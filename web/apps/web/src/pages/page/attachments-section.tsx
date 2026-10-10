@@ -1,13 +1,12 @@
 import { reaction } from "mobx";
 import { Upload as UploadIcon } from "lucide-react";
 import { observer } from "mobx-react-lite";
-import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useEffect, useId, useRef, useState, type RefObject } from "react";
 import useSWR from "swr";
 
 import { ConfirmDialog } from "../../app/confirm-dialog";
 import { writesPages } from "../../app/effective-role";
 import { useFileDrop } from "../../app/file-drop";
-import { useMounted } from "../../app/mounted";
 import { NotLoaded } from "../../app/not-loaded";
 import { errorText } from "../../app/problem-messages";
 import { FormField } from "../../components/form-field";
@@ -20,10 +19,10 @@ import type { Asset } from "../../services/asset.service";
 import type { Notebook } from "../../services/notebook.service";
 import type { AssetList, AssetStore } from "../../stores/asset.store";
 import { useAssets, useStore } from "../../stores/context";
+import { LoadMoreButton, useLoadMore } from "../load-more";
 import { MoveAssetDialog, RenameAssetDialog } from "./asset-dialogs";
 import { rereadIn } from "./assets-expiry";
 import { AttachmentRow, type AssetAction } from "./attachment-row";
-import { watchReader } from "./readers-input";
 import { UploadRows } from "./upload-rows";
 
 /** The dialogs of the section's rows. */
@@ -89,7 +88,21 @@ export const AttachmentsSection = observer(function AttachmentsSection({
     setFolders(dropped.folders);
     upload(dropped.files);
   });
-  const more = useMore(assets, parent, heading);
+  // The attachment's link the focus falls to as More goes: held by its row.
+  const focused = useRef<HTMLAnchorElement>(null);
+  const more = useLoadMore(
+    async () => {
+      const added = await assets.more(parent);
+      const read = assets.listOf(parent);
+      return {
+        added: added.map((asset) => asset.id),
+        whole: read !== undefined && read.next === null,
+        last: read?.assets.at(-1)?.id,
+      };
+    },
+    () => focused.current,
+    heading
+  );
 
   if (!writer && uploads.length === 0 && (list === undefined ? error === undefined : list.assets.length === 0)) {
     return null;
@@ -215,14 +228,14 @@ export const AttachmentsSection = observer(function AttachmentsSection({
                 writer={writer}
                 act={act}
                 menuClosed={menuClosed}
-                linkRef={asset.id === more.focusing ? more.focused : undefined}
+                linkRef={asset.id === more.focusing ? focused : undefined}
               />
             ))}
           </ul>
         )
       )}
       {more.failure !== undefined && <Alert>{errorText(more.failure, t)}</Alert>}
-      {list?.next != null && <MoreButton more={more} />}
+      {list?.next != null && <LoadMoreButton more={more} label={t("asset.more")} />}
       {shown !== undefined && writer && (
         <>
           <RenameAssetDialog notebook={notebook} asset={shown} held={held("rename", shown)} />
@@ -241,40 +254,6 @@ export const AttachmentsSection = observer(function AttachmentsSection({
     </section>
   );
 });
-
-/**
- * MoreButton is More. Gone with the focus, the last page read (by its own
- * read, or an upload's that read on to its attachment), it gives the focus
- * to the section's title before it leaves the document: not to the page's
- * start.
- */
-function MoreButton({ more }: { more: ReturnType<typeof useMore> }) {
-  const t = useT();
-  const leaving = useRef(more.left);
-  useEffect(() => {
-    leaving.current = more.left;
-  });
-  const { button } = more;
-  useLayoutEffect(() => {
-    const element = button.current;
-    return () => {
-      if (element?.contains(document.activeElement)) {
-        leaving.current();
-      }
-    };
-  }, [button]);
-  return (
-    <Button
-      ref={button}
-      variant="outline"
-      aria-busy={more.reading || undefined}
-      aria-disabled={more.reading || undefined}
-      onClick={() => void more.read()}
-    >
-      {t("asset.more")}
-    </Button>
-  );
-}
 
 /**
  * CopyField is an embed the page could not copy, the clipboard out of its
@@ -296,39 +275,6 @@ function CopyField({ embed, name, field }: { embed: string; name: string; field:
       value={embed}
       onFocus={(event) => event.currentTarget.select()}
     />
-  );
-}
-
-/**
- * AttachmentDrop is where files dropped upload under parent, as on its
- * attachments' section: the reading view of a page, for a writer (M7/P4
- * design 3.6). A folder is not uploaded: it says to import one.
- */
-export function AttachmentDrop({
-  notebook,
-  parent,
-  enabled,
-  children,
-}: {
-  notebook: Notebook;
-  parent: string | null;
-  enabled: boolean;
-  children: ReactNode;
-}) {
-  const t = useT();
-  const assets = useAssets(notebook);
-  const { instance } = useStore();
-  const [folders, setFolders] = useState(false);
-  // The section of parent says what began.
-  const drop = useFileDrop(enabled, (dropped) => {
-    setFolders(dropped.folders);
-    assets.upload(parent, dropped.files, t("asset.untitled"), { maxBytes: instance.info?.asset_max_bytes });
-  });
-  return (
-    <div className={cn("space-y-4 rounded-md", drop.over && "ring-2 ring-primary ring-offset-4")} {...drop.handlers}>
-      {folders && <Alert>{t("asset.folders")}</Alert>}
-      {children}
-    </div>
   );
 }
 
@@ -425,73 +371,4 @@ function useExpiry(list: AssetList | undefined, reread: () => void): void {
     );
     return () => clearTimeout(timer);
   }, [list]);
-}
-
-/**
- * useMore reads the next page of the attachments under parent. As the
- * last is read, More goes: the focus falls to the first attachment it
- * added, or the list's last, or the section's title, unless the reader did
- * something meanwhile or the focus is elsewhere than where More was (v0.1
- * design 13.2, item 26); More gone with the focus gave it to the title
- * (left), which is where More was.
- */
-function useMore(assets: AssetStore, parent: string | null, heading: RefObject<HTMLHeadingElement | null>) {
-  const mounted = useMounted();
-  const [reading, setReading] = useState(false);
-  const [failure, setFailure] = useState<unknown>(undefined);
-  // Where the focus falls as More goes: an attachment's link, or the section's title (null).
-  const [focusing, setFocusing] = useState<string | null | undefined>(undefined);
-  const busy = useRef(false);
-  const button = useRef<HTMLButtonElement>(null);
-  const focused = useRef<HTMLAnchorElement>(null);
-  // The title, once More gone with the focus gave it there.
-  const gaveTo = useRef<Element | null>(null);
-  useEffect(() => {
-    if (focusing === undefined) {
-      return;
-    }
-    const at = document.activeElement;
-    if (at === null || at === document.body || at === gaveTo.current) {
-      (focusing === null ? heading.current : focused.current)?.focus({ preventScroll: true });
-    }
-  }, [focusing, heading]);
-
-  function left(): void {
-    gaveTo.current = heading.current;
-    heading.current?.focus({ preventScroll: true });
-  }
-
-  async function read(): Promise<void> {
-    if (busy.current) {
-      return;
-    }
-    busy.current = true;
-    setReading(true);
-    setFailure(undefined);
-    setFocusing(undefined);
-    gaveTo.current = null;
-    const reader = watchReader({ on: button.current });
-    try {
-      const added = await assets.more(parent);
-      const list = assets.listOf(parent);
-      const at = document.activeElement;
-      const held =
-        !reader.acted() && (at === button.current || at === null || at === document.body || at === gaveTo.current);
-      if (mounted() && held && list !== undefined && list.next === null) {
-        setFocusing(added[0]?.id ?? list.assets.at(-1)?.id ?? null);
-      }
-    } catch (failed) {
-      if (mounted()) {
-        setFailure(failed);
-      }
-    } finally {
-      reader.end();
-      busy.current = false;
-      if (mounted()) {
-        setReading(false);
-      }
-    }
-  }
-
-  return { reading, failure, focusing, focused, button, read, left };
 }

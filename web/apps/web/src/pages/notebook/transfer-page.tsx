@@ -1,5 +1,5 @@
 import { observer } from "mobx-react-lite";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useRef, type RefObject } from "react";
 import { useLocation } from "react-router";
 import useSWR from "swr";
 
@@ -17,6 +17,7 @@ import { ExportDialog } from "./export-dialog";
 import { ImportDialog } from "./import-dialog";
 import { useNotebook } from "./notebook-layout";
 import { TransferJobRow } from "./transfer-job-row";
+import { LoadMoreButton, useLoadMore } from "../load-more";
 import { jobNames } from "./transfer-names";
 
 /** focusJob is the route state of the page reached by a page's export: the job its row takes the focus for. */
@@ -173,7 +174,18 @@ const JobsSection = observer(function JobsSection({
     // A second's polling is not deduplicated away.
     dedupingInterval: 500,
   });
-  const more = useMore(transfers, rows, heading);
+  const more = useLoadMore(
+    async () => {
+      const added = await transfers.more();
+      return {
+        added: added.map((job) => job.id),
+        whole: transfers.nextCursor === null,
+        last: transfers.jobs?.at(-1)?.id,
+      };
+    },
+    (id) => rows.current.get(id),
+    heading
+  );
   const jobs = transfers.loaded ? transfers.jobs : undefined;
   useArriving(rows, jobs);
   const reread = useCallback(() => void mutate(), [mutate]);
@@ -214,7 +226,7 @@ const JobsSection = observer(function JobsSection({
       )}
       {jobs !== undefined && transfers.nextCursor !== null && (
         <div className="flex flex-wrap items-center gap-3">
-          <MoreButton more={more} />
+          <LoadMoreButton more={more} label={t("transfer.more")} />
           {moreFailed !== undefined && (
             <p role="alert" className="text-sm text-destructive">
               {moreFailed}
@@ -276,104 +288,4 @@ function useArriving(rows: Rows, jobs: { id: string }[] | undefined): void {
       element.focus();
     }
   }, [jobs, rows]);
-}
-
-/**
- * MoreButton is Load more. Gone with the focus, the last page read, it
- * gives the focus to the section's title before it leaves the document:
- * not to the page's start.
- */
-function MoreButton({ more }: { more: ReturnType<typeof useMore> }) {
-  const t = useT();
-  const leaving = useRef(more.left);
-  useEffect(() => {
-    leaving.current = more.left;
-  });
-  const { button } = more;
-  useLayoutEffect(() => {
-    const element = button.current;
-    return () => {
-      if (element?.contains(document.activeElement)) {
-        leaving.current();
-      }
-    };
-  }, [button]);
-  return (
-    <Button
-      ref={button}
-      variant="outline"
-      aria-busy={more.reading || undefined}
-      aria-disabled={more.reading || undefined}
-      onClick={() => void more.read()}
-    >
-      {t("transfer.more")}
-    </Button>
-  );
-}
-
-/**
- * useMore reads the next page of the jobs. As the last is read, Load more
- * goes: the focus falls to the first job it added, or the list's last, or
- * the section's title, unless the reader did something meanwhile or the
- * focus is elsewhere than where Load more was (v0.1 design 13.2, item 26);
- * Load more gone with the focus gave it to the title (left), which is
- * where Load more was.
- */
-function useMore(transfers: TransferStore, rows: Rows, heading: RefObject<HTMLHeadingElement | null>) {
-  const mounted = useMounted();
-  const [reading, setReading] = useState(false);
-  const [failure, setFailure] = useState<unknown>(undefined);
-  // Where the focus falls as Load more goes: a job's row, or the section's title (null).
-  const [focusing, setFocusing] = useState<string | null | undefined>(undefined);
-  const busy = useRef(false);
-  const button = useRef<HTMLButtonElement>(null);
-  // The title, once Load more gone with the focus gave it there.
-  const gaveTo = useRef<Element | null>(null);
-  useEffect(() => {
-    if (focusing === undefined) {
-      return;
-    }
-    const at = document.activeElement;
-    if (at === null || at === document.body || at === gaveTo.current) {
-      (focusing === null ? heading.current : rows.current.get(focusing))?.focus({ preventScroll: true });
-    }
-  }, [focusing, heading, rows]);
-
-  function left(): void {
-    gaveTo.current = heading.current;
-    heading.current?.focus({ preventScroll: true });
-  }
-
-  async function read(): Promise<void> {
-    if (busy.current) {
-      return;
-    }
-    busy.current = true;
-    setReading(true);
-    setFailure(undefined);
-    setFocusing(undefined);
-    gaveTo.current = null;
-    const reader = watchReader({ on: button.current });
-    try {
-      const added = await transfers.more();
-      const at = document.activeElement;
-      const held =
-        !reader.acted() && (at === button.current || at === null || at === document.body || at === gaveTo.current);
-      if (mounted() && held && transfers.nextCursor === null) {
-        setFocusing(added[0]?.id ?? transfers.jobs?.at(-1)?.id ?? null);
-      }
-    } catch (failed) {
-      if (mounted()) {
-        setFailure(failed);
-      }
-    } finally {
-      reader.end();
-      busy.current = false;
-      if (mounted()) {
-        setReading(false);
-      }
-    }
-  }
-
-  return { reading, failure, button, read, left };
 }

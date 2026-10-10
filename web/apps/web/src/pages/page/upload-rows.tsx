@@ -1,6 +1,7 @@
 import { observer } from "mobx-react-lite";
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useRef } from "react";
 
+import { useFocusLeaving } from "../../app/focus-leaving";
 import { errorText } from "../../app/problem-messages";
 import { Button } from "../../components/ui/button";
 import { formatBytes } from "../../i18n/format";
@@ -49,19 +50,8 @@ const UploadRow = observer(function UploadRow({
   const t = useT();
   const { instance, preferences } = useStore();
   const row = useRef<HTMLLIElement>(null);
-  const leaving = useRef(left);
-  useEffect(() => {
-    leaving.current = left;
-  });
   // Before the row leaves the document: the focus in it goes elsewhere, not to the page's start.
-  useLayoutEffect(() => {
-    const element = row.current;
-    return () => {
-      if (element?.contains(document.activeElement)) {
-        leaving.current();
-      }
-    };
-  }, []);
+  useFocusLeaving(row, left);
   const failed = upload.failure !== undefined;
   const finishing = !failed && (upload.answered || (upload.total > 0 && upload.sent >= upload.total));
   const percent = upload.total > 0 ? Math.floor((upload.sent / upload.total) * 100) : 0;
