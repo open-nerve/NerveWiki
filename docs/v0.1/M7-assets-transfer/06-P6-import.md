@@ -208,7 +208,7 @@ worker 只调用用例 `Import.Run(ctx, jobID)`。导出与导入共用任务的
 
 - **报告随心跳写**：导入的计数与问题在运行中交给心跳（原子的指针），心跳在报告变了、且距上一次写至少 10 拍（10 秒）时随心跳一起写（`BeatJob` 的 `coalesce`），写失败下一拍再试；结束时照常写最终的。迁移 `00032` 允许运行中的行有报告（排队的仍不行）；读接口在任务结束之前不交出它。进程崩溃之后，收拾把失败合并进留着的报告（`InterruptJobs`），报告写明到最后一次心跳为止已导入的部分；导出的报告运行中为空，照旧只有失败。
 - **唯一索引**（迁移 `00031`）：`(notebook_id) WHERE kind = 'import' AND state IN ('queued', 'running') AND deleted_at IS NULL`；撞上答 409 `transfer.busy`。
-- **收拾**：启动时与每 5 分钟的"运行中"照旧（不分种类）；排队的核对改为两种都核对：`QueuedJobs(kind)` 与 River 还没结束的那一种（`Held(kind)`：`transfer.export`、`transfer.import`）。被收拾的导入的 zip 由清扫删掉。
+- **收拾**：启动时与每 5 分钟的"运行中"照旧（不分种类）；排队的核对改为两种都核对：`QueuedJobs(kind)` 与 River 还没结束的那一种（`Held(kind)`：`transfer.export`、`transfer.import`）。被收拾的导入的 zip 由清扫删掉。进程恰在 River 取到导入、开始之前停掉时，照导出（[P5 文档](05-P5-export.md) 3.12）：River 把它记在运行中，直到救援（`job_timeout + 1 小时`）丢掉它，行才被记成失败；其间这本笔记本的导入答 `transfer.busy`，开始它的人与笔记本的管理员可以取消（M7 收尾 A-Q1）。
 - **清扫**：先导出、再导入，`imports/` 下一天以前的文件，没有排队或运行中的导入对应的（`LiveArchives(ctx, kind, ids)`），删掉（结束时删不掉的、写行失败没删掉的、收拾之后的）；一种列不出或删不掉不妨碍另一种，错误合并之后返回。
 - **生命周期**：笔记本删除照旧软删除它的任务（排队的被取到时什么都不做；运行中的下一次心跳看到、在两批之间停下，zip 删掉）；清理器删行之前删 zip（`Archives.Delete` 已按种类）。
 

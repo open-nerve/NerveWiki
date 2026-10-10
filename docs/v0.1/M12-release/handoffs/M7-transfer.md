@@ -20,6 +20,7 @@ M7/P5 的导出（[P5 文档](../../M7-assets-transfer/05-P5-export.md)）有几
    - **几个 GB 的导入**：校验时每个文件解压一遍、写入时再读一遍，每批的附件写进存储，每 10,000 个节点 `ANALYZE` 一次，都只在小数据上测过。压测一个几 GB、几万个条目的库，核对时长在 `transfer.job_timeout` 之内、单元持着笔记本行的时长（挡着这本笔记本的保存）与 `ANALYZE` 的时长。
    - **部署文档**：反向代理的请求体上限至少 `transfer.import_max_bytes` 加 64 KiB，超时至少按 `asset.upload_min_rate` 传完它的时长（配置校验至多 3 小时）；正在上传的导入只在进程内计数（v0.1 一个进程，多个实例时要改到数据库）。
    - **名称不是 UTF-8 的条目**：现在跳过并写进报告；按 GBK、CP437 解读（M7 总设计第 2 节）。
+   - **River 取到之后、开始之前停掉的任务**（[M7 收尾审查](../../M7-assets-transfer/reviews/M7-closeout-review.md) A-Q1）：River 把它记在运行中，行仍在排队，直到 River 的救援（`transfer.job_timeout` 加 1 小时，默认 7 小时）丢掉它，收拾才把行记成失败；其间它占着队列的一个名额，这本笔记本的导入（导出是同一个人在这本笔记本）答 `transfer.busy`，只有开始它的人与笔记本的管理员能取消。导出在 P5 接受了（[P5 文档](../../M7-assets-transfer/05-P5-export.md) 3.12），导入同样接受。要缩短时：单实例下，启动时 River 记着运行中的 transfer 任务都是上一个进程的，启动时的收拾（`Job.Start`）可以一并把这些任务的行记成失败 `interrupted`、让 River 丢掉它们；多实例时要另想。
 6. **附件**（M7 总设计第 2、7、10 节）：
    - **总量配额**：只有单个文件与导入包的上限、同时的任务数、磁盘余量的检查（507），没有按工作区或笔记本的总量。定配额，或写明由管理员监控磁盘。
    - **按凭证的并发上传**：上传走 `authenticated` 的桶，一个凭证同时的上传数只由桶与 `asset.max_bytes / asset.upload_min_rate` 的时长约束（[P2 文档](../../M7-assets-transfer/02-P2-assets-server.md)第 2 节）。负载实测之后再定上限。

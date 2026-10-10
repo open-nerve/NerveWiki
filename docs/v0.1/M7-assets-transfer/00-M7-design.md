@@ -301,7 +301,7 @@
 ### 4.12 `transfer_jobs` 与文件
 
 - **表**（transfer 模块，迁移 `00029_transfer_transfer_jobs.sql`）：`id`、`notebook_id`（`RESTRICT`）、`root_id`（不建外键：指向节点会挡住节点的清理）、`kind`（`import`、`export`）、`name`（导出的笔记本或页、导入的文件的名称）、`state`（`queued`、`running`、`succeeded`、`failed`、`cancelled`、`expired`，带检查的状态机）、`created_by_id`、`client`、进度的两个数、`cancel_requested_at`、`heartbeat_at`、`started_at`、`finished_at`、`report`、结果的字节数、`created_at`、`deleted_at`。不存凭据的 id（会话清理会删 `auth_sessions` 的行）。写进 `runtime-grants.sql`。
-- **生命周期**：笔记本删除的订阅者软删除这些笔记本的任务（排队与运行中的任务下一批看到行已删，停下）；清理器排在 notebooks 之前；读、下载、取消都重新判定读权限（报告里有标题）。
+- **生命周期**：笔记本删除的订阅者软删除这些笔记本的任务（排队与运行中的任务下一批看到行已删，停下）；清理器排在 notebooks 之前；读与取消重新判定读权限（报告里有标题）；下载凭签名地址，不再判定：只有判定过的读签出地址（[P5 文档](05-P5-export.md) 3.11，[收尾审查](reviews/M7-closeout-review.md) A-N2）。
 - **文件的清扫**（transfer 的定时任务，每天）：`imports/`、`exports/` 下没有活着的任务对应的文件，删掉。
 
 ### 4.13 部署与配置
@@ -443,7 +443,7 @@ Nerve 的文件里程碑还没开始，只有计划与平台的做法（只读�
 - `platform/jobs`：队列与超时可配、`Job.Start`、只投递的客户端（含 `Unfinished`）；`platform/postgres`：`TxFrom`、`WithinSnapshot`（快照里拒绝 `WithinTx`）；`platform/storage`：写入途中每 64 MiB 看一次余量。
 - `platform/markdown`：核心的图片钩子（M4 的 `Extension` 加字段）；`obsidian.Resolve` 的签名（答类型）与 `Options.Assets`；`CheckHTML` 认附件的标记。
 - linking：`LinkTargetKind`、`PropertyLink.kind`、落点的 `target_is_asset`、`Linktexts` 的 `.md` 写法、补全数据带类型；`markdownExtensions(resolve, assets)`。
-- 组合根：`purgers(pool)` 改为 `purgers(pool, tx, store, logger)`；模块的构建次序 page → asset → transfer。
+- 组合根：`purgers(pool)` 改为 `purgers(pool, tx, store, logger)`，asset 与 transfer 的清理器排在 page 之前；模块的构建次序 page → asset → transfer。
 - 前端：`EditorContext.uploadAsset`、`EditorControls.whenComposed`；`PageView.assets_expire_at` 与阅读视图对缓存的视图的处理；M5 的 `pages` 处理的整树重读改经 `refresher`；`appLinks` 不碰附件的链接（`nw-asset`）；`InstanceInfo`；`PageTreeStore` 分出页面的索引；附件的上传不经 `oneAtATime`（13.2 第 1 条的例外）；右栏的属性对附件给地址。
 
 ## 9. 测试策略
@@ -478,7 +478,7 @@ Nerve 的文件里程碑还没开始，只有计划与平台的做法（只读�
 | 浏览器把附件当作本站的页面执行脚本、向外站请求 | 服务端测定类型；每个附件答复带 `sandbox` 与 `default-src 'none'` 的 CSP；非白名单的强制下载；`nosniff`；e2e 在浏览器里证明 |
 | 导入长时间持有笔记本的锁 | 小批量的单元（节点、正文、链接各有上限）；批与批之间放开锁；单元之前解析，不在锁里排队 |
 | 压缩炸弹、越出目录、海量条目、谎报的中央目录 | 先读 EOCD；先校验后写入；按实际读出的字节计；上限可配 |
-| 服务重启、超时时导入导出被打断 | 不自动重试；心跳与启动时的收拾记成失败并写报告；导入的部分照常可见、可删 |
+| 服务重启、超时时导入导出被打断 | 不自动重试；心跳与启动时的收拾记成失败并写报告；导入的部分照常可见、可删。进程恰在 River 取到任务、开始之前停掉时，排队的任务等 River 的救援（默认 7 小时）才记成失败，其间可以取消（导出在 P5 接受，导入同样；收尾审查 A-Q1，负责人可以改判，改法写进 [M12 的移交](../M12-release/handoffs/M7-transfer.md)第 5 项） |
 | 文件与行不一致（崩溃、手工改动卷、提交结果不明） | 先写文件后提交、先删文件后删行；结果不明时不删；孤儿清扫；下载时文件不在答 404 并记日志 |
 | 反向代理限制了请求体或超时、缓冲了上传 | README 写明 `client_max_body_size`、上传路由不缓冲、超时；网页在发送之前先查，提前的拒绝不靠答复 |
 | 旧版 Windows 打的 zip 名称不是 UTF-8 | 跳过并写进报告（M12 的移交） |
