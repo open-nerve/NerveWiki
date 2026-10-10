@@ -115,6 +115,8 @@ type tree struct {
 	pages      map[uuid.UUID]int
 	children   map[uuid.UUID][]string
 	made       []made
+	byID       map[uuid.UUID]made
+	keys       map[uuid.UUID]map[string]bool
 	units      []app.ImportSpec
 	actors     []shared.Actor
 	committed  []int
@@ -134,7 +136,8 @@ type tree struct {
 }
 
 func newTree() *tree {
-	return &tree{pages: map[uuid.UUID]int{}, children: map[uuid.UUID][]string{}, gone: map[uuid.UUID]bool{}}
+	return &tree{pages: map[uuid.UUID]int{}, children: map[uuid.UUID][]string{}, gone: map[uuid.UUID]bool{}, byID: map[uuid.UUID]made{},
+		keys: map[uuid.UUID]map[string]bool{}}
 }
 
 func (t *tree) CheckContent(content string) error {
@@ -242,7 +245,11 @@ func (t *tree) Import(ctx context.Context, spec app.ImportSpec, do func(ctx cont
 	for _, m := range u.made {
 		m.changeset = cs
 		t.made = append(t.made, m)
+		t.byID[m.id] = m
 		t.children[under(m.parent)] = append(t.children[under(m.parent)], m.name)
+		if keys, ok := t.keys[under(m.parent)]; ok {
+			keys[shared.TitleKey(m.name)] = true
+		}
 	}
 	t.committed = append(t.committed, len(u.made))
 	return cs, nil
@@ -284,7 +291,6 @@ func (u *unit) CreateAsset(ctx context.Context, a app.ImportedAsset, after func(
 func (u *unit) depth(parent *uuid.UUID) (int, error) {
 	u.t.mu.Lock()
 	defer u.t.mu.Unlock()
-	all := append(append([]made(nil), u.t.made...), u.made...)
 	depth := 0
 	for at := parent; at != nil; depth++ {
 		if u.t.gone[*at] {
@@ -293,13 +299,37 @@ func (u *unit) depth(parent *uuid.UUID) (int, error) {
 		if d, ok := u.t.pages[*at]; ok {
 			return depth + d + u.t.deeper, nil
 		}
-		i := slices.IndexFunc(all, func(m made) bool { return m.id == *at && !m.asset })
-		if i < 0 {
+		m, ok := u.find(*at)
+		if !ok || m.asset {
 			return 0, app.ErrNoParent
 		}
-		at = all[i].parent
+		at = m.parent
 	}
 	return depth, nil
+}
+
+// find is the node of id the unit made, or one made before it.
+func (u *unit) find(id uuid.UUID) (made, bool) {
+	if i := slices.IndexFunc(u.made, func(m made) bool { return m.id == id }); i >= 0 {
+		return u.made[i], true
+	}
+	m, ok := u.t.byID[id]
+	return m, ok
+}
+
+// keysUnder are the keys of the names under parent, there before or made
+// by the units committed: read from children as first asked, kept as each
+// unit commits (an import of 10,000 pages under one parent, linear).
+func (t *tree) keysUnder(parent uuid.UUID) map[string]bool {
+	keys, ok := t.keys[parent]
+	if !ok {
+		keys = map[string]bool{}
+		for _, name := range t.children[parent] {
+			keys[shared.TitleKey(name)] = true
+		}
+		t.keys[parent] = keys
+	}
+	return keys
 }
 
 // under is the key of a parent's children: uuid.Nil for the root.
@@ -320,17 +350,12 @@ func (u *unit) add(m made, reserved func(key string) bool) (app.CreatedNode, err
 	}
 	u.t.mu.Lock()
 	defer u.t.mu.Unlock()
-	taken := map[string]bool{}
-	for _, name := range u.t.children[under(m.parent)] {
-		taken[shared.TitleKey(name)] = true
-	}
-	for _, x := range slices.Concat(u.t.made, u.made) {
-		if under(x.parent) == under(m.parent) {
-			taken[shared.TitleKey(x.name)] = true
-		}
+	keys := u.t.keysUnder(under(m.parent))
+	taken := func(key string) bool {
+		return keys[key] || slices.ContainsFunc(u.made, func(x made) bool { return under(x.parent) == under(m.parent) && shared.TitleKey(x.name) == key })
 	}
 	name := m.name
-	for n := 2; taken[shared.TitleKey(name)] || n > 2 && reserved != nil && reserved(shared.TitleKey(name)); n++ {
+	for n := 2; taken(shared.TitleKey(name)) || n > 2 && reserved != nil && reserved(shared.TitleKey(name)); n++ {
 		if ext := path.Ext(m.name); m.asset && ext != "" {
 			name = strings.TrimSuffix(m.name, ext) + " " + strconv.Itoa(n) + ext
 		} else {
