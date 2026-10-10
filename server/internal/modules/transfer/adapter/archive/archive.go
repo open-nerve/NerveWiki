@@ -206,11 +206,11 @@ func readImport(f storage.File, most int, largest int64) (*zip.Reader, error) {
 	case d.records > uint64(most) || d.size > uint64(largest): //nolint:gosec // positive settings
 		return nil, app.ErrTooManyEntries
 	}
-	n, read := countRecords(f, size, d.start, most, largest)
+	n, read, refused := countRecords(f, size, d.start, most, largest)
 	if n > most || read > largest {
 		return nil, app.ErrTooManyEntries
 	}
-	b := &bounded{r: f, left: read + directoryEnds}
+	b := &bounded{r: f, left: read + refused + directoryEnds}
 	z, err := zip.NewReader(b, size)
 	b.lift()
 	switch {

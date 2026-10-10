@@ -191,3 +191,62 @@ func TestThePreReadTakesTheBaseAsArchiveZip(t *testing.T) {
 		})
 	}
 }
+
+// withComment is the record rec with a comment of n bytes.
+func withComment(rec []byte, n int) []byte {
+	out := slices.Concat(rec, bytes.Repeat([]byte("c"), n))
+	binary.LittleEndian.PutUint16(out[32:], uint16(n)) //nolint:gosec // short
+	return out
+}
+
+// archive/zip reads a record whole before it refuses it, its name, extra
+// and comment up to 192 KiB, or up to the file's end: the read's bound
+// lets it (M7 closeout F3-M1), and the directory before it is read.
+func TestARefusedRecordIsReadWithinTheBound(t *testing.T) {
+	b1 := dirRecord("b1", 1, 1, 0, nil)
+	// A size maxed, the zip64 field empty after n bytes of another field.
+	refused := func(name, other, comment int) []byte {
+		extra := binary.LittleEndian.AppendUint16([]byte{0x99, 0x99}, uint16(other)) //nolint:gosec // short
+		extra = slices.Concat(extra, make([]byte, other), zip64Field())
+		return withComment(dirRecord(string(bytes.Repeat([]byte("n"), name)), 1<<32-1, 1, 0, extra), comment)
+	}
+	// The end with a comment of n bytes: past 1 KiB, it is found in the last 65 KiB.
+	endWith := func(size, n int) []byte {
+		end := dirEnd(1, uint32(size), 0)                  //nolint:gosec // short
+		binary.LittleEndian.PutUint16(end[20:], uint16(n)) //nolint:gosec // short
+		return slices.Concat(end, bytes.Repeat([]byte("e"), n))
+	}
+	// A record's header saying a name, extra and comment of these lengths, the file ending within them.
+	cut := func(name, extra, comment uint16) []byte {
+		h := dirRecord("", 1, 1, 0, nil)
+		binary.LittleEndian.PutUint16(h[28:], name)
+		binary.LittleEndian.PutUint16(h[30:], extra)
+		binary.LittleEndian.PutUint16(h[32:], comment)
+		return h
+	}
+	long, shorter := refused(65535, 65527, 65535), refused(21000, 21000, 22000)
+	for _, tt := range []struct {
+		name string
+		data []byte
+	}{
+		{"a record of 192 KiB refused", slices.Concat(b1, long, endWith(len(b1)+len(long), 0))},
+		{"a record of 64 KiB refused, the end in the last 65 KiB", slices.Concat(b1, shorter, endWith(len(b1)+len(shorter), 2000))},
+		{"a record's comment cut by the file's end", slices.Concat(b1, cut(65535, 65535, 65535), make([]byte, 150000), endWith(len(b1), 0))},
+		{"a record's extra cut, the end in the last 65 KiB", slices.Concat(b1, cut(0, 65535, 0), make([]byte, 63000), endWith(len(b1), 2000))},
+		{"a record's name cut, the end in the last 65 KiB", slices.Concat(b1, cut(65535, 0, 0), make([]byte, 63000), endWith(len(b1), 2000))},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			zr, err := zip.NewReader(bytes.NewReader(tt.data), int64(len(tt.data)))
+			if err != nil || len(zr.File) != 1 {
+				t.Fatalf("archive/zip: %v, want 1 entry", err)
+			}
+			got, err := readImport(&counted{Reader: bytes.NewReader(tt.data)}, 50, MaxDirectory)
+			if err != nil {
+				t.Fatalf("readImport() = %v, want 1 entry", err)
+			}
+			if len(got.File) != 1 {
+				t.Errorf("readImport read %d entries, want 1", len(got.File))
+			}
+		})
+	}
+}

@@ -167,10 +167,15 @@ test("a folder dropped on the file is not taken, said so: the file chosen before
   expect(fireEvent.drop(file, { dataTransfer: dropped([vault()]) })).toBe(true);
   expect(within(shown).queryByText(/^A folder is not imported/u)).toBeNull();
   expect(file.getAttribute("aria-describedby")).toBeNull();
-  // It goes as the picker opens too.
-  fireEvent.drop(file, { dataTransfer: dropped([], ["Vault"]) });
-  await user.click(file);
-  expect(within(shown).queryByText(/^A folder is not imported/u)).toBeNull();
+  // It goes as the picker opens too, by the pointer or the keyboard.
+  for (const opening of [() => user.click(file), () => user.keyboard("{Enter}"), () => user.keyboard(" ")]) {
+    fireEvent.drop(file, { dataTransfer: dropped([], ["Vault"]) });
+    expect(within(shown).queryByText(/^A folder is not imported/u)).not.toBeNull();
+    file.focus();
+    // oxlint-disable-next-line no-await-in-loop -- one way at a time
+    await opening();
+    expect(within(shown).queryByText(/^A folder is not imported/u)).toBeNull();
+  }
 
   fireEvent.drop(file, { dataTransfer: dropped([], ["Vault"]) });
   await user.click(within(shown).getByRole("button", { name: "Import" }));

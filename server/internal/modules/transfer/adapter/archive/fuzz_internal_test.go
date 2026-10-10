@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"errors"
 	"testing"
+
+	"github.com/open-nerve/NerveWiki/server/internal/modules/transfer/app"
 )
 
 // The fuzz test (M7 closeout A-N6): a plain go test runs its seeds; the
@@ -41,7 +43,8 @@ func seedZip(f *testing.F, names []string, zip64 bool) {
 // panics and reads a directory as archive/zip does: what it reads,
 // archive/zip reads alike; what archive/zip reads within the most, it
 // reads, unless the entries' data overlap or reach into the directory
-// (checkData).
+// (checkData), or the end says more records than the most, or a larger
+// directory (endPastBounds).
 func FuzzReadImportAgreesWithArchiveZip(f *testing.F) {
 	seedZip(f, []string{"a.md", "b/", "b/c.png"}, false)
 	seedZip(f, []string{"x"}, false)
@@ -62,8 +65,20 @@ func FuzzReadImportAgreesWithArchiveZip(f *testing.F) {
 			}
 			return
 		}
-		if zipOK && len(zr.File) <= most && !errors.Is(err, errOverlap) {
+		switch {
+		case !zipOK || len(zr.File) > most || errors.Is(err, errOverlap):
+		case errors.Is(err, app.ErrTooManyEntries) && endPastBounds(data, most):
+		default:
 			t.Fatalf("readImport refused (%v) what archive/zip reads, %d entries", err, len(zr.File))
 		}
 	})
+}
+
+// endPastBounds reports whether data's end says more records than most,
+// or a directory larger than MaxDirectory: an import refuses it before it
+// reads further (M7/P6 design 3.10), though archive/zip, comparing 16
+// bits of the count, may read the records there are.
+func endPastBounds(data []byte, most int) bool {
+	d, err := readEnd(bytes.NewReader(data), int64(len(data)))
+	return err == nil && (d.records > uint64(most) || d.size > MaxDirectory)
 }

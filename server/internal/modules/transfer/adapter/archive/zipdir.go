@@ -10,12 +10,12 @@ import (
 
 // An import's archive's directory, read before archive/zip reads it (M7/P6
 // design 3.10). archive/zip reads the directory's records from its start
-// until one's signature is not a record's, whatever the end says it holds,
-// one *zip.File each: a 512 MiB archive can hold some eleven million. So
-// the end is found as archive/zip finds it (Go 1.27's readDirectoryEnd,
-// whose rules this follows), and the records are counted as it reads
-// them (its readDirectoryHeader), nothing kept, before it does: up to the
-// first it refuses.
+// until it refuses one (its readDirectoryHeader: a signature not a
+// record's, the file ending within it, a zip64 field too short), whatever
+// the end says it holds, one *zip.File each: a 512 MiB archive can hold
+// some eleven million. So the end is found as archive/zip finds it (Go
+// 1.27's readDirectoryEnd, whose rules this follows), and the records are
+// counted as it reads them, nothing kept, before it does.
 
 // The zip format's signatures and lengths (APPNOTE 4.3).
 const (
@@ -164,20 +164,20 @@ func recordAt(r io.ReaderAt, size, offset int64) bool {
 
 // countRecords counts the directory's records from start as archive/zip
 // reads them, until the first it refuses (records.next); it stops once
-// more than most are counted, or more than limit bytes
-// read. It answers the records and their bytes.
-func countRecords(r io.ReaderAt, size, start int64, most int, limit int64) (int, int64) {
+// more than most are counted, or more than limit bytes read. It answers
+// the records and their bytes, and the bytes archive/zip reads of the
+// record it refuses, at most: it reads one whole before refusing it.
+func countRecords(r io.ReaderAt, size, start int64, most int, limit int64) (n int, read, refused int64) {
 	in := newRecords(r, size, start)
-	n, read := 0, int64(0)
 	for n <= most && read <= limit {
 		length, ok := in.next()
 		if !ok {
-			break
+			return n, read, length
 		}
 		n++
 		read += length
 	}
-	return n, read
+	return n, read, 0
 }
 
 // records reads a directory's records in turn from where one starts.
@@ -193,25 +193,27 @@ func newRecords(r io.ReaderAt, size, start int64) *records {
 // next reads the next record: its header, name, extra field and comment,
 // and answers its length; false where archive/zip stops, refusing it: its
 // signature is not a record's, the file ends within it, or a zip64 field
-// is too short (zip64Short).
+// is too short (zip64Short). Refused, the length is what archive/zip
+// reads of it at most: the header, then the rest it says it has.
 func (rs *records) next() (int64, bool) {
 	var head [directoryHeaderLen]byte
 	if _, err := io.ReadFull(rs.in, head[:]); err != nil || binary.LittleEndian.Uint32(head[:]) != directoryHeaderSignature {
-		return 0, false
+		return directoryHeaderLen, false
 	}
 	name, extra, comment := int(binary.LittleEndian.Uint16(head[28:])), int(binary.LittleEndian.Uint16(head[30:])),
 		int(binary.LittleEndian.Uint16(head[32:]))
+	length := int64(directoryHeaderLen + name + extra + comment)
 	rs.extra = slices.Grow(rs.extra[:0], extra)[:extra]
 	if _, err := rs.in.Discard(name); err != nil {
-		return 0, false
+		return length, false
 	}
 	if _, err := io.ReadFull(rs.in, rs.extra); err != nil {
-		return 0, false
+		return length, false
 	}
 	if _, err := rs.in.Discard(comment); err != nil || zip64Short(head[:], rs.extra) {
-		return 0, false
+		return length, false
 	}
-	return int64(directoryHeaderLen + name + extra + comment), true
+	return length, true
 }
 
 // zip64Short reports whether a record, of the header head, has a zip64
