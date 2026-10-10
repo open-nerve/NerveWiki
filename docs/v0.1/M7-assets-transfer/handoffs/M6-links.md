@@ -1,5 +1,5 @@
 ```yaml
-status: open
+status: done
 from: M6 收尾
 to: M7
 created: 2026-10-06
@@ -31,3 +31,4 @@ M6 的链接只解析到页面（[M6 总设计](../../M6-links/00-M6-design.md) 
 - M7/P3A（2026-10-09，合并 `5138ad6`）：第 2 项（附件进解析，三种读法；page 的读端口读附件，`LinkTargetKind` 加 `asset`，`checkLinks` 认附件，附件的新建、删除、改名、移动经观察者重新解析，改名、移动照页面的规则改写）与第 3 项（落点答 `target_is_asset`）完成；第 6 项里附件的解析在整个程序上有行为测试（`bootstrap/links_assets_test.go`）。第 1 项与第 6 项里附件嵌入的渲染随 P3B，第 4 项随 P6，第 5 项随 P5。见 [P3 文档](../03-P3-assets-links.md)第 9 节。
 - M7/P3B（2026-10-09，合并 `f3bf03c`）：第 1 项落实：`obsidian.Options` 的 `Resolve` 答出 `Target{Node, Asset}`，另有 `Assets`；交空时解析到附件的写法是不带地址的文字（不再照链接渲染，也不写成页面的链接）；经 `markdownExtensions(resolve, assets)` 到达阅读视图，标记写进 `Markup`，`CheckHTML`、`CheckSize` 与样例集随之更新。第 6 项附件嵌入的渲染在整个程序上有行为测试（`bootstrap/assets_view_test.go`，组合根交空时失败）；e2e 的断言随 P4。见 [P3 文档](../03-P3-assets-links.md)第 9.2 节。
 - M7/P5A（2026-10-09，合并 `e8f02d5`）：第 5 项落实：没有正文、有子页的页，导出的范围里有链接（含属性链接）解析到它时写一个空的 `.md`，否则只有目录；`linking.NewLinkedPages` 读出它们，经组合根到达（整个程序上的测试，组合根交空时那一页只有目录、测试失败）；Obsidian 1.12.7 的核对里 `obsidian-verified` 的样例全部一致。见 [P5 文档](../05-P5-export.md) 3.9、9.1。
+- M7/P6A（2026-10-10，合并 `b60cf66`）：第 4 项落实：导入经 `TreeWrites().Import` 跑多操作的单元（只建不删，没有改名与移动，不碰改写的参与者要的前提）；正文在单元之前排队解析（`TreeWrites.Parse`，M7 总设计 4.2，不在单元里持锁解析）；导入的页经观察者进索引，之后建的页让先前解析不到的链接重新解析到它们；写过节点之后对 page、linking、asset 的表 `ANALYZE`（每 10,000 个节点与结束时，各模块经自己模块根的 `NewStatistics`，运行时角色有 `MAINTAIN`）。第 6 项里导入的索引在整个程序上有行为测试（`bootstrap/transfer_import_test.go`、Obsidian 的样例 `transfer_import_obsidian_test.go`），e2e 的 TR2 经 `expectIndexedLinks` 断言。六项都已落实。见 [P6 文档](../06-P6-import.md) 3.3、3.6、9.1。

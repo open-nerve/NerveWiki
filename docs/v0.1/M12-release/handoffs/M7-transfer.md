@@ -1,17 +1,22 @@
 ```yaml
 status: open
-from: M7/P5
+from: M7/P5, M7/P6
 to: M12
 created: 2026-10-09
 ```
 
 # 导入导出的任务：留给 M12 的几处
 
-M7/P5 的导出（[P5 文档](../../M7-assets-transfer/05-P5-export.md)）有几处只做了推理或小规模的实测，或者定下了做法而没有实现，留给 M12 的压测、部署文档与收尾（[P5A 审查](../../M7-assets-transfer/reviews/P5A-export-review.md) A P3-13）。
+M7/P5 的导出（[P5 文档](../../M7-assets-transfer/05-P5-export.md)）有几处只做了推理或小规模的实测，或者定下了做法而没有实现，留给 M12 的压测、部署文档与收尾（[P5A 审查](../../M7-assets-transfer/reviews/P5A-export-review.md) A P3-13）。M7/P6 的导入加了第 5 项（[P6 文档](../../M7-assets-transfer/06-P6-import.md)、[P6A 审查](../../M7-assets-transfer/reviews/P6A-import-review.md)）。
 
 1. **结束的任务行**：笔记本活着时，结束的任务（成功、失败、取消、过期）的行一直留着；只有笔记本删除之后才随它清理。每天导出一次的读者一年在一本笔记本留下几百行，列表按游标分页，不影响正确性。M12 定一个保留期（例如结束 90 天之后软删除，交给已有的清理器），或写明不清理。
 2. **几个 GB 的导出**：附件复制的速率、正文按 200 页或 16 MiB 一批的内存峰值、写入途中每 64 MiB 重读磁盘余量的开销，都只在小数据上测过。压测一本几个 GB 的笔记本的导出，核对时长在 `transfer.job_timeout` 之内、内存与连接的占用，以及与同时的编辑、上传争用磁盘时 `storage_full` 的表现。
-3. **部署文档**：`exports/`（P6 起还有 `imports/`）在存储目录里，成功的导出保留 `transfer.export_ttl`（默认 24 小时）、每人每本笔记本只留最新的一份；`jobs.export_workers` 至多 `database.max_conns` 的一半；下载走 `anonymous` 桶，经反向代理时照附件的下载配置超时与缓冲。
+3. **部署文档**：`exports/`（P6 起还有 `imports/`）在存储目录里，成功的导出保留 `transfer.export_ttl`（默认 24 小时）、每人每本笔记本只留最新的一份；`jobs.export_workers` 与 `jobs.import_workers` 合起来至多 `database.max_conns` 的一半；下载走 `anonymous` 桶，经反向代理时照附件的下载配置超时与缓冲。
 4. **任务列表的轮询**（[M7/P5B 审查](../../M7-assets-transfer/reviews/P5B-export-web-review.md)）：
    - 有任务在进行时，设置页每秒读回全部已加载的页：已"加载更多"到 N 页时每分钟 60·N 次，计入 `authenticated` 桶（每个凭据每分钟 1,200 次）。压测时核对几个标签页、几页同时开着的情形；需要时改为每秒只读第一页并接上，较慢的到期轮询再读回全部。
    - 下载地址的到期按客户端的时钟比较：时钟偏慢时，链接可能指向刚到期的地址（下载失败）。部署文档提醒校时。
+5. **导入**（M7/P6）：
+   - **按人的队列上限**（P6A 审查 B-9）：`transfer.max_queued`（默认 20）是全局的，一个人可以连着开始导入与导出、占满队列几个小时，别人的都答 503。定一个按人的上限，或写明由管理员处理。
+   - **几个 GB 的导入**：校验时每个文件解压一遍、写入时再读一遍，每批的附件写进存储，每 10,000 个节点 `ANALYZE` 一次，都只在小数据上测过。压测一个几 GB、几万个条目的库，核对时长在 `transfer.job_timeout` 之内、单元持着笔记本行的时长（挡着这本笔记本的保存）与 `ANALYZE` 的时长。
+   - **部署文档**：反向代理的请求体上限至少 `transfer.import_max_bytes` 加 64 KiB，超时至少按 `asset.upload_min_rate` 传完它的时长（配置校验至多 3 小时）；正在上传的导入只在进程内计数（v0.1 一个进程，多个实例时要改到数据库）。
+   - **名称不是 UTF-8 的条目**：现在跳过并写进报告；按 GBK、CP437 解读（M7 总设计第 2 节）。
