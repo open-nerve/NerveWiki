@@ -518,7 +518,7 @@ M7 开工时负责人确认进入 M7（2026-10-08："可以了"）。下面是�
 | P3 | 附件与链接（服务端） | 已完成（A 合并 `5138ad6`，B 合并 `f3bf03c`） | [03-P3-assets-links.md](03-P3-assets-links.md) | [P3A 审查](reviews/P3A-assets-links-review.md)、[P3B 审查](reviews/P3B-render-review.md) |
 | P4 | 附件（前端） | 已完成（A 合并 `e44b417`，B 合并 `32e175c`，C 合并 `008f81f`） | [04-P4-assets-web.md](04-P4-assets-web.md) | [P4A 审查](reviews/P4A-assets-web-review.md)、[P4B 审查](reviews/P4B-assets-web-review.md)、[P4C 审查](reviews/P4C-paste-upload-review.md) |
 | P5 | 导出 | 完成（A 合并 `e8f02d5`，B 合并 `ab4562a`） | [05-P5-export.md](05-P5-export.md) | [P5A 审查](reviews/P5A-export-review.md)、[P5B 审查](reviews/P5B-export-web-review.md) |
-| P6 | 导入 | 进行中（A 合并 `b60cf66`；B） | [06-P6-import.md](06-P6-import.md) | [P6A 审查](reviews/P6A-import-review.md) |
+| P6 | 导入 | 已完成（A 合并 `b60cf66`，B 合并 `c9a48dd`） | [06-P6-import.md](06-P6-import.md) | [P6A 审查](reviews/P6A-import-review.md)、[P6B 审查](reviews/P6B-import-web-review.md) |
 
 ## 13. 变更记录
 
@@ -542,3 +542,4 @@ M7 开工时负责人确认进入 M7（2026-10-08："可以了"）。下面是�
 | 2026-10-10 | P5B 完成：导出的前端照实际改写（[05-P5-export.md](05-P5-export.md) 第 4 节）：任务列表的重读照反链读回已加载的页数，读到之前与读不到时说明；行与控件以做什么、发起人与开始的时刻命名；控件带着焦点离开时交给行；轮询至多一小时；`ConfirmDialog` 按触发按钮打开时成功之后复位；实例信息的 `export_ttl_seconds` 进镜像的冒烟 | P5B 的实施、审查与两轮修复核对：[05-P5-export.md](05-P5-export.md) 第 4、9 节、[P5B 审查](reviews/P5B-export-web-review.md) |
 | 2026-10-10 | P6A 完成：导入的服务端照实际改写（[06-P6-import.md](06-P6-import.md) 第 3 节）：序号跳过同一个库里后面的兄弟原样的名称；正在上传的导入在进程内计数（一本笔记本一个，算进队列与存储，导出也看它），声明的长度过大时立即 413；导入的报告随心跳写、收拾保留；`import_max_entries` 至多 100,000，`import_max_bytes` 按最低速率在 3 小时之内传完；4.9 的收拾与数量、4.11 的接口、校验、名称、写入、取消与报告随之改 | P6A 的实施、审查与六轮修复核对：[06-P6-import.md](06-P6-import.md) 第 3、9 节、[P6A 审查](reviews/P6A-import-review.md) |
 | 2026-10-10 | P6B 开工：导入一节与对话框照 A 的实际修订（[06-P6-import.md](06-P6-import.md) 第 4 节）：报告、失败与问题的文案按任务的种类；`transfer.busy` 的通用文案不分种类，导出与导入的对话框各用自己的；自己的导入进行中时对话框先说明、不发送；上传属于对话框，卸载即中止；读文件之前的拒绝到浏览器可能只是连接中断，对话框说明可能的原因、不重试 | [06-P6-import.md](06-P6-import.md) 第 4 节；P6A 的交接（第 9.1 节） |
+| 2026-10-10 | P6B 完成：导入的前端照实际改写（[06-P6-import.md](06-P6-import.md) 第 4 节）：上传期间在应用里离开同样先问，询问只在上传期间；选的位置在重读的树里消失时说明、不发送；只列还能再放一层的页；进行中的导入按列表里看得到的判断（开工时写的是"自己的"），这时"导入"仍可聚焦、什么都不发；每次结束都重读任务列表；Chromium 读到读文件之前答的 409；`server_busy`、`payload_too_large`、`bad_request` 用导入自己的文案；`tree_changed` 只说删除（契约随之）；编辑器上传文件夹与 `.md` 的提示指到导入 | P6B 的实施、审查与四轮修复核对：[06-P6-import.md](06-P6-import.md) 第 4、9 节、[P6B 审查](reviews/P6B-import-web-review.md) |
