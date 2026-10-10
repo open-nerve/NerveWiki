@@ -1,10 +1,13 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
+import { eventHandlers } from "../../events/handlers";
+import { FakePage } from "../../events/testing/fake-page";
 import type { TransferFailure } from "../../services/transfer.service";
 import { transfers } from "../../test/attachments";
-import { instanceJSON, json, notebookJSON, problem } from "../../test/fakes";
+import { eventServer, withEvents } from "../../test/event-server";
+import { instanceJSON, json, notebookJSON, problem, workspaceJSON } from "../../test/fakes";
 import { jobJSON, jobsServer, underWay } from "../../test/jobs-server";
 import { assetNode, guide, pageNode } from "../../test/page-server";
 import type { TreeNode } from "../../services/page.service";
@@ -34,7 +37,7 @@ async function open(user: ReturnType<typeof userEvent.setup>): Promise<HTMLEleme
 
 test("an editor imports a zip under a page: the job goes first, the jobs read again, its row focused", async () => {
   const user = userEvent.setup();
-  const server = jobsServer({ jobs: [jobJSON(1)] });
+  const server = jobsServer({ role: "editor", jobs: [jobJSON(1)] });
   renderApp(transfer, server.app);
   expect(await screen.findByRole("heading", { level: 2, name: "Import" })).toBeTruthy();
   // The import's section comes before the export's.
@@ -47,6 +50,8 @@ test("an editor imports a zip under a page: the job goes first, the jobs read ag
 
   const shown = await open(user);
   expect(within(shown).getByText("The zip may be at most 512 MB.")).toBeTruthy();
+  expect(within(shown).getByText(/^Keep this dialog open while the zip uploads;/u)).toBeTruthy();
+  expect(within(shown).getByLabelText("Zip archive").getAttribute("accept")).toBe(".zip,application/zip");
   await user.upload(within(shown).getByLabelText("Zip archive"), vault());
   const place = within(shown).getByLabelText("Import under");
   expect(
@@ -64,6 +69,24 @@ test("an editor imports a zip under a page: the job goes first, the jobs read ag
   // The list is read again after the import started: its job is polled.
   expect(server.asked.filter((ask) => ask.startsWith("GET jobs")).length).toBeGreaterThan(1);
   expect(asksBeforeLeaving()).toBe(false);
+
+  // Cancelled later, the dialog gives the focus back to its button, not to the job started before.
+  await user.click(within(await open(user)).getByRole("button", { name: "Cancel" }));
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Import a zip…" })));
+});
+
+test("imported while the jobs cannot be read, the focus goes to their title", async () => {
+  const user = userEvent.setup();
+  const server = jobsServer();
+  server.listDown = true;
+  renderApp(transfer, server.app);
+  await screen.findByRole("alert");
+
+  const shown = await open(user);
+  await user.upload(within(shown).getByLabelText("Zip archive"), vault());
+  await user.click(within(shown).getByRole("button", { name: "Import" }));
+
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Recent jobs" })));
 });
 
 test("the places offered are the root and the pages that can hold one more level, by their paths; no attachment", async () => {
@@ -114,11 +137,63 @@ test("nothing goes out without a file, or with one larger than the server takes;
   expect(within(shown).getByText("The zip may be at most 3 B.")).toBeTruthy();
   expect(server.asked.filter((ask) => ask.startsWith("POST"))).toEqual([]);
 
-  await user.upload(file, new File(["12"], "notes.tar"));
+  await user.upload(file, new File(["123"], "VAULT.ZIP"));
+  expect(within(shown).queryByText(/does not end with \.zip/u)).toBeNull();
+  // A file as large as the server takes goes.
+  await user.upload(file, new File(["123"], "notes.tar"));
   expect(within(shown).getByText(/does not end with \.zip/u)).toBeTruthy();
   await user.click(within(shown).getByRole("button", { name: "Import" }));
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   expect(server.asked.filter((ask) => ask.startsWith("POST"))).toEqual(["POST import notes.tar under root"]);
+});
+
+test("the instance not read, no size is told, and none is checked", async () => {
+  const user = userEvent.setup();
+  const server = jobsServer({ answers: { "GET /api/v0/instance": () => problem(404, "not_found") } });
+  renderApp(transfer, server.app);
+  const shown = await open(user);
+
+  expect(within(shown).queryByText(/^The zip may be at most/u)).toBeNull();
+  await user.upload(within(shown).getByLabelText("Zip archive"), vault());
+  await user.click(within(shown).getByRole("button", { name: "Import" }));
+  await waitFor(() =>
+    expect(server.asked.filter((ask) => ask.startsWith("POST"))).toEqual(["POST import Vault.zip under root"])
+  );
+});
+
+test("a page chosen that the tree, read again, no longer has is not imported under: it is chosen again", async () => {
+  const user = userEvent.setup();
+  const events = eventServer();
+  const server = jobsServer({ answers: { "GET /api/v0/events": events.answer } });
+  renderApp(transfer, withEvents(server.app, new FakePage()), { eventHandlers });
+  const shown = await open(user);
+  await user.upload(within(shown).getByLabelText("Zip archive"), vault());
+  const place = within(shown).getByLabelText("Import under");
+  const offered = () =>
+    within(place)
+      .getAllByRole("option")
+      .map((option) => option.textContent);
+  await waitFor(() => expect(offered()).toContain("Guide"));
+  await user.selectOptions(place, guide.id);
+
+  // Another deletes the page: its event reads the tree again.
+  server.nodes = server.nodes.filter((node) => node.id !== guide.id && node.parent_id !== guide.id);
+  await waitFor(() => expect(events.streams).toHaveLength(1));
+  act(() => events.last().hello());
+  act(() =>
+    events.last().send("pages", { workspace_id: workspaceJSON.id, notebook_id: notebookJSON.id, tree: true, pages: [] })
+  );
+  await waitFor(() => expect(offered()).not.toContain("Guide"));
+  await user.click(within(shown).getByRole("button", { name: "Import" }));
+
+  expect(within(shown).getByText("The page chosen is no longer there: choose again.")).toBeTruthy();
+  expect(place.getAttribute("aria-invalid")).toBe("true");
+  expect(server.asked.filter((ask) => ask.startsWith("POST"))).toEqual([]);
+  await user.selectOptions(place, "The notebook's top level");
+  await user.click(within(shown).getByRole("button", { name: "Import" }));
+  await waitFor(() =>
+    expect(server.asked.filter((ask) => ask.startsWith("POST"))).toEqual(["POST import Vault.zip under root"])
+  );
 });
 
 test("an import of the notebook under way among the jobs is told, and none starts", async () => {
@@ -139,9 +214,15 @@ test.each([
     "An import into this notebook is under way, perhaps someone else's. Wait for it to end, then try again.",
   ],
   [problem(404, "page.not_found"), "The page to import under no longer exists."],
-  [problem(503, "server_busy"), "The server is busy. Try again in a moment."],
+  [problem(503, "server_busy"), "Too many jobs are waiting on the server. Try again in a few minutes."],
   [problem(507, "storage_full"), "The server has no room for more files. Ask its administrator."],
-  [problem(413, "payload_too_large"), "The request is too large."],
+  [problem(413, "payload_too_large"), "The zip is larger than the server takes."],
+  [
+    problem(400, "bad_request"),
+    "The upload did not arrive whole, or arrived too slowly. Try again, on a faster connection if you can.",
+  ],
+  [problem(404, "notebook.not_found"), "This notebook does not exist, or you have no access to it."],
+  [problem(403, "forbidden"), "You do not have permission to do this."],
 ])("a refusal stays in the dialog, the file kept to try again: %#", async (answer, says) => {
   const user = userEvent.setup();
   const server = jobsServer({ answers: { [imports]: () => answer.clone() } });
@@ -154,11 +235,22 @@ test.each([
   expect((await within(shown).findByRole("alert")).textContent).toBe(says);
   expect(within(shown).getByRole("button", { name: "Import" }).hasAttribute("disabled")).toBe(false);
   expect(asksBeforeLeaving()).toBe(false);
+  expect(within(shown).queryByRole("progressbar")).toBeNull();
+
+  // The file kept, it goes again as it is; refused, the dialog closes without asking.
+  await user.click(within(shown).getByRole("button", { name: "Import" }));
+  await waitFor(() => expect(transfers(server.app).length).toBe(2));
+  await waitFor(() =>
+    expect(within(shown).getByRole("button", { name: "Import" }).hasAttribute("disabled")).toBe(false)
+  );
+  await user.keyboard("{Escape}");
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 });
 
 test("a connection cut, as a refusal before the file is read may reach the browser, says what may have happened", async () => {
   const user = userEvent.setup();
-  renderApp(transfer, jobsServer({ answers: { [imports]: () => Promise.reject(new TypeError("reset")) } }).app);
+  const server = jobsServer({ answers: { [imports]: () => Promise.reject(new TypeError("reset")) } });
+  renderApp(transfer, server.app);
   const shown = await open(user);
   await user.upload(within(shown).getByLabelText("Zip archive"), vault());
 
@@ -167,6 +259,9 @@ test("a connection cut, as a refusal before the file is read may reach the brows
   expect((await within(shown).findByRole("alert")).textContent).toMatch(
     /^The upload did not finish: the connection was cut\./u
   );
+  expect(transfers(server.app).length).toBe(1);
+  expect(within(shown).getByRole("button", { name: "Import" }).hasAttribute("disabled")).toBe(false);
+  expect(asksBeforeLeaving()).toBe(false);
 });
 
 test("the upload tells its progress; the browser asks before the page is left; closed, the dialog asks before it stops it", async () => {
@@ -179,19 +274,29 @@ test("the upload tells its progress; the browser asks before the page is left; c
 
   await waitFor(() => expect(transfers(server.app).length).toBe(1));
   const [going] = transfers(server.app);
+  expect(document.activeElement?.textContent).toBe("Stop the upload");
   going?.progress(1, 4);
-  expect(await within(shown).findByRole("progressbar", { name: "Uploaded 1 B of 4 B" })).toBeTruthy();
+  const bar = (await within(shown).findByRole("progressbar", { name: "Uploaded 1 B of 4 B" })) as HTMLProgressElement;
+  expect([bar.value, bar.max]).toEqual([1, 4]);
   expect(within(shown).getByRole("button", { name: "Uploading…" }).hasAttribute("disabled")).toBe(true);
   expect(asksBeforeLeaving()).toBe(true);
 
   await user.keyboard("{Escape}");
   expect(within(shown).getByRole("alert").textContent).toMatch(/^Stop the upload\?/u);
+  expect(document.activeElement?.textContent).toBe("Keep uploading");
   await user.click(within(shown).getByRole("button", { name: "Keep uploading" }));
-  expect([screen.queryByRole("dialog") !== null, going?.aborted]).toEqual([true, false]);
+  expect([screen.queryByRole("dialog") !== null, within(shown).queryByRole("alert"), going?.aborted]).toEqual([
+    true,
+    null,
+    false,
+  ]);
+  await user.keyboard("{Escape}");
+  await user.keyboard("{Escape}");
+  expect([within(shown).queryByRole("alert"), going?.aborted]).toEqual([null, false]);
 
   await user.keyboard("{Escape}");
   const ask = within(shown).getByRole("alert");
-  await user.click(within(ask).getByRole("button", { name: "Stop the upload" }));
+  await user.click(within(ask).getByRole("button", { name: "Stop and close" }));
 
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   expect(going?.aborted).toBe(true);
@@ -199,7 +304,7 @@ test("the upload tells its progress; the browser asks before the page is left; c
   expect(await screen.findByText("No jobs yet.")).toBeTruthy();
 });
 
-test("Stop the upload stops it, the dialog kept; leaving the page stops it too", async () => {
+test("Stop the upload stops it, the dialog kept; leaving the page asks first, and stops it", async () => {
   const user = userEvent.setup();
   const server = jobsServer({ answers: { [imports]: () => new Promise<Response>(() => undefined) } });
   const { router } = renderApp(transfer, server.app);
@@ -211,14 +316,22 @@ test("Stop the upload stops it, the dialog kept; leaving the page stops it too",
   await user.click(within(shown).getByRole("button", { name: "Stop the upload" }));
   await waitFor(() => expect(transfers(server.app)[0]?.aborted).toBe(true));
   expect(within(shown).queryByRole("alert")).toBeNull();
+  expect(within(shown).queryByRole("progressbar")).toBeNull();
   expect(within(shown).getByRole("button", { name: "Import" }).hasAttribute("disabled")).toBe(false);
 
   await user.click(within(shown).getByRole("button", { name: "Import" }));
   await waitFor(() => expect(transfers(server.app).length).toBe(2));
-  await router.navigate(`/lab/notebooks/${notebookJSON.id}/settings/general`);
+  const general = `/lab/notebooks/${notebookJSON.id}/settings/general`;
+  await router.navigate(general);
+  await user.click(within(await within(shown).findByRole("alert")).getByRole("button", { name: "Keep uploading" }));
+  expect([router.state.location.pathname === general, transfers(server.app)[1]?.aborted]).toEqual([false, false]);
+  expect(within(shown).queryByRole("alert")).toBeNull();
 
-  await waitFor(() => expect(transfers(server.app)[1]?.aborted).toBe(true));
-  expect([asksBeforeLeaving(), screen.queryByRole("dialog")]).toEqual([false, null]);
+  await router.navigate(general);
+  await user.click(within(await within(shown).findByRole("alert")).getByRole("button", { name: "Stop and leave" }));
+  await waitFor(() => expect(router.state.location.pathname).toBe(general));
+  expect(transfers(server.app)[1]?.aborted).toBe(true);
+  await waitFor(() => expect([asksBeforeLeaving(), screen.queryByRole("dialog")]).toEqual([false, null]));
 });
 
 test("an import's report counts what it skipped, not missing files, and says what was not imported as it was", async () => {
@@ -274,6 +387,89 @@ test("an import's failures say what befell the import", async () => {
     "Failed · The person who started it could no longer edit the notebook.",
     "Failed · The page imported under no longer exists.",
     "Failed · The file is not a zip archive, or the archive is damaged.",
-    "Failed · A page the import had written was deleted or moved away while it ran.",
+    "Failed · A page the import had written was deleted while it ran.",
   ]);
+});
+
+const counts = (pages: number) => ({ pages, attachments: 0, renamed: 0, missing: 0, skipped: 0 });
+
+test("an import that did not succeed says that what it counts stays in the notebook; one that did, or wrote nothing, does not", async () => {
+  const user = userEvent.setup();
+  const jobs = [
+    jobJSON(1, {
+      kind: "import",
+      name: "A.zip",
+      state: "failed",
+      report: { failure: "tree_changed", counts: counts(2) },
+    }),
+    jobJSON(2, { kind: "import", name: "B.zip", report: { failure: null, counts: counts(2) } }),
+    jobJSON(3, { kind: "import", name: "C.zip", state: "failed", report: { failure: "not_zip", counts: counts(0) } }),
+  ];
+  renderApp(transfer, jobsServer({ jobs }).app);
+
+  async function keeps(name: string) {
+    const report = within(await row(`Import of ${name}`)).getByRole("button", { name: /^Report on / });
+    await user.click(report);
+    await waitFor(() => expect(screen.queryAllByText("Pages").length).toBeGreaterThan(0));
+    const said = screen.queryByText("What is counted here stays in the notebook.") !== null;
+    await user.click(report);
+    return said;
+  }
+  expect([await keeps("A.zip"), await keeps("B.zip"), await keeps("C.zip")]).toEqual([true, false, false]);
+});
+
+test("pages that cannot be read leave the root to import at, and are read again on asking", async () => {
+  const user = userEvent.setup();
+  let reads = 0;
+  const server = jobsServer({
+    answers: {
+      [`GET /api/v0/notebooks/${notebookJSON.id}/nodes`]: () => {
+        reads += 1;
+        return problem(500, "internal");
+      },
+    },
+  });
+  renderApp(transfer, server.app);
+  const shown = await open(user);
+
+  const retry = await within(shown).findByRole("button", { name: "Try again" });
+  const place = within(shown).getByLabelText("Import under");
+  expect([...place.querySelectorAll("option")].map((option) => option.textContent)).toEqual([
+    "The notebook's top level",
+  ]);
+  const before = reads;
+  await user.click(retry);
+  await waitFor(() => expect(reads).toBeGreaterThan(before));
+});
+
+test("an upload that ends while the dialog asks is asked about no more; one that ends as the page is left lets it go", async () => {
+  const user = userEvent.setup();
+  const answers: ((response: Response) => void)[] = [];
+  const server = jobsServer({
+    answers: {
+      [imports]: () =>
+        new Promise<Response>((resolve) => {
+          answers.push(resolve);
+        }),
+    },
+  });
+  const { router } = renderApp(transfer, server.app);
+  const shown = await open(user);
+  await user.upload(within(shown).getByLabelText("Zip archive"), vault());
+  await user.click(within(shown).getByRole("button", { name: "Import" }));
+  await waitFor(() => expect(answers.length).toBe(1));
+
+  await user.keyboard("{Escape}");
+  expect(within(shown).getByRole("button", { name: "Keep uploading" })).toBeTruthy();
+  answers[0]?.(problem(409, "transfer.busy"));
+  await waitFor(() => expect(within(shown).queryByRole("button", { name: "Keep uploading" })).toBeNull());
+  expect(screen.queryByRole("dialog")).not.toBeNull();
+
+  await user.click(within(shown).getByRole("button", { name: "Import" }));
+  await waitFor(() => expect(answers.length).toBe(2));
+  const general = `/lab/notebooks/${notebookJSON.id}/settings/general`;
+  await router.navigate(general);
+  await within(shown).findByRole("button", { name: "Stop and leave" });
+  answers[1]?.(problem(409, "transfer.busy"));
+  await waitFor(() => expect(router.state.location.pathname).toBe(general));
 });

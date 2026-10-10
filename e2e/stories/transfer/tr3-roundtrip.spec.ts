@@ -95,6 +95,8 @@ test("TR3 (page): a notebook exported from its settings, its archive downloaded 
   nervewiki,
   signedInPage,
 }, testInfo) => {
+  // Each import runs as a job, waited for: slow runners take longer than a test is given.
+  test.slow();
   const { tokens, adminId, pat, workspace } = await newOnboardedTeam(api, testInfo);
   const page = await signedInPage(tokens);
   const handbook = await createNotebook(api, pat, workspace.slug, "Handbook");

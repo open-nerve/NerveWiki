@@ -7,6 +7,8 @@ import type { Notebook } from "../../services/notebook.service";
 import type { TransferFailure, TransferJob, TransferProblem } from "../../services/transfer.service";
 import { useTransfers } from "../../stores/context";
 
+type TransferCounts = NonNullable<TransferJob["report"]>["counts"];
+
 /** The text of each failure's code (M7/P5 design 4.4, P6 design 3.8). */
 const failures: Record<TransferFailure, PlainKey> = {
   interrupted: "transfer.failure.interrupted",
@@ -61,7 +63,7 @@ const problems: Record<TransferProblem["code"], (problem: TransferProblem, t: Tr
  * page does not know differs all the same. A node an import renamed is
  * reached in the notebook by its new name.
  */
-function problemText(kind: TransferJob["kind"], problem: TransferProblem, t: Translate): string {
+export function problemText(kind: TransferJob["kind"], problem: TransferProblem, t: Translate): string {
   if (kind === "import" && problem.code === "renamed") {
     return t("transfer.importProblem.renamed", { path: problem.path, to: problem.to ?? "" });
   }
@@ -73,10 +75,10 @@ function problemText(kind: TransferJob["kind"], problem: TransferProblem, t: Tra
 }
 
 /** The counts a job's report shows, by its kind: an import's files are never missing, an export skips nothing. */
-const shownCounts = {
+const shownCounts: Record<string, readonly (keyof TransferCounts)[]> = {
   export: ["pages", "attachments", "renamed", "missing"],
   import: ["pages", "attachments", "renamed", "skipped"],
-} as const;
+};
 
 /**
  * TransferReport is what an ended job did (M7/P5 design 4.4, P6 design
@@ -90,11 +92,19 @@ export function TransferReport({ notebook, job, id }: { notebook: Notebook; job:
   const titleId = useId();
   const { data, error, mutate } = useSWR(["transfer-job", job.id], () => transfers.detail(job.id));
   const counts = job.report?.counts;
+  // A kind this page does not know shows what both kinds count.
+  const shown = shownCounts[job.kind] ?? ["pages", "attachments", "renamed"];
+  // An import that did not succeed leaves what it had written: the units are not undone.
+  const kept =
+    job.kind === "import" &&
+    (job.state === "failed" || job.state === "cancelled") &&
+    counts !== undefined &&
+    (counts.pages > 0 || counts.attachments > 0);
   return (
     <div id={id} className="space-y-3 rounded-md bg-muted/50 p-3 text-sm">
       {counts !== undefined && (
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
-          {shownCounts[job.kind].map((count) => (
+          {shown.map((count) => (
             <div key={count} className="contents">
               <dt className="text-muted-foreground">{t(`transfer.count.${count}`)}</dt>
               <dd>{counts[count]}</dd>
@@ -102,6 +112,7 @@ export function TransferReport({ notebook, job, id }: { notebook: Notebook; job:
           ))}
         </dl>
       )}
+      {kept && <p>{t("transfer.importKept")}</p>}
       {data === undefined ? (
         <NotLoaded error={error} retry={() => void mutate()} />
       ) : (

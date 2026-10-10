@@ -225,20 +225,37 @@ test("an import goes beside an export's start, first once answered, the read on 
   expect(ids(store)).toEqual([8, 9, 1]);
 });
 
-test("an import refused, or stopped, leaves the jobs held and no longer asks before the page is left", async () => {
+test.each([
+  ["refused", new Error("transfer.busy")],
+  ["stopped", new DOMException("the upload was stopped", "AbortError")],
+])("an import %s leaves the jobs held and no longer asks before the page is left", async (_, error) => {
   const { store, lists, imports, warned } = storeOf();
   await answer(lists, 0, page([job(1)]), store.load());
   const imported = store.startImport(null, new File(["zip"], "Vault.zip"));
   await settled();
-  imports[0]?.fail(new DOMException("the upload was stopped", "AbortError"));
+  imports[0]?.fail(error);
 
-  await expect(imported).rejects.toThrow("the upload was stopped");
+  await expect(imported).rejects.toBe(error);
   expect([ids(store), store.uploading, warned, imports.map((each) => each.ask)]).toEqual([
     [1],
     0,
     [true, false],
     ["root Vault.zip"],
   ]);
+});
+
+test("of two imports at once, the page asks before it is left until both have ended", async () => {
+  const { store, imports, warned } = storeOf();
+  const first = store.startImport(null, new File(["zip"], "A.zip"));
+  const second = store.startImport(null, new File(["zip"], "B.zip"));
+  await settled();
+
+  imports[0]?.fail(new Error("transfer.busy"));
+  await expect(first).rejects.toThrow("transfer.busy");
+  expect([store.uploading, warned.at(-1)]).toEqual([1, true]);
+  imports[1]?.fail(new Error("transfer.busy"));
+  await expect(second).rejects.toThrow("transfer.busy");
+  expect([store.uploading, warned.at(-1)]).toEqual([0, false]);
 });
 
 test("importing tells whether an import held is queued or running: not an export, not one ended", () => {

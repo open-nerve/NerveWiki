@@ -17,7 +17,7 @@ import (
 // UPDATE, so no other write of the tree changes them meanwhile.
 
 // ErrNoParent is a parent of an import's node that is no page of the
-// notebook: deleted, or moved away, since the import read it.
+// notebook: deleted since the import read it.
 var ErrNoParent = errors.New("page: the parent is no page of the notebook")
 
 // ImportUnit is an import's unit: Import's do calls its operations.

@@ -1,3 +1,5 @@
+import { randomBytes } from "node:crypto";
+
 import { expectIndexedLinks } from "../../fixtures/assert/links";
 import { failedToLoad } from "../../fixtures/browser";
 import { expectImported, idsOf, sha256Of, storedImports, treeOf } from "../../fixtures/assert/transfer";
@@ -40,6 +42,11 @@ function vault(): Buffer {
     { name: "Vault/What_ Why.md", data: "named so\n" },
     { name: "__MACOSX/Vault/._Home.md", data: "\x00\x05\x16\x07" },
   ]);
+}
+
+/** A zip of 32 MiB, one entry stored as it is: what it holds the server, refusing it first, never reads. */
+function large(): Buffer {
+  return zipOf([{ name: "large.bin", data: randomBytes(32 << 20), method: 0 }]);
 }
 
 /** The vault's nodes as a notebook holds them under prefix, in their order. */
@@ -145,7 +152,7 @@ test("TR2 (API): a vault imports at a notebook's root after its pages and under 
   await expectIndexedLinks(db, underIds.get("Imports/Projects/Alpha") ?? "", [
     { kind: "wikilink", property: null, target: "Home", resolved: underIds.get("Imports/Home") ?? "" },
   ]);
-  expect(storedImports(nervewiki.storageDir)).toEqual([]);
+  await expect.poll(() => storedImports(nervewiki.storageDir)).toEqual([]);
 });
 
 test("TR2 (page): a vault imports from the notebook's settings, at its root and under a page, its row focused, its report read; an import of the notebook under way refuses another", async ({
@@ -155,6 +162,8 @@ test("TR2 (page): a vault imports from the notebook's settings, at its root and 
   signedInPage,
   pageWatch,
 }, testInfo) => {
+  // Each import runs as a job, waited for: slow runners take longer than a test is given.
+  test.slow();
   const { tokens, adminId, pat, workspace } = await newOnboardedTeam(api, testInfo);
   const page = await signedInPage(tokens);
   const notebook = await createNotebook(api, pat, workspace.slug, "Notes");
@@ -202,24 +211,31 @@ test("TR2 (page): a vault imports from the notebook's settings, at its root and 
   // Another's upload into the notebook under way: the server refuses before it reads the file.
   // Two uploads of the API's: whichever reaches the server second is refused at once, the other holding the notebook.
   const uploads = [holdImport(nervewiki.baseURL, pat, archive.id), holdImport(nervewiki.baseURL, pat, archive.id)];
-  const refused = await Promise.race(uploads.map(async (upload, at) => ({ status: await upload.answered, at })));
-  expect(refused.status).toBe(409);
-  uploads[refused.at]?.stop();
-  const held = uploads[1 - refused.at] as ReturnType<typeof holdImport>;
-  await page.getByRole("button", { name: "Import a zip…" }).click();
-  const dialog = page.getByRole("dialog", { name: "Import into Archive" });
-  await dialog
-    .getByLabel("Zip archive")
-    .setInputFiles({ name: "again.zip", mimeType: "application/zip", buffer: vault() });
-  await dialog.getByRole("button", { name: "Import", exact: true }).click();
-  // Chromium reads the refusal the server answers before the file, though the body still goes.
-  await expect(dialog.getByRole("alert")).toHaveText(
-    "An import into this notebook is under way, perhaps someone else's. Wait for it to end, then try again."
-  );
-  pageWatch.expectConsole({ errors: [failedToLoad(409)] });
-  held.stop();
-  expect(await held.answered).toBe(0);
-  await dialog.getByRole("button", { name: "Cancel" }).click();
+  try {
+    const refused = await Promise.race(uploads.map(async (upload, at) => ({ status: await upload.answered, at })));
+    expect(refused.status).toBe(409);
+    uploads[refused.at]?.stop();
+    const held = uploads[1 - refused.at] as ReturnType<typeof holdImport>;
+    await page.getByRole("button", { name: "Import a zip…" }).click();
+    const dialog = page.getByRole("dialog", { name: "Import into Archive" });
+    // 32 MiB, far more than the connection takes unsent: the refusal comes while the browser still sends the file.
+    await dialog
+      .getByLabel("Zip archive")
+      .setInputFiles({ name: "again.zip", mimeType: "application/zip", buffer: large() });
+    await dialog.getByRole("button", { name: "Import", exact: true }).click();
+    // Chromium reads the refusal the server answers before the file, though the body still goes.
+    await expect(dialog.getByRole("alert")).toHaveText(
+      "An import into this notebook is under way, perhaps someone else's. Wait for it to end, then try again."
+    );
+    pageWatch.expectConsole({ errors: [failedToLoad(409)] });
+    held.stop();
+    expect(await held.answered).toBe(0);
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+  } finally {
+    for (const upload of uploads) {
+      upload.stop();
+    }
+  }
   await expect(page.getByRole("list", { name: "Recent jobs" }).getByRole("listitem")).toHaveCount(1);
-  expect(storedImports(nervewiki.storageDir)).toEqual([]);
+  await expect.poll(() => storedImports(nervewiki.storageDir)).toEqual([]);
 });

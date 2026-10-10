@@ -77,7 +77,8 @@ export async function startImport(
 /**
  * holdImport begins credential's import into the notebook notebookId and keeps sending its file, slowly, faster than
  * the lowest rate the server takes, until stopped: the notebook's upload under way, which holds it. It resolves the
- * status the server answered it, 0 for none; a refusal before the file is read answers at once.
+ * status the server answered it, 0 for none; a refusal before the file is read answers at once. The length declared
+ * takes over 15 minutes to send, far longer than a test, and no byte past it is sent: the test stops it, in a finally.
  */
 export function holdImport(
   baseURL: string,
@@ -88,7 +89,8 @@ export function holdImport(
   const head = Buffer.from(
     `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="held.zip"\r\nContent-Type: application/zip\r\n\r\n`
   );
-  const declared = head.length + (16 << 20);
+  // 256 MiB, under the instance's import_max_bytes, so that the server takes the upload.
+  const declared = head.length + (256 << 20);
   const held = request(new URL(`/api/v0/notebooks/${notebookId}/imports`, baseURL), {
     method: "POST",
     headers: {
@@ -107,8 +109,17 @@ export function holdImport(
     held.on("close", () => resolve(0));
   });
   held.write(head);
+  let sent = head.length;
   // 256 KiB a second, four times the lowest rate of the test's configuration.
-  timer = setInterval(() => held.write(Buffer.alloc(64 << 10)), 250);
+  timer = setInterval(() => {
+    const chunk = Math.min(64 << 10, declared - sent);
+    if (chunk <= 0) {
+      clearInterval(timer);
+      return;
+    }
+    held.write(Buffer.alloc(chunk));
+    sent += chunk;
+  }, 250);
   return {
     answered,
     stop: () => {

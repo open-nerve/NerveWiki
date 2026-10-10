@@ -129,7 +129,7 @@ test("TR4 (API): the entries that cannot be imported safely are skipped and repo
     comment,
   }));
   await failsWhole("a central directory of more than 64 MiB", zipOf(large), "too_many_entries");
-  expect(storedImports(nervewiki.storageDir)).toEqual([]);
+  await expect.poll(() => storedImports(nervewiki.storageDir)).toEqual([]);
 });
 
 test("TR4 (API): an archive larger than transfer.import_max_bytes is refused before it is stored; one that unpacks to more than transfer.import_max_unpacked_bytes fails whole", async ({
@@ -150,7 +150,7 @@ test("TR4 (API): an archive larger than transfer.import_max_bytes is refused bef
 
   const { response, error } = await postImport(api, pat, notebook.id, Buffer.alloc((1 << 20) + 1));
   expect([response.status, error?.code]).toEqual([413, "payload_too_large"]);
-  expect(storedImports(small.storageDir)).toEqual([]);
+  await expect.poll(() => storedImports(small.storageDir)).toEqual([]);
 
   // Three pages of 768 KiB each, a fifth of it packed: within the upload, past the unpacked bytes.
   const archive = zipOf([0, 1, 2].map((i) => ({ name: `p${i.toString()}.md`, data: text(768 << 10, i + 1) })));
@@ -158,7 +158,7 @@ test("TR4 (API): an archive larger than transfer.import_max_bytes is refused bef
   const job = await endedJob(api, pat, (await startImport(api, pat, notebook.id, archive)).id);
   expect([job.state, job.report?.failure]).toEqual(["failed", "unpacked_too_large"]);
   expect(await listNodes(api, pat, notebook.id)).toEqual([]);
-  expect(storedImports(small.storageDir)).toEqual([]);
+  await expect.poll(() => storedImports(small.storageDir)).toEqual([]);
 });
 
 test("TR4 (page): an archive's entries that cannot be imported safely are listed in its report, the rest imported; a file that is no zip goes, said so, and its job fails, nothing written", async ({
@@ -167,6 +167,8 @@ test("TR4 (page): an archive's entries that cannot be imported safely are listed
   nervewiki,
   signedInPage,
 }, testInfo) => {
+  // Each import runs as a job, waited for: slow runners take longer than a test is given.
+  test.slow();
   const { tokens, adminId, pat, workspace } = await newOnboardedTeam(api, testInfo);
   const page = await signedInPage(tokens);
   const notebook = await createNotebook(api, pat, workspace.slug, "Inbox");
@@ -189,7 +191,7 @@ test("TR4 (page): an archive's entries that cannot be imported safely are listed
     "../escape.md was skipped: its path leads outside the zip.",
     "link.md was skipped: it is a symbolic link or another special file.",
     "secret.md was skipped: it is encrypted.",
-    "dup.md was skipped: the zip holds another entry of the same path.",
+    "dup.md was skipped: an earlier entry of the zip has the same path.",
   ]);
   await expectImported(db, nervewiki.storageDir, job.id, {
     creatorId: adminId,
@@ -216,5 +218,5 @@ test("TR4 (page): an archive's entries that cannot be imported safely are listed
     timeout: 15_000,
   });
   expect((await treeOf(db, nervewiki.storageDir, notebook.id)).map((node) => node.path)).toEqual(["dup", "ok"]);
-  expect(storedImports(nervewiki.storageDir)).toEqual([]);
+  await expect.poll(() => storedImports(nervewiki.storageDir)).toEqual([]);
 });

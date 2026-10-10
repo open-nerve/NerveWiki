@@ -195,8 +195,8 @@ test("in Chinese the editor says it in Chinese, the names listed as Chinese list
   await settle();
   // What it says of the drop's folders stays with what it says of its files.
   expect(told(controls)).toEqual([
-    "文件夹不会上传：笔记文件夹请用导入。",
-    "文件夹不会上传：笔记文件夹请用导入。\nREADME和LICENSE 已上传，未插入：没有扩展名的名称不能嵌入。",
+    "文件夹不会上传：请把笔记文件夹打成 zip，在笔记本设置里导入。",
+    "文件夹不会上传：请把笔记文件夹打成 zip，在笔记本设置里导入。\nREADME和LICENSE 已上传，未插入：没有扩展名的名称不能嵌入。",
   ]);
 });
 
@@ -210,7 +210,9 @@ test("an image copied from a page, as Chromium has it, its HTML with it, is uplo
 test("a folder pasted is not uploaded: the editor says to import it, the selection kept when nothing else is", () => {
   const { view, going, controls, text } = editing("hello world", { anchor: 6, head: 11 });
   expect(paste(view, { ...dropped([], ["notes"]), getData: () => "" })).toBe(true);
-  expect(told(controls)).toEqual(["Folders are not uploaded: import a folder of notes instead."]);
+  expect(told(controls)).toEqual([
+    "Folders are not uploaded: zip a folder of notes and import it from the notebook's settings.",
+  ]);
   expect(text()).toBe("hello world");
   paste(view, { ...dropped([new File(["a"], "a.png")], ["notes"]), getData: () => "" });
   expect(going.map(({ file }) => file.name)).toEqual(["a.png"]);
@@ -400,7 +402,9 @@ test("files dragged from outside may drop, and upload where they drop, by their 
   drag(view, "dragover", files, { x: 30, y: 40 });
   expect(view.scrollDOM.querySelector(".cm-dropCursor")).not.toBeNull();
   expect(drag(view, "drop", files, { x: 30, y: 40 })).toBe(true);
-  expect(told(controls)).toEqual(["Folders are not uploaded: import a folder of notes instead."]);
+  expect(told(controls)).toEqual([
+    "Folders are not uploaded: zip a folder of notes and import it from the notebook's settings.",
+  ]);
   expect(going.map(({ file }) => file.name)).toEqual(["image.png"]);
   going[0]?.answer(attachment("image.png"));
   await settle();
@@ -461,8 +465,8 @@ test("a drop of folders only uploads nothing; one of folders and pages' files is
   // CodeMirror takes it, its default prevented too.
   drag(view, "drop", transferOf(dropped([new File(["# a"], "a.md")], ["notes"])));
   expect(told(controls)).toEqual([
-    "Folders are not uploaded: import a folder of notes instead.",
-    "Folders are not uploaded: import a folder of notes instead.",
+    "Folders are not uploaded: zip a folder of notes and import it from the notebook's settings.",
+    "Folders are not uploaded: zip a folder of notes and import it from the notebook's settings.",
   ]);
   await vi.waitFor(() => expect(text()).toContain("# a"));
   expect(going).toEqual([]);
@@ -482,7 +486,7 @@ test("what a drop with folders says of files not inserted keeps its folders' lin
   going[0]?.answer(attachment("a.png"));
   await settle();
   expect(told(controls).at(-1)).toBe(
-    "Folders are not uploaded: import a folder of notes instead.\n" +
+    "Folders are not uploaded: zip a folder of notes and import it from the notebook's settings.\n" +
       "a.png uploaded, not inserted: the text was replaced or can no longer be changed."
   );
 });

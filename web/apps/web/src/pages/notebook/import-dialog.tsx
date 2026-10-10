@@ -1,8 +1,10 @@
 import { observer } from "mobx-react-lite";
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactElement, type RefObject } from "react";
+import { useBlocker } from "react-router";
 import useSWR, { useSWRConfig } from "swr";
 
 import { useForm, type LocalProblems } from "../../app/form";
+import { NotLoaded } from "../../app/not-loaded";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from "../../components/ui/dialog";
@@ -32,12 +34,14 @@ type ImportDialogProps = {
  * and how large one the server takes. Before sending it checks the file's
  * size, and an import of the notebook under way among the jobs held; a
  * file that does not look like a zip goes all the same, the server
- * judging. The upload, which may take minutes, tells its progress and
- * stops; the dialog closed meanwhile asks first, and its upload stops as
- * the dialog goes. A refusal stays in the dialog; a connection cut, which
- * a refusal before the file is read may reach the browser as, says what
- * may have happened, and is not tried again. Started, the job goes first
- * in the notebook's jobs, read again then, and the focus goes to its row.
+ * judging; a page chosen that the tree, read again, no longer has is
+ * chosen again. The upload, which may take minutes, tells its progress and
+ * stops; the dialog closed, or the page left, meanwhile asks first, and
+ * the upload stops as the dialog goes. A refusal stays in the dialog; a
+ * connection cut, which a refusal before the file is read may reach the
+ * browser as, says what may have happened, and is not tried again. Each
+ * end reads the notebook's jobs again; started, the job goes first in
+ * them, and the focus goes to its row.
  */
 export const ImportDialog = observer(function ImportDialog({
   notebook,
@@ -48,12 +52,36 @@ export const ImportDialog = observer(function ImportDialog({
   const t = useT();
   const [open, setOpen] = useState(false);
   const [stopping, setStopping] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const upload = useRef<AbortController | undefined>(undefined);
   const started = useRef(false);
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) => uploading && currentLocation.pathname !== nextLocation.pathname
+  );
+  const leaving = blocker.state === "blocked";
+  // The prompt asks only while the zip uploads: an upload ended meanwhile has nothing to stop.
+  const asking = uploading && (stopping || leaving);
+  const keepButton = useRef<HTMLButtonElement>(null);
+  // Asked, the focus goes to the answer that loses nothing.
+  useEffect(() => {
+    if (asking) {
+      keepButton.current?.focus();
+    }
+  }, [asking]);
+  useEffect(() => {
+    if (blocker.state === "blocked" && !uploading) {
+      blocker.proceed();
+    }
+  }, [blocker, uploading]);
 
   function close() {
     setStopping(false);
     setOpen(false);
+  }
+
+  function keep() {
+    setStopping(false);
+    blocker.reset?.();
   }
 
   return (
@@ -62,7 +90,7 @@ export const ImportDialog = observer(function ImportDialog({
       onOpenChange={(next) => {
         if (next) {
           setOpen(true);
-        } else if (upload.current === undefined) {
+        } else if (!uploading) {
           close();
         } else {
           setStopping(true);
@@ -72,6 +100,12 @@ export const ImportDialog = observer(function ImportDialog({
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       {open && (
         <DialogContent
+          onEscapeKeyDown={(event) => {
+            if (asking) {
+              event.preventDefault();
+              keep();
+            }
+          }}
           onCloseAutoFocus={(event) => {
             if (started.current) {
               event.preventDefault();
@@ -82,11 +116,11 @@ export const ImportDialog = observer(function ImportDialog({
         >
           <DialogTitle>{t("transfer.importTitleOf", { name: notebook.name })}</DialogTitle>
           <DialogDescription>{t("transfer.importExplain")}</DialogDescription>
-          {stopping && (
+          {asking && (
             <div role="alert" className="space-y-3 rounded-md border px-4 py-3 text-sm">
               <p>{t("transfer.importStopAsk")}</p>
               <div className="flex justify-end gap-2">
-                <Button type="button" variant="outline" onClick={() => setStopping(false)}>
+                <Button type="button" variant="outline" ref={keepButton} onClick={keep}>
                   {t("transfer.importKeepGoing")}
                 </Button>
                 <Button
@@ -94,10 +128,14 @@ export const ImportDialog = observer(function ImportDialog({
                   variant="destructive"
                   onClick={() => {
                     upload.current?.abort();
-                    close();
+                    if (leaving) {
+                      blocker.proceed?.();
+                    } else {
+                      close();
+                    }
                   }}
                 >
-                  {t("transfer.importStop")}
+                  {t(leaving ? "transfer.importStopLeave" : "transfer.importStopClose")}
                 </Button>
               </div>
             </div>
@@ -105,6 +143,7 @@ export const ImportDialog = observer(function ImportDialog({
           <ImportForm
             notebook={notebook}
             upload={upload}
+            onUploading={setUploading}
             cancel={close}
             imported={(job) => {
               started.current = true;
@@ -122,69 +161,90 @@ type ImportFormProps = {
   notebook: Notebook;
   /** The upload going, which the dialog stops as it closes. */
   upload: RefObject<AbortController | undefined>;
+  /** Told as the upload starts and ends. */
+  onUploading: (on: boolean) => void;
   cancel: () => void;
   imported: (job: TransferJob) => void;
 };
 
-const ImportForm = observer(function ImportForm({ notebook, upload, cancel, imported }: ImportFormProps) {
+const ImportForm = observer(function ImportForm({ notebook, upload, onUploading, cancel, imported }: ImportFormProps) {
   const transfers = useTransfers(notebook);
   const pages = usePageTree(notebook);
   const { instance, preferences } = useStore();
   const t = useT();
   const { mutate } = useSWRConfig();
   useSWR("instance", () => instance.load());
-  useSWR(["pages", notebook.id], () => pages.load());
+  const read = useSWR(["pages", notebook.id], () => pages.load());
   const ids = { file: useId(), place: useId() };
   const [file, setFile] = useState<File | undefined>(undefined);
   const [place, setPlace] = useState(root);
-  const [sent, setSent] = useState<{ sent: number; total: number } | undefined>(undefined);
+  const progress = useRef<((sent: number, total: number) => void) | undefined>(undefined);
+  const stopButton = useRef<HTMLButtonElement>(null);
   const { ref, sending, banner, problemOf, submit } = useForm(["parent_id", "file"], {
-    texts: { "transfer.busy": "transfer.importBusy", "page.not_found": "transfer.importPlaceGone" },
+    texts: {
+      "transfer.busy": "transfer.importBusy",
+      "page.not_found": "transfer.importPlaceGone",
+      server_busy: "transfer.queueFull",
+      payload_too_large: "transfer.importTooLarge",
+      bad_request: "transfer.importBadRequest",
+    },
     explain: (error) => (error instanceof TypeError ? t("transfer.importCut") : undefined),
   });
   // The upload stops as the dialog goes.
   useEffect(() => () => upload.current?.abort(), [upload]);
+  // Sending, the import button is disabled: the focus goes to the button that stops it.
+  useEffect(() => {
+    if (sending) {
+      stopButton.current?.focus();
+    }
+  }, [sending]);
   const { locale } = preferences;
   const most = instance.info?.import_max_bytes;
   const tree = pages.tree;
   // A page at the deepest level holds nothing more: whatever went under it would be too deep.
   const parents = tree === undefined ? [] : [...tree.byId.values()].filter((each) => depthOf(tree, each.id) < maxDepth);
-  // A place the tree, read again, no longer has is the root again: what the select shows goes out.
-  const chosen = parents.some((each) => each.id === place) ? place : root;
+  // A place the tree, read again, no longer has shows as the root, and is not sent: it is chosen again.
+  const gone = place !== root && !parents.some((each) => each.id === place);
+  const chosen = gone ? root : place;
   const notZip = file !== undefined && !/\.zip$/i.test(file.name);
   const fileProblem = problemOf("file");
   const placeProblem = problemOf("parent_id");
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const found: LocalProblems<"file"> =
-      file === undefined
+    const found: LocalProblems<"file" | "parent_id"> = {
+      ...(file === undefined
         ? { file: "field.required" }
         : most !== undefined && file.size > most
           ? { file: "field.file.too_long" }
-          : {};
+          : {}),
+      ...(gone ? { parent_id: "field.place.gone" } : {}),
+    };
     void submit(found, async () => {
       if (file === undefined) {
         return;
       }
       const stop = new AbortController();
       upload.current = stop;
-      setSent({ sent: 0, total: file.size });
+      onUploading(true);
       try {
         const job = await transfers.startImport(chosen === root ? null : chosen, file, {
-          progress: (done, total) => setSent({ sent: done, total }),
+          progress: (done, total) => progress.current?.(done, total),
           signal: stop.signal,
         });
-        // The jobs are read again: a list whose read failed is polled no more until it is read.
-        void mutate(["transfer-jobs", notebook.id]);
         imported(job);
       } catch (error) {
         if (!stop.signal.aborted) {
           throw error;
         }
       } finally {
-        upload.current = undefined;
-        setSent(undefined);
+        // An upload stopped may end after the next began: only its own is forgotten.
+        if (upload.current === stop) {
+          upload.current = undefined;
+          onUploading(false);
+        }
+        // The jobs are read again at each end: a refusal may be another's import, and a list whose read failed is polled no more until it is read.
+        void mutate(["transfer-jobs", notebook.id]);
       }
     });
   }
@@ -232,26 +292,21 @@ const ImportForm = observer(function ImportForm({ notebook, upload, cancel, impo
           <ParentOptions pages={pages} parents={parents} />
         </NativeSelect>
         <Problem id={`${ids.place}-note`} text={placeProblem} />
+        {tree === undefined && read.error !== undefined && (
+          <NotLoaded error={read.error} retry={() => void read.mutate()} />
+        )}
       </div>
-      {sent !== undefined && (
-        <div className="space-y-1">
-          <progress
-            className="w-full"
-            max={sent.total}
-            value={sent.sent}
-            aria-label={t("transfer.importSent", {
-              sent: formatBytes(sent.sent, locale),
-              total: formatBytes(sent.total, locale),
-            })}
-          />
-          <p className="text-sm text-muted-foreground" aria-hidden>
-            {t("transfer.importSent", { sent: formatBytes(sent.sent, locale), total: formatBytes(sent.total, locale) })}
-          </p>
-        </div>
+      {sending && file !== undefined && (
+        <UploadProgress
+          total={file.size}
+          listen={(tell) => {
+            progress.current = tell;
+          }}
+        />
       )}
       <div className="flex justify-end gap-2">
         {sending ? (
-          <Button type="button" variant="outline" onClick={() => upload.current?.abort()}>
+          <Button ref={stopButton} type="button" variant="outline" onClick={() => upload.current?.abort()}>
             {t("transfer.importStop")}
           </Button>
         ) : (
@@ -266,3 +321,31 @@ const ImportForm = observer(function ImportForm({ notebook, upload, cancel, impo
     </form>
   );
 });
+
+type UploadProgressProps = {
+  total: number;
+  /** Given what tells the bytes sent, and nothing as it goes: the form does not render again at each. */
+  listen: (tell: ((sent: number, total: number) => void) | undefined) => void;
+};
+
+function UploadProgress({ total, listen }: UploadProgressProps) {
+  const { preferences } = useStore();
+  const t = useT();
+  const [sent, setSent] = useState({ sent: 0, total });
+  useEffect(() => {
+    listen((done, all) => setSent({ sent: done, total: all }));
+    return () => listen(undefined);
+  }, [listen]);
+  const text = t("transfer.importSent", {
+    sent: formatBytes(sent.sent, preferences.locale),
+    total: formatBytes(sent.total, preferences.locale),
+  });
+  return (
+    <div className="space-y-1">
+      <progress className="w-full" max={sent.total} value={sent.sent} aria-label={text} />
+      <p className="text-sm text-muted-foreground" aria-hidden>
+        {text}
+      </p>
+    </div>
+  );
+}
