@@ -283,6 +283,38 @@ func understated(t *testing.T, data []byte) []byte {
 	return data
 }
 
+// records is where data's directory starts, and its records' offsets.
+func records(data []byte) []int {
+	at := int(binary.LittleEndian.Uint32(data[endOf(data)+16:]))
+	var out []int
+	for binary.LittleEndian.Uint32(data[at:]) == 0x02014b50 {
+		out = append(out, at)
+		at += 46 + int(binary.LittleEndian.Uint16(data[at+28:])) + int(binary.LittleEndian.Uint16(data[at+30:])) +
+			int(binary.LittleEndian.Uint16(data[at+32:]))
+	}
+	return out
+}
+
+// twoRecordsOfOne is an archive whose second record points at the first
+// entry's local header: both read the same data (M7 closeout A-M1).
+func twoRecordsOfOne(t *testing.T) []byte {
+	t.Helper()
+	data := zipped(t, "", [2]string{"a.md", strings.Repeat("a", 1000)}, [2]string{"b.md", strings.Repeat("a", 1000)})
+	binary.LittleEndian.PutUint32(data[records(data)[1]+42:], 0)
+	return data
+}
+
+// packedPast is an archive whose last record says its entry packs to
+// more bytes than lie before the directory, no entry after it: its
+// unpacking would be measured against bytes the archive does not hold
+// for it (M7 closeout A-M1).
+func packedPast(t *testing.T) []byte {
+	t.Helper()
+	data := zipped(t, "", [2]string{"a.md", "x"}, [2]string{"b.md", strings.Repeat("b", 100_000)})
+	binary.LittleEndian.PutUint32(data[records(data)[1]+20:], uint32(len(data))) //nolint:gosec // a small archive
+	return data
+}
+
 // endOf is where data's directory end is.
 func endOf(data []byte) int {
 	return bytes.LastIndex(data, []byte{0x50, 0x4b, 0x05, 0x06})
@@ -349,6 +381,10 @@ func TestAnImportsArchiveRefusesItsDirectory(t *testing.T) {
 		{"a zip64 end before the archive", with64Locator(t, zipped(t, "", [2]string{"a.md", "x"}), 1<<63), 100000, archiveadapter.MaxDirectory,
 			app.ErrNotZip},
 		{"records fewer than the end says", short, 10, archiveadapter.MaxDirectory, app.ErrNotZip},
+		{"two records of one entry's data", twoRecordsOfOne(t), 10, archiveadapter.MaxDirectory, app.ErrNotZip},
+		{"a packed size past the entry's data", packedPast(t), 10, archiveadapter.MaxDirectory, app.ErrNotZip},
+		{"empty entries side by side", zipped(t, "", [2]string{"a.md", ""}, &zip.FileHeader{Name: "b.png", Method: zip.Store},
+			[2]string{"c.md", "x"}), 10, archiveadapter.MaxDirectory, nil},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := opened(t, archiveadapter.WithMaxDirectory(a, tt.largest), store, tt.data, tt.most)
