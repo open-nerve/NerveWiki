@@ -221,8 +221,9 @@ paths:
         it: the path's id, then the query e and s, in this order, each
         once, nothing escaped; anything else, a signature that does not
         match, an address expired, and a job deleted or expired since are
-        not_found, alike. Ranges are answered (206, 416; If-Range by
-        date), and a copy as new as the archive is not sent again (304:
+        not_found, alike. A range is answered (206, 416; If-Range by
+        date), a Range of several ranges passed by, the whole archive sent
+        (200); a copy as new as the archive is not sent again (304:
         If-Modified-Since when no If-None-Match is sent, or If-None-Match
         as *, there being no ETag);
         If-Match and If-Unmodified-Since are ignored, as an address's
@@ -267,9 +268,8 @@ paths:
             Content-Security-Policy:
               $ref: "#/components/headers/ArchivePolicy"
             Content-Range:
-              description: >-
-                The range sent, and the archive's size; for several ranges,
-                sent as multipart/byteranges, each part has its own instead.
+              description: The range sent, and the archive's size.
+              required: true
               schema:
                 type: string
           content:

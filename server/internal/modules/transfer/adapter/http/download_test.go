@@ -203,7 +203,8 @@ func TestDownloadOfAJobWithoutAnArchiveIsNotFound(t *testing.T) {
 	}
 }
 
-// A range is 206; a range outside the archive 416, sandboxed still; a
+// A range is 206; several ranges are passed by, the archive served whole
+// (M7 closeout A-N1); a range outside the archive 416, sandboxed still; a
 // condition on a change is passed by, the archive served; a copy as new as
 // the file 304; HEAD answers the headers alone.
 func TestDownloadAnswersRanges(t *testing.T) {
@@ -213,6 +214,9 @@ func TestDownloadAnswersRanges(t *testing.T) {
 	if res, body := h.fetch(t, http.MethodGet, u, "", "Range", "bytes=1-2"); res.StatusCode != http.StatusPartialContent ||
 		string(body) != "bc" || res.Header.Get("Content-Range") != "bytes 1-2/6" {
 		t.Errorf("a range = %d %q %q, want 206 bc bytes 1-2/6", res.StatusCode, body, res.Header.Get("Content-Range"))
+	}
+	if res, body := h.fetch(t, http.MethodGet, u, "", "Range", "bytes=0-1,3-4"); res.StatusCode != http.StatusOK || string(body) != "abcdef" {
+		t.Errorf("two ranges = %d %q, want 200 the archive", res.StatusCode, body)
 	}
 	if res, _ := h.fetch(t, http.MethodGet, u, "", "Range", "bytes=10-20"); res.StatusCode != http.StatusRequestedRangeNotSatisfiable ||
 		res.Header.Get("Content-Range") != "bytes */6" || res.Header.Get("Content-Security-Policy") != archivePolicy {

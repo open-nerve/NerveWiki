@@ -60,12 +60,7 @@ func (h content) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	setContentHeaders(w.Header(), o, a.Download)
-	// What an address serves never changes: a precondition on a change
-	// (If-Match, If-Unmodified-Since) has nothing to guard, and its 412
-	// would carry the file's headers.
-	r.Header.Del("If-Match")
-	r.Header.Del("If-Unmodified-Since")
-	http.ServeContent(w, r, "", o.File.ModTime(), o.File)
+	httpserver.ServeFixed(w, r, o.File.ModTime(), o.File)
 }
 
 // sandboxed sets the content's policy and its resource policy on every

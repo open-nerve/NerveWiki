@@ -1225,7 +1225,7 @@ export interface paths {
         };
         /**
          * Download an attachment's content
-         * @description The attachment's file, at the address getAsset, listAssets, uploadAsset, getPageView (in its HTML) and getPageProperties (a link's url) sign: anyone who has the address can open it, without a token, until it expires. The address is read as the server writes it: the path's id, then the query b, e, s and, to download whatever the type, d=1, in this order, each once, nothing escaped; anything else, a signature that does not match, an address expired, and an attachment deleted since are not_found, alike. An image, an audio, a video or a PDF is shown, any other file downloaded, under its name; every answer is sandboxed (Content-Security-Policy) and readable by no other site, and a file's is cached privately until the address expires. Ranges and the conditions on a copy the client holds are answered (206, 304, 416); what an address serves never changes, so a condition on a change (If-Match, If-Unmodified-Since) is passed by. The addresses share a bucket of their own, by client IP (rate_limited). A download still sending when the server shuts down is cut off; one asked for then is server_busy.
+         * @description The attachment's file, at the address getAsset, listAssets, uploadAsset, getPageView (in its HTML) and getPageProperties (a link's url) sign: anyone who has the address can open it, without a token, until it expires. The address is read as the server writes it: the path's id, then the query b, e, s and, to download whatever the type, d=1, in this order, each once, nothing escaped; anything else, a signature that does not match, an address expired, and an attachment deleted since are not_found, alike. An image, an audio, a video or a PDF is shown, any other file downloaded, under its name; every answer is sandboxed (Content-Security-Policy) and readable by no other site, and a file's is cached privately until the address expires. A range and the conditions on a copy the client holds are answered (206, 304, 416); a Range of several ranges is passed by, the whole file sent (200). What an address serves never changes, so a condition on a change (If-Match, If-Unmodified-Since) is passed by. The addresses share a bucket of their own, by client IP (rate_limited). A download still sending when the server shuts down is cut off; one asked for then is server_busy.
          */
         get: operations["getAssetContent"];
         put?: never;
@@ -1363,7 +1363,7 @@ export interface paths {
         };
         /**
          * Download an export's archive
-         * @description The export's zip archive, at the address getTransferJob and listTransferJobs sign: anyone who has the address can download it, without a token, until it expires. A path whose id is no uuid is bad_request; otherwise the address is read as the server writes it: the path's id, then the query e and s, in this order, each once, nothing escaped; anything else, a signature that does not match, an address expired, and a job deleted or expired since are not_found, alike. Ranges are answered (206, 416; If-Range by date), and a copy as new as the archive is not sent again (304: If-Modified-Since when no If-None-Match is sent, or If-None-Match as *, there being no ETag); If-Match and If-Unmodified-Since are ignored, as an address's archive never changes. The downloads count against the instance's limit of requests without a token, by client address. A download still sending when the server shuts down is cut off; one asked for then is server_busy.
+         * @description The export's zip archive, at the address getTransferJob and listTransferJobs sign: anyone who has the address can download it, without a token, until it expires. A path whose id is no uuid is bad_request; otherwise the address is read as the server writes it: the path's id, then the query e and s, in this order, each once, nothing escaped; anything else, a signature that does not match, an address expired, and a job deleted or expired since are not_found, alike. A range is answered (206, 416; If-Range by date), a Range of several ranges passed by, the whole archive sent (200); a copy as new as the archive is not sent again (304: If-Modified-Since when no If-None-Match is sent, or If-None-Match as *, there being no ETag); If-Match and If-Unmodified-Since are ignored, as an address's archive never changes. The downloads count against the instance's limit of requests without a token, by client address. A download still sending when the server shuts down is cut off; one asked for then is server_busy.
          */
         get: operations["downloadExport"];
         put?: never;
@@ -4273,8 +4273,8 @@ export interface operations {
                     "Cache-Control": components["headers"]["CacheControl"];
                     "Content-Security-Policy": components["headers"]["ContentSecurityPolicy"];
                     "Cross-Origin-Resource-Policy": components["headers"]["CrossOriginResourcePolicy"];
-                    /** @description The range sent, and the file's size; for several ranges, sent as multipart/byteranges, each part has its own instead. */
-                    "Content-Range"?: string;
+                    /** @description The range sent, and the file's size. */
+                    "Content-Range": string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -4483,8 +4483,8 @@ export interface operations {
                 headers: {
                     "Content-Disposition": components["headers"]["ArchiveDisposition"];
                     "Content-Security-Policy": components["headers"]["ArchivePolicy"];
-                    /** @description The range sent, and the archive's size; for several ranges, sent as multipart/byteranges, each part has its own instead. */
-                    "Content-Range"?: string;
+                    /** @description The range sent, and the archive's size. */
+                    "Content-Range": string;
                     [name: string]: unknown;
                 };
                 content: {

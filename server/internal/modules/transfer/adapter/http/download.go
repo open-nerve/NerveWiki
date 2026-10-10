@@ -59,11 +59,7 @@ func (h download) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("Content-Disposition", httpserver.Disposition(false, o.Name))
-	// What an address serves never changes: a precondition on a change
-	// has nothing to guard.
-	r.Header.Del("If-Match")
-	r.Header.Del("If-Unmodified-Since")
-	http.ServeContent(w, r, "", o.File.ModTime(), o.File)
+	httpserver.ServeFixed(w, r, o.File.ModTime(), o.File)
 }
 
 // sandboxed sets the archive's policy on every answer of the download, a

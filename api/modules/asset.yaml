@@ -146,8 +146,9 @@ paths:
         video or a PDF is shown, any other file downloaded, under its name;
         every answer is sandboxed (Content-Security-Policy) and readable by
         no other site, and a file's is cached privately until the address
-        expires. Ranges and the conditions on a copy the client holds are
-        answered (206, 304, 416); what an address serves never changes, so a
+        expires. A range and the conditions on a copy the client holds are
+        answered (206, 304, 416); a Range of several ranges is passed by, the
+        whole file sent (200). What an address serves never changes, so a
         condition on a change (If-Match, If-Unmodified-Since) is passed by.
         The addresses share a bucket of their own, by client IP
         (rate_limited). A download still sending when the server shuts down
@@ -212,9 +213,8 @@ paths:
             Cross-Origin-Resource-Policy:
               $ref: "#/components/headers/CrossOriginResourcePolicy"
             Content-Range:
-              description: >-
-                The range sent, and the file's size; for several ranges, sent
-                as multipart/byteranges, each part has its own instead.
+              description: The range sent, and the file's size.
+              required: true
               schema:
                 type: string
           content:
