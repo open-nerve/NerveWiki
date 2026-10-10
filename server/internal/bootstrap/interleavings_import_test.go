@@ -278,71 +278,104 @@ func TestCancellingARunningImport(t *testing.T) {
 	checkImports(t, tm)
 }
 
+// betweenUnits is how many times a test tries to have a request waiting
+// for an import's first unit come before the next: once the first
+// commits, PostgreSQL wakes the request waiting for the notebook's row,
+// but a lock asked anew may take the row before the woken one does (a
+// lock its holder left is no queue). The next unit first, the attempt
+// ends otherwise, as rightly; the test checks that end and tries again,
+// in a notebook of its own, failing if the request never came between
+// (M7 closeout: once in CI).
+const betweenUnits = 5
+
 // The place an import goes deleted as it runs: the deletion waits for the
 // first unit, held, then deletes the place with what it holds; the next
-// unit finds the place gone, and the job fails root_not_found.
+// unit finds the place gone, and the job fails root_not_found. The next
+// unit first, the import is whole, and the deletion takes it all.
 func TestAnImportWhosePlaceIsDeleted(t *testing.T) {
-	tm, nb, _ := transferTeam(t)
-	place := tm.createPage(t, "alice", nb, "", "Place")
-	release := tm.holdAssetBlobs(t)
-	j := tm.started(t, importStep(t, "bob", nb, place, manyPages(t, 150)))
-	pgtest.WaitForTableLockWaits(t, tm.pool, "asset_blobs", 1, interleavingWait)
+	tm, _, _ := transferTeam(t)
+	for try := range betweenUnits {
+		nb := tm.openNotebook(t, "alice", fmt.Sprintf("Deleted %d", try))
+		place := tm.createPage(t, "alice", nb, "", "Place")
+		release := tm.holdAssetBlobs(t)
+		j := tm.started(t, importStep(t, "bob", nb, place, manyPages(t, 150)))
+		pgtest.WaitForTableLockWaits(t, tm.pool, "asset_blobs", 1, interleavingWait)
 
-	deleted := tm.inBackground(t, request("alice", http.MethodDelete, "/api/v0/nodes/"+place, ""))
-	pgtest.WaitForLockWaitsOn(t, tm.pool, "notebooks", 1, interleavingWait)
-	release()
-	if a := deleted(); a.status != http.StatusNoContent && a.status != http.StatusOK {
-		t.Errorf("the place's deletion = %d %s, want it done", a.status, a.body)
+		deleted := tm.inBackground(t, request("alice", http.MethodDelete, "/api/v0/nodes/"+place, ""))
+		pgtest.WaitForLockWaitsOn(t, tm.pool, "notebooks", 1, interleavingWait)
+		release()
+		if a := deleted(); a.status != http.StatusNoContent && a.status != http.StatusOK {
+			t.Errorf("the place's deletion = %d %s, want it done", a.status, a.body)
+		}
+		ended := tm.endedJob(t, "bob", j.ID)
+		if ended.State == "succeeded" && ended.Report != nil && ended.Report.Counts["pages"] == 150 {
+			continue // the next unit first
+		}
+		if ended.State != "failed" || ended.Report == nil || ended.Report.Failure == nil || *ended.Report.Failure != "root_not_found" ||
+			ended.Report.Counts["pages"] != 99 {
+			t.Errorf("the import = %+v, report %s; want failed root_not_found after its first unit", ended, describe(ended.Report))
+		}
+		if n := count(t, tm.pool, `SELECT count(*) FROM nodes n JOIN nodes p ON p.id = $1
+			WHERE n.parent_id = p.id AND n.deleted_at = p.deleted_at`, place); n != 100 {
+			t.Errorf("%d of the first unit's nodes deleted with their place, want 100", n)
+		}
+		checkImports(t, tm)
+		return
 	}
-	ended := tm.endedJob(t, "bob", j.ID)
-	if ended.State != "failed" || ended.Report == nil || ended.Report.Failure == nil || *ended.Report.Failure != "root_not_found" ||
-		ended.Report.Counts["pages"] != 99 {
-		t.Errorf("the import = %+v, report %s; want failed root_not_found after its first unit", ended, describe(ended.Report))
-	}
-	if n := count(t, tm.pool, `SELECT count(*) FROM nodes n JOIN nodes p ON p.id = $1
-		WHERE n.parent_id = p.id AND n.deleted_at = p.deleted_at`, place); n != 100 {
-		t.Errorf("%d of the first unit's nodes deleted with their place, want 100", n)
-	}
-	checkImports(t, tm)
+	t.Fatalf("the deletion came after the import's next unit, %d times of %d", betweenUnits, betweenUnits)
 }
 
 // The place an import goes moved deeper as it runs (M7 closeout A-M3):
 // the move waits for the first unit, held, then puts the place two levels
 // lower; the units after it find the pages past MaxDepth too deep (the
 // page module's ErrTooDeep, through the composition root), skip them and
-// what is under them, too_deep, and the job succeeds with the rest.
+// what is under them, too_deep, and the job succeeds with the rest. The
+// next unit first, the import is whole, and the place, too deep to move
+// then, stays.
 func TestAnImportWhosePlaceMovesDeeper(t *testing.T) {
-	tm, nb, _ := transferTeam(t)
-	top := tm.createPage(t, "alice", nb, "", "Top")
-	middle := tm.createPage(t, "alice", nb, top, "Middle")
-	place := tm.createPage(t, "alice", nb, "", "Place")
+	tm, _, _ := transferTeam(t)
 	// The place at level 1 holds nine levels: d1 to d8, then x.md, at level 10.
 	files := []vaultFile{{"a.png", pngHead}}
 	for i := range 99 {
 		files = append(files, vaultFile{fmt.Sprintf("p%03d.md", i), "page"})
 	}
 	files = append(files, vaultFile{"d1/d2/d3/d4/d5/d6/d7/d8/x.md", "deep"})
-	release := tm.holdAssetBlobs(t)
-	j := tm.started(t, importStep(t, "bob", nb, place, vaultZip(t, files...)))
-	pgtest.WaitForTableLockWaits(t, tm.pool, "asset_blobs", 1, interleavingWait)
+	for try := range betweenUnits {
+		nb := tm.openNotebook(t, "alice", fmt.Sprintf("Moved %d", try))
+		top := tm.createPage(t, "alice", nb, "", "Top")
+		middle := tm.createPage(t, "alice", nb, top, "Middle")
+		place := tm.createPage(t, "alice", nb, "", "Place")
+		release := tm.holdAssetBlobs(t)
+		j := tm.started(t, importStep(t, "bob", nb, place, vaultZip(t, files...)))
+		pgtest.WaitForTableLockWaits(t, tm.pool, "asset_blobs", 1, interleavingWait)
 
-	moved := tm.inBackground(t, nodeMove("alice", place, middle))
-	pgtest.WaitForLockWaitsOn(t, tm.pool, "notebooks", 1, interleavingWait)
-	release()
-	if a := moved(); a.status != http.StatusOK {
-		t.Errorf("the place's move = %d %s, want 200", a.status, a.body)
+		moved := tm.inBackground(t, nodeMove("alice", place, middle))
+		pgtest.WaitForLockWaitsOn(t, tm.pool, "notebooks", 1, interleavingWait)
+		release()
+		a := moved()
+		ended := tm.endedJob(t, "bob", j.ID)
+		if a.is(http.StatusConflict, "page.too_deep") {
+			if ended.State != "succeeded" || len(ended.Problems) != 0 {
+				t.Errorf("the import, its next unit first = %+v, want succeeded whole", ended)
+			}
+			continue
+		}
+		if a.status != http.StatusOK {
+			t.Errorf("the place's move = %d %s, want 200", a.status, a.body)
+		}
+		var problems []string
+		for _, p := range ended.Problems {
+			problems = append(problems, p.Code+" "+p.Path)
+		}
+		slices.Sort(problems)
+		if ended.State != "succeeded" || !slices.Equal(problems, []string{"too_deep d1/d2/d3/d4/d5/d6/d7/d8/", "too_deep d1/d2/d3/d4/d5/d6/d7/d8/x.md"}) {
+			t.Errorf("the import = %+v, problems %q; want succeeded, d8 and x too deep", ended, problems)
+		}
+		if n := count(t, tm.pool, "SELECT count(*) FROM nodes WHERE notebook_id = $1 AND name = 'd7' AND deleted_at IS NULL", nb); n != 1 {
+			t.Errorf("%d pages d7, want the one at the deepest level", n)
+		}
+		checkImports(t, tm)
+		return
 	}
-	ended := tm.endedJob(t, "bob", j.ID)
-	var problems []string
-	for _, p := range ended.Problems {
-		problems = append(problems, p.Code+" "+p.Path)
-	}
-	slices.Sort(problems)
-	if ended.State != "succeeded" || !slices.Equal(problems, []string{"too_deep d1/d2/d3/d4/d5/d6/d7/d8/", "too_deep d1/d2/d3/d4/d5/d6/d7/d8/x.md"}) {
-		t.Errorf("the import = %+v, problems %q; want succeeded, d8 and x too deep", ended, problems)
-	}
-	if n := count(t, tm.pool, "SELECT count(*) FROM nodes WHERE notebook_id = $1 AND name = 'd7' AND deleted_at IS NULL", nb); n != 1 {
-		t.Errorf("%d pages d7, want the one at the deepest level", n)
-	}
-	checkImports(t, tm)
+	t.Fatalf("the move came after the import's next unit, %d times of %d", betweenUnits, betweenUnits)
 }
