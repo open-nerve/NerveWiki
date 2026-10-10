@@ -184,9 +184,10 @@ test("a page chosen that the tree, read again, no longer has is not imported und
     events.last().send("pages", { workspace_id: workspaceJSON.id, notebook_id: notebookJSON.id, tree: true, pages: [] })
   );
   await waitFor(() => expect(offered()).not.toContain("Guide"));
+  expect((place as HTMLSelectElement).selectedOptions[0]?.textContent).toBe("Choose a place");
   await user.click(within(shown).getByRole("button", { name: "Import" }));
 
-  expect(within(shown).getByText("The page chosen is no longer there: choose again.")).toBeTruthy();
+  expect(within(shown).getByText("The page chosen is no longer among the places: choose again.")).toBeTruthy();
   expect(place.getAttribute("aria-invalid")).toBe("true");
   expect(server.asked.filter((ask) => ask.startsWith("POST"))).toEqual([]);
   await user.selectOptions(place, "The notebook's top level");
@@ -290,6 +291,7 @@ test("the upload tells its progress; the browser asks before the page is left; c
     null,
     false,
   ]);
+  expect(document.activeElement?.textContent).toBe("Stop the upload");
   await user.keyboard("{Escape}");
   await user.keyboard("{Escape}");
   expect([within(shown).queryByRole("alert"), going?.aborted]).toEqual([null, false]);
@@ -411,7 +413,7 @@ test("an import that did not succeed says that what it counts stays in the noteb
     const report = within(await row(`Import of ${name}`)).getByRole("button", { name: /^Report on / });
     await user.click(report);
     await waitFor(() => expect(screen.queryAllByText("Pages").length).toBeGreaterThan(0));
-    const said = screen.queryByText("What is counted here stays in the notebook.") !== null;
+    const said = screen.queryByText("The pages and attachments counted here stay in the notebook.") !== null;
     await user.click(report);
     return said;
   }
@@ -467,9 +469,53 @@ test("an upload that ends while the dialog asks is asked about no more; one that
 
   await user.click(within(shown).getByRole("button", { name: "Import" }));
   await waitFor(() => expect(answers.length).toBe(2));
+  // The next upload does not find the question asked.
+  expect(within(shown).queryByRole("button", { name: "Keep uploading" })).toBeNull();
+  expect(document.activeElement?.textContent).toBe("Stop the upload");
   const general = `/lab/notebooks/${notebookJSON.id}/settings/general`;
   await router.navigate(general);
   await within(shown).findByRole("button", { name: "Stop and leave" });
   answers[1]?.(problem(409, "transfer.busy"));
   await waitFor(() => expect(router.state.location.pathname).toBe(general));
+});
+
+test("signed out elsewhere as the zip uploads, the upload stops with the account's pages, and nothing is read for them", async () => {
+  const user = userEvent.setup();
+  const server = jobsServer({ answers: { [imports]: () => new Promise<Response>(() => undefined) } });
+  const { app } = renderApp(transfer, server.app);
+  const shown = await open(user);
+  await user.upload(within(shown).getByLabelText("Zip archive"), vault());
+  await user.click(within(shown).getByRole("button", { name: "Import" }));
+  await waitFor(() => expect(transfers(server.app).length).toBe(1));
+
+  await act(() => app.session.tokens.signOut());
+
+  await waitFor(() => expect(transfers(server.app)[0]?.aborted).toBe(true));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(asksBeforeLeaving()).toBe(false);
+});
+
+test.each([
+  ["refused", (): Promise<Response> => Promise.resolve(problem(409, "transfer.busy"))],
+  ["stopped", (): Promise<Response> => new Promise<Response>(() => undefined)],
+])("an upload %s reads the jobs again, none under way to be polled", async (how, answer) => {
+  const user = userEvent.setup();
+  const server = jobsServer({ answers: { [imports]: answer } });
+  renderApp(transfer, server.app);
+  expect(await screen.findByText("No jobs yet.")).toBeTruthy();
+  const shown = await open(user);
+  await user.upload(within(shown).getByLabelText("Zip archive"), vault());
+  const reads = () => server.asked.filter((ask) => ask.startsWith("GET jobs")).length;
+  const before = reads();
+
+  await user.click(within(shown).getByRole("button", { name: "Import" }));
+  await waitFor(() => expect(transfers(server.app).length).toBe(1));
+  if (how === "stopped") {
+    await user.click(within(shown).getByRole("button", { name: "Stop the upload" }));
+  }
+
+  await waitFor(() =>
+    expect(within(shown).getByRole("button", { name: "Import" }).hasAttribute("disabled")).toBe(false)
+  );
+  await waitFor(() => expect(reads()).toBe(before + 1));
 });

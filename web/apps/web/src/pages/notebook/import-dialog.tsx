@@ -62,6 +62,7 @@ export const ImportDialog = observer(function ImportDialog({
   // The prompt asks only while the zip uploads: an upload ended meanwhile has nothing to stop.
   const asking = uploading && (stopping || leaving);
   const keepButton = useRef<HTMLButtonElement>(null);
+  const stopButton = useRef<HTMLButtonElement>(null);
   // Asked, the focus goes to the answer that loses nothing.
   useEffect(() => {
     if (asking) {
@@ -79,9 +80,19 @@ export const ImportDialog = observer(function ImportDialog({
     setOpen(false);
   }
 
+  // Kept on, the focus goes back to the button that stops the upload, the question's going.
   function keep() {
     setStopping(false);
     blocker.reset?.();
+    stopButton.current?.focus();
+  }
+
+  // An upload ended has nothing to ask about: the next does not find the question asked.
+  function uploadingNow(on: boolean) {
+    setUploading(on);
+    if (!on) {
+      setStopping(false);
+    }
   }
 
   return (
@@ -143,7 +154,8 @@ export const ImportDialog = observer(function ImportDialog({
           <ImportForm
             notebook={notebook}
             upload={upload}
-            onUploading={setUploading}
+            stopButton={stopButton}
+            onUploading={uploadingNow}
             cancel={close}
             imported={(job) => {
               started.current = true;
@@ -161,13 +173,22 @@ type ImportFormProps = {
   notebook: Notebook;
   /** The upload going, which the dialog stops as it closes. */
   upload: RefObject<AbortController | undefined>;
+  /** The button that stops the upload, which the dialog focuses as the upload goes on. */
+  stopButton: RefObject<HTMLButtonElement | null>;
   /** Told as the upload starts and ends. */
   onUploading: (on: boolean) => void;
   cancel: () => void;
   imported: (job: TransferJob) => void;
 };
 
-const ImportForm = observer(function ImportForm({ notebook, upload, onUploading, cancel, imported }: ImportFormProps) {
+const ImportForm = observer(function ImportForm({
+  notebook,
+  upload,
+  stopButton,
+  onUploading,
+  cancel,
+  imported,
+}: ImportFormProps) {
   const transfers = useTransfers(notebook);
   const pages = usePageTree(notebook);
   const { instance, preferences } = useStore();
@@ -179,7 +200,8 @@ const ImportForm = observer(function ImportForm({ notebook, upload, onUploading,
   const [file, setFile] = useState<File | undefined>(undefined);
   const [place, setPlace] = useState(root);
   const progress = useRef<((sent: number, total: number) => void) | undefined>(undefined);
-  const stopButton = useRef<HTMLButtonElement>(null);
+  /** Whether the form is still shown: one gone, its generation's SWR cache may be gone too. */
+  const shown = useRef(true);
   const { ref, sending, banner, problemOf, submit } = useForm(["parent_id", "file"], {
     texts: {
       "transfer.busy": "transfer.importBusy",
@@ -191,21 +213,27 @@ const ImportForm = observer(function ImportForm({ notebook, upload, onUploading,
     explain: (error) => (error instanceof TypeError ? t("transfer.importCut") : undefined),
   });
   // The upload stops as the dialog goes.
-  useEffect(() => () => upload.current?.abort(), [upload]);
+  useEffect(() => {
+    shown.current = true;
+    return () => {
+      shown.current = false;
+      upload.current?.abort();
+    };
+  }, [upload]);
   // Sending, the import button is disabled: the focus goes to the button that stops it.
   useEffect(() => {
     if (sending) {
       stopButton.current?.focus();
     }
-  }, [sending]);
+  }, [sending, stopButton]);
   const { locale } = preferences;
   const most = instance.info?.import_max_bytes;
   const tree = pages.tree;
   // A page at the deepest level holds nothing more: whatever went under it would be too deep.
   const parents = tree === undefined ? [] : [...tree.byId.values()].filter((each) => depthOf(tree, each.id) < maxDepth);
-  // A place the tree, read again, no longer has shows as the root, and is not sent: it is chosen again.
+  // A place the tree, read again, no longer offers (deleted, or moved too deep) is not sent: the select says to choose
+  // again, so that any place picked, the top level too, changes it.
   const gone = place !== root && !parents.some((each) => each.id === place);
-  const chosen = gone ? root : place;
   const notZip = file !== undefined && !/\.zip$/i.test(file.name);
   const fileProblem = problemOf("file");
   const placeProblem = problemOf("parent_id");
@@ -228,7 +256,7 @@ const ImportForm = observer(function ImportForm({ notebook, upload, onUploading,
       upload.current = stop;
       onUploading(true);
       try {
-        const job = await transfers.startImport(chosen === root ? null : chosen, file, {
+        const job = await transfers.startImport(place === root ? null : place, file, {
           progress: (done, total) => progress.current?.(done, total),
           signal: stop.signal,
         });
@@ -243,8 +271,11 @@ const ImportForm = observer(function ImportForm({ notebook, upload, onUploading,
           upload.current = undefined;
           onUploading(false);
         }
-        // The jobs are read again at each end: a refusal may be another's import, and a list whose read failed is polled no more until it is read.
-        void mutate(["transfer-jobs", notebook.id]);
+        // The jobs are read again at each end, the form still shown: a refusal may be another's import, and a list whose
+        // read failed is polled no more until it is read.
+        if (shown.current) {
+          void mutate(["transfer-jobs", notebook.id]);
+        }
       }
     });
   }
@@ -283,12 +314,17 @@ const ImportForm = observer(function ImportForm({ notebook, upload, onUploading,
         <NativeSelect
           id={ids.place}
           name="parent_id"
-          value={chosen}
+          value={place}
           disabled={sending}
           aria-invalid={placeProblem !== undefined || undefined}
           aria-describedby={placeProblem === undefined ? undefined : `${ids.place}-note`}
           onChange={(event) => setPlace(event.target.value)}
         >
+          {gone && (
+            <option value={place} disabled>
+              {t("transfer.importPlaceChoose")}
+            </option>
+          )}
           <ParentOptions pages={pages} parents={parents} />
         </NativeSelect>
         <Problem id={`${ids.place}-note`} text={placeProblem} />

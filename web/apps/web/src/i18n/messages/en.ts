@@ -440,6 +440,7 @@ export const en = {
   "transfer.importFile": "Zip archive",
   "transfer.importNotZip": "This file's name does not end with .zip: the server will tell whether it is a zip archive.",
   "transfer.importPlace": "Import under",
+  "transfer.importPlaceChoose": "Choose a place",
   "transfer.importUnderWay": "An import into this notebook is under way. Wait for it to end before starting another.",
   "transfer.importConfirm": "Import",
   "transfer.importing": "Uploading…",
@@ -452,7 +453,7 @@ export const en = {
   "transfer.importTooLarge": "The zip is larger than the server takes.",
   "transfer.importBadRequest":
     "The upload did not arrive whole, or arrived too slowly. Try again, on a faster connection if you can.",
-  "transfer.importKept": "What is counted here stays in the notebook.",
+  "transfer.importKept": "The pages and attachments counted here stay in the notebook.",
   "transfer.importBusy":
     "An import into this notebook is under way, perhaps someone else's. Wait for it to end, then try again.",
   "transfer.importPlaceGone": "The page to import under no longer exists.",
@@ -659,7 +660,7 @@ export const en = {
   "field.content.too_long": "The page is over 5 MiB: shorten it to save it.",
   "field.content.invalid_format": "The page has a NUL character, which cannot be saved: take it out to save it.",
   "field.file.too_long": "Larger than the server takes.",
-  "field.place.gone": "The page chosen is no longer there: choose again.",
+  "field.place.gone": "The page chosen is no longer among the places: choose again.",
   "field.expires_at.out_of_range": "Must be in the future.",
   "field.display_name.too_long": "At most 100 characters.",
   "field.display_name.invalid_format": "No control characters.",
