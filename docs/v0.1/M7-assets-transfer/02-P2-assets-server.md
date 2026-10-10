@@ -232,7 +232,7 @@ CREATE INDEX asset_blobs_deleted_at_idx ON asset_blobs (deleted_at) WHERE delete
    - 每个答复（含 400、404、429、503，内容路由的最外层 `sandboxed` 设）：`Content-Security-Policy: sandbox; default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'`、`Cross-Origin-Resource-Policy: same-origin`。签名核对通过之后：`Cache-Control: private, max-age=<e − now>, immutable`；`ETag: "<sha256 十六进制>"`；`Last-Modified`。全局的 `nosniff`、`X-Frame-Options: DENY`、`Referrer-Policy: same-origin` 照旧。
    - 内联与否按表判断（`domain.Served`、`domain.Inline`）：表外的类型一律 `application/octet-stream` 与 `attachment`。
 4. `Sending(r)`（平台改为不带字节数）：答复按步写出，每步之前把写截止时间设为"宣告时刻 + `read_timeout` + 已写字节 / `MinRate`"，停读的客户端在 `read_timeout` 加缓冲住的字节应得的时间之后断开（暂停的媒体元素靠浏览器的 `Range` 重新请求）。答 `ErrShuttingDown` 时 503 `server_busy`（`Retry-After: 5`，`no-store`，不带文件的头）。
-5. 去掉 `If-Match`、`If-Unmodified-Since`（地址所下发的内容从不改变，没有要守的；留着它们 `ServeContent` 会答 412，带着文件的头），再 `http.ServeContent`（`Range`、`If-None-Match`、`If-Modified-Since`；`HEAD` 由路由在 GET 上答，契约不单列）。`Bounded` 的一步过了请求的期限答 500，记 WARN。日志：下载不逐个记（访问日志已有）。
+5. 去掉 `If-Match`、`If-Unmodified-Since`（地址所下发的内容从不改变，没有要守的；留着它们 `ServeContent` 会答 412，带着文件的头），多段的 `Range` 也去掉、整份答 200（M7 收尾 A-N1，平台的 `httpserver.ServeFixed`），再 `http.ServeContent`（`Range`、`If-None-Match`、`If-Modified-Since`；`HEAD` 由路由在 GET 上答，契约不单列）。`Bounded` 的一步过了请求的期限答 500，记 WARN。日志：下载不逐个记（访问日志已有）。
 
 **PDF 的实测**（总设计 4.5 要求写进本文）：Playwright 的 Chromium 带完整的 CSP（含 `sandbox`）能显示，保持 `inline`；本机没有 Playwright 的 Firefox，没测。README 写"其他浏览器未实测；显示不了时用 `download_url` 下载"。结果见第 7 节。
 
