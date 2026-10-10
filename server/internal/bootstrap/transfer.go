@@ -162,8 +162,9 @@ func (a transferAttachments) Put(ctx context.Context, name string, r io.Reader, 
 	f, err := a.blobs.Put(ctx, name, r, maxBytes)
 	switch {
 	// An import reaches no ErrTooLarge (M7 closeout A-N7): an entry past
-	// asset.max_bytes is skipped as classified, and the archive's reader
-	// refuses data past an entry's size. It stays the port's word for it.
+	// asset.max_bytes is skipped as the archive is checked, too_large, and
+	// the archive's reader refuses data past an entry's size. It stays the
+	// port's word for it.
 	case errors.Is(err, asset.ErrTooLarge):
 		return transfer.File{}, transfer.ErrTooLarge
 	case errors.Is(err, asset.ErrStorageFull):

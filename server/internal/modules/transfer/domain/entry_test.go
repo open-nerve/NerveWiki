@@ -85,6 +85,9 @@ func TestClassify(t *testing.T) {
 			"V/a/b/c/d/e/f/g/h/i/j/k/", ".obsidian/a/b/c/d/e/f/g/h/i/j/k/l.md"},
 			// A folder of MaxDepth+1 names is the plan's to skip, as deep as a page under it.
 			[]string{"1 a/b/c/d/e/f/g/h/i/j/k.png", "3 a/b/c/d/e/f/g/h/i/j/k/", "too_deep: V/a/b/c/d/e/f/g/h/i/j/k/l.md"}},
+		// Only the first names are kept: an ignored one below them still ignores the entry.
+		{"an ignored name below the names kept", []string{"V/.obsidian/", "V/a/b/c/d/e/f/g/h/i/j/k/l/.git/m.md", "V/a/b/c/d/e/f/g/h/i/j/k/l/m.md"},
+			[]string{"too_deep: V/a/b/c/d/e/f/g/h/i/j/k/l/m.md"}},
 		{"nothing", nil, nil},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

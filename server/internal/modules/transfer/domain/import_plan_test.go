@@ -131,9 +131,6 @@ func TestNewImportPlan(t *testing.T) {
 	}
 }
 
-// meta.json gives the order of each node by its path, in NFC, and the
-// contributors' files; one that is not JSON, or of another format, gives
-// nothing.
 // allocated is the bytes f allocates.
 func allocated(f func()) uint64 {
 	var before, after runtime.MemStats
@@ -175,14 +172,15 @@ func TestThePlanAllocatesASmallMultipleOfItsPaths(t *testing.T) {
 }
 
 // An entry of tens of thousands of folders is skipped as it is classified,
-// before the plan makes one (M7 closeout A-I1): two of 64 KiB took 4.46
-// GiB of the heap, the plan's folders each holding its whole path.
+// by its count of names, before the plan makes a folder (M7 closeout A-I1):
+// two of 64 KiB took 4.46 GiB of the heap, the plan's folders each holding
+// its whole path; a thousand, Classify keeping each of their names, 2.5
+// GiB (the fix check, FA-I1). Of each entry the first names are kept.
 func TestAnEntryFarTooDeepIsSkippedBeforeItsFolders(t *testing.T) {
-	deep := "t/" + strings.Repeat("d/", 32_760) + "x.md"
-	raw := []domain.RawEntry{
-		{Index: 0, Name: deep, Method: domain.MethodDeflate},
-		{Index: 1, Name: deep + "x", Method: domain.MethodDeflate},
-		{Index: 2, Name: "ok.md", Method: domain.MethodDeflate},
+	deep := "t/" + strings.Repeat("d/", 32_760)
+	raw := []domain.RawEntry{{Index: 0, Name: "ok.md", Method: domain.MethodDeflate}}
+	for i := 1; i <= 1000; i++ {
+		raw = append(raw, domain.RawEntry{Index: i, Name: fmt.Sprintf("%sx%04d.md", deep, i), Method: domain.MethodDeflate})
 	}
 
 	var plan domain.ImportPlan
@@ -192,17 +190,21 @@ func TestAnEntryFarTooDeepIsSkippedBeforeItsFolders(t *testing.T) {
 		plan = domain.NewImportPlan(sorted.Entries, domain.ImportMeta{}, 0)
 	})
 
-	if got := planned(plan); !slices.Equal(got, []string{"1 - page ok <- ok.md #2"}) {
+	if got := planned(plan); !slices.Equal(got, []string{"1 - page ok <- ok.md #0"}) {
 		t.Errorf("planned %q; want ok.md alone", got)
 	}
-	if len(sorted.Skipped) != 2 || sorted.Skipped[0].Code != domain.ProblemTooDeep || sorted.Skipped[1].Code != domain.ProblemTooDeep {
-		t.Errorf("skipped %d, the first %q; want both too deep", len(sorted.Skipped), sorted.Skipped[0].Code)
+	tooDeep := func(p domain.Problem) bool { return p.Code == domain.ProblemTooDeep }
+	if len(sorted.Skipped) != 1000 || !slices.ContainsFunc(sorted.Skipped, tooDeep) || slices.IndexFunc(sorted.Skipped, func(p domain.Problem) bool { return !tooDeep(p) }) >= 0 {
+		t.Errorf("skipped %d; want the thousand, too deep", len(sorted.Skipped))
 	}
-	if bytes > 32<<20 {
-		t.Errorf("classified and planned in %d bytes; want 32 MiB at most", bytes)
+	if bytes > 8<<20 {
+		t.Errorf("classified and planned in %d bytes; want 8 MiB at most", bytes)
 	}
 }
 
+// meta.json gives the order of each node by its path, in NFC, and the
+// contributors' files; one that is not JSON, or of another format, gives
+// nothing.
 func TestReadMeta(t *testing.T) {
 	m := domain.ReadMeta([]byte(`{"format": 1, "nodes": [{"path": "Cafe\u0301.md", "kind": "page", "sort_order": 2.5},
 		{"path": "A/", "kind": "page", "sort_order": -1}], "contributed": ["index.md"], "extra": true}`))

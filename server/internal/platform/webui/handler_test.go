@@ -165,3 +165,27 @@ func TestRevalidatedFilesAnswer304ToTheirETag(t *testing.T) {
 		t.Errorf("index.html and theme-init.js share the ETag %s", a)
 	}
 }
+
+// A range of a file is 206; a Range of several ranges is passed by, the
+// whole file 200, as the downloads answer it.
+func TestServesARangeAndPassesSeveralBy(t *testing.T) {
+	h := Handler(built())
+	for _, tt := range []struct {
+		value, body string
+		status      int
+	}{
+		{"bytes=0-5", "export", http.StatusPartialContent},
+		{"bytes=0-0,1-1", "export {};", http.StatusOK},
+		{"bytes=" + strings.Repeat("0-0,", 1000) + "0-0", "export {};", http.StatusOK},
+	} {
+		req := httptest.NewRequest(http.MethodGet, "/assets/index-a1.js", nil)
+		req.Header.Set("Range", tt.value)
+		rec := httptest.NewRecorder()
+
+		h.ServeHTTP(rec, req)
+
+		if rec.Code != tt.status || rec.Body.String() != tt.body {
+			t.Errorf("Range %.40s = %d %q, want %d %q", tt.value, rec.Code, rec.Body.String(), tt.status, tt.body)
+		}
+	}
+}

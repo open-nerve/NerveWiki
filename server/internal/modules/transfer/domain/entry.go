@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -87,8 +86,9 @@ type Sorted struct {
 // a symbolic link or no regular one, encrypted, or of a method the import
 // does not read, and the second entry of a path, are skipped; and so is an
 // entry of more than MaxDepth+1 names, too deep wherever the import goes
-// (a page at its last folder's level, an attachment one below), before a
-// folder of its path is made: the paths' bytes bound what the plan holds.
+// (a page at its last folder's level, an attachment one below), by its
+// count of names: of each entry only the first keptNames are kept, so the
+// paths' bytes bound what Classify and the plan hold.
 func Classify(raw []RawEntry) Sorted {
 	var out Sorted
 	out.Meta = -1
@@ -104,43 +104,44 @@ func Classify(raw []RawEntry) Sorted {
 			out.Skipped = append(out.Skipped, Problem{Path: shown, Code: ProblemUnsafePath})
 			continue
 		}
-		if len(path) > 0 {
+		if path.depth > 0 {
 			kept = append(kept, candidate{raw: r, path: path})
 		}
 	}
 	if top, ok := vaultFolder(kept); ok {
 		for i, c := range kept {
-			if c.path[0] == top {
-				kept[i].path = c.path[1:]
+			if c.path.names[0] == top {
+				kept[i].path.names = c.path.names[1:]
+				kept[i].path.depth--
 			}
 		}
 	}
 	seen := map[string]bool{}
 	for _, c := range kept {
+		names := c.path.names
 		switch {
-		case len(c.path) == 0:
+		case c.path.depth == 0:
 			continue
-		case len(c.path) == 2 && c.path[0] == ".nerve" && c.path[1] == "meta.json" && !c.raw.Folder:
+		case c.path.depth == 2 && names[0] == ".nerve" && names[1] == "meta.json" && !c.raw.Folder:
 			if out.Meta < 0 {
 				out.Meta = c.raw.Index
 			}
 			continue
-		case slices.ContainsFunc(c.path, ignored):
+		case c.path.hidden:
 			continue
-		}
-		if len(c.path) > MaxDepth+1 {
+		case c.path.depth > MaxDepth+1:
 			out.Skipped = append(out.Skipped, Problem{Path: c.raw.Name, Code: ProblemTooDeep})
 			continue
 		}
 		problem := ProblemCode("")
-		joined := strings.Join(c.path, "/")
+		joined := strings.Join(names, "/")
 		switch {
 		case c.raw.Folder:
 			if seen[joined+"/"] {
 				continue
 			}
 			seen[joined+"/"] = true
-			out.Entries = append(out.Entries, ImportEntry{Index: c.raw.Index, Path: c.path, Folder: true, Name: c.raw.Name})
+			out.Entries = append(out.Entries, ImportEntry{Index: c.raw.Index, Path: names, Folder: true, Name: c.raw.Name})
 			continue
 		case c.raw.Special:
 			problem = ProblemSpecialFile
@@ -156,30 +157,47 @@ func Classify(raw []RawEntry) Sorted {
 			continue
 		}
 		seen[joined] = true
-		out.Entries = append(out.Entries, ImportEntry{Index: c.raw.Index, Path: c.path, Name: c.raw.Name})
+		out.Entries = append(out.Entries, ImportEntry{Index: c.raw.Index, Path: names, Name: c.raw.Name})
 	}
 	return out
 }
 
-// pathOf is the names of an entry's path: "\" separates them as "/" does,
-// "." and empty names dropped, each in NFC. false for a path that leaves
-// the root: absolute, starting with a drive ("C:"), or holding "..".
-func pathOf(name string) ([]string, bool) {
+// keptNames is how many of an entry's names Classify keeps: those of the
+// deepest path it imports, MaxDepth+1, and the vault's folder above them.
+// A deeper entry is skipped by its count of names alone.
+const keptNames = MaxDepth + 2
+
+// entryPath is an entry's path: its first keptNames names, how many names
+// it has, and whether any of them is ignored.
+type entryPath struct {
+	names  []string
+	depth  int
+	hidden bool
+}
+
+// pathOf is an entry's path: "\" separates its names as "/" does, "." and
+// empty names dropped, each kept in NFC. false for a path that leaves the
+// root: absolute, starting with a drive ("C:"), or holding "..".
+func pathOf(name string) (entryPath, bool) {
 	name = strings.ReplaceAll(name, `\`, "/")
 	if strings.HasPrefix(name, "/") || drive(name) {
-		return nil, false
+		return entryPath{}, false
 	}
-	var path []string
+	var p entryPath
 	for part := range strings.SplitSeq(name, "/") {
 		switch part {
 		case "", ".":
 			continue
 		case "..":
-			return nil, false
+			return entryPath{}, false
 		}
-		path = append(path, norm.NFC.String(part))
+		p.depth++
+		p.hidden = p.hidden || ignored(part)
+		if len(p.names) < keptNames {
+			p.names = append(p.names, norm.NFC.String(part))
+		}
 	}
-	return path, true
+	return p, true
 }
 
 // drive reports whether name, "\" turned to "/", starts with a Windows
@@ -198,10 +216,10 @@ func ignored(name string) bool {
 }
 
 // candidate is an entry whose name is UTF-8 and whose path stays in the
-// root: its path's names.
+// root, and its path.
 type candidate struct {
 	raw  RawEntry
-	path []string
+	path entryPath
 }
 
 // vaultFolder is the folder at the top of the entries that is the vault
@@ -210,11 +228,11 @@ type candidate struct {
 func vaultFolder(entries []candidate) (string, bool) {
 	top, marked := "", false
 	for _, c := range entries {
-		p := c.path
+		p := c.path.names
 		if ignored(p[0]) {
 			continue
 		}
-		if len(p) == 1 && !c.raw.Folder {
+		if c.path.depth == 1 && !c.raw.Folder {
 			return "", false
 		}
 		if top == "" {

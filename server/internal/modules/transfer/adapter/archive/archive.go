@@ -218,8 +218,10 @@ func readImport(f storage.File, most int, largest int64) (*zip.Reader, error) {
 		return nil, app.ErrTooManyEntries
 	case err != nil && !errors.Is(err, zip.ErrInsecurePath):
 		return nil, fmt.Errorf("%w: %w", app.ErrNotZip, err)
-	case len(z.File) != n:
+	case len(z.File) < n:
 		return nil, fmt.Errorf("%w: %w: %d read, %d counted", app.ErrNotZip, errMiscounted, len(z.File), n)
+	case len(z.File) > n:
+		return nil, fmt.Errorf("%w: %d entries read, %d counted", app.ErrNotZip, len(z.File), n)
 	}
 	if err := checkData(z, d.start); err != nil {
 		return nil, fmt.Errorf("%w: %w", app.ErrNotZip, err)
@@ -228,8 +230,8 @@ func readImport(f storage.File, most int, largest int64) (*zip.Reader, error) {
 }
 
 // errMiscounted is a directory whose records archive/zip reads fewer of
-// than were counted: it stops at a record it cannot read, one declaring
-// zip64 sizes it does not give.
+// than were counted: it stops at a record it cannot read, one whose zip64
+// field is too short for the sizes and offset it declares as 2³²-1.
 var errMiscounted = errors.New("zip: archive/zip reads other records than the directory's")
 
 // errOverlap is an archive whose entries' data overlap, or reach into its

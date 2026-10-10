@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"io/fs"
 	"slices"
@@ -315,6 +316,46 @@ func packedPast(t *testing.T) []byte {
 	return data
 }
 
+// touching is an archive written without data descriptors, as Info-ZIP
+// and Python's zipfile write one: its last entry's data ends where its
+// directory starts (the fix check, FA-M2).
+func touching(t *testing.T) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	w := zip.NewWriter(&buf)
+	var at int
+	for _, name := range []string{"a.md", "b.md"} {
+		body := []byte(strings.Repeat(name[:1], 100))
+		at += 30 + len(name) + len(body) // its local header, then its data
+		fw, err := w.CreateRaw(&zip.FileHeader{Name: name, Method: zip.Store, CRC32: crc32.ChecksumIEEE(body),
+			CompressedSize64: uint64(len(body)), UncompressedSize64: uint64(len(body))})
+		if err == nil {
+			_, err = fw.Write(body)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	data := buf.Bytes()
+	if records(data)[0] != at {
+		t.Fatalf("the last entry's data ends at %d, the directory starts at %d", at, records(data)[0])
+	}
+	return data
+}
+
+// packedOnePast is touching with its last entry packing to one byte more
+// than lies before the directory: less than the archive's bytes before
+// it, but reaching into it (the fix check, FA-M2).
+func packedOnePast(t *testing.T) []byte {
+	t.Helper()
+	data := touching(t)
+	binary.LittleEndian.PutUint32(data[records(data)[1]+20:], 101)
+	return data
+}
+
 // endOf is where data's directory end is.
 func endOf(data []byte) int {
 	return bytes.LastIndex(data, []byte{0x50, 0x4b, 0x05, 0x06})
@@ -385,6 +426,8 @@ func TestAnImportsArchiveRefusesItsDirectory(t *testing.T) {
 		{"a packed size past the entry's data", packedPast(t), 10, archiveadapter.MaxDirectory, app.ErrNotZip},
 		{"empty entries side by side", zipped(t, "", [2]string{"a.md", ""}, &zip.FileHeader{Name: "b.png", Method: zip.Store},
 			[2]string{"c.md", "x"}), 10, archiveadapter.MaxDirectory, nil},
+		{"a last entry's data ending where the directory starts", touching(t), 10, archiveadapter.MaxDirectory, nil},
+		{"a packed size one byte into the directory", packedOnePast(t), 10, archiveadapter.MaxDirectory, app.ErrNotZip},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := opened(t, archiveadapter.WithMaxDirectory(a, tt.largest), store, tt.data, tt.most)

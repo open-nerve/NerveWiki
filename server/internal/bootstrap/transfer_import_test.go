@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"mime/multipart"
 	"net/http"
+	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -314,15 +315,9 @@ func TestAnImportsUploadCountsTowardTheExportsQueue(t *testing.T) {
 	into, other := tm.openNotebook(t, "alice", "Eng"), tm.openNotebook(t, "alice", "Ops")
 	pr, pw := io.Pipe()
 	mw := multipart.NewWriter(pw)
-	// 256 KiB of the file read by the server, more than its buffers hold: it is storing the file, its start admitted.
-	storing := make(chan struct{})
 	go func() {
-		fw, err := mw.CreateFormFile("file", "vault.zip")
-		for i := 0; err == nil && i < 16; i++ {
-			_, err = fw.Write(make([]byte, 16<<10))
-		}
-		if err == nil {
-			close(storing)
+		if fw, err := mw.CreateFormFile("file", "vault.zip"); err == nil {
+			_, _ = fw.Write([]byte("PK\x03\x04"))
 		}
 	}()
 	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, tm.base+"/api/v0/notebooks/"+into+"/imports", pr)
@@ -346,10 +341,15 @@ func TestAnImportsUploadCountsTowardTheExportsQueue(t *testing.T) {
 	export := func() (int, string) {
 		return ask(t, tm.contract, http.MethodPost, tm.base+"/api/v0/notebooks/"+other+"/exports", tm.tokens["alice"], `{}`)
 	}
-	select {
-	case <-storing:
-	case <-time.After(interleavingWait):
-		t.Fatal("the import's upload was not read")
+	// The file is stored once its start is checked and admitted: its temporary file in imports/.tmp/ tells it is.
+	storing := func() bool {
+		files, err := os.ReadDir(filepath.Join(tm.storage, "imports", ".tmp"))
+		return err == nil && len(files) > 0
+	}
+	for deadline := time.Now().Add(interleavingWait); !storing(); time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("the import's file is not stored")
+		}
 	}
 	if status, answer := export(); status != http.StatusServiceUnavailable || problemCode(t, answer) != "server_busy" {
 		t.Fatalf("an export as the import uploads = %d %s, want 503 server_busy", status, answer)
