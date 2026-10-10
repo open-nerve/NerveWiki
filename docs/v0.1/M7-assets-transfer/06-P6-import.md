@@ -250,35 +250,36 @@ worker 只调用用例 `Import.Run(ctx, jobID)`。导出与导入共用任务的
 
 ## 4. B：前端
 
-实施之前的设计；照实际改写的在 A 合并之后。
+实施之前的设计（A 合并之后照 A 的实际修订）；实施之后照实际改写。
 
 ### 4.1 文件
 
 | 位置 | 内容 |
 |---|---|
-| `services/transfer.service.ts` | `startImport(notebookId, parent, file, options)`：经会话的客户端与 `uploadFetch`（进度、取消），表单依次 `parent_id`、`file` |
-| `stores/transfer.store.ts` | `startImport`：不经 `oneAtATime`（几分钟的上传不挡取消，13.2 第 1 条的例外，同附件的上传）；答复之后放到最前、丢弃在途的读；换代时中止在途的上传 |
-| `pages/notebook/transfer-page.tsx`、`import-dialog.tsx` | 导入一节（写者）与导入的对话框 |
-| `pages/notebook/transfer-report.tsx`、`transfer-job-row.tsx` | 导入的计数、失败与问题的码 |
-| `i18n/messages/en.ts`、`zh-CN.ts`、`app/problem-messages.ts` | 文案 |
-| `test/jobs-server.ts` | 假的服务端加导入 |
+| `services/transfer.service.ts` | `startImport(notebookId, parent, file, options)`：经会话的客户端与 `uploadFetch`（进度、取消；传输可注入，同 `AssetService`），表单依次 `parent_id`（根时不发）、`file` |
+| `stores/transfer.store.ts` | `startImport(parent, file, options)`：不经 `starts`（几分钟的上传不挡导出的开始与取消，13.2 第 1 条的例外，同附件的上传）；答复之后放到最前、丢弃在途的读；`importing`：列表里这本笔记本排队或运行中的导入（自己的；管理员看得到所有人的） |
+| `stores/root.store.ts` | 上传期间的离开提醒经根 store 的 `UnloadWarning`（键与附件的不同） |
+| `pages/notebook/transfer-page.tsx`、`import-dialog.tsx` | 导入一节（导出一节之前；写者才有按钮，读者一句说明）与导入的对话框 |
+| `pages/notebook/transfer-report.tsx`、`transfer-job-row.tsx` | 按任务的种类给计数、失败与问题的文案（审查 B-4）：导入的计数是页、附件、改名、跳过（不显示缺文件），`forbidden` 说"不能写"，`root_not_found` 说"导入的位置"，`renamed` 说"正文里指向原名的链接到不了它"，问题的标题说"没有照原样导入的条目" |
+| `i18n/messages/en.ts`、`zh-CN.ts`、`app/problem-messages.ts` | 文案；`problem.transfer.busy` 改成不分种类的说法，导出与导入的对话框各用自己的（审查 B-3） |
+| `test/jobs-server.ts` | 假的服务端加导入（multipart、读文件之前的拒绝、上传的进度） |
 | `e2e/stories/transfer/tr2-import.spec.ts`、`tr3-roundtrip.spec.ts`、`tr4-malicious.spec.ts` | 页面版本；`e2e/fixtures/wiki-transfer.ts` 加 `importWith` |
 
 ### 4.2 导入一节与对话框
 
-- **导入一节**（导出一节之前，写者才有；读者看到一句"只有写者能导入"）：一句说明（"把 Obsidian 的库或别的 Markdown 文件的 zip 导入这本笔记本"）与"导入 zip…"按钮。
+- **导入一节**（导出一节之前）：一句说明（"把 Obsidian 的库或别的 Markdown 文件夹的 zip 导入这本笔记本"）与"导入 zip…"按钮；读者看到"只有能编辑这本笔记本的人能导入"。
 - **对话框**：
-  - 选文件（`accept=".zip,application/zip"`）；位置：根（默认）或一页，照移动对话框的上级列表（可搜索，只列页面）；说明：导入在后台进行；`.md` 是页面、文件夹是页面的子页、其余文件是附件；名称不合规的会被修正、同名的加序号，报告列出；相对导入位置超过 10 层的部分不导入；zip 至多 `import_max_bytes`（实例信息读不到时不写）。
-  - 发送之前先查（总设计 4.8）：大小超过 `import_max_bytes` 时不发送，直接说明；不是 `.zip` 的提示但仍可发送（服务端判定）。
-  - 上传时显示进度（`<progress>`，"已上传 n / 总数"）与"取消上传"；有在途的上传时挂上 `beforeunload`（13.2 第 21 条）；关对话框等于取消上传（先确认）。
-  - 被拒时在对话框里说原因、不关：`transfer.busy`（"这本笔记本已有进行中的导入"）、`server_busy`、`storage_full`、`payload_too_large`、`page.not_found`（"导入的位置已不存在"）、`notebook.not_found`、`forbidden`、上传失败（传输错误）。
+  - 选文件（`accept=".zip,application/zip"`）；位置：根（默认）或一页（`ParentOptions`，只列页面）；说明：导入在后台进行；`.md` 是页面、文件夹是页面的子页、其余文件是附件；名称不合规的会被修正、同名的加序号，报告列出；在笔记本里超过 10 层的页不导入；zip 至多 `import_max_bytes`（实例信息读不到时不写）。
+  - 发送之前先查（总设计 4.8）：大小超过 `import_max_bytes` 时不发送，直接说明；不是 `.zip` 的提示但仍可发送（服务端判定）；列表里有这本笔记本进行中的导入时说明、不发送（别人的看不到，由服务端判定）。
+  - 上传时显示进度（`<progress>`，"已上传 n / 总数"）与"取消上传"；有在途的上传时挂上离开的提醒（13.2 第 21 条）；上传期间关对话框先确认，确认即取消上传。上传属于对话框：对话框卸载（离开设置页、退出登录）即中止。
+  - 被拒时在对话框里说原因、不关：`transfer.busy`（"这本笔记本已有进行中的导入，可能是别人的：等它结束再试"）、`server_busy`、`storage_full`、`payload_too_large`、`page.not_found`（"导入的位置已不存在"）、`notebook.not_found`、`forbidden`。服务端在读文件之前拒绝时关闭连接，浏览器可能只看到连接中断（P4 的已知限制）：上传失败时说"上传没有完成：连接中断了。服务器可能在接收之前拒绝了它（例如这本笔记本已有进行中的导入），稍后再试"，不重试。
   - 成功之后关掉，任务在列表最前，焦点到它那一行（同导出）。
-- **任务行**：导入的进度照导出（总数为 0 时不定：校验中）；报告的计数加"跳过"，不显示"缺文件"；失败的原因与问题按码给文案（3.8 的新码，不认识的照旧给通用的）；导入的 `renamed` 写"改名为 `to`，正文里指向原名的链接到不了它"。
+- **任务行**：导入的进度照导出（总数为 0 时不定：校验中）；报告与失败的文案按种类（4.1）。
 
 ### 4.3 测试
 
-- vitest：服务（表单的部分与次序、进度、取消）；store（不排队、放到最前、换代中止）；对话框经路由到达（设置页）：写者有、读者没有、选文件与位置、大小的预查、进度与取消、关闭时的确认、每种被拒、成功之后的焦点、`beforeunload`；任务行与报告的新码（表）。
-- e2e：TR2–TR4 的页面版本：在设置里选 zip 与位置导入，进度到完成，报告；导出再导入；恶意的 zip 的报告。
+- vitest：服务（表单的部分与次序、根时不发 `parent_id`、进度、取消）；store（不排队、放到最前、丢弃在途的读、`importing`）；对话框经路由到达（设置页）：写者有、读者没有、选文件与位置、大小与进行中的导入的预查、进度与取消、离开的提醒、关闭时的确认、卸载时中止、每种被拒与连接中断、成功之后的焦点；任务行与报告按种类的文案（表）。
+- e2e：TR2–TR4 的页面版本：在设置里选 zip 与位置导入，进度到完成，报告；导出再导入；恶意的 zip 的报告；同一本笔记本已有进行中的导入时的被拒（Chromium 看到的是 409 还是连接中断，照实写进测试与文档）。
 
 ## 5. 实施步骤
 
