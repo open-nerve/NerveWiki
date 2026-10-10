@@ -317,16 +317,16 @@ const ImportForm = observer(function ImportForm({
               .join(" ")
               .trim() || undefined
           }
-          onChange={(event) => {
-            setFolder(false);
-            setFile(event.target.files?.[0]);
-          }}
+          onChange={(event) => setFile(event.target.files?.[0])}
           // A folder dropped is not taken: the browser would give the input a file it cannot read, the upload then cut.
-          // The file chosen before stays.
+          // The file chosen before stays. The note goes with the next drop, or as the picker opens: choosing the same
+          // file again changes nothing (Chromium).
+          onClick={() => setFolder(false)}
           onDrop={(event) => {
-            if (filesDropped(event.dataTransfer).folders) {
+            const { folders } = filesDropped(event.dataTransfer);
+            setFolder(folders);
+            if (folders) {
               event.preventDefault();
-              setFolder(true);
             }
           }}
         />

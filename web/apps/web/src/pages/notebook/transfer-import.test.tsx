@@ -163,11 +163,14 @@ test("a folder dropped on the file is not taken, said so: the file chosen before
   expect(fireEvent.drop(file, { dataTransfer: dropped([], ["Vault"]) })).toBe(false);
   const note = within(shown).getByText("A folder is not imported as it is: zip it, then choose the zip.");
   expect(file.getAttribute("aria-describedby")).toBe(note.id);
-  // A file dropped is the browser's to take; chosen, the note goes.
+  // A file dropped is the browser's to take; the note goes, though the input changes not, the file the same.
   expect(fireEvent.drop(file, { dataTransfer: dropped([vault()]) })).toBe(true);
-  await user.upload(file, vault());
   expect(within(shown).queryByText(/^A folder is not imported/u)).toBeNull();
   expect(file.getAttribute("aria-describedby")).toBeNull();
+  // It goes as the picker opens too.
+  fireEvent.drop(file, { dataTransfer: dropped([], ["Vault"]) });
+  await user.click(file);
+  expect(within(shown).queryByText(/^A folder is not imported/u)).toBeNull();
 
   fireEvent.drop(file, { dataTransfer: dropped([], ["Vault"]) });
   await user.click(within(shown).getByRole("button", { name: "Import" }));

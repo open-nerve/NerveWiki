@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"slices"
 	"testing"
 	"time"
 
@@ -76,5 +77,117 @@ func TestADirectoryPastTheMostIsNotRead(t *testing.T) {
 	}
 	if f.read >= directory {
 		t.Errorf("%d bytes read, want fewer than the directory's %d: archive/zip read it", f.read, directory)
+	}
+}
+
+// dirRecord is a directory's record of name: its sizes and its local
+// header's offset as the record writes them, and its extra field.
+func dirRecord(name string, unpacked, packed, offset uint32, extra []byte) []byte {
+	h := make([]byte, directoryHeaderLen)
+	binary.LittleEndian.PutUint32(h, directoryHeaderSignature)
+	binary.LittleEndian.PutUint16(h[4:], 20)
+	binary.LittleEndian.PutUint16(h[6:], 20)
+	binary.LittleEndian.PutUint32(h[20:], packed)
+	binary.LittleEndian.PutUint32(h[24:], unpacked)
+	binary.LittleEndian.PutUint16(h[28:], uint16(len(name)))  //nolint:gosec // short names
+	binary.LittleEndian.PutUint16(h[30:], uint16(len(extra))) //nolint:gosec // short fields
+	binary.LittleEndian.PutUint32(h[42:], offset)
+	return slices.Concat(h, []byte(name), extra)
+}
+
+// zip64Field is an extra field's zip64 field of values, 8 bytes each.
+func zip64Field(values ...uint64) []byte {
+	b := binary.LittleEndian.AppendUint16(nil, zip64ExtraID)
+	b = binary.LittleEndian.AppendUint16(b, uint16(8*len(values))) //nolint:gosec // a few
+	for _, v := range values {
+		b = binary.LittleEndian.AppendUint64(b, v)
+	}
+	return b
+}
+
+// dirEnd is a directory's end: its records, its size and its offset.
+func dirEnd(records uint16, size, offset uint32) []byte {
+	e := make([]byte, directoryEndLen)
+	binary.LittleEndian.PutUint32(e, directoryEndSignature)
+	binary.LittleEndian.PutUint16(e[8:], records)
+	binary.LittleEndian.PutUint16(e[10:], records)
+	binary.LittleEndian.PutUint32(e[12:], size)
+	binary.LittleEndian.PutUint32(e[16:], offset)
+	return e
+}
+
+// A record's zip64 fields are too short as archive/zip reads them (M7
+// closeout FA2-N1): each case is checked against archive/zip, reading an
+// archive of that record alone, as well as against what it says.
+func TestZip64ShortReadsTheFieldsAsArchiveZip(t *testing.T) {
+	const most = 1<<32 - 1
+	other := []byte{0x55, 0x54, 5, 0, 1, 0, 0, 0, 0} // an extended time, 5 bytes
+	for _, tt := range []struct {
+		name                     string
+		unpacked, packed, offset uint32
+		extra                    []byte
+		short                    bool
+	}{
+		{"nothing maxed, no field", 1, 1, 0, nil, false},
+		{"nothing maxed, an empty field", 1, 1, 0, zip64Field(), false},
+		{"a size maxed, an empty field", most, 1, 0, zip64Field(), true},
+		{"a size maxed, its value", most, 1, 0, zip64Field(1 << 32), false},
+		{"both sizes maxed, one value", most, most, 0, zip64Field(1 << 32), true},
+		{"both sizes maxed, two values", most, most, 0, zip64Field(1<<32, 1<<32), false},
+		{"sizes and offset maxed, three values", most, most, most, zip64Field(1<<32, 1<<32, 0), false},
+		{"sizes and offset maxed, two values", most, most, most, zip64Field(1<<32, 1<<32), true},
+		{"the offset given, a later field without it", most, 1, most, slices.Concat(zip64Field(1<<32, 0), zip64Field(1<<32)), false},
+		{"the offset given as maxed, a later field without it", 1, 1, most, slices.Concat(zip64Field(most), zip64Field()), true},
+		{"after another field, empty", most, 1, 0, slices.Concat(other, zip64Field()), true},
+		{"after another field, its value", most, 1, 0, slices.Concat(other, zip64Field(1<<32)), false},
+		{"a field running past the extra first", most, 1, 0, slices.Concat([]byte{1, 0, 9, 0}, zip64Field()), false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := dirRecord("a", tt.unpacked, tt.packed, tt.offset, tt.extra)
+			if got := zip64Short(rec[:directoryHeaderLen], tt.extra); got != tt.short {
+				t.Errorf("zip64Short() = %v, want %v", got, tt.short)
+			}
+			data := slices.Concat(rec, dirEnd(1, uint32(len(rec)), 0)) //nolint:gosec // short
+			if _, err := zip.NewReader(bytes.NewReader(data), int64(len(data))); (err != nil) != tt.short {
+				t.Errorf("archive/zip: %v, want it refused %v", err, tt.short)
+			}
+			if _, err := readImport(&counted{Reader: bytes.NewReader(data)}, 50, MaxDirectory); (err != nil) != tt.short {
+				t.Errorf("readImport: %v, want it refused %v", err, tt.short)
+			}
+		})
+	}
+}
+
+// Where the end names a base past 0, archive/zip takes 0 when it reads a
+// record at the offset from 0; one it refuses there leaves the base (M7
+// closeout FA2-M1): the pre-read reads as many records as it.
+func TestThePreReadTakesTheBaseAsArchiveZip(t *testing.T) {
+	refused := func(name string) []byte { return dirRecord(name, 1<<32-1, 1, 0, zip64Field()) }
+	b1, b2 := dirRecord("b1", 1, 1, 0, nil), dirRecord("b2", 1, 1, 0, nil)
+	for _, tt := range []struct {
+		name string
+		data []byte
+		want int
+	}{
+		{"a record refused at the offset from 0", slices.Concat(refused("a"), bytes.Repeat([]byte("x"), 9), b1, b2,
+			dirEnd(2, uint32(len(b1)+len(b2)), 0)), 2}, //nolint:gosec // short
+		{"two records refused before the directory", slices.Concat(refused("a"), refused("x"), b1,
+			dirEnd(1, uint32(len(b1)), 0)), 1}, //nolint:gosec // short
+		{"a record read at the offset from 0", slices.Concat(b1, bytes.Repeat([]byte("x"), 9),
+			dirEnd(1, uint32(len(b1)), 0)), 1}, //nolint:gosec // short
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			zr, err := zip.NewReader(bytes.NewReader(tt.data), int64(len(tt.data)))
+			if err != nil || len(zr.File) != tt.want {
+				t.Fatalf("archive/zip: %v, want %d entries", err, tt.want)
+			}
+			got, err := readImport(&counted{Reader: bytes.NewReader(tt.data)}, 50, MaxDirectory)
+			if err != nil {
+				t.Fatalf("readImport() = %v, want %d entries", err, tt.want)
+			}
+			if len(got.File) != tt.want {
+				t.Errorf("readImport read %d entries, want %d", len(got.File), tt.want)
+			}
+		})
 	}
 }
