@@ -403,11 +403,13 @@ func TestAnUploadCountsItsBytesAsItStoresThem(t *testing.T) {
 	_, _ = w.Write(body[:len(body)-300])
 	<-h.archives.creating
 	waitFor(t, func() bool { return h.archives.uploaded() >= 2000 })
-	// Without the bytes written, the room is one byte short.
+	// Without the bytes written, the room is one byte short. The upload
+	// tells them as the store takes them: the export tries until it hears.
 	h.archives.setFree(minFree + int64(len(body)) - 1)
-	if res, answer := h.send(t, http.MethodPost, exportsPath(), "bob", `{}`); res.StatusCode != http.StatusAccepted {
-		t.Errorf("an export beside the upload = %d %s, want 202", res.StatusCode, answer)
-	}
+	waitFor(t, func() bool {
+		res, _ := h.send(t, http.MethodPost, exportsPath(), "bob", `{}`)
+		return res.StatusCode == http.StatusAccepted
+	})
 	_, _ = w.Write(body[len(body)-300:])
 	_ = w.Close()
 	<-sent

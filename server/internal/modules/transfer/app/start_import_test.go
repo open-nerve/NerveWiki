@@ -345,15 +345,83 @@ func TestAnUploadsRowCountsFromItsCommit(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.Release(other)
-	if err := s.Check(as(w.bob), app.ImportRequest{NotebookID: dev, FileName: "v.zip", Client: domain.ClientWeb}); !errors.Is(err, domain.ErrQueueFull) {
-		t.Errorf("Check() with three rows = %v, want ErrQueueFull", err)
-	}
 	w.rows = newRows()
 	s = w.startImport(&queue{}, 2)
 	// eng's upload, written, counts for no Check: one row and one upload.
 	w.rows.add(domain.Job{ID: uuid.NewV7(), NotebookID: w.eng, Kind: domain.KindImport, State: domain.StateQueued, CreatedBy: w.bob})
 	if err := s.Check(as(w.bob), app.ImportRequest{NotebookID: dev, FileName: "v.zip", Client: domain.ClientWeb}); err != nil {
 		t.Errorf("Check() beside a row written and its upload = %v", err)
+	}
+}
+
+// A Check counts an upload whose row is committing, and one whose commit
+// failed until its request ends; a start under the queue's lock counts
+// neither, but for its row. An upload told written after the Check's
+// count of the rows is counted as an upload.
+func TestACheckCountsTheUploadsWhoseRowsItMaySeeNot(t *testing.T) {
+	w := newWorld()
+	dev := uuid.NewV7()
+	w.auth.roles[dev] = map[uuid.UUID]shared.NotebookRole{w.bob: shared.NotebookAdmin}
+	w.notebooks.names[dev] = "Dev"
+	eng := app.ImportRequest{NotebookID: w.eng, FileName: "v.zip", Client: domain.ClientWeb}
+	toDev := app.ImportRequest{NotebookID: dev, FileName: "v.zip", Client: domain.ClientWeb}
+	start := func(maxQueued int) (*app.StartImport, app.Stored) {
+		t.Helper()
+		w.rows, w.uploads = newRows(), app.NewUploads()
+		s := w.startImport(&queue{}, maxQueued)
+		if err := s.Check(as(w.bob), eng); err != nil {
+			t.Fatal(err)
+		}
+		stored, err := s.Store(as(w.bob), eng, strings.NewReader("zip"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		w.rows.add(domain.Job{ID: uuid.NewV7(), NotebookID: uuid.NewV7(), Kind: domain.KindExport, State: domain.StateRunning, CreatedBy: w.bob})
+		return s, stored
+	}
+
+	// As eng's row commits (the fake shows it already): a Check counts the
+	// upload too, an export only the row.
+	s, stored := start(3)
+	exports := w.start(&queue{}, 3)
+	w.tx.onCommit = func() {
+		if err := s.Check(as(w.bob), toDev); !errors.Is(err, domain.ErrQueueFull) {
+			t.Errorf("Check() as another's row commits = %v, want ErrQueueFull", err)
+		}
+		if _, err := exports.Run(as(w.alice), w.eng, nil, domain.ClientWeb); err != nil {
+			t.Errorf("an export as an upload's row commits = %v", err)
+		}
+	}
+	if _, err := s.Create(as(w.bob), eng, stored); err != nil {
+		t.Fatal(err)
+	}
+
+	// eng's commit failed (the fake keeps its row): a Check counts the
+	// upload until its request ends.
+	s, stored = start(3)
+	w.tx.commitErr = errors.New("connection lost")
+	if _, err := s.Create(as(w.bob), eng, stored); err == nil {
+		t.Fatal("Create() with its commit failing = nil error")
+	}
+	w.tx.commitErr = nil
+	if err := s.Check(as(w.bob), toDev); !errors.Is(err, domain.ErrQueueFull) {
+		t.Errorf("Check() beside an upload whose commit failed = %v, want ErrQueueFull", err)
+	}
+	s.Release(eng)
+	if err := s.Check(as(w.bob), toDev); err != nil {
+		t.Errorf("Check() once that upload's request ended = %v", err)
+	}
+
+	// eng's row committed, and the upload told written, after the Check
+	// counted the rows: the Check read the uploads before.
+	s, stored = start(2)
+	w.rows.onCount = func() {
+		if _, err := s.Create(as(w.bob), eng, stored); err != nil {
+			t.Error(err)
+		}
+	}
+	if err := s.Check(as(w.bob), toDev); !errors.Is(err, domain.ErrQueueFull) {
+		t.Errorf("Check() whose count missed a row committed after it = %v, want ErrQueueFull", err)
 	}
 }
 

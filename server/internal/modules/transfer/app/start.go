@@ -169,13 +169,15 @@ func (s *StartExport) admit(ctx context.Context, notebookID, userID uuid.UUID) e
 
 // room is 503 server_busy when the jobs queued or running, and the
 // uploads under way into notebooks but except, are MaxQueued; queueLocked
-// tells whether the caller holds the queue's lock.
+// tells whether the caller holds the queue's lock. The uploads are read
+// first: one told written by then had its row committed before the count.
 func (d StartDeps) room(ctx context.Context, except uuid.UUID, queueLocked bool) error {
+	uploading, _ := d.Uploads.others(except, queueLocked)
 	active, err := d.Rows.CountActive(ctx)
 	if err != nil {
 		return err
 	}
-	if uploading, _ := d.Uploads.others(except, queueLocked); active+uploading >= d.MaxQueued {
+	if active+uploading >= d.MaxQueued {
 		return domain.ErrQueueFull
 	}
 	return nil
@@ -183,13 +185,16 @@ func (d StartDeps) room(ctx context.Context, except uuid.UUID, queueLocked bool)
 
 // free is 507 storage_full when the store's disk would keep less than
 // MinFree once need bytes, and those the uploads under way into notebooks
-// but except have yet to store, are written; queueLocked as room's.
+// but except have yet to store, are written; queueLocked as room's. The
+// uploads are read first: a byte stored meanwhile is counted twice, not
+// missed.
 func (d StartDeps) free(ctx context.Context, need int64, except uuid.UUID, queueLocked bool) error {
+	_, uploading := d.Uploads.others(except, queueLocked)
 	free, err := d.Archives.Free(ctx)
 	if err != nil {
 		return err
 	}
-	if _, uploading := d.Uploads.others(except, queueLocked); free-need-uploading < d.MinFree {
+	if free-need-uploading < d.MinFree {
 		return domain.ErrStorageFull
 	}
 	return nil

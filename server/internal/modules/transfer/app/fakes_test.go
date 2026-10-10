@@ -603,7 +603,8 @@ type row struct {
 // reports they wrote, reportedAt at which; failBeats fails as
 // many heartbeats first, failReports as many of those that carry a
 // report; finishErr fails a FinishJob, and finishLeft is the time its
-// context left it; onBeat runs at each heartbeat written.
+// context left it; onBeat runs at each heartbeat written, onCount once,
+// after the next count of the active jobs is taken.
 type rows struct {
 	rec         *recorder
 	mu          sync.Mutex
@@ -617,6 +618,7 @@ type rows struct {
 	finishErr   error
 	finishLeft  time.Duration
 	onBeat      func()
+	onCount     func()
 	finds       int
 	locks       int
 }
@@ -657,12 +659,17 @@ func (r *rows) LockQueue(context.Context) error {
 func (r *rows) CountActive(context.Context) (int, error) {
 	r.rec.add("CountActive")
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	n := 0
 	for _, x := range r.jobs {
 		if !x.deleted && !x.job.State.Ended() {
 			n++
 		}
+	}
+	counted := r.onCount
+	r.onCount = nil
+	r.mu.Unlock()
+	if counted != nil {
+		counted()
 	}
 	return n, nil
 }
