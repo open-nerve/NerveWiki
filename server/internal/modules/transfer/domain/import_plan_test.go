@@ -2,6 +2,7 @@ package domain_test
 
 import (
 	"fmt"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -133,6 +134,75 @@ func TestNewImportPlan(t *testing.T) {
 // meta.json gives the order of each node by its path, in NFC, and the
 // contributors' files; one that is not JSON, or of another format, gives
 // nothing.
+// allocated is the bytes f allocates.
+func allocated(f func()) uint64 {
+	var before, after runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+	f()
+	runtime.ReadMemStats(&after)
+	return after.TotalAlloc - before.TotalAlloc
+}
+
+// The plan's paths are each entry's joined once: no level of a deep path
+// copies it (M7 closeout A-I1). A thousand attachments, each under ten
+// folders of its own named with a thousand bytes, hold 10 MB of names;
+// copying each folder's path at each level allocated 160 MB, sixteen times
+// that, and the plan now 45 MB, the names mended taking most.
+func TestThePlanAllocatesASmallMultipleOfItsPaths(t *testing.T) {
+	var paths []string
+	names := 0
+	for i := range 1000 {
+		var b strings.Builder
+		for level := range 10 {
+			fmt.Fprintf(&b, "%04d-%d-%s/", i, level, strings.Repeat("n", 994))
+		}
+		b.WriteString("x.png")
+		paths = append(paths, b.String())
+		names += b.Len()
+	}
+	entries := importEntries(paths...)
+
+	var plan domain.ImportPlan
+	bytes := allocated(func() { plan = domain.NewImportPlan(entries, domain.ImportMeta{}, 0) })
+
+	if len(plan.Nodes) != 11_000 || len(plan.Skipped) != 0 {
+		t.Fatalf("%d nodes, %d skipped; want 11,000 and none", len(plan.Nodes), len(plan.Skipped))
+	}
+	if bytes > uint64(6*names) {
+		t.Errorf("the plan allocated %d bytes for %d bytes of names; want 6 times at most", bytes, names)
+	}
+}
+
+// An entry of tens of thousands of folders is skipped as it is classified,
+// before the plan makes one (M7 closeout A-I1): two of 64 KiB took 4.46
+// GiB of the heap, the plan's folders each holding its whole path.
+func TestAnEntryFarTooDeepIsSkippedBeforeItsFolders(t *testing.T) {
+	deep := "t/" + strings.Repeat("d/", 32_760) + "x.md"
+	raw := []domain.RawEntry{
+		{Index: 0, Name: deep, Method: domain.MethodDeflate},
+		{Index: 1, Name: deep + "x", Method: domain.MethodDeflate},
+		{Index: 2, Name: "ok.md", Method: domain.MethodDeflate},
+	}
+
+	var plan domain.ImportPlan
+	var sorted domain.Sorted
+	bytes := allocated(func() {
+		sorted = domain.Classify(raw)
+		plan = domain.NewImportPlan(sorted.Entries, domain.ImportMeta{}, 0)
+	})
+
+	if got := planned(plan); !slices.Equal(got, []string{"1 - page ok <- ok.md #2"}) {
+		t.Errorf("planned %q; want ok.md alone", got)
+	}
+	if len(sorted.Skipped) != 2 || sorted.Skipped[0].Code != domain.ProblemTooDeep || sorted.Skipped[1].Code != domain.ProblemTooDeep {
+		t.Errorf("skipped %d, the first %q; want both too deep", len(sorted.Skipped), sorted.Skipped[0].Code)
+	}
+	if bytes > 32<<20 {
+		t.Errorf("classified and planned in %d bytes; want 32 MiB at most", bytes)
+	}
+}
+
 func TestReadMeta(t *testing.T) {
 	m := domain.ReadMeta([]byte(`{"format": 1, "nodes": [{"path": "Cafe\u0301.md", "kind": "page", "sort_order": 2.5},
 		{"path": "A/", "kind": "page", "sort_order": -1}], "contributed": ["index.md"], "extra": true}`))

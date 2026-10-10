@@ -81,6 +81,10 @@ func TestClassify(t *testing.T) {
 		{"a folder without a mark", []string{"V/a.md", "V/b.md"}, []string{"0 V/a.md", "1 V/b.md"}},
 		{"a folder beside another", []string{"V/.obsidian/app.json", "V/a.md", "W/b.md"}, []string{"1 V/a.md", "2 W/b.md"}},
 		{"a folder beside a file", []string{"V/.obsidian/app.json", "V/a.md", "readme.md"}, []string{"1 V/a.md", "2 readme.md"}},
+		{"deeper than any page may be", []string{"V/.obsidian/", "V/a/b/c/d/e/f/g/h/i/j/k.png", "V/a/b/c/d/e/f/g/h/i/j/k/l.md",
+			"V/a/b/c/d/e/f/g/h/i/j/k/", ".obsidian/a/b/c/d/e/f/g/h/i/j/k/l.md"},
+			// A folder of MaxDepth+1 names is the plan's to skip, as deep as a page under it.
+			[]string{"1 a/b/c/d/e/f/g/h/i/j/k.png", "3 a/b/c/d/e/f/g/h/i/j/k/", "too_deep: V/a/b/c/d/e/f/g/h/i/j/k/l.md"}},
 		{"nothing", nil, nil},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

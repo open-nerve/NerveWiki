@@ -85,7 +85,10 @@ type Sorted struct {
 // only one at its top, besides those ignored, and holds .obsidian or
 // .nerve, is the vault itself: the paths start below it. A file that is
 // a symbolic link or no regular one, encrypted, or of a method the import
-// does not read, and the second entry of a path, are skipped.
+// does not read, and the second entry of a path, are skipped; and so is an
+// entry of more than MaxDepth+1 names, too deep wherever the import goes
+// (a page at its last folder's level, an attachment one below), before a
+// folder of its path is made: the paths' bytes bound what the plan holds.
 func Classify(raw []RawEntry) Sorted {
 	var out Sorted
 	out.Meta = -1
@@ -123,6 +126,10 @@ func Classify(raw []RawEntry) Sorted {
 			}
 			continue
 		case slices.ContainsFunc(c.path, ignored):
+			continue
+		}
+		if len(c.path) > MaxDepth+1 {
+			out.Skipped = append(out.Skipped, Problem{Path: c.raw.Name, Code: ProblemTooDeep})
 			continue
 		}
 		problem := ProblemCode("")
