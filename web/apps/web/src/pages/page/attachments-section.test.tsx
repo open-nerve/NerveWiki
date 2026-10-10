@@ -341,7 +341,8 @@ test("an attachment without an extension renamed to a page's file's name says wh
   const field = within(dialog).getByRole("textbox", { name: "Name" });
 
   await user.clear(field);
-  await user.type(field, "notes.MD{Enter}");
+  // The name is the field's, trimmed: a space after it is no other extension.
+  await user.type(field, "notes.MD {Enter}");
 
   expect(
     await within(dialog).findByText(

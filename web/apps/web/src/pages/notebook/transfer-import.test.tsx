@@ -1,11 +1,11 @@
-import { act, configure, screen, waitFor, within } from "@testing-library/react";
+import { act, configure, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterAll, beforeAll, expect, test } from "vitest";
 
 import { eventHandlers } from "../../events/handlers";
 import { FakePage } from "../../events/testing/fake-page";
 import type { TransferFailure } from "../../services/transfer.service";
-import { transfers } from "../../test/attachments";
+import { dropped, transfers } from "../../test/attachments";
 import { eventServer, withEvents } from "../../test/event-server";
 import { instanceJSON, json, notebookJSON, problem, workspaceJSON } from "../../test/fakes";
 import { jobJSON, jobsServer, underWay } from "../../test/jobs-server";
@@ -150,6 +150,30 @@ test("nothing goes out without a file, or with one larger than the server takes;
   await user.click(within(shown).getByRole("button", { name: "Import" }));
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   expect(server.asked.filter((ask) => ask.startsWith("POST"))).toEqual(["POST import notes.tar under root"]);
+});
+
+test("a folder dropped on the file is not taken, said so: the file chosen before stays, and goes", async () => {
+  const user = userEvent.setup();
+  const server = jobsServer();
+  renderApp(transfer, server.app);
+  const shown = await open(user);
+  const file = within(shown).getByLabelText("Zip archive");
+  await user.upload(file, vault());
+
+  expect(fireEvent.drop(file, { dataTransfer: dropped([], ["Vault"]) })).toBe(false);
+  const note = within(shown).getByText("A folder is not imported as it is: zip it, then choose the zip.");
+  expect(file.getAttribute("aria-describedby")).toBe(note.id);
+  // A file dropped is the browser's to take; chosen, the note goes.
+  expect(fireEvent.drop(file, { dataTransfer: dropped([vault()]) })).toBe(true);
+  await user.upload(file, vault());
+  expect(within(shown).queryByText(/^A folder is not imported/u)).toBeNull();
+  expect(file.getAttribute("aria-describedby")).toBeNull();
+
+  fireEvent.drop(file, { dataTransfer: dropped([], ["Vault"]) });
+  await user.click(within(shown).getByRole("button", { name: "Import" }));
+  await waitFor(() =>
+    expect(server.asked.filter((ask) => ask.startsWith("POST"))).toEqual(["POST import Vault.zip under root"])
+  );
 });
 
 test("the instance not read, no size is told, and none is checked", async () => {

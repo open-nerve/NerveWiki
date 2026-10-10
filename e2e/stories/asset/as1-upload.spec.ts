@@ -231,9 +231,10 @@ test("AS1 (page): an upload going shows its progress, of the whole request; canc
   const page = await signedInPage(tokens);
   const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
   const guide = await createPage(api, pat, notebook.id, "Guide");
-  // The browser sends about 100 KB a second, as CDP throttles it from before the page loads (set
-  // after, it holds the progress back but not the body). The socket's buffers let some megabytes
-  // ahead of it: 16 MiB take far longer than the cancel, which comes as the first bytes go.
+  // The browser sends about 100 KB a second (CDP): 16 MiB take minutes, the cancel comes as the
+  // first bytes go. The throttle stays to the end: lifted as the browser aborts, the rest of the
+  // body could go whole before the abort, and the server read it all (its unit then fails and the
+  // file is left for the orphans' sweep, M7/P2; the closeout's fix check FB-M1).
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("Network.enable");
   await cdp.send("Network.emulateNetworkConditions", {
@@ -260,12 +261,6 @@ test("AS1 (page): an upload going shows its progress, of the whole request; canc
   await section.getByRole("button", { name: "Cancel the upload of large.bin" }).click();
 
   await expect(section.getByRole("list", { name: "Uploads" })).toBeHidden();
-  await cdp.send("Network.emulateNetworkConditions", {
-    offline: false,
-    latency: 0,
-    downloadThroughput: -1,
-    uploadThroughput: -1,
-  });
   expect(await listAssets(api, pat, notebook.id, guide.id)).toEqual([]);
   expect(await db.query("SELECT id FROM asset_blobs WHERE notebook_id = $1", [notebook.id])).toEqual([]);
   await expect.poll(() => storedBlobs(nervewiki.storageDir), { message: "the store's blobs/" }).toEqual(before);

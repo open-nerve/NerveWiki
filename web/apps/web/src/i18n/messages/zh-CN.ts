@@ -433,6 +433,7 @@ export const zhCN: Messages = {
   "transfer.importMost": "zip 至多 {size}。",
   "transfer.importFile": "zip 文件",
   "transfer.importNotZip": "这个文件的名称不以 .zip 结尾：服务器会判定它是不是 zip。",
+  "transfer.importFolder": "文件夹不能直接导入：先把它打成 zip，再选这个 zip。",
   "transfer.importPlace": "导入到",
   "transfer.importPlaceChoose": "请选择位置",
   "transfer.importUnderWay": "这本笔记本已有进行中的导入，等它结束再导入。",

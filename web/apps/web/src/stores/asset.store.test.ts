@@ -425,6 +425,18 @@ describe("AssetStore's uploads, as they fail and go on", () => {
     ]);
   });
 
+  test("a name is free of the uploads still going: those begun before, and, tried again, the others of its own", async () => {
+    const { store, sent } = setUp();
+
+    store.upload(null, [file("a.png")], "Untitled", limits);
+    store.upload(null, [file("a.png"), file("a.png")], "Untitled", limits);
+    await settle();
+    sent[1]?.reject(refusal(409, "page.title_taken"));
+    await settle();
+
+    expect(sent.map((each) => each.name)).toEqual(["a.png", "a 2.png", "a 3.png", "a 4.png"]);
+  });
+
   test("cancelled as the tree is read after its failure, it leaves the uploads, no failure shown", async () => {
     const { store, sent, pages } = setUp();
     let answer: (() => void) | undefined;

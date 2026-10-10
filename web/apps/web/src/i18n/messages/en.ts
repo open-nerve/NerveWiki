@@ -439,6 +439,7 @@ export const en = {
   "transfer.importMost": "The zip may be at most {size}.",
   "transfer.importFile": "Zip archive",
   "transfer.importNotZip": "This file's name does not end with .zip: the server will tell whether it is a zip archive.",
+  "transfer.importFolder": "A folder is not imported as it is: zip it, then choose the zip.",
   "transfer.importPlace": "Import under",
   "transfer.importPlaceChoose": "Choose a place",
   "transfer.importUnderWay": "An import into this notebook is under way. Wait for it to end before starting another.",
