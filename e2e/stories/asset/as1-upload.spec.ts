@@ -1,8 +1,10 @@
+import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 
-import type { Page } from "@playwright/test";
+import type { Asset } from "@nervewiki/api-client";
+import type { Locator, Page } from "@playwright/test";
 
-import { expectAssetsDeletedWithNodes, expectUploaded } from "../../fixtures/assert/asset";
+import { expectAssetsDeletedWithNodes, expectUploaded, storedBlobs } from "../../fixtures/assert/asset";
 import { download, getAsset, listAssets, pngBytes, uploadAsset, utf8 } from "../../fixtures/assets";
 import { countAnswers } from "../../fixtures/browser";
 import { createNotebook } from "../../fixtures/notebooks";
@@ -74,6 +76,30 @@ const attachments = (page: Page) => page.getByRole("region", { name: "Attachment
 /** uploadsPath is the path an upload into the notebook notebookId goes to. */
 const uploadsPath = (notebookId: string) => `/api/v0/notebooks/${notebookId}/assets`;
 
+/**
+ * dragFileOver drags a file over target, then drops it there, as a script can: whether the dragover's default was
+ * prevented and the drop effect it set, and whether the drop's default was prevented.
+ */
+function dragFileOver(target: Locator) {
+  return target.evaluate((element) => {
+    const data = new DataTransfer();
+    data.items.add(new File(["x"], "notes.txt", { type: "text/plain" }));
+    // A transfer made by script is no drag's: the browser keeps no drop effect set on it. What is set is kept here.
+    let effect = "copy";
+    Object.defineProperty(data, "dropEffect", {
+      get: () => effect,
+      set: (value: string) => {
+        effect = value;
+      },
+    });
+    const over = new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer: data });
+    element.dispatchEvent(over);
+    const drop = new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: data });
+    element.dispatchEvent(drop);
+    return { prevented: over.defaultPrevented, effect, dropped: drop.defaultPrevented };
+  });
+}
+
 test("AS1 (page): files chosen, or dropped on the reading view, upload to the page, and at the root on the notebook's home; each is listed by name and size, opens or downloads as the same bytes, and is renamed and deleted from its menu", async ({
   api,
   db,
@@ -90,6 +116,8 @@ test("AS1 (page): files chosen, or dropped on the reading view, upload to the pa
   await expect(pageHeading(page, "Guide")).toBeVisible();
   const section = attachments(page);
   await expect(section.getByText("Drop files here to upload them.")).toBeVisible();
+  // Over the page's heading nothing takes files: the page keeps a file dropped there from opening in the tab.
+  expect(await dragFileOver(pageHeading(page, "Guide"))).toEqual({ prevented: true, effect: "none", dropped: true });
 
   // Upload opens the browser's picker, of several files.
   const choosing = page.waitForEvent("filechooser");
@@ -188,9 +216,56 @@ test("AS1 (page): files chosen, or dropped on the reading view, upload to the pa
     .locator("input[type=file]")
     .setInputFiles([{ name: "logo.png", mimeType: "image/png", buffer: Buffer.from(pngBytes) }]);
   await expect(root.getByRole("link", { name: "logo.png (opens in a new tab)" })).toBeVisible();
-  expect((await listAssets(api, pat, notebook.id)).map((asset) => [asset.name, asset.parent_id])).toEqual([
-    ["logo.png", null],
-  ]);
+  const atRoot = await listAssets(api, pat, notebook.id);
+  expect(atRoot.map((asset) => [asset.name, asset.parent_id])).toEqual([["logo.png", null]]);
+  await expectUploaded(db, nervewiki.storageDir, atRoot[0] as Asset, pngBytes, adminId, "web");
+});
+
+test("AS1 (page): an upload going shows its progress, of the whole request; cancelled, it stops, and the server keeps nothing of it", async ({
+  api,
+  db,
+  nervewiki,
+  signedInPage,
+}, testInfo) => {
+  const { tokens, pat, workspace } = await newOnboardedTeam(api, testInfo);
+  const page = await signedInPage(tokens);
+  const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
+  const guide = await createPage(api, pat, notebook.id, "Guide");
+  await page.goto(wikiPagePath(workspace.slug, notebook.id, guide.id));
+  const section = attachments(page);
+  await expect(section.getByRole("button", { name: "Upload" })).toBeVisible();
+  const before = storedBlobs(nervewiki.storageDir);
+  // The browser sends a megabyte a second: 8 MiB take seconds.
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Network.enable");
+  await cdp.send("Network.emulateNetworkConditions", {
+    offline: false,
+    latency: 0,
+    downloadThroughput: -1,
+    uploadThroughput: 1_000_000,
+  });
+
+  await section
+    .locator("input[type=file]")
+    .setInputFiles([{ name: "large.bin", mimeType: "application/octet-stream", buffer: randomBytes(8 << 20) }]);
+  const progress = section.getByRole("progressbar", { name: "Upload of large.bin" });
+  await expect.poll(async () => Number(await progress.getAttribute("value"))).toBeGreaterThan(0);
+  const [sent, total] = await progress.evaluate((bar: HTMLProgressElement) => [bar.value, bar.max]);
+  // Of the request as the browser sends it: the form's bytes beside the file's.
+  expect(total).toBeGreaterThan(8 << 20);
+  expect(sent).toBeLessThan(total);
+  await section.getByRole("button", { name: "Cancel the upload of large.bin" }).click();
+
+  await expect(section.getByRole("list", { name: "Uploads" })).toBeHidden();
+  await cdp.send("Network.emulateNetworkConditions", {
+    offline: false,
+    latency: 0,
+    downloadThroughput: -1,
+    uploadThroughput: -1,
+  });
+  expect(await listAssets(api, pat, notebook.id, guide.id)).toEqual([]);
+  expect(await db.query("SELECT id FROM asset_blobs WHERE notebook_id = $1", [notebook.id])).toEqual([]);
+  await expect.poll(() => storedBlobs(nervewiki.storageDir), { message: "the store's blobs/" }).toEqual(before);
 });
 
 test("AS1 (page): a Markdown file is not sent: the section says to import it, until dismissed", async ({

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
 import type { Asset, Page } from "@nervewiki/api-client";
@@ -90,6 +90,18 @@ export async function expectUploaded(
   expect(a.byte_size).toBe(bytes.length);
   expect(a.sha256).toBe(rows[0]?.sha256);
   expect(Buffer.compare(readFileSync(blobPath(storageDir, blob)), Buffer.from(bytes)), "the file in the store").toBe(0);
+}
+
+/** The files the store at storageDir keeps under blobs/, those being written (.tmp/) among them, sorted. */
+export function storedBlobs(storageDir: string): string[] {
+  const dir = path.join(storageDir, "blobs");
+  if (!existsSync(dir)) {
+    return [];
+  }
+  return readdirSync(dir, { recursive: true, withFileTypes: true })
+    .filter((e) => e.isFile())
+    .map((e) => path.relative(dir, path.join(e.parentPath, e.name)))
+    .toSorted();
 }
 
 /** asset_blobs: the rows of the attachments ids are deleted at their nodes' time, each node deleted. */

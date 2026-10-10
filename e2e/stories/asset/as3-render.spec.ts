@@ -4,7 +4,7 @@ import type { ApiClient } from "@nervewiki/api-client";
 import type { Locator, Page } from "@playwright/test";
 
 import { expectIndexedLinks } from "../../fixtures/assert/links";
-import { download, oggOpus, pngBytes, uploadAsset, utf8 } from "../../fixtures/assets";
+import { download, oggOpus, pngBytes, uploadAsset, utf8, webmHead } from "../../fixtures/assets";
 import { getPageProperties } from "../../fixtures/links";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, getView, readContent, renameNode } from "../../fixtures/pages";
@@ -29,8 +29,6 @@ const content =
 
 const pdfBytes = utf8("%PDF-1.4\n% a document\n");
 const zipBytes = Uint8Array.from([0x50, 0x4b, 0x03, 0x04, ...utf8("an archive")]);
-/** WebM's first bytes, which the server sniffs; the page version records a video the browser plays. */
-const webmHead = Uint8Array.from([0x1a, 0x45, 0xdf, 0xa3, 0x9f, 0x42, 0x86, 0x81, 0x01]);
 
 /** upload uploads the story's attachments, at the notebook's root, its video's bytes video. */
 async function upload(api: ApiClient, pat: string, notebook: string, video: Uint8Array<ArrayBuffer>) {
@@ -92,6 +90,11 @@ test("AS3 (API): the view has an attachment's image, audio and video at their si
     [path(data.id), true],
   ]);
   expect(html).toContain('data-nw-target="missing.png"');
+  // A link to an attachment is no link to a page: the app's links (data-nw-node) lead to pages only.
+  const ids = new Set([cover, sound, clip, doc, data].map((asset) => asset.id));
+  expect([...html.matchAll(/data-nw-node="([^"]*)"/g)].map(([, id]) => id).filter((id) => ids.has(id ?? ""))).toEqual(
+    []
+  );
   // The view expires as its addresses do.
   const expiry = new URL(img?.src ?? "", nervewiki.baseURL).searchParams.get("e");
   expect(view?.assets_expire_at && Date.parse(view.assets_expire_at) / 1000).toBe(Number(expiry));
