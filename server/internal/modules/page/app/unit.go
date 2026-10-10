@@ -1,6 +1,7 @@
 package app
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"errors"
@@ -66,6 +67,13 @@ type UnitSpec struct {
 	// see: notebook.not_found or page.not_found, by what its address
 	// names.
 	NotFound error
+	// Kind is the kind of the unit's changeset: an edit unless set.
+	Kind domain.ChangesetKind
+	// Changeset, when set, is the changeset the unit writes in rather
+	// than one of its own (M7/P6 design 3.2): an import's first unit's,
+	// which its later units merge into. It must be of the notebook, of
+	// Kind, by the unit's actor and from its client.
+	Changeset uuid.UUID
 }
 
 // Outcome is what a unit did: in which workspace, by whom, its changeset
@@ -82,7 +90,7 @@ type Outcome struct {
 // parsing its content (M4/P4 review P1). Run decides again under its
 // locks.
 func (w *Writer) Allowed(ctx context.Context, spec UnitSpec) error {
-	actor, err := shared.RequireActor(ctx)
+	actor, err := requireActor(ctx)
 	if err != nil {
 		return err
 	}
@@ -92,6 +100,16 @@ func (w *Writer) Allowed(ctx context.Context, spec UnitSpec) error {
 	}
 	_, err = authorize(ctx, w.d.Auth, actor, spec.Action, shared.Target{WorkspaceID: workspaceID, NotebookID: spec.NotebookID}, spec.NotFound)
 	return err
+}
+
+// requireActor is ctx's actor, which acts with exactly one credential:
+// one with none, or more, is the caller's fault (M7/P6 design 3.2).
+func requireActor(ctx context.Context) (shared.Actor, error) {
+	actor, err := shared.RequireActor(ctx)
+	if err == nil && !actor.Valid() {
+		err = errors.New("a page write's actor acts with no credential, or with more than one")
+	}
+	return actor, err
 }
 
 // workspaceOf is the workspace of spec's notebook, read unlocked; spec's
@@ -119,7 +137,7 @@ func (w *Writer) Run(ctx context.Context, spec UnitSpec, do func(ctx context.Con
 	if !spec.Client.Valid() {
 		return Outcome{}, fmt.Errorf("a page write unit of client %q: no such client", spec.Client)
 	}
-	actor, err := shared.RequireActor(ctx)
+	actor, err := requireActor(ctx)
 	if err != nil {
 		return Outcome{}, err
 	}
@@ -153,7 +171,7 @@ func (w *Writer) Run(ctx context.Context, spec UnitSpec, do func(ctx context.Con
 		u = &Unit{w: w, write: Write{
 			WorkspaceID: workspaceID, NotebookID: spec.NotebookID, By: actor.UserID, Client: spec.Client,
 			Options: spec.Options, At: w.d.Clock.Now(),
-		}, merged: map[uuid.UUID]int{}}
+		}, kind: cmp.Or(spec.Kind, domain.ChangesetEdit), into: spec.Changeset, merged: map[uuid.UUID]int{}}
 		if err := do(ctx, u); err != nil {
 			return err
 		}
@@ -169,8 +187,11 @@ func (w *Writer) Run(ctx context.Context, spec UnitSpec, do func(ctx context.Con
 type Unit struct {
 	w     *Writer
 	write Write
-	// changeset is the unit's, inserted with its first write.
+	// changeset is the unit's, inserted with its first write, of kind;
+	// or into, an earlier unit's it merges into then.
 	changeset uuid.UUID
+	kind      domain.ChangesetKind
+	into      uuid.UUID
 	// changes are the unit's, merged by node in the order first changed;
 	// merged indexes them.
 	changes []domain.Change
@@ -227,14 +248,33 @@ func (u *Unit) inUnit(ctx context.Context) error {
 	return nil
 }
 
-// ensureChangeset inserts the unit's changeset with its first write.
+// ensureChangeset inserts the unit's changeset with its first write, or
+// merges the unit into the one it names: locked, of the notebook, of the
+// unit's kind, by its actor and from its client; its updated_at moved to
+// the unit's time, which the notebook's activity and log read.
 func (u *Unit) ensureChangeset(ctx context.Context) error {
 	if u.changeset != (uuid.UUID{}) {
 		return nil
 	}
+	if u.into != (uuid.UUID{}) {
+		c, err := u.w.d.Changesets.LockChangeset(ctx, u.into)
+		switch {
+		case errors.Is(err, ErrNotFound):
+			return fmt.Errorf("a page write unit merges into changeset %s: no such changeset", u.into)
+		case err != nil:
+			return err
+		case c.NotebookID != u.write.NotebookID || c.Kind != u.kind || c.By != u.write.By || c.Client != u.write.Client:
+			return fmt.Errorf("a page write unit merges into changeset %s: another notebook's, kind's, actor's or client's", u.into)
+		}
+		if err := u.w.d.Changesets.TouchChangeset(ctx, c.ID, u.write.At); err != nil {
+			return err
+		}
+		u.changeset = c.ID
+		return nil
+	}
 	id := uuid.NewV7()
 	if err := u.w.d.Changesets.CreateChangeset(ctx, Changeset{
-		ID: id, NotebookID: u.write.NotebookID, Kind: "edit", Client: u.write.Client, By: u.write.By, At: u.write.At,
+		ID: id, NotebookID: u.write.NotebookID, Kind: u.kind, Client: u.write.Client, By: u.write.By, At: u.write.At,
 	}); err != nil {
 		return err
 	}
@@ -270,6 +310,9 @@ func (u *Unit) content(nodeID uuid.UUID, text string, revision int) Content {
 // rather than one of its own: an edit session's writes come first in
 // their unit.
 func (u *Unit) changesetOf(id uuid.UUID) error {
+	if u.into != (uuid.UUID{}) {
+		return errors.New("a page write unit that merges into a changeset writes in an edit session's")
+	}
 	if u.changeset != (uuid.UUID{}) && u.changeset != id {
 		return errors.New("a page write unit writes in an edit session's changeset after it wrote in its own")
 	}

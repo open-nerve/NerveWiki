@@ -8,14 +8,23 @@ import (
 	"uuid"
 )
 
-// The transfer module's rows (M7/P5 design 3.14), by the notebook columns:
-// each aims at its notebook (notebookOf) and at two exports seeded in it,
-// the column's own, succeeded, and someone else's, queued. Any role starts
-// an export, lists its jobs, and reads its own and asks to cancel it (an
-// export that ended: transfer.not_cancellable); another's job is its
-// notebook's admins' alone and is not found by the rest; the columns
-// without a role do not see the notebook. The download is public: its
-// signature decides (matrixExempt).
+// The transfer module's rows (M7/P5 design 3.14; M7/P6 design 3.16), by
+// the notebook columns: each aims at its notebook (notebookOf) and at two
+// exports seeded in it, the column's own, succeeded, and someone else's,
+// queued. Any role starts an export, lists its jobs, and reads its own and
+// asks to cancel it (an export that ended: transfer.not_cancellable);
+// another's job is its notebook's admins' alone and is not found by the
+// rest; its editors and admins start an import, its readers are refused;
+// the columns without a role do not see the notebook. The download is
+// public: its signature decides (matrixExempt).
+
+// importForm is an import's form: under parent, an archive that is no zip,
+// whose job fails, writing nothing.
+func importForm(parent string) string {
+	return "--matrix\r\nContent-Disposition: form-data; name=\"parent_id\"\r\n\r\n" + parent +
+		"\r\n--matrix\r\nContent-Disposition: form-data; name=\"file\"; filename=\"vault.zip\"\r\n" +
+		"Content-Type: application/zip\r\n\r\nno zip\r\n--matrix--\r\n"
+}
 
 // matrixJob is a seeded export: owner's, of notebook, in state.
 type matrixJob struct {
@@ -101,6 +110,25 @@ func transferMatrixRows() []matrixRow {
 				if root := s.page(pageOf(c)).String(); j.Kind != "export" || j.State != "queued" || j.RootID == nil || *j.RootID != root ||
 					j.Name != pageOf(c) || j.CreatedBy.UserID != s.accounts[c].String() {
 					t.Errorf("started %+v, want %s's export of %s, queued", j, c, pageOf(c))
+				}
+			},
+		},
+		{
+			op:          "startImport",
+			columns:     notebookColumns(),
+			write:       true,
+			contentType: "multipart/form-data; boundary=matrix",
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodPost, notebookPath(c, s) + "/imports", importForm(s.page(pageOf(c)).String())
+			},
+			cells: editorsOnly(cell{status: http.StatusAccepted}, cell{http.StatusNotFound, "notebook.not_found"}),
+			check: func(t *testing.T, c caller, s seeded, answer string) {
+				t.Helper()
+				var j transferJobAnswer
+				decodeAnswer(t, answer, &j)
+				if root := s.page(pageOf(c)).String(); j.Kind != "import" || j.State != "queued" || j.RootID == nil || *j.RootID != root ||
+					j.Name != "vault.zip" || j.CreatedBy.UserID != s.accounts[c].String() {
+					t.Errorf("started %+v, want %s's import under %s, queued", j, c, pageOf(c))
 				}
 			},
 		},

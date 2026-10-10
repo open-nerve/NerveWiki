@@ -118,10 +118,12 @@ func rules() map[shared.Action]Rule {
 		"asset.upload": {Level: LevelNotebook, Notebook: writers()},
 		"asset.read":   {Level: LevelNotebook, Notebook: readers()},
 
-		// A notebook's imports and exports (M7/P5 design 3.14): an export
-		// is a read, so any role starts one, reads its jobs and cancels
-		// them; the use cases keep another's jobs to the notebook's admins.
+		// A notebook's imports and exports (M7/P5 design 3.14; M7/P6 design
+		// 3.16): an export is a read, so any role starts one, reads its jobs
+		// and cancels them; the use cases keep another's jobs to the
+		// notebook's admins. An import writes: a writer's.
 		"transfer.export": {Level: LevelNotebook, Notebook: readers()},
+		"transfer.import": {Level: LevelNotebook, Notebook: writers()},
 		"transfer.read":   {Level: LevelNotebook, Notebook: readers()},
 		"transfer.cancel": {Level: LevelNotebook, Notebook: readers()},
 	}

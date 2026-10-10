@@ -35,21 +35,27 @@ func (s *Store) queries(ctx context.Context) *gen.Queries {
 	return gen.New(postgres.DB(ctx, s.pool))
 }
 
-// exportingKey is the unique index of one export queued or running for a
-// reader in a notebook.
-const exportingKey = "transfer_jobs_exporting_key"
+// The unique indexes of one export queued or running for a reader in a
+// notebook, and of one import in a notebook.
+const (
+	exportingKey = "transfer_jobs_exporting_key"
+	importingKey = "transfer_jobs_importing_key"
+)
 
 // CreateJob implements app.Rows: a second export queued or running for the
-// account in the notebook is domain.ErrBusy, whatever the count before
-// said.
+// account in the notebook is domain.ErrBusy, a second import in the
+// notebook domain.ErrImportBusy, whatever the count before said.
 func (s *Store) CreateJob(ctx context.Context, j domain.Job) error {
 	err := s.queries(ctx).CreateJob(ctx, gen.CreateJobParams{
 		ID: j.ID, NotebookID: j.NotebookID, RootID: j.RootID, Kind: string(j.Kind), Name: j.Name, CreatedByID: j.CreatedBy,
 		Client: string(j.Client), CreatedAt: j.CreatedAt,
 	})
 	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == exportingKey {
+	switch {
+	case errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == exportingKey:
 		return domain.ErrBusy
+	case errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == importingKey:
+		return domain.ErrImportBusy
 	}
 	if err != nil {
 		return fmt.Errorf("create job: %w", err)
@@ -83,6 +89,15 @@ func (s *Store) Exporting(ctx context.Context, notebookID, userID uuid.UUID) (bo
 	ok, err := s.queries(ctx).Exporting(ctx, gen.ExportingParams{NotebookID: notebookID, CreatedByID: userID})
 	if err != nil {
 		return false, fmt.Errorf("exporting: %w", err)
+	}
+	return ok, nil
+}
+
+// Importing implements app.Rows.
+func (s *Store) Importing(ctx context.Context, notebookID uuid.UUID) (bool, error) {
+	ok, err := s.queries(ctx).Importing(ctx, notebookID)
+	if err != nil {
+		return false, fmt.Errorf("importing: %w", err)
 	}
 	return ok, nil
 }
@@ -138,8 +153,15 @@ func (s *Store) StartJob(ctx context.Context, id uuid.UUID, at time.Time) (domai
 }
 
 // BeatJob implements app.Rows.
-func (s *Store) BeatJob(ctx context.Context, id uuid.UUID, at time.Time, p domain.Progress) (app.Beat, error) {
-	r, err := s.queries(ctx).BeatJob(ctx, gen.BeatJobParams{ID: id, At: &at, Done: p.Done, Total: p.Total})
+func (s *Store) BeatJob(ctx context.Context, id uuid.UUID, at time.Time, p domain.Progress, report *domain.Report) (app.Beat, error) {
+	var b []byte
+	if report != nil {
+		var err error
+		if b, err = encodeReport(*report); err != nil {
+			return app.Beat{}, err
+		}
+	}
+	r, err := s.queries(ctx).BeatJob(ctx, gen.BeatJobParams{ID: id, At: &at, Done: p.Done, Total: p.Total, Report: b})
 	if err != nil {
 		return app.Beat{}, noRow("beat job", err)
 	}
@@ -220,11 +242,11 @@ func (s *Store) InterruptJobs(ctx context.Context, beatBefore *time.Time, at tim
 	return out, nil
 }
 
-// QueuedExports implements app.MaintainedRows.
-func (s *Store) QueuedExports(ctx context.Context) ([]uuid.UUID, error) {
-	ids, err := s.queries(ctx).QueuedExports(ctx)
+// QueuedJobs implements app.MaintainedRows.
+func (s *Store) QueuedJobs(ctx context.Context, kind domain.Kind) ([]uuid.UUID, error) {
+	ids, err := s.queries(ctx).QueuedJobs(ctx, string(kind))
 	if err != nil {
-		return nil, fmt.Errorf("queued exports: %w", err)
+		return nil, fmt.Errorf("queued jobs: %w", err)
 	}
 	return ids, nil
 }
@@ -247,8 +269,8 @@ func (s *Store) FailQueued(ctx context.Context, ids []uuid.UUID, at time.Time, r
 }
 
 // LiveArchives implements app.MaintainedRows.
-func (s *Store) LiveArchives(ctx context.Context, ids []uuid.UUID) ([]uuid.UUID, error) {
-	live, err := s.queries(ctx).LiveArchives(ctx, ids)
+func (s *Store) LiveArchives(ctx context.Context, kind domain.Kind, ids []uuid.UUID) ([]uuid.UUID, error) {
+	live, err := s.queries(ctx).LiveArchives(ctx, gen.LiveArchivesParams{Ids: ids, Kind: string(kind)})
 	if err != nil {
 		return nil, fmt.Errorf("live archives: %w", err)
 	}
@@ -307,7 +329,8 @@ func jobOf(r gen.FindJobRow) (domain.Job, error) {
 		CancelRequested: r.CancelRequestedAt, Heartbeat: r.HeartbeatAt, Started: r.StartedAt, Finished: r.FinishedAt,
 		ResultBytes: r.ResultBytes, CreatedAt: r.CreatedAt,
 	}
-	if r.Report != nil {
+	// A running job's report is the heartbeat's, which only its end shows.
+	if r.Report != nil && j.State.Ended() {
 		report, err := decodeReport(r.Report)
 		if err != nil {
 			return domain.Job{}, fmt.Errorf("the report of job %s: %w", r.ID, err)

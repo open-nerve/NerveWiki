@@ -120,9 +120,10 @@ func call(t *testing.T, method, url, token, body string, want int) []byte {
 // as the jobs start; every statement of the account's API and of the
 // commands goes through, nervewiki reindex's too, which rekeys the nodes
 // and rebuilds the link index; an export runs, enqueued with its job's row
-// and read in its snapshot, and its archive downloads; River's daily
-// reindex goes through, as River runs it, index by index. Nothing logs a
-// permission denied, the shutdown included.
+// and read in its snapshot, and its archive downloads; an import runs, its
+// archive uploaded, its nodes written, the statistics of the tables it
+// fills refreshed; River's daily reindex goes through, as River runs it,
+// index by index. Nothing logs a permission denied, the shutdown included.
 func TestTheRuntimeRoleServesWithTheGrantsFile(t *testing.T) {
 	roles := newSplitRoles(t)
 	ctx := context.Background()
@@ -268,10 +269,44 @@ func TestTheRuntimeRoleServesWithTheGrantsFile(t *testing.T) {
 	}
 	call(t, http.MethodGet, base+export.Download.URL, "", "", http.StatusOK)
 
+	contentType, body := importBody(t, "", "vault.zip", vaultZip(t, vaultFile{"Imported.md", "[[Note]] ![[pic.png]]"},
+		vaultFile{"Imported/pic.png", pngHead}))
+	req := newRequest(t, http.MethodPost, base+"/api/v0/notebooks/"+notes+"/imports", admin.AccessToken, []byte(body))
+	req.Header.Set("Content-Type", contentType)
+	res, answer := sendRequest(t, req)
+	var imported transferJob
+	if res.StatusCode != http.StatusAccepted || json.Unmarshal(answer, &imported) != nil {
+		t.Fatalf("an import as %s = %d %s", roles.serverName, res.StatusCode, answer)
+	}
+	for deadline := time.Now().Add(15 * time.Second); imported.State == "queued" || imported.State == "running"; time.Sleep(50 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatalf("the import is still %s as %s; logs:\n%s", imported.State, roles.serverName, logs.String())
+		}
+		if err := json.Unmarshal(call(t, http.MethodGet, base+"/api/v0/transfer-jobs/"+imported.ID, admin.AccessToken, "", http.StatusOK),
+			&imported); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if imported.State != "succeeded" || imported.Report == nil || imported.Report.Counts["pages"] != 1 || imported.Report.Counts["attachments"] != 1 {
+		t.Fatalf("the import as %s = %+v, want succeeded; logs:\n%s", roles.serverName, imported, logs.String())
+	}
+	if got := analyzed(t, roles.owner, importAnalyzes()); len(got) != len(importAnalyzes()) {
+		t.Errorf("analyzed as %s %q, want %q", roles.serverName, got, importAnalyzes())
+	}
+
 	for _, index := range river.ReindexerIndexNamesDefault() {
 		if _, err := roles.server.Exec(ctx, "REINDEX INDEX CONCURRENTLY "+pgx.Identifier{index}.Sanitize()); err != nil {
 			t.Errorf("REINDEX INDEX CONCURRENTLY %s as %s: %v", index, roles.serverName, err)
 		}
+	}
+}
+
+// importAnalyzes are the tables an import analyzes, each module its own
+// (M7/P6 design 3.6), which take MAINTAIN.
+func importAnalyzes() []string {
+	return []string{
+		"nodes", "page_contents", "page_revisions", "changesets", "changeset_items",
+		"indexed_pages", "page_links", "page_tags", "page_properties", "page_aliases", "asset_blobs",
 	}
 }
 
@@ -308,6 +343,11 @@ func TestTheGrantsFileCoversEveryRelationAndFunction(t *testing.T) {
 		"f": {"EXECUTE"},
 	}
 	tablePrivileges := []string{"SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER", "MAINTAIN"}
+	// The tables an import analyzes (M7/P6 design 3.6).
+	analyzed := map[string]bool{}
+	for _, table := range importAnalyzes() {
+		analyzed[table] = true
+	}
 	dml := []string{"SELECT", "INSERT", "UPDATE", "DELETE"}
 	seen := map[string]int{}
 	for rows.Next() {
@@ -335,7 +375,7 @@ func TestTheGrantsFileCoversEveryRelationAndFunction(t *testing.T) {
 			want = []string{"EXECUTE"}
 		case kind == "v", kind == "m", name == "goose_db_version":
 			want = []string{"SELECT"}
-		case name == "river_job":
+		case name == "river_job" || analyzed[name]:
 			want = append(slices.Clone(dml), "MAINTAIN")
 		default:
 			want = dml

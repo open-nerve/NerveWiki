@@ -9,7 +9,6 @@ import (
 	"io"
 	"log/slog"
 	"strings"
-	"sync/atomic"
 	"time"
 	"uuid"
 
@@ -55,35 +54,6 @@ const (
 	contentsBytes = 16 << 20
 )
 
-// The finish's bounds: a job ending as the server stops has until River's
-// grace after the shutdown's timeout; any other, its timeout's too, long
-// enough.
-const (
-	finishStopping = 900 * time.Millisecond
-	finishWait     = 30 * time.Second
-)
-
-// The causes a running job's heartbeat stops it with. A job gone was
-// deleted with its notebook, or no longer runs: the rescue failed it.
-var (
-	errCancelRequested = errors.New("transfer: the job's cancel was asked")
-	errGone            = errors.New("transfer: the job was deleted, or no longer runs")
-)
-
-// failure is an export's failure as its report tells it, and the error
-// behind it, which is logged.
-type failure struct {
-	code domain.Failure
-	err  error
-}
-
-func (f *failure) Error() string { return string(f.code) + ": " + f.err.Error() }
-func (f *failure) Unwrap() error { return f.err }
-
-func failed(code domain.Failure, err error) error {
-	return &failure{code: code, err: err}
-}
-
 // Run runs the export id. A job no longer queued, cancelled or deleted
 // meanwhile, is left as it is. A running one writes its heartbeat every
 // Beat until its archive is committed, which stops it when its cancel was
@@ -98,75 +68,25 @@ func (e *Export) Run(ctx context.Context, id uuid.UUID) error {
 	if err != nil {
 		return err
 	}
-	attrs := []any{slog.String("job_id", job.ID.String()), slog.String("notebook_id", job.NotebookID.String()),
-		slog.String("user_id", job.CreatedBy.String()), slog.String("client", string(job.Client))}
+	attrs := jobAttrs(job)
 	e.d.Logger.InfoContext(ctx, "export started", attrs...)
-	r := &run{e: e, job: job, report: domain.Report{}, name: job.Name}
+	r := &run{jobRun: newJobRun(job, e.d.Rows, e.d.Clock, e.d.Logger, e.d.Beat), e: e}
 	running, stop := context.WithCancelCause(ctx)
 	beating := r.beat(running, stop)
 	size, err := r.write(running)
 	stop(nil)
 	<-beating
-	return r.finish(ctx, running, size, err, attrs)
+	return r.finish(ctx, running, err, attrs, func(end context.Context, e Ended) error {
+		e.ResultBytes = &size
+		return r.succeed(end, e, attrs)
+	})
 }
 
-// run is an export as it runs.
+// run is an export as it runs: its name is the archive's root folder's
+// once the snapshot is read.
 type run struct {
-	e    *Export
-	job  domain.Job
-	done atomic.Int64
-	all  atomic.Int64
-	// report and name are the export's as it goes: its counts and problems,
-	// and the archive's root folder's name once the snapshot is read.
-	report domain.Report
-	name   string
-}
-
-// progress is the run's progress now.
-func (r *run) progress() domain.Progress {
-	return domain.Progress{Done: r.done.Load(), Total: r.all.Load()}
-}
-
-// beat writes the job's heartbeat and progress every Beat until ctx ends,
-// and stops the run when the job's cancel was asked, or it was deleted or
-// no longer runs. A write that fails is tried again at the next beat: a
-// job whose heartbeat stays old is failed by the rescue. The first failure
-// of a run of them is logged, and the write that ends it. The channel
-// closes as it returns.
-func (r *run) beat(ctx context.Context, stop context.CancelCauseFunc) <-chan struct{} {
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		ticker := time.NewTicker(r.e.d.Beat)
-		defer ticker.Stop()
-		failing := false
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-			}
-			b, err := r.e.d.Rows.BeatJob(ctx, r.job.ID, r.e.d.Clock.Now(), r.progress())
-			if err != nil && !errors.Is(err, ErrNoRow) {
-				if !failing && ctx.Err() == nil {
-					r.e.d.Logger.WarnContext(ctx, "export heartbeat not written", slog.String("job_id", r.job.ID.String()), slog.Any("error", err))
-				}
-				failing = true
-				continue
-			}
-			if failing && err == nil {
-				r.e.d.Logger.InfoContext(ctx, "export heartbeat written again", slog.String("job_id", r.job.ID.String()))
-			}
-			failing = false
-			switch {
-			case errors.Is(err, ErrNoRow) || b.Deleted:
-				stop(errGone)
-			case b.CancelRequested:
-				stop(errCancelRequested)
-			}
-		}
-	}()
-	return done
+	*jobRun
+	e *Export
 }
 
 // write writes the archive and commits it: the snapshot's pages and the
@@ -202,24 +122,9 @@ func (r *run) write(ctx context.Context) (int64, error) {
 	return size, nil
 }
 
-// authorize decides transfer.export again, as the job runs, for its
-// starter acting through it: an account that can no longer read the
-// notebook fails it. A notebook deleted meanwhile deleted the job too.
+// authorize decides transfer.export again, as the job runs.
 func (r *run) authorize(ctx context.Context) error {
-	workspaceID, ok, err := r.e.d.Notebooks.WorkspaceOf(ctx, r.job.NotebookID)
-	switch {
-	case err != nil:
-		return err
-	case !ok:
-		return errGone
-	}
-	actor := shared.Actor{UserID: r.job.CreatedBy, JobID: r.job.ID}
-	_, err = r.e.d.Authorizer.Authorize(ctx, actor, domain.ActionExport, shared.Target{WorkspaceID: workspaceID, NotebookID: r.job.NotebookID})
-	var denied *shared.Error
-	if errors.Is(err, shared.ErrNotVisible) || errors.As(err, &denied) && denied.Kind == shared.KindForbidden {
-		return failed(domain.FailureForbidden, err)
-	}
-	return err
+	return authorizeJob(ctx, r.e.d.Notebooks, r.e.d.Authorizer, r.job, domain.ActionExport)
 }
 
 // fill writes the archive's files.
@@ -484,68 +389,6 @@ func (c contextReader) Read(p []byte) (int, error) {
 		return 0, context.Cause(c.ctx)
 	}
 	return c.r.Read(p)
-}
-
-// finish writes the run's end: the archive of size bytes committed and the
-// job succeeded, the starter's earlier exports of the notebook expired and
-// their archives deleted; or the job cancelled or failed, with what it
-// did; nothing for a job deleted, or no longer running. River's context
-// ends the job as a timeout or, as the server stops, an interruption.
-func (r *run) finish(ctx, running context.Context, size int64, err error, attrs []any) error {
-	wait := finishWait
-	if ctx.Err() != nil && !errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		wait = finishStopping
-	}
-	end, cancel := context.WithTimeout(context.WithoutCancel(ctx), wait)
-	defer cancel()
-	e := Ended{State: domain.StateSucceeded, At: r.e.d.Clock.Now(), Name: r.name, Progress: r.progress()}
-	if err == nil {
-		e.ResultBytes = &size
-		return r.succeed(end, e, attrs)
-	}
-	cause := context.Cause(running)
-	switch {
-	case errors.Is(cause, errGone) || errors.Is(err, errGone):
-		r.e.d.Logger.InfoContext(end, "export stopped: the job was deleted, or no longer runs", attrs...)
-		return nil
-	case errors.Is(cause, errCancelRequested):
-		e.State = domain.StateCancelled
-	default:
-		e.State, e.Report.Failure = domain.StateFailed, r.failureOf(ctx, err)
-	}
-	report := r.report
-	report.Failure = e.Report.Failure
-	e.Report = report
-	ok, writeErr := r.e.d.Rows.FinishJob(end, r.job.ID, e)
-	if writeErr != nil {
-		return fmt.Errorf("write the end of export %s: %w", r.job.ID, writeErr)
-	}
-	if !ok {
-		r.e.d.Logger.InfoContext(end, "export stopped: the job was deleted, or no longer runs", attrs...)
-		return nil
-	}
-	level := slog.LevelInfo
-	if e.Report.Failure == domain.FailureInternal {
-		level = slog.LevelError
-	}
-	r.e.d.Logger.Log(end, level, "export ended", append(attrs, slog.String("state", string(e.State)),
-		slog.String("failure", string(e.Report.Failure)), slog.Int64("nodes", e.Progress.Done), slog.Any("error", err))...)
-	return nil
-}
-
-// failureOf is why the run failed: River's context ended by its timeout or
-// by the server's stop, or the run's own failure; any other is internal.
-func (r *run) failureOf(ctx context.Context, err error) domain.Failure {
-	var f *failure
-	switch {
-	case errors.Is(ctx.Err(), context.DeadlineExceeded):
-		return domain.FailureTimeout
-	case ctx.Err() != nil:
-		return domain.FailureInterrupted
-	case errors.As(err, &f):
-		return f.code
-	}
-	return domain.FailureInternal
 }
 
 // succeed writes the job's success, and expires the starter's earlier

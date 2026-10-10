@@ -7,7 +7,7 @@ import type { Notebook } from "../../services/notebook.service";
 import type { TransferFailure, TransferJob, TransferProblem } from "../../services/transfer.service";
 import { useTransfers } from "../../stores/context";
 
-/** The text of each failure's code (M7/P5 design 4.4). */
+/** The text of each failure's code (M7/P5 design 4.4, P6 design 3.8). */
 const failures: Record<TransferFailure, PlainKey> = {
   interrupted: "transfer.failure.interrupted",
   timeout: "transfer.failure.timeout",
@@ -16,6 +16,10 @@ const failures: Record<TransferFailure, PlainKey> = {
   storage_full: "transfer.failure.storage_full",
   contributor_conflict: "transfer.failure.contributor_conflict",
   internal: "transfer.failure.internal",
+  not_zip: "transfer.failure.not_zip",
+  too_many_entries: "transfer.failure.too_many_entries",
+  unpacked_too_large: "transfer.failure.unpacked_too_large",
+  tree_changed: "transfer.failure.tree_changed",
 };
 
 /** failureText is why a job failed, by its code: one the page does not know is a failure all the same. */
@@ -24,10 +28,21 @@ export function failureText(failure: string, t: Translate): string {
   return t(key ?? "transfer.failure.unknown");
 }
 
-/** The text of each problem's code (M7/P5 design 4.4). */
+/** The text of each problem's code (M7/P5 design 4.4, P6 design 3.8). */
 const problems: Record<TransferProblem["code"], (problem: TransferProblem, t: Translate) => string> = {
   renamed: (problem, t) => t("transfer.problem.renamed", { path: problem.path, to: problem.to ?? "" }),
   file_missing: (problem, t) => t("transfer.problem.file_missing", { path: problem.path }),
+  unsafe_path: (problem, t) => t("transfer.problem.unsafe_path", { path: problem.path }),
+  special_file: (problem, t) => t("transfer.problem.special_file", { path: problem.path }),
+  encrypted: (problem, t) => t("transfer.problem.encrypted", { path: problem.path }),
+  unsupported_method: (problem, t) => t("transfer.problem.unsupported_method", { path: problem.path }),
+  too_compressed: (problem, t) => t("transfer.problem.too_compressed", { path: problem.path }),
+  name_not_utf8: (problem, t) => t("transfer.problem.name_not_utf8", { path: problem.path }),
+  invalid_content: (problem, t) => t("transfer.problem.invalid_content", { path: problem.path }),
+  too_large: (problem, t) => t("transfer.problem.too_large", { path: problem.path }),
+  too_deep: (problem, t) => t("transfer.problem.too_deep", { path: problem.path }),
+  duplicate: (problem, t) => t("transfer.problem.duplicate", { path: problem.path }),
+  unreadable: (problem, t) => t("transfer.problem.unreadable", { path: problem.path }),
 };
 
 /** problemText says what befell a node of the vault, by its code: one the page does not know differs all the same. */

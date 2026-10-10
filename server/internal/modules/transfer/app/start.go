@@ -17,7 +17,7 @@ type StartExport struct {
 	d StartDeps
 }
 
-// StartDeps are what StartExport needs.
+// StartDeps are what StartExport and StartImport need.
 type StartDeps struct {
 	Tx         shared.TxManager
 	Authorizer shared.Authorizer
@@ -31,9 +31,14 @@ type StartDeps struct {
 	Signer     Signer
 	Clock      Clock
 	Logger     *slog.Logger
-	// MaxQueued is transfer.max_queued, MinFree storage.min_free_bytes.
-	MaxQueued int
-	MinFree   int64
+	// Uploads are the imports' uploads under way, the same for the
+	// exports and the imports.
+	Uploads *Uploads
+	// MaxQueued is transfer.max_queued, MinFree storage.min_free_bytes,
+	// ImportMaxBytes transfer.import_max_bytes.
+	MaxQueued      int
+	MinFree        int64
+	ImportMaxBytes int64
 }
 
 // NewStartExport returns the use case.
@@ -47,9 +52,10 @@ func NewStartExport(d StartDeps) *StartExport {
 // workspace's row and the notebook's, FOR SHARE, it decides
 // transfer.export (notebook.not_found); root is a page of the notebook not
 // deleted (page.not_found); then, the jobs' creations one at a time, the
-// jobs queued or running are fewer than MaxQueued (503 server_busy), the
-// caller has no export queued or running in the notebook (transfer.busy),
-// and the store has room (507 storage_full).
+// jobs queued or running, with the imports' uploads under way, are fewer
+// than MaxQueued (503 server_busy), the caller has no export queued or
+// running in the notebook (transfer.busy), and the store has room, what
+// the uploads have yet to store counted (507 storage_full).
 func (s *StartExport) Run(ctx context.Context, notebookID uuid.UUID, root *uuid.UUID, client domain.Client) (JobView, error) {
 	actor, err := shared.RequireActor(ctx)
 	if err != nil {
@@ -64,7 +70,7 @@ func (s *StartExport) Run(ctx context.Context, notebookID uuid.UUID, root *uuid.
 	}
 	var job domain.Job
 	err = s.d.Tx.WithinTx(ctx, func(ctx context.Context) error {
-		if err := s.lock(ctx, actor, workspaceID, notebookID); err != nil {
+		if err := s.d.lock(ctx, actor, workspaceID, notebookID, domain.ActionExport); err != nil {
 			return err
 		}
 		name, err := s.nameOf(ctx, notebookID, root)
@@ -95,15 +101,21 @@ func (s *StartExport) Run(ctx context.Context, notebookID uuid.UUID, root *uuid.
 }
 
 // lock locks the workspace's row and the notebook's FOR SHARE, then
-// decides transfer.export: a deletion committed meanwhile leaves none.
-func (s *StartExport) lock(ctx context.Context, actor shared.Actor, workspaceID, notebookID uuid.UUID) error {
-	if ok, err := s.d.Workspaces.ShareByID(ctx, workspaceID); err != nil || !ok {
+// decides action: a deletion committed meanwhile leaves none.
+func (d StartDeps) lock(ctx context.Context, actor shared.Actor, workspaceID, notebookID uuid.UUID, action shared.Action) error {
+	if ok, err := d.Workspaces.ShareByID(ctx, workspaceID); err != nil || !ok {
 		return orNotFound(err)
 	}
-	if ok, err := s.d.Notebooks.ShareByID(ctx, notebookID); err != nil || !ok {
+	if ok, err := d.Notebooks.ShareByID(ctx, notebookID); err != nil || !ok {
 		return orNotFound(err)
 	}
-	_, err := s.d.Authorizer.Authorize(ctx, actor, domain.ActionExport, shared.Target{WorkspaceID: workspaceID, NotebookID: notebookID})
+	return d.authorize(ctx, actor, workspaceID, notebookID, action)
+}
+
+// authorize decides action on the notebook: notebook.not_found for a
+// caller who cannot see it.
+func (d StartDeps) authorize(ctx context.Context, actor shared.Actor, workspaceID, notebookID uuid.UUID, action shared.Action) error {
+	_, err := d.Authorizer.Authorize(ctx, actor, action, shared.Target{WorkspaceID: workspaceID, NotebookID: notebookID})
 	if errors.Is(err, shared.ErrNotVisible) {
 		return domain.ErrNotebookNotFound
 	}
@@ -142,12 +154,8 @@ func (s *StartExport) admit(ctx context.Context, notebookID, userID uuid.UUID) e
 	if err := s.d.Rows.LockQueue(ctx); err != nil {
 		return err
 	}
-	active, err := s.d.Rows.CountActive(ctx)
-	if err != nil {
+	if err := s.d.room(ctx, uuid.Nil(), true); err != nil {
 		return err
-	}
-	if active >= s.d.MaxQueued {
-		return domain.ErrQueueFull
 	}
 	busy, err := s.d.Rows.Exporting(ctx, notebookID, userID)
 	if err != nil {
@@ -156,11 +164,48 @@ func (s *StartExport) admit(ctx context.Context, notebookID, userID uuid.UUID) e
 	if busy {
 		return domain.ErrBusy
 	}
-	free, err := s.d.Archives.Free(ctx)
+	return s.d.free(ctx, 0, uuid.Nil(), true)
+}
+
+// room is 503 server_busy when the jobs queued or running, and the
+// uploads under way into notebooks but except, are MaxQueued; queueLocked
+// tells whether the caller holds the queue's lock. A Check reads the
+// uploads first: one told written by then had its row committed before
+// the count. A start under the lock counts the rows first: no row of an
+// upload commits while it holds the lock, and an upload a Check admits
+// meanwhile is counted. A Check and an export that decide at once may
+// still both pass: the queue is then one past its size, and the next
+// start under the lock is refused, an upload's Create among them.
+func (d StartDeps) room(ctx context.Context, except uuid.UUID, queueLocked bool) error {
+	var uploading int
+	if !queueLocked {
+		uploading, _ = d.Uploads.others(except, false)
+	}
+	active, err := d.Rows.CountActive(ctx)
 	if err != nil {
 		return err
 	}
-	if free < s.d.MinFree {
+	if queueLocked {
+		uploading, _ = d.Uploads.others(except, true)
+	}
+	if active+uploading >= d.MaxQueued {
+		return domain.ErrQueueFull
+	}
+	return nil
+}
+
+// free is 507 storage_full when the store's disk would keep less than
+// MinFree once need bytes, and those the uploads under way into notebooks
+// but except have yet to store, are written; queueLocked as room's. The
+// uploads are read first: a byte stored meanwhile is counted twice, not
+// missed.
+func (d StartDeps) free(ctx context.Context, need int64, except uuid.UUID, queueLocked bool) error {
+	_, uploading := d.Uploads.others(except, queueLocked)
+	free, err := d.Archives.Free(ctx)
+	if err != nil {
+		return err
+	}
+	if free-need-uploading < d.MinFree {
 		return domain.ErrStorageFull
 	}
 	return nil

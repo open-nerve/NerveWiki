@@ -141,6 +141,8 @@ paths:
     $ref: "modules/asset.yaml#/paths/~1api~1v0~1assets~1{node_id}~1content"
   /api/v0/notebooks/{notebook_id}/exports:
     $ref: "modules/transfer.yaml#/paths/~1api~1v0~1notebooks~1{notebook_id}~1exports"
+  /api/v0/notebooks/{notebook_id}/imports:
+    $ref: "modules/transfer.yaml#/paths/~1api~1v0~1notebooks~1{notebook_id}~1imports"
   /api/v0/notebooks/{notebook_id}/transfer-jobs:
     $ref: "modules/transfer.yaml#/paths/~1api~1v0~1notebooks~1{notebook_id}~1transfer-jobs"
   /api/v0/transfer-jobs/{job_id}:

@@ -23,6 +23,13 @@ SELECT EXISTS (
         AND state IN ('queued', 'running') AND deleted_at IS NULL
 );
 
+-- name: Importing :one
+-- Whether the notebook has an import queued or running, anyone's.
+SELECT EXISTS (
+    SELECT 1 FROM transfer_jobs
+    WHERE notebook_id = sqlc.arg(notebook_id) AND kind = 'import' AND state IN ('queued', 'running') AND deleted_at IS NULL
+);
+
 -- name: FindJob :one
 SELECT id, notebook_id, root_id, kind, state, name, created_by_id, client, progress_done, progress_total,
     cancel_requested_at, heartbeat_at, started_at, finished_at, report, result_bytes, created_at
@@ -58,9 +65,10 @@ RETURNING id, notebook_id, root_id, kind, state, name, created_by_id, client, pr
     cancel_requested_at, heartbeat_at, started_at, finished_at, report, result_bytes, created_at;
 
 -- name: BeatJob :one
--- A running job's heartbeat and progress; it reads back whether a cancel was asked and whether the job was deleted
--- (its notebook's deletion). None when the job no longer runs.
-UPDATE transfer_jobs SET heartbeat_at = sqlc.arg(at), progress_done = sqlc.arg(done), progress_total = sqlc.arg(total)
+-- A running job's heartbeat and progress, and its report as it goes when it is set; it reads back whether a cancel
+-- was asked and whether the job was deleted (its notebook's deletion). None when the job no longer runs.
+UPDATE transfer_jobs SET heartbeat_at = sqlc.arg(at), progress_done = sqlc.arg(done), progress_total = sqlc.arg(total),
+    report = coalesce(sqlc.narg(report)::jsonb, report)
 WHERE id = sqlc.arg(id) AND state = 'running'
 RETURNING (cancel_requested_at IS NOT NULL)::boolean AS cancel_requested, (deleted_at IS NOT NULL)::boolean AS deleted;
 
@@ -103,9 +111,10 @@ RETURNING id;
 
 -- name: InterruptJobs :many
 -- The running jobs, failed with report: all of them, or those whose heartbeat is older than beat_before when it is
--- set. Their progress stays as it was. The rows another transaction holds are skipped: a notebook's deletion that
--- holds some waits for none of these.
-UPDATE transfer_jobs SET state = 'failed', finished_at = sqlc.arg(at), report = sqlc.arg(report)
+-- set. Their progress stays as it was, and the report a heartbeat wrote, its failure report's. The rows another
+-- transaction holds are skipped: a notebook's deletion that holds some waits for none of these.
+UPDATE transfer_jobs SET state = 'failed', finished_at = sqlc.arg(at),
+    report = coalesce(report || jsonb_build_object('failure', sqlc.arg(report)::jsonb -> 'failure'), sqlc.arg(report)::jsonb)
 WHERE state = 'running' AND id IN (
     SELECT id FROM transfer_jobs
     WHERE state = 'running' AND deleted_at IS NULL
@@ -114,9 +123,9 @@ WHERE state = 'running' AND id IN (
 )
 RETURNING id, notebook_id, created_by_id, client;
 
--- name: QueuedExports :many
--- The queued exports not deleted: River holds them, or dropped them.
-SELECT id FROM transfer_jobs WHERE kind = 'export' AND state = 'queued' AND deleted_at IS NULL;
+-- name: QueuedJobs :many
+-- The queued jobs of a kind not deleted: River holds them, or dropped them.
+SELECT id FROM transfer_jobs WHERE kind = sqlc.arg(kind) AND state = 'queued' AND deleted_at IS NULL;
 
 -- name: FailQueued :many
 -- Of ids, the queued jobs not deleted, failed with report: River dropped them (M7/P5 design 3.12). The rows another
@@ -135,9 +144,11 @@ UPDATE transfer_jobs SET deleted_at = sqlc.arg(at)
 WHERE notebook_id = ANY(sqlc.arg(notebook_ids)::uuid[]) AND deleted_at IS NULL;
 
 -- name: LiveArchives :many
--- Of ids, the jobs whose archives are kept: the exports that succeeded, not deleted.
+-- Of ids, the jobs of a kind whose archives are kept: the exports that succeeded, the imports queued or running; none
+-- deleted.
 SELECT id FROM transfer_jobs
-WHERE id = ANY(sqlc.arg(ids)::uuid[]) AND deleted_at IS NULL AND kind = 'export' AND state = 'succeeded';
+WHERE id = ANY(sqlc.arg(ids)::uuid[]) AND deleted_at IS NULL AND kind = sqlc.arg(kind)
+    AND state = ANY(CASE WHEN sqlc.arg(kind) = 'export' THEN ARRAY['succeeded'] ELSE ARRAY['queued', 'running'] END);
 
 -- name: ExpiredJobs :many
 -- The purge's batch: up to batch rows deleted before before, the oldest deletions first, locked; the rows another

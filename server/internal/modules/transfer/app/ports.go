@@ -44,12 +44,15 @@ type Names interface {
 	DisplayNames(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error)
 }
 
-// Nodes reads an export's scope, in the caller's snapshot: bootstrap
-// adapts the page module's ExportNodes.
+// Nodes reads an export's scope, in the caller's snapshot, and where an
+// import goes: bootstrap adapts the page module's ExportNodes.
 type Nodes interface {
 	// Page is the name of the page not deleted id of notebookID; false for
 	// none, or for an attachment.
 	Page(ctx context.Context, notebookID, id uuid.UUID) (string, bool, error)
+	// Depth is the depth of the page not deleted id of notebookID, a page
+	// at its root's 1; false for none, or for an attachment.
+	Depth(ctx context.Context, notebookID, id uuid.UUID) (int, bool, error)
 	// Scope is the nodes not deleted of notebookID, or of the page root and
 	// its subtree when root is set.
 	Scope(ctx context.Context, notebookID uuid.UUID, root *uuid.UUID) ([]domain.Node, error)
@@ -101,7 +104,48 @@ type Archives interface {
 	List(ctx context.Context, kind domain.Kind, before time.Time, each func(id uuid.UUID) error) error
 	// Free tells the free bytes of the store's disk.
 	Free(ctx context.Context) (int64, error)
+	// Upload starts the archive of the import id, which its request's
+	// body writes: domain.ErrStorageFull when the store keeps no room for
+	// it.
+	Upload(ctx context.Context, id uuid.UUID) (Upload, error)
+	// OpenImport opens the import id's archive and reads its directory,
+	// of at most most entries (M7/P6 design 3.10): ErrFileMissing,
+	// ErrNotZip, ErrTooManyEntries.
+	OpenImport(ctx context.Context, id uuid.UUID, most int) (ImportArchive, error)
 }
+
+// Upload is an import's archive as its request's body writes it, visible
+// once committed. A write that runs out of room is domain.ErrStorageFull.
+type Upload interface {
+	io.Writer
+	// Commit keeps it. On failure the file may be there all the same: an
+	// orphan, which the sweep finds.
+	Commit() error
+	// Abort drops it.
+	Abort() error
+}
+
+// ImportArchive is an import's archive open for reading its entries.
+type ImportArchive interface {
+	// Entries are its entries as its directory lists them, in order.
+	Entries() []domain.RawEntry
+	// Packed is the bytes of entry i as packed: what it unpacks from.
+	Packed(i int) int64
+	// Open reads entry i as it unpacks; the read that ends it fails when
+	// its data is broken, or its checksum or size is not its header's.
+	Open(i int) (io.ReadCloser, error)
+	Close() error
+}
+
+// The failures of an import's archive as a whole.
+var (
+	// ErrNotZip is an archive that is no zip, or whose end or directory
+	// is broken.
+	ErrNotZip = errors.New("transfer: the archive is no zip, or its directory is broken")
+	// ErrTooManyEntries is an archive of more entries than the import
+	// reads, or of a larger directory.
+	ErrTooManyEntries = errors.New("transfer: the archive holds too many entries")
+)
 
 // Archive is an export's archive as it is written: a zip file, visible
 // once it commits. A write that runs out of room is
@@ -129,13 +173,14 @@ type ArchiveFile interface {
 // Queue enqueues the jobs in the caller's transaction: adapter/river.
 type Queue interface {
 	Export(ctx context.Context, id uuid.UUID) error
+	Import(ctx context.Context, id uuid.UUID) error
 }
 
 // Held tells which jobs River still holds: adapter/river.
 type Held interface {
-	// Held is the ids of the exports River has not finished: to work,
-	// working, or to try again.
-	Held(ctx context.Context) ([]uuid.UUID, error)
+	// Held is the ids of the jobs of kind River has not finished: to
+	// work, working, or to try again.
+	Held(ctx context.Context, kind domain.Kind) ([]uuid.UUID, error)
 }
 
 // Signer signs the addresses of the exports' archives: adapter/mac.
@@ -198,6 +243,9 @@ type Rows interface {
 	// Exporting reports whether userID has an export queued or running in
 	// notebookID.
 	Exporting(ctx context.Context, notebookID, userID uuid.UUID) (bool, error)
+	// Importing reports whether notebookID has an import queued or
+	// running.
+	Importing(ctx context.Context, notebookID uuid.UUID) (bool, error)
 	FindJob(ctx context.Context, id uuid.UUID) (domain.Job, error)
 	// LockJob is FindJob locked until the transaction ends.
 	LockJob(ctx context.Context, id uuid.UUID) (domain.Job, error)
@@ -207,9 +255,10 @@ type Rows interface {
 	// StartJob moves the queued job id to running at at; ErrNoRow when it
 	// is not queued, or deleted.
 	StartJob(ctx context.Context, id uuid.UUID, at time.Time) (domain.Job, error)
-	// BeatJob writes the running job's heartbeat and progress; ErrNoRow
-	// when it no longer runs.
-	BeatJob(ctx context.Context, id uuid.UUID, at time.Time, p domain.Progress) (Beat, error)
+	// BeatJob writes the running job's heartbeat and progress, and its
+	// report as it goes when r is set, which a job's view shows once it
+	// ended; ErrNoRow when it no longer runs.
+	BeatJob(ctx context.Context, id uuid.UUID, at time.Time, p domain.Progress, r *domain.Report) (Beat, error)
 	// FinishJob ends the running job id; false when it does not run, or
 	// is deleted.
 	FinishJob(ctx context.Context, id uuid.UUID, e Ended) (bool, error)
@@ -233,16 +282,18 @@ type MaintainedRows interface {
 	// before, skipping those locked, and tells which.
 	ExpireExports(ctx context.Context, before time.Time, batch int) ([]uuid.UUID, error)
 	// InterruptJobs fails the running jobs whose heartbeat is older than
-	// beatBefore, or all of them when it is nil, with r; those another
+	// beatBefore, or all of them when it is nil, with r's failure, the
+	// report a heartbeat wrote kept, or r when none did; those another
 	// transaction holds are skipped.
 	InterruptJobs(ctx context.Context, beatBefore *time.Time, at time.Time, r domain.Report) ([]Interrupted, error)
-	// QueuedExports is the ids of the queued exports.
-	QueuedExports(ctx context.Context) ([]uuid.UUID, error)
+	// QueuedJobs is the ids of the queued jobs of kind.
+	QueuedJobs(ctx context.Context, kind domain.Kind) ([]uuid.UUID, error)
 	// FailQueued fails those of ids still queued with r; those another
 	// transaction holds are skipped.
 	FailQueued(ctx context.Context, ids []uuid.UUID, at time.Time, r domain.Report) ([]Interrupted, error)
-	// LiveArchives is those of ids whose archives are kept.
-	LiveArchives(ctx context.Context, ids []uuid.UUID) ([]uuid.UUID, error)
+	// LiveArchives is those of ids, jobs of kind, whose archives are kept:
+	// an export's that succeeded, an import's queued or running.
+	LiveArchives(ctx context.Context, kind domain.Kind, ids []uuid.UUID) ([]uuid.UUID, error)
 	// DeleteJobsOfNotebooks deletes the notebooks' jobs at at.
 	DeleteJobsOfNotebooks(ctx context.Context, notebookIDs []uuid.UUID, at time.Time) error
 	// ExpiredJobs is up to batch jobs deleted before before, locked until

@@ -6,14 +6,9 @@ import (
 	"errors"
 	"io"
 	"log/slog"
-	"mime"
-	"mime/multipart"
-	"net"
 	"net/http"
-	"slices"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 	"uuid"
 
 	"github.com/oapi-codegen/nullable"
@@ -42,13 +37,6 @@ const maxPreface = 4 << 10
 // maxName is the longest name part, in bytes.
 const maxName = 1 << 10
 
-// parts are the form's parts, in their order: the first two may be left
-// out.
-func parts() []string { return []string{"parent_id", "name", "file"} }
-
-// errPreface is a body with more than maxPreface bytes before its file.
-var errPreface = errors.New("more than 4 KiB before the file")
-
 type upload struct {
 	uc       *app.Upload
 	errors   httpserver.APIErrors
@@ -62,12 +50,12 @@ func (h upload) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.early(w, r, err)
 		return
 	}
-	form, err := newForm(r)
+	form, err := httpserver.NewForm(r, []string{"parent_id", "name"}, "file", maxPreface)
 	if err != nil {
 		h.early(w, r, err)
 		return
 	}
-	req, file, err := form.fields(pathID(r, "notebook_id"), client)
+	req, file, err := fields(form, pathID(r, "notebook_id"), client)
 	if err != nil {
 		h.early(w, r, err)
 		return
@@ -76,13 +64,13 @@ func (h upload) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.early(w, br, err)
 		return
 	}
-	form.preface.open = true
+	form.Open()
 	blob, err := h.uc.Store(r.Context(), req, file)
 	if err != nil {
 		h.early(w, r, err)
 		return
 	}
-	if err := form.end(r); err != nil {
+	if err := form.End(r); err != nil {
 		h.discard(r, blob)
 		h.early(w, r, err)
 		return
@@ -126,183 +114,43 @@ func (h upload) early(w http.ResponseWriter, r *http.Request, err error) {
 // is the platform's to answer: a ProblemError as itself, the rest 500.
 func (h upload) readFailed(w http.ResponseWriter, r *http.Request, err error) {
 	var read *app.ReadError
+	var body *httpserver.BodyReadError
 	switch {
 	case errors.Is(err, httpserver.ErrShuttingDown):
 		h.logger.InfoContext(r.Context(), "upload cut off by the shutdown", slog.String("request_id", httpserver.RequestID(r.Context())))
 		panic(http.ErrAbortHandler)
 	case errors.Is(err, domain.ErrTooLarge):
 		h.errors.Write(w, r, &http.MaxBytesError{Limit: h.maxBytes})
-	case errors.As(err, &read):
+	case errors.As(err, &read) || errors.As(err, &body):
 		h.logger.InfoContext(r.Context(), "upload not received", slog.String("request_id", httpserver.RequestID(r.Context())),
-			slog.String("cause", readCause(read.Err)))
+			slog.String("cause", httpserver.ReadCause(err)))
 		h.errors.Write(w, r, badRequest("The request body was not read whole: it ended early, was not well-formed, or arrived too slowly."))
 	default:
 		h.errors.Write(w, r, err)
 	}
 }
 
-// form is the body's parts, read as they come, the reads before the file
-// bounded by preface.
-type form struct {
-	reader  *multipart.Reader
-	preface *preface
-}
-
-// newForm reads r's body as multipart/form-data: 400 for another type, or
-// one without a boundary.
-func newForm(r *http.Request) (*form, error) {
-	media, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
-	if err != nil || media != "multipart/form-data" || params["boundary"] == "" {
-		return nil, badRequest("The request body is not multipart/form-data with a boundary.")
-	}
-	p := &preface{r: r.Body, left: maxPreface}
-	return &form{reader: multipart.NewReader(p, params["boundary"]), preface: p}, nil
-}
-
-// fields reads the parts up to the file's: parent_id and name, each at
+// fields reads form's parts up to the file's: parent_id and name, each at
 // most once and in order, then file, whose part it answers to be read.
-// Without a name, or with one of blanks, the file's name is taken. A part
-// is read as it was sent: a Content-Transfer-Encoding is not decoded.
+// Without a name, or with one of blanks, the file's name is taken.
 // Anything else is 400.
-func (f *form) fields(notebookID uuid.UUID, client string) (app.Request, io.Reader, error) {
-	req := app.Request{NotebookID: notebookID, Client: client}
-	next := 0
-	var named bool
-	for {
-		part, err := f.reader.NextRawPart()
-		switch {
-		case errors.Is(err, io.EOF):
-			return app.Request{}, nil, badRequest("The form has no file part.")
-		case err != nil:
-			return app.Request{}, nil, f.readError(err)
+func fields(form *httpserver.Form, notebookID uuid.UUID, client string) (app.Request, io.Reader, error) {
+	values, file, err := form.Fields(map[string]int{"parent_id": len("00000000-0000-0000-0000-000000000000"), "name": maxName})
+	if err != nil {
+		return app.Request{}, nil, err
+	}
+	req := app.Request{NotebookID: notebookID, Client: client, Name: file.FileName()}
+	if v, ok := values["parent_id"]; ok {
+		id, err := uuid.Parse(v)
+		if err != nil {
+			return app.Request{}, nil, httpserver.InvalidPart("parent_id")
 		}
-		i := slices.Index(parts(), part.FormName())
-		if i < next {
-			return app.Request{}, nil, badRequest("The form's parts are parent_id, name and file, each once and in this order.")
-		}
-		next = i + 1
-		switch part.FormName() {
-		case "parent_id":
-			v, err := value(part, len("00000000-0000-0000-0000-000000000000"))
-			if err != nil {
-				return app.Request{}, nil, f.partError("parent_id", err)
-			}
-			id, err := uuid.Parse(v)
-			if err != nil {
-				return app.Request{}, nil, f.partError("parent_id", errInvalid)
-			}
-			req.ParentID = &id
-		case "name":
-			v, err := value(part, maxName)
-			if err != nil {
-				return app.Request{}, nil, f.partError("name", err)
-			}
-			req.Name, named = v, strings.TrimSpace(v) != ""
-		case "file":
-			if !named {
-				req.Name = part.FileName()
-			}
-			return req, part, nil
-		}
+		req.ParentID = &id
 	}
-}
-
-// errInvalid is a text part that is not what its field takes.
-var errInvalid = errors.New("the part is not valid")
-
-// value reads a text part of at most limit bytes of UTF-8: errInvalid
-// for more, or other bytes; the body's error when it fails.
-func value(part *multipart.Part, limit int) (string, error) {
-	b, err := io.ReadAll(io.LimitReader(part, int64(limit)+1))
-	switch {
-	case err != nil:
-		return "", err
-	case len(b) > limit || !utf8.Valid(b):
-		return "", errInvalid
+	if v := values["name"]; strings.TrimSpace(v) != "" {
+		req.Name = v
 	}
-	return string(b), nil
-}
-
-// partError is 400 on the part named field for errInvalid; any other
-// error is the body's (readError).
-func (f *form) partError(field string, err error) error {
-	if errors.Is(err, errInvalid) {
-		return badRequest("The form's "+field+" part is not valid.",
-			shared.FieldError{Field: field, Code: shared.FieldInvalidFormat, Message: "has the wrong type or format"})
-	}
-	return f.readError(err)
-}
-
-// readError is the body's failure under the form: 400 for more than
-// maxPreface bytes before the file, whatever the parser made of the read
-// that ran out (a header line it cuts reads as malformed); an
-// *app.ReadError otherwise, which readFailed tells apart.
-func (f *form) readError(err error) error {
-	if errors.Is(err, errPreface) || !f.preface.open && f.preface.left <= 0 {
-		return badRequest("The form holds more than 4 KiB before the file.")
-	}
-	return &app.ReadError{Err: err}
-}
-
-// readCause names how a body failed to arrive, for the log: too slow, cut
-// short, the connection failing, or malformed.
-func readCause(err error) string {
-	var netErr net.Error
-	switch {
-	case errors.As(err, &netErr) && netErr.Timeout():
-		return "too slow"
-	case errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF):
-		return "ended early"
-	case errors.As(err, &netErr):
-		return "connection failed"
-	}
-	return "malformed"
-}
-
-// end reads what follows the file: its closing boundary and nothing else,
-// then the body to its end, so that the stream's read deadline goes (M7/P1
-// design 7). A part after the file is 400, answered before it is read,
-// one whose header runs past the route's limit or the parser's too, and so
-// is a body that goes on past the limit after the form.
-func (f *form) end(r *http.Request) error {
-	var tooLarge *http.MaxBytesError
-	_, err := f.reader.NextRawPart()
-	switch {
-	case err == nil || errors.As(err, &tooLarge) || errors.Is(err, multipart.ErrMessageTooLarge):
-		return badRequest("The form has a part after the file.")
-	case !errors.Is(err, io.EOF):
-		return f.readError(err)
-	}
-	switch _, err := io.Copy(io.Discard, r.Body); {
-	case errors.As(err, &tooLarge):
-		return badRequest("The body goes on after the form's end.")
-	case err != nil:
-		return f.readError(err)
-	}
-	return nil
-}
-
-// preface lets left bytes of the body through until it is open: a body
-// that holds more before the file fails with errPreface.
-type preface struct {
-	r    io.Reader
-	left int64
-	open bool
-}
-
-func (p *preface) Read(b []byte) (int, error) {
-	if p.open {
-		return p.r.Read(b)
-	}
-	if p.left <= 0 {
-		return 0, errPreface
-	}
-	if int64(len(b)) > p.left {
-		b = b[:p.left]
-	}
-	n, err := p.r.Read(b)
-	p.left -= int64(n)
-	return n, err
+	return req, file, nil
 }
 
 // badRequest is 400 bad_request with detail, and the fields when any.

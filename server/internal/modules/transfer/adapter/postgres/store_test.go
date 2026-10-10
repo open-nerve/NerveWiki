@@ -3,6 +3,7 @@ package postgresadapter_test
 import (
 	"context"
 	"errors"
+	"reflect"
 	"slices"
 	"testing"
 	"time"
@@ -71,6 +72,17 @@ func (f fixture) export(t *testing.T, notebook, by uuid.UUID, at time.Time) doma
 	return j
 }
 
+// importJob creates a queued import into notebook by by, made at.
+func (f fixture) importJob(t *testing.T, notebook, by uuid.UUID, at time.Time) domain.Job {
+	t.Helper()
+	j := domain.Job{ID: uuid.NewV7(), NotebookID: notebook, Kind: domain.KindImport, State: domain.StateQueued, Name: "vault.zip", CreatedBy: by,
+		Client: domain.ClientWeb, CreatedAt: at}
+	if err := f.store.CreateJob(context.Background(), j); err != nil {
+		t.Fatal(err)
+	}
+	return j
+}
+
 func (f fixture) start(t *testing.T, id uuid.UUID, at time.Time) {
 	t.Helper()
 	if _, err := f.store.StartJob(context.Background(), id, at); err != nil {
@@ -129,7 +141,7 @@ func TestAJobMovesThroughItsStates(t *testing.T) {
 		!got.CreatedAt.Equal(at(0)) || got.Started != nil || got.Report != nil {
 		t.Fatalf("FindJob() = %+v, %v", got, err)
 	}
-	if _, err := f.store.BeatJob(ctx, j.ID, at(0), domain.Progress{}); !errors.Is(err, app.ErrNoRow) {
+	if _, err := f.store.BeatJob(ctx, j.ID, at(0), domain.Progress{}, nil); !errors.Is(err, app.ErrNoRow) {
 		t.Errorf("BeatJob() of a queued job = %v, want ErrNoRow", err)
 	}
 
@@ -140,7 +152,7 @@ func TestAJobMovesThroughItsStates(t *testing.T) {
 	if _, err := f.store.StartJob(ctx, j.ID, at(0)); !errors.Is(err, app.ErrNoRow) {
 		t.Errorf("StartJob() twice = %v, want ErrNoRow", err)
 	}
-	beat, err := f.store.BeatJob(ctx, j.ID, at(2*time.Second), domain.Progress{Done: 1, Total: 3})
+	beat, err := f.store.BeatJob(ctx, j.ID, at(2*time.Second), domain.Progress{Done: 1, Total: 3}, nil)
 	if err != nil || beat != (app.Beat{}) {
 		t.Errorf("BeatJob() = %+v, %v", beat, err)
 	}
@@ -150,7 +162,7 @@ func TestAJobMovesThroughItsStates(t *testing.T) {
 	if ok, err := f.store.RequestCancel(ctx, j.ID, at(4*time.Second)); !ok || err != nil {
 		t.Fatalf("RequestCancel() again = %v, %v", ok, err)
 	}
-	beat, err = f.store.BeatJob(ctx, j.ID, at(5*time.Second), domain.Progress{Done: 2, Total: 3})
+	beat, err = f.store.BeatJob(ctx, j.ID, at(5*time.Second), domain.Progress{Done: 2, Total: 3}, nil)
 	if err != nil || !beat.CancelRequested || beat.Deleted {
 		t.Errorf("BeatJob() after the cancel = %+v, %v; want the cancel read", beat, err)
 	}
@@ -224,6 +236,79 @@ func TestOneExportAtOnceForAReaderInANotebook(t *testing.T) {
 	}
 	if n, err := f.store.CountActive(ctx); n != 3 || err != nil {
 		t.Errorf("CountActive() = %d, %v; want 3", n, err)
+	}
+}
+
+// One import queued or running in a notebook, anyone's: a second is
+// domain.ErrImportBusy, whatever was counted; one in another notebook, an
+// export beside it, or one after the first ended or was deleted, goes.
+func TestOneImportAtOnceInANotebook(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	first := f.importJob(t, f.eng, f.alice, at(0))
+	second := domain.Job{ID: uuid.NewV7(), NotebookID: f.eng, Kind: domain.KindImport, State: domain.StateQueued, Name: "vault.zip", CreatedBy: f.bob,
+		Client: domain.ClientAPI, CreatedAt: at(0)}
+	if err := f.store.CreateJob(ctx, second); !errors.Is(err, domain.ErrImportBusy) {
+		t.Errorf("CreateJob() of a second import = %v, want ErrImportBusy", err)
+	}
+	if busy, err := f.store.Importing(ctx, f.eng); !busy || err != nil {
+		t.Errorf("Importing() = %v, %v; want true", busy, err)
+	}
+	if busy, err := f.store.Importing(ctx, f.ops); busy || err != nil {
+		t.Errorf("Importing() of another notebook = %v, %v; want false", busy, err)
+	}
+	f.export(t, f.eng, f.alice, at(0))
+	other := f.importJob(t, f.ops, f.alice, at(0))
+	f.start(t, first.ID, at(0))
+	if err := f.store.CreateJob(ctx, second); !errors.Is(err, domain.ErrImportBusy) {
+		t.Errorf("CreateJob() beside a running import = %v, want ErrImportBusy", err)
+	}
+	if ok, err := f.store.FinishJob(ctx, first.ID, app.Ended{State: domain.StateFailed, At: at(0), Name: "vault.zip",
+		Report: domain.Report{Failure: domain.FailureNotZip}}); !ok || err != nil {
+		t.Fatalf("FinishJob() = %v, %v", ok, err)
+	}
+	if busy, err := f.store.Importing(ctx, f.eng); busy || err != nil {
+		t.Errorf("Importing() once the first ended = %v, %v; want false", busy, err)
+	}
+	if err := f.store.CreateJob(ctx, second); err != nil {
+		t.Errorf("CreateJob() once the first ended = %v", err)
+	}
+	if err := f.store.DeleteJobsOfNotebooks(ctx, []uuid.UUID{f.ops}, at(0)); err != nil {
+		t.Fatal(err)
+	}
+	var state string
+	if err := f.pool.QueryRow(ctx, "SELECT state FROM transfer_jobs WHERE id = $1", other.ID).Scan(&state); err != nil || state != "queued" {
+		t.Fatalf("the deleted import is %q, %v; want it queued still", state, err)
+	}
+	f.importJob(t, f.ops, f.bob, at(0))
+}
+
+// An import's archive is kept while its job is queued or running, not
+// after it ended, nor once deleted; an export's id asked of the imports
+// is not kept.
+func TestTheImportsArchivesAreKeptWhileTheyRun(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	ended, running := f.importJob(t, f.eng, f.alice, at(0)), f.importJob(t, f.ops, f.alice, at(0))
+	f.start(t, running.ID, at(0))
+	export := f.done(t, f.eng, f.alice, at(0))
+	if ok, err := f.store.CancelQueued(ctx, ended.ID, at(0), domain.Report{}); !ok || err != nil {
+		t.Fatalf("CancelQueued() = %v, %v", ok, err)
+	}
+	queued := f.importJob(t, f.eng, f.bob, at(0))
+	asked := []uuid.UUID{queued.ID, running.ID, ended.ID, export.ID, uuid.NewV7()}
+	live, err := f.store.LiveArchives(ctx, domain.KindImport, asked)
+	if want := []uuid.UUID{queued.ID, running.ID}; err != nil || !sameSet(live, want) {
+		t.Errorf("LiveArchives(import) = %v, %v; want %v", live, err, want)
+	}
+	if live, err := f.store.LiveArchives(ctx, domain.KindExport, asked); err != nil || !slices.Equal(live, []uuid.UUID{export.ID}) {
+		t.Errorf("LiveArchives(export) = %v, %v; want the export alone", live, err)
+	}
+	if err := f.store.DeleteJobsOfNotebooks(ctx, []uuid.UUID{f.ops}, at(0)); err != nil {
+		t.Fatal(err)
+	}
+	if live, err := f.store.LiveArchives(ctx, domain.KindImport, asked); err != nil || !slices.Equal(live, []uuid.UUID{queued.ID}) {
+		t.Errorf("LiveArchives(import) once one was deleted = %v, %v; want the queued one alone", live, err)
 	}
 }
 
@@ -313,7 +398,7 @@ func TestADeletedJobStops(t *testing.T) {
 	if err := f.store.DeleteJobsOfNotebooks(ctx, []uuid.UUID{f.eng}, at(0)); err != nil {
 		t.Fatal(err)
 	}
-	beat, err := f.store.BeatJob(ctx, running.ID, at(0), domain.Progress{})
+	beat, err := f.store.BeatJob(ctx, running.ID, at(0), domain.Progress{}, nil)
 	if err != nil || !beat.Deleted {
 		t.Errorf("BeatJob() = %+v, %v; want the deletion read", beat, err)
 	}
@@ -346,7 +431,7 @@ func TestExportsExpire(t *testing.T) {
 	if err != nil || !slices.Equal(expired, []uuid.UUID{old.ID}) {
 		t.Errorf("ExpireOthers() = %v, %v; want the older alone", expired, err)
 	}
-	live, err := f.store.LiveArchives(ctx, []uuid.UUID{old.ID, bobs.ID, ops.ID, latest.ID, running.ID, uuid.NewV7()})
+	live, err := f.store.LiveArchives(ctx, domain.KindExport, []uuid.UUID{old.ID, bobs.ID, ops.ID, latest.ID, running.ID, uuid.NewV7()})
 	if want := []uuid.UUID{bobs.ID, ops.ID, latest.ID}; err != nil || !sameSet(live, want) {
 		t.Errorf("LiveArchives() = %v, %v; want %v", live, err, want)
 	}
@@ -410,10 +495,40 @@ func TestTheRescueFailsTheRunningJobs(t *testing.T) {
 	}
 }
 
-// The rescue reads the queued exports, not an import, and fails those of
-// them it is given that are still queued, skipping the rows another
-// transaction holds; a deleted job is neither read nor failed.
-func TestTheRescueFailsTheQueuedExportsRiverDropped(t *testing.T) {
+// A heartbeat writes the report as it goes, when it is given, which a job
+// shows only once it ended: the rescue keeps it, its failure the
+// rescue's.
+func TestARunningJobsReportIsKeptByTheRescue(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	j := f.export(t, f.eng, f.alice, at(0))
+	f.start(t, j.ID, at(0))
+	going := domain.Report{Counts: domain.Counts{Pages: 3, Renamed: 1}, Problems: []domain.Problem{{Path: "a:b.md", Code: domain.ProblemRenamed, To: "a_b"}}}
+	if _, err := f.store.BeatJob(ctx, j.ID, at(time.Second), domain.Progress{Done: 3, Total: 9}, &going); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.store.BeatJob(ctx, j.ID, at(2*time.Second), domain.Progress{Done: 4, Total: 9}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if running, err := f.store.FindJob(ctx, j.ID); err != nil || running.Report != nil {
+		t.Errorf("FindJob() of the running job = %+v, %v; want no report", running, err)
+	}
+	if _, err := f.store.InterruptJobs(ctx, nil, at(time.Hour), domain.Report{Failure: domain.FailureInterrupted}); err != nil {
+		t.Fatal(err)
+	}
+	failed, err := f.store.FindJob(ctx, j.ID)
+	want := going
+	want.Failure = domain.FailureInterrupted
+	if err != nil || failed.State != domain.StateFailed || failed.Report == nil || !reflect.DeepEqual(*failed.Report, want) ||
+		failed.Progress != (domain.Progress{Done: 4, Total: 9}) {
+		t.Errorf("FindJob() of the job rescued = %+v, report %+v, %v; want %+v", failed, failed.Report, err, want)
+	}
+}
+
+// The rescue reads the queued jobs of a kind, and fails those it is given
+// that are still queued, skipping the rows another transaction holds; a
+// deleted job is neither read nor failed.
+func TestTheRescueFailsTheQueuedJobsRiverDropped(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
 	dropped, held, running := f.export(t, f.eng, f.alice, at(0)), f.export(t, f.ops, f.alice, at(0)), f.export(t, f.eng, f.bob, at(0))
@@ -425,9 +540,12 @@ func TestTheRescueFailsTheQueuedExportsRiverDropped(t *testing.T) {
 	}
 	report := domain.Report{Failure: domain.FailureInterrupted}
 
-	queued, err := f.store.QueuedExports(ctx)
+	queued, err := f.store.QueuedJobs(ctx, domain.KindExport)
 	if err != nil || !sameSet(queued, []uuid.UUID{dropped.ID, held.ID}) {
-		t.Errorf("QueuedExports() = %v, %v; want the two queued exports", queued, err)
+		t.Errorf("QueuedJobs(export) = %v, %v; want the two queued exports", queued, err)
+	}
+	if queued, err := f.store.QueuedJobs(ctx, domain.KindImport); err != nil || !slices.Equal(queued, []uuid.UUID{imported.ID}) {
+		t.Errorf("QueuedJobs(import) = %v, %v; want the import", queued, err)
 	}
 	release := f.hold(t, held.ID)
 	got, err := f.store.FailQueued(skipping(t), []uuid.UUID{dropped.ID, held.ID, running.ID}, at(time.Hour), report)
@@ -446,8 +564,8 @@ func TestTheRescueFailsTheQueuedExportsRiverDropped(t *testing.T) {
 	if err := f.store.DeleteJobsOfNotebooks(ctx, []uuid.UUID{f.ops}, at(0)); err != nil {
 		t.Fatal(err)
 	}
-	if queued, err := f.store.QueuedExports(ctx); err != nil || len(queued) != 0 {
-		t.Errorf("QueuedExports() = %v, %v; want none, the deleted one left", queued, err)
+	if queued, err := f.store.QueuedJobs(ctx, domain.KindExport); err != nil || len(queued) != 0 {
+		t.Errorf("QueuedJobs(export) = %v, %v; want none, the deleted one left", queued, err)
 	}
 	if got, err := f.store.FailQueued(ctx, []uuid.UUID{held.ID}, at(time.Hour), report); err != nil || len(got) != 0 {
 		t.Errorf("FailQueued() of a deleted job = %+v, %v; want none", got, err)

@@ -55,17 +55,17 @@ func TestGetInstanceMatchesTheContract(t *testing.T) {
 		settings app.Settings
 		ttl      int64
 	}{
-		{app.Settings{SignupEnabled: true, AssetMaxBytes: 1 << 10, ExportTTL: 10*time.Minute + 999*time.Millisecond}, 600},
-		{app.Settings{WorkspaceCreationEnabled: true, AssetMaxBytes: 50 << 20, ExportTTL: 24 * time.Hour}, 86400},
+		{app.Settings{SignupEnabled: true, AssetMaxBytes: 1 << 10, ImportMaxBytes: 1 << 20, ExportTTL: 10*time.Minute + 999*time.Millisecond}, 600},
+		{app.Settings{WorkspaceCreationEnabled: true, AssetMaxBytes: 50 << 20, ImportMaxBytes: 512 << 20, ExportTTL: 24 * time.Hour}, 86400},
 	} {
 		settings := c.settings
 		getInfo := app.NewGetInfo(fixedSource{Version: "1.2.3", Commit: "4f2a9c1"}, settings)
 
 		res, body := get(t, httpadapter.UseCases{GetInfo: getInfo}, "/api/v0/instance")
 
-		want := fmt.Sprintf(`{"api_version":"v0","asset_max_bytes":%d,"commit":"4f2a9c1","export_ttl_seconds":%d,"product":"Nerve Wiki",`+
-			`"signup_enabled":%t,"version":"1.2.3","workspace_creation_enabled":%t}`, settings.AssetMaxBytes, c.ttl,
-			settings.SignupEnabled, settings.WorkspaceCreationEnabled) + "\n"
+		want := fmt.Sprintf(`{"api_version":"v0","asset_max_bytes":%d,"commit":"4f2a9c1","export_ttl_seconds":%d,"import_max_bytes":%d,`+
+			`"product":"Nerve Wiki","signup_enabled":%t,"version":"1.2.3","workspace_creation_enabled":%t}`, settings.AssetMaxBytes, c.ttl,
+			settings.ImportMaxBytes, settings.SignupEnabled, settings.WorkspaceCreationEnabled) + "\n"
 		if res.StatusCode != http.StatusOK || body != want {
 			t.Errorf("GET /api/v0/instance = %d %s, want 200 %s", res.StatusCode, body, want)
 		}

@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
+	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
@@ -19,7 +21,7 @@ func TestTheAttachmentsWritesReachTheUnit(t *testing.T) {
 	f := newFixture(t)
 	g, o := &guard{}, &observer{f: f}
 	writes := f.module([]page.WriteGuard{g}, nil, []page.PageObserver{o}).TreeWrites()
-	ctx := shared.WithActor(context.Background(), shared.Actor{UserID: f.alice})
+	ctx := shared.WithActor(context.Background(), shared.Actor{UserID: f.alice, SessionID: uuid.NewV7()})
 	sum := bytes.Repeat([]byte{1}, 32)
 	a := page.NewAsset{NotebookID: f.eng, ParentID: &f.notes, Name: "photo.png", Action: "asset.upload", Client: "web",
 		Meta: page.AssetMeta{MIME: "image/png", Bytes: 3, SHA256: sum}}
@@ -62,4 +64,100 @@ func TestTheAttachmentsWritesReachTheUnit(t *testing.T) {
 	if err := writes.Check(ctx, a); !errors.As(err, &e) || e.Code != "page.title_taken" {
 		t.Errorf("Check(PHOTO.png) = %v, want page.title_taken", err)
 	}
+}
+
+// The wired module's TreeWrites run an import's units on the database: a
+// job acting for alice creates pages and attachments in a changeset of the
+// import kind from the job's client, numbering a name taken; a later unit
+// merges into it, moving its time on. The content is checked and parsed
+// outside the unit; the read port tells a page's depth.
+func TestTheImportsWritesReachTheUnit(t *testing.T) {
+	f := newFixture(t)
+	clock := &steppingClock{at: testNow()}
+	f.clock = clock
+	o := &observer{f: f}
+	writes := f.module(nil, nil, []page.PageObserver{o}).TreeWrites()
+	ctx := shared.WithActor(context.Background(), shared.Actor{UserID: f.alice, JobID: uuid.NewV7()})
+	if err := writes.CheckContent("# Hi"); err != nil {
+		t.Errorf("CheckContent(# Hi) = %v, want nil", err)
+	}
+	var e *shared.Error
+	if err := writes.CheckContent("a\x00b"); !errors.As(err, &e) || e.Code != shared.CodeValidationFailed {
+		t.Errorf("CheckContent(NUL) = %v, want 422", err)
+	}
+	parsed, err := writes.Parse(ctx, "# Hi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec := page.ImportSpec{NotebookID: f.eng, Action: "transfer.import", Client: page.Client("api")}
+	var top, photo page.NodeInfo
+	first, err := writes.Import(ctx, spec, func(ctx context.Context, u page.ImportUnit) error {
+		var err error
+		if top, err = u.CreatePage(ctx, page.ImportedPage{Name: "NOTES", Content: "# Hi", Parsed: parsed}); err != nil {
+			return err
+		}
+		photo, err = u.CreateAsset(ctx, page.ImportedAsset{ParentID: &top.ID, Name: "photo.png",
+			Meta: page.AssetMeta{MIME: "image/png", Bytes: 3, SHA256: bytes.Repeat([]byte{1}, 32)}},
+			func(context.Context, page.NodeInfo) error { return nil })
+		return err
+	})
+	parsed.Release()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if top.Name != "NOTES 2" || top.Asset || !photo.Asset || *photo.ParentID != top.ID {
+		t.Errorf("created %+v and %+v, want NOTES 2 numbered past Notes, the photo under it", top, photo)
+	}
+	if got := f.count(t, "SELECT count(*) FROM changesets WHERE id = $1 AND kind = 'import' AND client = 'api' AND created_by_id = $2",
+		first, f.alice); got != 1 {
+		t.Errorf("%d changesets %s of an import from the API by alice, want 1", got, first)
+	}
+	if got := f.count(t, "SELECT count(*) FROM page_contents WHERE node_id = $1 AND content = '# Hi' AND revision = 1", top.ID); got != 1 {
+		t.Errorf("%d contents of NOTES 2 at revision 1, want 1", got)
+	}
+	second, err := writes.Import(ctx, page.ImportSpec{NotebookID: f.eng, Action: "transfer.import", Client: page.Client("api"), Changeset: first},
+		func(ctx context.Context, u page.ImportUnit) error {
+			_, err := u.CreatePage(ctx, page.ImportedPage{ParentID: &top.ID, Name: "Child"})
+			return err
+		})
+	if err != nil || second != first {
+		t.Fatalf("a later unit = %s, %v; want it merged into %s", second, err, first)
+	}
+	if got := f.count(t, "SELECT count(*) FROM changesets WHERE notebook_id = $1", f.eng); got != 1 {
+		t.Errorf("%d changesets, want the one", got)
+	}
+	if got := f.count(t, "SELECT count(*) FROM changesets WHERE id = $1 AND updated_at > created_at", first); got != 1 {
+		t.Errorf("the changeset's time did not move on with the later unit")
+	}
+	if len(o.events) != 2 {
+		t.Errorf("the observer saw %d units, want 2", len(o.events))
+	}
+	nodes := page.NewExportNodes(f.pool)
+	for _, tt := range []struct {
+		id    uuid.UUID
+		depth int
+		ok    bool
+	}{{f.notes, 1, true}, {top.ID, 1, true}, {photo.ID, 0, false}, {uuid.NewV7(), 0, false}} {
+		if depth, ok, err := nodes.Depth(context.Background(), f.eng, tt.id); err != nil || depth != tt.depth || ok != tt.ok {
+			t.Errorf("Depth(%s) = %d, %t, %v; want %d, %t", tt.id, depth, ok, err, tt.depth, tt.ok)
+		}
+	}
+	child := f.count(t, "SELECT count(*) FROM nodes WHERE parent_id = $1 AND name = 'Child'", top.ID)
+	var childID uuid.UUID
+	if err := f.pool.QueryRow(context.Background(), "SELECT id FROM nodes WHERE parent_id = $1 AND name = 'Child'", top.ID).Scan(&childID); err != nil || child != 1 {
+		t.Fatalf("Child: %v", err)
+	}
+	if depth, ok, err := nodes.Depth(context.Background(), f.eng, childID); err != nil || depth != 2 || !ok {
+		t.Errorf("Depth(Child) = %d, %t, %v; want 2", depth, ok, err)
+	}
+}
+
+// steppingClock moves on a second each time it is read.
+type steppingClock struct {
+	at time.Time
+}
+
+func (c *steppingClock) Now() time.Time {
+	c.at = c.at.Add(time.Second)
+	return c.at
 }

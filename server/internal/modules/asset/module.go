@@ -4,9 +4,11 @@
 // row. Its root is what bootstrap sees: New for the HTTP side, which
 // creates the attachments' nodes through the page module's TreeWrites and
 // reads them through its AssetNodes, and Jobs, the orphan sweep; the
-// parts in the other modules' events (lifecycle.go); Purgers for the purge;
-// ContentKeyInfo, the derivation of the key that signs the contents'
-// addresses; Actions for the composition's checks.
+// parts in the other modules' events (lifecycle.go); NewBlobs, the files
+// as an export reads them and an import writes them; NewStatistics, the
+// statistics an import updates; Purgers for the purge; ContentKeyInfo, the
+// derivation of the key that signs the contents' addresses; Actions for
+// the composition's checks.
 package asset
 
 import (

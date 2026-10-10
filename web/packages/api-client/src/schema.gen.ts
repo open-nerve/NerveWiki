@@ -220,7 +220,7 @@ export interface paths {
         };
         /**
          * Describe this instance
-         * @description Reports the product, the build and the API version this instance runs, whether it is open for sign-up, whether accounts may create workspaces, and the largest attachment it takes. Public: needs no authentication.
+         * @description Reports the product, the build and the API version this instance runs, whether it is open for sign-up, whether accounts may create workspaces, the largest attachment and import archive it takes, and how long it keeps an export. Public: needs no authentication.
          */
         get: operations["getInstance"];
         put?: never;
@@ -1250,9 +1250,32 @@ export interface paths {
         put?: never;
         /**
          * Export a notebook, or a page and its subtree
-         * @description Starts a job that writes the notebook, or the page root_id and its subtree, as a zip archive laid out as an Obsidian vault: a root folder named after the notebook or the page, a page as its file <title>.md and its children in the folder <title>/, an attachment as its file in its page's folder, and .nerve/meta.json with the siblings' order. Any role in the notebook can export it. The job is queued, and runs in the background: read it with getTransferJob until it ends. A notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found; a root_id that is no page of the notebook, or a deleted one, is page.not_found; an export of the caller's queued or running in the notebook is transfer.busy; as many jobs queued or running as the instance takes is server_busy; a server whose storage keeps no more room is storage_full.
+         * @description Starts a job that writes the notebook, or the page root_id and its subtree, as a zip archive laid out as an Obsidian vault: a root folder named after the notebook or the page, a page as its file <title>.md and its children in the folder <title>/, an attachment as its file in its page's folder, and .nerve/meta.json with the siblings' order. Any role in the notebook can export it. The job is queued, and runs in the background: read it with getTransferJob until it ends. A notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found; a root_id that is no page of the notebook, or a deleted one, is page.not_found; an export of the caller's queued or running in the notebook is transfer.busy; as many jobs queued or running, with the imports uploading, as the instance takes is server_busy; a server whose storage keeps no more room, the imports' uploads counted, is storage_full.
          */
         post: operations["startExport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/notebooks/{notebook_id}/imports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import a vault into a notebook
+         * @description Uploads a zip archive of an Obsidian vault, or of any folder of Markdown files, and starts a job that imports it into the notebook, at its root or under a page, after the children there: a file X.md is the page X, a folder X/ holds its children (X a page without content when there is no X.md beside it), any other file is an attachment of the page whose folder holds it. Hidden files and folders (.obsidian, .trash, .DS_Store...), __MACOSX and Thumbs.db are left out; a single folder at the archive's top that holds .obsidian or .nerve is the vault itself. The siblings come in the order the vault's .nerve/meta.json gives, then by name. A name that is no title is mended, a name a sibling has is numbered, each reported renamed. The archive is read whole before anything is written: an archive that is no zip, of more entries than the instance takes, or that unpacks to more than it takes fails the job, nothing written; an entry that cannot be imported is skipped and reported. The nodes are written in batches, each at once: a cancel stops the job between two, what was written kept. The notebook's editors and admins can import, a reader cannot (forbidden). The body is multipart/form-data whose parts are parent_id and file, in that order, the first optional: an unknown part, one twice, one out of order, a part after the file, a parent_id that is no id, more than 4 KiB read before the file's bytes, no file, and a body that goes on after the form past the limit are bad_request. Each part is read as sent: a Content-Transfer-Encoding is not decoded. Before the file is read, a notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found; a parent_id that is no page of the notebook, or a deleted one, is page.not_found; an import of the notebook queued, running or uploading, anyone's, is transfer.busy; as many jobs queued or running, with the imports uploading, as the instance takes is server_busy; a server whose storage would keep too little room once the body's declared length, and what the other uploads have yet to store, is stored is storage_full; a body whose declared length is past the limit is payload_too_large: a client answered before it sent its file may see the connection reset, and checks these first. A file larger than the instance's import_max_bytes is payload_too_large; one that does not arrive at the instance's lowest rate is cut off, as is one still arriving when the server shuts down. A file the storage runs out of room for is storage_full. The checks but the storage's are made again as the job is created. The job is named after the file, its root_id is the parent; it runs in the background: read it with getTransferJob until it ends.
+         */
+        post: operations["startImport"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1544,6 +1567,11 @@ export interface components {
              * @description The largest attachment an upload may send, in bytes (asset.max_bytes); a larger one is payload_too_large.
              */
             asset_max_bytes: number;
+            /**
+             * Format: int64
+             * @description The largest archive an import may send, in bytes (transfer.import_max_bytes); a larger one is payload_too_large.
+             */
+            import_max_bytes: number;
             /**
              * Format: int64
              * @description How long an export's archive is kept once the export succeeded, in seconds (transfer.export_ttl); then it expires.
@@ -2199,7 +2227,7 @@ export interface components {
             user_id: string;
             display_name: string;
         };
-        /** @description How many of the job's nodes are done, of all; an export's written. */
+        /** @description How many of the job's nodes are done, of all: an export's written; an import's created or skipped, of those to create, 0 of 0 until its archive is read. */
         TransferProgress: {
             /** Format: int64 */
             done: number;
@@ -2207,30 +2235,30 @@ export interface components {
             total: number;
         };
         /**
-         * @description Why a job failed: interrupted (the server stopped or restarted, the job stopped beating, or the job queue dropped it before it began), timeout (it ran past the instance's limit), forbidden (its starter could no longer read the notebook as it ran), root_not_found (the page exported was gone as it ran), storage_full, contributor_conflict (a file the server adds was where a node is), internal.
+         * @description Why a job failed: interrupted (the server stopped or restarted, the job stopped beating, or the job queue dropped it before it began), timeout (it ran past the instance's limit), forbidden (its starter could no longer read the notebook as it ran, or write in it as an import ran), root_not_found (the page exported, or imported under, was gone as it ran), storage_full, contributor_conflict (a file the server adds was where a node is), internal; for an import's archive as a whole, nothing written: not_zip (no zip, or its directory is broken), too_many_entries (more entries than the instance takes, or a directory larger than 64 MiB), unpacked_too_large (its entries unpack to more than the instance takes); tree_changed (a page the import created was deleted or moved away as it ran, its later nodes not written).
          * @enum {string}
          */
-        TransferFailure: "interrupted" | "timeout" | "forbidden" | "root_not_found" | "storage_full" | "contributor_conflict" | "internal";
-        /** @description What the job did before it ended, as it wrote its end. A job that could not write its end, which the server fails later as interrupted (it restarted, the job stopped beating, the job queue dropped it), counts nothing: its progress tells how far it went. */
+        TransferFailure: "interrupted" | "timeout" | "forbidden" | "root_not_found" | "storage_full" | "contributor_conflict" | "internal" | "not_zip" | "too_many_entries" | "unpacked_too_large" | "tree_changed";
+        /** @description What the job did before it ended, as it wrote its end. An export that could not write its end, which the server fails later as interrupted (it restarted, the job stopped beating, the job queue dropped it), counts nothing: its progress tells how far it went. An import writes its counts and problems as it goes, every ten seconds at most: one interrupted keeps those it last wrote, of the batches written by then. */
         TransferCounts: {
             /**
              * Format: int64
-             * @description The pages written.
+             * @description The pages written; an import's, created.
              */
             pages: number;
             /**
              * Format: int64
-             * @description The attachments whose files were written.
+             * @description The attachments whose files were written; an import's, created.
              */
             attachments: number;
             /**
              * Format: int64
-             * @description The nodes the export's vault names otherwise, as the export laid the vault out before it wrote.
+             * @description The nodes the export's vault names otherwise, as the export laid the vault out before it wrote; the nodes an import named otherwise than the archive.
              */
             renamed: number;
             /**
              * Format: int64
-             * @description The attachments whose files were not in the storage, and not written.
+             * @description The attachments whose files were not in the storage, and not written; 0 for an import.
              */
             missing: number;
             /**
@@ -2261,10 +2289,10 @@ export interface components {
             notebook_id: string;
             /**
              * Format: uuid
-             * @description The page exported with its subtree; null for the whole notebook.
+             * @description The page exported with its subtree, or imported under; null for the whole notebook, or its root.
              */
             root_id: string | null;
-            /** @description What is exported, by name, the notebook's or the page's; the archive is named after it. */
+            /** @description What is exported, by name, the notebook's or the page's, which the archive is named after; for an import, the archive's file name. */
             name: string;
             kind: components["schemas"]["TransferKind"];
             state: components["schemas"]["TransferState"];
@@ -2296,12 +2324,12 @@ export interface components {
             data: components["schemas"]["TransferJob"][];
             next_cursor: components["schemas"]["NextCursor"];
         };
-        /** @description What befell a node, at its path in the archive's vault (at most 1,024 bytes): renamed, written at to instead, so links to its old name do not reach it there; file_missing, an attachment whose file was not in the storage. */
+        /** @description What befell a node, at its path in the archive's vault (at most 1,024 bytes): renamed, written at to instead, so links to its old name do not reach it there; file_missing, an attachment whose file was not in the storage. An import's entry skipped, at its name in the archive: unsafe_path (it leaves the archive's root: "..", an absolute path, a drive), special_file (a symbolic link, or another file that is no regular one), encrypted, unsupported_method (compressed otherwise than stored or deflated), too_compressed (it unpacks to more than 200 times its packed size), name_not_utf8, invalid_content (a page's file not UTF-8, or holding NUL), too_large (a page's file past 5 MiB, an attachment past the instance's asset_max_bytes), duplicate (a path an earlier entry has), unreadable (its data broken, its checksum or size not its header's); an import's node, at its path in the vault: too_deep (more than 10 levels deep in the notebook where the import goes, with everything under it), renamed (created under the name at the end of to, its path from where the import goes). */
         TransferProblem: {
             path: string;
             /** @enum {string} */
-            code: "renamed" | "file_missing";
-            /** @description Where a renamed node is written; null for any other problem. */
+            code: "renamed" | "file_missing" | "unsafe_path" | "special_file" | "encrypted" | "unsupported_method" | "too_compressed" | "name_not_utf8" | "invalid_content" | "too_large" | "too_deep" | "duplicate" | "unreadable";
+            /** @description Where a renamed node is written, or created; null for any other problem. */
             to: string | null;
         };
         /** @description A job, as TransferJob, and its report's problems once it ended. */
@@ -2312,10 +2340,10 @@ export interface components {
             notebook_id: string;
             /**
              * Format: uuid
-             * @description The page exported with its subtree; null for the whole notebook.
+             * @description The page exported with its subtree, or imported under; null for the whole notebook, or its root.
              */
             root_id: string | null;
-            /** @description What is exported, by name, the notebook's or the page's; the archive is named after it. */
+            /** @description What is exported, by name, the notebook's or the page's, which the archive is named after; for an import, the archive's file name. */
             name: string;
             kind: components["schemas"]["TransferKind"];
             state: components["schemas"]["TransferState"];
@@ -4295,6 +4323,45 @@ export interface operations {
         };
         responses: {
             /** @description The export's job, queued. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransferJob"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    startImport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * Format: uuid
+                     * @description The page to import under; none imports at the notebook's root.
+                     */
+                    parent_id?: string;
+                    /**
+                     * Format: binary
+                     * @description The zip archive, the last part.
+                     */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The import's job, queued. */
             202: {
                 headers: {
                     [name: string]: unknown;

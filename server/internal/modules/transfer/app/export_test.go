@@ -43,12 +43,14 @@ type world struct {
 	contributors                          []app.Contributor
 	rec                                   *recorder
 	logger                                *slog.Logger
+	uploads                               *app.Uploads
 }
 
 func newWorld() *world {
 	rec := &recorder{}
 	w := &world{eng: uuid.NewV7(), alice: uuid.NewV7(), bob: uuid.NewV7(), spec: uuid.NewV7(), folder: uuid.NewV7(), deep: uuid.NewV7(),
-		linkd: uuid.NewV7(), child: uuid.NewV7(), png: uuid.NewV7(), gone: uuid.NewV7(), tx: &direct{rec: rec}, rec: rec, logger: quiet()}
+		linkd: uuid.NewV7(), child: uuid.NewV7(), png: uuid.NewV7(), gone: uuid.NewV7(), tx: &direct{rec: rec}, rec: rec, logger: quiet(),
+		uploads: app.NewUploads()}
 	w.auth = &auth{roles: map[uuid.UUID]map[uuid.UUID]shared.NotebookRole{w.eng: {w.alice: shared.NotebookReader, w.bob: shared.NotebookAdmin}}, rec: rec}
 	w.workspaces = workspaces{rec: rec}
 	w.notebooks = notebooks{names: map[uuid.UUID]string{w.eng: "Eng"}, workspace: uuid.NewV7(), rec: rec}

@@ -24,6 +24,12 @@ var ErrRootNotFound = shared.NewError(shared.KindNotFound, "page.not_found", "No
 var ErrBusy = shared.NewError(shared.KindConflict, "transfer.busy",
 	"An export of yours in this notebook is queued or running: wait for it, or cancel it.")
 
+// ErrImportBusy is an import asked of a notebook that has one queued or
+// running, or uploading, anyone's (M7 design 4.9), which the caller may
+// not see: the detail asks to wait only.
+var ErrImportBusy = shared.NewError(shared.KindConflict, "transfer.busy",
+	"An import into this notebook is under way: wait for it to end.")
+
 // ErrNotCancellable is a cancel of a job that has ended.
 var ErrNotCancellable = shared.NewError(shared.KindConflict, "transfer.not_cancellable", "The job has ended.")
 

@@ -3,6 +3,7 @@ package httpadapter_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net"
@@ -26,7 +27,8 @@ import (
 )
 
 // fakeAuth takes "session" for a sign-in session's access token and "pat"
-// for a personal access token, both alice's, and "bob" for bob's session.
+// for a personal access token, both alice's, and "bob" for bob's session,
+// "bobpat" for his personal access token.
 type fakeAuth struct{}
 
 func (fakeAuth) Authenticate(ctx context.Context, token string) (context.Context, string, error) {
@@ -38,6 +40,8 @@ func (fakeAuth) Authenticate(ctx context.Context, token string) (context.Context
 		actor.APITokenID = uuid.NewV7()
 	case "bob":
 		actor.UserID, actor.SessionID = bob(), uuid.NewV7()
+	case "bobpat":
+		actor.UserID, actor.APITokenID = bob(), uuid.NewV7()
 	default:
 		return nil, "", shared.Unauthenticated()
 	}
@@ -66,13 +70,16 @@ type direct struct{}
 func (direct) WithinTx(ctx context.Context, fn func(ctx context.Context) error) error { return fn(ctx) }
 
 // roles decides by each account's role in notebookID(): alice reads it,
-// bob is its admin; the rest do not see it.
+// bob is its admin; the rest do not see it. An import is its writers'.
 type roles struct{}
 
-func (roles) Authorize(_ context.Context, actor shared.Actor, _ shared.Action, t shared.Target) (shared.Grant, error) {
+func (roles) Authorize(_ context.Context, actor shared.Actor, action shared.Action, t shared.Target) (shared.Grant, error) {
 	role, ok := map[uuid.UUID]shared.NotebookRole{alice(): shared.NotebookReader, bob(): shared.NotebookAdmin}[actor.UserID]
 	if !ok || t.NotebookID != notebookID() {
 		return shared.Grant{}, shared.ErrNotVisible
+	}
+	if action == domain.ActionImport && role == shared.NotebookReader {
+		return shared.Grant{}, shared.Forbidden()
 	}
 	return shared.Grant{WorkspaceRole: shared.WorkspaceMember, NotebookRole: role}, nil
 }
@@ -112,6 +119,10 @@ type nodes struct{}
 
 func (nodes) Page(_ context.Context, notebook, id uuid.UUID) (string, bool, error) {
 	return "Spec", notebook == notebookID() && id == pageID(), nil
+}
+
+func (nodes) Depth(_ context.Context, notebook, id uuid.UUID) (int, bool, error) {
+	return 1, notebook == notebookID() && id == pageID(), nil
 }
 
 func (nodes) Scope(context.Context, uuid.UUID, *uuid.UUID) ([]domain.Node, error) { return nil, nil }
@@ -168,6 +179,17 @@ func (r *rows) CountActive(context.Context) (int, error) {
 	return n, nil
 }
 
+func (r *rows) Importing(_ context.Context, notebook uuid.UUID) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, j := range r.jobs {
+		if j.NotebookID == notebook && j.Kind == domain.KindImport && !j.State.Ended() {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func (r *rows) Exporting(_ context.Context, notebook, user uuid.UUID) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -220,7 +242,7 @@ func (r *rows) StartJob(context.Context, uuid.UUID, time.Time) (domain.Job, erro
 	panic("rows: no job runs here")
 }
 
-func (r *rows) BeatJob(context.Context, uuid.UUID, time.Time, domain.Progress) (app.Beat, error) {
+func (r *rows) BeatJob(context.Context, uuid.UUID, time.Time, domain.Progress, *domain.Report) (app.Beat, error) {
 	panic("rows: no job runs here")
 }
 
@@ -257,12 +279,20 @@ func (r *rows) RequestCancel(_ context.Context, id uuid.UUID, at time.Time) (boo
 }
 
 // archives keeps the exports' archives in memory: free is the store's
-// room; each opened is counted until it closes.
+// room; each opened is counted until it closes. imports are the imports'
+// archives, uploads those written, signalled on creating, with the bytes
+// written, aborted those dropped unfinished, deleted those deleted.
 type archives struct {
-	mu    sync.Mutex
-	files map[uuid.UUID][]byte
-	free  int64
-	open  int
+	mu       sync.Mutex
+	files    map[uuid.UUID][]byte
+	free     int64
+	open     int
+	imports  map[uuid.UUID][]byte
+	uploads  []uuid.UUID
+	creating chan struct{}
+	written  int64
+	aborted  []uuid.UUID
+	deleted  []uuid.UUID
 }
 
 func (a *archives) Create(context.Context, uuid.UUID) (app.Archive, error) {
@@ -280,13 +310,101 @@ func (a *archives) Open(_ context.Context, id uuid.UUID) (app.ArchiveFile, error
 	return &file{Reader: bytes.NewReader(data), archives: a}, nil
 }
 
-func (a *archives) Delete(context.Context, domain.Kind, uuid.UUID) error { return nil }
+func (a *archives) Delete(_ context.Context, _ domain.Kind, id uuid.UUID) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.deleted = append(a.deleted, id)
+	delete(a.imports, id)
+	return nil
+}
 
 func (a *archives) List(context.Context, domain.Kind, time.Time, func(uuid.UUID) error) error {
 	return nil
 }
 
-func (a *archives) Free(context.Context) (int64, error) { return a.free, nil }
+func (a *archives) Free(context.Context) (int64, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.free, nil
+}
+
+// setFree sets the store's room.
+func (a *archives) setFree(n int64) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.free = n
+}
+
+// uploaded is how many bytes the uploads have written.
+func (a *archives) uploaded() int64 {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.written
+}
+
+func (a *archives) Upload(_ context.Context, id uuid.UUID) (app.Upload, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.uploads = append(a.uploads, id)
+	select {
+	case a.creating <- struct{}{}:
+	default:
+	}
+	return &upload{a: a, id: id}, nil
+}
+
+// stored are the imports' archives kept, by job.
+func (a *archives) stored() map[uuid.UUID][]byte {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	out := map[uuid.UUID][]byte{}
+	for id, data := range a.imports {
+		out[id] = data
+	}
+	return out
+}
+
+// upload is an import's archive as its request writes it.
+type upload struct {
+	a   *archives
+	id  uuid.UUID
+	buf bytes.Buffer
+}
+
+func (u *upload) Write(p []byte) (int, error) {
+	u.a.mu.Lock()
+	u.a.written += int64(len(p))
+	u.a.mu.Unlock()
+	return u.buf.Write(p)
+}
+
+func (u *upload) Commit() error {
+	u.a.mu.Lock()
+	defer u.a.mu.Unlock()
+	if u.a.imports == nil {
+		u.a.imports = map[uuid.UUID][]byte{}
+	}
+	u.a.imports[u.id] = u.buf.Bytes()
+	return nil
+}
+
+func (u *upload) Abort() error {
+	u.a.mu.Lock()
+	defer u.a.mu.Unlock()
+	u.a.aborted = append(u.a.aborted, u.id)
+	return nil
+}
+
+// dropped are the uploads aborted.
+func (a *archives) dropped() []uuid.UUID {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return slices.Clone(a.aborted)
+}
+
+func (a *archives) OpenImport(context.Context, uuid.UUID, int) (app.ImportArchive, error) {
+	return nil, errors.New("no import's archive in the exports' tests")
+}
 
 func (a *archives) unclosed() int {
 	a.mu.Lock()
@@ -325,6 +443,13 @@ func (q *queue) enqueued() []uuid.UUID {
 }
 
 func (q *queue) Export(_ context.Context, id uuid.UUID) error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.ids = append(q.ids, id)
+	return nil
+}
+
+func (q *queue) Import(_ context.Context, id uuid.UUID) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	q.ids = append(q.ids, id)
@@ -390,8 +515,9 @@ type harness struct {
 }
 
 const (
-	maxQueued = 3
-	minFree   = 100
+	maxQueued      = 3
+	minFree        = 100
+	importMaxBytes = 4 << 10
 )
 
 func newHarness(t *testing.T) *harness {
@@ -404,14 +530,16 @@ func newHarness(t *testing.T) *harness {
 // harness's, its anonymous bucket the harness's unless o sets one.
 func newHarnessWith(t *testing.T, o httpservertest.APIOptions) *harness {
 	t.Helper()
-	h := &harness{rows: &rows{jobs: map[uuid.UUID]*domain.Job{}}, archives: &archives{files: map[uuid.UUID][]byte{}, free: 1 << 30},
+	h := &harness{rows: &rows{jobs: map[uuid.UUID]*domain.Job{}}, archives: &archives{files: map[uuid.UUID][]byte{}, free: 1 << 30, creating: make(chan struct{}, 8)},
 		queue: &queue{}, signer: macadapter.New([]byte("key")), signedAt: now(), logs: &syncBuffer{}, contract: apitest.Load(t),
 		client: &http.Client{Timeout: 10 * time.Second}, anonymous: &bucket{left: 1000}}
 	logger := slog.New(slog.NewTextHandler(h.logs, nil))
+	start := app.StartDeps{Tx: direct{}, Authorizer: roles{}, Workspaces: workspaces{}, Notebooks: notebooks{}, Nodes: nodes{},
+		Rows: h.rows, Archives: h.archives, Queue: h.queue, Names: names{}, Signer: h.signer, Clock: fixedClock{}, Logger: logger,
+		Uploads: app.NewUploads(), MaxQueued: maxQueued, MinFree: minFree, ImportMaxBytes: importMaxBytes}
 	uc := httpadapter.UseCases{
-		Start: app.NewStartExport(app.StartDeps{Tx: direct{}, Authorizer: roles{}, Workspaces: workspaces{}, Notebooks: notebooks{}, Nodes: nodes{},
-			Rows: h.rows, Archives: h.archives, Queue: h.queue, Names: names{}, Signer: h.signer, Clock: fixedClock{}, Logger: logger,
-			MaxQueued: maxQueued, MinFree: minFree}),
+		Start:  app.NewStartExport(start),
+		Import: app.NewStartImport(start),
 		Reads: app.NewReads(app.ReadsDeps{Authorizer: roles{}, Notebooks: notebooks{}, Names: names{}, Signer: h.signer, Clock: fixedClock{},
 			Rows: h.rows, ExportTTL: exportTTL}),
 		Cancel: app.NewCancel(app.CancelDeps{Tx: direct{}, Rows: h.rows, Authorizer: roles{}, Notebooks: notebooks{}, Names: names{},
@@ -423,7 +551,7 @@ func newHarnessWith(t *testing.T, o httpservertest.APIOptions) *harness {
 	if o.Anonymous == nil {
 		o.Anonymous = h.anonymous
 	}
-	httpadapter.Register(h.router, httpservertest.NewAPI(t, o), uc, 64<<10)
+	httpadapter.Register(h.router, httpservertest.NewAPI(t, o), uc, httpadapter.Limits{ImportMaxBytes: importMaxBytes, MinRate: 64 << 10}, logger)
 	h.serve(t)
 	return h
 }

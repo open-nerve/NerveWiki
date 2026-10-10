@@ -41,6 +41,36 @@ func (q *Queries) CreateChangeset(ctx context.Context, arg CreateChangesetParams
 	return err
 }
 
+const lockChangeset = `-- name: LockChangeset :one
+SELECT id, notebook_id, kind, client, created_by_id
+FROM changesets
+WHERE id = $1 AND deleted_at IS NULL
+FOR NO KEY UPDATE
+`
+
+type LockChangesetRow struct {
+	ID          uuid.UUID
+	NotebookID  uuid.UUID
+	Kind        string
+	Client      string
+	CreatedByID uuid.UUID
+}
+
+// A changeset a unit merges into (M7/P6 design 3.2), locked until the unit ends: an import's later units write in
+// its first's.
+func (q *Queries) LockChangeset(ctx context.Context, id uuid.UUID) (LockChangesetRow, error) {
+	row := q.db.QueryRow(ctx, lockChangeset, id)
+	var i LockChangesetRow
+	err := row.Scan(
+		&i.ID,
+		&i.NotebookID,
+		&i.Kind,
+		&i.Client,
+		&i.CreatedByID,
+	)
+	return i, err
+}
+
 const recordItem = `-- name: RecordItem :exec
 INSERT INTO changeset_items (id, changeset_id, node_id, before_parent_id, before_name, before_sort_order,
     after_parent_id, after_name, after_sort_order, created_at, updated_at, deleted_at)

@@ -1,13 +1,16 @@
 // Package archiveadapter keeps the jobs' archives in the platform's store
-// (M7/P5 design 3.8): an export writes its zip file there as it goes,
-// visible once committed, at exports/<job id>.zip; its errors in the
-// module's terms.
+// (M7/P5 design 3.8; M7/P6 design 3.10): an export writes its zip file
+// there as it goes, visible once committed, at exports/<job id>.zip; an
+// import's request writes its zip at imports/<job id>.zip, which its job
+// reads, the directory checked before archive/zip reads it; their errors
+// in the module's terms.
 package archiveadapter
 
 import (
 	"archive/zip"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"strings"
@@ -23,11 +26,14 @@ import (
 type Archives struct {
 	store  storage.Store
 	logger *slog.Logger
+	// maxDirectory is the largest directory of an import's archive read:
+	// MaxDirectory.
+	maxDirectory int64
 }
 
 // New returns the archives of store.
 func New(store storage.Store, logger *slog.Logger) Archives {
-	return Archives{store: store, logger: logger}
+	return Archives{store: store, logger: logger, maxDirectory: MaxDirectory}
 }
 
 // Create implements app.Archives.
@@ -137,4 +143,141 @@ func full(err error) error {
 		return domain.ErrStorageFull
 	}
 	return err
+}
+
+// Upload implements app.Archives.
+func (a Archives) Upload(ctx context.Context, id uuid.UUID) (app.Upload, error) {
+	w, err := a.store.Create(ctx, domain.Archive(domain.KindImport, id))
+	if err != nil {
+		return nil, full(err)
+	}
+	return upload{w: w}, nil
+}
+
+// upload is an import's archive written into a storage.Writer.
+type upload struct {
+	w storage.Writer
+}
+
+func (u upload) Write(p []byte) (int, error) {
+	n, err := u.w.Write(p)
+	return n, full(err)
+}
+
+func (u upload) Commit() error { return full(u.w.Commit()) }
+func (u upload) Abort() error  { return u.w.Abort() }
+
+// directoryEnds is what archive/zip reads of an archive besides its
+// directory: its end, searched in the last 65 KiB, the zip64 records, and
+// what its buffer reads ahead.
+const directoryEnds = 128 << 10
+
+// OpenImport implements app.Archives: the directory's end read, its
+// records counted (zipdir.go), then archive/zip reads it, bounded to the
+// bytes counted and its end's; once read, the entries' data is not.
+func (a Archives) OpenImport(ctx context.Context, id uuid.UUID, most int) (app.ImportArchive, error) {
+	f, err := a.store.Open(ctx, domain.Archive(domain.KindImport, id))
+	if errors.Is(err, storage.ErrNotFound) {
+		return nil, app.ErrFileMissing
+	}
+	if err != nil {
+		return nil, err
+	}
+	z, err := readImport(f, most, a.maxDirectory)
+	if err != nil {
+		_ = f.Close()
+		return nil, err
+	}
+	return &importArchive{f: f, z: z}, nil
+}
+
+// readImport reads f's directory, of at most most records and largest
+// bytes: app.ErrNotZip, app.ErrTooManyEntries.
+func readImport(f storage.File, most int, largest int64) (*zip.Reader, error) {
+	size := f.Size()
+	d, err := readEnd(f, size)
+	switch {
+	case errors.Is(err, errNotZip):
+		return nil, fmt.Errorf("%w: %w", app.ErrNotZip, err)
+	case err != nil:
+		return nil, err
+	case d.records > uint64(most) || d.size > uint64(largest): //nolint:gosec // positive settings
+		return nil, app.ErrTooManyEntries
+	}
+	n, read := countRecords(f, size, d.start, most, largest)
+	if n > most || read > largest {
+		return nil, app.ErrTooManyEntries
+	}
+	b := &bounded{r: f, left: read + directoryEnds}
+	z, err := zip.NewReader(b, size)
+	b.lift()
+	switch {
+	case errors.Is(err, errBounded):
+		return nil, app.ErrTooManyEntries
+	case err != nil && !errors.Is(err, zip.ErrInsecurePath):
+		return nil, fmt.Errorf("%w: %w", app.ErrNotZip, err)
+	case len(z.File) != n:
+		return nil, fmt.Errorf("%w: %d entries read, %d counted", app.ErrNotZip, len(z.File), n)
+	}
+	return z, nil
+}
+
+// errBounded is a read of an archive's directory past what was counted.
+var errBounded = errors.New("zip: the directory goes on past the records counted")
+
+// bounded lets left bytes of r be read, until lifted: archive/zip reads
+// no more of a directory than was counted.
+type bounded struct {
+	r      io.ReaderAt
+	left   int64
+	lifted bool
+}
+
+func (b *bounded) ReadAt(p []byte, off int64) (int, error) {
+	if !b.lifted && int64(len(p)) > b.left {
+		return 0, errBounded
+	}
+	n, err := b.r.ReadAt(p, off)
+	if !b.lifted {
+		b.left -= int64(n)
+	}
+	return n, err
+}
+
+func (b *bounded) lift() { b.lifted = true }
+
+// importArchive is an import's archive read by archive/zip.
+type importArchive struct {
+	f storage.File
+	z *zip.Reader
+}
+
+// Entries implements app.ImportArchive: a name ending in "/" or "\" is a
+// folder, and so is a folder's mode; a mode neither a folder's nor a
+// regular file's is special; the first bit of the flags tells an
+// encrypted one.
+func (a *importArchive) Entries() []domain.RawEntry {
+	out := make([]domain.RawEntry, len(a.z.File))
+	for i, f := range a.z.File {
+		mode := f.Mode()
+		folder := strings.HasSuffix(f.Name, "/") || strings.HasSuffix(f.Name, `\`) || mode.IsDir()
+		out[i] = domain.RawEntry{Index: i, Name: f.Name, Folder: folder, Special: !folder && !mode.IsRegular(), Encrypted: f.Flags&0x1 != 0,
+			Method: f.Method}
+	}
+	return out
+}
+
+// Packed implements app.ImportArchive.
+func (a *importArchive) Packed(i int) int64 {
+	return int64(min(a.z.File[i].CompressedSize64, 1<<63-1)) //nolint:gosec // bounded
+}
+
+// Open implements app.ImportArchive.
+func (a *importArchive) Open(i int) (io.ReadCloser, error) {
+	return a.z.File[i].Open()
+}
+
+// Close implements app.ImportArchive.
+func (a *importArchive) Close() error {
+	return a.f.Close()
 }

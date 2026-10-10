@@ -88,7 +88,7 @@ type ContentMeta struct {
 type Changeset struct {
 	ID         uuid.UUID
 	NotebookID uuid.UUID
-	Kind       string
+	Kind       domain.ChangesetKind
 	Client     domain.Client
 	Message    *string
 	By         uuid.UUID
@@ -163,6 +163,10 @@ type NodeWriter interface {
 // ChangesetWriter records a write's changeset, its items and its versions.
 type ChangesetWriter interface {
 	CreateChangeset(ctx context.Context, c Changeset) error
+	// LockChangeset reads the changeset id not deleted, locked until the
+	// transaction ends: a unit merges into it (M7/P6 design 3.2). Its
+	// Message and At are not read. ErrNotFound for none.
+	LockChangeset(ctx context.Context, id uuid.UUID) (Changeset, error)
 	// TouchChangeset moves the changeset id's updated_at to at: an edit
 	// session wrote in it again.
 	TouchChangeset(ctx context.Context, id uuid.UUID, at time.Time) error
@@ -311,6 +315,10 @@ type Markdown interface {
 	// Tasks are the content's task items in order (M5/P6 design 3.3); facts
 	// is what Facts returned.
 	Tasks(facts Facts) []Task
+	// Links is how many links the content holds that facts, what Facts
+	// returned, took: an import's unit holds at most so many (M7/P6
+	// design 3.3).
+	Links(facts Facts) int
 }
 
 // Rendered is a reading view: its HTML, and when the attachments'

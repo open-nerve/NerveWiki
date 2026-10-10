@@ -10,6 +10,7 @@ import (
 	markdownadapter "github.com/open-nerve/NerveWiki/server/internal/modules/page/adapter/markdown"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/app"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown/obsidian"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown/tasks"
 )
 
@@ -72,6 +73,30 @@ func TestTheAdapterGivesTheTasksOfTheFacts(t *testing.T) {
 	} {
 		if len(got) != 0 {
 			t.Errorf("%s: Tasks = %v, want none", name, got)
+		}
+	}
+}
+
+// Links counts the links the obsidian extension took of the content; a
+// Markdown without the extension, or facts of elsewhere, have none.
+func TestTheAdapterCountsTheLinksOfTheFacts(t *testing.T) {
+	md, err := markdown.New([]markdown.Extension{obsidian.Extension(obsidian.Options{})})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := markdownadapter.New(md)
+	if got := m.Links(m.Facts("[[a]] and ![[b.png]], [c](c.md) and ![d](d.png); `[[not]]`\n")); got != 4 {
+		t.Errorf("Links = %d, want 4", got)
+	}
+	plain := newAdapter(t)
+	for name, got := range map[string]int{
+		"without the extension": plain.Links(plain.Facts("[[a]]\n")),
+		"facts of elsewhere":    m.Links("[[a]]\n"),
+		"no facts":              m.Links(markdown.Facts{}),
+		"nothing":               m.Links(nil),
+	} {
+		if got != 0 {
+			t.Errorf("%s: Links = %d, want 0", name, got)
 		}
 	}
 }

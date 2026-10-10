@@ -1,6 +1,7 @@
 package app_test
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"errors"
@@ -8,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 	"uuid"
@@ -76,15 +78,25 @@ func (r *recorder) of(names ...string) []string {
 }
 
 // direct runs fn in no transaction: the fakes keep no state a rollback
-// would undo.
+// would undo. commitErr fails a commit after fn ends well; onCommit runs
+// once, at the next commit, its rows already seen by the others.
 type direct struct {
 	snapshots int
+	commitErr error
+	onCommit  func()
 	rec       *recorder
 }
 
 func (d *direct) WithinTx(ctx context.Context, fn func(ctx context.Context) error) error {
 	d.rec.add("WithinTx")
-	return fn(ctx)
+	if err := fn(ctx); err != nil {
+		return err
+	}
+	if onCommit := d.onCommit; onCommit != nil {
+		d.onCommit = nil
+		onCommit()
+	}
+	return d.commitErr
 }
 
 func (d *direct) WithinSnapshot(ctx context.Context, fn func(ctx context.Context) error) error {
@@ -93,15 +105,17 @@ func (d *direct) WithinSnapshot(ctx context.Context, fn func(ctx context.Context
 	return fn(ctx)
 }
 
-// auth decides by roles: a user's role in a notebook, none not visible.
+// auth decides by roles: a user's role in a notebook, none not visible;
+// an action of rules only the roles it lists.
 type auth struct {
 	mu    sync.Mutex
 	roles map[uuid.UUID]map[uuid.UUID]shared.NotebookRole
+	rules map[shared.Action][]shared.NotebookRole
 	asked []shared.Actor
 	rec   *recorder
 }
 
-func (a *auth) Authorize(_ context.Context, actor shared.Actor, _ shared.Action, t shared.Target) (shared.Grant, error) {
+func (a *auth) Authorize(_ context.Context, actor shared.Actor, action shared.Action, t shared.Target) (shared.Grant, error) {
 	a.rec.add("Authorize")
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -109,6 +123,9 @@ func (a *auth) Authorize(_ context.Context, actor shared.Actor, _ shared.Action,
 	role, ok := a.roles[t.NotebookID][actor.UserID]
 	if !ok {
 		return shared.Grant{}, shared.ErrNotVisible
+	}
+	if allowed, ruled := a.rules[action]; ruled && !slices.Contains(allowed, role) {
+		return shared.Grant{}, shared.Forbidden()
 	}
 	return shared.Grant{WorkspaceRole: shared.WorkspaceMember, NotebookRole: role}, nil
 }
@@ -177,6 +194,18 @@ func (n *nodes) Page(_ context.Context, _ uuid.UUID, id uuid.UUID) (string, bool
 		}
 	}
 	return "", false, nil
+}
+
+func (n *nodes) Depth(_ context.Context, _ uuid.UUID, id uuid.UUID) (int, bool, error) {
+	depth := 0
+	for at := &id; at != nil; depth++ {
+		i := slices.IndexFunc(n.all, func(x domain.Node) bool { return x.ID == *at })
+		if i < 0 || n.all[i].Asset {
+			return 0, false, nil
+		}
+		at = n.all[i].ParentID
+	}
+	return depth, true, nil
 }
 
 func (n *nodes) Scope(_ context.Context, _ uuid.UUID, root *uuid.UUID) ([]domain.Node, error) {
@@ -278,26 +307,38 @@ type entry struct {
 // archives keeps the archives in memory: committed by job, the jobs
 // created, aborted and deleted. full refuses a Create; fullAt fails the
 // Add of that path; commitErr fails a Commit; onAdd runs as a file is
-// added, onCommit as one commits, onOpen as one opens.
+// added, onCommit as one commits, onOpen as one opens. imports are the
+// imports' archives, by job; uploadFull fails an upload's writes as a
+// store out of room, openErr its opening. listed are the archives a List
+// of the kind gives, listErr fails it after them. onFree runs as Free
+// is asked, onFreeTaken once, after the next Free's room is taken.
 type archives struct {
-	rec       *recorder
-	mu        sync.Mutex
-	committed map[uuid.UUID][]entry
-	created   []uuid.UUID
-	aborted   []uuid.UUID
-	deleted   []uuid.UUID
-	full      bool
-	fullAt    string
-	commitErr error
-	free      int64
-	deleteErr error
-	listed    []uuid.UUID
-	onAdd     func(path string)
-	onCommit  func()
-	onOpen    func(id uuid.UUID)
+	rec         *recorder
+	mu          sync.Mutex
+	committed   map[uuid.UUID][]entry
+	created     []uuid.UUID
+	aborted     []uuid.UUID
+	deleted     []uuid.UUID
+	full        bool
+	fullAt      string
+	commitErr   error
+	free        int64
+	onFree      func()
+	onFreeTaken func()
+	deleteErr   error
+	listed      map[domain.Kind][]uuid.UUID
+	listErr     map[domain.Kind]error
+	onAdd       func(path string)
+	onCommit    func()
+	onOpen      func(id uuid.UUID)
+	imports     map[uuid.UUID][]byte
+	uploadFull  bool
+	openErr     error
 }
 
-func newArchives() *archives { return &archives{committed: map[uuid.UUID][]entry{}, free: 1 << 40} }
+func newArchives() *archives {
+	return &archives{committed: map[uuid.UUID][]entry{}, free: 1 << 40, imports: map[uuid.UUID][]byte{}}
+}
 
 func (a *archives) Create(_ context.Context, id uuid.UUID) (app.Archive, error) {
 	if a.full {
@@ -329,21 +370,117 @@ func (a *archives) Delete(_ context.Context, _ domain.Kind, id uuid.UUID) error 
 	defer a.mu.Unlock()
 	a.deleted = append(a.deleted, id)
 	delete(a.committed, id)
+	delete(a.imports, id)
 	return nil
 }
 
-func (a *archives) List(_ context.Context, _ domain.Kind, _ time.Time, each func(uuid.UUID) error) error {
-	for _, id := range a.listed {
+func (a *archives) List(_ context.Context, kind domain.Kind, _ time.Time, each func(uuid.UUID) error) error {
+	for _, id := range a.listed[kind] {
 		if err := each(id); err != nil {
 			return err
 		}
 	}
+	return a.listErr[kind]
+}
+
+func (a *archives) Upload(_ context.Context, id uuid.UUID) (app.Upload, error) {
+	a.rec.add("Upload")
+	return &upload{a: a, id: id}, nil
+}
+
+func (a *archives) OpenImport(_ context.Context, id uuid.UUID, most int) (app.ImportArchive, error) {
+	if a.openErr != nil {
+		return nil, a.openErr
+	}
+	a.mu.Lock()
+	data, ok := a.imports[id]
+	a.mu.Unlock()
+	if !ok {
+		return nil, app.ErrFileMissing
+	}
+	z, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	switch {
+	case err != nil:
+		return nil, fmt.Errorf("%w: %w", app.ErrNotZip, err)
+	case len(z.File) > most:
+		return nil, app.ErrTooManyEntries
+	}
+	return zipArchive{z}, nil
+}
+
+// imported is the import id's archive, and whether it is there.
+func (a *archives) imported(id uuid.UUID) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	_, ok := a.imports[id]
+	return ok
+}
+
+// upload is an import's archive as its request writes it.
+type upload struct {
+	a   *archives
+	id  uuid.UUID
+	buf bytes.Buffer
+}
+
+func (u *upload) Write(p []byte) (int, error) {
+	if u.a.uploadFull {
+		return 0, domain.ErrStorageFull
+	}
+	return u.buf.Write(p)
+}
+
+func (u *upload) Commit() error {
+	if u.a.commitErr != nil {
+		return u.a.commitErr
+	}
+	u.a.mu.Lock()
+	defer u.a.mu.Unlock()
+	u.a.imports[u.id] = u.buf.Bytes()
 	return nil
 }
 
+func (u *upload) Abort() error {
+	u.a.mu.Lock()
+	defer u.a.mu.Unlock()
+	u.a.aborted = append(u.a.aborted, u.id)
+	return nil
+}
+
+// zipArchive is an import's archive read as adapter/archive reads it.
+type zipArchive struct{ z *zip.Reader }
+
+func (a zipArchive) Entries() []domain.RawEntry {
+	out := make([]domain.RawEntry, len(a.z.File))
+	for i, f := range a.z.File {
+		mode := f.Mode()
+		folder := strings.HasSuffix(f.Name, "/") || mode.IsDir()
+		out[i] = domain.RawEntry{Index: i, Name: f.Name, Folder: folder, Special: !folder && !mode.IsRegular(), Encrypted: f.Flags&0x1 != 0,
+			Method: f.Method}
+	}
+	return out
+}
+
+func (a zipArchive) Packed(i int) int64                { return int64(a.z.File[i].CompressedSize64) } //nolint:gosec // a test's
+func (a zipArchive) Open(i int) (io.ReadCloser, error) { return a.z.File[i].Open() }
+func (a zipArchive) Close() error                      { return nil }
+
 func (a *archives) Free(context.Context) (int64, error) {
 	a.rec.add("Free")
-	return a.free, nil
+	a.mu.Lock()
+	onFree := a.onFree
+	a.mu.Unlock()
+	if onFree != nil {
+		onFree()
+	}
+	a.mu.Lock()
+	free, taken := a.free, a.onFreeTaken
+	a.onFreeTaken = nil
+	a.mu.Unlock()
+	if taken != nil {
+		taken()
+	}
+	return free, nil
 }
 
 // entries are the committed archive of job id, by path.
@@ -435,6 +572,15 @@ func (q *queue) Export(_ context.Context, id uuid.UUID) error {
 	return nil
 }
 
+func (q *queue) Import(_ context.Context, id uuid.UUID) error {
+	q.rec.add("Queue.Import")
+	if q.err != nil {
+		return q.err
+	}
+	q.enqueued = append(q.enqueued, id)
+	return nil
+}
+
 // signer signs as adapter/mac does, an address's expiry part of its
 // signature: the end of the hour after, or until when that comes first.
 type signer struct{}
@@ -461,21 +607,28 @@ type row struct {
 }
 
 // rows keeps the jobs in memory, moving them as the statements do. beats
-// counts the heartbeats, with the progress each wrote; failBeats fails as
-// many heartbeats first; finishErr fails a FinishJob, and finishLeft is the
-// time its context left it; onBeat runs at each heartbeat written.
+// counts the heartbeats, with the progress each wrote, and reported the
+// reports they wrote, reportedAt at which; failBeats fails as
+// many heartbeats first, failReports as many of those that carry a
+// report; finishErr fails a FinishJob, and finishLeft is the time its
+// context left it; onBeat runs at each heartbeat written, onCount once,
+// after the next count of the active jobs is taken.
 type rows struct {
-	rec        *recorder
-	mu         sync.Mutex
-	jobs       map[uuid.UUID]*row
-	order      []uuid.UUID
-	beats      []domain.Progress
-	failBeats  int
-	finishErr  error
-	finishLeft time.Duration
-	onBeat     func()
-	finds      int
-	locks      int
+	rec         *recorder
+	mu          sync.Mutex
+	jobs        map[uuid.UUID]*row
+	order       []uuid.UUID
+	beats       []domain.Progress
+	reported    []domain.Report
+	reportedAt  []int
+	failBeats   int
+	failReports int
+	finishErr   error
+	finishLeft  time.Duration
+	onBeat      func()
+	onCount     func()
+	finds       int
+	locks       int
 }
 
 func newRows() *rows { return &rows{jobs: map[uuid.UUID]*row{}} }
@@ -514,14 +667,31 @@ func (r *rows) LockQueue(context.Context) error {
 func (r *rows) CountActive(context.Context) (int, error) {
 	r.rec.add("CountActive")
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	n := 0
 	for _, x := range r.jobs {
 		if !x.deleted && !x.job.State.Ended() {
 			n++
 		}
 	}
+	counted := r.onCount
+	r.onCount = nil
+	r.mu.Unlock()
+	if counted != nil {
+		counted()
+	}
 	return n, nil
+}
+
+func (r *rows) Importing(_ context.Context, notebookID uuid.UUID) (bool, error) {
+	r.rec.add("Importing")
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, x := range r.jobs {
+		if !x.deleted && x.job.NotebookID == notebookID && x.job.Kind == domain.KindImport && !x.job.State.Ended() {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (r *rows) Exporting(_ context.Context, notebookID, userID uuid.UUID) (bool, error) {
@@ -582,10 +752,14 @@ func (r *rows) StartJob(_ context.Context, id uuid.UUID, at time.Time) (domain.J
 	return x.job, nil
 }
 
-func (r *rows) BeatJob(_ context.Context, id uuid.UUID, at time.Time, p domain.Progress) (app.Beat, error) {
+func (r *rows) BeatJob(_ context.Context, id uuid.UUID, at time.Time, p domain.Progress, report *domain.Report) (app.Beat, error) {
 	r.mu.Lock()
-	if r.failBeats > 0 {
-		r.failBeats--
+	if r.failBeats > 0 || report != nil && r.failReports > 0 {
+		if report != nil && r.failReports > 0 {
+			r.failReports--
+		} else {
+			r.failBeats--
+		}
 		r.mu.Unlock()
 		return app.Beat{}, errors.New("the database is gone")
 	}
@@ -596,6 +770,10 @@ func (r *rows) BeatJob(_ context.Context, id uuid.UUID, at time.Time, p domain.P
 	}
 	x.job.Heartbeat, x.job.Progress = &at, p
 	r.beats = append(r.beats, p)
+	if report != nil {
+		r.reported = append(r.reported, *report)
+		r.reportedAt = append(r.reportedAt, len(r.beats))
+	}
 	b := app.Beat{CancelRequested: x.job.CancelRequested != nil, Deleted: x.deleted}
 	onBeat := r.onBeat
 	r.mu.Unlock()
@@ -672,9 +850,9 @@ type maintained struct {
 	expiredAt   []time.Time
 	interrupted []app.Interrupted
 	beatBefore  []*time.Time
-	queued      []uuid.UUID
+	queued      map[domain.Kind][]uuid.UUID
 	failed      []uuid.UUID
-	live        []uuid.UUID
+	live        map[domain.Kind][]uuid.UUID
 	deletedOf   []uuid.UUID
 	expiredJobs map[uuid.UUID]domain.Kind
 	purged      []uuid.UUID
@@ -705,9 +883,9 @@ func (m *maintained) InterruptJobs(_ context.Context, beatBefore *time.Time, _ t
 	return m.interrupted, nil
 }
 
-func (m *maintained) QueuedExports(context.Context) ([]uuid.UUID, error) {
-	m.rec.add("QueuedExports")
-	return m.queued, nil
+func (m *maintained) QueuedJobs(_ context.Context, kind domain.Kind) ([]uuid.UUID, error) {
+	m.rec.add("QueuedJobs " + string(kind))
+	return m.queued[kind], nil
 }
 
 func (m *maintained) FailQueued(_ context.Context, ids []uuid.UUID, _ time.Time, r domain.Report) ([]app.Interrupted, error) {
@@ -722,22 +900,22 @@ func (m *maintained) FailQueued(_ context.Context, ids []uuid.UUID, _ time.Time,
 	return out, nil
 }
 
-// held are the jobs River holds, or err.
+// held are the jobs of each kind River holds, or err.
 type held struct {
-	ids []uuid.UUID
+	ids map[domain.Kind][]uuid.UUID
 	err error
 	rec *recorder
 }
 
-func (h held) Held(context.Context) ([]uuid.UUID, error) {
-	h.rec.add("Held")
-	return h.ids, h.err
+func (h held) Held(_ context.Context, kind domain.Kind) ([]uuid.UUID, error) {
+	h.rec.add("Held " + string(kind))
+	return h.ids[kind], h.err
 }
 
-func (m *maintained) LiveArchives(_ context.Context, ids []uuid.UUID) ([]uuid.UUID, error) {
+func (m *maintained) LiveArchives(_ context.Context, kind domain.Kind, ids []uuid.UUID) ([]uuid.UUID, error) {
 	var out []uuid.UUID
 	for _, id := range ids {
-		if slices.Contains(m.live, id) {
+		if slices.Contains(m.live[kind], id) {
 			out = append(out, id)
 		}
 	}

@@ -8,9 +8,10 @@ import "github.com/open-nerve/NerveWiki/server/internal/shared"
 
 // The module's actions, decided on a notebook: an export is a read, so
 // every role exports, reads its jobs and cancels them; the use cases keep
-// another's jobs to the notebook's admins.
+// another's jobs to the notebook's admins. An import writes: a writer's.
 const (
 	ActionExport shared.Action = "transfer.export"
+	ActionImport shared.Action = "transfer.import"
 	ActionRead   shared.Action = "transfer.read"
 	ActionCancel shared.Action = "transfer.cancel"
 )
@@ -18,5 +19,5 @@ const (
 // Actions are the module's actions, which the access module's rule table
 // lists (bootstrap's actions test).
 func Actions() []shared.Action {
-	return []shared.Action{ActionExport, ActionRead, ActionCancel}
+	return []shared.Action{ActionExport, ActionImport, ActionRead, ActionCancel}
 }

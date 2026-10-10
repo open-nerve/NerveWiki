@@ -312,7 +312,7 @@ make image-smoke VERSION=0.1.0   # 在镜像上跑 S1、S3：迁移、探针、�
     ```
 - 反向代理与上传（M7 起）：附件的上传与导入的 zip 走流式的路由，服务端按字节放宽它们的读写期限（不低于每秒 64 KiB）。
   - 反向代理不要缓冲上传的请求体：nginx 的 `proxy_request_buffering off`，否则整个文件传到代理之后服务端才开始读，提前的拒绝（无权、重名、超过上限）也要等传完。
-  - `client_max_body_size`（nginx 默认只有 1 MB）不小于导入包的上限。nginx 的 `client_body_timeout`、`proxy_send_timeout`、`proxy_read_timeout` 是两次读写之间的间隔，不是整个传输的时长，默认的 60 秒就够；按整个请求计时的代理或负载均衡，要容得下最慢的传输（50 MiB 的附件在每秒 64 KiB 下约 13 分钟）。
+  - `client_max_body_size`（nginx 默认只有 1 MB）不小于导入包的上限。nginx 的 `client_body_timeout`、`proxy_send_timeout`、`proxy_read_timeout` 是两次读写之间的间隔，不是整个传输的时长，默认的 60 秒就够；按整个请求计时的代理或负载均衡，要容得下最慢的传输（50 MiB 的附件在每秒 64 KiB 下约 13 分钟，512 MiB 的导入包约 2 小时 17 分钟；`transfer.import_max_bytes` 按 `asset.upload_min_rate` 传完不能超过 3 小时）。
 - 内存：页面正文的解析预算（`page.parse_budget_bytes`，默认 8 MiB）最坏时约占 2.4 GB，见上文"页面"的"解析预算"。内存小的机器调小预算（至少 5 MiB，最坏约 1.5 GB），并用 `GOMEMLIMIT` 给运行时一个略低于容器上限的目标。
 
 - 数据库必须以 builtin provider 的 `C.UTF-8` 初始化，否则服务拒绝启动，见[总体设计](docs/v0.1/v0.1-design.md) 7.1。

@@ -56,6 +56,7 @@ export const instanceJSON: InstanceInfo = {
   workspace_creation_enabled: true,
   asset_max_bytes: 52_428_800,
   export_ttl_seconds: 86_400,
+  import_max_bytes: 536_870_912,
 };
 
 /** tokensJSON is a valid answer to a sign-in, a sign-up or a refresh. */

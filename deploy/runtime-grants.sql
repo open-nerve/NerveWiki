@@ -20,6 +20,11 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON users, auth_sessions, api_tokens, worksp
     page_revisions, edit_sessions, indexed_pages, page_links, page_tags, page_properties, page_aliases, asset_blobs,
     transfer_jobs TO nervewiki_runtime;
 
+-- The tables an import writes thousands of rows to: it runs ANALYZE on them as it goes (M7/P6 design 3.6), which
+-- takes MAINTAIN (PostgreSQL 17 and later) or ownership. Each module analyzes its own.
+GRANT MAINTAIN ON nodes, page_contents, page_revisions, changesets, changeset_items, indexed_pages, page_links, page_tags,
+    page_properties, page_aliases, asset_blobs TO nervewiki_runtime;
+
 -- River's tables and the sequences of their ids. River rebuilds the indexes of river_job every day with
 -- REINDEX INDEX CONCURRENTLY, which takes MAINTAIN on the table (PostgreSQL 17 and later).
 GRANT SELECT, INSERT, UPDATE, DELETE ON river_job, river_leader, river_queue, river_notification TO nervewiki_runtime;

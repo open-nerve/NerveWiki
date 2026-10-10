@@ -50,11 +50,12 @@ func validConfig() Config {
 		Workspace: WorkspaceConfig{CreationEnabled: true},
 		Page:      PageConfig{EditSessionCleanupInterval: 10 * time.Minute, ParseBudgetBytes: 8 << 20, ParseMaxWait: 2 * time.Second},
 		Events:    EventsConfig{HeartbeatInterval: 20 * time.Second},
-		Jobs:      JobsConfig{ShutdownTimeout: 10 * time.Second, PurgeInterval: time.Hour, PurgeRetention: 1440 * time.Hour, ExportWorkers: 1},
+		Jobs:      JobsConfig{ShutdownTimeout: 10 * time.Second, PurgeInterval: time.Hour, PurgeRetention: 1440 * time.Hour, ExportWorkers: 1, ImportWorkers: 1},
 		Storage:   StorageConfig{Dir: "data", MinFreeBytes: 1 << 30},
 		Asset:     AssetConfig{MaxBytes: 50 << 20, UploadMinRate: 64 << 10},
-		Transfer:  TransferConfig{ExportTTL: 24 * time.Hour, JobTimeout: 6 * time.Hour, HeartbeatTimeout: 5 * time.Minute, MaxQueued: 20},
-		Log:       LogConfig{Level: "info", Format: "json"},
+		Transfer: TransferConfig{ExportTTL: 24 * time.Hour, JobTimeout: 6 * time.Hour, HeartbeatTimeout: 5 * time.Minute, MaxQueued: 20,
+			ImportMaxBytes: 512 << 20, ImportMaxEntries: 50000, ImportMaxUnpackedBytes: 4 << 30},
+		Log: LogConfig{Level: "info", Format: "json"},
 	}
 }
 
@@ -122,6 +123,7 @@ func TestValidateReportsEveryInvalidKey(t *testing.T) {
 		"jobs.purge_interval: must be at least 1s, got 0s",
 		"jobs.purge_retention: must be at least 1h, got 0s",
 		"jobs.export_workers: must be from 1 to 8, got 0",
+		"jobs.import_workers: must be from 1 to 8, got 0",
 		"storage.dir: is required",
 		"storage.min_free_bytes: must not be negative, got -1",
 		"asset.max_bytes: must be from 1024 (1 KiB) to 4294967296 (4 GiB), got 0",
@@ -130,6 +132,8 @@ func TestValidateReportsEveryInvalidKey(t *testing.T) {
 		"transfer.job_timeout: must be from 1m0s to 168h0m0s, got 0s",
 		"transfer.heartbeat_timeout: must be at least 1m0s, got 0s",
 		"transfer.max_queued: must be at least 1, got 0",
+		"transfer.import_max_bytes: must be at least 1048576 (1 MiB), got 0",
+		"transfer.import_max_entries: must be from 1 to 100000, got 0",
 		`log.level: must be one of debug, info, warn, error, got "verbose"`,
 		`log.format: must be text or json, got "xml"`,
 	}
@@ -305,30 +309,87 @@ func TestValidateCrossKeyRules(t *testing.T) {
 			want:   "asset.max_bytes: must be from 1024 (1 KiB) to 4294967296 (4 GiB), got 1023",
 		},
 		{
-			name:   "an attachment of 4 GiB, arriving within the hour",
-			mutate: func(c *Config) { c.Asset.MaxBytes, c.Asset.UploadMinRate = 4<<30, 4<<30/3600+1 },
+			name: "an attachment of 4 GiB, arriving within the hour, an import's archive of 4 GiB",
+			mutate: func(c *Config) {
+				c.Asset.MaxBytes, c.Asset.UploadMinRate, c.Transfer.ImportMaxBytes, c.Transfer.ImportMaxUnpackedBytes = 4<<30, 4<<30/3600+1, 4<<30, 4<<30
+			},
 		},
 		{
-			name:   "an attachment larger than 4 GiB",
-			mutate: func(c *Config) { c.Asset.MaxBytes, c.Asset.UploadMinRate = 4<<30+1, 4<<30 },
-			want:   "asset.max_bytes: must be from 1024 (1 KiB) to 4294967296 (4 GiB), got 4294967297",
+			name: "an attachment larger than 4 GiB",
+			mutate: func(c *Config) {
+				c.Asset.MaxBytes, c.Asset.UploadMinRate, c.Transfer.ImportMaxBytes, c.Transfer.ImportMaxUnpackedBytes = 4<<30+1, 4<<30, 4<<30+1, 4<<30+1
+			},
+			want: "asset.max_bytes: must be from 1024 (1 KiB) to 4294967296 (4 GiB), got 4294967297",
 		},
 		{
-			name:   "an upload of the largest attachment in an hour",
-			mutate: func(c *Config) { c.Asset.MaxBytes, c.Asset.UploadMinRate = 3600<<10, 1<<10 },
+			name: "an upload of the largest attachment in an hour",
+			mutate: func(c *Config) {
+				c.Asset.MaxBytes, c.Asset.UploadMinRate, c.Transfer.ImportMaxBytes = 3600<<10, 1<<10, 3*3600<<10
+			},
 		},
 		{
-			name:   "an upload of the largest attachment in more than an hour",
-			mutate: func(c *Config) { c.Asset.MaxBytes, c.Asset.UploadMinRate = 3600<<10+1, 1<<10 },
-			want:   "asset.upload_min_rate: must let asset.max_bytes (3686401) arrive within 1h0m0s, at least 1025, got 1024",
+			name: "an upload of the largest attachment in more than an hour",
+			mutate: func(c *Config) {
+				c.Asset.MaxBytes, c.Asset.UploadMinRate, c.Transfer.ImportMaxBytes = 3600<<10+1, 1<<10, 3*3600<<10
+			},
+			want: "asset.upload_min_rate: must let asset.max_bytes (3686401) arrive within 1h0m0s, at least 1025, got 1024",
 		},
 		{
-			name:   "eight exports at once",
-			mutate: func(c *Config) { c.Jobs.ExportWorkers, c.Database.MaxConns = 8, 16 },
+			name:   "eight exports and eight imports at once",
+			mutate: func(c *Config) { c.Jobs.ExportWorkers, c.Jobs.ImportWorkers, c.Database.MaxConns = 8, 8, 32 },
 		},
 		{
-			name:   "exports holding half the pool",
-			mutate: func(c *Config) { c.Jobs.ExportWorkers, c.Database.MaxConns = 3, 6 },
+			name:   "exports and imports holding half the pool",
+			mutate: func(c *Config) { c.Jobs.ExportWorkers, c.Jobs.ImportWorkers, c.Database.MaxConns = 2, 1, 6 },
+		},
+		{
+			name:   "exports and imports holding more than half the pool",
+			mutate: func(c *Config) { c.Jobs.ExportWorkers, c.Jobs.ImportWorkers, c.Database.MaxConns = 2, 2, 7 },
+			want:   "jobs.import_workers: must leave, with jobs.export_workers (2), half of database.max_conns (7) to the requests, at most 1, got 2",
+		},
+		{
+			name:   "more than eight imports at once",
+			mutate: func(c *Config) { c.Jobs.ImportWorkers = 9 },
+			want:   "jobs.import_workers: must be from 1 to 8, got 9",
+		},
+		{
+			name: "an import of 1 MiB, attachments of 1 MiB",
+			mutate: func(c *Config) {
+				c.Transfer.ImportMaxBytes, c.Asset.MaxBytes, c.Transfer.ImportMaxUnpackedBytes = 1<<20, 1<<20, 1<<20
+			},
+		},
+		{
+			name:   "an import below 1 MiB",
+			mutate: func(c *Config) { c.Transfer.ImportMaxBytes, c.Asset.MaxBytes = 1<<20-1, 1<<10 },
+			want:   "transfer.import_max_bytes: must be at least 1048576 (1 MiB), got 1048575",
+		},
+		{
+			name:   "an import smaller than an attachment",
+			mutate: func(c *Config) { c.Transfer.ImportMaxBytes = c.Asset.MaxBytes - 1 },
+			want:   "transfer.import_max_bytes: must be at least asset.max_bytes (52428800), got 52428799",
+		},
+		{
+			name:   "an import's upload in three hours",
+			mutate: func(c *Config) { c.Transfer.ImportMaxBytes = 65536 * 3 * 3600 },
+		},
+		{
+			name:   "an import's upload in more than three hours",
+			mutate: func(c *Config) { c.Transfer.ImportMaxBytes = 65536*3*3600 + 1 },
+			want:   "transfer.import_max_bytes: must arrive within 3h0m0s at asset.upload_min_rate (65536), at most 707788800, got 707788801",
+		},
+		{
+			name:   "a hundred thousand entries",
+			mutate: func(c *Config) { c.Transfer.ImportMaxEntries = 100000 },
+		},
+		{
+			name:   "more than a hundred thousand entries",
+			mutate: func(c *Config) { c.Transfer.ImportMaxEntries = 100001 },
+			want:   "transfer.import_max_entries: must be from 1 to 100000, got 100001",
+		},
+		{
+			name:   "an import unpacking to less than it packs",
+			mutate: func(c *Config) { c.Transfer.ImportMaxUnpackedBytes = c.Transfer.ImportMaxBytes - 1 },
+			want:   "transfer.import_max_unpacked_bytes: must be at least transfer.import_max_bytes (536870912), got 536870911",
 		},
 		{
 			name:   "exports holding more than half the pool",

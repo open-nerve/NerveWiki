@@ -61,6 +61,7 @@ func (h handler) GetInstance(context.Context, gen.GetInstanceRequestObject) (gen
 		SignupEnabled:            info.SignupEnabled,
 		WorkspaceCreationEnabled: info.WorkspaceCreationEnabled,
 		AssetMaxBytes:            info.AssetMaxBytes,
+		ImportMaxBytes:           info.ImportMaxBytes,
 		ExportTTLSeconds:         int64(info.ExportTTL / time.Second),
 	}, nil
 }

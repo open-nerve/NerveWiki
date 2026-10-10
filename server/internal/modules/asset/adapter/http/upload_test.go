@@ -6,16 +6,13 @@ import (
 	"errors"
 	"io"
 	"mime/multipart"
-	"net"
 	"net/http"
 	"net/textproto"
-	"os"
 	"regexp"
 	"strings"
 	"testing"
 	"time"
 
-	httpadapter "github.com/open-nerve/NerveWiki/server/internal/modules/asset/adapter/http"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/httpservertest"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
@@ -232,25 +229,6 @@ func TestUploadLogsAMalformedHeaderByItsCause(t *testing.T) {
 	waitFor(t, func() bool { return strings.Contains(h.logs.String(), "upload not received") })
 	if logs := h.logs.String(); !strings.Contains(logs, "cause=malformed") || strings.Contains(logs, "QQQQ") {
 		t.Errorf("logs %q, want the cause, malformed, and no line of the client's", logs)
-	}
-}
-
-// How a body failed to arrive is named by its error: too slow, ended
-// early, the connection failing, or malformed.
-func TestReadCause(t *testing.T) {
-	for _, tt := range []struct {
-		err  error
-		want string
-	}{
-		{&net.OpError{Op: "read", Err: os.ErrDeadlineExceeded}, "too slow"},
-		{io.ErrUnexpectedEOF, "ended early"},
-		{io.EOF, "ended early"},
-		{&net.OpError{Op: "read", Err: errors.New("connection reset by peer")}, "connection failed"},
-		{errors.New("malformed MIME header line: x"), "malformed"},
-	} {
-		if got := httpadapter.ReadCause(tt.err); got != tt.want {
-			t.Errorf("ReadCause(%v) = %q, want %q", tt.err, got, tt.want)
-		}
 	}
 }
 

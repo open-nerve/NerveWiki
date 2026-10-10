@@ -18,5 +18,7 @@ test("S3: a caller reads the instance information with the typed client", async 
     asset_max_bytes: 52_428_800,
     // transfer.export_ttl, 24 hours in every profile.
     export_ttl_seconds: 86_400,
+    // transfer.import_max_bytes, 512 MiB in every profile.
+    import_max_bytes: 536_870_912,
   });
 });

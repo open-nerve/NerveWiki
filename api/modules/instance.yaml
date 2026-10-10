@@ -13,7 +13,8 @@ paths:
       description: >-
         Reports the product, the build and the API version this instance
         runs, whether it is open for sign-up, whether accounts may create
-        workspaces, and the largest attachment it takes. Public: needs no
+        workspaces, the largest attachment and import archive it takes,
+        and how long it keeps an export. Public: needs no
         authentication.
       security: []
       x-problem-codes: []
@@ -64,6 +65,7 @@ components:
           signup_enabled,
           workspace_creation_enabled,
           asset_max_bytes,
+          import_max_bytes,
           export_ttl_seconds,
         ]
       properties:
@@ -100,6 +102,13 @@ components:
           type: integer
           format: int64
           minimum: 1024
+        import_max_bytes:
+          description: >-
+            The largest archive an import may send, in bytes
+            (transfer.import_max_bytes); a larger one is payload_too_large.
+          type: integer
+          format: int64
+          minimum: 1048576
         export_ttl_seconds:
           description: >-
             How long an export's archive is kept once the export succeeded,

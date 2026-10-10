@@ -58,7 +58,7 @@ func (u *Unit) Move(ctx context.Context, id uuid.UUID, parentID *uuid.UUID, p Po
 	if domain.Depth(line)+sub.Height()-1 > domain.MaxDepth {
 		return domain.Node{}, domain.ErrTooDeep
 	}
-	order, renumber := u.placeAmong(others, after)
+	order, _, renumber := u.placeAmong(others, after)
 	moved := n
 	moved.ParentID, moved.SortOrder, moved.UpdatedBy, moved.UpdatedAt = parentID, order, u.write.By, u.write.At
 	before, now := n.State(), moved.State()

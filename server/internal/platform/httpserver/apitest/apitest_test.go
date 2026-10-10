@@ -16,7 +16,7 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 )
 
-const instanceJSON = `{"product":"Nerve Wiki","version":"0.1.0-dev","commit":"unknown","api_version":"v0","signup_enabled":false,"workspace_creation_enabled":true,"asset_max_bytes":52428800,"export_ttl_seconds":86400}`
+const instanceJSON = `{"product":"Nerve Wiki","version":"0.1.0-dev","commit":"unknown","api_version":"v0","signup_enabled":false,"workspace_creation_enabled":true,"asset_max_bytes":52428800,"import_max_bytes":536870912,"export_ttl_seconds":86400}`
 
 // Component names become Go and TypeScript type names. Redocly's bundler
 // renames a clash between module files to "Name-2" and only warns, so a

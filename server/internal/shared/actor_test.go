@@ -26,3 +26,24 @@ func TestRequireActorWithoutActorIsUnauthenticated(t *testing.T) {
 		t.Errorf("RequireActor() error = %v, want 401 unauthorized", err)
 	}
 }
+
+func TestActorValidHoldsExactlyOneCredential(t *testing.T) {
+	user, id := uuid.NewV7(), uuid.NewV7()
+	for _, tt := range []struct {
+		actor shared.Actor
+		want  bool
+	}{
+		{shared.Actor{UserID: user, SessionID: id}, true},
+		{shared.Actor{UserID: user, APITokenID: id}, true},
+		{shared.Actor{UserID: user, JobID: id}, true},
+		{shared.Actor{UserID: user}, false},
+		{shared.Actor{UserID: user, SessionID: id, APITokenID: id}, false},
+		{shared.Actor{UserID: user, SessionID: id, JobID: id}, false},
+		{shared.Actor{UserID: user, APITokenID: id, JobID: id}, false},
+		{shared.Actor{SessionID: id}, false},
+	} {
+		if got := tt.actor.Valid(); got != tt.want {
+			t.Errorf("%+v.Valid() = %t, want %t", tt.actor, got, tt.want)
+		}
+	}
+}

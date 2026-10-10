@@ -84,6 +84,7 @@ sql:
       - migrations/sql/00017_page_edit_sessions.sql
       - migrations/sql/00018_page_edit_session_ends.sql
       - migrations/sql/00019_page_nodes_name_key.sql
+      - migrations/sql/00030_page_changesets_import.sql
     queries: internal/modules/page/adapter/postgres/queries
     gen:
       go:
@@ -154,6 +155,8 @@ sql:
   - engine: postgresql
     schema:
       - migrations/sql/00029_transfer_transfer_jobs.sql
+      - migrations/sql/00031_transfer_one_import.sql
+      - migrations/sql/00032_transfer_running_report.sql
     queries: internal/modules/transfer/adapter/postgres/queries
     gen:
       go:
