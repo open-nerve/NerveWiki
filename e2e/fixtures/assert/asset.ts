@@ -103,6 +103,21 @@ export async function expectAssetsDeletedWithNodes(db: Database, ids: readonly s
   expect(rows.map((row) => row.node_id)).toEqual(ids.toSorted());
 }
 
+/** asset_blobs: the rows of the attachments ids are deleted at the time of the notebook notebookId's deletion. */
+export async function expectAssetsDeletedWithNotebook(
+  db: Database,
+  notebookId: string,
+  ids: readonly string[]
+): Promise<void> {
+  const rows = await db.query<{ node_id: string }>(
+    `SELECT b.node_id FROM asset_blobs b JOIN notebooks n ON n.id = b.notebook_id
+      WHERE n.id = $1 AND b.node_id = ANY($2::uuid[]) AND n.deleted_at IS NOT NULL AND b.deleted_at = n.deleted_at
+      ORDER BY b.node_id`,
+    [notebookId, ids]
+  );
+  expect(rows.map((row) => row.node_id)).toEqual(ids.toSorted());
+}
+
 /** asset_blobs and the store at storageDir: the attachments as are gone, their rows and their files. */
 export async function expectAssetsPurged(db: Database, storageDir: string, as: readonly Asset[]): Promise<void> {
   const blobs = as.map(blobOf);
