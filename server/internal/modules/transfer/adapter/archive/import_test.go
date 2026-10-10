@@ -234,6 +234,7 @@ func TestAnImportsArchiveIsFoundAsArchiveZipFindsIt(t *testing.T) {
 		{"a comment of zeros", zipped(t, strings.Repeat("\x00", 100), [2]string{"a.md", "x"}), 1},
 		// Its end is past the last 1 KiB: found in the last 65 KiB.
 		{"a comment of 2 KiB", zipped(t, strings.Repeat("c", 2048), [2]string{"a.md", "x"}), 1},
+		{"a comment of 64 KiB, an entry of 80 KB", largeCommented(t), 1},
 		{"zip64, more records than 65535", zipped(t, "", many...), 70000},
 		{"prepended", append(bytes.Repeat([]byte{'#'}, 4096), zipped(t, "", [2]string{"a.md", "x"}, [2]string{"b.md", "y"})...), 2},
 		{"empty", zipped(t, ""), 0},
@@ -249,6 +250,30 @@ func TestAnImportsArchiveIsFoundAsArchiveZipFindsIt(t *testing.T) {
 			}
 		})
 	}
+}
+
+// largeCommented is an archive of one entry of 80 KB, stored, and a
+// comment of 64 KiB: archive/zip reads its last 1 KiB and 65 KiB for its
+// end, and its buffer 4 KiB from the directory's start, besides the
+// directory (M7 closeout F4-N2).
+func largeCommented(t *testing.T) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	w := zip.NewWriter(&buf)
+	fw, err := w.CreateHeader(&zip.FileHeader{Name: "a.md", Method: zip.Store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.WriteString(fw, strings.Repeat("x", 80000)); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.SetComment(strings.Repeat("c", 65000)); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
 }
 
 // shortEnd is an archive of two entries whose end says its directory is

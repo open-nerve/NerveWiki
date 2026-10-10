@@ -164,8 +164,11 @@ func TestZip64ShortReadsTheFieldsAsArchiveZip(t *testing.T) {
 func TestThePreReadTakesTheBaseAsArchiveZip(t *testing.T) {
 	refused := func(name string) []byte { return dirRecord(name, 1<<32-1, 1, 0, zip64Field()) }
 	b1, b2 := dirRecord("b1", 1, 1, 0, nil), dirRecord("b2", 1, 1, 0, nil)
-	other := binary.LittleEndian.AppendUint16([]byte{0x99, 0x99}, 65531)
-	long := dirRecord(string(bytes.Repeat([]byte("n"), 65535)), 1, 1, 0, slices.Concat(other, make([]byte, 65531)))
+	long := longRecord(65535, 65535, 0, 1, nil)
+	// 62,500 bytes refused at the offset from 0, 5,000 before the directory, the end found in the last 65 KiB.
+	refusedLong := longRecord(20833, 20833, 20834, 1<<32-1, zip64Field())
+	commented := dirEnd(1, uint32(len(b1)), 0) //nolint:gosec // short
+	binary.LittleEndian.PutUint16(commented[20:], 2000)
 	for _, tt := range []struct {
 		name string
 		data []byte
@@ -180,6 +183,9 @@ func TestThePreReadTakesTheBaseAsArchiveZip(t *testing.T) {
 		// archive/zip reads it there whole, then again as the directory's first (M7 closeout F3-M1).
 		{"a record of 128 KiB read at the offset from 0", slices.Concat(long, bytes.Repeat([]byte("x"), 9),
 			dirEnd(1, uint32(len(long)), 0)), 1}, //nolint:gosec // short
+		// archive/zip reads it there whole, refusing it, and keeps the base (M7 closeout F4-N1).
+		{"a record of 62,500 bytes refused at the offset from 0", slices.Concat(refusedLong, make([]byte, 5000), b1,
+			commented, bytes.Repeat([]byte("e"), 2000)), 1},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			zr, err := zip.NewReader(bytes.NewReader(tt.data), int64(len(tt.data)))
@@ -253,5 +259,46 @@ func TestARefusedRecordIsReadWithinTheBound(t *testing.T) {
 				t.Errorf("readImport read %d entries, want 1", len(got.File))
 			}
 		})
+	}
+}
+
+// longRecord is a record of a name, an extra field and a comment of these
+// lengths, the extra field's last bytes tail, its uncompressed size
+// unpacked: other fields fill the extra field.
+func longRecord(name, extra, comment int, unpacked uint32, tail []byte) []byte {
+	var ex []byte
+	for left := extra - len(tail); left > 0; {
+		size := min(left-4, 65535)
+		ex = binary.LittleEndian.AppendUint16(binary.LittleEndian.AppendUint16(ex, 0x9999), uint16(size)) //nolint:gosec // short
+		ex = append(ex, make([]byte, size)...)
+		left -= 4 + size
+	}
+	return withComment(dirRecord(string(bytes.Repeat([]byte("n"), name)), unpacked, 1, 0, append(ex, tail...)), comment)
+}
+
+// An end saying more records than the most is refused before archive/zip
+// reads the directory, though archive/zip, comparing the count's low 16
+// bits, reads the one there is (M7/P6 design 3.10; M7 closeout F4-M2): it
+// would allocate by the count where the archive is large enough to hold
+// so many.
+func TestAnEndOfMoreRecordsThanTheMostIsRefusedUnread(t *testing.T) {
+	rec := dirRecord("a.md", 1, 1, 0, nil)
+	end64 := make([]byte, directory64EndLen)
+	binary.LittleEndian.PutUint32(end64, directory64EndSignature)
+	binary.LittleEndian.PutUint64(end64[4:], directory64EndLen-12)
+	binary.LittleEndian.PutUint64(end64[24:], 1) // the records on this disk: archive/zip reads the total after them
+	binary.LittleEndian.PutUint64(end64[32:], 65537)
+	binary.LittleEndian.PutUint64(end64[40:], uint64(len(rec)))
+	locator := make([]byte, directory64LocLen)
+	binary.LittleEndian.PutUint32(locator, directory64LocSignature)
+	binary.LittleEndian.PutUint64(locator[8:], uint64(len(rec)))
+	binary.LittleEndian.PutUint32(locator[16:], 1)
+	data := slices.Concat(rec, end64, locator, dirEnd(0xffff, 0xffffffff, 0xffffffff))
+
+	if zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data))); err != nil || len(zr.File) != 1 {
+		t.Fatalf("archive/zip: %v, want 1 entry", err)
+	}
+	if _, err := readImport(&counted{Reader: bytes.NewReader(data)}, 50000, MaxDirectory); !errors.Is(err, app.ErrTooManyEntries) {
+		t.Fatalf("readImport() = %v, want ErrTooManyEntries", err)
 	}
 }

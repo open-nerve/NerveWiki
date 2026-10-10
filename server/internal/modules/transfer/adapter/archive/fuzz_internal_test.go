@@ -67,7 +67,7 @@ func FuzzReadImportAgreesWithArchiveZip(f *testing.F) {
 		}
 		switch {
 		case !zipOK || len(zr.File) > most || errors.Is(err, errOverlap):
-		case errors.Is(err, app.ErrTooManyEntries) && endPastBounds(data, most):
+		case errors.Is(err, app.ErrTooManyEntries) && endPastBounds(data, most, len(zr.File)):
 		default:
 			t.Fatalf("readImport refused (%v) what archive/zip reads, %d entries", err, len(zr.File))
 		}
@@ -77,8 +77,15 @@ func FuzzReadImportAgreesWithArchiveZip(f *testing.F) {
 // endPastBounds reports whether data's end says more records than most,
 // or a directory larger than MaxDirectory: an import refuses it before it
 // reads further (M7/P6 design 3.10), though archive/zip, comparing 16
-// bits of the count, may read the records there are.
-func endPastBounds(data []byte, most int) bool {
+// bits of the count, may read the records there are, read of them. The
+// count is checked against archive/zip's own comparison, so that a count
+// readEnd reads wrong is not excused (M7 closeout F4-M1); the directory's
+// size no input of the fuzz test reaches.
+func endPastBounds(data []byte, most, read int) bool {
 	d, err := readEnd(bytes.NewReader(data), int64(len(data)))
-	return err == nil && (d.records > uint64(most) || d.size > MaxDirectory)
+	if err != nil {
+		return false
+	}
+	many := d.records > uint64(most) && d.records > 0xffff && uint16(d.records) == uint16(read) //nolint:gosec // its low bits
+	return many || d.size > MaxDirectory
 }

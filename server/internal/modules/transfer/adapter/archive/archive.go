@@ -176,7 +176,9 @@ const directoryEnds = 128 << 10
 
 // OpenImport implements app.Archives: the directory's end read, its
 // records counted (zipdir.go), then archive/zip reads it, bounded to the
-// bytes counted and its end's; once read, the entries' data is not.
+// bytes it reads as counted (the records, the one it stops at, the one it
+// tries at the offset from 0) and its end's; once read, the entries' data
+// is not.
 func (a Archives) OpenImport(ctx context.Context, id uuid.UUID, most int) (app.ImportArchive, error) {
 	f, err := a.store.Open(ctx, domain.Archive(domain.KindImport, id))
 	if errors.Is(err, storage.ErrNotFound) {
