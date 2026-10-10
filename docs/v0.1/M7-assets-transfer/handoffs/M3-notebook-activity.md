@@ -1,5 +1,5 @@
 ```yaml
-status: open
+status: done
 from: M3
 to: M7
 created: 2026-10-02
@@ -17,3 +17,4 @@ M7 注册附件的来源时：
 ## 处理进展
 
 - M7/P2（2026-10-09，合并 `48c62c0`）：第 2 项完成（`bootstrap/assets_lifecycle_test.go` 经无主列表核对大小，组合根交空时失败）。第 1 项改为只报字节数：上传是树的一个单元，它的变更集已经由页面的来源算作同一时刻的写，附件不再另报最晚的上传（P2 审查 C3，[M7 总设计](../00-M7-design.md) 4.6）。M7 收尾时关闭。
+- M7 收尾（2026-10-10）：核对过各项的落实（[M7 收尾审查](../reviews/M7-closeout-review.md) C-I2），关闭。

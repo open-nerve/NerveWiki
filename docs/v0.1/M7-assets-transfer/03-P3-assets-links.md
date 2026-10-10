@@ -197,7 +197,7 @@ P3 改的面很宽：解析规则、索引、改写、落点、补全、渲染�
 | `tools/md-fixtures/`：`render/047`–`065`、`check.mjs`、`README.md`、`obsidian/verify-render.mjs`；`server/internal/platform/markdown/obsidian/render_fixtures_test.go` | 媒体的记法（5.8） |
 | `web/apps/web/src/pages/page/`：`page-properties.tsx`、`page-outline.tsx`；`reading/reading.css`、`reading/app-links.test.ts`；测试的视图与属性（`assets_expire_at`、`url`） | 属性里附件的地址；大纲认附件的图片；附件在行内（`appLinks` 不碰附件的链接，有测试） |
 | `e2e/stories/links/l5-completion.spec.ts`、`l6-panel.spec.ts` | 属性链接的 `url` |
-| `Makefile` | 应用的 HTML 检查在不带竞态检测的一遍里跑；竞态检测的一遍每个包 30 分钟 |
+| `Makefile` | 应用的 HTML 检查在不带竞态检测的一遍里跑；竞态检测的一遍 `-timeout 15m` |
 
 ### 5.2 平台：图片钩子与到期
 

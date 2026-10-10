@@ -88,7 +88,7 @@
   - `CreatePage(parent, name, draft)`：`draft` 是事先经同一端口的 `Parse` 解析好的正文与提取结果（P6）；
   - 另有不加锁的预检 `Check`（角色、父节点是这本笔记本里活着的页面、名称合法且此刻没被占用），同 `Writer.Allowed`。
   - 这是 13.1 第 11 条的例外：别的模块的端口原本只凭连接池构造。组合根按 page → asset → transfer 的次序建，命令行的组合不建 `page.New`，所以到不了它（`archtest/composition_test.go` 加上这一断言）。
-- **附件的端口**：asset 的模块根给出 `asset.NewBlobs(pool, store)`：`Put(ctx, r)` 把文件写进存储（边写边算 SHA-256、测定类型），`Attach(ctx, node, blob)` 在调用方的事务里写行（经 `postgres.DB(ctx, pool)`），`Open` 按节点读文件。transfer 的导入与导出用它，asset 自己的上传也用它。
+- **附件的端口**：asset 的模块根给出 `asset.NewBlobs(pool, store, logger)`：`Put(ctx, r)` 把文件写进存储（边写边算 SHA-256、测定类型），`Attach(ctx, node, blob)` 在调用方的事务里写行（经 `postgres.DB(ctx, pool)`），`Open` 按节点读文件。transfer 的导入与导出用它，asset 自己的上传也用它。
 - **读端口**：asset、transfer 读节点经 page 的只凭连接池的读端口（一个父节点下的附件、节点的笔记本与类型、导出范围里的树与正文），linking 给 transfer "导出范围里哪些没有正文的页是链接的目标"、给 asset 附件的 `link`（4.7）。asset 的 sqlc 看不到 `nodes`。
 - **存储端口**（`platform/storage`）：
 
@@ -169,7 +169,7 @@
   |---|---|---|
   | 内联的图片、音频、视频（png、jpeg、gif、webp、avif、bmp；mp3、ogg、wav、m4a、flac；mp4、webm、ogv） | 测定的类型 | `inline` |
   | svg | `image/svg+xml` | `inline` |
-  | pdf | `application/pdf` | `inline`（`sandbox` 下内置的阅读器能否用，P2 在 Chromium 与 Firefox 里实测，写进 P2 文档；不能用就按附件下载） |
+  | pdf | `application/pdf` | `inline`（`sandbox` 下内置的阅读器能否用：P2 在 Chromium 里实测可用，写进 P2 文档；Firefox 与 Safari 没有实测，归 M12 的打磨第 17 项；不能用时按附件下载） |
   | 其余（含 html、xml、js、`application/octet-stream`） | `application/octet-stream` | `attachment` |
 
   - 每个附件的答复都带 `Content-Security-Policy: sandbox; default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'`：直接打开的 svg 不运行脚本、源是不透明的，也不能向外站请求图片、字体与样式（否则外站拿到读者的 IP，违反总体设计 4.6 的"`img-src` 只许本站"）。
@@ -181,12 +181,12 @@
 
 ### 4.6 删除、清理与孤儿文件
 
-- **`asset_blobs`**（asset 模块，迁移 `000NN_asset_asset_blobs.sql`）：`id`（blob id，UUIDv7）、`node_id` 唯一、`notebook_id`、`mime`、`byte_size`、`sha256`、`width`、`height`、`created_by_id`、`created_at`、`deleted_at`。外键：`(notebook_id, node_id)` 指向 `nodes(notebook_id, id)`、`notebook_id` 指向 `notebooks`、`created_by_id` 指向 `users`，指向别的模块的都是 `ON DELETE RESTRICT`。索引：活动用的（`notebook_id WHERE deleted_at IS NULL`）、清理用的。存储的键由 blob id 推出，不另存。表写进 `runtime-grants.sql`。
+- **`asset_blobs`**（asset 模块，迁移 `00027_asset_asset_blobs.sql`）：`id`（blob id，UUIDv7）、`node_id` 唯一、`notebook_id`、`mime`、`byte_size`、`sha256`、`width`、`height`、`created_by_id`、`created_at`、`deleted_at`。外键：`(notebook_id, node_id)` 指向 `nodes(notebook_id, id)`（经它已经到达笔记本，`notebook_id` 不另指向 `notebooks`）、`created_by_id` 指向 `users`，指向别的模块的都是 `ON DELETE RESTRICT`。索引：活动用的（`notebook_id WHERE deleted_at IS NULL`）、清理用的。存储的键由 blob id 推出，不另存。表写进 `runtime-grants.sql`。
 - **跟着节点删除**：page 的删除只改自己的表，asset 看不到 `nodes`。asset 登记：
   - **页面领域事件的观察者**（事务内）：改动里被删除的节点，`UPDATE … SET deleted_at = 事件的时刻 WHERE node_id = ANY(被删的 id) AND deleted_at IS NULL`（删子树时改动已带每个后代，附件也在其中）。总体设计 12.4 这一行的注册者加上 M7；M8 的恢复照同一个观察者恢复行，写进 M8 的移交。
   - **笔记本删除事件的订阅者**：软删除这些笔记本的未删的行。笔记本删除的三条路径（删除笔记本、删除无主笔记本、删除工作区）都经它。
   - 两者只凭连接池构造：命令行的组合（停用经 `notebookRegistrants`）也到达它们，它们不要存储与密钥。
-- **清理器**：`asset.Purgers(pool, store)`（要存储，13.1 第 6 条的"登记"随之改写，组合根的 `purgers(pool)` 改为 `purgers(pool, store)`），排在 page 的清理器之前。一批在一个事务里：`FOR UPDATE SKIP LOCKED` 锁住到期的行 → 删文件（不存在算成功）→ 删行 → 提交。删文件不能回滚：提交失败时下一次运行再删一次文件（已不存在，算成功）、删掉行（M2/P4 的移交）。M8 的恢复锁同样的行，与清理串行。删不掉的文件让这一批失败、清理停下（"失败即停"，记日志带 blob id）。
+- **清理器**：`asset.Purgers(pool, tx, store, logger)`（要存储，13.1 第 6 条的"登记"随之改写，组合根的 `purgers(pool)` 改为 `purgers(pool, tx, store, logger)`），排在 page 的清理器之前。一批在一个事务里：`FOR UPDATE SKIP LOCKED` 锁住到期的行 → 删文件（不存在算成功）→ 删行 → 提交。删文件不能回滚：提交失败时下一次运行再删一次文件（已不存在，算成功）、删掉行（M2/P4 的移交）。M8 的恢复锁同样的行，与清理串行。删不掉的文件让这一批失败、清理停下（"失败即停"，记日志带 blob id）。
 - **孤儿清扫**（asset 的定时任务，每天）：`blobs/` 下修改时刻早于一天、而 `asset_blobs` 里（含软删除的）没有它的文件，删掉。上传在 `Commit` 之后、单元提交之前失败，提交结果不明，删除文件失败，留下的就是这些。临时文件由存储在启动时删掉（4.1）。transfer 的 `imports/`、`exports/` 由它自己的清扫收拾（4.9）。
 - **笔记本的活动**：字节数是未删除的附件的大小之和（M3 的移交）。上传是树的一个单元，它的变更集已算作页面一侧的写，附件不再另报最晚的上传时刻（P2 审查 C3）。
 
@@ -195,7 +195,7 @@
 照 [M6 的移交](handoffs/M6-links.md)，细节在 P3 文档，与 Obsidian 1.12.7 逐项核对：
 
 - **解析**：附件是链接的候选。page 给 linking 的读端口（`LinkTargets`、`All`）带上节点的类型；接口的 `LinkTargetKind` 加上 `asset`。写法的规则：
-  - 目标的最后一段含 `.` 时，先按附件的写法找（名称恰好是这一段的附件，规则照 4.4 的次序：相对、完整路径、后缀）；没有再按页面的写法；
+  - 目标的最后一段不以 `.md` 结尾、笔记本里任何地方有名称（按标题键）等于它的附件时，只读作附件：候选只有这个名称的附件（按 4.4 的次序：相对、完整路径、后缀），同名的页面不算，找不到即解析不到；没有这样的附件时按页面的写法（样例 `resolve/` 016–019）；
   - 去掉 `.md` 的判断（"笔记本里有没有去掉 `.md` 的那个名称"）与 `.md` 的写法只数页面：`[[x.png.md]]` 只指向页面 `x.png`，永远不是附件 `x.png`（Obsidian 里 `x.png` 与 `x.png.md` 是两个文件）；
   - 没有扩展名的附件不是候选（Obsidian 给这样的目标加 `.md`）。
   - 要核对的形状写成 `resolve/` 样例：A 里的附件 `x.png` 与 B 里的页面 `x.png`、从 B 里链接；`[[B/x.png]]` 而 `x.png` 只在 A；`[[x.png.md]]` 时两者都在；没有扩展名的附件；大小写与 Unicode 的折叠；与附件同名的别名。
@@ -300,7 +300,7 @@
 
 ### 4.12 `transfer_jobs` 与文件
 
-- **表**（transfer 模块，迁移 `000NN_transfer_transfer_jobs.sql`）：`id`、`notebook_id`（`RESTRICT`）、`root_id`（不建外键：指向节点会挡住节点的清理）、`kind`（`import`、`export`）、`state`（`queued`、`running`、`succeeded`、`failed`、`cancelled`、`expired`，带检查的状态机）、`created_by_id`、`client`、进度的两个数、`cancel_requested_at`、`heartbeat_at`、`started_at`、`finished_at`、`report`、结果的字节数、`created_at`、`deleted_at`。不存凭据的 id（会话清理会删 `auth_sessions` 的行）。写进 `runtime-grants.sql`。
+- **表**（transfer 模块，迁移 `00029_transfer_transfer_jobs.sql`）：`id`、`notebook_id`（`RESTRICT`）、`root_id`（不建外键：指向节点会挡住节点的清理）、`kind`（`import`、`export`）、`name`（导出的笔记本或页、导入的文件的名称）、`state`（`queued`、`running`、`succeeded`、`failed`、`cancelled`、`expired`，带检查的状态机）、`created_by_id`、`client`、进度的两个数、`cancel_requested_at`、`heartbeat_at`、`started_at`、`finished_at`、`report`、结果的字节数、`created_at`、`deleted_at`。不存凭据的 id（会话清理会删 `auth_sessions` 的行）。写进 `runtime-grants.sql`。
 - **生命周期**：笔记本删除的订阅者软删除这些笔记本的任务（排队与运行中的任务下一批看到行已删，停下）；清理器排在 notebooks 之前；读、下载、取消都重新判定读权限（报告里有标题）。
 - **文件的清扫**（transfer 的定时任务，每天）：`imports/`、`exports/` 下没有活着的任务对应的文件，删掉。
 
@@ -324,7 +324,7 @@
   | `jobs.import_workers`、`jobs.export_workers` | 1、1 | |
   | `ratelimit.asset_content` | 每分钟 6,000、突发 1,000（每 IP） | test 配置调到用不完 |
 
-  交叉规则（总体设计 8.4）：`asset.max_bytes` ≤ `transfer.import_max_bytes` ≤ `transfer.import_max_unpacked_bytes`；`transfer.heartbeat_timeout` 远长于 30 秒的心跳；River 的救援时间长于 `transfer.job_timeout`。各项进 `LogValue`。
+  交叉规则（总体设计 8.4，照实际：`platform/config/validate.go`）：`asset.max_bytes` ≤ `transfer.import_max_bytes` ≤ `transfer.import_max_unpacked_bytes`；`asset.max_bytes` 按 `asset.upload_min_rate` 传完不超过 1 小时，`transfer.import_max_bytes` 不超过 3 小时，`import_max_bytes` 至少 1 MiB；`transfer.import_max_entries` 在 1–100,000 之间；`transfer.heartbeat_timeout` 至少 1 分钟、短于 `transfer.job_timeout`（运行中的任务每秒心跳一次）；`jobs.export_workers` 与 `jobs.import_workers` 各在 1–8 之间，合起来至多 `database.max_conns` 的一半；River 的救援时间长于 `transfer.job_timeout`。各项进 `LogValue`。
 - **镜像**（M0/P6 的移交）：构建阶段建好 `/data`、属主 65532，`COPY --chown` 进运行时阶段，`VOLUME /data`，镜像的环境变量把 `storage.dir` 指向它；README 的部署一节写挂载方式（宿主机目录的属主要是 65532；不挂载时 Docker 建匿名卷，删容器就丢）、反向代理（`client_max_body_size`、上传路由不缓冲请求体、超时）与备份次序（只需备份 `blobs/`）。开发时的 `data/` 加进 `.gitignore` 与 `.dockerignore`。
 - **e2e**：每个 worker 的服务、`nervewikiWith` 起的服务各有自己的存储目录（`fixtures/server.ts`）。
 
@@ -355,7 +355,7 @@
 | `POST /api/v0/transfer-jobs/{job_id}/cancel` | 取消 |
 | `GET /api/v0/transfer-jobs/{job_id}/download` | 下载导出的 zip（`x-raw`，公开，靠签名） |
 
-改动：`NodeKind`、`LinkTargetKind` 加 `asset`；`PropertyLink` 加 `kind`、`url`；`PageView` 加 `assets_expire_at`；落点的原因加 `target_is_asset`；`InstanceInfo` 加 `asset_max_bytes`、`export_ttl_seconds`、`import_max_bytes`。错误码：平台码 `storage_full`（507）；名称的规则是字段错误 `name: not_allowed`；`transfer.not_found`、`transfer.busy`、`transfer.not_cancellable` 等，写进 P2、P5、P6 的文档。413 用平台的 `payload_too_large`。
+改动：`NodeKind`、`LinkTargetKind` 加 `asset`；`PropertyLink` 加 `kind`、`url`、`inline`；`PageView`、`PageProperties` 加 `assets_expire_at`；落点的原因加 `target_is_asset`；`InstanceInfo` 加 `asset_max_bytes`、`export_ttl_seconds`、`import_max_bytes`。错误码：平台码 `storage_full`（507）；名称的规则是字段错误 `name: not_allowed`；`asset.not_found`；`transfer.not_found`、`transfer.busy`、`transfer.not_cancellable` 等，写进 P2、P5、P6 的文档。413 用平台的 `payload_too_large`。
 
 ## 6. 从 Nerve 借鉴
 
@@ -392,12 +392,12 @@ Nerve 的文件里程碑还没开始，只有计划与平台的做法（只读�
 | [M4 附件的扩展与粘贴上传](handoffs/M4-extensions.md) | 1 附件内联（以 M6 的移交第 1 项为准）、2 粘贴上传与 `whenComposed`、3 最后一跳的两个测试、4 先建后删与活动 | 1：P3；2：P4；3：P3（服务端）、P4（编辑器）；4：先建后删见下一行，活动 P2 |
 | [M4/P2 一个单元里先建后删](handoffs/M4-P2-unit-merge.md) | — | 不适用：导入只建不删（4.2），由 M9 定下；本次提交以"不适用"关闭，指向 M9 的那份 |
 | [M6 链接与附件、导入、导出](handoffs/M6-links.md) | 1 嵌入的渲染由 M7 建立；2 附件进解析；3 落点；4 导入是多操作的单元；5 导出没有正文的页；6 最后一跳 | 1–3、6：P3；4：P6A；5：P5A |
-| [M4/P3 Markdown 的扩展](../M6-links/handoffs/M4-P3-markdown-extensions.md)（已关闭，抄送 M7） | 第 1–7 项的注册约束 | P3 照做 |
+| [M4/P3 Markdown 的扩展](../M6-links/handoffs/M4-P3-markdown-extensions.md)（已关闭，抄送 M7） | 第 1–8 项的注册约束 | P3 照做 |
 | [M4/P6 编辑器](../M5-collab-editing/handoffs/M4-P6-editor.md)（已关闭，抄送 M7） | 第 5 项：上传的手段、最后一跳 | P4 |
 
 ### 写给后面的 M
 
-由发现它的 Phase 写进目标 M 的 `handoffs/`，收尾时核对：
+由发现它的 Phase 写进目标 M 的 `handoffs/`，收尾时核对（收尾时补齐，[收尾审查](reviews/M7-closeout-review.md) C-I1）：[M8](../M8-history-search/handoffs/M7-assets-transfer.md)、[M9](../M9-mcp/handoffs/M7-assets.md)、[M10](../M10-llm-wiki/handoffs/M7-transfer.md)、[M12](../M12-release/handoffs/M7-transfer.md)（与[打磨](../M12-release/handoffs/M5-polish.md)第 15–20 项、[性能](../M12-release/handoffs/M4-performance.md)第 11–13 项）：
 
 - **M8**：恢复时恢复附件的行（同一个观察者）；清理与恢复的先后（清理器锁行）；导入的整组撤销（一次导入一个变更集，可能很大）；搜索是否列出附件（`nodes.name` 的三元组索引包括它们）。
 - **M9**：MCP 的 `read` 读附件；MCP 的客户端要绝对地址，签名地址是相对的，要一个对外的基地址；附件的路径写法。
@@ -443,7 +443,7 @@ Nerve 的文件里程碑还没开始，只有计划与平台的做法（只读�
 - `platform/jobs`：队列与超时可配、`Job.Start`、只投递的客户端（含 `Unfinished`）；`platform/postgres`：`TxFrom`、`WithinSnapshot`（快照里拒绝 `WithinTx`）；`platform/storage`：写入途中每 64 MiB 看一次余量。
 - `platform/markdown`：核心的图片钩子（M4 的 `Extension` 加字段）；`obsidian.Resolve` 的签名（答类型）与 `Options.Assets`；`CheckHTML` 认附件的标记。
 - linking：`LinkTargetKind`、`PropertyLink.kind`、落点的 `target_is_asset`、`Linktexts` 的 `.md` 写法、补全数据带类型；`markdownExtensions(resolve, assets)`。
-- 组合根：`purgers(pool)` 改为 `purgers(pool, store)`；模块的构建次序 page → asset → transfer。
+- 组合根：`purgers(pool)` 改为 `purgers(pool, tx, store, logger)`；模块的构建次序 page → asset → transfer。
 - 前端：`EditorContext.uploadAsset`、`EditorControls.whenComposed`；`PageView.assets_expire_at` 与阅读视图对缓存的视图的处理；M5 的 `pages` 处理的整树重读改经 `refresher`；`appLinks` 不碰附件的链接（`nw-asset`）；`InstanceInfo`；`PageTreeStore` 分出页面的索引；附件的上传不经 `oneAtATime`（13.2 第 1 条的例外）；右栏的属性对附件给地址。
 
 ## 9. 测试策略
@@ -459,9 +459,9 @@ Nerve 的文件里程碑还没开始，只有计划与平台的做法（只读�
   - AS1：上传、列出、下载（P2 接口；P4 页面：面板上传与打开，根下的附件在笔记本首页）。
   - AS2：编辑器里粘贴、拖入图片，插入嵌入并显示（接口版本：上传，再写带 `![[link]]` 的正文，同一组数据库断言）。
   - AS3：嵌入的图片、音频、视频（WebM、Ogg：Playwright 的 Chromium 没有 H.264、AAC）、附件链接显示；附件改名之后嵌入改写；未解析的嵌入；`expectIndexedLinks` 带附件的 id（M6 的移交第 6 项）。
-  - AS4：删除子树、删除笔记本之后附件的行与文件被清理（`deletedDaysAgo` 先挪 `asset_blobs`，否则 `RESTRICT` 让已有的清理故事停住）；活动算上附件。
+  - AS4：删除子树、删除笔记本之后附件的行与文件被清理（`deletedDaysAgo` 先挪 `asset_blobs`，否则 `RESTRICT` 让已有的清理故事停住）；活动算上附件。页面版本（收尾时补上，[收尾审查](reviews/M7-closeout-review.md) C-I4）：左栏删除一页时确认框数出它下面的附件，删掉之后它们的行随节点删除、地址读不到；设置里删除笔记本，其余的随笔记本删除；无主列表的大小与最后活动算上附件。清理是后台任务的，只有接口版本。
   - AS5：svg 在浏览器里不在本站的源里执行、不向外站请求（声明 sandbox 的 "Blocked script execution" 控制台消息）；html 附件被下载（`waitForEvent("download")`）。接口版本核对各类型的响应头；浏览器里的执行只有页面版本能证明（10.1 的例外）。
-  - TR1：导出笔记本与子树，zip 的结构与 `meta.json`（zip 的读取另加一个开发依赖）。
+  - TR1：导出笔记本与子树，zip 的结构与 `meta.json`（zip 的读取是 e2e 自己的 `fixtures/zip.ts`，不加依赖）。
   - TR2：导入 zip，进度、报告，导入的页与附件，链接解析。
   - TR3：导出再导入得到同样的树。
   - TR4：恶意的 zip 被拒绝或跳过，报告写明。
@@ -513,11 +513,11 @@ M7 开工时负责人确认进入 M7（2026-10-08："可以了"）。下面是�
 
 | P | 名称 | 状态 | Phase 文档 | 审查 |
 |---|---|---|---|---|
-| P1 | 平台：存储与流式路由 | 已完成 | [01-P1-storage-stream.md](01-P1-storage-stream.md) | [P1 审查](reviews/P1-storage-stream-review.md) |
-| P2 | 附件（服务端） | 已完成 | [02-P2-assets-server.md](02-P2-assets-server.md) | [P2 审查](reviews/P2-assets-server-review.md) |
+| P1 | 平台：存储与流式路由 | 已完成（合并 `d7af7cf`） | [01-P1-storage-stream.md](01-P1-storage-stream.md) | [P1 审查](reviews/P1-storage-stream-review.md) |
+| P2 | 附件（服务端） | 已完成（合并 `48c62c0`） | [02-P2-assets-server.md](02-P2-assets-server.md) | [P2 审查](reviews/P2-assets-server-review.md) |
 | P3 | 附件与链接（服务端） | 已完成（A 合并 `5138ad6`，B 合并 `f3bf03c`） | [03-P3-assets-links.md](03-P3-assets-links.md) | [P3A 审查](reviews/P3A-assets-links-review.md)、[P3B 审查](reviews/P3B-render-review.md) |
 | P4 | 附件（前端） | 已完成（A 合并 `e44b417`，B 合并 `32e175c`，C 合并 `008f81f`） | [04-P4-assets-web.md](04-P4-assets-web.md) | [P4A 审查](reviews/P4A-assets-web-review.md)、[P4B 审查](reviews/P4B-assets-web-review.md)、[P4C 审查](reviews/P4C-paste-upload-review.md) |
-| P5 | 导出 | 完成（A 合并 `e8f02d5`，B 合并 `ab4562a`） | [05-P5-export.md](05-P5-export.md) | [P5A 审查](reviews/P5A-export-review.md)、[P5B 审查](reviews/P5B-export-web-review.md) |
+| P5 | 导出 | 已完成（A 合并 `e8f02d5`，B 合并 `ab4562a`） | [05-P5-export.md](05-P5-export.md) | [P5A 审查](reviews/P5A-export-review.md)、[P5B 审查](reviews/P5B-export-web-review.md) |
 | P6 | 导入 | 已完成（A 合并 `b60cf66`，B 合并 `c9a48dd`） | [06-P6-import.md](06-P6-import.md) | [P6A 审查](reviews/P6A-import-review.md)、[P6B 审查](reviews/P6B-import-web-review.md) |
 
 ## 13. 变更记录

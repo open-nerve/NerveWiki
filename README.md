@@ -42,7 +42,7 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
 
 `make build` 构建前端并把它内嵌进 `bin/nervewiki`（版本号取 `VERSION`，默认 `0.1.0-dev`）。`make run` 启动的服务提供上一次 `make build` 复制进去的前端，从未构建时页面路径答 404 并提示；开发前端用 `make web-dev` 或 `make dev`，见下文"前端"。
 
-`serve` 启动时要连上数据库（最多等 10 秒，连不上就退出），按配置执行迁移（dev、test 默认执行，prod 默认不执行），然后自检数据库的编码与 locale，不满足就拒绝启动并给出建库命令。它还打开附件目录（`storage.dir`，`make run` 时是 `server/_data/`，不进仓库），不可写就拒绝启动，见下文"部署"的附件目录；其他命令不碰它。`GET /healthz` 表示进程存活；`GET /readyz` 在数据库可用、迁移已是最新时返回 200，否则 503。`GET /api/v0/instance` 返回产品名、版本、提交与接口版本，以及是否开放注册（`signup_enabled`）、是否开放创建工作区（`workspace_creation_enabled`）；`/api/` 下没有的路径返回 404 problem+json。
+`serve` 启动时要连上数据库（最多等 10 秒，连不上就退出），按配置执行迁移（dev、test 默认执行，prod 默认不执行），然后自检数据库的编码与 locale，不满足就拒绝启动并给出建库命令。它还打开附件目录（`storage.dir`，`make run` 时是 `server/_data/`，不进仓库），不可写就拒绝启动，见下文"部署"的附件目录；其他命令不碰它。`GET /healthz` 表示进程存活；`GET /readyz` 在数据库可用、迁移已是最新时返回 200，否则 503。`GET /api/v0/instance` 返回产品名、版本、提交与接口版本，以及是否开放注册（`signup_enabled`）、是否开放创建工作区（`workspace_creation_enabled`），单个附件、导入包的上限（`asset_max_bytes`、`import_max_bytes`）与导出保留多久（`export_ttl_seconds`）；`/api/` 下没有的路径返回 404 problem+json。
 
 其他命令在 `server/` 下用 `go run ./cmd/nervewiki <命令>` 执行：
 
@@ -100,7 +100,7 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
 
   账户不存在、已停用，slug 已被占用或不合规则，工作区不存在，或者他从来不是这个工作区的成员时，退出码 1，数据库不变。恢复不限于停用结束的成员关系：被移出、离开的也可以恢复，看输出的结束时刻确认恢复的是哪一次。成员关系已是有效的，什么也不做（`… is already a member of …`）。
 
-- **签名私钥**：`auth.jwt.private_key_file`，PKCS#8 PEM 的 Ed25519 私钥，用 `openssl genpkey -algorithm ed25519 -out jwt.pem` 生成。prod 必须提供，缺了拒绝启动；dev、test 不提供时每次启动生成临时密钥，重启后已签发的令牌与邀请链接全部失效。刷新令牌与邀请令牌的 MAC 密钥都由它派生（HKDF，各用各的 info）：换私钥之后，待接受的邀请链接全部失效，要重新邀请。日志只记是否设置，不记路径。
+- **签名私钥**：`auth.jwt.private_key_file`，PKCS#8 PEM 的 Ed25519 私钥，用 `openssl genpkey -algorithm ed25519 -out jwt.pem` 生成。prod 必须提供，缺了拒绝启动；dev、test 不提供时每次启动生成临时密钥，重启后已签发的令牌与邀请链接全部失效。刷新令牌与邀请令牌的 MAC 密钥都由它派生（HKDF，各用各的 info）：换私钥之后，待接受的邀请链接全部失效，要重新邀请。附件与导出的签名地址的密钥同样由它派生：换私钥之后，已签出的地址全部失效（打开着的页面重读时拿到新的）；要立刻收回已签出的地址时就这样做（见"附件"的"签名地址"）。日志只记是否设置，不记路径。
 - **反向代理**：`server.trusted_proxies` 列出代理的 CIDR（环境变量用逗号分隔，例如 `NWIKI_SERVER__TRUSTED_PROXIES=10.0.0.0/8`）。只有来自它们的 `X-Forwarded-For` 被采信，代理写入的必须是不带端口的 IP；会话记录的就是这样认出的客户端 IP。配置不对时服务各告警一次。
 - 非 prod 的服务监听在回环地址之外时，启动时告警：这多半是忘了设 `NWIKI_ENV=prod` 的部署，注册开放、签名密钥是临时的。
 
@@ -120,7 +120,7 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
 - **名称**：与页面标题同一规则（`shared.CheckTitle`）：去掉首尾空白、NFC 规范化之后 1–255 字节，不含 `/ \ : * ? " < > | # ^ [ ]` 与控制字符，不以 `.` 开头或结尾，不是 Windows 保留名；不要求唯一。不合规则是 `name` 的字段错误（422）。
 - **成员**：笔记本的管理员从工作区的有效成员中添加成员（访客也可以）、改角色、移出，不能改或移出自己（409 `notebook.own_membership`）；添加不是工作区有效成员的人是 `user_id: not_allowed`，已是成员的是 `user_id: duplicate`，成员关系已结束的（离开、被移出，或随工作区的成员关系结束）恢复原来那一行，取这次给的角色，保留第一次加入的时刻。成员可以离开，唯一的管理员不能，哪怕只有他一人（409 `notebook.sole_admin`）：先让别人成为管理员，或者删除笔记本。改名、改开放程度（`PATCH /api/v0/notebooks/{notebook_id}`）与删除（`DELETE` 同一地址）也只有笔记本的管理员能做，编辑者、阅读者答 403 `forbidden`；删除是软删除，连同它的成员行与页面，页面的编辑会话随之删除。
 - **离开工作区、停用与移出**：离开工作区或停用账户（自助与 `users deactivate`）时，他是某个还有别的有效显式成员的笔记本唯一的管理员，就被拒（409 `notebook.sole_admin`）；原因只给这些笔记本所在工作区的 slug 与数量（`… (1 in acme)`），不给名称。只靠 `workspace_access` 使用它的人不算别的成员。工作区自己的规则（`workspace.sole_admin`）先判断。成员关系结束时，他的笔记本成员关系一并结束；他是唯一管理员的笔记本成为**无主**：剩下的成员与按开放程度看得到它的人照常使用，只是没有人能管理它的设置与成员。工作区管理员移出成员不被拒，他独自管理的笔记本同样成为无主。
-- **无主笔记本**：只有工作区的管理员看得到、处理得了：`GET /api/v0/workspaces/{slug}/ownerless-notebooks` 列出（原所有者、成为无主的时刻、最后活动与大小：笔记本自己最后一次修改与它的页面最后一次写入（新建、改名、移动、删除、写正文）中较晚的时刻，没删除的页面正文的总字节数），`POST /api/v0/ownerless-notebooks/{notebook_id}/take-over` 接管（成为它的管理员，开放程度不变），`DELETE /api/v0/ownerless-notebooks/{notebook_id}` 删除。工作区的成员与访客读清单答 403；按 id 的两个操作对管理员之外的任何人答 404 `notebook.not_found`，与不存在、不是无主的相同。原所有者经接受邀请或 `workspaces reactivate-member` 回到工作区时，他名下还没被接管或删除的无主笔记本归还给他，以访客身份回来也一样。页面上是工作区设置的"无主笔记本"一页，管理员的首页另有提醒。
+- **无主笔记本**：只有工作区的管理员看得到、处理得了：`GET /api/v0/workspaces/{slug}/ownerless-notebooks` 列出（原所有者、成为无主的时刻、最后活动与大小：笔记本自己最后一次修改与它的页面最后一次写入（新建、改名、移动、删除、写正文）中较晚的时刻，没删除的页面正文与附件的总字节数），`POST /api/v0/ownerless-notebooks/{notebook_id}/take-over` 接管（成为它的管理员，开放程度不变），`DELETE /api/v0/ownerless-notebooks/{notebook_id}` 删除。工作区的成员与访客读清单答 403；按 id 的两个操作对管理员之外的任何人答 404 `notebook.not_found`，与不存在、不是无主的相同。原所有者经接受邀请或 `workspaces reactivate-member` 回到工作区时，他名下还没被接管或删除的无主笔记本归还给他，以访客身份回来也一样。页面上是工作区设置的"无主笔记本"一页，管理员的首页另有提醒。
 - **审计记录**：接管、删除、归还三种，记执行者、时刻、笔记本名称的快照与原所有者：`GET /api/v0/workspaces/{slug}/notebook-audit-events?limit=&cursor=`，只给工作区的管理员，新的在前。`limit` 1–100、默认 50；下一页用答复的 `next_cursor`，最后一页它是 `null`；读不出的游标（不是服务器写出的拼法；游标不签名，不防改写）答 400 `bad_request`，先于其余判断。审计记录比笔记本活得久，随工作区删除与清理。
 
 ### 页面
@@ -133,7 +133,7 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
   - **强制解锁**：笔记本的管理员 `DELETE /api/v0/pages/{page_id}/edit-lock` 结束持锁的会话（没人持锁也答 204）；那个会话再心跳或保存答 409 `page.edit_session_unlocked`，`ended_by` 成员给出解除者。
   - **读锁**：能读这一页的人 `GET /api/v0/pages/{page_id}/edit-lock`，答复 `{holder, expires_in}`：持锁人与租约剩余的秒数（向上取整），没人持锁时两者都是 `null`。
   - 会话过期，或不是写的人在这一页、用同一种客户端（网页，或任一令牌）开的，写答 409 `page.edit_session_ended`，心跳与结束答 404 `page.edit_session_not_found`，编辑器重开一个。被接管、被解锁的会话至少保留一个租约，让原来的标签页得知原因（这期间心跳与保存答原因，结束答 204；会话的主人不再能编辑这个笔记本时，心跳照常答 404 或 403），之后与过期的会话一起删除：这一页下一次开启或强制解锁时，或后台任务每 `page.edit_session_cleanup_interval`（默认 10 分钟）一次；删页、删子树、删笔记本时它们的会话一并删除。
-- **阅读视图**：`GET /api/v0/pages/{page_id}/view` 给出渲染好的 HTML 与它所依据的 `revision`：CommonMark 加 GFM（表格、任务项、删除线、自动链接）与脚注，frontmatter 的属性在最前面显示成表格；段落里的单个换行显示为换行（`<br>`），与 Obsidian 关闭"严格换行"（它的默认）时相同；正文里的 HTML 只留排版用的标签与属性，地址只留本站、http(s) 与 mailto，图片不加载、显示为链接。Obsidian 的写法（规则与样例见下文"Markdown 样例集"）：标签是 `<a class="nw-tag" data-nw-tag>`；callout 是带 `data-callout` 的 `<div>`，可折叠的是 `<details>`；`==高亮==` 是 `<mark>`；`%%注释%%` 不输出；公式 `$…$`、`$$…$$` 输出原文，包在 `nw-math`（块的另加 `nw-math-block`）里，由网页用 KaTeX 排版；`mermaid` 代码块由网页画图；嵌入（`![[…]]`）照链接显示（附件在 M7）；`[文字](#标题)` 指向本页的标题 id。表格、块公式与属性表包一层 `nw-scroll`，宽的时候自己横向滚动。任务项的复选框都是 `disabled`，`data-task` 是方括号里那个字符在正文里的字节位置。指向笔记本里的页的链接（wikilink、嵌入，以及 Markdown 链接与图片里不是外部地址的）不带地址，由网页给出：解析到的带 `data-nw-node`（那一页的 id）与 `data-nw-anchor`（锚点按标题 id 的规则算出，指向同名标题里的第一个），解析不到的带 `class="nw-unresolved"` 与 `data-nw-target`。链接的状态读自链接索引；索引不是这一版本的（`reindex` 之前，或读的期间有写）时当场解析（见下文"链接索引"）。
+- **阅读视图**：`GET /api/v0/pages/{page_id}/view` 给出渲染好的 HTML 与它所依据的 `revision`：CommonMark 加 GFM（表格、任务项、删除线、自动链接）与脚注，frontmatter 的属性在最前面显示成表格；段落里的单个换行显示为换行（`<br>`），与 Obsidian 关闭"严格换行"（它的默认）时相同；正文里的 HTML 只留排版用的标签与属性，地址只留本站、http(s) 与 mailto，图片不加载、显示为链接。Obsidian 的写法（规则与样例见下文"Markdown 样例集"）：标签是 `<a class="nw-tag" data-nw-tag>`；callout 是带 `data-callout` 的 `<div>`，可折叠的是 `<details>`；`==高亮==` 是 `<mark>`；`%%注释%%` 不输出；公式 `$…$`、`$$…$$` 输出原文，包在 `nw-math`（块的另加 `nw-math-block`）里，由网页用 KaTeX 排版；`mermaid` 代码块由网页画图；嵌入（`![[…]]`）指向页面的照链接显示，指向附件的见下文"附件"；`[文字](#标题)` 指向本页的标题 id。表格、块公式与属性表包一层 `nw-scroll`，宽的时候自己横向滚动。任务项的复选框都是 `disabled`，`data-task` 是方括号里那个字符在正文里的字节位置。指向笔记本里的页的链接（wikilink、嵌入，以及 Markdown 链接与图片里不是外部地址的）不带地址，由网页给出：解析到的带 `data-nw-node`（那一页的 id）与 `data-nw-anchor`（锚点按标题 id 的规则算出，指向同名标题里的第一个），解析不到的带 `class="nw-unresolved"` 与 `data-nw-target`。链接的状态读自链接索引；索引不是这一版本的（`reindex` 之前，或读的期间有写）时当场解析（见下文"链接索引"）。
 - **勾选任务项**：`POST /api/v0/pages/{page_id}/toggle-task`，`{base_revision, offset, checked}`：把位置 `offset` 上的那个字节换成 `x` 或空格，其余字节不变，答这一页；权限与写正文相同，有人持锁时同样答 409 `page.locked`。`base_revision` 不是当前版本答 409 `page.revision_mismatch`（位置只在它所依据的版本里有意义，先于 422）；`offset` 上不是任务项答 422（`offset`，`out_of_range`），勾了会让那里不再有任务项（例如 `- [ ]: /u` 勾上之后成了链接引用定义）答 422（`offset`，`not_allowed`）；已经是那个状态的什么也不写，有人持锁时也答 200。
 - **解析预算**：服务端同时解析的正文字节数有上限（`page.parse_budget_bytes`，默认 8 MiB，每次至少记 4 KiB），取不到额度的请求最多等 `page.parse_max_wait`（默认 2 秒），然后答 503 `server_busy`（带 `Retry-After`）；写正文、新建带正文的页与阅读视图都经它。最坏的正文解析时约占它字节数 300 倍的内存（默认预算约 2.4 GB），普通的约 40 倍：内存小的机器调小预算（不能小于 5 MiB），并设置 `GOMEMLIMIT`。
 
@@ -144,11 +144,14 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
 - **读**：`GET /api/v0/assets/{node_id}` 读一个，`GET /api/v0/notebooks/{notebook_id}/assets`（`parent_id` 可选）按名称分页列出一页下或根下的附件，能读这本笔记本的人都可以。答复的 `content_url` 与 `download_url` 是签名的地址，不带令牌也能打开，1 到 2 小时内有效（`expires_at`，同一小时签出的地址相同）；改动任何参数、过期、附件已删除都答 404。
 - **内容**：图片、音频、视频与 PDF 在浏览器里显示（`inline`），其余（包括 HTML）一律以 `application/octet-stream` 下载，`download_url` 总是下载。每个答复都带 `Content-Security-Policy: sandbox; …`：SVG 里的脚本不执行，也不向别的站请求；私有缓存到地址过期，`ETag` 是 SHA-256，支持 `Range` 与条件请求。PDF 在 Chromium 的内置阅读器里照常显示（其他浏览器未实测；显示不了时用 `download_url` 下载）。下载按客户端 IP 限速（`ratelimit.asset_content`），不占匿名请求的桶。
 - 删除附件、它的上级页或笔记本时，它的行一起软删除；保留期过后清理任务先删文件、再删行。没有行的文件（例如上传中途失败留下的）一天之后由每天的清扫删掉。笔记本的活动（无主笔记本列表的大小与最后活动）算上附件。
+- **在正文里**：链接与嵌入按名称解析到附件（规则见下文"链接索引"）。阅读视图里，嵌入的图片是 `<img>`，音频与视频带播放控件（一个视图至多 20 个，之后写成附件的链接），其余类型与指向附件的链接是附件的链接，网页在新标签页打开并显示大小；嵌入的显示写成 `300` 或 `300x200` 时是尺寸，其余是说明。一个视图至多写 2000 个附件的地址，之后的显示为文字。属性链接指向附件时，右栏给出它的地址。改名、移动附件时，指向它的链接照页面的规则改写。
+- **签名地址**：签名只在核对过读权限之后发出，至多两小时有效：失去访问之后，已经拿到的地址到期之前仍能读，要立刻收回就换签名私钥（见"账户与认证"，所有地址一起失效）。地址会进反向代理的访问日志（它是"秘密不进地址"的例外），访问日志要照敏感数据保管。
 
 ### 链接索引
 
 - **索引**：每一页正文里的链接（wikilink、嵌入、Markdown 链接与图片，以及 frontmatter 里的属性链接）、标签、属性与别名，和每条链接解析到的页，随每次写入在同一个事务里更新：新建、改名、移动、删除（连同子页）、写正文、勾选任务项，删除笔记本时一并删除。同一笔记本的索引维护一个接一个进行（索引自己按笔记本的锁），所以同一笔记本的保存在提交处排队。
 - **解析**：链接按目标最后一段的标题键找页。以 `.md` 结尾（不分大小写）的，笔记本里有去掉 `.md` 的那个名称的页时就是去掉 `.md` 的，没有时才是标题以 `.md` 结尾的页。`./`、`../` 开头的从出发页所在的文件夹（它的父页）算起；`/` 开头的从根算起；否则先找从根起路径恰好如此的页，再找路径以这几段结尾的页（出发文件夹的子树里的优先，文件夹自己的页也算，再按路径短的，即导出路径的字符数，再按 id，最后这一步时算有歧义）；只有一段的名称最后才找别名。规则与样例在 `tools/md-fixtures/resolve/`，与 Obsidian 1.12.7 核对过；不同的有：别名（Obsidian 不按别名解析），标题键用 Unicode 的大小写折叠（Obsidian 用 `toLowerCase`，`ß` 与 `ss` 它不当作一样），路径一样长时按 id 选（Obsidian 没有稳定的次序），以及三处 Obsidian 按字符串比较路径的地方（这里按整段）。
+- **附件**：笔记本里有名称等于目标最后一段的附件时，这条链接只读作附件（按附件的次序找，找不到即解析不到）；名叫 `x.png` 的页面写作 `x.png.md`；没有扩展名的附件没有链接的写法。索引记下解析到附件的链接（`page_links.resolved_asset`）。规则与样例在 `tools/md-fixtures/resolve/` 016–027。
 - **别名与标签**照 Obsidian 的读法：第一个名为 `aliases`、`tags` 的键（ASCII 字母不分大小写），字符串是一个（不按逗号拆开），列表取其中的字符串，去掉首尾空白，空的不算；`alias`、`tag` 不读。标签（frontmatter 的去掉开头的一个 `#`）是 Obsidian 的标签面板计入的：去掉结尾的一个 `/`，不含空白、ASCII 标点（`-`、`_`、`/` 除外）与 U+2000–U+206F、U+2E00–U+2E7F 两段标点，不全是 ASCII 数字。
 - 正文里经 `%00` 或 YAML 的转义写出的 U+0000 在索引里记作 U+FFFD；目标、别名、标签的标题键长于 1024 字节（任何标题的键都到不了）时，这条链接解析不到，这个别名、标签不记。
 - **改名与移动改写链接**：改名、移动一页（连同子页）时，指向它们的链接，以及被移动的页里的相对链接，不再解析到原来的页的，改写成解析到它的写法（名称在笔记本里只有这一页时写名称，否则从根起的完整路径），锚点不动，显示文字与链接文字照 Obsidian 的规则跟着改（[M6/P4 文档](docs/v0.1/M6-links/04-P4-rewrite.md)）；改写是同一个变更集里的正文写，作者是改名、移动的人。改写所需的页有人持锁（包括本人在编辑）时，整个改名、移动答 409 `linking.pages_locked`，problem 的 `locks` 成员列出每一页与持锁人（`page_id`、`user_id`、`display_name`）；改写要的解析预算取不到时立即答 503 `server_busy`。改写之后会超过 5 MiB 的页、读回的链接不对（依次退回更保守的写法之后仍不对）的页不改，写一条日志，改名、移动照常。
@@ -156,11 +159,18 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
   - `GET /api/v0/pages/{page_id}/backlinks?limit=&cursor=`：链接到这一页的页，按出发页的 id 分页；每页给出链接数（至多数到 1000）与前 10 条链接所在的行（长于 240 字节的截取，截掉的一端加 `…`）；
   - `GET /api/v0/pages/{page_id}/properties`：frontmatter 是否合法、各属性的值，以及属性链接解析到的页；
   - `GET /api/v0/notebooks/{notebook_id}/tags`：笔记本的标签与带它的页数；`GET /api/v0/notebooks/{notebook_id}/tags/{tag}`：带这个标签或它下面的标签的页（标签整个编码成一段）；
-  - `GET /api/v0/notebooks/{notebook_id}/link-targets`：笔记本的每一页、它的 `link`（链接写成什么才只解析到它）与别名，编辑器的补全用它；
-  - `GET /api/v0/pages/{page_id}/link-landing?target=`：只给笔记本的管理员与编辑者，为这一页里一条解析不到的链接新建页时，新页该建在哪个父页下、叫什么，或者已有的页，或者为什么不能建（`reason`）。
+  - `GET /api/v0/notebooks/{notebook_id}/link-targets`：笔记本的每一页与附件（`kind`）、它的 `link`（链接写成什么才只解析到它；没有扩展名的附件为 `null`）与别名，编辑器的补全用它；
+  - `GET /api/v0/pages/{page_id}/link-landing?target=`：只给笔记本的管理员与编辑者，为这一页里一条解析不到的链接新建页时，新页该建在哪个父页下、叫什么，或者已有的页，或者为什么不能建（`reason`；目标是附件的写法时是 `target_is_asset`）。
 - **`nervewiki reindex [--notebook <id>]`**：从页面重建链接索引，不给 `--notebook` 时逐个重建每个没删除的笔记本，每个一行（页数、链接数、解析不到的数）。升级到带链接索引的版本（M6）之后、或发布说明要求时（提取规则的版本 `indexed_pages.extractor` 变了）执行一次。
   - 每个笔记本一个事务：重建期间这个笔记本的写入在等待；页数上万的笔记本要十几秒，等不到的保存答 500。所以在没人写的时候执行，最好在 `migrate up` 之后、启动服务之前。
   - 它同时按当前的 Unicode 数据重算标题键：同一父页下有两页会撞键时，这个笔记本不重建、什么也不改，标准错误上列出这些页的标题与 id；改掉其中一个标题之后再执行。别的原因重建失败的笔记本同样原样保留，连同原因列在标准错误上。其余笔记本照常，命令最后以退出码 1 结束。
+
+### 导入与导出
+
+- **导出**（`POST /api/v0/notebooks/{notebook_id}/exports`，可带 `root_id` 只导出一页及其子页）：能读这本笔记本的人都能导出。后台任务在一个快照里把页面写成 `.md`、附件写成原来的文件，按 Obsidian 库的布局打成 zip（有子页的页是同名的文件夹；`.nerve/meta.json` 记着次序），报告列出改了名的与找不到文件的附件。成功之后经签名地址下载（`GET /api/v0/transfer-jobs/{job_id}/download`），保留 `transfer.export_ttl`（默认 24 小时）；每人每本笔记本只留最新的一份，同时只有一个在进行（409 `transfer.busy`）。导出贡献者（之后的 M 注册）加的文件也进 zip，记在 `meta.json` 的 `contributed`，导入时不导入。
+- **导入**（`POST /api/v0/notebooks/{notebook_id}/imports`，`multipart/form-data`：可选的 `parent_id`，然后是 `file`）：笔记本的编辑者与管理员把一个 zip（Obsidian 的库、本系统的导出，或任何 Markdown 文件夹）导入到根或一页之下。`.md` 是页面，文件夹是同名页面的子页面，其余文件是附件；隐藏的文件与文件夹（如 `.obsidian`）、`__MACOSX`、`Thumbs.db` 不导入；不能作为标题的名称修正、已占用的加序号，不能安全导入的条目（越出目录、符号链接、加密、压缩比过大、名称不是 UTF-8、过深、过大等）跳过，报告逐条列出。zip 至多 `transfer.import_max_bytes`（默认 512 MiB）、`import_max_entries` 个条目、解压后 `import_max_unpacked_bytes`，超过的整包失败、什么都不写。一本笔记本同时只有一个导入（上传中的也算，第二个在读文件之前答 409 `transfer.busy`）。导入分批写进笔记本（一批至多 100 个节点），整个导入是一个变更集；中途失败、取消或服务重启时，已写的部分留在笔记本里，报告写明。
+- **任务**：`GET /api/v0/notebooks/{notebook_id}/transfer-jobs` 按游标列出（自己的；笔记本的管理员看到所有人的），`GET /api/v0/transfer-jobs/{job_id}` 读一个与它的报告，`POST /api/v0/transfer-jobs/{job_id}/cancel` 取消（排队的立即取消，运行中的导出在一秒之内、导入在两批之间停下）。全部排队与运行中的任务至多 `transfer.max_queued`（默认 20），超出答 503 `server_busy`；一个任务至多运行 `transfer.job_timeout`（默认 6 小时）。不自动重试：失败的说明原因，重新开始即可。
+- **后台任务**：每 5 分钟把心跳停了超过 `transfer.heartbeat_timeout` 的任务记成失败（服务启动时也做一次），每 15 分钟让到期的导出过期并删掉 zip，每天清扫存储里不属于任何任务的 zip。导出与导入在各自的队列里运行，`jobs.export_workers` 与 `jobs.import_workers` 合起来至多 `database.max_conns` 的一半（默认各 1，所以 `max_conns` 至少 4；更小的配置启动失败）。
 
 ### 事件流
 
@@ -229,6 +239,8 @@ make build     # 构建前端并内嵌进 bin/nervewiki
 - **页面**：笔记本的左栏是它的页面树：展开与折叠，拖拽改变位置（或用"移动到…"对话框，键盘可用），新建子页、改名、删除在每一项的菜单里；`Ctrl+O`（macOS 上 `Cmd+O`）快速切换页面。`/:slug/notebooks/:id/pages/:pageId` 是页面：面包屑、标题、阅读视图与子页面列表；阅读视图里代码块的高亮在 Worker 里做，超时就不着色；能写的人在阅读视图里勾选、取消任务项（复选框以它那一项的文字为名称，空格键也可以）。页面树、阅读视图与编辑锁随事件流实时更新：一个浏览器一条流，由一个标签页持有、转给同一登录的别的标签页；别人连续保存时一页的阅读视图至多 5 秒重读一次，隐藏的标签页在重新可见时重读；每次连上都整体刷新。别的标签页或别人删掉的页显示 404，本标签页删掉的去它的父页；正在编辑而有未保存的修改时页面留在原处，直到离开：页面、笔记本、工作区被删（之后又有同名的新工作区也一样），或被移出笔记本、工作区，都一样。
 - **编辑**：写者点"编辑"或按 `Ctrl+E`（`Cmd+E`）先拿这一页的编辑锁，在原处换成源码编辑器（CodeMirror，第一次编辑时才下载）。别人正在编辑时页面写着"某某正在编辑这一页"，不能编辑；自己在别处编辑时可以"在这里编辑"接管；笔记本的管理员可以"解除锁定"。停顿约 2 秒自动保存，30 分钟没有输入就保存并退出编辑，关闭标签页时释放锁（释放没发出去时由租约兜底，至多 2 分钟）；编辑中失去锁（被接管、被解除，或过期之后被别人拿到）时编辑器只读，上方说明原因，"回到阅读"离开。`Ctrl+S` 保存，`Ctrl+E` 或"完成"保存之后回到阅读视图；保存的是编辑器里的文字加上原来的换行写法与 BOM，输入法组合中按的保存等组合结束再做。有未保存的修改时去别的页先确认，关标签页由浏览器提醒；退出登录（在哪个标签页都一样）先保存同一登录各标签页未保存的修改、结束它们的编辑，至多等 2 秒再登出。保存时这一页已被别人改过，编辑器上方显示差异，"保留我的"覆盖、"放弃我的"载入现在的正文。编辑模式不进地址：刷新回到阅读视图。
 - **链接与右栏**：阅读视图里指向页的链接经路由在应用内打开（带修饰键或中键时由浏览器在新标签页打开），带锚点的去那个标题；解析不到的链接，写者点了先确认、再按服务端给的落点新建并打开，读者只看到"页面不存在"的说明。标签去 `/:slug/notebooks/:id/tags/:tag`，列出带它（及其下的标签）的页。公式（KaTeX）与图（mermaid）在第一次用到时才下载，各有上限：定义宏的公式、太深太大的公式与图显示原文。编辑器里 `[[` 补全页面的标题与别名，`#` 补全标签，输入法组合中不弹出。页面旁边是右栏（宽屏在右侧，窄屏在正文之后）：大纲（阅读时，至多前 1,000 个标题）、反链（"更多反向链接"一页页往下读）、属性（属性链接去那一页），随事件流实时更新。
+- **附件**：页面的中栏与笔记本首页有附件一节：列出一页下（首页是根下）的附件，上传（选文件或拖进来，有进度、可以取消，一次多个）、改名、删除、下载；文件夹与 `.md` 不上传，提示打成 zip 导入。编辑器里粘贴、拖入的文件上传到这一页下，在光标处插入 `![[名称]]`；"完成"等上传与输入法组合结束再离开。阅读视图里的附件在签名地址到期之前重读，正在播放的音视频换地址时不中断。
+- **导入与导出**：笔记本设置的"导入与导出"一页：导入 zip（选位置，上传有进度、可以停止；上传期间关闭对话框、离开这一页或关闭标签页先问），导出整本笔记本，页面菜单的"导出此页"导出一页及其子页；下面是任务列表（进度、取消、报告、下载），有任务在进行时每秒刷新。
 - **邀请页** `/invitations/:id`：在守卫之外，令牌只在地址的片段里，不进 `next`，请求都把它放在请求体里。未登录时先看预览，在页内登录，或带着邀请注册（注册关闭时只有受邀的邮箱能注册）；会话变了页面仍停在原地址，登录之后接受，进入工作区（没完成引导的先走引导）。登录的邮箱不是受邀的，页面说明原因，可以在页内退出换账户。
 - **请求的错误**：problem 码与字段码到文案的映射在 `src/app/problem-messages.ts`；vitest 读 `api/dist/openapi.yaml`，契约中任何一个操作列出的码没有文案时失败（只有页面不显示其错误的续期与退出除外）。
 - **表单**：`src/app/form.ts` 的 `useForm` 是所有表单的发送：本地检查不通过就不发；服务端的字段错误在字段下方（个别 problem 码也可以指定字段，例如当前密码不对），其余在表单上方；发送中按钮禁用；失败之后焦点移到第一个有错误的字段。同一个 problem 码在个别页面要换一种说法时，页面把 `texts`（码到文案键）交给 `useForm`、`ConfirmDialog` 或 `CredentialsForm`，例如邀请页的注册被拒。
@@ -317,9 +329,9 @@ make image-smoke VERSION=0.1.0   # 在镜像上跑 S1、S3：迁移、探针、�
 
 - 数据库必须以 builtin provider 的 `C.UTF-8` 初始化，否则服务拒绝启动，见[总体设计](docs/v0.1/v0.1-design.md) 7.1。
 - 探针：存活用 `GET /healthz`（不访问任何依赖），就绪用 `GET /readyz`（数据库可用、迁移已执行完）。镜像里没有 shell 与 curl，所以没有写 `HEALTHCHECK`，由编排系统探测。
-- 后台任务（River：每小时一次的过期会话清理 `auth.session_cleanup_interval`，每小时一次的软删除清理 `jobs.purge_interval`，每 10 分钟一次的过期编辑会话清理 `page.edit_session_cleanup_interval`，每天一次的附件目录清扫）随 `serve` 运行，表在同一条迁移链上。关闭自动迁移时，服务在迁移执行完之前不启动后台任务，迁移之后自动启动，不必重启。River 从连接池里借走一个连接专门监听通知，事件流也借走一个（`LISTEN nwiki_events`，断开后自动重连），数据库要为每个实例多留两个连接（`database.max_conns` + 2）。
+- 后台任务（River：每小时一次的过期会话清理 `auth.session_cleanup_interval`，每小时一次的软删除清理 `jobs.purge_interval`，每 10 分钟一次的过期编辑会话清理 `page.edit_session_cleanup_interval`，每天一次的附件目录清扫，导入导出的收拾、到期与清扫（见上文"导入与导出"））随 `serve` 运行，表在同一条迁移链上。关闭自动迁移时，服务在迁移执行完之前不启动后台任务，迁移之后自动启动，不必重启。River 从连接池里借走一个连接专门监听通知，事件流也借走一个（`LISTEN nwiki_events`，断开后自动重连），数据库要为每个实例多留两个连接（`database.max_conns` + 2）。运行中的导出与导入各占一个连接，所以它们的 worker 合起来至多 `database.max_conns` 的一半。
 - 停止时发 SIGTERM：服务停止接收新连接，关闭开着的事件流，等正在处理的请求结束（最多 `server.shutdown_timeout`，默认 20 秒），关闭接收通知的连接（最多 2 秒），再等正在执行的后台任务（最多 `jobs.shutdown_timeout`，默认 10 秒，之后取消它们，再宽限 1 秒），最后关闭连接池（最多 5 秒）后退出。停机的宽限期要比这些之和长：`docker stop` 默认只等 10 秒，用 `docker stop -t 40`。启动之后不久就停止时（重启循环、端到端测试），River 通常记一条 ERROR `maintenance.PeriodicJobEnqueuer: Error starting transaction`（`context canceled`，它启动时的定时任务入队被停机打断），退出码仍是 0；运行了一段时间的服务停止时一般没有。
 
 ## Markdown 样例集
 
-`tools/md-fixtures/` 定义了 Markdown 的提取、渲染与改写规则，是服务端实现的验收标准。样例的输入逐字节有意义（CRLF、BOM、行尾空白），`.gitattributes` 与 `.editorconfig` 已经禁止工具改动它们。修改规则前先读它的 [README](tools/md-fixtures/README.md)。`cases/` 是提取与渲染的样例，`resolve/` 是解析，`rename/` 是改名、移动时的改写，`render/` 是阅读视图里块与换行的显示；`node tools/md-fixtures/check.mjs` 自检样例，`obsidian/` 下的四个脚本在隔离的数据目录里启动 Obsidian 核对（不碰本机已有的库）。
+`tools/md-fixtures/` 定义了 Markdown 的提取、渲染与改写规则，是服务端实现的验收标准。样例的输入逐字节有意义（CRLF、BOM、行尾空白），`.gitattributes` 与 `.editorconfig` 已经禁止工具改动它们。修改规则前先读它的 [README](tools/md-fixtures/README.md)。`cases/` 是提取与渲染的样例，`resolve/` 是解析，`rename/` 是改名、移动时的改写，`render/` 是阅读视图里块与换行的显示；`node tools/md-fixtures/check.mjs` 自检样例，`obsidian/` 下的五个脚本（解析、改名、渲染、导出的库各一个，加上共用的 `verify.mjs`）在隔离的数据目录里启动 Obsidian 核对（不碰本机已有的库）。

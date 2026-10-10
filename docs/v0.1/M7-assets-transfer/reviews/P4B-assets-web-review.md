@@ -45,7 +45,7 @@
   - 重签被拒之后的恢复（修复核对 4 需核实 2、修复核对 5 的低）：Firefox、Safari 的原生控件在出错时多半不重新加载，重签被拒而视图没过期时（断网、503），元素坏到下一次替换；Chromium 的控件重试先重新加载，丢掉失败时的位置。改法：被拒时记下失败时的位置，下一次重签与出错分支用它；`online` 时、或隔一段时间再签一次。
 - 已知的限制：替换时原生全屏退出（B ML1 的后一半；Fullscreen 规范的 removing steps）。
 - A L2：附件一节按 MIME 前缀判断是否内联（`lib/asset-kind.ts` 的 `opensInline`），阅读视图与右栏跟服务端（`download`、`inline`）：P4A 移交给 B 的第 3 项原意是两者用同一个 `lib/asset-kind.ts`，B 改成以服务端为准。今天两者等价（`TypeOf` 存下的 MIME 只会是显示的类型或 `application/octet-stream`，契约的 `Asset.mime` 写明）；移交 P5、P6：导入写附件时同样经 `TypeOf`，否则 `Asset` 加 `inline`。
-- 待人工确认（真实的浏览器，并入负责人的清单）：Firefox 与 Safari 在 CSP `sandbox` 下能否在新标签页显示 PDF，`download` 不受影响（A V1）；Safari 在 `HAVE_NOTHING` 时给 `currentTime` 赋值（B V1）；出错之后 `paused` 的取值（B V2）；Firefox、Safari 移出又放回时的暂停、全屏与焦点（B V3）；`user-select: none` 能否把提示排除在复制之外（B V4）；Chromium 里先展开再给焦点，折叠 callout 里的媒体拿得到焦点；WebKit 播放中失败、或按了播放在元数据之前失败之后 `paused` 是否仍为 false；Gecko、WebKit 网络或解码错误之后 `currentTime` 是否归 0；Safari 同一元素换地址之后，隐藏的标签页或锁屏下 `play()` 是否仍被允许；Chromium 的控件在出错时按播放是否先重新加载；Safari 的媒体键对出错的元素 `play()` 时是否清 `error`、原生控件出错时有没有播放按钮。
+- 待人工确认（真实的浏览器；没有并入输入法清单，归 [M12 的打磨](../../M12-release/handoffs/M5-polish.md)第 17 项，M7 收尾审查 C-M7）：Firefox 与 Safari 在 CSP `sandbox` 下能否在新标签页显示 PDF，`download` 不受影响（A V1）；Safari 在 `HAVE_NOTHING` 时给 `currentTime` 赋值（B V1）；出错之后 `paused` 的取值（B V2）；Firefox、Safari 移出又放回时的暂停、全屏与焦点（B V3）；`user-select: none` 能否把提示排除在复制之外（B V4）；Chromium 里先展开再给焦点，折叠 callout 里的媒体拿得到焦点；WebKit 播放中失败、或按了播放在元数据之前失败之后 `paused` 是否仍为 false；Gecko、WebKit 网络或解码错误之后 `currentTime` 是否归 0；Safari 同一元素换地址之后，隐藏的标签页或锁屏下 `play()` 是否仍被允许；Chromium 的控件在出错时按播放是否先重新加载；Safari 的媒体键对出错的元素 `play()` 时是否清 `error`、原生控件出错时有没有播放按钮。
 
 ## 修复的核对
 

@@ -68,7 +68,7 @@ P5 把一个笔记本或一棵子树导出为 zip。照 P3、P4 的先例分开�
 ### 3.2 平台：任务的队列、超时与只投递的客户端
 
 - **队列**：`jobs.Config.Queues map[string]int`（队列名 → worker 数），与默认队列（2 个，定时任务）一起交给 River；名字是 River 的默认队列时 `New` 失败。组合根（`jobsConfig`）给 `transfer_export: jobs.export_workers`（默认 1）。导出不占定时任务的队列，几个小时的导出也不挡住清理。
-- **超时**：导出的 worker 的 `Timeout()` 是 `transfer.job_timeout`（默认 6 小时）。`jobs.Config.RescueAfter` 是 River 的 `RescueStuckJobsAfter`，组合根给 `transfer.job_timeout + 1 小时`：`MaxAttempts` 为 1 的任务被救援就丢弃，救援要晚于任何 worker 的超时。River 只拿它与自己的默认超时比较，所以这条由组合根算出、由整个程序上的测试钉住（`TestTheExportsHaveTheirQueueAndOutlastRiversRescue`）。附件清扫的 `SweepTimeout` 的注释随之改。
+- **超时**：导出的 worker 的 `Timeout()` 是 `transfer.job_timeout`（默认 6 小时）。`jobs.Config.RescueAfter` 是 River 的 `RescueStuckJobsAfter`，组合根给 `transfer.job_timeout + 1 小时`：`MaxAttempts` 为 1 的任务被救援就丢弃，救援要晚于任何 worker 的超时。River 只拿它与自己的默认超时比较，所以这条由组合根算出、由整个程序上的测试钉住（`TestTheJobsHaveTheirQueuesAndOutlastRiversRescue`（P6A 起的名称））。附件清扫的 `SweepTimeout` 的注释随之改。
 - **启动时的收拾**：`jobs.Job.Start func(ctx) error`，在 `Runner.Start` 里、River 开始取任务之前依次运行；失败时 `Start` 失败（serve 退出，与 River 起不来相同）。`jobs.New` 按任务的次序收集它们。transfer 用它把上一个进程留下的"运行中"的任务记成失败（3.12）。
 - **只投递的客户端**：`jobs.NewInserter(pool, logger)`：不配队列、不启动的 River 客户端。`InsertTx(ctx, tx, args, opts)` 与业务的行同一个事务投递：回滚时任务也不存在；River 在同一个事务里 `NOTIFY`，服务的客户端随即取到。`Unfinished(ctx, kind)` 列出 River 还没结束的这类任务（`available`、`pending`、`retryable`、`running`、`scheduled`，每次 1,000 个、按游标翻页）的参数，给收拾核对排队的行（3.12）。`platform/jobs` 仍只导入 River 与 pgx：事务由调用方经 `postgres.TxFrom` 取出交进来。
 - **组合规则**：`archtest/composition_test.go` 的禁止集加上 `jobs.NewInserter` 与 `transfer.New`（命令行的组合不投递任务，M2/P4 移交第 3 项）；serve 到达它们。
@@ -424,7 +424,7 @@ River 的救援（`job_timeout + 1 小时`）由组合根算出，不是配置�
   - 012 别名 3 条：Obsidian 不按别名解析。
   - 015 Obsidian 不同的写法 3 条：重名取最短路径、后缀匹配、`./`。
   - 026 1 条：`[[y.png]]` 本系统解析到别名为它的页。
-  - 009 兄弟按 id 决胜的样例 Obsidian 一致，可以考虑改判为 `obsidian-verified`。
+  - 009 兄弟按 id 决胜的样例 Obsidian 一致，可以考虑改判为 `obsidian-verified`。M7 收尾时在 `38c3337` 上重跑，结果相同（27 个样例、133 条链接、0 失败，差异同上）；009 仍是 `nerve-defined`：样例的说明记着 Obsidian 在这种情形没有稳定的规则（两次运行选得不同），一致是碰巧。
 - 反向对照：
   - 实施之后 38 个：3 个起初没被抓到或要等测试的总超时，补测之后都被抓到（`edf9466`）。
   - 审查的修复之后 45 个；两轮修复核对之后 16、4 个。

@@ -1,13 +1,13 @@
 ```yaml
 status: open
-from: M7/P5, M7/P6
+from: M7/P5, M7/P6, M7 收尾
 to: M12
 created: 2026-10-09
 ```
 
 # 导入导出的任务：留给 M12 的几处
 
-M7/P5 的导出（[P5 文档](../../M7-assets-transfer/05-P5-export.md)）有几处只做了推理或小规模的实测，或者定下了做法而没有实现，留给 M12 的压测、部署文档与收尾（[P5A 审查](../../M7-assets-transfer/reviews/P5A-export-review.md) A P3-13）。M7/P6 的导入加了第 5 项（[P6 文档](../../M7-assets-transfer/06-P6-import.md)、[P6A 审查](../../M7-assets-transfer/reviews/P6A-import-review.md)）。
+M7/P5 的导出（[P5 文档](../../M7-assets-transfer/05-P5-export.md)）有几处只做了推理或小规模的实测，或者定下了做法而没有实现，留给 M12 的压测、部署文档与收尾（[P5A 审查](../../M7-assets-transfer/reviews/P5A-export-review.md) A P3-13）。M7/P6 的导入加了第 5 项（[P6 文档](../../M7-assets-transfer/06-P6-import.md)、[P6A 审查](../../M7-assets-transfer/reviews/P6A-import-review.md)）。M7 收尾加了第 6 项（附件，[M7 收尾审查](../../M7-assets-transfer/reviews/M7-closeout-review.md) C-I1）。
 
 1. **结束的任务行**：笔记本活着时，结束的任务（成功、失败、取消、过期）的行一直留着；只有笔记本删除之后才随它清理。每天导出一次的读者一年在一本笔记本留下几百行，列表按游标分页，不影响正确性。M12 定一个保留期（例如结束 90 天之后软删除，交给已有的清理器），或写明不清理。
 2. **几个 GB 的导出**：附件复制的速率、正文按 200 页或 16 MiB 一批的内存峰值、写入途中每 64 MiB 重读磁盘余量的开销，都只在小数据上测过。压测一本几个 GB 的笔记本的导出，核对时长在 `transfer.job_timeout` 之内、内存与连接的占用，以及与同时的编辑、上传争用磁盘时 `storage_full` 的表现。
@@ -20,3 +20,9 @@ M7/P5 的导出（[P5 文档](../../M7-assets-transfer/05-P5-export.md)）有几
    - **几个 GB 的导入**：校验时每个文件解压一遍、写入时再读一遍，每批的附件写进存储，每 10,000 个节点 `ANALYZE` 一次，都只在小数据上测过。压测一个几 GB、几万个条目的库，核对时长在 `transfer.job_timeout` 之内、单元持着笔记本行的时长（挡着这本笔记本的保存）与 `ANALYZE` 的时长。
    - **部署文档**：反向代理的请求体上限至少 `transfer.import_max_bytes` 加 64 KiB，超时至少按 `asset.upload_min_rate` 传完它的时长（配置校验至多 3 小时）；正在上传的导入只在进程内计数（v0.1 一个进程，多个实例时要改到数据库）。
    - **名称不是 UTF-8 的条目**：现在跳过并写进报告；按 GBK、CP437 解读（M7 总设计第 2 节）。
+6. **附件**（M7 总设计第 2、7、10 节）：
+   - **总量配额**：只有单个文件与导入包的上限、同时的任务数、磁盘余量的检查（507），没有按工作区或笔记本的总量。定配额，或写明由管理员监控磁盘。
+   - **按凭证的并发上传**：上传走 `authenticated` 的桶，一个凭证同时的上传数只由桶与 `asset.max_bytes / asset.upload_min_rate` 的时长约束（[P2 文档](../../M7-assets-transfer/02-P2-assets-server.md)第 2 节）。负载实测之后再定上限。
+   - **附件很多时节点树的大小**：节点树的读（`GET /notebooks/{id}/nodes`）也带附件节点，前端只列页面；一本笔记本几万个附件时树的读与内存都随之变大。压测时核对，需要时让树的读只带页面、附件一节自己分页读（已经是）。
+   - **从解析不到的附件链接直接上传**：现在点开解析不到的附件链接只说明；像未建的页那样给写者一个上传的入口，留到之后。
+   - **部署文档**：附件目录的卷与属主（65532）、备份只需 `blobs/`、监控磁盘、反向代理的请求体上限至少 `asset.max_bytes` 加 64 KiB 与上传路由不缓冲、签名地址进访问日志（总设计第 10 节）。README 已写了大部分，M12 的部署文档整理时核对。

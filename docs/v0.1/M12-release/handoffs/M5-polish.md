@@ -69,6 +69,7 @@ created: 2026-10-03
 15. **阅读视图里附件的几处**（[M7/P3](../../M7-assets-transfer/03-P3-assets-links.md)第 9.2 节，[P3B 审查](../../M7-assets-transfer/reviews/P3B-render-review.md) C10、B3）：
     - 写下的高度不起作用：CSS 的 `height: auto` 保持图片自己的比例，只写高度的（`|0x200`）、宽高都写的（`|300x200`）加载之后照图片的比例；
     - 折叠的 callout 的标题（`<summary>`）里的音视频控件：点控件也会开合 callout。
+    - 解析不到的、写法是附件的链接（`x.png`）点开之后的说明仍按页面说话（"没有这个名称的页"，嵌入"显示一页"）；服务端的落点答 `target_is_asset` 时才换成附件的说法。按写法一开始就说"没有这个附件"（[P3A 审查](../../M7-assets-transfer/reviews/P3A-assets-links-review.md) C9、C11 的余项，M7 收尾审查 C-Q2）。
 16. **附件一节的几处**（[M7/P4A 审查](../../M7-assets-transfer/reviews/P4A-assets-web-review.md)"接受与推后的"）：
     - 菜单开着时它的行被重读拿走，焦点丢失；
     - Safari 的拖放高亮靠 `dragleave.relatedTarget`，会闪；
