@@ -1,4 +1,6 @@
 import type { ApiClient, TransferJob, TransferJobDetail } from "@nervewiki/api-client";
+import { request } from "node:http";
+
 import { expect } from "@playwright/test";
 
 import { bearer } from "./auth";
@@ -70,6 +72,62 @@ export async function startImport(
     throw new Error("import answered 202 without the job");
   }
   return data;
+}
+
+/**
+ * holdImport begins credential's import into the notebook notebookId and keeps sending its file, slowly, faster than
+ * the lowest rate the server takes, until stopped: the notebook's upload under way, which holds it. It resolves the
+ * status the server answered it, 0 for none; a refusal before the file is read answers at once. The length declared
+ * takes over 15 minutes to send, far longer than a test, and no byte past it is sent: the test stops it, in a finally.
+ */
+export function holdImport(
+  baseURL: string,
+  credential: string,
+  notebookId: string
+): { answered: Promise<number>; stop: () => void } {
+  const boundary = "nervewiki-held-upload";
+  const head = Buffer.from(
+    `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="held.zip"\r\nContent-Type: application/zip\r\n\r\n`
+  );
+  // 256 MiB, under the instance's import_max_bytes, so that the server takes the upload.
+  const declared = head.length + (256 << 20);
+  const held = request(new URL(`/api/v0/notebooks/${notebookId}/imports`, baseURL), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${credential}`,
+      "Content-Type": `multipart/form-data; boundary=${boundary}`,
+      "Content-Length": String(declared),
+    },
+  });
+  let timer: NodeJS.Timeout | undefined;
+  const answered = new Promise<number>((resolve) => {
+    held.on("response", (answer) => {
+      answer.resume();
+      resolve(answer.statusCode ?? 0);
+    });
+    held.on("error", () => resolve(0));
+    held.on("close", () => resolve(0));
+  });
+  held.write(head);
+  let sent = head.length;
+  // 256 KiB a second, four times the lowest rate of the test's configuration.
+  timer = setInterval(() => {
+    const chunk = Math.min(64 << 10, declared - sent);
+    if (chunk <= 0) {
+      clearInterval(timer);
+      return;
+    }
+    held.write(Buffer.alloc(chunk));
+    sent += chunk;
+  }, 250);
+  return {
+    answered,
+    stop: () => {
+      clearInterval(timer);
+      timer = undefined;
+      held.destroy();
+    },
+  };
 }
 
 /** credential's read of the job id, as the API answers it. */

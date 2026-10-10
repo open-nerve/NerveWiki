@@ -292,7 +292,7 @@ test("a page's file, or a file larger than the server takes, is not sent: it say
   await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
   // Nothing goes: nothing is said to.
   expect(notice(section)).toBe("");
-  await within(uploads).findByText("A Markdown file is a page: import it instead.");
+  await within(uploads).findByText("A Markdown file is a page: zip it and import it from the notebook's settings.");
   await within(uploads).findByText("The file is larger than this server takes: 50 MB at most.");
   expect(uploaded(server.sent)).toEqual([]);
   await user.click(within(uploads).getByRole("button", { name: "Dismiss the upload of notes.md" }));
@@ -382,7 +382,9 @@ test("a drag of files over the section, or the reading view, may drop there; dro
     expect(over.dropEffect).toBe("copy");
   }
   fireEvent.drop(section, { dataTransfer: dropped([new File(["a"], "a.png")], ["photos"]) });
-  await within(section).findByText("Folders are not uploaded: import a folder of notes instead.");
+  await within(section).findByText(
+    "Folders are not uploaded: zip a folder of notes and import it from the notebook's settings."
+  );
   await waitFor(() => expect(notice(section)).toBe("Uploading files: 1."));
   fireEvent.drop(view, { dataTransfer: dropped([new File(["b"], "b.png"), new File(["c"], "c.png")]) });
 

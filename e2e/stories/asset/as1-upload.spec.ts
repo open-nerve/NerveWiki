@@ -215,7 +215,9 @@ test("AS1 (page): a Markdown file is not sent: the section says to import it, un
     .locator("input[type=file]")
     .setInputFiles([{ name: "notes.md", mimeType: "text/markdown", buffer: Buffer.from("# Notes\n") }]);
 
-  await expect(section.getByText("A Markdown file is a page: import it instead.")).toBeVisible();
+  await expect(
+    section.getByText("A Markdown file is a page: zip it and import it from the notebook's settings.")
+  ).toBeVisible();
   expect(sent).toBe(0);
   await section.getByRole("button", { name: "Dismiss the upload of notes.md" }).click();
   await expect(section.getByRole("list", { name: "Uploads" })).toBeHidden();

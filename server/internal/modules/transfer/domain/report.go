@@ -39,8 +39,8 @@ const (
 	// FailureUnpackedTooLarge is an archive whose entries unpack to more
 	// than transfer.import_max_unpacked_bytes.
 	FailureUnpackedTooLarge Failure = "unpacked_too_large"
-	// FailureTreeChanged is an import a page of which was deleted, or
-	// moved away, as it ran: a later unit could not write under it.
+	// FailureTreeChanged is an import a page of which was deleted as it
+	// ran: a later unit could not write under it.
 	FailureTreeChanged Failure = "tree_changed"
 )
 

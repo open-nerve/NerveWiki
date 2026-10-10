@@ -86,6 +86,35 @@ test("a generation's uploads stop once the tab has signed in again", async () =>
   expect(leaving()).toBe(false);
 });
 
+// An import's upload asks before the page is left under its own key (M7/P6 design 4.1): an attachment's upload of
+// the notebook, which goes on across pages, ending does not end it.
+test("an import's upload keeps the page asking once an attachment's upload of the notebook has ended", async () => {
+  const app = testApp((request) => {
+    const { pathname } = new URL(request.url);
+    if (pathname === "/api/v0/me") return json(me);
+    if (pathname.endsWith("/assets") || pathname.endsWith("/imports")) return new Promise<Response>(() => undefined);
+    if (pathname.endsWith("/nodes")) return json({ data: [] });
+    return json(tokens(1));
+  }, storedSession("login-0"));
+  await app.session.start();
+  const store = new RootStore(app, "login-0");
+  const stop = new AbortController();
+  const imported = store
+    .transfersOf(notebookJSON)
+    ?.startImport(null, new File(["PK"], "Vault.zip"), { signal: stop.signal })
+    .catch(() => undefined);
+  const assets = store.assetsOf(notebookJSON);
+  const [attachment] = assets?.upload(null, [new File(["x"], "a.png")], "Untitled", { maxBytes: undefined }) ?? [];
+  await vi.waitFor(() => expect((app.transfer as ReturnType<typeof transferTo>).made).toHaveLength(2));
+
+  attachment?.cancel();
+  await vi.waitFor(() => expect(assets?.uploads).toEqual([]));
+  expect(leaving()).toBe(true);
+  stop.abort();
+  await imported;
+  expect(leaving()).toBe(false);
+});
+
 test("a generation whose login has gone before its attachments are first asked for cancels their uploads at once", async () => {
   let issued = 0;
   const app = testApp((request) => {

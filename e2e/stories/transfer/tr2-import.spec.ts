@@ -1,11 +1,16 @@
+import { randomBytes } from "node:crypto";
+
 import { expectIndexedLinks } from "../../fixtures/assert/links";
+import { failedToLoad } from "../../fixtures/browser";
 import { expectImported, idsOf, sha256Of, storedImports, treeOf } from "../../fixtures/assert/transfer";
 import { pngBytes, utf8 } from "../../fixtures/assets";
+import { notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
-import { endedJob, startImport } from "../../fixtures/transfer";
-import { newTeam } from "../../fixtures/workspaces";
+import { endedJob, holdImport, startImport } from "../../fixtures/transfer";
+import { importWith, jobRow, openReport } from "../../fixtures/wiki-transfer";
+import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 import { zipOf } from "../../fixtures/zip-write";
 
 // TR2, an Obsidian vault imported (M7 design 9; M7/P6 design 3.18): a job
@@ -37,6 +42,11 @@ function vault(): Buffer {
     { name: "Vault/What_ Why.md", data: "named so\n" },
     { name: "__MACOSX/Vault/._Home.md", data: "\x00\x05\x16\x07" },
   ]);
+}
+
+/** A zip of 32 MiB, one entry stored as it is: what it holds the server, refusing it first, never reads. */
+function large(): Buffer {
+  return zipOf([{ name: "large.bin", data: randomBytes(32 << 20), method: 0 }]);
 }
 
 /** The vault's nodes as a notebook holds them under prefix, in their order. */
@@ -142,5 +152,90 @@ test("TR2 (API): a vault imports at a notebook's root after its pages and under 
   await expectIndexedLinks(db, underIds.get("Imports/Projects/Alpha") ?? "", [
     { kind: "wikilink", property: null, target: "Home", resolved: underIds.get("Imports/Home") ?? "" },
   ]);
-  expect(storedImports(nervewiki.storageDir)).toEqual([]);
+  await expect.poll(() => storedImports(nervewiki.storageDir)).toEqual([]);
+});
+
+test("TR2 (page): a vault imports from the notebook's settings, at its root and under a page, its row focused, its report read; an import of the notebook under way refuses another", async ({
+  api,
+  db,
+  nervewiki,
+  signedInPage,
+  pageWatch,
+}, testInfo) => {
+  // Each import runs as a job, waited for: slow runners take longer than a test is given.
+  test.slow();
+  const { tokens, adminId, pat, workspace } = await newOnboardedTeam(api, testInfo);
+  const page = await signedInPage(tokens);
+  const notebook = await createNotebook(api, pat, workspace.slug, "Notes");
+  await createPage(api, pat, notebook.id, "Index", null, "[[Alpha]]\n");
+
+  await page.goto(notebookPath(workspace.slug, notebook.id, "transfer"));
+  await expect(page.getByText("No jobs yet.")).toBeVisible();
+  const job = await importWith(page, notebook.id, vault());
+  const row = jobRow(page, "Import of vault.zip");
+  await expect(row).toBeFocused();
+  await expect(row.getByText("Done", { exact: true })).toBeVisible({ timeout: 15_000 });
+  const report = await openReport(row);
+  await expect(report.terms).toHaveText(["Pages", "Attachments", "Renamed", "Skipped"]);
+  await expect(report.counts).toHaveText(["6", "2", "1", "0"]);
+  await expect(report.problems).toHaveText([
+    "What? Why.md was imported as What_ Why 2: links to its old name do not reach it.",
+  ]);
+  expect(await treeOf(db, nervewiki.storageDir, notebook.id)).toEqual([
+    { path: "Index", kind: "page", content: "[[Alpha]]\n" },
+    ...imported(""),
+  ]);
+  await expectImported(db, nervewiki.storageDir, job.id, {
+    creatorId: adminId,
+    client: "web",
+    root: null,
+    state: "succeeded",
+    failure: null,
+    done: 8,
+    total: 8,
+    counts: { pages: 6, attachments: 2, renamed: 1, skipped: 0 },
+  });
+
+  // Under a page, chosen by its path.
+  const archive = await createNotebook(api, pat, workspace.slug, "Archive");
+  const imports = await createPage(api, pat, archive.id, "Imports");
+  await page.goto(notebookPath(workspace.slug, archive.id, "transfer"));
+  const under = await importWith(page, archive.id, vault(), { place: "Imports" });
+  expect(under.root_id).toBe(imports.id);
+  await expect(jobRow(page, "Import of vault.zip").getByText("Done", { exact: true })).toBeVisible({ timeout: 15_000 });
+  expect(await treeOf(db, nervewiki.storageDir, archive.id)).toEqual([
+    { path: "Imports", kind: "page", content: "" },
+    ...imported("Imports/"),
+  ]);
+
+  // Another's upload into the notebook under way: the server refuses before it reads the file.
+  // Two uploads of the API's: whichever reaches the server second is refused at once, the other holding the notebook.
+  const uploads = [holdImport(nervewiki.baseURL, pat, archive.id), holdImport(nervewiki.baseURL, pat, archive.id)];
+  try {
+    const refused = await Promise.race(uploads.map(async (upload, at) => ({ status: await upload.answered, at })));
+    expect(refused.status).toBe(409);
+    uploads[refused.at]?.stop();
+    const held = uploads[1 - refused.at] as ReturnType<typeof holdImport>;
+    await page.getByRole("button", { name: "Import a zip…" }).click();
+    const dialog = page.getByRole("dialog", { name: "Import into Archive" });
+    // 32 MiB, far more than the connection takes unsent: the refusal comes while the browser still sends the file.
+    await dialog
+      .getByLabel("Zip archive")
+      .setInputFiles({ name: "again.zip", mimeType: "application/zip", buffer: large() });
+    await dialog.getByRole("button", { name: "Import", exact: true }).click();
+    // Chromium reads the refusal the server answers before the file, though the body still goes.
+    await expect(dialog.getByRole("alert")).toHaveText(
+      "An import into this notebook is under way, perhaps someone else's. Wait for it to end, then try again."
+    );
+    pageWatch.expectConsole({ errors: [failedToLoad(409)] });
+    held.stop();
+    expect(await held.answered).toBe(0);
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+  } finally {
+    for (const upload of uploads) {
+      upload.stop();
+    }
+  }
+  await expect(page.getByRole("list", { name: "Recent jobs" }).getByRole("listitem")).toHaveCount(1);
+  await expect.poll(() => storedImports(nervewiki.storageDir)).toEqual([]);
 });

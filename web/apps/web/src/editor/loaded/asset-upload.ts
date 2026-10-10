@@ -182,7 +182,7 @@ export const assetUpload: Build = (context, controls) => {
 };
 
 /** What the editor says of folders pasted or dropped: they are imported. */
-const foldersPhrase = "Folders are not uploaded: import a folder of notes instead.";
+const foldersPhrase = "Folders are not uploaded: zip a folder of notes and import it from the notebook's settings.";
 
 /** What the editor says of attachments uploaded and not inserted: the content was replaced, or can no longer be changed. */
 const notInserted = "$ uploaded, not inserted: the text was replaced or can no longer be changed.";

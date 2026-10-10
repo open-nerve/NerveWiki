@@ -106,7 +106,7 @@ export const TransferJobRow = observer(function TransferJobRow({
           <p id={stateId} className="text-sm">
             {t(`transfer.state.${job.state}`)}
             {job.state === "running" && job.cancel_requested_at !== null && ` · ${t("transfer.cancelling")}`}
-            {job.state === "failed" && ` · ${failureText(job.report?.failure ?? "", t)}`}
+            {job.state === "failed" && ` · ${failureText(job.kind, job.report?.failure ?? "", t)}`}
           </p>
           {under(job) &&
             (total > 0 ? (

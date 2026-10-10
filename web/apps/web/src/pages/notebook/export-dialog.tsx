@@ -73,7 +73,11 @@ export const ExportDialog = observer(function ExportDialog({
         void mutate(["transfer-jobs", notebook.id]);
         onStarted(job);
       }}
-      texts={{ server_busy: "transfer.queueFull", "page.not_found": "transfer.pageGone" }}
+      texts={{
+        server_busy: "transfer.queueFull",
+        "page.not_found": "transfer.pageGone",
+        "transfer.busy": "transfer.exportBusy",
+      }}
     />
   );
 });

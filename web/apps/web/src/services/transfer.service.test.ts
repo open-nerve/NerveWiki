@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 
 import { fakeApi, json, problem } from "../test/fakes";
 import { jobJSON } from "../test/jobs-server";
+import { FakeTransfer, transferTo } from "../test/transfer";
 import { ApiError } from "./api";
 import { TransferService } from "./transfer.service";
 
@@ -31,6 +32,58 @@ test("startExport posts the root, null for the whole notebook, and answers the j
     'POST /api/v0/notebooks/n1/exports {"root_id":"p1"}',
     'POST /api/v0/notebooks/n1/exports {"root_id":null}',
   ]);
+});
+
+test("startImport sends parent_id, when it goes under a page, then the file as it is named; it answers the job, a refusal throws the server's problem", async () => {
+  let answer = json(jobJSON(2, { kind: "import", name: "Vault.zip" }), 202);
+  const transfers = transferTo((request) => {
+    expect(`${request.method} ${new URL(request.url).pathname}`).toBe("POST /api/v0/notebooks/n1/imports");
+    return answer;
+  });
+  const service = new TransferService(
+    fakeApi(() => problem(500, "internal")),
+    transfers
+  );
+
+  await expect(service.startImport("n1", "p1", new File(["zip"], "Vault.zip"))).resolves.toMatchObject({
+    kind: "import",
+  });
+  answer = problem(409, "transfer.busy");
+  const refused = service.startImport("n1", null, new File(["zip"], "Other.zip"));
+  await expect(refused).rejects.toMatchObject({ code: "transfer.busy" });
+
+  const [under, root] = transfers.made.map((transfer) => transfer.body as FormData);
+  expect(
+    under && [...under.entries()].map(([key, value]) => [key, typeof value === "string" ? value : value.name])
+  ).toEqual([
+    ["parent_id", "p1"],
+    ["file", "Vault.zip"],
+  ]);
+  expect(root && [...root.keys()]).toEqual(["file"]);
+});
+
+test("startImport tells its upload's progress, and stops as its signal aborts", async () => {
+  const transfer = new FakeTransfer();
+  const service = new TransferService(
+    fakeApi(() => problem(500, "internal")),
+    () => transfer
+  );
+  const told: [number, number][] = [];
+  const stop = new AbortController();
+
+  const upload = service.startImport("n1", null, new File(["zip"], "Vault.zip"), {
+    progress: (sent, total) => told.push([sent, total]),
+    signal: stop.signal,
+  });
+  for (let i = 0; i < 20 && transfer.body === undefined; i++) {
+    // oxlint-disable-next-line no-await-in-loop -- the session's middleware goes first
+    await Promise.resolve();
+  }
+  transfer.progress(1, 3);
+  stop.abort();
+
+  await expect(upload).rejects.toMatchObject({ name: "AbortError" });
+  expect([told, transfer.aborted]).toEqual([[[1, 3]], true]);
 });
 
 test("list reads fifty jobs a page, after a cursor when given", async () => {

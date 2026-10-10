@@ -142,7 +142,7 @@ export class RootStore {
     this.pages = client && new PageService(client);
     this.linking = client && new LinkingService(client);
     this.assets = client && new AssetService(client, app.transfer);
-    this.transfers = client && new TransferService(client);
+    this.transfers = client && new TransferService(client, app.transfer);
     this.hub =
       client && app.events && loginId !== undefined
         ? eventHub(new EventService(client), app.events, loginId)
@@ -323,18 +323,35 @@ export class RootStore {
     return (
       service &&
       pages &&
-      once(this.assetLists, notebook.id, () => {
-        this.unloadWarning ??= new UnloadWarning();
-        const warning = this.unloadWarning;
-        return new AssetStore(service, notebook.id, pages, this.ending(), (on) => warning.set(notebook.id, on));
-      })
+      once(
+        this.assetLists,
+        notebook.id,
+        () => new AssetStore(service, notebook.id, pages, this.ending(), (on) => this.warning().set(notebook.id, on))
+      )
     );
   }
 
-  /** transfersOf is the jobs of notebook, the same store for as long as this generation lives (M7/P5 design 4.2). */
+  /**
+   * transfersOf is the jobs of notebook, the same store for as long as
+   * this generation lives (M7/P5 design 4.2), whose imports' uploads have
+   * the browser ask before the page is left (P6 design 4.1).
+   */
   transfersOf(notebook: Notebook): TransferStore | undefined {
     const { transfers: service } = this;
-    return service && once(this.transferLists, notebook.id, () => new TransferStore(service, notebook.id));
+    return (
+      service &&
+      once(
+        this.transferLists,
+        notebook.id,
+        () => new TransferStore(service, notebook.id, (on) => this.warning().set(`import ${notebook.id}`, on))
+      )
+    );
+  }
+
+  /** warning is the tab's ask before the page is left, made as an upload first needs it. */
+  private warning(): UnloadWarning {
+    this.unloadWarning ??= new UnloadWarning();
+    return this.unloadWarning;
   }
 
   /** ending is the signal of this generation's end, which aborts as the tab's session leaves its login. */

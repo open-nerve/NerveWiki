@@ -7,33 +7,41 @@ import { TransferStore } from "./transfer.store";
 const job = (n: number, more: Partial<TransferJob> = {}) => jobJSON(n, more);
 const page = (jobs: TransferJob[], next: string | null = null): TransferJobPage => ({ data: jobs, next_cursor: next });
 
-type Service = Pick<TransferService, "list" | "startExport" | "cancel" | "get">;
+type Service = Pick<TransferService, "list" | "startExport" | "startImport" | "cancel" | "get">;
 
 /** A request of the store's service held until the test answers it. */
 type Held<A, T> = { ask: A; answer: (answered: T) => void; fail: (error: unknown) => void };
 
 /**
- * A store of n1's jobs over a service whose every list, start and cancel
- * waits for the test to answer it: lists, starts and cancels have them in
- * order, with their cursor, root and id.
+ * A store of n1's jobs over a service whose every list, start, import and
+ * cancel waits for the test to answer it: lists, starts, imports and
+ * cancels have them in order, with their cursor, root, place and file's
+ * name, and id; warned, what the store asked the browser's warning.
  */
 function storeOf(more: Partial<Service> = {}) {
   const lists: Held<string | undefined, TransferJobPage>[] = [];
   const starts: Held<string | null, TransferJob>[] = [];
+  const imports: Held<string, TransferJob>[] = [];
   const cancels: Held<string, TransferJob>[] = [];
+  const warned: boolean[] = [];
   const store = new TransferStore(
     {
       list: (_notebook, cursor) =>
         new Promise((resolve, reject) => lists.push({ ask: cursor, answer: resolve, fail: reject })),
       startExport: (_notebook, rootId) =>
         new Promise((resolve, reject) => starts.push({ ask: rootId, answer: resolve, fail: reject })),
+      startImport: (_notebook, parent, file) =>
+        new Promise((resolve, reject) =>
+          imports.push({ ask: `${parent ?? "root"} ${file.name}`, answer: resolve, fail: reject })
+        ),
       cancel: (id) => new Promise((resolve, reject) => cancels.push({ ask: id, answer: resolve, fail: reject })),
       get: () => Promise.reject(new Error("not read")),
       ...more,
     },
-    "n1"
+    "n1",
+    (on) => warned.push(on)
   );
-  return { store, lists, starts, cancels };
+  return { store, lists, starts, imports, cancels, warned };
 }
 
 /** answer answers the held request i of asks with answered, and waits for what came of it. */
@@ -196,6 +204,74 @@ test("an export started before the list is read: the read again that fails fails
 
   await expect(load).rejects.toThrow("offline");
   expect([ids(store), store.loaded]).toEqual([[9], false]);
+});
+
+test("an import goes beside an export's start, first once answered, the read on its way dropped; the browser asks before the page is left as it uploads", async () => {
+  const { store, lists, starts, imports, warned } = storeOf();
+  await answer(lists, 0, page([job(1)]), store.load());
+  const exported = store.start(null);
+  const imported = store.startImport("p1", new File(["zip"], "Vault.zip"));
+  await settled();
+  expect([starts.map((start) => start.ask), imports.map((each) => each.ask)]).toEqual([[null], ["p1 Vault.zip"]]);
+  expect([store.uploading, warned]).toEqual([1, [true]]);
+  const load = store.load();
+
+  const vault = underWay(job(9, { kind: "import", name: "Vault.zip", root_id: "p1" }), 0, 0);
+  await answer(imports, 0, vault, imported);
+  await answer(lists, 1, page([job(1)]), load);
+  expect(ids(store)).toEqual([9, 1]);
+  expect([store.uploading, warned, store.importing]).toEqual([0, [true, false], true]);
+  await answer(starts, 0, underWay(job(8), 0, 0), exported);
+  expect(ids(store)).toEqual([8, 9, 1]);
+});
+
+test.each([
+  ["refused", new Error("transfer.busy")],
+  ["stopped", new DOMException("the upload was stopped", "AbortError")],
+])("an import %s leaves the jobs held and no longer asks before the page is left", async (_, error) => {
+  const { store, lists, imports, warned } = storeOf();
+  await answer(lists, 0, page([job(1)]), store.load());
+  const imported = store.startImport(null, new File(["zip"], "Vault.zip"));
+  await settled();
+  imports[0]?.fail(error);
+
+  await expect(imported).rejects.toBe(error);
+  expect([ids(store), store.uploading, warned, imports.map((each) => each.ask)]).toEqual([
+    [1],
+    0,
+    [true, false],
+    ["root Vault.zip"],
+  ]);
+});
+
+test("of two imports at once, the page asks before it is left until both have ended", async () => {
+  const { store, imports, warned } = storeOf();
+  const first = store.startImport(null, new File(["zip"], "A.zip"));
+  const second = store.startImport(null, new File(["zip"], "B.zip"));
+  await settled();
+
+  imports[0]?.fail(new Error("transfer.busy"));
+  await expect(first).rejects.toThrow("transfer.busy");
+  expect([store.uploading, warned.at(-1)]).toEqual([1, true]);
+  imports[1]?.fail(new Error("transfer.busy"));
+  await expect(second).rejects.toThrow("transfer.busy");
+  expect([store.uploading, warned.at(-1)]).toEqual([0, false]);
+});
+
+test("importing tells whether an import held is queued or running: not an export, not one ended", () => {
+  const { store } = storeOf();
+  const imported = job(2, { kind: "import" });
+  const cases: [TransferJob[], boolean][] = [
+    [[], false],
+    [[underWay(job(1), 0, 0), imported], false],
+    [[job(1), underWay(imported, 0, 0)], true],
+    [[underWay(imported, 1, 4)], true],
+    [[{ ...imported, state: "failed" }], false],
+  ];
+  for (const [jobs, importing] of cases) {
+    store.jobs = jobs;
+    expect(store.importing).toBe(importing);
+  }
 });
 
 test("a running job's cancel answered replaces it at once: its cancel asked", async () => {

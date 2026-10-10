@@ -98,8 +98,8 @@ type CreatedNode struct {
 var (
 	// ErrTooDeep is a page deeper than pages go: nothing of it written.
 	ErrTooDeep = errors.New("transfer: the page is deeper than pages go")
-	// ErrNoParent is a parent that is no page of the notebook: deleted,
-	// or moved away, since the import read it.
+	// ErrNoParent is a parent that is no page of the notebook: deleted
+	// since the import read it.
 	ErrNoParent = errors.New("transfer: the parent is no page of the notebook")
 )
 
