@@ -1,7 +1,13 @@
 import { makeAutoObservable, runInAction } from "mobx";
 
 import { oneAtATime, oneAtATimeById } from "../lib/one-at-a-time";
-import type { TransferJob, TransferJobDetail, TransferJobPage, TransferService } from "../services/transfer.service";
+import type {
+  TransferJob,
+  TransferJobDetail,
+  TransferJobPage,
+  TransferService,
+  UploadOptions,
+} from "../services/transfer.service";
 
 /** under tells whether a job is under way: queued or running. */
 export function under(job: TransferJob): boolean {
@@ -15,6 +21,7 @@ export function under(job: TransferJob): boolean {
  * 13.2, item 19): a job under way, or an address that expires, on a page
  * that more added is read again too. An export started, or a job
  * cancelled, here is put in place at once; it may come before the list.
+ * An import's upload has the browser ask before the page is left (warn).
  */
 export class TransferStore {
   jobs: TransferJob[] | undefined = undefined;
@@ -28,6 +35,8 @@ export class TransferStore {
   private reads = 0;
   /** How many writes have put a job in place: a read out before one, which may not have it, is dropped. */
   private writes = 0;
+  /** How many imports' uploads are going: the browser asks before the page is left meanwhile. */
+  uploading = 0;
   /** The page on its way, if one is, with its cursor. */
   private next: { cursor: string; added: Promise<TransferJob[]> } | undefined = undefined;
   /** The exports' starts go one at a time; each job's cancels, too (v0.1 design 13.2, item 1). */
@@ -35,28 +44,40 @@ export class TransferStore {
   private readonly cancels = oneAtATimeById();
 
   constructor(
-    private readonly service: Pick<TransferService, "list" | "startExport" | "cancel" | "get">,
+    private readonly service: Pick<TransferService, "list" | "startExport" | "startImport" | "cancel" | "get">,
     /** The notebook whose jobs these are. */
-    private readonly notebookId: string
+    private readonly notebookId: string,
+    /** warn asks the browser to ask before the page is left, or no longer (v0.1 design 13.2, item 21). */
+    private readonly warn: (on: boolean) => void = () => undefined
   ) {
-    makeAutoObservable<this, "service" | "notebookId" | "pages" | "reads" | "writes" | "next" | "starts" | "cancels">(
+    makeAutoObservable<
       this,
-      {
-        service: false,
-        notebookId: false,
-        pages: false,
-        reads: false,
-        writes: false,
-        next: false,
-        starts: false,
-        cancels: false,
-      }
-    );
+      "service" | "notebookId" | "warn" | "pages" | "reads" | "writes" | "next" | "starts" | "cancels"
+    >(this, {
+      service: false,
+      notebookId: false,
+      warn: false,
+      pages: false,
+      reads: false,
+      writes: false,
+      next: false,
+      starts: false,
+      cancels: false,
+    });
   }
 
   /** active tells whether a job held is queued or running: its list is read again every second meanwhile. */
   get active(): boolean {
     return this.jobs?.some(under) ?? false;
+  }
+
+  /**
+   * importing tells whether a job held is an import queued or running: the
+   * server refuses another (transfer.busy). The account sees its own;
+   * the notebook's admins see everyone's.
+   */
+  get importing(): boolean {
+    return this.jobs?.some((job) => job.kind === "import" && under(job)) ?? false;
   }
 
   /**
@@ -167,6 +188,32 @@ export class TransferStore {
       });
       return job;
     });
+  }
+
+  /**
+   * startImport uploads file to import under the page parent (null: the
+   * notebook's root) and answers its job, which goes first in the jobs
+   * held, once; a read on its way is dropped. It waits for no export's
+   * start, and they not for it: an upload takes minutes (v0.1 design 13.2,
+   * item 1, as an attachment's upload). While it goes, the browser asks
+   * before the page is left; options stop it and tell its progress.
+   */
+  async startImport(parent: string | null, file: File, options?: UploadOptions): Promise<TransferJob> {
+    this.uploading += 1;
+    this.warn(true);
+    try {
+      const job = await this.service.startImport(this.notebookId, parent, file, options);
+      runInAction(() => {
+        this.writes += 1;
+        this.jobs = [job, ...(this.jobs ?? []).filter((held) => held.id !== job.id)];
+      });
+      return job;
+    } finally {
+      runInAction(() => {
+        this.uploading -= 1;
+        this.warn(this.uploading > 0);
+      });
+    }
   }
 
   /** detail reads the job id with its report's problems, which the store does not hold: a report shown reads it. */

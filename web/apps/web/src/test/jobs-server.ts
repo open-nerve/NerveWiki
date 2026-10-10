@@ -1,6 +1,7 @@
 import type { TransferJob, TransferJobDetail } from "../services/transfer.service";
 import { json, notebookJSON, problem, type Answer } from "./fakes";
 import { ada, pageServer } from "./page-server";
+import { formOf } from "./transfer";
 
 /** addressOf is the address the server signed for job's archive, which expires at expires. */
 export function addressOf(job: TransferJob, expires = "2100-01-01T00:00:00Z"): NonNullable<TransferJob["download"]> {
@@ -77,7 +78,9 @@ type JobsServerOptions = NonNullable<Parameters<typeof pageServer>[0]> & {
  * of the page's last job: the next page is the jobs after it in the list
  * as it is now, so that a job started since, which goes first, moves no
  * page, as the server's keys of time and id have it; an export started
- * is queued, first, named after the page exported or the notebook; a
+ * is queued, first, named after the page exported or the notebook; an
+ * import started, whose form the app's transfer sent, is queued, first,
+ * named after its file, under its parent_id; a
  * queued job cancelled is cancelled, a running one has its cancel asked,
  * an ended one is 409 transfer.not_cancellable; a job read is its detail,
  * with the problems problems has for it. While listDown is set, the list
@@ -132,6 +135,26 @@ export function jobsServer({ jobs = [], pageSize = 50, answers = {}, ...options 
         jobJSON(++started, {
           root_id: rootId,
           name: root?.name ?? notebookJSON.name,
+          created_at: "2026-10-06T08:00:00Z",
+        }),
+        0,
+        0
+      );
+      server.jobs = [job, ...server.jobs];
+      return json(job, 202);
+    },
+    [`POST ${plans}/imports`]: (request) => {
+      const form = formOf(request);
+      const parent = form?.get("parent_id");
+      const file = form?.get("file");
+      const name = file instanceof File ? file.name : "";
+      const under = server.nodes.find((node) => node.id === parent);
+      server.asked.push(`POST import ${name} under ${under?.name ?? "root"}`);
+      const job = underWay(
+        jobJSON(++started, {
+          kind: "import",
+          root_id: typeof parent === "string" ? parent : null,
+          name,
           created_at: "2026-10-06T08:00:00Z",
         }),
         0,

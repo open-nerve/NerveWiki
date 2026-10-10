@@ -22,9 +22,20 @@ const failures: Record<TransferFailure, PlainKey> = {
   tree_changed: "transfer.failure.tree_changed",
 };
 
-/** failureText is why a job failed, by its code: one the page does not know is a failure all the same. */
-export function failureText(failure: string, t: Translate): string {
-  const key = (failures as Partial<Record<string, PlainKey>>)[failure];
+/** What an import's failures say otherwise than an export's (M7/P6 design 4.1). */
+const importFailures: Partial<Record<TransferFailure, PlainKey>> = {
+  forbidden: "transfer.importFailure.forbidden",
+  root_not_found: "transfer.importFailure.root_not_found",
+};
+
+/**
+ * failureText is why a job of kind failed, by its code: one the page does
+ * not know is a failure all the same.
+ */
+export function failureText(kind: TransferJob["kind"], failure: string, t: Translate): string {
+  const key =
+    (kind === "import" ? (importFailures as Partial<Record<string, PlainKey>>)[failure] : undefined) ??
+    (failures as Partial<Record<string, PlainKey>>)[failure];
   return t(key ?? "transfer.failure.unknown");
 }
 
@@ -45,16 +56,33 @@ const problems: Record<TransferProblem["code"], (problem: TransferProblem, t: Tr
   unreadable: (problem, t) => t("transfer.problem.unreadable", { path: problem.path }),
 };
 
-/** problemText says what befell a node of the vault, by its code: one the page does not know differs all the same. */
-function problemText(problem: TransferProblem, t: Translate): string {
+/**
+ * problemText says what befell a node of the vault, by its code: one the
+ * page does not know differs all the same. A node an import renamed is
+ * reached in the notebook by its new name.
+ */
+function problemText(kind: TransferJob["kind"], problem: TransferProblem, t: Translate): string {
+  if (kind === "import" && problem.code === "renamed") {
+    return t("transfer.importProblem.renamed", { path: problem.path, to: problem.to ?? "" });
+  }
   const text = (problems as Partial<Record<string, (problem: TransferProblem, t: Translate) => string>>)[problem.code];
-  return text === undefined ? t("transfer.problem.other", { path: problem.path }) : text(problem, t);
+  if (text !== undefined) {
+    return text(problem, t);
+  }
+  return t(kind === "import" ? "transfer.importProblem.other" : "transfer.problem.other", { path: problem.path });
 }
 
+/** The counts a job's report shows, by its kind: an import's files are never missing, an export skips nothing. */
+const shownCounts = {
+  export: ["pages", "attachments", "renamed", "missing"],
+  import: ["pages", "attachments", "renamed", "skipped"],
+} as const;
+
 /**
- * TransferReport is what an ended job did (M7/P5 design 4.4): its counts,
- * and where the vault differs from the notebook, read as it shows (the
- * list holds no problems). Its failure the row tells.
+ * TransferReport is what an ended job did (M7/P5 design 4.4, P6 design
+ * 4.1): its counts, and where the vault differs from the notebook, or what
+ * an import did not take as it was, read as it shows (the list holds no
+ * problems). Its failure the row tells.
  */
 export function TransferReport({ notebook, job, id }: { notebook: Notebook; job: TransferJob; id: string }) {
   const transfers = useTransfers(notebook);
@@ -66,17 +94,10 @@ export function TransferReport({ notebook, job, id }: { notebook: Notebook; job:
     <div id={id} className="space-y-3 rounded-md bg-muted/50 p-3 text-sm">
       {counts !== undefined && (
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
-          {(
-            [
-              ["transfer.count.pages", counts.pages],
-              ["transfer.count.attachments", counts.attachments],
-              ["transfer.count.renamed", counts.renamed],
-              ["transfer.count.missing", counts.missing],
-            ] as const
-          ).map(([label, count]) => (
-            <div key={label} className="contents">
-              <dt className="text-muted-foreground">{t(label)}</dt>
-              <dd>{count}</dd>
+          {shownCounts[job.kind].map((count) => (
+            <div key={count} className="contents">
+              <dt className="text-muted-foreground">{t(`transfer.count.${count}`)}</dt>
+              <dd>{counts[count]}</dd>
             </div>
           ))}
         </dl>
@@ -87,11 +108,11 @@ export function TransferReport({ notebook, job, id }: { notebook: Notebook; job:
         data.problems.length > 0 && (
           <section className="space-y-1">
             <h3 id={titleId} className="font-medium">
-              {t("transfer.problemsTitle")}
+              {t(job.kind === "import" ? "transfer.importProblemsTitle" : "transfer.problemsTitle")}
             </h3>
             <ul aria-labelledby={titleId} className="list-disc space-y-1 pl-5 break-words">
               {data.problems.map((problem, at) => (
-                <li key={`${problem.path} ${at.toString()}`}>{problemText(problem, t)}</li>
+                <li key={`${problem.path} ${at.toString()}`}>{problemText(job.kind, problem, t)}</li>
               ))}
             </ul>
             {data.problems_truncated && <p className="text-muted-foreground">{t("transfer.problemsTruncated")}</p>}

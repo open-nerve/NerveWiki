@@ -6,6 +6,7 @@ import useSWR from "swr";
 import { useMounted } from "../../app/mounted";
 import { NotLoaded } from "../../app/not-loaded";
 import { errorText } from "../../app/problem-messages";
+import { writesPages } from "../../app/effective-role";
 import { Button } from "../../components/ui/button";
 import { useT } from "../../i18n/i18n";
 import type { Notebook } from "../../services/notebook.service";
@@ -13,6 +14,7 @@ import { useAccount, useStore, useTransfers } from "../../stores/context";
 import type { TransferStore } from "../../stores/transfer.store";
 import { watchReader } from "../page/readers-input";
 import { ExportDialog } from "./export-dialog";
+import { ImportDialog } from "./import-dialog";
 import { useNotebook } from "./notebook-layout";
 import { TransferJobRow } from "./transfer-job-row";
 import { jobNames } from "./transfer-names";
@@ -48,8 +50,8 @@ export function pollInterval(transfers: Pick<TransferStore, "active" | "jobs">, 
 
 /**
  * NotebookTransferPage is the notebook's imports and exports (M7/P5
- * design 4.3): whoever sees the notebook exports it, and sees their jobs;
- * its admins see everyone's.
+ * design 4.3, P6 design 4.2): its editors import into it; whoever sees
+ * the notebook exports it, and sees their jobs; its admins see everyone's.
  */
 export const NotebookTransferPage = observer(function NotebookTransferPage() {
   const notebook = useNotebook();
@@ -57,6 +59,7 @@ export const NotebookTransferPage = observer(function NotebookTransferPage() {
   const heading = useRef<HTMLHeadingElement>(null);
   return (
     <div className="space-y-10">
+      <ImportSection notebook={notebook} rows={rows} heading={heading} />
       <ExportSection notebook={notebook} rows={rows} heading={heading} />
       <JobsSection notebook={notebook} rows={rows} heading={heading} />
     </div>
@@ -64,6 +67,44 @@ export const NotebookTransferPage = observer(function NotebookTransferPage() {
 });
 
 type Rows = RefObject<Map<string, HTMLLIElement>>;
+
+/**
+ * ImportSection imports a zip into the notebook, for its editors; a
+ * reader is told who can. The focus goes to the job's row once it
+ * started, or to the jobs' title while they are not shown.
+ */
+function ImportSection({
+  notebook,
+  rows,
+  heading,
+}: {
+  notebook: Notebook;
+  rows: Rows;
+  heading: RefObject<HTMLHeadingElement | null>;
+}) {
+  const t = useT();
+  const started = useRef<string | undefined>(undefined);
+  return (
+    <section className="max-w-2xl space-y-3">
+      <h2 className="text-lg font-semibold">{t("transfer.importTitle")}</h2>
+      <p className="text-sm text-muted-foreground">{t("transfer.importBody")}</p>
+      {writesPages(notebook.role) ? (
+        <ImportDialog
+          notebook={notebook}
+          trigger={<Button variant="outline">{t("transfer.importZip")}</Button>}
+          onStarted={(job) => (started.current = job.id)}
+          focusAfter={() => {
+            if (started.current !== undefined) {
+              (rows.current.get(started.current) ?? heading.current)?.focus();
+            }
+          }}
+        />
+      ) : (
+        <p className="text-sm">{t("transfer.importReaders")}</p>
+      )}
+    </section>
+  );
+}
 
 /**
  * ExportSection exports the whole notebook: the focus goes to the job's
