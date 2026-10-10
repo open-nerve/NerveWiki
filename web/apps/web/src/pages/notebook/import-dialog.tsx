@@ -4,7 +4,6 @@ import { useBlocker } from "react-router";
 import useSWR, { useSWRConfig } from "swr";
 
 import { useForm, type LocalProblems } from "../../app/form";
-import { useMounted } from "../../app/mounted";
 import { NotLoaded } from "../../app/not-loaded";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
@@ -27,6 +26,8 @@ type ImportDialogProps = {
   onStarted: (job: TransferJob) => void;
   /** Gives the focus where it goes once the import started: the job's row. */
   focusAfter: () => void;
+  /** Whether the page the dialog is on is still shown: its going means the user left, or the generation ended. */
+  mounted: () => boolean;
 };
 
 /**
@@ -50,6 +51,7 @@ export const ImportDialog = observer(function ImportDialog({
   trigger,
   onStarted,
   focusAfter,
+  mounted,
 }: ImportDialogProps) {
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -65,8 +67,6 @@ export const ImportDialog = observer(function ImportDialog({
   const asking = uploading && (stopping || leaving);
   const keepButton = useRef<HTMLButtonElement>(null);
   const stopButton = useRef<HTMLButtonElement>(null);
-  // The dialog's going means the user left, or the generation ended; the form goes as the dialog closes too.
-  const mounted = useMounted();
   // Asked, the focus goes to the answer that loses nothing.
   useEffect(() => {
     if (asking) {
@@ -180,7 +180,7 @@ type ImportFormProps = {
   upload: RefObject<AbortController | undefined>;
   /** The button that stops the upload, which the dialog focuses as the upload goes on. */
   stopButton: RefObject<HTMLButtonElement | null>;
-  /** Whether the dialog is still mounted: gone, its page or its generation's SWR cache may be gone too. */
+  /** Whether the page is still shown: gone, the jobs are not read for it, and its generation's SWR cache may be gone. */
   mounted: () => boolean;
   /** Told as the upload starts and ends. */
   onUploading: (on: boolean) => void;
@@ -246,6 +246,10 @@ const ImportForm = observer(function ImportForm({
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    // An import under way, Import says it cannot go: it stays focusable, the focus kept in the dialog.
+    if (transfers.importing) {
+      return;
+    }
     const found: LocalProblems<"file" | "parent_id"> = {
       ...(file === undefined
         ? { file: "field.required" }
@@ -277,8 +281,8 @@ const ImportForm = observer(function ImportForm({
           upload.current = undefined;
           onUploading(false);
         }
-        // The jobs are read again at each end, the dialog still mounted: a refusal may be another's import, and a list
-        // whose read failed is polled no more until it is read.
+        // The jobs are read again at each end, the page still shown (the form goes as the dialog closes): a refusal may
+        // be another's import, and a list whose read failed is polled no more until it is read.
         if (mounted()) {
           void mutate(["transfer-jobs", notebook.id]);
         }
@@ -356,7 +360,13 @@ const ImportForm = observer(function ImportForm({
             {t("transfer.dialogCancel")}
           </Button>
         )}
-        <Button ref={importButton} type="submit" disabled={sending || transfers.importing}>
+        <Button
+          ref={importButton}
+          type="submit"
+          disabled={sending}
+          aria-disabled={transfers.importing || undefined}
+          className="aria-disabled:opacity-50"
+        >
           {sending ? t("transfer.importing") : t("transfer.importConfirm")}
         </Button>
       </div>

@@ -52,6 +52,7 @@ test("an editor imports a zip under a page: the job goes first, the jobs read ag
   ).toEqual(["Import", "Export", "Recent jobs"]);
 
   const shown = await open(user);
+  expect(document.activeElement).toBe(within(shown).getByLabelText("Zip archive"));
   expect(within(shown).getByText("The zip may be at most 512 MB.")).toBeTruthy();
   expect(within(shown).getByText(/^Keep this dialog open while the zip uploads;/u)).toBeTruthy();
   expect(within(shown).getByLabelText("Zip archive").getAttribute("accept")).toBe(".zip,application/zip");
@@ -134,6 +135,7 @@ test("nothing goes out without a file, or with one larger than the server takes;
   await user.click(within(shown).getByRole("button", { name: "Import" }));
   expect(file.getAttribute("aria-invalid")).toBe("true");
   expect(within(shown).getByText("Required.")).toBeTruthy();
+  expect(document.activeElement).toBe(file);
   await user.upload(file, new File(["1234"], "Vault.zip"));
   await user.click(within(shown).getByRole("button", { name: "Import" }));
   expect(within(shown).getByText("Larger than the server takes.")).toBeTruthy();
@@ -202,14 +204,19 @@ test("a page chosen that the tree, read again, no longer has is not imported und
 
 test("an import of the notebook under way among the jobs is told, and none starts", async () => {
   const user = userEvent.setup();
-  renderApp(transfer, jobsServer({ jobs: [underWay(jobJSON(1, { kind: "import", name: "Old.zip" }), 2, 9)] }).app);
+  const server = jobsServer({ jobs: [underWay(jobJSON(1, { kind: "import", name: "Old.zip" }), 2, 9)] });
+  renderApp(transfer, server.app);
   await row("Import of Old.zip");
 
   const shown = await open(user);
   expect(within(shown).getByRole("alert").textContent).toBe(
     "An import into this notebook is under way. Wait for it to end before starting another."
   );
-  expect(within(shown).getByRole("button", { name: "Import" }).hasAttribute("disabled")).toBe(true);
+  const confirm = within(shown).getByRole("button", { name: "Import" });
+  expect([confirm.getAttribute("aria-disabled"), confirm.hasAttribute("disabled")]).toEqual(["true", false]);
+  await user.upload(within(shown).getByLabelText("Zip archive"), vault());
+  await user.click(confirm);
+  expect(transfers(server.app)).toEqual([]);
 });
 
 test.each([
@@ -539,4 +546,61 @@ test.each([
     // The dialog kept, the focus goes to Import, to try again: not to Cancel, where Stop the upload was.
     await waitFor(() => expect(document.activeElement).toBe(within(shown).getByRole("button", { name: "Import" })));
   }
+});
+
+test("refused, as the jobs read again show an import under way, the focus stays in the dialog, on Import, which cannot go", async () => {
+  const user = userEvent.setup();
+  const answers: ((response: Response) => void)[] = [];
+  const server = jobsServer({
+    answers: {
+      [imports]: () =>
+        new Promise<Response>((resolve) => {
+          answers.push(resolve);
+        }),
+    },
+  });
+  renderApp(transfer, server.app);
+  expect(await screen.findByText("No jobs yet.")).toBeTruthy();
+  const shown = await open(user);
+  await user.upload(within(shown).getByLabelText("Zip archive"), vault());
+  await user.click(within(shown).getByRole("button", { name: "Import" }));
+  await waitFor(() => expect(answers.length).toBe(1));
+
+  // Another's import, started meanwhile, refuses this one; the jobs read again show it.
+  server.jobs = [underWay(jobJSON(9, { kind: "import", name: "Other.zip" }), 0, 0)];
+  answers[0]?.(problem(409, "transfer.busy"));
+
+  const confirm = await within(shown).findByRole("button", { name: "Import" });
+  await waitFor(() => expect(confirm.getAttribute("aria-disabled")).toBe("true"));
+  expect(document.activeElement).toBe(confirm);
+  await user.tab();
+  expect(shown.contains(document.activeElement)).toBe(true);
+});
+
+test("a focus the user put in the form as the upload went is kept as it ends", async () => {
+  const user = userEvent.setup();
+  const answers: ((response: Response) => void)[] = [];
+  const server = jobsServer({
+    answers: {
+      [`GET /api/v0/notebooks/${notebookJSON.id}/nodes`]: () => problem(500, "internal"),
+      [imports]: () =>
+        new Promise<Response>((resolve) => {
+          answers.push(resolve);
+        }),
+    },
+  });
+  renderApp(transfer, server.app);
+  const shown = await open(user);
+  const retry = await within(shown).findByRole("button", { name: "Try again" });
+  await user.upload(within(shown).getByLabelText("Zip archive"), vault());
+  await user.click(within(shown).getByRole("button", { name: "Import" }));
+  await waitFor(() => expect(answers.length).toBe(1));
+
+  act(() => retry.focus());
+  answers[0]?.(problem(409, "transfer.busy"));
+
+  await waitFor(() =>
+    expect(within(shown).getByRole("button", { name: "Import" }).hasAttribute("disabled")).toBe(false)
+  );
+  expect(document.activeElement).toBe(retry);
 });

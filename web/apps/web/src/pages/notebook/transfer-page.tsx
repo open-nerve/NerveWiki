@@ -84,6 +84,8 @@ function ImportSection({
 }) {
   const t = useT();
   const started = useRef<string | undefined>(undefined);
+  // The section's, not the dialog's: the dialog goes too when the notebook's role drops to reader.
+  const mounted = useMounted();
   return (
     <section className="max-w-2xl space-y-3">
       <h2 className="text-lg font-semibold">{t("transfer.importTitle")}</h2>
@@ -98,6 +100,7 @@ function ImportSection({
               (rows.current.get(started.current) ?? heading.current)?.focus();
             }
           }}
+          mounted={mounted}
         />
       ) : (
         <p className="text-sm">{t("transfer.importReaders")}</p>
