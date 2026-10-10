@@ -311,28 +311,29 @@ type entry struct {
 // imports' archives, by job; uploadFull fails an upload's writes as a
 // store out of room, openErr its opening. listed are the archives a List
 // of the kind gives, listErr fails it after them. onFree runs as Free
-// is asked.
+// is asked, onFreeTaken once, after the next Free's room is taken.
 type archives struct {
-	rec        *recorder
-	mu         sync.Mutex
-	committed  map[uuid.UUID][]entry
-	created    []uuid.UUID
-	aborted    []uuid.UUID
-	deleted    []uuid.UUID
-	full       bool
-	fullAt     string
-	commitErr  error
-	free       int64
-	onFree     func()
-	deleteErr  error
-	listed     map[domain.Kind][]uuid.UUID
-	listErr    map[domain.Kind]error
-	onAdd      func(path string)
-	onCommit   func()
-	onOpen     func(id uuid.UUID)
-	imports    map[uuid.UUID][]byte
-	uploadFull bool
-	openErr    error
+	rec         *recorder
+	mu          sync.Mutex
+	committed   map[uuid.UUID][]entry
+	created     []uuid.UUID
+	aborted     []uuid.UUID
+	deleted     []uuid.UUID
+	full        bool
+	fullAt      string
+	commitErr   error
+	free        int64
+	onFree      func()
+	onFreeTaken func()
+	deleteErr   error
+	listed      map[domain.Kind][]uuid.UUID
+	listErr     map[domain.Kind]error
+	onAdd       func(path string)
+	onCommit    func()
+	onOpen      func(id uuid.UUID)
+	imports     map[uuid.UUID][]byte
+	uploadFull  bool
+	openErr     error
 }
 
 func newArchives() *archives {
@@ -472,7 +473,14 @@ func (a *archives) Free(context.Context) (int64, error) {
 	if onFree != nil {
 		onFree()
 	}
-	return a.free, nil
+	a.mu.Lock()
+	free, taken := a.free, a.onFreeTaken
+	a.onFreeTaken = nil
+	a.mu.Unlock()
+	if taken != nil {
+		taken()
+	}
+	return free, nil
 }
 
 // entries are the committed archive of job id, by path.

@@ -169,13 +169,23 @@ func (s *StartExport) admit(ctx context.Context, notebookID, userID uuid.UUID) e
 
 // room is 503 server_busy when the jobs queued or running, and the
 // uploads under way into notebooks but except, are MaxQueued; queueLocked
-// tells whether the caller holds the queue's lock. The uploads are read
-// first: one told written by then had its row committed before the count.
+// tells whether the caller holds the queue's lock. A Check reads the
+// uploads first: one told written by then had its row committed before
+// the count. A start under the lock counts the rows first: no row of an
+// upload commits while it holds the lock, and an upload a Check admits
+// meanwhile is counted. A Check and an export that decide at once may
+// still both pass, the upload's Create then refused.
 func (d StartDeps) room(ctx context.Context, except uuid.UUID, queueLocked bool) error {
-	uploading, _ := d.Uploads.others(except, queueLocked)
+	var uploading int
+	if !queueLocked {
+		uploading, _ = d.Uploads.others(except, false)
+	}
 	active, err := d.Rows.CountActive(ctx)
 	if err != nil {
 		return err
+	}
+	if queueLocked {
+		uploading, _ = d.Uploads.others(except, true)
 	}
 	if active+uploading >= d.MaxQueued {
 		return domain.ErrQueueFull

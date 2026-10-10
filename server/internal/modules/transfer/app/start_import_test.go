@@ -425,6 +425,49 @@ func TestACheckCountsTheUploadsWhoseRowsItMaySeeNot(t *testing.T) {
 	}
 }
 
+// A start under the queue's lock counts an upload a Check admits as it
+// counts the rows; every start counts the bytes an upload stores as it
+// reads the store's room.
+func TestTheStartsCountWhatHappensAsTheyCount(t *testing.T) {
+	w := newWorld()
+	dev := uuid.NewV7()
+	w.auth.roles[dev] = map[uuid.UUID]shared.NotebookRole{w.bob: shared.NotebookAdmin}
+	w.notebooks.names[dev] = "Dev"
+	toDev := app.ImportRequest{NotebookID: dev, FileName: "v.zip", Client: domain.ClientWeb}
+	s, exports := w.startImport(&queue{}, 3), w.start(&queue{}, 3)
+	for range 2 {
+		w.rows.add(domain.Job{ID: uuid.NewV7(), NotebookID: uuid.NewV7(), Kind: domain.KindExport, State: domain.StateRunning, CreatedBy: w.bob})
+	}
+	w.rows.onCount = func() {
+		if err := s.Check(as(w.bob), toDev); err != nil {
+			t.Errorf("Check() as an export counts the rows = %v", err)
+		}
+	}
+	if _, err := exports.Run(as(w.alice), w.eng, nil, domain.ClientWeb); !errors.Is(err, domain.ErrQueueFull) {
+		t.Errorf("an export as a Check admits an upload, the queue one short = %v, want ErrQueueFull", err)
+	}
+	s.Release(toDev)
+
+	// eng's upload of 100 bytes stores 50 as dev's Check reads the room:
+	// the room it read is short of them, the uploads it read were not.
+	w.rows = newRows()
+	s = w.startImport(&queue{}, 3)
+	eng := app.ImportRequest{NotebookID: w.eng, FileName: "v.zip", Client: domain.ClientWeb, Size: 100}
+	w.archives.free = 1000
+	if err := s.Check(as(w.bob), eng); err != nil {
+		t.Fatal(err)
+	}
+	toDev.Size = 801 // 1000 - 801 - 100 < MinFree 100; past the 50 bytes, not
+	w.archives.onFreeTaken = func() {
+		if _, err := s.Store(as(w.bob), eng, strings.NewReader(strings.Repeat("z", 50))); err != nil {
+			t.Error(err)
+		}
+	}
+	if err := s.Check(as(w.bob), toDev); !errors.Is(err, domain.ErrStorageFull) {
+		t.Errorf("Check() at the store's edge as another upload stores = %v, want ErrStorageFull", err)
+	}
+}
+
 // A commit whose answer was lost leaves the archive, which the sweep
 // deletes when no job keeps it.
 func TestAnImportWhoseCommitFailsKeepsItsArchive(t *testing.T) {
