@@ -150,7 +150,7 @@ asset 的上传与导入读同一种表单：几个小的文字部分、一个�
 `adapter/archive` 的 `OpenImport(ctx, id, most)` 打开 `imports/<id>.zip`（`storage.File` 有 `ReaderAt` 与 `Size`），先读目录、再交给 `zip.NewReader`：
 
 - **结尾记录**（`zipdir.go`）：照 Go 的 `readDirectoryEnd` 找结尾记录（最后 1 KiB，再最后 65 KiB），有 zip64 的定位记录时读 zip64 的结尾记录（定位记录的偏移是负的时照 Go 忽略，越过文件的答 `not_zip`），算出中央目录的起点（含 Go 的 `baseOffset` 修正）。找不到、越界：失败 `not_zip`。结尾记录的条目数超过 `most`（`transfer.import_max_entries`）、或中央目录的大小超过 64 MiB：失败 `too_many_entries`。
-- **目录的预读**：从起点照 Go 的读法逐条读目录记录（46 字节的头，跳过名称、扩展字段与注释），直到不是目录记录的签名或读不满为止，只计数、不分配；条数超过上限、或读过的字节超过 64 MiB 就停下，失败 `too_many_entries`。这样 `zip.NewReader` 读到的条数（它的停法相同）有上限，不信结尾记录的条目数（总设计 4.11"中央目录的条目数谎报"）。交给 `zip.NewReader` 的 `ReaderAt` 另有字节的上限（预读的字节加结尾的 128 KiB），作为兜底：它若读得比预读多，答 `too_many_entries` 而不是继续分配。`NewReader` 之后条数与预读的不同：`not_zip`。`zip.ErrInsecurePath` 不算错（路径由 domain 分类）。
+- **目录的预读**：从起点照 Go 的 `readDirectoryHeader` 逐条读目录记录（46 字节的头，跳过名称与注释，读出扩展字段），停在它拒绝的一条（不是目录记录的签名、读不满、zip64 字段短于记录写作 2³²-1 的大小与偏移），只计数、不分配；结尾记录给出的起点大于 0 时，从 0 算的偏移处另找记录也照它判断（M7 收尾 FA2-M1）。条数超过上限、或读过的字节超过 64 MiB 就停下，失败 `too_many_entries`。这样 `zip.NewReader` 读到的条数（它的停法相同）有上限，不信结尾记录的条目数（总设计 4.11"中央目录的条目数谎报"）。交给 `zip.NewReader` 的 `ReaderAt` 另有字节的上限：预读的字节，加它停下的那条记录至多的字节（Go 读完一整条才拒绝它，至多约 192 KiB），加起点修正时它在从 0 算的偏移处读的那条（之后作为目录的第一条再读一次），加结尾的 128 KiB（M7 收尾 F3-M1）；作为兜底，它若读得比这多，答 `too_many_entries` 而不是继续分配。`NewReader` 之后条数与预读的不同：`not_zip`。`zip.ErrInsecurePath` 不算错（路径由 domain 分类）。
 - **条目**：交给 domain 的是 `RawEntry{Index, Name, Folder, Special, Encrypted, Method}`：名称的原始字节、是否目录（名称以 `/` 或 `\` 结尾，或模式是目录）、是否特殊文件（符号链接与其他不是普通文件的）、加密标志、压缩方法；压缩后的字节数经 `ImportArchive.Packed(i)`，按序号打开读者。条目头写的解压后的大小不交出（3.11 按实际读出的计）。
 
 ### 3.11 校验
