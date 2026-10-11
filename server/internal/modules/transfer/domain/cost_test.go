@@ -14,7 +14,17 @@ import (
 // changes the allocations: make test-go runs it without.
 func TestPagesWhoseNamesCutAlikeAreRenamedInTimeAsLongAsThey(t *testing.T) {
 	allocs := func(n int) float64 {
+		// Each spelled in a case of its own: alike by their keys (Codex M7 review fix check B-M2).
 		nodes := alike(n)
+		for i := range nodes {
+			cased := []byte(nodes[i].Name)
+			for b := range 10 {
+				if i>>b&1 == 1 {
+					cased[b] = 'A'
+				}
+			}
+			nodes[i].Name = string(cased)
+		}
 		return testing.AllocsPerRun(1, func() {
 			if _, err := domain.NewPlan(notebook(), nil, nodes, nothingLinked); err != nil {
 				t.Fatal(err)

@@ -294,6 +294,33 @@ func alike(n int) []domain.Node {
 	return nodes
 }
 
+// A page takes the first number free of its cut name, though a sibling
+// whose name cuts alike only at more digits took one of them: nine pages
+// whose names cut to "名…a" until "名… 10", then one cut to "名…" from 2
+// (Codex M7 review fix check B-M1).
+func TestAPageTakesTheFirstNumberFreeOfItsCutName(t *testing.T) {
+	stem := strings.Repeat("名", 83) // 249 bytes
+	var nodes []domain.Node
+	for i := range 9 {
+		// 254 bytes: its file is cut, to 250 bytes before 10, 249 from it.
+		nodes = append(nodes, domain.Node{ID: uuid.NewV7(), Name: stem + "azzz" + strconv.Itoa(i), SortOrder: float64(i), Bytes: 1})
+	}
+	nodes = append(nodes, domain.Node{ID: uuid.NewV7(), Name: strings.Repeat("名", 85), SortOrder: 9, Bytes: 1})
+	p, err := domain.NewPlan(notebook(), nil, nodes, nothingLinked)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, r := range p.Renamed {
+		got = append(got, r.To)
+	}
+	want := []string{stem + "a 2.md", stem + "a 3.md", stem + "a 4.md", stem + "a 5.md", stem + "a 6.md", stem + "a 7.md", stem + "a 8.md",
+		stem + "a 9.md", stem + " 10.md", stem + " 2.md"}
+	if !slices.Equal(got, want) {
+		t.Errorf("renamed to\n%q\nwant\n%q", got, want)
+	}
+}
+
 // Pages whose names cut alike, past the digits that told them apart, take
 // the numbers in turn, the name cut shorter as they grow (Codex M7 review
 // R3); their cost is cost_test.go's.

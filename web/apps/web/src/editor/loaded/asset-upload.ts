@@ -196,21 +196,23 @@ const notInFrontmatter =
   "$ uploaded, not inserted: in the frontmatter an embed goes just after a property's opening quote.";
 
 /**
- * embedAt is the embed of link as it goes in at place, or undefined where
- * it would break the frontmatter, or be no link there (Codex M7 review
- * R1). In a frontmatter, as a link completes there, a property's link is
- * a string's whole value: the embed goes just after a string's opening
- * quote, written as the string writes it, unless its name holds U+FFFE
- * or U+FFFF, which a YAML string does not take (a name holds none of the
- * other characters it does not: upload-name's unshowable); elsewhere in
- * it, and on its "---" lines, it does not.
+ * embedAt is what goes in at place for the embed of link, or undefined
+ * where it would break the frontmatter, or be no link there (Codex M7
+ * review R1): in the body the embed, on a line of its own after the
+ * batch's embeds before it (first tells none went). In a frontmatter, as
+ * a link completes there, a property's link is a string's whole value:
+ * the embed alone goes just after a string's opening quote, written as
+ * the string writes it, unless its name holds U+FFFE or U+FFFF, which a
+ * YAML string does not take (a name holds none of the other characters
+ * it does not: upload-name's unshowable); elsewhere in it, and on its
+ * "---" lines, it does not.
  */
-function embedAt(state: EditorState, place: number, link: string): string | undefined {
+function embedAt(state: EditorState, place: number, link: string, first: boolean): string | undefined {
   if (frontmatterAt(state, place) !== undefined) {
     const quote = openingQuote(state, place);
     return quote === "" || /[\uFFFE\uFFFF]/u.test(link) ? undefined : quoted(quote, embedOf(link));
   }
-  return fenceAt(state, place) ? undefined : embedOf(link);
+  return fenceAt(state, place) ? undefined : (first ? "" : "\n") + embedOf(link);
 }
 
 /** How many places have been opened: each its number. */
@@ -275,7 +277,7 @@ async function upload(
     );
     const state = view.state;
     const place = composed && !isClosed() ? state.field(places, false)?.get(id) : undefined;
-    const embed = place === undefined || asset.link === null ? undefined : embedAt(state, place, asset.link);
+    const embed = place === undefined || asset.link === null ? undefined : embedAt(state, place, asset.link, first);
     if (asset.link === null) {
       unlinked.push(asset.name);
     } else if (place === undefined || state.readOnly) {
@@ -283,7 +285,7 @@ async function upload(
     } else if (embed === undefined) {
       unplaced.push(asset.name);
     } else {
-      const changes = state.changes({ from: place, insert: (first ? "" : "\n") + embed });
+      const changes = state.changes({ from: place, insert: embed });
       const after = changes.mapPos(place, 1);
       // The cursor where it goes goes after it, as after a paste; non-empty, a selection keeps what it holds. Set only
       // then: a selection set resets what follows it, an open completion.

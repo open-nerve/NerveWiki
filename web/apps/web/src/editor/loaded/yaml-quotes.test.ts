@@ -1,7 +1,8 @@
 import { EditorState } from "@codemirror/state";
 import { expect, test } from "vitest";
 
-import { openingQuote, quoted } from "./yaml-quotes";
+import { lineBreaks, splitBreaks } from "../line-breaks";
+import { fenceAt, frontmatterAt, openingQuote, quoted } from "./yaml-quotes";
 
 // The quote of the YAML string a frontmatter's link starts (Codex review
 // R1): where a link completes, and what the completion escapes a page's
@@ -59,6 +60,10 @@ test("a quote opens none in a string in quotes, a plain string, a comment or a b
     ["---\n- |\n  '‸", ""],
     ["---\n? k\n: |\n  '‸", ""],
     ["---\nnote: a\n  '‸", ""],
+    // A line's start in a string over lines opens nothing (Codex M7 review fix check A-M1).
+    ["---\nup: 'a long\n‸", ""],
+    ['---\nup: "a\n‸', ""],
+    ["---\n- 'a\n  ‸", ""],
   ] as const;
   expect(openingAt(docs)).toEqual(docs);
 });
@@ -181,4 +186,38 @@ test("written in a string of a quote: in single quotes a ' twice, in double quot
   expect(quoted("'", s)).toBe(String.raw`Bob''s "Hi" a\nb`);
   expect(quoted('"', s)).toBe(String.raw`Bob's \"Hi\" a\\nb`);
   expect(quoted("", s)).toBe(s);
+});
+
+/** read is, for each line of raw, frontmatterAt and fenceAt at its start, as the editor keeps raw's line breaks. */
+function read(raw: string) {
+  const split = splitBreaks(raw);
+  const state = EditorState.create({ doc: split.text, extensions: lineBreaks(split) });
+  return Array.from({ length: state.doc.lines }, (_, i) => {
+    const at = state.doc.line(i + 1).from;
+    return [frontmatterAt(state, at) ?? "-", fenceAt(state, at)];
+  });
+}
+
+test('a frontmatter\'s lines "---" end where the server ends a line, LF or CRLF: a CR alone goes on with the line (Codex M7 review fix check A-M3)', () => {
+  const closed = [
+    ["-", true],
+    ["closed", false],
+    ["-", true],
+    ["-", false],
+  ];
+  expect(read("---\na: ''\n---\nBody")).toEqual(closed);
+  expect(read("---\r\na: ''\r\n---\r\nBody")).toEqual(closed);
+  // \rs alone: no frontmatter; one alone after the closing line, or before it, closes none: the one being written goes on.
+  expect(read("---\ra: ''\r---\rBody")).toEqual(Array.from({ length: 4 }, () => ["-", false]));
+  const open = [
+    ["-", true],
+    ["open", false],
+    ["open", false],
+    ["open", false],
+  ];
+  expect(read("---\na: ''\n---\rBody")).toEqual(open);
+  expect(read("---\na: ''\r---\nBody")).toEqual(open);
+  // A first line "---" with nothing after, or "--- ", opens none.
+  expect(read("---")).toEqual([["-", false]]);
+  expect(read("--- \na: ''\n---")).toEqual(Array.from({ length: 3 }, () => ["-", false]));
 });

@@ -1,5 +1,7 @@
 import type { EditorState } from "@codemirror/state";
 
+import { writtenBreak } from "../line-breaks";
+
 /** The quote of a YAML string: single or double; none where no string in quotes starts. */
 export type Quote = "'" | '"' | "";
 
@@ -149,38 +151,39 @@ export function openingQuote(state: EditorState, at: number): Quote {
     }
   }
   const last = lines.at(-1) ?? "";
-  return quote !== "" && opened === last.length - 1 ? quote : "";
+  // At a line's start in a string over lines, nothing opened on it (Codex M7 review fix check A-M1).
+  return quote !== "" && opened >= 0 && opened === last.length - 1 ? quote : "";
 }
 
 /**
  * frontmatterAt tells whether pos is in the content's frontmatter, as the
- * server's frontmatterSpan finds it ("closed"): a first line "---", up to
- * a later line "---" ("..." closes nothing). The content the editor loads
- * has no byte order mark (line-breaks.ts); one pasted at its start is not
- * looked for (accepted). One not closed, which the server reads as the
- * body until it is, is one being written ("open") as far as a blank
- * line: a link or a tag written there as the body's would be nothing
- * once it is closed.
+ * server's frontmatterSpan finds it ("closed"): after a first line "---",
+ * up to a later line "---" ("..." closes nothing; closingLine). The
+ * content the editor loads has no byte order mark (line-breaks.ts); one
+ * pasted at its start is not looked for (accepted). One not closed, which
+ * the server reads as the body until it is, is one being written ("open")
+ * as far as a blank line: a link or a tag written there as the body's
+ * would be nothing once it is closed.
  */
 export function frontmatterAt(state: EditorState, pos: number): "closed" | "open" | undefined {
   const { doc } = state;
   const at = doc.lineAt(pos).number;
-  if (at === 1 || doc.line(1).text !== "---") {
+  if (at === 1 || !opens(state)) {
     return undefined;
   }
-  let empty: number | undefined;
+  const closing = closingLine(state);
+  if (closing !== undefined) {
+    return at < closing ? "closed" : undefined;
+  }
   // Line by line, as the text's own iterator goes: a content opened by "---" and never closed is read to its end.
   let n = 1;
   for (const text of doc.iterLines(2)) {
     n++;
-    if (text === "---") {
-      return at < n ? "closed" : undefined;
-    }
-    if (empty === undefined && /^[ \t]*$/.test(text)) {
-      empty = n;
+    if (/^[ \t]*$/.test(text)) {
+      return at < n ? "open" : undefined;
     }
   }
-  return at < (empty ?? doc.lines + 1) ? "open" : undefined;
+  return "open";
 }
 
 /**
@@ -190,22 +193,35 @@ export function frontmatterAt(state: EditorState, pos: number): "closed" | "open
  * the closing one's end, makes it none (Codex M7 review R1).
  */
 export function fenceAt(state: EditorState, pos: number): boolean {
-  const { doc } = state;
-  const at = doc.lineAt(pos).number;
-  if (doc.line(1).text !== "---") {
-    return false;
-  }
-  if (at === 1) {
-    return true;
-  }
+  const at = state.doc.lineAt(pos).number;
+  return opens(state) && (at === 1 || at === closingLine(state));
+}
+
+/**
+ * opens tells whether the content's first line opens a frontmatter: "---"
+ * and a line break the server ends a line at, LF or CRLF (a CR alone it
+ * reads as the line's: line-breaks.ts keeps how each is written; Codex M7
+ * review fix check A-M3).
+ */
+function opens(state: EditorState): boolean {
+  const first = writtenBreak(state, 1);
+  return state.doc.line(1).text === "---" && first !== undefined && first !== "\r";
+}
+
+/**
+ * closingLine is the number of the line "---" that closes the frontmatter
+ * opens finds: the first later line "---" the server reads as one, no CR
+ * alone before or after it; undefined for none.
+ */
+function closingLine(state: EditorState): number | undefined {
   let n = 1;
-  for (const text of doc.iterLines(2)) {
+  for (const text of state.doc.iterLines(2)) {
     n++;
-    if (text === "---") {
-      return at === n;
+    if (text === "---" && writtenBreak(state, n - 1) !== "\r" && writtenBreak(state, n) !== "\r") {
+      return n;
     }
   }
-  return false;
+  return undefined;
 }
 
 /** quoted is s written in a YAML string of quote: in single quotes a ' twice, in double quotes a \ and a " escaped. */

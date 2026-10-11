@@ -287,15 +287,15 @@ test("those uploaded without an extension, or as the content was replaced, or ca
 test("in a frontmatter an embed goes just after a property's opening quote, written as its string writes it (Codex M7 review R1)", async () => {
   const doc = "---\ntags: [retained]\nimage: ''\ncover: \"\"\nref: '[[Guide]]'\n---\nBody";
   const { view, going, controls, text } = editing(doc, { anchor: doc.indexOf("''") + 1 });
-  paste(view, clipboard([new File(["b"], "Bob's.png")]));
-  going[0]?.answer(attachment("Bob's.png"));
+  paste(view, clipboard([new File(["b"], "Bob's Mom's.png")]));
+  going[0]?.answer(attachment("Bob's Mom's.png"));
   await settle();
   view.dispatch({ selection: { anchor: text().indexOf('""') + 1 } });
   paste(view, clipboard([new File(["b"], "Bob's.png")]));
   going[1]?.answer(attachment("Bob's.png"));
   await settle();
   expect(text()).toBe(
-    "---\ntags: [retained]\nimage: '![[Bob''s.png]]'\ncover: \"![[Bob's.png]]\"\nref: '[[Guide]]'\n---\nBody"
+    "---\ntags: [retained]\nimage: '![[Bob''s Mom''s.png]]'\ncover: \"![[Bob's.png]]\"\nref: '[[Guide]]'\n---\nBody"
   );
   expect(told(controls)).toEqual(["", ""]);
 
@@ -348,6 +348,17 @@ test("in a frontmatter the second of files pasted together, and one whose quote 
     "b.png uploaded, not inserted: in the frontmatter an embed goes just after a property's opening quote."
   );
 
+  // The first gone from the string before the second is answered: the second goes in alone, no line break before it
+  // (Codex M7 review fix check A-M2).
+  const undone = editing(doc, { anchor: 12 });
+  paste(undone.view, clipboard([new File(["a"], "a.png"), new File(["b"], "b.png")]));
+  undone.going[0]?.answer(attachment("a.png"));
+  await settle();
+  undone.view.dispatch({ changes: { from: 12, to: 22 } });
+  undone.going[1]?.answer(attachment("b.png"));
+  await settle();
+  expect(undone.text()).toBe("---\nimage: '![[b.png]]'\n---\n");
+
   const gone = editing(doc, { anchor: 12 });
   paste(gone.view, clipboard([new File(["a"], "a.png")]));
   gone.view.dispatch({ changes: { from: 11, to: 13 } });
@@ -358,14 +369,19 @@ test("in a frontmatter the second of files pasted together, and one whose quote 
     "a.png uploaded, not inserted: in the frontmatter an embed goes just after a property's opening quote."
   );
 
-  // A name holding what YAML does not take in a string.
-  for (const name of ["a\uFFFE.png", "a\uFFFF.png"]) {
-    const odd = editing(doc, { anchor: 12 });
+  // A name holding what YAML does not take in a string, in either quotes (Codex M7 review fix check A-N1).
+  for (const [quotes, name] of [
+    [doc, "a\uFFFE.png"],
+    [doc, "a\uFFFF.png"],
+    ['---\nimage: ""\n---\n', "a\uFFFE.png"],
+    ['---\nimage: ""\n---\n', "a\uFFFF.png"],
+  ] as const) {
+    const odd = editing(quotes, { anchor: 12 });
     paste(odd.view, clipboard([new File(["a"], name)]));
     odd.going[0]?.answer(attachment(name));
     // oxlint-disable-next-line no-await-in-loop -- each name in turn
     await settle();
-    expect(odd.text(), name).toBe(doc);
+    expect(odd.text(), name).toBe(quotes);
   }
 });
 

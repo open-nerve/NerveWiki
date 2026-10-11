@@ -221,9 +221,9 @@ func (p *Plan) place(folder, orig string, siblings []Node, children map[uuid.UUI
 // freeName is the first of "<name> 2", "<name> 3"… for the page x, the
 // name cut so that its file fits MaxSegment bytes, whose key is no name,
 // file or folder of its folder, nor its file's. next is the number after
-// the last tried of each family, the numbers before it taken: a name
-// taken stays so, and siblings whose names cut alike try each number
-// once (Codex M7 review R3).
+// the last tried of each family, the numbers of its digits before it
+// taken: a name taken stays so, and siblings whose names cut alike try
+// each number once (Codex M7 review R3).
 func freeName(x placed, names, files, folders map[string]bool, next map[family]int) string {
 	taken := func(s string) bool {
 		k := shared.TitleKey(s)
@@ -236,7 +236,7 @@ func freeName(x placed, names, files, folders map[string]bool, next map[family]i
 			limit -= len(".md")
 		}
 		stem := cutAt(x.node.Name, limit)
-		at := family{stem: shared.TitleKey(stem), file: x.file}
+		at := family{stem: shared.TitleKey(stem), digits: len(suffix) - 1, file: x.file}
 		if last := next[at]; last > n {
 			n = last // of more digits, the name may be cut shorter
 			continue
@@ -252,10 +252,13 @@ func freeName(x placed, names, files, folders map[string]bool, next map[family]i
 }
 
 // family is the names freeName numbers alike: of a cut name, by its key,
-// and whether a file is written, whose name is taken too.
+// with numbers of as many digits, which a sibling begins to try at the
+// first of them (Codex M7 review fix check B-M1), and whether a file is
+// written, whose name is taken too.
 type family struct {
-	stem string
-	file bool
+	stem   string
+	digits int
+	file   bool
 }
 
 // cutAt is s cut to at most n bytes at a character's boundary.
