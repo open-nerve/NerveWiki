@@ -35,6 +35,10 @@ import (
 // changing it changes every address signed.
 const ContentKeyInfo = "nervewiki asset-content mac v1"
 
+// SweepAge is how old a file no row holds is when the orphan sweep deletes
+// it: a file stored waits for its row less (bootstrap's tests).
+const SweepAge = app.SweepAge
+
 // What the module reads and writes of the other modules: bootstrap adapts
 // the page module's values, field by field.
 type (

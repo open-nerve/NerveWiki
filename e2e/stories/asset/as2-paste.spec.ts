@@ -3,6 +3,7 @@ import type { Locator } from "@playwright/test";
 import { expectEmbedded } from "../../fixtures/assert/asset";
 import { listAssets, pngBytes, uploadAsset } from "../../fixtures/assets";
 import { countAnswers } from "../../fixtures/browser";
+import { getPageProperties, listTags } from "../../fixtures/links";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, getView, readContent, writeContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -166,4 +167,56 @@ test("AS2 (page): an image pasted into the editor and one dropped on it upload a
     `/api/v0/assets/${dropped.id}/content`,
     `/api/v0/assets/${pasted.id}/content`,
   ]);
+});
+
+test("AS2 (page, frontmatter): a file pasted in a property's quotes goes in as the property's YAML string writes it; saved, the page keeps its properties, its tags and its property links (Codex M7 review R1)", async ({
+  api,
+  signedInPage,
+}, testInfo) => {
+  const { tokens, pat, workspace } = await newOnboardedTeam(api, testInfo);
+  const page = await signedInPage(tokens);
+  const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
+  const guide = await createPage(api, pat, notebook.id, "Guide", null, "");
+  const board = await createPage(
+    api,
+    pat,
+    notebook.id,
+    "Board",
+    null,
+    "---\ntags: [retained]\nimage: ''\nref: '[[Guide]]'\n---\nBody\n"
+  );
+  const uploads = countAnswers(page, "POST", `/api/v0/notebooks/${notebook.id}/assets`);
+  await page.goto(wikiPagePath(workspace.slug, notebook.id, board.id));
+  await expect(pageHeading(page, "Board")).toBeVisible();
+  const content = await startEditing(page);
+  // Between the quotes of image's value.
+  await page.keyboard.press("ControlOrMeta+Home");
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("End");
+  await page.keyboard.press("ArrowLeft");
+  await content.evaluate(
+    (element, bytes) => {
+      const data = new DataTransfer();
+      data.items.add(new File([new Uint8Array(bytes)], "Bob's.png", { type: "image/png" }));
+      element.dispatchEvent(new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: data }));
+    },
+    [...pngBytes]
+  );
+  await expect.poll(uploads).toBe(1);
+  await expect(content).toContainText("image: '![[Bob''s.png]]'");
+  await saveEdit(page);
+
+  expect((await readContent(api, pat, board.id)).content).toBe(
+    "---\ntags: [retained]\nimage: '![[Bob''s.png]]'\nref: '[[Guide]]'\n---\nBody\n"
+  );
+  const properties = (await getPageProperties(api, pat, board.id)).data;
+  expect(properties?.valid).toBe(true);
+  expect(properties?.properties).toEqual([
+    { key: "tags", value: ["retained"] },
+    { key: "image", value: "![[Bob's.png]]" },
+    { key: "ref", value: "[[Guide]]" },
+  ]);
+  expect(properties?.links).toContainEqual({ key: "ref", node_id: guide.id, kind: "page", url: null, inline: null });
+  expect((await listTags(api, pat, notebook.id)).data?.data).toEqual([{ tag: "retained", count: 1 }]);
 });

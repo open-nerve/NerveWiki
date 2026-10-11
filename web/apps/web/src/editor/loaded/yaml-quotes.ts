@@ -152,6 +152,62 @@ export function openingQuote(state: EditorState, at: number): Quote {
   return quote !== "" && opened === last.length - 1 ? quote : "";
 }
 
+/**
+ * frontmatterAt tells whether pos is in the content's frontmatter, as the
+ * server's frontmatterSpan finds it ("closed"): a first line "---", up to
+ * a later line "---" ("..." closes nothing). The content the editor loads
+ * has no byte order mark (line-breaks.ts); one pasted at its start is not
+ * looked for (accepted). One not closed, which the server reads as the
+ * body until it is, is one being written ("open") as far as a blank
+ * line: a link or a tag written there as the body's would be nothing
+ * once it is closed.
+ */
+export function frontmatterAt(state: EditorState, pos: number): "closed" | "open" | undefined {
+  const { doc } = state;
+  const at = doc.lineAt(pos).number;
+  if (at === 1 || doc.line(1).text !== "---") {
+    return undefined;
+  }
+  let empty: number | undefined;
+  // Line by line, as the text's own iterator goes: a content opened by "---" and never closed is read to its end.
+  let n = 1;
+  for (const text of doc.iterLines(2)) {
+    n++;
+    if (text === "---") {
+      return at < n ? "closed" : undefined;
+    }
+    if (empty === undefined && /^[ \t]*$/.test(text)) {
+      empty = n;
+    }
+  }
+  return at < (empty ?? doc.lines + 1) ? "open" : undefined;
+}
+
+/**
+ * fenceAt tells whether pos is on the first line "---", which opens a
+ * frontmatter, closed or being written, or on the line "---" that closes
+ * it, as frontmatterAt finds them: what goes in there, but a line's end at
+ * the closing one's end, makes it none (Codex M7 review R1).
+ */
+export function fenceAt(state: EditorState, pos: number): boolean {
+  const { doc } = state;
+  const at = doc.lineAt(pos).number;
+  if (doc.line(1).text !== "---") {
+    return false;
+  }
+  if (at === 1) {
+    return true;
+  }
+  let n = 1;
+  for (const text of doc.iterLines(2)) {
+    n++;
+    if (text === "---") {
+      return at === n;
+    }
+  }
+  return false;
+}
+
 /** quoted is s written in a YAML string of quote: in single quotes a ' twice, in double quotes a \ and a " escaped. */
 export function quoted(quote: Quote, s: string): string {
   if (quote === "'") {

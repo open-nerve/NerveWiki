@@ -261,6 +261,8 @@ export const en = {
   "editor.phrase.pages": "$ pages",
   "editor.phrase.uploadNotInserted": "$ uploaded, not inserted: the text was replaced or can no longer be changed.",
   "editor.phrase.uploadNoLink": "$ uploaded, not inserted: a name without an extension cannot be embedded.",
+  "editor.phrase.uploadNotInFrontmatter":
+    "$ uploaded, not inserted: in the frontmatter an embed goes just after a property's opening quote.",
   "notebookSettings.title": "Notebook settings",
   "notebookSettings.heading": "{name} settings",
   "notebookSettings.general": "General",

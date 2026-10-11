@@ -284,6 +284,91 @@ test("those uploaded without an extension, or as the content was replaced, or ca
   expect(replaced.text()).toBe("x");
 });
 
+test("in a frontmatter an embed goes just after a property's opening quote, written as its string writes it (Codex M7 review R1)", async () => {
+  const doc = "---\ntags: [retained]\nimage: ''\ncover: \"\"\nref: '[[Guide]]'\n---\nBody";
+  const { view, going, controls, text } = editing(doc, { anchor: doc.indexOf("''") + 1 });
+  paste(view, clipboard([new File(["b"], "Bob's.png")]));
+  going[0]?.answer(attachment("Bob's.png"));
+  await settle();
+  view.dispatch({ selection: { anchor: text().indexOf('""') + 1 } });
+  paste(view, clipboard([new File(["b"], "Bob's.png")]));
+  going[1]?.answer(attachment("Bob's.png"));
+  await settle();
+  expect(text()).toBe(
+    "---\ntags: [retained]\nimage: '![[Bob''s.png]]'\ncover: \"![[Bob's.png]]\"\nref: '[[Guide]]'\n---\nBody"
+  );
+  expect(told(controls)).toEqual(["", ""]);
+
+  // In a frontmatter being written, not closed, alike; on its line "---" it is not inserted.
+  const open = editing("---\nimage: ''", { anchor: 12 });
+  paste(open.view, clipboard([new File(["b"], "Bob's.png")]));
+  open.going[0]?.answer(attachment("Bob's.png"));
+  await settle();
+  expect(open.text()).toBe("---\nimage: '![[Bob''s.png]]'");
+  open.view.dispatch({ selection: { anchor: 3 } });
+  paste(open.view, clipboard([new File(["b"], "b.png")]));
+  open.going[1]?.answer(attachment("b.png"));
+  await settle();
+  expect(open.text()).toBe("---\nimage: '![[Bob''s.png]]'");
+});
+
+test('elsewhere in a frontmatter, and on its lines "---", an embed is not inserted: the editor says where it goes', async () => {
+  const doc = "---\nimage: \nnote: 'a'\n---\nBody";
+  // A plain value, a string's middle, after its closing quote, the "---" lines' starts and ends.
+  const places = [11, 20, 21, 0, 3, doc.indexOf("\n---") + 1, doc.indexOf("\nBody")];
+  for (const at of places) {
+    const { view, going, controls, text } = editing(doc, { anchor: at });
+    paste(view, clipboard([new File(["b"], "b.png")]));
+    going[0]?.answer(attachment("b.png"));
+    // oxlint-disable-next-line no-await-in-loop -- each place in turn
+    await settle();
+    expect(text(), `at ${at}`).toBe(doc);
+    expect(told(controls), `at ${at}`).toEqual([
+      "",
+      "b.png uploaded, not inserted: in the frontmatter an embed goes just after a property's opening quote.",
+    ]);
+  }
+  // The body's start, past the frontmatter, takes it.
+  const body = editing(doc, { anchor: doc.indexOf("Body") });
+  paste(body.view, clipboard([new File(["b"], "b.png")]));
+  body.going[0]?.answer(attachment("b.png"));
+  await settle();
+  expect(body.text()).toBe("---\nimage: \nnote: 'a'\n---\n![[b.png]]Body");
+});
+
+test("in a frontmatter the second of files pasted together, and one whose quote went as it was uploaded, are not inserted", async () => {
+  const doc = "---\nimage: ''\n---\n";
+  const { view, going, controls, text } = editing(doc, { anchor: 12 });
+  paste(view, clipboard([new File(["a"], "a.png"), new File(["b"], "b.png")]));
+  going[0]?.answer(attachment("a.png"));
+  going[1]?.answer(attachment("b.png"));
+  await settle();
+  expect(text()).toBe("---\nimage: '![[a.png]]'\n---\n");
+  expect(told(controls).at(-1)).toBe(
+    "b.png uploaded, not inserted: in the frontmatter an embed goes just after a property's opening quote."
+  );
+
+  const gone = editing(doc, { anchor: 12 });
+  paste(gone.view, clipboard([new File(["a"], "a.png")]));
+  gone.view.dispatch({ changes: { from: 11, to: 13 } });
+  gone.going[0]?.answer(attachment("a.png"));
+  await settle();
+  expect(gone.text()).toBe("---\nimage: \n---\n");
+  expect(told(gone.controls).at(-1)).toBe(
+    "a.png uploaded, not inserted: in the frontmatter an embed goes just after a property's opening quote."
+  );
+
+  // A name holding what YAML does not take in a string.
+  for (const name of ["a\uFFFE.png", "a\uFFFF.png"]) {
+    const odd = editing(doc, { anchor: 12 });
+    paste(odd.view, clipboard([new File(["a"], name)]));
+    odd.going[0]?.answer(attachment(name));
+    // oxlint-disable-next-line no-await-in-loop -- each name in turn
+    await settle();
+    expect(odd.text(), name).toBe(doc);
+  }
+});
+
 test("an embed inserted where the cursor is puts the cursor after it, as a paste does: what is typed, and pasted, next goes after", async () => {
   const { view, going, text } = editing("Notes\n");
   paste(view, clipboard([new File(["1"], "image.png", { type: "image/png" })]));
@@ -488,6 +573,17 @@ test("what a drop with folders says of files not inserted keeps its folders' lin
   expect(told(controls).at(-1)).toBe(
     "Folders are not uploaded: zip a folder of notes and import it from the notebook's settings.\n" +
       "a.png uploaded, not inserted: the text was replaced or can no longer be changed."
+  );
+
+  // So does what it says of files whose embeds go nowhere in a frontmatter: dropped on its line "---".
+  const fenced = editing("---\na: ''\n---\n");
+  drag(fenced.view, "drop", dropped([new File(["a"], "a.png")], ["notes"]));
+  fenced.going[0]?.answer(attachment("a.png"));
+  await settle();
+  expect(fenced.text()).toBe("---\na: ''\n---\n");
+  expect(told(fenced.controls).at(-1)).toBe(
+    "Folders are not uploaded: zip a folder of notes and import it from the notebook's settings.\n" +
+      "a.png uploaded, not inserted: in the frontmatter an embed goes just after a property's opening quote."
   );
 });
 

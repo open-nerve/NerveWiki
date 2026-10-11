@@ -2,7 +2,9 @@ package domain_test
 
 import (
 	"errors"
+	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -74,6 +76,10 @@ func notebook() domain.Named {
 
 // The mapping of v0.1 design 3.5, rule by rule.
 func TestThePlanMapsTheTree(t *testing.T) {
+	// s is a name of 250 bytes, the file of the page b, and the name of a page whose name is longer cut so that its
+	// number and ".md" fit, before ten.
+	b := strings.Repeat("b", 247)
+	s := b + ".md"
 	cases := []struct {
 		name   string
 		tree   *tree
@@ -113,6 +119,12 @@ func TestThePlanMapsTheTree(t *testing.T) {
 			[]string{"N.md N.md", "N.md 2/ -", "N.md 2/c.md N.md 2/c.md", "N.md 2.md/ -", "N.md 2.md/d.md N.md 2.md/d.md"}},
 		{"a page without children has no folder to clash", newTree("N page", "N.md page"), nil,
 			[]string{"N.md N.md", "N.md.md N.md.md"}},
+		// "s 2.md" is a folder's name: the long page, a file, is "s 3", and the next number tried for a file of s is 4;
+		// not for the folder s, whose 2 is free (Codex M7 review R3).
+		{"a number a file passed over is a folder's still", newTree(b+" page", s+"xyz page", s+"_2.md page empty", s+"_2.md/d page",
+			s+" page empty", s+"/c page"), nil,
+			[]string{s + " " + s, s + " 3.md " + s + " 3.md", s + " 2.md/ -", s + " 2.md/d.md " + s + " 2.md/d.md", s + " 2/ -",
+				s + " 2/c.md " + s + " 2/c.md"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -268,5 +280,43 @@ func TestContributedFilesGoWhereNothingIs(t *testing.T) {
 	}
 	if got := p.Contributed(); !slices.Equal(got, []string{"New/log.md"}) {
 		t.Errorf("Contributed() = %q", got)
+	}
+}
+
+// Pages whose names cut alike, past the digits that told them apart, take
+// the numbers in turn, the name cut shorter as they grow, each in time as
+// long as the others: four times as many take about four times the
+// allocations, as the whole plan does, not sixteen (Codex M7 review R3).
+func TestPagesWhoseNamesCutAlikeAreRenamedInTimeAsLongAsThey(t *testing.T) {
+	alike := func(n int) []domain.Node {
+		var nodes []domain.Node
+		for i := range n {
+			// 255 bytes: the file is cut, the digits with it.
+			nodes = append(nodes, domain.Node{ID: uuid.NewV7(), Name: strings.Repeat("a", 250) + fmt.Sprintf("%05d", i),
+				SortOrder: float64(i), Bytes: 1})
+		}
+		return nodes
+	}
+	p, err := domain.NewPlan(notebook(), nil, alike(1000), nothingLinked)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, r := range p.Renamed {
+		number := strconv.Itoa(i + 2)
+		if want := strings.Repeat("a", 251-len(number)) + " " + number + ".md"; r.To != want {
+			t.Fatalf("the %dth renamed to %q, want %q", i, r.To, want)
+		}
+	}
+	allocs := func(n int) float64 {
+		nodes := alike(n)
+		return testing.AllocsPerRun(1, func() {
+			if _, err := domain.NewPlan(notebook(), nil, nodes, nothingLinked); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+	small, large := allocs(250), allocs(1000)
+	if len(p.Renamed) != 1000 || large > 6*small {
+		t.Errorf("%d renamed; 1000 pages take %.0f allocations, 250 %.0f: more than 6 times", len(p.Renamed), large, small)
 	}
 }

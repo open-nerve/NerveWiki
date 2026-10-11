@@ -265,9 +265,13 @@ type TransferConfig struct {
 
 // The bounds of the transfer settings.
 const (
-	MinExportTTL                = 10 * time.Minute
-	MinJobTimeout               = time.Minute
-	MaxJobTimeout               = 7 * 24 * time.Hour
+	MinExportTTL  = 10 * time.Minute
+	MinJobTimeout = time.Minute
+	// MaxJobTimeout is an hour less than a day, how old a file no row
+	// holds is when the attachments' orphan sweep deletes it (asset's
+	// SweepAge): an import stores a batch's files before the unit that
+	// writes their rows, within its job (Codex M7 review R2).
+	MaxJobTimeout               = 23 * time.Hour
 	MinTransferHeartbeatTimeout = time.Minute
 	MinImportBytes              = 1 << 20
 	MaxImportEntries            = 100000

@@ -259,6 +259,7 @@ export const zhCN: Messages = {
   "editor.phrase.pages": "$ 页",
   "editor.phrase.uploadNotInserted": "$ 已上传，未插入：正文已被替换，或已不能再改。",
   "editor.phrase.uploadNoLink": "$ 已上传，未插入：没有扩展名的名称不能嵌入。",
+  "editor.phrase.uploadNotInFrontmatter": "$ 已上传，未插入：在 frontmatter 里，嵌入只能紧跟在属性值的开引号之后。",
   "notebookSettings.title": "笔记本设置",
   "notebookSettings.heading": "{name} 的设置",
   "notebookSettings.general": "常规",

@@ -6,6 +6,7 @@ import { carriesFiles, filesDropped } from "../../lib/file-transfer";
 import { isPageName } from "../../lib/upload-name";
 import type { Asset } from "../../services/asset.service";
 import type { Build, EditorContext, EditorControls } from "../registry";
+import { fenceAt, frontmatterAt, openingQuote, quoted } from "./yaml-quotes";
 
 /** A place where the embeds of files pasted or dropped together go, by its number, as the content changes. */
 type Place = { id: number; at: number };
@@ -190,6 +191,28 @@ const notInserted = "$ uploaded, not inserted: the text was replaced or can no l
 /** What the editor says of attachments uploaded without an extension: no link embeds them. */
 const noLink = "$ uploaded, not inserted: a name without an extension cannot be embedded.";
 
+/** What the editor says of attachments uploaded where their embeds go nowhere: in a frontmatter, but after a property's quote. */
+const notInFrontmatter =
+  "$ uploaded, not inserted: in the frontmatter an embed goes just after a property's opening quote.";
+
+/**
+ * embedAt is the embed of link as it goes in at place, or undefined where
+ * it would break the frontmatter, or be no link there (Codex M7 review
+ * R1). In a frontmatter, as a link completes there, a property's link is
+ * a string's whole value: the embed goes just after a string's opening
+ * quote, written as the string writes it, unless its name holds U+FFFE
+ * or U+FFFF, which a YAML string does not take (a name holds none of the
+ * other characters it does not: upload-name's unshowable); elsewhere in
+ * it, and on its "---" lines, it does not.
+ */
+function embedAt(state: EditorState, place: number, link: string): string | undefined {
+  if (frontmatterAt(state, place) !== undefined) {
+    const quote = openingQuote(state, place);
+    return quote === "" || /[\uFFFE\uFFFF]/u.test(link) ? undefined : quoted(quote, embedOf(link));
+  }
+  return fenceAt(state, place) ? undefined : embedOf(link);
+}
+
 /** How many places have been opened: each its number. */
 let opened = 0;
 
@@ -235,6 +258,7 @@ async function upload(
   );
   const unlinked: string[] = [];
   const left: string[] = [];
+  const unplaced: string[] = [];
   let first = true;
   for (const answered of uploads) {
     // oxlint-disable-next-line no-await-in-loop -- each embed after the one before, in their order
@@ -251,12 +275,15 @@ async function upload(
     );
     const state = view.state;
     const place = composed && !isClosed() ? state.field(places, false)?.get(id) : undefined;
+    const embed = place === undefined || asset.link === null ? undefined : embedAt(state, place, asset.link);
     if (asset.link === null) {
       unlinked.push(asset.name);
     } else if (place === undefined || state.readOnly) {
       left.push(asset.name);
+    } else if (embed === undefined) {
+      unplaced.push(asset.name);
     } else {
-      const changes = state.changes({ from: place, insert: (first ? "" : "\n") + embedOf(asset.link) });
+      const changes = state.changes({ from: place, insert: (first ? "" : "\n") + embed });
       const after = changes.mapPos(place, 1);
       // The cursor where it goes goes after it, as after a paste; non-empty, a selection keeps what it holds. Set only
       // then: a selection set resets what follows it, an open completion.
@@ -274,9 +301,10 @@ async function upload(
     view.dispatch({ effects: placeDone.of(id) });
   }
   const said = [
-    folders && (unlinked.length > 0 || left.length > 0) ? view.state.phrase(foldersPhrase) : "",
+    folders && (unlinked.length > 0 || left.length > 0 || unplaced.length > 0) ? view.state.phrase(foldersPhrase) : "",
     unlinked.length > 0 ? view.state.phrase(noLink, namesOf(unlinked)) : "",
     left.length > 0 ? view.state.phrase(notInserted, namesOf(left)) : "",
+    unplaced.length > 0 ? view.state.phrase(notInFrontmatter, namesOf(unplaced)) : "",
   ].filter((sentence) => sentence !== "");
   if (said.length > 0) {
     controls.tell(said.join("\n"));

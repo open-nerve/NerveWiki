@@ -6,6 +6,7 @@ import (
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
+	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
 // An import's unit (M7/P6 design 3.3): it creates pages and attachments
@@ -30,22 +31,16 @@ type ImportUnit struct {
 }
 
 // children are a parent's children as the unit knows them, in order, and
-// the keys of their names; next the number after the last a name took,
-// by its key and whether it is an attachment's: the numbers before it are
-// held, or were tried. A number may then be passed over that is free: a
-// cut long name numbers otherwise in another spelling, and a name
-// reserved for a page the import drops too deep is not held.
+// the keys of their names; next the number after the last tried of each
+// family (domain.Family), by its key: the numbers before it are held, or
+// were tried. The names that cut alike and the spellings of a key number
+// alike, each number tried once (Codex M7 review R3). A number may be
+// passed over that is free: a name reserved for a page the import drops
+// too deep is not held.
 type children struct {
 	nodes []domain.Node
 	keys  map[string]bool
-	next  map[numbering]int
-}
-
-// numbering is a name numbered, a page's or an attachment's, by its key:
-// the spellings of a key number alike.
-type numbering struct {
-	key   string
-	asset bool
+	next  map[string]int
 }
 
 // ImportedPage is an import's page: under ParentID (nil: the notebook's
@@ -162,7 +157,7 @@ func (iu *ImportUnit) children(ctx context.Context, parentID *uuid.UUID) (*child
 	if err != nil {
 		return nil, err
 	}
-	kids := &children{nodes: nodes, keys: make(map[string]bool, len(nodes)), next: map[numbering]int{}}
+	kids := &children{nodes: nodes, keys: make(map[string]bool, len(nodes)), next: map[string]int{}}
 	for _, n := range nodes {
 		kids.keys[n.NameKey] = true
 	}
@@ -172,8 +167,8 @@ func (iu *ImportUnit) children(ctx context.Context, parentID *uuid.UUID) (*child
 
 // free is name checked, a page's title or an attachment's name; when one
 // of the children holds its key, numbered "name 2", "name 3"… until none
-// does nor is it reserved, from the number after the last a name of its
-// key took in the unit.
+// does nor is it reserved, each family from the number after the last
+// tried of it in the unit.
 func (c *children) free(name string, asset bool, reserved func(key string) bool) (domain.Title, error) {
 	check := domain.CheckTitle
 	if asset {
@@ -183,16 +178,18 @@ func (c *children) free(name string, asset bool, reserved func(key string) bool)
 	if err != nil || !c.keys[title.Key] {
 		return title, err
 	}
-	at := numbering{key: title.Key, asset: asset}
-	for n := max(2, c.next[at]); ; n++ {
+	for n := 2; ; {
+		at := shared.TitleKey(domain.Family(name, n, asset))
+		if last := c.next[at]; last > n {
+			n = last // of more digits, the name may be cut shorter
+			continue
+		}
+		c.next[at] = n + 1
 		title, err = check("name", domain.Numbered(name, n, asset))
-		if err != nil {
+		if err != nil || !c.keys[title.Key] && (reserved == nil || !reserved(title.Key)) {
 			return title, err
 		}
-		if !c.keys[title.Key] && (reserved == nil || !reserved(title.Key)) {
-			c.next[at] = n + 1
-			return title, nil
-		}
+		n++
 	}
 }
 

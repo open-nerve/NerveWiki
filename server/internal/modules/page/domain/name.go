@@ -54,14 +54,27 @@ func hasExtension(name string) bool {
 // bytes. An extension too long to leave room for a character of the stem
 // is numbered as a page's name is.
 func Numbered(name string, n int, asset bool) string {
+	return numbered(name, strconv.Itoa(n), asset)
+}
+
+// Family is what the names Numbered numbers name with, the numbers of n's
+// digits, have in common: the name numbered with '#' for each digit, a
+// character no title holds. Their keys are those of one name and of one
+// extension (or none) cut alike, numbered.
+func Family(name string, n int, asset bool) string {
+	return numbered(name, strings.Repeat("#", len(strconv.Itoa(n))), asset)
+}
+
+// numbered is Numbered with the number written number.
+func numbered(name, number string, asset bool) string {
 	stem, ext := name, ""
 	if asset && hasExtension(name) {
 		i := strings.LastIndexByte(name, '.')
 		stem, ext = name[:i], name[i:]
 	}
-	suffix := " " + strconv.Itoa(n) + ext
+	suffix := " " + number + ext
 	if len(suffix) >= shared.MaxTitleBytes {
-		stem, suffix = name, " "+strconv.Itoa(n)
+		stem, suffix = name, " "+number
 	}
 	room := shared.MaxTitleBytes - len(suffix)
 	if len(stem) > room {

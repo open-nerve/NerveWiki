@@ -129,7 +129,7 @@ func TestValidateReportsEveryInvalidKey(t *testing.T) {
 		"asset.max_bytes: must be from 1024 (1 KiB) to 4294967296 (4 GiB), got 0",
 		"asset.upload_min_rate: must be at least 1, got 0",
 		"transfer.export_ttl: must be at least 10m0s, got 0s",
-		"transfer.job_timeout: must be from 1m0s to 168h0m0s, got 0s",
+		"transfer.job_timeout: must be from 1m0s to 23h0m0s, got 0s",
 		"transfer.heartbeat_timeout: must be at least 1m0s, got 0s",
 		"transfer.max_queued: must be at least 1, got 0",
 		"transfer.import_max_bytes: must be at least 1048576 (1 MiB), got 0",
@@ -415,13 +415,13 @@ func TestValidateCrossKeyRules(t *testing.T) {
 			mutate: func(c *Config) { c.Transfer.JobTimeout, c.Transfer.HeartbeatTimeout = 2*time.Minute, time.Minute },
 		},
 		{
-			name:   "a job of a week",
-			mutate: func(c *Config) { c.Transfer.JobTimeout = 7 * 24 * time.Hour },
+			name:   "a job of 23 hours",
+			mutate: func(c *Config) { c.Transfer.JobTimeout = 23 * time.Hour },
 		},
 		{
-			name:   "a job of more than a week",
-			mutate: func(c *Config) { c.Transfer.JobTimeout = 7*24*time.Hour + time.Second },
-			want:   "transfer.job_timeout: must be from 1m0s to 168h0m0s, got 168h0m1s",
+			name:   "a job of more than 23 hours",
+			mutate: func(c *Config) { c.Transfer.JobTimeout = 23*time.Hour + time.Second },
+			want:   "transfer.job_timeout: must be from 1m0s to 23h0m0s, got 23h0m1s",
 		},
 		{
 			name:   "a heartbeat timeout below a minute",

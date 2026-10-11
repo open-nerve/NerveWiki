@@ -2,6 +2,7 @@ package domain_test
 
 import (
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -102,6 +103,12 @@ func TestNumbered(t *testing.T) {
 		}
 		if _, f := shared.CheckTitle("name", got); f != nil {
 			t.Errorf("Numbered(%q, %d, %t) = %q, not a title: %+v", tt.name, tt.n, tt.asset, got, f)
+		}
+		// Its family: the number's digits '#'s.
+		number := strconv.Itoa(tt.n)
+		want := strings.Replace(tt.want, " "+number, " "+strings.Repeat("#", len(number)), 1)
+		if got := domain.Family(tt.name, tt.n, tt.asset); got != want {
+			t.Errorf("Family(%q, %d, %t) = %q, want %q", tt.name, tt.n, tt.asset, got, want)
 		}
 	}
 }

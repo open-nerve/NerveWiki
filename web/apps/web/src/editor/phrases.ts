@@ -36,6 +36,8 @@ export const phraseKeys = {
   "$ pages": "editor.phrase.pages",
   "$ uploaded, not inserted: the text was replaced or can no longer be changed.": "editor.phrase.uploadNotInserted",
   "$ uploaded, not inserted: a name without an extension cannot be embedded.": "editor.phrase.uploadNoLink",
+  "$ uploaded, not inserted: in the frontmatter an embed goes just after a property's opening quote.":
+    "editor.phrase.uploadNotInFrontmatter",
   "Folders are not uploaded: zip a folder of notes and import it from the notebook's settings.": "asset.folders",
 } as const satisfies Record<string, MessageKey>;
 
