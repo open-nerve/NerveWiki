@@ -319,53 +319,53 @@ func TestAnImportsUnitReadsEachParentOnce(t *testing.T) {
 	}
 }
 
-// Names numbered whose names cut alike, past the characters that told
-// them apart, take the numbers in turn, the name cut shorter as they grow,
-// each in time as long as the others: four times as many take about four
-// times the allocations, as the whole unit does, not sixteen (Codex M7
-// review R3, the import's alike).
-func TestAnImportsUnitNumbersNamesThatCutAlikeInTimeAsLongAsThey(t *testing.T) {
+// cutAlike is the ith of names of 255 bytes, which the last two
+// characters tell apart: numbered, a name is cut, they with it.
+func cutAlike(i int) string {
 	const digits = "0123456789abcdefghijklmnopqrstuvwxyz"
-	// name is the ith of 255 bytes, which the last two tell apart: numbered, it is cut, they with it.
-	name := func(i int) string {
-		return strings.Repeat("a", 253) + string(digits[i/len(digits)]) + string(digits[i%len(digits)])
+	return strings.Repeat("a", 253) + string(digits[i/len(digits)]) + string(digits[i%len(digits)])
+}
+
+// heldAlike is a fixture whose root holds the first n names cutAlike
+// names.
+func heldAlike(n int) *fixture {
+	f := newFixture()
+	f.grant(domain.ActionCreate)
+	for i := range n {
+		f.page(cutAlike(i), nil, float64(i))
 	}
-	named := func(n int, f *fixture) []string {
-		var got []string
-		_, err := f.importAs(uuid.UUID{}, func(ctx context.Context, u *app.ImportUnit) error {
-			for i := range n {
-				p, err := u.CreatePage(ctx, app.ImportedPage{Name: strings.ToUpper(name(i))})
-				if err != nil {
-					return err
-				}
-				got = append(got, p.Name)
-			}
-			return nil
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-		return got
-	}
-	held := func(n int) *fixture {
-		f := newFixture()
-		f.grant(domain.ActionCreate)
+	return f
+}
+
+// importAlike imports the first n names cutAlike names in upper case into
+// f's root, each numbered, and tells their names.
+func importAlike(t *testing.T, f *fixture, n int) []string {
+	t.Helper()
+	var got []string
+	_, err := f.importAs(uuid.UUID{}, func(ctx context.Context, u *app.ImportUnit) error {
 		for i := range n {
-			f.page(name(i), nil, float64(i))
+			p, err := u.CreatePage(ctx, app.ImportedPage{Name: strings.ToUpper(cutAlike(i))})
+			if err != nil {
+				return err
+			}
+			got = append(got, p.Name)
 		}
-		return f
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
-	for i, got := range named(1000, held(1000)) {
+	return got
+}
+
+// Names numbered whose names cut alike, past the characters that told
+// them apart, take the numbers in turn, the name cut shorter as they grow
+// (Codex M7 review R3, the import's alike); their cost is cost_test.go's.
+func TestAnImportsUnitNumbersNamesThatCutAlikeInTurn(t *testing.T) {
+	for i, got := range importAlike(t, heldAlike(1000), 1000) {
 		number := strconv.Itoa(i + 2)
 		if want := strings.Repeat("A", 254-len(number)) + " " + number; got != want {
 			t.Fatalf("the %dth named %q, want %q", i, got, want)
 		}
-	}
-	allocs := func(n int) float64 {
-		return testing.AllocsPerRun(1, func() { named(n, held(n)) })
-	}
-	small, large := allocs(250), allocs(1000)
-	if large > 6*small {
-		t.Errorf("1000 names take %.0f allocations, 250 %.0f: more than 6 times", large, small)
 	}
 }

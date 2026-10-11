@@ -283,40 +283,32 @@ func TestContributedFilesGoWhereNothingIs(t *testing.T) {
 	}
 }
 
-// Pages whose names cut alike, past the digits that told them apart, take
-// the numbers in turn, the name cut shorter as they grow, each in time as
-// long as the others: four times as many take about four times the
-// allocations, as the whole plan does, not sixteen (Codex M7 review R3).
-func TestPagesWhoseNamesCutAlikeAreRenamedInTimeAsLongAsThey(t *testing.T) {
-	alike := func(n int) []domain.Node {
-		var nodes []domain.Node
-		for i := range n {
-			// 255 bytes: the file is cut, the digits with it.
-			nodes = append(nodes, domain.Node{ID: uuid.NewV7(), Name: strings.Repeat("a", 250) + fmt.Sprintf("%05d", i),
-				SortOrder: float64(i), Bytes: 1})
-		}
-		return nodes
+// alike are n pages whose names cut alike: of 255 bytes, their files are
+// cut, the digits that tell them apart with them.
+func alike(n int) []domain.Node {
+	var nodes []domain.Node
+	for i := range n {
+		nodes = append(nodes, domain.Node{ID: uuid.NewV7(), Name: strings.Repeat("a", 250) + fmt.Sprintf("%05d", i),
+			SortOrder: float64(i), Bytes: 1})
 	}
+	return nodes
+}
+
+// Pages whose names cut alike, past the digits that told them apart, take
+// the numbers in turn, the name cut shorter as they grow (Codex M7 review
+// R3); their cost is cost_test.go's.
+func TestPagesWhoseNamesCutAlikeTakeTheNumbersInTurn(t *testing.T) {
 	p, err := domain.NewPlan(notebook(), nil, alike(1000), nothingLinked)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(p.Renamed) != 1000 {
+		t.Fatalf("%d renamed, want 1000", len(p.Renamed))
 	}
 	for i, r := range p.Renamed {
 		number := strconv.Itoa(i + 2)
 		if want := strings.Repeat("a", 251-len(number)) + " " + number + ".md"; r.To != want {
 			t.Fatalf("the %dth renamed to %q, want %q", i, r.To, want)
 		}
-	}
-	allocs := func(n int) float64 {
-		nodes := alike(n)
-		return testing.AllocsPerRun(1, func() {
-			if _, err := domain.NewPlan(notebook(), nil, nodes, nothingLinked); err != nil {
-				t.Fatal(err)
-			}
-		})
-	}
-	small, large := allocs(250), allocs(1000)
-	if len(p.Renamed) != 1000 || large > 6*small {
-		t.Errorf("%d renamed; 1000 pages take %.0f allocations, 250 %.0f: more than 6 times", len(p.Renamed), large, small)
 	}
 }
