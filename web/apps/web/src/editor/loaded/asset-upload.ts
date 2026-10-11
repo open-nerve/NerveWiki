@@ -197,7 +197,7 @@ const noLink = "$ uploaded, not inserted: a name without an extension cannot be 
 
 /** What the editor says of attachments uploaded where their embeds go nowhere: in a frontmatter, but after a property's quote. */
 const notInFrontmatter =
-  "$ uploaded, not inserted: in the frontmatter an embed goes just after a property's opening quote.";
+  "$ uploaded, not inserted: in the frontmatter an embed goes just after a property value's opening quote.";
 
 /** What the editor says of attachments uploaded whose names a frontmatter's string cannot hold. */
 const notInString = "$ uploaded, not inserted: a frontmatter's string cannot hold a character of its name.";

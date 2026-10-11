@@ -30,16 +30,17 @@ export type Quote = "'" | '"' | "";
  * "!"), on its line or a line before with no node between: the server
  * reads such a string by its tag, a value that fits it, which a link
  * would not (Codex M7 review fix checks A2-M2, A3-N1); nor a key's, after
- * a '?', or closing on its line before a ':' (keyClose): a key holds no
- * property link, and one written there may make it another key's, or
- * too long (fix check A4-M1).
+ * a '?' or in { } before its ':' (an entry there with none is a key), or
+ * closing on its line before a ':' (keyClose): a key holds no property
+ * link, and one written there may make it another key's, or too long (fix
+ * checks A4-M1, A5-M1).
  */
 export function openingQuote(state: EditorState, at: number): Quote {
   let quote: Quote = "";
   let opened = -1; // where the string in quotes opened, on the line read
   let block: number | undefined; // the column a block's lines are indented past
   let goesOn: number | undefined; // the column a plain string's lines are indented past
-  let flow = 0; // how deep in [ ] and { }
+  const flow: string[] = []; // the [ and { open, the innermost last
   let start = true; // whether a key or a value may start
   let plain = false; // whether in a plain string's text
   let pending: number | undefined; // the node of the line before, if it left a value to come
@@ -67,7 +68,7 @@ export function openingQuote(state: EditorState, at: number): Quote {
         continue;
       }
       block = goesOn = undefined;
-      if (flow === 0) {
+      if (flow.length === 0) {
         start = true;
         plain = false;
       }
@@ -108,18 +109,21 @@ export function openingQuote(state: EditorState, at: number): Quote {
         // past it: no string is told to open there (fix checks A5-M1, A6-M1, A6-M2).
         return "";
       }
-      keyAlone = c === "?" && flow > 0;
-      if (flow > 0 && (c === "," || c === "]" || c === "}")) {
-        flow -= c === "," ? 0 : 1;
+      keyAlone = c === "?" && flow.length > 0;
+      if (flow.length > 0 && (c === "," || c === "]" || c === "}")) {
+        if (c !== ",") {
+          flow.pop();
+        }
         start = c === ",";
         plain = false;
         tag = false; // the node it tagged was empty
-        explicit = false;
-      } else if (c === ":" && (spaceNext || (flow > 0 && (!plain || ",[]{}".includes(next))))) {
+        // In { } an entry is a key, its ':' and value or none (Codex M7 review fix check A5-M1).
+        explicit = c === "," && flow.at(-1) === "{";
+      } else if (c === ":" && (spaceNext || (flow.length > 0 && (!plain || ",[]{}".includes(next))))) {
         // A value's: after a key, or alone at the start (after "? k"), an empty key's anchor or tag before it.
         // Alone it is as "- " and "? ": a key may follow it on the line, its node (fix check A4-M3).
-        const alone: boolean = flow === 0 && !value && start && props === undefined;
-        if (flow === 0 && !value) {
+        const alone: boolean = flow.length === 0 && !value && start && props === undefined;
+        if (flow.length === 0 && !value) {
           node = start ? (props ?? i) : key;
           own = true;
         }
@@ -137,15 +141,16 @@ export function openingQuote(state: EditorState, at: number): Quote {
           explicit,
         ];
       } else if (c === "[" || c === "{") {
-        flow++;
+        flow.push(c);
         tag = false;
-      } else if ((c === "-" || c === "?") && flow === 0 && spaceNext) {
+        explicit = c === "{";
+      } else if ((c === "-" || c === "?") && flow.length === 0 && spaceNext) {
         node = i;
         value = false;
         own = true;
         tag = false; // a tag before it was its collection's (Codex M7 review fix check A3-N1)
         explicit = c === "?";
-      } else if (c === "?" && flow > 0) {
+      } else if (c === "?" && flow.length > 0) {
         // In [ ] and { } a '?' is a key's, a space after it or not, as the library reads it.
         explicit = true;
       } else if (c === "&" || c === "!") {
@@ -159,7 +164,7 @@ export function openingQuote(state: EditorState, at: number): Quote {
         if (c === "!") {
           tag = !stringTags.has(line.slice(from, i + 1));
         }
-      } else if ((c === "|" || c === ">") && flow === 0) {
+      } else if ((c === "|" || c === ">") && flow.length === 0) {
         block = own ? node : (pending ?? node);
         tag = false;
         break;
@@ -173,10 +178,10 @@ export function openingQuote(state: EditorState, at: number): Quote {
         [plain, start, key, tag] = [true, false, value ? key : (props ?? i), false];
       }
     }
-    if (plain && flow === 0) {
+    if (plain && flow.length === 0) {
       goesOn = own ? node : (pending ?? node);
     }
-    if (quote === "" && flow === 0 && block === undefined) {
+    if (quote === "" && flow.length === 0 && block === undefined) {
       pending = start ? (own ? node : pending) : undefined;
     }
   }

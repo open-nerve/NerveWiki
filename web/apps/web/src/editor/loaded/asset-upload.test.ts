@@ -285,7 +285,7 @@ test("those uploaded without an extension, or as the content was replaced, or ca
   expect(replaced.text()).toBe("x");
 });
 
-test("in a frontmatter an embed goes just after a property's opening quote, written as its string writes it (Codex M7 review R1)", async () => {
+test("in a frontmatter an embed goes just after a property value's opening quote, written as its string writes it (Codex M7 review R1)", async () => {
   const doc = "---\ntags: [retained]\nimage: ''\ncover: \"\"\nref: '[[Guide]]'\n---\nBody";
   const { view, going, controls, text } = editing(doc, { anchor: doc.indexOf("''") + 1 });
   paste(view, clipboard([new File(["b"], "Bob's Mom's.png")]));
@@ -326,7 +326,7 @@ test('elsewhere in a frontmatter, and on its lines "---", an embed is not insert
     expect(text(), `at ${at}`).toBe(doc);
     expect(told(controls), `at ${at}`).toEqual([
       "",
-      "b.png uploaded, not inserted: in the frontmatter an embed goes just after a property's opening quote.",
+      "b.png uploaded, not inserted: in the frontmatter an embed goes just after a property value's opening quote.",
     ]);
   }
   // The body's start, past the frontmatter, takes it.
@@ -346,7 +346,7 @@ test("in a frontmatter the second of files pasted together, and one whose quote 
   await settle();
   expect(text()).toBe("---\nimage: '![[a.png]]'\n---\n");
   expect(told(controls).at(-1)).toBe(
-    "b.png uploaded, not inserted: in the frontmatter an embed goes just after a property's opening quote."
+    "b.png uploaded, not inserted: in the frontmatter an embed goes just after a property value's opening quote."
   );
 
   // The first gone from the string before the second is answered: the second goes in alone, no line break before it
@@ -367,7 +367,7 @@ test("in a frontmatter the second of files pasted together, and one whose quote 
   await settle();
   expect(gone.text()).toBe("---\nimage: \n---\n");
   expect(told(gone.controls).at(-1)).toBe(
-    "a.png uploaded, not inserted: in the frontmatter an embed goes just after a property's opening quote."
+    "a.png uploaded, not inserted: in the frontmatter an embed goes just after a property value's opening quote."
   );
 
   // A name holding what YAML does not take in a string, in either quotes (Codex M7 review fix check A-N1).
@@ -398,7 +398,7 @@ test('a CR alone ending the content after the closing "---" is the frontmatter\'
   await settle();
   expect(text()).toBe(split.text);
   expect(told(controls).at(-1)).toBe(
-    "a.png uploaded, not inserted: in the frontmatter an embed goes just after a property's opening quote."
+    "a.png uploaded, not inserted: in the frontmatter an embed goes just after a property value's opening quote."
   );
 });
 
@@ -421,7 +421,19 @@ test("in a frontmatter's key an embed is not inserted: a key holds no property l
   await settle();
   expect(text()).toBe(doc);
   expect(told(controls).at(-1)).toBe(
-    "a.png uploaded, not inserted: in the frontmatter an embed goes just after a property's opening quote."
+    "a.png uploaded, not inserted: in the frontmatter an embed goes just after a property value's opening quote."
+  );
+});
+
+test("in an entry of { } without a ':' an embed is not inserted: the entry is a key, the same as another's (Codex M7 review fix check A5-M1)", async () => {
+  const doc = "---\nm: {'![[a.png]]', ''}\n---\n";
+  const { view, going, controls, text } = editing(doc, { anchor: doc.indexOf("''") + 1 });
+  paste(view, clipboard([new File(["a"], "a.png")]));
+  going[0]?.answer(attachment("a.png"));
+  await settle();
+  expect(text()).toBe(doc);
+  expect(told(controls).at(-1)).toBe(
+    "a.png uploaded, not inserted: in the frontmatter an embed goes just after a property value's opening quote."
   );
 });
 
@@ -652,7 +664,7 @@ test("what a drop with folders says of files not inserted keeps its folders' lin
   expect(fenced.text()).toBe("---\na: ''\n---\n");
   expect(told(fenced.controls).at(-1)).toBe(
     "Folders are not uploaded: zip a folder of notes and import it from the notebook's settings.\n" +
-      "a.png uploaded, not inserted: in the frontmatter an embed goes just after a property's opening quote."
+      "a.png uploaded, not inserted: in the frontmatter an embed goes just after a property value's opening quote."
   );
 });
 
