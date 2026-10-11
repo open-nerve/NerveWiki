@@ -25,7 +25,10 @@ export type Quote = "'" | '"' | "";
  * to come (Codex review fix checks A-M1, A2-M1). A line ends at '\n' and at
  * YAML's other line breaks (U+0085, U+2028, U+2029; CodeMirror's lines end
  * at the first alone). Past a '?' alone in [ ] that a ']' closes, which the
- * library reads unlike YAML, it tells no string to open.
+ * library reads unlike YAML, it tells no string to open; nor after a tag
+ * other than a string's ("!!str"), on its line or the one before: the
+ * server reads such a string by its tag, a value that fits it, which a
+ * link would not (Codex M7 review fix check A2-M2).
  */
 export function openingQuote(state: EditorState, at: number): Quote {
   let quote: Quote = "";
@@ -37,6 +40,8 @@ export function openingQuote(state: EditorState, at: number): Quote {
   let plain = false; // whether in a plain string's text
   let pending: number | undefined; // the node of the line before, if it left a value to come
   let keyAlone = false; // whether just past a '?' in [ ] or { }, no token after it yet
+  let tag = false; // whether a tag other than a string's is before the node to come
+  let tagged = false; // whether the string in quotes opened last had such a tag
   const lines = state.sliceDoc(state.doc.line(2).from, at).split(/[\n\u0085\u2028\u2029]/);
   for (const line of lines) {
     let i = 0;
@@ -102,6 +107,7 @@ export function openingQuote(state: EditorState, at: number): Quote {
         flow -= c === "," ? 0 : 1;
         start = c === ",";
         plain = false;
+        tag = false; // the node it tagged was empty
       } else if (c === ":" && (spaceNext || (flow > 0 && (!plain || ",[]{}".includes(next))))) {
         // A value's: after a key, or alone at the start (after "? k"), an empty key's anchor or tag before it.
         // Alone it is as "- " and "? ": a key may follow it on the line, its node (fix check A4-M3).
@@ -114,9 +120,10 @@ export function openingQuote(state: EditorState, at: number): Quote {
       } else if (plain || !start) {
         // A plain string's text, or past a string in quotes.
       } else if (c === "'" || c === '"') {
-        [quote, opened, key, start] = [c, i, value ? key : (props ?? i), false];
+        [quote, opened, key, start, tagged, tag] = [c, i, value ? key : (props ?? i), false, tag, false];
       } else if (c === "[" || c === "{") {
         flow++;
+        tag = false;
       } else if ((c === "-" || c === "?") && flow === 0 && spaceNext) {
         node = i;
         value = false;
@@ -126,21 +133,26 @@ export function openingQuote(state: EditorState, at: number): Quote {
       } else if (c === "&" || c === "!") {
         // An anchor's name is letters, digits, '-' and '_' (what follows it starts anew); a tag goes on to a space.
         props ??= value ? undefined : i;
+        const from = i;
         const name = c === "&" ? /[\w-]/ : /[^ \t]/;
         while (i + 1 < line.length && name.test(line[i + 1] ?? "")) {
           i++;
         }
+        if (c === "!") {
+          tag = !stringTags.has(line.slice(from, i + 1));
+        }
       } else if ((c === "|" || c === ">") && flow === 0) {
         block = own ? node : (pending ?? node);
+        tag = false;
         break;
       } else if (c === "*") {
         // An alias, a node of its own, no plain string's text: its name is an anchor's (fix check A4-M2).
-        [start, key] = [false, value ? key : (props ?? i)];
+        [start, key, tag] = [false, value ? key : (props ?? i), false];
         while (i + 1 < line.length && /[\w-]/.test(line[i + 1] ?? "")) {
           i++;
         }
       } else {
-        [plain, start, key] = [true, false, value ? key : (props ?? i)];
+        [plain, start, key, tag] = [true, false, value ? key : (props ?? i), false];
       }
     }
     if (plain && flow === 0) {
@@ -152,8 +164,11 @@ export function openingQuote(state: EditorState, at: number): Quote {
   }
   const last = lines.at(-1) ?? "";
   // At a line's start in a string over lines, nothing opened on it (Codex M7 review fix check A-M1).
-  return quote !== "" && opened >= 0 && opened === last.length - 1 ? quote : "";
+  return quote !== "" && opened >= 0 && opened === last.length - 1 && !tagged ? quote : "";
 }
+
+/** The tags of a string: its shorthand and its whole name. */
+const stringTags = new Set(["!!str", "!<tag:yaml.org,2002:str>"]);
 
 /**
  * frontmatterAt tells whether pos is in the content's frontmatter, as the
@@ -189,12 +204,19 @@ export function frontmatterAt(state: EditorState, pos: number): "closed" | "open
 /**
  * fenceAt tells whether pos is on the first line "---", which opens a
  * frontmatter, closed or being written, or on the line "---" that closes
- * it, as frontmatterAt finds them: what goes in there, but a line's end at
- * the closing one's end, makes it none (Codex M7 review R1).
+ * it, as frontmatterAt finds them, or on the empty last line after its CR
+ * alone: what goes in there, but a line's end at the closing one's end,
+ * makes it none (Codex M7 review R1, fix check A2-M1).
  */
 export function fenceAt(state: EditorState, pos: number): boolean {
+  if (!opens(state)) {
+    return false;
+  }
   const at = state.doc.lineAt(pos).number;
-  return opens(state) && (at === 1 || at === closingLine(state));
+  const closing = closingLine(state);
+  return (
+    at === 1 || at === closing || (closing !== undefined && at === closing + 1 && writtenBreak(state, closing) === "\r")
+  );
 }
 
 /**
@@ -210,14 +232,24 @@ function opens(state: EditorState): boolean {
 
 /**
  * closingLine is the number of the line "---" that closes the frontmatter
- * opens finds: the first later line "---" the server reads as one, no CR
- * alone before or after it; undefined for none.
+ * opens finds: the first later line "---" the server reads as one, which
+ * takes off a CR ending its line: no CR alone before it, nor after it but
+ * the content's last character, or one an LF follows, written apart
+ * (Codex M7 review fix check A2-M1); undefined for none.
  */
 function closingLine(state: EditorState): number | undefined {
+  const { doc } = state;
   let n = 1;
-  for (const text of state.doc.iterLines(2)) {
+  for (const text of doc.iterLines(2)) {
     n++;
-    if (text === "---" && writtenBreak(state, n - 1) !== "\r" && writtenBreak(state, n) !== "\r") {
+    if (text !== "---" || writtenBreak(state, n - 1) === "\r") {
+      continue;
+    }
+    if (writtenBreak(state, n) !== "\r") {
+      return n;
+    }
+    const then = writtenBreak(state, n + 1);
+    if (doc.line(n + 1).length === 0 && then !== "\r" && then !== "\r\n") {
       return n;
     }
   }

@@ -195,24 +195,38 @@ const noLink = "$ uploaded, not inserted: a name without an extension cannot be 
 const notInFrontmatter =
   "$ uploaded, not inserted: in the frontmatter an embed goes just after a property's opening quote.";
 
+/** What the editor says of attachments uploaded whose names a frontmatter's string cannot hold. */
+const notInString = "$ uploaded, not inserted: a frontmatter's string cannot hold a character of its name.";
+
+/** What goes in at a place for an embed, or what the editor says of it where none does. */
+type Embedding = { insert: string } | { not: string };
+
 /**
- * embedAt is what goes in at place for the embed of link, or undefined
- * where it would break the frontmatter, or be no link there (Codex M7
- * review R1): in the body the embed, on a line of its own after the
- * batch's embeds before it (first tells none went). In a frontmatter, as
- * a link completes there, a property's link is a string's whole value:
- * the embed alone goes just after a string's opening quote, written as
- * the string writes it, unless its name holds U+FFFE or U+FFFF, which a
- * YAML string does not take (a name holds none of the other characters
- * it does not: upload-name's unshowable); elsewhere in it, and on its
- * "---" lines, it does not.
+ * embedAt is what goes in at place for the embed of link, or why none
+ * does where it would break the frontmatter, or be no link there (Codex
+ * M7 review R1). In the body the embed, on a line of its own while the
+ * batch's embed before, before, is still just before it (Codex M7 review
+ * fix check A2-N1). In a frontmatter, as a link completes there, a
+ * property's link is a string's whole value: the embed alone goes just
+ * after a string's opening quote, written as the string writes it,
+ * unless its name holds U+FFFE or U+FFFF, which a YAML string does not
+ * take (a name holds none of the other characters it does not:
+ * upload-name's unshowable); elsewhere in it, and on its "---" lines, it
+ * does not.
  */
-function embedAt(state: EditorState, place: number, link: string, first: boolean): string | undefined {
+function embedAt(state: EditorState, place: number, link: string, before: string | undefined): Embedding {
   if (frontmatterAt(state, place) !== undefined) {
     const quote = openingQuote(state, place);
-    return quote === "" || /[\uFFFE\uFFFF]/u.test(link) ? undefined : quoted(quote, embedOf(link));
+    if (quote === "") {
+      return { not: notInFrontmatter };
+    }
+    return /[\uFFFE\uFFFF]/u.test(link) ? { not: notInString } : { insert: quoted(quote, embedOf(link)) };
   }
-  return fenceAt(state, place) ? undefined : (first ? "" : "\n") + embedOf(link);
+  if (fenceAt(state, place)) {
+    return { not: notInFrontmatter };
+  }
+  const after = before !== undefined && state.sliceDoc(place - before.length, place) === before;
+  return { insert: (after ? "\n" : "") + embedOf(link) };
 }
 
 /** How many places have been opened: each its number. */
@@ -260,8 +274,12 @@ async function upload(
   );
   const unlinked: string[] = [];
   const left: string[] = [];
-  const unplaced: string[] = [];
-  let first = true;
+  // Those not inserted where they were pasted or dropped, by what the editor says of them.
+  const unplaced = new Map<string, string[]>([
+    [notInFrontmatter, []],
+    [notInString, []],
+  ]);
+  let before: string | undefined;
   for (const answered of uploads) {
     // oxlint-disable-next-line no-await-in-loop -- each embed after the one before, in their order
     const asset = await answered;
@@ -277,15 +295,19 @@ async function upload(
     );
     const state = view.state;
     const place = composed && !isClosed() ? state.field(places, false)?.get(id) : undefined;
-    const embed = place === undefined || asset.link === null ? undefined : embedAt(state, place, asset.link, first);
     if (asset.link === null) {
       unlinked.push(asset.name);
-    } else if (place === undefined || state.readOnly) {
+      continue;
+    }
+    if (place === undefined || state.readOnly) {
       left.push(asset.name);
-    } else if (embed === undefined) {
-      unplaced.push(asset.name);
+      continue;
+    }
+    const embedding = embedAt(state, place, asset.link, before);
+    if ("not" in embedding) {
+      unplaced.get(embedding.not)?.push(asset.name);
     } else {
-      const changes = state.changes({ from: place, insert: embed });
+      const changes = state.changes({ from: place, insert: embedding.insert });
       const after = changes.mapPos(place, 1);
       // The cursor where it goes goes after it, as after a paste; non-empty, a selection keeps what it holds. Set only
       // then: a selection set resets what follows it, an open completion.
@@ -296,18 +318,18 @@ async function upload(
         effects: [id, ...laterAt(state, id, place)].map((each) => placeAdded.of({ id: each, at: after })),
         userEvent: "input.paste",
       });
-      first = false;
+      before = embedOf(asset.link);
     }
   }
   if (!isClosed()) {
     view.dispatch({ effects: placeDone.of(id) });
   }
-  const said = [
-    folders && (unlinked.length > 0 || left.length > 0 || unplaced.length > 0) ? view.state.phrase(foldersPhrase) : "",
+  const why = [
     unlinked.length > 0 ? view.state.phrase(noLink, namesOf(unlinked)) : "",
     left.length > 0 ? view.state.phrase(notInserted, namesOf(left)) : "",
-    unplaced.length > 0 ? view.state.phrase(notInFrontmatter, namesOf(unplaced)) : "",
+    ...[...unplaced].map(([phrase, names]) => (names.length > 0 ? view.state.phrase(phrase, namesOf(names)) : "")),
   ].filter((sentence) => sentence !== "");
+  const said = folders && why.length > 0 ? [view.state.phrase(foldersPhrase), ...why] : why;
   if (said.length > 0) {
     controls.tell(said.join("\n"));
   }

@@ -9,6 +9,7 @@ import type { Asset } from "../../services/asset.service";
 import { dropped } from "../../test/attachments";
 import { assetJSON, assetNode, guide } from "../../test/page-server";
 import { readOnly, readOnlyAs } from "../extensions";
+import { lineBreaks, splitBreaks } from "../line-breaks";
 import { editorPhrases } from "../phrases";
 import type { EditorContext } from "../registry";
 import { fakeControls } from "../testing/fake-controls";
@@ -382,7 +383,36 @@ test("in a frontmatter the second of files pasted together, and one whose quote 
     // oxlint-disable-next-line no-await-in-loop -- each name in turn
     await settle();
     expect(odd.text(), name).toBe(quotes);
+    // Said why (Codex M7 review fix check A2-N2).
+    expect(told(odd.controls).at(-1), name).toBe(
+      `${name} uploaded, not inserted: a frontmatter's string cannot hold a character of its name.`
+    );
   }
+});
+
+test('a CR alone ending the content after the closing "---" is the frontmatter\'s: what is pasted there is not inserted (Codex M7 review fix check A2-M1)', async () => {
+  const split = splitBreaks("---\na: ''\nb: x\n---\r");
+  const { view, going, controls, text } = editing(split.text, { extra: lineBreaks(split) });
+  paste(view, clipboard([new File(["a"], "a.png")]));
+  going[0]?.answer(attachment("a.png"));
+  await settle();
+  expect(text()).toBe(split.text);
+  expect(told(controls).at(-1)).toBe(
+    "a.png uploaded, not inserted: in the frontmatter an embed goes just after a property's opening quote."
+  );
+});
+
+test('the second of a batch goes on a line of its own only while the first is just before it: none makes a line "---" (Codex M7 review fix check A2-N1)', async () => {
+  const doc = "---x\nk: v\n---\nBody\n";
+  const { view, going, text } = editing(doc, { anchor: 3 });
+  paste(view, clipboard([new File(["a"], "a.png"), new File(["b"], "b.png")]));
+  going[0]?.answer(attachment("a.png"));
+  await settle();
+  expect(text()).toBe("---![[a.png]]x\nk: v\n---\nBody\n");
+  view.dispatch({ changes: { from: 3, to: 13 } });
+  going[1]?.answer(attachment("b.png"));
+  await settle();
+  expect(text()).toBe("---![[b.png]]x\nk: v\n---\nBody\n");
 });
 
 test("an embed inserted where the cursor is puts the cursor after it, as a paste does: what is typed, and pasted, next goes after", async () => {

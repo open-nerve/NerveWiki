@@ -120,16 +120,17 @@ func TestAnImportsUnitNumbersANameTaken(t *testing.T) {
 	f.page("Notes", nil, 0)
 	f.asset("photo.png", nil, 1)
 	f.asset("PHOTO 2.png", nil, 2)
+	f.asset("x.png", nil, 3)
 	var got []string
 	_, err := f.importAs(uuid.UUID{}, func(ctx context.Context, u *app.ImportUnit) error {
-		for _, name := range []string{"notes", "NOTES", "Straße", "STRASSE"} {
+		for _, name := range []string{"notes", "NOTES", "Straße", "STRASSE", "x.png"} {
 			n, err := u.CreatePage(ctx, app.ImportedPage{Name: name})
 			if err != nil {
 				return err
 			}
 			got = append(got, n.Name)
 		}
-		for _, name := range []string{"photo.png", "Photo.PNG", "README", "readme"} {
+		for _, name := range []string{"photo.png", "Photo.PNG", "README", "readme", "x.png"} {
 			n, err := u.CreateAsset(ctx, app.ImportedAsset{Name: name}, func(context.Context, domain.Node) error { return nil })
 			if err != nil {
 				return err
@@ -141,7 +142,9 @@ func TestAnImportsUnitNumbersANameTaken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"notes 2", "NOTES 3", "Straße", "STRASSE 2", "photo 3.png", "Photo 4.PNG", "README", "readme 2"}
+	// A page of an attachment's name numbers as a page, "x.png 2"; the attachment after it as one, from 2 (Codex M7
+	// review fix check B2-N2).
+	want := []string{"notes 2", "NOTES 3", "Straße", "STRASSE 2", "x.png 2", "photo 3.png", "Photo 4.PNG", "README", "readme 2", "x 2.png"}
 	if !slices.Equal(got, want) {
 		t.Errorf("names = %v, want %v", got, want)
 	}
@@ -320,10 +323,21 @@ func TestAnImportsUnitReadsEachParentOnce(t *testing.T) {
 }
 
 // cutAlike is the ith of names of 255 bytes, which the last two
-// characters tell apart: numbered, a name is cut, they with it.
-func cutAlike(i int) string {
+// characters tell apart: numbered, a name is cut, they with it. Alike by
+// their keys, each is spelled its own way before: "ß", or "ss" ("SS" in
+// upper case), two bytes either, by each of i's bits (Codex M7 review fix
+// check B2-N1).
+func cutAlike(i int, upper bool) string {
 	const digits = "0123456789abcdefghijklmnopqrstuvwxyz"
-	return strings.Repeat("a", 253) + string(digits[i/len(digits)]) + string(digits[i%len(digits)])
+	var name strings.Builder
+	for b := range 10 {
+		name.WriteString(map[bool]string{true: "ß", false: "ss"}[i>>b&1 == 1])
+	}
+	name.WriteString(strings.Repeat("a", 233) + string(digits[i/len(digits)]) + string(digits[i%len(digits)]))
+	if upper {
+		return strings.ReplaceAll(strings.ToUpper(strings.ReplaceAll(name.String(), "ß", "#")), "#", "ß")
+	}
+	return name.String()
 }
 
 // heldAlike is a fixture whose root holds the first n names cutAlike
@@ -332,19 +346,19 @@ func heldAlike(n int) *fixture {
 	f := newFixture()
 	f.grant(domain.ActionCreate)
 	for i := range n {
-		f.page(cutAlike(i), nil, float64(i))
+		f.page(cutAlike(i, false), nil, float64(i))
 	}
 	return f
 }
 
-// importAlike imports the first n names cutAlike names in upper case into
+// importAlike imports the first n names cutAlike names, in upper case, into
 // f's root, each numbered, and tells their names.
 func importAlike(t *testing.T, f *fixture, n int) []string {
 	t.Helper()
 	var got []string
 	_, err := f.importAs(uuid.UUID{}, func(ctx context.Context, u *app.ImportUnit) error {
 		for i := range n {
-			p, err := u.CreatePage(ctx, app.ImportedPage{Name: strings.ToUpper(cutAlike(i))})
+			p, err := u.CreatePage(ctx, app.ImportedPage{Name: cutAlike(i, true)})
 			if err != nil {
 				return err
 			}
@@ -364,7 +378,7 @@ func importAlike(t *testing.T, f *fixture, n int) []string {
 func TestAnImportsUnitNumbersNamesThatCutAlikeInTurn(t *testing.T) {
 	for i, got := range importAlike(t, heldAlike(1000), 1000) {
 		number := strconv.Itoa(i + 2)
-		if want := strings.Repeat("A", 254-len(number)) + " " + number; got != want {
+		if want := cutAlike(i, true)[:20] + strings.Repeat("A", 234-len(number)) + " " + number; got != want {
 			t.Fatalf("the %dth named %q, want %q", i, got, want)
 		}
 	}

@@ -33,6 +33,14 @@ test("a quote opens a string where a key or a value starts: after ': ' (a tab to
     ["---\nup: &x '‸", "'"],
     ['---\nup: !!str "‸', '"'],
     ["---\n'k''s': \"‸", '"'],
+    // A string's whole name tags it too; a string at a line's start opens, in [ ] too (Codex M7 review fix checks
+    // A2-M2, A2-N3).
+    ["---\nup: !<tag:yaml.org,2002:str> '‸", "'"],
+    ["---\nup: !!null\nb: '‸", "'"],
+    ["---\nup: [!!null , '‸", "'"],
+    ["---\nup: !!seq ['‸", "'"],
+    ["---\na: [\n'‸", "'"],
+    ["---\n'‸", "'"],
   ] as const;
   expect(openingAt(docs)).toEqual(docs);
 });
@@ -62,6 +70,16 @@ test("a quote opens none in a string in quotes, a plain string, a comment or a b
     ["---\nnote: a\n  '‸", ""],
     // A line's start in a string over lines opens nothing (Codex M7 review fix check A-M1).
     ["---\nup: 'a long\n‸", ""],
+    // After a tag other than a string's, which the server reads it by (Codex M7 review fix check A2-M2).
+    ["---\nup: !!null '‸", ""],
+    ['---\nup: !!null "‸', ""],
+    ["---\nup: !!int '‸1'", ""],
+    ["---\nup: !!bool '‸true'", ""],
+    ["---\nup: !<tag:yaml.org,2002:null> '‸", ""],
+    ["---\nup: !!null\n  '‸", ""],
+    ["---\n!!null '‸': v", ""],
+    ["---\nup: [!!float '‸", ""],
+    ["---\n- &a !!null '‸", ""],
     ['---\nup: "a\n‸', ""],
     ["---\n- 'a\n  ‸", ""],
   ] as const;
@@ -207,7 +225,7 @@ test('a frontmatter\'s lines "---" end where the server ends a line, LF or CRLF:
   ];
   expect(read("---\na: ''\n---\nBody")).toEqual(closed);
   expect(read("---\r\na: ''\r\n---\r\nBody")).toEqual(closed);
-  // \rs alone: no frontmatter; one alone after the closing line, or before it, closes none: the one being written goes on.
+  // CRs alone: no frontmatter; one alone after the closing line, or before it, closes none: the one being written goes on.
   expect(read("---\ra: ''\r---\rBody")).toEqual(Array.from({ length: 4 }, () => ["-", false]));
   const open = [
     ["-", true],
@@ -220,4 +238,29 @@ test('a frontmatter\'s lines "---" end where the server ends a line, LF or CRLF:
   // A first line "---" with nothing after, or "--- ", opens none.
   expect(read("---")).toEqual([["-", false]]);
   expect(read("--- \na: ''\n---")).toEqual(Array.from({ length: 3 }, () => ["-", false]));
+  // A CR alone ending the content closes: the server takes it off the closing line, whose empty line after it is a
+  // fence's too (Codex M7 review fix check A2-M1).
+  const tail = [...closed.slice(0, 3), ["-", true]];
+  expect(read("---\na: ''\n---\r")).toEqual(tail);
+  expect(read("---\r\na: ''\r\n---\r")).toEqual(tail);
+  // Not when more than the CR is left on the server's line: a CR, or a CRLF, after it.
+  const after = [
+    ["-", true],
+    ["open", false],
+    ["open", false],
+    ["-", false],
+    ["-", false],
+  ];
+  expect(read("---\na: ''\n---\r\r\nBody")).toEqual(after);
+  expect(read("---\na: ''\n---\r\rBody")).toEqual(after);
+  // The first "---" a CR alone ends, or follows, closes none; a later one does; "--- " none (fix check A2-N3).
+  expect(read("---\na: ''\r---\nb: x\n---\nBody")).toEqual([
+    ["-", true],
+    ["closed", false],
+    ["closed", false],
+    ["closed", false],
+    ["-", true],
+    ["-", false],
+  ]);
+  expect(read("---\na: x\n--- \nBody")).toEqual(open);
 });

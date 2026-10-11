@@ -263,6 +263,8 @@ export const en = {
   "editor.phrase.uploadNoLink": "$ uploaded, not inserted: a name without an extension cannot be embedded.",
   "editor.phrase.uploadNotInFrontmatter":
     "$ uploaded, not inserted: in the frontmatter an embed goes just after a property's opening quote.",
+  "editor.phrase.uploadNotInString":
+    "$ uploaded, not inserted: a frontmatter's string cannot hold a character of its name.",
   "notebookSettings.title": "Notebook settings",
   "notebookSettings.heading": "{name} settings",
   "notebookSettings.general": "General",

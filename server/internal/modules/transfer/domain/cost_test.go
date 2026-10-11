@@ -3,6 +3,7 @@
 package domain_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/transfer/domain"
@@ -14,16 +15,15 @@ import (
 // changes the allocations: make test-go runs it without.
 func TestPagesWhoseNamesCutAlikeAreRenamedInTimeAsLongAsThey(t *testing.T) {
 	allocs := func(n int) float64 {
-		// Each spelled in a case of its own: alike by their keys (Codex M7 review fix check B-M2).
+		// Each spelled its own way, alike by their keys: "ß" or "SS", two bytes either, by each of its number's bits
+		// (Codex M7 review fix checks B-M2, B2-N1).
 		nodes := alike(n)
 		for i := range nodes {
-			cased := []byte(nodes[i].Name)
+			var spelled strings.Builder
 			for b := range 10 {
-				if i>>b&1 == 1 {
-					cased[b] = 'A'
-				}
+				spelled.WriteString(map[bool]string{true: "ß", false: "SS"}[i>>b&1 == 1])
 			}
-			nodes[i].Name = string(cased)
+			nodes[i].Name = spelled.String() + nodes[i].Name[spelled.Len():]
 		}
 		return testing.AllocsPerRun(1, func() {
 			if _, err := domain.NewPlan(notebook(), nil, nodes, nothingLinked); err != nil {
