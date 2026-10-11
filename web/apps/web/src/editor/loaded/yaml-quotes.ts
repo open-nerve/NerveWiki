@@ -26,9 +26,13 @@ export type Quote = "'" | '"' | "";
  * YAML's other line breaks (U+0085, U+2028, U+2029; CodeMirror's lines end
  * at the first alone). Past a '?' alone in [ ] that a ']' closes, which the
  * library reads unlike YAML, it tells no string to open; nor after a tag
- * other than a string's ("!!str"), on its line or the one before: the
- * server reads such a string by its tag, a value that fits it, which a
- * link would not (Codex M7 review fix check A2-M2).
+ * other than a string's ("!!str", its whole name, or the non-specific
+ * "!"), on its line or a line before with no node between: the server
+ * reads such a string by its tag, a value that fits it, which a link
+ * would not (Codex M7 review fix checks A2-M2, A3-N1); nor a key's, after
+ * a '?', or closing on its line before a ':' (keyClose): a key holds no
+ * property link, and one written there may make it another key's, or
+ * too long (fix check A4-M1).
  */
 export function openingQuote(state: EditorState, at: number): Quote {
   let quote: Quote = "";
@@ -42,6 +46,8 @@ export function openingQuote(state: EditorState, at: number): Quote {
   let keyAlone = false; // whether just past a '?' in [ ] or { }, no token after it yet
   let tag = false; // whether a tag other than a string's is before the node to come
   let tagged = false; // whether the string in quotes opened last had such a tag
+  let explicit = false; // whether past a '?', before its ':': a key to come
+  let keyed = false; // whether the string in quotes opened last is such a key
   const lines = state.sliceDoc(state.doc.line(2).from, at).split(/[\n\u0085\u2028\u2029]/);
   for (const line of lines) {
     let i = 0;
@@ -108,6 +114,7 @@ export function openingQuote(state: EditorState, at: number): Quote {
         start = c === ",";
         plain = false;
         tag = false; // the node it tagged was empty
+        explicit = false;
       } else if (c === ":" && (spaceNext || (flow > 0 && (!plain || ",[]{}".includes(next))))) {
         // A value's: after a key, or alone at the start (after "? k"), an empty key's anchor or tag before it.
         // Alone it is as "- " and "? ": a key may follow it on the line, its node (fix check A4-M3).
@@ -116,11 +123,19 @@ export function openingQuote(state: EditorState, at: number): Quote {
           node = start ? (props ?? i) : key;
           own = true;
         }
-        [start, value, plain, tag] = [true, !alone, false, false]; // a tag before it was its key's
+        [start, value, plain, tag, explicit] = [true, !alone, false, false, false]; // a tag before it was its key's
       } else if (plain || !start) {
         // A plain string's text, or past a string in quotes.
       } else if (c === "'" || c === '"') {
-        [quote, opened, key, start, tagged, tag] = [c, i, value ? key : (props ?? i), false, tag, false];
+        [quote, opened, key, start, tagged, tag, keyed] = [
+          c,
+          i,
+          value ? key : (props ?? i),
+          false,
+          tag,
+          false,
+          explicit,
+        ];
       } else if (c === "[" || c === "{") {
         flow++;
         tag = false;
@@ -129,8 +144,10 @@ export function openingQuote(state: EditorState, at: number): Quote {
         value = false;
         own = true;
         tag = false; // a tag before it was its collection's (Codex M7 review fix check A3-N1)
+        explicit = c === "?";
       } else if (c === "?" && flow > 0) {
         // In [ ] and { } a '?' is a key's, a space after it or not, as the library reads it.
+        explicit = true;
       } else if (c === "&" || c === "!") {
         // An anchor's name is letters, digits, '-' and '_' (what follows it starts anew); a tag goes on to a space.
         props ??= value ? undefined : i;
@@ -165,7 +182,32 @@ export function openingQuote(state: EditorState, at: number): Quote {
   }
   const last = lines.at(-1) ?? "";
   // At a line's start in a string over lines, nothing opened on it (Codex M7 review fix check A-M1).
-  return quote !== "" && opened >= 0 && opened === last.length - 1 && !tagged ? quote : "";
+  if (quote === "" || opened < 0 || opened !== last.length - 1 || tagged || keyed) {
+    return "";
+  }
+  return keyClose(state, at, quote) ? "" : quote;
+}
+
+/**
+ * keyClose tells whether the string in quote that opens at at closes on
+ * its line before a ':', a key's: a key not after a '?' is on one line
+ * (Codex M7 review fix check A4-M1).
+ */
+function keyClose(state: EditorState, at: number, quote: Quote): boolean {
+  const line = state.doc.lineAt(at);
+  // As far as YAML's other line breaks too (U+0085, U+2028, U+2029).
+  const rest = line.text.slice(at - line.from).split(/[\u0085\u2028\u2029]/)[0] ?? "";
+  for (let i = 0; i < rest.length; i++) {
+    const c = rest[i];
+    if (quote === '"' && c === "\\") {
+      i++;
+    } else if (c === quote && quote === "'" && rest[i + 1] === "'") {
+      i++;
+    } else if (c === quote) {
+      return /^[ \t]*:/.test(rest.slice(i + 1));
+    }
+  }
+  return false;
 }
 
 /** The tags of a string: its shorthand, its whole name, and the non-specific ones, which make a scalar in quotes one (Codex M7 review fix check A3-N1). */

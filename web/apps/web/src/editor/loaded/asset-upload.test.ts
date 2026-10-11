@@ -413,6 +413,18 @@ test("a frontmatter whose first line ends in a CR alone, an empty line an LF end
   expect(text()).toBe("---\n\nimage: '![[Bob''s.png]]'\n---\nBody\n");
 });
 
+test("in a frontmatter's key an embed is not inserted: a key holds no property link, and the embed could make it another's (Codex M7 review fix check A4-M1)", async () => {
+  const doc = "---\n'![[a.png]]': 1\n'': 2\n---\n";
+  const { view, going, controls, text } = editing(doc, { anchor: doc.indexOf("''") + 1 });
+  paste(view, clipboard([new File(["a"], "a.png")]));
+  going[0]?.answer(attachment("a.png"));
+  await settle();
+  expect(text()).toBe(doc);
+  expect(told(controls).at(-1)).toBe(
+    "a.png uploaded, not inserted: in the frontmatter an embed goes just after a property's opening quote."
+  );
+});
+
 test('the second of a batch goes on a line of its own only while the first is just before it: none makes a line "---" (Codex M7 review fix check A2-N1)', async () => {
   const doc = "---x\nk: v\n---\nBody\n";
   const { view, going, text } = editing(doc, { anchor: 3 });

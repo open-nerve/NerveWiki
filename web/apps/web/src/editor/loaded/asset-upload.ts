@@ -103,13 +103,17 @@ export function pastedName(file: File, now: Date): string {
  * - A folder pasted or dropped is not uploaded: the editor says to import
  *   one, with a drop's pages' files too.
  * - Each embed is inserted once its upload is answered, where its files
- *   went, as the content changed since, in their order, a line each, the
- *   cursor there going after it as after a paste; once a composition
- *   ends. One failed or cancelled inserts nothing, its row saying why;
- *   one uploaded as the content was replaced, or can no longer be
- *   changed, or without an extension (no link), is not inserted, and the
- *   editor says so of them all as the last of the files is answered, in
- *   place of what it said before; each paste or drop begins anew.
+ *   went, as the content changed since, in their order, the cursor there
+ *   going after it as after a paste; once a composition ends. In the
+ *   body each goes on a line of its own while the one before is still
+ *   just before it; in a frontmatter it goes alone just after a value's
+ *   opening quote, as embedAt says. One failed or cancelled inserts
+ *   nothing, its row saying why; one uploaded as the content was
+ *   replaced, or can no longer be changed, or without an extension (no
+ *   link), or where a frontmatter takes no embed, or whose name its
+ *   string cannot hold, is not inserted, and the editor says so of them
+ *   all as the last of the files is answered, in place of what it said
+ *   before; each paste or drop begins anew.
  * - The edit waits for them to be inserted before it is left (going).
  */
 export const assetUpload: Build = (context, controls) => {
@@ -208,7 +212,8 @@ type Embedding = { insert: string } | { not: string };
  * batch's embed before, before, is still just before it (Codex M7 review
  * fix check A2-N1). In a frontmatter, as a link completes there, a
  * property's link is a string's whole value: the embed alone goes just
- * after a string's opening quote, written as the string writes it,
+ * after a value's opening quote (openingQuote), written as the string
+ * writes it,
  * unless its name holds U+FFFE or U+FFFF, which a YAML string does not
  * take (a name holds none of the other characters it does not:
  * upload-name's unshowable); elsewhere in it, and on its "---" lines, it
