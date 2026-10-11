@@ -402,6 +402,17 @@ test('a CR alone ending the content after the closing "---" is the frontmatter\'
   );
 });
 
+test("a frontmatter whose first line ends in a CR alone, an empty line an LF ends after it, is one: the server reads a CRLF (Codex M7 review fix check A3-M1)", async () => {
+  const split = splitBreaks("---\rimage: ''\n---\nBody\n");
+  const { view, going, text } = editing(split.text, { extra: lineBreaks(split) });
+  view.dispatch({ changes: { from: 4, insert: "\n" } });
+  view.dispatch({ selection: { anchor: text().indexOf("''") + 1 } });
+  paste(view, clipboard([new File(["b"], "Bob's.png")]));
+  going[0]?.answer(attachment("Bob's.png"));
+  await settle();
+  expect(text()).toBe("---\n\nimage: '![[Bob''s.png]]'\n---\nBody\n");
+});
+
 test('the second of a batch goes on a line of its own only while the first is just before it: none makes a line "---" (Codex M7 review fix check A2-N1)', async () => {
   const doc = "---x\nk: v\n---\nBody\n";
   const { view, going, text } = editing(doc, { anchor: 3 });

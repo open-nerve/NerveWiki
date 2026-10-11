@@ -39,6 +39,16 @@ test("a quote opens a string where a key or a value starts: after ': ' (a tab to
     ["---\nup: !!null\nb: '‸", "'"],
     ["---\nup: [!!null , '‸", "'"],
     ["---\nup: !!seq ['‸", "'"],
+    // A key's tag, a collection's, a string's own, and the non-specific ones (Codex M7 review fix check A3-N1).
+    ["---\nlist:\n  - !!null\n  - '‸", "'"],
+    ["---\na: !!seq\n  - '‸", "'"],
+    ["---\n? !!null\n: '‸", "'"],
+    ["---\n!!null : '‸", "'"],
+    ["---\na: {!!null : '‸", "'"],
+    ["---\na: ! '‸", "'"],
+    ["---\na: !<!> '‸", "'"],
+    ["---\n'k': !!null |\n'‸", "'"],
+    ["---\n'k': !!int '1'\n'‸", "'"],
     ["---\na: [\n'‸", "'"],
     ["---\n'‸", "'"],
   ] as const;
@@ -206,14 +216,25 @@ test("written in a string of a quote: in single quotes a ' twice, in double quot
   expect(quoted("", s)).toBe(s);
 });
 
-/** read is, for each line of raw, frontmatterAt and fenceAt at its start, as the editor keeps raw's line breaks. */
-function read(raw: string) {
+/** stateOf is an editor's state of raw, its line breaks kept. */
+function stateOf(raw: string): EditorState {
   const split = splitBreaks(raw);
-  const state = EditorState.create({ doc: split.text, extensions: lineBreaks(split) });
+  return EditorState.create({ doc: split.text, extensions: lineBreaks(split) });
+}
+
+/** read is, for each line of raw (or of a state), frontmatterAt and fenceAt at its start, as the editor keeps the line breaks. */
+function read(raw: string | EditorState) {
+  const state = typeof raw === "string" ? stateOf(raw) : raw;
   return Array.from({ length: state.doc.lines }, (_, i) => {
     const at = state.doc.line(i + 1).from;
     return [frontmatterAt(state, at) ?? "-", fenceAt(state, at)];
   });
+}
+
+/** enter is the state of raw after a line break typed at at. */
+function enter(raw: string, at: (state: EditorState) => number): EditorState {
+  const state = stateOf(raw);
+  return state.update({ changes: { from: at(state), insert: "\n" } }).state;
 }
 
 test('a frontmatter\'s lines "---" end where the server ends a line, LF or CRLF: a CR alone goes on with the line (Codex M7 review fix check A-M3)', () => {
@@ -263,4 +284,36 @@ test('a frontmatter\'s lines "---" end where the server ends a line, LF or CRLF:
     ["-", false],
   ]);
   expect(read("---\na: x\n--- \nBody")).toEqual(open);
+
+  // Line breaks the editor writes apart that the server reads as one: a CR alone, then an empty line an LF ends, typed
+  // there (fix checks A3-M1, A3-N2). A CRLF opens; a CRLF, or the CR alone ending the content, closes.
+  expect(read("---\r")).toEqual([
+    ["-", false],
+    ["-", false],
+  ]);
+  expect(read("---\rtitle: x\nimage: ''\n---\nBody\n")).toEqual(Array.from({ length: 6 }, () => ["-", false]));
+  expect(read(enter("---\rtitle: x\nimage: ''\n---\nBody\n", (state) => state.doc.line(2).from))).toEqual([
+    ["-", true],
+    ["-", true],
+    ["closed", false],
+    ["closed", false],
+    ["-", true],
+    ["-", false],
+    ["-", false],
+  ]);
+  // Not closed, being written after it (an LF the content's main line break, as typed).
+  expect(read(enter("---\rimage: ''\nnote: x\nmore: y", (state) => state.doc.line(2).from))).toEqual([
+    ["-", true],
+    ["-", true],
+    ["open", false],
+    ["open", false],
+    ["open", false],
+  ]);
+  expect(read(enter("---\na: ''\n---\r", (state) => state.doc.length))).toEqual([
+    ["-", true],
+    ["closed", false],
+    ["-", true],
+    ["-", true],
+    ["-", false],
+  ]);
 });
