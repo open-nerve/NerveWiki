@@ -184,7 +184,7 @@ P4 把附件交到读者与写者手里：面板与上传、阅读视图里的�
 | `web/apps/web/src/editor/registry.ts`、`editor/source-editor.tsx` | `EditorContext.uploadAsset`；`EditorControls.whenComposed`、`tell`、`going`；`SourceEditorHandle.working`、`settled`；注册 `assetUpload`（`load`，最后一个） |
 | `web/apps/web/src/editor/loaded/asset-upload.ts`（新） | 扩展：接住粘贴、拖入的文件，上传，插入，说出没插入的（5.2） |
 | `web/apps/web/src/editor/extensions.ts`、`editor/theme.ts` | 能改的正文有落点的光标（`dropCursor`）；正文至少 20rem 高，文字下方的空白也是正文 |
-| `web/apps/web/src/editor/phrases.ts`、`i18n/messages/*` | 四句提示经 CodeMirror 的短语 |
+| `web/apps/web/src/editor/phrases.ts`、`i18n/messages/*` | 五句提示经 CodeMirror 的短语 |
 | `web/apps/web/src/lib/file-transfer.ts`（新） | `pageDrag`、`hasFiles`、`carriesFiles`、`filesDropped`：从 `app/file-drop.tsx` 移来，编辑器不能导入 `app/` |
 | `web/apps/web/src/stores/asset.store.ts` | `uploaded(upload)`；`Upload.fromEditor` |
 | `web/apps/web/src/pages/page/page-edit.tsx`、`page-editing-bar.tsx`、`editor-uploads.tsx`（新）、`attachments-section.tsx`、`page-layout.tsx` | 上下文的 `uploadAsset`；编辑器旁的上传行与告知；离开等上传（5.3） |
@@ -197,8 +197,8 @@ P4 把附件交到读者与写者手里：面板与上传、阅读视图里的�
 - **粘贴**：剪贴板里有文件、没有 `text/plain` 时接（Excel、Word、Numbers 复制的单元格同时有文字：粘贴文字；Chromium"复制图片"是 `text/html` 加文件：上传；只有 `text/uri-list` 的：CodeMirror）。有文件时先删掉选区（`delete.cut`）。没有名字、或叫 `image.png` 之类（浏览器给剪贴板里的图片的名字）的图片取名 `Pasted image 20261008123045.png`（照 Obsidian：本地时间到秒；扩展名按类型，`jpeg` 写 `jpg`、`x-icon` 写 `ico`，其余取子类型；不随界面语言，它是存下来的内容）。
 - **拖入**：只接外来的、带文件的拖动（`carriesFiles`：页内开始的不是）。`dragover` 设 `copy`；能改的正文画出落点（`dropCursor` 在 `readOnlyAs(false)` 里，只读与离开时的锁住都没有）。`drop`：没有读得到的文件、也没有文件夹的，与全是页面文件（`.md`）的，交给 CodeMirror（前者插它的文字，后者读进 `.md` 的文字）；落点 `posAtCoords`，取不到时用光标。
 - **文件夹**：粘贴、拖入的文件夹不上传，编辑器说用导入（拖入的 `.md` 交给 CodeMirror 时也说）。
-- **插入**：每次粘贴或拖入在 `StateField` 里开一个插入点（按编号），随每次改动 `mapPos(at, -1)`（在那里输入的文字在嵌入之后）。各文件经 store 并行上传，每个一创建就接住拒绝；按原次序等答复，各自 `whenComposed` 之后插入：第一个不加换行，其后的各占一行。光标正好在插入点时移到嵌入之后（`selection.map(changes, 1)`，同步的粘贴就是这样；只在它确实要移时才带 `selection`，否则别处打开的补全会被关掉）；同一位置上之后才开的插入点也移到它之后（后粘贴的在后面）。落点在 frontmatter 里时只插在字符串的开引号之后、按那个字符串写，别处与 `---` 行上不插（总体设计 13.2 第 28 条；M7 Codex 评审 R1）。失败、被拒、取消的什么也不插，它的行说原因。
-- **不插入，说一句**：没有扩展名（`link` 为 null）；编辑器换了正文（`onClose`）、已经走了、或只读（失锁）；落点在 frontmatter 里、不在字符串的开引号之后（M7 Codex 评审 R1）。这一批最后一个答复之后一次说出：每种原因一句，名称按文档的语言列出（`Intl.ListFormat`），这次拖入的文件夹那句并在前面，一句一行；`tell` 取代之前所说，每次粘贴或拖入先清空（`tell("")`，不播报）。同时在途的几批，后完成的那批所说的留下。
+- **插入**：每次粘贴或拖入在 `StateField` 里开一个插入点（按编号），随每次改动 `mapPos(at, -1)`（在那里输入的文字在嵌入之后）。各文件经 store 并行上传，每个一创建就接住拒绝；按原次序等答复，各自 `whenComposed` 之后插入：第一个不加换行，其后的在前一个仍紧挨在落点之前时另起一行（M7 Codex 评审修复核对 A2-N1），frontmatter 里不换行。光标正好在插入点时移到嵌入之后（`selection.map(changes, 1)`，同步的粘贴就是这样；只在它确实要移时才带 `selection`，否则别处打开的补全会被关掉）；同一位置上之后才开的插入点也移到它之后（后粘贴的在后面）。落点在 frontmatter 里时只插在值的字符串的开引号之后（不在键里）、按那个字符串写，别处与 `---` 行上不插（总体设计 13.2 第 28 条；M7 Codex 评审 R1）。失败、被拒、取消的什么也不插，它的行说原因。
+- **不插入，说一句**：没有扩展名（`link` 为 null）；编辑器换了正文（`onClose`）、已经走了、或只读（失锁）；落点在 frontmatter 里、不在值的字符串的开引号之后（M7 Codex 评审 R1）；名称里有 frontmatter 的字符串写不进的字符（U+FFFE、U+FFFF，修复核对 A2-N2）。这一批最后一个答复之后一次说出：每种原因一句，名称按文档的语言列出（`Intl.ListFormat`），这次拖入的文件夹那句并在前面，一句一行；`tell` 取代之前所说，每次粘贴或拖入先清空（`tell("")`，不播报）。同时在途的几批，后完成的那批所说的留下。
 - **在途**：整批是一项 `controls.going` 的工作，离开编辑等它（5.3）。
 
 ### 5.3 上下文、上传行与离开
