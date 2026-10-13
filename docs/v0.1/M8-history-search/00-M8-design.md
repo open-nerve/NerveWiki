@@ -83,7 +83,7 @@ page 的（搜索的见 4.12）：
 | 表 | 改动 | 为什么 |
 |---|---|---|
 | `changesets` | `kind` 加 `version_restore`、`trash_restore`、`revert`；加 `reverts_id uuid`（不建外键；`CHECK ((kind = 'revert') = (reverts_id IS NOT NULL))`）；加 `trimmed boolean NOT NULL DEFAULT false` | 3.8 的类型；撤销记下撤销的是哪一个；外键会让清理器的先后受制于被撤销的变更集 |
-| `changesets` | 索引 `(notebook_id, created_at DESC, id DESC) WHERE deleted_at IS NULL`（日志）、`(notebook_id, created_by_id, created_at DESC, id DESC) WHERE deleted_at IS NULL`（按人筛选，M9 的 `log`）、`(id) WHERE trimmed`（空变更集的清理）；`changesets_notebook_id_idx` 在核对过还有没有别的查询用它之后去掉 | 13.1 第 27 条：与次序相同的索引；按客户端筛选在日志的索引上过滤（取值很少），计划测试核对 |
+| `changesets` | 索引 `(notebook_id, created_at DESC, id DESC) WHERE deleted_at IS NULL`（日志）、`(notebook_id, created_by_id, created_at DESC, id DESC) WHERE deleted_at IS NULL`（按人筛选，M9 的 `log`）、`(id) WHERE trimmed`（空变更集的清理）、`(reverts_id) WHERE reverts_id IS NOT NULL`（日志的 `reverted_by`、撤销之前的"已被撤销过"，P3 建，M8/P1 审查 C3）；`changesets_notebook_id_idx` 在核对过还有没有别的查询用它之后去掉 | 13.1 第 27 条：与次序相同的索引；按客户端筛选在日志的索引上过滤（取值很少），计划测试核对 |
 | `changeset_items` | 加 `restored boolean NOT NULL DEFAULT false` 与 `revision integer`；`CHECK` 两者只在"前"为空、"后"不空时可以有值，`revision >= 1`；迁移给已有的页面新建条目补上 `revision`（同一变更集里这一页的版本行） | 恢复与新建都没有"前"：日志、撤销与观察者要分开它们；撤销一次恢复要知道恢复时的版本（恢复不写版本行） |
 | `page_revisions` | 唯一索引 `(node_id, revision)`，去掉被它覆盖的 `page_revisions_node_id_idx` | 按版本号寻址与倒序列出；钉住"一页的每个版本号至多一行" |
 | `nodes` | 加 `trash_root boolean NOT NULL DEFAULT false`（`CHECK (NOT trash_root OR deleted_at IS NOT NULL)`）；部分索引 `(notebook_id, deleted_at DESC, id DESC) WHERE trash_root`；迁移按"父节点为空或父节点的 `deleted_at IS DISTINCT FROM` 它的"补上已有的根 | 回收站的一页只读根，不读过一次删除里的几万个节点（A-M9） |
@@ -92,7 +92,7 @@ transfer 的：`transfer_jobs.kind` 加 `trash_restore`、`revert`；加 `change
 
 **`trash_root` 的维护**：删除一个子树时它的根设上，同一时刻删除的子孙不设；一次删除的根之下、早先以同一时刻删除的（分批撤销一次导入时，4.10）随之取消；恢复的节点取消；分批恢复途中，父节点已恢复而自己仍在回收站的节点设上（停下时它们各自列出）；笔记本删除不设（回收站只列活着的笔记本）。
 
-**清理截掉的变更集**：清理器只删已删节点的行，所以活着的笔记本里的一个变更集，只有它碰过、后来被删除并过了保留期的节点的条目与版本会被删。被截掉一部分的变更集不能再整组撤销。`changeset_items` 与 `page_revisions` 的清理语句改为：以 `FOR UPDATE OF i SKIP LOCKED` 与 `FOR NO KEY UPDATE OF c SKIP LOCKED` 同时锁住要删的行与它所属的变更集（拿不到的下次再删，清理从不等待，13.1 第 5 条），删掉这些行并给活着的笔记本里的这些变更集设上 `trimmed`，答删掉的行数（`:execrows` 照旧给分批的循环用，A-M2）。`changesets` 的清理器另删 `trimmed` 而条目与版本都已删光的。撤销先读条目、后读 `trimmed`（READ COMMITTED 下，条目的读看得到的清理，之后的读也看得到它的标记，A-M3）。
+**清理截掉的变更集**：清理器只删已删节点的行，所以活着的笔记本里的一个变更集，只有它碰过、后来被删除并过了保留期的节点的条目与版本会被删。被截掉一部分的变更集不能再整组撤销。`changeset_items` 与 `page_revisions` 的清理语句改为：以 `FOR UPDATE OF i SKIP LOCKED` 与 `FOR NO KEY UPDATE OF c SKIP LOCKED` 同时锁住要删的行与它所属的变更集（拿不到的下次再删，清理从不等待，13.1 第 5 条），删掉这些行并给活着的笔记本里的这些变更集设上 `trimmed`，答删掉的行数（`:execrows` 照旧给分批的循环用，A-M2）。`changesets` 的清理器另删 `trimmed` 而条目与版本都已删光的。撤销先读条目、后读 `trimmed`（READ COMMITTED 下，条目的读看得到的清理，之后的读也看得到它的标记，A-M3）。P1 只加了列，标记与清理语句的改写一起在 P3 做；v0.1 之前没有发布的实例，所以不补记 P3 之前的清理截掉过的变更集（M8/P1 审查 C2）。
 
 ### 4.3 版本：列表、查看、比较
 
@@ -188,7 +188,7 @@ transfer 的：`transfer_jobs.kind` 加 `trash_restore`、`revert`；加 `change
 ### 4.10 后台的恢复与撤销（transfer）
 
 - 接口：`POST /notebooks/{notebook_id}/trash-restores`（`{node_id}`）、`POST /notebooks/{notebook_id}/reverts`（`{changeset_id}`），答 202 与任务；任务的类型 `trash_restore`、`revert`。权限与同步的相同（`node.restore`、`changeset.revert`）；一本笔记本同时一个写入的任务（与导入共用，`transfer.busy`）；排队的上限（`server_busy`）；队列与导入的相同。任务的状态机、心跳、启动时的收拾、取消、清理都沿用（M7 4.9、4.12）。
-- **分批**：沿用导入的分批（`transfer/app/import_write.go` 的批的上限、按预算的退避、`ANALYZE`），抽出给三种任务共用；每批一个单元，并入第一批的变更集（`UnitSpec.Changeset`），批之间放开笔记本的锁。
+- **分批**：沿用导入的分批（`transfer/app/import_write.go` 的批的上限、按预算的退避、`ANALYZE`），抽出给三种任务共用；每批一个单元，并入第一批的变更集（`UnitSpec.Changeset`），批之间放开笔记本的锁。一个变更集的版本是一页的一行：两批写同一页的正文时，后一批的写必须从前一批写下的版本号接着（`RecordRevision` 只在已有的行的 `revision` 等于这次的 `base_revision` 时更新，不然单元失败，M8/P1 审查 C4）。批之间别人写过这一页时，后一批在锁下的核对要自己发现（这一页的版本号不是前一批写下的）并作为冲突停下；`RecordRevision` 的拒绝是未分类的错误，只是最后的防线，单靠它任务会以内部错误失败（P1 核对第一轮）。
 - **恢复的任务**：先恢复根（决定位置与名称），之后按层，每批在锁下核对：父节点活着（不然停下，`tree_changed`）、层级（超过时停下）、名称（与活着的兄弟冲突时加序号：分批之间别人可能在已恢复的父节点下建了同名的页，A-I5）、只恢复仍是这一时刻删除的（别人可能已经恢复了其中一部分）、期限（不然停下，`expired`）。已恢复的父节点之下仍在回收站的节点设上 `trash_root`：任务停下时它们各自列出，可以再恢复。
 - **撤销的任务**：开始之前（请求里，不加锁）对 S\* 核对一遍，有冲突就照 4.8 答 409、不开任务；之后按 4.8 的依赖次序分批（删除从叶子往上，一批之内的删除用任务开始时定下的同一个时刻，所以撤销一次导入之后，回收站列出的是导入的最上层节点）；每批在锁下重新核对它的节点，第一次冲突时停下。途中停下时已撤销的部分留着（不是整组的），报告写明已撤销的、停下的原因与冲突的节点。
 - **报告**：恢复或撤销的页数与附件数、放在哪里、停下的原因、剩下的数目；任务行记 `changeset_id`（导入同样记，网页给出"在历史里查看"）。任务列表在笔记本设置的"导入导出"（改名为"导入导出与恢复"），按类型显示。
@@ -389,7 +389,7 @@ M8 开工时负责人确认进入 M8（2026-10-13："可以了，开始 M8 吧"�
 
 | P | Phase 文档 | 状态 | 审查 | 合并 |
 |---|---|---|---|---|
-| P1 版本 | — | 未开始 | — | — |
+| P1 版本 | [01-P1](01-P1-versions.md) | 进行中（A 已合并） | [P1A](reviews/P1A-versions-server-review.md) | A `12fc5d7` |
 | P2 回收站 | — | 未开始 | — | — |
 | P3 日志与整组撤销 | — | 未开始 | — | — |
 | P4 后台的恢复与撤销 | — | 未开始 | — | — |
@@ -402,3 +402,4 @@ M8 开工时负责人确认进入 M8（2026-10-13："可以了，开始 M8 吧"�
 |---|---|---|
 | 2026-10-13 | 初稿（`98fe84f`） | 移交 5 份、代码的现状（`b1e362b`） |
 | 2026-10-13 | 按设计审查修订：撤销按状态比较、对目标状态一次核对、按依赖应用；一个单元的界线与后台的恢复、撤销任务（transfer）；回收站的根的标记、预览的路由与链接的解析；清理截掉的标记不等待；保留期的下限与清理的时钟；附件的信息与工作区的角色两个端口；单个变更集的读与回收站的单项；Web Worker 的比较；页面树的去掉规则；Phase 重排（搜索放到最后、后台任务独立成 P4） | [设计审查](reviews/M8-design-review.md) |
+| 2026-10-13 | P1A 完成：版本的元数据与正文一条语句读出；`RecordRevision` 只在变更集的版本停在这次写的 base 时更新（版本链的守卫），`checkPages` 核对链；4.2 的索引表加 `(reverts_id) WHERE reverts_id IS NOT NULL`（P3 建）、`trimmed` 的标记在 P3 做且不补记；4.10 写明分批写同一页时后一批在锁下自己发现别人的写 | P1A 的实施、审查与两轮修复核对：[01-P1-versions.md](01-P1-versions.md) 第 3、9 节、[P1A 审查](reviews/P1A-versions-server-review.md) |

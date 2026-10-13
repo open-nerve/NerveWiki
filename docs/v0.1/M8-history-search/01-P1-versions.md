@@ -62,21 +62,20 @@
 
 ```go
 type Versions interface {
-	// ListVersions is the page's versions newer-first, below the cursor's revision (zero: from the newest), at most limit;
-	// each with its changeset. No content.
+	// ListVersions is the page's versions newer-first, below the revision below (domain.MaxRevision + 1: from the
+	// newest), at most limit; each with its changeset. No content.
 	ListVersions(ctx context.Context, pageID uuid.UUID, below int, limit int) ([]domain.Version, error)
-	// FindVersion is the version row holding revision: the row whose (base_revision, revision] has it.
-	FindVersion(ctx context.Context, pageID uuid.UUID, revision int) (domain.Version, error)
-	// VersionContent is a version row's content, as written.
-	VersionContent(ctx context.Context, rowID uuid.UUID) (string, error)
+	// FindVersion is the first version row at or above revision, with its content, read in one statement; the
+	// caller checks its base.
+	FindVersion(ctx context.Context, pageID uuid.UUID, revision int) (domain.Version, string, error)
 	// AliveChangesetOf is the changeset of the page's alive edit session, zero when none: the newest version's row
 	// is "being edited" when it is that changeset's.
 	AliveChangesetOf(ctx context.Context, pageID uuid.UUID, now time.Time) (uuid.UUID, error)
 }
 ```
 
-- `ListVersions`：`SELECT r.id, r.changeset_id, r.base_revision, r.revision, r.byte_size, r.created_at, r.updated_at, c.kind, c.client, c.created_by_id, c.created_at FROM page_revisions r JOIN changesets c ON c.id = r.changeset_id WHERE r.node_id = $1 AND ($2 = 0 OR r.revision < $2) ORDER BY r.revision DESC LIMIT $3`，走唯一索引倒序。不读 `content`（至多 5 MiB 一行，M8 设计审查 A-N8）。不按 `deleted_at` 过滤：回收站里的页的版本照列（M4 设计的表："历史不按它过滤"）。
-- `FindVersion`：`… WHERE r.node_id = $1 AND r.revision >= $2 ORDER BY r.revision LIMIT 1`，再在 Go 里核对 `base_revision` 为空或小于请求的版本号，不然 `ErrVersionNotFound`（版本链连续，第一个 `revision >= N` 的行就是唯一可能含 N 的行）。
+- `ListVersions`：`SELECT r.id, r.changeset_id, r.base_revision, r.revision, r.byte_size, r.created_at, r.updated_at, c.kind, c.client, c.created_by_id, c.created_at FROM page_revisions r JOIN changesets c ON c.id = r.changeset_id WHERE r.node_id = $1 AND r.revision < $2::bigint ORDER BY r.revision DESC LIMIT $3`，走唯一索引倒序；从最新的读时用例传 `domain.MaxRevision + 1`，不用"0 表示不限"的写法，保留下来的通用计划同样是索引上的范围（审查 C-S1）。不读 `content`（至多 5 MiB 一行，M8 设计审查 A-N8）。不按 `deleted_at` 过滤：回收站里的页的版本照列（M4 设计的表："历史不按它过滤"）。
+- `FindVersion`：`… WHERE r.node_id = $1 AND r.revision >= $2 ORDER BY r.revision LIMIT 1`，连同 `content` 一条语句读出（编辑会话的保存原地更新同一行，分两条读会让版本号与正文不一致，审查 A-2、B-M1），再在 Go 里核对 `base_revision` 为空或小于请求的版本号，不然 `ErrVersionNotFound`（版本链连续，第一个 `revision >= N` 的行就是唯一可能含 N 的行）。
 - `AliveChangesetOf`：这一页活着的会话（`AliveSessionsOf` 的同一条件）的 `changeset_id`。
 - 计划：这几条都按 `(node_id, revision)` 的唯一索引；13.4 第 9 条的计划测试不必另加（单表、等值加范围，与已有的同类查询一样），在适配器的测试里对一页上千个版本测倒序与游标。
 
@@ -85,10 +84,10 @@ type Versions interface {
 ### 3.5 用例
 
 - **`ListVersions`**（`GET /pages/{page_id}/versions?limit&cursor`）：游标先核对（400），`readableAny`（404、`page.history` 的 403 照"看不到答 404"：读者以上都能读，所以实际只有 404），`limit` 取值（422，`shared.PageSize`）；读 `limit + 1` 行；最新的一行若属于活着的会话，标 `editing`；执行者的显示名经 `Names` 一次读出。游标是版本号（`domain.VersionCursor`，经 `shared.EncodeCursor`）。
-- **`GetVersion`**（`GET /pages/{page_id}/versions/{revision}`）：`readableAny` → `FindVersion`（404 `page.version_not_found`）→ 正文；答复带这一行真实的 `revision`（请求的版本号落在它的区间里时与请求的不同，网页随之替换地址，M8 设计 4.3）。
+- **`GetVersion`**（`GET /pages/{page_id}/versions/{revision}`）：`readableAny` → `FindVersion`（404 `page.version_not_found`，正文同一条语句读出）；`editing` 照列表：这一行是最新的且属于活着的会话；答复带这一行真实的 `revision`（请求的版本号落在它的区间里时与请求的不同，网页随之替换地址，M8 设计 4.3）。
 - **`GetVersionView`**（`GET /pages/{page_id}/versions/{revision}/view`）：同上找到行，再照 `GetPageView` 取预算、渲染（`PageRef{Revision: row.Revision}`）；答 `ReadingView`，`Revision` 是这一行的。
 - **`RestoreVersion`**（`POST /pages/{page_id}/versions/{revision}/restore`，`{base_revision}`）：
-  1. 找节点（活着的页，`FindNode`；已删的 404 `page.not_found`：先从回收站恢复）；
+  1. 找节点（`readableAny` 以 `page.history` 先判定，未加锁；之后已删的页 404 `page.not_found`：先从回收站恢复。读者看得到的页才区分已删与否，不泄露）；
   2. `FindVersion`（404 `page.version_not_found`）与它的正文；
   3. `ContentParser.Parse(spec, content)`，`spec` 是 `{NotebookID, Action: ActionRestoreVersion, Client, Options{UpdateLinks: true}, NotFound: ErrNotFound, Kind: ChangesetVersionRestore}`：先未加锁地判定（404、403），再取预算解析（503）；
   4. `Writer.Run(spec, …)` 里 `u.WriteContent(ContentWrite{NodeID, Content, Facts, Base: base_revision})`：与当前相同时不写（`Outcome.ChangesetID` 为零）；否则核对 `base_revision`（409 `page.revision_mismatch`），经守卫（409 `page.locked`，调用者自己在别处编辑同样被拒），写新版本；
@@ -97,11 +96,11 @@ type Versions interface {
 
 ### 3.6 契约（`api/modules/page.yaml`）
 
-- `listPageVersions`：`PageVersionList {data: PageVersion[], next_cursor}`；`PageVersion {id, revision, base_revision|null, byte_size, created_at, updated_at, editing, changeset: VersionChangeset}`；`VersionChangeset {id, kind, client, created_at, created_by: Author}`；`Author {id, display_name}`（6.1 的例外：版本、日志、回收站内嵌执行者的显示名，M8 设计 4.1）。`x-problem-codes: [bad_request(游标), page.not_found, validation_failed]`。
+- `listPageVersions`：`PageVersionPage {data: PageVersion[], next_cursor}`（与其他分页的答复同名，审查之后由 `PageVersionList` 改名）；`PageVersion {id, revision, base_revision|null, byte_size, created_at, updated_at, editing, changeset: VersionChangeset}`；`VersionChangeset {id, kind, client, created_at, created_by: ChangesetAuthor}`；`ChangesetAuthor {user_id, display_name}`（6.1 的例外：版本、日志、回收站内嵌执行者的显示名，M8 设计 4.1）。`x-problem-codes: [bad_request(游标), page.not_found, validation_failed]`。
 - `getPageVersion`：`PageVersionContent`（`PageVersion` 的字段加 `content`）；`x-problem-codes: [page.not_found, page.version_not_found]`。
 - `getPageVersionView`：`PageView`（与 `getPageView` 相同）；`[page.not_found, page.version_not_found, server_busy]`。
-- `restorePageVersion`：请求 `VersionRestore {base_revision}`（`minimum: 1`，未知字段 400）；答 `VersionRestored {revision, changeset_id|null, changed}`；`[page.not_found, page.version_not_found, forbidden, server_busy, page.revision_mismatch, page.locked]`。
-- `{revision}` 路径参数：整数，`minimum: 1`。`kind` 的枚举写全五种（`edit`、`import`、`version_restore`、`trash_restore`、`revert`），前端照全部的取值显示。
+- `restorePageVersion`：请求 `VersionRestore {base_revision}`（整数，未知字段、`null`、小数 400；不设 `minimum`：与当前版本号不符的照第 4 步答 409 `page.revision_mismatch`，与 `PageContentWrite` 相同）；答 `VersionRestored {revision, changeset_id|null, changed}`；`[page.not_found, page.version_not_found, forbidden, server_busy, page.revision_mismatch, page.locked]`。
+- `{revision}` 路径参数：整数，不设 `minimum`：0 及以下与没有的版本号一样答 404 `page.version_not_found`（契约的描述写明），不让同一类错误有两个码。`kind` 的枚举写全五种（`edit`、`import`、`version_restore`、`trash_restore`、`revert`），前端照全部的取值显示。
 - 描述照现有操作的写法：读者以上都能读；回收站里的页同样读得到；中间版本的规则；还原的码。
 
 ### 3.7 权限、日志与交错
@@ -117,6 +116,13 @@ type Versions interface {
 - **handler**：契约的结构、未知字段、路径参数、各码。
 - **整个程序**（`bootstrap`）：还原之后正文、版本、索引（`checkLinks`）与 `pages`、`links` 事件；一个 `version_restore` 变更集；被锁时 409 带持锁人。
 - **e2e 的接口版本**：HI1、HI2 的 PAT 一半（第 4.7 节）。
+
+### 3.9 审查之后的改动
+
+三位审查者（A：正确性与并发；B：契约、数据与测试；C：设计的符合与演进）的处置见 `reviews/P1A-versions-server-review.md`。与上文最初的设计不同之处已改在各节里，另有两处是新加的：
+
+- **版本链的守卫**：`RecordRevision` 的 `ON CONFLICT … DO UPDATE` 只在已有的行的 `revision` 等于这次写的 `base_revision` 时更新（`:execrows`，0 行即错误，单元失败）。今天的写入者都满足（会话续写在正文行的锁下核对版本号），守卫让以后分批的写（P2 的恢复、P3 的撤销）不会悄悄让一行跨过别的变更集的版本（审查 C4、A 的潜在风险）。`checkPages` 加"版本不连成链"一项，调用它的交错测试都核对 `FindVersion` 依赖的这条不变式。
+- **`changesetOf`** 只接受 `edit` 的单元：编辑会话的变更集只有编辑写。
 
 ## 4. B：前端
 
@@ -219,5 +225,14 @@ B（分支 `m8-p1b`，A 合并之后）：
 - P3：日志与单个变更集的页；版本页的变更集信息链到它。
 
 ## 9. 结果
+
+### 9.1 A：服务端（2026-10-13，合并 `12fc5d7`）
+
+- 提交：实施 `8609c58`；CI 首轮的修补 `23be652`（网页缺 `page.version_not_found` 的文案、适配器夹具的时刻类型、权限矩阵的覆盖认 `{revision}`）；审查的修复 `78955b4`；两轮修复核对的修复 `d363d77`、`ce841f4`。合并 `12fc5d7`。
+- 审查：三位审查者（Opus）。高 1（适配器的版本测试跑不通，CI 是红的：夹具的 `node_id` 参数被推成 text）；其余是低与测试的缺口：版本的元数据与正文分两条语句读、版本链只靠调用者维持、几处测试分不出它声称的、契约的措辞与命名。修复核对两轮，没有行为问题。逐条见[审查记录](reviews/P1A-versions-server-review.md)。
+- 与设计不同之处已改在第 3 节（3.4–3.6、3.9）：`FindVersion` 一条语句连正文读出、没有 `VersionContent`；`ListVersions` 读 `below` 之下（最新的从 `MaxRevision + 1`）；`RecordRevision` 的版本链守卫与 `checkPages` 的链；`changesetOf` 只接受编辑；`PageVersionPage`、`ChangesetAuthor`；路径的版本号与 `base_revision` 不设 `minimum`。
+- 反向对照：用例 28 处、数据库与规则 17 处、核对之后新加 3 处，都被测试抓到。
+
+### 9.2 B：前端
 
 （完成后补写。）
