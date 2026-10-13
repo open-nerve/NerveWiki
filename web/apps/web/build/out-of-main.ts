@@ -9,7 +9,7 @@ const packageModule = (packages: string) =>
  * (M4/P6 design 3.11, M6/P6 design 10): its modules, and the chunks that
  * load it, whose modules and what they load in turn are its own. The
  * editor, CodeMirror and lezer with the packages only they use, loads
- * with the editor, the conflict's diff, or an editor's extension the
+ * with the editor, a diff (the conflict's, a version's), or an editor's extension the
  * editor loads (editor/loaded/, M6/P7 design 2); KaTeX with a view's first
  * formula, and mermaid with its first diagram, each by its own module.
  */
@@ -17,7 +17,7 @@ const lazy = [
   {
     name: "the editor",
     modules: packageModule(String.raw`@(?:codemirror|lezer)|style-mod|w3c-keyname|crelt`),
-    entries: /[\\/]src[\\/]editor[\\/](?:(?:source-editor|conflict-view)\.tsx|loaded[\\/][^\\/]+\.tsx?)$/,
+    entries: /[\\/]src[\\/]editor[\\/](?:(?:source-editor|conflict-view|text-diff)\.tsx|loaded[\\/][^\\/]+\.tsx?)$/,
   },
   { name: "KaTeX", modules: packageModule("katex"), entries: packageModule("katex") },
   {
