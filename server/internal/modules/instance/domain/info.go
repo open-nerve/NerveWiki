@@ -36,4 +36,8 @@ type Info struct {
 	// ExportTTL is transfer.export_ttl: how long an export's archive is
 	// kept once it succeeded, which a client tells before it starts one.
 	ExportTTL time.Duration
+	// TrashRetention is how long a deleted page or attachment can be
+	// restored from the trash: jobs.purge_retention less an hour, which a
+	// client tells before a deletion (M8/P2 design 3.8).
+	TrashRetention time.Duration
 }

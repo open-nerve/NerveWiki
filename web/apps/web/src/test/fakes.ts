@@ -57,6 +57,7 @@ export const instanceJSON: InstanceInfo = {
   asset_max_bytes: 52_428_800,
   export_ttl_seconds: 86_400,
   import_max_bytes: 536_870_912,
+  trash_retention_seconds: 5_180_400,
 };
 
 /** tokensJSON is a valid answer to a sign-in, a sign-up or a refresh. */

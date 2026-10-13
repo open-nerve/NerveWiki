@@ -343,6 +343,39 @@ func TestTheObserversFollowAUnit(t *testing.T) {
 	}
 }
 
+// A restore is a unit the observers follow once: each node a change with
+// no before, restored from the time it was deleted at, an attachment's
+// told apart, a page's with its revision (M8/P2 design 3.6).
+func TestTheObserversFollowARestore(t *testing.T) {
+	f := newFixture(t)
+	asset, created := uuid.NewV7(), uuid.NewV7()
+	f.exec(t, "INSERT INTO nodes (id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at, "+
+		"updated_at) VALUES ($1, $2, $3, 'asset', 'a.png', 'a.png', 0, $4, $4, $5, $5)", asset, f.eng, f.notes, f.alice, testNow())
+	f.exec(t, "INSERT INTO changesets (id, notebook_id, kind, client, created_by_id, created_at, updated_at) "+
+		"VALUES ($1, $2, 'edit', 'web', $3, $4, $4)", created, f.eng, f.alice, testNow())
+	f.exec(t, "INSERT INTO page_revisions (id, changeset_id, node_id, revision, content, content_hash, byte_size, created_at, updated_at) "+
+		"VALUES ($1, $2, $3, 1, '', sha256(''), 0, $4, $4)", uuid.NewV7(), created, f.notes, testNow())
+	if rec := f.serve(t, "session", http.MethodDelete, f.renamePath(), "", nil, nil, nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("DELETE = %d %s, want 204", rec.Code, rec.Body)
+	}
+	o := &observer{f: f}
+	rec := f.serve(t, "session", http.MethodPost, f.renamePath()+"/restore", "", nil, nil, []page.PageObserver{o})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST restore = %d %s, want 200", rec.Code, rec.Body)
+	}
+	if len(o.events) != 1 || o.changesets != 1 || len(o.events[0].Changes) != 2 {
+		t.Fatalf("the observer followed %+v, seeing %d changesets; want one event of both nodes, its changeset", o.events, o.changesets)
+	}
+	for _, c := range o.events[0].Changes {
+		asAsset := c.NodeID == asset
+		if c.Before != nil || c.After == nil || c.Restored == nil || !c.Restored.DeletedAt.Equal(testNow()) || c.Restored.Asset != asAsset ||
+			asAsset != (c.Revision == 0) {
+			t.Errorf("change %+v restored %+v; want no before, restored from the deletion's time, the attachment's told apart", c,
+				c.Restored)
+		}
+	}
+}
+
 // A participant's rename runs through the guards into the unit's
 // changeset and its one event; it calls no participant. The answer is
 // the page as the unit left it.

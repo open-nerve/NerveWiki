@@ -1,7 +1,6 @@
 import type {
   ApiClient,
   EditLock,
-  EditLockHolder,
   EditSession,
   NodeMove,
   Page,
@@ -13,6 +12,7 @@ import type {
   PageView,
   TaskToggle,
   TreeNode,
+  UserRef,
   VersionRestored,
 } from "@nervewiki/api-client";
 
@@ -20,7 +20,6 @@ import { unwrap } from "./api";
 
 export type {
   EditLock,
-  EditLockHolder,
   NodeMove,
   PageContent,
   PageVersion,
@@ -31,6 +30,9 @@ export type {
   TreeNode,
   VersionRestored,
 };
+
+/** EditLockHolder is the account whose edit session holds a page's lock. */
+export type EditLockHolder = UserRef;
 
 /** How many of a page's versions a page of them holds: the right column's (M8/P1 design 4.3). */
 const versionsPage = 20;

@@ -385,7 +385,7 @@ components:
         cancelled. An export's archive expires a while after it succeeded,
         the instance's export TTL, or at once when its starter's next export
         of the notebook succeeds: a starter keeps only their latest export
-        of a notebook.
+        of a notebook. created_by is its starter.
       type: object
       additionalProperties: false
       required:
@@ -433,7 +433,7 @@ components:
         client:
           $ref: "#/components/schemas/TransferClient"
         created_by:
-          $ref: "#/components/schemas/TransferStarter"
+          $ref: "../common.yaml#/components/schemas/UserRef"
         created_at:
           type: string
           format: date-time
@@ -519,7 +519,7 @@ components:
         client:
           $ref: "#/components/schemas/TransferClient"
         created_by:
-          $ref: "#/components/schemas/TransferStarter"
+          $ref: "../common.yaml#/components/schemas/UserRef"
         created_at:
           type: string
           format: date-time
@@ -570,17 +570,6 @@ components:
     TransferState:
       type: string
       enum: [queued, running, succeeded, failed, cancelled, expired]
-    TransferStarter:
-      description: Who started the job.
-      type: object
-      additionalProperties: false
-      required: [user_id, display_name]
-      properties:
-        user_id:
-          type: string
-          format: uuid
-        display_name:
-          type: string
     TransferProgress:
       description: >-
         How many of the job's nodes are done, of all: an export's written;

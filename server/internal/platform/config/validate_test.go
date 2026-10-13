@@ -121,7 +121,7 @@ func TestValidateReportsEveryInvalidKey(t *testing.T) {
 		"events.heartbeat_interval: must be from 5s to 50s, got 0s",
 		"jobs.shutdown_timeout: must be positive, got 0s",
 		"jobs.purge_interval: must be at least 1s, got 0s",
-		"jobs.purge_retention: must be at least 1h, got 0s",
+		"jobs.purge_retention: must be at least 24h, got 0s",
 		"jobs.export_workers: must be from 1 to 8, got 0",
 		"jobs.import_workers: must be from 1 to 8, got 0",
 		"storage.dir: is required",
@@ -177,6 +177,15 @@ func TestValidateCrossKeyRules(t *testing.T) {
 			name:   "a request must leave time to write its answer",
 			mutate: func(c *Config) { c.Server.RequestTimeout = c.Server.WriteTimeout },
 			want:   "server.request_timeout: must be less than server.write_timeout (1m0s), got 1m0s",
+		},
+		{
+			name:   "the purge keeps a day at least",
+			mutate: func(c *Config) { c.Jobs.PurgeRetention = 24 * time.Hour },
+		},
+		{
+			name:   "the purge keeps less than a day",
+			mutate: func(c *Config) { c.Jobs.PurgeRetention = 24*time.Hour - time.Second },
+			want:   "jobs.purge_retention: must be at least 24h, got 23h59m59s",
 		},
 		{
 			name:   "a host is optional in the address",

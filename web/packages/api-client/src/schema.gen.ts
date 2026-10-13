@@ -220,7 +220,7 @@ export interface paths {
         };
         /**
          * Describe this instance
-         * @description Reports the product, the build and the API version this instance runs, whether it is open for sign-up, whether accounts may create workspaces, the largest attachment and import archive it takes, and how long it keeps an export. Public: needs no authentication.
+         * @description Reports the product, the build and the API version this instance runs, whether it is open for sign-up, whether accounts may create workspaces, the largest attachment and import archive it takes, how long it keeps an export, and how long the trash restores what was deleted. Public: needs no authentication.
          */
         get: operations["getInstance"];
         put?: never;
@@ -936,7 +936,7 @@ export interface paths {
         };
         /**
          * Read a version of a page as a page
-         * @description The reading view of the version of the page that holds the revision, as getPageView renders a page's content: its links lead where they lead now, and revision is the version's own. A page in the trash has its versions too; its links show unresolved. Any role in the page's notebook can read them. A page that does not exist, whose notebook is deleted, or whose notebook the caller has no role in is page.not_found; a revision no version of the page holds, 0 and below among them, is page.version_not_found. When the server parses as much content as it can at once, the version waits a moment, then is server_busy.
+         * @description The reading view of the version of the page that holds the revision, as getPageView renders a page's content: its links lead where they lead now, and revision is the version's own. A page in the trash has its versions too; its links lead where they would from where the page was, among the pages not deleted. Any role in the page's notebook can read them. A page that does not exist, whose notebook is deleted, or whose notebook the caller has no role in is page.not_found; a revision no version of the page holds, 0 and below among them, is page.version_not_found. When the server parses as much content as it can at once, the version waits a moment, then is server_busy.
          */
         get: operations["getPageVersionView"];
         put?: never;
@@ -1056,7 +1056,7 @@ export interface paths {
         post?: never;
         /**
          * Delete a page or an attachment
-         * @description Deletes the node: a page with every node under it, its attachments among them, or an attachment, at one time: they go to the trash together. Its notebook's editors and admins can, a reader cannot (forbidden). A node that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found. While another account's edit session holds the lock of the page or of one under it, the deletion is page.locked, naming the first such page, level by level, and its holder in lock; the caller's own sessions end with their pages.
+         * @description Deletes the node: a page with every node under it, its attachments among them, or an attachment, at one time: they go to the trash together, one item that restoreNode brings back until its restorable_until. Its notebook's editors and admins can, a reader cannot (forbidden). A node that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found. While another account's edit session holds the lock of the page or of one under it, the deletion is page.locked, naming the first such page, level by level, and its holder in lock; the caller's own sessions end with their pages.
          */
         delete: operations["deleteNode"];
         options?: never;
@@ -1085,6 +1085,75 @@ export interface paths {
          * @description Moves the node, a page with every node under it or an attachment: under another parent page, to the notebook's root, or among its siblings. Its notebook's editors and admins can, a reader cannot (forbidden). A node that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found; the destination is checked after both: a parent that is no page of the notebook and a node to follow that is no other child of the parent are validation_failed; then a parent that is the node itself or under it is page.cycle, a title a new sibling has, compared by its key, page.title_taken, and a page under it that would be deeper than ten levels page.too_deep: an attachment is no level, and a page of the tenth holds them. A move to where the node is writes nothing. The links that led to the node, the attachment or the page and those under it, by a path that changes, the links in the moved pages that the move would lead elsewhere, and the links the moved nodes would take from other nodes, are written again in the pages they are in, so that each leads where it did; when one of these pages is being edited, one of the moved included, the move is refused as a whole, linking.pages_locked naming each of them and its editor, and when their parse finds the server busy it is server_busy.
          */
         post: operations["moveNode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/notebooks/{notebook_id}/trash": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List a notebook's trash
+         * @description The notebook's trash, newer first, a page at a time: each item a node deleted with the nodes under it at one time, by its root, while it can be restored, until restorable_until, the instance's trash_retention_seconds after its deletion. A node deleted with a page above it is no item of its own. Any role in the notebook can read it. A cursor the list cannot read is bad_request, before anything else; a notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found; a limit outside 1–100 is validation_failed.
+         */
+        get: operations["listTrash"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/nodes/{node_id}/trash-item": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The id of a node of a notebook's tree. */
+                node_id: components["parameters"]["NodeID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read a trash item
+         * @description The trash item whose root is the node, as listTrash lists it. Any role in the node's notebook can read it. A node that does not exist, whose notebook is deleted, or whose notebook the caller has no role in is page.not_found; then a node not deleted is page.not_in_trash; a node deleted with a page above it is page.not_trash_root, naming the root of its item in root_id; an item past its restorable_until is page.restore_expired.
+         */
+        get: operations["getTrashItem"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/nodes/{node_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The id of a node of a notebook's tree. */
+                node_id: components["parameters"]["NodeID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore a trash item
+         * @description Brings back the trash item whose root is the node: the nodes deleted with it at one time, their contents, versions and attachments' files, in a changeset of its own, a trash_restore. Its notebook's editors and admins can. It goes back where it was, under its parent at its place among its siblings, or at the notebook's root where it was there; last at the notebook's root when its parent is in the trash (parent_in_trash) or when its pages would be deeper than ten levels under it (too_deep). When a sibling there has its name, compared by its key, it is numbered, "Name 2", an attachment's number before its extension, and renamed tells. It can be restored until its restorable_until. One restore brings back at most 2,000 pages and attachments and, of more than one page, at most 100 pages, 8 MiB of content and 20,000 links. A node that does not exist, whose notebook is deleted, or whose notebook the caller has no role in is page.not_found; then a reader is forbidden; then a node not deleted is page.not_in_trash, a node deleted with a page above it page.not_trash_root naming the root of its item in root_id, an item past its restorable_until page.restore_expired; then an item past the bounds is page.restore_too_large; when the server parses as much content as it can at once, the restore waits a moment, then is server_busy: the links are counted as the contents are parsed, so that their page.restore_too_large may come after it. An item restored, deleted again or purged in part since it was read is page.trash_changed: read the trash again.
+         */
+        post: operations["restoreNode"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1536,6 +1605,11 @@ export interface components {
                 user_id: string;
                 display_name: string;
             };
+            /**
+             * Format: uuid
+             * @description The root of the trash item a node was deleted with: page.not_trash_root names it, the item to restore. No other code carries it.
+             */
+            root_id?: string;
         };
         /** @description A session's tokens. Send access_token as "Authorization: Bearer"; access_token_expires_in counts from the response, so a client's clock does not matter. When it expires, exchange refresh_token for the next pair at POST /api/v0/auth/refresh. */
         AuthTokens: {
@@ -1675,6 +1749,11 @@ export interface components {
              * @description How long an export's archive is kept once the export succeeded, in seconds (transfer.export_ttl); then it expires.
              */
             export_ttl_seconds: number;
+            /**
+             * Format: int64
+             * @description How long a deleted page or attachment can be restored from the trash, in seconds: jobs.purge_retention less an hour, after which the purge may take it.
+             */
+            trash_retention_seconds: number;
         };
         /**
          * @description A member's role: admin manages the workspace and its members, member and guest take part. Rules compare roles by set, never by order.
@@ -1931,7 +2010,7 @@ export interface components {
             created_at: string;
             /**
              * Format: date-time
-             * @description When the node was last created, renamed or moved; its content's writes do not change it.
+             * @description When the node was last created, renamed, moved or restored from the trash; its content's writes do not change it.
              */
             updated_at: string;
         };
@@ -1981,7 +2060,7 @@ export interface components {
             created_at: string;
             /**
              * Format: date-time
-             * @description When the page was last created, renamed or moved; its content's writes do not change it.
+             * @description When the page was last created, renamed, moved or restored from the trash; its content's writes do not change it.
              */
             updated_at: string;
             /** @description The pages above it, from the root down to its parent; none at the root. */
@@ -2040,16 +2119,16 @@ export interface components {
              */
             expires_at: string;
         };
-        /** @description The account whose alive edit session holds a page's lock. */
-        EditLockHolder: {
+        /** @description An account, by its id and its display name, as of the answer: who made a changeset, holds a lock, started a job or deleted a node. */
+        UserRef: {
             /** Format: uuid */
             user_id: string;
             display_name: string;
         };
         /** @description A page's edit lock. */
         EditLock: {
-            /** @description Who holds the lock; null while no one does. */
-            holder: components["schemas"]["EditLockHolder"] | null;
+            /** @description The account whose alive edit session holds the lock; null while no one does. */
+            holder: components["schemas"]["UserRef"] | null;
             /** @description Whole seconds, rounded up, until the holder's lease ends unless a heartbeat keeps it; null while no one holds the lock. A span, not a time: the client's clock may be wrong. */
             expires_in: number | null;
         };
@@ -2070,13 +2149,7 @@ export interface components {
          * @enum {string}
          */
         ChangesetKind: "edit" | "import" | "version_restore" | "trash_restore" | "revert";
-        /** @description The account a changeset is by. */
-        ChangesetAuthor: {
-            /** Format: uuid */
-            user_id: string;
-            display_name: string;
-        };
-        /** @description The changeset a version is of. */
+        /** @description The changeset a version is of, and the account it is by. */
         VersionChangeset: {
             /** Format: uuid */
             id: string;
@@ -2085,7 +2158,7 @@ export interface components {
             client: string;
             /** Format: date-time */
             created_at: string;
-            created_by: components["schemas"]["ChangesetAuthor"];
+            created_by: components["schemas"]["UserRef"];
         };
         /** @description A version of a page: the content a changeset left, which it holds from after base_revision to revision. */
         PageVersion: {
@@ -2185,6 +2258,76 @@ export interface components {
              * @description The sibling the page goes right after; null puts it first, absent last.
              */
             after_id?: string | null;
+        };
+        /** @description Where a restore puts a trash item: under its parent where it was, original (parent_id null when it was at the root), or last at the notebook's root, parent_id null, its parent being in the trash (parent_in_trash) or its pages too deep under it (too_deep). */
+        TrashPlacement: {
+            /** Format: uuid */
+            parent_id: string | null;
+            /** @enum {string} */
+            reason: "original" | "parent_in_trash" | "too_deep";
+        };
+        /** @description An attachment's file in the trash. */
+        TrashAttachment: {
+            /** @description The file's media type. */
+            mime: string;
+            /**
+             * Format: int64
+             * @description The file's size in bytes.
+             */
+            byte_size: number;
+        };
+        /** @description A trash item: a node deleted with the nodes under it at one time, by its root, as it was deleted, and who deleted it, deleted_by. */
+        TrashItem: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            notebook_id: string;
+            kind: components["schemas"]["NodeKind"];
+            /** @description The page's title, or the attachment's file name. */
+            name: string;
+            /** @description The pages it was under, from the root down to its parent, those in the trash among them; none at the root. */
+            ancestors: components["schemas"]["Ancestor"][];
+            /** Format: date-time */
+            deleted_at: string;
+            deleted_by: components["schemas"]["UserRef"];
+            /**
+             * Format: date-time
+             * @description Until when it can be restored, the instance's trash_retention_seconds after its deletion.
+             */
+            restorable_until: string;
+            /** @description The pages deleted with it, itself among them when it is a page. */
+            pages: number;
+            /** @description The attachments deleted with it, itself among them when it is an attachment. */
+            assets: number;
+            restore_to: components["schemas"]["TrashPlacement"];
+            /** @description A page's content's revision as it was deleted, whose version getPageVersionView shows; null for an attachment. */
+            revision: number | null;
+            /** @description An attachment's type and size; null for a page. */
+            asset: components["schemas"]["TrashAttachment"] | null;
+        };
+        /** @description A page of a notebook's trash, newer first. */
+        TrashItemPage: {
+            data: components["schemas"]["TrashItem"][];
+            next_cursor: components["schemas"]["NextCursor"];
+        };
+        /** @description What a restore did. */
+        NodeRestored: {
+            /**
+             * Format: uuid
+             * @description The item's root.
+             */
+            id: string;
+            kind: components["schemas"]["NodeKind"];
+            /** @description Its name as the restore leaves it. */
+            name: string;
+            /** @description Whether it was numbered, a sibling where it went back having its name. */
+            renamed: boolean;
+            placed: components["schemas"]["TrashPlacement"];
+            /**
+             * Format: uuid
+             * @description The restore's changeset, a trash_restore.
+             */
+            changeset_id: string;
         };
         /** @description A page that links to another. */
         Backlink: {
@@ -2415,12 +2558,6 @@ export interface components {
          * @enum {string}
          */
         TransferClient: "web" | "api";
-        /** @description Who started the job. */
-        TransferStarter: {
-            /** Format: uuid */
-            user_id: string;
-            display_name: string;
-        };
         /** @description How many of the job's nodes are done, of all: an export's written; an import's created or skipped, of those to create, 0 of 0 until its archive is read. */
         TransferProgress: {
             /** Format: int64 */
@@ -2475,7 +2612,7 @@ export interface components {
              */
             expires_at: string;
         };
-        /** @description An import or an export of a notebook, a job that runs in the background: queued, then running, then succeeded, failed or cancelled. An export's archive expires a while after it succeeded, the instance's export TTL, or at once when its starter's next export of the notebook succeeds: a starter keeps only their latest export of a notebook. */
+        /** @description An import or an export of a notebook, a job that runs in the background: queued, then running, then succeeded, failed or cancelled. An export's archive expires a while after it succeeded, the instance's export TTL, or at once when its starter's next export of the notebook succeeds: a starter keeps only their latest export of a notebook. created_by is its starter. */
         TransferJob: {
             /** Format: uuid */
             id: string;
@@ -2491,7 +2628,7 @@ export interface components {
             kind: components["schemas"]["TransferKind"];
             state: components["schemas"]["TransferState"];
             client: components["schemas"]["TransferClient"];
-            created_by: components["schemas"]["TransferStarter"];
+            created_by: components["schemas"]["UserRef"];
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -2542,7 +2679,7 @@ export interface components {
             kind: components["schemas"]["TransferKind"];
             state: components["schemas"]["TransferState"];
             client: components["schemas"]["TransferClient"];
-            created_by: components["schemas"]["TransferStarter"];
+            created_by: components["schemas"]["UserRef"];
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -2694,11 +2831,10 @@ export type PageContent = components['schemas']['PageContent'];
 export type PageContentWrite = components['schemas']['PageContentWrite'];
 export type EditSessionOpening = components['schemas']['EditSessionOpening'];
 export type EditSession = components['schemas']['EditSession'];
-export type EditLockHolder = components['schemas']['EditLockHolder'];
+export type UserRef = components['schemas']['UserRef'];
 export type EditLock = components['schemas']['EditLock'];
 export type PageView = components['schemas']['PageView'];
 export type ChangesetKind = components['schemas']['ChangesetKind'];
-export type ChangesetAuthor = components['schemas']['ChangesetAuthor'];
 export type VersionChangeset = components['schemas']['VersionChangeset'];
 export type PageVersion = components['schemas']['PageVersion'];
 export type PageVersionPage = components['schemas']['PageVersionPage'];
@@ -2708,6 +2844,11 @@ export type VersionRestored = components['schemas']['VersionRestored'];
 export type TaskToggle = components['schemas']['TaskToggle'];
 export type NodeRename = components['schemas']['NodeRename'];
 export type NodeMove = components['schemas']['NodeMove'];
+export type TrashPlacement = components['schemas']['TrashPlacement'];
+export type TrashAttachment = components['schemas']['TrashAttachment'];
+export type TrashItem = components['schemas']['TrashItem'];
+export type TrashItemPage = components['schemas']['TrashItemPage'];
+export type NodeRestored = components['schemas']['NodeRestored'];
 export type Backlink = components['schemas']['Backlink'];
 export type BacklinkPage = components['schemas']['BacklinkPage'];
 export type PageProperty = components['schemas']['PageProperty'];
@@ -2735,7 +2876,6 @@ export type ExportStart = components['schemas']['ExportStart'];
 export type TransferKind = components['schemas']['TransferKind'];
 export type TransferState = components['schemas']['TransferState'];
 export type TransferClient = components['schemas']['TransferClient'];
-export type TransferStarter = components['schemas']['TransferStarter'];
 export type TransferProgress = components['schemas']['TransferProgress'];
 export type TransferFailure = components['schemas']['TransferFailure'];
 export type TransferCounts = components['schemas']['TransferCounts'];
@@ -4270,6 +4410,83 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TreeNode"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    listTrash: {
+        parameters: {
+            query?: {
+                /** @description The page size, 1–100; 50 when absent. Outside that range the answer is 422 validation_failed on limit. */
+                limit?: components["parameters"]["Limit"];
+                /** @description The next_cursor of the page before; absent for the first page. A cursor that does not decode, has an unknown version or a payload of another shape than this list's, or is not spelled as the server writes it is 400 bad_request on cursor. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the notebook's trash. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrashItemPage"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    getTrashItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The id of a node of a notebook's tree. */
+                node_id: components["parameters"]["NodeID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The trash item. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrashItem"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    restoreNode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The id of a node of a notebook's tree. */
+                node_id: components["parameters"]["NodeID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The item's root, restored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeRestored"];
                 };
             };
             default: components["responses"]["Problem"];

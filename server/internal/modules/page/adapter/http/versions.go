@@ -9,6 +9,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/adapter/http/gen"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/app"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/apigen"
 )
 
 // ListVersionsUseCase is app.ListVersions.
@@ -96,7 +97,7 @@ func pageVersionOf(v domain.Version) gen.PageVersion {
 		ID: v.ID, Revision: v.Revision, BaseRevision: base, ByteSize: v.ByteSize, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt,
 		Editing: v.Editing, Changeset: gen.VersionChangeset{
 			ID: c.ID, Kind: gen.ChangesetKind(c.Kind), Client: string(c.Client), CreatedAt: c.CreatedAt,
-			CreatedBy: gen.ChangesetAuthor{UserID: c.By, DisplayName: c.ByName},
+			CreatedBy: apigen.UserRef{UserID: c.By, DisplayName: c.ByName},
 		},
 	}
 }

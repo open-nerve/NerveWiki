@@ -119,8 +119,10 @@ func (c Config) validate() error {
 	if c.Jobs.PurgeInterval < time.Second {
 		fail("jobs.purge_interval", "must be at least 1s, got %s", c.Jobs.PurgeInterval)
 	}
-	if c.Jobs.PurgeRetention < time.Hour {
-		fail("jobs.purge_retention", "must be at least 1h, got %s", c.Jobs.PurgeRetention)
+	// The trash restores until an hour before the purge (M8/P2 design 3.8):
+	// a day leaves it 23 hours.
+	if c.Jobs.PurgeRetention < 24*time.Hour {
+		fail("jobs.purge_retention", "must be at least 24h, got %s", c.Jobs.PurgeRetention)
 	}
 	c.Jobs.validate(c.Database.MaxConns, fail)
 	if c.Storage.Dir == "" {

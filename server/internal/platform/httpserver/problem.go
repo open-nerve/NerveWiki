@@ -35,13 +35,15 @@ type Problem struct {
 	Title  string       `json:"title"`
 	Detail string       `json:"detail,omitempty"`
 	Errors []FieldError `json:"errors,omitempty"`
-	// Lock, Locks and EndedBy are the members only some codes carry (M5
-	// design 4.5, M6/P4 design 4.1): page.locked names the lock,
-	// linking.pages_locked the locks, page.edit_session_unlocked who
-	// unlocked.
+	// Lock, Locks, EndedBy and RootID are the members only some codes
+	// carry (M5 design 4.5, M6/P4 design 4.1, M8/P2 design 3.9):
+	// page.locked names the lock, linking.pages_locked the locks,
+	// page.edit_session_unlocked who unlocked, page.not_trash_root the root
+	// of the trash item.
 	Lock    *ProblemLock   `json:"lock,omitempty"`
 	Locks   []ProblemLock  `json:"locks,omitempty"`
 	EndedBy *ProblemPerson `json:"ended_by,omitempty"`
+	RootID  *uuid.UUID     `json:"root_id,omitempty"`
 }
 
 // ProblemLock is a page's edit lock: the page locked and who holds it.

@@ -114,6 +114,26 @@ components:
               format: uuid
             display_name:
               type: string
+        root_id:
+          description: >-
+            The root of the trash item a node was deleted with:
+            page.not_trash_root names it, the item to restore. No other code
+            carries it.
+          type: string
+          format: uuid
+    UserRef:
+      description: >-
+        An account, by its id and its display name, as of the answer: who
+        made a changeset, holds a lock, started a job or deleted a node.
+      type: object
+      additionalProperties: false
+      required: [user_id, display_name]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        display_name:
+          type: string
     FieldError:
       description: >-
         One invalid field of a request. Clients show text looked up by `code`;

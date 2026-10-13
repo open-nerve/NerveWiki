@@ -20,5 +20,7 @@ test("S3: a caller reads the instance information with the typed client", async 
     export_ttl_seconds: 86_400,
     // transfer.import_max_bytes, 512 MiB in every profile.
     import_max_bytes: 536_870_912,
+    // jobs.purge_retention less an hour: 60 days in every profile.
+    trash_retention_seconds: 5_180_400,
   });
 });

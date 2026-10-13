@@ -66,16 +66,31 @@ func (e NodeKind) Valid() bool {
 	}
 }
 
+// Defines values for TrashPlacementReason.
+const (
+	TrashPlacementReasonOriginal      TrashPlacementReason = "original"
+	TrashPlacementReasonParentInTrash TrashPlacementReason = "parent_in_trash"
+	TrashPlacementReasonTooDeep       TrashPlacementReason = "too_deep"
+)
+
+// Valid indicates whether the value is a known member of the TrashPlacementReason enum.
+func (e TrashPlacementReason) Valid() bool {
+	switch e {
+	case TrashPlacementReasonOriginal:
+		return true
+	case TrashPlacementReasonParentInTrash:
+		return true
+	case TrashPlacementReasonTooDeep:
+		return true
+	default:
+		return false
+	}
+}
+
 // Ancestor A page above another, on the way from the root.
 type Ancestor struct {
 	ID   uuid.UUID `json:"id"`
 	Name string    `json:"name"`
-}
-
-// ChangesetAuthor The account a changeset is by.
-type ChangesetAuthor struct {
-	DisplayName string    `json:"display_name"`
-	UserID      uuid.UUID `json:"user_id"`
 }
 
 // ChangesetKind What a changeset records: an edit, an import, a version restored, a node restored from the trash, or the revert of another changeset.
@@ -89,14 +104,8 @@ type EditLock struct {
 	// ExpiresIn Whole seconds, rounded up, until the holder's lease ends unless a heartbeat keeps it; null while no one holds the lock. A span, not a time: the client's clock may be wrong.
 	ExpiresIn nullable.Nullable[int] `json:"expires_in"`
 
-	// Holder Who holds the lock; null while no one does.
-	Holder nullable.Nullable[EditLockHolder] `json:"holder"`
-}
-
-// EditLockHolder The account whose alive edit session holds a page's lock.
-type EditLockHolder struct {
-	DisplayName string    `json:"display_name"`
-	UserID      uuid.UUID `json:"user_id"`
+	// Holder The account whose alive edit session holds the lock; null while no one does.
+	Holder nullable.Nullable[externalRef0.UserRef] `json:"holder"`
 }
 
 // EditSession An edit session of a page, while its lease lasts.
@@ -131,6 +140,27 @@ type NodeRename struct {
 	Name Title `json:"name"`
 }
 
+// NodeRestored What a restore did.
+type NodeRestored struct {
+	// ChangesetID The restore's changeset, a trash_restore.
+	ChangesetID uuid.UUID `json:"changeset_id"`
+
+	// ID The item's root.
+	ID uuid.UUID `json:"id"`
+
+	// Kind What a node of the tree is: a page, or an attachment, a file at the root or under a page, which no node is under.
+	Kind NodeKind `json:"kind"`
+
+	// Name Its name as the restore leaves it.
+	Name string `json:"name"`
+
+	// Placed Where a restore puts a trash item: under its parent where it was, original (parent_id null when it was at the root), or last at the notebook's root, parent_id null, its parent being in the trash (parent_in_trash) or its pages too deep under it (too_deep).
+	Placed TrashPlacement `json:"placed"`
+
+	// Renamed Whether it was numbered, a sibling where it went back having its name.
+	Renamed bool `json:"renamed"`
+}
+
 // Page A page: its node, its ancestors and what it tells of its content.
 type Page struct {
 	// Ancestors The pages above it, from the root down to its parent; none at the root.
@@ -160,7 +190,7 @@ type Page struct {
 	// Revision The content's version, 1 for a new page; each write of the content adds one.
 	Revision int `json:"revision"`
 
-	// UpdatedAt When the page was last created, renamed or moved; its content's writes do not change it.
+	// UpdatedAt When the page was last created, renamed, moved or restored from the trash; its content's writes do not change it.
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
@@ -211,7 +241,7 @@ type PageVersion struct {
 	// ByteSize The content's size in bytes.
 	ByteSize int `json:"byte_size"`
 
-	// Changeset The changeset a version is of.
+	// Changeset The changeset a version is of, and the account it is by.
 	Changeset VersionChangeset `json:"changeset"`
 
 	// CreatedAt When the version was first written; an edit session's, at its first save.
@@ -238,7 +268,7 @@ type PageVersionContent struct {
 	// ByteSize The content's size in bytes.
 	ByteSize int `json:"byte_size"`
 
-	// Changeset The changeset a version is of.
+	// Changeset The changeset a version is of, and the account it is by.
 	Changeset VersionChangeset `json:"changeset"`
 
 	// Content A page's Markdown, byte for byte: at most 5 MiB (5,242,880 bytes) of UTF-8, without NUL characters. Its line breaks, byte order mark and blanks are kept as they are.
@@ -295,6 +325,68 @@ type TaskToggle struct {
 // Title 1–255 bytes after the surrounding blanks are trimmed and the text is in NFC; none of / \ : * ? " < > | # ^ [ ] nor control characters; not starting or ending with a dot; no name Windows reserves (CON, COM1, …). It is the file's name when the notebook is exported. Siblings' titles differ in more than case: they compare by Unicode case folding.
 type Title = string
 
+// TrashAttachment An attachment's file in the trash.
+type TrashAttachment struct {
+	// ByteSize The file's size in bytes.
+	ByteSize int64 `json:"byte_size"`
+
+	// Mime The file's media type.
+	Mime string `json:"mime"`
+}
+
+// TrashItem A trash item: a node deleted with the nodes under it at one time, by its root, as it was deleted, and who deleted it, deleted_by.
+type TrashItem struct {
+	// Ancestors The pages it was under, from the root down to its parent, those in the trash among them; none at the root.
+	Ancestors []Ancestor `json:"ancestors"`
+
+	// Asset An attachment's type and size; null for a page.
+	Asset nullable.Nullable[TrashAttachment] `json:"asset"`
+
+	// Assets The attachments deleted with it, itself among them when it is an attachment.
+	Assets    int       `json:"assets"`
+	DeletedAt time.Time `json:"deleted_at"`
+
+	// DeletedBy An account, by its id and its display name, as of the answer: who made a changeset, holds a lock, started a job or deleted a node.
+	DeletedBy externalRef0.UserRef `json:"deleted_by"`
+	ID        uuid.UUID            `json:"id"`
+
+	// Kind What a node of the tree is: a page, or an attachment, a file at the root or under a page, which no node is under.
+	Kind NodeKind `json:"kind"`
+
+	// Name The page's title, or the attachment's file name.
+	Name       string    `json:"name"`
+	NotebookID uuid.UUID `json:"notebook_id"`
+
+	// Pages The pages deleted with it, itself among them when it is a page.
+	Pages int `json:"pages"`
+
+	// RestorableUntil Until when it can be restored, the instance's trash_retention_seconds after its deletion.
+	RestorableUntil time.Time `json:"restorable_until"`
+
+	// RestoreTo Where a restore puts a trash item: under its parent where it was, original (parent_id null when it was at the root), or last at the notebook's root, parent_id null, its parent being in the trash (parent_in_trash) or its pages too deep under it (too_deep).
+	RestoreTo TrashPlacement `json:"restore_to"`
+
+	// Revision A page's content's revision as it was deleted, whose version getPageVersionView shows; null for an attachment.
+	Revision nullable.Nullable[int] `json:"revision"`
+}
+
+// TrashItemPage A page of a notebook's trash, newer first.
+type TrashItemPage struct {
+	Data []TrashItem `json:"data"`
+
+	// NextCursor The cursor of the next page; null on the last page.
+	NextCursor nullable.Nullable[externalRef0.NextCursor] `json:"next_cursor"`
+}
+
+// TrashPlacement Where a restore puts a trash item: under its parent where it was, original (parent_id null when it was at the root), or last at the notebook's root, parent_id null, its parent being in the trash (parent_in_trash) or its pages too deep under it (too_deep).
+type TrashPlacement struct {
+	ParentID nullable.Nullable[uuid.UUID] `json:"parent_id"`
+	Reason   TrashPlacementReason         `json:"reason"`
+}
+
+// TrashPlacementReason defines model for TrashPlacement.Reason.
+type TrashPlacementReason string
+
 // TreeNode A node of a notebook's tree, a page or an attachment.
 type TreeNode struct {
 	CreatedAt time.Time `json:"created_at"`
@@ -310,7 +402,7 @@ type TreeNode struct {
 	// ParentID The parent page; null at the notebook's root.
 	ParentID nullable.Nullable[uuid.UUID] `json:"parent_id"`
 
-	// UpdatedAt When the node was last created, renamed or moved; its content's writes do not change it.
+	// UpdatedAt When the node was last created, renamed, moved or restored from the trash; its content's writes do not change it.
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
@@ -319,15 +411,15 @@ type TreeNodeList struct {
 	Data []TreeNode `json:"data"`
 }
 
-// VersionChangeset The changeset a version is of.
+// VersionChangeset The changeset a version is of, and the account it is by.
 type VersionChangeset struct {
 	// Client Where the changeset's writes came from, web, api, cli, or mcp:<name> for an MCP client.
 	Client    string    `json:"client"`
 	CreatedAt time.Time `json:"created_at"`
 
-	// CreatedBy The account a changeset is by.
-	CreatedBy ChangesetAuthor `json:"created_by"`
-	ID        uuid.UUID       `json:"id"`
+	// CreatedBy An account, by its id and its display name, as of the answer: who made a changeset, holds a lock, started a job or deleted a node.
+	CreatedBy externalRef0.UserRef `json:"created_by"`
+	ID        uuid.UUID            `json:"id"`
 
 	// Kind What a changeset records: an edit, an import, a version restored, a node restored from the trash, or the revert of another changeset.
 	Kind ChangesetKind `json:"kind"`
@@ -366,6 +458,15 @@ type Revision = int
 
 // Problem RFC 9457 problem details. `title` is the HTTP status phrase, `detail` explains this occurrence, and clients branch on `code`. Must match httpserver.Problem; the platform's contract test checks it.
 type Problem = externalRef0.Problem
+
+// ListTrashParams defines parameters for ListTrash.
+type ListTrashParams struct {
+	// Limit The page size, 1–100; 50 when absent. Outside that range the answer is 422 validation_failed on limit.
+	Limit *externalRef0.Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor The next_cursor of the page before; absent for the first page. A cursor that does not decode, has an unknown version or a payload of another shape than this list's, or is not spelled as the server writes it is 400 bad_request on cursor.
+	Cursor *externalRef0.Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
 
 // ListPageVersionsParams defines parameters for ListPageVersions.
 type ListPageVersionsParams struct {
@@ -414,12 +515,21 @@ type ServerInterface interface {
 	// MoveNode Move a page or an attachment
 	// (POST /api/v0/nodes/{node_id}/move)
 	MoveNode(w http.ResponseWriter, r *http.Request, nodeID NodeID)
+	// RestoreNode Restore a trash item
+	// (POST /api/v0/nodes/{node_id}/restore)
+	RestoreNode(w http.ResponseWriter, r *http.Request, nodeID NodeID)
+	// GetTrashItem Read a trash item
+	// (GET /api/v0/nodes/{node_id}/trash-item)
+	GetTrashItem(w http.ResponseWriter, r *http.Request, nodeID NodeID)
 	// ListNodes List a notebook's tree
 	// (GET /api/v0/notebooks/{notebook_id}/nodes)
 	ListNodes(w http.ResponseWriter, r *http.Request, notebookID NotebookID)
 	// CreatePage Create a page
 	// (POST /api/v0/notebooks/{notebook_id}/pages)
 	CreatePage(w http.ResponseWriter, r *http.Request, notebookID NotebookID)
+	// ListTrash List a notebook's trash
+	// (GET /api/v0/notebooks/{notebook_id}/trash)
+	ListTrash(w http.ResponseWriter, r *http.Request, notebookID NotebookID, params ListTrashParams)
 	// GetPage Get a page
 	// (GET /api/v0/pages/{page_id})
 	GetPage(w http.ResponseWriter, r *http.Request, pageID PageID)
@@ -597,6 +707,58 @@ func (siw *ServerInterfaceWrapper) MoveNode(w http.ResponseWriter, r *http.Reque
 	handler.ServeHTTP(w, r)
 }
 
+// RestoreNode operation middleware
+func (siw *ServerInterfaceWrapper) RestoreNode(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "node_id" -------------
+	var nodeID NodeID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "node_id", r.PathValue("node_id"), &nodeID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "node_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RestoreNode(w, r, nodeID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetTrashItem operation middleware
+func (siw *ServerInterfaceWrapper) GetTrashItem(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "node_id" -------------
+	var nodeID NodeID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "node_id", r.PathValue("node_id"), &nodeID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "node_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTrashItem(w, r, nodeID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListNodes operation middleware
 func (siw *ServerInterfaceWrapper) ListNodes(w http.ResponseWriter, r *http.Request) {
 
@@ -640,6 +802,61 @@ func (siw *ServerInterfaceWrapper) CreatePage(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CreatePage(w, r, notebookID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListTrash operation middleware
+func (siw *ServerInterfaceWrapper) ListTrash(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "notebook_id" -------------
+	var notebookID NotebookID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "notebook_id", r.PathValue("notebook_id"), &notebookID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "notebook_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListTrashParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListTrash(w, r, notebookID, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1156,6 +1373,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v0/nodes/{node_id}", wrapper.DeleteNode)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v0/nodes/{node_id}", wrapper.RenameNode)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/nodes/{node_id}/move", wrapper.MoveNode)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/notebooks/{notebook_id}/trash", wrapper.ListTrash)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/nodes/{node_id}/trash-item", wrapper.GetTrashItem)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/nodes/{node_id}/restore", wrapper.RestoreNode)
 
 	return m
 }
@@ -1390,6 +1610,98 @@ func (response MoveNodedefaultApplicationProblemPlusJSONResponse) VisitMoveNodeR
 	return err
 }
 
+type RestoreNodeRequestObject struct {
+	NodeID NodeID `json:"node_id"`
+}
+
+type RestoreNodeResponseObject interface {
+	VisitRestoreNodeResponse(w http.ResponseWriter) error
+}
+
+type RestoreNode200JSONResponse NodeRestored
+
+func (response RestoreNode200JSONResponse) VisitRestoreNodeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RestoreNodedefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response RestoreNodedefaultApplicationProblemPlusJSONResponse) VisitRestoreNodeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTrashItemRequestObject struct {
+	NodeID NodeID `json:"node_id"`
+}
+
+type GetTrashItemResponseObject interface {
+	VisitGetTrashItemResponse(w http.ResponseWriter) error
+}
+
+type GetTrashItem200JSONResponse TrashItem
+
+func (response GetTrashItem200JSONResponse) VisitGetTrashItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTrashItemdefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response GetTrashItemdefaultApplicationProblemPlusJSONResponse) VisitGetTrashItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListNodesRequestObject struct {
 	NotebookID NotebookID `json:"notebook_id"`
 }
@@ -1466,6 +1778,53 @@ type CreatePagedefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response CreatePagedefaultApplicationProblemPlusJSONResponse) VisitCreatePageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTrashRequestObject struct {
+	NotebookID NotebookID `json:"notebook_id"`
+	Params     ListTrashParams
+}
+
+type ListTrashResponseObject interface {
+	VisitListTrashResponse(w http.ResponseWriter) error
+}
+
+type ListTrash200JSONResponse TrashItemPage
+
+func (response ListTrash200JSONResponse) VisitListTrashResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTrashdefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response ListTrashdefaultApplicationProblemPlusJSONResponse) VisitListTrashResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -2054,12 +2413,21 @@ type StrictServerInterface interface {
 	// MoveNode Move a page or an attachment
 	// (POST /api/v0/nodes/{node_id}/move)
 	MoveNode(ctx context.Context, request MoveNodeRequestObject) (MoveNodeResponseObject, error)
+	// RestoreNode Restore a trash item
+	// (POST /api/v0/nodes/{node_id}/restore)
+	RestoreNode(ctx context.Context, request RestoreNodeRequestObject) (RestoreNodeResponseObject, error)
+	// GetTrashItem Read a trash item
+	// (GET /api/v0/nodes/{node_id}/trash-item)
+	GetTrashItem(ctx context.Context, request GetTrashItemRequestObject) (GetTrashItemResponseObject, error)
 	// ListNodes List a notebook's tree
 	// (GET /api/v0/notebooks/{notebook_id}/nodes)
 	ListNodes(ctx context.Context, request ListNodesRequestObject) (ListNodesResponseObject, error)
 	// CreatePage Create a page
 	// (POST /api/v0/notebooks/{notebook_id}/pages)
 	CreatePage(ctx context.Context, request CreatePageRequestObject) (CreatePageResponseObject, error)
+	// ListTrash List a notebook's trash
+	// (GET /api/v0/notebooks/{notebook_id}/trash)
+	ListTrash(ctx context.Context, request ListTrashRequestObject) (ListTrashResponseObject, error)
 	// GetPage Get a page
 	// (GET /api/v0/pages/{page_id})
 	GetPage(ctx context.Context, request GetPageRequestObject) (GetPageResponseObject, error)
@@ -2281,6 +2649,58 @@ func (sh *strictHandler) MoveNode(w http.ResponseWriter, r *http.Request, nodeID
 	}
 }
 
+// RestoreNode operation middleware
+func (sh *strictHandler) RestoreNode(w http.ResponseWriter, r *http.Request, nodeID NodeID) {
+	var request RestoreNodeRequestObject
+
+	request.NodeID = nodeID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RestoreNode(ctx, request.(RestoreNodeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RestoreNode")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RestoreNodeResponseObject); ok {
+		if err := validResponse.VisitRestoreNodeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetTrashItem operation middleware
+func (sh *strictHandler) GetTrashItem(w http.ResponseWriter, r *http.Request, nodeID NodeID) {
+	var request GetTrashItemRequestObject
+
+	request.NodeID = nodeID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetTrashItem(ctx, request.(GetTrashItemRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetTrashItem")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetTrashItemResponseObject); ok {
+		if err := validResponse.VisitGetTrashItemResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListNodes operation middleware
 func (sh *strictHandler) ListNodes(w http.ResponseWriter, r *http.Request, notebookID NotebookID) {
 	var request ListNodesRequestObject
@@ -2333,6 +2753,33 @@ func (sh *strictHandler) CreatePage(w http.ResponseWriter, r *http.Request, note
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(CreatePageResponseObject); ok {
 		if err := validResponse.VisitCreatePageResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListTrash operation middleware
+func (sh *strictHandler) ListTrash(w http.ResponseWriter, r *http.Request, notebookID NotebookID, params ListTrashParams) {
+	var request ListTrashRequestObject
+
+	request.NotebookID = notebookID
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListTrash(ctx, request.(ListTrashRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListTrash")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListTrashResponseObject); ok {
+		if err := validResponse.VisitListTrashResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

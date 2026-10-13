@@ -14,8 +14,8 @@ paths:
         Reports the product, the build and the API version this instance
         runs, whether it is open for sign-up, whether accounts may create
         workspaces, the largest attachment and import archive it takes,
-        and how long it keeps an export. Public: needs no
-        authentication.
+        how long it keeps an export, and how long the trash restores what
+        was deleted. Public: needs no authentication.
       security: []
       x-problem-codes: []
       responses:
@@ -67,6 +67,7 @@ components:
           asset_max_bytes,
           import_max_bytes,
           export_ttl_seconds,
+          trash_retention_seconds,
         ]
       properties:
         product:
@@ -116,3 +117,11 @@ components:
           type: integer
           format: int64
           minimum: 600
+        trash_retention_seconds:
+          description: >-
+            How long a deleted page or attachment can be restored from the
+            trash, in seconds: jobs.purge_retention less an hour, after which
+            the purge may take it.
+          type: integer
+          format: int64
+          minimum: 82800

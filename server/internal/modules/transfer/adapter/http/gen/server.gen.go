@@ -221,7 +221,7 @@ type TransferDownload struct {
 // TransferFailure Why a job failed: interrupted (the server stopped or restarted, the job stopped beating, or the job queue dropped it before it began), timeout (it ran past the instance's limit), forbidden (its starter could no longer read the notebook as it ran, or write in it as an import ran), root_not_found (the page exported, or imported under, was gone as it ran), storage_full, contributor_conflict (a file the server adds was where a node is), internal; for an import's archive as a whole, nothing written: not_zip (no zip, or its directory is broken), too_many_entries (more entries than the instance takes, or a directory larger than 64 MiB), unpacked_too_large (its entries unpack to more than the instance takes); tree_changed (a page the import created was deleted as it ran, its later nodes not written).
 type TransferFailure string
 
-// TransferJob An import or an export of a notebook, a job that runs in the background: queued, then running, then succeeded, failed or cancelled. An export's archive expires a while after it succeeded, the instance's export TTL, or at once when its starter's next export of the notebook succeeds: a starter keeps only their latest export of a notebook.
+// TransferJob An import or an export of a notebook, a job that runs in the background: queued, then running, then succeeded, failed or cancelled. An export's archive expires a while after it succeeded, the instance's export TTL, or at once when its starter's next export of the notebook succeeds: a starter keeps only their latest export of a notebook. created_by is its starter.
 type TransferJob struct {
 	// CancelRequestedAt When a cancel of the job was asked as it ran: it stops at its next heartbeat, within about a second, unless it ends first; null when none was.
 	CancelRequestedAt nullable.Nullable[time.Time] `json:"cancel_requested_at"`
@@ -230,8 +230,8 @@ type TransferJob struct {
 	Client    TransferClient `json:"client"`
 	CreatedAt time.Time      `json:"created_at"`
 
-	// CreatedBy Who started the job.
-	CreatedBy TransferStarter `json:"created_by"`
+	// CreatedBy An account, by its id and its display name, as of the answer: who made a changeset, holds a lock, started a job or deleted a node.
+	CreatedBy externalRef0.UserRef `json:"created_by"`
 
 	// Download The address of an export's archive, once it succeeded and until it expires; null otherwise.
 	Download   nullable.Nullable[TransferDownload] `json:"download"`
@@ -267,8 +267,8 @@ type TransferJobDetail struct {
 	Client    TransferClient `json:"client"`
 	CreatedAt time.Time      `json:"created_at"`
 
-	// CreatedBy Who started the job.
-	CreatedBy TransferStarter `json:"created_by"`
+	// CreatedBy An account, by its id and its display name, as of the answer: who made a changeset, holds a lock, started a job or deleted a node.
+	CreatedBy externalRef0.UserRef `json:"created_by"`
 
 	// Download The address of an export's archive, once it succeeded and until it expires; null otherwise.
 	Download   nullable.Nullable[TransferDownload] `json:"download"`
@@ -337,12 +337,6 @@ type TransferReport struct {
 
 	// Failure Why the job failed; null when it did not.
 	Failure nullable.Nullable[TransferFailure] `json:"failure"`
-}
-
-// TransferStarter Who started the job.
-type TransferStarter struct {
-	DisplayName string    `json:"display_name"`
-	UserID      uuid.UUID `json:"user_id"`
 }
 
 // TransferState defines model for TransferState.

@@ -55,6 +55,9 @@ type InstanceInfo struct {
 	// SignupEnabled Whether anyone may register (auth.signup_enabled); when off, the server's administrator creates the accounts.
 	SignupEnabled bool `json:"signup_enabled"`
 
+	// TrashRetentionSeconds How long a deleted page or attachment can be restored from the trash, in seconds: jobs.purge_retention less an hour, after which the purge may take it.
+	TrashRetentionSeconds int64 `json:"trash_retention_seconds"`
+
 	// Version Product version of the running build.
 	//
 	// Examples: 0.1.0-dev

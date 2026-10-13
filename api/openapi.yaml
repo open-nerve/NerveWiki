@@ -127,6 +127,12 @@ paths:
     $ref: "modules/page.yaml#/paths/~1api~1v0~1nodes~1{node_id}"
   /api/v0/nodes/{node_id}/move:
     $ref: "modules/page.yaml#/paths/~1api~1v0~1nodes~1{node_id}~1move"
+  /api/v0/notebooks/{notebook_id}/trash:
+    $ref: "modules/page.yaml#/paths/~1api~1v0~1notebooks~1{notebook_id}~1trash"
+  /api/v0/nodes/{node_id}/trash-item:
+    $ref: "modules/page.yaml#/paths/~1api~1v0~1nodes~1{node_id}~1trash-item"
+  /api/v0/nodes/{node_id}/restore:
+    $ref: "modules/page.yaml#/paths/~1api~1v0~1nodes~1{node_id}~1restore"
   /api/v0/pages/{page_id}/backlinks:
     $ref: "modules/linking.yaml#/paths/~1api~1v0~1pages~1{page_id}~1backlinks"
   /api/v0/pages/{page_id}/properties:

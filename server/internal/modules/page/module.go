@@ -151,6 +151,8 @@ func New(d Deps) *Module {
 	})
 	parser := app.NewContentParser(writer, md, budget, d.Budget.Wait())
 	versions := app.VersionReads{Notebooks: d.Notebooks, Nodes: store, Versions: store, Names: d.Names, Auth: d.Authorizer, Clock: d.Clock}
+	trash := app.TrashReads{Notebooks: d.Notebooks, Nodes: store, Trash: store, Names: d.Names, Attachments: d.Attachments,
+		Auth: d.Authorizer, Clock: d.Clock, Retention: d.Retention}
 	return &Module{uc: httpadapter.UseCases{
 		ListNodes:       app.NewListNodes(d.Notebooks, store, d.Authorizer),
 		CreatePage:      app.NewCreatePage(writer, store, parser, d.Logger),
@@ -171,6 +173,9 @@ func New(d Deps) *Module {
 		GetVersion:      app.NewGetVersion(versions),
 		GetVersionView:  app.NewGetVersionView(versions, md, budget),
 		RestoreVersion:  app.NewRestoreVersion(versions, writer, parser, d.Logger),
+		ListTrash:       app.NewListTrash(trash),
+		GetTrashItem:    app.NewGetTrashItem(trash),
+		RestoreNode:     app.NewRestoreNode(trash, writer, parser, d.MaxUnitNodes, d.Logger),
 	}, jobs: []jobs.Job{
 		riveradapter.CleanupJob(app.NewCleanupEditSessions(store, d.Clock, d.Logger), d.EditSessionCleanupInterval),
 	}, assets: app.NewAssetWrites(writer, store), imports: app.NewImportWrites(writer, parser, md)}

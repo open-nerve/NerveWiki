@@ -88,11 +88,20 @@ type Problem struct {
 		UserID      uuid.UUID `json:"user_id"`
 	} `json:"locks,omitempty"`
 
+	// RootID The root of the trash item a node was deleted with: page.not_trash_root names it, the item to restore. No other code carries it.
+	RootID *uuid.UUID `json:"root_id,omitempty"`
+
 	// Status HTTP status code.
 	Status int `json:"status"`
 
 	// Title HTTP status phrase, e.g. "Not Found".
 	Title string `json:"title"`
+}
+
+// UserRef An account, by its id and its display name, as of the answer: who made a changeset, holds a lock, started a job or deleted a node.
+type UserRef struct {
+	DisplayName string    `json:"display_name"`
+	UserID      uuid.UUID `json:"user_id"`
 }
 
 // Cursor defines model for Cursor.

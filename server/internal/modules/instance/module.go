@@ -25,6 +25,10 @@ type Deps struct {
 	AssetMaxBytes            int64         // asset.max_bytes
 	ImportMaxBytes           int64         // transfer.import_max_bytes
 	ExportTTL                time.Duration // transfer.export_ttl
+	// TrashRetention is how long the trash restores: jobs.purge_retention
+	// less the page module's margin, which bootstrap takes (M8/P2 design
+	// 3.8).
+	TrashRetention time.Duration
 }
 
 // New wires the module: GetInfo reads the build of the running binary.
@@ -32,7 +36,7 @@ func New(d Deps) *Module {
 	return &Module{uc: httpadapter.UseCases{
 		GetInfo: app.NewGetInfo(buildinfo.Source{}, app.Settings{
 			SignupEnabled: d.SignupEnabled, WorkspaceCreationEnabled: d.WorkspaceCreationEnabled, AssetMaxBytes: d.AssetMaxBytes,
-			ImportMaxBytes: d.ImportMaxBytes, ExportTTL: d.ExportTTL,
+			ImportMaxBytes: d.ImportMaxBytes, ExportTTL: d.ExportTTL, TrashRetention: d.TrashRetention,
 		}),
 	}}
 }
