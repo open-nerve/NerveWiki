@@ -321,6 +321,12 @@ func TestPlanRevertReversesEachChange(t *testing.T) {
 			w.restored(p)
 			w.restored(q)
 		}, []string{"delete P"}},
+		{"a page written, then deleted (M9's shape): back at the content it was deleted at", func(w *world) {
+			p := w.page("P", nil, 0, 2, "two")
+			w.wrote(p, 1, "one")
+			w.trash(p, deletedAt)
+			w.deleted(p)
+		}, []string{"restore P"}},
 		{"an import's revert: its trash items", func(w *world) {
 			a, b := w.page("A", nil, 0, 1, "a"), w.page("B", nil, 1, 1, "b")
 			a1 := w.asset("a1.png", &a, 0)
@@ -530,6 +536,23 @@ func TestPlanRevertConflicts(t *testing.T) {
 			w.placed(p, domain.TreeState{ParentID: &f, Name: "P"})
 			w.move(f, &p, 0)
 		}, []string{"cycle P"}},
+		{"a deletion whose parent went deeper since, past MaxDepth for its subtree", func(w *world) {
+			var parent *uuid.UUID
+			for i := range domain.MaxDepth - 2 {
+				parent = new(w.page(fmt.Sprintf("D%d", i+1), parent, 0, 1, "d"))
+			}
+			top := w.page("Top", nil, 1, 1, "t")
+			p := w.page("P", parent, 0, 1, "p")
+			q := w.page("Q", &p, 0, 1, "q")
+			w.trash(p, deletedAt)
+			w.deleted(p)
+			w.deleted(q)
+			for id, n := range w.nodes {
+				if n.Name == "D1" {
+					w.move(id, &top, 0)
+				}
+			}
+		}, []string{"too_deep P"}},
 		{"a move whose subtree grew since past MaxDepth where it was", func(w *world) {
 			var parent *uuid.UUID
 			for i := range domain.MaxDepth - 2 {
@@ -549,6 +572,22 @@ func TestPlanRevertConflicts(t *testing.T) {
 				t.Errorf("conflicts = %q (%d), ops %q; want %q", got, plan.Count, w.ops(plan), tt.want)
 			}
 		})
+	}
+}
+
+// A deletion whose trash item's group the reads did not find, gone
+// between the read of its root and of its group, is changed: a group is
+// never restored unread.
+func TestPlanRevertOfAGroupUnreadIsChanged(t *testing.T) {
+	w := newWorld(t)
+	p := w.page("P", nil, 0, 1, "p")
+	w.trash(p, time.Date(2026, 10, 14, 11, 0, 0, 0, time.UTC))
+	w.deleted(p)
+	s := w.state()
+	delete(s.Groups, p)
+	plan, err := domain.PlanRevert(s)
+	if got := w.conflicts(plan); err != nil || !slices.Equal(got, []string{"changed P"}) || len(plan.Ops) != 0 {
+		t.Errorf("PlanRevert(P's group unread) = %q, %q, %v; want P changed", got, w.ops(plan), err)
 	}
 }
 
@@ -702,9 +741,9 @@ func TestPlanRevertsRoundGoesInItsOrder(t *testing.T) {
 	}
 }
 
-// A changeset of two nodes trading names, which only M9's batch makes,
-// reverts to a valid state no round in the fixed order reaches: the first
-// rename meets the other's name.
+// A changeset of two nodes trading names, or parents, which only M9's
+// batch makes, reverts to a valid state no round in the fixed order
+// reaches: the first rename, or move, meets the other's name.
 func TestPlanRevertOfASwapIsUnordered(t *testing.T) {
 	w := newWorld(t)
 	a, b := w.page("B", nil, 0, 1, "a"), w.page("A", nil, 1, 1, "b")
@@ -712,6 +751,16 @@ func TestPlanRevertOfASwapIsUnordered(t *testing.T) {
 	w.placed(b, domain.TreeState{Name: "B", SortOrder: 1})
 	if _, err := domain.PlanRevert(w.state()); !errors.Is(err, domain.ErrRevertUnordered) {
 		t.Errorf("PlanRevert(a swap) = %v, want ErrRevertUnordered", err)
+	}
+
+	// Two pages of one name trading parents: the first move meets the other.
+	w = newWorld(t)
+	f, g := w.page("F", nil, 0, 1, "f"), w.page("G", nil, 1, 1, "g")
+	x, y := w.page("N", &g, 0, 1, "x"), w.page("N", &f, 0, 1, "y")
+	w.placed(x, domain.TreeState{ParentID: &f, Name: "N"})
+	w.placed(y, domain.TreeState{ParentID: &g, Name: "N"})
+	if _, err := domain.PlanRevert(w.state()); !errors.Is(err, domain.ErrRevertUnordered) {
+		t.Errorf("PlanRevert(a swap of parents) = %v, want ErrRevertUnordered", err)
 	}
 }
 
@@ -737,12 +786,21 @@ func TestRevertGroupsAndRefs(t *testing.T) {
 	w.restored(r)
 	s := w.page("S", nil, 3, 5, "s")
 	w.wrote(s, 4, "four")
+	u := w.page("U", nil, 4, 1, "u")
+	w.trash(u, deletedAt)
+	w.deleted(u)
+	n = w.nodes[u]
+	n.TrashAssets = 1
+	w.nodes[u] = n
+	// P in the trash at revision 6 of revision 3's bytes: both compared.
+	w.hashes[domain.VersionRef{NodeID: p, Revision: 6}] = hash("p")
 	state := w.state()
 	if groups := domain.RevertGroups(w.items, state.Nodes); len(groups) != 1 || !groups[p].Equal(deletedAt) {
-		t.Errorf("RevertGroups = %v, want P's alone", groups)
+		t.Errorf("RevertGroups = %v, want P's alone: Q's root holds another page, U's an attachment", groups)
 	}
 	got := domain.RevertRefs(w.items, w.versions, state.Groups)
-	want := []domain.VersionRef{{NodeID: p, Revision: 3}, {NodeID: q, Revision: 1}, {NodeID: r, Revision: 2}, {NodeID: s, Revision: 4}}
+	want := []domain.VersionRef{{NodeID: p, Revision: 3}, {NodeID: p, Revision: 6}, {NodeID: q, Revision: 1}, {NodeID: r, Revision: 2},
+		{NodeID: s, Revision: 4}, {NodeID: u, Revision: 1}}
 	if !slices.Equal(got, want) {
 		t.Errorf("RevertRefs = %v, want %v", got, want)
 	}

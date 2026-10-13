@@ -232,6 +232,19 @@ func TestListChanges(t *testing.T) {
 	if err != nil || len(second.Changes) != 1 || second.Changes[0].NodeID == first.Changes[0].NodeID || second.NextCursor != "" {
 		t.Errorf("second page = %+v, %v; want the other, the last", second, err)
 	}
+	c := f.page("C", nil, 2)
+	three := f.log.changeset(domain.ChangesetEdit, f.alice, now(), []domain.ChangesetItem{{NodeID: f.a.ID, After: new(f.a.State())},
+		{NodeID: f.b.ID, After: new(f.b.State())}, {NodeID: c.ID, After: new(c.State())}})
+	two := 2
+	page, err := uc.Execute(f.asAlice(), three.ID, &two, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rest, err := uc.Execute(f.asAlice(), three.ID, &two, &page.NextCursor)
+	last := slices.MaxFunc([]uuid.UUID{f.a.ID, f.b.ID, c.ID}, uuid.UUID.Compare)
+	if err != nil || len(page.Changes) != 2 || len(rest.Changes) != 1 || rest.Changes[0].NodeID != last || rest.NextCursor != "" {
+		t.Errorf("three changes two at a time = %+v, then %+v, %v; want the highest id's alone after the first two", page, rest, err)
+	}
 	bad, zero := "!", 0
 	f.rec.calls = nil
 	if _, err := uc.Execute(f.asAlice(), uuid.NewV7(), &zero, &bad); !errors.Is(err, shared.InvalidCursor()) || len(f.rec.calls) != 0 {

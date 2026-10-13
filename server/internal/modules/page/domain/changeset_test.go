@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
@@ -62,6 +63,10 @@ func TestParseClientFilter(t *testing.T) {
 		var e *shared.Error
 		if !errors.As(err, &e) || e.Code != shared.CodeValidationFailed || len(e.Fields) != 1 || e.Fields[0].Field != "client" {
 			t.Errorf("ParseClientFilter(%q) = %v, want 422 on client", in, err)
+		}
+		// Bytes that are no UTF-8 are told so first, whatever they say.
+		if !utf8.ValidString(in) && e.Fields[0].Message != "is not UTF-8" {
+			t.Errorf("ParseClientFilter(%q) tells %q, want it is not UTF-8", in, e.Fields[0].Message)
 		}
 	}
 }

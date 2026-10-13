@@ -362,6 +362,17 @@ func TestRevertChangesetAnswersItsCodesInOrder(t *testing.T) {
 			f.store.lost = map[uuid.UUID]bool{f.doc.ID: true}
 			return f.c.ID
 		}, nil, 0, "page.changeset_trimmed"},
+		{"its root's group gone before it is read", func(f revertFixture) uuid.UUID {
+			f.rec.before = map[string]func(){"TrashGroup": func() { delete(f.store.trash, f.box.ID) }}
+			return f.c.ID
+		}, nil, 0, "page.revert_conflict"},
+		{"a version to write back the purge took between its hash and its content", func(f revertFixture) uuid.UUID {
+			c := f.writing(f.other.ID, "two")
+			f.rec.before = map[string]func(){"VersionContents 1": func() {
+				delete(f.log.versions, domain.VersionRef{NodeID: f.other.ID, Revision: 1})
+			}}
+			return c.ID
+		}, nil, 0, "page.changeset_trimmed"},
 		{"a version to write back the purge took, the budget busy", func(f revertFixture) uuid.UUID {
 			f.budget.err = shared.ServerBusy(time.Second)
 			c := f.writing(f.other.ID, "two")
@@ -419,6 +430,10 @@ func TestRevertChangesetAnswersItsCodesInOrder(t *testing.T) {
 			}
 			return f.c.ID
 		}, nil, 0, "page.revert_conflict"},
+		{"a page in the trash at other bytes meanwhile", func(f revertFixture) uuid.UUID {
+			f.notebooks.waited = func() { f.trashedContent(f.doc.ID, "# Doc, other bytes") }
+			return f.c.ID
+		}, nil, 0, "page.revert_conflict"},
 		{"a restore's rows the purge took meanwhile", func(f revertFixture) uuid.UUID {
 			f.store.rows = &app.RestoredRows{Nodes: 2, Contents: 2, CurrentVersions: 2, Creations: 2}
 			return f.c.ID
@@ -444,6 +459,13 @@ func TestRevertChangesetAnswersItsCodesInOrder(t *testing.T) {
 			}
 			if tt.name == "its root no longer its group's, past the history" && f.called("TrashGroup") {
 				t.Errorf("the group of a root that fails its check was read: %v", f.rec.calls)
+			}
+			if tt.name == "past the items" && f.called("ChangesetItems") {
+				t.Errorf("the items of a changeset past their bound were read: %v", f.rec.calls)
+			}
+			if tt.name == "a version to write back the purge took between its hash and its content" &&
+				slices.ContainsFunc(f.rec.calls, func(c string) bool { return strings.HasSuffix(c, " in tx") }) {
+				t.Errorf("a version the purge took before the parse went on to the unit: %v", f.rec.calls)
 			}
 		})
 	}

@@ -377,6 +377,19 @@ func TestThePurgeMarksTheChangesetsItTrims(t *testing.T) {
 	}
 }
 
+// The versions' purger marks the changesets whose versions it deletes on
+// its own: run first, it marks made, whose versions it takes, and not
+// deleted, which has only items, nor gone, of a deleted notebook.
+func TestThePurgeOfVersionsMarksTheChangesetsItTrims(t *testing.T) {
+	f := newTrimFixture(t)
+	if n, err := f.s.PurgePageRevisions(context.Background(), cutoff(), 100); err != nil || n != 4 {
+		t.Errorf("PurgePageRevisions() = %d, %v; want made's 3 and gone's", n, err)
+	}
+	if got, want := f.trimmed(t, f.made, f.deleted, f.kept, f.gone), []bool{true, false, false, false}; !slices.Equal(got, want) {
+		t.Errorf("made, deleted, kept and gone trimmed: %v, want %v", got, want)
+	}
+}
+
 // An item whose changeset another transaction holds, as a unit merging
 // into it does (FOR NO KEY UPDATE), is neither deleted nor marked: it waits
 // for a later run, which deletes and marks it.
