@@ -21,12 +21,14 @@ import (
 func (f fixture) versions(t *testing.T, id uuid.UUID, n int) {
 	t.Helper()
 	f.exec(t, `INSERT INTO changesets (id, notebook_id, kind, client, created_by_id, created_at, updated_at)
-		SELECT md5($1::text || i)::uuid, $2, 'edit', 'web', $3, $4 + i * interval '1 second', $4 + i * interval '1 second'
+		SELECT md5($1::text || i)::uuid, $2, 'edit', 'web', $3, $4::timestamptz + i * interval '1 second',
+			$4::timestamptz + i * interval '1 second'
 		FROM generate_series(1, $5::integer) i`, id, f.eng, f.alice, now(), n)
 	f.exec(t, `INSERT INTO page_revisions (id, changeset_id, node_id, base_revision, revision, content, content_hash, byte_size,
 			created_at, updated_at)
 		SELECT md5($1::text || 'r' || i)::uuid, md5($1::text || i)::uuid, $1, NULLIF(i - 1, 0), i, 'v' || i,
-			sha256(convert_to('v' || i, 'UTF8')), octet_length('v' || i), $2 + i * interval '1 second', $2 + i * interval '1 second'
+			sha256(convert_to('v' || i, 'UTF8')), octet_length('v' || i), $2::timestamptz + i * interval '1 second',
+			$2::timestamptz + i * interval '1 second'
 		FROM generate_series(1, $3::integer) i`, id, now(), n)
 }
 

@@ -624,6 +624,7 @@ export const en = {
   "problem.notebook.sole_admin":
     "You are the only admin of one or more notebooks. In each one's settings, make another member an admin first, or delete it.",
   "problem.page.not_found": "This page does not exist, or you have no access to it.",
+  "problem.page.version_not_found": "This page has no such version.",
   "problem.asset.not_found": "This attachment does not exist, or you have no access to it.",
   "problem.transfer.not_found": "This job does not exist, or you have no access to it.",
   "problem.transfer.busy":
