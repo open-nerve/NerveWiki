@@ -68,17 +68,26 @@ test("the shell says so when the notebooks cannot be loaded; Try again loads the
   expect(screen.queryByRole("alert")).toBeNull();
 });
 
-// M8/P2 design 4.5: the tree's links are its pages; the notebook's other places are a navigation of their own.
-test("the notebook's trash is in a navigation of its own below its pages, not the tree's; it leads there, which it marks", async () => {
+// M8/P2 design 4.5, M8/P3 design 4.5: the tree's links are its pages; the notebook's other places are a navigation of
+// their own, its history before its trash.
+test("the notebook's history and trash are in a navigation of its own below its pages, not the tree's; each leads there, which it marks", async () => {
   const user = userEvent.setup();
   const { router } = renderApp(`/lab/notebooks/${notebookJSON.id}`, withNotebooks());
   await screen.findByRole("heading", { level: 1, name: "Plans" });
 
   const tree = screen.getByRole("navigation", { name: "Pages of Plans" });
   expect(within(tree).queryByRole("link", { name: "Trash" })).toBeNull();
+  expect(within(tree).queryByRole("link", { name: "History" })).toBeNull();
   const places = screen.getByRole("navigation", { name: "More of Plans" });
+  expect(
+    within(places)
+      .getAllByRole("link")
+      .map((link) => link.textContent)
+  ).toEqual(["History", "Trash"]);
+  const history = within(places).getByRole("link", { name: "History" });
   const trash = within(places).getByRole("link", { name: "Trash" });
   expect(trash.getAttribute("aria-current")).toBeNull();
+  expect(history.getAttribute("aria-current")).toBeNull();
   // Below the tree, in the document's order.
   expect(tree.compareDocumentPosition(places) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
@@ -90,4 +99,13 @@ test("the notebook's trash is in a navigation of its own below its pages, not th
   // An item's preview is under the trash, not the trash (M8/P2B review A-N2).
   await act(() => router.navigate(`/lab/notebooks/${notebookJSON.id}/trash/0199a2b4-0000-7000-8000-000000000777`));
   await waitFor(() => expect(trash.getAttribute("aria-current")).toBeNull());
+
+  await user.click(history);
+
+  expect(await screen.findByRole("heading", { level: 1, name: "History" })).toBeTruthy();
+  expect(history.getAttribute("aria-current")).toBe("page");
+  expect(trash.getAttribute("aria-current")).toBeNull();
+  // A changeset's page is under the history, not the history.
+  await act(() => router.navigate(`/lab/notebooks/${notebookJSON.id}/history/0199a2b4-0000-7000-8000-000000000777`));
+  await waitFor(() => expect(history.getAttribute("aria-current")).toBeNull());
 });

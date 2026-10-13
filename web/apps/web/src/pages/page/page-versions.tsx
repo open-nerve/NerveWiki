@@ -14,6 +14,7 @@ import type { PageVersion, PageVersionPage } from "../../services/page.service";
 import { usePageTree, useStore } from "../../stores/context";
 import type { PageTreeStore } from "../../stores/page-tree.store";
 import { LoadMoreButton, useLoadMore } from "../load-more";
+import { kindText } from "../notebook/changeset-text";
 import { PanelSection } from "./panel-section";
 
 /**
@@ -143,22 +144,6 @@ export function Mark({ children }: { children: string }) {
 /** versionBy says who wrote version, and what its changeset was: "Ada · Edit". */
 export function versionBy(version: PageVersion, t: Translate): string {
   return `${version.changeset.created_by.display_name} · ${kindText(version.changeset.kind, t)}`;
-}
-
-/** kindText is the name of a changeset's kind, every kind the contract has. */
-function kindText(kind: PageVersion["changeset"]["kind"], t: Translate): string {
-  switch (kind) {
-    case "edit":
-      return t("version.kind.edit");
-    case "import":
-      return t("version.kind.import");
-    case "version_restore":
-      return t("version.kind.version_restore");
-    case "trash_restore":
-      return t("version.kind.trash_restore");
-    case "revert":
-      return t("version.kind.revert");
-  }
 }
 
 /** readPages reads count pages of the page id's versions, from the first, fewer when the list ends. */

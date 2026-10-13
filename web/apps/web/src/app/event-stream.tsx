@@ -28,6 +28,9 @@ const refreshedOnConnect = [
     "page-content",
     "trash",
     "trash-item",
+    "changesets",
+    "changeset",
+    "changeset-changes",
   ],
 ].map((level) => new Set(level));
 

@@ -2,7 +2,7 @@ import { reaction } from "mobx";
 import { expect, test, vi } from "vitest";
 
 import { ApiError } from "../services/api";
-import type { NodeMove, PageView, TreeNode } from "../services/page.service";
+import type { LogFilter, NodeMove, PageView, TreeNode } from "../services/page.service";
 import { assetNode, guide, install, linux, notes, pageNode } from "../test/page-server";
 import { PageTreeStore, toggleLimit } from "./page-tree.store";
 
@@ -97,6 +97,23 @@ function store(nodes: TreeNode[] = [guide, install, linux, notes]) {
         renamed: false,
         placed: { parent_id: null, reason: "original" as const },
         changeset_id: "c2",
+      })),
+    changesets: async (notebookId: string, filter: LogFilter, cursor?: string) => {
+      sent.push(`changesets ${notebookId} ${JSON.stringify(filter)} ${cursor ?? ""}`.trim());
+      return { data: [], next_cursor: null };
+    },
+    changeset: async (id: string) => {
+      sent.push(`changeset ${id}`);
+      throw new ApiError(404, { status: 404, code: "page.changeset_not_found", title: "gone" });
+    },
+    changes: async (id: string, cursor?: string) => {
+      sent.push(`changes ${id} ${cursor ?? ""}`.trim());
+      return { data: [], next_cursor: null };
+    },
+    revertChangeset: (id: string, message?: string) =>
+      answer(`revert ${id}${message === undefined ? "" : ` ${message}`}`, () => ({
+        changeset_id: `revert of ${id}`,
+        changed: true,
       })),
   };
   const linking = {
@@ -727,4 +744,133 @@ test("the trash and an item of it are read for the notebook", async () => {
   await expect(pages.trashItem(notes.id)).rejects.toThrow(ApiError);
 
   expect(sent).toEqual(["trash plans", "trash plans next", `trash item ${notes.id}`]);
+});
+
+test("the history is read for the notebook, as its filter keeps it; a changeset and its changes by its id", async () => {
+  const { pages, sent } = store();
+  const filter = { actor: "", client: "mcp", page: guide.id };
+
+  expect(await pages.changesets(filter)).toEqual({ data: [], next_cursor: null });
+  await pages.changesets(filter, "next");
+  await expect(pages.changeset("c1")).rejects.toThrow(ApiError);
+  await pages.changes("c1");
+  await pages.changes("c1", "next");
+
+  expect(sent).toEqual([
+    `changesets plans ${JSON.stringify(filter)}`,
+    `changesets plans ${JSON.stringify(filter)} next`,
+    "changeset c1",
+    "changes c1",
+    "changes c1 next",
+  ]);
+});
+
+test("a changeset's reverts go out one at a time, the second once the first settled, each in turn with the tree's writes and the tree read once answered; another's beside them; a refusal is the caller's", async () => {
+  const { pages, sent, state } = store();
+  await pages.load();
+  const first = held<unknown>();
+  state.writes.set("revert c1 Why", () => first.promise);
+  const conflict = new ApiError(409, { status: 409, code: "page.revert_conflict", title: "conflict" });
+
+  const one = pages.revert("c1", "Why");
+  const two = pages.revert("c1");
+  const other = pages.revert("c2");
+  await vi.waitFor(() => expect(sent.at(-1)).toBe("revert c1 Why"));
+  first.reject(conflict);
+
+  await expect(one).rejects.toBe(conflict);
+  expect(await other).toEqual({ changeset_id: "revert of c2", changed: true });
+  expect(await two).toEqual({ changeset_id: "revert of c1", changed: true });
+  expect(sent.slice(-6)).toEqual(["revert c1 Why", "list plans", "revert c2", "list plans", "revert c1", "list plans"]);
+  expect(pages.removedTo(guide.id)).toBeUndefined();
+});
+
+test("the pages a revert deleted, those of the tree before it its read after it has not, leave the tree as deleted ones, their shells going to the nearest ancestor still there; a later read that lists one alive takes it out", async () => {
+  const { pages, state } = store();
+  await pages.load();
+  state.writes.set("revert c1", async () => {
+    // The revert of Install's creation: Install and Linux go.
+    state.nodes = [guide, notes];
+    return { changeset_id: "r1", changed: true };
+  });
+
+  await pages.revert("c1");
+
+  expect(pages.removedTo(install.id)).toBe(guide.id);
+  expect(pages.removedTo(linux.id)).toBe(guide.id);
+  expect(pages.removedTo(notes.id)).toBeUndefined();
+  expect(pages.byId(install.id)).toBeUndefined();
+
+  // Restored since: a read that lists it alive takes it out.
+  state.nodes = [guide, install, notes];
+  await pages.load();
+  expect(pages.removedTo(install.id)).toBeUndefined();
+  expect(pages.byId(install.id)).toBe(install);
+  expect(pages.removedTo(linux.id)).toBe(guide.id);
+});
+
+test("a page a revert deleted with what was above it goes to the notebook's home; one whose answer changed nothing records nothing", async () => {
+  const { pages, state } = store();
+  await pages.load();
+  state.writes.set("revert c1", async () => {
+    state.nodes = [notes];
+    return { changeset_id: "r1", changed: true };
+  });
+
+  await pages.revert("c1");
+
+  expect(pages.removedTo(guide.id)).toBeNull();
+  expect(pages.removedTo(linux.id)).toBeNull();
+
+  const { pages: other, state: otherState } = store();
+  await other.load();
+  otherState.writes.set("revert c1", async () => {
+    otherState.nodes = [guide, notes];
+    return { changeset_id: null, changed: false };
+  });
+  await other.revert("c1");
+  expect(other.removedTo(install.id)).toBeUndefined();
+});
+
+test("a revert whose tree read fails reads the tree once more: the page this generation deleted it brought back is in it again, and those it deleted leave", async () => {
+  const { pages, sent, state } = store();
+  await pages.load();
+  state.nodes = [guide, install, linux];
+  await pages.remove(notes.id);
+  let failing = true;
+  state.writes.set("list", async () => {
+    if (failing) {
+      failing = false;
+      throw new TypeError("offline");
+    }
+    return state.nodes;
+  });
+  state.writes.set("revert c1", async () => {
+    // The revert of Notes' deletion and of Linux's creation.
+    state.nodes = [guide, install, notes];
+    return { changeset_id: "r1", changed: true };
+  });
+
+  await pages.revert("c1");
+
+  expect(sent.slice(-3)).toEqual(["revert c1", "list plans", "list plans"]);
+  expect(pages.removedTo(notes.id)).toBeUndefined();
+  expect(pages.byId(notes.id)).toBe(notes);
+  expect(pages.removedTo(linux.id)).toBe(install.id);
+});
+
+test("a revert whose tree cannot be read records nothing it deleted: the tree is as it was", async () => {
+  const { pages, sent, state } = store();
+  await pages.load();
+  state.writes.set("list", async () => {
+    throw new TypeError("offline");
+  });
+  state.writes.set("revert c1", async () => ({ changeset_id: "r1", changed: true }));
+
+  await pages.revert("c1");
+
+  // Nothing this generation deleted: no read once more.
+  expect(sent.slice(-2)).toEqual(["revert c1", "list plans"]);
+  expect(pages.byId(linux.id)).toBe(linux);
+  expect(pages.removedTo(linux.id)).toBeUndefined();
 });

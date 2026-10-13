@@ -28,7 +28,8 @@ import { RouteError } from "./route-error";
 // page's id (M4/P5 design 3.5), as a tag's pages are by the tag (M6/P6
 // design 8); a page's version under the page's, by its revision (M8
 // design 4.3); the notebook's trash beside them, an item's preview under
-// it by its root's id (M8 design 4.5).
+// it by its root's id (M8 design 4.5), and its history, a changeset's page
+// under it by its id (M8/P3 design 4.2, 4.3).
 export const routes: RouteObject[] = [
   {
     Component: Layout,
@@ -179,6 +180,21 @@ export const routes: RouteObject[] = [
                             lazy: async () => {
                               const { TrashPreview } = await import("../pages/notebook/trash-preview");
                               return { Component: TrashPreview };
+                            },
+                          },
+                          {
+                            // The notebook's history, its filters in the query (M8/P3 design 4.2).
+                            path: "history",
+                            lazy: async () => {
+                              const { HistoryPage } = await import("../pages/notebook/history-page");
+                              return { Component: HistoryPage };
+                            },
+                          },
+                          {
+                            path: "history/:changesetId",
+                            lazy: async () => {
+                              const { ChangesetPage } = await import("../pages/notebook/changeset-page");
+                              return { Component: ChangesetPage };
                             },
                           },
                           {

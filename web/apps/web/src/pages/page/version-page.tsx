@@ -1,6 +1,6 @@
 import { observer } from "mobx-react-lite";
 import { useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 import useSWR, { useSWRConfig } from "swr";
 
 import { arrived, useArrivalFocus } from "../../app/arrival";
@@ -66,7 +66,8 @@ export const VersionPage = observer(function VersionPage() {
 /**
  * VersionShell is the version found: where its page is, the version's
  * revision, when it was written, by whom and what its changeset was, as
- * the right column's list has them (page-versions.tsx), and who is editing
+ * the right column's list has them (page-versions.tsx), leading to the
+ * changeset's page (M8/P3 design 4.5), and who is editing
  * the page, as on the page. The version answered holds the address's
  * revision but writes another, the later save of an edit session: the
  * address is replaced with its own, and what was read under the revision
@@ -148,7 +149,12 @@ const VersionShell = observer(function VersionShell({
         {data !== undefined && (
           <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
             <time dateTime={data.updated_at}>{formatDateTime(data.updated_at, preferences.locale)}</time>
-            <span>· {versionBy(data, t)}</span>
+            <span>
+              ·{" "}
+              <Link to={`${home}/history/${data.changeset.id}`} className="underline underline-offset-4">
+                {versionBy(data, t)}
+              </Link>
+            </span>
             {newest?.id === data.id && <Mark>{t("version.current")}</Mark>}
             {data.editing && <Mark>{t("version.editing")}</Mark>}
           </p>

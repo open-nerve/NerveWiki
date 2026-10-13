@@ -57,7 +57,12 @@ test("a version shows where its page is, its revision, when it was written, by w
     ["Install", pagePath(install.id)],
   ]);
   expect(within(crumbs).getByText("Version 4").getAttribute("aria-current")).toBe("page");
-  expect(await screen.findByText("· Ada · Edit")).toBeTruthy();
+  // Its changeset leads to its page in the history (M8/P3 design 4.5); the right column's versions do not.
+  const by = await screen.findByRole("link", { name: "Ada · Edit" });
+  const changeset = server.versions.get(install.id)?.[1]?.changeset.id ?? "";
+  expect(by.getAttribute("href")).toBe(`/lab/notebooks/0199a2b4-0000-7000-8000-0000000000c1/history/${changeset}`);
+  expect(by.parentElement?.textContent).toBe("· Ada · Edit");
+  expect(screen.getAllByRole("link", { name: /· Edit$|· Import$/ })).toEqual([by]);
   expect(screen.getByText("Oct 2, 2026, 9:00 AM").getAttribute("dateTime")).toBe("2026-10-02T09:00:00Z");
 
   const tabs = screen.getByRole("tablist", { name: "Show this version" });
@@ -190,7 +195,7 @@ test("the version that created the page has nothing before it to compare with", 
   const server = installed();
   renderApp(versionPath(install.id, 1), server.app);
 
-  await screen.findByText("· Bob · Import");
+  await screen.findByRole("link", { name: "Bob · Import" });
   expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Read", "Compare with the current"]);
 });
 
@@ -199,7 +204,7 @@ test("an address of a revision a version holds below its own is replaced with it
   // The title whenever the version's details show: its own revision, never the address's.
   const titles = new Set<string>();
   const observer = new MutationObserver(() => {
-    if (screen.queryByText("· Ada · Edit") !== null) {
+    if (screen.queryByRole("link", { name: "Ada · Edit" }) !== null) {
       titles.add(document.querySelector("h1")?.textContent ?? "");
     }
   });
@@ -210,7 +215,7 @@ test("an address of a revision a version holds below its own is replaced with it
   expect(await screen.findByRole("heading", { level: 1, name: "Version 4" })).toBeTruthy();
   expect(router.state.location.pathname).toBe(versionPath(install.id, 4));
   expect(router.state.historyAction).toBe("REPLACE");
-  await screen.findByText("· Ada · Edit");
+  await screen.findByRole("link", { name: "Ada · Edit" });
   await screen.findByRole("article", { name: "Version 4" });
   expect(server.sent.filter((each) => each.startsWith("GET version Install"))).toEqual(["GET version Install 3"]);
   expect(server.sent.filter((each) => each.startsWith("GET version view Install"))).toEqual([
@@ -281,7 +286,7 @@ test("a version, its view, the version before it and the page now that could not
   renderApp(versionPath(install.id, 4), server.app);
 
   await user.click(await screen.findByRole("button", { name: "Try again" }));
-  expect(await screen.findByText("· Ada · Edit")).toBeTruthy();
+  expect(await screen.findByRole("link", { name: "Ada · Edit" })).toBeTruthy();
   await user.click(await screen.findByRole("button", { name: "Try again" }));
   expect((await screen.findByRole("article", { name: "Version 4" })).textContent).toBe("Version four");
 
@@ -506,7 +511,7 @@ test("leaving a version's page takes what it read out of the cache: come back to
     },
   });
   const { router } = renderApp(versionPath(install.id, 4), server.app);
-  await screen.findByText("· Ada · Edit");
+  await screen.findByRole("link", { name: "Ada · Edit" });
   await screen.findByRole("article", { name: "Version 4" });
 
   await act(() => router.navigate(pagePath(install.id)));
@@ -517,9 +522,9 @@ test("leaving a version's page takes what it read out of the cache: come back to
   await act(() => router.navigate(versionPath(install.id, 4)));
   await screen.findByRole("heading", { level: 1, name: "Version 4" });
   expect(screen.getByText("Loading…")).toBeTruthy();
-  expect(screen.queryByText("· Ada · Edit")).toBeNull();
+  expect(screen.queryByRole("link", { name: "Ada · Edit" })).toBeNull();
 
   await waitFor(() => expect(gate.held).toHaveLength(1));
   act(() => gate.held[0]?.());
-  expect(await screen.findByText("· Ada · Edit")).toBeTruthy();
+  expect(await screen.findByRole("link", { name: "Ada · Edit" })).toBeTruthy();
 });

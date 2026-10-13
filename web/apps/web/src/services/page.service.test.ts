@@ -110,3 +110,49 @@ describe("EditLeaveService.endOnLeave", () => {
     expect(asked).toBe(1);
   });
 });
+
+describe("PageService's history (M8/P3 design 4.1)", () => {
+  test("reads a notebook's history fifty changesets a page, as its filter keeps it, after a cursor for the next; a changeset, and its changes a hundred a page", async () => {
+    const asked: string[] = [];
+    const service = new PageService(
+      fakeApi(async (request) => {
+        const url = new URL(request.url);
+        asked.push(`${request.method} ${url.pathname}${url.search} ${await request.text()}`.trim());
+        return json({ data: [], next_cursor: null });
+      })
+    );
+
+    await service.changesets("nb1", { actor: "", client: "", page: "" });
+    await service.changesets("nb1", { actor: "u1", client: "mcp:claude", page: "p1" }, "next");
+    await service.changeset("c1");
+    await service.changes("c1");
+    await service.changes("c1", "next");
+
+    expect(asked).toEqual([
+      "GET /api/v0/notebooks/nb1/changesets?limit=50",
+      "GET /api/v0/notebooks/nb1/changesets?limit=50&actor=u1&client=mcp%3Aclaude&page_id=p1&cursor=next",
+      "GET /api/v0/changesets/c1",
+      "GET /api/v0/changesets/c1/changes?limit=100",
+      "GET /api/v0/changesets/c1/changes?limit=100&cursor=next",
+    ]);
+  });
+
+  test("reverts a changeset with its message, or with no body at all: the server takes none for no message", async () => {
+    const asked: string[] = [];
+    const service = new PageService(
+      fakeApi(async (request) => {
+        const url = new URL(request.url);
+        asked.push(`${request.method} ${url.pathname} ${await request.text()}`.trim());
+        return json({ changeset_id: "r1", changed: true });
+      })
+    );
+
+    expect(await service.revertChangeset("c1", "Back")).toEqual({ changeset_id: "r1", changed: true });
+    await service.revertChangeset("c1");
+
+    expect(asked).toEqual([
+      'POST /api/v0/changesets/c1/revert {"message":"Back"}',
+      "POST /api/v0/changesets/c1/revert",
+    ]);
+  });
+});

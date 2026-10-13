@@ -225,3 +225,38 @@ test("a pages event that changed the tree asks the refresher for the notebook's 
     ].map(matches)
   ).toEqual([true, true, false, false, false, false]);
 });
+
+test("any pages event asks the refresher for the notebook's history, its lists, changesets and their nodes, at its own interval: every write is a changeset or joins one (M8/P3 design 4.6)", () => {
+  const reads = new Map<string, () => void>();
+  const intervals = new Map<string, number | undefined>();
+  const handled = {
+    ...context([]).context,
+    refresher: {
+      request: (key: string, read: () => void, interval?: number) => {
+        reads.set(key, read);
+        intervals.set(key, interval);
+      },
+    } as unknown as Refresher,
+  };
+
+  eventHandlers.get("pages")?.({ workspace_id: "w1", notebook_id: "n1", pages: [], tree: false }, handled);
+  expect(intervals.has("history n1")).toBe(true);
+  expect(intervals.get("history n1")).toBeUndefined();
+  reads.get("history n1")?.();
+
+  const matches = (handled.mutate.mock.calls[0] as unknown[])[0] as (key: unknown) => boolean;
+  expect(
+    [
+      ["changesets", "n1", "", "", ""],
+      ["changesets", "n1", "u1", "web", "p1"],
+      ["changeset", "n1", "c1"],
+      ["changeset-changes", "n1", "c1"],
+      ["changesets", "n2", "", "", ""],
+      ["changeset", "n2", "c1"],
+      ["changeset-changes", "n2", "c1"],
+      ["pages", "n1"],
+      ["trash", "n1"],
+      "changesets",
+    ].map(matches)
+  ).toEqual([true, true, true, true, false, false, false, false, false, false]);
+});

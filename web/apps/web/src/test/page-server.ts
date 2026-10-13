@@ -14,6 +14,7 @@ import type {
 import { titleKey } from "../lib/title-key";
 import { extensionOf } from "../lib/upload-name";
 import { instanceJSON, json, notebookJSON, problem, signedInApp, userJSON, type Answer } from "./fakes";
+import { fakeChangeset, historyRoutes, type FakeChangeset, type HistoryWaits } from "./history-server";
 import { abortedFor, formOf } from "./transfer";
 import { putBack, trashed, trashRoutes, type FakeTrashItem, type TrashWaits } from "./trash-server";
 
@@ -141,6 +142,9 @@ type PageServerOptions = {
  * A deletion puts the node and the nodes under it in the trash (M8/P2),
  * which trash-server.ts answers. A trashed page's versions and their
  * views read as an alive one's.
+ *
+ * The notebook's history is the changesets a test logs (M8/P3), which
+ * history-server.ts answers, and reverts.
  */
 export function pageServer({
   role = "admin",
@@ -188,8 +192,24 @@ export function pageServer({
     trashDown: false,
     /** What the trash's list reads wait for while a test holds them: a first page's, a next page's. */
     trashWaits: {} as TrashWaits,
+    /** The history's changesets, in any order (M8/P3). */
+    changesets: [] as FakeChangeset[],
+    /** Whether a revert finds the server too busy to parse. */
+    revertsBusy: false,
+    /** Whether reverts wait to be released. */
+    revertsHeld: false,
+    /** Whether the history's log and its changesets cannot be read. */
+    historyDown: false,
+    /** What the history's reads wait for while a test holds them. */
+    historyWaits: {} as HistoryWaits,
     held: [] as (() => void)[],
-    /** release answers the uploads, the views and the restores held. */
+    /** log logs a changeset made of what, labelled label in what went out: it answers it, which the test may change. */
+    log(label: string, what: Partial<FakeChangeset> = {}): FakeChangeset {
+      const changeset = { ...fakeChangeset(what), label };
+      server.changesets = [...server.changesets, changeset];
+      return changeset;
+    },
+    /** release answers the uploads, the views, the restores and the reverts held. */
     release(): void {
       const held = server.held;
       server.held = [];
@@ -332,6 +352,7 @@ export function pageServer({
     },
     ...writeRoutes(server),
     ...trashRoutes(server, role, (node) => assetJSON(node)),
+    ...historyRoutes(server, role),
     ...assetRoutes(server, role),
     ...contentRoutes(server),
     ...taskRoutes(server),

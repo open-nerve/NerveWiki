@@ -4,11 +4,12 @@ import { expect, test } from "vitest";
 
 import { notebookJSON, problem } from "../../test/fakes";
 import { jobJSON, jobsServer } from "../../test/jobs-server";
-import { guide, pagePath } from "../../test/page-server";
+import { wrote } from "../../test/history-server";
+import { guide, notes, pagePath, pageServer } from "../../test/page-server";
 import { pageEditor } from "../../test/page-editor";
 import { renderApp } from "../../test/render";
 
-// A page's menu beside its title: Export this page (M7/P5 design 4.5).
+// A page's menu beside its title: Export this page (M7/P5 design 4.5), This page's history (M8/P3 design 4.5).
 
 const transfer = `/lab/notebooks/${notebookJSON.id}/settings/transfer`;
 const menu = () => screen.findByRole("button", { name: "Page actions" });
@@ -89,4 +90,26 @@ test("while the page is edited, its menu is not there", async () => {
   await pageEditor();
 
   expect(screen.queryByRole("button", { name: "Page actions" })).toBeNull();
+});
+
+test("a reader's This page's history goes to the notebook's history of the page's changes", async () => {
+  const user = userEvent.setup();
+  const server = pageServer({ role: "reader" });
+  server.log("guide", { message: "Guide's", changes: [wrote(guide, 1, 2)] });
+  server.log("notes", { message: "Notes'", changes: [wrote(notes, 1, 2)] });
+  const { router } = renderApp(pagePath(guide.id), server.app);
+
+  await user.click(await menu());
+  await user.click(await screen.findByRole("menuitem", { name: "This page's history" }));
+
+  expect(await screen.findByRole("heading", { level: 1, name: "History" })).toBeTruthy();
+  expect(router.state.location.pathname).toBe(`/lab/notebooks/${notebookJSON.id}/history`);
+  expect(router.state.location.search).toBe(`?page=${guide.id}`);
+  const list = await screen.findByRole("list", { name: "Changes" });
+  expect(
+    within(list)
+      .getAllByRole("listitem")
+      .map((row) => row.querySelector("bdi")?.textContent)
+  ).toEqual(["Guide's"]);
+  expect(screen.getByText("Page: Guide")).toBeTruthy();
 });
