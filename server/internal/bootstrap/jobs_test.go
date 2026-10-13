@@ -20,7 +20,7 @@ import (
 )
 
 // connect opens a pool of its own on url for the test's own statements.
-func connect(t *testing.T, url string) *pgxpool.Pool {
+func connect(t testing.TB, url string) *pgxpool.Pool {
 	t.Helper()
 	pool, err := postgres.NewPool(context.Background(), config.DatabaseConfig{URL: url, MaxConns: 4})
 	if err != nil {

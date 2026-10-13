@@ -277,6 +277,19 @@ func TestRestoreNodesBringsTheGroupBack(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// Items of R, A and the photo deleted at another time stay in the trash.
+	other := app.Changeset{ID: uuid.NewV7(), NotebookID: f.eng, Kind: "edit", Client: domain.ClientWeb, By: f.alice, At: now()}
+	if err := f.s.CreateChangeset(ctx, other); err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range []domain.Node{r, a, photo} {
+		state := n.State()
+		if err := f.s.RecordItems(ctx, []app.Item{{ID: uuid.NewV7(), ChangesetID: other.ID,
+			Change: domain.Change{NodeID: n.ID, After: &state}, At: now()}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f.exec(t, "UPDATE changeset_items SET deleted_at = $1 WHERE changeset_id = $2", now(), other.ID)
 	f.trashed(t, now(), 1, 0, 1, earlier.ID)
 	at := now().Add(time.Minute)
 	f.trashed(t, at, 2, 1, 2, r.ID, a.ID, photo.ID, earlier.ID)
@@ -328,8 +341,9 @@ func TestRestoreNodesBringsTheGroupBack(t *testing.T) {
 
 // What the purge took of an item, or a restore meanwhile, shows in the
 // counts: a content taken, a current version, a creation, a version
-// between, a node no longer deleted at the item's time. A name an alive
-// sibling holds is a title taken.
+// between, a node no longer deleted at the item's time; and a node, a
+// content or a version deleted at another time, which stays. A name an
+// alive sibling holds is a title taken.
 func TestRestoreNodesCountsWhatCameBack(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
@@ -348,6 +362,11 @@ func TestRestoreNodesCountsWhatCameBack(t *testing.T) {
 			app.RestoredRows{Nodes: 1, Contents: 1, CurrentVersions: 1, Creations: 1, Gaps: 1}},
 		{"the node restored", "UPDATE nodes SET deleted_at = NULL, trash_root = false, trash_pages = NULL, trash_assets = NULL, " +
 			"trash_height = NULL WHERE id = $1", app.RestoredRows{}},
+		{"the node at another time", "UPDATE nodes SET deleted_at = deleted_at - interval '1 second' WHERE id = $1", app.RestoredRows{}},
+		{"the content at another time", "UPDATE page_contents SET deleted_at = deleted_at - interval '1 second' WHERE node_id = $1",
+			app.RestoredRows{Nodes: 1, Creations: 1}},
+		{"a version at another time", "UPDATE page_revisions SET deleted_at = deleted_at - interval '1 second' WHERE node_id = $1 AND revision = 2",
+			app.RestoredRows{Nodes: 1, Contents: 1, CurrentVersions: 1, Creations: 1, Gaps: 1}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			x := f.page(t, f.eng, nil, tt.name, 0)

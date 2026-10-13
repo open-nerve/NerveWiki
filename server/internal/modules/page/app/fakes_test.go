@@ -127,10 +127,13 @@ type fakeStore struct {
 	trashed map[uuid.UUID]app.Content
 	// deletions are what DeleteNodes was given, restorations what
 	// RestoreNodes was; rows, when set, are what RestoreNodes answers it
-	// brought back, as if the purge took some.
+	// brought back, as if the purge took some. lost are the pages whose
+	// contents TrashContents does not find, as if the purge took them
+	// after TrashGroup read them.
 	deletions    []app.Deletion
 	restorations []app.Restoration
 	rows         *app.RestoredRows
+	lost         map[uuid.UUID]bool
 }
 
 func (f *fakeStore) FindNode(ctx context.Context, id uuid.UUID) (domain.Node, error) {
@@ -615,7 +618,7 @@ func (f *fakeStore) TrashContents(ctx context.Context, ids []uuid.UUID, at time.
 	f.record(ctx, "TrashContents")
 	out := map[uuid.UUID]string{}
 	for _, id := range ids {
-		if c, ok := f.trashed[id]; ok && f.trash[id].DeletedAt.Equal(at) {
+		if c, ok := f.trashed[id]; ok && f.trash[id].DeletedAt.Equal(at) && !f.lost[id] {
 			out[id] = c.Content
 		}
 	}

@@ -127,15 +127,15 @@ func (u *Unit) Restore(ctx context.Context, r TrashRestore) (RestoredItem, error
 
 // sameGroup reports whether a trash item's group read under the lock is
 // the one read before it: the same nodes, of the same kinds, the pages at
-// the same revisions, their contents there.
+// the same revisions, their contents there. The read before it refused a
+// page whose content the purge took, revision 0: one taken since differs.
 func sameGroup(now, before []domain.TrashMember) bool {
 	if len(now) != len(before) {
 		return false
 	}
 	for i, m := range now {
 		b := before[i]
-		if m.Node.ID != b.Node.ID || m.Node.Kind != b.Node.Kind || m.Revision != b.Revision ||
-			m.Node.Kind == domain.KindPage && m.Revision == 0 {
+		if m.Node.ID != b.Node.ID || m.Node.Kind != b.Node.Kind || m.Revision != b.Revision {
 			return false
 		}
 	}

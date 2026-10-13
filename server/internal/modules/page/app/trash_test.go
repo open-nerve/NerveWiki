@@ -86,9 +86,9 @@ func itemNames(items []app.TrashItem) []string {
 
 // trashFixture is a notebook's trash: P/Q/Doc, deleted an hour ago with
 // its child and attachment by bob, Q since; photo.png at the root, two
-// hours ago; Deep, as deep as its child Leaf fits under its parent, the
-// top of whose line, Level a, may move deeper; and an item past the time
-// it could be restored in.
+// hours ago; Deep, as deep as its child Leaf fits under its parent, an
+// attachment under Leaf, the top of whose line, Level a, may move deeper;
+// and an item past the time it could be restored in.
 type trashFixture struct {
 	*fixture
 	bob                                       uuid.UUID
@@ -117,7 +117,8 @@ func newTrashFixture() trashFixture {
 		parent = &n.ID
 	}
 	f.deep = f.page("Deep", parent, 0)
-	f.page("Leaf", &f.deep.ID, 0)
+	leaf := f.page("Leaf", &f.deep.ID, 0)
+	f.asset("leaf.png", &leaf.ID, 1) // below the deepest page: no level
 	f.old = f.page("Old", nil, 3)
 	f.trashed(f.doc.ID, now().Add(-time.Hour), f.bob)
 	f.trashed(f.q.ID, now().Add(-time.Minute), f.alice)

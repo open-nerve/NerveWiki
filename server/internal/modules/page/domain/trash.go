@@ -46,8 +46,14 @@ const (
 	MaxUnitPages = 100
 	MaxUnitBytes = 8 << 20
 	MaxUnitLinks = 20_000
-	// MaxUnitNodes is measured (M8/P2 design 3.11).
-	MaxUnitNodes = 2_000
+	// MaxUnitNodes is measured (M8/P2 design 3.11): BenchmarkTrashRestore
+	// on an Apple M5 Max of 18 cores, PostgreSQL 18 in Docker, beside a
+	// load of 15. A restore of the full load's 100 pages took, in its unit
+	// (the request but the contents' parse, about 220 ms), with 0, 1,000,
+	// 2,000, 5,000 and 10,000 attachments, 1,046, 1,029, 477, 659 and 999
+	// ms without statistics, 901, 927, 848, 1,755 and 2,684 ms analyzed.
+	// The bound is the most nodes measured within 5 seconds, rounded down.
+	MaxUnitNodes = 10_000
 )
 
 // UnitTooLarge reports whether a unit's pages, their content's bytes or

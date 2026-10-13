@@ -137,9 +137,15 @@ SELECT n::integer AS stray FROM stray;
 -- at that time: their contents, and their versions and items in every changeset, the deleting one's among them. A
 -- content keeps its writer and time: it did not change. The counts tell what came back, for the unit to check that the
 -- purge took nothing: the nodes; the pages' contents, and the versions at their contents' revisions; the versions that
--- created a page, and the versions whose base came back of none of their page's, a gap in its chain. The siblings'
--- unique index is checked a row at a time: the group's other nodes are deleted, out of it, until they are updated, and
--- their names were made unique beforehand.
+-- created a page, and the versions whose base is not the version before them, a gap in its chain (checkPages' chain).
+-- The siblings' unique index is checked a row at a time: the group's other nodes are deleted, out of it, until they
+-- are updated, and their names were made unique beforehand.
+-- The plans hold for an item of any size, at any statistics, planned with the arguments or for any (M8/P2 design
+-- 3.11): each form replaced was measured reading rows by rows past the request's 15 seconds. What followed the nodes
+-- is reached by its node's id from back, its time compared: back's, which the planner knows nothing of, not the
+-- argument, whose rows the statistics estimate at one when they never knew the time (back then read whole for each
+-- row of the time), and by IS NOT DISTINCT FROM, which no index serves (the index on deleted_at read for each node).
+-- The counts join no CTE with another, whose rows the planner estimates at one: a set operation and a window.
 WITH u AS (
     SELECT unnest(sqlc.arg(ids)::uuid[]) AS id, unnest(sqlc.arg(names)::text[]) AS name,
         unnest(sqlc.arg(name_keys)::text[]) AS name_key
@@ -151,25 +157,29 @@ WITH u AS (
         sort_order = CASE WHEN n.id = sqlc.arg(root) THEN sqlc.arg(sort_order)::float8 ELSE n.sort_order END
     FROM u
     WHERE n.id = u.id AND n.deleted_at = sqlc.arg(deleted_at)::timestamptz
-    RETURNING n.id
+    RETURNING n.id, sqlc.arg(deleted_at)::timestamptz AS deleted_at
 ), contents AS (
     UPDATE page_contents c SET deleted_at = NULL
-    WHERE c.node_id IN (SELECT id FROM back) AND c.deleted_at = sqlc.arg(deleted_at)::timestamptz
+    FROM back b
+    WHERE c.node_id = b.id AND c.deleted_at IS NOT DISTINCT FROM b.deleted_at
     RETURNING c.node_id, c.revision
 ), revisions AS (
     UPDATE page_revisions r SET deleted_at = NULL
-    WHERE r.node_id IN (SELECT id FROM back) AND r.deleted_at = sqlc.arg(deleted_at)::timestamptz
+    FROM back b
+    WHERE r.node_id = b.id AND r.deleted_at IS NOT DISTINCT FROM b.deleted_at
     RETURNING r.node_id, r.revision, r.base_revision
 ), items AS (
     UPDATE changeset_items i SET deleted_at = NULL
-    WHERE i.node_id IN (SELECT id FROM back) AND i.deleted_at = sqlc.arg(deleted_at)::timestamptz
+    FROM back b
+    WHERE i.node_id = b.id AND i.deleted_at IS NOT DISTINCT FROM b.deleted_at
 )
 SELECT (SELECT count(*) FROM back)::integer AS nodes,
     (SELECT count(*) FROM contents)::integer AS contents,
-    (SELECT count(*) FROM contents c JOIN revisions r USING (node_id, revision))::integer AS current_versions,
+    (SELECT count(*) FROM (SELECT node_id, revision FROM contents INTERSECT ALL
+        SELECT node_id, revision FROM revisions) v)::integer AS current_versions,
     (SELECT count(*) FROM revisions WHERE base_revision IS NULL)::integer AS creations,
-    (SELECT count(*) FROM revisions r WHERE r.base_revision IS NOT NULL AND NOT EXISTS (
-        SELECT 1 FROM revisions p WHERE p.node_id = r.node_id AND p.revision = r.base_revision))::integer AS gaps;
+    (SELECT count(*) FROM (SELECT base_revision, lag(revision) OVER (PARTITION BY node_id ORDER BY revision) AS prior
+        FROM revisions) v WHERE base_revision IS DISTINCT FROM prior)::integer AS gaps;
 
 -- name: DeleteNotebooksPages :exec
 -- The notebook deletion's registrant (M4/P1 design 3.9): the nodes not deleted of the notebooks, and what

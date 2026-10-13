@@ -125,6 +125,8 @@ func TestRestoreNodePlacesAndNumbers(t *testing.T) {
 			func(f trashFixture) *uuid.UUID { return &f.p.ID }, domain.PlacedOriginal, "Q", false},
 		{"at the root, as it was", func(f trashFixture) uuid.UUID { return f.photo.ID },
 			func(trashFixture) *uuid.UUID { return nil }, domain.PlacedOriginal, "photo.png", false},
+		{"as deep as it fits, an attachment below its deepest page", func(f trashFixture) uuid.UUID { return f.deep.ID },
+			func(f trashFixture) *uuid.UUID { return f.deep.ParentID }, domain.PlacedOriginal, "Deep", false},
 		{"its parent in the trash", func(f trashFixture) uuid.UUID { return f.doc.ID },
 			func(trashFixture) *uuid.UUID { return nil }, domain.PlacedParentInTrash, "Doc", false},
 		{"too deep", func(f trashFixture) uuid.UUID {
@@ -302,6 +304,36 @@ func TestRestoreNodeAnswersItsCodesInOrder(t *testing.T) {
 		}, 0, "page.trash_changed"},
 		{"a member restored meanwhile", func(f trashFixture) uuid.UUID {
 			f.notebooks.waited = func() { delete(f.store.trash, f.child.ID) }
+			return f.doc.ID
+		}, 0, "page.trash_changed"},
+		{"its last member restored meanwhile", func(f trashFixture) uuid.UUID {
+			f.notebooks.waited = func() {
+				for id, n := range f.store.trash {
+					if n.Kind == domain.KindAsset && n.ParentID != nil && *n.ParentID == f.doc.ID {
+						delete(f.store.trash, id)
+					}
+				}
+			}
+			return f.doc.ID
+		}, 0, "page.trash_changed"},
+		{"no root meanwhile", func(f trashFixture) uuid.UUID {
+			f.notebooks.waited = func() {
+				n := f.store.trash[f.doc.ID]
+				n.TrashRoot = false
+				f.store.trash[f.doc.ID] = n
+			}
+			return f.doc.ID
+		}, 0, "page.trash_changed"},
+		{"a content written meanwhile", func(f trashFixture) uuid.UUID {
+			f.notebooks.waited = func() {
+				c := f.store.trashed[f.child.ID]
+				c.Revision++
+				f.store.trashed[f.child.ID] = c
+			}
+			return f.doc.ID
+		}, 0, "page.trash_changed"},
+		{"a content purged after the group was read", func(f trashFixture) uuid.UUID {
+			f.store.lost = map[uuid.UUID]bool{f.child.ID: true}
 			return f.doc.ID
 		}, 0, "page.trash_changed"},
 		{"a content purged meanwhile", func(f trashFixture) uuid.UUID {

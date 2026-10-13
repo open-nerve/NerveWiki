@@ -53,14 +53,15 @@ func TestFollowDeletesTheRowsOfWhatWasDeleted(t *testing.T) {
 }
 
 // A restore of nodes brings back their rows deleted at their time and
-// tells how many; nothing restored asks nothing.
+// tells how many, as many as the store found: one of two here; nothing
+// restored asks nothing.
 func TestFollowRestoresTheRowsOfWhatWasRestored(t *testing.T) {
-	d := &deletions{rows: 2}
+	d := &deletions{rows: 1}
 	f := app.NewFollow(d)
 	nodes := []uuid.UUID{uuid.NewV7(), uuid.NewV7()}
 	ctx := context.Background()
-	if n, err := f.NodesRestored(ctx, nodes, now()); err != nil || n != 2 {
-		t.Errorf("NodesRestored() = %d, %v; want the rows' 2", n, err)
+	if n, err := f.NodesRestored(ctx, nodes, now()); err != nil || n != 1 {
+		t.Errorf("NodesRestored() = %d, %v; want the rows' 1", n, err)
 	}
 	if n, err := f.NodesRestored(ctx, nil, now()); err != nil || n != 0 {
 		t.Errorf("NodesRestored(none) = %d, %v; want 0", n, err)

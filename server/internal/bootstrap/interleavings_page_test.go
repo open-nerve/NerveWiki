@@ -24,7 +24,11 @@ import (
 // without exactly one content not deleted, or whose content's revision is
 // not its latest version's; a page deeper than ten levels of pages (an
 // attachment is no level), or on a chain that loops; a deleted page with a content, a
-// version or an item not deleted, which would keep the purge from it; an
+// version or an item not deleted, which would keep the purge from it, or
+// a page not deleted with one deleted, which a restore left behind; a
+// deleted node that is a trash item's root but for one whose parent was
+// deleted at its time, or with its notebook, or the other way round (M8/P2
+// design 3.3); an
 // edit session of a page that is not one not deleted of its notebook
 // (M4/P4 design 3.2); two sessions of a page alive at the database's time,
 // which the edit lock refuses (M5/P1 design 3.8).
@@ -51,6 +55,14 @@ func checkPages(t *testing.T, pool *pgxpool.Pool) {
 			EXISTS (SELECT 1 FROM page_contents c WHERE c.node_id = n.id AND c.deleted_at IS NULL)
 			OR EXISTS (SELECT 1 FROM page_revisions r WHERE r.node_id = n.id AND r.deleted_at IS NULL)
 			OR EXISTS (SELECT 1 FROM changeset_items i WHERE i.node_id = n.id AND i.deleted_at IS NULL))`,
+		"not deleted, with what follows it deleted": `SELECT count(*) FROM nodes n WHERE n.deleted_at IS NULL AND (
+			EXISTS (SELECT 1 FROM page_contents c WHERE c.node_id = n.id AND c.deleted_at IS NOT NULL)
+			OR EXISTS (SELECT 1 FROM page_revisions r WHERE r.node_id = n.id AND r.deleted_at IS NOT NULL)
+			OR EXISTS (SELECT 1 FROM changeset_items i WHERE i.node_id = n.id AND i.deleted_at IS NOT NULL))`,
+		"deleted, a trash item's root or not as its parent and notebook make it": `SELECT count(*) FROM nodes n
+			JOIN notebooks b ON b.id = n.notebook_id LEFT JOIN nodes p ON p.id = n.parent_id
+			WHERE n.deleted_at IS NOT NULL AND n.trash_root <> ((p.id IS NULL OR p.deleted_at IS DISTINCT FROM n.deleted_at)
+				AND b.deleted_at IS DISTINCT FROM n.deleted_at)`,
 		"deeper than ten levels of pages, or in a loop": `WITH RECURSIVE up AS (
 				SELECT id AS start, parent_id, 1 AS depth FROM nodes WHERE deleted_at IS NULL AND kind = 'page'
 				UNION ALL
