@@ -25,6 +25,7 @@ import { LoadMoreButton, useLoadMore } from "../load-more";
 import { MoveAssetDialog, RenameAssetDialog } from "./asset-dialogs";
 import { rereadIn } from "./assets-expiry";
 import { AttachmentRow, locatedOf, type AssetAction } from "./attachment-row";
+import { watchReader } from "./readers-input";
 import { UploadRows } from "./upload-rows";
 
 /** The dialogs of the section's rows. */
@@ -354,8 +355,11 @@ function saying(text: string) {
  * state names (Located), as soon as a list read has it: its link, in
  * section; or to the section's title, heading, once a list read since the
  * section showed, which a list cached from before is not, has it not (it
- * is on a later page). The section shown again, by Back say, does it
- * again: the state is the entry's.
+ * is on a later page). Not when the reader did something since the
+ * section showed, or the focus is somewhere already (v0.1 design 13.2,
+ * item 26, as transfer-page.tsx's useArriving): it gives up then. The
+ * section shown again, by Back say, does it again: the state is the
+ * entry's.
  */
 function useLocated(
   list: AssetList | undefined,
@@ -365,17 +369,29 @@ function useLocated(
   const located = locatedOf(useLocation().state);
   const shownFirst = useRef(list);
   const done = useRef(false);
+  const reader = useRef<ReturnType<typeof watchReader> | undefined>(undefined);
+  useEffect(() => {
+    if (located === undefined) {
+      return;
+    }
+    const watching = watchReader();
+    reader.current = watching;
+    return () => watching.end();
+  }, [located]);
   useEffect(() => {
     if (located === undefined || list === undefined || done.current) {
       return;
     }
     const link = section.current?.querySelector<HTMLElement>(`[data-attachment="${located}"]`);
-    if (link != null) {
-      done.current = true;
-      link.focus();
-    } else if (list !== shownFirst.current) {
-      done.current = true;
-      heading.current?.focus();
+    if (link == null && list === shownFirst.current) {
+      return;
+    }
+    done.current = true;
+    const acted = reader.current?.acted() === true;
+    reader.current?.end();
+    const at = document.activeElement;
+    if (!acted && (at === null || at === document.body)) {
+      (link ?? heading.current)?.focus();
     }
   }, [located, list, section, heading]);
 }

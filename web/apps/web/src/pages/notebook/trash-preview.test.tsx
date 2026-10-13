@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { unstable_serialize, type Cache } from "swr";
 import { expect, test } from "vitest";
@@ -10,17 +10,9 @@ import { unresolvedLinks } from "../../reading/unresolved-links";
 import type { NotebookRole } from "../../services/notebook.service";
 import { eventServer, withEvents } from "../../test/event-server";
 import { json, notebookJSON, problem, workspaceJSON, type Answer } from "../../test/fakes";
-import {
-  assetNode,
-  guide,
-  install,
-  linux,
-  notes,
-  pagePath,
-  pageServer,
-  type FakeTrashItem,
-} from "../../test/page-server";
+import { assetNode, guide, install, linux, notes, pagePath, pageServer } from "../../test/page-server";
 import { renderApp } from "../../test/render";
+import type { FakeTrashItem } from "../../test/trash-server";
 
 // A trash item's preview (M8 design 4.5; M8/P2 design 4.3, 4.6).
 
@@ -153,9 +145,49 @@ test("a node deleted with a page above it goes to its item's root's preview, the
   const { server } = trashed();
   const { router } = renderApp(previewPath(linux.id), server.app);
 
-  expect(await screen.findByRole("heading", { level: 1, name: "Install" })).toBeTruthy();
+  const heading = await screen.findByRole("heading", { level: 1, name: "Install" });
   expect(router.state.location.pathname).toBe(previewPath(install.id));
   expect(router.state.historyAction).toBe("REPLACE");
+  // It says why, its title taking the focus (M8/P2B review A-M1).
+  expect(screen.getByRole("alert").textContent).toBe(
+    "What you opened was deleted again with a page above it: it is part of this item now, and is restored with it."
+  );
+  await waitFor(() => expect(document.activeElement).toBe(heading));
+});
+
+// M8/P2B review B-3 (v0.1 design 13.2, item 7).
+test("an item that could not be read says why, and is read again on Try again", async () => {
+  const user = userEvent.setup();
+  const { server } = trashed();
+  server.trashDown = true;
+  renderApp(previewPath(install.id), server.app);
+
+  const retry = await screen.findByRole("button", { name: "Try again" });
+  expect(screen.getByRole("alert").textContent).not.toBe("");
+  server.trashDown = false;
+  await user.click(retry);
+
+  expect(await screen.findByRole("heading", { level: 1, name: "Install" })).toBeTruthy();
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
+// M8/P2B review A-N1, A-N3.
+test("an address of no node's id is no page, and reads nothing", async () => {
+  const { server } = trashed();
+  renderApp(`${trashPath}/install`, server.app);
+
+  expect(await screen.findByRole("heading", { name: "Page not found" })).toBeTruthy();
+  expect(server.sent.filter((each) => each.startsWith("GET trash item"))).toEqual([]);
+});
+
+test("a node of another notebook no longer in the trash is no page of this one's, once the tree read has it not", async () => {
+  const other = "0199a2b4-0000-7000-8000-000000000777";
+  const { server } = trashed("admin", {
+    [`GET /api/v0/nodes/${other}/trash-item`]: () => problem(409, "page.not_in_trash"),
+  });
+  renderApp(previewPath(other), server.app);
+
+  expect(await screen.findByRole("heading", { name: "Page not found" })).toBeTruthy();
 });
 
 test("a node no longer in the trash says so, with a way to it the tree has; a page to itself", async () => {
@@ -166,6 +198,11 @@ test("a node no longer in the trash says so, with a way to it the tree has; a pa
 
   expect(await screen.findByText("This is no longer in the trash.")).toBeTruthy();
   expect(screen.getByRole("link", { name: "Back to the trash" }).getAttribute("href")).toBe(trashPath);
+  await waitFor(() => expect(document.title).toBe("Trash · Plans · Nerve Wiki"));
+  expect(screen.queryByRole("alert")).toBeNull();
+  // Opened so, it takes no focus: nothing it showed left with it.
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(document.activeElement).toBe(document.body);
   await user.click(await screen.findByRole("link", { name: "Open it" }));
   expect(await screen.findByRole("heading", { level: 1, name: "Install" })).toBe(document.activeElement);
 });
@@ -188,6 +225,7 @@ test("an item past its time says so, and leads back to the trash; a node of no i
 
   expect(await screen.findByText("This can no longer be restored: its time in the trash is over.")).toBeTruthy();
   expect(screen.getByRole("link", { name: "Back to the trash" }).getAttribute("href")).toBe(trashPath);
+  await waitFor(() => expect(document.title).toBe("Trash · Plans · Nerve Wiki"));
   view.unmount();
 
   renderApp(previewPath("0199a2b4-0000-7000-8000-000000000999"), server.app);
@@ -206,10 +244,14 @@ test("a restore from the preview goes back to the trash, which says where the it
   const user = userEvent.setup();
   const { server } = trashed();
   const { router } = renderApp(previewPath(install.id), server.app);
+  const restore = await screen.findByRole("button", { name: "Restore “Install” (From: Guide)" });
+  const before = server.sent.length;
 
-  await user.click(await screen.findByRole("button", { name: "Restore “Install” (From: Guide)" }));
+  await user.click(restore);
 
   const heading = await screen.findByRole("heading", { level: 1, name: "Trash" });
+  // The item read again after the answer, as after every answer (M8/P2 design 4.2).
+  expect(server.sent.slice(before, before + 3)).toEqual(["RESTORE Install", "GET nodes", "GET trash item Install"]);
   expect(router.state.location.pathname).toBe(trashPath);
   await waitFor(() => expect(document.activeElement).toBe(heading));
   const status = screen.getByRole("status");
@@ -219,6 +261,49 @@ test("a restore from the preview goes back to the trash, which says where the it
   await waitFor(() =>
     expect(within(screen.getByRole("list", { name: "Trash" })).getAllByRole("listitem")).toHaveLength(1)
   );
+});
+
+// M8/P2B review A-I1, C-I1: the restore's own event comes with its answer, before the tree read after it.
+test("a restore from the preview whose own event reads the item again, no longer in the trash, before the restore's tree read answers keeps the item shown, then goes back to the trash, which says where it went", async () => {
+  const user = userEvent.setup();
+  const events = eventServer();
+  const tree: { waits?: Promise<void> } = {};
+  const holder: { server?: ReturnType<typeof pageServer> } = {};
+  const { server } = trashed("admin", {
+    "GET /api/v0/events": events.answer,
+    [`GET /api/v0/notebooks/${notebookJSON.id}/nodes`]: async () => {
+      holder.server?.sent.push("GET nodes");
+      await tree.waits;
+      return json({ data: holder.server?.nodes ?? [] });
+    },
+  });
+  holder.server = server;
+  const { router } = renderApp(previewPath(install.id), withEvents(server.app), { eventHandlers });
+  await screen.findByRole("article", { name: "Install" });
+  await waitFor(() => expect(events.streams).toHaveLength(1));
+  events.last().hello();
+  await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
+  let open!: () => void;
+  tree.waits = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  const itemReads = () => server.sent.filter((each) => each === "GET trash item Install").length;
+
+  await user.click(screen.getByRole("button", { name: "Restore “Install” (From: Guide)" }));
+  await waitFor(() => expect(server.sent.slice(-2)).toEqual(["RESTORE Install", "GET nodes"]));
+  const before = itemReads();
+  events.last().send("pages", { workspace_id: workspaceJSON.id, notebook_id: notebookJSON.id, tree: true, pages: [] });
+  await waitFor(() => expect(itemReads()).toBe(before + 1));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(screen.getByRole("article", { name: "Install" })).toBeTruthy();
+  expect(screen.queryByText("This is no longer in the trash.")).toBeNull();
+  tree.waits = undefined;
+  act(() => open());
+
+  const heading = await screen.findByRole("heading", { level: 1, name: "Trash" });
+  expect(router.state.location.pathname).toBe(trashPath);
+  await waitFor(() => expect(document.activeElement).toBe(heading));
+  expect(screen.getByRole("status").textContent).toBe("Restored “Install” under “Guide”. Open");
 });
 
 test("a restore from the preview refused says why above its view, which stays; the item is read again", async () => {
@@ -232,7 +317,7 @@ test("a restore from the preview refused says why above its view, which stays; t
   await user.click(restore);
 
   expect((await screen.findByRole("alert")).textContent).toBe(
-    "“Install” is too large to restore here. Pages: 2, attachments: 0."
+    "“Install” is too large to restore here: its pages, its attachments or the history of its pages' versions are more than one restore brings back. Pages: 2, attachments: 0."
   );
   await waitFor(() =>
     expect(server.sent.slice(before)).toEqual(["RESTORE Install", "GET nodes", "GET trash item Install"])
@@ -259,16 +344,112 @@ test("a restore from the preview refused, the role taken away meanwhile, says wh
   expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Install" }));
 });
 
-test("a restore from the preview of an item restored meanwhile says it is no longer in the trash", async () => {
+// M8/P2B review A-M1: what the restore was refused for is said where the item was, its title taking the focus.
+test.each([
+  {
+    meanwhile: "restored elsewhere",
+    change: (server: ReturnType<typeof trashed>) => void server.server.restoreElsewhere(install.id),
+    refusal: "“Install” changed meanwhile: the trash shows it as it is now.",
+    text: "This is no longer in the trash.",
+  },
+  {
+    meanwhile: "past its time",
+    change: (server: ReturnType<typeof trashed>) => {
+      server.item.expired = true;
+    },
+    refusal: "“Install” can no longer be restored: its time in the trash is over.",
+    text: "This can no longer be restored: its time in the trash is over.",
+  },
+])(
+  "a restore from the preview of an item $meanwhile says why, and what became of it, the trash's title taking the focus, described by the refusal",
+  async ({ change, refusal, text }) => {
+    const user = userEvent.setup();
+    const trash = trashed();
+    renderApp(previewPath(install.id), trash.server.app);
+    const restore = await screen.findByRole("button", { name: "Restore “Install” (From: Guide)" });
+    change(trash);
+
+    await user.click(restore);
+
+    expect(await screen.findByText(text)).toBeTruthy();
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toBe(refusal);
+    const heading = screen.getByRole("heading", { level: 1, name: "Trash" });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+    expect(heading.getAttribute("aria-describedby")).toBe(alert.id);
+    await waitFor(() => expect(document.title).toBe("Trash · Plans · Nerve Wiki"));
+  }
+);
+
+test("a restore from the preview of an item deleted again with a page above it goes to that item's preview, which says why, its title taking the focus", async () => {
   const user = userEvent.setup();
   const { server } = trashed();
-  renderApp(previewPath(install.id), server.app);
+  const { router } = renderApp(previewPath(install.id), server.app);
   const restore = await screen.findByRole("button", { name: "Restore “Install” (From: Guide)" });
   server.restoreElsewhere(install.id);
+  server.trashNode(guide.id);
 
   await user.click(restore);
 
+  const heading = await screen.findByRole("heading", { level: 1, name: "Guide" });
+  expect(router.state.location.pathname).toBe(previewPath(guide.id));
+  const alert = screen.getByRole("alert");
+  expect(alert.textContent).toBe(
+    "What you opened was deleted again with a page above it: it is part of this item now, and is restored with it."
+  );
+  await waitFor(() => expect(document.activeElement).toBe(heading));
+  expect(heading.getAttribute("aria-describedby")).toBe(alert.id);
+});
+
+test("a refusal from the preview is not said once the item is gone for another reason: restored elsewhere since", async () => {
+  const user = userEvent.setup();
+  const events = eventServer();
+  const { server, item } = trashed("admin", { "GET /api/v0/events": events.answer });
+  renderApp(previewPath(install.id), withEvents(server.app), { eventHandlers });
+  const restore = await screen.findByRole("button", { name: "Restore “Install” (From: Guide)" });
+  await waitFor(() => expect(events.streams).toHaveLength(1));
+  events.last().hello();
+  item.history = 400_001;
+  await user.click(restore);
+  expect(await screen.findByRole("alert")).toBeTruthy();
+
+  server.restoreElsewhere(install.id);
+  events.last().send("pages", { workspace_id: workspaceJSON.id, notebook_id: notebookJSON.id, tree: true, pages: [] });
+
   expect(await screen.findByText("This is no longer in the trash.")).toBeTruthy();
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
+test("a node no longer in the trash, the tree not read, says so, without a way to it", async () => {
+  const { server } = trashed();
+  server.restoreElsewhere(install.id);
+  server.nodesDown = true;
+  renderApp(previewPath(install.id), server.app);
+
+  expect(await screen.findByText("This is no longer in the trash.")).toBeTruthy();
+  await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
+  expect(screen.queryByRole("heading", { name: "Page not found" })).toBeNull();
+  expect(screen.queryByRole("link", { name: "Open it" })).toBeNull();
+});
+
+// M8/P2B review B-9.
+test("a restore from the preview pressed again says nothing of the refusal before while it is out", async () => {
+  const user = userEvent.setup();
+  const { server, item } = trashed();
+  renderApp(previewPath(install.id), server.app);
+  const restore = await screen.findByRole("button", { name: "Restore “Install” (From: Guide)" });
+  item.history = 400_001;
+  await user.click(restore);
+  expect(await screen.findByRole("alert")).toBeTruthy();
+  item.history = 2;
+  server.restoresHeld = true;
+
+  await user.click(restore);
+
+  await waitFor(() => expect(server.sent.filter((each) => each === "RESTORE Install")).toHaveLength(2));
+  expect(screen.queryByRole("alert")).toBeNull();
+  act(() => server.release());
+  expect(await screen.findByRole("heading", { level: 1, name: "Trash" })).toBeTruthy();
 });
 
 test("the preview left, its view leaves SWR's cache: read again as it shows again, not kept for each item visited", async () => {

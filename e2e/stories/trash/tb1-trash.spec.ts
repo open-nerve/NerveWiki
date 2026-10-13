@@ -3,7 +3,8 @@ import { expectIndexedLinks } from "../../fixtures/assert/links";
 import { expectSubtreeRestored, expectTrashRoot } from "../../fixtures/assert/page";
 import { download, getAsset, pngBytes, uploadAsset } from "../../fixtures/assets";
 import { displayNameOf } from "../../fixtures/auth";
-import { settleEvents } from "../../fixtures/events";
+import { answerTo, countAnswers, failedToLoad } from "../../fixtures/browser";
+import { holdStream, settleEvents } from "../../fixtures/events";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, deleteNode, getVersionView, listNodes, writeContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -169,18 +170,22 @@ test("TB1 (API): a subtree deleted with an attachment is one trash item of its c
   // A page deleted the purge's retention less half an hour ago, moved back so from its time a moment ago: past its
   // time, before the purge (every two seconds here) may take it, an hour later.
   const stale = await createPage(api, pat, notebook.id, "Stale");
+  await uploadAsset(api, pat, notebook.id, { name: "stale.png", bytes: pngBytes }, stale.id);
   expect((await deleteNode(api, pat, stale.id)).response.status).toBe(204);
-  // Its content, version and items, deleted at its node's time, as the group is.
+  // Its content, version and items, and its attachment's node and row, deleted at its node's time, as the group is.
   const group = () =>
-    db.query<{ contents: number; versions: number; items: number }>(
+    db.query<{ contents: number; versions: number; items: number; attachments: number; rows: number }>(
       `SELECT (SELECT count(*) FROM page_contents c WHERE c.node_id = n.id AND c.deleted_at = n.deleted_at)::int AS contents,
               (SELECT count(*) FROM page_revisions v WHERE v.node_id = n.id AND v.deleted_at = n.deleted_at)::int AS versions,
-              (SELECT count(*) FROM changeset_items i WHERE i.node_id = n.id AND i.deleted_at = n.deleted_at)::int AS items
+              (SELECT count(*) FROM changeset_items i WHERE i.node_id = n.id AND i.deleted_at = n.deleted_at)::int AS items,
+              (SELECT count(*) FROM nodes a WHERE a.parent_id = n.id AND a.deleted_at = n.deleted_at)::int AS attachments,
+              (SELECT count(*) FROM asset_blobs b JOIN nodes a ON a.id = b.node_id
+                WHERE a.parent_id = n.id AND b.deleted_at = n.deleted_at)::int AS rows
          FROM nodes n WHERE n.id = $1`,
       [stale.id]
     );
   const deleted = await group();
-  expect(deleted).toEqual([{ contents: 1, versions: 1, items: expect.any(Number) }]);
+  expect(deleted).toEqual([{ contents: 1, versions: 1, items: expect.any(Number), attachments: 1, rows: 1 }]);
   await trashedAgo(db, stale.id, "1439 hours 30 minutes");
   expect(await group(), "the group moved back whole").toEqual(deleted);
   expect((await listTrash(api, pat, notebook.id)).data?.data.map((each) => each.name)).toEqual(["Old"]);
@@ -263,4 +268,51 @@ test("TB1 (page): a page deleted from the tree, its confirmation saying the tras
   await expect(pageHeading(page, "Handbook")).toBeFocused();
   await expect(page).toHaveURL(wikiPagePath(workspace.slug, notebook.id, handbook.id));
   await expect(main.getByRole("article", { name: "Handbook", exact: true }).getByRole("link")).toHaveText("Elsewhere");
+});
+
+// M8/P2B review A-I1, C-I1: the restore's own event reads the item again as the restore's tree read is out.
+test("TB1 (preview): a page restored from its preview, its own event reading it again at once, goes back to the trash, which says where it went, its title taking the focus", async ({
+  api,
+  db,
+  pageWatch,
+  signedInPage,
+}, testInfo) => {
+  const { adminId, pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
+  const guide = await createPage(api, pat, notebook.id, "Guide");
+  const handbook = await createPage(api, pat, notebook.id, "Handbook", guide.id, "Hello.\n");
+  expect((await deleteNode(api, pat, handbook.id)).response.status).toBe(204);
+  const page = await signedInPage(tokens);
+  const main = page.getByRole("main");
+  // The stream let in once the preview shows: its connection reads the item again; the refresher has read nothing.
+  const letIn = await holdStream(page);
+  await page.goto(trashPath(workspace.slug, notebook.id, handbook.id));
+  await expect(main.getByRole("article", { name: "Handbook", exact: true })).toContainText("Hello.");
+  const itemPath = `/api/v0/nodes/${handbook.id}/trash-item`;
+  const reread = answerTo(page, "GET", itemPath);
+  letIn();
+  expect((await reread).status()).toBe(200);
+  // The item read again after the restore's answer, and by its event, answers it is no longer in the trash.
+  const rereads = countAnswers(page, "GET", itemPath);
+  // The item shown stays while the restore is out: nothing says it is gone (M8/P2B review A-I1).
+  await page.evaluate((text) => {
+    const said = { gone: false };
+    Object.assign(window, { nervewikiE2eGone: said });
+    new MutationObserver(() => {
+      said.gone ||= document.body.textContent.includes(text);
+    }).observe(document.body, { childList: true, subtree: true, characterData: true });
+  }, "This is no longer in the trash.");
+
+  const answer = await restoreWith(page, handbook.id, "Handbook", "From: Guide");
+  expect(answer.status()).toBe(200);
+  await expect(page).toHaveURL(trashPath(workspace.slug, notebook.id));
+  await expect(main.getByRole("status")).toHaveText("Restored “Handbook” under “Guide”. Open");
+  await expect(main.getByRole("heading", { level: 1, name: "Trash", exact: true })).toBeFocused();
+  await expect(main.getByText("The trash is empty.", { exact: true })).toBeVisible();
+  await expectSubtreeRestored(db, handbook.id, [handbook.id], adminId, { parentId: guide.id, name: "Handbook" });
+  expect(
+    await page.evaluate(() => (window as unknown as { nervewikiE2eGone: { gone: boolean } }).nervewikiE2eGone.gone)
+  ).toBe(false);
+  expect(rereads()).toBeGreaterThanOrEqual(1);
+  pageWatch.expectConsole({ errors: Array.from({ length: rereads() }, () => failedToLoad(409)) });
 });

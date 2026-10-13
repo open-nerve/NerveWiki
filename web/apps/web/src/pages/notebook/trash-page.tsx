@@ -12,8 +12,9 @@ import { Alert } from "../../components/ui/alert";
 import { useT } from "../../i18n/i18n";
 import { readPages } from "../../lib/read-pages";
 import type { TrashItem, TrashItemPage } from "../../services/page.service";
-import { usePageTree } from "../../stores/context";
+import { usePageTree, useStore } from "../../stores/context";
 import { LoadMoreButton, useLoadMore } from "../load-more";
+import { watchReader } from "../page/readers-input";
 import { useWorkspace } from "../workspace/workspace-layout";
 import { useNotebook } from "./notebook-layout";
 import {
@@ -22,7 +23,7 @@ import {
   restoredOf,
   restoredText,
   TrashRow,
-  twinsOf,
+  twinsIn,
   useTrashRestore,
   type TrashRestored,
 } from "./trash-row";
@@ -35,7 +36,8 @@ import {
  * refocus, a connection, a restore) as many pages as were read, from the
  * first (readPages). Anyone who reads the notebook sees it; a writer
  * restores an item from it, and stays: the status line says where it went,
- * with Open, and the title takes the focus, the line describing it. Arrived
+ * with Open, and the title takes the focus, the line describing it, unless
+ * the reader went on meanwhile (v0.1 design 13.2, item 26). Arrived
  * at from an item restored in its preview, it says so the same way. A
  * restore refused says why above the list.
  */
@@ -43,6 +45,7 @@ export const TrashPage = observer(function TrashPage() {
   const workspace = useWorkspace();
   const notebook = useNotebook();
   const pages = usePageTree(notebook);
+  const { locale } = useStore().preferences;
   const t = useT();
   const mounted = useMounted();
   const heading = useArrivalFocus<HTMLHeadingElement>();
@@ -90,21 +93,30 @@ export const TrashPage = observer(function TrashPage() {
   async function restoreItem(item: TrashItem): Promise<void> {
     setSaid(undefined);
     setRefused(undefined);
+    // Where the reader was as they pressed it: the title takes the focus only from there, from nothing, or from
+    // itself (the row gone with it), the reader having done nothing meanwhile (v0.1 design 13.2, item 26).
+    const from = document.activeElement;
+    const reader = watchReader({ on: from === document.body ? null : from });
     try {
       const restored = await restore(item);
       if (mounted()) {
         setSaid(restored);
-        heading.current?.focus();
+        const at = document.activeElement;
+        if (!reader.acted() && (at === from || at === null || at === document.body || at === heading.current)) {
+          heading.current?.focus();
+        }
       }
     } catch (refusal) {
       if (mounted()) {
         setRefused({ error: refusal, item });
       }
+    } finally {
+      reader.end();
     }
   }
 
   const items = data?.flatMap((read) => read.data) ?? [];
-  const twins = twinsOf(items);
+  const twinOf = twinsIn(items, locale);
   const home = `/${workspace.slug}/notebooks/${notebook.id}`;
   const open =
     said === undefined ? undefined : openOf({ id: said.id, kind: said.kind, parent: said.parent?.id ?? null }, home);
@@ -146,7 +158,7 @@ export const TrashPage = observer(function TrashPage() {
               key={item.id}
               notebook={notebook}
               item={item}
-              twin={twins.has(item.id)}
+              twin={twinOf(item)}
               restore={() => restoreItem(item)}
               left={() => heading.current?.focus()}
               linkRef={item.id === more.focusing ? focused : undefined}

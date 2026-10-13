@@ -150,17 +150,25 @@ test("an admin reads the ownerless notebooks, the longest ownerless first, each 
 // Two notebooks of one former owner may have the same name: nothing else
 // shown tells them apart, so each shows the end of its id, which its
 // controls and its deletion's title name it by too (v0.1 design 13.2,
-// item 17; M3 Codex review R6). Atlas, alone with its name, shows none.
+// item 17; M3 Codex review R6). Atlas, alone with its name, shows none;
+// nor does a Roadmap of another former owner, who tells it apart.
 test("two notebooks of one former owner with one name each show the end of their ids, as their controls do", async () => {
   const user = userEvent.setup();
   const twin: OwnerlessNotebook = { ...ownerlessJSON, id: "0199a2b4-0000-7000-8000-0000000000e3" };
-  renderApp(page, ownerlessServer({ list: [ownerlessJSON, twin, atlas] }).app);
+  const cara = { user_id: "0199a2b4-0000-7000-8000-0000000000c4", display_name: "Cara", email: "cara@example.com" };
+  const theirs: OwnerlessNotebook = {
+    ...ownerlessJSON,
+    id: "0199a2b4-0000-7000-8000-0000000000e4",
+    former_owner: cara,
+  };
+  renderApp(page, ownerlessServer({ list: [ownerlessJSON, twin, atlas, theirs] }).app);
 
   const first = "Roadmap (ID 0000e1), former owner Bob (bob@example.com)";
   const second = "Roadmap (ID 0000e3), former owner Bob (bob@example.com)";
   expect(await screen.findByRole("button", { name: `Take over ${first}` })).toBeTruthy();
   expect(screen.getByRole("button", { name: `Take over ${second}` })).toBeTruthy();
   expect(screen.getByRole("button", { name: takeOver("Atlas") })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Take over Roadmap, former owner Cara (cara@example.com)" })).toBeTruthy();
   expect([screen.getByText("ID 0000e1"), screen.getByText("ID 0000e3")]).toHaveLength(2);
   expect(screen.queryAllByText(/^ID /)).toHaveLength(2);
   await user.click(screen.getByRole("button", { name: `Delete ${second}` }));

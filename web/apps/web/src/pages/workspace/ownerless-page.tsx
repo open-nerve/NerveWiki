@@ -8,12 +8,13 @@ import { NotLoaded } from "../../app/not-loaded";
 import { errorText } from "../../app/problem-messages";
 import { Alert } from "../../components/ui/alert";
 import { useT } from "../../i18n/i18n";
+import { twinsOf } from "../../lib/twins";
 import { ApiError } from "../../services/api";
 import type { Notebook } from "../../services/notebook.service";
 import type { Workspace } from "../../services/workspace.service";
 import { useNotebooks, useOwnerless } from "../../stores/context";
 import { AuditSection } from "./audit-section";
-import { OwnerlessRow, twinsOf } from "./ownerless-row";
+import { OwnerlessRow, twinKey } from "./ownerless-row";
 import { useWorkspace } from "./workspace-layout";
 
 /**
@@ -100,7 +101,7 @@ const OwnerlessSection = observer(function OwnerlessSection({ workspace }: { wor
     }
   }
 
-  const twins = twinsOf(ownerless.list ?? []);
+  const twins = twinsOf(ownerless.list ?? [], twinKey);
   return (
     <section className="space-y-4">
       <div className="max-w-2xl space-y-1">

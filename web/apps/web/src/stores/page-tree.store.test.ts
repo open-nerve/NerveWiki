@@ -575,6 +575,18 @@ test("a page deleted is taken out of those deleted by a read begun after the del
   expect(pages.childrenOf(guide.id)).toEqual([install]);
 });
 
+// M8/P2B review C-M1: the rule's boundary, a read begun after the deletion answered.
+test("the deletion's own read, begun as it answered, takes a page it lists alive out: restored in between", async () => {
+  const { pages } = store();
+  await pages.load();
+
+  // Restored elsewhere between the deletion's answer and its read: the read lists Install, and Linux under it.
+  await pages.remove(install.id);
+
+  expect([install, linux].map((n) => pages.removedTo(n.id))).toEqual([undefined, undefined]);
+  expect(pages.byId(install.id)).toBe(install);
+});
+
 test("a read that lists the page alive begun before the deletion answered takes nothing out: the deletion's own read, and one out meanwhile", async () => {
   const { pages, state } = store();
   await pages.load();
@@ -652,6 +664,29 @@ test("a restore goes out in turn with the tree's writes, and reads the tree agai
   expect(sent.slice(-4)).toEqual(["create Untitled", "list plans", `restore ${install.id}`, "list plans"]);
   expect(pages.removedTo(install.id)).toBeUndefined();
   expect(pages.byId(linux.id)).toBe(linux);
+});
+
+// M8/P2B review C, nit 1.
+test("a restore whose tree read fails reads the tree once more: the page this generation deleted is in it again", async () => {
+  const { pages, sent, state } = store();
+  await pages.load();
+  state.nodes = [guide, notes];
+  await pages.remove(install.id);
+  state.nodes = [guide, install, linux, notes];
+  let failing = true;
+  state.writes.set("list", async () => {
+    if (failing) {
+      failing = false;
+      throw new TypeError("offline");
+    }
+    return state.nodes;
+  });
+
+  await pages.restore(install.id);
+
+  expect(sent.slice(-3)).toEqual([`restore ${install.id}`, "list plans", "list plans"]);
+  expect(pages.removedTo(install.id)).toBeUndefined();
+  expect(pages.byId(install.id)).toBe(install);
 });
 
 test("a node's restores go out one at a time, the second once the first settled; another's beside them, in turn with the writes; a refusal is the caller's and records nothing", async () => {

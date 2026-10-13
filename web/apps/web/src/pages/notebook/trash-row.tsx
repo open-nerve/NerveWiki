@@ -13,6 +13,7 @@ import { formatDateTime, formatRelative } from "../../i18n/format";
 import { useT, type Translate } from "../../i18n/i18n";
 import type { Locale } from "../../i18n/locale";
 import { useFocusLeaving } from "../../lib/focus-leaving";
+import { shortId, twinsOf } from "../../lib/twins";
 import { ApiError } from "../../services/api";
 import type { Notebook } from "../../services/notebook.service";
 import type { TrashItem, TreeNode } from "../../services/page.service";
@@ -133,32 +134,47 @@ function twinKey(item: TrashItem): string {
 }
 
 /**
- * twinsOf is the ids of the items of list that another of list has the
- * same name and place as: nothing else named tells them apart, so their
- * controls name them by when they were deleted too (M8/P2 design 4.2).
+ * Twin is how an item's controls tell it from the others listed: by its
+ * name and where it was alone; by when it was deleted too, another of its
+ * name and place listed; or by the end of its id too, another of them
+ * deleted in the same minute.
  */
-export function twinsOf(list: readonly TrashItem[]): Set<string> {
-  const counts = new Map<string, number>();
-  for (const item of list) {
-    counts.set(twinKey(item), (counts.get(twinKey(item)) ?? 0) + 1);
-  }
-  return new Set(list.filter((item) => (counts.get(twinKey(item)) ?? 0) > 1).map((item) => item.id));
+export type Twin = "none" | "time" | "id";
+
+/**
+ * twinsIn is how each item of list is told apart (M8/P2 design 4.2; v0.1
+ * design 13.2, item 17): the items of one name and place (twinsOf) by when
+ * each was deleted, as locale writes it, to the minute; those of the same
+ * minute too by the last six digits of their ids.
+ */
+export function twinsIn(list: readonly TrashItem[], locale: Locale): (item: TrashItem) => Twin {
+  const twins = twinsOf(list, twinKey);
+  const sameMinute = twinsOf(list, (item) => `${twinKey(item)}\n${formatDateTime(item.deleted_at, locale)}`);
+  return (item) => (sameMinute.has(item.id) ? "id" : twins.has(item.id) ? "time" : "none");
 }
 
 /**
  * namesOf are how the link to item's preview and its Restore are named:
- * by its name and where it was, and a twin's by when it was deleted too.
+ * by its name and where it was, and a twin's by when it was deleted too,
+ * and by the end of its id when that is the same to the minute.
  */
-export function namesOf(item: TrashItem, twin: boolean, t: Translate, locale: Locale) {
+export function namesOf(item: TrashItem, twin: Twin, t: Translate, locale: Locale) {
   const { name } = item;
   const from = fromText(item, t);
-  if (!twin) {
+  if (twin === "none") {
     return { link: t("trash.linkName", { name, from }), restore: t("trash.restoreLabel", { name, from }) };
   }
   const time = formatDateTime(item.deleted_at, locale);
+  if (twin === "time") {
+    return {
+      link: t("trash.linkNameTwin", { name, from, time }),
+      restore: t("trash.restoreLabelTwin", { name, from, time }),
+    };
+  }
+  const id = shortId(item.id);
   return {
-    link: t("trash.linkNameTwin", { name, from, time }),
-    restore: t("trash.restoreLabelTwin", { name, from, time }),
+    link: t("trash.linkNameTwinId", { name, from, time, id }),
+    restore: t("trash.restoreLabelTwinId", { name, from, time, id }),
   };
 }
 
@@ -177,10 +193,11 @@ export function ItemIcon({ item }: { item: TrashItem }) {
 /**
  * TrashFacts is what the trash says of item, line by line: where it was,
  * who deleted it, as long ago before now as it is (the time in full as its
- * title), until when it can be restored, how many pages and attachments
- * it holds, and where a restore puts it.
+ * title), and the end of its id when a twin's deletion is in the same
+ * minute (id); until when it can be restored, how many pages and
+ * attachments it holds, and where a restore puts it.
  */
-export function TrashFacts({ item, now }: { item: TrashItem; now: number }) {
+export function TrashFacts({ item, now, id }: { item: TrashItem; now: number; id?: string }) {
   const t = useT();
   const { locale } = useStore().preferences;
   return (
@@ -192,6 +209,12 @@ export function TrashFacts({ item, now }: { item: TrashItem; now: number }) {
         <time dateTime={item.deleted_at} title={formatDateTime(item.deleted_at, locale)}>
           {formatRelative(item.deleted_at, now, locale)}
         </time>
+        {id !== undefined && (
+          <>
+            {" · "}
+            {t("trash.id", { id })}
+          </>
+        )}
       </p>
       <p className="text-sm text-muted-foreground">
         {t("trash.until", { time: formatDateTime(item.restorable_until, locale) })}
@@ -207,15 +230,15 @@ export function TrashFacts({ item, now }: { item: TrashItem; now: number }) {
  * useTrashRestore is how the trash's list and its preview restore an item
  * (M8/P2 design 4.2): through the store, which sends one at a time per
  * node, in turn with the tree's writes. It answers the item restored, or
- * rejects with the refusal. Whatever the answer, the list is read again,
- * and the item refused: the event that would have them read may not come,
- * the stream down (M8/P2 design review B-M2). An item restored is read as
- * its preview shows again, not at once: the preview it was restored from
- * leaves for the trash, and would say first that it is gone. A refusal of
- * a role taken away meanwhile, or of a notebook gone or out of reach, has
- * the notebooks read again too, whose roles the pages follow. SWR's mutate
- * rejects only once the login's cache is gone, the page with it: nothing
- * to do then (M8/P1 fix check 3, R3-1).
+ * rejects with the refusal. Whatever the answer, the list and the item
+ * are read again: the event that would have them read may not come, the
+ * stream down (M8/P2 design review B-M2). The preview the item was
+ * restored from keeps what the restore answered over what the item reads
+ * meanwhile (trash-preview.tsx). A refusal of a role taken away
+ * meanwhile, or of a notebook gone or out of reach, has the notebooks read
+ * again too, whose roles the pages follow. SWR's mutate rejects only once
+ * the login's cache is gone, the page with it: nothing to do then (M8/P1
+ * fix check 3, R3-1).
  */
 export function useTrashRestore(notebook: Notebook): (item: TrashItem) => Promise<TrashRestored> {
   const pages = usePageTree(notebook);
@@ -240,13 +263,13 @@ export function useTrashRestore(notebook: Notebook): (item: TrashItem) => Promis
               },
       };
     } catch (refusal) {
-      void mutate(["trash-item", notebook.id, item.id]).catch(() => undefined);
       if (refusal instanceof ApiError && (refusal.code === "forbidden" || refusal.status === 404)) {
         void mutate(["notebooks", workspace.id]).catch(() => undefined);
       }
       throw refusal;
     } finally {
       void mutate(["trash", notebook.id]).catch(() => undefined);
+      void mutate(["trash-item", notebook.id, item.id]).catch(() => undefined);
     }
   };
 }
@@ -308,7 +331,8 @@ export function RestoreButton({
  * TrashRow is an item of the trash's list (M8/P2 design 4.2): its kind's
  * icon, its name, which leads to its preview, and what is said of it
  * (TrashFacts); a writer's Restore. Its link and Restore name it by where
- * it was, and a twin by when it was deleted too. Gone with the focus,
+ * it was, a twin by when it was deleted too, and one of the same minute by
+ * the end of its id, which its row shows. Gone with the focus,
  * restored or read away, it gives the focus away (left) before it leaves.
  */
 export const TrashRow = observer(function TrashRow({
@@ -324,8 +348,8 @@ export const TrashRow = observer(function TrashRow({
   item: TrashItem;
   /** The time the list was shown at, which its items' times are said before. */
   now: number;
-  /** Whether another item listed has its name and place. */
-  twin: boolean;
+  /** How it is told from the items listed of its name and place. */
+  twin: Twin;
   restore: () => Promise<void>;
   left: () => void;
   linkRef?: Ref<HTMLAnchorElement>;
@@ -350,7 +374,7 @@ export const TrashRow = observer(function TrashRow({
             {item.name}
           </Link>
         </p>
-        <TrashFacts item={item} now={now} />
+        <TrashFacts item={item} now={now} id={twin === "id" ? shortId(item.id) : undefined} />
       </div>
       {writesPages(notebook.role) && <RestoreButton label={names.restore} restore={restore} left={left} />}
     </li>

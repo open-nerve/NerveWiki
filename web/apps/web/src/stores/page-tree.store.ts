@@ -449,11 +449,17 @@ export class PageTreeStore {
    * a button pressed twice or the list's and the preview's, then in turn
    * with the tree's writes, the tree read again once it is answered either
    * way; the read lists its pages, which takes them out of those this
-   * generation deleted. A refusal records nothing. It answers where the
-   * item went, and under which name.
+   * generation deleted. That read failed, a page this generation deleted
+   * restored would stay deleted here, its Open leading to where it was:
+   * the tree is read once more (M8/P2B review C, nit 1). A refusal records
+   * nothing. It answers where the item went, and under which name.
    */
-  restore(id: string): Promise<NodeRestored> {
-    return this.restores(id, () => this.write(() => this.service.restoreNode(id)));
+  async restore(id: string): Promise<NodeRestored> {
+    const restored = await this.restores(id, () => this.write(() => this.service.restoreNode(id)));
+    if (this.removed.has(id)) {
+      await this.load().catch(() => undefined);
+    }
+    return restored;
   }
 
   /** editLock reads who edits the page id, which SWR keeps by page, as it does the view (M5/P3 design 3.10). */
