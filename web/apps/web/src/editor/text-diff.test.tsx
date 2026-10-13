@@ -220,7 +220,7 @@ describe("TextDiff", () => {
         return answering;
       });
     const big = "x\n".repeat(20_000);
-    const { container } = render(diff(big, `${big}y\n`, compare));
+    render(diff(big, `${big}y\n`, compare));
     expect((await screen.findByRole("alert")).textContent).toBe("比较失败。");
     expect(screen.queryByRole("button", { name: "重新加载" })).toBeNull();
     fail = false;
@@ -235,8 +235,10 @@ describe("TextDiff", () => {
     expect(await screen.findByText("+1 −0 行")).toBeDefined();
     // Gone with the focus, the failure gives it to the diff: not to the page's start.
     expect(screen.queryByRole("alert")).toBeNull();
-    expect(document.activeElement).toBe(container.firstElementChild);
-    expect(container.firstElementChild?.contains(screen.getByRole("button", { name: "下一处" }))).toBe(true);
+    // M8/P1 fix check 4, R4-2: a group named as the diff is, not by all the diff's text.
+    const group = screen.getByRole("group", { name: "比较" });
+    expect(document.activeElement).toBe(group);
+    expect(group.contains(screen.getByRole("button", { name: "下一处" }))).toBe(true);
   });
 
   // M8/P1 fix check 3, R3-2 (v0.1 design 13.2, items 12 and 17).
@@ -278,14 +280,22 @@ describe("TextDiff", () => {
     rerender(diff(big, `${big}z\n`, compare));
     await answered(asked, 3);
     expect(said()).toEqual({ alert: "比较失败。", reload: false });
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    await answered(asked, 4);
+    expect(said()).toEqual({ alert: "比较又失败了。重新加载页面通常能解决。", reload: true });
+
+    // M8/P1 fix check 4, N1: the text before alone newer, as the page now is in the restore dialog.
+    rerender(diff(`${big}q\n`, `${big}z\n`, compare));
+    await answered(asked, 5);
+    expect(said()).toEqual({ alert: "比较失败。", reload: false });
 
     // A success, then a failure of newer texts.
     fireEvent.click(screen.getByRole("button", { name: "重试" }));
-    await answered(asked, 4, lineDiff(big, `${big}z\n`));
-    expect(screen.getByText("+1 −0 行")).toBeDefined();
+    await answered(asked, 6, lineDiff(`${big}q\n`, `${big}z\n`));
+    expect(screen.getByText("+1 −1 行")).toBeDefined();
     expect(document.activeElement).toBe(document.body);
-    rerender(diff(big, `${big}w\n`, compare));
-    await answered(asked, 5);
+    rerender(diff(`${big}q\n`, `${big}w\n`, compare));
+    await answered(asked, 7);
     expect(said()).toEqual({ alert: "比较失败。", reload: false });
   });
 

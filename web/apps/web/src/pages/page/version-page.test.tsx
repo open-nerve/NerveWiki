@@ -330,7 +330,10 @@ test("differences whose code could not load say so, a reload helping, and show o
   const panel = screen.getByRole("tabpanel");
   const retry = within(panel).getByRole("button", { name: "Try again" });
   await user.click(retry);
-  expect(within(panel).getByRole("alert").textContent).toBe("Loading…");
+  const alert = within(panel).getByRole("alert");
+  expect(alert.textContent).toBe("Loading…");
+  // M8/P1 fix check 4, N2: the failure, loading again, is busy.
+  expect(alert.parentElement?.getAttribute("aria-busy")).toBe("true");
   expect(retry.getAttribute("aria-disabled")).toBe("true");
   await waitFor(() => expect(loads).toBe(1));
   await user.click(retry);
@@ -341,6 +344,7 @@ test("differences whose code could not load say so, a reload helping, and show o
     await within(panel).findByText("The differences could not be shown. Reloading the page usually fixes this.")
   ).toBeTruthy();
   expect(retry.hasAttribute("aria-disabled")).toBe(false);
+  expect(alert.parentElement?.hasAttribute("aria-busy")).toBe(false);
   expect(document.activeElement).toBe(retry);
   await user.tab();
   expect(document.activeElement).toBe(within(panel).getByRole("button", { name: "Reload" }));
@@ -349,8 +353,10 @@ test("differences whose code could not load say so, a reload helping, and show o
   vi.doUnmock("../../editor/text-diff");
   await user.click(retry);
   const diff = await within(panel).findByRole("textbox", { name: "Changes from the page now to version 4" });
-  expect(document.activeElement?.contains(diff)).toBe(true);
-  expect(panel.contains(document.activeElement)).toBe(true);
+  // M8/P1 fix check 4, R4-2: a group named as the comparison is, not by all its text.
+  const [comparison] = within(panel).getAllByRole("group", { name: "Changes from the page now to version 4" });
+  expect(document.activeElement).toBe(comparison);
+  expect(comparison?.contains(diff)).toBe(true);
 });
 
 test("in Chinese, differences whose code could not load say the same", async () => {

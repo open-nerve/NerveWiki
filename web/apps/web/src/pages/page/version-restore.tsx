@@ -150,7 +150,8 @@ function RestoreForm({ notebook, page, version, sending, setSending, close, rest
         close(error.code === "page.not_found" ? t("version.gone") : (errorText(error, t) ?? ""));
       } else {
         if (error instanceof ApiError && error.code === "page.locked") {
-          void mutate(["edit-lock", page.id]);
+          // As above: it rejects only once the login's cache is gone, the dialog with it (fix check 4, R4-1).
+          void mutate(["edit-lock", page.id]).catch(() => undefined);
         }
         setFailure(error);
       }

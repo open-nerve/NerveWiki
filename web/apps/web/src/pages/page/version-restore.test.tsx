@@ -255,9 +255,11 @@ test("a comparison with the page now that failed restores nothing until one show
   await answered(2);
   const diff = await within(dialog).findByRole("textbox", { name: "Changes from the page now to version 4" });
   expect(confirm.hasAttribute("disabled")).toBe(false);
-  // Gone with the focus, the failure gave it to the comparison.
+  // Gone with the focus, the failure gave it to the comparison: a group named as it is (M8/P1 fix check 4, R4-2).
+  expect(within(dialog).getAllByRole("group", { name: "Changes from the page now to version 4" })).toContain(
+    document.activeElement
+  );
   expect(document.activeElement?.contains(diff)).toBe(true);
-  expect(document.activeElement).not.toBe(dialog);
 });
 
 // M8/P1 fix check 3, R3-2: the version's page, its tab comparing it with the page now, the same.
@@ -311,6 +313,12 @@ test("a page written since it was read whose content could not be read again say
 test.each([
   { answer: "refused, the page written since", status: 409, body: { status: 409, code: "page.revision_mismatch" } },
   { answer: "restored", status: 200, body: { revision: 7, changed: true } },
+  // M8/P1 fix check 4, R4-1.
+  {
+    answer: "refused, the page edited",
+    status: 409,
+    body: { status: 409, code: "page.locked", lock: { page_id: install.id, ...bob } },
+  },
 ])(
   "a restore $answer, read once the tab signed out, its cache gone, leaves no rejection unhandled",
   async ({ status, body }) => {

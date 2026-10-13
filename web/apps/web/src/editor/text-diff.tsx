@@ -151,7 +151,8 @@ export function TextDiff({
   const shownBefore =
     split.a === split.b || (compared !== undefined && compared.result.kind !== "failed" && !busy) ? before : undefined;
   useEffect(() => shown?.(shownBefore), [shown, shownBefore]);
-  // Where the focus in a part that goes, a comparison showing, comes (v0.1 design 13.2, item 17).
+  // Where the focus in a part that goes, a comparison showing, comes (v0.1 design 13.2, item 17): a group named as
+  // the diff is, which a screen reader names so, not by all the diff's text (M8/P1 fix check 4, R4-2).
   const root = useRef<HTMLDivElement>(null);
 
   /** shows is what the diff shows of the texts: in root. */
@@ -197,7 +198,8 @@ export function TextDiff({
   }
 
   return (
-    <div ref={root} tabIndex={-1} className="outline-none">
+    // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- a fieldset groups a form's fields: this groups no field
+    <div ref={root} tabIndex={-1} role="group" aria-label={label} className="outline-none">
       {shows()}
     </div>
   );

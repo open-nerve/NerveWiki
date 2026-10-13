@@ -38,7 +38,8 @@ export function Comparison({ before, after, label, beforeName, afterName, shown 
   // Whether the chunk failed to load, and whether Try again loads it.
   const [failed, setFailed] = useState<"failed" | "loading">();
   const [unfolded, setUnfolded] = useState(false);
-  // Where the focus in a failure that goes, the chunk loaded, comes (v0.1 design 13.2, item 17).
+  // Where the focus in a failure that goes, the chunk loaded, comes (v0.1 design 13.2, item 17): a group named as the
+  // comparison is, not by all its text (M8/P1 fix check 4, R4-2).
   const root = useRef<HTMLDivElement>(null);
   const load = useCallback(() => import("../../editor/text-diff").then(setDiff, () => setFailed("failed")), []);
   useEffect(() => void load(), [load]);
@@ -75,7 +76,8 @@ export function Comparison({ before, after, label, beforeName, afterName, shown 
     );
   }
   return (
-    <div ref={root} tabIndex={-1} className="space-y-2 outline-none">
+    // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- a fieldset groups a form's fields: this groups no field
+    <div ref={root} tabIndex={-1} role="group" aria-label={label} className="space-y-2 outline-none">
       {shows}
     </div>
   );
