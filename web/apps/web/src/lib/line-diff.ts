@@ -1,4 +1,4 @@
-import { diff } from "@codemirror/merge";
+import { presentableDiff } from "@codemirror/merge";
 
 /**
  * A change between two texts: the range of the first, from fromA to toA,
@@ -47,11 +47,16 @@ export const lineDiffLimits: LineDiffLimits = {
  * break, an LF (the caller splits them as the editor does), so that a
  * last line without one differs from the same line with it: Myers'
  * algorithm on the lines, in linear space, after their common first and
- * last lines. A change of a few lines on each side is then refined to the
- * characters that differ by @codemirror/merge's own diff, with the scan
- * limit its views use, until maxRefinedTotal code units are; a larger
- * one, and those past it, stay whole lines. It answers tooLarge once the
- * work passes maxSteps, or when more than maxChangedLines lines change.
+ * last lines; an insertion or a deletion then moves down past the lines
+ * after it that its own lines repeat, so that none starts on an empty line
+ * the view would draw it under. A change of a few lines on each side is
+ * then refined to the words that differ by @codemirror/merge's own
+ * presentable diff, with the scan limit its views use, until
+ * maxRefinedTotal code units are; a larger one, and those past it, stay
+ * whole lines. Changes less than three code units apart are merged, as the
+ * view merges them, and empty ones dropped, so that the view, on the
+ * page's thread, finds none left to merge (M8/P1 review A, I1). It answers tooLarge once the work
+ * passes maxSteps, or when more than maxChangedLines lines change.
  */
 export function lineDiff(a: string, b: string, limits: LineDiffLimits = lineDiffLimits): LineDiffResult {
   const linesA = splitLines(a);
@@ -66,10 +71,13 @@ export function lineDiff(a: string, b: string, limits: LineDiffLimits = lineDiff
       }
       return id;
     });
-  const edits = lineEdits(idsOf(linesA), idsOf(linesB), limits.maxSteps);
-  if (edits === undefined) {
+  const idsA = idsOf(linesA);
+  const idsB = idsOf(linesB);
+  const found = lineEdits(idsA, idsB, limits.maxSteps);
+  if (found === undefined) {
     return { kind: "tooLarge", added: null, removed: null };
   }
+  const edits = slide(found, idsA, idsB);
   let added = 0;
   let removed = 0;
   for (const edit of edits) {
@@ -82,19 +90,32 @@ export function lineDiff(a: string, b: string, limits: LineDiffLimits = lineDiff
   const startsA = lineStarts(linesA);
   const startsB = lineStarts(linesB);
   const changes: TextChange[] = [];
+  const push = (change: TextChange) => {
+    if (change.fromA === change.toA && change.fromB === change.toB) {
+      return;
+    }
+    const last = changes.at(-1);
+    if (last !== undefined && last.toA > change.fromA - 3 && last.toB > change.fromB - 3) {
+      last.toA = change.toA;
+      last.toB = change.toB;
+    } else {
+      changes.push(change);
+    }
+  };
   let refined = 0;
   for (const edit of edits) {
     const fromA = startsA[edit.fromA] ?? 0;
     const toA = startsA[edit.toA] ?? 0;
     const fromB = startsB[edit.fromB] ?? 0;
     const toB = startsB[edit.toB] ?? 0;
-    refined += toA - fromA + toB - fromB;
-    if (toA - fromA > limits.maxRefined || toB - fromB > limits.maxRefined || refined > limits.maxRefinedTotal) {
-      changes.push({ fromA, toA, fromB, toB });
+    const size = toA - fromA + toB - fromB;
+    if (toA - fromA > limits.maxRefined || toB - fromB > limits.maxRefined || refined + size > limits.maxRefinedTotal) {
+      push({ fromA, toA, fromB, toB });
       continue;
     }
-    for (const c of diff(a.slice(fromA, toA), b.slice(fromB, toB), { scanLimit: 500 })) {
-      changes.push({ fromA: fromA + c.fromA, toA: fromA + c.toA, fromB: fromB + c.fromB, toB: fromB + c.toB });
+    refined += size;
+    for (const c of presentableDiff(a.slice(fromA, toA), b.slice(fromB, toB), { scanLimit: 500 })) {
+      push({ fromA: fromA + c.fromA, toA: fromA + c.toA, fromB: fromB + c.fromB, toB: fromB + c.toB });
     }
   }
   return { kind: "changes", changes, added, removed };
@@ -132,8 +153,8 @@ type LineEdit = { fromA: number; toA: number; fromB: number; toB: number };
 type Part = { aLo: number; aHi: number; bLo: number; bHi: number };
 
 /**
- * lineEdits are the edits from a to b, lines given as numbers, in order,
- * those that meet merged; undefined once the work passes maxSteps. Each
+ * lineEdits are the edits from a to b, lines given as numbers, in order;
+ * undefined once the work passes maxSteps. Each
  * part of the comparison is split where the forward and the backward
  * searches of Myers' linear space refinement (1986, 4b) meet, until one
  * side is empty; the parts wait on a stack, the leftmost on top, rather
@@ -142,15 +163,6 @@ type Part = { aLo: number; aHi: number; bLo: number; bHi: number };
  */
 function lineEdits(a: Int32Array, b: Int32Array, maxSteps: number): LineEdit[] | undefined {
   const edits: LineEdit[] = [];
-  const emit = (edit: LineEdit) => {
-    const last = edits.at(-1);
-    if (last !== undefined && last.toA === edit.fromA && last.toB === edit.fromB) {
-      last.toA = edit.toA;
-      last.toB = edit.toB;
-    } else {
-      edits.push(edit);
-    }
-  };
   const budget = { left: maxSteps };
   const stack: Part[] = [{ aLo: 0, aHi: a.length, bLo: 0, bHi: b.length }];
   for (let part = stack.pop(); part !== undefined; part = stack.pop()) {
@@ -165,7 +177,7 @@ function lineEdits(a: Int32Array, b: Int32Array, maxSteps: number): LineEdit[] |
     }
     if (aLo === aHi || bLo === bHi) {
       if (aLo < aHi || bLo < bHi) {
-        emit({ fromA: aLo, toA: aHi, fromB: bLo, toB: bHi });
+        edits.push({ fromA: aLo, toA: aHi, fromB: bLo, toB: bHi });
       }
       continue;
     }
@@ -174,7 +186,7 @@ function lineEdits(a: Int32Array, b: Int32Array, maxSteps: number): LineEdit[] |
       return undefined;
     }
     if (split === null) {
-      emit({ fromA: aLo, toA: aHi, fromB: bLo, toB: bHi });
+      edits.push({ fromA: aLo, toA: aHi, fromB: bLo, toB: bHi });
       continue;
     }
     // The right part waits under the left, which is taken first: the edits come in order.
@@ -187,6 +199,39 @@ function lineEdits(a: Int32Array, b: Int32Array, maxSteps: number): LineEdit[] |
 }
 
 /**
+ * slide is edits, in order, those that meet joined, with each insertion
+ * and each deletion moved down a line while its first line is the same as
+ * the line after it, as far as the next edit, which it then joins: the
+ * same lines changed, but none starting on an empty line followed by an
+ * empty line. @codemirror/merge draws a change that starts where a line
+ * ends in both texts, as on an empty line, from the next line on: the
+ * empty line would go unmarked, and a change of that line alone show
+ * nothing (M8/P1 review A, M1).
+ */
+function slide(edits: readonly LineEdit[], a: Int32Array, b: Int32Array): LineEdit[] {
+  const slid: LineEdit[] = [];
+  let edit = edits[0];
+  for (let i = 1; edit !== undefined; i++) {
+    const next = edits[i];
+    const end = next?.fromA ?? a.length;
+    let { fromA, toA, fromB, toB } = edit;
+    while (toA < end && ((fromB === toB && a[fromA] === a[toA]) || (fromA === toA && b[fromB] === b[toB]))) {
+      fromA++;
+      toA++;
+      fromB++;
+      toB++;
+    }
+    if (next !== undefined && toA === end) {
+      edit = { fromA, toA: next.toA, fromB, toB: next.toB };
+    } else {
+      slid.push({ fromA, toA, fromB, toB });
+      edit = next;
+    }
+  }
+  return slid;
+}
+
+/**
  * bisect is a point of a shortest edit script from a to b where it may be
  * split in two, both parts smaller (Myers 1986, 4b, as diff-match-patch's
  * bisect finds it): the forward and the backward searches run in turn, d
@@ -195,7 +240,9 @@ function lineEdits(a: Int32Array, b: Int32Array, maxSteps: number): LineEdit[] |
  * diagonal; the point is the forward search's there. A search that left
  * the grid stops trying the diagonals beyond. Each diagonal tried, and
  * each line a snake follows, spends a step of budget: undefined once none
- * are left; null if the searches never met, which Myers' bound rules out.
+ * are left; null if the searches never met, which happens only when a and
+ * b have no line in common: then replacing the whole of a is the shortest
+ * script.
  */
 function bisect(a: Int32Array, b: Int32Array, budget: { left: number }): { x: number; y: number } | null | undefined {
   const n = a.length;
