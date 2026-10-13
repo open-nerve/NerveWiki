@@ -140,3 +140,60 @@ test("a stream stopped as the tree is read reads no attachments' lists", async (
 
   expect(mutate).toHaveBeenCalledTimes(1);
 });
+
+test("a pages event asks the refresher for the versions of the pages written that were read, and for their versions being edited; a tree changed, for every version's view: not for a page whose versions were never read, which it would keep", () => {
+  const { requested, context: handled } = context([["page-versions", "n1", "a"]]);
+  eventHandlers.get("pages")?.(
+    {
+      workspace_id: "w1",
+      notebook_id: "n1",
+      tree: true,
+      pages: [
+        { id: "a", revision: 2 },
+        { id: "b", revision: 3 },
+      ],
+    },
+    handled
+  );
+
+  expect(requested.filter((key) => key.includes("version"))).toEqual([
+    unstable_serialize(["page-versions", "n1", "a"]),
+    "page-version edited n1 a",
+    "page-version views n1",
+  ]);
+});
+
+test("the versions of a page being edited are read again by the refresher: their content and view, by the content cached; another's, none", () => {
+  const reads = new Map<string, () => void>();
+  const edited = { editing: true };
+  const states = new Map<string, unknown>([
+    [unstable_serialize(["page-versions", "n1", "a"]), { data: [] }],
+    [unstable_serialize(["page-version", "n1", "a", 5]), { data: edited }],
+    [unstable_serialize(["page-version", "n1", "a", 2]), { data: { editing: false } }],
+  ]);
+  const handled = {
+    ...context([]).context,
+    cache: { get: (key: string) => states.get(key) } as unknown as Cache,
+    refresher: {
+      request: (key: string, read: () => void) => reads.set(key, read),
+    } as unknown as Refresher,
+  };
+
+  eventHandlers.get("pages")?.(
+    { workspace_id: "w1", notebook_id: "n1", tree: false, pages: [{ id: "a", revision: 6 }] },
+    handled
+  );
+  reads.get("page-version edited n1 a")?.();
+
+  const matches = (handled.mutate.mock.calls[0] as unknown[])[0] as (key: unknown) => boolean;
+  expect(
+    [
+      ["page-version", "n1", "a", 5],
+      ["page-version-view", "n1", "a", 5],
+      ["page-version", "n1", "a", 2],
+      ["page-version-view", "n1", "a", 2],
+      ["page-version", "n1", "b", 5],
+      ["page-versions", "n1", "a"],
+    ].map(matches)
+  ).toEqual([true, true, false, false, false, false]);
+});

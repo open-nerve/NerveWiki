@@ -32,6 +32,14 @@ import { VersionRestore } from "./version-restore";
 /** A revision as an address writes it: a whole number from 1, no longer than a number holds exactly. */
 const revisionPattern = /^[1-9]\d{0,14}$/;
 
+/**
+ * unchanging is SWR's options for a version's content: it changes only
+ * while it is being edited, which the events read again
+ * (events/handlers.ts). One cached, its own revision's put there as the
+ * address is replaced, is not read again as it shows.
+ */
+const unchanging = { revalidateIfStale: false };
+
 /** The tabs of a version: its reading view, and its comparisons with the version before it and with the page now. */
 type Tab = "read" | "previous" | "current";
 
@@ -96,7 +104,11 @@ const VersionShell = observer(function VersionShell({
   const [said, setSaid] = useState("");
   const home = `/${slug}/notebooks/${notebook.id}`;
   const href = (id?: string) => (id === undefined ? home : `${home}/pages/${id}`);
-  const version = useSWR(["page-version", notebook.id, page.id, revision], () => pages.version(page.id, revision));
+  const version = useSWR(
+    ["page-version", notebook.id, page.id, revision],
+    () => pages.version(page.id, revision),
+    unchanging
+  );
   const newest = useVersions(notebook, page.id).data?.[0]?.data[0];
   const data = version.data;
   const at = data?.revision;
@@ -273,8 +285,10 @@ function PreviousDiff({
 }) {
   const t = useT();
   const pages = usePageTree(notebook);
-  const { data, error, mutate } = useSWR(["page-version", notebook.id, page.id, base], () =>
-    pages.version(page.id, base)
+  const { data, error, mutate } = useSWR(
+    ["page-version", notebook.id, page.id, base],
+    () => pages.version(page.id, base),
+    unchanging
   );
   if (data === undefined) {
     return <NotLoaded error={error} retry={() => void mutate()} />;
@@ -313,8 +327,10 @@ function CurrentDiff({ notebook, page, version }: { notebook: Notebook; page: Tr
  * useLeftBehind takes what the version's page read of the page out of
  * SWR's cache once it is left (M8 design 4.13): its versions' contents and
  * views, and the page's content now, each up to 5 MiB, would stay in
- * memory for each version visited. Once the turn is over: StrictMode's
- * unmount, mounted again at once, takes nothing out.
+ * memory for each version visited. They go, to be read as they show
+ * again, deduplication or not. Once the turn is over: StrictMode's
+ * unmount, mounted again at once, takes nothing out. A cache gone by then,
+ * with its generation, holds nothing.
  */
 function useLeftBehind(notebook: string, page: string): void {
   const { mutate } = useSWRConfig();
@@ -323,15 +339,14 @@ function useLeftBehind(notebook: string, page: string): void {
     clearTimeout(leaving.current);
     return () => {
       leaving.current = setTimeout(() => {
-        void mutate(
+        mutate(
           (key) =>
             Array.isArray(key) &&
             (key[0] === "page-version" || key[0] === "page-version-view" || key[0] === "page-content") &&
             key[1] === notebook &&
             key[2] === page,
-          undefined,
-          { revalidate: false }
-        );
+          undefined
+        ).catch(() => undefined);
       }, 0);
     };
   }, [mutate, notebook, page]);

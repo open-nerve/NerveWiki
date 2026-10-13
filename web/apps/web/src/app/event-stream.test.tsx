@@ -7,7 +7,8 @@ import { eventHandlers, type EventHandler } from "../events/handlers";
 import { FakePage } from "../events/testing/fake-page";
 import { eventServer, withEvents } from "../test/event-server";
 import { json, notebookJSON, problem, workspaceJSON, type Answer } from "../test/fakes";
-import { bob, guide, install, linux, notes, pagePath, pageServer } from "../test/page-server";
+import type { PageVersionContent } from "../services/page.service";
+import { bob, guide, install, linux, notes, pagePath, pageServer, versionJSON } from "../test/page-server";
 import { renderApp } from "../test/render";
 
 // Each event has what it changed read again (M5/P3 design 3.8): the tree,
@@ -87,6 +88,7 @@ async function open(page = new FakePage(), answers: Record<string, Answer> = {},
         "GET view Guide",
         `GET backlinks ${guide.id}`,
         `GET properties ${guide.id}`,
+        "GET versions Guide",
         "GET assets Guide",
       ])
     )
@@ -523,6 +525,137 @@ test("the tab that edited the page reads it once back, not again for the events 
   await act(() => vi.advanceTimersByTimeAsync(6_000));
 
   expect(server.sent.filter((sent) => sent === "GET view Guide")).toHaveLength(reads);
+});
+
+/** versionPath is the address of Guide's version that holds revision. */
+const versionPath = (revision: number) => `${pagePath(guide.id)}/versions/${revision.toString()}`;
+
+/**
+ * openVersion renders Guide's version that holds revision, of versions,
+ * over pageServer and its event stream, connected, and waits for what the
+ * connection read again: from then on, what is read is the events' doing.
+ */
+async function openVersion(revision: number, versions: PageVersionContent[]) {
+  const events = eventServer();
+  const server = pageServer({ answers: { "GET /api/v0/events": events.answer } });
+  server.withVersions(guide.id, versions);
+  const view = renderApp(versionPath(revision), withEvents(server.app), { eventHandlers });
+  await screen.findByRole("article", { name: `Version ${revision.toString()}` });
+  await waitFor(() => expect(events.streams).toHaveLength(1));
+  const before = server.sent.length;
+  events.last().hello();
+  await waitFor(() =>
+    expect(server.sent.slice(before)).toEqual(
+      expect.arrayContaining([
+        `GET version Guide ${revision.toString()}`,
+        `GET version view Guide ${revision.toString()}`,
+        "GET versions Guide",
+      ])
+    )
+  );
+  await settle();
+  server.sent.length = 0;
+  return { ...view, server, events };
+}
+
+/** versionArticle is the view of Guide's version 1. */
+const versionArticle = () => screen.getByRole("article", { name: "Version 1" });
+
+/** versionReads is what of sent read a version, its view, or the page's versions. */
+function versionReads(sent: string[]): string[] {
+  return sent.filter((each) => each.startsWith("GET version"));
+}
+
+test("a pages event reads the version shown again while it is being edited, its address following the revision the session's saves move it to", async () => {
+  const first = versionJSON(1, null, "Guide\n");
+  const edited = versionJSON(3, 1, "Guide\nmore\n", { by: bob, editing: true });
+  const { server, events, router } = await openVersion(3, [first, edited]);
+  expect(screen.getByText("Editing")).toBeTruthy();
+
+  server.withVersions(guide.id, [first, { ...edited, revision: 5, content: "Guide\nmore and more\n" }]);
+  events.last().send("pages", pagesEvent(false, [{ id: guide.id, revision: 5 }]));
+
+  expect(await screen.findByRole("heading", { level: 1, name: "Version 5" })).toBeTruthy();
+  expect(router.state.location.pathname).toBe(versionPath(5));
+  await waitFor(() =>
+    expect(screen.getByRole("article", { name: "Version 5" }).textContent).toBe("Guide\nmore and more")
+  );
+  expect(versionReads(server.sent)).toEqual(
+    expect.arrayContaining(["GET version Guide 3", "GET version view Guide 3", "GET versions Guide"])
+  );
+});
+
+test("a pages event reads no version shown that is not being edited: it does not change; the page's versions it reads", async () => {
+  const { server, events } = await openVersion(1, [
+    versionJSON(1, null, "Guide\n"),
+    versionJSON(3, 1, "Guide\nmore\n", { by: bob, editing: true }),
+  ]);
+
+  events.last().send("pages", pagesEvent(false, [{ id: guide.id, revision: 4 }]));
+  await waitFor(() => expect(server.sent).toContain("GET versions Guide"));
+  await settle();
+
+  expect(versionReads(server.sent)).toEqual(["GET versions Guide"]);
+});
+
+test("a lock event reads the page's versions again at once, and its version shown being edited: its session over, neither is marked editing", async () => {
+  const first = versionJSON(1, null, "Guide\n");
+  const edited = versionJSON(3, 1, "Guide\nmore\n", { by: bob, editing: true });
+  const { server, events } = await openVersion(3, [first, edited]);
+
+  events.last().send("lock", lockEvent(notes.id));
+  await settle();
+  expect(versionReads(server.sent)).toEqual([]);
+
+  server.withVersions(guide.id, [first, { ...edited, editing: false }]);
+  events.last().send("lock", lockEvent(guide.id));
+
+  await waitFor(() => expect(screen.queryByText("Editing")).toBeNull());
+  expect(versionReads(server.sent).toSorted()).toEqual([
+    "GET version Guide 3",
+    "GET version view Guide 3",
+    "GET versions Guide",
+  ]);
+});
+
+test("a links event reads again the views of the versions shown of the pages it names; a tree changed, every one's; another page's, none", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const { server, events } = await openVersion(1, [versionJSON(1, null, "Guide\n"), versionJSON(2, 1, "Guide 2\n")]);
+
+  events
+    .last()
+    .send("links", { workspace_id: workspaceJSON.id, notebook_id: notebookJSON.id, pages: [notes.id], targets: [] });
+  await settle();
+  expect(versionReads(server.sent)).toEqual([]);
+
+  server.versionViews.set(`${guide.id} 1`, { html: "<p>Linked</p>", revision: 1, assets_expire_at: null });
+  events
+    .last()
+    .send("links", { workspace_id: workspaceJSON.id, notebook_id: notebookJSON.id, pages: [guide.id], targets: [] });
+  await waitFor(() => expect(versionArticle().innerHTML).toBe("<p>Linked</p>"));
+
+  server.versionViews.set(`${guide.id} 1`, { html: "<p>Renamed</p>", revision: 1, assets_expire_at: null });
+  events.last().send("pages", pagesEvent(true, []));
+  await waitFor(() => expect(versionArticle().innerHTML).toBe("<p>Renamed</p>"));
+  expect(versionReads(server.sent)).toEqual(["GET version view Guide 1", "GET version view Guide 1"]);
+});
+
+test("each connection reads again the version shown, the page's versions, and the page as it is now it is compared with", async () => {
+  const user = userEvent.setup();
+  const { server, events } = await openVersion(1, [versionJSON(1, null, "Guide\n"), versionJSON(2, 1, "Guide 2\n")]);
+  await user.click(screen.getByRole("tab", { name: "Compare with the current" }));
+  await waitFor(() => expect(server.sent).toContain("GET content Guide"));
+  server.sent.length = 0;
+
+  events.last().send("reset", { reason: "expired" });
+  await waitFor(() => expect(events.streams).toHaveLength(2));
+  events.last().hello();
+
+  await waitFor(() =>
+    expect(server.sent).toEqual(
+      expect.arrayContaining(["GET version Guide 1", "GET versions Guide", "GET content Guide"])
+    )
+  );
 });
 
 /**
