@@ -1,7 +1,7 @@
 import { observer } from "mobx-react-lite";
 import { useCallback, useId, useRef, useState, type ReactNode } from "react";
 
-import { useFocusLeaving } from "../../app/focus-leaving";
+import { useFocusLeaving } from "../../lib/focus-leaving";
 import { errorText } from "../../app/problem-messages";
 import { Button } from "../../components/ui/button";
 import { formatBytes, formatDateTime } from "../../i18n/format";

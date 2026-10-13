@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { useFocusLeaving } from "../../app/focus-leaving";
+import { useFocusLeaving } from "../../lib/focus-leaving";
 import { Loading } from "../../components/loading";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";

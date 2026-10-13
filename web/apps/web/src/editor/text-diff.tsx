@@ -12,6 +12,7 @@ import { EditorView } from "@codemirror/view";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 
 import { useT } from "../i18n/i18n";
+import { useFocusLeaving } from "../lib/focus-leaving";
 import { compareInWorker, compareNow } from "../lib/line-diff-client";
 import { lineDiffLimits, type LineDiffResult } from "../lib/line-diff";
 import { splitBreaks } from "./line-breaks";
@@ -257,27 +258,6 @@ function Reload({ to }: { to: RefObject<HTMLElement | null> }) {
       {t("error.reload")}
     </button>
   );
-}
-
-/**
- * useFocusLeaving has left give the focus elsewhere as the element of ref
- * leaves the document holding it, before it goes, in a layout effect's
- * cleanup: app/focus-leaving.ts's, which the editor does not import (v0.1
- * design 13.2, items 6 and 17). left is the latest given.
- */
-function useFocusLeaving(ref: RefObject<HTMLElement | null>, left: () => void): void {
-  const leaving = useRef(left);
-  useEffect(() => {
-    leaving.current = left;
-  });
-  useLayoutEffect(() => {
-    const element = ref.current;
-    return () => {
-      if (element?.contains(document.activeElement)) {
-        leaving.current();
-      }
-    };
-  }, [ref]);
 }
 
 /** focusOn gives the focus to the element of ref, if any, where it is. */
