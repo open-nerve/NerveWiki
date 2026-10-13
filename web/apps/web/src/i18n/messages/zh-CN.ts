@@ -233,7 +233,7 @@ export const zhCN: Messages = {
   "trash.expired": "「{name}」已过可以恢复的期限，不能再恢复了。",
   "trash.merged": "「{name}」已随它上面的页面再次删除，并入了那一项：请恢复那个页面。",
   "trash.tooLarge":
-    "「{name}」太大，不能在这里恢复：它的页面、附件或这些页面的历史版本超出了一次恢复能带回的量。含 {pages} 个页面、{assets} 个附件。",
+    "「{name}」太大，不能在这里恢复：它的页面、附件、正文、链接或历史版本超出了一次恢复能带回的量。含 {pages} 个页面、{assets} 个附件。",
   "trash.previewNote":
     "这是回收站里的页面。它的链接按今天的页面解析：链到与它一起删除的页面的，要两者都恢复之后才回到那里。",
   "trash.noPreview": "无法预览。",

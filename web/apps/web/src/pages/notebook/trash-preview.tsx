@@ -3,7 +3,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Link, Navigate, useLocation, useParams } from "react-router";
 import useSWR from "swr";
 
-import { arrived, useArrivalFocus } from "../../app/arrival";
+import { arrived } from "../../app/arrival";
 import { useDocumentTitle } from "../../app/document-title";
 import { writesPages } from "../../app/effective-role";
 import { useMounted } from "../../app/mounted";
@@ -63,8 +63,12 @@ export const TrashPreview = observer(function TrashPreview() {
 /** What came of a restore from the preview: out, the item restored, or refused. */
 type Restoring = { out: true } | { restored: TrashRestored } | { refused: unknown; item: TrashItem };
 
-/** MergedState is the route state of an item's preview gone to from a node deleted with it since (not_trash_root). */
-type MergedState = { arrived: true; merged: true };
+/**
+ * MergedState is the route state of an item's preview gone to from a node
+ * deleted with it since (not_trash_root): not arrived at, as the reader may
+ * be elsewhere, others having deleted it (M8/P2B fix check 1, N1).
+ */
+type MergedState = { merged: true };
 
 /** mergedOf tells whether the route state says the preview was gone to from a node of its item. */
 function mergedOf(state: unknown): boolean {
@@ -81,7 +85,9 @@ function mergedOf(state: unknown): boolean {
  * the route state, unless the user left meanwhile; refused, what the item
  * reads then shows, the refusal said above it (above what says it is gone,
  * when it is what said so), and what replaces the item shown takes the
- * focus it held.
+ * focus it held. The refusal is one alert, kept as what shows below it
+ * changes, which describes its title: announced once (M8/P2B fix check 1,
+ * N2).
  */
 const PreviewShell = observer(function PreviewShell({ notebook, id }: { notebook: Notebook; id: string }) {
   const pages = usePageTree(notebook);
@@ -94,7 +100,16 @@ const PreviewShell = observer(function PreviewShell({ notebook, id }: { notebook
   const [restoring, setRestoring] = useState<Restoring>();
   // Whether the item shown left the document holding the focus, which what replaces it takes.
   const [handed, setHanded] = useState(false);
+  const note = useId();
   const home = `/${slug}/notebooks/${notebook.id}`;
+  // What shows, below what a refusal says: the same alert above each, so that a view replacing another keeps it.
+  const shell = (told: string | undefined, view: ReactNode) => (
+    <div className="space-y-4">
+      {told !== undefined && <Alert id={note}>{told}</Alert>}
+      {view}
+    </div>
+  );
+  const describing = (told: string | undefined) => (told === undefined ? undefined : note);
 
   async function restoreItem(item: TrashItem): Promise<void> {
     setRestoring({ out: true });
@@ -134,27 +149,30 @@ const PreviewShell = observer(function PreviewShell({ notebook, id }: { notebook
       case "page.not_trash_root": {
         const root = error.problem?.root_id;
         if (root !== undefined) {
-          return (
-            <Navigate replace to={`${home}/trash/${root}`} state={{ ...arrived, merged: true } satisfies MergedState} />
-          );
+          return <Navigate replace to={`${home}/trash/${root}`} state={{ merged: true } satisfies MergedState} />;
         }
         break;
       }
-      case "page.not_in_trash":
-        return <NotInTrash notebook={notebook} id={id} said={saidGone(error.code)} focus={handed} />;
-      case "page.restore_expired":
-        return <Gone text={t("trash.expiredItem")} said={saidGone(error.code)} focus={handed} />;
+      case "page.not_in_trash": {
+        const told = saidGone(error.code);
+        return shell(told, <NotInTrash notebook={notebook} id={id} describedBy={describing(told)} focus={handed} />);
+      }
+      case "page.restore_expired": {
+        const told = saidGone(error.code);
+        return shell(told, <Gone text={t("trash.expiredItem")} describedBy={describing(told)} focus={handed} />);
+      }
     }
   }
   if (data === undefined) {
     return <NotLoaded error={error} retry={() => void mutate()} />;
   }
-  return (
+  return shell(
+    said,
     <Preview
       notebook={notebook}
       item={data}
       restore={() => restoreItem(data)}
-      said={said}
+      describedBy={describing(said)}
       left={() => setHanded(true)}
     />
   );
@@ -163,36 +181,43 @@ const PreviewShell = observer(function PreviewShell({ notebook, id }: { notebook
 /**
  * Preview is the item found: where it is, under the trash, its title, what
  * the trash says of it, its root's view or its attachment, and a writer's
- * Restore (restore, which says what came of it: said, a refusal, above).
- * Gone to from a node deleted with it since, it says so, its title taking
- * the focus. Gone from the document with the focus, read away, it hands
- * the focus on (left).
+ * Restore (restore; what a refusal says, above, describes its title:
+ * describedBy). Gone to from a node deleted with it since, it says so, its
+ * title taking the focus if the reader has it nowhere (v0.1 design 13.2,
+ * item 26): their own restore refused, what held it gone, or the address
+ * opened. Gone from the document with the focus, read away, it hands the
+ * focus on (left).
  */
 const Preview = observer(function Preview({
   notebook,
   item,
   restore,
-  said,
+  describedBy,
   left,
 }: {
   notebook: Notebook;
   item: TrashItem;
   restore: () => Promise<void>;
-  said: string | undefined;
+  describedBy: string | undefined;
   left: () => void;
 }) {
   const t = useT();
   const { slug } = useWorkspace();
   const { preferences } = useStore();
-  const heading = useArrivalFocus<HTMLHeadingElement>();
+  const heading = useRef<HTMLHeadingElement>(null);
   const merged = mergedOf(useLocation().state);
   const note = useId();
   const shown = useRef<HTMLDivElement>(null);
   useFocusLeaving(shown, left);
+  useEffect(() => {
+    const at = document.activeElement;
+    if (merged && (at === null || at === document.body)) {
+      heading.current?.focus();
+    }
+  }, [merged]);
   const trashTitle = t("trash.title");
   useDocumentTitle(item.name, trashTitle, notebook.name);
   const home = `/${slug}/notebooks/${notebook.id}`;
-  const alert = said ?? (merged ? t("trash.mergedHere") : undefined);
   return (
     <div ref={shown} className="space-y-6">
       <div className="space-y-2">
@@ -207,7 +232,7 @@ const Preview = observer(function Preview({
           <h1
             ref={heading}
             tabIndex={-1}
-            aria-describedby={alert === undefined ? undefined : note}
+            aria-describedby={describedBy ?? (merged ? note : undefined)}
             className="flex min-w-0 items-center gap-2 text-3xl font-semibold break-words outline-none"
           >
             <ItemIcon item={item} />
@@ -225,7 +250,7 @@ const Preview = observer(function Preview({
           <TrashFacts item={item} now={Date.now()} />
         </div>
       </div>
-      {alert !== undefined && <Alert id={note}>{alert}</Alert>}
+      {merged && <Alert id={note}>{t("trash.mergedHere")}</Alert>}
       {item.kind === "page" ? <PagePreview notebook={notebook} item={item} /> : <AttachmentPreview item={item} />}
     </div>
   );
@@ -271,12 +296,12 @@ function AttachmentPreview({ item }: { item: TrashItem }) {
 const NotInTrash = observer(function NotInTrash({
   notebook,
   id,
-  said,
+  describedBy,
   focus,
 }: {
   notebook: Notebook;
   id: string;
-  said: string | undefined;
+  describedBy: string | undefined;
   focus: boolean;
 }) {
   const t = useT();
@@ -307,7 +332,7 @@ const NotInTrash = observer(function NotInTrash({
   const home = `/${slug}/notebooks/${notebook.id}`;
   const open = node === undefined ? undefined : openOf({ id, kind: node.kind, parent: node.parent_id }, home);
   return (
-    <Gone text={t("trash.notInTrash")} said={said} focus={focus}>
+    <Gone text={t("trash.notInTrash")} describedBy={describedBy} focus={focus}>
       {open !== undefined && (
         <Link to={open.to} state={open.state} className="underline underline-offset-4">
           {t("trash.openIt")}
@@ -319,18 +344,19 @@ const NotInTrash = observer(function NotInTrash({
 
 /**
  * Gone says what became of the item, and leads back to the trash, or where
- * children lead; what a restore from the preview was refused for (said)
- * above it, announced and describing its title. Shown in place of the
- * item, which left with the focus (focus), its title takes it.
+ * children lead; what a restore from the preview was refused for, above it
+ * (PreviewShell), describes its title (describedBy). Shown in place of the
+ * item, which left with the focus (focus), its title takes it, the focus
+ * on nothing.
  */
 function Gone({
   text,
-  said,
+  describedBy,
   focus,
   children,
 }: {
   text: string;
-  said: string | undefined;
+  describedBy: string | undefined;
   focus: boolean;
   children?: ReactNode;
 }) {
@@ -338,7 +364,6 @@ function Gone({
   const notebook = useNotebook();
   const { slug } = useWorkspace();
   const heading = useRef<HTMLHeadingElement>(null);
-  const note = useId();
   useDocumentTitle(t("trash.title"), notebook.name);
   useEffect(() => {
     const at = document.activeElement;
@@ -348,15 +373,9 @@ function Gone({
   }, [focus]);
   return (
     <section className="space-y-2">
-      <h1
-        ref={heading}
-        tabIndex={-1}
-        aria-describedby={said === undefined ? undefined : note}
-        className="text-2xl font-semibold outline-none"
-      >
+      <h1 ref={heading} tabIndex={-1} aria-describedby={describedBy} className="text-2xl font-semibold outline-none">
         {t("trash.title")}
       </h1>
-      {said !== undefined && <Alert id={note}>{said}</Alert>}
       <p>{text}</p>
       <p className="flex flex-wrap gap-4">
         {children}

@@ -178,15 +178,16 @@ test("items of one name and place deleted in the same minute are told apart by t
   server.trashNode(notes.id).deletedAt = "2026-10-04T08:01:05.000Z";
   server.nodes = [...server.nodes, again];
   server.trashNode(again.id).deletedAt = "2026-10-04T08:01:40.000Z";
-  server.trashNode(linux.id);
+  // Of another name and place, in the same minute (M8/P2B fix check 1, K9): no twin.
+  server.trashNode(linux.id).deletedAt = "2026-10-04T08:01:20.000Z";
   renderApp(trashPath, server.app);
 
   await screen.findByRole("list", { name: "Trash" });
   expect(
     screen.getAllByRole("button", { name: /^Restore/ }).map((button) => button.getAttribute("aria-label"))
   ).toEqual([
-    "Restore “Linux” (From: Guide / Install)",
     "Restore “Notes” (From: the notebook's top level, deleted Oct 4, 2026, 8:01 AM, ID 000140)",
+    "Restore “Linux” (From: Guide / Install)",
     "Restore “Notes” (From: the notebook's top level, deleted Oct 4, 2026, 8:01 AM, ID 000104)",
   ]);
   expect(
@@ -194,11 +195,11 @@ test("items of one name and place deleted in the same minute are told apart by t
       .getAllByRole("link")
       .map((link) => link.getAttribute("aria-label"))
   ).toEqual([
-    "Linux (From: Guide / Install)",
     "Notes (From: the notebook's top level, deleted Oct 4, 2026, 8:01 AM, ID 000140)",
+    "Linux (From: Guide / Install)",
     "Notes (From: the notebook's top level, deleted Oct 4, 2026, 8:01 AM, ID 000104)",
   ]);
-  const [deep, later, earlier] = rows();
+  const [later, deep, earlier] = rows();
   expect(deep?.textContent).not.toContain("ID ");
   expect(later?.textContent).toContain(" · ID 000140");
   expect(earlier?.textContent).toContain(" · ID 000104");
@@ -433,6 +434,34 @@ test.each([
   }
 );
 
+// M8/P2B fix check 1: a press again on the Restore pressed is no act, and the watch ends with the restore.
+test("a restore whose Restore was pressed again as it was out takes the focus to the title all the same; the reader no longer watched once it is answered", async () => {
+  const user = userEvent.setup();
+  const { server } = trashed();
+  renderApp(trashPath, server.app);
+  await screen.findByRole("list", { name: "Trash" });
+  server.restoresHeld = true;
+  const listed = gate();
+  server.trashWaits.first = listed.promise;
+  const restore = restoreOf("a.png") as HTMLElement;
+  act(() => restore.focus());
+  await user.keyboard("{Enter}");
+  await waitFor(() => expect(server.sent).toContain("RESTORE a.png"));
+  const removed = vi.spyOn(window, "removeEventListener");
+
+  await user.keyboard("{Enter}");
+  act(() => server.release());
+
+  await waitFor(() => expect(screen.getByRole("status").textContent).toContain("Restored “a.png”"));
+  expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Trash" }));
+  expect(rows()).toHaveLength(3);
+  expect(removed.mock.calls.filter(([, , options]) => options === true).map(([type]) => type)).toEqual(
+    expect.arrayContaining(["wheel", "touchmove", "pointerdown", "keydown"])
+  );
+  removed.mockRestore();
+  act(() => listed.open());
+});
+
 test("a restore answered after the reader scrolled leaves the focus on the Restore they pressed: they did something", async () => {
   const user = userEvent.setup();
   const { server } = trashed();
@@ -578,7 +607,7 @@ test.each<[string, (server: Server) => void, string, boolean]>([
     (server) => {
       (server.trash.get(linux.id) as FakeTrashItem).history = 400_001;
     },
-    "“Linux” is too large to restore here: its pages, its attachments or the history of its pages' versions are more than one restore brings back. Pages: 1, attachments: 0.",
+    "“Linux” is too large to restore here: it holds more pages, attachments, content, links or versions than one restore brings back. Pages: 1, attachments: 0.",
     false,
   ],
   // The server's order: a restore too large before a part purged, which comes before a server too busy to parse.
@@ -589,7 +618,7 @@ test.each<[string, (server: Server) => void, string, boolean]>([
       item.history = 400_001;
       item.purged = true;
     },
-    "“Linux” is too large to restore here: its pages, its attachments or the history of its pages' versions are more than one restore brings back. Pages: 1, attachments: 0.",
+    "“Linux” is too large to restore here: it holds more pages, attachments, content, links or versions than one restore brings back. Pages: 1, attachments: 0.",
     false,
   ],
   [

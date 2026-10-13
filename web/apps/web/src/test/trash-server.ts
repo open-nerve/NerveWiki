@@ -21,7 +21,7 @@ import type { Person } from "./page-server";
 // puts the item back under its parent at its place, or last at the root
 // when its parent is in the trash or its pages would be too deep, numbered
 // where a sibling there has its name. While trashDown is set, the list and
-// the items cannot be read; trashWaits holds the list's reads, restoresHeld
+// the items cannot be read; trashWaits holds their reads, restoresHeld
 // the restores (released with the page server's release).
 
 /** idOf is the node's id in a request's path, /api/v0/nodes/{id}… */
@@ -80,8 +80,11 @@ function levelOf(item: FakeTrashItem, node: TreeNode): number {
   return node === item.members[0] || parent === undefined ? 1 : 1 + levelOf(item, parent);
 }
 
-/** What the trash's list reads wait for while a test holds them: a first page's, a next page's (after a cursor). */
-export type TrashWaits = { first?: Promise<void>; next?: Promise<void> };
+/**
+ * What the trash's reads wait for while a test holds them: the list's first page's, a next page's (after a
+ * cursor), an item's.
+ */
+export type TrashWaits = { first?: Promise<void>; next?: Promise<void>; item?: Promise<void> };
 
 /** What of the page server the trash reads and changes. */
 type TrashState = {
@@ -241,9 +244,10 @@ export function trashRoutes(server: TrashState, role: NotebookRole, assetOf: Ass
         next_cursor: listed.length > limit && last !== undefined ? `${last[1].deletedAt} ${last[0]}` : null,
       });
     },
-    "GET /api/v0/nodes/*/trash-item": (request) => {
+    "GET /api/v0/nodes/*/trash-item": async (request) => {
       const id = idOf(request);
       server.sent.push(`GET trash item ${nameOf(id)}`);
+      await server.trashWaits.item;
       if (server.trashDown) {
         return problem(500, "internal");
       }

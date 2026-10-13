@@ -239,7 +239,7 @@ export const en = {
   "trash.expired": "“{name}” can no longer be restored: its time in the trash is over.",
   "trash.merged": "“{name}” was deleted again with a page above it: restore that page, which holds it now.",
   "trash.tooLarge":
-    "“{name}” is too large to restore here: its pages, its attachments or the history of its pages' versions are more than one restore brings back. Pages: {pages}, attachments: {assets}.",
+    "“{name}” is too large to restore here: it holds more pages, attachments, content, links or versions than one restore brings back. Pages: {pages}, attachments: {assets}.",
   "trash.previewNote":
     "This page is in the trash. Its links lead to the pages there are today: a link to a page deleted with it leads there once both are restored.",
   "trash.noPreview": "This cannot be previewed.",
