@@ -158,8 +158,10 @@ func TestPutPageContentWritesAVersion(t *testing.T) {
 	if v.Content.Revision != 2 || v.Content.ByteSize != len(text) || v.Node.ID != n.ID {
 		t.Errorf("answer = %+v, want the page at revision 2", v)
 	}
-	if len(f.store.changesets) != 1 || f.store.changesets[0].Client != domain.ClientWeb || len(f.store.items) != 0 {
-		t.Errorf("changesets %+v, items %+v; want one changeset of the web without items", f.store.changesets, f.store.items)
+	if len(f.store.changesets) != 1 || f.store.changesets[0].Client != domain.ClientWeb || len(f.store.items) != 0 ||
+		slices.ContainsFunc(f.rec.calls, func(c string) bool { return strings.HasPrefix(c, "RecordItems") }) {
+		t.Errorf("changesets %+v, items %+v, calls %v; want one changeset of the web, no item written", f.store.changesets,
+			f.store.items, f.rec.calls)
 	}
 	r := f.store.revisions
 	if len(r) != 1 || r[0].Base == nil || *r[0].Base != 1 || r[0].Revision != 2 || r[0].Content != text || r[0].ChangesetID != f.store.changesets[0].ID {

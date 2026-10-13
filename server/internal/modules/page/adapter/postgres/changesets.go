@@ -48,21 +48,49 @@ func (s *Store) TouchChangeset(ctx context.Context, id uuid.UUID, at time.Time) 
 	return nil
 }
 
-// RecordItem implements app.ChangesetWriter.
-func (s *Store) RecordItem(ctx context.Context, it app.Item) error {
-	p := gen.RecordItemParams{ID: it.ID, ChangesetID: it.ChangesetID, NodeID: it.Change.NodeID, Now: it.At}
-	if b := it.Change.Before; b != nil {
-		p.BeforeParentID, p.BeforeName, p.BeforeSortOrder = b.ParentID, &b.Name, &b.SortOrder
+// RecordItems implements app.ChangesetWriter: the items' columns as
+// arrays, a state there is none of and a parent at the root marked so. A
+// restore's or a creation's item holds the revision the page's content is
+// at.
+func (s *Store) RecordItems(ctx context.Context, items []app.Item) error {
+	if len(items) == 0 {
+		return nil
 	}
-	if a := it.Change.After; a != nil {
-		p.AfterParentID, p.AfterName, p.AfterSortOrder = a.ParentID, &a.Name, &a.SortOrder
-	} else {
-		p.DeletedAt = &it.At
+	n := len(items)
+	p := gen.RecordItemsParams{
+		ChangesetID: items[0].ChangesetID, Now: items[0].At, Ids: make([]uuid.UUID, n), NodeIds: make([]uuid.UUID, n),
+		HasBefores: make([]bool, n), BeforeParentIds: make([]uuid.UUID, n), BeforeNames: make([]string, n),
+		BeforeSortOrders: make([]float64, n), HasAfters: make([]bool, n), AfterParentIds: make([]uuid.UUID, n),
+		AfterNames: make([]string, n), AfterSortOrders: make([]float64, n), Restored: make([]bool, n), Revisions: make([]int32, n),
 	}
-	if err := s.queries(ctx).RecordItem(ctx, p); err != nil {
-		return fmt.Errorf("record changeset item: %w", err)
+	for i, it := range items {
+		if it.ChangesetID != p.ChangesetID || !it.At.Equal(p.Now) {
+			return fmt.Errorf("record changeset items: item %d is of another changeset or time than the first's", i)
+		}
+		c := it.Change
+		p.Ids[i], p.NodeIds[i], p.Restored[i] = it.ID, c.NodeID, c.Restored != nil
+		if b := c.Before; b != nil {
+			p.HasBefores[i], p.BeforeParentIds[i], p.BeforeNames[i], p.BeforeSortOrders[i] = true, orZero(b.ParentID), b.Name, b.SortOrder
+		}
+		if a := c.After; a != nil {
+			p.HasAfters[i], p.AfterParentIds[i], p.AfterNames[i], p.AfterSortOrders[i] = true, orZero(a.ParentID), a.Name, a.SortOrder
+			if c.Before == nil {
+				p.Revisions[i] = int32(c.Revision)
+			}
+		}
+	}
+	if err := s.queries(ctx).RecordItems(ctx, p); err != nil {
+		return fmt.Errorf("record changeset items: %w", err)
 	}
 	return nil
+}
+
+// orZero is the id, or the zero id for none: a parent at the root.
+func orZero(id *uuid.UUID) uuid.UUID {
+	if id == nil {
+		return uuid.UUID{}
+	}
+	return *id
 }
 
 // RecordRevision implements app.ChangesetWriter.

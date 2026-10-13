@@ -167,9 +167,23 @@ type NodeWriter interface {
 	// MoveNode puts n under its ParentID at its SortOrder.
 	MoveNode(ctx context.Context, n domain.Node) error
 	SetSortOrder(ctx context.Context, id uuid.UUID, order float64) error
-	// DeleteNodes deletes the nodes ids not deleted and what follows them,
-	// at at, by by.
-	DeleteNodes(ctx context.Context, ids []uuid.UUID, by uuid.UUID, at time.Time) error
+	// DeleteNodes deletes the deletion's nodes not deleted and what follows
+	// them, its root a trash item with its counts. A node deleted at its
+	// time already under one of them is an error: a unit deletes from the
+	// top down.
+	DeleteNodes(ctx context.Context, d Deletion) error
+}
+
+// Deletion is a subtree's deletion (M8/P2 design 3.3): its nodes IDs, Root
+// first among them, which becomes a trash item holding Pages pages and
+// Assets attachments that span Height levels of pages; by By at At.
+type Deletion struct {
+	Root          uuid.UUID
+	IDs           []uuid.UUID
+	Pages, Assets int
+	Height        int
+	By            uuid.UUID
+	At            time.Time
 }
 
 // ChangesetWriter records a write's changeset, its items and its versions.
@@ -182,10 +196,11 @@ type ChangesetWriter interface {
 	// TouchChangeset moves the changeset id's updated_at to at: an edit
 	// session wrote in it again.
 	TouchChangeset(ctx context.Context, id uuid.UUID, at time.Time) error
-	// RecordItem inserts the item, or moves the after of the node's item in
-	// the changeset on, keeping its before. An item that deletes its node
-	// is deleted with it, at its time.
-	RecordItem(ctx context.Context, it Item) error
+	// RecordItems inserts the items of one changeset at one time, each a
+	// node's of its own, or moves the after of the node's item in the
+	// changeset on, keeping its before, its restore and its revision, in one
+	// write. An item that deletes its node is deleted with it, at its time.
+	RecordItems(ctx context.Context, items []Item) error
 	// RecordRevision inserts the version, or updates the page's in the
 	// changeset, keeping its base, when r is on the version's revision: one
 	// on another's write would break the chain of the page's versions, an

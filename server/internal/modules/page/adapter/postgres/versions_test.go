@@ -216,7 +216,7 @@ func TestAPageInTheTrashHasItsHistory(t *testing.T) {
 		t.Errorf("alive = %+v, %v; want A, not deleted", alive, err)
 	}
 	at := now().Add(time.Hour)
-	if err := f.s.DeleteNodes(ctx, []uuid.UUID{n.ID}, f.alice, at); err != nil {
+	if err := f.s.DeleteNodes(ctx, deletion([]uuid.UUID{n.ID}, f.alice, at)); err != nil {
 		t.Fatal(err)
 	}
 	trashed, err := f.s.FindAnyNode(ctx, n.ID)

@@ -37,7 +37,7 @@ func TestLinkTargetsAreTheNotebooksNodesWithTheirPaths(t *testing.T) {
 	c := f.page(t, f.eng, nil, "C", 2)
 	gone := f.page(t, f.eng, &c.ID, "Note", 0)
 	other := f.page(t, f.ops, nil, "Note", 0)
-	if err := f.s.DeleteNodes(ctx, []uuid.UUID{gone.ID}, f.alice, now().Add(time.Second)); err != nil {
+	if err := f.s.DeleteNodes(ctx, deletion([]uuid.UUID{gone.ID}, f.alice, now().Add(time.Second))); err != nil {
 		t.Fatal(err)
 	}
 	asset := domain.Node{ID: uuid.NewV7(), NotebookID: f.eng, ParentID: &c.ID, Kind: domain.KindAsset, Name: "note",
@@ -96,7 +96,7 @@ func TestAttachmentsAreReadWithHowManyHaveTheirTitleKey(t *testing.T) {
 	y, gone := asset(f.eng, &a.ID, "y.png", 1), asset(f.eng, &b.ID, "y.png", 1)
 	asset(f.ops, nil, "x.png", 0)
 	asset(f.ops, nil, "y.png", 1)
-	if err := f.s.DeleteNodes(ctx, []uuid.UUID{gone.ID}, f.alice, now().Add(time.Second)); err != nil {
+	if err := f.s.DeleteNodes(ctx, deletion([]uuid.UUID{gone.ID}, f.alice, now().Add(time.Second))); err != nil {
 		t.Fatal(err)
 	}
 
@@ -146,7 +146,7 @@ func TestSetNameKeysSetsTheNodesNotDeleted(t *testing.T) {
 	ctx := context.Background()
 	a := f.page(t, f.eng, nil, "A", 0)
 	gone := f.page(t, f.eng, nil, "Gone", 1)
-	if err := f.s.DeleteNodes(ctx, []uuid.UUID{gone.ID}, f.alice, now().Add(time.Second)); err != nil {
+	if err := f.s.DeleteNodes(ctx, deletion([]uuid.UUID{gone.ID}, f.alice, now().Add(time.Second))); err != nil {
 		t.Fatal(err)
 	}
 	a.NameKey = "new"

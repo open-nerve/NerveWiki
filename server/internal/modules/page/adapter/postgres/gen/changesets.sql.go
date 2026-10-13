@@ -75,46 +75,65 @@ func (q *Queries) LockChangeset(ctx context.Context, id uuid.UUID) (LockChangese
 	return i, err
 }
 
-const recordItem = `-- name: RecordItem :exec
+const recordItems = `-- name: RecordItems :exec
 INSERT INTO changeset_items (id, changeset_id, node_id, before_parent_id, before_name, before_sort_order,
-    after_parent_id, after_name, after_sort_order, created_at, updated_at, deleted_at)
-VALUES ($1, $2, $3, $4, $5,
-    $6, $7, $8, $9,
-    $10, $10, $11)
+    after_parent_id, after_name, after_sort_order, restored, revision, created_at, updated_at, deleted_at)
+SELECT u.id, $1, u.node_id,
+    CASE WHEN u.has_before THEN NULLIF(u.before_parent_id, '00000000-0000-0000-0000-000000000000'::uuid) END,
+    CASE WHEN u.has_before THEN u.before_name END, CASE WHEN u.has_before THEN u.before_sort_order END,
+    CASE WHEN u.has_after THEN NULLIF(u.after_parent_id, '00000000-0000-0000-0000-000000000000'::uuid) END,
+    CASE WHEN u.has_after THEN u.after_name END, CASE WHEN u.has_after THEN u.after_sort_order END,
+    u.restored, NULLIF(u.revision, 0), $2, $2,
+    CASE WHEN u.has_after THEN NULL ELSE $2::timestamptz END
+FROM (SELECT unnest($3::uuid[]) AS id, unnest($4::uuid[]) AS node_id,
+        unnest($5::boolean[]) AS has_before, unnest($6::uuid[]) AS before_parent_id,
+        unnest($7::text[]) AS before_name, unnest($8::float8[]) AS before_sort_order,
+        unnest($9::boolean[]) AS has_after, unnest($10::uuid[]) AS after_parent_id,
+        unnest($11::text[]) AS after_name, unnest($12::float8[]) AS after_sort_order,
+        unnest($13::boolean[]) AS restored, unnest($14::integer[]) AS revision) AS u
 ON CONFLICT (changeset_id, node_id) DO UPDATE
 SET after_parent_id = excluded.after_parent_id, after_name = excluded.after_name,
     after_sort_order = excluded.after_sort_order, updated_at = excluded.updated_at, deleted_at = excluded.deleted_at
 `
 
-type RecordItemParams struct {
-	ID              uuid.UUID
-	ChangesetID     uuid.UUID
-	NodeID          uuid.UUID
-	BeforeParentID  *uuid.UUID
-	BeforeName      *string
-	BeforeSortOrder *float64
-	AfterParentID   *uuid.UUID
-	AfterName       *string
-	AfterSortOrder  *float64
-	Now             time.Time
-	DeletedAt       *time.Time
+type RecordItemsParams struct {
+	ChangesetID      uuid.UUID
+	Now              time.Time
+	Ids              []uuid.UUID
+	NodeIds          []uuid.UUID
+	HasBefores       []bool
+	BeforeParentIds  []uuid.UUID
+	BeforeNames      []string
+	BeforeSortOrders []float64
+	HasAfters        []bool
+	AfterParentIds   []uuid.UUID
+	AfterNames       []string
+	AfterSortOrders  []float64
+	Restored         []bool
+	Revisions        []int32
 }
 
-// A node's change in a changeset: the first one inserts its before and after, a later one moves the after
-// on and keeps the before (M4 design 4). An item that deletes its node goes to the trash with it.
-func (q *Queries) RecordItem(ctx context.Context, arg RecordItemParams) error {
-	_, err := q.db.Exec(ctx, recordItem,
-		arg.ID,
+// A step's changes of nodes in a changeset, one statement (M8/P2 design 3.3): each node's first one inserts its before
+// and after, a later one moves the after on and keeps the before, restored and revision (M4 design 4). An item that
+// deletes its node goes to the trash with it. A step changes each node once, so no row is reached twice. The arrays
+// are the items' columns, a parent at the root and a state there is none of marked as linking's SetResolutions marks
+// none: the zero id; has_before and has_after; revision 0 for none.
+func (q *Queries) RecordItems(ctx context.Context, arg RecordItemsParams) error {
+	_, err := q.db.Exec(ctx, recordItems,
 		arg.ChangesetID,
-		arg.NodeID,
-		arg.BeforeParentID,
-		arg.BeforeName,
-		arg.BeforeSortOrder,
-		arg.AfterParentID,
-		arg.AfterName,
-		arg.AfterSortOrder,
 		arg.Now,
-		arg.DeletedAt,
+		arg.Ids,
+		arg.NodeIds,
+		arg.HasBefores,
+		arg.BeforeParentIds,
+		arg.BeforeNames,
+		arg.BeforeSortOrders,
+		arg.HasAfters,
+		arg.AfterParentIds,
+		arg.AfterNames,
+		arg.AfterSortOrders,
+		arg.Restored,
+		arg.Revisions,
 	)
 	return err
 }

@@ -295,11 +295,18 @@ func (q *Queries) CreateNode(ctx context.Context, arg CreateNodeParams) error {
 	return err
 }
 
-const deleteNodes = `-- name: DeleteNodes :exec
-WITH gone AS (
+const deleteNodes = `-- name: DeleteNodes :one
+WITH stray AS (
+    SELECT count(*) AS n FROM nodes c
+    WHERE c.deleted_at = $1::timestamptz AND c.parent_id = ANY($2::uuid[])
+), gone AS (
     UPDATE nodes n
-    SET deleted_at = $1::timestamptz, updated_by_id = $2, updated_at = $1
-    WHERE n.id = ANY($3::uuid[]) AND n.deleted_at IS NULL
+    SET deleted_at = $1::timestamptz, updated_by_id = $3, updated_at = $1,
+        trash_root = (n.id = $4),
+        trash_pages = CASE WHEN n.id = $4 THEN $5::integer END,
+        trash_assets = CASE WHEN n.id = $4 THEN $6::integer END,
+        trash_height = CASE WHEN n.id = $4 THEN $7::integer END
+    WHERE n.id = ANY($2::uuid[]) AND n.deleted_at IS NULL
     RETURNING n.id
 ), contents AS (
     UPDATE page_contents c SET deleted_at = $1::timestamptz
@@ -307,22 +314,43 @@ WITH gone AS (
 ), revisions AS (
     UPDATE page_revisions r SET deleted_at = $1::timestamptz
     WHERE r.node_id IN (SELECT id FROM gone) AND r.deleted_at IS NULL
+), items AS (
+    UPDATE changeset_items i SET deleted_at = $1::timestamptz
+    WHERE i.node_id IN (SELECT id FROM gone) AND i.deleted_at IS NULL
 )
-UPDATE changeset_items i SET deleted_at = $1::timestamptz
-WHERE i.node_id IN (SELECT id FROM gone) AND i.deleted_at IS NULL
+SELECT n::integer AS stray FROM stray
 `
 
 type DeleteNodesParams struct {
-	Now time.Time
-	By  uuid.UUID
-	Ids []uuid.UUID
+	Now    time.Time
+	Ids    []uuid.UUID
+	By     uuid.UUID
+	Root   uuid.UUID
+	Pages  int32
+	Assets int32
+	Height int32
 }
 
-// A subtree's deletion (M4 design 4): the nodes not deleted, and what follows them not deleted, at the
-// unit's time, by its caller. What an earlier deletion put in the trash keeps its own time.
-func (q *Queries) DeleteNodes(ctx context.Context, arg DeleteNodesParams) error {
-	_, err := q.db.Exec(ctx, deleteNodes, arg.Now, arg.By, arg.Ids)
-	return err
+// A subtree's deletion (M4 design 4; M8/P2 design 3.3): the nodes not deleted, and what follows them not deleted, at the
+// unit's time, by its caller, the root marked as a trash item with its group's counts and height. What an earlier
+// deletion put in the trash keeps its own time and mark. stray counts the nodes deleted at this time already whose
+// parent this deletion deletes: a unit that deleted a descendant, then its ancestor, would leave the descendant a root
+// within the ancestor's group, which the ancestor's counts miss; its caller's defect (a unit deletes from the top
+// down). It reads the statement's snapshot, before the update, the nodes of this time through the partial index on
+// deleted_at.
+func (q *Queries) DeleteNodes(ctx context.Context, arg DeleteNodesParams) (int32, error) {
+	row := q.db.QueryRow(ctx, deleteNodes,
+		arg.Now,
+		arg.Ids,
+		arg.By,
+		arg.Root,
+		arg.Pages,
+		arg.Assets,
+		arg.Height,
+	)
+	var stray int32
+	err := row.Scan(&stray)
+	return stray, err
 }
 
 const deleteNotebooksPages = `-- name: DeleteNotebooksPages :exec

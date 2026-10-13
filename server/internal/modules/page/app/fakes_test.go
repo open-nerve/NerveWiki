@@ -120,6 +120,8 @@ type fakeStore struct {
 	errs map[string]error
 	// trash are the nodes deleted, with when, which FindAnyNode reads.
 	trash map[uuid.UUID]app.AnyNode
+	// deletions are what DeleteNodes was given.
+	deletions []app.Deletion
 }
 
 func (f *fakeStore) FindNode(ctx context.Context, id uuid.UUID) (domain.Node, error) {
@@ -432,9 +434,10 @@ func (f *fakeStore) MoveNode(ctx context.Context, n domain.Node) error {
 	return nil
 }
 
-func (f *fakeStore) DeleteNodes(ctx context.Context, ids []uuid.UUID, _ uuid.UUID, _ time.Time) error {
+func (f *fakeStore) DeleteNodes(ctx context.Context, d app.Deletion) error {
 	f.record(ctx, "DeleteNodes")
-	for _, id := range ids {
+	f.deletions = append(f.deletions, d)
+	for _, id := range d.IDs {
 		delete(f.nodes, id)
 		delete(f.contents, id)
 	}
@@ -471,12 +474,18 @@ func (f *fakeStore) TouchChangeset(ctx context.Context, id uuid.UUID, at time.Ti
 	return nil
 }
 
-func (f *fakeStore) RecordItem(ctx context.Context, it app.Item) error {
-	f.record(ctx, "RecordItem")
-	if old, ok := f.items[it.Change.NodeID]; ok && old.ChangesetID == it.ChangesetID {
-		it.Change.Before = old.Change.Before
+// RecordItems inserts the items, or merges each into its node's of the
+// changeset, keeping its before, its restore and the revision it recorded,
+// as the table's upsert does; each write is one call, with its items'
+// count.
+func (f *fakeStore) RecordItems(ctx context.Context, items []app.Item) error {
+	f.record(ctx, fmt.Sprintf("RecordItems %d", len(items)))
+	for _, it := range items {
+		if old, ok := f.items[it.Change.NodeID]; ok && old.ChangesetID == it.ChangesetID {
+			it.Change.Before, it.Change.Restored, it.Change.Revision = old.Change.Before, old.Change.Restored, old.Change.Revision
+		}
+		f.items[it.Change.NodeID] = it
 	}
-	f.items[it.Change.NodeID] = it
 	return nil
 }
 

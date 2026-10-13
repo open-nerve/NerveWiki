@@ -41,7 +41,7 @@ func newPurgeFixture(t *testing.T) purgeFixture {
 		}
 		for _, n := range nodes {
 			state := n.State()
-			if err := f.s.RecordItem(ctx, app.Item{ID: uuid.NewV7(), ChangesetID: cs.ID, Change: domain.Change{NodeID: n.ID, After: &state}, At: now()}); err != nil {
+			if err := f.s.RecordItems(ctx, []app.Item{{ID: uuid.NewV7(), ChangesetID: cs.ID, Change: domain.Change{NodeID: n.ID, After: &state}, At: now()}}); err != nil {
 				t.Fatal(err)
 			}
 			sum := sha256.Sum256(nil)
@@ -245,7 +245,7 @@ func TestPurgeTakesADeletedSubtree(t *testing.T) {
 	}
 	for _, n := range []domain.Node{a, b, c} {
 		state := n.State()
-		if err := f.s.RecordItem(ctx, app.Item{ID: uuid.NewV7(), ChangesetID: created.ID, Change: domain.Change{NodeID: n.ID, After: &state}, At: now()}); err != nil {
+		if err := f.s.RecordItems(ctx, []app.Item{{ID: uuid.NewV7(), ChangesetID: created.ID, Change: domain.Change{NodeID: n.ID, After: &state}, At: now()}}); err != nil {
 			t.Fatal(err)
 		}
 		sum := sha256.Sum256(nil)
@@ -253,12 +253,12 @@ func TestPurgeTakesADeletedSubtree(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := f.s.DeleteNodes(ctx, []uuid.UUID{a.ID, b.ID, c.ID}, f.alice, deleted.At); err != nil {
+	if err := f.s.DeleteNodes(ctx, deletion([]uuid.UUID{a.ID, b.ID, c.ID}, f.alice, deleted.At)); err != nil {
 		t.Fatal(err)
 	}
 	for _, n := range []domain.Node{a, b, c} {
 		state := n.State()
-		if err := f.s.RecordItem(ctx, app.Item{ID: uuid.NewV7(), ChangesetID: deleted.ID, Change: domain.Change{NodeID: n.ID, Before: &state}, At: deleted.At}); err != nil {
+		if err := f.s.RecordItems(ctx, []app.Item{{ID: uuid.NewV7(), ChangesetID: deleted.ID, Change: domain.Change{NodeID: n.ID, Before: &state}, At: deleted.At}}); err != nil {
 			t.Fatal(err)
 		}
 	}

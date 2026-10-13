@@ -283,9 +283,15 @@ func (s *Store) MoveNode(ctx context.Context, n domain.Node) error {
 }
 
 // DeleteNodes implements app.NodeWriter.
-func (s *Store) DeleteNodes(ctx context.Context, ids []uuid.UUID, by uuid.UUID, at time.Time) error {
-	if err := s.queries(ctx).DeleteNodes(ctx, gen.DeleteNodesParams{Ids: ids, By: by, Now: at}); err != nil {
+func (s *Store) DeleteNodes(ctx context.Context, d app.Deletion) error {
+	stray, err := s.queries(ctx).DeleteNodes(ctx, gen.DeleteNodesParams{
+		Ids: d.IDs, By: d.By, Now: d.At, Root: d.Root, Pages: int32(d.Pages), Assets: int32(d.Assets), Height: int32(d.Height),
+	})
+	switch {
+	case err != nil:
 		return fmt.Errorf("delete nodes: %w", err)
+	case stray != 0:
+		return fmt.Errorf("delete nodes: %d nodes deleted at this time already are under them: a unit deletes from the top down", stray)
 	}
 	return nil
 }

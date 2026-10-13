@@ -98,12 +98,24 @@ SET parent_id = sqlc.narg(parent_id), sort_order = sqlc.arg(sort_order), updated
     updated_at = sqlc.arg(now)
 WHERE id = sqlc.arg(id);
 
--- name: DeleteNodes :exec
--- A subtree's deletion (M4 design 4): the nodes not deleted, and what follows them not deleted, at the
--- unit's time, by its caller. What an earlier deletion put in the trash keeps its own time.
-WITH gone AS (
+-- name: DeleteNodes :one
+-- A subtree's deletion (M4 design 4; M8/P2 design 3.3): the nodes not deleted, and what follows them not deleted, at the
+-- unit's time, by its caller, the root marked as a trash item with its group's counts and height. What an earlier
+-- deletion put in the trash keeps its own time and mark. stray counts the nodes deleted at this time already whose
+-- parent this deletion deletes: a unit that deleted a descendant, then its ancestor, would leave the descendant a root
+-- within the ancestor's group, which the ancestor's counts miss; its caller's defect (a unit deletes from the top
+-- down). It reads the statement's snapshot, before the update, the nodes of this time through the partial index on
+-- deleted_at.
+WITH stray AS (
+    SELECT count(*) AS n FROM nodes c
+    WHERE c.deleted_at = sqlc.arg(now)::timestamptz AND c.parent_id = ANY(sqlc.arg(ids)::uuid[])
+), gone AS (
     UPDATE nodes n
-    SET deleted_at = sqlc.arg(now)::timestamptz, updated_by_id = sqlc.arg(by), updated_at = sqlc.arg(now)
+    SET deleted_at = sqlc.arg(now)::timestamptz, updated_by_id = sqlc.arg(by), updated_at = sqlc.arg(now),
+        trash_root = (n.id = sqlc.arg(root)),
+        trash_pages = CASE WHEN n.id = sqlc.arg(root) THEN sqlc.arg(pages)::integer END,
+        trash_assets = CASE WHEN n.id = sqlc.arg(root) THEN sqlc.arg(assets)::integer END,
+        trash_height = CASE WHEN n.id = sqlc.arg(root) THEN sqlc.arg(height)::integer END
     WHERE n.id = ANY(sqlc.arg(ids)::uuid[]) AND n.deleted_at IS NULL
     RETURNING n.id
 ), contents AS (
@@ -112,9 +124,11 @@ WITH gone AS (
 ), revisions AS (
     UPDATE page_revisions r SET deleted_at = sqlc.arg(now)::timestamptz
     WHERE r.node_id IN (SELECT id FROM gone) AND r.deleted_at IS NULL
+), items AS (
+    UPDATE changeset_items i SET deleted_at = sqlc.arg(now)::timestamptz
+    WHERE i.node_id IN (SELECT id FROM gone) AND i.deleted_at IS NULL
 )
-UPDATE changeset_items i SET deleted_at = sqlc.arg(now)::timestamptz
-WHERE i.node_id IN (SELECT id FROM gone) AND i.deleted_at IS NULL;
+SELECT n::integer AS stray FROM stray;
 
 -- name: DeleteNotebooksPages :exec
 -- The notebook deletion's registrant (M4/P1 design 3.9): the nodes not deleted of the notebooks, and what

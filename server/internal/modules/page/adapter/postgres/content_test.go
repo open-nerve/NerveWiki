@@ -95,7 +95,7 @@ func TestLockContent(t *testing.T) {
 	}
 
 	b := f.page(t, f.eng, nil, "B", 1)
-	if err := f.s.DeleteNodes(ctx, []uuid.UUID{b.ID}, f.alice, now()); err != nil {
+	if err := f.s.DeleteNodes(ctx, deletion([]uuid.UUID{b.ID}, f.alice, now())); err != nil {
 		t.Fatal(err)
 	}
 	for name, id := range map[string][2]uuid.UUID{
@@ -139,7 +139,7 @@ func TestNotebookActivities(t *testing.T) {
 	f.write(t, a.ID, "12345", 2, now())
 	f.write(t, b.ID, "名", 2, now())
 	f.write(t, gone.ID, "1234567", 2, now())
-	if err := f.s.DeleteNodes(ctx, []uuid.UUID{gone.ID}, f.alice, now()); err != nil {
+	if err := f.s.DeleteNodes(ctx, deletion([]uuid.UUID{gone.ID}, f.alice, now())); err != nil {
 		t.Fatal(err)
 	}
 	latest := now().Add(2 * time.Hour)
