@@ -63,5 +63,6 @@ func (h handler) GetInstance(context.Context, gen.GetInstanceRequestObject) (gen
 		AssetMaxBytes:            info.AssetMaxBytes,
 		ImportMaxBytes:           info.ImportMaxBytes,
 		ExportTTLSeconds:         int64(info.ExportTTL / time.Second),
+		TrashRetentionSeconds:    int64(info.TrashRetention / time.Second),
 	}, nil
 }

@@ -48,6 +48,13 @@ type Notebooks = app.Notebooks
 // directory to it.
 type Names = app.Names
 
+// AttachmentInfos reads the attachments' type and size, deleted or not:
+// bootstrap hands the asset module's to it (M8 design 4.1).
+type (
+	AttachmentInfos = app.AttachmentInfos
+	AttachmentInfo  = app.AttachmentInfo
+)
+
 // The module's extension points (M4 design 8): bootstrap composes their
 // registrants in registrants.go.
 type (
@@ -55,6 +62,8 @@ type (
 	Options      = app.Options
 	Step         = app.Step
 	Change       = domain.Change
+	TreeState    = domain.TreeState
+	Restored     = domain.Restored
 	WriteGuard   = app.WriteGuard
 	Participant  = app.Participant
 	Appender     = app.Appender
@@ -68,6 +77,15 @@ type (
 	SessionEnded          = app.SessionEnded
 	EditSessionSubscriber = app.EditSessionSubscriber
 )
+
+// ErrTrashChanged is a trash item's restore that found the item changed
+// since it read it: an observer answers it for a row of the item the purge
+// took (M8/P2 design 3.6).
+var ErrTrashChanged = domain.ErrTrashChanged
+
+// TrashMargin is how long before the purge's retention a trash item can no
+// longer be restored: bootstrap tells the instance's retention less it.
+const TrashMargin = domain.TrashMargin
 
 // Deps are what bootstrap gives the module.
 type Deps struct {
@@ -96,6 +114,17 @@ type Deps struct {
 	// Budget bounds the content parsed and rendered at once: the server's
 	// one, which every module that parses shares (M6 design 4.7).
 	Budget *markdown.Budget
+	// Retention is the purge's, jobs.purge_retention: a trash item can be
+	// restored until it, less TrashMargin, after its deletion (M8 design
+	// 4.11).
+	Retention time.Duration
+	// Attachments shows an attachment in the trash: it must be there.
+	Attachments AttachmentInfos
+	// MaxUnitNodes and MaxUnitHistory bound the nodes of a trash item a
+	// request restores and the rows of their history: 0 is the domain's,
+	// domain.MaxUnitNodes and MaxUnitHistory, which only a measurement
+	// raises (M8/P2 design 3.11); production leaves them 0.
+	MaxUnitNodes, MaxUnitHistory int
 }
 
 // Module is the wired page module.
@@ -106,19 +135,25 @@ type Module struct {
 	imports *app.ImportWrites
 }
 
-// New wires the module: every write runs in the one writer's units.
+// New wires the module: every write runs in the one writer's units. A
+// module without the attachments' infos is a fault of its wiring.
 func New(d Deps) *Module {
+	if d.Attachments == nil {
+		panic("page: no attachment infos")
+	}
 	store := postgresadapter.New(d.Pool)
 	md := markdownadapter.New(d.Markdown)
 	budget := markdownadapter.NewBudget(d.Budget)
 	writer := app.NewWriter(app.WriterDeps{
 		Tx: d.Tx, Clock: d.Clock, Auth: d.Authorizer, Workspaces: d.Workspaces, Notebooks: d.Notebooks,
-		Nodes: store, NodeWriter: store, Changesets: store, SessionWriter: store, Names: d.Names,
+		Nodes: store, NodeWriter: store, Trash: store, Changesets: store, SessionWriter: store, Names: d.Names,
 		Guards: d.Guards, Participants: d.Participants, Observers: d.Observers,
 		SessionVetoers: d.EditSessionVetoers, SessionSubscribers: d.EditSessionSubscribers,
 	})
-	parser := app.NewContentParser(writer, md, budget)
+	parser := app.NewContentParser(writer, md, budget, d.Budget.Wait())
 	versions := app.VersionReads{Notebooks: d.Notebooks, Nodes: store, Versions: store, Names: d.Names, Auth: d.Authorizer, Clock: d.Clock}
+	trash := app.TrashReads{Notebooks: d.Notebooks, Nodes: store, Trash: store, Names: d.Names, Attachments: d.Attachments,
+		Auth: d.Authorizer, Clock: d.Clock, Retention: d.Retention}
 	return &Module{uc: httpadapter.UseCases{
 		ListNodes:       app.NewListNodes(d.Notebooks, store, d.Authorizer),
 		CreatePage:      app.NewCreatePage(writer, store, parser, d.Logger),
@@ -139,6 +174,9 @@ func New(d Deps) *Module {
 		GetVersion:      app.NewGetVersion(versions),
 		GetVersionView:  app.NewGetVersionView(versions, md, budget),
 		RestoreVersion:  app.NewRestoreVersion(versions, writer, parser, d.Logger),
+		ListTrash:       app.NewListTrash(trash),
+		GetTrashItem:    app.NewGetTrashItem(trash),
+		RestoreNode:     app.NewRestoreNode(trash, writer, parser, app.RestoreBounds{Nodes: d.MaxUnitNodes, History: d.MaxUnitHistory}, d.Logger),
 	}, jobs: []jobs.Job{
 		riveradapter.CleanupJob(app.NewCleanupEditSessions(store, d.Clock, d.Logger), d.EditSessionCleanupInterval),
 	}, assets: app.NewAssetWrites(writer, store), imports: app.NewImportWrites(writer, parser, md)}

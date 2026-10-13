@@ -24,7 +24,19 @@ import (
 // without exactly one content not deleted, or whose content's revision is
 // not its latest version's; a page deeper than ten levels of pages (an
 // attachment is no level), or on a chain that loops; a deleted page with a content, a
-// version or an item not deleted, which would keep the purge from it; an
+// version or an item not deleted, which would keep the purge from it, or
+// a page not deleted with one deleted, which a restore left behind; a
+// deleted node that is a trash item's root but for one whose parent was
+// deleted at its time, or with its notebook, or the other way round, or a
+// root whose counts are not its group's, the nodes deleted at its time
+// from it down (M8/P2 design 3.3), or, once the purge has reached the
+// group, less than what is left of it: the purge takes a page's content
+// before any node, then the nodes leaves first, the root last, a batch a
+// statement, so a page root without its content at its time is a group
+// it may be midway through (M8/P2A fix check 1, N-1). Its limit: a purge
+// that skips the root's content, which a lock holds, while it takes the
+// group below leaves a valid state this reports; no test reaches it (M8/P2A
+// fix check 2, N-c); an
 // edit session of a page that is not one not deleted of its notebook
 // (M4/P4 design 3.2); two sessions of a page alive at the database's time,
 // which the edit lock refuses (M5/P1 design 3.8).
@@ -51,6 +63,26 @@ func checkPages(t *testing.T, pool *pgxpool.Pool) {
 			EXISTS (SELECT 1 FROM page_contents c WHERE c.node_id = n.id AND c.deleted_at IS NULL)
 			OR EXISTS (SELECT 1 FROM page_revisions r WHERE r.node_id = n.id AND r.deleted_at IS NULL)
 			OR EXISTS (SELECT 1 FROM changeset_items i WHERE i.node_id = n.id AND i.deleted_at IS NULL))`,
+		"not deleted, with what follows it deleted": `SELECT count(*) FROM nodes n WHERE n.deleted_at IS NULL AND (
+			EXISTS (SELECT 1 FROM page_contents c WHERE c.node_id = n.id AND c.deleted_at IS NOT NULL)
+			OR EXISTS (SELECT 1 FROM page_revisions r WHERE r.node_id = n.id AND r.deleted_at IS NOT NULL)
+			OR EXISTS (SELECT 1 FROM changeset_items i WHERE i.node_id = n.id AND i.deleted_at IS NOT NULL))`,
+		"deleted, a trash item's root or not as its parent and notebook make it": `SELECT count(*) FROM nodes n
+			JOIN notebooks b ON b.id = n.notebook_id LEFT JOIN nodes p ON p.id = n.parent_id
+			WHERE n.deleted_at IS NOT NULL AND n.trash_root <> ((p.id IS NULL OR p.deleted_at IS DISTINCT FROM n.deleted_at)
+				AND b.deleted_at IS DISTINCT FROM n.deleted_at)`,
+		"a trash item's root, its pages, attachments or height not its group's, or less than what the purge left": `WITH RECURSIVE g AS (
+				SELECT r.id AS root, r.id, r.kind, 1 AS level, r.deleted_at FROM nodes r WHERE r.trash_root
+				UNION ALL
+				SELECT g.root, n.id, n.kind, g.level + 1, g.deleted_at FROM g JOIN nodes n ON n.parent_id = g.id
+					AND n.deleted_at = g.deleted_at
+			) SELECT count(*) FROM nodes r JOIN (SELECT root, count(*) FILTER (WHERE kind = 'page') AS pages,
+					count(*) FILTER (WHERE kind = 'asset') AS assets,
+					coalesce(max(level) FILTER (WHERE kind = 'page'), 0) AS height
+				FROM g GROUP BY root) c ON c.root = r.id
+			WHERE CASE WHEN r.kind = 'page' AND NOT EXISTS (SELECT 1 FROM page_contents x WHERE x.node_id = r.id AND x.deleted_at = r.deleted_at)
+				THEN NOT coalesce(r.trash_pages >= c.pages AND r.trash_assets >= c.assets AND r.trash_height >= c.height, false)
+				ELSE (r.trash_pages, r.trash_assets, r.trash_height) IS DISTINCT FROM (c.pages::integer, c.assets::integer, c.height) END`,
 		"deeper than ten levels of pages, or in a loop": `WITH RECURSIVE up AS (
 				SELECT id AS start, parent_id, 1 AS depth FROM nodes WHERE deleted_at IS NULL AND kind = 'page'
 				UNION ALL

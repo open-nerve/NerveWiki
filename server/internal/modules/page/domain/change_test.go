@@ -2,6 +2,7 @@ package domain_test
 
 import (
 	"testing"
+	"time"
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
@@ -44,5 +45,22 @@ func TestChangeThen(t *testing.T) {
 		domain.Change{NodeID: id, Before: &a, After: &a, Revision: 3, Facts: "three"})
 	if got.Revision != 3 || got.Facts != "three" {
 		t.Errorf("written twice = %+v; want revision 3 with its facts", got)
+	}
+}
+
+// A restore is the first change's, as its before is: a later change of the
+// node in the unit keeps it.
+func TestChangeThenKeepsTheFirstRestore(t *testing.T) {
+	id := uuid.NewV7()
+	a, b := domain.TreeState{Name: "a"}, domain.TreeState{Name: "b"}
+	at := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	restored := domain.Change{NodeID: id, After: &a, Revision: 3, Restored: &domain.Restored{DeletedAt: at, Asset: true}}
+	got := restored.Then(domain.Change{NodeID: id, Before: &a, After: &b})
+	if got.Restored == nil || !got.Restored.DeletedAt.Equal(at) || !got.Restored.Asset || got.Before != nil || got.After.Name != "b" {
+		t.Errorf("restored then renamed = %+v; want restored from %s, an attachment, named b", got, at)
+	}
+	got = domain.Change{NodeID: id, Before: &a, After: &a}.Then(restored)
+	if got.Restored != nil {
+		t.Errorf("written then restored = %+v; want the first change's restore, none", got)
 	}
 }

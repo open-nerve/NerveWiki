@@ -97,8 +97,9 @@ func (tm acmeTeam) download(t *testing.T, address string) (int, string) {
 
 // checkAssets fails t when the attachments break an invariant (M7/P2
 // design 3.12): an attachment's node not deleted without exactly one row
-// not deleted; a deleted one with a row not deleted; a row of a page's
-// node; a row whose file is not in the store at dir; a file there that no
+// not deleted; a deleted one with a row not deleted; a row deleted at
+// another time than its node, which a restore would not bring back (M8/P2
+// design 3.6); a row of a page's node; a row whose file is not in the store at dir; a file there that no
 // row holds, which an upload a unit refused deletes, and only the sweep's
 // test seeds.
 func checkAssets(t *testing.T, pool *pgxpool.Pool, dir string) {
@@ -108,6 +109,8 @@ func checkAssets(t *testing.T, pool *pgxpool.Pool, dir string) {
 			AND (SELECT count(*) FROM asset_blobs b WHERE b.node_id = n.id AND b.deleted_at IS NULL) <> 1`,
 		"deleted with a row not deleted": `SELECT count(*) FROM nodes n WHERE n.kind = 'asset' AND n.deleted_at IS NOT NULL
 			AND EXISTS (SELECT 1 FROM asset_blobs b WHERE b.node_id = n.id AND b.deleted_at IS NULL)`,
+		"with a row deleted at another time": `SELECT count(*) FROM asset_blobs b JOIN nodes n ON n.id = b.node_id
+			WHERE b.deleted_at IS DISTINCT FROM n.deleted_at AND b.deleted_at IS NOT NULL`,
 		"that are pages, with a row": `SELECT count(*) FROM asset_blobs b JOIN nodes n ON n.id = b.node_id WHERE n.kind <> 'asset'`,
 	} {
 		if n := count(t, pool, query); n != 0 {

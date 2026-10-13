@@ -65,7 +65,7 @@ func TestCreateAssetRunsInAUnitThatChangesTheTree(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []string{"WorkspaceOf", "ShareWorkspace in tx", "LockNotebook in tx", "Authorize asset.upload in tx", "FindNodeIn in tx",
-		"Children in tx", "GuardWrite create in tx", "CreateChangeset in tx", "CreateNode in tx", "RecordItem in tx",
+		"Children in tx", "GuardWrite create in tx", "CreateChangeset in tx", "CreateNode in tx", "RecordItems 1 in tx",
 		"Participate create in tx", "after in tx", "PagesChanged in tx"}
 	if !slices.Equal(f.rec.calls, want) {
 		t.Errorf("calls = %v, want %v", f.rec.calls, want)

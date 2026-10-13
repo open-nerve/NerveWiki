@@ -13,6 +13,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/open-nerve/NerveWiki/server/internal/platform/jobs"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres/pgtest"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/storage"
@@ -182,19 +183,25 @@ func TestUploadingAndDemotingTheWriter(t *testing.T) {
 	})
 }
 
-// purge is what runs the purgers in order, as the purge job does, on
-// what was deleted before it runs, and returns the first failure. Nothing
-// uploads while it is made: opening its store deletes the files being
-// written.
-func (tm acmeTeam) purge(t *testing.T) func() error {
+// purgeBefore is what runs the purgers in order, as the purge job does,
+// on what was deleted before before, and returns the first failure: those
+// of tables alone when they are given. The purge job's cutoff is its time
+// less the retention; a test gives its own, the trash's on either side of
+// its period or a clock ahead (M8/P2 design 3.8). Nothing uploads while it
+// is made: opening its store deletes the files being written.
+func (tm acmeTeam) purgeBefore(t *testing.T, before time.Time, tables ...string) func() error {
 	t.Helper()
 	store, err := storage.OpenLocal(tm.storage, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	all := purgers(tm.pool, postgres.NewTxManager(tm.pool, interleavingWait), store, slog.New(slog.DiscardHandler))
+	var all []jobs.Purger
+	for _, p := range purgers(tm.pool, postgres.NewTxManager(tm.pool, interleavingWait), store, slog.New(slog.DiscardHandler)) {
+		if len(tables) == 0 || slices.Contains(tables, p.Table) {
+			all = append(all, p)
+		}
+	}
 	return func() error {
-		before := time.Now()
 		for _, p := range all {
 			for {
 				n, err := p.Purge(context.Background(), before, 1000)
@@ -270,7 +277,7 @@ func TestPurgingAnAttachmentAnotherPurgeHolds(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			tm, _, a := deletedAsset(t)
-			purge := tm.purge(t)
+			purge := tm.purgeBefore(t, time.Now())
 			holder := tm.holdRow(t, a.Blob)
 			done := make(chan error, 1)
 			go func() { done <- purge() }()

@@ -13,6 +13,7 @@ type Settings struct {
 	AssetMaxBytes            int64         // asset.max_bytes
 	ImportMaxBytes           int64         // transfer.import_max_bytes
 	ExportTTL                time.Duration // transfer.export_ttl
+	TrashRetention           time.Duration // jobs.purge_retention less an hour
 }
 
 // GetInfo tells API clients what this instance runs.
@@ -40,5 +41,6 @@ func (uc *GetInfo) Execute() domain.Info {
 		AssetMaxBytes:            uc.settings.AssetMaxBytes,
 		ImportMaxBytes:           uc.settings.ImportMaxBytes,
 		ExportTTL:                uc.settings.ExportTTL,
+		TrashRetention:           uc.settings.TrashRetention,
 	}
 }

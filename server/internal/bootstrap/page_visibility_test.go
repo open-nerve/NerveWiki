@@ -39,9 +39,11 @@ func TestTheTreeIsWhatEachReadAllows(t *testing.T) {
 	}{{"team-page", "team-child", false}, {"priv-root", "priv-trashed", true}} {
 		id := uuid.NewV7()
 		pages, extras[extra.name] = append(pages, id), id
+		// A deleted page is a trash item of its own (M8/P2 design 3.3).
 		if _, err := pool.Exec(context.Background(), `INSERT INTO nodes (id, notebook_id, parent_id, kind, name, name_key, sort_order,
-				created_by_id, updated_by_id, created_at, updated_at, deleted_at)
-			SELECT $1, p.notebook_id, p.id, 'page', $3, $3, 1, p.created_by_id, p.created_by_id, now(), now(), CASE WHEN $4 THEN now() END
+				created_by_id, updated_by_id, created_at, updated_at, deleted_at, trash_root, trash_pages, trash_assets, trash_height)
+			SELECT $1, p.notebook_id, p.id, 'page', $3, $3, 1, p.created_by_id, p.created_by_id, now(), now(), CASE WHEN $4 THEN now() END,
+				$4, CASE WHEN $4 THEN 1 END, CASE WHEN $4 THEN 0 END, CASE WHEN $4 THEN 1 END
 			FROM nodes p WHERE p.id = $2`, id, s.page(extra.parent), extra.name, extra.deleted); err != nil {
 			t.Fatal(err)
 		}

@@ -44,16 +44,24 @@ func readable(ctx context.Context, notebooks Notebooks, nodes Nodes, auth shared
 // page whose notebook the caller has no role in.
 func readableAny(ctx context.Context, notebooks Notebooks, nodes Nodes, auth shared.Authorizer, id uuid.UUID,
 	action shared.Action) (AnyNode, error) {
+	n, err := readableNode(ctx, notebooks, nodes, auth, id, action)
+	if err == nil && n.Kind != domain.KindPage {
+		return AnyNode{}, domain.ErrNotFound
+	}
+	return n, err
+}
+
+// readableNode is readableAny for a node of either kind (M8/P2 design 3.5):
+// a trash item is a page or an attachment.
+func readableNode(ctx context.Context, notebooks Notebooks, nodes Nodes, auth shared.Authorizer, id uuid.UUID,
+	action shared.Action) (AnyNode, error) {
 	actor, err := shared.RequireActor(ctx)
 	if err != nil {
 		return AnyNode{}, err
 	}
 	n, err := nodes.FindAnyNode(ctx, id)
-	switch {
-	case err != nil:
+	if err != nil {
 		return AnyNode{}, found(err, domain.ErrNotFound)
-	case n.Kind != domain.KindPage:
-		return AnyNode{}, domain.ErrNotFound
 	}
 	workspaceID, ok, err := notebooks.WorkspaceOf(ctx, n.NotebookID)
 	switch {

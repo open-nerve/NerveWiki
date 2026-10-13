@@ -267,9 +267,14 @@ func (s *Store) AliasKeys(ctx context.Context, ids []uuid.UUID) ([]string, error
 	return keys, nil
 }
 
-// SetResolutions implements app.Store. A link it does not find, or finds
-// twice, is a defect: the maintenance read each once, in the same
-// transaction.
+// SetResolutions implements app.Store, planned with links: a plan for any
+// links, which the server may make a cached statement's from its sixth
+// run, joins them to the index's rows by comparing each with each when the
+// statistics count none, as after the deletion of a notebook's pages
+// before their restore; 20,000 links took 53 s where the plan for them
+// took 0.1 s (M8/P2 design 3.11's measurement). A link it does not find,
+// or finds twice, is a defect: the maintenance read each once, in the
+// same transaction.
 func (s *Store) SetResolutions(ctx context.Context, links []app.Link) error {
 	var p gen.SetResolutionsParams
 	for _, l := range links {
@@ -279,7 +284,7 @@ func (s *Store) SetResolutions(ctx context.Context, links []app.Link) error {
 		p.Ambiguous = append(p.Ambiguous, l.Resolution.Ambiguous)
 		p.ResolvedAssets = append(p.ResolvedAssets, l.Resolution.Asset)
 	}
-	n, err := s.queries(ctx).SetResolutions(ctx, p)
+	n, err := s.planned(ctx).SetResolutions(ctx, p)
 	if err != nil {
 		return fmt.Errorf("set %d links' resolutions: %w", len(links), err)
 	}

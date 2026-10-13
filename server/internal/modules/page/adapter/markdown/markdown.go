@@ -31,7 +31,7 @@ func (m *Markdown) Facts(content string) app.Facts {
 // Render implements app.Markdown.
 func (m *Markdown) Render(ctx context.Context, content string, page app.PageRef) (app.Rendered, error) {
 	v, err := m.md.Render(ctx, m.md.Parse([]byte(content)),
-		markdown.Page{NotebookID: page.NotebookID, PageID: page.PageID, Revision: page.Revision})
+		markdown.Page{NotebookID: page.NotebookID, PageID: page.PageID, Revision: page.Revision, Deleted: page.Deleted})
 	return app.Rendered{HTML: v.HTML, Expires: v.Expires}, err
 }
 

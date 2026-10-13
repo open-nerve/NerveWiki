@@ -1,6 +1,9 @@
 package domain
 
-import "uuid"
+import (
+	"time"
+	"uuid"
+)
 
 // TreeState is where a node is in the tree: its parent, name and order.
 type TreeState struct {
@@ -35,6 +38,19 @@ type Change struct {
 	// participants and the observers read them. They need not be
 	// comparable: two Changes are not compared with == (M6/P2 review L3).
 	Facts any
+	// Restored is set on a change that brings its node back from the trash
+	// (M8/P2 design 3.6): with no before, it tells a restore from a
+	// creation.
+	Restored *Restored
+}
+
+// Restored is a restore from the trash: when the node was deleted, which
+// its attachment's file was too, and whether it is an attachment, as
+// LinkNode and ExportNode tell one: an observer that follows attachments
+// restores their files of that time, and counts them.
+type Restored struct {
+	DeletedAt time.Time
+	Asset     bool
 }
 
 // Moves reports whether the change moves the node in the tree: it is
@@ -46,9 +62,10 @@ func (c Change) Moves() bool {
 
 // Then is c followed by a later change of the same node, as one change:
 // the first before and the last after, and the last revision written with
-// its facts.
+// its facts. A restore is the first change's, as its before is: no unit of
+// M8 deletes a node and restores it in one changeset.
 func (c Change) Then(later Change) Change {
-	out := Change{NodeID: c.NodeID, Before: c.Before, After: later.After, Revision: c.Revision, Facts: c.Facts}
+	out := Change{NodeID: c.NodeID, Before: c.Before, After: later.After, Revision: c.Revision, Facts: c.Facts, Restored: c.Restored}
 	if later.Revision != 0 {
 		out.Revision, out.Facts = later.Revision, later.Facts
 	}
@@ -66,4 +83,6 @@ const (
 	OpDelete Operation = "delete"
 	// OpContent writes a page's content.
 	OpContent Operation = "content"
+	// OpRestore brings a trash item back (M8/P2 design 3.5).
+	OpRestore Operation = "restore"
 )

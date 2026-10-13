@@ -31,6 +31,15 @@ type pageAnswer struct {
 	} `json:"ancestors"`
 }
 
+// trashItemAnswer is a TrashItem answer, as much as the rows check.
+type trashItemAnswer struct {
+	Name      string `json:"name"`
+	Pages     int    `json:"pages"`
+	RestoreTo struct {
+		Reason string `json:"reason"`
+	} `json:"restore_to"`
+}
+
 // editSessionAnswer is an EditSession answer.
 type editSessionAnswer struct {
 	ID        string    `json:"id"`
@@ -217,6 +226,59 @@ func pageMatrixRows() []matrixRow {
 				decodeAnswer(t, answer, &r)
 				if r.Revision != 1 || r.ChangesetID != nil || r.Changed {
 					t.Errorf("restored %+v, want revision 1 unchanged", r)
+				}
+			},
+		},
+		{
+			op:      "listTrash",
+			columns: notebookColumns(),
+			request: func(c caller, s seeded) (string, string, string) { return http.MethodGet, nodes(c, s) + "/trash", "" },
+			cells:   readers(notebookNotFound),
+			check: func(t *testing.T, c caller, _ seeded, answer string) {
+				t.Helper()
+				var l struct{ Data []trashItemAnswer }
+				decodeAnswer(t, answer, &l)
+				if len(l.Data) != 1 || l.Data[0].Name != trashedIn(notebookOf(c)) {
+					t.Errorf("listed %s, want the seeded item %s", answer, trashedIn(notebookOf(c)))
+				}
+			},
+		},
+		{
+			op:      "getTrashItem",
+			columns: notebookColumns(),
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodGet, "/api/v0/nodes/" + s.page(trashedIn(notebookOf(c))).String() + "/trash-item", ""
+			},
+			cells: readers(pageNotFound),
+			check: func(t *testing.T, c caller, _ seeded, answer string) {
+				t.Helper()
+				var it trashItemAnswer
+				decodeAnswer(t, answer, &it)
+				if it.Name != trashedIn(notebookOf(c)) || it.Pages != 1 || it.RestoreTo.Reason != "original" {
+					t.Errorf("read %s, want the seeded item, back at its root", answer)
+				}
+			},
+		},
+		{
+			op:      "restoreNode",
+			columns: notebookColumns(),
+			write:   true,
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodPost, "/api/v0/nodes/" + s.page(trashedIn(notebookOf(c))).String() + "/restore", ""
+			},
+			cells: editorsOnly(cellOK(), pageNotFound),
+			check: func(t *testing.T, c caller, _ seeded, answer string) {
+				t.Helper()
+				var r struct {
+					Name    string `json:"name"`
+					Renamed bool   `json:"renamed"`
+					Placed  struct {
+						Reason string `json:"reason"`
+					} `json:"placed"`
+				}
+				decodeAnswer(t, answer, &r)
+				if r.Name != trashedIn(notebookOf(c)) || r.Renamed || r.Placed.Reason != "original" {
+					t.Errorf("restored %s, want the seeded item back at its root as it was", answer)
 				}
 			},
 		},

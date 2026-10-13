@@ -69,7 +69,7 @@ func step(op domain.Operation, by, session uuid.UUID, ids ...uuid.UUID) app.Step
 // or in none while one is; a deletion is refused for another account's
 // alive session in it, naming the first in the subtree's order, level by
 // level, not the oldest, and passes for the deleter's own; the tree's
-// other writes pass. The time is the step's.
+// other writes pass, a restore among them. The time is the step's.
 func TestTheEditLockGuardsByOperation(t *testing.T) {
 	f := newLockFixture()
 	var none uuid.UUID
@@ -97,6 +97,8 @@ func TestTheEditLockGuardsByOperation(t *testing.T) {
 		{"a rename of a locked page", step(domain.OpRename, f.bob, none, f.top.ID), none, ""},
 		{"a move of a locked page", step(domain.OpMove, f.bob, none, f.top.ID), none, ""},
 		{"a creation under a locked page", step(domain.OpCreate, f.bob, none, uuid.NewV7()), none, ""},
+		// A restore passes whatever the pages' sessions: a trash item's were deleted with it (M8 design 8).
+		{"a restore of a page another holds", step(domain.OpRestore, f.bob, none, f.top.ID, f.low.ID), none, ""},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			err := f.lock.GuardWrite(f.asAlice(), tt.step)

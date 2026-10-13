@@ -19,9 +19,11 @@ import (
 
 // PageObserver follows the page module's units: bootstrap hands it the
 // nodes a unit deleted, whose attachments' rows it deletes at the unit's
-// time.
+// time, and the attachments a unit restored, whose rows deleted at their
+// nodes' time it brings back, telling how many (M8/P2 design 3.6).
 type PageObserver interface {
 	NodesDeleted(ctx context.Context, ids []uuid.UUID, at time.Time) error
+	NodesRestored(ctx context.Context, ids []uuid.UUID, deletedAt time.Time) (int, error)
 }
 
 // NewPageObserver returns the observer.

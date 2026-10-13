@@ -71,6 +71,36 @@ func TestDeleteNodeDeletesTheSubtreeUnderTheLock(t *testing.T) {
 	}
 }
 
+// A deletion's root becomes a trash item: DeleteNodes gets it first among
+// the subtree's ids, with the subtree's pages, attachments and height,
+// and the step's items are one write (M8/P2 design 3.3).
+func TestDeleteNodeMarksTheRootWithItsCounts(t *testing.T) {
+	f := newFixture()
+	f.grant(domain.ActionDelete)
+	n := f.page("N", nil, 0)
+	child := f.page("Child", &n.ID, 0)
+	grandchild := f.page("Grandchild", &child.ID, 0)
+	photo := f.asset("photo.png", &grandchild.ID, 0)
+	scan := f.asset("scan.pdf", &n.ID, 1)
+	f.page("Sibling", nil, 1)
+	if err := f.remove(n.ID); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.store.deletions) != 1 {
+		t.Fatalf("deletions = %+v, want one", f.store.deletions)
+	}
+	d := f.store.deletions[0]
+	if d.Root != n.ID || d.Pages != 3 || d.Assets != 2 || d.Height != 3 || d.By != f.alice || !d.At.Equal(now()) ||
+		len(d.IDs) != 5 || d.IDs[0] != n.ID || !slices.Contains(d.IDs, photo.ID) || !slices.Contains(d.IDs, scan.ID) {
+		t.Errorf("deletion = %+v; want N's, first of its five nodes, 3 pages, 2 attachments, 3 levels, by alice at %s", d, now())
+	}
+	if n := slices.Index(f.rec.calls, "RecordItems 5 in tx"); n < 0 || slices.ContainsFunc(f.rec.calls[n+1:], func(c string) bool {
+		return strings.HasPrefix(c, "RecordItems")
+	}) {
+		t.Errorf("calls = %v, want the five items in one write", f.rec.calls)
+	}
+}
+
 func TestDeleteNodeAnswersItsCodesInOrder(t *testing.T) {
 	refusal := shared.NewError(shared.KindConflict, "page.locked", "Locked.")
 	for _, tt := range []struct {

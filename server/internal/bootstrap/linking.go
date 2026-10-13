@@ -101,6 +101,11 @@ func (l linkTargets) Paths(ctx context.Context, notebookID uuid.UUID, ids []uuid
 	return linkNodes(nodes), err
 }
 
+func (l linkTargets) SourcePath(ctx context.Context, notebookID, id uuid.UUID) (linking.Node, bool, error) {
+	n, ok, err := l.page.SourcePath(ctx, notebookID, id)
+	return linkNodes([]page.LinkNode{n})[0], ok, err
+}
+
 func (l linkTargets) Attachments(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) ([]linking.Attachment, error) {
 	attachments, err := l.page.Attachments(ctx, notebookID, ids)
 	out := make([]linking.Attachment, len(attachments))

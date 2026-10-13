@@ -283,11 +283,35 @@ func (s *Store) MoveNode(ctx context.Context, n domain.Node) error {
 }
 
 // DeleteNodes implements app.NodeWriter.
-func (s *Store) DeleteNodes(ctx context.Context, ids []uuid.UUID, by uuid.UUID, at time.Time) error {
-	if err := s.queries(ctx).DeleteNodes(ctx, gen.DeleteNodesParams{Ids: ids, By: by, Now: at}); err != nil {
+func (s *Store) DeleteNodes(ctx context.Context, d app.Deletion) error {
+	stray, err := s.queries(ctx).DeleteNodes(ctx, gen.DeleteNodesParams{
+		Ids: d.IDs, By: d.By, Now: d.At, Root: d.Root, Pages: int32(d.Pages), Assets: int32(d.Assets), Height: int32(d.Height),
+	})
+	switch {
+	case err != nil:
 		return fmt.Errorf("delete nodes: %w", err)
+	case stray != 0:
+		return fmt.Errorf("delete nodes: %d nodes deleted at this time already are under them: a unit deletes from the top down", stray)
 	}
 	return nil
+}
+
+// RestoreNodes implements app.NodeWriter. A name a sibling holds already
+// is an error of its own, no code of the restore's: the unit numbered
+// them under the notebook's lock, so only a defect makes one.
+func (s *Store) RestoreNodes(ctx context.Context, r app.Restoration) (app.RestoredRows, error) {
+	row, err := s.queries(ctx).RestoreNodes(ctx, gen.RestoreNodesParams{
+		Ids: r.IDs, Names: r.Names, NameKeys: r.NameKeys, By: r.By, Now: r.At, Root: r.Root, ParentID: r.ParentID,
+		SortOrder: r.SortOrder, DeletedAt: r.DeletedAt,
+	})
+	switch {
+	case uniqueViolation(err, siblingNameKey):
+		return app.RestoredRows{}, fmt.Errorf("restore nodes: a name a sibling holds, though the unit numbered them: %w", err)
+	case err != nil:
+		return app.RestoredRows{}, fmt.Errorf("restore nodes: %w", err)
+	}
+	return app.RestoredRows{Nodes: int(row.Nodes), Contents: int(row.Contents), CurrentVersions: int(row.CurrentVersions),
+		Creations: int(row.Creations), Gaps: int(row.Gaps)}, nil
 }
 
 // SetSortOrder implements app.NodeWriter.

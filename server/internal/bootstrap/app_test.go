@@ -49,7 +49,7 @@ func client() *http.Client { return &http.Client{Timeout: 5 * time.Second} }
 
 // testConfig listens on a port the system picks and reports it through
 // server.addr_file.
-func testConfig(t *testing.T, dbURL string, autoMigrate bool) config.Config {
+func testConfig(t testing.TB, dbURL string, autoMigrate bool) config.Config {
 	t.Helper()
 	return config.Config{
 		Env: config.EnvTest,

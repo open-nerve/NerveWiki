@@ -311,7 +311,7 @@ paths:
       tags:
         - instance
       summary: Describe this instance
-      description: 'Reports the product, the build and the API version this instance runs, whether it is open for sign-up, whether accounts may create workspaces, the largest attachment and import archive it takes, and how long it keeps an export. Public: needs no authentication.'
+      description: 'Reports the product, the build and the API version this instance runs, whether it is open for sign-up, whether accounts may create workspaces, the largest attachment and import archive it takes, how long it keeps an export, and how long the trash restores what was deleted. Public: needs no authentication.'
       security: []
       x-problem-codes: []
       responses:
@@ -1278,7 +1278,7 @@ paths:
       tags:
         - page
       summary: Read a version of a page as a page
-      description: 'The reading view of the version of the page that holds the revision, as getPageView renders a page''s content: its links lead where they lead now, and revision is the version''s own. A page in the trash has its versions too; its links show unresolved. Any role in the page''s notebook can read them. A page that does not exist, whose notebook is deleted, or whose notebook the caller has no role in is page.not_found; a revision no version of the page holds, 0 and below among them, is page.version_not_found. When the server parses as much content as it can at once, the version waits a moment, then is server_busy.'
+      description: 'The reading view of the version of the page that holds the revision, as getPageView renders a page''s content: its links lead where they lead now, and revision is the version''s own. A page in the trash has its versions too; its links lead where they would from where the page was, among the pages not deleted. Any role in the page''s notebook can read them. A page that does not exist, whose notebook is deleted, or whose notebook the caller has no role in is page.not_found; a revision no version of the page holds, 0 and below among them, is page.version_not_found. When the server parses as much content as it can at once, the version waits a moment, then is server_busy.'
       security:
         - bearer: []
       x-problem-codes:
@@ -1442,7 +1442,7 @@ paths:
       tags:
         - page
       summary: Delete a page or an attachment
-      description: 'Deletes the node: a page with every node under it, its attachments among them, or an attachment, at one time: they go to the trash together. Its notebook''s editors and admins can, a reader cannot (forbidden). A node that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found. While another account''s edit session holds the lock of the page or of one under it, the deletion is page.locked, naming the first such page, level by level, and its holder in lock; the caller''s own sessions end with their pages.'
+      description: 'Deletes the node: a page with every node under it, its attachments among them, or an attachment, at one time: they go to the trash together, one item that restoreNode brings back until its restorable_until. Its notebook''s editors and admins can, a reader cannot (forbidden). A node that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found. While another account''s edit session holds the lock of the page or of one under it, the deletion is page.locked, naming the first such page, level by level, and its holder in lock; the caller''s own sessions end with their pages.'
       security:
         - bearer: []
       x-problem-codes:
@@ -1487,6 +1487,87 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TreeNode'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v0/notebooks/{notebook_id}/trash:
+    parameters:
+      - $ref: '#/components/parameters/NotebookID'
+    get:
+      operationId: listTrash
+      tags:
+        - page
+      summary: List a notebook's trash
+      description: 'The notebook''s trash, newer first, a page at a time: each item a node deleted with the nodes under it at one time, by its root, while it can be restored, until restorable_until, the instance''s trash_retention_seconds after its deletion. A node deleted with a page above it is no item of its own. Any role in the notebook can read it. A cursor the list cannot read is bad_request, before anything else; a notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found; a limit outside 1–100 is validation_failed.'
+      security:
+        - bearer: []
+      x-problem-codes:
+        - bad_request
+        - notebook.not_found
+        - validation_failed
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: A page of the notebook's trash.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrashItemPage'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v0/nodes/{node_id}/trash-item:
+    parameters:
+      - $ref: '#/components/parameters/NodeID'
+    get:
+      operationId: getTrashItem
+      tags:
+        - page
+      summary: Read a trash item
+      description: The trash item whose root is the node, as listTrash lists it. Any role in the node's notebook can read it. A node that does not exist, whose notebook is deleted, or whose notebook the caller has no role in is page.not_found; then a node not deleted is page.not_in_trash; a node deleted with a page above it is page.not_trash_root, naming the root of its item in root_id; an item past its restorable_until is page.restore_expired.
+      security:
+        - bearer: []
+      x-problem-codes:
+        - page.not_found
+        - page.not_in_trash
+        - page.not_trash_root
+        - page.restore_expired
+      responses:
+        '200':
+          description: The trash item.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrashItem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v0/nodes/{node_id}/restore:
+    parameters:
+      - $ref: '#/components/parameters/NodeID'
+    post:
+      operationId: restoreNode
+      tags:
+        - page
+      summary: Restore a trash item
+      description: 'Brings back the trash item whose root is the node: the nodes deleted with it at one time, their contents, versions and attachments'' files, in a changeset of its own, a trash_restore. Its notebook''s editors and admins can. It goes back where it was, under its parent at its place among its siblings, or at the notebook''s root where it was there; last at the notebook''s root when its parent is in the trash (parent_in_trash) or when its pages would be deeper than ten levels under it (too_deep). When a sibling there has its name, compared by its key, it is numbered, "Name 2", an attachment''s number before its extension, and renamed tells. It can be restored until its restorable_until. One restore brings back at most 10,000 pages and attachments, whose versions and records in changesets are 400,000 at most, and, of more than one page, at most 100 pages, 8 MiB of content and 20,000 links. A node that does not exist, whose notebook is deleted, or whose notebook the caller has no role in is page.not_found; then a reader is forbidden; then a node not deleted is page.not_in_trash, a node deleted with a page above it page.not_trash_root naming the root of its item in root_id, an item past its restorable_until page.restore_expired; then an item past the bounds is page.restore_too_large; then an item one of whose pages'' content the purge took is page.trash_changed, before any is parsed; when the server parses as much content as it can at once, the restore waits a moment, then is server_busy: the links are counted as the contents are parsed, so that their page.restore_too_large may come after it. An item restored, deleted again or purged in part since it was read is page.trash_changed, one past its restorable_until by the time it is restored page.restore_expired: read the trash again.'
+      security:
+        - bearer: []
+      x-problem-codes:
+        - page.not_found
+        - forbidden
+        - page.not_in_trash
+        - page.not_trash_root
+        - page.restore_expired
+        - page.restore_too_large
+        - server_busy
+        - page.trash_changed
+      responses:
+        '200':
+          description: The item's root, restored.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeRestored'
         default:
           $ref: '#/components/responses/Problem'
   /api/v0/pages/{page_id}/backlinks:
@@ -2243,6 +2324,10 @@ components:
               format: uuid
             display_name:
               type: string
+        root_id:
+          description: 'The root of the trash item a node was deleted with: page.not_trash_root names it, the item to restore. No other code carries it.'
+          type: string
+          format: uuid
     AuthTokens:
       description: 'A session''s tokens. Send access_token as "Authorization: Bearer"; access_token_expires_in counts from the response, so a client''s clock does not matter. When it expires, exchange refresh_token for the next pair at POST /api/v0/auth/refresh.'
       type: object
@@ -2455,6 +2540,7 @@ components:
         - asset_max_bytes
         - import_max_bytes
         - export_ttl_seconds
+        - trash_retention_seconds
       properties:
         product:
           description: Product name.
@@ -2495,6 +2581,11 @@ components:
           type: integer
           format: int64
           minimum: 600
+        trash_retention_seconds:
+          description: 'How long a deleted page or attachment can be restored from the trash, in seconds: jobs.purge_retention less an hour, after which the purge may take it.'
+          type: integer
+          format: int64
+          minimum: 82800
     WorkspaceRole:
       description: 'A member''s role: admin manages the workspace and its members, member and guest take part. Rules compare roles by set, never by order.'
       type: string
@@ -3010,7 +3101,7 @@ components:
           type: string
           format: date-time
         updated_at:
-          description: When the node was last created, renamed or moved; its content's writes do not change it.
+          description: When the node was last created, renamed, moved or restored from the trash; its content's writes do not change it.
           type: string
           format: date-time
     TreeNodeList:
@@ -3105,7 +3196,7 @@ components:
           type: string
           format: date-time
         updated_at:
-          description: When the page was last created, renamed or moved; its content's writes do not change it.
+          description: When the page was last created, renamed, moved or restored from the trash; its content's writes do not change it.
           type: string
           format: date-time
         ancestors:
@@ -3190,8 +3281,8 @@ components:
           description: When the session ends unless a heartbeat keeps it alive.
           type: string
           format: date-time
-    EditLockHolder:
-      description: The account whose alive edit session holds a page's lock.
+    UserRef:
+      description: 'An account, by its id and its display name, as of the answer: who made a changeset, holds a lock, started a job or deleted a node.'
       type: object
       additionalProperties: false
       required:
@@ -3212,9 +3303,9 @@ components:
         - expires_in
       properties:
         holder:
-          description: Who holds the lock; null while no one does.
+          description: The account whose alive edit session holds the lock; null while no one does.
           anyOf:
-            - $ref: '#/components/schemas/EditLockHolder'
+            - $ref: '#/components/schemas/UserRef'
             - type: 'null'
         expires_in:
           description: 'Whole seconds, rounded up, until the holder''s lease ends unless a heartbeat keeps it; null while no one holds the lock. A span, not a time: the client''s clock may be wrong.'
@@ -3252,21 +3343,8 @@ components:
         - version_restore
         - trash_restore
         - revert
-    ChangesetAuthor:
-      description: The account a changeset is by.
-      type: object
-      additionalProperties: false
-      required:
-        - user_id
-        - display_name
-      properties:
-        user_id:
-          type: string
-          format: uuid
-        display_name:
-          type: string
     VersionChangeset:
-      description: The changeset a version is of.
+      description: The changeset a version is of, and the account it is by.
       type: object
       additionalProperties: false
       required:
@@ -3288,7 +3366,7 @@ components:
           type: string
           format: date-time
         created_by:
-          $ref: '#/components/schemas/ChangesetAuthor'
+          $ref: '#/components/schemas/UserRef'
     PageVersion:
       description: 'A version of a page: the content a changeset left, which it holds from after base_revision to revision.'
       type: object
@@ -3464,6 +3542,148 @@ components:
           type:
             - string
             - 'null'
+          format: uuid
+    TrashPlacement:
+      description: 'Where a restore puts a trash item: under its parent where it was, original (parent_id null when it was at the root), or last at the notebook''s root, parent_id null, its parent being in the trash (parent_in_trash) or its pages too deep under it (too_deep).'
+      type: object
+      additionalProperties: false
+      required:
+        - parent_id
+        - reason
+      properties:
+        parent_id:
+          type:
+            - string
+            - 'null'
+          format: uuid
+        reason:
+          type: string
+          enum:
+            - original
+            - parent_in_trash
+            - too_deep
+    TrashAttachment:
+      description: An attachment's file in the trash.
+      type: object
+      additionalProperties: false
+      required:
+        - mime
+        - byte_size
+      properties:
+        mime:
+          description: The file's media type.
+          type: string
+        byte_size:
+          description: The file's size in bytes.
+          type: integer
+          format: int64
+    TrashItem:
+      description: 'A trash item: a node deleted with the nodes under it at one time, by its root, as it was deleted, and who deleted it, deleted_by.'
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - notebook_id
+        - kind
+        - name
+        - ancestors
+        - deleted_at
+        - deleted_by
+        - restorable_until
+        - pages
+        - assets
+        - restore_to
+        - revision
+        - asset
+      properties:
+        id:
+          type: string
+          format: uuid
+        notebook_id:
+          type: string
+          format: uuid
+        kind:
+          $ref: '#/components/schemas/NodeKind'
+        name:
+          description: The page's title, or the attachment's file name.
+          type: string
+        ancestors:
+          description: The pages it was under, from the root down to its parent, those in the trash among them; none at the root.
+          type: array
+          items:
+            $ref: '#/components/schemas/Ancestor'
+        deleted_at:
+          type: string
+          format: date-time
+        deleted_by:
+          $ref: '#/components/schemas/UserRef'
+        restorable_until:
+          description: Until when it can be restored, the instance's trash_retention_seconds after its deletion.
+          type: string
+          format: date-time
+        pages:
+          description: The pages deleted with it, itself among them when it is a page.
+          type: integer
+          minimum: 0
+        assets:
+          description: The attachments deleted with it, itself among them when it is an attachment.
+          type: integer
+          minimum: 0
+        restore_to:
+          $ref: '#/components/schemas/TrashPlacement'
+        revision:
+          description: A page's content's revision as it was deleted, whose version getPageVersionView shows; null for an attachment, and for a page whose content the purge took.
+          type:
+            - integer
+            - 'null'
+        asset:
+          description: An attachment's type and size; null for a page, and for an attachment whose file the purge took.
+          anyOf:
+            - $ref: '#/components/schemas/TrashAttachment'
+            - type: 'null'
+    TrashItemPage:
+      description: A page of a notebook's trash, newer first.
+      type: object
+      additionalProperties: false
+      required:
+        - data
+        - next_cursor
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrashItem'
+        next_cursor:
+          $ref: '#/components/schemas/NextCursor'
+    NodeRestored:
+      description: What a restore did.
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - kind
+        - name
+        - renamed
+        - placed
+        - changeset_id
+      properties:
+        id:
+          description: The item's root.
+          type: string
+          format: uuid
+        kind:
+          $ref: '#/components/schemas/NodeKind'
+        name:
+          description: Its name as the restore leaves it.
+          type: string
+        renamed:
+          description: Whether it was numbered, a sibling where it went back having its name.
+          type: boolean
+        placed:
+          $ref: '#/components/schemas/TrashPlacement'
+        changeset_id:
+          description: The restore's changeset, a trash_restore.
+          type: string
           format: uuid
     Backlink:
       description: A page that links to another.
@@ -3961,19 +4181,6 @@ components:
       enum:
         - web
         - api
-    TransferStarter:
-      description: Who started the job.
-      type: object
-      additionalProperties: false
-      required:
-        - user_id
-        - display_name
-      properties:
-        user_id:
-          type: string
-          format: uuid
-        display_name:
-          type: string
     TransferProgress:
       description: 'How many of the job''s nodes are done, of all: an export''s written; an import''s created or skipped, of those to create, 0 of 0 until its archive is read.'
       type: object
@@ -4063,7 +4270,7 @@ components:
           type: string
           format: date-time
     TransferJob:
-      description: 'An import or an export of a notebook, a job that runs in the background: queued, then running, then succeeded, failed or cancelled. An export''s archive expires a while after it succeeded, the instance''s export TTL, or at once when its starter''s next export of the notebook succeeds: a starter keeps only their latest export of a notebook.'
+      description: 'An import or an export of a notebook, a job that runs in the background: queued, then running, then succeeded, failed or cancelled. An export''s archive expires a while after it succeeded, the instance''s export TTL, or at once when its starter''s next export of the notebook succeeds: a starter keeps only their latest export of a notebook. created_by is its starter.'
       type: object
       additionalProperties: false
       required:
@@ -4106,7 +4313,7 @@ components:
         client:
           $ref: '#/components/schemas/TransferClient'
         created_by:
-          $ref: '#/components/schemas/TransferStarter'
+          $ref: '#/components/schemas/UserRef'
         created_at:
           type: string
           format: date-time
@@ -4235,7 +4442,7 @@ components:
         client:
           $ref: '#/components/schemas/TransferClient'
         created_by:
-          $ref: '#/components/schemas/TransferStarter'
+          $ref: '#/components/schemas/UserRef'
         created_at:
           type: string
           format: date-time

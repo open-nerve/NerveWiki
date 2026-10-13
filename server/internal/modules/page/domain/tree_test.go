@@ -54,7 +54,7 @@ func TestDepth(t *testing.T) {
 }
 
 // A subtree's height is its deepest level of pages: an attachment is no
-// level. It holds its node and every descendant, and nothing else: not a
+// level; it counts its pages and attachments. It holds its node and every descendant, and nothing else: not a
 // parent, a sibling or an uncle.
 func TestSubtree(t *testing.T) {
 	ids := make([]uuid.UUID, 4)
@@ -68,19 +68,22 @@ func TestSubtree(t *testing.T) {
 		return domain.SubtreeNode{Node: domain.Node{ID: ids[i], Kind: domain.KindAsset}, Level: level}
 	}
 	for _, tt := range []struct {
-		name    string
-		subtree domain.Subtree
-		height  int
+		name                  string
+		subtree               domain.Subtree
+		height, pages, assets int
 	}{
-		{"a lone node", domain.Subtree{at(0, 1)}, 1},
-		{"a child", domain.Subtree{at(0, 1), at(1, 2)}, 2},
-		{"three levels, the deep branch last", domain.Subtree{at(0, 1), at(1, 2), at(2, 2), at(3, 3)}, 3},
-		{"a lone attachment", domain.Subtree{asset(0, 1)}, 0},
-		{"a page with an attachment", domain.Subtree{at(0, 1), asset(1, 2)}, 1},
-		{"an attachment below the deepest page", domain.Subtree{at(0, 1), at(1, 2), asset(2, 2), asset(3, 3)}, 2},
+		{"a lone node", domain.Subtree{at(0, 1)}, 1, 1, 0},
+		{"a child", domain.Subtree{at(0, 1), at(1, 2)}, 2, 2, 0},
+		{"three levels, the deep branch last", domain.Subtree{at(0, 1), at(1, 2), at(2, 2), at(3, 3)}, 3, 4, 0},
+		{"a lone attachment", domain.Subtree{asset(0, 1)}, 0, 0, 1},
+		{"a page with an attachment", domain.Subtree{at(0, 1), asset(1, 2)}, 1, 1, 1},
+		{"an attachment below the deepest page", domain.Subtree{at(0, 1), at(1, 2), asset(2, 2), asset(3, 3)}, 2, 2, 2},
 	} {
 		if got := tt.subtree.Height(); got != tt.height {
 			t.Errorf("%s: Height() = %d, want %d", tt.name, got, tt.height)
+		}
+		if pages, assets := tt.subtree.Counts(); pages != tt.pages || assets != tt.assets {
+			t.Errorf("%s: Counts() = %d, %d, want %d, %d", tt.name, pages, assets, tt.pages, tt.assets)
 		}
 	}
 	tree := domain.Subtree{at(0, 1), at(1, 2), at(3, 3)}

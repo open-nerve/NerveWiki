@@ -293,7 +293,9 @@ func TestTheLinksAChangeReaches(t *testing.T) {
 // targets and sources however many times a connection reads them: pgx's
 // cached statement, which the server may plan once for any arguments from
 // its sixth run, compared each link with them one by one (M6 closeout
-// FA5-Q1). The rest are cached.
+// FA5-Q1); and so are their resolutions written, which compared each with
+// each once the statistics counted no link (M8/P2 design 3.11). The rest
+// are cached.
 func TestTheLinksReachedAreReadPlannedWithTheReach(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
@@ -313,10 +315,13 @@ func TestTheLinksReachedAreReadPlannedWithTheReach(t *testing.T) {
 		if err != nil || len(got) != 1 {
 			t.Fatalf("Links: %d, %v; want 1", len(got), err)
 		}
+		if err := s.SetResolutions(ctx, got); err != nil {
+			t.Fatal(err)
+		}
 	}
 	cached := pgtest.CachedStatements(t, pool)
-	if slices.Contains(cached, "LinksReached") || !slices.Contains(cached, "InsertIndexedPage") {
-		t.Errorf("the cached statements are %v: want InsertIndexedPage, not LinksReached", cached)
+	if slices.Contains(cached, "LinksReached") || slices.Contains(cached, "SetResolutions") || !slices.Contains(cached, "InsertIndexedPage") {
+		t.Errorf("the cached statements are %v: want InsertIndexedPage, not LinksReached nor SetResolutions", cached)
 	}
 }
 

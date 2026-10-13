@@ -149,7 +149,7 @@ func TestPageContent(t *testing.T) {
 	if want := (app.PageContent{Content: "# A\n", Revision: 4, Hash: sum[:]}); err != nil || !reflect.DeepEqual(got, want) {
 		t.Errorf("PageContent(A) = %+v, %v; want its content at revision 4, with its hash", got, err)
 	}
-	if err := f.s.DeleteNodes(ctx, []uuid.UUID{a.ID}, f.alice, now()); err != nil {
+	if err := f.s.DeleteNodes(ctx, deletion([]uuid.UUID{a.ID}, f.alice, now())); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := f.s.PageContent(ctx, a.ID); !errors.Is(err, app.ErrNotFound) {
@@ -236,7 +236,7 @@ func TestRecordItemAndRevisionMerge(t *testing.T) {
 	}
 	first, second := domain.TreeState{Name: "A", SortOrder: 0}, domain.TreeState{Name: "B", SortOrder: 0}
 	for _, c := range []domain.Change{{NodeID: n.ID, After: &first}, {NodeID: n.ID, Before: &first, After: &second}} {
-		if err := f.s.RecordItem(ctx, app.Item{ID: uuid.NewV7(), ChangesetID: cs.ID, Change: c, At: now()}); err != nil {
+		if err := f.s.RecordItems(ctx, []app.Item{{ID: uuid.NewV7(), ChangesetID: cs.ID, Change: c, At: now()}}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -269,7 +269,7 @@ func TestRecordItemKeepsTheTreeStates(t *testing.T) {
 		t.Fatal(err)
 	}
 	before, after := n.State(), domain.TreeState{ParentID: &q.ID, Name: "N", SortOrder: 2.5}
-	if err := f.s.RecordItem(ctx, app.Item{ID: uuid.NewV7(), ChangesetID: cs.ID, Change: domain.Change{NodeID: n.ID, Before: &before, After: &after}, At: now()}); err != nil {
+	if err := f.s.RecordItems(ctx, []app.Item{{ID: uuid.NewV7(), ChangesetID: cs.ID, Change: domain.Change{NodeID: n.ID, Before: &before, After: &after}, At: now()}}); err != nil {
 		t.Fatal(err)
 	}
 	if got := f.count(t, `SELECT count(*) FROM changeset_items WHERE node_id = $1 AND before_parent_id = $2 AND before_name = 'N'
@@ -311,7 +311,7 @@ func TestDeleteNotebooksPages(t *testing.T) {
 	}
 	for _, n := range []domain.Node{root, child, trashed} {
 		state := n.State()
-		if err := f.s.RecordItem(ctx, app.Item{ID: uuid.NewV7(), ChangesetID: cs.ID, Change: domain.Change{NodeID: n.ID, After: &state}, At: now()}); err != nil {
+		if err := f.s.RecordItems(ctx, []app.Item{{ID: uuid.NewV7(), ChangesetID: cs.ID, Change: domain.Change{NodeID: n.ID, After: &state}, At: now()}}); err != nil {
 			t.Fatal(err)
 		}
 		sum := sha256.Sum256(nil)
@@ -490,7 +490,7 @@ func TestDeleteNodes(t *testing.T) {
 	}
 	for _, n := range []domain.Node{root, child, trashed, sibling} {
 		state := n.State()
-		if err := f.s.RecordItem(ctx, app.Item{ID: uuid.NewV7(), ChangesetID: cs.ID, Change: domain.Change{NodeID: n.ID, After: &state}, At: now()}); err != nil {
+		if err := f.s.RecordItems(ctx, []app.Item{{ID: uuid.NewV7(), ChangesetID: cs.ID, Change: domain.Change{NodeID: n.ID, After: &state}, At: now()}}); err != nil {
 			t.Fatal(err)
 		}
 		sum := sha256.Sum256(nil)
@@ -504,7 +504,7 @@ func TestDeleteNodes(t *testing.T) {
 		f.exec(t, "UPDATE "+table+" SET deleted_at = $2 WHERE node_id = $1", trashed.ID, earlier)
 	}
 	at := now().Add(time.Minute)
-	if err := f.s.DeleteNodes(ctx, []uuid.UUID{root.ID, child.ID, trashed.ID}, bob, at); err != nil {
+	if err := f.s.DeleteNodes(ctx, deletion([]uuid.UUID{root.ID, child.ID, trashed.ID}, bob, at)); err != nil {
 		t.Fatal(err)
 	}
 	if got := f.count(t, "SELECT count(*) FROM nodes WHERE deleted_at = $1 AND updated_at = $1 AND updated_by_id = $2", at, bob); got != 2 {
@@ -535,6 +535,154 @@ func TestDeleteNodes(t *testing.T) {
 	}
 }
 
+// deletion is the deletion of ids, the first their root, by by at at, its
+// counts the ids': a test's.
+func deletion(ids []uuid.UUID, by uuid.UUID, at time.Time) app.Deletion {
+	return app.Deletion{Root: ids[0], IDs: ids, Pages: len(ids), Height: 1, By: by, At: at}
+}
+
+// trashMark is a node's trash columns, the counts -1 when NULL.
+func (f fixture) trashMark(t *testing.T, id uuid.UUID) string {
+	t.Helper()
+	var root bool
+	var pages, assets, height int
+	if err := f.pool.QueryRow(context.Background(), `SELECT trash_root, coalesce(trash_pages, -1), coalesce(trash_assets, -1),
+		coalesce(trash_height, -1) FROM nodes WHERE id = $1`, id).Scan(&root, &pages, &assets, &height); err != nil {
+		t.Fatal(err)
+	}
+	return fmt.Sprintf("%v %d %d %d", root, pages, assets, height)
+}
+
+// A deletion's root is a trash item with the counts it is given, its
+// descendants not; what an earlier deletion put in the trash keeps its own
+// mark (M8/P2 design 3.3).
+func TestDeleteNodesMarksItsRoot(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	r := f.page(t, f.eng, nil, "R", 0)
+	c := f.page(t, f.eng, &r.ID, "C", 0)
+	g := f.page(t, f.eng, &c.ID, "G", 0)
+	e := f.page(t, f.eng, &c.ID, "E", 1)
+	earlier, at := now(), now().Add(time.Minute)
+	if err := f.s.DeleteNodes(ctx, app.Deletion{Root: e.ID, IDs: []uuid.UUID{e.ID}, Pages: 1, Height: 1, By: f.alice, At: earlier}); err != nil {
+		t.Fatal(err)
+	}
+	d := app.Deletion{Root: r.ID, IDs: []uuid.UUID{r.ID, c.ID, g.ID, e.ID}, Pages: 3, Assets: 1, Height: 3, By: f.alice, At: at}
+	if err := f.s.DeleteNodes(ctx, d); err != nil {
+		t.Fatal(err)
+	}
+	for _, tt := range []struct {
+		name string
+		id   uuid.UUID
+		want string
+	}{{"R", r.ID, "true 3 1 3"}, {"C", c.ID, "false -1 -1 -1"}, {"G", g.ID, "false -1 -1 -1"}, {"E", e.ID, "true 1 0 1"}} {
+		if got := f.trashMark(t, tt.id); got != tt.want {
+			t.Errorf("%s's mark = %s, want %s", tt.name, got, tt.want)
+		}
+	}
+	if got := f.count(t, "SELECT count(*) FROM nodes WHERE id = $1 AND deleted_at = $2", e.ID, earlier); got != 1 {
+		t.Error("E lost its own time")
+	}
+}
+
+// A unit deletes from the top down: a deletion of a node whose child was
+// deleted at the same time is refused, which would leave the child a root
+// within its parent's group; a sibling's is not.
+func TestDeleteNodesRefusesAStray(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	p := f.page(t, f.eng, nil, "P", 0)
+	child := f.page(t, f.eng, &p.ID, "Child", 0)
+	sibling := f.page(t, f.eng, nil, "Sibling", 1)
+	at := now()
+	for _, n := range []domain.Node{child, sibling} {
+		if err := f.s.DeleteNodes(ctx, deletion([]uuid.UUID{n.ID}, f.alice, at)); err != nil {
+			t.Fatalf("deleting %s: %v", n.Name, err)
+		}
+	}
+	if err := f.s.DeleteNodes(ctx, deletion([]uuid.UUID{p.ID}, f.alice, at)); err == nil {
+		t.Error("DeleteNodes(P after its child, at one time) = nil, want an error")
+	}
+	other := f.page(t, f.eng, nil, "Other", 2)
+	if err := f.s.DeleteNodes(ctx, deletion([]uuid.UUID{other.ID}, f.alice, at)); err != nil {
+		t.Errorf("DeleteNodes(Other after its sibling, at one time) = %v, want no error", err)
+	}
+}
+
+// itemRow is an item's columns, read back as text.
+func (f fixture) itemRow(t *testing.T, changeset, node uuid.UUID) string {
+	t.Helper()
+	var row string
+	if err := f.pool.QueryRow(context.Background(), `SELECT concat_ws(' | ', coalesce(before_parent_id::text, '-'),
+		coalesce(before_name, '-'), coalesce(before_sort_order::text, '-'), coalesce(after_parent_id::text, '-'),
+		coalesce(after_name, '-'), coalesce(after_sort_order::text, '-'), restored::text, coalesce(revision::text, '-'),
+		coalesce((deleted_at = updated_at)::text, '-'))
+		FROM changeset_items WHERE changeset_id = $1 AND node_id = $2`, changeset, node).Scan(&row); err != nil {
+		t.Fatal(err)
+	}
+	return row
+}
+
+// A step's items are one write: each with its states, a parent at the root
+// and a state there is none of NULL; a restore's and a page's creation's
+// with their revision, an attachment's without; a deletion's in the trash
+// at its time. Merged again, an item keeps its before, its restore and its
+// revision (M8/P2 design 3.3).
+func TestRecordItemsWritesEachState(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	p := f.page(t, f.eng, nil, "P", 0)
+	created, deleted, moved, restored, asset := f.page(t, f.eng, nil, "Created", 1), f.page(t, f.eng, &p.ID, "Deleted", 0),
+		f.page(t, f.eng, nil, "Moved", 2), f.page(t, f.eng, nil, "Restored", 3), f.page(t, f.eng, &p.ID, "a.png", 1)
+	cs := app.Changeset{ID: uuid.NewV7(), NotebookID: f.eng, Kind: "edit", Client: domain.ClientWeb, By: f.alice, At: now()}
+	if err := f.s.CreateChangeset(ctx, cs); err != nil {
+		t.Fatal(err)
+	}
+	at := now().Add(time.Minute)
+	createdAt, deletedAt := created.State(), deleted.State()
+	movedFrom, movedTo := moved.State(), domain.TreeState{ParentID: &p.ID, Name: "Moved", SortOrder: 2.5}
+	restoredAt, assetAt := restored.State(), asset.State()
+	item := func(c domain.Change) app.Item {
+		return app.Item{ID: uuid.NewV7(), ChangesetID: cs.ID, Change: c, At: at}
+	}
+	if err := f.s.RecordItems(ctx, []app.Item{
+		item(domain.Change{NodeID: created.ID, After: &createdAt, Revision: 1}),
+		item(domain.Change{NodeID: deleted.ID, Before: &deletedAt}),
+		item(domain.Change{NodeID: moved.ID, Before: &movedFrom, After: &movedTo, Revision: 4}),
+		item(domain.Change{NodeID: restored.ID, After: &restoredAt, Revision: 5, Restored: &domain.Restored{DeletedAt: now()}}),
+		item(domain.Change{NodeID: asset.ID, After: &assetAt, Restored: &domain.Restored{DeletedAt: now(), Asset: true}}),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	pid := p.ID.String()
+	for _, tt := range []struct {
+		name string
+		id   uuid.UUID
+		want string
+	}{
+		{"the creation", created.ID, "- | - | - | - | Created | 1 | false | 1 | -"},
+		{"the deletion", deleted.ID, pid + " | Deleted | 0 | - | - | - | false | - | true"},
+		{"the move", moved.ID, "- | Moved | 2 | " + pid + " | Moved | 2.5 | false | - | -"},
+		{"the restore", restored.ID, "- | - | - | - | Restored | 3 | true | 5 | -"},
+		{"the attachment's restore", asset.ID, "- | - | - | " + pid + " | a.png | 1 | true | - | -"},
+	} {
+		if got := f.itemRow(t, cs.ID, tt.id); got != tt.want {
+			t.Errorf("%s's item = %s, want %s", tt.name, got, tt.want)
+		}
+	}
+	renamed := domain.TreeState{Name: "Renamed", SortOrder: 3}
+	if err := f.s.RecordItems(ctx, []app.Item{item(domain.Change{NodeID: restored.ID, Before: &restoredAt, After: &renamed})}); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := f.itemRow(t, cs.ID, restored.ID), "- | - | - | - | Renamed | 3 | true | 5 | -"; got != want {
+		t.Errorf("the restore renamed's item = %s, want %s", got, want)
+	}
+	other := app.Item{ID: uuid.NewV7(), ChangesetID: uuid.NewV7(), Change: domain.Change{NodeID: p.ID, After: &createdAt}, At: at}
+	if err := f.s.RecordItems(ctx, []app.Item{item(domain.Change{NodeID: p.ID, After: &createdAt}), other}); err == nil {
+		t.Error("RecordItems(items of two changesets) = nil, want an error")
+	}
+}
+
 // An item that deletes its node goes to the trash with it, at its time:
 // inserted so, or merged so after a rename in the same changeset, keeping
 // the first before.
@@ -553,7 +701,7 @@ func TestADeletionsItemIsDeletedWithItsNode(t *testing.T) {
 		{NodeID: m.ID, Before: &mState, After: &renamed},
 		{NodeID: m.ID, Before: &renamed},
 	} {
-		if err := f.s.RecordItem(ctx, app.Item{ID: uuid.NewV7(), ChangesetID: cs.ID, Change: c, At: at}); err != nil {
+		if err := f.s.RecordItems(ctx, []app.Item{{ID: uuid.NewV7(), ChangesetID: cs.ID, Change: c, At: at}}); err != nil {
 			t.Fatal(err)
 		}
 	}

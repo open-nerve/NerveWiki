@@ -23,7 +23,8 @@ func NewGetVersionView(r VersionReads, markdown Markdown, budget ParseBudget) *G
 // Execute renders the version of the page id holding revision, found as
 // GetVersion finds it, for this page at the version's own revision, within
 // the parse budget, as GetPageView renders the page's content: its links
-// resolved on the tree as it is now.
+// resolved on the tree as it is now, a page in the trash's from where it
+// was (M8/P2 design 3.7).
 func (g *GetVersionView) Execute(ctx context.Context, id uuid.UUID, revision int) (ReadingView, error) {
 	n, err := readableAny(ctx, g.r.Notebooks, g.r.Nodes, g.r.Auth, id, domain.ActionHistory)
 	if err != nil {
@@ -38,7 +39,8 @@ func (g *GetVersionView) Execute(ctx context.Context, id uuid.UUID, revision int
 		return ReadingView{}, err
 	}
 	defer hold.Release()
-	r, err := g.markdown.Render(ctx, content, PageRef{NotebookID: n.NotebookID, PageID: n.ID, Revision: v.Revision})
+	r, err := g.markdown.Render(ctx, content, PageRef{NotebookID: n.NotebookID, PageID: n.ID, Revision: v.Revision,
+		Deleted: n.DeletedAt != nil})
 	if err != nil {
 		return ReadingView{}, err
 	}

@@ -63,6 +63,19 @@ func (s Subtree) Height() int {
 	return h
 }
 
+// Counts are how many pages and attachments the subtree holds: a trash
+// item's (M8/P2 design 3.3).
+func (s Subtree) Counts() (pages, assets int) {
+	for _, n := range s {
+		if n.Node.Kind == KindAsset {
+			assets++
+		} else {
+			pages++
+		}
+	}
+	return pages, assets
+}
+
 // Holds reports whether id is the subtree's node or one of its
 // descendants: a parent the node cannot move under.
 func (s Subtree) Holds(id uuid.UUID) bool {

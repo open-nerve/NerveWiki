@@ -11,6 +11,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/transfer/adapter/http/gen"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/transfer/app"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/transfer/domain"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/apigen"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
@@ -96,7 +97,7 @@ func jobOf(v app.JobView) gen.TransferJob {
 	j := v.Job
 	return gen.TransferJob{
 		ID: j.ID, NotebookID: j.NotebookID, RootID: maybe(j.RootID), Name: j.Name, Kind: gen.TransferKind(j.Kind), State: gen.TransferState(j.State),
-		Client: gen.TransferClient(j.Client), CreatedBy: gen.TransferStarter{UserID: j.CreatedBy, DisplayName: v.CreatedByName},
+		Client: gen.TransferClient(j.Client), CreatedBy: apigen.UserRef{UserID: j.CreatedBy, DisplayName: v.CreatedByName},
 		CreatedAt: j.CreatedAt, StartedAt: maybe(j.Started), CancelRequestedAt: maybe(j.CancelRequested), FinishedAt: maybe(j.Finished),
 		Progress: gen.TransferProgress{Done: j.Progress.Done, Total: j.Progress.Total}, ResultBytes: maybe(j.ResultBytes),
 		Report: reportOf(j.Report), Download: downloadOf(j.ID, v.Download),

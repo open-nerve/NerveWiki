@@ -8,14 +8,27 @@ VALUES (sqlc.arg(id), sqlc.arg(notebook_id), sqlc.arg(kind), sqlc.narg(reverts_i
 -- activity reads.
 UPDATE changesets SET updated_at = sqlc.arg(now) WHERE id = sqlc.arg(id);
 
--- name: RecordItem :exec
--- A node's change in a changeset: the first one inserts its before and after, a later one moves the after
--- on and keeps the before (M4 design 4). An item that deletes its node goes to the trash with it.
+-- name: RecordItems :exec
+-- A step's changes of nodes in a changeset, one statement (M8/P2 design 3.3): each node's first one inserts its before
+-- and after, a later one moves the after on and keeps the before, restored and revision (M4 design 4). An item that
+-- deletes its node goes to the trash with it. A step changes each node once, so no row is reached twice. The arrays
+-- are the items' columns, a parent at the root and a state there is none of marked as linking's SetResolutions marks
+-- none: the zero id; has_before and has_after; revision 0 for none.
 INSERT INTO changeset_items (id, changeset_id, node_id, before_parent_id, before_name, before_sort_order,
-    after_parent_id, after_name, after_sort_order, created_at, updated_at, deleted_at)
-VALUES (sqlc.arg(id), sqlc.arg(changeset_id), sqlc.arg(node_id), sqlc.narg(before_parent_id), sqlc.narg(before_name),
-    sqlc.narg(before_sort_order), sqlc.narg(after_parent_id), sqlc.narg(after_name), sqlc.narg(after_sort_order),
-    sqlc.arg(now), sqlc.arg(now), sqlc.narg(deleted_at))
+    after_parent_id, after_name, after_sort_order, restored, revision, created_at, updated_at, deleted_at)
+SELECT u.id, sqlc.arg(changeset_id), u.node_id,
+    CASE WHEN u.has_before THEN NULLIF(u.before_parent_id, '00000000-0000-0000-0000-000000000000'::uuid) END,
+    CASE WHEN u.has_before THEN u.before_name END, CASE WHEN u.has_before THEN u.before_sort_order END,
+    CASE WHEN u.has_after THEN NULLIF(u.after_parent_id, '00000000-0000-0000-0000-000000000000'::uuid) END,
+    CASE WHEN u.has_after THEN u.after_name END, CASE WHEN u.has_after THEN u.after_sort_order END,
+    u.restored, NULLIF(u.revision, 0), sqlc.arg(now), sqlc.arg(now),
+    CASE WHEN u.has_after THEN NULL ELSE sqlc.arg(now)::timestamptz END
+FROM (SELECT unnest(sqlc.arg(ids)::uuid[]) AS id, unnest(sqlc.arg(node_ids)::uuid[]) AS node_id,
+        unnest(sqlc.arg(has_befores)::boolean[]) AS has_before, unnest(sqlc.arg(before_parent_ids)::uuid[]) AS before_parent_id,
+        unnest(sqlc.arg(before_names)::text[]) AS before_name, unnest(sqlc.arg(before_sort_orders)::float8[]) AS before_sort_order,
+        unnest(sqlc.arg(has_afters)::boolean[]) AS has_after, unnest(sqlc.arg(after_parent_ids)::uuid[]) AS after_parent_id,
+        unnest(sqlc.arg(after_names)::text[]) AS after_name, unnest(sqlc.arg(after_sort_orders)::float8[]) AS after_sort_order,
+        unnest(sqlc.arg(restored)::boolean[]) AS restored, unnest(sqlc.arg(revisions)::integer[]) AS revision) AS u
 ON CONFLICT (changeset_id, node_id) DO UPDATE
 SET after_parent_id = excluded.after_parent_id, after_name = excluded.after_name,
     after_sort_order = excluded.after_sort_order, updated_at = excluded.updated_at, deleted_at = excluded.deleted_at;

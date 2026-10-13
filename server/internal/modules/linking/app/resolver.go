@@ -14,7 +14,7 @@ import (
 // Under the notebook's lock, a link or an alias of a page the notebook
 // does not have is a defect: an error.
 func (x Index) resolve(ctx context.Context, notebookID uuid.UUID, links []Link) ([]Link, error) {
-	rs, missing, err := resolutions(ctx, x.Store, x.Pages, notebookID, links)
+	rs, missing, err := resolutions(ctx, x.Store, x.Pages, notebookID, links, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -47,8 +47,11 @@ const checkEvery = 4096
 // costs one resolution against the pages of its name (P3B review M1). A
 // target looks only at the pages whose path ends as it does, so that a page
 // of distinct paths to pages of one name costs about as many as it has
-// (M6 closeout FA-I1); and a context ended stops it.
-func resolutions(ctx context.Context, store Store, pages Pages, notebookID uuid.UUID, links []Link) (
+// (M6 closeout FA-I1); and a context ended stops it. known are pages whose
+// paths the caller read, a page in the trash's (M8/P2 design 3.7): their
+// links resolve from them, which Paths, of the pages alive, would not
+// find; the candidates and the aliases are still the pages alive alone.
+func resolutions(ctx context.Context, store Store, pages Pages, notebookID uuid.UUID, links []Link, known []domain.Node) (
 	[]domain.Resolution, []uuid.UUID, error,
 ) {
 	if len(links) == 0 {
@@ -58,11 +61,17 @@ func resolutions(ctx context.Context, store Store, pages Pages, notebookID uuid.
 	parsed := make([]bool, len(links))
 	var keys []string
 	ids := make([]uuid.UUID, 0, len(links))
+	read := make(map[uuid.UUID]bool, len(known))
+	for _, n := range known {
+		read[n.ID] = true
+	}
 	for i, l := range links {
 		if targets[i], parsed[i] = domain.ParseTarget(l.Target); parsed[i] {
 			keys = append(keys, targets[i].LastKeys()...)
 		}
-		ids = append(ids, l.SourceID)
+		if !read[l.SourceID] {
+			ids = append(ids, l.SourceID)
+		}
 	}
 	slices.Sort(keys)
 	keys = slices.Compact(keys)
@@ -88,8 +97,11 @@ func resolutions(ctx context.Context, store Store, pages Pages, notebookID uuid.
 	if err != nil {
 		return nil, nil, err
 	}
-	byID := make(map[uuid.UUID]domain.Node, len(nodes))
+	byID := make(map[uuid.UUID]domain.Node, len(nodes)+len(known))
 	for _, n := range nodes {
+		byID[n.ID] = n
+	}
+	for _, n := range known {
 		byID[n.ID] = n
 	}
 	reach := make(map[string]int)

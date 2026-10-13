@@ -14,11 +14,14 @@ import (
 )
 
 // Page is a page whose facts the index takes: its notebook, and the
-// revision of its content they are of.
+// revision of its content they are of. Deleted is a page in the trash,
+// whose view resolves its links: the index has none of it (M8/P2 design
+// 3.7).
 type Page struct {
 	ID         uuid.UUID
 	NotebookID uuid.UUID
 	Revision   int
+	Deleted    bool
 }
 
 // Dropped is what a page's rows held that the index's maintenance still
@@ -201,6 +204,10 @@ type Pages interface {
 	// Subtree is the node id of notebookID and the pages and attachments
 	// under it.
 	Subtree(ctx context.Context, notebookID, id uuid.UUID) ([]domain.Step, error)
+	// SourcePath is the page id of notebookID, deleted or not, with its
+	// path from the root through its ancestors, deleted or not; false for
+	// none (M8/P2 design 3.7: the view of a page in the trash).
+	SourcePath(ctx context.Context, notebookID, id uuid.UUID) (domain.Node, bool, error)
 }
 
 // LinksChanged is the links event of a unit (M6 design 4.8): the pages

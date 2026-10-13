@@ -16,6 +16,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/app"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/apigen"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
@@ -115,6 +116,9 @@ type UseCases struct {
 	GetVersion      GetVersionUseCase
 	GetVersionView  GetVersionViewUseCase
 	RestoreVersion  RestoreVersionUseCase
+	ListTrash       ListTrashUseCase
+	GetTrashItem    GetTrashItemUseCase
+	RestoreNode     RestoreNodeUseCase
 }
 
 // Register mounts the module's routes on router, the root router from
@@ -327,10 +331,10 @@ func (h handler) ToggleTask(ctx context.Context, req gen.ToggleTaskRequestObject
 // it.
 func editLockOf(l app.LockView) gen.EditLock {
 	if l.Holder == nil {
-		return gen.EditLock{Holder: nullable.NewNullNullable[gen.EditLockHolder](), ExpiresIn: nullable.NewNullNullable[int]()}
+		return gen.EditLock{Holder: nullable.NewNullNullable[apigen.UserRef](), ExpiresIn: nullable.NewNullNullable[int]()}
 	}
 	return gen.EditLock{
-		Holder:    nullable.NewNullableWithValue(gen.EditLockHolder{UserID: l.Holder.UserID, DisplayName: l.Holder.DisplayName}),
+		Holder:    nullable.NewNullableWithValue(apigen.UserRef{UserID: l.Holder.UserID, DisplayName: l.Holder.DisplayName}),
 		ExpiresIn: nullable.NewNullableWithValue(l.ExpiresIn),
 	}
 }

@@ -56,6 +56,7 @@ func TestServesTheInstanceAPI(t *testing.T) {
 		AssetMaxBytes  int64  `json:"asset_max_bytes"`
 		ImportMaxBytes int64  `json:"import_max_bytes"`
 		ExportTTL      int64  `json:"export_ttl_seconds"`
+		TrashRetention int64  `json:"trash_retention_seconds"`
 	}
 	if err := json.Unmarshal(body, &got); err != nil {
 		t.Fatalf("decode %s: %v", body, err)
@@ -64,8 +65,10 @@ func TestServesTheInstanceAPI(t *testing.T) {
 	if res.StatusCode != http.StatusOK || got.Product != "Nerve Wiki" || got.Version != info.Version || got.Commit != info.Commit || got.APIVersion != "v0" {
 		t.Errorf("GET /api/v0/instance = %d %s, want 200 Nerve Wiki %s %s v0", res.StatusCode, body, info.Version, info.Commit)
 	}
-	if got.AssetMaxBytes != 3<<20 || got.ImportMaxBytes != 5<<20 || got.ExportTTL != 5400 {
-		t.Errorf("GET /api/v0/instance = %s, want asset.max_bytes 3 MiB, transfer.import_max_bytes 5 MiB, transfer.export_ttl 5400 s", body)
+	if got.AssetMaxBytes != 3<<20 || got.ImportMaxBytes != 5<<20 || got.ExportTTL != 5400 ||
+		got.TrashRetention != int64((cfg.Jobs.PurgeRetention-time.Hour)/time.Second) {
+		t.Errorf("GET /api/v0/instance = %s, want asset.max_bytes 3 MiB, transfer.import_max_bytes 5 MiB, transfer.export_ttl 5400 s, "+
+			"jobs.purge_retention less an hour", body)
 	}
 	if res.Header.Get(httpserver.HeaderRequestID) == "" {
 		t.Error("response has no X-Request-Id: the platform middleware did not run")

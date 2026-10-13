@@ -21,13 +21,16 @@ import (
 
 // WriterDeps are what the write unit needs.
 type WriterDeps struct {
-	Tx            Tx
-	Clock         Clock
-	Auth          shared.Authorizer
-	Workspaces    Workspaces
-	Notebooks     Notebooks
-	Nodes         Nodes
-	NodeWriter    NodeWriter
+	Tx         Tx
+	Clock      Clock
+	Auth       shared.Authorizer
+	Workspaces Workspaces
+	Notebooks  Notebooks
+	Nodes      Nodes
+	NodeWriter NodeWriter
+	// Trash reads a trash item again under the notebook's lock: its
+	// restore's.
+	Trash         Trash
 	Changesets    ChangesetWriter
 	SessionWriter SessionWriter
 	// Names gives the name of who released a session's lock (M5 design
@@ -230,10 +233,8 @@ func (u *Unit) apply(ctx context.Context, s Step, participate bool, write func(c
 	if err := write(ctx); err != nil {
 		return err
 	}
-	for _, c := range s.Changes {
-		if err := u.recordItem(ctx, c); err != nil {
-			return err
-		}
+	if err := u.recordItems(ctx, s.Changes); err != nil {
+		return err
 	}
 	if !participate {
 		return nil
@@ -293,21 +294,34 @@ func (u *Unit) ensureChangeset(ctx context.Context) error {
 	return nil
 }
 
-// recordItem merges c into the unit's changes, and into the changeset's
-// item of its node when it moves the node. No unit of M4 creates a node
-// and deletes it: their item would have neither state, which the table
-// refuses (M4/P2 design 3.2).
-func (u *Unit) recordItem(ctx context.Context, c domain.Change) error {
-	if i, ok := u.merged[c.NodeID]; ok {
-		u.changes[i] = u.changes[i].Then(c)
-	} else {
-		u.merged[c.NodeID] = len(u.changes)
-		u.changes = append(u.changes, c)
+// recordItems merges a step's changes into the unit's, and those that move
+// their node into the changeset's items of their nodes, in one write: none
+// when none does (M8/P2 design 3.3). A step changes each node once; one
+// that changes a node twice is its caller's defect. No unit of M4 creates
+// a node and deletes it: their item would have neither state, which the
+// table refuses (M4/P2 design 3.2).
+func (u *Unit) recordItems(ctx context.Context, changes []domain.Change) error {
+	items := make([]Item, 0, len(changes))
+	seen := make(map[uuid.UUID]bool, len(changes))
+	for _, c := range changes {
+		if seen[c.NodeID] {
+			return fmt.Errorf("a page write unit's step changes node %s twice", c.NodeID)
+		}
+		seen[c.NodeID] = true
+		if i, ok := u.merged[c.NodeID]; ok {
+			u.changes[i] = u.changes[i].Then(c)
+		} else {
+			u.merged[c.NodeID] = len(u.changes)
+			u.changes = append(u.changes, c)
+		}
+		if c.Moves() {
+			items = append(items, Item{ID: uuid.NewV7(), ChangesetID: u.changeset, Change: c, At: u.write.At})
+		}
 	}
-	if !c.Moves() {
+	if len(items) == 0 {
 		return nil
 	}
-	return u.w.d.Changesets.RecordItem(ctx, Item{ID: uuid.NewV7(), ChangesetID: u.changeset, Change: c, At: u.write.At})
+	return u.w.d.Changesets.RecordItems(ctx, items)
 }
 
 // content is the page nodeID's content text at revision, as the unit

@@ -87,6 +87,8 @@ sql:
       - migrations/sql/00030_page_changesets_import.sql
       - migrations/sql/00033_page_revisions_node_revision.sql
       - migrations/sql/00034_page_changesets_history.sql
+      - migrations/sql/00035_page_nodes_trash.sql
+      - migrations/sql/00036_page_changeset_items_restored.sql
     queries: internal/modules/page/adapter/postgres/queries
     gen:
       go:

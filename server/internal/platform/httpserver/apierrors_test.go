@@ -36,12 +36,20 @@ func (f fieldErr) ProblemField() string { return f.field }
 func (f fieldErr) ProblemCode() string  { return f.code }
 
 // memberErr is a ProblemError with the members only some codes carry: a
-// lock, who ended a session, or neither (ok false).
+// lock, who ended a session, a trash item's root, or none (ok false).
 type memberErr struct {
 	problemErr
 	lock    *ProblemLock
 	locks   []ProblemLock
 	endedBy *ProblemPerson
+	rootID  *uuid.UUID
+}
+
+func (e memberErr) ProblemRootID() (uuid.UUID, bool) {
+	if e.rootID == nil {
+		return uuid.UUID{}, false
+	}
+	return *e.rootID, true
 }
 
 func (e memberErr) ProblemLocks(each func(pageID, userID uuid.UUID, displayName string)) {
@@ -231,6 +239,9 @@ func TestWriteMapsProblemErrors(t *testing.T) {
 			endedBy: &ProblemPerson{UserID: uuid.MustParse(lockHolder), DisplayName: "Ada"}}, http.StatusConflict,
 			`{"status":409,"code":"page.edit_session_unlocked","title":"Conflict","detail":"Unlocked.",` +
 				`"ended_by":{"user_id":"` + lockHolder + `","display_name":"Ada"}}`, ""},
+		{"the root", memberErr{problemErr: problemErr{status: http.StatusConflict, code: "page.not_trash_root", detail: "Not a root."},
+			rootID: new(uuid.MustParse(lockedPage))}, http.StatusConflict,
+			`{"status":409,"code":"page.not_trash_root","title":"Conflict","detail":"Not a root.","root_id":"` + lockedPage + `"}`, ""},
 		{"locks", memberErr{problemErr: problemErr{status: http.StatusConflict, code: "linking.pages_locked", detail: "Pages are being edited."},
 			locks: []ProblemLock{
 				{PageID: uuid.MustParse(lockedPage), UserID: uuid.MustParse(lockHolder), DisplayName: "Ada"},

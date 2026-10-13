@@ -29,6 +29,11 @@ type LinkTargets interface {
 	// Paths is the pages and attachments not deleted of notebookID among
 	// ids, each with its path from the root.
 	Paths(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) ([]LinkNode, error)
+	// SourcePath is the page or attachment id of notebookID, deleted or
+	// not, with its path from the root through its ancestors, deleted or
+	// not; false for none (M8/P2 design 3.7: the view of a page in the
+	// trash).
+	SourcePath(ctx context.Context, notebookID, id uuid.UUID) (LinkNode, bool, error)
 	// Attachments is the attachments not deleted of notebookID among ids,
 	// each with its path from the root and the number of notebookID's
 	// attachments not deleted with its title key, itself among them,
@@ -107,6 +112,14 @@ func (l linkTargets) Paths(ctx context.Context, notebookID uuid.UUID, ids []uuid
 		return nil, fmt.Errorf("page: link targets of %s: %w", notebookID, err)
 	}
 	return linkNodes(paths), nil
+}
+
+func (l linkTargets) SourcePath(ctx context.Context, notebookID, id uuid.UUID) (LinkNode, bool, error) {
+	path, ok, err := l.store.SourcePath(ctx, notebookID, id)
+	if err != nil || !ok {
+		return LinkNode{}, false, err
+	}
+	return linkNodes([]postgresadapter.LinkPath{path})[0], true, nil
 }
 
 func (l linkTargets) Attachments(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) ([]LinkAttachment, error) {

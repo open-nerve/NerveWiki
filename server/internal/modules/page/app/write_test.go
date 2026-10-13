@@ -27,7 +27,7 @@ func (f *fixture) rename(id uuid.UUID, name string) (domain.Node, error) {
 func codeOf(err error) string {
 	var e *shared.Error
 	if errors.As(err, &e) {
-		if e.Kind == shared.KindInvalid {
+		if e.Kind == shared.KindInvalid && len(e.Fields) > 0 {
 			return e.Code + " " + e.Fields[0].Field
 		}
 		return e.Code

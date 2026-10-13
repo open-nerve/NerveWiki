@@ -103,7 +103,7 @@ func TestIsMatchesKindAndCode(t *testing.T) {
 	}
 }
 
-// The lock and ended_by members are there when set, and absent otherwise:
+// The lock, ended_by and root_id members are there when set, and absent otherwise:
 // the platform leaves a member out of the problem when ok is false.
 func TestProblemMembers(t *testing.T) {
 	page, user := uuid.New(), uuid.New()
@@ -114,6 +114,9 @@ func TestProblemMembers(t *testing.T) {
 	}
 	if _, _, ok := err.ProblemEndedBy(); ok {
 		t.Error("ProblemEndedBy() ok without ended_by")
+	}
+	if _, ok := err.ProblemRootID(); ok {
+		t.Error("ProblemRootID() ok without root_id")
 	}
 	var locks []string
 	collect := func(p, u uuid.UUID, name string) { locks = append(locks, p.String()+" "+u.String()+" "+name) }
@@ -128,6 +131,11 @@ func TestProblemMembers(t *testing.T) {
 	}
 	if u, name, ok := err.ProblemEndedBy(); !ok || u != user || name != "Grace" {
 		t.Errorf("ProblemEndedBy() = %s %q %v, want %s Grace true", u, name, ok, user)
+	}
+	root := uuid.New()
+	err.RootID = &root
+	if id, ok := err.ProblemRootID(); !ok || id != root {
+		t.Errorf("ProblemRootID() = %s %v, want %s true", id, ok, root)
 	}
 	other := uuid.New()
 	err.Locks = []shared.LockHolder{{PageID: page, UserID: user, DisplayName: "Ada"}, {PageID: other, UserID: user, DisplayName: "Ada"}}

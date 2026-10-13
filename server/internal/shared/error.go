@@ -122,6 +122,9 @@ type Error struct {
 	// EndedBy is who ended the caller's edit session: the problem's
 	// ended_by member of page.edit_session_unlocked.
 	EndedBy *Person
+	// RootID is the trash item a node in the trash is of: the problem's
+	// root_id member of page.not_trash_root (M8/P2 design 3.9).
+	RootID *uuid.UUID
 }
 
 // LockHolder is a page's edit lock as a problem names it (M5 design 4.5):
@@ -238,4 +241,12 @@ func (e *Error) ProblemEndedBy() (userID uuid.UUID, displayName string, ok bool)
 		return uuid.UUID{}, "", false
 	}
 	return e.EndedBy.UserID, e.EndedBy.DisplayName, true
+}
+
+// ProblemRootID is the problem's root_id member, if it has one.
+func (e *Error) ProblemRootID() (uuid.UUID, bool) {
+	if e.RootID == nil {
+		return uuid.UUID{}, false
+	}
+	return *e.RootID, true
 }

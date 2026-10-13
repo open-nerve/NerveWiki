@@ -120,10 +120,12 @@ type Revision struct {
 }
 
 // AnyNode is a node alive or in the trash: DeletedAt is when it was
-// deleted, nil while it is alive.
+// deleted, nil while it is alive; TrashRoot whether it is a trash item's
+// root.
 type AnyNode struct {
 	domain.Node
 	DeletedAt *time.Time
+	TrashRoot bool
 }
 
 // Nodes reads a notebook's nodes: unlocked for a read, under the write
@@ -167,9 +169,50 @@ type NodeWriter interface {
 	// MoveNode puts n under its ParentID at its SortOrder.
 	MoveNode(ctx context.Context, n domain.Node) error
 	SetSortOrder(ctx context.Context, id uuid.UUID, order float64) error
-	// DeleteNodes deletes the nodes ids not deleted and what follows them,
-	// at at, by by.
-	DeleteNodes(ctx context.Context, ids []uuid.UUID, by uuid.UUID, at time.Time) error
+	// DeleteNodes deletes the deletion's nodes not deleted and what follows
+	// them, its root a trash item with its counts. A node deleted at its
+	// time already under one of them is an error: a unit deletes from the
+	// top down.
+	DeleteNodes(ctx context.Context, d Deletion) error
+	// RestoreNodes brings the restoration's nodes back from the trash, with
+	// what was deleted with them, and counts what it brought back.
+	RestoreNodes(ctx context.Context, r Restoration) (RestoredRows, error)
+}
+
+// Deletion is a subtree's deletion (M8/P2 design 3.3): its nodes IDs, Root
+// first among them, which becomes a trash item holding Pages pages and
+// Assets attachments that span Height levels of pages; by By at At.
+type Deletion struct {
+	Root          uuid.UUID
+	IDs           []uuid.UUID
+	Pages, Assets int
+	Height        int
+	By            uuid.UUID
+	At            time.Time
+}
+
+// Restoration is a trash item's restore (M8/P2 design 3.5): its nodes IDs,
+// still deleted at DeletedAt, each named Names, its key NameKeys, the Root
+// among them put under ParentID (nil: the notebook's root) at SortOrder;
+// by By at At.
+type Restoration struct {
+	Root      uuid.UUID
+	ParentID  *uuid.UUID
+	SortOrder float64
+	IDs       []uuid.UUID
+	Names     []string
+	NameKeys  []string
+	DeletedAt time.Time
+	By        uuid.UUID
+	At        time.Time
+}
+
+// RestoredRows are what a restore brought back: its nodes; its pages'
+// contents, and the versions at their contents' revisions; the versions
+// that created a page; and the gaps in its pages' chains of versions, a
+// version whose base no version of its page brought back has.
+type RestoredRows struct {
+	Nodes, Contents, CurrentVersions, Creations, Gaps int
 }
 
 // ChangesetWriter records a write's changeset, its items and its versions.
@@ -182,10 +225,11 @@ type ChangesetWriter interface {
 	// TouchChangeset moves the changeset id's updated_at to at: an edit
 	// session wrote in it again.
 	TouchChangeset(ctx context.Context, id uuid.UUID, at time.Time) error
-	// RecordItem inserts the item, or moves the after of the node's item in
-	// the changeset on, keeping its before. An item that deletes its node
-	// is deleted with it, at its time.
-	RecordItem(ctx context.Context, it Item) error
+	// RecordItems inserts the items of one changeset at one time, each a
+	// node's of its own, or moves the after of the node's item in the
+	// changeset on, keeping its before, its restore and its revision, in one
+	// write. An item that deletes its node is deleted with it, at its time.
+	RecordItems(ctx context.Context, items []Item) error
 	// RecordRevision inserts the version, or updates the page's in the
 	// changeset, keeping its base, when r is on the version's revision: one
 	// on another's write would break the chain of the page's versions, an
@@ -209,6 +253,52 @@ type Versions interface {
 	// at now, zero when none is or it has not written: the page's newest
 	// version is being edited while it is that changeset's.
 	AliveChangesetOf(ctx context.Context, pageID uuid.UUID, now time.Time) (uuid.UUID, error)
+}
+
+// Trash reads a notebook's trash (M8/P2 design 3.4), unlocked, or in a
+// unit's transaction. Its times compare with time.Time.Equal: the
+// answer's may be in another location than the argument's (a test's
+// pool's).
+type Trash interface {
+	// ListTrash is the notebook's trash items deleted after since, newer
+	// first, below the cursor below, at most limit.
+	ListTrash(ctx context.Context, notebookID uuid.UUID, since time.Time, below domain.TrashCursor, limit int) (
+		[]domain.TrashRoot, error)
+	// FindTrashRoot is the trash item of the root id, as ListTrash gives
+	// it; ErrNotFound when id is no trash item's root.
+	FindTrashRoot(ctx context.Context, id uuid.UUID) (domain.TrashRoot, error)
+	// TrashRootOf is the root of the trash item the node id is in;
+	// ErrNotFound when it is in none.
+	TrashRootOf(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
+	// TrashLines are the roots ids' lines: each one's ancestors, deleted or
+	// not, from the notebook's root down to its parent, none for a root at
+	// the notebook's root.
+	TrashLines(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID][]domain.TrashAncestor, error)
+	// TrashGroup is the trash item of the root id of the notebook deleted at
+	// at: the root and its descendants deleted at at, level by level, each
+	// level in order; ErrNotFound when id is not of the notebook deleted at
+	// at.
+	TrashGroup(ctx context.Context, notebookID, id uuid.UUID, at time.Time) ([]domain.TrashMember, error)
+	// TrashContents are the contents of the pages ids deleted at at, by
+	// page: one the purge took is not among them.
+	TrashContents(ctx context.Context, ids []uuid.UUID, at time.Time) (map[uuid.UUID]string, error)
+	// TrashHistory is how many versions and items, of every changeset, of
+	// the nodes ids were deleted at at, each of the two counted to limit
+	// at most: the rows a restore writes besides the nodes'.
+	TrashHistory(ctx context.Context, ids []uuid.UUID, at time.Time, limit int) (int, error)
+}
+
+// AttachmentInfo is an attachment's type and size.
+type AttachmentInfo struct {
+	MIME  string
+	Bytes int64
+}
+
+// AttachmentInfos reads the attachments' type and size, deleted or not, in
+// the caller's read (M8 design 4.1): bootstrap hands the asset module's to
+// it. A node without a row of its file is not in the answer.
+type AttachmentInfos interface {
+	Of(ctx context.Context, nodeIDs []uuid.UUID) (map[uuid.UUID]AttachmentInfo, error)
 }
 
 // NotebookPages deletes the pages of deleted notebooks, and their edit
@@ -374,9 +464,10 @@ type Task struct {
 
 // PageRef is the page a Render is for, and the revision of its content
 // rendered: an extension fetches its data for it (M6: the link index of
-// that revision).
+// that revision); Deleted, a page in the trash (M8/P2 design 3.7).
 type PageRef struct {
 	NotebookID uuid.UUID
 	PageID     uuid.UUID
 	Revision   int
+	Deleted    bool
 }

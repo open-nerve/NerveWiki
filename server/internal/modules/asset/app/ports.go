@@ -123,11 +123,21 @@ type ExpiredRows interface {
 	DeleteBlobs(ctx context.Context, ids []uuid.UUID) (int, error)
 }
 
-// Deletions delete the attachments' rows with their nodes and notebooks:
-// adapter/postgres, in the caller's transaction.
+// AttachmentInfo is an attachment's type and size (M8/P2 design 3.4).
+type AttachmentInfo struct {
+	MIME  string
+	Bytes int64
+}
+
+// Deletions delete the attachments' rows with their nodes and notebooks,
+// and bring a node's back with it: adapter/postgres, in the caller's
+// transaction.
 type Deletions interface {
 	// DeleteBlobsOfNodes deletes at at the rows not deleted of the nodes.
 	DeleteBlobsOfNodes(ctx context.Context, nodeIDs []uuid.UUID, at time.Time) error
+	// RestoreBlobsOfNodes brings back the rows of the nodes deleted at
+	// deletedAt, and tells how many.
+	RestoreBlobsOfNodes(ctx context.Context, nodeIDs []uuid.UUID, deletedAt time.Time) (int, error)
 	// DeleteBlobsOfNotebooks deletes at at the rows not deleted of the
 	// notebooks.
 	DeleteBlobsOfNotebooks(ctx context.Context, notebookIDs []uuid.UUID, at time.Time) error

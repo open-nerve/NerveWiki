@@ -97,6 +97,20 @@ func (t *tree) Paths(_ context.Context, _ uuid.UUID, ids []uuid.UUID) ([]domain.
 	return out, nil
 }
 
+// SourcePath is the node id, gone or not, with its path through its
+// ancestors, gone or not; false for none.
+func (t *tree) SourcePath(_ context.Context, _ uuid.UUID, id uuid.UUID) (domain.Node, bool, error) {
+	t.reads++
+	if t.reads == t.failAt {
+		return domain.Node{}, false, errRead
+	}
+	n, ok := t.nodes[id]
+	if !ok {
+		return domain.Node{}, false, nil
+	}
+	return domain.Node{ID: id, Path: t.path(id), Asset: n.asset}, true, nil
+}
+
 // Attachments is the attachments among ids, as the page module's reads
 // them: each with how many attachments not gone have its title key.
 func (t *tree) Attachments(_ context.Context, _ uuid.UUID, ids []uuid.UUID) ([]app.Attachment, error) {

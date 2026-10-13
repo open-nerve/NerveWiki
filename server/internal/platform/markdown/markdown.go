@@ -164,11 +164,13 @@ func (t Tree) Destination(n ast.Node) (Span, bool) {
 }
 
 // Page is the page a Render is for, and the revision of its content
-// rendered (M6: Fetch tells whether the link index is of it).
+// rendered (M6: Fetch tells whether the link index is of it); Deleted, a
+// page in the trash, which the index does not have (M8/P2 design 3.7).
 type Page struct {
 	NotebookID uuid.UUID
 	PageID     uuid.UUID
 	Revision   int
+	Deleted    bool
 }
 
 // Markdown parses and renders. It is safe for concurrent use.

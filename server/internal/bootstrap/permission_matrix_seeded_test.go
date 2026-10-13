@@ -137,6 +137,24 @@ func matrixPages() []matrixPage {
 	return pages
 }
 
+// matrixTrash are the trash items seeded, a page of each notebook of the
+// notebook columns at its root (M8/P2 design 3.10): seeded as the pages
+// are, then deleted through SQL an hour before the rest, as a deletion
+// leaves a page, gone-nb's before its notebook. They are no page of
+// matrixPages: the rows that read the trees see the pages not deleted.
+func matrixTrash() []matrixPage {
+	var out []matrixPage
+	for _, nb := range sessionNotebooks() {
+		out = append(out, matrixPage{trashedIn(nb), nb, ""})
+	}
+	return out
+}
+
+// trashedIn is a notebook's page in the trash.
+func trashedIn(notebook string) string {
+	return "trashed-" + notebook
+}
+
 // tasksIn is a notebook's page of task items, its content matrixTasks;
 // every other seeded page's is empty.
 func tasksIn(notebook string) string {
@@ -256,7 +274,7 @@ func newSeeded() seeded {
 	s := seeded{workspaces: map[string]uuid.UUID{}, memberships: map[string]uuid.UUID{}, invitations: map[string]uuid.UUID{},
 		notebooks: map[string]uuid.UUID{}, notebookMembers: map[string]uuid.UUID{}, pages: map[string]uuid.UUID{},
 		assets: map[string]uuid.UUID{}, sessions: map[string]uuid.UUID{}, jobs: map[string]uuid.UUID{}, accounts: map[caller]uuid.UUID{}}
-	for _, p := range matrixPages() {
+	for _, p := range slices.Concat(matrixPages(), matrixTrash()) {
 		s.pages[p.name] = uuid.NewV7()
 	}
 	for _, a := range matrixAssets() {
@@ -392,7 +410,7 @@ func (s seeded) workspaceOfRow(id uuid.UUID) (string, bool) {
 			return n.slug, true
 		}
 	}
-	for _, p := range slices.Concat(matrixPages(), matrixAssets()) {
+	for _, p := range slices.Concat(matrixPages(), matrixAssets(), matrixTrash()) {
 		if s.pages[p.name] == id || s.assets[p.name] == id {
 			return s.workspaceOfRow(s.notebooks[p.notebook])
 		}
@@ -555,6 +573,22 @@ func prepareMatrix(t *testing.T) matrixData {
 				d.seeded.pages[p.name], now, content)
 			exec(seededPageHistory, d.seeded.pages[p.name])
 		}
+		trashedAt := now.Add(-time.Hour)
+		for i, p := range matrixTrash() {
+			id := d.seeded.pages[p.name]
+			exec("INSERT INTO nodes (id, notebook_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at, updated_at) "+
+				"SELECT $1, n.id, 'page', $3, $3, $4, n.created_by_id, n.created_by_id, $5, $5 FROM notebooks n WHERE n.id = $2",
+				id, d.seeded.notebooks[p.notebook], p.name, len(matrixPages())+len(matrixAssets())+i, trashedAt.Add(-time.Hour))
+			exec("INSERT INTO page_contents (node_id, content, revision, content_hash, byte_size, updated_by_id, updated_at) "+
+				"SELECT id, '', 1, sha256(''), 0, created_by_id, created_at FROM nodes WHERE id = $1", id)
+			exec(seededPageHistory, id)
+			exec("UPDATE nodes SET deleted_at = $2, updated_at = $2, trash_root = true, trash_pages = 1, trash_assets = 0, trash_height = 1 "+
+				"WHERE id = $1", id, trashedAt)
+			for _, table := range []string{"page_contents", "page_revisions", "changeset_items"} {
+				exec("UPDATE "+table+" SET deleted_at = $2 WHERE node_id = $1", id, trashedAt)
+			}
+			exec("DELETE FROM indexed_pages WHERE node_id = $1", id)
+		}
 		for i, a := range matrixAssets() {
 			exec("INSERT INTO nodes (id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, "+
 				"created_at, updated_at) SELECT $1, n.id, $3, 'asset', $4, $4, $6, n.created_by_id, n.created_by_id, $5, $5 "+
@@ -584,14 +618,17 @@ func prepareMatrix(t *testing.T) matrixData {
 			if n.deleted {
 				exec("UPDATE notebooks SET deleted_at = $2 WHERE id = $1", d.seeded.notebooks[n.name], now)
 				exec("UPDATE notebook_members SET deleted_at = $2 WHERE notebook_id = $1", d.seeded.notebooks[n.name], now)
-				exec("UPDATE nodes SET deleted_at = $2 WHERE notebook_id = $1", d.seeded.notebooks[n.name], now)
+				// As DeleteNotebooksPages does: what the trash holds keeps its
+				// own time.
+				exec("UPDATE nodes SET deleted_at = $2 WHERE notebook_id = $1 AND deleted_at IS NULL", d.seeded.notebooks[n.name], now)
 				for _, table := range []string{"page_contents", "page_revisions", "changeset_items"} {
-					exec("UPDATE "+table+" SET deleted_at = $2 WHERE node_id IN (SELECT id FROM nodes WHERE notebook_id = $1)",
-						d.seeded.notebooks[n.name], now)
+					exec("UPDATE "+table+" SET deleted_at = $2 WHERE node_id IN (SELECT id FROM nodes WHERE notebook_id = $1) "+
+						"AND deleted_at IS NULL", d.seeded.notebooks[n.name], now)
 				}
-				exec("UPDATE changesets SET deleted_at = $2 WHERE notebook_id = $1", d.seeded.notebooks[n.name], now)
-				exec("UPDATE asset_blobs SET deleted_at = $2 WHERE notebook_id = $1", d.seeded.notebooks[n.name], now)
-				exec("UPDATE transfer_jobs SET deleted_at = $2 WHERE notebook_id = $1", d.seeded.notebooks[n.name], now)
+				exec("UPDATE changesets SET deleted_at = $2 WHERE notebook_id = $1 AND deleted_at IS NULL", d.seeded.notebooks[n.name], now)
+				exec("UPDATE asset_blobs SET deleted_at = $2 WHERE notebook_id = $1 AND deleted_at IS NULL", d.seeded.notebooks[n.name], now)
+				exec("UPDATE transfer_jobs SET deleted_at = $2 WHERE notebook_id = $1 AND deleted_at IS NULL", d.seeded.notebooks[n.name],
+					now)
 				exec("DELETE FROM edit_sessions WHERE notebook_id = $1", d.seeded.notebooks[n.name])
 				exec("DELETE FROM indexed_pages WHERE notebook_id = $1", d.seeded.notebooks[n.name])
 			}

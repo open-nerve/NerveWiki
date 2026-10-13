@@ -684,6 +684,11 @@ export const en = {
   "problem.page.edit_session_taken_over": "You took over editing this page elsewhere.",
   "problem.page.edit_session_unlocked": "An admin of the notebook released this page's edit lock.",
   "problem.page.locked": "This page is being edited in another session.",
+  "problem.page.not_in_trash": "This page or attachment is not in the trash.",
+  "problem.page.not_trash_root": "This was deleted together with a page above it: restore that page instead.",
+  "problem.page.restore_expired": "This can no longer be restored: its time in the trash is over.",
+  "problem.page.restore_too_large": "This is too large to restore at once.",
+  "problem.page.trash_changed": "The trash changed since you opened it. Look again.",
   "problem.linking.pages_locked":
     "Pages whose links this change would rewrite are being edited. Try again once their editors are done.",
   "problem.network": "Cannot reach the server. Check the connection and try again.",

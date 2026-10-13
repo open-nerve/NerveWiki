@@ -48,11 +48,21 @@ func (f *fakeTx) InTx(ctx context.Context) bool { return ctx.Value(txKey{}) != n
 
 // recorder is the calls of every fake, in order, each with whether it ran
 // in the transaction: the unit's order of locks, decision and writes.
-type recorder struct{ calls []string }
+// recorder records the calls made, in order; before, when set, runs a
+// call's function once, before it: what another transaction commits
+// between two reads.
+type recorder struct {
+	calls  []string
+	before map[string]func()
+}
 
 func (r *recorder) record(ctx context.Context, call string) {
 	if ctx.Value(txKey{}) != nil {
 		call += " in tx"
+	}
+	if f, ok := r.before[call]; ok {
+		delete(r.before, call)
+		f()
 	}
 	r.calls = append(r.calls, call)
 }
@@ -118,8 +128,26 @@ type fakeStore struct {
 	held     map[uuid.UUID]bool
 	// errs fails the reads named, FindNodeIn and Children.
 	errs map[string]error
-	// trash are the nodes deleted, with when, which FindAnyNode reads.
-	trash map[uuid.UUID]app.AnyNode
+	// trash are the nodes deleted, with when and whether each is a trash
+	// item's root, which FindAnyNode and the trash's reads read; counts
+	// are the roots' pages, attachments and height; trashed are the
+	// deleted pages' contents.
+	trash   map[uuid.UUID]app.AnyNode
+	counts  map[uuid.UUID][3]int
+	trashed map[uuid.UUID]app.Content
+	// deletions are what DeleteNodes was given, restorations what
+	// RestoreNodes was; rows, when set, are what RestoreNodes answers it
+	// brought back, as if the purge took some. lost are the pages whose
+	// contents TrashContents does not find, as if the purge took them
+	// after TrashGroup read them; unversioned those whose current version
+	// the purge took, which RestoreNodes does not count. history is the
+	// rows of a trashed node's versions and items, none unless set.
+	deletions    []app.Deletion
+	restorations []app.Restoration
+	rows         *app.RestoredRows
+	lost         map[uuid.UUID]bool
+	unversioned  map[uuid.UUID]bool
+	history      map[uuid.UUID]int
 }
 
 func (f *fakeStore) FindNode(ctx context.Context, id uuid.UUID) (domain.Node, error) {
@@ -356,17 +384,29 @@ func (f *fakeMarkdown) Tasks(facts app.Facts) []app.Task {
 
 // fakeBudget records each take of the parse budget with its bytes, each
 // keeping of the facts' share and each release; err, when set, is Take's.
+// A take waits the first of waits, when there are, before it gets its
+// bytes, or its context's end first.
 type fakeBudget struct {
 	*recorder
 	err      error
 	held     int
 	released int
+	waits    []time.Duration
 }
 
 func (b *fakeBudget) Take(ctx context.Context, n int) (app.BudgetHold, error) {
 	b.record(ctx, fmt.Sprintf("Take %d", n))
 	if b.err != nil {
 		return nil, b.err
+	}
+	if len(b.waits) > 0 {
+		wait := b.waits[0]
+		b.waits = b.waits[1:]
+		select {
+		case <-time.After(wait):
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 	}
 	b.held += n
 	return &fakeHold{budget: b, n: n}, nil
@@ -432,13 +472,202 @@ func (f *fakeStore) MoveNode(ctx context.Context, n domain.Node) error {
 	return nil
 }
 
-func (f *fakeStore) DeleteNodes(ctx context.Context, ids []uuid.UUID, _ uuid.UUID, _ time.Time) error {
+// DeleteNodes moves the nodes not deleted to the trash, the root an item
+// with its counts, with their contents.
+func (f *fakeStore) DeleteNodes(ctx context.Context, d app.Deletion) error {
 	f.record(ctx, "DeleteNodes")
-	for _, id := range ids {
+	f.deletions = append(f.deletions, d)
+	for _, id := range d.IDs {
+		n, ok := f.nodes[id]
+		if !ok {
+			continue
+		}
+		at := d.At
+		f.trash[id] = app.AnyNode{Node: n, DeletedAt: &at, TrashRoot: id == d.Root}
+		if c, ok := f.contents[id]; ok {
+			f.trashed[id] = c
+		}
 		delete(f.nodes, id)
 		delete(f.contents, id)
 	}
+	f.counts[d.Root] = [3]int{d.Pages, d.Assets, d.Height}
 	return nil
+}
+
+// RestoreNodes brings the nodes deleted at the restoration's time back
+// with their contents, renamed, the root put where it goes, and counts
+// them; each content counts as its creation's version, with no gap, and
+// as its current version unless unversioned.
+func (f *fakeStore) RestoreNodes(ctx context.Context, r app.Restoration) (app.RestoredRows, error) {
+	f.record(ctx, "RestoreNodes")
+	f.restorations = append(f.restorations, r)
+	var rows app.RestoredRows
+	for i, id := range r.IDs {
+		n, ok := f.trash[id]
+		if !ok || !n.DeletedAt.Equal(r.DeletedAt) {
+			continue
+		}
+		node := n.Node
+		node.Name, node.NameKey, node.UpdatedBy, node.UpdatedAt = r.Names[i], r.NameKeys[i], r.By, r.At
+		if id == r.Root {
+			node.ParentID, node.SortOrder = r.ParentID, r.SortOrder
+		}
+		f.nodes[id] = node
+		delete(f.trash, id)
+		rows.Nodes++
+		if c, ok := f.trashed[id]; ok {
+			f.contents[id] = c
+			delete(f.trashed, id)
+			rows.Contents++
+			rows.Creations++
+			if !f.unversioned[id] {
+				rows.CurrentVersions++
+			}
+		}
+	}
+	if f.rows != nil {
+		return *f.rows, nil
+	}
+	return rows, nil
+}
+
+// trashRoot is the trash item of the root n, its counts and its page's
+// content's revision at its deletion.
+func (f *fakeStore) trashRoot(n app.AnyNode) domain.TrashRoot {
+	c := f.counts[n.ID]
+	return domain.TrashRoot{Node: n.Node, DeletedAt: *n.DeletedAt, Pages: c[0], Assets: c[1], Height: c[2],
+		Revision: f.trashed[n.ID].Revision}
+}
+
+func (f *fakeStore) ListTrash(ctx context.Context, notebookID uuid.UUID, since time.Time, below domain.TrashCursor, limit int) (
+	[]domain.TrashRoot, error,
+) {
+	f.record(ctx, "ListTrash")
+	var out []domain.TrashRoot
+	for _, n := range f.trash {
+		at := *n.DeletedAt
+		if n.TrashRoot && n.NotebookID == notebookID && at.After(since) &&
+			(at.Before(below.At) || at.Equal(below.At) && n.ID.Compare(below.ID) < 0) {
+			out = append(out, f.trashRoot(n))
+		}
+	}
+	slices.SortFunc(out, func(a, b domain.TrashRoot) int {
+		return cmp.Or(b.DeletedAt.Compare(a.DeletedAt), b.Node.ID.Compare(a.Node.ID))
+	})
+	return out[:min(limit, len(out))], nil
+}
+
+func (f *fakeStore) FindTrashRoot(ctx context.Context, id uuid.UUID) (domain.TrashRoot, error) {
+	f.record(ctx, "FindTrashRoot")
+	n, ok := f.trash[id]
+	if !ok || !n.TrashRoot {
+		return domain.TrashRoot{}, app.ErrNotFound
+	}
+	return f.trashRoot(n), nil
+}
+
+func (f *fakeStore) TrashRootOf(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	f.record(ctx, "TrashRootOf")
+	for n, ok := f.trash[id]; ok; n, ok = f.trash[*n.ParentID] {
+		if n.TrashRoot {
+			return n.ID, nil
+		}
+		if n.ParentID == nil {
+			break
+		}
+	}
+	return uuid.UUID{}, app.ErrNotFound
+}
+
+func (f *fakeStore) TrashLines(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID][]domain.TrashAncestor, error) {
+	f.record(ctx, fmt.Sprintf("TrashLines %d", len(ids)))
+	out := map[uuid.UUID][]domain.TrashAncestor{}
+	for _, id := range ids {
+		var line []domain.TrashAncestor
+		for p := f.anyNode(id).ParentID; p != nil; p = f.anyNode(*p).ParentID {
+			n := f.anyNode(*p)
+			line = append(line, domain.TrashAncestor{ID: n.ID, Name: n.Name, DeletedAt: n.DeletedAt})
+		}
+		if len(line) > 0 {
+			slices.Reverse(line)
+			out[id] = line
+		}
+	}
+	return out, nil
+}
+
+// anyNode is the node id alive or in the trash.
+func (f *fakeStore) anyNode(id uuid.UUID) app.AnyNode {
+	if n, ok := f.nodes[id]; ok {
+		return app.AnyNode{Node: n}
+	}
+	return f.trash[id]
+}
+
+func (f *fakeStore) TrashGroup(ctx context.Context, notebookID, id uuid.UUID, at time.Time) ([]domain.TrashMember, error) {
+	f.record(ctx, "TrashGroup")
+	root, ok := f.trash[id]
+	if !ok || root.NotebookID != notebookID || !root.DeletedAt.Equal(at) {
+		return nil, app.ErrNotFound
+	}
+	member := func(n app.AnyNode, level int) domain.TrashMember {
+		c := f.trashed[n.ID]
+		return domain.TrashMember{Node: n.Node, Level: level, Revision: c.Revision, Bytes: c.ByteSize}
+	}
+	out := []domain.TrashMember{member(root, 1)}
+	for i := 0; i < len(out); i++ {
+		var level []domain.TrashMember
+		for _, n := range f.trash {
+			if n.ParentID != nil && *n.ParentID == out[i].Node.ID && n.DeletedAt.Equal(at) {
+				level = append(level, member(n, out[i].Level+1))
+			}
+		}
+		slices.SortFunc(level, func(a, b domain.TrashMember) int {
+			return cmp.Or(cmp.Compare(a.Node.SortOrder, b.Node.SortOrder), a.Node.ID.Compare(b.Node.ID))
+		})
+		out = append(out, level...)
+	}
+	slices.SortStableFunc(out, func(a, b domain.TrashMember) int { return cmp.Compare(a.Level, b.Level) })
+	return out, nil
+}
+
+func (f *fakeStore) TrashContents(ctx context.Context, ids []uuid.UUID, at time.Time) (map[uuid.UUID]string, error) {
+	f.record(ctx, "TrashContents")
+	out := map[uuid.UUID]string{}
+	for _, id := range ids {
+		if c, ok := f.trashed[id]; ok && f.trash[id].DeletedAt.Equal(at) && !f.lost[id] {
+			out[id] = c.Content
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeStore) TrashHistory(ctx context.Context, ids []uuid.UUID, at time.Time, limit int) (int, error) {
+	f.record(ctx, "TrashHistory")
+	rows := 0
+	for _, id := range ids {
+		if n, ok := f.trash[id]; ok && n.DeletedAt.Equal(at) {
+			rows += f.history[id]
+		}
+	}
+	return min(rows, limit), nil
+}
+
+// fakeAttachments is the attachments' infos, by node: each read is a call.
+type fakeAttachments struct {
+	*recorder
+	infos map[uuid.UUID]app.AttachmentInfo
+}
+
+func (f fakeAttachments) Of(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]app.AttachmentInfo, error) {
+	f.record(ctx, fmt.Sprintf("AttachmentInfos %d", len(ids)))
+	out := map[uuid.UUID]app.AttachmentInfo{}
+	for _, id := range ids {
+		if info, ok := f.infos[id]; ok {
+			out[id] = info
+		}
+	}
+	return out, nil
 }
 
 func (f *fakeStore) SetSortOrder(ctx context.Context, id uuid.UUID, order float64) error {
@@ -471,12 +700,18 @@ func (f *fakeStore) TouchChangeset(ctx context.Context, id uuid.UUID, at time.Ti
 	return nil
 }
 
-func (f *fakeStore) RecordItem(ctx context.Context, it app.Item) error {
-	f.record(ctx, "RecordItem")
-	if old, ok := f.items[it.Change.NodeID]; ok && old.ChangesetID == it.ChangesetID {
-		it.Change.Before = old.Change.Before
+// RecordItems inserts the items, or merges each into its node's of the
+// changeset, keeping its before, its restore and the revision it recorded,
+// as the table's upsert does; each write is one call, with its items'
+// count.
+func (f *fakeStore) RecordItems(ctx context.Context, items []app.Item) error {
+	f.record(ctx, fmt.Sprintf("RecordItems %d", len(items)))
+	for _, it := range items {
+		if old, ok := f.items[it.Change.NodeID]; ok && old.ChangesetID == it.ChangesetID {
+			it.Change.Before, it.Change.Restored, it.Change.Revision = old.Change.Before, old.Change.Restored, old.Change.Revision
+		}
+		f.items[it.Change.NodeID] = it
 	}
-	f.items[it.Change.NodeID] = it
 	return nil
 }
 
@@ -834,8 +1069,11 @@ type fixture struct {
 	vetoers    []app.EditSessionVetoer
 	enders     []app.EditSessionSubscriber
 	names      fakeNames
-	alice      uuid.UUID
-	acme, eng  uuid.UUID
+	infos      map[uuid.UUID]app.AttachmentInfo
+	// wait is the parse budget's wait.
+	wait      time.Duration
+	alice     uuid.UUID
+	acme, eng uuid.UUID
 }
 
 func newFixture() *fixture {
@@ -845,13 +1083,15 @@ func newFixture() *fixture {
 		workspaces: fakeWorkspaces{recorder: rec, gone: map[uuid.UUID]bool{}},
 		store: &fakeStore{recorder: rec, nodes: map[uuid.UUID]domain.Node{}, contents: map[uuid.UUID]app.Content{},
 			items: map[uuid.UUID]app.Item{}, touched: map[uuid.UUID]time.Time{}, sessions: map[uuid.UUID]app.EditSession{},
-			held: map[uuid.UUID]bool{}, trash: map[uuid.UUID]app.AnyNode{}},
+			held: map[uuid.UUID]bool{}, trash: map[uuid.UUID]app.AnyNode{}, counts: map[uuid.UUID][3]int{},
+			trashed: map[uuid.UUID]app.Content{}},
 		auth: &fakeAuthorizer{recorder: rec, grants: map[shared.Action]bool{}, forbidden: map[shared.Action]bool{}},
 		logs: &bytes.Buffer{}, names: fakeNames{}, alice: uuid.NewV7(), acme: uuid.NewV7(), eng: uuid.NewV7(),
 	}
 	f.notebooks = fakeNotebooks{recorder: rec, workspaces: map[uuid.UUID]uuid.UUID{f.eng: f.acme}, gone: map[uuid.UUID]bool{}}
 	f.md = &fakeMarkdown{recorder: rec}
 	f.budget = &fakeBudget{recorder: rec}
+	f.wait = time.Second
 	return f
 }
 
@@ -860,13 +1100,14 @@ func (f *fixture) logger() *slog.Logger { return slog.New(slog.NewTextHandler(f.
 func (f *fixture) writer() *app.Writer {
 	return app.NewWriter(app.WriterDeps{
 		Tx: f.tx, Clock: f.clock, Auth: f.auth, Workspaces: f.workspaces, Notebooks: f.notebooks, Nodes: f.store,
-		NodeWriter: f.store, Changesets: f.store, SessionWriter: f.store, Names: f.names, Guards: f.guards, Participants: f.partakers,
-		Observers: f.observers, SessionVetoers: f.vetoers, SessionSubscribers: f.enders,
+		NodeWriter: f.store, Trash: f.store, Changesets: f.store, SessionWriter: f.store, Names: f.names, Guards: f.guards,
+		Participants: f.partakers,
+		Observers:    f.observers, SessionVetoers: f.vetoers, SessionSubscribers: f.enders,
 	})
 }
 
 func (f *fixture) parser() *app.ContentParser {
-	return app.NewContentParser(f.writer(), f.md, f.budget)
+	return app.NewContentParser(f.writer(), f.md, f.budget, f.wait)
 }
 
 // grant has the authorizer allow actions.

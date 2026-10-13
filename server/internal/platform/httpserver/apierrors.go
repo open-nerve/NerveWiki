@@ -20,7 +20,7 @@ import (
 // not import internal/shared: shared.Error satisfies this by structure, and so
 // can any other error type, e.g. bodyshape's.
 //
-// Five methods are optional:
+// Six methods are optional:
 //
 //	ProblemFields() []error    each element has ProblemField() and
 //	                           ProblemCode() string, and Error() is the message
@@ -31,6 +31,8 @@ import (
 //	                           gives each lock of the locks member, in order
 //	ProblemEndedBy() (userID uuid.UUID, displayName string, ok bool)
 //	                           the ended_by member, when ok
+//	ProblemRootID() (rootID uuid.UUID, ok bool)
+//	                           the root_id member, when ok
 type ProblemError interface {
 	error
 	ProblemStatus() int
@@ -61,6 +63,10 @@ type problemLocks interface {
 
 type problemEndedBy interface {
 	ProblemEndedBy() (userID uuid.UUID, displayName string, ok bool)
+}
+
+type problemRootID interface {
+	ProblemRootID() (rootID uuid.UUID, ok bool)
 }
 
 // statusClientClosedRequest is logged when the client went away before the
@@ -262,6 +268,11 @@ func problemOf(pe ProblemError) (Problem, time.Duration) {
 	if b, ok := pe.(problemEndedBy); ok {
 		if userID, name, ok := b.ProblemEndedBy(); ok {
 			p.EndedBy = &ProblemPerson{UserID: userID, DisplayName: name}
+		}
+	}
+	if r, ok := pe.(problemRootID); ok {
+		if rootID, ok := r.ProblemRootID(); ok {
+			p.RootID = &rootID
 		}
 	}
 	var retry time.Duration

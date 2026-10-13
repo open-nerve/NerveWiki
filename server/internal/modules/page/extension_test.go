@@ -69,6 +69,13 @@ func (n sqlNotebooks) LockByID(ctx context.Context, id uuid.UUID) (bool, error) 
 	return exists(ctx, n.pool, "SELECT 1 FROM notebooks WHERE id = $1 AND deleted_at IS NULL FOR NO KEY UPDATE", id)
 }
 
+// noAttachments knows no attachment's file.
+type noAttachments struct{}
+
+func (noAttachments) Of(context.Context, []uuid.UUID) (map[uuid.UUID]page.AttachmentInfo, error) {
+	return map[uuid.UUID]page.AttachmentInfo{}, nil
+}
+
 // sqlNames stands in for identity's directory: the accounts' display
 // names.
 type sqlNames struct{ pool *pgxpool.Pool }
@@ -224,6 +231,7 @@ func (f fixture) module(guards []page.WriteGuard, participants []page.Participan
 		Authorizer: aliceWrites{f.alice}, Workspaces: sqlWorkspaces{f.pool}, Notebooks: sqlNotebooks{f.pool}, Names: sqlNames{f.pool},
 		Markdown: f.md, Budget: budget, Guards: guards, Participants: participants, Observers: observers,
 		EditSessionVetoers: f.vetoers, EditSessionSubscribers: f.subscribers, EditSessionCleanupInterval: time.Hour,
+		Retention: 24 * time.Hour, Attachments: noAttachments{},
 	})
 }
 
@@ -332,6 +340,39 @@ func TestTheObserversFollowAUnit(t *testing.T) {
 				t.Errorf("POST with a failing observer = %d with %d pages New, want 500 and nothing written", rec.Code, news)
 			}
 		})
+	}
+}
+
+// A restore is a unit the observers follow once: each node a change with
+// no before, restored from the time it was deleted at, an attachment's
+// told apart, a page's with its revision (M8/P2 design 3.6).
+func TestTheObserversFollowARestore(t *testing.T) {
+	f := newFixture(t)
+	asset, created := uuid.NewV7(), uuid.NewV7()
+	f.exec(t, "INSERT INTO nodes (id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at, "+
+		"updated_at) VALUES ($1, $2, $3, 'asset', 'a.png', 'a.png', 0, $4, $4, $5, $5)", asset, f.eng, f.notes, f.alice, testNow())
+	f.exec(t, "INSERT INTO changesets (id, notebook_id, kind, client, created_by_id, created_at, updated_at) "+
+		"VALUES ($1, $2, 'edit', 'web', $3, $4, $4)", created, f.eng, f.alice, testNow())
+	f.exec(t, "INSERT INTO page_revisions (id, changeset_id, node_id, revision, content, content_hash, byte_size, created_at, updated_at) "+
+		"VALUES ($1, $2, $3, 1, '', sha256(''), 0, $4, $4)", uuid.NewV7(), created, f.notes, testNow())
+	if rec := f.serve(t, "session", http.MethodDelete, f.renamePath(), "", nil, nil, nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("DELETE = %d %s, want 204", rec.Code, rec.Body)
+	}
+	o := &observer{f: f}
+	rec := f.serve(t, "session", http.MethodPost, f.renamePath()+"/restore", "", nil, nil, []page.PageObserver{o})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST restore = %d %s, want 200", rec.Code, rec.Body)
+	}
+	if len(o.events) != 1 || o.changesets != 1 || len(o.events[0].Changes) != 2 {
+		t.Fatalf("the observer followed %+v, seeing %d changesets; want one event of both nodes, its changeset", o.events, o.changesets)
+	}
+	for _, c := range o.events[0].Changes {
+		asAsset := c.NodeID == asset
+		if c.Before != nil || c.After == nil || c.Restored == nil || !c.Restored.DeletedAt.Equal(testNow()) || c.Restored.Asset != asAsset ||
+			asAsset != (c.Revision == 0) {
+			t.Errorf("change %+v restored %+v; want no before, restored from the deletion's time, the attachment's told apart", c,
+				c.Restored)
+		}
 	}
 }
 
@@ -728,7 +769,7 @@ func TestTheBodyLimitsAreTheModulesRoutes(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := page.New(page.Deps{Clock: fixedClock{}, Logger: slog.New(slog.DiscardHandler), Markdown: md, EditSessionCleanupInterval: time.Hour,
-		Budget: markdown.NewBudget(8<<20, time.Second, slog.New(slog.DiscardHandler))})
+		Budget: markdown.NewBudget(8<<20, time.Second, slog.New(slog.DiscardHandler)), Attachments: noAttachments{}})
 	router := httpserver.NewRouter(slog.New(slog.DiscardHandler))
 	m.Register(router, httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: tokenAuth{}, BodyLimits: m.BodyLimits()}))
 	if len(m.BodyLimits()) == 0 {
@@ -739,4 +780,20 @@ func TestTheBodyLimitsAreTheModulesRoutes(t *testing.T) {
 			t.Errorf("the body limit of %q, which is no route of the module's %q", route, router.Patterns())
 		}
 	}
+}
+
+// A module wired without the attachments' infos fails at its wiring, not
+// at its first read of the trash (M8/P2 design 3.4).
+func TestTheModuleRefusesNoAttachmentInfos(t *testing.T) {
+	md, err := markdown.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if recover() == nil {
+			t.Error("New without Attachments did not panic")
+		}
+	}()
+	page.New(page.Deps{Clock: fixedClock{}, Logger: slog.New(slog.DiscardHandler), Markdown: md, EditSessionCleanupInterval: time.Hour,
+		Budget: markdown.NewBudget(8<<20, time.Second, slog.New(slog.DiscardHandler))})
 }
