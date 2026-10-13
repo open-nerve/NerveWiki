@@ -141,7 +141,8 @@ func TestAUnitMergesOnlyIntoItsOwnKindOfChangeset(t *testing.T) {
 }
 
 // An edit session's write never merges into another changeset: a unit
-// that merges refuses one that resumes its session's changeset.
+// that merges refuses one that resumes its session's changeset. The units
+// are edits, so it is the merge that refuses, not the kind.
 func TestAMergingUnitRefusesAnEditSessionsWrite(t *testing.T) {
 	f := newFixture()
 	f.grant(domain.ActionCreate)
@@ -149,11 +150,15 @@ func TestAMergingUnitRefusesAnEditSessionsWrite(t *testing.T) {
 	s := f.session(n.ID, f.alice, now().Add(time.Hour))
 	s.ChangesetID, s.Revision = uuid.NewV7(), 1
 	f.store.sessions[s.ID] = s
-	first, err := f.importUnit(f.asAlice(), domain.ClientWeb, uuid.UUID{}, create("One"))
+	edit := func(into uuid.UUID, do func(ctx context.Context, u *app.Unit) error) (app.Outcome, error) {
+		return f.writer().Run(f.asAlice(), app.UnitSpec{NotebookID: f.eng, Action: domain.ActionCreate, Tree: true,
+			Client: domain.ClientWeb, NotFound: domain.ErrNotebookNotFound, Changeset: into}, do)
+	}
+	first, err := edit(uuid.UUID{}, create("One"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = f.importUnit(f.asAlice(), domain.ClientWeb, first.ChangesetID, func(ctx context.Context, u *app.Unit) error {
+	_, err = edit(first.ChangesetID, func(ctx context.Context, u *app.Unit) error {
 		_, err := u.WriteContent(ctx, app.ContentWrite{NodeID: n.ID, Content: "mine", Base: 1, EditSession: s.ID})
 		return err
 	})
