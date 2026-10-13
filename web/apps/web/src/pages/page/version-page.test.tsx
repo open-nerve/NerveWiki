@@ -1,13 +1,14 @@
-import { act, screen, waitFor, within } from "@testing-library/react";
+import { act, configure, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 
 import { appLinks } from "../../reading/app-links";
 import type { Enhancement } from "../../reading/enhancement";
 import { taskToggle } from "../../reading/task-toggle";
 import { unresolvedLinks } from "../../reading/unresolved-links";
 import type { NotebookRole } from "../../services/notebook.service";
-import { json, type Answer } from "../../test/fakes";
+import { json, problem, type Answer } from "../../test/fakes";
+import { marked } from "../../test/page-editor";
 import { bob, guide, install, pagePath, pageServer, versionJSON } from "../../test/page-server";
 import { renderApp } from "../../test/render";
 
@@ -119,13 +120,15 @@ test("the tabs are a named group the arrow keys move in, Enter choosing: what th
   // Counts as the app writes them in English (M8/P1 review B, M4).
   expect(screen.getByText("Changes: 1")).toBeTruthy();
   expect(screen.getByText("Lines: +1 −0")).toBeTruthy();
-  expect(changes.textContent).toContain("three");
+  // From the version before to this one.
+  expect(marked(changes)).toEqual({ removed: [], added: ["- [ ] three"] });
   expect(server.sent).toContain("GET version Install 1");
 
   await user.keyboard("{ArrowRight}{Enter}");
   const restoring = await screen.findByRole("textbox", { name: "Changes from the page now to version 4" });
   expect(screen.getByRole("tabpanel").textContent).toContain("The page now → Version 4");
-  expect(restoring.textContent).toContain("three");
+  // From the page now to this version: what the restore would change.
+  expect(marked(restoring)).toEqual({ removed: ["Install now"], added: ["- [ ] one", "- [x] two", "- [ ] three"] });
   expect(server.sent).toContain("GET content Install");
 
   await user.keyboard("{Home}{Enter}");
@@ -211,12 +214,78 @@ test("an address of no page, or of no revision, is no page; a revision no versio
   const { router } = renderApp(versionPath(install.id, "x"), server.app);
   expect(await screen.findByRole("heading", { level: 1, name: "Page not found" })).toBeTruthy();
 
+  // No version holds 0; 01 is not how an address writes 1.
+  for (const revision of ["0", "01"]) {
+    // oxlint-disable-next-line no-await-in-loop -- one address after the other
+    await act(() => router.navigate(versionPath(install.id, revision)));
+    // oxlint-disable-next-line no-await-in-loop -- as above
+    expect(await screen.findByRole("heading", { level: 1, name: "Page not found" })).toBeTruthy();
+  }
+  expect(server.sent.filter((each) => each.startsWith("GET version Install"))).toEqual([]);
+
   await act(() => router.navigate(versionPath("0199a2b4-0000-7000-8000-000000000999", 1)));
   expect(await screen.findByRole("heading", { level: 1, name: "Page not found" })).toBeTruthy();
 
   await act(() => router.navigate(versionPath(install.id, 7)));
   expect(await screen.findByText("This page has no such version.")).toBeTruthy();
   expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+});
+
+// v0.1 design 13.2, item 7: what does not load says why, and loads once tried again.
+test("a version, its view, the version before it and the page now that could not be read say why, and are read on Try again", async () => {
+  const user = userEvent.setup();
+  const failed = new Set<string>();
+  // Each read fails the first time.
+  const once = (read: string, answer: () => Response): Response => {
+    if (failed.has(read)) {
+      return answer();
+    }
+    failed.add(read);
+    return problem(500, "internal");
+  };
+  const server = installed("admin", {
+    "GET /api/v0/pages/*/versions/*": (request) => {
+      const revision = Number(new URL(request.url).pathname.split("/")[6]);
+      return once(`version ${revision.toString()}`, () =>
+        json(server.versions.get(install.id)?.find((version) => version.revision === revision))
+      );
+    },
+    "GET /api/v0/pages/*/versions/*/view": () =>
+      once("view", () => json({ html: "<p>Version four</p>", revision: 4, assets_expire_at: null })),
+    "GET /api/v0/pages/*/content": () =>
+      once("content", () => json({ ...server.contents.get(install.id), content_hash: "0".repeat(64) })),
+  });
+  renderApp(versionPath(install.id, 4), server.app);
+
+  await user.click(await screen.findByRole("button", { name: "Try again" }));
+  expect(await screen.findByText("· Ada · Edit")).toBeTruthy();
+  await user.click(await screen.findByRole("button", { name: "Try again" }));
+  expect((await screen.findByRole("article", { name: "Version 4" })).textContent).toBe("Version four");
+
+  await user.click(screen.getByRole("tab", { name: "Compare with the previous" }));
+  await user.click(await within(screen.getByRole("tabpanel")).findByRole("button", { name: "Try again" }));
+  expect(await screen.findByRole("textbox", { name: "Changes from version 1 to version 4" })).toBeTruthy();
+
+  await user.click(screen.getByRole("tab", { name: "Compare with the current" }));
+  await user.click(await within(screen.getByRole("tabpanel")).findByRole("button", { name: "Try again" }));
+  expect(await screen.findByRole("textbox", { name: "Changes from the page now to version 4" })).toBeTruthy();
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
+test("differences whose code could not load say so, and show on Try again", async () => {
+  // A module whose mock throws fails once: loaded again, as StrictMode does, it is there. Not here.
+  vi.doMock("../../editor/text-diff", () => {
+    throw new Error("offline");
+  });
+  onTestFinished(() => vi.doUnmock("../../editor/text-diff"));
+  const user = userEvent.setup();
+  renderApp(versionPath(install.id, 4), installed().app);
+
+  await user.click(await screen.findByRole("tab", { name: "Compare with the current" }));
+  expect(await screen.findByText("The differences could not be shown.")).toBeTruthy();
+  vi.doUnmock("../../editor/text-diff");
+  await user.click(within(screen.getByRole("tabpanel")).getByRole("button", { name: "Try again" }));
+  expect(await screen.findByRole("textbox", { name: "Changes from the page now to version 4" })).toBeTruthy();
 });
 
 test("who edits the page shows as on the page; the edit's lease run out, its version is no longer marked editing", async () => {
@@ -255,6 +324,22 @@ test.each<[string, NotebookRole, number, boolean]>([
   await act(async () => {});
   expect(screen.queryByRole("button", { name: "Restore this version" }) !== null).toBe(restores);
   expect(screen.queryByText("Current") !== null).toBe(revision === 6);
+});
+
+test("mounted again at once, as StrictMode does, the version's page keeps what it read: nothing is read twice", async () => {
+  configure({ reactStrictMode: true });
+  onTestFinished(() => configure({ reactStrictMode: false }));
+  const server = installed();
+  renderApp(versionPath(install.id, 4), server.app);
+
+  await screen.findByRole("article", { name: "Version 4" });
+  // The turn the version's page would be left in is over.
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(server.sent.filter((each) => each.startsWith("GET version"))).toEqual([
+    "GET version Install 4",
+    "GET versions Install",
+    "GET version view Install 4",
+  ]);
 });
 
 test("leaving a version's page takes what it read out of the cache: come back to, it is read anew, not shown from before", async () => {

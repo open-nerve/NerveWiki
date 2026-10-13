@@ -10,6 +10,7 @@ import { eventServer, withEvents } from "../test/event-server";
 import { json, notebookJSON, problem, workspaceJSON, type Answer } from "../test/fakes";
 import type { PageVersionContent } from "../services/page.service";
 import { bob, guide, install, linux, notes, pagePath, pageServer, versionJSON } from "../test/page-server";
+import { marked } from "../test/page-editor";
 import { renderApp } from "../test/render";
 
 // Each event has what it changed read again (M5/P3 design 3.8): the tree,
@@ -675,6 +676,29 @@ test("a links event reads again the views of the versions shown of the pages it 
   events.last().send("pages", pagesEvent(true, []));
   await waitFor(() => expect(versionArticle().innerHTML).toBe("<p>Renamed</p>"));
   expect(versionReads(server.sent)).toEqual(["GET version view Guide 1", "GET version view Guide 1"]);
+});
+
+/** compared is what the comparison of the page now with Guide's version 1 marks. */
+const compared = () => marked(screen.getByRole("textbox", { name: "Changes from the page now to version 1" }));
+
+test("a pages event reads again the page as it is now a version is compared with: of the page written newer, or of every page", async () => {
+  const user = userEvent.setup();
+  const { server, events } = await openVersion(1, [versionJSON(1, null, "Guide\n"), versionJSON(2, 1, "Guide 2\n")]);
+  await user.click(screen.getByRole("tab", { name: "Compare with the current" }));
+  await waitFor(() => expect(compared().removed).toEqual(["Guide 2"]));
+  server.sent.length = 0;
+
+  server.contents.set(guide.id, { content: "Guide 3\n", revision: 3 });
+  events.last().send("pages", pagesEvent(false, [{ id: notes.id, revision: 9 }]));
+  await settle();
+  expect(server.sent).not.toContain("GET content Guide");
+  events.last().send("pages", pagesEvent(false, [{ id: guide.id, revision: 3 }]));
+  await waitFor(() => expect(compared().removed).toEqual(["Guide 3"]));
+
+  server.contents.set(guide.id, { content: "Guide 4\n", revision: 4 });
+  events.last().send("pages", pagesEvent(false, null));
+  await waitFor(() => expect(compared().removed).toEqual(["Guide 4"]));
+  expect(server.sent.filter((each) => each === "GET content Guide")).toHaveLength(2);
 });
 
 test("each connection reads again the version shown, the page's versions, and the page as it is now it is compared with", async () => {

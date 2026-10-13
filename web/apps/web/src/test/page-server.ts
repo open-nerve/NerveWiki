@@ -732,11 +732,15 @@ function versionRoutes(server: VersionState): Record<string, Answer> {
       if (node === undefined) {
         return problem(404, "page.not_found");
       }
-      const at = Number(cursor ?? "0");
-      const next = at + Number(query.get("limit") ?? "50");
-      const all = versionsOf(node).toReversed();
-      const data = all.slice(at, next).map(({ content: _, ...version }) => version);
-      return json({ data, next_cursor: next < all.length ? next.toString() : null });
+      // The cursor is the revision the next page is below, as the server's says.
+      const below = cursor === null ? Infinity : Number(cursor);
+      const limit = Number(query.get("limit") ?? "50");
+      const listed = versionsOf(node)
+        .toReversed()
+        .filter((version) => version.revision < below);
+      const data = listed.slice(0, limit).map(({ content: _, ...version }) => version);
+      const last = data.at(-1);
+      return json({ data, next_cursor: listed.length > limit && last !== undefined ? last.revision.toString() : null });
     },
     "GET /api/v0/pages/*/versions/*": (request) => {
       const node = nodeOf(request);

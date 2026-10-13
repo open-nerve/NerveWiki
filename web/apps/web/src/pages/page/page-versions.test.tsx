@@ -110,7 +110,7 @@ test("more reads the next page of twenty and adds it, the focus kept on it until
   await act(() => vi.advanceTimersByTimeAsync(0));
   expect(document.activeElement).toBe(more);
   expect(server.sent.slice(before).filter((each) => each.startsWith("GET versions"))).toEqual([
-    "GET versions Install 20",
+    "GET versions Install 26",
   ]);
 
   await user.keyboard("{Enter}");
@@ -131,8 +131,8 @@ test("more reads the next page of twenty and adds it, the focus kept on it until
   await waitFor(() =>
     expect(server.sent.slice(before).filter((each) => each.startsWith("GET versions Install"))).toEqual([
       "GET versions Install",
-      "GET versions Install 20",
-      "GET versions Install 40",
+      "GET versions Install 26",
+      "GET versions Install 6",
     ])
   );
   expect(within(section("Versions")).getAllByRole("listitem")).toHaveLength(45);
@@ -148,9 +148,132 @@ test("more reads the next page of twenty and adds it, the focus kept on it until
   expect(listed()[0]).toEqual(["1 minute ago", "Oct 3, 2026, 9:59 AM", "Current", "Bob · Edit"]);
   expect(server.sent.slice(before).filter((each) => each.startsWith("GET versions"))).toEqual([
     "GET versions Install",
-    "GET versions Install 20",
-    "GET versions Install 40",
+    "GET versions Install 27",
+    "GET versions Install 7",
   ]);
+});
+
+/** listing is a page of the versions of revisions, as the list answers it, written by, the next after cursor. */
+function listing(revisions: number[], cursor: string | null, by = ada) {
+  return {
+    data: revisions.map((revision) => {
+      const { content: _, ...version } = versionJSON(revision, revision - 1, "", { by, at: "2026-10-01T09:00:00Z" });
+      return version;
+    }),
+    next_cursor: cursor,
+  };
+}
+
+/** writers is who wrote each version listed. */
+const writers = () =>
+  within(section("Versions"))
+    .getAllByRole("listitem")
+    .map((item) => item.querySelector("p")?.textContent);
+
+test("a More answered as the page come back to reads its list again has the list read again whole: SWR drops that read", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+  let by = ada;
+  let holding = false;
+  const answers: (() => void)[] = [];
+  const server = pageServer({
+    answers: {
+      "GET /api/v0/pages/*/versions": (request) => {
+        const cursor = new URL(request.url).searchParams.get("cursor");
+        const page = () => json(cursor === null ? listing([5], "5", by) : listing([4], null, by));
+        return holding && request.url.includes(install.id)
+          ? new Promise((resolve) => answers.push(() => resolve(page())))
+          : page();
+      },
+    },
+  });
+  const { router } = renderApp(pagePath(install.id), server.app);
+  await within(await shownPanel()).findByRole("list", { name: "Versions" });
+  holding = true;
+  await user.click(within(section("Versions")).getByRole("button", { name: "More versions" }));
+
+  await act(() => router.navigate(pagePath(notes.id)));
+  await screen.findByRole("heading", { level: 1, name: "Notes" });
+  // Past SWR's deduping: the page come back to reads its list again.
+  await act(() => vi.advanceTimersByTimeAsync(3_000));
+  await act(() => router.navigate(pagePath(install.id)));
+  await within(await shownPanel()).findByRole("list", { name: "Versions" });
+  await waitFor(() => expect(answers).toHaveLength(2));
+  by = bob;
+  holding = false;
+  // More answers first: the read of the page come back to is dropped.
+  answers[0]?.();
+  await waitFor(() => expect(writers()).toEqual(["Bob · Edit", "Bob · Edit"]));
+  answers[1]?.();
+});
+
+test("a next page added while the list is read again has the list read again whole: SWR drops that read", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+  let first = listing([5], "5");
+  let held = Promise.resolve();
+  let answer!: (response: Response) => void;
+  let next = (): Promise<Response> => new Promise((resolve) => (answer = resolve));
+  const server = pageServer({
+    answers: {
+      "GET /api/v0/pages/*/versions": async (request) => {
+        const cursor = new URL(request.url).searchParams.get("cursor");
+        server.sent.push(`GET versions ${cursor ?? ""}`.trim());
+        if (cursor !== null) {
+          return next();
+        }
+        await held;
+        return json(first);
+      },
+    },
+  });
+  renderApp(pagePath(install.id), server.app);
+  await within(await shownPanel()).findByRole("list", { name: "Versions" });
+  const more = within(section("Versions")).getByRole("button", { name: "More versions" });
+  await user.click(more);
+  await waitFor(() => expect(more.getAttribute("aria-busy")).toBe("true"));
+
+  // The list is read again, its first page's answer held, as the next page comes: SWR drops that read.
+  let release!: () => void;
+  held = new Promise((resolve) => (release = resolve));
+  first = listing([5], "5", bob);
+  await readAgain();
+  await waitFor(() => expect(server.sent.filter((each) => each === "GET versions")).toHaveLength(2));
+  next = () => Promise.resolve(json(listing([4], null, bob)));
+  answer(json(listing([4], null)));
+  await waitFor(() => expect(writers()).toEqual(["Ada · Edit", "Ada · Edit"]));
+  release();
+  await waitFor(() => expect(writers()).toEqual(["Bob · Edit", "Bob · Edit"]));
+});
+
+test("a next page read after a cursor the list read again no longer ends with is not added", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+  let first = listing([5], "5");
+  let answer!: (response: Response) => void;
+  const server = pageServer({
+    answers: {
+      "GET /api/v0/pages/*/versions": (request) => {
+        const cursor = new URL(request.url).searchParams.get("cursor");
+        return cursor === null ? json(first) : new Promise((resolve) => (answer = resolve));
+      },
+    },
+  });
+  renderApp(pagePath(install.id), server.app);
+  await within(await shownPanel()).findByRole("list", { name: "Versions" });
+  const more = within(section("Versions")).getByRole("button", { name: "More versions" });
+
+  await user.click(more);
+  await waitFor(() => expect(more.getAttribute("aria-busy")).toBe("true"));
+  // A version written meanwhile: the list's first page ends lower.
+  first = listing([6], "6");
+  await readAgain();
+  await waitFor(() =>
+    expect(within(section("Versions")).getAllByRole("link")[0]?.getAttribute("href")).toMatch(/\/versions\/6$/)
+  );
+  answer(json(listing([5, 4], null)));
+  await waitFor(() => expect(more.getAttribute("aria-busy")).toBeNull());
+  expect(within(section("Versions")).getAllByRole("listitem")).toHaveLength(1);
 });
 
 test("a More that fails says why beside it, which reads again", async () => {

@@ -2,7 +2,8 @@ import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
-import { problem, type Answer } from "../../test/fakes";
+import { json, problem, type Answer } from "../../test/fakes";
+import { marked } from "../../test/page-editor";
 import { section } from "../../test/page-panel";
 import { bob, install, pagePath, pageServer, versionJSON } from "../../test/page-server";
 import { renderApp } from "../../test/render";
@@ -12,6 +13,18 @@ import { renderApp } from "../../test/render";
 /** versionPath is the address of the version of the page id that holds revision. */
 const versionPath = (id: string, revision: number) => `${pagePath(id)}/versions/${revision.toString()}`;
 
+/** installed is Install over pageServer with three versions, the page now as the newest; answers answer instead of it. */
+function installed(answers: Record<string, Answer> = {}) {
+  const server = pageServer({ answers });
+  server.withVersions(install.id, [
+    versionJSON(1, null, "Install\n", { by: bob, at: "2026-10-01T09:00:00Z" }),
+    versionJSON(4, 1, "Install\nthree\n", { at: "2026-10-02T09:00:00Z" }),
+    versionJSON(6, 4, "Install now\n", { at: "2026-10-03T09:00:00Z" }),
+  ]);
+  server.views.set(install.id, { html: "<p>Install now</p>", revision: 6, assets_expire_at: null });
+  return server;
+}
+
 /**
  * restoring is Install with three versions, its version 4 shown and its
  * restore's dialog open, what it compares read; answers answer instead of
@@ -19,12 +32,7 @@ const versionPath = (id: string, revision: number) => `${pagePath(id)}/versions/
  */
 async function restoring(answers: Record<string, Answer> = {}) {
   const user = userEvent.setup();
-  const server = pageServer({ answers });
-  server.withVersions(install.id, [
-    versionJSON(1, null, "Install\n", { by: bob, at: "2026-10-01T09:00:00Z" }),
-    versionJSON(4, 1, "Install\nthree\n", { at: "2026-10-02T09:00:00Z" }),
-    versionJSON(6, 4, "Install now\n", { at: "2026-10-03T09:00:00Z" }),
-  ]);
+  const server = installed(answers);
   const { router } = renderApp(versionPath(install.id, 4), server.app);
   const restore = await screen.findByRole("button", { name: "Restore this version" });
   await user.click(restore);
@@ -37,19 +45,38 @@ async function restoring(answers: Record<string, Answer> = {}) {
 const restores = (sent: readonly string[]) => sent.filter((each) => each.startsWith("RESTORE"));
 
 test("the dialog shows what the restore changes of the page as it is now; restored, the tab goes to the page, its title focused, which says so, its view and versions read again", async () => {
-  const { user, server, router, dialog } = await restoring();
+  const user = userEvent.setup();
+  const server = installed();
+  const { router } = renderApp(pagePath(install.id), server.app);
+  // The page's view, read as it was, which the restore changes.
+  expect((await screen.findByRole("article", { name: "Install" })).textContent).toBe("Install now");
+  const version = await waitFor(() => {
+    const link = within(section("Versions"))
+      .getAllByRole("link")
+      .find((each) => each.getAttribute("href")?.endsWith("/versions/4"));
+    expect(link).toBeTruthy();
+    return link as HTMLElement;
+  });
+  await user.click(version);
+  await user.click(await screen.findByRole("button", { name: "Restore this version" }));
+  const dialog = await screen.findByRole("alertdialog", { name: "Restore version 4?" });
+  const diff = await within(dialog).findByRole("textbox", { name: "Changes from the page now to version 4" });
   expect(
     within(dialog).getByText(
       "The page's content becomes this version's, as a new version: the versions before it stay. Below, what the restore changes."
     )
   ).toBeTruthy();
   expect(dialog.textContent).toContain("The page now → Version 4");
+  // From the page now to the version: what the restore changes.
+  expect(marked(diff)).toEqual({ removed: ["Install now"], added: ["Install", "three"] });
   expect(server.sent).toContain("GET content Install");
 
   const before = server.sent.length;
   await user.click(within(dialog).getByRole("button", { name: "Restore" }));
 
   const heading = await screen.findByRole("heading", { level: 1, name: "Install" });
+  // The view cached before the restore is not shown, not even at first.
+  expect(screen.queryByRole("article", { name: "Install" })?.textContent).not.toBe("Install now");
   expect(router.state.location.pathname).toBe(pagePath(install.id));
   await waitFor(() => expect(document.activeElement).toBe(heading));
   const status = screen.getByText("Restored version 4.");
@@ -119,6 +146,36 @@ test("a page gone closes the dialog, the version's page saying so", async () => 
   expect(
     screen.getByText("The page is no longer there: deleted, or out of your reach. Nothing was restored.").tagName
   ).toBe("OUTPUT");
+});
+
+test("a version no longer there closes the dialog, the version's page saying why", async () => {
+  const { user, dialog } = await restoring({
+    "POST /api/v0/pages/*/versions/*/restore": () => problem(404, "page.version_not_found"),
+  });
+
+  await user.click(within(dialog).getByRole("button", { name: "Restore" }));
+
+  await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+  expect(screen.getByText("This page has no such version.").tagName).toBe("OUTPUT");
+});
+
+test("the page now that could not be read says why in the dialog, and is read on Try again", async () => {
+  const user = userEvent.setup();
+  let fail = true;
+  const server = installed({
+    "GET /api/v0/pages/*/content": () =>
+      fail ? problem(500, "internal") : json({ ...server.contents.get(install.id), content_hash: "0".repeat(64) }),
+  });
+  renderApp(versionPath(install.id, 4), server.app);
+  await user.click(await screen.findByRole("button", { name: "Restore this version" }));
+  const dialog = await screen.findByRole("alertdialog", { name: "Restore version 4?" });
+
+  const retry = await within(dialog).findByRole("button", { name: "Try again" });
+  expect(within(dialog).getByRole("button", { name: "Restore" }).hasAttribute("disabled")).toBe(true);
+  fail = false;
+  await user.click(retry);
+  expect(await within(dialog).findByRole("textbox", { name: "Changes from the page now to version 4" })).toBeTruthy();
+  expect(within(dialog).getByRole("button", { name: "Restore" }).hasAttribute("disabled")).toBe(false);
 });
 
 test("another refusal stays in the dialog with its reason", async () => {
