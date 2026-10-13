@@ -33,7 +33,7 @@ func (v *views) Resolve(_ context.Context, p app.Page, links []app.Link) (map[in
 func TestResolveAsksTheViewsAsTheIndexWritesTargets(t *testing.T) {
 	a, x := uuid.NewV7(), uuid.NewV7()
 	v := &views{rs: map[int]domain.Resolution{2: {ID: a, Ambiguous: true}, 12: {}, 22: {ID: x, Asset: true}}}
-	page := markdown.Page{NotebookID: uuid.NewV7(), PageID: uuid.NewV7(), Revision: 4}
+	page := markdown.Page{NotebookID: uuid.NewV7(), PageID: uuid.NewV7(), Revision: 4, Deleted: true}
 	links := []obsidian.Link{
 		{Kind: obsidian.KindWikilink, Target: "A", Anchor: "h", Range: markdown.Span{Start: 2, Stop: 3}},
 		{Kind: obsidian.KindLink, Target: "b\x00c.md", Range: markdown.Span{Start: 12, Stop: 18}},
@@ -48,7 +48,7 @@ func TestResolveAsksTheViewsAsTheIndexWritesTargets(t *testing.T) {
 		{SourceID: page.PageID, Start: 12, Target: "b\xef\xbf\xbdc.md"},
 		{SourceID: page.PageID, Start: 22, Target: "x.png"},
 	}
-	if want := (app.Page{ID: page.PageID, NotebookID: page.NotebookID, Revision: 4}); v.page != want || !reflect.DeepEqual(v.links, wantLinks) {
+	if want := (app.Page{ID: page.PageID, NotebookID: page.NotebookID, Revision: 4, Deleted: true}); v.page != want || !reflect.DeepEqual(v.links, wantLinks) {
 		t.Errorf("asked of %+v for %+v", v.page, v.links)
 	}
 	v.err = errors.New("down")

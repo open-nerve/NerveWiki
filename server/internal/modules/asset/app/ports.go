@@ -129,11 +129,15 @@ type AttachmentInfo struct {
 	Bytes int64
 }
 
-// Deletions delete the attachments' rows with their nodes and notebooks:
-// adapter/postgres, in the caller's transaction.
+// Deletions delete the attachments' rows with their nodes and notebooks,
+// and bring a node's back with it: adapter/postgres, in the caller's
+// transaction.
 type Deletions interface {
 	// DeleteBlobsOfNodes deletes at at the rows not deleted of the nodes.
 	DeleteBlobsOfNodes(ctx context.Context, nodeIDs []uuid.UUID, at time.Time) error
+	// RestoreBlobsOfNodes brings back the rows of the nodes deleted at
+	// deletedAt, and tells how many.
+	RestoreBlobsOfNodes(ctx context.Context, nodeIDs []uuid.UUID, deletedAt time.Time) (int, error)
 	// DeleteBlobsOfNotebooks deletes at at the rows not deleted of the
 	// notebooks.
 	DeleteBlobsOfNotebooks(ctx context.Context, notebookIDs []uuid.UUID, at time.Time) error

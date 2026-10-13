@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"context"
+	"time"
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/asset"
@@ -65,19 +66,40 @@ func (a assetNodes) Assets(ctx context.Context, notebookID uuid.UUID, parentID *
 }
 
 // assetObserver is the attachments' observer of the page module's units:
-// the nodes a unit deleted, of whatever kind, a subtree's each node.
+// the nodes a unit deleted, of whatever kind, a subtree's each node; and
+// the attachments it restored, by the time they were deleted at, each of
+// whose rows must come back: a row the purge took is a trash item changed,
+// which the asset module, not knowing the page module's codes, does not
+// tell (M8/P2 design 3.6).
 type assetObserver struct {
 	asset asset.PageObserver
 }
 
 func (o assetObserver) PagesChanged(ctx context.Context, e page.Event) error {
 	var deleted []uuid.UUID
+	restored := map[time.Time][]uuid.UUID{}
 	for _, c := range e.Changes {
-		if c.After == nil {
+		switch {
+		case c.After == nil:
 			deleted = append(deleted, c.NodeID)
+		case c.Restored != nil && c.Restored.Asset:
+			at := c.Restored.DeletedAt.UTC()
+			restored[at] = append(restored[at], c.NodeID)
 		}
 	}
-	return o.asset.NodesDeleted(ctx, deleted, e.At)
+	if err := o.asset.NodesDeleted(ctx, deleted, e.At); err != nil {
+		return err
+	}
+	for at, ids := range restored {
+		n, err := o.asset.NodesRestored(ctx, ids, at)
+		switch {
+		case err != nil:
+			return err
+		case n != len(ids):
+			return page.ErrTrashChanged
+		}
+	}
+	return nil
 }
 
 // assetNotebookDeletion is the attachments' part in a notebook's deletion

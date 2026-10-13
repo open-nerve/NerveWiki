@@ -51,6 +51,28 @@ func (s *Store) LinkTargetsByIDs(ctx context.Context, notebookID uuid.UUID, ids 
 	return linkPaths(same)
 }
 
+// SourcePath is the node id of notebookID, deleted or not, with its path
+// through its ancestors, deleted or not; false for none.
+func (s *Store) SourcePath(ctx context.Context, notebookID, id uuid.UUID) (LinkPath, bool, error) {
+	rows, err := s.queries(ctx).SourcePath(ctx, gen.SourcePathParams{ID: id, NotebookID: notebookID})
+	if err != nil {
+		return LinkPath{}, false, fmt.Errorf("source path: %w", err)
+	}
+	if len(rows) == 0 {
+		return LinkPath{}, false, nil
+	}
+	same := make([]gen.LinkTargetsByKeysRow, len(rows))
+	for i, r := range rows {
+		same[i] = gen.LinkTargetsByKeysRow{PageID: id, ID: r.ID, ParentID: r.ParentID, Name: r.Name, NameKey: r.NameKey, Kind: r.Kind,
+			Up: r.Up}
+	}
+	paths, err := linkPaths(same)
+	if err != nil {
+		return LinkPath{}, false, err
+	}
+	return paths[0], true, nil
+}
+
 // AttachmentPath is an attachment with its path, and the number of its
 // notebook's attachments with its title key, itself among them, to 2.
 type AttachmentPath struct {

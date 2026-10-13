@@ -310,7 +310,9 @@ func TestGetVersionMarksOnlyTheNewestVersionBeingEdited(t *testing.T) {
 }
 
 // A version's reading view is rendered as a page's, for this page at the
-// version's own revision, within the parse budget.
+// version's own revision, within the parse budget; a page in the trash's
+// for a page deleted, whose links resolve from where it was (M8/P2 design
+// 3.7).
 func TestGetVersionViewRendersTheVersion(t *testing.T) {
 	f := newFixture()
 	f.grant(domain.ActionHistory)
@@ -330,8 +332,14 @@ func TestGetVersionViewRendersTheVersion(t *testing.T) {
 		"Release 5"}) {
 		t.Errorf("calls = %v, want the page, the decision, the version with its content, rendered within the budget", f.rec.calls)
 	}
-	if !slices.Equal(md.pages, []app.PageRef{{NotebookID: f.eng, PageID: n.ID, Revision: 3}}) {
-		t.Errorf("rendered for %v, want the page at revision 3", md.pages)
+	if !slices.Equal(md.pages, []app.PageRef{{NotebookID: f.eng, PageID: n.ID, Revision: 3, Deleted: true}}) {
+		t.Errorf("rendered for %v, want the page in the trash at revision 3", md.pages)
+	}
+	alive := f.page("Alive", nil, 1)
+	f.version(alive.ID, nil, 1, "one", domain.ChangesetEdit, f.alice)
+	if _, err := app.NewGetVersionView(f.versionReads(), md, f.budget).Execute(f.asAlice(), alive.ID, 1); err != nil ||
+		md.pages[1] != (app.PageRef{NotebookID: f.eng, PageID: alive.ID, Revision: 1}) {
+		t.Errorf("rendered %v for %v, want the page alive at revision 1", err, md.pages)
 	}
 	if _, err := app.NewGetVersionView(f.versionReads(), md, f.budget).Execute(f.asAlice(), n.ID, 4); codeOf(err) !=
 		"page.version_not_found" {

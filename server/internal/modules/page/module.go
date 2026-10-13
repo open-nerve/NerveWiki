@@ -62,6 +62,8 @@ type (
 	Options      = app.Options
 	Step         = app.Step
 	Change       = domain.Change
+	TreeState    = domain.TreeState
+	Restored     = domain.Restored
 	WriteGuard   = app.WriteGuard
 	Participant  = app.Participant
 	Appender     = app.Appender
@@ -75,6 +77,15 @@ type (
 	SessionEnded          = app.SessionEnded
 	EditSessionSubscriber = app.EditSessionSubscriber
 )
+
+// ErrTrashChanged is a trash item's restore that found the item changed
+// since it read it: an observer answers it for a row of the item the purge
+// took (M8/P2 design 3.6).
+var ErrTrashChanged = domain.ErrTrashChanged
+
+// TrashMargin is how long before the purge's retention a trash item can no
+// longer be restored: bootstrap tells the instance's retention less it.
+const TrashMargin = domain.TrashMargin
 
 // Deps are what bootstrap gives the module.
 type Deps struct {

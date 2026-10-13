@@ -32,7 +32,7 @@ func TestTheAdapterRendersAContent(t *testing.T) {
 		t.Errorf("Render = %+v, %v; want %+v", got, err, want)
 	}
 	at := time.Date(2026, 10, 9, 14, 0, 0, 0, time.UTC)
-	page := app.PageRef{NotebookID: uuid.NewV7(), PageID: uuid.NewV7(), Revision: 3}
+	page := app.PageRef{NotebookID: uuid.NewV7(), PageID: uuid.NewV7(), Revision: 3, Deleted: true}
 	var fetched markdown.Page
 	md, err := markdown.New([]markdown.Extension{{
 		Name: "expiring",
@@ -46,7 +46,7 @@ func TestTheAdapterRendersAContent(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err = markdownadapter.New(md).Render(context.Background(), "a", page)
-	want := markdown.Page{NotebookID: page.NotebookID, PageID: page.PageID, Revision: 3}
+	want := markdown.Page{NotebookID: page.NotebookID, PageID: page.PageID, Revision: 3, Deleted: true}
 	if err != nil || got.HTML != "<p>a</p>\n" || !got.Expires.Equal(at) || fetched != want {
 		t.Errorf("Render = %+v, %v, for %+v", got, err, fetched)
 	}

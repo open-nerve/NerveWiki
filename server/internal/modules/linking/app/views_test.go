@@ -144,7 +144,14 @@ func TestAViewOfWhatWentMeanwhileIsNoError(t *testing.T) {
 type failing struct {
 	*store
 	*tree
-	viewErr, keysErr, aliasesErr, pathsErr error
+	viewErr, keysErr, aliasesErr, pathsErr, sourceErr error
+}
+
+func (f failing) SourcePath(ctx context.Context, notebookID, id uuid.UUID) (domain.Node, bool, error) {
+	if f.sourceErr != nil {
+		return domain.Node{}, false, f.sourceErr
+	}
+	return f.tree.SourcePath(ctx, notebookID, id)
 }
 
 func (f failing) View(ctx context.Context, id uuid.UUID) (app.Indexed, bool, error) {
@@ -243,5 +250,40 @@ func TestAViewsLinksToOneNameResolveAsWritten(t *testing.T) {
 	w = newWorld(t, "ab", "ab/c", "a", "a/bc", "src")
 	if got, want := w.view("src", 0, "ab/c", "a/bc"), w.leads("ab/c", "a/bc"); !reflect.DeepEqual(got, want) {
 		t.Errorf("paths cut otherwise: got %v, want %v", got, want)
+	}
+}
+
+// A view of a page in the trash reads no index, which has none of it: it
+// resolves its links anew from where the page was, through its ancestors
+// in the trash, against the pages alive, its group's not among them, an
+// alias as well; the page gone meanwhile leads nowhere; a read that fails
+// is its error (M8/P2 design 3.7).
+func TestAViewOfAPageInTheTrashResolvesFromWhereItWas(t *testing.T) {
+	w := newWorld(t, "A", "B", "A/Notes", "B/Notes", "A/Folder", "A/Folder/src", "A/Folder/Sibling", "Y")
+	w.run(w.write("Y", nil, "nick"))
+	w.run(w.write("A/Folder/src", []string{"Notes"}))
+	w.misindex("A/Folder/src", 0, "B/Notes")
+	for _, path := range []string{"A/Folder", "A/Folder/src", "A/Folder/Sibling"} {
+		w.tree.nodes[w.id(path)].gone = true
+	}
+	w.store.viewed = 0
+	src := w.id("A/Folder/src")
+	page := app.Page{ID: src, NotebookID: w.notebook, Revision: 1, Deleted: true}
+	links := []app.Link{{SourceID: src, Start: 0, Target: "Notes"}, {SourceID: src, Start: 10, Target: "nick"},
+		{SourceID: src, Start: 20, Target: "Sibling"}}
+	views := app.Views{Store: w.store, Pages: w.tree}
+	got, err := views.Resolve(context.Background(), page, links)
+	want := w.leads("A/Notes", "Y", "")
+	want[0] = domain.Resolution{ID: w.id("A/Notes"), Ambiguous: true} // B/Notes is further
+	if err != nil || !reflect.DeepEqual(got, want) || w.store.viewed != 0 {
+		t.Errorf("Resolve(in the trash) = %v, %v, viewed %d; want %v from A/Folder, the index not read", got, err, w.store.viewed, want)
+	}
+	failing := failing{store: w.store, tree: w.tree, sourceErr: errors.New("down")}
+	if _, err := (app.Views{Store: failing, Pages: failing}).Resolve(context.Background(), page, links); !errors.Is(err, failing.sourceErr) {
+		t.Errorf("Resolve(the path's read failing) = %v, want its error", err)
+	}
+	delete(w.tree.nodes, src)
+	if got, err := views.Resolve(context.Background(), page, links); err != nil || !reflect.DeepEqual(got, w.leads("", "", "")) {
+		t.Errorf("Resolve(the page gone) = %v, %v; want none", got, err)
 	}
 }

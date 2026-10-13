@@ -103,3 +103,22 @@ func (q *Queries) NotebookActivities(ctx context.Context, notebookIds []uuid.UUI
 	}
 	return items, nil
 }
+
+const restoreBlobsOfNodes = `-- name: RestoreBlobsOfNodes :execrows
+UPDATE asset_blobs SET deleted_at = NULL
+WHERE node_id = ANY($1::uuid[]) AND deleted_at = $2::timestamptz
+`
+
+type RestoreBlobsOfNodesParams struct {
+	NodeIds   []uuid.UUID
+	DeletedAt time.Time
+}
+
+// A trash item's restore (M8/P2 design 3.6): the rows of its attachments deleted at its time, which is their nodes'.
+func (q *Queries) RestoreBlobsOfNodes(ctx context.Context, arg RestoreBlobsOfNodesParams) (int64, error) {
+	result, err := q.db.Exec(ctx, restoreBlobsOfNodes, arg.NodeIds, arg.DeletedAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}

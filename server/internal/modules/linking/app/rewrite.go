@@ -108,7 +108,7 @@ func (r Rewrite) reached(ctx context.Context, m Moved, relocates bool, recased d
 	if err != nil {
 		return nil, nil, err
 	}
-	after, missing, err := resolutions(ctx, r.Store, r.Pages, m.NotebookID, links)
+	after, missing, err := resolutions(ctx, r.Store, r.Pages, m.NotebookID, links, nil)
 	if err != nil {
 		return nil, nil, err
 	}

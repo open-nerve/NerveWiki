@@ -18,6 +18,15 @@ func (s *Store) DeleteBlobsOfNodes(ctx context.Context, nodeIDs []uuid.UUID, at 
 	return nil
 }
 
+// RestoreBlobsOfNodes implements app.Deletions.
+func (s *Store) RestoreBlobsOfNodes(ctx context.Context, nodeIDs []uuid.UUID, deletedAt time.Time) (int, error) {
+	n, err := s.queries(ctx).RestoreBlobsOfNodes(ctx, gen.RestoreBlobsOfNodesParams{NodeIds: nodeIDs, DeletedAt: deletedAt})
+	if err != nil {
+		return 0, fmt.Errorf("restore the blobs of nodes: %w", err)
+	}
+	return int(n), nil
+}
+
 // DeleteBlobsOfNotebooks implements app.Deletions.
 func (s *Store) DeleteBlobsOfNotebooks(ctx context.Context, notebookIDs []uuid.UUID, at time.Time) error {
 	if err := s.queries(ctx).DeleteBlobsOfNotebooks(ctx, gen.DeleteBlobsOfNotebooksParams{At: at, NotebookIds: notebookIDs}); err != nil {

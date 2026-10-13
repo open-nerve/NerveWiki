@@ -25,7 +25,7 @@ func Resolve(views Views) obsidian.Resolve {
 		for i, l := range links {
 			asked[i] = app.Link{SourceID: page.PageID, Start: l.Range.Start, Target: text(l.Target)}
 		}
-		p := app.Page{ID: page.PageID, NotebookID: page.NotebookID, Revision: page.Revision}
+		p := app.Page{ID: page.PageID, NotebookID: page.NotebookID, Revision: page.Revision, Deleted: page.Deleted}
 		rs, err := views.Resolve(ctx, p, asked)
 		if err != nil {
 			return nil, err

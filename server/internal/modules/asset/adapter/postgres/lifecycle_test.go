@@ -68,3 +68,38 @@ func TestRowsFollowTheirNodesAndNotebooks(t *testing.T) {
 		t.Errorf("KnownBlobs() = %v, %v; want photo's and report's, deleted", known, err)
 	}
 }
+
+// A restore brings back the rows of its nodes deleted at its time, and
+// tells how many: not a row deleted at another time, nor one not deleted.
+func TestRestoreBlobsOfNodesTakesItsTimeAlone(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	store := postgresadapter.New(f.pool)
+	photo, report := f.blob(f.photo, f.eng, 0, 0), f.blob(f.report, f.ops, 0, 0)
+	for _, b := range []domain.Blob{photo, report} {
+		if err := store.CreateBlob(ctx, b); err != nil {
+			t.Fatal(err)
+		}
+	}
+	at := time.Date(2026, 10, 8, 11, 0, 0, 0, time.UTC)
+	if err := store.DeleteBlobsOfNodes(ctx, []uuid.UUID{f.photo}, at); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.DeleteBlobsOfNodes(ctx, []uuid.UUID{f.report}, at.Add(time.Microsecond)); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := store.RestoreBlobsOfNodes(ctx, []uuid.UUID{f.photo, f.report, uuid.NewV7()}, at); err != nil || n != 1 {
+		t.Errorf("RestoreBlobsOfNodes(at the photo's time) = %d, %v; want the photo's row", n, err)
+	}
+	var alive, gone int
+	if err := f.pool.QueryRow(ctx, `SELECT count(*) FILTER (WHERE id = $1 AND deleted_at IS NULL),
+		count(*) FILTER (WHERE id = $2 AND deleted_at IS NOT NULL) FROM asset_blobs`, photo.ID, report.ID).Scan(&alive, &gone); err != nil {
+		t.Fatal(err)
+	}
+	if alive != 1 || gone != 1 {
+		t.Errorf("the photo's row back %d, the report's still deleted %d; want each 1", alive, gone)
+	}
+	if n, err := store.RestoreBlobsOfNodes(ctx, []uuid.UUID{f.photo}, at); err != nil || n != 0 {
+		t.Errorf("RestoreBlobsOfNodes(a row not deleted) = %d, %v; want none", n, err)
+	}
+}

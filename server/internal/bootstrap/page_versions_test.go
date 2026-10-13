@@ -127,8 +127,8 @@ func TestRestoringAVersionThroughServe(t *testing.T) {
 // An edit session's saves are one version, being edited while the session
 // is alive, which any revision they wrote finds, answered with its own; its
 // reading view's links lead where they lead now. A page in the trash keeps
-// its history, read as an alive page's (its links resolve as M6 left a
-// deleted page's until P2); a restore is page.not_found until the page
+// its history, read as an alive page's, its links resolved from where it
+// was (M8/P2 design 3.7); a restore is page.not_found until the page
 // leaves the trash. A version no revision of the page holds is
 // page.version_not_found.
 func TestAPageInTheTrashKeepsItsHistory(t *testing.T) {
@@ -159,9 +159,9 @@ func TestAPageInTheTrashKeepsItsHistory(t *testing.T) {
 		t.Errorf("version 2 = %d %s, want the session's version 3", status, body)
 	}
 	status, body = ask(t, tm.contract, http.MethodGet, tm.base+"/api/v0/pages/"+id+"/versions/3/view", tm.tokens["bob"], "")
-	if status != http.StatusOK || !strings.Contains(body, `"revision":3`) || !strings.Contains(body, "nw-unresolved") ||
-		strings.Contains(body, "data-nw-node") {
-		t.Errorf("version 3's view in the trash = %d %s, want it rendered at 3, its link unresolved until P2", status, body)
+	if status != http.StatusOK || !strings.Contains(body, `"revision":3`) || !strings.Contains(body, `data-nw-node=\"`+target+`\"`) ||
+		strings.Contains(body, "nw-unresolved") {
+		t.Errorf("version 3's view in the trash = %d %s, want it rendered at 3, its link to Target from where it was", status, body)
 	}
 	for _, c := range []struct {
 		step step

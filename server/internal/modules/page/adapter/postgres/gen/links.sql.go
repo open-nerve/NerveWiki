@@ -236,6 +236,64 @@ func (q *Queries) SetNameKeys(ctx context.Context, arg SetNameKeysParams) (int64
 	return result.RowsAffected(), nil
 }
 
+const sourcePath = `-- name: SourcePath :many
+WITH RECURSIVE chain AS (
+    SELECT n.id, n.parent_id, n.name, n.name_key, n.kind, 0 AS up FROM nodes n
+    WHERE n.id = $1 AND n.notebook_id = $2
+    UNION ALL
+    SELECT p.id, p.parent_id, p.name, p.name_key, p.kind, c.up + 1
+    FROM chain c CROSS JOIN LATERAL (
+        SELECT id, parent_id, name, name_key, kind, notebook_id FROM nodes WHERE id = c.parent_id LIMIT 1
+    ) p
+    WHERE c.up < 64 AND p.notebook_id = $2
+)
+SELECT id, parent_id, name, name_key, kind, up::integer AS up FROM chain ORDER BY up DESC
+`
+
+type SourcePathParams struct {
+	ID         uuid.UUID
+	NotebookID uuid.UUID
+}
+
+type SourcePathRow struct {
+	ID       uuid.UUID
+	ParentID *uuid.UUID
+	Name     string
+	NameKey  string
+	Kind     string
+	Up       int32
+}
+
+// A node of a notebook, deleted or not, with its path from the root through its ancestors, deleted or not (M8/P2
+// design 3.7): where a page in the trash was, whose view resolves its links from there. It holds for a node alive
+// too: a page restored between two reads has its path all the same.
+func (q *Queries) SourcePath(ctx context.Context, arg SourcePathParams) ([]SourcePathRow, error) {
+	rows, err := q.db.Query(ctx, sourcePath, arg.ID, arg.NotebookID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SourcePathRow
+	for rows.Next() {
+		var i SourcePathRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ParentID,
+			&i.Name,
+			&i.NameKey,
+			&i.Kind,
+			&i.Up,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const unsetNameKeys = `-- name: UnsetNameKeys :execrows
 UPDATE nodes SET name_key = chr(1) || id::text
 WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL

@@ -139,6 +139,32 @@ func TestALinkTargetsPathThatReachesNoRootIsAnError(t *testing.T) {
 	}
 }
 
+// A source's path runs through its ancestors, deleted or not, to the root:
+// a page in the trash's where it was, an alive one's as well; none of
+// another notebook, or none at all (M8/P2 design 3.7).
+func TestSourcePathRunsThroughTheTrash(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	a := f.page(t, f.eng, nil, "A", 0)
+	folder := f.page(t, f.eng, &a.ID, "Folder", 0)
+	src := f.page(t, f.eng, &folder.ID, "Src", 0)
+	f.trashed(t, now(), 2, 0, 2, folder.ID, src.ID)
+	for _, tt := range []struct {
+		name string
+		id   uuid.UUID
+		want postgresadapter.LinkPath
+	}{{"the page in the trash", src.ID, pathOf(a, folder, src)}, {"the page alive", a.ID, pathOf(a)}} {
+		if got, ok, err := f.s.SourcePath(ctx, f.eng, tt.id); err != nil || !ok || !reflect.DeepEqual(got, tt.want) {
+			t.Errorf("SourcePath(%s) = %+v, %v, %v; want %+v", tt.name, got, ok, err, tt.want)
+		}
+	}
+	for what, args := range map[string][2]uuid.UUID{"another notebook": {f.ops, src.ID}, "none": {f.eng, uuid.NewV7()}} {
+		if got, ok, err := f.s.SourcePath(ctx, args[0], args[1]); err != nil || ok {
+			t.Errorf("SourcePath(%s) = %+v, %v, %v; want none", what, got, ok, err)
+		}
+	}
+}
+
 // The title keys reindex takes anew are set on the nodes not deleted; a
 // node deleted, or none, is a defect: an error, which rolls the unit back.
 func TestSetNameKeysSetsTheNodesNotDeleted(t *testing.T) {

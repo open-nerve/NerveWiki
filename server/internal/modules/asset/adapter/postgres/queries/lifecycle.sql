@@ -5,6 +5,11 @@
 UPDATE asset_blobs SET deleted_at = sqlc.arg(at)::timestamptz
 WHERE node_id = ANY(sqlc.arg(node_ids)::uuid[]) AND deleted_at IS NULL;
 
+-- name: RestoreBlobsOfNodes :execrows
+-- A trash item's restore (M8/P2 design 3.6): the rows of its attachments deleted at its time, which is their nodes'.
+UPDATE asset_blobs SET deleted_at = NULL
+WHERE node_id = ANY(sqlc.arg(node_ids)::uuid[]) AND deleted_at = sqlc.arg(deleted_at)::timestamptz;
+
 -- name: DeleteBlobsOfNotebooks :exec
 UPDATE asset_blobs SET deleted_at = sqlc.arg(at)::timestamptz
 WHERE notebook_id = ANY(sqlc.arg(notebook_ids)::uuid[]) AND deleted_at IS NULL;

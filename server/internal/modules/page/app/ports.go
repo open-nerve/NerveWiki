@@ -459,9 +459,10 @@ type Task struct {
 
 // PageRef is the page a Render is for, and the revision of its content
 // rendered: an extension fetches its data for it (M6: the link index of
-// that revision).
+// that revision); Deleted, a page in the trash (M8/P2 design 3.7).
 type PageRef struct {
 	NotebookID uuid.UUID
 	PageID     uuid.UUID
 	Revision   int
+	Deleted    bool
 }
