@@ -137,8 +137,9 @@ function RestoreForm({ notebook, page, version, sending, setSending, close, rest
     } catch (error) {
       if (error instanceof ApiError && error.code === "page.revision_mismatch") {
         setRefused(read.revision);
-        const now = await current.mutate().catch(() => undefined);
-        if (now === undefined || now.revision === read.revision) {
+        // SWR answers what it holds, the content read before when the read fails.
+        const now = await current.mutate();
+        if (now?.revision === read.revision) {
           // Not read again: the refusal says why.
           setFailure(error);
         }

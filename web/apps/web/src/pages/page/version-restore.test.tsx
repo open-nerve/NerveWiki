@@ -78,6 +78,22 @@ async function restoring(answers: Record<string, Answer> = {}) {
   return { user, server, router, restore, dialog };
 }
 
+/** same is Install, its content now, its version 4 version, shown with its restore's dialog open: texts the same once split. */
+async function same(now: string, version: string) {
+  worker.asked.length = 0;
+  const user = userEvent.setup();
+  const server = pageServer();
+  server.withVersions(install.id, [
+    versionJSON(1, null, "Install\n"),
+    versionJSON(4, 1, version),
+    versionJSON(6, 4, now),
+  ]);
+  renderApp(versionPath(install.id, 4), server.app);
+  await user.click(await screen.findByRole("button", { name: "Restore this version" }));
+  const dialog = await screen.findByRole("alertdialog", { name: "Restore version 4?" });
+  return { dialog, confirm: within(dialog).getByRole("button", { name: "Restore" }) };
+}
+
 /** restores is what of sent restored a version. */
 const restores = (sent: readonly string[]) => sent.filter((each) => each.startsWith("RESTORE"));
 
@@ -164,6 +180,19 @@ test("a page written since it was read has its content read again, and the compa
   expect(restores(server.sent)).toEqual(["RESTORE Install 4 on 6", "RESTORE Install 4 on 7"]);
 });
 
+test("the banner of a page written meanwhile goes as Restore is pressed again: a refusal after it is said alone", async () => {
+  const { user, server, dialog } = await restoring();
+  server.contents.set(install.id, { content: "Install later\n", revision: 7 });
+  await user.click(within(dialog).getByRole("button", { name: "Restore" }));
+  await within(dialog).findByText("The page changed meanwhile: the changes below are from the page as it is now.");
+
+  server.hold(install.id, bob);
+  await user.click(within(dialog).getByRole("button", { name: "Restore" }));
+
+  expect(await within(dialog).findByText("Bob is editing “Install”.")).toBeTruthy();
+  expect(within(dialog).queryByText(/The page changed meanwhile/)).toBeNull();
+});
+
 // M8/P1 fix check 1, N1: what a restore sends goes with what shows.
 test("on a large page, Restore waits for the comparison with the page now: the one before it shows meanwhile, saying so, nothing sent on the newer revision until its own shows", async () => {
   const { user, server, lines, dialog, confirm } = await large();
@@ -197,16 +226,40 @@ test("on a large page, Restore waits for the comparison with the page now: the o
   expect(restores(server.sent)).toEqual(["RESTORE Install 4 on 6", "RESTORE Install 4 on 7"]);
 });
 
-test("a comparison with the page now that failed restores nothing until one shows, on Try again", async () => {
+test("a comparison with the page now that failed restores nothing until one shows, on Try again; failed again, it says a reload helps", async () => {
   const { user, dialog, confirm } = await large();
   await answered(0, "fail");
   expect(await within(dialog).findByText("The comparison failed.")).toBeTruthy();
   expect(confirm.hasAttribute("disabled")).toBe(true);
 
+  // M8/P1 fix check 2, R2-2: a worker of an older build than the server's fails each time; a reload replaces it.
   await user.click(within(dialog).getByRole("button", { name: "Try again" }));
-  await answered(1);
+  await answered(1, "fail");
+  expect(
+    await within(dialog).findByText("The comparison failed again. Reloading the page usually fixes this.")
+  ).toBeTruthy();
+  expect(within(dialog).getByRole("button", { name: "Reload" })).toBeTruthy();
+  expect(confirm.hasAttribute("disabled")).toBe(true);
+
+  await user.click(within(dialog).getByRole("button", { name: "Try again" }));
+  await answered(2);
   expect(await within(dialog).findByRole("textbox", { name: "Changes from the page now to version 4" })).toBeTruthy();
   expect(confirm.hasAttribute("disabled")).toBe(false);
+});
+
+// M8/P1 fix check 2, R2-1: what shows needs no comparison in a worker.
+test("a large page the same as the version, compared in no worker, can be restored", async () => {
+  const lines = Array.from({ length: 1200 }, (_, i) => `line ${i.toString()}\n`).join("");
+  const { dialog, confirm } = await same(`${lines}Install\nthree\n`, `${lines}Install\nthree\n`);
+  expect(await within(dialog).findByText("No changes.")).toBeTruthy();
+  await waitFor(() => expect(confirm.hasAttribute("disabled")).toBe(false));
+  expect(worker.asked).toHaveLength(0);
+});
+
+test("a page that differs from the version in its line breaks alone can be restored", async () => {
+  const { dialog, confirm } = await same("Install\r\nthree\r\n", "Install\nthree\n");
+  expect(await within(dialog).findByText("Only the line breaks or the byte order mark differ.")).toBeTruthy();
+  await waitFor(() => expect(confirm.hasAttribute("disabled")).toBe(false));
 });
 
 test("a page written since it was read whose content could not be read again says so, claiming no comparison with it", async () => {

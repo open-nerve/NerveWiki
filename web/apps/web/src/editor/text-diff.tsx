@@ -54,7 +54,8 @@ type Compared = { a: string; b: string; attempt: number; result: LineDiffResult 
  * known of how far; so do changes the view would join into a block of
  * more lines removed than the comparison's bound. Texts the same once
  * split say so, or that only their line breaks or byte order mark differ.
- * A comparison that fails says so, with Try again. While the comparison of
+ * A comparison that fails says so, with Try again; failed again, that a
+ * reload of the page usually helps, with Reload. While the comparison of
  * newer texts runs, the one before stays shown, marked busy, and saying it
  * compares; shown hears of the texts' when theirs shows.
  */
@@ -145,14 +146,23 @@ export function TextDiff({
   }
   const { result } = compared;
   if (result.kind === "failed") {
+    // Failed again on Try again: a worker of an older build than the server's, which a reload replaces.
+    const again = compared.attempt > 0;
     return (
       <div className="space-y-2">
         <p role="alert" className="rounded-md border border-destructive/50 px-4 py-3 text-sm text-destructive">
-          {t("diff.failed")}
+          {t(again ? "diff.failedAgain" : "diff.failed")}
         </p>
-        <button type="button" className={buttonClass} onClick={() => setAttempt(attempt + 1)}>
-          {t("status.retry")}
-        </button>
+        <div className="flex gap-2">
+          <button type="button" className={buttonClass} onClick={() => setAttempt(attempt + 1)}>
+            {t("status.retry")}
+          </button>
+          {again && (
+            <button type="button" className={buttonClass} onClick={() => window.location.reload()}>
+              {t("error.reload")}
+            </button>
+          )}
+        </div>
       </div>
     );
   }

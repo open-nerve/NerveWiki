@@ -1,6 +1,6 @@
 import { EditorView } from "@codemirror/view";
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, test } from "vitest";
+import { describe, expect, onTestFinished, test, vi } from "vitest";
 
 import { I18nProvider } from "../i18n/i18n";
 import { lineDiff, type LineDiffResult } from "../lib/line-diff";
@@ -154,7 +154,7 @@ describe("TextDiff", () => {
   test("keeps texts too far apart side by side, saying it compares, while newer texts compare", async () => {
     const { compare, asked } = controlled();
     const big = "x\n".repeat(20_000);
-    const { rerender } = render(diff(big, `${big}y\n`, compare));
+    const { container, rerender } = render(diff(big, `${big}y\n`, compare));
     await act(async () => {
       asked[0]?.finish({ kind: "tooLarge", added: null, removed: null });
       await Promise.resolve();
@@ -162,6 +162,7 @@ describe("TextDiff", () => {
     rerender(diff(big, `${big}z\n`, compare));
     expect(screen.getByText("太大，不能逐行比较。")).toBeDefined();
     expect(screen.getByText("正在比较…")).toBeDefined();
+    expect(container.querySelector("[aria-busy=true]")).not.toBeNull();
   });
 
   test("lets an earlier comparison go once the texts are small enough to compare at once", async () => {
@@ -202,6 +203,7 @@ describe("TextDiff", () => {
     const big = "x\n".repeat(20_000);
     render(diff(big, `${big}y\n`, compare));
     expect((await screen.findByRole("alert")).textContent).toBe("比较失败。");
+    expect(screen.queryByRole("button", { name: "重新加载" })).toBeNull();
     fail = false;
     fireEvent.click(screen.getByRole("button", { name: "重试" }));
     // The failure goes as the comparison runs again.
@@ -209,6 +211,23 @@ describe("TextDiff", () => {
     expect(screen.queryByRole("alert")).toBeNull();
     act(() => answer?.());
     expect(await screen.findByText("+1 −0 行")).toBeDefined();
+  });
+
+  // M8/P1 fix check 2, R2-2: a worker of an older build than the server's fails each time; a reload replaces it.
+  test("failed again on Try again, says a reload of the page usually helps, with Reload", async () => {
+    const big = "x\n".repeat(20_000);
+    render(diff(big, `${big}y\n`, () => Promise.reject(new Error("failed"))));
+    await screen.findByRole("alert");
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    expect((await screen.findByRole("alert")).textContent).toBe("比较又失败了。重新加载页面通常能解决。");
+    const reload = vi.fn();
+    vi.stubGlobal("location", { ...window.location, reload });
+    onTestFinished(() => {
+      vi.unstubAllGlobals();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "重新加载" }));
+    expect(reload).toHaveBeenCalledOnce();
+    expect(screen.getByRole("button", { name: "重试" })).toBeDefined();
   });
 
   test("says nothing of a failure while the comparison of newer texts runs", async () => {

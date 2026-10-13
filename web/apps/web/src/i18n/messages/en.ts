@@ -193,7 +193,7 @@ export const en = {
   "version.now": "The page now",
   "version.previousDiff": "Changes from version {base} to version {revision}",
   "version.currentDiff": "Changes from the page now to version {revision}",
-  "version.diffNotLoaded": "The differences could not be shown.",
+  "version.diffNotLoaded": "The differences could not be shown. Reloading the page usually fixes this.",
   "version.restore": "Restore this version",
   "version.restoreTitle": "Restore version {revision}?",
   "version.restoreBody":
@@ -276,6 +276,7 @@ export const en = {
   "diff.tooLarge": "Too large to compare line by line.",
   "diff.tooLargeLines": "Too large to compare line by line (lines: +{added} −{removed}).",
   "diff.failed": "The comparison failed.",
+  "diff.failedAgain": "The comparison failed again. Reloading the page usually fixes this.",
   "editor.tabHint": "Tab indents. To move out of the editor, press Esc, then Tab.",
   "editor.keepMine": "Keep mine",
   "editor.discardMine": "Discard mine",

@@ -295,7 +295,7 @@ test("a version, its view, the version before it and the page now that could not
   expect(screen.queryByRole("alert")).toBeNull();
 });
 
-test("differences whose code could not load say so, and show on Try again", async () => {
+test("differences whose code could not load say so, a reload helping, and show on Try again", async () => {
   // A module whose mock throws fails once: loaded again, as StrictMode does, it is there. Not here.
   vi.doMock("../../editor/text-diff", () => {
     throw new Error("offline");
@@ -305,7 +305,17 @@ test("differences whose code could not load say so, and show on Try again", asyn
   renderApp(versionPath(install.id, 4), installed().app);
 
   await user.click(await screen.findByRole("tab", { name: "Compare with the current" }));
-  expect(await screen.findByText("The differences could not be shown.")).toBeTruthy();
+  // M8/P1 fix check 2, R2-2: a chunk of an older build than the server's fails each time; a reload replaces it.
+  expect(
+    await screen.findByText("The differences could not be shown. Reloading the page usually fixes this.")
+  ).toBeTruthy();
+  const reload = vi.fn();
+  vi.stubGlobal("location", { ...window.location, reload });
+  onTestFinished(() => {
+    vi.unstubAllGlobals();
+  });
+  await user.click(within(screen.getByRole("tabpanel")).getByRole("button", { name: "Reload" }));
+  expect(reload).toHaveBeenCalledOnce();
   vi.doUnmock("../../editor/text-diff");
   await user.click(within(screen.getByRole("tabpanel")).getByRole("button", { name: "Try again" }));
   expect(await screen.findByRole("textbox", { name: "Changes from the page now to version 4" })).toBeTruthy();
