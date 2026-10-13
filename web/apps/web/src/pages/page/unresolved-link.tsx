@@ -24,8 +24,11 @@ import { useWorkspace } from "../workspace/workspace-layout";
 
 type Landing = NonNullable<LinkLanding["landing"]>;
 
-/** Why a link's page is not created: the reader cannot, an embed or an image does not, or the server's reason. */
-type Why = "reader" | "embed" | "image" | NonNullable<LinkLanding["reason"]>;
+/**
+ * Why a link's page is not created: the reader cannot, a version's view does not, an embed or an image does not, or
+ * the server's reason.
+ */
+type Why = "reader" | "version" | "embed" | "image" | NonNullable<LinkLanding["reason"]>;
 
 /**
  * What the dialog asks or says, of the link it opened for, which was at of
@@ -48,7 +51,8 @@ type Asked = { n: number; link: UnresolvedLink; at: number } & ({ landing: Landi
  * then is gone to; else the dialog says why. No landing, an attachment's
  * name among them, whose view is read again, an embed's link,
  * an image's, and any link to a reader, say why it is not there, without a
- * question to the server for those. What the server refuses otherwise
+ * question to the server for those; so does any link of a version's view
+ * (readOnly: M8 design 4.3). What the server refuses otherwise
  * goes to the page (report), as a refusal of Edit does, and the next
  * question clears it. A page gone to that the tree does not have yet,
  * another tab's, is read with the tree first.
@@ -64,6 +68,7 @@ export function useUnresolvedLinks({
   article,
   reload,
   report,
+  readOnly = false,
 }: {
   notebook: Notebook;
   page: string;
@@ -71,6 +76,8 @@ export function useUnresolvedLinks({
   article: RefObject<HTMLElement | null>;
   reload: () => void;
   report: (error: unknown) => void;
+  /** Whether the view is a version's, whose links create no page. */
+  readOnly?: boolean;
 }): { unresolved: (link: UnresolvedLink) => Promise<void>; dialog: ReactNode } {
   const t = useT();
   const { slug } = useWorkspace();
@@ -100,8 +107,12 @@ export function useUnresolvedLinks({
       setAsked({ n: ++openings.current, link, at, ...answer });
       setOpen(true);
     };
-    if (link.kind !== "link" || !writesPages(notebook.role)) {
-      show({ why: link.kind === "link" ? "reader" : link.kind });
+    if (link.kind !== "link") {
+      show({ why: link.kind });
+      return;
+    }
+    if (readOnly || !writesPages(notebook.role)) {
+      show({ why: readOnly ? "version" : "reader" });
       return;
     }
     asking.current = true;
@@ -255,6 +266,8 @@ function whyText(why: Why, t: Translate): string {
   switch (why) {
     case "reader":
       return t("unresolved.reader");
+    case "version":
+      return t("unresolved.version");
     case "embed":
       return t("unresolved.embed");
     case "image":

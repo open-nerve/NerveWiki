@@ -67,6 +67,20 @@ function store(nodes: TreeNode[] = [guide, install, linux, notes]) {
       content_updated_at: "",
       content_updated_by: "",
     }),
+    getPageContent: async (id: string) => ({ content: `${id}\n`, revision: 1, content_hash: "" }),
+    versions: async () => ({ data: [], next_cursor: null }),
+    version: async () => {
+      throw new Error("no version");
+    },
+    versionView: async () => {
+      throw new Error("no version");
+    },
+    restoreVersion: (id: string, revision: number, base: number) =>
+      answer(`restore ${id} ${revision.toString()} on ${base.toString()}`, () => ({
+        revision: base + 1,
+        changeset_id: "c1",
+        changed: true,
+      })),
   };
   const linking = {
     tagPages: async (notebook: string, tag: string) => {
@@ -507,4 +521,21 @@ test("the pages of a tag and a link's landing are read for the notebook", async 
     reason: null,
   });
   expect(sent).toEqual(["tag plans a/b", `landing ${guide.id} Plans/x`]);
+});
+
+test("a page's restores go out one at a time, in the order made, each once the one before settled either way; another page's beside them", async () => {
+  const { pages, sent, state } = store();
+  const first = held<unknown>();
+  state.writes.set(`restore ${guide.id} 2 on 5`, () => first.promise);
+
+  const one = pages.restoreVersion(guide.id, 2, 5);
+  const two = pages.restoreVersion(guide.id, 3, 5);
+  const other = pages.restoreVersion(notes.id, 1, 2);
+  await vi.waitFor(() => expect(sent).toEqual([`restore ${guide.id} 2 on 5`, `restore ${notes.id} 1 on 2`]));
+  expect(await other).toEqual({ revision: 3, changeset_id: "c1", changed: true });
+
+  first.reject(new ApiError(409, { status: 409, code: "page.revision_mismatch", title: "changed" }));
+  await expect(one).rejects.toThrow(ApiError);
+  expect(await two).toEqual({ revision: 6, changeset_id: "c1", changed: true });
+  expect(sent).toEqual([`restore ${guide.id} 2 on 5`, `restore ${notes.id} 1 on 2`, `restore ${guide.id} 3 on 5`]);
 });

@@ -7,20 +7,40 @@ import type {
   Page,
   PageContent,
   PageContentWrite,
+  PageVersion,
+  PageVersionContent,
+  PageVersionList,
   PageView,
   TaskToggle,
   TreeNode,
+  VersionRestored,
 } from "@nervewiki/api-client";
 
 import { unwrap } from "./api";
 
-export type { EditLock, EditLockHolder, NodeMove, PageContent, PageView, TaskToggle, TreeNode };
+export type {
+  EditLock,
+  EditLockHolder,
+  NodeMove,
+  PageContent,
+  PageVersion,
+  PageVersionContent,
+  PageVersionList,
+  PageView,
+  TaskToggle,
+  TreeNode,
+  VersionRestored,
+};
+
+/** How many of a page's versions a page of them holds: the right column's (M8/P1 design 4.3). */
+const versionsPage = 20;
 
 /**
  * PageService reads a notebook's page tree and a page's reading view, and
  * writes the tree: creates, renames, moves and deletes pages (M4/P5 design
  * 3.4). It reads and writes a page's content, in an edit session (M4/P6
- * design 3.6), and ticks its task items (M5/P6).
+ * design 3.6), and ticks its task items (M5/P6). It reads a page's
+ * versions, and restores one (M8/P1 design 3.6).
  */
 export class PageService {
   constructor(private readonly api: ApiClient) {}
@@ -85,6 +105,53 @@ export class PageService {
   async toggleTask(id: string, toggle: TaskToggle): Promise<Page> {
     return unwrap(
       await this.api.POST("/api/v0/pages/{page_id}/toggle-task", { params: { path: { page_id: id } }, body: toggle })
+    );
+  }
+
+  /** versions answers a page of the page id's versions, newer first, after cursor (none for the first). */
+  async versions(id: string, cursor?: string): Promise<PageVersionList> {
+    return unwrap(
+      await this.api.GET("/api/v0/pages/{page_id}/versions", {
+        params: {
+          path: { page_id: id },
+          query: cursor === undefined ? { limit: versionsPage } : { limit: versionsPage, cursor },
+        },
+      })
+    );
+  }
+
+  /**
+   * version answers the version of the page id that holds revision, with its content: its own revision, which is a
+   * later one when an edit session's saves made it hold several (M8 design 4.3).
+   */
+  async version(id: string, revision: number): Promise<PageVersionContent> {
+    return unwrap(
+      await this.api.GET("/api/v0/pages/{page_id}/versions/{revision}", {
+        params: { path: { page_id: id, revision } },
+      })
+    );
+  }
+
+  /** versionView answers the reading view of the version of the page id that holds revision, at its own revision. */
+  async versionView(id: string, revision: number): Promise<PageView> {
+    return unwrap(
+      await this.api.GET("/api/v0/pages/{page_id}/versions/{revision}/view", {
+        params: { path: { page_id: id, revision } },
+      })
+    );
+  }
+
+  /**
+   * restoreVersion writes the content of the version of the page id that holds revision as the page's, on base, the
+   * revision the page was read at (M8 design 4.4); it answers the page's revision as it leaves it, and whether it
+   * wrote it.
+   */
+  async restoreVersion(id: string, revision: number, base: number): Promise<VersionRestored> {
+    return unwrap(
+      await this.api.POST("/api/v0/pages/{page_id}/versions/{revision}/restore", {
+        params: { path: { page_id: id, revision } },
+        body: { base_revision: base },
+      })
     );
   }
 

@@ -13,6 +13,33 @@ export function formatDateTime(iso: string, locale: Locale, timeZone?: string): 
   return new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short", timeZone }).format(new Date(iso));
 }
 
+/** The units formatRelative writes a span in, the largest first, each with the seconds it holds. */
+const relativeUnits = [
+  ["year", 365 * 86_400],
+  ["month", 30 * 86_400],
+  ["week", 7 * 86_400],
+  ["day", 86_400],
+  ["hour", 3_600],
+  ["minute", 60],
+] as const;
+
+/**
+ * formatRelative writes how long before now iso is, in the largest unit
+ * the span fills, such as "3 minutes ago" or "yesterday"; under a minute,
+ * or after now (a clock behind the server's), it is "now". What it leaves
+ * out, formatDateTime writes.
+ */
+export function formatRelative(iso: string, now: number, locale: Locale): string {
+  const seconds = Math.min(Math.round((Date.parse(iso) - now) / 1000), 0);
+  const format = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
+  for (const [unit, size] of relativeUnits) {
+    if (-seconds >= size) {
+      return format.format(Math.trunc(seconds / size), unit);
+    }
+  }
+  return format.format(0, "second");
+}
+
 const byteUnits = ["B", "KB", "MB", "GB", "TB"] as const;
 
 /** byteFormats are the numbers' formats of formatBytes by language and digits: a view writes a size for each link. */

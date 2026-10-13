@@ -4,11 +4,13 @@ import type { TreeNode } from "../../services/page.service";
 import { PageBacklinks } from "./page-backlinks";
 import { PageOutline } from "./page-outline";
 import { PageProperties } from "./page-properties";
+import { PageVersions } from "./page-versions";
 
 /**
  * PagePanel is the page's right column (M6/P7 design 7): its outline while
  * it is read, not while it is edited (M6 design 4.12), its backlinks and
- * its properties, each leading to a page by href. From xl up it is
+ * its properties, each leading to a page by href, and its versions (M8
+ * design 4.13), each leading to its version's page. From xl up it is
  * beside the page's content, at the top as the window scrolls, scrolling
  * itself when it is taller; narrower, after the content. Never the
  * window's scroll anchor: held at the top, it would not move as what is
@@ -35,6 +37,7 @@ export function PagePanel({
       {!editing && <PageOutline notebook={notebook} page={page.id} />}
       <PageBacklinks notebook={notebook} page={page.id} href={href} />
       <PageProperties notebook={notebook} page={page.id} href={href} />
+      <PageVersions notebook={notebook} page={page.id} href={(revision) => `${href(page.id)}/versions/${revision}`} />
     </aside>
   );
 }

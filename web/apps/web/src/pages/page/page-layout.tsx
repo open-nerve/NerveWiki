@@ -1,6 +1,6 @@
 import { observer } from "mobx-react-lite";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { Navigate, useParams } from "react-router";
+import { Navigate, useLocation, useParams } from "react-router";
 import useSWR, { useSWRConfig } from "swr";
 
 import { arrived, useArrivalFocus } from "../../app/arrival";
@@ -46,7 +46,6 @@ import { SubpageList } from "./subpage-list";
  */
 export const PageLayout = observer(function PageLayout() {
   const notebook = useNotebook();
-  const { slug } = useWorkspace();
   const pages = usePageTree(notebook);
   const store = useStore();
   const { pageId = "" } = useParams();
@@ -61,21 +60,38 @@ export const PageLayout = observer(function PageLayout() {
   }
   const page = found ?? (last?.id === pageId && store.unsavedEdit({ pageId }) ? last : undefined);
   if (page === undefined) {
-    const to = pages.removedTo(pageId);
-    if (to === undefined) {
-      return <NotFoundPage />;
-    }
-    const home = `/${slug}/notebooks/${notebook.id}`;
-    return (
-      <Navigate
-        replace
-        to={to !== null && pages.byId(to) !== undefined ? `${home}/pages/${to}` : home}
-        state={arrived}
-      />
-    );
+    return <PageGone notebook={notebook} page={pageId} />;
   }
   return <PageShell key={page.id} notebook={notebook} page={page} gone={found === undefined} />;
 });
+
+/**
+ * PageGone answers the page id the notebook's tree does not have, a page's
+ * shell or a part of it: no page of the app's, unless this tab deleted it;
+ * it then goes to the deleted subtree's parent, or the notebook's home
+ * when that is gone too, arrived at.
+ */
+export const PageGone = observer(function PageGone({ notebook, page }: { notebook: Notebook; page: string }) {
+  const { slug } = useWorkspace();
+  const pages = usePageTree(notebook);
+  const to = pages.removedTo(page);
+  if (to === undefined) {
+    return <NotFoundPage />;
+  }
+  const home = `/${slug}/notebooks/${notebook.id}`;
+  return (
+    <Navigate replace to={to !== null && pages.byId(to) !== undefined ? `${home}/pages/${to}` : home} state={arrived} />
+  );
+});
+
+/** Restored is the route state of a page arrived at from its version restored (M8 design 4.4): the version's revision. */
+export type Restored = { arrived: true; restored: number };
+
+function restoredOf(state: unknown): number | undefined {
+  return typeof state === "object" && state !== null && "restored" in state && typeof state.restored === "number"
+    ? state.restored
+    : undefined;
+}
 
 /**
  * PageShell is the page found: where it is, its title, who is editing it
@@ -92,7 +108,8 @@ export const PageLayout = observer(function PageLayout() {
  * attachments; files dropped on the reading view upload there (M7/P4
  * design 3.5, 3.6). A page gone, shown while its edit is unsaved, has none:
  * its list is not read. Beside its content, or after
- * it on a narrow window, is its right column (M6/P7 design 7).
+ * it on a narrow window, is its right column (M6/P7 design 7). Arrived at
+ * from one of its versions restored, it says so, unseen as well.
  */
 const PageShell = observer(function PageShell({
   notebook,
@@ -111,6 +128,12 @@ const PageShell = observer(function PageShell({
   const { mutate } = useSWRConfig();
   const heading = useArrivalFocus<HTMLHeadingElement>();
   useDocumentTitle(page.name, notebook.name);
+  const restored = restoredOf(useLocation().state);
+  // What the status says, once it is there: a region is heard as what it holds changes, not as it comes with it.
+  const [status, setStatus] = useState("");
+  useEffect(() => {
+    setStatus(restored === undefined ? "" : t("version.restored", { revision: restored }));
+  }, [restored, t]);
   const [editing, setEditing] = useState<PageEditing | undefined>(undefined);
   const [entering, setEntering] = useState(false);
   const [refusal, setRefusal] = useState<unknown>(undefined);
@@ -249,6 +272,9 @@ const PageShell = observer(function PageShell({
             </div>
           )}
         </div>
+        {restored !== undefined && (
+          <output className="block text-sm text-muted-foreground empty:sr-only">{status}</output>
+        )}
       </div>
       <div className="space-y-6 xl:grid xl:grid-cols-[minmax(0,1fr)_15rem] xl:items-start xl:gap-8 xl:space-y-0">
         <div className="min-w-0 space-y-6">

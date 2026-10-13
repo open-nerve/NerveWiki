@@ -302,7 +302,7 @@ test("a links event of too many pages to name reads again every backlinks and pr
   ]);
 });
 
-test("a pages event reads again the properties of the pages written that are shown, of every one for too many to name", async () => {
+test("a pages event reads again the properties and the versions of the pages written that are shown, of every one for too many to name", async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   const { server, events } = await open();
   server.properties.set(guide.id, {
@@ -319,7 +319,7 @@ test("a pages event reads again the properties of the pages written that are sho
   events.last().send("pages", pagesEvent(false, [{ id: guide.id, revision: 1 }]));
   const panel = screen.getByRole("complementary", { name: "About this page" });
   expect(await within(panel).findByText("draft")).toBeTruthy();
-  expect(server.sent).toEqual([`GET properties ${guide.id}`]);
+  await waitFor(() => expect(server.sent.toSorted()).toEqual([`GET properties ${guide.id}`, "GET versions Guide"]));
 
   server.properties.set(guide.id, {
     valid: true,
