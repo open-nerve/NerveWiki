@@ -83,6 +83,11 @@ type (
 // took (M8/P2 design 3.6).
 var ErrTrashChanged = domain.ErrTrashChanged
 
+// ErrChangesetReverted is an import's unit that would merge into the
+// changeset of its first, which a revert was made of as it ran (M8/P3
+// design 3.7): nothing of the unit was written.
+var ErrChangesetReverted = app.ErrChangesetReverted
+
 // TrashMargin is how long before the purge's retention a trash item can no
 // longer be restored: bootstrap tells the instance's retention less it.
 const TrashMargin = domain.TrashMargin

@@ -684,10 +684,13 @@ func (f *fakeStore) CreateChangeset(ctx context.Context, c app.Changeset) error 
 	return nil
 }
 
+// LockChangeset reads the changeset id, reverted when a revert of it was
+// made.
 func (f *fakeStore) LockChangeset(ctx context.Context, id uuid.UUID) (app.Changeset, error) {
 	f.record(ctx, "LockChangeset")
 	for _, c := range f.changesets {
 		if c.ID == id {
+			c.Reverted = slices.ContainsFunc(f.changesets, func(r app.Changeset) bool { return r.RevertsID == id })
 			return c, nil
 		}
 	}

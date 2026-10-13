@@ -13,7 +13,8 @@ import (
 // another transaction holds, and returns how many it deleted. Leaf to
 // root: what follows a node, the nodes, the changesets.
 
-// PurgeChangesetItems purges the changeset items.
+// PurgeChangesetItems purges the changeset items, marking their changesets
+// of live notebooks trimmed.
 func (s *Store) PurgeChangesetItems(ctx context.Context, before time.Time, batch int) (int, error) {
 	n, err := s.queries(ctx).PurgeChangesetItems(ctx, gen.PurgeChangesetItemsParams{Before: before, Batch: int32(batch)})
 	if err != nil {
@@ -22,7 +23,8 @@ func (s *Store) PurgeChangesetItems(ctx context.Context, before time.Time, batch
 	return int(n), nil
 }
 
-// PurgePageRevisions purges the page versions.
+// PurgePageRevisions purges the page versions, marking their changesets of
+// live notebooks trimmed.
 func (s *Store) PurgePageRevisions(ctx context.Context, before time.Time, batch int) (int, error) {
 	n, err := s.queries(ctx).PurgePageRevisions(ctx, gen.PurgePageRevisionsParams{Before: before, Batch: int32(batch)})
 	if err != nil {
@@ -60,11 +62,23 @@ func (s *Store) PurgeNodes(ctx context.Context, before time.Time, batch int) (in
 	return total, nil
 }
 
-// PurgeChangesets purges the changesets whose items and versions are gone.
+// PurgeChangesets purges the changesets whose items and versions are
+// gone: those deleted with their notebook, then, while the batch has room,
+// those of live notebooks it trimmed (M8/P3 design 3.3), as PurgeNodes goes
+// on. A revert of an emptied changeset touched its nodes alone, so it is
+// emptied and trimmed too, and goes in this run or the next.
 func (s *Store) PurgeChangesets(ctx context.Context, before time.Time, batch int) (int, error) {
-	n, err := s.queries(ctx).PurgeChangesets(ctx, gen.PurgeChangesetsParams{Before: before, Batch: int32(batch)})
+	q := s.queries(ctx)
+	n, err := q.PurgeChangesets(ctx, gen.PurgeChangesetsParams{Before: before, Batch: int32(batch)})
 	if err != nil {
 		return 0, fmt.Errorf("purge changesets: %w", err)
 	}
-	return int(n), nil
+	if int(n) >= batch {
+		return int(n), nil
+	}
+	trimmed, err := q.PurgeTrimmedChangesets(ctx, int32(batch)-int32(n))
+	if err != nil {
+		return int(n), fmt.Errorf("purge trimmed changesets: %w", err)
+	}
+	return int(n + trimmed), nil
 }

@@ -88,14 +88,16 @@ type (
 )
 
 // The errors the other modules' adapters answer: a file Blobs.Open does
-// not find in the store; an import's page too deep, its parent gone; an
-// attachment's file larger than its largest, or the store out of room.
+// not find in the store; an import's page too deep, its parent gone, its
+// changeset reverted; an attachment's file larger than its largest, or the
+// store out of room.
 var (
-	ErrFileMissing = app.ErrFileMissing
-	ErrTooDeep     = app.ErrTooDeep
-	ErrNoParent    = app.ErrNoParent
-	ErrTooLarge    = app.ErrTooLarge
-	ErrStorageFull = domain.ErrStorageFull
+	ErrFileMissing       = app.ErrFileMissing
+	ErrTooDeep           = app.ErrTooDeep
+	ErrNoParent          = app.ErrNoParent
+	ErrChangesetReverted = app.ErrChangesetReverted
+	ErrTooLarge          = app.ErrTooLarge
+	ErrStorageFull       = domain.ErrStorageFull
 )
 
 // Deps are what bootstrap gives the module.

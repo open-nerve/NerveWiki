@@ -78,9 +78,19 @@ type UnitSpec struct {
 	// Changeset, when set, is the changeset the unit writes in rather
 	// than one of its own (M7/P6 design 3.2): an import's first unit's,
 	// which its later units merge into. It must be of the notebook, of
-	// Kind and RevertsID, by the unit's actor and from its client.
+	// Kind and RevertsID, by the unit's actor and from its client, and not
+	// reverted (M8/P3 design 3.7).
 	Changeset uuid.UUID
+	// Message is the message of the changeset the unit creates, none when
+	// nil; one it merges into keeps its own.
+	Message *string
 }
+
+// ErrChangesetReverted is a unit that would merge into a changeset a
+// revert was made of (M8/P3 design 3.7): what that changeset changed is
+// settled by the revert, so nothing more joins it. It is no problem of the
+// API: only a job merges, and it starts a changeset of its own instead.
+var ErrChangesetReverted = errors.New("page: the changeset the unit merges into was reverted")
 
 // Outcome is what a unit did: in which workspace, by whom, its changeset
 // (zero when the unit changed nothing) and its time.
@@ -133,9 +143,9 @@ func (w *Writer) workspaceOf(ctx context.Context, spec UnitSpec) (uuid.UUID, err
 
 // Run runs do in a unit of spec: outside a transaction, the notebook's
 // workspace, unlocked; then, in the unit's transaction, the workspace's row
-// FOR SHARE, the notebook's, the decision, do, the observers. The clock is
-// read once: every row the unit writes has its time. Any error rolls the
-// whole unit back and is returned.
+// FOR SHARE, the notebook's, the decision, the changeset it merges into,
+// do, the observers. The clock is read once: every row the unit writes has
+// its time. Any error rolls the whole unit back and is returned.
 func (w *Writer) Run(ctx context.Context, spec UnitSpec, do func(ctx context.Context, u *Unit) error) (Outcome, error) {
 	if w.d.Tx.InTx(ctx) {
 		return Outcome{}, errors.New("a page write unit opens its own transaction: ctx carries one already")
@@ -182,7 +192,10 @@ func (w *Writer) Run(ctx context.Context, spec UnitSpec, do func(ctx context.Con
 		u = &Unit{w: w, write: Write{
 			WorkspaceID: workspaceID, NotebookID: spec.NotebookID, By: actor.UserID, Client: spec.Client,
 			Options: spec.Options, At: w.d.Clock.Now(), Kind: kind, RevertsID: spec.RevertsID,
-		}, into: spec.Changeset, merged: map[uuid.UUID]int{}}
+		}, into: spec.Changeset, message: spec.Message, merged: map[uuid.UUID]int{}}
+		if err := u.lockInto(ctx); err != nil {
+			return err
+		}
 		if err := do(ctx, u); err != nil {
 			return err
 		}
@@ -199,9 +212,11 @@ type Unit struct {
 	w     *Writer
 	write Write
 	// changeset is the unit's, inserted with its first write, of the
-	// write's kind; or into, an earlier unit's it merges into then.
+	// write's kind, with message; or into, an earlier unit's it merges into
+	// then.
 	changeset uuid.UUID
 	into      uuid.UUID
+	message   *string
 	// changes are the unit's, merged by node in the order first changed;
 	// merged indexes them.
 	changes []domain.Change
@@ -256,37 +271,51 @@ func (u *Unit) inUnit(ctx context.Context) error {
 	return nil
 }
 
+// lockInto locks the changeset the unit merges into, when it names one,
+// before the unit does anything (M8/P3 design 3.7): not reverted, of the
+// notebook, of the unit's kind and reverting what it reverts, by its actor
+// and from its client. A revert of it, made before, is
+// ErrChangesetReverted; one made after waits for the unit. It locks after
+// the notebook's row, as the units do (v0.1 design 13.1, item 5).
+func (u *Unit) lockInto(ctx context.Context) error {
+	if u.into == (uuid.UUID{}) {
+		return nil
+	}
+	c, err := u.w.d.Changesets.LockChangeset(ctx, u.into)
+	switch {
+	case errors.Is(err, ErrNotFound):
+		return fmt.Errorf("a page write unit merges into changeset %s: no such changeset", u.into)
+	case err != nil:
+		return err
+	case c.Reverted:
+		return ErrChangesetReverted
+	case c.NotebookID != u.write.NotebookID || c.Kind != u.write.Kind || c.RevertsID != u.write.RevertsID ||
+		c.By != u.write.By || c.Client != u.write.Client:
+		return fmt.Errorf("a page write unit merges into changeset %s: another notebook's, kind's, revert's, actor's or client's",
+			u.into)
+	}
+	return nil
+}
+
 // ensureChangeset inserts the unit's changeset with its first write, or
-// merges the unit into the one it names: locked, of the notebook, of the
-// unit's kind and reverting what it reverts, by its actor and from its
-// client; its updated_at moved to the unit's time, which the notebook's
-// activity and log read.
+// merges the unit into the one it names, which lockInto locked: its
+// updated_at moved to the unit's time, which the notebook's activity and
+// log read.
 func (u *Unit) ensureChangeset(ctx context.Context) error {
 	if u.changeset != (uuid.UUID{}) {
 		return nil
 	}
 	if u.into != (uuid.UUID{}) {
-		c, err := u.w.d.Changesets.LockChangeset(ctx, u.into)
-		switch {
-		case errors.Is(err, ErrNotFound):
-			return fmt.Errorf("a page write unit merges into changeset %s: no such changeset", u.into)
-		case err != nil:
-			return err
-		case c.NotebookID != u.write.NotebookID || c.Kind != u.write.Kind || c.RevertsID != u.write.RevertsID ||
-			c.By != u.write.By || c.Client != u.write.Client:
-			return fmt.Errorf("a page write unit merges into changeset %s: another notebook's, kind's, revert's, actor's or client's",
-				u.into)
-		}
-		if err := u.w.d.Changesets.TouchChangeset(ctx, c.ID, u.write.At); err != nil {
+		if err := u.w.d.Changesets.TouchChangeset(ctx, u.into, u.write.At); err != nil {
 			return err
 		}
-		u.changeset = c.ID
+		u.changeset = u.into
 		return nil
 	}
 	id := uuid.NewV7()
 	if err := u.w.d.Changesets.CreateChangeset(ctx, Changeset{
 		ID: id, NotebookID: u.write.NotebookID, Kind: u.write.Kind, RevertsID: u.write.RevertsID, Client: u.write.Client,
-		By: u.write.By, At: u.write.At,
+		Message: u.message, By: u.write.By, At: u.write.At,
 	}); err != nil {
 		return err
 	}

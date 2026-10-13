@@ -710,3 +710,79 @@ func TestADeletionsItemIsDeletedWithItsNode(t *testing.T) {
 		t.Errorf("deletions' items in the trash at their time, keeping the first before = %d, want 2", got)
 	}
 }
+
+// A deletion's item holds the revision of the content its unit deleted at
+// its time (M8/P3 design 3.4); an attachment's none. A merge into a
+// deletion, a rename then a deletion in one unit, takes the deletion's;
+// any other merge keeps the first item's, a creation's.
+func TestADeletionsItemHoldsItsPagesRevision(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	p, m, c := f.page(t, f.eng, nil, "P", 0), f.page(t, f.eng, nil, "M", 1), f.page(t, f.eng, nil, "C", 2)
+	x := f.asset(t, f.eng, &p.ID, "x.png", 0)
+	f.exec(t, "UPDATE page_contents SET revision = 3 WHERE node_id = $1", p.ID)
+	f.exec(t, "UPDATE page_contents SET revision = 7 WHERE node_id = $1", m.ID)
+	cs := app.Changeset{ID: uuid.NewV7(), NotebookID: f.eng, Kind: "edit", Client: domain.ClientWeb, By: f.alice, At: now()}
+	if err := f.s.CreateChangeset(ctx, cs); err != nil {
+		t.Fatal(err)
+	}
+	at := now().Add(time.Minute)
+	record := func(changes ...domain.Change) {
+		t.Helper()
+		items := make([]app.Item, len(changes))
+		for i, ch := range changes {
+			items[i] = app.Item{ID: uuid.NewV7(), ChangesetID: cs.ID, Change: ch, At: at}
+		}
+		if err := f.s.RecordItems(ctx, items); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mState, renamed := m.State(), domain.TreeState{Name: "M2", SortOrder: 1}
+	cState, cRenamed := c.State(), domain.TreeState{Name: "C2", SortOrder: 2}
+	record(domain.Change{NodeID: m.ID, Before: &mState, After: &renamed}, domain.Change{NodeID: c.ID, After: &cState, Revision: 1})
+	record(domain.Change{NodeID: c.ID, Before: &cState, After: &cRenamed})
+	f.trashed(t, at, 1, 1, 1, p.ID, x.ID)
+	f.trashed(t, at, 1, 0, 1, m.ID)
+	pState, xState := p.State(), x.State()
+	record(domain.Change{NodeID: p.ID, Before: &pState}, domain.Change{NodeID: x.ID, Before: &xState})
+	record(domain.Change{NodeID: m.ID, Before: &renamed})
+	pid := p.ID.String()
+	for _, tt := range []struct {
+		name string
+		id   uuid.UUID
+		want string
+	}{
+		{"P's deletion", p.ID, "- | P | 0 | - | - | - | false | 3 | true"},
+		{"x's deletion", x.ID, pid + " | x.png | 0 | - | - | - | false | - | true"},
+		{"M's rename, then deletion", m.ID, "- | M | 1 | - | - | - | false | 7 | true"},
+		{"C's creation, then rename", c.ID, "- | - | - | - | C2 | 2 | false | 1 | -"},
+	} {
+		if got := f.itemRow(t, cs.ID, tt.id); got != tt.want {
+			t.Errorf("%s's item = %s, want %s", tt.name, got, tt.want)
+		}
+	}
+}
+
+// A changeset a unit merges into tells whether a revert of it was made, a
+// revert of its notebook's alive (M8/P3 design 3.7).
+func TestLockChangesetTellsItWasReverted(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	changeset := func(kind domain.ChangesetKind, reverts uuid.UUID) uuid.UUID {
+		t.Helper()
+		c := app.Changeset{ID: uuid.NewV7(), NotebookID: f.eng, Kind: kind, RevertsID: reverts, Client: domain.ClientWeb, By: f.alice, At: now()}
+		if err := f.s.CreateChangeset(ctx, c); err != nil {
+			t.Fatal(err)
+		}
+		return c.ID
+	}
+	reverted, kept, gone := changeset(domain.ChangesetImport, uuid.UUID{}), changeset(domain.ChangesetImport, uuid.UUID{}),
+		changeset(domain.ChangesetImport, uuid.UUID{})
+	changeset(domain.ChangesetRevert, reverted)
+	f.exec(t, "UPDATE changesets SET deleted_at = $2 WHERE id = $1", changeset(domain.ChangesetRevert, gone), now())
+	for id, want := range map[uuid.UUID]bool{reverted: true, kept: false, gone: false} {
+		if got, err := f.s.LockChangeset(ctx, id); err != nil || got.Reverted != want || got.Kind != domain.ChangesetImport {
+			t.Errorf("LockChangeset(%s) = %+v, %v; want reverted %v", id, got, err, want)
+		}
+	}
+}

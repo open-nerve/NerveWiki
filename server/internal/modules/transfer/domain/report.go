@@ -42,6 +42,9 @@ const (
 	// FailureTreeChanged is an import a page of which was deleted as it
 	// ran: a later unit could not write under it.
 	FailureTreeChanged Failure = "tree_changed"
+	// FailureChangesetReverted is an import whose changeset was reverted
+	// as it ran (M8/P3 design 3.7): its later units were not written.
+	FailureChangesetReverted Failure = "changeset_reverted"
 )
 
 // ProblemCode is what befell a node, a code the web words.

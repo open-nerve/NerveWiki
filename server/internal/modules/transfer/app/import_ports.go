@@ -103,6 +103,11 @@ var (
 	ErrNoParent = errors.New("transfer: the parent is no page of the notebook")
 )
 
+// ErrChangesetReverted is a unit refused before it wrote anything: a revert
+// was made of the changeset the import writes in, its first unit's, as it
+// ran (M8/P3 design 3.7). The import stops.
+var ErrChangesetReverted = errors.New("transfer: the changeset the import writes in was reverted")
+
 // Attachments writes an import's attachments' files: bootstrap adapts the
 // asset module's Blobs.
 type Attachments interface {

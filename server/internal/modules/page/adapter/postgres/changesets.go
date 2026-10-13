@@ -33,7 +33,7 @@ func (s *Store) LockChangeset(ctx context.Context, id uuid.UUID) (app.Changeset,
 		return app.Changeset{}, notFound("lock changeset", err)
 	}
 	c := app.Changeset{ID: r.ID, NotebookID: r.NotebookID, Kind: domain.ChangesetKind(r.Kind), Client: domain.Client(r.Client),
-		By: r.CreatedByID}
+		By: r.CreatedByID, Reverted: r.Reverted}
 	if r.RevertsID != nil {
 		c.RevertsID = *r.RevertsID
 	}
@@ -51,7 +51,8 @@ func (s *Store) TouchChangeset(ctx context.Context, id uuid.UUID, at time.Time) 
 // RecordItems implements app.ChangesetWriter: the items' columns as
 // arrays, a state there is none of and a parent at the root marked so. A
 // restore's or a creation's item holds the revision the page's content is
-// at.
+// at; a deletion's, the revision the statement reads of the content its
+// unit deleted.
 func (s *Store) RecordItems(ctx context.Context, items []app.Item) error {
 	if len(items) == 0 {
 		return nil

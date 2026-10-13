@@ -85,7 +85,8 @@ type ContentMeta struct {
 }
 
 // Changeset is a write's entry in its notebook's log; a revert's names the
-// changeset it reverts.
+// changeset it reverts. Reverted, as LockChangeset reads it, tells whether
+// a revert of it was made.
 type Changeset struct {
 	ID         uuid.UUID
 	NotebookID uuid.UUID
@@ -95,6 +96,7 @@ type Changeset struct {
 	Message    *string
 	By         uuid.UUID
 	At         time.Time
+	Reverted   bool
 }
 
 // Item is a node's change in a changeset: where the node was before the
@@ -219,8 +221,9 @@ type RestoredRows struct {
 type ChangesetWriter interface {
 	CreateChangeset(ctx context.Context, c Changeset) error
 	// LockChangeset reads the changeset id not deleted, locked until the
-	// transaction ends: a unit merges into it (M7/P6 design 3.2). Its
-	// Message and At are not read. ErrNotFound for none.
+	// transaction ends: a unit merges into it (M7/P6 design 3.2), unless it
+	// was reverted (M8/P3 design 3.7). Its Message and At are not read.
+	// ErrNotFound for none.
 	LockChangeset(ctx context.Context, id uuid.UUID) (Changeset, error)
 	// TouchChangeset moves the changeset id's updated_at to at: an edit
 	// session wrote in it again.
@@ -228,7 +231,9 @@ type ChangesetWriter interface {
 	// RecordItems inserts the items of one changeset at one time, each a
 	// node's of its own, or moves the after of the node's item in the
 	// changeset on, keeping its before, its restore and its revision, in one
-	// write. An item that deletes its node is deleted with it, at its time.
+	// write. An item that deletes its node is deleted with it, at its time,
+	// with the revision of its page's content deleted at that time, which a
+	// merge into it takes (M8/P3 design 3.4).
 	RecordItems(ctx context.Context, items []Item) error
 	// RecordRevision inserts the version, or updates the page's in the
 	// changeset, keeping its base, when r is on the version's revision: one
