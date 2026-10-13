@@ -874,3 +874,21 @@ test("a revert whose tree cannot be read records nothing it deleted: the tree is
   expect(pages.byId(linux.id)).toBe(linux);
   expect(pages.removedTo(linux.id)).toBeUndefined();
 });
+
+// The negative controls (M8/P3 design section 6).
+test("a revert whose tree read fails records nothing it deleted, though a read out as it was took a page deleted elsewhere: no page of the revert's", async () => {
+  const { pages, state } = store();
+  await pages.load();
+  state.writes.set("revert c1", async () => {
+    // Linux deleted elsewhere, read as the revert is out; the revert's own read then fails.
+    state.nodes = [guide, install, notes];
+    await pages.load();
+    state.writes.set("list", () => Promise.reject(new TypeError("offline")));
+    return { changeset_id: "r1", changed: true };
+  });
+
+  await pages.revert("c1");
+
+  expect(pages.byId(linux.id)).toBeUndefined();
+  expect(pages.removedTo(linux.id)).toBeUndefined();
+});

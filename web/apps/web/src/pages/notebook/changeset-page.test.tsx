@@ -222,6 +222,9 @@ test("a revert says what it undid, leading there, or that the purge took it; wha
       .getByRole("link", { name: "Undid “Edit · Ada · Oct 5, 2026, 8:01 AM”" })
       .getAttribute("href")
   ).toBe(changesetPath(rework.id));
+  // Never written again: when it was made alone.
+  expect(reverting.nextElementSibling?.textContent).toContain("Made Oct 5, 2026, 8:10 AM");
+  expect(reverting.nextElementSibling?.textContent).not.toContain("Last written");
 
   await act(() => router.navigate(changesetPath(orphan.id)));
   await screen.findByText("Undid a change the purge took");
@@ -363,4 +366,45 @@ test("a changeset and its nodes are read again as the notebook's pages change, a
 
   await screen.findByText("Undone by:");
   await waitFor(() => expect(reads()).toHaveLength(6));
+});
+
+// The negative controls (M8/P3 design section 6).
+
+test("a content's link leads to the version the change wrote, not the one it wrote on", async () => {
+  const server = pageServer();
+  const write = server.log("write", { changes: [wrote(guide, 3, 4)] });
+  renderApp(changesetPath(write.id), server.app);
+  await screen.findByRole("list", { name: "Nodes of this change" });
+
+  expect(
+    within(rowOf("Guide")).getByRole("link", { name: "Wrote its content: “Guide”, version 4" }).getAttribute("href")
+  ).toBe(`${pagePath(guide.id)}/versions/4`);
+});
+
+test("a node moved and renamed at once says both", async () => {
+  const server = pageServer();
+  const both = server.log("both", {
+    changes: [{ ...moved(linux, notes.id), before: { parent: notes.id, name: "Old linux" } }],
+  });
+  renderApp(changesetPath(both.id), server.app);
+  await screen.findByRole("list", { name: "Nodes of this change" });
+
+  expect(rowOf("Linux").textContent).toBe(
+    "LinuxHistory of this nodeMoved from “Notes” to “Install”Renamed: “Old linux” → “Linux”"
+  );
+});
+
+test("a node read away as the focus is on its link gives the focus to the title", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const { server, rework } = reworked();
+  renderApp(changesetPath(rework.id), server.app);
+  await screen.findByRole("list", { name: "Nodes of this change" });
+  act(() => within(rowOf("Old")).getByRole("link", { name: "In the trash: “Old”" }).focus());
+
+  // Purged from the trash: the node and its change are gone.
+  server.trash.delete(old.id);
+  await readAgain();
+
+  await waitFor(() => expect(nodes()).toHaveLength(7));
+  expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Edit · Ada" }));
 });

@@ -159,7 +159,6 @@ function RevertForm({
   const me = store.account?.me?.id;
   const [message, setMessage] = useState("");
   const [conflict, setConflict] = useState<ApiError>();
-  const busy = useRef(false);
   const confirm = useRef<HTMLButtonElement>(null);
   const { ref, banner, problemOf, submit } = useForm(["message"], {
     explain: (error) => {
@@ -232,9 +231,6 @@ function RevertForm({
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy.current) {
-      return;
-    }
     const text = message.trim();
     const bytes = new TextEncoder().encode(text).length;
     const found: LocalProblems<"message"> =
@@ -243,10 +239,7 @@ function RevertForm({
         : text.includes("\0")
           ? { message: "field.message.invalid_format" }
           : {};
-    busy.current = true;
-    void submit(found, () => revert(text === "" ? undefined : text)).finally(() => {
-      busy.current = false;
-    });
+    void submit(found, () => revert(text === "" ? undefined : text));
   }
 
   return (

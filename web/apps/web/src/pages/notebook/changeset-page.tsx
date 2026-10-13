@@ -5,7 +5,6 @@ import useSWR, { unstable_serialize, useSWRConfig } from "swr";
 
 import { useDocumentTitle } from "../../app/document-title";
 import { writesPages } from "../../app/effective-role";
-import { useMounted } from "../../app/mounted";
 import { NotLoaded } from "../../app/not-loaded";
 import { errorText } from "../../app/problem-messages";
 import { Alert } from "../../components/ui/alert";
@@ -75,7 +74,6 @@ const ChangesetShell = observer(function ChangesetShell({ notebook, id }: { note
   const { data, error, mutate } = useSWR(["changeset", notebook.id, id], () => pages.changeset(id));
   const heading = useRef<HTMLHeadingElement>(null);
   const me = useStore().account?.me?.id;
-  const mounted = useMounted();
   const [said, setSaid] = useState<Said>();
   const [refused, setRefused] = useState<unknown>();
   // The status line describes the title, where the focus lands: it is heard with it; a refusal's alert, likewise.
@@ -115,9 +113,7 @@ const ChangesetShell = observer(function ChangesetShell({ notebook, id }: { note
     } catch {
       found = { kind: "unread" };
     }
-    if (mounted()) {
-      setSaid(found);
-    }
+    setSaid(found);
   }
 
   function done(reverted: Reverted): void {

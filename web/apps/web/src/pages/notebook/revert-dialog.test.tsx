@@ -1,17 +1,22 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, onTestFinished, test } from "vitest";
+import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 
 import type { NotebookRole } from "../../services/notebook.service";
 import type { RevertConflict } from "../../services/page.service";
 import { json, notebookJSON, problem, type Answer } from "../../test/fakes";
 import { changesetId, moved, renamed, wrote } from "../../test/history-server";
 import { ada, bob, guide, install, linux, notes, pageNode, pagePath, pageServer } from "../../test/page-server";
+import { readAgain } from "../../test/page-panel";
 import { renderApp } from "../../test/render";
 
 // A changeset's Undo change (M8 design 4.8; M8/P3 design 4.4).
 
 const home = `/lab/notebooks/${notebookJSON.id}`;
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 const changesetPath = (id: string) => `${home}/history/${id}`;
 
 const old = pageNode(7, "Old");
@@ -331,8 +336,8 @@ test("a message is held to its bytes, and to no NUL, before it is sent: the prob
   const field = within(dialog).getByRole("textbox", { name: "Message (optional)" });
   const undo = within(dialog).getByRole("button", { name: "Undo" });
 
-  // 2,049 characters of two bytes each: one byte too many.
-  fireEvent.change(field, { target: { value: "é".repeat(2049) } });
+  // 2,048 characters of two bytes each and one of one: 2,049 characters, one byte too many.
+  fireEvent.change(field, { target: { value: `${"é".repeat(2048)}a` } });
   await user.click(undo);
   await waitFor(() => expect(field.getAttribute("aria-invalid")).toBe("true"));
   expect(document.getElementById(field.getAttribute("aria-describedby") ?? "")?.textContent).toBe(
@@ -583,3 +588,186 @@ test.each([
     expect(rejections).toEqual([]);
   }
 );
+
+// The negative controls (M8/P3 design section 6).
+
+/** gate is a wait a test opens: what waits for its promise goes on once open is called. */
+function gate() {
+  let open!: () => void;
+  const promise = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  return { promise, open };
+}
+
+test("an undo whose answer was lost says its outcome is not known as it reads the changeset again", async () => {
+  const user = userEvent.setup();
+  const { server, rework } = lost(
+    () => problem(500, "internal_error"),
+    () => undefined
+  );
+  renderApp(changesetPath(rework.id), server.app);
+  const dialog = await opened(user);
+  const read = gate();
+  server.historyWaits.changeset = read.promise;
+
+  await user.click(within(dialog).getByRole("button", { name: "Undo" }));
+
+  await waitFor(() =>
+    expect(screen.getByRole("status").textContent).toBe(
+      "Whether it was undone is not known: reading this change again…"
+    )
+  );
+  act(() => read.open());
+  await waitFor(() => expect(screen.getByRole("status").textContent).toBe("It was not undone: you can try again."));
+});
+
+test("each undo says what came of it alone: what the one before said goes as it is sent", async () => {
+  const user = userEvent.setup();
+  const { server, rework } = reworked();
+  rework.unchanged = true;
+  renderApp(changesetPath(rework.id), server.app);
+  await user.click(within(await opened(user)).getByRole("button", { name: "Undo" }));
+  await waitFor(() =>
+    expect(screen.getByRole("status").textContent).toBe("Nothing to undo: every node is as it was before this change.")
+  );
+  rework.unchanged = false;
+  server.revertsHeld = true;
+
+  await user.click(within(await opened(user)).getByRole("button", { name: "Undo" }));
+
+  await waitFor(() => expect(reverts(server.sent)).toHaveLength(2));
+  // Outside the dialog, hidden while it is open.
+  expect(screen.getByRole("status", { hidden: true }).textContent).toBe("");
+  act(() => server.release());
+  await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Undone. See the undo"));
+});
+
+test("Enter pressed twice in the message sends one undo", async () => {
+  const user = userEvent.setup();
+  const { server, rework } = reworked();
+  server.revertsHeld = true;
+  renderApp(changesetPath(rework.id), server.app);
+  const dialog = await opened(user);
+  await user.type(within(dialog).getByRole("textbox", { name: "Message (optional)" }), "Why");
+
+  await user.keyboard("{Enter}{Enter}");
+  await waitFor(() => expect(reverts(server.sent)).toEqual(['REVERT rework "Why"']));
+  act(() => server.release());
+
+  await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Undone. See the undo"));
+  expect(reverts(server.sent)).toEqual(['REVERT rework "Why"']);
+});
+
+test("the history read before an undo lists it as soon as it is gone back to", async () => {
+  const user = userEvent.setup();
+  const { server, rework } = reworked();
+  const { router } = renderApp(`${home}/history`, server.app);
+  const list = await screen.findByRole("list", { name: "Changes" });
+  await user.click(within(list).getAllByRole("link")[0] as HTMLElement);
+  const dialog = await opened(user);
+
+  await user.click(within(dialog).getByRole("button", { name: "Undo" }));
+  await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Undone. See the undo"));
+  await act(() => router.navigate(`${home}/history`));
+
+  await waitFor(() =>
+    expect(within(screen.getByRole("list", { name: "Changes" })).getAllByRole("listitem")).toHaveLength(2)
+  );
+  expect(rework.revertedBy).toHaveLength(1);
+});
+
+test("an undo answered no longer watches the reader", async () => {
+  const user = userEvent.setup();
+  const { server, rework } = reworked();
+  renderApp(changesetPath(rework.id), server.app);
+  const dialog = await opened(user);
+  const removed = vi.spyOn(window, "removeEventListener");
+  onTestFinished(() => removed.mockRestore());
+
+  await user.click(within(dialog).getByRole("button", { name: "Undo" }));
+
+  await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Undone. See the undo"));
+  expect(removed.mock.calls.filter(([, , options]) => options === true).map(([type]) => type)).toEqual(
+    expect.arrayContaining(["wheel", "touchmove", "pointerdown", "keydown"])
+  );
+});
+
+test("Undo change read away as it has the focus, the changeset trimmed meanwhile, gives the focus to the title", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const { server, rework } = reworked();
+  renderApp(changesetPath(rework.id), server.app);
+  const undo = await screen.findByRole("button", { name: "Undo change" });
+  act(() => undo.focus());
+
+  rework.trimmed = true;
+  await readAgain();
+
+  await waitFor(() => expect(screen.queryByRole("button", { name: "Undo change" })).toBeNull());
+  expect(document.activeElement).toBe(title());
+});
+
+// M8/P1 fix check 3, R3-1: the session left as the answer's body is read, its headers past the session's check.
+test("an undo whose answer was lost, its changeset read again as the tab signed out, its cache gone, leaves no rejection unhandled", async () => {
+  const user = userEvent.setup();
+  let release: (() => void) | undefined;
+  let held = false;
+  const { server, rework } = reworked("admin", {
+    "POST /api/v0/changesets/*/revert": () => problem(500, "internal_error"),
+    "GET /api/v0/changesets/*": () => {
+      const body = JSON.stringify({
+        id: rework.id,
+        notebook_id: notebookJSON.id,
+        kind: "edit",
+        client: "web",
+        message: null,
+        created_by: ada,
+        created_at: rework.at,
+        updated_at: rework.at,
+        reverts: null,
+        reverted_by: [],
+        trimmed: false,
+        node_count: 1,
+        content_count: 1,
+        changes: [],
+        renames: true,
+        moves: false,
+      });
+      if (!held) {
+        return json(JSON.parse(body));
+      }
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            release = () => {
+              controller.enqueue(new TextEncoder().encode(body));
+              controller.close();
+            };
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    },
+  });
+  const { app } = renderApp(changesetPath(rework.id), server.app);
+  const dialog = await opened(user);
+  const rejections: unknown[] = [];
+  const record = (reason: unknown) => void rejections.push(reason);
+  process.on("unhandledRejection", record);
+  onTestFinished(() => {
+    process.off("unhandledRejection", record);
+  });
+  held = true;
+
+  await user.click(within(dialog).getByRole("button", { name: "Undo" }));
+  await waitFor(() => expect(release).toBeDefined());
+  // The read's headers pass the session's check; its body is still on its way.
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 10)));
+  await act(() => app.session.tokens.signOut());
+  await waitFor(() => expect(screen.queryByRole("heading", { level: 1, name: "Edit · Ada" })).toBeNull());
+  await act(async () => {
+    release?.();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  });
+  expect(rejections).toEqual([]);
+});

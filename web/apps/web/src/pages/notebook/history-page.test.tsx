@@ -538,6 +538,7 @@ test.each([
   { filter: "a client the server does not take", query: "client=nothing", sent: true },
   { filter: "an account that is no id", query: "actor=ada", sent: false },
   { filter: "a page that is no id", query: "page=guide", sent: false },
+  { filter: "a page whose id has more after it", query: `page=${guide.id}0`, sent: false },
 ])(
   "an address with $filter says the filters cannot be read, with Clear filters, which lists the whole history",
   async ({ query, sent }) => {
@@ -618,4 +619,108 @@ test("the history is read again as the notebook's pages change, a content writte
   events.last().send("pages", pagesEvent("0199a2b4-0000-7000-8000-0000000000c2", true));
   await act(() => vi.advanceTimersByTimeAsync(6_000));
   expect(reads()).toHaveLength(4);
+});
+
+// The negative controls (M8/P3 design section 6).
+
+test("what a choice lists is said once it is read, and said again with a space that does not break when the same; nothing is said of a list shown or read again unasked", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+  const { server } = logged();
+  renderApp(historyPath, server.app);
+  await screen.findByRole("list", { name: "Changes" });
+  const status = screen.getByRole("status");
+  await readAgain();
+  await waitFor(() => expect(server.sent.filter((each) => each === "GET changesets")).toHaveLength(2));
+  expect(status.textContent).toBe("");
+
+  await user.selectOptions(clientField(), "API");
+  await waitFor(() => expect(status.textContent).toBe("Listed: 1."));
+  await user.selectOptions(clientField(), "Every MCP client");
+  await waitFor(() => expect(status.textContent).toBe(`Listed: 1.${String.fromCharCode(0xa0)}`));
+  await user.selectOptions(clientField(), "Web");
+  await waitFor(() => expect(status.textContent).toBe("Listed: 2."));
+});
+
+test("Only this person keeps the other filters; Remove of a page's, those it has not", async () => {
+  const user = userEvent.setup();
+  const { server } = logged();
+  const { router } = renderApp(`${historyPath}?client=mcp%3Aclaude`, server.app);
+  await waitFor(() => expect(rows()).toHaveLength(1));
+
+  await user.click(screen.getByRole("button", { name: "Only this person (Bob)" }));
+
+  await waitFor(() => expect(router.state.location.search).toBe(`?actor=${bob.user_id}&client=mcp%3Aclaude`));
+  await act(() => router.navigate(`${historyPath}?actor=${userJSON.id}&page=${guide.id}`));
+  await waitFor(() => expect(rows()).toHaveLength(2));
+  await user.click(screen.getByRole("button", { name: "Remove the filter “Page: Guide”" }));
+  await waitFor(() => expect(router.state.location.search).toBe(`?actor=${userJSON.id}`));
+});
+
+test("a client the address names that none read has is chosen all the same", async () => {
+  const { server } = logged();
+  renderApp(`${historyPath}?client=mcp%3Azed`, server.app);
+
+  await screen.findByText("No changes.", { selector: "p" });
+  expect(clientField().querySelector("option:checked")?.textContent).toBe("MCP (zed)");
+});
+
+test("a page's history whose tree is not read yet says its page by an ellipsis", async () => {
+  const { server } = logged();
+  server.nodesDown = true;
+  renderApp(`${historyPath}?page=${guide.id}`, server.app);
+
+  await waitFor(() => expect(rows()).toHaveLength(2));
+  expect(screen.getByText("Page: …")).toBeTruthy();
+});
+
+test("Undone leads to the newest revert of a changeset undone more than once", async () => {
+  const { server, rename } = logged();
+  const again = server.log("again", { at: "2026-10-05T08:05:00Z", kind: "revert", reverts: rename.id });
+  rename.revertedBy = [again.id, ...rename.revertedBy];
+  renderApp(historyPath, server.app);
+  await screen.findByRole("list", { name: "Changes" });
+
+  expect(screen.getByRole("link", { name: "Undone: Edit · Bob · Oct 5, 2026, 8:02 AM" }).getAttribute("href")).toBe(
+    `${historyPath}/${again.id}`
+  );
+});
+
+test("a revert's link to a changeset not listed is told apart by the end of its id from a row of its name, which is too", async () => {
+  const user = userEvent.setup();
+  const server = pageServer();
+  const first = server.log("first", {
+    id: changesetId(11),
+    at: "2026-10-05T09:00:05Z",
+    client: "api",
+    changes: [wrote(guide, 1, 2)],
+  });
+  server.log("second", { id: changesetId(12), at: "2026-10-05T09:00:40Z", changes: [wrote(guide, 2, 3)] });
+  server.log("undo", {
+    at: "2026-10-05T09:01:00Z",
+    by: bob,
+    kind: "revert",
+    reverts: first.id,
+    changes: [wrote(guide, 3, 4)],
+  });
+  renderApp(historyPath, server.app);
+  await screen.findByRole("list", { name: "Changes" });
+
+  // The API's first is not listed of the web's.
+  await user.selectOptions(clientField(), "Web");
+
+  await waitFor(() => expect(rows()).toHaveLength(2));
+  expect(linkNames()).toEqual([
+    "Undo change · Bob · Oct 5, 2026, 9:01 AM",
+    "Edit · Ada · Oct 5, 2026, 9:00 AM, ID 0d0012",
+  ]);
+  expect(screen.getByRole("link", { name: "Undid “Edit · Ada · Oct 5, 2026, 9:00 AM, ID 0d0011”" })).toBeTruthy();
+});
+
+test("an account in capitals is an id all the same, and is read", async () => {
+  const { server } = logged();
+  renderApp(`${historyPath}?actor=${bob.user_id.toUpperCase()}`, server.app);
+
+  await screen.findByText("No changes.", { selector: "p" });
+  expect(server.sent).toContain(`GET changesets by ${bob.user_id.toUpperCase()}`);
 });
