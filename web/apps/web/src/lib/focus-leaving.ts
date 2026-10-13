@@ -4,7 +4,8 @@ import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
  * useFocusLeaving has left give the focus elsewhere as the element of ref
  * leaves the document holding it (v0.1 design 13.2, item 17): before it
  * goes, in a layout effect's cleanup, so that the focus does not fall to
- * the page's start. left is the latest given.
+ * the page's start. left is the latest given. In lib/, the editor's
+ * TextDiff uses it as the pages do (M8/P1 fix check 4, N3).
  */
 export function useFocusLeaving(ref: RefObject<HTMLElement | null>, left: () => void): void {
   const leaving = useRef(left);

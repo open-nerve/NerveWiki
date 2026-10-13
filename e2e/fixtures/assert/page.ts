@@ -234,3 +234,37 @@ export async function expectSessionGone(db: Database, id: string): Promise<void>
   const [row] = await db.query<{ n: number }>("SELECT count(*)::int AS n FROM edit_sessions WHERE id = $1", [id]);
   expect(row?.n).toBe(0);
 }
+
+/** A version of a page as the stories hold it (M8 design 4.3): what it holds, from base to revision, and who wrote it how. */
+export interface StoredVersion {
+  base: number | null;
+  revision: number;
+  content: string;
+  /** Its changeset's kind: edit, import, version_restore… */
+  kind: string;
+  /** Who wrote it, and through which client: web, api… */
+  byId: string;
+  client: string;
+  /** The changeset its changeset reverts, a revert's alone: none unless given. */
+  revertsId?: string | null;
+}
+
+/**
+ * page_revisions, changesets: the versions of the page pageId are versions, oldest first, each a row of its content,
+ * with its size and SHA-256, in a changeset of its kind by its writer through its client, reverting the changeset
+ * given or none, which holds that version alone.
+ */
+export async function expectVersions(db: Database, pageId: string, versions: StoredVersion[]): Promise<void> {
+  const rows = await db.query(
+    `SELECT r.base_revision AS base, r.revision, r.content, x.kind, x.created_by_id AS "byId", x.client,
+            x.reverts_id AS "revertsId",
+            r.byte_size = octet_length(convert_to(r.content, 'UTF8'))
+              AND r.content_hash = sha256(convert_to(r.content, 'UTF8')) AS hashed,
+            (SELECT count(*)::int FROM page_revisions o WHERE o.changeset_id = x.id) AS versions
+       FROM page_revisions r JOIN changesets x ON x.id = r.changeset_id
+      WHERE r.node_id = $1 AND r.deleted_at IS NULL
+      ORDER BY r.revision`,
+    [pageId]
+  );
+  expect(rows).toEqual(versions.map((version) => ({ revertsId: null, ...version, hashed: true, versions: 1 })));
+}

@@ -2,7 +2,7 @@ import { createContext } from "react";
 import { unstable_serialize, type Cache, type ScopedMutator } from "swr";
 
 import type { EventLinks, EventLock, EventPages } from "../services/event.service";
-import type { PageView } from "../services/page.service";
+import type { PageContent, PageVersionContent, PageView } from "../services/page.service";
 import type { StreamEvent } from "./channel";
 import type { Refresher } from "./refresher";
 
@@ -10,7 +10,8 @@ import type { Refresher } from "./refresher";
 // has SWR read again what an event of its type changed, which only what
 // is mounted does. M5 has pages and lock, M6 links; a later M adds its
 // type here (M10 and M11 a notebook's mode), the stream and the tabs
-// passing on a type they do not know with its data.
+// passing on a type they do not know with its data. M8 reads a page's
+// versions again through the types there are.
 
 /**
  * EventContext is what a handler has besides the event: SWR's cache and
@@ -43,7 +44,13 @@ export const TREE_INTERVAL_MS = 500;
  * older than the one written (or not read yet), through the refresher
  * too; the pages of the notebook's tags, which a page written or deleted
  * may join or leave (M6 design 4.8); and the properties of the pages
- * written, through the refresher (M6/P7 design 11).
+ * written, through the refresher (M6/P7 design 11). The versions of the
+ * pages written too, and of theirs shown, the content of those being
+ * edited, whose revision a save moves on: their view, read by the
+ * revision, follows (version-page.tsx); a version's view, whose links lead
+ * where the tree has them, once the tree changed (M8 design 4.13). The
+ * page's content as it is now, which a version is compared with, as its
+ * view.
  */
 const pagesChanged: EventHandler = (data, context) => {
   const { cache, mutate, refresher, stopped } = context;
@@ -65,19 +72,29 @@ const pagesChanged: EventHandler = (data, context) => {
   if (tree || pages === null || pages.length > 0) {
     readTagPages(notebook, context);
   }
-  readEach("page-properties", notebook, pages === null ? null : pages.map(({ id }) => id), context);
+  const ids = pages === null ? null : pages.map(({ id }) => id);
+  readEach("page-properties", notebook, ids, context);
+  readEach("page-versions", notebook, ids, context);
+  readVersions("edited", notebook, ids, (key) => key[0] === "page-version" && editing(cache, key), context);
+  if (tree) {
+    readVersions("views", notebook, null, (key) => key[0] === "page-version-view", context);
+  }
   if (pages === null) {
     readViews(notebook, context);
     return;
   }
   for (const { id, revision } of pages) {
-    const key = ["page-view", notebook, id];
-    // A view whose first read is out is read again, as that read may be the older; one not shown, or
-    // left without data by the editing tab's save, is not.
-    const state = cache.get(unstable_serialize(key));
-    const cached = state?.data as PageView | undefined;
-    if (cached === undefined ? state?.isLoading === true : cached.revision < revision) {
-      refresher.request(unstable_serialize(key), () => void mutate(key));
+    for (const key of [
+      ["page-view", notebook, id],
+      ["page-content", notebook, id],
+    ]) {
+      // A view whose first read is out is read again, as that read may be the older; one not shown, or
+      // left without data by the editing tab's save, is not.
+      const state = cache.get(unstable_serialize(key));
+      const cached = state?.data as PageView | PageContent | undefined;
+      if (cached === undefined ? state?.isLoading === true : cached.revision < revision) {
+        refresher.request(unstable_serialize(key), () => void mutate(key));
+      }
     }
   }
 };
@@ -87,14 +104,16 @@ const pagesChanged: EventHandler = (data, context) => {
  * elsewhere (M6 design 4.8, M6/P3 design 6.7): at the revision shown, so
  * whatever that is, through the refresher; every view of the notebook for
  * too many pages to name, and its tags' pages, as after a reindex. Their
- * properties too, whose links lead elsewhere as well; and the backlinks of
- * the pages whose backlinks changed, its targets (M6/P7 design 11).
+ * properties too, whose links lead elsewhere as well, and their versions'
+ * views (M8 design 4.13); and the backlinks of the pages whose backlinks
+ * changed, its targets (M6/P7 design 11).
  */
 const linksChanged: EventHandler = (data, context) => {
   const { cache, mutate, refresher } = context;
   const { notebook_id: notebook, pages, targets } = data as EventLinks;
   readEach("backlinks", notebook, targets, context);
   readEach("page-properties", notebook, pages, context);
+  readVersions("views", notebook, pages, (key) => key[0] === "page-version-view", context);
   if (pages === null) {
     readViews(notebook, context);
     readTagPages(notebook, context);
@@ -110,14 +129,14 @@ const linksChanged: EventHandler = (data, context) => {
 };
 
 /**
- * readEach reads again what of kind, a page's backlinks or properties, is
- * shown of the pages ids of notebook, each through the refresher; of every
+ * readEach reads again what of kind, a page's backlinks, properties or
+ * versions, is shown of the pages ids of notebook, each through the refresher; of every
  * page of the notebook for null, too many to name. Of a page never read, it
  * reads nothing (one whose first read is out was: SWR writes its key as it
  * mounts): the refresher keeps each key it is asked for.
  */
 function readEach(
-  kind: "backlinks" | "page-properties",
+  kind: "backlinks" | "page-properties" | "page-versions",
   notebook: string,
   ids: readonly string[] | null,
   { cache, mutate, refresher }: EventContext
@@ -136,10 +155,61 @@ function readEach(
   }
 }
 
-/** readViews reads every reading view of notebook again, through the refresher: too many pages to name. */
+/**
+ * readVersions reads again, through the refresher, the versions shown of
+ * the pages ids of notebook (of every page of it for null, too many to
+ * name) that picks, by their key: a version's content (page-version) or
+ * view (page-version-view), by page and revision. Of a page whose versions
+ * were never read (its list's key, which a version's page reads too, is not
+ * in the cache), it reads nothing: the refresher keeps each key it is asked
+ * for, what by what.
+ */
+function readVersions(
+  what: string,
+  notebook: string,
+  ids: readonly string[] | null,
+  picks: (key: unknown[]) => boolean,
+  { cache, mutate, refresher }: EventContext
+) {
+  const of = (page: string | null) => (key: unknown) =>
+    Array.isArray(key) &&
+    (key[0] === "page-version" || key[0] === "page-version-view") &&
+    key[1] === notebook &&
+    (page === null || key[2] === page) &&
+    picks(key);
+  if (ids === null) {
+    refresher.request(`page-version ${what} ${notebook}`, () => void mutate(of(null)));
+    return;
+  }
+  for (const id of ids) {
+    if (cache.get(unstable_serialize(["page-versions", notebook, id])) !== undefined) {
+      refresher.request(`page-version ${what} ${notebook} ${id}`, () => void mutate(of(id)));
+    }
+  }
+}
+
+/**
+ * editing tells whether the version of key, a version's content by page
+ * and revision, is being edited, as its content cached says: its revision
+ * moves on with its session's saves, which another's does not.
+ */
+function editing(cache: Cache, [, notebook, page, revision]: unknown[]): boolean {
+  const cached = cache.get(unstable_serialize(["page-version", notebook, page, revision]))?.data as
+    | PageVersionContent
+    | undefined;
+  return cached?.editing === true;
+}
+
+/**
+ * readViews reads every reading view of notebook again, and the content of
+ * its pages compared with versions, through the refresher: too many pages
+ * to name.
+ */
 function readViews(notebook: string, { mutate, refresher }: EventContext) {
   refresher.request(`page-views ${notebook}`, () => {
-    void mutate((key) => Array.isArray(key) && key[0] === "page-view" && key[1] === notebook);
+    void mutate(
+      (key) => Array.isArray(key) && (key[0] === "page-view" || key[0] === "page-content") && key[1] === notebook
+    );
   });
 }
 
@@ -154,14 +224,27 @@ function readTagPages(notebook: string, { mutate, refresher }: EventContext) {
  * lockChanged reads the page's lock again, after the notebook's tree: the
  * session of a page deleted while edited ends before the deletion's event
  * comes, and its page leaves before its lock would be read, not found.
+ * Its versions with it, and the content of those shown that are being
+ * edited: a session ended, its version is no longer (M8 design 4.3).
  */
-const lockChanged: EventHandler = (data, { mutate, stopped }) => {
+const lockChanged: EventHandler = (data, { cache, mutate, stopped }) => {
   const { notebook_id: notebook, page_id: page } = data as EventLock;
   void (async () => {
     await mutate(["pages", notebook]);
     await shown();
     if (!stopped.aborted) {
-      await mutate(["edit-lock", page]);
+      await Promise.all([
+        mutate(["edit-lock", page]),
+        mutate(["page-versions", notebook, page]),
+        mutate(
+          (key) =>
+            Array.isArray(key) &&
+            key[0] === "page-version" &&
+            key[1] === notebook &&
+            key[2] === page &&
+            editing(cache, key)
+        ),
+      ]);
     }
   })();
 };

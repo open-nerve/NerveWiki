@@ -1,13 +1,16 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { EditorView } from "@codemirror/view";
+import { unstable_serialize, type Cache } from "swr";
 import { afterEach, expect, test, vi } from "vitest";
 
 import { eventHandlers, type EventHandler } from "../events/handlers";
 import { FakePage } from "../events/testing/fake-page";
 import { eventServer, withEvents } from "../test/event-server";
 import { json, notebookJSON, problem, workspaceJSON, type Answer } from "../test/fakes";
-import { bob, guide, install, linux, notes, pagePath, pageServer } from "../test/page-server";
+import type { PageVersionContent } from "../services/page.service";
+import { bob, guide, install, linux, notes, pagePath, pageServer, versionJSON } from "../test/page-server";
+import { marked } from "../test/page-editor";
 import { renderApp } from "../test/render";
 
 // Each event has what it changed read again (M5/P3 design 3.8): the tree,
@@ -87,6 +90,7 @@ async function open(page = new FakePage(), answers: Record<string, Answer> = {},
         "GET view Guide",
         `GET backlinks ${guide.id}`,
         `GET properties ${guide.id}`,
+        "GET versions Guide",
         "GET assets Guide",
       ])
     )
@@ -302,7 +306,7 @@ test("a links event of too many pages to name reads again every backlinks and pr
   ]);
 });
 
-test("a pages event reads again the properties of the pages written that are shown, of every one for too many to name", async () => {
+test("a pages event reads again the properties and the versions of the pages written that are shown, of every one for too many to name", async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   const { server, events } = await open();
   server.properties.set(guide.id, {
@@ -319,7 +323,7 @@ test("a pages event reads again the properties of the pages written that are sho
   events.last().send("pages", pagesEvent(false, [{ id: guide.id, revision: 1 }]));
   const panel = screen.getByRole("complementary", { name: "About this page" });
   expect(await within(panel).findByText("draft")).toBeTruthy();
-  expect(server.sent).toEqual([`GET properties ${guide.id}`]);
+  await waitFor(() => expect(server.sent.toSorted()).toEqual([`GET properties ${guide.id}`, "GET versions Guide"]));
 
   server.properties.set(guide.id, {
     valid: true,
@@ -523,6 +527,213 @@ test("the tab that edited the page reads it once back, not again for the events 
   await act(() => vi.advanceTimersByTimeAsync(6_000));
 
   expect(server.sent.filter((sent) => sent === "GET view Guide")).toHaveLength(reads);
+});
+
+/** versionPath is the address of Guide's version that holds revision. */
+const versionPath = (revision: number) => `${pagePath(guide.id)}/versions/${revision.toString()}`;
+
+/**
+ * openVersion renders Guide's version that holds revision, of versions,
+ * over pageServer and its event stream, connected, and waits for what the
+ * connection read again: from then on, what is read is the events' doing.
+ */
+async function openVersion(revision: number, versions: PageVersionContent[]) {
+  const events = eventServer();
+  const server = pageServer({ answers: { "GET /api/v0/events": events.answer } });
+  server.withVersions(guide.id, versions);
+  // An event of its own hands the test SWR's cache, as the handlers have it.
+  const probed: { cache?: Cache } = {};
+  const handlers = new Map<string, EventHandler>([
+    ...eventHandlers,
+    [
+      "probe",
+      (_data, { cache }) => {
+        probed.cache = cache;
+      },
+    ],
+  ]);
+  const view = renderApp(versionPath(revision), withEvents(server.app), { eventHandlers: handlers });
+  await screen.findByRole("article", { name: `Version ${revision.toString()}` });
+  await waitFor(() => expect(events.streams).toHaveLength(1));
+  const before = server.sent.length;
+  events.last().hello();
+  await waitFor(() =>
+    expect(server.sent.slice(before)).toEqual(
+      expect.arrayContaining([
+        `GET version Guide ${revision.toString()}`,
+        `GET version view Guide ${revision.toString()}`,
+        "GET versions Guide",
+      ])
+    )
+  );
+  await settle();
+  server.sent.length = 0;
+  /** versionsCached are the keys of the versions' contents and views SWR's cache holds data of. */
+  const versionsCached = async () => {
+    events.last().send("probe", {});
+    await settle();
+    const cache = probed.cache;
+    return cache === undefined
+      ? []
+      : [...cache.keys()].filter((key) => /^@"page-version(-view)?",/.test(key) && cache.get(key)?.data !== undefined);
+  };
+  return { ...view, server, events, versionsCached };
+}
+
+/** versionArticle is the view of Guide's version 1. */
+const versionArticle = () => screen.getByRole("article", { name: "Version 1" });
+
+/** versionReads is what of sent read a version, its view, or the page's versions. */
+function versionReads(sent: string[]): string[] {
+  return sent.filter((each) => each.startsWith("GET version"));
+}
+
+test("a pages event reads the version shown again while it is being edited, its address following the revision the session's saves move it to", async () => {
+  const first = versionJSON(1, null, "Guide\n");
+  const edited = versionJSON(3, 1, "Guide\nmore\n", { by: bob, editing: true });
+  const { server, events, router, versionsCached } = await openVersion(3, [first, edited]);
+  expect(screen.getByText("Editing")).toBeTruthy();
+
+  server.withVersions(guide.id, [first, { ...edited, revision: 5, content: "Guide\nmore and more\n" }]);
+  events.last().send("pages", pagesEvent(false, [{ id: guide.id, revision: 5 }]));
+
+  expect(await screen.findByRole("heading", { level: 1, name: "Version 5" })).toBeTruthy();
+  expect(router.state.location.pathname).toBe(versionPath(5));
+  await waitFor(() =>
+    expect(screen.getByRole("article", { name: "Version 5" }).textContent).toBe("Guide\nmore and more")
+  );
+  await settle();
+  // The view is read once, at the revision moved to; what was read at the address's revision leaves the cache.
+  expect(versionReads(server.sent).toSorted()).toEqual([
+    "GET version Guide 3",
+    "GET version view Guide 5",
+    "GET versions Guide",
+  ]);
+  expect((await versionsCached()).toSorted()).toEqual([
+    unstable_serialize(["page-version", notebookJSON.id, guide.id, 5]),
+    unstable_serialize(["page-version-view", notebookJSON.id, guide.id, 5]),
+  ]);
+});
+
+test("a save of the version shown, its tab comparing with the version before it, keeps that one: read once, it is not dropped", async () => {
+  const user = userEvent.setup();
+  const first = versionJSON(1, null, "Guide\n");
+  const edited = versionJSON(3, 1, "Guide\nmore\n", { by: bob, editing: true });
+  const { server, events } = await openVersion(3, [first, edited]);
+  await user.click(screen.getByRole("tab", { name: "Compare with the previous" }));
+  await screen.findByRole("textbox", { name: "Changes from version 1 to version 3" });
+  server.sent.length = 0;
+
+  server.withVersions(guide.id, [first, { ...edited, revision: 5, content: "Guide\nmore and more\n" }]);
+  events.last().send("pages", pagesEvent(false, [{ id: guide.id, revision: 5 }]));
+
+  expect(await screen.findByRole("textbox", { name: "Changes from version 1 to version 5" })).toBeTruthy();
+  await settle();
+  expect(versionReads(server.sent).toSorted()).toEqual(["GET version Guide 3", "GET versions Guide"]);
+});
+
+test("a pages event reads no version shown that is not being edited: it does not change; the page's versions it reads", async () => {
+  const { server, events } = await openVersion(1, [
+    versionJSON(1, null, "Guide\n"),
+    versionJSON(3, 1, "Guide\nmore\n", { by: bob, editing: true }),
+  ]);
+
+  events.last().send("pages", pagesEvent(false, [{ id: guide.id, revision: 4 }]));
+  await waitFor(() => expect(server.sent).toContain("GET versions Guide"));
+  await settle();
+
+  expect(versionReads(server.sent)).toEqual(["GET versions Guide"]);
+});
+
+test("a lock event reads the page's versions again at once, and the content of its version shown being edited, not its view; its session over, neither is marked editing", async () => {
+  const user = userEvent.setup();
+  const first = versionJSON(1, null, "Guide\n");
+  const edited = versionJSON(3, 1, "Guide\nmore\n", { by: bob, editing: true });
+  const { server, events } = await openVersion(3, [first, edited]);
+
+  events.last().send("lock", lockEvent(notes.id));
+  await settle();
+  expect(versionReads(server.sent)).toEqual([]);
+
+  // Its view shows: the revision does not move, and the view stays.
+  events.last().send("lock", lockEvent(guide.id));
+  await waitFor(() => expect(versionReads(server.sent)).toHaveLength(2));
+  await settle();
+  expect(versionReads(server.sent).toSorted()).toEqual(["GET version Guide 3", "GET versions Guide"]);
+
+  // The version before it shows, which is not being edited.
+  await user.click(screen.getByRole("tab", { name: "Compare with the previous" }));
+  await screen.findByRole("textbox", { name: "Changes from version 1 to version 3" });
+  server.sent.length = 0;
+  server.withVersions(guide.id, [first, { ...edited, editing: false }]);
+  events.last().send("lock", lockEvent(guide.id));
+
+  await waitFor(() => expect(screen.queryByText("Editing")).toBeNull());
+  await settle();
+  expect(versionReads(server.sent).toSorted()).toEqual(["GET version Guide 3", "GET versions Guide"]);
+});
+
+test("a links event reads again the views of the versions shown of the pages it names; a tree changed, every one's; another page's, none", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const { server, events } = await openVersion(1, [versionJSON(1, null, "Guide\n"), versionJSON(2, 1, "Guide 2\n")]);
+
+  events
+    .last()
+    .send("links", { workspace_id: workspaceJSON.id, notebook_id: notebookJSON.id, pages: [notes.id], targets: [] });
+  await settle();
+  expect(versionReads(server.sent)).toEqual([]);
+
+  server.versionViews.set(`${guide.id} 1`, { html: "<p>Linked</p>", revision: 1, assets_expire_at: null });
+  events
+    .last()
+    .send("links", { workspace_id: workspaceJSON.id, notebook_id: notebookJSON.id, pages: [guide.id], targets: [] });
+  await waitFor(() => expect(versionArticle().innerHTML).toBe("<p>Linked</p>"));
+
+  server.versionViews.set(`${guide.id} 1`, { html: "<p>Renamed</p>", revision: 1, assets_expire_at: null });
+  events.last().send("pages", pagesEvent(true, []));
+  await waitFor(() => expect(versionArticle().innerHTML).toBe("<p>Renamed</p>"));
+  expect(versionReads(server.sent)).toEqual(["GET version view Guide 1", "GET version view Guide 1"]);
+});
+
+/** compared is what the comparison of the page now with Guide's version 1 marks. */
+const compared = () => marked(screen.getByRole("textbox", { name: "Changes from the page now to version 1" }));
+
+test("a pages event reads again the page as it is now a version is compared with: of the page written newer, or of every page", async () => {
+  const user = userEvent.setup();
+  const { server, events } = await openVersion(1, [versionJSON(1, null, "Guide\n"), versionJSON(2, 1, "Guide 2\n")]);
+  await user.click(screen.getByRole("tab", { name: "Compare with the current" }));
+  await waitFor(() => expect(compared().removed).toEqual(["Guide 2"]));
+  server.sent.length = 0;
+
+  server.contents.set(guide.id, { content: "Guide 3\n", revision: 3 });
+  events.last().send("pages", pagesEvent(false, [{ id: notes.id, revision: 9 }]));
+  await settle();
+  expect(server.sent).not.toContain("GET content Guide");
+  events.last().send("pages", pagesEvent(false, [{ id: guide.id, revision: 3 }]));
+  await waitFor(() => expect(compared().removed).toEqual(["Guide 3"]));
+
+  server.contents.set(guide.id, { content: "Guide 4\n", revision: 4 });
+  events.last().send("pages", pagesEvent(false, null));
+  await waitFor(() => expect(compared().removed).toEqual(["Guide 4"]));
+  expect(server.sent.filter((each) => each === "GET content Guide")).toHaveLength(2);
+});
+
+test("each connection reads again the version shown, the page's versions, and the page as it is now it is compared with", async () => {
+  const user = userEvent.setup();
+  const { server, events } = await openVersion(1, [versionJSON(1, null, "Guide\n"), versionJSON(2, 1, "Guide 2\n")]);
+  await user.click(screen.getByRole("tab", { name: "Compare with the current" }));
+  await waitFor(() => expect(server.sent).toContain("GET content Guide"));
+  server.sent.length = 0;
+
+  events.last().send("reset", { reason: "expired" });
+  await waitFor(() => expect(events.streams).toHaveLength(2));
+  events.last().hello();
+
+  await waitFor(() =>
+    expect(server.sent).toEqual(
+      expect.arrayContaining(["GET version Guide 1", "GET versions Guide", "GET content Guide"])
+    )
+  );
 });
 
 /**

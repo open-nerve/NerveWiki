@@ -26,7 +26,8 @@ import { RouteError } from "./route-error";
 // 3.3). A notebook's pages are under its workspace's, by the notebook's id
 // (M3/P4 design 3.4), and a wiki page's under its notebook's, by the
 // page's id (M4/P5 design 3.5), as a tag's pages are by the tag (M6/P6
-// design 8).
+// design 8); a page's version under the page's, by its revision (M8
+// design 4.3).
 export const routes: RouteObject[] = [
   {
     Component: Layout,
@@ -154,6 +155,14 @@ export const routes: RouteObject[] = [
                             lazy: async () => {
                               const { PageLayout } = await import("../pages/page/page-layout");
                               return { Component: PageLayout };
+                            },
+                          },
+                          {
+                            // A version of a page, by a revision it holds (M8 design 4.3).
+                            path: "pages/:pageId/versions/:revision",
+                            lazy: async () => {
+                              const { VersionPage } = await import("../pages/page/version-page");
+                              return { Component: VersionPage };
                             },
                           },
                           {

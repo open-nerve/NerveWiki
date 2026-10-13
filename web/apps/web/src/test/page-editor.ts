@@ -19,3 +19,12 @@ export async function pageEditor() {
     view.dispatch({ changes: { from: view.state.doc.length, insert: text }, userEvent: "input.type" });
   return { content, view, type };
 }
+
+/**
+ * marked is what a diff's unified view, the textbox of its text after,
+ * marks: the lines it shows removed and those it shows added, in order.
+ */
+export function marked(diff: HTMLElement): { removed: string[]; added: string[] } {
+  const lines = (selector: string) => [...diff.querySelectorAll(selector)].map((line) => line.textContent);
+  return { removed: lines(".cm-deletedLine"), added: lines(".cm-changedLine") };
+}

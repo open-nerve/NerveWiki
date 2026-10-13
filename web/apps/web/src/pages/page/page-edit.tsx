@@ -295,7 +295,8 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
    * the editor is, is read into SWR's cache, deduplication or not, unless
    * there is no view to read: the page is gone from the tree, or the edit
    * was lost as the page went or out of the account's reach (a notebook
-   * gone keeps its tree as it was).
+   * gone keeps its tree as it was). Its versions are read again then, at
+   * once, the edit's no longer being edited (M8 design 4.13).
    */
   async function finish(left: Left = { idle: false }): Promise<void> {
     await editing.end();
@@ -305,6 +306,7 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
       await mutate(["page-view", notebook.id, page.id], readView(pages, page.id), { revalidate: false }).catch(
         () => undefined
       );
+      void mutate(["page-versions", notebook.id, page.id]);
     }
     done(left);
   }

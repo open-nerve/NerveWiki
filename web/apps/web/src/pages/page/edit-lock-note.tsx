@@ -1,12 +1,12 @@
 import { observer } from "mobx-react-lite";
-import { useState } from "react";
-import useSWR from "swr";
+import { useRef, useState } from "react";
+import useSWR, { unstable_serialize, useSWRConfig, type Cache, type ScopedMutator } from "swr";
 
 import { ConfirmDialog } from "../../app/confirm-dialog";
 import { Button } from "../../components/ui/button";
 import { useT } from "../../i18n/i18n";
 import type { Notebook } from "../../services/notebook.service";
-import type { EditLock, TreeNode } from "../../services/page.service";
+import type { EditLock, PageVersionContent, TreeNode } from "../../services/page.service";
 import { usePageTree, useStore } from "../../stores/context";
 
 type EditLockNoteProps = {
@@ -25,17 +25,28 @@ type EditLockNoteProps = {
  * and once its lease should have ended, which no event tells. The
  * notebook's admins can release it, once confirmed; the one whose edit
  * ends learns so as they save. The account editing elsewhere may edit here
- * instead (M5/P4 design 3.6): the edit elsewhere is then taken over.
+ * instead (M5/P4 design 3.6): the edit elsewhere is then taken over. A
+ * lock read free after a held one has the page's versions read again, as
+ * its event does (readEnded).
  */
 export const EditLockNote = observer(function EditLockNote({ notebook, page, editHere, released }: EditLockNoteProps) {
   const t = useT();
   const pages = usePageTree(notebook);
   const me = useStore().account?.me;
+  const { cache, mutate: read } = useSWRConfig();
   // SWR polls by a number: a function of the data it would only ask once polling had started.
   const [expiry, setExpiry] = useState(0);
+  // Whether the lock read last had a holder.
+  const held = useRef(false);
   const { data, mutate } = useSWR(["edit-lock", page.id], () => pages.editLock(page.id), {
     refreshInterval: expiry,
-    onSuccess: (lock) => setExpiry(untilExpiry(lock)),
+    onSuccess: (lock) => {
+      setExpiry(untilExpiry(lock));
+      if (held.current && lock.holder === null) {
+        readEnded(cache, read, notebook.id, page.id);
+      }
+      held.current = lock.holder !== null;
+    },
   });
   const holder = data?.holder;
   if (holder === undefined || holder === null) {
@@ -72,6 +83,29 @@ export const EditLockNote = observer(function EditLockNote({ notebook, page, edi
     </div>
   );
 });
+
+/**
+ * readEnded reads the page's versions again, and the contents of those
+ * cached as being edited, an edit having ended (M8/P1 review B, M2): one
+ * whose lease ran out has no event (M8 design 4.13). What its event, when
+ * there was one, is reading already is not read twice.
+ */
+function readEnded(cache: Cache, mutate: ScopedMutator, notebook: string, page: string): void {
+  const idle = (key: unknown[]) => cache.get(unstable_serialize(key))?.isValidating !== true;
+  const versions = ["page-versions", notebook, page];
+  if (idle(versions)) {
+    void mutate(versions);
+  }
+  void mutate(
+    (key) =>
+      Array.isArray(key) &&
+      key[0] === "page-version" &&
+      key[1] === notebook &&
+      key[2] === page &&
+      (cache.get(unstable_serialize(key))?.data as PageVersionContent | undefined)?.editing === true &&
+      idle(key)
+  );
+}
 
 /** untilExpiry is when to read a held lock again: once its lease should have ended; never (0) while no one holds it. */
 function untilExpiry(lock: EditLock): number {

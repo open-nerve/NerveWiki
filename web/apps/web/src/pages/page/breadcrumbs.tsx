@@ -7,18 +7,22 @@ import type { TreeNode } from "../../services/page.service";
 /**
  * Breadcrumbs is where the page is (M4/P5 design 3.5): its notebook, then
  * its ancestors from the root down, each a link, then the page itself,
- * marked as the current one.
+ * marked as the current one; or, a part of the page shown (one of its
+ * versions, M8 design 4.13), a link too, then that part, the current one.
  */
 export function Breadcrumbs({
   notebook,
   ancestors,
   page,
   href,
+  part,
 }: {
   notebook: Notebook;
   ancestors: readonly TreeNode[];
   page: TreeNode;
   href: (id?: string) => string;
+  /** The part of the page shown, named. */
+  part?: string;
 }) {
   const t = useT();
   return (
@@ -37,10 +41,25 @@ export function Breadcrumbs({
             </Link>
           </li>
         ))}
-        <li className="text-foreground">
-          <Separator />
-          <span aria-current="page">{page.name}</span>
-        </li>
+        {part === undefined ? (
+          <li className="text-foreground">
+            <Separator />
+            <span aria-current="page">{page.name}</span>
+          </li>
+        ) : (
+          <>
+            <li>
+              <Separator />
+              <Link to={href(page.id)} className="hover:underline">
+                {page.name}
+              </Link>
+            </li>
+            <li className="text-foreground">
+              <Separator />
+              <span aria-current="page">{part}</span>
+            </li>
+          </>
+        )}
       </ol>
     </nav>
   );

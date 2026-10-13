@@ -1,7 +1,15 @@
 import type { Asset } from "../services/asset.service";
 import type { BacklinkPage, LinkLanding, PageProperties } from "../services/linking.service";
 import type { NotebookRole } from "../services/notebook.service";
-import type { EditLock, NodeMove, PageContent, PageView, TaskToggle, TreeNode } from "../services/page.service";
+import type {
+  EditLock,
+  NodeMove,
+  PageContent,
+  PageVersionContent,
+  PageView,
+  TaskToggle,
+  TreeNode,
+} from "../services/page.service";
 import { titleKey } from "../lib/title-key";
 import { extensionOf } from "../lib/upload-name";
 import { instanceJSON, json, notebookJSON, problem, signedInApp, userJSON, type Answer } from "./fakes";
@@ -94,6 +102,19 @@ type PageServerOptions = {
  * the page as it is for an item in that state, 409 page.locked while a
  * session holds the page; otherwise it writes the content and its view.
  *
+ * A page's versions (M8/P1) are what versions has for it, oldest first,
+ * by default one of its content as it is; withVersions gives it some and
+ * their newest's content. They are listed newer first, limit of them a
+ * page (50 without one), the cursor the index of the next; a version is
+ * the one whose (base_revision, revision] holds the revision asked for,
+ * 404 page.version_not_found without one; its view is what versionViews
+ * has for it by "<page id> <revision>", by default its task items as
+ * withTasks renders them, or its content in a paragraph. A restore answers
+ * as the server does: unchanged for the content the page has, whatever
+ * the base; 409 page.revision_mismatch on another revision, then 409
+ * page.locked while a session holds the page; otherwise it writes the
+ * content, its view and a version_restore version by Ada.
+ *
  * A tag's pages are the ids tags has for it, by its name as the path
  * carries it decoded (M6/P5), none for a tag it does not have. A link's
  * landing (M6/P6) is what landings has for its target, by default a page
@@ -140,6 +161,10 @@ export function pageServer({
     backlinks: new Map<string, BacklinkPage[]>(),
     /** Each page's properties, by its id. */
     properties: new Map<string, PageProperties>(),
+    /** Each page's versions, oldest first, by its id. */
+    versions: new Map<string, PageVersionContent[]>(),
+    /** The views of versions, by "<page id> <revision>". */
+    versionViews: new Map<string, PageView>(),
     /** When the addresses of the attachments listed expire. */
     assetsExpireAt: "2100-01-01T00:00:00Z",
     /** Whether uploads wait to be released. */
@@ -174,6 +199,14 @@ export function pageServer({
     withTasks(pageId: string, content: string, revision = 1): void {
       server.contents.set(pageId, { content, revision });
       server.views.set(pageId, { html: tasksView(content), revision, assets_expire_at: null });
+    },
+    /** withVersions gives the page pageId its versions, oldest first, and their newest's content. */
+    withVersions(pageId: string, versions: PageVersionContent[]): void {
+      server.versions.set(pageId, versions);
+      const newest = versions.at(-1);
+      if (newest !== undefined) {
+        server.contents.set(pageId, { content: newest.content, revision: newest.revision });
+      }
     },
     /** lockOf is the page's edit lock, as GET edit-lock answers it. */
     lockOf(pageId: string): EditLock {
@@ -261,6 +294,7 @@ export function pageServer({
     ...assetRoutes(server, role),
     ...contentRoutes(server),
     ...taskRoutes(server),
+    ...versionRoutes(server),
     ...answers,
   });
   return Object.assign(server, { app });
@@ -633,6 +667,148 @@ function contentRoutes(server: ContentState): Record<string, Answer> {
         ? new Response(null, { status: 204 })
         : problem(404, "page.edit_session_not_found");
     },
+  };
+}
+
+let versionsMade = 0;
+
+/**
+ * versionJSON is a version of a page as the server answers it, with its
+ * content: it holds (base, revision], written by by (Ada by default) at
+ * at, in a changeset of kind (edit by default) from the web.
+ */
+export function versionJSON(
+  revision: number,
+  base: number | null,
+  content: string,
+  {
+    kind = "edit",
+    by = ada,
+    at = "2026-10-03T08:00:00Z",
+    editing = false,
+  }: { kind?: PageVersionContent["changeset"]["kind"]; by?: Person; at?: string; editing?: boolean } = {}
+): PageVersionContent {
+  const n = (++versionsMade).toString();
+  return {
+    id: `version-${n}`,
+    revision,
+    base_revision: base,
+    byte_size: new TextEncoder().encode(content).length,
+    created_at: at,
+    updated_at: at,
+    editing,
+    changeset: { id: `changeset-${n}`, kind, client: "web", created_at: at, created_by: by },
+    content,
+  };
+}
+
+type VersionState = ContentState & {
+  views: Map<string, PageView>;
+  versions: Map<string, PageVersionContent[]>;
+  versionViews: Map<string, PageView>;
+};
+
+/** The answers to the versions of server's pages and their restores, which change it. */
+function versionRoutes(server: VersionState): Record<string, Answer> {
+  const nodeOf = (request: Request) => server.nodes.find((node) => node.id === idOf(request) && node.kind === "page");
+  const currentOf = (node: TreeNode) => server.contents.get(node.id) ?? { content: `${node.name}\n`, revision: 1 };
+  const versionsOf = (node: TreeNode) => {
+    let versions = server.versions.get(node.id);
+    if (versions === undefined) {
+      const { content, revision } = currentOf(node);
+      versions = [versionJSON(revision, null, content)];
+      server.versions.set(node.id, versions);
+    }
+    return versions;
+  };
+  const holding = (node: TreeNode, revision: number) =>
+    versionsOf(node).find((version) => (version.base_revision ?? 0) < revision && revision <= version.revision);
+  return {
+    "GET /api/v0/pages/*/versions": (request) => {
+      const node = nodeOf(request);
+      const query = new URL(request.url).searchParams;
+      const cursor = query.get("cursor");
+      server.sent.push(`GET versions ${node?.name} ${cursor ?? ""}`.trim());
+      if (node === undefined) {
+        return problem(404, "page.not_found");
+      }
+      // The cursor is the revision the next page is below, as the server's says.
+      const below = cursor === null ? Infinity : Number(cursor);
+      const limit = Number(query.get("limit") ?? "50");
+      const listed = versionsOf(node)
+        .toReversed()
+        .filter((version) => version.revision < below);
+      const data = listed.slice(0, limit).map(({ content: _, ...version }) => version);
+      const last = data.at(-1);
+      return json({ data, next_cursor: listed.length > limit && last !== undefined ? last.revision.toString() : null });
+    },
+    "GET /api/v0/pages/*/versions/*": (request) => {
+      const node = nodeOf(request);
+      server.sent.push(`GET version ${node?.name} ${revisionOf(request).toString()}`);
+      if (node === undefined) {
+        return problem(404, "page.not_found");
+      }
+      const version = holding(node, revisionOf(request));
+      return version === undefined ? problem(404, "page.version_not_found") : json(version);
+    },
+    "GET /api/v0/pages/*/versions/*/view": (request) => {
+      const node = nodeOf(request);
+      server.sent.push(`GET version view ${node?.name} ${revisionOf(request).toString()}`);
+      if (node === undefined) {
+        return problem(404, "page.not_found");
+      }
+      const version = holding(node, revisionOf(request));
+      if (version === undefined) {
+        return problem(404, "page.version_not_found");
+      }
+      return json(
+        server.versionViews.get(`${node.id} ${version.revision.toString()}`) ??
+          versionView(version.content, version.revision)
+      );
+    },
+    "POST /api/v0/pages/*/versions/*/restore": async (request) => {
+      const { base_revision: base } = (await request.clone().json()) as { base_revision: number };
+      const node = nodeOf(request);
+      server.sent.push(`RESTORE ${node?.name} ${revisionOf(request).toString()} on ${base.toString()}`);
+      if (node === undefined) {
+        return problem(404, "page.not_found");
+      }
+      const version = holding(node, revisionOf(request));
+      if (version === undefined) {
+        return problem(404, "page.version_not_found");
+      }
+      const current = currentOf(node);
+      if (current.content === version.content) {
+        return json({ revision: current.revision, changeset_id: null, changed: false });
+      }
+      if (base !== current.revision) {
+        return problem(409, "page.revision_mismatch");
+      }
+      const alive = aliveOf(server.sessions, node.id);
+      if (alive !== undefined) {
+        return problem(409, "page.locked", { lock: { page_id: node.id, ...alive.holder } });
+      }
+      const revision = current.revision + 1;
+      const restored = versionJSON(revision, current.revision, version.content, { kind: "version_restore" });
+      server.versions.set(node.id, [...versionsOf(node), restored]);
+      server.contents.set(node.id, { content: version.content, revision });
+      server.views.set(node.id, versionView(version.content, revision));
+      return json({ revision, changeset_id: restored.changeset.id, changed: true });
+    },
+  };
+}
+
+/** revisionOf is the revision in a request's path, /api/v0/pages/{id}/versions/{revision}… */
+function revisionOf(request: Request): number {
+  return Number(new URL(request.url).pathname.split("/")[6]);
+}
+
+/** versionView is the reading view of a version's content at revision: its task items, or its text in a paragraph. */
+function versionView(content: string, revision: number): PageView {
+  return {
+    html: tasksOf(content).length > 0 ? tasksView(content) : `<p>${content.trim()}</p>`,
+    revision,
+    assets_expire_at: null,
   };
 }
 

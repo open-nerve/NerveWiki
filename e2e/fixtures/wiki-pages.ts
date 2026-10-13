@@ -313,3 +313,37 @@ export async function holdContentWrites(page: Page, id: string): Promise<HeldWri
 export function conflictRegion(page: Page): Locator {
   return page.getByRole("region", { name: "This page changed while you edited it", exact: true });
 }
+
+/** The address of the version of the page id, of the notebook notebookId in the workspace of slug, that holds revision. */
+export function versionPath(slug: string, notebookId: string, id: string, revision: number): string {
+  return `${wikiPagePath(slug, notebookId, id)}/versions/${revision.toString()}`;
+}
+
+/** The versions the page's right column lists, newer first (M8 design 4.13). */
+export function versionsListed(page: Page): Locator {
+  return page
+    .getByRole("complementary", { name: "About this page", exact: true })
+    .getByRole("list", { name: "Versions", exact: true })
+    .getByRole("listitem");
+}
+
+/** The restore's dialog of the version that holds revision. */
+export function restoreDialog(page: Page, revision: number): Locator {
+  return page.getByRole("alertdialog", { name: `Restore version ${revision.toString()}?`, exact: true });
+}
+
+/**
+ * Restores the version of the page id shown, which holds revision, with Restore this version, once its dialog has
+ * read the page it compares the version with; resolves the answer. The dialog stays open on a refusal.
+ */
+export async function restoreWith(page: Page, id: string, revision: number): Promise<Response> {
+  const dialog = restoreDialog(page, revision);
+  if (!(await dialog.isVisible())) {
+    await page.getByRole("main").getByRole("button", { name: "Restore this version", exact: true }).click();
+  }
+  const restore = dialog.getByRole("button", { name: "Restore", exact: true });
+  await expect(restore).toBeEnabled();
+  const answer = answerTo(page, "POST", `/api/v0/pages/${id}/versions/${revision.toString()}/restore`);
+  await restore.click();
+  return answer;
+}

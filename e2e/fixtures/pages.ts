@@ -197,3 +197,31 @@ export async function toggleTask(api: ApiClient, credential: string, id: string,
     headers: bearer(credential),
   });
 }
+
+/** credential's read of a page of the page id's versions (M8 design 4.3), after cursor, as the API answers it. */
+export async function getVersions(api: ApiClient, credential: string, id: string, cursor?: string) {
+  return api.GET("/api/v0/pages/{page_id}/versions", {
+    params: { path: { page_id: id }, query: cursor === undefined ? {} : { cursor } },
+    headers: bearer(credential),
+  });
+}
+
+/** credential's read of the version of the page id that holds revision, with its content, as the API answers it. */
+export async function getVersion(api: ApiClient, credential: string, id: string, revision: number) {
+  return api.GET("/api/v0/pages/{page_id}/versions/{revision}", {
+    params: { path: { page_id: id, revision } },
+    headers: bearer(credential),
+  });
+}
+
+/**
+ * credential's restore of the version of the page id that holds revision (M8 design 4.4), on base, the revision the
+ * page was read at, as the API answers it.
+ */
+export async function postRestore(api: ApiClient, credential: string, id: string, revision: number, base: number) {
+  return api.POST("/api/v0/pages/{page_id}/versions/{revision}/restore", {
+    params: { path: { page_id: id, revision } },
+    body: { base_revision: base },
+    headers: bearer(credential),
+  });
+}

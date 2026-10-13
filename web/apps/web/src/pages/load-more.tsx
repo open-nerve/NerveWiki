@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 
-import { useFocusLeaving } from "../app/focus-leaving";
+import { useFocusLeaving } from "../lib/focus-leaving";
 import { useMounted } from "../app/mounted";
 import { Button } from "../components/ui/button";
 import { watchReader } from "./page/readers-input";

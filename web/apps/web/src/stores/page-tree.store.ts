@@ -1,6 +1,6 @@
 import { computed, makeAutoObservable, observableRef, runInAction } from "mobx";
 
-import { oneAtATime } from "../lib/one-at-a-time";
+import { oneAtATime, oneAtATimeById } from "../lib/one-at-a-time";
 import { ApiError } from "../services/api";
 import type {
   BacklinkPage,
@@ -10,7 +10,18 @@ import type {
   PageProperties,
   TagCount,
 } from "../services/linking.service";
-import type { EditLock, NodeMove, PageService, PageView, TaskToggle, TreeNode } from "../services/page.service";
+import type {
+  EditLock,
+  NodeMove,
+  PageContent,
+  PageService,
+  PageVersionContent,
+  PageVersionPage,
+  PageView,
+  TaskToggle,
+  TreeNode,
+  VersionRestored,
+} from "../services/page.service";
 import { ancestorsOf, childrenOf, indexTree, subtreeOf, type TreeIndex } from "./page-tree";
 
 /** How long a toggle of a task item holds its page's others back: more than the server takes to answer. */
@@ -36,6 +47,11 @@ export const toggleLimit = 60_000;
  * It reads for the notebook what its pages' links and tags lead to (M6/P6
  * design 13): the pages of a tag, which SWR keeps as it does the views,
  * and where a page made for a link would go, read anew each time.
+ *
+ * It reads a page's versions, which SWR keeps as it does the views, and
+ * restores one (M8 design 4.3, 4.4): a page's restores go out one at a
+ * time, in the order made, beside the tree's writes, which they do not
+ * change.
  */
 export class PageTreeStore {
   /** The nodes as read, pages and attachments, replaced whole by each read: they are not observed one by one. */
@@ -62,6 +78,7 @@ export class PageTreeStore {
   private readonly inTurn = oneAtATime();
   /** The pages with a toggle of a task item out, the view read again included, each with when it started. */
   private readonly togglesOut = new Map<string, number>();
+  private readonly restores = oneAtATimeById();
 
   constructor(
     private readonly service: Pick<
@@ -75,6 +92,11 @@ export class PageTreeStore {
       | "lock"
       | "releaseLock"
       | "toggleTask"
+      | "getPageContent"
+      | "versions"
+      | "version"
+      | "versionView"
+      | "restoreVersion"
     >,
     /** The notebook whose pages these are. */
     readonly notebookId: string,
@@ -94,6 +116,7 @@ export class PageTreeStore {
       | "rereading"
       | "inTurn"
       | "togglesOut"
+      | "restores"
     >(this, {
       service: false,
       linking: false,
@@ -107,6 +130,7 @@ export class PageTreeStore {
       rereading: false,
       inTurn: false,
       togglesOut: false,
+      restores: false,
     });
   }
 
@@ -348,6 +372,37 @@ export class PageTreeStore {
         this.togglesOut.delete(id);
       }
     }
+  }
+
+  /** content reads the page id's content as it is now, with its revision: what a version is compared with and restored on. */
+  content(id: string): Promise<PageContent> {
+    return this.service.getPageContent(id);
+  }
+
+  /** versions reads a page of the page id's versions, newer first, after cursor (none for the first). */
+  versions(id: string, cursor?: string): Promise<PageVersionPage> {
+    return this.service.versions(id, cursor);
+  }
+
+  /** version reads the version of the page id that holds revision, with its content and its own revision. */
+  version(id: string, revision: number): Promise<PageVersionContent> {
+    return this.service.version(id, revision);
+  }
+
+  /** versionView reads the reading view of the version of the page id that holds revision. */
+  versionView(id: string, revision: number): Promise<PageView> {
+    return this.service.versionView(id, revision);
+  }
+
+  /**
+   * restoreVersion writes the content of the version of the page id that
+   * holds revision as the page's, on base, the revision the page was read
+   * at, after the page's restores made before it have settled: a dialog
+   * mounted again may make one while the last is out. It answers what the
+   * restore did; SWR reads what it changed.
+   */
+  restoreVersion(id: string, revision: number, base: number): Promise<VersionRestored> {
+    return this.restores(id, () => this.service.restoreVersion(id, revision, base));
   }
 
   /** editLock reads who edits the page id, which SWR keeps by page, as it does the view (M5/P3 design 3.10). */
