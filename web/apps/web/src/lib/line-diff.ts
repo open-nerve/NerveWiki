@@ -1,4 +1,4 @@
-import { presentableDiff } from "@codemirror/merge";
+import { presentableDiff, type Change } from "@codemirror/merge";
 
 /**
  * A change between two texts: the range of the first, from fromA to toA,
@@ -51,7 +51,7 @@ export const lineDiffLimits: LineDiffLimits = {
  * after it that its own lines repeat, so that none starts on an empty line
  * the view would draw it under. A change of a few lines on each side is
  * then refined to the words that differ by @codemirror/merge's own
- * presentable diff, with the scan limit its views use, until
+ * presentable diff (presentable), with the scan limit its views use, until
  * maxRefinedTotal code units are; a larger one, and those past it, stay
  * whole lines. Changes less than three code units apart are merged, as the
  * view merges them, and empty ones dropped, so that the view, on the
@@ -114,11 +114,27 @@ export function lineDiff(a: string, b: string, limits: LineDiffLimits = lineDiff
       continue;
     }
     refined += size;
-    for (const c of presentableDiff(a.slice(fromA, toA), b.slice(fromB, toB), { scanLimit: 500 })) {
+    for (const c of presentable(a.slice(fromA, toA), b.slice(fromB, toB))) {
       push({ fromA: fromA + c.fromA, toA: fromA + c.toA, fromB: fromB + c.fromB, toB: fromB + c.toB });
     }
   }
   return { kind: "changes", changes, added, removed };
+}
+
+/**
+ * presentable is @codemirror/merge's presentable diff of a and b, made
+ * presentable again until a pass merges nothing more: a pass merges short
+ * insertions and deletions into a replacement it does not widen to its
+ * words, which the view, on the page's thread, would widen and merge on,
+ * splicing the whole text's array (M8/P1 fix check 1, N2).
+ */
+function presentable(a: string, b: string): readonly Change[] {
+  const again = (changes: readonly Change[]) => presentableDiff(a, b, { override: () => changes.slice() });
+  let found = presentableDiff(a, b, { scanLimit: 500 });
+  for (let next = again(found); next.length < found.length; next = again(found)) {
+    found = next;
+  }
+  return found;
 }
 
 /** splitLines is text's lines, each with its LF; the last without one when the text does not end in one. */

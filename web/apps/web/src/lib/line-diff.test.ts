@@ -79,6 +79,57 @@ const dense = (shift: number) =>
     return `same ${i.toString()}\n${words.join(" ")}\n`;
   }).join("");
 
+/**
+ * typos is a page of a hundred paragraphs of words and the same with two
+ * letters swapped in a share of its words (M8/P1 fix check 1, N2).
+ */
+function typos(share: number): [string, string] {
+  const next = random(9);
+  const letter = () => "etaoinshrdlucmfwyp".charAt(Math.floor(next() * 18));
+  const a: string[] = [];
+  const b: string[] = [];
+  for (let i = 0; i < 100; i++) {
+    const words = Array.from({ length: 70 }, () => Array.from({ length: 3 + Math.floor(next() * 6) }, letter).join(""));
+    const swapped = words.map((word) => {
+      const at = Math.floor(next() * (word.length - 1));
+      return next() < share
+        ? `${word.slice(0, at)}${word.charAt(at + 1)}${word.charAt(at)}${word.slice(at + 2)}`
+        : word;
+    });
+    a.push(`${words.join(" ")}.\n`);
+    b.push(`${swapped.join(" ")}.\n`);
+  }
+  return [a.join("\n"), b.join("\n")];
+}
+
+/** particles is a page of a hundred Chinese paragraphs and the same with a particle added or dropped at a share of its characters. */
+function particles(share: number): [string, string] {
+  const next = random(5);
+  const pick = (from: string) => from.charAt(Math.floor(next() * from.length));
+  const a: string[] = [];
+  const b: string[] = [];
+  for (let i = 0; i < 100; i++) {
+    let p = "";
+    let q = "";
+    for (let j = 0; j < 300; j++) {
+      const c = pick("的一是不了人我在有他上中大到小个子以和地出道也要就下天去能好自都然没日于起可多同而么");
+      const r = next();
+      p += c;
+      q += r < share / 2 ? `${pick("了的着地得")}${c}` : r < share ? "" : c;
+    }
+    a.push(`${p}。\n`);
+    b.push(`${q}。\n`);
+  }
+  return [a.join("\n"), b.join("\n")];
+}
+
+/** inWords is twenty lines of words, letters added and dropped inside each of them in the second text. */
+const inWords = (word: string) =>
+  Array.from(
+    { length: 20 },
+    (_, i) => `${Array.from({ length: 165 }, () => word).join(" ")}\nkeep ${i.toString()}\n`
+  ).join("");
+
 /** reworded is a thousand paragraphs, each the word numbered. */
 const reworded = (word: string) => paragraphs(Array.from({ length: 1000 }, (_, i) => `${word}${i.toString()}`));
 
@@ -267,14 +318,18 @@ describe("lineDiff", () => {
 
   // M8/P1 review A, I1: the view merges changes that nearly meet, splicing its array: quadratic, on the page's thread.
   test("gives the view changes it finds nothing left to merge in, however dense", () => {
-    // Every other letter changed; paragraphs an empty line apart, every one of them a word that changes.
+    // Every other letter changed; paragraphs an empty line apart, every one of them a word that changes; two letters
+    // swapped in nine words in ten; a particle added or dropped at three characters in ten; letters added and dropped
+    // in every word (M8/P1 fix check 1, N2).
     for (const [a, b] of [
       [dense(0), dense(1)],
       [reworded("old"), reworded("new")],
+      typos(0.9),
+      particles(0.3),
+      [inWords("abcdefgh"), inWords("abXcYdefgZh")],
     ] as const) {
       const found = changes(lineDiff(a, b));
       expect(apply(a, b, found)).toBe(b);
-      expect(found.length).toBeLessThanOrEqual(1000);
       expect(presentableDiff(a, b, { override: () => changesOf(found) })).toHaveLength(found.length);
     }
   });
