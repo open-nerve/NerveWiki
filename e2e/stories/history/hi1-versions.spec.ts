@@ -162,15 +162,16 @@ test("HI1 (page): two edits, the page left between them, are two more versions i
   await expect(main.getByRole("article", { name: "Version 2", exact: true })).toContainText("First");
   await main.getByRole("tab", { name: "Compare with the previous", exact: true }).click();
   await expect(main.getByRole("tabpanel")).toContainText("Version 1 → Version 2");
-  await expect(main.getByRole("textbox", { name: "Changes from version 1 to version 2", exact: true })).toContainText(
-    "First"
-  );
+  // What the version added to the one before it: its last line, empty there (the text ended in a line break).
+  const previous = main.getByRole("textbox", { name: "Changes from version 1 to version 2", exact: true });
+  await expect(previous.locator(".cm-changedLine")).toHaveText(["First"]);
+  await expect(previous.locator(".cm-deletedLine")).toHaveText([""]);
   await main.getByRole("tab", { name: "Compare with the current", exact: true }).click();
   await expect(main.getByRole("tabpanel")).toContainText("The page now → Version 2");
   // What a restore would take away: the page now's line, struck out, for the version's.
-  await expect(
-    main.getByRole("textbox", { name: "Changes from the page now to version 2", exact: true })
-  ).toContainText("First Second");
+  const current = main.getByRole("textbox", { name: "Changes from the page now to version 2", exact: true });
+  await expect(current.locator(".cm-deletedLine")).toHaveText(["First Second"]);
+  await expect(current.locator(".cm-changedLine")).toHaveText(["First"]);
   // Not in the address, the tab chosen: a reload reads the version again.
   expect(new URL(page.url()).pathname).toBe(versionPath(workspace.slug, notebook.id, tasks.id, 2));
 

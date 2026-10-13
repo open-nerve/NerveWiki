@@ -94,9 +94,10 @@ test("HI2 (page): A restores an older version: the page shows it, its title focu
   await main.getByRole("button", { name: "Restore this version", exact: true }).click();
   const dialog = restoreDialog(page, 1);
   await expect(dialog).toContainText("The page now → Version 1");
-  await expect(
-    dialog.getByRole("textbox", { name: "Changes from the page now to version 1", exact: true })
-  ).toContainText("See [[Alpha]].");
+  // What the restore changes: the page now's line, struck out, for the version's.
+  const changes = dialog.getByRole("textbox", { name: "Changes from the page now to version 1", exact: true });
+  await expect(changes.locator(".cm-deletedLine")).toHaveText(["See [[Beta]]."]);
+  await expect(changes.locator(".cm-changedLine")).toHaveText(["See [[Alpha]]."]);
   const restored = await restoreWith(page, notes.id, 1);
   expect([restored.status(), await restored.json()]).toEqual([
     200,

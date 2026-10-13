@@ -245,16 +245,19 @@ export interface StoredVersion {
   /** Who wrote it, and through which client: web, api… */
   byId: string;
   client: string;
+  /** The changeset its changeset reverts, a revert's alone: none unless given. */
+  revertsId?: string | null;
 }
 
 /**
  * page_revisions, changesets: the versions of the page pageId are versions, oldest first, each a row of its content,
- * with its size and SHA-256, in a changeset of its kind by its writer through its client, which holds that version
- * alone.
+ * with its size and SHA-256, in a changeset of its kind by its writer through its client, reverting the changeset
+ * given or none, which holds that version alone.
  */
 export async function expectVersions(db: Database, pageId: string, versions: StoredVersion[]): Promise<void> {
   const rows = await db.query(
     `SELECT r.base_revision AS base, r.revision, r.content, x.kind, x.created_by_id AS "byId", x.client,
+            x.reverts_id AS "revertsId",
             r.byte_size = octet_length(convert_to(r.content, 'UTF8'))
               AND r.content_hash = sha256(convert_to(r.content, 'UTF8')) AS hashed,
             (SELECT count(*)::int FROM page_revisions o WHERE o.changeset_id = x.id) AS versions
@@ -263,5 +266,5 @@ export async function expectVersions(db: Database, pageId: string, versions: Sto
       ORDER BY r.revision`,
     [pageId]
   );
-  expect(rows).toEqual(versions.map((version) => ({ ...version, hashed: true, versions: 1 })));
+  expect(rows).toEqual(versions.map((version) => ({ revertsId: null, ...version, hashed: true, versions: 1 })));
 }
