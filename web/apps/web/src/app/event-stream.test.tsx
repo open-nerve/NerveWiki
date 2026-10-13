@@ -615,6 +615,23 @@ test("a pages event reads the version shown again while it is being edited, its 
   ]);
 });
 
+test("a save of the version shown, its tab comparing with the version before it, keeps that one: read once, it is not dropped", async () => {
+  const user = userEvent.setup();
+  const first = versionJSON(1, null, "Guide\n");
+  const edited = versionJSON(3, 1, "Guide\nmore\n", { by: bob, editing: true });
+  const { server, events } = await openVersion(3, [first, edited]);
+  await user.click(screen.getByRole("tab", { name: "Compare with the previous" }));
+  await screen.findByRole("textbox", { name: "Changes from version 1 to version 3" });
+  server.sent.length = 0;
+
+  server.withVersions(guide.id, [first, { ...edited, revision: 5, content: "Guide\nmore and more\n" }]);
+  events.last().send("pages", pagesEvent(false, [{ id: guide.id, revision: 5 }]));
+
+  expect(await screen.findByRole("textbox", { name: "Changes from version 1 to version 5" })).toBeTruthy();
+  await settle();
+  expect(versionReads(server.sent).toSorted()).toEqual(["GET version Guide 3", "GET versions Guide"]);
+});
+
 test("a pages event reads no version shown that is not being edited: it does not change; the page's versions it reads", async () => {
   const { server, events } = await openVersion(1, [
     versionJSON(1, null, "Guide\n"),

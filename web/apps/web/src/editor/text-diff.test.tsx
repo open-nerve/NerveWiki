@@ -182,29 +182,33 @@ describe("TextDiff", () => {
   // M8/P1 review A, M3: a worker whose script an upgrade removed, or none at all.
   test("says when the comparison failed, and compares again on Try again", async () => {
     let fail = true;
+    let answer: (() => void) | undefined;
     const compare: Compare = (a, b, signal) =>
       compareInWorker(a, b, signal, () => {
         if (fail) {
           throw new Error("no workers here");
         }
-        const answered: DiffWorker = {
+        const answering: DiffWorker = {
           addEventListener: (type: string, listener: (event: MessageEvent<LineDiffResult>) => void) => {
             if (type === "message") {
-              queueMicrotask(() => listener(new MessageEvent("message", { data: lineDiff(a, b) })));
+              answer = () => listener(new MessageEvent("message", { data: lineDiff(a, b) }));
             }
           },
           postMessage: () => undefined,
           terminate: () => undefined,
         };
-        return answered;
+        return answering;
       });
     const big = "x\n".repeat(20_000);
     render(diff(big, `${big}y\n`, compare));
     expect((await screen.findByRole("alert")).textContent).toBe("比较失败。");
     fail = false;
     fireEvent.click(screen.getByRole("button", { name: "重试" }));
-    expect(await screen.findByText("+1 −0 行")).toBeDefined();
+    // The failure goes as the comparison runs again.
+    expect(screen.getByText("正在比较…")).toBeDefined();
     expect(screen.queryByRole("alert")).toBeNull();
+    act(() => answer?.());
+    expect(await screen.findByText("+1 −0 行")).toBeDefined();
   });
 
   test("says nothing of a failure while the comparison of newer texts runs", async () => {
@@ -218,10 +222,18 @@ describe("TextDiff", () => {
 
   // M8/P1 review A, M5: the view joins the changes that only an empty line parts, and shows a change's lines removed at once.
   test("shows side by side changes the view would show as more than 5,000 lines removed in one block", async () => {
-    const before = Array.from({ length: 5000 }, (_, i) => `paragraph ${i.toString()}\n`).join("\n");
-    const after = "\n".repeat(4999);
+    // 2,501 paragraphs removed, the empty lines between them kept: one block of 5,001 lines.
+    const before = Array.from({ length: 2501 }, (_, i) => `paragraph ${i.toString()}\n`).join("\n");
+    const after = "\n".repeat(2500);
     render(diff(before, after, inline));
-    expect(await screen.findByText("+0 −5000 行，太大，不能逐行比较。")).toBeDefined();
+    expect(await screen.findByText("+0 −2501 行，太大，不能逐行比较。")).toBeDefined();
     expect(document.querySelectorAll(".cm-editor")).toHaveLength(2);
+  });
+
+  test("shows a block of 5,000 lines removed in the unified view", async () => {
+    const before = Array.from({ length: 5000 }, (_, i) => `line ${i.toString()}\n`).join("");
+    render(diff(before, "", inline));
+    expect(await screen.findByText("+0 −5000 行")).toBeDefined();
+    expect(document.querySelectorAll(".cm-editor")).toHaveLength(1);
   });
 });

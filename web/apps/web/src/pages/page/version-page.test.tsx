@@ -196,6 +196,15 @@ test("the version that created the page has nothing before it to compare with", 
 
 test("an address of a revision a version holds below its own is replaced with its own, the version and its view read once", async () => {
   const server = installed();
+  // The title whenever the version's details show: its own revision, never the address's.
+  const titles = new Set<string>();
+  const observer = new MutationObserver(() => {
+    if (screen.queryByText("· Ada · Edit") !== null) {
+      titles.add(document.querySelector("h1")?.textContent ?? "");
+    }
+  });
+  observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+  onTestFinished(() => observer.disconnect());
   const { router } = renderApp(versionPath(install.id, 3), server.app);
 
   expect(await screen.findByRole("heading", { level: 1, name: "Version 4" })).toBeTruthy();
@@ -207,6 +216,20 @@ test("an address of a revision a version holds below its own is replaced with it
   expect(server.sent.filter((each) => each.startsWith("GET version view Install"))).toEqual([
     "GET version view Install 4",
   ]);
+  expect([...titles]).toEqual(["Version 4"]);
+});
+
+test("another version of the page, its tab comparing with the version before it, reads that one, the one left: it shows still", async () => {
+  const user = userEvent.setup();
+  const server = installed();
+  const { router } = renderApp(versionPath(install.id, 4), server.app);
+  await user.click(await screen.findByRole("tab", { name: "Compare with the previous" }));
+  await screen.findByRole("textbox", { name: "Changes from version 1 to version 4" });
+
+  // Version 6 is written on 4, the version left.
+  await act(() => router.navigate(versionPath(install.id, 6)));
+  expect(await screen.findByRole("textbox", { name: "Changes from version 4 to version 6" })).toBeTruthy();
+  expect(server.sent.filter((each) => each === "GET version Install 4")).toHaveLength(2);
 });
 
 test("an address of no page, or of no revision, is no page; a revision no version holds says so, with Try again", async () => {
@@ -290,6 +313,7 @@ test("differences whose code could not load say so, and show on Try again", asyn
 
 test("who edits the page shows as on the page; the edit's lease run out, its version is no longer marked editing", async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
+  const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
   const server = installed();
   const first = versionJSON(1, null, "Install\n");
   const edited = versionJSON(3, 1, "Install\nmore\n", { by: bob, editing: true });
@@ -299,14 +323,73 @@ test("who edits the page shows as on the page; the edit's lease run out, its ver
 
   expect(await screen.findByText("Bob is editing this page.")).toBeTruthy();
   expect(await screen.findByText("Editing")).toBeTruthy();
+  // The version before it shows too, which is not being edited.
+  await user.click(screen.getByRole("tab", { name: "Compare with the previous" }));
+  await screen.findByRole("textbox", { name: "Changes from version 1 to version 3" });
   // No event says so (M8/P1 review B, M2).
   server.sessions.delete(session);
   server.withVersions(install.id, [first, { ...edited, editing: false }]);
+  const before = server.sent.length;
   await act(() => vi.advanceTimersByTimeAsync(31_000));
 
   await waitFor(() => expect(screen.queryByText("Bob is editing this page.")).toBeNull());
   await waitFor(() => expect(screen.queryByText("Editing")).toBeNull());
   expect(screen.getByText("Current")).toBeTruthy();
+  expect(server.sent.slice(before).filter((each) => each.startsWith("GET version Install"))).toEqual([
+    "GET version Install 3",
+  ]);
+});
+
+test("a lock read free that was never held reads no version again", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const server = installed();
+  server.withVersions(install.id, [
+    versionJSON(1, null, "Install\n"),
+    versionJSON(3, 1, "Install\nmore\n", { by: bob, editing: true }),
+  ]);
+  renderApp(versionPath(install.id, 3), server.app);
+  await screen.findByRole("article", { name: "Version 3" });
+
+  const before = server.sent.length;
+  // The lock is read again as the window has the focus back: still free.
+  await focusAgain();
+  await waitFor(() => expect(server.sent.slice(before)).toContain("GET versions Install"));
+  await act(() => vi.advanceTimersByTimeAsync(50));
+  expect(server.sent.slice(before).filter((each) => each.startsWith("GET version Install"))).toEqual([]);
+});
+
+test("an edit's end, read as the versions are being read again, has them read once", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  let held: Promise<void> | undefined;
+  const server = installed("admin", {
+    // The versions' list, whose answer waits while held.
+    "GET /api/v0/pages/*/versions": async () => {
+      server.sent.push("GET versions Install");
+      await held;
+      const listed = (server.versions.get(install.id) ?? []).toReversed();
+      return json({ data: listed.map(({ content: _, ...version }) => version), next_cursor: null });
+    },
+  });
+  const first = versionJSON(1, null, "Install\n");
+  const edited = versionJSON(3, 1, "Install\nmore\n", { by: bob, editing: true });
+  server.withVersions(install.id, [first, edited]);
+  const session = server.hold(install.id, bob);
+  renderApp(versionPath(install.id, 3), server.app);
+  expect(await screen.findByText("Bob is editing this page.")).toBeTruthy();
+  expect(await screen.findByText("Editing")).toBeTruthy();
+
+  server.sessions.delete(session);
+  server.withVersions(install.id, [first, { ...edited, editing: false }]);
+  let release!: () => void;
+  held = new Promise((resolve) => (release = resolve));
+  const before = server.sent.length;
+  // The window's focus back reads the lock, free now, and the list, which waits.
+  await focusAgain();
+  await waitFor(() => expect(screen.queryByText("Bob is editing this page.")).toBeNull());
+  release();
+  await waitFor(() => expect(screen.queryByText("Editing")).toBeNull());
+  await act(() => vi.advanceTimersByTimeAsync(50));
+  expect(server.sent.slice(before).filter((each) => each === "GET versions Install")).toHaveLength(1);
 });
 
 test.each<[string, NotebookRole, number, boolean]>([
