@@ -222,7 +222,9 @@ func TestOpeningSessionsOfAPage(t *testing.T) {
 // held, as a save in it holds it. The cleanup skips the row and runs on,
 // leaving it; a run after its release deletes it. The cleanup is the job
 // serve runs, here every second; the session expires by SQL rather than
-// by a minute's wait. The last two checks are of a session the cleanup
+// by a minute's wait, in the hold of a key share the holder takes first:
+// a run between the expiry and the hold would delete the session before
+// the test holds it. The last two checks are of a session the cleanup
 // deleted, not of the cleanup: an expired session answers the same.
 func TestCleaningUpAHeldSession(t *testing.T) {
 	tm := newAcmeTeamWith(t, "member", "", func(c *config.Config) { c.Page.EditSessionCleanupInterval = time.Second })
@@ -230,17 +232,22 @@ func TestCleaningUpAHeldSession(t *testing.T) {
 	id := tm.createPage(t, "alice", nb, "", "Notes")
 	session := tm.openSession(t, "bob", id)
 	ctx := context.Background()
-	if _, err := tm.pool.Exec(ctx, "UPDATE edit_sessions SET created_at = now() - interval '2 minutes', expires_at = now() - interval '1 minute' "+
-		"WHERE id = $1", session); err != nil {
-		t.Fatal(err)
-	}
 	holder, err := tm.pool.Begin(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = holder.Rollback(ctx) }()
-	if _, err := holder.Exec(ctx, sessionRow(session).lock); err != nil {
+	if _, err := holder.Exec(ctx, "SELECT 1 FROM edit_sessions WHERE id = $1 FOR KEY SHARE", session); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := tm.pool.Exec(ctx, "UPDATE edit_sessions SET created_at = now() - interval '2 minutes', expires_at = now() - interval '1 minute' "+
+		"WHERE id = $1", session); err != nil {
+		t.Fatal(err)
+	}
+	if tag, err := holder.Exec(ctx, sessionRow(session).lock); err != nil {
+		t.Fatal(err)
+	} else if tag.RowsAffected() != 1 {
+		t.Fatalf("the holder holds %d sessions, want bob's", tag.RowsAffected())
 	}
 	const runs = "SELECT count(*) FROM river_job WHERE kind = 'page.cleanup_expired_edit_sessions' AND state = 'completed'"
 	held := count(t, tm.pool, runs)

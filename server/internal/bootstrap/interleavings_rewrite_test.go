@@ -131,7 +131,13 @@ func TestARenameAndAnOpeningOfALinkingPageInEitherOrder(t *testing.T) {
 // would, in a transaction of its own that holds the linking page's content
 // row: the rename's rewrite waits for the row, then the edit lock refuses
 // its write, and the rename reads the locks again, 409
-// linking.pages_locked by the editor, nothing written.
+// linking.pages_locked by the editor, nothing written. The transaction
+// holds the session's row FOR KEY SHARE from before the session expires:
+// the server's cleanup of the expired sessions, whose first run comes at a
+// moment River picks after the start, skips a row another transaction
+// holds, so it cannot delete the session before the heartbeat, which would
+// then keep nothing alive, and the rename's 200 be right. The expiry
+// changes no key and does not wait for that lock.
 func TestAHeartbeatAfterTheRenamesPrecheckRefusesTheRename(t *testing.T) {
 	tm := newAcmeTeam(t, "member", "")
 	nb := tm.openNotebook(t, "alice", "Eng")
@@ -139,16 +145,19 @@ func TestAHeartbeatAfterTheRenamesPrecheckRefusesTheRename(t *testing.T) {
 	src := tm.createPageWith(t, "alice", nb, "", "Src", "[[A]]\n")
 	session := tm.openSession(t, "bob", src)
 	ctx := context.Background()
-	if _, err := tm.pool.Exec(ctx, `UPDATE edit_sessions SET created_at = now() - interval '1 minute',
-		expires_at = now() - interval '1 second' WHERE id = $1`, session); err != nil {
-		t.Fatal(err)
-	}
-	was := tm.snapshot(t, nb)
 	holder, err := tm.pool.Begin(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = holder.Rollback(ctx) }()
+	if _, err := holder.Exec(ctx, "SELECT 1 FROM edit_sessions WHERE id = $1 FOR KEY SHARE", session); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tm.pool.Exec(ctx, `UPDATE edit_sessions SET created_at = now() - interval '1 minute',
+		expires_at = now() - interval '1 second' WHERE id = $1`, session); err != nil {
+		t.Fatal(err)
+	}
+	was := tm.snapshot(t, nb)
 	if _, err := holder.Exec(ctx, "SELECT 1 FROM page_contents WHERE node_id = $1 FOR NO KEY UPDATE", src); err != nil {
 		t.Fatal(err)
 	}
@@ -156,8 +165,10 @@ func TestAHeartbeatAfterTheRenamesPrecheckRefusesTheRename(t *testing.T) {
 	send, answered := tm.sender(t, rename), make(chan answer, 1)
 	go func() { answered <- send() }()
 	pgtest.WaitForLockWaitsOn(t, tm.pool, "page_contents", 1, interleavingWait)
-	if _, err := holder.Exec(ctx, "UPDATE edit_sessions SET expires_at = now() + interval '1 minute' WHERE id = $1", session); err != nil {
+	if tag, err := holder.Exec(ctx, "UPDATE edit_sessions SET expires_at = now() + interval '1 minute' WHERE id = $1", session); err != nil {
 		t.Fatal(err)
+	} else if tag.RowsAffected() != 1 {
+		t.Fatalf("the heartbeat kept %d sessions alive, want bob's", tag.RowsAffected())
 	}
 	if err := holder.Commit(ctx); err != nil {
 		t.Fatal(err)
