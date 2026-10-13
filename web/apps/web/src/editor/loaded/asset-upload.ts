@@ -195,7 +195,7 @@ const notInserted = "$ uploaded, not inserted: the text was replaced or can no l
 /** What the editor says of attachments uploaded without an extension: no link embeds them. */
 const noLink = "$ uploaded, not inserted: a name without an extension cannot be embedded.";
 
-/** What the editor says of attachments uploaded where their embeds go nowhere: in a frontmatter, but after a property's quote. */
+/** What the editor says of attachments uploaded where their embeds go nowhere: in a frontmatter, but just after a property value's opening quote. */
 const notInFrontmatter =
   "$ uploaded, not inserted: in the frontmatter an embed goes just after a property value's opening quote.";
 

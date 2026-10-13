@@ -22,7 +22,7 @@ export type Quote = "'" | '"' | "";
  * string's text after no space, and ends the plain string. A line's node is
  * where its key (its anchor or tag first), "-", "?" or ":" is; a line with
  * none, a value alone, is of the node of the line before that left a value
- * to come (Codex review fix checks A-M1, A2-M1). A line ends at '\n' and at
+ * to come (Codex M6 review fix checks A-M1, A2-M1). A line ends at '\n' and at
  * YAML's other line breaks (U+0085, U+2028, U+2029; CodeMirror's lines end
  * at the first alone). Past a '?' alone in [ ] that a ']' closes, which the
  * library reads unlike YAML, it tells no string to open; nor after a tag
@@ -106,7 +106,7 @@ export function openingQuote(state: EditorState, at: number): Quote {
       }
       if (keyAlone && c === "]") {
         // The YAML library takes the ']' after a '?' alone in [ ] as the key's and reads on in [ ] what is
-        // past it: no string is told to open there (fix checks A5-M1, A6-M1, A6-M2).
+        // past it: no string is told to open there (Codex M6 review fix checks A5-M1, A6-M1, A6-M2).
         return "";
       }
       keyAlone = c === "?" && flow.length > 0;
