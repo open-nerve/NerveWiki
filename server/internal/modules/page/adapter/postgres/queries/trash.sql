@@ -68,7 +68,8 @@ WHERE n.notebook_id = sqlc.arg(notebook_id) AND n.parent_id = ANY(sqlc.arg(paren
 ORDER BY n.sort_order, n.id;
 
 -- name: TrashContents :many
--- The contents of pages deleted at deleted_at, by their primary key.
+-- The contents of pages deleted at deleted_at, read by their primary key or, by a plan for any arguments, the rows of
+-- the time through the index on deleted_at: at most an item's pages either way.
 SELECT node_id, content FROM page_contents
 WHERE node_id = ANY(sqlc.arg(ids)::uuid[]) AND deleted_at = sqlc.arg(deleted_at)::timestamptz;
 

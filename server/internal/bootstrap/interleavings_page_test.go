@@ -33,7 +33,10 @@ import (
 // group, less than what is left of it: the purge takes a page's content
 // before any node, then the nodes leaves first, the root last, a batch a
 // statement, so a page root without its content at its time is a group
-// it may be midway through (M8/P2A fix check 1, N-1); an
+// it may be midway through (M8/P2A fix check 1, N-1). Its limit: a purge
+// that skips the root's content, which a lock holds, while it takes the
+// group below leaves a valid state this reports; no test reaches it (M8/P2A
+// fix check 2, N-c); an
 // edit session of a page that is not one not deleted of its notebook
 // (M4/P4 design 3.2); two sessions of a page alive at the database's time,
 // which the edit lock refuses (M5/P1 design 3.8).

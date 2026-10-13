@@ -457,10 +457,12 @@ func (b trashBench) toppedUp(tb testing.TB, root string, n int) {
 // A restore at the unit's bounds, of the full load, its nodes' and its
 // history's, takes its time: in 10 seconds, a CI's slower than the
 // machine the bounds were measured on (M8/P2 design 3.11; M8/P2A review,
-// A-M4), the time logged for CI's runs. Deleted again, its history a row
-// past the bound, with the items of the restore and of the deletion, it is
+// A-M4), the time logged for CI's runs (make test-go runs it with -v).
+// Deleted again, its history 420,000 rows with the items of the restore
+// and of the deletion, 20,000 past the bound, it is
 // page.restore_too_large and writes nothing. The bench keeps the
-// composition root's bounds: the domain's, or this fails.
+// composition root's bounds: one far from the domain's fails here, and
+// TestPageDepsLeaveTheUnitsBoundsTheDomains pins them exactly.
 func TestARestoreAtTheUnitsBoundTakesItsTime(t *testing.T) {
 	bench := newTrashBench(t, 0, 0)
 	root, _ := bench.item(t, benchLoads()[1], domain.MaxUnitNodes-domain.MaxUnitPages)

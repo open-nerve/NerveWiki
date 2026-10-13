@@ -232,7 +232,8 @@ type TrashContentsRow struct {
 	Content string
 }
 
-// The contents of pages deleted at deleted_at, by their primary key.
+// The contents of pages deleted at deleted_at, read by their primary key or, by a plan for any arguments, the rows of
+// the time through the index on deleted_at: at most an item's pages either way.
 func (q *Queries) TrashContents(ctx context.Context, arg TrashContentsParams) ([]TrashContentsRow, error) {
 	rows, err := q.db.Query(ctx, trashContents, arg.Ids, arg.DeletedAt)
 	if err != nil {
