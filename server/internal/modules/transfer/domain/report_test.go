@@ -1,6 +1,7 @@
 package domain_test
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -8,20 +9,22 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/transfer/domain"
 )
 
-// A report keeps its first 1,000 problems and marks the rest left out;
-// each path is cut to 1,024 bytes at a character's boundary.
+// A report keeps its first 1,000 problems (the interface's number, not
+// the constant's: Codex M7 review 6.1), in order, and marks the rest left
+// out; each path is cut to 1,024 bytes at a character's boundary.
 func TestAReportKeepsItsFirstProblems(t *testing.T) {
 	var r domain.Report
 	long := strings.Repeat("名", 400) // 1,200 bytes
-	for range domain.MaxProblems {
-		r.Add(domain.Problem{Path: long, Code: domain.ProblemRenamed, To: long + "x"})
+	r.Add(domain.Problem{Path: long, Code: domain.ProblemRenamed, To: long + "x"})
+	for i := 1; i < 1000; i++ {
+		r.Add(domain.Problem{Path: strconv.Itoa(i), Code: domain.ProblemFileMissing})
 	}
 	if r.Truncated {
 		t.Fatal("truncated at 1,000 problems, want only past them")
 	}
 	r.Add(domain.Problem{Path: "last", Code: domain.ProblemFileMissing})
-	if len(r.Problems) != domain.MaxProblems || !r.Truncated {
-		t.Errorf("%d problems, truncated %v; want 1,000, true", len(r.Problems), r.Truncated)
+	if len(r.Problems) != 1000 || !r.Truncated || r.Problems[1].Path != "1" || r.Problems[999].Path != "999" {
+		t.Errorf("%d problems, truncated %v; want 1,000 in order, true", len(r.Problems), r.Truncated)
 	}
 	p := r.Problems[0]
 	if len(p.Path) != 1023 || len(p.To) != 1023 || !utf8.ValidString(p.Path) || !utf8.ValidString(p.To) {

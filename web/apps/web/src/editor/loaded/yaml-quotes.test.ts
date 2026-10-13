@@ -1,7 +1,8 @@
 import { EditorState } from "@codemirror/state";
 import { expect, test } from "vitest";
 
-import { openingQuote, quoted } from "./yaml-quotes";
+import { lineBreaks, splitBreaks } from "../line-breaks";
+import { fenceAt, frontmatterAt, openingQuote, quoted } from "./yaml-quotes";
 
 // The quote of the YAML string a frontmatter's link starts (Codex review
 // R1): where a link completes, and what the completion escapes a page's
@@ -22,7 +23,6 @@ test("a quote opens a string where a key or a value starts: after ': ' (a tab to
     ["---\nup:\t'‸", "'"],
     ["---\n- '‸", "'"],
     ["---\n- k: '‸", "'"],
-    ["---\n? '‸", "'"],
     ["---\n? k\n: '‸", "'"],
     ["---\nup:\n  '‸", "'"],
     ["---\nl: ['[[a]]', \"‸", '"'],
@@ -32,6 +32,39 @@ test("a quote opens a string where a key or a value starts: after ': ' (a tab to
     ["---\nup: &x '‸", "'"],
     ['---\nup: !!str "‸', '"'],
     ["---\n'k''s': \"‸", '"'],
+    // A string's whole name tags it too; a string at a line's start opens, in [ ] too (Codex M7 review fix checks
+    // A2-M2, A2-N3).
+    ["---\nup: !<tag:yaml.org,2002:str> '‸", "'"],
+    ["---\nup: !!null\nb: '‸", "'"],
+    ["---\nup: [!!null , '‸", "'"],
+    ["---\nup: !!seq ['‸", "'"],
+    // A key's tag, a collection's, a string's own, and the non-specific ones (Codex M7 review fix check A3-N1).
+    ["---\nlist:\n  - !!null\n  - '‸", "'"],
+    ["---\na: !!seq\n  - '‸", "'"],
+    ["---\n? !!null\n: '‸", "'"],
+    ["---\n!!null : '‸", "'"],
+    ["---\na: {!!null : '‸", "'"],
+    ["---\na: ! '‸", "'"],
+    ["---\na: !<!> '‸", "'"],
+    // A value's, the key's ':' before it; a ':' in it or after a comment; a key's on another line (fix check A4-M1).
+    ["---\n'k': '‸': x", ""],
+    ["---\n'k': '‸a:b'", "'"],
+    ["---\nup: '‸' # :", "'"],
+    ["---\n? k\n: '‸'", "'"],
+    // In { } a value's, in [ ] an entry's; a "- " ends a '?' (fix checks A5-M1, A5-N2).
+    ["---\nm: {a: '‸'}", "'"],
+    ["---\nm: {a: ['‸']}", "'"],
+    ["---\nm: {a: [b, '‸']}", "'"],
+    ["---\nm: {a: {b: '‸'}}", "'"],
+    ["---\nm: [a, '‸']", "'"],
+    ["---\nm: [{a: 1}, '‸']", "'"],
+    ["---\nl:\n  - ? a\n  - '‸", "'"],
+    ["---\nup: '‸\n  a': 1", "'"],
+    ["---\nup: '‸\u2028a': 1", "'"],
+    ["---\n'k': !!null |\n'‸", "'"],
+    ["---\n'k': !!int '1'\n'‸", "'"],
+    ["---\na: [\n'‸", "'"],
+    ["---\n'‸", "'"],
   ] as const;
   expect(openingAt(docs)).toEqual(docs);
 });
@@ -59,6 +92,40 @@ test("a quote opens none in a string in quotes, a plain string, a comment or a b
     ["---\n- |\n  '‸", ""],
     ["---\n? k\n: |\n  '‸", ""],
     ["---\nnote: a\n  '‸", ""],
+    // A line's start in a string over lines opens nothing (Codex M7 review fix check A-M1).
+    ["---\nup: 'a long\n‸", ""],
+    // After a tag other than a string's, which the server reads it by (Codex M7 review fix check A2-M2).
+    // A key's: after a '?', or closing on its line before a ':' (Codex M7 review fix check A4-M1).
+    ["---\n'‸': 1", ""],
+    ['---\n"‸" : 1', ""],
+    ["---\n'‸a''b': 1", ""],
+    ['---\n"‸a\\\"": 1', ""],
+    ["---\nm: {'‸': 1}", ""],
+    ["---\nm: ['‸':1]", ""],
+    ["---\nm:\n  '‸': 1", ""],
+    ["---\n? '‸", ""],
+    ["---\n?\n  '‸", ""],
+    ["---\nm: {? '‸", ""],
+    // An entry of { } without a ':' is a key, its value none; a tab before the ':' (fix checks A5-M1, A5-N1).
+    ["---\nm: {'‸'}", ""],
+    ["---\nm: {a, '‸'}", ""],
+    ["---\nm: {'‸', b: 1}", ""],
+    ["---\nm: {a: 1,\n  '‸", ""],
+    ["---\nm: [{'‸'}]", ""],
+    ["---\nm: [a, {b: 1, '‸'}]", ""],
+    ["---\nm: {a: [1], '‸", ""],
+    ["---\n'‸'\t: 1", ""],
+    ["---\nup: !!null '‸", ""],
+    ['---\nup: !!null "‸', ""],
+    ["---\nup: !!int '‸1'", ""],
+    ["---\nup: !!bool '‸true'", ""],
+    ["---\nup: !<tag:yaml.org,2002:null> '‸", ""],
+    ["---\nup: !!null\n  '‸", ""],
+    ["---\n!!null '‸'", ""],
+    ["---\nup: [!!float '‸", ""],
+    ["---\n- &a !!null '‸", ""],
+    ['---\nup: "a\n‸', ""],
+    ["---\n- 'a\n  ‸", ""],
   ] as const;
   expect(openingAt(docs)).toEqual(docs);
 });
@@ -105,7 +172,9 @@ test("what a line leaves goes on to the next: a string in quotes, a block, a pla
     ["---\n&a : Notes from\n  '‸", ""],
     ["---\nk:\n  !!str : v\n   '‸", ""],
     ["---\nm: {? 'a,': 1}\nn: it's, '‸", ""],
-    ["---\nm: [?'‸", "'"],
+    // The '?' a key's without a space after it: its string a key's, the next an entry's (Codex M7 review fix check A4-M1).
+    ["---\nm: [?'‸", ""],
+    ["---\nm: [?'k,', '‸", "'"],
     ["---\nm: [? 'k,', '‸", "'"],
     // A key's anchor and tag, the first of them its node; a value alone after a line of its own node.
     ["---\n!!str &a k: v\n '‸", ""],
@@ -132,13 +201,13 @@ test("what a line leaves goes on to the next: a string in quotes, a block, a pla
     ['---\n? x\n: a: v\n  b: "first,\n\'‸second"', ""],
     ['---\nk:\n  ? x\n  : &a : v\n    b: "first,\n  \'‸second"', ""],
     ["---\n? x\n: a: v\n  c: '‸", "'"],
-    ["---\n? x\n: a: v\n  '‸c': d", "'"],
-    ["---\n? x\n: &a : v\n  '‸c': d", "'"],
+    ["---\n? x\n: a: v\n  '‸c'", "'"],
+    ["---\n? x\n: &a : v\n  '‸c'", "'"],
     // An alias in a block is a node of its own, a key's; a comment at a line's start ends a plain string in [ ] (fix check A5-M2).
     ["---\nx: &a v\n*a: |\n  '‸", ""],
     ["---\nx: &a v\nk:\n  *a : v\n   '‸x", ""],
     ['---\nx: &a v\nk:\n  *a : v\n  b: "c,\n\'‸d"', ""],
-    ["---\nx: &a v\nk:\n  *a : |\n    x\n  '‸b': c", "'"],
+    ["---\nx: &a v\nk:\n  *a : |\n    x\n  '‸b'", "'"],
     ["---\nm: [? k\n# c\n:'‸", "'"],
     // The library takes the ']' just past a '?' alone in [ ] as the key's and reads on in [ ] what is past it,
     // unlike YAML: no string is told to open there; past a '?' that something else follows, or in { }, they do
@@ -181,4 +250,106 @@ test("written in a string of a quote: in single quotes a ' twice, in double quot
   expect(quoted("'", s)).toBe(String.raw`Bob''s "Hi" a\nb`);
   expect(quoted('"', s)).toBe(String.raw`Bob's \"Hi\" a\\nb`);
   expect(quoted("", s)).toBe(s);
+});
+
+/** stateOf is an editor's state of raw, its line breaks kept. */
+function stateOf(raw: string): EditorState {
+  const split = splitBreaks(raw);
+  return EditorState.create({ doc: split.text, extensions: lineBreaks(split) });
+}
+
+/** read is, for each line of raw (or of a state), frontmatterAt and fenceAt at its start, as the editor keeps the line breaks. */
+function read(raw: string | EditorState) {
+  const state = typeof raw === "string" ? stateOf(raw) : raw;
+  return Array.from({ length: state.doc.lines }, (_, i) => {
+    const at = state.doc.line(i + 1).from;
+    return [frontmatterAt(state, at) ?? "-", fenceAt(state, at)];
+  });
+}
+
+/** enter is the state of raw after a line break typed at at. */
+function enter(raw: string, at: (state: EditorState) => number): EditorState {
+  const state = stateOf(raw);
+  return state.update({ changes: { from: at(state), insert: "\n" } }).state;
+}
+
+test('a frontmatter\'s lines "---" end where the server ends a line, LF or CRLF: a CR alone goes on with the line (Codex M7 review fix check A-M3)', () => {
+  const closed = [
+    ["-", true],
+    ["closed", false],
+    ["-", true],
+    ["-", false],
+  ];
+  expect(read("---\na: ''\n---\nBody")).toEqual(closed);
+  expect(read("---\r\na: ''\r\n---\r\nBody")).toEqual(closed);
+  // CRs alone: no frontmatter; one alone after the closing line, or before it, closes none: the one being written goes on.
+  expect(read("---\ra: ''\r---\rBody")).toEqual(Array.from({ length: 4 }, () => ["-", false]));
+  const open = [
+    ["-", true],
+    ["open", false],
+    ["open", false],
+    ["open", false],
+  ];
+  expect(read("---\na: ''\n---\rBody")).toEqual(open);
+  expect(read("---\na: ''\r---\nBody")).toEqual(open);
+  // A first line "---" with nothing after, or "--- ", opens none.
+  expect(read("---")).toEqual([["-", false]]);
+  expect(read("--- \na: ''\n---")).toEqual(Array.from({ length: 3 }, () => ["-", false]));
+  // A CR alone ending the content closes: the server takes it off the closing line, whose empty line after it is a
+  // fence's too (Codex M7 review fix check A2-M1).
+  const tail = [...closed.slice(0, 3), ["-", true]];
+  expect(read("---\na: ''\n---\r")).toEqual(tail);
+  expect(read("---\r\na: ''\r\n---\r")).toEqual(tail);
+  // Not when more than the CR is left on the server's line: a CR, or a CRLF, after it.
+  const after = [
+    ["-", true],
+    ["open", false],
+    ["open", false],
+    ["-", false],
+    ["-", false],
+  ];
+  expect(read("---\na: ''\n---\r\r\nBody")).toEqual(after);
+  expect(read("---\na: ''\n---\r\rBody")).toEqual(after);
+  // The first "---" a CR alone ends, or follows, closes none; a later one does; "--- " none (fix check A2-N3).
+  expect(read("---\na: ''\r---\nb: x\n---\nBody")).toEqual([
+    ["-", true],
+    ["closed", false],
+    ["closed", false],
+    ["closed", false],
+    ["-", true],
+    ["-", false],
+  ]);
+  expect(read("---\na: x\n--- \nBody")).toEqual(open);
+
+  // Line breaks the editor writes apart that the server reads as one: a CR alone, then an empty line an LF ends, typed
+  // there (fix checks A3-M1, A3-N2). A CRLF opens; a CRLF, or the CR alone ending the content, closes.
+  expect(read("---\r")).toEqual([
+    ["-", false],
+    ["-", false],
+  ]);
+  expect(read("---\rtitle: x\nimage: ''\n---\nBody\n")).toEqual(Array.from({ length: 6 }, () => ["-", false]));
+  expect(read(enter("---\rtitle: x\nimage: ''\n---\nBody\n", (state) => state.doc.line(2).from))).toEqual([
+    ["-", true],
+    ["-", true],
+    ["closed", false],
+    ["closed", false],
+    ["-", true],
+    ["-", false],
+    ["-", false],
+  ]);
+  // Not closed, being written after it (an LF the content's main line break, as typed).
+  expect(read(enter("---\rimage: ''\nnote: x\nmore: y", (state) => state.doc.line(2).from))).toEqual([
+    ["-", true],
+    ["-", true],
+    ["open", false],
+    ["open", false],
+    ["open", false],
+  ]);
+  expect(read(enter("---\na: ''\n---\r", (state) => state.doc.length))).toEqual([
+    ["-", true],
+    ["closed", false],
+    ["-", true],
+    ["-", true],
+    ["-", false],
+  ]);
 });

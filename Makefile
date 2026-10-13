@@ -185,6 +185,8 @@ test-go: ## 运行 Go 测试，含集成测试与 server/tools（开启竞态检
 	cd server && go test -count=1 -run '^(TestALinkWrittenManyTimesResolvesOnce|TestDistinctPathsToPagesOfOneTitleResolveInTimeAsLongAsThey)$$' ./internal/modules/linking/app
 	cd server && go test -count=1 -run '^TestTheLinktextsOfManyPagesOfOneTitleAreCheap$$' ./internal/modules/linking/domain
 	cd server && go test -count=1 -run '^(TestSubtreeReadsWithoutStatisticsInTimeAsLongAsIt|TestSubtreeOfAFolderOfMostNodesReadsInTimeAsLongAsIt)$$' ./internal/modules/page/adapter/postgres
+	cd server && go test -count=1 -run '^TestAnImportsUnitNumbersNamesThatCutAlikeInTimeAsLongAsThey$$' ./internal/modules/page/app
+	cd server && go test -count=1 -run '^TestPagesWhoseNamesCutAlikeAreRenamedInTimeAsLongAsThey$$' ./internal/modules/transfer/domain
 	go -C server/tools test -race -count=1 ./...
 
 .PHONY: test-web

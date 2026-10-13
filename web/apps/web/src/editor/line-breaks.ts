@@ -11,7 +11,7 @@ import {
 } from "@codemirror/state";
 
 /** A line break as written: CRLF, CR alone, or LF. */
-type LineBreak = "\r\n" | "\r" | "\n";
+export type LineBreak = "\r\n" | "\r" | "\n";
 
 const byteOrderMark = String.fromCodePoint(0xfeff);
 const anyBreak = /\r\n|\r|\n/g;
@@ -142,6 +142,29 @@ export function lineBreaks(split: Split): Extension {
       return deleted.length === 0 ? [] : [restoreBreaks.of(deleted)];
     }),
   ];
+}
+
+/**
+ * writtenBreak is the line break after state's line number as joinBreaks
+ * writes it; undefined after the last line. An editor without the line
+ * breaks kept writes LF.
+ */
+export function writtenBreak(state: EditorState, number: number): LineBreak | undefined {
+  if (number >= state.doc.lines) {
+    return undefined;
+  }
+  const kept = state.field(breaksField, false);
+  if (kept === undefined) {
+    return "\n";
+  }
+  const at = state.doc.line(number).to;
+  let written = kept.main;
+  kept.marks.between(at, at, (from, _to, mark) => {
+    if (from === at) {
+      written = mark.written;
+    }
+  });
+  return written;
 }
 
 /** joinBreaks writes state's content back: its byte order mark, and each line with its break as written. */

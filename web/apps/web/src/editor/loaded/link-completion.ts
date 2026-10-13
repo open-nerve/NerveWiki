@@ -12,7 +12,7 @@ import type { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 
 import type { Build, EditorContext } from "../registry";
-import { openingQuote, quoted } from "./yaml-quotes";
+import { frontmatterAt, openingQuote, quoted } from "./yaml-quotes";
 
 /**
  * A link's target being written: after the last [[ of the line, what the
@@ -159,37 +159,6 @@ function nodesAt(state: EditorState, pos: number): string[] {
     node = node.parent;
   }
   return names;
-}
-
-/**
- * frontmatterAt tells whether pos is in the content's frontmatter, as the
- * server's frontmatterSpan finds it ("closed"): a first line "---", up to
- * a later line "---" ("..." closes nothing). The content the editor loads
- * has no byte order mark (line-breaks.ts); one pasted at its start is not
- * looked for (accepted). One not closed, which the server reads as the
- * body until it is, is one being written ("open") as far as a blank
- * line: a link or a tag written there as the body's would be nothing
- * once it is closed.
- */
-function frontmatterAt(state: EditorState, pos: number): "closed" | "open" | undefined {
-  const { doc } = state;
-  const at = doc.lineAt(pos).number;
-  if (at === 1 || doc.line(1).text !== "---") {
-    return undefined;
-  }
-  let empty: number | undefined;
-  // Line by line, as the text's own iterator goes: a content opened by "---" and never closed is read to its end.
-  let n = 1;
-  for (const text of doc.iterLines(2)) {
-    n++;
-    if (text === "---") {
-      return at < n ? "closed" : undefined;
-    }
-    if (empty === undefined && /^[ \t]*$/.test(text)) {
-      empty = n;
-    }
-  }
-  return at < (empty ?? doc.lines + 1) ? "open" : undefined;
 }
 
 /**

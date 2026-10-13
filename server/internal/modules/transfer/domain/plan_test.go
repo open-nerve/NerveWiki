@@ -2,7 +2,9 @@ package domain_test
 
 import (
 	"errors"
+	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -74,6 +76,10 @@ func notebook() domain.Named {
 
 // The mapping of v0.1 design 3.5, rule by rule.
 func TestThePlanMapsTheTree(t *testing.T) {
+	// s is a name of 250 bytes, the file of the page b, and the name of a page whose name is longer cut so that its
+	// number and ".md" fit, before ten.
+	b := strings.Repeat("b", 247)
+	s := b + ".md"
 	cases := []struct {
 		name   string
 		tree   *tree
@@ -113,6 +119,12 @@ func TestThePlanMapsTheTree(t *testing.T) {
 			[]string{"N.md N.md", "N.md 2/ -", "N.md 2/c.md N.md 2/c.md", "N.md 2.md/ -", "N.md 2.md/d.md N.md 2.md/d.md"}},
 		{"a page without children has no folder to clash", newTree("N page", "N.md page"), nil,
 			[]string{"N.md N.md", "N.md.md N.md.md"}},
+		// "s 2.md" is a folder's name: the long page, a file, is "s 3", and the next number tried for a file of s is 4;
+		// not for the folder s, whose 2 is free (Codex M7 review R3).
+		{"a number a file passed over is a folder's still", newTree(b+" page", s+"xyz page", s+"_2.md page empty", s+"_2.md/d page",
+			s+" page empty", s+"/c page"), nil,
+			[]string{s + " " + s, s + " 3.md " + s + " 3.md", s + " 2.md/ -", s + " 2.md/d.md " + s + " 2.md/d.md", s + " 2/ -",
+				s + " 2/c.md " + s + " 2/c.md"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -268,5 +280,62 @@ func TestContributedFilesGoWhereNothingIs(t *testing.T) {
 	}
 	if got := p.Contributed(); !slices.Equal(got, []string{"New/log.md"}) {
 		t.Errorf("Contributed() = %q", got)
+	}
+}
+
+// alike are n pages whose names cut alike: of 255 bytes, their files are
+// cut, the digits that tell them apart with them.
+func alike(n int) []domain.Node {
+	var nodes []domain.Node
+	for i := range n {
+		nodes = append(nodes, domain.Node{ID: uuid.NewV7(), Name: strings.Repeat("a", 250) + fmt.Sprintf("%05d", i),
+			SortOrder: float64(i), Bytes: 1})
+	}
+	return nodes
+}
+
+// A page takes the first number free of its cut name, though a sibling
+// whose name cuts alike only at more digits took one of them: nine pages
+// whose names cut to "名…a" until "名… 10", then one cut to "名…" from 2
+// (Codex M7 review fix check B-M1).
+func TestAPageTakesTheFirstNumberFreeOfItsCutName(t *testing.T) {
+	stem := strings.Repeat("名", 83) // 249 bytes
+	var nodes []domain.Node
+	for i := range 9 {
+		// 254 bytes: its file is cut, to 250 bytes before 10, 249 from it.
+		nodes = append(nodes, domain.Node{ID: uuid.NewV7(), Name: stem + "azzz" + strconv.Itoa(i), SortOrder: float64(i), Bytes: 1})
+	}
+	nodes = append(nodes, domain.Node{ID: uuid.NewV7(), Name: strings.Repeat("名", 85), SortOrder: 9, Bytes: 1})
+	p, err := domain.NewPlan(notebook(), nil, nodes, nothingLinked)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, r := range p.Renamed {
+		got = append(got, r.To)
+	}
+	want := []string{stem + "a 2.md", stem + "a 3.md", stem + "a 4.md", stem + "a 5.md", stem + "a 6.md", stem + "a 7.md", stem + "a 8.md",
+		stem + "a 9.md", stem + " 10.md", stem + " 2.md"}
+	if !slices.Equal(got, want) {
+		t.Errorf("renamed to\n%q\nwant\n%q", got, want)
+	}
+}
+
+// Pages whose names cut alike, past the digits that told them apart, take
+// the numbers in turn, the name cut shorter as they grow (Codex M7 review
+// R3); their cost is cost_test.go's.
+func TestPagesWhoseNamesCutAlikeTakeTheNumbersInTurn(t *testing.T) {
+	p, err := domain.NewPlan(notebook(), nil, alike(1000), nothingLinked)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Renamed) != 1000 {
+		t.Fatalf("%d renamed, want 1000", len(p.Renamed))
+	}
+	for i, r := range p.Renamed {
+		number := strconv.Itoa(i + 2)
+		if want := strings.Repeat("a", 251-len(number)) + " " + number + ".md"; r.To != want {
+			t.Fatalf("the %dth renamed to %q, want %q", i, r.To, want)
+		}
 	}
 }

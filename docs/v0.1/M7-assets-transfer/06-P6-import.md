@@ -85,7 +85,7 @@ P6 把一个 zip（Obsidian 的库、本系统的导出、别的 Markdown 的 zi
 - **`Parse(ctx, content) (Parsed, error)`**：`ContentParser.Decided` 那一支：预算排队取正文的字节（`Budget.Take`，此时不持锁，13.1 第 19 条），解析，留下提取结果那一份；`Parsed` 带着提取结果、`Links`（链接数：page 的 markdown 适配器数 obsidian 扩展取到的链接，同 `Tasks` 的做法）与 `Release()`。空的正文不排队。取不到预算答 `shared.ServerBusy`，调用方退避重试（3.13）。
 - **`Import(ctx, spec ImportSpec, do func(ctx, u ImportUnit) error) (uuid.UUID, error)`**：跑一个写入单元：`Tree: true`、`Kind: import`、动作是 `spec.Action`（`transfer.import`，写者）、客户端是 `spec.Client`（任务记下的）、`spec.Changeset` 非零时并入；答出单元的变更集，什么都没写时答零。`ImportUnit` 是模块根的接口，`do` 里只有两种操作：
   - **`CreatePage(ctx, ImportedPage{ParentID, Name, Content, Parsed, Reserved}) (NodeInfo, error)`**：照 `CreatePage` 的规则，另有几处不同：
-    - 名称撞上兄弟（按标题键，原有的子节点与这个单元先建的都算）时不答 409，取 `Numbered(name, 2)`、`3`……里第一个空着、且不是 `Reserved` 的（同一个库里后面的兄弟原样的名称，3.4）；单元按名称键与是否附件记下一个键上次给到的序号，下一个从它之后试（同一个键的几千个兄弟不必每个从 2 试起）。答出的 `NodeInfo.Name` 是实际的名称。名称的规则（`CheckTitle`）照旧检查，不合答 422：调用方已修正过（3.4）。
+    - 名称撞上兄弟（按标题键，原有的子节点与这个单元先建的都算）时不答 409，取 `Numbered(name, 2)`、`3`……里第一个空着、且不是 `Reserved` 的（同一个库里后面的兄弟原样的名称，3.4）；单元按名称族（`domain.Family`：序号的位数写成 `#`；同一个键的各种写法与截短之后相同的名称共用）记下次试的序号，每个序号只试一次（同一个键、或截短之后相同的几千个兄弟不必每个从 2 试起；M7 Codex 评审 R3，原先按名称键记，截短之后相同的不同名称各从 2 试起）。答出的 `NodeInfo.Name` 是实际的名称。名称的规则（`CheckTitle`）照旧检查，不合答 422：调用方已修正过（3.4）。
     - 深度超过 10 时答 `domain.ErrTooDeep`，此前什么都没写：调用方把这一页与它的子孙记成跳过，单元里其余的照常（3.13）。
     - 父节点不是这本笔记本里活着的页（删了、是附件、别的笔记本的）答 `ErrNoParent`（用户的 `CreatePage` 照旧答 422）。
     - 兄弟与祖先按父节点在单元里读一次、缓存，之后新建的接在缓存上；单元持着笔记本行的 `FOR NO KEY UPDATE`，别的树写进不来，缓存在单元里一直对。重排次序（`placeAmong` 的 `renumber`）时缓存随之更新。
@@ -98,7 +98,7 @@ P6 把一个 zip（Obsidian 的库、本系统的导出、别的 Markdown 的 zi
 
 - **`shared.FixTitle(s string, keepExtension bool) string`**（与 `CheckTitle` 放在一起，规则只有一处）：非 UTF-8 的字节换成 `U+FFFD` 再处理（导入只对合法 UTF-8 的名称调用）；NFC；禁止的字符（`/ \ : * ? " < > | # ^ [ ]`）与不可显示的字符（`unshowable`）换成 `_`；反复去掉首尾的空白与 `.`；Windows 保留名在第一个 `.` 之前加 `_`（`con.txt` → `con_.txt`）；超过 255 字节时在字符边界截短，`keepExtension` 时保留最后一个 `.` 起的扩展名（扩展名本身不短于 255 字节时整体截短）；截短之后再去一次尾部的空白与 `.`。全部去掉时答 `""`，调用方给默认名。性质测试：任意输入的结果要么是 `""`，要么过 `CheckTitle` 且等于 `CheckTitle` 的输出（已经合法的名称不变）。
 - **页面与附件**：条目的最后一段先去掉首尾的空白与 `.`，以 `.md`（不分大小写）结尾、前面还有字符的是页面，标题是去掉 `.md` 的部分；否则是附件（总设计 4.11："去掉之后再判断"）。之后页面的标题经 `FixTitle(_, false)`、附件的名称经 `FixTitle(_, true)`；附件的结果以 `.md` 结尾时再加 `_`（到得了：扩展名太长、整体截短，正好截在 `x.md` 之后）。空的叫"未命名"（总设计 4.11；不随界面语言：它是存下来的内容，负责人可以改判）。文件夹的名称照页面。
-- **序号**（`page/domain.Numbered(name, n, asset)`）：页面写 `name n`；附件在扩展名之前写（`a 2.png`；没有扩展名的照页面）。超过 255 字节时截短名称的主体，保留序号与扩展名；结果过 `CheckTitle`（表格与性质测试）。
+- **序号**（`page/domain.Numbered(name, n, asset)`）：页面写 `name n`；附件在扩展名之前写（`a 2.png`；没有扩展名的照页面）。超过 255 字节时截短名称的主体，保留序号与扩展名；结果过 `CheckTitle`（表格与性质测试）。`Family(name, n, asset)` 是同样截短、序号的位数写成 `#` 的名称（M7 Codex 评审 R3）。
 - **保留的名称**：任务按父节点记下计划里每个名称键最后出现的位置；建一个节点要加序号时，序号的候选若是这个父节点下后面（还没建）的兄弟的名称键，就跳过：库 {`Untitled`、`Untitled 2`} 导入到已有 `Untitled` 的位置，前者成了 `Untitled 3`，库自己的 `Untitled 2` 原样，库里的 `[[Untitled 2]]` 照样到它。候选只按键核对，节点自己的名称保留与否不变。
 - **报告**：最终的名称与原名（NFC 之后）不同的，记一条 `renamed`：`path` 是库里的路径（去掉库外的一层、`\` 换成 `/`、NFC，只有目录的页以 `/` 结尾），`to` 是导入之后在笔记本里的路径（导入位置之下的名称以 `/` 连接）。只差 NFC 的不算改名（标题键本来就在 NFC 之后比较，指向它的链接照样解析到）。跳过的条目的 `path` 是 zip 里的原名（还没分类，可能越出根或不是 UTF-8），`too_deep` 的是库里的路径；契约写明两种。路径至多 1,024 字节。
 

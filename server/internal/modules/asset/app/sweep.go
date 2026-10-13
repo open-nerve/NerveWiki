@@ -12,8 +12,11 @@ import (
 )
 
 // SweepAge is how old a file no row holds is when the orphan sweep deletes
-// it: a day, far longer than a file waits between its commit and its
-// row's, so that no upload under way loses its file.
+// it: a day, longer than a file waits between its commit and its row's,
+// so that no upload under way loses its file: an upload's request; an
+// import's job, which stores a batch's files before the unit that writes
+// their rows, at most transfer.job_timeout, an hour less at most (Codex
+// M7 review R2).
 const SweepAge = 24 * time.Hour
 
 // sweepBatch is how many files one read of the rows asks about.

@@ -14,6 +14,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/open-nerve/NerveWiki/server/internal/modules/asset"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/transfer"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/transfer/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
@@ -265,5 +266,15 @@ func TestTheJobsHaveTheirQueuesAndOutlastRiversRescue(t *testing.T) {
 	if !maps.Equal(got.Queues, map[string]int{transfer.QueueExport: 3, transfer.QueueImport: 2}) || got.RescueAfter != 7*time.Hour ||
 		got.ShutdownTimeout != time.Second || got.Logger == nil {
 		t.Errorf("jobs.Config = %+v, want transfer_export of 3 workers, transfer_import of 2, the rescue after 7h", got)
+	}
+}
+
+// No job lasts as long as the attachments' orphan sweep waits for a file's
+// row: an import stores a batch's files before the unit that writes their
+// rows, within its job (Codex M7 review R2). The hour is far past a
+// unit's COMMIT, which database.commit_timeout bounds past the job's end.
+func TestNoJobOutlastsTheOrphanSweep(t *testing.T) {
+	if config.MaxJobTimeout+time.Hour > asset.SweepAge {
+		t.Errorf("transfer.job_timeout may be %s; the orphan sweep deletes a file %s old", config.MaxJobTimeout, asset.SweepAge)
 	}
 }

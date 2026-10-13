@@ -167,7 +167,7 @@ func (p *Plan) place(folder, orig string, siblings []Node, children map[uuid.UUI
 		kids := len(children[s.ID]) > 0
 		xs[i] = placed{node: s, name: s.Name, folder: !s.Asset && kids, file: s.Asset || s.Bytes > 0 || !kids || linked(s.ID)}
 	}
-	files, folders := map[string]bool{}, map[string]bool{}
+	files, folders, next := map[string]bool{}, map[string]bool{}, map[family]int{}
 	for _, x := range xs {
 		if x.file {
 			files[shared.TitleKey(x.fileName())] = true
@@ -189,7 +189,7 @@ func (p *Plan) place(folder, orig string, siblings []Node, children map[uuid.UUI
 		if x.folder {
 			delete(folders, shared.TitleKey(x.name))
 		}
-		x.name = freeName(x, names, files, folders)
+		x.name = freeName(x, names, files, folders, next)
 		names[shared.TitleKey(x.name)] = true
 		if x.file {
 			files[shared.TitleKey(x.fileName())] = true
@@ -220,24 +220,45 @@ func (p *Plan) place(folder, orig string, siblings []Node, children map[uuid.UUI
 
 // freeName is the first of "<name> 2", "<name> 3"… for the page x, the
 // name cut so that its file fits MaxSegment bytes, whose key is no name,
-// file or folder of its folder, nor its file's.
-func freeName(x placed, names, files, folders map[string]bool) string {
+// file or folder of its folder, nor its file's. next is the number after
+// the last tried of each family, the numbers of its digits before it
+// taken: a name taken stays so, and siblings whose names cut alike try
+// each number once (Codex M7 review R3).
+func freeName(x placed, names, files, folders map[string]bool, next map[family]int) string {
 	taken := func(s string) bool {
 		k := shared.TitleKey(s)
 		return names[k] || files[k] || folders[k]
 	}
-	for n := 2; ; n++ {
+	for n := 2; ; {
 		suffix := " " + strconv.Itoa(n)
 		limit := MaxSegment - len(suffix)
 		if x.file {
 			limit -= len(".md")
 		}
-		name := cutAt(x.node.Name, limit) + suffix
+		stem := cutAt(x.node.Name, limit)
+		at := family{stem: shared.TitleKey(stem), digits: len(suffix) - 1, file: x.file}
+		if last := next[at]; last > n {
+			n = last // of more digits, the name may be cut shorter
+			continue
+		}
+		next[at] = n + 1
+		name := stem + suffix
 		if taken(name) || x.file && taken(name+".md") {
+			n++
 			continue
 		}
 		return name
 	}
+}
+
+// family is the names freeName numbers alike: of a cut name, by its key,
+// with numbers of as many digits, which a sibling begins to try at the
+// first of them (Codex M7 review fix check B-M1), and whether a file is
+// written, whose name is taken too.
+type family struct {
+	stem   string
+	digits int
+	file   bool
 }
 
 // cutAt is s cut to at most n bytes at a character's boundary.

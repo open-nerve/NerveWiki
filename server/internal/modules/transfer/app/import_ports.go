@@ -108,7 +108,10 @@ var (
 type Attachments interface {
 	// Put writes the file r brings, named name, as a new blob, its type
 	// told by name and its first bytes: ErrTooLarge past maxBytes,
-	// domain.ErrStorageFull, or r's error, each leaving no file.
+	// domain.ErrStorageFull, or r's error, each leaving no file. The file
+	// is the caller's until Attach or Drop, within its job: the
+	// attachments' orphan sweep deletes it a day after it was stored, which
+	// no job lasts (Codex M7 review R2).
 	Put(ctx context.Context, name string, r io.Reader, maxBytes int64) (File, error)
 	// Attach writes f's row, owned by o, in the unit ctx carries.
 	Attach(ctx context.Context, f File, o Owner) error
