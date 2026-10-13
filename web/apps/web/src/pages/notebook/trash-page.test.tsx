@@ -1,6 +1,6 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 
 import { eventHandlers } from "../../events/handlers";
 import type { NotebookRole } from "../../services/notebook.service";
@@ -451,6 +451,64 @@ test("a restore refused as not found says why, and reads the notebooks again: on
   await user.click(restoreOf("Linux") as HTMLElement);
   expect(await screen.findByRole("heading", { name: "Page not found" })).toBeTruthy();
 });
+
+// M8/P1 fix check 3, R3-1: the session left as the answer's body is read, its headers past the session's check.
+test.each([
+  {
+    answer: "restored",
+    status: 200,
+    body: {
+      id: linux.id,
+      kind: "page",
+      name: "Linux",
+      renamed: false,
+      placed: { parent_id: install.id, reason: "original" },
+      changeset_id: "restore-linux",
+    },
+  },
+  { answer: "refused, restored elsewhere", status: 409, body: { status: 409, code: "page.not_in_trash" } },
+  { answer: "refused, the role taken away", status: 403, body: { status: 403, code: "forbidden" } },
+])(
+  "a restore $answer, read once the tab signed out, its cache gone, leaves no rejection unhandled",
+  async ({ status, body }) => {
+    const user = userEvent.setup();
+    let release: (() => void) | undefined;
+    const { server } = trashed("admin", {
+      "POST /api/v0/nodes/*/restore": () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              release = () => {
+                controller.enqueue(new TextEncoder().encode(JSON.stringify(body)));
+                controller.close();
+              };
+            },
+          }),
+          { status, headers: { "Content-Type": status === 200 ? "application/json" : "application/problem+json" } }
+        ),
+    });
+    const { app } = renderApp(trashPath, server.app);
+    await screen.findByRole("list", { name: "Trash" });
+    const rejections: unknown[] = [];
+    const record = (reason: unknown) => void rejections.push(reason);
+    process.on("unhandledRejection", record);
+    onTestFinished(() => {
+      process.off("unhandledRejection", record);
+    });
+
+    await user.click(restoreOf("Linux") as HTMLElement);
+    await waitFor(() => expect(release).toBeDefined());
+    // The answer's headers pass the session's check; its body is still on its way.
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 10)));
+    await act(() => app.session.tokens.signOut());
+    await waitFor(() => expect(screen.queryByRole("list", { name: "Trash" })).toBeNull());
+    await act(async () => {
+      release?.();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(rejections).toEqual([]);
+  }
+);
 
 test("Restore pressed twice sends one restore: busy while it is out", async () => {
   const user = userEvent.setup();
