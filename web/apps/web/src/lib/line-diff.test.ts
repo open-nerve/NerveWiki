@@ -3,10 +3,10 @@ import { describe, expect, test } from "vitest";
 import { lineDiff, lineDiffLimits, type LineDiffResult, type TextChange } from "./line-diff";
 
 /** apply is a with the changes made, which must come in order and not overlap. */
-function apply(a: string, b: string, changes: readonly TextChange[]): string {
+function apply(a: string, b: string, made: readonly TextChange[]): string {
   let out = "";
   let at = 0;
-  for (const c of changes) {
+  for (const c of made) {
     expect(c.fromA).toBeGreaterThanOrEqual(at);
     out += a.slice(at, c.fromA) + b.slice(c.fromB, c.toB);
     at = c.toA;
@@ -21,6 +21,9 @@ function changes(result: LineDiffResult): TextChange[] {
   return result.changes;
 }
 
+/** paragraph is the paragraph i of a long page of some 120 characters each (M8 design review B-I1). */
+const paragraph = (i: number) => `段落 ${i.toString()}：${"这是一段用来比较的文字，".repeat(10)}\n`;
+
 /** lines splits a text as lineDiff does: each line with its LF. */
 const lines = (text: string) => text.match(/[^\n]*\n|[^\n]+$/g) ?? [];
 
@@ -28,7 +31,7 @@ const lines = (text: string) => text.match(/[^\n]*\n|[^\n]+$/g) ?? [];
 function fewestEdits(a: string, b: string): number {
   const x = lines(a);
   const y = lines(b);
-  const row = new Array<number>(y.length + 1).fill(0);
+  const row = Array.from({ length: y.length + 1 }, () => 0);
   for (const line of x) {
     let diagonal = 0;
     for (let j = 1; j <= y.length; j++) {
@@ -139,7 +142,6 @@ describe("lineDiff", () => {
   // M8 design review B-I1: a page of some 30,000 characters with eight words changed, which @codemirror/merge's
   // own settings showed as the whole page removed and added.
   test("shows eight words changed in a long page as eight changes", () => {
-    const paragraph = (i: number) => `段落 ${i.toString()}：${"这是一段用来比较的文字，".repeat(10)}\n`;
     const a = Array.from({ length: 250 }, (_, i) => paragraph(i)).join("");
     let b = a;
     for (const i of [3, 40, 77, 110, 150, 190, 220, 249]) {

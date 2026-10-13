@@ -3,7 +3,6 @@ import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
-import { Button } from "../components/ui/button";
 import { useT } from "../i18n/i18n";
 import { compareInWorker, compareNow } from "../lib/line-diff-client";
 import type { LineDiffResult, TextChange } from "../lib/line-diff";
@@ -185,18 +184,25 @@ function UnifiedDiff({ compared, changes, label, legend, lines, unfolded }: Unif
         <span className="text-muted-foreground">{t("diff.lines", { added: lines.added, removed: lines.removed })}</span>
         <span className="text-muted-foreground">{legend}</span>
         <span className="ms-auto flex gap-1">
-          <Button variant="outline" disabled={chunks === 0} onClick={() => move(goToPreviousChunk)}>
+          <button type="button" className={buttonClass} disabled={chunks === 0} onClick={() => move(goToPreviousChunk)}>
             {t("diff.previous")}
-          </Button>
-          <Button variant="outline" disabled={chunks === 0} onClick={() => move(goToNextChunk)}>
+          </button>
+          <button type="button" className={buttonClass} disabled={chunks === 0} onClick={() => move(goToNextChunk)}>
             {t("diff.next")}
-          </Button>
+          </button>
         </span>
       </div>
       <div ref={element} />
     </div>
   );
 }
+
+/**
+ * The look of the diff's buttons: the app's outline button's (components/ui/button.tsx), which the editor does not
+ * import (v0.1 design 13.2, item 6).
+ */
+const buttonClass =
+  "inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md border bg-background px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors outline-none hover:bg-accent hover:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50";
 
 /** ReadOnlyText is a text in a read-only editor of its own, under its name. */
 function ReadOnlyText({ text, name }: { text: string; name: string }) {

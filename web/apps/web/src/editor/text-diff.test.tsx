@@ -27,6 +27,12 @@ const inline: Compare = (a, b) => Promise.resolve(lineDiff(a, b));
 
 const lines = Array.from({ length: 12 }, (_, i) => `line ${i.toString()}\n`).join("");
 
+/** text is lines, x, lines, y, lines: two changes apart. */
+const text = (x: string, y: string) => `${lines}${x}\n${lines}${y}\n${lines}`;
+
+/** paragraph is the paragraph i of a long page of some 120 characters each. */
+const paragraph = (i: number) => `段落 ${i.toString()}：${"这是一段用来比较的文字，".repeat(10)}\n`;
+
 describe("TextDiff", () => {
   test("says when the texts are the same, or differ in their line breaks or byte order mark alone", () => {
     const { rerender } = render(diff("a\nb\n", "a\nb\n"));
@@ -47,7 +53,6 @@ describe("TextDiff", () => {
   });
 
   test("moves to the next change and the one before", () => {
-    const text = (x: string, y: string) => `${lines}${x}\n${lines}${y}\n${lines}`;
     const { container } = render(diff(text("a", "b"), text("c", "d")));
     expect(screen.getByText("2 处改动")).toBeDefined();
     const view = EditorView.findFromDOM(container.querySelector<HTMLElement>(".cm-editor") ?? document.body);
@@ -67,7 +72,6 @@ describe("TextDiff", () => {
       return inline(a, b, signal);
     };
     // M8 design review B-I1: some 30,000 characters with eight words changed show as eight changes.
-    const paragraph = (i: number) => `段落 ${i.toString()}：${"这是一段用来比较的文字，".repeat(10)}\n`;
     const before = Array.from({ length: 250 }, (_, i) => paragraph(i)).join("");
     let after = before;
     for (const i of [3, 40, 77, 110, 150, 190, 220, 249]) {
@@ -94,7 +98,7 @@ describe("TextDiff", () => {
   });
 
   test("shows a comparison only for the texts it compared", async () => {
-    let finish: (result: LineDiffResult) => void = () => undefined;
+    let finish: ((result: LineDiffResult) => void) | undefined;
     const pending: Compare = () =>
       new Promise((resolve) => {
         finish = resolve;
@@ -104,7 +108,7 @@ describe("TextDiff", () => {
     const first = finish;
     rerender(diff(big, `${big}z\n`, pending));
     await act(async () => {
-      first({ kind: "tooLarge", added: 1, removed: 0 });
+      first?.({ kind: "tooLarge", added: 1, removed: 0 });
       await Promise.resolve();
     });
     expect(screen.queryByText(/太大/)).toBeNull();
