@@ -14,7 +14,7 @@
 
 1. **版本**：一页的正文版本可以列出、查看（只读的阅读视图）、与上一版或当前比较，还原到任意一个版本；还原是一次新的写，产生新的变更集。
 2. **日志与整组撤销**：笔记本的变更集按时间列出，可按人、客户端、页面筛选（M9 的 `log` 用同一个用例）；每个变更集看得到它改了哪些节点、怎么改的；整个变更集可以撤销，前提是其中每个节点的当前状态仍是它写出的，否则整体拒绝并列出冲突的节点（总体设计 3.8）。连续的撤销（从新到旧逐个撤销、撤销之后再撤销这次撤销）都成立，M11 的回滚靠它。
-3. **回收站**：删除的子树进笔记本的回收站，列出、预览、恢复；原父节点不在、在回收站里或放回去会太深时放到根下，标题冲突时加序号；清理期之后不能再恢复（总体设计 3.10）。恢复带回正文、历史、附件的行与链接索引（M6、M7 的移交）。
+3. **回收站**：删除的子树进笔记本的回收站，列出、预览、恢复；原父节点在回收站里或放回去会太深时放到根下，标题冲突时加序号；清理期之后不能再恢复（总体设计 3.10）。恢复带回正文、历史、附件的行与链接索引（M6、M7 的移交）。
 4. **大的恢复与撤销**：超过一个写入单元的恢复与撤销（大的子树、一次几万个节点的导入）作为后台任务分批完成，有进度与报告（M7 的移交第 4 项）。
 5. **搜索**：在工作区里按标题与正文搜索，中文可用，只列出调用者看得到的笔记本里活着的页与附件，正文命中给出摘要片段；方案经真实中文语料的实测定下（M0/P1 的移交）。
 6. **接到后面的 M**：日志、撤销与搜索的用例可由 M9 的 MCP 适配器直接调用；写入守卫看得到一个单元是不是撤销（M10 的来源区、M11 的冻结与回滚）。
@@ -28,7 +28,7 @@
 - linking：恢复的页经观察者进索引（与新建相同）；回收站里的页渲染时按它原来的路径解析链接。
 - transfer 模块：后台任务的两种新类型 `trash_restore`、`revert`，沿用导入的分批、预算、心跳、取消与报告；导入的任务记下它的变更集。
 - notebook、workspace 模块：给 page 的"看得到的笔记本"与"工作区与调用者的角色"（工作区搜索），只接线。
-- 平台：清理任务的时钟可以注入（测试）；`jobs.purge_retention` 的下限改为 1 天；`InstanceInfo.trash_retention_seconds`。
+- 平台：`jobs.purge_retention` 的下限改为 1 天；`InstanceInfo.trash_retention_seconds`。
 - 前端：右栏"页面信息"的版本列表；版本页（阅读、比较、还原）；Web Worker 里有上限的按行比较（M4 的冲突对比一并改用它）；笔记本的历史页与单个变更集页（日志、明细、撤销）；回收站页与预览；工作区的搜索框与结果页；页面树在任何恢复之后重新显示；删除页面与附件的确认框写明回收站。
 
 **不做**：
@@ -49,7 +49,7 @@
 1. **版本**：一页的版本按版本号倒序分页，每个版本带变更集的类型、客户端、执行者（显示名）与时刻；版本的正文与只读的阅读视图（链接按当前的树解析，回收站里的页按它原来的路径解析）；回收站里的页同样读得到；编辑会话进行中的那一行按它当前的版本号答出；比较在 Web Worker 里、有时间与大小的上限，超过时给出摘要并说明。接口给出两个版本的原样正文，比较的结果在网页上（总体设计 12.5"接口能做页面能做的"的例外：比较只是展示，正文都经接口读得到）。
 2. **还原版本**：以 `base_revision` 防覆盖，经编辑锁（有人编辑、包括自己在别处编辑时 409 `page.locked`），产生类型 `version_restore` 的变更集；与当前相同时不写并说明。
 3. **日志与撤销**：日志按变更集的创建时刻倒序分页，按人、客户端、页面筛选；单个变更集与它的明细（按节点分页）。撤销的表格测试覆盖每种条目（页面与附件的新建、删除、恢复、改名、移动、重新排序、写正文、还原版本、撤销）与每种冲突（之后又改过、标题被占、父节点不在、太深、成环、新建的节点下有别的变更集放进的节点、已被清理截掉、超过恢复的期限、页被锁、太大）；冲突整体拒绝、列出冲突的节点（至多 100 个与总数），什么都不写；性质测试：随机的操作序列之后从新到旧连续撤销 k 个变更集，树、正文与链接索引等于这 k 个之前的状态；撤销之后 `checkLinks` 成立，`links` 事件到达。
-4. **回收站**：列出被删除子树的根（分页），带原位置、删除者与时刻、可恢复的期限、子树里页与附件的数目、恢复之后会放到哪里；预览页的只读视图与附件的信息；恢复带回正文、版本、条目、附件的行（之后照常下载，无主列表的大小算上它们）与链接索引；父节点不在、在回收站、太深时放到根下，标题冲突加序号；超过期限答 409；不变式 `checkPages` 加上"活着的节点，它的正文、版本、条目都活着"。
+4. **回收站**：列出被删除子树的根（分页），带原位置、删除者与时刻、可恢复的期限、子树里页与附件的数目、恢复之后会放到哪里；预览页的只读视图与附件的信息；恢复带回正文、版本、条目、附件的行（之后照常下载，无主列表的大小算上它们）与链接索引；父节点在回收站、太深时放到根下，标题冲突加序号；超过期限答 409；不变式 `checkPages` 加上"活着的节点，它的正文、版本、条目都活着"。
 5. **后台的恢复与撤销**：超过一个单元的恢复与撤销分批完成、并入一个变更集，每批在锁下重新核对，途中停下时报告已完成的部分与原因；一次默认上限（5 万个条目）的导入可以撤销。
 6. **搜索**：第 4.12 节的方案在实测的语料规模下达到它的目标（各类查询的 p99、索引体积、建索引的时间与保存时维护索引的开销）；只列出调用者看得到的笔记本（"列表的结果"等于"逐项判定读取"的集成测试）与活着的节点（删除之后消失、恢复之后回来）；附件只按名称列出；摘要片段与高亮的位置；`q` 的上限与转义。
 7. **并发与权限**：4.14 的交错各有确定性的测试，结束时核对不变式（`checkPages`、`checkLinks`、`checkAssets`）；权限矩阵覆盖新操作的每一格。
@@ -65,16 +65,16 @@
 | 归属 | 版本、日志、撤销、回收站、搜索都在 page 模块：读写的都是 page 的表；搜索的索引迁移归 page（总体设计 7.2 末句） | 新的 `history`、`search` 模块：要经端口读 page 的全部表，跨模块的 SQL 不能 join，只多一层转发 |
 | 看得到的笔记本 | notebook 已有的 `VisibleNotebooks.VisibleIn` 与 workspace 已有的成员资格（事件流用的 `workspace.Memberships`）由组合根交给 page 的两个端口：从 slug 得到工作区与调用者的角色，再得到看得到的笔记本；page 以 `notebook_id = ANY($ids)` 过滤 | page 自己判定每一本：越过模块的边界 |
 | 显示名 | page 已有的 `Names` 端口；总体设计 6.1"内嵌账户资料"的例外加上版本、日志、回收站（与审计记录同理） | 只给 id：没有读别的用户的接口 |
-| 附件的信息 | asset 给只凭连接池的读 `asset.NewMeta(pool)`（类型、大小，按节点 id，含已删的），在 `page.New` 之前构建，经 `Deps` 交给 page（13.1 第 11 条：只凭连接池的构造） | page 读 `asset_blobs`：sqlc 按模块列迁移，越过边界 |
-| 附件的行 | 恢复时由 asset 的观察者在同一事务里恢复（`asset/app/follow.go` 加 `NodesRestored`），与删除对称；观察者从 `Change.Restored` 认出恢复（新建的附件节点同样没有"前"，它的行由单元写） | 恢复的用例直接写 `asset_blobs` |
+| 附件的信息 | asset 给只凭连接池的读 `asset.NewAttachmentInfos(pool)`（类型、大小，按节点 id，含已删的），在 `page.New` 之前构建，经 `Deps` 交给 page（13.1 第 11 条：只凭连接池的构造）；不叫 `AssetMeta`：`page.AssetMeta` 已是守卫看到的新附件的文件 | page 读 `asset_blobs`：sqlc 按模块列迁移，越过边界 |
+| 附件的行 | 恢复时由 asset 的观察者在同一事务里恢复（`asset/app/follow.go` 加 `NodesRestored`），与删除对称；观察者从 `Change.Restored` 认出恢复（新建的附件节点同样没有"前"，它的行由单元写）；`Restored` 带删除的时刻与是否附件：asset 按同一时刻恢复行，并核对行数 | 恢复的用例直接写 `asset_blobs` |
 | 链接索引 | 恢复的页与新建一样：变更带 `Revision` 与 `Facts`，linking 的观察者 `ReplacePage` 并重新解析受影响的键（M6 的移交第 1、2 项）；`Relocation` 要求"前"不空，恢复不触发改写的参与者 | 回收站里保留索引行：所有的索引读都要排除回收站里的来源 |
-| 回收站里的页的链接 | 渲染时来源页的路径照它被删时的位置读（经已删的祖先）；候选的目标仍只有活着的节点。page 的 `Paths` 加一个只用于来源的变体，linking 的视图在来源已删时用它 | 照现在：来源已删时每条链接都成了未解析（A-M5、B-I2） |
+| 回收站里的页的链接 | 渲染时来源页的路径照它被删时的位置读（经已删的祖先）；候选的目标仍只有活着的节点。渲染路径带"来源在回收站里"（`PageRef.Deleted` → `markdown.Page.Deleted` → linking 的 `Page.Deleted`），linking 的视图这时经新的端口 `Pages.SourcePath` 读来源的路径；索引的维护不变。所以链到同一次删除的页的链接，预览里可能解析到别处同名的活着的页或不解析，恢复之后才回到组里的页 | 照现在：来源已删时每条链接都成了未解析（A-M5、B-I2） |
 | 大的恢复与撤销 | page 在一个单元之内完成时直接答；超过（4.9）时答 422 `page.restore_too_large`、`page.revert_too_large`，网页再请 transfer 开后台任务（`startTrashRestore`、`startRevert`），任务经 `TreeWrites` 的分批写回到 page。依赖仍是 transfer → page | page 直接开 transfer 的任务：构建次序是 page → asset → transfer（transfer 要 `TreeWrites()`），page 反过来依赖 transfer 造不出来（C-I1、A-I4） |
 | 守卫看得到撤销 | `Write`（守卫与观察者都看得到）加上单元的 `Kind` 与 `RevertsID` | 守卫只看操作：撤销与普通的写分不开，M10 的来源区、M11 的冻结都要分开它们（A-M13、C-M10） |
 
 page 的新用例：读 `ListVersions`、`GetVersion`、`GetVersionView`、`ListChangesets`、`GetChangeset`、`ListChanges`、`ListTrash`、`GetTrashItem`、`Search`；写 `RestoreVersion`、`RestoreNode`、`Revert`；给 transfer 的 `TreeWrites` 加 `RestoreBatch`、`RevertBatch` 与它们要的读（回收站一组的节点与正文、变更集的条目，未加锁）。
 
-`Deps` 加：`VisibleNotebooks`、`WorkspaceRoles`、`AssetMeta`（端口）；`Retention`（配置值 `jobs.purge_retention`）。
+`Deps` 加：`VisibleNotebooks`、`WorkspaceRoles`、`Attachments`（端口 `AttachmentInfos`）；`Retention`（配置值 `jobs.purge_retention`）。
 
 ### 4.2 数据：迁移
 
@@ -84,13 +84,13 @@ page 的（搜索的见 4.12）：
 |---|---|---|
 | `changesets` | `kind` 加 `version_restore`、`trash_restore`、`revert`；加 `reverts_id uuid`（不建外键；`CHECK ((kind = 'revert') = (reverts_id IS NOT NULL))`）；加 `trimmed boolean NOT NULL DEFAULT false` | 3.8 的类型；撤销记下撤销的是哪一个；外键会让清理器的先后受制于被撤销的变更集 |
 | `changesets` | 索引 `(notebook_id, created_at DESC, id DESC) WHERE deleted_at IS NULL`（日志）、`(notebook_id, created_by_id, created_at DESC, id DESC) WHERE deleted_at IS NULL`（按人筛选，M9 的 `log`）、`(id) WHERE trimmed`（空变更集的清理）、`(reverts_id) WHERE reverts_id IS NOT NULL`（日志的 `reverted_by`、撤销之前的"已被撤销过"，P3 建，M8/P1 审查 C3）；`changesets_notebook_id_idx` 在核对过还有没有别的查询用它之后去掉 | 13.1 第 27 条：与次序相同的索引；按客户端筛选在日志的索引上过滤（取值很少），计划测试核对 |
-| `changeset_items` | 加 `restored boolean NOT NULL DEFAULT false` 与 `revision integer`；`CHECK` 两者只在"前"为空、"后"不空时可以有值，`revision >= 1`；迁移给已有的页面新建条目补上 `revision`（同一变更集里这一页的版本行） | 恢复与新建都没有"前"：日志、撤销与观察者要分开它们；撤销一次恢复要知道恢复时的版本（恢复不写版本行） |
+| `changeset_items` | 加 `restored boolean NOT NULL DEFAULT false` 与 `revision integer`；`CHECK` 两者只在"前"为空、"后"不空时可以有值，`revision >= 1`；迁移给已有的页面新建条目补上 `revision = 1`（同一变更集里这一页有创建的版本行时；运行时同样记 1）；条目合并时 `restored`、`revision` 保留第一次的 | 恢复与新建都没有"前"：日志、撤销与观察者要分开它们；撤销一次恢复要知道恢复时的版本（恢复不写版本行） |
 | `page_revisions` | 唯一索引 `(node_id, revision)`，去掉被它覆盖的 `page_revisions_node_id_idx` | 按版本号寻址与倒序列出；钉住"一页的每个版本号至多一行" |
-| `nodes` | 加 `trash_root boolean NOT NULL DEFAULT false`（`CHECK (NOT trash_root OR deleted_at IS NOT NULL)`）；部分索引 `(notebook_id, deleted_at DESC, id DESC) WHERE trash_root`；迁移按"父节点为空或父节点的 `deleted_at IS DISTINCT FROM` 它的"补上已有的根 | 回收站的一页只读根，不读过一次删除里的几万个节点（A-M9） |
+| `nodes` | 加 `trash_root boolean NOT NULL DEFAULT false`（`CHECK (NOT trash_root OR deleted_at IS NOT NULL)`）与这一组的统计 `trash_pages`、`trash_assets`、`trash_height`（只在根上，删除时记下；`CHECK` 有统计 ⇔ 是根）；部分索引 `(notebook_id, deleted_at DESC, id DESC) WHERE trash_root`；迁移按"父节点为空或父节点的 `deleted_at IS DISTINCT FROM` 它的、且不是随笔记本删除的"补上已有的根与统计：随笔记本删除的以"同一时刻删除的变更集"认出（笔记本的删除给它的变更集与节点同一个时刻，子树的删除不删变更集），不读 notebook 的表 | 回收站的一页只读根，不读过一次删除里的几万个节点（A-M9）；统计让列表不为每一项数整组，恢复在读组之前就能答 422 |
 
 transfer 的：`transfer_jobs.kind` 加 `trash_restore`、`revert`；加 `changeset_id uuid`（导入、恢复、撤销写入的变更集；撤销任务另有它撤销的变更集，放在 `root_id` 之外的新列 `target_changeset_id`）；`transfer_jobs_importing_key` 改为覆盖 `import`、`trash_restore`、`revert`（一本笔记本同时一个写入的任务）。
 
-**`trash_root` 的维护**：删除一个子树时它的根设上，同一时刻删除的子孙不设；一次删除的根之下、早先以同一时刻删除的（分批撤销一次导入时，4.10）随之取消；恢复的节点取消；分批恢复途中，父节点已恢复而自己仍在回收站的节点设上（停下时它们各自列出）；笔记本删除不设（回收站只列活着的笔记本）。
+**`trash_root` 的维护**：删除一个子树时它的根设上并记下统计，同一时刻删除的子孙不设；一个单元从上往下删，每棵子树一次：同一单元里先删子孙、再删它的祖先，子孙会留着根的标记，`DeleteNodes` 拒绝（调用者的缺陷）；一次删除的根之下、早先以同一时刻删除的（分批撤销一次导入时，4.10，跨单元）随之取消，统计重算；恢复的节点取消并清掉统计；分批恢复途中，父节点已恢复而自己仍在回收站的节点设上并记统计（停下时它们各自列出）；笔记本删除不设（回收站只列活着的笔记本）。
 
 **清理截掉的变更集**：清理器只删已删节点的行，所以活着的笔记本里的一个变更集，只有它碰过、后来被删除并过了保留期的节点的条目与版本会被删。被截掉一部分的变更集不能再整组撤销。`changeset_items` 与 `page_revisions` 的清理语句改为：以 `FOR UPDATE OF i SKIP LOCKED` 与 `FOR NO KEY UPDATE OF c SKIP LOCKED` 同时锁住要删的行与它所属的变更集（拿不到的下次再删，清理从不等待，13.1 第 5 条），删掉这些行并给活着的笔记本里的这些变更集设上 `trimmed`，答删掉的行数（`:execrows` 照旧给分批的循环用，A-M2）。`changesets` 的清理器另删 `trimmed` 而条目与版本都已删光的。撤销先读条目、后读 `trimmed`（READ COMMITTED 下，条目的读看得到的清理，之后的读也看得到它的标记，A-M3）。P1 只加了列，标记与清理语句的改写一起在 P3 做；v0.1 之前没有发布的实例，所以不补记 P3 之前的清理截掉过的变更集（M8/P1 审查 C2）。
 
@@ -99,7 +99,7 @@ transfer 的：`transfer_jobs.kind` 加 `trash_restore`、`revert`；加 `change
 - **版本就是 `page_revisions` 的一行**，以它写出的版本号寻址：`/pages/{page_id}/versions/{revision}`。编辑会话的一行覆盖 `(base_revision, revision]`，会话每次保存都改这一行的版本号：请求的版本号落在某一行的区间里时答那一行（带它真实的版本号，网页随之替换地址），不在任何一行里答 404 `page.version_not_found`。
 - **列表**：一页的版本按 `revision` 倒序，游标是版本号，不读正文；每项带行的 id（网页以它为键）、`base_revision`、字节数、写出的时刻（行的 `updated_at`）与变更集（id、类型、客户端、执行者的 id 与显示名、创建的时刻）。最新的一行若属于活着的编辑会话，标出"编辑中"。不列树的变化（改名、移动在日志里）。
 - **正文**：原样的正文（至多 5 MiB），供比较与复制。
-- **阅读视图**：照 `getPageView` 的形状与渲染路径（`PageRef{Revision}`），链接按当前的树即时解析（M6 4.7）；来源页在回收站里时按它原来的路径解析（4.1）。网页上只读：没有任务复选框的勾选、没有"新建这一页"。
+- **阅读视图**：照 `getPageView` 的形状与渲染路径（`PageRef{Revision}`），链接按当前的树即时解析（M6 4.7）；来源页在回收站里时按它原来的路径解析（4.1：候选仍只有活着的节点，链到同一次删除的页要恢复之后才回到组里的页）。网页上只读：没有任务复选框的勾选、没有"新建这一页"。
 - **回收站里的页**同样读得到（M4 的移交第 2 项），权限与活着的页相同。
 - **比较在网页上**：`@codemirror/merge` 默认的设置（`scanLimit` 500）会把超过约 16,000 个码元的改动合成一整块，`timeout` 又管不住它的全部算法（B-I1 的实测：3 万字的页改 8 个词显示为整页删除再插入；20 万字的重复行 90 秒算不完）。所以：
   - 按行比较（行的哈希上的 Myers）放在 Web Worker 里，硬性的期限（2 秒）一到就终止它；结果经 `diffConfig.override` 交给只读的统一视图，一处改动的范围小时才在行内细分。
@@ -121,19 +121,19 @@ transfer 的：`transfer_jobs.kind` 加 `trash_restore`、`revert`；加 `change
 ### 4.5 回收站：列表与预览
 
 - `GET /notebooks/{notebook_id}/trash`：`trash_root` 的节点，按 `deleted_at` 倒序、id 倒序分页，只列期限之内的（4.11）。
-- 每项：节点（id、类型、名称）；原位置（祖先的名称，读已删的祖先）；删除者（`nodes.updated_by_id`，删除时写的）与显示名；删除的时刻；`restorable_until`（删除时刻加保留期减 1 小时，4.11）；这一组里的页数与附件数（数到 1,000 为止，之上显示"1,000+"）；恢复之后会放到哪里（原父节点，或根下，以及原因）。
-- `GET /nodes/{node_id}/trash-item`：单项（同上），预览页用。
-- **预览**在回收站自己的路由里（`/:slug/notebooks/:id/trash/:nodeId`），不在页面的外壳里（外壳对不在树里的页答 404）：页显示它当前版本的只读阅读视图（4.3）；附件显示名称、类型与大小（4.1 的附件信息），不签发下载地址。
+- 每项：节点（id、类型、名称）；原位置（祖先的名称，读已删的祖先）；删除者（`nodes.updated_by_id`，删除时写的）与显示名；删除的时刻；`restorable_until`（删除时刻加保留期减 1 小时，4.11）；这一组里的页数与附件数（删除时记下的准确值，4.2）；恢复之后会放到哪里（原父节点，或根下，以及原因）。
+- `GET /nodes/{node_id}/trash-item`：单项（同上，另带 `notebook_id`、页的正文的版本号 `revision`、附件的类型与大小），预览页用；码是恢复的 409 里的三种（`page.not_in_trash`、`page.not_trash_root`、`page.restore_expired`）。
+- **预览**在回收站自己的路由里（`/:slug/notebooks/:id/trash/:nodeId`），不在页面的外壳里（外壳对不在树里的页答 404）：只显示根，页显示它当前版本的只读阅读视图（4.3，以单项的 `revision` 读），附件显示名称、类型与大小（4.1 的附件信息），不签发下载地址；组里的其余只给数目。
 - 能读这本笔记本的人都看得到回收站与预览；恢复要写者。
 
 ### 4.6 从回收站恢复（一个单元）
 
 - `POST /nodes/{node_id}/restore`：恢复一个回收站的根与同一时刻删除的子孙。节点活着答 409 `page.not_in_trash`；在回收站但不是根答 409 `page.not_trash_root`，扩展成员 `root_id`（写进契约，13.1 第 8 条）；超过期限答 409 `page.restore_expired`；超过一个单元（4.9）答 422 `page.restore_too_large`。
-- **放在哪里**：父节点活着、且放回去不超过 10 层时放回原父节点下，次序值用它原来的（删除时保留，插在兄弟之间）；父节点不在、在回收站里、或会超过 10 层时放到根下的末尾。标题与活着的兄弟冲突时加序号（`page/domain.Numbered`，附件加在扩展名之前，同导入的 `children.free`）。一个单元恢复整组，只有根可能冲突（它的子孙的兄弟要么一起恢复，要么仍在回收站）。重算 `name_key`（`reindex` 只重算活着的节点）；组内重算之后撞上的答 409 `page.trash_changed`，与 `reindex` 报告它的冲突同理。
-- **单元**：树的写入单元（`Tree: true`），操作 `OpRestore`，新的变更集，类型 `trash_restore`。每个恢复的节点一项变更：没有"前"、"后"是恢复后的状态、页面带当前的 `Revision` 与 `Facts`、`Restored: true`（`Change.Then` 合并时保留它）。条目照新建写，另记 `restored` 与页的 `revision`。在锁下清空这一组的 `deleted_at`（`nodes`、`page_contents`，以及这些节点在所有变更集里 `deleted_at` 等于这一时刻的版本与条目，包括删除它们的变更集的条目），取消 `trash_root`，根的父节点、名称与次序照上面，`updated_by_id`、`updated_at` 记恢复者与时刻。
-- **核对**：在锁下核对这一组仍是同一时刻删除、每页的版本号未变（否则 409 `page.trash_changed`）；页的正文行与节点数相符（缺了说明被清理过，让单元失败，作为期限之外的防线，A-M6）。
-- **解析在单元之前**：未加锁地读出这一组的正文，按大小从大到小、按 `Take` 取预算解析（总体设计 4.3、13.1 第 19 条；M7 设计审查 A-I2 去掉了锁下的 `TakeNow`，M6 的移交第 1 项写的 `TakeNow` 照此改；从大到小，后面的小页总拿得到预算）。
-- **观察者**：linking 为每页建索引、重新解析受影响的键；asset 恢复附件的行，行数与附件节点数不符时让单元失败；`pages` 事件照常（树变了）。
+- **放在哪里**：父节点活着、且放回去不超过 10 层时放回原父节点下（原来在根下的回到根下），次序值用它原来的（删除时保留，插在兄弟之间）；父节点在回收站里、或会超过 10 层时放到根下的末尾。父节点不会"不在"：父节点的外键是 `ON DELETE RESTRICT`，清理只删叶子。标题与活着的兄弟冲突时加序号（`page/domain.Numbered`，附件加在扩展名之前，同导入的 `children.free`）。一个单元恢复整组，与活着的兄弟冲突的只有根（它的子孙的兄弟要么一起恢复，要么仍在回收站）。重算 `name_key`（`reindex` 只重算活着的节点）；组内同一父节点下重算之后键相同的（Unicode 数据升级之后的 `reindex` 才有），先到的留名，后到的同样加序号：答 409 会让这一项永远恢复不了。
+- **单元**：树的写入单元（`Tree: true`），操作 `OpRestore`，新的变更集，类型 `trash_restore`。每个恢复的节点一项变更：没有"前"、"后"是恢复后的状态、页面带当前的 `Revision` 与 `Facts`、`Restored`（删除的时刻与是否附件；`Change.Then` 合并时保留第一项的，与"前"同出于第一项）。条目照新建写，另记 `restored` 与页的 `revision`。在锁下清空这一组的 `deleted_at`（`nodes`、`page_contents`，以及这些节点在所有变更集里 `deleted_at` 等于这一时刻的版本与条目，包括删除它们的变更集的条目），取消 `trash_root`，根的父节点、名称与次序照上面，`updated_by_id`、`updated_at` 记恢复者与时刻。
+- **核对**：在锁下核对这一组仍是同一时刻删除、每页的版本号未变（否则 409 `page.trash_changed`）；页的正文行与节点数相符，每页的版本行从创建起连成链（清理先删条目、版本，后删正文：缺了说明被清理过，答 409 `page.trash_changed`，作为期限之外的防线，A-M6）。防线之外的两种不检测：被清理拿走的条目、附件的清理删了文件却提交失败留下的行（只在下载时发现）；两者都要清理的时钟比恢复的快一小时以上。
+- **解析在单元之前**：未加锁地读出这一组的正文，按大小从大到小、按 `Take` 取预算解析（总体设计 4.3、13.1 第 19 条；M7 设计审查 A-I2 去掉了锁下的 `TakeNow`，M6 的移交第 1 项写的 `TakeNow` 照此改；从大到小，后面的小页总拿得到预算）。各次 `Take` 的等待合计至多 `page.parse_max_wait`，用完答 503（每次等 2 秒，100 页会超过 15 秒的请求期限）。
+- **观察者**：linking 为每页建索引、重新解析受影响的键；asset 恢复附件的行，行数与附件节点数不符时让单元失败，答 409 `page.trash_changed`（组合根把 asset 的计数换成 page 的码）；`pages` 事件照常（树变了）。
 - 权限：写者（与删除相同）。
 
 ### 4.7 日志
@@ -180,8 +180,8 @@ transfer 的：`transfer_jobs.kind` 加 `trash_restore`、`revert`；加 `change
 
 恢复（4.6）与撤销（4.8）都在请求里一个单元完成，界线相同，量的是花时间与占预算的部分：
 
-- 要解析的页：合计不超过 100 页、8 MiB 正文，解析之后链接合计不超过 20,000 条（与导入的一批相同，13.1 第 31 条；8 MiB 正文留下的提取结果约 0.8 MiB，预算的下限 5 MiB 也容得下，A-I2、C-I4）。
-- 树的操作（新建、删除、恢复、移动的节点，附件也算）：不超过一个实测的数（P2 定下，在 15 秒的请求期限里留出余量；删除与恢复用整组的语句、条目用 `INSERT … SELECT unnest`，不一个节点一条语句，M12 的移交第 4 项）。
+- 要解析的页：合计不超过 100 页（是页，附件计入树的操作）、8 MiB 正文，解析之后链接合计不超过 20,000 条（与导入的一批相同，13.1 第 31 条；8 MiB 正文留下的提取结果约 0.8 MiB，预算的下限 5 MiB 也容得下，A-I2、C-I4）。只有一页的组不受这三项限制：它曾在一个请求里写成（同导入的批"独自超过的一页单独成批"）。链接数要解析之后才知道，超过时的 422 可能排在 503 之后（4.14）。
+- 树的操作（新建、删除、恢复、移动的节点，附件也算）：不超过一个实测的数 `domain.MaxUnitNodes`（P2A 定下，在 15 秒的请求期限里留出余量；删除与恢复用整组的语句、条目用 `INSERT … SELECT unnest`，不一个节点一条语句，M12 的移交第 4 项）。
 
 超过任何一项答 422 `page.restore_too_large` 或 `page.revert_too_large`；网页说明这次的大小，问是否在后台进行（4.10）。没有"撤销不设上限"的例外（一次 5 万个条目的导入在一个单元里删不完，A-I3、C-I3）。
 
@@ -200,8 +200,8 @@ transfer 的：`transfer_jobs.kind` 加 `trash_restore`、`revert`；加 `change
 - 保留期的下限从 1 小时改为 1 天（`validate`），否则一小时的间隔会让回收站永远是空的（A-M6、C-M4）。
 - 一小时的间隔假设实例的时钟由 NTP 校准、只有一个实例（总体设计第 11 节：单实例），与 13.1 第 6 条孤儿清扫的假设相同。
 - 回收站显示 `restorable_until`（保留期减 1 小时），`InstanceInfo.trash_retention_seconds` 给的同样是可以恢复的期限。
-- 清理任务的时钟改为可以注入（`PurgeConfig.Clock`，今天直接用 `time.Now()`），期限两侧的交错测试靠它。
-- 防线：正文行与附件行的数目在恢复的单元里核对（4.6）。
+- 清理任务的时钟不改为可以注入（不加 `PurgeConfig.Clock`）：期限两侧的交错测试直接调用清理器、自己给截止时刻，不经 `PurgeJob`；期限的边界（恰在期限的那一刻不能恢复）在 page 的用例里以假的时钟测。
+- 防线：正文行、版本链与附件行的数目在恢复的单元里核对（4.6）。
 
 ### 4.12 搜索
 
@@ -222,26 +222,27 @@ transfer 的：`transfer_jobs.kind` 加 `trash_restore`、`revert`；加 `change
 - **右栏"页面信息"**加"版本"一节：最近的版本（时刻、执行者、类型；"编辑中"的标记；当前的一行没有"还原"），"更多"读下一页；点开进版本页。列表写明"一次编辑一个版本"。锁的状态仍在中栏（总体设计 9.2 随之改）。
 - **版本页** `/:slug/notebooks/:id/pages/:pageId/versions/:revision`：版本的信息；"阅读、与上一版比较、与当前比较"三个标签页（第一个版本没有"与上一版"）；写者有"还原到这个版本"（4.4）；中栏的锁提示也在这里显示。版本的阅读视图与正文用自己的 SWR 键，离开页面时从缓存去掉（几十个 5 MiB 的版本不留在内存里）。
 - **历史页** `/:slug/notebooks/:id/history`：日志，筛选在地址里（人、客户端、页面），人从工作区成员与日志里出现过的执行者里选，每条可以"只看此人"；每条带"已撤销""已截掉"的标记。**单个变更集页** `/:slug/notebooks/:id/history/:changesetId`：信息、明细（分页）、写者的"撤销"（确认框；冲突时列出每个节点与原因，原因各有可以去做什么的说明：`changed` 链到这个节点的历史、`title_taken` 链到占着名称的页并说明回收站的恢复会加序号、`parent_gone` 指向回收站；422 时说明大小并问是否在后台进行；超时时说"结果未知"并重读）。页面的菜单（读者也有）加"查看这一页的历史"。
-- **回收站页** `/:slug/notebooks/:id/trash`：列表（每项说明恢复之后放到哪里），写者的"恢复"之后留在回收站，状态行"已恢复「X」到「Y」下 [打开]"，焦点回到这一节的标题；422 时问是否在后台进行；预览 `/:slug/notebooks/:id/trash/:nodeId`（4.5）。笔记本的左栏加"历史"与"回收站"两个入口。
+- **回收站页** `/:slug/notebooks/:id/trash`：列表（每项说明恢复之后放到哪里），写者的"恢复"之后留在回收站，状态行"已恢复「X」到「Y」下 [打开]"，焦点回到这一节的标题；恢复的附件的"打开"去它所在的位置（同 4.12 的搜索结果）；422 时问是否在后台进行；预览 `/:slug/notebooks/:id/trash/:nodeId`（4.5），从预览恢复之后回到回收站页（与列表的恢复同一个状态行）。笔记本的左栏加"历史"与"回收站"两个入口，在页面树之外一个单独命名的 `nav` 里（页面树的 `nav` 里的每个链接都当作页面）。
 - **页面树**：`PageTreeStore.removed` 里的页，一次开始于删除答复之后的树的读把它列为活着时，从 `removed` 去掉（同步恢复、撤销、后台任务、别的标签页与别人的恢复都覆盖，M4 的移交第 4 项，B-I3）；撤销里的删除照 `remove` 记下 `removedTo`；恢复与撤销经树的写入队列（13.2 第 1 条）。
 - **搜索**：工作区左栏顶部的搜索框，回车进结果页 `/:slug/search?q=&notebook_id=`（在笔记本里打开时默认限定这一本）；快捷键 `Mod+Shift+F` 用新的判断（`isMod` 拒绝 Shift），它在微软拼音、搜狗里是简繁切换，所以还有看得见的入口，并进输入法清单；摘要以文字放在 `<bdi>` 里，只高亮服务端给的位置；不随事件重读，不在窗口获得焦点时重读。
 - **列表的模式**：回收站、日志、明细、版本列表的项会变或消失，用 `readPages` 那种"按已读的页数重读"（13.2 第 19 条），不用审计记录的"保留已读的尾巴"。
 - **事件**：回收站只在 `tree: true` 时重读；版本列表在事件点到这一页（或 `pages` 为空）时重读；历史页按 `refresher` 的间隔（5 秒）重读；版本的阅读视图在 `links` 事件与 `tree: true` 时重读；连上时重读已缓存的这些键（`refreshedOnConnect`）；本标签页自己保存、离开编辑之后更新这一页的版本列表。
-- **删除确认框**（页面与附件两个）改写："移到回收站，N 天内可以恢复；能读这本笔记本的人在回收站里仍看得到它"（N 由 `InstanceInfo`，可以不是整数天）。
+- **删除确认框**（页面与附件两个）改写："移到回收站，N 天内可以恢复；能读这本笔记本的人在回收站里仍看得到它"（N 由 `InstanceInfo`，可以不是整数天：向下取整，不把期限说长，不满一天写小时）。
 - **无障碍与文字**：每个列表有名称；行上的按钮带对象（"恢复「X」（原位置：A / B）"），同名的项区分；焦点的去向与礼貌的播报（"已开始恢复""已撤销"、结果数）；每个新页面设文档标题。英文里 撤销 写 "Undo change"、还原 写 "Restore this version"；`mcp:<名>` 显示为 "MCP（名）"；英文不用复数形式（照现有的写法）。
 
 ### 4.14 权限、码的次序、上限、加锁与交错
 
-- **新的动作**（规则表与矩阵各一行，`boot/actions_test.go` 的"规则 = 动作"）：`page.history`（版本、日志、单个变更集、明细、回收站的列表与单项，读者）；`page.restore_version`（写者）；`node.restore`（写者；同步的与后台的恢复）；`changeset.revert`（写者；同步的与后台的撤销；撤销别人的变更集不另要管理员）；`page.search`（工作区级，每种角色）。
+- **新的动作**（规则表与矩阵各一行，`server/internal/bootstrap/actions_test.go` 的"规则 = 动作"）：`page.history`（版本、日志、单个变更集、明细、回收站的列表与单项，读者）；`page.restore_version`（写者）；`node.restore`（写者；同步的与后台的恢复）；`changeset.revert`（写者；同步的与后台的撤销；撤销别人的变更集不另要管理员）；`page.search`（工作区级，每种角色）。
 - **码的次序**（13.1 第 4 条，契约与测试照这个次序）：
   - `revertChangeset`：取值 422（`message`）→ 404 `page.changeset_not_found` → 403 → 409 `page.changeset_trimmed` → 422 `page.revert_too_large` → 503 `server_busy`（预算）→ 409 `page.revert_conflict` → 409 `page.locked`。
-  - `restoreNode`：404 `page.not_found` → 403 → 409 `page.not_in_trash`、`page.not_trash_root`、`page.restore_expired` → 422 `page.restore_too_large` → 503 → 409 `page.trash_changed`。
+  - `restoreNode`：404 `page.not_found` → 403 → 409 `page.not_in_trash`、`page.not_trash_root`、`page.restore_expired` → 422 `page.restore_too_large` → 503 → 409 `page.trash_changed`（锁下的核对与观察者）。例外：链接数的 422 要解析之后才知道，可能排在 503 之后（4.9），契约写明。
+  - `getTrashItem`：404 `page.not_found` → 409 `page.not_in_trash`、`page.not_trash_root`、`page.restore_expired`。
   - `restorePageVersion`：404 `page.not_found`、`page.version_not_found` → 403 → 503 → 409 `page.revision_mismatch` → 409 `page.locked`。
   - transfer 的两个开始：照 `startImport`，另加上面对应的 404、409、422。
-- **上限**（13.1 第 31 条，测试在上限处）：`conflicts` 至多 100 项；日志的计数与回收站的计数至多数到 1,000；`q` 的字节与词数；版本、日志、回收站、明细的分页照 `limit` 的上限。
+- **上限**（13.1 第 31 条，测试在上限处）：`conflicts` 至多 100 项；日志的计数至多数到 1,000（回收站的数目是删除时记下的准确值，4.2）；`q` 的字节与词数；版本、日志、回收站、明细的分页照 `limit` 的上限。
 - **加锁**：还原版本是正文的写（笔记本 `FOR SHARE`、正文行 `FOR NO KEY UPDATE`）；恢复与撤销是树的单元（笔记本行 `FOR NO KEY UPDATE`，同一笔记本的树写串行），撤销里的正文写按页 id 的次序锁正文行（13.1 第 5 条）。读不加锁。
 - **日志**（13.1 第 10 条）：新用例只记 id 与数目，`q` 与冲突里的名称不进日志。
-- **交错**（确定性的测试，结束时核对不变式）：恢复与删除它原来的父节点；恢复与在原位置新建同名的页（序号）；撤销与对其中一页的并发写；撤销时其中一页被锁（M5 的移交第 3 项）；撤销与清理截掉 C（先读条目、后读 `trimmed`）；恢复与清理（期限两侧，注入的时钟）；恢复附件的行与附件的清理（M7 的移交第 2 项）；恢复的任务与在已恢复的部分里删除、在已恢复的父节点下新建同名的页；撤销正在被导入任务并入的变更集；还原版本与编辑会话的保存。
+- **交错**（确定性的测试，结束时核对不变式）：恢复与删除它原来的父节点；恢复与在原位置新建同名的页（序号）；撤销与对其中一页的并发写；撤销时其中一页被锁（M5 的移交第 3 项）；撤销与清理截掉 C（先读条目、后读 `trimmed`）；恢复与清理（期限两侧，测试给清理的截止时刻，4.11）；恢复附件的行与附件的清理（M7 的移交第 2 项）；恢复的任务与在已恢复的部分里删除、在已恢复的父节点下新建同名的页；撤销正在被导入任务并入的变更集；还原版本与编辑会话的保存。
 
 ## 5. 接口
 
@@ -261,10 +262,10 @@ transfer 的：`transfer_jobs.kind` 加 `trash_restore`、`revert`；加 `change
 | `searchWorkspace` | `GET /api/v0/workspaces/{slug}/search` | `q`、`notebook_id`、游标 |
 | `startTrashRestore` | `POST /api/v0/notebooks/{notebook_id}/trash-restores` | transfer；202 任务 |
 | `startRevert` | `POST /api/v0/notebooks/{notebook_id}/reverts` | transfer；202 任务 |
-| `getInstanceInfo` | （已有） | 加 `trash_retention_seconds` |
+| `getInstance` | （已有） | 加 `trash_retention_seconds` |
 | `listTransferJobs` 等 | （已有） | 类型加 `trash_restore`、`revert`；任务加 `changeset_id` |
 
-14 个新操作（12.1 第 4 条的约 20 之内）。新的码：`page.version_not_found`、`page.changeset_not_found`（404）；`page.revert_conflict`（409，扩展成员 `conflicts`、`conflict_count`）、`page.changeset_trimmed`、`page.restore_expired`、`page.not_in_trash`、`page.not_trash_root`（扩展成员 `root_id`）、`page.trash_changed`（409）；`page.revert_too_large`、`page.restore_too_large`（422）。扩展成员逐个写进契约（13.1 第 8 条），只有各自的码带它们。
+14 个新操作（12.1 第 4 条的约 20 之内）。新的码：`page.version_not_found`、`page.changeset_not_found`（404）；`page.revert_conflict`（409，扩展成员 `conflicts`、`conflict_count`）、`page.changeset_trimmed`、`page.restore_expired`、`page.not_in_trash`、`page.not_trash_root`（扩展成员 `root_id`）、`page.trash_changed`（409）；`page.revert_too_large`、`page.restore_too_large`（422）。扩展成员逐个写进契约（13.1 第 8 条），只有各自的码带它们。内嵌的用户 `{user_id, display_name}` 统一为 `common.yaml` 的 `UserRef`：回收站的删除者用它，P1A 的 `ChangesetAuthor` 与同形的 `EditLockHolder`、`TransferStarter` 一并改用它（一种形状一个名字，P1A 审查 C6）。
 
 ## 6. 从 Nerve 借鉴
 
@@ -275,7 +276,7 @@ Nerve 没有历史与搜索（只读核对：`nerve-project/server` 里没有 `p
 | P | 名称 | 交付 | 验证 |
 |---|---|---|---|
 | P1 | 版本 | `page_revisions` 的唯一索引；`changesets` 的类型与列（`reverts_id`、`trimmed`）；`Write.Kind`、`Write.RevertsID`；版本的列表、正文、阅读视图（只读）、还原；`page.history`、`page.restore_version`；Web Worker 的比较（`ConflictDiff` 一并改）；右栏的版本列表、版本页 | 用例与 handler 的表格测试；会话进行中的版本寻址；还原经守卫；比较在上限处的测试；e2e：HI1、HI2 |
-| P2 | 回收站 | `trash_root` 与它的维护；`changeset_items` 的 `restored`、`revision`；列表、单项、预览；`OpRestore`、`Change.Restored`；asset 的 `NodesRestored` 与 `asset.NewMeta`；回收站里的页的链接按原来的路径解析；期限、保留期的下限、清理的时钟、`InstanceInfo`；一个单元的界线（树的操作数实测）；`node.restore`；前端的回收站页与预览、树的 `removed`、删除确认框 | 恢复的每种位置与序号；观察者的最后一跳（附件下载、索引、`links` 事件）；`checkPages` 的新不变式；清理与恢复的交错；e2e：TB1 |
+| P2 | 回收站 | `trash_root` 与它的维护；`changeset_items` 的 `restored`、`revision`；列表、单项、预览；`OpRestore`、`Change.Restored`；asset 的 `NodesRestored` 与 `asset.NewAttachmentInfos`；回收站里的页的链接按原来的路径解析；期限、保留期的下限、`InstanceInfo`；一个单元的界线（树的操作数实测）；`node.restore`；前端的回收站页与预览、树的 `removed`、删除确认框 | 恢复的每种位置与序号；观察者的最后一跳（附件下载、索引、`links` 事件）；`checkPages` 的新不变式；清理与恢复的交错；e2e：TB1 |
 | P3 | 日志与整组撤销 | 日志、单个变更集、明细；撤销（按状态比较、S\* 的一次核对、按依赖应用）；清理截掉的标记与空变更集的清理；被撤销的变更集不再被并入；`changeset.revert`；前端的历史页与单个变更集页 | 撤销的表格测试与性质测试（从新到旧连续撤销）；交错；计划测试（13.4 第 9 条：日志的筛选、`page_id`）；e2e：HI3、HI4 |
 | P4 | 后台的恢复与撤销 | transfer 的 `trash_restore`、`revert`（分批抽出共用、每批的核对、报告、`changeset_id`）；`startTrashRestore`、`startRevert`；网页的 422 → 后台进行、任务列表 | 分批的核对（父节点被删、被移深、同名、期限）；导入的撤销（默认上限 5 万个条目）；e2e：HI5、TB2 |
 | P5 | 搜索 | 搜索的迁移（4.12）；`Search` 用例与端口；`page.search`；`searchWorkspace`；前端的搜索框与结果页；输入法清单加一步 | 实测的目标在测试库的规模上复现（基准手动运行，成本测试在不带竞态检测的一步）；可见性的集成测试；转义与上限；e2e：SE1、SE2 |
@@ -289,7 +290,7 @@ Nerve 没有历史与搜索（只读核对：`nerve-project/server` 里没有 `p
 | [M0/P1 中文搜索](handoffs/M0-P1-cjk-search.md) | 1 实测、2 备选、3 写进设计与 1.3、14 | 设计时实测（4.12）；P5 |
 | [M4 历史、回收站与恢复](handoffs/M4-history.md) | 1 重排不记条目、2 回收站里的页有历史、3 同一变更集里的删除与恢复、4 `removedTo` | 1：次序按状态比较，重新编号显示为冲突（4.8）；2：4.3（P1）；3：M8 的恢复各自一个变更集，不在同一变更集里删除与恢复，仍留给 M9 的 batch（M9 的那份移交）；4：P2（4.13） |
 | [M5 编辑锁与还原、撤销](handoffs/M5-locks.md) | 1 整组撤销碰上被锁、2 恢复不会被锁挡、3 测试 | 1：整体拒绝，`page.locked`（4.8）；2：4.6；3：P3 的交错 |
-| [M6 链接索引与恢复、历史、还原](handoffs/M6-links.md) | 1 恢复带提取结果、2 只重新解析、3 历史的即时解析、4 撤销与改写、5 最后一跳 | 1：单元之前从大到小 `Take`（4.6，改 `TakeNow`）；2：4.1；3：4.3，回收站里的页另按原来的路径解析；4：不经参与者（4.8）；5：P2、P3 |
+| [M6 链接索引与恢复、历史、还原](handoffs/M6-links.md) | 1 恢复带提取结果、2 只重新解析、3 历史的即时解析、4 撤销与改写、5 最后一跳 | 1：单元之前从大到小 `Take`、等待合计有界（4.6，改 `TakeNow`）；2：4.1；3：4.3，回收站里的页另按原来的路径解析；4：不经参与者（4.8）；5：P2、P3 |
 | [M7 附件、导入与恢复、历史、搜索](handoffs/M7-assets-transfer.md) | 1 恢复附件的行、2 恢复与清理的先后、3 附件没有版本、4 导入的撤销、5 序号、6 搜索列附件 | 1：P2；2：期限的间隔（4.11）；3：4.3；4：后台的撤销任务（4.10，P4）；5：4.6、4.10；6：4.12（P5），并更正它"名称的三元组索引 M4 已建"的前提 |
 | [M4/P2 一个单元里先建后删](../M9-mcp/handoffs/M4-P2-unit-merge.md) | — | 仍归 M9：M8 的单元不在同一变更集里先建后删；M8 的撤销按依赖应用，M9 的 batch 可以直接用 |
 
@@ -308,7 +309,7 @@ Nerve 没有历史与搜索（只读核对：`nerve-project/server` 里没有 `p
 
 - 1.3（中文搜索，按 4.12 的实测）；3.5（树操作加恢复）；3.8（类型加还原版本、恢复、撤销；撤销按状态比较、一次核对、次序值）；3.10（恢复的期限、父节点在回收站或太深时放到根下）；4.5（撤销改名不经改写的例外）；6.1（内嵌显示名的例外、新的码与扩展成员）；7.1、7.2（新的列、类型与索引，`transfer_jobs` 的新类型；搜索的索引按 4.12）；8.5（后台任务加恢复与撤销）；9.2（右栏的版本、锁在中栏、搜索与历史、回收站的入口）；12.2、12.3（M8 的依赖是 M4–M7；M9 的 `grep` 用 M8 的索引按 4.12）；12.4（观察者的行加 M8 的恢复）；12.6；14（中文搜索的风险按实测改写）；变更记录（第 15 节）。
 - 随实现它们的 Phase 改（第 13 节）：
-  - 13.1 第 1 条（`OpRestore`、撤销的单元、`TreeWrites` 的分批）、第 2 条（变更集的类型、`reverts_id`、`trimmed`）、第 4 条（新操作的码的次序）、第 5 条（清理同时锁条目与变更集，仍不等待；M7 设计 4.6 的那一句改写；asset 的观察者恢复已删的行）、第 6 条（截掉的标记、空变更集的清理、恢复的期限与保留期的下限）、第 8 条（新的扩展成员）、第 10 条（日志里没有 `q` 与名称）、第 11 条（新的端口与只凭连接池的 `asset.NewMeta`）、第 15 条（保留期交给 page、下限）、第 19 条（恢复与撤销在单元之前从大到小解析）、第 21 条（最后一跳）、第 23 条（恢复与撤销的任务在导入的队列上）、第 27 条（日志、回收站、版本的游标）、第 29 条（`OpRestore` 经编辑锁放行）、第 31 条（新的上限）。
+  - 13.1 第 1 条（`OpRestore`、撤销的单元、`TreeWrites` 的分批）、第 2 条（变更集的类型、`reverts_id`、`trimmed`）、第 4 条（新操作的码的次序）、第 5 条（清理同时锁条目与变更集，仍不等待；M7 设计 4.6 的那一句改写；asset 的观察者恢复已删的行）、第 6 条（截掉的标记、空变更集的清理、恢复的期限与保留期的下限）、第 8 条（新的扩展成员）、第 10 条（日志里没有 `q` 与名称）、第 11 条（新的端口与只凭连接池的 `asset.NewAttachmentInfos`）、第 15 条（保留期交给 page、下限）、第 19 条（恢复与撤销在单元之前从大到小解析）、第 21 条（最后一跳）、第 23 条（恢复与撤销的任务在导入的队列上）、第 27 条（日志、回收站、版本的游标）、第 29 条（`OpRestore` 经编辑锁放行）、第 31 条（新的上限）。
   - 13.2 第 1 条（恢复、撤销经树的写入队列）、第 19 条（这些列表用"按已读的页数重读"）、第 20 条（`Mod+Shift+F`）、第 23 条（`pages` 的处理表的新键、`refreshedOnConnect`）、第 25 条（比较与冲突列表的上限）。
   - 13.4 第 3 条（e2e 的数据库断言按模块：`page.ts`、`asset.ts`、`links.ts`、`transfer.ts`）、第 4 条（交错）、第 6 条（权限矩阵）、第 9 条（新查询的计划测试与无统计的测试）。
 
@@ -322,12 +323,12 @@ Nerve 没有历史与搜索（只读核对：`nerve-project/server` 里没有 `p
 
 改前面 M 的扩展点与代码（12.1 第 6 条的例外，逐项写明）：
 
-- page：`domain.Change` 加 `Restored`（`Then` 保留它）；`OpRestore`；`Write` 加 `Kind`、`RevertsID`；`TreeWrites` 加 `RestoreBatch`、`RevertBatch` 与它们的读；读已删的节点与正文；`Paths` 的来源变体（回收站里的页的渲染）；`changesets`、`changeset_items`、`nodes`、`page_revisions` 的迁移；清理语句；`LockChangeset` 认出被撤销的变更集。
-- asset：观察者加恢复（`NodesRestored`）；只凭连接池的 `asset.NewMeta`。
-- linking：视图的解析在来源已删时用来源的原路径。
+- page：`domain.Change` 加 `Restored`（删除的时刻与是否附件；`Then` 保留第一项的）；`OpRestore`；`Write` 加 `Kind`、`RevertsID`；`TreeWrites` 加 `RestoreBatch`、`RevertBatch` 与它们的读；读已删的节点与正文；渲染路径的 `PageRef.Deleted` 与给 linking 的 `SourcePath`（回收站里的页的渲染）；`changesets`、`changeset_items`、`nodes`、`page_revisions` 的迁移；清理语句；`LockChangeset` 认出被撤销的变更集。
+- asset：观察者加恢复（`NodesRestored`）；只凭连接池的 `asset.NewAttachmentInfos`。
+- linking：`Page.Deleted` 与 `Pages.SourcePath`，视图的解析在来源已删时用来源的原路径。
 - transfer：`transfer_jobs` 的类型、`changeset_id`、`target_changeset_id`、一本笔记本一个写入任务的索引；导入的分批抽出共用；导入报告的 `changeset_id`。
 - notebook、workspace：`VisibleNotebooks`、成员资格接给 page（只接线）。
-- 平台：`PurgeConfig.Clock`；`jobs.purge_retention` 的下限；`InstanceInfo.trash_retention_seconds`。
+- 平台：`jobs.purge_retention` 的下限；`InstanceInfo.trash_retention_seconds`。
 - 前端：`PageTreeStore.removed` 的去掉规则；`pages` 的处理表的新键；右栏 `PagePanel` 加一节；`ConflictDiff` 改用新的比较；快捷键的新判断；删除确认框的文字。
 
 ## 9. 测试策略
@@ -346,7 +347,7 @@ Nerve 没有历史与搜索（只读核对：`nerve-project/server` 里没有 `p
   - HI3：日志按人与页面筛选；撤销一次编辑会话的正文；撤销一次改名（被改写的链接一并回到原样，`links` 事件到达）；冲突时列出冲突的节点。
   - HI4：撤销一次删除（同一个标签页里删除再撤销，树里看得到、打开得了）；撤销的撤销。
   - HI5：从导入任务的"在历史里查看"进入，撤销一次导入（后台任务），导入的最上层节点进回收站。
-  - TB1：删除带附件的子树，回收站列出；预览页的链接解析；恢复之后附件照常下载、链接索引恢复；原父节点不在时恢复到根下、同名时加序号；同一个标签页里删除再恢复，树里看得到。
+  - TB1：删除带附件的子树，回收站列出；预览页的链接解析；恢复之后附件照常下载、链接索引恢复；原父节点在回收站里时恢复到根下、同名时加序号；同一个标签页里删除再恢复，树里看得到。
   - TB2：恢复一个超过一个单元的子树，任务的进度与报告。
   - SE1：中文 2 字、3 字以上、中英混合与英文的搜索，标题与正文命中，摘要片段；附件按名称，打开它所在的位置；删除之后不再出现，恢复之后回来。
   - SE2：看不到的笔记本里的页不出现；限定笔记本；访客。
@@ -390,7 +391,7 @@ M8 开工时负责人确认进入 M8（2026-10-13："可以了，开始 M8 吧"�
 | P | Phase 文档 | 状态 | 审查 | 合并 |
 |---|---|---|---|---|
 | P1 版本 | [01-P1](01-P1-versions.md) | 进行中（A 已合并） | [P1A](reviews/P1A-versions-server-review.md) | A `12fc5d7` |
-| P2 回收站 | — | 未开始 | — | — |
+| P2 回收站 | [02-P2](02-P2-trash.md) | 进行中（设计已审查） | [设计](reviews/P2-design-review.md) | — |
 | P3 日志与整组撤销 | — | 未开始 | — | — |
 | P4 后台的恢复与撤销 | — | 未开始 | — | — |
 | P5 搜索 | — | 未开始 | — | — |
@@ -403,3 +404,4 @@ M8 开工时负责人确认进入 M8（2026-10-13："可以了，开始 M8 吧"�
 | 2026-10-13 | 初稿（`98fe84f`） | 移交 5 份、代码的现状（`b1e362b`） |
 | 2026-10-13 | 按设计审查修订：撤销按状态比较、对目标状态一次核对、按依赖应用；一个单元的界线与后台的恢复、撤销任务（transfer）；回收站的根的标记、预览的路由与链接的解析；清理截掉的标记不等待；保留期的下限与清理的时钟；附件的信息与工作区的角色两个端口；单个变更集的读与回收站的单项；Web Worker 的比较；页面树的去掉规则；Phase 重排（搜索放到最后、后台任务独立成 P4） | [设计审查](reviews/M8-design-review.md) |
 | 2026-10-13 | P1A 完成：版本的元数据与正文一条语句读出；`RecordRevision` 只在变更集的版本停在这次写的 base 时更新（版本链的守卫），`checkPages` 核对链；4.2 的索引表加 `(reverts_id) WHERE reverts_id IS NOT NULL`（P3 建）、`trimmed` 的标记在 P3 做且不补记；4.10 写明分批写同一页时后一批在锁下自己发现别人的写 | P1A 的实施、审查与两轮修复核对：[01-P1-versions.md](01-P1-versions.md) 第 3、9 节、[P1A 审查](reviews/P1A-versions-server-review.md) |
+| 2026-10-13 | P2 设计：放置去掉"父节点不在"，组内同键加序号；附件的信息改名 `asset.NewAttachmentInfos`、`Deps.Attachments`；`Change.Restored` 带删除的时刻与是否附件，行数不符答 409；回收站里的页的链接经 `PageRef.Deleted` 与 `Pages.SourcePath` 解析，链到同组的页恢复之后才回来；根记下统计（数目是准确值），补值不读 `notebooks`，`DeleteNodes` 拒绝先删子孙再删祖先；单项带 `notebook_id`、`revision` 与附件信息；锁下另核对版本链；解析的等待合计有界；只有一页的组不受页数、字节、链接三项限制，链接的 422 可能排在 503 之后；不加清理的时钟；回收站的入口、确认框的天数与附件的"打开"；码的次序与文件名、`getInstance`、共用的 `UserRef` | [02-P2-trash.md](02-P2-trash.md) 第 2.1 节、[P2 设计审查](reviews/P2-design-review.md) |
