@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"os"
+	"strings"
 	"testing"
 	"time"
 	"uuid"
@@ -192,29 +193,39 @@ func TestRestoringAndPurgingAtTheEndOfThePeriod(t *testing.T) {
 }
 
 // A restore and a purge whose clock is ahead, which takes the item's
-// items, versions and contents while the restore waits for the notebook:
-// under the lock the restore finds them gone, page.trash_changed, and
-// restores nothing.
+// items and versions, then its contents, while the restore waits for the
+// notebook: under the lock the restore finds them gone, page.trash_changed,
+// and restores nothing. A purge between its versions and its contents
+// leaves the group as the restore read it: the counts of what came back
+// tell (M8/P2 design 3.5).
 func TestRestoringWhatThePurgeTakes(t *testing.T) {
-	tm := newAcmeTeam(t, "member", "")
-	nb := tm.openNotebook(t, "alice", "Eng")
-	r := tm.createPageWith(t, "alice", nb, "", "R", "# R")
-	tm.send(t, nodeDeletion("alice", r), http.StatusNoContent)
-	holder := tm.holdNotebook(t, nb)
-	got := tm.waitingFor(t, "notebooks", nodeRestore("bob", r), func() {
-		if err := tm.purgeBefore(t, time.Now().Add(2*time.Hour), "changeset_items", "page_revisions", "page_contents")(); err != nil {
-			t.Errorf("the purge: %v", err)
-		}
-		commit(t, holder)
-	})
-	if !got.is(http.StatusConflict, "page.trash_changed") {
-		t.Errorf("the restore = %d %s, want 409 page.trash_changed", got.status, got.body)
+	for _, tables := range [][]string{{"changeset_items", "page_revisions", "page_contents"}, {"changeset_items", "page_revisions"}} {
+		t.Run(strings.Join(tables, ", "), func(t *testing.T) {
+			tm := newAcmeTeam(t, "member", "")
+			nb := tm.openNotebook(t, "alice", "Eng")
+			r := tm.createPageWith(t, "alice", nb, "", "R", "# R")
+			tm.send(t, nodeDeletion("alice", r), http.StatusNoContent)
+			holder := tm.holdNotebook(t, nb)
+			got := tm.waitingFor(t, "notebooks", nodeRestore("bob", r), func() {
+				if err := tm.purgeBefore(t, time.Now().Add(2*time.Hour), tables...)(); err != nil {
+					t.Errorf("the purge: %v", err)
+				}
+				commit(t, holder)
+			})
+			if !got.is(http.StatusConflict, "page.trash_changed") {
+				t.Errorf("the restore = %d %s, want 409 page.trash_changed", got.status, got.body)
+			}
+			if n := count(t, tm.pool, "SELECT count(*) FROM nodes WHERE id = $1 AND deleted_at IS NOT NULL", r) +
+				count(t, tm.pool, "SELECT count(*) FROM changesets WHERE kind = 'trash_restore'"); n != 1 {
+				t.Errorf("R deleted and the restores' changesets: %d, want R alone", n)
+			}
+			// The purge's next run takes the rest.
+			if err := tm.purgeBefore(t, time.Now().Add(2*time.Hour))(); err != nil {
+				t.Fatalf("the purge: %v", err)
+			}
+			tm.checkTrash(t)
+		})
 	}
-	if n := count(t, tm.pool, "SELECT count(*) FROM nodes WHERE id = $1 AND deleted_at IS NOT NULL", r) +
-		count(t, tm.pool, "SELECT count(*) FROM changesets WHERE kind = 'trash_restore'"); n != 1 {
-		t.Errorf("R deleted and the restores' changesets: %d, want R alone", n)
-	}
-	tm.checkTrash(t)
 }
 
 // A restore and the purge of an attachment's row (M7 handoff, item 2): the
