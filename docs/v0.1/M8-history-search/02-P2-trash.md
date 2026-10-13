@@ -539,66 +539,81 @@ SELECT node_id, mime, byte_size FROM asset_blobs WHERE node_id = ANY(sqlc.arg(no
 
 | 文件 | 内容 |
 |---|---|
-| `web/apps/web/src/services/page.service.ts` | `trash`、`trashItem`、`restoreNode` 与类型（`TrashItem`、`TrashItemPage`、`NodeRestored`） |
-| `web/apps/web/src/stores/page-tree.store.ts` | `removed` 记下答复时读的序号与去掉规则；`restore`（按节点一个一个、经写入队列）；`trash`、`trashItem` 读 |
+| `web/apps/web/src/services/page.service.ts` | `trash`（每页 50 项，游标）、`trashItem`、`restoreNode`（POST，没有请求体）与类型（`TrashItem`、`TrashItemPage`、`NodeRestored`） |
+| `web/apps/web/src/stores/page-tree.store.ts` | `removed` 记下答复时读的序号与去掉规则；`restore`（按节点一个一个、经写入队列；之后的树的读失败而页仍在 `removed` 里时再读一次）；`trash`、`trashItem` 读 |
 | `web/apps/web/src/lib/read-pages.ts` | "按已读的页数重读"，回收站的列表用（反链与版本列表的两份私有实现不动，留给 v0.1 之后的打磨） |
-| `web/apps/web/src/pages/page/version-view.tsx` | 从 P1B 的 `version-page.tsx` 移出的只读阅读视图（参数是页 id、版本号与名称）与 `useLeftBehind`（版本页与预览共用） |
-| `web/apps/web/src/pages/notebook/trash-page.tsx`、`trash-row.tsx` | 回收站页 |
-| `web/apps/web/src/pages/notebook/trash-preview.tsx` | 预览 |
-| `web/apps/web/src/pages/notebook/notebook-places.tsx`、`notebook-layout.tsx` | 左栏的入口（P3 再加"历史"） |
+| `web/apps/web/src/lib/twins.ts` | `twinsOf(list, keyOf)`（另有一项与它同键的项）与 `shortId`（id 的末六位）：回收站与无主笔记本的清单共用（`ownerless-row.tsx`、`ownerless-page.tsx` 改用它，审查 C 的细节） |
+| `web/apps/web/src/pages/page/version-view.tsx` | 从 P1B 的 `version-page.tsx` 移出的只读阅读视图 `VersionView`（参数是笔记本、页 id、版本号与名称）与 `useLeftBehind`（版本页与预览共用；`version-page.tsx` 只留 `useLeftRevision`） |
+| `web/apps/web/src/pages/notebook/trash-page.tsx`、`trash-row.tsx` | 回收站页；`trash-row.tsx` 另有列表与预览共用的部分：一项的信息 `TrashFacts`，恢复 `useTrashRestore` 与按钮 `RestoreButton`，同名的区分 `twinsIn` 与名称 `namesOf`，拒绝的说明 `refusalText`，"打开"的去处 `openOf` |
+| `web/apps/web/src/pages/notebook/trash-preview.tsx` | 预览：`PreviewShell`（随地址里的节点挂载，持有从这里恢复的结果）、`Preview`、说明页 `NotInTrash` 与 `Gone` |
+| `web/apps/web/src/pages/notebook/notebook-places.tsx`、`notebook-layout.tsx` | 左栏的入口 `NotebookPlaces`，与页面树在同一个按笔记本挂载的门户里（P3 再加"历史"） |
 | `web/apps/web/src/app/routes.tsx` | `notebooks/:id/trash`、`trash/:nodeId` |
 | `web/apps/web/src/events/handlers.ts`、`app/event-stream.tsx` | 新键的重读、连上时的重读 |
-| `web/apps/web/src/pages/notebook/page-tree.tsx`、`page-tree-item.tsx`、`pages/page/attachments-section.tsx` | 删除确认框；期限在 `PageTree` 读一次 |
+| `web/apps/web/src/pages/notebook/page-tree.tsx`、`page-tree-item.tsx`、`pages/page/attachments-section.tsx` | 删除确认框；期限在 `PageTree` 读一次，经 `TreeContext` 交给各行的菜单；附件一节的 `useLocated`（路由状态点名的附件那一行取得焦点） |
 | `web/apps/web/src/i18n/format.ts` | `formatPeriod` |
-| `web/apps/web/src/pages/page/attachment-row.tsx` | 导出类型图标（`AssetIcon`），预览的附件行用；路由状态里点名的附件一行取得焦点 |
-| `web/apps/web/src/pages/page/unresolved-link.tsx` | 只读视图的说明不只说"版本" |
-| `web/apps/web/src/i18n/messages/{zh-CN,en}.ts` | 文字（前缀 `trash.`） |
-| `web/apps/web/src/test/page-server.ts` | 假接口的回收站路由 |
+| `web/apps/web/src/pages/page/attachment-row.tsx` | 导出类型图标 `AssetIcon`（预览的附件用）、路由状态 `Located`（`{attachment: id}`）与 `locatedOf`；行的链接带 `data-attachment` |
+| `web/apps/web/src/pages/page/breadcrumbs.tsx` | `BreadcrumbTrail`：`Breadcrumbs` 与预览的面包屑共用（审查 C 的细节） |
+| `web/apps/web/src/pages/page/unresolved-link.tsx` | 只读视图的说明不只说"版本"（`unresolved.readOnly`） |
+| `web/apps/web/src/i18n/messages/{zh-CN,en}.ts` | 文字（前缀 `trash.`；附件类型的名称 `asset.kind.*`） |
+| `web/apps/web/src/test/trash-server.ts`、`test/page-server.ts` | 假接口的回收站（`trash-server.ts`，从 `page-server.ts` 移出，审查 C 的细节）与它的开关（4.6） |
 
 ### 4.2 回收站页
 
-- 路由 `/:slug/notebooks/:id/trash`，在笔记本的外壳里、页面的外壳之外（页面的外壳对不在树里的页答 404）。文档标题"回收站 · 笔记本名"；标题 `h1`"回收站"。
-- 列表：SWR 键 `["trash", nb]`，`readPages`（每页 50 项，"更多"用 `useLoadMore`）；列表有名称；每项一行：类型图标、名称（链到预览）、原位置（"原位置：A / B"，根下写"笔记本首页"）、删除者与相对时刻、"可恢复至 …"（`restorable_until` 的完整时刻）、"含 N 个页面、M 个附件"、恢复到哪里（"恢复到「Y」下"，原来就在根下时"恢复到笔记本首页"；"恢复到根下：原上级页面在回收站里"；"恢复到根下：放回原处会超过 10 层"）。
-- **同名的项**：已读到的项里名称与原位置都相同的（`twinsOf`，同无主笔记本的清单），按钮与名称链接的可及名称加删除时刻，"恢复「X」（原位置：A / B，删除于 …）"；不同名的只带原位置。
-- 写者的按钮"恢复「X」（原位置：A / B）"：`pages.restore(id)`。它在恢复出去期间 `aria-disabled` 且 `aria-busy`；store 里同一节点的恢复一个一个来（`oneAtATimeById`，同 P1B 的还原），连点两下只发一个请求。
-  - 不论答什么（200、409、422、403、404），之后都重读 `["trash", nb]` 与缓存里的 `["trash-item", nb, id]`：不只靠事件（事件流断开、重连时，列表会留着已恢复的项）。
-  - 成功：留在回收站，状态行"已恢复「X」到「Y」下 [打开]"（改名时"已恢复为「X 2」…"），焦点回到 `h1`（同无主笔记本的接管）；`<output>` 先空着渲染、答复之后再填字（同 P1B 的页面外壳），读屏才会念出。"打开"：页去它的页面；附件去它所在的位置：父页的页面、附件一节里它那一行取得焦点（路由状态点名它），根下的去笔记本首页的附件一节（同 00-M8 4.12 的搜索结果，P5 照用）。
-  - 409 `page.not_in_trash`、`page.trash_changed`：说明"这一项在这期间变了"；`page.restore_expired`：说明已过期限；`page.not_trash_root`（P2 里不会有，P3、P4 之后可能）：说明它已并入另一项；422：说明"这一项太大（N 个页面、M 个附件），不能在这里恢复"（P4 改为问是否在后台进行；P2A 之后 422 也可能来自历史的行数，3.11 的 `MaxUnitHistory`，页数与附件数都不大时同样答它，文字由 B 定）；503：照现有的忙的说明。
+- 路由 `/:slug/notebooks/:id/trash`，在笔记本的外壳里、页面的外壳之外（页面的外壳对不在树里的页答 404）。文档标题"回收站 · 笔记本名"；标题 `h1`"回收站"，其下一句说明。
+- 列表：SWR 键 `["trash", nb]`，`readPages` 读回缓存里已有的页数（每页 50 项）；"更多"用 `useLoadMore`（焦点到加进来的第一项，读完时按钮离开），只接在它读的游标仍是最后一页的 `next_cursor` 时，接上时有重读在途的再整体读一次（同反链）；失败在按钮旁说明，可以再按。列表有名称；每项一行：类型图标、名称（链到预览）、原位置（"原位置：A / B"，根下写"原位置：笔记本首页"）、"X 删除 · 相对时刻"（`<time>` 的提示是完整时刻）、"可恢复至 …（`restorable_until` 的完整时刻） · 含 N 个页面、M 个附件"、恢复到哪里（"恢复到「Y」下"，原来就在根下时"恢复到笔记本首页"；"恢复到根下：原上级页面在回收站里"；"恢复到根下：放回原处会超过 10 层"）。这些信息与预览共用（`TrashFacts`）；相对时刻在渲染时算，页面开着时不走（打磨）。
+- **同名的项**：已读到的项里名称与原位置都相同的（`twinsOf`，与无主笔记本的清单共用 `lib/twins.ts`），按钮与名称链接的可及名称加删除时刻，"恢复「X」（原位置：A / B，删除于 …）"；删除时刻到分钟也相同的（一分钟里删除、重建、再删除）再加 id 的末六位，"…，删除于 …，编号 000140"，行上同样写出"编号 000140"（`twinsIn`，13.2 第 17 条，审查 A-M4、B-2）。不同名的只带原位置。只在已读的项里区分：后面一页的同名，"更多"读到之后才知道（打磨）。
+- 写者的按钮"恢复「X」（原位置：A / B）"：`pages.restore(id)`。它在恢复出去期间 `aria-disabled` 且 `aria-busy`，再按什么也不发；store 里同一节点的恢复一个一个来（`oneAtATimeById`，与 P1B 的还原共用一队），连点两下只发一个请求。被拒而行留着时按钮不再忙（审查 B-5）。
+  - 不论答什么（200、409、422、403、404），之后都重读 `["trash", nb]` 与 `["trash-item", nb, id]`（`useTrashRestore` 的 `finally`；单项只在挂着时真的读）：不只靠事件（事件流断开、重连时，列表会留着已恢复的项）。每个 `mutate` 都带 `.catch`：登录的缓存已经没了时它拒绝，页面也随之没了（P1B 核对第三轮 R3-1）。
+  - 成功：留在回收站。状态行是先空着渲染、答复之后再填字的 `<output>`（同 P1B 的页面外壳），读屏才会念出："已恢复「X」到「Y」下。 打开"（根下"已恢复「X」到笔记本首页。"；改名时"已恢复为「X 2」，在「Y」下：那里已有同名的页面或附件。"）；Y 取恢复之后重读的树里的名称（列表读到之后改过名的，照现在的）。焦点到 `h1`，`h1` 的 `aria-describedby` 指向状态行：只在读者从按下起没有动作、焦点仍在按下的控件、`body` 或 `h1`（行随恢复离开时交给它）上时（`watchReader`，13.2 第 26 条，审查 A-M2）。"打开"：页去它的页面（`arrived`）；附件去它所在的位置：父页的页面，根下的去笔记本首页，路由状态 `Located` 点名它（同 00-M8 4.12 的搜索结果，P5 照用）。附件一节的 `useLocated` 在一次读到的列表有它那一行时把焦点交给那一行；只认附件一节出现之后的读（缓存里从前的列表可能还没有它），这样的一次读里没有它（在后面的页上）时交给这一节的标题；读者其间有动作、或焦点已不在 `body` 时都不动（照 `useArriving`，审查 B-1、B-7）。
+  - 拒绝的说明在列表之上（`Alert`）：409 `page.not_in_trash`、`page.trash_changed`："「X」在这期间变了：回收站已按它现在的样子显示。"；`page.restore_expired`：已过可以恢复的期限；`page.not_trash_root`：它已随上面的页面再次删除、并入了那一项，请恢复那个页面（P2 里就会有：别人恢复了它、之后又删除它的上级，审查 A 的实验；原写的"P2 里不会有"不对）；422：一句覆盖每一种界线（页面、附件、正文、链接与历史版本：422 不说越过的是哪一个），带页数与附件数（审查 A-M3、修复核对 N3；P4 改为问是否在后台进行）；503：照现有的忙的说明。
   - 403（这期间被降为读者）、404（笔记本没了或看不到了）：`errorText`，并重读 `["notebooks", ws]`（同无主笔记本页的 `refused()`）。
+  - 行带着焦点（名称的链接或"恢复"）离开时（恢复了、重读拿走了、降为读者），焦点交给 `h1`（`useFocusLeaving`）；行留着时焦点留在"恢复"上。
 - 读者只看列表与预览。
 
 ### 4.3 预览
 
-- 路由 `/:slug/notebooks/:id/trash/:nodeId`；SWR 键 `["trash-item", nb, nodeId]`。文档标题"X · 回收站 · 笔记本名"。单项的 `notebook_id` 与地址里的笔记本不同时答 `NotFoundPage`（别的笔记本的项不在这本的外壳里显示）。
-- 页：信息（原位置、删除者与时刻、期限、数目、恢复到哪里），一句说明"这是回收站里的页，链接按今天的树解析，链到同一次删除的页要恢复之后才回来"（3.7），下面是 `VersionView`（`getPageVersionView(nodeId, item.revision)`，键 `["page-version-view", nb, nodeId, revision]`，P1B 的重读规则照用：`tree: true` 时重读；`links` 事件不会点到回收站里的页，它没有索引）：只读，不能勾任务，未解析的链接只说明"这是只读的视图"。离开预览时 `useLeftBehind` 把这一页的视图从缓存去掉（几十个预览不把各自的 HTML 留在内存里、也不在每次 `tree: true` 时重读）。
-- 附件：名称、类型（`assetKind` 的文字与图标）、大小（`formatBytes`），"恢复之后可以下载"；不签发地址。
+- 路由 `/:slug/notebooks/:id/trash/:nodeId`；地址里的节点 id 不是 UUID 时显示 `NotFoundPage`，不读（审查 A-N1，同版本页的版本号）。SWR 键 `["trash-item", nb, nodeId]`。文档标题"X · 回收站 · 笔记本名"；面包屑"笔记本名 / 回收站 / X"（`BreadcrumbTrail`）。读到的单项（200）的 `notebook_id` 与地址里的笔记本不同时答 `NotFoundPage`，之后的读答什么都不改变它（别的笔记本的项不在这本的外壳里显示，审查 A-N3）。
+- 标题 `h1`（类型图标与名称）、与列表的行相同的信息（`TrashFacts`）、写者的"恢复"（名称只带原位置：页上只有这一项）。
+- 页：一句说明"这是回收站里的页，链接按今天的树解析，链到同一次删除的页要恢复之后才回来"（3.7），下面是 `VersionView`（`getPageVersionView(nodeId, item.revision)`，键 `["page-version-view", nb, nodeId, revision]`，P1B 的重读规则照用：`tree: true` 时重读；`links` 事件不会点到回收站里的页，它没有索引）：只读，不能勾任务，未解析的链接只说明"这是只读的视图"。离开预览时 `useLeftBehind` 把这一页的视图从缓存去掉（几十个预览不把各自的 HTML 留在内存里、也不在每次 `tree: true` 时重读）。
+- 附件：名称、类型（`assetKind` 的文字；标题旁是它的图标）、大小（`formatBytes`），"恢复之后可以下载"；不签发地址。
 - 页的 `revision` 为空、附件的 `asset` 为空（期限之内不会有：正文或行已被清理）：显示"无法预览"，不去读视图。
-- 写者的"恢复"：流程与答复同列表；成功之后回到回收站页（路由状态带状态行），焦点在 `h1`。
-- `page.not_trash_root`：`replace` 到 `root_id` 的预览；`page.not_in_trash`：说明"它已不在回收站里"并给出打开它的链接（树里有它时）；`page.restore_expired`：说明并给回收站的链接；404：`NotFoundPage`。
+- 写者的"恢复"：流程与答复同列表（`useTrashRestore`）。结果由 `PreviewShell` 持有（在途、已恢复、被拒）：它随地址里的节点挂载，`Preview` 与说明页都在它之下。恢复在途时它不理会单项的读答的错误，留着显示的那一项（SWR 在读失败时留着数据）：恢复自己的 `pages` 事件（`tree: true`）与答复几乎同时到达，立即重读挂着的单项，答 409 `page.not_in_trash` 比 store 在恢复之后对整棵树的读先到；不这样，预览会换成"它已不在回收站里"，焦点掉到 `body`，回不到回收站（审查 A-I1、C-I1：对着真的服务端六次都如此）。成功时 `PreviewShell` 自己 `<Navigate>` 到回收站（路由状态 `arrived` 与 `restored`），不论单项读到什么；回收站说出状态行，焦点在它的 `h1`。用户其间离开了的（`PreviewShell` 已卸载）不再跳转。单项照 4.2 在每次答复之后重读。
+- 被拒：重读之后单项还在（422、503、项还在的 `page.trash_changed`）时，原因说在视图之上（`Alert`，描述 `h1`），视图留着，焦点留在"恢复"；单项随之不在（`not_in_trash`、`restore_expired`）时换成下面的说明页，原因同样说出、描述说明页的 `h1`（只说码相同的拒绝，不说之前别的原因的）；被换下的 `Preview` 带着焦点离开时（`useFocusLeaving` 记下），说明页的 `h1` 在焦点落到 `body` 时取得它（审查 A-M1）。原因的 `Alert` 由 `PreviewShell` 渲染一次，换成说明页时同一个元素留在文档里，只播报一次（修复核对 N2）；再按"恢复"时清掉。
+- `page.not_trash_root`（被拒之后、事件的重读，或直接打开组员的地址）：`replace` 到 `root_id` 的预览，路由状态 `merged`；那一项的预览在 `Alert` 里说"你打开的内容已随它上面的页面再次删除，现在是这一项的一部分，随这一项一起恢复"，描述它的 `h1`。跳转不带 `arrived`（别人的改动也会引起它，焦点在别处时不动），预览挂载时焦点在 `body` 才给它的 `h1`（修复核对 N1）。
+- `page.not_in_trash`：说明页（`h1`"回收站"，文档标题"回收站 · 笔记本名"）说"它已不在回收站里"，树里有它时给出"打开它"（页去它的页面，附件去它所在的位置，同"打开"），另有"回到回收站"；说明页挂着时读一次树，这本笔记本的树里没有它（别的笔记本的节点）时答 `NotFoundPage`，树读不到时不判断（审查 A-N3）。`page.restore_expired`：同样的说明页，说已过期限，给回收站的链接（别的笔记本的、过了期限的项，直接打开、从没读到时也这样说：409 不带笔记本）。404：`NotFoundPage`。直接打开的说明页不取焦点。
 
 ### 4.4 页面树
 
-- `removed` 改为 `Map<string, {to: string | null; after: number}>`：`remove` 在删除的答复之后记下 `after = readsStarted`；`read()` 保留一次读（`readKept`）时，`read > after` 且这次读把它列为活着的页的条目去掉（与替换 `nodes` 同一个 `runInAction`，`sameNodes` 时也做）。同步恢复、别的标签页与别人的恢复、P4 的任务、P3 的撤销都是"之后的一次读列出它"，一条规则覆盖；早于答复开始的读去不掉它（它被 `changesAnswered` 丢弃或 `read ≤ after`）。`removedTo` 答 `entry?.to`。
-- `restore(id)`：`this.restores(id, () => this.write(() => this.service.restoreNode(id)))`：同一节点一个一个来，再经树的写入队列（13.2 第 1 条）；422 与 409 不记什么。
+- `removed` 改为 `Map<string, {to: string | null; after: number}>`：`remove` 在删除的答复之后记下 `after = readsStarted`；`read()` 保留一次读（`readKept`）时，`read > after` 且这次读把它列为活着的页的条目去掉（与替换 `nodes` 同一个 `runInAction`，`sameNodes` 时也做）。同步恢复、别的标签页与别人的恢复、P4 的任务、P3 的撤销都是"之后的一次读列出它"，一条规则覆盖；删除自己的那次读（`read = after + 1`）就算（审查 C-M1 的测试）；早于答复开始的读去不掉它（它被 `changesAnswered` 丢弃或 `read ≤ after`）。`removedTo` 答 `entry?.to`。
+- `restore(id)`：`this.restores(id, () => this.write(() => this.service.restoreNode(id)))`：同一节点一个一个来，再经树的写入队列（13.2 第 1 条）；422 与 409 不记什么。它在恢复之后的那次树的读答复之后才结束；那次读失败而页仍在 `removed` 里时再读一次，不然"打开"会去被删子树的父页（审查 C 的细节 1；树一直读不到时照旧）。
 
 ### 4.5 删除确认框与左栏的入口
 
-- 页面与附件两个确认框的正文改为"移到回收站，{period}内可以恢复；能读这本笔记本的人在回收站里仍看得到它。"（附件另加"嵌入它的页面会显示它缺失"）；子页面与附件数目的两句不变（PG4、AS4 的断言照旧）。`{period}` 来自 `InstanceInfo.trash_retention_seconds`：`formatPeriod` 满一天写整天数、不满写整小时数，都向下取整（不把期限说长；默认写"59 天"）；信息未读到时用不带期限的一句。页面的确认框不在每一行读 `InstanceInfo`：`PageTree` 读一次（`useSWR("instance")`），经属性交给各行的菜单；附件一节已经读它。
-- 左栏：`NotebookLayout` 的栏里，页面树之后一个单独的 `<nav aria-label="{notebook} 的更多">`，`NavItem`"回收站"。不放进页面树的 `nav`：vitest 的帮助函数与 e2e 的 `treeTitles()` 把那里的每个链接当作页面。
+- 页面与附件两个确认框的正文改为"移到回收站，{period}内可以恢复；能读这本笔记本的人在回收站里仍看得到它。"（附件另加"嵌入它的页面会显示它缺失"）；子页面与附件数目的两句不变（PG4、AS4 的断言照旧）。`{period}` 来自 `InstanceInfo.trash_retention_seconds`：`formatPeriod` 满一天写整天数、不满写整小时数，都向下取整（不把期限说长；默认写"59 天"）；信息未读到时用不带期限的一句（"移到回收站，在那里可以恢复；…"）。页面的确认框不在每一行读 `InstanceInfo`：`PageTree` 读一次（`useSWR("instance")`），经 `TreeContext` 的 `period` 交给各行的菜单；附件一节已经读它。
+- 左栏：`NotebookLayout` 把页面树与 `NotebookPlaces` 放进同一个按笔记本挂载的门户，页面树之后一个单独的 `<nav aria-label="{notebook}的更多">`（英文 "More of {notebook}"），`NavItem`"回收站"带 `end`：只在回收站页上是当前的，预览上不是（预览的面包屑把它放在回收站之下，审查 A-N2）。不放进页面树的 `nav`：vitest 的帮助函数与 e2e 的 `treeTitles()` 把那里的每个链接当作页面。
 
 ### 4.6 事件、列表的模式与测试
 
 - 事件：`pages` 的 `tree: true` 经 `refresher` 重读 `["trash", nb]` 与这本笔记本的 `["trash-item", nb, *]`；`refreshedOnConnect` 的最内一层加 `trash`、`trash-item`。
 - `readPages` 新放在 `lib/read-pages.ts`，只给回收站的列表用；13.2 第 19 条按 4.13 改写（"按已读的页数重读"）。
-- **vitest**：`readPages`；`PageTreeStore`：`removed` 被之后的读去掉、不被之前的读去掉、恢复经队列、同一节点的第二次恢复排在第一次之后、422 不记；回收站页：行的文字与名称、放置的四种、同名的项的可及名称、"更多"、恢复的每种答复（200、409 四种、422、503、403、404）与焦点、每种答复之后列表重读（事件流断开时）、连点两下只发一个请求、恢复的附件的"打开"去它所在的位置、读者没有按钮、事件与连上时的重读；预览：页的阅读视图以单项的版本号读、离开时视图的键从缓存去掉、附件的信息、"无法预览"、`notebook_id` 不符时的 `NotFoundPage`、`not_trash_root` 的跳转、`not_in_trash`、期限、预览里的恢复回到回收站并带状态行与焦点；删除确认框的文字与期限、未读到时的文字；`formatPeriod`；左栏的入口不在树的 `nav` 里；经组合根到达。
+- 假接口（`test/trash-server.ts`）只答网页到得了的，码照服务端的次序：404 → 403 → 409 `page.not_in_trash`、`page.not_trash_root`（带 `root_id`）、`page.restore_expired` → 422 的界线（节点、历史，多于一页时页数与字节）→ 409 `page.trash_changed`（`purged`）→ 503 → 422 的链接；放置按现在的树（活着的与回收站里的页）算，码相争的两处各有 `test.each`。测试用的开关：`restoresHeld`、`restoresBusy`、`trashWaits`（按住列表与单项的读）、`trashDown`（读不到，答 500）、`restoreElsewhere`、`trashNode`（答可改的一项，测试设它的 `deletedAt`），每项的 `expired`、`purged`、`history`、`links`。
+- **vitest**：`readPages`；`PageTreeStore`：`removed` 被之后的读去掉、不被之前的读去掉、恢复经队列、同一节点的第二次恢复排在第一次之后、422 不记；回收站页：行的文字与名称、放置的四种、同名的项的可及名称、"更多"、恢复的每种答复（200、409 四种、422、503、403、404）与焦点、每种答复之后列表重读（事件流断开时）、连点两下只发一个请求、恢复的附件的"打开"去它所在的位置、读者没有按钮、事件与连上时的重读；预览：页的阅读视图以单项的版本号读、离开时视图的键从缓存去掉、附件的信息、"无法预览"、`notebook_id` 不符时的 `NotFoundPage`、`not_trash_root` 的跳转、`not_in_trash`、期限、预览里的恢复回到回收站并带状态行与焦点；删除确认框的文字与期限、未读到时的文字；`formatPeriod`；左栏的入口不在树的 `nav` 里；经组合根到达。审查之后另加：从预览恢复时恢复自己的事件先重读单项（事件流连着、树的读按住，A-I1）；预览的拒绝让单项不在时的原因与焦点、`not_trash_root` 的跳转与说明、别人的改动引起的跳转不拿焦点（A-M1，修复核对 N1、N2）；读者动了不抢焦点（回收站页与 `useLocated`，A-M2、B-1）；同一分钟的同名与同一分钟里别的名称（A-M4、B-2、修复核对）；同层不同位置的同名（B-6）；"重试"（B-3）；"更多"的竞争、失败与 101 项（B-4）；按钮不再忙（B-5）；交给标题（B-7）；预览的拒绝在再按时清掉、说明页的文档标题、404 的焦点（B-9）；删除自己的那次读（C-M1）；恢复之后树的读失败（C 的细节 1）；地址不是 UUID、别的笔记本的项（A-N1、A-N3）；`end`（A-N2）；`twinsOf`、`BreadcrumbTrail`。
 - 删除确认框的旧断言随文字改：`attachments-section.test.tsx:634` 的整句。
 
 ### 4.7 e2e
 
-- **TB1**（`e2e/stories/trash/tb1-trash.spec.ts`；回收站是自己的一块，P4 的 TB2 也放这里；接口版本与页面版本都在 B 里做，照 P1 的 HI1、HI2）：
-  - 接口版本：PAT 建页（含链接）与附件，删除子树；数据库断言 `expectTrashRoot`（只有根有 `trash_root` 与统计，页数、附件数、层数对）；`listTrash` 列出它与数目；`getTrashItem` 的 `revision` 读视图，链接解析到活着的页；恢复：放回原处，数据库断言 `expectSubtreeRestored`、`expectAssetsRestored`（行活着、文件在）、`expectIndexedLinks`；`getAsset` 新签的地址下载 200；`pages` 与 `links` 事件到达；先删子页面、再删它的上级、恢复子页面 → 根下（`parent_in_trash`）；原位置新建同名的页之后恢复 → "名称 2"；一组以 `trashedAgo` 移到期限与清理的截止之间（删除于 `now − purge_retention + 30 分钟`：已过 `restorable_until`，又在清理的截止之后，e2e 每 2 秒一次的清理碰不到它）→ 列表不列、恢复 409 `page.restore_expired`。
-  - 页面版本：树的菜单删除（确认框写明回收站与天数）；左栏进回收站；打开预览，链接可以点到活着的页；从列表恢复，状态行与"打开"；同一个标签页里树中看得到它（`treeTitles` 轮询），打开它的页。
-- 夹具：`e2e/fixtures/trash.ts`（`listTrash`、`getTrashItem`、`restoreNode`、`trashPath`、`restoreWith`、`trashedAgo`：以一组的删除时刻为准整体移动，节点、正文、版本、条目、附件的行各 `deleted_at = deleted_at − interval WHERE deleted_at = T …`，不用每条语句的 `now()`，同 3.10）；`assert/page.ts` 的 `expectTrashRoot(db, rootId, {pages, assets, height})` 与 `expectSubtreeRestored(db, rootId, ids, restorerId, {parentId, name})`；`assert/asset.ts` 的 `expectAssetsRestored(db, storageDir, assets)`。
+- **TB1**（`e2e/stories/trash/tb1-trash.spec.ts`；回收站是自己的一块，P4 的 TB2 也放这里；接口版本、页面版本与预览版本都在 B 里做，照 P1 的 HI1、HI2）：
+  - 接口版本（TB1 (API)）：PAT 建页（含链接）与附件，删除子树；数据库断言 `expectTrashRoot`（只有根有 `trash_root` 与统计：页数 2、附件 1、层数 2；组的其余节点没有，个数等于统计）与 `expectAssetsDeletedWithNodes`；`listTrash` 恰列出这一项（`restorable_until − deleted_at` 是 5,180,400 秒），`getTrashItem` 相同，组员答 409 `page.not_trash_root` 带 `root_id`；以单项的 `revision` 读视图（`getVersionView`），链接解析到活着的页；恢复：`pages` 事件带 `tree: true` 与两页的版本号，`links` 事件到达；数据库断言 `expectSubtreeRestored`（放置与名称；节点活着、没有标记、由恢复者在变更集的时刻更新；正文、版本与条目活着；一个 `trash_restore` 变更集，每个节点一项恢复的条目）、`expectAssetsRestored`（行活着、文件在）、`expectIndexedLinks`；`getAsset` 新签的地址下载 200；先删子页面、再删它的上级、恢复子页面 → 根下（`parent_in_trash`）；原位置新建同名的页之后恢复 → "Notes 2"；带附件的一组（"Stale"，审查 B-8）以 `trashedAgo` 移到期限与清理的截止之间（删除于 `now − purge_retention + 30 分钟`：已过 `restorable_until`，又在清理的截止之后，e2e 每 2 秒一次的清理碰不到它），组仍完整（节点、正文、版本、条目、附件的行）→ 列表不列，单项与恢复都答 409 `page.restore_expired`，节点仍已删。
+  - 页面版本（TB1 (page)）：打开要删的页，从树的菜单删除（确认框写明回收站、59 天、子页面与附件的数目），外壳去它的上级；左栏的"{notebook}的更多"进回收站（标题、文档标题、行的文字）；打开预览，文章里的链接点到活着的页、返回，面包屑回到回收站；从列表恢复，状态行与"打开"，`h1` 取得焦点，列表空了；同一个标签页里树中看得到它（`treeTitles` 轮询），数据库断言；"打开"去它的页面，标题取得焦点。
+  - 预览版本（TB1 (preview)，审查 A-I1）：事件流以已有的 `holdStream` 按住到预览显示（连上时的重读读过单项，`refresher` 还没读过），在预览里恢复：地址回到回收站，状态行，`h1` 取得焦点，列表空了；`MutationObserver` 断言"它已不在回收站里"从没出现；数据库断言 `expectSubtreeRestored`；单项重读答的 409 按答复的个数声明（`failedToLoad(409)`）。
+- 夹具：`e2e/fixtures/trash.ts`（`listTrash`、`getTrashItem`、`restoreNode`、`trashPath`、`trashListed`、`restoreWith`、`trashedAgo`：以一组的删除时刻 T 为准整体移动，节点、正文、版本、条目、附件的行各 `deleted_at = T − interval WHERE deleted_at = T …`，一条带数据修改的 CTE 的语句，不用每条语句的 `now()`，同 3.10）；`assert/page.ts` 的 `expectTrashRoot(db, rootId, {pages, assets, height})` 与 `expectSubtreeRestored(db, rootId, ids, restorerId, {parentId, name})`；`assert/asset.ts` 的 `expectAssetsRestored(db, storageDir, assets)`；`fixtures/pages.ts` 的 `getVersionView`。
+
+### 4.8 实施时定下的与审查带来的
+
+三位审查者（A：回收站页、预览、数据流与无障碍；B：测试、假接口、e2e 与设计的符合；C：跨模块的接线与代码质量）与修复核对的处置见 `reviews/P2B-trash-web-review.md`。与上文最初的设计不同之处已改在各节里：
+
+- **实施时定下的**（设计没写或留了余地；实施者的偏离与审查 B 列出的"不在偏离里"的，A、B 判过）：假接口只答网页到得了的、码照服务端的次序，放置按现在的树算（4.6）；附件的"打开"经路由状态 `Located`（`attachment-row.tsx` 的 `locatedOf`，行的链接带 `data-attachment`），定位在附件一节的 `useLocated`：只认这一节出现之后的读，读到的列表里没有它时交给这一节的标题（4.2）；列表的行与预览共用 `TrashFacts`，相对时刻在渲染时算、不走（4.2，打磨）；状态行里上级页面的名称取恢复之后重读的树（4.2）；期限经 `TreeContext` 交给各行的菜单（4.5）；说明页（`not_in_trash`、`restore_expired`）有自己的 `h1`"回收站"与文档标题"回收站 · 笔记本名"（4.3）；左栏的 `nav` 名为"{notebook}的更多"（4.5）；夹具另有 `fixtures/pages.ts` 的 `getVersionView` 与 `trash.ts` 的 `trashListed`（4.7）。实施者的偏离 1（单项只在拒绝之后重读：成功时重读会让预览先说"它已不在回收站里"）随 A-I1 的修复去掉。
+- **审查与修复核对带来的**：从预览恢复的结果由 `PreviewShell` 持有，在途时留着显示的单项，成功时由它回到回收站，单项在每次答复之后重读（A-I1、C-I1，4.3）；预览的拒绝让单项不在时，说明页说出原因（只说一次）、它的 `h1` 接过离开的焦点；`not_trash_root` 跳到根的预览并说明，不带 `arrived`（A-M1，修复核对 N1、N2，4.3）；`page.not_trash_root` 在 P2 里就会有（4.2）；恢复之后的焦点与附件的定位看读者（`watchReader`，A-M2、B-1，4.2）；422 的一句覆盖每种界线（A-M3、修复核对 N3，4.2）；同一分钟删除的同名项带 id 的末六位（A-M4、B-2，4.2）；地址不是 UUID 时 404、不读，别的笔记本的项在 200 之后、在树里找不到时 404（A-N1、A-N3，4.3）；回收站的入口带 `end`（A-N2，4.5）；恢复之后树的读失败时再读一次（C 的细节 1，4.4）；`lib/twins.ts`、`BreadcrumbTrail`、`test/trash-server.ts`（C 的细节 3–5，4.1）；TB1 (preview) 与带附件的过期一组（A-I1、B-8，4.7）；测试的补足（B-3–B-7、B-9、C-M1、修复核对的三处缺口，4.6）。
 
 ## 5. 实施步骤
 
@@ -635,7 +650,7 @@ B（分支 `m8-p2b`，P1B 与 A 合并之后）：
 - **P2 的文档提交做的改动**（随本文档一起）：
   - `00-M8-design.md`：2.1 的 13 条。
   - `v0.1-design.md`（00-M8 第 7 节"随这份设计一起改的"里与 P2 有关的，至今没有改）：3.5 树操作加"从回收站恢复（3.10）"；3.10 改写为：删除的子树以同一个时刻进回收站，回收站列出它们的根；恢复时原父节点在回收站里或放回去太深就放到根下，标题冲突加序号；可以恢复的期限是 `jobs.purge_retention` 减 1 小时（默认约 60 天），之后由清理任务物理清除；6.1 的内嵌显示名的例外加 M8 的版本（执行者）与回收站（删除者），问题的扩展成员加 `root_id`；7.2 的 `nodes` 加 `trash_root` 与统计，`changeset_items` 加 `restored`、`revision`；12.4 的观察者一行加"M8（恢复时附件的行跟着节点恢复）"。
-  - v0.1 设计第 13 节的条目随实现改（A、B 各自的提交）：13.1 第 1 条（`OpRestore`、整步的条目、从上往下删）、第 4 条（三个操作的码的次序）、第 5 条（asset 的观察者恢复已删的行）、第 6 条（恢复的期限、保留期的下限）、第 8 条（`root_id`）、第 11 条（`asset.NewAttachmentInfos`）、第 15 条（保留期交给 page）、第 19 条（恢复在单元之前从大到小、等待合计）、第 21 条（最后一跳）、第 27 条（回收站的游标）、第 29 条（`OpRestore` 经编辑锁放行）、第 31 条（单元的界线），13.2 第 1、19、23 条（B），13.4 第 3、4、6、9 条。
+  - v0.1 设计第 13 节的条目随实现改（A、B 各自的提交）：13.1 第 1 条（`OpRestore`、整步的条目、从上往下删）、第 4 条（三个操作的码的次序）、第 5 条（asset 的观察者恢复已删的行）、第 6 条（恢复的期限、保留期的下限）、第 8 条（`root_id`）、第 11 条（`asset.NewAttachmentInfos`）、第 15 条（保留期交给 page）、第 19 条（恢复在单元之前从大到小、等待合计）、第 21 条（最后一跳）、第 27 条（回收站的游标）、第 29 条（`OpRestore` 经编辑锁放行）、第 31 条（单元的界线），13.2 第 1、15、16、17、19、23、26 条（B），13.4 第 3、4、6、9 条。
   - M7 设计 4.6（`00-M7-design.md:189`）"M8 的恢复锁同样的行，与清理串行"一句改为"M8 的恢复与清理以一小时的间隔分开（M8 设计 4.11）"。
   - `01-P1-versions.md` 3.6 的 `ChangesetAuthor` 改为 `UserRef`（实施时）。
   - README 的"软删除与清理"一段。
@@ -643,10 +658,10 @@ B（分支 `m8-p2b`，P1B 与 A 合并之后）：
 
 ## 8. 交给后面的 Phase
 
-- **P3**：撤销一次恢复用条目的 `restored`、`revision`；撤销里的恢复（C 删除的节点回来）同样设 `Change.Restored` 并清掉根的标记与统计；撤销里的删除经 `DeleteNodes` 记根与统计，**从上往下删**：一个单元里每棵要删的子树删一次、从它的最上层删，不先删子孙再删祖先（`DeleteNodes` 的 `stray` 会拒绝）；`DecidedAll` 与单元的界线共用（`DecidedAll(ctx, contents, tooLarge)` 的第三个参数是超过链接数时答的码，撤销传 `page.revert_too_large`；P2A 加的 `MaxUnitHistory` 量的是写回的版本与条目，撤销里恢复 C 删除的节点时同样要数）；`RecordItems` 一次只写一个变更集、一个时刻的条目，合并时保留第一次的 `restored`/`revision`；清理截掉的标记、空变更集的清理照 4.2（P2 没有标记被清理拿走的条目，3.5）。
+- **P3**：撤销一次恢复用条目的 `restored`、`revision`；撤销里的恢复（C 删除的节点回来）同样设 `Change.Restored` 并清掉根的标记与统计；撤销里的删除经 `DeleteNodes` 记根与统计，**从上往下删**：一个单元里每棵要删的子树删一次、从它的最上层删，不先删子孙再删祖先（`DeleteNodes` 的 `stray` 会拒绝）；`DecidedAll` 与单元的界线共用（`DecidedAll(ctx, contents, tooLarge)` 的第三个参数是超过链接数时答的码，撤销传 `page.revert_too_large`；P2A 加的 `MaxUnitHistory` 量的是写回的版本与条目，撤销里恢复 C 删除的节点时同样要数）；`RecordItems` 一次只写一个变更集、一个时刻的条目，合并时保留第一次的 `restored`/`revision`；清理截掉的标记、空变更集的清理照 4.2（P2 没有标记被清理拿走的条目，3.5）。网页：左栏的 `NotebookPlaces` 加"历史"；撤销里恢复的页由 `removed` 的规则从这一代删除的页里去掉（之后的读列出它，4.4）。
 - **P4**：分批恢复复用 `PlacementOf`、`children.free`、`RestoreNodes`（ids 可以是组的一部分，根的参数给这一批的根；五个数按这一批的期望核对）；途中停下时，新标上的根要写统计（任务读过组，手里有）；撤销的分批删除用同一时刻时，上层的根之下早先标上的根取消、统计重算（跨单元，`stray` 只管一个单元）；网页的 422 改为问是否在后台进行。分批除了节点、页数、字节与链接，还要按历史的行（每批的版本与条目至多 `MaxUnitHistory`）：历史的 422 同样转到后台；一页自己的历史超过 40 万行（约 20 万个版本）时按节点分不开，要按历史的行分批，否则它一直恢复不了，而删除没有界线（修复核对第一轮的合并注记）。
-- **P5**：搜索结果的附件信息用 `AttachmentInfos`；附件的"打开去它所在的位置"沿用 B 的路由状态。
-- **M12**：删除没有界线：导入的上限 5 万个节点 1.8–2.1 秒，没有超过请求期限（3.11）；它也没有历史的界线，同一大项反复删除与恢复让历史增长到 422，缓存的语句的通用计划是一类风险，写进 [M12 的性能移交](../M12-release/handoffs/M4-performance.md)第 14 项；反链、版本列表与回收站的三份"按已读的页数重读"收拢（v0.1 之后的打磨）。
+- **P5**：搜索结果的附件信息用 `AttachmentInfos`；附件的"打开去它所在的位置"沿用 B 的路由状态（`attachment-row.tsx` 的 `Located`、附件一节的 `useLocated`）。
+- **M12**：删除没有界线：导入的上限 5 万个节点 1.8–2.1 秒，没有超过请求期限（3.11）；它也没有历史的界线，同一大项反复删除与恢复让历史增长到 422，缓存的语句的通用计划是一类风险，写进 [M12 的性能移交](../M12-release/handoffs/M4-performance.md)第 14 项；反链、版本列表与回收站的三份"按已读的页数重读"收拢（v0.1 之后的打磨）；B 的其余打磨写进 [M12 的打磨移交](../M12-release/handoffs/M5-polish.md)第 22 条。
 
 ## 9. 结果
 
@@ -659,6 +674,16 @@ B（分支 `m8-p2b`，P1B 与 A 合并之后）：
 - 反向对照：实施之后 94 个（90 个被抓到，存活的 4 个与代码等价）；审查者 49 个（A 14、B 8、C 27，存活的即各条测试的缺口或等价）；审查的修复之后 32 个、修复核对第一轮的核对者 18 个（存活 2 个：M-1 与一个不算发现的错误分支）、它的修复之后 6 个，修复之后的都被抓到。
 - 门禁：本机 `27fee6b` 上 `make lint-go gen-check test-go`、`make lint-web knip test-web build-web`（2,673 个测试）、整个 e2e 234 个、`make image-smoke` 通过；`4bf696d` 上 `make lint-go gen-check test-go` 通过。CI：`16de05b` 只有镜像的冒烟失败，`27fee6b` 四个 job 全绿。
 - 交给后面的：B（`m8-p2b`）以这份契约为准，422 也可能来自历史（4.2）；P3 的 `DecidedAll` 与 `RecordItems`、P4 按历史的行分批（第 8 节）；M12 的性能移交第 14 项（删除的历史、反复删除与恢复、通用计划、界线测试在 CI 上的余量）。
+
+### 9.2 B：前端（2026-10-14，合并 `5116194`）
+
+- 提交：实施：回收站的列表与恢复、预览、页面树的 `removed`、删除的文字 `537365f`，TB1 `2ec1ec1`，反向对照第一轮漏掉的测试 `ef85768`，登出之后才答复的恢复不留未处理的拒绝 `7048cef`（审查时在 `m8-p2a` 的 `27fee6b` 之上，是 `84ac133`、`d7c6eed`、`e4824d3`、`79d7311`，之后变基到 `main` 的 `613adfc`，没有冲突）；审查的修复 `4daf892`；修复核对第一轮的修复 `7d5dfc2`，第二轮的测试 `13462f9`。合并 `5116194`。
+- 审查：三位审查者（Opus）。高 1 条（A 与 C 各自发现）：从预览恢复时，恢复自己的事件先重读单项、答它已不在，预览停在"它已不在回收站里"，焦点落到 `body`，回不到回收站、没有状态行，对着真的服务端六次都如此（A-I1、C-I1）。中低 1 条：预览的恢复被拒、单项随之不在时原因不说、焦点落到 `body`（A-M1）。其余是低（恢复之后与附件定位的焦点不看读者；422 的文字对历史的界线自相矛盾；同一分钟删除的同名项名称相同；"重试"、"更多"的竞争与失败、`removed` 在删除自己的那次读上的边界没有测试；第 4 节没写的做法）与细节。修复核对：第一轮低 1 条（A-M1 的修复带进的回归：别人的改动引起的 `not_trash_root` 跳转也拿走焦点，N1）、细节 3 条（拒绝说两次、422 只列三种界线、后退再前进的预览不知道在途的恢复）与三处测试的缺口；第二轮没有行为上的发现，只有两处测试的缺口（只在合并之后才给标题焦点、合并的预览上的拒绝），补上（`13462f9`）。逐条见[审查记录](reviews/P2B-trash-web-review.md)。
+- 与设计不同之处已改在第 4 节（4.1–4.7），4.8 分实施时定下的与审查带来的列出；4.2 更正了"`page.not_trash_root` 在 P2 里不会有"（别人恢复了它、之后又删除它的上级时就有）。
+- 反向对照：实施之后 112 个 vitest 变异（第一轮 13 个存活，补了测试之后都被抓到）与 3 个 e2e 变异，都被抓到；审查者 B 35 个与 e2e 1 个、C 13 个（存活的即各条测试的缺口或等价），A 以复现代替；审查的修复之后第一轮的 107 个回跑、新的 47 个与 e2e 2 个，都被抓到（去掉 `reader.end()` 的一个先接受，第二轮由 `removeEventListener` 的测试抓到）；修复核对第一轮核对者 22 个（存活 8 个：三处测试的缺口在 `7d5dfc2` 补上，五个等价或防御）。
+- 门禁（本机）：`make lint-web knip test-web build-web`（`4daf892`，153 个文件、2,813 个测试）与全仓库的格式检查；整个 e2e 237 个通过（`4daf892`）；TB1 连跑三次通过。这一阶段没有服务端与契约的改动。
+- 交给后面的：P3：左栏的 `NotebookPlaces` 加"历史"，撤销里恢复的页由 `removed` 的规则覆盖；P4：422 改为问是否在后台进行；P5：附件的"打开"沿用 `Located` 与附件一节的 `useLocated`；打磨的十余条见审查记录，已写进 [M12 的打磨移交](../M12-release/handoffs/M5-polish.md)第 22 条。
+- 负责人可以改判的取舍：从预览恢复之后回收站压进历史（返回落在"它已不在回收站里"，`replace` 可以跳过）；状态行随历史在刷新、返回时再说一次；同名的项只在已读的项里区分；回收站页开着时别处的删除只经事件进列表（A 细节 N4）；后退再前进的预览不知道在途的恢复（修复核对第一轮 N4）。
 
 ## 附：调研列出的 38 项的处置
 
