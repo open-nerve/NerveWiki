@@ -9,7 +9,7 @@ import type {
   PageContentWrite,
   PageVersion,
   PageVersionContent,
-  PageVersionList,
+  PageVersionPage,
   PageView,
   TaskToggle,
   TreeNode,
@@ -25,7 +25,7 @@ export type {
   PageContent,
   PageVersion,
   PageVersionContent,
-  PageVersionList,
+  PageVersionPage,
   PageView,
   TaskToggle,
   TreeNode,
@@ -109,7 +109,7 @@ export class PageService {
   }
 
   /** versions answers a page of the page id's versions, newer first, after cursor (none for the first). */
-  async versions(id: string, cursor?: string): Promise<PageVersionList> {
+  async versions(id: string, cursor?: string): Promise<PageVersionPage> {
     return unwrap(
       await this.api.GET("/api/v0/pages/{page_id}/versions", {
         params: {

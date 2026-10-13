@@ -10,7 +10,7 @@ import { Alert } from "../../components/ui/alert";
 import { formatDateTime, formatRelative } from "../../i18n/format";
 import { useT, type Translate } from "../../i18n/i18n";
 import type { Notebook } from "../../services/notebook.service";
-import type { PageVersion, PageVersionList } from "../../services/page.service";
+import type { PageVersion, PageVersionPage } from "../../services/page.service";
 import { usePageTree, useStore } from "../../stores/context";
 import type { PageTreeStore } from "../../stores/page-tree.store";
 import { LoadMoreButton, useLoadMore } from "../load-more";
@@ -29,7 +29,7 @@ export function useVersions(notebook: Notebook, page: string) {
   const { cache } = useSWRConfig();
   const cached = () => cache.get(unstable_serialize(key));
   const { data, error, mutate } = useSWR(key, () =>
-    readPages(pages, page, (cached()?.data as PageVersionList[] | undefined)?.length ?? 1)
+    readPages(pages, page, (cached()?.data as PageVersionPage[] | undefined)?.length ?? 1)
   );
   return { data, error, mutate, cached };
 }
@@ -156,7 +156,7 @@ function kindText(kind: PageVersion["changeset"]["kind"], t: Translate): string 
 }
 
 /** readPages reads count pages of the page id's versions, from the first, fewer when the list ends. */
-async function readPages(pages: PageTreeStore, id: string, count: number): Promise<PageVersionList[]> {
+async function readPages(pages: PageTreeStore, id: string, count: number): Promise<PageVersionPage[]> {
   const read = [await pages.versions(id)];
   for (let cursor = read[0]?.next_cursor; cursor && read.length < count; cursor = read.at(-1)?.next_cursor) {
     // oxlint-disable-next-line no-await-in-loop -- each page after the one before

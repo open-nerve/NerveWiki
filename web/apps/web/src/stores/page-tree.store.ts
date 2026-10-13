@@ -16,7 +16,7 @@ import type {
   PageContent,
   PageService,
   PageVersionContent,
-  PageVersionList,
+  PageVersionPage,
   PageView,
   TaskToggle,
   TreeNode,
@@ -380,7 +380,7 @@ export class PageTreeStore {
   }
 
   /** versions reads a page of the page id's versions, newer first, after cursor (none for the first). */
-  versions(id: string, cursor?: string): Promise<PageVersionList> {
+  versions(id: string, cursor?: string): Promise<PageVersionPage> {
     return this.service.versions(id, cursor);
   }
 
