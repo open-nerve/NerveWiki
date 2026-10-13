@@ -7,7 +7,6 @@ package httpadapter
 import (
 	"context"
 	"encoding/hex"
-	"time"
 	"uuid"
 
 	"github.com/oapi-codegen/nullable"
@@ -111,6 +110,10 @@ type UseCases struct {
 	GetEditLock     GetEditLockUseCase
 	ReleaseEditLock ReleaseEditLockUseCase
 	ToggleTask      ToggleTaskUseCase
+	ListVersions    ListVersionsUseCase
+	GetVersion      GetVersionUseCase
+	GetVersionView  GetVersionViewUseCase
+	RestoreVersion  RestoreVersionUseCase
 }
 
 // Register mounts the module's routes on router, the root router from
@@ -210,11 +213,7 @@ func (h handler) GetPageView(ctx context.Context, req gen.GetPageViewRequestObje
 	if err != nil {
 		return nil, err
 	}
-	expires := nullable.NewNullNullable[time.Time]()
-	if !v.Expires.IsZero() {
-		expires = nullable.NewNullableWithValue(v.Expires)
-	}
-	return gen.GetPageView200JSONResponse{HTML: v.HTML, Revision: v.Revision, AssetsExpireAt: expires}, nil
+	return gen.GetPageView200JSONResponse(pageViewOf(v)), nil
 }
 
 // RenameNode serves PATCH /api/v0/nodes/{node_id}.

@@ -69,10 +69,13 @@ type UnitSpec struct {
 	NotFound error
 	// Kind is the kind of the unit's changeset: an edit unless set.
 	Kind domain.ChangesetKind
+	// RevertsID is the changeset a revert's unit reverts: set exactly
+	// when Kind is a revert.
+	RevertsID uuid.UUID
 	// Changeset, when set, is the changeset the unit writes in rather
 	// than one of its own (M7/P6 design 3.2): an import's first unit's,
 	// which its later units merge into. It must be of the notebook, of
-	// Kind, by the unit's actor and from its client.
+	// Kind and RevertsID, by the unit's actor and from its client.
 	Changeset uuid.UUID
 }
 
@@ -137,6 +140,11 @@ func (w *Writer) Run(ctx context.Context, spec UnitSpec, do func(ctx context.Con
 	if !spec.Client.Valid() {
 		return Outcome{}, fmt.Errorf("a page write unit of client %q: no such client", spec.Client)
 	}
+	kind := cmp.Or(spec.Kind, domain.ChangesetEdit)
+	if (kind == domain.ChangesetRevert) != (spec.RevertsID != uuid.UUID{}) {
+		return Outcome{}, fmt.Errorf("a page write unit of kind %q reverting %s: a revert names what it reverts, nothing else does",
+			kind, spec.RevertsID)
+	}
 	actor, err := requireActor(ctx)
 	if err != nil {
 		return Outcome{}, err
@@ -170,8 +178,8 @@ func (w *Writer) Run(ctx context.Context, spec UnitSpec, do func(ctx context.Con
 		}
 		u = &Unit{w: w, write: Write{
 			WorkspaceID: workspaceID, NotebookID: spec.NotebookID, By: actor.UserID, Client: spec.Client,
-			Options: spec.Options, At: w.d.Clock.Now(),
-		}, kind: cmp.Or(spec.Kind, domain.ChangesetEdit), into: spec.Changeset, merged: map[uuid.UUID]int{}}
+			Options: spec.Options, At: w.d.Clock.Now(), Kind: kind, RevertsID: spec.RevertsID,
+		}, into: spec.Changeset, merged: map[uuid.UUID]int{}}
 		if err := do(ctx, u); err != nil {
 			return err
 		}
@@ -187,10 +195,9 @@ func (w *Writer) Run(ctx context.Context, spec UnitSpec, do func(ctx context.Con
 type Unit struct {
 	w     *Writer
 	write Write
-	// changeset is the unit's, inserted with its first write, of kind;
-	// or into, an earlier unit's it merges into then.
+	// changeset is the unit's, inserted with its first write, of the
+	// write's kind; or into, an earlier unit's it merges into then.
 	changeset uuid.UUID
-	kind      domain.ChangesetKind
 	into      uuid.UUID
 	// changes are the unit's, merged by node in the order first changed;
 	// merged indexes them.
@@ -250,8 +257,9 @@ func (u *Unit) inUnit(ctx context.Context) error {
 
 // ensureChangeset inserts the unit's changeset with its first write, or
 // merges the unit into the one it names: locked, of the notebook, of the
-// unit's kind, by its actor and from its client; its updated_at moved to
-// the unit's time, which the notebook's activity and log read.
+// unit's kind and reverting what it reverts, by its actor and from its
+// client; its updated_at moved to the unit's time, which the notebook's
+// activity and log read.
 func (u *Unit) ensureChangeset(ctx context.Context) error {
 	if u.changeset != (uuid.UUID{}) {
 		return nil
@@ -263,8 +271,10 @@ func (u *Unit) ensureChangeset(ctx context.Context) error {
 			return fmt.Errorf("a page write unit merges into changeset %s: no such changeset", u.into)
 		case err != nil:
 			return err
-		case c.NotebookID != u.write.NotebookID || c.Kind != u.kind || c.By != u.write.By || c.Client != u.write.Client:
-			return fmt.Errorf("a page write unit merges into changeset %s: another notebook's, kind's, actor's or client's", u.into)
+		case c.NotebookID != u.write.NotebookID || c.Kind != u.write.Kind || c.RevertsID != u.write.RevertsID ||
+			c.By != u.write.By || c.Client != u.write.Client:
+			return fmt.Errorf("a page write unit merges into changeset %s: another notebook's, kind's, revert's, actor's or client's",
+				u.into)
 		}
 		if err := u.w.d.Changesets.TouchChangeset(ctx, c.ID, u.write.At); err != nil {
 			return err
@@ -274,7 +284,8 @@ func (u *Unit) ensureChangeset(ctx context.Context) error {
 	}
 	id := uuid.NewV7()
 	if err := u.w.d.Changesets.CreateChangeset(ctx, Changeset{
-		ID: id, NotebookID: u.write.NotebookID, Kind: u.kind, Client: u.write.Client, By: u.write.By, At: u.write.At,
+		ID: id, NotebookID: u.write.NotebookID, Kind: u.write.Kind, RevertsID: u.write.RevertsID, Client: u.write.Client,
+		By: u.write.By, At: u.write.At,
 	}); err != nil {
 		return err
 	}

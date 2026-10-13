@@ -20,6 +20,8 @@ type Changeset struct {
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	DeletedAt   *time.Time
+	RevertsID   *uuid.UUID
+	Trimmed     bool
 }
 
 type ChangesetItem struct {

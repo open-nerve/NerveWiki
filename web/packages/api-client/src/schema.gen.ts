@@ -874,6 +874,104 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v0/pages/{page_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The page's id. */
+                page_id: components["parameters"]["PageID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List a page's versions
+         * @description The page's versions, newer first, a page at a time: each the content a changeset left, which it holds from after its base_revision to its revision, without the content. An edit session's saves are one version, whose revision moves on with each; the newest is editing while that session is alive. Renames and moves are not versions. A page in the trash has its versions too. Any role in the page's notebook can read them. A cursor the list cannot read is bad_request, before anything else; a page that does not exist, whose notebook is deleted, or whose notebook the caller has no role in is page.not_found; a limit outside 1–100 is validation_failed.
+         */
+        get: operations["listPageVersions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/pages/{page_id}/versions/{revision}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The page's id. */
+                page_id: components["parameters"]["PageID"];
+                /** @description A revision the version holds. */
+                revision: components["parameters"]["Revision"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read a version of a page
+         * @description The version of the page that holds the revision, with its content byte for byte as written. It is answered with its own revision, which is not the one asked for when an edit session's saves made it hold several. A page in the trash has its versions too. Any role in the page's notebook can read them. A page that does not exist, whose notebook is deleted, or whose notebook the caller has no role in is page.not_found; a revision no version of the page holds, 0 and below among them, is page.version_not_found.
+         */
+        get: operations["getPageVersion"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/pages/{page_id}/versions/{revision}/view": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The page's id. */
+                page_id: components["parameters"]["PageID"];
+                /** @description A revision the version holds. */
+                revision: components["parameters"]["Revision"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read a version of a page as a page
+         * @description The reading view of the version of the page that holds the revision, as getPageView renders a page's content: its links lead where they lead now, and revision is the version's own. A page in the trash has its versions too. Any role in the page's notebook can read them. A page that does not exist, whose notebook is deleted, or whose notebook the caller has no role in is page.not_found; a revision no version of the page holds is page.version_not_found. When the server parses as much content as it can at once, the version waits a moment, then is server_busy.
+         */
+        get: operations["getPageVersionView"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/pages/{page_id}/versions/{revision}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The page's id. */
+                page_id: components["parameters"]["PageID"];
+                /** @description A revision the version holds. */
+                revision: components["parameters"]["Revision"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore a version of a page
+         * @description Writes the content of the version that holds the revision as the page's, on base_revision, the revision the caller read the page at: a new version, in a changeset of its own, a version_restore. Its notebook's editors and admins can. A page that does not exist, is in the trash (restore it first), or whose notebook the caller has no role in is page.not_found; a revision no version of the page holds is page.version_not_found; then a reader is forbidden; when the server parses as much content as it can at once, the content waits a moment, then is server_busy. A content the page holds already writes nothing, whatever the base: changed is false. Then a base_revision that is not the page's revision is page.revision_mismatch: the page was written since; then a page whose lock an edit session holds, the caller's elsewhere among them, is page.locked, naming the holder in lock.
+         */
+        post: operations["restorePageVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v0/pages/{page_id}/toggle-task": {
         parameters: {
             query?: never;
@@ -1967,6 +2065,95 @@ export interface components {
              */
             assets_expire_at: string | null;
         };
+        /**
+         * @description What a changeset records: an edit, an import, a version restored, a node restored from the trash, or the revert of another changeset.
+         * @enum {string}
+         */
+        ChangesetKind: "edit" | "import" | "version_restore" | "trash_restore" | "revert";
+        /** @description The account a changeset is by. */
+        ChangesetAuthor: {
+            /** Format: uuid */
+            user_id: string;
+            display_name: string;
+        };
+        /** @description The changeset a version is of. */
+        VersionChangeset: {
+            /** Format: uuid */
+            id: string;
+            kind: components["schemas"]["ChangesetKind"];
+            /** @description Where the changeset's writes came from: web, api or cli, or mcp: and the name of an MCP client. */
+            client: string;
+            /** Format: date-time */
+            created_at: string;
+            created_by: components["schemas"]["ChangesetAuthor"];
+        };
+        /** @description A version of a page: the content a changeset left, which it holds from after base_revision to revision. */
+        PageVersion: {
+            /**
+             * Format: uuid
+             * @description The version's own id, which stays as an edit session's saves move its revision on.
+             */
+            id: string;
+            /** @description The revision the version wrote, the last it holds. */
+            revision: number;
+            /** @description The revision the version was written on; null for the version that created the page. */
+            base_revision: number | null;
+            /** @description The content's size in bytes. */
+            byte_size: number;
+            /** Format: date-time */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When the version was last written.
+             */
+            updated_at: string;
+            /** @description The page's newest version, while the edit session whose changeset it is is alive: its revision may move on. */
+            editing: boolean;
+            changeset: components["schemas"]["VersionChangeset"];
+        };
+        /** @description A page of a page's versions, newer first. */
+        PageVersionList: {
+            data: components["schemas"]["PageVersion"][];
+            next_cursor: components["schemas"]["NextCursor"];
+        };
+        /** @description A version of a page, with its content. */
+        PageVersionContent: {
+            /**
+             * Format: uuid
+             * @description The version's own id, which stays as an edit session's saves move its revision on.
+             */
+            id: string;
+            /** @description The revision the version wrote, the last it holds. */
+            revision: number;
+            /** @description The revision the version was written on; null for the version that created the page. */
+            base_revision: number | null;
+            /** @description The content's size in bytes. */
+            byte_size: number;
+            /** Format: date-time */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When the version was last written.
+             */
+            updated_at: string;
+            /** @description The page's newest version, while the edit session whose changeset it is is alive: its revision may move on. */
+            editing: boolean;
+            changeset: components["schemas"]["VersionChangeset"];
+            content: components["schemas"]["Content"];
+        };
+        /** @description A restore of a version. */
+        VersionRestore: {
+            /** @description The revision the page was read at. */
+            base_revision: number;
+        };
+        /** @description What a restore did: the page's revision as it leaves it, and its changeset, null when the page held the version's content already and nothing was written. */
+        VersionRestored: {
+            revision: number;
+            /** Format: uuid */
+            changeset_id: string | null;
+            /** @description Whether the restore wrote the page. */
+            changed: boolean;
+        };
         /** @description A tick or a clear of a task item. */
         TaskToggle: {
             /** @description The revision the offset was read at, the reading view's. */
@@ -2408,6 +2595,8 @@ export interface components {
         Cursor: string;
         /** @description The page's id. */
         PageID: string;
+        /** @description A revision the version holds. */
+        Revision: number;
         /** @description The edit session's id. */
         EditSessionID: string;
         /** @description The id of a node of a notebook's tree. */
@@ -2501,6 +2690,14 @@ export type EditSession = components['schemas']['EditSession'];
 export type EditLockHolder = components['schemas']['EditLockHolder'];
 export type EditLock = components['schemas']['EditLock'];
 export type PageView = components['schemas']['PageView'];
+export type ChangesetKind = components['schemas']['ChangesetKind'];
+export type ChangesetAuthor = components['schemas']['ChangesetAuthor'];
+export type VersionChangeset = components['schemas']['VersionChangeset'];
+export type PageVersion = components['schemas']['PageVersion'];
+export type PageVersionList = components['schemas']['PageVersionList'];
+export type PageVersionContent = components['schemas']['PageVersionContent'];
+export type VersionRestore = components['schemas']['VersionRestore'];
+export type VersionRestored = components['schemas']['VersionRestored'];
 export type TaskToggle = components['schemas']['TaskToggle'];
 export type NodeRename = components['schemas']['NodeRename'];
 export type NodeMove = components['schemas']['NodeMove'];
@@ -2550,6 +2747,7 @@ export type ParameterNotebookMemberId = components['parameters']['NotebookMember
 export type ParameterLimit = components['parameters']['Limit'];
 export type ParameterCursor = components['parameters']['Cursor'];
 export type ParameterPageId = components['parameters']['PageID'];
+export type ParameterRevision = components['parameters']['Revision'];
 export type ParameterEditSessionId = components['parameters']['EditSessionID'];
 export type ParameterNodeId = components['parameters']['NodeID'];
 export type ParameterTag = components['parameters']['Tag'];
@@ -3802,6 +4000,117 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PageView"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    listPageVersions: {
+        parameters: {
+            query?: {
+                /** @description The page size, 1–100; 50 when absent. Outside that range the answer is 422 validation_failed on limit. */
+                limit?: components["parameters"]["Limit"];
+                /** @description The next_cursor of the page before; absent for the first page. A cursor that does not decode, has an unknown version or a payload of another shape than this list's, or is not spelled as the server writes it is 400 bad_request on cursor. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path: {
+                /** @description The page's id. */
+                page_id: components["parameters"]["PageID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the page's versions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageVersionList"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    getPageVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The page's id. */
+                page_id: components["parameters"]["PageID"];
+                /** @description A revision the version holds. */
+                revision: components["parameters"]["Revision"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The version and its content. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageVersionContent"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    getPageVersionView: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The page's id. */
+                page_id: components["parameters"]["PageID"];
+                /** @description A revision the version holds. */
+                revision: components["parameters"]["Revision"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The version's reading view. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageView"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    restorePageVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The page's id. */
+                page_id: components["parameters"]["PageID"];
+                /** @description A revision the version holds. */
+                revision: components["parameters"]["Revision"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VersionRestore"];
+            };
+        };
+        responses: {
+            /** @description What the restore did. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VersionRestored"];
                 };
             };
             default: components["responses"]["Problem"];

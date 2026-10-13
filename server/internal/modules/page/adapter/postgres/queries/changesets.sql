@@ -1,7 +1,7 @@
 -- name: CreateChangeset :exec
-INSERT INTO changesets (id, notebook_id, kind, client, message, created_by_id, created_at, updated_at)
-VALUES (sqlc.arg(id), sqlc.arg(notebook_id), sqlc.arg(kind), sqlc.arg(client), sqlc.narg(message), sqlc.arg(by),
-    sqlc.arg(now), sqlc.arg(now));
+INSERT INTO changesets (id, notebook_id, kind, reverts_id, client, message, created_by_id, created_at, updated_at)
+VALUES (sqlc.arg(id), sqlc.arg(notebook_id), sqlc.arg(kind), sqlc.narg(reverts_id), sqlc.arg(client), sqlc.narg(message),
+    sqlc.arg(by), sqlc.arg(now), sqlc.arg(now));
 
 -- name: TouchChangeset :exec
 -- An edit session's changeset, written again: its updated_at is its last write's time, which the notebook's
@@ -34,7 +34,7 @@ SET revision = excluded.revision, content = excluded.content, content_hash = exc
 -- name: LockChangeset :one
 -- A changeset a unit merges into (M7/P6 design 3.2), locked until the unit ends: an import's later units write in
 -- its first's.
-SELECT id, notebook_id, kind, client, created_by_id
+SELECT id, notebook_id, kind, reverts_id, client, created_by_id
 FROM changesets
 WHERE id = sqlc.arg(id) AND deleted_at IS NULL
 FOR NO KEY UPDATE;

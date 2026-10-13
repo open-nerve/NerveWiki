@@ -1218,6 +1218,116 @@ paths:
                 $ref: '#/components/schemas/PageView'
         default:
           $ref: '#/components/responses/Problem'
+  /api/v0/pages/{page_id}/versions:
+    parameters:
+      - $ref: '#/components/parameters/PageID'
+    get:
+      operationId: listPageVersions
+      tags:
+        - page
+      summary: List a page's versions
+      description: 'The page''s versions, newer first, a page at a time: each the content a changeset left, which it holds from after its base_revision to its revision, without the content. An edit session''s saves are one version, whose revision moves on with each; the newest is editing while that session is alive. Renames and moves are not versions. A page in the trash has its versions too. Any role in the page''s notebook can read them. A cursor the list cannot read is bad_request, before anything else; a page that does not exist, whose notebook is deleted, or whose notebook the caller has no role in is page.not_found; a limit outside 1–100 is validation_failed.'
+      security:
+        - bearer: []
+      x-problem-codes:
+        - bad_request
+        - page.not_found
+        - validation_failed
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: A page of the page's versions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageVersionList'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v0/pages/{page_id}/versions/{revision}:
+    parameters:
+      - $ref: '#/components/parameters/PageID'
+      - $ref: '#/components/parameters/Revision'
+    get:
+      operationId: getPageVersion
+      tags:
+        - page
+      summary: Read a version of a page
+      description: The version of the page that holds the revision, with its content byte for byte as written. It is answered with its own revision, which is not the one asked for when an edit session's saves made it hold several. A page in the trash has its versions too. Any role in the page's notebook can read them. A page that does not exist, whose notebook is deleted, or whose notebook the caller has no role in is page.not_found; a revision no version of the page holds, 0 and below among them, is page.version_not_found.
+      security:
+        - bearer: []
+      x-problem-codes:
+        - page.not_found
+        - page.version_not_found
+      responses:
+        '200':
+          description: The version and its content.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageVersionContent'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v0/pages/{page_id}/versions/{revision}/view:
+    parameters:
+      - $ref: '#/components/parameters/PageID'
+      - $ref: '#/components/parameters/Revision'
+    get:
+      operationId: getPageVersionView
+      tags:
+        - page
+      summary: Read a version of a page as a page
+      description: 'The reading view of the version of the page that holds the revision, as getPageView renders a page''s content: its links lead where they lead now, and revision is the version''s own. A page in the trash has its versions too. Any role in the page''s notebook can read them. A page that does not exist, whose notebook is deleted, or whose notebook the caller has no role in is page.not_found; a revision no version of the page holds is page.version_not_found. When the server parses as much content as it can at once, the version waits a moment, then is server_busy.'
+      security:
+        - bearer: []
+      x-problem-codes:
+        - page.not_found
+        - page.version_not_found
+        - server_busy
+      responses:
+        '200':
+          description: The version's reading view.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageView'
+        default:
+          $ref: '#/components/responses/Problem'
+  /api/v0/pages/{page_id}/versions/{revision}/restore:
+    parameters:
+      - $ref: '#/components/parameters/PageID'
+      - $ref: '#/components/parameters/Revision'
+    post:
+      operationId: restorePageVersion
+      tags:
+        - page
+      summary: Restore a version of a page
+      description: 'Writes the content of the version that holds the revision as the page''s, on base_revision, the revision the caller read the page at: a new version, in a changeset of its own, a version_restore. Its notebook''s editors and admins can. A page that does not exist, is in the trash (restore it first), or whose notebook the caller has no role in is page.not_found; a revision no version of the page holds is page.version_not_found; then a reader is forbidden; when the server parses as much content as it can at once, the content waits a moment, then is server_busy. A content the page holds already writes nothing, whatever the base: changed is false. Then a base_revision that is not the page''s revision is page.revision_mismatch: the page was written since; then a page whose lock an edit session holds, the caller''s elsewhere among them, is page.locked, naming the holder in lock.'
+      security:
+        - bearer: []
+      x-problem-codes:
+        - page.not_found
+        - page.version_not_found
+        - forbidden
+        - server_busy
+        - page.revision_mismatch
+        - page.locked
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VersionRestore'
+      responses:
+        '200':
+          description: What the restore did.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionRestored'
+        default:
+          $ref: '#/components/responses/Problem'
   /api/v0/pages/{page_id}/toggle-task:
     parameters:
       - $ref: '#/components/parameters/PageID'
@@ -3133,6 +3243,180 @@ components:
             - string
             - 'null'
           format: date-time
+    ChangesetKind:
+      description: 'What a changeset records: an edit, an import, a version restored, a node restored from the trash, or the revert of another changeset.'
+      type: string
+      enum:
+        - edit
+        - import
+        - version_restore
+        - trash_restore
+        - revert
+    ChangesetAuthor:
+      description: The account a changeset is by.
+      type: object
+      additionalProperties: false
+      required:
+        - user_id
+        - display_name
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        display_name:
+          type: string
+    VersionChangeset:
+      description: The changeset a version is of.
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - kind
+        - client
+        - created_at
+        - created_by
+      properties:
+        id:
+          type: string
+          format: uuid
+        kind:
+          $ref: '#/components/schemas/ChangesetKind'
+        client:
+          description: 'Where the changeset''s writes came from: web, api or cli, or mcp: and the name of an MCP client.'
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        created_by:
+          $ref: '#/components/schemas/ChangesetAuthor'
+    PageVersion:
+      description: 'A version of a page: the content a changeset left, which it holds from after base_revision to revision.'
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - revision
+        - base_revision
+        - byte_size
+        - created_at
+        - updated_at
+        - editing
+        - changeset
+      properties:
+        id:
+          description: The version's own id, which stays as an edit session's saves move its revision on.
+          type: string
+          format: uuid
+        revision:
+          description: The revision the version wrote, the last it holds.
+          type: integer
+        base_revision:
+          description: The revision the version was written on; null for the version that created the page.
+          type:
+            - integer
+            - 'null'
+        byte_size:
+          description: The content's size in bytes.
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          description: When the version was last written.
+          type: string
+          format: date-time
+        editing:
+          description: 'The page''s newest version, while the edit session whose changeset it is is alive: its revision may move on.'
+          type: boolean
+        changeset:
+          $ref: '#/components/schemas/VersionChangeset'
+    PageVersionList:
+      description: A page of a page's versions, newer first.
+      type: object
+      additionalProperties: false
+      required:
+        - data
+        - next_cursor
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PageVersion'
+        next_cursor:
+          $ref: '#/components/schemas/NextCursor'
+    PageVersionContent:
+      description: A version of a page, with its content.
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - revision
+        - base_revision
+        - byte_size
+        - created_at
+        - updated_at
+        - editing
+        - changeset
+        - content
+      properties:
+        id:
+          description: The version's own id, which stays as an edit session's saves move its revision on.
+          type: string
+          format: uuid
+        revision:
+          description: The revision the version wrote, the last it holds.
+          type: integer
+        base_revision:
+          description: The revision the version was written on; null for the version that created the page.
+          type:
+            - integer
+            - 'null'
+        byte_size:
+          description: The content's size in bytes.
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          description: When the version was last written.
+          type: string
+          format: date-time
+        editing:
+          description: 'The page''s newest version, while the edit session whose changeset it is is alive: its revision may move on.'
+          type: boolean
+        changeset:
+          $ref: '#/components/schemas/VersionChangeset'
+        content:
+          $ref: '#/components/schemas/Content'
+    VersionRestore:
+      description: A restore of a version.
+      type: object
+      additionalProperties: false
+      required:
+        - base_revision
+      properties:
+        base_revision:
+          description: The revision the page was read at.
+          type: integer
+    VersionRestored:
+      description: 'What a restore did: the page''s revision as it leaves it, and its changeset, null when the page held the version''s content already and nothing was written.'
+      type: object
+      additionalProperties: false
+      required:
+        - revision
+        - changeset_id
+        - changed
+      properties:
+        revision:
+          type: integer
+        changeset_id:
+          type:
+            - string
+            - 'null'
+          format: uuid
+        changed:
+          description: Whether the restore wrote the page.
+          type: boolean
     TaskToggle:
       description: A tick or a clear of a task item.
       type: object
@@ -4071,6 +4355,13 @@ components:
       schema:
         type: string
         format: uuid
+    Revision:
+      name: revision
+      in: path
+      required: true
+      description: A revision the version holds.
+      schema:
+        type: integer
     EditSessionID:
       name: edit_session_id
       in: path

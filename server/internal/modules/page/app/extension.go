@@ -21,7 +21,9 @@ type Options struct {
 }
 
 // Write is a unit's write as an extension sees it: the notebook, who
-// wrote, from where, with which options, at the unit's one time.
+// wrote, from where, with which options, at the unit's one time; the kind
+// of its changeset, and the changeset a revert reverts (M8 design 4.1:
+// M10's and M11's guards tell a restore or a revert from an edit).
 type Write struct {
 	WorkspaceID uuid.UUID
 	NotebookID  uuid.UUID
@@ -29,6 +31,8 @@ type Write struct {
 	Client      domain.Client
 	Options     Options
 	At          time.Time
+	Kind        domain.ChangesetKind
+	RevertsID   uuid.UUID
 }
 
 // Step is one operation of a unit: its kind, and each node it changes,

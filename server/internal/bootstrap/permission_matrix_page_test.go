@@ -137,6 +137,90 @@ func pageMatrixRows() []matrixRow {
 			},
 		},
 		{
+			op:      "listPageVersions",
+			columns: notebookColumns(),
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodGet, "/api/v0/pages/" + s.page(pageOf(c)).String() + "/versions", ""
+			},
+			cells: readers(pageNotFound),
+			check: func(t *testing.T, _ caller, _ seeded, answer string) {
+				t.Helper()
+				var l struct {
+					Data []struct {
+						Revision  int `json:"revision"`
+						Changeset struct {
+							Kind string `json:"kind"`
+						} `json:"changeset"`
+					} `json:"data"`
+				}
+				decodeAnswer(t, answer, &l)
+				if len(l.Data) != 1 || l.Data[0].Revision != 1 || l.Data[0].Changeset.Kind != "edit" {
+					t.Errorf("listed %s, want the seeded creation's version 1", answer)
+				}
+			},
+		},
+		{
+			op:      "getPageVersion",
+			columns: notebookColumns(),
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodGet, "/api/v0/pages/" + s.page(pageOf(c)).String() + "/versions/1", ""
+			},
+			cells: readers(pageNotFound),
+			check: func(t *testing.T, _ caller, _ seeded, answer string) {
+				t.Helper()
+				var v struct {
+					Content  string `json:"content"`
+					Revision int    `json:"revision"`
+				}
+				decodeAnswer(t, answer, &v)
+				if v.Content != "" || v.Revision != 1 {
+					t.Errorf("read %+v, want the seeded empty content at revision 1", v)
+				}
+			},
+		},
+		{
+			op:      "getPageVersionView",
+			columns: notebookColumns(),
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodGet, "/api/v0/pages/" + s.page(pageOf(c)).String() + "/versions/1/view", ""
+			},
+			cells: readers(pageNotFound),
+			check: func(t *testing.T, _ caller, _ seeded, answer string) {
+				t.Helper()
+				var v struct {
+					HTML     string `json:"html"`
+					Revision int    `json:"revision"`
+				}
+				decodeAnswer(t, answer, &v)
+				if v.HTML != "" || v.Revision != 1 {
+					t.Errorf("read %+v, want the seeded empty content at revision 1", v)
+				}
+			},
+		},
+		{
+			// The seeded page's one version is its content: the restore is
+			// decided and writes nothing.
+			op:      "restorePageVersion",
+			columns: notebookColumns(),
+			write:   true,
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodPost, "/api/v0/pages/" + s.page(pageOf(c)).String() + "/versions/1/restore", `{"base_revision":1}`
+			},
+			cells: editorsOnly(cellOK(), pageNotFound),
+			check: func(t *testing.T, _ caller, _ seeded, answer string) {
+				t.Helper()
+				var r struct {
+					Revision    int     `json:"revision"`
+					ChangesetID *string `json:"changeset_id"`
+					Changed     bool    `json:"changed"`
+				}
+				decodeAnswer(t, answer, &r)
+				if r.Revision != 1 || r.ChangesetID != nil || r.Changed {
+					t.Errorf("restored %+v, want revision 1 unchanged", r)
+				}
+			},
+		},
+		{
 			op:      "getPageContent",
 			columns: notebookColumns(),
 			request: func(c caller, s seeded) (string, string, string) {

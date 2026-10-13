@@ -21,6 +21,33 @@ import (
 	externalRef0 "github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/apigen"
 )
 
+// Defines values for ChangesetKind.
+const (
+	ChangesetKindEdit           ChangesetKind = "edit"
+	ChangesetKindImport         ChangesetKind = "import"
+	ChangesetKindRevert         ChangesetKind = "revert"
+	ChangesetKindTrashRestore   ChangesetKind = "trash_restore"
+	ChangesetKindVersionRestore ChangesetKind = "version_restore"
+)
+
+// Valid indicates whether the value is a known member of the ChangesetKind enum.
+func (e ChangesetKind) Valid() bool {
+	switch e {
+	case ChangesetKindEdit:
+		return true
+	case ChangesetKindImport:
+		return true
+	case ChangesetKindRevert:
+		return true
+	case ChangesetKindTrashRestore:
+		return true
+	case ChangesetKindVersionRestore:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for NodeKind.
 const (
 	NodeKindAsset NodeKind = "asset"
@@ -44,6 +71,15 @@ type Ancestor struct {
 	ID   uuid.UUID `json:"id"`
 	Name string    `json:"name"`
 }
+
+// ChangesetAuthor The account a changeset is by.
+type ChangesetAuthor struct {
+	DisplayName string    `json:"display_name"`
+	UserID      uuid.UUID `json:"user_id"`
+}
+
+// ChangesetKind What a changeset records: an edit, an import, a version restored, a node restored from the trash, or the revert of another changeset.
+type ChangesetKind string
 
 // Content A page's Markdown, byte for byte: at most 5 MiB (5,242,880 bytes) of UTF-8, without NUL characters. Its line breaks, byte order mark and blanks are kept as they are.
 type Content = string
@@ -167,6 +203,67 @@ type PageCreate struct {
 	Title Title `json:"title"`
 }
 
+// PageVersion A version of a page: the content a changeset left, which it holds from after base_revision to revision.
+type PageVersion struct {
+	// BaseRevision The revision the version was written on; null for the version that created the page.
+	BaseRevision nullable.Nullable[int] `json:"base_revision"`
+
+	// ByteSize The content's size in bytes.
+	ByteSize int `json:"byte_size"`
+
+	// Changeset The changeset a version is of.
+	Changeset VersionChangeset `json:"changeset"`
+	CreatedAt time.Time        `json:"created_at"`
+
+	// Editing The page's newest version, while the edit session whose changeset it is is alive: its revision may move on.
+	Editing bool `json:"editing"`
+
+	// ID The version's own id, which stays as an edit session's saves move its revision on.
+	ID uuid.UUID `json:"id"`
+
+	// Revision The revision the version wrote, the last it holds.
+	Revision int `json:"revision"`
+
+	// UpdatedAt When the version was last written.
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// PageVersionContent A version of a page, with its content.
+type PageVersionContent struct {
+	// BaseRevision The revision the version was written on; null for the version that created the page.
+	BaseRevision nullable.Nullable[int] `json:"base_revision"`
+
+	// ByteSize The content's size in bytes.
+	ByteSize int `json:"byte_size"`
+
+	// Changeset The changeset a version is of.
+	Changeset VersionChangeset `json:"changeset"`
+
+	// Content A page's Markdown, byte for byte: at most 5 MiB (5,242,880 bytes) of UTF-8, without NUL characters. Its line breaks, byte order mark and blanks are kept as they are.
+	Content   Content   `json:"content"`
+	CreatedAt time.Time `json:"created_at"`
+
+	// Editing The page's newest version, while the edit session whose changeset it is is alive: its revision may move on.
+	Editing bool `json:"editing"`
+
+	// ID The version's own id, which stays as an edit session's saves move its revision on.
+	ID uuid.UUID `json:"id"`
+
+	// Revision The revision the version wrote, the last it holds.
+	Revision int `json:"revision"`
+
+	// UpdatedAt When the version was last written.
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// PageVersionList A page of a page's versions, newer first.
+type PageVersionList struct {
+	Data []PageVersion `json:"data"`
+
+	// NextCursor The cursor of the next page; null on the last page.
+	NextCursor nullable.Nullable[externalRef0.NextCursor] `json:"next_cursor"`
+}
+
 // PageView A page's reading view.
 type PageView struct {
 	// AssetsExpireAt When the earliest of the attachments' addresses in the HTML expires, after which the view is to be read again; null for a view with none.
@@ -218,6 +315,34 @@ type TreeNodeList struct {
 	Data []TreeNode `json:"data"`
 }
 
+// VersionChangeset The changeset a version is of.
+type VersionChangeset struct {
+	// Client Where the changeset's writes came from: web, api or cli, or mcp: and the name of an MCP client.
+	Client    string    `json:"client"`
+	CreatedAt time.Time `json:"created_at"`
+
+	// CreatedBy The account a changeset is by.
+	CreatedBy ChangesetAuthor `json:"created_by"`
+	ID        uuid.UUID       `json:"id"`
+
+	// Kind What a changeset records: an edit, an import, a version restored, a node restored from the trash, or the revert of another changeset.
+	Kind ChangesetKind `json:"kind"`
+}
+
+// VersionRestore A restore of a version.
+type VersionRestore struct {
+	// BaseRevision The revision the page was read at.
+	BaseRevision int `json:"base_revision"`
+}
+
+// VersionRestored What a restore did: the page's revision as it leaves it, and its changeset, null when the page held the version's content already and nothing was written.
+type VersionRestored struct {
+	// Changed Whether the restore wrote the page.
+	Changed     bool                         `json:"changed"`
+	ChangesetID nullable.Nullable[uuid.UUID] `json:"changeset_id"`
+	Revision    int                          `json:"revision"`
+}
+
 // EditSessionID defines model for EditSessionID.
 type EditSessionID = uuid.UUID
 
@@ -230,8 +355,20 @@ type NotebookID = uuid.UUID
 // PageID defines model for PageID.
 type PageID = uuid.UUID
 
+// Revision defines model for Revision.
+type Revision = int
+
 // Problem RFC 9457 problem details. `title` is the HTTP status phrase, `detail` explains this occurrence, and clients branch on `code`. Must match httpserver.Problem; the platform's contract test checks it.
 type Problem = externalRef0.Problem
+
+// ListPageVersionsParams defines parameters for ListPageVersions.
+type ListPageVersionsParams struct {
+	// Limit The page size, 1–100; 50 when absent. Outside that range the answer is 422 validation_failed on limit.
+	Limit *externalRef0.Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor The next_cursor of the page before; absent for the first page. A cursor that does not decode, has an unknown version or a payload of another shape than this list's, or is not spelled as the server writes it is 400 bad_request on cursor.
+	Cursor *externalRef0.Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
 
 // RenameNodeJSONRequestBody defines body for RenameNode for application/json ContentType.
 type RenameNodeJSONRequestBody = NodeRename
@@ -250,6 +387,9 @@ type OpenEditSessionJSONRequestBody = EditSessionOpening
 
 // ToggleTaskJSONRequestBody defines body for ToggleTask for application/json ContentType.
 type ToggleTaskJSONRequestBody = TaskToggle
+
+// RestorePageVersionJSONRequestBody defines body for RestorePageVersion for application/json ContentType.
+type RestorePageVersionJSONRequestBody = VersionRestore
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -295,6 +435,18 @@ type ServerInterface interface {
 	// ToggleTask Tick or clear a task item
 	// (POST /api/v0/pages/{page_id}/toggle-task)
 	ToggleTask(w http.ResponseWriter, r *http.Request, pageID PageID)
+	// ListPageVersions List a page's versions
+	// (GET /api/v0/pages/{page_id}/versions)
+	ListPageVersions(w http.ResponseWriter, r *http.Request, pageID PageID, params ListPageVersionsParams)
+	// GetPageVersion Read a version of a page
+	// (GET /api/v0/pages/{page_id}/versions/{revision})
+	GetPageVersion(w http.ResponseWriter, r *http.Request, pageID PageID, revision Revision)
+	// RestorePageVersion Restore a version of a page
+	// (POST /api/v0/pages/{page_id}/versions/{revision}/restore)
+	RestorePageVersion(w http.ResponseWriter, r *http.Request, pageID PageID, revision Revision)
+	// GetPageVersionView Read a version of a page as a page
+	// (GET /api/v0/pages/{page_id}/versions/{revision}/view)
+	GetPageVersionView(w http.ResponseWriter, r *http.Request, pageID PageID, revision Revision)
 	// GetPageView Read a page
 	// (GET /api/v0/pages/{page_id}/view)
 	GetPageView(w http.ResponseWriter, r *http.Request, pageID PageID)
@@ -673,6 +825,166 @@ func (siw *ServerInterfaceWrapper) ToggleTask(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
+// ListPageVersions operation middleware
+func (siw *ServerInterfaceWrapper) ListPageVersions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "page_id" -------------
+	var pageID PageID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "page_id", r.PathValue("page_id"), &pageID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListPageVersionsParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPageVersions(w, r, pageID, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPageVersion operation middleware
+func (siw *ServerInterfaceWrapper) GetPageVersion(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "page_id" -------------
+	var pageID PageID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "page_id", r.PathValue("page_id"), &pageID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "revision" -------------
+	var revision Revision
+
+	err = runtime.BindStyledParameterWithOptions("simple", "revision", r.PathValue("revision"), &revision, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "revision", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPageVersion(w, r, pageID, revision)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RestorePageVersion operation middleware
+func (siw *ServerInterfaceWrapper) RestorePageVersion(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "page_id" -------------
+	var pageID PageID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "page_id", r.PathValue("page_id"), &pageID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "revision" -------------
+	var revision Revision
+
+	err = runtime.BindStyledParameterWithOptions("simple", "revision", r.PathValue("revision"), &revision, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "revision", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RestorePageVersion(w, r, pageID, revision)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPageVersionView operation middleware
+func (siw *ServerInterfaceWrapper) GetPageVersionView(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "page_id" -------------
+	var pageID PageID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "page_id", r.PathValue("page_id"), &pageID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "revision" -------------
+	var revision Revision
+
+	err = runtime.BindStyledParameterWithOptions("simple", "revision", r.PathValue("revision"), &revision, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "revision", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPageVersionView(w, r, pageID, revision)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetPageView operation middleware
 func (siw *ServerInterfaceWrapper) GetPageView(w http.ResponseWriter, r *http.Request) {
 
@@ -828,6 +1140,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v0/pages/{page_id}/edit-lock", wrapper.ReleaseEditLock)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/pages/{page_id}/edit-lock", wrapper.GetEditLock)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/pages/{page_id}/view", wrapper.GetPageView)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/pages/{page_id}/versions", wrapper.ListPageVersions)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/pages/{page_id}/versions/{revision}", wrapper.GetPageVersion)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/pages/{page_id}/versions/{revision}/view", wrapper.GetPageVersionView)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/pages/{page_id}/versions/{revision}/restore", wrapper.RestorePageVersion)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/pages/{page_id}/toggle-task", wrapper.ToggleTask)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/edit-sessions/{edit_session_id}/heartbeat", wrapper.HeartbeatEditSession)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v0/edit-sessions/{edit_session_id}", wrapper.EndEditSession)
@@ -1480,6 +1796,195 @@ func (response ToggleTaskdefaultApplicationProblemPlusJSONResponse) VisitToggleT
 	return err
 }
 
+type ListPageVersionsRequestObject struct {
+	PageID PageID `json:"page_id"`
+	Params ListPageVersionsParams
+}
+
+type ListPageVersionsResponseObject interface {
+	VisitListPageVersionsResponse(w http.ResponseWriter) error
+}
+
+type ListPageVersions200JSONResponse PageVersionList
+
+func (response ListPageVersions200JSONResponse) VisitListPageVersionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPageVersionsdefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response ListPageVersionsdefaultApplicationProblemPlusJSONResponse) VisitListPageVersionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPageVersionRequestObject struct {
+	PageID   PageID   `json:"page_id"`
+	Revision Revision `json:"revision"`
+}
+
+type GetPageVersionResponseObject interface {
+	VisitGetPageVersionResponse(w http.ResponseWriter) error
+}
+
+type GetPageVersion200JSONResponse PageVersionContent
+
+func (response GetPageVersion200JSONResponse) VisitGetPageVersionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPageVersiondefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response GetPageVersiondefaultApplicationProblemPlusJSONResponse) VisitGetPageVersionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RestorePageVersionRequestObject struct {
+	PageID   PageID   `json:"page_id"`
+	Revision Revision `json:"revision"`
+	Body     *RestorePageVersionJSONRequestBody
+}
+
+type RestorePageVersionResponseObject interface {
+	VisitRestorePageVersionResponse(w http.ResponseWriter) error
+}
+
+type RestorePageVersion200JSONResponse VersionRestored
+
+func (response RestorePageVersion200JSONResponse) VisitRestorePageVersionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RestorePageVersiondefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response RestorePageVersiondefaultApplicationProblemPlusJSONResponse) VisitRestorePageVersionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPageVersionViewRequestObject struct {
+	PageID   PageID   `json:"page_id"`
+	Revision Revision `json:"revision"`
+}
+
+type GetPageVersionViewResponseObject interface {
+	VisitGetPageVersionViewResponse(w http.ResponseWriter) error
+}
+
+type GetPageVersionView200JSONResponse PageView
+
+func (response GetPageVersionView200JSONResponse) VisitGetPageVersionViewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPageVersionViewdefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response GetPageVersionViewdefaultApplicationProblemPlusJSONResponse) VisitGetPageVersionViewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetPageViewRequestObject struct {
 	PageID PageID `json:"page_id"`
 }
@@ -1570,6 +2075,18 @@ type StrictServerInterface interface {
 	// ToggleTask Tick or clear a task item
 	// (POST /api/v0/pages/{page_id}/toggle-task)
 	ToggleTask(ctx context.Context, request ToggleTaskRequestObject) (ToggleTaskResponseObject, error)
+	// ListPageVersions List a page's versions
+	// (GET /api/v0/pages/{page_id}/versions)
+	ListPageVersions(ctx context.Context, request ListPageVersionsRequestObject) (ListPageVersionsResponseObject, error)
+	// GetPageVersion Read a version of a page
+	// (GET /api/v0/pages/{page_id}/versions/{revision})
+	GetPageVersion(ctx context.Context, request GetPageVersionRequestObject) (GetPageVersionResponseObject, error)
+	// RestorePageVersion Restore a version of a page
+	// (POST /api/v0/pages/{page_id}/versions/{revision}/restore)
+	RestorePageVersion(ctx context.Context, request RestorePageVersionRequestObject) (RestorePageVersionResponseObject, error)
+	// GetPageVersionView Read a version of a page as a page
+	// (GET /api/v0/pages/{page_id}/versions/{revision}/view)
+	GetPageVersionView(ctx context.Context, request GetPageVersionViewRequestObject) (GetPageVersionViewResponseObject, error)
 	// GetPageView Read a page
 	// (GET /api/v0/pages/{page_id}/view)
 	GetPageView(ctx context.Context, request GetPageViewRequestObject) (GetPageViewResponseObject, error)
@@ -2016,6 +2533,121 @@ func (sh *strictHandler) ToggleTask(w http.ResponseWriter, r *http.Request, page
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ToggleTaskResponseObject); ok {
 		if err := validResponse.VisitToggleTaskResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListPageVersions operation middleware
+func (sh *strictHandler) ListPageVersions(w http.ResponseWriter, r *http.Request, pageID PageID, params ListPageVersionsParams) {
+	var request ListPageVersionsRequestObject
+
+	request.PageID = pageID
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListPageVersions(ctx, request.(ListPageVersionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListPageVersions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListPageVersionsResponseObject); ok {
+		if err := validResponse.VisitListPageVersionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetPageVersion operation middleware
+func (sh *strictHandler) GetPageVersion(w http.ResponseWriter, r *http.Request, pageID PageID, revision Revision) {
+	var request GetPageVersionRequestObject
+
+	request.PageID = pageID
+	request.Revision = revision
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPageVersion(ctx, request.(GetPageVersionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPageVersion")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetPageVersionResponseObject); ok {
+		if err := validResponse.VisitGetPageVersionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RestorePageVersion operation middleware
+func (sh *strictHandler) RestorePageVersion(w http.ResponseWriter, r *http.Request, pageID PageID, revision Revision) {
+	var request RestorePageVersionRequestObject
+
+	request.PageID = pageID
+	request.Revision = revision
+
+	var body RestorePageVersionJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RestorePageVersion(ctx, request.(RestorePageVersionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RestorePageVersion")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RestorePageVersionResponseObject); ok {
+		if err := validResponse.VisitRestorePageVersionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetPageVersionView operation middleware
+func (sh *strictHandler) GetPageVersionView(w http.ResponseWriter, r *http.Request, pageID PageID, revision Revision) {
+	var request GetPageVersionViewRequestObject
+
+	request.PageID = pageID
+	request.Revision = revision
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPageVersionView(ctx, request.(GetPageVersionViewRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPageVersionView")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetPageVersionViewResponseObject); ok {
+		if err := validResponse.VisitGetPageVersionViewResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

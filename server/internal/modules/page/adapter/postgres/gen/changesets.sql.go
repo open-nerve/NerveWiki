@@ -13,15 +13,16 @@ import (
 )
 
 const createChangeset = `-- name: CreateChangeset :exec
-INSERT INTO changesets (id, notebook_id, kind, client, message, created_by_id, created_at, updated_at)
+INSERT INTO changesets (id, notebook_id, kind, reverts_id, client, message, created_by_id, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6,
-    $7, $7)
+    $7, $8, $8)
 `
 
 type CreateChangesetParams struct {
 	ID         uuid.UUID
 	NotebookID uuid.UUID
 	Kind       string
+	RevertsID  *uuid.UUID
 	Client     string
 	Message    *string
 	By         uuid.UUID
@@ -33,6 +34,7 @@ func (q *Queries) CreateChangeset(ctx context.Context, arg CreateChangesetParams
 		arg.ID,
 		arg.NotebookID,
 		arg.Kind,
+		arg.RevertsID,
 		arg.Client,
 		arg.Message,
 		arg.By,
@@ -42,7 +44,7 @@ func (q *Queries) CreateChangeset(ctx context.Context, arg CreateChangesetParams
 }
 
 const lockChangeset = `-- name: LockChangeset :one
-SELECT id, notebook_id, kind, client, created_by_id
+SELECT id, notebook_id, kind, reverts_id, client, created_by_id
 FROM changesets
 WHERE id = $1 AND deleted_at IS NULL
 FOR NO KEY UPDATE
@@ -52,6 +54,7 @@ type LockChangesetRow struct {
 	ID          uuid.UUID
 	NotebookID  uuid.UUID
 	Kind        string
+	RevertsID   *uuid.UUID
 	Client      string
 	CreatedByID uuid.UUID
 }
@@ -65,6 +68,7 @@ func (q *Queries) LockChangeset(ctx context.Context, id uuid.UUID) (LockChangese
 		&i.ID,
 		&i.NotebookID,
 		&i.Kind,
+		&i.RevertsID,
 		&i.Client,
 		&i.CreatedByID,
 	)
