@@ -1571,6 +1571,20 @@ export interface components {
             code: "required" | "invalid_format" | "too_short" | "too_long" | "out_of_range" | "not_allowed" | "duplicate" | "common_password";
             message: string;
         };
+        /** @description A node that keeps a revert from its changeset (page.revert_conflict). reason, in the order the conflicts are listed: changed (the node is no longer as the changeset left it: changed, moved, deleted or restored since, its trash item another, or its content written); expired (a trash item the changeset deleted is past the time it can be restored in); parent_gone (the node would go back under a parent that is in the trash or purged); children_added (another changeset put the node under one the revert would delete: it would go with it); title_taken (the node would go back to a name another node holds under its parent there: holder_id); cycle (the node would go back under itself); too_deep (pages would nest deeper than 10 levels under the node). */
+        RevertConflict: {
+            /** Format: uuid */
+            node_id: string;
+            /** @description The node's name where the revert would put it, the name contended for by title_taken; its name now when the revert would leave it nowhere. */
+            name: string;
+            /** @enum {string} */
+            reason: "changed" | "expired" | "parent_gone" | "children_added" | "title_taken" | "cycle" | "too_deep";
+            /**
+             * Format: uuid
+             * @description The node holding the name, title_taken's alone.
+             */
+            holder_id?: string;
+        };
         /** @description RFC 9457 problem details. `title` is the HTTP status phrase, `detail` explains this occurrence, and clients branch on `code`. Must match httpserver.Problem; the platform's contract test checks it. */
         Problem: {
             /** @description HTTP status code. */
@@ -1610,6 +1624,10 @@ export interface components {
              * @description The root of the trash item a node was deleted with: page.not_trash_root names it, the item to restore. No other code carries it.
              */
             root_id?: string;
+            /** @description The nodes that keep a revert from its changeset, page.revert_conflict's: by reason in the order of RevertConflict's, then by node id, the first 100 of conflict_count. No other code carries it. */
+            conflicts?: components["schemas"]["RevertConflict"][];
+            /** @description How many conflicts keep the revert, page.revert_conflict's: conflicts lists the first 100. No other code carries it. */
+            conflict_count?: number;
         };
         /** @description A session's tokens. Send access_token as "Authorization: Bearer"; access_token_expires_in counts from the response, so a client's clock does not matter. When it expires, exchange refresh_token for the next pair at POST /api/v0/auth/refresh. */
         AuthTokens: {
@@ -2772,6 +2790,7 @@ export interface components {
 export type SignupInvitation = components['schemas']['SignupInvitation'];
 export type RegisterRequest = components['schemas']['RegisterRequest'];
 export type FieldError = components['schemas']['FieldError'];
+export type RevertConflict = components['schemas']['RevertConflict'];
 export type Problem = components['schemas']['Problem'];
 export type AuthTokens = components['schemas']['AuthTokens'];
 export type LoginRequest = components['schemas']['LoginRequest'];

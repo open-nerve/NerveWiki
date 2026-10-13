@@ -41,6 +41,39 @@ func (e FieldErrorCode) Valid() bool {
 	}
 }
 
+// Defines values for RevertConflictReason.
+const (
+	RevertConflictReasonChanged       RevertConflictReason = "changed"
+	RevertConflictReasonChildrenAdded RevertConflictReason = "children_added"
+	RevertConflictReasonCycle         RevertConflictReason = "cycle"
+	RevertConflictReasonExpired       RevertConflictReason = "expired"
+	RevertConflictReasonParentGone    RevertConflictReason = "parent_gone"
+	RevertConflictReasonTitleTaken    RevertConflictReason = "title_taken"
+	RevertConflictReasonTooDeep       RevertConflictReason = "too_deep"
+)
+
+// Valid indicates whether the value is a known member of the RevertConflictReason enum.
+func (e RevertConflictReason) Valid() bool {
+	switch e {
+	case RevertConflictReasonChanged:
+		return true
+	case RevertConflictReasonChildrenAdded:
+		return true
+	case RevertConflictReasonCycle:
+		return true
+	case RevertConflictReasonExpired:
+		return true
+	case RevertConflictReasonParentGone:
+		return true
+	case RevertConflictReasonTitleTaken:
+		return true
+	case RevertConflictReasonTooDeep:
+		return true
+	default:
+		return false
+	}
+}
+
 // FieldError One invalid field of a request. Clients show text looked up by `code`; `message` is an English explanation for developers. Must match httpserver.FieldError and the field codes of internal/shared.
 type FieldError struct {
 	// Code What is wrong with the field.
@@ -61,6 +94,12 @@ type NextCursor = string
 type Problem struct {
 	// Code Stable error code. Platform codes have no prefix (bad_request, unauthorized, forbidden, not_found, payload_too_large, validation_failed, rate_limited, server_busy, internal_error, not_ready, storage_full); module codes are prefixed with the module that refuses, e.g. page.locked. Each operation lists the codes it can answer in x-problem-codes.
 	Code string `json:"code"`
+
+	// ConflictCount How many conflicts keep the revert, page.revert_conflict's: conflicts lists the first 100. No other code carries it.
+	ConflictCount *int `json:"conflict_count,omitempty"`
+
+	// Conflicts The nodes that keep a revert from its changeset, page.revert_conflict's: by reason in the order of RevertConflict's, then by node id, the first 100 of conflict_count. No other code carries it.
+	Conflicts *[]RevertConflict `json:"conflicts,omitempty"`
 
 	// Detail What went wrong in this occurrence.
 	Detail *string `json:"detail,omitempty"`
@@ -97,6 +136,20 @@ type Problem struct {
 	// Title HTTP status phrase, e.g. "Not Found".
 	Title string `json:"title"`
 }
+
+// RevertConflict A node that keeps a revert from its changeset (page.revert_conflict). reason, in the order the conflicts are listed: changed (the node is no longer as the changeset left it: changed, moved, deleted or restored since, its trash item another, or its content written); expired (a trash item the changeset deleted is past the time it can be restored in); parent_gone (the node would go back under a parent that is in the trash or purged); children_added (another changeset put the node under one the revert would delete: it would go with it); title_taken (the node would go back to a name another node holds under its parent there: holder_id); cycle (the node would go back under itself); too_deep (pages would nest deeper than 10 levels under the node).
+type RevertConflict struct {
+	// HolderID The node holding the name, title_taken's alone.
+	HolderID *uuid.UUID `json:"holder_id,omitempty"`
+
+	// Name The node's name where the revert would put it, the name contended for by title_taken; its name now when the revert would leave it nowhere.
+	Name   string               `json:"name"`
+	NodeID uuid.UUID            `json:"node_id"`
+	Reason RevertConflictReason `json:"reason"`
+}
+
+// RevertConflictReason defines model for RevertConflict.Reason.
+type RevertConflictReason string
 
 // UserRef An account, by its id and its display name, as of the answer: who made a changeset, holds a lock, started a job or deleted a node.
 type UserRef struct {

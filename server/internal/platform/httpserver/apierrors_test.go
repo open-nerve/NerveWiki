@@ -36,13 +36,26 @@ func (f fieldErr) ProblemField() string { return f.field }
 func (f fieldErr) ProblemCode() string  { return f.code }
 
 // memberErr is a ProblemError with the members only some codes carry: a
-// lock, who ended a session, a trash item's root, or none (ok false).
+// lock, who ended a session, a trash item's root, a revert's conflicts, or
+// none (ok false).
 type memberErr struct {
 	problemErr
-	lock    *ProblemLock
-	locks   []ProblemLock
-	endedBy *ProblemPerson
-	rootID  *uuid.UUID
+	lock      *ProblemLock
+	locks     []ProblemLock
+	endedBy   *ProblemPerson
+	rootID    *uuid.UUID
+	conflicts []ProblemConflict
+	count     *int
+}
+
+func (e memberErr) ProblemConflicts(each func(nodeID uuid.UUID, name, reason string, holderID *uuid.UUID)) (int, bool) {
+	if e.count == nil {
+		return 0, false
+	}
+	for _, c := range e.conflicts {
+		each(c.NodeID, c.Name, c.Reason, c.HolderID)
+	}
+	return *e.count, true
 }
 
 func (e memberErr) ProblemRootID() (uuid.UUID, bool) {
@@ -250,6 +263,14 @@ func TestWriteMapsProblemErrors(t *testing.T) {
 			`{"status":409,"code":"linking.pages_locked","title":"Conflict","detail":"Pages are being edited.",` +
 				`"locks":[{"page_id":"` + lockedPage + `","user_id":"` + lockHolder + `","display_name":"Ada"},` +
 				`{"page_id":"` + lockHolder + `","user_id":"` + lockedPage + `","display_name":"Grace"}]}`, ""},
+		{"conflicts", memberErr{problemErr: problemErr{status: http.StatusConflict, code: "page.revert_conflict", detail: "Changed since."},
+			conflicts: []ProblemConflict{
+				{NodeID: uuid.MustParse(lockedPage), Name: "A", Reason: "changed"},
+				{NodeID: uuid.MustParse(lockHolder), Name: "B", Reason: "title_taken", HolderID: new(uuid.MustParse(lockedPage))},
+			}, count: new(102)}, http.StatusConflict,
+			`{"status":409,"code":"page.revert_conflict","title":"Conflict","detail":"Changed since.",` +
+				`"conflicts":[{"node_id":"` + lockedPage + `","name":"A","reason":"changed"},` +
+				`{"node_id":"` + lockHolder + `","name":"B","reason":"title_taken","holder_id":"` + lockedPage + `"}],"conflict_count":102}`, ""},
 		{"members it has not", memberErr{problemErr: conflict}, http.StatusConflict,
 			`{"status":409,"code":"things.taken","title":"Conflict","detail":"The name is taken."}`, ""},
 		{"payload too large", fmt.Errorf("read body: %w", &http.MaxBytesError{Limit: 1048576}), http.StatusRequestEntityTooLarge,

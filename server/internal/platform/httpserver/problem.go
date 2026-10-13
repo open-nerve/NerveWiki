@@ -35,15 +35,28 @@ type Problem struct {
 	Title  string       `json:"title"`
 	Detail string       `json:"detail,omitempty"`
 	Errors []FieldError `json:"errors,omitempty"`
-	// Lock, Locks, EndedBy and RootID are the members only some codes
-	// carry (M5 design 4.5, M6/P4 design 4.1, M8/P2 design 3.9):
-	// page.locked names the lock, linking.pages_locked the locks,
-	// page.edit_session_unlocked who unlocked, page.not_trash_root the root
-	// of the trash item.
-	Lock    *ProblemLock   `json:"lock,omitempty"`
-	Locks   []ProblemLock  `json:"locks,omitempty"`
-	EndedBy *ProblemPerson `json:"ended_by,omitempty"`
-	RootID  *uuid.UUID     `json:"root_id,omitempty"`
+	// Lock, Locks, EndedBy, RootID, Conflicts and ConflictCount are the
+	// members only some codes carry (M5 design 4.5, M6/P4 design 4.1, M8/P2
+	// design 3.9, M8/P3 design 3.9): page.locked names the lock,
+	// linking.pages_locked the locks, page.edit_session_unlocked who
+	// unlocked, page.not_trash_root the root of the trash item,
+	// page.revert_conflict the first nodes that keep a revert and how many
+	// keep it.
+	Lock          *ProblemLock      `json:"lock,omitempty"`
+	Locks         []ProblemLock     `json:"locks,omitempty"`
+	EndedBy       *ProblemPerson    `json:"ended_by,omitempty"`
+	RootID        *uuid.UUID        `json:"root_id,omitempty"`
+	Conflicts     []ProblemConflict `json:"conflicts,omitempty"`
+	ConflictCount *int              `json:"conflict_count,omitempty"`
+}
+
+// ProblemConflict is a node that keeps a revert from its changeset: its
+// name, why, and for a name another node holds, that node.
+type ProblemConflict struct {
+	NodeID   uuid.UUID  `json:"node_id"`
+	Name     string     `json:"name"`
+	Reason   string     `json:"reason"`
+	HolderID *uuid.UUID `json:"holder_id,omitempty"`
 }
 
 // ProblemLock is a page's edit lock: the page locked and who holds it.
