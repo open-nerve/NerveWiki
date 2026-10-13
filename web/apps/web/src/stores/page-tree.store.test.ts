@@ -81,6 +81,23 @@ function store(nodes: TreeNode[] = [guide, install, linux, notes]) {
         changeset_id: "c1",
         changed: true,
       })),
+    trash: async (notebookId: string, cursor?: string) => {
+      sent.push(`trash ${notebookId} ${cursor ?? ""}`.trim());
+      return { data: [], next_cursor: null };
+    },
+    trashItem: async (id: string) => {
+      sent.push(`trash item ${id}`);
+      throw new ApiError(404, { status: 404, code: "page.not_found", title: "gone" });
+    },
+    restoreNode: (id: string) =>
+      answer(`restore ${id}`, () => ({
+        id,
+        kind: "page" as const,
+        name: state.nodes.find((n) => n.id === id)?.name ?? "",
+        renamed: false,
+        placed: { parent_id: null, reason: "original" as const },
+        changeset_id: "c2",
+      })),
   };
   const linking = {
     tagPages: async (notebook: string, tag: string) => {
@@ -356,6 +373,7 @@ test("a page deleted, or deleted already, sends its subtree's shells to its pare
   await pages.remove(install.id);
 
   expect([install, linux, guide].map((n) => pages.removedTo(n.id))).toEqual([guide.id, guide.id, undefined]);
+  state.nodes = [notes];
   await pages.remove(guide.id);
   expect(pages.removedTo(guide.id)).toBeNull();
 });
@@ -538,4 +556,140 @@ test("a page's restores go out one at a time, in the order made, each once the o
   await expect(one).rejects.toThrow(ApiError);
   expect(await two).toEqual({ revision: 6, changeset_id: "c1", changed: true });
   expect(sent).toEqual([`restore ${guide.id} 2 on 5`, `restore ${notes.id} 1 on 2`, `restore ${guide.id} 3 on 5`]);
+});
+
+// M8/P2 design 4.4: a page this generation deleted is restored, here or elsewhere.
+test("a page deleted is taken out of those deleted by a read begun after the deletion answered that lists it alive: restored since, it is in the tree again", async () => {
+  const { pages, state } = store();
+  await pages.load();
+  state.nodes = [guide, notes];
+  await pages.remove(install.id);
+  expect(pages.byId(install.id)).toBeUndefined();
+
+  // Restored elsewhere: the next read lists Install, and Linux under it.
+  state.nodes = [guide, install, linux, notes];
+  await pages.load();
+
+  expect([install, linux].map((n) => pages.removedTo(n.id))).toEqual([undefined, undefined]);
+  expect(pages.byId(linux.id)).toBe(linux);
+  expect(pages.childrenOf(guide.id)).toEqual([install]);
+});
+
+test("a read that lists the page alive begun before the deletion answered takes nothing out: the deletion's own read, and one out meanwhile", async () => {
+  const { pages, state } = store();
+  await pages.load();
+  const early = held<TreeNode[]>();
+  state.writes.set("list", () => early.promise);
+  const reading = pages.load();
+  state.writes.delete("list");
+  // The deletion's read fails, so that the early one's tree is what is left to keep.
+  state.writes.set(`delete ${notes.id}`, async () => {
+    state.writes.set("list", () => Promise.reject(new TypeError("offline")));
+  });
+
+  await pages.remove(notes.id);
+  early.resolve([guide, install, linux, notes]);
+  await reading.catch(() => undefined);
+
+  expect(pages.removedTo(notes.id)).toBeNull();
+  expect(pages.byId(notes.id)).toBeUndefined();
+});
+
+test("a read begun before the deletion answered and kept after it, answered as the answer is, takes nothing out: it may have listed the page before it went", async () => {
+  const { pages, state } = store();
+  await pages.load();
+  const early = held<TreeNode[]>();
+  // One step longer than the deletion's answer: the read is kept after the page is marked, before the write's count.
+  state.writes.set("list", () => early.promise.then((nodes) => nodes));
+  const reading = pages.load();
+  state.writes.delete("list");
+  state.writes.set(`delete ${notes.id}`, async () => {
+    state.nodes = [guide, install, linux];
+    early.resolve([guide, install, linux, notes]);
+  });
+
+  await pages.remove(notes.id);
+  await reading;
+
+  expect(pages.removedTo(notes.id)).toBeNull();
+  expect(pages.byId(notes.id)).toBeUndefined();
+});
+
+test("a read the same as the tree kept takes a page restored out of those deleted too: the deletion's own read had failed", async () => {
+  const { pages, state } = store();
+  await pages.load();
+  const before = pages.nodes;
+  state.writes.set("list", () => Promise.reject(new TypeError("offline")));
+  await pages.remove(notes.id);
+  expect(pages.byId(notes.id)).toBeUndefined();
+
+  state.writes.delete("list");
+  await pages.load();
+
+  expect(pages.nodes).toBe(before);
+  expect(pages.removedTo(notes.id)).toBeUndefined();
+  expect(pages.byId(notes.id)).toBe(notes);
+});
+
+test("a restore goes out in turn with the tree's writes, and reads the tree again once answered, which takes the page out of those deleted", async () => {
+  const { pages, sent, state } = store();
+  await pages.load();
+  state.nodes = [guide, notes];
+  await pages.remove(install.id);
+  const creation = held<unknown>();
+  state.writes.set("create Untitled", () => creation.promise);
+
+  const creating = pages.create(null, "Untitled");
+  const restoring = pages.restore(install.id);
+  await Promise.resolve();
+  expect(sent.at(-1)).toBe("create Untitled");
+
+  creation.resolve({ ...pageNode(9, "Untitled"), ancestors: [], revision: 1, byte_size: 0 });
+  await creating;
+  state.nodes = [guide, install, linux, notes];
+  expect(await restoring).toMatchObject({ id: install.id, changeset_id: "c2" });
+
+  expect(sent.slice(-4)).toEqual(["create Untitled", "list plans", `restore ${install.id}`, "list plans"]);
+  expect(pages.removedTo(install.id)).toBeUndefined();
+  expect(pages.byId(linux.id)).toBe(linux);
+});
+
+test("a node's restores go out one at a time, the second once the first settled; another's beside them, in turn with the writes; a refusal is the caller's and records nothing", async () => {
+  const { pages, sent, state } = store();
+  await pages.load();
+  state.nodes = [guide, install, linux];
+  await pages.remove(notes.id);
+  const first = held<unknown>();
+  state.writes.set(`restore ${notes.id}`, () => first.promise);
+  const tooLarge = new ApiError(422, { status: 422, code: "page.restore_too_large", title: "large" });
+
+  const one = pages.restore(notes.id);
+  const two = pages.restore(notes.id);
+  const other = pages.restore(guide.id);
+  await vi.waitFor(() => expect(sent.at(-1)).toBe(`restore ${notes.id}`));
+  first.reject(tooLarge);
+
+  await expect(one).rejects.toBe(tooLarge);
+  await other;
+  state.writes.set(`restore ${notes.id}`, () => Promise.reject(tooLarge));
+  await expect(two).rejects.toBe(tooLarge);
+  expect(sent.slice(-6)).toEqual([
+    `restore ${notes.id}`,
+    "list plans",
+    `restore ${guide.id}`,
+    "list plans",
+    `restore ${notes.id}`,
+    "list plans",
+  ]);
+  expect(pages.removedTo(notes.id)).toBeNull();
+});
+
+test("the trash and an item of it are read for the notebook", async () => {
+  const { pages, sent } = store();
+
+  expect(await pages.trash()).toEqual({ data: [], next_cursor: null });
+  await pages.trash("next");
+  await expect(pages.trashItem(notes.id)).rejects.toThrow(ApiError);
+
+  expect(sent).toEqual(["trash plans", "trash plans next", `trash item ${notes.id}`]);
 });

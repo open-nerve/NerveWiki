@@ -2,6 +2,7 @@ import { reaction } from "mobx";
 import { Upload as UploadIcon } from "lucide-react";
 import { observer } from "mobx-react-lite";
 import { useEffect, useId, useRef, useState, type RefObject } from "react";
+import { useLocation } from "react-router";
 import useSWR from "swr";
 
 import { ConfirmDialog } from "../../app/confirm-dialog";
@@ -12,6 +13,7 @@ import { errorText } from "../../app/problem-messages";
 import { FormField } from "../../components/form-field";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
+import { formatPeriod } from "../../i18n/format";
 import { useT } from "../../i18n/i18n";
 import { embedOf } from "../../lib/asset-kind";
 import { cn } from "../../lib/cn";
@@ -22,7 +24,7 @@ import { useAssets, useStore } from "../../stores/context";
 import { LoadMoreButton, useLoadMore } from "../load-more";
 import { MoveAssetDialog, RenameAssetDialog } from "./asset-dialogs";
 import { rereadIn } from "./assets-expiry";
-import { AttachmentRow, type AssetAction } from "./attachment-row";
+import { AttachmentRow, locatedOf, type AssetAction } from "./attachment-row";
 import { UploadRows } from "./upload-rows";
 
 /** The dialogs of the section's rows. */
@@ -44,7 +46,11 @@ type Dialog = Exclude<AssetAction, "copy">;
  * focus from the menu as it closes, or as it shows. The section holds
  * the dialogs of its rows, which a row read away (the rename done, another
  * tab's) does not take with it; one closed gives the focus back to its
- * row's menu, the section's title when the row is gone.
+ * row's menu, the section's title when the row is gone. A deletion says
+ * the attachment goes to the trash, for how long (M8/P2 design 4.5). Gone
+ * to for one of its attachments (Located), the section gives its row the
+ * focus once a list read has it, or its title once one read since it
+ * showed has not (useLocated).
  */
 export const AttachmentsSection = observer(function AttachmentsSection({
   notebook,
@@ -59,18 +65,20 @@ export const AttachmentsSection = observer(function AttachmentsSection({
 }) {
   const t = useT();
   const assets = useAssets(notebook);
-  const { instance } = useStore();
+  const { instance, preferences } = useStore();
   useSWR("instance", () => instance.load());
+  const retention = instance.info?.trash_retention_seconds;
   const { error, mutate } = useSWR(["assets", notebook.id, parent ?? "root"], () => assets.load(parent));
   const list = assets.listOf(parent);
   useExpiry(list, () => void mutate());
+  const section = useRef<HTMLElement>(null);
+  const heading = useRef<HTMLHeadingElement>(null);
+  useLocated(list, section, heading);
   const writer = writesPages(notebook.role);
   const uploads = assets.uploads.filter(
     (upload) => upload.parent === parent && !(editorsElsewhere && upload.fromEditor)
   );
   const headingId = useId();
-  const section = useRef<HTMLElement>(null);
-  const heading = useRef<HTMLHeadingElement>(null);
   const uploadButton = useRef<HTMLButtonElement>(null);
   const picker = useRef<HTMLInputElement>(null);
   const [folders, setFolders] = useState(false);
@@ -243,7 +251,11 @@ export const AttachmentsSection = observer(function AttachmentsSection({
           <ConfirmDialog
             held={held("delete", shown)}
             title={t("asset.deleteTitle", { name: shown.name })}
-            description={t("asset.deleteBody")}
+            description={
+              retention === undefined
+                ? t("asset.deleteBodyNoPeriod")
+                : t("asset.deleteBody", { period: formatPeriod(retention, preferences.locale) })
+            }
             confirmLabel={t("page.delete")}
             sendingLabel={t("page.deleting")}
             cancelLabel={t("page.cancel")}
@@ -335,6 +347,37 @@ function useNotice(assets: AssetStore, parent: string | null) {
 /** saying is the notice that says text, after the one before: the same text is said again. */
 function saying(text: string) {
   return (before: { text: string; again: boolean }) => ({ text, again: before.text === text && !before.again });
+}
+
+/**
+ * useLocated gives the focus, once, to the row of the attachment the route
+ * state names (Located), as soon as a list read has it: its link, in
+ * section; or to the section's title, heading, once a list read since the
+ * section showed, which a list cached from before is not, has it not (it
+ * is on a later page). The section shown again, by Back say, does it
+ * again: the state is the entry's.
+ */
+function useLocated(
+  list: AssetList | undefined,
+  section: RefObject<HTMLElement | null>,
+  heading: RefObject<HTMLHeadingElement | null>
+): void {
+  const located = locatedOf(useLocation().state);
+  const shownFirst = useRef(list);
+  const done = useRef(false);
+  useEffect(() => {
+    if (located === undefined || list === undefined || done.current) {
+      return;
+    }
+    const link = section.current?.querySelector<HTMLElement>(`[data-attachment="${located}"]`);
+    if (link != null) {
+      done.current = true;
+      link.focus();
+    } else if (list !== shownFirst.current) {
+      done.current = true;
+      heading.current?.focus();
+    }
+  }, [located, list, section, heading]);
 }
 
 /**

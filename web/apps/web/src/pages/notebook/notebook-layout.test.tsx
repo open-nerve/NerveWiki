@@ -67,3 +67,23 @@ test("the shell says so when the notebooks cannot be loaded; Try again loads the
   expect(await screen.findByRole("heading", { level: 1, name: "Plans" })).toBeTruthy();
   expect(screen.queryByRole("alert")).toBeNull();
 });
+
+// M8/P2 design 4.5: the tree's links are its pages; the notebook's other places are a navigation of their own.
+test("the notebook's trash is in a navigation of its own below its pages, not the tree's; it leads there, which it marks", async () => {
+  const user = userEvent.setup();
+  renderApp(`/lab/notebooks/${notebookJSON.id}`, withNotebooks());
+  await screen.findByRole("heading", { level: 1, name: "Plans" });
+
+  const tree = screen.getByRole("navigation", { name: "Pages of Plans" });
+  expect(within(tree).queryByRole("link", { name: "Trash" })).toBeNull();
+  const places = screen.getByRole("navigation", { name: "More of Plans" });
+  const trash = within(places).getByRole("link", { name: "Trash" });
+  expect(trash.getAttribute("aria-current")).toBeNull();
+  // Below the tree, in the document's order.
+  expect(tree.compareDocumentPosition(places) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+  await user.click(trash);
+
+  expect(await screen.findByRole("heading", { level: 1, name: "Trash" })).toBeTruthy();
+  expect(trash.getAttribute("aria-current")).toBe("page");
+});

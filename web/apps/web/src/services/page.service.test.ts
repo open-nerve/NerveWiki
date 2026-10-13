@@ -44,6 +44,40 @@ describe("PageService.heartbeatEditSession", () => {
   });
 });
 
+describe("PageService's trash (M8/P2 design 4.1)", () => {
+  test("reads a notebook's trash fifty items a page, after a cursor for the next; an item by its node; a restore by its node, with no body", async () => {
+    const asked: string[] = [];
+    const service = new PageService(
+      fakeApi(async (request) => {
+        const url = new URL(request.url);
+        asked.push(`${request.method} ${url.pathname}${url.search} ${await request.text()}`.trim());
+        return request.method === "POST"
+          ? json({
+              id: "n1",
+              kind: "page",
+              name: "A",
+              renamed: false,
+              placed: { parent_id: null, reason: "original" },
+              changeset_id: "c1",
+            })
+          : json({ data: [], next_cursor: null });
+      })
+    );
+
+    await service.trash("nb1");
+    await service.trash("nb1", "next");
+    await service.trashItem("n1");
+    expect(await service.restoreNode("n1")).toMatchObject({ id: "n1", renamed: false });
+
+    expect(asked).toEqual([
+      "GET /api/v0/notebooks/nb1/trash?limit=50",
+      "GET /api/v0/notebooks/nb1/trash?limit=50&cursor=next",
+      "GET /api/v0/nodes/n1/trash-item",
+      "POST /api/v0/nodes/n1/restore",
+    ]);
+  });
+});
+
 describe("EditLeaveService.endOnLeave", () => {
   test("sends DELETE of the session before it returns, with the token and keepalive, and waits for no answer", () => {
     const asked: Request[] = [];

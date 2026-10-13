@@ -26,6 +26,8 @@ const refreshedOnConnect = [
     "page-version",
     "page-version-view",
     "page-content",
+    "trash",
+    "trash-item",
   ],
 ].map((level) => new Set(level));
 

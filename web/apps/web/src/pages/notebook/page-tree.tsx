@@ -12,6 +12,7 @@ import { pagesLocked } from "../../app/pages-locked";
 import { errorText } from "../../app/problem-messages";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
+import { formatPeriod } from "../../i18n/format";
 import { useT } from "../../i18n/i18n";
 import type { Notebook } from "../../services/notebook.service";
 import { usePageTree, useStore } from "../../stores/context";
@@ -35,12 +36,18 @@ import { isDragData, PageList, type TreeContext } from "./page-tree-item";
  * move refused for the pages whose links it would write again being
  * edited names those pages and their editors (M6/P4).
  * A page moved keeps the focus on its menu's button, wherever it went.
+ * A deletion's confirmation says how long the trash keeps the page, as
+ * the instance has it, read once here for every page's menu (M8/P2 design
+ * 4.5).
  */
 export const PageTree = observer(function PageTree({ notebook }: { notebook: Notebook }) {
   const pages = usePageTree(notebook);
   const { pageId } = useParams();
   const t = useT();
-  const me = useStore().account?.me?.id;
+  const { account, instance, preferences } = useStore();
+  const me = account?.me?.id;
+  useSWR("instance", () => instance.load());
+  const retention = instance.info?.trash_retention_seconds;
   const nav = useRef<HTMLElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const newPage = useNewPage(notebook);
@@ -105,6 +112,7 @@ export const PageTree = observer(function PageTree({ notebook }: { notebook: Not
     newPage: { create, sending: newPage.sending },
     fail: setFailure,
     focusActions: setFocusing,
+    period: retention === undefined ? undefined : formatPeriod(retention, preferences.locale),
   };
   return (
     <nav ref={nav} aria-label={t("page.tree", { notebook: notebook.name })} className="space-y-1">

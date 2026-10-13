@@ -25,10 +25,10 @@ import { useWorkspace } from "../workspace/workspace-layout";
 type Landing = NonNullable<LinkLanding["landing"]>;
 
 /**
- * Why a link's page is not created: the reader cannot, a version's view does not, an embed or an image does not, or
- * the server's reason.
+ * Why a link's page is not created: the reader cannot, a read-only view (a version's, a page's in the trash) does
+ * not, an embed or an image does not, or the server's reason.
  */
-type Why = "reader" | "version" | "embed" | "image" | NonNullable<LinkLanding["reason"]>;
+type Why = "reader" | "readOnly" | "embed" | "image" | NonNullable<LinkLanding["reason"]>;
 
 /**
  * What the dialog asks or says, of the link it opened for, which was at of
@@ -51,8 +51,9 @@ type Asked = { n: number; link: UnresolvedLink; at: number } & ({ landing: Landi
  * then is gone to; else the dialog says why. No landing, an attachment's
  * name among them, whose view is read again, an embed's link,
  * an image's, and any link to a reader, say why it is not there, without a
- * question to the server for those; so does any link of a version's view
- * (readOnly: M8 design 4.3). What the server refuses otherwise
+ * question to the server for those; so does any link of a read-only view,
+ * a version's or a page's in the trash (readOnly: M8 design 4.3, M8/P2
+ * design 4.3). What the server refuses otherwise
  * goes to the page (report), as a refusal of Edit does, and the next
  * question clears it. A page gone to that the tree does not have yet,
  * another tab's, is read with the tree first.
@@ -76,7 +77,7 @@ export function useUnresolvedLinks({
   article: RefObject<HTMLElement | null>;
   reload: () => void;
   report: (error: unknown) => void;
-  /** Whether the view is a version's, whose links create no page. */
+  /** Whether the view is read only, a version's or a page's in the trash, whose links create no page. */
   readOnly?: boolean;
 }): { unresolved: (link: UnresolvedLink) => Promise<void>; dialog: ReactNode } {
   const t = useT();
@@ -112,7 +113,7 @@ export function useUnresolvedLinks({
       return;
     }
     if (readOnly || !writesPages(notebook.role)) {
-      show({ why: readOnly ? "version" : "reader" });
+      show({ why: readOnly ? "readOnly" : "reader" });
       return;
     }
     asking.current = true;
@@ -266,8 +267,8 @@ function whyText(why: Why, t: Translate): string {
   switch (why) {
     case "reader":
       return t("unresolved.reader");
-    case "version":
-      return t("unresolved.version");
+    case "readOnly":
+      return t("unresolved.readOnly");
     case "embed":
       return t("unresolved.embed");
     case "image":

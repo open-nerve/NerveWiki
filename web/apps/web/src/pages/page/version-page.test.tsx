@@ -95,7 +95,7 @@ test("a link of a version's view to a page that is not there says so, offering n
   await user.click(await screen.findByRole("button", { name: "Nowhere" }));
   const dialog = await screen.findByRole("alertdialog", { name: "“Nowhere” does not exist" });
   expect(
-    within(dialog).getByText("No page has this name. A version is read only: no page is created from its links.")
+    within(dialog).getByText("No page has this name. This view is read only: no page is created from its links.")
   ).toBeTruthy();
   expect(within(dialog).queryByRole("button", { name: "Create page" })).toBeNull();
   expect(server.sent.filter((each) => each.startsWith("GET landing"))).toEqual([]);

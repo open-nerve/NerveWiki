@@ -27,7 +27,8 @@ import { RouteError } from "./route-error";
 // (M3/P4 design 3.4), and a wiki page's under its notebook's, by the
 // page's id (M4/P5 design 3.5), as a tag's pages are by the tag (M6/P6
 // design 8); a page's version under the page's, by its revision (M8
-// design 4.3).
+// design 4.3); the notebook's trash beside them, an item's preview under
+// it by its root's id (M8 design 4.5).
 export const routes: RouteObject[] = [
   {
     Component: Layout,
@@ -163,6 +164,21 @@ export const routes: RouteObject[] = [
                             lazy: async () => {
                               const { VersionPage } = await import("../pages/page/version-page");
                               return { Component: VersionPage };
+                            },
+                          },
+                          {
+                            // Outside a page's shell, which has the pages of the tree alone (M8 design 4.5).
+                            path: "trash",
+                            lazy: async () => {
+                              const { TrashPage } = await import("../pages/notebook/trash-page");
+                              return { Component: TrashPage };
+                            },
+                          },
+                          {
+                            path: "trash/:nodeId",
+                            lazy: async () => {
+                              const { TrashPreview } = await import("../pages/notebook/trash-preview");
+                              return { Component: TrashPreview };
                             },
                           },
                           {

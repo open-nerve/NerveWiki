@@ -10,6 +10,7 @@ import type { Notebook } from "../../services/notebook.service";
 import { useNotebooks, useStore } from "../../stores/context";
 import { NotFoundPage } from "../not-found";
 import { useNotebookColumn, useWorkspace } from "../workspace/workspace-layout";
+import { NotebookPlaces } from "./notebook-places";
 import { PageTree } from "./page-tree";
 import { QuickSwitch } from "./quick-switch";
 
@@ -37,7 +38,8 @@ export function useNotebook(): Notebook {
  * hidden; one this tab has just deleted or left goes to the workspace's
  * home instead, arrived at. Its pages start anew with each notebook, and
  * so do its page tree, which it puts in the workspace's left column
- * (M4/P5 design 3.6), and its quick switch (3.10). A notebook gone while
+ * (M4/P5 design 3.6) with its other places below it (notebook-places.tsx),
+ * and its quick switch (3.10). A notebook gone while
  * this tab edits one of its pages with changes not saved stays, as it was
  * last found, until the edit ends (M5/P4 design 3.9).
  */
@@ -62,7 +64,14 @@ export const NotebookLayout = observer(function NotebookLayout() {
   }
   return (
     <NotebookContext value={notebook}>
-      {column !== null && createPortal(<PageTree key={notebook.id} notebook={notebook} />, column)}
+      {column !== null &&
+        createPortal(
+          <div key={notebook.id} className="space-y-4">
+            <PageTree notebook={notebook} />
+            <NotebookPlaces notebook={notebook} />
+          </div>,
+          column
+        )}
       <QuickSwitch notebook={notebook} />
       <Outlet key={notebook.id} />
     </NotebookContext>

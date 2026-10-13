@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 
-import { formatBytes, formatDate, formatDateTime, formatDuration, formatRelative } from "./format";
+import { formatBytes, formatDate, formatDateTime, formatDuration, formatPeriod, formatRelative } from "./format";
 
 const iso = "2026-10-01T15:04:00Z";
 
@@ -59,4 +59,18 @@ test.each([
 ] as const)("%d seconds before now in %s: %s", (seconds, locale, want) => {
   const now = Date.parse(iso) + seconds * 1000;
   expect(formatRelative(iso, now, locale)).toBe(want);
+});
+
+test.each([
+  // The default retention, 60 days, less the hour before the purge: 59 days and 23 hours.
+  [5_180_400, "en", "59 days"],
+  [5_180_400, "zh-CN", "59天"],
+  [86_400, "en", "1 day"],
+  [86_399, "en", "23 hours"],
+  // The least the contract allows, a day less the hour.
+  [82_800, "en", "23 hours"],
+  [82_800, "zh-CN", "23小时"],
+  [3_599, "en", "0 hours"],
+] as const)("the trash's period of %i seconds is written whole, never longer: %s %s", (seconds, locale, want) => {
+  expect(formatPeriod(seconds, locale)).toBe(want);
 });
