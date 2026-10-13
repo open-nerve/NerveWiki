@@ -23,6 +23,9 @@ const relativeUnits = [
   ["minute", 60],
 ] as const;
 
+/** relativeFormats are formatRelative's formats by language: a list writes a time for each version. */
+const relativeFormats = new Map<string, Intl.RelativeTimeFormat>();
+
 /**
  * formatRelative writes how long before now iso is, in the largest unit
  * the span fills, such as "3 minutes ago" or "yesterday"; under a minute,
@@ -31,7 +34,11 @@ const relativeUnits = [
  */
 export function formatRelative(iso: string, now: number, locale: Locale): string {
   const seconds = Math.min(Math.round((Date.parse(iso) - now) / 1000), 0);
-  const format = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
+  let format = relativeFormats.get(locale);
+  if (format === undefined) {
+    format = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
+    relativeFormats.set(locale, format);
+  }
   for (const [unit, size] of relativeUnits) {
     if (-seconds >= size) {
       return format.format(Math.trunc(seconds / size), unit);

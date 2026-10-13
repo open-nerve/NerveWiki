@@ -38,8 +38,9 @@ export function useVersions(notebook: Notebook, page: string) {
  * PageVersions is the page's versions in its right column (M8 design 4.3,
  * 4.13), one for each edit, newer first, a page of them at a time: each
  * when it was written, as long ago as it is (the time in full as its
- * title), leading to its version's page, then who wrote it and what its
- * changeset was; the newest is marked current, and editing while its
+ * title, and in its name with the version's revision, which tell apart two
+ * of one hour), leading to its version's page, then who wrote it and what
+ * its changeset was; the newest is marked current, and editing while its
  * session is alive. More reads the next page and adds it; the last, More
  * going, the focus falls to the first version it adds (load-more.tsx).
  */
@@ -102,25 +103,30 @@ export const PageVersions = observer(function PageVersions({
       <p className="text-xs text-muted-foreground">{t("version.listHint")}</p>
       {versions.length > 0 && (
         <ul aria-label={t("version.list")} className="space-y-2 text-sm">
-          {versions.map((version) => (
-            <li key={version.id} className="space-y-0.5">
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                <Link
-                  ref={version.id === more.focusing ? focused : undefined}
-                  to={href(version.revision)}
-                  state={arrived}
-                  className="underline underline-offset-4"
-                >
-                  <time dateTime={version.updated_at} title={formatDateTime(version.updated_at, locale)}>
-                    {formatRelative(version.updated_at, now, locale)}
-                  </time>
-                </Link>
-                {version.id === newest && <Mark>{t("version.current")}</Mark>}
-                {version.editing && <Mark>{t("version.editing")}</Mark>}
-              </div>
-              <p className="text-xs break-words text-muted-foreground">{versionBy(version, t)}</p>
-            </li>
-          ))}
+          {versions.map((version) => {
+            const when = formatRelative(version.updated_at, now, locale);
+            const time = formatDateTime(version.updated_at, locale);
+            return (
+              <li key={version.id} className="space-y-0.5">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <Link
+                    ref={version.id === more.focusing ? focused : undefined}
+                    to={href(version.revision)}
+                    state={arrived}
+                    aria-label={t("version.linkName", { when, revision: version.revision, time })}
+                    className="underline underline-offset-4"
+                  >
+                    <time dateTime={version.updated_at} title={time}>
+                      {when}
+                    </time>
+                  </Link>
+                  {version.id === newest && <Mark>{t("version.current")}</Mark>}
+                  {version.editing && <Mark>{t("version.editing")}</Mark>}
+                </div>
+                <p className="text-xs break-words text-muted-foreground">{versionBy(version, t)}</p>
+              </li>
+            );
+          })}
         </ul>
       )}
       {more.failure !== undefined && <Alert>{errorText(more.failure, t)}</Alert>}

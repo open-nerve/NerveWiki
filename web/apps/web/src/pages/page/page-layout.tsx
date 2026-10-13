@@ -109,7 +109,8 @@ function restoredOf(state: unknown): number | undefined {
  * design 3.5, 3.6). A page gone, shown while its edit is unsaved, has none:
  * its list is not read. Beside its content, or after
  * it on a narrow window, is its right column (M6/P7 design 7). Arrived at
- * from one of its versions restored, it says so, unseen as well.
+ * from one of its versions restored, it says so, with the title that has
+ * the focus.
  */
 const PageShell = observer(function PageShell({
   notebook,
@@ -129,11 +130,8 @@ const PageShell = observer(function PageShell({
   const heading = useArrivalFocus<HTMLHeadingElement>();
   useDocumentTitle(page.name, notebook.name);
   const restored = restoredOf(useLocation().state);
-  // What the status says, once it is there: a region is heard as what it holds changes, not as it comes with it.
-  const [status, setStatus] = useState("");
-  useEffect(() => {
-    setStatus(restored === undefined ? "" : t("version.restored", { revision: restored }));
-  }, [restored, t]);
+  // The status of a version restored describes the title, where the focus lands: it is heard as it comes.
+  const restoredNote = useId();
   const [editing, setEditing] = useState<PageEditing | undefined>(undefined);
   const [entering, setEntering] = useState(false);
   const [refusal, setRefusal] = useState<unknown>(undefined);
@@ -251,7 +249,12 @@ const PageShell = observer(function PageShell({
       <div className="space-y-2">
         <Breadcrumbs notebook={notebook} ancestors={pages.ancestorsOf(page.id)} page={page} href={href} />
         <div className="flex items-start justify-between gap-3">
-          <h1 ref={heading} tabIndex={-1} className="text-3xl font-semibold break-words outline-none">
+          <h1
+            ref={heading}
+            tabIndex={-1}
+            aria-describedby={restored === undefined ? undefined : restoredNote}
+            className="text-3xl font-semibold break-words outline-none"
+          >
             {page.name}
           </h1>
           {reading && (
@@ -273,7 +276,9 @@ const PageShell = observer(function PageShell({
           )}
         </div>
         {restored !== undefined && (
-          <output className="block text-sm text-muted-foreground empty:sr-only">{status}</output>
+          <output id={restoredNote} className="block text-sm text-muted-foreground">
+            {t("version.restored", { revision: restored })}
+          </output>
         )}
       </div>
       <div className="space-y-6 xl:grid xl:grid-cols-[minmax(0,1fr)_15rem] xl:items-start xl:gap-8 xl:space-y-0">

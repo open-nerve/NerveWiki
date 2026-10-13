@@ -183,6 +183,7 @@ export const zhCN: Messages = {
   "version.kind.trash_restore": "恢复",
   "version.kind.revert": "撤销",
   "version.title": "版本 {revision}",
+  "version.linkName": "{when}，版本 {revision}，{time}",
   "version.views": "查看这个版本",
   "version.read": "阅读",
   "version.comparePrevious": "与上一版比较",

@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 
 import { appLinks } from "../../reading/app-links";
+import type { Enhancement } from "../../reading/enhancement";
 import { taskToggle } from "../../reading/task-toggle";
 import { unresolvedLinks } from "../../reading/unresolved-links";
 import type { NotebookRole } from "../../services/notebook.service";
@@ -115,6 +116,9 @@ test("the tabs are a named group the arrow keys move in, Enter choosing: what th
   expect(previous.getAttribute("aria-selected")).toBe("true");
   const changes = await screen.findByRole("textbox", { name: "Changes from version 1 to version 4" });
   expect(screen.getByRole("tabpanel").textContent).toContain("Version 1 → Version 4");
+  // Counts as the app writes them in English (M8/P1 review B, M4).
+  expect(screen.getByText("Changes: 1")).toBeTruthy();
+  expect(screen.getByText("Lines: +1 −0")).toBeTruthy();
   expect(changes.textContent).toContain("three");
   expect(server.sent).toContain("GET version Install 1");
 
@@ -128,6 +132,57 @@ test("the tabs are a named group the arrow keys move in, Enter choosing: what th
   expect(await screen.findByRole("article", { name: "Version 4" })).toBeTruthy();
 });
 
+/** reporting is an enhancement that reports a failure of a view that reads "broken". */
+const reporting: Enhancement = (container, { report }) => {
+  if (container.textContent === "broken") {
+    report(new TypeError("offline"));
+  }
+  return undefined;
+};
+
+/** focusAgain gives the window the focus back, past SWR's throttle of the reads it starts so. */
+async function focusAgain(): Promise<void> {
+  await act(() => vi.advanceTimersByTimeAsync(6_000));
+  act(() => {
+    window.dispatchEvent(new Event("focus"));
+  });
+  await act(() => vi.advanceTimersByTimeAsync(50));
+}
+
+// M8/P1 review B, M1: a version's content is up to 5 MiB.
+test("the window's focus back reads a version's view again, its attachments' addresses expiring; not its content, which does not change, nor the one before it's", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+  const server = installed();
+  renderApp(versionPath(install.id, 4), server.app);
+  await screen.findByRole("article", { name: "Version 4" });
+
+  let before = server.sent.length;
+  await focusAgain();
+  await waitFor(() => expect(server.sent.slice(before)).toContain("GET version view Install 4"));
+  expect(server.sent.slice(before).filter((each) => each.startsWith("GET version Install"))).toEqual([]);
+
+  await user.click(screen.getByRole("tab", { name: "Compare with the previous" }));
+  await screen.findByRole("textbox", { name: "Changes from version 1 to version 4" });
+  before = server.sent.length;
+  await focusAgain();
+  await waitFor(() => expect(server.sent.slice(before)).toContain("GET versions Install"));
+  expect(server.sent.slice(before).filter((each) => each.startsWith("GET version Install"))).toEqual([]);
+});
+
+test("what an enhancement of a version's view reported goes once the view is read anew", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const server = installed();
+  server.versionViews.set(`${install.id} 4`, { html: "<p>broken</p>", revision: 4, assets_expire_at: null });
+  renderApp(versionPath(install.id, 4), server.app, { enhancements: [reporting] });
+  expect(await screen.findByRole("alert")).toBeTruthy();
+
+  server.versionViews.set(`${install.id} 4`, { html: "<p>whole</p>", revision: 4, assets_expire_at: null });
+  await focusAgain();
+  await waitFor(() => expect(screen.getByRole("article", { name: "Version 4" }).textContent).toBe("whole"));
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
 test("the version that created the page has nothing before it to compare with", async () => {
   const server = installed();
   renderApp(versionPath(install.id, 1), server.app);
@@ -136,7 +191,7 @@ test("the version that created the page has nothing before it to compare with", 
   expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Read", "Compare with the current"]);
 });
 
-test("an address of a revision a version holds below its own is replaced with its own, the version read once", async () => {
+test("an address of a revision a version holds below its own is replaced with its own, the version and its view read once", async () => {
   const server = installed();
   const { router } = renderApp(versionPath(install.id, 3), server.app);
 
@@ -144,7 +199,11 @@ test("an address of a revision a version holds below its own is replaced with it
   expect(router.state.location.pathname).toBe(versionPath(install.id, 4));
   expect(router.state.historyAction).toBe("REPLACE");
   await screen.findByText("· Ada · Edit");
+  await screen.findByRole("article", { name: "Version 4" });
   expect(server.sent.filter((each) => each.startsWith("GET version Install"))).toEqual(["GET version Install 3"]);
+  expect(server.sent.filter((each) => each.startsWith("GET version view Install"))).toEqual([
+    "GET version view Install 4",
+  ]);
 });
 
 test("an address of no page, or of no revision, is no page; a revision no version holds says so, with Try again", async () => {
@@ -160,12 +219,25 @@ test("an address of no page, or of no revision, is no page; a revision no versio
   expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
 });
 
-test("who edits the page shows as on the page", async () => {
+test("who edits the page shows as on the page; the edit's lease run out, its version is no longer marked editing", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
   const server = installed();
-  server.hold(install.id, bob);
-  renderApp(versionPath(install.id, 4), server.app);
+  const first = versionJSON(1, null, "Install\n");
+  const edited = versionJSON(3, 1, "Install\nmore\n", { by: bob, editing: true });
+  server.withVersions(install.id, [first, edited]);
+  const session = server.hold(install.id, bob, 30);
+  renderApp(versionPath(install.id, 3), server.app);
 
   expect(await screen.findByText("Bob is editing this page.")).toBeTruthy();
+  expect(await screen.findByText("Editing")).toBeTruthy();
+  // No event says so (M8/P1 review B, M2).
+  server.sessions.delete(session);
+  server.withVersions(install.id, [first, { ...edited, editing: false }]);
+  await act(() => vi.advanceTimersByTimeAsync(31_000));
+
+  await waitFor(() => expect(screen.queryByText("Bob is editing this page.")).toBeNull());
+  await waitFor(() => expect(screen.queryByText("Editing")).toBeNull());
+  expect(screen.getByText("Current")).toBeTruthy();
 });
 
 test.each<[string, NotebookRole, number, boolean]>([

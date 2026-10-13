@@ -45,10 +45,12 @@ export const TREE_INTERVAL_MS = 500;
  * too; the pages of the notebook's tags, which a page written or deleted
  * may join or leave (M6 design 4.8); and the properties of the pages
  * written, through the refresher (M6/P7 design 11). The versions of the
- * pages written too, and of theirs shown, those being edited, whose
- * revision a save moves on; a version's view, whose links lead where the
- * tree has them, once the tree changed (M8 design 4.13). The page's
- * content as it is now, which a version is compared with, as its view.
+ * pages written too, and of theirs shown, the content of those being
+ * edited, whose revision a save moves on: their view, read by the
+ * revision, follows (version-page.tsx); a version's view, whose links lead
+ * where the tree has them, once the tree changed (M8 design 4.13). The
+ * page's content as it is now, which a version is compared with, as its
+ * view.
  */
 const pagesChanged: EventHandler = (data, context) => {
   const { cache, mutate, refresher, stopped } = context;
@@ -73,7 +75,7 @@ const pagesChanged: EventHandler = (data, context) => {
   const ids = pages === null ? null : pages.map(({ id }) => id);
   readEach("page-properties", notebook, ids, context);
   readEach("page-versions", notebook, ids, context);
-  readVersions("edited", notebook, ids, (key) => editing(cache, key), context);
+  readVersions("edited", notebook, ids, (key) => key[0] === "page-version" && editing(cache, key), context);
   if (tree) {
     readVersions("views", notebook, null, (key) => key[0] === "page-version-view", context);
   }
@@ -187,9 +189,9 @@ function readVersions(
 }
 
 /**
- * editing tells whether the version of key, a version's content or view by
- * page and revision, is being edited, as its content cached says: its
- * revision moves on with its session's saves, which another's does not.
+ * editing tells whether the version of key, a version's content by page
+ * and revision, is being edited, as its content cached says: its revision
+ * moves on with its session's saves, which another's does not.
  */
 function editing(cache: Cache, [, notebook, page, revision]: unknown[]): boolean {
   const cached = cache.get(unstable_serialize(["page-version", notebook, page, revision]))?.data as
@@ -222,8 +224,8 @@ function readTagPages(notebook: string, { mutate, refresher }: EventContext) {
  * lockChanged reads the page's lock again, after the notebook's tree: the
  * session of a page deleted while edited ends before the deletion's event
  * comes, and its page leaves before its lock would be read, not found.
- * Its versions with it, and those shown that are being edited: a session
- * ended, its version is no longer (M8 design 4.3).
+ * Its versions with it, and the content of those shown that are being
+ * edited: a session ended, its version is no longer (M8 design 4.3).
  */
 const lockChanged: EventHandler = (data, { cache, mutate, stopped }) => {
   const { notebook_id: notebook, page_id: page } = data as EventLock;
@@ -237,7 +239,7 @@ const lockChanged: EventHandler = (data, { cache, mutate, stopped }) => {
         mutate(
           (key) =>
             Array.isArray(key) &&
-            (key[0] === "page-version" || key[0] === "page-version-view") &&
+            key[0] === "page-version" &&
             key[1] === notebook &&
             key[2] === page &&
             editing(cache, key)

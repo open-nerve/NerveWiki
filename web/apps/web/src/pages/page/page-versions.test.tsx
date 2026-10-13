@@ -53,20 +53,23 @@ test("the versions are the page's, newer first: as long ago as each was written,
   expect(within(section("Versions")).getByText("One version per edit.")).toBeTruthy();
   expect(listed()).toEqual([
     ["2 minutes ago", "Oct 3, 2026, 9:58 AM", "Current", "Editing", "Bob · Edit"],
-    ["1 hour ago", "Oct 3, 2026, 9:00 AM", "Ada · Undo"],
+    ["1 hour ago", "Oct 3, 2026, 9:00 AM", "Ada · Undo change"],
     ["1 hour ago", "Oct 3, 2026, 8:30 AM", "Ada · Restore from trash"],
     ["yesterday", "Oct 2, 2026, 9:00 AM", "Ada · Restore"],
     ["2 days ago", "Oct 1, 2026, 9:00 AM", "Ada · Edit"],
     ["2 weeks ago", "Sep 19, 2026, 10:00 AM", "Bob · Import"],
   ]);
-  expect(
-    within(list)
-      .getAllByRole("link")
-      .map((link) => link.getAttribute("href"))
-  ).toEqual([9, 7, 6, 5, 3, 1].map((revision) => `${pagePath(install.id)}/versions/${revision.toString()}`));
+  const links = within(list).getAllByRole("link");
+  expect(links.map((link) => link.getAttribute("href"))).toEqual(
+    [9, 7, 6, 5, 3, 1].map((revision) => `${pagePath(install.id)}/versions/${revision.toString()}`)
+  );
+  // Named as they read, the version and the time in full telling apart those of one hour.
+  const times = listed().map(([, title]) => title ?? "");
+  expect(within(list).getByRole("link", { name: `1 hour ago, version 7, ${times[1] ?? ""}` })).toBe(links[1]);
+  expect(within(list).getByRole("link", { name: `1 hour ago, version 6, ${times[2] ?? ""}` })).toBe(links[2]);
   expect(within(section("Versions")).queryByRole("button", { name: "More versions" })).toBeNull();
 
-  await user.click(within(list).getByRole("link", { name: "yesterday" }));
+  await user.click(within(list).getByRole("link", { name: /^yesterday,/ }));
   const heading = await screen.findByRole("heading", { level: 1, name: "Version 5" });
   expect(router.state.location.pathname).toBe(`${pagePath(install.id)}/versions/5`);
   await waitFor(() => expect(document.activeElement).toBe(heading));
@@ -195,6 +198,27 @@ test("versions that could not be read say why, and are read again on Try again",
   await userEvent.click(retry);
   expect(await within(section("Versions")).findByRole("list", { name: "Versions" })).toBeTruthy();
   expect(within(section("Versions")).queryByRole("alert")).toBeNull();
+});
+
+// M8/P1 review B, M2: a lease that ends is not an event.
+test("an edit whose lease ran out, its lock read free, has the versions read again: none is marked editing", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const server = pageServer();
+  const first = versionJSON(1, null, "Install\n");
+  const edited = versionJSON(2, 1, "Install\nmore\n", { by: bob, editing: true });
+  server.withVersions(install.id, [first, edited]);
+  const session = server.hold(install.id, bob, 30);
+  renderApp(pagePath(install.id), server.app);
+  expect(await screen.findByText("Bob is editing this page.")).toBeTruthy();
+  await waitFor(() => expect(within(section("Versions")).getByText("Editing")).toBeTruthy());
+
+  // Bob's tab went away: his lease runs out, and no event says so.
+  server.sessions.delete(session);
+  server.withVersions(install.id, [first, { ...edited, editing: false }]);
+  await act(() => vi.advanceTimersByTimeAsync(31_000));
+
+  await waitFor(() => expect(screen.queryByText("Bob is editing this page.")).toBeNull());
+  await waitFor(() => expect(within(section("Versions")).queryByText("Editing")).toBeNull());
 });
 
 test("leaving an edit reads the versions at once, the edit's among them", async () => {

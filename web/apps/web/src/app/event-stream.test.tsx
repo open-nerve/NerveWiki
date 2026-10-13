@@ -1,6 +1,7 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { EditorView } from "@codemirror/view";
+import { unstable_serialize, type Cache } from "swr";
 import { afterEach, expect, test, vi } from "vitest";
 
 import { eventHandlers, type EventHandler } from "../events/handlers";
@@ -539,7 +540,18 @@ async function openVersion(revision: number, versions: PageVersionContent[]) {
   const events = eventServer();
   const server = pageServer({ answers: { "GET /api/v0/events": events.answer } });
   server.withVersions(guide.id, versions);
-  const view = renderApp(versionPath(revision), withEvents(server.app), { eventHandlers });
+  // An event of its own hands the test SWR's cache, as the handlers have it.
+  const probed: { cache?: Cache } = {};
+  const handlers = new Map<string, EventHandler>([
+    ...eventHandlers,
+    [
+      "probe",
+      (_data, { cache }) => {
+        probed.cache = cache;
+      },
+    ],
+  ]);
+  const view = renderApp(versionPath(revision), withEvents(server.app), { eventHandlers: handlers });
   await screen.findByRole("article", { name: `Version ${revision.toString()}` });
   await waitFor(() => expect(events.streams).toHaveLength(1));
   const before = server.sent.length;
@@ -555,7 +567,16 @@ async function openVersion(revision: number, versions: PageVersionContent[]) {
   );
   await settle();
   server.sent.length = 0;
-  return { ...view, server, events };
+  /** versionsCached are the keys of the versions' contents and views SWR's cache holds data of. */
+  const versionsCached = async () => {
+    events.last().send("probe", {});
+    await settle();
+    const cache = probed.cache;
+    return cache === undefined
+      ? []
+      : [...cache.keys()].filter((key) => /^@"page-version(-view)?",/.test(key) && cache.get(key)?.data !== undefined);
+  };
+  return { ...view, server, events, versionsCached };
 }
 
 /** versionArticle is the view of Guide's version 1. */
@@ -569,7 +590,7 @@ function versionReads(sent: string[]): string[] {
 test("a pages event reads the version shown again while it is being edited, its address following the revision the session's saves move it to", async () => {
   const first = versionJSON(1, null, "Guide\n");
   const edited = versionJSON(3, 1, "Guide\nmore\n", { by: bob, editing: true });
-  const { server, events, router } = await openVersion(3, [first, edited]);
+  const { server, events, router, versionsCached } = await openVersion(3, [first, edited]);
   expect(screen.getByText("Editing")).toBeTruthy();
 
   server.withVersions(guide.id, [first, { ...edited, revision: 5, content: "Guide\nmore and more\n" }]);
@@ -580,9 +601,17 @@ test("a pages event reads the version shown again while it is being edited, its 
   await waitFor(() =>
     expect(screen.getByRole("article", { name: "Version 5" }).textContent).toBe("Guide\nmore and more")
   );
-  expect(versionReads(server.sent)).toEqual(
-    expect.arrayContaining(["GET version Guide 3", "GET version view Guide 3", "GET versions Guide"])
-  );
+  await settle();
+  // The view is read once, at the revision moved to; what was read at the address's revision leaves the cache.
+  expect(versionReads(server.sent).toSorted()).toEqual([
+    "GET version Guide 3",
+    "GET version view Guide 5",
+    "GET versions Guide",
+  ]);
+  expect((await versionsCached()).toSorted()).toEqual([
+    unstable_serialize(["page-version", notebookJSON.id, guide.id, 5]),
+    unstable_serialize(["page-version-view", notebookJSON.id, guide.id, 5]),
+  ]);
 });
 
 test("a pages event reads no version shown that is not being edited: it does not change; the page's versions it reads", async () => {
@@ -598,7 +627,8 @@ test("a pages event reads no version shown that is not being edited: it does not
   expect(versionReads(server.sent)).toEqual(["GET versions Guide"]);
 });
 
-test("a lock event reads the page's versions again at once, and its version shown being edited: its session over, neither is marked editing", async () => {
+test("a lock event reads the page's versions again at once, and the content of its version shown being edited, not its view; its session over, neither is marked editing", async () => {
+  const user = userEvent.setup();
   const first = versionJSON(1, null, "Guide\n");
   const edited = versionJSON(3, 1, "Guide\nmore\n", { by: bob, editing: true });
   const { server, events } = await openVersion(3, [first, edited]);
@@ -607,15 +637,22 @@ test("a lock event reads the page's versions again at once, and its version show
   await settle();
   expect(versionReads(server.sent)).toEqual([]);
 
+  // Its view shows: the revision does not move, and the view stays.
+  events.last().send("lock", lockEvent(guide.id));
+  await waitFor(() => expect(versionReads(server.sent)).toHaveLength(2));
+  await settle();
+  expect(versionReads(server.sent).toSorted()).toEqual(["GET version Guide 3", "GET versions Guide"]);
+
+  // The version before it shows, which is not being edited.
+  await user.click(screen.getByRole("tab", { name: "Compare with the previous" }));
+  await screen.findByRole("textbox", { name: "Changes from version 1 to version 3" });
+  server.sent.length = 0;
   server.withVersions(guide.id, [first, { ...edited, editing: false }]);
   events.last().send("lock", lockEvent(guide.id));
 
   await waitFor(() => expect(screen.queryByText("Editing")).toBeNull());
-  expect(versionReads(server.sent).toSorted()).toEqual([
-    "GET version Guide 3",
-    "GET version view Guide 3",
-    "GET versions Guide",
-  ]);
+  await settle();
+  expect(versionReads(server.sent).toSorted()).toEqual(["GET version Guide 3", "GET versions Guide"]);
 });
 
 test("a links event reads again the views of the versions shown of the pages it names; a tree changed, every one's; another page's, none", async () => {

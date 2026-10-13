@@ -163,7 +163,7 @@ test("a pages event asks the refresher for the versions of the pages written tha
   ]);
 });
 
-test("the versions of a page being edited are read again by the refresher: their content and view, by the content cached; another's, none", () => {
+test("the versions of a page being edited are read again by the refresher: their content, by the content cached, not their view, which follows its revision; another's, none", () => {
   const reads = new Map<string, () => void>();
   const edited = { editing: true };
   const states = new Map<string, unknown>([
@@ -195,5 +195,5 @@ test("the versions of a page being edited are read again by the refresher: their
       ["page-version", "n1", "b", 5],
       ["page-versions", "n1", "a"],
     ].map(matches)
-  ).toEqual([true, true, false, false, false, false]);
+  ).toEqual([true, false, false, false, false, false]);
 });

@@ -52,7 +52,10 @@ test("the dialog shows what the restore changes of the page as it is now; restor
   const heading = await screen.findByRole("heading", { level: 1, name: "Install" });
   expect(router.state.location.pathname).toBe(pagePath(install.id));
   await waitFor(() => expect(document.activeElement).toBe(heading));
-  await waitFor(() => expect(screen.getByText("Restored version 4.").tagName).toBe("OUTPUT"));
+  const status = screen.getByText("Restored version 4.");
+  expect(status.tagName).toBe("OUTPUT");
+  // Heard with the title, which has the focus.
+  expect(heading.getAttribute("aria-describedby")).toBe(status.id);
   expect(restores(server.sent)).toEqual(["RESTORE Install 4 on 6"]);
   expect((await screen.findByRole("article", { name: "Install" })).textContent).toBe("Install\nthree");
   await waitFor(() => expect(within(section("Versions")).getAllByRole("listitem")).toHaveLength(4));
