@@ -119,7 +119,7 @@ func (q *Queries) RecordItem(ctx context.Context, arg RecordItemParams) error {
 	return err
 }
 
-const recordRevision = `-- name: RecordRevision :exec
+const recordRevision = `-- name: RecordRevision :execrows
 INSERT INTO page_revisions (id, changeset_id, node_id, base_revision, revision, content, content_hash, byte_size,
     created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5,
@@ -127,6 +127,7 @@ VALUES ($1, $2, $3, $4, $5,
 ON CONFLICT (changeset_id, node_id) DO UPDATE
 SET revision = excluded.revision, content = excluded.content, content_hash = excluded.content_hash,
     byte_size = excluded.byte_size, updated_at = excluded.updated_at
+WHERE page_revisions.revision = excluded.base_revision
 `
 
 type RecordRevisionParams struct {
@@ -142,9 +143,10 @@ type RecordRevisionParams struct {
 }
 
 // A page's content as a changeset leaves it: a later write of the same changeset updates the row, keeping
-// the base it started from.
-func (q *Queries) RecordRevision(ctx context.Context, arg RecordRevisionParams) error {
-	_, err := q.db.Exec(ctx, recordRevision,
+// the base it started from, when it goes on from the row's revision. One on another's write would make the row
+// hold that write's revisions too (M8/P1 review C4): it updates nothing, and the unit fails.
+func (q *Queries) RecordRevision(ctx context.Context, arg RecordRevisionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, recordRevision,
 		arg.ID,
 		arg.ChangesetID,
 		arg.NodeID,
@@ -155,7 +157,10 @@ func (q *Queries) RecordRevision(ctx context.Context, arg RecordRevisionParams) 
 		arg.ByteSize,
 		arg.Now,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const touchChangeset = `-- name: TouchChangeset :exec

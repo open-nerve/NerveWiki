@@ -213,7 +213,9 @@ type PageVersion struct {
 
 	// Changeset The changeset a version is of.
 	Changeset VersionChangeset `json:"changeset"`
-	CreatedAt time.Time        `json:"created_at"`
+
+	// CreatedAt When the version was first written; an edit session's, at its first save.
+	CreatedAt time.Time `json:"created_at"`
 
 	// Editing The page's newest version, while the edit session whose changeset it is is alive: its revision may move on.
 	Editing bool `json:"editing"`
@@ -240,7 +242,9 @@ type PageVersionContent struct {
 	Changeset VersionChangeset `json:"changeset"`
 
 	// Content A page's Markdown, byte for byte: at most 5 MiB (5,242,880 bytes) of UTF-8, without NUL characters. Its line breaks, byte order mark and blanks are kept as they are.
-	Content   Content   `json:"content"`
+	Content Content `json:"content"`
+
+	// CreatedAt When the version was first written; an edit session's, at its first save.
 	CreatedAt time.Time `json:"created_at"`
 
 	// Editing The page's newest version, while the edit session whose changeset it is is alive: its revision may move on.
@@ -256,8 +260,8 @@ type PageVersionContent struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// PageVersionList A page of a page's versions, newer first.
-type PageVersionList struct {
+// PageVersionPage A page of a page's versions, newer first.
+type PageVersionPage struct {
 	Data []PageVersion `json:"data"`
 
 	// NextCursor The cursor of the next page; null on the last page.
@@ -317,7 +321,7 @@ type TreeNodeList struct {
 
 // VersionChangeset The changeset a version is of.
 type VersionChangeset struct {
-	// Client Where the changeset's writes came from: web, api or cli, or mcp: and the name of an MCP client.
+	// Client Where the changeset's writes came from, web, api, cli, or mcp:<name> for an MCP client.
 	Client    string    `json:"client"`
 	CreatedAt time.Time `json:"created_at"`
 
@@ -340,7 +344,9 @@ type VersionRestored struct {
 	// Changed Whether the restore wrote the page.
 	Changed     bool                         `json:"changed"`
 	ChangesetID nullable.Nullable[uuid.UUID] `json:"changeset_id"`
-	Revision    int                          `json:"revision"`
+
+	// Revision The page's revision as the restore leaves it.
+	Revision int `json:"revision"`
 }
 
 // EditSessionID defines model for EditSessionID.
@@ -1805,7 +1811,7 @@ type ListPageVersionsResponseObject interface {
 	VisitListPageVersionsResponse(w http.ResponseWriter) error
 }
 
-type ListPageVersions200JSONResponse PageVersionList
+type ListPageVersions200JSONResponse PageVersionPage
 
 func (response ListPageVersions200JSONResponse) VisitListPageVersionsResponse(w http.ResponseWriter) error {
 

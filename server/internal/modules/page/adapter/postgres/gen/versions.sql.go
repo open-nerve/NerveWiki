@@ -47,7 +47,7 @@ func (q *Queries) AliveChangesetOf(ctx context.Context, arg AliveChangesetOfPara
 
 const findVersion = `-- name: FindVersion :one
 SELECT r.id, r.base_revision, r.revision, r.byte_size, r.created_at, r.updated_at, c.id AS changeset_id, c.kind,
-    c.client, c.created_by_id, c.created_at AS changeset_created_at
+    c.client, c.created_by_id, c.created_at AS changeset_created_at, r.content
 FROM page_revisions r
 JOIN changesets c ON c.id = r.changeset_id
 WHERE r.node_id = $1 AND r.revision >= $2
@@ -72,10 +72,12 @@ type FindVersionRow struct {
 	Client             string
 	CreatedByID        uuid.UUID
 	ChangesetCreatedAt time.Time
+	Content            string
 }
 
-// The first version of a page at or above the revision: the only one that may hold it, as each version's base is the
-// one before's revision. The caller checks its base.
+// The first version of a page at or above the revision, with its content, in one statement: the only one that may
+// hold it, as each version's base is the one before's revision; an edit session's save, which moves its version's
+// row on, comes before or after the whole read. The caller checks its base.
 func (q *Queries) FindVersion(ctx context.Context, arg FindVersionParams) (FindVersionRow, error) {
 	row := q.db.QueryRow(ctx, findVersion, arg.NodeID, arg.Revision)
 	var i FindVersionRow
@@ -91,6 +93,7 @@ func (q *Queries) FindVersion(ctx context.Context, arg FindVersionParams) (FindV
 		&i.Client,
 		&i.CreatedByID,
 		&i.ChangesetCreatedAt,
+		&i.Content,
 	)
 	return i, err
 }
@@ -100,14 +103,14 @@ SELECT r.id, r.base_revision, r.revision, r.byte_size, r.created_at, r.updated_a
     c.client, c.created_by_id, c.created_at AS changeset_created_at
 FROM page_revisions r
 JOIN changesets c ON c.id = r.changeset_id
-WHERE r.node_id = $1 AND ($2::integer = 0 OR r.revision < $2::integer)
+WHERE r.node_id = $1 AND r.revision < $2::bigint
 ORDER BY r.revision DESC
 LIMIT $3
 `
 
 type ListVersionsParams struct {
 	NodeID uuid.UUID
-	Below  int32
+	Below  int64
 	Max    int32
 }
 
@@ -125,9 +128,9 @@ type ListVersionsRow struct {
 	ChangesetCreatedAt time.Time
 }
 
-// A page's versions newer-first below the revision below (0: from the newest), each with its changeset (M8/P1 design
-// 3.4): on the unique index (node_id, revision) backward. The content is not read; deleted rows are listed, as a
-// page in the trash has its history.
+// A page's versions newer-first below the revision below, each with its changeset (M8/P1 design 3.4): a range of the
+// unique index (node_id, revision) backward, whatever plan is kept for the statement. The content is not read; deleted
+// rows are listed, as a page in the trash has its history.
 func (q *Queries) ListVersions(ctx context.Context, arg ListVersionsParams) ([]ListVersionsRow, error) {
 	rows, err := q.db.Query(ctx, listVersions, arg.NodeID, arg.Below, arg.Max)
 	if err != nil {
@@ -158,16 +161,4 @@ func (q *Queries) ListVersions(ctx context.Context, arg ListVersionsParams) ([]L
 		return nil, err
 	}
 	return items, nil
-}
-
-const versionContent = `-- name: VersionContent :one
-SELECT content FROM page_revisions WHERE id = $1
-`
-
-// A version's content, as written.
-func (q *Queries) VersionContent(ctx context.Context, id uuid.UUID) (string, error) {
-	row := q.db.QueryRow(ctx, versionContent, id)
-	var content string
-	err := row.Scan(&content)
-	return content, err
 }

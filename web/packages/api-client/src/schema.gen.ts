@@ -911,7 +911,7 @@ export interface paths {
         };
         /**
          * Read a version of a page
-         * @description The version of the page that holds the revision, with its content byte for byte as written. It is answered with its own revision, which is not the one asked for when an edit session's saves made it hold several. A page in the trash has its versions too. Any role in the page's notebook can read them. A page that does not exist, whose notebook is deleted, or whose notebook the caller has no role in is page.not_found; a revision no version of the page holds, 0 and below among them, is page.version_not_found.
+         * @description The version of the page that holds the revision, with its content byte for byte as written, read at once. It is answered with its own revision, which differs from the one asked for when that is one of the earlier revisions an edit session's saves made it hold. A page in the trash has its versions too. Any role in the page's notebook can read them. A page that does not exist, whose notebook is deleted, or whose notebook the caller has no role in is page.not_found; a revision no version of the page holds, 0 and below among them, is page.version_not_found.
          */
         get: operations["getPageVersion"];
         put?: never;
@@ -936,7 +936,7 @@ export interface paths {
         };
         /**
          * Read a version of a page as a page
-         * @description The reading view of the version of the page that holds the revision, as getPageView renders a page's content: its links lead where they lead now, and revision is the version's own. A page in the trash has its versions too. Any role in the page's notebook can read them. A page that does not exist, whose notebook is deleted, or whose notebook the caller has no role in is page.not_found; a revision no version of the page holds is page.version_not_found. When the server parses as much content as it can at once, the version waits a moment, then is server_busy.
+         * @description The reading view of the version of the page that holds the revision, as getPageView renders a page's content: its links lead where they lead now, and revision is the version's own. A page in the trash has its versions too; its links show unresolved. Any role in the page's notebook can read them. A page that does not exist, whose notebook is deleted, or whose notebook the caller has no role in is page.not_found; a revision no version of the page holds, 0 and below among them, is page.version_not_found. When the server parses as much content as it can at once, the version waits a moment, then is server_busy.
          */
         get: operations["getPageVersionView"];
         put?: never;
@@ -963,7 +963,7 @@ export interface paths {
         put?: never;
         /**
          * Restore a version of a page
-         * @description Writes the content of the version that holds the revision as the page's, on base_revision, the revision the caller read the page at: a new version, in a changeset of its own, a version_restore. Its notebook's editors and admins can. A page that does not exist, is in the trash (restore it first), or whose notebook the caller has no role in is page.not_found; a revision no version of the page holds is page.version_not_found; then a reader is forbidden; when the server parses as much content as it can at once, the content waits a moment, then is server_busy. A content the page holds already writes nothing, whatever the base: changed is false. Then a base_revision that is not the page's revision is page.revision_mismatch: the page was written since; then a page whose lock an edit session holds, the caller's elsewhere among them, is page.locked, naming the holder in lock.
+         * @description Writes the content of the version that holds the revision as the page's, on base_revision, the revision the caller read the page at: a new version, in a changeset of its own, a version_restore. Its notebook's editors and admins can. A page that does not exist, is in the trash (restore it first), whose notebook is deleted, or whose notebook the caller has no role in is page.not_found; a revision no version of the page holds, 0 and below among them, is page.version_not_found; then a reader is forbidden; when the server parses as much content as it can at once, the content waits a moment, then is server_busy. A content the page holds already writes nothing, whatever the base: changed is false. Then a base_revision that is not the page's revision is page.revision_mismatch: the page was written since; then a page whose lock an edit session holds, the caller's elsewhere among them, is page.locked, naming the holder in lock.
          */
         post: operations["restorePageVersion"];
         delete?: never;
@@ -2081,7 +2081,7 @@ export interface components {
             /** Format: uuid */
             id: string;
             kind: components["schemas"]["ChangesetKind"];
-            /** @description Where the changeset's writes came from: web, api or cli, or mcp: and the name of an MCP client. */
+            /** @description Where the changeset's writes came from, web, api, cli, or mcp:<name> for an MCP client. */
             client: string;
             /** Format: date-time */
             created_at: string;
@@ -2100,7 +2100,10 @@ export interface components {
             base_revision: number | null;
             /** @description The content's size in bytes. */
             byte_size: number;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When the version was first written; an edit session's, at its first save.
+             */
             created_at: string;
             /**
              * Format: date-time
@@ -2112,7 +2115,7 @@ export interface components {
             changeset: components["schemas"]["VersionChangeset"];
         };
         /** @description A page of a page's versions, newer first. */
-        PageVersionList: {
+        PageVersionPage: {
             data: components["schemas"]["PageVersion"][];
             next_cursor: components["schemas"]["NextCursor"];
         };
@@ -2129,7 +2132,10 @@ export interface components {
             base_revision: number | null;
             /** @description The content's size in bytes. */
             byte_size: number;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When the version was first written; an edit session's, at its first save.
+             */
             created_at: string;
             /**
              * Format: date-time
@@ -2148,6 +2154,7 @@ export interface components {
         };
         /** @description What a restore did: the page's revision as it leaves it, and its changeset, null when the page held the version's content already and nothing was written. */
         VersionRestored: {
+            /** @description The page's revision as the restore leaves it. */
             revision: number;
             /** Format: uuid */
             changeset_id: string | null;
@@ -2694,7 +2701,7 @@ export type ChangesetKind = components['schemas']['ChangesetKind'];
 export type ChangesetAuthor = components['schemas']['ChangesetAuthor'];
 export type VersionChangeset = components['schemas']['VersionChangeset'];
 export type PageVersion = components['schemas']['PageVersion'];
-export type PageVersionList = components['schemas']['PageVersionList'];
+export type PageVersionPage = components['schemas']['PageVersionPage'];
 export type PageVersionContent = components['schemas']['PageVersionContent'];
 export type VersionRestore = components['schemas']['VersionRestore'];
 export type VersionRestored = components['schemas']['VersionRestored'];
@@ -4028,7 +4035,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PageVersionList"];
+                    "application/json": components["schemas"]["PageVersionPage"];
                 };
             };
             default: components["responses"]["Problem"];

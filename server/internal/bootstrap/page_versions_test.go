@@ -103,7 +103,23 @@ func TestRestoringAVersionThroughServe(t *testing.T) {
 		t.Errorf("%d version_restore changesets of bob with the version 3 on 2, want 1", n)
 	}
 
-	tm.send(t, versionRestore("bob", id, 1, 3), http.StatusOK)
+	if v := tm.versions(t, "alice", id); len(v) != 3 || v[0].Revision != 3 || *v[0].BaseRevision != 2 ||
+		v[0].Changeset.Kind != "version_restore" || v[0].Changeset.CreatedBy.DisplayName != "bob" ||
+		v[1].Changeset.CreatedBy.DisplayName != "alice" {
+		t.Errorf("versions after the restore = %+v, want bob's version_restore 3 on 2, then alice's", v)
+	}
+
+	c = versionRestore("bob", id, 1, 3)
+	status, body = ask(t, tm.contract, c.method, tm.base+c.path, tm.tokens["bob"], c.body)
+	r = struct {
+		Revision    int     `json:"revision"`
+		ChangesetID *string `json:"changeset_id"`
+		Changed     bool    `json:"changed"`
+	}{}
+	decodeAnswer(t, body, &r)
+	if status != http.StatusOK || r.Revision != 3 || r.ChangesetID != nil || r.Changed {
+		t.Errorf("a restore of the content the page holds = %d %s, want revision 3 unchanged", status, body)
+	}
 	tm.quiet(t, nb, marker, s)
 	checkPages(t, tm.pool)
 }
@@ -143,8 +159,9 @@ func TestAPageInTheTrashKeepsItsHistory(t *testing.T) {
 		t.Errorf("version 2 = %d %s, want the session's version 3", status, body)
 	}
 	status, body = ask(t, tm.contract, http.MethodGet, tm.base+"/api/v0/pages/"+id+"/versions/3/view", tm.tokens["bob"], "")
-	if status != http.StatusOK || !strings.Contains(body, `"revision":3`) {
-		t.Errorf("version 3's view in the trash = %d %s, want it rendered at 3", status, body)
+	if status != http.StatusOK || !strings.Contains(body, `"revision":3`) || !strings.Contains(body, "nw-unresolved") ||
+		strings.Contains(body, "data-nw-node") {
+		t.Errorf("version 3's view in the trash = %d %s, want it rendered at 3, its link unresolved until P2", status, body)
 	}
 	for _, c := range []struct {
 		step step

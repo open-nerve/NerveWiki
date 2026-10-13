@@ -167,31 +167,25 @@ func (f *fakeStore) ListVersions(ctx context.Context, pageID uuid.UUID, below in
 	var out []domain.Version
 	all := f.versionsOf(pageID)
 	for i := len(all) - 1; i >= 0 && len(out) < limit; i-- {
-		if below == 0 || all[i].Revision < below {
+		if all[i].Revision < below {
 			out = append(out, all[i])
 		}
 	}
 	return out, nil
 }
 
-func (f *fakeStore) FindVersion(ctx context.Context, pageID uuid.UUID, revision int) (domain.Version, error) {
+func (f *fakeStore) FindVersion(ctx context.Context, pageID uuid.UUID, revision int) (domain.Version, string, error) {
 	f.record(ctx, "FindVersion")
 	for _, v := range f.versionsOf(pageID) {
 		if v.Revision >= revision {
-			return v, nil
+			for _, r := range f.revisions {
+				if r.ID == v.ID {
+					return v, r.Content, nil
+				}
+			}
 		}
 	}
-	return domain.Version{}, app.ErrNotFound
-}
-
-func (f *fakeStore) VersionContent(ctx context.Context, id uuid.UUID) (string, error) {
-	f.record(ctx, "VersionContent")
-	for _, r := range f.revisions {
-		if r.ID == id {
-			return r.Content, nil
-		}
-	}
-	return "", app.ErrNotFound
+	return domain.Version{}, "", app.ErrNotFound
 }
 
 func (f *fakeStore) AliveChangesetOf(ctx context.Context, pageID uuid.UUID, now time.Time) (uuid.UUID, error) {

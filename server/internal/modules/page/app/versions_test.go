@@ -58,6 +58,17 @@ func (f *fixture) versionReads() app.VersionReads {
 	return app.VersionReads{Notebooks: f.notebooks, Nodes: f.store, Versions: f.store, Names: f.names, Auth: f.auth, Clock: f.clock}
 }
 
+// countingNames is fakeNames that counts its reads.
+type countingNames struct {
+	fakeNames
+	reads *int
+}
+
+func (n countingNames) DisplayNames(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error) {
+	*n.reads++
+	return n.fakeNames.DisplayNames(ctx, ids)
+}
+
 func (f *fixture) listVersions(id uuid.UUID, limit int, cursor string) (app.VersionList, error) {
 	var c *string
 	if cursor != "" {
@@ -77,26 +88,40 @@ func revisionsOf(versions []domain.Version) []int {
 // A page's versions list newer-first, a page at a time, without a
 // transaction: the node alive or in the trash, its notebook's workspace,
 // the decision on page.history, the versions; each with its changeset and
-// its actor's name. The cursor is the last revision listed; the last page
-// has none.
+// its actor's name, the names of a page read at once. The cursor is the
+// last revision listed; the last page has none.
 func TestListVersionsPagesNewerFirst(t *testing.T) {
 	f := newFixture()
 	f.grant(domain.ActionHistory)
-	f.names[f.alice] = "Alice"
+	bob := uuid.NewV7()
+	f.names[f.alice], f.names[bob] = "Alice", "Bob"
 	n := f.page("Notes", nil, 0)
 	f.history(n.ID, 6)
+	for _, i := range []int{1, 2, 4} {
+		f.store.changesets[i].By = bob
+	}
+	reads := 0
+	list := app.NewListVersions(app.VersionReads{Notebooks: f.notebooks, Nodes: f.store, Versions: f.store,
+		Names: countingNames{f.names, &reads}, Auth: f.auth, Clock: f.clock})
 	var pages [][]int
+	var names []string
 	cursor := ""
 	for range 4 {
 		f.rec.calls = nil
-		l, err := f.listVersions(n.ID, 2, cursor)
+		limit := 2
+		var c *string
+		if cursor != "" {
+			c = &cursor
+		}
+		l, err := list.Execute(f.asAlice(), n.ID, &limit, c)
 		if err != nil {
 			t.Fatal(err)
 		}
 		pages = append(pages, revisionsOf(l.Versions))
 		for _, v := range l.Versions {
-			if v.Changeset.By != f.alice || v.Changeset.ByName != "Alice" || v.Changeset.Kind != domain.ChangesetEdit || v.Editing {
-				t.Errorf("version %+v, want alice's edit, named, not being edited", v)
+			names = append(names, v.Changeset.ByName)
+			if v.Changeset.Kind != domain.ChangesetEdit || v.Editing {
+				t.Errorf("version %+v, want an edit, not being edited", v)
 			}
 		}
 		want := []string{"FindAnyNode", "WorkspaceOf", "Authorize page.history", "ListVersions"}
@@ -112,6 +137,9 @@ func TestListVersionsPagesNewerFirst(t *testing.T) {
 	}
 	if !slices.EqualFunc(pages, [][]int{{6, 5}, {4, 3}, {2, 1}}, slices.Equal) {
 		t.Errorf("pages = %v, want [6 5] [4 3] [2 1], the last with no cursor", pages)
+	}
+	if want := []string{"Alice", "Bob", "Alice", "Bob", "Bob", "Alice"}; !slices.Equal(names, want) || reads != 3 {
+		t.Errorf("names %v in %d reads, want %v, one read a page", names, reads, want)
 	}
 }
 
@@ -236,8 +264,8 @@ func TestGetVersionFindsTheVersionHoldingARevision(t *testing.T) {
 			t.Errorf("version %d = %+v, want %q at %d by Alice", revision, v, want.Content, want.Revision)
 		}
 		if !slices.Equal(f.rec.calls, []string{"FindAnyNode", "WorkspaceOf", "Authorize page.history", "FindVersion",
-			"AliveChangesetOf", "VersionContent"}) {
-			t.Errorf("calls = %v, want the page, the decision, the version, its session, its content, outside a transaction",
+			"AliveChangesetOf"}) {
+			t.Errorf("calls = %v, want the page, the decision, the version with its content, its session, outside a transaction",
 				f.rec.calls)
 		}
 	}
@@ -298,9 +326,9 @@ func TestGetVersionViewRendersTheVersion(t *testing.T) {
 	if v != (app.ReadingView{HTML: "<p>three</p>", Revision: 3, Expires: md.expires}) {
 		t.Errorf("view = %+v, want version 3 rendered", v)
 	}
-	if !slices.Equal(f.rec.calls, []string{"FindAnyNode", "WorkspaceOf", "Authorize page.history", "FindVersion", "VersionContent",
-		"Take 5", "Render", "Release 5"}) {
-		t.Errorf("calls = %v, want the page, the decision, the version and its content, rendered within the budget", f.rec.calls)
+	if !slices.Equal(f.rec.calls, []string{"FindAnyNode", "WorkspaceOf", "Authorize page.history", "FindVersion", "Take 5", "Render",
+		"Release 5"}) {
+		t.Errorf("calls = %v, want the page, the decision, the version with its content, rendered within the budget", f.rec.calls)
 	}
 	if !slices.Equal(md.pages, []app.PageRef{{NotebookID: f.eng, PageID: n.ID, Revision: 3}}) {
 		t.Errorf("rendered for %v, want the page at revision 3", md.pages)
@@ -349,7 +377,7 @@ func TestRestoreVersionWritesTheVersionsContent(t *testing.T) {
 	if len(g.steps) != 1 || g.steps[0].Kind != domain.ChangesetVersionRestore || g.steps[0].Operation != domain.OpContent {
 		t.Errorf("the guard saw %+v, want a content write of a version_restore", g.steps)
 	}
-	want := []string{"FindAnyNode", "WorkspaceOf", "Authorize page.history", "FindVersion", "VersionContent", "WorkspaceOf",
+	want := []string{"FindAnyNode", "WorkspaceOf", "Authorize page.history", "FindVersion", "WorkspaceOf",
 		"Authorize page.restore_version", "Take 2", "Facts", "KeepFacts 2", "WorkspaceOf", "ShareWorkspace in tx",
 		"ShareNotebook in tx", "Authorize page.restore_version in tx", "LockContent in tx", "FindNodeIn in tx",
 		"GuardWrite content in tx", "CreateChangeset in tx", "WriteContent in tx", "RecordRevision in tx"}
@@ -364,10 +392,13 @@ func TestRestoreVersionWritesTheVersionsContent(t *testing.T) {
 }
 
 // A version whose content the page holds already writes nothing, whatever
-// the base: the page's revision, no changeset, nothing logged.
+// the base, and while an edit session holds the page's lock: the page's
+// revision, no changeset, nothing logged. The content is parsed first:
+// with the budget full, server_busy.
 func TestRestoringTheCurrentContentWritesNothing(t *testing.T) {
 	f := newFixture()
 	f.grant(domain.ActionHistory, domain.ActionRestoreVersion)
+	f.guards = []app.WriteGuard{&guard{recorder: f.rec, err: domain.Locked(uuid.NewV7(), uuid.NewV7(), "Bob")}}
 	n := f.page("Notes", nil, 0)
 	versions := f.history(n.ID, 3)
 	f.version(n.ID, &versions[2].Revision, 4, "v3", domain.ChangesetEdit, f.alice)
@@ -381,6 +412,10 @@ func TestRestoringTheCurrentContentWritesNothing(t *testing.T) {
 			t.Errorf("restore on %d = %+v, %v; %d changesets, logged %q; want revision 4, nothing written", base, r, err,
 				len(f.store.changesets), f.logs.String())
 		}
+	}
+	f.budget.err = shared.ServerBusy(time.Second)
+	if _, err := f.restore(n.ID, 3, 4); codeOf(err) != "server_busy" {
+		t.Errorf("restore with the budget full = %q, want server_busy", codeOf(err))
 	}
 }
 
@@ -448,36 +483,4 @@ func TestRestoreVersionAnswersItsCodesInOrder(t *testing.T) {
 			t.Errorf("restore of no page = %q, want page.not_found", codeOf(err))
 		}
 	}
-}
-
-// A version purged between its look-up and its content's read is not
-// found: as if it was purged before.
-func TestAVersionPurgedWhileItIsReadIsNotFound(t *testing.T) {
-	f := newFixture()
-	f.grant(domain.ActionHistory, domain.ActionRestoreVersion)
-	n := f.page("Notes", nil, 0)
-	f.history(n.ID, 2)
-	gone := &purgingVersions{fakeStore: f.store}
-	reads := f.versionReads()
-	reads.Versions = gone
-	if _, err := app.NewGetVersion(reads).Execute(f.asAlice(), n.ID, 1); codeOf(err) != "page.version_not_found" {
-		t.Errorf("getVersion = %q, want page.version_not_found", codeOf(err))
-	}
-	md := &fakeMarkdown{recorder: f.rec}
-	if _, err := app.NewGetVersionView(reads, md, f.budget).Execute(f.asAlice(), n.ID, 1); codeOf(err) != "page.version_not_found" {
-		t.Errorf("getVersionView = %q, want page.version_not_found", codeOf(err))
-	}
-	restore := app.NewRestoreVersion(reads, f.writer(), f.parser(), f.logger())
-	if _, err := restore.Execute(f.asAlice(), n.ID, 1, 2, domain.ClientWeb); codeOf(err) != "page.version_not_found" {
-		t.Errorf("restorePageVersion = %q, want page.version_not_found", codeOf(err))
-	}
-}
-
-// purgingVersions finds the versions, whose contents the purge took since.
-type purgingVersions struct {
-	*fakeStore
-}
-
-func (p *purgingVersions) VersionContent(context.Context, uuid.UUID) (string, error) {
-	return "", app.ErrNotFound
 }

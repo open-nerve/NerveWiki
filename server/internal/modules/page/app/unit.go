@@ -319,10 +319,13 @@ func (u *Unit) content(nodeID uuid.UUID, text string, revision int) Content {
 
 // changesetOf has the unit write in the changeset id, an edit session's,
 // rather than one of its own: an edit session's writes come first in
-// their unit.
+// their unit, which is an edit's.
 func (u *Unit) changesetOf(id uuid.UUID) error {
 	if u.into != (uuid.UUID{}) {
 		return errors.New("a page write unit that merges into a changeset writes in an edit session's")
+	}
+	if u.write.Kind != domain.ChangesetEdit {
+		return fmt.Errorf("a page write unit of kind %q writes in an edit session's changeset", u.write.Kind)
 	}
 	if u.changeset != (uuid.UUID{}) && u.changeset != id {
 		return errors.New("a page write unit writes in an edit session's changeset after it wrote in its own")

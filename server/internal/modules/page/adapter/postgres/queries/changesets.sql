@@ -20,16 +20,18 @@ ON CONFLICT (changeset_id, node_id) DO UPDATE
 SET after_parent_id = excluded.after_parent_id, after_name = excluded.after_name,
     after_sort_order = excluded.after_sort_order, updated_at = excluded.updated_at, deleted_at = excluded.deleted_at;
 
--- name: RecordRevision :exec
+-- name: RecordRevision :execrows
 -- A page's content as a changeset leaves it: a later write of the same changeset updates the row, keeping
--- the base it started from.
+-- the base it started from, when it goes on from the row's revision. One on another's write would make the row
+-- hold that write's revisions too (M8/P1 review C4): it updates nothing, and the unit fails.
 INSERT INTO page_revisions (id, changeset_id, node_id, base_revision, revision, content, content_hash, byte_size,
     created_at, updated_at)
 VALUES (sqlc.arg(id), sqlc.arg(changeset_id), sqlc.arg(node_id), sqlc.narg(base_revision), sqlc.arg(revision),
     sqlc.arg(content), sqlc.arg(content_hash), sqlc.arg(byte_size), sqlc.arg(now), sqlc.arg(now))
 ON CONFLICT (changeset_id, node_id) DO UPDATE
 SET revision = excluded.revision, content = excluded.content, content_hash = excluded.content_hash,
-    byte_size = excluded.byte_size, updated_at = excluded.updated_at;
+    byte_size = excluded.byte_size, updated_at = excluded.updated_at
+WHERE page_revisions.revision = excluded.base_revision;
 
 -- name: LockChangeset :one
 -- A changeset a unit merges into (M7/P6 design 3.2), locked until the unit ends: an import's later units write in

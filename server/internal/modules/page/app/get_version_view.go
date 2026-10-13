@@ -29,13 +29,9 @@ func (g *GetVersionView) Execute(ctx context.Context, id uuid.UUID, revision int
 	if err != nil {
 		return ReadingView{}, err
 	}
-	v, err := findVersion(ctx, g.r.Versions, n.ID, revision)
+	v, content, err := findVersion(ctx, g.r.Versions, n.ID, revision)
 	if err != nil {
 		return ReadingView{}, err
-	}
-	content, err := g.r.Versions.VersionContent(ctx, v.ID)
-	if err != nil {
-		return ReadingView{}, found(err, domain.ErrVersionNotFound)
 	}
 	hold, err := g.budget.Take(ctx, len(content))
 	if err != nil {

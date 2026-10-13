@@ -187,7 +187,9 @@ type ChangesetWriter interface {
 	// is deleted with it, at its time.
 	RecordItem(ctx context.Context, it Item) error
 	// RecordRevision inserts the version, or updates the page's in the
-	// changeset, keeping its base.
+	// changeset, keeping its base, when r is on the version's revision: one
+	// on another's write would break the chain of the page's versions, an
+	// error.
 	RecordRevision(ctx context.Context, r Revision) error
 }
 
@@ -195,16 +197,14 @@ type ChangesetWriter interface {
 // trash, unlocked.
 type Versions interface {
 	// ListVersions is the page's versions newer-first, below the revision
-	// below (zero: from the newest), at most limit; each with its
-	// changeset, without its display name. No content.
+	// below, at most limit; each with its changeset, without its display
+	// name. No content.
 	ListVersions(ctx context.Context, pageID uuid.UUID, below int, limit int) ([]domain.Version, error)
-	// FindVersion is the page's first version at or above revision: the
-	// one version that may hold it, as each version's base is the
-	// revision of the one before. ErrNotFound for none.
-	FindVersion(ctx context.Context, pageID uuid.UUID, revision int) (domain.Version, error)
-	// VersionContent is a version's content, as written; ErrNotFound for
-	// none.
-	VersionContent(ctx context.Context, id uuid.UUID) (string, error)
+	// FindVersion is the page's first version at or above revision, and
+	// its content as written, read at once: the one version that may hold
+	// it, as each version's base is the revision of the one before.
+	// ErrNotFound for none.
+	FindVersion(ctx context.Context, pageID uuid.UUID, revision int) (domain.Version, string, error)
 	// AliveChangesetOf is the changeset of the page's edit session alive
 	// at now, zero when none is or it has not written: the page's newest
 	// version is being edited while it is that changeset's.

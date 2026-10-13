@@ -41,6 +41,12 @@ func checkPages(t *testing.T, pool *pgxpool.Pool) {
 			AND (SELECT count(*) FROM page_contents c WHERE c.node_id = n.id AND c.deleted_at IS NULL) <> 1`,
 		"whose content is not its latest version": `SELECT count(*) FROM page_contents c WHERE c.deleted_at IS NULL
 			AND c.revision IS DISTINCT FROM (SELECT max(r.revision) FROM page_revisions r WHERE r.node_id = c.node_id)`,
+		// A version goes on from the one before it: FindVersion reads N in the
+		// first at or above it (M8/P1 review A).
+		"whose versions do not chain": `SELECT count(DISTINCT node_id) FROM (SELECT r.node_id, r.base_revision,
+				lag(r.revision) OVER (PARTITION BY r.node_id ORDER BY r.revision) AS prior
+			FROM page_revisions r JOIN nodes n ON n.id = r.node_id WHERE n.deleted_at IS NULL) v
+			WHERE base_revision IS DISTINCT FROM prior`,
 		"deleted, with what follows it not deleted": `SELECT count(*) FROM nodes n WHERE n.deleted_at IS NOT NULL AND (
 			EXISTS (SELECT 1 FROM page_contents c WHERE c.node_id = n.id AND c.deleted_at IS NULL)
 			OR EXISTS (SELECT 1 FROM page_revisions r WHERE r.node_id = n.id AND r.deleted_at IS NULL)

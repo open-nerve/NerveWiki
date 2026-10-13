@@ -345,7 +345,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/PageVersionList"
+                $ref: "#/components/schemas/PageVersionPage"
         default:
           $ref: "#/components/responses/Problem"
   /api/v0/pages/{page_id}/versions/{revision}:
@@ -358,9 +358,10 @@ paths:
       summary: Read a version of a page
       description: >-
         The version of the page that holds the revision, with its content
-        byte for byte as written. It is answered with its own revision,
-        which is not the one asked for when an edit session's saves made it
-        hold several. A page in the trash has its versions too. Any role in
+        byte for byte as written, read at once. It is answered with its own
+        revision, which differs from the one asked for when that is one of
+        the earlier revisions an edit session's saves made it hold. A page
+        in the trash has its versions too. Any role in
         the page's notebook can read them. A page that does not exist, whose
         notebook is deleted, or whose notebook the caller has no role in is
         page.not_found; a revision no version of the page holds, 0 and below
@@ -388,10 +389,11 @@ paths:
         The reading view of the version of the page that holds the revision,
         as getPageView renders a page's content: its links lead where they
         lead now, and revision is the version's own. A page in the trash has
-        its versions too. Any role in the page's notebook can read them. A
-        page that does not exist, whose notebook is deleted, or whose
-        notebook the caller has no role in is page.not_found; a revision no
-        version of the page holds is page.version_not_found. When the server
+        its versions too; its links show unresolved. Any role in the page's
+        notebook can read them. A page that does not exist, whose notebook
+        is deleted, or whose notebook the caller has no role in is
+        page.not_found; a revision no version of the page holds, 0 and below
+        among them, is page.version_not_found. When the server
         parses as much content as it can at once, the version waits a
         moment, then is server_busy.
       security: [{ bearer: [] }]
@@ -418,9 +420,10 @@ paths:
         page's, on base_revision, the revision the caller read the page at:
         a new version, in a changeset of its own, a version_restore. Its
         notebook's editors and admins can. A page that does not exist, is in
-        the trash (restore it first), or whose notebook the caller has no
-        role in is page.not_found; a revision no version of the page holds
-        is page.version_not_found; then a reader is forbidden; when the
+        the trash (restore it first), whose notebook is deleted, or whose
+        notebook the caller has no role in is page.not_found; a revision no
+        version of the page holds, 0 and below among them, is
+        page.version_not_found; then a reader is forbidden; when the
         server parses as much content as it can at once, the content waits a
         moment, then is server_busy. A content the page holds already writes
         nothing, whatever the base: changed is false. Then a base_revision
@@ -867,7 +870,7 @@ components:
             again; null for a view with none.
           type: [string, "null"]
           format: date-time
-    PageVersionList:
+    PageVersionPage:
       description: A page of a page's versions, newer first.
       type: object
       additionalProperties: false
@@ -900,6 +903,7 @@ components:
           description: The content's size in bytes.
           type: integer
         created_at:
+          description: When the version was first written; an edit session's, at its first save.
           type: string
           format: date-time
         updated_at:
@@ -933,6 +937,7 @@ components:
           description: The content's size in bytes.
           type: integer
         created_at:
+          description: When the version was first written; an edit session's, at its first save.
           type: string
           format: date-time
         updated_at:
@@ -960,8 +965,7 @@ components:
         kind:
           $ref: "#/components/schemas/ChangesetKind"
         client:
-          description: >-
-            Where the changeset's writes came from: web, api or cli, or mcp: and the name of an MCP client.
+          description: Where the changeset's writes came from, web, api, cli, or mcp:<name> for an MCP client.
           type: string
         created_at:
           type: string
@@ -1003,6 +1007,7 @@ components:
       required: [revision, changeset_id, changed]
       properties:
         revision:
+          description: The page's revision as the restore leaves it.
           type: integer
         changeset_id:
           type: [string, "null"]

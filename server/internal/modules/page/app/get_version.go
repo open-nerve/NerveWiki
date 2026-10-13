@@ -25,23 +25,35 @@ func NewGetVersion(r VersionReads) *GetVersion {
 }
 
 // Execute reads the version of the page id holding revision, with its
-// content: the page alive or in the trash, as ListVersions reads it; then
-// page.version_not_found when no version holds the revision. The version
-// answered has its own revision, which an edit session's version may have
-// moved past the one asked for. A read takes no lock and opens no
-// transaction: a version the purge took in between is not found.
+// content, read at once: the page alive or in the trash, as ListVersions
+// reads it; then page.version_not_found when no version holds the
+// revision. The version answered has its own revision, which an edit
+// session's version may have moved past the one asked for; it is being
+// edited while it is the page's newest and its session is alive. A read
+// takes no lock and opens no transaction.
 func (g *GetVersion) Execute(ctx context.Context, id uuid.UUID, revision int) (VersionContent, error) {
 	n, err := readableAny(ctx, g.r.Notebooks, g.r.Nodes, g.r.Auth, id, domain.ActionHistory)
 	if err != nil {
 		return VersionContent{}, err
 	}
-	v, err := g.r.version(ctx, n.ID, revision)
+	v, content, err := findVersion(ctx, g.r.Versions, n.ID, revision)
 	if err != nil {
 		return VersionContent{}, err
 	}
-	content, err := g.r.Versions.VersionContent(ctx, v.ID)
+	alive, err := g.r.Versions.AliveChangesetOf(ctx, n.ID, g.r.Clock.Now())
 	if err != nil {
-		return VersionContent{}, found(err, domain.ErrVersionNotFound)
+		return VersionContent{}, err
 	}
-	return VersionContent{Version: v, Content: content}, nil
+	if alive != (uuid.UUID{}) && alive == v.Changeset.ID {
+		newest, err := g.r.Versions.ListVersions(ctx, n.ID, domain.MaxRevision+1, 1)
+		if err != nil {
+			return VersionContent{}, err
+		}
+		v.Editing = len(newest) == 1 && newest[0].ID == v.ID
+	}
+	versions := []domain.Version{v}
+	if err := named(ctx, g.r.Names, versions); err != nil {
+		return VersionContent{}, err
+	}
+	return VersionContent{Version: versions[0], Content: content}, nil
 }

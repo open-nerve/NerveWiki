@@ -72,11 +72,16 @@ func (s *Store) RecordRevision(ctx context.Context, r app.Revision) error {
 		b := int32(*r.Base)
 		base = &b
 	}
-	if err := s.queries(ctx).RecordRevision(ctx, gen.RecordRevisionParams{
+	n, err := s.queries(ctx).RecordRevision(ctx, gen.RecordRevisionParams{
 		ID: r.ID, ChangesetID: r.ChangesetID, NodeID: r.NodeID, BaseRevision: base, Revision: int32(r.Revision),
 		Content: r.Content, ContentHash: r.Hash, ByteSize: int32(r.ByteSize), Now: r.At,
-	}); err != nil {
+	})
+	switch {
+	case err != nil:
 		return fmt.Errorf("record page revision: %w", err)
+	case n == 0:
+		return fmt.Errorf("record page revision: changeset %s's version of page %s is not at revision %v: another's write "+
+			"came between", r.ChangesetID, r.NodeID, r.Base)
 	}
 	return nil
 }

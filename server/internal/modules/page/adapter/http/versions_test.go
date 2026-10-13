@@ -103,6 +103,8 @@ func TestTheVersionOperationsAnswerTheUseCases(t *testing.T) {
 		{"a restore that wrote nothing, by the API", "pat", http.MethodPost, restorePath, `{"base_revision":9}`,
 			`{"changed":false,"changeset_id":null,"revision":9}`, []any{id(12), 2, 9, domain.ClientAPI}},
 		{"a version at revision 0", "session", http.MethodGet, versionsPath + "/0", "", versionContentJSON, []any{id(12), 0}},
+		{"a version at a negative revision", "session", http.MethodGet, versionsPath + "/-3", "", versionContentJSON,
+			[]any{id(12), -3}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			f := &fakes{}
@@ -165,6 +167,8 @@ func TestAVersionsRequestTheBoundaryRefuses(t *testing.T) {
 		{http.MethodPost, restorePath, `{}`},
 		{http.MethodPost, restorePath, `{"base_revision":"1"}`},
 		{http.MethodPost, restorePath, `{"base_revision":1,"content":"x"}`},
+		{http.MethodPost, restorePath, `{"base_revision":null}`},
+		{http.MethodPost, restorePath, `{"base_revision":1.5}`},
 		{http.MethodPost, restorePath, ""},
 	} {
 		f := &fakes{}

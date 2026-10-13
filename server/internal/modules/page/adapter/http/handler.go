@@ -7,6 +7,7 @@ package httpadapter
 import (
 	"context"
 	"encoding/hex"
+	"time"
 	"uuid"
 
 	"github.com/oapi-codegen/nullable"
@@ -400,4 +401,14 @@ func pageOf(v app.PageView) gen.Page {
 		CreatedAt: n.CreatedAt, UpdatedAt: n.UpdatedAt, Ancestors: ancestors, Revision: v.Content.Revision,
 		ByteSize: v.Content.ByteSize, ContentUpdatedAt: v.Content.UpdatedAt, ContentUpdatedBy: v.Content.UpdatedBy,
 	}
+}
+
+// pageViewOf is a reading view's answer: assets_expire_at null for a view
+// with no attachment's address.
+func pageViewOf(v app.ReadingView) gen.PageView {
+	expires := nullable.NewNullNullable[time.Time]()
+	if !v.Expires.IsZero() {
+		expires = nullable.NewNullableWithValue(v.Expires)
+	}
+	return gen.PageView{HTML: v.HTML, Revision: v.Revision, AssetsExpireAt: expires}
 }

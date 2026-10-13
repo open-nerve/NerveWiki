@@ -49,13 +49,9 @@ func (r *RestoreVersion) Execute(ctx context.Context, id uuid.UUID, revision, ba
 	case n.DeletedAt != nil:
 		return VersionRestored{}, domain.ErrNotFound
 	}
-	v, err := findVersion(ctx, r.reads.Versions, n.ID, revision)
+	v, content, err := findVersion(ctx, r.reads.Versions, n.ID, revision)
 	if err != nil {
 		return VersionRestored{}, err
-	}
-	content, err := r.reads.Versions.VersionContent(ctx, v.ID)
-	if err != nil {
-		return VersionRestored{}, found(err, domain.ErrVersionNotFound)
 	}
 	spec := UnitSpec{NotebookID: n.NotebookID, Action: domain.ActionRestoreVersion, Client: client,
 		Options: Options{UpdateLinks: true}, NotFound: domain.ErrNotFound, Kind: domain.ChangesetVersionRestore}
