@@ -9,7 +9,7 @@ import { taskToggle } from "../../reading/task-toggle";
 import { unresolvedLinks } from "../../reading/unresolved-links";
 import type { NotebookRole } from "../../services/notebook.service";
 import { eventServer, withEvents } from "../../test/event-server";
-import { json, notebookJSON, workspaceJSON, type Answer } from "../../test/fakes";
+import { json, notebookJSON, problem, workspaceJSON, type Answer } from "../../test/fakes";
 import {
   assetNode,
   guide,
@@ -239,6 +239,24 @@ test("a restore from the preview refused says why above its view, which stays; t
   );
   expect(document.activeElement).toBe(restore);
   expect(screen.getByRole("article", { name: "Install" })).toBeTruthy();
+});
+
+test("a restore from the preview refused, the role taken away meanwhile, says why: a reader by now, the Restore goes, the focus to the title", async () => {
+  const user = userEvent.setup();
+  let role: NotebookRole = "admin";
+  const { server } = trashed("admin", {
+    "GET /api/v0/workspaces/lab/notebooks": () => json({ data: [{ ...notebookJSON, role }] }),
+    "POST /api/v0/nodes/*/restore": () => problem(403, "forbidden"),
+  });
+  renderApp(previewPath(install.id), server.app);
+  const restore = await screen.findByRole("button", { name: "Restore “Install” (From: Guide)" });
+  role = "reader";
+
+  await user.click(restore);
+
+  expect((await screen.findByRole("alert")).textContent).toBe("You do not have permission to do this.");
+  await waitFor(() => expect(screen.queryByRole("button", { name: /^Restore/ })).toBeNull());
+  expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Install" }));
 });
 
 test("a restore from the preview of an item restored meanwhile says it is no longer in the trash", async () => {

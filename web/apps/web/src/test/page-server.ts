@@ -197,8 +197,10 @@ export function pageServer({
     restoresBusy: false,
     /** Whether restores wait to be released. */
     restoresHeld: false,
+    /** Whether the trash's lists wait to be released. */
+    trashHeld: false,
     held: [] as (() => void)[],
-    /** release answers the uploads and the views held. */
+    /** release answers the uploads, the views, the restores and the trash's lists held. */
     release(): void {
       const held = server.held;
       server.held = [];
@@ -1008,6 +1010,7 @@ type TrashState = {
   notebookGone: boolean;
   restoresBusy: boolean;
   restoresHeld: boolean;
+  trashHeld: boolean;
   held: (() => void)[];
 };
 
@@ -1111,11 +1114,14 @@ function trashRoutes(server: TrashState, role: NotebookRole): Record<string, Ans
   };
   const nameOf = (id: string) => [...server.nodes, ...trashedNodes(server)].find((node) => node.id === id)?.name ?? id;
   return {
-    [`GET /api/v0/notebooks/${notebookJSON.id}/trash`]: (request) => {
+    [`GET /api/v0/notebooks/${notebookJSON.id}/trash`]: async (request) => {
       const query = new URL(request.url).searchParams;
       const cursor = query.get("cursor");
       const limit = Number(query.get("limit") ?? "50");
       server.sent.push(`GET trash${cursor === null ? "" : ` below ${nameOf(cursor.split(" ")[1] ?? "")}`}`);
+      if (server.trashHeld) {
+        await new Promise<void>((resolve) => server.held.push(resolve));
+      }
       if (server.notebookGone) {
         return problem(404, "notebook.not_found");
       }

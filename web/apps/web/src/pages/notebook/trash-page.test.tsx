@@ -1,6 +1,6 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 
 import { eventHandlers } from "../../events/handlers";
 import type { NotebookRole } from "../../services/notebook.service";
@@ -40,10 +40,16 @@ function trashed(role: NotebookRole = "admin", answers: Record<string, Answer> =
   return { server, picture };
 }
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 /** rows are the items the trash lists, each row's text. */
 const rows = () => within(screen.getByRole("list", { name: "Trash" })).getAllByRole("listitem");
 
 test("the trash lists its items newer first, each by its name, leading to its preview, where it was, who deleted it, until when it can be restored, what it holds and where a restore puts it; the page and its tab are named for it", async () => {
+  // Shown two and a half hours after the first deletion.
+  vi.useFakeTimers({ now: Date.parse("2026-10-04T10:31:00Z"), toFake: ["Date"] });
   const { server } = trashed();
   renderApp(trashPath, server.app);
 
@@ -63,7 +69,7 @@ test("the trash lists its items newer first, each by its name, leading to its pr
   expect((top as HTMLElement).textContent).toContain("From: the notebook's top level");
   expect((top as HTMLElement).textContent).toContain("Restores at the notebook's top level");
   expect((deep as HTMLElement).textContent).toContain("From: Guide / Install");
-  expect((deep as HTMLElement).textContent).toContain("Deleted by Ada · ");
+  expect((deep as HTMLElement).textContent).toContain("Deleted by Ada · 2 hours ago");
   expect((deep as HTMLElement).textContent).toContain("Can be restored until Dec 3, 2026, 7:01 AM");
   expect((deep as HTMLElement).textContent).toContain("Pages: 1, attachments: 0");
   expect((deep as HTMLElement).textContent).toContain("Restores under “Install”");
@@ -108,19 +114,22 @@ test("an empty trash says so", async () => {
   expect(screen.queryByRole("list", { name: "Trash" })).toBeNull();
 });
 
-test("a writer's Restore names the item by where it was; items of one name and place each by when it was deleted too, their links as well", async () => {
+test("a writer's Restore names the item by where it was; items of one name and place each by when it was deleted too, their links as well; one of the name elsewhere not", async () => {
   const again = { ...notes, id: "0199a2b4-0000-7000-8000-000000000140" };
-  const server = pageServer({ nodes: [guide, install, linux, notes] });
+  const elsewhere = pageNode(41, "Notes", guide);
+  const server = pageServer({ nodes: [guide, install, linux, notes, elsewhere] });
   server.trashNode(notes.id);
   server.nodes = [...server.nodes, again];
   server.trashNode(again.id);
   server.trashNode(linux.id);
+  server.trashNode(elsewhere.id);
   renderApp(trashPath, server.app);
 
   await screen.findByRole("list", { name: "Trash" });
   expect(
     screen.getAllByRole("button", { name: /^Restore/ }).map((button) => button.getAttribute("aria-label"))
   ).toEqual([
+    "Restore “Notes” (From: Guide)",
     "Restore “Linux” (From: Guide / Install)",
     "Restore “Notes” (From: the notebook's top level, deleted Oct 4, 2026, 8:02 AM)",
     "Restore “Notes” (From: the notebook's top level, deleted Oct 4, 2026, 8:01 AM)",
@@ -130,12 +139,14 @@ test("a writer's Restore names the item by where it was; items of one name and p
       .getAllByRole("link")
       .map((link) => link.getAttribute("aria-label"))
   ).toEqual([
+    "Notes (From: Guide)",
     "Linux (From: Guide / Install)",
     "Notes (From: the notebook's top level, deleted Oct 4, 2026, 8:02 AM)",
     "Notes (From: the notebook's top level, deleted Oct 4, 2026, 8:01 AM)",
   ]);
   // The visible text is the start of each name.
   expect(screen.getAllByRole("button", { name: /^Restore/ }).map((button) => button.textContent)).toEqual([
+    "Restore",
     "Restore",
     "Restore",
     "Restore",
@@ -151,7 +162,7 @@ test("a reader sees the trash and its items, without Restore", async () => {
   expect(screen.queryByRole("button", { name: /^Restore/ })).toBeNull();
 });
 
-test("More reads the next fifty items after those read, and leaves once the trash is read whole, the focus on the first it added", async () => {
+test("More reads the next fifty items after those read, and leaves once the trash is read whole, the focus on the first it added; read again, the list is as long as it was", async () => {
   const user = userEvent.setup();
   const pages = Array.from({ length: 51 }, (_, i) => pageNode(200 + i, `Page ${(i + 1).toString()}`));
   const server = pageServer({ nodes: pages });
@@ -169,6 +180,16 @@ test("More reads the next fifty items after those read, and leaves once the tras
   expect(screen.queryByRole("button", { name: "More of the trash" })).toBeNull();
   expect(document.activeElement?.textContent).toBe("Page 1");
   expect(server.sent.filter((each) => each.startsWith("GET trash"))).toEqual(["GET trash", "GET trash below Page 2"]);
+
+  // A restore refused reads it again: as many pages as were read, from the first.
+  server.restoresBusy = true;
+  const before = server.sent.length;
+  await user.click(restoreOf("Page 51") as HTMLElement);
+  await screen.findByRole("alert");
+  await waitFor(() =>
+    expect(server.sent.slice(before)).toEqual(["RESTORE Page 51", "GET nodes", "GET trash", "GET trash below Page 2"])
+  );
+  expect(rows()).toHaveLength(51);
 });
 
 /** restoreOf is the Restore of the item named name, the first of its rows. */
@@ -180,6 +201,8 @@ test("a restore stays in the trash, which says where the item went with a way to
   renderApp(trashPath, server.app);
   await screen.findByRole("list", { name: "Trash" });
   const before = server.sent.length;
+  // The list's read held: the title has the focus as the line says where the item went, its row there still.
+  server.trashHeld = true;
 
   await user.click(restoreOf("Linux") as HTMLElement);
 
@@ -188,6 +211,8 @@ test("a restore stays in the trash, which says where the item went with a way to
   const heading = screen.getByRole("heading", { level: 1, name: "Trash" });
   expect(document.activeElement).toBe(heading);
   expect(heading.getAttribute("aria-describedby")).toBe(status.id);
+  expect(rows()).toHaveLength(3);
+  act(() => server.release());
   await waitFor(() => expect(rows()).toHaveLength(2));
   expect(server.sent.slice(before)).toEqual(["RESTORE Linux", "GET nodes", "GET trash"]);
   expect(within(status).getByRole("link", { name: "Open" }).getAttribute("href")).toBe(pagePath(linux.id));
@@ -205,7 +230,7 @@ test("an item restored by another name says so: a sibling where it went has its 
   const { server } = trashed();
   renderApp(trashPath, server.app);
   await screen.findByRole("list", { name: "Trash" });
-  server.nodes = [...server.nodes, pageNode(50, "Notes")];
+  server.nodes = [...server.nodes, pageNode(50, "Notes"), pageNode(51, "Linux", install)];
 
   await user.click(restoreOf("Notes") as HTMLElement);
 
@@ -214,6 +239,50 @@ test("an item restored by another name says so: a sibling where it went has its 
       "Restored as “Notes 2” at the notebook's top level: a page or attachment there had its name. Open"
     )
   );
+
+  await user.click(restoreOf("Linux") as HTMLElement);
+
+  await waitFor(() =>
+    expect(screen.getByRole("status").textContent).toBe(
+      "Restored as “Linux 2” under “Install”: a page or attachment there had its name. Open"
+    )
+  );
+});
+
+test("a restore names the page the item went under as the tree has it now: renamed since the list was read", async () => {
+  const user = userEvent.setup();
+  const { server } = trashed();
+  renderApp(trashPath, server.app);
+  await screen.findByRole("list", { name: "Trash" });
+  server.nodes = server.nodes.toSpliced(server.nodes.indexOf(install), 1, { ...install, name: "Setup" });
+
+  await user.click(restoreOf("Linux") as HTMLElement);
+
+  await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Restored “Linux” under “Setup”. Open"));
+});
+
+test("each restore says what came of it alone: what the one before said goes as it is sent", async () => {
+  const user = userEvent.setup();
+  const { server } = trashed();
+  renderApp(trashPath, server.app);
+  await screen.findByRole("list", { name: "Trash" });
+  const heading = screen.getByRole("heading", { level: 1, name: "Trash" });
+  const busy = "The server is busy. Try again in a moment.";
+  server.restoresBusy = true;
+
+  await user.click(restoreOf("Linux") as HTMLElement);
+  expect((await screen.findByRole("alert")).textContent).toBe(busy);
+
+  server.restoresBusy = false;
+  await user.click(restoreOf("Linux") as HTMLElement);
+  await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Restored “Linux” under “Install”. Open"));
+  expect(screen.queryByRole("alert")).toBeNull();
+
+  server.restoresBusy = true;
+  await user.click(restoreOf("Notes") as HTMLElement);
+  expect((await screen.findByRole("alert")).textContent).toBe(busy);
+  expect(screen.getByRole("status").textContent).toBe("");
+  expect(heading.getAttribute("aria-describedby")).toBeNull();
 });
 
 test("an attachment restored opens where it is: its page, the focus on its row; one at the top level, the notebook's home", async () => {
@@ -283,6 +352,26 @@ test.each<[string, (server: Server) => void, string, boolean]>([
       (server.trash.get(linux.id) as FakeTrashItem).history = 400_001;
     },
     "“Linux” is too large to restore here. Pages: 1, attachments: 0.",
+    false,
+  ],
+  // The server's order: a restore too large before a part purged, which comes before a server too busy to parse.
+  [
+    "of too long a history and purged in part, page.restore_too_large first",
+    (server) => {
+      const item = server.trash.get(linux.id) as FakeTrashItem;
+      item.history = 400_001;
+      item.purged = true;
+    },
+    "“Linux” is too large to restore here. Pages: 1, attachments: 0.",
+    false,
+  ],
+  [
+    "purged in part as the server is busy, page.trash_changed first",
+    (server) => {
+      (server.trash.get(linux.id) as FakeTrashItem).purged = true;
+      server.restoresBusy = true;
+    },
+    "“Linux” changed meanwhile: the trash shows it as it is now.",
     false,
   ],
   [
@@ -406,6 +495,54 @@ test("the trash is read again as the tree changes, a deletion or a restore elsew
   events.last().send("pages", pagesEvent(false));
   await act(() => new Promise((resolve) => setTimeout(resolve, 600)));
   expect(server.sent.filter((each) => each === "GET trash")).toHaveLength(3);
+});
+
+test("an attachment restored opens where it is, its page's list read before it came back: its row takes the focus once a read has it, and once only", async () => {
+  const user = userEvent.setup();
+  const events = eventServer();
+  const { server, picture } = trashed("admin", { "GET /api/v0/events": events.answer });
+  renderApp(pagePath(guide.id), withEvents(server.app), { eventHandlers });
+  // Guide's attachments read, a.png in the trash.
+  await waitFor(() => expect(server.sent).toContain("GET assets Guide"));
+  await waitFor(() => expect(events.streams).toHaveLength(1));
+  events.last().hello();
+
+  await user.click(
+    within(screen.getByRole("navigation", { name: "More of Plans" })).getByRole("link", { name: "Trash" })
+  );
+  await user.click(await screen.findByRole("button", { name: "Restore “a.png” (From: Guide)" }));
+  await user.click(await within(screen.getByRole("status")).findByRole("link", { name: "Open" }));
+
+  expect(await screen.findByRole("heading", { level: 1, name: "Guide" })).toBeTruthy();
+  await waitFor(() => expect(document.activeElement?.getAttribute("data-attachment")).toBe(picture.id));
+
+  // The list read again, with another, the focus stays where the user put it.
+  const elsewhere = within(screen.getByRole("navigation", { name: "Pages of Plans" })).getByRole("link", {
+    name: "Guide",
+  });
+  act(() => elsewhere.focus());
+  const another = assetNode(22, "c.png", guide);
+  server.nodes = [...server.nodes, another];
+  events.last().send("pages", pagesEvent(true));
+  await waitFor(() => expect(document.querySelector(`[data-attachment="${another.id}"]`)).not.toBeNull());
+  expect(document.activeElement).toBe(elsewhere);
+});
+
+test("an item read away, restored elsewhere, as the focus is on its link gives the focus to the title", async () => {
+  const events = eventServer();
+  const { server } = trashed("admin", { "GET /api/v0/events": events.answer });
+  renderApp(trashPath, withEvents(server.app), { eventHandlers });
+  await screen.findByRole("list", { name: "Trash" });
+  await waitFor(() => expect(events.streams).toHaveLength(1));
+  events.last().hello();
+  await waitFor(() => expect(server.sent.filter((each) => each === "GET trash")).toHaveLength(2));
+  act(() => screen.getByRole("link", { name: "Linux (From: Guide / Install)" }).focus());
+
+  server.restoreElsewhere(linux.id);
+  events.last().send("pages", pagesEvent(true));
+
+  await waitFor(() => expect(rows()).toHaveLength(2));
+  expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Trash" }));
 });
 
 test("a page deleted in the tree and restored from the trash in the same tab is in the tree again, and its page opens", async () => {
