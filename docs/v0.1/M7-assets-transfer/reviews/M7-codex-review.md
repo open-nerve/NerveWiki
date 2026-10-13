@@ -393,3 +393,5 @@ R1 缺少“实际附件插入结果仍是合法 YAML、已有属性事实保留
 |---|---|---|---|
 | A6-N1 | Nit | `asset-upload.ts` 里 `notInFrontmatter` 的注释仍说 "after a property's quote"，A5-N3 已把提示改为值的开引号 | 照改（`d2f8753`） |
 | A6-N2 | Nit | `yaml-quotes.ts` 里 `keyAlone` 的注释引的 "fix checks A5-M1, A6-M1, A6-M2" 是 M6 评审的编号，同一文件里 A5-M1 又指 M7 的，读者会找错记录 | 写成 "Codex M6 review fix checks"；文件开头注释里同样没写评审的 M6 编号（A-M1、A2-M1）一并写明（`d2f8753`） |
+
+合并为 `main` 的 `23a5623`。合并之前本地的全量门禁：`lint-web`、knip、`test-web`（2,505 项）、`build-web`、`lint-go`、`gen-check`、`make test-go`（竞态检测，93 个包）、`make e2e`（230 项）都通过；分支的持续集成每轮都为绿（`e98966c` run 38143769342、`a7ca288` run 38146454577、`28234a0` run 38149952480、`85d0bdc` run 38154145639、`1ad882b` run 38157831340、`0978958` run 38162427775），合并之前最后一次是 `98d6331` run 38335177677。
