@@ -216,7 +216,7 @@ func (s *Store) NodesNow(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]do
 		n := domain.NodeNow{Node: nodeOf(gen.FindNodeRow{
 			ID: r.ID, NotebookID: r.NotebookID, ParentID: r.ParentID, Kind: r.Kind, Name: r.Name, NameKey: r.NameKey,
 			SortOrder: r.SortOrder, CreatedByID: r.CreatedByID, UpdatedByID: r.UpdatedByID, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
-		}), DeletedAt: r.DeletedAt, TrashRoot: r.TrashRoot}
+		}), DeletedAt: r.DeletedAt, TrashRoot: r.TrashRoot, DeletedByRevert: r.DeletedByRevert}
 		if r.TrashPages != nil && r.TrashAssets != nil {
 			n.TrashPages, n.TrashAssets = int(*r.TrashPages), int(*r.TrashAssets)
 		}

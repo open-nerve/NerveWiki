@@ -19,7 +19,8 @@ import (
 // whole tables' scans off and the arguments bound as the store binds
 // them: the log and one actor's a range of their own index each, already
 // in its order; one page's its items' and versions' by node; a
-// changeset's changes, counts and moves its two keys; what reverted a
+// changeset's changes, counts and moves its two keys; a trash root's
+// deletion by a revert the log's and the items' keys; what reverted a
 // changeset the partial index on reverts_id; the purge's the partial
 // indexes on deleted_at and the changesets' key, its deletion of the
 // emptied ones the partial index on trimmed; and the notebooks' foreign
@@ -29,6 +30,10 @@ func TestTheLogReadsUseTheirIndexes(t *testing.T) {
 	f := newFixture(t)
 	id, actor := f.logOfSomeSize(t)
 	ids := []uuid.UUID{id, uuid.NewV7()}
+	var roots []uuid.UUID
+	if err := f.pool.QueryRow(ctx, "SELECT array_agg(id) FROM nodes WHERE trash_root").Scan(&roots); err != nil || len(roots) == 0 {
+		t.Fatalf("the log's trash roots = %v, %v", roots, err)
+	}
 	for _, tt := range []struct {
 		name    string
 		s       statement
@@ -82,6 +87,10 @@ func TestTheLogReadsUseTheirIndexes(t *testing.T) {
 			_, err := q.ChangesetVersions(ctx, id)
 			return err
 		}), []string{"page_revisions_changeset_id_node_id_key", "page_revisions_node_id_revision_key"}, false},
+		{"NodesNow", statementOf(t, func(q *gen.Queries) error {
+			_, err := q.NodesNow(ctx, roots)
+			return err
+		}), []string{"changesets_notebook_id_created_at_id_idx", "changeset_items_changeset_id_node_id_key"}, false},
 		{"LockChangeset", statementOf(t, func(q *gen.Queries) error {
 			_, err := q.LockChangeset(ctx, id)
 			return err
@@ -120,8 +129,9 @@ func TestTheLogReadsUseTheirIndexes(t *testing.T) {
 // logOfSomeSize gives eng a log the planner weighs as a notebook's, with
 // its statistics: 2,000 changesets of three actors from four clients, 100
 // of them reverts, 20 trimmed; ten items of each on 1,000 pages, and
-// 5,000 versions of them, some deleted; and 500 changesets of ops, deleted
-// with it. It answers one of eng's changesets and an actor.
+// 5,000 versions of them, some deleted; 100 of the pages trash items'
+// roots, each deleted at a changeset's time; and 500 changesets of ops,
+// deleted with it. It answers one of eng's changesets and an actor.
 func (f fixture) logOfSomeSize(t *testing.T) (uuid.UUID, uuid.UUID) {
 	t.Helper()
 	bob, carol := f.user(t, "bob@corp.com"), f.user(t, "carol@corp.com")
@@ -146,6 +156,10 @@ func (f fixture) logOfSomeSize(t *testing.T) (uuid.UUID, uuid.UUID) {
 		SELECT uuidv7(), c.id, ($2::uuid[])[1 + c.k % 1000], 1 + c.k / 1000, '', sha256(''), 0, $3::timestamptz,
 			$3::timestamptz, CASE WHEN c.k % 10 = 0 THEN $3::timestamptz END
 		FROM (SELECT id, row_number() OVER (ORDER BY id) AS k FROM changesets WHERE notebook_id = $1) c`, f.eng, pages, now())
+	f.exec(t, `UPDATE nodes SET deleted_at = $2::timestamptz + interval '1 second' * (n.k * 10), trash_root = true, trash_pages = 1,
+			trash_assets = 0, trash_height = 1
+		FROM (SELECT id, row_number() OVER (ORDER BY id) AS k FROM unnest($1::uuid[]) id) n WHERE nodes.id = n.id AND n.k <= 100`,
+		pages, now())
 	f.exec(t, "ANALYZE")
 	var id uuid.UUID
 	if err := f.pool.QueryRow(context.Background(), `SELECT id FROM changesets WHERE notebook_id = $1 AND kind = 'edit' ORDER BY id LIMIT 1`,

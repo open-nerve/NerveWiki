@@ -51,12 +51,14 @@ type RevertConflict struct {
 
 // NodeNow is a node as it is now, alive or in the trash: DeletedAt is when
 // it was deleted, nil while it is alive; a trash item's root holds its
-// group's pages and attachments.
+// group's pages and attachments, and DeletedByRevert when a revert's
+// changeset deleted it, at that time.
 type NodeNow struct {
 	Node
 	DeletedAt               *time.Time
 	TrashRoot               bool
 	TrashPages, TrashAssets int
+	DeletedByRevert         bool
 }
 
 // ContentNow is a page's content now: its revision and hash.
@@ -306,8 +308,9 @@ func (c reverted) rootHolds(top uuid.UUID, nodes map[uuid.UUID]NodeNow) bool {
 // changed must be as it left it, else it is changed: created or restored,
 // alive where it put it, a page at the content it left; deleted, in the
 // trash, each top of its deletion the root of a trash item that holds
-// exactly the nodes it deleted under it, the others where it deleted
-// them, a page at the content it deleted; renamed, moved or reordered,
+// exactly the nodes it deleted under it, each node where and as it
+// deleted it (a top a revert deleted again excepted: below), a page at
+// the content it deleted; renamed, moved or reordered,
 // alive where it put it; written, alive at the content it wrote. A
 // version it compares by that the purge took is missing, no conflict.
 // Then the state before it, S*, is checked once: what it deleted alive
@@ -408,7 +411,12 @@ func (p *planner) left() {
 }
 
 // leftDeleted checks a node the changeset deleted is in the trash as it
-// left it.
+// left it: each node under the parent, at the order and of the name it
+// deleted it from, a newer rename or move of it, restored and deleted
+// again, changed (M8/P3A review A-1). A top a revert deleted again is
+// compared by its group alone: a restore may have put the item elsewhere
+// (at the root, its name numbered), and reverted newest first, the revert
+// of that restore deletes it there before the revert of the deletion.
 func (p *planner) leftDeleted(id uuid.UUID, it ChangesetItem, n NodeNow, exists bool) {
 	top := p.c.top[id]
 	t := p.s.Nodes[top]
@@ -417,12 +425,11 @@ func (p *planner) leftDeleted(id uuid.UUID, it ChangesetItem, n NodeNow, exists 
 		p.conflict(id, ConflictChanged, nil)
 		return
 	case id == top:
-		if !p.c.rootHolds(top, p.s.Nodes) || !p.groupIsDeleted(top) {
+		if !p.c.rootHolds(top, p.s.Nodes) || !p.groupIsDeleted(top) || !n.DeletedByRevert && !sameState(n.Node, *it.Before) {
 			p.conflict(id, ConflictChanged, nil)
 			return
 		}
-	case n.TrashRoot || !SameParent(n.ParentID, it.Before.ParentID) || n.SortOrder != it.Before.SortOrder || t.DeletedAt == nil ||
-		!n.DeletedAt.Equal(*t.DeletedAt):
+	case n.TrashRoot || !sameState(n.Node, *it.Before) || t.DeletedAt == nil || !n.DeletedAt.Equal(*t.DeletedAt):
 		p.conflict(id, ConflictChanged, nil)
 		return
 	}

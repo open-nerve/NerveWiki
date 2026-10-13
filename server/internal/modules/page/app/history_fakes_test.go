@@ -265,7 +265,7 @@ func (h *fakeHistory) ChangesetVersions(ctx context.Context, id uuid.UUID) ([]do
 }
 
 // NodesNow reads the store's nodes, alive or in the trash, a root with its
-// counts.
+// counts and whether a revert deleted it.
 func (h *fakeHistory) NodesNow(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]domain.NodeNow, error) {
 	h.record(ctx, fmt.Sprintf("NodesNow %d", len(ids)))
 	out := map[uuid.UUID]domain.NodeNow{}
@@ -277,6 +277,7 @@ func (h *fakeHistory) NodesNow(ctx context.Context, ids []uuid.UUID) (map[uuid.U
 		now := domain.NodeNow{Node: n.Node, DeletedAt: n.DeletedAt, TrashRoot: n.TrashRoot}
 		if n.TrashRoot {
 			now.TrashPages, now.TrashAssets = h.store.counts[id][0], h.store.counts[id][1]
+			now.DeletedByRevert = h.store.deletedByRevert(id, *n.DeletedAt)
 		}
 		out[id] = now
 	}

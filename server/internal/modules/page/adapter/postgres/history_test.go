@@ -358,8 +358,8 @@ func TestListChangesMergesItemsAndVersions(t *testing.T) {
 
 // A revert's reads: the items counted to a limit; the items and versions by
 // node, each version with its base's size, none once the purge took the
-// base; the nodes now, a root with its counts, a node the purge took not
-// among them; the contents of the pages alive; the versions' hashes and
+// base; the nodes now, a root with its counts and whether a revert deleted
+// it, a node the purge took not among them; the contents of the pages alive; the versions' hashes and
 // contents, a version the purge took not among them.
 func TestTheRevertsReads(t *testing.T) {
 	ctx := context.Background()
@@ -413,6 +413,37 @@ func TestTheRevertsReads(t *testing.T) {
 		nodes[p.ID].TrashAssets != 1 || nodes[x.ID].TrashRoot || nodes[x.ID].DeletedAt == nil || nodes[r.ID].DeletedAt != nil ||
 		nodes[r.ID].Name != "R" || nodes[x.ID].Kind != domain.KindAsset {
 		t.Errorf("NodesNow = %+v, %v", nodes, err)
+	}
+	if nodes[p.ID].DeletedByRevert {
+		t.Errorf("NodesNow(P) = %+v, deleted by an edit's changeset; want no revert's deletion", nodes[p.ID])
+	}
+	// A revert's deletion: its changeset, created at the root's time, holds
+	// the root's deletion. One created at another time, or holding another
+	// item of the root, did not delete it.
+	byRevert := func(name string, order float64, at time.Time, deletion bool) uuid.UUID {
+		t.Helper()
+		n := f.page(t, f.eng, nil, name, order)
+		f.trashed(t, at, 1, 0, 1, n.ID)
+		rev := app.Changeset{ID: uuid.NewV7(), NotebookID: f.eng, Kind: domain.ChangesetRevert, RevertsID: cs.ID, Client: domain.ClientWeb,
+			By: f.alice, At: now().Add(time.Hour)}
+		if deletion {
+			rev.At = at
+		}
+		if err := f.s.CreateChangeset(ctx, rev); err != nil {
+			t.Fatal(err)
+		}
+		before, after := n.State(), n.State()
+		change := domain.Change{NodeID: n.ID, Before: &before}
+		if !deletion {
+			change.After = &after
+		}
+		f.item(t, rev.ID, at, change)
+		return n.ID
+	}
+	deleted, other := byRevert("S", 3, now().Add(time.Minute), true), byRevert("U", 4, now().Add(2*time.Minute), false)
+	nodes, err = f.s.NodesNow(ctx, []uuid.UUID{deleted, other, r.ID})
+	if err != nil || !nodes[deleted].DeletedByRevert || nodes[other].DeletedByRevert || nodes[r.ID].DeletedByRevert {
+		t.Errorf("NodesNow = %+v, %v; want S deleted by a revert alone", nodes, err)
 	}
 	contents, err := f.s.ContentsNow(ctx, []uuid.UUID{p.ID, q.ID, r.ID})
 	if err != nil || len(contents) != 2 || contents[r.ID].Revision != 1 || len(contents[q.ID].Hash) != 32 {

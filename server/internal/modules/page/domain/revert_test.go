@@ -196,6 +196,23 @@ func (w *world) wrote(id uuid.UUID, base int, text string) {
 	w.versions = append(w.versions, domain.ChangesetVersion{NodeID: id, Base: &base, Revision: c.Revision, Hash: c.Hash})
 }
 
+// revive brings the nodes ids back alive where they are, no root any
+// more: a restore of their trash item after the changeset.
+func (w *world) revive(ids ...uuid.UUID) {
+	for _, id := range ids {
+		n := w.nodes[id]
+		n.DeletedAt, n.TrashRoot, n.DeletedByRevert = nil, false, false
+		w.nodes[id] = n
+	}
+}
+
+// byRevert marks the trash item of the root id as a revert's deletion.
+func (w *world) byRevert(id uuid.UUID) {
+	n := w.nodes[id]
+	n.DeletedByRevert = true
+	w.nodes[id] = n
+}
+
 // rename, move and set change the node id after the changeset.
 func (w *world) rename(id uuid.UUID, name string) {
 	n := w.nodes[id]
@@ -327,6 +344,28 @@ func TestPlanRevertReversesEachChange(t *testing.T) {
 			w.trash(p, deletedAt)
 			w.deleted(p)
 		}, []string{"restore P"}},
+		{"a deletion whose item a restore put at the root, numbered, and the restore's revert deleted there", func(w *world) {
+			f := w.page("F", nil, 0, 1, "f")
+			p := w.page("P", &f, 3, 1, "p")
+			q := w.page("Q", &p, 0, 1, "q")
+			w.trash(p, deletedAt)
+			w.deleted(p)
+			w.deleted(q)
+			w.revive(p, q)
+			w.move(p, nil, 9)
+			w.rename(p, "P (2)")
+			w.trash(p, deletedAt.Add(time.Hour))
+			w.byRevert(p)
+		}, []string{"restore P (2)"}},
+		{"a move back to exactly MaxDepth levels, an attachment under its deepest page", func(w *world) {
+			var parent *uuid.UUID
+			for i := range domain.MaxDepth - 2 {
+				parent = new(w.page(fmt.Sprintf("D%d", i+1), parent, 0, 1, "d"))
+			}
+			x := w.page("X", nil, 1, 1, "x")
+			w.asset("y.png", new(w.page("Y", &x, 0, 1, "y")), 0)
+			w.placed(x, domain.TreeState{ParentID: parent, Name: "X"})
+		}, []string{"place X moved"}},
 		{"an import's revert: its trash items", func(w *world) {
 			a, b := w.page("A", nil, 0, 1, "a"), w.page("B", nil, 1, 1, "b")
 			a1 := w.asset("a1.png", &a, 0)
@@ -496,6 +535,79 @@ func TestPlanRevertConflicts(t *testing.T) {
 			w.page("X", &p, 0, 1, "x")
 			w.trash(p, w.at)
 		}, []string{"changed P"}},
+		{"a deletion restored, its top renamed and moved, its member renamed, deleted again", func(w *world) {
+			f, g := w.page("F", nil, 0, 1, "f"), w.page("G", nil, 1, 1, "g")
+			x := w.page("X", &f, 0, 1, "x")
+			z := w.page("Z", &x, 0, 1, "z")
+			w.trash(x, deletedAt)
+			w.deleted(x)
+			w.deleted(z)
+			w.revive(x, z)
+			w.rename(z, "Z2")
+			w.rename(x, "Y")
+			w.move(x, &g, 5)
+			w.trash(x, deletedAt.Add(time.Hour))
+		}, []string{"changed X", "changed Z"}},
+		{"a deletion restored, its top renamed, deleted again", func(w *world) {
+			x := w.page("X", nil, 0, 1, "x")
+			w.trash(x, deletedAt)
+			w.deleted(x)
+			w.revive(x)
+			w.rename(x, "Y")
+			w.trash(x, deletedAt.Add(time.Hour))
+		}, []string{"changed X"}},
+		{"a deletion restored, its top reordered, deleted again", func(w *world) {
+			x := w.page("X", nil, 0, 1, "x")
+			w.trash(x, deletedAt)
+			w.deleted(x)
+			w.revive(x)
+			w.move(x, nil, 4)
+			w.trash(x, deletedAt.Add(time.Hour))
+		}, []string{"changed X"}},
+		{"a deletion restored, its member renamed, deleted again where it was", func(w *world) {
+			x := w.page("X", nil, 0, 1, "x")
+			z := w.page("Z", &x, 0, 1, "z")
+			w.trash(x, deletedAt)
+			w.deleted(x)
+			w.deleted(z)
+			w.revive(x, z)
+			w.rename(z, "Z2")
+			w.trash(x, deletedAt.Add(time.Hour))
+		}, []string{"changed Z"}},
+		{"a deletion restored, its member moved within the group, deleted again", func(w *world) {
+			x := w.page("X", nil, 0, 1, "x")
+			q := w.page("Q", &x, 0, 1, "q")
+			r := w.page("R", &q, 0, 1, "r")
+			w.trash(x, deletedAt)
+			w.deleted(x)
+			w.deleted(q)
+			w.deleted(r)
+			w.revive(x, q, r)
+			w.move(r, &x, 1)
+			w.trash(x, deletedAt.Add(time.Hour))
+		}, []string{"changed R"}},
+		{"a deletion restored, its member reordered, deleted again", func(w *world) {
+			x := w.page("X", nil, 0, 1, "x")
+			q := w.page("Q", &x, 0, 1, "q")
+			w.trash(x, deletedAt)
+			w.deleted(x)
+			w.deleted(q)
+			w.revive(x, q)
+			w.move(q, &x, 3)
+			w.trash(x, deletedAt.Add(time.Hour))
+		}, []string{"changed Q"}},
+		{"a deletion restored, a member with its child moved to the root, the top deleted again: the grandchild alive", func(w *world) {
+			top := w.page("T", nil, 0, 1, "t")
+			x := w.page("X", &top, 0, 1, "x")
+			n := w.page("N", &x, 0, 1, "n")
+			w.trash(top, deletedAt)
+			w.deleted(top)
+			w.deleted(x)
+			w.deleted(n)
+			w.revive(top, x, n)
+			w.move(x, nil, 9)
+			w.trash(top, deletedAt.Add(time.Hour))
+		}, []string{"changed T", "changed X", "changed N"}},
 		{"a deletion past its time", func(w *world) {
 			p := w.page("P", nil, 0, 1, "p")
 			w.trash(p, w.at.Add(domain.TrashMargin-retention))

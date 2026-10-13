@@ -200,9 +200,11 @@ func TestTheLogReadsInTimeAsLongAsAPage(t *testing.T) {
 
 // A revert's reads of arrays read the unit's bound of 10,000 nodes,
 // contents and versions in time, whatever plan the server keeps for them
-// (M8/P3 design 3.11): 4 to 19 ms here, a plan for any arguments no
+// (M8/P3 design 3.11): 4 to 20 ms here, a plan for any arguments no
 // slower than one with them, so they are pgx's cached statements; a
-// second each, a CI's runner slower.
+// second each, a CI's runner slower. The nodes are read alive, and as
+// many trash items' roots, each deleted by a revert, whose deletions it
+// reads (M8/P3A review A-1): 23 to 26 ms.
 func TestTheRevertsArrayReadsInTimeAtTheUnitsBound(t *testing.T) {
 	ctx := context.Background()
 	l := newLongLog(t)
@@ -210,10 +212,39 @@ func TestTheRevertsArrayReadsInTimeAtTheUnitsBound(t *testing.T) {
 	for i, id := range ids {
 		refs[i] = domain.VersionRef{NodeID: id, Revision: 1}
 	}
+	roots := l.pages[domain.MaxUnitNodes : 2*domain.MaxUnitNodes]
+	// Each root deleted at the time of a changeset of the long page's
+	// versions, which has no items, made a revert holding its deletion.
+	for _, sql := range []string{
+		`WITH r AS (SELECT id, row_number() OVER (ORDER BY id) AS k FROM unnest($1::uuid[]) id),
+			c AS (SELECT id, created_at, row_number() OVER (ORDER BY created_at) AS k FROM changesets
+				WHERE notebook_id = $2 AND id NOT IN (SELECT changeset_id FROM changeset_items))
+		UPDATE nodes SET deleted_at = c.created_at, trash_root = true, trash_pages = 1, trash_assets = 0, trash_height = 1
+		FROM r JOIN c ON c.k = r.k WHERE nodes.id = r.id`,
+		`UPDATE changesets c SET kind = 'revert', reverts_id = c.id FROM nodes n
+		WHERE n.id = ANY($1::uuid[]) AND n.notebook_id = $2 AND c.notebook_id = $2 AND c.created_at = n.deleted_at`,
+		`INSERT INTO changeset_items (id, changeset_id, node_id, before_name, before_sort_order, created_at, updated_at, deleted_at)
+		SELECT uuidv7(), c.id, n.id, n.name, n.sort_order, n.deleted_at, n.deleted_at, n.deleted_at FROM nodes n
+		JOIN changesets c ON c.notebook_id = n.notebook_id AND c.created_at = n.deleted_at WHERE n.id = ANY($1::uuid[]) AND n.notebook_id = $2`,
+	} {
+		if _, err := l.pool.Exec(ctx, sql, roots, l.notebook); err != nil {
+			t.Fatalf("%s: %v", sql, err)
+		}
+	}
 	reads := []logRead{
 		{"NodesNow", func() error {
 			got, err := l.s.NodesNow(ctx, ids)
 			return expect(err, len(got) == len(ids), len(got))
+		}},
+		{"NodesNow of roots a revert deleted", func() error {
+			got, err := l.s.NodesNow(ctx, roots)
+			n := 0
+			for _, r := range got {
+				if r.DeletedByRevert {
+					n++
+				}
+			}
+			return expect(err, len(got) == len(roots) && n == len(roots), n)
 		}},
 		{"ContentsNow", func() error {
 			got, err := l.s.ContentsNow(ctx, ids)

@@ -707,6 +707,16 @@ func (f *fakeStore) LockChangeset(ctx context.Context, id uuid.UUID) (app.Change
 	return app.Changeset{}, app.ErrNotFound
 }
 
+// deletedByRevert reports whether a revert's changeset deleted the node
+// id at at, as NodesNow reads it: a changeset created at that time whose
+// item of the node is its deletion.
+func (f *fakeStore) deletedByRevert(id uuid.UUID, at time.Time) bool {
+	it, ok := f.items[id]
+	return ok && it.Change.After == nil && slices.ContainsFunc(f.changesets, func(c app.Changeset) bool {
+		return c.ID == it.ChangesetID && c.Kind == domain.ChangesetRevert && c.At.Equal(at)
+	})
+}
+
 func (f *fakeStore) TouchChangeset(ctx context.Context, id uuid.UUID, at time.Time) error {
 	f.record(ctx, "TouchChangeset")
 	f.touched[id] = at

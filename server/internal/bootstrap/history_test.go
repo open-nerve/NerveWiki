@@ -357,6 +357,16 @@ func TestEachChangeIsRevertedThroughServe(t *testing.T) {
 			}
 		}, nil)
 	})
+	t.Run("a move out of ten levels, an attachment under its deepest page", func(t *testing.T) {
+		deep := tm.openNotebook(t, "alice", "Deep")
+		var level string
+		for i := range domain.MaxDepth - 2 {
+			level = tm.createPage(t, "alice", deep, level, "Level "+string(rune('A'+i)))
+		}
+		x := tm.createPage(t, "alice", deep, level, "X")
+		tm.upload(t, "alice", deep, tm.createPage(t, "alice", deep, x, "Y"), "y.png", sevenByFive)
+		tm.undone(t, deep, "edit", func() { tm.send(t, nodeMove("alice", x, ""), http.StatusOK) }, nil)
+	})
 	t.Run("a revert's revert", func(t *testing.T) {
 		tm.send(t, nodeRename("alice", x, "Y"), http.StatusOK)
 		renamed := tm.newest(t, nb)
@@ -612,6 +622,96 @@ func TestARevertsConflictsThroughServe(t *testing.T) {
 				t.Errorf("%d reverts' changesets, want none", n)
 			}
 			tm.checkTrash(t)
+		})
+	}
+}
+
+// A revert of a deletion compares each node of its trash item where and
+// as the deletion left it (M8/P3A review A-1, A-2, C M-1, M-5): restored,
+// changed and deleted again by another changeset, the item is changed,
+// its newer changes never undone in silence. Its top renamed and moved,
+// its member renamed: X and Z changed. A member moved within the group:
+// R changed. A member moved out with its child, the top deleted again,
+// the child alive under its parent before the deletion: T, X and N
+// changed. Reverted newest first, each of the changesets succeeds, the
+// deletion's last, the restore's revert having deleted the item where the
+// restore put it: the notebook is as before the deletion.
+func TestARevertOfADeletionComparesItsItemWhereItWas(t *testing.T) {
+	tm := newAcmeTeam(t, "member", "")
+	for _, tt := range []struct {
+		name string
+		// change makes the deletion D after the pages, restores its item
+		// and changes it, then deletes it again; it answers D.
+		change func(t *testing.T, nb string, before func()) string
+		want   []string
+	}{
+		{"its top renamed and moved, its member renamed", func(t *testing.T, nb string, before func()) string {
+			p, q := tm.createPage(t, "alice", nb, "", "P"), tm.createPage(t, "alice", nb, "", "Q")
+			x := tm.createPage(t, "alice", nb, p, "X")
+			z := tm.createPage(t, "alice", nb, x, "Z")
+			before()
+			tm.send(t, nodeDeletion("alice", x), http.StatusNoContent)
+			d := tm.newest(t, nb).ID
+			tm.restored(t, "alice", x)
+			tm.send(t, nodeRename("alice", z, "Z2"), http.StatusOK)
+			tm.send(t, nodeRename("alice", x, "Y"), http.StatusOK)
+			tm.send(t, nodeMove("alice", x, q), http.StatusOK)
+			tm.send(t, nodeDeletion("alice", x), http.StatusNoContent)
+			return d
+		}, []string{"changed X", "changed Z"}},
+		{"a member moved within the group", func(t *testing.T, nb string, before func()) string {
+			p := tm.createPage(t, "alice", nb, "", "P")
+			r := tm.createPage(t, "alice", nb, tm.createPage(t, "alice", nb, p, "Q"), "R")
+			before()
+			tm.send(t, nodeDeletion("alice", p), http.StatusNoContent)
+			d := tm.newest(t, nb).ID
+			tm.restored(t, "alice", p)
+			tm.send(t, nodeMove("alice", r, p), http.StatusOK)
+			tm.send(t, nodeDeletion("alice", p), http.StatusNoContent)
+			return d
+		}, []string{"changed R"}},
+		{"a member moved out with its child", func(t *testing.T, nb string, before func()) string {
+			top := tm.createPage(t, "alice", nb, "", "T")
+			x := tm.createPage(t, "alice", nb, top, "X")
+			tm.createPage(t, "alice", nb, x, "N")
+			before()
+			tm.send(t, nodeDeletion("alice", top), http.StatusNoContent)
+			d := tm.newest(t, nb).ID
+			tm.restored(t, "alice", top)
+			tm.send(t, nodeMove("alice", x, ""), http.StatusOK)
+			tm.send(t, nodeDeletion("alice", top), http.StatusNoContent)
+			return d
+		}, []string{"changed T", "changed X", "changed N"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			nb := tm.openNotebook(t, "alice", tt.name)
+			var was string
+			d := tt.change(t, nb, func() { was = tm.notebookState(t, nb) })
+			changed := tm.notebookState(t, nb)
+			c := changesetRevert("bob", d)
+			status, body := ask(t, tm.contract, c.method, tm.base+c.path, tm.tokens["bob"], "")
+			conflicts, n := conflictsOf(t, answer{body: body})
+			var got []string
+			for _, c := range conflicts {
+				got = append(got, c.Reason+" "+c.Name)
+			}
+			if status != http.StatusConflict || problemCode(t, body) != "page.revert_conflict" || n != len(tt.want) ||
+				!reflect.DeepEqual(got, tt.want) {
+				t.Errorf("the revert of D = %d %s, want 409 page.revert_conflict of %q", status, body, tt.want)
+			}
+			if now := tm.notebookState(t, nb); now != changed {
+				t.Errorf("the refused revert changed the notebook:\n%s\nwas\n%s", now, changed)
+			}
+			after, _ := tm.history(t, "alice", nb, "")
+			for _, c := range after {
+				tm.reverted(t, "bob", c.ID)
+				if c.ID == d {
+					break
+				}
+			}
+			if now := tm.notebookState(t, nb); now != was {
+				t.Errorf("the notebook reverted newest first to D:\n%s\nwant as before D:\n%s", now, was)
+			}
 		})
 	}
 }
