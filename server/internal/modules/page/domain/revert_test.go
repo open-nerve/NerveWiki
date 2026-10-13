@@ -679,6 +679,29 @@ func TestPlanRevertsConflictsInTheirOrder(t *testing.T) {
 	}
 }
 
+// The round goes in its fixed order (M8/P3 design 3.5), each kind of step
+// needing the ones before it: Y moved into the root as A, where X, named
+// A, was deleted; N created as D where D was deleted; P's content
+// written. Y goes back first, freeing A; N goes to the trash, freeing D;
+// then X and D come back; then P's version is written back.
+func TestPlanRevertsRoundGoesInItsOrder(t *testing.T) {
+	deletedAt := time.Date(2026, 10, 14, 11, 0, 0, 0, time.UTC)
+	w := newWorld(t)
+	f := w.page("F", nil, 0, 1, "f")
+	x, d := w.page("A", nil, 1, 1, "x"), w.page("D", nil, 2, 1, "d")
+	for _, id := range []uuid.UUID{x, d} {
+		w.trash(id, deletedAt)
+		w.deleted(id)
+	}
+	w.placed(w.page("A", nil, 3, 1, "y"), domain.TreeState{ParentID: &f, Name: "Y"})
+	w.created(w.page("D", nil, 4, 1, "n"))
+	w.wrote(w.page("P", nil, 5, 2, "two"), 1, "one")
+	want := []string{"place A moved and renamed", "delete D", "restore A", "restore D", "content P"}
+	if got := w.ops(w.plan()); !slices.Equal(got, want) {
+		t.Errorf("ops = %q, want %q", got, want)
+	}
+}
+
 // A changeset of two nodes trading names, which only M9's batch makes,
 // reverts to a valid state no round in the fixed order reaches: the first
 // rename meets the other's name.

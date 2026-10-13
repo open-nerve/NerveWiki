@@ -41,29 +41,10 @@ type trashItemAnswer struct {
 	} `json:"restore_to"`
 }
 
-// changesetAnswer is a Changeset answer, as much as the rows check.
-type changesetAnswer struct {
-	ID        string         `json:"id"`
-	Kind      string         `json:"kind"`
-	NodeCount int            `json:"node_count"`
-	Changes   []changeAnswer `json:"changes"`
-}
-
 // isRename reports whether the answer is the seeded rename id, of one
 // node, its change a rename.
 func (a changesetAnswer) isRename(id uuid.UUID) bool {
 	return a.ID == id.String() && a.Kind == "edit" && a.NodeCount == 1 && len(a.Changes) == 1 && a.Changes[0].Kind == "renamed"
-}
-
-// changeAnswer is a ChangesetChange answer, as much as the rows check.
-type changeAnswer struct {
-	Kind   string `json:"kind"`
-	Before *struct {
-		Name string `json:"name"`
-	} `json:"before"`
-	After *struct {
-		Name string `json:"name"`
-	} `json:"after"`
 }
 
 // renames reports whether the change renames its node from before to
@@ -339,11 +320,7 @@ func pageMatrixRows() []matrixRow {
 			cells:   readers(changesetNotFound),
 			check: func(t *testing.T, c caller, s seeded, answer string) {
 				t.Helper()
-				var d struct {
-					changesetAnswer
-					Renames bool `json:"renames"`
-					Moves   bool `json:"moves"`
-				}
+				var d changesetAnswer
 				decodeAnswer(t, answer, &d)
 				if !d.isRename(s.changeset(notebookOf(c))) || !d.Renames || d.Moves {
 					t.Errorf("read %s, want the seeded rename, renaming and moving nothing", answer)

@@ -376,6 +376,87 @@ func TestTheObserversFollowARestore(t *testing.T) {
 	}
 }
 
+// A revert is a unit the guards and the observers follow as any other
+// (M8/P3 design 3.8): C, a creation of B, a rename of Notes, a deletion
+// of D and a write of Notes' content, made through the module and merged
+// into one changeset, is reverted in one unit of its four operations,
+// each through the guard, which sees the revert's kind and C; the
+// observer follows it once with the same, B deleted, Notes renamed back
+// and its content written back, one change of it, D restored from the
+// time it was deleted at (M10's and M11's guards tell a revert from an
+// edit by them).
+func TestTheObserversFollowARevert(t *testing.T) {
+	f := newFixture(t)
+	created := uuid.NewV7()
+	f.exec(t, "INSERT INTO changesets (id, notebook_id, kind, client, created_by_id, created_at, updated_at) "+
+		"VALUES ($1, $2, 'edit', 'web', $3, $4, $4)", created, f.eng, f.alice, testNow())
+	f.exec(t, "INSERT INTO page_revisions (id, changeset_id, node_id, revision, content, content_hash, byte_size, created_at, updated_at) "+
+		"VALUES ($1, $2, $3, 1, '', sha256(''), 0, $4, $4)", uuid.NewV7(), created, f.notes, testNow())
+	ids := map[string]uuid.UUID{}
+	for _, title := range []string{"B", "D"} {
+		rec := f.serve(t, "session", http.MethodPost, f.createPath(), `{"parent_id":null,"title":"`+title+`"}`, nil, nil, nil)
+		var p struct{ ID uuid.UUID }
+		if err := json.Unmarshal(rec.Body.Bytes(), &p); err != nil || rec.Code != http.StatusCreated {
+			t.Fatalf("create %s = %d %s", title, rec.Code, rec.Body)
+		}
+		ids[title] = p.ID
+	}
+	for _, r := range []struct{ method, path, body string }{
+		{http.MethodPatch, f.renamePath(), `{"name":"Journal"}`},
+		{http.MethodDelete, "/api/v0/nodes/" + ids["D"].String(), ""},
+		{http.MethodPut, "/api/v0/pages/" + f.notes.String() + "/content", `{"content":"new","base_revision":1}`},
+	} {
+		if rec := f.serve(t, "session", r.method, r.path, r.body, nil, nil, nil); rec.Code/100 != 2 {
+			t.Fatalf("%s %s = %d %s", r.method, r.path, rec.Code, rec.Body)
+		}
+	}
+	var c uuid.UUID
+	if err := f.pool.QueryRow(context.Background(), "SELECT changeset_id FROM changeset_items WHERE node_id = $1", ids["B"]).Scan(&c); err != nil {
+		t.Fatal(err)
+	}
+	f.exec(t, "UPDATE changeset_items SET changeset_id = $1 WHERE (node_id = $2 AND before_name = 'Notes') OR (node_id = $3 AND after_name IS NULL)",
+		c, f.notes, ids["D"])
+	f.exec(t, "UPDATE page_revisions SET changeset_id = $1 WHERE node_id = $2 AND revision = 2", c, f.notes)
+	f.exec(t, "DELETE FROM changesets s WHERE NOT EXISTS (SELECT 1 FROM changeset_items i WHERE i.changeset_id = s.id) "+
+		"AND NOT EXISTS (SELECT 1 FROM page_revisions r WHERE r.changeset_id = s.id)")
+
+	g, o := &guard{}, &observer{f: f}
+	rec := f.serve(t, "session", http.MethodPost, "/api/v0/changesets/"+c.String()+"/revert", "", []page.WriteGuard{g}, nil,
+		[]page.PageObserver{o})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST revert = %d %s, want 200", rec.Code, rec.Body)
+	}
+	var ops []string
+	for _, s := range g.steps {
+		ops = append(ops, string(s.Operation))
+		if s.Kind != domain.ChangesetRevert || s.RevertsID != c {
+			t.Errorf("the guard saw %s of %s reverting %s, want a revert of %s", s.Operation, s.Kind, s.RevertsID, c)
+		}
+	}
+	if fmt.Sprint(ops) != "[rename delete restore content]" || !g.inTx {
+		t.Errorf("the guard saw %v, in a transaction %v; want the round's four operations in order, in it", ops, g.inTx)
+	}
+	if len(o.events) != 1 || o.changesets != 1 || o.events[0].Kind != domain.ChangesetRevert || o.events[0].RevertsID != c {
+		t.Fatalf("the observer followed %+v, seeing %d changesets; want one event of the revert of %s", o.events, o.changesets, c)
+	}
+	var got []string
+	for _, ch := range o.events[0].Changes {
+		switch {
+		case ch.NodeID == f.notes && ch.Before != nil && ch.After != nil:
+			got = append(got, fmt.Sprintf("%s renamed %s, written at %d", ch.Before.Name, ch.After.Name, ch.Revision))
+		case ch.NodeID == ids["B"] && ch.Before != nil && ch.After == nil:
+			got = append(got, "B deleted")
+		case ch.NodeID == ids["D"] && ch.Before == nil && ch.Restored != nil && ch.Restored.DeletedAt.Equal(testNow()) && ch.Revision == 1:
+			got = append(got, "D restored")
+		default:
+			got = append(got, fmt.Sprintf("%+v", ch))
+		}
+	}
+	if fmt.Sprint(got) != "[Journal renamed Notes, written at 3 B deleted D restored]" {
+		t.Errorf("the observer saw %q, want the four changes, Notes' two in one", got)
+	}
+}
+
 // A participant's rename runs through the guards into the unit's
 // changeset and its one event; it calls no participant. The answer is
 // the page as the unit left it.

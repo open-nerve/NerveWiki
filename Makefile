@@ -184,6 +184,8 @@ test-go: ## 运行 Go 测试，含集成测试与 server/tools（开启竞态检
 	cd server && go test -count=1 -run '^(TestTheAppsMarkdownCostsAboutItsSize|TestTheAppsMarkdownRendersCheckedHTML|TestTheAppsLinksAreWithinTheirBound)$$' ./internal/bootstrap
 	@# 恢复在单元上限的测试单独一行、带 -v：通过时也打出恢复用的时间，CI 的日志里看得到（M8/P2A 第二轮复核 M-a）
 	cd server && go test -count=1 -v -run '^TestARestoreAtTheUnitsBoundTakesItsTime$$' ./internal/bootstrap
+	@# 撤销在单元上限的测试同样单独一行、带 -v：撤销一次删除用的时间（M8/P3 设计 3.11）
+	cd server && go test -count=1 -v -run '^TestARevertAtTheUnitsBoundTakesItsTime$$' ./internal/bootstrap
 	cd server && go test -count=1 -run '^(TestALinkWrittenManyTimesResolvesOnce|TestDistinctPathsToPagesOfOneTitleResolveInTimeAsLongAsThey)$$' ./internal/modules/linking/app
 	cd server && go test -count=1 -run '^TestTheLinktextsOfManyPagesOfOneTitleAreCheap$$' ./internal/modules/linking/domain
 	cd server && go test -count=1 -run '^(TestSubtreeReadsWithoutStatisticsInTimeAsLongAsIt|TestSubtreeOfAFolderOfMostNodesReadsInTimeAsLongAsIt|TestListTrashReadsInTimeAsLongAsAPage|TestTrashLinesReadInTimeAsLongAsAPage|TestRestoreNodesTakesItsTimeAtAnyStatistics|TestTrashHistoryCountsInTimeAtAnyStatistics|TestTheLogReadsInTimeAsLongAsAPage|TestTheRevertsArrayReadsInTimeAtTheUnitsBound)$$' ./internal/modules/page/adapter/postgres
