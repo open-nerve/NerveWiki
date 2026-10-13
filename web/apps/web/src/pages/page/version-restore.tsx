@@ -131,14 +131,17 @@ function RestoreForm({ notebook, page, version, sending, setSending, close, rest
         return;
       }
       // The page's view is older than the page: it goes, read as the page shows; its versions have one more.
-      void mutate(["page-view", notebook.id, page.id], undefined);
-      void mutate(["page-versions", notebook.id, page.id]);
+      // SWR's mutate rejects only once the login's cache is gone (signed out in another tab, say), the dialog with
+      // it: then nothing is said (M8/P1 fix check 3, R3-1).
+      void mutate(["page-view", notebook.id, page.id], undefined).catch(() => undefined);
+      void mutate(["page-versions", notebook.id, page.id]).catch(() => undefined);
       restored();
     } catch (error) {
       if (error instanceof ApiError && error.code === "page.revision_mismatch") {
         setRefused(read.revision);
-        // SWR answers what it holds, the content read before when the read fails.
-        const now = await current.mutate();
+        // SWR answers what it holds, the content read before when the read fails. It rejects only once the login's
+        // cache is gone (signed out in another tab, say), the dialog with it: nothing to say then (R3-1).
+        const now = await current.mutate().catch(() => undefined);
         if (now?.revision === read.revision) {
           // Not read again: the refusal says why.
           setFailure(error);

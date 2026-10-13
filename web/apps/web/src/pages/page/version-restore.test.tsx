@@ -1,6 +1,6 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, test, vi } from "vitest";
+import { expect, onTestFinished, test, vi } from "vitest";
 
 import { lineDiff, type LineDiffResult } from "../../lib/line-diff";
 import { json, problem, type Answer } from "../../test/fakes";
@@ -70,12 +70,12 @@ function installed(answers: Record<string, Answer> = {}) {
 async function restoring(answers: Record<string, Answer> = {}) {
   const user = userEvent.setup();
   const server = installed(answers);
-  const { router } = renderApp(versionPath(install.id, 4), server.app);
+  const { app, router } = renderApp(versionPath(install.id, 4), server.app);
   const restore = await screen.findByRole("button", { name: "Restore this version" });
   await user.click(restore);
   const dialog = await screen.findByRole("alertdialog", { name: "Restore version 4?" });
   await within(dialog).findByRole("textbox", { name: "Changes from the page now to version 4" });
-  return { user, server, router, restore, dialog };
+  return { user, app, server, router, restore, dialog };
 }
 
 /** same is Install, its content now, its version 4 version, shown with its restore's dialog open: texts the same once split. */
@@ -278,6 +278,49 @@ test("a page written since it was read whose content could not be read again say
   expect(within(dialog).queryByText(/The page changed meanwhile/)).toBeNull();
   expect(reads).toBe(2);
 });
+
+// M8/P1 fix check 3, R3-1: the session left as the answer's body is read, its headers past the session's check.
+test.each([
+  { answer: "refused, the page written since", status: 409, body: { status: 409, code: "page.revision_mismatch" } },
+  { answer: "restored", status: 200, body: { revision: 7, changed: true } },
+])(
+  "a restore $answer, read once the tab signed out, its cache gone, leaves no rejection unhandled",
+  async ({ status, body }) => {
+    let release: (() => void) | undefined;
+    const { user, app, dialog } = await restoring({
+      "POST /api/v0/pages/*/versions/*/restore": () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              release = () => {
+                controller.enqueue(new TextEncoder().encode(JSON.stringify(body)));
+                controller.close();
+              };
+            },
+          }),
+          { status, headers: { "Content-Type": status === 200 ? "application/json" : "application/problem+json" } }
+        ),
+    });
+    const rejections: unknown[] = [];
+    const record = (reason: unknown) => void rejections.push(reason);
+    process.on("unhandledRejection", record);
+    onTestFinished(() => {
+      process.off("unhandledRejection", record);
+    });
+
+    await user.click(within(dialog).getByRole("button", { name: "Restore" }));
+    await waitFor(() => expect(release).toBeDefined());
+    // The answer's headers pass the session's check; its body is still on its way.
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 10)));
+    await act(() => app.session.tokens.signOut());
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    await act(async () => {
+      release?.();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(rejections).toEqual([]);
+  }
+);
 
 test("a page someone edits says who in the dialog, which stays; the page's lock is read again", async () => {
   const { user, server, dialog } = await restoring();
