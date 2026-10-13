@@ -96,7 +96,7 @@ type Versions interface {
 
 ### 3.6 契约（`api/modules/page.yaml`）
 
-- `listPageVersions`：`PageVersionPage {data: PageVersion[], next_cursor}`（与其他分页的答复同名，审查之后由 `PageVersionList` 改名）；`PageVersion {id, revision, base_revision|null, byte_size, created_at, updated_at, editing, changeset: VersionChangeset}`；`VersionChangeset {id, kind, client, created_at, created_by: ChangesetAuthor}`；`ChangesetAuthor {user_id, display_name}`（6.1 的例外：版本、日志、回收站内嵌执行者的显示名，M8 设计 4.1）。`x-problem-codes: [bad_request(游标), page.not_found, validation_failed]`。
+- `listPageVersions`：`PageVersionPage {data: PageVersion[], next_cursor}`（与其他分页的答复同名，审查之后由 `PageVersionList` 改名）；`PageVersion {id, revision, base_revision|null, byte_size, created_at, updated_at, editing, changeset: VersionChangeset}`；`VersionChangeset {id, kind, client, created_at, created_by: UserRef}`；`UserRef {user_id, display_name}`（6.1 的例外：版本、日志、回收站内嵌执行者的显示名，M8 设计 4.1）是 `common.yaml` 的，与持锁人、任务的发起人、回收站的删除者共用（P1A 时叫 `ChangesetAuthor`，M8/P2 3.9 并入）。`x-problem-codes: [bad_request(游标), page.not_found, validation_failed]`。
 - `getPageVersion`：`PageVersionContent`（`PageVersion` 的字段加 `content`）；`x-problem-codes: [page.not_found, page.version_not_found]`。
 - `getPageVersionView`：`PageView`（与 `getPageView` 相同）；`[page.not_found, page.version_not_found, server_busy]`。
 - `restorePageVersion`：请求 `VersionRestore {base_revision}`（整数，未知字段、`null`、小数 400；不设 `minimum`：与当前版本号不符的照第 4 步答 409 `page.revision_mismatch`，与 `PageContentWrite` 相同）；答 `VersionRestored {revision, changeset_id|null, changed}`；`[page.not_found, page.version_not_found, forbidden, server_busy, page.revision_mismatch, page.locked]`。
@@ -246,7 +246,7 @@ B（分支 `m8-p1b`，A 合并之后）：
 
 - 提交：实施 `8609c58`；CI 首轮的修补 `23be652`（网页缺 `page.version_not_found` 的文案、适配器夹具的时刻类型、权限矩阵的覆盖认 `{revision}`）；审查的修复 `78955b4`；两轮修复核对的修复 `d363d77`、`ce841f4`。合并 `12fc5d7`。
 - 审查：三位审查者（Opus）。高 1（适配器的版本测试跑不通，CI 是红的：夹具的 `node_id` 参数被推成 text）；其余是低与测试的缺口：版本的元数据与正文分两条语句读、版本链只靠调用者维持、几处测试分不出它声称的、契约的措辞与命名。修复核对两轮，没有行为问题。逐条见[审查记录](reviews/P1A-versions-server-review.md)。
-- 与设计不同之处已改在第 3 节（3.4–3.6、3.9）：`FindVersion` 一条语句连正文读出、没有 `VersionContent`；`ListVersions` 读 `below` 之下（最新的从 `MaxRevision + 1`）；`RecordRevision` 的版本链守卫与 `checkPages` 的链；`changesetOf` 只接受编辑；`PageVersionPage`、`ChangesetAuthor`；路径的版本号与 `base_revision` 不设 `minimum`。
+- 与设计不同之处已改在第 3 节（3.4–3.6、3.9）：`FindVersion` 一条语句连正文读出、没有 `VersionContent`；`ListVersions` 读 `below` 之下（最新的从 `MaxRevision + 1`）；`RecordRevision` 的版本链守卫与 `checkPages` 的链；`changesetOf` 只接受编辑；`PageVersionPage`、`ChangesetAuthor`（P2A 起是共用的 `UserRef`）；路径的版本号与 `base_revision` 不设 `minimum`。
 - 反向对照：用例 28 处、数据库与规则 17 处、核对之后新加 3 处，都被测试抓到。
 
 ### 9.2 B：前端（2026-10-13，合并 `df306e3`）

@@ -6,7 +6,7 @@
 
 ## 1. 基线
 
-- A 从 `main` 的 `4891f87` 开始（P1A 已合并，`12fc5d7`）；B 从 P1B 合并之后的 `main` 开始。
+- A 从 `main` 的 `e178c64` 开始（P1A 已合并，`12fc5d7`；这份设计在 `e178c64` 提交）；B 从 P1B 合并之后的 `main` 开始。
 - 删除今天：`DeleteNode` → `Unit.Delete` 读活着的子树（`Subtree`，按层），每个节点一项没有"后"的变更；`DeleteNodes` 一条语句以单元的时刻 T 删除节点（`updated_by_id` 记删除者）与它们的正文、所有变更集里的版本行与条目；条目一个节点一条 `RecordItem`；asset 的观察者以 `e.At`（= T）删除附件的行；linking 的观察者删除这些页的索引行（不是软删除）。没有 `trash_root`，删除没有任何大小的界线。
 - P1 留下：`readableAny`（只认页面）、`FindAnyNode`、版本的读与 `getPageVersionView`（回收站里的页读得到，但链接一律未解析：来源不在 `Paths` 的答复里，`bootstrap/page_versions_test.go` 写明"until P2"）；`changesets.kind` 已有 `trash_restore`；`RecordRevision` 的版本链守卫。
 - 清理：`jobs.purge_retention` 默认 1440h、下限 1h；清理任务用 `time.Now()`；页面的表逐表各自提交（条目 → 版本 → 正文 → 节点，节点只删叶子；条目与版本每批 1,000 行、不排序），附件一个事务里先删文件再删行；`nodes` 的父节点外键 `ON DELETE RESTRICT`。
@@ -60,27 +60,28 @@ P2 的文档提交随这份文档一起改 `00-M8-design.md`（理由在本文�
 | `server/migrations/sql/00036_page_changeset_items_restored.sql` | `changeset_items` 的 `restored`、`revision`，约束，补值 |
 | `page/domain/change.go` | `Change.Restored *Restored`、`Restored{DeletedAt, Asset}`；`Then` 保留第一项的；`OpRestore` |
 | `page/domain/tree.go` | `Subtree.Counts()`（页数、附件数） |
-| `page/domain/trash.go` | `TrashRoot`、`TrashMember`、`TrashCursor`、`TrashFrom`、`Placement`、`PlacementOf`、`TrashMargin`（1 小时）、`RestorableUntil`、`Restorable`；单元的界线 `MaxUnitNodes`、`MaxUnitPages`、`MaxUnitBytes`、`MaxUnitLinks` |
+| `page/domain/trash.go` | `TrashRoot`、`TrashAncestor`、`TrashMember`、`TrashCursor`（JSON 以 UTC 写时刻）、`TrashFrom`、`Placement`、`PlacementOf`、`TrashMargin`（1 小时）、`RestorableUntil`、`Restorable`、`TrashSince`；单元的界线 `MaxUnitNodes`、`MaxUnitHistory`、`MaxUnitPages`、`MaxUnitBytes`、`MaxUnitLinks` 与 `UnitTooLarge` |
 | `page/domain/errors.go` | `ErrNotInTrash`、`NotTrashRoot(rootID)`、`ErrRestoreExpired`、`ErrRestoreTooLarge`、`ErrTrashChanged` |
 | `page/domain/actions.go` | `ActionRestore = "node.restore"` |
-| `page/app/ports.go` | `Trash` 端口；`NodeWriter.DeleteNodes(ctx, Deletion)`、`RestoreNodes`；`ChangesetWriter.RecordItems`（代替 `RecordItem`）；`AttachmentInfos`；`AnyNode.TrashRoot`；`PageRef.Deleted` |
+| `page/app/ports.go` | `Trash` 端口（含 `TrashHistory`）；`NodeWriter.DeleteNodes(ctx, Deletion)`、`RestoreNodes(ctx, Restoration) (RestoredRows, error)`；`ChangesetWriter.RecordItems`（代替 `RecordItem`）；`AttachmentInfos`；`AnyNode.TrashRoot`；`PageRef.Deleted` |
 | `page/app/unit.go` | `apply` 一步的条目一次写（`recordItems`，没有要记的就不写） |
 | `page/app/unit_delete.go` | 根与统计交给 `DeleteNodes` |
 | `page/app/unit_restore.go` | `Unit.Restore` |
 | `page/app/readable.go` | `readableNode`（不看类型）；`readableAny` 在它之上要求页面 |
 | `page/app/content.go` | `ContentParser.DecidedAll`（从大到小、等待合计有界） |
-| `page/app/trash.go`、`list_trash.go`、`get_trash_item.go`、`restore_node.go` | 共用的读与放置；三个用例 |
+| `page/app/trash.go`、`list_trash.go`、`get_trash_item.go`、`restore_node.go` | 共用的读与放置；三个用例；`RestoreBounds{Nodes, History}`（0 即 domain 的值） |
 | `page/app/get_version_view.go` | 回收站里的页设 `PageRef.Deleted` |
-| `page/adapter/postgres/queries/trash.sql`、`trash.go` | `Trash` 端口的查询与实现 |
+| `page/adapter/postgres/queries/trash.sql`、`trash.go` | `Trash` 端口的查询与实现（另有 `TrashGroupRoot`、`TrashHistory`） |
 | `page/adapter/postgres/queries/nodes.sql`、`changesets.sql`、`links.sql` | `DeleteNodes`、`RestoreNodes`、`RecordItems`、`SourcePath` |
 | `page/adapter/markdown/markdown.go` | `PageRef.Deleted` → `markdown.Page.Deleted` |
 | `page/link_targets.go` | `SourcePath` |
 | `page/adapter/http/trash.go`、`handler.go`、`versions.go` | 三个处理器；`UserRef` |
-| `page/module.go` | `Deps.Retention`、`Deps.Attachments`、`Deps.MaxUnitNodes`（0 即 `domain.MaxUnitNodes`，只有实测抬高它）；导出 `ErrTrashChanged`、`TrashMargin`、`Restored` |
+| `page/module.go` | `Deps.Retention`、`Deps.Attachments`、`Deps.MaxUnitNodes` 与 `Deps.MaxUnitHistory`（0 即 `domain.MaxUnitNodes`、`MaxUnitHistory`，只有实测抬高它们）；导出 `ErrTrashChanged`、`TrashMargin`、`Restored`，另导出 `TreeState`（bootstrap 的附件观察者用） |
 | `platform/markdown/markdown.go`、`budget.go` | `Page.Deleted`；`Budget.Wait()` |
 | `linking/app/ports.go`、`views.go`、`resolver.go`；`linking/adapter/markdown/views.go` | `Page.Deleted`；`Pages.SourcePath`；`resolutions` 接受已读到路径的来源 |
-| `asset/lifecycle.go`、`asset/app/follow.go`、`asset/app/ports.go`、`asset/adapter/postgres/queries/lifecycle.sql` | `NodesRestored`、`RestoreBlobsOfNodes` |
-| `asset/attachment_infos.go`、`asset/adapter/postgres/queries/infos.sql` | `NewAttachmentInfos(pool)`（只凭连接池） |
+| `asset/lifecycle.go`、`asset/app/follow.go`、`asset/app/ports.go`、`asset/adapter/postgres/queries/lifecycle.sql`、`lifecycle.go`、`store.go` | `NodesRestored`、`RestoreBlobsOfNodes`（按参数规划：store 加 `planned`） |
+| `asset/attachment_infos.go`、`asset/adapter/postgres/queries/infos.sql` | `NewAttachmentInfos(pool)`（只凭连接池），答结构体 `asset.AttachmentInfos` |
+| `linking/adapter/postgres/store.go` | M6 的 `SetResolutions` 按参数规划（3.11 的实测） |
 | `instance/domain/info.go`、`instance/app/get_info.go`、`instance/module.go`、`instance/adapter/http/handler.go` | `TrashRetention` |
 | `transfer/adapter/http/server.go` | `UserRef` |
 | `shared/error.go`、`platform/httpserver/apierrors.go`、`problem.go` | 扩展成员 `root_id` |
@@ -88,7 +89,8 @@ P2 的文档提交随这份文档一起改 `00-M8-design.md`（理由在本文�
 | `access/domain/rules.go` | `node.restore` |
 | `api/common.yaml`、`api/modules/page.yaml`、`instance.yaml`、`transfer.yaml` | 三个操作、`UserRef`、`TrashAttachment`、`root_id`、`trash_retention_seconds` |
 | `bootstrap/deps.go`、`assets.go`、`linking.go` | `retention(cfg)`、`Attachments`、观察者的恢复、`SourcePath`、`trash_retention_seconds` |
-| `web/apps/web/src/app/problem-messages.ts`、`i18n/messages/{en,zh-CN}.ts`、`test/fakes.ts`、`services/page.service.ts`；`e2e/stories/smoke/s3-instance-info.spec.ts` | 契约带来的门禁：五个新码的文字（`problem-messages.test.ts` 读契约里每个操作的码，P1A 的 `23be652` 为 `page.version_not_found` 做过同样的事）；`instanceJSON` 的新字段；`EditLockHolder` 改为 `UserRef` 的别名；S3 对 `InstanceInfo` 的整体比较 |
+| `web/apps/web/src/app/problem-messages.ts`、`i18n/messages/{en,zh-CN}.ts`、`test/fakes.ts`、`services/page.service.ts`；`e2e/stories/smoke/s3-instance-info.spec.ts`；`deploy/image-smoke.sh` | 契约带来的门禁：五个新码的文字（`problem-messages.test.ts` 读契约里每个操作的码，P1A 的 `23be652` 为 `page.version_not_found` 做过同样的事）；`instanceJSON` 的新字段；`EditLockHolder` 改为 `UserRef` 的别名；S3 与镜像的冒烟对 `InstanceInfo` 的整体比较（冒烟漏改，CI 的修补 `463d9e9`） |
+| `bootstrap/trash_test.go`、`interleavings_trash_test.go`、`trash_cost_test.go`；`page/adapter/postgres/trash_cost_test.go` | 整个程序、交错；基准与守住它们的成本测试（3.11） |
 
 ### 3.2 迁移
 
@@ -190,7 +192,7 @@ ALTER TABLE changeset_items
       after_sort_order = excluded.after_sort_order, updated_at = excluded.updated_at, deleted_at = excluded.deleted_at;
   ```
 
-  空值照 `SetResolutions` 的写法用零 id 与 `has_*` 标出（根下的父节点也是空，所以"有没有前"要单独一列）。`restored`、`revision` 不在 `DO UPDATE` 里：合并时保留第一次的。适配器从 `Change` 取：`restored = Restored != nil`，`revision = Revision`（只在"前"空、"后"不空时，新建的页是 1）。
+  空值照 `SetResolutions` 的写法用零 id 与 `has_*` 标出（根下的父节点也是空，所以"有没有前"要单独一列）。`restored`、`revision` 不在 `DO UPDATE` 里：合并时保留第一次的。适配器从 `Change` 取：`restored = Restored != nil`，`revision = Revision`（只在"前"空、"后"不空时，新建的页是 1）。`RecordItems` 一次只写一个变更集、一个时刻的条目（语句只有一个 `changeset_id` 与 `now`，一步的条目本来如此），别的拒绝（调用者的缺陷）。
 
 ### 3.4 读：端口与查询
 
@@ -213,6 +215,9 @@ type Trash interface {
 	TrashGroup(ctx context.Context, notebookID, id uuid.UUID, at time.Time) ([]domain.TrashMember, error)
 	// TrashContents are the contents of the pages ids deleted at at, by page.
 	TrashContents(ctx context.Context, ids []uuid.UUID, at time.Time) (map[uuid.UUID]string, error)
+	// TrashHistory is how many versions and items, of every changeset, of the nodes ids were deleted at at, each of
+	// the two counted to limit at most: the rows a restore writes besides the nodes' (审查 A-M4).
+	TrashHistory(ctx context.Context, ids []uuid.UUID, at time.Time, limit int) (int, error)
 }
 ```
 
@@ -241,11 +246,11 @@ type Trash interface {
       FROM chain c CROSS JOIN LATERAL (SELECT id, parent_id, name, deleted_at FROM nodes WHERE id = c.parent_id LIMIT 1) p
       WHERE c.up < 64
   )
-  SELECT root_id, id, name, deleted_at, up::integer AS up FROM chain ORDER BY root_id, up DESC;
+  SELECT root_id, id, parent_id, name, deleted_at, up::integer AS up FROM chain ORDER BY root_id, up DESC;
   ```
 
-  原位置就是这些名称。`domain.PlacementOf(line, height)`（列表、单项与恢复共用）：线为空（原来在根下）→ `original`，`parent_id` 为空；父节点（`up = 1`）活着且 `len(line) + height ≤ domain.MaxDepth`（`Depth(line) + h - 1 ≤ 10` 的同一个式子）→ `original`；父节点已删 → 根下，`parent_in_trash`；否则根下，`too_deep`。
-- `TrashRootOf`：从节点往上，直到 `trash_root`（非根的已删节点，父节点一定是同一时刻删除的）；列名都带表的别名（sqlc 对 `id = sqlc.arg(id)` 报歧义）：
+  另答 `parent_id`：一条线最上面的一行父节点不为空，即没有到根（只有缺陷会成环、超过 64 步），适配器答错误。原位置就是这些名称。`domain.PlacementOf(line, height)`（列表、单项与恢复共用）：线为空（原来在根下）→ `original`，`parent_id` 为空；父节点（`up = 1`）活着且 `len(line) + height ≤ domain.MaxDepth`（`Depth(line) + h - 1 ≤ 10` 的同一个式子）→ `original`；父节点已删 → 根下，`parent_in_trash`；否则根下，`too_deep`。
+- `TrashRootOf`（`:one`）：从节点往上，直到 `trash_root`（非根的已删节点，父节点一定是同一时刻删除的）；列名都带表的别名（sqlc 对 `id = sqlc.arg(id)` 报歧义）：
 
   ```sql
   WITH RECURSIVE up AS (
@@ -258,7 +263,7 @@ type Trash interface {
   SELECT up.id FROM up WHERE up.trash_root;
   ```
 
-- `TrashGroup`：根（`FindTrashRoot` 的行）之后按层读，每层一条语句、以它的父节点规划（`postgres.Planned`，同 `Subtree`）：
+- `TrashGroup`：根之后按层读，每层一条语句、以它的父节点规划（`postgres.Planned`，同 `Subtree`）。根由单独的 `TrashGroupRoot` 读：`FindTrashRoot` 的行没有正文的大小；它以 `id`、笔记本与时刻 T 认根（`n.deleted_at = T`，同下面每层的条件），不要求 `trash_root`，这期间被恢复或以别的时刻再删的根读不到，答 `page.trash_changed`。每层：
 
   ```sql
   -- name: TrashChildrenOfAll :many
@@ -271,10 +276,24 @@ type Trash interface {
   ```
 
   更早删除的子孙（时刻不同）不在组里，它是自己的一项。`nodes_notebook_id_parent_id_idx` 含已删的行，这一读走它。
-- `TrashContents`：`SELECT node_id, content FROM page_contents WHERE node_id = ANY($1) AND deleted_at = $2`。
-- `Nodes.FindAnyNode` 多读 `trash_root`（`AnyNode.TrashRoot`）。时刻的比较一律 `time.Time.Equal`（pgx 答的时刻在本地时区，`==` 连时区也比）。
+- `TrashContents`：`SELECT node_id, content FROM page_contents WHERE node_id = ANY($1) AND deleted_at = $2`。留作缓存的语句：它的通用计划与 `TrashHistory` 的相同（下），但 ids 与这一时刻的行都至多是一项的页（100），两种计划都约 0.3 ms（修复核对第一轮的实测，3.11）。
+- `TrashHistory`（审查 A-M4 加的，恢复的第 4 步用）：这一组的节点以时刻 T 删除的版本行与所有变更集里的条目，两张表各数到 `lim`（用例给界线加一）为止：
 
-**附件的信息**（4.1，P5 的搜索也用）：asset 的根加只凭连接池的 `asset.NewAttachmentInfos(pool) AttachmentInfos`，`Of(ctx, nodeIDs) (map[uuid.UUID]AttachmentInfo, error)`，`AttachmentInfo{MIME string; Bytes int64}`：
+  ```sql
+  -- name: TrashHistory :one
+  SELECT ((SELECT count(*) FROM (SELECT 1 FROM page_revisions r
+              WHERE r.node_id = ANY(sqlc.arg(ids)::uuid[]) AND r.deleted_at = sqlc.arg(deleted_at)::timestamptz
+              LIMIT sqlc.arg(lim)::integer) v)
+      + (SELECT count(*) FROM (SELECT 1 FROM changeset_items i
+              WHERE i.node_id = ANY(sqlc.arg(ids)::uuid[]) AND i.deleted_at = sqlc.arg(deleted_at)::timestamptz
+              LIMIT sqlc.arg(lim)::integer) w))::integer AS rows;
+  ```
+
+  它恰是 `RestoreNodes` 的 `revisions`、`items` 两步要恢复的行。各数到界线加一不改变判定：和超过界线时，要么有一项被截在界线加一（已超过），要么两项都准。每次以它的 ids 规划（`s.planned(ctx)`）：作为缓存的语句，一个连接上第 6 次起服务端可能只规划一次、对任何参数都用，统计是活着时取的（生产库的常态）时这种计划估 `deleted_at = $2` 一行、经 `*_deleted_at_idx` 读这一时刻的行，再把每行与上万个 id 逐个比较：两个界线上、页排在 ids 最后时 5.0–5.5 秒，按参数的 41–67 ms（修复核对第一轮 I-1）。按参数的计划读 `*_deleted_at_idx`（这一时刻的行正是这一组的）、`node_id` 的索引，或在组占了表的大半时顺序扫描、由 `LIMIT` 停下。
+- `Nodes.FindAnyNode` 多读 `trash_root`（`AnyNode.TrashRoot`）。时刻的比较一律 `time.Time.Equal`（答复的时刻可能与参数的不在同一个时区：测试的连接池按本地时区读，`==` 连时区也比）。
+- `TrashCursor` 的 JSON 以 UTC 写时刻（`MarshalJSON`）：按别的时区读到的时刻会把同一个位置拼成两种，`shared.DecodeCursor` 拒绝第二种（13.1 第 27 条"每个位置只有一种拼法"）。
+
+**附件的信息**（4.1，P5 的搜索也用）：asset 的根加只凭连接池的 `asset.NewAttachmentInfos(pool) AttachmentInfos`（带连接池的结构体，模块常用的构造），`Of(ctx, nodeIDs) (map[uuid.UUID]AttachmentInfo, error)`，`AttachmentInfo{MIME string; Bytes int64}`：
 
 ```sql
 -- name: AttachmentInfos :many
@@ -283,26 +302,28 @@ SELECT node_id, mime, byte_size FROM asset_blobs WHERE node_id = ANY(sqlc.arg(no
 
 不按 `deleted_at` 过滤（回收站里的附件要读）；在调用者的读里、走 `asset_blobs_node_id_key`。page 的端口 `app.AttachmentInfos`，bootstrap 的 `attachmentInfos` 适配，`page.Deps.Attachments`；`page.New` 对空的端口 panic（组合根交空即接线的错，同 `markdownadapter.NewBudget`）。不叫 `AssetMeta`：`page.AssetMeta` 已是守卫看到的新附件的文件（含 SHA-256），两者用途不同。
 
-计划：`ListTrash`、`TrashLines` 各有一个"一个连接上读 8 次、无统计"的成本测试（`//go:build !race`，照 `subtree_cost_test.go`：一本笔记本 10 万个节点、其中 1 万个回收站的根），时限写在测试里。
+计划：`ListTrash`、`TrashLines` 各有一个"一个连接上读 8 次"的成本测试（`//go:build !race`，照 `subtree_cost_test.go`：一本笔记本 10 万个节点、其中 1 万个回收站的根；无统计，修复核对第一轮之后另跑一遍有统计的），各 200 ms 之内；`TrashHistory` 有它自己的（3.11）。其余新的语句按参数的形状留作缓存的语句：`ListTrash`、`FindTrashRoot`、`TrashRootOf`、`TrashGroupRoot`、`SourcePath` 是标量参数；`TrashLines` 至多一页的根、按主键；`RecordItems` 从 `unnest` 插入；`DeleteNodes` 的 `stray` 读单元自己的时刻的行（平常没有）；`AttachmentInfos` 按 `node_id` 的唯一键、没有时刻（两种计划都约 6 ms）；`RestoreNodes` 连接 `u` 与 `back`、没有 `ANY` 的过滤（两个界线上两种计划都约 2.6–3.3 秒）。
 
 ### 3.5 用例
 
 - **`ListTrash`**（`GET /notebooks/{notebook_id}/trash?limit&cursor`）：游标先核对（400）；笔记本的 `WorkspaceOf` → 以 `page.history` 判定（看不到答 404 `notebook.not_found`）；`limit`（422，`shared.PageSize`）；`since = now − (Retention − TrashMargin)`；读 `limit + 1` 项；`TrashLines`（一条）、删除者的显示名（`Names`，一次）、附件根的信息（`Attachments`，一次）。每项：`TrashRoot`、原位置、删除者、`RestorableUntil`、统计、放置。
-- **`GetTrashItem`**（`GET /nodes/{node_id}/trash-item`）：`readableNode(id, page.history)`（不看类型；404 `page.not_found`）→ 活着的 409 `page.not_in_trash` → 不是根的 409 `page.not_trash_root`（`root_id` 由 `TrashRootOf`）→ 期限之外 409 `page.restore_expired` → 同列表的一项。
+- **`GetTrashItem`**（`GET /nodes/{node_id}/trash-item`）：`readableNode(id, page.history)`（不看类型；404 `page.not_found`）→ 活着的 409 `page.not_in_trash` → 不是根的 409 `page.not_trash_root`（`root_id` 由 `TrashRootOf`）→ 期限之外 409 `page.restore_expired` → 同列表的一项。两次读之间这一项被恢复了（`TrashRootOf`、`FindTrashRoot` 读不到）答 409 `page.not_in_trash`。
 - **`RestoreNode`**（`POST /nodes/{node_id}/restore`，没有请求体），码照 4.14 的次序：
   1. `FindAnyNode`，笔记本活着，未加锁：没有、笔记本已删 404 `page.not_found`；`Writer.Allowed`（`node.restore`）：没有角色 404、读者 403。
-  2. 活着 → 409 `page.not_in_trash`；不是根 → 409 `page.not_trash_root{root_id}`；`!Restorable(deletedAt, now, Retention)` → 409 `page.restore_expired`。
+  2. 活着 → 409 `page.not_in_trash`；不是根 → 409 `page.not_trash_root{root_id}`；`!Restorable(deletedAt, now, Retention)` → 409 `page.restore_expired`。两次读之间这一项被恢复了（`TrashRootOf`、`FindTrashRoot` 读不到）→ 409 `page.not_in_trash`，不是 500（审查 C-N1）。
   3. `FindTrashRoot` 的统计：`pages + assets > MaxUnitNodes` → 422 `page.restore_too_large`（不读组）。
-  4. `TrashGroup`（未加锁）：有页的正文已不在（版本号为 0）→ 409 `page.trash_changed`（不去解析空的正文）；多于一页时，页数 `> MaxUnitPages`（100）或正文字节 `> MaxUnitBytes`（8 MiB）→ 422。
-  5. `TrashContents`，`ContentParser.DecidedAll`：按大小从大到小 `Take`，各次的等待合计至多 `parse_max_wait`（`page.New` 以 `Budget.Wait()` 交给 `ContentParser`，不另加配置；每次 `Take` 的期限是剩下的等待；它因这一期限失败、请求本身未到期时答 503 `server_busy`）；多于一页时边解析边数链接，超过 `MaxUnitLinks` 就停下、放回预算、答 422（链接数只能解析之后知道，所以它可能排在 503 之后，契约写明）。
+  4. `TrashGroup`（未加锁；读不到这一组即这期间被恢复或清理了 → 409 `page.trash_changed`）：多于一页时，页数 `> MaxUnitPages`（100）或正文字节 `> MaxUnitBytes`（8 MiB）→ 422；然后 `TrashHistory(ids, T, MaxUnitHistory + 1)`：这一组的版本与条目 `> MaxUnitHistory`（400,000，只有一页也算）→ 422（审查 A-M4）。数历史不加锁：在回收站里它这一时刻的行只会被清理减少，单元写的不会多于数过的；锁下另核对组（`Unit.Restore` 第 2 步）。
+  5. `TrashContents`：读到的正文少于页（清理拿走了正文，含版本号为 0 的页：它在这一时刻没有正文行）→ 409 `page.trash_changed`，不去解析空的正文。这个 409 在页数、字节、历史的 422 之后（同一遍读出的拒绝，先答永久的那一种，客户端不会重试一个太大的项；00-M8 4.14 的 422 在 409 之前），却在解析的 503 之前：4.14 次序的又一个例外。然后 `ContentParser.DecidedAll(ctx, contents, ErrRestoreTooLarge)`：按大小从大到小 `Take`，各次的等待合计至多 `parse_max_wait`（`page.New` 以 `Budget.Wait()` 交给 `ContentParser`，不另加配置；每次 `Take` 的期限是剩下的等待；它因这一期限失败、请求本身未到期时答 503 `server_busy`）；多于一页时边解析边数链接，超过 `MaxUnitLinks` 就停下、放回预算、答调用者给的码（P3 的撤销传它自己的，`page.revert_too_large`；链接数只能解析之后知道，所以这个 422 可能排在 503 之后，契约写明）。
   6. `Writer.Run(UnitSpec{NotebookID, Action: node.restore, Tree: true, Client, NotFound: ErrNotFound, Kind: trash_restore}, u.Restore(…))`。`Options` 留空：改写链接的参与者对没有"前"的变更什么都不做（`Relocation` 答 false）。
   7. 答 `NodeRestored`；记日志 `node restored`（ids、`nodes`、`pages`、`assets`、放置的原因、根是否改名、组内改名的个数、客户端；不记名称）。
 
+  所以码的次序是：404 → 403 → 409（`not_in_trash`、`not_trash_root`、`restore_expired`）→ 422（节点数，按记下的统计；页数、字节；历史的行）→ 409 `page.trash_changed`（未加锁时正文已被清理）→ 503 → 422（链接数）→ 单元的 409（`page.trash_changed`：锁下的核对与观察者；`page.restore_expired`：以单元的时刻再核对）。`restoreNode` 的描述照这个次序写全（审查 B-3）。
+
 **`Unit.Restore`**（`unit_restore.go`，笔记本行 `FOR NO KEY UPDATE` 之下）：
 
-1. 重读根（`FindAnyNode`）：仍以 T 删除（`Equal`）、仍是根，否则 409 `page.trash_changed`（这期间别人恢复了它，或别的变化：一律"这一项变了"，网页重读）。以单元的时刻再核对期限（409 `page.restore_expired`）。
-2. 重读 `TrashGroup`，与用例第 4 步未加锁读到的逐项比较（节点、类型、页的版本号；页的版本号为 0 即正文已被清理）：不同则 409 `page.trash_changed`。
-3. **放在哪里**：`PlacementOf`，父节点是否活着由单元在锁下重读（`lineUnder`：已删的父节点是 `errNotAPage`，即 `parent_in_trash`），层数用第 2 步的组。原处时次序值用它原来的（不重算：兄弟这期间被重新编号过时，它落在按值排的位置，与兄弟同值时按 id，写明即可，调研第 25 项）；根下时放在末尾（`placeAmong(根的子节点, len − 1)`，可能重新编号根的子节点）。
+1. 重读根（`FindAnyNode`）：仍在这本笔记本、仍以 T 删除（`Equal`）、仍是根，否则 409 `page.trash_changed`（这期间别人恢复了它、清理拿走了它，或别的变化：一律"这一项变了"，网页重读）。以单元的时刻再核对期限（409 `page.restore_expired`）。
+2. 重读 `TrashGroup`，与用例第 4 步未加锁读到的逐项比较（节点、类型、页的版本号）：不同则 409 `page.trash_changed`。不单独核对版本号 0：未加锁时已拒绝（用例第 5 步），之后被拿走的正文版本号不同（`TrashGroupRoot` 与每层读的是这一时刻的正文）。
+3. **放在哪里**：`PlacementOf`，父节点是否活着由单元在锁下以 `TrashLines` 重读根的线（不是 `lineUnder`：列表、单项与恢复以同一个 `PlacementOf` 放置同一种线；已删的父节点即 `parent_in_trash`），层数用第 2 步的组。原处时次序值用它原来的（不重算：兄弟这期间被重新编号过时，它落在按值排的位置，与兄弟同值时按 id，写明即可，调研第 25 项）；根下时放在末尾（`placeAmong(根的子节点, len − 1)`，可能重新编号根的子节点）。
 4. **名称**：目标位置活着的兄弟建 `children`，`free(root.Name, asset, nil)`：冲突时"名称 2"、附件加在扩展名之前（同导入）。`free` 照今天的规则重核对名称：存下的名称就是 `CheckTitle` 的输出，规则未变，核对必然通过，不进契约的码（调研第 26 项）。组里每个节点的键以 `shared.TitleKey` 重算（`reindex` 只重算活着的）；组内同一父节点下键相同的（Unicode 数据升级之后的 `reindex` 才会有），按次序值与 id 先到的留名，后到的照根的规则加序号（每个父节点一个 `children`，只含组里的兄弟：已删的页下面不会有活着的节点）。不答 409：那会是永久的拒绝，回收站里的这一项再也恢复不了（审查 A-N6）。
 5. **变更**：每个节点一项 `Change{NodeID, After: &state, Revision: 页的版本号, Facts, Restored: &Restored{DeletedAt: T, Asset: 是附件}}`（根的 `state` 是新的父节点、名称与次序，改了名的组员是新名称）；`u.apply(ctx, u.step(OpRestore, changes...), true, write)`。守卫：编辑锁对 `OpRestore` 放行（不改代码，加测试）；参与者：改写的参与者对没有"前"的变更什么都不做。
 6. **写**：重新编号（若有），然后 `NodeWriter.RestoreNodes`：
@@ -317,31 +338,40 @@ SELECT node_id, mime, byte_size FROM asset_blobs WHERE node_id = ANY(sqlc.arg(no
        SET deleted_at = NULL, trash_root = false, trash_pages = NULL, trash_assets = NULL, trash_height = NULL,
            name = u.name, name_key = u.name_key, updated_by_id = sqlc.arg(by), updated_at = sqlc.arg(now),
            parent_id = CASE WHEN n.id = sqlc.arg(root) THEN sqlc.narg(parent_id)::uuid ELSE n.parent_id END,
-           sort_order = CASE WHEN n.id = sqlc.arg(root) THEN sqlc.arg(sort_order) ELSE n.sort_order END
+           sort_order = CASE WHEN n.id = sqlc.arg(root) THEN sqlc.arg(sort_order)::float8 ELSE n.sort_order END
        FROM u
        WHERE n.id = u.id AND n.deleted_at = sqlc.arg(deleted_at)::timestamptz
-       RETURNING n.id
+       RETURNING n.id, sqlc.arg(deleted_at)::timestamptz AS deleted_at
    ), contents AS (
        UPDATE page_contents c SET deleted_at = NULL
-       WHERE c.node_id IN (SELECT id FROM back) AND c.deleted_at = sqlc.arg(deleted_at)::timestamptz
+       FROM back b
+       WHERE c.node_id = b.id AND c.deleted_at IS NOT DISTINCT FROM b.deleted_at
        RETURNING c.node_id, c.revision
    ), revisions AS (
        UPDATE page_revisions r SET deleted_at = NULL
-       WHERE r.node_id IN (SELECT id FROM back) AND r.deleted_at = sqlc.arg(deleted_at)::timestamptz
+       FROM back b
+       WHERE r.node_id = b.id AND r.deleted_at IS NOT DISTINCT FROM b.deleted_at
        RETURNING r.node_id, r.revision, r.base_revision
    ), items AS (
        UPDATE changeset_items i SET deleted_at = NULL
-       WHERE i.node_id IN (SELECT id FROM back) AND i.deleted_at = sqlc.arg(deleted_at)::timestamptz
+       FROM back b
+       WHERE i.node_id = b.id AND i.deleted_at IS NOT DISTINCT FROM b.deleted_at
    )
    SELECT (SELECT count(*) FROM back)::integer AS nodes,
        (SELECT count(*) FROM contents)::integer AS contents,
-       (SELECT count(*) FROM contents c JOIN revisions r USING (node_id, revision))::integer AS current_versions,
+       (SELECT count(*) FROM (SELECT node_id, revision FROM contents INTERSECT ALL
+           SELECT node_id, revision FROM revisions) v)::integer AS current_versions,
        (SELECT count(*) FROM revisions WHERE base_revision IS NULL)::integer AS creations,
-       (SELECT count(*) FROM revisions r WHERE r.base_revision IS NOT NULL AND NOT EXISTS (
-           SELECT 1 FROM revisions p WHERE p.node_id = r.node_id AND p.revision = r.base_revision))::integer AS gaps;
+       (SELECT count(*) FROM (SELECT base_revision, lag(revision) OVER (PARTITION BY node_id ORDER BY revision) AS prior
+           FROM revisions) v WHERE base_revision IS DISTINCT FROM prior)::integer AS gaps;
    ```
 
-   版本行与条目在所有变更集里、`deleted_at` 等于 T 的都恢复（含删除它们的变更集的条目）。正文的 `updated_*` 不动（正文没变）。期望：`nodes` 是组的节点数；`contents`、`current_versions`、`creations` 都是页数；`gaps` 为零（每页恰有一个创建的版本行，之后每一行的 base 是前一行的版本号：`unit_content.go` 的写与 P1 的链守卫）。不符 → 409 `page.trash_changed`。理由：清理与这条语句之间没有锁，清理先删条目、版本（每批 1,000 行、不排序），后删正文；只数正文会放过"有正文、版本断了链"的页（`checkPages` 的"版本不连成链"，P1 的 `FindVersion` 会以下一版答链缝里的版本号）。兄弟的唯一索引逐行核对：组里的其余节点在更新之前仍是已删的（不在部分索引里），根与组员的名称已由第 4 步定下，不会途中撞上。
+   版本行与条目在所有变更集里、`deleted_at` 等于 T 的都恢复（含删除它们的变更集的条目）。正文的 `updated_*` 不动（正文没变）。期望：`nodes` 是组的节点数；`contents`、`current_versions`、`creations` 都是页数；`gaps` 为零（每页恰有一个创建的版本行，之后每一行的 base 是前一行的版本号：`unit_content.go` 的写与 P1 的链守卫）。五个数整体比较，不符 → 409 `page.trash_changed`。理由：清理与这条语句之间没有锁，清理先删条目、版本（每批 1,000 行、不排序），后删正文；只数正文会放过"有正文、版本断了链"的页（`checkPages` 的"版本不连成链"，P1 的 `FindVersion` 会以下一版答链缝里的版本号）。`current_versions` 是唯一抓得到"只拿走了一页最新的版本"的：拿走链的最后一环不留缝（审查 A-M3）。兄弟的唯一索引逐行核对：组里的其余节点在更新之前仍是已删的（不在部分索引里），根与组员的名称已由第 4 步定下，不会途中撞上；真撞上了是缺陷，答未分类的错误（500），不是契约之外的 `page.title_taken`（审查 B-4）。
+
+   **写法是实测定下的**（3.11），与最初的设计有三处不同：
+   - 跟随节点的三步从 `back` 按节点 id 连接，时刻以 `x.deleted_at IS NOT DISTINCT FROM b.deleted_at` 比较，`back` 答 `$T AS deleted_at`。原来的 `node_id IN (SELECT id FROM back) AND deleted_at = $T` 在过时的统计下（统计从来不认识比它新的时刻）把这一时刻估成一行，规划器为每行整读一遍 `back`：恢复一组 10,100 个节点 14.8 秒、请求超时，测的各组上 14.8–33 秒（版本的一步规划器碰巧建了哈希、不慢，三步仍保持一种写法）。写成 `= b.deleted_at` 则每个节点读一遍 `deleted_at` 的索引（2 万 × 4 万个索引条目），27–48 秒。`IS NOT DISTINCT FROM` 对非空的 T 等于 `=`，只是没有索引用得上它。节点那一步照设计：强制通用计划与过时的统计下 2 万个节点不慢。
+   - `current_versions` 是 `contents INTERSECT ALL revisions`（`(node_id, revision)` 唯一，与设计的连接等价）。
+   - `gaps` 是每页按版本号排序后 `base_revision IS DISTINCT FROM lag(revision)` 的行：一页的第一行要是创建（base 为空），之后每一行的 base 是前一行的版本号，即 `checkPages` 的链，比设计的"base 在这次恢复的版本里"稍严，设计列的各例计数相同。CTE 的 `NOT EXISTS` 自连接被估成一行、成了嵌套循环，100 页 × 200 个版本 12 秒。
    **防线之外的**（写明，不检测）：被清理拿走的条目（便宜的办法查不出：恢复的页在旧变更集里少了条目，P3 的截掉标记之前不留痕）；附件的清理删了文件、提交失败留下的行（行数对得上，文件不在：只在下载时 404 并记警告）。两者都要清理的时钟比恢复的快一小时以上：清理只取 `deleted_at < now − R`，恢复只认 `deleted_at > now − R + 1h`。
 7. 答复：根的节点（新的父节点、名称）、`renamed`、放置的原因、变更集。
 
@@ -356,10 +386,10 @@ SELECT node_id, mime, byte_size FROM asset_blobs WHERE node_id = ANY(sqlc.arg(no
   WHERE node_id = ANY(sqlc.arg(node_ids)::uuid[]) AND deleted_at = sqlc.arg(deleted_at)::timestamptz;
   ```
 
-  bootstrap 的 `assetObserver`：删除的照旧交 `NodesDeleted`；`Restored` 不空且 `Asset` 的按 `DeletedAt` 分组交 `NodesRestored`，答的行数不等于这一组的附件数 → `page.ErrTrashChanged`（清理拿走了行：恢复的附件会没有行，下载 404、`checkAssets` 失败）。asset 不知道 page 的码，由组合根换成它。行与节点的 `deleted_at` 出自同一个单元的 `At`，`Restored.DeletedAt` 从节点读回，与行的相等。
-- **linking**：不改。恢复的页的变更没有"前"、带 `Revision` 与 `Facts`，观察者 `ReplacePage` 并重新解析以这些名称为目标的链接（`links` 事件照常）。
+  按参数规划（asset 的 store 加 `planned`）：作为缓存的语句，统计是活着时取的时第 6 次起的通用计划读这一时刻的行、与 id 逐个比较，节点的界线上 108–114 ms 对 40–43 ms（修复核对第一轮 I-1 一并比过的，`TestRestoreBlobsOfNodesIsPlannedWithItsNodes` 核对它不在 `pg_prepared_statements` 里）。bootstrap 的 `assetObserver`：删除的照旧交 `NodesDeleted`；`Restored` 不空且 `Asset` 的按 `DeletedAt` 分组交 `NodesRestored`，答的行数不等于这一组的附件数 → `page.ErrTrashChanged`（清理拿走了行：恢复的附件会没有行，下载 404、`checkAssets` 失败）。asset 不知道 page 的码，由组合根换成它。行与节点的 `deleted_at` 出自同一个单元的 `At`，`Restored.DeletedAt` 从节点读回，与行的相等。
+- **linking**：观察者不改。恢复的页的变更没有"前"、带 `Revision` 与 `Facts`，观察者 `ReplacePage` 并重新解析以这些名称为目标的链接（`links` 事件照常）。它写解析的 M6 语句 `SetResolutions` 改为按参数规划（3.11 的实测：通用计划 53 秒）。
 - **`pages` 事件**：恢复的页带它（未变的）版本号出现在 `pages` 里、`tree: true`：网页把它当作这一页在那个版本写过，重读至多多一次视图，接受（调研第 24 项）。
-- `page/extension_test.go` 的 `TestTheObserversFollowAUnit` 加恢复：观察者看到 `Restored` 的时刻与是否附件。
+- `page/extension_test.go` 另加 `TestTheObserversFollowARestore`（不并进 `TestTheObserversFollowAUnit`）：观察者看到 `Restored` 的时刻与是否附件。
 
 ### 3.7 回收站里的页的链接
 
@@ -392,20 +422,20 @@ SELECT node_id, mime, byte_size FROM asset_blobs WHERE node_id = ANY(sqlc.arg(no
 - `domain.TrashMargin = time.Hour`；`RestorableUntil(T, R) = T + R − TrashMargin`；`Restorable(T, now, R)` 即 `now < RestorableUntil`（与清理的 `deleted_at < now − R` 之间隔一小时，两者从不碰同一组）。列表的 `since = now − (R − TrashMargin)`。
 - bootstrap 的一个 `retention(cfg)` 同时给清理任务的 `PurgeConfig.Retention`、`page.Deps.Retention` 与 `instance.Deps.TrashRetention`（它减 `page.TrashMargin`，bootstrap 算：instance 不能 import page）：间隔要求两边是同一个值，交错测试不经 `PurgeJob`，接错了看不出来。`domain.Info`、`app.Settings`、处理器跟着加，`trash_retention_seconds` 是秒的整数。
 - `validate`：`jobs.purge_retention` 至少 24h（错误 "must be at least 24h"），否则一小时的间隔会让回收站几乎是空的；`config.yaml` 的注释改为"至少 1 天；回收站可以恢复的期限是它减 1 小时"，README 的"软删除与清理"一段同。
-- **清理的时钟**：不加 `PurgeConfig.Clock`。交错测试直接调用清理器（`tm.purge`），截止时刻由测试给：`tm.purge` 改为 `tm.purgeBefore(t, before)`（原来的调用传 `time.Now()`），期限两侧的测试传 `now − R` 或更晚的时刻（模拟时钟偏差）。期限的边界（恰在期限的那一刻不能恢复）在 `page/app` 以假时钟测；整个程序上的测试以 SQL 移动一组的时刻（3.10 的 `tm.trashedAgo`）。
-- **随之改的固定值**：`platform/config/validate.go`、`validate_test.go:124`；`server/configs/config.yaml`、README；`instance/adapter/http/handler_test.go`（整个 JSON）、`instance/app/get_info_test.go`；`bootstrap/api_test.go`；`platform/httpserver/apitest/apitest_test.go` 的 `instanceJSON`（契约是封闭的）；`web/apps/web/src/test/fakes.ts` 的 `instanceJSON`；e2e `s3-instance-info.spec.ts`（默认 60 天减 1 小时，5,180,400）；`bootstrap/app_test.go` 的 1440h 与 `configs/embed_test.go` 的 60 天不变。
+- **清理的时钟**：不加 `PurgeConfig.Clock`。交错测试直接调用清理器（`tm.purge`），截止时刻由测试给：`tm.purge` 改为 `tm.purgeBefore(t, before, tables...)`（原来的调用传 `time.Now()`；给了表名时只跑这些表的清理器，交错 5 用它停在版本与正文之间），期限两侧的测试传 `now − R` 或更晚的时刻（模拟时钟偏差）。期限的边界（恰在期限的那一刻不能恢复）在 `page/app` 以假时钟测；整个程序上的测试以 SQL 移动一组的时刻（3.10 的 `tm.trashedAgo`）。
+- **随之改的固定值**：`platform/config/validate.go`、`validate_test.go:124`；`server/configs/config.yaml`、README；`instance/adapter/http/handler_test.go`（整个 JSON）、`instance/app/get_info_test.go`；`bootstrap/api_test.go`；`platform/httpserver/apitest/apitest_test.go` 的 `instanceJSON`（契约是封闭的）；`web/apps/web/src/test/fakes.ts` 的 `instanceJSON`；e2e `s3-instance-info.spec.ts`（默认 60 天减 1 小时，5,180,400）；`deploy/image-smoke.sh` 对 `/api/v0/instance` 的整体比较（镜像的 prod 配置同为 1440h，5,180,400；实施时漏了，`16de05b` 的 CI 只有它失败，`463d9e9` 补上）；`bootstrap/app_test.go` 的 1440h 与 `configs/embed_test.go` 的 60 天不变。
 
 ### 3.9 契约
 
 - **`listTrash`**：`TrashItemPage {data: TrashItem[], next_cursor}`；`[bad_request, notebook.not_found, validation_failed]`。
 - **`getTrashItem`**：`TrashItem`；`[page.not_found, page.not_in_trash, page.not_trash_root, page.restore_expired]`。
-- **`restoreNode`**：没有请求体；答 200 `NodeRestored`；`[page.not_found, forbidden, page.not_in_trash, page.not_trash_root, page.restore_expired, page.restore_too_large, server_busy, page.trash_changed]`；描述写放置的规则、序号、期限、一个单元的界线（只有一页时不限页数、字节与链接），以及链接数的 422 可能排在 503 之后。
+- **`restoreNode`**：没有请求体；答 200 `NodeRestored`；`[page.not_found, forbidden, page.not_in_trash, page.not_trash_root, page.restore_expired, page.restore_too_large, server_busy, page.trash_changed]`；描述写放置的规则、序号、期限、一个单元的界线（至多 10,000 个页与附件、它们的版本与条目至多 400,000 行；多于一页时至多 100 页、8 MiB、20,000 条链接），以及码按 3.5 的次序：正文被清理的 `page.trash_changed` 在解析之前，链接数的 422 可能排在 503 之后，到恢复时已过期限的是 `page.restore_expired`（审查 B-3）。码的集合不变。
 - **结构**：
-  - `TrashItem {id, notebook_id, kind: NodeKind, name, ancestors: Ancestor[]（原位置，含回收站里的祖先）, deleted_at, deleted_by: UserRef, restorable_until, pages, assets（组里的，含根）, restore_to: TrashPlacement, revision: integer|null（页的正文的版本号，预览以它读 getPageVersionView；附件为 null）, asset: TrashAttachment|null}`。`asset` 照 `EditLock.holder` 写成 `anyOf: [{$ref: TrashAttachment}, {type: 'null'}]`（契约的编写规则不认内联的可空对象）。
+  - `TrashItem {id, notebook_id, kind: NodeKind, name, ancestors: Ancestor[]（原位置，含回收站里的祖先）, deleted_at, deleted_by: UserRef, restorable_until, pages, assets（组里的，含根）, restore_to: TrashPlacement, revision: integer|null（页的正文的版本号，预览以它读 getPageVersionView；附件、清理拿走了正文的页为 null，审查 B-2）, asset: TrashAttachment|null（页、清理拿走了文件的附件为 null）}`。`asset` 照 `EditLock.holder` 写成 `anyOf: [{$ref: TrashAttachment}, {type: 'null'}]`（契约的编写规则不认内联的可空对象）。
   - `TrashAttachment {mime, byte_size}`（`additionalProperties: false`）。
   - `TrashPlacement {parent_id: uuid|null, reason: original | parent_in_trash | too_deep}`：`original` 时 `parent_id` 是原父节点（原来就在根下则为 null），其余为 null（根下）。
   - `NodeRestored {id, kind, name, renamed, placed: TrashPlacement, changeset_id}`。
-- **`UserRef`**（`common.yaml`，`{user_id, display_name}`，`additionalProperties: false`）：`TrashItem.deleted_by` 用它；P1A 的 `ChangesetAuthor` 与形状完全相同的 `EditLockHolder`、`TransferStarter` 一并改用它（P1A 审查 C6：一种形状一个名字，第四个同形的结构不再出现；各处的说明移到引用它的属性上）。审查以仓库的 `oapi-codegen` 与 `openapi-typescript` 实测过：生成 `apigen.UserRef`，`EditLock.Holder` 是 `nullable.Nullable[externalRef0.UserRef]`，`bodyshape.gen.go` 不变。Go 里要改的：`page/adapter/http/handler.go:330,333`、`versions.go:99`、`transfer/adapter/http/server.go:99`（各加 `apigen` 的 import：archtest 只拦模块自己的 `gen` 被别处 import）。网页只改 `services/page.service.ts` 的转出（`export type EditLockHolder = UserRef`），`edit-session.ts` 与 P1B 的分支只用字段。`Problem.ended_by` 形状相同但留作内联：`Problem` 与 `httpserver.Problem` 逐字段对照，不动它。合并次序：P1B 若先合并，P2A 在它之上改 `page.service.ts` 这一行。
+- **`UserRef`**（`common.yaml`，`{user_id, display_name}`，`additionalProperties: false`）：`TrashItem.deleted_by` 用它；P1A 的 `ChangesetAuthor` 与形状完全相同的 `EditLockHolder`、`TransferStarter` 一并改用它（P1A 审查 C6：一种形状一个名字，第四个同形的结构不再出现；各处的说明移到引用它的属性上；契约是 OpenAPI 3.1，`$ref` 旁本也可以写 `description`，实施报告"3.0 忽略它"的理由不对，做法照设计，审查 B）。审查以仓库的 `oapi-codegen` 与 `openapi-typescript` 实测过：生成 `apigen.UserRef`，`EditLock.Holder` 是 `nullable.Nullable[externalRef0.UserRef]`，`bodyshape.gen.go` 不变。Go 里要改的：`page/adapter/http/handler.go:330,333`、`versions.go:99`、`transfer/adapter/http/server.go:99`（各加 `apigen` 的 import：archtest 只拦模块自己的 `gen` 被别处 import）。网页只改 `services/page.service.ts` 的转出（`export type EditLockHolder = UserRef`），`edit-session.ts` 与 P1B 的分支只用字段。`Problem.ended_by` 形状相同但留作内联：`Problem` 与 `httpserver.Problem` 逐字段对照，不动它。合并次序：P1B 若先合并，P2A 在它之上改 `page.service.ts` 这一行。
 - **扩展成员 `root_id`**：`Problem` 加可选的 `root_id`（"page.not_trash_root 的这一组的根；别的码不带"）；`shared.Error.RootID *uuid.UUID`、`ProblemRootID()`，`httpserver` 的接口与 `Problem.RootID`；`domain.NotTrashRoot(rootID)` 设它。测试照 `ended_by`：`platform/httpserver/contract_test.go` 加一例（平台的 problem 对照 `Problem` 结构）、`apierrors_test.go`、`shared/error_test.go` 的有与无。
 - **`getInstance`**：`InstanceInfo` 加必有的 `trash_retention_seconds`（`minimum: 82800`），描述"删除的页与附件在回收站里可以恢复多久：`jobs.purge_retention` 减 1 小时"。
 - `TreeNode.updated_at` 与 `Page.updated_at` 的描述加"或从回收站恢复"（调研第 33 项）；`deleteNode` 的描述加"可以经 restoreNode 恢复到 restorable_until"。
@@ -422,20 +452,67 @@ SELECT node_id, mime, byte_size FROM asset_blobs WHERE node_id = ANY(sqlc.arg(no
   2. 恢复与在原位置新建同名的页（`notebookRow`）：新建在先 → 恢复为"名称 2"、`renamed`；恢复在先 → 新建 409 `page.title_taken`。
   3. 同一项的两次恢复：后一个 409 `page.trash_changed`，只有一个 `trash_restore` 变更集。
   4. 恢复与清理，期限两侧（保留期 1 天，`newAcmeTeamWith` 的配置）：两组以 `trashedAgo` 移到"可恢复的期限之内一分钟"与"期限与清理的截止之间"（删除于 `now − R + 30 分钟`）。第一组：恢复在笔记本行上等着时清理以 `now − R` 运行，什么都不删，放开之后恢复 200；第二组：恢复在加锁之前就答 409 `page.restore_expired`，同一次清理不碰它（一小时的间隔）。
-  5. 恢复时清理拿走了正文（模拟时钟偏差）：恢复在笔记本行上等着时，清理以 `now + 2h` 只运行条目、版本、正文三个清理器；放开之后 409 `page.trash_changed`，什么都没恢复。
+  5. 恢复时清理拿走了正文（模拟时钟偏差）：恢复在笔记本行上等着时，清理以 `now + 2h` 只运行条目、版本、正文三个清理器；放开之后 409 `page.trash_changed`，什么都没恢复。另一例清理停在版本与正文之间（只运行条目、版本两个清理器）：锁下读到的组与未加锁时的相同，只有 `RestoreNodes` 的计数拒绝（实施时由存活的变异 `lock-rows-whole-program` 发现，`a55095a`）。
   6. 恢复附件的行与附件的清理（M7 的移交第 2 项）：`holdRow` 拿着一个组里附件的行（清理的批），恢复在 `asset_blobs` 上等；拿着的一方删掉文件与行并提交 → 409 `page.trash_changed`、整个单元回滚；拿着的一方回滚 → 恢复 200、文件在、可以下载。
   7. 嵌套的根与它父节点的组（`notebookRow`）：D 先被删、之后它的父节点 P 被删；恢复 D 与恢复 P 交错：P 在先 → D 回到 P 下（`original`）；D 在先 → D 到根下（`parent_in_trash`）。
   8. 原父节点这期间被移深（`notebookRow`）：移动在先 → 恢复到根下（`too_deep`，单元在锁下重算，不用未加锁时的预测）；恢复在先 → 回到原处，之后的移动照它自己的层数核对。
   9. 恢复等着时删除组里的一页：删除未加锁的 `FindNode` 就答 404，不等；放开之后恢复 200；再删除恢复了的那个子页，它成为新的根、带它自己的统计，根的不变式成立。
 
+  另有 `TestAGroupThePurgeIsMidwayThrough`（修复核对第一轮 N-1）：真的清理器拿走一组的条目、版本与正文，再删一批 1 个叶子，`checkPages` 对这样的组成立。未加锁的两次读之间的竞态（读根、读组、锁下根已被清理，各答 409，审查 C-N1）不在整个程序上交错：`page/app` 的假存储以 `recorder.before` 在指名的读之前跑"另一个事务"。
+
 ### 3.11 一个单元的大小与实测
 
-- 界线（`domain`，P3 的撤销同用）：`MaxUnitPages = 100`、`MaxUnitBytes = 8 MiB`、`MaxUnitLinks = 20,000`（与导入的一批相同；只有一页的组不受这三项限制）、`MaxUnitNodes`（树的操作：组里的页与附件，实测之前取 2,000）。
-- **实测**：`bootstrap/trash_cost_test.go`（`//go:build !race`）里的基准，手动运行：`go test -run '^$' -bench 'BenchmarkTrash' -benchtime 3x ./internal/bootstrap/`。
-  - **经单元、进程内**：基准自己组一个 page 模块：`pageDeps(...)`（真的观察者：事件、索引、附件；真的预算），`Deps.MaxUnitNodes` 抬到足够大（生产的 `pageDeps` 不设它），路由挂在 `httpservertest` 的 API 上，进程内经 `restoreNode` 的处理器计时。不经正式的 API：它的界线是实测之前的 2,000，更大的档都会先答 422。
-  - **组**：每组至多 100 页（根与 99 个子页面）。两种页的负载：轻（每页 8 KiB、20 条链接）与满（三项界线的上限：100 页合计 8 MiB、20,000 条链接，每页约 82 KiB、200 条，linking 每页至多记 10,000 条，所以至少两页）；附件 0 / 1,000 / 2,000 / 5,000 / 10,000 个（节点与行以 SQL 成批写入，分在各页之下）。数据经同一模块删除，无统计与 `ANALYZE` 之后各一遍。
-  - **计时与取值**：单元（恢复的请求减去解析）、解析（满负载另记，对照 15 秒减 `parse_max_wait` 的 13 秒）、删除各记。`MaxUnitNodes` 取满负载下单元不超过 5 秒的最大"页 + 附件"数，向下取整（15 秒的请求期限的三分之一，留给解析的等待与解析本身、更慢的服务器）。每档的数字写回本文第 9 节与常量的注释。
-- 守住它：同一文件里一个普通测试以满负载在 `MaxUnitNodes` 处（至多 100 页）恢复一次，时限 10 秒（CI 比开发机慢）。删除若在默认的导入上限（5 万个节点）超过 15 秒，写进 M12 的移交（今天删除没有界线，P2 只让它更快）。
+- 界线（`domain/trash.go`，P3 的撤销同用）：`MaxUnitPages = 100`、`MaxUnitBytes = 8 MiB`、`MaxUnitLinks = 20,000`（与导入的一批相同；只有一页的组不受这三项限制，`UnitTooLarge`）；`MaxUnitNodes = 10,000`（树的操作：组里的页与附件，按根记下的统计，读组之前）；`MaxUnitHistory = 400,000`（这一组以它的时刻删除的版本行与所有变更集里的条目，`TrashHistory` 数，只有一页也算；审查 A-M4 加的：恢复与删除还随每页的版本与条目增长，原来的界线管不到它）。后两个实测，经 `RestoreBounds` 交给用例；`page.Deps.MaxUnitNodes`、`MaxUnitHistory` 为 0 即 domain 的值，生产的 `pageDeps` 不设，只有基准抬高它们。
+- **实测**：`bootstrap/trash_cost_test.go`（`//go:build !race`）里的基准，手动经 `heavy.sh` 运行：`go test -run '^$' -bench 'BenchmarkTrash' -benchtime 3x -timeout 60m ./internal/bootstrap/`。
+  - **经单元、进程内**：基准自己组一个 page 模块：`pageDeps(...)`（真的观察者：事件、索引、附件；真的预算），抬高两个界线；路由挂在以 `apiConfig` 组的 API 上（生产的中间件、15 秒的请求期限，连接池 10），不是 `httpservertest`；进程内经 `restoreNode` 的处理器计时。不经正式的 API：它的界线在实测之前会先答 422。
+  - **组**：每组至多 100 页（根与 99 个子页面）。两种页的负载：轻（每页 8 KiB、20 条链接）与满（三项界线的上限：100 页合计 8 MiB、20,000 条链接，每页约 82 KiB、200 条，linking 每页至多记 10,000 条，所以至少两页）；附件 0 / 1,000 / 2,000 / 5,000 / 10,000 个（节点与行以 SQL 成批写入，分在各页之下）。数据经同一模块删除。
+  - **统计**：表关掉 autovacuum（"无统计"要它），每次请求之前 `VACUUM`（不 `ANALYZE`、不计时）。设计没写这一步：迭代留下的死行会堆积，第四轮 `ANALYZE` 之后删除 1 万个节点 6 秒而不是 1 秒；服务器的 autovacuum 会清掉它们。`BenchmarkTrashRestore` 在无统计的一遍之后、这一项删除着时 `ANALYZE`（删除时的统计）；`BenchmarkTrashRestoreHistory` 在每档的版本写完之后、这一项活着时 `ANALYZE`（服务器的常态），两种统计各一个库。
+  - **计时与取值**：单元（恢复的请求减去解析：未加锁的读也算进单元，偏保守）、解析、删除各记。界线取满负载下单元不超过 5 秒的最大一档，向下取整（15 秒的请求期限的三分之一，留给解析的等待与解析本身、更慢的服务器）。数字写在常量的注释里。`-benchtime 3x` 只报 Go 第一次 `b.N = 1` 之后的三次，每档冷的第一次恢复不在表里，由审查 C 的探针补上（下）。
+- **`MaxUnitNodes = 10,000`**（`BenchmarkTrashRestore`；Apple M5 Max 18 核，PostgreSQL 18.6 在 Docker 里，旁边别的工作负载约 15，所以各档有噪声、不单调）：
+
+  | 负载 | 附件 | 解析 ms | 单元 ms，无统计 | 单元 ms，删除时 ANALYZE | 删除 ms，无统计 | 删除 ms，ANALYZE |
+  |---|---:|---:|---:|---:|---:|---:|
+  | 轻 | 0 | 29 | 374 | 457 | 23 | 30 |
+  | 轻 | 1,000 | 30 | 802 | 393 | 445 | 160 |
+  | 轻 | 2,000 | 32 | 353 | 413 | 159 | 242 |
+  | 轻 | 5,000 | 24 | 660 | 746 | 349 | 599 |
+  | 轻 | 10,000 | 36 | 964 | 1,263 | 698 | 1,284 |
+  | 满 | 0 | 198 | 1,046 | 901 | 55 | 46 |
+  | 满 | 1,000 | 241 | 1,029 | 926 | 360 | 214 |
+  | 满 | 2,000 | 232 | 477 | 848 | 152 | 266 |
+  | 满 | 5,000 | 217 | 659 | 1,755 | 322 | 748 |
+  | 满 | 10,000 | 220 | 999 | 2,684 | 591 | 2,520 |
+
+  满负载的单元在 10,100 个节点处至多 2.7 秒，每档都在 5 秒之内，向下取整为 10,000。审查 C 另测了基准没有的状态：每次一组新的满负载 1 万个节点，删除之后立即恢复、不 `VACUUM`（每行一个死版本、索引条目不是 HOT 的），三轮，请求（解析约 0.2 秒）：
+
+  | 状态 | 三轮的恢复 |
+  |---|---|
+  | 无统计 | 0.97 / 1.37 / 1.50 秒 |
+  | 活着时 ANALYZE | 1.15 / 1.34 / 1.50 秒 |
+  | 活着时 ANALYZE，强制通用计划 | 1.38 / 1.51 / 1.72 秒 |
+  | 无统计，强制通用计划 | 2.73 / 2.63 / 2.82 秒 |
+
+  最坏的单元约 2.6 秒，10,000 成立，`VACUUM` 也没有藏住问题。
+- **`MaxUnitHistory = 400,000`**（`BenchmarkTrashRestoreHistory`；同一台机器，负载 5–8）：满负载在节点的界线上（100 页、9,900 个附件，8 MiB、最多的链接），每页 250 / 500 / 1,000 / 1,500 / 2,000 个版本，变更集共用，每个版本 1 KiB 不可压缩的正文（约是一行留在表里的最宽的一半；1.8 KiB 时界线处的恢复多约 8%，修复核对第一轮 N-2），每页每步一条条目；每轮一次删除、一次恢复，历史随它们的条目增长；解析约 205–209 ms。行数是一次恢复写的版本与条目的均值：
+
+  | 历史的行（版本 + 条目） | 单元 ms，无统计 | 单元 ms，活着时 ANALYZE | 删除 ms，无统计 | 删除 ms，ANALYZE |
+  |---:|---:|---:|---:|---:|
+  | 109,900 | 1,133 | 1,176 | 673 | 696 |
+  | 239,900 | 3,318 | 2,857 | 1,476 | 1,389 |
+  | 419,900 | 2,852 | 4,288 | 2,505 | 2,299 |
+  | 599,900 | 3,853 | 5,703 | 3,624 | 3,214 |
+  | 779,900 | 5,553 | 7,284 | 4,858 | 4,233 |
+
+  两种统计下都在 5 秒之内的最大一档是 419,900 行，向下取整为 400,000（与 `MaxUnitNodes` 同一条规则）。ANALYZE 的一列单调、近似线性（约每千行 7.3 ms，约 52 万行处过 5 秒）；无统计的一列在 24 万行处有一个离群（3.3 秒，42 万行 2.9 秒），趋势在 65–70 万行处过 5 秒（修复核对第一轮）。第一次运行 ANALYZE 的各档从 1,000 个版本起失败（建数据的语句被取消，之后的档 404），ANALYZE 的一列取自第二次运行。修复核对第一轮在正好 400,000 行、无统计、不 `VACUUM` 时测得请求 3.62、3.94、3.92 秒（最后一次 1.8 KiB 的版本），单元约 3.4–3.7 秒，余量约 25%。
+- **测量中发现、改掉的计划**（都是一种写法让每行读一遍别的行，超过 15 秒的请求）：
+  1. linking 的 `SetResolutions`（M6 的语句）：满负载、ANALYZE 的每次恢复都答 500。缓存的语句第 6 次起的通用计划在统计以为没有链接时两两比较 2 万条链接，53 秒（按参数 0.1 秒）。改为按参数规划（`s.planned(ctx)`），`TestTheLinksReachedAreReadPlannedWithTheReach` 随之核对它不在缓存的语句里。
+  2. `RestoreNodes` 跟随节点的三步与计数：写法见 3.5 `Unit.Restore` 第 6 步（14.8–48 秒的两种写法、12 秒的自连接）。
+  3. `TrashHistory`（修复核对第一轮 I-1，3.4）：缓存时的通用计划 5.0–5.5 秒，按参数 41–67 ms。别的新的数组语句一并在两个界线上比过通用与按参数的计划（无统计 / 活着时 ANALYZE / 删除时 ANALYZE）：`RestoreBlobsOfNodes` 41–64 / 108–114 / 42 ms 对 49–61 / 40–43 / 43 ms，改为按参数规划（3.6）；`TrashContents` 0.26–0.28 对 0.35–0.64 ms，ids 至多 100，留着缓存；`AttachmentInfos` 约 5–7 ms，没有时刻的参数，不变；`RestoreNodes` 2.6–3.3 秒两种计划相近，连接 `u` 与 `back`、没有 `ANY` 的过滤，不变。所以按参数规划的有：`TrashGroup` 的每层（`TrashChildrenOfAll`，设计里就是）、`TrashHistory`、`RestoreBlobsOfNodes`、`SetResolutions`。
+- **守住它**（都是 `//go:build !race`，在 `make test-go` 不带竞态检测的一步）：
+  - `TestARestoreAtTheUnitsBoundTakesItsTime`（bootstrap）：满负载、1 万个节点、正好 400,000 行历史，恢复 10 秒之内（本机 3.6–4.3 秒，CI 比开发机慢；耗时以 `t.Logf` 记下，这一条在 `make test-go` 里单独一行带 `-v`，CI 的日志里看得到）；再删除、多一行之后答 422 `page.restore_too_large`，不写变更集。基准对为 0 的参数保留 `pageDeps` 的界线，生产的接线抬高了任何一个，这个测试就失败（修复核对第一轮 M-1）。
+  - `TestRestoreNodesTakesItsTimeAtAnyStatistics`（page 的适配器）：2 万个节点、100 页各 300 个版本与条目，在一个连接上恢复五次：无统计、活着时、删除时、别的时刻的统计、强制通用计划，各 8 秒之内（本机 0.5–0.8 秒，退化的写法 12–48 秒）。
+  - `TestTrashHistoryCountsInTimeAtAnyStatistics`（page 的适配器）：两个界线上（1 万个节点、40 万行，页排在 ids 的最后，`TrashGroup` 按层排、附件多在页的上一层时就是这样），一个连接上数 8 次，三种统计各一遍，每次 1 秒之内（本机 30–200 ms；改回缓存的语句时 68 秒失败）。
+- **删除**：`BenchmarkTrashDelete` 删除导入的上限 5 万个节点（100 页轻负载、其余是附件，每次一组新的：恢复它超过单元的界线），1.8 秒（无统计）、2.1 秒（活着时 ANALYZE），远在 15 秒之内。删除没有历史的界线：上表约 42 万行时 2.3–2.5 秒，更多时 3.2–4.9 秒，审查 A 的探针（100 页各 2,000 个版本与条目）2.73 秒；每轮删除与恢复给这一组的历史加约 2 × 节点数条条目，同一大项反复删除、恢复会到达 `MaxUnitHistory`、之后答 422。写进 [M12 的性能移交](../M12-release/handoffs/M4-performance.md)第 14 项。
 
 ### 3.12 测试
 
@@ -447,6 +524,14 @@ SELECT node_id, mime, byte_size FROM asset_blobs WHERE node_id = ANY(sqlc.arg(no
 - **整个程序**（`bootstrap/trash_test.go`；13.1 第 21 条：组合根交空时失败）：删除带附件与链接的子树 → 列表与单项（统计、原位置、放置、显示名、附件信息、`notebook_id`）→ 回收站里的页的视图从原路径解析（3.7 的三例）→ 恢复：正文、版本、条目（`restored`、`revision`）、附件的行（`GET /assets/{id}` 200、新签的地址下载 200、无主列表的大小算上它们，扩展 `assets_lifecycle_test.go`）、索引（`checkLinks`）、`pages`（`tree: true`）与 `links` 事件；放置的四种与序号；422 的各项界线；`trash_retention_seconds`。
 - **不变式**：`checkPages` 加"活着，却有已删的正文、版本或条目"（`"deleted, with what follows it not deleted"` 的反面）与"已删的节点：是根 ⇔ 父节点为空或不是同一时刻删除、且不是随笔记本删除的"；`checkAssets` 加"已删的行的时刻等于它的节点的"。
 - TB1 的接口版本在 B 里做（4.7），用到 A 的契约。
+- **实施与审查另加的**：适配器里节点、正文、版本在别的时刻的各例，别的时刻的条目留在回收站；`TrashHistory` 只数同一时刻、组里的节点，各数到上限（`TestTrashHistoryCountsTheRowsOfItsTime`）；`RestoreBlobsOfNodes` 按参数规划；交错 5 的"清理停在版本与正文之间"与 `TestAGroupThePurgeIsMidwayThrough`（3.10）；`page/app` 的两次读之间的竞态（读根、读组、锁下根已被清理）各答 409，"这期间当前的版本被清理了"、一组两个父节点下的同名、根也改了名时的 `others_renamed`、100 页加附件可以恢复、超过历史的界线与它的次序；根的变更的 `After`（父节点、名称、次序），整个程序上恢复的条目的 `after_*` 与改名之后的链接（`TestARestoresChangesCarryItsState`）；整个程序上按根记下的统计超过节点的界线答 422（"Counted"）；处理器的版本号 0 答 `null`、带请求体的恢复照常（`TestARestoreReadsNoBody`）；`checkPages` 核对根的统计等于它的组（清理已到这一组、页的根没有正文时不少于剩下的）。守住计划与界线的五个成本测试（`ListTrash`、`TrashLines`、`RestoreNodes`、`TrashHistory` 的与 bootstrap 的界线测试，3.4、3.11）在 Makefile 不带竞态检测的一步。
+
+### 3.13 审查之后的改动
+
+三位审查者（A：数据、恢复的单元与并发；B：契约、用例的答复、权限与别的模块；C：测试、交错、实测与设计的符合）与修复核对的处置见 `reviews/P2A-trash-server-review.md`。与上文最初的设计不同之处已改在各节里：
+
+- **实施时定下的**（设计没写或留了余地；实施者的偏离，审查 C 逐条判过）：`RestoreNodes` 跟随节点的三步从 `back` 按 id 连接、计数用集合运算与窗口，`gaps` 即 `checkPages` 的链（3.5 `Unit.Restore` 第 6 步，实测）；M6 的 `SetResolutions` 按参数规划（3.11）；单元在锁下以 `TrashLines` 重读线（3.5）；`TrashGroupRoot`，`TrashRootOf` 是 `:one`，`TrashLines` 答 `parent_id`，`TrashCursor` 以 UTC 写，`asset.AttachmentInfos` 是结构体（3.4）；`DecidedAll` 由调用者给超过链接数时的码（3.5）；`RecordItems` 一次一个变更集与时刻（3.3）；两次读之间被恢复答 `page.not_in_trash`，读组时 `page.trash_changed`（3.5）；页数、字节的 422 先于正文已被清理的 409（3.5）；`sameGroup` 不再单看版本号 0（3.5）；基准的 API、`VACUUM` 与 `BenchmarkTrashDelete`（3.11）；`purgeBefore` 的表的筛选（3.8）；观察者的恢复是单独的测试（3.6）；page 另导出 `TreeState`（3.1）；`node.restore` 与 `shared.Error.RootID` 在第 1 步、矩阵与观察者的扩展测试在第 6 步（第 5 节）。
+- **审查与修复核对带来的**：历史的界线 `MaxUnitHistory` = 400,000 与 `TrashHistory`，未加锁、在页数与字节之后数（A-M4，3.4、3.5、3.11）；`TrashHistory`、`RestoreBlobsOfNodes` 按参数规划（核对 I-1，3.4、3.6、3.11）；两次未加锁的读之间被恢复、锁下根已被清理，都答 409（C-N1，3.5）；未加锁的"正文已被清理"不另设标记，由 `TrashContents` 少了页答出（C-N6，3.5）；`RestoreNodes` 撞上兄弟的唯一索引是缺陷的错误，不答契约之外的 `page.title_taken`（B-4，3.5）；契约写明清理拿走了正文、文件时 `revision`、`asset` 为空，`restoreNode` 的描述写全码的次序与历史的界线（B-2、B-3，3.9）；`checkPages` 核对根的统计（C-N4、核对 N-1，3.12）；测试的补足（A-M1–M3、A-N1、B-1、C-M1、C-M2、C-N5、核对 M-1，3.11、3.12）。
 
 ## 4. B：前端
 
@@ -478,7 +563,7 @@ SELECT node_id, mime, byte_size FROM asset_blobs WHERE node_id = ANY(sqlc.arg(no
 - 写者的按钮"恢复「X」（原位置：A / B）"：`pages.restore(id)`。它在恢复出去期间 `aria-disabled` 且 `aria-busy`；store 里同一节点的恢复一个一个来（`oneAtATimeById`，同 P1B 的还原），连点两下只发一个请求。
   - 不论答什么（200、409、422、403、404），之后都重读 `["trash", nb]` 与缓存里的 `["trash-item", nb, id]`：不只靠事件（事件流断开、重连时，列表会留着已恢复的项）。
   - 成功：留在回收站，状态行"已恢复「X」到「Y」下 [打开]"（改名时"已恢复为「X 2」…"），焦点回到 `h1`（同无主笔记本的接管）；`<output>` 先空着渲染、答复之后再填字（同 P1B 的页面外壳），读屏才会念出。"打开"：页去它的页面；附件去它所在的位置：父页的页面、附件一节里它那一行取得焦点（路由状态点名它），根下的去笔记本首页的附件一节（同 00-M8 4.12 的搜索结果，P5 照用）。
-  - 409 `page.not_in_trash`、`page.trash_changed`：说明"这一项在这期间变了"；`page.restore_expired`：说明已过期限；`page.not_trash_root`（P2 里不会有，P3、P4 之后可能）：说明它已并入另一项；422：说明"这一项太大（N 个页面、M 个附件），不能在这里恢复"（P4 改为问是否在后台进行）；503：照现有的忙的说明。
+  - 409 `page.not_in_trash`、`page.trash_changed`：说明"这一项在这期间变了"；`page.restore_expired`：说明已过期限；`page.not_trash_root`（P2 里不会有，P3、P4 之后可能）：说明它已并入另一项；422：说明"这一项太大（N 个页面、M 个附件），不能在这里恢复"（P4 改为问是否在后台进行；P2A 之后 422 也可能来自历史的行数，3.11 的 `MaxUnitHistory`，页数与附件数都不大时同样答它，文字由 B 定）；503：照现有的忙的说明。
   - 403（这期间被降为读者）、404（笔记本没了或看不到了）：`errorText`，并重读 `["notebooks", ws]`（同无主笔记本页的 `refused()`）。
 - 读者只看列表与预览。
 
@@ -528,6 +613,8 @@ A（分支 `m8-p2a`）：
 7. 权限、矩阵、组合根；整个程序上的测试、不变式与交错；实测 `MaxUnitNodes` 并写回。
 8. 反向对照、门禁、审查。
 
+实施时的次序与上面有两处不同：`node.restore` 的规则与 `shared.Error.RootID` 在第 1 步（域的 `NotTrashRoot` 要它们，第 1 步才绿）；权限矩阵的行与观察者的扩展测试在第 6 步（路由在第 6 步进来，矩阵对没有行的路由失败）。第 8 步的反向对照另补了一个交错（3.10 的交错 5，清理停在版本与正文之间）。
+
 B（分支 `m8-p2b`，P1B 与 A 合并之后）：
 
 1. `readPages`；`VersionView` 与 `useLeftBehind` 移出；服务与 store（`removed`、`restore`）。
@@ -556,14 +643,22 @@ B（分支 `m8-p2b`，P1B 与 A 合并之后）：
 
 ## 8. 交给后面的 Phase
 
-- **P3**：撤销一次恢复用条目的 `restored`、`revision`；撤销里的恢复（C 删除的节点回来）同样设 `Change.Restored` 并清掉根的标记与统计；撤销里的删除经 `DeleteNodes` 记根与统计，**从上往下删**：一个单元里每棵要删的子树删一次、从它的最上层删，不先删子孙再删祖先（`DeleteNodes` 的 `stray` 会拒绝）；`DecidedAll` 与单元的界线共用；`RecordItems` 合并时保留第一次的 `restored`/`revision`；清理截掉的标记、空变更集的清理照 4.2（P2 没有标记被清理拿走的条目，3.5）。
-- **P4**：分批恢复复用 `PlacementOf`、`children.free`、`RestoreNodes`（ids 可以是组的一部分，根的参数给这一批的根；五个数按这一批的期望核对）；途中停下时，新标上的根要写统计（任务读过组，手里有）；撤销的分批删除用同一时刻时，上层的根之下早先标上的根取消、统计重算（跨单元，`stray` 只管一个单元）；网页的 422 改为问是否在后台进行。
+- **P3**：撤销一次恢复用条目的 `restored`、`revision`；撤销里的恢复（C 删除的节点回来）同样设 `Change.Restored` 并清掉根的标记与统计；撤销里的删除经 `DeleteNodes` 记根与统计，**从上往下删**：一个单元里每棵要删的子树删一次、从它的最上层删，不先删子孙再删祖先（`DeleteNodes` 的 `stray` 会拒绝）；`DecidedAll` 与单元的界线共用（`DecidedAll(ctx, contents, tooLarge)` 的第三个参数是超过链接数时答的码，撤销传 `page.revert_too_large`；P2A 加的 `MaxUnitHistory` 量的是写回的版本与条目，撤销里恢复 C 删除的节点时同样要数）；`RecordItems` 一次只写一个变更集、一个时刻的条目，合并时保留第一次的 `restored`/`revision`；清理截掉的标记、空变更集的清理照 4.2（P2 没有标记被清理拿走的条目，3.5）。
+- **P4**：分批恢复复用 `PlacementOf`、`children.free`、`RestoreNodes`（ids 可以是组的一部分，根的参数给这一批的根；五个数按这一批的期望核对）；途中停下时，新标上的根要写统计（任务读过组，手里有）；撤销的分批删除用同一时刻时，上层的根之下早先标上的根取消、统计重算（跨单元，`stray` 只管一个单元）；网页的 422 改为问是否在后台进行。分批除了节点、页数、字节与链接，还要按历史的行（每批的版本与条目至多 `MaxUnitHistory`）：历史的 422 同样转到后台；一页自己的历史超过 40 万行（约 20 万个版本）时按节点分不开，要按历史的行分批，否则它一直恢复不了，而删除没有界线（修复核对第一轮的合并注记）。
 - **P5**：搜索结果的附件信息用 `AttachmentInfos`；附件的"打开去它所在的位置"沿用 B 的路由状态。
-- **M12**：删除没有界线（实测若超过请求期限，见 3.11）；反链、版本列表与回收站的三份"按已读的页数重读"收拢（v0.1 之后的打磨）。
+- **M12**：删除没有界线：导入的上限 5 万个节点 1.8–2.1 秒，没有超过请求期限（3.11）；它也没有历史的界线，同一大项反复删除与恢复让历史增长到 422，缓存的语句的通用计划是一类风险，写进 [M12 的性能移交](../M12-release/handoffs/M4-performance.md)第 14 项；反链、版本列表与回收站的三份"按已读的页数重读"收拢（v0.1 之后的打磨）。
 
 ## 9. 结果
 
-（完成后补写；`MaxUnitNodes` 的实测数字与每档的耗时写在这里。）
+### 9.1 A：服务端（2026-10-14，合并 `25d250a`）
+
+- 提交：实施：迁移与领域 `9710ff2`，整步的条目与根的标记 `3c97655`，回收站的读 `9cda81d`，恢复的单元 `c3bb0b6`，附件的行与回收站里的页的链接 `08a1d7f`，契约、期限、`UserRef` 与 `root_id` `e2907f5`，整个程序与 `MaxUnitNodes` 的实测 `99dca8a`，清理停在版本与正文之间的交错 `a55095a`（审查时在 `e178c64` 上，是 `0440e2f..16de05b`，之后变基到 `main` 的 `ce63b00`，唯一的冲突是 `page.service.ts`）；CI 的修补 `463d9e9`（镜像的冒烟期望 `trash_retention_seconds`）；审查的修复 `27fee6b`；修复核对第一轮的修复 `4bf696d`，第二轮的 `82351ad`。合并 `25d250a`。
+- 实测（3.11）：`MaxUnitNodes = 10,000`（满负载的单元在 10,100 个节点处至多 2.7 秒）；`MaxUnitHistory = 400,000`（419,900 行时单元 2.9 秒无统计、4.3 秒活着时 ANALYZE）；导入上限的删除 1.8 / 2.1 秒。测量中改掉三处每行读一遍别的行的计划：`RestoreNodes` 的写法、M6 的 `SetResolutions`、`TrashHistory`（与 `RestoreBlobsOfNodes`）按参数规划。
+- 审查：三位审查者（Opus），没有 Important。中低 1 条：历史的行没有界线，每页几千个版本的一组在请求里超时或答 500（A-M4，加了 `MaxUnitHistory`）。其余是低（恢复的变更带的状态、两个父节点下的同名、只被拿走当前的版本、节点的界线经组合根，这些测试的缺口；e2e 全量没跑；第 7 节的文档）与细节（两次读之间的竞态答 500、契约的措辞与码的次序、唯一索引的冲突答契约之外的码），另有 CI 的镜像冒烟。修复核对：第一轮中高 1 条（`TrashHistory` 作为缓存的语句，第 6 次起的通用计划在界线处 5 秒，I-1）、低 1 条（生产的 `MaxUnitHistory` 接线没有测试钉住）与细节 2 条；第二轮没有行为上的发现（测试与注释的几处）。逐条见[审查记录](reviews/P2A-trash-server-review.md)。
+- 与设计不同之处已改在第 3 节（3.1、3.3–3.12），3.13 分实施时定下的与审查带来的列出；第 5 节的次序。
+- 反向对照：实施之后 94 个（90 个被抓到，存活的 4 个与代码等价）；审查者 49 个（A 14、B 8、C 27，存活的即各条测试的缺口或等价）；审查的修复之后 32 个、修复核对第一轮的核对者 18 个（存活 2 个：M-1 与一个不算发现的错误分支）、它的修复之后 6 个，修复之后的都被抓到。
+- 门禁：本机 `27fee6b` 上 `make lint-go gen-check test-go`、`make lint-web knip test-web build-web`（2,673 个测试）、整个 e2e 234 个、`make image-smoke` 通过；`4bf696d` 上 `make lint-go gen-check test-go` 通过。CI：`16de05b` 只有镜像的冒烟失败，`27fee6b` 四个 job 全绿。
+- 交给后面的：B（`m8-p2b`）以这份契约为准，422 也可能来自历史（4.2）；P3 的 `DecidedAll` 与 `RecordItems`、P4 按历史的行分批（第 8 节）；M12 的性能移交第 14 项（删除的历史、反复删除与恢复、通用计划、界线测试在 CI 上的余量）。
 
 ## 附：调研列出的 38 项的处置
 

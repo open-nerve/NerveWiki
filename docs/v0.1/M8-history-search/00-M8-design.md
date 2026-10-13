@@ -181,7 +181,8 @@ transfer 的：`transfer_jobs.kind` 加 `trash_restore`、`revert`；加 `change
 恢复（4.6）与撤销（4.8）都在请求里一个单元完成，界线相同，量的是花时间与占预算的部分：
 
 - 要解析的页：合计不超过 100 页（是页，附件计入树的操作）、8 MiB 正文，解析之后链接合计不超过 20,000 条（与导入的一批相同，13.1 第 31 条；8 MiB 正文留下的提取结果约 0.8 MiB，预算的下限 5 MiB 也容得下，A-I2、C-I4）。只有一页的组不受这三项限制：它曾在一个请求里写成（同导入的批"独自超过的一页单独成批"）。链接数要解析之后才知道，超过时的 422 可能排在 503 之后（4.14）。
-- 树的操作（新建、删除、恢复、移动的节点，附件也算）：不超过一个实测的数 `domain.MaxUnitNodes`（P2A 定下，在 15 秒的请求期限里留出余量；删除与恢复用整组的语句、条目用 `INSERT … SELECT unnest`，不一个节点一条语句，M12 的移交第 4 项）。
+- 树的操作（新建、删除、恢复、移动的节点，附件也算）：不超过一个实测的数 `domain.MaxUnitNodes` = 10,000（P2A 实测：满负载下单元至多约 2.7 秒，取不超过 5 秒的最大一档，在 15 秒的请求期限里留出余量，[02-P2](02-P2-trash.md) 3.11；删除与恢复用整组的语句、条目用 `INSERT … SELECT unnest`，不一个节点一条语句，M12 的移交第 4 项）；恢复按删除时记下的统计核对，不读组。
+- 写回的历史（这一组以它的时刻删除的版本行与所有变更集里的条目）：不超过 `domain.MaxUnitHistory` = 400,000，同样实测（P2A 的审查 A-M4：节点数管不到每页几千个版本的组，那样的恢复在请求里超时或答 500）；只有一页也算。
 
 超过任何一项答 422 `page.restore_too_large` 或 `page.revert_too_large`；网页说明这次的大小，问是否在后台进行（4.10）。没有"撤销不设上限"的例外（一次 5 万个条目的导入在一个单元里删不完，A-I3、C-I3）。
 
@@ -189,7 +190,7 @@ transfer 的：`transfer_jobs.kind` 加 `trash_restore`、`revert`；加 `change
 
 - 接口：`POST /notebooks/{notebook_id}/trash-restores`（`{node_id}`）、`POST /notebooks/{notebook_id}/reverts`（`{changeset_id}`），答 202 与任务；任务的类型 `trash_restore`、`revert`。权限与同步的相同（`node.restore`、`changeset.revert`）；一本笔记本同时一个写入的任务（与导入共用，`transfer.busy`）；排队的上限（`server_busy`）；队列与导入的相同。任务的状态机、心跳、启动时的收拾、取消、清理都沿用（M7 4.9、4.12）。
 - **分批**：沿用导入的分批（`transfer/app/import_write.go` 的批的上限、按预算的退避、`ANALYZE`），抽出给三种任务共用；每批一个单元，并入第一批的变更集（`UnitSpec.Changeset`），批之间放开笔记本的锁。一个变更集的版本是一页的一行：两批写同一页的正文时，后一批的写必须从前一批写下的版本号接着（`RecordRevision` 只在已有的行的 `revision` 等于这次的 `base_revision` 时更新，不然单元失败，M8/P1 审查 C4）。批之间别人写过这一页时，后一批在锁下的核对要自己发现（这一页的版本号不是前一批写下的）并作为冲突停下；`RecordRevision` 的拒绝是未分类的错误，只是最后的防线，单靠它任务会以内部错误失败（P1 核对第一轮）。
-- **恢复的任务**：先恢复根（决定位置与名称），之后按层，每批在锁下核对：父节点活着（不然停下，`tree_changed`）、层级（超过时停下）、名称（与活着的兄弟冲突时加序号：分批之间别人可能在已恢复的父节点下建了同名的页，A-I5）、只恢复仍是这一时刻删除的（别人可能已经恢复了其中一部分）、期限（不然停下，`expired`）。已恢复的父节点之下仍在回收站的节点设上 `trash_root`：任务停下时它们各自列出，可以再恢复。
+- **恢复的任务**：先恢复根（决定位置与名称），之后按层，每批在锁下核对：父节点活着（不然停下，`tree_changed`）、层级（超过时停下）、名称（与活着的兄弟冲突时加序号：分批之间别人可能在已恢复的父节点下建了同名的页，A-I5）、只恢复仍是这一时刻删除的（别人可能已经恢复了其中一部分）、期限（不然停下，`expired`）。已恢复的父节点之下仍在回收站的节点设上 `trash_root`：任务停下时它们各自列出，可以再恢复。批也按历史的行分（每批写回的版本与条目至多 `MaxUnitHistory`，4.9），历史的 422 同样转到后台；一页自己的历史超过它时按节点分不开，要按历史的行分批，否则这一页一直恢复不了，而删除没有界线（P2A 修复核对第一轮）。
 - **撤销的任务**：开始之前（请求里，不加锁）对 S\* 核对一遍，有冲突就照 4.8 答 409、不开任务；之后按 4.8 的依赖次序分批（删除从叶子往上，一批之内的删除用任务开始时定下的同一个时刻，所以撤销一次导入之后，回收站列出的是导入的最上层节点）；每批在锁下重新核对它的节点，第一次冲突时停下。途中停下时已撤销的部分留着（不是整组的），报告写明已撤销的、停下的原因与冲突的节点。
 - **报告**：恢复或撤销的页数与附件数、放在哪里、停下的原因、剩下的数目；任务行记 `changeset_id`（导入同样记，网页给出"在历史里查看"）。任务列表在笔记本设置的"导入导出"（改名为"导入导出与恢复"），按类型显示。
 
@@ -235,7 +236,7 @@ transfer 的：`transfer_jobs.kind` 加 `trash_restore`、`revert`；加 `change
 - **新的动作**（规则表与矩阵各一行，`server/internal/bootstrap/actions_test.go` 的"规则 = 动作"）：`page.history`（版本、日志、单个变更集、明细、回收站的列表与单项，读者）；`page.restore_version`（写者）；`node.restore`（写者；同步的与后台的恢复）；`changeset.revert`（写者；同步的与后台的撤销；撤销别人的变更集不另要管理员）；`page.search`（工作区级，每种角色）。
 - **码的次序**（13.1 第 4 条，契约与测试照这个次序）：
   - `revertChangeset`：取值 422（`message`）→ 404 `page.changeset_not_found` → 403 → 409 `page.changeset_trimmed` → 422 `page.revert_too_large` → 503 `server_busy`（预算）→ 409 `page.revert_conflict` → 409 `page.locked`。
-  - `restoreNode`：404 `page.not_found` → 403 → 409 `page.not_in_trash`、`page.not_trash_root`、`page.restore_expired` → 422 `page.restore_too_large` → 503 → 409 `page.trash_changed`（锁下的核对与观察者）。例外：链接数的 422 要解析之后才知道，可能排在 503 之后（4.9），契约写明。
+  - `restoreNode`：404 `page.not_found` → 403 → 409 `page.not_in_trash`、`page.not_trash_root`、`page.restore_expired` → 422 `page.restore_too_large`（节点数，按记下的统计；页数、字节；历史的行，4.9）→ 503 → 409 `page.trash_changed`（锁下的核对与观察者）、`page.restore_expired`（单元以它的时刻再核对）。两个例外，契约写明：链接数的 422 要解析之后才知道，可能排在 503 之后（4.9）；未加锁时这一组有页的正文已被清理，在解析之前答 409 `page.trash_changed`（空的正文不能解析），排在 422 之后、503 之前（P2A 审查 B-3）。两次未加锁的读之间这一项被恢复了答 409 `page.not_in_trash`，读组时是 `page.trash_changed`。
   - `getTrashItem`：404 `page.not_found` → 409 `page.not_in_trash`、`page.not_trash_root`、`page.restore_expired`。
   - `restorePageVersion`：404 `page.not_found`、`page.version_not_found` → 403 → 503 → 409 `page.revision_mismatch` → 409 `page.locked`。
   - transfer 的两个开始：照 `startImport`，另加上面对应的 404、409、422。
@@ -290,7 +291,7 @@ Nerve 没有历史与搜索（只读核对：`nerve-project/server` 里没有 `p
 | [M0/P1 中文搜索](handoffs/M0-P1-cjk-search.md) | 1 实测、2 备选、3 写进设计与 1.3、14 | 设计时实测（4.12）；P5 |
 | [M4 历史、回收站与恢复](handoffs/M4-history.md) | 1 重排不记条目、2 回收站里的页有历史、3 同一变更集里的删除与恢复、4 `removedTo` | 1：次序按状态比较，重新编号显示为冲突（4.8）；2：4.3（P1）；3：M8 的恢复各自一个变更集，不在同一变更集里删除与恢复，仍留给 M9 的 batch（M9 的那份移交）；4：P2（4.13） |
 | [M5 编辑锁与还原、撤销](handoffs/M5-locks.md) | 1 整组撤销碰上被锁、2 恢复不会被锁挡、3 测试 | 1：整体拒绝，`page.locked`（4.8）；2：4.6；3：P3 的交错 |
-| [M6 链接索引与恢复、历史、还原](handoffs/M6-links.md) | 1 恢复带提取结果、2 只重新解析、3 历史的即时解析、4 撤销与改写、5 最后一跳 | 1：单元之前从大到小 `Take`、等待合计有界（4.6，改 `TakeNow`）；2：4.1；3：4.3，回收站里的页另按原来的路径解析；4：不经参与者（4.8）；5：P2、P3 |
+| [M6 链接索引与恢复、历史、还原](handoffs/M6-links.md) | 1 恢复带提取结果、2 只重新解析、3 历史的即时解析、4 撤销与改写、5 最后一跳 | 1：单元之前从大到小 `Take`、等待合计有界（4.6，改 `TakeNow`）；恢复的观察者写解析的 `SetResolutions` 按参数规划（P2A 实测：缓存的语句的通用计划在统计以为没有链接时两两比较 2 万条链接，53 秒）；2：4.1；3：4.3，回收站里的页另按原来的路径解析；4：不经参与者（4.8）；5：P2、P3 |
 | [M7 附件、导入与恢复、历史、搜索](handoffs/M7-assets-transfer.md) | 1 恢复附件的行、2 恢复与清理的先后、3 附件没有版本、4 导入的撤销、5 序号、6 搜索列附件 | 1：P2；2：期限的间隔（4.11）；3：4.3；4：后台的撤销任务（4.10，P4）；5：4.6、4.10；6：4.12（P5），并更正它"名称的三元组索引 M4 已建"的前提 |
 | [M4/P2 一个单元里先建后删](../M9-mcp/handoffs/M4-P2-unit-merge.md) | — | 仍归 M9：M8 的单元不在同一变更集里先建后删；M8 的撤销按依赖应用，M9 的 batch 可以直接用 |
 
@@ -301,7 +302,7 @@ Nerve 没有历史与搜索（只读核对：`nerve-project/server` 里没有 `p
 - **M9**：`log` 调用 `ListChangesets`（筛选与游标已备）；`grep` 用 4.12 的索引；`batch` 写 `message`；一个单元里删除再恢复同一节点时 `RecordItem` 的 upsert 会清掉条目的 `deleted_at`（M4 的移交第 3 项）；撤销按依赖应用、适用于 batch；`transfer_jobs` 的客户端只许 `web`、`api`，MCP 开的后台任务要先改它；要不要给 agent 历史、撤销与恢复的工具（总体设计 5.3"失败的 ingest 可以整组撤销"）。
 - **M10**：来源区的守卫经 `Write.Kind` 认出撤销与还原版本（撤销写回改名时改写过的来源页，算不算"修改来源"）。
 - **M11**：回滚一次升级 = 按时间从新到旧逐个撤销它的变更集（按状态比较，连续撤销成立）；冻结与护栏经 `Write.Kind` 放行回滚的撤销；冲突时停下并报告；大的变更集走后台的撤销。
-- **M12**：搜索在更大的语料与并发下的压测；条目记"排在哪个兄弟之后"让撤销的次序不受重新编号影响；版本的保留策略（v0.2）；编辑会话里按时间分出版本；永久删除回收站里的一项（第 11 节第 1 条）。
+- **M12**：删除没有历史的界线、同一大项反复删除与恢复让历史增长到 422、缓存的语句的通用计划（P2A，已写进 [M12 的性能移交](../M12-release/handoffs/M4-performance.md)第 14 项）；搜索在更大的语料与并发下的压测；条目记"排在哪个兄弟之后"让撤销的次序不受重新编号影响；版本的保留策略（v0.2）；编辑会话里按时间分出版本；永久删除回收站里的一项（第 11 节第 1 条）。
 
 ### 总体设计的修订
 
@@ -391,7 +392,7 @@ M8 开工时负责人确认进入 M8（2026-10-13："可以了，开始 M8 吧"�
 | P | Phase 文档 | 状态 | 审查 | 合并 |
 |---|---|---|---|---|
 | P1 版本 | [01-P1](01-P1-versions.md) | 完成 | [P1A](reviews/P1A-versions-server-review.md)、[P1B](reviews/P1B-versions-web-review.md) | A `12fc5d7`、B `df306e3` |
-| P2 回收站 | [02-P2](02-P2-trash.md) | 进行中（设计已审查） | [设计](reviews/P2-design-review.md) | — |
+| P2 回收站 | [02-P2](02-P2-trash.md) | 进行中（A 已合并） | [设计](reviews/P2-design-review.md)、[P2A](reviews/P2A-trash-server-review.md) | A `25d250a` |
 | P3 日志与整组撤销 | — | 未开始 | — | — |
 | P4 后台的恢复与撤销 | — | 未开始 | — | — |
 | P5 搜索 | — | 未开始 | — | — |
@@ -406,3 +407,4 @@ M8 开工时负责人确认进入 M8（2026-10-13："可以了，开始 M8 吧"�
 | 2026-10-13 | P1A 完成：版本的元数据与正文一条语句读出；`RecordRevision` 只在变更集的版本停在这次写的 base 时更新（版本链的守卫），`checkPages` 核对链；4.2 的索引表加 `(reverts_id) WHERE reverts_id IS NOT NULL`（P3 建）、`trimmed` 的标记在 P3 做且不补记；4.10 写明分批写同一页时后一批在锁下自己发现别人的写 | P1A 的实施、审查与两轮修复核对：[01-P1-versions.md](01-P1-versions.md) 第 3、9 节、[P1A 审查](reviews/P1A-versions-server-review.md) |
 | 2026-10-13 | P2 设计：放置去掉"父节点不在"，组内同键加序号；附件的信息改名 `asset.NewAttachmentInfos`、`Deps.Attachments`；`Change.Restored` 带删除的时刻与是否附件，行数不符答 409；回收站里的页的链接经 `PageRef.Deleted` 与 `Pages.SourcePath` 解析，链到同组的页恢复之后才回来；根记下统计（数目是准确值），补值不读 `notebooks`，`DeleteNodes` 拒绝先删子孙再删祖先；单项带 `notebook_id`、`revision` 与附件信息；锁下另核对版本链；解析的等待合计有界；只有一页的组不受页数、字节、链接三项限制，链接的 422 可能排在 503 之后；不加清理的时钟；回收站的入口、确认框的天数与附件的"打开"；码的次序与文件名、`getInstance`、共用的 `UserRef` | [02-P2-trash.md](02-P2-trash.md) 第 2.1 节、[P2 设计审查](reviews/P2-design-review.md) |
 | 2026-10-13 | P1B 完成：比较的细分与合并在 Worker 里做到视图无可合并（`@codemirror/merge` 在主线程上的合并是平方级的），插入、删除滑过重复的行，删除的一块按视图的块限 5,000 行，Worker 失败时说"比较失败"可重试，新的比较进行时留着上一次的并写明；版本页按答复的版本号读视图，地址的版本号变了即去掉之前的正文与视图，版本的正文焦点时不重读，租约过期之后重读版本，版本链接的名称带版本号与完整时间；还原只在显示的比较正是它送出的版本号的正文时可用；版本页是笔记本的外壳之下自己的路由（`PageGone` 共用），新的 SWR 键 `page-content`，"同一时刻至多一个比较"按视图；总体设计 13.2 第 15、16、19、23、25 条随之 | P1B 的实施、审查与修复核对：[01-P1-versions.md](01-P1-versions.md) 第 4、9 节、[P1B 审查](reviews/P1B-versions-web-review.md) |
+| 2026-10-14 | P2A 完成：4.9 写下实测的界线 `MaxUnitNodes` = 10,000，并加第三项：写回的历史（版本与条目）至多 `MaxUnitHistory` = 400,000，只有一页也算；4.14 `restoreNode` 的次序写明历史的 422、单元再核对期限，以及未加锁时正文已被清理的 409 在 503 之前（第二个例外）；4.10 的恢复任务也按历史的行分批，一页的历史超过界线时按节点分不开；"移交的落实" M6 一行加 `SetResolutions` 按参数规划；M12 一条写明已移交的性能项 | P2A 的实施、审查与修复核对：[02-P2-trash.md](02-P2-trash.md) 第 3、9 节、[P2A 审查](reviews/P2A-trash-server-review.md) |
