@@ -5,6 +5,7 @@ import (
 	"slices"
 	"testing"
 	"time"
+	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
 )
@@ -40,6 +41,37 @@ type trashItemAnswer struct {
 	} `json:"restore_to"`
 }
 
+// changesetAnswer is a Changeset answer, as much as the rows check.
+type changesetAnswer struct {
+	ID        string         `json:"id"`
+	Kind      string         `json:"kind"`
+	NodeCount int            `json:"node_count"`
+	Changes   []changeAnswer `json:"changes"`
+}
+
+// isRename reports whether the answer is the seeded rename id, of one
+// node, its change a rename.
+func (a changesetAnswer) isRename(id uuid.UUID) bool {
+	return a.ID == id.String() && a.Kind == "edit" && a.NodeCount == 1 && len(a.Changes) == 1 && a.Changes[0].Kind == "renamed"
+}
+
+// changeAnswer is a ChangesetChange answer, as much as the rows check.
+type changeAnswer struct {
+	Kind   string `json:"kind"`
+	Before *struct {
+		Name string `json:"name"`
+	} `json:"before"`
+	After *struct {
+		Name string `json:"name"`
+	} `json:"after"`
+}
+
+// renames reports whether the change renames its node from before to
+// after.
+func (a changeAnswer) renames(before, after string) bool {
+	return a.Kind == "renamed" && a.Before != nil && a.Before.Name == before && a.After != nil && a.After.Name == after
+}
+
 // editSessionAnswer is an EditSession answer.
 type editSessionAnswer struct {
 	ID        string    `json:"id"`
@@ -66,6 +98,8 @@ func (p pageAnswer) ancestorNames() []string {
 func pageMatrixRows() []matrixRow {
 	notebookNotFound := cell{http.StatusNotFound, "notebook.not_found"}
 	pageNotFound := cell{http.StatusNotFound, "page.not_found"}
+	changesetNotFound := cell{http.StatusNotFound, "page.changeset_not_found"}
+	changesets := func(c caller, s seeded) string { return "/api/v0/changesets/" + s.changeset(notebookOf(c)).String() }
 	nodes := func(c caller, s seeded) string { return "/api/v0/notebooks/" + s.notebook(notebookOf(c)).String() }
 	readers := func(notFound cell) map[caller]cell {
 		cells := map[caller]cell{}
@@ -279,6 +313,76 @@ func pageMatrixRows() []matrixRow {
 				decodeAnswer(t, answer, &r)
 				if r.Name != trashedIn(notebookOf(c)) || r.Renamed || r.Placed.Reason != "original" {
 					t.Errorf("restored %s, want the seeded item back at its root as it was", answer)
+				}
+			},
+		},
+		{
+			op:      "listChangesets",
+			columns: notebookColumns(),
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodGet, nodes(c, s) + "/changesets", ""
+			},
+			cells: readers(notebookNotFound),
+			check: func(t *testing.T, c caller, s seeded, answer string) {
+				t.Helper()
+				var l struct{ Data []changesetAnswer }
+				decodeAnswer(t, answer, &l)
+				if len(l.Data) == 0 || !l.Data[0].isRename(s.changeset(notebookOf(c))) {
+					t.Errorf("listed %s, want the seeded rename first", answer)
+				}
+			},
+		},
+		{
+			op:      "getChangeset",
+			columns: notebookColumns(),
+			request: func(c caller, s seeded) (string, string, string) { return http.MethodGet, changesets(c, s), "" },
+			cells:   readers(changesetNotFound),
+			check: func(t *testing.T, c caller, s seeded, answer string) {
+				t.Helper()
+				var d struct {
+					changesetAnswer
+					Renames bool `json:"renames"`
+					Moves   bool `json:"moves"`
+				}
+				decodeAnswer(t, answer, &d)
+				if !d.isRename(s.changeset(notebookOf(c))) || !d.Renames || d.Moves {
+					t.Errorf("read %s, want the seeded rename, renaming and moving nothing", answer)
+				}
+			},
+		},
+		{
+			op:      "listChangesetChanges",
+			columns: notebookColumns(),
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodGet, changesets(c, s) + "/changes", ""
+			},
+			cells: readers(changesetNotFound),
+			check: func(t *testing.T, c caller, _ seeded, answer string) {
+				t.Helper()
+				var l struct{ Data []changeAnswer }
+				decodeAnswer(t, answer, &l)
+				if len(l.Data) != 1 || !l.Data[0].renames(wasIn(notebookOf(c)), renamedIn(notebookOf(c))) {
+					t.Errorf("listed %s, want the seeded rename", answer)
+				}
+			},
+		},
+		{
+			op:      "revertChangeset",
+			columns: notebookColumns(),
+			write:   true,
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodPost, changesets(c, s) + "/revert", `{"message":"Back"}`
+			},
+			cells: editorsOnly(cellOK(), changesetNotFound),
+			check: func(t *testing.T, _ caller, _ seeded, answer string) {
+				t.Helper()
+				var r struct {
+					ChangesetID *string `json:"changeset_id"`
+					Changed     bool    `json:"changed"`
+				}
+				decodeAnswer(t, answer, &r)
+				if r.ChangesetID == nil || !r.Changed {
+					t.Errorf("reverted %s, want the rename put back in a changeset", answer)
 				}
 			},
 		},

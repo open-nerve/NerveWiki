@@ -159,6 +159,7 @@ func New(d Deps) *Module {
 	versions := app.VersionReads{Notebooks: d.Notebooks, Nodes: store, Versions: store, Names: d.Names, Auth: d.Authorizer, Clock: d.Clock}
 	trash := app.TrashReads{Notebooks: d.Notebooks, Nodes: store, Trash: store, Names: d.Names, Attachments: d.Attachments,
 		Auth: d.Authorizer, Clock: d.Clock, Retention: d.Retention}
+	history := app.HistoryReads{Notebooks: d.Notebooks, History: store, Names: d.Names, Auth: d.Authorizer}
 	return &Module{uc: httpadapter.UseCases{
 		ListNodes:       app.NewListNodes(d.Notebooks, store, d.Authorizer),
 		CreatePage:      app.NewCreatePage(writer, store, parser, d.Logger),
@@ -182,6 +183,11 @@ func New(d Deps) *Module {
 		ListTrash:       app.NewListTrash(trash),
 		GetTrashItem:    app.NewGetTrashItem(trash),
 		RestoreNode:     app.NewRestoreNode(trash, writer, parser, app.RestoreBounds{Nodes: d.MaxUnitNodes, History: d.MaxUnitHistory}, d.Logger),
+		ListChangesets:  app.NewListChangesets(history),
+		GetChangeset:    app.NewGetChangeset(history),
+		ListChanges:     app.NewListChanges(history),
+		RevertChangeset: app.NewRevertChangeset(trash, store, writer, parser,
+			app.RevertBounds{Nodes: d.MaxUnitNodes, History: d.MaxUnitHistory}, d.Logger),
 	}, jobs: []jobs.Job{
 		riveradapter.CleanupJob(app.NewCleanupEditSessions(store, d.Clock, d.Logger), d.EditSessionCleanupInterval),
 	}, assets: app.NewAssetWrites(writer, store), imports: app.NewImportWrites(writer, parser, md)}

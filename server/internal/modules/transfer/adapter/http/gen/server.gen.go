@@ -40,6 +40,7 @@ func (e TransferClient) Valid() bool {
 
 // Defines values for TransferFailure.
 const (
+	TransferFailureChangesetReverted   TransferFailure = "changeset_reverted"
 	TransferFailureContributorConflict TransferFailure = "contributor_conflict"
 	TransferFailureForbidden           TransferFailure = "forbidden"
 	TransferFailureInternal            TransferFailure = "internal"
@@ -56,6 +57,8 @@ const (
 // Valid indicates whether the value is a known member of the TransferFailure enum.
 func (e TransferFailure) Valid() bool {
 	switch e {
+	case TransferFailureChangesetReverted:
+		return true
 	case TransferFailureContributorConflict:
 		return true
 	case TransferFailureForbidden:
@@ -218,7 +221,7 @@ type TransferDownload struct {
 	URL string `json:"url"`
 }
 
-// TransferFailure Why a job failed: interrupted (the server stopped or restarted, the job stopped beating, or the job queue dropped it before it began), timeout (it ran past the instance's limit), forbidden (its starter could no longer read the notebook as it ran, or write in it as an import ran), root_not_found (the page exported, or imported under, was gone as it ran), storage_full, contributor_conflict (a file the server adds was where a node is), internal; for an import's archive as a whole, nothing written: not_zip (no zip, or its directory is broken), too_many_entries (more entries than the instance takes, or a directory larger than 64 MiB), unpacked_too_large (its entries unpack to more than the instance takes); tree_changed (a page the import created was deleted as it ran, its later nodes not written).
+// TransferFailure Why a job failed: interrupted (the server stopped or restarted, the job stopped beating, or the job queue dropped it before it began), timeout (it ran past the instance's limit), forbidden (its starter could no longer read the notebook as it ran, or write in it as an import ran), root_not_found (the page exported, or imported under, was gone as it ran), storage_full, contributor_conflict (a file the server adds was where a node is), internal; for an import's archive as a whole, nothing written: not_zip (no zip, or its directory is broken), too_many_entries (more entries than the instance takes, or a directory larger than 64 MiB), unpacked_too_large (its entries unpack to more than the instance takes); tree_changed (a page the import created was deleted as it ran, its later nodes not written); changeset_reverted (the changeset it writes in was reverted as it ran, its later nodes not written).
 type TransferFailure string
 
 // TransferJob An import or an export of a notebook, a job that runs in the background: queued, then running, then succeeded, failed or cancelled. An export's archive expires a while after it succeeded, the instance's export TTL, or at once when its starter's next export of the notebook succeeds: a starter keeps only their latest export of a notebook. created_by is its starter.

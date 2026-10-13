@@ -778,6 +778,191 @@ paths:
                 $ref: "#/components/schemas/NodeRestored"
         default:
           $ref: "#/components/responses/Problem"
+  /api/v0/notebooks/{notebook_id}/changesets:
+    parameters:
+      - $ref: "#/components/parameters/NotebookID"
+    get:
+      operationId: listChangesets
+      tags: [page]
+      summary: List a notebook's history
+      description: >-
+        The notebook's changesets, newer first by when each was first
+        written, a page at a time: what each write of the notebook's tree
+        and contents changed, by whom and from where, with its counts, the
+        changesets that reverted it and its first three changes. A filter
+        narrows it: actor, one account's; client, one client's (web, api,
+        cli or mcp:<name>), or mcp, every MCP client's; page_id, those that
+        changed the node, a page or an attachment, alive or in the trash.
+        Any role in the notebook can read it. A cursor the list cannot read
+        is bad_request, before anything else; a notebook that does not
+        exist, is deleted, or that the caller has no role in is
+        notebook.not_found; a page_id that is no node of the notebook, one
+        the purge took among them, is page.not_found; a client that is none
+        of those, or a limit outside 1–100, is validation_failed.
+      security: [{ bearer: [] }]
+      x-problem-codes: [bad_request, notebook.not_found, page.not_found, validation_failed]
+      parameters:
+        - name: actor
+          in: query
+          description: The account whose changesets to list.
+          schema:
+            type: string
+            format: uuid
+        - name: client
+          in: query
+          description: >-
+            The client whose changesets to list: web, api, cli, mcp:<name>
+            for one MCP client, or mcp for every one.
+          schema:
+            type: string
+        - name: page_id
+          in: query
+          description: The node, a page or an attachment, whose changesets to list.
+          schema:
+            type: string
+            format: uuid
+        - $ref: "../common.yaml#/components/parameters/Limit"
+        - $ref: "../common.yaml#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: A page of the notebook's history.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChangesetPage"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v0/changesets/{changeset_id}:
+    parameters:
+      - $ref: "#/components/parameters/ChangesetID"
+    get:
+      operationId: getChangeset
+      tags: [page]
+      summary: Read a changeset
+      description: >-
+        The changeset as listChangesets lists it, and whether its first
+        1,000 changes rename or move a node, whose revert leaves the links
+        written to the new names and places as they are. Any role in its
+        notebook can read it. A changeset that does not exist, whose
+        notebook is deleted, or whose notebook the caller has no role in is
+        page.changeset_not_found.
+      security: [{ bearer: [] }]
+      x-problem-codes: [page.changeset_not_found]
+      responses:
+        "200":
+          description: The changeset.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChangesetDetail"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v0/changesets/{changeset_id}/changes:
+    parameters:
+      - $ref: "#/components/parameters/ChangesetID"
+    get:
+      operationId: listChangesetChanges
+      tags: [page]
+      summary: List a changeset's changes
+      description: >-
+        What the changeset did to each node it changed, by node id, a page
+        at a time: where the node was before and after it in the tree, and
+        the version of its content it wrote. Any role in its notebook can
+        read them. A cursor the list cannot read is bad_request, before
+        anything else; a changeset that does not exist, whose notebook is
+        deleted, or whose notebook the caller has no role in is
+        page.changeset_not_found; a limit outside 1–100 is
+        validation_failed.
+      security: [{ bearer: [] }]
+      x-problem-codes: [bad_request, page.changeset_not_found, validation_failed]
+      parameters:
+        - $ref: "../common.yaml#/components/parameters/Limit"
+        - $ref: "../common.yaml#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: A page of the changeset's changes.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChangesetChangePage"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v0/changesets/{changeset_id}/revert:
+    parameters:
+      - $ref: "#/components/parameters/ChangesetID"
+    post:
+      operationId: revertChangeset
+      tags: [page]
+      summary: Revert a changeset
+      description: >-
+        Puts every node the changeset changed back as it was before it, in a
+        changeset of its own, a revert, whose message is the request's,
+        whole or not at all. Its notebook's editors and admins can, whoever
+        made the changeset. Each node is compared by its state, not by when
+        it changed: it must be as the changeset left it, where it put it
+        and with the content it wrote, a node it deleted still in its trash
+        item, else it is changed. Nodes it created or restored go to the
+        trash, at the revert's time; nodes it deleted come back where they
+        were, with the names they had, their trash item whole, at its time;
+        nodes it renamed or moved go back where they were, under the same
+        name and order; pages whose content it wrote get back the content
+        they had, as a new version. The links written by a rename or a move
+        stay as they are. What stops a revert is a conflict, listed in
+        conflicts, the first 100 of conflict_count: a node changed since, a
+        trash item past its restorable_until (expired), a node that would go
+        back under a parent no longer there (parent_gone) or into a cycle
+        (cycle) or deeper than ten levels of pages (too_deep), a node
+        another changeset put under one the revert deletes (children_added),
+        a name another node took where one would go back (title_taken,
+        naming the holder in holder_id). One revert puts back at most
+        10,000 nodes, restores trash items whose versions and records in
+        changesets are 400,000 at most, and, of more than one page, writes
+        back or restores at most 100 pages, 8 MiB of content and 20,000
+        links. A message that is empty, longer than 4,096 bytes, not UTF-8
+        or with a NUL is validation_failed; then a changeset that does not
+        exist, whose notebook is deleted, or whose notebook the caller has
+        no role in is page.changeset_not_found; a reader is forbidden; then
+        a changeset part of which the purge took is page.changeset_trimmed;
+        then one past the bounds is page.revert_too_large; then the
+        conflicts, page.revert_conflict; then a version or a content in the
+        trash to compare, write back or restore that the purge took is
+        page.changeset_trimmed, before any content is parsed; when the
+        server parses as much content as it can at once, the revert waits a
+        moment, then is server_busy: the links are counted as the contents
+        are parsed, so that their page.revert_too_large may come after it.
+        The revert reads and checks it all again as it writes:
+        page.changeset_trimmed, page.revert_too_large and
+        page.revert_conflict for what changed meanwhile; then a page whose
+        lock an edit session holds, the caller's elsewhere among them, is
+        page.locked, naming the holder in lock. A changeset whose nodes are
+        all as they were before it writes nothing: changed is false.
+      security: [{ bearer: [] }]
+      x-problem-codes:
+        [
+          validation_failed,
+          page.changeset_not_found,
+          forbidden,
+          page.changeset_trimmed,
+          page.revert_too_large,
+          page.revert_conflict,
+          server_busy,
+          page.locked,
+        ]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangesetRevert"
+      responses:
+        "200":
+          description: What the revert did.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChangesetReverted"
+        default:
+          $ref: "#/components/responses/Problem"
 components:
   # 与 api/openapi.yaml 的相同：打包时丢掉模块文件的 securitySchemes，oapi-codegen 读这一份
   securitySchemes:
@@ -821,6 +1006,14 @@ components:
       in: path
       required: true
       description: The id of a node of a notebook's tree.
+      schema:
+        type: string
+        format: uuid
+    ChangesetID:
+      name: changeset_id
+      in: path
+      required: true
+      description: The changeset's id.
       schema:
         type: string
         format: uuid
@@ -1257,6 +1450,320 @@ components:
           description: The restore's changeset, a trash_restore.
           type: string
           format: uuid
+    ChangesetPage:
+      description: A page of a notebook's history, newer first.
+      type: object
+      additionalProperties: false
+      required: [data, next_cursor]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Changeset"
+        next_cursor:
+          $ref: "../common.yaml#/components/schemas/NextCursor"
+    Changeset:
+      description: >-
+        A changeset of a notebook's history: the writes one action made, by whom and from where, and what they
+        changed.
+      type: object
+      additionalProperties: false
+      required:
+        [
+          id,
+          notebook_id,
+          kind,
+          client,
+          message,
+          created_by,
+          created_at,
+          updated_at,
+          reverts,
+          reverted_by,
+          trimmed,
+          node_count,
+          content_count,
+          changes,
+        ]
+      properties:
+        id:
+          type: string
+          format: uuid
+        notebook_id:
+          type: string
+          format: uuid
+        kind:
+          $ref: "#/components/schemas/ChangesetKind"
+        client:
+          description: Where the changeset's writes came from, web, api, cli, or mcp:<name> for an MCP client.
+          type: string
+        message:
+          description: Why it was made, as a revert's request said; null for none.
+          type: [string, "null"]
+        created_by:
+          $ref: "../common.yaml#/components/schemas/UserRef"
+        created_at:
+          description: When it was first written, which the history is ordered by.
+          type: string
+          format: date-time
+        updated_at:
+          description: When it was last written; an edit session's, at its last save.
+          type: string
+          format: date-time
+        reverts:
+          description: >-
+            The changeset a revert reverts; null for any other, and for a revert whose changeset the purge took.
+          anyOf:
+            - $ref: "#/components/schemas/ChangesetBrief"
+            - type: "null"
+        reverted_by:
+          description: The reverts of it, newer first, the newest 100.
+          type: array
+          maxItems: 100
+          items:
+            type: string
+            format: uuid
+        trimmed:
+          description: >-
+            Whether the purge took part of what it changed, its nodes long in the trash: it can no longer be
+            reverted.
+          type: boolean
+        node_count:
+          description: >-
+            How many nodes it changed in the tree, counted up to 1000: 1000 is as many or more.
+          type: integer
+          minimum: 0
+          maximum: 1000
+        content_count:
+          description: >-
+            How many pages' contents it wrote, counted up to 1000: 1000 is as many or more.
+          type: integer
+          minimum: 0
+          maximum: 1000
+        changes:
+          description: Its first three changes, by node id.
+          type: array
+          maxItems: 3
+          items:
+            $ref: "#/components/schemas/ChangesetChange"
+    # Changeset 的每个属性加上 renames、moves 两项，与 Changeset 同步改：不用 allOf，Changeset 的
+    # additionalProperties: false 会拒绝多出的两项。
+    ChangesetDetail:
+      description: >-
+        A changeset, as Changeset, and whether its first 1,000 changes rename or move a node.
+      type: object
+      additionalProperties: false
+      required:
+        [
+          id,
+          notebook_id,
+          kind,
+          client,
+          message,
+          created_by,
+          created_at,
+          updated_at,
+          reverts,
+          reverted_by,
+          trimmed,
+          node_count,
+          content_count,
+          changes,
+          renames,
+          moves,
+        ]
+      properties:
+        id:
+          type: string
+          format: uuid
+        notebook_id:
+          type: string
+          format: uuid
+        kind:
+          $ref: "#/components/schemas/ChangesetKind"
+        client:
+          description: Where the changeset's writes came from, web, api, cli, or mcp:<name> for an MCP client.
+          type: string
+        message:
+          description: Why it was made, as a revert's request said; null for none.
+          type: [string, "null"]
+        created_by:
+          $ref: "../common.yaml#/components/schemas/UserRef"
+        created_at:
+          description: When it was first written, which the history is ordered by.
+          type: string
+          format: date-time
+        updated_at:
+          description: When it was last written; an edit session's, at its last save.
+          type: string
+          format: date-time
+        reverts:
+          description: >-
+            The changeset a revert reverts; null for any other, and for a revert whose changeset the purge took.
+          anyOf:
+            - $ref: "#/components/schemas/ChangesetBrief"
+            - type: "null"
+        reverted_by:
+          description: The reverts of it, newer first, the newest 100.
+          type: array
+          maxItems: 100
+          items:
+            type: string
+            format: uuid
+        trimmed:
+          description: >-
+            Whether the purge took part of what it changed, its nodes long in the trash: it can no longer be
+            reverted.
+          type: boolean
+        node_count:
+          description: >-
+            How many nodes it changed in the tree, counted up to 1000: 1000 is as many or more.
+          type: integer
+          minimum: 0
+          maximum: 1000
+        content_count:
+          description: >-
+            How many pages' contents it wrote, counted up to 1000: 1000 is as many or more.
+          type: integer
+          minimum: 0
+          maximum: 1000
+        changes:
+          description: Its first three changes, by node id.
+          type: array
+          maxItems: 3
+          items:
+            $ref: "#/components/schemas/ChangesetChange"
+        renames:
+          description: Whether its first 1,000 changes rename a node.
+          type: boolean
+        moves:
+          description: Whether its first 1,000 changes move a node under another parent.
+          type: boolean
+    ChangesetBrief:
+      description: A changeset, by its id, kind, author and time.
+      type: object
+      additionalProperties: false
+      required: [id, kind, created_by, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        kind:
+          $ref: "#/components/schemas/ChangesetKind"
+        created_by:
+          $ref: "../common.yaml#/components/schemas/UserRef"
+        created_at:
+          type: string
+          format: date-time
+    ChangesetChangePage:
+      description: A page of a changeset's changes, by node id.
+      type: object
+      additionalProperties: false
+      required: [data, next_cursor]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChangesetChange"
+        next_cursor:
+          $ref: "../common.yaml#/components/schemas/NextCursor"
+    ChangesetChange:
+      description: >-
+        What a changeset did to a node: kind, created, restored from the trash, deleted, moved under another
+        parent, renamed, reordered among its siblings, or its content written; where it was before and after in
+        the tree, and the version of its content it wrote.
+      type: object
+      additionalProperties: false
+      required: [node, kind, before, after, content]
+      properties:
+        node:
+          $ref: "#/components/schemas/ChangeNode"
+        kind:
+          type: string
+          enum: [created, restored, deleted, moved, renamed, reordered, content]
+        before:
+          description: Where the node was before; null for a node created or restored, and for a content's write alone.
+          anyOf:
+            - $ref: "#/components/schemas/ChangeState"
+            - type: "null"
+        after:
+          description: Where the node was after; null for a node deleted, and for a content's write alone.
+          anyOf:
+            - $ref: "#/components/schemas/ChangeState"
+            - type: "null"
+        content:
+          description: The version of the page's content it wrote; null for none.
+          anyOf:
+            - $ref: "#/components/schemas/ChangeContent"
+            - type: "null"
+    ChangeNode:
+      description: A node a changeset changed, as it is now.
+      type: object
+      additionalProperties: false
+      required: [id, kind, name, alive]
+      properties:
+        id:
+          type: string
+          format: uuid
+        kind:
+          $ref: "#/components/schemas/NodeKind"
+        name:
+          description: Its name now.
+          type: string
+        alive:
+          description: Whether it is alive; false in the trash.
+          type: boolean
+    ChangeState:
+      description: Where a node was in the tree.
+      type: object
+      additionalProperties: false
+      required: [parent_id, parent_name, name]
+      properties:
+        parent_id:
+          description: The parent page; null at the notebook's root.
+          type: [string, "null"]
+          format: uuid
+        parent_name:
+          description: The parent's name now; null at the root, and for a parent the purge took.
+          type: [string, "null"]
+        name:
+          description: The node's name there.
+          type: string
+    ChangeContent:
+      description: A version of a page's content a changeset wrote.
+      type: object
+      additionalProperties: false
+      required: [base_revision, revision]
+      properties:
+        base_revision:
+          description: The revision it was written on; null for the version that created the page.
+          type: [integer, "null"]
+        revision:
+          description: The revision it wrote.
+          type: integer
+    ChangesetRevert:
+      description: A revert of a changeset; an empty request has no message.
+      type: object
+      additionalProperties: false
+      properties:
+        message:
+          description: >-
+            Why, kept with the revert's changeset: 1–4,096 bytes of UTF-8, without NUL characters.
+          type: string
+    ChangesetReverted:
+      description: >-
+        What a revert did: its changeset, null when every node was as it was before the changeset and nothing was
+        written.
+      type: object
+      additionalProperties: false
+      required: [changeset_id, changed]
+      properties:
+        changeset_id:
+          type: [string, "null"]
+          format: uuid
+        changed:
+          description: Whether the revert wrote anything.
+          type: boolean
     PageCreate:
       description: A new page.
       type: object

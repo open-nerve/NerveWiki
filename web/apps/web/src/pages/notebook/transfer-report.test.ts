@@ -17,6 +17,7 @@ test.each([
   ["import", "too_many_entries", "The zip holds more entries than the server takes."],
   ["import", "unpacked_too_large", "The zip unpacks to more than the server takes."],
   ["import", "tree_changed", "A page the import had written was deleted while it ran."],
+  ["import", "changeset_reverted", "What the import had written was reverted while it ran."],
   ["import", "storage_full", "The server's storage is full."],
   ["import", "gremlins", "The job failed."],
 ] as const)("a failure of an %s, %s, says what befell it", (kind, failure, says) => {

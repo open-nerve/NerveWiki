@@ -21,6 +21,39 @@ import (
 	externalRef0 "github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/apigen"
 )
 
+// Defines values for ChangesetChangeKind.
+const (
+	ChangesetChangeKindContent   ChangesetChangeKind = "content"
+	ChangesetChangeKindCreated   ChangesetChangeKind = "created"
+	ChangesetChangeKindDeleted   ChangesetChangeKind = "deleted"
+	ChangesetChangeKindMoved     ChangesetChangeKind = "moved"
+	ChangesetChangeKindRenamed   ChangesetChangeKind = "renamed"
+	ChangesetChangeKindReordered ChangesetChangeKind = "reordered"
+	ChangesetChangeKindRestored  ChangesetChangeKind = "restored"
+)
+
+// Valid indicates whether the value is a known member of the ChangesetChangeKind enum.
+func (e ChangesetChangeKind) Valid() bool {
+	switch e {
+	case ChangesetChangeKindContent:
+		return true
+	case ChangesetChangeKindCreated:
+		return true
+	case ChangesetChangeKindDeleted:
+		return true
+	case ChangesetChangeKindMoved:
+		return true
+	case ChangesetChangeKindRenamed:
+		return true
+	case ChangesetChangeKindReordered:
+		return true
+	case ChangesetChangeKindRestored:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ChangesetKind.
 const (
 	ChangesetKindEdit           ChangesetKind = "edit"
@@ -93,8 +126,190 @@ type Ancestor struct {
 	Name string    `json:"name"`
 }
 
+// ChangeContent A version of a page's content a changeset wrote.
+type ChangeContent struct {
+	// BaseRevision The revision it was written on; null for the version that created the page.
+	BaseRevision nullable.Nullable[int] `json:"base_revision"`
+
+	// Revision The revision it wrote.
+	Revision int `json:"revision"`
+}
+
+// ChangeNode A node a changeset changed, as it is now.
+type ChangeNode struct {
+	// Alive Whether it is alive; false in the trash.
+	Alive bool      `json:"alive"`
+	ID    uuid.UUID `json:"id"`
+
+	// Kind What a node of the tree is: a page, or an attachment, a file at the root or under a page, which no node is under.
+	Kind NodeKind `json:"kind"`
+
+	// Name Its name now.
+	Name string `json:"name"`
+}
+
+// ChangeState Where a node was in the tree.
+type ChangeState struct {
+	// Name The node's name there.
+	Name string `json:"name"`
+
+	// ParentID The parent page; null at the notebook's root.
+	ParentID nullable.Nullable[uuid.UUID] `json:"parent_id"`
+
+	// ParentName The parent's name now; null at the root, and for a parent the purge took.
+	ParentName nullable.Nullable[string] `json:"parent_name"`
+}
+
+// Changeset A changeset of a notebook's history: the writes one action made, by whom and from where, and what they changed.
+type Changeset struct {
+	// Changes Its first three changes, by node id.
+	Changes []ChangesetChange `json:"changes"`
+
+	// Client Where the changeset's writes came from, web, api, cli, or mcp:<name> for an MCP client.
+	Client string `json:"client"`
+
+	// ContentCount How many pages' contents it wrote, counted up to 1000: 1000 is as many or more.
+	ContentCount int `json:"content_count"`
+
+	// CreatedAt When it was first written, which the history is ordered by.
+	CreatedAt time.Time `json:"created_at"`
+
+	// CreatedBy An account, by its id and its display name, as of the answer: who made a changeset, holds a lock, started a job or deleted a node.
+	CreatedBy externalRef0.UserRef `json:"created_by"`
+	ID        uuid.UUID            `json:"id"`
+
+	// Kind What a changeset records: an edit, an import, a version restored, a node restored from the trash, or the revert of another changeset.
+	Kind ChangesetKind `json:"kind"`
+
+	// Message Why it was made, as a revert's request said; null for none.
+	Message nullable.Nullable[string] `json:"message"`
+
+	// NodeCount How many nodes it changed in the tree, counted up to 1000: 1000 is as many or more.
+	NodeCount  int       `json:"node_count"`
+	NotebookID uuid.UUID `json:"notebook_id"`
+
+	// RevertedBy The reverts of it, newer first, the newest 100.
+	RevertedBy []uuid.UUID `json:"reverted_by"`
+
+	// Reverts The changeset a revert reverts; null for any other, and for a revert whose changeset the purge took.
+	Reverts nullable.Nullable[ChangesetBrief] `json:"reverts"`
+
+	// Trimmed Whether the purge took part of what it changed, its nodes long in the trash: it can no longer be reverted.
+	Trimmed bool `json:"trimmed"`
+
+	// UpdatedAt When it was last written; an edit session's, at its last save.
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// ChangesetBrief A changeset, by its id, kind, author and time.
+type ChangesetBrief struct {
+	CreatedAt time.Time `json:"created_at"`
+
+	// CreatedBy An account, by its id and its display name, as of the answer: who made a changeset, holds a lock, started a job or deleted a node.
+	CreatedBy externalRef0.UserRef `json:"created_by"`
+	ID        uuid.UUID            `json:"id"`
+
+	// Kind What a changeset records: an edit, an import, a version restored, a node restored from the trash, or the revert of another changeset.
+	Kind ChangesetKind `json:"kind"`
+}
+
+// ChangesetChange What a changeset did to a node: kind, created, restored from the trash, deleted, moved under another parent, renamed, reordered among its siblings, or its content written; where it was before and after in the tree, and the version of its content it wrote.
+type ChangesetChange struct {
+	// After Where the node was after; null for a node deleted, and for a content's write alone.
+	After nullable.Nullable[ChangeState] `json:"after"`
+
+	// Before Where the node was before; null for a node created or restored, and for a content's write alone.
+	Before nullable.Nullable[ChangeState] `json:"before"`
+
+	// Content The version of the page's content it wrote; null for none.
+	Content nullable.Nullable[ChangeContent] `json:"content"`
+	Kind    ChangesetChangeKind              `json:"kind"`
+
+	// Node A node a changeset changed, as it is now.
+	Node ChangeNode `json:"node"`
+}
+
+// ChangesetChangeKind defines model for ChangesetChange.Kind.
+type ChangesetChangeKind string
+
+// ChangesetChangePage A page of a changeset's changes, by node id.
+type ChangesetChangePage struct {
+	Data []ChangesetChange `json:"data"`
+
+	// NextCursor The cursor of the next page; null on the last page.
+	NextCursor nullable.Nullable[externalRef0.NextCursor] `json:"next_cursor"`
+}
+
+// ChangesetDetail A changeset, as Changeset, and whether its first 1,000 changes rename or move a node.
+type ChangesetDetail struct {
+	// Changes Its first three changes, by node id.
+	Changes []ChangesetChange `json:"changes"`
+
+	// Client Where the changeset's writes came from, web, api, cli, or mcp:<name> for an MCP client.
+	Client string `json:"client"`
+
+	// ContentCount How many pages' contents it wrote, counted up to 1000: 1000 is as many or more.
+	ContentCount int `json:"content_count"`
+
+	// CreatedAt When it was first written, which the history is ordered by.
+	CreatedAt time.Time `json:"created_at"`
+
+	// CreatedBy An account, by its id and its display name, as of the answer: who made a changeset, holds a lock, started a job or deleted a node.
+	CreatedBy externalRef0.UserRef `json:"created_by"`
+	ID        uuid.UUID            `json:"id"`
+
+	// Kind What a changeset records: an edit, an import, a version restored, a node restored from the trash, or the revert of another changeset.
+	Kind ChangesetKind `json:"kind"`
+
+	// Message Why it was made, as a revert's request said; null for none.
+	Message nullable.Nullable[string] `json:"message"`
+
+	// Moves Whether its first 1,000 changes move a node under another parent.
+	Moves bool `json:"moves"`
+
+	// NodeCount How many nodes it changed in the tree, counted up to 1000: 1000 is as many or more.
+	NodeCount  int       `json:"node_count"`
+	NotebookID uuid.UUID `json:"notebook_id"`
+
+	// Renames Whether its first 1,000 changes rename a node.
+	Renames bool `json:"renames"`
+
+	// RevertedBy The reverts of it, newer first, the newest 100.
+	RevertedBy []uuid.UUID `json:"reverted_by"`
+
+	// Reverts The changeset a revert reverts; null for any other, and for a revert whose changeset the purge took.
+	Reverts nullable.Nullable[ChangesetBrief] `json:"reverts"`
+
+	// Trimmed Whether the purge took part of what it changed, its nodes long in the trash: it can no longer be reverted.
+	Trimmed bool `json:"trimmed"`
+
+	// UpdatedAt When it was last written; an edit session's, at its last save.
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 // ChangesetKind What a changeset records: an edit, an import, a version restored, a node restored from the trash, or the revert of another changeset.
 type ChangesetKind string
+
+// ChangesetPage A page of a notebook's history, newer first.
+type ChangesetPage struct {
+	Data []Changeset `json:"data"`
+
+	// NextCursor The cursor of the next page; null on the last page.
+	NextCursor nullable.Nullable[externalRef0.NextCursor] `json:"next_cursor"`
+}
+
+// ChangesetRevert A revert of a changeset; an empty request has no message.
+type ChangesetRevert struct {
+	// Message Why, kept with the revert's changeset: 1–4,096 bytes of UTF-8, without NUL characters.
+	Message *string `json:"message,omitempty"`
+}
+
+// ChangesetReverted What a revert did: its changeset, null when every node was as it was before the changeset and nothing was written.
+type ChangesetReverted struct {
+	// Changed Whether the revert wrote anything.
+	Changed     bool                         `json:"changed"`
+	ChangesetID nullable.Nullable[uuid.UUID] `json:"changeset_id"`
+}
 
 // Content A page's Markdown, byte for byte: at most 5 MiB (5,242,880 bytes) of UTF-8, without NUL characters. Its line breaks, byte order mark and blanks are kept as they are.
 type Content = string
@@ -441,6 +656,9 @@ type VersionRestored struct {
 	Revision int `json:"revision"`
 }
 
+// ChangesetID defines model for ChangesetID.
+type ChangesetID = uuid.UUID
+
 // EditSessionID defines model for EditSessionID.
 type EditSessionID = uuid.UUID
 
@@ -459,6 +677,33 @@ type Revision = int
 // Problem RFC 9457 problem details. `title` is the HTTP status phrase, `detail` explains this occurrence, and clients branch on `code`. Must match httpserver.Problem; the platform's contract test checks it.
 type Problem = externalRef0.Problem
 
+// ListChangesetChangesParams defines parameters for ListChangesetChanges.
+type ListChangesetChangesParams struct {
+	// Limit The page size, 1–100; 50 when absent. Outside that range the answer is 422 validation_failed on limit.
+	Limit *externalRef0.Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor The next_cursor of the page before; absent for the first page. A cursor that does not decode, has an unknown version or a payload of another shape than this list's, or is not spelled as the server writes it is 400 bad_request on cursor.
+	Cursor *externalRef0.Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
+// ListChangesetsParams defines parameters for ListChangesets.
+type ListChangesetsParams struct {
+	// Actor The account whose changesets to list.
+	Actor *uuid.UUID `form:"actor,omitempty" json:"actor,omitempty"`
+
+	// Client The client whose changesets to list: web, api, cli, mcp:<name> for one MCP client, or mcp for every one.
+	Client *string `form:"client,omitempty" json:"client,omitempty"`
+
+	// PageID The node, a page or an attachment, whose changesets to list.
+	PageID *uuid.UUID `form:"page_id,omitempty" json:"page_id,omitempty"`
+
+	// Limit The page size, 1–100; 50 when absent. Outside that range the answer is 422 validation_failed on limit.
+	Limit *externalRef0.Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor The next_cursor of the page before; absent for the first page. A cursor that does not decode, has an unknown version or a payload of another shape than this list's, or is not spelled as the server writes it is 400 bad_request on cursor.
+	Cursor *externalRef0.Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
 // ListTrashParams defines parameters for ListTrash.
 type ListTrashParams struct {
 	// Limit The page size, 1–100; 50 when absent. Outside that range the answer is 422 validation_failed on limit.
@@ -476,6 +721,9 @@ type ListPageVersionsParams struct {
 	// Cursor The next_cursor of the page before; absent for the first page. A cursor that does not decode, has an unknown version or a payload of another shape than this list's, or is not spelled as the server writes it is 400 bad_request on cursor.
 	Cursor *externalRef0.Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
+
+// RevertChangesetJSONRequestBody defines body for RevertChangeset for application/json ContentType.
+type RevertChangesetJSONRequestBody = ChangesetRevert
 
 // RenameNodeJSONRequestBody defines body for RenameNode for application/json ContentType.
 type RenameNodeJSONRequestBody = NodeRename
@@ -500,6 +748,15 @@ type RestorePageVersionJSONRequestBody = VersionRestore
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// GetChangeset Read a changeset
+	// (GET /api/v0/changesets/{changeset_id})
+	GetChangeset(w http.ResponseWriter, r *http.Request, changesetID ChangesetID)
+	// ListChangesetChanges List a changeset's changes
+	// (GET /api/v0/changesets/{changeset_id}/changes)
+	ListChangesetChanges(w http.ResponseWriter, r *http.Request, changesetID ChangesetID, params ListChangesetChangesParams)
+	// RevertChangeset Revert a changeset
+	// (POST /api/v0/changesets/{changeset_id}/revert)
+	RevertChangeset(w http.ResponseWriter, r *http.Request, changesetID ChangesetID)
 	// EndEditSession End an edit session
 	// (DELETE /api/v0/edit-sessions/{edit_session_id})
 	EndEditSession(w http.ResponseWriter, r *http.Request, editSessionID EditSessionID)
@@ -521,6 +778,9 @@ type ServerInterface interface {
 	// GetTrashItem Read a trash item
 	// (GET /api/v0/nodes/{node_id}/trash-item)
 	GetTrashItem(w http.ResponseWriter, r *http.Request, nodeID NodeID)
+	// ListChangesets List a notebook's history
+	// (GET /api/v0/notebooks/{notebook_id}/changesets)
+	ListChangesets(w http.ResponseWriter, r *http.Request, notebookID NotebookID, params ListChangesetsParams)
 	// ListNodes List a notebook's tree
 	// (GET /api/v0/notebooks/{notebook_id}/nodes)
 	ListNodes(w http.ResponseWriter, r *http.Request, notebookID NotebookID)
@@ -576,6 +836,113 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// GetChangeset operation middleware
+func (siw *ServerInterfaceWrapper) GetChangeset(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "changeset_id" -------------
+	var changesetID ChangesetID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "changeset_id", r.PathValue("changeset_id"), &changesetID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "changeset_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetChangeset(w, r, changesetID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListChangesetChanges operation middleware
+func (siw *ServerInterfaceWrapper) ListChangesetChanges(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "changeset_id" -------------
+	var changesetID ChangesetID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "changeset_id", r.PathValue("changeset_id"), &changesetID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "changeset_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListChangesetChangesParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListChangesetChanges(w, r, changesetID, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevertChangeset operation middleware
+func (siw *ServerInterfaceWrapper) RevertChangeset(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "changeset_id" -------------
+	var changesetID ChangesetID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "changeset_id", r.PathValue("changeset_id"), &changesetID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "changeset_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevertChangeset(w, r, changesetID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // EndEditSession operation middleware
 func (siw *ServerInterfaceWrapper) EndEditSession(w http.ResponseWriter, r *http.Request) {
@@ -750,6 +1117,100 @@ func (siw *ServerInterfaceWrapper) GetTrashItem(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetTrashItem(w, r, nodeID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListChangesets operation middleware
+func (siw *ServerInterfaceWrapper) ListChangesets(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "notebook_id" -------------
+	var notebookID NotebookID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "notebook_id", r.PathValue("notebook_id"), &notebookID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "notebook_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListChangesetsParams
+
+	// ------------- Optional query parameter "actor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "actor", r.URL.Query(), &params.Actor, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "actor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "actor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "client" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "client", r.URL.Query(), &params.Client, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "client"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "client", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "page_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page_id", r.URL.Query(), &params.PageID, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListChangesets(w, r, notebookID, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1376,6 +1837,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/notebooks/{notebook_id}/trash", wrapper.ListTrash)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/nodes/{node_id}/trash-item", wrapper.GetTrashItem)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/nodes/{node_id}/restore", wrapper.RestoreNode)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/notebooks/{notebook_id}/changesets", wrapper.ListChangesets)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/changesets/{changeset_id}", wrapper.GetChangeset)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/changesets/{changeset_id}/changes", wrapper.ListChangesetChanges)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/changesets/{changeset_id}/revert", wrapper.RevertChangeset)
 
 	return m
 }
@@ -1388,6 +1853,146 @@ type ProblemApplicationProblemPlusJSONResponse struct {
 	Body externalRef0.Problem
 
 	Headers ProblemResponseHeaders
+}
+
+type GetChangesetRequestObject struct {
+	ChangesetID ChangesetID `json:"changeset_id"`
+}
+
+type GetChangesetResponseObject interface {
+	VisitGetChangesetResponse(w http.ResponseWriter) error
+}
+
+type GetChangeset200JSONResponse ChangesetDetail
+
+func (response GetChangeset200JSONResponse) VisitGetChangesetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetChangesetdefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response GetChangesetdefaultApplicationProblemPlusJSONResponse) VisitGetChangesetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListChangesetChangesRequestObject struct {
+	ChangesetID ChangesetID `json:"changeset_id"`
+	Params      ListChangesetChangesParams
+}
+
+type ListChangesetChangesResponseObject interface {
+	VisitListChangesetChangesResponse(w http.ResponseWriter) error
+}
+
+type ListChangesetChanges200JSONResponse ChangesetChangePage
+
+func (response ListChangesetChanges200JSONResponse) VisitListChangesetChangesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListChangesetChangesdefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response ListChangesetChangesdefaultApplicationProblemPlusJSONResponse) VisitListChangesetChangesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevertChangesetRequestObject struct {
+	ChangesetID ChangesetID `json:"changeset_id"`
+	Body        *RevertChangesetJSONRequestBody
+}
+
+type RevertChangesetResponseObject interface {
+	VisitRevertChangesetResponse(w http.ResponseWriter) error
+}
+
+type RevertChangeset200JSONResponse ChangesetReverted
+
+func (response RevertChangeset200JSONResponse) VisitRevertChangesetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevertChangesetdefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response RevertChangesetdefaultApplicationProblemPlusJSONResponse) VisitRevertChangesetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type EndEditSessionRequestObject struct {
@@ -1685,6 +2290,53 @@ type GetTrashItemdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response GetTrashItemdefaultApplicationProblemPlusJSONResponse) VisitGetTrashItemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListChangesetsRequestObject struct {
+	NotebookID NotebookID `json:"notebook_id"`
+	Params     ListChangesetsParams
+}
+
+type ListChangesetsResponseObject interface {
+	VisitListChangesetsResponse(w http.ResponseWriter) error
+}
+
+type ListChangesets200JSONResponse ChangesetPage
+
+func (response ListChangesets200JSONResponse) VisitListChangesetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListChangesetsdefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response ListChangesetsdefaultApplicationProblemPlusJSONResponse) VisitListChangesetsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -2398,6 +3050,15 @@ func (response GetPageViewdefaultApplicationProblemPlusJSONResponse) VisitGetPag
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// GetChangeset Read a changeset
+	// (GET /api/v0/changesets/{changeset_id})
+	GetChangeset(ctx context.Context, request GetChangesetRequestObject) (GetChangesetResponseObject, error)
+	// ListChangesetChanges List a changeset's changes
+	// (GET /api/v0/changesets/{changeset_id}/changes)
+	ListChangesetChanges(ctx context.Context, request ListChangesetChangesRequestObject) (ListChangesetChangesResponseObject, error)
+	// RevertChangeset Revert a changeset
+	// (POST /api/v0/changesets/{changeset_id}/revert)
+	RevertChangeset(ctx context.Context, request RevertChangesetRequestObject) (RevertChangesetResponseObject, error)
 	// EndEditSession End an edit session
 	// (DELETE /api/v0/edit-sessions/{edit_session_id})
 	EndEditSession(ctx context.Context, request EndEditSessionRequestObject) (EndEditSessionResponseObject, error)
@@ -2419,6 +3080,9 @@ type StrictServerInterface interface {
 	// GetTrashItem Read a trash item
 	// (GET /api/v0/nodes/{node_id}/trash-item)
 	GetTrashItem(ctx context.Context, request GetTrashItemRequestObject) (GetTrashItemResponseObject, error)
+	// ListChangesets List a notebook's history
+	// (GET /api/v0/notebooks/{notebook_id}/changesets)
+	ListChangesets(ctx context.Context, request ListChangesetsRequestObject) (ListChangesetsResponseObject, error)
 	// ListNodes List a notebook's tree
 	// (GET /api/v0/notebooks/{notebook_id}/nodes)
 	ListNodes(ctx context.Context, request ListNodesRequestObject) (ListNodesResponseObject, error)
@@ -2503,6 +3167,95 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// GetChangeset operation middleware
+func (sh *strictHandler) GetChangeset(w http.ResponseWriter, r *http.Request, changesetID ChangesetID) {
+	var request GetChangesetRequestObject
+
+	request.ChangesetID = changesetID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetChangeset(ctx, request.(GetChangesetRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetChangeset")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetChangesetResponseObject); ok {
+		if err := validResponse.VisitGetChangesetResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListChangesetChanges operation middleware
+func (sh *strictHandler) ListChangesetChanges(w http.ResponseWriter, r *http.Request, changesetID ChangesetID, params ListChangesetChangesParams) {
+	var request ListChangesetChangesRequestObject
+
+	request.ChangesetID = changesetID
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListChangesetChanges(ctx, request.(ListChangesetChangesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListChangesetChanges")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListChangesetChangesResponseObject); ok {
+		if err := validResponse.VisitListChangesetChangesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RevertChangeset operation middleware
+func (sh *strictHandler) RevertChangeset(w http.ResponseWriter, r *http.Request, changesetID ChangesetID) {
+	var request RevertChangesetRequestObject
+
+	request.ChangesetID = changesetID
+
+	var body RevertChangesetJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RevertChangeset(ctx, request.(RevertChangesetRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RevertChangeset")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RevertChangesetResponseObject); ok {
+		if err := validResponse.VisitRevertChangesetResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // EndEditSession operation middleware
@@ -2694,6 +3447,33 @@ func (sh *strictHandler) GetTrashItem(w http.ResponseWriter, r *http.Request, no
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetTrashItemResponseObject); ok {
 		if err := validResponse.VisitGetTrashItemResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListChangesets operation middleware
+func (sh *strictHandler) ListChangesets(w http.ResponseWriter, r *http.Request, notebookID NotebookID, params ListChangesetsParams) {
+	var request ListChangesetsRequestObject
+
+	request.NotebookID = notebookID
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListChangesets(ctx, request.(ListChangesetsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListChangesets")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListChangesetsResponseObject); ok {
+		if err := validResponse.VisitListChangesetsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -1160,6 +1160,98 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v0/notebooks/{notebook_id}/changesets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List a notebook's history
+         * @description The notebook's changesets, newer first by when each was first written, a page at a time: what each write of the notebook's tree and contents changed, by whom and from where, with its counts, the changesets that reverted it and its first three changes. A filter narrows it: actor, one account's; client, one client's (web, api, cli or mcp:<name>), or mcp, every MCP client's; page_id, those that changed the node, a page or an attachment, alive or in the trash. Any role in the notebook can read it. A cursor the list cannot read is bad_request, before anything else; a notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found; a page_id that is no node of the notebook, one the purge took among them, is page.not_found; a client that is none of those, or a limit outside 1–100, is validation_failed.
+         */
+        get: operations["listChangesets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/changesets/{changeset_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The changeset's id. */
+                changeset_id: components["parameters"]["ChangesetID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read a changeset
+         * @description The changeset as listChangesets lists it, and whether its first 1,000 changes rename or move a node, whose revert leaves the links written to the new names and places as they are. Any role in its notebook can read it. A changeset that does not exist, whose notebook is deleted, or whose notebook the caller has no role in is page.changeset_not_found.
+         */
+        get: operations["getChangeset"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/changesets/{changeset_id}/changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The changeset's id. */
+                changeset_id: components["parameters"]["ChangesetID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List a changeset's changes
+         * @description What the changeset did to each node it changed, by node id, a page at a time: where the node was before and after it in the tree, and the version of its content it wrote. Any role in its notebook can read them. A cursor the list cannot read is bad_request, before anything else; a changeset that does not exist, whose notebook is deleted, or whose notebook the caller has no role in is page.changeset_not_found; a limit outside 1–100 is validation_failed.
+         */
+        get: operations["listChangesetChanges"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/changesets/{changeset_id}/revert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The changeset's id. */
+                changeset_id: components["parameters"]["ChangesetID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revert a changeset
+         * @description Puts every node the changeset changed back as it was before it, in a changeset of its own, a revert, whose message is the request's, whole or not at all. Its notebook's editors and admins can, whoever made the changeset. Each node is compared by its state, not by when it changed: it must be as the changeset left it, where it put it and with the content it wrote, a node it deleted still in its trash item, else it is changed. Nodes it created or restored go to the trash, at the revert's time; nodes it deleted come back where they were, with the names they had, their trash item whole, at its time; nodes it renamed or moved go back where they were, under the same name and order; pages whose content it wrote get back the content they had, as a new version. The links written by a rename or a move stay as they are. What stops a revert is a conflict, listed in conflicts, the first 100 of conflict_count: a node changed since, a trash item past its restorable_until (expired), a node that would go back under a parent no longer there (parent_gone) or into a cycle (cycle) or deeper than ten levels of pages (too_deep), a node another changeset put under one the revert deletes (children_added), a name another node took where one would go back (title_taken, naming the holder in holder_id). One revert puts back at most 10,000 nodes, restores trash items whose versions and records in changesets are 400,000 at most, and, of more than one page, writes back or restores at most 100 pages, 8 MiB of content and 20,000 links. A message that is empty, longer than 4,096 bytes, not UTF-8 or with a NUL is validation_failed; then a changeset that does not exist, whose notebook is deleted, or whose notebook the caller has no role in is page.changeset_not_found; a reader is forbidden; then a changeset part of which the purge took is page.changeset_trimmed; then one past the bounds is page.revert_too_large; then the conflicts, page.revert_conflict; then a version or a content in the trash to compare, write back or restore that the purge took is page.changeset_trimmed, before any content is parsed; when the server parses as much content as it can at once, the revert waits a moment, then is server_busy: the links are counted as the contents are parsed, so that their page.revert_too_large may come after it. The revert reads and checks it all again as it writes: page.changeset_trimmed, page.revert_too_large and page.revert_conflict for what changed meanwhile; then a page whose lock an edit session holds, the caller's elsewhere among them, is page.locked, naming the holder in lock. A changeset whose nodes are all as they were before it writes nothing: changed is false.
+         */
+        post: operations["revertChangeset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v0/pages/{page_id}/backlinks": {
         parameters: {
             query?: never;
@@ -2347,6 +2439,152 @@ export interface components {
              */
             changeset_id: string;
         };
+        /** @description A changeset, by its id, kind, author and time. */
+        ChangesetBrief: {
+            /** Format: uuid */
+            id: string;
+            kind: components["schemas"]["ChangesetKind"];
+            created_by: components["schemas"]["UserRef"];
+            /** Format: date-time */
+            created_at: string;
+        };
+        /** @description A node a changeset changed, as it is now. */
+        ChangeNode: {
+            /** Format: uuid */
+            id: string;
+            kind: components["schemas"]["NodeKind"];
+            /** @description Its name now. */
+            name: string;
+            /** @description Whether it is alive; false in the trash. */
+            alive: boolean;
+        };
+        /** @description Where a node was in the tree. */
+        ChangeState: {
+            /**
+             * Format: uuid
+             * @description The parent page; null at the notebook's root.
+             */
+            parent_id: string | null;
+            /** @description The parent's name now; null at the root, and for a parent the purge took. */
+            parent_name: string | null;
+            /** @description The node's name there. */
+            name: string;
+        };
+        /** @description A version of a page's content a changeset wrote. */
+        ChangeContent: {
+            /** @description The revision it was written on; null for the version that created the page. */
+            base_revision: number | null;
+            /** @description The revision it wrote. */
+            revision: number;
+        };
+        /** @description What a changeset did to a node: kind, created, restored from the trash, deleted, moved under another parent, renamed, reordered among its siblings, or its content written; where it was before and after in the tree, and the version of its content it wrote. */
+        ChangesetChange: {
+            node: components["schemas"]["ChangeNode"];
+            /** @enum {string} */
+            kind: "created" | "restored" | "deleted" | "moved" | "renamed" | "reordered" | "content";
+            /** @description Where the node was before; null for a node created or restored, and for a content's write alone. */
+            before: components["schemas"]["ChangeState"] | null;
+            /** @description Where the node was after; null for a node deleted, and for a content's write alone. */
+            after: components["schemas"]["ChangeState"] | null;
+            /** @description The version of the page's content it wrote; null for none. */
+            content: components["schemas"]["ChangeContent"] | null;
+        };
+        /** @description A changeset of a notebook's history: the writes one action made, by whom and from where, and what they changed. */
+        Changeset: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            notebook_id: string;
+            kind: components["schemas"]["ChangesetKind"];
+            /** @description Where the changeset's writes came from, web, api, cli, or mcp:<name> for an MCP client. */
+            client: string;
+            /** @description Why it was made, as a revert's request said; null for none. */
+            message: string | null;
+            created_by: components["schemas"]["UserRef"];
+            /**
+             * Format: date-time
+             * @description When it was first written, which the history is ordered by.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When it was last written; an edit session's, at its last save.
+             */
+            updated_at: string;
+            /** @description The changeset a revert reverts; null for any other, and for a revert whose changeset the purge took. */
+            reverts: components["schemas"]["ChangesetBrief"] | null;
+            /** @description The reverts of it, newer first, the newest 100. */
+            reverted_by: string[];
+            /** @description Whether the purge took part of what it changed, its nodes long in the trash: it can no longer be reverted. */
+            trimmed: boolean;
+            /** @description How many nodes it changed in the tree, counted up to 1000: 1000 is as many or more. */
+            node_count: number;
+            /** @description How many pages' contents it wrote, counted up to 1000: 1000 is as many or more. */
+            content_count: number;
+            /** @description Its first three changes, by node id. */
+            changes: components["schemas"]["ChangesetChange"][];
+        };
+        /** @description A page of a notebook's history, newer first. */
+        ChangesetPage: {
+            data: components["schemas"]["Changeset"][];
+            next_cursor: components["schemas"]["NextCursor"];
+        };
+        /** @description A changeset, as Changeset, and whether its first 1,000 changes rename or move a node. */
+        ChangesetDetail: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            notebook_id: string;
+            kind: components["schemas"]["ChangesetKind"];
+            /** @description Where the changeset's writes came from, web, api, cli, or mcp:<name> for an MCP client. */
+            client: string;
+            /** @description Why it was made, as a revert's request said; null for none. */
+            message: string | null;
+            created_by: components["schemas"]["UserRef"];
+            /**
+             * Format: date-time
+             * @description When it was first written, which the history is ordered by.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When it was last written; an edit session's, at its last save.
+             */
+            updated_at: string;
+            /** @description The changeset a revert reverts; null for any other, and for a revert whose changeset the purge took. */
+            reverts: components["schemas"]["ChangesetBrief"] | null;
+            /** @description The reverts of it, newer first, the newest 100. */
+            reverted_by: string[];
+            /** @description Whether the purge took part of what it changed, its nodes long in the trash: it can no longer be reverted. */
+            trimmed: boolean;
+            /** @description How many nodes it changed in the tree, counted up to 1000: 1000 is as many or more. */
+            node_count: number;
+            /** @description How many pages' contents it wrote, counted up to 1000: 1000 is as many or more. */
+            content_count: number;
+            /** @description Its first three changes, by node id. */
+            changes: components["schemas"]["ChangesetChange"][];
+            /** @description Whether its first 1,000 changes rename a node. */
+            renames: boolean;
+            /** @description Whether its first 1,000 changes move a node under another parent. */
+            moves: boolean;
+        };
+        /** @description A page of a changeset's changes, by node id. */
+        ChangesetChangePage: {
+            data: components["schemas"]["ChangesetChange"][];
+            next_cursor: components["schemas"]["NextCursor"];
+        };
+        /** @description A revert of a changeset; an empty request has no message. */
+        ChangesetRevert: {
+            /** @description Why, kept with the revert's changeset: 1–4,096 bytes of UTF-8, without NUL characters. */
+            message?: string;
+        };
+        /** @description What a revert did: its changeset, null when every node was as it was before the changeset and nothing was written. */
+        ChangesetReverted: {
+            /** Format: uuid */
+            changeset_id: string | null;
+            /** @description Whether the revert wrote anything. */
+            changed: boolean;
+        };
         /** @description A page that links to another. */
         Backlink: {
             /**
@@ -2584,10 +2822,10 @@ export interface components {
             total: number;
         };
         /**
-         * @description Why a job failed: interrupted (the server stopped or restarted, the job stopped beating, or the job queue dropped it before it began), timeout (it ran past the instance's limit), forbidden (its starter could no longer read the notebook as it ran, or write in it as an import ran), root_not_found (the page exported, or imported under, was gone as it ran), storage_full, contributor_conflict (a file the server adds was where a node is), internal; for an import's archive as a whole, nothing written: not_zip (no zip, or its directory is broken), too_many_entries (more entries than the instance takes, or a directory larger than 64 MiB), unpacked_too_large (its entries unpack to more than the instance takes); tree_changed (a page the import created was deleted as it ran, its later nodes not written).
+         * @description Why a job failed: interrupted (the server stopped or restarted, the job stopped beating, or the job queue dropped it before it began), timeout (it ran past the instance's limit), forbidden (its starter could no longer read the notebook as it ran, or write in it as an import ran), root_not_found (the page exported, or imported under, was gone as it ran), storage_full, contributor_conflict (a file the server adds was where a node is), internal; for an import's archive as a whole, nothing written: not_zip (no zip, or its directory is broken), too_many_entries (more entries than the instance takes, or a directory larger than 64 MiB), unpacked_too_large (its entries unpack to more than the instance takes); tree_changed (a page the import created was deleted as it ran, its later nodes not written); changeset_reverted (the changeset it writes in was reverted as it ran, its later nodes not written).
          * @enum {string}
          */
-        TransferFailure: "interrupted" | "timeout" | "forbidden" | "root_not_found" | "storage_full" | "contributor_conflict" | "internal" | "not_zip" | "too_many_entries" | "unpacked_too_large" | "tree_changed";
+        TransferFailure: "interrupted" | "timeout" | "forbidden" | "root_not_found" | "storage_full" | "contributor_conflict" | "internal" | "not_zip" | "too_many_entries" | "unpacked_too_large" | "tree_changed" | "changeset_reverted";
         /** @description What the job did before it ended, as it wrote its end. An export that could not write its end, which the server fails later as interrupted (it restarted, the job stopped beating, the job queue dropped it), counts nothing: its progress tells how far it went. An import writes its counts and problems as it goes, every ten seconds at most: one interrupted keeps those it last wrote, of the batches written by then. */
         TransferCounts: {
             /**
@@ -2763,6 +3001,8 @@ export interface components {
         EditSessionID: string;
         /** @description The id of a node of a notebook's tree. */
         NodeID: string;
+        /** @description The changeset's id. */
+        ChangesetID: string;
         /** @description A tag's name, without its '#', as listTags writes it and a reading view's tag link carries it; a nested tag's '/' is written %2F (a%2Fb). The tag "/" alone cannot be named: the path reads its %2F as a trailing slash, a path no operation has (404 not_found). */
         Tag: string;
         /** @description The job's id. */
@@ -2868,6 +3108,17 @@ export type TrashAttachment = components['schemas']['TrashAttachment'];
 export type TrashItem = components['schemas']['TrashItem'];
 export type TrashItemPage = components['schemas']['TrashItemPage'];
 export type NodeRestored = components['schemas']['NodeRestored'];
+export type ChangesetBrief = components['schemas']['ChangesetBrief'];
+export type ChangeNode = components['schemas']['ChangeNode'];
+export type ChangeState = components['schemas']['ChangeState'];
+export type ChangeContent = components['schemas']['ChangeContent'];
+export type ChangesetChange = components['schemas']['ChangesetChange'];
+export type Changeset = components['schemas']['Changeset'];
+export type ChangesetPage = components['schemas']['ChangesetPage'];
+export type ChangesetDetail = components['schemas']['ChangesetDetail'];
+export type ChangesetChangePage = components['schemas']['ChangesetChangePage'];
+export type ChangesetRevert = components['schemas']['ChangesetRevert'];
+export type ChangesetReverted = components['schemas']['ChangesetReverted'];
 export type Backlink = components['schemas']['Backlink'];
 export type BacklinkPage = components['schemas']['BacklinkPage'];
 export type PageProperty = components['schemas']['PageProperty'];
@@ -2916,6 +3167,7 @@ export type ParameterPageId = components['parameters']['PageID'];
 export type ParameterRevision = components['parameters']['Revision'];
 export type ParameterEditSessionId = components['parameters']['EditSessionID'];
 export type ParameterNodeId = components['parameters']['NodeID'];
+export type ParameterChangesetId = components['parameters']['ChangesetID'];
 export type ParameterTag = components['parameters']['Tag'];
 export type ParameterJobId = components['parameters']['JobID'];
 export type HeaderContentDisposition = components['headers']['ContentDisposition'];
@@ -4506,6 +4758,122 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NodeRestored"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    listChangesets: {
+        parameters: {
+            query?: {
+                /** @description The account whose changesets to list. */
+                actor?: string;
+                /** @description The client whose changesets to list: web, api, cli, mcp:<name> for one MCP client, or mcp for every one. */
+                client?: string;
+                /** @description The node, a page or an attachment, whose changesets to list. */
+                page_id?: string;
+                /** @description The page size, 1–100; 50 when absent. Outside that range the answer is 422 validation_failed on limit. */
+                limit?: components["parameters"]["Limit"];
+                /** @description The next_cursor of the page before; absent for the first page. A cursor that does not decode, has an unknown version or a payload of another shape than this list's, or is not spelled as the server writes it is 400 bad_request on cursor. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the notebook's history. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangesetPage"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    getChangeset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The changeset's id. */
+                changeset_id: components["parameters"]["ChangesetID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The changeset. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangesetDetail"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    listChangesetChanges: {
+        parameters: {
+            query?: {
+                /** @description The page size, 1–100; 50 when absent. Outside that range the answer is 422 validation_failed on limit. */
+                limit?: components["parameters"]["Limit"];
+                /** @description The next_cursor of the page before; absent for the first page. A cursor that does not decode, has an unknown version or a payload of another shape than this list's, or is not spelled as the server writes it is 400 bad_request on cursor. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path: {
+                /** @description The changeset's id. */
+                changeset_id: components["parameters"]["ChangesetID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the changeset's changes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangesetChangePage"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    revertChangeset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The changeset's id. */
+                changeset_id: components["parameters"]["ChangesetID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ChangesetRevert"];
+            };
+        };
+        responses: {
+            /** @description What the revert did. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangesetReverted"];
                 };
             };
             default: components["responses"]["Problem"];

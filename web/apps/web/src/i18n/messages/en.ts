@@ -508,6 +508,7 @@ export const en = {
   "transfer.failure.too_many_entries": "The zip holds more entries than the server takes.",
   "transfer.failure.unpacked_too_large": "The zip unpacks to more than the server takes.",
   "transfer.failure.tree_changed": "A page the import had written was deleted while it ran.",
+  "transfer.failure.changeset_reverted": "What the import had written was reverted while it ran.",
   "transfer.failure.unknown": "The job failed.",
   "transfer.problemsTitle": "Where the vault differs",
   "transfer.problem.renamed": "{path} is written as {to}: links to its old name do not reach it in Obsidian.",
@@ -743,6 +744,10 @@ export const en = {
   "problem.page.restore_expired": "This can no longer be restored: its time in the trash is over.",
   "problem.page.restore_too_large": "This is too large to restore at once.",
   "problem.page.trash_changed": "The trash changed since you opened it. Look again.",
+  "problem.page.changeset_not_found": "This change does not exist, or you cannot see it.",
+  "problem.page.changeset_trimmed": "Part of this change has been purged from the trash: it can no longer be reverted.",
+  "problem.page.revert_too_large": "This change is too large to revert at once.",
+  "problem.page.revert_conflict": "What this change touched has changed since: it cannot be reverted as it is.",
   "problem.linking.pages_locked":
     "Pages whose links this change would rewrite are being edited. Try again once their editors are done.",
   "problem.network": "Cannot reach the server. Check the connection and try again.",

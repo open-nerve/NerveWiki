@@ -134,7 +134,28 @@ func matrixPages() []matrixPage {
 	for _, nb := range sessionNotebooks() {
 		pages = append(pages, matrixPage{othersDraftIn(nb), nb, ""}, matrixPage{tasksIn(nb), nb, ""})
 	}
+	for _, nb := range matrixRevert() {
+		pages = append(pages, matrixPage{renamedIn(nb), nb, ""})
+	}
 	return pages
+}
+
+// matrixRevert are the notebooks whose renames are seeded, those of the
+// notebook columns (M8/P3 design 3.10): a changeset of its own renamed
+// each one's page renamedIn from wasIn, by the notebook's creator, a
+// second after the pages were made.
+func matrixRevert() []string {
+	return sessionNotebooks()
+}
+
+// renamedIn is a notebook's page a seeded changeset renamed; wasIn its name
+// before.
+func renamedIn(notebook string) string {
+	return "renamed-" + notebook
+}
+
+func wasIn(notebook string) string {
+	return "was-" + notebook
 }
 
 // matrixTrash are the trash items seeded, a page of each notebook of the
@@ -264,6 +285,7 @@ type seeded struct {
 	assets          map[string]uuid.UUID // by name
 	sessions        map[string]uuid.UUID // by page/owner
 	jobs            map[string]uuid.UUID // by notebook/owner
+	changesets      map[string]uuid.UUID // by notebook
 	// accounts are the columns' account ids, which registering them through
 	// the API gives: prepareMatrix fills the map, so they are known to the
 	// rows' requests, not to the coverage test, which reads the paths alone.
@@ -273,7 +295,11 @@ type seeded struct {
 func newSeeded() seeded {
 	s := seeded{workspaces: map[string]uuid.UUID{}, memberships: map[string]uuid.UUID{}, invitations: map[string]uuid.UUID{},
 		notebooks: map[string]uuid.UUID{}, notebookMembers: map[string]uuid.UUID{}, pages: map[string]uuid.UUID{},
-		assets: map[string]uuid.UUID{}, sessions: map[string]uuid.UUID{}, jobs: map[string]uuid.UUID{}, accounts: map[caller]uuid.UUID{}}
+		assets: map[string]uuid.UUID{}, sessions: map[string]uuid.UUID{}, jobs: map[string]uuid.UUID{}, changesets: map[string]uuid.UUID{},
+		accounts: map[caller]uuid.UUID{}}
+	for _, nb := range matrixRevert() {
+		s.changesets[nb] = uuid.NewV7()
+	}
 	for _, p := range slices.Concat(matrixPages(), matrixTrash()) {
 		s.pages[p.name] = uuid.NewV7()
 	}
@@ -403,6 +429,16 @@ func (s seeded) job(name string, owner caller) uuid.UUID {
 	return id
 }
 
+// changeset is the id of the rename seeded in the notebook name.
+func (s seeded) changeset(name string) uuid.UUID {
+	id, ok := s.changesets[name]
+	if !ok {
+		s.t.Helper()
+		s.t.Fatalf("no changeset of %s is seeded", name)
+	}
+	return id
+}
+
 // workspaceOfRow is the slug of the workspace a seeded row's id is in.
 func (s seeded) workspaceOfRow(id uuid.UUID) (string, bool) {
 	for _, n := range matrixNotebooks() {
@@ -424,6 +460,11 @@ func (s seeded) workspaceOfRow(id uuid.UUID) (string, bool) {
 	for key, seededID := range s.jobs {
 		if seededID == id {
 			name, _, _ := strings.Cut(key, "/")
+			return s.workspaceOfRow(s.notebooks[name])
+		}
+	}
+	for name, seededID := range s.changesets {
+		if seededID == id {
 			return s.workspaceOfRow(s.notebooks[name])
 		}
 	}
@@ -572,6 +613,15 @@ func prepareMatrix(t *testing.T) matrixData {
 				"SELECT id, $3, 1, sha256(convert_to($3, 'UTF8')), octet_length($3), created_by_id, $2 FROM nodes WHERE id = $1",
 				d.seeded.pages[p.name], now, content)
 			exec(seededPageHistory, d.seeded.pages[p.name])
+		}
+		for _, nb := range matrixRevert() {
+			exec("INSERT INTO changesets (id, notebook_id, kind, client, created_by_id, created_at, updated_at) "+
+				"SELECT $1, n.notebook_id, 'edit', 'web', n.created_by_id, $3, $3 FROM nodes n WHERE n.id = $2",
+				d.seeded.changesets[nb], d.seeded.pages[renamedIn(nb)], now.Add(time.Second))
+			exec("INSERT INTO changeset_items (id, changeset_id, node_id, before_parent_id, before_name, before_sort_order, "+
+				"after_parent_id, after_name, after_sort_order, created_at, updated_at) "+
+				"SELECT gen_random_uuid(), $1, n.id, n.parent_id, $3, n.sort_order, n.parent_id, n.name, n.sort_order, $4, $4 "+
+				"FROM nodes n WHERE n.id = $2", d.seeded.changesets[nb], d.seeded.pages[renamedIn(nb)], wasIn(nb), now.Add(time.Second))
 		}
 		trashedAt := now.Add(-time.Hour)
 		for i, p := range matrixTrash() {
