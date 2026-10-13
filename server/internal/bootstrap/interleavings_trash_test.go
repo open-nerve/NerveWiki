@@ -11,6 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres/pgtest"
@@ -226,6 +227,44 @@ func TestRestoringWhatThePurgeTakes(t *testing.T) {
 			tm.checkTrash(t)
 		})
 	}
+}
+
+// A group the purge is midway through (M8/P2A fix check 1, N-1): the
+// purge took its items, versions and contents, then a batch of one leaf
+// of its nodes. Its root's counts are then more than what is left of it,
+// which the pages' invariant allows of a root whose content is gone; the
+// purge's next run takes the rest.
+func TestAGroupThePurgeIsMidwayThrough(t *testing.T) {
+	tm := newAcmeTeam(t, "member", "")
+	nb := tm.openNotebook(t, "alice", "Eng")
+	p := tm.createPage(t, "alice", nb, "", "P")
+	for _, title := range []string{"A", "B"} {
+		tm.createPage(t, "alice", nb, p, title)
+	}
+	tm.send(t, nodeDeletion("alice", p), http.StatusNoContent)
+	before := time.Now().Add(2 * time.Hour)
+	if err := tm.purgeBefore(t, before, "changeset_items", "page_revisions", "page_contents")(); err != nil {
+		t.Fatalf("the purge of what follows the nodes: %v", err)
+	}
+	for _, purger := range page.Purgers(tm.pool) {
+		if purger.Table != "nodes" {
+			continue
+		}
+		if n, err := purger.Purge(context.Background(), before, 1); err != nil || n != 1 {
+			t.Fatalf("a batch of one node = %d, %v; want a leaf", n, err)
+		}
+	}
+	if n := count(t, tm.pool, "SELECT count(*) FROM nodes WHERE deleted_at IS NOT NULL AND id <> $1", p); n != 1 {
+		t.Fatalf("%d of P's pages left, want one of two", n)
+	}
+	tm.checkTrash(t)
+	if err := tm.purgeBefore(t, before)(); err != nil {
+		t.Fatalf("the purge: %v", err)
+	}
+	if n := count(t, tm.pool, "SELECT count(*) FROM nodes WHERE deleted_at IS NOT NULL"); n != 0 {
+		t.Errorf("%d nodes deleted left, want none", n)
+	}
+	tm.checkTrash(t)
 }
 
 // A restore and the purge of an attachment's row (M7 handoff, item 2): the

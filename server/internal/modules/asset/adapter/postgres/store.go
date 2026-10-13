@@ -32,6 +32,12 @@ func (s *Store) queries(ctx context.Context) *gen.Queries {
 	return gen.New(postgres.DB(ctx, s.pool))
 }
 
+// planned is queries with each statement planned with its arguments
+// (postgres.Planned): for those a plan for any arguments makes much slower.
+func (s *Store) planned(ctx context.Context) *gen.Queries {
+	return gen.New(postgres.Planned(postgres.DB(ctx, s.pool)))
+}
+
 // CreateBlob implements app.Rows.
 func (s *Store) CreateBlob(ctx context.Context, b domain.Blob) error {
 	err := s.queries(ctx).CreateBlob(ctx, gen.CreateBlobParams{

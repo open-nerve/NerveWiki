@@ -23,8 +23,9 @@ import (
 // deletion (M8/P2 design 3.4): 100 folders, 900 pages in each, and under
 // those pages the roots, deleted a second apart from now() back. It
 // answers a store on one connection, which caches the statements, the
-// notebook and the newest 100 roots' ids.
-func trashOfManyItems(t *testing.T) (*postgresadapter.Store, uuid.UUID, []uuid.UUID) {
+// notebook, the newest 100 roots' ids, and analyze, which takes the
+// statistics.
+func trashOfManyItems(t *testing.T) (*postgresadapter.Store, uuid.UUID, []uuid.UUID, func()) {
 	t.Helper()
 	ctx := context.Background()
 	f := newFixture(t)
@@ -74,50 +75,63 @@ func trashOfManyItems(t *testing.T) (*postgresadapter.Store, uuid.UUID, []uuid.U
 		t.Fatal(err)
 	}
 	t.Cleanup(pool.Close)
-	return postgresadapter.New(pool), f.eng, roots
+	return postgresadapter.New(pool), f.eng, roots, func() { f.exec(t, "ANALYZE") }
 }
 
 // A page of the trash reads a range of its index, whatever the notebook
-// holds besides, eight times on one connection: from the newest, and from
-// a cursor halfway down.
+// holds besides, eight times on one connection, which plans it for any
+// arguments from the sixth: from the newest, and from a cursor halfway
+// down; without statistics, then with them (M8/P2A fix check 1).
 func TestListTrashReadsInTimeAsLongAsAPage(t *testing.T) {
 	ctx := context.Background()
-	s, notebook, _ := trashOfManyItems(t)
+	s, notebook, _, analyze := trashOfManyItems(t)
 	halfway := domain.TrashCursor{At: now().Add(-5000 * time.Second), ID: uuid.Max()}
-	for _, below := range []domain.TrashCursor{domain.TrashFrom(), halfway} {
-		var longest time.Duration
-		for range 8 {
-			at := time.Now()
-			page, err := s.ListTrash(ctx, notebook, now().Add(-24*time.Hour), below, 101)
-			took := time.Since(at)
-			if err != nil || len(page) != 101 {
-				t.Fatalf("ListTrash(101) = %d, %v", len(page), err)
-			}
-			longest = max(longest, took)
+	for _, stats := range []string{"without statistics", "analyzed"} {
+		if stats == "analyzed" {
+			analyze()
 		}
-		if longest > 200*time.Millisecond {
-			t.Errorf("a page of 101 items below %s took %s", below.At, longest)
+		for _, below := range []domain.TrashCursor{domain.TrashFrom(), halfway} {
+			var longest time.Duration
+			for range 8 {
+				at := time.Now()
+				page, err := s.ListTrash(ctx, notebook, now().Add(-24*time.Hour), below, 101)
+				took := time.Since(at)
+				if err != nil || len(page) != 101 {
+					t.Fatalf("ListTrash(101) = %d, %v", len(page), err)
+				}
+				longest = max(longest, took)
+			}
+			if longest > 200*time.Millisecond {
+				t.Errorf("a page of 101 items below %s %s took %s", below.At, stats, longest)
+			}
 		}
 	}
 }
 
 // The lines of a page of the trash read each step up by its parent's key,
-// whatever the notebook holds, eight times on one connection.
+// whatever the notebook holds, eight times on one connection, which plans
+// them for any arguments from the sixth; without statistics, then with
+// them (M8/P2A fix check 1).
 func TestTrashLinesReadInTimeAsLongAsAPage(t *testing.T) {
 	ctx := context.Background()
-	s, _, roots := trashOfManyItems(t)
-	var longest time.Duration
-	for range 8 {
-		at := time.Now()
-		lines, err := s.TrashLines(ctx, roots)
-		took := time.Since(at)
-		if err != nil || len(lines) != len(roots) || len(lines[roots[0]]) != 2 {
-			t.Fatalf("TrashLines(100) = %d lines, %v; want 100 of 2 steps", len(lines), err)
+	s, _, roots, analyze := trashOfManyItems(t)
+	for _, stats := range []string{"without statistics", "analyzed"} {
+		if stats == "analyzed" {
+			analyze()
 		}
-		longest = max(longest, took)
-	}
-	if longest > 200*time.Millisecond {
-		t.Errorf("the lines of 100 items took %s", longest)
+		var longest time.Duration
+		for range 8 {
+			at := time.Now()
+			lines, err := s.TrashLines(ctx, roots)
+			took := time.Since(at)
+			if err != nil || len(lines) != len(roots) || len(lines[roots[0]]) != 2 {
+				t.Fatalf("TrashLines(100) = %d lines, %v; want 100 of 2 steps", len(lines), err)
+			}
+			longest = max(longest, took)
+		}
+		if longest > 200*time.Millisecond {
+			t.Errorf("the lines of 100 items %s took %s", stats, longest)
+		}
 	}
 }
 
@@ -210,4 +224,94 @@ func TestRestoreNodesTakesItsTimeAtAnyStatistics(t *testing.T) {
 		t.Fatal(err)
 	}
 	restore("planned for any arguments, with statistics of it deleted at another time", false)
+}
+
+// TrashHistory counts in its time at the unit's bounds, at any statistics
+// (M8/P2A fix check 1, I-1): an item of the unit's nodes, its 100 pages
+// of 2,000 versions, each with its item, the bound's 400,000 rows, its ids
+// the pages last, as a group whose pages sit below most of its
+// attachments reads them; eight counts on one connection, which caches
+// the statements as a server's do, in a second each, a CI's runner slower
+// than the machine where they took 30 to 200 ms. A cached statement's
+// plan for any arguments, from its sixth run, with statistics taken while
+// the rows were alive, compared each row of the time with the ids one by
+// one: 5 seconds a count.
+func TestTrashHistoryCountsInTimeAtAnyStatistics(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	for _, table := range []string{"nodes", "page_contents", "page_revisions", "changeset_items", "changesets"} {
+		f.exec(t, "ALTER TABLE "+table+" SET (autovacuum_enabled = false)")
+	}
+	root := f.page(t, f.eng, nil, "Root", 0)
+	pages := []uuid.UUID{root.ID}
+	for i := range domain.MaxUnitPages - 1 {
+		pages = append(pages, f.page(t, f.eng, &root.ID, fmt.Sprintf("Page %d", i), float64(i)).ID)
+	}
+	versions := domain.MaxUnitHistory / (2 * domain.MaxUnitPages)
+	f.exec(t, `INSERT INTO changesets (id, notebook_id, kind, client, created_by_id, created_at, updated_at)
+		SELECT md5($1::uuid::text || k)::uuid, $1, 'edit', 'web', $2, now(), now() FROM generate_series(1, $3::integer) k`,
+		f.eng, f.alice, versions)
+	f.exec(t, `INSERT INTO page_revisions (id, changeset_id, node_id, base_revision, revision, content, content_hash, byte_size,
+			created_at, updated_at)
+		SELECT gen_random_uuid(), md5($3::uuid::text || k)::uuid, p, NULLIF(k - 1, 0), k, 'v' || k,
+			sha256(convert_to('v' || k, 'UTF8')), octet_length('v' || k), now(), now()
+		FROM unnest($1::uuid[]) p, generate_series(1, $2::integer) k`, pages, versions, f.eng)
+	f.exec(t, `UPDATE page_contents SET revision = $2 WHERE node_id = ANY($1)`, pages, versions)
+	f.exec(t, `INSERT INTO changeset_items (id, changeset_id, node_id, after_parent_id, after_name, after_sort_order, created_at, updated_at)
+		SELECT gen_random_uuid(), r.changeset_id, n.id, n.parent_id, n.name, n.sort_order, n.created_at, n.created_at
+		FROM page_revisions r JOIN nodes n ON n.id = r.node_id`)
+	assets := domain.MaxUnitNodes - domain.MaxUnitPages
+	f.exec(t, `WITH p AS (SELECT id, row_number() OVER (ORDER BY id) - 1 AS k FROM nodes WHERE id = ANY($3))
+		INSERT INTO nodes (id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at, updated_at)
+		SELECT gen_random_uuid(), $1, p.id, 'asset', 'a' || g || '.png', 'a' || g || '.png', g, $2, $2, now(), now()
+		FROM generate_series(0, $4::integer - 1) g JOIN p ON p.k = g % 100`, f.eng, f.alice, pages, assets)
+	rows, err := f.pool.Query(ctx, `SELECT id, name, name_key FROM nodes WHERE notebook_id = $1 ORDER BY id <> $2, kind = 'page', id`,
+		f.eng, root.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nodes, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (domain.Node, error) {
+		var n domain.Node
+		return n, r.Scan(&n.ID, &n.Name, &n.NameKey)
+	})
+	if err != nil || len(nodes) != domain.MaxUnitNodes {
+		t.Fatalf("the item holds %d nodes, %v", len(nodes), err)
+	}
+	ids := make([]uuid.UUID, len(nodes))
+	for i, n := range nodes {
+		ids[i] = n.ID
+	}
+	pool, err := postgres.NewPool(ctx, config.DatabaseConfig{URL: f.pool.Config().ConnString(), MaxConns: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	s := postgresadapter.New(pool)
+	at := now()
+	counted := func(stats string, analyzed bool) {
+		t.Helper()
+		at = at.Add(time.Minute)
+		f.trashed(t, at, len(pages), assets, 2, ids...)
+		if analyzed {
+			f.exec(t, "ANALYZE")
+		}
+		for run := range 8 {
+			started := time.Now()
+			got, err := s.TrashHistory(ctx, ids, at, domain.MaxUnitHistory+1)
+			took := time.Since(started)
+			if err != nil || got != domain.MaxUnitHistory {
+				t.Fatalf("TrashHistory(%s) = %d, %v; want the bound %d", stats, got, err, domain.MaxUnitHistory)
+			}
+			if took > time.Second {
+				t.Errorf("count %d of a history of %d rows %s took %s", run+1, domain.MaxUnitHistory, stats, took)
+			}
+		}
+		if _, err := f.s.RestoreNodes(ctx, restoration(at, nil, 0, f.alice, nodes...)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	counted("without statistics", false)
+	f.exec(t, "ANALYZE")
+	counted("with statistics of it alive", false)
+	counted("with statistics of it deleted", true)
 }

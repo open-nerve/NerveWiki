@@ -122,7 +122,9 @@ func memberOf(r gen.TrashChildrenOfAllRow, level int) domain.TrashMember {
 	return m
 }
 
-// TrashContents implements app.Trash.
+// TrashContents implements app.Trash. Its ids are an item's pages, at most
+// the unit's, and so are its rows of the time: a plan for any arguments
+// that compares each with the ids costs as much as the one with them.
 func (s *Store) TrashContents(ctx context.Context, ids []uuid.UUID, at time.Time) (map[uuid.UUID]string, error) {
 	rows, err := s.queries(ctx).TrashContents(ctx, gen.TrashContentsParams{Ids: ids, DeletedAt: at})
 	if err != nil {
@@ -135,9 +137,13 @@ func (s *Store) TrashContents(ctx context.Context, ids []uuid.UUID, at time.Time
 	return out, nil
 }
 
-// TrashHistory implements app.Trash.
+// TrashHistory implements app.Trash, planned with ids: from a cached
+// statement's sixth run, statistics taken while the rows were alive make
+// its plan for any arguments read the rows of the time and compare each
+// with the ids one by one, 5 seconds at the unit's bounds where the plan
+// with them took 50 ms (M8/P2A fix check 1, I-1).
 func (s *Store) TrashHistory(ctx context.Context, ids []uuid.UUID, at time.Time, limit int) (int, error) {
-	n, err := s.queries(ctx).TrashHistory(ctx, gen.TrashHistoryParams{Ids: ids, DeletedAt: at, Lim: int32(limit)})
+	n, err := s.planned(ctx).TrashHistory(ctx, gen.TrashHistoryParams{Ids: ids, DeletedAt: at, Lim: int32(limit)})
 	if err != nil {
 		return 0, fmt.Errorf("trash history: %w", err)
 	}

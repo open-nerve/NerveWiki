@@ -18,9 +18,13 @@ func (s *Store) DeleteBlobsOfNodes(ctx context.Context, nodeIDs []uuid.UUID, at 
 	return nil
 }
 
-// RestoreBlobsOfNodes implements app.Deletions.
+// RestoreBlobsOfNodes implements app.Deletions, planned with nodeIDs: from
+// a cached statement's sixth run, statistics taken while the rows were
+// alive make its plan for any arguments read the rows of the time and
+// compare each with the ids one by one, 110 ms at a restore's bound of
+// nodes where the plan with them took 40 (M8/P2A fix check 1, I-1).
 func (s *Store) RestoreBlobsOfNodes(ctx context.Context, nodeIDs []uuid.UUID, deletedAt time.Time) (int, error) {
-	n, err := s.queries(ctx).RestoreBlobsOfNodes(ctx, gen.RestoreBlobsOfNodesParams{NodeIds: nodeIDs, DeletedAt: deletedAt})
+	n, err := s.planned(ctx).RestoreBlobsOfNodes(ctx, gen.RestoreBlobsOfNodesParams{NodeIds: nodeIDs, DeletedAt: deletedAt})
 	if err != nil {
 		return 0, fmt.Errorf("restore the blobs of nodes: %w", err)
 	}

@@ -3,6 +3,7 @@
 package bootstrap
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"encoding/json"
@@ -61,8 +62,9 @@ func (a benchAuth) Authenticate(ctx context.Context, _ string) (context.Context,
 	return shared.WithActor(ctx, actor), "session:" + actor.SessionID.String(), nil
 }
 
-// newTrashBench is the bench, its unit bounded at maxNodes and maxHistory, 0 the
-// domain's.
+// newTrashBench is the bench, its unit bounded at maxNodes and maxHistory;
+// 0 keeps the composition root's bound, the domain's unless pageDeps sets
+// one, so a test at the bounds answers as the server would.
 func newTrashBench(tb testing.TB, maxNodes, maxHistory int) trashBench {
 	tb.Helper()
 	ctx := context.Background()
@@ -112,7 +114,7 @@ func newTrashBench(tb testing.TB, maxNodes, maxHistory int) trashBench {
 		tb.Fatal(err)
 	}
 	deps := pageDeps(cfg, pool, logger, authorizer, md, budget)
-	deps.MaxUnitNodes, deps.MaxUnitHistory = maxNodes, maxHistory
+	deps.MaxUnitNodes, deps.MaxUnitHistory = cmp.Or(maxNodes, deps.MaxUnitNodes), cmp.Or(maxHistory, deps.MaxUnitHistory)
 	pg := page.New(deps)
 	router := httpserver.NewRouter(logger)
 	api, err := httpserver.NewAPI(apiConfig(cfg, logger, ratelimit.New(time.Now), benchAuth{b.alice}, nil, nil, pg.BodyLimits()))
@@ -323,8 +325,10 @@ func BenchmarkTrashDelete(b *testing.B) {
 // versions writes the item's pages versions from after to up to, each
 // step a changeset of the notebook's and an item of each page in it, the
 // pages' contents on the last: the history of pages edited that often.
-// A version is of 1 KiB that compresses to nothing, the widest a row
-// stays in its table (TOAST moves a wider content's out of it).
+// A version is of 1 KiB that does not compress, about half the widest a
+// row keeps in its table, about 2 KB, past which TOAST moves the content
+// out of it: at 1.8 KiB the restore at the bounds took 8% longer (M8/P2A
+// fix check 1, N-2).
 func (b trashBench) versions(tb testing.TB, after, upTo int) {
 	tb.Helper()
 	ctx := context.Background()
@@ -453,9 +457,10 @@ func (b trashBench) toppedUp(tb testing.TB, root string, n int) {
 // A restore at the unit's bounds, of the full load, its nodes' and its
 // history's, takes its time: in 10 seconds, a CI's slower than the
 // machine the bounds were measured on (M8/P2 design 3.11; M8/P2A review,
-// A-M4). Deleted again, its history a row past the bound, with the items
-// of the restore and of the deletion, it is page.restore_too_large and
-// writes nothing: the composition root leaves the bounds the domain's.
+// A-M4), the time logged for CI's runs. Deleted again, its history a row
+// past the bound, with the items of the restore and of the deletion, it is
+// page.restore_too_large and writes nothing. The bench keeps the
+// composition root's bounds: the domain's, or this fails.
 func TestARestoreAtTheUnitsBoundTakesItsTime(t *testing.T) {
 	bench := newTrashBench(t, 0, 0)
 	root, _ := bench.item(t, benchLoads()[1], domain.MaxUnitNodes-domain.MaxUnitPages)
@@ -471,7 +476,9 @@ func TestARestoreAtTheUnitsBoundTakesItsTime(t *testing.T) {
 	if rows := bench.history(t, root); rows != domain.MaxUnitHistory {
 		t.Fatalf("the item's history is %d rows, want the bound %d", rows, domain.MaxUnitHistory)
 	}
-	if took := bench.timed(t, http.MethodPost, "/api/v0/nodes/"+root+"/restore", http.StatusOK); took > 10*time.Second {
+	took := bench.timed(t, http.MethodPost, "/api/v0/nodes/"+root+"/restore", http.StatusOK)
+	t.Logf("a restore of %d nodes, %d rows of history, took %s", domain.MaxUnitNodes, domain.MaxUnitHistory, took)
+	if took > 10*time.Second {
 		t.Errorf("a restore of %d nodes, %d rows of history, took %s, want 10 s at most", domain.MaxUnitNodes, domain.MaxUnitHistory, took)
 	}
 	if n := count(t, bench.pool, "SELECT count(*) FROM nodes WHERE deleted_at IS NULL"); n != domain.MaxUnitNodes {

@@ -321,8 +321,9 @@ type TrashHistoryParams struct {
 }
 
 // How many versions, and items of every changeset, of nodes deleted at deleted_at were deleted with them, each of the
-// two counted to lim at most: a restore's rows besides the nodes', read through the indexes on node_id, as many as
-// the bound at most.
+// two counted to lim at most: a restore's rows besides the nodes', as many as the bound at most. Planned with ids, it
+// reads the rows of the time through the index on deleted_at, or the nodes' through the one on node_id; its store
+// never runs it as a cached statement (M8/P2A fix check 1, I-1).
 func (q *Queries) TrashHistory(ctx context.Context, arg TrashHistoryParams) (int32, error) {
 	row := q.db.QueryRow(ctx, trashHistory, arg.Ids, arg.DeletedAt, arg.Lim)
 	var rows int32
