@@ -130,65 +130,81 @@ type Versions interface {
 
 | 文件 | 内容 |
 |---|---|
-| `web/apps/web/src/lib/line-diff.ts` | 按行比较（行的哈希上的 Myers），纯函数，带步数的上限 |
-| `web/apps/web/src/lib/line-diff.worker.ts`、`line-diff-client.ts` | Worker 与它的调用：硬性的期限一到就 `terminate()`，答"太大" |
-| `web/apps/web/src/editor/text-diff.tsx` | 只读的比较视图：统一视图（经 `diffConfig.override` 用算好的改动）或并排；摘要、上一处与下一处、标记 |
+| `web/apps/web/src/lib/line-diff.ts` | 按行比较（行编号上的 Myers，线性空间），带步数与改动行数的上限；插入、删除滑过重复的行；小的改动细分到词并合并（4.2） |
+| `web/apps/web/src/lib/line-diff.worker.ts`、`line-diff-client.ts` | Worker 与它的调用 `compareInWorker`：5 MiB 以上不起 Worker，硬性的期限一到就 `terminate()`，答"太大"；Worker 失败时拒绝；小的文字在主线程上比较（`compareNow`） |
+| `web/apps/web/src/editor/text-diff.tsx` | 只读的比较视图：规整换行与 BOM，统一视图（经 `diffConfig.override` 用算好的改动）或并排；摘要、上一处与下一处、标记；失败与重试；新的比较进行时留着上一次的 |
 | `web/apps/web/src/editor/conflict-view.tsx` | `ConflictDiff` 改用 `TextDiff` |
-| `web/apps/web/src/services/page.service.ts` | 四个操作的调用与类型 |
-| `web/apps/web/src/pages/page/page-versions.tsx` | 右栏"版本"一节 |
+| `web/apps/web/src/pages/page/comparison.tsx`（新） | 懒加载 `TextDiff`（随编辑器的分包，`build/out-of-main.ts` 把 `text-diff.tsx` 算作编辑器的入口），载入失败时说明并重试；"显示未改动的行" |
+| `web/apps/web/src/components/ui/tabs.tsx`（新） | Radix 的标签页 |
+| `web/apps/web/src/services/page.service.ts`、`stores/page-tree.store.ts` | 四个操作的调用与类型；store 的 `content`（`getPageContent`）、`versions`、`version`、`versionView`、`restoreVersion`（按页的 `oneAtATimeById`） |
+| `web/apps/web/src/pages/page/page-versions.tsx` | 右栏"版本"一节；`useVersions`（版本页用同一个键知道最新的版本） |
 | `web/apps/web/src/pages/page/version-page.tsx`、`version-restore.tsx` | 版本页、还原的确认框 |
-| `web/apps/web/src/app/routes.tsx` | `pages/:pageId/versions/:revision` |
-| `web/apps/web/src/events/handlers.ts`、`app/event-stream.tsx` | 版本列表与版本视图的重读、连上时的重读 |
+| `web/apps/web/src/app/routes.tsx` | `pages/:pageId/versions/:revision`（笔记本的外壳之下，懒加载） |
+| `web/apps/web/src/events/handlers.ts`、`app/event-stream.tsx`、`pages/page/edit-lock-note.tsx`、`page-edit.tsx` | 版本列表、版本的正文与视图、页面的当前正文的重读；连上时的重读；租约过期之后、离开编辑之后的重读 |
+| `web/apps/web/src/pages/page/page-layout.tsx`、`breadcrumbs.tsx`、`unresolved-link.tsx`、`page-panel.tsx`、`i18n/format.ts` | 共用的改动：`PageGone`（树里找不到页时的去向，版本页同用）与还原之后的状态行；面包屑的 `part`；`useUnresolvedLinks({ readOnly })`；右栏挂上版本；`formatRelative` |
 | `web/apps/web/src/i18n/messages/{zh-CN,en}.ts` | 文字 |
+| `web/apps/web/src/test/page-server.ts` | 假的服务端的四个操作：区间的寻址、`version_not_found`、还原的码的次序、游标是下面的版本号（同服务端） |
 
 ### 4.2 比较
 
-- **`lineDiff(a, b, {maxSteps})`**：两段文字先按行切开（`\n`，比较之前与编辑器一样把 CRLF、CR 规整为 LF，并记下两边是否只差换行与 BOM），行映射为整数，去掉共同的头尾，在中间做 Myers；步数超过 `maxSteps` 时答"太大"。答改动的行区间，再换算为字符的偏移。
-- **Worker**：`lineDiffInWorker(a, b)` 在 Web Worker 里跑 `lineDiff`，2 秒没有答复就 `terminate()` 并答"太大"；同一时刻至多一个（新的比较取消旧的）。jsdom 里测纯函数与调用的超时（假的 Worker）。
-- **细分**：一处改动两边各不超过 2,000 个字符时，用 `@codemirror/merge` 导出的 `diff` 在这一处里细分到字符；大的改动按行显示。
-- **上限**：两边合计超过 5 MiB、改动的行超过 5,000，或 Worker 超时，就不逐行比较：显示"+a −b 行，太大，不能逐行比较"（能数出时）与两个版本的只读编辑器并排。
-- **视图**：统一视图（`unifiedMergeView`，`diffConfig.override` 返回算好的改动，`mergeControls: false`，未改动的段落折叠）；删除的大段不作为一整块 DOM（超过上限时走并排，上限之内的删除段落至多 5,000 行）；改动不只靠颜色：加的行前 `+`、删的行前 `−` 与删除线；"N 处改动"的摘要；"上一处、下一处"的按钮（`goToPreviousChunk`、`goToNextChunk`）。
-- **只差换行或 BOM** 时说明这一点（视图里没有改动）。
-- **`ConflictDiff`** 改用同一个视图，保留它现有的折叠与标签（M4/P6 的测试照旧通过）。
+- **`lineDiff(a, b, limits)`**：两段文字由调用者先照编辑器规整（`TextDiff` 用 `splitBreaks`：CRLF、CR 改为 LF，去掉 BOM，并记下两边是否只差这些），按行（连同行尾的 LF：最后一行有没有换行算不同）映射为整数，去掉共同的头尾，在中间做 Myers 的线性空间版本（未做的部分放在栈上，不递归）；步数超过 `maxSteps`（2,000 万，笔记本上约 150 毫秒）时答"太大"，不带行数。之后每处纯插入、纯删除往下滑过与它之后相同的行，直到下一处改动（碰到就并上）：不从两边都是空行的地方开始，`@codemirror/merge` 会把这样的改动画晚一行，只有那个空行时什么也画不出（审查 A-M1）。改动的行合计超过 `maxChangedLines`（5,000）时答"太大"，带行数。答改动的字符区间。
+- **细分**：一处改动两边各不超过 `maxRefined`（2,000 个码元）、细分的合计不超过 `maxRefinedTotal`（1 MiB，只算细分了的，审查 A-M2）时，用 `@codemirror/merge` 导出的 `presentableDiff`（`scanLimit` 500）细分到词，并重复到一遍不再合并为止；相距不到 3 个码元的改动合并、空的去掉。这些都在 Worker 里做：视图在主线程上对全文的改动还要做一遍 `makePresentable`，它的合并逐个 `splice` 整个数组，是平方级的（一页上万处改动时几秒到几十秒），交给它的改动已经没有可合并的（审查 A-I1、修复核对第一轮 N2）。大的改动与超出合计之后的按整行显示。
+- **Worker**：`compareInWorker(a, b, signal)` 在 Web Worker 里跑 `lineDiff`：两边 UTF-8 合计超过 5 MiB 不起 Worker，答"太大"；2 秒没有答复就 `terminate()` 并答"太大"；Worker 起不来、脚本载不到（升级之后旧的分包答 404）、答复读不出（`messageerror`）时结束它并拒绝，视图说"比较失败"并给"重试"（审查 A-M3）。合计不超过 1,000 行且不超过 32K 个码元的文字在主线程上直接比较（`compareNow`），不起 Worker。"同一时刻至多一个"是按视图的：文字变了、重试、卸载时中止这个视图的上一个；不是全局的：版本页的"与当前比较"开着时打开还原的确认框，两个视图各比较一次同一对文字（都有上限、都会结束，审查 A 的细节，接受）。jsdom 里测纯函数与调用（假的 Worker）。
+- **上限**：两边合计超过 5 MiB、改动的行超过 5,000，或 Worker 超时，就不逐行比较：显示"+a −b 行，太大，不能逐行比较"（能数出时）与两个版本的只读编辑器并排。视图会把只隔一个空行的改动并成一块，删除的一块超过 5,000 行时同样并排（`removedLines`，审查 A-M5）：上限之内的删除段落至多 5,000 行。
+- **视图**：统一视图（`unifiedMergeView`，`diffConfig.override` 只对算过的那一对文字返回算好的改动，`mergeControls: false`，未改动的段落折叠）；改动不只靠颜色：加的行前 `+`、删的行前 `−` 与删除线；"N 处改动"（视图的块数）与行数的摘要；"上一处、下一处"的按钮（`goToPreviousChunk`、`goToNextChunk`）；图例"之前 → 之后"。新的文字还在 Worker 里比较时，上一次的比较留着（`aria-busy`、变淡，摘要旁写"正在比较…"），上一处、下一处与它们的焦点不丢（审查 A-M4、修复核对第一轮 N1）；迟到的、已中止的答复丢弃，旧文字的失败不显示在新文字上。`shown` 告诉调用者正显示的是哪一份"之前"的比较（比较进行中、失败时没有），还原的确认框据此启用"还原"（4.5）。
+- **只差换行或 BOM** 时说明这一点（视图里没有改动）；两边相同时说"没有改动"。
+- **`ConflictDiff`** 改用 `TextDiff`，保留它的折叠与标签（M4/P6 的测试照旧通过）；它新有摘要与上一处、下一处，相同或只差换行时说明，不再显示空的编辑器。
+- **懒加载**：`pages/page/comparison.tsx` 动态导入 `editor/text-diff`，载入失败时说明并"重试"；它带"显示未改动的行"的按钮（键盘到得了，折叠到不了）。
 
 ### 4.3 右栏的版本列表
 
-- `PageVersions`：SWR 键 `["page-versions", notebookId, pageId]`，"按已读的页数重读"（13.2 第 19 条的 `readPages` 那种：重读时读回同样多的页），每页 20 项，"更多"读下一页；项以行 id 为键。每项：时刻（相对时间与完整时间的提示）、执行者、类型（"编辑""导入""还原""恢复""撤销"）、"编辑中"的标记；最新的一项标"当前"。点开进版本页。列表的名称"版本"，标题下写"一次编辑一个版本"。
-- 重读：`pages` 事件点到这一页（或 `pages` 为空）时按 `refresher` 的间隔重读；本标签页自己保存、离开编辑之后立即更新；连上时重读（`refreshedOnConnect`）。
+- `PageVersions`（右栏的最后一节）：SWR 键 `["page-versions", notebookId, pageId]`，"按已读的页数重读"（13.2 第 19 条的 `readPages` 那种：重读时读回同样多的页），每页 20 项；"更多"读下一页、接在它读的那一页之后，接上时有重读在途的再整体读一次（反链的做法），焦点照 M7 的 `useLoadMore`、`LoadMoreButton`；项以行 id 为键。每项：相对时间（`formatRelative`；`<time>` 的提示是完整时间）是到版本页的链接，名称以它开头、带版本号与完整时间（"1 小时前，版本 7，…"：同一小时的两个分得开，审查 B-M3）；"当前"（最新的一项）与"编辑中"的标记；"执行者 · 类型"（"编辑""导入""还原""恢复""撤销"；英文 Edit、Import、Restore、Restore from trash、Undo change）。列表的名称"版本"，标题下写"一次编辑一个版本"。版本页经同一个键（`useVersions`）知道最新的版本。
+- 重读：`pages` 事件点到这一页（或 `pages` 为空）时经 `refresher` 重读；`lock` 事件在树之后立即重读；本标签页离开编辑之后立即重读（自己的每次自动保存交给事件与 `refresher`，不另读）；锁的说明读到空闲而之前有人持有时重读（租约过期不是事件，`EditLockNote` 的 `readEnded`，审查 B-M2）；连上时重读（`refreshedOnConnect`）。
 
 ### 4.4 版本页
 
-- 路由 `/:slug/notebooks/:id/pages/:pageId/versions/:revision`，在页面的外壳里（P1 只有活着的页的版本页；回收站里的在 P2 的预览里）。文档标题"版本 N · 页面名"。
-- 版本的信息：版本号、时刻、执行者、类型；答复的版本号与地址不同时 `replace` 地址。
-- 三个标签页（有名称的一组）："阅读"（只读的阅读视图：不能勾任务、未解析的链接不给"新建这一页"）、"与上一版比较"（第一个版本没有这一项）、"与当前比较"（方向是"当前 → 这个版本"，即还原会做的改动，图例写明）。比较读两个版本的正文（`getPageVersion`），视图读 `getPageVersionView`，各用自己的 SWR 键，离开版本页时从缓存去掉。
+- 路由 `/:slug/notebooks/:id/pages/:pageId/versions/:revision` 是笔记本的外壳之下自己的一条（懒加载），不在页面的外壳里，没有右栏与子页面：照 `PageLayout` 在树里找页，找不到时经共用的 `PageGone`（这一代删除的去被删子树的父页，其余 404）。地址的版本号不是 `^[1-9]\d{0,14}$` 的（`versions/0`、`versions/01`）显示 404。P1 只有活着的页的版本页；回收站里的在 P2 的预览里。标题"版本 N"，文档标题"版本 N · 页面名 · 笔记本名"，面包屑以页面的链接与"版本 N"结束（`Breadcrumbs` 的 `part`）；读到版本之后标题用答复的版本号。
+- 版本的信息：完整的时刻、"执行者 · 类型"、"当前"与"编辑中"的标记。答复的版本号与地址不同时先把答复放进它自己版本号的键，再 `replace` 地址；地址的版本号变了（替换、编辑会话的再次保存、到别的版本），之前那个版本号的正文与视图从缓存去掉（`useLeftRevision`，审查 B-I1）。
+- 三个标签页（有名称的一组，Radix 的 tabs；手动激活：方向键、Home、End 只移焦点，Enter、空格才切换，每个比较可能读 5 MiB；选的标签页不进地址；只挂载选中的，切换即中止它的比较）："阅读"（只读的阅读视图，按答复的版本号读：增强照常运行但不给 `toggleTask`，写者也不能勾；未解析的链接经 `useUnresolvedLinks({ readOnly: true })` 说明版本只供阅读，不问服务端、不给"新建这一页"；附件地址的到期照 `page-view.ts`：`stamped`、`eachRead`、`useAssetsExpiry`；增强报告的错误在视图换了之后清掉）、"与上一版比较"（第一个版本没有这一项；读 `["page-version", 笔记本 id, 页 id, base_revision]`）、"与当前比较"（读页面的当前正文 `["page-content", 笔记本 id, 页 id]`，与还原的确认框共用；方向是"当前 → 这个版本"，即还原会做的改动，图例写明）。
+- 缓存：版本的正文 `["page-version", 笔记本 id, 页 id, 版本号]`、视图 `["page-version-view", 笔记本 id, 页 id, 版本号]` 与 `page-content` 离开版本页时从缓存去掉（下一轮才去，StrictMode 的重新挂载不清；带默认的重读，回来时不被去重挡住）。版本的正文挂载时与窗口取得焦点时不重读（`revalidateIfStale`、`revalidateOnFocus` 为 false，审查 B-M1）：它只在编辑中才变，由事件重读；视图照常在焦点时重读（附件的地址）。
 - 中栏的锁提示（`EditLockNote`）同样显示。
-- 写者有"还原到这个版本"（最新的版本没有）：确认框（4.5）。
+- 写者有"还原到这个版本"：最新的版本没有；"最新"从版本列表的键读，列表读不到时没有这个按钮。确认框见 4.5。
 
 ### 4.5 还原的流程
 
-- 确认框读当前的正文（`getPageContent`），显示"当前 → 这个版本"的比较；`base_revision` 就是这次读到的版本号。
-- 确认：`restorePageVersion`。
-  - `changed: false`：说明"与当前相同，没有改动"，关闭确认框。
-  - 成功：回到页面，焦点在标题，状态行"已还原到版本 N"（`useNotice` 的礼貌播报），版本列表更新。
-  - 409 `page.revision_mismatch`：重读当前、刷新比较，确认框留着并说明"页面在这期间改过了"（不自动重发，13.2 第 7 条）。
-  - 409 `page.locked`：照现有的锁的说明（持锁人）。
-  - 404：页已不在（被删或移走），说明并关闭。
-- 还原经 `oneAtATime`（同一个确认框里的再次点击不重发）。
+- 确认框打开时读当前的正文（`["page-content", …]`，与"与当前比较"共用），显示"当前 → 这个版本"的比较；`base_revision` 就是这次读到的版本号。"还原"只在屏幕上的比较正是这份正文的时候可用（`TextDiff` 的 `shown`）：比较进行中（上一次的还留着）或失败时不可用，送出的版本号总是显示着的比较的（修复核对第一轮 N1）。
+- 确认：经 `PageTreeStore.restoreVersion`（按页的 `oneAtATimeById`，13.2 第 1 条）；发送中两个按钮禁用，Esc 不关闭。
+  - `changed: false`：关闭确认框，版本页一直挂载的 `<output>` 说"与当前相同，没有改动"，焦点回到"还原"。
+  - 成功：去掉页面视图的缓存、重读版本列表；版本页仍挂载时回到页面（路由状态 `{arrived, restored: N}`），焦点在标题。状态行"已还原到版本 N"是页面外壳里的 `<output>`（不是 `useNotice`），一开始就有文字，标题经 `aria-describedby` 指向它，取得焦点时一起读出；它在这一条历史里，刷新、返回时再说一次。
+  - 409 `page.revision_mismatch`：重读当前、刷新比较，确认框留着；重读到别的版本号、且它的比较显示出来之后才说明"页面在这期间改过了"，重读失败或版本号没变时说明被拒的原因（不自动重发，13.2 第 7 条）。
+  - 409 `page.locked`：照现有的锁的说明（持锁人，`lockedText`），并重读锁。
+  - 404：`page.not_found` 时说明页已不在并关闭；别的 404 说明原因并关闭。
+  - 别的拒绝留在确认框里。
 
 ### 4.6 测试（vitest）
 
-- `lineDiff`：一般的改动、只差换行或 BOM、步数的上限、空的一边、只有头尾的改动；与 `@codemirror/merge` 的 `diff` 在小输入上逐行一致的性质测试。
-- Worker 的调用：超时之后 `terminate()` 并答"太大"；新的比较取消旧的。
-- `TextDiff`：上限处（5 MiB、5,000 行、超时）的并排与摘要；标记、摘要与上一处、下一处；B-I1 的形状（3 万字改 8 个词）显示为 8 处改动。
-- `PageVersions`：分页、"编辑中"、"当前"、重读的条件；经组合根到达右栏。
-- 版本页：三个标签页、地址的替换、只读、第一个版本没有"与上一版"、锁提示；还原的每种答复。
+- `lineDiff`：一般的改动、最后一行有没有换行、步数的上限（小的预算）、空的一边、只有头尾的改动；性质测试：随机的文字对，改动应用到 a 得到 b、改动的行数等于按行的最短编辑（取代原写的"与 `@codemirror/merge` 的 `diff` 在小输入上逐行一致"：对照最短同样说明正确与最小，审查 C 记为偏离）；视图的块标出每一行改动的行（审查 A-M1）；一页密集的改动交给视图之后没有可合并的（英文九成的词换字母、中文三成的字加删助词、词里加删字母，审查 A-I1、修复核对第一轮 N2）；B-I1 的形状（3 万字改 8 个词）是 8 处改动；每个上限在它的值上：5,000 与 5,001 行、2,000 与 2,001 个码元、1 MiB 的细分合计（审查 C-F2）。
+- Worker 的调用：默认的 2 秒之后 `terminate()` 并答"太大"；正好 5 MiB 与多一个字节；`error`、`messageerror`、起不来时拒绝；中止时结束；小的文字在主线程上（`smallDiff` 的值）。
+- `TextDiff`：只差换行或 BOM、相同；标记、摘要与上一处、下一处；并排与摘要；删除的一块 5,000 行统一显示、5,001 行并排；失败与重试（重试时显示"正在比较…"）；新的文字比较时留着上一次的、迟到的答复丢弃、文字变了时中止旧的（经信号断言）。
+- `PageVersions`：两种语言；分页与焦点；"更多"与重读的三种竞争（照反链）；读不到与重试；"编辑中"、"当前"；租约过期与离开编辑之后的重读；经组合根到达右栏。
+- 版本页：信息与只读的视图；未建的链接；标签页与键盘、两个比较的方向（删的、加的行，审查 C-F1）；焦点时只重读视图；第一个版本没有"与上一版"；地址的替换（视图读一次、之前的键去掉）与标题的版本号；到别的版本时它的基版本照常显示；404 与 `version_not_found`；版本、视图、上一版、当前与比较的分包读不到时说明、按"重试"之后加载（还原的确认框里的当前同样，审查 C-F3）；锁提示与 `readEnded` 的守卫；StrictMode 的重新挂载不重读；离开时去掉缓存。还原：每种答复、只发一次、比较进行中与失败时不能还原、从页面开始时旧的视图不再显示（审查 C-F6）。
+- 事件流（经真的处理函数）：`pages` 事件的列表与编辑中的版本（地址随之；"与上一版"开着时基版本留着）、不在编辑的不读、`page-content` 的重读（审查 C-F4）、锁事件、链接与树、连上时；`handlers.test.ts` 核对 `refresher` 的键与"只为读过列表的页"。
 - `ConflictDiff` 现有的测试照旧通过。
 
 ### 4.7 e2e
 
-- **HI1**（`e2e/stories/history/hi1-versions.spec.ts`）：两次编辑会话之间离开编辑，右栏的版本列表有三个版本；打开旧版本阅读（只读，没有任务复选框的勾选）；与上一版、与当前比较显示改动；接口版本：PAT 读列表与两个版本的正文，内容与写入的逐字节相同。
-- **HI2**（`hi2-version-restore.spec.ts`）：还原到旧版本，正文与索引随之改变（`links.ts` 的断言），版本列表多一个"还原"的版本（数据库：一个 `version_restore` 变更集）；另一个账户在编辑时还原被拒并显示持锁人；与当前相同时说明没有改动；接口版本：PAT 还原与 409。
-- 数据库断言放在 `e2e/fixtures/assert/page.ts`（13.4 第 3 条按模块）。
+- **HI1**（`e2e/stories/history/hi1-versions.spec.ts`）：两次编辑会话之间离开编辑，右栏的版本列表有三个版本，最新的标"当前"；打开旧版本阅读（只读，任务复选框不能勾），文档标题，第一个版本没有"与上一版"；与上一版、与当前比较按标记的行核对方向（审查 C-F1）；接口版本：编辑会话即版本、中间的版本号答它所在的那一行、活着的会话标 `editing`、列表不带正文、正文与写入的逐字节相同（BOM、CRLF、行尾空格）、404 `page.version_not_found`。
+- **HI2**（`hi2-version-restore.spec.ts`）：还原到旧版本，正文与索引随之改变（`links.ts` 的断言），版本列表多一个"还原"的版本（数据库：一个 `version_restore` 变更集），焦点在标题，状态行；与当前相同时说明没有改动、焦点回到"还原"；另一个账户在编辑时还原被拒并显示持锁人，什么都没写；确认框的比较按标记的行核对方向；接口版本：PAT 还原、未改动、409 `page.revision_mismatch`、409 `page.locked`（带 `lock`）。
+- 数据库断言放在 `e2e/fixtures/assert/page.ts`（13.4 第 3 条按模块）：`expectVersions` 核对每个变更集一行、正文、字节数与哈希、类型、执行者、客户端与 `reverts_id`（P1 里都为空，HI3、HI4 沿用）。夹具：`fixtures/pages.ts` 的 `getVersions`、`getVersion`、`postRestore`，`fixtures/wiki-pages.ts` 的 `versionPath`、`versionsListed`、`restoreDialog`、`restoreWith`。
+- 页面版本不断言不存在的版本的 404：连上时的重读与第一次读赛跑，控制台的 404 数不定（接口版本与 vitest 覆盖）。比较的页都小，只走主线程的路径，Worker 的路径没有 e2e（审查 A 的存疑，接受）。
+- C4（笔记本被删）的 404 由 8 个变为 10 个：未保存的编辑留住页面时，右栏的版本列表在锁事件与重连时各读一次（反链、属性在重连时已经如此）。
+
+### 4.8 审查之后的改动
+
+三位审查者（A：比较与性能；B：界面、数据流与无障碍；C：测试、e2e 与设计的符合）与修复核对的处置见 `reviews/P1B-versions-web-review.md`。与上文最初的设计不同之处已改在各节里：
+
+- **实施时定下的**（设计没写或留了余地）：版本页是笔记本的外壳之下自己的路由，`PageGone` 与页面的外壳共用；新的 SWR 键 `["page-content", 笔记本 id, 页 id]`（"与当前比较"与还原共用）；换行与 BOM 的规整在 `TextDiff`，小的文字在主线程上比较，调用叫 `compareInWorker`，"同一时刻至多一个"按视图；自己的保存只在离开编辑时立即重读列表，锁事件也重读列表与编辑中的版本，`tree: true` 重读版本的视图（00 号文档 4.13 有，本文原来没写），"编辑中"按同一版本号缓存的正文判断；版本的正文挂载时不重读；"还原"与"当前"随版本列表的读；标签页手动激活、不进地址；信息行也有"当前""编辑中"；状态行是 `<output>`，不是 `useNotice`；还原经按页的 `oneAtATimeById`，不是 `oneAtATime`；性质测试对照最短编辑。
+- **审查与修复核对带来的**：细分与合并在 Worker 里做到视图无可合并（A-I1、核对 N2）；插入、删除滑过重复的行（A-M1）；细分的合计只算细分了的（A-M2）；Worker 失败时的"比较失败"与"重试"（A-M3）；新的比较进行时留着上一次的，写着"正在比较…"（A-M4、核对 N1）；删除的一块按视图的块限 5,000 行（A-M5）；视图按答复的版本号读，地址的版本号变了即去掉之前的正文与视图，"编辑中"的规则只重读正文（B-I1）；版本的正文焦点时不重读（B-M1）；租约过期之后重读版本（B-M2）；版本链接的名称（B-M3）；英文的计数写成"Changes: N"（B-M4）；状态行经标题的 `aria-describedby` 读出；"还原"只在显示的比较是它送出的版本号的正文时可用，"在这期间改过了"只在重读到别的版本号、且它的比较显示之后（核对 N1、B 的细节）。
 
 ## 5. 实施步骤
 
@@ -233,6 +249,12 @@ B（分支 `m8-p1b`，A 合并之后）：
 - 与设计不同之处已改在第 3 节（3.4–3.6、3.9）：`FindVersion` 一条语句连正文读出、没有 `VersionContent`；`ListVersions` 读 `below` 之下（最新的从 `MaxRevision + 1`）；`RecordRevision` 的版本链守卫与 `checkPages` 的链；`changesetOf` 只接受编辑；`PageVersionPage`、`ChangesetAuthor`；路径的版本号与 `base_revision` 不设 `minimum`。
 - 反向对照：用例 28 处、数据库与规则 17 处、核对之后新加 3 处，都被测试抓到。
 
-### 9.2 B：前端
+### 9.2 B：前端（2026-10-13，合并 `df306e3`）
 
-（完成后补写。）
+- 提交：实施：比较、Worker 与 `TextDiff` `1d4f252`、`c7fbe9a`，服务、store、右栏、版本页、还原与文字 `101c8d4`，vitest `fe6999a`、`d635bf8`，e2e HI1、HI2 `de2a06e`，C4 的计数 `3ecca93`，`PageVersionPage` `9920cad`（审查时是 P1A 的修复之上的 `70f6620`，之后变基到 `main` 的 `4891f87`）；审查的修复 `c355a11`、`99e1b85`（A）、`b744598`（B）、`7e77b50`、`e7b8010`（C）；修复核对第一轮的修复 `56962f4`、`18f7215`、`0d252e6`。合并 `df306e3`。
+- 审查：三位审查者（Opus）。没有高。中高 3 条：交给视图的改动在主线程上还要经 `@codemirror/merge` 平方级的合并，一页密集的改动（简繁转换）在 Worker 答复之后卡 4–11 秒（A-I1）；看着编辑中的版本时，每次保存在缓存里多留一份正文与视图、视图读两次（B-I1）；比较的方向没有测试，三处反过来 vitest 与 e2e 都通过（C-F1）。中低 3 条：插入、删除从空行开始时画晚一行或画不出（A-M1）；Worker 失败时说"太大"或一直"正在比较…"（A-M3）；编辑中的页上"与当前比较"每次重读都变回"正在比较…"、丢焦点（A-M4）。其余是低与细节。修复核对：第一轮中低 2 条（A-M4 的修复带进的回归：还原的确认框留着旧的比较时"还原"可用、送出新的版本号，N1；词里密集的插入与删除仍把合并留给主线程，N2）与细节 2 条；第二轮中低 1 条（永远成功不了的比较让“还原”一直不可用，也不说重新加载能解决，R2-2）与细节；第三轮中低 1 条（修前就有的：按“重试”时焦点掉到 `body`，R3-2）与细节 2 条（去掉的 `.catch` 带进的未处理的拒绝、“再次失败”不复位）；第四轮中低 1 条（交接焦点的目标没有名称，读屏把整段比较读一遍，R4-2）与细节；第五轮中低 1 条（两层同名的 `group`，推到打磨），没有别的发现。逐条见[审查记录](reviews/P1B-versions-web-review.md)。
+- 与设计不同之处已改在第 4 节（4.1–4.7），4.8 分实施时定下的与审查带来的列出。
+- 反向对照：实施之后 27 个、审查的修复之后 58 个（含 C 存活的 24 个）、核对第一轮的修复之后 20 个，都被测试抓到；手工 2 个（去掉两处发送的守卫；静态导入 `editor/text-diff` 让构建检查失败）；e2e 1 个（三个比较的方向对调），HI1、HI2 的页面版本失败。
+- 门禁（本机）：`make lint-web knip test-web build-web`（`0d252e6`，2,652 个测试）；整个 e2e 234 个通过（`e7b8010`）；`stories/history` 连跑三次通过（`0d252e6`）。
+- 交给后面的：P2：回收站里的页的版本在 P2 的预览里（版本页只找活着的页），`trash_restore` 的标签已有；P3：`revert` 的标签已有，`expectVersions` 已核对 `reverts_id`，HI3、HI4 沿用；打磨的十余条见审查记录，M8 收尾时写进 M12 的打磨移交。
+- 负责人可以改判的取舍：同一对文字在两个视图里各比较一次（不做全局的一个）；Worker 的路径没有 e2e；自己的保存只在离开编辑时立即重读版本列表；标签页手动激活、选的标签页不进地址；"已还原到版本 N"随历史在刷新、返回时再说一次。
