@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
+import { useFocusLeaving } from "../../app/focus-leaving";
 import { Loading } from "../../components/loading";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
@@ -25,20 +26,26 @@ type ComparisonProps = {
  * TextDiff (editor/text-diff.tsx), which comes in a chunk of its own with
  * the editor's CodeMirror, as the conflict's diff does (conflict-panel.tsx);
  * one that cannot load says so, and that a reload usually helps (a tab of
- * an older build than the server's), with Try again and Reload. Its
- * unchanged stretches are folded; Show unchanged lines, which the keyboard
- * reaches as it does not a fold, shows them all.
+ * an older build than the server's), with Try again and Reload; loading
+ * again, it says so, Try again aria-disabled, and gone with the focus, the
+ * chunk loaded, gives it to the comparison. Its unchanged stretches are
+ * folded; Show unchanged lines, which the keyboard reaches as it does not
+ * a fold, shows them all.
  */
 export function Comparison({ before, after, label, beforeName, afterName, shown }: ComparisonProps) {
   const t = useT();
   const [diff, setDiff] = useState<Diff>();
-  const [failed, setFailed] = useState(false);
+  // Whether the chunk failed to load, and whether Try again loads it.
+  const [failed, setFailed] = useState<"failed" | "loading">();
   const [unfolded, setUnfolded] = useState(false);
-  const load = useCallback(() => import("../../editor/text-diff").then(setDiff, () => setFailed(true)), []);
+  // Where the focus in a failure that goes, the chunk loaded, comes (v0.1 design 13.2, item 17).
+  const root = useRef<HTMLDivElement>(null);
+  const load = useCallback(() => import("../../editor/text-diff").then(setDiff, () => setFailed("failed")), []);
   useEffect(() => void load(), [load]);
+  let shows;
   if (diff !== undefined) {
-    return (
-      <div className="space-y-2">
+    shows = (
+      <>
         <diff.TextDiff
           before={before}
           after={after}
@@ -51,29 +58,56 @@ export function Comparison({ before, after, label, beforeName, afterName, shown 
         <Button variant="outline" aria-pressed={unfolded} onClick={() => setUnfolded(!unfolded)}>
           {t("editor.showUnchanged")}
         </Button>
-      </div>
+      </>
+    );
+  } else if (failed === undefined) {
+    shows = <Loading />;
+  } else {
+    shows = (
+      <ChunkNotLoaded
+        loading={failed === "loading"}
+        retry={() => {
+          setFailed("loading");
+          void load();
+        }}
+        left={() => root.current?.focus({ preventScroll: true })}
+      />
     );
   }
-  if (failed) {
-    return (
-      <div className="space-y-2">
-        <Alert>{t("version.diffNotLoaded")}</Alert>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={() => {
-              setFailed(false);
-              void load();
-            }}
-          >
-            {t("status.retry")}
-          </Button>
-          <Button variant="outline" onClick={() => window.location.reload()}>
-            {t("error.reload")}
-          </Button>
-        </div>
+  return (
+    <div ref={root} tabIndex={-1} className="space-y-2 outline-none">
+      {shows}
+    </div>
+  );
+}
+
+/**
+ * ChunkNotLoaded says the diff's chunk could not load, and that a reload
+ * usually helps, with Try again and Reload. Loading again, it says so, Try
+ * again aria-disabled, doing nothing: the focus stays on it (v0.1 design
+ * 13.2, item 12). Gone with the focus, it calls left before it leaves the
+ * document (item 17).
+ */
+function ChunkNotLoaded({ loading, retry, left }: { loading: boolean; retry: () => void; left: () => void }) {
+  const t = useT();
+  const own = useRef<HTMLDivElement>(null);
+  useFocusLeaving(own, left);
+  return (
+    <div ref={own} className="space-y-2" aria-busy={loading || undefined}>
+      <Alert>{t(loading ? "status.loading" : "version.diffNotLoaded")}</Alert>
+      <div className="flex gap-2">
+        <Button
+          variant="outline"
+          className="aria-disabled:opacity-50"
+          aria-disabled={loading || undefined}
+          onClick={loading ? undefined : retry}
+        >
+          {t("status.retry")}
+        </Button>
+        <Button variant="outline" onClick={() => window.location.reload()}>
+          {t("error.reload")}
+        </Button>
       </div>
-    );
-  }
-  return <Loading />;
+    </div>
+  );
 }

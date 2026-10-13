@@ -316,9 +316,61 @@ test("differences whose code could not load say so, a reload helping, and show o
   });
   await user.click(within(screen.getByRole("tabpanel")).getByRole("button", { name: "Reload" }));
   expect(reload).toHaveBeenCalledOnce();
+
+  // M8/P1 fix check 3, R3-2: Try again, loading, keeps the focus; failed again, Reload follows it, which Tab reaches.
+  let release: (() => void) | undefined;
+  let loads = 0;
+  vi.doMock("../../editor/text-diff", async () => {
+    loads++;
+    await new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    throw new Error("offline");
+  });
+  const panel = screen.getByRole("tabpanel");
+  const retry = within(panel).getByRole("button", { name: "Try again" });
+  await user.click(retry);
+  expect(within(panel).getByRole("alert").textContent).toBe("Loading…");
+  expect(retry.getAttribute("aria-disabled")).toBe("true");
+  await waitFor(() => expect(loads).toBe(1));
+  await user.click(retry);
+  expect(document.activeElement).toBe(retry);
+  act(() => release?.());
+  expect(loads).toBe(1);
+  expect(
+    await within(panel).findByText("The differences could not be shown. Reloading the page usually fixes this.")
+  ).toBeTruthy();
+  expect(retry.hasAttribute("aria-disabled")).toBe(false);
+  expect(document.activeElement).toBe(retry);
+  await user.tab();
+  expect(document.activeElement).toBe(within(panel).getByRole("button", { name: "Reload" }));
+
+  // Loaded, the differences take the focus where the failure was: not the page's start.
   vi.doUnmock("../../editor/text-diff");
-  await user.click(within(screen.getByRole("tabpanel")).getByRole("button", { name: "Try again" }));
-  expect(await screen.findByRole("textbox", { name: "Changes from the page now to version 4" })).toBeTruthy();
+  await user.click(retry);
+  const diff = await within(panel).findByRole("textbox", { name: "Changes from the page now to version 4" });
+  expect(document.activeElement?.contains(diff)).toBe(true);
+  expect(panel.contains(document.activeElement)).toBe(true);
+});
+
+test("in Chinese, differences whose code could not load say the same", async () => {
+  vi.doMock("../../editor/text-diff", () => {
+    throw new Error("offline");
+  });
+  onTestFinished(() => vi.doUnmock("../../editor/text-diff"));
+  const user = userEvent.setup();
+  const server = installed();
+  server.app.preferences.setLocale("zh-CN");
+  renderApp(versionPath(install.id, 4), server.app);
+
+  await user.click(await screen.findByRole("tab", { name: "与当前比较" }));
+  const panel = screen.getByRole("tabpanel");
+  expect((await within(panel).findByRole("alert")).textContent).toBe("差异显示不出来。重新加载页面通常能解决。");
+  expect(
+    within(panel)
+      .getAllByRole("button")
+      .map((button) => button.textContent)
+  ).toEqual(["重试", "重新加载"]);
 });
 
 test("who edits the page shows as on the page; the edit's lease run out, its version is no longer marked editing", async () => {

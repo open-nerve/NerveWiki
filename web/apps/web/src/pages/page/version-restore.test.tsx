@@ -30,8 +30,8 @@ async function answered(nth: number, how: "answer" | "fail" = "answer"): Promise
   });
 }
 
-/** large is Install of over a thousand lines, its version 4 shown and its restore's dialog open. */
-async function large() {
+/** largeShown is Install of over a thousand lines, its version 4 shown, no comparison asked yet. */
+function largeShown() {
   worker.asked.length = 0;
   const user = userEvent.setup();
   const lines = Array.from({ length: 1200 }, (_, i) => `line ${i.toString()}\n`).join("");
@@ -42,6 +42,12 @@ async function large() {
     versionJSON(6, 4, `${lines}Install now\n`, { at: "2026-10-03T09:00:00Z" }),
   ]);
   renderApp(versionPath(install.id, 4), server.app);
+  return { user, server, lines };
+}
+
+/** large is Install of over a thousand lines, its version 4 shown and its restore's dialog open. */
+async function large() {
+  const { user, server, lines } = largeShown();
   await user.click(await screen.findByRole("button", { name: "Restore this version" }));
   const dialog = await screen.findByRole("alertdialog", { name: "Restore version 4?" });
   return { user, server, lines, dialog, confirm: within(dialog).getByRole("button", { name: "Restore" }) };
@@ -233,18 +239,40 @@ test("a comparison with the page now that failed restores nothing until one show
   expect(confirm.hasAttribute("disabled")).toBe(true);
 
   // M8/P1 fix check 2, R2-2: a worker of an older build than the server's fails each time; a reload replaces it.
-  await user.click(within(dialog).getByRole("button", { name: "Try again" }));
+  const retry = within(dialog).getByRole("button", { name: "Try again" });
+  await user.click(retry);
   await answered(1, "fail");
   expect(
     await within(dialog).findByText("The comparison failed again. Reloading the page usually fixes this.")
   ).toBeTruthy();
-  expect(within(dialog).getByRole("button", { name: "Reload" })).toBeTruthy();
   expect(confirm.hasAttribute("disabled")).toBe(true);
+  // M8/P1 fix check 3, R3-2: the focus stayed on Try again; Reload follows it.
+  expect(document.activeElement).toBe(retry);
+  await user.tab();
+  expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: "Reload" }));
 
-  await user.click(within(dialog).getByRole("button", { name: "Try again" }));
+  await user.click(retry);
   await answered(2);
-  expect(await within(dialog).findByRole("textbox", { name: "Changes from the page now to version 4" })).toBeTruthy();
+  const diff = await within(dialog).findByRole("textbox", { name: "Changes from the page now to version 4" });
   expect(confirm.hasAttribute("disabled")).toBe(false);
+  // Gone with the focus, the failure gave it to the comparison.
+  expect(document.activeElement?.contains(diff)).toBe(true);
+  expect(document.activeElement).not.toBe(dialog);
+});
+
+// M8/P1 fix check 3, R3-2: the version's page, its tab comparing it with the page now, the same.
+test("on the tab comparing the version with the page now, Try again failed again keeps the focus, Reload following it", async () => {
+  const { user } = largeShown();
+  await user.click(await screen.findByRole("tab", { name: "Compare with the current" }));
+  await answered(0, "fail");
+  const panel = screen.getByRole("tabpanel");
+  const retry = await within(panel).findByRole("button", { name: "Try again" });
+  await user.click(retry);
+  await answered(1, "fail");
+  await within(panel).findByRole("button", { name: "Reload" });
+  expect(document.activeElement).toBe(retry);
+  await user.tab();
+  expect(document.activeElement).toBe(within(panel).getByRole("button", { name: "Reload" }));
 });
 
 // M8/P1 fix check 2, R2-1: what shows needs no comparison in a worker.

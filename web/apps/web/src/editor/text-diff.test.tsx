@@ -1,5 +1,6 @@
 import { EditorView } from "@codemirror/view";
 import { act, fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, onTestFinished, test, vi } from "vitest";
 
 import { I18nProvider } from "../i18n/i18n";
@@ -26,14 +27,26 @@ const diff = (before: string, after: string, compareLarge?: Compare) => (
 /** inline compares on the test's thread, as the worker would. */
 const inline: Compare = (a, b) => Promise.resolve(lineDiff(a, b));
 
-/** controlled is a comparison that answers when the test says: each one asked, with its signal. */
+/** controlled is a comparison that answers, or fails, when the test says: each one asked, with its signal. */
 function controlled() {
-  const asked: { signal: AbortSignal; finish: (result: LineDiffResult) => void }[] = [];
+  const asked: { signal: AbortSignal; finish: (result: LineDiffResult) => void; fail: () => void }[] = [];
   const compare: Compare = (_a, _b, signal) =>
-    new Promise((resolve) => {
-      asked.push({ signal, finish: resolve });
+    new Promise((resolve, reject) => {
+      asked.push({ signal, finish: resolve, fail: () => reject(new Error("failed")) });
     });
   return { compare, asked };
+}
+
+/** answered has the comparison asked finish, or fail, and what it answers show. */
+async function answered(asked: ReturnType<typeof controlled>["asked"], nth: number, result?: LineDiffResult) {
+  await act(async () => {
+    if (result === undefined) {
+      asked[nth]?.fail();
+    } else {
+      asked[nth]?.finish(result);
+    }
+    await Promise.resolve();
+  });
 }
 
 const lines = Array.from({ length: 12 }, (_, i) => `line ${i.toString()}\n`).join("");
@@ -43,6 +56,12 @@ const text = (x: string, y: string) => `${lines}${x}\n${lines}${y}\n${lines}`;
 
 /** paragraph is the paragraph i of a long page of some 120 characters each. */
 const paragraph = (i: number) => `段落 ${i.toString()}：${"这是一段用来比较的文字，".repeat(10)}\n`;
+
+/** said is what a failure says, and whether it offers Reload. */
+const said = () => ({
+  alert: screen.queryByRole("alert")?.textContent,
+  reload: screen.queryByRole("button", { name: "重新加载" }) !== null,
+});
 
 describe("TextDiff", () => {
   test("says when the texts are the same, or differ in their line breaks or byte order mark alone", () => {
@@ -201,16 +220,89 @@ describe("TextDiff", () => {
         return answering;
       });
     const big = "x\n".repeat(20_000);
-    render(diff(big, `${big}y\n`, compare));
+    const { container } = render(diff(big, `${big}y\n`, compare));
     expect((await screen.findByRole("alert")).textContent).toBe("比较失败。");
     expect(screen.queryByRole("button", { name: "重新加载" })).toBeNull();
     fail = false;
-    fireEvent.click(screen.getByRole("button", { name: "重试" }));
-    // The failure goes as the comparison runs again.
-    expect(screen.getByText("正在比较…")).toBeDefined();
-    expect(screen.queryByRole("alert")).toBeNull();
+    const retry = screen.getByRole("button", { name: "重试" });
+    retry.focus();
+    fireEvent.click(retry);
+    // M8/P1 fix check 3, R3-2: the failure stays as the comparison runs again, saying so; Try again keeps the focus.
+    expect(screen.getByRole("alert").textContent).toBe("正在比较…");
+    expect(retry.getAttribute("aria-disabled")).toBe("true");
+    expect(document.activeElement).toBe(retry);
     act(() => answer?.());
     expect(await screen.findByText("+1 −0 行")).toBeDefined();
+    // Gone with the focus, the failure gives it to the diff: not to the page's start.
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(document.activeElement).toBe(container.firstElementChild);
+    expect(container.firstElementChild?.contains(screen.getByRole("button", { name: "下一处" }))).toBe(true);
+  });
+
+  // M8/P1 fix check 3, R3-2 (v0.1 design 13.2, items 12 and 17).
+  test("Try again, comparing, does nothing and keeps the focus; failed again, Reload follows it, which Tab reaches", async () => {
+    const user = userEvent.setup();
+    const { compare, asked } = controlled();
+    const big = "x\n".repeat(20_000);
+    render(diff(big, `${big}y\n`, compare));
+    await answered(asked, 0);
+    const retry = screen.getByRole("button", { name: "重试" });
+    await user.click(retry);
+    expect(screen.getByRole("alert").textContent).toBe("正在比较…");
+    await user.click(retry);
+    expect(asked).toHaveLength(2);
+    expect(document.activeElement).toBe(retry);
+
+    await answered(asked, 1);
+    expect(screen.getByRole("alert").textContent).toBe("比较又失败了。重新加载页面通常能解决。");
+    expect(retry.hasAttribute("aria-disabled")).toBe(false);
+    expect(document.activeElement).toBe(retry);
+    await user.tab();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "重新加载" }));
+  });
+
+  // M8/P1 fix check 3, R3-3: Reload is offered for a failure of the same texts again.
+  test("says it failed again only when the same texts' comparison before failed too: a success, or newer texts, start anew", async () => {
+    const { compare, asked } = controlled();
+    const big = "x\n".repeat(20_000);
+    const { rerender } = render(diff(big, `${big}y\n`, compare));
+    await answered(asked, 0);
+    expect(said()).toEqual({ alert: "比较失败。", reload: false });
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    await answered(asked, 1);
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    await answered(asked, 2);
+    expect(said()).toEqual({ alert: "比较又失败了。重新加载页面通常能解决。", reload: true });
+
+    // Newer texts, whose first comparison fails.
+    rerender(diff(big, `${big}z\n`, compare));
+    await answered(asked, 3);
+    expect(said()).toEqual({ alert: "比较失败。", reload: false });
+
+    // A success, then a failure of newer texts.
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    await answered(asked, 4, lineDiff(big, `${big}z\n`));
+    expect(screen.getByText("+1 −0 行")).toBeDefined();
+    expect(document.activeElement).toBe(document.body);
+    rerender(diff(big, `${big}w\n`, compare));
+    await answered(asked, 5);
+    expect(said()).toEqual({ alert: "比较失败。", reload: false });
+  });
+
+  test("Reload, gone with the focus as newer texts fail but once, gives it to Try again", async () => {
+    const { compare, asked } = controlled();
+    const big = "x\n".repeat(20_000);
+    const { rerender } = render(diff(big, `${big}y\n`, compare));
+    await answered(asked, 0);
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    await answered(asked, 1);
+    const reload = screen.getByRole("button", { name: "重新加载" });
+    reload.focus();
+    rerender(diff(big, `${big}z\n`, compare));
+    expect(document.activeElement).toBe(reload);
+    await answered(asked, 2);
+    expect(screen.queryByRole("button", { name: "重新加载" })).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "重试" }));
   });
 
   // M8/P1 fix check 2, R2-2: a worker of an older build than the server's fails each time; a reload replaces it.
@@ -230,13 +322,20 @@ describe("TextDiff", () => {
     expect(screen.getByRole("button", { name: "重试" })).toBeDefined();
   });
 
-  test("says nothing of a failure while the comparison of newer texts runs", async () => {
+  test("says nothing of a failure while the comparison of newer texts runs: that it compares, Try again doing nothing", async () => {
+    const { compare, asked } = controlled();
     const big = "x\n".repeat(20_000);
-    const { rerender } = render(diff(big, `${big}y\n`, () => Promise.reject(new Error("failed"))));
-    expect(await screen.findByRole("alert")).toBeDefined();
-    rerender(diff(big, `${big}z\n`, controlled().compare));
-    expect(screen.queryByRole("alert")).toBeNull();
-    expect(screen.getByText("正在比较…")).toBeDefined();
+    const { container, rerender } = render(diff(big, `${big}y\n`, compare));
+    await answered(asked, 0);
+    expect(screen.getByRole("alert").textContent).toBe("比较失败。");
+    rerender(diff(big, `${big}z\n`, compare));
+    expect(screen.getByRole("alert").textContent).toBe("正在比较…");
+    expect(container.querySelector("[aria-busy=true]")).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    expect(asked).toHaveLength(2);
+    await answered(asked, 1, lineDiff(big, `${big}z\n`));
+    expect(screen.getByText("+1 −0 行")).toBeDefined();
+    expect(container.querySelector("[aria-busy]")).toBeNull();
   });
 
   // M8/P1 review A, M5: the view joins the changes that only an empty line parts, and shows a change's lines removed at once.
