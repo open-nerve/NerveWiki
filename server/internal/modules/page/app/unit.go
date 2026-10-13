@@ -29,8 +29,10 @@ type WriterDeps struct {
 	Nodes      Nodes
 	NodeWriter NodeWriter
 	// Trash reads a trash item again under the notebook's lock: its
-	// restore's.
+	// restore's, and a revert's; History a changeset and its nodes: a
+	// revert's.
 	Trash         Trash
+	History       History
 	Changesets    ChangesetWriter
 	SessionWriter SessionWriter
 	// Names gives the name of who released a session's lock (M5 design

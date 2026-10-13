@@ -293,6 +293,45 @@ type Trash interface {
 	TrashHistory(ctx context.Context, ids []uuid.UUID, at time.Time, limit int) (int, error)
 }
 
+// History reads a notebook's log and what a revert reads of a changeset
+// (M8/P3 design 3.4), unlocked or in a unit's transaction. Its times
+// compare with time.Time.Equal, as the trash's do.
+type History interface {
+	// FindChangeset is the changeset id of a live notebook, with the brief
+	// of the one it reverts while that one is there, its display names
+	// empty; ErrNotFound for none.
+	FindChangeset(ctx context.Context, id uuid.UUID) (domain.Changeset, error)
+	// ListChangesets is the notebook's changesets the filter keeps, newer
+	// first, below the cursor below, at most limit, as FindChangeset reads
+	// each.
+	ListChangesets(ctx context.Context, notebookID uuid.UUID, f domain.LogFilter, below domain.ChangesetCursor, limit int) (
+		[]domain.Changeset, error)
+	// ChangesetFacts are the changesets' counts, each to MaxLogCount, and
+	// their reverts, newest first, MaxRevertedBy at most, by changeset.
+	ChangesetFacts(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]domain.ChangesetFacts, error)
+	// ChangesetMoves is whether the changeset's first MaxLogCount items
+	// rename or move a node: the single changeset's.
+	ChangesetMoves(ctx context.Context, id uuid.UUID) (domain.ChangesetMoves, error)
+	// ListChanges are the changeset's changes by node id after after, at
+	// most limit; FirstChanges the first n of each changeset's, by
+	// changeset.
+	ListChanges(ctx context.Context, id, after uuid.UUID, limit int) ([]domain.ChangeRow, error)
+	FirstChanges(ctx context.Context, ids []uuid.UUID, n int) (map[uuid.UUID][]domain.ChangeRow, error)
+	// The revert's reads (M8/P3 design 3.6): the changeset's items counted
+	// to limit; its items and its versions, by node; nodes as they are
+	// now, alive or not, a root with its group's counts (one the purge took
+	// is not among them); the alive pages' contents' revisions and hashes;
+	// versions' hashes and contents (a version the purge took is not among
+	// them).
+	CountItems(ctx context.Context, id uuid.UUID, limit int) (int, error)
+	ChangesetItems(ctx context.Context, id uuid.UUID) ([]domain.ChangesetItem, error)
+	ChangesetVersions(ctx context.Context, id uuid.UUID) ([]domain.ChangesetVersion, error)
+	NodesNow(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]domain.NodeNow, error)
+	ContentsNow(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]domain.ContentNow, error)
+	VersionHashes(ctx context.Context, refs []domain.VersionRef) (map[domain.VersionRef][]byte, error)
+	VersionContents(ctx context.Context, refs []domain.VersionRef) (map[domain.VersionRef]PageContent, error)
+}
+
 // AttachmentInfo is an attachment's type and size.
 type AttachmentInfo struct {
 	MIME  string

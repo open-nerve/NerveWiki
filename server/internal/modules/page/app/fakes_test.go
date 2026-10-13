@@ -1062,6 +1062,7 @@ type fixture struct {
 	workspaces fakeWorkspaces
 	notebooks  fakeNotebooks
 	store      *fakeStore
+	log        *fakeHistory
 	md         *fakeMarkdown
 	budget     *fakeBudget
 	auth       *fakeAuthorizer
@@ -1092,6 +1093,7 @@ func newFixture() *fixture {
 		logs: &bytes.Buffer{}, names: fakeNames{}, alice: uuid.NewV7(), acme: uuid.NewV7(), eng: uuid.NewV7(),
 	}
 	f.notebooks = fakeNotebooks{recorder: rec, workspaces: map[uuid.UUID]uuid.UUID{f.eng: f.acme}, gone: map[uuid.UUID]bool{}}
+	f.log = &fakeHistory{recorder: rec, store: f.store, notebook: f.eng, versions: map[domain.VersionRef]string{}}
 	f.md = &fakeMarkdown{recorder: rec}
 	f.budget = &fakeBudget{recorder: rec}
 	f.wait = time.Second
@@ -1103,9 +1105,9 @@ func (f *fixture) logger() *slog.Logger { return slog.New(slog.NewTextHandler(f.
 func (f *fixture) writer() *app.Writer {
 	return app.NewWriter(app.WriterDeps{
 		Tx: f.tx, Clock: f.clock, Auth: f.auth, Workspaces: f.workspaces, Notebooks: f.notebooks, Nodes: f.store,
-		NodeWriter: f.store, Trash: f.store, Changesets: f.store, SessionWriter: f.store, Names: f.names, Guards: f.guards,
-		Participants: f.partakers,
-		Observers:    f.observers, SessionVetoers: f.vetoers, SessionSubscribers: f.enders,
+		NodeWriter: f.store, Trash: f.store, History: f.log, Changesets: f.store, SessionWriter: f.store, Names: f.names,
+		Guards: f.guards, Participants: f.partakers, Observers: f.observers, SessionVetoers: f.vetoers,
+		SessionSubscribers: f.enders,
 	})
 }
 

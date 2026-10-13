@@ -151,7 +151,7 @@ func New(d Deps) *Module {
 	budget := markdownadapter.NewBudget(d.Budget)
 	writer := app.NewWriter(app.WriterDeps{
 		Tx: d.Tx, Clock: d.Clock, Auth: d.Authorizer, Workspaces: d.Workspaces, Notebooks: d.Notebooks,
-		Nodes: store, NodeWriter: store, Trash: store, Changesets: store, SessionWriter: store, Names: d.Names,
+		Nodes: store, NodeWriter: store, Trash: store, History: store, Changesets: store, SessionWriter: store, Names: d.Names,
 		Guards: d.Guards, Participants: d.Participants, Observers: d.Observers,
 		SessionVetoers: d.EditSessionVetoers, SessionSubscribers: d.EditSessionSubscribers,
 	})
