@@ -126,7 +126,8 @@ type fakeStore struct {
 	// holds.
 	sessions map[uuid.UUID]app.EditSession
 	held     map[uuid.UUID]bool
-	// errs fails the reads named, FindNodeIn and Children.
+	// errs fails the calls named: FindNodeIn and Children; WriteContent,
+	// RenameNode and MoveNode.
 	errs map[string]error
 	// trash are the nodes deleted, with when and whether each is a trash
 	// item's root, which FindAnyNode and the trash's reads read; counts
@@ -456,18 +457,27 @@ func (f *fakeStore) CreateContent(ctx context.Context, c app.Content) error {
 
 func (f *fakeStore) WriteContent(ctx context.Context, c app.Content) error {
 	f.record(ctx, "WriteContent")
+	if err := f.errs["WriteContent"]; err != nil {
+		return err
+	}
 	f.contents[c.NodeID] = c
 	return nil
 }
 
 func (f *fakeStore) RenameNode(ctx context.Context, n domain.Node) error {
 	f.record(ctx, "RenameNode")
+	if err := f.errs["RenameNode"]; err != nil {
+		return err
+	}
 	f.nodes[n.ID] = n
 	return nil
 }
 
 func (f *fakeStore) MoveNode(ctx context.Context, n domain.Node) error {
 	f.record(ctx, "MoveNode")
+	if err := f.errs["MoveNode"]; err != nil {
+		return err
+	}
 	f.nodes[n.ID] = n
 	return nil
 }
