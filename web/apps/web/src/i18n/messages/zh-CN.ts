@@ -271,6 +271,7 @@ export const zhCN: Messages = {
   "diff.next": "下一处",
   "diff.tooLarge": "太大，不能逐行比较。",
   "diff.tooLargeLines": "+{added} −{removed} 行，太大，不能逐行比较。",
+  "diff.failed": "比较失败。",
   "editor.tabHint": "Tab 键缩进。要离开编辑区，先按 Esc，再按 Tab。",
   "editor.keepMine": "保留我的",
   "editor.discardMine": "放弃我的",

@@ -274,6 +274,7 @@ export const en = {
   "diff.next": "Next change",
   "diff.tooLarge": "Too large to compare line by line.",
   "diff.tooLargeLines": "+{added} −{removed} lines: too large to compare line by line.",
+  "diff.failed": "The comparison failed.",
   "editor.tabHint": "Tab indents. To move out of the editor, press Esc, then Tab.",
   "editor.keepMine": "Keep mine",
   "editor.discardMine": "Discard mine",

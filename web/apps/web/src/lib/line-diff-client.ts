@@ -4,7 +4,7 @@ import { lineDiff, type LineDiffResult } from "./line-diff";
 const diffTimeout = 2000;
 
 /** The most bytes of UTF-8, both texts together, compared line by line (M8 design 4.3). */
-export const maxDiffBytes = 5 * 1024 * 1024;
+const maxDiffBytes = 5 * 1024 * 1024;
 
 /**
  * Texts this small, both together, are compared on the page's own thread
@@ -18,7 +18,10 @@ export type DiffRequest = { a: string; b: string };
 
 /** What comparing uses of a Worker; the tests give a fake one. */
 export type DiffWorker = {
-  addEventListener: (type: "message", listener: (event: MessageEvent<LineDiffResult>) => void) => void;
+  addEventListener: {
+    (type: "message", listener: (event: MessageEvent<LineDiffResult>) => void): void;
+    (type: "error" | "messageerror", listener: () => void): void;
+  };
   postMessage: (request: DiffRequest) => void;
   terminate: () => void;
 };
@@ -45,16 +48,18 @@ const tooLarge: LineDiffResult = { kind: "tooLarge", added: null, removed: null 
 /**
  * compareInWorker is lineDiff of two texts in a worker that start starts
  * (M8/P1 design 4.2): tooLarge for texts of more than maxDiffBytes
- * together, without a worker, and once timeout passes, the worker ended.
- * When signal aborts, the worker is ended and the answer is the signal's
- * reason, rejected: a newer comparison of the same view replaced it.
+ * together, without a worker, and once diffTimeout passes, the worker
+ * ended. When signal aborts, the worker is ended and the answer is the
+ * signal's reason, rejected: a newer comparison of the same view replaced
+ * it. A worker that cannot start, whose script does not load or whose
+ * answer cannot be read is ended too, and the answer rejected with an
+ * error (M8/P1 review A, M3).
  */
 export function compareInWorker(
   a: string,
   b: string,
   signal: AbortSignal,
-  start: () => DiffWorker = lineDiffWorker,
-  timeout = diffTimeout
+  start: () => DiffWorker = lineDiffWorker
 ): Promise<LineDiffResult> {
   if (signal.aborted) {
     return Promise.reject(signal.reason);
@@ -76,12 +81,18 @@ export function compareInWorker(
     const timer = setTimeout(() => {
       end();
       resolve(tooLarge);
-    }, timeout);
+    }, diffTimeout);
     signal.addEventListener("abort", abort);
     running.addEventListener("message", ({ data }) => {
       end();
       resolve(data);
     });
+    const fail = () => {
+      end();
+      reject(new Error("the comparison's worker failed"));
+    };
+    running.addEventListener("error", fail);
+    running.addEventListener("messageerror", fail);
     // oxlint-disable-next-line unicorn/require-post-message-target-origin -- a worker's postMessage has no target origin
     running.postMessage({ a, b });
   });

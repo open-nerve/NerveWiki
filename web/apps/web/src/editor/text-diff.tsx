@@ -1,11 +1,19 @@
-import { Change, diff, getChunks, goToNextChunk, goToPreviousChunk, unifiedMergeView } from "@codemirror/merge";
+import {
+  Change,
+  diff,
+  getChunks,
+  getOriginalDoc,
+  goToNextChunk,
+  goToPreviousChunk,
+  unifiedMergeView,
+} from "@codemirror/merge";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { useT } from "../i18n/i18n";
 import { compareInWorker, compareNow } from "../lib/line-diff-client";
-import type { LineDiffResult, TextChange } from "../lib/line-diff";
+import { lineDiffLimits, type LineDiffResult } from "../lib/line-diff";
 import { splitBreaks } from "./line-breaks";
 import { markdownEditing } from "./markdown";
 import { editorPhrases } from "./phrases";
@@ -27,8 +35,8 @@ type TextDiffProps = {
   compareLarge?: typeof compareInWorker;
 };
 
-/** The comparison of the texts a view shows: running, or its result. */
-type Compared = { a: string; b: string; result: LineDiffResult };
+/** The comparison of the texts a view shows, the attempt at it that answered: its result, or that it failed. */
+type Compared = { a: string; b: string; attempt: number; result: LineDiffResult | { kind: "failed" } };
 
 /**
  * TextDiff shows what changes from one text to another (M8 design 4.3):
@@ -41,8 +49,11 @@ type Compared = { a: string; b: string; result: LineDiffResult };
  * unless unfolded. Above it, how many changes there are, Previous and
  * Next, which move to them, and the legend. Texts too far apart to
  * compare line by line show side by side, read-only, with as much as is
- * known of how far. Texts the same once split say so, or that only their
- * line breaks or byte order mark differ.
+ * known of how far; so do changes the view would join into a block of
+ * more lines removed than the comparison's bound. Texts the same once
+ * split say so, or that only their line breaks or byte order mark differ.
+ * A comparison that fails says so, with Try again. While the comparison of
+ * newer texts runs, the one before stays shown, marked busy.
  */
 export function TextDiff({
   before,
@@ -59,23 +70,59 @@ export function TextDiff({
     const b = splitBreaks(after);
     return { a: a.text, b: b.text, breaksOnly: a.text === b.text && before !== after };
   }, [before, after]);
+  const [attempt, setAttempt] = useState(0);
   const now = useMemo(() => {
     const result = compareNow(split.a, split.b);
-    return result === undefined ? undefined : { a: split.a, b: split.b, result };
+    return result === undefined ? undefined : { a: split.a, b: split.b, attempt: 0, result };
   }, [split]);
   const [later, setLater] = useState<Compared>();
+  if (later !== undefined && (now !== undefined || split.a === split.b)) {
+    // No worker's comparison is shown: the last one, and its texts, are let go.
+    setLater(undefined);
+  }
   useEffect(() => {
-    if (now !== undefined) {
+    if (now !== undefined || split.a === split.b) {
       return undefined;
     }
     const controller = new AbortController();
-    compareLarge(split.a, split.b, controller.signal).then(
-      (result) => setLater({ a: split.a, b: split.b, result }),
-      () => undefined
-    );
+    const answer = (result: Compared["result"]) => {
+      if (!controller.signal.aborted) {
+        setLater({ a: split.a, b: split.b, attempt, result });
+      }
+    };
+    compareLarge(split.a, split.b, controller.signal).then(answer, () => answer({ kind: "failed" }));
     return () => controller.abort();
-  }, [now, split, compareLarge]);
-  const compared = now ?? (later?.a === split.a && later.b === split.b ? later : undefined);
+  }, [now, split, compareLarge, attempt]);
+  // The comparison of other texts stays shown while this one runs (M8/P1 review A, M4), unless it failed.
+  const stale = later !== undefined && (later.a !== split.a || later.b !== split.b || later.attempt !== attempt);
+  const compared = now ?? (stale && later.result.kind === "failed" ? undefined : later);
+  const state = useMemo(() => {
+    if (compared?.result.kind !== "changes") {
+      return undefined;
+    }
+    const found = compared.result.changes.map((c) => new Change(c.fromA, c.toA, c.fromB, c.toB));
+    // The view compares the texts the comparison did: any other pair, which it never asks for, is compared afresh.
+    const override = (a: string, b: string) =>
+      a === compared.a && b === compared.b ? found : diff(a, b, { scanLimit: 500 });
+    return EditorState.create({
+      doc: compared.b,
+      extensions: [
+        EditorState.readOnly.of(true),
+        EditorView.editable.of(false),
+        markdownEditing(),
+        editorTheme,
+        diffTheme,
+        editorPhrases(t),
+        EditorView.contentAttributes.of({ "aria-label": label }),
+        unifiedMergeView({
+          original: compared.a,
+          mergeControls: false,
+          diffConfig: { override },
+          ...(unfolded ? {} : { collapseUnchanged: { margin: 2, minSize: 4 } }),
+        }),
+      ],
+    });
+  }, [compared, label, t, unfolded]);
 
   if (split.a === split.b) {
     return <p className="text-sm text-muted-foreground">{t(split.breaksOnly ? "diff.breaksOnly" : "diff.same")}</p>;
@@ -87,11 +134,23 @@ export function TextDiff({
       </p>
     );
   }
-  const legend = t("diff.legend", { before: beforeName, after: afterName });
   const { result } = compared;
-  if (result.kind === "tooLarge") {
+  if (result.kind === "failed") {
     return (
       <div className="space-y-2">
+        <p role="alert" className="rounded-md border border-destructive/50 px-4 py-3 text-sm text-destructive">
+          {t("diff.failed")}
+        </p>
+        <button type="button" className={buttonClass} onClick={() => setAttempt(attempt + 1)}>
+          {t("status.retry")}
+        </button>
+      </div>
+    );
+  }
+  const busy = now === undefined && stale;
+  if (result.kind === "tooLarge" || state === undefined || removedLines(state) > lineDiffLimits.maxChangedLines) {
+    return (
+      <div className="space-y-2" aria-busy={busy || undefined}>
         <p className="text-sm text-muted-foreground">
           {result.added === null || result.removed === null
             ? t("diff.tooLarge")
@@ -106,23 +165,38 @@ export function TextDiff({
   }
   return (
     <UnifiedDiff
-      compared={compared}
-      changes={result.changes}
-      label={label}
-      legend={legend}
+      state={state}
+      legend={t("diff.legend", { before: beforeName, after: afterName })}
       lines={{ added: result.added, removed: result.removed }}
-      unfolded={unfolded}
+      busy={busy}
     />
   );
 }
 
+/**
+ * removedLines is the most lines a change of the view removes: it shows
+ * them at once, in one block, having joined the changes that only an
+ * empty line parts, so that it may hold more lines than the comparison
+ * counted (M8/P1 review A, M5).
+ */
+function removedLines(state: EditorState): number {
+  const original = getOriginalDoc(state);
+  let most = 0;
+  for (const chunk of getChunks(state)?.chunks ?? []) {
+    if (chunk.toA > chunk.fromA) {
+      most = Math.max(most, original.lineAt(chunk.endA).number - original.lineAt(chunk.fromA).number + 1);
+    }
+  }
+  return most;
+}
+
 type UnifiedDiffProps = {
-  compared: Compared;
-  changes: readonly TextChange[];
-  label: string;
+  /** The text after with what changed from the text before, as the view's state. */
+  state: EditorState;
   legend: string;
   lines: { added: number; removed: number };
-  unfolded: boolean;
+  /** Whether a newer comparison runs. */
+  busy: boolean;
 };
 
 /**
@@ -130,47 +204,22 @@ type UnifiedDiffProps = {
  * text before: @codemirror/merge's unified view, given the changes the
  * comparison found (diffConfig.override) rather than computing its own.
  */
-function UnifiedDiff({ compared, changes, label, legend, lines, unfolded }: UnifiedDiffProps) {
+function UnifiedDiff({ state, legend, lines, busy }: UnifiedDiffProps) {
   const t = useT();
   const element = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView>(undefined);
-  const [chunks, setChunks] = useState(0);
+  const chunks = getChunks(state)?.chunks.length ?? 0;
   useLayoutEffect(() => {
     if (element.current === null) {
       return undefined;
     }
-    const found = changes.map((c) => new Change(c.fromA, c.toA, c.fromB, c.toB));
-    // The view compares the texts the comparison did: any other pair, which it never asks for, is compared afresh.
-    const override = (a: string, b: string) =>
-      a === compared.a && b === compared.b ? found : diff(a, b, { scanLimit: 500 });
-    const editor = new EditorView({
-      parent: element.current,
-      state: EditorState.create({
-        doc: compared.b,
-        extensions: [
-          EditorState.readOnly.of(true),
-          EditorView.editable.of(false),
-          markdownEditing(),
-          editorTheme,
-          diffTheme,
-          editorPhrases(t),
-          EditorView.contentAttributes.of({ "aria-label": label }),
-          unifiedMergeView({
-            original: compared.a,
-            mergeControls: false,
-            diffConfig: { override },
-            ...(unfolded ? {} : { collapseUnchanged: { margin: 2, minSize: 4 } }),
-          }),
-        ],
-      }),
-    });
+    const editor = new EditorView({ parent: element.current, state });
     view.current = editor;
-    setChunks(getChunks(editor.state)?.chunks.length ?? 0);
     return () => {
       view.current = undefined;
       editor.destroy();
     };
-  }, [compared, changes, label, t, unfolded]);
+  }, [state]);
   const move = (command: typeof goToNextChunk) => {
     const editor = view.current;
     if (editor !== undefined) {
@@ -178,7 +227,7 @@ function UnifiedDiff({ compared, changes, label, legend, lines, unfolded }: Unif
     }
   };
   return (
-    <div className="space-y-2">
+    <div className="space-y-2" aria-busy={busy || undefined}>
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <span>{t("diff.changes", { count: chunks })}</span>
         <span className="text-muted-foreground">{t("diff.lines", { added: lines.added, removed: lines.removed })}</span>

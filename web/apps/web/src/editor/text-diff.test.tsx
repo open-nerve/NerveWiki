@@ -4,6 +4,7 @@ import { describe, expect, test } from "vitest";
 
 import { I18nProvider } from "../i18n/i18n";
 import { lineDiff, type LineDiffResult } from "../lib/line-diff";
+import { compareInWorker, type DiffWorker } from "../lib/line-diff-client";
 import { TextDiff } from "./text-diff";
 
 type Compare = (a: string, b: string, signal: AbortSignal) => Promise<LineDiffResult>;
@@ -24,6 +25,16 @@ const diff = (before: string, after: string, compareLarge?: Compare) => (
 
 /** inline compares on the test's thread, as the worker would. */
 const inline: Compare = (a, b) => Promise.resolve(lineDiff(a, b));
+
+/** controlled is a comparison that answers when the test says: each one asked, with its signal. */
+function controlled() {
+  const asked: { signal: AbortSignal; finish: (result: LineDiffResult) => void }[] = [];
+  const compare: Compare = (_a, _b, signal) =>
+    new Promise((resolve) => {
+      asked.push({ signal, finish: resolve });
+    });
+  return { compare, asked };
+}
 
 const lines = Array.from({ length: 12 }, (_, i) => `line ${i.toString()}\n`).join("");
 
@@ -97,21 +108,102 @@ describe("TextDiff", () => {
     expect(await screen.findByText("太大，不能逐行比较。")).toBeDefined();
   });
 
-  test("shows a comparison only for the texts it compared", async () => {
-    let finish: ((result: LineDiffResult) => void) | undefined;
-    const pending: Compare = () =>
-      new Promise((resolve) => {
-        finish = resolve;
-      });
+  test("shows a comparison only for the texts it compared, dropping the one before", async () => {
+    const { compare, asked } = controlled();
     const big = "x\n".repeat(20_000);
-    const { rerender } = render(diff(big, `${big}y\n`, pending));
-    const first = finish;
-    rerender(diff(big, `${big}z\n`, pending));
+    const { rerender } = render(diff(big, `${big}y\n`, compare));
+    rerender(diff(big, `${big}z\n`, compare));
+    expect(asked.map((each) => each.signal.aborted)).toEqual([true, false]);
     await act(async () => {
-      first?.({ kind: "tooLarge", added: 1, removed: 0 });
+      asked[0]?.finish({ kind: "tooLarge", added: 1, removed: 0 });
       await Promise.resolve();
     });
     expect(screen.queryByText(/太大/)).toBeNull();
     expect(screen.getByText("正在比较…")).toBeDefined();
+  });
+
+  // M8/P1 review A, M4: a page edited elsewhere is read again every few seconds.
+  test("keeps the comparison it shows, marked busy, while that of newer texts runs", async () => {
+    const { compare, asked } = controlled();
+    const big = "x\n".repeat(20_000);
+    const { container, rerender } = render(diff(big, `${big}y\n`, compare));
+    await act(async () => {
+      asked[0]?.finish(lineDiff(big, `${big}y\n`));
+      await Promise.resolve();
+    });
+    const next = screen.getByRole("button", { name: "下一处" });
+    next.focus();
+    rerender(diff(big, `${big}y\nz\n`, compare));
+    expect(screen.getByText("+1 −0 行")).toBeDefined();
+    expect(container.querySelector("[aria-busy=true]")).not.toBeNull();
+    expect(document.activeElement).toBe(next);
+    await act(async () => {
+      asked[1]?.finish(lineDiff(big, `${big}y\nz\n`));
+      await Promise.resolve();
+    });
+    expect(screen.getByText("+2 −0 行")).toBeDefined();
+    expect(container.querySelector("[aria-busy]")).toBeNull();
+    expect(document.activeElement).toBe(next);
+  });
+
+  test("lets an earlier comparison go once the texts are small enough to compare at once", async () => {
+    const { compare, asked } = controlled();
+    const big = "x\n".repeat(20_000);
+    const { rerender } = render(diff(big, `${big}y\n`, compare));
+    await act(async () => {
+      asked[0]?.finish({ kind: "tooLarge", added: 1, removed: 0 });
+      await Promise.resolve();
+    });
+    rerender(diff("a\n", "b\n", compare));
+    expect(screen.getByText("1 处改动")).toBeDefined();
+    rerender(diff(big, `${big}z\n`, compare));
+    expect(screen.queryByText(/太大/)).toBeNull();
+    expect(screen.getByText("正在比较…")).toBeDefined();
+  });
+
+  // M8/P1 review A, M3: a worker whose script an upgrade removed, or none at all.
+  test("says when the comparison failed, and compares again on Try again", async () => {
+    let fail = true;
+    const compare: Compare = (a, b, signal) =>
+      compareInWorker(a, b, signal, () => {
+        if (fail) {
+          throw new Error("no workers here");
+        }
+        const answered: DiffWorker = {
+          addEventListener: (type: string, listener: (event: MessageEvent<LineDiffResult>) => void) => {
+            if (type === "message") {
+              queueMicrotask(() => listener(new MessageEvent("message", { data: lineDiff(a, b) })));
+            }
+          },
+          postMessage: () => undefined,
+          terminate: () => undefined,
+        };
+        return answered;
+      });
+    const big = "x\n".repeat(20_000);
+    render(diff(big, `${big}y\n`, compare));
+    expect((await screen.findByRole("alert")).textContent).toBe("比较失败。");
+    fail = false;
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    expect(await screen.findByText("+1 −0 行")).toBeDefined();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  test("says nothing of a failure while the comparison of newer texts runs", async () => {
+    const big = "x\n".repeat(20_000);
+    const { rerender } = render(diff(big, `${big}y\n`, () => Promise.reject(new Error("failed"))));
+    expect(await screen.findByRole("alert")).toBeDefined();
+    rerender(diff(big, `${big}z\n`, controlled().compare));
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByText("正在比较…")).toBeDefined();
+  });
+
+  // M8/P1 review A, M5: the view joins the changes that only an empty line parts, and shows a change's lines removed at once.
+  test("shows side by side changes the view would show as more than 5,000 lines removed in one block", async () => {
+    const before = Array.from({ length: 5000 }, (_, i) => `paragraph ${i.toString()}\n`).join("\n");
+    const after = "\n".repeat(4999);
+    render(diff(before, after, inline));
+    expect(await screen.findByText("+0 −5000 行，太大，不能逐行比较。")).toBeDefined();
+    expect(document.querySelectorAll(".cm-editor")).toHaveLength(2);
   });
 });
