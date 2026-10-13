@@ -467,6 +467,43 @@ test("a node made a member of another item by others while its preview shows goe
   expect(document.activeElement).toBe(elsewhere);
 });
 
+// M8/P2B fix check 2: what describes the title of a preview gone to from a node deleted with it since, refused.
+test("a restore refused on the preview of an item gone to from a node deleted with it since says both, the refusal describing the title", async () => {
+  const user = userEvent.setup();
+  const { server } = trashed();
+  server.restoreElsewhere(install.id);
+  server.trashNode(guide.id);
+  (server.trash.get(guide.id) as FakeTrashItem).history = 400_001;
+  renderApp(previewPath(install.id), server.app);
+  const heading = await screen.findByRole("heading", { level: 1, name: "Guide" });
+  await waitFor(() => expect(document.activeElement).toBe(heading));
+
+  await user.click(screen.getByRole("button", { name: /^Restore “Guide”/ }));
+
+  await waitFor(() => expect(screen.getAllByRole("alert")).toHaveLength(2));
+  const [refusal, merged] = screen.getAllByRole("alert");
+  expect(refusal?.textContent).toBe(
+    "“Guide” is too large to restore here: it holds more pages, attachments, content, links or versions than one restore brings back. Pages: 3, attachments: 0."
+  );
+  expect(merged?.textContent).toBe(
+    "What you opened was deleted again with a page above it: it is part of this item now, and is restored with it."
+  );
+  expect(heading.getAttribute("aria-describedby")).toBe(refusal?.id);
+});
+
+// M8/P2B fix check 2 (v0.1 design 13.2, item 17): opened, not gone to from a node deleted with it since.
+test("a preview opened from the trash's list takes no focus", async () => {
+  const user = userEvent.setup();
+  const { server } = trashed();
+  renderApp(trashPath, server.app);
+
+  await user.click(await screen.findByRole("link", { name: "Install (From: Guide)" }));
+
+  await screen.findByRole("heading", { level: 1, name: "Install" });
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(document.activeElement).toBe(document.body);
+});
+
 // M8/P2B fix check 1, N2 (K5b): the item read again as a network would, after the refusal is said.
 test("a refusal from the preview that takes the item away is one alert, said once as what shows below it changes", async () => {
   const user = userEvent.setup();
