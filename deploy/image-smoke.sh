@@ -132,7 +132,7 @@ instance=$(get "$base/api/v0/instance")
 jq -e --arg version "$version" --arg commit "$commit" \
   '. == {product: "Nerve Wiki", version: $version, commit: $commit, api_version: "v0", signup_enabled: false,
       workspace_creation_enabled: true, asset_max_bytes: 52428800, export_ttl_seconds: 86400,
-      import_max_bytes: 536870912}' \
+      import_max_bytes: 536870912, trash_retention_seconds: 5180400}' \
   <<<"$instance" >/dev/null || fail "/api/v0/instance 与预期不符：$instance"
 signup=$(curl -sS --max-time 5 -H 'Content-Type: application/json' -d '{"email":"a@example.com","password":"correct horse battery"}' \
   "$base/api/v0/auth/register")
