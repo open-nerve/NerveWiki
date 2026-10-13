@@ -43,9 +43,11 @@ type VersionRestoreProps = {
  * writes nothing, which the version's page says (said) as the dialog
  * closes, as it says a page gone (404). A page written since it was read
  * has its content read again, and the comparison with it, and the dialog
- * stays, saying so: nothing is sent again by itself (v0.1 design 13.2,
- * item 7). A page someone edits says who, as a lock does elsewhere, its
- * lock's note read again; any other refusal stays in the dialog.
+ * stays, saying so once that comparison shows: nothing is sent again by
+ * itself (v0.1 design 13.2, item 7). A page someone edits says who, as a
+ * lock does elsewhere, its lock's note read again; any other refusal stays
+ * in the dialog. Restore sends only what shows: the comparison on screen
+ * is with the content whose revision it sends (M8/P1 fix check 1, N1).
  */
 export function VersionRestore({ notebook, page, version, said, restored }: VersionRestoreProps) {
   const t = useT();
@@ -108,7 +110,11 @@ function RestoreForm({ notebook, page, version, sending, setSending, close, rest
   const { mutate } = useSWRConfig();
   const current = useSWR(["page-content", notebook.id, page.id], () => pages.content(page.id));
   const [failure, setFailure] = useState<unknown>(undefined);
-  const [changed, setChanged] = useState(false);
+  // The revision a restore was refused on, the page written since.
+  const [refused, setRefused] = useState<number>();
+  // The page's content whose comparison shows: none while one runs.
+  const [shown, setShown] = useState<string>();
+  const ready = current.data !== undefined && shown === current.data.content;
 
   async function restore(): Promise<void> {
     const read = current.data;
@@ -117,7 +123,7 @@ function RestoreForm({ notebook, page, version, sending, setSending, close, rest
     }
     setSending(true);
     setFailure(undefined);
-    setChanged(false);
+    setRefused(undefined);
     try {
       const answer = await pages.restoreVersion(page.id, version.revision, read.revision);
       if (!answer.changed) {
@@ -130,8 +136,12 @@ function RestoreForm({ notebook, page, version, sending, setSending, close, rest
       restored();
     } catch (error) {
       if (error instanceof ApiError && error.code === "page.revision_mismatch") {
-        await current.mutate().catch(() => undefined);
-        setChanged(true);
+        setRefused(read.revision);
+        const now = await current.mutate().catch(() => undefined);
+        if (now === undefined || now.revision === read.revision) {
+          // Not read again: the refusal says why.
+          setFailure(error);
+        }
       } else if (error instanceof ApiError && error.status === 404) {
         close(error.code === "page.not_found" ? t("version.gone") : (errorText(error, t) ?? ""));
       } else {
@@ -153,7 +163,9 @@ function RestoreForm({ notebook, page, version, sending, setSending, close, rest
     <>
       <AlertDialogTitle>{t("version.restoreTitle", { revision: version.revision })}</AlertDialogTitle>
       <AlertDialogDescription>{t("version.restoreBody")}</AlertDialogDescription>
-      {changed && <Alert>{t("version.changedMeanwhile")}</Alert>}
+      {ready && refused !== undefined && current.data?.revision !== refused && (
+        <Alert>{t("version.changedMeanwhile")}</Alert>
+      )}
       {current.data === undefined ? (
         <NotLoaded error={current.error} retry={() => void current.mutate()} />
       ) : (
@@ -163,6 +175,7 @@ function RestoreForm({ notebook, page, version, sending, setSending, close, rest
           label={t("version.currentDiff", { revision: version.revision })}
           beforeName={t("version.now")}
           afterName={t("version.title", { revision: version.revision })}
+          shown={setShown}
         />
       )}
       {failed !== undefined && <Alert>{failed}</Alert>}
@@ -172,7 +185,7 @@ function RestoreForm({ notebook, page, version, sending, setSending, close, rest
             {t("page.cancel")}
           </Button>
         </AlertDialogCancel>
-        <Button disabled={sending || current.data === undefined} onClick={() => void restore()}>
+        <Button disabled={sending || !ready} onClick={() => void restore()}>
           {sending ? t("version.restoring") : t("version.restoreConfirm")}
         </Button>
       </div>

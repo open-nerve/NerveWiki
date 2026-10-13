@@ -16,6 +16,8 @@ type ComparisonProps = {
   /** What the two texts are, for the legend. */
   beforeName: string;
   afterName: string;
+  /** shown is told the text before whose comparison shows (TextDiff's shown). */
+  shown?: (before: string | undefined) => void;
 };
 
 /**
@@ -26,7 +28,7 @@ type ComparisonProps = {
  * are folded; Show unchanged lines, which the keyboard reaches as it does
  * not a fold, shows them all.
  */
-export function Comparison({ before, after, label, beforeName, afterName }: ComparisonProps) {
+export function Comparison({ before, after, label, beforeName, afterName, shown }: ComparisonProps) {
   const t = useT();
   const [diff, setDiff] = useState<Diff>();
   const [failed, setFailed] = useState(false);
@@ -43,6 +45,7 @@ export function Comparison({ before, after, label, beforeName, afterName }: Comp
           beforeName={beforeName}
           afterName={afterName}
           unfolded={unfolded}
+          shown={shown}
         />
         <Button variant="outline" aria-pressed={unfolded} onClick={() => setUnfolded(!unfolded)}>
           {t("editor.showUnchanged")}

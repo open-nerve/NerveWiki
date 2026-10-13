@@ -33,6 +33,8 @@ type TextDiffProps = {
   unfolded?: boolean;
   /** How a comparison too large for the page's thread runs: in a worker; the tests give their own. */
   compareLarge?: typeof compareInWorker;
+  /** shown is told the text before whose comparison shows, as it changes: undefined while none of it does. */
+  shown?: (before: string | undefined) => void;
 };
 
 /** The comparison of the texts a view shows, the attempt at it that answered: its result, or that it failed. */
@@ -53,7 +55,8 @@ type Compared = { a: string; b: string; attempt: number; result: LineDiffResult 
  * more lines removed than the comparison's bound. Texts the same once
  * split say so, or that only their line breaks or byte order mark differ.
  * A comparison that fails says so, with Try again. While the comparison of
- * newer texts runs, the one before stays shown, marked busy.
+ * newer texts runs, the one before stays shown, marked busy, and saying it
+ * compares; shown hears of the texts' when theirs shows.
  */
 export function TextDiff({
   before,
@@ -63,6 +66,7 @@ export function TextDiff({
   afterName,
   unfolded = false,
   compareLarge = compareInWorker,
+  shown,
 }: TextDiffProps) {
   const t = useT();
   const split = useMemo(() => {
@@ -123,6 +127,11 @@ export function TextDiff({
       ],
     });
   }, [compared, label, t, unfolded]);
+  const busy = now === undefined && stale;
+  // A comparison of these texts, or none needed: what a restore sends goes with what shows (M8/P1 fix check 1, N1).
+  const shownBefore =
+    split.a === split.b || (compared !== undefined && compared.result.kind !== "failed" && !busy) ? before : undefined;
+  useEffect(() => shown?.(shownBefore), [shown, shownBefore]);
 
   if (split.a === split.b) {
     return <p className="text-sm text-muted-foreground">{t(split.breaksOnly ? "diff.breaksOnly" : "diff.same")}</p>;
@@ -147,10 +156,10 @@ export function TextDiff({
       </div>
     );
   }
-  const busy = now === undefined && stale;
   if (result.kind === "tooLarge" || state === undefined || removedLines(state) > lineDiffLimits.maxChangedLines) {
     return (
       <div className="space-y-2" aria-busy={busy || undefined}>
+        {busy && <p className="text-sm text-muted-foreground">{t("diff.comparing")}</p>}
         <p className="text-sm text-muted-foreground">
           {result.added === null || result.removed === null
             ? t("diff.tooLarge")
@@ -195,7 +204,7 @@ type UnifiedDiffProps = {
   state: EditorState;
   legend: string;
   lines: { added: number; removed: number };
-  /** Whether a newer comparison runs. */
+  /** Whether a newer comparison runs: the view says so, dimmed. */
   busy: boolean;
 };
 
@@ -229,6 +238,7 @@ function UnifiedDiff({ state, legend, lines, busy }: UnifiedDiffProps) {
   return (
     <div className="space-y-2" aria-busy={busy || undefined}>
       <div className="flex flex-wrap items-center gap-2 text-sm">
+        {busy && <span className="text-muted-foreground">{t("diff.comparing")}</span>}
         <span>{t("diff.changes", { count: chunks })}</span>
         <span className="text-muted-foreground">{t("diff.lines", { added: lines.added, removed: lines.removed })}</span>
         <span className="text-muted-foreground">{legend}</span>
@@ -241,7 +251,7 @@ function UnifiedDiff({ state, legend, lines, busy }: UnifiedDiffProps) {
           </button>
         </span>
       </div>
-      <div ref={element} />
+      <div ref={element} className={busy ? "opacity-60" : undefined} />
     </div>
   );
 }

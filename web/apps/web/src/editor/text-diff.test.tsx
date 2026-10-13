@@ -136,6 +136,9 @@ describe("TextDiff", () => {
     rerender(diff(big, `${big}y\nz\n`, compare));
     expect(screen.getByText("+1 −0 行")).toBeDefined();
     expect(container.querySelector("[aria-busy=true]")).not.toBeNull();
+    // Seen as well as heard: it says it compares, the view dimmed.
+    expect(screen.getByText("正在比较…")).toBeDefined();
+    expect(container.querySelector(".opacity-60 .cm-editor")).not.toBeNull();
     expect(document.activeElement).toBe(next);
     await act(async () => {
       asked[1]?.finish(lineDiff(big, `${big}y\nz\n`));
@@ -143,7 +146,22 @@ describe("TextDiff", () => {
     });
     expect(screen.getByText("+2 −0 行")).toBeDefined();
     expect(container.querySelector("[aria-busy]")).toBeNull();
+    expect(screen.queryByText("正在比较…")).toBeNull();
+    expect(container.querySelector(".opacity-60")).toBeNull();
     expect(document.activeElement).toBe(next);
+  });
+
+  test("keeps texts too far apart side by side, saying it compares, while newer texts compare", async () => {
+    const { compare, asked } = controlled();
+    const big = "x\n".repeat(20_000);
+    const { rerender } = render(diff(big, `${big}y\n`, compare));
+    await act(async () => {
+      asked[0]?.finish({ kind: "tooLarge", added: null, removed: null });
+      await Promise.resolve();
+    });
+    rerender(diff(big, `${big}z\n`, compare));
+    expect(screen.getByText("太大，不能逐行比较。")).toBeDefined();
+    expect(screen.getByText("正在比较…")).toBeDefined();
   });
 
   test("lets an earlier comparison go once the texts are small enough to compare at once", async () => {
