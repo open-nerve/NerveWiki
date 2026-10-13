@@ -1,6 +1,5 @@
-import { reaction } from "mobx";
 import { observer } from "mobx-react-lite";
-import { useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import useSWR, { useSWRConfig } from "swr";
 
@@ -9,25 +8,21 @@ import { useDocumentTitle } from "../../app/document-title";
 import { writesPages } from "../../app/effective-role";
 import { useMounted } from "../../app/mounted";
 import { NotLoaded } from "../../app/not-loaded";
-import { errorText } from "../../app/problem-messages";
-import { Alert } from "../../components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { formatDateTime } from "../../i18n/format";
 import { useT } from "../../i18n/i18n";
-import { enhance, Enhancements } from "../../reading/enhancement";
 import type { Notebook } from "../../services/notebook.service";
 import type { PageVersionContent, TreeNode } from "../../services/page.service";
-import { useAssets, usePageTree, useStore } from "../../stores/context";
+import { usePageTree, useStore } from "../../stores/context";
 import { useNotebook } from "../notebook/notebook-layout";
 import { useWorkspace } from "../workspace/workspace-layout";
-import { eachRead, stamped, useAssetsExpiry } from "./assets-expiry";
 import { Breadcrumbs } from "./breadcrumbs";
 import { Comparison } from "./comparison";
 import { EditLockNote } from "./edit-lock-note";
 import { PageGone, type Restored } from "./page-layout";
 import { Mark, useVersions, versionBy } from "./page-versions";
-import { useUnresolvedLinks } from "./unresolved-link";
 import { VersionRestore } from "./version-restore";
+import { useLeftBehind, VersionView } from "./version-view";
 
 /** A revision as an address writes it: a whole number from 1, no longer than a number holds exactly. */
 const revisionPattern = /^[1-9]\d{0,14}$/;
@@ -49,8 +44,9 @@ type Tab = "read" | "previous" | "current";
  * that holds the address's revision. It finds the page in the notebook's
  * tree, as the page's shell does (page-layout.tsx): nothing until the tree
  * is read, and no page of the app's for a page the tree does not have, or
- * a revision no version could hold. P1 has the versions of the pages
- * alive alone: a page in the trash shows its versions in P2's preview.
+ * a revision no version could hold. It has the versions of the pages
+ * alive alone: a page in the trash shows the version it was deleted at in
+ * the trash's preview (trash-preview.tsx).
  */
 export const VersionPage = observer(function VersionPage() {
   const notebook = useNotebook();
@@ -170,7 +166,12 @@ const VersionShell = observer(function VersionShell({
             <TabsTrigger value="current">{t("version.compareCurrent")}</TabsTrigger>
           </TabsList>
           <TabsContent value="read" className="pt-4">
-            <VersionView notebook={notebook} page={page} revision={data.revision} />
+            <VersionView
+              notebook={notebook}
+              page={page.id}
+              revision={data.revision}
+              label={t("version.title", { revision: data.revision })}
+            />
           </TabsContent>
           {data.base_revision !== null && (
             <TabsContent value="previous" className="pt-4">
@@ -182,102 +183,6 @@ const VersionShell = observer(function VersionShell({
           </TabsContent>
         </Tabs>
       )}
-    </div>
-  );
-});
-
-/**
- * VersionView is the version's reading view (M8 design 4.3): the server's
- * HTML of its content, its links leading where they lead now, which the
- * reading enhancements run on as on the page's (reading-view.tsx), read
- * only: no task item is ticked, and a link to a page that is not there
- * says so, creating none. Its attachments' addresses expire as the page's
- * do: it is read again before they do (page-view.ts). What an enhancement
- * reports shows above it, until the view is read anew.
- */
-const VersionView = observer(function VersionView({
-  notebook,
-  page,
-  revision,
-}: {
-  notebook: Notebook;
-  page: TreeNode;
-  revision: number;
-}) {
-  const { slug } = useWorkspace();
-  const pages = usePageTree(notebook);
-  const assets = useAssets(notebook);
-  const enhancements = useContext(Enhancements);
-  const t = useT();
-  const { preferences } = useStore();
-  const navigate = useNavigate();
-  const [failure, setFailure] = useState<unknown>(undefined);
-  const { data, error, mutate } = useSWR(
-    ["page-version-view", notebook.id, page.id, revision],
-    () => stamped(pages.versionView(page.id, revision)),
-    eachRead
-  );
-  const view = useAssetsExpiry(data, () => void mutate());
-  const html = view?.html;
-  // What an enhancement reported of a view goes with it.
-  const [reported, setReported] = useState(html);
-  if (reported !== html) {
-    setReported(html);
-    setFailure(undefined);
-  }
-  const article = useRef<HTMLElement>(null);
-  const links = useUnresolvedLinks({
-    notebook,
-    page: page.id,
-    pages,
-    article,
-    reload: () => void mutate(),
-    report: setFailure,
-    readOnly: true,
-  });
-  const latestUnresolved = useRef(links.unresolved);
-  useEffect(() => {
-    latestUnresolved.current = links.unresolved;
-  });
-  const at = view?.revision;
-  const assetsExpire = view?.assets_expire_at ?? null;
-  const { id: notebookId, role } = notebook;
-  useLayoutEffect(() => {
-    const container = article.current;
-    if (container === null || html === undefined || at === undefined) {
-      return undefined;
-    }
-    container.innerHTML = html;
-    return enhance(enhancements, container, {
-      workspace: slug,
-      notebook: notebookId,
-      page: page.id,
-      revision: at,
-      role,
-      t,
-      locale: preferences.locale,
-      theme: () => preferences.resolvedTheme,
-      onThemeChange: (listener) => reaction(() => preferences.resolvedTheme, listener),
-      reload: () => void mutate(),
-      navigate: (to) => void navigate(to, to.includes("#") ? undefined : { state: arrived }),
-      report: setFailure,
-      unresolved: (link) => void latestUnresolved.current(link),
-      assetsExpire,
-      assetAddress: (id) => assets.address(id),
-    });
-  }, [html, at, assetsExpire, enhancements, slug, notebookId, role, t, preferences, page.id, mutate, navigate, assets]);
-  if (view === undefined) {
-    return <NotLoaded error={error} retry={() => void mutate()} />;
-  }
-  return (
-    <div className="space-y-4">
-      {failure !== undefined && <Alert>{errorText(failure, t)}</Alert>}
-      <article
-        ref={article}
-        aria-label={t("version.title", { revision: at ?? revision })}
-        className="nw-reading min-w-0"
-      />
-      {links.dialog}
     </div>
   );
 });
@@ -361,33 +266,4 @@ function useLeftRevision(notebook: string, page: string, revision: number): void
       );
     }
   }, [mutate, notebook, page, revision]);
-}
-
-/**
- * useLeftBehind takes what the version's page read of the page out of
- * SWR's cache once it is left (M8 design 4.13): its versions' contents and
- * views, and the page's content now, each up to 5 MiB, would stay in
- * memory for each version visited. They go, to be read as they show
- * again, deduplication or not. Once the turn is over: StrictMode's
- * unmount, mounted again at once, takes nothing out. A cache gone by then,
- * with its generation, holds nothing.
- */
-function useLeftBehind(notebook: string, page: string): void {
-  const { mutate } = useSWRConfig();
-  const leaving = useRef<ReturnType<typeof setTimeout>>(undefined);
-  useEffect(() => {
-    clearTimeout(leaving.current);
-    return () => {
-      leaving.current = setTimeout(() => {
-        mutate(
-          (key) =>
-            Array.isArray(key) &&
-            (key[0] === "page-version" || key[0] === "page-version-view" || key[0] === "page-content") &&
-            key[1] === notebook &&
-            key[2] === page,
-          undefined
-        ).catch(() => undefined);
-      }, 0);
-    };
-  }, [mutate, notebook, page]);
 }

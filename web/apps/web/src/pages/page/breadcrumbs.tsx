@@ -24,42 +24,42 @@ export function Breadcrumbs({
   /** The part of the page shown, named. */
   part?: string;
 }) {
+  const steps = [
+    { key: notebook.id, to: href(), name: notebook.name },
+    ...ancestors.map((ancestor) => ({ key: ancestor.id, to: href(ancestor.id), name: ancestor.name })),
+    ...(part === undefined ? [] : [{ key: page.id, to: href(page.id), name: page.name }]),
+  ];
+  return <BreadcrumbTrail steps={steps} current={part ?? page.name} />;
+}
+
+/**
+ * BreadcrumbTrail is a trail of steps, each a link, then where the reader
+ * is (current), marked as the current one: a page's (Breadcrumbs), a trash
+ * item's preview (its notebook, the trash, the item).
+ */
+export function BreadcrumbTrail({
+  steps,
+  current,
+}: {
+  steps: readonly { key: string; to: string; name: string }[];
+  current: string;
+}) {
   const t = useT();
   return (
     <nav aria-label={t("page.breadcrumb")}>
       <ol className="flex flex-wrap items-center gap-x-1 text-sm text-muted-foreground">
-        <li>
-          <Link to={href()} className="hover:underline">
-            {notebook.name}
-          </Link>
-        </li>
-        {ancestors.map((ancestor) => (
-          <li key={ancestor.id}>
-            <Separator />
-            <Link to={href(ancestor.id)} className="hover:underline">
-              {ancestor.name}
+        {steps.map((step, i) => (
+          <li key={step.key}>
+            {i > 0 && <Separator />}
+            <Link to={step.to} className="hover:underline">
+              {step.name}
             </Link>
           </li>
         ))}
-        {part === undefined ? (
-          <li className="text-foreground">
-            <Separator />
-            <span aria-current="page">{page.name}</span>
-          </li>
-        ) : (
-          <>
-            <li>
-              <Separator />
-              <Link to={href(page.id)} className="hover:underline">
-                {page.name}
-              </Link>
-            </li>
-            <li className="text-foreground">
-              <Separator />
-              <span aria-current="page">{part}</span>
-            </li>
-          </>
-        )}
+        <li className="text-foreground">
+          {steps.length > 0 && <Separator />}
+          <span aria-current="page">{current}</span>
+        </li>
       </ol>
     </nav>
   );

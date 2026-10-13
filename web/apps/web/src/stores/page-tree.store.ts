@@ -13,12 +13,15 @@ import type {
 import type {
   EditLock,
   NodeMove,
+  NodeRestored,
   PageContent,
   PageService,
   PageVersionContent,
   PageVersionPage,
   PageView,
   TaskToggle,
+  TrashItem,
+  TrashItemPage,
   TreeNode,
   VersionRestored,
 } from "../services/page.service";
@@ -42,7 +45,9 @@ export const toggleLimit = 60_000;
  * 4). Each answer, a refusal too, has the tree read again; what a write
  * answers is not put in the tree here, since the client does not work out
  * the siblings' order. The pages this generation deleted leave the tree at
- * once, whether it could be read again or not.
+ * once, whether it could be read again or not, until a read begun after
+ * the deletion's answer lists one again: restored from the trash, here,
+ * in another tab or by someone else (M8 design 4.13).
  *
  * It reads for the notebook what its pages' links and tags lead to (M6/P6
  * design 13): the pages of a tag, which SWR keeps as it does the views,
@@ -51,7 +56,10 @@ export const toggleLimit = 60_000;
  * It reads a page's versions, which SWR keeps as it does the views, and
  * restores one (M8 design 4.3, 4.4): a page's restores go out one at a
  * time, in the order made, beside the tree's writes, which they do not
- * change.
+ * change. It reads the notebook's trash and an item of it, which SWR
+ * keeps, and restores an item (M8 design 4.5, 4.6): a node's restores go
+ * out one at a time too, each then in turn with the tree's writes, which
+ * it is one of.
  */
 export class PageTreeStore {
   /** The nodes as read, pages and attachments, replaced whole by each read: they are not observed one by one. */
@@ -73,8 +81,13 @@ export class PageTreeStore {
     out: false,
     next: undefined,
   };
-  /** The pages this generation deleted, each with where its shell goes: the deleted subtree's parent (null: home). */
-  private readonly removed = new Map<string, string | null>();
+  /**
+   * The pages this generation deleted, each with where its shell goes, the
+   * deleted subtree's parent (null: home), and how many reads had started
+   * as the deletion answered: a read begun after it that lists the page
+   * alive takes it out (M8/P2 design 4.4).
+   */
+  private readonly removed = new Map<string, { to: string | null; after: number }>();
   private readonly inTurn = oneAtATime();
   /** The pages with a toggle of a task item out, the view read again included, each with when it started. */
   private readonly togglesOut = new Map<string, number>();
@@ -97,6 +110,9 @@ export class PageTreeStore {
       | "version"
       | "versionView"
       | "restoreVersion"
+      | "trash"
+      | "trashItem"
+      | "restoreNode"
     >,
     /** The notebook whose pages these are. */
     readonly notebookId: string,
@@ -175,7 +191,7 @@ export class PageTreeStore {
    * the notebook's home); undefined for a page it did not delete.
    */
   removedTo(id: string): string | null | undefined {
-    return this.removed.get(id);
+    return this.removed.get(id)?.to;
   }
 
   /**
@@ -187,7 +203,10 @@ export class PageTreeStore {
    * upload's answer overlapping it or not. Reads that overlap take effect
    * in the order they started (M5/P3 design 3.9): one answered after a
    * later one is dropped. A tree read the same as before is kept as it was,
-   * so that what shows it does not render again.
+   * so that what shows it does not render again. A page this generation
+   * deleted that a read kept lists alive, a read begun after the
+   * deletion's answer, is no longer deleted: it was restored since (M8/P2
+   * design 4.4), and is in the tree again, a read the same as before too.
    */
   load(): Promise<TreeNode[]> {
     const read = ++this.readsStarted;
@@ -208,9 +227,16 @@ export class PageTreeStore {
       return this.nodes ?? nodes;
     }
     this.readKept = read;
-    if (!sameNodes(this.nodes, nodes)) {
+    const back = [...this.removed].filter(([id, { after }]) => read > after && nodes.some((node) => node.id === id));
+    const same = sameNodes(this.nodes, nodes);
+    if (!same || back.length > 0) {
       runInAction(() => {
-        this.nodes = nodes;
+        if (!same) {
+          this.nodes = nodes;
+        }
+        for (const [id] of back) {
+          this.removed.delete(id);
+        }
       });
     }
     return nodes;
@@ -248,8 +274,10 @@ export class PageTreeStore {
         }
       }
       runInAction(() => {
+        // The read after the answer, and those begun later, may take the pages out again.
+        const after = this.readsStarted;
         for (const page of tree === undefined ? [] : subtreeOf(tree, id)) {
-          this.removed.set(page.id, parent);
+          this.removed.set(page.id, { to: parent, after });
         }
       });
     });
@@ -403,6 +431,35 @@ export class PageTreeStore {
    */
   restoreVersion(id: string, revision: number, base: number): Promise<VersionRestored> {
     return this.restores(id, () => this.service.restoreVersion(id, revision, base));
+  }
+
+  /** trash reads a page of the notebook's trash items, newer first, after cursor (none for the first). */
+  trash(cursor?: string): Promise<TrashItemPage> {
+    return this.service.trash(this.notebookId, cursor);
+  }
+
+  /** trashItem reads the trash item whose root is the node id, which SWR keeps, by node, as it does the views. */
+  trashItem(id: string): Promise<TrashItem> {
+    return this.service.trashItem(id);
+  }
+
+  /**
+   * restore brings back the trash item whose root is the node id (M8/P2
+   * design 4.4): after the node's restores made before it have settled,
+   * a button pressed twice or the list's and the preview's, then in turn
+   * with the tree's writes, the tree read again once it is answered either
+   * way; the read lists its pages, which takes them out of those this
+   * generation deleted. That read failed, a page this generation deleted
+   * restored would stay deleted here, its Open leading to where it was:
+   * the tree is read once more (M8/P2B review C, nit 1). A refusal records
+   * nothing. It answers where the item went, and under which name.
+   */
+  async restore(id: string): Promise<NodeRestored> {
+    const restored = await this.restores(id, () => this.write(() => this.service.restoreNode(id)));
+    if (this.removed.has(id)) {
+      await this.load().catch(() => undefined);
+    }
+    return restored;
   }
 
   /** editLock reads who edits the page id, which SWR keeps by page, as it does the view (M5/P3 design 3.10). */

@@ -22,6 +22,27 @@ const icons: Record<AssetKind, LucideIcon> = {
   file: File,
 };
 
+/** AssetIcon is the icon of the kind of an attachment of type mime, for the eye alone: the trash's preview shows it too. */
+export function AssetIcon({ mime }: { mime: string }) {
+  const Icon = icons[assetKind(mime)];
+  return <Icon aria-hidden className="size-4 shrink-0 text-muted-foreground" />;
+}
+
+/**
+ * Located is the route state of a page or the notebook's home gone to for
+ * one of its attachments (M8/P2 design 4.2): a restored one opened from
+ * the trash, a search's result in P5. The row of the attachment takes the
+ * focus, or the section's title when the list read has it not.
+ */
+export type Located = { attachment: string };
+
+/** locatedOf is the attachment the route state names, if it names one. */
+export function locatedOf(state: unknown): string | undefined {
+  return typeof state === "object" && state !== null && "attachment" in state && typeof state.attachment === "string"
+    ? state.attachment
+    : undefined;
+}
+
 /** What a row's menu asks its section for: a dialog of the attachment's, or the embed copied. */
 export type AssetAction = "rename" | "move" | "delete" | "copy";
 
@@ -49,7 +70,6 @@ export function AttachmentRow({
 }) {
   const t = useT();
   const { preferences } = useStore();
-  const Icon = icons[assetKind(asset.mime)];
   const inline = opensInline(asset.mime);
   const link = asset.link;
   const opening = inline
@@ -67,9 +87,15 @@ export function AttachmentRow({
         }
       }}
     >
-      <Icon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+      <AssetIcon mime={asset.mime} />
       {/* A link drags itself: a drag from the name is the row's. */}
-      <a ref={linkRef} {...opening} draggable={false} className="min-w-0 flex-1 truncate hover:underline">
+      <a
+        ref={linkRef}
+        {...opening}
+        data-attachment={asset.id}
+        draggable={false}
+        className="min-w-0 flex-1 truncate hover:underline"
+      >
         {asset.name}
         {inline && <NewTab />}
       </a>

@@ -130,6 +130,23 @@ export async function expectAssetsDeletedWithNotebook(
   expect(rows.map((row) => row.node_id)).toEqual(ids.toSorted());
 }
 
+/**
+ * asset_blobs, nodes and the store at storageDir: the attachments as are back from the trash (M8 design 4.6), their
+ * nodes and their rows alive, the same rows as before, and their files kept in the store.
+ */
+export async function expectAssetsRestored(db: Database, storageDir: string, as: readonly Asset[]): Promise<void> {
+  const rows = await db.query<{ node_id: string }>(
+    `SELECT b.node_id FROM asset_blobs b JOIN nodes n ON n.id = b.node_id
+      WHERE b.id = ANY($1::uuid[]) AND b.deleted_at IS NULL AND n.deleted_at IS NULL ORDER BY b.node_id`,
+    [as.map(blobOf)]
+  );
+  expect(rows.map((row) => row.node_id)).toEqual(as.map((a) => a.id).toSorted());
+  expect(
+    as.filter((a) => !existsSync(blobPath(storageDir, blobOf(a)))).map((a) => a.name),
+    "the restored attachments' files missing"
+  ).toEqual([]);
+}
+
 /** asset_blobs and the store at storageDir: the attachments as are gone, their rows and their files. */
 export async function expectAssetsPurged(db: Database, storageDir: string, as: readonly Asset[]): Promise<void> {
   const blobs = as.map(blobOf);

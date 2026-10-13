@@ -197,3 +197,31 @@ test("the versions of a page being edited are read again by the refresher: their
     ].map(matches)
   ).toEqual([true, false, false, false, false, false]);
 });
+
+test("a pages event that changed the tree asks the refresher for the notebook's trash and its items, a deletion or a restore being a change of it (M8/P2 design 4.6); one that did not, not", () => {
+  const reads = new Map<string, () => void>();
+  const handled = {
+    ...context([]).context,
+    refresher: {
+      request: (key: string, read: () => void) => reads.set(key, read),
+    } as unknown as Refresher,
+  };
+  const event = { workspace_id: "w1", notebook_id: "n1", pages: [{ id: "a", revision: 2 }] };
+
+  eventHandlers.get("pages")?.({ ...event, tree: false }, handled);
+  expect(reads.has("trash n1")).toBe(false);
+  eventHandlers.get("pages")?.({ ...event, tree: true }, handled);
+  reads.get("trash n1")?.();
+
+  const matches = (handled.mutate.mock.calls[0] as unknown[])[0] as (key: unknown) => boolean;
+  expect(
+    [
+      ["trash", "n1"],
+      ["trash-item", "n1", "x"],
+      ["trash", "n2"],
+      ["trash-item", "n2", "x"],
+      ["pages", "n1"],
+      "trash",
+    ].map(matches)
+  ).toEqual([true, true, false, false, false, false]);
+});

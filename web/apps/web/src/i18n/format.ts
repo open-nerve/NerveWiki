@@ -80,3 +80,16 @@ export function formatDuration(seconds: number, locale: Locale): string {
   const [value, unit] = seconds % 3600 === 0 ? [seconds / 3600, "hour"] : [Math.floor(seconds / 60), "minute"];
   return new Intl.NumberFormat(locale, { style: "unit", unit, unitDisplay: "long" }).format(value);
 }
+
+/**
+ * formatPeriod writes a span of seconds in the whole days it holds when it
+ * is a day or more, otherwise in its whole hours, such as "59 days" or "23
+ * hours": how long the trash keeps an item it can restore
+ * (trash_retention_seconds, the purge's retention less an hour), never
+ * said longer than it is (M8 design 4.13).
+ */
+export function formatPeriod(seconds: number, locale: Locale): string {
+  const [value, unit] =
+    seconds >= 86_400 ? [Math.floor(seconds / 86_400), "day"] : [Math.floor(seconds / 3600), "hour"];
+  return new Intl.NumberFormat(locale, { style: "unit", unit, unitDisplay: "long" }).format(value);
+}

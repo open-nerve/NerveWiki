@@ -3,6 +3,7 @@ import type {
   EditLock,
   EditSession,
   NodeMove,
+  NodeRestored,
   Page,
   PageContent,
   PageContentWrite,
@@ -11,6 +12,8 @@ import type {
   PageVersionPage,
   PageView,
   TaskToggle,
+  TrashItem,
+  TrashItemPage,
   TreeNode,
   UserRef,
   VersionRestored,
@@ -21,12 +24,15 @@ import { unwrap } from "./api";
 export type {
   EditLock,
   NodeMove,
+  NodeRestored,
   PageContent,
   PageVersion,
   PageVersionContent,
   PageVersionPage,
   PageView,
   TaskToggle,
+  TrashItem,
+  TrashItemPage,
   TreeNode,
   VersionRestored,
 };
@@ -37,12 +43,16 @@ export type EditLockHolder = UserRef;
 /** How many of a page's versions a page of them holds: the right column's (M8/P1 design 4.3). */
 const versionsPage = 20;
 
+/** How many trash items a page of them holds: the trash's (M8/P2 design 4.2). */
+const trashPage = 50;
+
 /**
  * PageService reads a notebook's page tree and a page's reading view, and
  * writes the tree: creates, renames, moves and deletes pages (M4/P5 design
  * 3.4). It reads and writes a page's content, in an edit session (M4/P6
  * design 3.6), and ticks its task items (M5/P6). It reads a page's
- * versions, and restores one (M8/P1 design 3.6).
+ * versions, and restores one (M8/P1 design 3.6); it reads a notebook's
+ * trash and an item of it, and restores one (M8/P2 design 4.1).
  */
 export class PageService {
   constructor(private readonly api: ApiClient) {}
@@ -155,6 +165,31 @@ export class PageService {
         body: { base_revision: base },
       })
     );
+  }
+
+  /** trash answers a page of the notebook's trash items, newer first, after cursor (none for the first). */
+  async trash(notebookId: string, cursor?: string): Promise<TrashItemPage> {
+    return unwrap(
+      await this.api.GET("/api/v0/notebooks/{notebook_id}/trash", {
+        params: {
+          path: { notebook_id: notebookId },
+          query: cursor === undefined ? { limit: trashPage } : { limit: trashPage, cursor },
+        },
+      })
+    );
+  }
+
+  /** trashItem answers the trash item whose root is the node id, as the trash lists it, with its notebook. */
+  async trashItem(id: string): Promise<TrashItem> {
+    return unwrap(await this.api.GET("/api/v0/nodes/{node_id}/trash-item", { params: { path: { node_id: id } } }));
+  }
+
+  /**
+   * restoreNode brings back the trash item whose root is the node id, with the nodes deleted with it (M8 design
+   * 4.6); it answers where it put it, and under which name.
+   */
+  async restoreNode(id: string): Promise<NodeRestored> {
+    return unwrap(await this.api.POST("/api/v0/nodes/{node_id}/restore", { params: { path: { node_id: id } } }));
   }
 
   /** lock answers who holds the page's edit lock and for how many more seconds; both null when nobody does (M5 design 4.2). */

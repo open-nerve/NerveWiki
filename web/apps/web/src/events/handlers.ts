@@ -50,7 +50,8 @@ export const TREE_INTERVAL_MS = 500;
  * revision, follows (version-page.tsx); a version's view, whose links lead
  * where the tree has them, once the tree changed (M8 design 4.13). The
  * page's content as it is now, which a version is compared with, as its
- * view.
+ * view. The notebook's trash and its items shown, once the tree changed:
+ * a deletion or a restore is a change of it (M8/P2 design 4.6).
  */
 const pagesChanged: EventHandler = (data, context) => {
   const { cache, mutate, refresher, stopped } = context;
@@ -78,6 +79,11 @@ const pagesChanged: EventHandler = (data, context) => {
   readVersions("edited", notebook, ids, (key) => key[0] === "page-version" && editing(cache, key), context);
   if (tree) {
     readVersions("views", notebook, null, (key) => key[0] === "page-version-view", context);
+    refresher.request(`trash ${notebook}`, () => {
+      void mutate(
+        (key) => Array.isArray(key) && (key[0] === "trash" || key[0] === "trash-item") && key[1] === notebook
+      );
+    });
   }
   if (pages === null) {
     readViews(notebook, context);

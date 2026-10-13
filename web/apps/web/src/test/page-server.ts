@@ -4,6 +4,7 @@ import type { NotebookRole } from "../services/notebook.service";
 import type {
   EditLock,
   NodeMove,
+  NodeRestored,
   PageContent,
   PageVersionContent,
   PageView,
@@ -14,6 +15,7 @@ import { titleKey } from "../lib/title-key";
 import { extensionOf } from "../lib/upload-name";
 import { instanceJSON, json, notebookJSON, problem, signedInApp, userJSON, type Answer } from "./fakes";
 import { abortedFor, formOf } from "./transfer";
+import { putBack, trashed, trashRoutes, type FakeTrashItem, type TrashWaits } from "./trash-server";
 
 /** pageNode is the page n of Plans, titled name, under parent (none: at the root). */
 export function pageNode(n: number, name: string, parent?: TreeNode): TreeNode {
@@ -135,6 +137,10 @@ type PageServerOptions = {
  * payload_too_large), a name a sibling has 409 page.title_taken. While
  * uploadsHeld is set, an upload is answered once released; while
  * viewsHeld is, a reading view.
+ *
+ * A deletion puts the node and the nodes under it in the trash (M8/P2),
+ * which trash-server.ts answers. A trashed page's versions and their
+ * views read as an alive one's.
  */
 export function pageServer({
   role = "admin",
@@ -171,8 +177,19 @@ export function pageServer({
     uploadsHeld: false,
     /** Whether reading views wait to be released. */
     viewsHeld: false,
+    /** The trash's items, by their root's id, and how many deletions made them. */
+    trash: new Map<string, FakeTrashItem>(),
+    deletions: 0,
+    /** Whether a restore finds the server too busy to parse. */
+    restoresBusy: false,
+    /** Whether restores wait to be released. */
+    restoresHeld: false,
+    /** Whether the trash's list and its items cannot be read. */
+    trashDown: false,
+    /** What the trash's list reads wait for while a test holds them: a first page's, a next page's. */
+    trashWaits: {} as TrashWaits,
     held: [] as (() => void)[],
-    /** release answers the uploads and the views held. */
+    /** release answers the uploads, the views and the restores held. */
     release(): void {
       const held = server.held;
       server.held = [];
@@ -207,6 +224,29 @@ export function pageServer({
       if (newest !== undefined) {
         server.contents.set(pageId, { content: newest.content, revision: newest.revision });
       }
+    },
+    /**
+     * trashNode deletes the node id with the nodes under it, as Ada in another tab would (the deletion's route does
+     * so too), into the trash: it answers their item, which the test may change.
+     */
+    trashNode(id: string): FakeTrashItem {
+      const node = server.nodes.find((each) => each.id === id);
+      if (node === undefined) {
+        throw new Error(`no node ${id}`);
+      }
+      const gone = server.nodes.filter((each) => each === node || isUnder(server.nodes, each, node.id));
+      const item = trashed(server.nodes, gone, ++server.deletions, ada);
+      server.trash.set(node.id, item);
+      server.nodes = server.nodes.filter((each) => !gone.includes(each));
+      return item;
+    },
+    /** restoreElsewhere restores the trash item of the root id as another tab would: it answers what the restore did. */
+    restoreElsewhere(id: string): NodeRestored {
+      const item = server.trash.get(id);
+      if (item === undefined) {
+        throw new Error(`no trash item ${id}`);
+      }
+      return putBack(server, id, item);
     },
     /** lockOf is the page's edit lock, as GET edit-lock answers it. */
     lockOf(pageId: string): EditLock {
@@ -291,6 +331,7 @@ export function pageServer({
       return new Response(null, { status: 204 });
     },
     ...writeRoutes(server),
+    ...trashRoutes(server, role, (node) => assetJSON(node)),
     ...assetRoutes(server, role),
     ...contentRoutes(server),
     ...taskRoutes(server),
@@ -335,6 +376,7 @@ function writeRoutes(server: {
   sent: string[];
   nodes: TreeNode[];
   sessions: Map<string, FakeSession>;
+  trashNode: (id: string) => FakeTrashItem;
 }): Record<string, Answer> {
   const taken = (parent: string | null, title: string, except?: string) =>
     server.nodes.some(
@@ -424,7 +466,7 @@ function writeRoutes(server: {
       if (editing !== undefined) {
         return problem(409, "page.locked", { lock: { page_id: editing.page, ...editing.holder } });
       }
-      server.nodes = server.nodes.filter((each) => !gone.includes(each));
+      server.trashNode(node.id);
       for (const [id, session] of server.sessions) {
         if (gone.some((each) => each.id === session.page)) {
           server.sessions.delete(id);
@@ -703,6 +745,7 @@ export function versionJSON(
 }
 
 type VersionState = ContentState & {
+  trash: Map<string, FakeTrashItem>;
   views: Map<string, PageView>;
   versions: Map<string, PageVersionContent[]>;
   versionViews: Map<string, PageView>;
@@ -710,7 +753,11 @@ type VersionState = ContentState & {
 
 /** The answers to the versions of server's pages and their restores, which change it. */
 function versionRoutes(server: VersionState): Record<string, Answer> {
-  const nodeOf = (request: Request) => server.nodes.find((node) => node.id === idOf(request) && node.kind === "page");
+  // A page in the trash has its versions too.
+  const nodeOf = (request: Request) =>
+    [...server.nodes, ...[...server.trash.values()].flatMap((item) => item.members)].find(
+      (node) => node.id === idOf(request) && node.kind === "page"
+    );
   const currentOf = (node: TreeNode) => server.contents.get(node.id) ?? { content: `${node.name}\n`, revision: 1 };
   const versionsOf = (node: TreeNode) => {
     let versions = server.versions.get(node.id);

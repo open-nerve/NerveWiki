@@ -46,7 +46,9 @@ export function isDragData(data: Record<string | symbol, unknown>): data is Drag
 /**
  * The tree's means, which each item takes: its notebook, its pages, its
  * heading, the creation of a page under a parent, where a write's failure
- * shows, and the focus given to a page's menu button once the tree has it.
+ * shows, the focus given to a page's menu button once the tree has it,
+ * and how long the trash keeps a page deleted, written, until the
+ * instance is read.
  */
 export type TreeContext = {
   notebook: Notebook;
@@ -55,6 +57,7 @@ export type TreeContext = {
   newPage: { create: (parent: string | null) => void; sending: boolean };
   fail: (error: unknown) => void;
   focusActions: (id: string) => void;
+  period: string | undefined;
 };
 
 type ListProps = { context: TreeContext; parent: string | null; depth: number; id?: string };
@@ -202,8 +205,10 @@ type Dialogs = "rename" | "move" | "delete" | undefined;
  * holds. A dialog closed gives the focus back to the menu's button, the
  * page's wherever it moved; a deletion gives it to the tree's heading,
  * unless the page shown went with it: its shell then goes to the parent,
- * arrived at. Its confirmation counts the pages under it and the
- * attachments of the subtree, which go with it (M7/P4 design 3.7). A page
+ * arrived at. Its confirmation says the page goes to the trash, for how
+ * long, and that the notebook's readers still see it there (M8/P2 design
+ * 4.5), and counts the pages under it and the attachments of the
+ * subtree, which go with it (M7/P4 design 3.7). A page
  * ten levels down has no New subpage. They name the
  * page by name, which tells it from others of its title.
  */
@@ -216,7 +221,7 @@ const PageMenu = observer(function PageMenu({
   node: TreeNode;
   name: string;
 }) {
-  const { notebook, pages, heading, newPage, fail, focusActions } = context;
+  const { notebook, pages, heading, newPage, fail, focusActions, period } = context;
   const { pageId } = useParams();
   const t = useT();
   const me = useStore().account?.me?.id;
@@ -282,7 +287,10 @@ const PageMenu = observer(function PageMenu({
         description={[
           ...(count === 0 ? [] : [t("page.deleteSubpages", { count })]),
           ...(attachments === 0 ? [] : [t("page.deleteAttachments", { count: attachments })]),
-        ].reduce((first, second) => t("page.sentences", { first, second }), t("page.deleteBody"))}
+        ].reduce(
+          (first, second) => t("page.sentences", { first, second }),
+          period === undefined ? t("page.deleteBodyNoPeriod") : t("page.deleteBody", { period })
+        )}
         confirmLabel={t("page.delete")}
         sendingLabel={t("page.deleting")}
         cancelLabel={t("page.cancel")}

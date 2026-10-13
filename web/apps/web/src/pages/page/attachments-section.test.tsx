@@ -450,12 +450,32 @@ test("Delete asks first; once deleted, the focus goes to the section's title", a
   await user.click(await actionsOf(section, "data.zip"));
   await user.click(screen.getByRole("menuitem", { name: "Delete" }));
   const dialog = await screen.findByRole("alertdialog", { name: "Delete data.zip?" });
+  // M8/P2 design 4.5: to the trash, for the instance's period, whole days down.
+  expect(within(dialog).getByText(/^It moves/).textContent).toBe(
+    "It moves to the trash, where it can be restored for 59 days; whoever can read this notebook still sees it there. The pages that embed it show it missing."
+  );
   await user.click(within(dialog).getByRole("button", { name: "Delete" }));
 
   await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
   expect(server.sent).toContain("DELETE data.zip");
   expect(rows(section)).not.toContain("data.zip");
   expect(document.activeElement).toBe(within(section).getByRole("heading", { name: "Attachments" }));
+});
+
+test("Delete, the instance not read, says the attachment goes to the trash without how long", async () => {
+  const user = userEvent.setup();
+  renderApp(
+    pagePath(guide.id),
+    pageServer({ nodes, answers: { "GET /api/v0/instance": () => Promise.reject(new TypeError("offline")) } }).app
+  );
+  const section = await attachments();
+
+  await user.click(await actionsOf(section, "data.zip"));
+  await user.click(screen.getByRole("menuitem", { name: "Delete" }));
+  const dialog = await screen.findByRole("alertdialog", { name: "Delete data.zip?" });
+  expect(within(dialog).getByText(/^It moves/).textContent).toBe(
+    "It moves to the trash, where it can be restored; whoever can read this notebook still sees it there. The pages that embed it show it missing."
+  );
 });
 
 /** many is a hundred and two attachments under Guide, named so that they list in their order. */
@@ -631,7 +651,7 @@ test("a page's deletion counts the attachments of its subtree, which go with it"
   await user.click(screen.getByRole("menuitem", { name: "Delete" }));
   let dialog = await screen.findByRole("alertdialog", { name: "Delete Guide?" });
   expect(dialog.textContent).toContain(
-    "Everyone who sees this notebook loses the page. Its subpages go with it: 2. The attachments under it go with it: 5."
+    "It moves to the trash, where it can be restored for 59 days; whoever can read this notebook still sees it there. Its subpages go with it: 2. The attachments under it go with it: 5."
   );
   await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
 

@@ -2,7 +2,7 @@ import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 
-import { json, notebookJSON, problem } from "../../test/fakes";
+import { instanceJSON, json, notebookJSON, problem } from "../../test/fakes";
 import {
   ada,
   assetNode,
@@ -281,6 +281,51 @@ test("Delete says how many subpages go with the page; the page shown goes to the
   await waitFor(() => expect(document.activeElement).toBe(heading));
   expect(server.sent).toContain("DELETE Install");
   expect(titles(await tree())).toEqual(["Guide", "Notes"]);
+});
+
+// M8/P2 design 4.5: the trash keeps a page deleted for the instance's period, said whole days down.
+test("Delete says the page goes to the trash, for how long the instance keeps it, and that the notebook's readers still see it there; read once for the tree", async () => {
+  const user = userEvent.setup();
+  let instanceReads = 0;
+  const server = pageServer({
+    answers: {
+      "GET /api/v0/instance": () => {
+        instanceReads += 1;
+        return json({ ...instanceJSON, trash_retention_seconds: 2 * 86_400 + 3600 * 23 });
+      },
+    },
+  });
+  renderApp(pagePath(linux.id), server.app);
+  await screen.findByRole("heading", { level: 1, name: "Linux" });
+
+  await choose(user, "Install", "Delete");
+  const dialog = await screen.findByRole("alertdialog", { name: "Delete Install?" });
+  await waitFor(() =>
+    expect(within(dialog).getByText(/^It moves/).textContent).toBe(
+      "It moves to the trash, where it can be restored for 2 days; whoever can read this notebook still sees it there. Its subpages go with it: 1."
+    )
+  );
+  await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+  await choose(user, "Notes", "Delete");
+  expect((await screen.findByRole("alertdialog", { name: "Delete Notes?" })).textContent).toContain(
+    "where it can be restored for 2 days;"
+  );
+  // The tree's, the shell's and the attachments' readers share one read.
+  expect(instanceReads).toBe(1);
+});
+
+test("Delete, the instance not read, says the page goes to the trash without how long", async () => {
+  const user = userEvent.setup();
+  renderApp(
+    pagePath(linux.id),
+    pageServer({ answers: { "GET /api/v0/instance": () => Promise.reject(new TypeError("offline")) } }).app
+  );
+  await screen.findByRole("heading", { level: 1, name: "Linux" });
+
+  await choose(user, "Notes", "Delete");
+  expect((await screen.findByRole("alertdialog", { name: "Delete Notes?" })).textContent).toContain(
+    "It moves to the trash, where it can be restored; whoever can read this notebook still sees it there."
+  );
 });
 
 test("a root page deleted while shown sends its shell to the notebook's home", async () => {
