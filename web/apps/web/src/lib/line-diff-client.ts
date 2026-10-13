@@ -1,7 +1,7 @@
 import { lineDiff, type LineDiffResult } from "./line-diff";
 
 /** How long a comparison may take in its worker: then the worker is ended, and the texts are too far apart. */
-export const diffTimeout = 2000;
+const diffTimeout = 2000;
 
 /** The most bytes of UTF-8, both texts together, compared line by line (M8 design 4.3). */
 export const maxDiffBytes = 5 * 1024 * 1024;
@@ -27,7 +27,7 @@ export type DiffWorker = {
  * lineDiffWorker starts line-diff.worker.ts: a file of the app's own
  * origin, which the CSP's script-src 'self' allows, as the highlighting's.
  */
-export function lineDiffWorker(): DiffWorker {
+function lineDiffWorker(): DiffWorker {
   return new Worker(new URL("./line-diff.worker.ts", import.meta.url), { type: "module" });
 }
 
