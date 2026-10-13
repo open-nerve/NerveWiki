@@ -385,6 +385,27 @@ func TestAnEditSessionsWritesAreOneChangeset(t *testing.T) {
 	}
 }
 
+// Only an edit writes in an edit session's changeset: another kind's unit
+// naming the session is the caller's mistake, and writes nothing.
+func TestOnlyAnEditWritesInASessionsChangeset(t *testing.T) {
+	f := newFixture()
+	f.grant(domain.ActionWrite)
+	n := f.page("Notes", nil, 0)
+	s := f.session(n.ID, f.alice, now().Add(time.Hour))
+	if _, err := f.put(n.ID, app.ContentPut{Content: "one", Base: 1, EditSession: s.ID}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := f.writer().Run(f.asAlice(), app.UnitSpec{NotebookID: f.eng, Action: domain.ActionWrite, Client: domain.ClientWeb,
+		NotFound: domain.ErrNotFound, Kind: domain.ChangesetVersionRestore}, func(ctx context.Context, u *app.Unit) error {
+		_, err := u.WriteContent(ctx, app.ContentWrite{NodeID: n.ID, Content: "two", Base: 2, EditSession: s.ID})
+		return err
+	})
+	if err == nil || len(f.store.changesets) != 1 || len(f.store.revisions) != 1 || f.store.revisions[0].Content != "one" {
+		t.Errorf("a version_restore unit's write in the session = %v, changesets %d, versions %+v; want an error and only the session's",
+			err, len(f.store.changesets), f.store.revisions)
+	}
+}
+
 // A participant's content write, added to a unit, runs through the guards,
 // writes the next revision in the unit's changeset, joins its event, and
 // calls no participant; a session it names is not its.

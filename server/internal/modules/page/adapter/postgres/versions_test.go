@@ -186,6 +186,24 @@ func TestAVersionGoesOnFromItsOwnRevision(t *testing.T) {
 	}
 }
 
+// FindVersion reads the row as it is: its ids, its base and its times,
+// first and last written, apart.
+func TestFindVersionReadsTheRow(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	n := f.page(t, f.eng, nil, "A", 0)
+	f.versions(t, n.ID, 3)
+	id, cs := versionID(t, f, n.ID, 2)
+	one := 1
+	want := domain.Version{ID: id, Base: &one, Revision: 2, ByteSize: 2, CreatedAt: now().Add(2*time.Minute + time.Second),
+		UpdatedAt: now().Add(2*time.Minute + 2*time.Second), Changeset: domain.VersionChangeset{ID: cs, Kind: domain.ChangesetEdit,
+			Client: domain.ClientWeb, By: f.alice, CreatedAt: now().Add(2 * time.Minute)}}
+	v, content, err := f.s.FindVersion(ctx, n.ID, 2)
+	if err != nil || !reflect.DeepEqual(v, want) || content != "v2" {
+		t.Errorf("FindVersion(2) = %+v, %q, %v; want %+v, \"v2\"", v, content, err, want)
+	}
+}
+
 // A page's history is read in the trash too: its node, with when it was
 // deleted, and its versions.
 func TestAPageInTheTrashHasItsHistory(t *testing.T) {

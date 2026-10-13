@@ -80,8 +80,12 @@ func (s *Store) RecordRevision(ctx context.Context, r app.Revision) error {
 	case err != nil:
 		return fmt.Errorf("record page revision: %w", err)
 	case n == 0:
-		return fmt.Errorf("record page revision: changeset %s's version of page %s is not at revision %v: another's write "+
-			"came between", r.ChangesetID, r.NodeID, r.Base)
+		based := "a base"
+		if r.Base != nil {
+			based = fmt.Sprintf("revision %d", *r.Base)
+		}
+		return fmt.Errorf("record page revision: changeset %s's version of page %s is not at %s: another's write came between",
+			r.ChangesetID, r.NodeID, based)
 	}
 	return nil
 }

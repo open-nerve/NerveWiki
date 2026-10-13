@@ -486,6 +486,10 @@ func (f *fakeStore) RecordRevision(ctx context.Context, r app.Revision) error {
 	f.record(ctx, "RecordRevision")
 	for i, old := range f.revisions {
 		if old.ChangesetID == r.ChangesetID && old.NodeID == r.NodeID {
+			// The database's: a changeset's version goes on only from its own revision.
+			if r.Base == nil || *r.Base != old.Revision {
+				return fmt.Errorf("fake: changeset %s's version of %s is at %d, not at the write's base", r.ChangesetID, r.NodeID, old.Revision)
+			}
 			r.ID, r.Base = old.ID, old.Base
 			f.revisions[i] = r
 			return nil

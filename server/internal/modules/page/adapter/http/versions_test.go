@@ -45,6 +45,9 @@ const (
 // page, of a restore, and the next cursor "next".
 func (f fakeVersions) Execute(_ context.Context, pageID uuid.UUID, limit *int, cursor *string) (app.VersionList, error) {
 	f.got = []any{pageID, limit, cursor}
+	if cursor != nil && *cursor == "end" {
+		return app.VersionList{}, f.err
+	}
 	if cursor != nil {
 		return app.VersionList{Versions: []domain.Version{version()}}, f.err
 	}
@@ -81,7 +84,7 @@ const (
 )
 
 func TestTheVersionOperationsAnswerTheUseCases(t *testing.T) {
-	limit, cursor := 2, "abc"
+	limit, cursor, end := 2, "abc", "end"
 	for _, tt := range []struct {
 		name, token, method, path, body string
 		want                            string
@@ -94,6 +97,8 @@ func TestTheVersionOperationsAnswerTheUseCases(t *testing.T) {
 			`"revision":1,"updated_at":"2026-10-02T10:01:00Z"}],"next_cursor":"next"}`, []any{id(12), (*int)(nil), (*string)(nil)}},
 		{"a page of them", "session", http.MethodGet, versionsPath + "?limit=2&cursor=abc", "", `{"data":[` + versionJSON +
 			`],"next_cursor":null}`, []any{id(12), &limit, &cursor}},
+		{"none left", "session", http.MethodGet, versionsPath + "?cursor=end", "", `{"data":[],"next_cursor":null}`,
+			[]any{id(12), (*int)(nil), &end}},
 		{"a version", "session", http.MethodGet, versionPath, "", versionContentJSON,
 			[]any{id(12), 2}},
 		{"a version's view", "session", http.MethodGet, versionPath + "/view", "",
