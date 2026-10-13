@@ -172,6 +172,88 @@ export async function expectSubtreeDeleted(
   ]);
 }
 
+/** The counts a deletion keeps on its root (M8/P2 design 3.2): its group's pages, attachments and levels of pages. */
+export interface TrashCounts {
+  pages: number;
+  assets: number;
+  height: number;
+}
+
+/**
+ * nodes: the node rootId is a trash item's root, deleted, with the counts of the group deleted with it at its time,
+ * which are its alone: the other nodes of its group are no roots and have none, and there are as many of them as
+ * its counts say.
+ */
+export async function expectTrashRoot(db: Database, rootId: string, counts: TrashCounts): Promise<void> {
+  const rows = await db.query(
+    `SELECT n.trash_root, n.trash_pages AS pages, n.trash_assets AS assets, n.trash_height AS height,
+            (SELECT count(*)::int FROM nodes x WHERE x.notebook_id = n.notebook_id AND x.deleted_at = n.deleted_at) AS grouped,
+            (SELECT count(*)::int FROM nodes x WHERE x.notebook_id = n.notebook_id AND x.deleted_at = n.deleted_at
+               AND x.id <> n.id AND (x.trash_root OR x.trash_pages IS NOT NULL OR x.trash_assets IS NOT NULL
+                 OR x.trash_height IS NOT NULL)) AS others_marked
+       FROM nodes n WHERE n.id = $1 AND n.deleted_at IS NOT NULL`,
+    [rootId]
+  );
+  expect(rows).toEqual([{ trash_root: true, ...counts, grouped: counts.pages + counts.assets, others_marked: 0 }]);
+}
+
+/** Where a restore put a trash item's root: its parent (null at the root) and its name, numbered or not. */
+export interface RestoredRoot {
+  parentId: string | null;
+  name: string;
+}
+
+/**
+ * nodes, page_contents, page_revisions, changeset_items, changesets: the trash item of rootId, the nodes ids, is
+ * restored by restorerId: its root under root.parentId named root.name, each node alive, no root nor counts, updated
+ * by the restorer at the restore's time; their contents, versions and items alive; the restore's changeset a
+ * trash_restore of theirs, holding an item of each node, restored, from nothing to where the node is, a page's at its
+ * content's revision.
+ */
+export async function expectSubtreeRestored(
+  db: Database,
+  rootId: string,
+  ids: string[],
+  restorerId: string,
+  root: RestoredRoot
+): Promise<void> {
+  const rows = await db.query(
+    `SELECT n.parent_id AS "parentId", n.name, s.kind, s.created_by_id = $3 AS by_restorer,
+            (SELECT count(*)::int FROM nodes x WHERE x.id = ANY($2::uuid[]) AND x.deleted_at IS NULL AND NOT x.trash_root
+               AND x.trash_pages IS NULL AND x.trash_assets IS NULL AND x.trash_height IS NULL
+               AND x.updated_by_id = $3 AND x.updated_at = s.created_at) AS nodes,
+            (SELECT count(*)::int FROM nodes x WHERE x.id = ANY($2::uuid[]) AND x.kind = 'page' AND NOT EXISTS (
+               SELECT 1 FROM page_contents c WHERE c.node_id = x.id AND c.deleted_at IS NULL)) AS pages_without_content,
+            (SELECT count(*)::int FROM page_revisions v WHERE v.node_id = ANY($2::uuid[]) AND v.deleted_at IS NOT NULL) AS versions_deleted,
+            (SELECT count(*)::int FROM changeset_items i WHERE i.node_id = ANY($2::uuid[]) AND i.deleted_at IS NOT NULL) AS items_deleted,
+            (SELECT count(*)::int FROM changeset_items i JOIN nodes x ON x.id = i.node_id
+              WHERE i.changeset_id = s.id AND i.node_id = ANY($2::uuid[]) AND i.restored AND i.deleted_at IS NULL
+                AND i.before_name IS NULL AND i.before_parent_id IS NULL AND i.before_sort_order IS NULL
+                AND i.after_name = x.name AND i.after_parent_id IS NOT DISTINCT FROM x.parent_id
+                AND i.after_sort_order = x.sort_order
+                AND i.revision IS NOT DISTINCT FROM (SELECT c.revision FROM page_contents c WHERE c.node_id = x.id)) AS items,
+            (SELECT count(*)::int FROM changeset_items i WHERE i.changeset_id = s.id) AS changeset_items
+       FROM nodes n
+       JOIN LATERAL (SELECT s.* FROM changeset_items i JOIN changesets s ON s.id = i.changeset_id
+                      WHERE i.node_id = n.id ORDER BY s.created_at DESC, s.id DESC LIMIT 1) s ON true
+      WHERE n.id = $1`,
+    [rootId, ids, restorerId]
+  );
+  expect(rows).toEqual([
+    {
+      ...root,
+      kind: "trash_restore",
+      by_restorer: true,
+      nodes: ids.length,
+      pages_without_content: 0,
+      versions_deleted: 0,
+      items_deleted: 0,
+      items: ids.length,
+      changeset_items: ids.length,
+    },
+  ]);
+}
+
 /**
  * page_contents: the page written, as the API answered its write, holds content, its bytes' size and SHA-256 at the
  * answer's revision, written by writerId at the answer's time.

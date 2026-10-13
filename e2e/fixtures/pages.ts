@@ -214,6 +214,14 @@ export async function getVersion(api: ApiClient, credential: string, id: string,
   });
 }
 
+/** credential's read of the reading view of the version of the page id that holds revision, as the API answers it. */
+export async function getVersionView(api: ApiClient, credential: string, id: string, revision: number) {
+  return api.GET("/api/v0/pages/{page_id}/versions/{revision}/view", {
+    params: { path: { page_id: id, revision } },
+    headers: bearer(credential),
+  });
+}
+
 /**
  * credential's restore of the version of the page id that holds revision (M8 design 4.4), on base, the revision the
  * page was read at, as the API answers it.
