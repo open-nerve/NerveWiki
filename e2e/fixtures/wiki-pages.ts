@@ -5,8 +5,10 @@ import { answerTo } from "./browser";
 
 // A notebook's pages as a user works them (M4/P5 design 3.5–3.7, 3.10;
 // M4/P6 design 3.12): the page tree in the left column, its menus, dialogs
-// and dragging, a page's shell, the quick switch, and the source editor.
-// fixtures/pages.ts is the API's.
+// and dragging, a page's shell, the quick switch, and the source editor;
+// a page's versions, and the notebook's history and a changeset's page,
+// with Undo change (M8). fixtures/pages.ts and fixtures/history.ts are the
+// API's.
 
 /** The address of the page id of the notebook notebookId in the workspace of slug. */
 export function wikiPagePath(slug: string, notebookId: string, id: string): string {
@@ -345,5 +347,46 @@ export async function restoreWith(page: Page, id: string, revision: number): Pro
   await expect(restore).toBeEnabled();
   const answer = answerTo(page, "POST", `/api/v0/pages/${id}/versions/${revision.toString()}/restore`);
   await restore.click();
+  return answer;
+}
+
+/**
+ * The address of the history of the notebook notebookId in the workspace of slug (M8/P3 design 4.2), filtered by
+ * filters as its address has them (actor, client, page), or of its changeset id's page.
+ */
+export function historyPath(slug: string, notebookId: string, filters: Record<string, string> = {}): string {
+  const query = new URLSearchParams(filters).toString();
+  return `/${slug}/notebooks/${notebookId}/history${query === "" ? "" : `?${query}`}`;
+}
+
+/** The address of the page of the changeset id of the notebook notebookId in the workspace of slug. */
+export function changesetPath(slug: string, notebookId: string, id: string): string {
+  return `/${slug}/notebooks/${notebookId}/history/${id}`;
+}
+
+/** The changesets the history on page lists, newer first. */
+export function historyListed(page: Page): Locator {
+  return page.getByRole("main").getByRole("list", { name: "Changes", exact: true }).getByRole("listitem");
+}
+
+/** The dialog of Undo change of the changeset's page. */
+export function revertDialog(page: Page): Locator {
+  return page.getByRole("alertdialog", { name: "Undo this change?", exact: true });
+}
+
+/**
+ * Reverts the changeset id shown, with Undo change and the dialog's Undo, with message when given; resolves the
+ * answer. The dialog stays open on a refusal it says.
+ */
+export async function revertWith(page: Page, id: string, message?: string): Promise<Response> {
+  const dialog = revertDialog(page);
+  if (!(await dialog.isVisible())) {
+    await page.getByRole("main").getByRole("button", { name: "Undo change", exact: true }).click();
+  }
+  if (message !== undefined) {
+    await dialog.getByRole("textbox", { name: "Message (optional)", exact: true }).fill(message);
+  }
+  const answer = answerTo(page, "POST", `/api/v0/changesets/${id}/revert`);
+  await dialog.getByRole("button", { name: "Undo", exact: true }).click();
   return answer;
 }
