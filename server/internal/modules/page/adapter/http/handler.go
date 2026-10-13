@@ -111,6 +111,10 @@ type UseCases struct {
 	GetEditLock     GetEditLockUseCase
 	ReleaseEditLock ReleaseEditLockUseCase
 	ToggleTask      ToggleTaskUseCase
+	ListVersions    ListVersionsUseCase
+	GetVersion      GetVersionUseCase
+	GetVersionView  GetVersionViewUseCase
+	RestoreVersion  RestoreVersionUseCase
 }
 
 // Register mounts the module's routes on router, the root router from
@@ -210,11 +214,7 @@ func (h handler) GetPageView(ctx context.Context, req gen.GetPageViewRequestObje
 	if err != nil {
 		return nil, err
 	}
-	expires := nullable.NewNullNullable[time.Time]()
-	if !v.Expires.IsZero() {
-		expires = nullable.NewNullableWithValue(v.Expires)
-	}
-	return gen.GetPageView200JSONResponse{HTML: v.HTML, Revision: v.Revision, AssetsExpireAt: expires}, nil
+	return gen.GetPageView200JSONResponse(pageViewOf(v)), nil
 }
 
 // RenameNode serves PATCH /api/v0/nodes/{node_id}.
@@ -401,4 +401,14 @@ func pageOf(v app.PageView) gen.Page {
 		CreatedAt: n.CreatedAt, UpdatedAt: n.UpdatedAt, Ancestors: ancestors, Revision: v.Content.Revision,
 		ByteSize: v.Content.ByteSize, ContentUpdatedAt: v.Content.UpdatedAt, ContentUpdatedBy: v.Content.UpdatedBy,
 	}
+}
+
+// pageViewOf is a reading view's answer: assets_expire_at null for a view
+// with no attachment's address.
+func pageViewOf(v app.ReadingView) gen.PageView {
+	expires := nullable.NewNullNullable[time.Time]()
+	if !v.Expires.IsZero() {
+		expires = nullable.NewNullableWithValue(v.Expires)
+	}
+	return gen.PageView{HTML: v.HTML, Revision: v.Revision, AssetsExpireAt: expires}
 }

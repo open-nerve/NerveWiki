@@ -84,11 +84,13 @@ type ContentMeta struct {
 	UpdatedAt time.Time
 }
 
-// Changeset is a write's entry in its notebook's log.
+// Changeset is a write's entry in its notebook's log; a revert's names the
+// changeset it reverts.
 type Changeset struct {
 	ID         uuid.UUID
 	NotebookID uuid.UUID
 	Kind       domain.ChangesetKind
+	RevertsID  uuid.UUID
 	Client     domain.Client
 	Message    *string
 	By         uuid.UUID
@@ -117,10 +119,20 @@ type Revision struct {
 	At          time.Time
 }
 
+// AnyNode is a node alive or in the trash: DeletedAt is when it was
+// deleted, nil while it is alive.
+type AnyNode struct {
+	domain.Node
+	DeletedAt *time.Time
+}
+
 // Nodes reads a notebook's nodes: unlocked for a read, under the write
 // unit's locks for a write. ErrNotFound for a missing or deleted node.
 type Nodes interface {
 	FindNode(ctx context.Context, id uuid.UUID) (domain.Node, error)
+	// FindAnyNode is FindNode alive or in the trash (M8/P1 design 3.4):
+	// ErrNotFound for a missing node alone.
+	FindAnyNode(ctx context.Context, id uuid.UUID) (AnyNode, error)
 	// FindNodeIn is FindNode within the notebook.
 	FindNodeIn(ctx context.Context, notebookID, id uuid.UUID) (domain.Node, error)
 	ListNodes(ctx context.Context, notebookID uuid.UUID) ([]domain.Node, error)
@@ -175,8 +187,28 @@ type ChangesetWriter interface {
 	// is deleted with it, at its time.
 	RecordItem(ctx context.Context, it Item) error
 	// RecordRevision inserts the version, or updates the page's in the
-	// changeset, keeping its base.
+	// changeset, keeping its base, when r is on the version's revision: one
+	// on another's write would break the chain of the page's versions, an
+	// error.
 	RecordRevision(ctx context.Context, r Revision) error
+}
+
+// Versions reads a page's versions (M8/P1 design 3.4), alive or in the
+// trash, unlocked.
+type Versions interface {
+	// ListVersions is the page's versions newer-first, below the revision
+	// below, at most limit; each with its changeset, without its display
+	// name. No content.
+	ListVersions(ctx context.Context, pageID uuid.UUID, below int, limit int) ([]domain.Version, error)
+	// FindVersion is the page's first version at or above revision, and
+	// its content as written, read at once: the one version that may hold
+	// it, as each version's base is the revision of the one before.
+	// ErrNotFound for none.
+	FindVersion(ctx context.Context, pageID uuid.UUID, revision int) (domain.Version, string, error)
+	// AliveChangesetOf is the changeset of the page's edit session alive
+	// at now, zero when none is or it has not written: the page's newest
+	// version is being edited while it is that changeset's.
+	AliveChangesetOf(ctx context.Context, pageID uuid.UUID, now time.Time) (uuid.UUID, error)
 }
 
 // NotebookPages deletes the pages of deleted notebooks, and their edit

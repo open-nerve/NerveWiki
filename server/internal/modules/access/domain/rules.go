@@ -101,6 +101,10 @@ func rules() map[shared.Action]Rule {
 		"page.toggle_task": {Level: LevelNotebook, Notebook: writers()},
 		// Its admins release a page's edit lock (M5 design 4.2).
 		"page.release_edit_lock": {Level: LevelNotebook, Notebook: notebookAdmins()},
+		// A notebook's history: any role reads it, its writers restore a
+		// version (M8 design 4.14).
+		"page.history":         {Level: LevelNotebook, Notebook: readers()},
+		"page.restore_version": {Level: LevelNotebook, Notebook: writers()},
 
 		// The link index's reads (M6/P5 design 2): whoever reads the notebook.
 		"backlink.list":      {Level: LevelNotebook, Notebook: readers()},

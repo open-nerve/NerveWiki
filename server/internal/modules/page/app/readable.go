@@ -1,0 +1,70 @@
+package app
+
+import (
+	"context"
+	"uuid"
+
+	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
+	"github.com/open-nerve/NerveWiki/server/internal/shared"
+)
+
+// readable is the node of the page id, if the caller may read it: its node,
+// then its notebook's workspace, then the decision, unlocked. A page that
+// does not exist, is deleted, or whose notebook the caller has no role in
+// is page.not_found.
+func readable(ctx context.Context, notebooks Notebooks, nodes Nodes, auth shared.Authorizer, id uuid.UUID) (domain.Node, error) {
+	actor, err := shared.RequireActor(ctx)
+	if err != nil {
+		return domain.Node{}, err
+	}
+	n, err := nodes.FindNode(ctx, id)
+	switch {
+	case err != nil:
+		return domain.Node{}, found(err, domain.ErrNotFound)
+	case n.Kind != domain.KindPage:
+		return domain.Node{}, domain.ErrNotFound
+	}
+	workspaceID, ok, err := notebooks.WorkspaceOf(ctx, n.NotebookID)
+	switch {
+	case err != nil:
+		return domain.Node{}, err
+	case !ok:
+		return domain.Node{}, domain.ErrNotFound
+	}
+	target := shared.Target{WorkspaceID: workspaceID, NotebookID: n.NotebookID}
+	if _, err := authorize(ctx, auth, actor, domain.ActionRead, target, domain.ErrNotFound); err != nil {
+		return domain.Node{}, err
+	}
+	return n, nil
+}
+
+// readableAny is readable for a page alive or in the trash, decided on
+// action (M8/P1 design 3.4): a page's history reads either. Its notebook
+// is alive still: a deleted notebook's pages are page.not_found, as is a
+// page whose notebook the caller has no role in.
+func readableAny(ctx context.Context, notebooks Notebooks, nodes Nodes, auth shared.Authorizer, id uuid.UUID,
+	action shared.Action) (AnyNode, error) {
+	actor, err := shared.RequireActor(ctx)
+	if err != nil {
+		return AnyNode{}, err
+	}
+	n, err := nodes.FindAnyNode(ctx, id)
+	switch {
+	case err != nil:
+		return AnyNode{}, found(err, domain.ErrNotFound)
+	case n.Kind != domain.KindPage:
+		return AnyNode{}, domain.ErrNotFound
+	}
+	workspaceID, ok, err := notebooks.WorkspaceOf(ctx, n.NotebookID)
+	switch {
+	case err != nil:
+		return AnyNode{}, err
+	case !ok:
+		return AnyNode{}, domain.ErrNotFound
+	}
+	target := shared.Target{WorkspaceID: workspaceID, NotebookID: n.NotebookID}
+	if _, err := authorize(ctx, auth, actor, action, target, domain.ErrNotFound); err != nil {
+		return AnyNode{}, err
+	}
+	return n, nil
+}

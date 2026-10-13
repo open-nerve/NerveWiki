@@ -78,7 +78,8 @@ type Deps struct {
 	Authorizer shared.Authorizer
 	Workspaces Workspaces
 	Notebooks  Notebooks
-	// Names names a lock's holder and who released one.
+	// Names names a lock's holder and who released one, and who made a
+	// version's changeset.
 	Names Names
 	// Markdown is the one parse and rendering of Markdown, with the
 	// registered extensions (M4 design 8).
@@ -117,6 +118,7 @@ func New(d Deps) *Module {
 		SessionVetoers: d.EditSessionVetoers, SessionSubscribers: d.EditSessionSubscribers,
 	})
 	parser := app.NewContentParser(writer, md, budget)
+	versions := app.VersionReads{Notebooks: d.Notebooks, Nodes: store, Versions: store, Names: d.Names, Auth: d.Authorizer, Clock: d.Clock}
 	return &Module{uc: httpadapter.UseCases{
 		ListNodes:       app.NewListNodes(d.Notebooks, store, d.Authorizer),
 		CreatePage:      app.NewCreatePage(writer, store, parser, d.Logger),
@@ -133,6 +135,10 @@ func New(d Deps) *Module {
 		GetEditLock:     app.NewGetEditLock(d.Notebooks, store, store, d.Names, d.Authorizer, d.Clock),
 		ReleaseEditLock: app.NewReleaseEditLock(writer, store, d.Logger),
 		ToggleTask:      app.NewToggleTask(writer, store, parser, md, d.Logger),
+		ListVersions:    app.NewListVersions(versions),
+		GetVersion:      app.NewGetVersion(versions),
+		GetVersionView:  app.NewGetVersionView(versions, md, budget),
+		RestoreVersion:  app.NewRestoreVersion(versions, writer, parser, d.Logger),
 	}, jobs: []jobs.Job{
 		riveradapter.CleanupJob(app.NewCleanupEditSessions(store, d.Clock, d.Logger), d.EditSessionCleanupInterval),
 	}, assets: app.NewAssetWrites(writer, store), imports: app.NewImportWrites(writer, parser, md)}

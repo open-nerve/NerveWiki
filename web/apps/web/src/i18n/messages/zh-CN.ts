@@ -604,6 +604,7 @@ export const zhCN: Messages = {
   "problem.notebook.own_membership": "不能修改或移出自己的成员身份。",
   "problem.notebook.sole_admin": "你是笔记本唯一的管理员。请先在笔记本设置里让另一位成员成为管理员，或者删除笔记本。",
   "problem.page.not_found": "这个页面不存在，或者你无权访问它。",
+  "problem.page.version_not_found": "这个页面没有这个版本。",
   "problem.asset.not_found": "这个附件不存在，或者你无权访问它。",
   "problem.transfer.not_found": "这个任务不存在，或者你无权访问它。",
   "problem.transfer.busy": "这本笔记本已有进行中的导入，或你对它的导出还在进行：等它结束再试。",

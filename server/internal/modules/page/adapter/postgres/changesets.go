@@ -13,8 +13,13 @@ import (
 
 // CreateChangeset implements app.ChangesetWriter.
 func (s *Store) CreateChangeset(ctx context.Context, c app.Changeset) error {
+	var reverts *uuid.UUID
+	if c.RevertsID != (uuid.UUID{}) {
+		reverts = &c.RevertsID
+	}
 	if err := s.queries(ctx).CreateChangeset(ctx, gen.CreateChangesetParams{
-		ID: c.ID, NotebookID: c.NotebookID, Kind: string(c.Kind), Client: string(c.Client), Message: c.Message, By: c.By, Now: c.At,
+		ID: c.ID, NotebookID: c.NotebookID, Kind: string(c.Kind), RevertsID: reverts, Client: string(c.Client), Message: c.Message,
+		By: c.By, Now: c.At,
 	}); err != nil {
 		return fmt.Errorf("create changeset: %w", err)
 	}
@@ -27,8 +32,12 @@ func (s *Store) LockChangeset(ctx context.Context, id uuid.UUID) (app.Changeset,
 	if err != nil {
 		return app.Changeset{}, notFound("lock changeset", err)
 	}
-	return app.Changeset{ID: r.ID, NotebookID: r.NotebookID, Kind: domain.ChangesetKind(r.Kind), Client: domain.Client(r.Client),
-		By: r.CreatedByID}, nil
+	c := app.Changeset{ID: r.ID, NotebookID: r.NotebookID, Kind: domain.ChangesetKind(r.Kind), Client: domain.Client(r.Client),
+		By: r.CreatedByID}
+	if r.RevertsID != nil {
+		c.RevertsID = *r.RevertsID
+	}
+	return c, nil
 }
 
 // TouchChangeset implements app.ChangesetWriter.
@@ -63,11 +72,20 @@ func (s *Store) RecordRevision(ctx context.Context, r app.Revision) error {
 		b := int32(*r.Base)
 		base = &b
 	}
-	if err := s.queries(ctx).RecordRevision(ctx, gen.RecordRevisionParams{
+	n, err := s.queries(ctx).RecordRevision(ctx, gen.RecordRevisionParams{
 		ID: r.ID, ChangesetID: r.ChangesetID, NodeID: r.NodeID, BaseRevision: base, Revision: int32(r.Revision),
 		Content: r.Content, ContentHash: r.Hash, ByteSize: int32(r.ByteSize), Now: r.At,
-	}); err != nil {
+	})
+	switch {
+	case err != nil:
 		return fmt.Errorf("record page revision: %w", err)
+	case n == 0:
+		based := "a base"
+		if r.Base != nil {
+			based = fmt.Sprintf("revision %d", *r.Base)
+		}
+		return fmt.Errorf("record page revision: changeset %s's version of page %s is not at %s: another's write came between",
+			r.ChangesetID, r.NodeID, based)
 	}
 	return nil
 }

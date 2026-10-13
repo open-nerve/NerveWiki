@@ -201,7 +201,8 @@ func (f *fakes) serve(t *testing.T) http.Handler {
 		ListNodes: fakeList{f}, CreatePage: fakeCreate{f}, GetPage: fakeGet{f}, GetPageContent: fakeRead{f},
 		PutPageContent: fakeWrite{f}, GetPageView: fakeView{f}, RenameNode: fakeRename{f}, MoveNode: fakeMove{f},
 		DeleteNode: fakeDelete{f}, OpenSession: fakeOpen{f}, Heartbeat: fakeBeat{f}, EndSession: fakeEnd{f},
-		GetEditLock: fakeLock{f}, ReleaseEditLock: fakeRelease{f}, ToggleTask: fakeToggle{f},
+		GetEditLock: fakeLock{f}, ReleaseEditLock: fakeRelease{f}, ToggleTask: fakeToggle{f}, ListVersions: fakeVersions{f},
+		GetVersion: fakeVersion{f}, GetVersionView: fakeVersionView{f}, RestoreVersion: fakeRestore{f},
 	})
 	return router
 }

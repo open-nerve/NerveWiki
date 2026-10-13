@@ -47,6 +47,9 @@ var (
 	// ended_by member.
 	ErrEditSessionUnlocked = shared.NewError(shared.KindConflict, "page.edit_session_unlocked",
 		"An admin of the notebook released the page's lock.")
+	// ErrVersionNotFound: no version of the page holds the revision (M8
+	// design 4.3).
+	ErrVersionNotFound = shared.NewError(shared.KindNotFound, "page.version_not_found", "No such version of the page.")
 )
 
 // Locked is ErrLocked naming the lock: the page locked and its holder

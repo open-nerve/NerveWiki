@@ -360,6 +360,34 @@ func (q *Queries) DeleteNotebooksPages(ctx context.Context, arg DeleteNotebooksP
 	return err
 }
 
+const findAnyNode = `-- name: FindAnyNode :one
+SELECT id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at,
+    updated_at, deleted_at
+FROM nodes
+WHERE id = $1
+`
+
+// FindNode alive or in the trash, with when it was deleted (M8/P1 design 3.4): a page's history reads either.
+func (q *Queries) FindAnyNode(ctx context.Context, id uuid.UUID) (Node, error) {
+	row := q.db.QueryRow(ctx, findAnyNode, id)
+	var i Node
+	err := row.Scan(
+		&i.ID,
+		&i.NotebookID,
+		&i.ParentID,
+		&i.Kind,
+		&i.Name,
+		&i.NameKey,
+		&i.SortOrder,
+		&i.CreatedByID,
+		&i.UpdatedByID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
 const findNode = `-- name: FindNode :one
 SELECT id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at,
     updated_at

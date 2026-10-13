@@ -12,6 +12,13 @@ SELECT id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_
 FROM nodes
 WHERE id = sqlc.arg(id) AND deleted_at IS NULL;
 
+-- name: FindAnyNode :one
+-- FindNode alive or in the trash, with when it was deleted (M8/P1 design 3.4): a page's history reads either.
+SELECT id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at,
+    updated_at, deleted_at
+FROM nodes
+WHERE id = sqlc.arg(id);
+
 -- name: FindNodeIn :one
 -- FindNode within one notebook: what a write reads under the notebook's lock.
 SELECT id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at,

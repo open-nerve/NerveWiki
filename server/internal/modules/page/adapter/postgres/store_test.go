@@ -243,8 +243,9 @@ func TestRecordItemAndRevisionMerge(t *testing.T) {
 	if got := f.count(t, "SELECT count(*) FROM changeset_items WHERE node_id = $1 AND before_name IS NULL AND after_name = 'B'", n.ID); got != 1 {
 		t.Errorf("items of a page created then renamed in one changeset = %d with no before and after B, want 1", got)
 	}
-	base := 1
-	for _, r := range []app.Revision{{Base: &base, Revision: 2, Content: "x"}, {Revision: 3, Content: "xy"}} {
+	// The second write goes on from the first's revision, as a unit's does.
+	one, two := 1, 2
+	for _, r := range []app.Revision{{Base: &one, Revision: 2, Content: "x"}, {Base: &two, Revision: 3, Content: "xy"}} {
 		sum := sha256.Sum256([]byte(r.Content))
 		r.ID, r.ChangesetID, r.NodeID, r.Hash, r.ByteSize, r.At = uuid.NewV7(), cs.ID, n.ID, sum[:], len(r.Content), now()
 		if err := f.s.RecordRevision(ctx, r); err != nil {

@@ -118,6 +118,8 @@ type fakeStore struct {
 	held     map[uuid.UUID]bool
 	// errs fails the reads named, FindNodeIn and Children.
 	errs map[string]error
+	// trash are the nodes deleted, with when, which FindAnyNode reads.
+	trash map[uuid.UUID]app.AnyNode
 }
 
 func (f *fakeStore) FindNode(ctx context.Context, id uuid.UUID) (domain.Node, error) {
@@ -127,6 +129,73 @@ func (f *fakeStore) FindNode(ctx context.Context, id uuid.UUID) (domain.Node, er
 		return domain.Node{}, app.ErrNotFound
 	}
 	return n, nil
+}
+
+func (f *fakeStore) FindAnyNode(ctx context.Context, id uuid.UUID) (app.AnyNode, error) {
+	f.record(ctx, "FindAnyNode")
+	if n, ok := f.nodes[id]; ok {
+		return app.AnyNode{Node: n}, nil
+	}
+	if n, ok := f.trash[id]; ok {
+		return n, nil
+	}
+	return app.AnyNode{}, app.ErrNotFound
+}
+
+// versionsOf are the page id's versions, as the version queries join them
+// to their changesets, in the order of their revisions.
+func (f *fakeStore) versionsOf(id uuid.UUID) []domain.Version {
+	var out []domain.Version
+	for _, r := range f.revisions {
+		if r.NodeID != id {
+			continue
+		}
+		v := domain.Version{ID: r.ID, Base: r.Base, Revision: r.Revision, ByteSize: r.ByteSize, CreatedAt: r.At, UpdatedAt: r.At}
+		for _, c := range f.changesets {
+			if c.ID == r.ChangesetID {
+				v.Changeset = domain.VersionChangeset{ID: c.ID, Kind: c.Kind, Client: c.Client, By: c.By, CreatedAt: c.At}
+			}
+		}
+		out = append(out, v)
+	}
+	slices.SortFunc(out, func(a, b domain.Version) int { return a.Revision - b.Revision })
+	return out
+}
+
+func (f *fakeStore) ListVersions(ctx context.Context, pageID uuid.UUID, below int, limit int) ([]domain.Version, error) {
+	f.record(ctx, "ListVersions")
+	var out []domain.Version
+	all := f.versionsOf(pageID)
+	for i := len(all) - 1; i >= 0 && len(out) < limit; i-- {
+		if all[i].Revision < below {
+			out = append(out, all[i])
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeStore) FindVersion(ctx context.Context, pageID uuid.UUID, revision int) (domain.Version, string, error) {
+	f.record(ctx, "FindVersion")
+	for _, v := range f.versionsOf(pageID) {
+		if v.Revision >= revision {
+			for _, r := range f.revisions {
+				if r.ID == v.ID {
+					return v, r.Content, nil
+				}
+			}
+		}
+	}
+	return domain.Version{}, "", app.ErrNotFound
+}
+
+func (f *fakeStore) AliveChangesetOf(ctx context.Context, pageID uuid.UUID, now time.Time) (uuid.UUID, error) {
+	f.record(ctx, "AliveChangesetOf")
+	for _, s := range f.sessions {
+		if s.NodeID == pageID && s.Alive(now) {
+			return s.ChangesetID, nil
+		}
+	}
+	return uuid.UUID{}, nil
 }
 
 func (f *fakeStore) FindNodeIn(ctx context.Context, notebookID, id uuid.UUID) (domain.Node, error) {
@@ -417,6 +486,10 @@ func (f *fakeStore) RecordRevision(ctx context.Context, r app.Revision) error {
 	f.record(ctx, "RecordRevision")
 	for i, old := range f.revisions {
 		if old.ChangesetID == r.ChangesetID && old.NodeID == r.NodeID {
+			// The database's: a changeset's version goes on only from its own revision.
+			if r.Base == nil || *r.Base != old.Revision {
+				return fmt.Errorf("fake: changeset %s's version of %s is at %d, not at the write's base", r.ChangesetID, r.NodeID, old.Revision)
+			}
 			r.ID, r.Base = old.ID, old.Base
 			f.revisions[i] = r
 			return nil
@@ -772,7 +845,7 @@ func newFixture() *fixture {
 		workspaces: fakeWorkspaces{recorder: rec, gone: map[uuid.UUID]bool{}},
 		store: &fakeStore{recorder: rec, nodes: map[uuid.UUID]domain.Node{}, contents: map[uuid.UUID]app.Content{},
 			items: map[uuid.UUID]app.Item{}, touched: map[uuid.UUID]time.Time{}, sessions: map[uuid.UUID]app.EditSession{},
-			held: map[uuid.UUID]bool{}},
+			held: map[uuid.UUID]bool{}, trash: map[uuid.UUID]app.AnyNode{}},
 		auth: &fakeAuthorizer{recorder: rec, grants: map[shared.Action]bool{}, forbidden: map[shared.Action]bool{}},
 		logs: &bytes.Buffer{}, names: fakeNames{}, alice: uuid.NewV7(), acme: uuid.NewV7(), eng: uuid.NewV7(),
 	}

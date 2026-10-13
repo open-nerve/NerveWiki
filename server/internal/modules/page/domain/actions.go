@@ -23,10 +23,15 @@ const (
 	// ActionToggleTask ticks or clears a task item of a page's content
 	// (M5/P6): a write of its content, by the same rule.
 	ActionToggleTask shared.Action = "page.toggle_task"
+	// ActionHistory reads a notebook's history: a page's versions, alive
+	// or in the trash (M8 design 4.14).
+	ActionHistory shared.Action = "page.history"
+	// ActionRestoreVersion writes a version's content as a page's.
+	ActionRestoreVersion shared.Action = "page.restore_version"
 )
 
 // Actions lists the module's actions.
 func Actions() []shared.Action {
 	return []shared.Action{ActionList, ActionRead, ActionCreate, ActionRename, ActionMove, ActionDelete, ActionWrite, ActionEdit,
-		ActionReleaseEditLock, ActionToggleTask}
+		ActionReleaseEditLock, ActionToggleTask, ActionHistory, ActionRestoreVersion}
 }
