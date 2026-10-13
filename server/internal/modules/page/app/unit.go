@@ -21,13 +21,16 @@ import (
 
 // WriterDeps are what the write unit needs.
 type WriterDeps struct {
-	Tx            Tx
-	Clock         Clock
-	Auth          shared.Authorizer
-	Workspaces    Workspaces
-	Notebooks     Notebooks
-	Nodes         Nodes
-	NodeWriter    NodeWriter
+	Tx         Tx
+	Clock      Clock
+	Auth       shared.Authorizer
+	Workspaces Workspaces
+	Notebooks  Notebooks
+	Nodes      Nodes
+	NodeWriter NodeWriter
+	// Trash reads a trash item again under the notebook's lock: its
+	// restore's.
+	Trash         Trash
 	Changesets    ChangesetWriter
 	SessionWriter SessionWriter
 	// Names gives the name of who released a session's lock (M5 design

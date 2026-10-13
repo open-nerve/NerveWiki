@@ -235,3 +235,138 @@ func TestTrashGroupAndContents(t *testing.T) {
 		t.Errorf("TrashContents() = %q, %v; want R's and A's, not B's taken nor Earlier's of another time", contents, err)
 	}
 }
+
+// restoration is the restore of the trash item ids, the first its root,
+// deleted at at, under parent at order, each by its name: a test's.
+func restoration(at time.Time, parent *uuid.UUID, order float64, by uuid.UUID, nodes ...domain.Node) app.Restoration {
+	r := app.Restoration{Root: nodes[0].ID, ParentID: parent, SortOrder: order, DeletedAt: at, By: by, At: at.Add(time.Hour)}
+	for _, n := range nodes {
+		r.IDs, r.Names, r.NameKeys = append(r.IDs, n.ID), append(r.Names, n.Name), append(r.NameKeys, n.NameKey)
+	}
+	return r
+}
+
+// A restore brings back the nodes deleted at the item's time, each with
+// its name, the root under its parent at its order, by its caller at its
+// time, no item any more; and what followed them at that time, a content
+// keeping its writer; what the trash held before keeps its own time. It
+// counts what came back.
+func TestRestoreNodesBringsTheGroupBack(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	bob := uuid.NewV7()
+	f.exec(t, "INSERT INTO users (id, email, password, display_name, created_at, updated_at) VALUES ($1, 'bob@corp.com', 'x', 'x', $2, $2)",
+		bob, now())
+	p := f.page(t, f.eng, nil, "P", 0)
+	r := f.page(t, f.eng, nil, "R", 1)
+	a := f.page(t, f.eng, &r.ID, "A", 0)
+	photo := f.asset(t, f.eng, &a.ID, "photo.png", 0)
+	earlier := f.page(t, f.eng, &r.ID, "Earlier", 1)
+	f.versions(t, r.ID, 3)
+	f.versions(t, a.ID, 2)
+	f.versions(t, earlier.ID, 1)
+	f.exec(t, "UPDATE page_contents SET revision = CASE node_id WHEN $1 THEN 3 ELSE 2 END WHERE node_id IN ($1, $2)", r.ID, a.ID)
+	cs := app.Changeset{ID: uuid.NewV7(), NotebookID: f.eng, Kind: "edit", Client: domain.ClientWeb, By: f.alice, At: now()}
+	if err := f.s.CreateChangeset(ctx, cs); err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range []domain.Node{r, a, photo, earlier} {
+		state := n.State()
+		if err := f.s.RecordItems(ctx, []app.Item{{ID: uuid.NewV7(), ChangesetID: cs.ID, Change: domain.Change{NodeID: n.ID, After: &state},
+			At: now()}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f.trashed(t, now(), 1, 0, 1, earlier.ID)
+	at := now().Add(time.Minute)
+	f.trashed(t, at, 2, 1, 2, r.ID, a.ID, photo.ID, earlier.ID)
+	r.Name, r.NameKey = "R 2", "r 2"
+	back := restoration(at, &p.ID, 7, bob, r, a, photo)
+	rows, err := f.s.RestoreNodes(ctx, back)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := (app.RestoredRows{Nodes: 3, Contents: 2, CurrentVersions: 2, Creations: 2}); rows != want {
+		t.Errorf("RestoreNodes() = %+v, want %+v", rows, want)
+	}
+	if got := f.count(t, `SELECT count(*) FROM nodes WHERE id = $1 AND parent_id = $2 AND sort_order = 7 AND name = 'R 2'
+		AND name_key = 'r 2'`, r.ID, p.ID); got != 1 {
+		t.Error("R is not back under P at its order, by its new name")
+	}
+	if got := f.count(t, "SELECT count(*) FROM nodes WHERE id = $1 AND parent_id = $2 AND sort_order = 0", a.ID, r.ID); got != 1 {
+		t.Error("A is not back under R at its order")
+	}
+	for _, n := range []domain.Node{r, a, photo} {
+		if got := f.count(t, "SELECT count(*) FROM nodes WHERE id = $1 AND deleted_at IS NULL AND updated_by_id = $2 AND updated_at = $3",
+			n.ID, bob, back.At); got != 1 {
+			t.Errorf("%s is not back by bob at the restore's time", n.Name)
+		}
+		if got := f.trashMark(t, n.ID); got != "false -1 -1 -1" {
+			t.Errorf("%s's mark = %s, want none", n.Name, got)
+		}
+		if got := f.count(t, "SELECT count(*) FROM changeset_items WHERE node_id = $1 AND deleted_at IS NULL", n.ID); got != 1 {
+			t.Errorf("%s's items back = %d, want its edit's", n.Name, got)
+		}
+	}
+	if got := f.count(t, "SELECT count(*) FROM page_revisions WHERE node_id IN ($1, $2) AND deleted_at IS NULL", r.ID, a.ID); got != 5 {
+		t.Errorf("versions back = %d, want R's 3 and A's 2", got)
+	}
+	if got := f.count(t, "SELECT count(*) FROM page_contents WHERE node_id IN ($1, $2) AND deleted_at IS NULL AND updated_by_id = $3",
+		r.ID, a.ID, f.alice); got != 2 {
+		t.Error("the contents are not back with their writer")
+	}
+	for _, table := range append([]string{"nodes"}, followers()...) {
+		column := "node_id"
+		if table == "nodes" {
+			column = "id"
+		}
+		if got := f.count(t, "SELECT count(*) FROM "+table+" WHERE "+column+" = $1 AND deleted_at = $2", earlier.ID, now()); got == 0 {
+			t.Errorf("Earlier's row of %s lost its own time", table)
+		}
+	}
+}
+
+// What the purge took of an item, or a restore meanwhile, shows in the
+// counts: a content taken, a current version, a creation, a version
+// between, a node no longer deleted at the item's time. A name an alive
+// sibling holds is a title taken.
+func TestRestoreNodesCountsWhatCameBack(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	for _, tt := range []struct {
+		name string
+		take string
+		want app.RestoredRows
+	}{
+		{"nothing", "", app.RestoredRows{Nodes: 1, Contents: 1, CurrentVersions: 1, Creations: 1}},
+		{"the content", "DELETE FROM page_contents WHERE node_id = $1", app.RestoredRows{Nodes: 1, Creations: 1}},
+		{"the current version", "DELETE FROM page_revisions WHERE node_id = $1 AND revision = 3",
+			app.RestoredRows{Nodes: 1, Contents: 1, Creations: 1}},
+		{"the creation", "DELETE FROM page_revisions WHERE node_id = $1 AND revision = 1",
+			app.RestoredRows{Nodes: 1, Contents: 1, CurrentVersions: 1, Gaps: 1}},
+		{"a version between", "DELETE FROM page_revisions WHERE node_id = $1 AND revision = 2",
+			app.RestoredRows{Nodes: 1, Contents: 1, CurrentVersions: 1, Creations: 1, Gaps: 1}},
+		{"the node restored", "UPDATE nodes SET deleted_at = NULL, trash_root = false, trash_pages = NULL, trash_assets = NULL, " +
+			"trash_height = NULL WHERE id = $1", app.RestoredRows{}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			x := f.page(t, f.eng, nil, tt.name, 0)
+			f.versions(t, x.ID, 3)
+			f.exec(t, "UPDATE page_contents SET revision = 3 WHERE node_id = $1", x.ID)
+			f.trashed(t, now(), 1, 0, 1, x.ID)
+			if tt.take != "" {
+				f.exec(t, tt.take, x.ID)
+			}
+			x.Name = tt.name + " back"
+			if rows, err := f.s.RestoreNodes(ctx, restoration(now(), nil, 0, f.alice, x)); err != nil || rows != tt.want {
+				t.Errorf("RestoreNodes(%s taken) = %+v, %v; want %+v", tt.name, rows, err, tt.want)
+			}
+		})
+	}
+	taken := f.page(t, f.eng, nil, "Taken", 1)
+	f.trashed(t, now(), 1, 0, 1, taken.ID)
+	f.page(t, f.eng, nil, "taken", 2)
+	if _, err := f.s.RestoreNodes(ctx, restoration(now(), nil, 1, f.alice, taken)); !errors.Is(err, domain.ErrTitleTaken) {
+		t.Errorf("RestoreNodes(a name a sibling holds) = %v, want page.title_taken", err)
+	}
+}

@@ -51,6 +51,12 @@ func NewBudget(size int, wait time.Duration, logger *slog.Logger) *Budget {
 	return &Budget{bytes: semaphore.NewWeighted(int64(size)), size: size, wait: wait, logger: logger}
 }
 
+// Wait is the longest a take waits for its bytes, page.parse_max_wait:
+// what a request's takes, together, wait at most (M8/P2 design 3.5).
+func (b *Budget) Wait() time.Duration {
+	return b.wait
+}
+
 // minTake is the least a content takes (M6/P2 fix check 3 L1): however
 // short, a frontmatter's aliases may expand to the YAML's limit of values,
 // whose facts keep up to some 480 KB, the parse not much more; 4 KiB counts

@@ -296,6 +296,24 @@ func (s *Store) DeleteNodes(ctx context.Context, d app.Deletion) error {
 	return nil
 }
 
+// RestoreNodes implements app.NodeWriter. A name a sibling holds already
+// is domain.ErrTitleTaken: the unit numbered them, so only a defect makes
+// one.
+func (s *Store) RestoreNodes(ctx context.Context, r app.Restoration) (app.RestoredRows, error) {
+	row, err := s.queries(ctx).RestoreNodes(ctx, gen.RestoreNodesParams{
+		Ids: r.IDs, Names: r.Names, NameKeys: r.NameKeys, By: r.By, Now: r.At, Root: r.Root, ParentID: r.ParentID,
+		SortOrder: r.SortOrder, DeletedAt: r.DeletedAt,
+	})
+	switch {
+	case uniqueViolation(err, siblingNameKey):
+		return app.RestoredRows{}, domain.ErrTitleTaken
+	case err != nil:
+		return app.RestoredRows{}, fmt.Errorf("restore nodes: %w", err)
+	}
+	return app.RestoredRows{Nodes: int(row.Nodes), Contents: int(row.Contents), CurrentVersions: int(row.CurrentVersions),
+		Creations: int(row.Creations), Gaps: int(row.Gaps)}, nil
+}
+
 // SetSortOrder implements app.NodeWriter.
 func (s *Store) SetSortOrder(ctx context.Context, id uuid.UUID, order float64) error {
 	if err := s.queries(ctx).SetSortOrder(ctx, gen.SetSortOrderParams{ID: id, SortOrder: order}); err != nil {

@@ -194,12 +194,16 @@ func TestATakeNowWaitsForNothing(t *testing.T) {
 	one.Release()
 }
 
-// A take that does not get its bytes within the wait is busy, and logs it;
-// a cancelled request, or one whose own deadline comes first, gets its
-// context's error: the request ran out, the server is not busy.
+// A take that does not get its bytes within the wait, which Wait tells, is
+// busy, and logs it; a cancelled request, or one whose own deadline comes
+// first, gets its context's error: the request ran out, the server is not
+// busy.
 func TestABudgetThatDoesNotFreeUpIsBusy(t *testing.T) {
 	var logs bytes.Buffer
 	b := markdown.NewBudget(10, 20*time.Millisecond, slog.New(slog.NewTextHandler(&logs, nil)))
+	if b.Wait() != 20*time.Millisecond {
+		t.Errorf("Wait() = %s, want the budget's 20ms", b.Wait())
+	}
 	all, err := b.Take(context.Background(), 10)
 	if err != nil {
 		t.Fatal(err)

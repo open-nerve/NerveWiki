@@ -626,6 +626,90 @@ func (q *Queries) RenameNode(ctx context.Context, arg RenameNodeParams) error {
 	return err
 }
 
+const restoreNodes = `-- name: RestoreNodes :one
+WITH u AS (
+    SELECT unnest($1::uuid[]) AS id, unnest($2::text[]) AS name,
+        unnest($3::text[]) AS name_key
+), back AS (
+    UPDATE nodes n
+    SET deleted_at = NULL, trash_root = false, trash_pages = NULL, trash_assets = NULL, trash_height = NULL,
+        name = u.name, name_key = u.name_key, updated_by_id = $4, updated_at = $5,
+        parent_id = CASE WHEN n.id = $6 THEN $7::uuid ELSE n.parent_id END,
+        sort_order = CASE WHEN n.id = $6 THEN $8::float8 ELSE n.sort_order END
+    FROM u
+    WHERE n.id = u.id AND n.deleted_at = $9::timestamptz
+    RETURNING n.id
+), contents AS (
+    UPDATE page_contents c SET deleted_at = NULL
+    WHERE c.node_id IN (SELECT id FROM back) AND c.deleted_at = $9::timestamptz
+    RETURNING c.node_id, c.revision
+), revisions AS (
+    UPDATE page_revisions r SET deleted_at = NULL
+    WHERE r.node_id IN (SELECT id FROM back) AND r.deleted_at = $9::timestamptz
+    RETURNING r.node_id, r.revision, r.base_revision
+), items AS (
+    UPDATE changeset_items i SET deleted_at = NULL
+    WHERE i.node_id IN (SELECT id FROM back) AND i.deleted_at = $9::timestamptz
+)
+SELECT (SELECT count(*) FROM back)::integer AS nodes,
+    (SELECT count(*) FROM contents)::integer AS contents,
+    (SELECT count(*) FROM contents c JOIN revisions r USING (node_id, revision))::integer AS current_versions,
+    (SELECT count(*) FROM revisions WHERE base_revision IS NULL)::integer AS creations,
+    (SELECT count(*) FROM revisions r WHERE r.base_revision IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM revisions p WHERE p.node_id = r.node_id AND p.revision = r.base_revision))::integer AS gaps
+`
+
+type RestoreNodesParams struct {
+	Ids       []uuid.UUID
+	Names     []string
+	NameKeys  []string
+	By        uuid.UUID
+	Now       time.Time
+	Root      uuid.UUID
+	ParentID  *uuid.UUID
+	SortOrder float64
+	DeletedAt time.Time
+}
+
+type RestoreNodesRow struct {
+	Nodes           int32
+	Contents        int32
+	CurrentVersions int32
+	Creations       int32
+	Gaps            int32
+}
+
+// A trash item's restore (M8/P2 design 3.5): its nodes still deleted at its time, each with its name and key, the root
+// under its parent at its order, by the unit's caller at its time, no root any more; then what was deleted with them
+// at that time: their contents, and their versions and items in every changeset, the deleting one's among them. A
+// content keeps its writer and time: it did not change. The counts tell what came back, for the unit to check that the
+// purge took nothing: the nodes; the pages' contents, and the versions at their contents' revisions; the versions that
+// created a page, and the versions whose base came back of none of their page's, a gap in its chain. The siblings'
+// unique index is checked a row at a time: the group's other nodes are deleted, out of it, until they are updated, and
+// their names were made unique beforehand.
+func (q *Queries) RestoreNodes(ctx context.Context, arg RestoreNodesParams) (RestoreNodesRow, error) {
+	row := q.db.QueryRow(ctx, restoreNodes,
+		arg.Ids,
+		arg.Names,
+		arg.NameKeys,
+		arg.By,
+		arg.Now,
+		arg.Root,
+		arg.ParentID,
+		arg.SortOrder,
+		arg.DeletedAt,
+	)
+	var i RestoreNodesRow
+	err := row.Scan(
+		&i.Nodes,
+		&i.Contents,
+		&i.CurrentVersions,
+		&i.Creations,
+		&i.Gaps,
+	)
+	return i, err
+}
+
 const setSortOrder = `-- name: SetSortOrder :exec
 UPDATE nodes SET sort_order = $1 WHERE id = $2
 `

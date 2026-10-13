@@ -109,6 +109,10 @@ type Deps struct {
 	Retention time.Duration
 	// Attachments shows an attachment in the trash: it must be there.
 	Attachments AttachmentInfos
+	// MaxUnitNodes bounds the nodes of a trash item a request restores: 0
+	// is domain.MaxUnitNodes, which only a measurement raises (M8/P2 design
+	// 3.11).
+	MaxUnitNodes int
 }
 
 // Module is the wired page module.
@@ -130,11 +134,11 @@ func New(d Deps) *Module {
 	budget := markdownadapter.NewBudget(d.Budget)
 	writer := app.NewWriter(app.WriterDeps{
 		Tx: d.Tx, Clock: d.Clock, Auth: d.Authorizer, Workspaces: d.Workspaces, Notebooks: d.Notebooks,
-		Nodes: store, NodeWriter: store, Changesets: store, SessionWriter: store, Names: d.Names,
+		Nodes: store, NodeWriter: store, Trash: store, Changesets: store, SessionWriter: store, Names: d.Names,
 		Guards: d.Guards, Participants: d.Participants, Observers: d.Observers,
 		SessionVetoers: d.EditSessionVetoers, SessionSubscribers: d.EditSessionSubscribers,
 	})
-	parser := app.NewContentParser(writer, md, budget)
+	parser := app.NewContentParser(writer, md, budget, d.Budget.Wait())
 	versions := app.VersionReads{Notebooks: d.Notebooks, Nodes: store, Versions: store, Names: d.Names, Auth: d.Authorizer, Clock: d.Clock}
 	return &Module{uc: httpadapter.UseCases{
 		ListNodes:       app.NewListNodes(d.Notebooks, store, d.Authorizer),

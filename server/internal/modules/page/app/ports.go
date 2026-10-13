@@ -174,6 +174,9 @@ type NodeWriter interface {
 	// time already under one of them is an error: a unit deletes from the
 	// top down.
 	DeleteNodes(ctx context.Context, d Deletion) error
+	// RestoreNodes brings the restoration's nodes back from the trash, with
+	// what was deleted with them, and counts what it brought back.
+	RestoreNodes(ctx context.Context, r Restoration) (RestoredRows, error)
 }
 
 // Deletion is a subtree's deletion (M8/P2 design 3.3): its nodes IDs, Root
@@ -186,6 +189,30 @@ type Deletion struct {
 	Height        int
 	By            uuid.UUID
 	At            time.Time
+}
+
+// Restoration is a trash item's restore (M8/P2 design 3.5): its nodes IDs,
+// still deleted at DeletedAt, each named Names, its key NameKeys, the Root
+// among them put under ParentID (nil: the notebook's root) at SortOrder;
+// by By at At.
+type Restoration struct {
+	Root      uuid.UUID
+	ParentID  *uuid.UUID
+	SortOrder float64
+	IDs       []uuid.UUID
+	Names     []string
+	NameKeys  []string
+	DeletedAt time.Time
+	By        uuid.UUID
+	At        time.Time
+}
+
+// RestoredRows are what a restore brought back: its nodes; its pages'
+// contents, and the versions at their contents' revisions; the versions
+// that created a page; and the gaps in its pages' chains of versions, a
+// version whose base no version of its page brought back has.
+type RestoredRows struct {
+	Nodes, Contents, CurrentVersions, Creations, Gaps int
 }
 
 // ChangesetWriter records a write's changeset, its items and its versions.

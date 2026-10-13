@@ -125,8 +125,12 @@ type fakeStore struct {
 	trash   map[uuid.UUID]app.AnyNode
 	counts  map[uuid.UUID][3]int
 	trashed map[uuid.UUID]app.Content
-	// deletions are what DeleteNodes was given.
-	deletions []app.Deletion
+	// deletions are what DeleteNodes was given, restorations what
+	// RestoreNodes was; rows, when set, are what RestoreNodes answers it
+	// brought back, as if the purge took some.
+	deletions    []app.Deletion
+	restorations []app.Restoration
+	rows         *app.RestoredRows
 }
 
 func (f *fakeStore) FindNode(ctx context.Context, id uuid.UUID) (domain.Node, error) {
@@ -363,17 +367,29 @@ func (f *fakeMarkdown) Tasks(facts app.Facts) []app.Task {
 
 // fakeBudget records each take of the parse budget with its bytes, each
 // keeping of the facts' share and each release; err, when set, is Take's.
+// A take waits the first of waits, when there are, before it gets its
+// bytes, or its context's end first.
 type fakeBudget struct {
 	*recorder
 	err      error
 	held     int
 	released int
+	waits    []time.Duration
 }
 
 func (b *fakeBudget) Take(ctx context.Context, n int) (app.BudgetHold, error) {
 	b.record(ctx, fmt.Sprintf("Take %d", n))
 	if b.err != nil {
 		return nil, b.err
+	}
+	if len(b.waits) > 0 {
+		wait := b.waits[0]
+		b.waits = b.waits[1:]
+		select {
+		case <-time.After(wait):
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 	}
 	b.held += n
 	return &fakeHold{budget: b, n: n}, nil
@@ -459,6 +475,40 @@ func (f *fakeStore) DeleteNodes(ctx context.Context, d app.Deletion) error {
 	}
 	f.counts[d.Root] = [3]int{d.Pages, d.Assets, d.Height}
 	return nil
+}
+
+// RestoreNodes brings the nodes deleted at the restoration's time back
+// with their contents, renamed, the root put where it goes, and counts
+// them; each content counts as its current version, its creation's, with
+// no gap.
+func (f *fakeStore) RestoreNodes(ctx context.Context, r app.Restoration) (app.RestoredRows, error) {
+	f.record(ctx, "RestoreNodes")
+	f.restorations = append(f.restorations, r)
+	var rows app.RestoredRows
+	for i, id := range r.IDs {
+		n, ok := f.trash[id]
+		if !ok || !n.DeletedAt.Equal(r.DeletedAt) {
+			continue
+		}
+		node := n.Node
+		node.Name, node.NameKey, node.UpdatedBy, node.UpdatedAt = r.Names[i], r.NameKeys[i], r.By, r.At
+		if id == r.Root {
+			node.ParentID, node.SortOrder = r.ParentID, r.SortOrder
+		}
+		f.nodes[id] = node
+		delete(f.trash, id)
+		rows.Nodes++
+		if c, ok := f.trashed[id]; ok {
+			f.contents[id] = c
+			delete(f.trashed, id)
+			rows.Contents++
+		}
+	}
+	rows.CurrentVersions, rows.Creations = rows.Contents, rows.Contents
+	if f.rows != nil {
+		return *f.rows, nil
+	}
+	return rows, nil
 }
 
 // trashRoot is the trash item of the root n, its counts and its page's
@@ -989,8 +1039,10 @@ type fixture struct {
 	enders     []app.EditSessionSubscriber
 	names      fakeNames
 	infos      map[uuid.UUID]app.AttachmentInfo
-	alice      uuid.UUID
-	acme, eng  uuid.UUID
+	// wait is the parse budget's wait.
+	wait      time.Duration
+	alice     uuid.UUID
+	acme, eng uuid.UUID
 }
 
 func newFixture() *fixture {
@@ -1008,6 +1060,7 @@ func newFixture() *fixture {
 	f.notebooks = fakeNotebooks{recorder: rec, workspaces: map[uuid.UUID]uuid.UUID{f.eng: f.acme}, gone: map[uuid.UUID]bool{}}
 	f.md = &fakeMarkdown{recorder: rec}
 	f.budget = &fakeBudget{recorder: rec}
+	f.wait = time.Second
 	return f
 }
 
@@ -1016,13 +1069,14 @@ func (f *fixture) logger() *slog.Logger { return slog.New(slog.NewTextHandler(f.
 func (f *fixture) writer() *app.Writer {
 	return app.NewWriter(app.WriterDeps{
 		Tx: f.tx, Clock: f.clock, Auth: f.auth, Workspaces: f.workspaces, Notebooks: f.notebooks, Nodes: f.store,
-		NodeWriter: f.store, Changesets: f.store, SessionWriter: f.store, Names: f.names, Guards: f.guards, Participants: f.partakers,
-		Observers: f.observers, SessionVetoers: f.vetoers, SessionSubscribers: f.enders,
+		NodeWriter: f.store, Trash: f.store, Changesets: f.store, SessionWriter: f.store, Names: f.names, Guards: f.guards,
+		Participants: f.partakers,
+		Observers:    f.observers, SessionVetoers: f.vetoers, SessionSubscribers: f.enders,
 	})
 }
 
 func (f *fixture) parser() *app.ContentParser {
-	return app.NewContentParser(f.writer(), f.md, f.budget)
+	return app.NewContentParser(f.writer(), f.md, f.budget, f.wait)
 }
 
 // grant has the authorizer allow actions.

@@ -131,6 +131,46 @@ WITH stray AS (
 )
 SELECT n::integer AS stray FROM stray;
 
+-- name: RestoreNodes :one
+-- A trash item's restore (M8/P2 design 3.5): its nodes still deleted at its time, each with its name and key, the root
+-- under its parent at its order, by the unit's caller at its time, no root any more; then what was deleted with them
+-- at that time: their contents, and their versions and items in every changeset, the deleting one's among them. A
+-- content keeps its writer and time: it did not change. The counts tell what came back, for the unit to check that the
+-- purge took nothing: the nodes; the pages' contents, and the versions at their contents' revisions; the versions that
+-- created a page, and the versions whose base came back of none of their page's, a gap in its chain. The siblings'
+-- unique index is checked a row at a time: the group's other nodes are deleted, out of it, until they are updated, and
+-- their names were made unique beforehand.
+WITH u AS (
+    SELECT unnest(sqlc.arg(ids)::uuid[]) AS id, unnest(sqlc.arg(names)::text[]) AS name,
+        unnest(sqlc.arg(name_keys)::text[]) AS name_key
+), back AS (
+    UPDATE nodes n
+    SET deleted_at = NULL, trash_root = false, trash_pages = NULL, trash_assets = NULL, trash_height = NULL,
+        name = u.name, name_key = u.name_key, updated_by_id = sqlc.arg(by), updated_at = sqlc.arg(now),
+        parent_id = CASE WHEN n.id = sqlc.arg(root) THEN sqlc.narg(parent_id)::uuid ELSE n.parent_id END,
+        sort_order = CASE WHEN n.id = sqlc.arg(root) THEN sqlc.arg(sort_order)::float8 ELSE n.sort_order END
+    FROM u
+    WHERE n.id = u.id AND n.deleted_at = sqlc.arg(deleted_at)::timestamptz
+    RETURNING n.id
+), contents AS (
+    UPDATE page_contents c SET deleted_at = NULL
+    WHERE c.node_id IN (SELECT id FROM back) AND c.deleted_at = sqlc.arg(deleted_at)::timestamptz
+    RETURNING c.node_id, c.revision
+), revisions AS (
+    UPDATE page_revisions r SET deleted_at = NULL
+    WHERE r.node_id IN (SELECT id FROM back) AND r.deleted_at = sqlc.arg(deleted_at)::timestamptz
+    RETURNING r.node_id, r.revision, r.base_revision
+), items AS (
+    UPDATE changeset_items i SET deleted_at = NULL
+    WHERE i.node_id IN (SELECT id FROM back) AND i.deleted_at = sqlc.arg(deleted_at)::timestamptz
+)
+SELECT (SELECT count(*) FROM back)::integer AS nodes,
+    (SELECT count(*) FROM contents)::integer AS contents,
+    (SELECT count(*) FROM contents c JOIN revisions r USING (node_id, revision))::integer AS current_versions,
+    (SELECT count(*) FROM revisions WHERE base_revision IS NULL)::integer AS creations,
+    (SELECT count(*) FROM revisions r WHERE r.base_revision IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM revisions p WHERE p.node_id = r.node_id AND p.revision = r.base_revision))::integer AS gaps;
+
 -- name: DeleteNotebooksPages :exec
 -- The notebook deletion's registrant (M4/P1 design 3.9): the nodes not deleted of the notebooks, and what
 -- follows them, at the deletion's time, by the deleter; then the notebooks' changesets. What a subtree's
