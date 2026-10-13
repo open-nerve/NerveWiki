@@ -13,9 +13,10 @@ FROM nodes
 WHERE id = sqlc.arg(id) AND deleted_at IS NULL;
 
 -- name: FindAnyNode :one
--- FindNode alive or in the trash, with when it was deleted (M8/P1 design 3.4): a page's history reads either.
+-- FindNode alive or in the trash, with when it was deleted (M8/P1 design 3.4): a page's history reads either; and
+-- whether it is a trash item's root (M8/P2 design 3.4).
 SELECT id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at,
-    updated_at, deleted_at
+    updated_at, deleted_at, trash_root
 FROM nodes
 WHERE id = sqlc.arg(id);
 

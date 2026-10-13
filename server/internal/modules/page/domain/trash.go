@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/json"
 	"time"
 	"uuid"
 )
@@ -93,6 +94,13 @@ type TrashMember struct {
 type TrashCursor struct {
 	At time.Time `json:"at"`
 	ID uuid.UUID `json:"id"`
+}
+
+// MarshalJSON writes the cursor with At in UTC, so that each position has
+// one spelling: shared.DecodeCursor refuses another.
+func (c TrashCursor) MarshalJSON() ([]byte, error) {
+	type plain TrashCursor
+	return json.Marshal(plain{At: c.At.UTC(), ID: c.ID})
 }
 
 // TrashFrom is the cursor above every item: the first page's. A cursor at

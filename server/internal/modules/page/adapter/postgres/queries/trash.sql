@@ -1,0 +1,73 @@
+-- The trash (M8/P2 design 3.4): a notebook's deletions' roots, each with what was deleted with it, at its time.
+
+-- name: ListTrash :many
+-- A notebook's trash items deleted after since, newer first, below the cursor, at most max_rows: a range of the trash's
+-- partial index. A page's content's revision with it, at its deletion's time: none for an attachment, or a content the
+-- purge took. Who deleted it is its updated_by_id, which the deletion wrote.
+SELECT n.id, n.notebook_id, n.parent_id, n.kind, n.name, n.name_key, n.sort_order, n.created_by_id, n.updated_by_id,
+    n.created_at, n.updated_at, n.deleted_at, n.trash_pages, n.trash_assets, n.trash_height, c.revision
+FROM nodes n LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at = n.deleted_at
+WHERE n.notebook_id = sqlc.arg(notebook_id) AND n.trash_root AND n.deleted_at > sqlc.arg(since)::timestamptz
+    AND (n.deleted_at, n.id) < (sqlc.arg(below_at)::timestamptz, sqlc.arg(below_id)::uuid)
+ORDER BY n.deleted_at DESC, n.id DESC
+LIMIT sqlc.arg(max_rows);
+
+-- name: FindTrashRoot :one
+-- The trash item of the root id, as ListTrash reads it.
+SELECT n.id, n.notebook_id, n.parent_id, n.kind, n.name, n.name_key, n.sort_order, n.created_by_id, n.updated_by_id,
+    n.created_at, n.updated_at, n.deleted_at, n.trash_pages, n.trash_assets, n.trash_height, c.revision
+FROM nodes n LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at = n.deleted_at
+WHERE n.id = sqlc.arg(id) AND n.trash_root;
+
+-- name: TrashRootOf :one
+-- The root of the trash item a deleted node is in: up its parents, deleted at its time, to the first root. The bound
+-- stops a chain that loops, which only a defect could make.
+WITH RECURSIVE up AS (
+    SELECT n.id, n.parent_id, n.trash_root, 0 AS hops FROM nodes n WHERE n.id = sqlc.arg(id) AND n.deleted_at IS NOT NULL
+    UNION ALL
+    SELECT p.id, p.parent_id, p.trash_root, u.hops + 1
+    FROM up u JOIN nodes p ON p.id = u.parent_id
+    WHERE NOT u.trash_root AND u.hops < 64
+)
+SELECT up.id FROM up WHERE up.trash_root;
+
+-- name: TrashLines :many
+-- Where trash items were: each root's ancestors, deleted or not, with when each was deleted, a row a step up, its
+-- parent's the step 1. Each step reads its parent by its key alone, as LinkTargetsByIDs does, which no statistics
+-- (a large deletion's) turn into a read of the notebook. The bound stops a chain that loops, which only a defect could
+-- make: such a line reaches no root.
+WITH RECURSIVE chain AS (
+    SELECT n.id AS root_id, p.id, p.parent_id, p.name, p.deleted_at, 1 AS up
+    FROM nodes n JOIN nodes p ON p.id = n.parent_id
+    WHERE n.id = ANY(sqlc.arg(ids)::uuid[])
+    UNION ALL
+    SELECT c.root_id, p.id, p.parent_id, p.name, p.deleted_at, c.up + 1
+    FROM chain c CROSS JOIN LATERAL (SELECT id, parent_id, name, deleted_at FROM nodes WHERE id = c.parent_id LIMIT 1) p
+    WHERE c.up < 64
+)
+SELECT root_id, id, parent_id, name, deleted_at, up::integer AS up FROM chain ORDER BY root_id, up DESC;
+
+-- name: TrashGroupRoot :one
+-- A trash item's root of the notebook deleted at deleted_at, with a page's content's revision and size, as
+-- TrashChildrenOfAll reads its descendants.
+SELECT n.id, n.notebook_id, n.parent_id, n.kind, n.name, n.name_key, n.sort_order, n.created_by_id, n.updated_by_id,
+    n.created_at, n.updated_at, c.revision, c.byte_size
+FROM nodes n LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at = n.deleted_at
+WHERE n.id = sqlc.arg(id) AND n.notebook_id = sqlc.arg(notebook_id) AND n.deleted_at = sqlc.arg(deleted_at)::timestamptz;
+
+-- name: TrashChildrenOfAll :many
+-- The children of parents of the notebook deleted at deleted_at, in order, each page with its content's revision and
+-- size, none when the purge took it: a level of a trash item's group, read a level a statement and planned with its
+-- parents, as ChildrenOfAll reads a subtree's, through the siblings' index, which holds the deleted rows. A
+-- descendant deleted earlier is not of the group: it is an item of its own.
+SELECT n.id, n.notebook_id, n.parent_id, n.kind, n.name, n.name_key, n.sort_order, n.created_by_id, n.updated_by_id,
+    n.created_at, n.updated_at, c.revision, c.byte_size
+FROM nodes n LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at = n.deleted_at
+WHERE n.notebook_id = sqlc.arg(notebook_id) AND n.parent_id = ANY(sqlc.arg(parents)::uuid[])
+    AND n.deleted_at = sqlc.arg(deleted_at)::timestamptz
+ORDER BY n.sort_order, n.id;
+
+-- name: TrashContents :many
+-- The contents of pages deleted at deleted_at, by their primary key.
+SELECT node_id, content FROM page_contents
+WHERE node_id = ANY(sqlc.arg(ids)::uuid[]) AND deleted_at = sqlc.arg(deleted_at)::timestamptz;

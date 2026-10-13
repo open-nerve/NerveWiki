@@ -120,10 +120,12 @@ type Revision struct {
 }
 
 // AnyNode is a node alive or in the trash: DeletedAt is when it was
-// deleted, nil while it is alive.
+// deleted, nil while it is alive; TrashRoot whether it is a trash item's
+// root.
 type AnyNode struct {
 	domain.Node
 	DeletedAt *time.Time
+	TrashRoot bool
 }
 
 // Nodes reads a notebook's nodes: unlocked for a read, under the write
@@ -224,6 +226,47 @@ type Versions interface {
 	// at now, zero when none is or it has not written: the page's newest
 	// version is being edited while it is that changeset's.
 	AliveChangesetOf(ctx context.Context, pageID uuid.UUID, now time.Time) (uuid.UUID, error)
+}
+
+// Trash reads a notebook's trash (M8/P2 design 3.4), unlocked, or in a
+// unit's transaction. Its times compare with time.Time.Equal: the answer's
+// are in the local zone.
+type Trash interface {
+	// ListTrash is the notebook's trash items deleted after since, newer
+	// first, below the cursor below, at most limit.
+	ListTrash(ctx context.Context, notebookID uuid.UUID, since time.Time, below domain.TrashCursor, limit int) (
+		[]domain.TrashRoot, error)
+	// FindTrashRoot is the trash item of the root id, as ListTrash gives
+	// it; ErrNotFound when id is no trash item's root.
+	FindTrashRoot(ctx context.Context, id uuid.UUID) (domain.TrashRoot, error)
+	// TrashRootOf is the root of the trash item the node id is in;
+	// ErrNotFound when it is in none.
+	TrashRootOf(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
+	// TrashLines are the roots ids' lines: each one's ancestors, deleted or
+	// not, from the notebook's root down to its parent, none for a root at
+	// the notebook's root.
+	TrashLines(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID][]domain.TrashAncestor, error)
+	// TrashGroup is the trash item of the root id of the notebook deleted at
+	// at: the root and its descendants deleted at at, level by level, each
+	// level in order; ErrNotFound when id is not of the notebook deleted at
+	// at.
+	TrashGroup(ctx context.Context, notebookID, id uuid.UUID, at time.Time) ([]domain.TrashMember, error)
+	// TrashContents are the contents of the pages ids deleted at at, by
+	// page: one the purge took is not among them.
+	TrashContents(ctx context.Context, ids []uuid.UUID, at time.Time) (map[uuid.UUID]string, error)
+}
+
+// AttachmentInfo is an attachment's type and size.
+type AttachmentInfo struct {
+	MIME  string
+	Bytes int64
+}
+
+// AttachmentInfos reads the attachments' type and size, deleted or not, in
+// the caller's read (M8 design 4.1): bootstrap hands the asset module's to
+// it. A node without a row of its file is not in the answer.
+type AttachmentInfos interface {
+	Of(ctx context.Context, nodeIDs []uuid.UUID) (map[uuid.UUID]AttachmentInfo, error)
 }
 
 // NotebookPages deletes the pages of deleted notebooks, and their edit

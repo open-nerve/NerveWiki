@@ -1,11 +1,13 @@
 package domain_test
 
 import (
+	"encoding/base64"
 	"testing"
 	"time"
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
+	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
 // A trash item is restorable until the retention less the margin after its
@@ -55,6 +57,31 @@ func TestUnitTooLarge(t *testing.T) {
 		if got := domain.UnitTooLarge(tt.pages, tt.bytes, tt.links); got != tt.want {
 			t.Errorf("%s: UnitTooLarge() = %v, want %v", tt.name, got, tt.want)
 		}
+	}
+}
+
+// A cursor reads back as it was written, its time in UTC: the same time at
+// an offset is another spelling, which a cursor refuses.
+func TestTrashCursor(t *testing.T) {
+	at := time.Date(2026, 10, 1, 20, 0, 0, 123456000, time.FixedZone("CST", 8*3600))
+	c := domain.TrashCursor{At: at, ID: uuid.NewV7()}
+	s, err := shared.EncodeCursor(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got domain.TrashCursor
+	if err := shared.DecodeCursor(s, &got); err != nil || !got.At.Equal(at) || got.At.Location() != time.UTC || got.ID != c.ID {
+		t.Errorf("DecodeCursor(EncodeCursor(%+v)) = %+v, %v; want it back in UTC", c, got, err)
+	}
+	spelled := func(at time.Time) string {
+		return base64.RawURLEncoding.EncodeToString([]byte(`{"v":1,"p":{"at":"` + at.Format(time.RFC3339Nano) + `","id":"` +
+			c.ID.String() + `"}}`))
+	}
+	if err := shared.DecodeCursor(spelled(at.UTC()), &got); err != nil {
+		t.Errorf("DecodeCursor(the time in UTC) = %v, want it read", err)
+	}
+	if err := shared.DecodeCursor(spelled(at), &got); err == nil {
+		t.Error("DecodeCursor(the time at an offset) = nil, want the cursor refused")
 	}
 }
 

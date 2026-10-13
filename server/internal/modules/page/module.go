@@ -48,6 +48,13 @@ type Notebooks = app.Notebooks
 // directory to it.
 type Names = app.Names
 
+// AttachmentInfos reads the attachments' type and size, deleted or not:
+// bootstrap hands the asset module's to it (M8 design 4.1).
+type (
+	AttachmentInfos = app.AttachmentInfos
+	AttachmentInfo  = app.AttachmentInfo
+)
+
 // The module's extension points (M4 design 8): bootstrap composes their
 // registrants in registrants.go.
 type (
@@ -96,6 +103,12 @@ type Deps struct {
 	// Budget bounds the content parsed and rendered at once: the server's
 	// one, which every module that parses shares (M6 design 4.7).
 	Budget *markdown.Budget
+	// Retention is the purge's, jobs.purge_retention: a trash item can be
+	// restored until it, less TrashMargin, after its deletion (M8 design
+	// 4.11).
+	Retention time.Duration
+	// Attachments shows an attachment in the trash: it must be there.
+	Attachments AttachmentInfos
 }
 
 // Module is the wired page module.
@@ -106,8 +119,12 @@ type Module struct {
 	imports *app.ImportWrites
 }
 
-// New wires the module: every write runs in the one writer's units.
+// New wires the module: every write runs in the one writer's units. A
+// module without the attachments' infos is a fault of its wiring.
 func New(d Deps) *Module {
+	if d.Attachments == nil {
+		panic("page: no attachment infos")
+	}
 	store := postgresadapter.New(d.Pool)
 	md := markdownadapter.New(d.Markdown)
 	budget := markdownadapter.NewBudget(d.Budget)

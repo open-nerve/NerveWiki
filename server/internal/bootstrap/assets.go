@@ -109,6 +109,24 @@ func (a assetActivity) NotebookActivities(ctx context.Context, ids []uuid.UUID) 
 	return out, nil
 }
 
+// attachmentInfos is the asset module's infos of attachments, deleted or
+// not, as the page module's trash reads them (M8 design 4.1).
+type attachmentInfos struct {
+	asset asset.AttachmentInfos
+}
+
+func (a attachmentInfos) Of(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]page.AttachmentInfo, error) {
+	got, err := a.asset.Of(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[uuid.UUID]page.AttachmentInfo, len(got))
+	for id, x := range got {
+		out[id] = page.AttachmentInfo{MIME: x.MIME, Bytes: x.Bytes}
+	}
+	return out, nil
+}
+
 // pageAsset is the asset module's new node as the page module takes it.
 func pageAsset(n asset.NewNode) page.NewAsset {
 	return page.NewAsset{

@@ -118,8 +118,13 @@ type fakeStore struct {
 	held     map[uuid.UUID]bool
 	// errs fails the reads named, FindNodeIn and Children.
 	errs map[string]error
-	// trash are the nodes deleted, with when, which FindAnyNode reads.
-	trash map[uuid.UUID]app.AnyNode
+	// trash are the nodes deleted, with when and whether each is a trash
+	// item's root, which FindAnyNode and the trash's reads read; counts
+	// are the roots' pages, attachments and height; trashed are the
+	// deleted pages' contents.
+	trash   map[uuid.UUID]app.AnyNode
+	counts  map[uuid.UUID][3]int
+	trashed map[uuid.UUID]app.Content
 	// deletions are what DeleteNodes was given.
 	deletions []app.Deletion
 }
@@ -434,14 +439,154 @@ func (f *fakeStore) MoveNode(ctx context.Context, n domain.Node) error {
 	return nil
 }
 
+// DeleteNodes moves the nodes not deleted to the trash, the root an item
+// with its counts, with their contents.
 func (f *fakeStore) DeleteNodes(ctx context.Context, d app.Deletion) error {
 	f.record(ctx, "DeleteNodes")
 	f.deletions = append(f.deletions, d)
 	for _, id := range d.IDs {
+		n, ok := f.nodes[id]
+		if !ok {
+			continue
+		}
+		at := d.At
+		f.trash[id] = app.AnyNode{Node: n, DeletedAt: &at, TrashRoot: id == d.Root}
+		if c, ok := f.contents[id]; ok {
+			f.trashed[id] = c
+		}
 		delete(f.nodes, id)
 		delete(f.contents, id)
 	}
+	f.counts[d.Root] = [3]int{d.Pages, d.Assets, d.Height}
 	return nil
+}
+
+// trashRoot is the trash item of the root n, its counts and its page's
+// content's revision at its deletion.
+func (f *fakeStore) trashRoot(n app.AnyNode) domain.TrashRoot {
+	c := f.counts[n.ID]
+	return domain.TrashRoot{Node: n.Node, DeletedAt: *n.DeletedAt, Pages: c[0], Assets: c[1], Height: c[2],
+		Revision: f.trashed[n.ID].Revision}
+}
+
+func (f *fakeStore) ListTrash(ctx context.Context, notebookID uuid.UUID, since time.Time, below domain.TrashCursor, limit int) (
+	[]domain.TrashRoot, error,
+) {
+	f.record(ctx, "ListTrash")
+	var out []domain.TrashRoot
+	for _, n := range f.trash {
+		at := *n.DeletedAt
+		if n.TrashRoot && n.NotebookID == notebookID && at.After(since) &&
+			(at.Before(below.At) || at.Equal(below.At) && n.ID.Compare(below.ID) < 0) {
+			out = append(out, f.trashRoot(n))
+		}
+	}
+	slices.SortFunc(out, func(a, b domain.TrashRoot) int {
+		return cmp.Or(b.DeletedAt.Compare(a.DeletedAt), b.Node.ID.Compare(a.Node.ID))
+	})
+	return out[:min(limit, len(out))], nil
+}
+
+func (f *fakeStore) FindTrashRoot(ctx context.Context, id uuid.UUID) (domain.TrashRoot, error) {
+	f.record(ctx, "FindTrashRoot")
+	n, ok := f.trash[id]
+	if !ok || !n.TrashRoot {
+		return domain.TrashRoot{}, app.ErrNotFound
+	}
+	return f.trashRoot(n), nil
+}
+
+func (f *fakeStore) TrashRootOf(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	f.record(ctx, "TrashRootOf")
+	for n, ok := f.trash[id]; ok; n, ok = f.trash[*n.ParentID] {
+		if n.TrashRoot {
+			return n.ID, nil
+		}
+		if n.ParentID == nil {
+			break
+		}
+	}
+	return uuid.UUID{}, app.ErrNotFound
+}
+
+func (f *fakeStore) TrashLines(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID][]domain.TrashAncestor, error) {
+	f.record(ctx, fmt.Sprintf("TrashLines %d", len(ids)))
+	out := map[uuid.UUID][]domain.TrashAncestor{}
+	for _, id := range ids {
+		var line []domain.TrashAncestor
+		for p := f.anyNode(id).ParentID; p != nil; p = f.anyNode(*p).ParentID {
+			n := f.anyNode(*p)
+			line = append(line, domain.TrashAncestor{ID: n.ID, Name: n.Name, DeletedAt: n.DeletedAt})
+		}
+		if len(line) > 0 {
+			slices.Reverse(line)
+			out[id] = line
+		}
+	}
+	return out, nil
+}
+
+// anyNode is the node id alive or in the trash.
+func (f *fakeStore) anyNode(id uuid.UUID) app.AnyNode {
+	if n, ok := f.nodes[id]; ok {
+		return app.AnyNode{Node: n}
+	}
+	return f.trash[id]
+}
+
+func (f *fakeStore) TrashGroup(ctx context.Context, notebookID, id uuid.UUID, at time.Time) ([]domain.TrashMember, error) {
+	f.record(ctx, "TrashGroup")
+	root, ok := f.trash[id]
+	if !ok || root.NotebookID != notebookID || !root.DeletedAt.Equal(at) {
+		return nil, app.ErrNotFound
+	}
+	member := func(n app.AnyNode, level int) domain.TrashMember {
+		c := f.trashed[n.ID]
+		return domain.TrashMember{Node: n.Node, Level: level, Revision: c.Revision, Bytes: c.ByteSize}
+	}
+	out := []domain.TrashMember{member(root, 1)}
+	for i := 0; i < len(out); i++ {
+		var level []domain.TrashMember
+		for _, n := range f.trash {
+			if n.ParentID != nil && *n.ParentID == out[i].Node.ID && n.DeletedAt.Equal(at) {
+				level = append(level, member(n, out[i].Level+1))
+			}
+		}
+		slices.SortFunc(level, func(a, b domain.TrashMember) int {
+			return cmp.Or(cmp.Compare(a.Node.SortOrder, b.Node.SortOrder), a.Node.ID.Compare(b.Node.ID))
+		})
+		out = append(out, level...)
+	}
+	slices.SortStableFunc(out, func(a, b domain.TrashMember) int { return cmp.Compare(a.Level, b.Level) })
+	return out, nil
+}
+
+func (f *fakeStore) TrashContents(ctx context.Context, ids []uuid.UUID, at time.Time) (map[uuid.UUID]string, error) {
+	f.record(ctx, "TrashContents")
+	out := map[uuid.UUID]string{}
+	for _, id := range ids {
+		if c, ok := f.trashed[id]; ok && f.trash[id].DeletedAt.Equal(at) {
+			out[id] = c.Content
+		}
+	}
+	return out, nil
+}
+
+// fakeAttachments is the attachments' infos, by node: each read is a call.
+type fakeAttachments struct {
+	*recorder
+	infos map[uuid.UUID]app.AttachmentInfo
+}
+
+func (f fakeAttachments) Of(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]app.AttachmentInfo, error) {
+	f.record(ctx, fmt.Sprintf("AttachmentInfos %d", len(ids)))
+	out := map[uuid.UUID]app.AttachmentInfo{}
+	for _, id := range ids {
+		if info, ok := f.infos[id]; ok {
+			out[id] = info
+		}
+	}
+	return out, nil
 }
 
 func (f *fakeStore) SetSortOrder(ctx context.Context, id uuid.UUID, order float64) error {
@@ -843,6 +988,7 @@ type fixture struct {
 	vetoers    []app.EditSessionVetoer
 	enders     []app.EditSessionSubscriber
 	names      fakeNames
+	infos      map[uuid.UUID]app.AttachmentInfo
 	alice      uuid.UUID
 	acme, eng  uuid.UUID
 }
@@ -854,7 +1000,8 @@ func newFixture() *fixture {
 		workspaces: fakeWorkspaces{recorder: rec, gone: map[uuid.UUID]bool{}},
 		store: &fakeStore{recorder: rec, nodes: map[uuid.UUID]domain.Node{}, contents: map[uuid.UUID]app.Content{},
 			items: map[uuid.UUID]app.Item{}, touched: map[uuid.UUID]time.Time{}, sessions: map[uuid.UUID]app.EditSession{},
-			held: map[uuid.UUID]bool{}, trash: map[uuid.UUID]app.AnyNode{}},
+			held: map[uuid.UUID]bool{}, trash: map[uuid.UUID]app.AnyNode{}, counts: map[uuid.UUID][3]int{},
+			trashed: map[uuid.UUID]app.Content{}},
 		auth: &fakeAuthorizer{recorder: rec, grants: map[shared.Action]bool{}, forbidden: map[shared.Action]bool{}},
 		logs: &bytes.Buffer{}, names: fakeNames{}, alice: uuid.NewV7(), acme: uuid.NewV7(), eng: uuid.NewV7(),
 	}

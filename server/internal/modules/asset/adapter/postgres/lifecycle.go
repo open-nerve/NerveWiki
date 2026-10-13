@@ -47,3 +47,17 @@ func (s *Store) KnownBlobs(ctx context.Context, ids []uuid.UUID) ([]uuid.UUID, e
 	}
 	return known, nil
 }
+
+// AttachmentInfos is the type and size of the attachments of nodeIDs,
+// deleted or not, by node.
+func (s *Store) AttachmentInfos(ctx context.Context, nodeIDs []uuid.UUID) (map[uuid.UUID]app.AttachmentInfo, error) {
+	rows, err := s.queries(ctx).AttachmentInfos(ctx, nodeIDs)
+	if err != nil {
+		return nil, fmt.Errorf("attachment infos: %w", err)
+	}
+	out := make(map[uuid.UUID]app.AttachmentInfo, len(rows))
+	for _, r := range rows {
+		out[r.NodeID] = app.AttachmentInfo{MIME: r.Mime, Bytes: r.ByteSize}
+	}
+	return out, nil
+}

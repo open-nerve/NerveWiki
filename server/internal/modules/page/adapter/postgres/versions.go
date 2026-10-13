@@ -21,7 +21,7 @@ func (s *Store) FindAnyNode(ctx context.Context, id uuid.UUID) (app.AnyNode, err
 		ID: r.ID, NotebookID: r.NotebookID, ParentID: r.ParentID, Kind: r.Kind, Name: r.Name, NameKey: r.NameKey,
 		SortOrder: r.SortOrder, CreatedByID: r.CreatedByID, UpdatedByID: r.UpdatedByID, CreatedAt: r.CreatedAt,
 		UpdatedAt: r.UpdatedAt,
-	}), DeletedAt: r.DeletedAt}, nil
+	}), DeletedAt: r.DeletedAt, TrashRoot: r.TrashRoot}, nil
 }
 
 // ListVersions implements app.Versions.

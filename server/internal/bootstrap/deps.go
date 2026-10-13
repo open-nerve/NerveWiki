@@ -155,7 +155,16 @@ func pageDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, author
 		EditSessionSubscribers:     ext.sessionSubscribers,
 		EditSessionCleanupInterval: cfg.Page.EditSessionCleanupInterval,
 		Budget:                     budget,
+		Retention:                  retention(cfg),
+		Attachments:                attachmentInfos{asset.NewAttachmentInfos(pool)},
 	}
+}
+
+// retention is jobs.purge_retention, which the purge, the page module's
+// trash and the instance's settings each take: a restore keeps an hour
+// clear of the purge only when theirs are one (M8/P2 design 3.8).
+func retention(cfg config.Config) time.Duration {
+	return cfg.Jobs.PurgeRetention
 }
 
 // assetDeps are the asset module's: the store of files, the notebook
@@ -236,7 +245,7 @@ func jobsConfig(cfg config.Config, logger *slog.Logger) jobs.Config {
 // jobs.purge_interval and jobs.purge_retention.
 func purgeJob(cfg config.Config, pool *pgxpool.Pool, store storage.Store, logger *slog.Logger) jobs.Job {
 	tx := postgres.NewTxManager(pool, cfg.Database.CommitTimeout)
-	return jobs.PurgeJob(purgers(pool, tx, store, logger), jobs.PurgeConfig{Interval: cfg.Jobs.PurgeInterval, Retention: cfg.Jobs.PurgeRetention, Logger: logger})
+	return jobs.PurgeJob(purgers(pool, tx, store, logger), jobs.PurgeConfig{Interval: cfg.Jobs.PurgeInterval, Retention: retention(cfg), Logger: logger})
 }
 
 // apiConfig is the per-route middlewares' configuration: the modules'

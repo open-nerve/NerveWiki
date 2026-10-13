@@ -71,6 +71,13 @@ func (n sqlNotebooks) LockByID(ctx context.Context, id uuid.UUID) (bool, error) 
 
 // sqlNames stands in for identity's directory: the accounts' display
 // names.
+// noAttachments knows no attachment's file.
+type noAttachments struct{}
+
+func (noAttachments) Of(context.Context, []uuid.UUID) (map[uuid.UUID]page.AttachmentInfo, error) {
+	return map[uuid.UUID]page.AttachmentInfo{}, nil
+}
+
 type sqlNames struct{ pool *pgxpool.Pool }
 
 func (n sqlNames) DisplayNames(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error) {
@@ -224,6 +231,7 @@ func (f fixture) module(guards []page.WriteGuard, participants []page.Participan
 		Authorizer: aliceWrites{f.alice}, Workspaces: sqlWorkspaces{f.pool}, Notebooks: sqlNotebooks{f.pool}, Names: sqlNames{f.pool},
 		Markdown: f.md, Budget: budget, Guards: guards, Participants: participants, Observers: observers,
 		EditSessionVetoers: f.vetoers, EditSessionSubscribers: f.subscribers, EditSessionCleanupInterval: time.Hour,
+		Retention: 24 * time.Hour, Attachments: noAttachments{},
 	})
 }
 
@@ -728,7 +736,7 @@ func TestTheBodyLimitsAreTheModulesRoutes(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := page.New(page.Deps{Clock: fixedClock{}, Logger: slog.New(slog.DiscardHandler), Markdown: md, EditSessionCleanupInterval: time.Hour,
-		Budget: markdown.NewBudget(8<<20, time.Second, slog.New(slog.DiscardHandler))})
+		Budget: markdown.NewBudget(8<<20, time.Second, slog.New(slog.DiscardHandler)), Attachments: noAttachments{}})
 	router := httpserver.NewRouter(slog.New(slog.DiscardHandler))
 	m.Register(router, httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: tokenAuth{}, BodyLimits: m.BodyLimits()}))
 	if len(m.BodyLimits()) == 0 {
@@ -739,4 +747,20 @@ func TestTheBodyLimitsAreTheModulesRoutes(t *testing.T) {
 			t.Errorf("the body limit of %q, which is no route of the module's %q", route, router.Patterns())
 		}
 	}
+}
+
+// A module wired without the attachments' infos fails at its wiring, not
+// at its first read of the trash (M8/P2 design 3.4).
+func TestTheModuleRefusesNoAttachmentInfos(t *testing.T) {
+	md, err := markdown.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if recover() == nil {
+			t.Error("New without Attachments did not panic")
+		}
+	}()
+	page.New(page.Deps{Clock: fixedClock{}, Logger: slog.New(slog.DiscardHandler), Markdown: md, EditSessionCleanupInterval: time.Hour,
+		Budget: markdown.NewBudget(8<<20, time.Second, slog.New(slog.DiscardHandler))})
 }

@@ -13,8 +13,8 @@ import (
 
 // A deletion of nodes or notebooks deletes their rows not deleted, at its
 // time, and leaves a row deleted before as it was; the activity counts
-// the rows not deleted; the known blobs are those with a row, deleted or
-// not.
+// the rows not deleted; the infos and the known blobs are those with a
+// row, deleted or not.
 func TestRowsFollowTheirNodesAndNotebooks(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
@@ -54,6 +54,10 @@ func TestRowsFollowTheirNodesAndNotebooks(t *testing.T) {
 	}
 	if activity, err := store.NotebookActivities(ctx, []uuid.UUID{f.eng, f.ops}); err != nil || len(activity) != 0 {
 		t.Errorf("NotebookActivities() after the deletions = %+v, %v; want none", activity, err)
+	}
+	infos, err := store.AttachmentInfos(ctx, []uuid.UUID{f.photo, f.report, uuid.NewV7()})
+	if err != nil || len(infos) != 2 || infos[f.photo].MIME != photo.MIME || infos[f.photo].Bytes != 3 || infos[f.report].Bytes != 40 {
+		t.Errorf("AttachmentInfos() of the rows deleted = %+v, %v; want the photo's and the report's type and size", infos, err)
 	}
 	other := uuid.NewV7()
 	known, err := store.KnownBlobs(ctx, []uuid.UUID{photo.ID, report.ID, other})
