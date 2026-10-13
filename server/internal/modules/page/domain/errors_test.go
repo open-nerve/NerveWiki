@@ -34,3 +34,19 @@ func TestLockProblemsCarryTheirMembers(t *testing.T) {
 		t.Error("a constructor set its member on the shared error")
 	}
 }
+
+// NotTrashRoot carries its root_id, matches its code under errors.Is, and
+// leaves the shared error without it.
+func TestNotTrashRootCarriesItsRoot(t *testing.T) {
+	root := uuid.New()
+	var e *shared.Error
+	if err := domain.NotTrashRoot(root); !errors.As(err, &e) || !errors.Is(err, domain.ErrNotTrashRoot) {
+		t.Fatalf("NotTrashRoot() = %v, want page.not_trash_root", err)
+	}
+	if id, ok := e.ProblemRootID(); !ok || id != root {
+		t.Errorf("NotTrashRoot's root_id = %s %v, want %s", id, ok, root)
+	}
+	if domain.ErrNotTrashRoot.RootID != nil {
+		t.Error("NotTrashRoot set its member on the shared error")
+	}
+}

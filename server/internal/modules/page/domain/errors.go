@@ -50,7 +50,36 @@ var (
 	// ErrVersionNotFound: no version of the page holds the revision (M8
 	// design 4.3).
 	ErrVersionNotFound = shared.NewError(shared.KindNotFound, "page.version_not_found", "No such version of the page.")
+	// ErrNotInTrash: the node a trash read or a restore names is alive (M8
+	// design 4.6).
+	ErrNotInTrash = shared.NewError(shared.KindConflict, "page.not_in_trash", "The node is not in the trash.")
+	// ErrNotTrashRoot: the node is in the trash with what it was deleted
+	// with, the trash item of another root. NotTrashRoot returns it with the
+	// root_id member.
+	ErrNotTrashRoot = shared.NewError(shared.KindConflict, "page.not_trash_root",
+		"The node is in the trash as part of another item: its root is restored with it.")
+	// ErrRestoreExpired: the trash item is past the time it can be restored
+	// in, its deletion's time and the retention less TrashMargin (M8 design
+	// 4.11).
+	ErrRestoreExpired = shared.NewError(shared.KindConflict, "page.restore_expired",
+		"The trash item can no longer be restored.")
+	// ErrRestoreTooLarge: the trash item holds more than one unit restores
+	// (M8 design 4.9).
+	ErrRestoreTooLarge = shared.NewError(shared.KindInvalid, "page.restore_too_large",
+		"The trash item is too large to restore in one request.")
+	// ErrTrashChanged: the trash item changed since the restore read it,
+	// restored meanwhile or purged in part (M8/P2 design 3.5).
+	ErrTrashChanged = shared.NewError(shared.KindConflict, "page.trash_changed",
+		"The trash item changed since it was read.")
 )
+
+// NotTrashRoot is ErrNotTrashRoot naming the root of the trash item the
+// node is of.
+func NotTrashRoot(rootID uuid.UUID) error {
+	e := *ErrNotTrashRoot
+	e.RootID = &rootID
+	return &e
+}
 
 // Locked is ErrLocked naming the lock: the page locked and its holder
 // (M5 design 4.5).

@@ -367,10 +367,25 @@ FROM nodes
 WHERE id = $1
 `
 
+type FindAnyNodeRow struct {
+	ID          uuid.UUID
+	NotebookID  uuid.UUID
+	ParentID    *uuid.UUID
+	Kind        string
+	Name        string
+	NameKey     string
+	SortOrder   float64
+	CreatedByID uuid.UUID
+	UpdatedByID uuid.UUID
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	DeletedAt   *time.Time
+}
+
 // FindNode alive or in the trash, with when it was deleted (M8/P1 design 3.4): a page's history reads either.
-func (q *Queries) FindAnyNode(ctx context.Context, id uuid.UUID) (Node, error) {
+func (q *Queries) FindAnyNode(ctx context.Context, id uuid.UUID) (FindAnyNodeRow, error) {
 	row := q.db.QueryRow(ctx, findAnyNode, id)
-	var i Node
+	var i FindAnyNodeRow
 	err := row.Scan(
 		&i.ID,
 		&i.NotebookID,

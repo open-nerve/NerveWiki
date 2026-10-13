@@ -37,6 +37,8 @@ type ChangesetItem struct {
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 	DeletedAt       *time.Time
+	Restored        bool
+	Revision        *int32
 }
 
 type EditSession struct {
@@ -67,6 +69,10 @@ type Node struct {
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	DeletedAt   *time.Time
+	TrashRoot   bool
+	TrashPages  *int32
+	TrashAssets *int32
+	TrashHeight *int32
 }
 
 type PageContent struct {
