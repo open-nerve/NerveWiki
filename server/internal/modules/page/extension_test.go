@@ -69,8 +69,6 @@ func (n sqlNotebooks) LockByID(ctx context.Context, id uuid.UUID) (bool, error) 
 	return exists(ctx, n.pool, "SELECT 1 FROM notebooks WHERE id = $1 AND deleted_at IS NULL FOR NO KEY UPDATE", id)
 }
 
-// sqlNames stands in for identity's directory: the accounts' display
-// names.
 // noAttachments knows no attachment's file.
 type noAttachments struct{}
 
@@ -78,6 +76,8 @@ func (noAttachments) Of(context.Context, []uuid.UUID) (map[uuid.UUID]page.Attach
 	return map[uuid.UUID]page.AttachmentInfo{}, nil
 }
 
+// sqlNames stands in for identity's directory: the accounts' display
+// names.
 type sqlNames struct{ pool *pgxpool.Pool }
 
 func (n sqlNames) DisplayNames(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error) {

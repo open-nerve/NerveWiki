@@ -9,6 +9,8 @@ import (
 	"time"
 	"uuid"
 
+	"github.com/jackc/pgx/v5/pgconn"
+
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/app"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
 )
@@ -343,7 +345,8 @@ func TestRestoreNodesBringsTheGroupBack(t *testing.T) {
 // counts: a content taken, a current version, a creation, a version
 // between, a node no longer deleted at the item's time; and a node, a
 // content or a version deleted at another time, which stays. A name an
-// alive sibling holds is a title taken.
+// alive sibling holds is a defect, the unit numbered them: an error, no
+// code.
 func TestRestoreNodesCountsWhatCameBack(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
@@ -385,7 +388,57 @@ func TestRestoreNodesCountsWhatCameBack(t *testing.T) {
 	taken := f.page(t, f.eng, nil, "Taken", 1)
 	f.trashed(t, now(), 1, 0, 1, taken.ID)
 	f.page(t, f.eng, nil, "taken", 2)
-	if _, err := f.s.RestoreNodes(ctx, restoration(now(), nil, 1, f.alice, taken)); !errors.Is(err, domain.ErrTitleTaken) {
-		t.Errorf("RestoreNodes(a name a sibling holds) = %v, want page.title_taken", err)
+	if _, err := f.s.RestoreNodes(ctx, restoration(now(), nil, 1, f.alice, taken)); err == nil || errors.Is(err, domain.ErrTitleTaken) ||
+		!uniqueViolated(err) {
+		t.Errorf("RestoreNodes(a name a sibling holds) = %v, want the unique index's violation, no code of the contract's", err)
+	}
+}
+
+// uniqueViolated reports whether err is PostgreSQL's unique violation.
+func uniqueViolated(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
+}
+
+// A trash item's history is the versions and items of its nodes deleted
+// at its time, in every changeset: not those of another time, nor of
+// another node deleted with them; each of the two counted to the limit.
+func TestTrashHistoryCountsTheRowsOfItsTime(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	p := f.page(t, f.eng, nil, "P", 0)
+	a := f.asset(t, f.eng, &p.ID, "a.png", 0)
+	other := f.page(t, f.eng, nil, "Other", 1)
+	f.versions(t, p.ID, 3)
+	f.versions(t, other.ID, 2)
+	for range 2 {
+		cs := app.Changeset{ID: uuid.NewV7(), NotebookID: f.eng, Kind: "edit", Client: domain.ClientWeb, By: f.alice, At: now()}
+		if err := f.s.CreateChangeset(ctx, cs); err != nil {
+			t.Fatal(err)
+		}
+		var items []app.Item
+		for _, n := range []domain.Node{p, a, other} {
+			state := n.State()
+			items = append(items, app.Item{ID: uuid.NewV7(), ChangesetID: cs.ID, Change: domain.Change{NodeID: n.ID, After: &state}, At: now()})
+		}
+		if err := f.s.RecordItems(ctx, items); err != nil {
+			t.Fatal(err)
+		}
+	}
+	at := now().Add(time.Minute)
+	f.trashed(t, at, 1, 1, 1, p.ID, a.ID)
+	f.trashed(t, at, 1, 0, 1, other.ID)
+	f.exec(t, "UPDATE page_revisions SET deleted_at = deleted_at - interval '1 second' WHERE node_id = $1 AND revision = 1", p.ID)
+	f.exec(t, `UPDATE changeset_items SET deleted_at = deleted_at - interval '1 second'
+		WHERE id = (SELECT id FROM changeset_items WHERE node_id = $1 LIMIT 1)`, a.ID)
+	for _, tt := range []struct {
+		limit, want int
+	}{{100, 2 + 3}, {3, 2 + 3}, {2, 2 + 2}, {1, 1 + 1}} {
+		if got, err := f.s.TrashHistory(ctx, []uuid.UUID{p.ID, a.ID}, at, tt.limit); err != nil || got != tt.want {
+			t.Errorf("TrashHistory(P and a.png, to %d) = %d, %v; want %d", tt.limit, got, err, tt.want)
+		}
+	}
+	if got, err := f.s.TrashHistory(ctx, []uuid.UUID{p.ID}, at.Add(time.Second), 100); err != nil || got != 0 {
+		t.Errorf("TrashHistory(at another time) = %d, %v; want 0", got, err)
 	}
 }

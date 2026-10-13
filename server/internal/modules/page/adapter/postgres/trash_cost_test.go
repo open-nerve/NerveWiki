@@ -123,12 +123,13 @@ func TestTrashLinesReadInTimeAsLongAsAPage(t *testing.T) {
 
 // A restore's statement holds its plans for an item of any size, at any
 // statistics (M8/P2 design 3.11): an item of twice the unit's bound of
-// nodes, its 100 pages of 200 versions, each with its item, restores in
+// nodes, its 100 pages of 300 versions, each with its item, restores in
 // time without statistics; with statistics taken while it was alive, and
 // while it was deleted, at its time, then at another, which they never
 // knew; and planned for any arguments, as a cached statement may be from
-// its sixth run. Each of RestoreNodes' plans that read rows by rows took
-// longer than a request's 15 seconds here.
+// its sixth run: each in 8 seconds, a CI's runner slower than the machine
+// where it took 0.5 to 0.8. Each of RestoreNodes' plans that read rows by
+// rows took 12 to 48 seconds here.
 func TestRestoreNodesTakesItsTimeAtAnyStatistics(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
@@ -141,9 +142,9 @@ func TestRestoreNodesTakesItsTimeAtAnyStatistics(t *testing.T) {
 		ids = append(ids, f.page(t, f.eng, &root.ID, fmt.Sprintf("Page %d", i), float64(i)).ID)
 	}
 	for _, id := range ids {
-		f.versions(t, id, 200)
+		f.versions(t, id, 300)
 	}
-	f.exec(t, `UPDATE page_contents SET revision = 200 WHERE node_id = ANY($1)`, ids)
+	f.exec(t, `UPDATE page_contents SET revision = 300 WHERE node_id = ANY($1)`, ids)
 	f.exec(t, `INSERT INTO changeset_items (id, changeset_id, node_id, after_parent_id, after_name, after_sort_order, created_at, updated_at)
 		SELECT gen_random_uuid(), r.changeset_id, n.id, n.parent_id, n.name, n.sort_order, n.created_at, n.created_at
 		FROM page_revisions r JOIN nodes n ON n.id = r.node_id`)
@@ -196,7 +197,7 @@ func TestRestoreNodesTakesItsTimeAtAnyStatistics(t *testing.T) {
 		if err != nil || got != want {
 			t.Fatalf("RestoreNodes(%s) = %+v, %v; want %+v", stats, got, err, want)
 		}
-		if took > 3*time.Second {
+		if took > 8*time.Second {
 			t.Errorf("a restore of %d nodes %s took %s", len(nodes), stats, took)
 		}
 	}

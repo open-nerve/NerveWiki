@@ -134,3 +134,12 @@ func (s *Store) TrashContents(ctx context.Context, ids []uuid.UUID, at time.Time
 	}
 	return out, nil
 }
+
+// TrashHistory implements app.Trash.
+func (s *Store) TrashHistory(ctx context.Context, ids []uuid.UUID, at time.Time, limit int) (int, error) {
+	n, err := s.queries(ctx).TrashHistory(ctx, gen.TrashHistoryParams{Ids: ids, DeletedAt: at, Lim: int32(limit)})
+	if err != nil {
+		return 0, fmt.Errorf("trash history: %w", err)
+	}
+	return int(n), nil
+}

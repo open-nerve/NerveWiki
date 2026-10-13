@@ -40,8 +40,9 @@ func TrashSince(now time.Time, retention time.Duration) time.Time {
 // (M8/P3). The pages it parses, their content's bytes and their links are
 // those of an import's batch (M7/P6 design 3.3), but a lone page, which one
 // request wrote, is never past them. The nodes of the tree it writes, pages
-// and attachments, are bounded by what its statements write within the
-// request's time.
+// and attachments, and the rows of their history it writes besides,
+// their versions and their items in every changeset, are bounded by what
+// its statements write within the request's time.
 const (
 	MaxUnitPages = 100
 	MaxUnitBytes = 8 << 20
@@ -54,6 +55,15 @@ const (
 	// ms without statistics, 901, 927, 848, 1,755 and 2,684 ms analyzed.
 	// The bound is the most nodes measured within 5 seconds, rounded down.
 	MaxUnitNodes = 10_000
+	// MaxUnitHistory is measured as MaxUnitNodes is (M8/P2A review, A-M4):
+	// BenchmarkTrashRestoreHistory, on the same machine beside a load of 6,
+	// the full load at the unit's nodes, its pages of 250 to 2,000
+	// versions, each with its item. A restore of 109,900, 239,900,
+	// 419,900, 599,900 and 779,900 rows of history took, in its unit,
+	// 1,133, 3,318, 2,852, 3,853 and 5,553 ms without statistics, 1,176,
+	// 2,857, 4,288, 5,703 and 7,284 ms analyzed while the item was alive.
+	// The bound is the most rows measured within 5 seconds, rounded down.
+	MaxUnitHistory = 400_000
 )
 
 // UnitTooLarge reports whether a unit's pages, their content's bytes or

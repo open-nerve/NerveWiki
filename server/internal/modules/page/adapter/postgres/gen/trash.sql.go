@@ -305,6 +305,31 @@ func (q *Queries) TrashGroupRoot(ctx context.Context, arg TrashGroupRootParams) 
 	return i, err
 }
 
+const trashHistory = `-- name: TrashHistory :one
+SELECT ((SELECT count(*) FROM (SELECT 1 FROM page_revisions r
+            WHERE r.node_id = ANY($1::uuid[]) AND r.deleted_at = $2::timestamptz
+            LIMIT $3::integer) v)
+    + (SELECT count(*) FROM (SELECT 1 FROM changeset_items i
+            WHERE i.node_id = ANY($1::uuid[]) AND i.deleted_at = $2::timestamptz
+            LIMIT $3::integer) w))::integer AS rows
+`
+
+type TrashHistoryParams struct {
+	Ids       []uuid.UUID
+	DeletedAt time.Time
+	Lim       int32
+}
+
+// How many versions, and items of every changeset, of nodes deleted at deleted_at were deleted with them, each of the
+// two counted to lim at most: a restore's rows besides the nodes', read through the indexes on node_id, as many as
+// the bound at most.
+func (q *Queries) TrashHistory(ctx context.Context, arg TrashHistoryParams) (int32, error) {
+	row := q.db.QueryRow(ctx, trashHistory, arg.Ids, arg.DeletedAt, arg.Lim)
+	var rows int32
+	err := row.Scan(&rows)
+	return rows, err
+}
+
 const trashLines = `-- name: TrashLines :many
 WITH RECURSIVE chain AS (
     SELECT n.id AS root_id, p.id, p.parent_id, p.name, p.deleted_at, 1 AS up

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"cmp"
 	"context"
 	"log/slog"
 	"uuid"
@@ -17,24 +18,30 @@ type NodeRestored struct {
 	ChangesetID uuid.UUID
 }
 
+// RestoreBounds bound a trash item one unit restores beyond the pages,
+// bytes and links any unit parses: its nodes, and the rows of its
+// history, its versions and items. Zero is the domain's, MaxUnitNodes and
+// MaxUnitHistory; only a measurement raises them.
+type RestoreBounds struct {
+	Nodes, History int
+}
+
 // RestoreNode brings a trash item back: POST
 // /api/v0/nodes/{node_id}/restore (M8/P2 design 3.5).
 type RestoreNode struct {
 	reads  TrashReads
 	writer *Writer
 	parser *ContentParser
-	// maxNodes bounds the nodes of an item one unit restores: domain's
-	// MaxUnitNodes, but where a measurement raises it.
-	maxNodes int
-	logger   *slog.Logger
+	bounds RestoreBounds
+	logger *slog.Logger
 }
 
-// NewRestoreNode returns the use case; maxNodes 0 is domain.MaxUnitNodes.
-func NewRestoreNode(reads TrashReads, writer *Writer, parser *ContentParser, maxNodes int, logger *slog.Logger) *RestoreNode {
-	if maxNodes == 0 {
-		maxNodes = domain.MaxUnitNodes
-	}
-	return &RestoreNode{reads: reads, writer: writer, parser: parser, maxNodes: maxNodes, logger: logger}
+// NewRestoreNode returns the use case, the domain's bound where bounds
+// has none.
+func NewRestoreNode(reads TrashReads, writer *Writer, parser *ContentParser, bounds RestoreBounds, logger *slog.Logger) *RestoreNode {
+	bounds.Nodes = cmp.Or(bounds.Nodes, domain.MaxUnitNodes)
+	bounds.History = cmp.Or(bounds.History, domain.MaxUnitHistory)
+	return &RestoreNode{reads: reads, writer: writer, parser: parser, bounds: bounds, logger: logger}
 }
 
 // Execute brings the trash item of the root id back, from client, in a
@@ -43,15 +50,18 @@ func NewRestoreNode(reads TrashReads, writer *Writer, parser *ContentParser, max
 // whose notebook is deleted or the caller has no role in, is
 // page.not_found; a reader forbidden; then as GetTrashItem answers,
 // page.not_in_trash, page.not_trash_root and page.restore_expired; then
-// page.restore_too_large, by the item's counts, past the unit's nodes, and
-// by its group, past its pages or their content's bytes (a lone page
-// never is); page.trash_changed for a page whose content the purge took,
-// not parsed; then the contents parsed, largest first, server_busy when their waits
-// run out, and page.restore_too_large past the unit's links, known only
-// once they are; then the unit, which reads the item again under the lock
+// page.restore_too_large, by the item's counts, past the unit's nodes, by
+// its group, past its pages or their content's bytes (a lone page never
+// is), and past the rows of its history; page.trash_changed for a page
+// whose content the purge took, not parsed; then the contents parsed,
+// largest first, server_busy when their waits run out, and
+// page.restore_too_large past the unit's links, known only once they are;
+// then the unit, which reads the item again under the lock
 // (Unit.Restore): page.restore_expired at its time, page.trash_changed
 // for an item changed meanwhile, and from the observers, an attachment's
-// file the purge took.
+// file the purge took. An item restored between two reads before the
+// lock is page.not_in_trash, or page.trash_changed once its group is
+// read.
 func (r *RestoreNode) Execute(ctx context.Context, id uuid.UUID, client domain.Client) (NodeRestored, error) {
 	n, err := r.reads.Nodes.FindAnyNode(ctx, id)
 	if err != nil {
@@ -66,26 +76,31 @@ func (r *RestoreNode) Execute(ctx context.Context, id uuid.UUID, client domain.C
 	if err != nil {
 		return NodeRestored{}, err
 	}
-	if root.Pages+root.Assets > r.maxNodes {
+	if root.Pages+root.Assets > r.bounds.Nodes {
 		return NodeRestored{}, domain.ErrRestoreTooLarge
 	}
 	group, err := r.reads.Trash.TrashGroup(ctx, root.Node.NotebookID, root.Node.ID, root.DeletedAt)
 	if err != nil {
 		return NodeRestored{}, found(err, domain.ErrTrashChanged)
 	}
-	var pages []uuid.UUID
-	bytes, taken := 0, false
-	for _, m := range group {
+	ids, pages, bytes := make([]uuid.UUID, len(group)), []uuid.UUID(nil), 0
+	for i, m := range group {
+		ids[i] = m.Node.ID
 		if m.Node.Kind == domain.KindPage {
-			pages, bytes, taken = append(pages, m.Node.ID), bytes+m.Bytes, taken || m.Revision == 0
+			pages, bytes = append(pages, m.Node.ID), bytes+m.Bytes
 		}
 	}
-	switch {
-	case domain.UnitTooLarge(len(pages), bytes, 0):
+	if domain.UnitTooLarge(len(pages), bytes, 0) {
 		return NodeRestored{}, domain.ErrRestoreTooLarge
-	case taken:
-		return NodeRestored{}, domain.ErrTrashChanged
 	}
+	history, err := r.reads.Trash.TrashHistory(ctx, ids, root.DeletedAt, r.bounds.History+1)
+	switch {
+	case err != nil:
+		return NodeRestored{}, err
+	case history > r.bounds.History:
+		return NodeRestored{}, domain.ErrRestoreTooLarge
+	}
+	// A page whose content the purge took has none at its time.
 	contents, err := r.reads.Trash.TrashContents(ctx, pages, root.DeletedAt)
 	switch {
 	case err != nil:

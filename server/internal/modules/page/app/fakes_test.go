@@ -48,11 +48,21 @@ func (f *fakeTx) InTx(ctx context.Context) bool { return ctx.Value(txKey{}) != n
 
 // recorder is the calls of every fake, in order, each with whether it ran
 // in the transaction: the unit's order of locks, decision and writes.
-type recorder struct{ calls []string }
+// recorder records the calls made, in order; before, when set, runs a
+// call's function once, before it: what another transaction commits
+// between two reads.
+type recorder struct {
+	calls  []string
+	before map[string]func()
+}
 
 func (r *recorder) record(ctx context.Context, call string) {
 	if ctx.Value(txKey{}) != nil {
 		call += " in tx"
+	}
+	if f, ok := r.before[call]; ok {
+		delete(r.before, call)
+		f()
 	}
 	r.calls = append(r.calls, call)
 }
@@ -129,11 +139,15 @@ type fakeStore struct {
 	// RestoreNodes was; rows, when set, are what RestoreNodes answers it
 	// brought back, as if the purge took some. lost are the pages whose
 	// contents TrashContents does not find, as if the purge took them
-	// after TrashGroup read them.
+	// after TrashGroup read them; unversioned those whose current version
+	// the purge took, which RestoreNodes does not count. history is the
+	// rows of a trashed node's versions and items, none unless set.
 	deletions    []app.Deletion
 	restorations []app.Restoration
 	rows         *app.RestoredRows
 	lost         map[uuid.UUID]bool
+	unversioned  map[uuid.UUID]bool
+	history      map[uuid.UUID]int
 }
 
 func (f *fakeStore) FindNode(ctx context.Context, id uuid.UUID) (domain.Node, error) {
@@ -482,8 +496,8 @@ func (f *fakeStore) DeleteNodes(ctx context.Context, d app.Deletion) error {
 
 // RestoreNodes brings the nodes deleted at the restoration's time back
 // with their contents, renamed, the root put where it goes, and counts
-// them; each content counts as its current version, its creation's, with
-// no gap.
+// them; each content counts as its creation's version, with no gap, and
+// as its current version unless unversioned.
 func (f *fakeStore) RestoreNodes(ctx context.Context, r app.Restoration) (app.RestoredRows, error) {
 	f.record(ctx, "RestoreNodes")
 	f.restorations = append(f.restorations, r)
@@ -505,9 +519,12 @@ func (f *fakeStore) RestoreNodes(ctx context.Context, r app.Restoration) (app.Re
 			f.contents[id] = c
 			delete(f.trashed, id)
 			rows.Contents++
+			rows.Creations++
+			if !f.unversioned[id] {
+				rows.CurrentVersions++
+			}
 		}
 	}
-	rows.CurrentVersions, rows.Creations = rows.Contents, rows.Contents
 	if f.rows != nil {
 		return *f.rows, nil
 	}
@@ -623,6 +640,17 @@ func (f *fakeStore) TrashContents(ctx context.Context, ids []uuid.UUID, at time.
 		}
 	}
 	return out, nil
+}
+
+func (f *fakeStore) TrashHistory(ctx context.Context, ids []uuid.UUID, at time.Time, limit int) (int, error) {
+	f.record(ctx, "TrashHistory")
+	rows := 0
+	for _, id := range ids {
+		if n, ok := f.trash[id]; ok && n.DeletedAt.Equal(at) {
+			rows += f.history[id]
+		}
+	}
+	return min(rows, limit), nil
 }
 
 // fakeAttachments is the attachments' infos, by node: each read is a call.

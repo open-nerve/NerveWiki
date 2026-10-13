@@ -120,10 +120,11 @@ type Deps struct {
 	Retention time.Duration
 	// Attachments shows an attachment in the trash: it must be there.
 	Attachments AttachmentInfos
-	// MaxUnitNodes bounds the nodes of a trash item a request restores: 0
-	// is domain.MaxUnitNodes, which only a measurement raises (M8/P2 design
-	// 3.11).
-	MaxUnitNodes int
+	// MaxUnitNodes and MaxUnitHistory bound the nodes of a trash item a
+	// request restores and the rows of their history: 0 is the domain's,
+	// domain.MaxUnitNodes and MaxUnitHistory, which only a measurement
+	// raises (M8/P2 design 3.11); production leaves them 0.
+	MaxUnitNodes, MaxUnitHistory int
 }
 
 // Module is the wired page module.
@@ -175,7 +176,7 @@ func New(d Deps) *Module {
 		RestoreVersion:  app.NewRestoreVersion(versions, writer, parser, d.Logger),
 		ListTrash:       app.NewListTrash(trash),
 		GetTrashItem:    app.NewGetTrashItem(trash),
-		RestoreNode:     app.NewRestoreNode(trash, writer, parser, d.MaxUnitNodes, d.Logger),
+		RestoreNode:     app.NewRestoreNode(trash, writer, parser, app.RestoreBounds{Nodes: d.MaxUnitNodes, History: d.MaxUnitHistory}, d.Logger),
 	}, jobs: []jobs.Job{
 		riveradapter.CleanupJob(app.NewCleanupEditSessions(store, d.Clock, d.Logger), d.EditSessionCleanupInterval),
 	}, assets: app.NewAssetWrites(writer, store), imports: app.NewImportWrites(writer, parser, md)}

@@ -66,11 +66,17 @@ func (f fakeTrash) Execute(_ context.Context, notebookID uuid.UUID, limit *int, 
 	return app.TrashList{Items: []app.TrashItem{trashItem(), attachmentItem()}, NextCursor: "next"}, f.err
 }
 
-// Execute answers the page's item, but for the node 43, the attachment's.
+// Execute answers the page's item, but for the node 43, the attachment's,
+// and for 44, the page's whose content the purge took.
 func (f fakeTrashItem) Execute(_ context.Context, nodeID uuid.UUID) (app.TrashItem, error) {
 	f.got = []any{nodeID}
-	if nodeID == id(43) {
+	switch nodeID {
+	case id(43):
 		return attachmentItem(), f.err
+	case id(44):
+		item := trashItem()
+		item.Root.Revision = 0
+		return item, f.err
 	}
 	return trashItem(), f.err
 }
@@ -104,6 +110,8 @@ func TestTheTrashOperationsAnswerTheUseCases(t *testing.T) {
 		{"a page's item", "session", http.MethodGet, trashItemPath, trashItemJSON, []any{id(12)}},
 		{"an attachment's item", "session", http.MethodGet, "/api/v0/nodes/0199a2b4-0000-7000-8000-000000000043/trash-item",
 			attachmentItemJSON, []any{id(43)}},
+		{"a page's item, its content purged", "session", http.MethodGet, "/api/v0/nodes/0199a2b4-0000-7000-8000-000000000044/trash-item",
+			strings.Replace(trashItemJSON, `"revision":6`, `"revision":null`, 1), []any{id(44)}},
 		{"a restore by the web", "session", http.MethodPost, restoreNodePath, `{"changeset_id":"0199a2b4-0000-7000-8000-000000000045",` +
 			`"id":"0199a2b4-0000-7000-8000-000000000012","kind":"page","name":"Doc 2","placed":{"parent_id":null,"reason":` +
 			`"parent_in_trash"},"renamed":true}`, []any{id(12), domain.ClientWeb}},
@@ -161,8 +169,8 @@ func TestTheTrashOperationsAnswerEachProblem(t *testing.T) {
 	}
 }
 
-// A path's ids are uuids and a restore takes no body: anything else is the
-// boundary's 400, before any use case.
+// A path's ids are uuids: anything else is the boundary's 400, before any
+// use case.
 func TestATrashRequestTheBoundaryRefuses(t *testing.T) {
 	for _, tt := range []struct{ method, path, body string }{
 		{http.MethodGet, "/api/v0/notebooks/notes/trash", ""},
@@ -176,5 +184,16 @@ func TestATrashRequestTheBoundaryRefuses(t *testing.T) {
 			t.Errorf("%s %s %s = %d %s, use case got %v; want 400 bad_request, the use case not called", tt.method, tt.path, tt.body,
 				status, answer, f.got)
 		}
+	}
+}
+
+// A restore has no body: one sent is not read, as the boundary passes on
+// a body no operation declares (bodyshape), and the restore answers as
+// without it.
+func TestARestoreReadsNoBody(t *testing.T) {
+	f := &fakes{}
+	status, body := call(t, f.serve(t), "session", http.MethodPost, restoreNodePath, `{"x":1}`)
+	if status != http.StatusOK || !strings.Contains(body, `"name":"Doc 2"`) || !reflect.DeepEqual(f.got, []any{id(12), domain.ClientWeb}) {
+		t.Errorf("POST restore with a body = %d %s, use case got %v; want 200 as without it", status, body, f.got)
 	}
 }

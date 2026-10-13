@@ -95,6 +95,14 @@ type trashFixture struct {
 	p, q, doc, child, photo, deep, old, level domain.Node
 }
 
+// untrash brings the trashed nodes ids back, as another restore would.
+func (f trashFixture) untrash(ids ...uuid.UUID) {
+	for _, id := range ids {
+		f.store.nodes[id] = f.store.trash[id].Node
+		delete(f.store.trash, id)
+	}
+}
+
 func newTrashFixture() trashFixture {
 	f := trashFixture{fixture: newFixture(), bob: uuid.NewV7()}
 	f.names[f.alice], f.names[f.bob] = "Alice", "Bob"
@@ -299,6 +307,14 @@ func TestGetTrashItemAnswersItsCodesInOrder(t *testing.T) {
 		{"at its time", func(f trashFixture) (uuid.UUID, time.Time) { return f.old.ID, now() }, "page.restore_expired"},
 		{"after it", func(f trashFixture) (uuid.UUID, time.Time) { return f.old.ID, now().Add(time.Hour) }, "page.restore_expired"},
 		{"a microsecond before", func(f trashFixture) (uuid.UUID, time.Time) { return f.old.ID, now().Add(-time.Microsecond) }, ""},
+		{"a member whose item was restored before its root was read", func(f trashFixture) (uuid.UUID, time.Time) {
+			f.rec.before = map[string]func(){"TrashRootOf": func() { f.untrash(f.doc.ID, f.child.ID) }}
+			return f.child.ID, now()
+		}, "page.not_in_trash"},
+		{"restored before its item was read", func(f trashFixture) (uuid.UUID, time.Time) {
+			f.rec.before = map[string]func(){"FindTrashRoot": func() { f.untrash(f.doc.ID) }}
+			return f.doc.ID, now()
+		}, "page.not_in_trash"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			f := newTrashFixture()

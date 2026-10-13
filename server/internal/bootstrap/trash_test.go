@@ -322,8 +322,49 @@ func TestARestoreGoesBackWhereItCan(t *testing.T) {
 	tm.checkTrash(t)
 }
 
+// A restore's changes carry the state it left (M8/P2A review, A-M1 and
+// C-M1): the item of the changeset records the name a node came back
+// with and where the root went, and the link index reaches the links to
+// the new name. C comes back as "C 2" under P, where Linker's [[C 2]] now
+// leads; D, Q in the trash, at the root at its order there.
+func TestARestoresChangesCarryItsState(t *testing.T) {
+	tm := newAcmeTeam(t, "member", "")
+	nb := tm.openNotebook(t, "alice", "Eng")
+	p := tm.createPage(t, "alice", nb, "", "P")
+	c := tm.createPage(t, "alice", nb, p, "C")
+	tm.send(t, nodeDeletion("alice", c), http.StatusNoContent)
+	tm.createPage(t, "alice", nb, p, "c")
+	linker := tm.createPageWith(t, "alice", nb, p, "Linker", "[[C 2]]")
+	tm.resolves(t, linker, "")
+	got := tm.restored(t, "alice", c)
+	if got.Name != "C 2" {
+		t.Fatalf("restored %+v, want C 2", got)
+	}
+	tm.resolves(t, linker, c)
+	if n := count(t, tm.pool, `SELECT count(*) FROM changeset_items WHERE changeset_id = $1 AND node_id = $2
+		AND after_name = 'C 2' AND after_parent_id = $3`, got.ChangesetID, c, p); n != 1 {
+		t.Errorf("the restore's item of C records %d rows as C 2 under P, want 1", n)
+	}
+
+	q := tm.createPage(t, "alice", nb, "", "Q")
+	d := tm.createPage(t, "alice", nb, q, "D")
+	tm.send(t, nodeDeletion("alice", d), http.StatusNoContent)
+	tm.send(t, nodeDeletion("alice", q), http.StatusNoContent)
+	r := tm.restored(t, "alice", d)
+	if r.Placed.at() != " parent_in_trash" {
+		t.Fatalf("restored %+v, want D at the root", r)
+	}
+	if n := count(t, tm.pool, `SELECT count(*) FROM changeset_items i JOIN nodes n ON n.id = i.node_id WHERE i.changeset_id = $1
+		AND i.node_id = $2 AND i.after_parent_id IS NULL AND i.after_sort_order = n.sort_order`, r.ChangesetID, d); n != 1 {
+		t.Errorf("the restore's item of D records %d rows at the root at its order, want 1", n)
+	}
+	tm.checkTrash(t)
+}
+
 // A restore past the unit's bounds is page.restore_too_large, and writes
-// nothing: more than 100 pages; more than 8 MiB of their contents; more
+// nothing: more nodes than the domain's bound by the item's counts, which
+// the composition root leaves the domain's; more than 100 pages; more
+// than 8 MiB of their contents; more
 // than 20,000 links among them, known once they are parsed. A lone page
 // is never past them.
 func TestARestorePastTheUnitsBoundsIsRefused(t *testing.T) {
@@ -339,10 +380,17 @@ func TestARestorePastTheUnitsBoundsIsRefused(t *testing.T) {
 	linked := tm.createPageWith(t, "alice", nb, "", "Linked", links)
 	tm.createPageWith(t, "alice", nb, linked, "More", links)
 	lone := tm.createPageWith(t, "alice", nb, "", "Lone", links+links)
-	for _, id := range []string{many, heavy, linked, lone} {
+	counted := tm.createPage(t, "alice", nb, "", "Counted")
+	for _, id := range []string{many, heavy, linked, lone, counted} {
 		tm.send(t, nodeDeletion("alice", id), http.StatusNoContent)
 	}
-	for name, id := range map[string]string{"101 pages": many, "8 MiB and a byte": heavy, "20,002 links": linked} {
+	// The counts are read before the group: a page counted with the
+	// bound's attachments is past it.
+	if _, err := tm.pool.Exec(context.Background(), "UPDATE nodes SET trash_assets = $2 WHERE id = $1", counted, domain.MaxUnitNodes); err != nil {
+		t.Fatal(err)
+	}
+	for name, id := range map[string]string{"a node past the nodes": counted, "101 pages": many, "8 MiB and a byte": heavy,
+		"20,002 links": linked} {
 		c := nodeRestore("bob", id)
 		if status, answer := ask(t, tm.contract, c.method, tm.base+c.path, tm.tokens["bob"], ""); status != http.StatusUnprocessableEntity ||
 			problemCode(t, answer) != "page.restore_too_large" {
@@ -351,6 +399,9 @@ func TestARestorePastTheUnitsBoundsIsRefused(t *testing.T) {
 	}
 	if n := count(t, tm.pool, "SELECT count(*) FROM changesets WHERE kind = 'trash_restore'"); n != 0 {
 		t.Errorf("%d restores' changesets, want none", n)
+	}
+	if _, err := tm.pool.Exec(context.Background(), "UPDATE nodes SET trash_assets = 0 WHERE id = $1", counted); err != nil {
+		t.Fatal(err)
 	}
 	if got := tm.restored(t, "bob", lone); got.Name != "Lone" {
 		t.Errorf("the lone page restored as %+v", got)

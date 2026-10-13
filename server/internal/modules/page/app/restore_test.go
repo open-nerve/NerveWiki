@@ -19,7 +19,8 @@ import (
 // restore runs restoreNode on id as alice from the web, of maxNodes (0:
 // domain's), the trash read at now.
 func (f trashFixture) restore(id uuid.UUID, maxNodes int) (app.NodeRestored, error) {
-	return app.NewRestoreNode(f.trashReads(now()), f.writer(), f.parser(), maxNodes, f.logger()).Execute(f.asAlice(), id, domain.ClientWeb)
+	return app.NewRestoreNode(f.trashReads(now()), f.writer(), f.parser(), app.RestoreBounds{Nodes: maxNodes}, f.logger()).
+		Execute(f.asAlice(), id, domain.ClientWeb)
 }
 
 // trashedContent gives the trashed page id the content text, at its
@@ -51,7 +52,7 @@ func TestRestoreNodeBringsAnItemBack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"FindAnyNode", "WorkspaceOf", "Authorize node.restore", "FindTrashRoot", "TrashGroup", "TrashContents",
+	want := []string{"FindAnyNode", "WorkspaceOf", "Authorize node.restore", "FindTrashRoot", "TrashGroup", "TrashHistory", "TrashContents",
 		"Take 15", "Facts", "KeepFacts 15", "Links", "Take 5", "Facts", "KeepFacts 5", "Links",
 		"WorkspaceOf", "ShareWorkspace in tx", "LockNotebook in tx", "Authorize node.restore in tx", "FindAnyNode in tx",
 		"TrashGroup in tx", "TrashLines 1 in tx", "Children in tx", "GuardWrite restore in tx", "CreateChangeset in tx",
@@ -111,7 +112,8 @@ func TestRestoreNodeBringsAnItemBack(t *testing.T) {
 // Where an item goes back: under its parent alive at its order, as it was
 // at the root; last at the root, its parent in the trash or its pages too
 // deep under it; numbered when an alive sibling holds its name there, an
-// attachment's before its extension.
+// attachment's before its extension. Its change, and so its item, holds
+// the state it went back with.
 func TestRestoreNodePlacesAndNumbers(t *testing.T) {
 	for _, tt := range []struct {
 		name    string
@@ -175,37 +177,60 @@ func TestRestoreNodePlacesAndNumbers(t *testing.T) {
 			if moved && n.SortOrder != last+1 || !moved && n.SortOrder != before.SortOrder {
 				t.Errorf("order %v, want %v: its own back where it was, after the root's last at the root", n.SortOrder, last+1)
 			}
+			if after := f.store.items[id].Change.After; after == nil || !domain.SameParent(after.ParentID, parent) ||
+				after.Name != tt.named || after.SortOrder != n.SortOrder {
+				t.Errorf("its item's after = %+v; want under %v as %q at %v", after, parent, tt.named, n.SortOrder)
+			}
 		})
 	}
 }
 
 // The group's names are keyed again by today's rules, and one whose key
 // another of the group under the same parent holds, after it by order and
-// id, is numbered: refused, the item could never come back.
+// id, is numbered: refused, the item could never come back. Names alike
+// under two parents of the group are not. The others renamed do not count
+// the root, numbered or not.
 func TestRestoreNodeKeysTheGroupAgain(t *testing.T) {
-	f := newTrashFixture()
-	f.grant(domain.ActionHistory, domain.ActionRestore)
-	box := f.page("Box", nil, 4)
-	notes := f.page("Notes", &box.ID, 0)
-	other := f.page("NOTES", &box.ID, 1)
-	f.trashed(box.ID, now().Add(-time.Minute), f.alice)
-	for id, key := range map[uuid.UUID]string{notes.ID: "stale", other.ID: "keyed apart"} {
-		n := f.store.trash[id]
-		n.NameKey = key
-		f.store.trash[id] = n
-	}
-	got, err := f.restore(box.ID, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n := f.store.nodes[notes.ID]; n.Name != "Notes" || n.NameKey != shared.TitleKey("Notes") {
-		t.Errorf("Notes = %+v, want its name keyed again", n)
-	}
-	if n := f.store.nodes[other.ID]; n.Name != "NOTES 2" || n.NameKey != shared.TitleKey("NOTES 2") {
-		t.Errorf("NOTES = %+v, want it numbered after Notes", n)
-	}
-	if got.Renamed || !strings.Contains(f.logs.String(), "others_renamed=1") {
-		t.Errorf("restored = %+v, log %q; want the root as it was, one other renamed", got, f.logs)
+	for _, rootRenamed := range []bool{false, true} {
+		t.Run(fmt.Sprintf("the root renamed %v", rootRenamed), func(t *testing.T) {
+			f := newTrashFixture()
+			f.grant(domain.ActionHistory, domain.ActionRestore)
+			box := f.page("Box", nil, 4)
+			notes := f.page("Notes", &box.ID, 0)
+			other := f.page("NOTES", &box.ID, 1)
+			a, b := f.page("A", &box.ID, 2), f.page("B", &box.ID, 3)
+			aNotes, bNotes := f.page("Notes", &a.ID, 0), f.page("Notes", &b.ID, 0)
+			f.trashed(box.ID, now().Add(-time.Minute), f.alice)
+			for id, key := range map[uuid.UUID]string{notes.ID: "stale", other.ID: "keyed apart"} {
+				n := f.store.trash[id]
+				n.NameKey = key
+				f.store.trash[id] = n
+			}
+			name := "Box"
+			if rootRenamed {
+				f.page("box", nil, 5)
+				name = "Box 2"
+			}
+			got, err := f.restore(box.ID, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if n := f.store.nodes[notes.ID]; n.Name != "Notes" || n.NameKey != shared.TitleKey("Notes") {
+				t.Errorf("Notes = %+v, want its name keyed again", n)
+			}
+			if n, after := f.store.nodes[other.ID], f.store.items[other.ID].Change.After; n.Name != "NOTES 2" ||
+				n.NameKey != shared.TitleKey("NOTES 2") || after == nil || after.Name != "NOTES 2" {
+				t.Errorf("NOTES = %+v, its item's after %+v; want it numbered after Notes", n, after)
+			}
+			for _, id := range []uuid.UUID{aNotes.ID, bNotes.ID} {
+				if n := f.store.nodes[id]; n.Name != "Notes" {
+					t.Errorf("Notes under %v = %+v, want it as it was: its parent's alone", *n.ParentID, n)
+				}
+			}
+			if got.Renamed != rootRenamed || got.Node.Name != name || !strings.Contains(f.logs.String(), "others_renamed=1") {
+				t.Errorf("restored = %+v, log %q; want the root as %s, one other renamed", got, f.logs, name)
+			}
+		})
 	}
 }
 
@@ -261,6 +286,36 @@ func TestRestoreNodeAnswersItsCodesInOrder(t *testing.T) {
 			f.trashed(box.ID, now(), f.alice)
 			return box.ID
 		}, 1000, ""},
+		{"at the pages, with attachments", func(f trashFixture) uuid.UUID {
+			box := f.page("Box", nil, 4)
+			for i := range domain.MaxUnitPages - 1 {
+				page := f.page(fmt.Sprintf("Page %d", i), &box.ID, float64(i))
+				f.asset(fmt.Sprintf("a%d.png", i), &page.ID, 0)
+			}
+			f.trashed(box.ID, now(), f.alice)
+			return box.ID
+		}, 1000, ""},
+		{"past the history", func(f trashFixture) uuid.UUID {
+			f.store.history = map[uuid.UUID]int{f.doc.ID: 1, f.child.ID: domain.MaxUnitHistory}
+			return f.doc.ID
+		}, 0, "page.restore_too_large"},
+		{"past the history, by its attachment's", func(f trashFixture) uuid.UUID {
+			for id, n := range f.store.trash {
+				if n.Kind == domain.KindAsset && n.ParentID != nil && *n.ParentID == f.doc.ID {
+					f.store.history = map[uuid.UUID]int{id: domain.MaxUnitHistory + 1}
+				}
+			}
+			return f.doc.ID
+		}, 0, "page.restore_too_large"},
+		{"at the history", func(f trashFixture) uuid.UUID {
+			f.store.history = map[uuid.UUID]int{f.doc.ID: 1, f.child.ID: domain.MaxUnitHistory - 1}
+			return f.doc.ID
+		}, 0, ""},
+		{"a content the purge took, past the history", func(f trashFixture) uuid.UUID {
+			f.store.history = map[uuid.UUID]int{f.child.ID: domain.MaxUnitHistory + 1}
+			delete(f.store.trashed, f.child.ID)
+			return f.doc.ID
+		}, 0, "page.restore_too_large"},
 		{"past the bytes", func(f trashFixture) uuid.UUID {
 			f.trashedContent(f.doc.ID, strings.Repeat("a", domain.MaxUnitBytes))
 			f.trashedContent(f.child.ID, "b")
@@ -338,6 +393,29 @@ func TestRestoreNodeAnswersItsCodesInOrder(t *testing.T) {
 		}, 0, "page.trash_changed"},
 		{"a content purged meanwhile", func(f trashFixture) uuid.UUID {
 			f.notebooks.waited = func() { delete(f.store.trashed, f.child.ID) }
+			return f.doc.ID
+		}, 0, "page.trash_changed"},
+		{"restored before its item was read", func(f trashFixture) uuid.UUID {
+			f.rec.before = map[string]func(){"FindTrashRoot": func() { f.untrash(f.doc.ID) }}
+			return f.doc.ID
+		}, 0, "page.not_in_trash"},
+		{"restored before its group was read", func(f trashFixture) uuid.UUID {
+			f.rec.before = map[string]func(){"TrashGroup": func() { f.untrash(f.doc.ID) }}
+			return f.doc.ID
+		}, 0, "page.trash_changed"},
+		{"purged before the lock", func(f trashFixture) uuid.UUID {
+			at := *f.store.trash[f.doc.ID].DeletedAt
+			f.rec.before = map[string]func(){"FindAnyNode in tx": func() {
+				for id, n := range f.store.trash {
+					if n.DeletedAt.Equal(at) {
+						delete(f.store.trash, id)
+					}
+				}
+			}}
+			return f.doc.ID
+		}, 0, "page.trash_changed"},
+		{"the current version purged meanwhile", func(f trashFixture) uuid.UUID {
+			f.store.unversioned = map[uuid.UUID]bool{f.child.ID: true}
 			return f.doc.ID
 		}, 0, "page.trash_changed"},
 		{"a version purged meanwhile", func(f trashFixture) uuid.UUID {

@@ -71,3 +71,14 @@ ORDER BY n.sort_order, n.id;
 -- The contents of pages deleted at deleted_at, by their primary key.
 SELECT node_id, content FROM page_contents
 WHERE node_id = ANY(sqlc.arg(ids)::uuid[]) AND deleted_at = sqlc.arg(deleted_at)::timestamptz;
+
+-- name: TrashHistory :one
+-- How many versions, and items of every changeset, of nodes deleted at deleted_at were deleted with them, each of the
+-- two counted to lim at most: a restore's rows besides the nodes', read through the indexes on node_id, as many as
+-- the bound at most.
+SELECT ((SELECT count(*) FROM (SELECT 1 FROM page_revisions r
+            WHERE r.node_id = ANY(sqlc.arg(ids)::uuid[]) AND r.deleted_at = sqlc.arg(deleted_at)::timestamptz
+            LIMIT sqlc.arg(lim)::integer) v)
+    + (SELECT count(*) FROM (SELECT 1 FROM changeset_items i
+            WHERE i.node_id = ANY(sqlc.arg(ids)::uuid[]) AND i.deleted_at = sqlc.arg(deleted_at)::timestamptz
+            LIMIT sqlc.arg(lim)::integer) w))::integer AS rows;

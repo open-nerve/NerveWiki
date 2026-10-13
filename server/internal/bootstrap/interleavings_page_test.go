@@ -27,8 +27,9 @@ import (
 // version or an item not deleted, which would keep the purge from it, or
 // a page not deleted with one deleted, which a restore left behind; a
 // deleted node that is a trash item's root but for one whose parent was
-// deleted at its time, or with its notebook, or the other way round (M8/P2
-// design 3.3); an
+// deleted at its time, or with its notebook, or the other way round, or a
+// root whose counts are not its group's, the nodes deleted at its time
+// from it down (M8/P2 design 3.3); an
 // edit session of a page that is not one not deleted of its notebook
 // (M4/P4 design 3.2); two sessions of a page alive at the database's time,
 // which the edit lock refuses (M5/P1 design 3.8).
@@ -63,6 +64,16 @@ func checkPages(t *testing.T, pool *pgxpool.Pool) {
 			JOIN notebooks b ON b.id = n.notebook_id LEFT JOIN nodes p ON p.id = n.parent_id
 			WHERE n.deleted_at IS NOT NULL AND n.trash_root <> ((p.id IS NULL OR p.deleted_at IS DISTINCT FROM n.deleted_at)
 				AND b.deleted_at IS DISTINCT FROM n.deleted_at)`,
+		"a trash item's root, its pages, attachments or height not its group's": `WITH RECURSIVE g AS (
+				SELECT r.id AS root, r.id, r.kind, 1 AS level, r.deleted_at FROM nodes r WHERE r.trash_root
+				UNION ALL
+				SELECT g.root, n.id, n.kind, g.level + 1, g.deleted_at FROM g JOIN nodes n ON n.parent_id = g.id
+					AND n.deleted_at = g.deleted_at
+			) SELECT count(*) FROM nodes r JOIN (SELECT root, count(*) FILTER (WHERE kind = 'page') AS pages,
+					count(*) FILTER (WHERE kind = 'asset') AS assets,
+					coalesce(max(level) FILTER (WHERE kind = 'page'), 0) AS height
+				FROM g GROUP BY root) c ON c.root = r.id
+			WHERE (r.trash_pages, r.trash_assets, r.trash_height) IS DISTINCT FROM (c.pages::integer, c.assets::integer, c.height)`,
 		"deeper than ten levels of pages, or in a loop": `WITH RECURSIVE up AS (
 				SELECT id AS start, parent_id, 1 AS depth FROM nodes WHERE deleted_at IS NULL AND kind = 'page'
 				UNION ALL

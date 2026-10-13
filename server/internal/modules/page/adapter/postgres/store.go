@@ -297,8 +297,8 @@ func (s *Store) DeleteNodes(ctx context.Context, d app.Deletion) error {
 }
 
 // RestoreNodes implements app.NodeWriter. A name a sibling holds already
-// is domain.ErrTitleTaken: the unit numbered them, so only a defect makes
-// one.
+// is an error of its own, no code of the restore's: the unit numbered
+// them under the notebook's lock, so only a defect makes one.
 func (s *Store) RestoreNodes(ctx context.Context, r app.Restoration) (app.RestoredRows, error) {
 	row, err := s.queries(ctx).RestoreNodes(ctx, gen.RestoreNodesParams{
 		Ids: r.IDs, Names: r.Names, NameKeys: r.NameKeys, By: r.By, Now: r.At, Root: r.Root, ParentID: r.ParentID,
@@ -306,7 +306,7 @@ func (s *Store) RestoreNodes(ctx context.Context, r app.Restoration) (app.Restor
 	})
 	switch {
 	case uniqueViolation(err, siblingNameKey):
-		return app.RestoredRows{}, domain.ErrTitleTaken
+		return app.RestoredRows{}, fmt.Errorf("restore nodes: a name a sibling holds, though the unit numbered them: %w", err)
 	case err != nil:
 		return app.RestoredRows{}, fmt.Errorf("restore nodes: %w", err)
 	}

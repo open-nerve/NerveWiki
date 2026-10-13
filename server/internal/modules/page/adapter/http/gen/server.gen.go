@@ -339,7 +339,7 @@ type TrashItem struct {
 	// Ancestors The pages it was under, from the root down to its parent, those in the trash among them; none at the root.
 	Ancestors []Ancestor `json:"ancestors"`
 
-	// Asset An attachment's type and size; null for a page.
+	// Asset An attachment's type and size; null for a page, and for an attachment whose file the purge took.
 	Asset nullable.Nullable[TrashAttachment] `json:"asset"`
 
 	// Assets The attachments deleted with it, itself among them when it is an attachment.
@@ -366,7 +366,7 @@ type TrashItem struct {
 	// RestoreTo Where a restore puts a trash item: under its parent where it was, original (parent_id null when it was at the root), or last at the notebook's root, parent_id null, its parent being in the trash (parent_in_trash) or its pages too deep under it (too_deep).
 	RestoreTo TrashPlacement `json:"restore_to"`
 
-	// Revision A page's content's revision as it was deleted, whose version getPageVersionView shows; null for an attachment.
+	// Revision A page's content's revision as it was deleted, whose version getPageVersionView shows; null for an attachment, and for a page whose content the purge took.
 	Revision nullable.Nullable[int] `json:"revision"`
 }
 

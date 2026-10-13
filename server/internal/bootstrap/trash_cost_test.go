@@ -61,9 +61,9 @@ func (a benchAuth) Authenticate(ctx context.Context, _ string) (context.Context,
 	return shared.WithActor(ctx, actor), "session:" + actor.SessionID.String(), nil
 }
 
-// newTrashBench is the bench, its unit bounded at maxNodes, 0 the
+// newTrashBench is the bench, its unit bounded at maxNodes and maxHistory, 0 the
 // domain's.
-func newTrashBench(tb testing.TB, maxNodes int) trashBench {
+func newTrashBench(tb testing.TB, maxNodes, maxHistory int) trashBench {
 	tb.Helper()
 	ctx := context.Background()
 	url := pgtest.NewDatabase(tb)
@@ -112,7 +112,7 @@ func newTrashBench(tb testing.TB, maxNodes int) trashBench {
 		tb.Fatal(err)
 	}
 	deps := pageDeps(cfg, pool, logger, authorizer, md, budget)
-	deps.MaxUnitNodes = maxNodes
+	deps.MaxUnitNodes, deps.MaxUnitHistory = maxNodes, maxHistory
 	pg := page.New(deps)
 	router := httpserver.NewRouter(logger)
 	api, err := httpserver.NewAPI(apiConfig(cfg, logger, ratelimit.New(time.Now), benchAuth{b.alice}, nil, nil, pg.BodyLimits()))
@@ -256,7 +256,7 @@ func (b trashBench) vacuumed(tb testing.TB) {
 func BenchmarkTrashRestore(b *testing.B) {
 	for _, l := range benchLoads() {
 		for _, attachments := range []int{0, 1000, 2000, 5000, 10000} {
-			bench := newTrashBench(b, 1<<20)
+			bench := newTrashBench(b, 1<<20, 1<<30)
 			root, contents := bench.item(b, l, attachments)
 			deletion := bench.timed(b, http.MethodDelete, "/api/v0/nodes/"+root, http.StatusNoContent)
 			parse := bench.parsed(contents)
@@ -305,7 +305,7 @@ func BenchmarkTrashDelete(b *testing.B) {
 			var deleted time.Duration
 			for range b.N {
 				b.StopTimer()
-				bench := newTrashBench(b, 0)
+				bench := newTrashBench(b, 0, 0)
 				root, _ := bench.item(b, benchLoads()[0], entries-domain.MaxUnitPages)
 				if stats == "analyzed" {
 					if _, err := bench.pool.Exec(context.Background(), "ANALYZE"); err != nil {
@@ -320,18 +320,172 @@ func BenchmarkTrashDelete(b *testing.B) {
 	}
 }
 
-// A restore at the unit's bound, of the full load, takes its time: in 10
-// seconds, a CI's slower than the machine the bound was measured on (M8/P2
-// design 3.11).
+// versions writes the item's pages versions from after to up to, each
+// step a changeset of the notebook's and an item of each page in it, the
+// pages' contents on the last: the history of pages edited that often.
+// A version is of 1 KiB that compresses to nothing, the widest a row
+// stays in its table (TOAST moves a wider content's out of it).
+func (b trashBench) versions(tb testing.TB, after, upTo int) {
+	tb.Helper()
+	ctx := context.Background()
+	pages := `SELECT id, parent_id, name, sort_order FROM nodes WHERE notebook_id = $1::uuid AND kind = 'page' AND deleted_at IS NULL`
+	for _, x := range []struct {
+		sql  string
+		args []any
+	}{
+		{`INSERT INTO changesets (id, notebook_id, kind, client, created_by_id, created_at, updated_at)
+		SELECT md5($1::uuid::text || k)::uuid, $1::uuid, 'edit', 'web', $2, now(), now() FROM generate_series($3::integer + 1, $4::integer) k`,
+			[]any{b.nb, b.alice, after, upTo}},
+		{`WITH pool AS (SELECT i, (SELECT string_agg(md5(i::text || '.' || g), '') FROM generate_series(1, 32) g) AS content
+			FROM generate_series(0, 999) i)
+		INSERT INTO page_revisions (id, changeset_id, node_id, base_revision, revision, content, content_hash, byte_size,
+			created_at, updated_at)
+		SELECT gen_random_uuid(), md5($1::uuid::text || k)::uuid, p.id, k - 1, k, pool.content, sha256(convert_to(pool.content, 'UTF8')),
+			octet_length(pool.content), now(), now()
+		FROM (` + pages + `) p, generate_series($2::integer + 1, $3::integer) k JOIN pool ON pool.i = k % 1000`,
+			[]any{b.nb, after, upTo}},
+		{`INSERT INTO changeset_items (id, changeset_id, node_id, after_parent_id, after_name, after_sort_order, created_at, updated_at)
+		SELECT gen_random_uuid(), md5($1::uuid::text || k)::uuid, p.id, p.parent_id, p.name, p.sort_order, now(), now()
+		FROM (` + pages + `) p, generate_series($2::integer + 1, $3::integer) k`, []any{b.nb, after, upTo}},
+		{`UPDATE page_contents SET revision = $2 WHERE node_id IN (SELECT id FROM nodes WHERE notebook_id = $1 AND kind = 'page')`,
+			[]any{b.nb, upTo}},
+	} {
+		if _, err := b.pool.Exec(ctx, x.sql, x.args...); err != nil {
+			tb.Fatalf("%s: %v", x.sql, err)
+		}
+	}
+}
+
+// history is the rows of the trash item root's history: the versions and
+// items of its group, deleted at its time; the group read first, then its
+// rows by their ids, as TrashHistory reads them (one statement joining the
+// two took minutes, analyzed).
+func (b trashBench) history(tb testing.TB, root string) int {
+	tb.Helper()
+	ctx := context.Background()
+	var ids []uuid.UUID
+	var at time.Time
+	if err := b.pool.QueryRow(ctx, `WITH RECURSIVE g AS (SELECT id, deleted_at FROM nodes WHERE id = $1 AND trash_root
+			UNION ALL SELECT n.id, n.deleted_at FROM nodes n JOIN g ON n.parent_id = g.id AND n.deleted_at = g.deleted_at)
+		SELECT array_agg(id), max(deleted_at) FROM g`, root).Scan(&ids, &at); err != nil {
+		tb.Fatal(err)
+	}
+	var n int
+	if err := b.pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM page_revisions WHERE node_id = ANY($1) AND deleted_at = $2)
+		+ (SELECT count(*) FROM changeset_items WHERE node_id = ANY($1) AND deleted_at = $2)`, ids, at).Scan(&n); err != nil {
+		tb.Fatal(err)
+	}
+	return n
+}
+
+// BenchmarkTrashRestoreHistory restores an item of the full load at the
+// unit's bound of nodes, 100 pages and 9,900 attachments, whose pages have
+// 250 to 2,000 versions, each with its item (M8/P2A review, A-M4): the
+// measurement MaxUnitHistory is taken from, as MaxUnitNodes is. Without
+// statistics, then on a database of its own analyzed after each tier's
+// versions, while the item is not deleted, as a server's statistics are.
+// Each iteration a deletion, then a restore, each after a vacuum,
+// untimed; the history grows by the two's items. It reports the request,
+// the parse, the unit, the deletion, each a mean in milliseconds, and the
+// rows of the history a restore wrote, a mean.
+func BenchmarkTrashRestoreHistory(b *testing.B) {
+	for _, stats := range []string{"without statistics", "analyzed"} {
+		bench := newTrashBench(b, 1<<20, 1<<30)
+		root, contents := bench.item(b, benchLoads()[1], domain.MaxUnitNodes-domain.MaxUnitPages)
+		parse := bench.parsed(contents)
+		after := 1
+		for _, upTo := range []int{250, 500, 1000, 1500, 2000} {
+			bench.versions(b, after, upTo)
+			after = upTo
+			if stats == "analyzed" {
+				if _, err := bench.pool.Exec(context.Background(), "ANALYZE"); err != nil {
+					b.Fatal(err)
+				}
+			}
+			b.Run(fmt.Sprintf("%d versions a page/%s", upTo, stats), func(b *testing.B) {
+				var request, deleted time.Duration
+				rows := 0
+				for range b.N {
+					b.StopTimer()
+					bench.vacuumed(b)
+					b.StartTimer()
+					deleted += bench.timed(b, http.MethodDelete, "/api/v0/nodes/"+root, http.StatusNoContent)
+					b.StopTimer()
+					rows += bench.history(b, root)
+					bench.vacuumed(b)
+					b.StartTimer()
+					request += bench.timed(b, http.MethodPost, "/api/v0/nodes/"+root+"/restore", http.StatusOK)
+				}
+				n := float64(b.N)
+				ms := func(d time.Duration) float64 { return float64(d) / float64(time.Millisecond) }
+				b.ReportMetric(ms(request)/n, "request-ms")
+				b.ReportMetric(ms(parse), "parse-ms")
+				b.ReportMetric(ms(request)/n-ms(parse), "unit-ms")
+				b.ReportMetric(ms(deleted)/n, "delete-ms")
+				b.ReportMetric(float64(rows)/n, "rows")
+			})
+		}
+	}
+}
+
+// toppedUp gives the trash item root's attachments n more items, of new
+// changesets, deleted at its time: its history to a row.
+func (b trashBench) toppedUp(tb testing.TB, root string, n int) {
+	tb.Helper()
+	for n > 0 {
+		changeset := uuid.NewV7()
+		tag, err := b.pool.Exec(context.Background(), `WITH cs AS (
+				INSERT INTO changesets (id, notebook_id, kind, client, created_by_id, created_at, updated_at)
+				VALUES ($2, $3, 'edit', 'web', $4, now(), now()) RETURNING id
+			), a AS (SELECT n.id, n.parent_id, n.name, n.sort_order, n.deleted_at FROM nodes n JOIN nodes r ON r.id = $1
+				WHERE n.notebook_id = r.notebook_id AND n.kind = 'asset' AND n.deleted_at = r.deleted_at ORDER BY n.id LIMIT $5)
+			INSERT INTO changeset_items (id, changeset_id, node_id, after_parent_id, after_name, after_sort_order, created_at,
+				updated_at, deleted_at)
+			SELECT gen_random_uuid(), cs.id, a.id, a.parent_id, a.name, a.sort_order, now(), now(), a.deleted_at FROM a, cs`,
+			root, changeset, b.nb, b.alice, n)
+		if err != nil || tag.RowsAffected() == 0 {
+			tb.Fatalf("top the history up by %d: %d, %v", n, tag.RowsAffected(), err)
+		}
+		n -= int(tag.RowsAffected())
+	}
+}
+
+// A restore at the unit's bounds, of the full load, its nodes' and its
+// history's, takes its time: in 10 seconds, a CI's slower than the
+// machine the bounds were measured on (M8/P2 design 3.11; M8/P2A review,
+// A-M4). Deleted again, its history a row past the bound, with the items
+// of the restore and of the deletion, it is page.restore_too_large and
+// writes nothing: the composition root leaves the bounds the domain's.
 func TestARestoreAtTheUnitsBoundTakesItsTime(t *testing.T) {
-	bench := newTrashBench(t, 0)
+	bench := newTrashBench(t, 0, 0)
 	root, _ := bench.item(t, benchLoads()[1], domain.MaxUnitNodes-domain.MaxUnitPages)
+	// The item's rows, its deletion's items among them, leave the versions
+	// and their items the rest of the bound, a step of them each page's.
+	bench.versions(t, 1, (domain.MaxUnitHistory-2*domain.MaxUnitNodes-2*domain.MaxUnitPages)/(2*domain.MaxUnitPages))
 	bench.timed(t, http.MethodDelete, "/api/v0/nodes/"+root, http.StatusNoContent)
+	rows := bench.history(t, root)
+	if rows > domain.MaxUnitHistory {
+		t.Fatalf("the item's history is %d rows, past the bound %d before it is topped up", rows, domain.MaxUnitHistory)
+	}
+	bench.toppedUp(t, root, domain.MaxUnitHistory-rows)
+	if rows := bench.history(t, root); rows != domain.MaxUnitHistory {
+		t.Fatalf("the item's history is %d rows, want the bound %d", rows, domain.MaxUnitHistory)
+	}
 	if took := bench.timed(t, http.MethodPost, "/api/v0/nodes/"+root+"/restore", http.StatusOK); took > 10*time.Second {
-		t.Errorf("a restore of %d nodes took %s, want 10 s at most", domain.MaxUnitNodes, took)
+		t.Errorf("a restore of %d nodes, %d rows of history, took %s, want 10 s at most", domain.MaxUnitNodes, domain.MaxUnitHistory, took)
 	}
 	if n := count(t, bench.pool, "SELECT count(*) FROM nodes WHERE deleted_at IS NULL"); n != domain.MaxUnitNodes {
 		t.Errorf("%d nodes back, want %d", n, domain.MaxUnitNodes)
+	}
+	checkPages(t, bench.pool)
+
+	bench.timed(t, http.MethodDelete, "/api/v0/nodes/"+root, http.StatusNoContent)
+	if status, answer := bench.serve(http.MethodPost, "/api/v0/nodes/"+root+"/restore", ""); status != http.StatusUnprocessableEntity ||
+		!strings.Contains(answer, `"code":"page.restore_too_large"`) {
+		t.Errorf("a restore past the history's bound = %d %s, want 422 page.restore_too_large", status, answer)
+	}
+	if n := count(t, bench.pool, "SELECT count(*) FROM changesets WHERE kind = 'trash_restore'"); n != 1 {
+		t.Errorf("%d restores' changesets, want the first's alone", n)
 	}
 	checkPages(t, bench.pool)
 }

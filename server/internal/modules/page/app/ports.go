@@ -256,8 +256,9 @@ type Versions interface {
 }
 
 // Trash reads a notebook's trash (M8/P2 design 3.4), unlocked, or in a
-// unit's transaction. Its times compare with time.Time.Equal: the answer's
-// are in the local zone.
+// unit's transaction. Its times compare with time.Time.Equal: the
+// answer's may be in another location than the argument's (a test's
+// pool's).
 type Trash interface {
 	// ListTrash is the notebook's trash items deleted after since, newer
 	// first, below the cursor below, at most limit.
@@ -281,6 +282,10 @@ type Trash interface {
 	// TrashContents are the contents of the pages ids deleted at at, by
 	// page: one the purge took is not among them.
 	TrashContents(ctx context.Context, ids []uuid.UUID, at time.Time) (map[uuid.UUID]string, error)
+	// TrashHistory is how many versions and items, of every changeset, of
+	// the nodes ids were deleted at at, each of the two counted to limit
+	// at most: the rows a restore writes besides the nodes'.
+	TrashHistory(ctx context.Context, ids []uuid.UUID, at time.Time, limit int) (int, error)
 }
 
 // AttachmentInfo is an attachment's type and size.
