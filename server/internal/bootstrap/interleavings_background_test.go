@@ -538,6 +538,46 @@ func TestARestoreJobAndTheRevertOfItsDeletion(t *testing.T) {
 	})
 }
 
+// A background revert of R1, the revert of an import of ten pages under
+// P: ten groups of a page each, four batches of three nodes at most. The
+// last group's page restored where it was by a request between the job's
+// first and second batches, then deleted again, unchanged, between the
+// second and the third: the fourth batch plans its group at the time it
+// is deleted at now and reads its content there, as a request's revert of
+// R1 would, and the job restores all ten (M8/P4A review A-M1). The fourth
+// batch before the deletion: the page alive where it was is changed,
+// page.revert_conflict, as a request's revert has it.
+func TestARevertJobOfAGroupDeletedAgainSinceItsPlan(t *testing.T) {
+	tm := newBatchedTeam(t, "member", "")
+	for try := range betweenUnits {
+		nb := tm.openNotebook(t, "alice", "Again "+strconv.Itoa(try))
+		p := tm.createPage(t, "alice", nb, "", "P")
+		if j := tm.imported(t, "alice", nb, p, flatImport(t, 10)); j.State != "succeeded" {
+			t.Fatalf("the import = %+v", j)
+		}
+		r1 := tm.reverted(t, "alice", tm.newest(t, nb).ID)
+		g := tm.bgLastOf(t, r1)
+		then, deleted := tm.bgAfterSecondBatch(t, nodeDeletion("bob", g))
+		j, answers := tm.bgBetweenBatches(t, nb, revertStart("bob", nb, r1, ""), []step{nodeRestore("bob", g)}, then)
+		if a := answers[0]; a.status != http.StatusOK {
+			t.Fatalf("the restore of %s = %d %s, want 200", g, a.status, a.body)
+		}
+		if d := deleted(); d.status != http.StatusNoContent {
+			t.Fatalf("the deletion of %s = %d %s, want 204", g, d.status, d.body)
+		}
+		if j.failure() == "revert_conflict" && len(j.Conflicts) == 1 && j.Conflicts[0].NodeID == g &&
+			j.Conflicts[0].Reason == "changed" && j.Progress.Done == 9 {
+			continue
+		}
+		if j.State != "succeeded" || j.counts()["restored"] != 10 || j.Progress.Done != 10 {
+			t.Fatalf("the revert of R1 = %s; want it whole, %s back where it was", j, g)
+		}
+		checkBackground(t, tm)
+		return
+	}
+	t.Fatalf("the deletion came after the revert's fourth batch, %d times of %d", betweenUnits, betweenUnits)
+}
+
 // Interleaving 16: a background revert of the deletion of Box and its
 // seven pages, a group it restores across three batches, and a restore,
 // through a request, of C6, which its first batch left in the trash, an

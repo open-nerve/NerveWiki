@@ -301,14 +301,16 @@ func TestNoJobOutlastsTheOrphanSweep(t *testing.T) {
 	}
 }
 
-// The composition root leaves the writing jobs' batches the import's
-// bounds (M8/P4 design 3.6): only the interleavings make them smaller, so
-// that a few nodes span batches; and bounds the nodes an import makes by
-// the items a background revert reverts (M8/P4 design 2.2 (a)).
+// The composition root hands the transfer module the page module's
+// actions, and bounds the nodes an import makes by the items a background
+// revert reverts (M8/P4 design 2.2 (a)). transferDeps sets no batch:
+// newApp's, which wireApp sets, is the import's, which the whole-program
+// tests pin through newApp (TestABackgroundRestoreThroughServe's two
+// batches; M8/P4A review B-M1).
 func TestTransferDepsLeaveTheBatchesTheImports(t *testing.T) {
 	d := transferDeps(testConfig(t, "", false), nil, slog.New(slog.DiscardHandler), nil, nil, nil, nil, nil)
 	if d.Batch != (transfer.Batch{}) {
-		t.Errorf("transferDeps' batch = %+v, want the zero value, the import's bounds", d.Batch)
+		t.Errorf("transferDeps' batch = %+v, want none: newApp's is the one production uses", d.Batch)
 	}
 	if d.RestoreAction != page.ActionRestore || d.RevertAction != page.ActionRevert {
 		t.Errorf("transferDeps' actions = %s, %s; want the page module's restore and revert", d.RestoreAction, d.RevertAction)

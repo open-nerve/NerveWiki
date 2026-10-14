@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -236,6 +237,60 @@ func (tm acmeTeam) cancelSeen(t *testing.T, by, id string) {
 			t.Fatalf("the job %s's heartbeat did not read its cancel", id)
 		}
 	}
+}
+
+// A background restore puts its item's root where a request's restore
+// would (M8/P4A review C-M1): a page deleted, then its parent, goes back
+// last at the notebook's root, numbered when a page there holds its name;
+// the job's report says where and why.
+func TestABackgroundRestorePlacesItsRoot(t *testing.T) {
+	tm := newAcmeTeam(t, "member", "")
+	nb := tm.openNotebook(t, "alice", "Eng")
+	parent := tm.createPage(t, "alice", nb, "", "Parent")
+	child := tm.createPage(t, "alice", nb, parent, "Child")
+	tm.createPage(t, "alice", nb, "", "Child")
+	tm.send(t, nodeDeletion("alice", child), http.StatusNoContent)
+	tm.send(t, nodeDeletion("alice", parent), http.StatusNoContent)
+	j := tm.background(t, trashRestoreStart("bob", nb, child))
+	if j.State != "succeeded" || j.Report.Placed == nil || j.Report.Placed.at() != " parent_in_trash" || j.counts()["pages"] != 1 ||
+		j.counts()["renamed"] != 1 {
+		t.Fatalf("the restore = %s, want Child at the root, its parent in the trash, renamed", j)
+	}
+	if got := queryStrings(t, tm.pool, `SELECT coalesce(n.parent_id::text, 'root') || ' ' || n.name || ' ' || (n.sort_order > (
+			SELECT max(o.sort_order) FROM nodes o WHERE o.notebook_id = n.notebook_id AND o.parent_id IS NULL AND o.id <> n.id))
+		FROM nodes n WHERE n.id = $1 AND n.deleted_at IS NULL`, child); !slices.Equal(got, []string{"root Child 2 true"}) {
+		t.Errorf("Child = %q, want back last at the root as Child 2", got)
+	}
+	checkBackground(t, tm)
+}
+
+// A batch whose pages hold more links than a unit's is halved through
+// the composition root (M8/P4A review B-I1): the page module's
+// ErrBatchTooLarge, which treeError hands the run as the transfer
+// module's. The first batch of the restore of a page with 101 pages of
+// 210 links each under it, the item's root and 99 of them, holds 20,790,
+// past 20,000: halved, the job writes its 102 restores in two units.
+func TestABackgroundBatchPastTheLinksIsHalved(t *testing.T) {
+	tm := newAcmeTeam(t, "member", "")
+	nb := tm.openNotebook(t, "alice", "Eng")
+	box := tm.createPageWith(t, "alice", nb, "", "Box", "x")
+	var links strings.Builder
+	for i := range 210 {
+		fmt.Fprintf(&links, "[[T %d]] ", i)
+	}
+	for i := range 101 {
+		tm.createPageWith(t, "alice", nb, box, fmt.Sprintf("P %d", i), links.String())
+	}
+	tm.send(t, nodeDeletion("alice", box), http.StatusNoContent)
+	j := tm.background(t, trashRestoreStart("bob", nb, box))
+	if j.State != "succeeded" || j.Progress.Done != 102 || j.counts()["pages"] != 102 {
+		t.Fatalf("the restore = %s, want it succeeded, 102 pages", j)
+	}
+	if got := queryStrings(t, tm.pool, `SELECT count(*) || ' ' || count(DISTINCT i.created_at) FROM changeset_items i
+		WHERE i.changeset_id = $1 AND i.restored`, *j.ChangesetID); !slices.Equal(got, []string{"102 2"}) {
+		t.Errorf("the job's items = %q, want 102 in two units, the first batch halved", got)
+	}
+	checkBackground(t, tm)
 }
 
 // A trash item past a request's bounds, 102 pages and an attachment with

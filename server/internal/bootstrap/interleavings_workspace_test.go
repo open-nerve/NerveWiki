@@ -60,7 +60,8 @@ func newAcmeTeamWith(t *testing.T, bobRole, carolRole string, change func(*confi
 }
 
 // newAcmeTeamWired is newAcmeTeamWith on an app whose writing jobs' batches
-// batch bounds, zero the import's (wireApp).
+// batch bounds (wireApp); zero, the app newApp wires, as serve does: the
+// whole-program tests pin the bounds production uses (M8/P4A review B-M1).
 func newAcmeTeamWired(t *testing.T, bobRole, carolRole string, change func(*config.Config), batch transfer.Batch) acmeTeam {
 	t.Helper()
 	url := pgtest.NewDatabase(t)
@@ -68,9 +69,16 @@ func newAcmeTeamWired(t *testing.T, bobRole, carolRole string, change func(*conf
 	if change != nil {
 		change(&cfg)
 	}
-	a, err := wireApp(context.Background(), cfg, slog.New(slog.DiscardHandler), migrations.FS(), testWebUI(), batch)
+	logger := slog.New(slog.DiscardHandler)
+	var a *app
+	var err error
+	if batch == (transfer.Batch{}) {
+		a, err = newApp(context.Background(), cfg, logger, migrations.FS(), testWebUI())
+	} else {
+		a, err = wireApp(context.Background(), cfg, logger, migrations.FS(), testWebUI(), batch)
+	}
 	if err != nil {
-		t.Fatalf("wireApp() error = %v", err)
+		t.Fatalf("wiring the app: %v", err)
 	}
 	t.Cleanup(a.close)
 	tm := acmeTeam{
