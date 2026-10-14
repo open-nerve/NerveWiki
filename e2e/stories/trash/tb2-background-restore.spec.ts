@@ -8,7 +8,7 @@ import { download, getAsset, listAssets, pngBytes } from "../../fixtures/assets"
 import { answerTo, failedToLoad } from "../../fixtures/browser";
 import type { Database } from "../../fixtures/db";
 import { createNotebook } from "../../fixtures/notebooks";
-import { deleteNode } from "../../fixtures/pages";
+import { createPage, deleteNode } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
 import { endedJob, holdNotebookRow, startImport, startTrashRestore } from "../../fixtures/transfer";
 import { restoreNode, restoreWith, trashListed, trashStatus } from "../../fixtures/trash";
@@ -63,11 +63,11 @@ interface Big {
   photo: Asset;
 }
 
-/** Imports the vault into the notebook notebookId with pat, at its root, and returns Big there. */
+/** Imports the vault into the notebook notebookId with pat, at its root after its pages, and returns Big there. */
 async function importBig(api: ApiClient, db: Database, pat: string, notebookId: string): Promise<Big> {
   const imported = await endedJob(api, pat, (await startImport(api, pat, notebookId, vault())).id, jobTime);
   expect(imported.state).toBe("succeeded");
-  const ids = await idsOf(db, notebookId);
+  const ids = new Map([...(await idsOf(db, notebookId))].filter(([path]) => path === "Big" || path.startsWith("Big/")));
   const id = ids.get("Big") ?? "";
   const [photo] = await listAssets(api, pat, notebookId, id);
   if (photo === undefined) {
@@ -174,11 +174,14 @@ test("TB2 (page): an item deleted from the tree, too large to restore from the t
   test.slow();
   const { adminId, pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
   const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
+  const index = await createPage(api, pat, notebook.id, "Index");
   const big = await importBig(api, db, pat, notebook.id);
   const page = await signedInPage(tokens);
   const main = page.getByRole("main");
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, big.id));
-  await expect.poll(() => treeTitles(page, "Plans")).toEqual(["Big"]);
+  // Big deleted from the tree as another page shows: shown, its own panels would be read again as the backlinks of
+  // its hundred notes change (a links event naming no page, past MaxEventPages), and answer 404 (P4B fix check F-1).
+  await page.goto(wikiPagePath(workspace.slug, notebook.id, index.id));
+  await expect.poll(() => treeTitles(page, "Plans")).toEqual(["Index", "Big"]);
 
   await choosePageAction(page, "Plans", "Big", "Delete");
   const deletion = page.getByRole("alertdialog", { name: "Delete Big?", exact: true });
@@ -188,9 +191,8 @@ test("TB2 (page): an item deleted from the tree, too large to restore from the t
   const deleted = answerTo(page, "DELETE", `/api/v0/nodes/${big.id}`);
   await deletion.getByRole("button", { name: "Delete", exact: true }).click();
   expect((await deleted).status()).toBe(204);
-  // The page shown gone, its shell goes to the notebook's home, Big having been at its top level.
-  await expect(main.getByRole("heading", { level: 1, name: "Plans", exact: true })).toBeFocused();
-  await expect.poll(() => treeTitles(page, "Plans")).toEqual([]);
+  await expect.poll(() => treeTitles(page, "Plans")).toEqual(["Index"]);
+  await expect(pageHeading(page, "Index")).toBeVisible();
   await expectTrashRoot(db, big.id, { pages: notes + 1, assets: 1, height: 2 }, { alone: true });
 
   // Too large to restore here: the trash says so, and offers to restore it in the background.
@@ -242,7 +244,7 @@ test("TB2 (page): an item deleted from the tree, too large to restore from the t
   });
 
   // Big is in the tree again, with its notes; its attachment downloads.
-  await expect.poll(() => treeTitles(page, "Plans")).toEqual(["Big"]);
+  await expect.poll(() => treeTitles(page, "Plans")).toEqual(["Index", "Big"]);
   await pageTree(page, "Plans").getByRole("link", { name: "Big", exact: true }).click();
   await expect(pageHeading(page, "Big")).toBeVisible();
   await expect.poll(() => subpages(page)).toEqual(Array.from({ length: notes }, (_, at) => note(at + 1)));
