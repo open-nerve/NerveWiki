@@ -277,15 +277,16 @@ func TestRevertChangesetPutsEachChangeBack(t *testing.T) {
 }
 
 // The codes come in M8/P3 design 3.6's order: the message; the changeset
-// and the decision; its mark; its items' count; its mark again, read
-// after its items, or the changeset gone meanwhile, purged, or with its
-// notebook; then the trash items it deleted, read only past their roots'
-// check, the bounds of what it parses and restores; the conflicts, the
-// versions the purge took and the round's steps, then the contents the
-// purge took, before the parse's server_busy; the links past it; then
-// under the lock its mark, the changeset purged, its items' count, its
-// conflicts, a version the purge took, its steps, a page parsed at another
-// hash, the restore's rows and the guards.
+// and the decision; its mark; its items' count; its mark again, read after
+// its items, or the changeset gone meanwhile, purged, with its notebook,
+// or the caller's role ended, which answers as the first read; then the
+// trash items it deleted, read only past their roots' check, the bounds of
+// what it parses and restores; the conflicts, the versions the purge took
+// and the round's steps, then the contents the purge took, before the
+// parse's server_busy; the links past it; then under the lock its mark,
+// the changeset purged, its items' count, its conflicts, a version the
+// purge took, its steps, a page parsed at another hash, the restore's rows
+// and the guards.
 func TestRevertChangesetAnswersItsCodesInOrder(t *testing.T) {
 	links := strings.Repeat("[[x]]", domain.MaxUnitLinks/2+1)
 	empty, bad := "", "a\x00b"
@@ -342,6 +343,21 @@ func TestRevertChangesetAnswersItsCodesInOrder(t *testing.T) {
 			}}
 			return f.c.ID
 		}, nil, 0, 0, "page.changeset_not_found"},
+		{"its caller's role ended between its items and its row", func(f revertFixture) uuid.UUID {
+			f.rec.before = map[string]func(){"ChangesetVersions": func() {
+				f.c.gone = true
+				delete(f.auth.grants, domain.ActionRevert)
+			}}
+			return f.c.ID
+		}, nil, 0, 0, "page.changeset_not_found"},
+		{"its caller a reader between its items and its row", func(f revertFixture) uuid.UUID {
+			f.rec.before = map[string]func(){"ChangesetVersions": func() {
+				f.c.gone = true
+				delete(f.auth.grants, domain.ActionRevert)
+				f.auth.forbidden[domain.ActionRevert] = true
+			}}
+			return f.c.ID
+		}, nil, 0, 0, "forbidden"},
 		{"its root no longer its group's, past the history", func(f revertFixture) uuid.UUID {
 			f.store.counts[f.box.ID] = [3]int{3, 1, 2}
 			f.store.history = map[uuid.UUID]int{f.doc.ID: domain.MaxUnitHistory + 1}
