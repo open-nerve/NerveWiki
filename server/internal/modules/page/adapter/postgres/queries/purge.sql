@@ -65,10 +65,11 @@ DELETE FROM changesets WHERE id IN (
 
 -- name: PurgeTrimmedChangesets :execrows
 -- The trimmed changesets of live notebooks whose items and versions the purge has all deleted: nothing of them is left
--- to read or revert (M8/P3 design 3.3). Through the partial index on trimmed; at any time, as nothing deleted them.
+-- to read or revert (M8/P3 design 3.3). Through the partial index on trimmed; at any time, as nothing deleted them. One
+-- whose notebook was deleted since waits for the notebook's retention, as PurgeChangesets takes it (M8/P3A review A-6).
 DELETE FROM changesets WHERE id IN (
     SELECT s.id FROM changesets s
-    WHERE s.trimmed
+    WHERE s.trimmed AND s.deleted_at IS NULL
         AND NOT EXISTS (SELECT 1 FROM changeset_items x WHERE x.changeset_id = s.id)
         AND NOT EXISTS (SELECT 1 FROM page_revisions x WHERE x.changeset_id = s.id)
     LIMIT sqlc.arg(batch) FOR UPDATE SKIP LOCKED);

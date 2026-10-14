@@ -67,6 +67,13 @@ func (a benchAuth) Authenticate(ctx context.Context, _ string) (context.Context,
 // one, so a test at the bounds answers as the server would.
 func newTrashBench(tb testing.TB, maxNodes, maxHistory int) trashBench {
 	tb.Helper()
+	return newTrashBenchOfSteps(tb, maxNodes, maxHistory, 0)
+}
+
+// newTrashBenchOfSteps is the bench, a revert's round also bounded at
+// maxSteps, 0 the composition root's.
+func newTrashBenchOfSteps(tb testing.TB, maxNodes, maxHistory, maxSteps int) trashBench {
+	tb.Helper()
 	ctx := context.Background()
 	url := pgtest.NewDatabase(tb)
 	cfg := testConfig(tb, url, false)
@@ -115,6 +122,7 @@ func newTrashBench(tb testing.TB, maxNodes, maxHistory int) trashBench {
 	}
 	deps := pageDeps(cfg, pool, logger, authorizer, md, budget)
 	deps.MaxUnitNodes, deps.MaxUnitHistory = cmp.Or(maxNodes, deps.MaxUnitNodes), cmp.Or(maxHistory, deps.MaxUnitHistory)
+	deps.MaxRevertSteps = cmp.Or(maxSteps, deps.MaxRevertSteps)
 	pg := page.New(deps)
 	router := httpserver.NewRouter(logger)
 	api, err := httpserver.NewAPI(apiConfig(cfg, logger, ratelimit.New(time.Now), benchAuth{b.alice}, nil, nil, pg.BodyLimits()))

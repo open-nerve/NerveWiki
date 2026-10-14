@@ -834,7 +834,8 @@ func TestPlanRevertsConflictsInTheirOrder(t *testing.T) {
 // needing the ones before it: Y moved into the root as A, where X, named
 // A, was deleted; N created as D where D was deleted; P's content
 // written. Y goes back first, freeing A; N goes to the trash, freeing D;
-// then X and D come back; then P's version is written back.
+// then X and D come back; then P's version is written back. Four of the
+// five steps count against MaxRevertSteps.
 func TestPlanRevertsRoundGoesInItsOrder(t *testing.T) {
 	deletedAt := time.Date(2026, 10, 14, 11, 0, 0, 0, time.UTC)
 	w := newWorld(t)
@@ -848,8 +849,14 @@ func TestPlanRevertsRoundGoesInItsOrder(t *testing.T) {
 	w.created(w.page("D", nil, 4, 1, "n"))
 	w.wrote(w.page("P", nil, 5, 2, "two"), 1, "one")
 	want := []string{"place A moved and renamed", "delete D", "restore A", "restore D", "content P"}
-	if got := w.ops(w.plan()); !slices.Equal(got, want) {
+	plan := w.plan()
+	if got := w.ops(plan); !slices.Equal(got, want) {
 		t.Errorf("ops = %q, want %q", got, want)
+	}
+	// MaxRevertSteps bounds the places, deletions and restores, a content's
+	// write not among them.
+	if n := plan.Steps(); n != 4 {
+		t.Errorf("Steps() = %d, want 4", n)
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 	"uuid"
 
@@ -24,12 +25,14 @@ type ParsedContent struct {
 
 // RevertRead is what a revert read before its unit, unlocked: the
 // changeset it reverts, the contents it writes back or restores parsed,
-// by page, the purge's retention, and the bound of the changeset's items.
+// by page, the purge's retention, and the bounds of the changeset's items
+// and of its round's steps (domain.RevertPlan.Steps).
 type RevertRead struct {
 	Changeset uuid.UUID
 	Parsed    map[uuid.UUID]ParsedContent
 	Retention time.Duration
 	MaxItems  int
+	MaxSteps  int
 }
 
 // RevertDone is what a revert's unit did: how many nodes it put back,
@@ -40,11 +43,11 @@ type RevertDone struct {
 
 // Revert reverts the changeset r names, under the notebook's lock: it is
 // read again, its items and versions, then its row, page.changeset_trimmed
-// for one the purge marked or took meanwhile, page.revert_too_large past
+// for one the purge marked or took meanwhile (the lock keeps its notebook), page.revert_too_large past
 // the bound of its items, merged into meanwhile; then the state, planned
 // at the unit's time, the plan this one, which is authoritative:
 // page.revert_conflict, page.changeset_trimmed for a version the purge
-// took. Each content it writes back or restores must have been parsed at
+// took, page.revert_too_large past the bound of its round's steps. Each content it writes back or restores must have been parsed at
 // the hash it writes now, else its page is changed. Then its round's
 // steps, each a unit's operation through the guards (page.locked for a
 // page under another's lock, or the caller's elsewhere), its write, the
@@ -59,6 +62,10 @@ func (u *Unit) Revert(ctx context.Context, r RevertRead) (RevertDone, error) {
 	reads := revertReads{history: u.w.d.History, trash: u.w.d.Trash, nodes: u.w.d.Nodes}
 	items, versions, err := reads.changeset(ctx, r.Changeset)
 	switch {
+	case errors.Is(err, ErrNotFound):
+		// Under the notebook's lock, its deletion waits: only the purge,
+		// which took what the changeset held, deletes the changeset.
+		return RevertDone{}, domain.ErrChangesetTrimmed
 	case err != nil:
 		return RevertDone{}, err
 	case len(items) > r.MaxItems:
@@ -69,8 +76,11 @@ func (u *Unit) Revert(ctx context.Context, r RevertRead) (RevertDone, error) {
 		return RevertDone{}, err
 	}
 	plan, err := planned(state)
-	if err != nil {
+	switch {
+	case err != nil:
 		return RevertDone{}, err
+	case plan.Steps() > r.MaxSteps:
+		return RevertDone{}, domain.ErrRevertTooLarge
 	}
 	if err := parsedAsPlanned(plan, state, r.Parsed); err != nil {
 		return RevertDone{}, err
@@ -174,8 +184,9 @@ func planned(state domain.RevertState) (domain.RevertPlan, error) {
 // parsedAsPlanned checks each content the plan writes back or restores
 // was parsed before the unit at the hash it writes now: a version
 // written back, a page's content in the trash. One that was not, or
-// differs, is a page changed between the two reads, a conflict; one of
-// the same bytes at another revision is none, its revision the unit's.
+// differs, is a page changed between the two reads, a conflict, listed
+// by node id; one of the same bytes at another revision is none, its
+// revision the unit's.
 func parsedAsPlanned(plan domain.RevertPlan, state domain.RevertState, parsed map[uuid.UUID]ParsedContent) error {
 	var changed []domain.RevertConflict
 	check := func(id uuid.UUID, name string, hash []byte) {
@@ -196,6 +207,8 @@ func parsedAsPlanned(plan domain.RevertPlan, state domain.RevertState, parsed ma
 		}
 	}
 	if len(changed) > 0 {
+		// All changed: in their order, by node id, as the plan's.
+		slices.SortFunc(changed, func(a, b domain.RevertConflict) int { return a.NodeID.Compare(b.NodeID) })
 		return domain.RevertConflicts(changed[:min(len(changed), domain.MaxConflicts)], len(changed))
 	}
 	return nil
@@ -210,9 +223,11 @@ type revertReads struct {
 }
 
 // changeset reads the changeset id's items and versions, then its row:
-// page.changeset_trimmed when the purge marked it, or took it, meanwhile.
-// The purge marks a changeset as it takes its rows: read after them, an
-// unmarked one had none taken before (M8/P3 design 3.3).
+// page.changeset_trimmed when the purge marked it meanwhile, ErrNotFound
+// when the row is gone, which its caller tells (the purge took it, or its
+// notebook was deleted). The purge marks a changeset as it takes its
+// rows: read after them, an unmarked one had none taken before (M8/P3
+// design 3.3).
 func (r revertReads) changeset(ctx context.Context, id uuid.UUID) ([]domain.ChangesetItem, []domain.ChangesetVersion, error) {
 	items, err := r.history.ChangesetItems(ctx, id)
 	if err != nil {
@@ -224,8 +239,6 @@ func (r revertReads) changeset(ctx context.Context, id uuid.UUID) ([]domain.Chan
 	}
 	c, err := r.history.FindChangeset(ctx, id)
 	switch {
-	case errors.Is(err, ErrNotFound):
-		return nil, nil, domain.ErrChangesetTrimmed
 	case err != nil:
 		return nil, nil, err
 	case c.Trimmed:

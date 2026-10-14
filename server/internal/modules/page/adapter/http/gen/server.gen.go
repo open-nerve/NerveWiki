@@ -304,7 +304,7 @@ type ChangesetRevert struct {
 	Message *string `json:"message,omitempty"`
 }
 
-// ChangesetReverted What a revert did: its changeset, null when every node was as it was before the changeset and nothing was written.
+// ChangesetReverted What a revert did: its changeset, null when the changeset, as it left its nodes, changed nothing (an edit session that wrote its bytes back) and nothing was written.
 type ChangesetReverted struct {
 	// Changed Whether the revert wrote anything.
 	Changed     bool                         `json:"changed"`

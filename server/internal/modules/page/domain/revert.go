@@ -38,6 +38,22 @@ const (
 // design 4.14): the first, with how many there are.
 const MaxConflicts = 100
 
+// MaxRevertSteps bounds a revert's round by its steps that are each a
+// unit's operation on the tree, its places, deletions and restores (M8/P3A
+// review C I-2): each reads and writes its node's subtree or its trash
+// item, so a changeset of many tops, a flat import's creation or the
+// revert of its revert, which restores as many trash items, takes its
+// time by their number, within the unit's nodes. Measured as MaxUnitNodes
+// is: BenchmarkRevertOfManyTops, on the same machine beside a load of 4 to
+// 16, in notebooks of 0 and 100,000 more nodes, at the three statistics.
+// The revert of 1,000, 2,000 and 3,000 pages' creations at the root took
+// 1.6-1.8, 2.9-3.8 and 4.2-5.8 s; of attachments' 1.2-1.8, 2.5-3.6 and
+// 3.3-5.3 s; the restore of as many trash items, the revert of that
+// revert, the costliest, 1.7-2.5 s, 3.5-7.7 s (once past the request's 15
+// s), 6.0-10.0 s, and of 1,500 2.6-4.8 s. The bound is the most steps
+// measured within 5 seconds, rounded down.
+const MaxRevertSteps = 1_500
+
 // RevertConflict is a node that keeps a revert from its changeset: its
 // name where the revert would put it (the name a title_taken contends
 // for), its name now when the revert would leave it nowhere; why; and the
@@ -104,6 +120,19 @@ type RevertPlan struct {
 	Count     int
 	Missing   []uuid.UUID
 	Ops       []RevertOp
+}
+
+// Steps is how many of the plan's steps MaxRevertSteps bounds: its
+// places, deletions and restores. A content's write is bounded as the
+// pages a unit parses are.
+func (p RevertPlan) Steps() int {
+	n := 0
+	for _, op := range p.Ops {
+		if op.Kind != RevertContent {
+			n++
+		}
+	}
+	return n
 }
 
 // RevertOpKind is what a step of a revert's round does.

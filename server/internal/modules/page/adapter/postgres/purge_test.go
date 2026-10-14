@@ -458,4 +458,16 @@ func TestThePurgeDeletesTheChangesetsItEmptied(t *testing.T) {
 	if got := f.count(t, "SELECT count(*) FROM changesets WHERE id = ANY($1)", []uuid.UUID{f.kept, empty.ID}); got != 2 {
 		t.Errorf("kept and the empty one untrimmed left: %d, want both", got)
 	}
+	// Trimmed, emptied, then deleted with its notebook within the
+	// retention: the notebook's purge takes it once past it, not the
+	// trimmed changesets' (M8/P3A review A-6).
+	late := app.Changeset{ID: uuid.NewV7(), NotebookID: f.ops, Kind: "edit", Client: domain.ClientWeb, By: f.alice, At: now()}
+	if err := f.s.CreateChangeset(ctx, late); err != nil {
+		t.Fatal(err)
+	}
+	f.exec(t, "UPDATE changesets SET trimmed = true, deleted_at = $2 WHERE id = $1", late.ID, cutoff().Add(time.Hour))
+	if n, err := f.s.PurgeChangesets(ctx, cutoff(), 100); err != nil || n != 0 ||
+		f.count(t, "SELECT count(*) FROM changesets WHERE id = $1", late.ID) != 1 {
+		t.Errorf("PurgeChangesets() = %d, %v; want a trimmed changeset of a notebook deleted within the retention kept", n, err)
+	}
 }

@@ -126,10 +126,12 @@ type Deps struct {
 	// Attachments shows an attachment in the trash: it must be there.
 	Attachments AttachmentInfos
 	// MaxUnitNodes and MaxUnitHistory bound the nodes of a trash item a
-	// request restores and the rows of their history: 0 is the domain's,
-	// domain.MaxUnitNodes and MaxUnitHistory, which only a measurement
-	// raises (M8/P2 design 3.11); production leaves them 0.
-	MaxUnitNodes, MaxUnitHistory int
+	// request restores or reverts, or of the changeset it reverts, and the
+	// rows of their history; MaxRevertSteps a revert's places, deletions
+	// and restores: 0 is the domain's, domain.MaxUnitNodes, MaxUnitHistory
+	// and MaxRevertSteps, which only a measurement raises (M8/P2 design
+	// 3.11, M8/P3 design 3.11); production leaves them 0.
+	MaxUnitNodes, MaxUnitHistory, MaxRevertSteps int
 }
 
 // Module is the wired page module.
@@ -187,7 +189,7 @@ func New(d Deps) *Module {
 		GetChangeset:    app.NewGetChangeset(history),
 		ListChanges:     app.NewListChanges(history),
 		RevertChangeset: app.NewRevertChangeset(trash, store, writer, parser,
-			app.RevertBounds{Nodes: d.MaxUnitNodes, History: d.MaxUnitHistory}, d.Logger),
+			app.RevertBounds{Nodes: d.MaxUnitNodes, History: d.MaxUnitHistory, Steps: d.MaxRevertSteps}, d.Logger),
 	}, jobs: []jobs.Job{
 		riveradapter.CleanupJob(app.NewCleanupEditSessions(store, d.Clock, d.Logger), d.EditSessionCleanupInterval),
 	}, assets: app.NewAssetWrites(writer, store), imports: app.NewImportWrites(writer, parser, md)}

@@ -18,7 +18,12 @@ import (
 // revert runs revertChangeset on id as alice from the web, with message,
 // of maxItems (0: the domain's), the trash read at now.
 func (f *fixture) revert(id uuid.UUID, message *string, maxItems int) (app.ChangesetReverted, error) {
-	return app.NewRevertChangeset(f.trashReads(now()), f.log, f.writer(), f.parser(), app.RevertBounds{Nodes: maxItems}, f.logger()).
+	return f.revertWithin(id, message, app.RevertBounds{Nodes: maxItems})
+}
+
+// revertWithin is revert within bounds.
+func (f *fixture) revertWithin(id uuid.UUID, message *string, bounds app.RevertBounds) (app.ChangesetReverted, error) {
+	return app.NewRevertChangeset(f.trashReads(now()), f.log, f.writer(), f.parser(), bounds, f.logger()).
 		Execute(f.asAlice(), id, message, domain.ClientWeb)
 }
 
@@ -99,6 +104,15 @@ func newRevertFixture() revertFixture {
 	return f
 }
 
+// twoSteps adds to C the creation of a page Fresh at the root: its revert
+// restores Box and deletes Fresh, two steps of its round.
+func (f revertFixture) twoSteps() {
+	fresh := f.page("Fresh", nil, 7)
+	f.content(fresh.ID, "fresh", 1)
+	f.c.items = append(f.c.items, domain.ChangesetItem{NodeID: fresh.ID, After: new(fresh.State()), Revision: 1})
+	f.c.versions = append(f.c.versions, f.log.version(fresh.ID, 0, 1, "fresh"))
+}
+
 // trashedContent gives the trashed page id the content text, at its
 // revision, which its version holds.
 func (f revertFixture) trashedContent(id uuid.UUID, text string) {
@@ -168,7 +182,7 @@ func TestRevertChangesetRestoresADeletion(t *testing.T) {
 	}
 	logs := f.logs.String()
 	for _, part := range []string{"changeset reverted", "restored=1", "placed=0", "deleted=0", "written=0", f.c.ID.String(),
-		cs[0].ID.String(), f.eng.String(), "client=web"} {
+		cs[0].ID.String(), f.eng.String(), "client=web", "workspace_id=" + f.acme.String(), "user_id=" + f.alice.String()} {
 		if !strings.Contains(logs, part) || strings.Contains(logs, "Doc") {
 			t.Errorf("log %q, want %s and no name", logs, part)
 		}
@@ -264,12 +278,14 @@ func TestRevertChangesetPutsEachChangeBack(t *testing.T) {
 
 // The codes come in M8/P3 design 3.6's order: the message; the changeset
 // and the decision; its mark; its items' count; its mark again, read
-// after its items; then the trash items it deleted, read only past their
-// roots' check, the bounds of what it parses and restores; the conflicts
-// and the versions or contents the purge took, before the parse's
-// server_busy; the links past it; then under the lock its mark, its
-// items' count, its conflicts, a version the purge took, a page parsed at
-// another hash, the restore's rows and the guards.
+// after its items, or the changeset gone meanwhile, purged, or with its
+// notebook; then the trash items it deleted, read only past their roots'
+// check, the bounds of what it parses and restores; the conflicts, the
+// versions the purge took and the round's steps, then the contents the
+// purge took, before the parse's server_busy; the links past it; then
+// under the lock its mark, the changeset purged, its items' count, its
+// conflicts, a version the purge took, its steps, a page parsed at another
+// hash, the restore's rows and the guards.
 func TestRevertChangesetAnswersItsCodesInOrder(t *testing.T) {
 	links := strings.Repeat("[[x]]", domain.MaxUnitLinks/2+1)
 	empty, bad := "", "a\x00b"
@@ -278,118 +294,150 @@ func TestRevertChangesetAnswersItsCodesInOrder(t *testing.T) {
 		setup    func(f revertFixture) uuid.UUID
 		message  *string
 		maxItems int
+		maxSteps int
 		want     string
 	}{
-		{"an empty message, of no changeset", func(f revertFixture) uuid.UUID { return uuid.NewV7() }, &empty, 0,
+		{"an empty message, of no changeset", func(f revertFixture) uuid.UUID { return uuid.NewV7() }, &empty, 0, 0,
 			shared.CodeValidationFailed + " message"},
-		{"a message with a NUL", func(f revertFixture) uuid.UUID { return f.c.ID }, &bad, 0, shared.CodeValidationFailed + " message"},
-		{"none", func(f revertFixture) uuid.UUID { return uuid.NewV7() }, nil, 0, "page.changeset_not_found"},
+		{"a message with a NUL", func(f revertFixture) uuid.UUID { return f.c.ID }, &bad, 0, 0, shared.CodeValidationFailed + " message"},
+		{"none", func(f revertFixture) uuid.UUID { return uuid.NewV7() }, nil, 0, 0, "page.changeset_not_found"},
 		{"of a deleted notebook", func(f revertFixture) uuid.UUID {
 			f.c.gone = true
 			return f.c.ID
-		}, nil, 0, "page.changeset_not_found"},
+		}, nil, 0, 0, "page.changeset_not_found"},
 		{"of a notebook gone from its workspace", func(f revertFixture) uuid.UUID {
 			delete(f.notebooks.workspaces, f.eng)
 			return f.c.ID
-		}, nil, 0, "page.changeset_not_found"},
+		}, nil, 0, 0, "page.changeset_not_found"},
 		{"no role", func(f revertFixture) uuid.UUID {
 			delete(f.auth.grants, domain.ActionRevert)
 			return f.c.ID
-		}, nil, 0, "page.changeset_not_found"},
+		}, nil, 0, 0, "page.changeset_not_found"},
 		{"a reader, of a trimmed changeset", func(f revertFixture) uuid.UUID {
 			delete(f.auth.grants, domain.ActionRevert)
 			f.auth.forbidden[domain.ActionRevert] = true
 			f.c.Trimmed = true
 			return f.c.ID
-		}, nil, 0, "forbidden"},
+		}, nil, 0, 0, "forbidden"},
 		{"trimmed, past the items", func(f revertFixture) uuid.UUID {
 			f.c.Trimmed = true
 			return f.c.ID
-		}, nil, 1, "page.changeset_trimmed"},
-		{"past the items", func(f revertFixture) uuid.UUID { return f.c.ID }, nil, 2, "page.revert_too_large"},
-		{"at the items", func(f revertFixture) uuid.UUID { return f.c.ID }, nil, 3, ""},
+		}, nil, 1, 0, "page.changeset_trimmed"},
+		{"past the items", func(f revertFixture) uuid.UUID { return f.c.ID }, nil, 2, 0, "page.revert_too_large"},
+		{"at the items", func(f revertFixture) uuid.UUID { return f.c.ID }, nil, 3, 0, ""},
 		{"trimmed between its items and its mark", func(f revertFixture) uuid.UUID {
 			f.rec.before = map[string]func(){"ChangesetVersions": func() {
 				f.c.items, f.c.Trimmed = f.c.items[:1], true
 			}}
 			return f.c.ID
-		}, nil, 0, "page.changeset_trimmed"},
+		}, nil, 0, 0, "page.changeset_trimmed"},
+		{"purged between its items and its row", func(f revertFixture) uuid.UUID {
+			f.rec.before = map[string]func(){"ChangesetVersions": func() { f.c.gone = true }}
+			return f.c.ID
+		}, nil, 0, 0, "page.changeset_trimmed"},
+		{"its notebook deleted between its items and its row", func(f revertFixture) uuid.UUID {
+			f.rec.before = map[string]func(){"ChangesetVersions": func() {
+				f.c.gone = true
+				delete(f.notebooks.workspaces, f.eng)
+			}}
+			return f.c.ID
+		}, nil, 0, 0, "page.changeset_not_found"},
 		{"its root no longer its group's, past the history", func(f revertFixture) uuid.UUID {
 			f.store.counts[f.box.ID] = [3]int{3, 1, 2}
 			f.store.history = map[uuid.UUID]int{f.doc.ID: domain.MaxUnitHistory + 1}
 			return f.c.ID
-		}, nil, 0, "page.revert_conflict"},
+		}, nil, 0, 0, "page.revert_conflict"},
 		{"past the pages", func(f revertFixture) uuid.UUID {
 			box := f.page("Many", nil, 4)
 			for i := range domain.MaxUnitPages {
 				f.page(fmt.Sprintf("Page %d", i), &box.ID, float64(i))
 			}
 			return f.deletion(box.ID, now().Add(-time.Minute)).ID
-		}, nil, 0, "page.revert_too_large"},
+		}, nil, 0, 0, "page.revert_too_large"},
 		{"at the pages", func(f revertFixture) uuid.UUID {
 			box := f.page("Many", nil, 4)
 			for i := range domain.MaxUnitPages - 1 {
 				f.page(fmt.Sprintf("Page %d", i), &box.ID, float64(i))
 			}
 			return f.deletion(box.ID, now().Add(-time.Minute)).ID
-		}, nil, 0, ""},
+		}, nil, 0, 0, ""},
 		{"past the history", func(f revertFixture) uuid.UUID {
 			f.store.history = map[uuid.UUID]int{f.doc.ID: 1, f.scan.ID: domain.MaxUnitHistory}
 			return f.c.ID
-		}, nil, 0, "page.revert_too_large"},
+		}, nil, 0, 0, "page.revert_too_large"},
 		{"at the history", func(f revertFixture) uuid.UUID {
 			f.store.history = map[uuid.UUID]int{f.doc.ID: 1, f.scan.ID: domain.MaxUnitHistory - 1}
 			return f.c.ID
-		}, nil, 0, ""},
+		}, nil, 0, 0, ""},
 		{"past the bytes, a conflict", func(f revertFixture) uuid.UUID {
 			f.trashedContent(f.doc.ID, strings.Repeat("a", domain.MaxUnitBytes))
 			f.trashedContent(f.box.ID, "b")
 			f.store.nodes[f.other.ID] = domain.Node{ID: f.other.ID, NotebookID: f.eng, Kind: domain.KindPage, Name: "box", NameKey: "box"}
 			return f.c.ID
-		}, nil, 0, "page.revert_too_large"},
+		}, nil, 0, 0, "page.revert_too_large"},
 		{"a conflict, the budget busy", func(f revertFixture) uuid.UUID {
 			f.budget.err = shared.ServerBusy(time.Second)
 			f.store.nodes[f.other.ID] = domain.Node{ID: f.other.ID, NotebookID: f.eng, Kind: domain.KindPage, Name: "box", NameKey: "box"}
 			return f.c.ID
-		}, nil, 0, "page.revert_conflict"},
+		}, nil, 0, 0, "page.revert_conflict"},
 		{"a version the purge took, the budget busy", func(f revertFixture) uuid.UUID {
 			f.budget.err = shared.ServerBusy(time.Second)
 			delete(f.log.versions, domain.VersionRef{NodeID: f.doc.ID, Revision: 3})
 			return f.c.ID
-		}, nil, 0, "page.changeset_trimmed"},
+		}, nil, 0, 0, "page.changeset_trimmed"},
 		{"a content the purge took, the budget busy", func(f revertFixture) uuid.UUID {
 			f.budget.err = shared.ServerBusy(time.Second)
 			f.store.lost = map[uuid.UUID]bool{f.doc.ID: true}
 			return f.c.ID
-		}, nil, 0, "page.changeset_trimmed"},
+		}, nil, 0, 0, "page.changeset_trimmed"},
 		{"its root's group gone before it is read", func(f revertFixture) uuid.UUID {
 			f.rec.before = map[string]func(){"TrashGroup": func() { delete(f.store.trash, f.box.ID) }}
 			return f.c.ID
-		}, nil, 0, "page.revert_conflict"},
+		}, nil, 0, 0, "page.revert_conflict"},
 		{"a version to write back the purge took between its hash and its content", func(f revertFixture) uuid.UUID {
 			c := f.writing(f.other.ID, "two")
 			f.rec.before = map[string]func(){"VersionContents 1": func() {
 				delete(f.log.versions, domain.VersionRef{NodeID: f.other.ID, Revision: 1})
 			}}
 			return c.ID
-		}, nil, 0, "page.changeset_trimmed"},
+		}, nil, 0, 0, "page.changeset_trimmed"},
 		{"a version to write back the purge took, the budget busy", func(f revertFixture) uuid.UUID {
 			f.budget.err = shared.ServerBusy(time.Second)
 			c := f.writing(f.other.ID, "two")
 			delete(f.log.versions, domain.VersionRef{NodeID: f.other.ID, Revision: 1})
 			return c.ID
-		}, nil, 0, "page.changeset_trimmed"},
+		}, nil, 0, 0, "page.changeset_trimmed"},
+		{"a conflict, past the steps", func(f revertFixture) uuid.UUID {
+			f.twoSteps()
+			f.store.nodes[f.other.ID] = domain.Node{ID: f.other.ID, NotebookID: f.eng, Kind: domain.KindPage, Name: "box", NameKey: "box"}
+			return f.c.ID
+		}, nil, 0, 1, "page.revert_conflict"},
+		{"a version the purge took, past the steps", func(f revertFixture) uuid.UUID {
+			f.twoSteps()
+			delete(f.log.versions, domain.VersionRef{NodeID: f.doc.ID, Revision: 3})
+			return f.c.ID
+		}, nil, 0, 1, "page.changeset_trimmed"},
+		{"past the steps, a content the purge took, the budget busy", func(f revertFixture) uuid.UUID {
+			f.twoSteps()
+			f.budget.err = shared.ServerBusy(time.Second)
+			f.store.lost = map[uuid.UUID]bool{f.doc.ID: true}
+			return f.c.ID
+		}, nil, 0, 1, "page.revert_too_large"},
+		{"at the steps", func(f revertFixture) uuid.UUID {
+			f.twoSteps()
+			return f.c.ID
+		}, nil, 0, 2, ""},
 		{"the budget busy, past the links", func(f revertFixture) uuid.UUID {
 			f.budget.err = shared.ServerBusy(time.Second)
 			f.trashedContent(f.doc.ID, links)
 			f.trashedContent(f.box.ID, links)
 			return f.c.ID
-		}, nil, 0, "server_busy"},
+		}, nil, 0, 0, "server_busy"},
 		{"past the links", func(f revertFixture) uuid.UUID {
 			f.trashedContent(f.doc.ID, links)
 			f.trashedContent(f.box.ID, links)
 			return f.c.ID
-		}, nil, 0, "page.revert_too_large"},
+		}, nil, 0, 0, "page.revert_too_large"},
 		{"a round out of order", func(f revertFixture) uuid.UUID {
 			a, b := f.page("A", nil, 5), f.page("B", nil, 6)
 			sa, sb := a.State(), b.State()
@@ -397,31 +445,42 @@ func TestRevertChangesetAnswersItsCodesInOrder(t *testing.T) {
 			f.store.nodes[a.ID], f.store.nodes[b.ID] = a, b
 			return f.log.changeset(domain.ChangesetEdit, f.alice, now(), []domain.ChangesetItem{
 				{NodeID: a.ID, Before: &sa, After: new(a.State())}, {NodeID: b.ID, Before: &sb, After: new(b.State())}}).ID
-		}, nil, 0, domain.ErrRevertUnordered.Error()},
+		}, nil, 0, 0, domain.ErrRevertUnordered.Error()},
 		{"trimmed meanwhile", func(f revertFixture) uuid.UUID {
 			f.notebooks.waited = func() { f.c.Trimmed = true }
 			return f.c.ID
-		}, nil, 0, "page.changeset_trimmed"},
+		}, nil, 0, 0, "page.changeset_trimmed"},
+		{"purged meanwhile", func(f revertFixture) uuid.UUID {
+			f.notebooks.waited = func() { f.c.gone = true }
+			return f.c.ID
+		}, nil, 0, 0, "page.changeset_trimmed"},
 		{"merged into past the items meanwhile", func(f revertFixture) uuid.UUID {
 			f.notebooks.waited = func() {
 				f.c.items = append(f.c.items, domain.ChangesetItem{NodeID: f.other.ID, After: new(f.other.State()), Revision: 1})
 			}
 			return f.c.ID
-		}, nil, 3, "page.revert_too_large"},
+		}, nil, 3, 0, "page.revert_too_large"},
 		{"a conflict meanwhile", func(f revertFixture) uuid.UUID {
 			f.notebooks.waited = func() {
 				f.store.nodes[f.other.ID] = domain.Node{ID: f.other.ID, NotebookID: f.eng, Kind: domain.KindPage, Name: "BOX", NameKey: "box"}
 			}
 			return f.c.ID
-		}, nil, 0, "page.revert_conflict"},
+		}, nil, 0, 0, "page.revert_conflict"},
 		{"expired while it waited", func(f revertFixture) uuid.UUID {
 			f.clock.reads = int((retention - 2*time.Hour) / time.Microsecond)
 			return f.c.ID
-		}, nil, 0, "page.revert_conflict"},
+		}, nil, 0, 0, "page.revert_conflict"},
 		{"a version the purge took meanwhile", func(f revertFixture) uuid.UUID {
 			f.notebooks.waited = func() { delete(f.log.versions, domain.VersionRef{NodeID: f.doc.ID, Revision: 3}) }
 			return f.c.ID
-		}, nil, 0, "page.changeset_trimmed"},
+		}, nil, 0, 0, "page.changeset_trimmed"},
+		{"merged into past the steps meanwhile, a page in the trash at other bytes", func(f revertFixture) uuid.UUID {
+			f.notebooks.waited = func() {
+				f.twoSteps()
+				f.trashedContent(f.doc.ID, "# Doc, other bytes")
+			}
+			return f.c.ID
+		}, nil, 0, 1, "page.revert_too_large"},
 		{"a page merged in meanwhile, not parsed", func(f revertFixture) uuid.UUID {
 			f.notebooks.waited = func() {
 				f.log.versions[domain.VersionRef{NodeID: f.other.ID, Revision: 1}] = ""
@@ -429,24 +488,24 @@ func TestRevertChangesetAnswersItsCodesInOrder(t *testing.T) {
 				f.c.versions = append(f.c.versions, f.log.version(f.other.ID, 1, 2, "x"))
 			}
 			return f.c.ID
-		}, nil, 0, "page.revert_conflict"},
+		}, nil, 0, 0, "page.revert_conflict"},
 		{"a page in the trash at other bytes meanwhile", func(f revertFixture) uuid.UUID {
 			f.notebooks.waited = func() { f.trashedContent(f.doc.ID, "# Doc, other bytes") }
 			return f.c.ID
-		}, nil, 0, "page.revert_conflict"},
+		}, nil, 0, 0, "page.revert_conflict"},
 		{"a restore's rows the purge took meanwhile", func(f revertFixture) uuid.UUID {
 			f.store.rows = &app.RestoredRows{Nodes: 2, Contents: 2, CurrentVersions: 2, Creations: 2}
 			return f.c.ID
-		}, nil, 0, "page.changeset_trimmed"},
+		}, nil, 0, 0, "page.changeset_trimmed"},
 		{"the guard", func(f revertFixture) uuid.UUID {
 			f.guards = []app.WriteGuard{&guard{recorder: f.rec, err: domain.ErrLocked}}
 			return f.c.ID
-		}, nil, 0, "page.locked"},
+		}, nil, 0, 0, "page.locked"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			f := newRevertFixture()
 			id := tt.setup(f)
-			_, err := f.revert(id, tt.message, tt.maxItems)
+			_, err := f.revertWithin(id, tt.message, app.RevertBounds{Nodes: tt.maxItems, Steps: tt.maxSteps})
 			if got := codeOf(err); got != tt.want {
 				t.Errorf("revertChangeset = %q, want %q", got, tt.want)
 			}
@@ -505,23 +564,33 @@ func TestRevertChangesetRestoresAtTheRevisionItReads(t *testing.T) {
 	}
 }
 
-// A title taken in a place's write, or a revision moved in a content's,
-// which the plan found free and in place, is a defect: unclassified, no
-// conflict of the revert's contract.
+// A title taken in a place's write, its move's or its rename's, or a
+// revision moved in a content's, which the plan found free and in place,
+// is a defect: unclassified, no conflict of the revert's contract.
 func TestRevertChangesetsDefectsAreUnclassified(t *testing.T) {
 	for _, tt := range []struct {
 		call string
 		err  error
 	}{
 		{"RenameNode", domain.ErrTitleTaken},
+		{"MoveNode", domain.ErrTitleTaken},
 		{"WriteContent", domain.ErrRevisionMismatch},
 	} {
 		f := newFixture()
 		f.grant(domain.ActionRevert)
 		p := f.page("Old", nil, 0)
 		c := f.renaming(p.ID, "New")
-		if tt.call == "WriteContent" {
+		switch tt.call {
+		case "WriteContent":
 			c = f.writing(p.ID, "two")
+		case "MoveNode":
+			box := f.page("Box", nil, 1)
+			n := f.store.nodes[p.ID]
+			before := n.State()
+			n.ParentID = &box.ID
+			f.store.nodes[p.ID] = n
+			c = f.log.changeset(domain.ChangesetEdit, f.alice, now(), []domain.ChangesetItem{{NodeID: p.ID, Before: &before,
+				After: new(n.State())}})
 		}
 		f.store.errs = map[string]error{tt.call: tt.err}
 		_, err := f.revert(c.ID, nil, 0)
@@ -529,5 +598,32 @@ func TestRevertChangesetsDefectsAreUnclassified(t *testing.T) {
 		if err == nil || errors.As(err, &e) || !strings.Contains(err.Error(), tt.err.Error()) {
 			t.Errorf("%s answering %v: the revert = %v; want it unclassified", tt.call, tt.err, err)
 		}
+	}
+}
+
+// Under the lock, the pages parsed at another hash than the trash holds
+// now are conflicts in their order, by node id, not the group's: Early,
+// created first, moved under Box before Box's deletion, comes first.
+func TestRevertChangesetsLockedConflictsComeByNodeID(t *testing.T) {
+	f := newFixture()
+	f.grant(domain.ActionRevert)
+	early := f.page("Early", nil, 0)
+	box := f.page("Box", nil, 1)
+	n := f.store.nodes[early.ID]
+	n.ParentID = &box.ID
+	f.store.nodes[early.ID] = n
+	f.content(early.ID, "early", 1)
+	f.content(box.ID, "box", 1)
+	rf := revertFixture{fixture: f, box: box}
+	c := f.deletion(box.ID, now().Add(-time.Hour))
+	f.notebooks.waited = func() {
+		rf.trashedContent(box.ID, "box, other bytes")
+		rf.trashedContent(early.ID, "early, other bytes")
+	}
+	_, err := f.revert(c.ID, nil, 0)
+	var e *shared.Error
+	if !errors.As(err, &e) || e.Code != "page.revert_conflict" || len(e.Conflicts) != 2 || e.Conflicts[0].NodeID != early.ID ||
+		e.Conflicts[1].NodeID != box.ID {
+		t.Errorf("revert = %v, %+v; want Early, then Box, changed", err, e)
 	}
 }

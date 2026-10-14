@@ -13,11 +13,11 @@ import (
 
 // RevertBounds bound a changeset one unit reverts beyond the pages, bytes
 // and links any unit parses, as RestoreBounds bound a restore: its items,
-// and the rows of history of the trash items it restores. Zero is the
-// domain's, MaxUnitNodes and MaxUnitHistory; only a measurement changes
-// them.
+// the rows of history of the trash items it restores, and its round's
+// places, deletions and restores. Zero is the domain's, MaxUnitNodes,
+// MaxUnitHistory and MaxRevertSteps; only a measurement changes them.
 type RevertBounds struct {
-	Nodes, History int
+	Nodes, History, Steps int
 }
 
 // ChangesetReverted is what a revert did: its changeset, zero when it
@@ -46,6 +46,7 @@ func NewRevertChangeset(reads TrashReads, history History, writer *Writer, parse
 ) *RevertChangeset {
 	bounds.Nodes = cmp.Or(bounds.Nodes, domain.MaxUnitNodes)
 	bounds.History = cmp.Or(bounds.History, domain.MaxUnitHistory)
+	bounds.Steps = cmp.Or(bounds.Steps, domain.MaxRevertSteps)
 	return &RevertChangeset{reads: reads, history: history, writer: writer, parser: parser, bounds: bounds, logger: logger}
 }
 
@@ -58,17 +59,20 @@ func NewRevertChangeset(reads TrashReads, history History, writer *Writer, parse
 // one the purge marked page.changeset_trimmed; one of more items than the
 // unit's bound page.revert_too_large, before they are read; then its
 // items and versions, and its row again, page.changeset_trimmed when the
-// purge marked it meanwhile; then the trash items it deleted, each read
-// only when its root passes the check, and page.revert_too_large past the
-// pages and bytes it parses (a lone page never is) or the rows of their
-// history; then the state, planned once before parsing:
-// page.revert_conflict, then page.changeset_trimmed for a version, or a
-// content to write back or restore, the purge took; then the contents
-// parsed, largest first, server_busy when their waits run out, and
-// page.revert_too_large past the unit's links, known only once they are;
-// then the unit, which reads and plans again under the lock
-// (Unit.Revert): page.changeset_trimmed, page.revert_too_large,
-// page.revert_conflict, then the guards' page.locked. A restore's rows
+// purge marked or took it meanwhile, page.changeset_not_found when its
+// notebook went meanwhile, or the caller's role; then the trash items it
+// deleted, each read only when its root passes the check, and
+// page.revert_too_large past the pages and bytes it parses (a lone page
+// never is) or the rows of their history; then the state, planned once
+// before parsing: page.revert_conflict, then page.changeset_trimmed for a
+// version the purge took, then page.revert_too_large past the round's
+// steps; then page.changeset_trimmed for a content to write back or
+// restore the purge took; then the contents parsed, largest first,
+// server_busy when their waits run out, and page.revert_too_large past
+// the unit's links, known only once they are; then the unit, which reads
+// and plans again under the lock (Unit.Revert): page.changeset_trimmed,
+// page.revert_too_large, page.revert_conflict, page.changeset_trimmed,
+// page.revert_too_large, then the guards' page.locked. A restore's rows
 // the purge took meanwhile, page.trash_changed in the unit, is
 // page.changeset_trimmed here: the purge trimmed the changeset. Nothing
 // to change writes nothing: no changeset, changed false.
@@ -99,6 +103,15 @@ func (r *RevertChangeset) Execute(ctx context.Context, id uuid.UUID, message *st
 	}
 	reads := revertReads{history: r.history, trash: r.reads.Trash, nodes: r.reads.Nodes}
 	items, versions, err := reads.changeset(ctx, c.ID)
+	if errors.Is(err, ErrNotFound) {
+		// Gone since it was found: its notebook deleted, or the caller's
+		// role ended, answers as the first read would (M8/P3A review B F2);
+		// else the purge took it.
+		if err := r.writer.Allowed(ctx, spec); err != nil {
+			return ChangesetReverted{}, err
+		}
+		err = domain.ErrChangesetTrimmed
+	}
 	if err != nil {
 		return ChangesetReverted{}, err
 	}
@@ -115,8 +128,11 @@ func (r *RevertChangeset) Execute(ctx context.Context, id uuid.UUID, message *st
 		return ChangesetReverted{}, err
 	}
 	plan, err := planned(state)
-	if err != nil {
+	switch {
+	case err != nil:
 		return ChangesetReverted{}, err
+	case plan.Steps() > r.bounds.Steps:
+		return ChangesetReverted{}, domain.ErrRevertTooLarge
 	}
 	contents, err := r.contents(ctx, plan)
 	if err != nil {
@@ -128,7 +144,7 @@ func (r *RevertChangeset) Execute(ctx context.Context, id uuid.UUID, message *st
 	}
 	defer release()
 	read := RevertRead{Changeset: c.ID, Parsed: make(map[uuid.UUID]ParsedContent, len(contents)), Retention: r.reads.Retention,
-		MaxItems: r.bounds.Nodes}
+		MaxItems: r.bounds.Nodes, MaxSteps: r.bounds.Steps}
 	for page, content := range contents {
 		sum := sha256.Sum256([]byte(content))
 		read.Parsed[page] = ParsedContent{Hash: sum[:], Content: content, Facts: facts[page]}
@@ -147,7 +163,8 @@ func (r *RevertChangeset) Execute(ctx context.Context, id uuid.UUID, message *st
 	case outcome.ChangesetID == uuid.UUID{}:
 		return ChangesetReverted{}, nil
 	}
-	r.logger.InfoContext(ctx, "changeset reverted", slog.String("changeset_id", outcome.ChangesetID.String()),
+	r.logger.InfoContext(ctx, "changeset reverted", slog.String("workspace_id", outcome.WorkspaceID.String()),
+		slog.String("user_id", outcome.By.String()), slog.String("changeset_id", outcome.ChangesetID.String()),
 		slog.String("reverted_id", c.ID.String()), slog.String("notebook_id", c.NotebookID.String()), slog.Int("placed", done.Placed),
 		slog.Int("deleted", done.Deleted), slog.Int("restored", done.Restored), slog.Int("written", done.Written),
 		slog.String("client", string(client)))
