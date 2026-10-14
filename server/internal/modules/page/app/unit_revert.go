@@ -652,7 +652,12 @@ func (u *Unit) continuation(ctx context.Context, r RevertPart, conts []revertSte
 			return restoring{}, err
 		}
 		for _, ref := range refs {
-			out.contents = append(out.contents, writtenContent{id: ref.NodeID, name: out.states[ref.NodeID].Name, hash: hashes[ref]})
+			hash, ok := hashes[ref]
+			if !ok {
+				// The purge took the version it restores, as planned's.
+				return restoring{}, domain.ErrChangesetTrimmed
+			}
+			out.contents = append(out.contents, writtenContent{id: ref.NodeID, name: out.states[ref.NodeID].Name, hash: hash})
 		}
 	}
 	return out, nil

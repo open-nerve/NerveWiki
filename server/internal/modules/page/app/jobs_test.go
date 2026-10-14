@@ -206,6 +206,20 @@ func TestARestoreJobsBatchChecksUnderTheLock(t *testing.T) {
 		{name: "the item restored before the first", before: func(f boxFixture) {
 			f.restoredMeanwhile(f.box.ID)
 		}, code: "page.trash_changed"},
+		{name: "the root's counts not the plan's", before: func(f boxFixture) {
+			c := f.store.counts[f.box.ID]
+			c[0]++
+			f.store.counts[f.box.ID] = c
+		}, code: "page.trash_changed"},
+		{name: "a node the first leaves an item already", before: func(f boxFixture) {
+			n := f.store.trash[f.b.ID]
+			n.TrashRoot = true
+			f.store.trash[f.b.ID], f.store.counts[f.b.ID] = n, [3]int{1, 0, 1}
+		}, code: "page.trash_changed", check: func(t *testing.T, f boxFixture, done []app.BatchDone) {
+			if len(done) != 0 {
+				t.Errorf("batches %+v written, want the first refused", done)
+			}
+		}},
 		{name: "a frontier member no item", between: func(f boxFixture) {
 			n := f.store.trash[f.b.ID]
 			n.TrashRoot = false
@@ -244,6 +258,31 @@ func TestARestoreJobsBatchChecksUnderTheLock(t *testing.T) {
 				tt.check(t, f, done)
 			}
 		})
+	}
+}
+
+// An item of its root alone, restored by someone before the first batch,
+// is no longer the item the job restores: page.trash_changed, not a
+// member skipped. A plan whose group is not the one its root counts is
+// page.trash_changed too.
+func TestARestoreJobsItemChangedBeforeItsFirstBatch(t *testing.T) {
+	f := newBoxFixture()
+	lone := f.page("Lone", nil, 5)
+	f.trashed(lone.ID, f.at, f.alice)
+	w, spec := f.jobs(now(), 0, 0), f.jobSpec()
+	plan, err := w.PlanRestore(f.asJob(), spec, lone.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.restoredMeanwhile(lone.ID)
+	if _, err := w.RunBatch(f.asJob(), spec, plan, 0, 1); codeOf(err) != "page.trash_changed" {
+		t.Errorf("RunBatch(the item restored meanwhile) = %v, want page.trash_changed", err)
+	}
+	c := f.store.counts[f.box.ID]
+	c[1]++
+	f.store.counts[f.box.ID] = c
+	if _, err := w.PlanRestore(f.asJob(), spec, f.box.ID); codeOf(err) != "page.trash_changed" {
+		t.Errorf("PlanRestore(counts of another group) = %v, want page.trash_changed", err)
 	}
 }
 
@@ -567,7 +606,8 @@ func TestARevertJobsBatchPlansItsOwnNodes(t *testing.T) {
 // A batch's write refused by the edit lock stops it as it is, page.locked
 // naming the holder; a title taken in its place, which its plan found
 // free, is a defect, no problem of the API; the restore's rows the purge
-// took, page.trash_changed in the unit, is page.changeset_trimmed.
+// took, page.trash_changed in the unit, is page.changeset_trimmed, as a
+// later member's version the purge took between two batches.
 func TestARevertJobsBatchErrors(t *testing.T) {
 	f := newFixture()
 	f.grant(domain.ActionRevert)
@@ -594,12 +634,35 @@ func TestARevertJobsBatchErrors(t *testing.T) {
 	if _, err := w.RunBatch(g.asJob(), spec, plan, 0, 1); err == nil || errors.As(err, &e) {
 		t.Errorf("RunBatch(a title taken in its place) = %v, want a defect, unclassified", err)
 	}
+	h := newFixture()
+	h.grant(domain.ActionRevert)
+	q := h.page("Q", nil, 0)
+	h.content(q.ID, "before", 2)
+	c = h.writing(q.ID, "after")
+	w, spec, plan = h.revertJob(t, c.ID, nil, now())
+	h.store.errs = map[string]error{"WriteContent": domain.ErrRevisionMismatch}
+	if _, err := w.RunBatch(h.asJob(), spec, plan, 0, 1); err == nil || errors.As(err, &e) {
+		t.Errorf("RunBatch(a revision written meanwhile) = %v, want a defect, unclassified", err)
+	}
 
 	r := newRevertFixture()
 	w, spec, plan = r.revertJob(t, r.c.ID, nil, now())
 	r.store.rows = &app.RestoredRows{}
 	if _, err := w.RunBatch(r.asJob(), spec, plan, 0, 1); codeOf(err) != "page.changeset_trimmed" {
 		t.Errorf("RunBatch(rows the purge took) = %v, want page.changeset_trimmed", err)
+	}
+	v := newRevertFixture()
+	w, spec, plan = v.revertJob(t, v.c.ID, nil, now())
+	if _, err := w.RunBatch(v.asJob(), spec, plan, 0, 1); err != nil {
+		t.Fatal(err)
+	}
+	for ref := range v.log.versions {
+		if ref.NodeID == v.doc.ID {
+			delete(v.log.versions, ref)
+		}
+	}
+	if _, err := w.RunBatch(v.asJob(), spec, plan, 1, 3); codeOf(err) != "page.changeset_trimmed" {
+		t.Errorf("RunBatch(Doc's version purged after the first batch) = %v, want page.changeset_trimmed", err)
 	}
 }
 
@@ -729,5 +792,11 @@ func TestCheckRevertRefusesTheLockedPages(t *testing.T) {
 	if err := check(created.ID); !errors.As(err, &e) || e.Code != "page.locked" || e.Lock.PageID != folder.ID ||
 		e.Lock.DisplayName != "Bob" {
 		t.Errorf("CheckRevert(a deletion Bob edits) = %v, want page.locked of Folder, the first, by Bob", err)
+	}
+	// The job's plan checks the locks again: one taken since the start
+	// stops it, nothing written.
+	if _, err := f.jobs(now(), 0, 0).PlanRevert(f.asJob(), f.jobSpec(), created.ID); !errors.As(err, &e) || e.Code != "page.locked" ||
+		e.Lock.PageID != folder.ID {
+		t.Errorf("PlanRevert(a deletion Bob edits) = %v, want page.locked of Folder", err)
 	}
 }
