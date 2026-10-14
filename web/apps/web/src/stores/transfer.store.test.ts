@@ -359,7 +359,8 @@ test("startedJob reads the list again and finds the account's job of the kind on
     mine(3, { kind: "revert", target_changeset_id: "c3", created_by: bob }),
     job(4, { kind: "revert", target_changeset_id: "c3", created_at: "2026-10-06T07:59:59Z" }),
     mine(5, { kind: "revert", target_changeset_id: "c3", created_at: "2026-10-06T08:00:00Z" }),
-    mine(6, { kind: "trash_restore", root_id: "n6" }),
+    mine(6, { kind: "import", root_id: "n6" }),
+    mine(7, { kind: "trash_restore", root_id: "n6" }),
   ];
 
   const revert = store.startedJob("revert", "c3", jobJSON(1).created_by.user_id, since);
@@ -370,7 +371,7 @@ test("startedJob reads the list again and finds the account's job of the kind on
   await answer(lists, 2, page(listed), none);
 
   await expect(revert).resolves.toBe(listed[4]);
-  await expect(restore).resolves.toBe(listed[5]);
+  await expect(restore).resolves.toBe(listed[6]);
   await expect(none).resolves.toBeUndefined();
   expect(lists.map((list) => list.ask)).toEqual([undefined, undefined, undefined]);
 });

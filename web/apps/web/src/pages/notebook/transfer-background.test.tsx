@@ -251,6 +251,36 @@ test.each<[string, TransferJob, string, string[]]>([
     [],
   ],
   [
+    "a restore failed as its starter could no longer edit the notebook",
+    restoreOf(1, { state: "failed", report: reportOf("forbidden"), progress: { done: 0, total: 103 } }),
+    "Failed · The person who started it could no longer edit the notebook.",
+    [],
+  ],
+  [
+    "a restore failed as what it restored was undone",
+    restoreOf(1, { state: "failed", report: reportOf("changeset_reverted"), progress: { done: 0, total: 103 } }),
+    "Failed · What the restore had restored was undone while it ran.",
+    [],
+  ],
+  [
+    "a restore failed as its item went past its time",
+    restoreOf(1, { state: "failed", report: reportOf("restore_expired"), progress: { done: 0, total: 103 } }),
+    "Failed · The item went past the time it could be restored in.",
+    [],
+  ],
+  [
+    "a revert failed as the pages it was undoing changed",
+    revertOf(1, { state: "failed", report: reportOf("tree_changed"), progress: { done: 0, total: 1501 } }),
+    "Failed · While the undo ran, the pages it was undoing changed.",
+    [],
+  ],
+  [
+    "a revert failed as its starter could no longer edit the notebook",
+    revertOf(1, { state: "failed", report: reportOf("forbidden"), progress: { done: 0, total: 1501 } }),
+    "Failed · The person who started it could no longer edit the notebook.",
+    [],
+  ],
+  [
     "a revert failed as its changeset was undone",
     revertOf(1, {
       state: "failed",

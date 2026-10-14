@@ -1,4 +1,4 @@
-import { act, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 
@@ -360,6 +360,19 @@ test("a restore in the background answered after the reader moved the focus leav
 
   await waitFor(() => expect(screen.getByRole("status").textContent).toBe(started));
   expect(document.activeElement).toBe(next);
+});
+
+test("Restore in the background pressed by a click that leaves the focus where it was, as Safari's, gives the title the focus as it starts", async () => {
+  const user = userEvent.setup();
+  const { server } = large();
+  renderApp(trashPath, server.app);
+  const start = await refused(user);
+  act(() => (document.activeElement as HTMLElement).blur());
+
+  fireEvent.click(start);
+
+  await waitFor(() => expect(screen.getByRole("status").textContent).toBe(started));
+  expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Trash" }));
 });
 
 test("a restore here after one refused as too large says nothing of it: the refusal and its offer go as it is sent", async () => {
