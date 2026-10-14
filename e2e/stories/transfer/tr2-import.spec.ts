@@ -113,7 +113,19 @@ test("TR2 (API): a vault imports at a notebook's root after its pages and under 
   expect([job.state, job.progress]).toEqual(["succeeded", { done: 8, total: 8 }]);
   expect(job.report).toEqual({
     failure: null,
-    counts: { pages: 6, attachments: 2, renamed: 1, missing: 0, skipped: 0 },
+    counts: {
+      pages: 6,
+      attachments: 2,
+      renamed: 1,
+      missing: 0,
+      skipped: 0,
+      restored: 0,
+      deleted: 0,
+      put_back: 0,
+      written: 0,
+    },
+    placed: null,
+    lock: null,
   });
   expect(job.problems).toEqual([{ path: "What? Why.md", code: "renamed", to: "What_ Why 2" }]);
   expect(await treeOf(db, nervewiki.storageDir, notebook.id)).toEqual([

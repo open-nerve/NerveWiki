@@ -65,7 +65,19 @@ test("TR1 (API): a notebook and a subtree export as vaults, their pages, folders
   expect([whole.state, whole.name, whole.root_id, whole.client]).toEqual(["succeeded", "Handbook", null, "api"]);
   expect(whole.report).toEqual({
     failure: null,
-    counts: { pages: 9, attachments: 2, renamed: 1, missing: 0, skipped: 0 },
+    counts: {
+      pages: 9,
+      attachments: 2,
+      renamed: 1,
+      missing: 0,
+      skipped: 0,
+      restored: 0,
+      deleted: 0,
+      put_back: 0,
+      written: 0,
+    },
+    placed: null,
+    lock: null,
   });
   expect(whole.problems).toEqual([{ path: "Plan.md/", code: "renamed", to: "Plan.md 2/" }]);
   if (!whole.download || whole.result_bytes === null) {
