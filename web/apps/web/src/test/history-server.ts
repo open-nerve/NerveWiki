@@ -25,12 +25,13 @@ import type { Person } from "./page-server";
 //   forbidden; then a changeset trimmed 409 page.changeset_trimmed; then
 //   one too large (tooLarge) 422 page.revert_too_large; then its conflicts
 //   409 page.revert_conflict, by reason in the contract's order, then by
-//   node id, the first 100 and their count; then one that changed nothing
-//   (unchanged: an edit session that wrote its bytes back) changed false,
-//   no changeset, nothing to write, so nothing parsed and no guard run;
-//   then one a version of which the purge took (purged) 409
-//   page.changeset_trimmed; while busy (revertsBusy) 503 server_busy; then
-//   a page someone edits (lockedBy) 409 page.locked naming them; else a
+//   node id, the first 100 and their count; then one a version of which
+//   the purge took (purged) 409 page.changeset_trimmed, a version it would
+//   not write too; then one that changed nothing (unchanged: an edit
+//   session that wrote its bytes back) changed false, no changeset,
+//   nothing to write, so nothing parsed and no guard run; while busy
+//   (revertsBusy) 503 server_busy; then a page someone edits (lockedBy)
+//   409 page.locked naming them; else a
 //   revert of it, by Ada from the web, the newest of the log and of its
 //   reverts, which does to the tree what undo does: a node created or
 //   restored deleted again, one deleted restored, neither writing a
@@ -424,11 +425,11 @@ export function historyRoutes(server: HistoryState, role: NotebookRole): Record<
           conflict_count: changeset.conflicts.length,
         });
       }
-      if (changeset.unchanged) {
-        return json({ changeset_id: null, changed: false });
-      }
       if (changeset.purged) {
         return problem(409, "page.changeset_trimmed");
+      }
+      if (changeset.unchanged) {
+        return json({ changeset_id: null, changed: false });
       }
       if (server.revertsBusy) {
         return problem(503, "server_busy", {}, { "Retry-After": "2" });

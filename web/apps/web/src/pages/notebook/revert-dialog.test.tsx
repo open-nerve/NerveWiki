@@ -5,7 +5,7 @@ import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 import type { NotebookRole } from "../../services/notebook.service";
 import type { RevertConflict } from "../../services/page.service";
 import { json, notebookJSON, problem, type Answer } from "../../test/fakes";
-import { changesetId, moved, renamed, wrote } from "../../test/history-server";
+import { changesetId, created, moved, renamed, wrote } from "../../test/history-server";
 import { ada, bob, guide, install, linux, notes, pageNode, pagePath, pageServer } from "../../test/page-server";
 import { readAgain } from "../../test/page-panel";
 import { renderApp } from "../../test/render";
@@ -131,21 +131,35 @@ test.each([
   ).toBe(note);
 });
 
-test("an undo of nothing to undo says so as the dialog closes, the focus back on Undo change", async () => {
-  const user = userEvent.setup();
-  const { server, rework } = reworked();
-  rework.unchanged = true;
-  renderApp(changesetPath(rework.id), server.app);
-  const dialog = await opened(user);
-  const logged = server.changesets.length;
+test.each([
+  { while: "", meanwhile: () => undefined },
+  // The server runs no guard when there is nothing to write (M8/P3B review B, F-3).
+  {
+    while: ", the server busy or a page edited too",
+    meanwhile: ({ server, rework }: ReturnType<typeof reworked>) => {
+      server.revertsBusy = true;
+      rework.lockedBy = { page: guide.id, holder: bob };
+    },
+  },
+])(
+  "an undo of nothing to undo$while says so as the dialog closes, the focus back on Undo change",
+  async ({ meanwhile }) => {
+    const user = userEvent.setup();
+    const { server, rework } = reworked();
+    rework.unchanged = true;
+    meanwhile({ server, rework });
+    renderApp(changesetPath(rework.id), server.app);
+    const dialog = await opened(user);
+    const logged = server.changesets.length;
 
-  await user.click(within(dialog).getByRole("button", { name: "Undo" }));
+    await user.click(within(dialog).getByRole("button", { name: "Undo" }));
 
-  await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
-  expect(screen.getByRole("status").textContent).toBe("Nothing to undo: this change left every node as it was.");
-  expect(document.activeElement).toBe(screen.getByRole("button", { name: "Undo change" }));
-  expect(server.changesets).toHaveLength(logged);
-});
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(screen.getByRole("status").textContent).toBe("Nothing to undo: this change left every node as it was.");
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Undo change" }));
+    expect(server.changesets).toHaveLength(logged);
+  }
+);
 
 /** conflict is a node of name in the way of a revert, for reason, another node holding its name. */
 const conflict = (node: string, name: string, reason: RevertConflict["reason"], holder?: string): RevertConflict =>
@@ -349,6 +363,52 @@ test("a changeset the purge trimmed meanwhile says so as the dialog closes, the 
   ).toBeTruthy();
   expect(document.activeElement).toBe(title());
   expect(title().getAttribute("aria-describedby")).toBe(alert.id);
+});
+
+// M8/P3B fix check 1, N1: the server finds a version the purge took before it finds nothing to undo.
+test("a changeset a version of which the purge took is refused as trimmed, though its undo would change nothing", async () => {
+  const user = userEvent.setup();
+  const { server, rework } = reworked();
+  rework.purged = true;
+  rework.unchanged = true;
+  renderApp(changesetPath(rework.id), server.app);
+  const dialog = await opened(user);
+
+  await user.click(within(dialog).getByRole("button", { name: "Undo" }));
+
+  expect((await screen.findByRole("alert")).textContent).toBe(
+    "Part of this change has been purged from the trash: it can no longer be reverted."
+  );
+  expect(screen.getByRole("status").textContent).toBe("");
+  expect(reverts(server.sent)).toEqual(["REVERT rework"]);
+});
+
+// M8/P3B fix check 1, N2: the undo of a creation deletes the page and writes no version of it (the fake's F-1).
+test("the undo of a creation leads to an undo that deleted the page, writing no version of it", async () => {
+  const user = userEvent.setup();
+  const server = pageServer();
+  const creation = server.log("creation", {
+    changes: [created(notes)],
+    undo: () => {
+      server.trashNode(notes.id);
+    },
+  });
+  renderApp(changesetPath(creation.id), server.app);
+  const dialog = await opened(user);
+  await user.click(within(dialog).getByRole("button", { name: "Undo" }));
+  const status = screen.getByRole("status");
+  await waitFor(() => expect(status.textContent).toBe("Undone. See the undo"));
+
+  await user.click(within(status).getByRole("link", { name: "See the undo" }));
+
+  const heading = await screen.findByRole("heading", { level: 1, name: "Undo change · Ada" });
+  expect((heading.nextElementSibling as HTMLElement).textContent).toContain("Nodes: 1, contents: 0");
+  const list = await screen.findByRole("list", { name: "Nodes of this change" });
+  expect(
+    within(list)
+      .getAllByRole("listitem")
+      .map((row) => row.textContent)
+  ).toEqual(["NotesIn the trashHistory of this nodeDeleted"]);
 });
 
 test.each<[string, (rework: ReturnType<typeof reworked>["rework"]) => void, string]>([
