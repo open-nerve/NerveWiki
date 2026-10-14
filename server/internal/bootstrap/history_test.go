@@ -647,10 +647,12 @@ func TestARevertsConflictsThroughServe(t *testing.T) {
 // check 1). The top renamed and deleted by an edit, its restore's revert,
 // itself reverted, an older deletion: X changed. The top renamed and
 // deleted again, the restore of that later item reverted, not of the
-// deletion's: A changed (fix check 2). Reverted newest first, each of the
-// changesets succeeds, the deletion's last, the restore's revert having
-// deleted the item where the restore put it: the notebook is as before the
-// deletion.
+// deletion's: A changed (fix check 2). The top restored before the
+// deletion, renamed, deleted, restored and renamed back, then deleted by
+// the revert of the older restore: B changed. Reverted newest first, each
+// of the changesets succeeds, the deletion's last, the restore's revert
+// having deleted the item where the restore put it: the notebook is as
+// before the deletion.
 func TestARevertOfADeletionComparesItsItemWhereItWas(t *testing.T) {
 	tm := newAcmeTeam(t, "member", "")
 	for _, tt := range []struct {
@@ -733,6 +735,22 @@ func TestARevertOfADeletionComparesItsItemWhereItWas(t *testing.T) {
 			tm.reverted(t, "bob", tm.newest(t, nb).ID)
 			return d
 		}, []string{"changed A"}},
+		{"its top renamed back, then deleted by the revert of a restore older than it", func(t *testing.T, nb string,
+			before func(),
+		) string {
+			x := tm.createPage(t, "alice", nb, "", "A")
+			tm.send(t, nodeDeletion("alice", x), http.StatusNoContent)
+			tm.restored(t, "alice", x)
+			older := tm.newest(t, nb).ID
+			tm.send(t, nodeRename("alice", x, "B"), http.StatusOK)
+			before()
+			tm.send(t, nodeDeletion("alice", x), http.StatusNoContent)
+			d := tm.newest(t, nb).ID
+			tm.restored(t, "alice", x)
+			tm.send(t, nodeRename("alice", x, "A"), http.StatusOK)
+			tm.reverted(t, "bob", older)
+			return d
+		}, []string{"changed B"}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			nb := tm.openNotebook(t, "alice", tt.name)
