@@ -327,6 +327,19 @@ func (b trashBench) restoreJob(tb testing.TB, root uuid.UUID) jobRun {
 // deletion's one group and of many groups, the revert of an import's
 // revert, BenchmarkBackgroundJobs measures, after the revert it reverts.
 // It logs each, ms.
+//
+// Measured on an Apple M5 Max shared with other work (load 8-10), ms,
+// without statistics / analyzed:
+//
+//	nodes      flat            deep            folders
+//	 50,000      285 /   247     262 /   232     274 /   236
+//	 90,000      589 /   497     488 /   461     490 /   455
+//	200,000    1,261 / 1,020   1,179 / 1,025   1,180 / 1,084
+//	550,000    3,617 / 3,337
+//
+// The request grows with the changeset alone, a tenth of the costliest
+// step at MaxJobItems (BenchmarkBackgroundSteps); 550,000 nodes, the most
+// an import within the default bounds makes (design 2.2), 3.6 s.
 func BenchmarkStartRevert(b *testing.B) {
 	for _, n := range jobSizes(b) {
 		for _, shape := range []string{shapeFlat, shapeDeep, shapeFolders} {
@@ -355,6 +368,23 @@ func BenchmarkStartRevert(b *testing.B) {
 // deletion, the request of its restore, and its item's background
 // restore. Each run tells its plan, its heap and its batches
 // (jobRun.String). It logs each, ms.
+//
+// Measured at MaxJobItems on an Apple M5 Max shared with other work
+// (load 5-8), analyzed: the import's revert, its batches' p95 and the
+// whole; the revert of that revert, the same; seconds unless ms:
+//
+//	shape          the import's revert       its revert's revert
+//	flat           325 ms, 191 s             411 ms, 250 s
+//	deep           one step, 5.2 s           252 ms, 171 s
+//	folders        228 ms, 120 s             357 ms, 240 s
+//	attachments    266 ms, 173 s             184 ms, 108 s
+//
+// Without statistics a batch is three to four times slower until the
+// job's first ANALYZE, then as analyzed. The plans hold 18 MiB at most;
+// the deep top's item's restore, 900 batches, p95 310 ms, 191 s. A batch
+// grows with the notebook by its re-plan's read of the whole live tree
+// alone (24 ms at 50,000 nodes), not by its tops' subtrees (M8/P4 design
+// 3.11's Subtrees, not needed).
 func BenchmarkBackgroundJobs(b *testing.B) {
 	for _, n := range jobSizes(b) {
 		for _, shape := range []string{shapeFlat, shapeDeep, shapeFolders, "attachments"} {
@@ -434,6 +464,18 @@ func BenchmarkBackgroundJobs(b *testing.B) {
 // rows the deletion just deleted, 5.9 s of it), the group's first batch
 // 7,201 ms (its links' resolutions over the table the deletion left, not
 // yet vacuumed, 5.9 s).
+//
+// Then, at load 8-10: the plans of a deep import's revert and of the
+// restore of its top's item, 488 ms with 3 MiB and 198 ms with 2 MiB at
+// 90,000 nodes, 3,662 ms with 18 MiB and 1,045 ms with 15 MiB at 550,000
+// (the revert's revert's of one group of every node, 7 MiB at 50,000,
+// 14 MiB at 100,000). A page of a million rows of history: its deletion
+// 6,235 ms, its restore 8,925 ms, 1.43 times. A page with 5,000
+// attachments: its restore's first batch, which marks the 4,901 left,
+// 50 ms. The arrays' statements at 50,000 ids, planned with them / for
+// any: TrashNodesAt 135 / 188, TrashGroups 154 / 210, ChangesetItemsOf
+// 56 / 45, ChangesetVersionsOf 62 / 56, NodesNow 270 / 252, MarkTrashRoots
+// 14 / 54; none of them slow for any, all kept planned with them.
 func BenchmarkBackgroundSteps(b *testing.B) {
 	for _, n := range jobSizes(b) {
 		for _, stats := range []string{"nostats", "analyzed"} {

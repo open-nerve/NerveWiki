@@ -17,10 +17,10 @@ import (
 // a group's first batch, grows with them. It is the largest size whose
 // costliest step took 5 s at most (BenchmarkBackgroundSteps): the
 // deletion of a top of an import of that many nodes, its pages of 2 KiB
-// with ten links each, 4.7 s at 90,000, 5.1 s at 100,000, analyzed; the
-// request and the group's first batch take a fifth of it, the plans
-// 15 MiB. The transfer module bounds an import's nodes by it, so that a
-// background revert can undo any import (M8/P4 design 2.2 (a)).
+// with ten links each, 4.7 s at 90,000, 5.1 s at 100,000, analyzed; at
+// 90,000 the request takes 0.5 s, a group's first batch 1.4 s, a plan
+// 14 MiB at most. The transfer module bounds an import's nodes by it, so
+// that a background revert can undo any import (M8/P4 design 2.2 (a)).
 const MaxJobItems = 90_000
 
 // JobStep is a step of a background job (M8/P4 design 3.3), a write no
