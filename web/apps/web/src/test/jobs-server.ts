@@ -6,6 +6,30 @@ import { formOf } from "./transfer";
 /** What the server parses as an id: a parent_id not like it is 400. */
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 
+type TransferReport = NonNullable<TransferJob["report"]>;
+
+/**
+ * reportOf is a report as the server answers it: failure, and counts, none
+ * but those given; no place nor lock, an import's or an export's.
+ */
+export function reportOf(
+  failure: TransferReport["failure"],
+  counts: Partial<TransferReport["counts"]> = {}
+): TransferReport {
+  const none = {
+    pages: 0,
+    attachments: 0,
+    renamed: 0,
+    missing: 0,
+    skipped: 0,
+    restored: 0,
+    deleted: 0,
+    put_back: 0,
+    written: 0,
+  };
+  return { failure, counts: { ...none, ...counts }, placed: null, lock: null };
+}
+
 /** addressOf is the address the server signed for job's archive, which expires at expires. */
 export function addressOf(job: TransferJob, expires = "2100-01-01T00:00:00Z"): NonNullable<TransferJob["download"]> {
   return { url: `/api/v0/transfer-jobs/${job.id}/download?e=${Date.parse(expires) / 1000}&s=sig`, expires_at: expires };
@@ -25,6 +49,8 @@ export function jobJSON(n: number, more: Partial<TransferJob> = {}): TransferJob
     notebook_id: notebookJSON.id,
     root_id: null,
     name: notebookJSON.name,
+    changeset_id: null,
+    target_changeset_id: null,
     kind: "export",
     state: "succeeded",
     client: "web",
@@ -35,7 +61,7 @@ export function jobJSON(n: number, more: Partial<TransferJob> = {}): TransferJob
     finished_at: "2026-10-05T10:20:00Z",
     progress: { done: 4, total: 4 },
     result_bytes: null,
-    report: { failure: null, counts: { pages: 4, attachments: 0, renamed: 0, missing: 0, skipped: 0 } },
+    report: reportOf(null, { pages: 4 }),
     download: null,
     ...more,
   };
@@ -63,8 +89,7 @@ export function underWay(job: TransferJob, done: number, total: number): Transfe
 
 /** cancelled is job, queued, as its cancel leaves it: cancelled at once, its report counting nothing. */
 export function cancelled(job: TransferJob): TransferJob {
-  const counts = { pages: 0, attachments: 0, renamed: 0, missing: 0, skipped: 0 };
-  return { ...job, state: "cancelled", finished_at: "2026-10-06T08:00:02Z", report: { failure: null, counts } };
+  return { ...job, state: "cancelled", finished_at: "2026-10-06T08:00:02Z", report: reportOf(null) };
 }
 
 type JobsServerOptions = NonNullable<Parameters<typeof pageServer>[0]> & {
@@ -180,7 +205,12 @@ export function jobsServer({ jobs = [], pageSize = 50, answers = {}, ...options 
       server.asked.push(`GET job ${job?.name ?? ""}`);
       return job === undefined
         ? problem(404, "transfer.not_found")
-        : json({ ...job, ...(server.problems.get(job.id) ?? { problems: [], problems_truncated: false }) });
+        : json({
+            ...job,
+            ...(server.problems.get(job.id) ?? { problems: [], problems_truncated: false }),
+            conflicts: [],
+            conflict_count: 0,
+          });
     },
     "POST /api/v0/transfer-jobs/*/cancel": (request) => {
       const job = jobOf(request);

@@ -186,7 +186,7 @@ test("TR2 (page): a vault imports from the notebook's settings, at its root and 
   await page.goto(notebookPath(workspace.slug, notebook.id, "general"));
   await page
     .getByRole("navigation", { name: "Notebook settings" })
-    .getByRole("link", { name: "Import and export" })
+    .getByRole("link", { name: "Import, export and restore" })
     .click();
   await expect(page.getByText("No jobs yet.")).toBeVisible();
   const job = await importWith(page, notebook.id, vault());
@@ -287,7 +287,7 @@ test("TR2 (page): a vault imports from the notebook's settings, at its root and 
     await dialog.getByRole("button", { name: "Import", exact: true }).click();
     // Chromium reads the refusal the server answers before the file, though the body still goes.
     await expect(dialog.getByRole("alert")).toHaveText(
-      "An import into this notebook is under way, perhaps someone else's. Wait for it to end, then try again."
+      "An import, a restore or an undo is under way in this notebook, perhaps someone else's. Wait for it to end, then try again."
     );
     pageWatch.expectConsole({ errors: [failedToLoad(409)] });
     held.stop();

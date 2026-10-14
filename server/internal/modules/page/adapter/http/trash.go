@@ -89,8 +89,8 @@ func trashItemOf(it app.TrashItem) gen.TrashItem {
 	return out
 }
 
-func placementOf(p domain.Placement) gen.TrashPlacement {
-	out := gen.TrashPlacement{ParentID: nullable.NewNullNullable[uuid.UUID](), Reason: gen.TrashPlacementReason(p.Reason)}
+func placementOf(p domain.Placement) apigen.TrashPlacement {
+	out := apigen.TrashPlacement{ParentID: nullable.NewNullNullable[uuid.UUID](), Reason: apigen.TrashPlacementReason(p.Reason)}
 	if p.ParentID != nil {
 		out.ParentID = nullable.NewNullableWithValue(*p.ParentID)
 	}

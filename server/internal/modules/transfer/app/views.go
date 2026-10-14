@@ -10,12 +10,14 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
-// JobView is a job as its readers see it: who started it, by name, and an
-// export's archive's address, signed, once it succeeded.
+// JobView is a job as its readers see it: who started it, by name, an
+// export's archive's address, signed, once it succeeded, and who holds the
+// lock a revert met, by name.
 type JobView struct {
 	Job           domain.Job
 	CreatedByName string
 	Download      *Signed
+	LockedByName  string
 }
 
 // views makes the jobs' views and decides who sees a job.
@@ -37,6 +39,9 @@ func (v views) of(ctx context.Context, jobs []domain.Job) ([]JobView, error) {
 	ids := make([]uuid.UUID, 0, len(jobs))
 	for _, j := range jobs {
 		ids = append(ids, j.CreatedBy)
+		if j.Report != nil && j.Report.Lock != nil {
+			ids = append(ids, j.Report.Lock.UserID)
+		}
 	}
 	names, err := v.names.DisplayNames(ctx, ids)
 	if err != nil {
@@ -46,6 +51,9 @@ func (v views) of(ctx context.Context, jobs []domain.Job) ([]JobView, error) {
 	out := make([]JobView, len(jobs))
 	for i, j := range jobs {
 		out[i] = JobView{Job: j, CreatedByName: names[j.CreatedBy]}
+		if j.Report != nil && j.Report.Lock != nil {
+			out[i].LockedByName = names[j.Report.Lock.UserID]
+		}
 		if j.Kind != domain.KindExport || j.State != domain.StateSucceeded || j.Finished == nil {
 			continue
 		}

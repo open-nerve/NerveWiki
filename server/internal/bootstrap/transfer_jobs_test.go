@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/asset"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/transfer"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/transfer/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
@@ -307,5 +308,8 @@ func TestTransferDepsLeaveTheBatchesTheImports(t *testing.T) {
 	d := transferDeps(testConfig(t, "", false), nil, slog.New(slog.DiscardHandler), nil, nil, nil, nil, nil)
 	if d.Batch != (transfer.Batch{}) {
 		t.Errorf("transferDeps' batch = %+v, want the zero value, the import's bounds", d.Batch)
+	}
+	if d.RestoreAction != page.ActionRestore || d.RevertAction != page.ActionRevert {
+		t.Errorf("transferDeps' actions = %s, %s; want the page module's restore and revert", d.RestoreAction, d.RevertAction)
 	}
 }

@@ -41,15 +41,20 @@ func (e TransferClient) Valid() bool {
 // Defines values for TransferFailure.
 const (
 	TransferFailureChangesetReverted   TransferFailure = "changeset_reverted"
+	TransferFailureChangesetTrimmed    TransferFailure = "changeset_trimmed"
 	TransferFailureContributorConflict TransferFailure = "contributor_conflict"
 	TransferFailureForbidden           TransferFailure = "forbidden"
 	TransferFailureInternal            TransferFailure = "internal"
 	TransferFailureInterrupted         TransferFailure = "interrupted"
 	TransferFailureNotZip              TransferFailure = "not_zip"
+	TransferFailurePageLocked          TransferFailure = "page_locked"
+	TransferFailureRestoreExpired      TransferFailure = "restore_expired"
+	TransferFailureRevertConflict      TransferFailure = "revert_conflict"
 	TransferFailureRootNotFound        TransferFailure = "root_not_found"
 	TransferFailureStorageFull         TransferFailure = "storage_full"
 	TransferFailureTimeout             TransferFailure = "timeout"
 	TransferFailureTooManyEntries      TransferFailure = "too_many_entries"
+	TransferFailureTrashChanged        TransferFailure = "trash_changed"
 	TransferFailureTreeChanged         TransferFailure = "tree_changed"
 	TransferFailureUnpackedTooLarge    TransferFailure = "unpacked_too_large"
 )
@@ -58,6 +63,8 @@ const (
 func (e TransferFailure) Valid() bool {
 	switch e {
 	case TransferFailureChangesetReverted:
+		return true
+	case TransferFailureChangesetTrimmed:
 		return true
 	case TransferFailureContributorConflict:
 		return true
@@ -69,6 +76,12 @@ func (e TransferFailure) Valid() bool {
 		return true
 	case TransferFailureNotZip:
 		return true
+	case TransferFailurePageLocked:
+		return true
+	case TransferFailureRestoreExpired:
+		return true
+	case TransferFailureRevertConflict:
+		return true
 	case TransferFailureRootNotFound:
 		return true
 	case TransferFailureStorageFull:
@@ -76,6 +89,8 @@ func (e TransferFailure) Valid() bool {
 	case TransferFailureTimeout:
 		return true
 	case TransferFailureTooManyEntries:
+		return true
+	case TransferFailureTrashChanged:
 		return true
 	case TransferFailureTreeChanged:
 		return true
@@ -88,8 +103,10 @@ func (e TransferFailure) Valid() bool {
 
 // Defines values for TransferKind.
 const (
-	TransferKindExport TransferKind = "export"
-	TransferKindImport TransferKind = "import"
+	TransferKindExport       TransferKind = "export"
+	TransferKindImport       TransferKind = "import"
+	TransferKindRevert       TransferKind = "revert"
+	TransferKindTrashRestore TransferKind = "trash_restore"
 )
 
 // Valid indicates whether the value is a known member of the TransferKind enum.
@@ -98,6 +115,10 @@ func (e TransferKind) Valid() bool {
 	case TransferKindExport:
 		return true
 	case TransferKindImport:
+		return true
+	case TransferKindRevert:
+		return true
+	case TransferKindTrashRestore:
 		return true
 	default:
 		return false
@@ -191,25 +212,46 @@ type ExportStart struct {
 	RootID nullable.Nullable[uuid.UUID] `json:"root_id,omitempty"`
 }
 
+// RevertStart A revert of a changeset in the background; no message, none.
+type RevertStart struct {
+	// ChangesetID The changeset to revert, of the notebook.
+	ChangesetID uuid.UUID `json:"changeset_id"`
+
+	// Message Why, kept with the revert's changeset: 1–4,096 bytes of UTF-8, without NUL characters.
+	Message *string `json:"message,omitempty"`
+}
+
 // TransferClient Where the job was started from, which its writes are of.
 type TransferClient string
 
-// TransferCounts What the job did before it ended, as it wrote its end. An export that could not write its end, which the server fails later as interrupted (it restarted, the job stopped beating, the job queue dropped it), counts nothing: its progress tells how far it went. An import writes its counts and problems as it goes, every ten seconds at most: one interrupted keeps those it last wrote, of the batches written by then.
+// TransferCounts What the job did before it ended, as it wrote its end. An export that could not write its end, which the server fails later as interrupted (it restarted, the job stopped beating, the job queue dropped it), counts nothing: its progress tells how far it went. An import, a restore and a revert write their counts and problems as they go, every ten seconds at most: one interrupted keeps those it last wrote, of the batches written by then. A restore counts pages, attachments, renamed and skipped; a revert restored, deleted, put_back, written and skipped.
 type TransferCounts struct {
-	// Attachments The attachments whose files were written; an import's, created.
+	// Attachments The attachments whose files were written; an import's, created; a restore's, restored.
 	Attachments int64 `json:"attachments"`
+
+	// Deleted The nodes a revert deleted, with the subtrees of those it deleted; 0 for every other job.
+	Deleted int64 `json:"deleted"`
 
 	// Missing The attachments whose files were not in the storage, and not written; 0 for an import.
 	Missing int64 `json:"missing"`
 
-	// Pages The pages written; an import's, created.
+	// Pages The pages written; an import's, created; a restore's, restored.
 	Pages int64 `json:"pages"`
 
-	// Renamed The nodes the export's vault names otherwise, as the export laid the vault out before it wrote; the nodes an import named otherwise than the archive.
+	// PutBack The nodes a revert put back where and as they were; 0 for every other job.
+	PutBack int64 `json:"put_back"`
+
+	// Renamed The nodes the export's vault names otherwise, as the export laid the vault out before it wrote; the nodes an import named otherwise than the archive; the nodes a restore numbered, a sibling where they went back holding their name.
 	Renamed int64 `json:"renamed"`
 
-	// Skipped An import's entries skipped; 0 for an export.
+	// Restored The nodes a revert restored from the trash, its trash items' every node; 0 for every other job. (revertChangeset's log counts the trash items.)
+	Restored int64 `json:"restored"`
+
+	// Skipped An import's entries skipped; the nodes of a restore's item, and of a revert's groups, that someone restored before the job came to them; 0 for an export.
 	Skipped int64 `json:"skipped"`
+
+	// Written The pages whose content a revert wrote back; 0 for every other job.
+	Written int64 `json:"written"`
 }
 
 // TransferDownload defines model for TransferDownload.
@@ -221,13 +263,16 @@ type TransferDownload struct {
 	URL string `json:"url"`
 }
 
-// TransferFailure Why a job failed: interrupted (the server stopped or restarted, the job stopped beating, or the job queue dropped it before it began), timeout (it ran past the instance's limit), forbidden (its starter could no longer read the notebook as it ran, or write in it as an import ran), root_not_found (the page exported, or imported under, was gone as it ran), storage_full, contributor_conflict (a file the server adds was where a node is), internal; for an import's archive as a whole, nothing written: not_zip (no zip, or its directory is broken), too_many_entries (more entries than the instance takes, or a directory larger than 64 MiB), unpacked_too_large (its entries unpack to more than the instance takes); tree_changed (a page the import created was deleted as it ran, its later nodes not written); changeset_reverted (the changeset it writes in was reverted as it ran, its later nodes not written).
+// TransferFailure Why a job failed: interrupted (the server stopped or restarted, the job stopped beating, or the job queue dropped it before it began), timeout (it ran past the instance's limit), forbidden (its starter could no longer read the notebook as it ran, or write in it as an import, a restore or a revert ran), root_not_found (the page exported, or imported under, was gone as it ran), storage_full, contributor_conflict (a file the server adds was where a node is), internal; for an import's archive as a whole, nothing written: not_zip (no zip, or its directory is broken), too_many_entries (more entries than the instance takes, or a directory larger than 64 MiB), unpacked_too_large (its entries unpack to more than the instance takes); tree_changed (a page an import created was deleted as it ran; a parent a restore restored was deleted, or moved so that its pages would nest deeper than 10 levels, as it ran), its later nodes not written; changeset_reverted (the changeset an import, a restore or a revert writes in was reverted as it ran, its later nodes not written). A restore's alone: trash_changed (the trash item is no longer as it was planned: restored, purged or deleted again as another, before its first batch, or a node left in the trash below what it restored no longer the root of its own item it made it); restore_expired (the item went past the time it can be restored in as it ran). A revert's alone: revert_conflict (a node it was about to change changed since, or would conflict, the report's conflicts listing them); changeset_trimmed (the purge took part of the changeset, a version it writes back or restores, or a trash item it restores); page_locked (an edit session holds a page it was about to delete or write back, the report's lock). What a job wrote before it failed is kept.
 type TransferFailure string
 
-// TransferJob An import or an export of a notebook, a job that runs in the background: queued, then running, then succeeded, failed or cancelled. An export's archive expires a while after it succeeded, the instance's export TTL, or at once when its starter's next export of the notebook succeeds: a starter keeps only their latest export of a notebook. created_by is its starter.
+// TransferJob An import or an export of a notebook, a restore of a trash item or a revert of a changeset, a job that runs in the background: queued, then running, then succeeded, failed or cancelled. An export's archive expires a while after it succeeded, the instance's export TTL, or at once when its starter's next export of the notebook succeeds: a starter keeps only their latest export of a notebook. created_by is its starter.
 type TransferJob struct {
 	// CancelRequestedAt When a cancel of the job was asked as it ran: it stops at its next heartbeat, within about a second, unless it ends first; null when none was.
 	CancelRequestedAt nullable.Nullable[time.Time] `json:"cancel_requested_at"`
+
+	// ChangesetID The changeset the job writes in, an import's, a restore's trash_restore or a revert's revert, decided as the job was created: it exists once the job first wrote. Null for an export, and for an import created before the jobs had it.
+	ChangesetID nullable.Nullable[uuid.UUID] `json:"changeset_id"`
 
 	// Client Where the job was started from, which its writes are of.
 	Client    TransferClient `json:"client"`
@@ -242,11 +287,11 @@ type TransferJob struct {
 	ID         uuid.UUID                           `json:"id"`
 	Kind       TransferKind                        `json:"kind"`
 
-	// Name What is exported, by name, the notebook's or the page's, which the archive is named after; for an import, the archive's file name.
+	// Name What is exported, by name, the notebook's or the page's, which the archive is named after; for an import, the archive's file name; for a restore, the trash item's name as it was deleted; for a revert, the kind of the changeset it reverts.
 	Name       string    `json:"name"`
 	NotebookID uuid.UUID `json:"notebook_id"`
 
-	// Progress How many of the job's nodes are done, of all: an export's written; an import's created or skipped, of those to create, 0 of 0 until its archive is read.
+	// Progress How many of the job's nodes are done, of all: an export's written; an import's created or skipped, of those to create, 0 of 0 until its archive is read; a restore's restored or skipped, of the trash item's; a revert's put back, deleted, restored, written back or skipped, of those its plan changes, a subtree deleted counting its nodes; both 0 of 0 until the job is planned. A job interrupted keeps the progress it last wrote, at most a heartbeat behind.
 	Progress TransferProgress `json:"progress"`
 
 	// Report What the job did and why it failed, once it ended; null before.
@@ -255,20 +300,32 @@ type TransferJob struct {
 	// ResultBytes The bytes of an export's archive, once it succeeded, and after it expired; null otherwise.
 	ResultBytes nullable.Nullable[int64] `json:"result_bytes"`
 
-	// RootID The page exported with its subtree, or imported under; null for the whole notebook, or its root.
+	// RootID The page exported with its subtree, or imported under; null for the whole notebook, or its root. A restore's, the root of the trash item it restores, a page or an attachment; null for a revert.
 	RootID    nullable.Nullable[uuid.UUID] `json:"root_id"`
 	StartedAt nullable.Nullable[time.Time] `json:"started_at"`
 	State     TransferState                `json:"state"`
+
+	// TargetChangesetID The changeset a revert reverts; null for every other job.
+	TargetChangesetID nullable.Nullable[uuid.UUID] `json:"target_changeset_id"`
 }
 
-// TransferJobDetail A job, as TransferJob, and its report's problems once it ended.
+// TransferJobDetail A job, as TransferJob, and its report's problems and a revert's conflicts once it ended.
 type TransferJobDetail struct {
 	// CancelRequestedAt When a cancel of the job was asked as it ran: it stops at its next heartbeat, within about a second, unless it ends first; null when none was.
 	CancelRequestedAt nullable.Nullable[time.Time] `json:"cancel_requested_at"`
 
+	// ChangesetID The changeset the job writes in, an import's, a restore's trash_restore or a revert's revert, decided as the job was created: it exists once the job first wrote. Null for an export, and for an import created before the jobs had it.
+	ChangesetID nullable.Nullable[uuid.UUID] `json:"changeset_id"`
+
 	// Client Where the job was started from, which its writes are of.
-	Client    TransferClient `json:"client"`
-	CreatedAt time.Time      `json:"created_at"`
+	Client TransferClient `json:"client"`
+
+	// ConflictCount How many conflicts stopped a revert (revert_conflict); 0 otherwise.
+	ConflictCount int `json:"conflict_count"`
+
+	// Conflicts The conflicts that stopped a revert (revert_conflict), as page.revert_conflict lists them: by reason, then by node id, the first 100 of conflict_count; empty for every other job and failure.
+	Conflicts []externalRef0.RevertConflict `json:"conflicts"`
+	CreatedAt time.Time                     `json:"created_at"`
 
 	// CreatedBy An account, by its id and its display name, as of the answer: who made a changeset, holds a lock, started a job or deleted a node.
 	CreatedBy externalRef0.UserRef `json:"created_by"`
@@ -279,7 +336,7 @@ type TransferJobDetail struct {
 	ID         uuid.UUID                           `json:"id"`
 	Kind       TransferKind                        `json:"kind"`
 
-	// Name What is exported, by name, the notebook's or the page's, which the archive is named after; for an import, the archive's file name.
+	// Name What is exported, by name, the notebook's or the page's, which the archive is named after; for an import, the archive's file name; for a restore, the trash item's name as it was deleted; for a revert, the kind of the changeset it reverts.
 	Name       string    `json:"name"`
 	NotebookID uuid.UUID `json:"notebook_id"`
 
@@ -289,7 +346,7 @@ type TransferJobDetail struct {
 	// ProblemsTruncated Whether problems were left out past the first 1,000.
 	ProblemsTruncated bool `json:"problems_truncated"`
 
-	// Progress How many of the job's nodes are done, of all: an export's written; an import's created or skipped, of those to create, 0 of 0 until its archive is read.
+	// Progress How many of the job's nodes are done, of all: an export's written; an import's created or skipped, of those to create, 0 of 0 until its archive is read; a restore's restored or skipped, of the trash item's; a revert's put back, deleted, restored, written back or skipped, of those its plan changes, a subtree deleted counting its nodes; both 0 of 0 until the job is planned. A job interrupted keeps the progress it last wrote, at most a heartbeat behind.
 	Progress TransferProgress `json:"progress"`
 
 	// Report What the job did and why it failed, once it ended; null before.
@@ -298,10 +355,13 @@ type TransferJobDetail struct {
 	// ResultBytes The bytes of an export's archive, once it succeeded, and after it expired; null otherwise.
 	ResultBytes nullable.Nullable[int64] `json:"result_bytes"`
 
-	// RootID The page exported with its subtree, or imported under; null for the whole notebook, or its root.
+	// RootID The page exported with its subtree, or imported under; null for the whole notebook, or its root. A restore's, the root of the trash item it restores, a page or an attachment; null for a revert.
 	RootID    nullable.Nullable[uuid.UUID] `json:"root_id"`
 	StartedAt nullable.Nullable[time.Time] `json:"started_at"`
 	State     TransferState                `json:"state"`
+
+	// TargetChangesetID The changeset a revert reverts; null for every other job.
+	TargetChangesetID nullable.Nullable[uuid.UUID] `json:"target_changeset_id"`
 }
 
 // TransferJobPage defines model for TransferJobPage.
@@ -327,7 +387,7 @@ type TransferProblem struct {
 // TransferProblemCode defines model for TransferProblem.Code.
 type TransferProblemCode string
 
-// TransferProgress How many of the job's nodes are done, of all: an export's written; an import's created or skipped, of those to create, 0 of 0 until its archive is read.
+// TransferProgress How many of the job's nodes are done, of all: an export's written; an import's created or skipped, of those to create, 0 of 0 until its archive is read; a restore's restored or skipped, of the trash item's; a revert's put back, deleted, restored, written back or skipped, of those its plan changes, a subtree deleted counting its nodes; both 0 of 0 until the job is planned. A job interrupted keeps the progress it last wrote, at most a heartbeat behind.
 type TransferProgress struct {
 	Done  int64 `json:"done"`
 	Total int64 `json:"total"`
@@ -335,15 +395,27 @@ type TransferProgress struct {
 
 // TransferReport defines model for TransferReport.
 type TransferReport struct {
-	// Counts What the job did before it ended, as it wrote its end. An export that could not write its end, which the server fails later as interrupted (it restarted, the job stopped beating, the job queue dropped it), counts nothing: its progress tells how far it went. An import writes its counts and problems as it goes, every ten seconds at most: one interrupted keeps those it last wrote, of the batches written by then.
+	// Counts What the job did before it ended, as it wrote its end. An export that could not write its end, which the server fails later as interrupted (it restarted, the job stopped beating, the job queue dropped it), counts nothing: its progress tells how far it went. An import, a restore and a revert write their counts and problems as they go, every ten seconds at most: one interrupted keeps those it last wrote, of the batches written by then. A restore counts pages, attachments, renamed and skipped; a revert restored, deleted, put_back, written and skipped.
 	Counts TransferCounts `json:"counts"`
 
 	// Failure Why the job failed; null when it did not.
 	Failure nullable.Nullable[TransferFailure] `json:"failure"`
+
+	// Lock The page whose edit session stopped a revert (page_locked) and who holds it, by their display name as of the answer; null for every other job and failure.
+	Lock nullable.Nullable[externalRef0.PageLock] `json:"lock"`
+
+	// Placed Where a restore put the trash item's root, once its first batch was written; null before, and for every other job.
+	Placed nullable.Nullable[externalRef0.TrashPlacement] `json:"placed"`
 }
 
 // TransferState defines model for TransferState.
 type TransferState string
+
+// TrashRestoreStart defines model for TrashRestoreStart.
+type TrashRestoreStart struct {
+	// NodeID The root of the trash item to restore, a page or an attachment.
+	NodeID uuid.UUID `json:"node_id"`
+}
 
 // JobID defines model for JobID.
 type JobID = uuid.UUID
@@ -366,14 +438,26 @@ type ListTransferJobsParams struct {
 // StartExportJSONRequestBody defines body for StartExport for application/json ContentType.
 type StartExportJSONRequestBody = ExportStart
 
+// StartRevertJSONRequestBody defines body for StartRevert for application/json ContentType.
+type StartRevertJSONRequestBody = RevertStart
+
+// StartTrashRestoreJSONRequestBody defines body for StartTrashRestore for application/json ContentType.
+type StartTrashRestoreJSONRequestBody = TrashRestoreStart
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// StartExport Export a notebook, or a page and its subtree
 	// (POST /api/v0/notebooks/{notebook_id}/exports)
 	StartExport(w http.ResponseWriter, r *http.Request, notebookID NotebookID)
+	// StartRevert Revert a changeset in the background
+	// (POST /api/v0/notebooks/{notebook_id}/reverts)
+	StartRevert(w http.ResponseWriter, r *http.Request, notebookID NotebookID)
 	// ListTransferJobs List a notebook's jobs
 	// (GET /api/v0/notebooks/{notebook_id}/transfer-jobs)
 	ListTransferJobs(w http.ResponseWriter, r *http.Request, notebookID NotebookID, params ListTransferJobsParams)
+	// StartTrashRestore Restore a trash item in the background
+	// (POST /api/v0/notebooks/{notebook_id}/trash-restores)
+	StartTrashRestore(w http.ResponseWriter, r *http.Request, notebookID NotebookID)
 	// GetTransferJob Read a job
 	// (GET /api/v0/transfer-jobs/{job_id})
 	GetTransferJob(w http.ResponseWriter, r *http.Request, jobID JobID)
@@ -408,6 +492,32 @@ func (siw *ServerInterfaceWrapper) StartExport(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.StartExport(w, r, notebookID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StartRevert operation middleware
+func (siw *ServerInterfaceWrapper) StartRevert(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "notebook_id" -------------
+	var notebookID NotebookID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "notebook_id", r.PathValue("notebook_id"), &notebookID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "notebook_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StartRevert(w, r, notebookID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -463,6 +573,32 @@ func (siw *ServerInterfaceWrapper) ListTransferJobs(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListTransferJobs(w, r, notebookID, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StartTrashRestore operation middleware
+func (siw *ServerInterfaceWrapper) StartTrashRestore(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "notebook_id" -------------
+	var notebookID NotebookID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "notebook_id", r.PathValue("notebook_id"), &notebookID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "notebook_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StartTrashRestore(w, r, notebookID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -645,6 +781,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	}
 
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/notebooks/{notebook_id}/exports", wrapper.StartExport)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/notebooks/{notebook_id}/trash-restores", wrapper.StartTrashRestore)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/notebooks/{notebook_id}/reverts", wrapper.StartRevert)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/notebooks/{notebook_id}/transfer-jobs", wrapper.ListTransferJobs)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/transfer-jobs/{job_id}", wrapper.GetTransferJob)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/transfer-jobs/{job_id}/cancel", wrapper.CancelTransferJob)
@@ -709,6 +847,53 @@ func (response StartExportdefaultApplicationProblemPlusJSONResponse) VisitStartE
 	return err
 }
 
+type StartRevertRequestObject struct {
+	NotebookID NotebookID `json:"notebook_id"`
+	Body       *StartRevertJSONRequestBody
+}
+
+type StartRevertResponseObject interface {
+	VisitStartRevertResponse(w http.ResponseWriter) error
+}
+
+type StartRevert202JSONResponse TransferJob
+
+func (response StartRevert202JSONResponse) VisitStartRevertResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartRevertdefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response StartRevertdefaultApplicationProblemPlusJSONResponse) VisitStartRevertResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListTransferJobsRequestObject struct {
 	NotebookID NotebookID `json:"notebook_id"`
 	Params     ListTransferJobsParams
@@ -739,6 +924,53 @@ type ListTransferJobsdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response ListTransferJobsdefaultApplicationProblemPlusJSONResponse) VisitListTransferJobsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartTrashRestoreRequestObject struct {
+	NotebookID NotebookID `json:"notebook_id"`
+	Body       *StartTrashRestoreJSONRequestBody
+}
+
+type StartTrashRestoreResponseObject interface {
+	VisitStartTrashRestoreResponse(w http.ResponseWriter) error
+}
+
+type StartTrashRestore202JSONResponse TransferJob
+
+func (response StartTrashRestore202JSONResponse) VisitStartTrashRestoreResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartTrashRestoredefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response StartTrashRestoredefaultApplicationProblemPlusJSONResponse) VisitStartTrashRestoreResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -853,9 +1085,15 @@ type StrictServerInterface interface {
 	// StartExport Export a notebook, or a page and its subtree
 	// (POST /api/v0/notebooks/{notebook_id}/exports)
 	StartExport(ctx context.Context, request StartExportRequestObject) (StartExportResponseObject, error)
+	// StartRevert Revert a changeset in the background
+	// (POST /api/v0/notebooks/{notebook_id}/reverts)
+	StartRevert(ctx context.Context, request StartRevertRequestObject) (StartRevertResponseObject, error)
 	// ListTransferJobs List a notebook's jobs
 	// (GET /api/v0/notebooks/{notebook_id}/transfer-jobs)
 	ListTransferJobs(ctx context.Context, request ListTransferJobsRequestObject) (ListTransferJobsResponseObject, error)
+	// StartTrashRestore Restore a trash item in the background
+	// (POST /api/v0/notebooks/{notebook_id}/trash-restores)
+	StartTrashRestore(ctx context.Context, request StartTrashRestoreRequestObject) (StartTrashRestoreResponseObject, error)
 	// GetTransferJob Read a job
 	// (GET /api/v0/transfer-jobs/{job_id})
 	GetTransferJob(ctx context.Context, request GetTransferJobRequestObject) (GetTransferJobResponseObject, error)
@@ -936,6 +1174,39 @@ func (sh *strictHandler) StartExport(w http.ResponseWriter, r *http.Request, not
 	}
 }
 
+// StartRevert operation middleware
+func (sh *strictHandler) StartRevert(w http.ResponseWriter, r *http.Request, notebookID NotebookID) {
+	var request StartRevertRequestObject
+
+	request.NotebookID = notebookID
+
+	var body StartRevertJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.StartRevert(ctx, request.(StartRevertRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "StartRevert")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(StartRevertResponseObject); ok {
+		if err := validResponse.VisitStartRevertResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListTransferJobs operation middleware
 func (sh *strictHandler) ListTransferJobs(w http.ResponseWriter, r *http.Request, notebookID NotebookID, params ListTransferJobsParams) {
 	var request ListTransferJobsRequestObject
@@ -956,6 +1227,39 @@ func (sh *strictHandler) ListTransferJobs(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListTransferJobsResponseObject); ok {
 		if err := validResponse.VisitListTransferJobsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// StartTrashRestore operation middleware
+func (sh *strictHandler) StartTrashRestore(w http.ResponseWriter, r *http.Request, notebookID NotebookID) {
+	var request StartTrashRestoreRequestObject
+
+	request.NotebookID = notebookID
+
+	var body StartTrashRestoreJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.StartTrashRestore(ctx, request.(StartTrashRestoreRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "StartTrashRestore")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(StartTrashRestoreResponseObject); ok {
+		if err := validResponse.VisitStartTrashRestoreResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

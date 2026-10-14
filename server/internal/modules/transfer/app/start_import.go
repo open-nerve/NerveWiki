@@ -69,7 +69,7 @@ func (s *StartImport) Check(ctx context.Context, req ImportRequest) error {
 	if err != nil {
 		return err
 	}
-	workspaceID, err := s.workspaceOf(ctx, req.NotebookID)
+	workspaceID, err := s.d.workspaceOf(ctx, req.NotebookID)
 	if err != nil {
 		return err
 	}
@@ -114,15 +114,6 @@ func (s *StartImport) admit(ctx context.Context, req ImportRequest) error {
 // request ended.
 func (s *StartImport) Release(req ImportRequest) {
 	s.d.Uploads.release(req.NotebookID)
-}
-
-// workspaceOf is the notebook's workspace: notebook.not_found for none.
-func (s *StartImport) workspaceOf(ctx context.Context, notebookID uuid.UUID) (uuid.UUID, error) {
-	workspaceID, ok, err := s.d.Notebooks.WorkspaceOf(ctx, notebookID)
-	if err == nil && !ok {
-		err = domain.ErrNotebookNotFound
-	}
-	return workspaceID, err
 }
 
 // place is page.not_found when the import goes under a page that is no
@@ -250,7 +241,7 @@ func (s *StartImport) write(ctx context.Context, req ImportRequest, stored Store
 	if err != nil {
 		return job, false, err
 	}
-	workspaceID, err := s.workspaceOf(ctx, req.NotebookID)
+	workspaceID, err := s.d.workspaceOf(ctx, req.NotebookID)
 	if err != nil {
 		return job, false, err
 	}

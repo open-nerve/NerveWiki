@@ -1,12 +1,34 @@
 import { formatDateTime } from "../../i18n/format";
 import type { Translate } from "../../i18n/i18n";
 import type { Locale } from "../../i18n/locale";
+import type { Changeset } from "../../services/page.service";
 import type { TransferJob } from "../../services/transfer.service";
+import { kindText } from "./changeset-text";
 
-/** jobTitle is what a job does: an export of the whole notebook or of a page, or an import. */
+/** The changesets' kinds, which a revert's job is named after. */
+const changesetKinds: Record<Changeset["kind"], true> = {
+  edit: true,
+  import: true,
+  version_restore: true,
+  trash_restore: true,
+  revert: true,
+};
+
+/**
+ * jobTitle is what a job does: an export of the whole notebook or of a
+ * page, an import, a restore of a trash item, or an undo of a change of a
+ * kind, its name (M8/P4 design 4.3).
+ */
 export function jobTitle(job: TransferJob, t: Translate): string {
-  if (job.kind === "import") {
-    return t("transfer.importOf", { name: job.name });
+  switch (job.kind) {
+    case "import":
+      return t("transfer.importOf", { name: job.name });
+    case "trash_restore":
+      return t("transfer.restoreOf", { name: job.name });
+    case "revert":
+      return t("transfer.revertOf", {
+        kind: Object.hasOwn(changesetKinds, job.name) ? kindText(job.name as Changeset["kind"], t) : job.name,
+      });
   }
   return job.root_id === null ? t("transfer.exportOfNotebook") : t("transfer.exportOfPage", { name: job.name });
 }

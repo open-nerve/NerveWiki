@@ -14,9 +14,10 @@ import (
 // queued. Any role starts an export, lists its jobs, and reads its own and
 // asks to cancel it (an export that ended: transfer.not_cancellable);
 // another's job is its notebook's admins' alone and is not found by the
-// rest; its editors and admins start an import, its readers are refused;
-// the columns without a role do not see the notebook. The download is
-// public: its signature decides (matrixExempt).
+// rest; its editors and admins start an import, a restore of its seeded
+// trash item and a revert of its seeded rename (M8/P4 design 3.10), its
+// readers are refused; the columns without a role do not see the
+// notebook. The download is public: its signature decides (matrixExempt).
 
 // importForm is an import's form: under parent, an archive that is no zip,
 // whose job fails, writing nothing.
@@ -50,13 +51,15 @@ func matrixJobs() []matrixJob {
 
 // transferJobAnswer is a TransferJob answer, as much as the rows check.
 type transferJobAnswer struct {
-	ID         string  `json:"id"`
-	NotebookID string  `json:"notebook_id"`
-	RootID     *string `json:"root_id"`
-	Name       string  `json:"name"`
-	Kind       string  `json:"kind"`
-	State      string  `json:"state"`
-	CreatedBy  struct {
+	ID                string  `json:"id"`
+	NotebookID        string  `json:"notebook_id"`
+	RootID            *string `json:"root_id"`
+	Name              string  `json:"name"`
+	Kind              string  `json:"kind"`
+	State             string  `json:"state"`
+	ChangesetID       *string `json:"changeset_id"`
+	TargetChangesetID *string `json:"target_changeset_id"`
+	CreatedBy         struct {
 		UserID string `json:"user_id"`
 	} `json:"created_by"`
 	Download *struct {
@@ -129,6 +132,44 @@ func transferMatrixRows() []matrixRow {
 				if root := s.page(pageOf(c)).String(); j.Kind != "import" || j.State != "queued" || j.RootID == nil || *j.RootID != root ||
 					j.Name != "vault.zip" || j.CreatedBy.UserID != s.accounts[c].String() {
 					t.Errorf("started %+v, want %s's import under %s, queued", j, c, pageOf(c))
+				}
+			},
+		},
+		{
+			op:      "startTrashRestore",
+			columns: notebookColumns(),
+			write:   true,
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodPost, notebookPath(c, s) + "/trash-restores", `{"node_id": "` + s.page(trashedIn(notebookOf(c))).String() + `"}`
+			},
+			cells: editorsOnly(cell{status: http.StatusAccepted}, cell{http.StatusNotFound, "notebook.not_found"}),
+			check: func(t *testing.T, c caller, s seeded, answer string) {
+				t.Helper()
+				var j transferJobAnswer
+				decodeAnswer(t, answer, &j)
+				item := trashedIn(notebookOf(c))
+				if j.Kind != "trash_restore" || j.State != "queued" || j.RootID == nil || *j.RootID != s.page(item).String() || j.Name != item ||
+					j.ChangesetID == nil || j.TargetChangesetID != nil || j.CreatedBy.UserID != s.accounts[c].String() {
+					t.Errorf("started %+v, want %s's restore of %s, queued, its changeset decided", j, c, item)
+				}
+			},
+		},
+		{
+			op:      "startRevert",
+			columns: notebookColumns(),
+			write:   true,
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodPost, notebookPath(c, s) + "/reverts", `{"changeset_id": "` + s.changeset(notebookOf(c)).String() + `"}`
+			},
+			cells: editorsOnly(cell{status: http.StatusAccepted}, cell{http.StatusNotFound, "notebook.not_found"}),
+			check: func(t *testing.T, c caller, s seeded, answer string) {
+				t.Helper()
+				var j transferJobAnswer
+				decodeAnswer(t, answer, &j)
+				target := s.changeset(notebookOf(c)).String()
+				if j.Kind != "revert" || j.State != "queued" || j.RootID != nil || j.TargetChangesetID == nil || *j.TargetChangesetID != target ||
+					j.Name != "edit" || j.ChangesetID == nil || *j.ChangesetID == target || j.CreatedBy.UserID != s.accounts[c].String() {
+					t.Errorf("started %+v, want %s's revert of %s, queued, its changeset decided", j, c, target)
 				}
 			},
 		},

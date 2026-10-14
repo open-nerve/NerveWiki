@@ -108,7 +108,7 @@ func (r *jobRun) progress() domain.Progress {
 // publish publishes the report as it is, for the heartbeat to write.
 func (r *jobRun) publish() {
 	report := r.report
-	report.Problems = slices.Clone(report.Problems)
+	report.Problems, report.Conflicts = slices.Clone(report.Problems), slices.Clone(report.Conflicts)
 	r.reported.Store(&report)
 }
 

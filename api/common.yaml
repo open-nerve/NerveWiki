@@ -64,22 +64,11 @@ components:
           items:
             $ref: "#/components/schemas/FieldError"
         lock:
+          $ref: "#/components/schemas/PageLock"
           description: >-
             The edit lock page.locked names: the page locked and who holds it
             (the caller themself when they hold it elsewhere). No other code
             carries it.
-          type: object
-          additionalProperties: false
-          required: [page_id, user_id, display_name]
-          properties:
-            page_id:
-              type: string
-              format: uuid
-            user_id:
-              type: string
-              format: uuid
-            display_name:
-              type: string
         locks:
           description: >-
             The edit locks linking.pages_locked names, one a page: each page
@@ -88,18 +77,7 @@ components:
             it.
           type: array
           items:
-            type: object
-            additionalProperties: false
-            required: [page_id, user_id, display_name]
-            properties:
-              page_id:
-                type: string
-                format: uuid
-              user_id:
-                type: string
-                format: uuid
-              display_name:
-                type: string
+            $ref: "#/components/schemas/PageLock"
         ended_by:
           description: >-
             Who ended the caller's edit session: page.edit_session_unlocked
@@ -136,6 +114,37 @@ components:
             lists the first 100. No other code carries it.
           type: integer
           minimum: 1
+    PageLock:
+      description: >-
+        An edit lock: the page locked and who holds it, by their display name
+        as of the answer.
+      type: object
+      additionalProperties: false
+      required: [page_id, user_id, display_name]
+      properties:
+        page_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        display_name:
+          type: string
+    TrashPlacement:
+      description: >-
+        Where a restore puts a trash item: under its parent where it was, original (parent_id null when it was at
+        the root), or last at the notebook's root, parent_id null, its parent being in the trash (parent_in_trash)
+        or its pages too deep under it (too_deep).
+      type: object
+      additionalProperties: false
+      required: [parent_id, reason]
+      properties:
+        parent_id:
+          type: [string, "null"]
+          format: uuid
+        reason:
+          type: string
+          enum: [original, parent_in_trash, too_deep]
     RevertConflict:
       description: >-
         A node that keeps a revert from its changeset (page.revert_conflict).

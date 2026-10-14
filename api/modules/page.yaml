@@ -1398,7 +1398,7 @@ components:
           type: integer
           minimum: 0
         restore_to:
-          $ref: "#/components/schemas/TrashPlacement"
+          $ref: "../common.yaml#/components/schemas/TrashPlacement"
         revision:
           description: >-
             A page's content's revision as it was deleted, whose version getPageVersionView shows; null for an
@@ -1422,21 +1422,6 @@ components:
           description: The file's size in bytes.
           type: integer
           format: int64
-    TrashPlacement:
-      description: >-
-        Where a restore puts a trash item: under its parent where it was, original (parent_id null when it was at
-        the root), or last at the notebook's root, parent_id null, its parent being in the trash (parent_in_trash)
-        or its pages too deep under it (too_deep).
-      type: object
-      additionalProperties: false
-      required: [parent_id, reason]
-      properties:
-        parent_id:
-          type: [string, "null"]
-          format: uuid
-        reason:
-          type: string
-          enum: [original, parent_in_trash, too_deep]
     NodeRestored:
       description: What a restore did.
       type: object
@@ -1456,7 +1441,7 @@ components:
           description: Whether it was numbered, a sibling where it went back having its name.
           type: boolean
         placed:
-          $ref: "#/components/schemas/TrashPlacement"
+          $ref: "../common.yaml#/components/schemas/TrashPlacement"
         changeset_id:
           description: The restore's changeset, a trash_restore.
           type: string

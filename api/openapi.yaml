@@ -33,7 +33,7 @@ tags:
   - name: asset
     description: The attachments of a notebook's pages and their files.
   - name: transfer
-    description: The imports and exports of notebooks, jobs that run in the background.
+    description: The imports and exports of notebooks, and the restores and reverts too large for a request, jobs that run in the background.
 paths:
   /api/v0/auth/register:
     $ref: "modules/identity.yaml#/paths/~1api~1v0~1auth~1register"
@@ -165,6 +165,10 @@ paths:
     $ref: "modules/transfer.yaml#/paths/~1api~1v0~1notebooks~1{notebook_id}~1exports"
   /api/v0/notebooks/{notebook_id}/imports:
     $ref: "modules/transfer.yaml#/paths/~1api~1v0~1notebooks~1{notebook_id}~1imports"
+  /api/v0/notebooks/{notebook_id}/trash-restores:
+    $ref: "modules/transfer.yaml#/paths/~1api~1v0~1notebooks~1{notebook_id}~1trash-restores"
+  /api/v0/notebooks/{notebook_id}/reverts:
+    $ref: "modules/transfer.yaml#/paths/~1api~1v0~1notebooks~1{notebook_id}~1reverts"
   /api/v0/notebooks/{notebook_id}/transfer-jobs:
     $ref: "modules/transfer.yaml#/paths/~1api~1v0~1notebooks~1{notebook_id}~1transfer-jobs"
   /api/v0/transfer-jobs/{job_id}:

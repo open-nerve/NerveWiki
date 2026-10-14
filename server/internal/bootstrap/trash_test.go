@@ -442,13 +442,13 @@ func (tm acmeTeam) trashedAgo(t *testing.T, id string, d time.Duration) {
 
 // The composition root leaves a restore's and a revert's bounds the
 // domain's (M8/P2A fix check 2, N-b): the page module takes 0 as the
-// domain's MaxUnitNodes, MaxUnitHistory and MaxRevertSteps, which only a
-// measurement raises. The tests at the bounds tell a bound far off; this
-// one, exactly.
+// domain's MaxUnitNodes, MaxUnitHistory, MaxRevertSteps and MaxJobItems
+// (M8/P4 design 3.11), which only a measurement raises. The tests at the
+// bounds tell a bound far off; this one, exactly.
 func TestPageDepsLeaveTheUnitsBoundsTheDomains(t *testing.T) {
 	d := pageDeps(testConfig(t, "", false), nil, slog.New(slog.DiscardHandler), nil, nil, nil)
-	if d.MaxUnitNodes != 0 || d.MaxUnitHistory != 0 || d.MaxRevertSteps != 0 {
-		t.Errorf("pageDeps' bounds: %d nodes, %d rows of history, %d steps; want 0 each, the domain's", d.MaxUnitNodes, d.MaxUnitHistory,
-			d.MaxRevertSteps)
+	if d.MaxUnitNodes != 0 || d.MaxUnitHistory != 0 || d.MaxRevertSteps != 0 || d.MaxJobItems != 0 {
+		t.Errorf("pageDeps' bounds: %d nodes, %d rows of history, %d steps, %d items of a job; want 0 each, the domain's", d.MaxUnitNodes,
+			d.MaxUnitHistory, d.MaxRevertSteps, d.MaxJobItems)
 	}
 }

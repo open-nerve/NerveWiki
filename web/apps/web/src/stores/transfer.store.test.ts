@@ -365,7 +365,7 @@ test("of two reads that overlap, the later one asked wins, even answered first",
 });
 
 test("detail reads the job from the service, which the store does not hold", async () => {
-  const detail = { ...job(1), problems: [], problems_truncated: true };
+  const detail = { ...job(1), problems: [], problems_truncated: true, conflicts: [], conflict_count: 0 };
   const { store } = storeOf({ get: async () => detail });
 
   await expect(store.detail(job(1).id)).resolves.toBe(detail);

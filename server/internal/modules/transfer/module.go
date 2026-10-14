@@ -1,12 +1,14 @@
 // Package transfer is the module of the imports and exports of notebooks
-// (M7 design 4.9–4.12; M7/P5, P6 design): each a background job, its row
-// in transfer_jobs, its archive a file of the store. Its root is what
-// bootstrap sees: New for the HTTP side and the jobs, which read the
-// notebooks' trees through the page module's ExportNodes, the links
-// through the linking module's LinkedPages and the files through the asset
-// module's Blobs, and write an import's nodes through the page module's
-// TreeWrites, its files through the asset module's Blobs, and refresh the
-// statistics of the tables it fills; the parts in the other modules'
+// (M7 design 4.9–4.12; M7/P5, P6 design), and of the restores and reverts
+// too large for a request (M8/P4 design 3.6): each a background job, its
+// row in transfer_jobs, an import's and an export's archive a file of the
+// store. Its root is what bootstrap sees: New for the HTTP side and the
+// jobs, which read the notebooks' trees through the page module's
+// ExportNodes, the links through the linking module's LinkedPages and the
+// files through the asset module's Blobs, and write an import's nodes, a
+// restore's and a revert's batches through the page module's TreeWrites,
+// an import's files through the asset module's Blobs, and refresh the
+// statistics of the tables they fill; the parts in the other modules'
 // events (lifecycle.go);
 // Purgers for the purge; the export contributors' extension point
 // (contributors.go); DownloadKeyInfo, the derivation of the key that signs
@@ -67,9 +69,10 @@ type (
 	Blob = app.Blob
 	// Clock tells the time.
 	Clock = app.Clock
-	// Tree writes an import's nodes: bootstrap adapts the page module's
-	// TreeWrites to it, and Parsed, ImportUnit and its operands, and
-	// CreatedNode to the page module's.
+	// Tree writes an import's nodes, a restore's and a revert's batches:
+	// bootstrap adapts the page module's TreeWrites to it, and Parsed,
+	// ImportUnit and its operands, CreatedNode, and the jobs' JobSpec,
+	// JobPlan, JobStep and BatchDone to the page module's.
 	Tree          = app.Tree
 	Parsed        = app.Parsed
 	ImportSpec    = app.ImportSpec
@@ -77,6 +80,12 @@ type (
 	ImportedPage  = app.ImportedPage
 	ImportedAsset = app.ImportedAsset
 	CreatedNode   = app.CreatedNode
+	JobSpec       = app.JobSpec
+	JobPlan       = app.JobPlan
+	JobStep       = app.JobStep
+	BatchDone     = app.BatchDone
+	// Placement is where a restore put its trash item's root.
+	Placement = domain.Placement
 	// Attachments writes an import's attachments' files: bootstrap adapts
 	// the asset module's Blobs to it, and File and Owner to its.
 	Attachments = app.Attachments
@@ -93,7 +102,9 @@ type (
 // The errors the other modules' adapters answer: a file Blobs.Open does
 // not find in the store; an import's page too deep, its parent gone, its
 // changeset reverted; an attachment's file larger than its largest, or the
-// store out of room.
+// store out of room; a restore's or a revert's batch too large, its trash
+// item changed or expired, its conflicts, its changeset trimmed, its page
+// locked.
 var (
 	ErrFileMissing       = app.ErrFileMissing
 	ErrTooDeep           = app.ErrTooDeep
@@ -101,6 +112,12 @@ var (
 	ErrChangesetReverted = app.ErrChangesetReverted
 	ErrTooLarge          = app.ErrTooLarge
 	ErrStorageFull       = domain.ErrStorageFull
+	ErrBatchTooLarge     = app.ErrBatchTooLarge
+	ErrTrashChanged      = app.ErrTrashChanged
+	ErrRestoreExpired    = app.ErrRestoreExpired
+	ErrRevertConflict    = app.ErrRevertConflict
+	ErrChangesetTrimmed  = app.ErrChangesetTrimmed
+	ErrLocked            = app.ErrLocked
 )
 
 // Deps are what bootstrap gives the module.
@@ -148,10 +165,15 @@ type Deps struct {
 	// Batch bounds the writing jobs' batches: production leaves it zero,
 	// the import's bounds; the interleavings make it small.
 	Batch Batch
+	// RestoreAction and RevertAction are the page module's actions a
+	// background restore's and revert's start decides again as it writes
+	// the job's row: node.restore and changeset.revert.
+	RestoreAction shared.Action
+	RevertAction  shared.Action
 }
 
 // beat is how often a running job writes its heartbeat and progress;
-// backoff the first wait of an import the server is too busy for.
+// backoff the first wait of a batch the server is too busy for.
 const (
 	beat    = time.Second
 	backoff = time.Second
@@ -178,10 +200,15 @@ func New(d Deps) *Module {
 	start := app.StartDeps{Tx: d.Tx, Authorizer: d.Authorizer, Workspaces: d.Workspaces, Notebooks: d.Notebooks, Nodes: d.Nodes,
 		Rows: rows, Archives: archives, Queue: queue, Names: d.Names, Signer: signer, Clock: d.Clock, Logger: d.Logger, Uploads: app.NewUploads(),
 		MaxQueued: d.MaxQueued, MinFree: d.MinFreeBytes, ImportMaxBytes: d.ImportMaxBytes}
+	background := app.BackgroundDeps{Tree: d.Tree, RestoreAction: d.RestoreAction, RevertAction: d.RevertAction}
+	run := app.NewBackground(app.BackgroundRunDeps{Tree: d.Tree, Statistics: d.Statistics, Rows: rows, Clock: d.Clock, Logger: d.Logger,
+		Beat: beat, Backoff: backoff, Batch: d.Batch})
 	return &Module{
 		uc: httpadapter.UseCases{
-			Start:  app.NewStartExport(start),
-			Import: app.NewStartImport(start),
+			Start:   app.NewStartExport(start),
+			Import:  app.NewStartImport(start),
+			Restore: app.NewStartTrashRestore(start, background),
+			Revert:  app.NewStartRevert(start, background),
 			Reads: app.NewReads(app.ReadsDeps{Authorizer: d.Authorizer, Notebooks: d.Notebooks, Names: d.Names, Signer: signer, Clock: d.Clock,
 				Rows: rows, ExportTTL: d.ExportTTL}),
 			Cancel: app.NewCancel(app.CancelDeps{Tx: d.Tx, Rows: rows, Authorizer: d.Authorizer, Notebooks: d.Notebooks, Names: d.Names,
@@ -193,6 +220,8 @@ func New(d Deps) *Module {
 		jobs: []jobs.Job{
 			riveradapter.ExportJob(export, d.JobTimeout),
 			riveradapter.ImportJob(imp, d.JobTimeout),
+			riveradapter.TrashRestoreJob(run, d.JobTimeout),
+			riveradapter.RevertJob(run, d.JobTimeout),
 			riveradapter.RescueJob(app.NewRescue(rows, queue, d.Clock, d.Logger, d.HeartbeatTimeout)),
 			riveradapter.ExpireJob(app.NewExpire(rows, archives, d.Clock, d.Logger, d.ExportTTL)),
 			riveradapter.SweepJob(app.NewSweep(rows, archives, d.Clock, d.Logger)),
@@ -207,8 +236,9 @@ func (m *Module) Register(router *httpserver.Router, api *httpserver.API) {
 }
 
 // Jobs are the module's background jobs, for the server's jobs runner:
-// the exports and the imports, the rescue of the interrupted ones, the
-// exports' expiry and the sweep of the archives no job keeps.
+// the exports, the imports, the restores and the reverts, the rescue of
+// the interrupted ones, the exports' expiry and the sweep of the archives
+// no job keeps.
 func (m *Module) Jobs() []jobs.Job {
 	return m.jobs
 }

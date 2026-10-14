@@ -8,7 +8,7 @@ import type { TransferFailure } from "../../services/transfer.service";
 import { dropped, transfers } from "../../test/attachments";
 import { eventServer, withEvents } from "../../test/event-server";
 import { instanceJSON, json, notebookJSON, problem, workspaceJSON } from "../../test/fakes";
-import { jobJSON, jobsServer, underWay } from "../../test/jobs-server";
+import { jobJSON, jobsServer, reportOf, underWay } from "../../test/jobs-server";
 import { assetNode, guide, pageNode } from "../../test/page-server";
 import type { TreeNode } from "../../services/page.service";
 import { renderApp } from "../../test/render";
@@ -254,7 +254,7 @@ test("an import of the notebook under way among the jobs is told, and none start
 test.each([
   [
     problem(409, "transfer.busy"),
-    "An import into this notebook is under way, perhaps someone else's. Wait for it to end, then try again.",
+    "An import, a restore or an undo is under way in this notebook, perhaps someone else's. Wait for it to end, then try again.",
   ],
   [problem(404, "page.not_found"), "The page to import under no longer exists."],
   [problem(503, "server_busy"), "Too many jobs are waiting on the server. Try again in a few minutes."],
@@ -381,7 +381,7 @@ test("Stop the upload stops it, the dialog kept; leaving the page asks first, an
 test("an import's report counts what it skipped, not missing files, and says what was not imported as it was", async () => {
   const user = userEvent.setup();
   const counts = { pages: 5, attachments: 3, renamed: 1, missing: 0, skipped: 2 };
-  const job = jobJSON(1, { kind: "import", name: "Vault.zip", report: { failure: null, counts } });
+  const job = jobJSON(1, { kind: "import", name: "Vault.zip", report: reportOf(null, counts) });
   const server = jobsServer({ jobs: [job] });
   server.problems.set(job.id, {
     problems: [
@@ -445,16 +445,16 @@ test("an import that failed or was cancelled says that what it counts stays in t
       kind: "import",
       name: "A.zip",
       state: "failed",
-      report: { failure: "tree_changed", counts: counts(2) },
+      report: reportOf("tree_changed", counts(2)),
     }),
-    jobJSON(2, { kind: "import", name: "B.zip", report: { failure: null, counts: counts(2) } }),
-    jobJSON(3, { kind: "import", name: "C.zip", state: "failed", report: { failure: "not_zip", counts: counts(0) } }),
-    jobJSON(4, { kind: "import", name: "D.zip", state: "cancelled", report: { failure: null, counts: counts(2) } }),
+    jobJSON(2, { kind: "import", name: "B.zip", report: reportOf(null, counts(2)) }),
+    jobJSON(3, { kind: "import", name: "C.zip", state: "failed", report: reportOf("not_zip", counts(0)) }),
+    jobJSON(4, { kind: "import", name: "D.zip", state: "cancelled", report: reportOf(null, counts(2)) }),
     jobJSON(5, {
       kind: "import",
       name: "E.zip",
       state: "failed",
-      report: { failure: "storage_full", counts: counts(0, 1) },
+      report: reportOf("storage_full", counts(0, 1)),
     }),
   ];
   renderApp(transfer, jobsServer({ jobs }).app);

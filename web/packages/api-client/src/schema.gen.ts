@@ -1532,9 +1532,55 @@ export interface paths {
         put?: never;
         /**
          * Import a vault into a notebook
-         * @description Uploads a zip archive of an Obsidian vault, or of any folder of Markdown files, and starts a job that imports it into the notebook, at its root or under a page, after the children there: a file X.md is the page X, a folder X/ holds its children (X a page without content when there is no X.md beside it), any other file is an attachment of the page whose folder holds it. Hidden files and folders (.obsidian, .trash, .DS_Store...), __MACOSX and Thumbs.db are left out; a single folder at the archive's top that holds .obsidian or .nerve is the vault itself. The siblings come in the order the vault's .nerve/meta.json gives, then by name. A name that is no title is mended, a name a sibling has is numbered, each reported renamed. The archive is read whole before anything is written: an archive that is no zip, of more entries than the instance takes, or that unpacks to more than it takes fails the job, nothing written; an entry that cannot be imported is skipped and reported. The nodes are written in batches, each at once: a cancel stops the job between two, what was written kept. The notebook's editors and admins can import, a reader cannot (forbidden). The body is multipart/form-data whose parts are parent_id and file, in that order, the first optional: an unknown part, one twice, one out of order, a part after the file, a parent_id that is no id, more than 4 KiB read before the file's bytes, no file, and a body that goes on after the form past the limit are bad_request. Each part is read as sent: a Content-Transfer-Encoding is not decoded. Before the file is read, a notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found; a parent_id that is no page of the notebook, or a deleted one, is page.not_found; an import of the notebook queued, running or uploading, anyone's, is transfer.busy; as many jobs queued or running, with the imports uploading, as the instance takes is server_busy; a server whose storage would keep too little room once the body's declared length, and what the other uploads have yet to store, is stored is storage_full; a body whose declared length is past the limit is payload_too_large: a client answered before it sent its file may see the connection reset, and checks these first. A file larger than the instance's import_max_bytes is payload_too_large; one that does not arrive at the instance's lowest rate is cut off, as is one still arriving when the server shuts down. A file the storage runs out of room for is storage_full. The checks but the storage's are made again as the job is created. The job is named after the file, its root_id is the parent; it runs in the background: read it with getTransferJob until it ends.
+         * @description Uploads a zip archive of an Obsidian vault, or of any folder of Markdown files, and starts a job that imports it into the notebook, at its root or under a page, after the children there: a file X.md is the page X, a folder X/ holds its children (X a page without content when there is no X.md beside it), any other file is an attachment of the page whose folder holds it. Hidden files and folders (.obsidian, .trash, .DS_Store...), __MACOSX and Thumbs.db are left out; a single folder at the archive's top that holds .obsidian or .nerve is the vault itself. The siblings come in the order the vault's .nerve/meta.json gives, then by name. A name that is no title is mended, a name a sibling has is numbered, each reported renamed. The archive is read whole before anything is written: an archive that is no zip, of more entries than the instance takes, or that unpacks to more than it takes fails the job, nothing written; an entry that cannot be imported is skipped and reported. The nodes are written in batches, each at once: a cancel stops the job between two, what was written kept. The notebook's editors and admins can import, a reader cannot (forbidden). The body is multipart/form-data whose parts are parent_id and file, in that order, the first optional: an unknown part, one twice, one out of order, a part after the file, a parent_id that is no id, more than 4 KiB read before the file's bytes, no file, and a body that goes on after the form past the limit are bad_request. Each part is read as sent: a Content-Transfer-Encoding is not decoded. Before the file is read, a notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found; a parent_id that is no page of the notebook, or a deleted one, is page.not_found; a job that writes the notebook's tree (an import, a restore or a revert) queued or running, or an import uploading or a restore's or a revert's start under way into it, anyone's, is transfer.busy; as many jobs queued or running, with the imports uploading, as the instance takes is server_busy; a server whose storage would keep too little room once the body's declared length, and what the other uploads have yet to store, is stored is storage_full; a body whose declared length is past the limit is payload_too_large: a client answered before it sent its file may see the connection reset, and checks these first. A file larger than the instance's import_max_bytes is payload_too_large; one that does not arrive at the instance's lowest rate is cut off, as is one still arriving when the server shuts down. A file the storage runs out of room for is storage_full. The checks but the storage's are made again as the job is created. The job is named after the file, its root_id is the parent; it runs in the background: read it with getTransferJob until it ends.
          */
         post: operations["startImport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/notebooks/{notebook_id}/trash-restores": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore a trash item in the background
+         * @description Starts a job that restores the trash item of the root node_id, a page with what was deleted with it or an attachment, of any size, as restoreNode does one a request holds: where the root goes, its parent alive where it was, or the notebook's root; its name numbered when a sibling there holds it. The job restores the item in batches, its root first, then the rest depth first, each batch a unit of one changeset, a trash_restore, which the job's changeset_id names: between two batches, the nodes left in the trash under those restored are trash items of their own, each restorable alone, which the job skips when someone restored them first. Each batch checks its nodes again: the item's time to be restored in (restore_expired), its root unchanged (trash_changed), a parent restored and deleted or moved too deep since (tree_changed); a name a sibling took since is numbered. The job stops at the first, what it restored kept; its changeset can be reverted as any other (within the background revert's bound of items). The notebook's editors and admins can restore, a reader cannot (forbidden). In this order: a notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found; a reader forbidden; a node of no notebook, of another, or purged page.not_found; an alive node page.not_in_trash; a node deleted with another root page.not_trash_root; an item past the time it can be restored in page.restore_expired; a job that writes the notebook's tree (an import, a restore or a revert) queued or running, or an import uploading or another start under way into it, anyone's, transfer.busy; as many jobs queued or running, with the imports uploading, as the instance takes server_busy. The checks but the item's are made again as the job is created. The job is named after the item, its root_id is the item's root; it runs in the background: read it with getTransferJob until it ends.
+         */
+        post: operations["startTrashRestore"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/notebooks/{notebook_id}/reverts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revert a changeset in the background
+         * @description Starts a job that reverts the changeset changeset_id of the notebook as revertChangeset does one a request holds, of up to the instance's bound of items, whatever its pages, bytes, history or steps: revertChangeset's checks are made first, in the request, but past its unit's bounds; a changeset of more items than the bound is page.revert_too_large, which no job reverts. The job reverts it in batches of the round's steps, puts, deletions, a group's nodes restored, pages written back, each batch a unit of one changeset, a revert of it with the message, which the job's changeset_id names; each batch plans its own steps again, under the lock: a node changed since stops the job (revert_conflict, the report's conflicts), as does a page of the batch an edit session holds (page_locked, the report's lock) and a changeset the purge trimmed (changeset_trimmed); a top deleted goes to the trash whole; a group restored past one batch is restored depth first, a member someone restored where it goes skipped. What the job reverted is kept as it stops; its changeset can be reverted. The notebook's editors and admins can revert, a reader cannot (forbidden). In this order: a message that breaks its rules is validation_failed; a notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found; a reader forbidden; a changeset of no notebook or of another page.changeset_not_found; one the purge trimmed page.changeset_trimmed; one of more items than the bound page.revert_too_large; then, before anything else is read, a job that writes the notebook's tree queued or running, or an import uploading or another start under way into it, transfer.busy; then as revertChangeset reads it (gone meanwhile: notebook.not_found or forbidden as first, else page.changeset_trimmed): the conflicts (page.revert_conflict with conflicts and conflict_count), a version the purge took (page.changeset_trimmed); a page the revert deletes another account's edit session holds, or a page it writes back any session holds, the first in the round's order (page.locked with lock); as many jobs queued or running, with the imports uploading, as the instance takes server_busy. The checks but the changeset's are made again as the job is created. The job is named after the changeset's kind, its target_changeset_id is the changeset; it runs in the background: read it with getTransferJob until it ends.
+         */
+        post: operations["startRevert"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1553,7 +1599,7 @@ export interface paths {
         };
         /**
          * List a notebook's jobs
-         * @description The notebook's imports and exports, the newest first, a page at a time: the caller's own, or every one for the notebook's admins. Any role in the notebook can list them. A cursor the list cannot read is bad_request, before anything else; a notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found; a limit outside 1–100 is validation_failed.
+         * @description The notebook's imports, exports, background restores and reverts, the newest first, a page at a time, without their reports' problems and conflicts: the caller's own, or every one for the notebook's admins. Any role in the notebook can list them. A cursor the list cannot read is bad_request, before anything else; a notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found; a limit outside 1–100 is validation_failed.
          */
         get: operations["listTransferJobs"];
         put?: never;
@@ -1576,7 +1622,7 @@ export interface paths {
         };
         /**
          * Read a job
-         * @description The job, its progress, its report's problems once it ended, and an export's archive's address once it succeeded. Its starter and the notebook's admins can read it. A job that does not exist, is deleted with its notebook, is of a notebook the caller has no role in, or is another's to one who is not the notebook's admin is transfer.not_found.
+         * @description The job, its progress, its report's problems, and a revert's conflicts, once it ended, and an export's archive's address once it succeeded. Its starter and the notebook's admins can read it. A job that does not exist, is deleted with its notebook, is of a notebook the caller has no role in, or is another's to one who is not the notebook's admin is transfer.not_found.
          */
         get: operations["getTransferJob"];
         put?: never;
@@ -1663,6 +1709,14 @@ export interface components {
             code: "required" | "invalid_format" | "too_short" | "too_long" | "out_of_range" | "not_allowed" | "duplicate" | "common_password";
             message: string;
         };
+        /** @description An edit lock: the page locked and who holds it, by their display name as of the answer. */
+        PageLock: {
+            /** Format: uuid */
+            page_id: string;
+            /** Format: uuid */
+            user_id: string;
+            display_name: string;
+        };
         /** @description A node that keeps a revert from its changeset (page.revert_conflict). reason, in the order the conflicts are listed: changed (the node is no longer as the changeset left it: changed, moved, deleted or restored since, its trash item another, or its content written); expired (a trash item the changeset deleted is past the time it can be restored in); parent_gone (the node would go back under a parent that is in the trash or purged); children_added (another changeset put the node under one the revert would delete: it would go with it); title_taken (the node would go back to a name another node holds under its parent there: holder_id); cycle (the node would go back under itself); too_deep (pages would nest deeper than 10 levels under the node). */
         RevertConflict: {
             /** Format: uuid */
@@ -1690,21 +1744,9 @@ export interface components {
             /** @description The invalid fields of the request. */
             errors?: components["schemas"]["FieldError"][];
             /** @description The edit lock page.locked names: the page locked and who holds it (the caller themself when they hold it elsewhere). No other code carries it. */
-            lock?: {
-                /** Format: uuid */
-                page_id: string;
-                /** Format: uuid */
-                user_id: string;
-                display_name: string;
-            };
+            lock?: components["schemas"]["PageLock"];
             /** @description The edit locks linking.pages_locked names, one a page: each page whose links a rename or move would write again and who edits it (the caller themself when they edit it). No other code carries it. */
-            locks?: {
-                /** Format: uuid */
-                page_id: string;
-                /** Format: uuid */
-                user_id: string;
-                display_name: string;
-            }[];
+            locks?: components["schemas"]["PageLock"][];
             /** @description Who ended the caller's edit session: page.edit_session_unlocked names the notebook's admin who unlocked it. No other code carries it. */
             ended_by?: {
                 /** Format: uuid */
@@ -2806,7 +2848,7 @@ export interface components {
             root_id?: string | null;
         };
         /** @enum {string} */
-        TransferKind: "import" | "export";
+        TransferKind: "import" | "export" | "trash_restore" | "revert";
         /** @enum {string} */
         TransferState: "queued" | "running" | "succeeded" | "failed" | "cancelled" | "expired";
         /**
@@ -2814,7 +2856,7 @@ export interface components {
          * @enum {string}
          */
         TransferClient: "web" | "api";
-        /** @description How many of the job's nodes are done, of all: an export's written; an import's created or skipped, of those to create, 0 of 0 until its archive is read. */
+        /** @description How many of the job's nodes are done, of all: an export's written; an import's created or skipped, of those to create, 0 of 0 until its archive is read; a restore's restored or skipped, of the trash item's; a revert's put back, deleted, restored, written back or skipped, of those its plan changes, a subtree deleted counting its nodes; both 0 of 0 until the job is planned. A job interrupted keeps the progress it last wrote, at most a heartbeat behind. */
         TransferProgress: {
             /** Format: int64 */
             done: number;
@@ -2822,25 +2864,25 @@ export interface components {
             total: number;
         };
         /**
-         * @description Why a job failed: interrupted (the server stopped or restarted, the job stopped beating, or the job queue dropped it before it began), timeout (it ran past the instance's limit), forbidden (its starter could no longer read the notebook as it ran, or write in it as an import ran), root_not_found (the page exported, or imported under, was gone as it ran), storage_full, contributor_conflict (a file the server adds was where a node is), internal; for an import's archive as a whole, nothing written: not_zip (no zip, or its directory is broken), too_many_entries (more entries than the instance takes, or a directory larger than 64 MiB), unpacked_too_large (its entries unpack to more than the instance takes); tree_changed (a page the import created was deleted as it ran, its later nodes not written); changeset_reverted (the changeset it writes in was reverted as it ran, its later nodes not written).
+         * @description Why a job failed: interrupted (the server stopped or restarted, the job stopped beating, or the job queue dropped it before it began), timeout (it ran past the instance's limit), forbidden (its starter could no longer read the notebook as it ran, or write in it as an import, a restore or a revert ran), root_not_found (the page exported, or imported under, was gone as it ran), storage_full, contributor_conflict (a file the server adds was where a node is), internal; for an import's archive as a whole, nothing written: not_zip (no zip, or its directory is broken), too_many_entries (more entries than the instance takes, or a directory larger than 64 MiB), unpacked_too_large (its entries unpack to more than the instance takes); tree_changed (a page an import created was deleted as it ran; a parent a restore restored was deleted, or moved so that its pages would nest deeper than 10 levels, as it ran), its later nodes not written; changeset_reverted (the changeset an import, a restore or a revert writes in was reverted as it ran, its later nodes not written). A restore's alone: trash_changed (the trash item is no longer as it was planned: restored, purged or deleted again as another, before its first batch, or a node left in the trash below what it restored no longer the root of its own item it made it); restore_expired (the item went past the time it can be restored in as it ran). A revert's alone: revert_conflict (a node it was about to change changed since, or would conflict, the report's conflicts listing them); changeset_trimmed (the purge took part of the changeset, a version it writes back or restores, or a trash item it restores); page_locked (an edit session holds a page it was about to delete or write back, the report's lock). What a job wrote before it failed is kept.
          * @enum {string}
          */
-        TransferFailure: "interrupted" | "timeout" | "forbidden" | "root_not_found" | "storage_full" | "contributor_conflict" | "internal" | "not_zip" | "too_many_entries" | "unpacked_too_large" | "tree_changed" | "changeset_reverted";
-        /** @description What the job did before it ended, as it wrote its end. An export that could not write its end, which the server fails later as interrupted (it restarted, the job stopped beating, the job queue dropped it), counts nothing: its progress tells how far it went. An import writes its counts and problems as it goes, every ten seconds at most: one interrupted keeps those it last wrote, of the batches written by then. */
+        TransferFailure: "interrupted" | "timeout" | "forbidden" | "root_not_found" | "storage_full" | "contributor_conflict" | "internal" | "not_zip" | "too_many_entries" | "unpacked_too_large" | "tree_changed" | "changeset_reverted" | "trash_changed" | "restore_expired" | "revert_conflict" | "changeset_trimmed" | "page_locked";
+        /** @description What the job did before it ended, as it wrote its end. An export that could not write its end, which the server fails later as interrupted (it restarted, the job stopped beating, the job queue dropped it), counts nothing: its progress tells how far it went. An import, a restore and a revert write their counts and problems as they go, every ten seconds at most: one interrupted keeps those it last wrote, of the batches written by then. A restore counts pages, attachments, renamed and skipped; a revert restored, deleted, put_back, written and skipped. */
         TransferCounts: {
             /**
              * Format: int64
-             * @description The pages written; an import's, created.
+             * @description The pages written; an import's, created; a restore's, restored.
              */
             pages: number;
             /**
              * Format: int64
-             * @description The attachments whose files were written; an import's, created.
+             * @description The attachments whose files were written; an import's, created; a restore's, restored.
              */
             attachments: number;
             /**
              * Format: int64
-             * @description The nodes the export's vault names otherwise, as the export laid the vault out before it wrote; the nodes an import named otherwise than the archive.
+             * @description The nodes the export's vault names otherwise, as the export laid the vault out before it wrote; the nodes an import named otherwise than the archive; the nodes a restore numbered, a sibling where they went back holding their name.
              */
             renamed: number;
             /**
@@ -2850,14 +2892,38 @@ export interface components {
             missing: number;
             /**
              * Format: int64
-             * @description An import's entries skipped; 0 for an export.
+             * @description An import's entries skipped; the nodes of a restore's item, and of a revert's groups, that someone restored before the job came to them; 0 for an export.
              */
             skipped: number;
+            /**
+             * Format: int64
+             * @description The nodes a revert restored from the trash, its trash items' every node; 0 for every other job. (revertChangeset's log counts the trash items.)
+             */
+            restored: number;
+            /**
+             * Format: int64
+             * @description The nodes a revert deleted, with the subtrees of those it deleted; 0 for every other job.
+             */
+            deleted: number;
+            /**
+             * Format: int64
+             * @description The nodes a revert put back where and as they were; 0 for every other job.
+             */
+            put_back: number;
+            /**
+             * Format: int64
+             * @description The pages whose content a revert wrote back; 0 for every other job.
+             */
+            written: number;
         };
         TransferReport: {
             /** @description Why the job failed; null when it did not. */
             failure: components["schemas"]["TransferFailure"] | null;
             counts: components["schemas"]["TransferCounts"];
+            /** @description Where a restore put the trash item's root, once its first batch was written; null before, and for every other job. */
+            placed: components["schemas"]["TrashPlacement"] | null;
+            /** @description The page whose edit session stopped a revert (page_locked) and who holds it, by their display name as of the answer; null for every other job and failure. */
+            lock: components["schemas"]["PageLock"] | null;
         };
         TransferDownload: {
             /** @description The archive's address on this server, which a browser downloads without a token until expires_at. */
@@ -2868,7 +2934,7 @@ export interface components {
              */
             expires_at: string;
         };
-        /** @description An import or an export of a notebook, a job that runs in the background: queued, then running, then succeeded, failed or cancelled. An export's archive expires a while after it succeeded, the instance's export TTL, or at once when its starter's next export of the notebook succeeds: a starter keeps only their latest export of a notebook. created_by is its starter. */
+        /** @description An import or an export of a notebook, a restore of a trash item or a revert of a changeset, a job that runs in the background: queued, then running, then succeeded, failed or cancelled. An export's archive expires a while after it succeeded, the instance's export TTL, or at once when its starter's next export of the notebook succeeds: a starter keeps only their latest export of a notebook. created_by is its starter. */
         TransferJob: {
             /** Format: uuid */
             id: string;
@@ -2876,11 +2942,21 @@ export interface components {
             notebook_id: string;
             /**
              * Format: uuid
-             * @description The page exported with its subtree, or imported under; null for the whole notebook, or its root.
+             * @description The page exported with its subtree, or imported under; null for the whole notebook, or its root. A restore's, the root of the trash item it restores, a page or an attachment; null for a revert.
              */
             root_id: string | null;
-            /** @description What is exported, by name, the notebook's or the page's, which the archive is named after; for an import, the archive's file name. */
+            /** @description What is exported, by name, the notebook's or the page's, which the archive is named after; for an import, the archive's file name; for a restore, the trash item's name as it was deleted; for a revert, the kind of the changeset it reverts. */
             name: string;
+            /**
+             * Format: uuid
+             * @description The changeset the job writes in, an import's, a restore's trash_restore or a revert's revert, decided as the job was created: it exists once the job first wrote. Null for an export, and for an import created before the jobs had it.
+             */
+            changeset_id: string | null;
+            /**
+             * Format: uuid
+             * @description The changeset a revert reverts; null for every other job.
+             */
+            target_changeset_id: string | null;
             kind: components["schemas"]["TransferKind"];
             state: components["schemas"]["TransferState"];
             client: components["schemas"]["TransferClient"];
@@ -2907,6 +2983,23 @@ export interface components {
             /** @description The address of an export's archive, once it succeeded and until it expires; null otherwise. */
             download: components["schemas"]["TransferDownload"] | null;
         };
+        TrashRestoreStart: {
+            /**
+             * Format: uuid
+             * @description The root of the trash item to restore, a page or an attachment.
+             */
+            node_id: string;
+        };
+        /** @description A revert of a changeset in the background; no message, none. */
+        RevertStart: {
+            /**
+             * Format: uuid
+             * @description The changeset to revert, of the notebook.
+             */
+            changeset_id: string;
+            /** @description Why, kept with the revert's changeset: 1–4,096 bytes of UTF-8, without NUL characters. */
+            message?: string;
+        };
         TransferJobPage: {
             data: components["schemas"]["TransferJob"][];
             next_cursor: components["schemas"]["NextCursor"];
@@ -2919,7 +3012,7 @@ export interface components {
             /** @description Where a renamed node is written, or created; null for any other problem. */
             to: string | null;
         };
-        /** @description A job, as TransferJob, and its report's problems once it ended. */
+        /** @description A job, as TransferJob, and its report's problems and a revert's conflicts once it ended. */
         TransferJobDetail: {
             /** Format: uuid */
             id: string;
@@ -2927,11 +3020,21 @@ export interface components {
             notebook_id: string;
             /**
              * Format: uuid
-             * @description The page exported with its subtree, or imported under; null for the whole notebook, or its root.
+             * @description The page exported with its subtree, or imported under; null for the whole notebook, or its root. A restore's, the root of the trash item it restores, a page or an attachment; null for a revert.
              */
             root_id: string | null;
-            /** @description What is exported, by name, the notebook's or the page's, which the archive is named after; for an import, the archive's file name. */
+            /** @description What is exported, by name, the notebook's or the page's, which the archive is named after; for an import, the archive's file name; for a restore, the trash item's name as it was deleted; for a revert, the kind of the changeset it reverts. */
             name: string;
+            /**
+             * Format: uuid
+             * @description The changeset the job writes in, an import's, a restore's trash_restore or a revert's revert, decided as the job was created: it exists once the job first wrote. Null for an export, and for an import created before the jobs had it.
+             */
+            changeset_id: string | null;
+            /**
+             * Format: uuid
+             * @description The changeset a revert reverts; null for every other job.
+             */
+            target_changeset_id: string | null;
             kind: components["schemas"]["TransferKind"];
             state: components["schemas"]["TransferState"];
             client: components["schemas"]["TransferClient"];
@@ -2961,6 +3064,10 @@ export interface components {
             problems: components["schemas"]["TransferProblem"][];
             /** @description Whether problems were left out past the first 1,000. */
             problems_truncated: boolean;
+            /** @description The conflicts that stopped a revert (revert_conflict), as page.revert_conflict lists them: by reason, then by node id, the first 100 of conflict_count; empty for every other job and failure. */
+            conflicts: components["schemas"]["RevertConflict"][];
+            /** @description How many conflicts stopped a revert (revert_conflict); 0 otherwise. */
+            conflict_count: number;
         };
     };
     responses: {
@@ -3030,6 +3137,7 @@ export interface components {
 export type SignupInvitation = components['schemas']['SignupInvitation'];
 export type RegisterRequest = components['schemas']['RegisterRequest'];
 export type FieldError = components['schemas']['FieldError'];
+export type PageLock = components['schemas']['PageLock'];
 export type RevertConflict = components['schemas']['RevertConflict'];
 export type Problem = components['schemas']['Problem'];
 export type AuthTokens = components['schemas']['AuthTokens'];
@@ -3152,6 +3260,8 @@ export type TransferCounts = components['schemas']['TransferCounts'];
 export type TransferReport = components['schemas']['TransferReport'];
 export type TransferDownload = components['schemas']['TransferDownload'];
 export type TransferJob = components['schemas']['TransferJob'];
+export type TrashRestoreStart = components['schemas']['TrashRestoreStart'];
+export type RevertStart = components['schemas']['RevertStart'];
 export type TransferJobPage = components['schemas']['TransferJobPage'];
 export type TransferProblem = components['schemas']['TransferProblem'];
 export type TransferJobDetail = components['schemas']['TransferJobDetail'];
@@ -5282,6 +5392,62 @@ export interface operations {
         };
         responses: {
             /** @description The import's job, queued. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransferJob"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    startTrashRestore: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TrashRestoreStart"];
+            };
+        };
+        responses: {
+            /** @description The restore's job, queued. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransferJob"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    startRevert: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevertStart"];
+            };
+        };
+        responses: {
+            /** @description The revert's job, queued. */
             202: {
                 headers: {
                     [name: string]: unknown;

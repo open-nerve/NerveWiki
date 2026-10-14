@@ -133,6 +133,22 @@ func ImportJob(uc JobUseCase, timeout time.Duration) jobs.Job {
 	}}
 }
 
+// TrashRestoreJob is the background restores' worker, each run within
+// timeout, on the imports' queue.
+func TrashRestoreJob(uc JobUseCase, timeout time.Duration) jobs.Job {
+	return jobs.Job{Add: func(w *river.Workers) error {
+		return river.AddWorkerSafely(w, &jobWorker[TrashRestoreArgs]{uc: uc, timeout: timeout})
+	}}
+}
+
+// RevertJob is the background reverts' worker, each run within timeout,
+// on the imports' queue.
+func RevertJob(uc JobUseCase, timeout time.Duration) jobs.Job {
+	return jobs.Job{Add: func(w *river.Workers) error {
+		return river.AddWorkerSafely(w, &jobWorker[RevertArgs]{uc: uc, timeout: timeout})
+	}}
+}
+
 // Queue enqueues the module's jobs in the caller's transaction, with the
 // insert-only client, and tells which River still holds.
 type Queue struct {

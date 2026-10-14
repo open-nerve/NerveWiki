@@ -199,7 +199,7 @@ test("TR1 (page): the notebook exports from its settings and downloads as its va
   await page.goto(notebookPath(workspace.slug, handbook.id, "general"));
   await page
     .getByRole("navigation", { name: "Notebook settings" })
-    .getByRole("link", { name: "Import and export" })
+    .getByRole("link", { name: "Import, export and restore" })
     .click();
   await expect(page).toHaveURL(notebookPath(workspace.slug, handbook.id, "transfer"));
   await expect(page.getByText("No jobs yet.")).toBeVisible();

@@ -126,7 +126,8 @@ func (s *Store) LockJob(ctx context.Context, id uuid.UUID) (domain.Job, error) {
 	return jobOf(gen.FindJobRow(r))
 }
 
-// ListJobs implements app.Rows: the reports come without their problems.
+// ListJobs implements app.Rows: the reports come without their problems
+// and conflicts.
 func (s *Store) ListJobs(ctx context.Context, notebookID uuid.UUID, by *uuid.UUID, after *app.Cursor, limit int) ([]domain.Job, error) {
 	p := gen.ListJobsParams{NotebookID: notebookID, CreatedByID: by, RowLimit: int32(limit)} //nolint:gosec // a page's size
 	if after != nil {
