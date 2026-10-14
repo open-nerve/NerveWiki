@@ -546,7 +546,10 @@ func TestARestoreJobAndTheRevertOfItsDeletion(t *testing.T) {
 // is deleted at now and reads its content there, as a request's revert of
 // R1 would, and the job restores all ten (M8/P4A review A-M1). The fourth
 // batch before the deletion: the page alive where it was is changed,
-// page.revert_conflict, as a request's revert has it.
+// page.revert_conflict, as a request's revert has it. Its groups are a
+// page each, so it pins the batch's reads at the new time; that later
+// batches read a group there, TestARevertJobOfAGroupDeletedAgainSinceThePlan
+// (page/app) holds.
 func TestARevertJobOfAGroupDeletedAgainSinceItsPlan(t *testing.T) {
 	tm := newBatchedTeam(t, "member", "")
 	for try := range betweenUnits {

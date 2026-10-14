@@ -47,8 +47,9 @@ const (
 )
 
 // shapeGroups is the revert of the revert of an import of attachments at
-// the root, which restores a group of each (revertOfAttachments): the
-// longest request (BenchmarkBackgroundJobs).
+// the root, which restores a group of each (revertOfAttachments): many
+// groups, a request about as long as the revert's revert of one group of
+// every node (BenchmarkBackgroundSteps).
 const shapeGroups = "groups"
 
 // The load of an imported changeset's pages, the design's full load
@@ -358,8 +359,8 @@ func (b trashBench) restoreJob(tb testing.TB, root uuid.UUID) jobRun {
 // import's changeset by its shape and size (M8/P4 design 3.11): its pages
 // at the root, under a top five levels deep, and in folders; and of the
 // revert of the revert of an import of attachments at the root, which
-// restores a group of each, the longest (shapeGroups); each on a database
-// of its own without statistics, then analyzed. It logs each, ms.
+// restores a group of each (shapeGroups); each on a database of its own
+// without statistics, then analyzed. It logs each, ms.
 //
 // Measured on an Apple M5 Max shared with other work (load 5-14), at the
 // full load, three runs at MaxJobItems, ms, without statistics / analyzed:
@@ -759,8 +760,12 @@ func (b trashBench) arrays(tb testing.TB, c, r uuid.UUID) string {
 // analyzed, is answered in its time: of the import, its pages at the root
 // (BenchmarkStartRevert's other shapes take about as long); and of the
 // revert of the revert of an import of as many attachments at the root,
-// which restores as many groups, the longest request (shapeGroups; M8/P4A
-// review C-M5), the revert written through SQL as its job writes it. One
+// which restores as many groups (shapeGroups; M8/P4A review C-M5), the
+// revert written through SQL as its job writes it. A request reads
+// NodesNow and TrashGroups of every item; the batches' arrays' statements
+// at scale, the changeset's items and versions of every node of a top and
+// the mark of a group's frontier, TestARevertJobOfAnImportAtMaxJobItems
+// times in its largest steps (M8/P4A fix check K-4). One
 // more node in the import is page.revert_too_large before its items are
 // read, admit not asked.
 func TestStartRevertAtMaxJobItems(t *testing.T) {
@@ -801,9 +806,10 @@ func TestStartRevertAtMaxJobItems(t *testing.T) {
 // A background revert of an import of guardJobItems nodes in folders, as
 // a vault's, analyzed as an import's end leaves its tables, ends in its
 // time, the trash listing its tops, a folder's page of each six; and the
-// largest step any revert's job takes, the first batch of the revert of
-// an import of a top and every node under it, which deletes them all in
-// one unit (BenchmarkBackgroundSteps), takes its time. The invariants are
+// largest steps any revert's job takes take their time: the first batch
+// of the revert of an import of a top and every node under it, which
+// deletes them all in one unit, and the first batch of that revert's
+// revert, which plans the group of every node again (BenchmarkBackgroundSteps). The invariants are
 // read analyzed, as the job leaves the tables past 10,000 nodes: a group
 // of every node, its statistics read before its deletion, makes their
 // recursive read of the groups read every node of its time for each.
@@ -831,13 +837,24 @@ func TestARevertJobOfAnImportAtMaxJobItems(t *testing.T) {
 		bench := newJobBench(t, 0)
 		c := bench.importOf(t, shapeDeep, page.MaxJobItems)
 		bench.analyze(t)
-		took, _ := bench.firstBatch(t, c)
+		took, r := bench.firstBatch(t, c)
 		t.Logf("the deletion of a top of %d nodes took %s", page.MaxJobItems, took)
 		if took > largestStepLimit {
 			t.Errorf("the deletion of a top of %d nodes took %s, want %s at most", page.MaxJobItems, took, largestStepLimit)
 		}
 		if n := count(t, bench.pool, "SELECT count(*) FROM nodes WHERE notebook_id = $1 AND deleted_at IS NULL", bench.nb); n != 0 {
 			t.Errorf("%d nodes alive, want none", n)
+		}
+		bench.analyze(t)
+		checkPages(t, bench.pool)
+		// The first batch of that deletion's revert: the group of every
+		// node planned again, its first members restored, the rest marked
+		// trash items of their own (M8/P4A fix check K-4).
+		group, _ := bench.firstBatch(t, r)
+		t.Logf("the first batch of the restore of a group of %d nodes took %s", page.MaxJobItems, group)
+		if group > groupBatchLimit {
+			t.Errorf("the first batch of the restore of a group of %d nodes took %s, want %s at most", page.MaxJobItems, group,
+				groupBatchLimit)
 		}
 		bench.analyze(t)
 		checkPages(t, bench.pool)
@@ -853,11 +870,13 @@ const guardJobItems = 10_000
 
 // The guards' limits, three times the times measured here at the full
 // load (load 6-8): the request 0.3 s, of many groups 0.7 s, the job of
-// 10,000 nodes 5.5-6.5 s; the largest step 3.6-4.5 s, 4.6 s in the
-// bench's slowest run (load 6-13), which its limit is three times.
+// 10,000 nodes 5.5-6.5 s; the largest steps three times the bench's
+// slowest runs (load 6-13), the deletion 3.6-4.7 s here, 4.6 s there, the
+// group's first batch 0.75-1.0 s here, 2.2 s there.
 const (
 	startRevertLimit = 1 * time.Second
 	manyGroupsLimit  = 2100 * time.Millisecond
 	revertJobLimit   = 17 * time.Second
 	largestStepLimit = 14 * time.Second
+	groupBatchLimit  = 6600 * time.Millisecond
 )

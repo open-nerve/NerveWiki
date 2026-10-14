@@ -697,9 +697,10 @@ func TestARevertJobsContinuationBesideANewTop(t *testing.T) {
 // A group someone restored where it was and deleted again, unchanged,
 // since the job's plan: the batch that begins it plans it at the time it
 // is deleted at now, as a request's revert would, and reads its pages'
-// contents there; the later batches read its members at that time once
-// the first commits (M8/P4A review A-M1). A batch of the whole group, and
-// batches of a member each.
+// contents and counts its history there; the later batches read its
+// members at that time once the first commits (M8/P4A review A-M1, fix
+// check K-1). A batch of the whole group, and batches of a member each;
+// then the group's history past the bound at its new time.
 func TestARevertJobOfAGroupDeletedAgainSinceThePlan(t *testing.T) {
 	for _, size := range []int{3, 1} {
 		f := newRevertFixture()
@@ -723,29 +724,45 @@ func TestARevertJobOfAGroupDeletedAgainSinceThePlan(t *testing.T) {
 			}
 		}
 	}
+	f := newRevertFixture()
+	w, spec := f.jobs(now(), 0, 10), f.jobSpec()
+	plan, err := w.PlanRevert(f.asJob(), spec, f.c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.restoredMeanwhile(f.box.ID, f.doc.ID, f.scan.ID)
+	f.trashed(f.box.ID, now().Add(-time.Minute), f.alice)
+	f.store.history = map[uuid.UUID]int{f.box.ID: 6, f.doc.ID: 6}
+	if _, err := w.RunBatch(f.asJob(), spec, plan, 0, 3); !errors.Is(err, domain.ErrBatchTooLarge) {
+		t.Errorf("RunBatch(the group, 12 rows of history at its new time, 10 a unit) = %v, want ErrBatchTooLarge", err)
+	}
+	if _, err := f.runJob(w, spec, plan, 1); err != nil {
+		t.Errorf("a member a batch = %v, want the group back", err)
+	}
 }
 
 // A group's later member that cannot go back keeps the members under it
-// in the same batch out of the conflicts: they are none of their own, as
-// a request's revert has a group's, and the cause comes first (M8/P4A
-// review A-M3).
+// in the same batch, at any depth, out of the conflicts: they are none of
+// their own, as a request's revert has a group's, and the cause comes
+// first (M8/P4A review A-M3, fix check K-2).
 func TestARevertJobsContinuationListsTheCauseAlone(t *testing.T) {
 	f := newFixture()
 	f.grant(domain.ActionRevert)
 	f.names[f.alice] = "Alice"
 	box := f.page("Box", nil, 0)
 	a := f.page("A", &box.ID, 0)
-	f.page("A1", &a.ID, 0)
+	a1 := f.page("A1", &a.ID, 0)
+	f.page("A1a", &a1.ID, 0)
 	c := f.deletion(box.ID, now().Add(-time.Hour))
 	w, spec, plan := f.revertJob(t, c.ID, nil, now())
 	if _, err := w.RunBatch(f.asJob(), spec, plan, 0, 1); err != nil {
 		t.Fatal(err)
 	}
 	holder := f.page("a", &box.ID, 3)
-	_, err := w.RunBatch(f.asJob(), spec, plan, 1, 3)
+	_, err := w.RunBatch(f.asJob(), spec, plan, 1, 4)
 	var e *shared.Error
 	if !errors.As(err, &e) || e.Code != "page.revert_conflict" || e.ConflictCount == nil {
-		t.Fatalf("RunBatch(A and A1) = %v, want page.revert_conflict", err)
+		t.Fatalf("RunBatch(A, A1 and A1a) = %v, want page.revert_conflict", err)
 	}
 	if len(e.Conflicts) != 1 || *e.ConflictCount != 1 || e.Conflicts[0].NodeID != a.ID ||
 		e.Conflicts[0].Reason != string(domain.ConflictTitleTaken) || e.Conflicts[0].HolderID == nil || *e.Conflicts[0].HolderID != holder.ID {

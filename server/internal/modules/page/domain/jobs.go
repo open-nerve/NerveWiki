@@ -20,8 +20,9 @@ import (
 // 20 resolved links each and a tenth of the nodes attachments: the
 // deletion of a top of an import of that many nodes, 3.5-4.6 s at 60,000
 // (one run of 70,000 took 6.9 s; 80,000, 5.9-6.1 s analyzed); at 60,000
-// the requests take 0.8 s at most (the revert's revert of as many groups),
-// a group's first batch 2.2 s. The step grows with the links of the pages
+// the requests take about 1.2 s at most (1,231 ms, the revert's revert of
+// one group of every node; of as many groups, 0.84 s), a group's first
+// batch 2.2 s. The step grows with the links of the pages
 // past 20 a page as a user's deletion of the same top does, about 1.6 µs a
 // link. The transfer module bounds an import's nodes by it, so that a
 // background revert can undo any import (M8/P4 design 2.2 (a)).
