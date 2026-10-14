@@ -418,17 +418,14 @@ func TestTheRevertsReads(t *testing.T) {
 		t.Errorf("NodesNow(P) = %+v, deleted by an edit's changeset; want no revert's deletion", nodes[p.ID])
 	}
 	// A revert's deletion: its changeset, created at the root's time, holds
-	// the root's deletion. One created at another time, or holding another
-	// item of the root, did not delete it.
-	byRevert := func(name string, order float64, at time.Time, deletion bool) uuid.UUID {
+	// the root's deletion. One holding another item of the root, or created
+	// at another time, did not delete it.
+	byRevert := func(name string, order float64, at, made time.Time, deletion bool) uuid.UUID {
 		t.Helper()
 		n := f.page(t, f.eng, nil, name, order)
 		f.trashed(t, at, 1, 0, 1, n.ID)
 		rev := app.Changeset{ID: uuid.NewV7(), NotebookID: f.eng, Kind: domain.ChangesetRevert, RevertsID: cs.ID, Client: domain.ClientWeb,
-			By: f.alice, At: now().Add(time.Hour)}
-		if deletion {
-			rev.At = at
-		}
+			By: f.alice, At: made}
 		if err := f.s.CreateChangeset(ctx, rev); err != nil {
 			t.Fatal(err)
 		}
@@ -440,9 +437,11 @@ func TestTheRevertsReads(t *testing.T) {
 		f.item(t, rev.ID, at, change)
 		return n.ID
 	}
-	deleted, other := byRevert("S", 3, now().Add(time.Minute), true), byRevert("U", 4, now().Add(2*time.Minute), false)
-	nodes, err = f.s.NodesNow(ctx, []uuid.UUID{deleted, other, r.ID})
-	if err != nil || !nodes[deleted].DeletedByRevert || nodes[other].DeletedByRevert || nodes[r.ID].DeletedByRevert {
+	s1, s2, s3 := now().Add(time.Minute), now().Add(2*time.Minute), now().Add(3*time.Minute)
+	deleted, other, later := byRevert("S", 3, s1, s1, true), byRevert("U", 4, s2, s2, false), byRevert("V", 5, s3, s3.Add(time.Hour), true)
+	nodes, err = f.s.NodesNow(ctx, []uuid.UUID{deleted, other, later, r.ID})
+	if err != nil || !nodes[deleted].DeletedByRevert || nodes[other].DeletedByRevert || nodes[later].DeletedByRevert ||
+		nodes[r.ID].DeletedByRevert {
 		t.Errorf("NodesNow = %+v, %v; want S deleted by a revert alone", nodes, err)
 	}
 	contents, err := f.s.ContentsNow(ctx, []uuid.UUID{p.ID, q.ID, r.ID})

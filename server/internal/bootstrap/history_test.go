@@ -723,6 +723,32 @@ func TestARevertOfADeletionComparesItsItemWhereItWas(t *testing.T) {
 			}
 		})
 	}
+	// Deviation 5's case, the one a top is not compared in: X deleted, then
+	// its parent; X restored to the root, its parent gone. Newest first, the
+	// restore's revert deletes X at the root, a revert's deletion; the
+	// parent comes back; X's deletion's revert puts X back under it.
+	t.Run("an item a restore put elsewhere, reverted newest first", func(t *testing.T) {
+		nb := tm.openNotebook(t, "alice", "Elsewhere")
+		p := tm.createPage(t, "alice", nb, "", "P")
+		x := tm.createPage(t, "alice", nb, p, "X")
+		was := tm.notebookState(t, nb)
+		tm.send(t, nodeDeletion("alice", x), http.StatusNoContent)
+		d := tm.newest(t, nb).ID
+		tm.send(t, nodeDeletion("alice", p), http.StatusNoContent)
+		if r := tm.restored(t, "alice", x); r.Placed.at() != " parent_in_trash" {
+			t.Fatalf("X restored %s, want at the root, its parent in the trash", r.Placed.at())
+		}
+		after, _ := tm.history(t, "alice", nb, "")
+		for _, c := range after {
+			tm.reverted(t, "bob", c.ID)
+			if c.ID == d {
+				break
+			}
+		}
+		if now := tm.notebookState(t, nb); now != was {
+			t.Errorf("the notebook reverted newest first to X's deletion:\n%s\nwant as before it:\n%s", now, was)
+		}
+	})
 }
 
 // A changeset part of which the purge took is page.changeset_trimmed, and
