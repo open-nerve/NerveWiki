@@ -850,7 +850,7 @@ components:
         entries than the instance takes, or a directory larger than 64 MiB),
         unpacked_too_large (its entries unpack to more than the instance
         takes), too_many_nodes (its pages, attachments and the folders their
-        paths imply are more nodes than one undo can revert, 90,000);
+        paths imply are more nodes than one undo can revert, 60,000);
         tree_changed (a page an import created was deleted as it
         ran; a parent a restore restored was deleted, or moved so that its
         pages would nest deeper than 10 levels, as it ran), its later nodes

@@ -243,7 +243,11 @@ func changedVersionOf(r gen.ChangesetVersionsOfRow) domain.ChangesetVersion {
 	return out
 }
 
-// NodesNow implements app.History.
+// NodesNow implements app.History, a cached statement: with the ids of a
+// background revert's changeset its plan for any reads as fast as one with
+// them, 252 against 270 ms at 50,000 ids (BenchmarkBackgroundSteps/arrays;
+// M8/P4 design 3.11), unlike the trash's arrays' statements, which run
+// planned.
 func (s *Store) NodesNow(ctx context.Context, ids []uuid.UUID, reverted uuid.UUID) (map[uuid.UUID]domain.NodeNow, error) {
 	rows, err := s.queries(ctx).NodesNow(ctx, gen.NodesNowParams{Ids: ids, Reverted: reverted})
 	if err != nil {

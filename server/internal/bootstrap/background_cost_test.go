@@ -29,7 +29,7 @@ import (
 // What a background revert and restore cost (M8/P4 design 3.11): the
 // measurements MaxJobItems is taken from, run by hand through heavy.sh,
 //
-//	NW_JOB_SIZES=50000,100000 go test -run '^$' -bench 'BenchmarkStartRevert|BenchmarkBackground' -benchtime 1x \
+//	NW_JOB_SIZES=60000,70000 go test -run '^$' -bench 'BenchmarkStartRevert|BenchmarkBackground' -benchtime 1x \
 //		-timeout 6h ./internal/bootstrap/
 //
 // and the guards that hold a job at the bound to its time. The bench is
@@ -46,29 +46,36 @@ const (
 	shapeFolders = "folders"
 )
 
-// The load of an imported changeset's pages: a content of 2 KiB, which
-// its row keeps out of line, with jobLinks links to the import's other
-// pages, resolved; and an attachment under a page of each nine, a tenth
-// of its nodes.
+// shapeGroups is the revert of the revert of an import of attachments at
+// the root, which restores a group of each (revertOfAttachments): the
+// longest request (BenchmarkBackgroundJobs).
+const shapeGroups = "groups"
+
+// The load of an imported changeset's pages, the design's full load
+// MaxJobItems is measured at (M8/P4 design 3.11, fixed in its review's fix
+// round): a content of 2 KiB, which its row keeps out of line, with
+// jobLinks links to the import's other pages, resolved; and an attachment
+// under a page of each nine, a tenth of its nodes.
 const jobContent = 2 << 10
 
-// jobLinks are the links of each imported page: NW_JOB_LINKS, or 10.
+// jobLinks are the links of each imported page: NW_JOB_LINKS, or 20, the
+// full load's.
 func jobLinks(tb testing.TB) int {
 	tb.Helper()
-	n, err := strconv.Atoi(cmp.Or(os.Getenv("NW_JOB_LINKS"), "10"))
+	n, err := strconv.Atoi(cmp.Or(os.Getenv("NW_JOB_LINKS"), "20"))
 	if err != nil || n < 1 || n*12 > jobContent {
 		tb.Fatalf("NW_JOB_LINKS %q: from 1 to %d", os.Getenv("NW_JOB_LINKS"), jobContent/12)
 	}
 	return n
 }
 
-// jobSizes are the sizes measured: NW_JOB_SIZES, or 50,000, 100,000 and
-// 200,000.
+// jobSizes are the sizes measured: NW_JOB_SIZES, or 50,000, 60,000 and
+// 70,000.
 func jobSizes(tb testing.TB) []int {
 	tb.Helper()
 	list := os.Getenv("NW_JOB_SIZES")
 	if list == "" {
-		return []int{50_000, 100_000, 200_000}
+		return []int{50_000, 60_000, 70_000}
 	}
 	var out []int
 	for s := range strings.SplitSeq(list, ",") {
@@ -179,6 +186,33 @@ func (b trashBench) importedAttachments(tb testing.TB, n int) uuid.UUID {
 	SELECT gen_random_uuid(), $2, md5($1::uuid::text || ':a' || g)::uuid, NULL, 'a' || g || '.png', g, now(), now()
 	FROM generate_series(0, $3::integer - 1) g`, b.nb, c, n)
 	return c
+}
+
+// revertOfAttachments writes, through SQL, the revert of the import c of
+// n attachments at the notebook's root (importedAttachments) as its
+// background job leaves it: each attachment deleted, a trash item of its
+// own, in batches of 100 a millisecond apart, the revert's item of it and
+// the import's in the trash at its batch's time; the job's changeset made
+// at its first batch, written last at its last. At 300 attachments its
+// rows read as the job's do, row by row. It answers the revert.
+func (b trashBench) revertOfAttachments(tb testing.TB, c uuid.UUID, n int) uuid.UUID {
+	tb.Helper()
+	r, start := uuid.NewV7(), time.Now()
+	b.exec(tb, `INSERT INTO changesets (id, notebook_id, kind, reverts_id, client, created_by_id, created_at, updated_at)
+	VALUES ($1, $2, 'revert', $3, 'web', $4, $5, $5::timestamptz + ($6::integer - 1) / 100 * interval '1 millisecond')`, r, b.nb, c,
+		b.alice, start, n)
+	b.exec(tb, `UPDATE nodes n SET deleted_at = t.at, updated_by_id = $2, updated_at = t.at, trash_root = true, trash_pages = 0,
+		trash_assets = 1, trash_height = 0
+	FROM (SELECT md5($1::uuid::text || ':a' || g)::uuid AS id, $4::timestamptz + (g / 100) * interval '1 millisecond' AS at
+		FROM generate_series(0, $3::integer - 1) g) t
+	WHERE n.id = t.id`, b.nb, b.alice, n, start)
+	b.exec(tb, `UPDATE changeset_items i SET deleted_at = n.deleted_at FROM nodes n
+	WHERE i.changeset_id = $2 AND n.id = i.node_id AND n.notebook_id = $1`, b.nb, c)
+	b.exec(tb, `INSERT INTO changeset_items (id, changeset_id, node_id, before_parent_id, before_name, before_sort_order, created_at,
+		updated_at, deleted_at)
+	SELECT gen_random_uuid(), $2, n.id, NULL, n.name, n.sort_order, n.deleted_at, n.deleted_at, n.deleted_at
+	FROM nodes n WHERE n.notebook_id = $1 AND n.deleted_at IS NOT NULL`, b.nb, r)
+	return r
 }
 
 // analyze refreshes the statistics of every table, as a job does the
@@ -322,30 +356,34 @@ func (b trashBench) restoreJob(tb testing.TB, root uuid.UUID) jobRun {
 
 // BenchmarkStartRevert measures a background revert's request of an
 // import's changeset by its shape and size (M8/P4 design 3.11): its pages
-// at the root, under a top five levels deep, and in folders; each on a
-// database of its own without statistics, then analyzed. The request of a
-// deletion's one group and of many groups, the revert of an import's
-// revert, BenchmarkBackgroundJobs measures, after the revert it reverts.
-// It logs each, ms.
+// at the root, under a top five levels deep, and in folders; and of the
+// revert of the revert of an import of attachments at the root, which
+// restores a group of each, the longest (shapeGroups); each on a database
+// of its own without statistics, then analyzed. It logs each, ms.
 //
-// Measured on an Apple M5 Max shared with other work (load 8-10), ms,
-// without statistics / analyzed:
+// Measured on an Apple M5 Max shared with other work (load 5-14), at the
+// full load, three runs at MaxJobItems, ms, without statistics / analyzed:
 //
-//	nodes      flat            deep            folders
-//	 50,000      285 /   247     262 /   232     274 /   236
-//	 90,000      589 /   497     488 /   461     490 /   455
-//	200,000    1,261 / 1,020   1,179 / 1,025   1,180 / 1,084
-//	550,000    3,617 / 3,337
+//	nodes      flat          deep          folders       many groups
+//	 60,000    324-358 /     417-663 /     338-386 /     744-836 /
+//	           273-310       353-592       292-308       736-807
 //
-// The request grows with the changeset alone, a tenth of the costliest
-// step at MaxJobItems (BenchmarkBackgroundSteps); 550,000 nodes, the most
-// an import within the default bounds makes (design 2.2), 3.6 s.
+// The request grows with the changeset alone, a fifth of the costliest
+// step at MaxJobItems (BenchmarkBackgroundSteps): the first round's, at
+// ten links a page, 0.5 s at 90,000, 1.0 s at 200,000, 3.3 s at 550,000,
+// flat, analyzed. An import makes MaxJobItems nodes at most (M8/P4 design
+// 2.2 (a)).
 func BenchmarkStartRevert(b *testing.B) {
 	for _, n := range jobSizes(b) {
-		for _, shape := range []string{shapeFlat, shapeDeep, shapeFolders} {
+		for _, shape := range []string{shapeFlat, shapeDeep, shapeFolders, shapeGroups} {
 			b.Run(fmt.Sprintf("%s/%d", shape, n), func(b *testing.B) {
 				bench := newJobBench(b, 1<<30)
-				c := bench.importOf(b, shape, n)
+				var c uuid.UUID
+				if shape == shapeGroups {
+					c = bench.revertOfAttachments(b, bench.importedAttachments(b, n), n)
+				} else {
+					c = bench.importOf(b, shape, n)
+				}
 				raw := bench.startRevert(b, c)
 				bench.analyze(b)
 				analyzed := bench.startRevert(b, c)
@@ -369,9 +407,11 @@ func BenchmarkStartRevert(b *testing.B) {
 // restore. Each run tells its plan, its heap and its batches
 // (jobRun.String). It logs each, ms.
 //
-// Measured at MaxJobItems on an Apple M5 Max shared with other work
-// (load 5-8), analyzed: the import's revert, its batches' p95 and the
-// whole; the revert of that revert, the same; seconds unless ms:
+// Measured in the first round, at 90,000 nodes of pages of ten links,
+// before MaxJobItems was taken at the full load (60,000), on an Apple M5
+// Max shared with other work (load 5-8), analyzed: the import's revert,
+// its batches' p95 and the whole; the revert of that revert, the same;
+// seconds unless ms:
 //
 //	shape          the import's revert       its revert's revert
 //	flat           325 ms, 191 s             411 ms, 250 s
@@ -445,27 +485,35 @@ func BenchmarkBackgroundJobs(b *testing.B) {
 // arrays' statements at 10,000 and 50,000 ids, planned with their
 // arguments and for any (P2A's lesson). It logs each, ms.
 //
-// Measured on an Apple M5 Max shared with other work (load 4-5), ms,
-// without statistics / analyzed, pages of 2 KiB with ten links: the
-// deletion of the top, MaxJobItems the largest size it takes 5 s at most
-// at; the first batch of the group's restore; and the request of the
-// revert's revert, analyzed:
+// Measured on an Apple M5 Max shared with other work (load 5-14), at the
+// full load, ms, without statistics / analyzed, three runs each: the
+// deletion of the top, MaxJobItems the largest size of ten thousands it
+// takes 5 s at most at in every run; the first batch of the group's
+// restore; the request of the revert's revert:
 //
-//	nodes      the top's deletion   the group's first batch   the request
-//	 50,000    2,418 / 2,386          680 /   652                 415
-//	 80,000    3,943 / 4,113        1,235 / 1,115                 740
-//	 90,000    4,654 / 4,707        1,393 / 1,364                 942
-//	100,000    4,993 / 5,087        1,386 / 1,322                 935
-//	200,000   10,583 / 11,666       3,992 / 4,014               2,353
+//	nodes     the top's deletion          the group's first batch       the request
+//	60,000    3,544-3,981 / 4,220-4,642   1,281-1,555 / 1,295-2,203     628-737 / 620-1,231
+//	70,000    3,973-6,907 / 4,267-4,564   1,561-3,210 / 1,490-1,670     688-1,636 / 645-662
+//	80,000    4,278-4,361 / 5,946-6,108   1,968-2,328 / 2,065-2,695     730-896 / 884-1,007
+//
+// 70,000's 6,907 ms run was a busy machine's (every step of it slower),
+// but a run past 5 s is past the bound (P3A's rule: every run, not the
+// median); 90,000 took 6,465 ms (the review's run) and 6,508 ms.
 //
 // The deletion grows with the links of the pages as much as with the
-// nodes: 50,000 nodes of a hundred links a page, 11,043 ms analyzed (the
-// statement reading the links reaching the deleted pages, through the
-// rows the deletion just deleted, 5.9 s of it), the group's first batch
-// 7,201 ms (its links' resolutions over the table the deletion left, not
-// yet vacuumed, 5.9 s).
+// nodes, about 1.6 µs a link: 60,000 nodes, analyzed, 3,227-3,317 ms at
+// ten links a page, 4,220-4,642 at 20, 5,864-6,244 at 40 (the group's
+// first batch 927-1,106, 1,295-2,203, 2,798-3,773); past 20 a page the
+// bound does not hold the step to 5 s, as it does not a user's deletion of
+// the same top, the same unit. At 90,000 and 20 links its statements:
+// DeleteNodes 2.2 s, LinksReached 1.4 s, RecordItems 0.9 s, DeleteLinksOf
+// 0.9 s. LinksReached reads every link the deletion deleted, which meet
+// its keys and targets (an import's links point at its own pages) in the
+// unit that deleted them: read without the deleted pages as sources, 1.34
+// against 1.38 s, so it is as it was.
 //
-// Then, at load 8-10: the plans of a deep import's revert and of the
+// Then, in the first round, at ten links a page and load 8-10: the
+// plans of a deep import's revert and of the
 // restore of its top's item, 488 ms with 3 MiB and 198 ms with 2 MiB at
 // 90,000 nodes, 3,662 ms with 18 MiB and 1,045 ms with 15 MiB at 550,000
 // (the revert's revert's of one group of every node, 7 MiB at 50,000,
@@ -475,7 +523,8 @@ func BenchmarkBackgroundJobs(b *testing.B) {
 // 50 ms. The arrays' statements at 50,000 ids, planned with them / for
 // any: TrashNodesAt 135 / 188, TrashGroups 154 / 210, ChangesetItemsOf
 // 56 / 45, ChangesetVersionsOf 62 / 56, NodesNow 270 / 252, MarkTrashRoots
-// 14 / 54; none of them slow for any, all kept planned with them.
+// 14 / 54; none of them slow for any. NodesNow stays a cached statement,
+// as P3 left it, its plan for any no slower; the others run planned.
 func BenchmarkBackgroundSteps(b *testing.B) {
 	for _, n := range jobSizes(b) {
 		for _, stats := range []string{"nostats", "analyzed"} {
@@ -706,11 +755,25 @@ func (b trashBench) arrays(tb testing.TB, c, r uuid.UUID) string {
 // keeps the composition root's bound: one far from the domain's fails
 // here, and TestPageDepsLeaveTheUnitsBoundsTheDomains pins it exactly.
 
-// A background revert's request of an import of MaxJobItems nodes, of the
-// shape whose request took longest (BenchmarkStartRevert), analyzed, is
-// answered in its time; one more node in the import is
-// page.revert_too_large before its items are read, admit not asked.
+// A background revert's request of an import of MaxJobItems nodes,
+// analyzed, is answered in its time: of the import, its pages at the root
+// (BenchmarkStartRevert's other shapes take about as long); and of the
+// revert of the revert of an import of as many attachments at the root,
+// which restores as many groups, the longest request (shapeGroups; M8/P4A
+// review C-M5), the revert written through SQL as its job writes it. One
+// more node in the import is page.revert_too_large before its items are
+// read, admit not asked.
 func TestStartRevertAtMaxJobItems(t *testing.T) {
+	t.Run("many groups", func(t *testing.T) {
+		bench := newJobBench(t, 0)
+		r := bench.revertOfAttachments(t, bench.importedAttachments(t, page.MaxJobItems), page.MaxJobItems)
+		bench.analyze(t)
+		took := bench.startRevert(t, r)
+		t.Logf("the request of the revert of a revert of %d groups took %s", page.MaxJobItems, took)
+		if took > manyGroupsLimit {
+			t.Errorf("the request of the revert of a revert of %d groups took %s, want %s at most", page.MaxJobItems, took, manyGroupsLimit)
+		}
+	})
 	bench := newJobBench(t, 0)
 	c := bench.importOf(t, shapeFlat, page.MaxJobItems)
 	bench.analyze(t)
@@ -782,15 +845,19 @@ func TestARevertJobOfAnImportAtMaxJobItems(t *testing.T) {
 }
 
 // guardJobItems are the nodes of the import whose revert's job the guard
-// runs whole: at MaxJobItems it took 93 s here, past the minute a guard
-// takes at most (M8/P4 design 3.11), so 10,000; BenchmarkBackgroundJobs
-// measures it at MaxJobItems.
+// runs whole: a job of a size near MaxJobItems takes minutes (120 s in
+// folders at 90,000, the first round's), past the minute a guard takes at
+// most (M8/P4 design 3.11), so 10,000; BenchmarkBackgroundJobs measures
+// the jobs whole.
 const guardJobItems = 10_000
 
-// The guards' limits, three times the times measured here: the request
-// 0.47 s, the job of 10,000 nodes 5.2 s, the largest step 4.6 s.
+// The guards' limits, three times the times measured here at the full
+// load (load 6-8): the request 0.3 s, of many groups 0.7 s, the job of
+// 10,000 nodes 5.5-6.5 s; the largest step 3.6-4.5 s, 4.6 s in the
+// bench's slowest run (load 6-13), which its limit is three times.
 const (
-	startRevertLimit = 1500 * time.Millisecond
-	revertJobLimit   = 16 * time.Second
+	startRevertLimit = 1 * time.Second
+	manyGroupsLimit  = 2100 * time.Millisecond
+	revertJobLimit   = 17 * time.Second
 	largestStepLimit = 14 * time.Second
 )

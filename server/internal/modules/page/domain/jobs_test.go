@@ -40,12 +40,13 @@ func (s *shape) order() ([]domain.GroupNode, []string) {
 	return nodes, names
 }
 
-// MaxJobItems is the size measured (M8/P4 design 3.11, 3.12): a new value
-// is measured again (BenchmarkBackgroundSteps) and the guards' limits set
-// anew (TestARevertJobOfAnImportAtMaxJobItems).
+// MaxJobItems is the size measured at the full load, 20 links a page
+// (M8/P4 design 3.11, 3.12; its review's fix round): a new value is
+// measured again (BenchmarkBackgroundSteps) and the guards' limits set
+// anew (TestStartRevertAtMaxJobItems, TestARevertJobOfAnImportAtMaxJobItems).
 func TestMaxJobItemsIsTheMeasuredSize(t *testing.T) {
-	if domain.MaxJobItems != 90_000 {
-		t.Errorf("MaxJobItems = %d, measured 90,000", domain.MaxJobItems)
+	if domain.MaxJobItems != 60_000 {
+		t.Errorf("MaxJobItems = %d, measured 60,000", domain.MaxJobItems)
 	}
 }
 

@@ -14,14 +14,18 @@ import (
 // items (M8 design 4.9; M8/P4 design 3.11): the request and the job's
 // start each read them all, with their nodes, groups and the notebook's
 // tree, and plan them, and the costliest step it cuts, a top's deletion or
-// a group's first batch, grows with them. It is the largest size whose
-// costliest step took 5 s at most (BenchmarkBackgroundSteps): the
-// deletion of a top of an import of that many nodes, its pages of 2 KiB
-// with ten links each, 4.7 s at 90,000, 5.1 s at 100,000, analyzed; at
-// 90,000 the request takes 0.5 s, a group's first batch 1.4 s, a plan
-// 14 MiB at most. The transfer module bounds an import's nodes by it, so
-// that a background revert can undo any import (M8/P4 design 2.2 (a)).
-const MaxJobItems = 90_000
+// a group's first batch, grows with them. It is the largest size of ten
+// thousands whose costliest step took 5 s at most in every run
+// (BenchmarkBackgroundSteps) at the design's full load, pages of 2 KiB with
+// 20 resolved links each and a tenth of the nodes attachments: the
+// deletion of a top of an import of that many nodes, 3.5-4.6 s at 60,000
+// (one run of 70,000 took 6.9 s; 80,000, 5.9-6.1 s analyzed); at 60,000
+// the requests take 0.8 s at most (the revert's revert of as many groups),
+// a group's first batch 2.2 s. The step grows with the links of the pages
+// past 20 a page as a user's deletion of the same top does, about 1.6 µs a
+// link. The transfer module bounds an import's nodes by it, so that a
+// background revert can undo any import (M8/P4 design 2.2 (a)).
+const MaxJobItems = 60_000
 
 // JobStep is a step of a background job (M8/P4 design 3.3), a write no
 // batch splits: a restore's node; a revert's place of a node, deletion of
