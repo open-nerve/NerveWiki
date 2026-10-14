@@ -811,18 +811,21 @@ func TestARevertOfADeletionComparesItsItemWhereItWas(t *testing.T) {
 	})
 }
 
-// The undo of an undo goes newest first too (M8/P3A fix check 2): after
-// a deletion D and a restore of its item, the log reverted newest first
-// to before D, then the reverts of that walk reverted newest first, each
-// succeeds, and the notebook is as before D, then as after the restore.
-// X deleted, then its parent; X restored at the root: the first walk
-// brings X back under its parent by D's revert, exempt as the restore's
-// revert deleted it; the second deletes X there by that revert's revert,
-// then the parent, then restores X at the root by the revert of the
-// restore's revert, exempt as the revert of D's revert, a revert's
-// restore of the same item, deleted it. X deleted, a page created in its
-// name, X restored numbered: the same. D reverted: its revert's revert,
-// then D's revert of it.
+// The undo of an undo goes newest first too (M8/P3A fix check 2): after a
+// deletion D and a restore of its item, the log reverted newest first to
+// before D, then the reverts of that walk reverted newest first, each
+// succeeds, and the notebook is as before D, then as after the restore. X
+// deleted, then its parent; X restored at the root: the first walk brings
+// X back under its parent by D's revert, exempt as the restore's revert
+// deleted it; the second deletes X there by that revert's revert, then the
+// parent, then restores X at the root by the revert of the restore's
+// revert, exempt as the revert of D's revert, a revert's restore of the
+// same item, deleted it. X deleted, a page created in its name, X restored
+// numbered: the same. Then deleted and restored in place again: in the
+// second walk, deletions the walk made lie between a changeset reverted
+// and the top's current deletion, though not between it and the restore
+// that deletion undid (fix check 3). D reverted: its revert's revert, then
+// D's revert of it.
 func TestTheUndoOfAnUndoGoesNewestFirst(t *testing.T) {
 	tm := newAcmeTeam(t, "member", "")
 	// back reverts the notebook's changesets newest first, as its log reads
@@ -868,6 +871,22 @@ func TestTheUndoOfAnUndoGoesNewestFirst(t *testing.T) {
 			tm.createPage(t, "alice", nb, "", "A")
 			if r := tm.restored(t, "alice", x); r.Name != "A 2" {
 				t.Fatalf("X restored as %q, want A 2", r.Name)
+			}
+			return d
+		}},
+		{"a restore numbered, then deleted and restored in place again", func(t *testing.T, nb string, before func()) string {
+			x := tm.createPage(t, "alice", nb, "", "A")
+			tm.createPage(t, "alice", nb, "", "Other")
+			before()
+			tm.send(t, nodeDeletion("alice", x), http.StatusNoContent)
+			d := tm.newest(t, nb).ID
+			tm.createPage(t, "alice", nb, "", "A")
+			if r := tm.restored(t, "alice", x); r.Name != "A 2" {
+				t.Fatalf("X restored as %q, want A 2", r.Name)
+			}
+			tm.send(t, nodeDeletion("alice", x), http.StatusNoContent)
+			if r := tm.restored(t, "alice", x); r.Name != "A 2" || r.Placed.at() != " original" {
+				t.Fatalf("X restored again as %q %s, want A 2 where it was", r.Name, r.Placed.at())
 			}
 			return d
 		}},

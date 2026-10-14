@@ -421,8 +421,10 @@ func TestTheRevertsReads(t *testing.T) {
 	// A root's deletion that undid the restore of the trash item the
 	// changeset reverted, D, made: the revert of a changeset that brought it
 	// back after D, a trash restore's (S) or a revert's (T), with no
-	// deletion of it between, holding its deletion, created at its time.
-	// Not one holding another item of it (U), created at another time (V);
+	// deletion of it between, holding its deletion, created at its time;
+	// deleted and restored again after the changeset and before its revert,
+	// too (E, fix check 3). Not one holding another item of it (U), created
+	// at another time (V);
 	// nor the revert of a creation (W, fix check 1), of a restore of a
 	// later item, a deletion between (B), or of one older than D (O); nor
 	// one before the root's current deletion, an edit's, the root restored
@@ -438,6 +440,7 @@ func TestTheRevertsReads(t *testing.T) {
 		back, at, made     time.Time
 		restored, deletion bool
 		between            bool // a deletion of it between D and back
+		again              bool // a deletion and a restore of it between back and at
 	}
 	undone := func(u undo, order float64) domain.Node {
 		t.Helper()
@@ -459,6 +462,17 @@ func TestTheRevertsReads(t *testing.T) {
 			brought.Restored = &domain.Restored{DeletedAt: tD}
 		}
 		f.item(t, back.ID, u.back, brought)
+		if u.again {
+			f.item(t, f.changeset(t, f.eng, f.alice, domain.ClientWeb, u.back.Add(10*time.Second)).ID, u.back.Add(10*time.Second),
+				domain.Change{NodeID: n.ID, Before: new(n.State())})
+			restore := app.Changeset{ID: uuid.NewV7(), NotebookID: f.eng, Kind: domain.ChangesetTrashRestore, Client: domain.ClientWeb,
+				By: f.alice, At: u.back.Add(20 * time.Second)}
+			if err := f.s.CreateChangeset(ctx, restore); err != nil {
+				t.Fatal(err)
+			}
+			f.item(t, restore.ID, restore.At, domain.Change{NodeID: n.ID, After: new(n.State()),
+				Restored: &domain.Restored{DeletedAt: u.back.Add(10 * time.Second)}})
+		}
 		f.trashed(t, u.at, 1, 0, 1, n.ID)
 		rev := app.Changeset{ID: uuid.NewV7(), NotebookID: f.eng, Kind: domain.ChangesetRevert, RevertsID: back.ID, Client: domain.ClientWeb,
 			By: f.alice, At: u.made}
@@ -486,6 +500,8 @@ func TestTheRevertsReads(t *testing.T) {
 		{name: "O", kind: domain.ChangesetTrashRestore, back: tD.Add(-time.Minute), at: at(13), made: at(13), restored: true,
 			deletion: true},
 		{name: "Y", kind: domain.ChangesetTrashRestore, back: at(14), at: at(15), made: at(15), restored: true, deletion: true},
+		{name: "E", kind: domain.ChangesetTrashRestore, back: at(16), at: at(17), made: at(17), restored: true, deletion: true,
+			again: true},
 	} {
 		n := undone(u, float64(10+i))
 		ids = append(ids, n.ID)
@@ -506,8 +522,8 @@ func TestTheRevertsReads(t *testing.T) {
 			got[n.Name] = true
 		}
 	}
-	if err != nil || len(nodes) != len(ids) || !got["S"] || !got["T"] || len(got) != 2 || !nodes[y.ID].DeletedAt.Equal(later) {
-		t.Errorf("NodesNow = %+v, %v; want S and T alone their restores undone, Y at its later deletion", got, err)
+	if err != nil || len(nodes) != len(ids) || !got["S"] || !got["T"] || !got["E"] || len(got) != 3 || !nodes[y.ID].DeletedAt.Equal(later) {
+		t.Errorf("NodesNow = %+v, %v; want S, T and E alone their restores undone, Y at its later deletion", got, err)
 	}
 	if nodes, err := f.s.NodesNow(ctx, ids[1:2], uuid.UUID{}); err != nil || nodes[ids[1]].DeletedByRevert {
 		t.Errorf("NodesNow(S) of no changeset reverted = %+v, %v; want its restore not undone", nodes, err)
