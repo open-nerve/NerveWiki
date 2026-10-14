@@ -261,6 +261,147 @@ func TestARestoreJobsBatchChecksUnderTheLock(t *testing.T) {
 	}
 }
 
+// A background restore puts its item's root where Restore does (M8/P4
+// design 3.4; M8/P4A review C-M1): under its parent alive at its own
+// order, as at the root where it was; last at the notebook's root, its
+// parent in the trash or its pages too deep under it, numbered when a
+// sibling alive there holds its name. Its first batch tells where. A
+// member at a time, the later batches put the rest under it, Deep's Leaf
+// at the tenth level and its attachment below it (M8/P4A review C-M2).
+func TestARestoreJobPlacesItsRootAsRestoreDoes(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		setup  func(f trashFixture) uuid.UUID
+		parent func(f trashFixture) *uuid.UUID
+		reason domain.PlacementReason
+		named  string
+	}{
+		{"its parent alive", func(f trashFixture) uuid.UUID { return f.q.ID },
+			func(f trashFixture) *uuid.UUID { return &f.p.ID }, domain.PlacedOriginal, "Q"},
+		{"at the root, as it was", func(f trashFixture) uuid.UUID { return f.photo.ID },
+			func(trashFixture) *uuid.UUID { return nil }, domain.PlacedOriginal, "photo.png"},
+		{"as deep as it fits, an attachment below its deepest page", func(f trashFixture) uuid.UUID { return f.deep.ID },
+			func(f trashFixture) *uuid.UUID { return f.deep.ParentID }, domain.PlacedOriginal, "Deep"},
+		{"its parent in the trash", func(f trashFixture) uuid.UUID { return f.doc.ID },
+			func(trashFixture) *uuid.UUID { return nil }, domain.PlacedParentInTrash, "Doc"},
+		{"too deep", func(f trashFixture) uuid.UUID {
+			top := f.page("Top", nil, 9)
+			level := f.store.nodes[f.level.ID]
+			level.ParentID = &top.ID
+			f.store.nodes[f.level.ID] = level
+			return f.deep.ID
+		}, func(trashFixture) *uuid.UUID { return nil }, domain.PlacedTooDeep, "Deep"},
+		{"a sibling of its name at the root", func(f trashFixture) uuid.UUID {
+			f.page("Doc", nil, 8)
+			return f.doc.ID
+		}, func(trashFixture) *uuid.UUID { return nil }, domain.PlacedParentInTrash, "Doc 2"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newTrashFixture()
+			f.grant(domain.ActionRestore)
+			id := tt.setup(f)
+			before := f.store.trash[id].Node
+			var last float64
+			for _, n := range f.store.nodes {
+				if n.ParentID == nil {
+					last = max(last, n.SortOrder)
+				}
+			}
+			group := f.groupUnder(id)
+			w, spec := f.jobs(now(), 0, 0), f.jobSpec()
+			plan, err := w.PlanRestore(f.asJob(), spec, id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			done, err := f.runJob(w, spec, plan, 1)
+			if err != nil {
+				t.Fatalf("a member a batch = %+v, %v; want the item back", done, err)
+			}
+			n, parent, placed := f.store.nodes[id], tt.parent(f), done[0].Placed
+			if placed == nil || placed.Reason != tt.reason || !domain.SameParent(placed.ParentID, parent) ||
+				!domain.SameParent(n.ParentID, parent) || n.Name != tt.named || done[0].Renamed != boolInt(tt.named != before.Name) {
+				t.Errorf("the first batch %+v placed %+v as %+v; want under %v as %q, %s", done[0], placed, n, parent, tt.named, tt.reason)
+			}
+			moved := tt.reason != domain.PlacedOriginal
+			if moved && n.SortOrder != last+1 || !moved && n.SortOrder != before.SortOrder {
+				t.Errorf("order %v, want %v: its own back where it was, after the root's last at the root", n.SortOrder, last+1)
+			}
+			for _, m := range group {
+				if got, ok := f.store.nodes[m.ID]; !ok || !domain.SameParent(got.ParentID, m.ParentID) || got.Name != m.Name {
+					t.Errorf("%s = %+v, want back under its parent", m.Name, got)
+				}
+			}
+		})
+	}
+}
+
+// groupUnder are the members of the trash item of the root id but the
+// root: the nodes under it deleted at its time.
+func (f trashFixture) groupUnder(id uuid.UUID) []domain.Node {
+	var out []domain.Node
+	at := *f.store.trash[id].DeletedAt
+	for _, n := range f.store.trash {
+		if !n.DeletedAt.Equal(at) {
+			continue
+		}
+		for p := n.ParentID; p != nil; p = f.store.trash[*p].ParentID {
+			if *p == id {
+				out = append(out, n.Node)
+				break
+			}
+			if _, ok := f.store.trash[*p]; !ok {
+				break
+			}
+		}
+	}
+	return out
+}
+
+func boolInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// A member a batch restored made an item of its own, which someone
+// restores whole: the next batch skips it and its members it holds, and
+// leaves the members under it past the batch out of the trash items it
+// makes, alive as they are; the batch after skips them (M8/P4 deviation
+// 8; M8/P4A review C-M3).
+func TestARestoreJobLeavesTheMembersUnderASkippedOneAlone(t *testing.T) {
+	f := newFixture()
+	f.grant(domain.ActionRestore)
+	box := f.page("Box", nil, 0)
+	a := f.page("A", &box.ID, 0)
+	f.page("A1", &a.ID, 0)
+	f.page("A2", &a.ID, 1)
+	b := f.page("B", &box.ID, 1)
+	b1 := f.page("B1", &b.ID, 0)
+	b2 := f.page("B2", &b.ID, 1)
+	f.trashed(box.ID, now().Add(-time.Hour), f.alice)
+	w, spec := f.jobs(now(), 0, 0), f.jobSpec()
+	plan, err := w.PlanRestore(f.asJob(), spec, box.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.RunBatch(f.asJob(), spec, plan, 0, 3); err != nil {
+		t.Fatal(err)
+	}
+	f.restoredMeanwhile(b.ID, b1.ID, b2.ID)
+	second, err := w.RunBatch(f.asJob(), spec, plan, 3, 6)
+	if err != nil || second.Pages != 1 || second.Skipped != 2 {
+		t.Fatalf("the batch of A2, B and B1 = %+v, %v; want A2 back, B and B1 skipped", second, err)
+	}
+	if _, ok := f.store.nodes[b2.ID]; !ok || slices.ContainsFunc(f.store.marks, func(m app.TrashMark) bool { return m.ID == b2.ID }) {
+		t.Errorf("B2 marked an item of its own %v; want it alive, left alone", f.store.marks)
+	}
+	if third, err := w.RunBatch(f.asJob(), spec, plan, 6, 7); err != nil || third.Skipped != 1 || len(f.store.trash) != 0 {
+		t.Errorf("the batch of B2 = %+v, %v, trash %v; want it skipped, the trash empty", third, err, f.store.trash)
+	}
+}
+
+// An item of its root alone, restored by someone before the first batch,
 // An item of its root alone, restored by someone before the first batch,
 // is no longer the item the job restores: page.trash_changed, not a
 // member skipped. A plan whose group is not the one its root counts is
@@ -314,10 +455,12 @@ func TestARestoreJobsBatchPastTheTimeIsExpired(t *testing.T) {
 
 // A batch of more than one step past the rows of history a unit restores
 // is ErrBatchTooLarge before any content is parsed, and so is one whose
-// pages hold more links than a unit's once they are; a lone step never.
+// pages hold more links than a unit's once they are; a lone step never,
+// though its own history is past the bound: its deletion was one unit, and
+// no batch is smaller (M8/P4A review C-M4).
 func TestABatchTooLargeIsHalved(t *testing.T) {
 	f := newBoxFixture()
-	f.store.history = map[uuid.UUID]int{f.box.ID: 6, f.a.ID: 6}
+	f.store.history = map[uuid.UUID]int{f.box.ID: 11, f.a.ID: 6}
 	w, spec := f.jobs(now(), 0, 10), f.jobSpec()
 	plan, err := w.PlanRestore(f.asJob(), spec, f.box.ID)
 	if err != nil {
@@ -328,7 +471,7 @@ func TestABatchTooLargeIsHalved(t *testing.T) {
 		t.Errorf("RunBatch(two steps past the history) = %v, calls %v; want ErrBatchTooLarge before a parse", err, f.rec.calls)
 	}
 	if _, err := w.RunBatch(f.asJob(), spec, plan, 0, 1); err != nil {
-		t.Errorf("RunBatch(the root alone) = %v, want it restored", err)
+		t.Errorf("RunBatch(the root alone, its history past the bound) = %v, want it restored", err)
 	}
 	trashed := f.store.trash[f.a.ID]
 	f.store.trashed[f.a.ID] = app.Content{NodeID: f.a.ID, Content: strings.Repeat("[[x]]", 10_001), Revision: 2}
@@ -548,6 +691,93 @@ func TestARevertJobsContinuationBesideANewTop(t *testing.T) {
 	}
 	if len(done) != 2 || done[1].Restored != 2 || len(f.store.trash) != 0 {
 		t.Errorf("batches %+v, trash %v; want all back, the second batch scan.pdf and Other", done, f.store.trash)
+	}
+}
+
+// A group someone restored where it was and deleted again, unchanged,
+// since the job's plan: the batch that begins it plans it at the time it
+// is deleted at now, as a request's revert would, and reads its pages'
+// contents there; the later batches read its members at that time once
+// the first commits (M8/P4A review A-M1). A batch of the whole group, and
+// batches of a member each.
+func TestARevertJobOfAGroupDeletedAgainSinceThePlan(t *testing.T) {
+	for _, size := range []int{3, 1} {
+		f := newRevertFixture()
+		w, spec, plan := f.revertJob(t, f.c.ID, nil, now())
+		f.restoredMeanwhile(f.box.ID, f.doc.ID, f.scan.ID)
+		f.trashed(f.box.ID, now().Add(-time.Minute), f.alice)
+		done, err := f.runJob(w, spec, plan, size)
+		if err != nil {
+			t.Fatalf("batches of %d: runJob() = %+v, %v; want Box's group back", size, done, err)
+		}
+		restored := 0
+		for _, d := range done {
+			restored += d.Restored
+		}
+		if restored != 3 || len(f.store.trash) != 0 {
+			t.Errorf("batches of %d: %+v, trash %v; want the three restored", size, done, f.store.trash)
+		}
+		for _, n := range []domain.Node{f.box, f.doc, f.scan} {
+			if got, ok := f.store.nodes[n.ID]; !ok || !sameParent(got.ParentID, n.ParentID) || got.Name != n.Name {
+				t.Errorf("batches of %d: %s = %+v, want back where it was", size, n.Name, got)
+			}
+		}
+	}
+}
+
+// A group's later member that cannot go back keeps the members under it
+// in the same batch out of the conflicts: they are none of their own, as
+// a request's revert has a group's, and the cause comes first (M8/P4A
+// review A-M3).
+func TestARevertJobsContinuationListsTheCauseAlone(t *testing.T) {
+	f := newFixture()
+	f.grant(domain.ActionRevert)
+	f.names[f.alice] = "Alice"
+	box := f.page("Box", nil, 0)
+	a := f.page("A", &box.ID, 0)
+	f.page("A1", &a.ID, 0)
+	c := f.deletion(box.ID, now().Add(-time.Hour))
+	w, spec, plan := f.revertJob(t, c.ID, nil, now())
+	if _, err := w.RunBatch(f.asJob(), spec, plan, 0, 1); err != nil {
+		t.Fatal(err)
+	}
+	holder := f.page("a", &box.ID, 3)
+	_, err := w.RunBatch(f.asJob(), spec, plan, 1, 3)
+	var e *shared.Error
+	if !errors.As(err, &e) || e.Code != "page.revert_conflict" || e.ConflictCount == nil {
+		t.Fatalf("RunBatch(A and A1) = %v, want page.revert_conflict", err)
+	}
+	if len(e.Conflicts) != 1 || *e.ConflictCount != 1 || e.Conflicts[0].NodeID != a.ID ||
+		e.Conflicts[0].Reason != string(domain.ConflictTitleTaken) || e.Conflicts[0].HolderID == nil || *e.Conflicts[0].HolderID != holder.ID {
+		t.Errorf("conflicts %+v, count %d; want A's name held by a alone", e.Conflicts, *e.ConflictCount)
+	}
+}
+
+// A group's later members, a member a batch, go back as deep as pages
+// go: a page at the tenth level, an attachment below it, which is no
+// level (M8/P4A review C-M2).
+func TestARevertJobsContinuationAtTheDeepestLevel(t *testing.T) {
+	f := newFixture()
+	f.grant(domain.ActionRevert)
+	f.names[f.alice] = "Alice"
+	var parent *uuid.UUID
+	for range domain.MaxDepth - 2 {
+		n := f.page("Level", parent, 0)
+		parent = &n.ID
+	}
+	deep := f.page("Deep", parent, 0)
+	leaf := f.page("Leaf", &deep.ID, 0)
+	png := f.asset("leaf.png", &leaf.ID, 1)
+	c := f.deletion(deep.ID, now().Add(-time.Hour))
+	w, spec, plan := f.revertJob(t, c.ID, nil, now())
+	done, err := f.runJob(w, spec, plan, 1)
+	if err != nil || len(done) != 3 {
+		t.Fatalf("a member a batch = %+v, %v; want Deep, Leaf and leaf.png back", done, err)
+	}
+	for _, n := range []domain.Node{deep, leaf, png} {
+		if got, ok := f.store.nodes[n.ID]; !ok || !sameParent(got.ParentID, n.ParentID) {
+			t.Errorf("%s = %+v, want back where it was", n.Name, got)
+		}
 	}
 }
 

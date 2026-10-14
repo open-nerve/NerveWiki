@@ -353,12 +353,15 @@ func (r revertReads) state(ctx context.Context, notebookID, reverted uuid.UUID, 
 
 // RevertPart is a background revert's batch (M8/P4 design 3.5): the steps
 // from to to (not included) of the job's plan; the contents they restore
-// or write back, parsed before the unit, by page; the purge's retention.
+// or write back, parsed before the unit, by page; the purge's retention;
+// and retimed, where the unit tells the time it restored each group it
+// begins at, by its index, which the plan takes once the unit commits.
 type RevertPart struct {
 	plan      *revertPlan
 	from, to  int
 	parsed    map[uuid.UUID]ParsedContent
 	retention time.Duration
+	retimed   map[int]time.Time
 }
 
 // stepKey is a step of a revert's round by its kind and node: a node may
@@ -577,7 +580,8 @@ type restoring struct {
 // continuation checks the batch's members of the groups whose first steps
 // earlier batches took, conts, one by one, as RevertBatch has it, by the
 // changeset's items of them, befores, and answers what it restores; every
-// conflict it finds, in their order.
+// conflict it finds, in their order, but for the members under one that
+// conflicts, which are none of their own.
 func (u *Unit) continuation(ctx context.Context, r RevertPart, conts []revertStep, befores map[uuid.UUID]domain.ChangesetItem) (
 	restoring, error,
 ) {
@@ -594,14 +598,22 @@ func (u *Unit) continuation(ctx context.Context, r RevertPart, conts []revertSte
 		return restoring{}, err
 	}
 	var conflicts []domain.RevertConflict
+	conflicted := map[uuid.UUID]bool{}
 	conflict := func(id uuid.UUID, name string, reason domain.ConflictReason, holder *uuid.UUID) {
-		conflicts = append(conflicts, domain.RevertConflict{NodeID: id, Name: name, Reason: reason, HolderID: holder})
+		conflicts, conflicted[id] = append(conflicts, domain.RevertConflict{NodeID: id, Name: name, Reason: reason, HolderID: holder}), true
 	}
 	places := contPlaces{u: u, kids: map[uuid.UUID]map[string]uuid.UUID{}, depths: map[uuid.UUID]int{}}
 	var refs []domain.VersionRef
 	for _, s := range conts {
 		g := r.plan.groups[s.group]
 		n := g.nodes[s.member]
+		parent := g.nodes[n.Parent].ID
+		if conflicted[parent] {
+			// Under a member that cannot go back: no conflict of its own,
+			// as a request's revert has a group's (M8/P4A review A-M3).
+			conflicted[s.node] = true
+			continue
+		}
 		it, ok := befores[s.node]
 		if !ok || it.Before == nil || it.After != nil {
 			// The changeset's item of it is gone with it: the purge took it.
@@ -609,7 +621,6 @@ func (u *Unit) continuation(ctx context.Context, r RevertPart, conts []revertSte
 			continue
 		}
 		before := *it.Before
-		parent := g.nodes[n.Parent].ID
 		m, deleted := read[s.node]
 		_, parentBack := out.members[parent]
 		switch {
@@ -718,16 +729,17 @@ func (c contPlaces) check(ctx context.Context, id uuid.UUID, kind domain.Kind, b
 
 // restoreSegment restores the batch's part of a group, its steps in the
 // group's pre-order: from its first member the whole group's restore as
-// planned again, each member where the changeset deleted it, the group's
-// time the plan's from then on; else the continuation's members it
-// restores, as they are. Then the nodes under them later batches restore
-// become trash items of their own. It answers how many it restored and
-// skipped.
+// planned again, each member where the changeset deleted it, at the time
+// the group is deleted at now, which r.retimed tells; else the
+// continuation's members it restores, as they are. Then the nodes under
+// them later batches restore become trash items of their own. It answers
+// how many it restored and skipped.
 func (u *Unit) restoreSegment(ctx context.Context, r RevertPart, steps []revertStep, ops map[stepKey]domain.RevertOp,
 	cont restoring,
 ) (int, int, error) {
-	g := &r.plan.groups[steps[0].group]
+	g := r.plan.groups[steps[0].group]
 	from, to := steps[0].member, steps[len(steps)-1].member+1
+	deletedAt := g.at
 	var members []domain.TrashMember
 	var states []domain.TreeState
 	back := make([]bool, to-from)
@@ -748,9 +760,11 @@ func (u *Unit) restoreSegment(ctx context.Context, r RevertPart, steps []revertS
 			}
 			members, states, back[j-from] = append(members, op.Group[i]), append(states, op.States[i]), true
 		}
-		// The group deleted again since the plan, as the revert of its
-		// restore did: the time the later batches read it at.
-		g.at = op.DeletedAt
+		// The group deleted again since the plan (restored and deleted, or
+		// the revert of its restore reverted): its unit plans it at that
+		// time, the later batches read it there once this one commits.
+		deletedAt = op.DeletedAt
+		r.retimed[steps[0].group] = deletedAt
 	} else {
 		for j := from; j < to; j++ {
 			id := g.nodes[j].ID
@@ -768,10 +782,10 @@ func (u *Unit) restoreSegment(ctx context.Context, r RevertPart, steps []revertS
 	for i, m := range members {
 		keys[i], facts[m.Node.ID] = shared.TitleKey(states[i].Name), r.parsed[m.Node.ID].Facts
 	}
-	if err := u.bringBack(ctx, members, g.at, states, keys, facts, func(context.Context) error { return nil }); err != nil {
+	if err := u.bringBack(ctx, members, deletedAt, states, keys, facts, func(context.Context) error { return nil }); err != nil {
 		return 0, 0, err
 	}
-	return len(members), skipped, u.markFrontier(ctx, g.nodes, domain.Frontier(g.nodes, from, to, func(j int) bool { return back[j-from] }), g.at)
+	return len(members), skipped, u.markFrontier(ctx, g.nodes, domain.Frontier(g.nodes, from, to, func(j int) bool { return back[j-from] }), deletedAt)
 }
 
 // revertDefect is err of a batch's step s: a classified error but the

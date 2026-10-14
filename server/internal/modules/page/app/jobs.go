@@ -436,19 +436,31 @@ func (w *JobWrites) withinHistory(ctx context.Context, steps int, deleted map[ti
 	return nil
 }
 
-// revertBatch writes the plan's steps from to to.
+// revertBatch writes the plan's steps from to to. A group the batch
+// begins is read at the time its root is deleted at now, which its unit
+// plans it at: deleted again since the plan, its pages' contents and
+// history are there (M8/P4A review A-M1); a group earlier batches began,
+// at the time they restored it at.
 func (w *JobWrites) revertBatch(ctx context.Context, spec JobSpec, p *revertPlan, from, to int) (BatchDone, error) {
 	steps := p.steps[from:to]
+	begun, err := w.begun(ctx, p, steps)
+	if err != nil {
+		return BatchDone{}, err
+	}
 	deleted, trashed := map[time.Time][]uuid.UUID{}, map[time.Time][]uuid.UUID{}
 	var written []uuid.UUID
 	for _, s := range steps {
 		switch s.kind {
 		case domain.RevertRestore:
 			g := p.groups[s.group]
+			at, ok := begun[s.group]
+			if !ok {
+				at = g.at
+			}
 			n := g.nodes[s.member]
-			deleted[g.at] = append(deleted[g.at], n.ID)
+			deleted[at] = append(deleted[at], n.ID)
 			if !n.Asset {
-				trashed[g.at] = append(trashed[g.at], n.ID)
+				trashed[at] = append(trashed[at], n.ID)
 			}
 		case domain.RevertContent:
 			written = append(written, s.node)
@@ -472,14 +484,49 @@ func (w *JobWrites) revertBatch(ctx context.Context, spec JobSpec, p *revertPlan
 		parsed[page] = ParsedContent{Hash: sum[:], Content: content, Facts: facts[page]}
 	}
 	var done BatchDone
+	var retimed map[int]time.Time
 	if _, err := w.writer.Run(ctx, revertUnit(spec, p.changeset), func(ctx context.Context, u *Unit) error {
 		var err error
-		done, err = u.RevertBatch(ctx, RevertPart{plan: p, from: from, to: to, parsed: parsed, retention: w.reads.Retention})
+		retimed = map[int]time.Time{}
+		done, err = u.RevertBatch(ctx, RevertPart{plan: p, from: from, to: to, parsed: parsed, retention: w.reads.Retention,
+			retimed: retimed})
 		return err
 	}); err != nil {
 		return BatchDone{}, err
 	}
+	for i, at := range retimed {
+		p.groups[i].at = at
+	}
 	return done, nil
+}
+
+// begun are the times the roots of the groups the steps begin are
+// deleted at now, by the group's index, read at once: the plan's for a
+// root not deleted, or not there, which the batch's unit tells.
+func (w *JobWrites) begun(ctx context.Context, p *revertPlan, steps []revertStep) (map[int]time.Time, error) {
+	var roots []uuid.UUID
+	for _, s := range steps {
+		if s.kind == domain.RevertRestore && s.member == 0 {
+			roots = append(roots, s.node)
+		}
+	}
+	out := make(map[int]time.Time, len(roots))
+	if len(roots) == 0 {
+		return out, nil
+	}
+	now, err := w.history.NodesNow(ctx, roots, uuid.UUID{})
+	if err != nil {
+		return nil, err
+	}
+	for _, s := range steps {
+		if s.kind == domain.RevertRestore && s.member == 0 {
+			out[s.group] = p.groups[s.group].at
+			if n, ok := now[s.node]; ok && n.DeletedAt != nil {
+				out[s.group] = *n.DeletedAt
+			}
+		}
+	}
+	return out, nil
 }
 
 // revertContents are the contents a revert's batch restores or writes
