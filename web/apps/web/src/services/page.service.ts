@@ -1,5 +1,12 @@
 import type {
   ApiClient,
+  Changeset,
+  ChangesetBrief,
+  ChangesetChange,
+  ChangesetChangePage,
+  ChangesetDetail,
+  ChangesetPage,
+  ChangesetReverted,
   EditLock,
   EditSession,
   NodeMove,
@@ -11,6 +18,7 @@ import type {
   PageVersionContent,
   PageVersionPage,
   PageView,
+  RevertConflict,
   TaskToggle,
   TrashItem,
   TrashItemPage,
@@ -22,6 +30,13 @@ import type {
 import { unwrap } from "./api";
 
 export type {
+  Changeset,
+  ChangesetBrief,
+  ChangesetChange,
+  ChangesetChangePage,
+  ChangesetDetail,
+  ChangesetPage,
+  ChangesetReverted,
   EditLock,
   NodeMove,
   NodeRestored,
@@ -30,6 +45,7 @@ export type {
   PageVersionContent,
   PageVersionPage,
   PageView,
+  RevertConflict,
   TaskToggle,
   TrashItem,
   TrashItemPage,
@@ -46,13 +62,28 @@ const versionsPage = 20;
 /** How many trash items a page of them holds: the trash's (M8/P2 design 4.2). */
 const trashPage = 50;
 
+/** How many changesets a page of a notebook's history holds: the history page's (M8/P3 design 4.2). */
+const changesetsPage = 50;
+
+/** How many changes a page of a changeset's holds: its page's (M8/P3 design 4.3). */
+const changesPage = 100;
+
+/**
+ * LogFilter narrows a notebook's history (M8 design 4.7): one account's
+ * changesets (actor, its id), one client's (web, api, cli, mcp:<name>, or
+ * mcp for every MCP client's), those that changed a node (page, a page's
+ * or an attachment's id); "" for none.
+ */
+export type LogFilter = { actor: string; client: string; page: string };
+
 /**
  * PageService reads a notebook's page tree and a page's reading view, and
  * writes the tree: creates, renames, moves and deletes pages (M4/P5 design
  * 3.4). It reads and writes a page's content, in an edit session (M4/P6
  * design 3.6), and ticks its task items (M5/P6). It reads a page's
  * versions, and restores one (M8/P1 design 3.6); it reads a notebook's
- * trash and an item of it, and restores one (M8/P2 design 4.1).
+ * trash and an item of it, and restores one (M8/P2 design 4.1); it reads a
+ * notebook's history, and reverts a changeset of it (M8/P3 design 4.1).
  */
 export class PageService {
   constructor(private readonly api: ApiClient) {}
@@ -190,6 +221,58 @@ export class PageService {
    */
   async restoreNode(id: string): Promise<NodeRestored> {
     return unwrap(await this.api.POST("/api/v0/nodes/{node_id}/restore", { params: { path: { node_id: id } } }));
+  }
+
+  /**
+   * changesets answers a page of the notebook's history that filter keeps, newer first by when each changeset was
+   * first written, after cursor (none for the first).
+   */
+  async changesets(notebookId: string, filter: LogFilter, cursor?: string): Promise<ChangesetPage> {
+    return unwrap(
+      await this.api.GET("/api/v0/notebooks/{notebook_id}/changesets", {
+        params: {
+          path: { notebook_id: notebookId },
+          query: {
+            limit: changesetsPage,
+            ...(filter.actor === "" ? {} : { actor: filter.actor }),
+            ...(filter.client === "" ? {} : { client: filter.client }),
+            ...(filter.page === "" ? {} : { page_id: filter.page }),
+            ...(cursor === undefined ? {} : { cursor }),
+          },
+        },
+      })
+    );
+  }
+
+  /** changeset answers the changeset id as the history lists it, with whether its first changes rename or move a node. */
+  async changeset(id: string): Promise<ChangesetDetail> {
+    return unwrap(await this.api.GET("/api/v0/changesets/{changeset_id}", { params: { path: { changeset_id: id } } }));
+  }
+
+  /** changes answers a page of the changeset id's changes, by node id, after cursor (none for the first). */
+  async changes(id: string, cursor?: string): Promise<ChangesetChangePage> {
+    return unwrap(
+      await this.api.GET("/api/v0/changesets/{changeset_id}/changes", {
+        params: {
+          path: { changeset_id: id },
+          query: cursor === undefined ? { limit: changesPage } : { limit: changesPage, cursor },
+        },
+      })
+    );
+  }
+
+  /**
+   * revertChangeset puts every node the changeset id changed back as it was before it (M8 design 4.8), in a
+   * changeset of its own, a revert, with message, or without one; it answers that changeset, and whether it wrote
+   * anything.
+   */
+  async revertChangeset(id: string, message?: string): Promise<ChangesetReverted> {
+    return unwrap(
+      await this.api.POST("/api/v0/changesets/{changeset_id}/revert", {
+        params: { path: { changeset_id: id } },
+        ...(message === undefined ? {} : { body: { message } }),
+      })
+    );
   }
 
   /** lock answers who holds the page's edit lock and for how many more seconds; both null when nobody does (M5 design 4.2). */

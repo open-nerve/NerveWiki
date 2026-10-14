@@ -121,10 +121,14 @@ test("TB1 (API): a subtree deleted with an attachment is one trash item of its c
     pages: [linker.id],
     targets: [elsewhere.id, photo.id, setup.id].toSorted(),
   });
-  await expectSubtreeRestored(db, handbook.id, [handbook.id, setup.id, photo.id], adminId, {
-    parentId: guide.id,
-    name: "Handbook",
-  });
+  await expectSubtreeRestored(
+    db,
+    handbook.id,
+    [handbook.id, setup.id, photo.id],
+    adminId,
+    { parentId: guide.id, name: "Handbook" },
+    { kind: "trash_restore" }
+  );
   await expectAssetsRestored(db, nervewiki.storageDir, [photo]);
   await expectIndexedLinks(db, setup.id, setupLinks);
   await expectIndexedLinks(db, linker.id, [{ kind: "wikilink", property: null, target: "Setup", resolved: setup.id }]);
@@ -150,7 +154,14 @@ test("TB1 (API): a subtree deleted with an attachment is one trash item of its c
     { parent_id: null, reason: "parent_in_trash" },
     false,
   ]);
-  await expectSubtreeRestored(db, older.id, [older.id], adminId, { parentId: null, name: "Older" });
+  await expectSubtreeRestored(
+    db,
+    older.id,
+    [older.id],
+    adminId,
+    { parentId: null, name: "Older" },
+    { kind: "trash_restore" }
+  );
 
   // A page whose name a page made where it was took since: restored, it is numbered.
   const notes = await createPage(api, pat, notebook.id, "Notes", guide.id);
@@ -163,7 +174,14 @@ test("TB1 (API): a subtree deleted with an attachment is one trash item of its c
     true,
     { parent_id: guide.id, reason: "original" },
   ]);
-  await expectSubtreeRestored(db, notes.id, [notes.id], adminId, { parentId: guide.id, name: "Notes 2" });
+  await expectSubtreeRestored(
+    db,
+    notes.id,
+    [notes.id],
+    adminId,
+    { parentId: guide.id, name: "Notes 2" },
+    { kind: "trash_restore" }
+  );
   expect(
     (await listNodes(api, pat, notebook.id)).filter((node) => node.parent_id === guide.id).map((node) => node.name)
   ).toEqual(expect.arrayContaining(["Handbook", "Notes", "Notes 2"]));
@@ -259,10 +277,14 @@ test("TB1 (page): a page deleted from the tree, its confirmation saying the tras
   await expect(main.getByRole("heading", { level: 1, name: "Trash", exact: true })).toBeFocused();
   await expect(main.getByText("The trash is empty.", { exact: true })).toBeVisible();
   await expect.poll(() => treeTitles(page, "Plans")).toEqual(["Guide", "Handbook", "Elsewhere"]);
-  await expectSubtreeRestored(db, handbook.id, [handbook.id, setup.id, photo.id], adminId, {
-    parentId: guide.id,
-    name: "Handbook",
-  });
+  await expectSubtreeRestored(
+    db,
+    handbook.id,
+    [handbook.id, setup.id, photo.id],
+    adminId,
+    { parentId: guide.id, name: "Handbook" },
+    { kind: "trash_restore" }
+  );
   await expectAssetsRestored(db, nervewiki.storageDir, [photo]);
 
   await status.getByRole("link", { name: "Open", exact: true }).click();
@@ -310,7 +332,14 @@ test("TB1 (preview): a page restored from its preview, its own event reading it 
   await expect(trashStatus(page)).toHaveText("Restored “Handbook” under “Guide”. Open");
   await expect(main.getByRole("heading", { level: 1, name: "Trash", exact: true })).toBeFocused();
   await expect(main.getByText("The trash is empty.", { exact: true })).toBeVisible();
-  await expectSubtreeRestored(db, handbook.id, [handbook.id], adminId, { parentId: guide.id, name: "Handbook" });
+  await expectSubtreeRestored(
+    db,
+    handbook.id,
+    [handbook.id],
+    adminId,
+    { parentId: guide.id, name: "Handbook" },
+    { kind: "trash_restore" }
+  );
   expect(
     await page.evaluate(() => (window as unknown as { nervewikiE2eGone: { gone: boolean } }).nervewikiE2eGone.gone)
   ).toBe(false);

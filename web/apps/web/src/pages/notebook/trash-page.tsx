@@ -13,7 +13,7 @@ import { useT } from "../../i18n/i18n";
 import { readPages } from "../../lib/read-pages";
 import type { TrashItem, TrashItemPage } from "../../services/page.service";
 import { usePageTree, useStore } from "../../stores/context";
-import { LoadMoreButton, useLoadMore } from "../load-more";
+import { LoadMoreButton, readNext, useLoadMore } from "../load-more";
 import { watchReader } from "../page/readers-input";
 import { useWorkspace } from "../workspace/workspace-layout";
 import { useNotebook } from "./notebook-layout";
@@ -52,9 +52,9 @@ export const TrashPage = observer(function TrashPage() {
   const title = t("trash.title");
   useDocumentTitle(title, notebook.name);
   const key = ["trash", notebook.id];
-  const { cache } = useSWRConfig();
+  const swr = useSWRConfig();
   // A read reads as many pages as the list has, by the cache as it reads: what More added, the page come back to.
-  const cached = () => cache.get(unstable_serialize(key));
+  const cached = () => swr.cache.get(unstable_serialize(key));
   const { data, error, mutate } = useSWR(key, () =>
     readPages((cursor) => pages.trash(cursor), (cached()?.data as TrashItemPage[] | undefined)?.length ?? 1)
   );
@@ -68,24 +68,14 @@ export const TrashPage = observer(function TrashPage() {
   const focused = useRef<HTMLAnchorElement>(null);
   const cursor = data?.at(-1)?.next_cursor ?? undefined;
   const more = useLoadMore(
-    async () => {
-      const next = await pages.trash(cursor);
-      // Added after the page it was read after, which a read meanwhile may have read again.
-      const read = await mutate(
-        (list) => (list !== undefined && list.at(-1)?.next_cursor === cursor ? [...list, next] : list),
-        { revalidate: false }
-      );
-      if (cached()?.isValidating === true) {
-        // A read out as it was added answers what is older than the addition: SWR drops it. Another reads it all.
-        void mutate();
-      }
-      const added = read?.at(-1) === next;
-      return {
-        added: added ? next.data.map((item) => item.id) : [],
-        whole: added && next.next_cursor === null,
-        last: read?.at(-1)?.data.at(-1)?.id,
-      };
-    },
+    async () =>
+      readNext(
+        swr,
+        key,
+        cursor,
+        (after) => pages.trash(after),
+        (read) => read.data.map((item) => item.id)
+      ),
     () => focused.current,
     heading
   );

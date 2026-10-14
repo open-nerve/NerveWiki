@@ -207,6 +207,43 @@ test("a More answered as the page come back to reads its list again has the list
   answers[1]?.();
 });
 
+// M8/P3B review C-M1, as the history's.
+test("a More out as another page is shown reads for its own page: the other's More is not busy, nor given its versions", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+  let holding = true;
+  let answer: (() => void) | undefined;
+  const server = pageServer({
+    answers: {
+      "GET /api/v0/pages/*/versions": (request) => {
+        const cursor = new URL(request.url).searchParams.get("cursor");
+        const by = request.url.includes(install.id) ? ada : bob;
+        const page = json(cursor === null ? listing([5], "5", by) : listing([4], null, by));
+        return cursor !== null && by === ada && holding
+          ? new Promise((resolve) => (answer = () => resolve(page)))
+          : page;
+      },
+    },
+  });
+  const { router } = renderApp(pagePath(install.id), server.app);
+  await within(await shownPanel()).findByRole("list", { name: "Versions" });
+  await user.click(within(section("Versions")).getByRole("button", { name: "More versions" }));
+
+  await act(() => router.navigate(pagePath(notes.id)));
+  await screen.findByRole("heading", { level: 1, name: "Notes" });
+  await waitFor(() => expect(writers()).toEqual(["Bob · Edit"]));
+  expect(
+    within(section("Versions")).getByRole("button", { name: "More versions" }).getAttribute("aria-busy")
+  ).toBeNull();
+  holding = false;
+  act(() => answer?.());
+  await act(() => vi.advanceTimersByTimeAsync(50));
+
+  expect(writers()).toEqual(["Bob · Edit"]);
+  await act(() => router.navigate(pagePath(install.id)));
+  await waitFor(() => expect(writers()).toEqual(["Ada · Edit", "Ada · Edit"]));
+});
+
 test("a next page added while the list is read again has the list read again whole: SWR drops that read", async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });

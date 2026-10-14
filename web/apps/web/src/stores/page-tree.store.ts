@@ -11,7 +11,12 @@ import type {
   TagCount,
 } from "../services/linking.service";
 import type {
+  ChangesetChangePage,
+  ChangesetDetail,
+  ChangesetPage,
+  ChangesetReverted,
   EditLock,
+  LogFilter,
   NodeMove,
   NodeRestored,
   PageContent,
@@ -59,7 +64,10 @@ export const toggleLimit = 60_000;
  * change. It reads the notebook's trash and an item of it, which SWR
  * keeps, and restores an item (M8 design 4.5, 4.6): a node's restores go
  * out one at a time too, each then in turn with the tree's writes, which
- * it is one of.
+ * it is one of. It reads the notebook's history, which SWR keeps, and
+ * reverts a changeset of it (M8/P3 design 4.6): a changeset's reverts go
+ * out one at a time too, each in turn with the tree's writes, which it is
+ * one of; the pages it deletes are this generation's deleted as well.
  */
 export class PageTreeStore {
   /** The nodes as read, pages and attachments, replaced whole by each read: they are not observed one by one. */
@@ -113,6 +121,10 @@ export class PageTreeStore {
       | "trash"
       | "trashItem"
       | "restoreNode"
+      | "changesets"
+      | "changeset"
+      | "changes"
+      | "revertChangeset"
     >,
     /** The notebook whose pages these are. */
     readonly notebookId: string,
@@ -460,6 +472,69 @@ export class PageTreeStore {
       await this.load().catch(() => undefined);
     }
     return restored;
+  }
+
+  /** changesets reads a page of the notebook's history that filter keeps, newer first, after cursor (none for the first). */
+  changesets(filter: LogFilter, cursor?: string): Promise<ChangesetPage> {
+    return this.service.changesets(this.notebookId, filter, cursor);
+  }
+
+  /** changeset reads the changeset id of the history, which SWR keeps, by changeset, as it does the views. */
+  changeset(id: string): Promise<ChangesetDetail> {
+    return this.service.changeset(id);
+  }
+
+  /** changes reads a page of the changeset id's changes, by node id, after cursor (none for the first). */
+  changes(id: string, cursor?: string): Promise<ChangesetChangePage> {
+    return this.service.changes(id, cursor);
+  }
+
+  /**
+   * revert puts every node the changeset id changed back as it was before
+   * it, with message, or without one (M8/P3 design 4.6): after the
+   * changeset's reverts made before it have settled, a button pressed
+   * twice or a dialog opened again, then in turn with the tree's writes,
+   * the tree read again once it is answered either way. The answer does not
+   * say which pages it deleted: those the tree had before it that a read
+   * begun after the answer has not are this generation's deleted, as
+   * remove records them, each shell then going to its nearest ancestor
+   * still there, until a read begun after the answer lists one alive (one
+   * someone else deleted meanwhile among them, gone all the same). It
+   * brings pages back too, which that read lists: that read failed, a page
+   * this generation deleted would stay deleted here, so the tree is read
+   * once more (as restore does). A refusal records nothing. It answers what
+   * the revert did.
+   */
+  async revert(id: string, message?: string): Promise<ChangesetReverted> {
+    let before: TreeIndex | undefined;
+    let after = Infinity;
+    const reverted = await this.restores(id, () =>
+      this.write(async () => {
+        before = this.tree;
+        const answer = await this.service.revertChangeset(id, message);
+        after = this.readsStarted;
+        return answer;
+      })
+    );
+    // Whether a read begun after the answer was kept: the write's, or the one more.
+    const read = () => this.readKept > after;
+    if (!read() && this.removed.size > 0) {
+      await this.load().catch(() => undefined);
+    }
+    const tree = before;
+    const nodes = this.nodes;
+    if (reverted.changed && tree !== undefined && nodes !== undefined && read()) {
+      const alive = new Set(nodes.map((node) => node.id));
+      runInAction(() => {
+        for (const page of tree.byId.values()) {
+          if (!alive.has(page.id) && !this.removed.has(page.id)) {
+            const to = ancestorsOf(tree, page.id).findLast((ancestor) => alive.has(ancestor.id))?.id ?? null;
+            this.removed.set(page.id, { to, after });
+          }
+        }
+      });
+    }
+    return reverted;
   }
 
   /** editLock reads who edits the page id, which SWR keeps by page, as it does the view (M5/P3 design 3.10). */

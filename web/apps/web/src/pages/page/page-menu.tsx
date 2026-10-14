@@ -19,10 +19,21 @@ import type { FocusJob } from "../notebook/transfer-page";
  * PageMenu is the menu beside a page's title (M7/P5 design 4.5), which
  * readers have too: the tree's menu is its writers'. Export this page
  * exports it with its subtree, then goes to the notebook's imports and
- * exports, the job's row taking the focus; cancelled, the focus goes back
- * to the menu.
+ * exports (href), the job's row taking the focus; cancelled, the focus
+ * goes back to the menu. This page's history goes to the notebook's
+ * history of the changes to it (history; M8/P3 design 4.5).
  */
-export function PageMenu({ notebook, page, href }: { notebook: Notebook; page: TreeNode; href: string }) {
+export function PageMenu({
+  notebook,
+  page,
+  href,
+  history,
+}: {
+  notebook: Notebook;
+  page: TreeNode;
+  href: string;
+  history: string;
+}) {
   const t = useT();
   const navigate = useNavigate();
   const [exporting, setExporting] = useState(false);
@@ -38,6 +49,7 @@ export function PageMenu({ notebook, page, href }: { notebook: Notebook; page: T
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuItem onSelect={() => setExporting(true)}>{t("page.export")}</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => void navigate(history)}>{t("page.history")}</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
       <ExportDialog

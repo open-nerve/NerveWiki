@@ -35,6 +35,9 @@ export function typeOf(event: StreamEvent): string {
  */
 export const TREE_INTERVAL_MS = 500;
 
+/** The keys of a notebook's history: its lists, by their filters, a changeset, and its nodes. */
+const historyKeys = new Set(["changesets", "changeset", "changeset-changes"]);
+
 /**
  * pagesChanged reads again a tree that changed, through the refresher, at
  * most once in TREE_INTERVAL_MS: an upload is a unit of its own (M7/P2
@@ -51,7 +54,10 @@ export const TREE_INTERVAL_MS = 500;
  * where the tree has them, once the tree changed (M8 design 4.13). The
  * page's content as it is now, which a version is compared with, as its
  * view. The notebook's trash and its items shown, once the tree changed:
- * a deletion or a restore is a change of it (M8/P2 design 4.6).
+ * a deletion or a restore is a change of it (M8/P2 design 4.6). The
+ * notebook's history shown, its lists, changesets and their nodes, through
+ * the refresher, at its own interval: any write is a changeset, or joins
+ * one (M8 design 4.13; M8/P3 design 4.6).
  */
 const pagesChanged: EventHandler = (data, context) => {
   const { cache, mutate, refresher, stopped } = context;
@@ -85,6 +91,9 @@ const pagesChanged: EventHandler = (data, context) => {
       );
     });
   }
+  refresher.request(`history ${notebook}`, () => {
+    void mutate((key) => Array.isArray(key) && historyKeys.has(key[0] as string) && key[1] === notebook);
+  });
   if (pages === null) {
     readViews(notebook, context);
     return;

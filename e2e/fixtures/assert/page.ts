@@ -206,16 +206,17 @@ export interface RestoredRoot {
 /**
  * nodes, page_contents, page_revisions, changeset_items, changesets: the trash item of rootId, the nodes ids, is
  * restored by restorerId: its root under root.parentId named root.name, each node alive, no root nor counts, updated
- * by the restorer at the restore's time; their contents, versions and items alive; the restore's changeset a
- * trash_restore of theirs, holding an item of each node, restored, from nothing to where the node is, a page's at its
- * content's revision.
+ * by the restorer at the restore's time; their contents, versions and items alive; the restore's changeset of its
+ * kind, a trash_restore or, a deletion reverted, a revert (M8/P3 design 4.8), holding an item of each node, restored,
+ * from nothing to where the node is, a page's at its content's revision.
  */
 export async function expectSubtreeRestored(
   db: Database,
   rootId: string,
   ids: string[],
   restorerId: string,
-  root: RestoredRoot
+  root: RestoredRoot,
+  { kind }: { kind: "trash_restore" | "revert" }
 ): Promise<void> {
   const rows = await db.query(
     `SELECT n.parent_id AS "parentId", n.name, s.kind, s.created_by_id = $3 AS by_restorer,
@@ -242,7 +243,7 @@ export async function expectSubtreeRestored(
   expect(rows).toEqual([
     {
       ...root,
-      kind: "trash_restore",
+      kind,
       by_restorer: true,
       nodes: ids.length,
       pages_without_content: 0,
@@ -349,4 +350,57 @@ export async function expectVersions(db: Database, pageId: string, versions: Sto
     [pageId]
   );
   expect(rows).toEqual(versions.map((version) => ({ revertsId: null, ...version, hashed: true, versions: 1 })));
+}
+
+/** What a revert holds (M8/P3 design 4.8): the changeset it reverts, its items and its versions. */
+export interface StoredRevert {
+  revertsId: string;
+  items: number;
+  versions: number;
+}
+
+/**
+ * changesets, changeset_items, page_revisions: the changeset revertId is a revert of the changeset revert.revertsId by
+ * reverterId from client, alive, holding revert.items items and revert.versions versions, deleted with their nodes or
+ * not.
+ */
+export async function expectRevert(
+  db: Database,
+  revertId: string,
+  reverterId: string,
+  client: string,
+  revert: StoredRevert
+): Promise<void> {
+  const rows = await db.query(
+    `SELECT s.kind, s.reverts_id AS "revertsId", s.created_by_id = $2 AS by_reverter, s.client,
+            (SELECT count(*)::int FROM changeset_items i WHERE i.changeset_id = s.id) AS items,
+            (SELECT count(*)::int FROM page_revisions r WHERE r.changeset_id = s.id) AS versions
+       FROM changesets s WHERE s.id = $1 AND s.deleted_at IS NULL`,
+    [revertId, reverterId]
+  );
+  expect(rows).toEqual([{ kind: "revert", by_reverter: true, client, ...revert }]);
+}
+
+/** changesets: the reverts of the changeset id, newest first. */
+export async function revertsOf(db: Database, id: string): Promise<string[]> {
+  const rows = await db.query<{ id: string }>(
+    "SELECT id FROM changesets WHERE reverts_id = $1 AND kind = 'revert' ORDER BY created_at DESC, id DESC",
+    [id]
+  );
+  return rows.map((row) => row.id);
+}
+
+/**
+ * changeset_items, page_contents: the changeset deletionId deleted the nodes ids, each of its items one of a node to
+ * nothing, a page's holding its content's revision as it was deleted (M8/P3 design 3.2), which a revert writes back;
+ * an attachment's none.
+ */
+export async function expectDeletionRevisions(db: Database, deletionId: string, ids: string[]): Promise<void> {
+  const rows = await db.query(
+    `SELECT i.node_id AS id, i.before_name IS NOT NULL AND i.after_name IS NULL AS deleted,
+            i.revision IS NOT DISTINCT FROM (SELECT c.revision FROM page_contents c WHERE c.node_id = i.node_id) AS revision
+       FROM changeset_items i WHERE i.changeset_id = $1 ORDER BY i.node_id`,
+    [deletionId]
+  );
+  expect(rows).toEqual(ids.toSorted().map((id) => ({ id, deleted: true, revision: true })));
 }

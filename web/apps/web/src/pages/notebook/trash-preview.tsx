@@ -13,6 +13,7 @@ import { formatBytes } from "../../i18n/format";
 import { useT } from "../../i18n/i18n";
 import { assetKind } from "../../lib/asset-kind";
 import { useFocusLeaving } from "../../lib/focus-leaving";
+import { idPattern } from "../../lib/ids";
 import { ApiError } from "../../services/api";
 import type { Notebook } from "../../services/notebook.service";
 import type { TrashItem } from "../../services/page.service";
@@ -34,9 +35,6 @@ import {
   type TrashRestored,
 } from "./trash-row";
 
-/** nodeIdPattern is a node's id, a UUID: anything else in the address is no item, not a read refused as malformed. */
-const nodeIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
-
 /**
  * TrashPreview is a trash item's preview (M8 design 4.5; M8/P2 design 4.3),
  * by its root's node in the address: what the trash says of it and its
@@ -54,7 +52,7 @@ const nodeIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]
 export const TrashPreview = observer(function TrashPreview() {
   const notebook = useNotebook();
   const { nodeId = "" } = useParams();
-  if (!nodeIdPattern.test(nodeId)) {
+  if (!idPattern.test(nodeId)) {
     return <NotFoundPage />;
   }
   return <PreviewShell key={nodeId} notebook={notebook} id={nodeId} />;

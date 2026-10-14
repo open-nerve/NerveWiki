@@ -259,7 +259,14 @@ const PageShell = observer(function PageShell({
           </h1>
           {reading && (
             <div className="flex shrink-0 gap-2">
-              {!gone && <PageMenu notebook={notebook} page={page} href={`${home}/settings/transfer`} />}
+              {!gone && (
+                <PageMenu
+                  notebook={notebook}
+                  page={page}
+                  href={`${home}/settings/transfer`}
+                  history={`${home}/history?page=${page.id}`}
+                />
+              )}
               {writer && (
                 <Button
                   ref={edit}
