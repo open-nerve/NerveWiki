@@ -15,12 +15,28 @@ permissions:
 
 jobs:
   server:
-    name: server
+    name: server (${{ matrix.leg }})
     # 同仓库分支的 PR 已由 push 事件在同一个提交上跑过；pull_request 事件只为 fork 的 PR 运行
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-24.04
-    # 测试一步在 M7/P2 时约 14 分钟（竞态检测下的整个程序测试占大半），留出余量
-    timeout-minutes: 25
+    # 一个作业跑全部的 Go 测试在 M8/P3A 时超过了 25 分钟的时限：分成三份并行，各占一个 runner（Makefile 的
+    # test-go-race、test-go-bootstrap、test-go-costs，三份之和是 make test-go）。不带竞态检测的耗时守卫也因此不与竞态检测下的构建抢 CPU。
+    # 一份失败不取消别的：各自的失败都看得到。时限约为各份在 CI 上实测的两倍（M8/P3A，作业 6:20、10:58、9:26）：
+    # 组合根那一份里 go test 的 -timeout 15m 先到，打出卡住的测试
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # 组合根之外的全部包（go list 列出，新加的包自动在内）
+          - leg: race
+            timeout: 15
+          # 组合根的整个程序测试，竞态检测下最慢的一个包
+          - leg: bootstrap
+            timeout: 25
+          # 不带竞态检测的预算与界线的守卫、server/tools；静态检查与生成物的检查也只在这一份里跑一次
+          - leg: costs
+            timeout: 20
+    timeout-minutes: ${{ matrix.timeout }}
     steps:
       # 按完整的提交 SHA 引用 actions（tag 可以被改指），注释中写明对应的版本
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -38,9 +54,11 @@ jobs:
         working-directory: server
         run: go version
       - name: Lint
+        if: matrix.leg == 'costs'
         run: make lint-go
       # 由 api/ 重新生成 Go 接口层，生成物必须已提交且没有差异
       - name: Generated code
+        if: matrix.leg == 'costs'
         run: make gen-check-go
       # 集成测试用 testcontainers 启动 PostgreSQL：ubuntu runner 自带 Docker。
       # 输出另存一份：失败时下一步从中取出失败的测试
@@ -51,7 +69,7 @@ jobs:
         # runner 用完即弃，容器不必回收；本机照旧由回收器删除
         env:
           TESTCONTAINERS_RYUK_DISABLED: "true"
-        run: make test-go 2>&1 | tee "$RUNNER_TEMP/test-go.log"
+        run: make "test-go-${{ matrix.leg }}" 2>&1 | tee "$RUNNER_TEMP/test-go.log"
       # 失败的测试写成注解：公开仓库的运行日志只有有权限的人读得到，注解经检查的接口人人可读。
       # 容器、磁盘、内存与内核的 OOM 记录另写成警告（错误的注解一步至多十条）：数据库中途消失时看得出是谁
       - name: Annotate the failed tests
@@ -118,7 +136,7 @@ jobs:
 
   e2e:
     name: e2e
-    # server、web 都通过之后才运行；if 与这两个任务相同
+    # server（它的三份全部）、web 都通过之后才运行；if 与这两个任务相同
     needs: [server, web]
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-24.04

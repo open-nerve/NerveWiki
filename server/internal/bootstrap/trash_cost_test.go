@@ -67,6 +67,13 @@ func (a benchAuth) Authenticate(ctx context.Context, _ string) (context.Context,
 // one, so a test at the bounds answers as the server would.
 func newTrashBench(tb testing.TB, maxNodes, maxHistory int) trashBench {
 	tb.Helper()
+	return newTrashBenchOfSteps(tb, maxNodes, maxHistory, 0)
+}
+
+// newTrashBenchOfSteps is the bench, a revert's round also bounded at
+// maxSteps, 0 the composition root's.
+func newTrashBenchOfSteps(tb testing.TB, maxNodes, maxHistory, maxSteps int) trashBench {
+	tb.Helper()
 	ctx := context.Background()
 	url := pgtest.NewDatabase(tb)
 	cfg := testConfig(tb, url, false)
@@ -115,6 +122,7 @@ func newTrashBench(tb testing.TB, maxNodes, maxHistory int) trashBench {
 	}
 	deps := pageDeps(cfg, pool, logger, authorizer, md, budget)
 	deps.MaxUnitNodes, deps.MaxUnitHistory = cmp.Or(maxNodes, deps.MaxUnitNodes), cmp.Or(maxHistory, deps.MaxUnitHistory)
+	deps.MaxRevertSteps = cmp.Or(maxSteps, deps.MaxRevertSteps)
 	pg := page.New(deps)
 	router := httpserver.NewRouter(logger)
 	api, err := httpserver.NewAPI(apiConfig(cfg, logger, ratelimit.New(time.Now), benchAuth{b.alice}, nil, nil, pg.BodyLimits()))
@@ -324,7 +332,9 @@ func BenchmarkTrashDelete(b *testing.B) {
 
 // versions writes the item's pages versions from after to up to, each
 // step a changeset of the notebook's and an item of each page in it, the
-// pages' contents on the last: the history of pages edited that often.
+// pages' contents on the last, which holds them, as a page's latest
+// version does (a revert compares the content it restores with it, M8/P3
+// design 3.5): the history of pages edited that often.
 // A version is of 1 KiB that does not compress, about half the widest a
 // row keeps in its table, about 2 KB, past which TOAST moves the content
 // out of it: at 1.8 KiB the restore at the bounds took 8% longer (M8/P2A
@@ -353,6 +363,9 @@ func (b trashBench) versions(tb testing.TB, after, upTo int) {
 		FROM (` + pages + `) p, generate_series($2::integer + 1, $3::integer) k`, []any{b.nb, after, upTo}},
 		{`UPDATE page_contents SET revision = $2 WHERE node_id IN (SELECT id FROM nodes WHERE notebook_id = $1 AND kind = 'page')`,
 			[]any{b.nb, upTo}},
+		{`UPDATE page_revisions r SET content = c.content, content_hash = c.content_hash, byte_size = c.byte_size
+		FROM page_contents c JOIN nodes n ON n.id = c.node_id
+		WHERE n.notebook_id = $1 AND n.kind = 'page' AND r.node_id = c.node_id AND r.revision = $2`, []any{b.nb, upTo}},
 	} {
 		if _, err := b.pool.Exec(ctx, x.sql, x.args...); err != nil {
 			tb.Fatalf("%s: %v", x.sql, err)

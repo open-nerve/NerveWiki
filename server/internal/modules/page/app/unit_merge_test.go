@@ -2,6 +2,8 @@ package app_test
 
 import (
 	"context"
+	"errors"
+	"slices"
 	"testing"
 	"time"
 	"uuid"
@@ -227,5 +229,68 @@ func TestARevertsUnitMergesOnlyIntoTheSameRevert(t *testing.T) {
 	if _, err := f.revertUnit(domain.ChangesetRevert, uuid.NewV7(), first.ChangesetID, create("Three")); err == nil ||
 		f.called("CreateNode in tx") || f.called("TouchChangeset in tx") {
 		t.Errorf("a unit merged into another changeset's revert = %v after %v, want an error before any write", err, f.rec.calls)
+	}
+}
+
+// A unit merging into a changeset a revert was made of, a revert of a
+// revert too, is refused with ErrChangesetReverted once it holds the
+// notebook's lock and its decision, before do runs (M8/P3 design 3.7);
+// before the revert it merges.
+func TestAUnitMergesIntoNoRevertedChangeset(t *testing.T) {
+	f := newFixture()
+	f.grant(domain.ActionCreate)
+	first, err := f.importUnit(f.asAlice(), domain.ClientWeb, uuid.UUID{}, create("One"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.importUnit(f.asAlice(), domain.ClientWeb, first.ChangesetID, create("Two")); err != nil {
+		t.Fatalf("a merge before the revert = %v", err)
+	}
+	revert, err := f.revertUnit(domain.ChangesetRevert, first.ChangesetID, uuid.UUID{}, create("Back"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.revertUnit(domain.ChangesetRevert, revert.ChangesetID, uuid.UUID{}, create("Again")); err != nil {
+		t.Fatal(err)
+	}
+	for _, into := range []uuid.UUID{first.ChangesetID, revert.ChangesetID} {
+		f.rec.calls = nil
+		ran := false
+		kind := domain.ChangesetImport
+		reverts := uuid.UUID{}
+		if into == revert.ChangesetID {
+			kind, reverts = domain.ChangesetRevert, first.ChangesetID
+		}
+		_, err := f.revertUnit(kind, reverts, into, func(context.Context, *app.Unit) error {
+			ran = true
+			return nil
+		})
+		want := []string{"WorkspaceOf", "ShareWorkspace in tx", "LockNotebook in tx", "Authorize page.create in tx", "LockChangeset in tx"}
+		if !errors.Is(err, app.ErrChangesetReverted) || ran || !slices.Equal(f.rec.calls, want) {
+			t.Errorf("a unit merged into the reverted %s = %v, ran %v, after %v; want ErrChangesetReverted after %v", into, err, ran,
+				f.rec.calls, want)
+		}
+	}
+}
+
+// A unit's message is its changeset's; a unit merging keeps the one it
+// merges into.
+func TestAUnitsMessageIsItsChangesets(t *testing.T) {
+	f := newFixture()
+	f.grant(domain.ActionCreate)
+	message := "Undo the import"
+	spec := app.UnitSpec{NotebookID: f.eng, Action: domain.ActionCreate, Tree: true, Client: domain.ClientWeb,
+		NotFound: domain.ErrNotebookNotFound, Kind: domain.ChangesetImport, Message: &message}
+	first, err := f.writer().Run(f.asAlice(), spec, create("One"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := "Another"
+	spec.Changeset, spec.Message = first.ChangesetID, &other
+	if _, err := f.writer().Run(f.asAlice(), spec, create("Two")); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.store.changesets) != 1 || f.store.changesets[0].Message == nil || *f.store.changesets[0].Message != message {
+		t.Errorf("changesets = %+v, want one with the first unit's message", f.store.changesets)
 	}
 }

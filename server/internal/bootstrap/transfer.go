@@ -96,11 +96,15 @@ func (t transferTree) Parse(ctx context.Context, content string) (transfer.Parse
 	return parsedPage{p}, nil
 }
 
+// Import runs the import's unit: the unit's own refusal, a revert of the
+// changeset it merges into, is the import's (M8/P3 design 3.7), as the
+// unit's nodes' are.
 func (t transferTree) Import(ctx context.Context, spec transfer.ImportSpec, do func(ctx context.Context, u transfer.ImportUnit) error) (uuid.UUID, error) {
-	return t.tree.Import(ctx, page.ImportSpec{NotebookID: spec.NotebookID, Action: spec.Action, Client: page.Client(spec.Client),
+	id, err := t.tree.Import(ctx, page.ImportSpec{NotebookID: spec.NotebookID, Action: spec.Action, Client: page.Client(spec.Client),
 		Changeset: spec.Changeset}, func(ctx context.Context, u page.ImportUnit) error {
 		return do(ctx, importUnit{u})
 	})
+	return id, treeError(err)
 }
 
 // parsedPage is a page's content the page module parsed.
@@ -141,13 +145,15 @@ func createdNode(n page.NodeInfo) transfer.CreatedNode {
 }
 
 // treeError is the page module's error as the import reads it: a page too
-// deep, a parent gone.
+// deep, a parent gone, the import's changeset reverted.
 func treeError(err error) error {
 	switch {
 	case errors.Is(err, page.ErrTooDeep):
 		return transfer.ErrTooDeep
 	case errors.Is(err, page.ErrNoParent):
 		return transfer.ErrNoParent
+	case errors.Is(err, page.ErrChangesetReverted):
+		return transfer.ErrChangesetReverted
 	}
 	return err
 }

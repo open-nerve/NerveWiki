@@ -93,6 +93,13 @@ func checkPages(t *testing.T, pool *pgxpool.Pool) {
 				AND n.kind = 'page' AND n.deleted_at IS NULL)`,
 		"with two alive edit sessions": `SELECT count(*) FROM (SELECT 1 FROM edit_sessions
 			WHERE ended_reason IS NULL AND expires_at > now() GROUP BY node_id HAVING count(*) > 1) locked`,
+		// A revert's changeset reverts one of its notebook, or one the purge
+		// took; a page's deletion holds the revision it deleted, which the
+		// revert of it compares (M8/P3 design 3.12).
+		"reverted by a changeset of another notebook": `SELECT count(*) FROM changesets r
+			JOIN changesets c ON c.id = r.reverts_id WHERE r.notebook_id <> c.notebook_id`,
+		"deleted by an item without its revision": `SELECT count(*) FROM changeset_items i JOIN nodes n ON n.id = i.node_id
+			WHERE i.after_name IS NULL AND n.kind = 'page' AND i.revision IS NULL`,
 	} {
 		if n := count(t, pool, query); n != 0 {
 			t.Errorf("%d pages %s, want none", n, what)

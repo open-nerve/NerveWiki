@@ -16,6 +16,7 @@ import {
   trashedAgo,
   trashListed,
   trashPath,
+  trashStatus,
 } from "../../fixtures/trash";
 import { choosePageAction, pageHeading, treeTitles, wikiPagePath } from "../../fixtures/wiki-pages";
 import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
@@ -253,7 +254,7 @@ test("TB1 (page): a page deleted from the tree, its confirmation saying the tras
 
   const answer = await restoreWith(page, handbook.id, "Handbook", "From: Guide");
   expect(answer.status()).toBe(200);
-  const status = main.getByRole("status");
+  const status = trashStatus(page);
   await expect(status).toHaveText("Restored “Handbook” under “Guide”. Open");
   await expect(main.getByRole("heading", { level: 1, name: "Trash", exact: true })).toBeFocused();
   await expect(main.getByText("The trash is empty.", { exact: true })).toBeVisible();
@@ -306,7 +307,7 @@ test("TB1 (preview): a page restored from its preview, its own event reading it 
   const answer = await restoreWith(page, handbook.id, "Handbook", "From: Guide");
   expect(answer.status()).toBe(200);
   await expect(page).toHaveURL(trashPath(workspace.slug, notebook.id));
-  await expect(main.getByRole("status")).toHaveText("Restored “Handbook” under “Guide”. Open");
+  await expect(trashStatus(page)).toHaveText("Restored “Handbook” under “Guide”. Open");
   await expect(main.getByRole("heading", { level: 1, name: "Trash", exact: true })).toBeFocused();
   await expect(main.getByText("The trash is empty.", { exact: true })).toBeVisible();
   await expectSubtreeRestored(db, handbook.id, [handbook.id], adminId, { parentId: guide.id, name: "Handbook" });

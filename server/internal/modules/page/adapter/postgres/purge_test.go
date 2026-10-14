@@ -192,7 +192,9 @@ func TestPurgeSkipsAHeldNodeAndKeepsItsAncestors(t *testing.T) {
 // A held row is skipped, not waited for, and so is what needs it gone: a
 // node while a row that follows it is held, a changeset while one of its
 // items or versions is; deleting either would cascade to the held row and
-// wait for it. A later run takes the rest.
+// wait for it. An item or a version is skipped while its changeset is
+// held too (a unit merging into it, M8/P3 design 3.3). A later run takes
+// the rest.
 func TestPurgeKeepsWhatAHeldRowNeeds(t *testing.T) {
 	for _, tt := range []struct {
 		name  string
@@ -210,9 +212,9 @@ func TestPurgeKeepsWhatAHeldRowNeeds(t *testing.T) {
 		// Not c, nor its ancestors, nor the tree's changeset; g and its own.
 		{"c's item", "changeset_items WHERE node_id", func(f purgeFixture) uuid.UUID { return f.c },
 			[]int{3, 4, 4, 1, 1}, []int{1, 0, 0, 3, 1}},
-		// Everything but g's changeset itself.
+		// Not g's item and version, nor g, nor its changeset; g's content.
 		{"g's changeset", "changesets WHERE id", func(f purgeFixture) uuid.UUID { return f.older },
-			[]int{4, 4, 4, 4, 1}, []int{0, 0, 0, 0, 1}},
+			[]int{3, 3, 4, 3, 1}, []int{1, 1, 0, 1, 1}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			f := newPurgeFixture(t)
@@ -229,7 +231,8 @@ func TestPurgeKeepsWhatAHeldRowNeeds(t *testing.T) {
 }
 
 // A subtree deleted in a live notebook goes in one run with the items of
-// the changeset that deleted it; the changesets stay with their notebook.
+// the changeset that deleted it; the changesets, trimmed and emptied, go in
+// it too (M8/P3 design 3.3).
 func TestPurgeTakesADeletedSubtree(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
@@ -262,10 +265,209 @@ func TestPurgeTakesADeletedSubtree(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if purged, want := run(t, f.s), []int{6, 3, 3, 3, 0}; !slices.Equal(purged, want) {
-		t.Errorf("purged %v, want %v: both changesets' items, the tree and what follows it", purged, want)
+	if purged, want := run(t, f.s), []int{6, 3, 3, 3, 2}; !slices.Equal(purged, want) {
+		t.Errorf("purged %v, want %v: both changesets' items, the tree and what follows it, both changesets", purged, want)
 	}
-	if got := f.count(t, "SELECT count(*) FROM changesets"); got != 2 {
-		t.Errorf("changesets left = %d, want both", got)
+	if got := f.count(t, "SELECT count(*) FROM changesets"); got != 0 {
+		t.Errorf("changesets left = %d, want none", got)
+	}
+}
+
+// trimFixture is a live notebook's changesets: made, which created a, b
+// and c, each an item and a version; deleted, which deleted them before the
+// cutoff, each an item; kept, which created d, alive; and gone's, deleted
+// with its notebook before the cutoff, with an item of e, deleted with it.
+type trimFixture struct {
+	fixture
+	made, deleted, kept, gone uuid.UUID
+}
+
+func newTrimFixture(t *testing.T) trimFixture {
+	t.Helper()
+	ctx := context.Background()
+	f := trimFixture{fixture: newFixture(t)}
+	changeset := func(notebook uuid.UUID, at time.Time) uuid.UUID {
+		cs := app.Changeset{ID: uuid.NewV7(), NotebookID: notebook, Kind: "edit", Client: domain.ClientWeb, By: f.alice, At: at}
+		if err := f.s.CreateChangeset(ctx, cs); err != nil {
+			t.Fatal(err)
+		}
+		return cs.ID
+	}
+	f.made, f.deleted, f.kept, f.gone = changeset(f.eng, now()), changeset(f.eng, cutoff().Add(-time.Hour)), changeset(f.eng, now()),
+		changeset(f.ops, now())
+	created := func(cs uuid.UUID, n domain.Node) {
+		state := n.State()
+		if err := f.s.RecordItems(ctx, []app.Item{{ID: uuid.NewV7(), ChangesetID: cs, Change: domain.Change{NodeID: n.ID, After: &state}, At: now()}}); err != nil {
+			t.Fatal(err)
+		}
+		sum := sha256.Sum256(nil)
+		if err := f.s.RecordRevision(ctx, app.Revision{ID: uuid.NewV7(), ChangesetID: cs, NodeID: n.ID, Revision: 1, Hash: sum[:], At: now()}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a := f.page(t, f.eng, nil, "A", 0)
+	b := f.page(t, f.eng, &a.ID, "B", 0)
+	c := f.page(t, f.eng, &b.ID, "C", 0)
+	for _, n := range []domain.Node{a, b, c} {
+		created(f.made, n)
+	}
+	at := cutoff().Add(-time.Hour)
+	if err := f.s.DeleteNodes(ctx, deletion([]uuid.UUID{a.ID, b.ID, c.ID}, f.alice, at)); err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range []domain.Node{a, b, c} {
+		state := n.State()
+		if err := f.s.RecordItems(ctx, []app.Item{{ID: uuid.NewV7(), ChangesetID: f.deleted, Change: domain.Change{NodeID: n.ID, Before: &state}, At: at}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	created(f.kept, f.page(t, f.eng, nil, "D", 1))
+	e := f.page(t, f.ops, nil, "E", 0)
+	created(f.gone, e)
+	f.exec(t, "UPDATE nodes SET deleted_at = $2 WHERE id = $1", e.ID, at)
+	for _, table := range followers() {
+		f.exec(t, "UPDATE "+table+" SET deleted_at = $2 WHERE node_id = $1", e.ID, at)
+	}
+	f.exec(t, "UPDATE changesets SET deleted_at = $2 WHERE id = $1", f.gone, at)
+	return f
+}
+
+// trimmed are the changesets of ids marked trimmed, in their order.
+func (f trimFixture) trimmed(t *testing.T, ids ...uuid.UUID) []bool {
+	t.Helper()
+	out := make([]bool, len(ids))
+	for i, id := range ids {
+		out[i] = f.count(t, "SELECT count(*) FROM changesets WHERE id = $1 AND trimmed", id) == 1
+	}
+	return out
+}
+
+// The items' and the versions' purgers mark the changesets of live notebooks
+// whose rows they delete trimmed, in the statement that deletes them, and
+// count the rows they deleted, a batch at most: not a changeset deleted
+// with its notebook, nor one of whose rows they deleted none.
+func TestThePurgeMarksTheChangesetsItTrims(t *testing.T) {
+	ctx := context.Background()
+	f := newTrimFixture(t)
+	// made's items and versions, deleted's items, gone's item and version: a batch of 2 at a time.
+	for _, step := range []struct {
+		purge   func(context.Context, time.Time, int) (int, error)
+		batches []int
+	}{
+		{f.s.PurgeChangesetItems, []int{2, 2, 2, 1}},
+		{f.s.PurgePageRevisions, []int{2, 2, 0}},
+	} {
+		var got []int
+		for {
+			n, err := step.purge(ctx, cutoff(), 2)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got = append(got, n)
+			if n < 2 {
+				break
+			}
+		}
+		if !slices.Equal(got, step.batches) {
+			t.Errorf("batches of 2 = %v, want %v", got, step.batches)
+		}
+	}
+	if got, want := f.trimmed(t, f.made, f.deleted, f.kept, f.gone), []bool{true, true, false, false}; !slices.Equal(got, want) {
+		t.Errorf("made, deleted, kept and gone trimmed: %v, want %v", got, want)
+	}
+}
+
+// The versions' purger marks the changesets whose versions it deletes on
+// its own: run first, it marks made, whose versions it takes, and not
+// deleted, which has only items, nor gone, of a deleted notebook.
+func TestThePurgeOfVersionsMarksTheChangesetsItTrims(t *testing.T) {
+	f := newTrimFixture(t)
+	if n, err := f.s.PurgePageRevisions(context.Background(), cutoff(), 100); err != nil || n != 4 {
+		t.Errorf("PurgePageRevisions() = %d, %v; want made's 3 and gone's", n, err)
+	}
+	if got, want := f.trimmed(t, f.made, f.deleted, f.kept, f.gone), []bool{true, false, false, false}; !slices.Equal(got, want) {
+		t.Errorf("made, deleted, kept and gone trimmed: %v, want %v", got, want)
+	}
+}
+
+// An item whose changeset another transaction holds, as a unit merging
+// into it does (FOR NO KEY UPDATE), is neither deleted nor marked: it waits
+// for a later run, which deletes and marks it.
+func TestThePurgeSkipsTheItemsOfAHeldChangeset(t *testing.T) {
+	ctx := context.Background()
+	f := newTrimFixture(t)
+	holder, err := f.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = holder.Rollback(ctx) })
+	if _, err := holder.Exec(ctx, "SELECT 1 FROM changesets WHERE id = $1 FOR NO KEY UPDATE", f.deleted); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := f.s.PurgeChangesetItems(ctx, cutoff(), 100); err != nil || n != 4 {
+		t.Errorf("PurgeChangesetItems() = %d, %v; want made's 3 and gone's", n, err)
+	}
+	if got, want := f.trimmed(t, f.made, f.deleted), []bool{true, false}; !slices.Equal(got, want) {
+		t.Errorf("made and deleted trimmed: %v, want %v", got, want)
+	}
+	if got := f.count(t, "SELECT count(*) FROM changeset_items WHERE changeset_id = $1", f.deleted); got != 3 {
+		t.Errorf("deleted's items left = %d, want 3", got)
+	}
+	if err := holder.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := f.s.PurgeChangesetItems(ctx, cutoff(), 100); err != nil || n != 3 {
+		t.Errorf("the next PurgeChangesetItems() = %d, %v; want deleted's 3", n, err)
+	}
+	if got, want := f.trimmed(t, f.made, f.deleted), []bool{true, true}; !slices.Equal(got, want) {
+		t.Errorf("made and deleted trimmed then: %v, want %v", got, want)
+	}
+}
+
+// The changesets' purger takes, after those deleted with their notebook,
+// the trimmed ones the purge emptied, while its batch has room; a trimmed
+// changeset with an item or a version left stays, as does one not trimmed,
+// however empty.
+func TestThePurgeDeletesTheChangesetsItEmptied(t *testing.T) {
+	ctx := context.Background()
+	f := newTrimFixture(t)
+	empty := app.Changeset{ID: uuid.NewV7(), NotebookID: f.eng, Kind: "edit", Client: domain.ClientWeb, By: f.alice, At: now()}
+	if err := f.s.CreateChangeset(ctx, empty); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.s.PurgeChangesetItems(ctx, cutoff(), 100); err != nil {
+		t.Fatal(err)
+	}
+	// made, trimmed, and gone keep their versions; deleted, trimmed, is empty.
+	if n, err := f.s.PurgeChangesets(ctx, cutoff(), 100); err != nil || n != 1 ||
+		f.count(t, "SELECT count(*) FROM changesets WHERE id = $1", f.deleted) != 0 {
+		t.Errorf("PurgeChangesets() = %d, %v; want deleted's alone", n, err)
+	}
+	if _, err := f.s.PurgePageRevisions(ctx, cutoff(), 100); err != nil {
+		t.Fatal(err)
+	}
+	// A batch gone's fills: made waits.
+	if n, err := f.s.PurgeChangesets(ctx, cutoff(), 1); err != nil || n != 1 ||
+		f.count(t, "SELECT count(*) FROM changesets WHERE id = $1", f.gone) != 0 {
+		t.Errorf("PurgeChangesets(a batch of 1) = %d, %v; want gone's", n, err)
+	}
+	if n, err := f.s.PurgeChangesets(ctx, cutoff(), 100); err != nil || n != 1 ||
+		f.count(t, "SELECT count(*) FROM changesets WHERE id = $1", f.made) != 0 {
+		t.Errorf("the next PurgeChangesets() = %d, %v; want made's", n, err)
+	}
+	if got := f.count(t, "SELECT count(*) FROM changesets WHERE id = ANY($1)", []uuid.UUID{f.kept, empty.ID}); got != 2 {
+		t.Errorf("kept and the empty one untrimmed left: %d, want both", got)
+	}
+	// Trimmed, emptied, then deleted with its notebook within the
+	// retention: the notebook's purge takes it once past it, not the
+	// trimmed changesets' (M8/P3A review A-6).
+	late := app.Changeset{ID: uuid.NewV7(), NotebookID: f.ops, Kind: "edit", Client: domain.ClientWeb, By: f.alice, At: now()}
+	if err := f.s.CreateChangeset(ctx, late); err != nil {
+		t.Fatal(err)
+	}
+	f.exec(t, "UPDATE changesets SET trimmed = true, deleted_at = $2 WHERE id = $1", late.ID, cutoff().Add(time.Hour))
+	if n, err := f.s.PurgeChangesets(ctx, cutoff(), 100); err != nil || n != 0 ||
+		f.count(t, "SELECT count(*) FROM changesets WHERE id = $1", late.ID) != 1 {
+		t.Errorf("PurgeChangesets() = %d, %v; want a trimmed changeset of a notebook deleted within the retention kept", n, err)
 	}
 }

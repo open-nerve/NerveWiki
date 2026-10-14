@@ -121,6 +121,55 @@ components:
             carries it.
           type: string
           format: uuid
+        conflicts:
+          description: >-
+            The nodes that keep a revert from its changeset, page.revert_conflict's:
+            by reason in the order of RevertConflict's, then by node id, the
+            first 100 of conflict_count. No other code carries it.
+          type: array
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/RevertConflict"
+        conflict_count:
+          description: >-
+            How many conflicts keep the revert, page.revert_conflict's: conflicts
+            lists the first 100. No other code carries it.
+          type: integer
+          minimum: 1
+    RevertConflict:
+      description: >-
+        A node that keeps a revert from its changeset (page.revert_conflict).
+        reason, in the order the conflicts are listed: changed (the node is
+        no longer as the changeset left it: changed, moved, deleted or
+        restored since, its trash item another, or its content written);
+        expired (a trash item the changeset deleted is past the time it can
+        be restored in); parent_gone (the node would go back under a parent
+        that is in the trash or purged); children_added (another changeset
+        put the node under one the revert would delete: it would go with
+        it); title_taken (the node would go back to a name another node
+        holds under its parent there: holder_id); cycle (the node would go
+        back under itself); too_deep (pages would nest deeper than 10 levels
+        under the node).
+      type: object
+      additionalProperties: false
+      required: [node_id, name, reason]
+      properties:
+        node_id:
+          type: string
+          format: uuid
+        name:
+          description: >-
+            The node's name where the revert would put it, the name contended
+            for by title_taken; its name now when the revert would leave it
+            nowhere.
+          type: string
+        reason:
+          type: string
+          enum: [changed, expired, parent_gone, children_added, title_taken, cycle, too_deep]
+        holder_id:
+          description: The node holding the name, title_taken's alone.
+          type: string
+          format: uuid
     UserRef:
       description: >-
         An account, by its id and its display name, as of the answer: who

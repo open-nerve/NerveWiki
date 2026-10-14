@@ -44,10 +44,11 @@ func (q *Queries) CreateChangeset(ctx context.Context, arg CreateChangesetParams
 }
 
 const lockChangeset = `-- name: LockChangeset :one
-SELECT id, notebook_id, kind, reverts_id, client, created_by_id
-FROM changesets
-WHERE id = $1 AND deleted_at IS NULL
-FOR NO KEY UPDATE
+SELECT c.id, c.notebook_id, c.kind, c.reverts_id, c.client, c.created_by_id,
+    EXISTS (SELECT 1 FROM changesets r WHERE r.reverts_id = c.id AND r.deleted_at IS NULL) AS reverted
+FROM changesets c
+WHERE c.id = $1 AND c.deleted_at IS NULL
+FOR NO KEY UPDATE OF c
 `
 
 type LockChangesetRow struct {
@@ -57,10 +58,12 @@ type LockChangesetRow struct {
 	RevertsID   *uuid.UUID
 	Client      string
 	CreatedByID uuid.UUID
+	Reverted    bool
 }
 
 // A changeset a unit merges into (M7/P6 design 3.2), locked until the unit ends: an import's later units write in
-// its first's.
+// its first's. reverted tells whether a revert of it was made, through the partial index on reverts_id: one reverted
+// takes no more (M8/P3 design 3.7).
 func (q *Queries) LockChangeset(ctx context.Context, id uuid.UUID) (LockChangesetRow, error) {
 	row := q.db.QueryRow(ctx, lockChangeset, id)
 	var i LockChangesetRow
@@ -71,6 +74,7 @@ func (q *Queries) LockChangeset(ctx context.Context, id uuid.UUID) (LockChangese
 		&i.RevertsID,
 		&i.Client,
 		&i.CreatedByID,
+		&i.Reverted,
 	)
 	return i, err
 }
@@ -83,7 +87,10 @@ SELECT u.id, $1, u.node_id,
     CASE WHEN u.has_before THEN u.before_name END, CASE WHEN u.has_before THEN u.before_sort_order END,
     CASE WHEN u.has_after THEN NULLIF(u.after_parent_id, '00000000-0000-0000-0000-000000000000'::uuid) END,
     CASE WHEN u.has_after THEN u.after_name END, CASE WHEN u.has_after THEN u.after_sort_order END,
-    u.restored, NULLIF(u.revision, 0), $2, $2,
+    u.restored,
+    CASE WHEN u.has_after THEN NULLIF(u.revision, 0)
+        ELSE (SELECT c.revision FROM page_contents c WHERE c.node_id = u.node_id AND c.deleted_at = $2::timestamptz) END,
+    $2, $2,
     CASE WHEN u.has_after THEN NULL ELSE $2::timestamptz END
 FROM (SELECT unnest($3::uuid[]) AS id, unnest($4::uuid[]) AS node_id,
         unnest($5::boolean[]) AS has_before, unnest($6::uuid[]) AS before_parent_id,
@@ -93,7 +100,8 @@ FROM (SELECT unnest($3::uuid[]) AS id, unnest($4::uuid[]) AS node_id,
         unnest($13::boolean[]) AS restored, unnest($14::integer[]) AS revision) AS u
 ON CONFLICT (changeset_id, node_id) DO UPDATE
 SET after_parent_id = excluded.after_parent_id, after_name = excluded.after_name,
-    after_sort_order = excluded.after_sort_order, updated_at = excluded.updated_at, deleted_at = excluded.deleted_at
+    after_sort_order = excluded.after_sort_order, updated_at = excluded.updated_at, deleted_at = excluded.deleted_at,
+    revision = CASE WHEN excluded.after_name IS NULL THEN excluded.revision ELSE changeset_items.revision END
 `
 
 type RecordItemsParams struct {
@@ -115,9 +123,12 @@ type RecordItemsParams struct {
 
 // A step's changes of nodes in a changeset, one statement (M8/P2 design 3.3): each node's first one inserts its before
 // and after, a later one moves the after on and keeps the before, restored and revision (M4 design 4). An item that
-// deletes its node goes to the trash with it. A step changes each node once, so no row is reached twice. The arrays
-// are the items' columns, a parent at the root and a state there is none of marked as linking's SetResolutions marks
-// none: the zero id; has_before and has_after; revision 0 for none.
+// deletes its node goes to the trash with it, with its page's revision (M8/P3 design 3.4): the content the unit's
+// deletion, which wrote before its items, put in the trash at its time, read by its key (none for an attachment); a
+// merge into a deletion takes the deletion's (a rename, then a deletion, in one unit), any other keeps the first's. A
+// step changes each node once, so no row is reached twice. The arrays are the items' columns, a parent at the root and
+// a state there is none of marked as linking's SetResolutions marks none: the zero id; has_before and has_after;
+// revision 0 for none.
 func (q *Queries) RecordItems(ctx context.Context, arg RecordItemsParams) error {
 	_, err := q.db.Exec(ctx, recordItems,
 		arg.ChangesetID,

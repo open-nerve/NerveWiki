@@ -84,24 +84,48 @@ func (u *Unit) Restore(ctx context.Context, r TrashRestore) (RestoredItem, error
 	if err != nil {
 		return RestoredItem{}, err
 	}
-	back := Restoration{Root: id, ParentID: place.ParentID, SortOrder: order, DeletedAt: at, By: u.write.By, At: u.write.At}
+	states, keys := make([]domain.TreeState, len(group)), make([]string, len(group))
+	for i, m := range group {
+		states[i], keys[i] = domain.TreeState{ParentID: m.Node.ParentID, Name: names[i].Name, SortOrder: m.Node.SortOrder}, names[i].Key
+	}
+	states[0].ParentID, states[0].SortOrder = place.ParentID, order
+	if err := u.bringBack(ctx, group, at, states, keys, r.Facts, renumber); err != nil {
+		return RestoredItem{}, err
+	}
+	root.ParentID, root.SortOrder, root.Name, root.NameKey = place.ParentID, order, names[0].Name, names[0].Key
+	root.UpdatedBy, root.UpdatedAt = u.write.By, u.write.At
+	others := renamed
+	if names[0].Name != n.Name {
+		others--
+	}
+	return RestoredItem{Node: root, Renamed: names[0].Name != n.Name, Placement: place, Others: others}, nil
+}
+
+// bringBack brings back the group of a trash item deleted at at, under
+// the notebook's lock, its checks passed: each member to its state,
+// keyed by its key, a change with no before, restored, a page with its
+// revision and facts; before runs first in the step's write. Then the
+// rows deleted at at come back, counted: every node, each page's content
+// and its versions in one chain from its creation, else
+// page.trash_changed. A restore and a revert share it (M8/P3 design 3.6).
+func (u *Unit) bringBack(ctx context.Context, group []domain.TrashMember, at time.Time, states []domain.TreeState, keys []string,
+	facts map[uuid.UUID]Facts, before func(context.Context) error,
+) error {
+	back := Restoration{Root: group[0].Node.ID, ParentID: states[0].ParentID, SortOrder: states[0].SortOrder, DeletedAt: at,
+		By: u.write.By, At: u.write.At}
 	changes := make([]domain.Change, len(group))
 	pages := 0
 	for i, m := range group {
-		state := domain.TreeState{ParentID: m.Node.ParentID, Name: names[i].Name, SortOrder: m.Node.SortOrder}
-		if i == 0 {
-			state.ParentID, state.SortOrder = place.ParentID, order
-		}
-		changes[i] = domain.Change{NodeID: m.Node.ID, After: &state,
+		changes[i] = domain.Change{NodeID: m.Node.ID, After: &states[i],
 			Restored: &domain.Restored{DeletedAt: at, Asset: m.Node.Kind == domain.KindAsset}}
 		if m.Node.Kind == domain.KindPage {
-			changes[i].Revision, changes[i].Facts = m.Revision, r.Facts[m.Node.ID]
+			changes[i].Revision, changes[i].Facts = m.Revision, facts[m.Node.ID]
 			pages++
 		}
-		back.IDs, back.Names, back.NameKeys = append(back.IDs, m.Node.ID), append(back.Names, names[i].Name), append(back.NameKeys, names[i].Key)
+		back.IDs, back.Names, back.NameKeys = append(back.IDs, m.Node.ID), append(back.Names, states[i].Name), append(back.NameKeys, keys[i])
 	}
-	err = u.apply(ctx, u.step(domain.OpRestore, changes...), true, func(ctx context.Context) error {
-		if err := renumber(ctx); err != nil {
+	return u.apply(ctx, u.step(domain.OpRestore, changes...), true, func(ctx context.Context) error {
+		if err := before(ctx); err != nil {
 			return err
 		}
 		rows, err := u.w.d.NodeWriter.RestoreNodes(ctx, back)
@@ -113,16 +137,6 @@ func (u *Unit) Restore(ctx context.Context, r TrashRestore) (RestoredItem, error
 		}
 		return nil
 	})
-	if err != nil {
-		return RestoredItem{}, err
-	}
-	root.ParentID, root.SortOrder, root.Name, root.NameKey = place.ParentID, order, names[0].Name, names[0].Key
-	root.UpdatedBy, root.UpdatedAt = u.write.By, u.write.At
-	others := renamed
-	if names[0].Name != n.Name {
-		others--
-	}
-	return RestoredItem{Node: root, Renamed: names[0].Name != n.Name, Placement: place, Others: others}, nil
 }
 
 // sameGroup reports whether a trash item's group read under the lock is

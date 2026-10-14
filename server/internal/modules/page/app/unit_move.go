@@ -61,17 +61,24 @@ func (u *Unit) Move(ctx context.Context, id uuid.UUID, parentID *uuid.UUID, p Po
 	order, _, renumber := u.placeAmong(others, after)
 	moved := n
 	moved.ParentID, moved.SortOrder, moved.UpdatedBy, moved.UpdatedAt = parentID, order, u.write.By, u.write.At
-	before, now := n.State(), moved.State()
-	changes := []domain.Change{{NodeID: n.ID, Before: &before, After: &now}}
+	return moved, u.moveSubtree(ctx, sub, moved, renumber)
+}
+
+// moveSubtree moves sub's node to where moved is, its checks passed,
+// before running first in the step's write: the step tells each of its
+// descendants, in a place of the same parent, name and order, and only
+// the node's change is an item. A move and a revert's place share it.
+func (u *Unit) moveSubtree(ctx context.Context, sub domain.Subtree, moved domain.Node, before func(context.Context) error) error {
+	from, now := sub[0].Node.State(), moved.State()
+	changes := []domain.Change{{NodeID: moved.ID, Before: &from, After: &now}}
 	for _, d := range sub[1:] {
 		state := d.Node.State()
 		changes = append(changes, domain.Change{NodeID: d.Node.ID, Before: &state, After: &state})
 	}
-	err = u.apply(ctx, u.step(domain.OpMove, changes...), true, func(ctx context.Context) error {
-		if err := renumber(ctx); err != nil {
+	return u.apply(ctx, u.step(domain.OpMove, changes...), true, func(ctx context.Context) error {
+		if err := before(ctx); err != nil {
 			return err
 		}
 		return u.w.d.NodeWriter.MoveNode(ctx, moved)
 	})
-	return moved, err
 }

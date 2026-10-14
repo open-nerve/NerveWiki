@@ -117,8 +117,10 @@ type fakeStore struct {
 	contents   map[uuid.UUID]app.Content
 	changesets []app.Changeset
 	// items are the changesets' items, merged by node as the table's
-	// upsert merges them.
+	// upsert merges them; recorded are all of them, each changeset's
+	// merged by node.
 	items     map[uuid.UUID]app.Item
+	recorded  []app.Item
 	revisions []app.Revision
 	// touched are the changesets written again, with when.
 	touched map[uuid.UUID]time.Time
@@ -126,7 +128,8 @@ type fakeStore struct {
 	// holds.
 	sessions map[uuid.UUID]app.EditSession
 	held     map[uuid.UUID]bool
-	// errs fails the reads named, FindNodeIn and Children.
+	// errs fails the calls named: FindNodeIn and Children; WriteContent,
+	// RenameNode and MoveNode.
 	errs map[string]error
 	// trash are the nodes deleted, with when and whether each is a trash
 	// item's root, which FindAnyNode and the trash's reads read; counts
@@ -456,18 +459,27 @@ func (f *fakeStore) CreateContent(ctx context.Context, c app.Content) error {
 
 func (f *fakeStore) WriteContent(ctx context.Context, c app.Content) error {
 	f.record(ctx, "WriteContent")
+	if err := f.errs["WriteContent"]; err != nil {
+		return err
+	}
 	f.contents[c.NodeID] = c
 	return nil
 }
 
 func (f *fakeStore) RenameNode(ctx context.Context, n domain.Node) error {
 	f.record(ctx, "RenameNode")
+	if err := f.errs["RenameNode"]; err != nil {
+		return err
+	}
 	f.nodes[n.ID] = n
 	return nil
 }
 
 func (f *fakeStore) MoveNode(ctx context.Context, n domain.Node) error {
 	f.record(ctx, "MoveNode")
+	if err := f.errs["MoveNode"]; err != nil {
+		return err
+	}
 	f.nodes[n.ID] = n
 	return nil
 }
@@ -684,10 +696,13 @@ func (f *fakeStore) CreateChangeset(ctx context.Context, c app.Changeset) error 
 	return nil
 }
 
+// LockChangeset reads the changeset id, reverted when a revert of it was
+// made.
 func (f *fakeStore) LockChangeset(ctx context.Context, id uuid.UUID) (app.Changeset, error) {
 	f.record(ctx, "LockChangeset")
 	for _, c := range f.changesets {
 		if c.ID == id {
+			c.Reverted = slices.ContainsFunc(f.changesets, func(r app.Changeset) bool { return r.RevertsID == id })
 			return c, nil
 		}
 	}
@@ -711,6 +726,10 @@ func (f *fakeStore) RecordItems(ctx context.Context, items []app.Item) error {
 			it.Change.Before, it.Change.Restored, it.Change.Revision = old.Change.Before, old.Change.Restored, old.Change.Revision
 		}
 		f.items[it.Change.NodeID] = it
+		f.recorded = slices.DeleteFunc(f.recorded, func(r app.Item) bool {
+			return r.ChangesetID == it.ChangesetID && r.Change.NodeID == it.Change.NodeID
+		})
+		f.recorded = append(f.recorded, it)
 	}
 	return nil
 }
@@ -1059,6 +1078,7 @@ type fixture struct {
 	workspaces fakeWorkspaces
 	notebooks  fakeNotebooks
 	store      *fakeStore
+	log        *fakeHistory
 	md         *fakeMarkdown
 	budget     *fakeBudget
 	auth       *fakeAuthorizer
@@ -1089,6 +1109,7 @@ func newFixture() *fixture {
 		logs: &bytes.Buffer{}, names: fakeNames{}, alice: uuid.NewV7(), acme: uuid.NewV7(), eng: uuid.NewV7(),
 	}
 	f.notebooks = fakeNotebooks{recorder: rec, workspaces: map[uuid.UUID]uuid.UUID{f.eng: f.acme}, gone: map[uuid.UUID]bool{}}
+	f.log = &fakeHistory{recorder: rec, store: f.store, notebook: f.eng, versions: map[domain.VersionRef]string{}}
 	f.md = &fakeMarkdown{recorder: rec}
 	f.budget = &fakeBudget{recorder: rec}
 	f.wait = time.Second
@@ -1100,9 +1121,9 @@ func (f *fixture) logger() *slog.Logger { return slog.New(slog.NewTextHandler(f.
 func (f *fixture) writer() *app.Writer {
 	return app.NewWriter(app.WriterDeps{
 		Tx: f.tx, Clock: f.clock, Auth: f.auth, Workspaces: f.workspaces, Notebooks: f.notebooks, Nodes: f.store,
-		NodeWriter: f.store, Trash: f.store, Changesets: f.store, SessionWriter: f.store, Names: f.names, Guards: f.guards,
-		Participants: f.partakers,
-		Observers:    f.observers, SessionVetoers: f.vetoers, SessionSubscribers: f.enders,
+		NodeWriter: f.store, Trash: f.store, History: f.log, Changesets: f.store, SessionWriter: f.store, Names: f.names,
+		Guards: f.guards, Participants: f.partakers, Observers: f.observers, SessionVetoers: f.vetoers,
+		SessionSubscribers: f.enders,
 	})
 }
 

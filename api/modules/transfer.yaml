@@ -610,7 +610,9 @@ components:
         broken), too_many_entries (more entries than the instance takes, or
         a directory larger than 64 MiB), unpacked_too_large (its entries
         unpack to more than the instance takes); tree_changed (a page the
-        import created was deleted as it ran, its later nodes not written).
+        import created was deleted as it ran, its later nodes not written);
+        changeset_reverted (the changeset it writes in was reverted as it
+        ran, its later nodes not written).
       type: string
       enum:
         [
@@ -625,6 +627,7 @@ components:
           too_many_entries,
           unpacked_too_large,
           tree_changed,
+          changeset_reverted,
         ]
     TransferCounts:
       description: >-

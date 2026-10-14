@@ -38,6 +38,14 @@ export function trashPath(slug: string, notebookId: string, id?: string): string
   return `/${slug}/notebooks/${notebookId}/trash${id === undefined ? "" : `/${id}`}`;
 }
 
+/**
+ * The trash's status line on page: the output its heading is described by, once a restore said where its item went.
+ * The list's loading output, there while the list is read again after the restore, is a status too.
+ */
+export function trashStatus(page: Page): Locator {
+  return page.getByRole("main").locator('xpath=.//output[@id = //h1[normalize-space() = "Trash"]/@aria-describedby]');
+}
+
 /** The items the trash on page lists, newer first. */
 export function trashListed(page: Page): Locator {
   return page.getByRole("main").getByRole("list", { name: "Trash", exact: true }).getByRole("listitem");

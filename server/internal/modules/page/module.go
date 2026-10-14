@@ -83,6 +83,11 @@ type (
 // took (M8/P2 design 3.6).
 var ErrTrashChanged = domain.ErrTrashChanged
 
+// ErrChangesetReverted is an import's unit that would merge into the
+// changeset of its first, which a revert was made of as it ran (M8/P3
+// design 3.7): nothing of the unit was written.
+var ErrChangesetReverted = app.ErrChangesetReverted
+
 // TrashMargin is how long before the purge's retention a trash item can no
 // longer be restored: bootstrap tells the instance's retention less it.
 const TrashMargin = domain.TrashMargin
@@ -121,10 +126,12 @@ type Deps struct {
 	// Attachments shows an attachment in the trash: it must be there.
 	Attachments AttachmentInfos
 	// MaxUnitNodes and MaxUnitHistory bound the nodes of a trash item a
-	// request restores and the rows of their history: 0 is the domain's,
-	// domain.MaxUnitNodes and MaxUnitHistory, which only a measurement
-	// raises (M8/P2 design 3.11); production leaves them 0.
-	MaxUnitNodes, MaxUnitHistory int
+	// request restores or reverts, or of the changeset it reverts, and the
+	// rows of their history; MaxRevertSteps a revert's places, deletions
+	// and restores: 0 is the domain's, domain.MaxUnitNodes, MaxUnitHistory
+	// and MaxRevertSteps, which only a measurement raises (M8/P2 design
+	// 3.11, M8/P3 design 3.11); production leaves them 0.
+	MaxUnitNodes, MaxUnitHistory, MaxRevertSteps int
 }
 
 // Module is the wired page module.
@@ -146,7 +153,7 @@ func New(d Deps) *Module {
 	budget := markdownadapter.NewBudget(d.Budget)
 	writer := app.NewWriter(app.WriterDeps{
 		Tx: d.Tx, Clock: d.Clock, Auth: d.Authorizer, Workspaces: d.Workspaces, Notebooks: d.Notebooks,
-		Nodes: store, NodeWriter: store, Trash: store, Changesets: store, SessionWriter: store, Names: d.Names,
+		Nodes: store, NodeWriter: store, Trash: store, History: store, Changesets: store, SessionWriter: store, Names: d.Names,
 		Guards: d.Guards, Participants: d.Participants, Observers: d.Observers,
 		SessionVetoers: d.EditSessionVetoers, SessionSubscribers: d.EditSessionSubscribers,
 	})
@@ -154,6 +161,7 @@ func New(d Deps) *Module {
 	versions := app.VersionReads{Notebooks: d.Notebooks, Nodes: store, Versions: store, Names: d.Names, Auth: d.Authorizer, Clock: d.Clock}
 	trash := app.TrashReads{Notebooks: d.Notebooks, Nodes: store, Trash: store, Names: d.Names, Attachments: d.Attachments,
 		Auth: d.Authorizer, Clock: d.Clock, Retention: d.Retention}
+	history := app.HistoryReads{Notebooks: d.Notebooks, History: store, Names: d.Names, Auth: d.Authorizer}
 	return &Module{uc: httpadapter.UseCases{
 		ListNodes:       app.NewListNodes(d.Notebooks, store, d.Authorizer),
 		CreatePage:      app.NewCreatePage(writer, store, parser, d.Logger),
@@ -177,6 +185,11 @@ func New(d Deps) *Module {
 		ListTrash:       app.NewListTrash(trash),
 		GetTrashItem:    app.NewGetTrashItem(trash),
 		RestoreNode:     app.NewRestoreNode(trash, writer, parser, app.RestoreBounds{Nodes: d.MaxUnitNodes, History: d.MaxUnitHistory}, d.Logger),
+		ListChangesets:  app.NewListChangesets(history),
+		GetChangeset:    app.NewGetChangeset(history),
+		ListChanges:     app.NewListChanges(history),
+		RevertChangeset: app.NewRevertChangeset(trash, store, writer, parser,
+			app.RevertBounds{Nodes: d.MaxUnitNodes, History: d.MaxUnitHistory, Steps: d.MaxRevertSteps}, d.Logger),
 	}, jobs: []jobs.Job{
 		riveradapter.CleanupJob(app.NewCleanupEditSessions(store, d.Clock, d.Logger), d.EditSessionCleanupInterval),
 	}, assets: app.NewAssetWrites(writer, store), imports: app.NewImportWrites(writer, parser, md)}

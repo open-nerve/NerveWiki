@@ -125,6 +125,20 @@ type Error struct {
 	// RootID is the trash item a node in the trash is of: the problem's
 	// root_id member of page.not_trash_root (M8/P2 design 3.9).
 	RootID *uuid.UUID
+	// Conflicts are the first nodes that keep a revert from its changeset,
+	// and ConflictCount how many keep it: the problem's conflicts and
+	// conflict_count members of page.revert_conflict (M8/P3 design 3.9).
+	Conflicts     []Conflict
+	ConflictCount *int
+}
+
+// Conflict is a node that keeps a revert from its changeset: its id, its
+// name, why, and for a name another node holds, that node.
+type Conflict struct {
+	NodeID   uuid.UUID
+	Name     string
+	Reason   string
+	HolderID *uuid.UUID
 }
 
 // LockHolder is a page's edit lock as a problem names it (M5 design 4.5):
@@ -249,4 +263,16 @@ func (e *Error) ProblemRootID() (uuid.UUID, bool) {
 		return uuid.UUID{}, false
 	}
 	return *e.RootID, true
+}
+
+// ProblemConflicts gives each of the problem's conflicts members to each,
+// in order, and is its conflict_count member: ok false when it has none.
+func (e *Error) ProblemConflicts(each func(nodeID uuid.UUID, name, reason string, holderID *uuid.UUID)) (count int, ok bool) {
+	if e.ConflictCount == nil {
+		return 0, false
+	}
+	for _, c := range e.Conflicts {
+		each(c.NodeID, c.Name, c.Reason, c.HolderID)
+	}
+	return *e.ConflictCount, true
 }

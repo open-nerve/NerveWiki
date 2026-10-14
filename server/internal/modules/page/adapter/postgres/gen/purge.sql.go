@@ -12,10 +12,17 @@ import (
 
 const purgeChangesetItems = `-- name: PurgeChangesetItems :execrows
 
-DELETE FROM changeset_items WHERE id IN (
-    SELECT i.id FROM changeset_items i
+WITH doomed AS (
+    SELECT i.id, i.changeset_id
+    FROM changeset_items i JOIN changesets c ON c.id = i.changeset_id
     WHERE i.deleted_at < $1::timestamptz
-    LIMIT $2 FOR UPDATE SKIP LOCKED)
+    LIMIT $2
+    FOR UPDATE OF i SKIP LOCKED FOR NO KEY UPDATE OF c SKIP LOCKED
+), marked AS (
+    UPDATE changesets c SET trimmed = true
+    WHERE c.id IN (SELECT d.changeset_id FROM doomed d) AND c.deleted_at IS NULL AND NOT c.trimmed
+)
+DELETE FROM changeset_items i USING doomed d WHERE i.id = d.id
 `
 
 type PurgeChangesetItemsParams struct {
@@ -26,6 +33,11 @@ type PurgeChangesetItemsParams struct {
 // The purge's statements (v0.1 design 13.1, item 6; M4/P1 design 3.10): each deletes up to batch rows
 // deleted before before, skipping those another transaction holds. Leaf to root: what follows a node
 // first, then the nodes, then the changesets.
+// The items deleted before before, each locked with its changeset without waiting (M8 design 4.2): a row another
+// transaction holds, or whose changeset another holds (a unit merging into it), waits for a later run, and the purge
+// never waits (v0.1 design 13.1, item 5). The changesets of live notebooks whose items it deletes are marked trimmed,
+// once: they can no longer be reverted whole, which a revert reads after their items (M8/P3 design 3.3). The deletion
+// is the statement, so that its rows are what :execrows counts.
 func (q *Queries) PurgeChangesetItems(ctx context.Context, arg PurgeChangesetItemsParams) (int64, error) {
 	result, err := q.db.Exec(ctx, purgeChangesetItems, arg.Before, arg.Batch)
 	if err != nil {
@@ -48,7 +60,7 @@ type PurgeChangesetsParams struct {
 	Batch  int32
 }
 
-// The changesets whose items and versions are gone.
+// The changesets deleted with their notebook whose items and versions are gone.
 func (q *Queries) PurgeChangesets(ctx context.Context, arg PurgeChangesetsParams) (int64, error) {
 	result, err := q.db.Exec(ctx, purgeChangesets, arg.Before, arg.Batch)
 	if err != nil {
@@ -105,10 +117,17 @@ func (q *Queries) PurgePageContents(ctx context.Context, arg PurgePageContentsPa
 }
 
 const purgePageRevisions = `-- name: PurgePageRevisions :execrows
-DELETE FROM page_revisions WHERE id IN (
-    SELECT r.id FROM page_revisions r
+WITH doomed AS (
+    SELECT r.id, r.changeset_id
+    FROM page_revisions r JOIN changesets c ON c.id = r.changeset_id
     WHERE r.deleted_at < $1::timestamptz
-    LIMIT $2 FOR UPDATE SKIP LOCKED)
+    LIMIT $2
+    FOR UPDATE OF r SKIP LOCKED FOR NO KEY UPDATE OF c SKIP LOCKED
+), marked AS (
+    UPDATE changesets c SET trimmed = true
+    WHERE c.id IN (SELECT d.changeset_id FROM doomed d) AND c.deleted_at IS NULL AND NOT c.trimmed
+)
+DELETE FROM page_revisions r USING doomed d WHERE r.id = d.id
 `
 
 type PurgePageRevisionsParams struct {
@@ -116,8 +135,30 @@ type PurgePageRevisionsParams struct {
 	Batch  int32
 }
 
+// The versions deleted before before, as PurgeChangesetItems purges the items: each locked with its changeset, which is
+// marked trimmed in a live notebook.
 func (q *Queries) PurgePageRevisions(ctx context.Context, arg PurgePageRevisionsParams) (int64, error) {
 	result, err := q.db.Exec(ctx, purgePageRevisions, arg.Before, arg.Batch)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const purgeTrimmedChangesets = `-- name: PurgeTrimmedChangesets :execrows
+DELETE FROM changesets WHERE id IN (
+    SELECT s.id FROM changesets s
+    WHERE s.trimmed AND s.deleted_at IS NULL
+        AND NOT EXISTS (SELECT 1 FROM changeset_items x WHERE x.changeset_id = s.id)
+        AND NOT EXISTS (SELECT 1 FROM page_revisions x WHERE x.changeset_id = s.id)
+    LIMIT $1 FOR UPDATE SKIP LOCKED)
+`
+
+// The trimmed changesets of live notebooks whose items and versions the purge has all deleted: nothing of them is left
+// to read or revert (M8/P3 design 3.3). Through the partial index on trimmed; at any time, as nothing deleted them. One
+// whose notebook was deleted since waits for the notebook's retention, as PurgeChangesets takes it (M8/P3A review A-6).
+func (q *Queries) PurgeTrimmedChangesets(ctx context.Context, batch int32) (int64, error) {
+	result, err := q.db.Exec(ctx, purgeTrimmedChangesets, batch)
 	if err != nil {
 		return 0, err
 	}

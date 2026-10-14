@@ -107,8 +107,9 @@ func TestDeletingANotebookDeletesItsAttachmentsRows(t *testing.T) {
 // The attachments' activity reaches the ownerless list through serve (M3
 // handoff to M7, item 2): a notebook's size counts its attachments' bytes
 // beside its pages', one deleted not, one restored from the trash again
-// (M8/P2 design 3.12), and its last activity is its latest upload, a
-// change of its tree as a page's write is.
+// (M8/P2 design 3.12), one whose deletion is reverted (M8/P3 design
+// 3.12), and its last activity is its latest upload, a change of its
+// tree as a page's write is.
 func TestTheOwnerlessListShowsTheAttachmentsActivity(t *testing.T) {
 	tm := newAcmeTeam(t, "admin", "member")
 	nb := tm.createNotebook(t, "carol", "Plans")
@@ -119,6 +120,10 @@ func TestTheOwnerlessListShowsTheAttachmentsActivity(t *testing.T) {
 	back := tm.upload(t, "carol", nb, "", "back.bin", strings.Repeat("z", 10))
 	tm.send(t, nodeDeletion("carol", back.ID), http.StatusNoContent)
 	tm.restored(t, "carol", back.ID)
+	undone := tm.upload(t, "carol", nb, "", "undone.bin", strings.Repeat("w", 5))
+	tm.send(t, nodeDeletion("carol", undone.ID), http.StatusNoContent)
+	deletion, _ := tm.history(t, "carol", nb, "limit=1")
+	tm.reverted(t, "carol", deletion[0].ID)
 	file := strings.Repeat("x", 100)
 	uploaded := tm.upload(t, "carol", nb, "", "data.bin", file)
 	tm.send(t, tm.removal("alice", "carol"), http.StatusNoContent)
@@ -135,9 +140,9 @@ func TestTheOwnerlessListShowsTheAttachmentsActivity(t *testing.T) {
 	if status != http.StatusOK || len(list.Data) != 1 || list.Data[0].ID != nb {
 		t.Fatalf("the ownerless list = %d %s, want Plans alone", status, answer)
 	}
-	if got := list.Data[0]; got.SizeBytes != len(content)+len(file)+10 || !got.LastActivityAt.Equal(uploaded.CreatedAt) {
+	if got := list.Data[0]; got.SizeBytes != len(content)+len(file)+10+5 || !got.LastActivityAt.Equal(uploaded.CreatedAt) {
 		t.Errorf("Plans is listed with %d bytes, last active %s; want %d, at the upload %s", got.SizeBytes, got.LastActivityAt,
-			len(content)+len(file)+10, uploaded.CreatedAt)
+			len(content)+len(file)+10+5, uploaded.CreatedAt)
 	}
 	checkAssets(t, tm.pool, tm.storage)
 }

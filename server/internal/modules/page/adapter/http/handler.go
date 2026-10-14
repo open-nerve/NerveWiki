@@ -119,6 +119,10 @@ type UseCases struct {
 	ListTrash       ListTrashUseCase
 	GetTrashItem    GetTrashItemUseCase
 	RestoreNode     RestoreNodeUseCase
+	ListChangesets  ListChangesetsUseCase
+	GetChangeset    GetChangesetUseCase
+	ListChanges     ListChangesUseCase
+	RevertChangeset RevertChangesetUseCase
 }
 
 // Register mounts the module's routes on router, the root router from

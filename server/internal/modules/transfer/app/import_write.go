@@ -199,7 +199,8 @@ func release(items []item) {
 // unit writes the batch: its attachments' files, then its nodes in one
 // unit, run with River's context, which the heartbeat's stop does not
 // end; the server too busy for it, it is tried again. A unit that rolled
-// back drops the files; one whose commit failed leaves them to the
+// back, or was refused, a revert of its changeset among the refusals,
+// drops the files; one whose commit failed leaves them to the
 // attachments' sweep.
 func (r *importRun) unit(ctx, running context.Context, items []item) error {
 	if len(items) == 0 {
@@ -228,7 +229,7 @@ func (r *importRun) unit(ctx, running context.Context, items []item) error {
 			return err
 		})
 		var refused *shared.Error
-		uncertain = err != nil && !rolledBack && !errors.As(err, &refused)
+		uncertain = err != nil && !rolledBack && !errors.As(err, &refused) && !errors.Is(err, ErrChangesetReverted)
 		return err
 	})
 	if err != nil {
@@ -245,12 +246,16 @@ func (r *importRun) unit(ctx, running context.Context, items []item) error {
 }
 
 // unitFailure is why a unit failed: forbidden for a job whose account can
-// no longer write in the notebook, or see it; the failure it found; any
-// other is internal.
+// no longer write in the notebook, or see it; changeset_reverted for a
+// revert of the import's changeset; the failure it found; any other is
+// internal.
 func unitFailure(err error) error {
 	var e *shared.Error
-	if errors.As(err, &e) && (e.Kind == shared.KindForbidden || e.Kind == shared.KindNotFound || e.Kind == shared.KindUnauthenticated) {
+	switch {
+	case errors.As(err, &e) && (e.Kind == shared.KindForbidden || e.Kind == shared.KindNotFound || e.Kind == shared.KindUnauthenticated):
 		return failed(domain.FailureForbidden, err)
+	case errors.Is(err, ErrChangesetReverted):
+		return failed(domain.FailureChangesetReverted, err)
 	}
 	return err
 }

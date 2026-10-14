@@ -31,10 +31,13 @@ const (
 	// ActionRestore brings a trash item back, a page or an attachment with
 	// what was deleted with it (M8 design 4.14).
 	ActionRestore shared.Action = "node.restore"
+	// ActionRevert reverts a changeset of the notebook, whoever made it
+	// (M8 design 4.14).
+	ActionRevert shared.Action = "changeset.revert"
 )
 
 // Actions lists the module's actions.
 func Actions() []shared.Action {
 	return []shared.Action{ActionList, ActionRead, ActionCreate, ActionRename, ActionMove, ActionDelete, ActionWrite, ActionEdit,
-		ActionReleaseEditLock, ActionToggleTask, ActionHistory, ActionRestoreVersion, ActionRestore}
+		ActionReleaseEditLock, ActionToggleTask, ActionHistory, ActionRestoreVersion, ActionRestore, ActionRevert}
 }

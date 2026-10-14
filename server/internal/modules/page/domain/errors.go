@@ -71,7 +71,36 @@ var (
 	// restored meanwhile or purged in part (M8/P2 design 3.5).
 	ErrTrashChanged = shared.NewError(shared.KindConflict, "page.trash_changed",
 		"The trash item changed since it was read.")
+	// ErrChangesetNotFound: no changeset has the id, its notebook is
+	// deleted, or the caller has no role in it (M8 design 4.7).
+	ErrChangesetNotFound = shared.NewError(shared.KindNotFound, "page.changeset_not_found", "No such changeset.")
+	// ErrChangesetTrimmed: the purge took part of what the changeset
+	// changed, the history of nodes deleted past the retention: it can no
+	// longer be reverted whole (M8 design 4.2, 4.8).
+	ErrChangesetTrimmed = shared.NewError(shared.KindConflict, "page.changeset_trimmed",
+		"The purge took part of what the changeset changed: it can no longer be reverted whole.")
+	// ErrRevertTooLarge: the changeset changed more than one unit reverts
+	// (M8 design 4.9).
+	ErrRevertTooLarge = shared.NewError(shared.KindInvalid, "page.revert_too_large",
+		"The changeset is too large to revert in one request.")
+	// ErrRevertConflict: nodes the changeset changed changed since, or
+	// cannot go back as they were (M8 design 4.8). RevertConflicts returns
+	// it with the conflicts members.
+	ErrRevertConflict = shared.NewError(shared.KindConflict, "page.revert_conflict",
+		"Nodes the changeset changed changed since, or cannot go back as they were.")
 )
+
+// RevertConflicts is ErrRevertConflict naming the conflicts, the first
+// MaxConflicts of count.
+func RevertConflicts(conflicts []RevertConflict, count int) error {
+	e := *ErrRevertConflict
+	e.Conflicts = make([]shared.Conflict, len(conflicts))
+	for i, c := range conflicts {
+		e.Conflicts[i] = shared.Conflict{NodeID: c.NodeID, Name: c.Name, Reason: string(c.Reason), HolderID: c.HolderID}
+	}
+	e.ConflictCount = &count
+	return &e
+}
 
 // NotTrashRoot is ErrNotTrashRoot naming the root of the trash item the
 // node is of.

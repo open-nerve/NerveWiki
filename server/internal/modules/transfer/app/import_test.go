@@ -622,6 +622,37 @@ func TestAnImportWhoseParentIsGoneFails(t *testing.T) {
 	}
 }
 
+// An import whose changeset a revert was made of as it ran stops at its
+// next unit (M8/P3 design 3.7): failed changeset_reverted, its report the
+// units written before, the refused unit's files deleted, as the unit
+// wrote nothing.
+func TestAnImportWhoseChangesetIsRevertedFails(t *testing.T) {
+	entries := []zipEntry{{name: "a.md", data: "a"}}
+	for i := range 120 {
+		entries = append(entries, zipEntry{name: fmt.Sprintf("a/p%03d.md", i), data: "x"}, zipEntry{name: fmt.Sprintf("a/x%03d.png", i), data: "x"})
+	}
+	w := newImportWorld()
+	w.tree.onUnit = func(n int) {
+		if n == 2 {
+			w.tree.mu.Lock()
+			defer w.tree.mu.Unlock()
+			w.tree.refuse = app.ErrChangesetReverted
+		}
+	}
+	got := w.run(t, w.queuedImport(nil, zipOf(t, entries...)))
+	if got.State != domain.StateFailed || got.Report.Failure != domain.FailureChangesetReverted || len(w.tree.made) != 100 ||
+		got.Report.Counts.Pages+got.Report.Counts.Attachments != 100 {
+		t.Errorf("job %s, report %+v, made %d; want failed changeset_reverted after the first unit's 100", got.State, got.Report,
+			len(w.tree.made))
+	}
+	if kept := w.files.kept(); kept != len(w.files.attached) || len(w.files.dropped) == 0 {
+		t.Errorf("%d files kept, %d attached, %d dropped; want the second unit's dropped", kept, len(w.files.attached), len(w.files.dropped))
+	}
+	if len(w.tree.units) != 2 || w.tree.units[1].Changeset != w.tree.made[0].changeset {
+		t.Errorf("units %+v; want the second merged into the first's changeset", w.tree.units)
+	}
+}
+
 // A parse or a unit the server is too busy for is tried again; a parse
 // refused as a batch is held writes the batch first.
 func TestAnImportWaitsForABusyServer(t *testing.T) {

@@ -22,6 +22,7 @@ const failures: Record<TransferFailure, PlainKey> = {
   too_many_entries: "transfer.failure.too_many_entries",
   unpacked_too_large: "transfer.failure.unpacked_too_large",
   tree_changed: "transfer.failure.tree_changed",
+  changeset_reverted: "transfer.failure.changeset_reverted",
 };
 
 /** What an import's failures say otherwise than an export's (M7/P6 design 4.1). */

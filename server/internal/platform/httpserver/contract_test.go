@@ -61,6 +61,11 @@ func TestPlatformProblemsMatchTheContract(t *testing.T) {
 			endedBy: &ProblemPerson{UserID: uuid.MustParse(lockHolder), DisplayName: "Ada"}}), http.MethodGet, "/api/v0/things", "", http.StatusConflict},
 		{"the root", writing(memberErr{problemErr: problemErr{status: http.StatusConflict, code: "page.not_trash_root", detail: "Not a root."},
 			rootID: new(uuid.MustParse(lockedPage))}), http.MethodGet, "/api/v0/things", "", http.StatusConflict},
+		{"conflicts", writing(memberErr{problemErr: problemErr{status: http.StatusConflict, code: "page.revert_conflict", detail: "Changed since."},
+			conflicts: []ProblemConflict{
+				{NodeID: uuid.MustParse(lockedPage), Name: "A", Reason: "changed"},
+				{NodeID: uuid.MustParse(lockHolder), Name: "B", Reason: "title_taken", HolderID: new(uuid.MustParse(lockedPage))},
+			}, count: new(102)}), http.MethodGet, "/api/v0/things", "", http.StatusConflict},
 		{"locks", writing(memberErr{problemErr: problemErr{status: http.StatusConflict, code: "linking.pages_locked", detail: "Pages are being edited."},
 			locks: []ProblemLock{{PageID: uuid.MustParse(lockedPage), UserID: uuid.MustParse(lockHolder), DisplayName: "Ada"}}}),
 			http.MethodGet, "/api/v0/things", "", http.StatusConflict},
