@@ -669,7 +669,7 @@ export const zhCN: Messages = {
   "transfer.importBusy": "这本笔记本有进行中的导入、恢复或撤销，可能是别人的：等它结束再试。",
   "transfer.importPlaceGone": "导入的位置已不存在。",
   "transfer.importCut":
-    "上传没有完成：连接中断了。服务器可能在接收之前就拒绝了它（这本笔记本已有进行中的导入、排队的任务已满、存储空间不足或 zip 太大），也可能是上传太慢。请稍后再试。",
+    "上传没有完成：连接中断了。服务器可能在接收之前就拒绝了它（这本笔记本有进行中的导入、恢复或撤销、排队的任务已满、存储空间不足或 zip 太大），也可能是上传太慢。请稍后再试。",
   "transfer.exportBusy": "你对这个笔记本的导出还在进行中，请等它结束或者取消它。",
   "transfer.importFailure.forbidden": "发起人已不能编辑这本笔记本。",
   "transfer.importFailure.root_not_found": "导入的位置已不存在。",

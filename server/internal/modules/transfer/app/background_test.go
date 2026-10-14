@@ -216,7 +216,9 @@ func TestABackgroundJobStopsWithItsReason(t *testing.T) {
 // deleted as it runs, with its notebook, stops so too, writing no end.
 // The heartbeat that reads the stop ends the run's context just after: a
 // third batch asked before it is answered busy until then, as a busy
-// server's, and its wait ends with the run.
+// server's, and its wait ends with the run. So a run that never looked at
+// the stop between batches would pass here too: TestCancellingABackgroundJob
+// and TestABackgroundJobStoppedAtEachBatch (bootstrap) hold that check.
 func TestABackgroundJobStopsBetweenTwoBatches(t *testing.T) {
 	for _, tt := range []struct {
 		name string

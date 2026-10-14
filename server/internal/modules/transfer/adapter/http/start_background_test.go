@@ -1,8 +1,10 @@
 package httpadapter_test
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 	"uuid"
@@ -180,7 +182,20 @@ func TestABackgroundJobReadsWithItsReport(t *testing.T) {
 		got.Report.Counts["renamed"] != 1 || got.Report.Lock != nil || len(got.Conflicts) != 0 || got.ConflictCount != 0 {
 		t.Errorf("getTransferJob = %d %s, want the restore's report", res.StatusCode, body)
 	}
-	if res, body := h.send(t, http.MethodGet, jobsPath(), "bob", ""); res.StatusCode != http.StatusOK {
-		t.Errorf("listTransferJobs = %d %s", res.StatusCode, body)
+	res, body = h.send(t, http.MethodGet, jobsPath(), "bob", "")
+	var list struct {
+		Data []map[string]json.RawMessage `json:"data"`
+	}
+	decode(t, body, &list)
+	var listed map[string]json.RawMessage
+	for _, item := range list.Data {
+		if string(item["id"]) == `"`+j.ID.String()+`"` {
+			listed = item
+		}
+	}
+	if res.StatusCode != http.StatusOK || listed == nil || listed["conflicts"] != nil || listed["conflict_count"] != nil ||
+		!strings.Contains(string(listed["report"]), `"put_back":2`) || strings.Contains(string(listed["report"]), `"conflicts"`) ||
+		strings.Contains(string(listed["report"]), `"conflict_count"`) {
+		t.Errorf("listTransferJobs = %d %s; want the revert with its report, without its conflicts", res.StatusCode, body)
 	}
 }

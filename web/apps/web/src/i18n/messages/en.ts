@@ -689,7 +689,7 @@ export const en = {
     "An import, a restore or an undo is under way in this notebook, perhaps someone else's. Wait for it to end, then try again.",
   "transfer.importPlaceGone": "The page to import under no longer exists.",
   "transfer.importCut":
-    "The upload did not finish: the connection was cut. The server may have refused the zip before taking it (an import into this notebook under way, a full queue, too little room, or a zip too large), or the upload was too slow. Try again later.",
+    "The upload did not finish: the connection was cut. The server may have refused the zip before taking it (an import, a restore or an undo under way in this notebook, a full queue, too little room, or a zip too large), or the upload was too slow. Try again later.",
   "transfer.exportBusy": "You already have an export of this notebook under way. Wait for it to end, or cancel it.",
   "transfer.importFailure.forbidden": "The person who started it could no longer edit the notebook.",
   "transfer.importFailure.root_not_found": "The page imported under no longer exists.",
