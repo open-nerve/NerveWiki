@@ -14,14 +14,19 @@ export function under(job: TransferJob): boolean {
   return job.state === "queued" || job.state === "running";
 }
 
+/** The kinds of the jobs that write a notebook's tree, one of which a notebook has under way at once (M8/P4 design 3.2). */
+const writingKinds: ReadonlySet<TransferJob["kind"]> = new Set(["import", "trash_restore", "revert"]);
+
 /**
  * TransferStore holds the jobs of a notebook that the account sees, the
  * newest first, a page at a time (M7/P5 design 4.2). A read again reads
  * back as many pages as are held, as the backlinks are read (v0.1 design
  * 13.2, item 19): a job under way, or an address that expires, on a page
  * that more added is read again too. An export started, or a job
- * cancelled, here is put in place at once; it may come before the list.
- * An import's upload has the browser ask before the page is left (warn).
+ * cancelled, here is put in place at once; it may come before the list;
+ * so are a trash item's restore and a changeset's revert started in the
+ * background from the trash and the history (M8/P4 design 4.1). An
+ * import's upload has the browser ask before the page is left (warn).
  */
 export class TransferStore {
   jobs: TransferJob[] | undefined = undefined;
@@ -39,12 +44,18 @@ export class TransferStore {
   uploading = 0;
   /** The page on its way, if one is, with its cursor. */
   private next: { cursor: string; added: Promise<TransferJob[]> } | undefined = undefined;
-  /** The exports' starts go one at a time; each job's cancels, too (v0.1 design 13.2, item 1). */
+  /**
+   * The starts of the exports, the restores and the reverts go one at a
+   * time; each job's cancels, too (v0.1 design 13.2, item 1).
+   */
   private readonly starts = oneAtATime();
   private readonly cancels = oneAtATimeById();
 
   constructor(
-    private readonly service: Pick<TransferService, "list" | "startExport" | "startImport" | "cancel" | "get">,
+    private readonly service: Pick<
+      TransferService,
+      "list" | "startExport" | "startImport" | "startTrashRestore" | "startRevert" | "cancel" | "get"
+    >,
     /** The notebook whose jobs these are. */
     private readonly notebookId: string,
     /** warn asks the browser to ask before the page is left, or no longer (v0.1 design 13.2, item 21). */
@@ -72,12 +83,13 @@ export class TransferStore {
   }
 
   /**
-   * importing tells whether a job held is an import queued or running: the
-   * server refuses another (transfer.busy). The account sees its own;
-   * the notebook's admins see everyone's.
+   * writing tells whether a job held that writes the notebook's tree, an
+   * import, a restore or a revert, is queued or running: the server
+   * refuses another (transfer.busy; M8/P4 design 4.3). The account sees
+   * its own; the notebook's admins see everyone's.
    */
-  get importing(): boolean {
-    return this.jobs?.some((job) => job.kind === "import" && under(job)) ?? false;
+  get writing(): boolean {
+    return this.jobs?.some((job) => writingKinds.has(job.kind) && under(job)) ?? false;
   }
 
   /**
@@ -180,14 +192,62 @@ export class TransferStore {
    * it, is dropped.
    */
   start(rootId: string | null): Promise<TransferJob> {
-    return this.starts(async () => {
-      const job = await this.service.startExport(this.notebookId, rootId);
-      runInAction(() => {
-        this.writes += 1;
-        this.jobs = [job, ...(this.jobs ?? []).filter((held) => held.id !== job.id)];
-      });
-      return job;
+    return this.starts(async () => this.first(await this.service.startExport(this.notebookId, rootId)));
+  }
+
+  /**
+   * startTrashRestore starts the restore of the trash item of the root
+   * nodeId in the background, and answers its job, which goes first in the
+   * jobs held, as an export's (M8/P4 design 4.2).
+   */
+  startTrashRestore(nodeId: string): Promise<TransferJob> {
+    return this.starts(async () => this.first(await this.service.startTrashRestore(this.notebookId, nodeId)));
+  }
+
+  /**
+   * startRevert starts the revert of the changeset changesetId in the
+   * background, with message, and answers its job, which goes first in the
+   * jobs held, as an export's (M8/P4 design 4.2).
+   */
+  startRevert(changesetId: string, message?: string): Promise<TransferJob> {
+    return this.starts(async () => this.first(await this.service.startRevert(this.notebookId, changesetId, message)));
+  }
+
+  /**
+   * startedJob is what a start of a restore or a revert whose answer was
+   * lost came to (M8/P4 design 4.2, review B-M6): the list read again, the
+   * job of kind on target (a restore's trash item's root, a revert's
+   * changeset) that the account me started at since or after, by the
+   * server's time of it; undefined when there is none. A read that fails
+   * rejects: nothing is known.
+   */
+  async startedJob(
+    kind: "trash_restore" | "revert",
+    target: string,
+    me: string,
+    since: number
+  ): Promise<TransferJob | undefined> {
+    const jobs = await this.load();
+    return jobs.find(
+      (job) =>
+        job.kind === kind &&
+        (kind === "revert" ? job.target_changeset_id : job.root_id) === target &&
+        job.created_by.user_id === me &&
+        Date.parse(job.created_at) >= since
+    );
+  }
+
+  /**
+   * first puts job, just answered, first in the jobs held, once (a read may
+   * have it already), and answers it; a read on its way, which may not have
+   * it, is dropped.
+   */
+  private first(job: TransferJob): TransferJob {
+    runInAction(() => {
+      this.writes += 1;
+      this.jobs = [job, ...(this.jobs ?? []).filter((held) => held.id !== job.id)];
     });
+    return job;
   }
 
   /**
@@ -202,12 +262,7 @@ export class TransferStore {
     this.uploading += 1;
     this.warn(true);
     try {
-      const job = await this.service.startImport(this.notebookId, parent, file, options);
-      runInAction(() => {
-        this.writes += 1;
-        this.jobs = [job, ...(this.jobs ?? []).filter((held) => held.id !== job.id)];
-      });
-      return job;
+      return this.first(await this.service.startImport(this.notebookId, parent, file, options));
     } finally {
       runInAction(() => {
         this.uploading -= 1;

@@ -86,6 +86,25 @@ test("startImport tells its upload's progress, and stops as its signal aborts", 
   expect([told, transfer.aborted]).toEqual([[[1, 3]], true]);
 });
 
+test("startTrashRestore posts the trash item's root; startRevert the changeset, and the message when there is one; each answers the job, a refusal throws the server's problem", async () => {
+  let answer = () => json(jobJSON(2, { kind: "trash_restore" }), 202);
+  const { service, asked } = serviceOf(() => answer());
+
+  await expect(service.startTrashRestore("n1", "p7")).resolves.toMatchObject({ kind: "trash_restore" });
+  answer = () => json(jobJSON(3, { kind: "revert" }), 202);
+  await expect(service.startRevert("n1", "c8", "Back")).resolves.toMatchObject({ kind: "revert" });
+  await service.startRevert("n1", "c9");
+  answer = () => problem(422, "page.revert_too_large");
+  await expect(service.startRevert("n1", "c9")).rejects.toMatchObject({ code: "page.revert_too_large" });
+
+  expect(asked).toEqual([
+    'POST /api/v0/notebooks/n1/trash-restores {"node_id":"p7"}',
+    'POST /api/v0/notebooks/n1/reverts {"changeset_id":"c8","message":"Back"}',
+    'POST /api/v0/notebooks/n1/reverts {"changeset_id":"c9"}',
+    'POST /api/v0/notebooks/n1/reverts {"changeset_id":"c9"}',
+  ]);
+});
+
 test("list reads fifty jobs a page, after a cursor when given", async () => {
   const { service, asked } = serviceOf(() => json({ data: [job], next_cursor: "c2" }));
 

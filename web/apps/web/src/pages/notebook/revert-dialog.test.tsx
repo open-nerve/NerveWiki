@@ -419,14 +419,6 @@ test.each<[string, (rework: ReturnType<typeof reworked>["rework"]) => void, stri
     },
     "Bob is editing “Guide”.",
   ],
-  [
-    "a changeset too large says what is, and how many nodes it touched, a thousand as many or more",
-    (rework) => {
-      rework.tooLarge = true;
-      rework.counts = { nodes: 1000, contents: 3 };
-    },
-    "This change is too large to undo here: its nodes, pages, content, links or those pages' history are more than one undo does. Nodes it touched: 1,000+.",
-  ],
 ])("an undo refused as %s, in the dialog, which stays", async (_, refuse, text) => {
   const user = userEvent.setup();
   const { server, rework } = reworked();

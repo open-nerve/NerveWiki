@@ -2,11 +2,13 @@ import { formatDateTime } from "../../i18n/format";
 import type { Translate } from "../../i18n/i18n";
 import type { Locale } from "../../i18n/locale";
 import { shortId, twinsOf } from "../../lib/twins";
-import type { Changeset, ChangesetBrief, ChangesetChange } from "../../services/page.service";
+import type { Changeset, ChangesetBrief, ChangesetChange, RevertConflict } from "../../services/page.service";
 
 // What the history says of a changeset (M8 design 4.7, 4.13; M8/P3 design
 // 4.2, 4.3): its kind, its client, its name, its counts and its changes,
-// which the log's rows, a changeset's page and a version's page share.
+// which the log's rows, a changeset's page and a version's page share; and
+// why a node keeps its revert, which the revert's dialog and a revert job's
+// report share (M8/P4 design 4.3).
 
 /** kindText is the name of a changeset's kind, every kind the contract has. */
 export function kindText(kind: Changeset["kind"], t: Translate): string {
@@ -127,4 +129,25 @@ export function changesText(changeset: Changeset, t: Translate, locale: Locale):
   const versions = changeset.changes.filter((change) => change.content !== null).length;
   const more = changeset.node_count > items || changeset.content_count > versions ? "…" : "";
   return said === "" ? "" : `${said.charAt(0).toLocaleUpperCase(locale)}${said.slice(1)}${more}`;
+}
+
+/** reasonText says why the node of conflict keeps the revert from its changeset. */
+export function reasonText(conflict: RevertConflict, t: Translate): string {
+  const name = conflict.name;
+  switch (conflict.reason) {
+    case "changed":
+      return t("history.conflict.changed", { name });
+    case "expired":
+      return t("history.conflict.expired", { name });
+    case "parent_gone":
+      return t("history.conflict.parent_gone", { name });
+    case "children_added":
+      return t("history.conflict.children_added", { name });
+    case "title_taken":
+      return t("history.conflict.title_taken", { name });
+    case "cycle":
+      return t("history.conflict.cycle", { name });
+    case "too_deep":
+      return t("history.conflict.too_deep", { name });
+  }
 }

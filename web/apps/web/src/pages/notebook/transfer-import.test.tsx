@@ -8,7 +8,8 @@ import type { TransferFailure } from "../../services/transfer.service";
 import { dropped, transfers } from "../../test/attachments";
 import { eventServer, withEvents } from "../../test/event-server";
 import { instanceJSON, json, notebookJSON, problem, workspaceJSON } from "../../test/fakes";
-import { jobJSON, jobsServer, reportOf, underWay } from "../../test/jobs-server";
+import { changesetId } from "../../test/history-server";
+import { jobChangesetId, jobJSON, jobsServer, reportOf, underWay } from "../../test/jobs-server";
 import { assetNode, guide, pageNode } from "../../test/page-server";
 import type { TreeNode } from "../../services/page.service";
 import { renderApp } from "../../test/render";
@@ -73,6 +74,13 @@ test("an editor imports a zip under a page: the job goes first, the jobs read ag
   // The list is read again after the import started: its job is polled.
   expect(server.asked.filter((ask) => ask.startsWith("GET jobs")).length).toBeGreaterThan(1);
   expect(asksBeforeLeaving()).toBe(false);
+  // Its row names the changeset it writes as it is made (M8/P4 design 3.2), which it leads to once it wrote.
+  const job = server.jobs[0];
+  expect(job?.changeset_id).toBe(jobChangesetId(51));
+  expect(within(imported).queryByRole("link", { name: /^See in the history/u })).toBeNull();
+  server.jobs = server.jobs.map((each) => (each === job ? underWay(each, 3, 8) : each));
+  const see = await within(imported).findByRole("link", { name: /^See in the history/u }, { timeout: 3000 });
+  expect(see.getAttribute("href")).toBe(`/lab/notebooks/${notebookJSON.id}/history/${jobChangesetId(51)}`);
 
   // Cancelled later, the dialog gives the focus back to its button, not to the job started before.
   await user.click(within(await open(user)).getByRole("button", { name: "Cancel" }));
@@ -234,15 +242,20 @@ test("a page chosen that the tree, read again, no longer has is not imported und
   );
 });
 
-test("an import of the notebook under way among the jobs is told, and none starts", async () => {
+// M8/P4 design 4.3: an import, a restore and a revert each write the tree, one at once.
+test.each([
+  ["an import", jobJSON(1, { kind: "import", name: "Old.zip" }), "Import of Old.zip"],
+  ["a restore", jobJSON(1, { kind: "trash_restore", root_id: guide.id, name: "Guide" }), "Restore of Guide from"],
+  ["an undo", jobJSON(1, { kind: "revert", name: "import", target_changeset_id: changesetId(1) }), "Undo: Import"],
+])("%s of the notebook under way among the jobs is told, and no import starts", async (_, job, title) => {
   const user = userEvent.setup();
-  const server = jobsServer({ jobs: [underWay(jobJSON(1, { kind: "import", name: "Old.zip" }), 2, 9)] });
+  const server = jobsServer({ jobs: [underWay(job, 2, 9)] });
   renderApp(transfer, server.app);
-  await row("Import of Old.zip");
+  await row(title);
 
   const shown = await open(user);
   expect(within(shown).getByRole("alert").textContent).toBe(
-    "An import into this notebook is under way. Wait for it to end before starting another."
+    "An import, a restore or an undo is under way in this notebook. Wait for it to end before starting an import."
   );
   const confirm = within(shown).getByRole("button", { name: "Import" });
   expect([confirm.getAttribute("aria-disabled"), confirm.hasAttribute("disabled")]).toEqual(["true", false]);

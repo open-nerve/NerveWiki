@@ -35,7 +35,8 @@ type ImportDialogProps = {
  * ImportDialog imports a zip into the notebook, at its root or under a
  * page (M7/P6 design 4.2): it says what becomes of the archive's files,
  * and how large one the server takes. Before sending it checks the file's
- * size, and an import of the notebook under way among the jobs held; a
+ * size, and a job that writes the notebook's tree under way among the jobs
+ * held, an import, a restore or a revert (M8/P4 design 4.3); a
  * file that does not look like a zip goes all the same, the server
  * judging; a folder dropped on the file is not taken, said so; a page chosen that the tree, read again, no longer has is
  * chosen again. The upload, which may take minutes, tells its progress and
@@ -248,8 +249,8 @@ const ImportForm = observer(function ImportForm({
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    // An import under way, Import says it cannot go: it stays focusable, the focus kept in the dialog.
-    if (transfers.importing) {
+    // A write of the tree under way, Import says it cannot go: it stays focusable, the focus kept in the dialog.
+    if (transfers.writing) {
       return;
     }
     const found: LocalProblems<"file" | "parent_id"> = {
@@ -297,7 +298,7 @@ const ImportForm = observer(function ImportForm({
       {most !== undefined && (
         <p className="text-sm text-muted-foreground">{t("transfer.importMost", { size: formatBytes(most, locale) })}</p>
       )}
-      {transfers.importing && <Alert>{t("transfer.importUnderWay")}</Alert>}
+      {transfers.writing && <Alert>{t("transfer.importUnderWay")}</Alert>}
       {banner !== undefined && <Alert>{banner}</Alert>}
       <div className="space-y-2">
         <Label htmlFor={ids.file}>{t("transfer.importFile")}</Label>
@@ -387,7 +388,7 @@ const ImportForm = observer(function ImportForm({
           ref={importButton}
           type="submit"
           disabled={sending}
-          aria-disabled={transfers.importing || undefined}
+          aria-disabled={transfers.writing || undefined}
           className="aria-disabled:opacity-50"
         >
           {sending ? t("transfer.importing") : t("transfer.importConfirm")}

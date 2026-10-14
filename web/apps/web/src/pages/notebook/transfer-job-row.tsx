@@ -1,5 +1,6 @@
 import { observer } from "mobx-react-lite";
 import { useCallback, useId, useRef, useState, type ReactNode } from "react";
+import { Link } from "react-router";
 
 import { useFocusLeaving } from "../../lib/focus-leaving";
 import { errorText } from "../../app/problem-messages";
@@ -10,6 +11,7 @@ import type { Notebook } from "../../services/notebook.service";
 import type { TransferJob } from "../../services/transfer.service";
 import { useAccount, useStore, useTransfers } from "../../stores/context";
 import { under } from "../../stores/transfer.store";
+import { useWorkspace } from "../workspace/workspace-layout";
 import { jobTitle } from "./transfer-names";
 import { failureText, TransferReport } from "./transfer-report";
 
@@ -18,7 +20,9 @@ import { failureText, TransferReport } from "./transfer-report";
  * does, its state and progress, who started it when not the account, when,
  * and, for an export that succeeded, its size and until when it is kept.
  * An export with an address downloads; a job under way cancels, until its
- * cancel is asked; an ended one shows its report. A cancel refused says
+ * cancel is asked; an ended one shows its report. A job that wrote in a
+ * changeset leads to it in the history, a revert to the change it undoes
+ * too (M8/P4 design 4.3). A cancel refused says
  * why in the row, and the list is read again. The row is named by name,
  * which tells it from the others, and so are its controls (v0.1 design
  * 13.2, item 17); a control gone with the focus gives it to the row. The
@@ -41,6 +45,7 @@ export const TransferJobRow = observer(function TransferJobRow({
 }) {
   const transfers = useTransfers(notebook);
   const { me } = useAccount();
+  const { slug } = useWorkspace();
   const { instance, preferences } = useStore();
   const t = useT();
   const stateId = useId();
@@ -74,6 +79,10 @@ export const TransferJobRow = observer(function TransferJobRow({
   ].filter((detail) => detail !== undefined);
   const refused = refusal === undefined ? undefined : errorText(refusal, t);
   const toRow = () => row.current?.focus();
+  const history = `/${slug}/notebooks/${notebook.id}/history`;
+  // Its changeset is there once it wrote: none of a job that wrote nothing; an interrupted one's progress may be a
+  // heartbeat behind (review A-M7).
+  const wrote = job.changeset_id !== null && (done > 0 || job.report?.failure === "interrupted");
 
   async function cancel() {
     if (busy.current) {
@@ -136,6 +145,24 @@ export const TransferJobRow = observer(function TransferJobRow({
                 {t("transfer.download")}
               </a>
             </Leaving>
+          )}
+          {wrote && (
+            <Link
+              to={`${history}/${job.changeset_id ?? ""}`}
+              aria-label={t("transfer.inHistoryOf", { name })}
+              className="text-sm underline underline-offset-4"
+            >
+              {t("transfer.inHistory")}
+            </Link>
+          )}
+          {job.kind === "revert" && job.target_changeset_id !== null && (
+            <Link
+              to={`${history}/${job.target_changeset_id}`}
+              aria-label={t("transfer.revertedOf", { name })}
+              className="text-sm underline underline-offset-4"
+            >
+              {t("transfer.reverted")}
+            </Link>
           )}
           {under(job) && job.cancel_requested_at === null && (
             <Leaving left={toRow}>

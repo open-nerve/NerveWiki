@@ -26,12 +26,16 @@ import { useNotebook } from "./notebook-layout";
 import {
   ItemIcon,
   namesOf,
+  offeredOf,
   openOf,
-  refusalText,
+  refusedText,
   RestoreButton,
   TrashFacts,
+  useBackgroundRestore,
   useTrashRestore,
   type RestoredState,
+  type Started,
+  type StartedState,
   type TrashRestored,
 } from "./trash-row";
 
@@ -47,7 +51,10 @@ import {
  * this one's; a node deleted with a page above it goes to its item's
  * root's preview, which says why; one restored or past its time says so,
  * with where to go. A writer restores it here, as from the list, and goes
- * back to the trash, which says where it went.
+ * back to the trash, which says where it went; refused as too large, in
+ * the background, and goes back to the trash, which says it started (M8/P4
+ * design 4.2, review B-M5): the item's first batch would have it read as
+ * no longer in the trash here.
  */
 export const TrashPreview = observer(function TrashPreview() {
   const notebook = useNotebook();
@@ -58,8 +65,17 @@ export const TrashPreview = observer(function TrashPreview() {
   return <PreviewShell key={nodeId} notebook={notebook} id={nodeId} />;
 });
 
-/** What came of a restore from the preview: out, the item restored, or refused. */
-type Restoring = { out: true } | { restored: TrashRestored } | { refused: unknown; item: TrashItem };
+/**
+ * What came of a restore from the preview: out, the item restored, or
+ * refused; of its restore in the background: started, refused (start), or,
+ * its answer lost, not started or not known to have (lost).
+ */
+type Restoring =
+  | { out: true }
+  | { restored: TrashRestored }
+  | { refused: unknown; item: TrashItem; start?: boolean }
+  | { started: Started }
+  | { lost: "none" | "unread"; item: TrashItem };
 
 /**
  * MergedState is the route state of an item's preview gone to from a node
@@ -85,7 +101,11 @@ function mergedOf(state: unknown): boolean {
  * when it is what said so), and what replaces the item shown takes the
  * focus it held. The refusal is one alert, kept as what shows below it
  * changes, which describes its title: announced once (M8/P2B fix check 1,
- * N2).
+ * N2). Refused as too large, the item is offered a restore in the
+ * background, as on the trash's list: out, the item shown stays as the
+ * restore's own; started, it goes back to the trash, which says so; its
+ * start refused, or its answer lost, the alert says what came of it, the
+ * restore still offered where the trash's list would offer it.
  */
 const PreviewShell = observer(function PreviewShell({ notebook, id }: { notebook: Notebook; id: string }) {
   const pages = usePageTree(notebook);
@@ -93,21 +113,24 @@ const PreviewShell = observer(function PreviewShell({ notebook, id }: { notebook
   const { slug } = useWorkspace();
   const mounted = useMounted();
   const restore = useTrashRestore(notebook);
+  const start = useBackgroundRestore(notebook);
   useLeftBehind(notebook.id, id);
   const { data, error, mutate } = useSWR(["trash-item", notebook.id, id], () => pages.trashItem(id));
   const [restoring, setRestoring] = useState<Restoring>();
+  // Whether a restore in the background is out: what came before it stays said meanwhile.
+  const [starting, setStarting] = useState(false);
   // Whether the item shown left the document holding the focus, which what replaces it takes.
   const [handed, setHanded] = useState(false);
   const note = useId();
   const home = `/${slug}/notebooks/${notebook.id}`;
   // What shows, below what a refusal says: the same alert above each, so that a view replacing another keeps it.
-  const shell = (told: string | undefined, view: ReactNode) => (
+  const shell = (told: ReactNode, view: ReactNode) => (
     <div className="space-y-4">
       {told !== undefined && <Alert id={note}>{told}</Alert>}
       {view}
     </div>
   );
-  const describing = (told: string | undefined) => (told === undefined ? undefined : note);
+  const describing = (told: ReactNode) => (told === undefined ? undefined : note);
 
   async function restoreItem(item: TrashItem): Promise<void> {
     setRestoring({ out: true });
@@ -123,23 +146,52 @@ const PreviewShell = observer(function PreviewShell({ notebook, id }: { notebook
     }
   }
 
+  async function startItem(item: TrashItem): Promise<void> {
+    setStarting(true);
+    try {
+      const started = await start(item);
+      if (mounted()) {
+        setRestoring(
+          "job" in started ? { started: { name: item.name, job: started.job.id } } : { lost: started.lost, item }
+        );
+      }
+    } catch (refusal) {
+      if (mounted()) {
+        setRestoring({ refused: refusal, item, start: true });
+      }
+    } finally {
+      setStarting(false);
+    }
+  }
+
   if (restoring !== undefined && "restored" in restoring) {
     return (
       <Navigate to={`${home}/trash`} state={{ ...arrived, restored: restoring.restored } satisfies RestoredState} />
     );
   }
+  if (restoring !== undefined && "started" in restoring) {
+    return <Navigate to={`${home}/trash`} state={{ ...arrived, started: restoring.started } satisfies StartedState} />;
+  }
   // An item read of another notebook is no page of this one's, whatever is read since.
   if (data !== undefined && data.notebook_id !== notebook.id) {
     return <NotFoundPage />;
   }
-  const refusal = restoring !== undefined && "refused" in restoring ? restoring : undefined;
-  const said = refusal === undefined ? undefined : refusalText(refusal.refused, refusal.item, t);
+  const refused = restoring !== undefined && "refused" in restoring ? restoring : undefined;
+  const refusal = refused && { error: refused.refused, item: refused.item, start: refused.start };
+  const lostStart = restoring !== undefined && "lost" in restoring ? restoring : undefined;
+  const said =
+    refusal !== undefined ? (
+      refusedText(refusal, t)
+    ) : lostStart === undefined ? undefined : (
+      <LostStart {...lostStart} />
+    );
   // Gone, the item says the refusal that said so: not one before it, of what the item read then.
   const saidGone = (code: string) =>
-    refusal?.refused instanceof ApiError && refusal.refused.code === code ? said : undefined;
+    refusal?.error instanceof ApiError && refusal.error.code === code ? said : undefined;
   // What the server answers now, read again, comes before what it answered before, unless a restore from here is
   // out: pressed on the item shown, which SWR keeps through a read that fails.
-  const out = restoring !== undefined && "out" in restoring;
+  const out = (restoring !== undefined && "out" in restoring) || starting;
+  const offered = writesPages(notebook.role) ? (lostStart?.item ?? offeredOf(refusal)) : undefined;
   if (error instanceof ApiError && !out) {
     switch (error.code) {
       case "page.not_found":
@@ -170,6 +222,7 @@ const PreviewShell = observer(function PreviewShell({ notebook, id }: { notebook
       notebook={notebook}
       item={data}
       restore={() => restoreItem(data)}
+      start={offered?.id === data.id ? () => startItem(data) : undefined}
       describedBy={describing(said)}
       left={() => setHanded(true)}
     />
@@ -177,10 +230,32 @@ const PreviewShell = observer(function PreviewShell({ notebook, id }: { notebook
 });
 
 /**
+ * LostStart says what came of the restore of item in the background whose
+ * answer was lost: none started since it was pressed, or the jobs could not
+ * be read, which lead there.
+ */
+function LostStart({ lost, item }: { lost: "none" | "unread"; item: TrashItem }) {
+  const t = useT();
+  const { slug } = useWorkspace();
+  if (lost === "none") {
+    return t("trash.backgroundNotStarted", { name: item.name });
+  }
+  return (
+    <>
+      {t("trash.backgroundUnknown", { name: item.name })}{" "}
+      <Link to={`/${slug}/notebooks/${item.notebook_id}/settings/transfer`} className="underline underline-offset-4">
+        {t("transfer.seeJobs")}
+      </Link>
+    </>
+  );
+}
+
+/**
  * Preview is the item found: where it is, under the trash, its title, what
  * the trash says of it, its root's view or its attachment, and a writer's
  * Restore (restore; what a refusal says, above, describes its title:
- * describedBy). Gone to from a node deleted with it since, it says so, its
+ * describedBy), and its Restore in the background where it is offered
+ * (start). Gone to from a node deleted with it since, it says so, its
  * title taking the focus if the reader has it nowhere (v0.1 design 13.2,
  * item 26): their own restore refused, what held it gone, or the address
  * opened. Gone from the document with the focus, read away, it hands the
@@ -190,12 +265,14 @@ const Preview = observer(function Preview({
   notebook,
   item,
   restore,
+  start,
   describedBy,
   left,
 }: {
   notebook: Notebook;
   item: TrashItem;
   restore: () => Promise<void>;
+  start: (() => Promise<void>) | undefined;
   describedBy: string | undefined;
   left: () => void;
 }) {
@@ -237,11 +314,21 @@ const Preview = observer(function Preview({
             {item.name}
           </h1>
           {writesPages(notebook.role) && (
-            <RestoreButton
-              label={namesOf(item, "none", t, preferences.locale).restore}
-              restore={restore}
-              left={() => heading.current?.focus()}
-            />
+            <div className="flex flex-wrap justify-end gap-2">
+              <RestoreButton
+                label={namesOf(item, "none", t, preferences.locale).restore}
+                restore={restore}
+                left={() => heading.current?.focus()}
+              />
+              {start !== undefined && (
+                <RestoreButton
+                  label={namesOf(item, "none", t, preferences.locale).background}
+                  text={t("trash.background", { name: item.name })}
+                  restore={start}
+                  left={() => heading.current?.focus()}
+                />
+              )}
+            </div>
           )}
         </div>
         <div className="space-y-1">

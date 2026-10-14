@@ -17,10 +17,11 @@ export type { UploadOptions };
 const jobPage = 50;
 
 /**
- * TransferService starts a notebook's imports and exports and reads, lists
- * and cancels its jobs (M7/P5 design 4.2, P6 design 4.1). An export's
- * archive downloads at the address the server signed, without the client:
- * a link does.
+ * TransferService starts a notebook's imports and exports, and its trash
+ * items' restores and its changesets' reverts in the background, and reads,
+ * lists and cancels its jobs (M7/P5 design 4.2, P6 design 4.1; M8/P4 design
+ * 4.1). An export's archive downloads at the address the server signed,
+ * without the client: a link does.
  */
 export class TransferService {
   constructor(
@@ -63,6 +64,29 @@ export class TransferService {
         body: { file: file.name },
         bodySerializer: () => undefined,
         fetch: uploadFetch(form, options, this.transfer),
+      })
+    );
+  }
+
+  /** startTrashRestore starts the restore of the trash item of the root nodeId in the background, and answers its job. */
+  async startTrashRestore(notebookId: string, nodeId: string): Promise<TransferJob> {
+    return unwrap(
+      await this.api.POST("/api/v0/notebooks/{notebook_id}/trash-restores", {
+        params: { path: { notebook_id: notebookId } },
+        body: { node_id: nodeId },
+      })
+    );
+  }
+
+  /**
+   * startRevert starts the revert of the changeset changesetId in the
+   * background, with message, none without one, and answers its job.
+   */
+  async startRevert(notebookId: string, changesetId: string, message?: string): Promise<TransferJob> {
+    return unwrap(
+      await this.api.POST("/api/v0/notebooks/{notebook_id}/reverts", {
+        params: { path: { notebook_id: notebookId } },
+        body: { changeset_id: changesetId, ...(message === undefined ? {} : { message }) },
       })
     );
   }
