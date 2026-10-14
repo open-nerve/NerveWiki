@@ -25,6 +25,33 @@ type (
 	ImportSpec = app.ImportSpec
 	// Parsed is a page's content parsed for an import's unit.
 	Parsed = app.Parsed
+	// JobSpec is a background restore's or revert's unit; JobPlan its
+	// plan, of JobSteps; BatchDone what a batch of it did (M8/P4 design
+	// 3.3).
+	JobSpec   = app.JobSpec
+	JobPlan   = app.JobPlan
+	JobStep   = domain.JobStep
+	BatchDone = app.BatchDone
+	// Placement is where a restore put a trash item's root.
+	Placement = domain.Placement
+)
+
+// The background jobs' actions, decided again as each job's row is
+// written (M8/P4 design 3.6).
+const (
+	ActionRestore = domain.ActionRestore
+	ActionRevert  = domain.ActionRevert
+)
+
+// The sentinels the background jobs' batches answer (M8/P4 design 3.3,
+// 3.6): a batch to halve; a trash item past its time; a revert's
+// conflicts (Conflicts, ConflictCount); a changeset the purge trimmed;
+// and ErrLocked, a page under another's edit lock (Lock).
+var (
+	ErrBatchTooLarge    = domain.ErrBatchTooLarge
+	ErrRestoreExpired   = domain.ErrRestoreExpired
+	ErrRevertConflict   = domain.ErrRevertConflict
+	ErrChangesetTrimmed = domain.ErrChangesetTrimmed
 )
 
 // ErrTooDeep is an import's page deeper than pages go: nothing of it was
@@ -34,7 +61,8 @@ var ErrTooDeep = domain.ErrTooDeep
 // ErrNoParent is an import's parent that is no page of the notebook.
 var ErrNoParent = app.ErrNoParent
 
-// TreeWrites creates the attachments' nodes, and an import's.
+// TreeWrites creates the attachments' nodes, and an import's; and writes
+// the background restores and reverts (M8/P4 design 3.3).
 type TreeWrites interface {
 	// Check decides as CreateAsset would, unlocked: notebook.not_found,
 	// forbidden, then the name's rules and a parent that is no page of
@@ -59,6 +87,31 @@ type TreeWrites interface {
 	// none when it wrote nothing. notebook.not_found for a notebook the
 	// job cannot see, forbidden for a reader.
 	Import(ctx context.Context, spec ImportSpec, do func(ctx context.Context, u ImportUnit) error) (uuid.UUID, error)
+	// CheckRestore checks a background restore of the trash item of the
+	// root nodeID, unlocked, and answers its name: notebook.not_found,
+	// forbidden, page.not_found, then page.not_in_trash,
+	// page.not_trash_root and page.restore_expired.
+	CheckRestore(ctx context.Context, notebookID, nodeID uuid.UUID) (string, error)
+	// CheckRevert checks a background revert of the changeset, unlocked,
+	// in the order of revertChangeset's check, admit called right after
+	// its items are counted, its error answered as it is, and page.locked
+	// after the conflicts; it answers the changeset's kind.
+	CheckRevert(ctx context.Context, notebookID, changesetID uuid.UUID, message *string, admit func(context.Context) error) (string, error)
+	// PlanRestore and PlanRevert plan a background job as it starts,
+	// unlocked: notebook.not_found or forbidden for a job whose account
+	// can no longer write in the notebook; ErrTrashChanged,
+	// ErrRestoreExpired; ErrRevertConflict, ErrChangesetTrimmed,
+	// ErrLocked.
+	PlanRestore(ctx context.Context, spec JobSpec, nodeID uuid.UUID) (JobPlan, error)
+	PlanRevert(ctx context.Context, spec JobSpec, changesetID uuid.UUID) (JobPlan, error)
+	// RunBatch writes the plan's steps from to to (not included) in a
+	// unit of spec merged into the job's changeset: ErrBatchTooLarge to
+	// halve, server_busy to try again; the restores' ErrTrashChanged,
+	// ErrRestoreExpired, ErrNoParent and ErrTooDeep; the reverts'
+	// ErrRevertConflict, ErrChangesetTrimmed and ErrLocked;
+	// ErrChangesetReverted; notebook.not_found or forbidden from the
+	// unit's decision.
+	RunBatch(ctx context.Context, spec JobSpec, plan JobPlan, from, to int) (BatchDone, error)
 }
 
 // ImportUnit is an import's unit (M7/P6 design 3.3): each node created
@@ -118,15 +171,39 @@ func nodeInfo(n domain.Node) NodeInfo {
 		NameKey: n.NameKey, CreatedBy: n.CreatedBy, CreatedAt: n.CreatedAt, UpdatedAt: n.UpdatedAt}
 }
 
-// TreeWrites are the wired module's writes of attachments' nodes and of
-// imports.
+// TreeWrites are the wired module's writes of attachments' nodes, of
+// imports and of the background jobs.
 func (m *Module) TreeWrites() TreeWrites {
-	return treeWrites{assets: m.assets, imports: m.imports}
+	return treeWrites{assets: m.assets, imports: m.imports, jobs: m.jobWrites}
 }
 
 type treeWrites struct {
 	assets  *app.AssetWrites
 	imports *app.ImportWrites
+	jobs    *app.JobWrites
+}
+
+func (t treeWrites) CheckRestore(ctx context.Context, notebookID, nodeID uuid.UUID) (string, error) {
+	return t.jobs.CheckRestore(ctx, notebookID, nodeID)
+}
+
+func (t treeWrites) CheckRevert(ctx context.Context, notebookID, changesetID uuid.UUID, message *string,
+	admit func(context.Context) error,
+) (string, error) {
+	kind, err := t.jobs.CheckRevert(ctx, notebookID, changesetID, message, admit)
+	return string(kind), err
+}
+
+func (t treeWrites) PlanRestore(ctx context.Context, spec JobSpec, nodeID uuid.UUID) (JobPlan, error) {
+	return t.jobs.PlanRestore(ctx, spec, nodeID)
+}
+
+func (t treeWrites) PlanRevert(ctx context.Context, spec JobSpec, changesetID uuid.UUID) (JobPlan, error) {
+	return t.jobs.PlanRevert(ctx, spec, changesetID)
+}
+
+func (t treeWrites) RunBatch(ctx context.Context, spec JobSpec, plan JobPlan, from, to int) (BatchDone, error) {
+	return t.jobs.RunBatch(ctx, spec, plan, from, to)
 }
 
 func (t treeWrites) CheckContent(content string) error {

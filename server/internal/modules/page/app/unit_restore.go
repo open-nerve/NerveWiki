@@ -208,3 +208,256 @@ func restoredNames(group []domain.TrashMember, siblings []domain.Node) ([]domain
 	}
 	return out, renamed, nil
 }
+
+// TrashPart is a background restore's batch (M8/P4 design 3.4): of the
+// trash item deleted at At whose group is Nodes, in its pre-order with
+// their counts, the nodes From to To (not included); the root's counts as
+// the job's plan read them; the facts of the batch's pages parsed before
+// the unit; the purge's retention.
+type TrashPart struct {
+	At                    time.Time
+	Nodes                 []domain.GroupNode
+	From, To              int
+	Pages, Assets, Height int
+	Facts                 map[uuid.UUID]Facts
+	Retention             time.Duration
+}
+
+// PartRestored is what a batch of a background restore did: the pages and
+// attachments it restored, those it renamed, those someone else restored
+// before it, which it skipped, and where its first batch put the item's
+// root.
+type PartRestored struct {
+	Pages, Assets, Renamed, Skipped int
+	Placement                       *domain.Placement
+}
+
+// RestorePart restores a batch of a trash item's group under the
+// notebook's lock (M8/P4 design 3.4). Within the time the item can be
+// restored in at the unit's time (page.restore_expired), its members are
+// read at the item's time: the first batch's root must be the item's
+// root still, of its counts as planned (page.trash_changed); a member no
+// longer deleted then someone restored, a trash item of its own the batch
+// before it left, and is skipped; one still deleted then whose parent the
+// batch does not restore must be such an item, of its counts in the
+// group (page.trash_changed). The parent of each must be alive
+// (ErrNoParent) and its pages no deeper than domain.MaxDepth
+// (domain.ErrTooDeep): someone may have deleted or moved what the batches
+// before it restored. The root goes where PlacementOf puts it, as Restore
+// has it; every other member under its parent, at its order, its name
+// numbered when a sibling alive or restored before it under the same
+// parent holds its key. Then the nodes of the group under those it
+// restored that later batches restore become trash items of their own,
+// with their counts (domain.Frontier).
+func (u *Unit) RestorePart(ctx context.Context, p TrashPart) (PartRestored, error) {
+	if !domain.Restorable(p.At, u.write.At, p.Retention) {
+		return PartRestored{}, domain.ErrRestoreExpired
+	}
+	at := make(map[uuid.UUID]time.Time, p.To-p.From)
+	for _, n := range p.Nodes[p.From:p.To] {
+		at[n.ID] = p.At
+	}
+	read, err := u.w.d.Trash.TrashNodesAt(ctx, u.write.NotebookID, at)
+	if err != nil {
+		return PartRestored{}, err
+	}
+	if p.From == 0 {
+		if r, ok := read[p.Nodes[0].ID]; !ok || !r.Root || r.Pages != p.Pages || r.Assets != p.Assets || r.Height != p.Height {
+			return PartRestored{}, domain.ErrTrashChanged
+		}
+	}
+	var out PartRestored
+	restored := make([]bool, p.To-p.From)
+	inBatch := func(i int) bool { return i >= p.From && i < p.To && restored[i-p.From] }
+	var members []domain.TrashMember
+	var positions []int
+	for i := p.From; i < p.To; i++ {
+		n := p.Nodes[i]
+		m, ok := read[n.ID]
+		switch {
+		case !ok:
+			out.Skipped++
+			continue
+		case i > 0 && !inBatch(int(n.Parent)) &&
+			(!m.Root || m.Pages != int(n.Pages) || m.Assets != int(n.Assets) || m.Height != int(n.Height)):
+			return PartRestored{}, domain.ErrTrashChanged
+		}
+		restored[i-p.From] = true
+		members, positions = append(members, m.TrashMember), append(positions, i)
+	}
+	if len(members) == 0 {
+		return out, nil
+	}
+	places := partPlaces{u: u, p: p, kids: map[int]*children{}, depths: map[int]int{}}
+	states, keys := make([]domain.TreeState, len(members)), make([]string, len(members))
+	renumber := func(context.Context) error { return nil }
+	for k, i := range positions {
+		m := members[k]
+		state := m.Node.State()
+		var kids *children
+		if i == 0 {
+			place, order, siblings, before, err := u.placeRoot(ctx, m.Node, p.Height)
+			if err != nil {
+				return PartRestored{}, err
+			}
+			out.Placement, renumber = &place, before
+			state.ParentID, state.SortOrder = place.ParentID, order
+			kids = places.under(-1, siblings)
+		} else {
+			if kids, err = places.of(ctx, int(p.Nodes[i].Parent), inBatch); err != nil {
+				return PartRestored{}, err
+			}
+			if err := places.deep(i, m.Node.Kind); err != nil {
+				return PartRestored{}, err
+			}
+		}
+		title, err := kids.free(m.Node.Name, m.Node.Kind == domain.KindAsset, nil)
+		if err != nil {
+			return PartRestored{}, err
+		}
+		kids.keys[title.Key] = true
+		state.Name = title.Name
+		states[k], keys[k] = state, title.Key
+		if title.Name != m.Node.Name {
+			out.Renamed++
+		}
+		if m.Node.Kind == domain.KindAsset {
+			out.Assets++
+		} else {
+			out.Pages++
+		}
+	}
+	facts := make(map[uuid.UUID]Facts, out.Pages)
+	for _, m := range members {
+		if m.Node.Kind == domain.KindPage {
+			f, ok := p.Facts[m.Node.ID]
+			if !ok {
+				// Deleted at the time, unread before the unit: the purge took
+				// its content.
+				return PartRestored{}, domain.ErrTrashChanged
+			}
+			facts[m.Node.ID] = f
+		}
+	}
+	if err := u.bringBack(ctx, members, p.At, states, keys, facts, renumber); err != nil {
+		return PartRestored{}, err
+	}
+	return out, u.markFrontier(ctx, p.Nodes, domain.Frontier(p.Nodes, p.From, p.To, func(i int) bool { return restored[i-p.From] }), p.At)
+}
+
+// placeRoot is where a trash item's root, n, goes back, its group spanning
+// height levels of pages, as Restore puts it: PlacementOf on its line as it
+// is now; its order there, its own under its parent, last at the
+// notebook's root, with the renumbering of the siblings that takes; and
+// the siblings alive where it goes. PlacementOf keeps its group within
+// domain.MaxDepth.
+func (u *Unit) placeRoot(ctx context.Context, n domain.Node, height int) (domain.Placement, float64, []domain.Node,
+	func(context.Context) error, error,
+) {
+	lines, err := u.w.d.Trash.TrashLines(ctx, []uuid.UUID{n.ID})
+	if err != nil {
+		return domain.Placement{}, 0, nil, nil, err
+	}
+	place := domain.PlacementOf(lines[n.ID], height)
+	siblings, err := u.w.d.Nodes.Children(ctx, u.write.NotebookID, place.ParentID)
+	if err != nil {
+		return domain.Placement{}, 0, nil, nil, err
+	}
+	order, renumber := n.SortOrder, func(context.Context) error { return nil }
+	if place.ParentID == nil && n.ParentID != nil {
+		order, _, renumber = u.placeAmong(siblings, len(siblings)-1)
+	}
+	return place, order, siblings, renumber, nil
+}
+
+// partPlaces are where a batch of a background restore puts its members
+// but the item's root: the names taken under each parent, by its position
+// in the group, and the depths of the parents the batch did not restore,
+// read once each, and of the members under them. The members under the
+// root its first batch restores have none: PlacementOf kept the group
+// within domain.MaxDepth.
+type partPlaces struct {
+	u      *Unit
+	p      TrashPart
+	kids   map[int]*children
+	depths map[int]int
+}
+
+// under are the names taken where siblings are alive, under the parent at
+// position at (-1: where the root goes).
+func (s partPlaces) under(at int, siblings []domain.Node) *children {
+	kids := &children{nodes: siblings, keys: make(map[string]bool, len(siblings)), next: map[string]int{}}
+	for _, n := range siblings {
+		kids.keys[n.NameKey] = true
+	}
+	s.kids[at] = kids
+	return kids
+}
+
+// of are the names taken under the parent at position at: the batch's
+// members restored before under it, when the batch restored it; else its
+// children alive, those of the batches before it among them, read once,
+// the parent alive (ErrNoParent) and its depth read with them.
+func (s partPlaces) of(ctx context.Context, at int, inBatch func(int) bool) (*children, error) {
+	if kids, ok := s.kids[at]; ok {
+		return kids, nil
+	}
+	if inBatch(at) {
+		return s.under(at, nil), nil
+	}
+	id := s.p.Nodes[at].ID
+	if _, err := s.u.w.d.Nodes.FindNodeIn(ctx, s.u.write.NotebookID, id); errors.Is(err, ErrNotFound) {
+		return nil, ErrNoParent
+	} else if err != nil {
+		return nil, err
+	}
+	ancestors, err := s.u.w.d.Nodes.Ancestors(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	siblings, err := s.u.w.d.Nodes.Children(ctx, s.u.write.NotebookID, &id)
+	if err != nil {
+		return nil, err
+	}
+	s.depths[at] = domain.Depth(ancestors)
+	return s.under(at, siblings), nil
+}
+
+// deep keeps the depth of the member at position i, of kind, one below
+// its parent's when that is known, and refuses a page deeper than
+// domain.MaxDepth: someone moved what the batches before it restored
+// deeper.
+func (s partPlaces) deep(i int, kind domain.Kind) error {
+	d, ok := s.depths[int(s.p.Nodes[i].Parent)]
+	if !ok {
+		return nil
+	}
+	s.depths[i] = d + 1
+	if kind == domain.KindPage && d+1 > domain.MaxDepth {
+		return domain.ErrTooDeep
+	}
+	return nil
+}
+
+// markFrontier makes the nodes at positions frontier of a group in
+// pre-order, deleted at at, trash items of their own with their counts in
+// the group: each must be deleted at at still, and no root, else
+// page.trash_changed. No change of the tree: they stay in the trash.
+func (u *Unit) markFrontier(ctx context.Context, nodes []domain.GroupNode, frontier []int, at time.Time) error {
+	if len(frontier) == 0 {
+		return nil
+	}
+	marks := make([]TrashMark, len(frontier))
+	for i, f := range frontier {
+		n := nodes[f]
+		marks[i] = TrashMark{ID: n.ID, Pages: int(n.Pages), Assets: int(n.Assets), Height: int(n.Height)}
+	}
+	n, err := u.w.d.NodeWriter.MarkTrashRoots(ctx, marks, at)
+	switch {
+	case err != nil:
+		return err
+	case n != len(marks):
+		return domain.ErrTrashChanged
+	}
+	return nil
+}
