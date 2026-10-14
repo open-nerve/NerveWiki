@@ -92,10 +92,17 @@ test("a job that wrote leads to its changeset in the history, a revert to the ch
       underWay(restoreOf(2), 40, 103),
       revertOf(3, { progress: { done: 1501, total: 1501 } }),
       // Nothing to undo: no step, no changeset.
-      revertOf(4, { progress: { done: 0, total: 0 } }),
+      revertOf(4, { progress: { done: 0, total: 0 }, report: reportOf(null) }),
       underWay(restoreOf(5), 0, 0),
       // Interrupted, its progress may be a heartbeat behind what it wrote.
       restoreOf(6, { state: "failed", progress: { done: 0, total: 103 }, report: reportOf("interrupted") }),
+      // Interrupted as the queue dropped it before it began (the rescue's): it wrote nothing (P4B review B-M2).
+      restoreOf(9, {
+        state: "failed",
+        started_at: null,
+        progress: { done: 0, total: 0 },
+        report: reportOf("interrupted"),
+      }),
       // An export, and an import of before the jobs had their changeset, have none.
       jobJSON(7),
       jobJSON(8, { kind: "import", name: "Old.zip", changeset_id: null }),
@@ -104,35 +111,48 @@ test("a job that wrote leads to its changeset in the history, a revert to the ch
   renderApp(transfer, server.app);
 
   expect(links(await row("Import of Vault.zip"))).toEqual([
-    ["See in the history", "See in the history: Import of Vault.zip, Oct 5, 2026, 8:00 AM", history(jobChangesetId(1))],
+    [
+      "See in the history",
+      "See in the history (Import of Vault.zip, Oct 5, 2026, 8:00 AM)",
+      history(jobChangesetId(1)),
+    ],
   ]);
   const running = await row("Restore of Linux from the trash, Oct 5, 2026, 8:00 AM (ID 000702)");
   expect(links(running)).toEqual([
     [
       "See in the history",
-      "See in the history: Restore of Linux from the trash, Oct 5, 2026, 8:00 AM (ID 000702)",
+      "See in the history (Restore of Linux from the trash, Oct 5, 2026, 8:00 AM (ID 000702))",
       history(jobChangesetId(2)),
     ],
   ]);
   expect(links(await row("Undo: Import, Oct 5, 2026, 8:00 AM (ID 000703)"))).toEqual([
     [
       "See in the history",
-      "See in the history: Undo: Import, Oct 5, 2026, 8:00 AM (ID 000703)",
+      "See in the history (Undo: Import, Oct 5, 2026, 8:00 AM (ID 000703))",
       history(jobChangesetId(3)),
     ],
-    ["The change undone", "The change undone: Undo: Import, Oct 5, 2026, 8:00 AM (ID 000703)", history(changesetId(7))],
+    [
+      "The change undone",
+      "The change undone (Undo: Import, Oct 5, 2026, 8:00 AM (ID 000703))",
+      history(changesetId(7)),
+    ],
   ]);
   expect(links(await row("Undo: Import, Oct 5, 2026, 8:00 AM (ID 000704)"))).toEqual([
-    ["The change undone", "The change undone: Undo: Import, Oct 5, 2026, 8:00 AM (ID 000704)", history(changesetId(7))],
+    [
+      "The change undone",
+      "The change undone (Undo: Import, Oct 5, 2026, 8:00 AM (ID 000704))",
+      history(changesetId(7)),
+    ],
   ]);
   expect(links(await row("Restore of Linux from the trash, Oct 5, 2026, 8:00 AM (ID 000705)"))).toEqual([]);
   expect(links(await row("Restore of Linux from the trash, Oct 5, 2026, 8:00 AM (ID 000706)"))).toEqual([
     [
       "See in the history",
-      "See in the history: Restore of Linux from the trash, Oct 5, 2026, 8:00 AM (ID 000706)",
+      "See in the history (Restore of Linux from the trash, Oct 5, 2026, 8:00 AM (ID 000706))",
       history(jobChangesetId(6)),
     ],
   ]);
+  expect(links(await row("Restore of Linux from the trash, Oct 5, 2026, 8:00 AM (ID 000709)"))).toEqual([]);
   expect(links(await row("Export of the whole notebook"))).toEqual([]);
   expect(links(await row("Import of Old.zip"))).toEqual([]);
 });
@@ -211,7 +231,7 @@ test("a revert's report counts what it did to the nodes and the pages; one with 
   const done = await reportOpened(user, "Undo: Import, Oct 5, 2026, 8:00 AM (ID 000701)");
   expect(countsOf(done)).toEqual([
     "Nodes restored 5",
-    "Nodes deleted 1501",
+    "Nodes deleted 1,501",
     "Nodes put back 2",
     "Pages written back 3",
     "Skipped, restored by someone first 1",
@@ -232,21 +252,29 @@ test.each<[string, TransferJob, string, string[]]>([
       progress: { done: 40, total: 103 },
     }),
     "Failed · While the restore ran, what it had restored was deleted or moved too deep.",
-    [
-      "What it restored stays in the notebook. The 63 nodes left are in the trash, in items of their own: each can be restored alone.",
-    ],
+    ["Nodes it had not come to: 63. They are in the trash, in items of their own: each can be restored alone."],
   ],
   [
     "a restore cancelled",
-    restoreOf(1, { state: "cancelled", report: reportOf(null, { pages: 99 }), progress: { done: 100, total: 103 } }),
+    restoreOf(1, { state: "cancelled", report: reportOf(null, { pages: 99 }), progress: { done: 100, total: 1203 } }),
     "Cancelled",
     [
-      "What it restored stays in the notebook. The 3 nodes left are in the trash, in items of their own: each can be restored alone.",
+      "What it restored stays in the notebook. Nodes left: 1,103. They are in the trash, in items of their own: each can be restored alone.",
     ],
   ],
   [
     "a restore failed before it restored anything",
     restoreOf(1, { state: "failed", report: reportOf("trash_changed"), progress: { done: 0, total: 103 } }),
+    "Failed · The item in the trash changed before the restore came to it: someone restored it, the purge took it, or it was deleted again.",
+    [],
+  ],
+  [
+    "a restore failed as its item changed after its first batch",
+    restoreOf(1, {
+      state: "failed",
+      report: reportOf("trash_changed", { pages: 99 }),
+      progress: { done: 100, total: 103 },
+    }),
     "Failed · The item in the trash changed before the restore came to it: someone restored it, the purge took it, or it was deleted again.",
     [],
   ],
@@ -258,21 +286,31 @@ test.each<[string, TransferJob, string, string[]]>([
   ],
   [
     "a restore failed as what it restored was undone",
-    restoreOf(1, { state: "failed", report: reportOf("changeset_reverted"), progress: { done: 0, total: 103 } }),
+    restoreOf(1, {
+      state: "failed",
+      report: reportOf("changeset_reverted", { pages: 99 }),
+      progress: { done: 100, total: 103 },
+    }),
     "Failed · What the restore had restored was undone while it ran.",
-    [],
+    ["What it restored is in the trash again, with the nodes it had not come to."],
   ],
   [
-    "a restore failed as its item went past its time",
+    "a restore failed as its item went past its time before its first batch",
     restoreOf(1, { state: "failed", report: reportOf("restore_expired"), progress: { done: 0, total: 103 } }),
     "Failed · The item went past the time it could be restored in.",
     [],
   ],
   [
-    "a revert failed as the pages it was undoing changed",
-    revertOf(1, { state: "failed", report: reportOf("tree_changed"), progress: { done: 0, total: 1501 } }),
-    "Failed · While the undo ran, the pages it was undoing changed.",
-    [],
+    "a restore failed as its item went past its time between its batches",
+    restoreOf(1, {
+      state: "failed",
+      report: reportOf("restore_expired", { pages: 99 }),
+      progress: { done: 100, total: 103 },
+    }),
+    "Failed · The item went past the time it could be restored in.",
+    [
+      "What it restored stays in the notebook. Nodes left: 3. Their time in the trash is over: they can no longer be restored.",
+    ],
   ],
   [
     "a revert failed as its starter could no longer edit the notebook",
@@ -288,10 +326,7 @@ test.each<[string, TransferJob, string, string[]]>([
       progress: { done: 300, total: 1501 },
     }),
     "Failed · What the undo had done was itself undone while it ran.",
-    [
-      "What it undid stays; 1201 nodes were left. To go back to before, undo this undo in the history; then the change can be undone whole again.",
-      "If it stopped in the middle of restoring a group, restoring the items it left in the trash one by one completes that group: do not undo this undo first.",
-    ],
+    [],
   ],
   [
     "a revert interrupted",
@@ -302,17 +337,27 @@ test.each<[string, TransferJob, string, string[]]>([
     }),
     "Failed · The job was interrupted: the server stopped or restarted, or the job stopped responding.",
     [
-      "What it undid stays; 1401 nodes were left. To go back to before, undo this undo in the history; then the change can be undone whole again.",
+      "What it undid stays. Nodes not undone: 1,401. To go back to before, undo this undo in the history; then the change can be undone whole again.",
       "If it stopped in the middle of restoring a group, restoring the items it left in the trash one by one completes that group: do not undo this undo first.",
     ],
   ],
   [
-    "a revert failed before it undid anything",
-    revertOf(1, { state: "failed", report: reportOf("changeset_trimmed"), progress: { done: 0, total: 1501 } }),
+    "a revert failed as the purge took part of its change at its start",
+    revertOf(1, { state: "failed", report: reportOf("changeset_trimmed"), progress: { done: 0, total: 0 } }),
     "Failed · The purge took part of the change: it can no longer be undone.",
     [],
   ],
-])("%s says why, and that what it did stays, with what is left and what to do", async (_, job, state, says) => {
+  [
+    "a revert failed as the purge took part of its change between its batches",
+    revertOf(1, {
+      state: "failed",
+      report: reportOf("changeset_trimmed", { deleted: 300 }),
+      progress: { done: 300, total: 1501 },
+    }),
+    "Failed · The purge took part of the change: it can no longer be undone.",
+    ["What it undid stays. Nodes not undone: 1,201. To go back to before, undo this undo in the history."],
+  ],
+])("%s says why, and what became of what it did, what is left and what to do", async (_, job, state, says) => {
   const user = userEvent.setup();
   const server = jobsServer({ jobs: [job] });
   renderApp(transfer, server.app);
@@ -324,6 +369,58 @@ test.each<[string, TransferJob, string, string[]]>([
 
   await waitFor(() => expect(server.asked).toContain(`GET job ${job.name}`));
   expect([...shown.querySelectorAll(":scope > p")].map((line) => line.textContent)).toEqual(says);
+});
+
+test.each([
+  {
+    failure: "page_locked" as const,
+    lock: { page_id: guide.id, ...bob },
+    says: ["Bob is editing “Guide”.Open “Guide”"],
+  },
+  { failure: "revert_conflict" as const, lock: null, says: [] },
+])(
+  "a revert stopped as it began ($failure), at 0 of 0, says why, and not that there was nothing to undo",
+  async ({ failure, lock, says }) => {
+    const user = userEvent.setup();
+    const job = revertOf(1, {
+      state: "failed",
+      report: { ...reportOf(failure), lock },
+      progress: { done: 0, total: 0 },
+    });
+    const server = jobsServer({ jobs: [job] });
+    renderApp(transfer, server.app);
+    await screen.findByRole("navigation", { name: "Pages of Plans" });
+
+    const shown = await reportOpened(user, "Undo: Import");
+
+    await waitFor(() => expect(server.asked).toContain("GET job import"));
+    expect([...shown.querySelectorAll(":scope > p")].map((line) => line.textContent)).toEqual(says);
+  }
+);
+
+test("the reports of an import, a restore and a revert stopped by none show no conflicts", async () => {
+  const user = userEvent.setup();
+  const server = jobsServer({
+    jobs: [
+      jobJSON(1, { kind: "import", name: "Vault.zip", changeset_id: jobChangesetId(1) }),
+      restoreOf(2, { report: reportOf(null, { pages: 4 }) }),
+      revertOf(3),
+    ],
+  });
+  renderApp(transfer, server.app);
+
+  for (const [title, name] of [
+    ["Import of Vault.zip", "Vault.zip"],
+    ["Restore of Linux", "Linux"],
+    ["Undo: Import", "import"],
+  ] as const) {
+    // oxlint-disable-next-line no-await-in-loop -- one report after another, each read as it opens
+    const shown = await reportOpened(user, title);
+    // oxlint-disable-next-line no-await-in-loop -- as above
+    await waitFor(() => expect(server.asked).toContain(`GET job ${name}`));
+    expect(within(shown).queryByRole("heading", { name: /^Nodes that stopped the undo/u })).toBeNull();
+    expect(within(shown).queryByText(/The change undone/u)).toBeNull();
+  }
 });
 
 test("a revert stopped by its conflicts lists them, read as its report opens: each why, by its name, those of one name by the end of their ids; how many, the first hundred listed; no links, which the change undone's undo has", async () => {
@@ -339,12 +436,12 @@ test("a revert stopped by its conflicts lists them, read as its report opens: ea
     { node_id: guide.id, name: "Twin", reason: "children_added" },
     { node_id: install.id, name: "Twin", reason: "title_taken", holder_id: linux.id },
   ];
-  server.conflicts.set(job.id, { conflicts, conflict_count: 120 });
+  server.conflicts.set(job.id, { conflicts, conflict_count: 1200 });
   renderApp(transfer, server.app);
 
   const shown = await reportOpened(user, "Undo: Import");
 
-  const listed = await within(shown).findByRole("list", { name: "Nodes that stopped the undo: 120" });
+  const listed = await within(shown).findByRole("list", { name: "Nodes that stopped the undo: 1,200" });
   expect(
     within(listed)
       .getAllByRole("listitem")
@@ -364,6 +461,27 @@ test("a revert stopped by its conflicts lists them, read as its report opens: ea
   ).toBeTruthy();
 });
 
+test("a revert stopped by conflicts all listed does not say only the first are", async () => {
+  const user = userEvent.setup();
+  const job = revertOf(1, {
+    state: "failed",
+    report: reportOf("revert_conflict", { deleted: 10 }),
+    progress: { done: 10, total: 1501 },
+  });
+  const server = jobsServer({ jobs: [job] });
+  const conflicts: RevertConflict[] = [
+    { node_id: notes.id, name: "Notes", reason: "changed" },
+    { node_id: guide.id, name: "Guide", reason: "children_added" },
+  ];
+  server.conflicts.set(job.id, { conflicts, conflict_count: 2 });
+  renderApp(transfer, server.app);
+
+  const shown = await reportOpened(user, "Undo: Import");
+
+  expect(await within(shown).findByRole("list", { name: "Nodes that stopped the undo: 2" })).toBeTruthy();
+  expect(within(shown).queryByText(/^The first/u)).toBeNull();
+});
+
 test.each([
   {
     who: "another account",
@@ -381,6 +499,12 @@ test.each([
     who: "another account, on a page the tree has not",
     lock: { page_id: pageNode(40, "Gone").id, ...bob },
     says: "Bob is editing a page the undo was about to change.",
+    open: false,
+  },
+  {
+    who: "the account itself elsewhere, on a page the tree has not",
+    lock: { page_id: pageNode(40, "Gone").id, ...ada },
+    says: "You are editing, elsewhere, a page the undo was about to change.",
     open: false,
   },
 ])(

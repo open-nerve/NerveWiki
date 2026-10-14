@@ -81,8 +81,9 @@ export const TransferJobRow = observer(function TransferJobRow({
   const toRow = () => row.current?.focus();
   const history = `/${slug}/notebooks/${notebook.id}/history`;
   // Its changeset is there once it wrote: none of a job that wrote nothing; an interrupted one's progress may be a
-  // heartbeat behind (review A-M7).
-  const wrote = job.changeset_id !== null && (done > 0 || job.report?.failure === "interrupted");
+  // heartbeat behind (review A-M7), but one the queue dropped before it began wrote nothing (P4B review B-M2).
+  const wrote =
+    job.changeset_id !== null && (done > 0 || (job.report?.failure === "interrupted" && job.started_at !== null));
 
   async function cancel() {
     if (busy.current) {

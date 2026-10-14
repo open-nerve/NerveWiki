@@ -681,16 +681,24 @@ export const en = {
   "transfer.placedParentInTrash": "Put at the notebook's top level: the page it was under is in the trash.",
   "transfer.placedTooDeep": "Put at the notebook's top level: where it was, it would nest more than 10 levels deep.",
   "transfer.restoreLeft":
-    "What it restored stays in the notebook. The {left} nodes left are in the trash, in items of their own: each can be restored alone.",
+    "What it restored stays in the notebook. Nodes left: {left}. They are in the trash, in items of their own: each can be restored alone.",
+  "transfer.restoreLeftOnly":
+    "Nodes it had not come to: {left}. They are in the trash, in items of their own: each can be restored alone.",
+  "transfer.restoreLeftExpired":
+    "What it restored stays in the notebook. Nodes left: {left}. Their time in the trash is over: they can no longer be restored.",
+  "transfer.restoreLeftUndone": "What it restored is in the trash again, with the nodes it had not come to.",
   "transfer.revertNothing": "Nothing to undo: whatever the change touched is as it was before it.",
   "transfer.revertLeft":
-    "What it undid stays; {left} nodes were left. To go back to before, undo this undo in the history; then the change can be undone whole again.",
+    "What it undid stays. Nodes not undone: {left}. To go back to before, undo this undo in the history; then the change can be undone whole again.",
+  "transfer.revertLeftTrimmed":
+    "What it undid stays. Nodes not undone: {left}. To go back to before, undo this undo in the history.",
   "transfer.revertLeftGroup":
     "If it stopped in the middle of restoring a group, restoring the items it left in the trash one by one completes that group: do not undo this undo first.",
   "transfer.conflictsTitle": "Nodes that stopped the undo: {count}",
   "transfer.conflictsAgain": "Undoing the change again from “The change undone” lists them with their links.",
   "transfer.openPage": "Open “{page}”",
   "transfer.lockedSome": "{name} is editing a page the undo was about to change.",
+  "transfer.lockedSomeSelf": "You are editing, elsewhere, a page the undo was about to change.",
   "transfer.problem.other": "{path} differs in the vault.",
   "transfer.jobName": "{title}, {time}",
   "transfer.jobNameBy": "{title}, {person}, {time}",
@@ -699,9 +707,9 @@ export const en = {
   "transfer.cancelOf": "Cancel {name}",
   "transfer.reportOf": "Report on {name}",
   "transfer.inHistory": "See in the history",
-  "transfer.inHistoryOf": "See in the history: {name}",
+  "transfer.inHistoryOf": "See in the history ({name})",
   "transfer.reverted": "The change undone",
-  "transfer.revertedOf": "The change undone: {name}",
+  "transfer.revertedOf": "The change undone ({name})",
   "transfer.seeProgress": "See its progress",
   "transfer.seeJobs": "See the jobs",
   "transfer.writingBusy":

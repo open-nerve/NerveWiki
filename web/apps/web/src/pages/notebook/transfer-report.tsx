@@ -6,6 +6,7 @@ import useSWR from "swr";
 import { NotLoaded } from "../../app/not-loaded";
 import { useT, type PlainKey, type Translate } from "../../i18n/i18n";
 import { shortId, twinsOf } from "../../lib/twins";
+import type { Locale } from "../../i18n/locale";
 import type { Notebook } from "../../services/notebook.service";
 import type { RevertConflict } from "../../services/page.service";
 import type { TransferFailure, TransferJob, TransferProblem } from "../../services/transfer.service";
@@ -125,19 +126,63 @@ function countText(kind: TransferJob["kind"], count: ShownCount, t: Translate): 
     : t(`transfer.count.${count}`);
 }
 
+/** numberText writes a count as locale does: "1,501". */
+function numberText(count: number, locale: Locale): string {
+  return new Intl.NumberFormat(locale).format(count);
+}
+
+/**
+ * stoppedText is what a restore or a revert stopped on the way leaves,
+ * left (written) nodes not come to, and what to do, as its failure has it
+ * (M8/P4 design 4.3; P4B review B-M1): what it did stays, the rest in the
+ * trash in items of their own; a restore whose part was deleted or moved
+ * too deep (tree_changed), the rest alone; whose item went past its time,
+ * the rest no longer to restore; undone (changeset_reverted), all of it in
+ * the trash again; whose item changed (trash_changed), nothing to add. A
+ * revert undoes its undo to go back to before, then the change whole, and
+ * completes a group it stopped in the middle of item by item (review
+ * A-M4); trimmed, the change can no longer be undone whole; undone itself
+ * (changeset_reverted), nothing to add.
+ */
+function stoppedText(job: TransferJob, left: string, t: Translate): string[] {
+  const failure = job.state === "failed" ? job.report?.failure : undefined;
+  if (job.kind === "trash_restore") {
+    switch (failure) {
+      case "tree_changed":
+        return [t("transfer.restoreLeftOnly", { left })];
+      case "restore_expired":
+        return [t("transfer.restoreLeftExpired", { left })];
+      case "changeset_reverted":
+        return [t("transfer.restoreLeftUndone")];
+      case "trash_changed":
+        return [];
+    }
+    return [t("transfer.restoreLeft", { left })];
+  }
+  switch (failure) {
+    case "changeset_reverted":
+      return [];
+    case "changeset_trimmed":
+      return [t("transfer.revertLeftTrimmed", { left })];
+  }
+  return [t("transfer.revertLeft", { left }), t("transfer.revertLeftGroup")];
+}
+
 /**
  * TransferReport is what an ended job did (M7/P5 design 4.4, P6 design
  * 4.1): its counts, and where the vault differs from the notebook, or what
  * an import did not take as it was, read as it shows (the list holds no
  * problems). Its failure the row tells. A restore says where it put the
- * item; a revert, that there was nothing to undo; either, stopped, that
- * what it did stays, how many nodes are left, and what to do; a revert,
- * the nodes in its way, read as it shows, or who edits the page it was
- * about to change (M8/P4 design 4.3).
+ * item; a revert, that there was nothing to undo; either, stopped, what
+ * became of what it did, how many nodes are left, and what to do
+ * (stoppedText); a revert, the nodes in its way, read as it shows, or who
+ * edits the page it was about to change (M8/P4 design 4.3). Counts are
+ * written as the language writes numbers.
  */
 export function TransferReport({ notebook, job, id }: { notebook: Notebook; job: TransferJob; id: string }) {
   const transfers = useTransfers(notebook);
   const t = useT();
+  const { locale } = useStore().preferences;
   const titleId = useId();
   const { data, error, mutate } = useSWR(["transfer-job", job.id], () => transfers.detail(job.id));
   const report = job.report;
@@ -149,7 +194,10 @@ export function TransferReport({ notebook, job, id }: { notebook: Notebook; job:
   const kept = job.kind === "import" && stopped && counts !== undefined && (counts.pages > 0 || counts.attachments > 0);
   // A restore or a revert stopped on the way leaves what it did, the rest of its nodes left.
   const { done, total } = job.progress;
-  const left = stopped && done > 0 ? total - done : undefined;
+  const left =
+    (job.kind === "trash_restore" || job.kind === "revert") && stopped && done > 0
+      ? stoppedText(job, numberText(total - done, locale), t)
+      : [];
   return (
     <div id={id} className="space-y-3 rounded-md bg-muted/50 p-3 text-sm">
       {counts !== undefined && (
@@ -157,7 +205,7 @@ export function TransferReport({ notebook, job, id }: { notebook: Notebook; job:
           {shown.map((count) => (
             <div key={count} className="contents">
               <dt className="text-muted-foreground">{countText(job.kind, count, t)}</dt>
-              <dd>{counts[count]}</dd>
+              <dd>{numberText(counts[count], locale)}</dd>
             </div>
           ))}
         </dl>
@@ -165,13 +213,9 @@ export function TransferReport({ notebook, job, id }: { notebook: Notebook; job:
       {kept && <p>{t("transfer.importKept")}</p>}
       {job.kind === "trash_restore" && report?.placed != null && <Placed notebook={notebook} placed={report.placed} />}
       {job.kind === "revert" && job.state === "succeeded" && total === 0 && <p>{t("transfer.revertNothing")}</p>}
-      {job.kind === "trash_restore" && left !== undefined && <p>{t("transfer.restoreLeft", { left })}</p>}
-      {job.kind === "revert" && left !== undefined && (
-        <>
-          <p>{t("transfer.revertLeft", { left })}</p>
-          <p>{t("transfer.revertLeftGroup")}</p>
-        </>
-      )}
+      {left.map((line) => (
+        <p key={line}>{line}</p>
+      ))}
       {job.kind === "revert" && report?.lock != null && <Locked notebook={notebook} lock={report.lock} />}
       {data !== undefined && data.conflicts.length > 0 && (
         <Conflicts conflicts={data.conflicts} count={data.conflict_count} />
@@ -230,7 +274,8 @@ const Placed = observer(function Placed({
 
 /**
  * Locked says who edits the page a revert stopped at (page_locked), the
- * account itself elsewhere, leading to the page where the tree has it.
+ * account itself elsewhere, leading to the page where the tree has it;
+ * the page out of the tree, a page of the undo's.
  */
 const Locked = observer(function Locked({ notebook, lock }: { notebook: Notebook; lock: NonNullable<Report["lock"]> }) {
   const t = useT();
@@ -239,7 +284,11 @@ const Locked = observer(function Locked({ notebook, lock }: { notebook: Notebook
   const { slug } = useWorkspace();
   const page = distinctName(pages.tree, notebook, lock.page_id, t);
   if (page === undefined) {
-    return <p>{t("transfer.lockedSome", { name: lock.display_name })}</p>;
+    return (
+      <p>
+        {lock.user_id === me.id ? t("transfer.lockedSomeSelf") : t("transfer.lockedSome", { name: lock.display_name })}
+      </p>
+    );
   }
   return (
     <p className="flex flex-wrap gap-x-3">
@@ -265,7 +314,7 @@ function Conflicts({ conflicts, count }: { conflicts: readonly RevertConflict[];
   const t = useT();
   const { locale } = useStore().preferences;
   const titleId = useId();
-  const number = (n: number) => new Intl.NumberFormat(locale).format(n);
+  const number = (n: number) => numberText(n, locale);
   const twins = twinsOf(
     conflicts.map((conflict) => ({ id: conflict.node_id, name: conflict.name })),
     (node) => node.name

@@ -20,7 +20,11 @@ import { TransferJobRow } from "./transfer-job-row";
 import { LoadMoreButton, useLoadMore } from "../load-more";
 import { jobNames } from "./transfer-names";
 
-/** focusJob is the route state of the page reached by a page's export: the job its row takes the focus for. */
+/**
+ * focusJob is the route state of the page reached by a page's export, or by
+ * a restore's or an undo's start in the background: the job its row takes
+ * the focus for.
+ */
 export type FocusJob = { focusJob: string };
 
 function focusJobOf(state: unknown): string | undefined {
@@ -52,9 +56,10 @@ export function pollInterval(transfers: Pick<TransferStore, "active" | "jobs">, 
 }
 
 /**
- * NotebookTransferPage is the notebook's imports and exports (M7/P5
- * design 4.3, P6 design 4.2): its editors import into it; whoever sees
- * the notebook exports it, and sees their jobs; its admins see everyone's.
+ * NotebookTransferPage is the notebook's imports, exports, and restores
+ * and undos in the background (M7/P5 design 4.3, P6 design 4.2; M8/P4
+ * design 4.3): its editors import into it; whoever sees the notebook
+ * exports it, and sees their jobs; its admins see everyone's.
  */
 export const NotebookTransferPage = observer(function NotebookTransferPage() {
   const notebook = useNotebook();
