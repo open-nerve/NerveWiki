@@ -71,7 +71,7 @@ func (u *Unit) Revert(ctx context.Context, r RevertRead) (RevertDone, error) {
 	case len(items) > r.MaxItems:
 		return RevertDone{}, domain.ErrRevertTooLarge
 	}
-	state, err := reads.state(ctx, u.write.NotebookID, items, versions, u.write.At, r.Retention)
+	state, err := reads.state(ctx, u.write.NotebookID, r.Changeset, items, versions, u.write.At, r.Retention)
 	if err != nil {
 		return RevertDone{}, err
 	}
@@ -247,10 +247,11 @@ func (r revertReads) changeset(ctx context.Context, id uuid.UUID) ([]domain.Chan
 	return items, versions, nil
 }
 
-// groups reads the nodes the changeset changed as they are now, and the
+// groups reads the nodes the changeset reverted changed as they are now,
+// each root's deletion against that changeset (History.NodesNow), and the
 // groups of its deletions' trash items whose roots pass the check
 // (domain.RevertGroups), each at its time: one gone since is left out.
-func (r revertReads) groups(ctx context.Context, notebookID uuid.UUID, items []domain.ChangesetItem,
+func (r revertReads) groups(ctx context.Context, notebookID, reverted uuid.UUID, items []domain.ChangesetItem,
 	versions []domain.ChangesetVersion,
 ) (map[uuid.UUID]domain.NodeNow, map[uuid.UUID][]domain.TrashMember, error) {
 	ids := make([]uuid.UUID, 0, len(items)+len(versions))
@@ -260,7 +261,7 @@ func (r revertReads) groups(ctx context.Context, notebookID uuid.UUID, items []d
 	for _, v := range versions {
 		ids = append(ids, v.NodeID)
 	}
-	nodes, err := r.history.NodesNow(ctx, ids)
+	nodes, err := r.history.NodesNow(ctx, ids, reverted)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -303,12 +304,12 @@ func (r revertReads) rest(ctx context.Context, notebookID uuid.UUID, s domain.Re
 	return s, nil
 }
 
-// state reads the whole state of the changeset's revert in the notebook,
-// to be judged at at under retention.
-func (r revertReads) state(ctx context.Context, notebookID uuid.UUID, items []domain.ChangesetItem,
+// state reads the whole state of the revert of the changeset reverted in
+// the notebook, to be judged at at under retention.
+func (r revertReads) state(ctx context.Context, notebookID, reverted uuid.UUID, items []domain.ChangesetItem,
 	versions []domain.ChangesetVersion, at time.Time, retention time.Duration,
 ) (domain.RevertState, error) {
-	nodes, groups, err := r.groups(ctx, notebookID, items, versions)
+	nodes, groups, err := r.groups(ctx, notebookID, reverted, items, versions)
 	if err != nil {
 		return domain.RevertState{}, err
 	}

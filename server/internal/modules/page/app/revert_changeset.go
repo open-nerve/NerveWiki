@@ -115,7 +115,7 @@ func (r *RevertChangeset) Execute(ctx context.Context, id uuid.UUID, message *st
 	if err != nil {
 		return ChangesetReverted{}, err
 	}
-	nodes, groups, err := reads.groups(ctx, c.NotebookID, items, versions)
+	nodes, groups, err := reads.groups(ctx, c.NotebookID, c.ID, items, versions)
 	if err != nil {
 		return ChangesetReverted{}, err
 	}

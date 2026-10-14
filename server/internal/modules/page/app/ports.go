@@ -319,14 +319,15 @@ type History interface {
 	FirstChanges(ctx context.Context, ids []uuid.UUID, n int) (map[uuid.UUID][]domain.ChangeRow, error)
 	// The revert's reads (M8/P3 design 3.6): the changeset's items counted
 	// to limit; its items and its versions, by node; nodes as they are
-	// now, alive or not, a root with its group's counts (one the purge took
-	// is not among them); the alive pages' contents' revisions and hashes;
-	// versions' hashes and contents (a version the purge took is not among
-	// them).
+	// now, alive or not, a root with its group's counts and whether its
+	// deletion undid the restore of the trash item the changeset reverted
+	// made (one the purge took is not among them); the alive pages'
+	// contents' revisions and hashes; versions' hashes and contents (a
+	// version the purge took is not among them).
 	CountItems(ctx context.Context, id uuid.UUID, limit int) (int, error)
 	ChangesetItems(ctx context.Context, id uuid.UUID) ([]domain.ChangesetItem, error)
 	ChangesetVersions(ctx context.Context, id uuid.UUID) ([]domain.ChangesetVersion, error)
-	NodesNow(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]domain.NodeNow, error)
+	NodesNow(ctx context.Context, ids []uuid.UUID, reverted uuid.UUID) (map[uuid.UUID]domain.NodeNow, error)
 	ContentsNow(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]domain.ContentNow, error)
 	VersionHashes(ctx context.Context, refs []domain.VersionRef) (map[domain.VersionRef][]byte, error)
 	VersionContents(ctx context.Context, refs []domain.VersionRef) (map[domain.VersionRef]PageContent, error)

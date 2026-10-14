@@ -162,7 +162,7 @@ func (b trashBench) planned(tb testing.TB, c uuid.UUID) (reads, tree, plan time.
 	for _, v := range s.Versions {
 		ids = append(ids, v.NodeID)
 	}
-	if s.Nodes, err = store.NodesNow(ctx, ids); err != nil {
+	if s.Nodes, err = store.NodesNow(ctx, ids, c); err != nil {
 		tb.Fatal(err)
 	}
 	for root, deleted := range domain.RevertGroups(s.Items, s.Nodes) {

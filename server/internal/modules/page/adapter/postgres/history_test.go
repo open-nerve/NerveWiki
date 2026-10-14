@@ -356,12 +356,12 @@ func TestListChangesMergesItemsAndVersions(t *testing.T) {
 	}
 }
 
-// A revert's reads: the items counted to a limit; the items and versions by
-// node, each version with its base's size, none once the purge took the
-// base; the nodes now, a root with its counts and whether the revert of a
-// restore deleted it, a node the purge took not among them; the contents
-// of the pages alive; the versions' hashes and contents, a version the
-// purge took not among them.
+// A revert's reads: the items counted to a limit; the items and versions
+// by node, each version with its base's size, none once the purge took the
+// base; the nodes now, a root with its counts and whether its deletion
+// undid the restore of the trash item the changeset reverted made, a node
+// the purge took not among them; the contents of the pages alive; the
+// versions' hashes and contents, a version the purge took not among them.
 func TestTheRevertsReads(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
@@ -409,7 +409,7 @@ func TestTheRevertsReads(t *testing.T) {
 		t.Errorf("ChangesetVersions = %+v, %v; want P's on 1 of 3 bytes, Q's base purged", versions, err)
 	}
 	gone := uuid.NewV7()
-	nodes, err := f.s.NodesNow(ctx, []uuid.UUID{p.ID, x.ID, r.ID, gone})
+	nodes, err := f.s.NodesNow(ctx, []uuid.UUID{p.ID, x.ID, r.ID, gone}, cs.ID)
 	if err != nil || len(nodes) != 3 || nodes[p.ID].DeletedAt == nil || !nodes[p.ID].TrashRoot || nodes[p.ID].TrashPages != 1 ||
 		nodes[p.ID].TrashAssets != 1 || nodes[x.ID].TrashRoot || nodes[x.ID].DeletedAt == nil || nodes[r.ID].DeletedAt != nil ||
 		nodes[r.ID].Name != "R" || nodes[x.ID].Kind != domain.KindAsset {
@@ -418,50 +418,99 @@ func TestTheRevertsReads(t *testing.T) {
 	if nodes[p.ID].DeletedByRevert {
 		t.Errorf("NodesNow(P) = %+v, deleted by an edit's changeset; want no revert's deletion", nodes[p.ID])
 	}
-	// The deletion by the revert of a restore: its changeset, created at
-	// the root's time, a revert of a trash item's restore, holds the root's
-	// deletion. One holding another item of the root, created at another
-	// time, or a revert of an edit did not delete it (fix check 1); nor
-	// did one before the root's current deletion, an edit's, the root
-	// restored between them (fix check 1, nit 2).
-	restore := app.Changeset{ID: uuid.NewV7(), NotebookID: f.eng, Kind: domain.ChangesetTrashRestore, Client: domain.ClientWeb,
-		By: f.alice, At: now()}
-	if err := f.s.CreateChangeset(ctx, restore); err != nil {
-		t.Fatal(err)
+	// A root's deletion that undid the restore of the trash item the
+	// changeset reverted, D, made: the revert of a changeset that brought it
+	// back after D, a trash restore's (S) or a revert's (T), with no
+	// deletion of it between, holding its deletion, created at its time.
+	// Not one holding another item of it (U), created at another time (V);
+	// nor the revert of a creation (W, fix check 1), of a restore of a
+	// later item, a deletion between (B), or of one older than D (O); nor
+	// one before the root's current deletion, an edit's, the root restored
+	// between them (Y); nor against no changeset (fix check 2).
+	tD := now().Add(time.Minute)
+	del := f.changeset(t, f.eng, f.alice, domain.ClientWeb, tD)
+	type undo struct {
+		name string
+		// kind brought the page back at back, its item a restore, or a
+		// creation; the revert of it, made at made, deleted it at at, its
+		// item the deletion or another.
+		kind               domain.ChangesetKind
+		back, at, made     time.Time
+		restored, deletion bool
+		between            bool // a deletion of it between D and back
 	}
-	byRevert := func(name string, order float64, at, made time.Time, reverts uuid.UUID, deletion bool) domain.Node {
+	undone := func(u undo, order float64) domain.Node {
 		t.Helper()
-		n := f.page(t, f.eng, nil, name, order)
-		f.trashed(t, at, 1, 0, 1, n.ID)
-		rev := app.Changeset{ID: uuid.NewV7(), NotebookID: f.eng, Kind: domain.ChangesetRevert, RevertsID: reverts, Client: domain.ClientWeb,
-			By: f.alice, At: made}
+		n := f.page(t, f.eng, nil, u.name, order)
+		f.item(t, del.ID, tD, domain.Change{NodeID: n.ID, Before: new(n.State())})
+		if u.between {
+			f.item(t, f.changeset(t, f.eng, f.alice, domain.ClientWeb, tD.Add(time.Second)).ID, tD.Add(time.Second),
+				domain.Change{NodeID: n.ID, Before: new(n.State())})
+		}
+		back := app.Changeset{ID: uuid.NewV7(), NotebookID: f.eng, Kind: u.kind, Client: domain.ClientWeb, By: f.alice, At: u.back}
+		if u.kind == domain.ChangesetRevert {
+			back.RevertsID = cs.ID
+		}
+		if err := f.s.CreateChangeset(ctx, back); err != nil {
+			t.Fatal(err)
+		}
+		brought := domain.Change{NodeID: n.ID, After: new(n.State())}
+		if u.restored {
+			brought.Restored = &domain.Restored{DeletedAt: tD}
+		}
+		f.item(t, back.ID, u.back, brought)
+		f.trashed(t, u.at, 1, 0, 1, n.ID)
+		rev := app.Changeset{ID: uuid.NewV7(), NotebookID: f.eng, Kind: domain.ChangesetRevert, RevertsID: back.ID, Client: domain.ClientWeb,
+			By: f.alice, At: u.made}
 		if err := f.s.CreateChangeset(ctx, rev); err != nil {
 			t.Fatal(err)
 		}
-		before, after := n.State(), n.State()
-		change := domain.Change{NodeID: n.ID, Before: &before}
-		if !deletion {
-			change.After = &after
+		change := domain.Change{NodeID: n.ID, Before: new(n.State())}
+		if !u.deletion {
+			change.After = new(n.State())
 		}
-		f.item(t, rev.ID, at, change)
+		f.item(t, rev.ID, u.at, change)
 		return n
 	}
-	s1, s2, s3, s4, s5 := now().Add(time.Minute), now().Add(2*time.Minute), now().Add(3*time.Minute), now().Add(4*time.Minute),
-		now().Add(5*time.Minute)
-	deleted, other := byRevert("S", 3, s1, s1, restore.ID, true).ID, byRevert("U", 4, s2, s2, restore.ID, false).ID
-	later, ofAnEdit := byRevert("V", 5, s3, s3.Add(time.Hour), restore.ID, true).ID, byRevert("W", 6, s4, s4, cs.ID, true).ID
-	y := byRevert("Y", 7, s5, s5, restore.ID, true)
-	if _, err := f.s.RestoreNodes(ctx, restoration(s5, nil, 7, f.alice, y)); err != nil {
+	at := func(i int) time.Time { return tD.Add(time.Duration(i) * time.Minute) }
+	ids := []uuid.UUID{r.ID}
+	var y domain.Node
+	for i, u := range []undo{
+		{name: "S", kind: domain.ChangesetTrashRestore, back: at(1), at: at(2), made: at(2), restored: true, deletion: true},
+		{name: "T", kind: domain.ChangesetRevert, back: at(3), at: at(4), made: at(4), restored: true, deletion: true},
+		{name: "U", kind: domain.ChangesetTrashRestore, back: at(5), at: at(6), made: at(6), restored: true},
+		{name: "V", kind: domain.ChangesetTrashRestore, back: at(7), at: at(8), made: at(8).Add(time.Hour), restored: true, deletion: true},
+		{name: "W", kind: domain.ChangesetEdit, back: at(9), at: at(10), made: at(10), deletion: true},
+		{name: "B", kind: domain.ChangesetTrashRestore, back: at(11), at: at(12), made: at(12), restored: true, deletion: true,
+			between: true},
+		{name: "O", kind: domain.ChangesetTrashRestore, back: tD.Add(-time.Minute), at: at(13), made: at(13), restored: true,
+			deletion: true},
+		{name: "Y", kind: domain.ChangesetTrashRestore, back: at(14), at: at(15), made: at(15), restored: true, deletion: true},
+	} {
+		n := undone(u, float64(10+i))
+		ids = append(ids, n.ID)
+		if u.name == "Y" {
+			y = n
+		}
+	}
+	if _, err := f.s.RestoreNodes(ctx, restoration(at(15), nil, 17, f.alice, y)); err != nil {
 		t.Fatal(err)
 	}
-	s6 := s5.Add(2 * time.Hour)
-	f.trashed(t, s6, 1, 0, 1, y.ID)
-	f.item(t, f.changeset(t, f.eng, f.alice, domain.ClientWeb, s6).ID, s6, domain.Change{NodeID: y.ID, Before: new(y.State())})
-	nodes, err = f.s.NodesNow(ctx, []uuid.UUID{deleted, other, later, ofAnEdit, y.ID, r.ID})
-	if err != nil || !nodes[deleted].DeletedByRevert || nodes[other].DeletedByRevert || nodes[later].DeletedByRevert ||
-		nodes[ofAnEdit].DeletedByRevert || nodes[y.ID].DeletedByRevert || !nodes[y.ID].DeletedAt.Equal(s6) ||
-		nodes[r.ID].DeletedByRevert {
-		t.Errorf("NodesNow = %+v, %v; want S deleted by a restore's revert alone, Y at its later deletion", nodes, err)
+	later := at(15).Add(2 * time.Hour)
+	f.trashed(t, later, 1, 0, 1, y.ID)
+	f.item(t, f.changeset(t, f.eng, f.alice, domain.ClientWeb, later).ID, later, domain.Change{NodeID: y.ID, Before: new(y.State())})
+	nodes, err = f.s.NodesNow(ctx, ids, del.ID)
+	got := map[string]bool{}
+	for _, n := range nodes {
+		if n.DeletedByRevert {
+			got[n.Name] = true
+		}
+	}
+	if err != nil || len(nodes) != len(ids) || !got["S"] || !got["T"] || len(got) != 2 || !nodes[y.ID].DeletedAt.Equal(later) {
+		t.Errorf("NodesNow = %+v, %v; want S and T alone their restores undone, Y at its later deletion", got, err)
+	}
+	if nodes, err := f.s.NodesNow(ctx, ids[1:2], uuid.UUID{}); err != nil || nodes[ids[1]].DeletedByRevert {
+		t.Errorf("NodesNow(S) of no changeset reverted = %+v, %v; want its restore not undone", nodes, err)
 	}
 	contents, err := f.s.ContentsNow(ctx, []uuid.UUID{p.ID, q.ID, r.ID})
 	if err != nil || len(contents) != 2 || contents[r.ID].Revision != 1 || len(contents[q.ID].Hash) != 32 {

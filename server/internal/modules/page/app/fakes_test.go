@@ -117,8 +117,10 @@ type fakeStore struct {
 	contents   map[uuid.UUID]app.Content
 	changesets []app.Changeset
 	// items are the changesets' items, merged by node as the table's
-	// upsert merges them.
+	// upsert merges them; recorded are all of them, each changeset's
+	// merged by node.
 	items     map[uuid.UUID]app.Item
+	recorded  []app.Item
 	revisions []app.Revision
 	// touched are the changesets written again, with when.
 	touched map[uuid.UUID]time.Time
@@ -724,6 +726,10 @@ func (f *fakeStore) RecordItems(ctx context.Context, items []app.Item) error {
 			it.Change.Before, it.Change.Restored, it.Change.Revision = old.Change.Before, old.Change.Restored, old.Change.Revision
 		}
 		f.items[it.Change.NodeID] = it
+		f.recorded = slices.DeleteFunc(f.recorded, func(r app.Item) bool {
+			return r.ChangesetID == it.ChangesetID && r.Change.NodeID == it.Change.NodeID
+		})
+		f.recorded = append(f.recorded, it)
 	}
 	return nil
 }

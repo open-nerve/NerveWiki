@@ -645,10 +645,12 @@ func TestARevertsConflictsThroughServe(t *testing.T) {
 // The top renamed back by a revert, then deleted where the deletion left
 // it by its creation's revert, not a restore's: B changed (M8/P3A fix
 // check 1). The top renamed and deleted by an edit, its restore's revert,
-// itself reverted, an older deletion: X changed. Reverted newest first,
-// each of the changesets succeeds, the deletion's last, the restore's
-// revert having deleted the item where the restore put it: the notebook is
-// as before the deletion.
+// itself reverted, an older deletion: X changed. The top renamed and
+// deleted again, the restore of that later item reverted, not of the
+// deletion's: A changed (fix check 2). Reverted newest first, each of the
+// changesets succeeds, the deletion's last, the restore's revert having
+// deleted the item where the restore put it: the notebook is as before the
+// deletion.
 func TestARevertOfADeletionComparesItsItemWhereItWas(t *testing.T) {
 	tm := newAcmeTeam(t, "member", "")
 	for _, tt := range []struct {
@@ -719,6 +721,18 @@ func TestARevertOfADeletionComparesItsItemWhereItWas(t *testing.T) {
 			tm.send(t, nodeDeletion("alice", x), http.StatusNoContent)
 			return d
 		}, []string{"changed X"}},
+		{"its top renamed and deleted again, that item's restore reverted", func(t *testing.T, nb string, before func()) string {
+			x := tm.createPage(t, "alice", nb, "", "A")
+			before()
+			tm.send(t, nodeDeletion("alice", x), http.StatusNoContent)
+			d := tm.newest(t, nb).ID
+			tm.restored(t, "alice", x)
+			tm.send(t, nodeRename("alice", x, "B"), http.StatusOK)
+			tm.send(t, nodeDeletion("alice", x), http.StatusNoContent)
+			tm.restored(t, "alice", x)
+			tm.reverted(t, "bob", tm.newest(t, nb).ID)
+			return d
+		}, []string{"changed A"}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			nb := tm.openNotebook(t, "alice", tt.name)
@@ -777,6 +791,94 @@ func TestARevertOfADeletionComparesItsItemWhereItWas(t *testing.T) {
 			t.Errorf("the notebook reverted newest first to X's deletion:\n%s\nwant as before it:\n%s", now, was)
 		}
 	})
+}
+
+// The undo of an undo goes newest first too (M8/P3A fix check 2): after
+// a deletion D and a restore of its item, the log reverted newest first
+// to before D, then the reverts of that walk reverted newest first, each
+// succeeds, and the notebook is as before D, then as after the restore.
+// X deleted, then its parent; X restored at the root: the first walk
+// brings X back under its parent by D's revert, exempt as the restore's
+// revert deleted it; the second deletes X there by that revert's revert,
+// then the parent, then restores X at the root by the revert of the
+// restore's revert, exempt as the revert of D's revert, a revert's
+// restore of the same item, deleted it. X deleted, a page created in its
+// name, X restored numbered: the same. D reverted: its revert's revert,
+// then D's revert of it.
+func TestTheUndoOfAnUndoGoesNewestFirst(t *testing.T) {
+	tm := newAcmeTeam(t, "member", "")
+	// back reverts the notebook's changesets newest first, as its log reads
+	// them now, down to stop or n of them, each to succeed; it answers how
+	// many.
+	back := func(t *testing.T, nb, stop string, n int) int {
+		t.Helper()
+		after, _ := tm.history(t, "alice", nb, "")
+		for i, c := range after {
+			if i == n {
+				return i
+			}
+			tm.reverted(t, "bob", c.ID)
+			if c.ID == stop {
+				return i + 1
+			}
+		}
+		return len(after)
+	}
+	for _, tt := range []struct {
+		name string
+		// change makes D after the pages, then the restore of its item;
+		// it answers D.
+		change func(t *testing.T, nb string, before func()) string
+	}{
+		{"a restore at the root, its parent in the trash", func(t *testing.T, nb string, before func()) string {
+			p := tm.createPage(t, "alice", nb, "", "P")
+			x := tm.createPage(t, "alice", nb, p, "X")
+			before()
+			tm.send(t, nodeDeletion("alice", x), http.StatusNoContent)
+			d := tm.newest(t, nb).ID
+			tm.send(t, nodeDeletion("alice", p), http.StatusNoContent)
+			if r := tm.restored(t, "alice", x); r.Placed.at() != " parent_in_trash" {
+				t.Fatalf("X restored %s, want at the root, its parent in the trash", r.Placed.at())
+			}
+			return d
+		}},
+		{"a restore numbered", func(t *testing.T, nb string, before func()) string {
+			x := tm.createPage(t, "alice", nb, "", "A")
+			before()
+			tm.send(t, nodeDeletion("alice", x), http.StatusNoContent)
+			d := tm.newest(t, nb).ID
+			tm.createPage(t, "alice", nb, "", "A")
+			if r := tm.restored(t, "alice", x); r.Name != "A 2" {
+				t.Fatalf("X restored as %q, want A 2", r.Name)
+			}
+			return d
+		}},
+		{"a restore by the deletion's revert", func(t *testing.T, nb string, before func()) string {
+			p := tm.createPage(t, "alice", nb, "", "P")
+			x := tm.createPage(t, "alice", nb, p, "X")
+			tm.createPage(t, "alice", nb, p, "Sibling")
+			before()
+			tm.send(t, nodeDeletion("alice", x), http.StatusNoContent)
+			d := tm.newest(t, nb).ID
+			tm.reverted(t, "bob", d)
+			return d
+		}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			nb := tm.openNotebook(t, "alice", tt.name)
+			var was string
+			d := tt.change(t, nb, func() { was = tm.notebookState(t, nb) })
+			restored := tm.notebookState(t, nb)
+			n := back(t, nb, d, -1)
+			if now := tm.notebookState(t, nb); now != was {
+				t.Fatalf("the notebook reverted newest first to D:\n%s\nwant as before D:\n%s", now, was)
+			}
+			back(t, nb, "", n)
+			if now := tm.notebookState(t, nb); now != restored {
+				t.Errorf("the notebook's %d reverts reverted newest first:\n%s\nwant as after the restore:\n%s", n, now, restored)
+			}
+		})
+	}
 }
 
 // A changeset part of which the purge took is page.changeset_trimmed, and

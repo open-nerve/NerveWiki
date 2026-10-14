@@ -146,16 +146,24 @@ FROM page_revisions r LEFT JOIN page_revisions b ON b.node_id = r.node_id AND b.
 WHERE r.changeset_id = sqlc.arg(id) ORDER BY r.node_id;
 
 -- name: NodesNow :many
--- Nodes as they are now, alive or in the trash, by their key: a trash item's root with its counts, and whether the
--- revert of a trash item's restore deleted it (M8/P3A review A-1, fix check 1). A unit writes at one time, its
--- changeset created at it: the root's deletion's item is of a changeset of the notebook created at its time, which the
--- log's index reads by its key, the item by the changeset's and the node's, the changeset it reverts by its own.
+-- Nodes as they are now, alive or in the trash, by their key: a trash item's root with its counts, and whether its
+-- deletion undid the restore of the trash item the changeset reverted made (M8/P3A review A-1, fix checks 1 and 2): it
+-- is the revert of a changeset that restored the node, a trash restore or a revert, made after the changeset reverted
+-- with no deletion of the node between them, so that what it restored was that changeset's item. A unit writes at one
+-- time, its changeset created at it: the root's deletion's item is of a changeset of the notebook created at its time,
+-- which the log's index reads by its key; the items by their changesets' and the node's key, the changesets by their
+-- own; the deletions between by the node's items' index.
 SELECT n.id, n.notebook_id, n.parent_id, n.kind, n.name, n.name_key, n.sort_order, n.created_by_id, n.updated_by_id,
     n.created_at, n.updated_at, n.deleted_at, n.trash_root, n.trash_pages, n.trash_assets,
     CASE WHEN n.trash_root THEN EXISTS (
         SELECT 1 FROM changesets c JOIN changeset_items i ON i.changeset_id = c.id AND i.node_id = n.id AND i.after_name IS NULL
-        JOIN changesets r ON r.id = c.reverts_id AND r.kind = 'trash_restore'
+        JOIN changeset_items ri ON ri.changeset_id = c.reverts_id AND ri.node_id = n.id AND ri.restored
+        JOIN changesets r ON r.id = c.reverts_id
+        JOIN changesets d ON d.id = sqlc.arg(reverted)::uuid AND d.created_at < r.created_at
         WHERE c.notebook_id = n.notebook_id AND c.created_at = n.deleted_at AND c.kind = 'revert'
+            AND NOT EXISTS (
+                SELECT 1 FROM changeset_items x JOIN changesets xc ON xc.id = x.changeset_id
+                WHERE x.node_id = n.id AND x.after_name IS NULL AND xc.created_at > d.created_at AND xc.created_at < r.created_at)
     ) ELSE false END::boolean AS deleted_by_revert
 FROM nodes n WHERE n.id = ANY(sqlc.arg(ids)::uuid[]);
 

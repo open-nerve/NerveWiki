@@ -20,12 +20,12 @@ import (
 // the log and one actor's a range of their own index each, already in its
 // order; one page's its items' and versions' by node; a changeset's
 // changes, counts and moves its two keys; a trash root's deletion by the
-// revert of a restore the log's and the items' keys and the changesets';
-// what reverted a changeset the partial index on reverts_id; the purge's
-// the partial indexes on deleted_at and the changesets' key, its deletion
-// of the emptied ones the partial index on trimmed; and the notebooks'
-// foreign key's check, which reads changesets by notebook_id alone, the
-// log's.
+// revert of its restore the log's and the items' keys and the changesets',
+// the deletions between the items' index on node_id; what reverted a
+// changeset the partial index on reverts_id; the purge's the partial
+// indexes on deleted_at and the changesets' key, its deletion of the
+// emptied ones the partial index on trimmed; and the notebooks' foreign
+// key's check, which reads changesets by notebook_id alone, the log's.
 func TestTheLogReadsUseTheirIndexes(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
@@ -89,9 +89,10 @@ func TestTheLogReadsUseTheirIndexes(t *testing.T) {
 			return err
 		}), []string{"page_revisions_changeset_id_node_id_key", "page_revisions_node_id_revision_key"}, false},
 		{"NodesNow", statementOf(t, func(q *gen.Queries) error {
-			_, err := q.NodesNow(ctx, roots)
+			_, err := q.NodesNow(ctx, gen.NodesNowParams{Ids: roots, Reverted: id})
 			return err
-		}), []string{"changesets_notebook_id_created_at_id_idx", "changeset_items_changeset_id_node_id_key", "changesets_pkey"}, false},
+		}), []string{"changesets_notebook_id_created_at_id_idx", "changeset_items_changeset_id_node_id_key", "changesets_pkey",
+			"changeset_items_node_id_idx"}, false},
 		{"LockChangeset", statementOf(t, func(q *gen.Queries) error {
 			_, err := q.LockChangeset(ctx, id)
 			return err

@@ -67,8 +67,11 @@ type RevertConflict struct {
 
 // NodeNow is a node as it is now, alive or in the trash: DeletedAt is when
 // it was deleted, nil while it is alive; a trash item's root holds its
-// group's pages and attachments, and DeletedByRevert when the revert of a
-// trash item's restore deleted it, at that time.
+// group's pages and attachments, and DeletedByRevert when its deletion,
+// at that time, undid the restore of the trash item the changeset
+// reverted made: it is the revert of a changeset, a trash restore or a
+// revert, that restored the node after that changeset, with no deletion
+// of the node between them.
 type NodeNow struct {
 	Node
 	DeletedAt               *time.Time
@@ -338,8 +341,8 @@ func (c reverted) rootHolds(top uuid.UUID, nodes map[uuid.UUID]NodeNow) bool {
 // alive where it put it, a page at the content it left; deleted, in the
 // trash, each top of its deletion the root of a trash item that holds
 // exactly the nodes it deleted under it, each node where and as it
-// deleted it (a top the revert of a restore deleted again excepted:
-// below), a page at the content it deleted; renamed, moved or reordered,
+// deleted it (a top whose restore was reverted excepted: below), a page
+// at the content it deleted; renamed, moved or reordered,
 // alive where it put it; written, alive at the content it wrote. A
 // version it compares by that the purge took is missing, no conflict.
 // Then the state before it, S*, is checked once: what it deleted alive
@@ -442,14 +445,18 @@ func (p *planner) left() {
 // leftDeleted checks a node the changeset deleted is in the trash as it
 // left it: each node under the parent, at the order and of the name it
 // deleted it from, a newer rename or move of it, restored and deleted
-// again, changed (M8/P3A review A-1). A top the revert of a restore
-// deleted again is compared by its group alone: the restore may have put
-// the item elsewhere (at the root, its name numbered), and reverted newest
-// first, its revert deletes it there before the revert of the deletion.
-// Any other revert deletes the top where the deletion's revert puts it
-// back, or comes after that revert, so the top is compared: a revert of a
-// revert of the deletion deletes it where that revert put it, and a
-// creation is older than the deletion (M8/P3A fix check 1).
+// again, changed (M8/P3A review A-1). A top whose current deletion
+// undid the restore of this deletion's own trash item is compared by its
+// group alone (NodeNow.DeletedByRevert): the first changeset after the
+// deletion that brought the item back, a trash restore or a revert, put it
+// where it chose (a restore at the root, its name numbered; the revert of
+// an older deletion where that one left it), and reverted newest first,
+// its revert deleted it there, before this one. That pair cancels out, so
+// putting the top back where the deletion left it undoes nothing newer.
+// Any other deletion of the top is compared where and as the deletion
+// left it: an edit's; a creation's revert; the revert of a restore of a
+// later trash item of the node, which a deletion after this one made
+// (M8/P3A fix checks 1 and 2).
 func (p *planner) leftDeleted(id uuid.UUID, it ChangesetItem, n NodeNow, exists bool) {
 	top := p.c.top[id]
 	t := p.s.Nodes[top]

@@ -264,33 +264,74 @@ func (h *fakeHistory) ChangesetVersions(ctx context.Context, id uuid.UUID) ([]do
 	return nil, nil
 }
 
-// deletedByRevert reports whether the revert of a restore deleted the node
-// id at at, as NodesNow reads it: a revert the store made at that time
-// whose item of the node is its deletion, of a trash item's restore, the
-// store's or the history's.
-func (h *fakeHistory) deletedByRevert(id uuid.UUID, at time.Time) bool {
-	it, ok := h.store.items[id]
-	return ok && it.Change.After == nil && slices.ContainsFunc(h.store.changesets, func(c app.Changeset) bool {
-		return c.ID == it.ChangesetID && c.Kind == domain.ChangesetRevert && c.At.Equal(at) &&
-			h.kindOf(c.RevertsID) == domain.ChangesetTrashRestore
+// nodeItem is a changeset's item of a node, the history's or one the store
+// recorded, at its changeset's time: a deletion, a restore, or neither.
+type nodeItem struct {
+	changeset          uuid.UUID
+	at                 time.Time
+	deletion, restored bool
+}
+
+// itemsOf are the node id's items.
+func (h *fakeHistory) itemsOf(id uuid.UUID) []nodeItem {
+	var out []nodeItem
+	for _, c := range h.sets {
+		for _, it := range c.items {
+			if it.NodeID == id {
+				out = append(out, nodeItem{changeset: c.ID, at: c.CreatedAt, deletion: it.After == nil, restored: it.Restored})
+			}
+		}
+	}
+	for _, it := range h.store.recorded {
+		if at, ok := h.timeOf(it.ChangesetID); ok && it.Change.NodeID == id {
+			out = append(out, nodeItem{changeset: it.ChangesetID, at: at, deletion: it.Change.After == nil, restored: it.Change.Restored != nil})
+		}
+	}
+	return out
+}
+
+// timeOf is the time of the changeset id, the store's or the history's.
+func (h *fakeHistory) timeOf(id uuid.UUID) (time.Time, bool) {
+	if i := slices.IndexFunc(h.store.changesets, func(c app.Changeset) bool { return c.ID == id }); i >= 0 {
+		return h.store.changesets[i].At, true
+	}
+	if i := slices.IndexFunc(h.sets, func(c *fakeChangeset) bool { return c.ID == id }); i >= 0 {
+		return h.sets[i].CreatedAt, true
+	}
+	return time.Time{}, false
+}
+
+// deletedByRevert reports whether the node id's deletion at at undid the
+// restore of the trash item the changeset reverted made, as NodesNow reads
+// it: a revert the store made at that time, whose item of the node is its
+// deletion, of a changeset, the store's or the history's, that restored
+// the node after the one reverted, with no deletion of the node between
+// them.
+func (h *fakeHistory) deletedByRevert(id uuid.UUID, at time.Time, reverted uuid.UUID) bool {
+	from, ok := h.timeOf(reverted)
+	if !ok {
+		return false
+	}
+	items := h.itemsOf(id)
+	has := func(changeset uuid.UUID, deletion, restored bool) bool {
+		return slices.ContainsFunc(items, func(i nodeItem) bool {
+			return i.changeset == changeset && (!deletion || i.deletion) && (!restored || i.restored)
+		})
+	}
+	undid := func(c, r uuid.UUID) bool {
+		to, ok := h.timeOf(r)
+		return ok && to.After(from) && has(c, true, false) && has(r, false, true) &&
+			!slices.ContainsFunc(items, func(i nodeItem) bool { return i.deletion && i.at.After(from) && i.at.Before(to) })
+	}
+	return slices.ContainsFunc(h.store.changesets, func(c app.Changeset) bool {
+		return c.Kind == domain.ChangesetRevert && c.At.Equal(at) && undid(c.ID, c.RevertsID)
 	})
 }
 
-// kindOf is the kind of the changeset id, the store's or the history's;
-// none when neither holds it.
-func (h *fakeHistory) kindOf(id uuid.UUID) domain.ChangesetKind {
-	if i := slices.IndexFunc(h.store.changesets, func(c app.Changeset) bool { return c.ID == id }); i >= 0 {
-		return h.store.changesets[i].Kind
-	}
-	if c := h.find(id); c != nil {
-		return c.Kind
-	}
-	return ""
-}
-
 // NodesNow reads the store's nodes, alive or in the trash, a root with its
-// counts and whether the revert of a restore deleted it.
-func (h *fakeHistory) NodesNow(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]domain.NodeNow, error) {
+// counts and whether its deletion undid the restore of the trash item the
+// changeset reverted made.
+func (h *fakeHistory) NodesNow(ctx context.Context, ids []uuid.UUID, reverted uuid.UUID) (map[uuid.UUID]domain.NodeNow, error) {
 	h.record(ctx, fmt.Sprintf("NodesNow %d", len(ids)))
 	out := map[uuid.UUID]domain.NodeNow{}
 	for _, id := range ids {
@@ -301,7 +342,7 @@ func (h *fakeHistory) NodesNow(ctx context.Context, ids []uuid.UUID) (map[uuid.U
 		now := domain.NodeNow{Node: n.Node, DeletedAt: n.DeletedAt, TrashRoot: n.TrashRoot}
 		if n.TrashRoot {
 			now.TrashPages, now.TrashAssets = h.store.counts[id][0], h.store.counts[id][1]
-			now.DeletedByRevert = h.deletedByRevert(id, *n.DeletedAt)
+			now.DeletedByRevert = h.deletedByRevert(id, *n.DeletedAt, reverted)
 		}
 		out[id] = now
 	}

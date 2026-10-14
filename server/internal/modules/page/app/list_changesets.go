@@ -72,7 +72,7 @@ func (l *ListChangesets) Execute(ctx context.Context, notebookID uuid.UUID, q Lo
 	}
 	f := domain.LogFilter{Actor: q.Actor, PageID: q.PageID}
 	if q.PageID != nil {
-		nodes, err := l.r.History.NodesNow(ctx, []uuid.UUID{*q.PageID})
+		nodes, err := l.r.History.NodesNow(ctx, []uuid.UUID{*q.PageID}, uuid.UUID{}) // no changeset reverted
 		if err != nil {
 			return ChangesetList{}, err
 		}

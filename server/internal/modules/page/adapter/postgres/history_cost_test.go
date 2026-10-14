@@ -203,9 +203,10 @@ func TestTheLogReadsInTimeAsLongAsAPage(t *testing.T) {
 // (M8/P3 design 3.11): 4 to 20 ms here, a plan for any arguments no
 // slower than one with them, so they are pgx's cached statements; a
 // second each, a CI's runner slower. The nodes are read alive, and as
-// many trash items' roots, each deleted by the revert of a restore, whose
-// deletions it reads with the changesets they revert (M8/P3A review A-1,
-// fix check 1): 35 to 38 ms.
+// many trash items' roots, each deleted by the revert of the restore of
+// the item a deletion D made, whose deletions it reads with the changesets
+// they revert, their restores and the roots' deletions between (M8/P3A
+// review A-1, fix checks 1 and 2): 69 to 85 ms.
 func TestTheRevertsArrayReadsInTimeAtTheUnitsBound(t *testing.T) {
 	ctx := context.Background()
 	l := newLongLog(t)
@@ -214,37 +215,49 @@ func TestTheRevertsArrayReadsInTimeAtTheUnitsBound(t *testing.T) {
 		refs[i] = domain.VersionRef{NodeID: id, Revision: 1}
 	}
 	roots := l.pages[domain.MaxUnitNodes : 2*domain.MaxUnitNodes]
-	// Each root deleted at the time of a changeset of the long page's
-	// versions, which has no items, made a revert of a restore, an hour
-	// before the first, holding its deletion.
-	for _, sql := range []string{
-		`WITH r AS (SELECT id, row_number() OVER (ORDER BY id) AS k FROM unnest($1::uuid[]) id),
+	// Each root deleted by D two hours before the first changeset, brought
+	// back by a restore an hour later, then deleted again at the time of a
+	// changeset of the long page's versions, which has no items, made the
+	// revert of that restore holding its deletion.
+	d, back := uuid.NewV7(), uuid.NewV7()
+	for _, s := range []struct {
+		sql  string
+		args []any
+	}{
+		{`WITH r AS (SELECT id, row_number() OVER (ORDER BY id) AS k FROM unnest($1::uuid[]) id),
 			c AS (SELECT id, created_at, row_number() OVER (ORDER BY created_at) AS k FROM changesets
 				WHERE notebook_id = $2 AND id NOT IN (SELECT changeset_id FROM changeset_items))
 		UPDATE nodes SET deleted_at = c.created_at, trash_root = true, trash_pages = 1, trash_assets = 0, trash_height = 1
-		FROM r JOIN c ON c.k = r.k WHERE nodes.id = r.id`,
-		`WITH s AS (
-			INSERT INTO changesets (id, notebook_id, kind, client, created_by_id, created_at, updated_at)
-			SELECT uuidv7(), notebook_id, 'trash_restore', client, created_by_id, created_at - interval '1 hour',
-				created_at - interval '1 hour'
-			FROM changesets WHERE notebook_id = $2 ORDER BY created_at LIMIT 1 RETURNING id)
-		UPDATE changesets c SET kind = 'revert', reverts_id = s.id FROM nodes n, s
+		FROM r JOIN c ON c.k = r.k WHERE nodes.id = r.id`, []any{roots, l.notebook}},
+		{`INSERT INTO changesets (id, notebook_id, kind, client, created_by_id, created_at, updated_at)
+		VALUES ($1, $3, 'edit', 'web', $4, $5, $5), ($2, $3, 'trash_restore', 'web', $4, $6, $6)`,
+			[]any{d, back, l.notebook, l.bob, now().Add(-2 * time.Hour), now().Add(-time.Hour)}},
+		{`UPDATE changesets c SET kind = 'revert', reverts_id = $3 FROM nodes n
 		WHERE n.id = ANY($1::uuid[]) AND n.notebook_id = $2 AND c.notebook_id = $2 AND c.created_at = n.deleted_at`,
-		`INSERT INTO changeset_items (id, changeset_id, node_id, before_name, before_sort_order, created_at, updated_at, deleted_at)
+			[]any{roots, l.notebook, back}},
+		{`INSERT INTO changeset_items (id, changeset_id, node_id, before_name, before_sort_order, created_at, updated_at, deleted_at)
+		SELECT uuidv7(), c.id, n.id, n.name, n.sort_order, c.created_at, c.created_at, n.deleted_at FROM nodes n, changesets c
+		WHERE n.id = ANY($1::uuid[]) AND n.notebook_id = $2 AND c.id = $3`, []any{roots, l.notebook, d}},
+		{`INSERT INTO changeset_items (id, changeset_id, node_id, after_name, after_sort_order, restored, created_at, updated_at,
+			deleted_at)
+		SELECT uuidv7(), c.id, n.id, n.name, n.sort_order, true, c.created_at, c.created_at, n.deleted_at FROM nodes n, changesets c
+		WHERE n.id = ANY($1::uuid[]) AND n.notebook_id = $2 AND c.id = $3`, []any{roots, l.notebook, back}},
+		{`INSERT INTO changeset_items (id, changeset_id, node_id, before_name, before_sort_order, created_at, updated_at, deleted_at)
 		SELECT uuidv7(), c.id, n.id, n.name, n.sort_order, n.deleted_at, n.deleted_at, n.deleted_at FROM nodes n
 		JOIN changesets c ON c.notebook_id = n.notebook_id AND c.created_at = n.deleted_at WHERE n.id = ANY($1::uuid[]) AND n.notebook_id = $2`,
+			[]any{roots, l.notebook}},
 	} {
-		if _, err := l.pool.Exec(ctx, sql, roots, l.notebook); err != nil {
-			t.Fatalf("%s: %v", sql, err)
+		if _, err := l.pool.Exec(ctx, s.sql, s.args...); err != nil {
+			t.Fatalf("%s: %v", s.sql, err)
 		}
 	}
 	reads := []logRead{
 		{"NodesNow", func() error {
-			got, err := l.s.NodesNow(ctx, ids)
+			got, err := l.s.NodesNow(ctx, ids, d)
 			return expect(err, len(got) == len(ids), len(got))
 		}},
-		{"NodesNow of roots a restore's revert deleted", func() error {
-			got, err := l.s.NodesNow(ctx, roots)
+		{"NodesNow of roots whose restores were reverted", func() error {
+			got, err := l.s.NodesNow(ctx, roots, d)
 			n := 0
 			for _, r := range got {
 				if r.DeletedByRevert {

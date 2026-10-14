@@ -206,8 +206,8 @@ func (s *Store) ChangesetVersions(ctx context.Context, id uuid.UUID) ([]domain.C
 }
 
 // NodesNow implements app.History.
-func (s *Store) NodesNow(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]domain.NodeNow, error) {
-	rows, err := s.queries(ctx).NodesNow(ctx, ids)
+func (s *Store) NodesNow(ctx context.Context, ids []uuid.UUID, reverted uuid.UUID) (map[uuid.UUID]domain.NodeNow, error) {
+	rows, err := s.queries(ctx).NodesNow(ctx, gen.NodesNowParams{Ids: ids, Reverted: reverted})
 	if err != nil {
 		return nil, fmt.Errorf("nodes now: %w", err)
 	}

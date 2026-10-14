@@ -645,46 +645,84 @@ func TestRevertChangesetsLockedConflictsComeByNodeID(t *testing.T) {
 }
 
 // A deletion's revert compares its top where and as the deletion left it,
-// unless the revert of a restore deleted it again (M8/P3A fix check 1): X
-// created as A, renamed B, deleted (D) and restored; the rename reverted,
-// then the creation, which deletes X as A where D left it. D's revert
-// finds X changed and writes nothing, as it would undo the rename's
-// revert. Had the revert of the restore made that deletion, D's revert
-// would bring X back as B.
+// unless the top's deletion undid the restore of the deletion's own trash
+// item (M8/P3A fix checks 1 and 2). X created as A, renamed B, deleted (D)
+// and restored; the rename reverted, then the creation, which deletes X as
+// A where D left it: D's revert finds X changed and writes nothing, as it
+// would undo the rename's revert. Had that deletion been the revert of a
+// changeset that restored D's item after D, a trash restore or a revert,
+// D's revert would bring X back as B; of one after D whose item of X is
+// no restore, of one that restored a later item of X, a deletion between
+// them, or of one older than D, it finds X changed.
 func TestRevertChangesetComparesATopAnotherRevertDeleted(t *testing.T) {
-	f := newFixture()
-	f.names[f.alice] = "Alice"
-	f.grant(domain.ActionRevert)
-	x := f.page("A", nil, 0)
-	f.content(x.ID, "x", 1)
-	creation := f.log.changeset(domain.ChangesetEdit, f.alice, now().Add(-3*time.Hour),
-		[]domain.ChangesetItem{{NodeID: x.ID, After: new(x.State()), Revision: 1}}, f.log.version(x.ID, 0, 1, "x"))
-	rename := f.renaming(x.ID, "B")
-	deletedAt := now().Add(-time.Hour)
-	d := f.deletion(x.ID, deletedAt)
-	b := f.store.trash[x.ID].Node
-	if _, err := f.store.RestoreNodes(f.asAlice(), app.Restoration{Root: x.ID, IDs: []uuid.UUID{x.ID}, Names: []string{b.Name},
-		NameKeys: []string{b.NameKey}, DeletedAt: deletedAt, By: f.alice, At: now().Add(-time.Minute)}); err != nil {
-		t.Fatal(err)
-	}
-	restore := f.log.changeset(domain.ChangesetTrashRestore, f.alice, now().Add(-time.Minute),
-		[]domain.ChangesetItem{{NodeID: x.ID, After: new(b.State()), Restored: true, Revision: 1}})
-	for _, c := range []*fakeChangeset{rename, creation} {
-		if _, err := f.revert(c.ID, nil, 0); err != nil {
-			t.Fatalf("the revert of %s: %v", c.ID, err)
-		}
-	}
-	if n := f.store.trash[x.ID]; n.Name != "A" || !n.TrashRoot || len(f.store.changesets) != 2 {
-		t.Fatalf("X = %+v, changesets %+v; want X deleted as A by the creation's revert", n, f.store.changesets)
-	}
-	_, err := f.revert(d.ID, nil, 0)
-	var e *shared.Error
-	if !errors.As(err, &e) || e.Code != "page.revert_conflict" || len(e.Conflicts) != 1 || e.Conflicts[0].NodeID != x.ID ||
-		e.Conflicts[0].Reason != "changed" || len(f.store.changesets) != 2 {
-		t.Errorf("D's revert = %v, %+v, changesets %+v; want X changed, nothing written", err, e, f.store.changesets)
-	}
-	f.store.changesets[1].RevertsID = restore.ID
-	if _, err := f.revert(d.ID, nil, 0); err != nil || f.store.nodes[x.ID].Name != "B" {
-		t.Errorf("D's revert after the restore's revert = %v, X %+v; want X back as B", err, f.store.nodes[x.ID])
+	for _, tt := range []struct {
+		name string
+		// undid gives the creation's revert's deletion of X another
+		// changeset it reverts, made in the history, at an hour from D.
+		undid   func(f *fixture, x domain.Node, from time.Time) uuid.UUID
+		changed bool
+	}{
+		{"its creation's revert", nil, true},
+		{"the revert of the restore of its item", func(f *fixture, x domain.Node, from time.Time) uuid.UUID {
+			return f.log.changeset(domain.ChangesetTrashRestore, f.alice, from.Add(30*time.Minute),
+				[]domain.ChangesetItem{{NodeID: x.ID, After: new(x.State()), Restored: true, Revision: 1}}).ID
+		}, false},
+		{"the revert of a revert's restore of its item", func(f *fixture, x domain.Node, from time.Time) uuid.UUID {
+			return f.log.changeset(domain.ChangesetRevert, f.alice, from.Add(30*time.Minute),
+				[]domain.ChangesetItem{{NodeID: x.ID, After: new(x.State()), Restored: true, Revision: 1}}).ID
+		}, false},
+		{"the revert of a changeset after it that brought it back, not restored", func(f *fixture, x domain.Node, from time.Time) uuid.UUID {
+			return f.log.changeset(domain.ChangesetEdit, f.alice, from.Add(30*time.Minute),
+				[]domain.ChangesetItem{{NodeID: x.ID, After: new(x.State()), Revision: 1}}).ID
+		}, true},
+		{"the revert of the restore of a later item", func(f *fixture, x domain.Node, from time.Time) uuid.UUID {
+			f.log.changeset(domain.ChangesetEdit, f.alice, from.Add(20*time.Minute), []domain.ChangesetItem{{NodeID: x.ID, Before: new(x.State())}})
+			return f.log.changeset(domain.ChangesetTrashRestore, f.alice, from.Add(30*time.Minute),
+				[]domain.ChangesetItem{{NodeID: x.ID, After: new(x.State()), Restored: true, Revision: 1}}).ID
+		}, true},
+		{"the revert of a restore older than the deletion", func(f *fixture, x domain.Node, from time.Time) uuid.UUID {
+			return f.log.changeset(domain.ChangesetTrashRestore, f.alice, from.Add(-30*time.Minute),
+				[]domain.ChangesetItem{{NodeID: x.ID, After: new(x.State()), Restored: true, Revision: 1}}).ID
+		}, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newFixture()
+			f.names[f.alice] = "Alice"
+			f.grant(domain.ActionRevert)
+			x := f.page("A", nil, 0)
+			f.content(x.ID, "x", 1)
+			creation := f.log.changeset(domain.ChangesetEdit, f.alice, now().Add(-3*time.Hour),
+				[]domain.ChangesetItem{{NodeID: x.ID, After: new(x.State()), Revision: 1}}, f.log.version(x.ID, 0, 1, "x"))
+			rename := f.renaming(x.ID, "B")
+			deletedAt := now().Add(-2 * time.Hour)
+			d := f.deletion(x.ID, deletedAt)
+			b := f.store.trash[x.ID].Node
+			if _, err := f.store.RestoreNodes(f.asAlice(), app.Restoration{Root: x.ID, IDs: []uuid.UUID{x.ID}, Names: []string{b.Name},
+				NameKeys: []string{b.NameKey}, DeletedAt: deletedAt, By: f.alice, At: now().Add(-time.Hour)}); err != nil {
+				t.Fatal(err)
+			}
+			f.log.changeset(domain.ChangesetTrashRestore, f.alice, now().Add(-time.Hour),
+				[]domain.ChangesetItem{{NodeID: x.ID, After: new(b.State()), Restored: true, Revision: 1}})
+			for _, c := range []*fakeChangeset{rename, creation} {
+				if _, err := f.revert(c.ID, nil, 0); err != nil {
+					t.Fatalf("the revert of %s: %v", c.ID, err)
+				}
+			}
+			if n := f.store.trash[x.ID]; n.Name != "A" || !n.TrashRoot || len(f.store.changesets) != 2 {
+				t.Fatalf("X = %+v, changesets %+v; want X deleted as A by the creation's revert", n, f.store.changesets)
+			}
+			if tt.undid != nil {
+				f.store.changesets[1].RevertsID = tt.undid(f, b, deletedAt)
+			}
+			_, err := f.revert(d.ID, nil, 0)
+			var e *shared.Error
+			switch {
+			case tt.changed && (!errors.As(err, &e) || e.Code != "page.revert_conflict" || len(e.Conflicts) != 1 ||
+				e.Conflicts[0].NodeID != x.ID || e.Conflicts[0].Reason != "changed" || len(f.store.changesets) != 2):
+				t.Errorf("D's revert = %v, %+v, changesets %+v; want X changed, nothing written", err, e, f.store.changesets)
+			case !tt.changed && (err != nil || f.store.nodes[x.ID].Name != "B"):
+				t.Errorf("D's revert = %v, X %+v; want X back as B", err, f.store.nodes[x.ID])
+			}
+		})
 	}
 }
