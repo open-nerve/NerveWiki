@@ -151,6 +151,11 @@ type fakeStore struct {
 	lost         map[uuid.UUID]bool
 	unversioned  map[uuid.UUID]bool
 	history      map[uuid.UUID]int
+	// marks are what MarkTrashRoots was given; firsts when each
+	// changeset's item of each node was first written, which a merge into
+	// it keeps (the table's created_at).
+	marks  []app.TrashMark
+	firsts map[[2]uuid.UUID]time.Time
 }
 
 func (f *fakeStore) FindNode(ctx context.Context, id uuid.UUID) (domain.Node, error) {
@@ -618,6 +623,12 @@ func (f *fakeStore) anyNode(id uuid.UUID) app.AnyNode {
 
 func (f *fakeStore) TrashGroup(ctx context.Context, notebookID, id uuid.UUID, at time.Time) ([]domain.TrashMember, error) {
 	f.record(ctx, "TrashGroup")
+	return f.group(notebookID, id, at)
+}
+
+// group is the trash item of the root id deleted at at: the root, then
+// each level, by parent, each parent's children by order and id.
+func (f *fakeStore) group(notebookID, id uuid.UUID, at time.Time) ([]domain.TrashMember, error) {
 	root, ok := f.trash[id]
 	if !ok || root.NotebookID != notebookID || !root.DeletedAt.Equal(at) {
 		return nil, app.ErrNotFound
@@ -641,6 +652,75 @@ func (f *fakeStore) TrashGroup(ctx context.Context, notebookID, id uuid.UUID, at
 	}
 	slices.SortStableFunc(out, func(a, b domain.TrashMember) int { return cmp.Compare(a.Level, b.Level) })
 	return out, nil
+}
+
+// TrashGroups reads each root's group as TrashGroup does, in one call.
+func (f *fakeStore) TrashGroups(ctx context.Context, notebookID uuid.UUID, roots map[uuid.UUID]time.Time) (
+	map[uuid.UUID][]domain.TrashMember, error,
+) {
+	f.record(ctx, fmt.Sprintf("TrashGroups %d", len(roots)))
+	out := map[uuid.UUID][]domain.TrashMember{}
+	for root, at := range roots {
+		if g, err := f.group(notebookID, root, at); err == nil {
+			out[root] = g
+		}
+	}
+	return out, nil
+}
+
+// TrashShape is the group below its root as TrashGroup reads it.
+func (f *fakeStore) TrashShape(ctx context.Context, notebookID, id uuid.UUID, at time.Time) ([]domain.ShapeNode, error) {
+	f.record(ctx, "TrashShape")
+	g, err := f.group(notebookID, id, at)
+	if err != nil {
+		return nil, nil
+	}
+	out := make([]domain.ShapeNode, 0, len(g)-1)
+	for _, m := range g[1:] {
+		out = append(out, domain.ShapeNode{ID: m.Node.ID, ParentID: *m.Node.ParentID, Asset: m.Node.Kind == domain.KindAsset, Bytes: m.Bytes})
+	}
+	return out, nil
+}
+
+// TrashNodesAt reads the nodes each in the trash at its time, a root with
+// its counts.
+func (f *fakeStore) TrashNodesAt(ctx context.Context, notebookID uuid.UUID, at map[uuid.UUID]time.Time) (
+	map[uuid.UUID]app.TrashNode, error,
+) {
+	f.record(ctx, fmt.Sprintf("TrashNodesAt %d", len(at)))
+	out := map[uuid.UUID]app.TrashNode{}
+	for id, t := range at {
+		n, ok := f.trash[id]
+		if !ok || n.NotebookID != notebookID || !n.DeletedAt.Equal(t) {
+			continue
+		}
+		c := f.trashed[id]
+		node := app.TrashNode{TrashMember: domain.TrashMember{Node: n.Node, Revision: c.Revision, Bytes: c.ByteSize}, Root: n.TrashRoot}
+		if n.TrashRoot {
+			counts := f.counts[id]
+			node.Pages, node.Assets, node.Height = counts[0], counts[1], counts[2]
+		}
+		out[id] = node
+	}
+	return out, nil
+}
+
+// MarkTrashRoots marks the nodes still in the trash at at and no root
+// each a root with its counts, and counts them.
+func (f *fakeStore) MarkTrashRoots(ctx context.Context, roots []app.TrashMark, at time.Time) (int, error) {
+	f.record(ctx, fmt.Sprintf("MarkTrashRoots %d", len(roots)))
+	f.marks = append(f.marks, roots...)
+	n := 0
+	for _, r := range roots {
+		t, ok := f.trash[r.ID]
+		if !ok || !t.DeletedAt.Equal(at) || t.TrashRoot {
+			continue
+		}
+		t.TrashRoot = true
+		f.trash[r.ID], f.counts[r.ID] = t, [3]int{r.Pages, r.Assets, r.Height}
+		n++
+	}
+	return n, nil
 }
 
 func (f *fakeStore) TrashContents(ctx context.Context, ids []uuid.UUID, at time.Time) (map[uuid.UUID]string, error) {
@@ -730,6 +810,9 @@ func (f *fakeStore) RecordItems(ctx context.Context, items []app.Item) error {
 			return r.ChangesetID == it.ChangesetID && r.Change.NodeID == it.Change.NodeID
 		})
 		f.recorded = append(f.recorded, it)
+		if key := [2]uuid.UUID{it.ChangesetID, it.Change.NodeID}; f.firsts[key].IsZero() {
+			f.firsts[key] = it.At
+		}
 	}
 	return nil
 }
@@ -1104,7 +1187,7 @@ func newFixture() *fixture {
 		store: &fakeStore{recorder: rec, nodes: map[uuid.UUID]domain.Node{}, contents: map[uuid.UUID]app.Content{},
 			items: map[uuid.UUID]app.Item{}, touched: map[uuid.UUID]time.Time{}, sessions: map[uuid.UUID]app.EditSession{},
 			held: map[uuid.UUID]bool{}, trash: map[uuid.UUID]app.AnyNode{}, counts: map[uuid.UUID][3]int{},
-			trashed: map[uuid.UUID]app.Content{}},
+			trashed: map[uuid.UUID]app.Content{}, firsts: map[[2]uuid.UUID]time.Time{}},
 		auth: &fakeAuthorizer{recorder: rec, grants: map[shared.Action]bool{}, forbidden: map[shared.Action]bool{}},
 		logs: &bytes.Buffer{}, names: fakeNames{}, alice: uuid.NewV7(), acme: uuid.NewV7(), eng: uuid.NewV7(),
 	}

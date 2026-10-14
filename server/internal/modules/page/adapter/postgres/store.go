@@ -314,6 +314,20 @@ func (s *Store) RestoreNodes(ctx context.Context, r app.Restoration) (app.Restor
 		Creations: int(row.Creations), Gaps: int(row.Gaps)}, nil
 }
 
+// MarkTrashRoots implements app.NodeWriter, planned with its arguments.
+func (s *Store) MarkTrashRoots(ctx context.Context, roots []app.TrashMark, at time.Time) (int, error) {
+	p := gen.MarkTrashRootsParams{Ids: make([]uuid.UUID, len(roots)), Pages: make([]int32, len(roots)),
+		Assets: make([]int32, len(roots)), Heights: make([]int32, len(roots)), DeletedAt: at}
+	for i, r := range roots {
+		p.Ids[i], p.Pages[i], p.Assets[i], p.Heights[i] = r.ID, int32(r.Pages), int32(r.Assets), int32(r.Height)
+	}
+	n, err := s.planned(ctx).MarkTrashRoots(ctx, p)
+	if err != nil {
+		return 0, fmt.Errorf("mark trash roots: %w", err)
+	}
+	return int(n), nil
+}
+
 // SetSortOrder implements app.NodeWriter.
 func (s *Store) SetSortOrder(ctx context.Context, id uuid.UUID, order float64) error {
 	if err := s.queries(ctx).SetSortOrder(ctx, gen.SetSortOrderParams{ID: id, SortOrder: order}); err != nil {

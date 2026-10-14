@@ -112,6 +112,15 @@ func (d StartDeps) lock(ctx context.Context, actor shared.Actor, workspaceID, no
 	return d.authorize(ctx, actor, workspaceID, notebookID, action)
 }
 
+// workspaceOf is the notebook's workspace: notebook.not_found for none.
+func (d StartDeps) workspaceOf(ctx context.Context, notebookID uuid.UUID) (uuid.UUID, error) {
+	workspaceID, ok, err := d.Notebooks.WorkspaceOf(ctx, notebookID)
+	if err == nil && !ok {
+		err = domain.ErrNotebookNotFound
+	}
+	return workspaceID, err
+}
+
 // authorize decides action on the notebook: notebook.not_found for a
 // caller who cannot see it.
 func (d StartDeps) authorize(ctx context.Context, actor shared.Actor, workspaceID, notebookID uuid.UUID, action shared.Action) error {

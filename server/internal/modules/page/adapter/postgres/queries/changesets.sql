@@ -12,8 +12,10 @@ UPDATE changesets SET updated_at = sqlc.arg(now) WHERE id = sqlc.arg(id);
 -- A step's changes of nodes in a changeset, one statement (M8/P2 design 3.3): each node's first one inserts its before
 -- and after, a later one moves the after on and keeps the before, restored and revision (M4 design 4). An item that
 -- deletes its node goes to the trash with it, with its page's revision (M8/P3 design 3.4): the content the unit's
--- deletion, which wrote before its items, put in the trash at its time, read by its key (none for an attachment); a
--- merge into a deletion takes the deletion's (a rename, then a deletion, in one unit), any other keeps the first's. A
+-- deletion, which wrote before its items, put in the trash at its time (none for an attachment), read by its key alone
+-- and its time compared after: a lookup by the time too may go through the partial index on deleted_at, every row the
+-- deletion put there for each item, and a deletion of 45,000 pages took 92 s (M8/P4A); a merge into a deletion takes
+-- the deletion's (a rename, then a deletion, in one unit), any other keeps the first's. A
 -- step changes each node once, so no row is reached twice. The arrays are the items' columns, a parent at the root and
 -- a state there is none of marked as linking's SetResolutions marks none: the zero id; has_before and has_after;
 -- revision 0 for none.
@@ -26,7 +28,8 @@ SELECT u.id, sqlc.arg(changeset_id), u.node_id,
     CASE WHEN u.has_after THEN u.after_name END, CASE WHEN u.has_after THEN u.after_sort_order END,
     u.restored,
     CASE WHEN u.has_after THEN NULLIF(u.revision, 0)
-        ELSE (SELECT c.revision FROM page_contents c WHERE c.node_id = u.node_id AND c.deleted_at = sqlc.arg(now)::timestamptz) END,
+        ELSE (SELECT CASE WHEN c.deleted_at = sqlc.arg(now)::timestamptz THEN c.revision END FROM page_contents c
+            WHERE c.node_id = u.node_id) END,
     sqlc.arg(now), sqlc.arg(now),
     CASE WHEN u.has_after THEN NULL ELSE sqlc.arg(now)::timestamptz END
 FROM (SELECT unnest(sqlc.arg(ids)::uuid[]) AS id, unnest(sqlc.arg(node_ids)::uuid[]) AS node_id,

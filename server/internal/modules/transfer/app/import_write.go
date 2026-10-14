@@ -6,29 +6,15 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"time"
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/transfer/domain"
-	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
-// An import's writes (M7/P6 design 3.13): the plan's nodes in batches,
-// each written in one unit of the page module, which holds the notebook's
-// row as it runs, so each is bounded; the pages parsed and the
-// attachments' files written before it, outside it.
-
-// A batch's bounds: batchNodes nodes, batchBytes of the pages' contents,
-// batchLinks of their links; a page past them alone. The statistics are
-// refreshed every analyzeEvery nodes written; a parse or a unit the server
-// is too busy for waits at most maxBackoff before it is tried again.
-const (
-	batchNodes   = 100
-	batchBytes   = 8 << 20
-	batchLinks   = 20000
-	analyzeEvery = 10000
-	maxBackoff   = 30 * time.Second
-)
+// An import's writes (M7/P6 design 3.13): the plan's nodes in batches
+// (batches.go), each written in one unit of the page module, which holds
+// the notebook's row as it runs, so each is bounded; the pages parsed and
+// the attachments' files written before it, outside it.
 
 // errBusy is a parse the server was too busy for as the run held a batch
 // already parsed: the batch is written first, which frees its share of
@@ -84,7 +70,7 @@ func (r *importRun) batch(ctx context.Context, start int) ([]item, int, error) {
 	var size int64
 	links := 0
 	next := start
-	for ; next < len(r.plan.Nodes) && len(items) < batchNodes; next++ {
+	for ; next < len(r.plan.Nodes) && len(items) < r.bounds.Nodes; next++ {
 		node := r.plan.Nodes[next]
 		if node.Parent >= 0 && r.dropped[node.Parent] {
 			r.drop(next)
@@ -95,7 +81,7 @@ func (r *importRun) batch(ctx context.Context, start int) ([]item, int, error) {
 			continue
 		}
 		n := r.sizes[node.Entry]
-		if len(items) > 0 && size+n > batchBytes {
+		if len(items) > 0 && size+n > r.bounds.Bytes {
 			break
 		}
 		content, err := r.content(ctx, node)
@@ -109,7 +95,7 @@ func (r *importRun) batch(ctx context.Context, start int) ([]item, int, error) {
 		if err != nil {
 			return items, next, err
 		}
-		if len(items) > 0 && links+parsed.Links() > batchLinks {
+		if len(items) > 0 && links+parsed.Links() > r.bounds.Links {
 			parsed.Release()
 			break
 		}
@@ -149,7 +135,7 @@ func (r *importRun) content(ctx context.Context, node domain.ImportNode) (string
 // without one, the parse is tried again after a wait.
 func (r *importRun) parse(ctx context.Context, content string, holding bool) (Parsed, error) {
 	var parsed Parsed
-	err := r.retry(ctx, func() error {
+	err := retry(ctx, r.i.d.Backoff, func() error {
 		var err error
 		parsed, err = r.i.d.Tree.Parse(ctx, content)
 		if busy(err) && holding {
@@ -158,33 +144,6 @@ func (r *importRun) parse(ctx context.Context, content string, holding bool) (Pa
 		return err
 	})
 	return parsed, err
-}
-
-// retry runs do until it answers anything but 503: after a wait of
-// Backoff, doubled each time up to maxBackoff, until ctx ends.
-func (r *importRun) retry(ctx context.Context, do func() error) error {
-	wait := r.i.d.Backoff
-	for {
-		err := do()
-		if !busy(err) {
-			return err
-		}
-		t := time.NewTimer(wait)
-		select {
-		case <-ctx.Done():
-			t.Stop()
-			return context.Cause(ctx)
-		case <-t.C:
-		}
-		wait = min(2*wait, maxBackoff)
-	}
-}
-
-// busy reports whether err is the server's 503: its parse budget, or a
-// lock, too busy.
-func busy(err error) bool {
-	var e *shared.Error
-	return errors.As(err, &e) && e.Kind == shared.KindUnavailable
 }
 
 // release gives back the parse budget the batch's pages hold.
@@ -198,10 +157,11 @@ func release(items []item) {
 
 // unit writes the batch: its attachments' files, then its nodes in one
 // unit, run with River's context, which the heartbeat's stop does not
-// end; the server too busy for it, it is tried again. A unit that rolled
-// back, or was refused, a revert of its changeset among the refusals,
-// drops the files; one whose commit failed leaves them to the
-// attachments' sweep.
+// end, in the changeset the job's row names, which the first unit that
+// writes makes (M8/P4 design 3.2); the server too busy for it, it is tried
+// again. A unit that rolled back, or was refused, a revert of its
+// changeset among the refusals, drops the files; one whose commit failed
+// leaves them to the attachments' sweep.
 func (r *importRun) unit(ctx, running context.Context, items []item) error {
 	if len(items) == 0 {
 		return nil
@@ -212,10 +172,9 @@ func (r *importRun) unit(ctx, running context.Context, items []item) error {
 	}
 	var done []created
 	var changeset uuid.UUID
-	// uncertain is a unit that failed neither in do nor refused: its
-	// commit may have failed after the database took it.
-	uncertain := false
-	err := r.retry(running, func() error {
+	// unknown is a unit that may have been written all the same.
+	unknown := false
+	err := retry(running, r.i.d.Backoff, func() error {
 		if running.Err() != nil {
 			return context.Cause(running)
 		}
@@ -228,12 +187,11 @@ func (r *importRun) unit(ctx, running context.Context, items []item) error {
 			rolledBack = err != nil
 			return err
 		})
-		var refused *shared.Error
-		uncertain = err != nil && !rolledBack && !errors.As(err, &refused) && !errors.Is(err, ErrChangesetReverted)
+		unknown = uncertain(err, rolledBack)
 		return err
 	})
 	if err != nil {
-		if !uncertain {
+		if !unknown {
 			r.dropFiles(ctx, items)
 		}
 		return unitFailure(err)
@@ -243,21 +201,6 @@ func (r *importRun) unit(ctx, running context.Context, items []item) error {
 	}
 	r.tell(ctx, items, done)
 	return nil
-}
-
-// unitFailure is why a unit failed: forbidden for a job whose account can
-// no longer write in the notebook, or see it; changeset_reverted for a
-// revert of the import's changeset; the failure it found; any other is
-// internal.
-func unitFailure(err error) error {
-	var e *shared.Error
-	switch {
-	case errors.As(err, &e) && (e.Kind == shared.KindForbidden || e.Kind == shared.KindNotFound || e.Kind == shared.KindUnauthenticated):
-		return failed(domain.FailureForbidden, err)
-	case errors.Is(err, ErrChangesetReverted):
-		return failed(domain.FailureChangesetReverted, err)
-	}
-	return err
 }
 
 // put writes the batch's attachments' files from the archive, their reads
@@ -370,6 +313,7 @@ func (r *importRun) tell(ctx context.Context, items []item, done []created) {
 		files[it.index] = it.file
 	}
 	var unattached []item
+	written := 0
 	for _, c := range done {
 		node := r.plan.Nodes[c.index]
 		if c.dropped {
@@ -390,13 +334,11 @@ func (r *importRun) tell(ctx context.Context, items []item, done []created) {
 			r.report.Add(domain.Problem{Path: node.Path, Code: domain.ProblemRenamed, To: r.pathOf(c.index)})
 		}
 		r.done.Add(1)
-		r.unanalyzed++
+		written++
 	}
 	r.publish()
 	r.dropFiles(ctx, unattached)
-	if r.unanalyzed >= analyzeEvery {
-		r.analyze(ctx)
-	}
+	r.stats.wrote(ctx, written)
 }
 
 // pathOf is the path of the plan's node i in the notebook, from where the

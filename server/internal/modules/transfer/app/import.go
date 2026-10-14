@@ -38,15 +38,21 @@ type ImportDeps struct {
 	Beat time.Duration
 	// MaxEntries is transfer.import_max_entries; MaxUnpacked
 	// transfer.import_max_unpacked_bytes; MaxContent the most bytes of a
-	// page's content, the page module's; MaxAsset asset.max_bytes.
+	// page's content, the page module's; MaxAsset asset.max_bytes;
+	// MaxNodes the most nodes an import makes, the most items of a
+	// changeset a background revert reverts, the page module's
+	// MaxJobItems (M8/P4 design 2.2 (a)), 0 none.
 	MaxEntries  int
 	MaxUnpacked int64
 	MaxContent  int64
 	MaxAsset    int64
+	MaxNodes    int
 	// Backoff is the first wait before a parse or a unit the server was
 	// too busy for is tried again: a second, doubled each time up to
 	// maxBackoff.
 	Backoff time.Duration
+	// Batch bounds a batch: zero is the import's, which production keeps.
+	Batch Batch
 }
 
 // NewImport returns the use case.
@@ -73,13 +79,15 @@ func (i *Import) Run(ctx context.Context, id uuid.UUID) error {
 	attrs := jobAttrs(job)
 	i.d.Logger.InfoContext(ctx, "import started", attrs...)
 	ctx = shared.WithActor(ctx, shared.Actor{UserID: job.CreatedBy, JobID: job.ID})
-	r := &importRun{jobRun: newJobRun(job, i.d.Rows, i.d.Clock, i.d.Logger, i.d.Beat), i: i}
+	r := &importRun{jobRun: newJobRun(job, i.d.Rows, i.d.Clock, i.d.Logger, i.d.Beat), i: i, bounds: i.d.Batch.bounds(),
+		stats: &statistics{analyzers: i.d.Statistics, logger: i.d.Logger, job: job}}
+	if job.ChangesetID != nil {
+		r.changeset = *job.ChangesetID
+	}
 	running, stop := context.WithCancelCause(ctx)
 	beating := r.beat(running, stop)
 	err = r.run(ctx, running)
-	if r.unanalyzed > 0 && ctx.Err() == nil {
-		r.analyze(ctx)
-	}
+	r.stats.end(ctx)
 	stop(nil)
 	<-beating
 	err = r.finish(ctx, running, err, attrs, nil)
@@ -97,7 +105,9 @@ func (i *Import) drop(ctx context.Context, id uuid.UUID) {
 // importRun is an import as it runs.
 type importRun struct {
 	*jobRun
-	i       *Import
+	i *Import
+	// bounds are its batches'.
+	bounds  Batch
 	archive ImportArchive
 	// sizes are the bytes each entry kept unpacks to, by its index.
 	sizes map[int]int64
@@ -111,12 +121,12 @@ type importRun struct {
 	// last is, by the plan's index of a parent (-1: the place imported
 	// into), the last of its children named with each key.
 	last map[int]map[string]int
-	// changeset is the first unit's, which the later ones merge into.
+	// changeset is the one its row names, which its first unit that
+	// writes makes and the later ones merge into (M8/P4 design 3.2); an
+	// import made before has none, its first unit's then.
 	changeset uuid.UUID
-	// unanalyzed is how many nodes were written since the statistics
-	// were last refreshed.
-	unanalyzed int
-	buf        []byte
+	stats     *statistics
+	buf       []byte
 }
 
 // run reads the archive and writes its nodes: running is River's context
@@ -150,6 +160,9 @@ func (r *importRun) run(ctx, running context.Context) error {
 		return err
 	}
 	r.plan = domain.NewImportPlan(entries, meta, depth)
+	if n := len(r.plan.Nodes); r.i.d.MaxNodes > 0 && n > r.i.d.MaxNodes {
+		return failed(domain.FailureTooManyNodes, fmt.Errorf("the archive makes %d nodes, more than %d", n, r.i.d.MaxNodes))
+	}
 	for _, p := range r.plan.Skipped {
 		r.skip(p)
 	}
@@ -293,15 +306,4 @@ func (r *importRun) depth(ctx context.Context) (int, error) {
 		err = failed(domain.FailureRootNotFound, errors.New("the page imported into is gone"))
 	}
 	return depth, err
-}
-
-// analyze refreshes the statistics of the tables the import fills: a
-// failure is logged, the import going on.
-func (r *importRun) analyze(ctx context.Context) {
-	for _, a := range r.i.d.Statistics {
-		if err := a.Analyze(ctx); err != nil {
-			r.logger.WarnContext(ctx, "import statistics not refreshed", slog.String("job_id", r.job.ID.String()), slog.Any("error", err))
-		}
-	}
-	r.unanalyzed = 0
 }

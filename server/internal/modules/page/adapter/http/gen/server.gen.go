@@ -99,27 +99,6 @@ func (e NodeKind) Valid() bool {
 	}
 }
 
-// Defines values for TrashPlacementReason.
-const (
-	TrashPlacementReasonOriginal      TrashPlacementReason = "original"
-	TrashPlacementReasonParentInTrash TrashPlacementReason = "parent_in_trash"
-	TrashPlacementReasonTooDeep       TrashPlacementReason = "too_deep"
-)
-
-// Valid indicates whether the value is a known member of the TrashPlacementReason enum.
-func (e TrashPlacementReason) Valid() bool {
-	switch e {
-	case TrashPlacementReasonOriginal:
-		return true
-	case TrashPlacementReasonParentInTrash:
-		return true
-	case TrashPlacementReasonTooDeep:
-		return true
-	default:
-		return false
-	}
-}
-
 // Ancestor A page above another, on the way from the root.
 type Ancestor struct {
 	ID   uuid.UUID `json:"id"`
@@ -370,7 +349,7 @@ type NodeRestored struct {
 	Name string `json:"name"`
 
 	// Placed Where a restore puts a trash item: under its parent where it was, original (parent_id null when it was at the root), or last at the notebook's root, parent_id null, its parent being in the trash (parent_in_trash) or its pages too deep under it (too_deep).
-	Placed TrashPlacement `json:"placed"`
+	Placed externalRef0.TrashPlacement `json:"placed"`
 
 	// Renamed Whether it was numbered, a sibling where it went back having its name.
 	Renamed bool `json:"renamed"`
@@ -579,7 +558,7 @@ type TrashItem struct {
 	RestorableUntil time.Time `json:"restorable_until"`
 
 	// RestoreTo Where a restore puts a trash item: under its parent where it was, original (parent_id null when it was at the root), or last at the notebook's root, parent_id null, its parent being in the trash (parent_in_trash) or its pages too deep under it (too_deep).
-	RestoreTo TrashPlacement `json:"restore_to"`
+	RestoreTo externalRef0.TrashPlacement `json:"restore_to"`
 
 	// Revision A page's content's revision as it was deleted, whose version getPageVersionView shows; null for an attachment, and for a page whose content the purge took.
 	Revision nullable.Nullable[int] `json:"revision"`
@@ -592,15 +571,6 @@ type TrashItemPage struct {
 	// NextCursor The cursor of the next page; null on the last page.
 	NextCursor nullable.Nullable[externalRef0.NextCursor] `json:"next_cursor"`
 }
-
-// TrashPlacement Where a restore puts a trash item: under its parent where it was, original (parent_id null when it was at the root), or last at the notebook's root, parent_id null, its parent being in the trash (parent_in_trash) or its pages too deep under it (too_deep).
-type TrashPlacement struct {
-	ParentID nullable.Nullable[uuid.UUID] `json:"parent_id"`
-	Reason   TrashPlacementReason         `json:"reason"`
-}
-
-// TrashPlacementReason defines model for TrashPlacement.Reason.
-type TrashPlacementReason string
 
 // TreeNode A node of a notebook's tree, a page or an attachment.
 type TreeNode struct {

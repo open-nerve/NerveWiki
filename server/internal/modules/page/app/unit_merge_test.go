@@ -294,3 +294,49 @@ func TestAUnitsMessageIsItsChangesets(t *testing.T) {
 		t.Errorf("changesets = %+v, want one with the first unit's message", f.store.changesets)
 	}
 }
+
+// A unit that is to create the changeset it names makes it with its first
+// write, of that id, its kind, what it reverts and its message, by its
+// actor at its time (M8/P4 design 3.3); a later unit naming it merges into
+// it. One that writes nothing makes none; one whose changeset is there
+// checks it as any merge does.
+func TestAUnitCreatesTheChangesetItNames(t *testing.T) {
+	f := newFixture()
+	f.grant(domain.ActionCreate)
+	reverted, id, message := uuid.NewV7(), uuid.NewV7(), "Undo"
+	spec := app.UnitSpec{NotebookID: f.eng, Action: domain.ActionCreate, Tree: true, Client: domain.ClientWeb, NotFound: domain.ErrNotebookNotFound,
+		Kind: domain.ChangesetRevert, RevertsID: reverted, Changeset: id, Create: true, Message: &message}
+	nothing, err := f.writer().Run(f.asAlice(), spec, func(context.Context, *app.Unit) error { return nil })
+	if err != nil || nothing.ChangesetID != (uuid.UUID{}) || len(f.store.changesets) != 0 {
+		t.Fatalf("a unit that wrote nothing = %+v, %v, changesets %+v; want none made", nothing, err, f.store.changesets)
+	}
+	first, err := f.writer().Run(f.asAlice(), spec, create("One"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(f.store.changesets) != 1 || first.ChangesetID != id {
+		t.Fatalf("changesets %+v, outcome %s; want one, of id %s", f.store.changesets, first.ChangesetID, id)
+	}
+	if c := f.store.changesets[0]; c.ID != id || c.Kind != domain.ChangesetRevert || c.RevertsID != reverted || c.Message == nil ||
+		*c.Message != message || c.By != f.alice || !c.At.Equal(first.At) {
+		t.Errorf("changeset %+v; want the unit's revert of %s, its message, by alice at %v", c, reverted, first.At)
+	}
+	other := "Another"
+	spec.Message = &other
+	second, err := f.writer().Run(f.asAlice(), spec, create("Two"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(f.store.changesets) != 1 || second.ChangesetID != id || *f.store.changesets[0].Message != message {
+		t.Errorf("changesets %+v, outcome %s; want the second merged into the first's, its message kept", f.store.changesets, second.ChangesetID)
+	}
+	if at, ok := f.store.touched[id]; !ok || !at.Equal(second.At) {
+		t.Errorf("the changeset's time = %v, %v; want the second unit's, %v", at, ok, second.At)
+	}
+	f.rec.calls = nil
+	spec.RevertsID = uuid.NewV7()
+	if _, err := f.writer().Run(f.asAlice(), spec, create("Three")); err == nil || f.called("CreateNode in tx") ||
+		f.called("CreateChangeset in tx") {
+		t.Errorf("a unit to create the changeset of another revert, there = %v after %v; want an error before any write", err, f.rec.calls)
+	}
+}

@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"uuid"
 
@@ -13,12 +14,14 @@ import (
 )
 
 // The exports' and the imports' parts (M7/P5 design 3.8, 3.14; M7/P6
-// design 3.3, 3.5, 3.16): the transfer module reads a notebook's tree
-// through the page module's ExportNodes and the attachments' files through
-// the asset module's Blobs, writes an import's nodes through the page
-// module's TreeWrites and its files through the asset module's Blobs, and
-// follows the notebook module's deletions. The modules do not import each
-// other, so their values meet here.
+// design 3.3, 3.5, 3.16), and the background restores' and reverts' (M8/P4
+// design 3.6): the transfer module reads a notebook's tree through the
+// page module's ExportNodes and the attachments' files through the asset
+// module's Blobs, writes an import's nodes, a restore's and a revert's
+// batches through the page module's TreeWrites and an import's files
+// through the asset module's Blobs, and follows the notebook module's
+// deletions. The modules do not import each other, so their values meet
+// here.
 
 // transferNodes is the page module's ExportNodes as the transfer module
 // reads them.
@@ -79,7 +82,7 @@ func (d transferNotebookDeletion) NotebookDeleted(ctx context.Context, x noteboo
 }
 
 // transferTree is the page module's TreeWrites as the transfer module's
-// imports write through it.
+// imports, restores and reverts write through it.
 type transferTree struct {
 	tree page.TreeWrites
 }
@@ -106,6 +109,74 @@ func (t transferTree) Import(ctx context.Context, spec transfer.ImportSpec, do f
 	})
 	return id, treeError(err)
 }
+
+// CheckRestore and CheckRevert are the starts' checks: their refusals are
+// the page module's problems, which the start answers as they are.
+func (t transferTree) CheckRestore(ctx context.Context, notebookID, nodeID uuid.UUID) (string, error) {
+	return t.tree.CheckRestore(ctx, notebookID, nodeID)
+}
+
+func (t transferTree) CheckRevert(ctx context.Context, notebookID, changesetID uuid.UUID, message *string,
+	admit func(context.Context) error,
+) (string, error) {
+	return t.tree.CheckRevert(ctx, notebookID, changesetID, message, admit)
+}
+
+func (t transferTree) PlanRestore(ctx context.Context, spec transfer.JobSpec, nodeID uuid.UUID) (transfer.JobPlan, error) {
+	p, err := t.tree.PlanRestore(ctx, jobSpec(spec), nodeID)
+	if err != nil {
+		return nil, treeError(err)
+	}
+	return planOf(p), nil
+}
+
+func (t transferTree) PlanRevert(ctx context.Context, spec transfer.JobSpec, changesetID uuid.UUID) (transfer.JobPlan, error) {
+	p, err := t.tree.PlanRevert(ctx, jobSpec(spec), changesetID)
+	if err != nil {
+		return nil, treeError(err)
+	}
+	return planOf(p), nil
+}
+
+// RunBatch writes a batch of a plan PlanRestore or PlanRevert made.
+func (t transferTree) RunBatch(ctx context.Context, spec transfer.JobSpec, plan transfer.JobPlan, from, to int) (transfer.BatchDone, error) {
+	p, ok := plan.(jobPlan)
+	if !ok {
+		return transfer.BatchDone{}, errors.New("a background job's plan not the page module's")
+	}
+	d, err := t.tree.RunBatch(ctx, jobSpec(spec), p.plan, from, to)
+	if err != nil {
+		return transfer.BatchDone{}, treeError(err)
+	}
+	out := transfer.BatchDone{Nodes: d.Nodes, Pages: d.Pages, Assets: d.Assets, Renamed: d.Renamed, Skipped: d.Skipped,
+		Restored: d.Restored, Deleted: d.Deleted, PutBack: d.PutBack, Written: d.Written}
+	if d.Placed != nil {
+		out.Placed = &transfer.Placement{ParentID: d.Placed.ParentID, Reason: string(d.Placed.Reason)}
+	}
+	return out, nil
+}
+
+func jobSpec(spec transfer.JobSpec) page.JobSpec {
+	return page.JobSpec{NotebookID: spec.NotebookID, Client: page.Client(spec.Client), Changeset: spec.Changeset, Message: spec.Message}
+}
+
+// jobPlan is the page module's plan, its steps as the transfer module
+// cuts them into batches, converted once.
+type jobPlan struct {
+	plan  page.JobPlan
+	steps []transfer.JobStep
+}
+
+func planOf(p page.JobPlan) jobPlan {
+	steps := make([]transfer.JobStep, len(p.Steps()))
+	for i, s := range p.Steps() {
+		steps[i] = transfer.JobStep(s)
+	}
+	return jobPlan{plan: p, steps: steps}
+}
+
+func (p jobPlan) Steps() []transfer.JobStep { return p.steps }
+func (p jobPlan) Total() int                { return p.plan.Total() }
 
 // parsedPage is a page's content the page module parsed.
 type parsedPage struct {
@@ -144,8 +215,11 @@ func createdNode(n page.NodeInfo) transfer.CreatedNode {
 	return transfer.CreatedNode{ID: n.ID, Name: n.Name, CreatedAt: n.CreatedAt}
 }
 
-// treeError is the page module's error as the import reads it: a page too
-// deep, a parent gone, the import's changeset reverted.
+// treeError is the page module's error as the jobs read it: a page too
+// deep, a parent gone, the job's changeset reverted; a batch to halve, a
+// trash item changed or expired, a changeset trimmed; a revert's conflicts
+// and the lock it met, which keep the page module's problem, wrapped, for
+// the report to read its conflicts and lock from.
 func treeError(err error) error {
 	switch {
 	case errors.Is(err, page.ErrTooDeep):
@@ -154,6 +228,18 @@ func treeError(err error) error {
 		return transfer.ErrNoParent
 	case errors.Is(err, page.ErrChangesetReverted):
 		return transfer.ErrChangesetReverted
+	case errors.Is(err, page.ErrBatchTooLarge):
+		return transfer.ErrBatchTooLarge
+	case errors.Is(err, page.ErrTrashChanged):
+		return transfer.ErrTrashChanged
+	case errors.Is(err, page.ErrRestoreExpired):
+		return transfer.ErrRestoreExpired
+	case errors.Is(err, page.ErrChangesetTrimmed):
+		return transfer.ErrChangesetTrimmed
+	case errors.Is(err, page.ErrRevertConflict):
+		return fmt.Errorf("%w: %w", transfer.ErrRevertConflict, err)
+	case errors.Is(err, page.ErrLocked):
+		return fmt.Errorf("%w: %w", transfer.ErrLocked, err)
 	}
 	return err
 }

@@ -104,6 +104,61 @@ func (q *Queries) ChangesetItems(ctx context.Context, id uuid.UUID) ([]Changeset
 	return items, nil
 }
 
+const changesetItemsOf = `-- name: ChangesetItemsOf :many
+SELECT node_id, before_parent_id, before_name, before_sort_order, after_parent_id, after_name, after_sort_order,
+    restored, revision
+FROM changeset_items WHERE changeset_id = $1 AND node_id = ANY($2::uuid[]) ORDER BY node_id
+`
+
+type ChangesetItemsOfParams struct {
+	ID      uuid.UUID
+	NodeIds []uuid.UUID
+}
+
+type ChangesetItemsOfRow struct {
+	NodeID          uuid.UUID
+	BeforeParentID  *uuid.UUID
+	BeforeName      *string
+	BeforeSortOrder *float64
+	AfterParentID   *uuid.UUID
+	AfterName       *string
+	AfterSortOrder  *float64
+	Restored        bool
+	Revision        *int32
+}
+
+// A changeset's items of some nodes, by its key on (changeset_id, node_id): a background revert's batch's (M8/P4 design
+// 3.5), as ChangesetItems reads them all.
+func (q *Queries) ChangesetItemsOf(ctx context.Context, arg ChangesetItemsOfParams) ([]ChangesetItemsOfRow, error) {
+	rows, err := q.db.Query(ctx, changesetItemsOf, arg.ID, arg.NodeIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ChangesetItemsOfRow
+	for rows.Next() {
+		var i ChangesetItemsOfRow
+		if err := rows.Scan(
+			&i.NodeID,
+			&i.BeforeParentID,
+			&i.BeforeName,
+			&i.BeforeSortOrder,
+			&i.AfterParentID,
+			&i.AfterName,
+			&i.AfterSortOrder,
+			&i.Restored,
+			&i.Revision,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const changesetMoves = `-- name: ChangesetMoves :one
 SELECT coalesce(bool_or(i.before_name <> i.after_name), false)::boolean AS renames,
     coalesce(bool_or(i.before_name IS NOT NULL AND i.after_name IS NOT NULL
@@ -151,6 +206,52 @@ func (q *Queries) ChangesetVersions(ctx context.Context, id uuid.UUID) ([]Change
 	var items []ChangesetVersionsRow
 	for rows.Next() {
 		var i ChangesetVersionsRow
+		if err := rows.Scan(
+			&i.NodeID,
+			&i.BaseRevision,
+			&i.Revision,
+			&i.ContentHash,
+			&i.BaseBytes,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const changesetVersionsOf = `-- name: ChangesetVersionsOf :many
+SELECT r.node_id, r.base_revision, r.revision, r.content_hash, b.byte_size AS base_bytes
+FROM page_revisions r LEFT JOIN page_revisions b ON b.node_id = r.node_id AND b.revision = r.base_revision
+WHERE r.changeset_id = $1 AND r.node_id = ANY($2::uuid[]) ORDER BY r.node_id
+`
+
+type ChangesetVersionsOfParams struct {
+	ID      uuid.UUID
+	NodeIds []uuid.UUID
+}
+
+type ChangesetVersionsOfRow struct {
+	NodeID       uuid.UUID
+	BaseRevision *int32
+	Revision     int32
+	ContentHash  []byte
+	BaseBytes    *int32
+}
+
+// A changeset's versions of some pages, as ChangesetVersions reads them all: a background revert's batch's.
+func (q *Queries) ChangesetVersionsOf(ctx context.Context, arg ChangesetVersionsOfParams) ([]ChangesetVersionsOfRow, error) {
+	rows, err := q.db.Query(ctx, changesetVersionsOf, arg.ID, arg.NodeIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ChangesetVersionsOfRow
+	for rows.Next() {
+		var i ChangesetVersionsOfRow
 		if err := rows.Scan(
 			&i.NodeID,
 			&i.BaseRevision,
@@ -704,14 +805,16 @@ const nodesNow = `-- name: NodesNow :many
 SELECT n.id, n.notebook_id, n.parent_id, n.kind, n.name, n.name_key, n.sort_order, n.created_by_id, n.updated_by_id,
     n.created_at, n.updated_at, n.deleted_at, n.trash_root, n.trash_pages, n.trash_assets,
     CASE WHEN n.trash_root THEN EXISTS (
-        SELECT 1 FROM changesets c JOIN changeset_items i ON i.changeset_id = c.id AND i.node_id = n.id AND i.after_name IS NULL
+        SELECT 1 FROM changeset_items i
+        JOIN changesets c ON c.id = i.changeset_id AND c.kind = 'revert'
         JOIN changeset_items ri ON ri.changeset_id = c.reverts_id AND ri.node_id = n.id AND ri.restored
-        JOIN changesets r ON r.id = c.reverts_id
-        JOIN changesets d ON d.id = $1::uuid AND d.created_at < r.created_at
-        WHERE c.notebook_id = n.notebook_id AND c.created_at = n.deleted_at AND c.kind = 'revert'
+        JOIN changeset_items di ON di.changeset_id = $1::uuid AND di.node_id = n.id
+            AND di.after_name IS NULL AND di.updated_at < ri.created_at
+        WHERE i.node_id = n.id AND i.after_name IS NULL AND i.updated_at = n.deleted_at
             AND NOT EXISTS (
-                SELECT 1 FROM changeset_items x JOIN changesets xc ON xc.id = x.changeset_id
-                WHERE x.node_id = n.id AND x.after_name IS NULL AND xc.created_at > d.created_at AND xc.created_at < r.created_at)
+                SELECT 1 FROM changeset_items x
+                WHERE x.node_id = n.id AND x.after_name IS NULL
+                    AND x.updated_at > di.updated_at AND x.updated_at < ri.created_at)
     ) ELSE false END::boolean AS deleted_by_revert
 FROM nodes n WHERE n.id = ANY($2::uuid[])
 `
@@ -743,10 +846,13 @@ type NodesNowRow struct {
 // Nodes as they are now, alive or in the trash, by their key: a trash item's root with its counts, and whether its
 // deletion undid the restore of the trash item the changeset reverted made (M8/P3A review A-1, fix checks 1 and 2): it
 // is the revert of a changeset that restored the node, a trash restore or a revert, made after the changeset reverted
-// with no deletion of the node between them, so that what it restored was that changeset's item. A unit writes at one
-// time, its changeset created at it: the root's deletion's item is of a changeset of the notebook created at its time,
-// which the log's index reads by its key; the items by their changesets' and the node's key, the changesets by their
-// own; the deletions between by the node's items' index.
+// with no deletion of the node between them, so that what it restored was that changeset's item. Each is told by its
+// items' own times, not its changeset's (M8/P4 design 3.7): a background job's later batches write after its
+// changeset was made, by its first. An item that deletes its node is last written as it does, at the node's deletion's
+// time (a merge into it moves updated_at; the deletion's statement sets deleted_at alone); a restored node's item is
+// first written as it is restored (a merge keeps created_at). The root's deletion's item is read by the node's items'
+// index, the reverted changesets' items by their changesets' and the node's key, the deletions between by the node's
+// items' index.
 func (q *Queries) NodesNow(ctx context.Context, arg NodesNowParams) ([]NodesNowRow, error) {
 	rows, err := q.db.Query(ctx, nodesNow, arg.Reverted, arg.Ids)
 	if err != nil {

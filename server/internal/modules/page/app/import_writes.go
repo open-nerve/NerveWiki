@@ -25,7 +25,8 @@ func NewImportWrites(writer *Writer, parser *ContentParser, md Markdown) *Import
 }
 
 // ImportSpec is an import's unit: in NotebookID, deciding on Action, from
-// Client, the job's; merged into Changeset when it is set.
+// Client, the job's; written in Changeset when it is set, made by the
+// first unit that writes.
 type ImportSpec struct {
 	NotebookID uuid.UUID
 	Action     shared.Action
@@ -70,12 +71,14 @@ func (w *ImportWrites) Parse(ctx context.Context, content string) (Parsed, error
 
 // Import runs do in a unit of spec that changes the tree, of the import
 // kind, and answers its changeset: the one it merged into, the one it
-// created, or none when it wrote nothing. A notebook the job cannot see
-// is notebook.not_found.
+// created, or none when it wrote nothing. The changeset spec names the
+// unit makes with its first write when it is not there yet: its job's
+// row's (M8/P4 design 3.2). A notebook the job cannot see is
+// notebook.not_found.
 func (w *ImportWrites) Import(ctx context.Context, spec ImportSpec, do func(ctx context.Context, u *ImportUnit) error) (uuid.UUID, error) {
 	outcome, err := w.writer.Run(ctx, UnitSpec{
 		NotebookID: spec.NotebookID, Action: spec.Action, Tree: true, Client: spec.Client, NotFound: domain.ErrNotebookNotFound,
-		Kind: domain.ChangesetImport, Changeset: spec.Changeset,
+		Kind: domain.ChangesetImport, Changeset: spec.Changeset, Create: true,
 	}, func(ctx context.Context, u *Unit) error {
 		return do(ctx, &ImportUnit{u: u, under: map[uuid.UUID]*children{}, lines: map[uuid.UUID][]domain.Ancestor{}})
 	})

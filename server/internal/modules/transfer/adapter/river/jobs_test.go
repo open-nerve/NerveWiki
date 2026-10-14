@@ -59,10 +59,17 @@ func TestQueueRefusesOutsideATransaction(t *testing.T) {
 	if err := (Queue{}).Import(context.Background(), uuid.NewV7()); err == nil {
 		t.Error("Import outside a transaction = nil, want an error")
 	}
+	if err := (Queue{}).TrashRestore(context.Background(), uuid.NewV7()); err == nil {
+		t.Error("TrashRestore outside a transaction = nil, want an error")
+	}
+	if err := (Queue{}).Revert(context.Background(), uuid.NewV7()); err == nil {
+		t.Error("Revert outside a transaction = nil, want an error")
+	}
 }
 
 // The queue enqueues an export or an import in its transaction, in its
-// kind's queue, one attempt; it holds those of a kind River has not
+// kind's queue, a background restore or revert in the imports' (M8/P4
+// design 3.6), one attempt; it holds those of a kind River has not
 // finished: not one River discarded, nor another kind's job.
 func TestTheQueueHoldsTheJobsRiverHasNotFinished(t *testing.T) {
 	ctx := context.Background()
@@ -76,9 +83,15 @@ func TestTheQueueHoldsTheJobsRiverHasNotFinished(t *testing.T) {
 		t.Fatal(err)
 	}
 	q, tx := NewQueue(inserter), postgres.NewTxManager(pool, 5*time.Second)
-	kept, dropped, imported := uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
+	kept, dropped, imported, restored, reverted := uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
 	err = tx.WithinTx(ctx, func(ctx context.Context) error {
 		if err := q.Export(ctx, kept); err != nil {
+			return err
+		}
+		if err := q.TrashRestore(ctx, restored); err != nil {
+			return err
+		}
+		if err := q.Revert(ctx, reverted); err != nil {
 			return err
 		}
 		if err := q.Export(ctx, dropped); err != nil {
@@ -96,7 +109,7 @@ func TestTheQueueHoldsTheJobsRiverHasNotFinished(t *testing.T) {
 	for kind, want := range map[string]struct {
 		queue string
 		n     int
-	}{ExportKind: {QueueExport, 2}, ImportKind: {QueueImport, 1}} {
+	}{ExportKind: {QueueExport, 2}, ImportKind: {QueueImport, 1}, TrashRestoreKind: {QueueImport, 1}, RevertKind: {QueueImport, 1}} {
 		var n, otherwise int
 		if err := pool.QueryRow(ctx, `SELECT count(*), count(*) FILTER (WHERE queue <> $1 OR max_attempts <> 1) FROM river_job WHERE kind = $2`,
 			want.queue, kind).Scan(&n, &otherwise); err != nil || n != want.n || otherwise != 0 {
@@ -115,5 +128,16 @@ func TestTheQueueHoldsTheJobsRiverHasNotFinished(t *testing.T) {
 	held, err = q.Held(ctx, domain.KindImport)
 	if err != nil || !slices.Equal(held, []uuid.UUID{imported}) {
 		t.Errorf("Held(import) = %v, %v; want the import alone", held, err)
+	}
+	held, err = q.Held(ctx, domain.KindTrashRestore)
+	if err != nil || !slices.Equal(held, []uuid.UUID{restored}) {
+		t.Errorf("Held(trash_restore) = %v, %v; want the restore alone", held, err)
+	}
+	held, err = q.Held(ctx, domain.KindRevert)
+	if err != nil || !slices.Equal(held, []uuid.UUID{reverted}) {
+		t.Errorf("Held(revert) = %v, %v; want the revert alone", held, err)
+	}
+	if _, err := q.Held(ctx, domain.Kind("copy")); err == nil {
+		t.Error("Held of no kind = nil error")
 	}
 }

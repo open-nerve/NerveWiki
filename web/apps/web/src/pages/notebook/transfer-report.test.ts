@@ -16,10 +16,36 @@ test.each([
   ["import", "not_zip", "The file is not a zip archive, or the archive is damaged."],
   ["import", "too_many_entries", "The zip holds more entries than the server takes."],
   ["import", "unpacked_too_large", "The zip unpacks to more than the server takes."],
+  [
+    "import",
+    "too_many_nodes",
+    "The zip would make more pages and attachments than one import can, counting the folders in its paths: an import past it could not be undone.",
+  ],
   ["import", "tree_changed", "A page the import had written was deleted while it ran."],
   ["import", "changeset_reverted", "What the import had written was reverted while it ran."],
   ["import", "storage_full", "The server's storage is full."],
   ["import", "gremlins", "The job failed."],
+  [
+    "trash_restore",
+    "trash_changed",
+    "The item in the trash changed before the restore came to it: someone restored it, the purge took it, or it was deleted again.",
+  ],
+  ["trash_restore", "restore_expired", "The item went past the time it could be restored in."],
+  ["trash_restore", "forbidden", "The person who started it could no longer edit the notebook."],
+  ["trash_restore", "tree_changed", "While the restore ran, what it had restored was deleted or moved too deep."],
+  ["trash_restore", "changeset_reverted", "What the restore had restored was undone while it ran."],
+  [
+    "trash_restore",
+    "interrupted",
+    "The job was interrupted: the server stopped or restarted, or the job stopped responding.",
+  ],
+  ["revert", "revert_conflict", "What the change touched changed since, or could not go back."],
+  ["revert", "changeset_trimmed", "The purge took part of the change: it can no longer be undone."],
+  ["revert", "page_locked", "Someone is editing a page the undo was about to change."],
+  ["revert", "forbidden", "The person who started it could no longer edit the notebook."],
+  ["revert", "tree_changed", "While the undo ran, the pages it was undoing changed."],
+  ["revert", "changeset_reverted", "What the undo had done was itself undone while it ran."],
+  ["revert", "gremlins", "The job failed."],
 ] as const)("a failure of an %s, %s, says what befell it", (kind, failure, says) => {
   expect(failureText(kind, failure, t)).toBe(says);
 });

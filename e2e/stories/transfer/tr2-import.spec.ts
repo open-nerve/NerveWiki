@@ -113,7 +113,19 @@ test("TR2 (API): a vault imports at a notebook's root after its pages and under 
   expect([job.state, job.progress]).toEqual(["succeeded", { done: 8, total: 8 }]);
   expect(job.report).toEqual({
     failure: null,
-    counts: { pages: 6, attachments: 2, renamed: 1, missing: 0, skipped: 0 },
+    counts: {
+      pages: 6,
+      attachments: 2,
+      renamed: 1,
+      missing: 0,
+      skipped: 0,
+      restored: 0,
+      deleted: 0,
+      put_back: 0,
+      written: 0,
+    },
+    placed: null,
+    lock: null,
   });
   expect(job.problems).toEqual([{ path: "What? Why.md", code: "renamed", to: "What_ Why 2" }]);
   expect(await treeOf(db, nervewiki.storageDir, notebook.id)).toEqual([
@@ -186,7 +198,7 @@ test("TR2 (page): a vault imports from the notebook's settings, at its root and 
   await page.goto(notebookPath(workspace.slug, notebook.id, "general"));
   await page
     .getByRole("navigation", { name: "Notebook settings" })
-    .getByRole("link", { name: "Import and export" })
+    .getByRole("link", { name: "Import, export and restore" })
     .click();
   await expect(page.getByText("No jobs yet.")).toBeVisible();
   const job = await importWith(page, notebook.id, vault());
@@ -287,7 +299,7 @@ test("TR2 (page): a vault imports from the notebook's settings, at its root and 
     await dialog.getByRole("button", { name: "Import", exact: true }).click();
     // Chromium reads the refusal the server answers before the file, though the body still goes.
     await expect(dialog.getByRole("alert")).toHaveText(
-      "An import into this notebook is under way, perhaps someone else's. Wait for it to end, then try again."
+      "An import, a restore or an undo is under way in this notebook, perhaps someone else's. Wait for it to end, then try again."
     );
     pageWatch.expectConsole({ errors: [failedToLoad(409)] });
     held.stop();

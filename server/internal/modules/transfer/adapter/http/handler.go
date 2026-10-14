@@ -20,6 +20,8 @@ import (
 type UseCases struct {
 	Start    *app.StartExport
 	Import   *app.StartImport
+	Restore  *app.StartTrashRestore
+	Revert   *app.StartRevert
 	Reads    *app.Reads
 	Cancel   *app.Cancel
 	Download *app.Download

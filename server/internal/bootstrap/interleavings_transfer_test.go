@@ -64,14 +64,16 @@ func (tm acmeTeam) holdAssetBlobs(t *testing.T) (release func()) {
 }
 
 // checkTransfers fails t when the jobs break an invariant (M7/P5 design
-// 3.14; M7/P6 design 3.16): a job not deleted still queued or running once
-// River's every export and import has completed; an archive in the store
+// 3.14; M7/P6 design 3.16; M8/P4 design 3.10): a job not deleted still
+// queued or running once River's every export, import, restore and revert
+// has completed; an archive in the store
 // that no export that succeeded keeps, live or deleted with its notebook
 // (the sweep's, a day later); an import's that no import queued or running
 // keeps, not deleted.
 func checkTransfers(t *testing.T, tm acmeTeam) {
 	t.Helper()
-	if n := count(t, tm.pool, "SELECT count(*) FROM river_job WHERE kind IN ('transfer.export', 'transfer.import') AND state <> 'completed'"); n != 0 {
+	if n := count(t, tm.pool, "SELECT count(*) FROM river_job WHERE kind IN ('transfer.export', 'transfer.import', "+
+		"'transfer.trash_restore', 'transfer.revert') AND state <> 'completed'"); n != 0 {
 		t.Errorf("%d jobs not completed by River", n)
 	}
 	if n := count(t, tm.pool, "SELECT count(*) FROM transfer_jobs WHERE state IN ('queued', 'running') AND deleted_at IS NULL"); n != 0 {

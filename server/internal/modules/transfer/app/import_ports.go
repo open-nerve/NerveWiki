@@ -32,6 +32,57 @@ type Tree interface {
 	// when it wrote nothing. notebook.not_found for a notebook the job
 	// can no longer see, forbidden for a reader.
 	Import(ctx context.Context, spec ImportSpec, do func(ctx context.Context, u ImportUnit) error) (uuid.UUID, error)
+	// The background restores' and reverts' (M8/P4 design 3.3). CheckRestore
+	// checks a restore of the trash item of the root nodeID, unlocked, and
+	// answers its name; CheckRevert a revert of the changeset, unlocked,
+	// calling admit right after its items are counted, before anything else
+	// is read, its error answered as it is, and answers the changeset's
+	// kind: each the page module's codes in its operation's order.
+	CheckRestore(ctx context.Context, notebookID, nodeID uuid.UUID) (string, error)
+	CheckRevert(ctx context.Context, notebookID, changesetID uuid.UUID, message *string, admit func(context.Context) error) (string, error)
+	// PlanRestore and PlanRevert plan a job as it starts, unlocked: a
+	// notebook the job's account can no longer see or write in, and the
+	// sentinels below. RunBatch writes the plan's steps from to to (not
+	// included) in one unit merged into the job's changeset: 503 to try
+	// again, ErrBatchTooLarge to halve, the sentinels below, and the unit's
+	// refusals.
+	PlanRestore(ctx context.Context, spec JobSpec, nodeID uuid.UUID) (JobPlan, error)
+	PlanRevert(ctx context.Context, spec JobSpec, changesetID uuid.UUID) (JobPlan, error)
+	RunBatch(ctx context.Context, spec JobSpec, plan JobPlan, from, to int) (BatchDone, error)
+}
+
+// JobSpec is a background job's units': its notebook and client, the
+// changeset its row names, a revert's message.
+type JobSpec struct {
+	NotebookID uuid.UUID
+	Client     domain.Client
+	Changeset  uuid.UUID
+	Message    *string
+}
+
+// JobPlan is a background job's plan, the page module's, which only it
+// reads: its steps, each a write no batch splits, in their order, and the
+// nodes they write.
+type JobPlan interface {
+	Steps() []JobStep
+	Total() int
+}
+
+// JobStep is a step of a background job: the nodes it writes and the
+// content's bytes it parses.
+type JobStep struct {
+	Nodes int
+	Bytes int64
+}
+
+// BatchDone is what a background job's batch did: the nodes it wrote; a
+// restore's pages and attachments it brought back, those it renamed,
+// skipped and where its first batch put the item's root; a revert's nodes
+// restored, deleted and put back, and pages written back.
+type BatchDone struct {
+	Nodes, Pages, Assets, Renamed, Skipped int
+	Restored, Deleted, PutBack, Written    int
+	Placed                                 *domain.Placement
 }
 
 // Parsed is a page's content parsed for its unit: how many links it
@@ -104,9 +155,25 @@ var (
 )
 
 // ErrChangesetReverted is a unit refused before it wrote anything: a revert
-// was made of the changeset the import writes in, its first unit's, as it
-// ran (M8/P3 design 3.7). The import stops.
-var ErrChangesetReverted = errors.New("transfer: the changeset the import writes in was reverted")
+// was made of the changeset the job writes in, its row's, as it ran (M8/P3
+// design 3.7). The job stops.
+var ErrChangesetReverted = errors.New("transfer: the changeset the job writes in was reverted")
+
+// The background jobs' sentinels (M8/P4 design 3.6), each a stop but the
+// first, which halves the batch: the rows of history or links of a batch
+// past a unit's; a restore's trash item changed since it started, or past
+// the time it can be restored in; a revert's conflicts, which the page
+// module's problem it wraps names (shared.Error's Conflicts and
+// ConflictCount); its changeset trimmed by the purge; a page of its batch
+// under an edit lock, which the problem names (Lock).
+var (
+	ErrBatchTooLarge    = errors.New("transfer: the batch is past a unit's history or links")
+	ErrTrashChanged     = errors.New("transfer: the trash item changed")
+	ErrRestoreExpired   = errors.New("transfer: the trash item can no longer be restored")
+	ErrRevertConflict   = errors.New("transfer: nodes the changeset changed changed since, or cannot go back")
+	ErrChangesetTrimmed = errors.New("transfer: the purge trimmed the changeset")
+	ErrLocked           = errors.New("transfer: an edit session holds a page of the batch")
+)
 
 // Attachments writes an import's attachments' files: bootstrap adapts the
 // asset module's Blobs.

@@ -74,7 +74,22 @@ test("TR4 (API): the entries that cannot be imported safely are skipped and repo
   const job = await endedJob(api, pat, (await startImport(api, pat, notebook.id, archive)).id);
   expect([job.state, job.report]).toEqual([
     "succeeded",
-    { failure: null, counts: { pages: 12, attachments: 1, renamed: 0, missing: 0, skipped: 13 } },
+    {
+      failure: null,
+      counts: {
+        pages: 12,
+        attachments: 1,
+        renamed: 0,
+        missing: 0,
+        skipped: 13,
+        restored: 0,
+        deleted: 0,
+        put_back: 0,
+        written: 0,
+      },
+      placed: null,
+      lock: null,
+    },
   ]);
   expect(job.problems.toSorted((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))).toEqual([
     { path: "../escape.md", code: "unsafe_path", to: null },

@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"errors"
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
@@ -89,6 +90,13 @@ var (
 	ErrRevertConflict = shared.NewError(shared.KindConflict, "page.revert_conflict",
 		"Nodes the changeset changed changed since, or cannot go back as they were.")
 )
+
+// ErrBatchTooLarge is a background job's batch of more than one step past
+// what a unit writes besides its nodes (M8/P4 design 3.3): the rows of
+// history it restores, counted before its contents are parsed, or the
+// links they hold, once they are. No problem of the API: the job halves
+// the batch and tries again; a lone step never is.
+var ErrBatchTooLarge = errors.New("page: a background job's batch is past the unit's history or links")
 
 // RevertConflicts is ErrRevertConflict naming the conflicts, the first
 // MaxConflicts of count.

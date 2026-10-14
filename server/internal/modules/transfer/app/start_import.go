@@ -56,8 +56,9 @@ func (e *ReadError) Unwrap() error { return e.Err }
 // Check decides, before the file is read and unlocked, what Create
 // decides again: a notebook the caller cannot see is notebook.not_found;
 // a reader is forbidden; a parent that is no page of the notebook not
-// deleted is page.not_found; an import of the notebook being uploaded,
-// queued or running, anyone's, is transfer.busy; MaxQueued jobs waiting,
+// deleted is page.not_found; an import of the notebook being uploaded, or
+// a restore or a revert being started (M8/P4 design 3.6), or a job that
+// writes its tree queued or running, anyone's, is transfer.busy; MaxQueued jobs waiting,
 // running or being uploaded are 503 server_busy; a store that would keep
 // less than MinFree once the body, and what the other uploads have still
 // to store, are written is 507 storage_full. Once it passes, the notebook
@@ -68,7 +69,7 @@ func (s *StartImport) Check(ctx context.Context, req ImportRequest) error {
 	if err != nil {
 		return err
 	}
-	workspaceID, err := s.workspaceOf(ctx, req.NotebookID)
+	workspaceID, err := s.d.workspaceOf(ctx, req.NotebookID)
 	if err != nil {
 		return err
 	}
@@ -81,7 +82,7 @@ func (s *StartImport) Check(ctx context.Context, req ImportRequest) error {
 	s.d.Uploads.checking.Lock()
 	defer s.d.Uploads.checking.Unlock()
 	if !s.d.Uploads.claim(req.NotebookID, max(req.Size, 0)) {
-		return domain.ErrImportBusy
+		return domain.ErrWriting
 	}
 	admitted := false
 	defer func() {
@@ -97,10 +98,10 @@ func (s *StartImport) Check(ctx context.Context, req ImportRequest) error {
 	return nil
 }
 
-// admit is Check's last: no import of the notebook, room in the queue and
-// in the store for the body.
+// admit is Check's last: no job that writes the notebook's tree, room in
+// the queue and in the store for the body.
 func (s *StartImport) admit(ctx context.Context, req ImportRequest) error {
-	if err := s.busy(ctx, req.NotebookID); err != nil {
+	if err := s.d.writing(ctx, req.NotebookID); err != nil {
 		return err
 	}
 	if err := s.d.room(ctx, req.NotebookID, false); err != nil {
@@ -113,15 +114,6 @@ func (s *StartImport) admit(ctx context.Context, req ImportRequest) error {
 // request ended.
 func (s *StartImport) Release(req ImportRequest) {
 	s.d.Uploads.release(req.NotebookID)
-}
-
-// workspaceOf is the notebook's workspace: notebook.not_found for none.
-func (s *StartImport) workspaceOf(ctx context.Context, notebookID uuid.UUID) (uuid.UUID, error) {
-	workspaceID, ok, err := s.d.Notebooks.WorkspaceOf(ctx, notebookID)
-	if err == nil && !ok {
-		err = domain.ErrNotebookNotFound
-	}
-	return workspaceID, err
 }
 
 // place is page.not_found when the import goes under a page that is no
@@ -137,12 +129,12 @@ func (s *StartImport) place(ctx context.Context, req ImportRequest) error {
 	return err
 }
 
-// busy is transfer.busy when the notebook has an import queued or
-// running.
-func (s *StartImport) busy(ctx context.Context, notebookID uuid.UUID) error {
-	busy, err := s.d.Rows.Importing(ctx, notebookID)
+// writing is transfer.busy when the notebook has a job that writes its
+// tree queued or running: an import, a restore or a revert.
+func (d StartDeps) writing(ctx context.Context, notebookID uuid.UUID) error {
+	busy, err := d.Rows.Writing(ctx, notebookID)
 	if err == nil && busy {
-		err = domain.ErrImportBusy
+		err = domain.ErrWriting
 	}
 	return err
 }
@@ -220,8 +212,9 @@ func (s *StartImport) Discard(ctx context.Context, stored Stored) {
 // Create starts the import of stored as req asks, and answers its job:
 // under the workspace's row and the notebook's, FOR SHARE, it decides
 // transfer.import and checks the parent again; then, the jobs' creations
-// one at a time, there is room in the queue and no import of the
-// notebook. The job, named as the file, goes under the parent. The
+// one at a time, there is room in the queue and no job that writes the
+// notebook's tree. The job, named as the file, goes under the parent, the
+// changeset it will write decided (M8/P4 design 3.2). The
 // archive is deleted on any failure before the commit; one whose commit
 // failed is left to the sweep.
 func (s *StartImport) Create(ctx context.Context, req ImportRequest, stored Stored) (JobView, error) {
@@ -248,7 +241,7 @@ func (s *StartImport) write(ctx context.Context, req ImportRequest, stored Store
 	if err != nil {
 		return job, false, err
 	}
-	workspaceID, err := s.workspaceOf(ctx, req.NotebookID)
+	workspaceID, err := s.d.workspaceOf(ctx, req.NotebookID)
 	if err != nil {
 		return job, false, err
 	}
@@ -265,11 +258,13 @@ func (s *StartImport) write(ctx context.Context, req ImportRequest, stored Store
 		if err := s.d.room(ctx, req.NotebookID, true); err != nil {
 			return err
 		}
-		if err := s.busy(ctx, req.NotebookID); err != nil {
+		if err := s.d.writing(ctx, req.NotebookID); err != nil {
 			return err
 		}
+		changeset := uuid.NewV7()
 		job = domain.Job{ID: stored.ID, NotebookID: req.NotebookID, RootID: req.ParentID, Kind: domain.KindImport, State: domain.StateQueued,
-			Name: domain.ImportName(req.FileName), CreatedBy: actor.UserID, Client: req.Client, CreatedAt: s.d.Clock.Now()}
+			Name: domain.ImportName(req.FileName), CreatedBy: actor.UserID, Client: req.Client, CreatedAt: s.d.Clock.Now(),
+			ChangesetID: &changeset}
 		if err := s.d.Rows.CreateJob(ctx, job); err != nil {
 			return err
 		}

@@ -25,9 +25,7 @@ func TestTheDeletionsRevisionsAreBackfilled(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = m.Close() })
-	if back, err := m.Down(ctx); err != nil || back == nil || back.Version != 38 {
-		t.Fatalf("Down() = %+v, %v; want 00038 down", back, err)
-	}
+	downTo(t, m, 38)
 
 	const (
 		user = "'0199a2b4-0000-7000-8000-000000000001'"
@@ -123,9 +121,7 @@ func TestTheDeletionsRevisionsAreBackfilled(t *testing.T) {
 
 	// Down again over d's revision (M8/P3A review A-4): the deletions' items
 	// lose theirs, which 00037's checks forbid; the creation keeps its own.
-	if back, err := m.Down(ctx); err != nil || back == nil || back.Version != 38 {
-		t.Fatalf("Down() over a deletion's revision = %+v, %v; want 00038 down", back, err)
-	}
+	downTo(t, m, 38)
 	rows, err = pool.Query(ctx, `SELECT node_id::text, revision FROM changeset_items ORDER BY id`)
 	if err != nil {
 		t.Fatal(err)

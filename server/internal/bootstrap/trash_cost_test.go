@@ -45,11 +45,13 @@ import (
 // served in process, alice's by a token any.
 
 // trashBench is a notebook of alice's on a database of its own whose
-// tables keep no statistics until analyzed, and the page module on it.
+// tables keep no statistics until analyzed, and the page module on it, its
+// writes of the background jobs among them.
 type trashBench struct {
 	pool   *pgxpool.Pool
 	router http.Handler
 	md     *markdown.Markdown
+	jobs   page.TreeWrites
 	alice  uuid.UUID
 	nb     uuid.UUID
 }
@@ -73,6 +75,16 @@ func newTrashBench(tb testing.TB, maxNodes, maxHistory int) trashBench {
 // newTrashBenchOfSteps is the bench, a revert's round also bounded at
 // maxSteps, 0 the composition root's.
 func newTrashBenchOfSteps(tb testing.TB, maxNodes, maxHistory, maxSteps int) trashBench {
+	tb.Helper()
+	return newTrashBenchWith(tb, func(d *page.Deps) {
+		d.MaxUnitNodes, d.MaxUnitHistory = cmp.Or(maxNodes, d.MaxUnitNodes), cmp.Or(maxHistory, d.MaxUnitHistory)
+		d.MaxRevertSteps = cmp.Or(maxSteps, d.MaxRevertSteps)
+	})
+}
+
+// newTrashBenchWith is the bench, the page module's dependencies as set
+// leaves those the composition root gives it.
+func newTrashBenchWith(tb testing.TB, set func(d *page.Deps)) trashBench {
 	tb.Helper()
 	ctx := context.Background()
 	url := pgtest.NewDatabase(tb)
@@ -121,8 +133,7 @@ func newTrashBenchOfSteps(tb testing.TB, maxNodes, maxHistory, maxSteps int) tra
 		tb.Fatal(err)
 	}
 	deps := pageDeps(cfg, pool, logger, authorizer, md, budget)
-	deps.MaxUnitNodes, deps.MaxUnitHistory = cmp.Or(maxNodes, deps.MaxUnitNodes), cmp.Or(maxHistory, deps.MaxUnitHistory)
-	deps.MaxRevertSteps = cmp.Or(maxSteps, deps.MaxRevertSteps)
+	set(&deps)
 	pg := page.New(deps)
 	router := httpserver.NewRouter(logger)
 	api, err := httpserver.NewAPI(apiConfig(cfg, logger, ratelimit.New(time.Now), benchAuth{b.alice}, nil, nil, pg.BodyLimits()))
@@ -130,7 +141,7 @@ func newTrashBenchOfSteps(tb testing.TB, maxNodes, maxHistory, maxSteps int) tra
 		tb.Fatal(err)
 	}
 	pg.Register(router, api)
-	b.router, b.md = router, md
+	b.router, b.md, b.jobs = router, md, pg.TreeWrites()
 	return b
 }
 

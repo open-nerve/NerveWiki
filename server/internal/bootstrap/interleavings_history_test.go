@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 	"testing"
 	"time"
 
@@ -262,7 +263,8 @@ func threeBatches(t *testing.T) []byte {
 // changeset_reverted, reporting the two units' counts, the third unit's
 // file deleted (checkAssets: no file in the store without its row). The
 // third unit first, the revert reverts the whole import, and the job
-// succeeds. C's id is read through SQL (the job's changeset_id is P4's).
+// succeeds. C's id is the job's changeset_id, which its row has from its
+// start (M8/P4 design 3.2); the first unit made C with it.
 func TestRevertingAnImportBeingMerged(t *testing.T) {
 	tm, _, _ := transferTeam(t)
 	for try := range betweenUnits {
@@ -270,12 +272,18 @@ func TestRevertingAnImportBeingMerged(t *testing.T) {
 		release := tm.holdAssetBlobs(t)
 		j := tm.started(t, importStep(t, "bob", nb, "", threeBatches(t)))
 		pgtest.WaitForTableLockWaits(t, tm.pool, "asset_blobs", 1, interleavingWait)
-		changesets := queryStrings(t, tm.pool, "SELECT id::text FROM changesets WHERE notebook_id = $1 AND kind = 'import'", nb)
-		if len(changesets) != 1 {
-			t.Fatalf("the import's changesets = %v, want the first unit's", changesets)
+		status, answer := ask(t, tm.contract, http.MethodGet, tm.base+"/api/v0/transfer-jobs/"+j.ID, tm.tokens["bob"], "")
+		var row backgroundJob
+		decodeAnswer(t, answer, &row)
+		if status != http.StatusOK || row.ChangesetID == nil {
+			t.Fatalf("the import's job = %d %s, want its changeset", status, answer)
+		}
+		if changesets := queryStrings(t, tm.pool, "SELECT id::text FROM changesets WHERE notebook_id = $1 AND kind = 'import'", nb); !slices.Equal(
+			changesets, []string{*row.ChangesetID}) {
+			t.Fatalf("the import's changesets = %v, want the first unit's, the job's %s", changesets, *row.ChangesetID)
 		}
 
-		reverted := tm.inBackground(t, changesetRevert("alice", changesets[0]))
+		reverted := tm.inBackground(t, changesetRevert("alice", *row.ChangesetID))
 		pgtest.WaitForLockWaitsOn(t, tm.pool, "notebooks", 1, interleavingWait)
 		release()
 		if a := reverted(); a.status != http.StatusOK {

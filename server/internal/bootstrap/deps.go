@@ -224,8 +224,8 @@ func transferDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, au
 		Statistics:  []transfer.Analyzer{page.NewStatistics(pool), linking.NewStatistics(pool), asset.NewStatistics(pool)},
 		DownloadKey: downloadKey, ExportTTL: t.ExportTTL, JobTimeout: t.JobTimeout, HeartbeatTimeout: t.HeartbeatTimeout, MaxQueued: t.MaxQueued,
 		ImportMaxBytes: t.ImportMaxBytes, ImportMaxEntries: t.ImportMaxEntries, ImportMaxUnpackedBytes: t.ImportMaxUnpackedBytes,
-		MinFreeBytes: cfg.Storage.MinFreeBytes, MinRate: cfg.Asset.UploadMinRate, AssetMaxBytes: cfg.Asset.MaxBytes,
-		MaxContentBytes: page.MaxContentBytes,
+		ImportMaxNodes: page.MaxJobItems, MinFreeBytes: cfg.Storage.MinFreeBytes, MinRate: cfg.Asset.UploadMinRate, AssetMaxBytes: cfg.Asset.MaxBytes,
+		MaxContentBytes: page.MaxContentBytes, RestoreAction: page.ActionRestore, RevertAction: page.ActionRevert,
 	}
 }
 

@@ -707,17 +707,28 @@ func (p *planner) height(id uuid.UUID, down int) int {
 	return h + 1
 }
 
+// rank is the reason's place in the order a revert's conflicts are
+// listed in.
+func (r ConflictReason) rank() int {
+	return slices.Index([]ConflictReason{ConflictChanged, ConflictExpired, ConflictParentGone, ConflictChildrenAdded,
+		ConflictTitleTaken, ConflictCycle, ConflictTooDeep}, r)
+}
+
+// CompareConflicts orders two conflicts as a revert lists them: by their
+// reasons' order, then by node id.
+func CompareConflicts(a, b RevertConflict) int {
+	return cmp.Or(cmp.Compare(a.Reason.rank(), b.Reason.rank()), a.NodeID.Compare(b.NodeID))
+}
+
 // plan is the conflicts in their order, at most MaxConflicts named, and
 // the pages missing.
 func (p *planner) plan() RevertPlan {
-	order := []ConflictReason{ConflictChanged, ConflictExpired, ConflictParentGone, ConflictChildrenAdded, ConflictTitleTaken,
-		ConflictCycle, ConflictTooDeep}
 	ids := make([]uuid.UUID, 0, len(p.reasons))
 	for id := range p.reasons {
 		ids = append(ids, id)
 	}
 	slices.SortFunc(ids, func(a, b uuid.UUID) int {
-		return cmp.Or(cmp.Compare(slices.Index(order, p.reasons[a].reason), slices.Index(order, p.reasons[b].reason)), a.Compare(b))
+		return cmp.Or(cmp.Compare(p.reasons[a].reason.rank(), p.reasons[b].reason.rank()), a.Compare(b))
 	})
 	out := RevertPlan{Count: len(ids)}
 	for _, id := range ids[:min(len(ids), MaxConflicts)] {

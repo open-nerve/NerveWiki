@@ -575,6 +575,38 @@ func (q *Queries) ListNodes(ctx context.Context, notebookID uuid.UUID) ([]ListNo
 	return items, nil
 }
 
+const markTrashRoots = `-- name: MarkTrashRoots :execrows
+UPDATE nodes n SET trash_root = true, trash_pages = u.pages, trash_assets = u.assets, trash_height = u.height
+FROM (SELECT unnest($2::uuid[]) AS id, unnest($3::integer[]) AS pages,
+        unnest($4::integer[]) AS assets, unnest($5::integer[]) AS height) u
+WHERE n.id = u.id AND n.deleted_at = $1::timestamptz AND NOT n.trash_root
+`
+
+type MarkTrashRootsParams struct {
+	DeletedAt time.Time
+	Ids       []uuid.UUID
+	Pages     []int32
+	Assets    []int32
+	Heights   []int32
+}
+
+// The nodes of a trash item a background restore left in the trash under parents it brought back (M8 design 4.10;
+// M8/P4 design 3.4): each its own trash item, with its part of the group's counts and height. Joined by key, as
+// RestoreNodes; a node no longer deleted at the time, or a root already, is not marked, which its caller counts.
+func (q *Queries) MarkTrashRoots(ctx context.Context, arg MarkTrashRootsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markTrashRoots,
+		arg.DeletedAt,
+		arg.Ids,
+		arg.Pages,
+		arg.Assets,
+		arg.Heights,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const moveNode = `-- name: MoveNode :exec
 UPDATE nodes
 SET parent_id = $1, sort_order = $2, updated_by_id = $3,

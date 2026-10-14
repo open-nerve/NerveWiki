@@ -51,7 +51,22 @@ test("TR3 (API): TR1's notebook exports and imports into another as it was: its 
   const job = await endedJob(api, pat, (await startImport(api, pat, copy.id, archive)).id);
   expect([job.state, job.report, job.problems]).toEqual([
     "succeeded",
-    { failure: null, counts: { pages: 9, attachments: 2, renamed: 0, missing: 0, skipped: 0 } },
+    {
+      failure: null,
+      counts: {
+        pages: 9,
+        attachments: 2,
+        renamed: 0,
+        missing: 0,
+        skipped: 0,
+        restored: 0,
+        deleted: 0,
+        put_back: 0,
+        written: 0,
+      },
+      placed: null,
+      lock: null,
+    },
     [],
   ]);
   const before = await treeOf(db, nervewiki.storageDir, handbook.id);

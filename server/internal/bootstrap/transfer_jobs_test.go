@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"cmp"
 	"context"
 	"log/slog"
 	"maps"
@@ -15,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/asset"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/transfer"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/transfer/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
@@ -29,27 +31,28 @@ import (
 // the archives no export keeps, and the purge. Each test seeds its jobs
 // through SQL and their archives in the store before serve starts.
 
-// seededJob is an export the tests seed, or an import when imported, of a
-// notebook of its own named after it: in state, created, started and
+// seededJob is a job the tests seed, an export unless of another kind, of
+// a notebook of its own named after it: in state, created, started and
 // ended ago, its archive in the store, as old as archiveAgo, when
-// archived. A job of no state has no row: its archive is an orphan's.
+// archived; a background restore of an item, or a revert of a changeset,
+// with its changeset (M8/P4 design 3.2), and the report its heartbeat
+// wrote when running and reported. A job of no state has no row: its
+// archive is an orphan's.
 type seededJob struct {
 	name       string
 	id         uuid.UUID
-	imported   bool
+	of         domain.Kind
 	state      string
 	ago        time.Duration
 	deleted    bool // with its notebook, at the job's time
 	archived   bool
 	archiveAgo time.Duration
+	reported   string
 }
 
 // kind is the job's kind.
 func (j seededJob) kind() domain.Kind {
-	if j.imported {
-		return domain.KindImport
-	}
-	return domain.KindExport
+	return cmp.Or(j.of, domain.KindExport)
 }
 
 // seedJobs writes alice, acme, the jobs and their notebooks into the
@@ -82,14 +85,25 @@ func seedJobs(t *testing.T, pool *pgxpool.Pool, dir string, seeded []seededJob) 
 				deletedAt = &at
 			}
 			exec(notebook, nb, workspace, j.name, user, deletedAt)
+			var root, changeset, target *uuid.UUID
+			switch j.kind() {
+			case domain.KindTrashRestore:
+				root, changeset = new(uuid.NewV7()), new(uuid.NewV7())
+			case domain.KindRevert:
+				changeset, target = new(uuid.NewV7()), new(uuid.NewV7())
+			}
+			var reported *string
+			if j.reported != "" {
+				reported = &j.reported
+			}
 			exec(`INSERT INTO transfer_jobs (id, notebook_id, kind, state, name, created_by_id, client, started_at, heartbeat_at, finished_at,
-				report, result_bytes, created_at, deleted_at)
+				report, result_bytes, created_at, deleted_at, root_id, changeset_id, target_changeset_id)
 				SELECT $1, $2, $8, $3::text, $4, $5, 'web', CASE WHEN $3 <> 'queued' THEN $6::timestamptz END,
 					CASE WHEN $3 <> 'queued' THEN $6::timestamptz END, CASE WHEN $3 NOT IN ('queued', 'running') THEN $6::timestamptz END,
 					CASE WHEN $3 NOT IN ('queued', 'running') THEN '{"failure": null, "counts": {"pages": 1, "attachments": 0, "renamed": 0,
-						"missing": 0, "skipped": 0}, "problems": [], "problems_truncated": false}'::jsonb END,
-					CASE WHEN $3 IN ('succeeded', 'expired') THEN 3 END, $6, $7`,
-				j.id, nb, j.state, j.name, user, at, deletedAt, j.kind())
+						"missing": 0, "skipped": 0}, "problems": [], "problems_truncated": false}'::jsonb ELSE $12::jsonb END,
+					CASE WHEN $3 IN ('succeeded', 'expired') THEN 3 END, $6, $7, $9, $10, $11`,
+				j.id, nb, j.state, j.name, user, at, deletedAt, j.kind(), root, changeset, target, reported)
 		}
 		if !j.archived {
 			continue
@@ -146,28 +160,36 @@ func jobStates(t *testing.T, pool *pgxpool.Pool) []string {
 
 // As serve starts, before River works any job, every job left running is
 // failed, interrupted, whatever its heartbeat; a queued one stays queued.
+// A background restore's and revert's keep the report their heartbeat
+// wrote (M8/P4 design 3.6).
 func TestServeFailsTheJobsLeftRunning(t *testing.T) {
 	url := pgtest.NewDatabase(t)
 	pool := connect(t, url)
 	cfg := testConfig(t, url, false)
+	reported := `{"failure": null, "counts": {"pages": 2, "attachments": 1, "renamed": 0, "missing": 0, "skipped": 1, "restored": 4,
+		"deleted": 5, "put_back": 0, "written": 0}, "problems": [], "problems_truncated": false}`
 	seedJobs(t, pool, cfg.Storage.Dir, []seededJob{
 		{name: "beating", id: uuid.NewV7(), state: "running"},
 		{name: "waiting", id: uuid.NewV7(), state: "queued"},
+		{name: "restoring", id: uuid.NewV7(), of: domain.KindTrashRestore, state: "running", reported: reported},
+		{name: "reverting", id: uuid.NewV7(), of: domain.KindRevert, state: "running", reported: reported},
 	})
 
 	startApp(t, cfg, migrations.FS())
 
 	// The jobs start beside HTTP: the rescue runs a moment after serve
 	// answers.
-	want := []string{"beating failed", "waiting queued"}
+	want := []string{"beating failed", "restoring failed", "reverting failed", "waiting queued"}
 	for deadline := time.Now().Add(10 * time.Second); !slices.Equal(jobStates(t, pool), want); time.Sleep(50 * time.Millisecond) {
 		if time.Now().After(deadline) {
-			t.Fatalf("jobs %q, want the running one failed, the queued one queued", jobStates(t, pool))
+			t.Fatalf("jobs %q, want the running ones failed, the queued one queued", jobStates(t, pool))
 		}
 	}
-	if got := queryStrings(t, pool, "SELECT report->>'failure' FROM transfer_jobs WHERE state = 'failed' AND finished_at IS NOT NULL"); !slices.Equal(got,
-		[]string{"interrupted"}) {
-		t.Errorf("the failure %q, want interrupted, ended", got)
+	if got := queryStrings(t, pool, "SELECT name || ' ' || (report->>'failure') || ' ' || (report->'counts'->>'pages') || ' ' || "+
+		"coalesce(report->'counts'->>'restored', '-') || ' ' || coalesce(report->'counts'->>'deleted', '-') FROM transfer_jobs "+
+		"WHERE state = 'failed' AND finished_at IS NOT NULL ORDER BY name"); !slices.Equal(got,
+		[]string{"beating interrupted 0 0 0", "restoring interrupted 2 4 5", "reverting interrupted 2 4 5"}) {
+		t.Errorf("the failures %q, want each interrupted, ended, the background jobs' counts kept", got)
 	}
 }
 
@@ -209,10 +231,10 @@ func TestTheSweepDeletesTheArchivesNoJobKeeps(t *testing.T) {
 		{name: "new orphan", id: uuid.NewV7(), archived: true, archiveAgo: time.Hour},
 		{name: "expired", id: uuid.NewV7(), state: "expired", ago: 48 * time.Hour, archived: true, archiveAgo: 48 * time.Hour},
 		{name: "live", id: uuid.NewV7(), state: "succeeded", ago: time.Hour, archived: true, archiveAgo: 48 * time.Hour},
-		{name: "upload", id: uuid.NewV7(), imported: true, archived: true, archiveAgo: 48 * time.Hour},
-		{name: "new upload", id: uuid.NewV7(), imported: true, archived: true, archiveAgo: time.Hour},
-		{name: "imported", id: uuid.NewV7(), imported: true, state: "failed", ago: 48 * time.Hour, archived: true, archiveAgo: 48 * time.Hour},
-		{name: "importing", id: uuid.NewV7(), imported: true, state: "queued", archived: true, archiveAgo: 48 * time.Hour},
+		{name: "upload", id: uuid.NewV7(), of: domain.KindImport, archived: true, archiveAgo: 48 * time.Hour},
+		{name: "new upload", id: uuid.NewV7(), of: domain.KindImport, archived: true, archiveAgo: time.Hour},
+		{name: "imported", id: uuid.NewV7(), of: domain.KindImport, state: "failed", ago: 48 * time.Hour, archived: true, archiveAgo: 48 * time.Hour},
+		{name: "importing", id: uuid.NewV7(), of: domain.KindImport, state: "queued", archived: true, archiveAgo: 48 * time.Hour},
 	}
 	// An export's archive of the queued import's id, no export's row: the
 	// import keeps none of it.
@@ -276,5 +298,24 @@ func TestTheJobsHaveTheirQueuesAndOutlastRiversRescue(t *testing.T) {
 func TestNoJobOutlastsTheOrphanSweep(t *testing.T) {
 	if config.MaxJobTimeout+time.Hour > asset.SweepAge {
 		t.Errorf("transfer.job_timeout may be %s; the orphan sweep deletes a file %s old", config.MaxJobTimeout, asset.SweepAge)
+	}
+}
+
+// The composition root hands the transfer module the page module's
+// actions, and bounds the nodes an import makes by the items a background
+// revert reverts (M8/P4 design 2.2 (a)). transferDeps sets no batch:
+// newApp's, which wireApp sets, is the import's, which the whole-program
+// tests pin through newApp (TestABackgroundRestoreThroughServe's two
+// batches; M8/P4A review B-M1).
+func TestTransferDepsLeaveTheBatchesTheImports(t *testing.T) {
+	d := transferDeps(testConfig(t, "", false), nil, slog.New(slog.DiscardHandler), nil, nil, nil, nil, nil)
+	if d.Batch != (transfer.Batch{}) {
+		t.Errorf("transferDeps' batch = %+v, want none: newApp's is the one production uses", d.Batch)
+	}
+	if d.RestoreAction != page.ActionRestore || d.RevertAction != page.ActionRevert {
+		t.Errorf("transferDeps' actions = %s, %s; want the page module's restore and revert", d.RestoreAction, d.RevertAction)
+	}
+	if d.ImportMaxNodes != page.MaxJobItems {
+		t.Errorf("transferDeps' nodes of an import = %d, want the page module's MaxJobItems, %d", d.ImportMaxNodes, page.MaxJobItems)
 	}
 }

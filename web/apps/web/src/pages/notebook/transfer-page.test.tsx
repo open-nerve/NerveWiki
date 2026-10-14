@@ -4,7 +4,7 @@ import { afterEach, expect, test, vi } from "vitest";
 
 import type { TransferFailure, TransferJob } from "../../services/transfer.service";
 import { instanceJSON, json, notebookJSON, problem } from "../../test/fakes";
-import { addressOf, cancelled, jobJSON, jobsServer, underWay } from "../../test/jobs-server";
+import { addressOf, cancelled, jobJSON, jobsServer, reportOf, underWay } from "../../test/jobs-server";
 import { bob, guide } from "../../test/page-server";
 import { renderApp } from "../../test/render";
 import { pollInterval } from "./transfer-page";
@@ -57,13 +57,15 @@ test("whoever sees the notebook comes to its imports and exports from its settin
     within(nav)
       .getAllByRole("link")
       .map((link) => link.textContent)
-  ).toEqual(["General", "Members", "Import and export"]);
-  await user.click(within(nav).getByRole("link", { name: "Import and export" }));
+  ).toEqual(["General", "Members", "Import, export and restore"]);
+  await user.click(within(nav).getByRole("link", { name: "Import, export and restore" }));
 
   expect(await screen.findByRole("heading", { level: 2, name: "Export" })).toBeTruthy();
   expect(router.state.location.pathname).toBe(transfer);
-  expect(within(nav).getByRole("link", { name: "Import and export" }).getAttribute("aria-current")).toBe("page");
-  expect(document.title).toBe("Import and export · Plans settings · Nerve Wiki");
+  expect(within(nav).getByRole("link", { name: "Import, export and restore" }).getAttribute("aria-current")).toBe(
+    "page"
+  );
+  expect(document.title).toBe("Import, export and restore · Plans settings · Nerve Wiki");
   expect(await screen.findByText("No jobs yet.")).toBeTruthy();
   expect(screen.getByRole("button", { name: "Export the whole notebook" })).toBeTruthy();
 });
@@ -281,7 +283,7 @@ test("a download whose address the read again finds expired goes, the focus on i
 test("the report of an ended job shows its counts and where the vault differs, read as it opens", async () => {
   const user = userEvent.setup();
   const counts = { pages: 5, attachments: 3, renamed: 2, missing: 1, skipped: 0 };
-  const job = jobJSON(1, { report: { failure: null, counts } });
+  const job = jobJSON(1, { report: reportOf(null, counts) });
   const server = jobsServer({ jobs: [job] });
   server.problems.set(job.id, {
     problems: [

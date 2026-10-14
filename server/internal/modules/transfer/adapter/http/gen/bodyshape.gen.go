@@ -12,9 +12,16 @@ func BodyShapes() *bodyshape.Table {
 		Nodes: []bodyshape.Node{
 			/* 0 */ {Types: bodyshape.Object, Extra: bodyshape.Closed, Items: bodyshape.Open, Props: map[string]int{"root_id": 1}},
 			/* 1 */ {Types: bodyshape.Null | bodyshape.String, Format: bodyshape.FormatUUID, Extra: bodyshape.Open, Items: bodyshape.Open},
+			/* 2 */ {Types: bodyshape.Object, Extra: bodyshape.Closed, Items: bodyshape.Open, Props: map[string]int{"changeset_id": 3, "message": 4}, Required: []string{"changeset_id"}},
+			/* 3 */ {Types: bodyshape.String, Format: bodyshape.FormatUUID, Extra: bodyshape.Open, Items: bodyshape.Open},
+			/* 4 */ {Types: bodyshape.String, Extra: bodyshape.Open, Items: bodyshape.Open},
+			/* 5 */ {Types: bodyshape.Object, Extra: bodyshape.Closed, Items: bodyshape.Open, Props: map[string]int{"node_id": 6}, Required: []string{"node_id"}},
+			/* 6 */ {Types: bodyshape.String, Format: bodyshape.FormatUUID, Extra: bodyshape.Open, Items: bodyshape.Open},
 		},
 		Roots: map[string]int{
-			"POST /api/v0/notebooks/{notebook_id}/exports": 0,
+			"POST /api/v0/notebooks/{notebook_id}/exports":        0,
+			"POST /api/v0/notebooks/{notebook_id}/reverts":        2,
+			"POST /api/v0/notebooks/{notebook_id}/trash-restores": 5,
 		},
 	}
 }

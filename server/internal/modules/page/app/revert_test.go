@@ -141,7 +141,7 @@ func TestRevertChangesetRestoresADeletion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	reads := []string{"ChangesetItems", "ChangesetVersions", "FindChangeset", "NodesNow 3", "TrashGroup"}
+	reads := []string{"ChangesetItems", "ChangesetVersions", "FindChangeset", "NodesNow 3", "TrashGroups 1"}
 	state := []string{"ContentsNow 0", "VersionHashes 2", "ListNodes"}
 	var want []string
 	want = append(want, "FindChangeset", "WorkspaceOf", "Authorize changeset.revert", "CountItems")
@@ -407,7 +407,7 @@ func TestRevertChangesetAnswersItsCodesInOrder(t *testing.T) {
 			return f.c.ID
 		}, nil, 0, 0, "page.changeset_trimmed"},
 		{"its root's group gone before it is read", func(f revertFixture) uuid.UUID {
-			f.rec.before = map[string]func(){"TrashGroup": func() { delete(f.store.trash, f.box.ID) }}
+			f.rec.before = map[string]func(){"TrashGroups 1": func() { delete(f.store.trash, f.box.ID) }}
 			return f.c.ID
 		}, nil, 0, 0, "page.revert_conflict"},
 		{"a version to write back the purge took between its hash and its content", func(f revertFixture) uuid.UUID {
@@ -532,7 +532,7 @@ func TestRevertChangesetAnswersItsCodesInOrder(t *testing.T) {
 			if tt.want == "" && len(f.store.changesets) != 1 {
 				t.Errorf("changesets %+v, want the revert's", f.store.changesets)
 			}
-			if tt.name == "its root no longer its group's, past the history" && f.called("TrashGroup") {
+			if tt.name == "its root no longer its group's, past the history" && f.called("TrashGroups 1") {
 				t.Errorf("the group of a root that fails its check was read: %v", f.rec.calls)
 			}
 			if tt.name == "past the items" && f.called("ChangesetItems") {

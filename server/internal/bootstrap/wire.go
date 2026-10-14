@@ -41,7 +41,16 @@ var (
 // newApp wires the server described by cfg around the given migrations and
 // web frontend: the platform routes, each module's API behind the per-route
 // middlewares, and the frontend on every other path. close releases it.
-func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrationFiles, webFiles fs.FS) (_ *app, err error) {
+// The writing jobs' batches are the import's (M8/P4 design 3.6).
+func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrationFiles, webFiles fs.FS) (*app, error) {
+	return wireApp(ctx, cfg, logger, migrationFiles, webFiles, transfer.Batch{})
+}
+
+// wireApp is newApp, the writing jobs' batches bounded by batch, zero the
+// import's: the interleavings make them small, so that a few nodes span
+// batches (M8/P4 design 3.10).
+func wireApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrationFiles, webFiles fs.FS, batch transfer.Batch,
+) (_ *app, err error) {
 	signingKey, err := readSigningKey(cfg.Auth.JWT.PrivateKeyFile)
 	if err != nil {
 		return nil, err
@@ -130,7 +139,9 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 	if err != nil {
 		return nil, err
 	}
-	tr := transfer.New(transferDeps(cfg, pool, logger, authorizer, store, inserter, pg.TreeWrites(), keys.Derive(transfer.DownloadKeyInfo)))
+	trDeps := transferDeps(cfg, pool, logger, authorizer, store, inserter, pg.TreeWrites(), keys.Derive(transfer.DownloadKeyInfo))
+	trDeps.Batch = batch
+	tr := transfer.New(trDeps)
 	ev, listener := eventsModule(cfg, pool, logger)
 	runner, err := jobs.New(pool, jobsConfig(cfg, logger),
 		slices.Concat(ident.Jobs(), pg.Jobs(), as.Jobs(), tr.Jobs(), []jobs.Job{purgeJob(cfg, pool, store, logger)}))

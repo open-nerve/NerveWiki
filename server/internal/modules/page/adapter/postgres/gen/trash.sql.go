@@ -15,7 +15,7 @@ import (
 const findTrashRoot = `-- name: FindTrashRoot :one
 SELECT n.id, n.notebook_id, n.parent_id, n.kind, n.name, n.name_key, n.sort_order, n.created_by_id, n.updated_by_id,
     n.created_at, n.updated_at, n.deleted_at, n.trash_pages, n.trash_assets, n.trash_height, c.revision
-FROM nodes n LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at = n.deleted_at
+FROM nodes n LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at IS NOT DISTINCT FROM n.deleted_at
 WHERE n.id = $1 AND n.trash_root
 `
 
@@ -67,7 +67,7 @@ const listTrash = `-- name: ListTrash :many
 
 SELECT n.id, n.notebook_id, n.parent_id, n.kind, n.name, n.name_key, n.sort_order, n.created_by_id, n.updated_by_id,
     n.created_at, n.updated_at, n.deleted_at, n.trash_pages, n.trash_assets, n.trash_height, c.revision
-FROM nodes n LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at = n.deleted_at
+FROM nodes n LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at IS NOT DISTINCT FROM n.deleted_at
 WHERE n.notebook_id = $1 AND n.trash_root AND n.deleted_at > $2::timestamptz
     AND (n.deleted_at, n.id) < ($3::timestamptz, $4::uuid)
 ORDER BY n.deleted_at DESC, n.id DESC
@@ -102,6 +102,12 @@ type ListTrashRow struct {
 }
 
 // The trash (M8/P2 design 3.4): a notebook's deletions' roots, each with what was deleted with it, at its time.
+//
+// A row read with a node deleted at its time is joined by its key, the time compared as not distinct: no index serves
+// that comparison. As an equality the planner could reach the row by its time, through the partial index on
+// deleted_at, and with the statistics read before a large deletion (none of its rows deleted) it did, each node reading
+// every row of the time: a background restore's plan of 45,000 pages took 55 s (M8/P4A). The nodes compared are
+// deleted and the times given deletions', so not distinct is equal.
 // A notebook's trash items deleted after since, newer first, below the cursor, at most max_rows: a range of the trash's
 // partial index. A page's content's revision with it, at its deletion's time: none for an attachment, or a content the
 // purge took. Who deleted it is its updated_by_id, which the deletion wrote.
@@ -148,10 +154,78 @@ func (q *Queries) ListTrash(ctx context.Context, arg ListTrashParams) ([]ListTra
 	return items, nil
 }
 
+const trashChildrenAt = `-- name: TrashChildrenAt :many
+SELECT n.id, n.notebook_id, n.parent_id, n.kind, n.name, n.name_key, n.sort_order, n.created_by_id, n.updated_by_id,
+    n.created_at, n.updated_at, c.revision, c.byte_size
+FROM (SELECT unnest($1::uuid[]) AS id, unnest($2::timestamptz[]) AS deleted_at) p
+JOIN nodes n ON n.notebook_id = $3 AND n.parent_id = p.id AND n.deleted_at IS NOT DISTINCT FROM p.deleted_at
+LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at IS NOT DISTINCT FROM n.deleted_at
+ORDER BY n.sort_order, n.id
+`
+
+type TrashChildrenAtParams struct {
+	Parents    []uuid.UUID
+	DeletedAts []time.Time
+	NotebookID uuid.UUID
+}
+
+type TrashChildrenAtRow struct {
+	ID          uuid.UUID
+	NotebookID  uuid.UUID
+	ParentID    *uuid.UUID
+	Kind        string
+	Name        string
+	NameKey     string
+	SortOrder   float64
+	CreatedByID uuid.UUID
+	UpdatedByID uuid.UUID
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	Revision    *int32
+	ByteSize    *int32
+}
+
+// The children of parents of the notebook, each deleted at its parent's time (M8/P4 design 3.3): a level of many trash
+// items' groups in one statement, through the siblings' index as TrashChildrenOfAll reads one group's, in its order:
+// each group's part of the level is the one TrashGroup reads.
+func (q *Queries) TrashChildrenAt(ctx context.Context, arg TrashChildrenAtParams) ([]TrashChildrenAtRow, error) {
+	rows, err := q.db.Query(ctx, trashChildrenAt, arg.Parents, arg.DeletedAts, arg.NotebookID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []TrashChildrenAtRow
+	for rows.Next() {
+		var i TrashChildrenAtRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.NotebookID,
+			&i.ParentID,
+			&i.Kind,
+			&i.Name,
+			&i.NameKey,
+			&i.SortOrder,
+			&i.CreatedByID,
+			&i.UpdatedByID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Revision,
+			&i.ByteSize,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const trashChildrenOfAll = `-- name: TrashChildrenOfAll :many
 SELECT n.id, n.notebook_id, n.parent_id, n.kind, n.name, n.name_key, n.sort_order, n.created_by_id, n.updated_by_id,
     n.created_at, n.updated_at, c.revision, c.byte_size
-FROM nodes n LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at = n.deleted_at
+FROM nodes n LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at IS NOT DISTINCT FROM n.deleted_at
 WHERE n.notebook_id = $1 AND n.parent_id = ANY($2::uuid[])
     AND n.deleted_at = $3::timestamptz
 ORDER BY n.sort_order, n.id
@@ -257,7 +331,7 @@ func (q *Queries) TrashContents(ctx context.Context, arg TrashContentsParams) ([
 const trashGroupRoot = `-- name: TrashGroupRoot :one
 SELECT n.id, n.notebook_id, n.parent_id, n.kind, n.name, n.name_key, n.sort_order, n.created_by_id, n.updated_by_id,
     n.created_at, n.updated_at, c.revision, c.byte_size
-FROM nodes n LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at = n.deleted_at
+FROM nodes n LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at IS NOT DISTINCT FROM n.deleted_at
 WHERE n.id = $1 AND n.notebook_id = $2 AND n.deleted_at = $3::timestamptz
 `
 
@@ -385,6 +459,82 @@ func (q *Queries) TrashLines(ctx context.Context, ids []uuid.UUID) ([]TrashLines
 	return items, nil
 }
 
+const trashNodesAt = `-- name: TrashNodesAt :many
+SELECT n.id, n.notebook_id, n.parent_id, n.kind, n.name, n.name_key, n.sort_order, n.created_by_id, n.updated_by_id,
+    n.created_at, n.updated_at, n.trash_root, n.trash_pages, n.trash_assets, n.trash_height, c.revision, c.byte_size
+FROM (SELECT unnest($1::uuid[]) AS id, unnest($2::timestamptz[]) AS deleted_at) g
+JOIN nodes n ON n.id = g.id AND n.deleted_at IS NOT DISTINCT FROM g.deleted_at
+LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at IS NOT DISTINCT FROM n.deleted_at
+WHERE n.notebook_id = $3
+`
+
+type TrashNodesAtParams struct {
+	Ids        []uuid.UUID
+	DeletedAts []time.Time
+	NotebookID uuid.UUID
+}
+
+type TrashNodesAtRow struct {
+	ID          uuid.UUID
+	NotebookID  uuid.UUID
+	ParentID    *uuid.UUID
+	Kind        string
+	Name        string
+	NameKey     string
+	SortOrder   float64
+	CreatedByID uuid.UUID
+	UpdatedByID uuid.UUID
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	TrashRoot   bool
+	TrashPages  *int32
+	TrashAssets *int32
+	TrashHeight *int32
+	Revision    *int32
+	ByteSize    *int32
+}
+
+// Nodes of the notebook, each deleted at its own time, by key (M8/P4 design 3.3): many trash items' roots at once, or
+// a background job's batch's members; with a root's counts, and a page's content's revision and size as
+// TrashChildrenOfAll reads them. One no longer deleted at its time is not read.
+func (q *Queries) TrashNodesAt(ctx context.Context, arg TrashNodesAtParams) ([]TrashNodesAtRow, error) {
+	rows, err := q.db.Query(ctx, trashNodesAt, arg.Ids, arg.DeletedAts, arg.NotebookID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []TrashNodesAtRow
+	for rows.Next() {
+		var i TrashNodesAtRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.NotebookID,
+			&i.ParentID,
+			&i.Kind,
+			&i.Name,
+			&i.NameKey,
+			&i.SortOrder,
+			&i.CreatedByID,
+			&i.UpdatedByID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.TrashRoot,
+			&i.TrashPages,
+			&i.TrashAssets,
+			&i.TrashHeight,
+			&i.Revision,
+			&i.ByteSize,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const trashRootOf = `-- name: TrashRootOf :one
 WITH RECURSIVE up AS (
     SELECT n.id, n.parent_id, n.trash_root, 0 AS hops FROM nodes n WHERE n.id = $1 AND n.deleted_at IS NOT NULL
@@ -403,4 +553,52 @@ func (q *Queries) TrashRootOf(ctx context.Context, id uuid.UUID) (uuid.UUID, err
 	var id_2 uuid.UUID
 	err := row.Scan(&id_2)
 	return id_2, err
+}
+
+const trashShapeOfAll = `-- name: TrashShapeOfAll :many
+SELECT n.id, n.parent_id, n.kind, c.byte_size
+FROM nodes n LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at IS NOT DISTINCT FROM n.deleted_at
+WHERE n.notebook_id = $1 AND n.parent_id = ANY($2::uuid[])
+    AND n.deleted_at = $3::timestamptz
+ORDER BY n.parent_id, n.sort_order, n.id
+`
+
+type TrashShapeOfAllParams struct {
+	NotebookID uuid.UUID
+	Parents    []uuid.UUID
+	DeletedAt  time.Time
+}
+
+type TrashShapeOfAllRow struct {
+	ID       uuid.UUID
+	ParentID *uuid.UUID
+	Kind     string
+	ByteSize *int32
+}
+
+// A level of a trash item's group as a background restore's plan keeps it (M8/P4 design 3.4): no names, a page's
+// content's size; by parent, each parent's children in order, as TrashChildrenOfAll reads them.
+func (q *Queries) TrashShapeOfAll(ctx context.Context, arg TrashShapeOfAllParams) ([]TrashShapeOfAllRow, error) {
+	rows, err := q.db.Query(ctx, trashShapeOfAll, arg.NotebookID, arg.Parents, arg.DeletedAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []TrashShapeOfAllRow
+	for rows.Next() {
+		var i TrashShapeOfAllRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ParentID,
+			&i.Kind,
+			&i.ByteSize,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

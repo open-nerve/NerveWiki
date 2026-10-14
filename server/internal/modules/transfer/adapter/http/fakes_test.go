@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -70,15 +71,22 @@ type direct struct{}
 func (direct) WithinTx(ctx context.Context, fn func(ctx context.Context) error) error { return fn(ctx) }
 
 // roles decides by each account's role in notebookID(): alice reads it,
-// bob is its admin; the rest do not see it. An import is its writers'.
+// bob is its admin; the rest do not see it. An import, a restore and a
+// revert are its writers'.
 type roles struct{}
+
+// The page module's actions of the background starts.
+const (
+	restoreAction shared.Action = "node.restore"
+	revertAction  shared.Action = "changeset.revert"
+)
 
 func (roles) Authorize(_ context.Context, actor shared.Actor, action shared.Action, t shared.Target) (shared.Grant, error) {
 	role, ok := map[uuid.UUID]shared.NotebookRole{alice(): shared.NotebookReader, bob(): shared.NotebookAdmin}[actor.UserID]
 	if !ok || t.NotebookID != notebookID() {
 		return shared.Grant{}, shared.ErrNotVisible
 	}
-	if action == domain.ActionImport && role == shared.NotebookReader {
+	if slices.Contains([]shared.Action{domain.ActionImport, restoreAction, revertAction}, action) && role == shared.NotebookReader {
 		return shared.Grant{}, shared.Forbidden()
 	}
 	return shared.Grant{WorkspaceRole: shared.WorkspaceMember, NotebookRole: role}, nil
@@ -128,6 +136,106 @@ func (nodes) Depth(_ context.Context, notebook, id uuid.UUID) (int, bool, error)
 func (nodes) Scope(context.Context, uuid.UUID, *uuid.UUID) ([]domain.Node, error) { return nil, nil }
 
 func (nodes) Contents(context.Context, []uuid.UUID) (map[uuid.UUID]string, error) { return nil, nil }
+
+// refusals are the page module's refusals of the background starts the
+// tree answers, each of the trash item or the changeset refusing(code).
+func refusals() []*shared.Error {
+	return []*shared.Error{
+		{Kind: shared.KindNotFound, Code: "page.not_found"},
+		{Kind: shared.KindConflict, Code: "page.not_in_trash"},
+		{Kind: shared.KindConflict, Code: "page.not_trash_root"},
+		{Kind: shared.KindConflict, Code: "page.restore_expired"},
+		{Kind: shared.KindNotFound, Code: "page.changeset_not_found"},
+		{Kind: shared.KindConflict, Code: "page.changeset_trimmed"},
+		{Kind: shared.KindInvalid, Code: "page.revert_too_large"},
+	}
+}
+
+// refusing is the id the tree refuses with code: the nth refusal's.
+func refusing(code string) string {
+	for i, e := range refusals() {
+		if e.Code == code {
+			return fmt.Sprintf("0199a2b4-0000-7000-8000-%012d", 100+i)
+		}
+	}
+	panic("no refusal " + code)
+}
+
+// tree is the page module's checks of the background starts: a notebook
+// but notebookID() is notebook.not_found, a reader forbidden, an empty
+// message validation_failed; then the ids refusing a code answer it; a
+// revert is admitted, then its changeset conflicting() conflicts, its
+// locking() is locked by alice. It plans and writes nothing: no job runs
+// here.
+type tree struct{}
+
+// conflicting and locking are the changesets the tree's revert check
+// finds conflicting, and locked.
+func conflicting() uuid.UUID { return uuid.MustParse("0199a2b4-0000-7000-8000-000000000201") }
+func locking() uuid.UUID     { return uuid.MustParse("0199a2b4-0000-7000-8000-000000000202") }
+
+func (tree) refused(ctx context.Context, notebook, id uuid.UUID) error {
+	actor, err := shared.RequireActor(ctx)
+	switch {
+	case err != nil:
+		return err
+	case notebook != notebookID():
+		return shared.NewError(shared.KindNotFound, "notebook.not_found", "No such notebook.")
+	case actor.UserID != bob():
+		return shared.Forbidden()
+	}
+	for _, e := range refusals() {
+		if id.String() == refusing(e.Code) {
+			return e
+		}
+	}
+	return nil
+}
+
+func (t tree) CheckRestore(ctx context.Context, notebook, id uuid.UUID) (string, error) {
+	return "Box", t.refused(ctx, notebook, id)
+}
+
+func (t tree) CheckRevert(ctx context.Context, notebook, id uuid.UUID, message *string, admit func(context.Context) error) (string, error) {
+	if message != nil && *message == "" {
+		return "", shared.Invalid(shared.FieldError{Field: "message", Code: shared.FieldTooShort, Message: "is empty"})
+	}
+	if err := t.refused(ctx, notebook, id); err != nil {
+		return "", err
+	}
+	if err := admit(ctx); err != nil {
+		return "", err
+	}
+	switch id {
+	case conflicting():
+		count := 1
+		return "", &shared.Error{Kind: shared.KindConflict, Code: "page.revert_conflict", Detail: "Changed since.",
+			Conflicts: []shared.Conflict{{NodeID: pageID(), Name: "Spec", Reason: "changed"}}, ConflictCount: &count}
+	case locking():
+		return "", &shared.Error{Kind: shared.KindConflict, Code: "page.locked", Detail: "Alice is editing the page.",
+			Lock: &shared.LockHolder{PageID: pageID(), UserID: alice(), DisplayName: "Alice"}}
+	}
+	return "import", nil
+}
+
+func (tree) CheckContent(string) error { panic("tree: no import runs here") }
+
+func (tree) Parse(context.Context, string) (app.Parsed, error) { panic("tree: no import runs here") }
+
+func (tree) Import(context.Context, app.ImportSpec, func(context.Context, app.ImportUnit) error) (uuid.UUID, error) {
+	panic("tree: no import runs here")
+}
+
+func (tree) PlanRestore(context.Context, app.JobSpec, uuid.UUID) (app.JobPlan, error) {
+	panic("tree: no job runs here")
+}
+func (tree) PlanRevert(context.Context, app.JobSpec, uuid.UUID) (app.JobPlan, error) {
+	panic("tree: no job runs here")
+}
+
+func (tree) RunBatch(context.Context, app.JobSpec, app.JobPlan, int, int) (app.BatchDone, error) {
+	panic("tree: no job runs here")
+}
 
 // rows keeps the jobs in memory, as the statements move them; FindJob
 // waits on gate when it is set, once it said so on asked.
@@ -179,11 +287,11 @@ func (r *rows) CountActive(context.Context) (int, error) {
 	return n, nil
 }
 
-func (r *rows) Importing(_ context.Context, notebook uuid.UUID) (bool, error) {
+func (r *rows) Writing(_ context.Context, notebook uuid.UUID) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, j := range r.jobs {
-		if j.NotebookID == notebook && j.Kind == domain.KindImport && !j.State.Ended() {
+		if j.NotebookID == notebook && j.Kind.Writes() && !j.State.Ended() {
 			return true, nil
 		}
 	}
@@ -456,6 +564,14 @@ func (q *queue) Import(_ context.Context, id uuid.UUID) error {
 	return nil
 }
 
+func (q *queue) TrashRestore(_ context.Context, id uuid.UUID) error {
+	return q.Import(context.Background(), id)
+}
+
+func (q *queue) Revert(_ context.Context, id uuid.UUID) error {
+	return q.Import(context.Background(), id)
+}
+
 // bucket allows left requests, recording each key.
 type bucket struct {
 	mu   sync.Mutex
@@ -537,9 +653,12 @@ func newHarnessWith(t *testing.T, o httpservertest.APIOptions) *harness {
 	start := app.StartDeps{Tx: direct{}, Authorizer: roles{}, Workspaces: workspaces{}, Notebooks: notebooks{}, Nodes: nodes{},
 		Rows: h.rows, Archives: h.archives, Queue: h.queue, Names: names{}, Signer: h.signer, Clock: fixedClock{}, Logger: logger,
 		Uploads: app.NewUploads(), MaxQueued: maxQueued, MinFree: minFree, ImportMaxBytes: importMaxBytes}
+	background := app.BackgroundDeps{Tree: tree{}, RestoreAction: restoreAction, RevertAction: revertAction}
 	uc := httpadapter.UseCases{
-		Start:  app.NewStartExport(start),
-		Import: app.NewStartImport(start),
+		Start:   app.NewStartExport(start),
+		Import:  app.NewStartImport(start),
+		Restore: app.NewStartTrashRestore(start, background),
+		Revert:  app.NewStartRevert(start, background),
 		Reads: app.NewReads(app.ReadsDeps{Authorizer: roles{}, Notebooks: notebooks{}, Names: names{}, Signer: h.signer, Clock: fixedClock{},
 			Rows: h.rows, ExportTTL: exportTTL}),
 		Cancel: app.NewCancel(app.CancelDeps{Tx: direct{}, Rows: h.rows, Authorizer: roles{}, Notebooks: notebooks{}, Names: names{},

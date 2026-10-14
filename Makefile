@@ -179,36 +179,55 @@ GO_TEST_RACE = go test -race -count=1 -timeout 15m
 
 .PHONY: test-go
 test-go: ## 运行 Go 测试，含集成测试与 server/tools（开启竞态检测，不用测试缓存；需要 Docker）
-	@# 本机一次跑全部的包，各包并行；CI 分成下面三份并行（M8/P3A 审查 C 的 I-1），三份之和就是这里
+	@# 本机一次跑全部的包，各包并行；CI 分成下面五份并行（M8/P3A 审查 C 的 I-1；M8/P4A 分出组合根的守卫，再把组合根分成两份），五份之和就是这里
 	cd server && $(GO_TEST_RACE) ./...
 	@$(MAKE) --no-print-directory test-go-costs
+	@$(MAKE) --no-print-directory test-go-guards
 
-# CI 的三份：一个作业跑全部时超过了 25 分钟的时限（M8/P3A，竞态检测下的组合根占了一半）。
-# 组合根之外的包由 go list 列出，以后新加的包自动归入第一份
+# CI 的五份：一个作业跑全部时超过了 25 分钟的时限（M8/P3A，竞态检测下的组合根占了一半）。
+# 组合根之外的包由 go list 列出，以后新加的包自动归入第一份。不带竞态检测的那一份在 M8/P4A 之前作业已到 15 分钟
+# （测试一步 13:37），超过 15 分钟就分（M8/P4 设计 3.11）：组合根的预算与守卫各自编译、各起数据库，分作一份。
+# 竞态检测下的组合根在 M8/P4A 的 CI 上测试一步 12:00–12:05，离 go test 的 15 分钟只剩约两成，P5 还要加测试（M8/P4A 审查 C 的 M-6）：
+# 按测试名分成两份，名字以 TestA 到 TestD 开头的一份，其余的一份，本机两份的测试时间之和各约一半（199 与 210 秒）。
+# -run 与 -skip 用同一个表达式：两份之和总是整个包，新加的测试自动落在其中一份；一份变得太慢时改这个表达式
+BOOTSTRAP_FIRST = ^Test[A-D]
 .PHONY: test-go-race
 test-go-race: ## 竞态检测下运行组合根（internal/bootstrap）之外的全部 Go 包（CI 的一份；需要 Docker）
 	cd server && $(GO_TEST_RACE) $$(go list ./... | grep -v '/internal/bootstrap$$')
 
 .PHONY: test-go-bootstrap
-test-go-bootstrap: ## 竞态检测下运行组合根的整个程序测试（CI 的一份；需要 Docker）
-	cd server && $(GO_TEST_RACE) ./internal/bootstrap
+test-go-bootstrap: test-go-bootstrap-1 test-go-bootstrap-2 ## 竞态检测下运行组合根的整个程序测试，两份依次（需要 Docker）
+
+.PHONY: test-go-bootstrap-1
+test-go-bootstrap-1: ## 竞态检测下运行组合根的整个程序测试中名字匹配 BOOTSTRAP_FIRST 的（CI 的一份；需要 Docker）
+	cd server && $(GO_TEST_RACE) -run '$(BOOTSTRAP_FIRST)' ./internal/bootstrap
+
+.PHONY: test-go-bootstrap-2
+test-go-bootstrap-2: ## 竞态检测下运行组合根的整个程序测试中其余的（CI 的一份；需要 Docker）
+	cd server && $(GO_TEST_RACE) -skip '$(BOOTSTRAP_FIRST)' ./internal/bootstrap
 
 .PHONY: test-go-costs
 test-go-costs: ## 不带竞态检测的分配、耗时预算与界线的守卫，以及 server/tools（CI 的一份；需要 Docker）
 	@# 竞态检测让同一段代码的分配多出数倍、耗时慢数倍：分配与耗时的预算，以及阅读视图在各种解析下的 HTML 检查与体积上限，在不带它的构建中另测一次
 	cd server && go test -count=1 -run '^TestCheckCostsAboutTheBody$$' ./internal/platform/httpserver/bodyshape
 	cd server && go test -count=1 -run '^TestTheCostsAreAboutTheSize$$' ./internal/platform/markdown
-	cd server && go test -count=1 -run '^(TestTheAppsMarkdownCostsAboutItsSize|TestTheAppsMarkdownRendersCheckedHTML|TestTheAppsLinksAreWithinTheirBound)$$' ./internal/bootstrap
-	@# 恢复在单元上限的测试单独一行、带 -v：通过时也打出恢复用的时间，CI 的日志里看得到（M8/P2A 第二轮复核 M-a）
-	cd server && go test -count=1 -v -run '^TestARestoreAtTheUnitsBoundTakesItsTime$$' ./internal/bootstrap
-	@# 撤销在单元上限的测试同样单独一行、带 -v：撤销一次删除用的时间（M8/P3 设计 3.11），与撤销在单轮步数上限时恢复那么多项用的时间（M8/P3A 审查 C 的 I-2）
-	cd server && go test -count=1 -v -run '^(TestARevertAtTheUnitsBoundTakesItsTime|TestARevertOfManyTopsAtItsBoundTakesItsTime)$$' ./internal/bootstrap
 	cd server && go test -count=1 -run '^(TestALinkWrittenManyTimesResolvesOnce|TestDistinctPathsToPagesOfOneTitleResolveInTimeAsLongAsThey)$$' ./internal/modules/linking/app
 	cd server && go test -count=1 -run '^TestTheLinktextsOfManyPagesOfOneTitleAreCheap$$' ./internal/modules/linking/domain
 	cd server && go test -count=1 -run '^(TestSubtreeReadsWithoutStatisticsInTimeAsLongAsIt|TestSubtreeOfAFolderOfMostNodesReadsInTimeAsLongAsIt|TestListTrashReadsInTimeAsLongAsAPage|TestTrashLinesReadInTimeAsLongAsAPage|TestRestoreNodesTakesItsTimeAtAnyStatistics|TestTrashHistoryCountsInTimeAtAnyStatistics|TestTheLogReadsInTimeAsLongAsAPage|TestTheRevertsArrayReadsInTimeAtTheUnitsBound)$$' ./internal/modules/page/adapter/postgres
 	cd server && go test -count=1 -run '^TestAnImportsUnitNumbersNamesThatCutAlikeInTimeAsLongAsThey$$' ./internal/modules/page/app
 	cd server && go test -count=1 -run '^TestPagesWhoseNamesCutAlikeAreRenamedInTimeAsLongAsThey$$' ./internal/modules/transfer/domain
 	go -C server/tools test -race -count=1 ./...
+
+.PHONY: test-go-guards
+test-go-guards: ## 不带竞态检测的组合根的预算与界线的守卫（CI 的一份；需要 Docker）
+	cd server && go test -count=1 -run '^(TestTheAppsMarkdownCostsAboutItsSize|TestTheAppsMarkdownRendersCheckedHTML|TestTheAppsLinksAreWithinTheirBound)$$' ./internal/bootstrap
+	@# 恢复在单元上限的测试单独一行、带 -v：通过时也打出恢复用的时间，CI 的日志里看得到（M8/P2A 第二轮复核 M-a）
+	cd server && go test -count=1 -v -run '^TestARestoreAtTheUnitsBoundTakesItsTime$$' ./internal/bootstrap
+	@# 撤销在单元上限的测试同样单独一行、带 -v：撤销一次删除用的时间（M8/P3 设计 3.11），与撤销在单轮步数上限时恢复那么多项用的时间（M8/P3A 审查 C 的 I-2）
+	cd server && go test -count=1 -v -run '^(TestARevertAtTheUnitsBoundTakesItsTime|TestARevertOfManyTopsAtItsBoundTakesItsTime)$$' ./internal/bootstrap
+	@# 后台撤销在 MaxJobItems 的守卫各单独一行、带 -v：请求，整个任务（1 万个条目）与最大的一步（一个最上层的删除）用的时间（M8/P4 设计 3.11）
+	cd server && go test -count=1 -v -run '^TestStartRevertAtMaxJobItems$$' ./internal/bootstrap
+	cd server && go test -count=1 -v -run '^TestARevertJobOfAnImportAtMaxJobItems$$' ./internal/bootstrap
 
 .PHONY: test-web
 test-web: ## 运行前端各包的测试（vitest；需要 Node）

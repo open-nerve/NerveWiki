@@ -503,7 +503,7 @@ type importWorld struct {
 
 func newImportWorld() *importWorld {
 	w := &importWorld{world: newWorld(), tree: newTree(), files: newAttachments(), stats: &analyzer{}}
-	w.max = app.ImportDeps{MaxEntries: 1000, MaxUnpacked: 64 << 20, MaxContent: 5 << 20, MaxAsset: 1 << 20}
+	w.max = app.ImportDeps{MaxEntries: 1000, MaxUnpacked: 64 << 20, MaxContent: 5 << 20, MaxAsset: 1 << 20, MaxNodes: 20000}
 	for _, n := range w.nodes.all {
 		if !n.Asset {
 			depth, _, _ := w.nodes.Depth(context.Background(), w.eng, n.ID)
@@ -516,14 +516,16 @@ func newImportWorld() *importWorld {
 func (w *importWorld) importer() *app.Import {
 	return app.NewImport(app.ImportDeps{Authorizer: w.auth, Notebooks: w.notebooks, Nodes: w.nodes, Tree: w.tree, Attachments: w.files,
 		Statistics: []app.Analyzer{w.stats}, Archives: w.archives, Rows: w.rows, Clock: fixedClock{now()}, Logger: w.logger, Beat: 5 * time.Millisecond,
-		MaxEntries: w.max.MaxEntries, MaxUnpacked: w.max.MaxUnpacked, MaxContent: w.max.MaxContent, MaxAsset: w.max.MaxAsset, Backoff: time.Millisecond})
+		MaxEntries: w.max.MaxEntries, MaxUnpacked: w.max.MaxUnpacked, MaxContent: w.max.MaxContent, MaxAsset: w.max.MaxAsset,
+		MaxNodes: w.max.MaxNodes, Backoff: time.Millisecond, Batch: w.max.Batch})
 }
 
 // queuedImport adds bob's import of archive into eng, under root when
-// set, queued.
+// set, queued, the changeset it writes decided.
 func (w *importWorld) queuedImport(root *uuid.UUID, archive []byte) domain.Job {
+	changeset := uuid.NewV7()
 	j := domain.Job{ID: uuid.NewV7(), NotebookID: w.eng, RootID: root, Kind: domain.KindImport, State: domain.StateQueued, Name: "vault.zip",
-		CreatedBy: w.bob, Client: domain.ClientAPI, CreatedAt: now()}
+		CreatedBy: w.bob, Client: domain.ClientAPI, CreatedAt: now(), ChangesetID: &changeset}
 	w.rows.add(j)
 	w.archives.imports[j.ID] = archive
 	return j

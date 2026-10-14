@@ -1,8 +1,9 @@
 // Package riveradapter works the transfer module's background jobs on
-// River (M7/P5 design 3.2, 3.8, 3.12; M7/P6 design 3.13): each worker only
-// runs a use case. The exports and the imports run each in a queue of
-// their own, each its job's timeout, one attempt; the request enqueues
-// them in its own transaction.
+// River (M7/P5 design 3.2, 3.8, 3.12; M7/P6 design 3.13; M8/P4 design
+// 3.6): each worker only runs a use case. The exports run in a queue of
+// their own, the jobs that write a notebook's tree, the imports, restores
+// and reverts, in another, each its job's timeout, one attempt; the
+// request enqueues them in its own transaction.
 package riveradapter
 
 import (
@@ -23,11 +24,13 @@ import (
 // The kinds of the module's jobs, and the ids of the periodic ones'
 // schedules.
 const (
-	ExportKind = "transfer.export"
-	ImportKind = "transfer.import"
-	RescueKind = "transfer.rescue_interrupted"
-	ExpireKind = "transfer.expire_exports"
-	SweepKind  = "transfer.sweep_orphan_archives"
+	ExportKind       = "transfer.export"
+	ImportKind       = "transfer.import"
+	TrashRestoreKind = "transfer.trash_restore"
+	RevertKind       = "transfer.revert"
+	RescueKind       = "transfer.rescue_interrupted"
+	ExpireKind       = "transfer.expire_exports"
+	SweepKind        = "transfer.sweep_orphan_archives"
 )
 
 // The exports' and the imports' queues: a few hours' job holds neither
@@ -67,19 +70,40 @@ func (ImportArgs) Kind() string { return ImportKind }
 
 func (a ImportArgs) id() uuid.UUID { return a.JobID }
 
-// JobUseCase is the use case a job's worker runs: app.Export, app.Import.
+// TrashRestoreArgs are a background restore's job's arguments: its row's
+// id.
+type TrashRestoreArgs struct {
+	JobID uuid.UUID `json:"job_id"`
+}
+
+// Kind is TrashRestoreKind.
+func (TrashRestoreArgs) Kind() string { return TrashRestoreKind }
+
+func (a TrashRestoreArgs) id() uuid.UUID { return a.JobID }
+
+// RevertArgs are a background revert's job's arguments: its row's id.
+type RevertArgs struct {
+	JobID uuid.UUID `json:"job_id"`
+}
+
+// Kind is RevertKind.
+func (RevertArgs) Kind() string { return RevertKind }
+
+func (a RevertArgs) id() uuid.UUID { return a.JobID }
+
+// JobUseCase is the use case a job's worker runs: app.Export, app.Import,
+// app.Background.
 type JobUseCase interface {
 	Run(ctx context.Context, id uuid.UUID) error
 }
 
-// jobArgs are an export's or an import's arguments, which hold its row's
-// id.
+// jobArgs are a job's arguments, which hold its row's id.
 type jobArgs interface {
 	river.JobArgs
 	id() uuid.UUID
 }
 
-// jobWorker runs an export or an import, within timeout.
+// jobWorker runs a job of the module, within timeout.
 type jobWorker[T jobArgs] struct {
 	river.WorkerDefaults[T]
 	uc      JobUseCase
@@ -109,9 +133,24 @@ func ImportJob(uc JobUseCase, timeout time.Duration) jobs.Job {
 	}}
 }
 
-// Queue enqueues the exports and the imports in the caller's
-// transaction, with the insert-only client, and tells which River still
-// holds.
+// TrashRestoreJob is the background restores' worker, each run within
+// timeout, on the imports' queue.
+func TrashRestoreJob(uc JobUseCase, timeout time.Duration) jobs.Job {
+	return jobs.Job{Add: func(w *river.Workers) error {
+		return river.AddWorkerSafely(w, &jobWorker[TrashRestoreArgs]{uc: uc, timeout: timeout})
+	}}
+}
+
+// RevertJob is the background reverts' worker, each run within timeout,
+// on the imports' queue.
+func RevertJob(uc JobUseCase, timeout time.Duration) jobs.Job {
+	return jobs.Job{Add: func(w *river.Workers) error {
+		return river.AddWorkerSafely(w, &jobWorker[RevertArgs]{uc: uc, timeout: timeout})
+	}}
+}
+
+// Queue enqueues the module's jobs in the caller's transaction, with the
+// insert-only client, and tells which River still holds.
 type Queue struct {
 	inserter *jobs.Inserter
 }
@@ -143,14 +182,49 @@ func (q Queue) Import(ctx context.Context, id uuid.UUID) error {
 	return q.inserter.InsertTx(ctx, tx, ImportArgs{JobID: id}, &river.InsertOpts{Queue: QueueImport, MaxAttempts: 1})
 }
 
-// Held is the ids of the jobs of kind River has not finished: both kinds'
-// arguments are the row's id.
-func (q Queue) Held(ctx context.Context, kind domain.Kind) ([]uuid.UUID, error) {
-	riverKind := ExportKind
-	if kind == domain.KindImport {
-		riverKind = ImportKind
+// TrashRestore enqueues the background restore id in the imports' queue
+// (M8/P4 design 3.6), one attempt, in the transaction ctx carries.
+func (q Queue) TrashRestore(ctx context.Context, id uuid.UUID) error {
+	tx, ok := postgres.TxFrom(ctx)
+	if !ok {
+		return errors.New("enqueue a restore: not in a transaction")
 	}
-	args, err := q.inserter.Unfinished(ctx, riverKind)
+	return q.inserter.InsertTx(ctx, tx, TrashRestoreArgs{JobID: id}, &river.InsertOpts{Queue: QueueImport, MaxAttempts: 1})
+}
+
+// Revert enqueues the background revert id in the imports' queue (M8/P4
+// design 3.6), one attempt, in the transaction ctx carries.
+func (q Queue) Revert(ctx context.Context, id uuid.UUID) error {
+	tx, ok := postgres.TxFrom(ctx)
+	if !ok {
+		return errors.New("enqueue a revert: not in a transaction")
+	}
+	return q.inserter.InsertTx(ctx, tx, RevertArgs{JobID: id}, &river.InsertOpts{Queue: QueueImport, MaxAttempts: 1})
+}
+
+// riverKind is River's kind of the module's jobs of kind.
+func riverKind(kind domain.Kind) (string, bool) {
+	switch kind {
+	case domain.KindExport:
+		return ExportKind, true
+	case domain.KindImport:
+		return ImportKind, true
+	case domain.KindTrashRestore:
+		return TrashRestoreKind, true
+	case domain.KindRevert:
+		return RevertKind, true
+	}
+	return "", false
+}
+
+// Held is the ids of the jobs of kind River has not finished: every kind's
+// arguments are the row's id. A kind of no River job is an error.
+func (q Queue) Held(ctx context.Context, kind domain.Kind) ([]uuid.UUID, error) {
+	name, ok := riverKind(kind)
+	if !ok {
+		return nil, fmt.Errorf("the jobs River holds of kind %q: no such kind", kind)
+	}
+	args, err := q.inserter.Unfinished(ctx, name)
 	if err != nil {
 		return nil, err
 	}

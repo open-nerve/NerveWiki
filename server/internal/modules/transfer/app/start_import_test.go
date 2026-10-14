@@ -40,7 +40,7 @@ func TestAnImportStarts(t *testing.T) {
 	if err := s.Check(as(w.bob), req); err != nil {
 		t.Fatal(err)
 	}
-	if want := []string{"Notebooks.WorkspaceOf", "Authorize", "Importing", "CountActive", "Free"}; !slices.Equal(w.rec.calls, want) {
+	if want := []string{"Notebooks.WorkspaceOf", "Authorize", "Writing", "CountActive", "Free"}; !slices.Equal(w.rec.calls, want) {
 		t.Errorf("Check's calls = %v, want %v", w.rec.calls, want)
 	}
 	stored, err := s.Store(as(w.bob), app.ImportRequest{NotebookID: w.eng}, strings.NewReader("PK zip"))
@@ -53,7 +53,7 @@ func TestAnImportStarts(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []string{"Notebooks.WorkspaceOf", "WithinTx", "Workspaces.ShareByID", "Notebooks.ShareByID", "Authorize", "LockQueue", "CountActive",
-		"Importing", "CreateJob", "Queue.Import"}
+		"Writing", "CreateJob", "Queue.Import"}
 	if !slices.Equal(w.rec.calls, want) {
 		t.Errorf("Create's calls = %v, want %v", w.rec.calls, want)
 	}
@@ -67,8 +67,8 @@ func TestAnImportStarts(t *testing.T) {
 		strings.Contains(text, "a:b") {
 		t.Errorf("logs %q", text)
 	}
-	if _, err := s.Create(as(w.bob), app.ImportRequest{NotebookID: w.eng, FileName: " ", Client: domain.ClientWeb}, stored); !errors.Is(err, domain.ErrImportBusy) {
-		t.Errorf("a second Create() = %v, want ErrImportBusy", err)
+	if _, err := s.Create(as(w.bob), app.ImportRequest{NotebookID: w.eng, FileName: " ", Client: domain.ClientWeb}, stored); !errors.Is(err, domain.ErrWriting) {
+		t.Errorf("a second Create() = %v, want ErrWriting", err)
 	}
 }
 
@@ -92,7 +92,7 @@ func TestAnImportIsRefused(t *testing.T) {
 		{"no such page", func(_ *world, _ *queue, req *app.ImportRequest) { id := uuid.NewV7(); req.ParentID = &id }, domain.ErrRootNotFound, both},
 		{"an import going, anyone's", func(w *world, _ *queue, _ *app.ImportRequest) {
 			w.rows.add(domain.Job{ID: uuid.NewV7(), NotebookID: w.eng, Kind: domain.KindImport, State: domain.StateRunning, CreatedBy: w.alice})
-		}, domain.ErrImportBusy, both},
+		}, domain.ErrWriting, both},
 		{"the queue full", func(w *world, _ *queue, _ *app.ImportRequest) {
 			w.rows.add(domain.Job{ID: uuid.NewV7(), NotebookID: uuid.NewV7(), Kind: domain.KindExport, State: domain.StateRunning, CreatedBy: w.bob})
 			w.rows.add(domain.Job{ID: uuid.NewV7(), NotebookID: uuid.NewV7(), Kind: domain.KindImport, State: domain.StateQueued, CreatedBy: w.bob})
@@ -146,7 +146,7 @@ func TestAnImportsUploadHoldsItsNotebook(t *testing.T) {
 		}
 	}
 	check(eng, nil)
-	check(eng, domain.ErrImportBusy)
+	check(eng, domain.ErrWriting)
 	w.rows.add(domain.Job{ID: uuid.NewV7(), NotebookID: uuid.NewV7(), Kind: domain.KindExport, State: domain.StateRunning, CreatedBy: w.bob})
 	check(other, domain.ErrQueueFull)
 	s.Release(eng)

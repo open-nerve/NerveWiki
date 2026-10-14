@@ -65,9 +65,9 @@ func (e *Expire) Run(ctx context.Context) (int, error) {
 // Rescue fails the jobs that no longer run, or will not, though their rows
 // say so: the server's own running ones, as it starts, which the last
 // process left; then those whose heartbeat is older than the timeout, and
-// the queued jobs River no longer holds. A job does not run again. Its
-// report tells the failure: an export's alone, an import's with the counts
-// and problems its heartbeat last wrote; its progress, how far it went.
+// the queued jobs River no longer holds, of every kind. A job does not run
+// again. Its report tells the failure: an export's alone, a writing job's
+// with the counts its heartbeat last wrote; its progress, how far it went.
 type Rescue struct {
 	rows    MaintainedRows
 	held    Held
@@ -105,7 +105,7 @@ func (r *Rescue) Run(ctx context.Context) error {
 		return fmt.Errorf("rescue the interrupted jobs: %w", err)
 	}
 	r.log(ctx, "job interrupted", jobs)
-	for _, kind := range []domain.Kind{domain.KindExport, domain.KindImport} {
+	for _, kind := range []domain.Kind{domain.KindExport, domain.KindImport, domain.KindTrashRestore, domain.KindRevert} {
 		if err := r.lost(ctx, kind); err != nil {
 			return err
 		}
@@ -262,7 +262,8 @@ func (f Follow) NotebooksDeleted(ctx context.Context, ids []uuid.UUID, at time.T
 }
 
 // Purge deletes the jobs' rows deleted longer than the retention ago,
-// their archives first (v0.1 design 13.1, item 6).
+// their archives first (v0.1 design 13.1, item 6): an export's and an
+// import's, the kinds that have one (M8/P4 design 3.6).
 type Purge struct {
 	tx       shared.TxManager
 	rows     MaintainedRows
@@ -288,6 +289,10 @@ func (p *Purge) Batch(ctx context.Context, before time.Time, batch int) (int, er
 		}
 		ids := make([]uuid.UUID, 0, len(jobs))
 		for id, kind := range jobs {
+			if kind != domain.KindExport && kind != domain.KindImport {
+				ids = append(ids, id)
+				continue
+			}
 			if err := p.archives.Delete(ctx, kind, id); err != nil {
 				p.logger.ErrorContext(ctx, "job archive not purged", slog.String("job_id", id.String()), slog.Any("error", err))
 				return fmt.Errorf("delete the archive of job %s: %w", id, err)

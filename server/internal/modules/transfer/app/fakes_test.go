@@ -28,6 +28,14 @@ func (c fixedClock) Now() time.Time { return c.t }
 
 func quiet() *slog.Logger { return slog.New(slog.DiscardHandler) }
 
+// sameIDs reports whether a and b hold the same ids, in any order.
+func sameIDs(a, b []uuid.UUID) bool {
+	a, b = slices.Clone(a), slices.Clone(b)
+	slices.SortFunc(a, uuid.UUID.Compare)
+	slices.SortFunc(b, uuid.UUID.Compare)
+	return slices.Equal(a, b)
+}
+
 // logs keeps a logger's text.
 type logs struct {
 	mu  sync.Mutex
@@ -581,6 +589,24 @@ func (q *queue) Import(_ context.Context, id uuid.UUID) error {
 	return nil
 }
 
+func (q *queue) TrashRestore(_ context.Context, id uuid.UUID) error {
+	q.rec.add("Queue.TrashRestore")
+	if q.err != nil {
+		return q.err
+	}
+	q.enqueued = append(q.enqueued, id)
+	return nil
+}
+
+func (q *queue) Revert(_ context.Context, id uuid.UUID) error {
+	q.rec.add("Queue.Revert")
+	if q.err != nil {
+		return q.err
+	}
+	q.enqueued = append(q.enqueued, id)
+	return nil
+}
+
 // signer signs as adapter/mac does, an address's expiry part of its
 // signature: the end of the hour after, or until when that comes first.
 type signer struct{}
@@ -682,12 +708,12 @@ func (r *rows) CountActive(context.Context) (int, error) {
 	return n, nil
 }
 
-func (r *rows) Importing(_ context.Context, notebookID uuid.UUID) (bool, error) {
-	r.rec.add("Importing")
+func (r *rows) Writing(_ context.Context, notebookID uuid.UUID) (bool, error) {
+	r.rec.add("Writing")
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, x := range r.jobs {
-		if !x.deleted && x.job.NotebookID == notebookID && x.job.Kind == domain.KindImport && !x.job.State.Ended() {
+		if !x.deleted && x.job.NotebookID == notebookID && x.job.Kind.Writes() && !x.job.State.Ended() {
 			return true, nil
 		}
 	}

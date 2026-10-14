@@ -82,8 +82,10 @@ paths:
         Before the file is read, a notebook that does not exist, is deleted,
         or that the caller has no role in is notebook.not_found; a parent_id
         that is no page of the notebook, or a deleted one, is
-        page.not_found; an import of the notebook queued, running or
-        uploading, anyone's, is transfer.busy; as many jobs queued or
+        page.not_found; a job that writes the notebook's tree (an import,
+        a restore or a revert) queued or running, or an import uploading or
+        a restore's or a revert's start under way into it, anyone's, is
+        transfer.busy; as many jobs queued or
         running, with the imports uploading, as the instance takes is
         server_busy; a server whose storage would keep too little room once
         the body's declared length, and what the other uploads have yet to
@@ -127,6 +129,145 @@ paths:
                 $ref: "#/components/schemas/TransferJob"
         default:
           $ref: "#/components/responses/Problem"
+  /api/v0/notebooks/{notebook_id}/trash-restores:
+    parameters:
+      - $ref: "#/components/parameters/NotebookID"
+    post:
+      operationId: startTrashRestore
+      tags: [transfer]
+      summary: Restore a trash item in the background
+      description: >-
+        Starts a job that restores the trash item of the root node_id, a
+        page with what was deleted with it or an attachment, of any size,
+        as restoreNode does one a request holds: where the root goes, its
+        parent alive where it was, or the notebook's root; its name
+        numbered when a sibling there holds it. The job restores the item
+        in batches, its root first, then the rest depth first, each batch
+        a unit of one changeset, a trash_restore, which the job's
+        changeset_id names: between two batches, the nodes left in the
+        trash under those restored are trash items of their own, each
+        restorable alone, which the job skips when someone restored them
+        first. Each batch checks its nodes again: the item's time to be
+        restored in (restore_expired), its root unchanged (trash_changed),
+        a parent restored and deleted or moved too deep since (tree_changed);
+        a name a sibling took since is numbered. The job stops at the first,
+        what it restored kept; its changeset can be reverted as any other
+        (within the background revert's bound of items). The notebook's
+        editors and admins can restore, a reader cannot (forbidden). In
+        this order: a notebook that does not exist, is deleted, or that the
+        caller has no role in is notebook.not_found; a reader forbidden; a
+        node of no notebook, of another, or purged page.not_found; an alive
+        node page.not_in_trash; a node deleted with another root
+        page.not_trash_root; an item past the time it can be restored in
+        page.restore_expired; a job that writes the notebook's tree
+        (an import, a restore or a revert) queued or running, or an import
+        uploading or another start under way into it, anyone's,
+        transfer.busy; as many jobs queued or running, with the imports
+        uploading, as the instance takes server_busy. The checks but the
+        item's are made again as the job is created. The job is named after
+        the item, its root_id is the item's root; it runs in the background:
+        read it with getTransferJob until it ends.
+      security: [{ bearer: [] }]
+      x-problem-codes:
+        [
+          notebook.not_found,
+          forbidden,
+          page.not_found,
+          page.not_in_trash,
+          page.not_trash_root,
+          page.restore_expired,
+          transfer.busy,
+          server_busy,
+        ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TrashRestoreStart"
+      responses:
+        "202":
+          description: The restore's job, queued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransferJob"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v0/notebooks/{notebook_id}/reverts:
+    parameters:
+      - $ref: "#/components/parameters/NotebookID"
+    post:
+      operationId: startRevert
+      tags: [transfer]
+      summary: Revert a changeset in the background
+      description: >-
+        Starts a job that reverts the changeset changeset_id of the
+        notebook as revertChangeset does one a request holds, of up to the
+        instance's bound of items, whatever its pages, bytes, history or
+        steps: revertChangeset's checks are made first, in the request,
+        but past its unit's bounds; a changeset of more items than the
+        bound is page.revert_too_large, which no job reverts. The job
+        reverts it in batches of the round's steps, puts, deletions, a
+        group's nodes restored, pages written back, each batch a unit of
+        one changeset, a revert of it with the message, which the job's
+        changeset_id names; each batch plans its own steps again, under the
+        lock: a node changed since stops the job (revert_conflict, the
+        report's conflicts), as does a page of the batch an edit session
+        holds (page_locked, the report's lock) and a changeset the purge
+        trimmed (changeset_trimmed); a top deleted goes to the trash whole;
+        a group restored past one batch is restored depth first, a member
+        someone restored where it goes skipped. What the job reverted is
+        kept as it stops; its changeset can be reverted. The notebook's
+        editors and admins can revert, a reader cannot (forbidden). In this
+        order: a message that breaks its rules is validation_failed; a
+        notebook that does not exist, is deleted, or that the caller has no
+        role in is notebook.not_found; a reader forbidden; a changeset of
+        no notebook or of another page.changeset_not_found; one the purge
+        trimmed page.changeset_trimmed; one of more items than the bound
+        page.revert_too_large; then, before anything else is read, a job
+        that writes the notebook's tree queued or running, or an import
+        uploading or another start under way into it, transfer.busy; then
+        as revertChangeset reads it (gone meanwhile: notebook.not_found or
+        forbidden as first, else page.changeset_trimmed): the conflicts
+        (page.revert_conflict with conflicts and conflict_count), a version
+        the purge took (page.changeset_trimmed); a page the revert deletes
+        another account's edit session holds, or a page it writes back any
+        session holds, the first in the round's order (page.locked with
+        lock); as many jobs queued or running, with the imports uploading,
+        as the instance takes server_busy. The checks but the changeset's
+        are made again as the job is created. The job is named after the
+        changeset's kind, its target_changeset_id is the changeset; it runs
+        in the background: read it with getTransferJob until it ends.
+      security: [{ bearer: [] }]
+      x-problem-codes:
+        [
+          validation_failed,
+          notebook.not_found,
+          forbidden,
+          page.changeset_not_found,
+          page.changeset_trimmed,
+          page.revert_too_large,
+          page.revert_conflict,
+          page.locked,
+          transfer.busy,
+          server_busy,
+        ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RevertStart"
+      responses:
+        "202":
+          description: The revert's job, queued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransferJob"
+        default:
+          $ref: "#/components/responses/Problem"
   /api/v0/notebooks/{notebook_id}/transfer-jobs:
     parameters:
       - $ref: "#/components/parameters/NotebookID"
@@ -135,8 +276,10 @@ paths:
       tags: [transfer]
       summary: List a notebook's jobs
       description: >-
-        The notebook's imports and exports, the newest first, a page at a
-        time: the caller's own, or every one for the notebook's admins. Any
+        The notebook's imports, exports, background restores and reverts,
+        the newest first, a page at a time, without their reports' problems
+        and conflicts: the caller's own, or every one for the notebook's
+        admins. Any
         role in the notebook can list them. A cursor the list cannot read
         is bad_request, before anything else; a notebook that does not
         exist, is deleted, or that the caller has no role in is
@@ -163,8 +306,9 @@ paths:
       tags: [transfer]
       summary: Read a job
       description: >-
-        The job, its progress, its report's problems once it ended, and an
-        export's archive's address once it succeeded. Its starter and the
+        The job, its progress, its report's problems, and a revert's
+        conflicts, once it ended, and an export's archive's address once it
+        succeeded. Its starter and the
         notebook's admins can read it. A job that does not exist, is
         deleted with its notebook, is of a notebook the caller has no role
         in, or is another's to one who is not the notebook's admin is
@@ -367,6 +511,29 @@ components:
           description: The page to export with its subtree; absent or null for the whole notebook.
           type: [string, "null"]
           format: uuid
+    TrashRestoreStart:
+      type: object
+      additionalProperties: false
+      required: [node_id]
+      properties:
+        node_id:
+          description: The root of the trash item to restore, a page or an attachment.
+          type: string
+          format: uuid
+    RevertStart:
+      description: A revert of a changeset in the background; no message, none.
+      type: object
+      additionalProperties: false
+      required: [changeset_id]
+      properties:
+        changeset_id:
+          description: The changeset to revert, of the notebook.
+          type: string
+          format: uuid
+        message:
+          description: >-
+            Why, kept with the revert's changeset: 1–4,096 bytes of UTF-8, without NUL characters.
+          type: string
     TransferJobPage:
       type: object
       additionalProperties: false
@@ -380,12 +547,13 @@ components:
           $ref: "../common.yaml#/components/schemas/NextCursor"
     TransferJob:
       description: >-
-        An import or an export of a notebook, a job that runs in the
-        background: queued, then running, then succeeded, failed or
-        cancelled. An export's archive expires a while after it succeeded,
-        the instance's export TTL, or at once when its starter's next export
-        of the notebook succeeds: a starter keeps only their latest export
-        of a notebook. created_by is its starter.
+        An import or an export of a notebook, a restore of a trash item or
+        a revert of a changeset, a job that runs in the background: queued,
+        then running, then succeeded, failed or cancelled. An export's
+        archive expires a while after it succeeded, the instance's export
+        TTL, or at once when its starter's next export of the notebook
+        succeeds: a starter keeps only their latest export of a notebook.
+        created_by is its starter.
       type: object
       additionalProperties: false
       required:
@@ -394,6 +562,8 @@ components:
           notebook_id,
           root_id,
           name,
+          changeset_id,
+          target_changeset_id,
           kind,
           state,
           client,
@@ -417,15 +587,30 @@ components:
         root_id:
           description: >-
             The page exported with its subtree, or imported under; null for
-            the whole notebook, or its root.
+            the whole notebook, or its root. A restore's, the root of the
+            trash item it restores, a page or an attachment; null for a
+            revert.
           type: [string, "null"]
           format: uuid
         name:
           description: >-
             What is exported, by name, the notebook's or the page's, which
             the archive is named after; for an import, the archive's file
-            name.
+            name; for a restore, the trash item's name as it was deleted;
+            for a revert, the kind of the changeset it reverts.
           type: string
+        changeset_id:
+          description: >-
+            The changeset the job writes in, an import's, a restore's
+            trash_restore or a revert's revert, decided as the job was
+            created: it exists once the job first wrote. Null for an export,
+            and for an import created before the jobs had it.
+          type: [string, "null"]
+          format: uuid
+        target_changeset_id:
+          description: The changeset a revert reverts; null for every other job.
+          type: [string, "null"]
+          format: uuid
         kind:
           $ref: "#/components/schemas/TransferKind"
         state:
@@ -469,7 +654,9 @@ components:
     # TransferJob 的每个属性加上问题的两项，与 TransferJob 同步改：不用 allOf，TransferJob 的 additionalProperties: false
     # 会拒绝多出的两项。
     TransferJobDetail:
-      description: A job, as TransferJob, and its report's problems once it ended.
+      description: >-
+        A job, as TransferJob, and its report's problems and a revert's
+        conflicts once it ended.
       type: object
       additionalProperties: false
       required:
@@ -478,6 +665,8 @@ components:
           notebook_id,
           root_id,
           name,
+          changeset_id,
+          target_changeset_id,
           kind,
           state,
           client,
@@ -492,6 +681,8 @@ components:
           download,
           problems,
           problems_truncated,
+          conflicts,
+          conflict_count,
         ]
       properties:
         id:
@@ -503,15 +694,30 @@ components:
         root_id:
           description: >-
             The page exported with its subtree, or imported under; null for
-            the whole notebook, or its root.
+            the whole notebook, or its root. A restore's, the root of the
+            trash item it restores, a page or an attachment; null for a
+            revert.
           type: [string, "null"]
           format: uuid
         name:
           description: >-
             What is exported, by name, the notebook's or the page's, which
             the archive is named after; for an import, the archive's file
-            name.
+            name; for a restore, the trash item's name as it was deleted;
+            for a revert, the kind of the changeset it reverts.
           type: string
+        changeset_id:
+          description: >-
+            The changeset the job writes in, an import's, a restore's
+            trash_restore or a revert's revert, decided as the job was
+            created: it exists once the job first wrote. Null for an export,
+            and for an import created before the jobs had it.
+          type: [string, "null"]
+          format: uuid
+        target_changeset_id:
+          description: The changeset a revert reverts; null for every other job.
+          type: [string, "null"]
+          format: uuid
         kind:
           $ref: "#/components/schemas/TransferKind"
         state:
@@ -560,9 +766,23 @@ components:
         problems_truncated:
           description: Whether problems were left out past the first 1,000.
           type: boolean
+        conflicts:
+          description: >-
+            The conflicts that stopped a revert (revert_conflict), as
+            page.revert_conflict lists them: by reason, then by node id, the
+            first 100 of conflict_count; empty for every other job and
+            failure.
+          type: array
+          maxItems: 100
+          items:
+            $ref: "../common.yaml#/components/schemas/RevertConflict"
+        conflict_count:
+          description: How many conflicts stopped a revert (revert_conflict); 0 otherwise.
+          type: integer
+          minimum: 0
     TransferKind:
       type: string
-      enum: [import, export]
+      enum: [import, export, trash_restore, revert]
     TransferClient:
       description: Where the job was started from, which its writes are of.
       type: string
@@ -574,7 +794,11 @@ components:
       description: >-
         How many of the job's nodes are done, of all: an export's written;
         an import's created or skipped, of those to create, 0 of 0 until
-        its archive is read.
+        its archive is read; a restore's restored or skipped, of the trash
+        item's; a revert's put back, deleted, restored, written back or
+        skipped, of those its plan changes, a subtree deleted counting its
+        nodes; both 0 of 0 until the job is planned. A job interrupted
+        keeps the progress it last wrote, at most a heartbeat behind.
       type: object
       additionalProperties: false
       required: [done, total]
@@ -588,7 +812,7 @@ components:
     TransferReport:
       type: object
       additionalProperties: false
-      required: [failure, counts]
+      required: [failure, counts, placed, lock]
       properties:
         failure:
           description: Why the job failed; null when it did not.
@@ -597,22 +821,53 @@ components:
             - type: "null"
         counts:
           $ref: "#/components/schemas/TransferCounts"
+        placed:
+          description: >-
+            Where a restore put the trash item's root, once its first batch
+            was written; null before, and for every other job.
+          anyOf:
+            - $ref: "../common.yaml#/components/schemas/TrashPlacement"
+            - type: "null"
+        lock:
+          description: >-
+            The page whose edit session stopped a revert (page_locked) and
+            who holds it, by their display name as of the answer; null for
+            every other job and failure.
+          anyOf:
+            - $ref: "../common.yaml#/components/schemas/PageLock"
+            - type: "null"
     TransferFailure:
       description: >-
         Why a job failed: interrupted (the server stopped or restarted, the
         job stopped beating, or the job queue dropped it before it began),
         timeout (it ran past the instance's limit), forbidden (its starter
         could no longer read the notebook as it ran, or write in it as an
-        import ran), root_not_found (the page exported, or imported under,
-        was gone as it ran), storage_full, contributor_conflict (a file the
-        server adds was where a node is), internal; for an import's archive
-        as a whole, nothing written: not_zip (no zip, or its directory is
-        broken), too_many_entries (more entries than the instance takes, or
-        a directory larger than 64 MiB), unpacked_too_large (its entries
-        unpack to more than the instance takes); tree_changed (a page the
-        import created was deleted as it ran, its later nodes not written);
-        changeset_reverted (the changeset it writes in was reverted as it
-        ran, its later nodes not written).
+        import, a restore or a revert ran), root_not_found (the page
+        exported, or imported under, was gone as it ran), storage_full,
+        contributor_conflict (a file the server adds was where a node is),
+        internal; for an import's archive as a whole, nothing written:
+        not_zip (no zip, or its directory is broken), too_many_entries (more
+        entries than the instance takes, or a directory larger than 64 MiB),
+        unpacked_too_large (its entries unpack to more than the instance
+        takes), too_many_nodes (its pages, attachments and the folders their
+        paths imply are more nodes than one undo can revert, 60,000);
+        tree_changed (a page an import created was deleted as it
+        ran; a parent a restore restored was deleted, or moved so that its
+        pages would nest deeper than 10 levels, as it ran), its later nodes
+        not written; changeset_reverted (the changeset an import, a restore
+        or a revert writes in was reverted as it ran, its later nodes not
+        written). A restore's alone: trash_changed (the trash item is no
+        longer as it was planned: restored, purged or deleted again as
+        another, before its first batch, or a node left in the trash below
+        what it restored no longer the root of its own item it made it);
+        restore_expired (the item went past the time it can be restored in
+        as it ran). A revert's alone: revert_conflict (a node it was about
+        to change changed since, or would conflict, the report's conflicts
+        listing them); changeset_trimmed (the purge took part of the
+        changeset, a version it writes back or restores, or a trash item it
+        restores); page_locked (an edit session holds a page it was about to
+        delete or write back, the report's lock). What a job wrote before
+        it failed is kept.
       type: string
       enum:
         [
@@ -626,8 +881,14 @@ components:
           not_zip,
           too_many_entries,
           unpacked_too_large,
+          too_many_nodes,
           tree_changed,
           changeset_reverted,
+          trash_changed,
+          restore_expired,
+          revert_conflict,
+          changeset_trimmed,
+          page_locked,
         ]
     TransferCounts:
       description: >-
@@ -635,26 +896,29 @@ components:
         that could not write its end, which the server fails later as
         interrupted (it restarted, the job stopped beating, the job queue
         dropped it), counts nothing: its progress tells how far it went. An
-        import writes its counts and problems as it goes, every ten seconds
-        at most: one interrupted keeps those it last wrote, of the batches
-        written by then.
+        import, a restore and a revert write their counts and problems as
+        they go, every ten seconds at most: one interrupted keeps those it
+        last wrote, of the batches written by then. A restore counts pages,
+        attachments, renamed and skipped; a revert restored, deleted,
+        put_back, written and skipped.
       type: object
       additionalProperties: false
-      required: [pages, attachments, renamed, missing, skipped]
+      required: [pages, attachments, renamed, missing, skipped, restored, deleted, put_back, written]
       properties:
         pages:
-          description: The pages written; an import's, created.
+          description: The pages written; an import's, created; a restore's, restored.
           type: integer
           format: int64
         attachments:
-          description: The attachments whose files were written; an import's, created.
+          description: The attachments whose files were written; an import's, created; a restore's, restored.
           type: integer
           format: int64
         renamed:
           description: >-
             The nodes the export's vault names otherwise, as the export laid
             the vault out before it wrote; the nodes an import named
-            otherwise than the archive.
+            otherwise than the archive; the nodes a restore numbered, a
+            sibling where they went back holding their name.
           type: integer
           format: int64
         missing:
@@ -662,7 +926,29 @@ components:
           type: integer
           format: int64
         skipped:
-          description: An import's entries skipped; 0 for an export.
+          description: >-
+            An import's entries skipped; the nodes of a restore's item, and
+            of a revert's groups, that someone restored before the job came
+            to them; 0 for an export.
+          type: integer
+          format: int64
+        restored:
+          description: >-
+            The nodes a revert restored from the trash, its trash items'
+            every node; 0 for every other job. (revertChangeset's log counts
+            the trash items.)
+          type: integer
+          format: int64
+        deleted:
+          description: The nodes a revert deleted, with the subtrees of those it deleted; 0 for every other job.
+          type: integer
+          format: int64
+        put_back:
+          description: The nodes a revert put back where and as they were; 0 for every other job.
+          type: integer
+          format: int64
+        written:
+          description: The pages whose content a revert wrote back; 0 for every other job.
           type: integer
           format: int64
     TransferProblem:

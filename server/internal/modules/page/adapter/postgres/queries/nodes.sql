@@ -181,6 +181,15 @@ SELECT (SELECT count(*) FROM back)::integer AS nodes,
     (SELECT count(*) FROM (SELECT base_revision, lag(revision) OVER (PARTITION BY node_id ORDER BY revision) AS prior
         FROM revisions) v WHERE base_revision IS DISTINCT FROM prior)::integer AS gaps;
 
+-- name: MarkTrashRoots :execrows
+-- The nodes of a trash item a background restore left in the trash under parents it brought back (M8 design 4.10;
+-- M8/P4 design 3.4): each its own trash item, with its part of the group's counts and height. Joined by key, as
+-- RestoreNodes; a node no longer deleted at the time, or a root already, is not marked, which its caller counts.
+UPDATE nodes n SET trash_root = true, trash_pages = u.pages, trash_assets = u.assets, trash_height = u.height
+FROM (SELECT unnest(sqlc.arg(ids)::uuid[]) AS id, unnest(sqlc.arg(pages)::integer[]) AS pages,
+        unnest(sqlc.arg(assets)::integer[]) AS assets, unnest(sqlc.arg(heights)::integer[]) AS height) u
+WHERE n.id = u.id AND n.deleted_at = sqlc.arg(deleted_at)::timestamptz AND NOT n.trash_root;
+
 -- name: DeleteNotebooksPages :exec
 -- The notebook deletion's registrant (M4/P1 design 3.9): the nodes not deleted of the notebooks, and what
 -- follows them, at the deletion's time, by the deleter; then the notebooks' changesets. What a subtree's

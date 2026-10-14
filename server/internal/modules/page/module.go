@@ -132,14 +132,19 @@ type Deps struct {
 	// and MaxRevertSteps, which only a measurement raises (M8/P2 design
 	// 3.11, M8/P3 design 3.11); production leaves them 0.
 	MaxUnitNodes, MaxUnitHistory, MaxRevertSteps int
+	// MaxJobItems bounds the items of a changeset a background revert
+	// reverts: 0 is the domain's, domain.MaxJobItems, measured (M8/P4
+	// design 3.11); production leaves it 0.
+	MaxJobItems int
 }
 
 // Module is the wired page module.
 type Module struct {
-	uc      httpadapter.UseCases
-	jobs    []jobs.Job
-	assets  *app.AssetWrites
-	imports *app.ImportWrites
+	uc        httpadapter.UseCases
+	jobs      []jobs.Job
+	assets    *app.AssetWrites
+	imports   *app.ImportWrites
+	jobWrites *app.JobWrites
 }
 
 // New wires the module: every write runs in the one writer's units. A
@@ -192,7 +197,8 @@ func New(d Deps) *Module {
 			app.RevertBounds{Nodes: d.MaxUnitNodes, History: d.MaxUnitHistory, Steps: d.MaxRevertSteps}, d.Logger),
 	}, jobs: []jobs.Job{
 		riveradapter.CleanupJob(app.NewCleanupEditSessions(store, d.Clock, d.Logger), d.EditSessionCleanupInterval),
-	}, assets: app.NewAssetWrites(writer, store), imports: app.NewImportWrites(writer, parser, md)}
+	}, assets: app.NewAssetWrites(writer, store), imports: app.NewImportWrites(writer, parser, md),
+		jobWrites: app.NewJobWrites(trash, store, writer, parser, store, d.MaxJobItems, d.MaxUnitHistory)}
 }
 
 // Jobs are the module's background jobs, for the server's jobs runner: the

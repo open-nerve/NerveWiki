@@ -65,7 +65,19 @@ test("TR1 (API): a notebook and a subtree export as vaults, their pages, folders
   expect([whole.state, whole.name, whole.root_id, whole.client]).toEqual(["succeeded", "Handbook", null, "api"]);
   expect(whole.report).toEqual({
     failure: null,
-    counts: { pages: 9, attachments: 2, renamed: 1, missing: 0, skipped: 0 },
+    counts: {
+      pages: 9,
+      attachments: 2,
+      renamed: 1,
+      missing: 0,
+      skipped: 0,
+      restored: 0,
+      deleted: 0,
+      put_back: 0,
+      written: 0,
+    },
+    placed: null,
+    lock: null,
   });
   expect(whole.problems).toEqual([{ path: "Plan.md/", code: "renamed", to: "Plan.md 2/" }]);
   if (!whole.download || whole.result_bytes === null) {
@@ -199,7 +211,7 @@ test("TR1 (page): the notebook exports from its settings and downloads as its va
   await page.goto(notebookPath(workspace.slug, handbook.id, "general"));
   await page
     .getByRole("navigation", { name: "Notebook settings" })
-    .getByRole("link", { name: "Import and export" })
+    .getByRole("link", { name: "Import, export and restore" })
     .click();
   await expect(page).toHaveURL(notebookPath(workspace.slug, handbook.id, "transfer"));
   await expect(page.getByText("No jobs yet.")).toBeVisible();

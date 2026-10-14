@@ -7,9 +7,13 @@ import type { Notebook } from "../../services/notebook.service";
 import type { TransferFailure, TransferJob, TransferProblem } from "../../services/transfer.service";
 import { useTransfers } from "../../stores/context";
 
-type TransferCounts = NonNullable<TransferJob["report"]>["counts"];
+/** The counts an import's and an export's reports show, each with a text of its own. */
+type ShownCount = keyof Pick<
+  NonNullable<TransferJob["report"]>["counts"],
+  "pages" | "attachments" | "renamed" | "missing" | "skipped"
+>;
 
-/** The text of each failure's code (M7/P5 design 4.4, P6 design 3.8). */
+/** The text of each failure's code (M7/P5 design 4.4, P6 design 3.8; M8/P4 design 3.9). */
 const failures: Record<TransferFailure, PlainKey> = {
   interrupted: "transfer.failure.interrupted",
   timeout: "transfer.failure.timeout",
@@ -21,14 +25,35 @@ const failures: Record<TransferFailure, PlainKey> = {
   not_zip: "transfer.failure.not_zip",
   too_many_entries: "transfer.failure.too_many_entries",
   unpacked_too_large: "transfer.failure.unpacked_too_large",
+  too_many_nodes: "transfer.failure.too_many_nodes",
   tree_changed: "transfer.failure.tree_changed",
   changeset_reverted: "transfer.failure.changeset_reverted",
+  trash_changed: "transfer.failure.trash_changed",
+  restore_expired: "transfer.failure.restore_expired",
+  revert_conflict: "transfer.failure.revert_conflict",
+  changeset_trimmed: "transfer.failure.changeset_trimmed",
+  page_locked: "transfer.failure.page_locked",
 };
 
-/** What an import's failures say otherwise than an export's (M7/P6 design 4.1). */
-const importFailures: Partial<Record<TransferFailure, PlainKey>> = {
-  forbidden: "transfer.importFailure.forbidden",
-  root_not_found: "transfer.importFailure.root_not_found",
+/**
+ * What a kind's failures say otherwise than an export's (M7/P6 design 4.1;
+ * M8/P4 design 3.9): an import's, a restore's and a revert's.
+ */
+const kindFailures: Partial<Record<TransferJob["kind"], Partial<Record<TransferFailure, PlainKey>>>> = {
+  import: {
+    forbidden: "transfer.importFailure.forbidden",
+    root_not_found: "transfer.importFailure.root_not_found",
+  },
+  trash_restore: {
+    forbidden: "transfer.restoreFailure.forbidden",
+    tree_changed: "transfer.restoreFailure.tree_changed",
+    changeset_reverted: "transfer.restoreFailure.changeset_reverted",
+  },
+  revert: {
+    forbidden: "transfer.revertFailure.forbidden",
+    tree_changed: "transfer.revertFailure.tree_changed",
+    changeset_reverted: "transfer.revertFailure.changeset_reverted",
+  },
 };
 
 /**
@@ -37,7 +62,7 @@ const importFailures: Partial<Record<TransferFailure, PlainKey>> = {
  */
 export function failureText(kind: TransferJob["kind"], failure: string, t: Translate): string {
   const key =
-    (kind === "import" ? (importFailures as Partial<Record<string, PlainKey>>)[failure] : undefined) ??
+    (kindFailures[kind] as Partial<Record<string, PlainKey>> | undefined)?.[failure] ??
     (failures as Partial<Record<string, PlainKey>>)[failure];
   return t(key ?? "transfer.failure.unknown");
 }
@@ -76,7 +101,7 @@ export function problemText(kind: TransferJob["kind"], problem: TransferProblem,
 }
 
 /** The counts a job's report shows, by its kind: an import's files are never missing, an export skips nothing. */
-const shownCounts: Record<string, readonly (keyof TransferCounts)[]> = {
+const shownCounts: Record<string, readonly ShownCount[]> = {
   export: ["pages", "attachments", "renamed", "missing"],
   import: ["pages", "attachments", "renamed", "skipped"],
 };

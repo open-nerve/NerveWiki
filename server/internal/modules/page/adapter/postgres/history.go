@@ -171,21 +171,40 @@ func (s *Store) ChangesetItems(ctx context.Context, id uuid.UUID) ([]domain.Chan
 	if err != nil {
 		return nil, fmt.Errorf("changeset items: %w", err)
 	}
+	out := make([]domain.ChangesetItem, len(rows))
+	for i, r := range rows {
+		out[i] = itemOf(gen.ChangesetItemsOfRow(r))
+	}
+	return out, nil
+}
+
+// ChangesetItemsOf implements app.History, planned with its arguments.
+func (s *Store) ChangesetItemsOf(ctx context.Context, id uuid.UUID, ids []uuid.UUID) ([]domain.ChangesetItem, error) {
+	rows, err := s.planned(ctx).ChangesetItemsOf(ctx, gen.ChangesetItemsOfParams{ID: id, NodeIds: ids})
+	if err != nil {
+		return nil, fmt.Errorf("changeset items of nodes: %w", err)
+	}
+	out := make([]domain.ChangesetItem, len(rows))
+	for i, r := range rows {
+		out[i] = itemOf(r)
+	}
+	return out, nil
+}
+
+// itemOf is a row of the statements that read a changeset's items.
+func itemOf(r gen.ChangesetItemsOfRow) domain.ChangesetItem {
 	state := func(parent *uuid.UUID, name *string, order *float64) *domain.TreeState {
 		if name == nil || order == nil {
 			return nil
 		}
 		return &domain.TreeState{ParentID: parent, Name: *name, SortOrder: *order}
 	}
-	out := make([]domain.ChangesetItem, len(rows))
-	for i, r := range rows {
-		out[i] = domain.ChangesetItem{NodeID: r.NodeID, Before: state(r.BeforeParentID, r.BeforeName, r.BeforeSortOrder),
-			After: state(r.AfterParentID, r.AfterName, r.AfterSortOrder), Restored: r.Restored}
-		if r.Revision != nil {
-			out[i].Revision = int(*r.Revision)
-		}
+	out := domain.ChangesetItem{NodeID: r.NodeID, Before: state(r.BeforeParentID, r.BeforeName, r.BeforeSortOrder),
+		After: state(r.AfterParentID, r.AfterName, r.AfterSortOrder), Restored: r.Restored}
+	if r.Revision != nil {
+		out.Revision = int(*r.Revision)
 	}
-	return out, nil
+	return out
 }
 
 // ChangesetVersions implements app.History. A version whose base the purge
@@ -197,15 +216,38 @@ func (s *Store) ChangesetVersions(ctx context.Context, id uuid.UUID) ([]domain.C
 	}
 	out := make([]domain.ChangesetVersion, len(rows))
 	for i, r := range rows {
-		out[i] = domain.ChangesetVersion{NodeID: r.NodeID, Base: intOf(r.BaseRevision), Revision: int(r.Revision), Hash: r.ContentHash}
-		if r.BaseBytes != nil {
-			out[i].BaseBytes = int(*r.BaseBytes)
-		}
+		out[i] = changedVersionOf(gen.ChangesetVersionsOfRow(r))
 	}
 	return out, nil
 }
 
-// NodesNow implements app.History.
+// ChangesetVersionsOf implements app.History, planned with its arguments.
+func (s *Store) ChangesetVersionsOf(ctx context.Context, id uuid.UUID, ids []uuid.UUID) ([]domain.ChangesetVersion, error) {
+	rows, err := s.planned(ctx).ChangesetVersionsOf(ctx, gen.ChangesetVersionsOfParams{ID: id, NodeIds: ids})
+	if err != nil {
+		return nil, fmt.Errorf("changeset versions of pages: %w", err)
+	}
+	out := make([]domain.ChangesetVersion, len(rows))
+	for i, r := range rows {
+		out[i] = changedVersionOf(r)
+	}
+	return out, nil
+}
+
+// changedVersionOf is a row of the statements that read a changeset's versions.
+func changedVersionOf(r gen.ChangesetVersionsOfRow) domain.ChangesetVersion {
+	out := domain.ChangesetVersion{NodeID: r.NodeID, Base: intOf(r.BaseRevision), Revision: int(r.Revision), Hash: r.ContentHash}
+	if r.BaseBytes != nil {
+		out.BaseBytes = int(*r.BaseBytes)
+	}
+	return out
+}
+
+// NodesNow implements app.History, a cached statement: with the ids of a
+// background revert's changeset its plan for any reads as fast as one with
+// them, 252 against 270 ms at 50,000 ids (BenchmarkBackgroundSteps/arrays;
+// M8/P4 design 3.11), unlike the trash's arrays' statements, which run
+// planned.
 func (s *Store) NodesNow(ctx context.Context, ids []uuid.UUID, reverted uuid.UUID) (map[uuid.UUID]domain.NodeNow, error) {
 	rows, err := s.queries(ctx).NodesNow(ctx, gen.NodesNowParams{Ids: ids, Reverted: reverted})
 	if err != nil {

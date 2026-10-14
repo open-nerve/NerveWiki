@@ -174,6 +174,10 @@ type ArchiveFile interface {
 type Queue interface {
 	Export(ctx context.Context, id uuid.UUID) error
 	Import(ctx context.Context, id uuid.UUID) error
+	// TrashRestore and Revert enqueue a background restore and revert, in
+	// the imports' queue (M8/P4 design 3.6).
+	TrashRestore(ctx context.Context, id uuid.UUID) error
+	Revert(ctx context.Context, id uuid.UUID) error
 }
 
 // Held tells which jobs River still holds: adapter/river.
@@ -243,9 +247,9 @@ type Rows interface {
 	// Exporting reports whether userID has an export queued or running in
 	// notebookID.
 	Exporting(ctx context.Context, notebookID, userID uuid.UUID) (bool, error)
-	// Importing reports whether notebookID has an import queued or
-	// running.
-	Importing(ctx context.Context, notebookID uuid.UUID) (bool, error)
+	// Writing reports whether notebookID has a job that writes its tree
+	// queued or running: an import, a restore or a revert.
+	Writing(ctx context.Context, notebookID uuid.UUID) (bool, error)
 	FindJob(ctx context.Context, id uuid.UUID) (domain.Job, error)
 	// LockJob is FindJob locked until the transaction ends.
 	LockJob(ctx context.Context, id uuid.UUID) (domain.Job, error)

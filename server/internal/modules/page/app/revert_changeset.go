@@ -91,49 +91,12 @@ func (r *RevertChangeset) Execute(ctx context.Context, id uuid.UUID, message *st
 	if err := r.writer.Allowed(ctx, spec); err != nil {
 		return ChangesetReverted{}, err
 	}
-	if c.Trimmed {
-		return ChangesetReverted{}, domain.ErrChangesetTrimmed
-	}
-	n, err := r.history.CountItems(ctx, c.ID, r.bounds.Nodes+1)
-	switch {
-	case err != nil:
-		return ChangesetReverted{}, err
-	case n > r.bounds.Nodes:
-		return ChangesetReverted{}, domain.ErrRevertTooLarge
-	}
-	reads := revertReads{history: r.history, trash: r.reads.Trash, nodes: r.reads.Nodes}
-	items, versions, err := reads.changeset(ctx, c.ID)
-	if errors.Is(err, ErrNotFound) {
-		// Gone since it was found: its notebook deleted, or the caller's
-		// role ended, answers as the first read would (M8/P3A review B F2);
-		// else the purge took it.
-		if err := r.writer.Allowed(ctx, spec); err != nil {
-			return ChangesetReverted{}, err
-		}
-		err = domain.ErrChangesetTrimmed
-	}
+	checked, err := r.checks().check(ctx, c, spec, revertBounds{Items: r.bounds.Nodes, Parse: true, History: r.bounds.History,
+		Steps: r.bounds.Steps})
 	if err != nil {
 		return ChangesetReverted{}, err
 	}
-	nodes, groups, err := reads.groups(ctx, c.NotebookID, c.ID, items, versions)
-	if err != nil {
-		return ChangesetReverted{}, err
-	}
-	if err := r.withinBounds(ctx, items, versions, nodes, groups); err != nil {
-		return ChangesetReverted{}, err
-	}
-	state, err := reads.rest(ctx, c.NotebookID, domain.RevertState{Items: items, Versions: versions, Nodes: nodes, Groups: groups,
-		At: r.reads.Clock.Now(), Retention: r.reads.Retention})
-	if err != nil {
-		return ChangesetReverted{}, err
-	}
-	plan, err := planned(state)
-	switch {
-	case err != nil:
-		return ChangesetReverted{}, err
-	case plan.Steps() > r.bounds.Steps:
-		return ChangesetReverted{}, domain.ErrRevertTooLarge
-	}
+	plan := checked.plan
 	contents, err := r.contents(ctx, plan)
 	if err != nil {
 		return ChangesetReverted{}, err
@@ -171,14 +134,137 @@ func (r *RevertChangeset) Execute(ctx context.Context, id uuid.UUID, message *st
 	return ChangesetReverted{ChangesetID: outcome.ChangesetID, Changed: true}, nil
 }
 
+// checks are the use case's reads as its unlocked check reads them.
+func (r *RevertChangeset) checks() revertChecks {
+	return revertChecks{reads: r.reads, history: r.history, writer: r.writer}
+}
+
+// revertBounds are where a revert's unlocked check stops it (M8/P4 design
+// 3.5): Items before the items are read (MaxUnitNodes, a job's
+// MaxJobItems); Admit right after it, before anything else is read (a
+// job's transfer.busy); Groups after the nodes, before their groups are
+// read (a job's MaxJobGroups; 0 none); Parse at step 6, the unit's pages,
+// bytes and History rows of history (the sync's); Steps after the plan's
+// conflicts (MaxRevertSteps, the sync's; 0 none); Locks after them,
+// page.locked for a page the plan deletes or writes back that an edit
+// session holds (a job's). The 404 of a changeset gone between its reads
+// is spec.NotFound, the one the caller's first read answers.
+type revertBounds struct {
+	Items   int
+	Admit   func(context.Context) error
+	Groups  int
+	Parse   bool
+	History int
+	Steps   int
+	Locks   bool
+}
+
+// revertChecks are what a revert's unlocked check reads, a request's and a
+// background job's (M8/P4 design 3.5); sessions the edit locks, read when
+// its bounds have Locks.
+type revertChecks struct {
+	reads    TrashReads
+	history  History
+	writer   *Writer
+	sessions AliveSessions
+}
+
+// revertChecked is what a revert's check read: the state it planned by,
+// and its plan, which has no conflict and no version missing.
+type revertChecked struct {
+	state domain.RevertState
+	plan  domain.RevertPlan
+}
+
+// check is a revert's check before its unit, unlocked, of the changeset c
+// the caller found and is allowed by spec to revert (M8/P3 design 3.6,
+// steps 1 to 7; M8/P4 design 3.5), stopping where b says:
+// page.changeset_trimmed for one the purge marked; page.revert_too_large
+// past b's items, before they are read; then b's Admit; then its items
+// and versions, and its row again, page.changeset_trimmed when the purge
+// marked or took it meanwhile, spec's 404 or 403 when its notebook went
+// meanwhile, or the caller's role; then its nodes now, page.revert_too_large
+// past b's groups; then the trash items it deleted, each read only when its
+// root passes the check, and with b's Parse, page.revert_too_large past the
+// pages and bytes it parses (a lone page never is) or b's rows of their
+// history; then the state, planned: page.revert_conflict, then
+// page.changeset_trimmed for a version the purge took, then
+// page.revert_too_large past b's steps, then with b's Locks page.locked.
+func (r revertChecks) check(ctx context.Context, c domain.Changeset, spec UnitSpec, b revertBounds) (revertChecked, error) {
+	if c.Trimmed {
+		return revertChecked{}, domain.ErrChangesetTrimmed
+	}
+	n, err := r.history.CountItems(ctx, c.ID, b.Items+1)
+	switch {
+	case err != nil:
+		return revertChecked{}, err
+	case n > b.Items:
+		return revertChecked{}, domain.ErrRevertTooLarge
+	}
+	if b.Admit != nil {
+		if err := b.Admit(ctx); err != nil {
+			return revertChecked{}, err
+		}
+	}
+	reads := revertReads{history: r.history, trash: r.reads.Trash, nodes: r.reads.Nodes}
+	items, versions, err := reads.changeset(ctx, c.ID)
+	if errors.Is(err, ErrNotFound) {
+		// Gone since it was found: its notebook deleted, or the caller's
+		// role ended, answers as the first read would (M8/P3A review B F2);
+		// else the purge took it.
+		if err := r.writer.Allowed(ctx, spec); err != nil {
+			return revertChecked{}, err
+		}
+		err = domain.ErrChangesetTrimmed
+	}
+	if err != nil {
+		return revertChecked{}, err
+	}
+	nodes, err := reads.nodesNow(ctx, c.ID, items, versions)
+	if err != nil {
+		return revertChecked{}, err
+	}
+	roots := domain.RevertGroups(items, nodes)
+	if b.Groups > 0 && len(roots) > b.Groups {
+		return revertChecked{}, domain.ErrRevertTooLarge
+	}
+	groups, err := reads.trashGroups(ctx, c.NotebookID, roots)
+	if err != nil {
+		return revertChecked{}, err
+	}
+	if b.Parse {
+		if err := r.withinBounds(ctx, items, versions, nodes, groups, b.History); err != nil {
+			return revertChecked{}, err
+		}
+	}
+	state, err := reads.rest(ctx, c.NotebookID, domain.RevertState{Items: items, Versions: versions, Nodes: nodes, Groups: groups,
+		At: r.reads.Clock.Now(), Retention: r.reads.Retention})
+	if err != nil {
+		return revertChecked{}, err
+	}
+	plan, err := planned(state)
+	switch {
+	case err != nil:
+		return revertChecked{}, err
+	case b.Steps > 0 && plan.Steps() > b.Steps:
+		return revertChecked{}, domain.ErrRevertTooLarge
+	}
+	if b.Locks {
+		if err := r.locked(ctx, plan, state); err != nil {
+			return revertChecked{}, err
+		}
+	}
+	return revertChecked{state: state, plan: plan}, nil
+}
+
 // withinBounds checks a revert parses at most the unit's pages and bytes,
 // those of the versions it writes back and of the pages of the trash
-// items it restores, a page each, and restores at most the bound of rows
-// of history, its items' roots' at their time: page.revert_too_large.
-func (r *RevertChangeset) withinBounds(ctx context.Context, items []domain.ChangesetItem, versions []domain.ChangesetVersion,
-	nodes map[uuid.UUID]domain.NodeNow, groups map[uuid.UUID][]domain.TrashMember,
+// items it restores, a page each, and restores at most history rows of
+// history, its items' roots' at their time: page.revert_too_large.
+func (r revertChecks) withinBounds(ctx context.Context, items []domain.ChangesetItem, versions []domain.ChangesetVersion,
+	nodes map[uuid.UUID]domain.NodeNow, groups map[uuid.UUID][]domain.TrashMember, history int,
 ) error {
-	pages, bytes, history := 0, 0, 0
+	pages, bytes, rows := 0, 0, 0
 	for _, v := range domain.RevertWrites(items, versions) {
 		pages, bytes = pages+1, bytes+v.BaseBytes
 	}
@@ -197,12 +283,70 @@ func (r *RevertChangeset) withinBounds(ctx context.Context, items []domain.Chang
 		for i, m := range g {
 			ids[i] = m.Node.ID
 		}
-		n, err := r.reads.Trash.TrashHistory(ctx, ids, *nodes[root].DeletedAt, r.bounds.History+1)
+		n, err := r.reads.Trash.TrashHistory(ctx, ids, *nodes[root].DeletedAt, history+1)
 		if err != nil {
 			return err
 		}
-		if history += n; history > r.bounds.History {
+		if rows += n; rows > history {
 			return domain.ErrRevertTooLarge
+		}
+	}
+	return nil
+}
+
+// locked is page.locked for the first page, in the plan's order, that an
+// edit session holds and the plan deletes or writes back (M8/P4 design
+// 3.5, review B-M3), read once: a deletion's pages, those of each top's
+// subtree alive now, held by another account's session, the reverter's
+// own ending with their pages, as the guard of a deletion has it; a page
+// written back held by any.
+func (r revertChecks) locked(ctx context.Context, plan domain.RevertPlan, state domain.RevertState) error {
+	actor, err := requireActor(ctx)
+	if err != nil {
+		return err
+	}
+	children, pages := map[uuid.UUID][]uuid.UUID{}, map[uuid.UUID]bool{}
+	for _, n := range state.Tree {
+		if n.ParentID != nil {
+			children[*n.ParentID] = append(children[*n.ParentID], n.ID)
+		}
+		pages[n.ID] = n.Kind == domain.KindPage
+	}
+	var ids []uuid.UUID
+	deleted := map[uuid.UUID]bool{}
+	for _, op := range plan.Ops {
+		switch op.Kind {
+		case domain.RevertDelete:
+			for sub, at := []uuid.UUID{op.NodeID}, 0; at < len(sub); at++ {
+				if id := sub[at]; pages[id] {
+					ids, deleted[id] = append(ids, id), true
+				}
+				sub = append(sub, children[sub[at]]...)
+			}
+		case domain.RevertContent:
+			ids = append(ids, op.NodeID)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	alive, err := r.sessions.AliveSessionsOf(ctx, ids, r.reads.Clock.Now())
+	if err != nil {
+		return err
+	}
+	held := map[uuid.UUID]EditSession{}
+	for _, a := range alive {
+		if _, ok := held[a.NodeID]; !ok && (!deleted[a.NodeID] || a.UserID != actor.UserID) {
+			held[a.NodeID] = a
+		}
+	}
+	for _, id := range ids {
+		if a, ok := held[id]; ok {
+			names, err := r.reads.Names.DisplayNames(ctx, []uuid.UUID{a.UserID})
+			if err != nil {
+				return err
+			}
+			return domain.Locked(a.NodeID, a.UserID, names[a.UserID])
 		}
 	}
 	return nil
