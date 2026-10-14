@@ -46,15 +46,18 @@ export function addressOf(job: TransferJob, expires = "2100-01-01T00:00:00Z"): N
  * apart; more changes what it says. As the server answers it (v0.1 design
  * 13.4, item 7), a succeeded export has its size and an address (expiring
  * far off unless more gives one), an expired one its size alone, any other
- * job neither.
+ * job neither; a restore and a revert have their changeset from the start
+ * (jobChangesetId), and a revert counts nodes, not pages (M8/P4 design
+ * 3.2; P4B review B-N2).
  */
 export function jobJSON(n: number, more: Partial<TransferJob> = {}): TransferJob {
+  const writes = more.kind === "trash_restore" || more.kind === "revert";
   const job: TransferJob = {
     id: `0199a2b4-0000-7000-8000-0000000007${n.toString().padStart(2, "0")}`,
     notebook_id: notebookJSON.id,
     root_id: null,
     name: notebookJSON.name,
-    changeset_id: null,
+    changeset_id: writes ? jobChangesetId(n) : null,
     target_changeset_id: null,
     kind: "export",
     state: "succeeded",
@@ -66,7 +69,7 @@ export function jobJSON(n: number, more: Partial<TransferJob> = {}): TransferJob
     finished_at: "2026-10-05T10:20:00Z",
     progress: { done: 4, total: 4 },
     result_bytes: null,
-    report: reportOf(null, { pages: 4 }),
+    report: reportOf(null, more.kind === "revert" ? { deleted: 4 } : { pages: 4 }),
     download: null,
     ...more,
   };
@@ -154,7 +157,8 @@ type JobsServerOptions = NonNullable<Parameters<typeof pageServer>[0]> & {
  *   target_changeset_id the changeset, with the message.
  *
  * Each started job has the changeset it writes (jobChangesetId) and is
- * made now. While startsHeld is set, a start is answered once released;
+ * made now, by the server's clock, clockBehind the browser's. While
+ * startsHeld is set, a start is answered once released;
  * lost, a start's job is written but its answer lost, a 500 or none at
  * all; listWaits holds the list's reads.
  */
@@ -176,6 +180,8 @@ export function jobsServer({ jobs = [], pageSize = 50, answers = {}, ...options 
     startsHeld: false,
     /** How a start's answer is lost once its job is written: a 500, or no answer at all; not lost without it. */
     lost: undefined as "500" | "network" | undefined,
+    /** How far the server's clock is behind the browser's, in milliseconds: when it says a job started was made. */
+    clockBehind: 0,
     /** What the list's reads wait for while a test holds them. */
     listWaits: undefined as Promise<void> | undefined,
     /** The messages the reverts started were sent with, by their jobs' ids. */
@@ -203,7 +209,11 @@ export function jobsServer({ jobs = [], pageSize = 50, answers = {}, ...options 
   const queued = (more: Partial<TransferJob>) => {
     const n = ++started;
     const job = underWay(
-      jobJSON(n, { changeset_id: jobChangesetId(n), created_at: new Date().toISOString(), ...more }),
+      jobJSON(n, {
+        changeset_id: jobChangesetId(n),
+        created_at: new Date(Date.now() - server.clockBehind).toISOString(),
+        ...more,
+      }),
       0,
       0
     );

@@ -23,6 +23,7 @@ import { ApiError, lost } from "../../services/api";
 import type { Notebook } from "../../services/notebook.service";
 import type { ChangesetDetail } from "../../services/page.service";
 import { usePageTree, useStore, useTransfers } from "../../stores/context";
+import type { Press } from "../../stores/transfer.store";
 import { watchReader } from "../page/readers-input";
 import { useWorkspace } from "../workspace/workspace-layout";
 import { countText, reasonText } from "./changeset-text";
@@ -38,8 +39,8 @@ const messageBytes = 4096;
  * undo; refused, the changeset trimmed or out of reach; or its answer lost
  * (a 5xx, the network), its outcome to find out: the newest revert of the
  * changeset known as it was sent is before. A revert in the background
- * came to its job, started; or, its answer lost, to a job started at
- * since or after, to find out (M8/P4 design 4.2).
+ * came to its job, started; or, its answer lost, to the job of its press,
+ * if any, to find out (M8/P4 design 4.2).
  */
 export type Reverted =
   | { kind: "reverted"; revert: string }
@@ -47,7 +48,7 @@ export type Reverted =
   | { kind: "refused"; error: unknown }
   | { kind: "unknown"; before: string | undefined }
   | { kind: "started"; job: string }
-  | { kind: "startLost"; since: number };
+  | { kind: "startLost"; press: Press };
 
 /**
  * RevertDialog is a changeset's Undo change (M8 design 4.8; M8/P3 design
@@ -237,8 +238,7 @@ function RevertForm({
   // lost, the page finds out from the jobs, its reverted_by being empty until the job's first batch (review B-M6).
   async function start(text: string | undefined): Promise<void> {
     const reader = watchReader({ on: confirm.current });
-    // oxlint-disable-next-line react/purity -- as the undo is sent, not as the dialog renders
-    const since = Date.now();
+    const press = transfers.press();
     setSending(true);
     sent();
     try {
@@ -249,7 +249,7 @@ function RevertForm({
         if (!lost(error)) {
           throw error;
         }
-        close({ kind: "startLost", since }, !reader.acted());
+        close({ kind: "startLost", press }, !reader.acted());
       }
     } finally {
       reader.end();

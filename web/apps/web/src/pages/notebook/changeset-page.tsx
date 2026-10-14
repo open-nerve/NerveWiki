@@ -17,6 +17,7 @@ import { ApiError } from "../../services/api";
 import type { Notebook } from "../../services/notebook.service";
 import type { ChangesetChangePage, ChangesetDetail } from "../../services/page.service";
 import { useAccount, usePageTree, useStore, useTransfers } from "../../stores/context";
+import type { Press } from "../../stores/transfer.store";
 import { LoadMoreButton, readNext, useLoadMore } from "../load-more";
 import { NotFoundPage } from "../not-found";
 import { BreadcrumbTrail } from "../page/breadcrumbs";
@@ -77,7 +78,8 @@ export const ChangesetPage = observer(function ChangesetPage() {
  * was lost reads the changeset again: a newest undo of it other than the
  * one known as it was sent is the account's, or someone else's. An undo in
  * the background whose answer was lost reads the jobs again: the
- * account's revert of it started since it was pressed, if any.
+ * account's revert of it that is its press's, if any. What a read finds
+ * out late, another undo sent meanwhile, it does not say.
  */
 const ChangesetShell = observer(function ChangesetShell({ notebook, id }: { notebook: Notebook; id: string }) {
   const t = useT();
@@ -89,6 +91,8 @@ const ChangesetShell = observer(function ChangesetShell({ notebook, id }: { note
   const heading = useRef<HTMLHeadingElement>(null);
   const me = useAccount().me.id;
   const [said, setSaid] = useState<Said>();
+  // Each undo sent: what is found out of an earlier one is not said over a later one's (P4B review A-N3).
+  const attempt = useRef(0);
   const [refused, setRefused] = useState<unknown>();
   // The status line describes the title, where the focus lands: it is heard with it; a refusal's alert, likewise.
   const status = useId();
@@ -106,44 +110,56 @@ const ChangesetShell = observer(function ChangesetShell({ notebook, id }: { note
   const href = (changeset: string) => `${home}/history/${changeset}`;
   const writer = writesPages(notebook.role);
 
+  // saying is setSaid for the undo sent last as it is called, which says nothing once another is sent.
+  function saying(): (said: Said) => void {
+    const at = attempt.current;
+    return (next) => {
+      if (attempt.current === at) {
+        setSaid(next);
+      }
+    };
+  }
+
   async function findOut(before: string | undefined): Promise<void> {
-    setSaid({ kind: "unknown" });
+    const say = saying();
+    say({ kind: "unknown" });
     let now: ChangesetDetail;
     try {
       // Read here, not through SWR: its mutate answers what it holds when the read fails.
       now = await pages.changeset(id);
     } catch {
-      setSaid({ kind: "unread" });
+      say({ kind: "unread" });
       return;
     }
     // It rejects only once the login's cache is gone, the page with it (M8/P1 fix check 3, R3-1).
     void mutate(now, { revalidate: false }).catch(() => undefined);
     const newest = now.reverted_by[0];
     if (newest === undefined || newest === before) {
-      setSaid({ kind: "notDone" });
+      say({ kind: "notDone" });
       return;
     }
     // Undone: by whom, the undo read says (M8/P3B review A-M3).
     try {
       const revert = await pages.changeset(newest);
-      setSaid(
+      say(
         revert.created_by.user_id === me
           ? { kind: "reverted", revert: newest }
           : { kind: "by", name: revert.created_by.display_name, revert: newest }
       );
     } catch {
-      setSaid({ kind: "undone", revert: newest });
+      say({ kind: "undone", revert: newest });
     }
   }
 
   // Its job not read, a start's outcome is not known (M8/P4 design 4.2, review B-M6).
-  async function findStarted(since: number): Promise<void> {
-    setSaid({ kind: "starting" });
+  async function findStarted(press: Press): Promise<void> {
+    const say = saying();
+    say({ kind: "starting" });
     try {
-      const job = await transfers.startedJob("revert", id, me, since);
-      setSaid(job === undefined ? { kind: "notStarted" } : { kind: "started", job: job.id });
+      const job = await transfers.startedJob("revert", id, me, press);
+      say(job === undefined ? { kind: "notStarted" } : { kind: "started", job: job.id });
     } catch {
-      setSaid({ kind: "startUnread" });
+      say({ kind: "startUnread" });
     }
   }
 
@@ -165,7 +181,7 @@ const ChangesetShell = observer(function ChangesetShell({ notebook, id }: { note
         setSaid({ kind: "started", job: reverted.job });
         return;
       case "startLost":
-        void findStarted(reverted.since);
+        void findStarted(reverted.press);
     }
   }
   return (
@@ -196,6 +212,7 @@ const ChangesetShell = observer(function ChangesetShell({ notebook, id }: { note
               changeset={data}
               heading={heading}
               sent={() => {
+                attempt.current += 1;
                 setSaid(undefined);
                 setRefused(undefined);
               }}

@@ -14,6 +14,15 @@ export function under(job: TransferJob): boolean {
   return job.state === "queued" || job.state === "running";
 }
 
+/**
+ * How far apart the server's clock and the browser's may be for an ended
+ * job to be a lost start's (startedJob): a minute.
+ */
+const clockMargin = 60_000;
+
+/** Press is a start of a restore or a revert as pressed: the browser's time, and the ids of the jobs held then. */
+export type Press = { at: number; known: ReadonlySet<string> };
+
 /** The kinds of the jobs that write a notebook's tree, one of which a notebook has under way at once (M8/P4 design 3.2). */
 const writingKinds: ReadonlySet<TransferJob["kind"]> = new Set(["import", "trash_restore", "revert"]);
 
@@ -214,18 +223,34 @@ export class TransferStore {
   }
 
   /**
-   * startedJob is what a start of a restore or a revert whose answer was
-   * lost came to (M8/P4 design 4.2, review B-M6): the list read again, the
-   * job of kind on target (a restore's trash item's root, a revert's
-   * changeset) that the account me started at since or after, by the
-   * server's time of it; undefined when there is none. A read that fails
-   * rejects: nothing is known.
+   * press is a start of a restore or a revert pressed now, as startedJob
+   * finds its job if its answer is lost: the browser's time, and the jobs
+   * held then.
+   */
+  press(): Press {
+    return { at: Date.now(), known: new Set((this.jobs ?? []).map((job) => job.id)) };
+  }
+
+  /**
+   * startedJob is what press, a start of a restore or a revert whose answer
+   * was lost, came to (M8/P4 design 4.2, review B-M6): the list read again,
+   * the job of kind on target (a restore's trash item's root, a revert's
+   * changeset) that the account me started, and that is press's; undefined
+   * when there is none. A read that fails rejects: nothing is known.
+   *
+   * The server's clock and the browser's differ, so the server's time of a
+   * job is not compared with the press's (P4B review A-M1). A job under way
+   * is press's whatever its time: a notebook has one job that writes its
+   * tree at once (transfer.busy), so a press that started none was refused
+   * for it, and it is under way all the same. One ended is press's only if
+   * the store did not hold it at the press and the server made it no
+   * earlier than clockMargin before the press.
    */
   async startedJob(
     kind: "trash_restore" | "revert",
     target: string,
     me: string,
-    since: number
+    press: Press
   ): Promise<TransferJob | undefined> {
     const jobs = await this.load();
     return jobs.find(
@@ -233,7 +258,7 @@ export class TransferStore {
         job.kind === kind &&
         (kind === "revert" ? job.target_changeset_id : job.root_id) === target &&
         job.created_by.user_id === me &&
-        Date.parse(job.created_at) >= since
+        (under(job) || (!press.known.has(job.id) && Date.parse(job.created_at) >= press.at - clockMargin))
     );
   }
 

@@ -6,7 +6,7 @@ import { eventHandlers } from "../../events/handlers";
 import type { NotebookRole } from "../../services/notebook.service";
 import { eventServer, withEvents } from "../../test/event-server";
 import { json, notebookJSON, problem, workspaceJSON, type Answer } from "../../test/fakes";
-import { jobsServer } from "../../test/jobs-server";
+import { jobJSON, jobsServer, reportOf } from "../../test/jobs-server";
 import { assetNode, guide, install, linux, notes } from "../../test/page-server";
 import { readAgain } from "../../test/page-panel";
 import { renderApp } from "../../test/render";
@@ -60,6 +60,17 @@ const restoreOf = (name: string) => screen.getAllByRole("button", { name: new Re
 /** startsOf are the restores in the background that went out. */
 const startsOf = (asked: string[]) => asked.filter((each) => each.startsWith("POST restore"));
 
+/** olderRestore is Ada's restore of Linux in the background, made and ended long before: none of a press now. */
+const olderRestore = () =>
+  jobJSON(9, {
+    kind: "trash_restore",
+    root_id: linux.id,
+    name: "Linux",
+    state: "cancelled",
+    progress: { done: 0, total: 103 },
+    report: reportOf(null),
+  });
+
 /** refused restores Linux, once the trash lists it: too large, it answers Restore in the background. */
 async function refused(user: ReturnType<typeof userEvent.setup>): Promise<HTMLElement> {
   await screen.findByRole("list", { name: "Trash" });
@@ -101,6 +112,31 @@ test("Restore in the background tells twins apart as their rows' Restore does: b
     name: "Restore “Notes” in the background (From: the notebook's top level, deleted Oct 4, 2026, 8:02 AM)",
   });
   expect(start.textContent).toBe("Restore “Notes” in the background");
+});
+
+test("Restore in the background tells twins deleted in one minute apart by the end of their ids", async () => {
+  const user = userEvent.setup();
+  const again = { ...notes, id: "0199a2b4-0000-7000-8000-000000000140" };
+  const server = jobsServer({ nodes: [guide, notes] });
+  server.trashNode(notes.id).deletedAt = "2026-10-04T08:01:05.000Z";
+  server.nodes = [...server.nodes, again];
+  const item = server.trashNode(again.id);
+  item.deletedAt = "2026-10-04T08:01:40.000Z";
+  item.history = 400_001;
+  renderApp(trashPath, server.app);
+  await screen.findByRole("list", { name: "Trash" });
+
+  await user.click(
+    screen.getByRole("button", {
+      name: "Restore “Notes” (From: the notebook's top level, deleted Oct 4, 2026, 8:01 AM, ID 000140)",
+    })
+  );
+
+  expect(
+    await screen.findByRole("button", {
+      name: "Restore “Notes” in the background (From: the notebook's top level, deleted Oct 4, 2026, 8:01 AM, ID 000140)",
+    })
+  ).toBeTruthy();
 });
 
 test("Restore in the background starts the item's restore: the line says so, leading to its progress, the title taking the focus, described by it; the refusal goes; the trash is read again; there, the job's row takes the focus", async () => {
@@ -265,26 +301,30 @@ test("a writer made a reader as the refusal shows no longer has Restore in the b
 });
 
 // M8/P4 design 4.2, review B-M6.
-test("a restore in the background whose answer was lost reads the jobs again: its job there, the line says it started, leading to its progress, the title taking the focus", async () => {
-  const user = userEvent.setup();
-  const { server } = large();
-  renderApp(trashPath, server.app);
-  const start = await refused(user);
-  server.lost = "network";
+test.each([0, 300, 3000])(
+  "a restore in the background whose answer was lost reads the jobs again: its job there, made by a server's clock %i ms behind the browser's, the line says it started, leading to its progress, the title taking the focus",
+  async (behind) => {
+    const user = userEvent.setup();
+    const { server } = large();
+    renderApp(trashPath, server.app);
+    const start = await refused(user);
+    Object.assign(server, { lost: "network", clockBehind: behind });
 
-  await user.click(start);
+    await user.click(start);
 
-  const status = screen.getByRole("status");
-  await waitFor(() => expect(status.textContent).toBe(started));
-  expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Trash" }));
-  expect(within(status).getByRole("link", { name: "See its progress" }).getAttribute("href")).toBe(transfer);
-  expect(screen.queryByRole("alert")).toBeNull();
-  expect(server.asked.filter((each) => each.startsWith("GET jobs"))).toHaveLength(1);
-});
+    const status = screen.getByRole("status");
+    await waitFor(() => expect(status.textContent).toBe(started));
+    expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Trash" }));
+    expect(within(status).getByRole("link", { name: "See its progress" }).getAttribute("href")).toBe(transfer);
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(server.asked.filter((each) => each.startsWith("GET jobs"))).toHaveLength(1);
+  }
+);
 
-test("a restore in the background whose answer was lost, none of the jobs read again its own, says it did not start; still offered, as busy as the jobs are read", async () => {
+test("a restore in the background whose answer was lost, none of the jobs read again its own (Ada's restore of it ended long before), says it did not start; still offered, as busy as the jobs are read", async () => {
   const user = userEvent.setup();
   const { server } = large("admin", { [restores]: () => problem(500, "internal_error") });
+  server.jobs = [olderRestore()];
   renderApp(trashPath, server.app);
   const start = await refused(user);
   const listed = gate();
@@ -416,14 +456,13 @@ test("the trash arrived at from a restore started in the background in an item's
   expect(server.trash.get(linux.id)).toBe(item);
 });
 
-test.each<[string, (server: ReturnType<typeof large>["server"]) => void, string, boolean]>([
+test.each<[string, (server: ReturnType<typeof large>["server"]) => void, string]>([
   [
     "a job that writes the tree under way",
     (server) => {
       server.busy = true;
     },
     "An import, a restore or an undo is under way in this notebook: wait for it to end, then try again.",
-    true,
   ],
   [
     "the queue full",
@@ -431,39 +470,134 @@ test.each<[string, (server: ReturnType<typeof large>["server"]) => void, string,
       server.queueFull = true;
     },
     "Too many jobs are waiting on the server. Try again in a few minutes.",
-    true,
-  ],
-  [
-    "past its time",
-    (server) => {
-      (server.trash.get(linux.id) as FakeTrashItem).expired = true;
-    },
-    "“Linux” can no longer be restored: its time in the trash is over.",
-    false,
   ],
 ])(
-  "a restore in the background from the preview refused as %s says why above it, the refusal describing its title",
-  async (_, refuse, text, offered) => {
+  "a restore in the background from the preview refused as %s says why above it, the refusal describing its title; offered still, its button keeps the focus; the item is read again",
+  async (_, refuse, text) => {
     const user = userEvent.setup();
     const { server } = large();
     renderApp(previewPath(linux.id), server.app);
     await user.click(await screen.findByRole("button", { name: "Restore “Linux” (From: Guide / Install)" }));
     const start = await screen.findByRole("button", { name: /^Restore “Linux” in the background/u });
     refuse(server);
+    const before = server.sent.length;
 
     await user.click(start);
 
     await waitFor(() => expect(screen.getByRole("alert").textContent).toBe(text));
-    const heading = screen.getByRole("heading", { level: 1 });
+    const heading = screen.getByRole("heading", { level: 1, name: "Linux" });
     expect(heading.getAttribute("aria-describedby")).toBe(screen.getByRole("alert").id);
-    expect(screen.queryByRole("button", { name: /in the background/u }) !== null).toBe(offered);
-    expect(document.activeElement).toBe(offered ? start : heading);
+    expect(screen.getByRole("button", { name: /in the background/u })).toBe(start);
+    expect(document.activeElement).toBe(start);
+    await waitFor(() => expect(server.sent.slice(before)).toContain("GET trash item Linux"));
   }
 );
 
-test("a restore in the background from the preview whose answer was lost, none of the jobs its own, says it did not start above it, still offered", async () => {
+// As a restore from the preview refused (M8/P2B review A-M1): what the start was refused for is said where the item
+// was, the trash's title taking the focus (P4B review A-M2, C-M1).
+test.each([
+  {
+    meanwhile: "restored elsewhere",
+    change: (server: ReturnType<typeof large>["server"]) => void server.restoreElsewhere(linux.id),
+    refusal: "“Linux” changed meanwhile: the trash shows it as it is now.",
+    text: "This is no longer in the trash.",
+  },
+  {
+    meanwhile: "past its time",
+    change: (server: ReturnType<typeof large>["server"]) => {
+      (server.trash.get(linux.id) as FakeTrashItem).expired = true;
+    },
+    refusal: "“Linux” can no longer be restored: its time in the trash is over.",
+    text: "This can no longer be restored: its time in the trash is over.",
+  },
+])(
+  "a restore in the background from the preview of an item $meanwhile says why, and what became of it, the trash's title taking the focus, described by the refusal",
+  async ({ change, refusal, text }) => {
+    const user = userEvent.setup();
+    const { server } = large();
+    renderApp(previewPath(linux.id), server.app);
+    await user.click(await screen.findByRole("button", { name: "Restore “Linux” (From: Guide / Install)" }));
+    const start = await screen.findByRole("button", { name: /^Restore “Linux” in the background/u });
+    change(server);
+
+    await user.click(start);
+
+    expect(await screen.findByText(text)).toBeTruthy();
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toBe(refusal);
+    const heading = screen.getByRole("heading", { level: 1, name: "Trash" });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+    expect(heading.getAttribute("aria-describedby")).toBe(alert.id);
+    expect(screen.queryByRole("button", { name: /^Restore/u })).toBeNull();
+  }
+);
+
+test("a restore in the background from the preview of an item deleted again with a page above it goes to that item's preview, which says why, its title taking the focus", async () => {
+  const user = userEvent.setup();
+  const { server } = large();
+  const { router } = renderApp(previewPath(linux.id), server.app);
+  await user.click(await screen.findByRole("button", { name: "Restore “Linux” (From: Guide / Install)" }));
+  const start = await screen.findByRole("button", { name: /^Restore “Linux” in the background/u });
+  server.restoreElsewhere(linux.id);
+  server.trashNode(install.id);
+
+  await user.click(start);
+
+  const heading = await screen.findByRole("heading", { level: 1, name: "Install" });
+  expect(router.state.location.pathname).toBe(previewPath(install.id));
+  const alert = screen.getByRole("alert");
+  expect(alert.textContent).toBe(
+    "What you opened was deleted again with a page above it: it is part of this item now, and is restored with it."
+  );
+  await waitFor(() => expect(document.activeElement).toBe(heading));
+  expect(heading.getAttribute("aria-describedby")).toBe(alert.id);
+});
+
+test("a restore in the background from the preview refused, the role taken away meanwhile, says why: a reader by now, the Restores go, the focus to the title", async () => {
+  const user = userEvent.setup();
+  let role: NotebookRole = "admin";
+  const { server } = large("admin", {
+    "GET /api/v0/workspaces/lab/notebooks": () => json({ data: [{ ...notebookJSON, role }] }),
+    [restores]: () => problem(403, "forbidden"),
+  });
+  renderApp(previewPath(linux.id), server.app);
+  await user.click(await screen.findByRole("button", { name: "Restore “Linux” (From: Guide / Install)" }));
+  const start = await screen.findByRole("button", { name: /^Restore “Linux” in the background/u });
+  role = "reader";
+
+  await user.click(start);
+
+  expect((await screen.findByRole("alert")).textContent).toBe("You do not have permission to do this.");
+  await waitFor(() => expect(screen.queryByRole("button", { name: /^Restore/u })).toBeNull());
+  expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Linux" }));
+});
+
+test("a restore in the background from the preview refused as its notebook is gone reads it and the notebooks again: the item is no page", async () => {
+  const user = userEvent.setup();
+  const reads: string[] = [];
+  const { server } = large("admin", {
+    "GET /api/v0/workspaces/lab/notebooks": () => {
+      reads.push("GET notebooks");
+      return json({ data: [notebookJSON] });
+    },
+  });
+  renderApp(previewPath(linux.id), server.app);
+  await user.click(await screen.findByRole("button", { name: "Restore “Linux” (From: Guide / Install)" }));
+  const start = await screen.findByRole("button", { name: /^Restore “Linux” in the background/u });
+  server.notebookGone = true;
+  reads.length = 0;
+
+  await user.click(start);
+
+  // The item read again, of a notebook gone, is no page, as after a restore here refused so.
+  expect(await screen.findByRole("heading", { level: 1, name: "Page not found" })).toBeTruthy();
+  expect(reads).toEqual(["GET notebooks"]);
+});
+
+test("a restore in the background from the preview whose answer was lost, none of the jobs its own (Ada's restore of it ended long before), says it did not start above it, still offered", async () => {
   const user = userEvent.setup();
   const { server } = large("admin", { [restores]: () => problem(502, "bad_gateway") });
+  server.jobs = [olderRestore()];
   renderApp(previewPath(linux.id), server.app);
   await user.click(await screen.findByRole("button", { name: "Restore “Linux” (From: Guide / Install)" }));
   const start = await screen.findByRole("button", { name: /^Restore “Linux” in the background/u });

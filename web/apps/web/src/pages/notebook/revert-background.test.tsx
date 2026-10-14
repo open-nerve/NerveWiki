@@ -5,7 +5,7 @@ import { expect, test } from "vitest";
 import type { RevertConflict } from "../../services/page.service";
 import { json, notebookJSON, problem, type Answer } from "../../test/fakes";
 import { changesetId, renamed, wrote } from "../../test/history-server";
-import { jobJSON, jobsServer, underWay } from "../../test/jobs-server";
+import { jobJSON, jobsServer, reportOf, underWay } from "../../test/jobs-server";
 import { bob, guide, install, linux, notes } from "../../test/page-server";
 import { renderApp } from "../../test/render";
 
@@ -275,14 +275,19 @@ test("an undo in the background of a changeset gone meanwhile closes the dialog,
 });
 
 // M8/P4 design 4.2, review B-M6: the changeset's reverted_by is empty until the job's first batch; the jobs tell.
-test.each([{ how: "500" as const }, { how: "network" as const }])(
-  "an undo in the background whose answer was lost ($how) reads the jobs again: its job there, the page says it started, leading to its progress, the title taking the focus",
-  async ({ how }) => {
+test.each([
+  { how: "500" as const, behind: 0 },
+  { how: "network" as const, behind: 0 },
+  { how: "500" as const, behind: 300 },
+  { how: "network" as const, behind: 3000 },
+])(
+  "an undo in the background whose answer was lost ($how) reads the jobs again: its job there, made by a server's clock $behind ms behind the browser's, the page says it started, leading to its progress, the title taking the focus",
+  async ({ how, behind }) => {
     const user = userEvent.setup();
     const { server, rework } = large();
     renderApp(changesetPath(rework.id), server.app);
     const dialog = await tooLarge(user);
-    server.lost = how;
+    Object.assign(server, { lost: how, clockBehind: behind });
     const listed = server.asked.filter((each) => each.startsWith("GET jobs")).length;
 
     await user.click(within(dialog).getByRole("button", { name: "Undo in the background" }));
@@ -298,14 +303,25 @@ test.each([{ how: "500" as const }, { how: "network" as const }])(
   }
 );
 
+/** revertOf is the job n, Ada's revert in the background of an edit, which succeeded; more changes what it says. */
+const revertOf = (n: number, more: Parameters<typeof jobJSON>[1]) =>
+  jobJSON(n, { kind: "revert", name: "edit", report: reportOf(null), ...more });
+
 test("an undo in the background whose answer was lost says so as it reads the jobs again; none of them its own, it did not start", async () => {
   const user = userEvent.setup();
   const { server, rework } = large({ [reverts]: () => problem(500, "internal_error") });
-  // Another account's revert of it, and one of Ada's of another change, are none of this one's, though made since.
+  // Another account's revert of it, and one of Ada's of another change, are none of this one's, though made since;
+  // nor is Ada's revert of it that ended long before.
   const since = new Date(Date.now() + 60_000).toISOString();
   server.jobs = [
-    jobJSON(1, { kind: "revert", target_changeset_id: rework.id, name: "edit", created_by: bob, created_at: since }),
-    jobJSON(2, { kind: "revert", target_changeset_id: changesetId(9999), name: "edit", created_at: since }),
+    revertOf(1, { target_changeset_id: rework.id, created_by: bob, created_at: since }),
+    revertOf(2, { target_changeset_id: changesetId(9999), created_at: since }),
+    revertOf(3, {
+      target_changeset_id: rework.id,
+      state: "failed",
+      progress: { done: 0, total: 0 },
+      report: reportOf("revert_conflict"),
+    }),
   ];
   renderApp(changesetPath(rework.id), server.app);
   const dialog = await tooLarge(user);
@@ -325,6 +341,38 @@ test("an undo in the background whose answer was lost says so as it reads the jo
     expect(status.textContent).toBe("Undoing it in the background did not start: you can try again.")
   );
   expect(document.activeElement).toBe(title());
+});
+
+// P4B review A-N3: what is found out of an undo is not said over what came of one sent later.
+test("an undo in the background whose answer was lost, found out only after another undo started, says nothing over it", async () => {
+  const user = userEvent.setup();
+  const { server, rework } = large();
+  renderApp(changesetPath(rework.id), server.app);
+  const first = await tooLarge(user);
+  const listed = gate();
+  Object.assign(server, { lost: "500", listWaits: listed.promise });
+  await user.click(within(first).getByRole("button", { name: "Undo in the background" }));
+  const status = screen.getByRole("status");
+  await waitFor(() =>
+    expect(status.textContent).toBe(
+      "Whether undoing it in the background started is not known: reading the jobs again…"
+    )
+  );
+
+  // Its job dropped meanwhile, another undo starts.
+  Object.assign(server, { lost: undefined, jobs: [] });
+  const second = await tooLarge(user);
+  await user.click(within(second).getByRole("button", { name: "Undo in the background" }));
+  await waitFor(() =>
+    expect(status.textContent).toBe("Undoing this change in the background has started. See its progress")
+  );
+  // The first one's read of the jobs, answered last, finds nothing out.
+  server.listDown = true;
+  act(() => listed.open());
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+
+  expect(status.textContent).toBe("Undoing this change in the background has started. See its progress");
+  expect(starts(server.asked)).toEqual(["POST revert rework", "POST revert rework"]);
 });
 
 test("an undo in the background whose answer was lost, the jobs not read again, says it is not known whether it started, leading to the jobs", async () => {
@@ -393,11 +441,21 @@ test("an undo in the background answered after the reader scrolled leaves the fo
 
 // M8/P4A review A-M2: an undo in the request as a job writes the tree finds the nodes it wrote meanwhile changed.
 test.each([
-  { while: "a job that writes the tree under way", state: "running" as const, says: true },
-  { while: "only a job ended", state: "succeeded" as const, says: false },
+  {
+    while: "a job that writes the tree under way",
+    job: underWay(jobJSON(1, { kind: "revert", target_changeset_id: changesetId(9999), name: "import" }), 100, 1501),
+    says: true,
+  },
+  {
+    while: "only a job ended",
+    job: jobJSON(1, { kind: "revert", target_changeset_id: changesetId(9999), name: "import" }),
+    says: false,
+  },
+  // An export writes no tree (P4B review C-M2).
+  { while: "only an export under way", job: underWay(jobJSON(1), 1, 4), says: false },
 ])(
   "an undo refused for its conflicts, $while among the jobs read again, says the conflicts may come from it: $says",
-  async ({ state, says }) => {
+  async ({ job, says }) => {
     const user = userEvent.setup();
     const { server, rework } = large();
     rework.tooLarge = false;
@@ -406,8 +464,7 @@ test.each([
     await user.click(await screen.findByRole("button", { name: "Undo change" }));
     const dialog = await screen.findByRole("alertdialog", { name: "Undo this change?" });
     // Started elsewhere since the page showed: the jobs are read as the undo is refused.
-    const job = jobJSON(1, { kind: "revert", target_changeset_id: changesetId(9999), name: "import" });
-    server.jobs = [state === "running" ? underWay(job, 100, 1501) : job];
+    server.jobs = [job];
     const listed = server.asked.filter((each) => each.startsWith("GET jobs")).length;
 
     await user.click(within(dialog).getByRole("button", { name: "Undo" }));

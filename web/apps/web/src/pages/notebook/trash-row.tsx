@@ -348,8 +348,8 @@ export function useTrashRestore(notebook: Notebook): (item: TrashItem) => Promis
 
 /**
  * BackgroundStart is what a restore started in the background came to: its
- * job; or, its answer lost, none of the jobs read again started since it
- * was pressed (none), or the jobs not read either (unread).
+ * job; or, its answer lost, none of the jobs read again its press's (none),
+ * or the jobs not read either (unread).
  */
 export type BackgroundStart = { job: TransferJob } | { lost: "none" | "unread" };
 
@@ -358,8 +358,8 @@ export type BackgroundStart = { job: TransferJob } | { lost: "none" | "unread" }
  * item in the background, refused as too large to restore here (M8/P4
  * design 4.2): through the jobs' store, a start at a time. It answers the
  * job started, or, its answer lost (a 5xx but busy, no answer), the
- * account's job of the item started since it was pressed among the jobs
- * read again, if any (review B-M6); it rejects with any other refusal.
+ * account's job of the item that is the press's among the jobs read again,
+ * if any (review B-M6; startedJob); it rejects with any other refusal.
  * The list and the item are read again, as after a restore; a refusal of
  * a role taken away meanwhile, or of a notebook gone or out of reach, has
  * the notebooks read again too.
@@ -370,7 +370,7 @@ export function useBackgroundRestore(notebook: Notebook): (item: TrashItem) => P
   const workspace = useWorkspace();
   const { mutate } = useSWRConfig();
   return async (item) => {
-    const since = Date.now();
+    const press = transfers.press();
     try {
       return { job: await transfers.startTrashRestore(item.id) };
     } catch (refusal) {
@@ -385,7 +385,7 @@ export function useBackgroundRestore(notebook: Notebook): (item: TrashItem) => P
       void mutate(["trash-item", notebook.id, item.id]).catch(() => undefined);
     }
     try {
-      const job = await transfers.startedJob("trash_restore", item.id, me.id, since);
+      const job = await transfers.startedJob("trash_restore", item.id, me.id, press);
       return job === undefined ? { lost: "none" } : { job };
     } catch {
       return { lost: "unread" };

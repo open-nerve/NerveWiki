@@ -298,6 +298,9 @@ test("writing tells whether a job held that writes the tree, an import, a restor
     store.jobs = jobs;
     expect(store.writing).toBe(writing);
   }
+  // An export running is under way, the list read again for it, but writes no tree.
+  store.jobs = [underWay(job(1), 1, 4)];
+  expect([store.active, store.writing]).toEqual([true, false]);
 });
 
 test("a restore and a revert started in the background go first, once though a read had them, the read on its way dropped; they start one at a time with the exports, the message sent", async () => {
@@ -349,36 +352,53 @@ test("a start refused leaves the jobs held, and the next start goes", async () =
 
 // M8/P4 design 4.2, review B-M6: a start whose answer was lost finds its job by its kind, its target, who started it
 // and when.
-test("startedJob reads the list again and finds the account's job of the kind on the target, made since: not another kind's, target's or account's, nor one made before", async () => {
+test("press holds the browser's time and the jobs held as it is pressed", async () => {
   const { store, lists } = storeOf();
-  const since = Date.parse("2026-10-06T08:00:00Z");
+  expect([...store.press().known]).toEqual([]);
+  await answer(lists, 0, page([job(2), job(1)]), store.load());
+  const before = Date.now();
+
+  const press = store.press();
+
+  expect(press.at).toBeGreaterThanOrEqual(before);
+  expect(press.at).toBeLessThanOrEqual(Date.now());
+  expect([...press.known]).toEqual([job(2).id, job(1).id]);
+});
+
+test("startedJob reads the list again and finds the account's job of the kind on the target that is the press's: one under way, whatever time the server's clock gave it; one ended that the store did not hold at the press, made no earlier than a minute before it; not another kind's, target's or account's", async () => {
+  const { store, lists } = storeOf();
+  const press = { at: Date.parse("2026-10-06T08:00:00Z"), known: new Set([job(8).id]) };
   const mine = (n: number, more: Partial<TransferJob>) => job(n, { created_at: "2026-10-06T08:00:01Z", ...more });
   const listed = [
     mine(1, { kind: "trash_restore", root_id: "c3" }),
     mine(2, { kind: "revert", target_changeset_id: "c4" }),
     mine(3, { kind: "revert", target_changeset_id: "c3", created_by: bob }),
-    job(4, { kind: "revert", target_changeset_id: "c3", created_at: "2026-10-06T07:59:59Z" }),
-    mine(5, { kind: "revert", target_changeset_id: "c3", created_at: "2026-10-06T08:00:00Z" }),
+    // Ended: one the store held at the press; one made more than a minute before it.
+    mine(8, { kind: "revert", target_changeset_id: "c3", created_at: "2026-10-06T07:59:50Z" }),
+    mine(4, { kind: "revert", target_changeset_id: "c3", created_at: "2026-10-06T07:58:59Z" }),
+    // Ended, made by a server's clock 30 seconds behind the browser's.
+    mine(5, { kind: "revert", target_changeset_id: "c3", created_at: "2026-10-06T07:59:30Z" }),
     mine(6, { kind: "import", root_id: "n6" }),
-    mine(7, { kind: "trash_restore", root_id: "n6" }),
+    // Under way, made by a server's clock ten minutes behind.
+    underWay(mine(7, { kind: "trash_restore", root_id: "n6", created_at: "2026-10-06T07:50:00Z" }), 0, 0),
   ];
 
-  const revert = store.startedJob("revert", "c3", jobJSON(1).created_by.user_id, since);
+  const revert = store.startedJob("revert", "c3", jobJSON(1).created_by.user_id, press);
   await answer(lists, 0, page(listed), revert);
-  const restore = store.startedJob("trash_restore", "n6", jobJSON(1).created_by.user_id, since);
+  const restore = store.startedJob("trash_restore", "n6", jobJSON(1).created_by.user_id, press);
   await answer(lists, 1, page(listed), restore);
-  const none = store.startedJob("trash_restore", "n9", jobJSON(1).created_by.user_id, since);
+  const none = store.startedJob("trash_restore", "n9", jobJSON(1).created_by.user_id, press);
   await answer(lists, 2, page(listed), none);
 
-  await expect(revert).resolves.toBe(listed[4]);
-  await expect(restore).resolves.toBe(listed[6]);
+  await expect(revert).resolves.toBe(listed[5]);
+  await expect(restore).resolves.toBe(listed[7]);
   await expect(none).resolves.toBeUndefined();
   expect(lists.map((list) => list.ask)).toEqual([undefined, undefined, undefined]);
 });
 
 test("startedJob rejects when the list cannot be read: nothing is known", async () => {
   const { store, lists } = storeOf();
-  const found = store.startedJob("revert", "c3", jobJSON(1).created_by.user_id, 0);
+  const found = store.startedJob("revert", "c3", jobJSON(1).created_by.user_id, store.press());
   await settled();
   lists[0]?.fail(new TypeError("offline"));
 
