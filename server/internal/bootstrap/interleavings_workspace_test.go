@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"testing"
 	"time"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/open-nerve/NerveWiki/server/internal/modules/transfer"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/apitest"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres/pgtest"
@@ -54,13 +56,25 @@ func newAcmeTeam(t *testing.T, bobRole, carolRole string) acmeTeam {
 // alters, when it is not nil.
 func newAcmeTeamWith(t *testing.T, bobRole, carolRole string, change func(*config.Config)) acmeTeam {
 	t.Helper()
+	return newAcmeTeamWired(t, bobRole, carolRole, change, transfer.Batch{})
+}
+
+// newAcmeTeamWired is newAcmeTeamWith on an app whose writing jobs' batches
+// batch bounds, zero the import's (wireApp).
+func newAcmeTeamWired(t *testing.T, bobRole, carolRole string, change func(*config.Config), batch transfer.Batch) acmeTeam {
+	t.Helper()
 	url := pgtest.NewDatabase(t)
 	cfg := testConfig(t, url, false)
 	if change != nil {
 		change(&cfg)
 	}
+	a, err := wireApp(context.Background(), cfg, slog.New(slog.DiscardHandler), migrations.FS(), testWebUI(), batch)
+	if err != nil {
+		t.Fatalf("wireApp() error = %v", err)
+	}
+	t.Cleanup(a.close)
 	tm := acmeTeam{
-		url: url, base: startApp(t, cfg, migrations.FS()), storage: cfg.Storage.Dir, pool: connect(t, url), contract: apitest.Load(t),
+		url: url, base: runApp(t, a), storage: cfg.Storage.Dir, pool: connect(t, url), contract: apitest.Load(t),
 		tokens: map[string]string{}, members: map[string]uuid.UUID{},
 	}
 	for _, name := range []string{"alice", "bob", "carol", "dana"} {
