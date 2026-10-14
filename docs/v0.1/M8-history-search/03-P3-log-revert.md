@@ -587,79 +587,99 @@ JOIN page_revisions r ON r.node_id = v.node_id AND r.revision = v.revision;
 
 | 文件 | 内容 |
 |---|---|
-| `web/apps/web/src/services/page.service.ts` | `changesets`、`changeset`、`changes`、`revertChangeset` 与类型（`Changeset`、`ChangesetDetail`、`ChangesetBrief`、`ChangesetPage`、`ChangesetChange`、`ChangesetReverted`、`RevertConflict`），各随第一次用到它的那一步加入 |
-| `web/apps/web/src/stores/page-tree.store.ts` | `revert(id, message)`：同一变更集一个一个来（`oneAtATimeById`）、经树的写入队列；撤销删掉的页记进 `removed` |
-| `web/apps/web/src/pages/notebook/history-page.tsx`、`history-row.tsx`、`history-filters.tsx` | 历史页 |
-| `web/apps/web/src/pages/notebook/changeset-page.tsx`、`changeset-change.tsx` | 单个变更集页与明细的一行 |
+| `web/apps/web/src/services/page.service.ts` | `changesets(notebook, filter, cursor?)`（每页 50 条；`actor`、`client`、`page_id`、`cursor` 只在有值时带）、`changeset`、`changes`（每页 100 项）、`revertChangeset(id, message?)`（没有说明时不带请求体）与类型（`Changeset`、`ChangesetDetail`、`ChangesetBrief`、`ChangesetPage`、`ChangesetChange`、`ChangesetReverted`、`RevertConflict`），各随第一次用到它的那一步加入 |
+| `web/apps/web/src/stores/page-tree.store.ts` | `changesets`、`changeset`、`changes` 的读；`revert(id, message?)`：同一变更集一个一个来（`oneAtATimeById` 的 `restores`）、经树的写入队列；撤销删掉的页记进 `removed`（4.6） |
+| `web/apps/web/src/lib/ids.ts` | `idPattern`（UUID，不分大小写）：P2B 预览的 `nodeIdPattern` 移来共用（回收站的项、变更集，历史的 `actor` 与 `page`） |
+| `web/apps/web/src/pages/load-more.tsx`、`lib/read-pages.ts` | `readNext(swr, key, cursor, read, idsOf)`：读下一页，写进"更多"开始时的那个键（审查 C-M1、C-N2），历史页、明细、P2B 的回收站与 P1B 的版本列表共用；`useLoadMore` 按列表（`list`）记"在读"与失败（审查 A-N1）；`read-pages.ts` 导出 `ListPage` |
+| `web/apps/web/src/pages/notebook/history-page.tsx`、`history-row.tsx`、`history-filters.tsx` | 历史页；`history-filters.tsx` 另导出 `Actor` 与 `useActors`（工作区成员的读移进它，"谁"的选择与行的"只看此人"共用一种区分） |
+| `web/apps/web/src/pages/notebook/changeset-page.tsx`、`changeset-change.tsx` | 单个变更集页（`ChangesetShell` 按变更集 id 挂载，持有撤销的结果与"结果未知"的重读）与明细的一行 |
 | `web/apps/web/src/pages/notebook/revert-dialog.tsx` | 撤销的确认框与冲突 |
-| `web/apps/web/src/pages/notebook/changeset-text.ts` | 类型、客户端、变化的文字（日志、明细、版本页共用） |
-| `web/apps/web/src/pages/notebook/notebook-places.tsx` | 加"历史"；`nav` 的名称键改为中性的 `notebook.places` |
-| `web/apps/web/src/pages/page/page-menu.tsx`、`version-page.tsx` | "查看这一页的历史"；版本页的变更集链到它的页 |
+| `web/apps/web/src/pages/notebook/changeset-text.ts` | 类型（`kindText` 从 P1B 的 `page-versions.tsx` 移来，`version.kind.*` 的文字改为 `history.kind.*`，版本页与版本列表照用）、客户端、变化的文字、计数、同名的行（`twinsIn`）与名称（日志、明细、版本页共用） |
+| `web/apps/web/src/pages/notebook/notebook-places.tsx` | 加"历史"（在"回收站"之前，`end`）；`nav` 的名称键改为中性的 `notebook.places` |
+| `web/apps/web/src/pages/page/page-menu.tsx`、`page-layout.tsx` | "查看这一页的历史"（读者也有），去处由 `page-layout.tsx` 给出（`history?page=<id>`） |
+| `web/apps/web/src/pages/page/version-page.tsx`、`page-versions.tsx` | 版本页的"执行者 · 类型"链到它的变更集页；版本列表的"更多"改用 `readNext`（`useVersions` 答 `key`，不再答 `cached`） |
+| `web/apps/web/src/pages/notebook/trash-page.tsx`、`trash-preview.tsx` | 回收站的"更多"改用 `readNext`；预览改用 `idPattern` |
 | `web/apps/web/src/app/routes.tsx` | `notebooks/:id/history`、`history/:changesetId` |
 | `web/apps/web/src/events/handlers.ts`、`app/event-stream.tsx` | 新键的重读、连上时的重读 |
-| `web/apps/web/src/i18n/messages/{zh-CN,en}.ts` | 文字（前缀 `history.`） |
-| `web/apps/web/src/test/page-server.ts` | 假接口的日志、明细与撤销（码的次序同服务端） |
-| `e2e/fixtures/history.ts`、`wiki-pages.ts`、`assert/page.ts` | 夹具（4.8） |
+| `web/apps/web/src/i18n/messages/{zh-CN,en}.ts` | 文字（前缀 `history.`；`field.message.*`） |
+| `web/apps/web/src/test/history-server.ts`、`test/page-server.ts` | 假接口的日志、明细与撤销：自己的文件，照 `trash-server.ts` 接进 `page-server.ts`（偏离 4；码的次序同服务端，4.7） |
+| `e2e/fixtures/history.ts`、`wiki-pages.ts`、`assert/page.ts`；`e2e/stories/history/`、`stories/trash/tb1-trash.spec.ts` | 夹具与 HI3、HI4（4.8）；TB1 的 `expectSubtreeRestored` 带 `{kind: "trash_restore"}` |
 
 ### 4.2 历史页
 
 - 路由 `/:slug/notebooks/:id/history`，在笔记本的外壳里、页面的外壳之外。`h1`"历史"，文档标题"历史 · 笔记本名"。
-- 列表：SWR 键 `["changesets", nb, actor, client, page]`（空的筛选写 `""`），`readPages`（每页 50 条），"更多"用 `useLoadMore`；列表有名称"改动"。
-- 每条：类型与执行者（"编辑 · Ada"），客户端（"网页""接口""命令行"，`mcp:<名>` 写"MCP（名）"），相对时刻（`<time>` 带完整时刻），说明（`<bdi>`），前三项变化的摘要（"新建「A」、改名「B」为「C」…"）与"共 N 个节点、M 篇正文"（1,000 写"1,000 多"，英文不用复数形式）；标记："已撤销"（链到最新的那次撤销的页）、"已截掉"、撤销的"撤销了「编辑 · Ada · 时刻」"（链到被撤销的；它已被清理时写"撤销了一个已被清理的改动"）。整条的主链接到单个变更集页，名称"类型 · 执行者 · 完整时刻"；完整时刻只到分钟，以 `twinsOf` 按（类型、执行者、分钟）找出同名的行，给它们加 `shortId`（"ID 0000e1"，同 P2B 回收站的行，13.2 第 17 条）；"撤销了「…」"的链接同样。行里的控件用 `useFocusLeaving`：重读之后行没了，焦点不落到 `body`。
-- **筛选在地址里**（`?actor=&client=&page=`，替换而不压历史）：人的选择从工作区成员（能读到时）与已读到的日志里的执行者里来；客户端：全部、网页、接口、命令行、全部 MCP 与已读到的 `mcp:<名>`；页面只经页面菜单、明细与冲突里的"这个节点的历史"进来，显示为可以去掉的"页面：X"（树里没有它时写"已删除的页"）。每条的执行者旁有"只看此人"（可及名称"只看 Ada 的改动"）。筛选变了焦点留在控件上，结果礼貌地播报（"列出 50 条，还有更多"、"列出 12 条"、"没有改动"）。
-- 手改的地址：`actor`、`page` 不是 UUID 时不读（同 P2B 预览的 `nodeIdPattern`），422（`client` 非法）与 404 `page.not_found`（这一页不在这本笔记本里，或已被清理）同样说明并给"清除筛选"。读者与写者看到的一样。
+- 列表：SWR 键 `["changesets", nb, actor, client, page]`（空的筛选写 `""`），`readPages`（每页 50 条），"更多"用 `useLoadMore` 与 `readNext`：读到的一页写进"更多"开始时的那个键，只接在那个列表仍以这个游标结尾时（服务端的游标只记位置，与筛选无关：这期间换了筛选，读到的一页仍回到它读的列表，不接到显示着的列表上，审查 C-M1）；"在读"与失败按筛选的键记，别的列表显示时失败不再说、读完时不移焦点（A-N1）。列表有名称"改动"。
+- 每条：类型与执行者（"编辑 · Ada"），客户端（"网页""接口""命令行"，`mcp:<名>` 写"MCP（名）"），相对时刻（`<time>` 的提示是完整时刻），说明（`<bdi>`），前三项变化的摘要（"新建「A」、改名「B」为「C」…"）与"共 N 个节点、M 篇正文"（到 1,000 写"1,000 多"，英文 "1,000+"）。"…"在 `node_count` 多于列出的条目、或 `content_count` 多于列出的版本时才有：服务端按节点 id 取前三个节点，连同各自的条目与版本，列出的节点不会漏掉条目或版本（审查 B-1：按两个计数的较大者比，条目与版本在不同节点上时会漏）。标记："已撤销"（链到最新的那次撤销）、"已截掉"、撤销的"撤销了「编辑 · Ada · 时刻」"（链到被撤销的；它已被清理时写"撤销了一个已被清理的改动"）。整条的主链接到单个变更集页，名称"类型 · 执行者 · 完整时刻"；完整时刻只到分钟，`twinsIn` 按（类型、执行者的显示名、分钟）找出同名的行（显示名可以重复，按账户 id 找会漏，审查 A-M5、B-3），给它们加"编号 0000e1"（`shortId`，13.2 第 17 条），"撤销了「…」"的链接同样（被撤销的那一条也算进名称里）。行与行里的控件用 `useFocusLeaving`：重读之后行没了，焦点交给 `h1`，不落到 `body`。
+- **筛选在地址里**（`?actor=&client=&page=`，替换而不压历史；`actor`、`page` 读的时候转成小写，服务端的 `uuid.Parse` 不分大小写，审查 B-2）：
+  - "谁"：工作区成员（能读到时；两人显示名相同时带邮箱，看不到邮箱的访客看到"编号 xxxxxx"），已读到的日志里的执行者，以及地址里点名而两者都没有的账户（"一个账户，编号 xxxxxx"）。
+  - 客户端：全部、网页、接口、命令行、全部 MCP、已读到的 `mcp:<名>` 与地址里点名的那一个。
+  - 页面只经页面菜单、明细与冲突里的"这个节点的历史"进来，显示为可以去掉的"页面：X"：树里有的节点照它的名称（附件也是），树还没读到时写"…"，树里没有时写"已删除的页"（偏离 6）；"去掉"带着焦点离开时交给 `h1`。
+  - 每条的执行者旁有"只看此人"，可及名称以可见文字开头："只看此人（Ada）"（偏离 1：设计的"只看 Ada 的改动"不含可见的文字）；列出的执行者里另有同显示名的，带"谁"里的区分："只看此人（Ada，ada@…）"。它换掉人、留着别的筛选；按下时焦点先到"谁"的选择：这个人的列表在缓存里时行留着，按钮随即离开（这个人自己的列表上没有它），焦点曾落到 `body`（审查 A-M2）。
+  - 筛选变了焦点留在控件上，读到之后礼貌地播报（"列出 12 条。""列出 50 条，还有更多。""没有改动。"；同样的文字再说时加一个不断行的空格，没有人要的重读不说）。
+- 手改的地址：`actor`、`page` 不是 UUID 时不读（`lib/ids.ts` 的 `idPattern`），422（`client` 非法）与 404 `page.not_found`（这一页不在这本笔记本里，或已被清理）同样说明并给"清除筛选"（它离开时焦点交给 `h1`）。读者与写者看到的一样。
 
 ### 4.3 单个变更集页
 
-- 路由 `/:slug/notebooks/:id/history/:changesetId`；`:changesetId` 不是 UUID 时 `NotFoundPage`、不读。SWR 键 `["changeset", nb, id]` 与 `["changeset-changes", nb, id]`（`readPages`，每页 100 项）。答复的 `notebook_id` 与地址不同时 `NotFoundPage`；404 同。文档标题"编辑 · Ada · 历史 · 笔记本名"；面包屑经 `BreadcrumbTrail`：历史 › 这一条（左栏的"历史"是 `end` 的，这里不标为当前）。
-- 信息：类型、执行者、客户端、创建与最后写入的完整时刻、说明、撤销了哪一个与被哪些撤销过（链接）、截掉的说明（"这次改动碰过的一些页已被清理，不能整组撤销"）、两个计数。
-- 明细（列表名称"这次改动的节点"）：每项是节点（活着的页链到页面；附件链到它所在的位置，同 P2B 的"打开"；回收站里的写"在回收站里"并链到 `/trash/:id`，不是根时预览会换成它的根的，P2B 的 A-M1；之后写"这个节点的历史"链到 `?page=`）与变化（"新建""从回收站恢复""删除""从「P」移到「Q」""改名：「A」→「B」""调整次序"，可兼"写了正文"；页活着时链到版本页 `/pages/:pageId/versions/:revision`，它的"与上一版比较"就是这次的改动，版本页只认树里的页；父节点已被清理的写"（已清理）"）。
-- 写者的"撤销这次改动"（英文 "Undo change"）：截掉的不显示按钮、显示上面的说明；已被撤销过的照样可以撤销，按钮旁写"已被撤销过：再撤销只在那次撤销被撤销之后才会成功"。读者看到"编辑者与管理员可以撤销这次改动"（M8 设计审查 B-N8）。
+- 路由 `/:slug/notebooks/:id/history/:changesetId`；`:changesetId` 不是 UUID 时 `NotFoundPage`、不读。`ChangesetShell` 按变更集 id 挂载；SWR 键 `["changeset", nb, id]` 与 `["changeset-changes", nb, id]`（`readPages`，每页 100 项，"更多"经 `readNext`）。答复的 `notebook_id` 与地址不同时 `NotFoundPage`；404 同。文档标题"编辑 · Ada · 历史 · 笔记本名"（撤销的是"撤销 · Ada · …"）；面包屑经 `BreadcrumbTrail`：笔记本名 › 历史 › 这一条（同 P2B 的预览；左栏的"历史"是 `end` 的，这里不标为当前）。
+- 信息：类型、执行者、客户端、创建的完整时刻与最后写入的（只在与创建不同时）、说明、撤销了哪一个（已被清理时写"撤销了一个已被清理的改动"）与"被撤销："的链接（"撤销，编号 xxxxxx"）、截掉的说明（"这次改动碰过的一些页已被清理，不能整组撤销"）、两个计数。
+- 明细（列表名称"这次改动的节点"）：每项是节点与变化。节点：活着的页链到页面；活着的附件链到它所在的位置，同 P2B 的"打开"（路由状态 `Located`）：树里有它时取树里的父节点（`null` 即笔记本首页），树还没读到时取这次变化的"后"（审查 A-M4：把树里的 `null` 当作没读到，移到根下的附件会链到旧的父页）；回收站里的写"在回收站里"并链到 `/trash/:id`（不是根时预览会换成它的根的，P2B 的 A-M1）；之后写"这个节点的历史"链到 `?page=`；同名的节点带"编号 xxxxxx"。变化："新建""从回收站恢复""删除""从「P」移到「Q」"（根下写"笔记本首页"，偏离 9）"改名：「A」→「B」""调整次序"，移动兼改名的两样都说，可兼"写了正文"：页活着时链到这次写下的那个版本 `/pages/:pageId/versions/:revision`，它的"与上一版比较"就是这次的改动，版本页只认树里的页；父节点已被清理的写"（已清理）"。行带着焦点离开时交给 `h1`。
+- 写者的"撤销这次改动"（英文 "Undo change"）：截掉的不显示按钮、显示上面的说明；已被撤销过的照样可以撤销，按钮旁写"已被撤销过：再撤销只在那次撤销被撤销之后才会成功"。读者看到"编辑者与管理员可以撤销这次改动"（截掉的不显示；M8 设计审查 B-N8）。按钮带着焦点离开时（这期间被截掉、被降为读者）交给 `h1`。
 
 ### 4.4 撤销的确认框与冲突
 
-- 确认框：标题"撤销这次改动？"；正文"N 个节点与 M 篇正文回到这次改动之前，记为一次新的改动（撤销）。这次改动之后又改过的、放不回去的会列出，什么都不会改。"；单个变更集页读到的 `renames` 或 `moves` 为真时另一句"改名、移动之后新写的、指向新位置的链接不会跟着改回"（第 11 节第 4 条）；可选的"说明"。经 `useForm`（13.2 第 12 条）：说明的字节数在送出前核对，服务端对 `message` 的 422 落在字段下面；说明为空时不带它。发送中两个按钮禁用、Esc 不关闭；`pages.revert(id, message)`。
+- 确认框：标题"撤销这次改动？"；正文"N 个节点与 M 篇正文回到这次改动之前，记为一次新的改动（撤销）。这次改动之后又改过的、放不回去的会列出，什么都不会改。"；单个变更集页读到的 `renames` 或 `moves` 为真时另一句"改名、移动之后新写的、指向新位置的链接不会跟着改回"（第 11 节第 4 条）；可选的"说明"。经 `useForm`（13.2 第 12 条）：说明去掉首尾空白，送出之前在本地核对 UTF-8 字节数（至多 4,096，`field.message.too_long`）与 NUL（`invalid_format`），服务端对 `message` 的 422 落在字段下面；为空时不带请求体。发送中"撤销"`aria-disabled` 且 `aria-busy`（"正在撤销…"）、"取消"`aria-disabled`，都不用 `disabled`：禁用的按钮丢掉焦点，焦点落到确认框之外的 `body`，留在确认框里的拒绝之后仍在那里，途中再按一次 Enter 也被 `watchReader` 当作读者的动作（审查 A-M1）；`onSubmit` 有忙的守卫，一次按下至多一个请求；Esc 与"取消"不关闭（`onOpenChange` 在发送中不关）。`pages.revert(id, message)`。
 - 答复：
-  - 200 `changed`：关闭，单个变更集页的 `<output>`"已撤销 [查看这次撤销]"（链到 R），焦点经 `watchReader` 回到 `h1`（13.2 第 26 条，同 P2B 的恢复；`aria-describedby` 指向状态行）；重读这一页、明细与日志的键；树由写入队列重读。
-  - 200 未改动：关闭，状态行"没有要撤销的改动"。
-  - 409 `page.revert_conflict`：确认框留着，内容换成冲突：小标题"不能撤销：K 个节点在这之后改过或放不回去"取得焦点（多于 100 时"列出前 100 个"），列表每项"「名称」：原因"与可以去做什么：`changed` →"这个节点的历史"（`?page=`）；`title_taken` → 链到占着名称的节点，"先给它改名"，这个节点不在树里（在回收站里，撤销的是一次删除）时另说"或从回收站恢复（恢复会加序号）"；`parent_gone` →"它原来的上级不在了（在回收站里或已被清理）"，链到回收站；`children_added` → 链到这个节点，"它是之后放进来的，撤销会把它一起删掉：先把它移走"；`too_deep`、`cycle` → 说明；`expired` →"已过回收站的期限"。`renames` 为真时另一句"也可以在页面树里把它改回原名（普通的改名，会改写链接）"（00 号文档 4.8）。"关闭"把焦点还给"撤销"。
-  - 409 `page.changeset_trimmed`：说明，重读这一页（按钮随之消失）。
-  - 409 `page.locked`：照现有的锁的说明（持锁人，`lockedText`）。
-  - 422 `page.revert_too_large`：照 P2B 的 `trash.tooLarge` 不说是哪一项："这次改动太大，不能在这里撤销：它的节点、页面、正文、链接或这些页面的历史超出了一次撤销能做的量。它碰过 N 个节点。"（N 是 `node_count`，1,000 写"1,000 多"；P4 改为问是否在后台进行）。
-  - 503：照现有的忙的说明，可以再试。
-  - 403、404：`errorText`，关闭，重读这一页与 `["notebooks", ws]`（同 P2B 回收站的拒绝：被降为读者的写者随之没有按钮）。
-  - 500 `internal_error`（请求的期限是 500，提交可能已落下）、网络错误、超时：说"结果未知"，重读这一页：`reverted_by[0]` 与请求之前知道的最新那个不同时读 `getChangeset(reverted_by[0])`，执行者是自己就说"已撤销 [查看这次撤销]"，不是就说"这次改动已被 X 撤销"；相同就说"没有撤销，可以再试"。比较第一个而不比个数：个数到 100 不再增长，也数得到别人的撤销。
+  - 200 `changed`：关闭，单个变更集页的状态行（一开始就在的 `<output>`）"已撤销。 查看这次撤销"（链到 R），焦点经 `watchReader` 到 `h1`（13.2 第 26 条，同 P2B 的恢复；`aria-describedby` 指向状态行），读者其间有动作时不动；重读这一页、明细与日志的键（日志的键只在缓存里时有用：没挂着，只去掉 SWR 的去重项，下次进历史页时重读）；树由写入队列重读。
+  - 200 未改动：关闭，状态行"没有要撤销的：这次改动没有改变任何节点。"（照 P3A 改过的契约：C 留下的状态本身什么都没改，例如一次编辑会话写回了原来的字节；别的变更集把节点改回之前的样子是 `changed`，审查 C-N1），焦点回到"撤销这次改动"。
+  - 409 `page.revert_conflict`：确认框留着，内容换成冲突：小标题（确认框的描述）"不能撤销：K 个节点在这之后改过或放不回去"取得焦点（K 多于列出的时另说"列出前 100 个。"），列表每项"「名称」…"的原因与可以去做什么（链接的可及名称以可见文字开头、带上节点，偏离 2）：`changed` →"这个节点的历史：「X」"（`?page=`）；`title_taken` →"打开占着名称的那个：「X」"（附件去它所在的位置），这个节点不在树里（在回收站里，撤销的是一次删除）时另有"或从回收站恢复（恢复会加序号）：「X」"（树还没读到时两样都不给）；`parent_gone` →"它原来的上级不在了（在回收站里或已被清理）"，"回收站：「X」原来的上级可能在这里"链到回收站的列表（冲突不点名上级）；`children_added` →"打开它：「X」"，"它是之后放进来的，撤销会把它一起删掉：先把它移走"；`too_deep`、`cycle` → 说明；`expired` →"已过回收站的期限"。同名的节点在原因之后带"编号 xxxxxx"，链接名为"X（编号 xxxxxx）"（审查 A-M5）。`renames` 为真时另一句"也可以在页面树里把它改回原名（普通的改名，会改写链接）"（00 号文档 4.8）。"关闭"把焦点还给"撤销这次改动"。
+  - 409 `page.changeset_trimmed`：关闭，页上的说明（`Alert`，`errorText`），重读这一页（按钮随之消失）；`h1` 经 `watchReader` 取得焦点、由这条说明描述。
+  - 409 `page.locked`：照现有的锁的说明（持锁人，`lockedText`），确认框留着，焦点留在"撤销"。
+  - 422 `page.revert_too_large`：照 P2B 的 `trash.tooLarge` 不说是哪一项："这次改动太大，不能在这里撤销：它的节点、页面、正文、链接或这些页面的历史超出了一次撤销能做的量。它碰过 N 个节点。"（N 是 `node_count`，1,000 写"1,000 多"；P3A 的单轮步数也答这个码，同一句；P4 改为问是否在后台进行）。
+  - 503：照现有的忙的说明，确认框留着，可以再试。
+  - 403、404：关闭，页上的说明（同截掉的焦点与描述），重读这一页与 `["notebooks", ws]`（同 P2B 回收站的拒绝：被降为读者的写者随之没有按钮）。404 使整页换成 `NotFoundPage` 时焦点落到 `body`（审查 A-N2，接受，打磨）。
+  - 500 `internal_error`（请求的期限是 500，提交可能已落下）、网络错误、超时：状态行"结果未知：正在重读这次改动…"，页经 store 重读这次改动（不经 SWR：读失败时它答缓存里的旧数据），比较 `reverted_by[0]` 与发出时知道的最新那个：不同时读 `getChangeset(reverted_by[0])`，执行者是自己说"已撤销。 查看这次撤销"，不是说"这次改动已被 X 撤销。"（链到那次撤销），那次撤销读不到时说"这次改动已被撤销。 查看这次撤销"（审查 A-M3：原来的一个 `catch` 在这里也说"重读不出来"）；相同说"没有撤销，可以再试。"；这次改动本身重读不到时说"结果未知：这次改动重读不出来。请重新加载页面查看。"（偏离 5）。比较第一个而不比个数：个数到 100 不再增长，也数得到别人的撤销。焦点同 200。
+  - 每个发出即不等的 `mutate` 都带 `.catch`：登录的缓存已经没了时它拒绝（P1B 修复核对第三轮 R3-1）。
 
 ### 4.5 入口、页面菜单与版本页
 
-- 左栏 `NotebookPlaces` 的单独命名的 `nav` 里，"历史"在"回收站"之前（`NavItem end`：只在历史页上是当前，单个变更集页不是）；`nav` 的名称键从 `trash.places` 改为 `notebook.places`（它现在有两处）。
-- 页面菜单（读者也有）加"查看这一页的历史"：去 `history?page=<id>`。
-- 版本页：版本的"执行者 · 类型"链到它的变更集页（P1 的移交）。右栏的版本列表不加：每行已有版本的链接，再加的链接每行同名（13.2 第 17 条）。
+- 左栏 `NotebookPlaces` 的单独命名的 `nav`（"{笔记本}的更多"）里，"历史"在"回收站"之前（`NavItem end`：只在历史页上是当前，单个变更集页不是）；`nav` 的名称键从 `trash.places` 改为 `notebook.places`（它现在有两处）。
+- 页面菜单（读者也有）加"查看这一页的历史"：去 `history?page=<id>`（去处由 `page-layout.tsx` 给出）。
+- 版本页：版本的"执行者 · 类型"（"Ada · 编辑"）链到它的变更集页（P1 的移交）。右栏的版本列表不加：每行已有版本的链接，再加的链接每行同名（13.2 第 17 条）。
 
 ### 4.6 页面树、事件与列表的模式
 
-- `PageTreeStore.revert`：`this.restores(id, () => this.write(…))` 同一个变更集一个一个来、经树的写入队列（13.2 第 1 条）。撤销删掉的页照 `remove` 记进 `removed`：撤销之前的树里有、写入队列的重读之后没有的页，`to` 是之后仍在的最近的祖先，`after` 是答复时的 `readsStarted`；这一比较也会收进这期间别人删掉的页，无害（它们确实不在了）。撤销恢复回来的页由 P2B 的规则去掉（一次开始于答复之后的读列出它）；答复不列出带回了哪些页，所以 `removed` 不空时再读一次树（同 P2B 的 `restore`：写入队列的那次读失败时，这个标签页删掉、撤销带回的页会一直显示为已删）。
-- 事件：`pages` 事件（任何）经 `refresher` 以默认的间隔（5 秒）重读这本笔记本的 `changesets`、`changeset`、`changeset-changes` 键（00 号文档 4.13）；`refreshedOnConnect` 的最内一层加这三个。撤销答复之后本标签页立即重读，不等事件。
-- 列表照 P2B：会变、会消失的项用 `readPages`"按已读的页数重读"（13.2 第 19 条）；新的变更集到来时已读的最后一页的尾部会掉出去，同这个模式的约定。
+- `PageTreeStore.revert`：`this.restores(id, () => this.write(…))` 同一个变更集一个一个来（与恢复、版本的还原共用 `restores` 一队，各表的 id 不会相撞）、经树的写入队列（13.2 第 1 条）。撤销删掉的页照 `remove` 记进 `removed`：撤销之前的树（写入队列轮到它时的树，这个标签页已删的不在里面）里有、一次开始于答复之后并被保留的读里没有的页，`to` 是之后仍在的最近的祖先，`after` 是答复时的 `readsStarted`；这一比较也会收进这期间别人删掉的页，无害（它们确实不在了）。撤销恢复回来的页由 P2B 的规则去掉（一次开始于答复之后的读列出它）；答复不列出带回了哪些页，所以写入队列的那次读失败、而 `removed` 不空时再读一次树，成功时不再读（审查 C-N3 的测试）。被拒与 `changed: false` 不记什么。
+- 事件：`pages` 事件（任何）经 `refresher` 以默认的间隔（5 秒）重读这本笔记本的 `changesets`、`changeset`、`changeset-changes` 键（一本笔记本一项，00 号文档 4.13）；`refreshedOnConnect` 的最内一层加这三个。撤销答复之后本标签页立即重读，不等事件。
+- 列表照 P2B：会变、会消失的项用 `readPages`"按已读的页数重读"（13.2 第 19 条）；新的变更集到来时已读的最后一页的尾部会掉出去，同这个模式的约定。"更多"接上的一页经 `readNext`（4.2）：四个列表共用，只有历史页一个钩子跨键（筛选），明细、回收站与版本列表随键重新挂载（`ChangesetShell key`、笔记本的 `Outlet key`、`PageShell key`），不必给列表名。
 
 ### 4.7 测试（vitest）
 
-- 服务与 store：`revert` 只发一次（连点两下）、经写入队列、`removed` 记下撤销删掉的页（以及之后的读列出它时去掉）、写入队列的读失败而 `removed` 不空时再读一次。
-- 历史页：行的文字与可及名称（两种语言；同一分钟同类型同执行者的两条带 `shortId`，"撤销了「…」"的链接同样）、计数在 1,000 处、标记与链接（被撤销的已清理时的文字）、"更多"与重读的竞争（照回收站）、筛选进地址、"只看此人"、客户端的选择、页面的筛选与去掉、播报的文字、422、`page.not_found`、不是 UUID 的 `actor`、`page` 不读、事件与连上时的重读、经组合根到达。
-- 单个变更集页：信息、明细的每种变化的文字与链接（活着、回收站里链到 `/trash/:id`、已清理的父节点；正文的链接只在活着的页上）、分页、面包屑、读者的说明、截掉时没有按钮、已被撤销过的说明、不是 UUID 的地址不读。
-- 确认框：每种答复（200 两种；409 三种，冲突另有超过 100 项的一例；422；503；403、404 的重读；500、网络错误各三种结果）与焦点、冲突的每种原因的文字与链接（`title_taken` 的回收站提示只在节点不在树里时）、100 项与总数、`renames`/`moves` 的提示、说明的字节上限与 422 落在字段下、只发一次。
-- 版本页的变更集链接（右栏没有）、页面菜单的项、左栏的入口在单独的 `nav` 里（中性的名称、`end`）。
+- 服务与 store：`revert` 只发一次（连点两下）、经写入队列、`removed` 记下撤销删掉的页（以及之后的读列出它时去掉）、写入队列的读失败而 `removed` 不空时再读一次、成功时只读一次。
+- 历史页：行的文字与可及名称（两种语言，每种变化的摘要；同一分钟同类型同显示名的两条带 `shortId`，两个同名的账户也是，"撤销了「…」"的链接同样）、计数在 1,000 处、"…"的三种、标记与链接（被撤销的已清理时的文字）、"更多"与重读的竞争（照回收站）、筛选之下的"更多"、换了筛选之后才到的一页与失败、筛选进地址、"只看此人"（焦点到"谁"，第一次与缓存的）、客户端的选择、页面的筛选与去掉、播报的文字、422、`page.not_found`、不是 UUID 的 `actor`、`page` 不读、大写的 id、事件与连上时的重读、经组合根到达。
+- 单个变更集页：信息、明细的每种变化的文字（两种语言）与链接（活着、回收站里链到 `/trash/:id`、已清理的父节点、附件在根下与树没读到时；正文的链接只在活着的页上、去写下的版本）、分页、面包屑、读者的说明、截掉时没有按钮、已被撤销过的说明、不是 UUID 的地址不读。
+- 确认框：每种答复（200 两种；409 三种，冲突另有超过 100 项的一例；422；503；403、404 的重读；500、网络错误的四种结果，撤销的 GET 答 503 的一例）与焦点、冲突的每种原因的文字与链接（`title_taken` 的回收站提示只在节点不在树里、且树已读到时；附件占着名称；同名的冲突）、100 项与总数、`renames`/`moves` 的提示、说明的字节上限与 422 落在字段下、只发一次（`aria-disabled`、`aria-busy`，按"取消"不关闭）、登出之后才答复的不留未处理的拒绝。
+- 版本页的变更集链接（右栏没有）、页面菜单的项、左栏的入口在单独的 `nav` 里（中性的名称、`end`）；`readNext` 的重读被拒（登录的缓存没了）不留未处理的拒绝（`load-more.test.tsx`，修复核对 N2）；版本列表别的页的"更多"不忙、拿不到这一页的。
+- 假接口（`test/history-server.ts`）照服务端的码的次序与形状：日志：读不出的游标 400 → 笔记本 404 → `page_id` 不是这本笔记本的节点 404 `page.not_found` → `client` 的 422 → `limit` 的 422，id 不分大小写；按页面筛选是"有这个节点的变化"；游标是"<时刻> <id>"（网页不解析）；`node_count` 数有前或后的变化、`content_count` 数有正文的。撤销：说明的 422 → 404 → 403 → 截掉 409 → 422（`tooLarge`）→ 冲突 409（照契约按原因再按节点 id 排，前 100 项与总数）→ 被清理的版本 409 `page.changeset_trimmed`（`purged`）→ `changed: false`（`unchanged`，不经守卫）→ 503（`revertsBusy`）→ `page.locked`（`lockedBy`）（审查 B 的 F-2、F-3，修复核对 N1）；撤销一次新建、恢复或删除不带正文（F-1）。开关：`historyDown`（读不到）、`historyWaits`（按住日志与单个变更集的读）、`revertsHeld`（按住撤销）。
+- 测试的数目：实施时 `history-page.test.tsx` 34 个、`changeset-page.test.tsx` 16 个、`revert-dialog.test.tsx` 35 个，store 7 个；审查与修复核对之后 `make test-web` 156 个文件、3,061 个测试。
 
 ### 4.8 e2e
 
 - **HI3**（`e2e/stories/history/hi3-log-revert.spec.ts`）：
-  - 接口版本：两个账户经 PAT 写（`api`：新建、改名并改写别的页的链接、移动），其中一个另经 `login` 的登录会话写一次正文（`web`）；`listChangesets` 按人、按页面（另一本笔记本的页 → 404）、按客户端筛选，游标；`getChangeset`、`listChangesetChanges`；撤销那次正文 → 字节回到原样（`expectVersions` 的 `reverts_id`）；撤销那次改名 → 被改写的页逐字节回到原样，`links.ts` 的索引断言、`links` 事件到达；之后改过一页再撤销另一条 → 409，`conflicts` 里是它与 `changed`，数据库里没有新的 `revert` 变更集。
-  - 页面版本：左栏进历史页；"只看此人"与页面菜单的"查看这一页的历史"筛选；打开那次改名的一条，看明细；撤销（状态行、焦点）；调用接口版本的同样断言（`expectVersions` 的 `reverts_id`、`links.ts` 的索引、被改写的页的字节）；冲突时确认框列出节点与原因，数据库里没有新的 `revert` 变更集（13.4 第 3 条）。
+  - 接口版本：两个账户经 PAT 写（`api`：新建、改名并改写别的页的链接、移动），其中一个另经 `login` 的登录会话写一次正文（`web`，没有编辑会话的一次 PUT）；`listChangesets` 按人、按页面（另一本笔记本的页 → 404）、按客户端筛选，游标；`getChangeset`、`listChangesetChanges`；撤销那次正文 → 字节回到原样（`expectVersions` 的 `reverts_id`）；撤销那次改名 → 被改写的页逐字节回到原样，`links.ts` 的索引断言、`links` 事件到达（`{pages: [], targets: [beta]}`：撤销写了 Alpha 的正文，它在 `pages` 事件里，不在 `links` 的 `pages` 里）；之后改过一页再撤销另一条 → 409，`conflicts` 里是它与 `changed`，数据库里没有新的 `revert` 变更集（`revertsOf`）。
+  - 页面版本：左栏进历史页；"只看此人"与页面菜单的"查看这一页的历史"筛选；打开那次改名的一条，看明细；撤销（状态行、焦点）；调用接口版本的同样断言（`expectVersions` 的 `reverts_id`、`links.ts` 的索引、被改写的页的字节）；冲突时确认框列出节点与原因，数据库里没有新的 `revert` 变更集（13.4 第 3 条）。另经编辑器写 Notes（"编辑"、Ctrl+End、打字、"完成"：一次编辑会话），从历史打开这次会话的变更集（编辑、网页、0 个节点、1 篇正文）撤销：撤销以 `page.route` 按住，其间焦点留在"撤销"；B 持着编辑会话时答 409 `page.locked`，确认框留着说明、焦点仍在"撤销"；B 结束之后按住时连按两次 Enter 只发一个 POST，200 之后 `h1` 取得焦点；字节回到原样（版本 5），`expectVersions` 的 `reverts_id` 是会话的变更集，`expectRevert` 0 个条目、1 个版本（审查 B-6、A-M1）。00 号文档第 9 节的"撤销一次编辑会话的正文"由页面版本做到；接口版本撤销的是登录会话的一次写。
 - **HI4**（`hi4-revert-delete.spec.ts`）：
   - 接口版本（PAT）：删除带子页与附件的子树，撤销这次删除，再撤销这次撤销。
   - 页面版本：同一个标签页里在树的菜单删除一页（带子页与附件），进历史撤销这次删除 → 树里看得到它（`treeTitles` 轮询）、打开得了、附件下载 200；撤销这次撤销 → 它回到回收站（回收站页列出它）。
-  - 两个版本调用同样的断言：`expectSubtreeRestored(…, {kind: "revert"})`、`expectAssetsRestored`、删除的条目带 `revision`、两个 `revert` 变更集的 `reverts_id` 成链、撤销的撤销之后 `expectSubtreeDeleted`。
-- 夹具：`e2e/fixtures/history.ts`（`listChangesets`、`getChangeset`、`listChanges`、`revertChangeset`）；`wiki-pages.ts` 的 `historyPath`、`changesetPath`、`revertWith`；`assert/page.ts` 的 `expectSubtreeRestored` 加参数 `kind`（`trash_restore` | `revert`，P2B 的写死了 `trash_restore`）与 `expectRevert(db, revertId, {revertsId, items, versions})`。
+  - 两个版本调用同样的断言：`expectSubtreeRestored(…, {kind: "revert"})`、`expectAssetsRestored`、删除的条目带 `revision`（`expectDeletionRevisions`）、两个 `revert` 变更集的 `reverts_id` 成链（`revertsOf`）、撤销的撤销之后 `expectSubtreeDeleted` 与 `expectAssetsDeletedWithNodes`。
+- 夹具：`e2e/fixtures/history.ts`（`listChangesets`、`getChangeset`、`listChanges`、`revertChangeset`）；`wiki-pages.ts` 的 `historyPath`、`changesetPath`、`revertWith`，另有 `historyListed`、`revertDialog`（偏离 8）；`assert/page.ts` 的 `expectSubtreeRestored` 加参数 `kind`（`trash_restore` | `revert`，P2B 的写死了 `trash_restore`；TB1 的调用带 `{kind: "trash_restore"}`）、`expectRevert(db, revertId, reverterId, client, {revertsId, items, versions})`（多两个参数，好让页面版本核对撤销是网页的、管理员的；条目与版本连同已删的一起数：撤销的撤销连它的节点的条目一起删，偏离 3）、`revertsOf`（冲突之后没有新的撤销；撤销的链）与 `expectDeletionRevisions`。
+- 反向对照的 e2e 变异：实施者的 6 个（`expectSubtreeRestored` 的 `kind`、撤销的链、字节的 CRLF、撤销之后的焦点、`actor` 参数、菜单的去处）与修复之后的 2 个（"撤销"又用 `disabled`、去掉忙的守卫），都被抓到；审查 B 的 3 个见审查记录。
+
+### 4.9 实施时定下的与审查带来的
+
+三位审查者（A：页面、确认框、数据流与无障碍；B：测试、假接口、e2e 与设计的符合；C：跨模块的接线、store 与真的服务端）与修复核对的处置见 `reviews/P3B-log-revert-web-review.md`。与上文最初的设计不同之处已改在各节里：
+
+- **实施时定下的**（实施者的 9 条偏离与审查 B 列出的"不在偏离里"的，A、B 判过）："只看此人"的可及名称以可见文字开头（偏离 1，4.2）；冲突的链接名称同样（偏离 2，4.4）；`expectRevert` 多两个参数，另有 `revertsOf`、`expectDeletionRevisions`（偏离 3，4.8）；假接口在 `test/history-server.ts`（偏离 4，4.1、4.7）；"结果未知"而这次改动重读不到时的文字（偏离 5，4.4）；页面的筛选对树里没有的节点写"已删除的页"（偏离 6，4.2）；`wiki-pages.ts` 另有 `historyListed`、`revertDialog`（偏离 8，4.8）；中文的根下写"笔记本首页"，同回收站（偏离 9，4.3）。偏离 7（去掉确认框的忙的守卫与一处 `mounted()`）的忙的守卫在 A-M1 之后不再等价、放回。B 列出的：面包屑是笔记本名 › 历史 › 这一条、"最后写入"只在与创建不同时、截掉的不显示读者的说明（4.3）；`lib/ids.ts` 的 `idPattern` 取代 P2B 的 `nodeIdPattern`、`kindText` 移到 `changeset-text.ts`（`version.kind.*` 改为 `history.kind.*`）、`page-layout.tsx` 给菜单的去处（4.1）；"谁"另有地址里点名的账户、客户端另有地址里点名的那一个、播报的重复与不说（4.2）；未改动时焦点回到"撤销这次改动"（4.4）。
+- **审查与修复核对带来的**：确认框发送中用 `aria-disabled` 与忙的守卫，焦点留在"撤销"（A-M1，4.4，HI3 的页面版本核对）；"只看此人"按下时焦点先到"谁"（A-M2，4.2）；"结果未知"分开四种结果（A-M3，4.4）；附件在根下时链到笔记本首页（A-M4，4.3）；同名的行按显示名、"只看此人"与冲突的同名带区分（A-M5、B-3，4.2、4.4）；行的"…"按条目与版本各自比较（B-1，4.2）；地址里的 id 转成小写、假接口不分大小写（B-2，4.2）；HI3 撤销一次编辑会话的正文（B-6，4.8）；共用的 `readNext` 写进"更多"开始时的键，四个列表都用，`useLoadMore` 按列表记状态（C-M1、C-N2、A-N1，4.1、4.2、4.6）；`changed: false` 的文字照 P3A 改过的契约（C-N1，4.4）；假接口的码的次序与撤销不带正文（B 的 F-1–F-3、修复核对 N1，4.7）；测试的补足（B-4、B-5、B-7、C-N3、修复核对 N2，4.7）。
 
 ## 5. 实施步骤
 
@@ -712,7 +732,7 @@ B（分支 `m8-p3b`，P2B 与 A 合并之后；服务函数与类型随第一次
 - **P5**：无。
 - **M9**：`log` 调用 `ListChangesets`（`actor`、`client`、`page_id`、游标都已备）；`batch` 的撤销要的多轮应用、临时名称与别的见 `M9-mcp/handoffs/M8-P3-revert.md`（第 7 节）；一个单元里删除再恢复同一节点仍是 M9 的事（`RecordItem` 的 upsert，00 号文档"写给后面的 M"）；单个变更集的 `renames`、`moves` 只看前 1,000 项，`batch` 的大变更集里之后的改名不算（3.4）；一页先写正文再删除时不写回（3.5）、`batch` 的撤销同受步数的界线（3.11），见移交第 7、8 条。
 - **M11**：从新到旧连续撤销对恢复与删除也成立（3.5），回滚可以照它；冲突时停下并报告。
-- **M12**：撤销里的删除与 `DeleteNode` 一样没有历史的界线；截掉了一部分的变更集每次清理都扫到（3.3）；撤销读整本活着的树（3.5，实测写在 3.11 与 M12 的移交第 15 项）；单轮一步一次单元的操作，很多最上层时比步数增长得快，改为一次删除多个最上层、一次恢复多组（3.11，同第 15 项）；最上层的例外读之间的删除，随一个节点自己的条目增长（3.11，同第 15 项）；次序值被重新编号时显示为冲突（条目记前一个兄弟的精确做法，已在 00 号文档第 7 节）。
+- **M12**：撤销里的删除与 `DeleteNode` 一样没有历史的界线；截掉了一部分的变更集每次清理都扫到（3.3）；撤销读整本活着的树（3.5，实测写在 3.11 与 M12 的移交第 15 项）；单轮一步一次单元的操作，很多最上层时比步数增长得快，改为一次删除多个最上层、一次恢复多组（3.11，同第 15 项）；最上层的例外读之间的删除，随一个节点自己的条目增长（3.11，同第 15 项）；次序值被重新编号时显示为冲突（条目记前一个兄弟的精确做法，已在 00 号文档第 7 节）；读的一致性待查：日志的读是两条语句、不开事务（`ListChangesets` 再 `ChangesetFacts`，3.4），读跨过一次撤销的提交时，可能把被撤销的那一条列为"已撤销"、却没有那条撤销，到下次重读为止（P3B 审查 C 的存疑，没有复现）。
 
 ## 9. 结果
 
@@ -726,6 +746,16 @@ B（分支 `m8-p3b`，P2B 与 A 合并之后；服务函数与类型随第一次
 - 门禁：本机 `19df1d6`（变基之前）与 `8935903` 上 `make lint-go gen-check test-go`、`make lint-web knip test-web build-web`（2,683、2,829 个测试）通过；CI：`fd1dd31` 的服务端作业被时限取消，`8935903` 三份都绿、e2e 碰上 TB1 的不稳定，`9bc3b02` 全绿（三份 5:39、11:03、11:02）；修复核对的修复 `1214292`、`cd40fb7` 上同样通过（`cb3dacd` 只加一例经 serve 的测试），CI 在 `1214292`、`cb3dacd` 上全绿（`cb3dacd` 的三份 4:08、11:07、13:22）。
 - 交给后面的：B（`m8-p3b`）以这份契约为准（422 也可能是单轮的步数；`changed: false` 的含义）；P4：步数的 422 同样转到后台、最上层的例外改比条目自己的时刻（第 8 节）；M9：一页先写正文再删除、`batch` 的撤销同受步数的界线（[M9 的移交](../M9-mcp/handoffs/M8-P3-revert.md)第 7、8 条）；M12：[性能移交](../M12-release/handoffs/M4-performance.md)第 15 项（很多最上层的超线性、没量过的混合、截掉的变更集每次清理都扫到、按页面的日志、例外的读随一个节点的条目增长、守卫与组合根、成本两份在 CI 上的余量）。
 - 负责人可以改判的取舍：最上层现在的删除撤销了这一项自己的恢复时只比组（3.5，依赖单元的时刻严格递增）；C 自己的重新编号不报冲突（3.5 的已知局限）；`MaxRevertSteps` 取 1,500，很多组又带满一个单元的历史没量过（偏离 D16）。
+
+### 9.2 B：前端（2026-10-14，合并 `16468979`）
+
+- 提交：实施：历史页、单个变更集页与撤销 `8ef9d0d`，HI3、HI4 `875661d`，反向对照第一轮漏掉的测试 `e0c8514`（审查时在 `m8-p3a` 的 `fd1dd31` 之上）；审查的修复 `bc948f4`，HI3 撤销编辑会话的正文与焦点的核对 `a9d7df2`；修复核对第一轮的细节 `2894398`；之后变基到 `main` 的 `e08745e`（P3A 的合并与文档），是 `94a0c15`、`56c7302`、`546f6bc`、`e11fbed`、`2a36e2b`、`7852300`，没有冲突。合并 `16468979`。
+- 审查：三位审查者（Opus），都没有 Important。中低 1 条：确认框发送中"撤销"用 `disabled`，焦点落到 `body`，留在确认框里的拒绝（503、`page.locked`、422）之后仍在那里，途中再按一次 Enter 被当作读者的动作（A-M1）。其余是低（"只看此人"在缓存的列表上丢焦点；"结果未知"在只读不到最新的撤销时说错；根下的附件链到旧的父页；同名的行按账户而不按显示名区分，冲突的同名不区分；行的"…"在条目与版本在不同节点上时漏掉；地址里大写的 id；"更多"在换了筛选之后接到别的列表上；HI3 没有撤销编辑会话的正文；几处测试的缺口）与细节。修复核对一轮，没有行为上的发现：两条细节（假接口把 `changed: false` 排在被清理的版本之前；`readNext` 的 `.catch` 与假接口的 F-1 没有测试钉住），补上（`2894398`）。逐条见[审查记录](reviews/P3B-log-revert-web-review.md)。
+- 与设计不同之处已改在第 4 节（4.1–4.8），4.9 分实施时定下的与审查带来的列出。
+- 反向对照：实施之后 164 个（158 个 vitest、6 个 e2e）：161 个被抓到（第一轮 137 个，补了测试之后 22 个，改正规格之后 2 个），1 个等价，2 处守卫分不出、去掉（偏离 7，忙的守卫之后放回）；审查者 B 31 个 vitest 与 3 个 e2e、C 7 个（存活的即各条测试的缺口或等价），A 以对着假接口与真的服务端的实验代替；审查的修复之后 47 个 vitest 与 2 个 e2e，等价的 3 个的代码去掉，其余都被抓到；修复核对第一轮核对者 22 个（存活 3 个：1 个等价，2 个即 N2），它的修复之后 4 个都被抓到。
+- 门禁：本机 `e0c8514` 与 `a9d7df2` 上 `make lint-web knip test-web build-web`（3,035、3,057 个测试）、`make build` 之后整个 e2e 241 个、HI3 与 HI4 连跑三次通过，`2894398` 上 `make lint-web knip test-web`（3,061 个测试）通过；这一阶段没有服务端与契约的改动。变基之后：`make gen` 没有差异，网页的门禁（3,061 个测试）、整个 e2e 241 个与 HI3、HI4、TB1 连跑三次通过，CI（run 38524265525）全绿。
+- 交给后面的：P4：422 改为问是否在后台进行，任务的"在历史里查看"链到单个变更集页（第 8 节）；M12：日志的读是两条语句、不开事务，读的一致性待查（审查 C 的存疑，没有复现，第 8 节）；打磨的十余条见审查记录，已写进 [M12 的打磨移交](../M12-release/handoffs/M5-polish.md)第 23 条。
+- 负责人可以改判的取舍：撤销答 404、整页换成"页面不存在"时焦点落到 `body`（A-N2，设计的流程）；撤销在途时回到它要删的那一页先显示"页面不存在"（A-N3）；"谁"列出工作区的全部成员；"只看此人"的名称以可见文字开头，不是设计的"只看 Ada 的改动"（偏离 1）；后退再前进的变更集页不知道在途的撤销（同 P2B 修复核对 N4）。
 
 ## 附：查过的代码
 
