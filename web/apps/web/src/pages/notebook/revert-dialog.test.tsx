@@ -142,7 +142,7 @@ test("an undo of nothing to undo says so as the dialog closes, the focus back on
   await user.click(within(dialog).getByRole("button", { name: "Undo" }));
 
   await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
-  expect(screen.getByRole("status").textContent).toBe("Nothing to undo: every node is as it was before this change.");
+  expect(screen.getByRole("status").textContent).toBe("Nothing to undo: this change left every node as it was.");
   expect(document.activeElement).toBe(screen.getByRole("button", { name: "Undo change" }));
   expect(server.changesets).toHaveLength(logged);
 });
@@ -160,6 +160,7 @@ const links = (item: HTMLElement | undefined) =>
 test("conflicts stay in the dialog: how many, their title taking the focus; each node, why, and what to do there; renamed, it can be renamed back; Close gives the focus back to Undo change, nothing undone", async () => {
   const user = userEvent.setup();
   const { server, rework } = reworked();
+  // In no order: the server lists them by reason, then by node id.
   rework.conflicts = [
     conflict(notes.id, "Notes", "changed"),
     conflict(guide.id, "Guide", "children_added"),
@@ -185,20 +186,22 @@ test("conflicts stay in the dialog: how many, their title taking the focus; each
   expect(dialog.getAttribute("aria-describedby")).toBe(heading.id);
   expect(within(dialog).queryByText(/are listed/)).toBeNull();
   const items = within(within(dialog).getByRole("list", { name: "Nodes in the way" })).getAllByRole("listitem");
+  // By reason in the contract's order, then by node id, as the server lists them.
   expect(items.map((item) => item.querySelector("p")?.textContent)).toEqual([
     "“Notes” changed since.",
-    "“Guide” was put there since, and would go with the undo: move it away first.",
+    "“Gone” is past its time in the trash.",
     "The page “Linux” was under is gone: in the trash, or purged.",
+    "“Guide” was put there since, and would go with the undo: move it away first.",
     "Where “Install” goes back, a page or attachment has its name: rename that one first.",
     "Where “Old” goes back, a page or attachment has its name: rename that one first.",
     "“Loop” would go back under itself: the page it was under is below it now.",
     "“Deep” would nest more than 10 levels deep where it goes back.",
-    "“Gone” is past its time in the trash.",
   ]);
   expect(items.map(links)).toEqual([
     [["History of this node", "History of this node: “Notes”", `${home}/history?page=${notes.id}`]],
-    [["Open it", "Open it: “Guide”", pagePath(guide.id)]],
+    [],
     [["Trash", "Trash: the page “Linux” was under may be there", `${home}/trash`]],
+    [["Open it", "Open it: “Guide”", pagePath(guide.id)]],
     [["Open the one with this name", "Open the one with this name: “Install”", pagePath(guide.id)]],
     [
       ["Open the one with this name", "Open the one with this name: “Old”", pagePath(notes.id)],
@@ -208,7 +211,6 @@ test("conflicts stay in the dialog: how many, their title taking the focus; each
         `${home}/trash/${old.id}`,
       ],
     ],
-    [],
     [],
     [],
   ]);
@@ -251,6 +253,81 @@ test("more conflicts than the hundred listed say how many, and that the first hu
     100
   );
   expect(within(dialog).queryByText(/rename it back/)).toBeNull();
+});
+
+// M8/P3B review A-M5 (v0.1 design 13.2, item 17).
+test("conflicting nodes of one name are told apart by the end of their ids, which their reasons show, and so are their links", async () => {
+  const user = userEvent.setup();
+  const { server, rework } = reworked();
+  rework.conflicts = [
+    conflict(linux.id, "Notes", "changed"),
+    conflict(guide.id, "Notes", "changed"),
+    conflict(install.id, "Install", "parent_gone"),
+  ];
+  renderApp(changesetPath(rework.id), server.app);
+  const dialog = await opened(user);
+
+  await user.click(within(dialog).getByRole("button", { name: "Undo" }));
+
+  const list = await within(dialog).findByRole("list", { name: "Nodes in the way" });
+  const items = within(list).getAllByRole("listitem");
+  expect(items.map((item) => item.querySelector("p")?.textContent)).toEqual([
+    "“Notes” changed since. ID 000101",
+    "“Notes” changed since. ID 000103",
+    "The page “Install” was under is gone: in the trash, or purged.",
+  ]);
+  expect(items.map(links)).toEqual([
+    [["History of this node", "History of this node: “Notes (ID 000101)”", `${home}/history?page=${guide.id}`]],
+    [["History of this node", "History of this node: “Notes (ID 000103)”", `${home}/history?page=${linux.id}`]],
+    [["Trash", "Trash: the page “Install” was under may be there", `${home}/trash`]],
+  ]);
+});
+
+// M8/P3B review B-7.
+test("a name an attachment holds leads to its page, where it is shown", async () => {
+  const user = userEvent.setup();
+  const photo = pageNode(9, "photo.png");
+  const holder = { ...pageNode(10, "photo.png", guide), kind: "asset" as const };
+  const server = pageServer({ nodes: [guide, install, linux, notes, photo, holder] });
+  server.trashNode(photo.id);
+  const deletion = server.log("deletion", { changes: [wrote(guide, 1, 2)] });
+  deletion.conflicts = [conflict(photo.id, "photo.png", "title_taken", holder.id)];
+  renderApp(changesetPath(deletion.id), server.app);
+  await screen.findByRole("navigation", { name: "Pages of Plans" });
+  const dialog = await opened(user);
+  await user.click(within(dialog).getByRole("button", { name: "Undo" }));
+  const list = await within(dialog).findByRole("list", { name: "Nodes in the way" });
+
+  expect(links(within(list).getAllByRole("listitem")[0])).toEqual([
+    ["Open the one with this name", "Open the one with this name: “photo.png”", pagePath(guide.id)],
+    [
+      "Or restore it from the trash (a restore numbers its name)",
+      "Or restore it from the trash (a restore numbers its name): “photo.png”",
+      `${home}/trash/${photo.id}`,
+    ],
+  ]);
+
+  await user.click(within(list).getByRole("link", { name: "Open the one with this name: “photo.png”" }));
+
+  expect(await screen.findByRole("heading", { level: 1, name: "Guide" })).toBeTruthy();
+  await waitFor(() => expect(document.activeElement?.getAttribute("data-attachment")).toBe(holder.id));
+});
+
+// M8/P3B review B-7.
+test("a name taken where the tree is not read yet offers no restore from the trash, nor the one holding it", async () => {
+  const user = userEvent.setup();
+  const { server, rework } = reworked();
+  server.nodesDown = true;
+  rework.conflicts = [conflict(old.id, "Old", "title_taken", notes.id)];
+  renderApp(changesetPath(rework.id), server.app);
+  const dialog = await opened(user);
+
+  await user.click(within(dialog).getByRole("button", { name: "Undo" }));
+
+  const list = await within(dialog).findByRole("list", { name: "Nodes in the way" });
+  const [item] = within(list).getAllByRole("listitem");
+  expect(item?.textContent).toContain("Where “Old” goes back, a page or attachment has its name");
+  expect(links(item)).toEqual([]);
 });
 
 test("a changeset the purge trimmed meanwhile says so as the dialog closes, the title taking the focus, described by it; read again, Undo change goes", async () => {
@@ -377,8 +454,17 @@ test("Undo pressed twice sends one undo; nothing closes the dialog while it is o
   await user.dblClick(undo);
   await user.click(undo);
   await waitFor(() => expect(reverts(server.sent)).toEqual(["REVERT rework"]));
-  expect(within(dialog).getByRole("button", { name: "Undoing…" }).hasAttribute("disabled")).toBe(true);
-  expect(within(dialog).getByRole("button", { name: "Cancel" }).hasAttribute("disabled")).toBe(true);
+  // Busy, not disabled: the focus stays on what was pressed (v0.1 design 13.2, item 12; M8/P3B review A-M1).
+  const undoing = within(dialog).getByRole("button", { name: "Undoing…" });
+  expect([
+    undoing.getAttribute("aria-disabled"),
+    undoing.getAttribute("aria-busy"),
+    undoing.hasAttribute("disabled"),
+  ]).toEqual(["true", "true", false]);
+  const cancel = within(dialog).getByRole("button", { name: "Cancel" });
+  expect([cancel.getAttribute("aria-disabled"), cancel.hasAttribute("disabled")]).toEqual(["true", false]);
+  await user.click(cancel);
+  expect(screen.getByRole("alertdialog")).toBe(dialog);
   await user.keyboard("{Escape}");
   expect(screen.getByRole("alertdialog")).toBe(dialog);
 
@@ -459,13 +545,18 @@ const earlier = "earlier";
  * next undo's answer is lost, as answer says (a 500, or no answer), once
  * the server did what does.
  */
-function lost(answer: () => Response | Promise<Response>, does: (server: LostServer) => void) {
+function lost(
+  answer: () => Response | Promise<Response>,
+  does: (server: LostServer) => void,
+  answers: Record<string, Answer> = {}
+) {
   const { server, rework } = reworked("admin", {
     "POST /api/v0/changesets/*/revert": () => {
       server.sent.push("REVERT rework");
       does(server);
       return answer();
     },
+    ...answers,
   });
   const before = server.log(earlier, { kind: "revert", reverts: rework.id });
   rework.revertedBy = [before.id, ...Array.from({ length: 99 }, (_, n) => changesetId(8000 + n))];
@@ -489,7 +580,7 @@ const answersLost = [
 ];
 const outcomes = [
   { whose: "the account's", does: undoneBy(ada), text: "Undone. See the undo" },
-  { whose: "another's", does: undoneBy(bob), text: "This change has been undone by Bob." },
+  { whose: "another's", does: undoneBy(bob), text: "This change has been undone by Bob. See the undo" },
   { whose: "the one known as it was sent", does: () => undefined, text: "It was not undone: you can try again." },
 ];
 
@@ -513,7 +604,7 @@ test.each(
     expect(document.activeElement).toBe(title());
     expect(title().getAttribute("aria-describedby")).toBe(status.id);
     expect(server.sent.slice(before)).toContain("GET changeset rework");
-    if (text.startsWith("Undone")) {
+    if (text.endsWith("See the undo")) {
       const undo = server.changesets.find((each) => each.label === "lost undo");
       expect(within(status).getByRole("link", { name: "See the undo" }).getAttribute("href")).toBe(
         changesetPath(undo?.id ?? "")
@@ -540,6 +631,35 @@ test("an undo whose answer was lost, its changeset not read again, says the outc
       "Whether it was undone is not known: this change could not be read again. Reload the page to see."
     )
   );
+});
+
+// M8/P3B review A-M3.
+test("an undo whose answer was lost, its changeset read again undone, the undo not read, says it was undone, leading there", async () => {
+  const user = userEvent.setup();
+  const undo = changesetId(7100);
+  const { server, rework } = lost(
+    () => problem(500, "internal_error"),
+    (state) => {
+      const changeset = state.changesets.find((each) => each.label === "rework");
+      state.log("lost undo", { id: undo, kind: "revert", reverts: changeset?.id ?? "", by: bob });
+      if (changeset !== undefined) {
+        changeset.revertedBy = [undo, ...changeset.revertedBy].slice(0, 100);
+      }
+    },
+    { [`GET /api/v0/changesets/${undo}`]: () => problem(503, "server_busy") }
+  );
+  renderApp(changesetPath(rework.id), server.app);
+  const dialog = await opened(user);
+
+  await user.click(within(dialog).getByRole("button", { name: "Undo" }));
+
+  const status = screen.getByRole("status");
+  await waitFor(() => expect(status.textContent).toBe("This change has been undone. See the undo"));
+  expect(within(status).getByRole("link", { name: "See the undo" }).getAttribute("href")).toBe(changesetPath(undo));
+  expect(document.activeElement).toBe(title());
+
+  act(() => server.app.preferences.setLocale("zh-CN"));
+  await waitFor(() => expect(status.textContent).toContain("这次改动已被撤销。"));
 });
 
 // M8/P1 fix check 3, R3-1: the session left as the answer's body is read, its headers past the session's check.
@@ -629,7 +749,7 @@ test("each undo says what came of it alone: what the one before said goes as it 
   renderApp(changesetPath(rework.id), server.app);
   await user.click(within(await opened(user)).getByRole("button", { name: "Undo" }));
   await waitFor(() =>
-    expect(screen.getByRole("status").textContent).toBe("Nothing to undo: every node is as it was before this change.")
+    expect(screen.getByRole("status").textContent).toBe("Nothing to undo: this change left every node as it was.")
   );
   rework.unchanged = false;
   server.revertsHeld = true;

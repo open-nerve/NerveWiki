@@ -14,6 +14,8 @@ import type { Person } from "./page-server";
 //   notebook.not_found; then a page_id of no node of Plans, alive or in
 //   the trash, 404 page.not_found; then a client none of web, api, cli,
 //   mcp and mcp:<name> 422 on client, a limit outside 1–100 422 on limit;
+//   an id, an account's or a node's, read in either case, as uuid.Parse
+//   reads it;
 // - a changeset and its changes: one not logged, or Plans gone, 404
 //   page.changeset_not_found; its changes by node id, a node the purge
 //   took (neither alive nor in the trash) left out, as the server's join
@@ -22,13 +24,17 @@ import type { Person } from "./page-server";
 //   message; then 404 page.changeset_not_found; then a reader's 403
 //   forbidden; then a changeset trimmed 409 page.changeset_trimmed; then
 //   one too large (tooLarge) 422 page.revert_too_large; then its conflicts
-//   409 page.revert_conflict, the first 100 and their count; then one a
-//   version of which the purge took (purged) 409 page.changeset_trimmed;
-//   while busy (revertsBusy) 503 server_busy; then a page someone edits
-//   (lockedBy) 409 page.locked naming them; then one whose nodes are as
-//   they were (unchanged) changed false, no changeset; else a revert of
-//   it, by Ada from the web, the newest of the log and of its reverts,
-//   which does to the tree what undo does.
+//   409 page.revert_conflict, by reason in the contract's order, then by
+//   node id, the first 100 and their count; then one that changed nothing
+//   (unchanged: an edit session that wrote its bytes back) changed false,
+//   no changeset, nothing to write, so nothing parsed and no guard run;
+//   then one a version of which the purge took (purged) 409
+//   page.changeset_trimmed; while busy (revertsBusy) 503 server_busy; then
+//   a page someone edits (lockedBy) 409 page.locked naming them; else a
+//   revert of it, by Ada from the web, the newest of the log and of its
+//   reverts, which does to the tree what undo does: a node created or
+//   restored deleted again, one deleted restored, neither writing a
+//   version.
 //
 // While historyDown is set, the log and a changeset cannot be read;
 // historyWaits holds their reads, revertsHeld the reverts (released with
@@ -180,6 +186,22 @@ const reverse: Record<ChangesetChange["kind"], ChangesetChange["kind"]> = {
   content: "content",
 };
 
+/** The reasons of the conflicts, in the order the contract lists them in (common.yaml's RevertConflict). */
+const reasons: RevertConflict["reason"][] = [
+  "changed",
+  "expired",
+  "parent_gone",
+  "children_added",
+  "title_taken",
+  "cycle",
+  "too_deep",
+];
+
+/** sameId tells whether two ids are one, in either case. */
+function sameId(a: string, b: string): boolean {
+  return a.toLowerCase() === b.toLowerCase();
+}
+
 /** What of the page server the history reads and changes. */
 type HistoryState = {
   sent: string[];
@@ -220,8 +242,8 @@ export function historyRoutes(server: HistoryState, role: NotebookRole): Record<
   const nodeOf = (id: string | null) =>
     id === null
       ? undefined
-      : (server.nodes.find((node) => node.id === id) ??
-        [...server.trash.values()].flatMap((item) => item.members).find((node) => node.id === id));
+      : (server.nodes.find((node) => sameId(node.id, id)) ??
+        [...server.trash.values()].flatMap((item) => item.members).find((node) => sameId(node.id, id)));
   const changesetOf = (id: string) =>
     server.notebookGone ? undefined : server.changesets.find((changeset) => changeset.id === id);
   const labelOf = (id: string) => changesetOf(id)?.label ?? id;
@@ -313,11 +335,11 @@ export function historyRoutes(server: HistoryState, role: NotebookRole): Record<
         .filter(
           (changeset) =>
             (cursor === null || keyOf(changeset) < cursor) &&
-            (actor === null || changeset.by.user_id === actor) &&
+            (actor === null || sameId(changeset.by.user_id, actor)) &&
             (client === null ||
               changeset.client === client ||
               (client === "mcp" && changeset.client.startsWith("mcp:"))) &&
-            (page === null || changeset.changes.some((change) => change.node === page))
+            (page === null || changeset.changes.some((change) => sameId(change.node, page)))
         )
         .toSorted((a, b) => compare(keyOf(b), keyOf(a)));
       const data = listed.slice(0, limit);
@@ -394,10 +416,16 @@ export function historyRoutes(server: HistoryState, role: NotebookRole): Record<
         return problem(422, "page.revert_too_large");
       }
       if (changeset.conflicts.length > 0) {
+        const ordered = changeset.conflicts.toSorted(
+          (a, b) => reasons.indexOf(a.reason) - reasons.indexOf(b.reason) || compare(a.node_id, b.node_id)
+        );
         return problem(409, "page.revert_conflict", {
-          conflicts: changeset.conflicts.slice(0, 100),
+          conflicts: ordered.slice(0, 100),
           conflict_count: changeset.conflicts.length,
         });
+      }
+      if (changeset.unchanged) {
+        return json({ changeset_id: null, changed: false });
       }
       if (changeset.purged) {
         return problem(409, "page.changeset_trimmed");
@@ -408,9 +436,6 @@ export function historyRoutes(server: HistoryState, role: NotebookRole): Record<
       if (changeset.lockedBy !== undefined) {
         const { page, holder } = changeset.lockedBy;
         return problem(409, "page.locked", { lock: { page_id: page, ...holder } });
-      }
-      if (changeset.unchanged) {
-        return json({ changeset_id: null, changed: false });
       }
       changeset.undo?.();
       const revert = fakeChangeset({
@@ -423,7 +448,9 @@ export function historyRoutes(server: HistoryState, role: NotebookRole): Record<
           before: change.after,
           after: change.before,
           content:
-            change.content === null ? null : { base: change.content.revision, revision: change.content.revision + 1 },
+            change.content === null || reverse[change.kind] === "deleted" || reverse[change.kind] === "restored"
+              ? null
+              : { base: change.content.revision, revision: change.content.revision + 1 },
         })),
       });
       revert.label = `revert of ${changeset.label}`;

@@ -18,6 +18,7 @@ import {
 import { Button } from "../../components/ui/button";
 import { useT, type Translate } from "../../i18n/i18n";
 import { useFocusLeaving } from "../../lib/focus-leaving";
+import { shortId, twinsOf } from "../../lib/twins";
 import { ApiError } from "../../services/api";
 import type { Notebook } from "../../services/notebook.service";
 import type { ChangesetDetail, RevertConflict } from "../../services/page.service";
@@ -159,6 +160,8 @@ function RevertForm({
   const me = store.account?.me?.id;
   const [message, setMessage] = useState("");
   const [conflict, setConflict] = useState<ApiError>();
+  // One undo a press: Undo stays where the focus is while it is out (aria-disabled), so it can be pressed again.
+  const busy = useRef(false);
   const confirm = useRef<HTMLButtonElement>(null);
   const { ref, banner, problemOf, submit } = useForm(["message"], {
     explain: (error) => {
@@ -231,6 +234,9 @@ function RevertForm({
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (busy.current) {
+      return;
+    }
     const text = message.trim();
     const bytes = new TextEncoder().encode(text).length;
     const found: LocalProblems<"message"> =
@@ -239,7 +245,10 @@ function RevertForm({
         : text.includes("\0")
           ? { message: "field.message.invalid_format" }
           : {};
-    void submit(found, () => revert(text === "" ? undefined : text));
+    busy.current = true;
+    void submit(found, () => revert(text === "" ? undefined : text)).finally(() => {
+      busy.current = false;
+    });
   }
 
   return (
@@ -261,12 +270,14 @@ function RevertForm({
         onChange={(event) => setMessage(event.target.value)}
       />
       <div className="flex justify-end gap-2">
+        {/* Not disabled while it is out: a disabled button drops the focus (v0.1 design 13.2, item 12). The dialog
+            does not close while it is out. */}
         <AlertDialogCancel asChild>
-          <Button variant="outline" disabled={sending}>
+          <Button variant="outline" aria-disabled={sending || undefined}>
             {t("page.cancel")}
           </Button>
         </AlertDialogCancel>
-        <Button ref={confirm} type="submit" disabled={sending}>
+        <Button ref={confirm} type="submit" aria-busy={sending || undefined} aria-disabled={sending || undefined}>
           {sending ? t("history.reverting") : t("history.revertConfirm")}
         </Button>
       </div>
@@ -303,7 +314,9 @@ function reasonText(conflict: RevertConflict, t: Translate): string {
  * page it was under went; the node put there since, to move it away; the
  * one with its name, to rename it, and, the node not in the tree (in the
  * trash, a deletion undone), its trash item, which a restore numbers. A
- * changeset that renamed a node can be renamed back by hand, too.
+ * changeset that renamed a node can be renamed back by hand, too. Nodes
+ * of one name are told apart by the end of their ids (v0.1 design 13.2,
+ * item 17; M8/P3B review A-M5).
  */
 const Conflicts = observer(function Conflicts({
   notebook,
@@ -331,6 +344,10 @@ const Conflicts = observer(function Conflicts({
     return node === undefined ? undefined : openOf({ id, kind: node.kind, parent: node.parent_id }, home);
   };
   const number = (n: number) => new Intl.NumberFormat(locale).format(n);
+  const twins = twinsOf(
+    conflicts.map((conflict) => ({ id: conflict.node_id, name: conflict.name })),
+    (node) => node.name
+  );
   return (
     <div className="space-y-4">
       <AlertDialogDescription asChild>
@@ -345,14 +362,23 @@ const Conflicts = observer(function Conflicts({
         {conflicts.map((conflict) => {
           const holder = conflict.holder_id === undefined ? undefined : opening(conflict.holder_id);
           const node = opening(conflict.node_id);
+          const twin = twins.has(conflict.node_id);
+          const name = twin
+            ? t("history.nodeTwin", { name: conflict.name, id: shortId(conflict.node_id) })
+            : conflict.name;
           return (
             <li key={conflict.node_id} className="space-y-1">
-              <p className="break-words">{reasonText(conflict, t)}</p>
+              <p className="break-words">
+                {reasonText(conflict, t)}
+                {twin && (
+                  <span className="text-muted-foreground"> {t("history.id", { id: shortId(conflict.node_id) })}</span>
+                )}
+              </p>
               <p className="flex flex-wrap gap-x-3 gap-y-1">
                 {conflict.reason === "changed" && (
                   <Link
                     to={`${home}/history?page=${conflict.node_id}`}
-                    aria-label={t("history.nodeHistoryLabel", { name: conflict.name })}
+                    aria-label={t("history.nodeHistoryLabel", { name })}
                     className="underline underline-offset-4"
                   >
                     {t("history.nodeHistory")}
@@ -361,7 +387,7 @@ const Conflicts = observer(function Conflicts({
                 {conflict.reason === "parent_gone" && (
                   <Link
                     to={`${home}/trash`}
-                    aria-label={t("history.conflictTrashLabel", { name: conflict.name })}
+                    aria-label={t("history.conflictTrashLabel", { name })}
                     className="underline underline-offset-4"
                   >
                     {t("history.conflictTrash")}
@@ -371,7 +397,7 @@ const Conflicts = observer(function Conflicts({
                   <Link
                     to={node.to}
                     state={node.state}
-                    aria-label={t("history.conflictOpenLabel", { name: conflict.name })}
+                    aria-label={t("history.conflictOpenLabel", { name })}
                     className="underline underline-offset-4"
                   >
                     {t("history.conflictOpen")}
@@ -381,7 +407,7 @@ const Conflicts = observer(function Conflicts({
                   <Link
                     to={holder.to}
                     state={holder.state}
-                    aria-label={t("history.conflictHolderLabel", { name: conflict.name })}
+                    aria-label={t("history.conflictHolderLabel", { name })}
                     className="underline underline-offset-4"
                   >
                     {t("history.conflictHolder")}
@@ -390,7 +416,7 @@ const Conflicts = observer(function Conflicts({
                 {conflict.reason === "title_taken" && pages.nodes !== undefined && node === undefined && (
                   <Link
                     to={`${home}/trash/${conflict.node_id}`}
-                    aria-label={t("history.conflictRestoreLabel", { name: conflict.name })}
+                    aria-label={t("history.conflictRestoreLabel", { name })}
                     className="underline underline-offset-4"
                   >
                     {t("history.conflictRestore")}

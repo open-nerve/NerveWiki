@@ -6,7 +6,7 @@ import { eventHandlers } from "../../events/handlers";
 import type { NotebookRole } from "../../services/notebook.service";
 import { eventServer, withEvents } from "../../test/event-server";
 import { json, notebookJSON, workspaceJSON, type Answer } from "../../test/fakes";
-import { changesetId, created, deleted, moved, renamed, reordered, wrote } from "../../test/history-server";
+import { changesetId, created, deleted, moved, renamed, reordered, restored, wrote } from "../../test/history-server";
 import { assetNode, bob, guide, install, linux, notes, pageNode, pagePath, pageServer } from "../../test/page-server";
 import { readAgain } from "../../test/page-panel";
 import { renderApp } from "../../test/render";
@@ -166,11 +166,12 @@ test("a changeset's page speaks Chinese too", async () => {
   expect(within(rowOf("Old", list)).getByRole("link", { name: "在回收站里：「Old」" }).textContent).toBe("在回收站里");
 });
 
-test("nodes of one name are told apart by the end of their ids, which their rows show", async () => {
+test("nodes of one name are told apart by the end of their ids, which their rows show, one in the trash too", async () => {
   const readme = pageNode(9, "Readme", guide);
   const other = pageNode(10, "Readme", notes);
   const server = pageServer({ nodes: [guide, install, linux, notes, readme, other] });
   const twice = server.log("twice", { changes: [created(readme), created(other), created(install)] });
+  server.trashNode(other.id);
   renderApp(changesetPath(twice.id), server.app);
   await screen.findByRole("list", { name: "Nodes of this change" });
 
@@ -188,9 +189,46 @@ test("nodes of one name are told apart by the end of their ids, which their rows
   expect(second?.textContent).toContain("ID 000109");
   expect(
     within(third as HTMLElement)
-      .getAllByRole("link")[0]
-      ?.getAttribute("aria-label")
-  ).toBe("Readme (ID 000110)");
+      .getAllByRole("link")
+      .map((link) => link.getAttribute("aria-label"))
+  ).toEqual(["In the trash: “Readme (ID 000110)”", "History of this node: “Readme (ID 000110)”"]);
+  expect(third?.textContent).toContain("ID 000110");
+});
+
+// M8/P3B review B-4 (M8/P3 design 4.7).
+test("a node restored from the trash says so, in Chinese too", async () => {
+  const server = pageServer();
+  const restore = server.log("restore", { changes: [restored(notes)] });
+  renderApp(changesetPath(restore.id), server.app);
+  await screen.findByRole("list", { name: "Nodes of this change" });
+
+  expect(nodes().map((row) => row.textContent)).toEqual(["NotesHistory of this nodeRestored from the trash"]);
+  act(() => server.app.preferences.setLocale("zh-CN"));
+  await waitFor(() => expect(rowOf("Notes", "这次改动的节点").textContent).toContain("从回收站恢复"));
+});
+
+// M8/P3B review A-M4.
+test("an attachment leads to its page as the tree has it now: one at the notebook's top level to the notebook's home", async () => {
+  const photo = assetNode(9, "photo.png");
+  const server = pageServer({ nodes: [guide, install, linux, notes, photo] });
+  // The change moved it from Notes to Guide; another moved it to the top level since.
+  const move = server.log("move", { changes: [moved({ ...photo, parent_id: guide.id }, notes.id)] });
+  renderApp(changesetPath(move.id), server.app);
+  await screen.findByRole("navigation", { name: "Pages of Plans" });
+  await screen.findByRole("list", { name: "Nodes of this change" });
+
+  expect(links("photo.png")[0]).toEqual(["photo.png", home]);
+});
+
+test("an attachment leads to where the change left it while the tree is not read", async () => {
+  const photo = assetNode(9, "photo.png", guide);
+  const server = pageServer({ nodes: [guide, install, linux, notes, photo] });
+  server.nodesDown = true;
+  const move = server.log("move", { changes: [moved(photo, notes.id)] });
+  renderApp(changesetPath(move.id), server.app);
+  await screen.findByRole("list", { name: "Nodes of this change" });
+
+  expect(links("photo.png")[0]).toEqual(["photo.png", pagePath(guide.id)]);
 });
 
 test("a revert says what it undid, leading there, or that the purge took it; what undid a changeset, newest first, each leading there, and that undoing it again waits for those", async () => {

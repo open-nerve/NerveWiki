@@ -17,7 +17,8 @@ import { byText, changesetName, changesText, clientText, countsText } from "./ch
  * M8/P3 design 4.2): its kind and who made it, which leads to its page and
  * is named by when it was made, to the minute, a twin by the end of its id
  * too, which the row shows (twin); Only this person beside them, unless
- * the list is theirs already (only); where it came from, as long ago
+ * the list is theirs already (only), named by who, an account of the name
+ * of another told apart as the filter tells it; where it came from, as long ago
  * before now as it is (the time in full as its title), why (its message),
  * its first changes summed up and its counts; and its marks: undone,
  * leading to its newest revert, trimmed, and what a revert undid, leading
@@ -40,8 +41,8 @@ export const HistoryRow = observer(function HistoryRow({
   /** Whether another changeset the page names has its name, and that of the one it reverts. */
   twin: boolean;
   revertsTwin: boolean;
-  /** Lists the changesets of the account who made it alone; none when the list is theirs already. */
-  only: (() => void) | undefined;
+  /** Lists the changesets of the account who made it alone, its name; none when the list is theirs already. */
+  only: { name: string; choose: () => void } | undefined;
   left: () => void;
   linkRef?: Ref<HTMLAnchorElement>;
   /** The time the list was shown at, which its changesets' times are said before. */
@@ -52,7 +53,6 @@ export const HistoryRow = observer(function HistoryRow({
   const row = useRef<HTMLLIElement>(null);
   useFocusLeaving(row, left);
   const name = changesetName(changeset, twin, t, locale);
-  const actor = changeset.created_by.display_name;
   const newest = changeset.reverted_by[0];
   const reverts = changeset.reverts;
   const summary = changesText(changeset, t, locale);
@@ -68,12 +68,7 @@ export const HistoryRow = observer(function HistoryRow({
           {byText(changeset, t)}
         </Link>
         {only !== undefined && (
-          <Button
-            variant="ghost"
-            className="h-7 px-2 text-xs"
-            aria-label={t("history.onlyLabel", { name: actor })}
-            onClick={only}
-          >
+          <Button variant="ghost" className="h-7 px-2 text-xs" aria-label={only.name} onClick={only.choose}>
             {t("history.only")}
           </Button>
         )}

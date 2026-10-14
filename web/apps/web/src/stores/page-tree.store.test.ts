@@ -859,6 +859,25 @@ test("a revert whose tree read fails reads the tree once more: the page this gen
   expect(pages.removedTo(linux.id)).toBe(install.id);
 });
 
+// M8/P3B review C-N3.
+test("a revert whose tree read succeeds reads the tree once, though this generation deleted a page", async () => {
+  const { pages, sent, state } = store();
+  await pages.load();
+  state.nodes = [guide, install, linux];
+  await pages.remove(notes.id);
+  state.writes.set("revert c1", async () => {
+    // The revert of Linux's creation.
+    state.nodes = [guide, install];
+    return { changeset_id: "r1", changed: true };
+  });
+
+  await pages.revert("c1");
+
+  expect(sent.slice(-2)).toEqual(["revert c1", "list plans"]);
+  expect(pages.removedTo(linux.id)).toBe(install.id);
+  expect(pages.removedTo(notes.id)).toBeNull();
+});
+
 test("a revert whose tree cannot be read records nothing it deleted: the tree is as it was", async () => {
   const { pages, sent, state } = store();
   await pages.load();

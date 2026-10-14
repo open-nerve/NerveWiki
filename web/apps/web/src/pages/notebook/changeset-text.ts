@@ -51,8 +51,8 @@ export function byText(changeset: ChangesetBrief, t: Translate): string {
 /**
  * changesetName is how a changeset is named where it leads (v0.1 design
  * 13.2, item 17): by its kind, who made it and when, to the minute, as
- * locale writes it; a twin, another of these the same to the minute, by
- * the end of its id too (twinsIn).
+ * locale writes it; a twin, another named the same, by the end of its id
+ * too (twinsIn).
  */
 export function changesetName(changeset: ChangesetBrief, twin: boolean, t: Translate, locale: Locale): string {
   const kind = kindText(changeset.kind, t);
@@ -65,16 +65,17 @@ export function changesetName(changeset: ChangesetBrief, twin: boolean, t: Trans
 
 /**
  * twinsIn are the ids of the changesets of list, those a page names, that
- * another of them has the name of: of one kind, by one account, in one
- * minute as locale writes it (M8/P3 design 4.2, as the trash's items,
- * M8/P2B review A-M4). One listed twice, a row and what another reverts,
- * is one.
+ * another of them has the name of: of one kind, by a name, two accounts
+ * of one name too, in one minute as locale writes it (M8/P3 design 4.2,
+ * as the trash's items, M8/P2B review A-M4; M8/P3B review A-M5). One
+ * listed twice, a row and what another reverts, is one.
  */
 export function twinsIn(list: readonly ChangesetBrief[], locale: Locale): Set<string> {
   const each = [...new Map(list.map((changeset) => [changeset.id, changeset])).values()];
   return twinsOf(
     each,
-    (changeset) => `${changeset.kind}\n${changeset.created_by.user_id}\n${formatDateTime(changeset.created_at, locale)}`
+    (changeset) =>
+      `${changeset.kind}\n${changeset.created_by.display_name}\n${formatDateTime(changeset.created_at, locale)}`
   );
 }
 
@@ -116,10 +117,14 @@ function changeText(change: ChangesetChange, t: Translate): string {
 /**
  * changesText sums up the changes a changeset lists with it, its first
  * three by node id: what each did, one after the other, as a sentence of
- * locale, and an ellipsis when it changed more.
+ * locale, and an ellipsis when it changed more: a node has one item and
+ * one version at most in a changeset, so the items and versions not
+ * listed are of nodes not listed (M8/P3B review B-1).
  */
 export function changesText(changeset: Changeset, t: Translate, locale: Locale): string {
   const said = changeset.changes.map((change) => changeText(change, t)).join(t("history.separator"));
-  const more = Math.max(changeset.node_count, changeset.content_count) > changeset.changes.length ? "…" : "";
+  const items = changeset.changes.filter((change) => change.kind !== "content").length;
+  const versions = changeset.changes.filter((change) => change.content !== null).length;
+  const more = changeset.node_count > items || changeset.content_count > versions ? "…" : "";
   return said === "" ? "" : `${said.charAt(0).toLocaleUpperCase(locale)}${said.slice(1)}${more}`;
 }

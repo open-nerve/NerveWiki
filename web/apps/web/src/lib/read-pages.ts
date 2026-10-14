@@ -1,5 +1,5 @@
 /** A page of a list read a page at a time: the cursor of the next, null after the last. */
-type ListPage = { next_cursor: string | null };
+export type ListPage = { next_cursor: string | null };
 
 /**
  * readPages reads count pages of a list, from the first, fewer when the

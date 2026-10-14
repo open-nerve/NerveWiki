@@ -85,8 +85,10 @@ export const ChangesetChangeRow = observer(function ChangesetChangeRow({
   const home = `/${slug}/notebooks/${notebook.id}`;
   const { node, content } = change;
   const name = twin ? t("history.nodeTwin", { name: node.name, id: shortId(node.id) }) : node.name;
-  // An attachment is where the tree has it now, or where the change left it, the tree not read yet.
-  const parent = pages.nodes?.find((each) => each.id === node.id)?.parent_id ?? change.after?.parent_id ?? null;
+  // An attachment is where the tree has it now, the notebook's top level too (null), or where the change left it, the
+  // tree not read yet, or read before it came (M8/P3B review A-M4).
+  const now = pages.nodes?.find((each) => each.id === node.id);
+  const parent = now === undefined ? (change.after?.parent_id ?? null) : now.parent_id;
   const open = openOf({ id: node.id, kind: node.kind, parent }, home);
   const texts = treeTexts(change, t);
   return (

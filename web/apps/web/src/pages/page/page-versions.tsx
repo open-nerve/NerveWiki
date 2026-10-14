@@ -13,7 +13,7 @@ import type { Notebook } from "../../services/notebook.service";
 import type { PageVersion, PageVersionPage } from "../../services/page.service";
 import { usePageTree, useStore } from "../../stores/context";
 import type { PageTreeStore } from "../../stores/page-tree.store";
-import { LoadMoreButton, useLoadMore } from "../load-more";
+import { LoadMoreButton, readNext, useLoadMore } from "../load-more";
 import { kindText } from "../notebook/changeset-text";
 import { PanelSection } from "./panel-section";
 
@@ -22,7 +22,7 @@ import { PanelSection } from "./panel-section";
  * events read them again by (events/handlers.ts): as many pages of them as
  * the cache has, from the first, fewer when the list ends (readPages), so
  * that a list read again (an event, a refocus, a connection, the page come
- * back to) is as long as it was. cached is the key's state in SWR's cache.
+ * back to) is as long as it was; key is the key, which More adds to.
  */
 export function useVersions(notebook: Notebook, page: string) {
   const pages = usePageTree(notebook);
@@ -32,7 +32,7 @@ export function useVersions(notebook: Notebook, page: string) {
   const { data, error, mutate } = useSWR(key, () =>
     readPages(pages, page, (cached()?.data as PageVersionPage[] | undefined)?.length ?? 1)
   );
-  return { data, error, mutate, cached };
+  return { data, error, mutate, key };
 }
 
 /**
@@ -58,30 +58,21 @@ export const PageVersions = observer(function PageVersions({
   const t = useT();
   const pages = usePageTree(notebook);
   const { preferences } = useStore();
-  const { data, error, mutate, cached } = useVersions(notebook, page);
+  const swr = useSWRConfig();
+  const { data, error, mutate, key } = useVersions(notebook, page);
   const summary = useRef<HTMLElement>(null);
   // The version's link the focus falls to as More goes.
   const focused = useRef<HTMLAnchorElement>(null);
   const cursor = data?.at(-1)?.next_cursor ?? undefined;
   const more = useLoadMore(
-    async () => {
-      const next = await pages.versions(page, cursor);
-      // Added after the page it was read after, which a read meanwhile may have read again.
-      const read = await mutate(
-        (list) => (list !== undefined && list.at(-1)?.next_cursor === cursor ? [...list, next] : list),
-        { revalidate: false }
-      );
-      if (cached()?.isValidating === true) {
-        // A read out as it was added answers what is older than the addition: SWR drops it. Another reads it all.
-        void mutate();
-      }
-      const added = read?.at(-1) === next;
-      return {
-        added: added ? next.data.map((version) => version.id) : [],
-        whole: added && next.next_cursor === null,
-        last: read?.at(-1)?.data.at(-1)?.id,
-      };
-    },
+    async () =>
+      readNext(
+        swr,
+        key,
+        cursor,
+        (after) => pages.versions(page, after),
+        (read) => read.data.map((version) => version.id)
+      ),
     () => focused.current,
     summary
   );

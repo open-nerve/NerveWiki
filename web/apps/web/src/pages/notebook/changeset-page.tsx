@@ -17,7 +17,7 @@ import { ApiError } from "../../services/api";
 import type { Notebook } from "../../services/notebook.service";
 import type { ChangesetChangePage, ChangesetDetail } from "../../services/page.service";
 import { usePageTree, useStore } from "../../stores/context";
-import { LoadMoreButton, useLoadMore } from "../load-more";
+import { LoadMoreButton, readNext, useLoadMore } from "../load-more";
 import { NotFoundPage } from "../not-found";
 import { BreadcrumbTrail } from "../page/breadcrumbs";
 import { useWorkspace } from "../workspace/workspace-layout";
@@ -29,14 +29,17 @@ import { RevertDialog, type Reverted } from "./revert-dialog";
 /**
  * Said is what the changeset's page says of an undo of it: done, leading
  * to the undo; nothing to undo; its answer lost, finding out (unknown):
- * not found out (unread), undone by someone else (by), or not undone.
+ * not found out, the changeset not read again (unread); undone by someone
+ * else (by), or by whom is not known, the undo not read (undone), each
+ * leading to the undo; or not undone.
  */
 type Said =
   | { kind: "reverted"; revert: string }
   | { kind: "unchanged" }
   | { kind: "unknown" }
   | { kind: "unread" }
-  | { kind: "by"; name: string }
+  | { kind: "by"; name: string; revert: string }
+  | { kind: "undone"; revert: string }
   | { kind: "notDone" };
 
 /**
@@ -94,26 +97,32 @@ const ChangesetShell = observer(function ChangesetShell({ notebook, id }: { note
 
   async function findOut(before: string | undefined): Promise<void> {
     setSaid({ kind: "unknown" });
-    let found: Said;
+    let now: ChangesetDetail;
     try {
       // Read here, not through SWR: its mutate answers what it holds when the read fails.
-      const now = await pages.changeset(id);
-      // It rejects only once the login's cache is gone, the page with it (M8/P1 fix check 3, R3-1).
-      void mutate(now, { revalidate: false }).catch(() => undefined);
-      const newest = now.reverted_by[0];
-      if (newest === undefined || newest === before) {
-        found = { kind: "notDone" };
-      } else {
-        const revert = await pages.changeset(newest);
-        found =
-          revert.created_by.user_id === me
-            ? { kind: "reverted", revert: newest }
-            : { kind: "by", name: revert.created_by.display_name };
-      }
+      now = await pages.changeset(id);
     } catch {
-      found = { kind: "unread" };
+      setSaid({ kind: "unread" });
+      return;
     }
-    setSaid(found);
+    // It rejects only once the login's cache is gone, the page with it (M8/P1 fix check 3, R3-1).
+    void mutate(now, { revalidate: false }).catch(() => undefined);
+    const newest = now.reverted_by[0];
+    if (newest === undefined || newest === before) {
+      setSaid({ kind: "notDone" });
+      return;
+    }
+    // Undone: by whom, the undo read says (M8/P3B review A-M3).
+    try {
+      const revert = await pages.changeset(newest);
+      setSaid(
+        revert.created_by.user_id === me
+          ? { kind: "reverted", revert: newest }
+          : { kind: "by", name: revert.created_by.display_name, revert: newest }
+      );
+    } catch {
+      setSaid({ kind: "undone", revert: newest });
+    }
   }
 
   function done(reverted: Reverted): void {
@@ -182,14 +191,16 @@ const ChangesetShell = observer(function ChangesetShell({ notebook, id }: { note
 /** SaidText is what said says, an undo done leading to its page. */
 function SaidText({ said, href }: { said: Said; href: (id: string) => string }) {
   const t = useT();
+  const see = (revert: string) => (
+    <Link to={href(revert)} className="underline underline-offset-4">
+      {t("history.revertSee")}
+    </Link>
+  );
   switch (said.kind) {
     case "reverted":
       return (
         <>
-          {t("history.revertDone")}{" "}
-          <Link to={href(said.revert)} className="underline underline-offset-4">
-            {t("history.revertSee")}
-          </Link>
+          {t("history.revertDone")} {see(said.revert)}
         </>
       );
     case "unchanged":
@@ -199,7 +210,17 @@ function SaidText({ said, href }: { said: Said; href: (id: string) => string }) 
     case "unread":
       return t("history.revertUnknownStill");
     case "by":
-      return t("history.revertedByOther", { name: said.name });
+      return (
+        <>
+          {t("history.revertedByOther", { name: said.name })} {see(said.revert)}
+        </>
+      );
+    case "undone":
+      return (
+        <>
+          {t("history.revertedBySomeone")} {see(said.revert)}
+        </>
+      );
     case "notDone":
       return t("history.revertNotDone");
   }
@@ -277,8 +298,8 @@ const ChangesetChanges = observer(function ChangesetChanges({
   const t = useT();
   const pages = usePageTree(notebook);
   const key = ["changeset-changes", notebook.id, id];
-  const { cache } = useSWRConfig();
-  const cached = () => cache.get(unstable_serialize(key));
+  const swr = useSWRConfig();
+  const cached = () => swr.cache.get(unstable_serialize(key));
   const { data, error, mutate } = useSWR(key, () =>
     readPages((cursor) => pages.changes(id, cursor), (cached()?.data as ChangesetChangePage[] | undefined)?.length ?? 1)
   );
@@ -286,24 +307,14 @@ const ChangesetChanges = observer(function ChangesetChanges({
   const focused = useRef<HTMLAnchorElement>(null);
   const cursor = data?.at(-1)?.next_cursor ?? undefined;
   const more = useLoadMore(
-    async () => {
-      const next = await pages.changes(id, cursor);
-      // Added after the page it was read after, which a read meanwhile may have read again.
-      const read = await mutate(
-        (list) => (list !== undefined && list.at(-1)?.next_cursor === cursor ? [...list, next] : list),
-        { revalidate: false }
-      );
-      if (cached()?.isValidating === true) {
-        // A read out as it was added answers what is older than the addition: SWR drops it. Another reads it all.
-        void mutate();
-      }
-      const added = read?.at(-1) === next;
-      return {
-        added: added ? next.data.map((change) => change.node.id) : [],
-        whole: added && next.next_cursor === null,
-        last: read?.at(-1)?.data.at(-1)?.node.id,
-      };
-    },
+    async () =>
+      readNext(
+        swr,
+        key,
+        cursor,
+        (after) => pages.changes(id, after),
+        (read) => read.data.map((change) => change.node.id)
+      ),
     () => focused.current,
     heading
   );

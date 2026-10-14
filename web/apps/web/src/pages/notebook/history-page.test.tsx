@@ -6,8 +6,8 @@ import type { NotebookRole } from "../../services/notebook.service";
 import { eventHandlers } from "../../events/handlers";
 import { eventServer, withEvents } from "../../test/event-server";
 import { json, notebookJSON, userJSON, workspaceJSON, type Answer } from "../../test/fakes";
-import { changesetId, created, deleted, moved, renamed, restored, wrote } from "../../test/history-server";
-import { bob, guide, install, linux, notes, pageNode, pageServer } from "../../test/page-server";
+import { changesetId, created, deleted, moved, renamed, reordered, restored, wrote } from "../../test/history-server";
+import { assetNode, bob, guide, install, linux, notes, pageNode, pageServer } from "../../test/page-server";
 import { readAgain } from "../../test/page-panel";
 import { renderApp } from "../../test/render";
 
@@ -441,7 +441,7 @@ test("the clients are each one, every MCP client, and the MCP clients read; MCP 
   await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Listed: 2."));
 });
 
-test("Only this person lists the changesets of who made it, the address's, said politely; its name says who", async () => {
+test("Only this person lists the changesets of who made it, the address's, said politely, the focus on Who, which holds the choice; its name says who", async () => {
   const user = userEvent.setup();
   const { server } = logged();
   const { router } = renderApp(historyPath, server.app);
@@ -452,7 +452,27 @@ test("Only this person lists the changesets of who made it, the address's, said 
   await waitFor(() => expect(rows()).toHaveLength(1));
   expect(router.state.location.search).toBe(`?actor=${bob.user_id}`);
   expect((whoField() as HTMLSelectElement).value).toBe(bob.user_id);
+  expect(document.activeElement).toBe(whoField());
   await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Listed: 1."));
+});
+
+// M8/P3B review A-M2.
+test("Only this person of a list read before, which shows at once, leaves the focus on Who", async () => {
+  const user = userEvent.setup();
+  const { server } = logged();
+  renderApp(historyPath, server.app);
+  await screen.findByRole("list", { name: "Changes" });
+  await user.selectOptions(whoField(), "Bob");
+  await waitFor(() => expect(rows()).toHaveLength(1));
+  await user.selectOptions(whoField(), "Everyone");
+  await waitFor(() => expect(rows()).toHaveLength(4));
+
+  await user.click(screen.getByRole("button", { name: "Only this person (Bob)" }));
+
+  await waitFor(() => expect(rows()).toHaveLength(1));
+  expect(document.activeElement).toBe(whoField());
+  await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Listed: 1."));
+  expect(document.activeElement).toBe(whoField());
 });
 
 /** member is the member n of Lab, person, by email. */
@@ -503,6 +523,70 @@ test("an account the address names that none read has is chosen all the same, by
 
   await screen.findByText("No changes.", { selector: "p" });
   expect(whoField().querySelector("option:checked")?.textContent).toBe("An account, ID 0000aa");
+});
+
+// M8/P3B reviews A-M5, B-3 (v0.1 design 13.2, item 17).
+test("two accounts of one name are told apart: their changesets in a minute by the end of their ids, their Only this person as Who tells them apart", async () => {
+  const user = userEvent.setup();
+  const other = { user_id: "0199a2b4-0000-7000-8000-0000000000aa", display_name: "Ada" };
+  const server = pageServer();
+  server.log("mine", { id: changesetId(21), at: "2026-10-05T09:00:05Z", changes: [wrote(guide, 1, 2)] });
+  server.log("theirs", { id: changesetId(22), at: "2026-10-05T09:00:40Z", by: other, changes: [wrote(guide, 2, 3)] });
+  server.log("undo", {
+    at: "2026-10-05T09:01:00Z",
+    by: bob,
+    kind: "revert",
+    reverts: changesetId(22),
+    changes: [wrote(guide, 3, 4)],
+  });
+  const { router } = renderApp(historyPath, server.app);
+  await screen.findByRole("list", { name: "Changes" });
+
+  expect(linkNames()).toEqual([
+    "Undo change · Bob · Oct 5, 2026, 9:01 AM",
+    "Edit · Ada · Oct 5, 2026, 9:00 AM, ID 0d0022",
+    "Edit · Ada · Oct 5, 2026, 9:00 AM, ID 0d0021",
+  ]);
+  expect(screen.getByRole("link", { name: "Undid “Edit · Ada · Oct 5, 2026, 9:00 AM, ID 0d0022”" })).toBeTruthy();
+  const [, theirs, mine] = rows();
+  expect(
+    within(theirs as HTMLElement).getByRole("button", { name: "Only this person (Ada, ID 0000aa)" }).textContent
+  ).toBe("Only this person");
+  expect(within(mine as HTMLElement).getByRole("button", { name: "Only this person (Ada, ID 000001)" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Only this person (Bob)" })).toBeTruthy();
+
+  await user.click(screen.getByRole("button", { name: "Only this person (Ada, ID 0000aa)" }));
+
+  await waitFor(() => expect(rows()).toHaveLength(1));
+  expect(router.state.location.search).toBe(`?actor=${other.user_id}`);
+  expect((whoField() as HTMLSelectElement).value).toBe(other.user_id);
+});
+
+test("two accounts of one name in the workspace are told apart by their emails, as Who tells them apart, in Chinese too", async () => {
+  const other = { user_id: "0199a2b4-0000-7000-8000-0000000000aa", display_name: "Ada" };
+  const server = pageServer({
+    answers: {
+      "GET /api/v0/workspaces/lab/members": () =>
+        json({
+          data: [
+            member({ user_id: userJSON.id, display_name: "Ada" }, "ada@example.com", 1),
+            member(other, "ada2@example.com", 2),
+          ],
+        }),
+    },
+  });
+  server.log("mine", { at: "2026-10-05T09:00:05Z", changes: [wrote(guide, 1, 2)] });
+  server.log("theirs", { at: "2026-10-05T10:00:40Z", by: other, changes: [wrote(guide, 2, 3)] });
+  renderApp(historyPath, server.app);
+  await screen.findByRole("list", { name: "Changes" });
+
+  // Not in one minute: their rows are not twins.
+  expect(linkNames()).toEqual(["Edit · Ada · Oct 5, 2026, 10:00 AM", "Edit · Ada · Oct 5, 2026, 9:00 AM"]);
+  expect(await screen.findByRole("button", { name: "Only this person (Ada, ada2@example.com)" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Only this person (Ada, ada@example.com)" })).toBeTruthy();
+
+  act(() => server.app.preferences.setLocale("zh-CN"));
+  expect(await screen.findByRole("button", { name: "只看此人（Ada，ada2@example.com）" })).toBeTruthy();
 });
 
 test("a page's history, from the address, is said by its name, with a way to take it off: Remove, the focus to the title", async () => {
@@ -717,10 +801,204 @@ test("a revert's link to a changeset not listed is told apart by the end of its 
   expect(screen.getByRole("link", { name: "Undid “Edit · Ada · Oct 5, 2026, 9:00 AM, ID 0d0011”" })).toBeTruthy();
 });
 
-test("an account in capitals is an id all the same, and is read", async () => {
+test("an account or a page in capitals is the id all the same, as the server reads it: read, and named", async () => {
   const { server } = logged();
-  renderApp(`${historyPath}?actor=${bob.user_id.toUpperCase()}`, server.app);
+  const { router } = renderApp(`${historyPath}?actor=${bob.user_id.toUpperCase()}`, server.app);
 
-  await screen.findByText("No changes.", { selector: "p" });
-  expect(server.sent).toContain(`GET changesets by ${bob.user_id.toUpperCase()}`);
+  await waitFor(() => expect(rows()).toHaveLength(1));
+  expect(server.sent).toContain(`GET changesets by ${bob.user_id}`);
+  expect(whoField().querySelector("option:checked")?.textContent).toBe("Bob");
+  // The list is his: no Only this person.
+  expect(screen.queryByRole("button", { name: "Only this person (Bob)" })).toBeNull();
+
+  await act(() => router.navigate(`${historyPath}?page=${guide.id.toUpperCase()}`));
+  await waitFor(() => expect(rows()).toHaveLength(2));
+  expect(screen.getByText("Page: Guide")).toBeTruthy();
+});
+
+// M8/P3B review B-1.
+test("a changeset of more nodes than its changes listed says so by an ellipsis, though they list as many items or versions as it counts", async () => {
+  const server = pageServer();
+  // A rename of Notes that wrote three pages' links: the three writes are listed, by node id; the rename not.
+  server.log("rename", {
+    changes: [renamed(notes, "Old notes"), wrote(guide, 1, 2), wrote(install, 1, 2), wrote(linux, 1, 2)],
+  });
+  server.log("write", { changes: [wrote(guide, 2, 3), wrote(install, 2, 3), wrote(linux, 2, 3)] });
+  // Three renames listed, and a write of Notes not.
+  server.log("renames", {
+    changes: [renamed(guide, "G"), renamed(install, "I"), renamed(linux, "L"), wrote(notes, 1, 2)],
+  });
+  renderApp(historyPath, server.app);
+  await screen.findByRole("list", { name: "Changes" });
+
+  const [renames, write, rename] = rows();
+  expect(renames?.textContent).toContain("Renamed “G” to “Guide”, renamed “I” to “Install”, renamed “L” to “Linux”…");
+  expect(renames?.textContent).toContain("Nodes: 3, contents: 1");
+  expect(rename?.textContent).toContain("Wrote “Guide”, wrote “Install”, wrote “Linux”…");
+  expect(rename?.textContent).toContain("Nodes: 1, contents: 3");
+  expect(write?.textContent).toContain("Wrote “Guide”, wrote “Install”, wrote “Linux”");
+  expect(write?.textContent).not.toContain("…");
+});
+
+// M8/P3B review B-4 (M8/P3 design 4.7).
+test("a row says what each kind of change did, in Chinese too", async () => {
+  const server = pageServer();
+  server.log("tidy", { changes: [restored(guide), deleted(install), reordered(linux)] });
+  server.log("move", { changes: [moved(notes, guide.id)] });
+  renderApp(historyPath, server.app);
+  await screen.findByRole("list", { name: "Changes" });
+
+  const [move, tidy] = rows();
+  expect(tidy?.textContent).toContain("Restored “Guide” from the trash, deleted “Install”, reordered “Linux”");
+  expect(move?.textContent).toContain("Moved “Notes”");
+
+  act(() => server.app.preferences.setLocale("zh-CN"));
+  const list = await screen.findByRole("list", { name: "改动" });
+  const [moveZh, tidyZh] = within(list).getAllByRole("listitem");
+  expect(tidyZh?.textContent).toContain("从回收站恢复「Guide」、删除「Install」、调整「Linux」的次序");
+  expect(moveZh?.textContent).toContain("移动「Notes」");
+});
+
+// M8/P3B review B-5.
+test("More of a history filtered reads the next of that filter", async () => {
+  const user = userEvent.setup();
+  const server = pageServer();
+  for (let n = 1; n <= 51; n++) {
+    server.log(`Bob ${n.toString()}`, { by: bob, message: `Bob ${n.toString()}`, changes: [wrote(guide, n, n + 1)] });
+    server.log(`Ada ${n.toString()}`, { message: `Ada ${n.toString()}`, changes: [wrote(notes, n, n + 1)] });
+  }
+  renderApp(`${historyPath}?actor=${bob.user_id}`, server.app);
+  await waitFor(() => expect(rows()).toHaveLength(50));
+
+  await user.click(more());
+
+  await waitFor(() => expect(rows()).toHaveLength(51));
+  expect(rows().map((row) => row.querySelector("bdi")?.textContent?.split(" ")[0])).toEqual(
+    Array.from({ length: 51 }, () => "Bob")
+  );
+  expect(server.sent).toContain(`GET changesets by ${bob.user_id} below Bob 2`);
+});
+
+// M8/P3B review A-N1.
+test("a More that failed says nothing once another filter is chosen, nor once its list is shown again", async () => {
+  const user = userEvent.setup();
+  const server = loggedMany(51);
+  renderApp(historyPath, server.app);
+  await screen.findByRole("list", { name: "Changes" });
+  server.historyDown = true;
+  await user.click(more());
+  await screen.findByRole("alert");
+  server.historyDown = false;
+
+  await user.selectOptions(clientField(), "API");
+
+  await waitFor(() => expect(screen.getByText("No changes.", { selector: "p" })).toBeTruthy());
+  expect(screen.queryByRole("alert")).toBeNull();
+  await user.selectOptions(clientField(), "Every client");
+  await waitFor(() => expect(rows()).toHaveLength(50));
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
+// M8/P3B review C-M1.
+test("a More read for one filter, another chosen while it is out, adds to the list it was read for: not to the one shown, which is not busy", async () => {
+  const user = userEvent.setup();
+  const server = pageServer();
+  let n = 0;
+  const log = (client: string, count: number) => {
+    for (let i = 0; i < count; i++) {
+      n += 1;
+      const at = new Date(Date.parse("2026-10-05T08:00:00Z") + n * 60_000).toISOString();
+      const message = `${client} ${n.toString()}`;
+      server.log(message, { at, client, message, changes: [wrote(guide, n, n + 1)] });
+    }
+  };
+  log("api", 5);
+  log("web", 5);
+  log("api", 50);
+  renderApp(`${historyPath}?client=api`, server.app);
+  await waitFor(() => expect(rows()).toHaveLength(50));
+  await user.selectOptions(clientField(), "Every client");
+  await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Listed: 50, and more."));
+  const next = gate();
+  server.historyWaits.next = next.promise;
+  await user.click(more());
+  await waitFor(() => expect(more().getAttribute("aria-busy")).toBe("true"));
+
+  await user.selectOptions(clientField(), "API");
+  await waitFor(() => expect(rows()[0]?.textContent).toContain("api 60"));
+  expect(more().getAttribute("aria-busy")).toBeNull();
+  // The API's More reads its own, the other's out.
+  server.historyWaits.next = undefined;
+  await user.click(more());
+  await waitFor(() => expect(rows()).toHaveLength(55));
+  expect(server.sent).toContain("GET changesets from api below api 11");
+  act(() => next.open());
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 50)));
+
+  expect(rows()).toHaveLength(55);
+  expect(rows().filter((row) => row.querySelector("bdi")?.textContent?.startsWith("web"))).toEqual([]);
+  await user.selectOptions(clientField(), "Every client");
+  await waitFor(() => expect(rows()).toHaveLength(60));
+});
+
+// M8/P3B review A-N1.
+test("a More that fails once another filter is chosen says nothing of it", async () => {
+  const user = userEvent.setup();
+  const server = loggedMany(51);
+  renderApp(historyPath, server.app);
+  await screen.findByRole("list", { name: "Changes" });
+  const next = gate();
+  server.historyWaits.next = next.promise;
+  server.historyDown = true;
+  await user.click(more());
+  await waitFor(() => expect(more().getAttribute("aria-busy")).toBe("true"));
+  server.historyDown = false;
+  await user.selectOptions(clientField(), "API");
+  await waitFor(() => expect(screen.getByText("No changes.", { selector: "p" })).toBeTruthy());
+  server.historyDown = true;
+
+  act(() => next.open());
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 50)));
+
+  expect(screen.queryByRole("alert")).toBeNull();
+  server.historyDown = false;
+});
+
+test("a More read whose list is no longer shown as it ends leaves the focus where it is: not on a row of the list shown", async () => {
+  const user = userEvent.setup();
+  const server = pageServer();
+  server.log("Change 1", { message: "Change 1", changes: [wrote(guide, 1, 2)] });
+  for (let n = 2; n <= 51; n++) {
+    server.log(`Change ${n.toString()}`, { message: `Change ${n.toString()}`, changes: [wrote(notes, n, n + 1)] });
+  }
+  const { router } = renderApp(historyPath, server.app);
+  await screen.findByRole("list", { name: "Changes" });
+  const next = gate();
+  server.historyWaits.next = next.promise;
+  await user.click(more());
+  await waitFor(() => expect(more().getAttribute("aria-busy")).toBe("true"));
+
+  // Guide's history, as Back would show it, lists Change 1, which the More reads: no More there, the focus to the title.
+  await act(() => router.navigate(`${historyPath}?page=${guide.id}`));
+  await waitFor(() => expect(rows()).toHaveLength(1));
+  const heading = screen.getByRole("heading", { level: 1, name: "History" });
+  expect(document.activeElement).toBe(heading);
+  server.historyWaits.next = undefined;
+  act(() => next.open());
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 50)));
+
+  expect(document.activeElement).toBe(heading);
+  await act(() => router.navigate(historyPath));
+  await waitFor(() => expect(rows()).toHaveLength(51));
+});
+
+// M8/P3B review B-7.
+test("an attachment's history is said by its name", async () => {
+  const picture = assetNode(9, "a.png", guide);
+  const server = pageServer({ nodes: [guide, install, linux, notes, picture] });
+  server.log("upload", { changes: [created(picture)] });
+  renderApp(`${historyPath}?page=${picture.id}`, server.app);
+
+  await waitFor(() => expect(rows()).toHaveLength(1));
+  expect(screen.getByText("Page: a.png")).toBeTruthy();
 });

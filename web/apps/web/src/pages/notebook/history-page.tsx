@@ -15,16 +15,23 @@ import { readPages } from "../../lib/read-pages";
 import { ApiError } from "../../services/api";
 import type { ChangesetPage, LogFilter } from "../../services/page.service";
 import { usePageTree, useStore } from "../../stores/context";
-import { LoadMoreButton, useLoadMore } from "../load-more";
+import { LoadMoreButton, readNext, useLoadMore } from "../load-more";
 import { useWorkspace } from "../workspace/workspace-layout";
 import { twinsIn } from "./changeset-text";
-import { HistoryFilters } from "./history-filters";
+import { HistoryFilters, useActors } from "./history-filters";
 import { HistoryRow } from "./history-row";
 import { useNotebook } from "./notebook-layout";
 
-/** filterOf is the filter of a history's address: ?actor=&client=&page=, "" for each left out. */
+/**
+ * filterOf is the filter of a history's address: ?actor=&client=&page=, "" for each left out; an id in capitals is
+ * the id, as the server reads it, and as the page names it (M8/P3B review B-2).
+ */
 function filterOf(params: URLSearchParams): LogFilter {
-  return { actor: params.get("actor") ?? "", client: params.get("client") ?? "", page: params.get("page") ?? "" };
+  return {
+    actor: (params.get("actor") ?? "").toLowerCase(),
+    client: params.get("client") ?? "",
+    page: (params.get("page") ?? "").toLowerCase(),
+  };
 }
 
 /** paramsOf is the query of a history's address that has filter: those of it that narrow it alone. */
@@ -60,6 +67,8 @@ export const HistoryPage = observer(function HistoryPage() {
   const { locale } = useStore().preferences;
   const t = useT();
   const heading = useRef<HTMLHeadingElement>(null);
+  // Who's filter, which holds Only this person's choice.
+  const who = useRef<HTMLSelectElement>(null);
   const title = t("history.title");
   useDocumentTitle(title, notebook.name);
   const [params, setParams] = useSearchParams();
@@ -67,9 +76,9 @@ export const HistoryPage = observer(function HistoryPage() {
   // An account or a page in the address that is no id names none: not read, as the server would refuse it.
   const readable = [filter.actor, filter.page].every((id) => id === "" || idPattern.test(id));
   const key = readable ? ["changesets", notebook.id, filter.actor, filter.client, filter.page] : null;
-  const { cache } = useSWRConfig();
+  const swr = useSWRConfig();
   // A read reads as many pages as the list has, by the cache as it reads: what More added, the page come back to.
-  const cached = () => (key === null ? undefined : cache.get(unstable_serialize(key)));
+  const cached = () => (key === null ? undefined : swr.cache.get(unstable_serialize(key)));
   const { data, error, mutate } = useSWR(key, () =>
     readPages(
       (cursor) => pages.changesets(filter, cursor),
@@ -99,26 +108,19 @@ export const HistoryPage = observer(function HistoryPage() {
     setAsked(undefined);
   }, [asked, serial, data, locale, t]);
   const more = useLoadMore(
-    async () => {
-      const next = await pages.changesets(filter, cursor);
-      // Added after the page it was read after, which a read meanwhile may have read again.
-      const read = await mutate(
-        (list) => (list !== undefined && list.at(-1)?.next_cursor === cursor ? [...list, next] : list),
-        { revalidate: false }
-      );
-      if (cached()?.isValidating === true) {
-        // A read out as it was added answers what is older than the addition: SWR drops it. Another reads it all.
-        void mutate();
-      }
-      const added = read?.at(-1) === next;
-      return {
-        added: added ? next.data.map((changeset) => changeset.id) : [],
-        whole: added && next.next_cursor === null,
-        last: read?.at(-1)?.data.at(-1)?.id,
-      };
-    },
+    async () =>
+      key === null
+        ? { added: [], whole: false, last: undefined }
+        : readNext(
+            swr,
+            key,
+            cursor,
+            (after) => pages.changesets(filter, after),
+            (read) => read.data.map((changeset) => changeset.id)
+          ),
     () => focused.current,
-    heading
+    heading,
+    serial
   );
 
   function choose(next: LogFilter): void {
@@ -129,6 +131,23 @@ export const HistoryPage = observer(function HistoryPage() {
 
   const home = `/${workspace.slug}/notebooks/${notebook.id}`;
   const href = (id: string) => `${home}/history/${id}`;
+  const actors = useActors(changesets, filter.actor);
+  const actorOf = new Map(actors.map((actor) => [actor.id, actor]));
+  // Only this person: named by who, as Who tells them apart; it chooses, the focus on Who, which holds the choice
+  // (M8/P3B review A-M2): its button goes with the list that is theirs.
+  const onlyOf = (id: string, name: string) => {
+    const actor = actorOf.get(id);
+    return {
+      name:
+        actor?.twin === true
+          ? t("history.onlyLabelTwin", { name: actor.name, detail: actor.detail })
+          : t("history.onlyLabel", { name }),
+      choose: () => {
+        who.current?.focus();
+        choose({ ...filter, actor: id });
+      },
+    };
+  };
   const twins = twinsIn(
     changesets.flatMap((changeset) => (changeset.reverts === null ? [changeset] : [changeset, changeset.reverts])),
     locale
@@ -150,6 +169,8 @@ export const HistoryPage = observer(function HistoryPage() {
         notebook={notebook}
         filter={filter}
         read={changesets}
+        actors={actors}
+        whoRef={who}
         choose={choose}
         left={() => heading.current?.focus()}
       />
@@ -176,7 +197,7 @@ export const HistoryPage = observer(function HistoryPage() {
               only={
                 changeset.created_by.user_id === filter.actor
                   ? undefined
-                  : () => choose({ ...filter, actor: changeset.created_by.user_id })
+                  : onlyOf(changeset.created_by.user_id, changeset.created_by.display_name)
               }
               left={() => heading.current?.focus()}
               linkRef={changeset.id === more.focusing ? focused : undefined}
