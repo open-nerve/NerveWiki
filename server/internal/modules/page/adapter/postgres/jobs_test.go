@@ -321,3 +321,34 @@ func TestTheJobsReadsUseTheirIndexes(t *testing.T) {
 		}
 	}
 }
+
+// A deletion's items read the revision of each page they put in the trash
+// by its key alone (M8/P4A): the statistics read before the deletion knew
+// no content deleted at its time, and a look-up by its time too went
+// through the partial index on deleted_at, every content the deletion put
+// there for each item; a background revert's deletion of a top of 45,000
+// pages took 92 s.
+func TestADeletionsItemsReadTheirPagesContentsByKey(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	pages := f.nodes(t, f.eng, "P", 2000)
+	f.exec(t, `INSERT INTO page_contents (node_id, content, revision, content_hash, byte_size, updated_by_id, updated_at)
+		SELECT id, 'x', 1, sha256('x'), 1, $2, $3 FROM unnest($1::uuid[]) id`, pages, f.alice, now())
+	f.exec(t, "ANALYZE")
+	at := now().Add(time.Hour)
+	f.exec(t, `UPDATE nodes SET deleted_at = $2 WHERE id = ANY($1::uuid[])`, pages, at)
+	f.exec(t, `UPDATE page_contents SET deleted_at = $2 WHERE node_id = ANY($1::uuid[])`, pages, at)
+	n := 100
+	p := gen.RecordItemsParams{ChangesetID: uuid.NewV7(), Now: at, Ids: make([]uuid.UUID, n), NodeIds: pages[:n],
+		HasBefores: make([]bool, n), BeforeParentIds: make([]uuid.UUID, n), BeforeNames: make([]string, n),
+		BeforeSortOrders: make([]float64, n), HasAfters: make([]bool, n), AfterParentIds: make([]uuid.UUID, n),
+		AfterNames: make([]string, n), AfterSortOrders: make([]float64, n), Restored: make([]bool, n), Revisions: make([]int32, n)}
+	for i := range n {
+		p.Ids[i], p.HasBefores[i], p.BeforeNames[i] = uuid.NewV7(), true, "P"
+	}
+	plan := f.planOf(t, statementOf(t, func(q *gen.Queries) error { return q.RecordItems(ctx, p) }))
+	text := strings.Join(plan, "\n")
+	if strings.Contains(text, "page_contents_deleted_at_idx") || !strings.Contains(text, "page_contents_pkey") {
+		t.Errorf("RecordItems does not read the pages' contents by their key:\n%s", text)
+	}
+}
