@@ -61,8 +61,9 @@ export type FakeChange = {
  * where and when, why, what it reverts (an id the log has not: purged) and
  * what reverted it, newest first; whether the purge trimmed it, and what
  * it changed, its counts by them unless counts says otherwise. What a
- * test sets of its revert: its conflicts, too large, purged, a page
- * locked, unchanged, and what it does to the tree (undo).
+ * test sets of its revert: its conflicts, too large, too large for a
+ * background job too (jobTooLarge), purged, a page locked, unchanged, and
+ * what it does to the tree (undo).
  */
 export type FakeChangeset = {
   id: string;
@@ -81,6 +82,7 @@ export type FakeChangeset = {
   counts?: { nodes: number; contents: number };
   conflicts: RevertConflict[];
   tooLarge: boolean;
+  jobTooLarge: boolean;
   purged: boolean;
   lockedBy?: { page: string; holder: Person };
   unchanged: boolean;
@@ -117,6 +119,7 @@ export function fakeChangeset(what: Partial<FakeChangeset> = {}): FakeChangeset 
     changes: [],
     conflicts: [],
     tooLarge: false,
+    jobTooLarge: false,
     purged: false,
     unchanged: false,
     ...what,
@@ -197,6 +200,13 @@ const reasons: RevertConflict["reason"][] = [
   "cycle",
   "too_deep",
 ];
+
+/** orderedConflicts are conflicts as the server lists them: by reason in the contract's order, then by node id. */
+export function orderedConflicts(conflicts: readonly RevertConflict[]): RevertConflict[] {
+  return conflicts.toSorted(
+    (a, b) => reasons.indexOf(a.reason) - reasons.indexOf(b.reason) || compare(a.node_id, b.node_id)
+  );
+}
 
 /** sameId tells whether two ids are one, in either case. */
 function sameId(a: string, b: string): boolean {
@@ -417,11 +427,8 @@ export function historyRoutes(server: HistoryState, role: NotebookRole): Record<
         return problem(422, "page.revert_too_large");
       }
       if (changeset.conflicts.length > 0) {
-        const ordered = changeset.conflicts.toSorted(
-          (a, b) => reasons.indexOf(a.reason) - reasons.indexOf(b.reason) || compare(a.node_id, b.node_id)
-        );
         return problem(409, "page.revert_conflict", {
-          conflicts: ordered.slice(0, 100),
+          conflicts: orderedConflicts(changeset.conflicts).slice(0, 100),
           conflict_count: changeset.conflicts.length,
         });
       }

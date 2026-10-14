@@ -180,21 +180,48 @@ export interface TrashCounts {
 }
 
 /**
- * nodes: the node rootId is a trash item's root, deleted, with the counts of the group deleted with it at its time,
- * which are its alone: the other nodes of its group are no roots and have none, and there are as many of them as
- * its counts say.
+ * nodes: the node rootId is a trash item's root, deleted, with the counts of its group, which are its alone: the
+ * nodes under it deleted at its time, down from it, as the server's invariants count them (M8/P4 design 4.5), not
+ * every node of the notebook deleted then, as a batch of a revert deletes many items at once. The other nodes of its
+ * group are no roots and have none, and its pages, attachments and levels of pages are as its counts say. alone, its
+ * deletion deleted nothing else of the notebook at its time: a deletion of the tree's, one item (P4B review C-N2).
  */
-export async function expectTrashRoot(db: Database, rootId: string, counts: TrashCounts): Promise<void> {
+export async function expectTrashRoot(
+  db: Database,
+  rootId: string,
+  counts: TrashCounts,
+  { alone = false }: { alone?: boolean } = {}
+): Promise<void> {
   const rows = await db.query(
-    `SELECT n.trash_root, n.trash_pages AS pages, n.trash_assets AS assets, n.trash_height AS height,
-            (SELECT count(*)::int FROM nodes x WHERE x.notebook_id = n.notebook_id AND x.deleted_at = n.deleted_at) AS grouped,
-            (SELECT count(*)::int FROM nodes x WHERE x.notebook_id = n.notebook_id AND x.deleted_at = n.deleted_at
-               AND x.id <> n.id AND (x.trash_root OR x.trash_pages IS NOT NULL OR x.trash_assets IS NOT NULL
-                 OR x.trash_height IS NOT NULL)) AS others_marked
+    `WITH RECURSIVE g AS (
+       SELECT r.id, r.kind, 1 AS level, r.deleted_at FROM nodes r WHERE r.id = $1
+       UNION ALL
+       SELECT x.id, x.kind, g.level + 1, g.deleted_at
+         FROM g JOIN nodes x ON x.parent_id = g.id AND x.deleted_at = g.deleted_at
+     )
+     SELECT n.trash_root, n.trash_pages AS pages, n.trash_assets AS assets, n.trash_height AS height,
+            (SELECT count(*)::int FROM g WHERE g.kind = 'page') AS grouped_pages,
+            (SELECT count(*)::int FROM g WHERE g.kind = 'asset') AS grouped_assets,
+            (SELECT coalesce(max(g.level) FILTER (WHERE g.kind = 'page'), 0)::int FROM g) AS grouped_height,
+            (SELECT count(*)::int FROM g JOIN nodes x ON x.id = g.id
+              WHERE x.id <> n.id AND (x.trash_root OR x.trash_pages IS NOT NULL OR x.trash_assets IS NOT NULL
+                OR x.trash_height IS NOT NULL)) AS others_marked,
+            (SELECT count(*)::int FROM nodes x WHERE x.notebook_id = n.notebook_id AND x.deleted_at = n.deleted_at)
+              AS at_its_time
        FROM nodes n WHERE n.id = $1 AND n.deleted_at IS NOT NULL`,
     [rootId]
   );
-  expect(rows).toEqual([{ trash_root: true, ...counts, grouped: counts.pages + counts.assets, others_marked: 0 }]);
+  expect(rows).toEqual([
+    {
+      trash_root: true,
+      ...counts,
+      grouped_pages: counts.pages,
+      grouped_assets: counts.assets,
+      grouped_height: counts.height,
+      others_marked: 0,
+      at_its_time: alone ? counts.pages + counts.assets : expect.any(Number),
+    },
+  ]);
 }
 
 /** Where a restore put a trash item's root: its parent (null at the root) and its name, numbered or not. */
@@ -206,9 +233,10 @@ export interface RestoredRoot {
 /**
  * nodes, page_contents, page_revisions, changeset_items, changesets: the trash item of rootId, the nodes ids, is
  * restored by restorerId: its root under root.parentId named root.name, each node alive, no root nor counts, updated
- * by the restorer at the restore's time; their contents, versions and items alive; the restore's changeset of its
- * kind, a trash_restore or, a deletion reverted, a revert (M8/P3 design 4.8), holding an item of each node, restored,
- * from nothing to where the node is, a page's at its content's revision.
+ * by the restorer at the time of its own item, which a restore in the background writes batch by batch (M8/P4 design
+ * 4.5); their contents, versions and items alive; the restore's changeset of its kind, a trash_restore or, a deletion
+ * reverted, a revert (M8/P3 design 4.8), holding an item of each node, restored, from nothing to where the node is, a
+ * page's at its content's revision.
  */
 export async function expectSubtreeRestored(
   db: Database,
@@ -222,7 +250,8 @@ export async function expectSubtreeRestored(
     `SELECT n.parent_id AS "parentId", n.name, s.kind, s.created_by_id = $3 AS by_restorer,
             (SELECT count(*)::int FROM nodes x WHERE x.id = ANY($2::uuid[]) AND x.deleted_at IS NULL AND NOT x.trash_root
                AND x.trash_pages IS NULL AND x.trash_assets IS NULL AND x.trash_height IS NULL
-               AND x.updated_by_id = $3 AND x.updated_at = s.created_at) AS nodes,
+               AND x.updated_by_id = $3 AND x.updated_at = (SELECT i.created_at FROM changeset_items i
+                 WHERE i.changeset_id = s.id AND i.node_id = x.id)) AS nodes,
             (SELECT count(*)::int FROM nodes x WHERE x.id = ANY($2::uuid[]) AND x.kind = 'page' AND NOT EXISTS (
                SELECT 1 FROM page_contents c WHERE c.node_id = x.id AND c.deleted_at IS NULL)) AS pages_without_content,
             (SELECT count(*)::int FROM page_revisions v WHERE v.node_id = ANY($2::uuid[]) AND v.deleted_at IS NOT NULL) AS versions_deleted,

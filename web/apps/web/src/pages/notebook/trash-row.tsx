@@ -14,16 +14,18 @@ import { useT, type Translate } from "../../i18n/i18n";
 import type { Locale } from "../../i18n/locale";
 import { useFocusLeaving } from "../../lib/focus-leaving";
 import { shortId, twinsOf } from "../../lib/twins";
-import { ApiError } from "../../services/api";
+import { ApiError, lost } from "../../services/api";
 import type { Notebook } from "../../services/notebook.service";
 import type { TrashItem, TreeNode } from "../../services/page.service";
-import { usePageTree, useStore } from "../../stores/context";
+import type { TransferJob } from "../../services/transfer.service";
+import { useAccount, usePageTree, useStore, useTransfers } from "../../stores/context";
 import { AssetIcon, type Located } from "../page/attachment-row";
 import { useWorkspace } from "../workspace/workspace-layout";
 
 // A trash item as the trash's list and its preview show it (M8 design 4.5,
 // 4.13; M8/P2 design 4.2, 4.3): its row, what is said of it, and its
-// restore, which both send.
+// restore, which both send; refused as too large to restore here, its
+// restore in the background (M8/P4 design 4.2).
 
 /**
  * TrashRestored is what the trash's status line says of an item restored:
@@ -49,6 +51,32 @@ export function restoredOf(state: unknown): TrashRestored | undefined {
   const restored = state.restored;
   return typeof restored === "object" && restored !== null && "id" in restored && typeof restored.id === "string"
     ? (restored as TrashRestored)
+    : undefined;
+}
+
+/**
+ * Started is what the trash's status line says of a restore started in
+ * the background: the item's name, and its job, whose row the jobs' page
+ * gives the focus to (M8/P4 design 4.2).
+ */
+export type Started = { name: string; job: string };
+
+/** StartedState is the route state of the trash arrived at from an item's restore started in its preview (review B-M5). */
+export type StartedState = { arrived: true; started: Started };
+
+/** startedOf is the restore started the route state says, if it says one. */
+export function startedOf(state: unknown): Started | undefined {
+  if (typeof state !== "object" || state === null || !("started" in state)) {
+    return undefined;
+  }
+  const started = state.started;
+  return typeof started === "object" &&
+    started !== null &&
+    "job" in started &&
+    typeof started.job === "string" &&
+    "name" in started &&
+    typeof started.name === "string"
+    ? { name: started.name, job: started.job }
     : undefined;
 }
 
@@ -111,7 +139,7 @@ export function openOf(
  * another item, deleted with a page above it since, or too large to
  * restore here, with its counts; anything else as the app says it.
  */
-export function refusalText(error: unknown, item: TrashItem, t: Translate): string | undefined {
+function refusalText(error: unknown, item: TrashItem, t: Translate): string | undefined {
   if (error instanceof ApiError) {
     switch (error.code) {
       case "page.not_in_trash":
@@ -126,6 +154,43 @@ export function refusalText(error: unknown, item: TrashItem, t: Translate): stri
     }
   }
   return errorText(error, t);
+}
+
+/**
+ * Refusal is a refusal of item's restore: its restore here's, or, start,
+ * its start in the background's.
+ */
+export type Refusal = { error: unknown; item: TrashItem; start?: boolean };
+
+/**
+ * refusedText says why refusal's item was not restored, or, refused its
+ * start in the background, why that did not start: a job that writes the
+ * notebook's tree under way, or too many jobs waiting (M8/P4 design 4.2);
+ * else as refusalText.
+ */
+export function refusedText({ error, item, start }: Refusal, t: Translate): string | undefined {
+  if (start === true && error instanceof ApiError) {
+    switch (error.code) {
+      case "transfer.busy":
+        return t("transfer.writingBusy");
+      case "server_busy":
+        return t("transfer.queueFull");
+    }
+  }
+  return refusalText(error, item, t);
+}
+
+/**
+ * offeredOf is the item a restore in the background is offered for after
+ * refusal (M8/P4 design 4.2): one too large to restore here, or whose start
+ * in the background found the notebook or the server busy, to try again;
+ * none after any other refusal.
+ */
+export function offeredOf(refusal: Refusal | undefined): TrashItem | undefined {
+  const code = refusal?.error instanceof ApiError ? refusal.error.code : undefined;
+  const offered =
+    refusal?.start === true ? code === "transfer.busy" || code === "server_busy" : code === "page.restore_too_large";
+  return offered ? refusal?.item : undefined;
 }
 
 /** twinKey is what tells two trash items apart in the list: their names, and the names of where they were. */
@@ -154,27 +219,34 @@ export function twinsIn(list: readonly TrashItem[], locale: Locale): (item: Tras
 }
 
 /**
- * namesOf are how the link to item's preview and its Restore are named:
- * by its name and where it was, and a twin's by when it was deleted too,
- * and by the end of its id when that is the same to the minute.
+ * namesOf are how the link to item's preview, its Restore and its Restore
+ * in the background are named: by its name and where it was, and a twin's
+ * by when it was deleted too, and by the end of its id when that is the
+ * same to the minute.
  */
 export function namesOf(item: TrashItem, twin: Twin, t: Translate, locale: Locale) {
   const { name } = item;
   const from = fromText(item, t);
   if (twin === "none") {
-    return { link: t("trash.linkName", { name, from }), restore: t("trash.restoreLabel", { name, from }) };
+    return {
+      link: t("trash.linkName", { name, from }),
+      restore: t("trash.restoreLabel", { name, from }),
+      background: t("trash.backgroundLabel", { name, from }),
+    };
   }
   const time = formatDateTime(item.deleted_at, locale);
   if (twin === "time") {
     return {
       link: t("trash.linkNameTwin", { name, from, time }),
       restore: t("trash.restoreLabelTwin", { name, from, time }),
+      background: t("trash.backgroundLabelTwin", { name, from, time }),
     };
   }
   const id = shortId(item.id);
   return {
     link: t("trash.linkNameTwinId", { name, from, time, id }),
     restore: t("trash.restoreLabelTwinId", { name, from, time, id }),
+    background: t("trash.backgroundLabelTwinId", { name, from, time, id }),
   };
 }
 
@@ -275,17 +347,68 @@ export function useTrashRestore(notebook: Notebook): (item: TrashItem) => Promis
 }
 
 /**
- * RestoreButton is an item's Restore, named label: busy while its restore
- * is out, pressed again meanwhile it sends nothing (M8/P2 design review
- * B-M3). Gone with the focus, a reader by now, it gives the focus away
- * (left) before it leaves the document.
+ * BackgroundStart is what a restore started in the background came to: its
+ * job; or, its answer lost, none of the jobs read again its press's (none),
+ * or the jobs not read either (unread).
+ */
+export type BackgroundStart = { job: TransferJob } | { lost: "none" | "unread" };
+
+/**
+ * useBackgroundRestore is how the trash's list and its preview restore an
+ * item in the background, refused as too large to restore here (M8/P4
+ * design 4.2): through the jobs' store, a start at a time. It answers the
+ * job started, or, its answer lost (a 5xx but busy, no answer), the
+ * account's job of the item that is the press's among the jobs read again,
+ * if any (review B-M6; startedJob); it rejects with any other refusal.
+ * The list and the item are read again, as after a restore; a refusal of
+ * a role taken away meanwhile, or of a notebook gone or out of reach, has
+ * the notebooks read again too.
+ */
+export function useBackgroundRestore(notebook: Notebook): (item: TrashItem) => Promise<BackgroundStart> {
+  const transfers = useTransfers(notebook);
+  const { me } = useAccount();
+  const workspace = useWorkspace();
+  const { mutate } = useSWRConfig();
+  return async (item) => {
+    const press = transfers.press();
+    try {
+      return { job: await transfers.startTrashRestore(item.id) };
+    } catch (refusal) {
+      if (!lost(refusal)) {
+        if (refusal instanceof ApiError && (refusal.code === "forbidden" || refusal.status === 404)) {
+          void mutate(["notebooks", workspace.id]).catch(() => undefined);
+        }
+        throw refusal;
+      }
+    } finally {
+      void mutate(["trash", notebook.id]).catch(() => undefined);
+      void mutate(["trash-item", notebook.id, item.id]).catch(() => undefined);
+    }
+    try {
+      const job = await transfers.startedJob("trash_restore", item.id, me.id, press);
+      return job === undefined ? { lost: "none" } : { job };
+    } catch {
+      return { lost: "unread" };
+    }
+  };
+}
+
+/**
+ * RestoreButton is an item's Restore, named label, or its Restore in the
+ * background, which says text: busy while its restore is out, pressed
+ * again meanwhile it sends nothing (M8/P2 design review B-M3). Gone with
+ * the focus, a reader by now, it gives the focus away (left) before it
+ * leaves the document.
  */
 export function RestoreButton({
   label,
+  text,
   restore,
   left,
 }: {
   label: string;
+  /** What it says; Restore without it. */
+  text?: string;
   /** Restores the item, saying what came of it: it does not reject. */
   restore: () => Promise<void>;
   left: () => void;
@@ -322,7 +445,7 @@ export function RestoreButton({
       aria-disabled={sending || undefined}
       onClick={() => void send()}
     >
-      {t("trash.restore")}
+      {text ?? t("trash.restore")}
     </Button>
   );
 }

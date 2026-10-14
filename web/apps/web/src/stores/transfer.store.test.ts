@@ -2,26 +2,33 @@ import { expect, test } from "vitest";
 
 import type { TransferJob, TransferJobPage, TransferService } from "../services/transfer.service";
 import { jobJSON, underWay } from "../test/jobs-server";
+import { bob } from "../test/page-server";
 import { TransferStore } from "./transfer.store";
 
 const job = (n: number, more: Partial<TransferJob> = {}) => jobJSON(n, more);
 const page = (jobs: TransferJob[], next: string | null = null): TransferJobPage => ({ data: jobs, next_cursor: next });
 
-type Service = Pick<TransferService, "list" | "startExport" | "startImport" | "cancel" | "get">;
+type Service = Pick<
+  TransferService,
+  "list" | "startExport" | "startImport" | "startTrashRestore" | "startRevert" | "cancel" | "get"
+>;
 
 /** A request of the store's service held until the test answers it. */
 type Held<A, T> = { ask: A; answer: (answered: T) => void; fail: (error: unknown) => void };
 
 /**
- * A store of n1's jobs over a service whose every list, start, import and
- * cancel waits for the test to answer it: lists, starts, imports and
- * cancels have them in order, with their cursor, root, place and file's
- * name, and id; warned, what the store asked the browser's warning.
+ * A store of n1's jobs over a service whose every list, start, import,
+ * restore, revert and cancel waits for the test to answer it: lists,
+ * starts, imports, restores, reverts and cancels have them in order, with
+ * their cursor, root, place and file's name, node, changeset and message,
+ * and id; warned, what the store asked the browser's warning.
  */
 function storeOf(more: Partial<Service> = {}) {
   const lists: Held<string | undefined, TransferJobPage>[] = [];
   const starts: Held<string | null, TransferJob>[] = [];
   const imports: Held<string, TransferJob>[] = [];
+  const restores: Held<string, TransferJob>[] = [];
+  const reverts: Held<string, TransferJob>[] = [];
   const cancels: Held<string, TransferJob>[] = [];
   const warned: boolean[] = [];
   const store = new TransferStore(
@@ -34,6 +41,12 @@ function storeOf(more: Partial<Service> = {}) {
         new Promise((resolve, reject) =>
           imports.push({ ask: `${parent ?? "root"} ${file.name}`, answer: resolve, fail: reject })
         ),
+      startTrashRestore: (_notebook, node) =>
+        new Promise((resolve, reject) => restores.push({ ask: node, answer: resolve, fail: reject })),
+      startRevert: (_notebook, changeset, message) =>
+        new Promise((resolve, reject) =>
+          reverts.push({ ask: `${changeset} ${message ?? "-"}`, answer: resolve, fail: reject })
+        ),
       cancel: (id) => new Promise((resolve, reject) => cancels.push({ ask: id, answer: resolve, fail: reject })),
       get: () => Promise.reject(new Error("not read")),
       ...more,
@@ -41,7 +54,7 @@ function storeOf(more: Partial<Service> = {}) {
     "n1",
     (on) => warned.push(on)
   );
-  return { store, lists, starts, imports, cancels, warned };
+  return { store, lists, starts, imports, restores, reverts, cancels, warned };
 }
 
 /** answer answers the held request i of asks with answered, and waits for what came of it. */
@@ -220,7 +233,7 @@ test("an import goes beside an export's start, first once answered, the read on 
   await answer(imports, 0, vault, imported);
   await answer(lists, 1, page([job(1)]), load);
   expect(ids(store)).toEqual([9, 1]);
-  expect([store.uploading, warned, store.importing]).toEqual([0, [true, false], true]);
+  expect([store.uploading, warned, store.writing]).toEqual([0, [true, false], true]);
   await answer(starts, 0, underWay(job(8), 0, 0), exported);
   expect(ids(store)).toEqual([8, 9, 1]);
 });
@@ -258,20 +271,138 @@ test("of two imports at once, the page asks before it is left until both have en
   expect([store.uploading, warned.at(-1)]).toEqual([0, false]);
 });
 
-test("importing tells whether an import held is queued or running: not an export, not one ended", () => {
+test("writing tells whether a job held that writes the tree, an import, a restore or a revert, is queued or running: not an export, not one ended", () => {
   const { store } = storeOf();
   const imported = job(2, { kind: "import" });
+  const restore = job(3, { kind: "trash_restore", root_id: "n3" });
+  const revert = job(4, { kind: "revert", target_changeset_id: "c4" });
   const cases: [TransferJob[], boolean][] = [
     [[], false],
-    [[underWay(job(1), 0, 0), imported], false],
+    [[underWay(job(1), 0, 0), imported, restore, revert], false],
     [[job(1), underWay(imported, 0, 0)], true],
     [[underWay(imported, 1, 4)], true],
-    [[{ ...imported, state: "failed" }], false],
+    [[underWay(restore, 0, 0)], true],
+    [[underWay(restore, 1, 103)], true],
+    [[underWay(revert, 0, 0)], true],
+    [[underWay(revert, 1, 1501)], true],
+    [
+      [
+        { ...imported, state: "failed" },
+        { ...restore, state: "cancelled" },
+        { ...revert, state: "failed" },
+      ],
+      false,
+    ],
   ];
-  for (const [jobs, importing] of cases) {
+  for (const [jobs, writing] of cases) {
     store.jobs = jobs;
-    expect(store.importing).toBe(importing);
+    expect(store.writing).toBe(writing);
   }
+  // An export running is under way, the list read again for it, but writes no tree.
+  store.jobs = [underWay(job(1), 1, 4)];
+  expect([store.active, store.writing]).toEqual([true, false]);
+});
+
+test("a restore and a revert started in the background go first, once though a read had them, the read on its way dropped; they start one at a time with the exports, the message sent", async () => {
+  const { store, lists, starts, restores, reverts } = storeOf();
+  await answer(lists, 0, page([job(1)]), store.load());
+  const load = store.load();
+
+  const exported = store.start(null);
+  const restored = store.startTrashRestore("n7");
+  const reverted = store.startRevert("c8", "why");
+  await settled();
+  expect([starts.length, restores.length, reverts.length]).toEqual([1, 0, 0]);
+  await answer(starts, 0, underWay(job(6), 0, 0), exported);
+  await settled();
+  expect([restores.map((each) => each.ask), reverts.length]).toEqual([["n7"], 0]);
+  const restore = underWay(job(7, { kind: "trash_restore", root_id: "n7" }), 0, 0);
+  await answer(restores, 0, restore, restored);
+  await settled();
+  expect(reverts.map((each) => each.ask)).toEqual(["c8 why"]);
+  await answer(lists, 1, page([restore, job(1)]), load);
+  const revert = underWay(job(8, { kind: "revert", target_changeset_id: "c8" }), 0, 0);
+  await answer(reverts, 0, revert, reverted);
+
+  await expect(restored).resolves.toBe(restore);
+  await expect(reverted).resolves.toBe(revert);
+  expect([ids(store), store.writing]).toEqual([[8, 7, 6, 1], true]);
+  void store.startRevert("c9");
+  await settled();
+  expect(reverts.map((each) => each.ask)).toEqual(["c8 why", "c9 -"]);
+});
+
+test("a start refused leaves the jobs held, and the next start goes", async () => {
+  const { store, lists, restores } = storeOf();
+  await answer(lists, 0, page([job(1)]), store.load());
+  const refused = store.startTrashRestore("n7");
+  const next = store.startTrashRestore("n8");
+  await settled();
+
+  restores[0]?.fail(new Error("transfer.busy"));
+  await expect(refused).rejects.toThrow("transfer.busy");
+  await settled();
+  await answer(restores, 1, underWay(job(8, { kind: "trash_restore", root_id: "n8" }), 0, 0), next);
+
+  expect([restores.map((each) => each.ask), ids(store)]).toEqual([
+    ["n7", "n8"],
+    [8, 1],
+  ]);
+});
+
+// M8/P4 design 4.2, review B-M6: a start whose answer was lost finds its job by its kind, its target, who started it
+// and when.
+test("press holds the browser's time and the jobs held as it is pressed", async () => {
+  const { store, lists } = storeOf();
+  expect([...store.press().known]).toEqual([]);
+  await answer(lists, 0, page([job(2), job(1)]), store.load());
+  const before = Date.now();
+
+  const press = store.press();
+
+  expect(press.at).toBeGreaterThanOrEqual(before);
+  expect(press.at).toBeLessThanOrEqual(Date.now());
+  expect([...press.known]).toEqual([job(2).id, job(1).id]);
+});
+
+test("startedJob reads the list again and finds the account's job of the kind on the target that is the press's: one under way, whatever time the server's clock gave it; one ended that the store did not hold at the press, made no earlier than a minute before it; not another kind's, target's or account's", async () => {
+  const { store, lists } = storeOf();
+  const press = { at: Date.parse("2026-10-06T08:00:00Z"), known: new Set([job(8).id]) };
+  const mine = (n: number, more: Partial<TransferJob>) => job(n, { created_at: "2026-10-06T08:00:01Z", ...more });
+  const listed = [
+    mine(1, { kind: "trash_restore", root_id: "c3" }),
+    mine(2, { kind: "revert", target_changeset_id: "c4" }),
+    mine(3, { kind: "revert", target_changeset_id: "c3", created_by: bob }),
+    // Ended: one the store held at the press; one made more than a minute before it.
+    mine(8, { kind: "revert", target_changeset_id: "c3", created_at: "2026-10-06T07:59:50Z" }),
+    mine(4, { kind: "revert", target_changeset_id: "c3", created_at: "2026-10-06T07:58:59Z" }),
+    // Ended, made by a server's clock 30 seconds behind the browser's.
+    mine(5, { kind: "revert", target_changeset_id: "c3", created_at: "2026-10-06T07:59:30Z" }),
+    mine(6, { kind: "import", root_id: "n6" }),
+    // Under way, running, made by a server's clock ten minutes behind.
+    underWay(mine(7, { kind: "trash_restore", root_id: "n6", created_at: "2026-10-06T07:50:00Z" }), 1, 103),
+  ];
+
+  const revert = store.startedJob("revert", "c3", jobJSON(1).created_by.user_id, press);
+  await answer(lists, 0, page(listed), revert);
+  const restore = store.startedJob("trash_restore", "n6", jobJSON(1).created_by.user_id, press);
+  await answer(lists, 1, page(listed), restore);
+  const none = store.startedJob("trash_restore", "n9", jobJSON(1).created_by.user_id, press);
+  await answer(lists, 2, page(listed), none);
+
+  await expect(revert).resolves.toBe(listed[5]);
+  await expect(restore).resolves.toBe(listed[7]);
+  await expect(none).resolves.toBeUndefined();
+  expect(lists.map((list) => list.ask)).toEqual([undefined, undefined, undefined]);
+});
+
+test("startedJob rejects when the list cannot be read: nothing is known", async () => {
+  const { store, lists } = storeOf();
+  const found = store.startedJob("revert", "c3", jobJSON(1).created_by.user_id, store.press());
+  await settled();
+  lists[0]?.fail(new TypeError("offline"));
+
+  await expect(found).rejects.toThrow("offline");
 });
 
 test("a running job's cancel answered replaces it at once: its cancel asked", async () => {

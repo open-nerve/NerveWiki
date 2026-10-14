@@ -333,7 +333,7 @@ test("a report whose problems cannot be read says why, its counts shown; Try aga
       "GET /api/v0/transfer-jobs/*": () =>
         down
           ? Promise.reject(new TypeError("offline"))
-          : json({ ...jobJSON(1), problems: [], problems_truncated: false }),
+          : json({ ...jobJSON(1), problems: [], problems_truncated: false, conflicts: [], conflict_count: 0 }),
     },
   });
   renderApp(transfer, server.app);

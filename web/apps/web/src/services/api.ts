@@ -29,6 +29,16 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * lost tells whether a write's answer says nothing of its outcome: a 5xx
+ * but busy (the server's request deadline is a 500, its commit maybe
+ * landed), or no answer at all (fetch's TypeError); then what it would
+ * have changed is read again (M8/P3 design 4.4, P4 design 4.2).
+ */
+export function lost(error: unknown): boolean {
+  return error instanceof TypeError || (error instanceof ApiError && error.status >= 500 && error.status !== 503);
+}
+
 function isProblem(body: unknown): body is Problem {
   return typeof body === "object" && body !== null && typeof (body as { code?: unknown }).code === "string";
 }

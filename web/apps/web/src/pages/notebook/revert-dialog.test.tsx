@@ -419,14 +419,6 @@ test.each<[string, (rework: ReturnType<typeof reworked>["rework"]) => void, stri
     },
     "Bob is editing “Guide”.",
   ],
-  [
-    "a changeset too large says what is, and how many nodes it touched, a thousand as many or more",
-    (rework) => {
-      rework.tooLarge = true;
-      rework.counts = { nodes: 1000, contents: 3 };
-    },
-    "This change is too large to undo here: its nodes, pages, content, links or those pages' history are more than one undo does. Nodes it touched: 1,000+.",
-  ],
 ])("an undo refused as %s, in the dialog, which stays", async (_, refuse, text) => {
   const user = userEvent.setup();
   const { server, rework } = reworked();
@@ -691,6 +683,39 @@ test("an undo whose answer was lost, its changeset not read again, says the outc
       "Whether it was undone is not known: this change could not be read again. Reload the page to see."
     )
   );
+});
+
+// P4B review A-N3, fix check F-3: what the changeset read again finds out late is not said over a later undo's.
+test("an undo whose answer was lost, its changeset read again only after another undo was done, says nothing over it", async () => {
+  const user = userEvent.setup();
+  const undone = changesetId(7000);
+  let sent = 0;
+  const { server, rework } = lost(
+    () => {
+      sent += 1;
+      return sent === 1 ? problem(500, "internal_error") : json({ changeset_id: undone, changed: true });
+    },
+    () => undefined
+  );
+  renderApp(changesetPath(rework.id), server.app);
+  const read = gate();
+  const first = await opened(user);
+  server.historyWaits.changeset = read.promise;
+  await user.click(within(first).getByRole("button", { name: "Undo" }));
+  const status = screen.getByRole("status");
+  await waitFor(() =>
+    expect(status.textContent).toBe("Whether it was undone is not known: reading this change again…")
+  );
+
+  const second = await opened(user);
+  await user.click(within(second).getByRole("button", { name: "Undo" }));
+  await waitFor(() => expect(status.textContent).toBe("Undone. See the undo"));
+  // The first undo's read of the changeset answers last: it finds no undo but the one known as it was sent.
+  act(() => read.open());
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+
+  expect(status.textContent).toBe("Undone. See the undo");
+  expect(within(status).getByRole("link", { name: "See the undo" }).getAttribute("href")).toBe(changesetPath(undone));
 });
 
 // M8/P3B review A-M3.

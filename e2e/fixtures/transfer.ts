@@ -4,13 +4,15 @@ import { request } from "node:http";
 import { expect } from "@playwright/test";
 
 import { bearer } from "./auth";
+import type { Database } from "./db";
 import { unzip, type ZipEntry } from "./zip";
 
-// The exports and imports of the stories, through the API (M7/P5 design
-// 3.16, P6 design 3.18): a job started, read until it ends; an export's
+// The jobs of the stories, through the API (M7/P5 design 3.16, P6 design
+// 3.18; M8/P4 design 4.5): a job started, read until it ends; an export's
 // archive downloaded at the address the server signed, without a token;
 // an import's sent as multipart/form-data, which the client sends as a
-// FormData.
+// FormData; a trash item's restore and a changeset's revert in the
+// background, whose batches a test holds back by the notebook's row.
 
 /** credential's start of an export of the notebook notebookId, or of its page rootId and its subtree. */
 async function postExport(api: ApiClient, credential: string, notebookId: string, rootId?: string) {
@@ -130,13 +132,83 @@ export function holdImport(
   };
 }
 
+/** credential's start of the restore of the trash item whose root is the node nodeId in the background, as answered. */
+async function postTrashRestore(api: ApiClient, credential: string, notebookId: string, nodeId: string) {
+  return api.POST("/api/v0/notebooks/{notebook_id}/trash-restores", {
+    params: { path: { notebook_id: notebookId } },
+    body: { node_id: nodeId },
+    headers: bearer(credential),
+  });
+}
+
+/** Starts credential's restore of the trash item of the root nodeId in the background, and returns its job, queued. */
+export async function startTrashRestore(
+  api: ApiClient,
+  credential: string,
+  notebookId: string,
+  nodeId: string
+): Promise<TransferJob> {
+  const { data, error, response } = await postTrashRestore(api, credential, notebookId, nodeId);
+  expect(response.status, `restore in the background: ${JSON.stringify(error)}`).toBe(202);
+  if (!data) {
+    throw new Error("restore in the background answered 202 without the job");
+  }
+  return data;
+}
+
+/** credential's start of the revert of the changeset changesetId in the background, with message, as answered. */
+async function postRevert(
+  api: ApiClient,
+  credential: string,
+  notebookId: string,
+  changesetId: string,
+  message?: string
+) {
+  return api.POST("/api/v0/notebooks/{notebook_id}/reverts", {
+    params: { path: { notebook_id: notebookId } },
+    body: { changeset_id: changesetId, ...(message === undefined ? {} : { message }) },
+    headers: bearer(credential),
+  });
+}
+
+/** Starts credential's revert of the changeset changesetId in the background, and returns its job, queued. */
+export async function startRevert(
+  api: ApiClient,
+  credential: string,
+  notebookId: string,
+  changesetId: string,
+  message?: string
+): Promise<TransferJob> {
+  const { data, error, response } = await postRevert(api, credential, notebookId, changesetId, message);
+  expect(response.status, `revert in the background: ${JSON.stringify(error)}`).toBe(202);
+  if (!data) {
+    throw new Error("revert in the background answered 202 without the job");
+  }
+  return data;
+}
+
+/**
+ * holdNotebookRow holds the row of the notebook notebookId FOR SHARE in a transaction of the test's own, on a
+ * connection of its own (db.hold), as a page write that changes no tree does: a start, a plan and a job's progress
+ * go on beside it, but a batch of a restore or a revert, a write of the tree, takes the row FOR NO KEY UPDATE and
+ * waits (M8/P4 design 3.10, 4.5). It resolves the hold's release, which the test calls in a finally.
+ */
+export function holdNotebookRow(db: Database, notebookId: string): Promise<() => Promise<void>> {
+  return db.hold("SELECT 1 FROM notebooks WHERE id = $1 FOR SHARE", [notebookId]);
+}
+
 /** credential's read of the job id, as the API answers it. */
 async function getJob(api: ApiClient, credential: string, id: string) {
   return api.GET("/api/v0/transfer-jobs/{job_id}", { params: { path: { job_id: id } }, headers: bearer(credential) });
 }
 
-/** The job id once it has ended, as credential reads it. */
-export async function endedJob(api: ApiClient, credential: string, id: string): Promise<TransferJobDetail> {
+/** The job id once it has ended, as credential reads it, within timeout: a large job's batches take longer. */
+export async function endedJob(
+  api: ApiClient,
+  credential: string,
+  id: string,
+  timeout = 15_000
+): Promise<TransferJobDetail> {
   let job: TransferJobDetail | undefined;
   await expect
     .poll(
@@ -146,7 +218,7 @@ export async function endedJob(api: ApiClient, credential: string, id: string): 
         job = data;
         return job?.state;
       },
-      { message: `the job ${id} ends`, timeout: 15_000 }
+      { message: `the job ${id} ends`, timeout }
     )
     .not.toMatch(/^(queued|running)$/);
   if (!job) {

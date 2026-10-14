@@ -163,6 +163,79 @@ export async function expectImported(
     .toBe(false);
 }
 
+/** What a restore or a revert in the background did, as its report counts it: a count not given is none. */
+export type BackgroundCounts = Partial<
+  Record<"pages" | "attachments" | "renamed" | "skipped" | "restored" | "deleted" | "put_back" | "written", number>
+>;
+
+/**
+ * transfer_jobs, changesets: the job id is creatorId's restore of the trash item of the root root, or revert of the
+ * changeset target, in the background (M8/P4 design 4.5), from client, succeeded with its nodes done of as many, its
+ * report the counts, where it put the item (placed, a restore's) and no failure, started before it ended. Its
+ * changeset, decided as it started, is the one its batches wrote, alive, of its kind, creatorId's from client, a
+ * revert's reverting target. It resolves that changeset's id.
+ */
+export async function expectBackgroundJob(
+  db: Database,
+  id: string,
+  expected: {
+    kind: "trash_restore" | "revert";
+    creatorId: string;
+    client: string;
+    root: string | null;
+    target: string | null;
+    nodes: number;
+    counts: BackgroundCounts;
+    placed: { parent_id: string | null; reason: string } | null;
+  }
+): Promise<string> {
+  const rows = await db.query<Record<string, unknown> & { changeset_id: string | null }>(
+    `SELECT j.kind, j.state, j.client, j.root_id, j.target_changeset_id, j.created_by_id = $2 AS by_creator,
+            j.progress_done::int AS done, j.progress_total::int AS total, j.report->'failure' AS failure,
+            j.report->'counts' AS counts, j.report->'placed' AS placed,
+            j.created_at <= j.started_at AND j.started_at <= j.finished_at AS ordered, j.deleted_at IS NULL AS live,
+            j.changeset_id, s.kind AS changeset_kind, s.reverts_id, s.created_by_id = $2 AS changeset_by_creator,
+            s.client AS changeset_client, s.deleted_at IS NULL AS changeset_live
+       FROM transfer_jobs j LEFT JOIN changesets s ON s.id = j.changeset_id WHERE j.id = $1`,
+    [id, expected.creatorId]
+  );
+  const none = {
+    pages: 0,
+    attachments: 0,
+    renamed: 0,
+    missing: 0,
+    skipped: 0,
+    restored: 0,
+    deleted: 0,
+    put_back: 0,
+    written: 0,
+  };
+  expect(rows).toEqual([
+    {
+      kind: expected.kind,
+      state: "succeeded",
+      client: expected.client,
+      root_id: expected.root,
+      target_changeset_id: expected.target,
+      by_creator: true,
+      done: expected.nodes,
+      total: expected.nodes,
+      failure: null,
+      counts: { ...none, ...expected.counts },
+      placed: expected.placed,
+      ordered: true,
+      live: true,
+      changeset_id: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      changeset_kind: expected.kind,
+      reverts_id: expected.kind === "revert" ? expected.target : null,
+      changeset_by_creator: true,
+      changeset_client: expected.client,
+      changeset_live: true,
+    },
+  ]);
+  return rows[0]?.changeset_id ?? "";
+}
+
 /** The files the store at storageDir keeps under imports/, those still being written left out. */
 export function storedImports(storageDir: string): string[] {
   const dir = path.join(storageDir, "imports");

@@ -16,7 +16,8 @@ import { shortId, twinsOf } from "../../lib/twins";
 import { ApiError } from "../../services/api";
 import type { Notebook } from "../../services/notebook.service";
 import type { ChangesetChangePage, ChangesetDetail } from "../../services/page.service";
-import { usePageTree, useStore } from "../../stores/context";
+import { useAccount, usePageTree, useStore, useTransfers } from "../../stores/context";
+import type { Press } from "../../stores/transfer.store";
 import { LoadMoreButton, readNext, useLoadMore } from "../load-more";
 import { NotFoundPage } from "../not-found";
 import { BreadcrumbTrail } from "../page/breadcrumbs";
@@ -25,13 +26,17 @@ import { ChangesetChangeRow } from "./changeset-change";
 import { byText, changesetName, clientText, countsText } from "./changeset-text";
 import { useNotebook } from "./notebook-layout";
 import { RevertDialog, type Reverted } from "./revert-dialog";
+import type { FocusJob } from "./transfer-page";
 
 /**
  * Said is what the changeset's page says of an undo of it: done, leading
  * to the undo; nothing to undo; its answer lost, finding out (unknown):
  * not found out, the changeset not read again (unread); undone by someone
  * else (by), or by whom is not known, the undo not read (undone), each
- * leading to the undo; or not undone.
+ * leading to the undo; or not undone. Of an undo in the background (M8/P4
+ * design 4.2): its job started, leading to its progress; its answer lost,
+ * finding out (starting): not started, or not found out, the jobs not read
+ * (startUnread).
  */
 type Said =
   | { kind: "reverted"; revert: string }
@@ -40,7 +45,11 @@ type Said =
   | { kind: "unread" }
   | { kind: "by"; name: string; revert: string }
   | { kind: "undone"; revert: string }
-  | { kind: "notDone" };
+  | { kind: "notDone" }
+  | { kind: "started"; job: string }
+  | { kind: "starting" }
+  | { kind: "notStarted" }
+  | { kind: "startUnread" };
 
 /**
  * ChangesetPage is a changeset of a notebook's history (M8 design 4.7,
@@ -67,17 +76,26 @@ export const ChangesetPage = observer(function ChangesetPage() {
  * the nodes it changed, a page of them at a time, More reading the next,
  * read again as many pages as were read (readPages). An undo whose answer
  * was lost reads the changeset again: a newest undo of it other than the
- * one known as it was sent is the account's, or someone else's.
+ * one known as it was sent is the account's, or someone else's. An undo in
+ * the background whose answer was lost reads the jobs again: the
+ * account's revert of it that is its press's, if any. What a read finds
+ * out late, once a later undo said what came of it, it does not say.
  */
 const ChangesetShell = observer(function ChangesetShell({ notebook, id }: { notebook: Notebook; id: string }) {
   const t = useT();
   const pages = usePageTree(notebook);
+  const transfers = useTransfers(notebook);
   const { slug } = useWorkspace();
   const { locale } = useStore().preferences;
   const { data, error, mutate } = useSWR(["changeset", notebook.id, id], () => pages.changeset(id));
   const heading = useRef<HTMLHeadingElement>(null);
-  const me = useStore().account?.me?.id;
+  const me = useAccount().me.id;
   const [said, setSaid] = useState<Said>();
+  // Each undo sent, and the last whose outcome the page says: what is found out of an undo is not said over what a
+  // later one said (P4B review A-N3); a later one that said nothing, as the dialog asked and was cancelled, leaves the
+  // line to it (fix check F-2).
+  const attempt = useRef(0);
+  const shown = useRef(0);
   const [refused, setRefused] = useState<unknown>();
   // The status line describes the title, where the focus lands: it is heard with it; a refusal's alert, likewise.
   const status = useId();
@@ -95,37 +113,61 @@ const ChangesetShell = observer(function ChangesetShell({ notebook, id }: { note
   const href = (changeset: string) => `${home}/history/${changeset}`;
   const writer = writesPages(notebook.role);
 
+  // saying is setSaid for the undo sent last as it is called, which says nothing once a later one said something.
+  function saying(): (said: Said) => void {
+    const at = attempt.current;
+    return (next) => {
+      if (shown.current <= at) {
+        setSaid(next);
+      }
+    };
+  }
+
   async function findOut(before: string | undefined): Promise<void> {
-    setSaid({ kind: "unknown" });
+    const say = saying();
+    say({ kind: "unknown" });
     let now: ChangesetDetail;
     try {
       // Read here, not through SWR: its mutate answers what it holds when the read fails.
       now = await pages.changeset(id);
     } catch {
-      setSaid({ kind: "unread" });
+      say({ kind: "unread" });
       return;
     }
     // It rejects only once the login's cache is gone, the page with it (M8/P1 fix check 3, R3-1).
     void mutate(now, { revalidate: false }).catch(() => undefined);
     const newest = now.reverted_by[0];
     if (newest === undefined || newest === before) {
-      setSaid({ kind: "notDone" });
+      say({ kind: "notDone" });
       return;
     }
     // Undone: by whom, the undo read says (M8/P3B review A-M3).
     try {
       const revert = await pages.changeset(newest);
-      setSaid(
+      say(
         revert.created_by.user_id === me
           ? { kind: "reverted", revert: newest }
           : { kind: "by", name: revert.created_by.display_name, revert: newest }
       );
     } catch {
-      setSaid({ kind: "undone", revert: newest });
+      say({ kind: "undone", revert: newest });
+    }
+  }
+
+  // Its job not read, a start's outcome is not known (M8/P4 design 4.2, review B-M6).
+  async function findStarted(press: Press): Promise<void> {
+    const say = saying();
+    say({ kind: "starting" });
+    try {
+      const job = await transfers.startedJob("revert", id, me, press);
+      say(job === undefined ? { kind: "notStarted" } : { kind: "started", job: job.id });
+    } catch {
+      say({ kind: "startUnread" });
     }
   }
 
   function done(reverted: Reverted): void {
+    shown.current = attempt.current;
     switch (reverted.kind) {
       case "reverted":
         setSaid({ kind: "reverted", revert: reverted.revert });
@@ -138,6 +180,12 @@ const ChangesetShell = observer(function ChangesetShell({ notebook, id }: { note
         return;
       case "unknown":
         void findOut(reverted.before);
+        return;
+      case "started":
+        setSaid({ kind: "started", job: reverted.job });
+        return;
+      case "startLost":
+        void findStarted(reverted.press);
     }
   }
   return (
@@ -168,6 +216,7 @@ const ChangesetShell = observer(function ChangesetShell({ notebook, id }: { note
               changeset={data}
               heading={heading}
               sent={() => {
+                attempt.current += 1;
                 setSaid(undefined);
                 setRefused(undefined);
               }}
@@ -180,7 +229,7 @@ const ChangesetShell = observer(function ChangesetShell({ notebook, id }: { note
         ))}
       {/* There before it says anything: a status that comes with its region is not always read. */}
       <output id={status} className="block text-sm empty:sr-only">
-        {said !== undefined && <SaidText said={said} href={href} />}
+        {said !== undefined && <SaidText said={said} href={href} jobs={`${home}/settings/transfer`} />}
       </output>
       {refused !== undefined && <Alert id={note}>{errorText(refused, t)}</Alert>}
       <ChangesetChanges notebook={notebook} id={id} heading={heading} />
@@ -188,8 +237,12 @@ const ChangesetShell = observer(function ChangesetShell({ notebook, id }: { note
   );
 });
 
-/** SaidText is what said says, an undo done leading to its page. */
-function SaidText({ said, href }: { said: Said; href: (id: string) => string }) {
+/**
+ * SaidText is what said says, an undo done leading to its page, one
+ * started in the background to its job's row among the jobs, its focus
+ * there.
+ */
+function SaidText({ said, href, jobs }: { said: Said; href: (id: string) => string; jobs: string }) {
   const t = useT();
   const see = (revert: string) => (
     <Link to={href(revert)} className="underline underline-offset-4">
@@ -223,6 +276,28 @@ function SaidText({ said, href }: { said: Said; href: (id: string) => string }) 
       );
     case "notDone":
       return t("history.revertNotDone");
+    case "started":
+      return (
+        <>
+          {t("history.backgroundStarted")}{" "}
+          <Link to={jobs} state={{ focusJob: said.job } satisfies FocusJob} className="underline underline-offset-4">
+            {t("transfer.seeProgress")}
+          </Link>
+        </>
+      );
+    case "starting":
+      return t("history.backgroundFinding");
+    case "notStarted":
+      return t("history.backgroundNotStarted");
+    case "startUnread":
+      return (
+        <>
+          {t("history.backgroundUnknown")}{" "}
+          <Link to={jobs} className="underline underline-offset-4">
+            {t("transfer.seeJobs")}
+          </Link>
+        </>
+      );
   }
 }
 
