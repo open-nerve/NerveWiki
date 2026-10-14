@@ -79,7 +79,7 @@ export const ChangesetPage = observer(function ChangesetPage() {
  * one known as it was sent is the account's, or someone else's. An undo in
  * the background whose answer was lost reads the jobs again: the
  * account's revert of it that is its press's, if any. What a read finds
- * out late, another undo sent meanwhile, it does not say.
+ * out late, once a later undo said what came of it, it does not say.
  */
 const ChangesetShell = observer(function ChangesetShell({ notebook, id }: { notebook: Notebook; id: string }) {
   const t = useT();
@@ -91,8 +91,11 @@ const ChangesetShell = observer(function ChangesetShell({ notebook, id }: { note
   const heading = useRef<HTMLHeadingElement>(null);
   const me = useAccount().me.id;
   const [said, setSaid] = useState<Said>();
-  // Each undo sent: what is found out of an earlier one is not said over a later one's (P4B review A-N3).
+  // Each undo sent, and the last whose outcome the page says: what is found out of an undo is not said over what a
+  // later one said (P4B review A-N3); a later one that said nothing, as the dialog asked and was cancelled, leaves the
+  // line to it (fix check F-2).
   const attempt = useRef(0);
+  const shown = useRef(0);
   const [refused, setRefused] = useState<unknown>();
   // The status line describes the title, where the focus lands: it is heard with it; a refusal's alert, likewise.
   const status = useId();
@@ -110,11 +113,11 @@ const ChangesetShell = observer(function ChangesetShell({ notebook, id }: { note
   const href = (changeset: string) => `${home}/history/${changeset}`;
   const writer = writesPages(notebook.role);
 
-  // saying is setSaid for the undo sent last as it is called, which says nothing once another is sent.
+  // saying is setSaid for the undo sent last as it is called, which says nothing once a later one said something.
   function saying(): (said: Said) => void {
     const at = attempt.current;
     return (next) => {
-      if (attempt.current === at) {
+      if (shown.current <= at) {
         setSaid(next);
       }
     };
@@ -164,6 +167,7 @@ const ChangesetShell = observer(function ChangesetShell({ notebook, id }: { note
   }
 
   function done(reverted: Reverted): void {
+    shown.current = attempt.current;
     switch (reverted.kind) {
       case "reverted":
         setSaid({ kind: "reverted", revert: reverted.revert });

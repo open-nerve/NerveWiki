@@ -451,7 +451,7 @@ test("an import's failures say what befell the import", async () => {
 
 const counts = (pages: number, attachments = 0) => ({ pages, attachments, renamed: 0, missing: 0, skipped: 0 });
 
-test("an import that failed or was cancelled says that what it counts stays in the notebook, pages or attachments; one that succeeded, or wrote nothing, does not", async () => {
+test("an import that failed or was cancelled says that what it counts stays in the notebook, pages or attachments, and nothing of what a restore or an undo leaves; one that succeeded, or wrote nothing, does not", async () => {
   const user = userEvent.setup();
   const jobs = [
     jobJSON(1, {
@@ -470,23 +470,27 @@ test("an import that failed or was cancelled says that what it counts stays in t
       report: reportOf("storage_full", counts(0, 1)),
     }),
   ];
-  renderApp(transfer, jobsServer({ jobs }).app);
+  const server = jobsServer({ jobs });
+  renderApp(transfer, server.app);
 
-  async function keeps(name: string) {
+  // The lines the report of the import of name says below its counts, read as it opens.
+  async function says(name: string) {
     const report = within(await row(`Import of ${name}`)).getByRole("button", { name: /^Report on / });
     await user.click(report);
-    await waitFor(() => expect(screen.queryAllByText("Pages").length).toBeGreaterThan(0));
-    const said = screen.queryByText("The pages and attachments counted here stay in the notebook.") !== null;
+    await waitFor(() => expect(server.asked).toContain(`GET job ${name}`));
+    const shown = document.getElementById(report.getAttribute("aria-controls") ?? "") as HTMLElement;
+    const lines = [...shown.querySelectorAll(":scope > p")].map((line) => line.textContent);
     await user.click(report);
-    return said;
+    return lines;
   }
+  const kept = ["The pages and attachments counted here stay in the notebook."];
   expect([
-    await keeps("A.zip"),
-    await keeps("B.zip"),
-    await keeps("C.zip"),
-    await keeps("D.zip"),
-    await keeps("E.zip"),
-  ]).toEqual([true, false, false, true, true]);
+    await says("A.zip"),
+    await says("B.zip"),
+    await says("C.zip"),
+    await says("D.zip"),
+    await says("E.zip"),
+  ]).toEqual([kept, [], [], kept, kept]);
 });
 
 test("pages that cannot be read leave the root to import at, and are read again on asking", async () => {

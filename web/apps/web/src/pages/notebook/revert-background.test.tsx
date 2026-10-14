@@ -375,6 +375,35 @@ test("an undo in the background whose answer was lost, found out only after anot
   expect(starts(server.asked)).toEqual(["POST revert rework", "POST revert rework"]);
 });
 
+// P4B fix check F-2: a later undo that says nothing on the page leaves the line to what the earlier one finds out.
+test("an undo in the background whose answer was lost, found out after another undo the dialog asked of and that was cancelled, says it started", async () => {
+  const user = userEvent.setup();
+  const { server, rework } = large();
+  renderApp(changesetPath(rework.id), server.app);
+  const first = await tooLarge(user);
+  const listed = gate();
+  Object.assign(server, { lost: "500", listWaits: listed.promise });
+  await user.click(within(first).getByRole("button", { name: "Undo in the background" }));
+  const status = screen.getByRole("status");
+  await waitFor(() =>
+    expect(status.textContent).toBe(
+      "Whether undoing it in the background started is not known: reading the jobs again…"
+    )
+  );
+
+  // Undo again, refused as too large here: the dialog asks, and is cancelled.
+  const second = await tooLarge(user);
+  await user.click(within(second).getByRole("button", { name: "Cancel" }));
+  await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+  // The first undo's job is under way: the jobs' read answers it.
+  act(() => listed.open());
+
+  await waitFor(() =>
+    expect(status.textContent).toBe("Undoing this change in the background has started. See its progress")
+  );
+  expect(starts(server.asked)).toEqual(["POST revert rework"]);
+});
+
 test("an undo in the background whose answer was lost, the jobs not read again, says it is not known whether it started, leading to the jobs", async () => {
   const user = userEvent.setup();
   const { server, rework } = large();

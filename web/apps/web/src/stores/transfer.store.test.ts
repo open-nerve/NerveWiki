@@ -379,8 +379,8 @@ test("startedJob reads the list again and finds the account's job of the kind on
     // Ended, made by a server's clock 30 seconds behind the browser's.
     mine(5, { kind: "revert", target_changeset_id: "c3", created_at: "2026-10-06T07:59:30Z" }),
     mine(6, { kind: "import", root_id: "n6" }),
-    // Under way, made by a server's clock ten minutes behind.
-    underWay(mine(7, { kind: "trash_restore", root_id: "n6", created_at: "2026-10-06T07:50:00Z" }), 0, 0),
+    // Under way, running, made by a server's clock ten minutes behind.
+    underWay(mine(7, { kind: "trash_restore", root_id: "n6", created_at: "2026-10-06T07:50:00Z" }), 1, 103),
   ];
 
   const revert = store.startedJob("revert", "c3", jobJSON(1).created_by.user_id, press);
