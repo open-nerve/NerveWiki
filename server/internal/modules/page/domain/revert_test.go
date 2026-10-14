@@ -206,7 +206,8 @@ func (w *world) revive(ids ...uuid.UUID) {
 	}
 }
 
-// byRevert marks the trash item of the root id as a revert's deletion.
+// byRevert marks the trash item of the root id as deleted by the revert of
+// a restore.
 func (w *world) byRevert(id uuid.UUID) {
 	n := w.nodes[id]
 	n.DeletedByRevert = true

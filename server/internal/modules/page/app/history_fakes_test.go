@@ -264,8 +264,32 @@ func (h *fakeHistory) ChangesetVersions(ctx context.Context, id uuid.UUID) ([]do
 	return nil, nil
 }
 
+// deletedByRevert reports whether the revert of a restore deleted the node
+// id at at, as NodesNow reads it: a revert the store made at that time
+// whose item of the node is its deletion, of a trash item's restore, the
+// store's or the history's.
+func (h *fakeHistory) deletedByRevert(id uuid.UUID, at time.Time) bool {
+	it, ok := h.store.items[id]
+	return ok && it.Change.After == nil && slices.ContainsFunc(h.store.changesets, func(c app.Changeset) bool {
+		return c.ID == it.ChangesetID && c.Kind == domain.ChangesetRevert && c.At.Equal(at) &&
+			h.kindOf(c.RevertsID) == domain.ChangesetTrashRestore
+	})
+}
+
+// kindOf is the kind of the changeset id, the store's or the history's;
+// none when neither holds it.
+func (h *fakeHistory) kindOf(id uuid.UUID) domain.ChangesetKind {
+	if i := slices.IndexFunc(h.store.changesets, func(c app.Changeset) bool { return c.ID == id }); i >= 0 {
+		return h.store.changesets[i].Kind
+	}
+	if c := h.find(id); c != nil {
+		return c.Kind
+	}
+	return ""
+}
+
 // NodesNow reads the store's nodes, alive or in the trash, a root with its
-// counts and whether a revert deleted it.
+// counts and whether the revert of a restore deleted it.
 func (h *fakeHistory) NodesNow(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]domain.NodeNow, error) {
 	h.record(ctx, fmt.Sprintf("NodesNow %d", len(ids)))
 	out := map[uuid.UUID]domain.NodeNow{}
@@ -277,7 +301,7 @@ func (h *fakeHistory) NodesNow(ctx context.Context, ids []uuid.UUID) (map[uuid.U
 		now := domain.NodeNow{Node: n.Node, DeletedAt: n.DeletedAt, TrashRoot: n.TrashRoot}
 		if n.TrashRoot {
 			now.TrashPages, now.TrashAssets = h.store.counts[id][0], h.store.counts[id][1]
-			now.DeletedByRevert = h.store.deletedByRevert(id, *n.DeletedAt)
+			now.DeletedByRevert = h.deletedByRevert(id, *n.DeletedAt)
 		}
 		out[id] = now
 	}

@@ -203,8 +203,9 @@ func TestTheLogReadsInTimeAsLongAsAPage(t *testing.T) {
 // (M8/P3 design 3.11): 4 to 20 ms here, a plan for any arguments no
 // slower than one with them, so they are pgx's cached statements; a
 // second each, a CI's runner slower. The nodes are read alive, and as
-// many trash items' roots, each deleted by a revert, whose deletions it
-// reads (M8/P3A review A-1): 23 to 26 ms.
+// many trash items' roots, each deleted by the revert of a restore, whose
+// deletions it reads with the changesets they revert (M8/P3A review A-1,
+// fix check 1): 35 to 38 ms.
 func TestTheRevertsArrayReadsInTimeAtTheUnitsBound(t *testing.T) {
 	ctx := context.Background()
 	l := newLongLog(t)
@@ -214,14 +215,20 @@ func TestTheRevertsArrayReadsInTimeAtTheUnitsBound(t *testing.T) {
 	}
 	roots := l.pages[domain.MaxUnitNodes : 2*domain.MaxUnitNodes]
 	// Each root deleted at the time of a changeset of the long page's
-	// versions, which has no items, made a revert holding its deletion.
+	// versions, which has no items, made a revert of a restore, an hour
+	// before the first, holding its deletion.
 	for _, sql := range []string{
 		`WITH r AS (SELECT id, row_number() OVER (ORDER BY id) AS k FROM unnest($1::uuid[]) id),
 			c AS (SELECT id, created_at, row_number() OVER (ORDER BY created_at) AS k FROM changesets
 				WHERE notebook_id = $2 AND id NOT IN (SELECT changeset_id FROM changeset_items))
 		UPDATE nodes SET deleted_at = c.created_at, trash_root = true, trash_pages = 1, trash_assets = 0, trash_height = 1
 		FROM r JOIN c ON c.k = r.k WHERE nodes.id = r.id`,
-		`UPDATE changesets c SET kind = 'revert', reverts_id = c.id FROM nodes n
+		`WITH s AS (
+			INSERT INTO changesets (id, notebook_id, kind, client, created_by_id, created_at, updated_at)
+			SELECT uuidv7(), notebook_id, 'trash_restore', client, created_by_id, created_at - interval '1 hour',
+				created_at - interval '1 hour'
+			FROM changesets WHERE notebook_id = $2 ORDER BY created_at LIMIT 1 RETURNING id)
+		UPDATE changesets c SET kind = 'revert', reverts_id = s.id FROM nodes n, s
 		WHERE n.id = ANY($1::uuid[]) AND n.notebook_id = $2 AND c.notebook_id = $2 AND c.created_at = n.deleted_at`,
 		`INSERT INTO changeset_items (id, changeset_id, node_id, before_name, before_sort_order, created_at, updated_at, deleted_at)
 		SELECT uuidv7(), c.id, n.id, n.name, n.sort_order, n.deleted_at, n.deleted_at, n.deleted_at FROM nodes n
@@ -236,7 +243,7 @@ func TestTheRevertsArrayReadsInTimeAtTheUnitsBound(t *testing.T) {
 			got, err := l.s.NodesNow(ctx, ids)
 			return expect(err, len(got) == len(ids), len(got))
 		}},
-		{"NodesNow of roots a revert deleted", func() error {
+		{"NodesNow of roots a restore's revert deleted", func() error {
 			got, err := l.s.NodesNow(ctx, roots)
 			n := 0
 			for _, r := range got {

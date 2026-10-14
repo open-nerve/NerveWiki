@@ -358,9 +358,10 @@ func TestListChangesMergesItemsAndVersions(t *testing.T) {
 
 // A revert's reads: the items counted to a limit; the items and versions by
 // node, each version with its base's size, none once the purge took the
-// base; the nodes now, a root with its counts and whether a revert deleted
-// it, a node the purge took not among them; the contents of the pages alive; the versions' hashes and
-// contents, a version the purge took not among them.
+// base; the nodes now, a root with its counts and whether the revert of a
+// restore deleted it, a node the purge took not among them; the contents
+// of the pages alive; the versions' hashes and contents, a version the
+// purge took not among them.
 func TestTheRevertsReads(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
@@ -417,14 +418,22 @@ func TestTheRevertsReads(t *testing.T) {
 	if nodes[p.ID].DeletedByRevert {
 		t.Errorf("NodesNow(P) = %+v, deleted by an edit's changeset; want no revert's deletion", nodes[p.ID])
 	}
-	// A revert's deletion: its changeset, created at the root's time, holds
-	// the root's deletion. One holding another item of the root, or created
-	// at another time, did not delete it.
-	byRevert := func(name string, order float64, at, made time.Time, deletion bool) uuid.UUID {
+	// The deletion by the revert of a restore: its changeset, created at
+	// the root's time, a revert of a trash item's restore, holds the root's
+	// deletion. One holding another item of the root, created at another
+	// time, or a revert of an edit did not delete it (fix check 1); nor
+	// did one before the root's current deletion, an edit's, the root
+	// restored between them (fix check 1, nit 2).
+	restore := app.Changeset{ID: uuid.NewV7(), NotebookID: f.eng, Kind: domain.ChangesetTrashRestore, Client: domain.ClientWeb,
+		By: f.alice, At: now()}
+	if err := f.s.CreateChangeset(ctx, restore); err != nil {
+		t.Fatal(err)
+	}
+	byRevert := func(name string, order float64, at, made time.Time, reverts uuid.UUID, deletion bool) domain.Node {
 		t.Helper()
 		n := f.page(t, f.eng, nil, name, order)
 		f.trashed(t, at, 1, 0, 1, n.ID)
-		rev := app.Changeset{ID: uuid.NewV7(), NotebookID: f.eng, Kind: domain.ChangesetRevert, RevertsID: cs.ID, Client: domain.ClientWeb,
+		rev := app.Changeset{ID: uuid.NewV7(), NotebookID: f.eng, Kind: domain.ChangesetRevert, RevertsID: reverts, Client: domain.ClientWeb,
 			By: f.alice, At: made}
 		if err := f.s.CreateChangeset(ctx, rev); err != nil {
 			t.Fatal(err)
@@ -435,14 +444,24 @@ func TestTheRevertsReads(t *testing.T) {
 			change.After = &after
 		}
 		f.item(t, rev.ID, at, change)
-		return n.ID
+		return n
 	}
-	s1, s2, s3 := now().Add(time.Minute), now().Add(2*time.Minute), now().Add(3*time.Minute)
-	deleted, other, later := byRevert("S", 3, s1, s1, true), byRevert("U", 4, s2, s2, false), byRevert("V", 5, s3, s3.Add(time.Hour), true)
-	nodes, err = f.s.NodesNow(ctx, []uuid.UUID{deleted, other, later, r.ID})
+	s1, s2, s3, s4, s5 := now().Add(time.Minute), now().Add(2*time.Minute), now().Add(3*time.Minute), now().Add(4*time.Minute),
+		now().Add(5*time.Minute)
+	deleted, other := byRevert("S", 3, s1, s1, restore.ID, true).ID, byRevert("U", 4, s2, s2, restore.ID, false).ID
+	later, ofAnEdit := byRevert("V", 5, s3, s3.Add(time.Hour), restore.ID, true).ID, byRevert("W", 6, s4, s4, cs.ID, true).ID
+	y := byRevert("Y", 7, s5, s5, restore.ID, true)
+	if _, err := f.s.RestoreNodes(ctx, restoration(s5, nil, 7, f.alice, y)); err != nil {
+		t.Fatal(err)
+	}
+	s6 := s5.Add(2 * time.Hour)
+	f.trashed(t, s6, 1, 0, 1, y.ID)
+	f.item(t, f.changeset(t, f.eng, f.alice, domain.ClientWeb, s6).ID, s6, domain.Change{NodeID: y.ID, Before: new(y.State())})
+	nodes, err = f.s.NodesNow(ctx, []uuid.UUID{deleted, other, later, ofAnEdit, y.ID, r.ID})
 	if err != nil || !nodes[deleted].DeletedByRevert || nodes[other].DeletedByRevert || nodes[later].DeletedByRevert ||
+		nodes[ofAnEdit].DeletedByRevert || nodes[y.ID].DeletedByRevert || !nodes[y.ID].DeletedAt.Equal(s6) ||
 		nodes[r.ID].DeletedByRevert {
-		t.Errorf("NodesNow = %+v, %v; want S deleted by a revert alone", nodes, err)
+		t.Errorf("NodesNow = %+v, %v; want S deleted by a restore's revert alone, Y at its later deletion", nodes, err)
 	}
 	contents, err := f.s.ContentsNow(ctx, []uuid.UUID{p.ID, q.ID, r.ID})
 	if err != nil || len(contents) != 2 || contents[r.ID].Revision != 1 || len(contents[q.ID].Hash) != 32 {

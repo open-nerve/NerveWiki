@@ -16,15 +16,16 @@ import (
 
 // The log's reads, the revert's look-ups and the purge's statements read
 // through their indexes (M8/P3 design 3.11; v0.1 design 13.4, item 9),
-// whole tables' scans off and the arguments bound as the store binds
-// them: the log and one actor's a range of their own index each, already
-// in its order; one page's its items' and versions' by node; a
-// changeset's changes, counts and moves its two keys; a trash root's
-// deletion by a revert the log's and the items' keys; what reverted a
-// changeset the partial index on reverts_id; the purge's the partial
-// indexes on deleted_at and the changesets' key, its deletion of the
-// emptied ones the partial index on trimmed; and the notebooks' foreign
-// key's check, which reads changesets by notebook_id alone, the log's.
+// whole tables' scans off and the arguments bound as the store binds them:
+// the log and one actor's a range of their own index each, already in its
+// order; one page's its items' and versions' by node; a changeset's
+// changes, counts and moves its two keys; a trash root's deletion by the
+// revert of a restore the log's and the items' keys and the changesets';
+// what reverted a changeset the partial index on reverts_id; the purge's
+// the partial indexes on deleted_at and the changesets' key, its deletion
+// of the emptied ones the partial index on trimmed; and the notebooks'
+// foreign key's check, which reads changesets by notebook_id alone, the
+// log's.
 func TestTheLogReadsUseTheirIndexes(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
@@ -90,7 +91,7 @@ func TestTheLogReadsUseTheirIndexes(t *testing.T) {
 		{"NodesNow", statementOf(t, func(q *gen.Queries) error {
 			_, err := q.NodesNow(ctx, roots)
 			return err
-		}), []string{"changesets_notebook_id_created_at_id_idx", "changeset_items_changeset_id_node_id_key"}, false},
+		}), []string{"changesets_notebook_id_created_at_id_idx", "changeset_items_changeset_id_node_id_key", "changesets_pkey"}, false},
 		{"LockChangeset", statementOf(t, func(q *gen.Queries) error {
 			_, err := q.LockChangeset(ctx, id)
 			return err

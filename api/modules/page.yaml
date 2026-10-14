@@ -903,8 +903,8 @@ paths:
         and with the content it wrote, a node it deleted still in its trash
         item where and as it deleted it, else it is changed; a node another
         changeset put back as it was before is changed too. A trash item
-        that a revert deleted again, after a restore that may have put it
-        elsewhere, is compared by its nodes alone. Nodes it created or
+        that the revert of its restore deleted again, wherever the restore
+        had put it, is compared by its nodes alone. Nodes it created or
         restored go to the trash, at the revert's time; nodes it deleted
         come back where they were, with the names they had, their trash
         item whole, at its time; nodes it renamed or moved go back where

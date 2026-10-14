@@ -635,16 +635,20 @@ func TestARevertsConflictsThroughServe(t *testing.T) {
 	}
 }
 
-// A revert of a deletion compares each node of its trash item where and
-// as the deletion left it (M8/P3A review A-1, A-2, C M-1, M-5): restored,
-// changed and deleted again by another changeset, the item is changed,
-// its newer changes never undone in silence. Its top renamed and moved,
-// its member renamed: X and Z changed. A member moved within the group:
-// R changed. A member moved out with its child, the top deleted again,
-// the child alive under its parent before the deletion: T, X and N
-// changed. Reverted newest first, each of the changesets succeeds, the
-// deletion's last, the restore's revert having deleted the item where the
-// restore put it: the notebook is as before the deletion.
+// A revert of a deletion compares each node of its trash item where and as
+// the deletion left it (M8/P3A review A-1, A-2, C M-1, M-5): restored,
+// changed and deleted again by another changeset, the item is changed, its
+// newer changes never undone in silence. Its top renamed and moved, its
+// member renamed: X and Z changed. A member moved within the group: R
+// changed. A member moved out with its child, the top deleted again, the
+// child alive under its parent before the deletion: T, X and N changed.
+// The top renamed back by a revert, then deleted where the deletion left
+// it by its creation's revert, not a restore's: B changed (M8/P3A fix
+// check 1). The top renamed and deleted by an edit, its restore's revert,
+// itself reverted, an older deletion: X changed. Reverted newest first,
+// each of the changesets succeeds, the deletion's last, the restore's
+// revert having deleted the item where the restore put it: the notebook is
+// as before the deletion.
 func TestARevertOfADeletionComparesItsItemWhereItWas(t *testing.T) {
 	tm := newAcmeTeam(t, "member", "")
 	for _, tt := range []struct {
@@ -691,6 +695,30 @@ func TestARevertOfADeletionComparesItsItemWhereItWas(t *testing.T) {
 			tm.send(t, nodeDeletion("alice", top), http.StatusNoContent)
 			return d
 		}, []string{"changed T", "changed X", "changed N"}},
+		{"its top renamed back by a revert, then deleted by its creation's", func(t *testing.T, nb string, before func()) string {
+			x := tm.createPage(t, "alice", nb, "", "A")
+			creation := tm.newest(t, nb).ID
+			tm.send(t, nodeRename("alice", x, "B"), http.StatusOK)
+			rename := tm.newest(t, nb).ID
+			before()
+			tm.send(t, nodeDeletion("alice", x), http.StatusNoContent)
+			d := tm.newest(t, nb).ID
+			tm.restored(t, "alice", x)
+			tm.reverted(t, "bob", rename)
+			tm.reverted(t, "bob", creation)
+			return d
+		}, []string{"changed B"}},
+		{"its top renamed and deleted, after its restore's revert was reverted", func(t *testing.T, nb string, before func()) string {
+			x := tm.createPage(t, "alice", nb, tm.createPage(t, "alice", nb, "", "P"), "X")
+			before()
+			tm.send(t, nodeDeletion("alice", x), http.StatusNoContent)
+			d := tm.newest(t, nb).ID
+			tm.restored(t, "alice", x)
+			tm.reverted(t, "bob", tm.reverted(t, "bob", tm.newest(t, nb).ID))
+			tm.send(t, nodeRename("alice", x, "Y"), http.StatusOK)
+			tm.send(t, nodeDeletion("alice", x), http.StatusNoContent)
+			return d
+		}, []string{"changed X"}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			nb := tm.openNotebook(t, "alice", tt.name)
