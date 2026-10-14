@@ -29,4 +29,7 @@ type TransferJob struct {
 	ResultBytes       *int64
 	CreatedAt         time.Time
 	DeletedAt         *time.Time
+	ChangesetID       *uuid.UUID
+	TargetChangesetID *uuid.UUID
+	Message           *string
 }

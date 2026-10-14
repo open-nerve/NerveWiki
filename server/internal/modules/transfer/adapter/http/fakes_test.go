@@ -179,11 +179,11 @@ func (r *rows) CountActive(context.Context) (int, error) {
 	return n, nil
 }
 
-func (r *rows) Importing(_ context.Context, notebook uuid.UUID) (bool, error) {
+func (r *rows) Writing(_ context.Context, notebook uuid.UUID) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, j := range r.jobs {
-		if j.NotebookID == notebook && j.Kind == domain.KindImport && !j.State.Ended() {
+		if j.NotebookID == notebook && j.Kind.Writes() && !j.State.Ended() {
 			return true, nil
 		}
 	}
@@ -454,6 +454,14 @@ func (q *queue) Import(_ context.Context, id uuid.UUID) error {
 	defer q.mu.Unlock()
 	q.ids = append(q.ids, id)
 	return nil
+}
+
+func (q *queue) TrashRestore(_ context.Context, id uuid.UUID) error {
+	return q.Import(context.Background(), id)
+}
+
+func (q *queue) Revert(_ context.Context, id uuid.UUID) error {
+	return q.Import(context.Background(), id)
 }
 
 // bucket allows left requests, recording each key.

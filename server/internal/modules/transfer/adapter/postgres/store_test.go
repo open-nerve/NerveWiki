@@ -240,7 +240,7 @@ func TestOneExportAtOnceForAReaderInANotebook(t *testing.T) {
 }
 
 // One import queued or running in a notebook, anyone's: a second is
-// domain.ErrImportBusy, whatever was counted; one in another notebook, an
+// domain.ErrWriting, whatever was counted; one in another notebook, an
 // export beside it, or one after the first ended or was deleted, goes.
 func TestOneImportAtOnceInANotebook(t *testing.T) {
 	f := newFixture(t)
@@ -248,27 +248,27 @@ func TestOneImportAtOnceInANotebook(t *testing.T) {
 	first := f.importJob(t, f.eng, f.alice, at(0))
 	second := domain.Job{ID: uuid.NewV7(), NotebookID: f.eng, Kind: domain.KindImport, State: domain.StateQueued, Name: "vault.zip", CreatedBy: f.bob,
 		Client: domain.ClientAPI, CreatedAt: at(0)}
-	if err := f.store.CreateJob(ctx, second); !errors.Is(err, domain.ErrImportBusy) {
-		t.Errorf("CreateJob() of a second import = %v, want ErrImportBusy", err)
+	if err := f.store.CreateJob(ctx, second); !errors.Is(err, domain.ErrWriting) {
+		t.Errorf("CreateJob() of a second import = %v, want ErrWriting", err)
 	}
-	if busy, err := f.store.Importing(ctx, f.eng); !busy || err != nil {
-		t.Errorf("Importing() = %v, %v; want true", busy, err)
+	if busy, err := f.store.Writing(ctx, f.eng); !busy || err != nil {
+		t.Errorf("Writing() = %v, %v; want true", busy, err)
 	}
-	if busy, err := f.store.Importing(ctx, f.ops); busy || err != nil {
-		t.Errorf("Importing() of another notebook = %v, %v; want false", busy, err)
+	if busy, err := f.store.Writing(ctx, f.ops); busy || err != nil {
+		t.Errorf("Writing() of another notebook = %v, %v; want false", busy, err)
 	}
 	f.export(t, f.eng, f.alice, at(0))
 	other := f.importJob(t, f.ops, f.alice, at(0))
 	f.start(t, first.ID, at(0))
-	if err := f.store.CreateJob(ctx, second); !errors.Is(err, domain.ErrImportBusy) {
-		t.Errorf("CreateJob() beside a running import = %v, want ErrImportBusy", err)
+	if err := f.store.CreateJob(ctx, second); !errors.Is(err, domain.ErrWriting) {
+		t.Errorf("CreateJob() beside a running import = %v, want ErrWriting", err)
 	}
 	if ok, err := f.store.FinishJob(ctx, first.ID, app.Ended{State: domain.StateFailed, At: at(0), Name: "vault.zip",
 		Report: domain.Report{Failure: domain.FailureNotZip}}); !ok || err != nil {
 		t.Fatalf("FinishJob() = %v, %v", ok, err)
 	}
-	if busy, err := f.store.Importing(ctx, f.eng); busy || err != nil {
-		t.Errorf("Importing() once the first ended = %v, %v; want false", busy, err)
+	if busy, err := f.store.Writing(ctx, f.eng); busy || err != nil {
+		t.Errorf("Writing() once the first ended = %v, %v; want false", busy, err)
 	}
 	if err := f.store.CreateJob(ctx, second); err != nil {
 		t.Errorf("CreateJob() once the first ended = %v", err)
@@ -281,6 +281,98 @@ func TestOneImportAtOnceInANotebook(t *testing.T) {
 		t.Fatalf("the deleted import is %q, %v; want it queued still", state, err)
 	}
 	f.importJob(t, f.ops, f.bob, at(0))
+}
+
+// background creates a queued restore of the trash item root, or a revert
+// of the changeset target when root is nil, in notebook by by, made at.
+func (f fixture) background(t *testing.T, notebook, by uuid.UUID, root *uuid.UUID, target uuid.UUID) (domain.Job, error) {
+	t.Helper()
+	changeset := uuid.NewV7()
+	j := domain.Job{ID: uuid.NewV7(), NotebookID: notebook, RootID: root, Kind: domain.KindTrashRestore, State: domain.StateQueued, Name: "Big",
+		CreatedBy: by, Client: domain.ClientWeb, CreatedAt: at(0), ChangesetID: &changeset}
+	if root == nil {
+		message := "back"
+		j.Kind, j.Name, j.TargetChangesetID, j.Message = domain.KindRevert, "import", &target, &message
+	}
+	return j, f.store.CreateJob(context.Background(), j)
+}
+
+// One job that writes a notebook's tree queued or running at once (M8/P4
+// design 3.2): an import, a restore and a revert each refuse the others,
+// domain.ErrWriting; an export goes beside them, and each goes in another
+// notebook.
+func TestOneWritingJobAtOnceInANotebook(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	root := uuid.NewV7()
+	restore, err := f.background(t, f.eng, f.alice, &root, uuid.UUID{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if busy, err := f.store.Writing(ctx, f.eng); !busy || err != nil {
+		t.Errorf("Writing() beside a restore = %v, %v; want true", busy, err)
+	}
+	imported := domain.Job{ID: uuid.NewV7(), NotebookID: f.eng, Kind: domain.KindImport, State: domain.StateQueued, Name: "vault.zip",
+		CreatedBy: f.bob, Client: domain.ClientWeb, CreatedAt: at(0)}
+	if err := f.store.CreateJob(ctx, imported); !errors.Is(err, domain.ErrWriting) {
+		t.Errorf("CreateJob() of an import beside a restore = %v, want ErrWriting", err)
+	}
+	if _, err := f.background(t, f.eng, f.bob, nil, uuid.NewV7()); !errors.Is(err, domain.ErrWriting) {
+		t.Errorf("CreateJob() of a revert beside a restore = %v, want ErrWriting", err)
+	}
+	f.export(t, f.eng, f.bob, at(0))
+	if _, err := f.background(t, f.ops, f.bob, nil, uuid.NewV7()); err != nil {
+		t.Errorf("CreateJob() of a revert in another notebook = %v", err)
+	}
+	if ok, err := f.store.CancelQueued(ctx, restore.ID, at(0), domain.Report{}); !ok || err != nil {
+		t.Fatalf("CancelQueued() = %v, %v", ok, err)
+	}
+	if _, err := f.background(t, f.eng, f.bob, nil, uuid.NewV7()); err != nil {
+		t.Errorf("CreateJob() of a revert once the restore ended = %v", err)
+	}
+	if _, err := f.background(t, f.eng, f.alice, &root, uuid.UUID{}); !errors.Is(err, domain.ErrWriting) {
+		t.Errorf("CreateJob() of a restore beside a revert = %v, want ErrWriting", err)
+	}
+}
+
+// A background job's row reads back as written (M8/P4 design 3.2, 3.6):
+// its changeset, a revert's target and message; its report's placement,
+// conflicts and lock, the list without the conflicts.
+func TestABackgroundJobReadsBackAsWritten(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	target := uuid.NewV7()
+	j, err := f.background(t, f.eng, f.alice, nil, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := f.store.FindJob(ctx, j.ID)
+	if err != nil || got.Kind != domain.KindRevert || got.RootID != nil || *got.ChangesetID != *j.ChangesetID || *got.TargetChangesetID != target ||
+		*got.Message != "back" || got.Name != "import" {
+		t.Fatalf("FindJob() = %+v, %v; want the revert as written", got, err)
+	}
+	f.start(t, j.ID, at(0))
+	parent, holder := uuid.NewV7(), uuid.NewV7()
+	report := domain.Report{Failure: domain.FailureRevertConflict, Counts: domain.Counts{Restored: 3, Deleted: 2, PutBack: 1, Written: 4, Skipped: 5},
+		Placed:        &domain.Placement{ParentID: &parent, Reason: "original"},
+		Conflicts:     []domain.Conflict{{NodeID: uuid.NewV7(), Name: "A", Reason: "title_taken", HolderID: &holder}, {NodeID: uuid.NewV7(), Name: "B", Reason: "changed"}},
+		ConflictCount: 7, Lock: &domain.Lock{PageID: uuid.NewV7(), UserID: f.bob}}
+	if ok, err := f.store.FinishJob(ctx, j.ID, app.Ended{State: domain.StateFailed, At: at(time.Second), Name: j.Name, Report: report}); !ok || err != nil {
+		t.Fatalf("FinishJob() = %v, %v", ok, err)
+	}
+	got, err = f.store.FindJob(ctx, j.ID)
+	if err != nil || got.Report == nil || !reflect.DeepEqual(*got.Report, report) {
+		t.Errorf("FindJob()'s report = %+v, %v; want %+v", got.Report, err, report)
+	}
+	listed, err := f.store.ListJobs(ctx, f.eng, nil, nil, 10)
+	if err != nil || len(listed) != 1 || listed[0].Report == nil {
+		t.Fatalf("ListJobs() = %v, %v", listed, err)
+	}
+	want := report
+	want.Conflicts = nil
+	if r := *listed[0].Report; !reflect.DeepEqual(r, want) || *listed[0].ChangesetID != *j.ChangesetID {
+		t.Errorf("the listed report = %+v; want %+v, without its conflicts", r, want)
+	}
 }
 
 // An import's archive is kept while its job is queued or running, not

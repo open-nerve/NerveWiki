@@ -85,6 +85,9 @@ type (
 	// Analyzer refreshes the statistics of a module's tables an import
 	// fills: the page, linking and asset modules' Statistics.
 	Analyzer = app.Analyzer
+	// Batch bounds a writing job's batch: zero is the import's, which
+	// production keeps (M8/P4 design 3.6).
+	Batch = app.Batch
 )
 
 // The errors the other modules' adapters answer: a file Blobs.Open does
@@ -142,6 +145,9 @@ type Deps struct {
 	MinRate                int64
 	AssetMaxBytes          int64
 	MaxContentBytes        int64
+	// Batch bounds the writing jobs' batches: production leaves it zero,
+	// the import's bounds; the interleavings make it small.
+	Batch Batch
 }
 
 // beat is how often a running job writes its heartbeat and progress;
@@ -168,7 +174,7 @@ func New(d Deps) *Module {
 		Linked: d.Linked, Blobs: d.Blobs, Archives: archives, Rows: rows, Contributors: d.Contributors, Clock: d.Clock, Logger: d.Logger, Beat: beat})
 	imp := app.NewImport(app.ImportDeps{Authorizer: d.Authorizer, Notebooks: d.Notebooks, Nodes: d.Nodes, Tree: d.Tree, Attachments: d.Attachments,
 		Statistics: d.Statistics, Archives: archives, Rows: rows, Clock: d.Clock, Logger: d.Logger, Beat: beat, MaxEntries: d.ImportMaxEntries,
-		MaxUnpacked: d.ImportMaxUnpackedBytes, MaxContent: d.MaxContentBytes, MaxAsset: d.AssetMaxBytes, Backoff: backoff})
+		MaxUnpacked: d.ImportMaxUnpackedBytes, MaxContent: d.MaxContentBytes, MaxAsset: d.AssetMaxBytes, Backoff: backoff, Batch: d.Batch})
 	start := app.StartDeps{Tx: d.Tx, Authorizer: d.Authorizer, Workspaces: d.Workspaces, Notebooks: d.Notebooks, Nodes: d.Nodes,
 		Rows: rows, Archives: archives, Queue: queue, Names: d.Names, Signer: signer, Clock: d.Clock, Logger: d.Logger, Uploads: app.NewUploads(),
 		MaxQueued: d.MaxQueued, MinFree: d.MinFreeBytes, ImportMaxBytes: d.ImportMaxBytes}

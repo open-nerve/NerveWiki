@@ -334,15 +334,19 @@ func TestExportsExpireTheirArchives(t *testing.T) {
 
 // The rescue fails every running job as the server starts, then those
 // whose heartbeat is older than the timeout, and the queued jobs of each
-// kind River no longer holds, the rows read before River; each logged.
+// kind River no longer holds, the rows read before River, the background
+// restores and reverts too (M8/P4 design 3.6); each logged.
 func TestTheRescue(t *testing.T) {
 	running, kept, dropped, imported, lost := uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
+	restoring, restoreLost, revertLost := uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
 	rec := &recorder{}
 	var l logs
 	m := &maintained{interrupted: []app.Interrupted{{ID: running}}, rec: rec, queued: map[domain.Kind][]uuid.UUID{
-		domain.KindExport: {kept, dropped}, domain.KindImport: {imported, lost},
+		domain.KindExport: {kept, dropped}, domain.KindImport: {imported, lost}, domain.KindTrashRestore: {restoring, restoreLost},
+		domain.KindRevert: {revertLost},
 	}}
-	h := held{ids: map[domain.Kind][]uuid.UUID{domain.KindExport: {kept, lost}, domain.KindImport: {imported, dropped}}, rec: rec}
+	h := held{ids: map[domain.Kind][]uuid.UUID{domain.KindExport: {kept, lost}, domain.KindImport: {imported, dropped},
+		domain.KindTrashRestore: {restoring}}, rec: rec}
 	r := app.NewRescue(m, h, fixedClock{now()}, l.logger(), 5*time.Minute)
 	if err := r.AtStart(context.Background()); err != nil {
 		t.Fatal(err)
@@ -356,12 +360,13 @@ func TestTheRescue(t *testing.T) {
 	if len(m.beatBefore) != 2 || !m.beatBefore[1].Equal(now().Add(-5*time.Minute)) {
 		t.Errorf("asked %v, want all, then before five minutes ago", m.beatBefore)
 	}
-	calls := []string{"QueuedJobs export", "Held export", "QueuedJobs import", "Held import"}
-	if !slices.Equal(m.failed, []uuid.UUID{dropped, lost}) || !slices.Equal(rec.calls, calls) {
+	calls := []string{"QueuedJobs export", "Held export", "QueuedJobs import", "Held import", "QueuedJobs trash_restore", "Held trash_restore",
+		"QueuedJobs revert", "Held revert"}
+	if !slices.Equal(m.failed, []uuid.UUID{dropped, lost, restoreLost, revertLost}) || !slices.Equal(rec.calls, calls) {
 		t.Errorf("failed %v, calls %v; want the jobs River dropped of each kind, the rows read first", m.failed, rec.calls)
 	}
 	text := l.String()
-	if strings.Count(text, "job interrupted") != 2 || strings.Count(text, "queued job dropped by River") != 2 || !strings.Contains(text, lost.String()) {
+	if strings.Count(text, "job interrupted") != 2 || strings.Count(text, "queued job dropped by River") != 4 || !strings.Contains(text, lost.String()) {
 		t.Errorf("logs %q", text)
 	}
 
@@ -403,16 +408,18 @@ func TestTheSweepDeletesOrphanArchives(t *testing.T) {
 }
 
 // The purge deletes the archives, then the rows; an archive not deleted
-// keeps them.
+// keeps them. A background restore or revert has no archive to delete
+// (M8/P4 design 3.6).
 func TestThePurgeDeletesArchivesThenRows(t *testing.T) {
-	id := uuid.NewV7()
-	m := &maintained{expiredJobs: map[uuid.UUID]domain.Kind{id: domain.KindExport}}
+	id, restored, reverted := uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
+	m := &maintained{expiredJobs: map[uuid.UUID]domain.Kind{id: domain.KindExport, restored: domain.KindTrashRestore, reverted: domain.KindRevert}}
 	a := newArchives()
 	p := app.NewPurge(&direct{}, m, a, quiet())
-	if n, err := p.Batch(context.Background(), now(), 10); n != 1 || err != nil || !slices.Equal(a.deleted, []uuid.UUID{id}) ||
-		!slices.Equal(m.purged, []uuid.UUID{id}) {
+	if n, err := p.Batch(context.Background(), now(), 10); n != 3 || err != nil || !slices.Equal(a.deleted, []uuid.UUID{id}) ||
+		!sameIDs(m.purged, []uuid.UUID{id, restored, reverted}) {
 		t.Errorf("Batch() = %d, %v; deleted %v, purged %v", n, err, a.deleted, m.purged)
 	}
+	m.expiredJobs = map[uuid.UUID]domain.Kind{id: domain.KindExport}
 	m.purged = nil
 	a.deleteErr = errors.New("denied")
 	if n, err := p.Batch(context.Background(), now(), 10); n != 0 || err == nil || len(m.purged) != 0 {

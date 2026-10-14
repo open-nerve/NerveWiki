@@ -163,6 +163,7 @@ sql:
       - migrations/sql/00029_transfer_transfer_jobs.sql
       - migrations/sql/00031_transfer_one_import.sql
       - migrations/sql/00032_transfer_running_report.sql
+      - migrations/sql/00039_transfer_background_jobs.sql
     queries: internal/modules/transfer/adapter/postgres/queries
     gen:
       go:

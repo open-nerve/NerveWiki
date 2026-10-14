@@ -1,6 +1,9 @@
 package domain
 
-import "unicode/utf8"
+import (
+	"unicode/utf8"
+	"uuid"
+)
 
 // Failure is why a job failed, a code the web words (M7 design 4.8).
 type Failure string
@@ -45,6 +48,28 @@ const (
 	// FailureChangesetReverted is an import whose changeset was reverted
 	// as it ran (M8/P3 design 3.7): its later units were not written.
 	FailureChangesetReverted Failure = "changeset_reverted"
+)
+
+// The failures of a background restore and revert (M8/P4 design 3.6):
+// what they wrote kept, the rest not written. A restore's tree_changed is
+// a part it brought back deleted, or moved too deep, as it ran; its
+// forbidden and changeset_reverted are the import's.
+const (
+	// FailureTrashChanged is a restore whose trash item changed after it
+	// started: restored, or wrapped in another deletion.
+	FailureTrashChanged Failure = "trash_changed"
+	// FailureRestoreExpired is a restore whose item reached the time it can
+	// be restored in as it ran.
+	FailureRestoreExpired Failure = "restore_expired"
+	// FailureRevertConflict is a revert a node of whose batch changed since
+	// it started, or cannot go back as it was: the report's conflicts.
+	FailureRevertConflict Failure = "revert_conflict"
+	// FailureChangesetTrimmed is a revert of a changeset the purge took part
+	// of as it ran.
+	FailureChangesetTrimmed Failure = "changeset_trimmed"
+	// FailurePageLocked is a revert a page of whose batch an edit session
+	// holds: the report's lock.
+	FailurePageLocked Failure = "page_locked"
 )
 
 // ProblemCode is what befell a node, a code the web words.
@@ -105,20 +130,57 @@ type Problem struct {
 // Counts are a report's numbers: an export's pages and attachments
 // written, the nodes renamed and the attachments whose files were
 // missing; an import's pages and attachments created, the nodes renamed,
-// and the entries and nodes skipped.
+// and the entries and nodes skipped; a restore's pages and attachments
+// brought back, the nodes renamed, and those skipped, restored by another
+// first; a revert's nodes restored, deleted and put back, its pages
+// written back, and those skipped, put back by another first (M8/P4
+// design 3.6).
 type Counts struct {
 	Pages, Attachments, Renamed, Missing, Skipped int64
+	Restored, Deleted, PutBack, Written           int64
+}
+
+// Placement is where a restore put its trash item's root: under ParentID,
+// nil for the notebook's root, and why, as the page module's reasons go.
+type Placement struct {
+	ParentID *uuid.UUID
+	Reason   string
+}
+
+// Conflict is a node that kept a revert's batch from going on: why, as the
+// page module's reasons go, its name, and the node holding the name of a
+// title_taken.
+type Conflict struct {
+	NodeID   uuid.UUID
+	Name     string
+	Reason   string
+	HolderID *uuid.UUID
+}
+
+// Lock is the edit lock a revert's batch met: the page, and who holds it.
+type Lock struct {
+	PageID, UserID uuid.UUID
 }
 
 // Report is what a job tells as it ends (M7 design 4.11): its failure, its
-// counts and its first MaxProblems problems.
+// counts and its first MaxProblems problems; a restore's placement, a
+// revert's conflicts, the first MaxConflicts of ConflictCount, and the
+// lock it met (M8/P4 design 3.6).
 type Report struct {
 	Failure  Failure
 	Counts   Counts
 	Problems []Problem
 	// Truncated tells problems were left out past MaxProblems.
-	Truncated bool
+	Truncated     bool
+	Placed        *Placement
+	Conflicts     []Conflict
+	ConflictCount int
+	Lock          *Lock
 }
+
+// MaxConflicts is how many of a revert's conflicts its report keeps, as
+// the page module's problem names.
+const MaxConflicts = 100
 
 // MaxProblems is how many problems a report keeps, and MaxProblemPath the
 // longest path of one, in bytes (M7 design 4.11).

@@ -302,6 +302,7 @@ func TestConstraintAndIndexNames(t *testing.T) {
 		"page_tags_pkey p",
 		"page_tags_tag_check c",
 		"page_tags_tag_key_check c",
+		"transfer_jobs_changeset_check c",
 		"transfer_jobs_client_check c",
 		"transfer_jobs_created_by_id_fkey f a",
 		"transfer_jobs_deleted_at_idx iw",
@@ -309,8 +310,8 @@ func TestConstraintAndIndexNames(t *testing.T) {
 		"transfer_jobs_exporting_key iuw",
 		"transfer_jobs_finished_at_idx iw",
 		"transfer_jobs_finished_check c",
-		"transfer_jobs_importing_key iuw",
 		"transfer_jobs_kind_check c",
+		"transfer_jobs_message_check c",
 		"transfer_jobs_name_check c",
 		"transfer_jobs_notebook_id_created_at_idx iw",
 		"transfer_jobs_notebook_id_fkey f r",
@@ -318,9 +319,12 @@ func TestConstraintAndIndexNames(t *testing.T) {
 		"transfer_jobs_pkey p",
 		"transfer_jobs_progress_check c",
 		"transfer_jobs_result_bytes_check c",
+		"transfer_jobs_root_check c",
 		"transfer_jobs_started_check c",
 		"transfer_jobs_state_check c",
 		"transfer_jobs_state_idx iw",
+		"transfer_jobs_target_check c",
+		"transfer_jobs_writing_key iuw",
 		"users_display_name_check c",
 		"users_email_check c",
 		"users_email_key iu",
@@ -573,7 +577,7 @@ func TestChecksRejectCounterexamples(t *testing.T) {
 		{"a width without its height", "UPDATE asset_blobs SET height = NULL", "asset_blobs_size_check"},
 		{"a height without its width", "UPDATE asset_blobs SET width = NULL", "asset_blobs_size_check"},
 		{"a sixth state of a job", "UPDATE transfer_jobs SET state = 'paused', finished_at = now(), report = '{}'", "transfer_jobs_state_check"},
-		{"a third kind of job", "UPDATE transfer_jobs SET kind = 'copy'", "transfer_jobs_kind_check"},
+		{"a fifth kind of job", "UPDATE transfer_jobs SET kind = 'copy', changeset_id = gen_random_uuid()", "transfer_jobs_kind_check"},
 		{"a job of no name", "UPDATE transfer_jobs SET name = ''", "transfer_jobs_name_check"},
 		{"a job's name of 256 bytes", "UPDATE transfer_jobs SET name = repeat('a', 256)", "transfer_jobs_name_check"},
 		{"a job of the command line", "UPDATE transfer_jobs SET client = 'cli'", "transfer_jobs_client_check"},
@@ -598,6 +602,25 @@ func TestChecksRejectCounterexamples(t *testing.T) {
 		{"a running export's bytes", "UPDATE transfer_jobs SET result_bytes = 1", "transfer_jobs_result_bytes_check"},
 		{"an archive of -1 bytes", "UPDATE transfer_jobs SET state = 'succeeded', finished_at = now(), report = '{}', result_bytes = -1",
 			"transfer_jobs_result_bytes_check"},
+		// The writing jobs' columns (M8/P4 design 3.2): each check alone broken, the others kept.
+		{"an export's changeset", "UPDATE transfer_jobs SET changeset_id = gen_random_uuid()", "transfer_jobs_changeset_check"},
+		{"a restore without its changeset", "UPDATE transfer_jobs SET kind = 'trash_restore', root_id = gen_random_uuid()",
+			"transfer_jobs_changeset_check"},
+		{"a revert without its changeset", "UPDATE transfer_jobs SET kind = 'revert', target_changeset_id = gen_random_uuid()",
+			"transfer_jobs_changeset_check"},
+		{"a revert of nothing", "UPDATE transfer_jobs SET kind = 'revert', changeset_id = gen_random_uuid()", "transfer_jobs_target_check"},
+		{"a restore's target", "UPDATE transfer_jobs SET kind = 'trash_restore', root_id = gen_random_uuid(), " +
+			"changeset_id = gen_random_uuid(), target_changeset_id = gen_random_uuid()", "transfer_jobs_target_check"},
+		{"a restore's message", "UPDATE transfer_jobs SET kind = 'trash_restore', root_id = gen_random_uuid(), " +
+			"changeset_id = gen_random_uuid(), message = 'm'", "transfer_jobs_message_check"},
+		{"a revert's empty message", "UPDATE transfer_jobs SET kind = 'revert', changeset_id = gen_random_uuid(), " +
+			"target_changeset_id = gen_random_uuid(), message = ''", "transfer_jobs_message_check"},
+		{"a revert's message of 4,097 bytes", "UPDATE transfer_jobs SET kind = 'revert', changeset_id = gen_random_uuid(), " +
+			"target_changeset_id = gen_random_uuid(), message = repeat('a', 4097)", "transfer_jobs_message_check"},
+		{"a restore of no item", "UPDATE transfer_jobs SET kind = 'trash_restore', changeset_id = gen_random_uuid()",
+			"transfer_jobs_root_check"},
+		{"a revert under a page", "UPDATE transfer_jobs SET kind = 'revert', root_id = gen_random_uuid(), " +
+			"changeset_id = gen_random_uuid(), target_changeset_id = gen_random_uuid()", "transfer_jobs_root_check"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -36,26 +36,28 @@ func (s *Store) queries(ctx context.Context) *gen.Queries {
 }
 
 // The unique indexes of one export queued or running for a reader in a
-// notebook, and of one import in a notebook.
+// notebook, and of one job that writes a notebook's tree in it: an import,
+// a restore or a revert (M8/P4 design 3.2).
 const (
 	exportingKey = "transfer_jobs_exporting_key"
-	importingKey = "transfer_jobs_importing_key"
+	writingKey   = "transfer_jobs_writing_key"
 )
 
 // CreateJob implements app.Rows: a second export queued or running for the
-// account in the notebook is domain.ErrBusy, a second import in the
-// notebook domain.ErrImportBusy, whatever the count before said.
+// account in the notebook is domain.ErrBusy, a second job that writes the
+// notebook's tree domain.ErrWriting, whatever the count before said.
 func (s *Store) CreateJob(ctx context.Context, j domain.Job) error {
 	err := s.queries(ctx).CreateJob(ctx, gen.CreateJobParams{
 		ID: j.ID, NotebookID: j.NotebookID, RootID: j.RootID, Kind: string(j.Kind), Name: j.Name, CreatedByID: j.CreatedBy,
-		Client: string(j.Client), CreatedAt: j.CreatedAt,
+		Client: string(j.Client), CreatedAt: j.CreatedAt, ChangesetID: j.ChangesetID, TargetChangesetID: j.TargetChangesetID,
+		Message: j.Message,
 	})
 	var pgErr *pgconn.PgError
 	switch {
 	case errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == exportingKey:
 		return domain.ErrBusy
-	case errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == importingKey:
-		return domain.ErrImportBusy
+	case errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == writingKey:
+		return domain.ErrWriting
 	}
 	if err != nil {
 		return fmt.Errorf("create job: %w", err)
@@ -93,11 +95,11 @@ func (s *Store) Exporting(ctx context.Context, notebookID, userID uuid.UUID) (bo
 	return ok, nil
 }
 
-// Importing implements app.Rows.
-func (s *Store) Importing(ctx context.Context, notebookID uuid.UUID) (bool, error) {
-	ok, err := s.queries(ctx).Importing(ctx, notebookID)
+// Writing implements app.Rows.
+func (s *Store) Writing(ctx context.Context, notebookID uuid.UUID) (bool, error) {
+	ok, err := s.queries(ctx).Writing(ctx, notebookID)
 	if err != nil {
-		return false, fmt.Errorf("importing: %w", err)
+		return false, fmt.Errorf("writing: %w", err)
 	}
 	return ok, nil
 }
@@ -327,7 +329,8 @@ func jobOf(r gen.FindJobRow) (domain.Job, error) {
 		ID: r.ID, NotebookID: r.NotebookID, RootID: r.RootID, Kind: domain.Kind(r.Kind), State: domain.State(r.State), Name: r.Name,
 		CreatedBy: r.CreatedByID, Client: domain.Client(r.Client), Progress: domain.Progress{Done: r.ProgressDone, Total: r.ProgressTotal},
 		CancelRequested: r.CancelRequestedAt, Heartbeat: r.HeartbeatAt, Started: r.StartedAt, Finished: r.FinishedAt,
-		ResultBytes: r.ResultBytes, CreatedAt: r.CreatedAt,
+		ResultBytes: r.ResultBytes, CreatedAt: r.CreatedAt, ChangesetID: r.ChangesetID, TargetChangesetID: r.TargetChangesetID,
+		Message: r.Message,
 	}
 	// A running job's report is the heartbeat's, which only its end shows.
 	if r.Report != nil && j.State.Ended() {
@@ -340,12 +343,19 @@ func jobOf(r gen.FindJobRow) (domain.Job, error) {
 	return j, nil
 }
 
-// reportJSON is a report as transfer_jobs.report keeps it.
+// reportJSON is a report as transfer_jobs.report keeps it. A background
+// restore's placement, a revert's conflicts and the lock it met are kept
+// only when there are (M8/P4 design 3.6): the list reads a report without
+// its problems and conflicts.
 type reportJSON struct {
-	Failure   *string       `json:"failure"`
-	Counts    countsJSON    `json:"counts"`
-	Problems  []problemJSON `json:"problems"`
-	Truncated bool          `json:"problems_truncated"`
+	Failure       *string        `json:"failure"`
+	Counts        countsJSON     `json:"counts"`
+	Problems      []problemJSON  `json:"problems"`
+	Truncated     bool           `json:"problems_truncated"`
+	Placed        *placementJSON `json:"placed,omitempty"`
+	Conflicts     []conflictJSON `json:"conflicts,omitempty"`
+	ConflictCount int            `json:"conflict_count,omitempty"`
+	Lock          *lockJSON      `json:"lock,omitempty"`
 }
 
 type countsJSON struct {
@@ -354,6 +364,10 @@ type countsJSON struct {
 	Renamed     int64 `json:"renamed"`
 	Missing     int64 `json:"missing"`
 	Skipped     int64 `json:"skipped"`
+	Restored    int64 `json:"restored"`
+	Deleted     int64 `json:"deleted"`
+	PutBack     int64 `json:"put_back"`
+	Written     int64 `json:"written"`
 }
 
 type problemJSON struct {
@@ -362,14 +376,41 @@ type problemJSON struct {
 	To   string `json:"to,omitempty"`
 }
 
+type placementJSON struct {
+	ParentID *uuid.UUID `json:"parent_id"`
+	Reason   string     `json:"reason"`
+}
+
+type conflictJSON struct {
+	NodeID   uuid.UUID  `json:"node_id"`
+	Name     string     `json:"name"`
+	Reason   string     `json:"reason"`
+	HolderID *uuid.UUID `json:"holder_id,omitempty"`
+}
+
+type lockJSON struct {
+	PageID uuid.UUID `json:"page_id"`
+	UserID uuid.UUID `json:"user_id"`
+}
+
 func encodeReport(r domain.Report) ([]byte, error) {
-	out := reportJSON{Counts: countsJSON(r.Counts), Problems: make([]problemJSON, len(r.Problems)), Truncated: r.Truncated}
+	out := reportJSON{Counts: countsJSON(r.Counts), Problems: make([]problemJSON, len(r.Problems)), Truncated: r.Truncated,
+		ConflictCount: r.ConflictCount}
 	if r.Failure != "" {
 		f := string(r.Failure)
 		out.Failure = &f
 	}
 	for i, p := range r.Problems {
 		out.Problems[i] = problemJSON{Path: p.Path, Code: string(p.Code), To: p.To}
+	}
+	if r.Placed != nil {
+		out.Placed = &placementJSON{ParentID: r.Placed.ParentID, Reason: r.Placed.Reason}
+	}
+	for _, c := range r.Conflicts {
+		out.Conflicts = append(out.Conflicts, conflictJSON(c))
+	}
+	if r.Lock != nil {
+		out.Lock = &lockJSON{PageID: r.Lock.PageID, UserID: r.Lock.UserID}
 	}
 	b, err := json.Marshal(out)
 	if err != nil {
@@ -383,12 +424,21 @@ func decodeReport(b []byte) (domain.Report, error) {
 	if err := json.Unmarshal(b, &in); err != nil {
 		return domain.Report{}, err
 	}
-	r := domain.Report{Counts: domain.Counts(in.Counts), Truncated: in.Truncated}
+	r := domain.Report{Counts: domain.Counts(in.Counts), Truncated: in.Truncated, ConflictCount: in.ConflictCount}
 	if in.Failure != nil {
 		r.Failure = domain.Failure(*in.Failure)
 	}
 	for _, p := range in.Problems {
 		r.Problems = append(r.Problems, domain.Problem{Path: p.Path, Code: domain.ProblemCode(p.Code), To: p.To})
+	}
+	if in.Placed != nil {
+		r.Placed = &domain.Placement{ParentID: in.Placed.ParentID, Reason: in.Placed.Reason}
+	}
+	for _, c := range in.Conflicts {
+		r.Conflicts = append(r.Conflicts, domain.Conflict(c))
+	}
+	if in.Lock != nil {
+		r.Lock = &domain.Lock{PageID: in.Lock.PageID, UserID: in.Lock.UserID}
 	}
 	return r, nil
 }

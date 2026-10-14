@@ -8,11 +8,21 @@ import (
 // Kind is what a job does.
 type Kind string
 
-// The two kinds of job.
+// The kinds of job: an import and an export of a notebook (M7), and from
+// M8 a trash item's restore and a changeset's revert in the background
+// (M8/P4 design 3.2).
 const (
-	KindImport Kind = "import"
-	KindExport Kind = "export"
+	KindImport       Kind = "import"
+	KindExport       Kind = "export"
+	KindTrashRestore Kind = "trash_restore"
+	KindRevert       Kind = "revert"
 )
+
+// Writes reports whether a job of kind writes its notebook's tree: one
+// such job at a time a notebook, whoever started it (M8 design 4.10).
+func (k Kind) Writes() bool {
+	return k == KindImport || k == KindTrashRestore || k == KindRevert
+}
 
 // State is where a job is (M7/P5 design 3.5): queued, then running, then
 // one of the four ends; an export that succeeded expires. The statements
@@ -53,16 +63,28 @@ type Progress struct {
 type Job struct {
 	ID         uuid.UUID
 	NotebookID uuid.UUID
-	// RootID is the page exported with its subtree; nil for the whole
-	// notebook.
+	// RootID is the page exported with its subtree, or imported under; nil
+	// for the whole notebook, or its root. A restore's is its trash
+	// item's root; a revert has none.
 	RootID *uuid.UUID
 	Kind   Kind
 	State  State
-	// Name is what is exported, by name: the notebook's or the page's.
-	Name      string
-	CreatedBy uuid.UUID
-	Client    Client
-	Progress  Progress
+	// Name is what is exported, by name: the notebook's or the page's; an
+	// import's archive's; a restore's item's; the kind of the changeset a
+	// revert reverts.
+	Name string
+	// ChangesetID is the changeset a writing job writes, decided as its row
+	// is made (M8/P4 design 3.2): its first unit that writes makes it, its
+	// later units merge into it. An export, and an import made before,
+	// have none.
+	ChangesetID *uuid.UUID
+	// TargetChangesetID is the changeset a revert reverts, and Message the
+	// message of its revert, nil for none.
+	TargetChangesetID *uuid.UUID
+	Message           *string
+	CreatedBy         uuid.UUID
+	Client            Client
+	Progress          Progress
 	// CancelRequested is when a cancel of the running job was asked.
 	CancelRequested *time.Time
 	Heartbeat       *time.Time

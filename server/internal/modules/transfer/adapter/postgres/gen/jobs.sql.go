@@ -81,20 +81,25 @@ func (q *Queries) CountActive(ctx context.Context) (int64, error) {
 
 const createJob = `-- name: CreateJob :exec
 
-INSERT INTO transfer_jobs (id, notebook_id, root_id, kind, state, name, created_by_id, client, created_at)
+INSERT INTO transfer_jobs (id, notebook_id, root_id, kind, state, name, created_by_id, client, created_at, changeset_id,
+    target_changeset_id, message)
 VALUES ($1, $2, $3, $4, 'queued', $5,
-    $6, $7, $8)
+    $6, $7, $8, $9,
+    $10, $11)
 `
 
 type CreateJobParams struct {
-	ID          uuid.UUID
-	NotebookID  uuid.UUID
-	RootID      *uuid.UUID
-	Kind        string
-	Name        string
-	CreatedByID uuid.UUID
-	Client      string
-	CreatedAt   time.Time
+	ID                uuid.UUID
+	NotebookID        uuid.UUID
+	RootID            *uuid.UUID
+	Kind              string
+	Name              string
+	CreatedByID       uuid.UUID
+	Client            string
+	CreatedAt         time.Time
+	ChangesetID       *uuid.UUID
+	TargetChangesetID *uuid.UUID
+	Message           *string
 }
 
 // The jobs' rows (M7/P5 design 3.5). Each statement that moves a job names the state it moves it from: the state
@@ -109,6 +114,9 @@ func (q *Queries) CreateJob(ctx context.Context, arg CreateJobParams) error {
 		arg.CreatedByID,
 		arg.Client,
 		arg.CreatedAt,
+		arg.ChangesetID,
+		arg.TargetChangesetID,
+		arg.Message,
 	)
 	return err
 }
@@ -327,7 +335,8 @@ func (q *Queries) FailQueued(ctx context.Context, arg FailQueuedParams) ([]FailQ
 
 const findJob = `-- name: FindJob :one
 SELECT id, notebook_id, root_id, kind, state, name, created_by_id, client, progress_done, progress_total,
-    cancel_requested_at, heartbeat_at, started_at, finished_at, report, result_bytes, created_at
+    cancel_requested_at, heartbeat_at, started_at, finished_at, report, result_bytes, created_at, changeset_id,
+    target_changeset_id, message
 FROM transfer_jobs
 WHERE id = $1 AND deleted_at IS NULL
 `
@@ -350,6 +359,9 @@ type FindJobRow struct {
 	Report            []byte
 	ResultBytes       *int64
 	CreatedAt         time.Time
+	ChangesetID       *uuid.UUID
+	TargetChangesetID *uuid.UUID
+	Message           *string
 }
 
 func (q *Queries) FindJob(ctx context.Context, id uuid.UUID) (FindJobRow, error) {
@@ -373,6 +385,9 @@ func (q *Queries) FindJob(ctx context.Context, id uuid.UUID) (FindJobRow, error)
 		&i.Report,
 		&i.ResultBytes,
 		&i.CreatedAt,
+		&i.ChangesetID,
+		&i.TargetChangesetID,
+		&i.Message,
 	)
 	return i, err
 }
@@ -411,21 +426,6 @@ func (q *Queries) FinishJob(ctx context.Context, arg FinishJobParams) (int64, er
 		return 0, err
 	}
 	return result.RowsAffected(), nil
-}
-
-const importing = `-- name: Importing :one
-SELECT EXISTS (
-    SELECT 1 FROM transfer_jobs
-    WHERE notebook_id = $1 AND kind = 'import' AND state IN ('queued', 'running') AND deleted_at IS NULL
-)
-`
-
-// Whether the notebook has an import queued or running, anyone's.
-func (q *Queries) Importing(ctx context.Context, notebookID uuid.UUID) (bool, error) {
-	row := q.db.QueryRow(ctx, importing, notebookID)
-	var exists bool
-	err := row.Scan(&exists)
-	return exists, err
 }
 
 const interruptJobs = `-- name: InterruptJobs :many
@@ -483,7 +483,8 @@ func (q *Queries) InterruptJobs(ctx context.Context, arg InterruptJobsParams) ([
 
 const listJobs = `-- name: ListJobs :many
 SELECT id, notebook_id, root_id, kind, state, name, created_by_id, client, progress_done, progress_total,
-    cancel_requested_at, heartbeat_at, started_at, finished_at, (report - 'problems')::jsonb AS report, result_bytes, created_at
+    cancel_requested_at, heartbeat_at, started_at, finished_at, (report - 'problems' - 'conflicts')::jsonb AS report,
+    result_bytes, created_at, changeset_id, target_changeset_id, message
 FROM transfer_jobs
 WHERE notebook_id = $1 AND deleted_at IS NULL
     AND ($2::uuid IS NULL OR created_by_id = $2)
@@ -519,10 +520,13 @@ type ListJobsRow struct {
 	Report            []byte
 	ResultBytes       *int64
 	CreatedAt         time.Time
+	ChangesetID       *uuid.UUID
+	TargetChangesetID *uuid.UUID
+	Message           *string
 }
 
 // A notebook's jobs, the newest first, the account's alone when created_by_id is set, after the cursor's. A report
-// comes without its problems, up to 1,000 a job, which the list does not show.
+// comes without its problems, up to 1,000 a job, and a revert's conflicts, up to 100, which the list does not show.
 func (q *Queries) ListJobs(ctx context.Context, arg ListJobsParams) ([]ListJobsRow, error) {
 	rows, err := q.db.Query(ctx, listJobs,
 		arg.NotebookID,
@@ -556,6 +560,9 @@ func (q *Queries) ListJobs(ctx context.Context, arg ListJobsParams) ([]ListJobsR
 			&i.Report,
 			&i.ResultBytes,
 			&i.CreatedAt,
+			&i.ChangesetID,
+			&i.TargetChangesetID,
+			&i.Message,
 		); err != nil {
 			return nil, err
 		}
@@ -602,7 +609,8 @@ func (q *Queries) LiveArchives(ctx context.Context, arg LiveArchivesParams) ([]u
 
 const lockJob = `-- name: LockJob :one
 SELECT id, notebook_id, root_id, kind, state, name, created_by_id, client, progress_done, progress_total,
-    cancel_requested_at, heartbeat_at, started_at, finished_at, report, result_bytes, created_at
+    cancel_requested_at, heartbeat_at, started_at, finished_at, report, result_bytes, created_at, changeset_id,
+    target_changeset_id, message
 FROM transfer_jobs
 WHERE id = $1 AND deleted_at IS NULL
 FOR UPDATE
@@ -626,6 +634,9 @@ type LockJobRow struct {
 	Report            []byte
 	ResultBytes       *int64
 	CreatedAt         time.Time
+	ChangesetID       *uuid.UUID
+	TargetChangesetID *uuid.UUID
+	Message           *string
 }
 
 // FindJob locked FOR UPDATE until the transaction ends: a cancel decides on the state it reads.
@@ -650,6 +661,9 @@ func (q *Queries) LockJob(ctx context.Context, id uuid.UUID) (LockJobRow, error)
 		&i.Report,
 		&i.ResultBytes,
 		&i.CreatedAt,
+		&i.ChangesetID,
+		&i.TargetChangesetID,
+		&i.Message,
 	)
 	return i, err
 }
@@ -713,7 +727,8 @@ const startJob = `-- name: StartJob :one
 UPDATE transfer_jobs SET state = 'running', started_at = $1, heartbeat_at = $1
 WHERE id = $2 AND state = 'queued' AND deleted_at IS NULL
 RETURNING id, notebook_id, root_id, kind, state, name, created_by_id, client, progress_done, progress_total,
-    cancel_requested_at, heartbeat_at, started_at, finished_at, report, result_bytes, created_at
+    cancel_requested_at, heartbeat_at, started_at, finished_at, report, result_bytes, created_at, changeset_id,
+    target_changeset_id, message
 `
 
 type StartJobParams struct {
@@ -739,6 +754,9 @@ type StartJobRow struct {
 	Report            []byte
 	ResultBytes       *int64
 	CreatedAt         time.Time
+	ChangesetID       *uuid.UUID
+	TargetChangesetID *uuid.UUID
+	Message           *string
 }
 
 // A queued job, running: none when it was cancelled or deleted meanwhile.
@@ -763,6 +781,26 @@ func (q *Queries) StartJob(ctx context.Context, arg StartJobParams) (StartJobRow
 		&i.Report,
 		&i.ResultBytes,
 		&i.CreatedAt,
+		&i.ChangesetID,
+		&i.TargetChangesetID,
+		&i.Message,
 	)
 	return i, err
+}
+
+const writing = `-- name: Writing :one
+SELECT EXISTS (
+    SELECT 1 FROM transfer_jobs
+    WHERE notebook_id = $1 AND kind IN ('import', 'trash_restore', 'revert')
+        AND state IN ('queued', 'running') AND deleted_at IS NULL
+)
+`
+
+// Whether the notebook has a job that writes its tree queued or running, anyone's: an import, a restore or a revert
+// (M8/P4 design 3.6), through the writing key.
+func (q *Queries) Writing(ctx context.Context, notebookID uuid.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, writing, notebookID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }

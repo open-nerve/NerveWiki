@@ -83,6 +83,11 @@ type UnitSpec struct {
 	// Kind and RevertsID, by the unit's actor and from its client, and not
 	// reverted (M8/P3 design 3.7).
 	Changeset uuid.UUID
+	// Create has the unit make Changeset with its first write when there
+	// is none yet (M8/P4 design 3.3): a job's, whose row names it, which
+	// its first unit that writes makes and the later ones merge into. One
+	// that writes nothing makes none.
+	Create bool
 	// Message is the message of the changeset the unit creates, none when
 	// nil; one it merges into keeps its own.
 	Message *string
@@ -194,7 +199,7 @@ func (w *Writer) Run(ctx context.Context, spec UnitSpec, do func(ctx context.Con
 		u = &Unit{w: w, write: Write{
 			WorkspaceID: workspaceID, NotebookID: spec.NotebookID, By: actor.UserID, Client: spec.Client,
 			Options: spec.Options, At: w.d.Clock.Now(), Kind: kind, RevertsID: spec.RevertsID,
-		}, into: spec.Changeset, message: spec.Message, merged: map[uuid.UUID]int{}}
+		}, into: spec.Changeset, create: spec.Create, message: spec.Message, merged: map[uuid.UUID]int{}}
 		if err := u.lockInto(ctx); err != nil {
 			return err
 		}
@@ -215,9 +220,12 @@ type Unit struct {
 	write Write
 	// changeset is the unit's, inserted with its first write, of the
 	// write's kind, with message; or into, an earlier unit's it merges into
-	// then.
+	// then, or the one it inserts with that id when it is to create it and
+	// none is there (fresh).
 	changeset uuid.UUID
 	into      uuid.UUID
+	create    bool
+	fresh     bool
 	message   *string
 	// changes are the unit's, merged by node in the order first changed;
 	// merged indexes them.
@@ -278,13 +286,19 @@ func (u *Unit) inUnit(ctx context.Context) error {
 // notebook, of the unit's kind and reverting what it reverts, by its actor
 // and from its client. A revert of it, made before, is
 // ErrChangesetReverted; one made after waits for the unit. It locks after
-// the notebook's row, as the units do (v0.1 design 13.1, item 5).
+// the notebook's row, as the units do (v0.1 design 13.1, item 5). One that
+// is not there yet the unit makes with its first write when it is to
+// create it (M8/P4 design 3.3): its job's units run one at a time, under
+// the notebook's row, so no other makes it meanwhile.
 func (u *Unit) lockInto(ctx context.Context) error {
 	if u.into == (uuid.UUID{}) {
 		return nil
 	}
 	c, err := u.w.d.Changesets.LockChangeset(ctx, u.into)
 	switch {
+	case errors.Is(err, ErrNotFound) && u.create:
+		u.fresh = true
+		return nil
 	case errors.Is(err, ErrNotFound):
 		return fmt.Errorf("a page write unit merges into changeset %s: no such changeset", u.into)
 	case err != nil:
@@ -302,19 +316,23 @@ func (u *Unit) lockInto(ctx context.Context) error {
 // ensureChangeset inserts the unit's changeset with its first write, or
 // merges the unit into the one it names, which lockInto locked: its
 // updated_at moved to the unit's time, which the notebook's activity and
-// log read.
+// log read. One it is to create, not there yet, it inserts with the id it
+// names.
 func (u *Unit) ensureChangeset(ctx context.Context) error {
 	if u.changeset != (uuid.UUID{}) {
 		return nil
 	}
-	if u.into != (uuid.UUID{}) {
+	if u.into != (uuid.UUID{}) && !u.fresh {
 		if err := u.w.d.Changesets.TouchChangeset(ctx, u.into, u.write.At); err != nil {
 			return err
 		}
 		u.changeset = u.into
 		return nil
 	}
-	id := uuid.NewV7()
+	id := u.into
+	if !u.fresh {
+		id = uuid.NewV7()
+	}
 	if err := u.w.d.Changesets.CreateChangeset(ctx, Changeset{
 		ID: id, NotebookID: u.write.NotebookID, Kind: u.write.Kind, RevertsID: u.write.RevertsID, Client: u.write.Client,
 		Message: u.message, By: u.write.By, At: u.write.At,

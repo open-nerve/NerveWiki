@@ -2,9 +2,11 @@
 -- machine is the statements', the checks keep each row's columns in step with its state.
 
 -- name: CreateJob :exec
-INSERT INTO transfer_jobs (id, notebook_id, root_id, kind, state, name, created_by_id, client, created_at)
+INSERT INTO transfer_jobs (id, notebook_id, root_id, kind, state, name, created_by_id, client, created_at, changeset_id,
+    target_changeset_id, message)
 VALUES (sqlc.arg(id), sqlc.arg(notebook_id), sqlc.narg(root_id), sqlc.arg(kind), 'queued', sqlc.arg(name),
-    sqlc.arg(created_by_id), sqlc.arg(client), sqlc.arg(created_at));
+    sqlc.arg(created_by_id), sqlc.arg(client), sqlc.arg(created_at), sqlc.narg(changeset_id),
+    sqlc.narg(target_changeset_id), sqlc.narg(message));
 
 -- name: LockQueue :exec
 -- The jobs' creations one at a time, until the transaction ends: how many are queued or running is counted under it
@@ -23,32 +25,37 @@ SELECT EXISTS (
         AND state IN ('queued', 'running') AND deleted_at IS NULL
 );
 
--- name: Importing :one
--- Whether the notebook has an import queued or running, anyone's.
+-- name: Writing :one
+-- Whether the notebook has a job that writes its tree queued or running, anyone's: an import, a restore or a revert
+-- (M8/P4 design 3.6), through the writing key.
 SELECT EXISTS (
     SELECT 1 FROM transfer_jobs
-    WHERE notebook_id = sqlc.arg(notebook_id) AND kind = 'import' AND state IN ('queued', 'running') AND deleted_at IS NULL
+    WHERE notebook_id = sqlc.arg(notebook_id) AND kind IN ('import', 'trash_restore', 'revert')
+        AND state IN ('queued', 'running') AND deleted_at IS NULL
 );
 
 -- name: FindJob :one
 SELECT id, notebook_id, root_id, kind, state, name, created_by_id, client, progress_done, progress_total,
-    cancel_requested_at, heartbeat_at, started_at, finished_at, report, result_bytes, created_at
+    cancel_requested_at, heartbeat_at, started_at, finished_at, report, result_bytes, created_at, changeset_id,
+    target_changeset_id, message
 FROM transfer_jobs
 WHERE id = sqlc.arg(id) AND deleted_at IS NULL;
 
 -- name: LockJob :one
 -- FindJob locked FOR UPDATE until the transaction ends: a cancel decides on the state it reads.
 SELECT id, notebook_id, root_id, kind, state, name, created_by_id, client, progress_done, progress_total,
-    cancel_requested_at, heartbeat_at, started_at, finished_at, report, result_bytes, created_at
+    cancel_requested_at, heartbeat_at, started_at, finished_at, report, result_bytes, created_at, changeset_id,
+    target_changeset_id, message
 FROM transfer_jobs
 WHERE id = sqlc.arg(id) AND deleted_at IS NULL
 FOR UPDATE;
 
 -- name: ListJobs :many
 -- A notebook's jobs, the newest first, the account's alone when created_by_id is set, after the cursor's. A report
--- comes without its problems, up to 1,000 a job, which the list does not show.
+-- comes without its problems, up to 1,000 a job, and a revert's conflicts, up to 100, which the list does not show.
 SELECT id, notebook_id, root_id, kind, state, name, created_by_id, client, progress_done, progress_total,
-    cancel_requested_at, heartbeat_at, started_at, finished_at, (report - 'problems')::jsonb AS report, result_bytes, created_at
+    cancel_requested_at, heartbeat_at, started_at, finished_at, (report - 'problems' - 'conflicts')::jsonb AS report,
+    result_bytes, created_at, changeset_id, target_changeset_id, message
 FROM transfer_jobs
 WHERE notebook_id = sqlc.arg(notebook_id) AND deleted_at IS NULL
     AND (sqlc.narg(created_by_id)::uuid IS NULL OR created_by_id = sqlc.narg(created_by_id))
@@ -62,7 +69,8 @@ LIMIT sqlc.arg(row_limit);
 UPDATE transfer_jobs SET state = 'running', started_at = sqlc.arg(at), heartbeat_at = sqlc.arg(at)
 WHERE id = sqlc.arg(id) AND state = 'queued' AND deleted_at IS NULL
 RETURNING id, notebook_id, root_id, kind, state, name, created_by_id, client, progress_done, progress_total,
-    cancel_requested_at, heartbeat_at, started_at, finished_at, report, result_bytes, created_at;
+    cancel_requested_at, heartbeat_at, started_at, finished_at, report, result_bytes, created_at, changeset_id,
+    target_changeset_id, message;
 
 -- name: BeatJob :one
 -- A running job's heartbeat and progress, and its report as it goes when it is set; it reads back whether a cancel

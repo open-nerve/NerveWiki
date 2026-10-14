@@ -65,8 +65,9 @@ func TestAnImportWritesTheVault(t *testing.T) {
 		string(w.files.files[png.file.ID]) != "PNG" {
 		t.Errorf("x.png's file %+v attached %+v, %v", png.file, o, ok)
 	}
-	if len(w.tree.units) != 1 || w.tree.units[0] != (app.ImportSpec{NotebookID: w.eng, Action: domain.ActionImport, Client: domain.ClientAPI}) {
-		t.Errorf("units %+v, want one of the job's", w.tree.units)
+	if len(w.tree.units) != 1 || w.tree.units[0] != (app.ImportSpec{NotebookID: w.eng, Action: domain.ActionImport, Client: domain.ClientAPI,
+		Changeset: *j.ChangesetID}) {
+		t.Errorf("units %+v, want one of the job's, in its row's changeset", w.tree.units)
 	}
 	if job := (shared.Actor{UserID: w.bob, JobID: j.ID}); !slices.Equal(w.auth.asked, []shared.Actor{job}) ||
 		!slices.Equal(w.tree.actors, []shared.Actor{job}) {
@@ -275,29 +276,51 @@ func many(t *testing.T, n int, content func(i int) string) []byte {
 	return zipOf(t, entries...)
 }
 
+// An import whose row names no changeset, queued before M8/P4 and
+// backfilled by none, merges its later units into its first one's.
+func TestAnImportOfARowWithoutItsChangesetMergesIntoItsFirst(t *testing.T) {
+	w := newImportWorld()
+	j := w.queuedImport(nil, many(t, 150, func(int) string { return "x" }))
+	w.rows.jobs[j.ID].job.ChangesetID = nil
+	if got := w.run(t, j); got.State != domain.StateSucceeded {
+		t.Fatalf("job %+v, report %+v", got, got.Report)
+	}
+	if len(w.tree.units) != 2 || w.tree.units[0].Changeset != (uuid.UUID{}) || w.tree.units[1].Changeset != w.tree.made[0].changeset {
+		t.Errorf("units %+v; want the first in a changeset of its own, the second merged into it", w.tree.units)
+	}
+}
+
 // The nodes are written in batches, each its unit: at most 100 nodes, 8
-// MiB of contents, 20,000 links, a page past them alone; the later units
-// merge into the first one's changeset.
+// MiB of contents, 20,000 links, a page past them alone, or the bounds
+// given (M8/P4 design 3.6); each unit writes in the changeset the job's
+// row names, which the first makes (M8/P4 design 3.2).
 func TestAnImportWritesInBatches(t *testing.T) {
 	for _, tt := range []struct {
 		name    string
 		archive func(t *testing.T) []byte
+		batch   app.Batch
 		want    []int
 	}{
-		{"nodes", func(t *testing.T) []byte { return many(t, 250, func(int) string { return "x" }) }, []int{100, 100, 50}},
-		{"bytes", func(t *testing.T) []byte { return many(t, 5, func(int) string { return noise(3 << 20) }) }, []int{2, 2, 1}},
+		{"nodes", func(t *testing.T) []byte { return many(t, 250, func(int) string { return "x" }) }, app.Batch{}, []int{100, 100, 50}},
+		{"bytes", func(t *testing.T) []byte { return many(t, 5, func(int) string { return noise(3 << 20) }) }, app.Batch{}, []int{2, 2, 1}},
 		{"links", func(t *testing.T) []byte {
 			return many(t, 5, func(int) string { return strings.Repeat("[[x]]", 9000) })
-		}, []int{2, 2, 1}},
+		}, app.Batch{}, []int{2, 2, 1}},
 		{"a page past them", func(t *testing.T) []byte {
 			return many(t, 2, func(int) string { return strings.Repeat("[[x]]", 30000) })
 		},
-			[]int{1, 1}},
+			app.Batch{}, []int{1, 1}},
+		{"nodes given", func(t *testing.T) []byte { return many(t, 7, func(int) string { return "x" }) }, app.Batch{Nodes: 3}, []int{3, 3, 1}},
+		{"bytes given", func(t *testing.T) []byte { return many(t, 3, func(int) string { return noise(1 << 10) }) },
+			app.Batch{Bytes: 1 << 11}, []int{2, 1}},
+		{"links given", func(t *testing.T) []byte { return many(t, 3, func(int) string { return "[[x]] [[y]]" }) },
+			app.Batch{Links: 3}, []int{1, 1, 1}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			w := newImportWorld()
-			w.max.MaxUnpacked = 1 << 30
-			got := w.run(t, w.queuedImport(nil, tt.archive(t)))
+			w.max.MaxUnpacked, w.max.Batch = 1<<30, tt.batch
+			j := w.queuedImport(nil, tt.archive(t))
+			got := w.run(t, j)
 			if got.State != domain.StateSucceeded {
 				t.Fatalf("job %+v, report %+v", got, got.Report)
 			}
@@ -306,8 +329,8 @@ func TestAnImportWritesInBatches(t *testing.T) {
 				changesets[m.changeset] = true
 			}
 			for i, u := range w.tree.units {
-				if first := w.tree.made[0].changeset; i > 0 && u.Changeset != first {
-					t.Errorf("unit %d merges into %v, want the first's %v", i, u.Changeset, first)
+				if u.Changeset != *j.ChangesetID {
+					t.Errorf("unit %d writes in %v, want the row's %v", i, u.Changeset, *j.ChangesetID)
 				}
 			}
 			if len(changesets) != 1 || !slices.Equal(w.tree.committed, tt.want) {
