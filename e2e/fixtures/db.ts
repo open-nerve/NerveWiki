@@ -25,6 +25,12 @@ export interface Database {
   readonly url: string;
   /** Runs one statement on this database, through its own pool, and returns the rows. */
   query<Row extends QueryResultRow>(sql: string, params?: unknown[]): Promise<Row[]>;
+  /**
+   * Begins a transaction on a connection of its own, outside the pool, and runs one statement in it: what it locks
+   * stays locked until the function it resolves ends the transaction, which a test calls in a finally. Calling it
+   * again does nothing.
+   */
+  hold(sql: string, params?: unknown[]): Promise<() => Promise<void>>;
   /** Writes a plain SQL pg_dump of this database to file, for the artifacts of a failed test. */
   dump(file: string): Promise<void>;
   /** Closes the pool. */
@@ -104,8 +110,34 @@ export function openDatabase(name: string): Database {
     url,
     query: async <Row extends QueryResultRow>(sql: string, params?: unknown[]) =>
       (await pool.query<Row>(sql, params)).rows,
+    hold: (sql, params) => hold(url, sql, params),
     dump: (file) => dump(serverUrl, name, file),
     close: () => pool.end(),
+  };
+}
+
+/** Runs sql in a transaction of a connection of its own to the database at url: see Database.hold. */
+async function hold(url: string, sql: string, params?: unknown[]): Promise<() => Promise<void>> {
+  const client = new Client({
+    connectionString: url,
+    connectionTimeoutMillis: connectTimeoutMs,
+    query_timeout: queryTimeoutMs,
+  });
+  await client.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(sql, params);
+  } catch (error) {
+    await client.end();
+    throw error;
+  }
+  let ended: Promise<void> | undefined;
+  return () => {
+    ended ??= client.query("ROLLBACK").then(
+      () => client.end(),
+      () => client.end()
+    );
+    return ended;
   };
 }
 
