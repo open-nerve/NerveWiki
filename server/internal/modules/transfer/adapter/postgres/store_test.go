@@ -330,6 +330,9 @@ func TestOneWritingJobAtOnceInANotebook(t *testing.T) {
 	if _, err := f.background(t, f.eng, f.bob, nil, uuid.NewV7()); err != nil {
 		t.Errorf("CreateJob() of a revert once the restore ended = %v", err)
 	}
+	if busy, err := f.store.Writing(ctx, f.eng); !busy || err != nil {
+		t.Errorf("Writing() beside a revert = %v, %v; want true", busy, err)
+	}
 	if _, err := f.background(t, f.eng, f.alice, &root, uuid.UUID{}); !errors.Is(err, domain.ErrWriting) {
 		t.Errorf("CreateJob() of a restore beside a revert = %v, want ErrWriting", err)
 	}

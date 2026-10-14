@@ -19,8 +19,8 @@ jobs:
     # 同仓库分支的 PR 已由 push 事件在同一个提交上跑过；pull_request 事件只为 fork 的 PR 运行
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-24.04
-    # 一个作业跑全部的 Go 测试在 M8/P3A 时超过了 25 分钟的时限：分成三份并行，各占一个 runner（Makefile 的
-    # test-go-race、test-go-bootstrap、test-go-costs，三份之和是 make test-go）。不带竞态检测的耗时守卫也因此不与竞态检测下的构建抢 CPU。
+    # 一个作业跑全部的 Go 测试在 M8/P3A 时超过了 25 分钟的时限：分成几份并行，各占一个 runner（Makefile 的
+    # test-go-race、test-go-bootstrap、test-go-costs、test-go-guards，几份之和是 make test-go）。不带竞态检测的耗时守卫也因此不与竞态检测下的构建抢 CPU。
     # 一份失败不取消别的：各自的失败都看得到。时限约为各份在 CI 上实测的两倍（M8/P3A，作业 6:20、10:58、9:26）：
     # 组合根那一份里 go test 的 -timeout 15m 先到，打出卡住的测试
     strategy:
@@ -35,6 +35,9 @@ jobs:
             timeout: 25
           # 不带竞态检测的预算与界线的守卫、server/tools；静态检查与生成物的检查也只在这一份里跑一次
           - leg: costs
+            timeout: 20
+          # 不带竞态检测的组合根的预算与守卫：成本那一份在 M8/P4A 之前已到 15 分钟，加后台撤销的守卫时分出（M8/P4 设计 3.11）
+          - leg: guards
             timeout: 20
     timeout-minutes: ${{ matrix.timeout }}
     steps:
@@ -138,7 +141,7 @@ jobs:
 
   e2e:
     name: e2e
-    # server（它的三份全部）、web 都通过之后才运行；if 与这两个任务相同
+    # server（它的各份全部）、web 都通过之后才运行；if 与这两个任务相同
     needs: [server, web]
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-24.04
