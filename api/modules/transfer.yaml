@@ -849,7 +849,9 @@ components:
         not_zip (no zip, or its directory is broken), too_many_entries (more
         entries than the instance takes, or a directory larger than 64 MiB),
         unpacked_too_large (its entries unpack to more than the instance
-        takes); tree_changed (a page an import created was deleted as it
+        takes), too_many_nodes (its pages, attachments and the folders their
+        paths imply are more nodes than one undo can revert, 90,000);
+        tree_changed (a page an import created was deleted as it
         ran; a parent a restore restored was deleted, or moved so that its
         pages would nest deeper than 10 levels, as it ran), its later nodes
         not written; changeset_reverted (the changeset an import, a restore
@@ -879,6 +881,7 @@ components:
           not_zip,
           too_many_entries,
           unpacked_too_large,
+          too_many_nodes,
           tree_changed,
           changeset_reverted,
           trash_changed,

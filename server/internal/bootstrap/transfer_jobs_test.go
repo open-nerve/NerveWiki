@@ -303,7 +303,8 @@ func TestNoJobOutlastsTheOrphanSweep(t *testing.T) {
 
 // The composition root leaves the writing jobs' batches the import's
 // bounds (M8/P4 design 3.6): only the interleavings make them smaller, so
-// that a few nodes span batches.
+// that a few nodes span batches; and bounds the nodes an import makes by
+// the items a background revert reverts (M8/P4 design 2.2 (a)).
 func TestTransferDepsLeaveTheBatchesTheImports(t *testing.T) {
 	d := transferDeps(testConfig(t, "", false), nil, slog.New(slog.DiscardHandler), nil, nil, nil, nil, nil)
 	if d.Batch != (transfer.Batch{}) {
@@ -311,5 +312,8 @@ func TestTransferDepsLeaveTheBatchesTheImports(t *testing.T) {
 	}
 	if d.RestoreAction != page.ActionRestore || d.RevertAction != page.ActionRevert {
 		t.Errorf("transferDeps' actions = %s, %s; want the page module's restore and revert", d.RestoreAction, d.RevertAction)
+	}
+	if d.ImportMaxNodes != page.MaxJobItems {
+		t.Errorf("transferDeps' nodes of an import = %d, want the page module's MaxJobItems, %d", d.ImportMaxNodes, page.MaxJobItems)
 	}
 }

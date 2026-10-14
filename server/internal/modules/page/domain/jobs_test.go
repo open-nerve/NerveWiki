@@ -40,6 +40,15 @@ func (s *shape) order() ([]domain.GroupNode, []string) {
 	return nodes, names
 }
 
+// MaxJobItems is the size measured (M8/P4 design 3.11, 3.12): a new value
+// is measured again (BenchmarkBackgroundSteps) and the guards' limits set
+// anew (TestARevertJobOfAnImportAtMaxJobItems).
+func TestMaxJobItemsIsTheMeasuredSize(t *testing.T) {
+	if domain.MaxJobItems != 90_000 {
+		t.Errorf("MaxJobItems = %d, measured 90,000", domain.MaxJobItems)
+	}
+}
+
 // A group's pre-order: each parent before its children, its subtree whole
 // before the next sibling, the siblings in the order the level read them
 // (by order and id, as TrashGroup reads each level), not by id; each

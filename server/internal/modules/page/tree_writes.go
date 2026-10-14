@@ -36,6 +36,12 @@ type (
 	Placement = domain.Placement
 )
 
+// MaxJobItems is the most items of a changeset a background revert
+// reverts (M8/P4 design 3.11), which the composition root leaves the
+// module: the transfer module's bound of the nodes an import makes, so
+// that it can be undone (M8/P4 design 2.2 (a)).
+const MaxJobItems = domain.MaxJobItems
+
 // The background jobs' actions, decided again as each job's row is
 // written (M8/P4 design 3.6).
 const (

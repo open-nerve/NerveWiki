@@ -25,6 +25,7 @@ const failures: Record<TransferFailure, PlainKey> = {
   not_zip: "transfer.failure.not_zip",
   too_many_entries: "transfer.failure.too_many_entries",
   unpacked_too_large: "transfer.failure.unpacked_too_large",
+  too_many_nodes: "transfer.failure.too_many_nodes",
   tree_changed: "transfer.failure.tree_changed",
   changeset_reverted: "transfer.failure.changeset_reverted",
   trash_changed: "transfer.failure.trash_changed",

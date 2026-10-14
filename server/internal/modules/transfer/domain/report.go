@@ -42,6 +42,11 @@ const (
 	// FailureUnpackedTooLarge is an archive whose entries unpack to more
 	// than transfer.import_max_unpacked_bytes.
 	FailureUnpackedTooLarge Failure = "unpacked_too_large"
+	// FailureTooManyNodes is an archive whose plan, its entries and the
+	// folders their paths imply, makes more nodes than a background revert
+	// reverts, the page module's MaxJobItems (M8/P4 design 2.2 (a)): an
+	// import made can be undone.
+	FailureTooManyNodes Failure = "too_many_nodes"
 	// FailureTreeChanged is an import a page of which was deleted as it
 	// ran: a later unit could not write under it.
 	FailureTreeChanged Failure = "tree_changed"

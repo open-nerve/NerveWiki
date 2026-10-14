@@ -147,7 +147,9 @@ type Deps struct {
 	// ExportTTL is transfer.export_ttl, JobTimeout transfer.job_timeout,
 	// HeartbeatTimeout transfer.heartbeat_timeout, MaxQueued
 	// transfer.max_queued; the Import* are transfer.import_max_bytes,
-	// import_max_entries and import_max_unpacked_bytes; MinFreeBytes
+	// import_max_entries and import_max_unpacked_bytes, and ImportMaxNodes
+	// the page module's MaxJobItems, the most nodes an import makes, so
+	// that a background revert can undo any (M8/P4 design 2.2 (a)); MinFreeBytes
 	// storage.min_free_bytes; MinRate asset.upload_min_rate, the uploads'
 	// and downloads' slowest; AssetMaxBytes asset.max_bytes; MaxContentBytes
 	// the largest page's content, the page module's.
@@ -158,6 +160,7 @@ type Deps struct {
 	ImportMaxBytes         int64
 	ImportMaxEntries       int
 	ImportMaxUnpackedBytes int64
+	ImportMaxNodes         int
 	MinFreeBytes           int64
 	MinRate                int64
 	AssetMaxBytes          int64
@@ -196,7 +199,8 @@ func New(d Deps) *Module {
 		Linked: d.Linked, Blobs: d.Blobs, Archives: archives, Rows: rows, Contributors: d.Contributors, Clock: d.Clock, Logger: d.Logger, Beat: beat})
 	imp := app.NewImport(app.ImportDeps{Authorizer: d.Authorizer, Notebooks: d.Notebooks, Nodes: d.Nodes, Tree: d.Tree, Attachments: d.Attachments,
 		Statistics: d.Statistics, Archives: archives, Rows: rows, Clock: d.Clock, Logger: d.Logger, Beat: beat, MaxEntries: d.ImportMaxEntries,
-		MaxUnpacked: d.ImportMaxUnpackedBytes, MaxContent: d.MaxContentBytes, MaxAsset: d.AssetMaxBytes, Backoff: backoff, Batch: d.Batch})
+		MaxUnpacked: d.ImportMaxUnpackedBytes, MaxContent: d.MaxContentBytes, MaxAsset: d.AssetMaxBytes, MaxNodes: d.ImportMaxNodes, Backoff: backoff,
+		Batch: d.Batch})
 	start := app.StartDeps{Tx: d.Tx, Authorizer: d.Authorizer, Workspaces: d.Workspaces, Notebooks: d.Notebooks, Nodes: d.Nodes,
 		Rows: rows, Archives: archives, Queue: queue, Names: d.Names, Signer: signer, Clock: d.Clock, Logger: d.Logger, Uploads: app.NewUploads(),
 		MaxQueued: d.MaxQueued, MinFree: d.MinFreeBytes, ImportMaxBytes: d.ImportMaxBytes}

@@ -608,6 +608,8 @@ export const zhCN: Messages = {
   "transfer.failure.not_zip": "文件不是 zip，或 zip 已损坏。",
   "transfer.failure.too_many_entries": "zip 里的条目超过了服务器的上限。",
   "transfer.failure.unpacked_too_large": "zip 解压后超过了服务器的上限。",
+  "transfer.failure.too_many_nodes":
+    "zip 要建的页面与附件（连同路径里的文件夹）超过了一次导入的上限：超过它的导入撤销不了。",
   "transfer.failure.tree_changed": "导入途中，已导入的页面被删除了。",
   "transfer.failure.changeset_reverted": "导入途中，已导入的内容被撤销了。",
   "transfer.failure.trash_changed": "恢复到它之前，回收站里的这一项变了：有人恢复了它、它被清理了，或它被重新删除了。",

@@ -625,6 +625,8 @@ export const en = {
   "transfer.failure.not_zip": "The file is not a zip archive, or the archive is damaged.",
   "transfer.failure.too_many_entries": "The zip holds more entries than the server takes.",
   "transfer.failure.unpacked_too_large": "The zip unpacks to more than the server takes.",
+  "transfer.failure.too_many_nodes":
+    "The zip would make more pages and attachments than one import can, counting the folders in its paths: an import past it could not be undone.",
   "transfer.failure.tree_changed": "A page the import had written was deleted while it ran.",
   "transfer.failure.changeset_reverted": "What the import had written was reverted while it ran.",
   "transfer.failure.trash_changed":

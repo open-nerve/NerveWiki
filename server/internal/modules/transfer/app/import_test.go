@@ -198,6 +198,8 @@ func TestAnImportFailsAsAWhole(t *testing.T) {
 		{"its directory refused", func(t *testing.T) []byte { return vault(t) },
 			func(w *importWorld) { w.archives.openErr = app.ErrNotZip }, domain.FailureNotZip},
 		{"too many entries", func(t *testing.T) []byte { return vault(t) }, func(w *importWorld) { w.max.MaxEntries = 3 }, domain.FailureTooManyEntries},
+		{"too many nodes", func(t *testing.T) []byte { return zipOf(t, files("a/b/c.md", "c")...) },
+			func(w *importWorld) { w.max.MaxNodes = 2 }, domain.FailureTooManyNodes},
 		{"unpacked too large", func(t *testing.T) []byte { return zipOf(t, files("a.md", strings.Repeat("a", 600), "b.md", "b")...) },
 			func(w *importWorld) { w.max.MaxUnpacked = 600 }, domain.FailureUnpackedTooLarge},
 		{"its archive missing", func(t *testing.T) []byte { return vault(t) },
@@ -222,6 +224,18 @@ func TestAnImportFailsAsAWhole(t *testing.T) {
 					len(w.tree.made), w.archives.imported(j.ID), tt.want)
 			}
 		})
+	}
+}
+
+// An archive whose plan makes as many nodes as the bound, the folders its
+// paths imply among them, is imported; one more fails it as a whole
+// (TestAnImportFailsAsAWhole; M8/P4 design 2.2 (a)).
+func TestAnImportOfAsManyNodesAsItsBound(t *testing.T) {
+	w := newImportWorld()
+	w.max.MaxNodes = 3
+	got := w.run(t, w.queuedImport(&w.spec, zipOf(t, files("a/b/c.md", "c")...)))
+	if got.State != domain.StateSucceeded || len(w.tree.made) != 3 {
+		t.Errorf("job %s, report %+v, made %d; want succeeded, a, b and c made", got.State, got.Report, len(w.tree.made))
 	}
 }
 

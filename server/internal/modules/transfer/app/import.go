@@ -38,11 +38,15 @@ type ImportDeps struct {
 	Beat time.Duration
 	// MaxEntries is transfer.import_max_entries; MaxUnpacked
 	// transfer.import_max_unpacked_bytes; MaxContent the most bytes of a
-	// page's content, the page module's; MaxAsset asset.max_bytes.
+	// page's content, the page module's; MaxAsset asset.max_bytes;
+	// MaxNodes the most nodes an import makes, the most items of a
+	// changeset a background revert reverts, the page module's
+	// MaxJobItems (M8/P4 design 2.2 (a)), 0 none.
 	MaxEntries  int
 	MaxUnpacked int64
 	MaxContent  int64
 	MaxAsset    int64
+	MaxNodes    int
 	// Backoff is the first wait before a parse or a unit the server was
 	// too busy for is tried again: a second, doubled each time up to
 	// maxBackoff.
@@ -156,6 +160,9 @@ func (r *importRun) run(ctx, running context.Context) error {
 		return err
 	}
 	r.plan = domain.NewImportPlan(entries, meta, depth)
+	if n := len(r.plan.Nodes); r.i.d.MaxNodes > 0 && n > r.i.d.MaxNodes {
+		return failed(domain.FailureTooManyNodes, fmt.Errorf("the archive makes %d nodes, more than %d", n, r.i.d.MaxNodes))
+	}
 	for _, p := range r.plan.Skipped {
 		r.skip(p)
 	}

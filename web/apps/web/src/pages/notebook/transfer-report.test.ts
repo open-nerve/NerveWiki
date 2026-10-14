@@ -16,6 +16,11 @@ test.each([
   ["import", "not_zip", "The file is not a zip archive, or the archive is damaged."],
   ["import", "too_many_entries", "The zip holds more entries than the server takes."],
   ["import", "unpacked_too_large", "The zip unpacks to more than the server takes."],
+  [
+    "import",
+    "too_many_nodes",
+    "The zip would make more pages and attachments than one import can, counting the folders in its paths: an import past it could not be undone.",
+  ],
   ["import", "tree_changed", "A page the import had written was deleted while it ran."],
   ["import", "changeset_reverted", "What the import had written was reverted while it ran."],
   ["import", "storage_full", "The server's storage is full."],
