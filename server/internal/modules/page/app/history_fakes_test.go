@@ -254,6 +254,34 @@ func (h *fakeHistory) ChangesetItems(ctx context.Context, id uuid.UUID) ([]domai
 	return nil, nil
 }
 
+func (h *fakeHistory) ChangesetItemsOf(ctx context.Context, id uuid.UUID, ids []uuid.UUID) ([]domain.ChangesetItem, error) {
+	h.record(ctx, fmt.Sprintf("ChangesetItemsOf %d", len(ids)))
+	var out []domain.ChangesetItem
+	if c := h.find(id); c != nil {
+		for _, it := range c.items {
+			if slices.Contains(ids, it.NodeID) {
+				out = append(out, it)
+			}
+		}
+		slices.SortFunc(out, func(a, b domain.ChangesetItem) int { return a.NodeID.Compare(b.NodeID) })
+	}
+	return out, nil
+}
+
+func (h *fakeHistory) ChangesetVersionsOf(ctx context.Context, id uuid.UUID, ids []uuid.UUID) ([]domain.ChangesetVersion, error) {
+	h.record(ctx, fmt.Sprintf("ChangesetVersionsOf %d", len(ids)))
+	var out []domain.ChangesetVersion
+	if c := h.find(id); c != nil {
+		for _, v := range c.versions {
+			if slices.Contains(ids, v.NodeID) {
+				out = append(out, v)
+			}
+		}
+		slices.SortFunc(out, func(a, b domain.ChangesetVersion) int { return a.NodeID.Compare(b.NodeID) })
+	}
+	return out, nil
+}
+
 func (h *fakeHistory) ChangesetVersions(ctx context.Context, id uuid.UUID) ([]domain.ChangesetVersion, error) {
 	h.record(ctx, "ChangesetVersions")
 	if c := h.find(id); c != nil {
@@ -265,10 +293,11 @@ func (h *fakeHistory) ChangesetVersions(ctx context.Context, id uuid.UUID) ([]do
 }
 
 // nodeItem is a changeset's item of a node, the history's or one the store
-// recorded, at its changeset's time: a deletion, a restore, or neither.
+// recorded: a deletion, a restore, or neither; when it was first written
+// and last, its changeset's time for the history's.
 type nodeItem struct {
 	changeset          uuid.UUID
-	at                 time.Time
+	first, at          time.Time
 	deletion, restored bool
 }
 
@@ -278,53 +307,44 @@ func (h *fakeHistory) itemsOf(id uuid.UUID) []nodeItem {
 	for _, c := range h.sets {
 		for _, it := range c.items {
 			if it.NodeID == id {
-				out = append(out, nodeItem{changeset: c.ID, at: c.CreatedAt, deletion: it.After == nil, restored: it.Restored})
+				out = append(out, nodeItem{changeset: c.ID, first: c.CreatedAt, at: c.CreatedAt, deletion: it.After == nil,
+					restored: it.Restored})
 			}
 		}
 	}
 	for _, it := range h.store.recorded {
-		if at, ok := h.timeOf(it.ChangesetID); ok && it.Change.NodeID == id {
-			out = append(out, nodeItem{changeset: it.ChangesetID, at: at, deletion: it.Change.After == nil, restored: it.Change.Restored != nil})
+		if it.Change.NodeID == id {
+			out = append(out, nodeItem{changeset: it.ChangesetID, first: h.store.firsts[[2]uuid.UUID{it.ChangesetID, id}], at: it.At,
+				deletion: it.Change.After == nil, restored: it.Change.Restored != nil})
 		}
 	}
 	return out
 }
 
-// timeOf is the time of the changeset id, the store's or the history's.
-func (h *fakeHistory) timeOf(id uuid.UUID) (time.Time, bool) {
-	if i := slices.IndexFunc(h.store.changesets, func(c app.Changeset) bool { return c.ID == id }); i >= 0 {
-		return h.store.changesets[i].At, true
-	}
-	if i := slices.IndexFunc(h.sets, func(c *fakeChangeset) bool { return c.ID == id }); i >= 0 {
-		return h.sets[i].CreatedAt, true
-	}
-	return time.Time{}, false
-}
-
 // deletedByRevert reports whether the node id's deletion at at undid the
 // restore of the trash item the changeset reverted made, as NodesNow reads
-// it: a revert the store made at that time, whose item of the node is its
-// deletion, of a changeset, the store's or the history's, that restored
-// the node after the one reverted, with no deletion of the node between
-// them.
+// it, by the items' own times (M8/P4 design 3.7): an item of a revert the
+// store made deletes the node at at, and that revert reverted a changeset
+// whose item restored the node, first written after the deletion of the
+// changeset reverted's item, with no deletion of the node between them.
 func (h *fakeHistory) deletedByRevert(id uuid.UUID, at time.Time, reverted uuid.UUID) bool {
-	from, ok := h.timeOf(reverted)
-	if !ok {
+	items := h.itemsOf(id)
+	d := slices.IndexFunc(items, func(i nodeItem) bool { return i.changeset == reverted && i.deletion })
+	if d < 0 {
 		return false
 	}
-	items := h.itemsOf(id)
-	has := func(changeset uuid.UUID, deletion, restored bool) bool {
-		return slices.ContainsFunc(items, func(i nodeItem) bool {
-			return i.changeset == changeset && (!deletion || i.deletion) && (!restored || i.restored)
-		})
-	}
+	from := items[d].at
 	undid := func(c, r uuid.UUID) bool {
-		to, ok := h.timeOf(r)
-		return ok && to.After(from) && has(c, true, false) && has(r, false, true) &&
-			!slices.ContainsFunc(items, func(i nodeItem) bool { return i.deletion && i.at.After(from) && i.at.Before(to) })
+		deletes := slices.ContainsFunc(items, func(i nodeItem) bool { return i.changeset == c && i.deletion && i.at.Equal(at) })
+		ri := slices.IndexFunc(items, func(i nodeItem) bool { return i.changeset == r && i.restored })
+		if !deletes || ri < 0 || !from.Before(items[ri].first) {
+			return false
+		}
+		to := items[ri].first
+		return !slices.ContainsFunc(items, func(i nodeItem) bool { return i.deletion && i.at.After(from) && i.at.Before(to) })
 	}
 	return slices.ContainsFunc(h.store.changesets, func(c app.Changeset) bool {
-		return c.Kind == domain.ChangesetRevert && c.At.Equal(at) && undid(c.ID, c.RevertsID)
+		return c.Kind == domain.ChangesetRevert && undid(c.ID, c.RevertsID)
 	})
 }
 

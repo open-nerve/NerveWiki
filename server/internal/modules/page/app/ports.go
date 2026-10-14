@@ -179,6 +179,21 @@ type NodeWriter interface {
 	// RestoreNodes brings the restoration's nodes back from the trash, with
 	// what was deleted with them, and counts what it brought back.
 	RestoreNodes(ctx context.Context, r Restoration) (RestoredRows, error)
+	// MarkTrashRoots makes the nodes of a trash item deleted at at, each
+	// still deleted then and no root, trash items of their own with their
+	// counts (M8/P4 design 3.4): those a background restore's batch leaves
+	// in the trash under the nodes it brought back. It counts those it
+	// marked.
+	MarkTrashRoots(ctx context.Context, roots []TrashMark, at time.Time) (int, error)
+}
+
+// TrashMark is a node a background restore's batch leaves in the trash,
+// made a trash item: the pages and attachments of its subtree, itself
+// included, and the levels of pages it spans (domain.GroupCounts).
+type TrashMark struct {
+	ID            uuid.UUID
+	Pages, Assets int
+	Height        int
 }
 
 // Deletion is a subtree's deletion (M8/P2 design 3.3): its nodes IDs, Root
@@ -291,6 +306,28 @@ type Trash interface {
 	// the nodes ids were deleted at at, each of the two counted to limit
 	// at most: the rows a restore writes besides the nodes'.
 	TrashHistory(ctx context.Context, ids []uuid.UUID, at time.Time, limit int) (int, error)
+	// The background jobs' reads (M8/P4 design 3.3), each a level of many
+	// nodes in one statement. TrashNodesAt are the nodes of the notebook,
+	// each deleted at its time in at, by id: one no longer deleted then is
+	// not among them. TrashGroups are the trash items of the roots of the
+	// notebook, each deleted at its time, by root, as TrashGroup reads
+	// each: one not deleted at its time is not among them. TrashShape is
+	// the group of the trash item of the root id deleted at at below the
+	// root, as a background restore's plan keeps it: a level after
+	// another, each by parent, a parent's children in order.
+	TrashNodesAt(ctx context.Context, notebookID uuid.UUID, at map[uuid.UUID]time.Time) (map[uuid.UUID]TrashNode, error)
+	TrashGroups(ctx context.Context, notebookID uuid.UUID, roots map[uuid.UUID]time.Time) (map[uuid.UUID][]domain.TrashMember, error)
+	TrashShape(ctx context.Context, notebookID, id uuid.UUID, at time.Time) ([]domain.ShapeNode, error)
+}
+
+// TrashNode is a node in the trash as TrashNodesAt reads it: as its group
+// holds it (its level unread), and whether it is a trash item's root, with
+// the root's counts.
+type TrashNode struct {
+	domain.TrashMember
+	Root          bool
+	Pages, Assets int
+	Height        int
 }
 
 // History reads a notebook's log and what a revert reads of a changeset
@@ -327,6 +364,10 @@ type History interface {
 	CountItems(ctx context.Context, id uuid.UUID, limit int) (int, error)
 	ChangesetItems(ctx context.Context, id uuid.UUID) ([]domain.ChangesetItem, error)
 	ChangesetVersions(ctx context.Context, id uuid.UUID) ([]domain.ChangesetVersion, error)
+	// ChangesetItemsOf and ChangesetVersionsOf are those of the nodes ids
+	// alone: a background revert's batch's (M8/P4 design 3.5).
+	ChangesetItemsOf(ctx context.Context, id uuid.UUID, ids []uuid.UUID) ([]domain.ChangesetItem, error)
+	ChangesetVersionsOf(ctx context.Context, id uuid.UUID, ids []uuid.UUID) ([]domain.ChangesetVersion, error)
 	NodesNow(ctx context.Context, ids []uuid.UUID, reverted uuid.UUID) (map[uuid.UUID]domain.NodeNow, error)
 	ContentsNow(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]domain.ContentNow, error)
 	VersionHashes(ctx context.Context, refs []domain.VersionRef) (map[domain.VersionRef][]byte, error)

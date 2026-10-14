@@ -84,3 +84,34 @@ SELECT ((SELECT count(*) FROM (SELECT 1 FROM page_revisions r
     + (SELECT count(*) FROM (SELECT 1 FROM changeset_items i
             WHERE i.node_id = ANY(sqlc.arg(ids)::uuid[]) AND i.deleted_at = sqlc.arg(deleted_at)::timestamptz
             LIMIT sqlc.arg(lim)::integer) w))::integer AS rows;
+
+-- name: TrashNodesAt :many
+-- Nodes of the notebook, each deleted at its own time, by key (M8/P4 design 3.3): many trash items' roots at once, or
+-- a background job's batch's members; with a root's counts, and a page's content's revision and size as
+-- TrashChildrenOfAll reads them. One no longer deleted at its time is not read.
+SELECT n.id, n.notebook_id, n.parent_id, n.kind, n.name, n.name_key, n.sort_order, n.created_by_id, n.updated_by_id,
+    n.created_at, n.updated_at, n.trash_root, n.trash_pages, n.trash_assets, n.trash_height, c.revision, c.byte_size
+FROM (SELECT unnest(sqlc.arg(ids)::uuid[]) AS id, unnest(sqlc.arg(deleted_ats)::timestamptz[]) AS deleted_at) g
+JOIN nodes n ON n.id = g.id AND n.deleted_at = g.deleted_at
+LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at = n.deleted_at
+WHERE n.notebook_id = sqlc.arg(notebook_id);
+
+-- name: TrashChildrenAt :many
+-- The children of parents of the notebook, each deleted at its parent's time (M8/P4 design 3.3): a level of many trash
+-- items' groups in one statement, through the siblings' index as TrashChildrenOfAll reads one group's, in its order:
+-- each group's part of the level is the one TrashGroup reads.
+SELECT n.id, n.notebook_id, n.parent_id, n.kind, n.name, n.name_key, n.sort_order, n.created_by_id, n.updated_by_id,
+    n.created_at, n.updated_at, c.revision, c.byte_size
+FROM (SELECT unnest(sqlc.arg(parents)::uuid[]) AS id, unnest(sqlc.arg(deleted_ats)::timestamptz[]) AS deleted_at) p
+JOIN nodes n ON n.notebook_id = sqlc.arg(notebook_id) AND n.parent_id = p.id AND n.deleted_at = p.deleted_at
+LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at = n.deleted_at
+ORDER BY n.sort_order, n.id;
+
+-- name: TrashShapeOfAll :many
+-- A level of a trash item's group as a background restore's plan keeps it (M8/P4 design 3.4): no names, a page's
+-- content's size; by parent, each parent's children in order, as TrashChildrenOfAll reads them.
+SELECT n.id, n.parent_id, n.kind, c.byte_size
+FROM nodes n LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at = n.deleted_at
+WHERE n.notebook_id = sqlc.arg(notebook_id) AND n.parent_id = ANY(sqlc.arg(parents)::uuid[])
+    AND n.deleted_at = sqlc.arg(deleted_at)::timestamptz
+ORDER BY n.parent_id, n.sort_order, n.id;

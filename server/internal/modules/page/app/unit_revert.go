@@ -250,10 +250,27 @@ func (r revertReads) changeset(ctx context.Context, id uuid.UUID) ([]domain.Chan
 // groups reads the nodes the changeset reverted changed as they are now,
 // each root's deletion against that changeset (History.NodesNow), and the
 // groups of its deletions' trash items whose roots pass the check
-// (domain.RevertGroups), each at its time: one gone since is left out.
+// (domain.RevertGroups), each at its time, all a level at a time (M8/P4
+// design 3.3): one gone since is left out.
 func (r revertReads) groups(ctx context.Context, notebookID, reverted uuid.UUID, items []domain.ChangesetItem,
 	versions []domain.ChangesetVersion,
 ) (map[uuid.UUID]domain.NodeNow, map[uuid.UUID][]domain.TrashMember, error) {
+	nodes, err := r.nodesNow(ctx, reverted, items, versions)
+	if err != nil {
+		return nil, nil, err
+	}
+	groups, err := r.trashGroups(ctx, notebookID, domain.RevertGroups(items, nodes))
+	if err != nil {
+		return nil, nil, err
+	}
+	return nodes, groups, nil
+}
+
+// nodesNow reads the nodes of the items and versions of the changeset
+// reverted as they are now.
+func (r revertReads) nodesNow(ctx context.Context, reverted uuid.UUID, items []domain.ChangesetItem, versions []domain.ChangesetVersion) (
+	map[uuid.UUID]domain.NodeNow, error,
+) {
 	ids := make([]uuid.UUID, 0, len(items)+len(versions))
 	for _, it := range items {
 		ids = append(ids, it.NodeID)
@@ -261,22 +278,18 @@ func (r revertReads) groups(ctx context.Context, notebookID, reverted uuid.UUID,
 	for _, v := range versions {
 		ids = append(ids, v.NodeID)
 	}
-	nodes, err := r.history.NodesNow(ctx, ids, reverted)
-	if err != nil {
-		return nil, nil, err
+	return r.history.NodesNow(ctx, ids, reverted)
+}
+
+// trashGroups reads the groups of the roots, each at its time: none when
+// there is no root.
+func (r revertReads) trashGroups(ctx context.Context, notebookID uuid.UUID, roots map[uuid.UUID]time.Time) (
+	map[uuid.UUID][]domain.TrashMember, error,
+) {
+	if len(roots) == 0 {
+		return map[uuid.UUID][]domain.TrashMember{}, nil
 	}
-	groups := map[uuid.UUID][]domain.TrashMember{}
-	for root, at := range domain.RevertGroups(items, nodes) {
-		g, err := r.trash.TrashGroup(ctx, notebookID, root, at)
-		switch {
-		case errors.Is(err, ErrNotFound):
-		case err != nil:
-			return nil, nil, err
-		default:
-			groups[root] = g
-		}
-	}
-	return nodes, groups, nil
+	return r.trash.TrashGroups(ctx, notebookID, roots)
 }
 
 // rest reads the rest of the state: the contents of the changeset's pages
