@@ -179,21 +179,32 @@ GO_TEST_RACE = go test -race -count=1 -timeout 15m
 
 .PHONY: test-go
 test-go: ## 运行 Go 测试，含集成测试与 server/tools（开启竞态检测，不用测试缓存；需要 Docker）
-	@# 本机一次跑全部的包，各包并行；CI 分成下面四份并行（M8/P3A 审查 C 的 I-1；M8/P4A 分出组合根的守卫），四份之和就是这里
+	@# 本机一次跑全部的包，各包并行；CI 分成下面五份并行（M8/P3A 审查 C 的 I-1；M8/P4A 分出组合根的守卫，再把组合根分成两份），五份之和就是这里
 	cd server && $(GO_TEST_RACE) ./...
 	@$(MAKE) --no-print-directory test-go-costs
 	@$(MAKE) --no-print-directory test-go-guards
 
-# CI 的四份：一个作业跑全部时超过了 25 分钟的时限（M8/P3A，竞态检测下的组合根占了一半）。
+# CI 的五份：一个作业跑全部时超过了 25 分钟的时限（M8/P3A，竞态检测下的组合根占了一半）。
 # 组合根之外的包由 go list 列出，以后新加的包自动归入第一份。不带竞态检测的那一份在 M8/P4A 之前作业已到 15 分钟
-# （测试一步 13:37），超过 15 分钟就分（M8/P4 设计 3.11）：组合根的预算与守卫各自编译、各起数据库，分作第四份
+# （测试一步 13:37），超过 15 分钟就分（M8/P4 设计 3.11）：组合根的预算与守卫各自编译、各起数据库，分作一份。
+# 竞态检测下的组合根在 M8/P4A 的 CI 上测试一步 12:00–12:05，离 go test 的 15 分钟只剩约两成，P5 还要加测试（M8/P4A 审查 C 的 M-6）：
+# 按测试名分成两份，名字以 TestA 到 TestD 开头的一份，其余的一份，本机两份的测试时间之和各约一半（199 与 210 秒）。
+# -run 与 -skip 用同一个表达式：两份之和总是整个包，新加的测试自动落在其中一份；一份变得太慢时改这个表达式
+BOOTSTRAP_FIRST = ^Test[A-D]
 .PHONY: test-go-race
 test-go-race: ## 竞态检测下运行组合根（internal/bootstrap）之外的全部 Go 包（CI 的一份；需要 Docker）
 	cd server && $(GO_TEST_RACE) $$(go list ./... | grep -v '/internal/bootstrap$$')
 
 .PHONY: test-go-bootstrap
-test-go-bootstrap: ## 竞态检测下运行组合根的整个程序测试（CI 的一份；需要 Docker）
-	cd server && $(GO_TEST_RACE) ./internal/bootstrap
+test-go-bootstrap: test-go-bootstrap-1 test-go-bootstrap-2 ## 竞态检测下运行组合根的整个程序测试，两份依次（需要 Docker）
+
+.PHONY: test-go-bootstrap-1
+test-go-bootstrap-1: ## 竞态检测下运行组合根的整个程序测试中名字匹配 BOOTSTRAP_FIRST 的（CI 的一份；需要 Docker）
+	cd server && $(GO_TEST_RACE) -run '$(BOOTSTRAP_FIRST)' ./internal/bootstrap
+
+.PHONY: test-go-bootstrap-2
+test-go-bootstrap-2: ## 竞态检测下运行组合根的整个程序测试中其余的（CI 的一份；需要 Docker）
+	cd server && $(GO_TEST_RACE) -skip '$(BOOTSTRAP_FIRST)' ./internal/bootstrap
 
 .PHONY: test-go-costs
 test-go-costs: ## 不带竞态检测的分配、耗时预算与界线的守卫，以及 server/tools（CI 的一份；需要 Docker）
