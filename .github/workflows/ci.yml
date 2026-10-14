@@ -71,12 +71,14 @@ jobs:
           TESTCONTAINERS_RYUK_DISABLED: "true"
         run: make "test-go-${{ matrix.leg }}" 2>&1 | tee "$RUNNER_TEMP/test-go.log"
       # 失败的测试写成注解：公开仓库的运行日志只有有权限的人读得到，注解经检查的接口人人可读。
+      # 失败处之前的 16 行也取：带 -v 的测试（耗时的守卫）在 --- FAIL 之前就打出了 === RUN 与自己的 Logf、Errorf，
+      # 只取其后的行时注解里看不出是哪一条断言失败、测得多少（M8，main 的 1f732c9）；总量仍由 head 与下面的字数封顶。
       # 容器、磁盘、内存与内核的 OOM 记录另写成警告（错误的注解一步至多十条）：数据库中途消失时看得出是谁
       - name: Annotate the failed tests
         if: failure()
         shell: bash
         run: |
-          grep -E -A24 -- '--- FAIL|^panic: |^FAIL\s' "$RUNNER_TEMP/test-go.log" | head -n 600 > "$RUNNER_TEMP/failures.txt" || true
+          grep -E -B16 -A24 -- '--- FAIL|^panic: |^FAIL\s' "$RUNNER_TEMP/test-go.log" | head -n 600 > "$RUNNER_TEMP/failures.txt" || true
           {
             echo "== containers"
             docker ps -a --format '{{.ID}} {{.Image}} {{.Status}}'

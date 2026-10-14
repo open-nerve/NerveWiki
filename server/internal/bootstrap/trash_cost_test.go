@@ -223,14 +223,15 @@ func (b trashBench) item(tb testing.TB, l load, attachments int) (string, []stri
 }
 
 // timed runs a request of alice's that must answer want, and answers how
-// long it took.
+// long it took; a wrong answer says it too, a 500 past the request's
+// deadline among them.
 func (b trashBench) timed(tb testing.TB, method, path string, want int) time.Duration {
 	tb.Helper()
 	at := time.Now()
 	status, answer := b.serve(method, path, "")
 	took := time.Since(at)
 	if status != want {
-		tb.Fatalf("%s %s = %d %s, want %d", method, path, status, answer, want)
+		tb.Fatalf("%s %s = %d %s after %s, want %d", method, path, status, answer, took, want)
 	}
 	return took
 }
@@ -468,9 +469,11 @@ func (b trashBench) toppedUp(tb testing.TB, root string, n int) {
 }
 
 // A restore at the unit's bounds, of the full load, its nodes' and its
-// history's, takes its time: in 10 seconds, a CI's slower than the
+// history's, takes its time: in 12 seconds, a CI's slower than the
 // machine the bounds were measured on (M8/P2 design 3.11; M8/P2A review,
-// A-M4), the time logged for CI's runs (make test-go runs it with -v).
+// A-M4), three times its 3.8–4.0 s there, under the bench's request
+// deadline, 15 s; the time logged for CI's runs (make test-go runs it
+// with -v).
 // Deleted again, its history 420,000 rows with the items of the restore
 // and of the deletion, 20,000 past the bound, it is
 // page.restore_too_large and writes nothing. The bench keeps the
@@ -493,8 +496,8 @@ func TestARestoreAtTheUnitsBoundTakesItsTime(t *testing.T) {
 	}
 	took := bench.timed(t, http.MethodPost, "/api/v0/nodes/"+root+"/restore", http.StatusOK)
 	t.Logf("a restore of %d nodes, %d rows of history, took %s", domain.MaxUnitNodes, domain.MaxUnitHistory, took)
-	if took > 10*time.Second {
-		t.Errorf("a restore of %d nodes, %d rows of history, took %s, want 10 s at most", domain.MaxUnitNodes, domain.MaxUnitHistory, took)
+	if took > 12*time.Second {
+		t.Errorf("a restore of %d nodes, %d rows of history, took %s, want 12 s at most", domain.MaxUnitNodes, domain.MaxUnitHistory, took)
 	}
 	if n := count(t, bench.pool, "SELECT count(*) FROM nodes WHERE deleted_at IS NULL"); n != domain.MaxUnitNodes {
 		t.Errorf("%d nodes back, want %d", n, domain.MaxUnitNodes)

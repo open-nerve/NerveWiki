@@ -565,9 +565,14 @@ func BenchmarkPurgeOfTrimmedChangesets(b *testing.B) {
 
 // A revert at the unit's bounds takes its time (M8/P3 design 3.11): the
 // deletion of the full load's item at the bound of its nodes and of its
-// history, as TestARestoreAtTheUnitsBoundTakesItsTime's, reverted in 10
-// seconds, the time logged for CI's runs (make test-go runs it with -v).
-// The deletion's changeset one item past the unit's nodes, its revert is
+// history, as TestARestoreAtTheUnitsBoundTakesItsTime's, reverted in 12
+// seconds, the time logged for CI's runs (make test-go runs it with -v):
+// three times its 4.0 s, 3.9–5.2 s, on the machine the bounds were
+// measured on, under the bench's request deadline, 15 s, past which it
+// answers 500. Three times its slowest run would pass the deadline: on a
+// CI runner, about twice as slow, the bound leaves the revert little room
+// under it (CI on main at 1f732c9 took the test 61 s, 24–32 s here). The
+// deletion's changeset one item past the unit's nodes, its revert is
 // page.revert_too_large before reading them. Deleted again, its history
 // 420,000 rows with the items of the revert and of the deletion, 20,000
 // past the bound, its revert is page.revert_too_large. Neither writes
@@ -617,12 +622,12 @@ func TestARevertAtTheUnitsBoundTakesItsTime(t *testing.T) {
 
 	took := bench.timed(t, http.MethodPost, revert, http.StatusOK)
 	t.Logf("a revert of a deletion of %d nodes, %d rows of history, took %s", domain.MaxUnitNodes, domain.MaxUnitHistory, took)
-	if took > 10*time.Second {
-		t.Errorf("a revert of a deletion of %d nodes, %d rows of history, took %s, want 10 s at most", domain.MaxUnitNodes,
+	if took > 12*time.Second {
+		t.Errorf("a revert of a deletion of %d nodes, %d rows of history, took %s, want 12 s at most", domain.MaxUnitNodes,
 			domain.MaxUnitHistory, took)
 	}
 	if n := count(t, bench.pool, "SELECT count(*) FROM nodes WHERE deleted_at IS NULL"); n != domain.MaxUnitNodes+1 {
-		t.Errorf("%d nodes alive, want the %d back and Extra", n, domain.MaxUnitNodes)
+		t.Errorf("%d nodes alive after a revert of %s, want the %d back and Extra", n, took, domain.MaxUnitNodes)
 	}
 	checkPages(t, bench.pool)
 
@@ -637,10 +642,12 @@ func TestARevertAtTheUnitsBoundTakesItsTime(t *testing.T) {
 // (M8/P3A review C I-2): the creation of MaxRevertSteps attachments at the
 // notebook's root, a flat import's, reverted; then the revert of that
 // revert, which restores as many trash items, the costliest step
-// measured, in 10 seconds, the time logged for CI's runs (make test-go
-// runs it with -v). One top more, its revert is page.revert_too_large,
-// after the plan, writing nothing. The bench keeps the composition root's
-// bound, which the module hands the revert.
+// measured, in 8 seconds, the time logged for CI's runs (make test-go
+// runs it with -v): three times its 2.6 s, 2.4–2.8 s, on the machine the
+// bounds were measured on (4.8 s on CI on main at 1f732c9), under the
+// bench's request deadline, 15 s. One top more, its revert is
+// page.revert_too_large, after the plan, writing nothing. The bench keeps
+// the composition root's bound, which the module hands the revert.
 func TestARevertOfManyTopsAtItsBoundTakesItsTime(t *testing.T) {
 	bench := newTrashBench(t, 0, 0)
 	c := bench.tops(t, domain.KindAsset, domain.MaxRevertSteps+1)
@@ -661,8 +668,8 @@ func TestARevertOfManyTopsAtItsBoundTakesItsTime(t *testing.T) {
 	bench.vacuumed(t)
 	took := bench.timed(t, http.MethodPost, revert(r), http.StatusOK)
 	t.Logf("a revert restoring %d trash items took %s", domain.MaxRevertSteps, took)
-	if took > 10*time.Second {
-		t.Errorf("a revert restoring %d trash items took %s, want 10 s at most", domain.MaxRevertSteps, took)
+	if took > 8*time.Second {
+		t.Errorf("a revert restoring %d trash items took %s, want 8 s at most", domain.MaxRevertSteps, took)
 	}
 	if n := count(t, bench.pool, "SELECT count(*) FROM nodes WHERE deleted_at IS NULL"); n != domain.MaxRevertSteps+1 {
 		t.Errorf("%d nodes alive, want the %d back and the one left out", n, domain.MaxRevertSteps)
