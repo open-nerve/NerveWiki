@@ -28,12 +28,12 @@ export interface Database {
   /**
    * Begins a transaction on a connection of its own, outside the pool, and runs one statement in it: what it locks
    * stays locked until the function it resolves ends the transaction, which a test calls in a finally. Calling it
-   * again does nothing.
+   * again does nothing; close ends a hold left.
    */
   hold(sql: string, params?: unknown[]): Promise<() => Promise<void>>;
   /** Writes a plain SQL pg_dump of this database to file, for the artifacts of a failed test. */
   dump(file: string): Promise<void>;
-  /** Closes the pool. */
+  /** Ends the holds left, and closes the pool. */
   close(): Promise<void>;
 }
 
@@ -106,13 +106,26 @@ export function openDatabase(name: string): Database {
     connectionTimeoutMillis: connectTimeoutMs,
     query_timeout: queryTimeoutMs,
   });
+  // The holds not ended yet, each by its end.
+  const holds = new Set<() => Promise<void>>();
   return {
     url,
     query: async <Row extends QueryResultRow>(sql: string, params?: unknown[]) =>
       (await pool.query<Row>(sql, params)).rows,
-    hold: (sql, params) => hold(url, sql, params),
+    hold: async (sql, params) => {
+      const end = await hold(url, sql, params);
+      const ending = () => {
+        holds.delete(ending);
+        return end();
+      };
+      holds.add(ending);
+      return ending;
+    },
     dump: (file) => dump(serverUrl, name, file),
-    close: () => pool.end(),
+    close: async () => {
+      await Promise.all([...holds].map((end) => end()));
+      await pool.end();
+    },
   };
 }
 
@@ -123,6 +136,8 @@ async function hold(url: string, sql: string, params?: unknown[]): Promise<() =>
     connectionTimeoutMillis: connectTimeoutMs,
     query_timeout: queryTimeoutMs,
   });
+  // A held connection the server ends (its database dropped) must not end the worker: its end ends it.
+  client.on("error", () => undefined);
   await client.connect();
   try {
     await client.query("BEGIN");

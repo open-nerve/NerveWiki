@@ -159,7 +159,7 @@ test("HI5 (page): an import of more notes than an undo takes, its changeset reac
   await expect(imports.getByText("Done", { exact: true })).toBeVisible({ timeout: jobTime });
 
   // The import's changeset, from its row: more nodes than the history counts.
-  await imports.getByRole("link", { name: /^See in the history: Import of notes\.zip, / }).click();
+  await imports.getByRole("link", { name: /^See in the history \(Import of notes\.zip, / }).click();
   await expect(page).toHaveURL(changesetPath(workspace.slug, notebook.id, changeset));
   const heading = main.getByRole("heading", { level: 1, name: `Import · ${admin}`, exact: true });
   await expect(heading).toBeVisible();
@@ -198,7 +198,7 @@ test("HI5 (page): an import of more notes than an undo takes, its changeset reac
     "Pages written back",
     "Skipped, restored by someone first",
   ]);
-  await expect(report.counts).toHaveText(["0", String(notes), "0", "0", "0"]);
+  await expect(report.counts).toHaveText(["0", "1,501", "0", "0", "0"]);
   await expectImportReverted(db, {
     importJob: queued.id,
     imported: changeset,

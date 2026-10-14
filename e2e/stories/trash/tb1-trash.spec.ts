@@ -55,7 +55,7 @@ test("TB1 (API): a subtree deleted with an attachment is one trash item of its c
   await expectIndexedLinks(db, setup.id, setupLinks);
 
   expect((await deleteNode(api, pat, handbook.id)).response.status).toBe(204);
-  await expectTrashRoot(db, handbook.id, { pages: 2, assets: 1, height: 2 });
+  await expectTrashRoot(db, handbook.id, { pages: 2, assets: 1, height: 2 }, { alone: true });
   await expectAssetsDeletedWithNodes(db, [photo.id]);
   const listed = await listTrash(api, pat, notebook.id);
   expect(listed.response.status, JSON.stringify(listed.error)).toBe(200);
@@ -142,8 +142,8 @@ test("TB1 (API): a subtree deleted with an attachment is one trash item of its c
   const older = await createPage(api, pat, notebook.id, "Older", old.id);
   expect((await deleteNode(api, pat, older.id)).response.status).toBe(204);
   expect((await deleteNode(api, pat, old.id)).response.status).toBe(204);
-  await expectTrashRoot(db, older.id, { pages: 1, assets: 0, height: 1 });
-  await expectTrashRoot(db, old.id, { pages: 1, assets: 0, height: 1 });
+  await expectTrashRoot(db, older.id, { pages: 1, assets: 0, height: 1 }, { alone: true });
+  await expectTrashRoot(db, old.id, { pages: 1, assets: 0, height: 1 }, { alone: true });
   expect((await getTrashItem(api, pat, older.id)).data?.restore_to).toEqual({
     parent_id: null,
     reason: "parent_in_trash",
@@ -246,7 +246,7 @@ test("TB1 (page): a page deleted from the tree, its confirmation saying the tras
   // The page shown gone, its shell goes to its parent.
   await expect(pageHeading(page, "Guide")).toBeFocused();
   await expect.poll(() => treeTitles(page, "Plans")).toEqual(["Guide", "Elsewhere"]);
-  await expectTrashRoot(db, handbook.id, { pages: 2, assets: 1, height: 2 });
+  await expectTrashRoot(db, handbook.id, { pages: 2, assets: 1, height: 2 }, { alone: true });
 
   await page
     .getByRole("navigation", { name: "More of Plans", exact: true })

@@ -183,9 +183,15 @@ export interface TrashCounts {
  * nodes: the node rootId is a trash item's root, deleted, with the counts of its group, which are its alone: the
  * nodes under it deleted at its time, down from it, as the server's invariants count them (M8/P4 design 4.5), not
  * every node of the notebook deleted then, as a batch of a revert deletes many items at once. The other nodes of its
- * group are no roots and have none, and its pages, attachments and levels of pages are as its counts say.
+ * group are no roots and have none, and its pages, attachments and levels of pages are as its counts say. alone, its
+ * deletion deleted nothing else of the notebook at its time: a deletion of the tree's, one item (P4B review C-N2).
  */
-export async function expectTrashRoot(db: Database, rootId: string, counts: TrashCounts): Promise<void> {
+export async function expectTrashRoot(
+  db: Database,
+  rootId: string,
+  counts: TrashCounts,
+  { alone = false }: { alone?: boolean } = {}
+): Promise<void> {
   const rows = await db.query(
     `WITH RECURSIVE g AS (
        SELECT r.id, r.kind, 1 AS level, r.deleted_at FROM nodes r WHERE r.id = $1
@@ -199,7 +205,9 @@ export async function expectTrashRoot(db: Database, rootId: string, counts: Tras
             (SELECT coalesce(max(g.level) FILTER (WHERE g.kind = 'page'), 0)::int FROM g) AS grouped_height,
             (SELECT count(*)::int FROM g JOIN nodes x ON x.id = g.id
               WHERE x.id <> n.id AND (x.trash_root OR x.trash_pages IS NOT NULL OR x.trash_assets IS NOT NULL
-                OR x.trash_height IS NOT NULL)) AS others_marked
+                OR x.trash_height IS NOT NULL)) AS others_marked,
+            (SELECT count(*)::int FROM nodes x WHERE x.notebook_id = n.notebook_id AND x.deleted_at = n.deleted_at)
+              AS at_its_time
        FROM nodes n WHERE n.id = $1 AND n.deleted_at IS NOT NULL`,
     [rootId]
   );
@@ -211,6 +219,7 @@ export async function expectTrashRoot(db: Database, rootId: string, counts: Tras
       grouped_assets: counts.assets,
       grouped_height: counts.height,
       others_marked: 0,
+      at_its_time: alone ? counts.pages + counts.assets : expect.any(Number),
     },
   ]);
 }

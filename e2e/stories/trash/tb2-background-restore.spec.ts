@@ -111,6 +111,7 @@ async function expectBigRestored(
   ).toEqual([{ id: restore }]);
   await expectSubtreeRestored(db, big.id, big.ids, byId, { parentId: null, name: "Big" }, { kind: "trash_restore" });
   await expectAssetsRestored(db, storageDir, [big.photo]);
+  // Note 001's embed of photo.png crosses the batches: Big and Note 001 to 099 in the first, photo.png in the second.
   await expectIndexedLinks(db, big.first, [
     { kind: "embed", property: null, target: "photo.png", resolved: big.photo.id },
     { kind: "wikilink", property: null, target: note(2), resolved: big.second },
@@ -127,7 +128,7 @@ test("TB2 (API): an item of more pages than a restore brings back is refused as 
   const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
   const big = await importBig(api, db, pat, notebook.id);
   expect((await deleteNode(api, pat, big.id)).response.status).toBe(204);
-  await expectTrashRoot(db, big.id, { pages: notes + 1, assets: 1, height: 2 });
+  await expectTrashRoot(db, big.id, { pages: notes + 1, assets: 1, height: 2 }, { alone: true });
 
   const refused = await restoreNode(api, pat, big.id);
   expect([refused.response.status, refused.error?.code]).toEqual([422, "page.restore_too_large"]);
@@ -190,7 +191,7 @@ test("TB2 (page): an item deleted from the tree, too large to restore from the t
   // The page shown gone, its shell goes to the notebook's home, Big having been at its top level.
   await expect(main.getByRole("heading", { level: 1, name: "Plans", exact: true })).toBeFocused();
   await expect.poll(() => treeTitles(page, "Plans")).toEqual([]);
-  await expectTrashRoot(db, big.id, { pages: notes + 1, assets: 1, height: 2 });
+  await expectTrashRoot(db, big.id, { pages: notes + 1, assets: 1, height: 2 }, { alone: true });
 
   // Too large to restore here: the trash says so, and offers to restore it in the background.
   await page
