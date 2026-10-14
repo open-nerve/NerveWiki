@@ -214,6 +214,9 @@ func TestABackgroundJobStopsWithItsReason(t *testing.T) {
 // A cancel asked as a batch runs lets it end, then stops the job between
 // two: the batches written kept and counted, the job cancelled. A job
 // deleted as it runs, with its notebook, stops so too, writing no end.
+// The heartbeat that reads the stop ends the run's context just after: a
+// third batch asked before it is answered busy until then, as a busy
+// server's, and its wait ends with the run.
 func TestABackgroundJobStopsBetweenTwoBatches(t *testing.T) {
 	for _, tt := range []struct {
 		name string
@@ -247,14 +250,19 @@ func TestABackgroundJobStopsBetweenTwoBatches(t *testing.T) {
 				}
 			}
 			w.tree.onBatch = func(n int) {
-				if n == 2 {
+				switch n {
+				case 2:
 					tt.stop(w, j)
 					<-read
+				case 3:
+					w.tree.mu.Lock()
+					w.tree.busy = 1 << 30
+					w.tree.mu.Unlock()
 				}
 			}
 			got := w.run(t, j)
-			if got.State != tt.want || len(w.tree.written()) != 2 {
-				t.Errorf("job %s, batches %v; want %s after two batches", got.State, w.tree.written(), tt.want)
+			if got.State != tt.want || len(w.tree.succeeded()) != 2 {
+				t.Errorf("job %s, batches %v; want %s after two batches", got.State, w.tree.succeeded(), tt.want)
 			}
 			if tt.want == domain.StateCancelled && (got.Report.Counts.Pages != 200 || got.Progress != (domain.Progress{Done: 200, Total: 300})) {
 				t.Errorf("progress %+v, report %+v; want two batches counted", got.Progress, got.Report)

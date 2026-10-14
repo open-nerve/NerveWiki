@@ -46,7 +46,7 @@ func (t *tree) RunBatch(context.Context, app.JobSpec, app.JobPlan, int, int) (ap
 // spec and actor; busy answers as many batches 503 first; halving answers
 // ErrBatchTooLarge to a batch of more steps than it, none when 0; fail
 // refuses the batch from a step; onBatch runs as each batch starts, its
-// number from 1.
+// number from 1; wrote are the batches written.
 type jobTree struct {
 	*tree
 	rec          *recorder
@@ -59,6 +59,7 @@ type jobTree struct {
 	planErr error
 	planned []uuid.UUID
 	batches [][2]int
+	wrote   [][2]int
 	specs   []app.JobSpec
 	actors  []shared.Actor
 	busy    int
@@ -133,6 +134,7 @@ func (t *jobTree) RunBatch(ctx context.Context, spec app.JobSpec, p app.JobPlan,
 	case t.fail[from] != nil:
 		return app.BatchDone{}, t.fail[from]
 	}
+	t.wrote = append(t.wrote, [2]int{from, to})
 	done := app.BatchDone{}
 	for _, s := range p.Steps()[from:to] {
 		done.Nodes += s.Nodes
@@ -144,12 +146,19 @@ func (t *jobTree) RunBatch(ctx context.Context, spec app.JobSpec, p app.JobPlan,
 	return done, nil
 }
 
-// written are the batches written so far, each its first step and the
-// one after its last.
+// written are the batches asked so far, each its first step and the one
+// after its last.
 func (t *jobTree) written() [][2]int {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return append([][2]int(nil), t.batches...)
+}
+
+// succeeded are the batches written so far, as written tells them.
+func (t *jobTree) succeeded() [][2]int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return append([][2]int(nil), t.wrote...)
 }
 
 // plan is a background job's plan of steps.
