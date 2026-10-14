@@ -1,4 +1,10 @@
 -- The trash (M8/P2 design 3.4): a notebook's deletions' roots, each with what was deleted with it, at its time.
+--
+-- A row read with a node deleted at its time is joined by its key, the time compared as not distinct: no index serves
+-- that comparison. As an equality the planner could reach the row by its time, through the partial index on
+-- deleted_at, and with the statistics read before a large deletion (none of its rows deleted) it did, each node reading
+-- every row of the time: a background restore's plan of 45,000 pages took 55 s (M8/P4A). The nodes compared are
+-- deleted and the times given deletions', so not distinct is equal.
 
 -- name: ListTrash :many
 -- A notebook's trash items deleted after since, newer first, below the cursor, at most max_rows: a range of the trash's
@@ -6,7 +12,7 @@
 -- purge took. Who deleted it is its updated_by_id, which the deletion wrote.
 SELECT n.id, n.notebook_id, n.parent_id, n.kind, n.name, n.name_key, n.sort_order, n.created_by_id, n.updated_by_id,
     n.created_at, n.updated_at, n.deleted_at, n.trash_pages, n.trash_assets, n.trash_height, c.revision
-FROM nodes n LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at = n.deleted_at
+FROM nodes n LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at IS NOT DISTINCT FROM n.deleted_at
 WHERE n.notebook_id = sqlc.arg(notebook_id) AND n.trash_root AND n.deleted_at > sqlc.arg(since)::timestamptz
     AND (n.deleted_at, n.id) < (sqlc.arg(below_at)::timestamptz, sqlc.arg(below_id)::uuid)
 ORDER BY n.deleted_at DESC, n.id DESC
@@ -16,7 +22,7 @@ LIMIT sqlc.arg(max_rows);
 -- The trash item of the root id, as ListTrash reads it.
 SELECT n.id, n.notebook_id, n.parent_id, n.kind, n.name, n.name_key, n.sort_order, n.created_by_id, n.updated_by_id,
     n.created_at, n.updated_at, n.deleted_at, n.trash_pages, n.trash_assets, n.trash_height, c.revision
-FROM nodes n LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at = n.deleted_at
+FROM nodes n LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at IS NOT DISTINCT FROM n.deleted_at
 WHERE n.id = sqlc.arg(id) AND n.trash_root;
 
 -- name: TrashRootOf :one
@@ -52,7 +58,7 @@ SELECT root_id, id, parent_id, name, deleted_at, up::integer AS up FROM chain OR
 -- TrashChildrenOfAll reads its descendants.
 SELECT n.id, n.notebook_id, n.parent_id, n.kind, n.name, n.name_key, n.sort_order, n.created_by_id, n.updated_by_id,
     n.created_at, n.updated_at, c.revision, c.byte_size
-FROM nodes n LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at = n.deleted_at
+FROM nodes n LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at IS NOT DISTINCT FROM n.deleted_at
 WHERE n.id = sqlc.arg(id) AND n.notebook_id = sqlc.arg(notebook_id) AND n.deleted_at = sqlc.arg(deleted_at)::timestamptz;
 
 -- name: TrashChildrenOfAll :many
@@ -62,7 +68,7 @@ WHERE n.id = sqlc.arg(id) AND n.notebook_id = sqlc.arg(notebook_id) AND n.delete
 -- descendant deleted earlier is not of the group: it is an item of its own.
 SELECT n.id, n.notebook_id, n.parent_id, n.kind, n.name, n.name_key, n.sort_order, n.created_by_id, n.updated_by_id,
     n.created_at, n.updated_at, c.revision, c.byte_size
-FROM nodes n LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at = n.deleted_at
+FROM nodes n LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at IS NOT DISTINCT FROM n.deleted_at
 WHERE n.notebook_id = sqlc.arg(notebook_id) AND n.parent_id = ANY(sqlc.arg(parents)::uuid[])
     AND n.deleted_at = sqlc.arg(deleted_at)::timestamptz
 ORDER BY n.sort_order, n.id;
@@ -92,8 +98,8 @@ SELECT ((SELECT count(*) FROM (SELECT 1 FROM page_revisions r
 SELECT n.id, n.notebook_id, n.parent_id, n.kind, n.name, n.name_key, n.sort_order, n.created_by_id, n.updated_by_id,
     n.created_at, n.updated_at, n.trash_root, n.trash_pages, n.trash_assets, n.trash_height, c.revision, c.byte_size
 FROM (SELECT unnest(sqlc.arg(ids)::uuid[]) AS id, unnest(sqlc.arg(deleted_ats)::timestamptz[]) AS deleted_at) g
-JOIN nodes n ON n.id = g.id AND n.deleted_at = g.deleted_at
-LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at = n.deleted_at
+JOIN nodes n ON n.id = g.id AND n.deleted_at IS NOT DISTINCT FROM g.deleted_at
+LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at IS NOT DISTINCT FROM n.deleted_at
 WHERE n.notebook_id = sqlc.arg(notebook_id);
 
 -- name: TrashChildrenAt :many
@@ -103,15 +109,15 @@ WHERE n.notebook_id = sqlc.arg(notebook_id);
 SELECT n.id, n.notebook_id, n.parent_id, n.kind, n.name, n.name_key, n.sort_order, n.created_by_id, n.updated_by_id,
     n.created_at, n.updated_at, c.revision, c.byte_size
 FROM (SELECT unnest(sqlc.arg(parents)::uuid[]) AS id, unnest(sqlc.arg(deleted_ats)::timestamptz[]) AS deleted_at) p
-JOIN nodes n ON n.notebook_id = sqlc.arg(notebook_id) AND n.parent_id = p.id AND n.deleted_at = p.deleted_at
-LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at = n.deleted_at
+JOIN nodes n ON n.notebook_id = sqlc.arg(notebook_id) AND n.parent_id = p.id AND n.deleted_at IS NOT DISTINCT FROM p.deleted_at
+LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at IS NOT DISTINCT FROM n.deleted_at
 ORDER BY n.sort_order, n.id;
 
 -- name: TrashShapeOfAll :many
 -- A level of a trash item's group as a background restore's plan keeps it (M8/P4 design 3.4): no names, a page's
 -- content's size; by parent, each parent's children in order, as TrashChildrenOfAll reads them.
 SELECT n.id, n.parent_id, n.kind, c.byte_size
-FROM nodes n LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at = n.deleted_at
+FROM nodes n LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at IS NOT DISTINCT FROM n.deleted_at
 WHERE n.notebook_id = sqlc.arg(notebook_id) AND n.parent_id = ANY(sqlc.arg(parents)::uuid[])
     AND n.deleted_at = sqlc.arg(deleted_at)::timestamptz
 ORDER BY n.parent_id, n.sort_order, n.id;

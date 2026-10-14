@@ -15,7 +15,7 @@ import (
 const findTrashRoot = `-- name: FindTrashRoot :one
 SELECT n.id, n.notebook_id, n.parent_id, n.kind, n.name, n.name_key, n.sort_order, n.created_by_id, n.updated_by_id,
     n.created_at, n.updated_at, n.deleted_at, n.trash_pages, n.trash_assets, n.trash_height, c.revision
-FROM nodes n LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at = n.deleted_at
+FROM nodes n LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at IS NOT DISTINCT FROM n.deleted_at
 WHERE n.id = $1 AND n.trash_root
 `
 
@@ -67,7 +67,7 @@ const listTrash = `-- name: ListTrash :many
 
 SELECT n.id, n.notebook_id, n.parent_id, n.kind, n.name, n.name_key, n.sort_order, n.created_by_id, n.updated_by_id,
     n.created_at, n.updated_at, n.deleted_at, n.trash_pages, n.trash_assets, n.trash_height, c.revision
-FROM nodes n LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at = n.deleted_at
+FROM nodes n LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at IS NOT DISTINCT FROM n.deleted_at
 WHERE n.notebook_id = $1 AND n.trash_root AND n.deleted_at > $2::timestamptz
     AND (n.deleted_at, n.id) < ($3::timestamptz, $4::uuid)
 ORDER BY n.deleted_at DESC, n.id DESC
@@ -102,6 +102,12 @@ type ListTrashRow struct {
 }
 
 // The trash (M8/P2 design 3.4): a notebook's deletions' roots, each with what was deleted with it, at its time.
+//
+// A row read with a node deleted at its time is joined by its key, the time compared as not distinct: no index serves
+// that comparison. As an equality the planner could reach the row by its time, through the partial index on
+// deleted_at, and with the statistics read before a large deletion (none of its rows deleted) it did, each node reading
+// every row of the time: a background restore's plan of 45,000 pages took 55 s (M8/P4A). The nodes compared are
+// deleted and the times given deletions', so not distinct is equal.
 // A notebook's trash items deleted after since, newer first, below the cursor, at most max_rows: a range of the trash's
 // partial index. A page's content's revision with it, at its deletion's time: none for an attachment, or a content the
 // purge took. Who deleted it is its updated_by_id, which the deletion wrote.
@@ -152,8 +158,8 @@ const trashChildrenAt = `-- name: TrashChildrenAt :many
 SELECT n.id, n.notebook_id, n.parent_id, n.kind, n.name, n.name_key, n.sort_order, n.created_by_id, n.updated_by_id,
     n.created_at, n.updated_at, c.revision, c.byte_size
 FROM (SELECT unnest($1::uuid[]) AS id, unnest($2::timestamptz[]) AS deleted_at) p
-JOIN nodes n ON n.notebook_id = $3 AND n.parent_id = p.id AND n.deleted_at = p.deleted_at
-LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at = n.deleted_at
+JOIN nodes n ON n.notebook_id = $3 AND n.parent_id = p.id AND n.deleted_at IS NOT DISTINCT FROM p.deleted_at
+LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at IS NOT DISTINCT FROM n.deleted_at
 ORDER BY n.sort_order, n.id
 `
 
@@ -219,7 +225,7 @@ func (q *Queries) TrashChildrenAt(ctx context.Context, arg TrashChildrenAtParams
 const trashChildrenOfAll = `-- name: TrashChildrenOfAll :many
 SELECT n.id, n.notebook_id, n.parent_id, n.kind, n.name, n.name_key, n.sort_order, n.created_by_id, n.updated_by_id,
     n.created_at, n.updated_at, c.revision, c.byte_size
-FROM nodes n LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at = n.deleted_at
+FROM nodes n LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at IS NOT DISTINCT FROM n.deleted_at
 WHERE n.notebook_id = $1 AND n.parent_id = ANY($2::uuid[])
     AND n.deleted_at = $3::timestamptz
 ORDER BY n.sort_order, n.id
@@ -325,7 +331,7 @@ func (q *Queries) TrashContents(ctx context.Context, arg TrashContentsParams) ([
 const trashGroupRoot = `-- name: TrashGroupRoot :one
 SELECT n.id, n.notebook_id, n.parent_id, n.kind, n.name, n.name_key, n.sort_order, n.created_by_id, n.updated_by_id,
     n.created_at, n.updated_at, c.revision, c.byte_size
-FROM nodes n LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at = n.deleted_at
+FROM nodes n LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at IS NOT DISTINCT FROM n.deleted_at
 WHERE n.id = $1 AND n.notebook_id = $2 AND n.deleted_at = $3::timestamptz
 `
 
@@ -457,8 +463,8 @@ const trashNodesAt = `-- name: TrashNodesAt :many
 SELECT n.id, n.notebook_id, n.parent_id, n.kind, n.name, n.name_key, n.sort_order, n.created_by_id, n.updated_by_id,
     n.created_at, n.updated_at, n.trash_root, n.trash_pages, n.trash_assets, n.trash_height, c.revision, c.byte_size
 FROM (SELECT unnest($1::uuid[]) AS id, unnest($2::timestamptz[]) AS deleted_at) g
-JOIN nodes n ON n.id = g.id AND n.deleted_at = g.deleted_at
-LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at = n.deleted_at
+JOIN nodes n ON n.id = g.id AND n.deleted_at IS NOT DISTINCT FROM g.deleted_at
+LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at IS NOT DISTINCT FROM n.deleted_at
 WHERE n.notebook_id = $3
 `
 
@@ -551,7 +557,7 @@ func (q *Queries) TrashRootOf(ctx context.Context, id uuid.UUID) (uuid.UUID, err
 
 const trashShapeOfAll = `-- name: TrashShapeOfAll :many
 SELECT n.id, n.parent_id, n.kind, c.byte_size
-FROM nodes n LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at = n.deleted_at
+FROM nodes n LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at IS NOT DISTINCT FROM n.deleted_at
 WHERE n.notebook_id = $1 AND n.parent_id = ANY($2::uuid[])
     AND n.deleted_at = $3::timestamptz
 ORDER BY n.parent_id, n.sort_order, n.id

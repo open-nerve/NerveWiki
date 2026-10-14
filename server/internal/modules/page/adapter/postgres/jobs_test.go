@@ -352,3 +352,78 @@ func TestADeletionsItemsReadTheirPagesContentsByKey(t *testing.T) {
 		t.Errorf("RecordItems does not read the pages' contents by their key:\n%s", text)
 	}
 }
+
+// The trash's reads of a large deletion join each node's rows by its key
+// at any statistics (M8/P4A): read before the deletion, they know no row
+// deleted at its time, and a join by the time too went through the
+// partial indexes on deleted_at, every row of the time for each node; a
+// background restore's plan of 45,000 pages took 55 s.
+func TestTheTrashsReadsJoinByKeyWhateverTheStatistics(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	root := f.page(t, f.eng, nil, "Root", 0)
+	f.exec(t, `INSERT INTO nodes (id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id,
+		created_at, updated_at)
+		SELECT uuidv7(), $1, $2, 'page', 'P' || i, 'p' || i, i, $3, $3, $4, $4 FROM generate_series(1, 2000) i`,
+		f.eng, root.ID, f.alice, now())
+	f.exec(t, `INSERT INTO page_contents (node_id, content, revision, content_hash, byte_size, updated_by_id, updated_at)
+		SELECT id, 'x', 1, sha256('x'), 1, $2, $3 FROM nodes WHERE parent_id = $1`, root.ID, f.alice, now())
+	f.exec(t, "ANALYZE")
+	at := now().Add(time.Hour)
+	f.exec(t, `UPDATE nodes SET deleted_at = $2, trash_root = (id = $1), trash_pages = CASE WHEN id = $1 THEN 2001 END,
+		trash_assets = CASE WHEN id = $1 THEN 0 END, trash_height = CASE WHEN id = $1 THEN 2 END
+		WHERE id = $1 OR parent_id = $1`, root.ID, at)
+	f.exec(t, `UPDATE page_contents SET deleted_at = $2 WHERE node_id = $1 OR node_id IN (SELECT id FROM nodes WHERE parent_id = $1)`,
+		root.ID, at)
+	rows, err := f.pool.Query(ctx, `SELECT id FROM nodes WHERE parent_id = $1 ORDER BY id LIMIT 100`, root.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids, err := pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
+	if err != nil {
+		t.Fatal(err)
+	}
+	times := make([]time.Time, len(ids))
+	for i := range times {
+		times[i] = at
+	}
+	for _, tt := range []struct {
+		name string
+		s    statement
+	}{
+		{"FindTrashRoot", statementOf(t, func(q *gen.Queries) error { _, err := q.FindTrashRoot(ctx, root.ID); return err })},
+		{"ListTrash", statementOf(t, func(q *gen.Queries) error {
+			_, err := q.ListTrash(ctx, gen.ListTrashParams{NotebookID: f.eng, Since: now(), BelowAt: at.Add(time.Hour), BelowID: uuid.Max(),
+				MaxRows: 100})
+			return err
+		})},
+		{"TrashGroupRoot", statementOf(t, func(q *gen.Queries) error {
+			_, err := q.TrashGroupRoot(ctx, gen.TrashGroupRootParams{ID: root.ID, NotebookID: f.eng, DeletedAt: at})
+			return err
+		})},
+		{"TrashChildrenOfAll", statementOf(t, func(q *gen.Queries) error {
+			_, err := q.TrashChildrenOfAll(ctx, gen.TrashChildrenOfAllParams{NotebookID: f.eng, Parents: []uuid.UUID{root.ID}, DeletedAt: at})
+			return err
+		})},
+		{"TrashShapeOfAll", statementOf(t, func(q *gen.Queries) error {
+			_, err := q.TrashShapeOfAll(ctx, gen.TrashShapeOfAllParams{NotebookID: f.eng, Parents: []uuid.UUID{root.ID}, DeletedAt: at})
+			return err
+		})},
+		{"TrashNodesAt", statementOf(t, func(q *gen.Queries) error {
+			_, err := q.TrashNodesAt(ctx, gen.TrashNodesAtParams{Ids: ids, DeletedAts: times, NotebookID: f.eng})
+			return err
+		})},
+		{"TrashChildrenAt", statementOf(t, func(q *gen.Queries) error {
+			_, err := q.TrashChildrenAt(ctx, gen.TrashChildrenAtParams{Parents: []uuid.UUID{root.ID}, DeletedAts: times[:1], NotebookID: f.eng})
+			return err
+		})},
+	} {
+		text := strings.Join(f.planOf(t, tt.s), "\n")
+		if strings.Contains(text, "page_contents_deleted_at_idx") || !strings.Contains(text, "page_contents_pkey") {
+			t.Errorf("%s does not read the contents by their key:\n%s", tt.name, text)
+		}
+		if (tt.name == "TrashNodesAt" || tt.name == "TrashChildrenAt") && strings.Contains(text, "nodes_deleted_at_idx") {
+			t.Errorf("%s reads the nodes by their time:\n%s", tt.name, text)
+		}
+	}
+}
