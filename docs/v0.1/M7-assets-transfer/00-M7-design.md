@@ -279,7 +279,7 @@
 - **接口**：`POST /api/v0/notebooks/{notebook_id}/imports`，`multipart/form-data`：`parent_id`（可选）、`file`（zip）。先判定（`transfer.import`，写者）与不加锁的预检（父节点、同时的导入与上传、队列、磁盘余量；声明的长度超过上限时立即 413），再读请求体，流式写到 `imports/<job id>.zip`（上限 `transfer.import_max_bytes`，默认 512 MiB，`API.Stream`），然后在一个事务里写 `transfer_jobs` 的行并投递任务，答 202 与任务。事务以工作区行 `FOR SHARE` → 笔记本行 `FOR SHARE` → 判定 → 写行与投递，同 13.1 第 5 条的页面一支。写行之前失败的，删掉已写的 zip。
 - **先校验，后写入**：任务先把全部条目过一遍，不写任何东西：
   - 先读 zip 的结尾记录（EOCD 与 zip64 的 EOCD），条目数超过上限或中央目录大于上限时整包拒绝，然后才 `zip.NewReader`（它会先建出每一条的记录：512 MiB 的 zip 可以有约 700 万条，几个 GB 的内存）；
-  - 整包拒绝（任务失败，报告写明）：不是 zip、条目超过 `transfer.import_max_entries`（默认 50,000，至多 100,000）、解压后的总字节数超过 `transfer.import_max_unpacked_bytes`（默认 4 GiB，按实际读出的字节计，不信条目头）；
+  - 整包拒绝（任务失败，报告写明）：不是 zip、条目超过 `transfer.import_max_entries`（默认 50,000，至多 100,000）、解压后的总字节数超过 `transfer.import_max_unpacked_bytes`（默认 4 GiB，按实际读出的字节计，不信条目头）、计划建的节点（条目加路径隐含的文件夹页）超过 `page.MaxJobItems` = 60,000（`too_many_nodes`，不是配置：超过它的导入在后台也撤销不了，M8/P4 设计 2.2 的 (a)）；
   - 逐条跳过并写进报告：路径越出根（`..`、绝对路径、盘符）、符号链接与其他特殊文件、加密的、压缩方法不支持的、压缩比超过 200（小于 1 MiB 的不看：小文件能压得远超 200 倍）、名称不是 UTF-8、`.md` 不是合法的 UTF-8 或超过 5 MiB 或含 NUL、附件超过 `asset.max_bytes`、在笔记本里超过深度 10 的页与它下面的一切（附件不算一层）；
   - 忽略：`.obsidian/`、`.trash/`、`.git/`、`__MACOSX/`、`.DS_Store`、`Thumbs.db` 与其他以 `.` 开头的条目；`.nerve/meta.json` 读作次序（至多 16 MiB，超过的不读）。
 - **映射**：
@@ -315,7 +315,7 @@
   | `asset.max_bytes` | 50 MiB | 单个附件 |
   | `asset.upload_min_rate` | 64 KiB/s | 上传与下载的最低速率 |
   | `transfer.import_max_bytes` | 512 MiB | 导入包 |
-  | `transfer.import_max_entries` | 50,000 | |
+  | `transfer.import_max_entries` | 50,000 | 导入建的节点（条目加路径隐含的文件夹）另至多 60,000 个（`page.MaxJobItems`，不是配置，M8/P4） |
   | `transfer.import_max_unpacked_bytes` | 4 GiB | |
   | `transfer.export_ttl` | 24 h | |
   | `transfer.job_timeout` | 6 h | 1 分钟到 23 小时，比附件的孤儿清扫少一小时（M7 Codex 评审 R2） |

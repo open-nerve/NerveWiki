@@ -11,7 +11,7 @@ A 的网页改动只有契约带来的门禁：新类型的标题、新失败的
 
 ## 1. 基线
 
-- A 从 `main` 的 `1f0e3a98` 开始（P3A 合并于 `314d9ec`，P3B 合并于 `16468979`；服务端与契约自 `e08745e` 起没有改动）。
+- A 从 `main` 的 `1f0e3a98` 开始（P3A 合并于 `314d9ec`，P3B 合并于 `16468979`；服务端与契约自 `e08745e` 起没有改动）。实施从 `main` 的 `1f732c96` 开始，审查之前变基到 `3cb0c51e`（第 9 节）。
 - **transfer**：
   - 任务只有 `import`、`export` 两种（`00029:15`、`domain/job.go:9-15`）。
   - 一本笔记本一个导入，靠三样：唯一索引 `transfer_jobs_importing_key`（`00031:5-6`，只认 `import`）、`Importing` 查询、进程内的 `Uploads`（导入的 `Check` 占住笔记本直到写行，`uploads.go:14-56`）。
@@ -164,6 +164,8 @@ P4 的文档提交随这份文档一起改 `00-M8-design.md`。行号指 `1f0e3a
      - 负责人可以否决 (a)，例如宁可降低第 3 节第 5 条的要求，也不拒绝这样的 zip；那时撤掉这个上限、改第 3 节第 5 条。
    - **`MaxJobItems` < 5 万**：连平铺的默认上限的导入也撤销不了；加节点的上限就等于降低默认的条目上限。停下来问负责人。
 
+   **结果**（P4A）：满负载定为每页 20 条解析的链接之后，`MaxJobItems` = 60,000（3.11），5 万 ≤ 它 < N：照 (a) 做了，导入的节点上限 60,000（`too_many_nodes`，3.6、3.9）。负责人可以否决。
+
 第 11 节的 12 条都不受影响：
 
 - **第 3 条**（被锁整体拒绝）：在请求里照做，`startRevert` 答 409 `page.locked`，不开任务。
@@ -177,26 +179,26 @@ P4 的文档提交随这份文档一起改 `00-M8-design.md`。行号指 `1f0e3a
 | 文件 | 内容 |
 |---|---|
 | `server/migrations/sql/00039_transfer_background_jobs.sql` | 两种新类型、三列、约束、排队的导入的变更集 id，一本笔记本一个写入任务的唯一索引（3.2） |
-| `page/domain/jobs.go` | `JobStep`；`PreOrder`（组的深度优先先序）；`GroupCounts`（一组里每个节点的子树在组内的页数、附件数、层数）；`Frontier`（一批之后要设上根的节点与统计）；`MaxJobItems`（`MaxJobGroups` 若实测要它，3.11） |
+| `page/domain/jobs.go` | `JobStep`；`GroupPreOrder`（组的深度优先先序；`PreOrder` 这个名字已有，偏离 4）；`GroupCounts`（一组里每个节点的子树在组内的页数、附件数、层数）；`Frontier`（一批之后要设上根的节点与统计）；`MaxJobItems` = 60,000（没有 `MaxJobGroups`，3.11） |
 | `page/domain/errors.go` | `ErrBatchTooLarge`（未分类：调用者减半，3.3） |
 | `page/app/ports.go` | `NodeWriter.MarkTrashRoots`；`Trash.TrashNodesAt`、`TrashGroups`、`TrashShape`；`History.ChangesetItemsOf`、`ChangesetVersionsOf` |
 | `page/app/unit.go` | `UnitSpec.Create`：任务的变更集由它第一个写了东西的单元以给定的 id 建（3.3） |
 | `page/app/jobs.go` | `JobWrites`：`CheckRestore`、`PlanRestore`、`CheckRevert`、`PlanRevert`、`RunBatch`；`JobPlan`、`BatchDone`；每批的读与解析（单元之前） |
 | `page/app/unit_restore.go` | `Unit.RestorePart`（恢复的任务的一批、撤销里一组的一段）：放置（只第一段）、名称、`bringBack`、`markFrontier` |
 | `page/app/unit_revert.go`、`revert_changeset.go` | `Unit.RevertBatch`（只含这一批的节点的再计划、续段的逐个核对、应用，删除走 P3 的路）；`revertReads.groups` 改用 `TrashGroups`；未加锁的核对抽成 `revertCheck(…, revertBounds)`，`RevertChangeset` 与 `CheckRevert` 共用 |
-| `page/adapter/postgres/queries/trash.sql`、`nodes.sql`、`history.sql`；`store.go`、`trash.go`、`history.go` | `TrashNodesAt`、`TrashChildrenAt`、`TrashShapeOfAll`、`MarkTrashRoots`、`ChangesetItemsOf`、`ChangesetVersionsOf`；`TrashGroups` 按层；`NodesNow` 的例外按条目的时刻（3.7） |
+| `page/adapter/postgres/queries/trash.sql`、`nodes.sql`、`history.sql`；`store.go`、`trash.go`、`history.go` | `TrashNodesAt`、`TrashChildrenAt`、`TrashShapeOfAll`、`MarkTrashRoots`、`ChangesetItemsOf`、`ChangesetVersionsOf`；`TrashGroups` 按层；`NodesNow` 的例外按条目的时刻（3.7）；回收站已有的四条读按键连接，`changesets.sql` 的 `RecordItems` 按键读删除的页的版本号（实测找到的两个缺陷，3.3） |
 | `page/tree_writes.go`、`page/module.go` | `TreeWrites` 加五个方法与 `JobSpec`、`JobPlan`、`JobStep`、`BatchDone`；导出 `ActionRestore`、`ActionRevert`、`ErrBatchTooLarge`、`ErrRestoreExpired`、`ErrRevertConflict`、`ErrChangesetTrimmed`、`ErrLocked`；`Deps.MaxJobItems`（0 即 domain 的值） |
 | `transfer/domain/job.go`、`report.go`、`errors.go` | `KindTrashRestore`、`KindRevert`；`Job.ChangesetID`、`TargetChangesetID`、`Message`；报告的 `Placed`、`Conflicts`、`ConflictCount`、`Lock` 与四个新计数；五个新失败；`ErrImportBusy` 改名 `ErrWriting`，详情说写入任务 |
-| `transfer/app/batches.go`（新）、`import_write.go`、`import.go` | 从导入抽出的：批的上限（`Deps.Batch`）、`retry`/`busy`、单元的"结果未知"与 `unitFailure`、`ANALYZE` 的节拍；导入改用它，并入任务行的变更集 |
+| `transfer/app/batches.go`（新）、`import_write.go`、`import.go` | 从导入抽出的：批的上限（`Deps.Batch`）、`retry`/`busy`、单元的"结果未知"与 `unitFailure`、`ANALYZE` 的节拍；导入改用它，并入任务行的变更集；导入的节点上限（`ImportDeps.MaxNodes`，2.2 的 (a)） |
 | `transfer/app/start_background.go`（新）、`background.go`（新） | `StartTrashRestore`、`StartRevert`；两种任务共用的 `Background.Run` |
-| `transfer/app/ports.go`、`import_ports.go`、`uploads.go`、`start_import.go`、`maintain.go`、`views.go` | `Tree` 加五个方法；`Rows.Writing`（代替 `Importing`）；`Queue.TrashRestore`、`Revert`；`Uploads.uploading`；收拾的种类；清理只删导入、导出的文件；报告里持锁人的显示名 |
+| `transfer/app/ports.go`、`import_ports.go`、`start_import.go`、`maintain.go`、`views.go` | `Tree` 加五个方法；`Rows.Writing`（代替 `Importing`）；`Queue.TrashRestore`、`Revert`；收拾的种类；清理只删导入、导出的文件；报告里持锁人的显示名。没有加 `Uploads.uploading`：两个开始用已有的 `claim`，它已挡住导入的上传（偏离 3） |
 | `transfer/adapter/postgres/queries/jobs.sql`、`store.go` | 新列的读写，`Writing`，列表去掉报告的 `conflicts` |
 | `transfer/adapter/river/jobs.go` | 两个 River 种类 `transfer.trash_restore`、`transfer.revert`，在 `transfer_import` 队列上；`Held` 按种类 |
 | `transfer/adapter/http/server.go`、`handler.go` | 两个开始的处理器（严格的服务器，不是 `x-raw`） |
-| `transfer/module.go`；`bootstrap/transfer.go`、`deps.go` | `Deps` 加两个动作与 `Batch`；`transferTree` 的五个方法与错误的映射（`treeError`）；生产接线的守卫钉住 `Batch` 为零值 |
+| `transfer/module.go`；`bootstrap/transfer.go`、`deps.go`、`wire.go` | `Deps` 加两个动作、`Batch` 与 `ImportMaxNodes`（组合根交 `page.MaxJobItems`）；`transferTree` 的五个方法与错误的映射（`treeError`）；`wireApp` 带批（交错以 3 个节点一批），`newApp` 交零值（偏离 17）；生产接线的守卫核对 `transferDeps` 不设批、导入的节点上限是 `MaxJobItems` |
 | `api/modules/transfer.yaml`、`api/modules/page.yaml`、`api/common.yaml`、`api/openapi.yaml` | 两个操作；`TransferKind`、`TransferJob`、`TransferJobDetail`、`TransferReport`、`TransferCounts`、`TransferProgress`、`TransferFailure`；被说错了的描述（3.9）；`TrashPlacement` 移到 `common.yaml`；`PageLock`（新，`Problem.lock` 引用它） |
-| `web/apps/web/src/pages/notebook/transfer-names.ts`、`transfer-report.tsx`、`import-dialog.tsx`、`i18n/messages/{en,zh-CN}.ts`、`test/jobs-server.ts`；`e2e/stories/transfer/tr2-import.spec.ts` | 契约带来的门禁：两种类型的标题、五个新失败的文字、三个旧失败按类型的文字、忙的文字（TR2 逐字断言英文）、假接口的必有字段（3.9） |
-| `bootstrap/background_test.go`、`interleavings_background_test.go`、`background_cost_test.go`、`permission_matrix_transfer_test.go`、`transfer_jobs_test.go`（`seededJob.kind`、重启）、`interleavings_transfer_test.go`（`checkTransfers` 的种类）、`interleavings_history_test.go`（交错 5 改读任务行的 `changeset_id`）；`page/adapter/postgres/jobs_test.go`、`jobs_cost_test.go`、`history_test.go`（V）；`transfer/app/background_test.go`、`start_background_test.go`；`migrations/background_jobs_test.go`；`Makefile`、`.github/workflows/ci.yml` | 3.12、3.11 |
+| `web/apps/web/src/pages/notebook/transfer-names.ts`（另有 `transfer-names.test.ts`，偏离 18）、`transfer-report.tsx`、`i18n/messages/{en,zh-CN}.ts`、`test/jobs-server.ts`；`e2e/stories/transfer/tr1`–`tr4` | 契约带来的门禁：两种类型的标题、五个新失败与 `too_many_nodes` 的文字、三个旧失败按类型的文字、忙的文字（TR2 逐字断言英文）、假接口的必有字段（3.9）；TR1–TR4 以接口比较整份报告，随新的必有计数与 `placed`、`lock` 改（这张表原来只列了 TR2，偏离 30） |
+| `bootstrap/background_test.go`、`interleavings_background_test.go`、`interleavings_background_stops_test.go`（停下的交错）、`background_cost_test.go`、`permission_matrix_transfer_test.go`、`transfer_jobs_test.go`（`seededJob.kind`、重启）、`interleavings_transfer_test.go`（`checkTransfers` 的种类）、`interleavings_history_test.go`（交错 5 改读任务行的 `changeset_id`）；`page/adapter/postgres/jobs_test.go`、`history_test.go`（V）；`transfer/app/background_test.go`、`start_background_test.go`、`transfer/adapter/http/start_background_test.go`；`migrations/background_jobs_test.go`；`server/sqlc.yaml`（列上 00039，偏离 1）；`Makefile`、`.github/workflows/ci.yml`；`server/configs/config.yaml`、`README.md`（导入的节点上限） | 3.12、3.11。数组语句的两种计划在组合根的基准里量（`BenchmarkBackgroundSteps/arrays`，在真的撤销留下的回收站上），没有 `page/adapter/postgres/jobs_cost_test.go`（偏离 25） |
 
 ### 3.2 迁移
 
@@ -255,6 +257,7 @@ ALTER TABLE transfer_jobs DROP CONSTRAINT transfer_jobs_root_check, DROP CONSTRA
   - Down 带数据跑一次（P3A 审查 A-4 的教训）：有一个恢复的任务与一个带 `changeset_id` 的导入时，Down 成功、导入留着。
 - **Down 与 River**：Down 之后，River 里这两个种类的排队任务没有 worker。River 以"没有这个种类"失败它们，`MaxAttempts: 1`，不重试。Down 只在开发时跑（A-N7）。
 - **page 没有迁移**：新的读都走已有的索引（3.3）。
+- **实施时**：`server/sqlc.yaml` 列上 00039（sqlc 只读列出的迁移，偏离 1）；迁移测试的一个反例由"第三种任务"改为"第五种任务带 `changeset_id`"：PostgreSQL 按约束的名字的次序核对，否则先撞上类型的约束（偏离 2）。
 
 ### 3.3 page：给任务的端口与查询
 
@@ -307,51 +310,60 @@ type JobSpec struct {
 SELECT n.id, n.notebook_id, n.parent_id, n.kind, n.name, n.name_key, n.sort_order, n.created_by_id, n.updated_by_id,
     n.created_at, n.updated_at, n.trash_root, n.trash_pages, n.trash_assets, n.trash_height, c.revision, c.byte_size
 FROM (SELECT unnest(sqlc.arg(ids)::uuid[]) AS id, unnest(sqlc.arg(deleted_ats)::timestamptz[]) AS deleted_at) g
-JOIN nodes n ON n.id = g.id AND n.deleted_at = g.deleted_at
-LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at = n.deleted_at
+JOIN nodes n ON n.id = g.id AND n.deleted_at IS NOT DISTINCT FROM g.deleted_at
+LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at IS NOT DISTINCT FROM n.deleted_at
 WHERE n.notebook_id = sqlc.arg(notebook_id);
 
 -- name: TrashChildrenAt :many
--- The children of parents of the notebook, each deleted at its parent's time, in order (M8/P4 design 3.3): a level of
--- many trash items' groups in one statement, through the siblings' index as TrashChildrenOfAll reads one group's.
+-- The children of parents of the notebook, each deleted at its parent's time (M8/P4 design 3.3): a level of many trash
+-- items' groups in one statement, through the siblings' index as TrashChildrenOfAll reads one group's, in its order:
+-- each group's part of the level is the one TrashGroup reads.
 SELECT n.id, n.notebook_id, n.parent_id, n.kind, n.name, n.name_key, n.sort_order, n.created_by_id, n.updated_by_id,
     n.created_at, n.updated_at, c.revision, c.byte_size
 FROM (SELECT unnest(sqlc.arg(parents)::uuid[]) AS id, unnest(sqlc.arg(deleted_ats)::timestamptz[]) AS deleted_at) p
-JOIN nodes n ON n.notebook_id = sqlc.arg(notebook_id) AND n.parent_id = p.id AND n.deleted_at = p.deleted_at
-LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at = n.deleted_at
-ORDER BY n.parent_id, n.sort_order, n.id;
+JOIN nodes n ON n.notebook_id = sqlc.arg(notebook_id) AND n.parent_id = p.id AND n.deleted_at IS NOT DISTINCT FROM p.deleted_at
+LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at IS NOT DISTINCT FROM n.deleted_at
+ORDER BY n.sort_order, n.id;
 
 -- name: TrashShapeOfAll :many
 -- A level of a trash item's group as a background restore's plan keeps it (M8/P4 design 3.4): no names, a page's
--- content's size; by parent, in order, as TrashChildrenOfAll.
+-- content's size; by parent, each parent's children in order, as TrashChildrenOfAll reads them.
 SELECT n.id, n.parent_id, n.kind, c.byte_size
-FROM nodes n LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at = n.deleted_at
+FROM nodes n LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at IS NOT DISTINCT FROM n.deleted_at
 WHERE n.notebook_id = sqlc.arg(notebook_id) AND n.parent_id = ANY(sqlc.arg(parents)::uuid[])
     AND n.deleted_at = sqlc.arg(deleted_at)::timestamptz
 ORDER BY n.parent_id, n.sort_order, n.id;
 
 -- name: MarkTrashRoots :execrows
--- The nodes of a trash item a background restore left in the trash under parents it brought back (M8 design 4.2):
--- each its own trash item, with its part of the group's counts and height. Joined by key, as RestoreNodes.
+-- The nodes of a trash item a background restore left in the trash under parents it brought back (M8 design 4.10;
+-- M8/P4 design 3.4): each its own trash item, with its part of the group's counts and height. Joined by key, as
+-- RestoreNodes; a node no longer deleted at the time, or a root already, is not marked, which its caller counts.
 UPDATE nodes n SET trash_root = true, trash_pages = u.pages, trash_assets = u.assets, trash_height = u.height
 FROM (SELECT unnest(sqlc.arg(ids)::uuid[]) AS id, unnest(sqlc.arg(pages)::integer[]) AS pages,
         unnest(sqlc.arg(assets)::integer[]) AS assets, unnest(sqlc.arg(heights)::integer[]) AS height) u
 WHERE n.id = u.id AND n.deleted_at = sqlc.arg(deleted_at)::timestamptz AND NOT n.trash_root;
 
 -- name: ChangesetItemsOf :many
--- A changeset's items of some nodes, by its key on (changeset_id, node_id): a revert job's batch's (3.5).
+-- A changeset's items of some nodes, by its key on (changeset_id, node_id): a background revert's batch's (M8/P4 design
+-- 3.5), as ChangesetItems reads them all.
 SELECT node_id, before_parent_id, before_name, before_sort_order, after_parent_id, after_name, after_sort_order,
     restored, revision
 FROM changeset_items WHERE changeset_id = sqlc.arg(id) AND node_id = ANY(sqlc.arg(node_ids)::uuid[]) ORDER BY node_id;
 ```
 
-- **`TrashGroups(notebookID, roots map[uuid.UUID]time.Time)`**：很多组一起按层读，第一层是 `TrashNodesAt`，之后每层一条 `TrashChildrenAt`。任何多的组都是"层数"条语句（实际至多约 11 层），不再每组两条以上（A-I1）。
+（实施的样子：`TrashNodesAt`、`TrashChildrenAt`、`TrashShapeOfAll` 在 `trash.sql`，`MarkTrashRoots` 在 `nodes.sql`，`ChangesetItemsOf`、`ChangesetVersionsOf` 在 `history.sql`；按键连接与时刻的比较见下。）
+
+- **`TrashGroups(notebookID, roots map[uuid.UUID]time.Time)`**：很多组一起按层读，第一层是 `TrashNodesAt`，之后每层一条 `TrashChildrenAt`。任何多的组都是"层数"条语句（实际至多约 11 层），不再每组两条以上（A-I1）。`TrashChildrenAt` 照 `TrashChildrenOfAll` 按次序值与 id 排，store 在 Go 里按组分开（这里原来先按 `parent_id` 排；一种次序给两个调用者，偏离 5）。
   - `revertReads.groups` 改用它，同步的撤销、`CheckRevert`、任务开始与每批都经它。
   - `TrashGroup`（一组）留给同步的恢复。
 - `ChangesetVersionsOf` 同 `ChangesetVersions` 加 `AND r.node_id = ANY(...)`。
 - `MarkTrashRoots` 答的行数不等于传入的个数是 `ErrTrashChanged`。这是防线：组里不是根的节点谁也改不了（3.4）。
-- 六条数组语句都先经 `s.planned`（按参数规划，同 `TrashChildrenOfAll`），3.11 比较两种计划之后，不慢的才改回缓存；计划测试核对它们走主键、`(changeset_id, node_id)` 键与兄弟的索引（`nodes_notebook_id_parent_id_idx`）。
+- 六条数组语句都经 `s.planned`（按参数规划，同 `TrashChildrenOfAll`）。3.11 比过两种计划：通用计划没有灾难性的，慢的至多 3.9 倍（`MarkTrashRoots`），快的至多约两成；都留在 `planned`（改回缓存只省一次往返，取保守的默认）。`NodesNow` 照 P3 是缓存的语句：它的通用计划不慢（5 万个 id 252 对 270 ms；实施报告一度说它也在 `planned`，P4A 审查 A-N1 改正）。计划测试（`TestTheJobsReadsUseTheirIndexes`）核对它们走主键、`(changeset_id, node_id)` 键与兄弟的索引（`nodes_notebook_id_parent_id_idx`）；一层的读取 100 个父节点里的 10 个（一层的一部分，偏离 12）。
 - `RestoreNodes` 不改，按批的 ids 用。`NodesNow` 的签名不改，例外改了（3.7）。
+- **按键连接**（3.11 的实测找到的两个缺陷，偏离 20）：
+  - 回收站的读以节点的删除时刻连接 `page_contents` 时，规划器在大的删除之前的统计下（这次删除的行一个都没有）经 `deleted_at` 的部分索引走，每个节点读这一时刻的每一行：4.5 万页的一项的后台恢复，计划 55 秒（10 万个节点 222 秒，20 万 1,107 秒）。七条读（`ListTrash`、`FindTrashRoot`、`TrashGroupRoot`、`TrashChildrenOfAll` 与上面的三条）改为按键连接、以 `IS NOT DISTINCT FROM` 比时刻（没有索引能用它；比的都是已删的行与删除的时刻，等同相等）：5 万处 161 ms，55 万处 1,045 ms。
+  - P3 的 `RecordItems` 读删除的页的版本号是同一个陷阱：一个 4.5 万页的最上层，任务的第一批 92 秒，用户的 `DeleteNode` 过了 15 秒的期限（500）。改为按键读、之后比时刻：2.5 秒。
+  - 计划测试在大的删除之前的统计下钉住它们（`TestTheTrashsReadsJoinByKeyWhateverTheStatistics`、`TestADeletionsItemsReadTheirPagesContentsByKey`）；最大一步的守卫也抓到 `RecordItems` 的回归（3.11）。
 
 ### 3.4 恢复的任务：计划、分批与每批的核对
 
@@ -360,7 +372,7 @@ FROM changeset_items WHERE changeset_id = sqlc.arg(id) AND node_id = ANY(sqlc.ar
 1. `FindAnyNode` → `trashRoot`（`trash.go:98`）：不在回收站、不是根、过期的，任务以 `trash_changed`、`restore_expired` 停下，什么都没写。
 2. 以 `TrashNodesAt` 读根与它的统计。
 3. `TrashShapeOfAll` 按层读组的骨架。
-4. `domain.PreOrder` 排成深度优先的先序（孩子按次序值与 id），`domain.GroupCounts` 一遍算出每个成员在组内的子树的页数、附件数与层数。
+4. `domain.GroupPreOrder` 排成深度优先的先序（孩子按次序值与 id；`PreOrder` 这个名字已有，偏离 4），`domain.GroupCounts` 一遍算出每个成员在组内的子树的页数、附件数与层数；算出的根的统计与根上记下的不等时同样 `trash_changed`（偏离 13）。
 
 步是组的成员，按先序：父节点总在孩子之前，同一父节点下的相对次序同 `TrashGroup`，所以 P2 的"组内同键先到的留名"不变。
 
@@ -378,15 +390,15 @@ FROM changeset_items WHERE changeset_id = sqlc.arg(id) AND node_id = ANY(sqlc.ar
 | 第一批：根仍在这本笔记本、仍以 T 删除、仍是根，统计等于计划的 | 停下 `trash_changed`（这一项在任务开始之后变了） |
 | 之后的批：这一批的成员仍以 T 删除（`TrashNodesAt` 读到它） | 不是：别人恢复了它所在的那一项（之前设上根的节点可以被恢复），跳过，`Skipped` |
 | 仍以 T 删除、父节点不在这一批：它是根，统计是之前的批设的 | `trash_changed`（防线） |
-| 父节点此刻活着（之前的批或这一批恢复的） | 停下 `tree_changed`（`ErrNoParent`：别人删了已恢复的部分） |
+| 父节点此刻活着（之前的批或这一批恢复的；不在这一批里的父节点以 `FindNodeIn` 读） | 停下 `tree_changed`（`ErrNoParent`：别人删了已恢复的部分） |
 | 页的层级：父节点的深度（`Ancestors`，这一批每个不在这一批里的父节点一次）加一不超过 10 | 停下 `tree_changed`（`ErrTooDeep`：别人把已恢复的部分移深了） |
 
 - **放置与名称**：
-  - 第一批的根照 [P2](02-P2-trash.md) 3.5：`TrashLines` → `PlacementOf`；原处时次序值不变，根下时放在末尾；`free` 加序号。
-  - 之后的节点留在原父节点下、原次序值。名称与那个父节点下活着的兄弟比（`ChildrenOfAll` 一次读这一批的父节点，含之前的批恢复的兄弟），也与这一批先到的同父节点的成员比，撞上加序号。分批之间别人可能在已恢复的父节点下建了同名的页（A-I5）。
+  - 第一批的根照 [P2](02-P2-trash.md) 3.5：`TrashLines` → `PlacementOf`；原处时次序值不变，根下时放在末尾；`free` 加序号。六种放置（父节点活着、根下原处、正好放得下的深度、父节点在回收站、太深、根下有同名的兄弟）由 `TestARestoreJobPlacesItsRootAsRestoreDoes`（每批一个成员）与经 serve 的 `TestABackgroundRestorePlacesItsRoot` 钉住；正好 10 层的页与它下面的附件可以恢复（P4A 审查 C-M1、C-M2）。
+  - 之后的节点留在原父节点下、原次序值。名称与那个父节点下活着的兄弟比（`Nodes.Children`，这一批里每个不在这一批的父节点一次，含之前的批恢复的兄弟；不另加端口，偏离 6），也与这一批先到的同父节点的成员比，撞上加序号。分批之间别人可能在已恢复的父节点下建了同名的页（A-I5）。
 - **写**：
   - `bringBack(批里仍以 T 删除的成员, T, 状态, 键, Facts)`。`Restoration` 的 `Root` 是这一批的第一个，续段的第一个的"新"父节点与次序值就是它自己的，`RestoreNodes` 照写不变（`nodes.sql:134-182`）。五个数按这一批核对（`unit_restore.go:127-139`）。
-  - 然后 `markFrontier`：这一批恢复了的成员、在这一批之后的孩子，由 `MarkTrashRoots` 设上根与它在组内的子树的统计（`domain.Frontier`）。
+  - 然后 `markFrontier`：这一批恢复了的成员、在这一批之后的孩子，由 `MarkTrashRoots` 设上根与它在组内的子树的统计（`domain.Frontier`）。这一批跳过的成员（别人已恢复的）的孩子不设：它们随别人恢复的那一项回来了（偏离 8；P4A 审查 C-M3 加了测试）。
   - 按先序，这些只是这一批右边缘上各祖先余下的孩子，至多约"层数 × 扇出"。例如根下 50 个文件夹、每个 1,000 页：第一批设约 950 个，之后每进一个文件夹多约 1,000 个；按层时第一批要设 49,951 个（A-I2）。
   - 组里不是根的节点谁也改不了，所以计划读到的子树就是此刻的，统计准确，不必在锁下重读整组：
     - 恢复只认根（`page.not_trash_root`）。
@@ -417,22 +429,23 @@ FROM changeset_items WHERE changeset_id = sqlc.arg(id) AND node_id = ANY(sqlc.ar
 ```go
 // revertBounds are where a revert's unlocked check stops it (M8/P4 design 3.5): Items before the items are read
 // (MaxUnitNodes, a job's MaxJobItems); Admit right after it, before anything else is read (a job's transfer.busy);
-// Groups after the nodes, before their groups are read (a job's MaxJobGroups, 3.11; 0 none); Parse at step 6, the
-// unit's pages, bytes and history (the sync's); Steps after the plan's conflicts (MaxRevertSteps, the sync's; 0
-// none); Locks after them, page.locked for a page the plan deletes or writes back that an edit session holds (a
+// Groups after the nodes, before their groups are read (a job's MaxJobGroups; 0 none); Parse at step 6, the unit's
+// pages, bytes and History rows of history (the sync's); Steps after the plan's conflicts (MaxRevertSteps, the
+// sync's; 0 none); Locks after them, page.locked for a page the plan deletes or writes back that an edit session holds (a
 // job's). The 404 of a changeset gone between its reads is spec.NotFound, the one the caller's first read answers.
 type revertBounds struct {
-	Items  int
-	Admit  func(context.Context) error
-	Groups int
-	Parse  bool
-	Steps  int
-	Locks  bool
+	Items   int
+	Admit   func(context.Context) error
+	Groups  int
+	Parse   bool
+	History int
+	Steps   int
+	Locks   bool
 }
 ```
 
-- **同步**：`{Items: MaxUnitNodes, Parse: true, Steps: MaxRevertSteps}`。次序与 P3 的表原样，3.12 钉住（A-M2、B-M1）。
-- **后台**：`{Items: MaxJobItems, Admit: transfer 的忙, Groups: MaxJobGroups, Locks: true}`。次序：
+- **同步**：`{Items: MaxUnitNodes, Parse: true, History: MaxUnitHistory, Steps: MaxRevertSteps}`（历史的行的界线留在 P3 的位置，偏离 10）。次序与 P3 的表原样，3.12 钉住（A-M2、B-M1）。
+- **后台**：`{Items: MaxJobItems, Admit: transfer 的忙, Locks: true}`（没有 `MaxJobGroups`，`Groups` 为 0，3.11）。次序：
   1. 422 说明（`validation_failed`）
   2. 404 `notebook.not_found`
   3. 403 `forbidden`
@@ -441,7 +454,7 @@ type revertBounds struct {
   6. 422 `page.revert_too_large`：条目超过 `MaxJobItems`
   7. 409 `transfer.busy`：`Admit`
   8. 读条目、版本，再读变更集（不在了：再判定，答 404 `notebook.not_found` 或 403，否则 409 `page.changeset_trimmed`）
-  9. `NodesNow`（有 `MaxJobGroups` 时组多于它答 422）
+  9. `NodesNow`
   10. `TrashGroups`、读其余、`PlanRevert`
   11. 409 `page.revert_conflict`（带 `conflicts`），然后 409 `page.changeset_trimmed`（读不到的版本）
   12. 409 `page.locked`（带 `lock`）
@@ -467,9 +480,10 @@ type revertBounds struct {
 **一批的单元**（`Unit.RevertBatch`，`UnitSpec{Kind: revert, RevertsID: C, Changeset: 任务行的, Create: true, Message}`，`Options` 为空）：
 
 1. **读**：
-   - 这一批的步的节点集里 C 的条目、版本（`ChangesetItemsOf`、`ChangesetVersionsOf`）；再读 C 的行，先读条目、后读 `trimmed`（同 P3 3.3）。截掉或不在 → 停下 `changeset_trimmed`。
+   - 这一批的步的节点集里 C 的条目、版本（`ChangesetItemsOf`、`ChangesetVersionsOf`），按步的种类读：放回只读条目，写回只读版本，删除与一组的第一步读两者（偏离 7）；再读 C 的行，先读条目、后读 `trimmed`（同 P3 3.3）。截掉或不在 → 停下 `changeset_trimmed`。
    - 续段的成员只读配对要的：`TrashNodesAt`（在组的时刻，带根、统计、版本号与大小）、要解析的 `TrashContents`、配对的 `VersionHashes`。
    - 这一批要写回的历史以 `TrashHistory` 每组一次数（超过 → `ErrBatchTooLarge`）。
+   - 第一步在这一批的组，先以一条 `NodesNow`（不带被撤销的变更集，一批至多 100 个根）读它们的根此刻的删除时刻，历史的计数与回收站的正文按它读。组在计划之后被恢复又原样删除一次时，按计划的时刻读不到这一页的正文，任务会以假的 `changed` 停下，历史也少数、这样的批从不减半（P4A 审查 A-M1，交错 21）。
 2. **再计划**：
    - 以只含这些条目与版本的状态，在单元的时刻跑 `PlanRevert`。状态包括 `NodesNow`、第一步在这一批的组的 `TrashGroups`、`ContentsNow`、`VersionHashes` 与整本笔记本活着的树。S\* 就是前面的批已应用之后、再应用这一批的样子（单轮的前缀）；还没轮到的 C 的节点，在 S\* 里照现在的。
    - 有冲突 → 停下 `revert_conflict`，报告带冲突（3.6）。
@@ -481,11 +495,13 @@ type revertBounds struct {
    - 不再以那个时刻删除：活着且正在它"前"的父节点、名称与次序值上（读者从回收站恢复了它所在的一项，回到的正是撤销要放的位置）→ 跳过、计入 `skipped`（A-M9）；否则 `changed`。
    - 它"前"的父节点此刻活着（`parent_gone`）；"前"的名称的键在那里空着（`title_taken`，`holder_id` 是占着的）；页的层级不超过 10（`too_deep`）；期限（`expired`）。
    - 冲突的 `name` 同 P3 3.5。不加序号：撤销放回原位置、放不回就冲突（第 11 节第 6 条）。
+   - 一个冲突的成员之下、同一批里的成员（父节点没回来）跳过、不另列，`conflict_count` 只数真正的冲突（P4A 审查 A-M3：原来列为 `changed`，排在真正的原因之前）。
+   - 成员的版本这期间被清理拿走：`changeset_trimmed`，同计划的 `Missing`（交错 17 找到的缺陷：原来按空的哈希答 `changed`）。
 4. **配对**：解析过的正文照 P3 3.6 第 3 步配对：写回配版本 `Base` 的哈希，恢复配回收站里的版本的哈希。只配对这一批要写的页：一组跨批时，第一批再计划出的是整组的恢复，`parsedAsPlanned` 只看这一批里的成员。
 5. **应用**，按步的次序：
    - 放回（`place`）。
-   - 删除：每个最上层照 P3 的路（`Subtree` → `apply(OpDelete)` → `DeleteNodes`，根与统计，单元的时刻）。一批至多 100 个最上层；一起读很多最上层的 `Subtrees` 只在实测要它时加（3.11，B 过度设计 1）。
-   - 恢复的段：`RestorePart`，第一段的最上层放到 C 的"前"，各节点照"前"的名称，之后 `markFrontier`。
+   - 删除：每个最上层照 P3 的路（`Subtree` → `apply(OpDelete)` → `DeleteNodes`，根与统计，单元的时刻）。一批至多 100 个最上层；没有加一起读很多最上层的 `Subtrees`：每个最上层的子树读不随笔记本增长（3.11）。
+   - 恢复的段：`RestorePart`，第一段的最上层放到 C 的"前"，各节点照"前"的名称，之后 `markFrontier`。第一段的组的时刻取锁下再计划的 `DeletedAt`（偏离 13）；单元答出它恢复各组用的时刻（`RevertPart.retimed`），`Writer.Run` 无错返回之后计划才取它，回滚的单元不改计划（P4A 审查 A-M1、A-N2）。
    - 写回：`WriteContent`，基于锁下读到的版本号。
    - 错误：
      - 已分类的错误照 P3 包成未分类：名称被占、版本号不符；再计划已核对过，撞上是缺陷。
@@ -508,7 +524,7 @@ type revertBounds struct {
   - **没停在一组中间**：
     - 回到之前：撤销 R（同步或在后台）。R 的"前"就是 C 的"后"，C 的节点回到 C 留下的样子。
     - 再来一次：之后 C 可以再整组撤销。
-    - R 的撤销本身要恢复 R 删掉的各个最上层（各是一组）；有 `MaxJobGroups` 时，在它之内才走得通（3.11）。
+    - R 的撤销本身要恢复 R 删掉的各个最上层（各是一组），至多 `MaxJobItems` 组（没有 `MaxJobGroups`，3.11）。
   - **停在一组中间**（这一组的最上层已恢复，剩下的成员各是已恢复的父节点下回收站的一项）：回收站的几项合不回一项，这一组回不到任务之前。
     - **往前**：不要撤销 R，逐项恢复剩下的：父节点活着，各自回到原处，即 C 的"前"，这一组就是 C 的撤销要的样子。计划里这一组之后的步没做：之后的组各是回收站的一项，可以逐项恢复，名称被占时加序号而不是冲突；写回经各页的版本还原。
     - **已撤销了 R 时**：R 的撤销把已恢复的部分以 t_r 删成一项，剩下那几项的父节点都进了回收站。这时逐项恢复会放到笔记本的根下（`parent_in_trash`）。要先恢复 R 的撤销删成的那一项（回到原处），再逐项恢复剩下的。
@@ -517,6 +533,10 @@ type revertBounds struct {
 - **请求与任务开始之间**：
   - C 被别人撤销了（同步撤销或它的撤销）、改了，或页被锁了：任务开始时的计划停下，什么都没写。
   - 别人撤销了任务正在写的 R：下一批 `Run` 答 `ErrChangesetReverted`，任务 `changeset_reverted`（P3 3.7，同一条路）。
+- **任务正在写时在请求里撤销它的 R**（P4A 审查 A-M2，偏离 28）：
+  - 撤销任务的 R 带着它删除的最上层时（例如撤销一次导入），请求未加锁地读 R、解析它要恢复的页；这期间任务的下一批把更多删除并入 R；锁下 R 多出没有解析过的组，答 409 `page.revert_conflict`，把这些页列为 `changed`（P3 3.6：没有解析过的恢复的页算 `changed`）。
+  - 什么都不写、任务照常；"R 在请求读它之后变了"字面上是对的。批接连落下时这样的请求几乎每次被拒，R 过了同步的界线之后答 422；走得通的是先取消任务或等它结束，再撤销 R。
+  - 服务端与契约不改（主持者的决定），网页在冲突之前说明（4.2）。只恢复的 R（恢复的任务、只恢复的撤销任务）的撤销只删除、不解析，照上一条：撤销成功，任务的下一批以 `changeset_reverted` 停下。
 
 ### 3.6 transfer：开始、运行、报告与失败
 
@@ -546,8 +566,8 @@ type revertBounds struct {
 
 1. **停下的检查**：心跳要求取消、行已删。在这里停，即"在两批之间停下"。
 2. **切批**：从下一步起，节点数到 `Deps.Batch.Nodes`、正文字节到 `Deps.Batch.Bytes` 为止，第一步总在批里（单独超过的一步自成一批）。
-   - `Deps.Batch` 零值即 100 个节点、8 MiB、20,000 条链接；生产接线的守卫钉住零值（同 `pageDeps`），交错以 3 个节点一批跑（B-M11）。
-   - `RunBatch`：503 退避重试（1 秒起、加倍、至多 30 秒，同导入）；`ErrBatchTooLarge` 把 `to` 减到一半（至少一步）再试。
+   - `Deps.Batch` 零值即 100 个节点、8 MiB、20,000 条链接；交错以 3 个节点一批跑（B-M11），经 `wireApp` 的批（偏离 17）；`newApp` 交零值，同 serve。生产用的批由经 serve 的 `TestABackgroundRestoreThroughServe`（103 个条目、两批）钉住，`transferDeps` 的守卫只核对它不设批（P4A 审查 B-M1：原来的守卫核对的不是生产用的批，不会失败）。
+   - `RunBatch`：503 退避重试（1 秒起、加倍、至多 30 秒，同导入）；`ErrBatchTooLarge` 把 `to` 减到一半（至少一步）再试。page 的 `ErrBatchTooLarge` 经组合根的 `treeError` 换成 transfer 的，减半才发生（P4A 审查 B-I1：这条映射原来没有测试；`TestABackgroundBatchPastTheLinksIsHalved`：第一批 100 个节点带 20,790 条链接，减半之后 102 个恢复落在两个单元里）。
    - 单元用 River 的上下文，已开始的单元做完。
 3. **成功**：进度加这一批的步的 `Nodes` 之和，至多到总数（B-N4：不按单元答的计数，一个数错不会让每次心跳违反 `progress_done <= progress_total`）；计数前进，报告交给心跳（`publish`）；每写 10,000 个节点与结束时 `ANALYZE` page、linking、asset 的表（同导入）。
 4. **失败**：照下表停下，报告写明已完成的部分（计数）与原因。
@@ -565,14 +585,15 @@ type revertBounds struct {
 | 503 / `ErrBatchTooLarge` | 退避重试 / 批减半 |
 | 别的 | `internal` |
 
-组合根的 `treeError` 加这些映射：page 的哨兵 → transfer 的哨兵，同 `ErrChangesetReverted`（`bootstrap/transfer.go:149-159`）。冲突与持锁人从 `*shared.Error` 的 `Conflicts`、`ConflictCount`、`Lock` 读：这是共享内核的类型，transfer 不碰 page 的码。
+组合根的 `treeError` 加这些映射：page 的哨兵 → transfer 的哨兵，同 `ErrChangesetReverted`（`bootstrap/transfer.go:149-159`）。冲突与持锁人从 `*shared.Error` 的 `Conflicts`、`ConflictCount`、`Lock` 读：这是共享内核的类型，transfer 不碰 page 的码。组合根以 `fmt.Errorf("%w: %w", …)` 把 transfer 的哨兵与 page 的 `*shared.Error` 一起包（偏离 9）。
 
 - **抽出共用**（`transfer/app/batches.go`）：批的上限（`Deps.Batch`）、`retry`/`busy`、单元的"结果未知"（导入另加删文件）、`unitFailure`、`ANALYZE` 的节拍。
   - 导入照旧边解析边切批：链接按解析的结果，503 时先写已解析的批。只是换用这些，每个单元带任务行的 `changeset_id`（`Create: true`）。
   - 两种新任务的解析在 `RunBatch` 里（page 读正文、`DecidedAll`），transfer 只切节点与字节。
   - 导入的测试原样通过（`import_test.go`），只是变更集的 id 来自任务行。
+- **导入的节点上限**（2.2 的 (a)）：导入的计划（条目加路径隐含的文件夹）建的节点超过 `ImportDeps.MaxNodes` 时整包失败 `too_many_nodes`，什么都不写、删掉文件（同条目超过上限）。组合根交 `page.MaxJobItems`（60,000），不是配置；0 即不设，只给测试；生产接线的守卫钉住它。
 - **取消与重启**：
-  - 取消照旧（`cancel.go`）：排队的立即取消；运行中的在两批之间停下，状态 `cancelled`，报告写明已完成的部分。
+  - 取消照旧（`cancel.go`）：排队的立即取消；运行中的在两批之间停下，状态 `cancelled`，报告写明已完成的部分。两批之间的停下检查由经 serve 的 `TestCancellingABackgroundJob`、`TestABackgroundJobStoppedAtEachBatch` 守住；单元测试 `TestABackgroundJobStopsBetweenTwoBatches` 里停下之前要的第三批答忙、等运行结束（CI 的竞态检测下它曾让任务接着跑，偏离 29），它分不出两批之间不查停下的运行。
   - 服务重启：收拾记 `interrupted`，保留心跳写的报告（`jobs.sql:116-117`）。进度至多落后一次心跳、计数至多落后 `reportBeats` 次（同导入，写进契约的描述）；任务行的 `changeset_id` 不受影响。
   - 收拾的"River 已不持有的排队任务"走四种（`maintain.go:108`），`Held` 按种类映射（`river/jobs.go:148-166` 原来把导入之外的都当作导出）。
   - 清扫与到期只认导入、导出的文件；清理删行时只给这两种删文件（`maintain.go:282-299`，B-N5）。
@@ -647,10 +668,10 @@ CASE WHEN n.trash_root THEN EXISTS (
   - 加必有的 `changeset_id`、`target_changeset_id`（`uuid|null`）。`changeset_id` 的描述：建行时定下；任务第一次写之后才有这个变更集；导出与 P4 之前的导入为空。
   - `root_id`、`name` 的描述写每种类型的含义：恢复是这一项（页或附件）与它的名称；撤销的 `root_id` 为空、`name` 是被撤销的变更集的类型。
   - `TransferJobDetail` 另加 `conflicts`（`RevertConflict[]`，`maxItems 100`）与 `conflict_count`：`revert_conflict` 的；别的为空数组与 0。
-- **`TransferReport`** 加 `placed: TrashPlacement|null`（恢复的任务）、`lock: PageLock|null`（`page_locked` 的）。
+- **`TransferReport`** 加 `placed: TrashPlacement|null`（恢复的任务）、`lock: PageLock|null`（`page_locked` 的），两者必有、可为空；`TransferJobDetail` 的 `conflicts`、`conflict_count` 总有（偏离 16）。
 - **`TransferCounts`** 加必有的 `restored`、`deleted`、`put_back`、`written`，描述写各种类型用哪几个、`restored` 数的是节点；`renamed`、`skipped` 的描述按类型写（:653-666 现在只说导入与导出）。
 - **`TransferProgress`**（:573-577）的描述加两种：已处理的节点，含跳过的；中断时可能落后一次心跳。
-- **`TransferFailure`** 加 `trash_changed`、`restore_expired`、`revert_conflict`、`changeset_trimmed`、`page_locked`，各写一句；`forbidden`、`tree_changed`、`changeset_reverted` 的描述按类型写（:600-615，B-M7）。
+- **`TransferFailure`** 加 `trash_changed`、`restore_expired`、`revert_conflict`、`changeset_trimmed`、`page_locked`，各写一句；`forbidden`、`tree_changed`、`changeset_reverted` 的描述按类型写（:600-615，B-M7）。另加 `too_many_nodes`：导入的计划建的节点（条目加路径隐含的文件夹）超过一次撤销能撤销的 60,000（2.2 的 (a)）。
 - **被新类型说错了的描述**（B-M8）：
   - `startImport` 的 `transfer.busy`（:82-87）："这本笔记本有排队、运行中的写入任务（导入、恢复、撤销）或正在上传的导入"。
   - `listTransferJobs`（:137-140）："导入、导出、恢复与撤销"。
@@ -658,7 +679,7 @@ CASE WHEN n.trash_root THEN EXISTS (
   - `TransferJob`（:382-388）：四种。
 - **`api/common.yaml`**：
   - `TrashPlacement` 从 `page.yaml` 移来：两个模块用它，照 P3 移 `RevertConflict`。`page.yaml` 的 `TrashItem`、`NodeRestored` 改为 `$ref`。
-  - `PageLock {page_id, user_id, display_name}`（新），`Problem.lock` 改为 `$ref` 它：一种形状一个名字（00-M8 第 5 节，B-N10），同 `Problem.conflicts` 引用 `RevertConflict`；平台的契约测试随之。
+  - `PageLock {page_id, user_id, display_name}`（新），`Problem.lock` 改为 `$ref` 它：一种形状一个名字（00-M8 第 5 节，B-N10），同 `Problem.conflicts` 引用 `RevertConflict`；平台的契约测试随之。`Problem.locks` 的项同样引用它（偏离 15）。
 - **服务端的文字**：`ErrImportBusy` 改名 `ErrWriting`，详情 "A write into this notebook (an import, a restore or a revert) is under way: wait for it to end."（`transfer/domain/errors.go:28-31`）。
 - **网页的门禁**（A 第 4 步）：
   - 门禁是 `transfer-report.tsx:13` 的 `Record<TransferFailure, PlainKey>`；`transfer-report.test.ts` 是手写的表，随之加行（B-N1）。
@@ -666,6 +687,7 @@ CASE WHEN n.trash_root THEN EXISTS (
   - 忙与列表的文字（4.3）：`problem.transfer.busy`（zh-CN.ts:817、en.ts:845）、`transfer.importBusy`（zh-CN.ts:660、en.ts:677，导入对话框 :217 用它，TR2 在 `tr2-import.spec.ts:289-291` 逐字断言英文，随之改）、`transfer.jobsBody`（zh-CN.ts:573、en.ts:588）、`notebookSettings.transfer`（zh-CN.ts:474、en.ts:486）。
   - `make gen` 让新字段成为必有的，假接口的 `jobJSON`（`test/jobs-server.ts:22-45`）与别的 `TransferJob` 字面量同一步补上（B-N2）。
   - `problem-messages.test.ts` 不新增码（两个操作的码都已有文字）。
+  - `transfer.importCut`（上传被进行中的写入任务挡住）说导入、恢复或撤销（P4A 审查 B-N1）。
 
 ### 3.10 权限、日志、加锁与交错
 
@@ -678,7 +700,7 @@ CASE WHEN n.trash_root THEN EXISTS (
   - 一本笔记本同时一个写入任务（唯一索引）。
   - 清理 `SKIP LOCKED`，任务持着自己的变更集时它的条目留到下一次（P3 3.3）；期限之内的组由一小时的间隔与清理分开。
   - 13.1 第 5 条不加新的支：任务的单元照页面一支。
-- **交错**（`bootstrap/interleavings_background_test.go`）：
+- **交错**（`bootstrap/interleavings_background_test.go`；任务停下的 6–8、11、12、15、17–20 在 `interleavings_background_stops_test.go`）：
   - 照 `interleavings_import_test.go` 的 `betweenUnits`（重试直到请求排进两批之间）与 `holdNotebook` 写，`Deps.Batch` 以 3 个节点一批，小的组就跨好几批（B-M11）。
   - 每个结束时核对 `checkPages`、`checkLinks`、`checkAssets`、`checkNotebooks` 与"没有停在排队或运行中的任务"。
   - 列表：
@@ -690,7 +712,7 @@ CASE WHEN n.trash_root THEN EXISTS (
        - 两批之间清理以 `now − R` 跑，剩下的（期限之内）一点不碰，下一批照常。
        - 一组在任务开始之前以 `trashedAgo` 挪到期限与清理的截止之间：第一批 `restore_expired`，什么都没写，同一次清理也不碰它（一小时的间隔）。
        - 在两批之间越过期限由 `page/app` 的假时钟测：`trashedAgo` 会改掉组的时刻，让任务以为是别人恢复了，不能用。
-    6. 两种任务与同步撤销它们自己的变更集：下一批 `changeset_reverted`，什么都没写。
+    6. 两种任务与同步撤销它们自己的变更集：下一批 `changeset_reverted`，什么都没写。撤销的任务这一例让第 2、3 批删除附件：撤销正在写的、删除页的 R 时，请求的未加锁的读与锁之间任务又删了页，答 409 `page.revert_conflict`，把这些页列为 `changed`，不是成功（3.5 的"任务正在写时在请求里撤销它的 R"，P4A 审查 A-M2）；这时先取消任务或等它结束。
     7. 撤销的任务与两批之间对一页的写：下一批 `revert_conflict`（`changed`），之前的批留着，报告列出它。之后撤销 R、再整组撤销 C 成功（B-M12）。
     8. 撤销的任务与编辑锁（另一个账户编辑）：
        - 开始之前就在编辑：`startRevert` 答 409 `page.locked`，不开任务。
@@ -712,51 +734,66 @@ CASE WHEN n.trash_root THEN EXISTS (
         - 逐项恢复剩下的，这一组就是 C 的撤销要的样子。
         - 先撤销了 R 时，先恢复 R 的撤销删成的那一项再逐项恢复，结果相同。
         - 撤销 R 之后再撤销 C，这一组答 409 `changed`。
+    21. 撤销的任务的一组在计划之后被恢复、又原样删除一次（P4A 审查 A-M1，修复时加，`TestARevertJobOfAGroupDeletedAgainSinceItsPlan`）：开始它的那一批按组现在的删除时刻读，任务成功。
+  - **实施时的写法**（偏离 27）：要第 1 批先提交的写放在第 2、3 批之间（1、2、3、6、7、10、16：放在第 1、2 批之间时，这个写在排到第 1 批之后之前就过不了自己的核对）；5 在计划时就以 `restore_expired` 停下（过期的一项 `PlanRestore` 就拒绝）；13 的种子把 N 恢复在根下（原处恢复照例外的规则不是冲突）；16 由编辑者恢复 C6（读者不能恢复）；19 在第 k − 1 批的边缘之外留一个第 k 批的节点；8 的第二例在计划之后、第 1 批等着时开编辑会话。排进两批之间靠重试，在自己的笔记本里重来（`betweenUnits`）。
+  - 经 serve 另有：后台恢复的根放在哪里（`TestABackgroundRestorePlacesItsRoot`）、一批过了链接的界线经组合根减半（`TestABackgroundBatchPastTheLinksIsHalved`）、生产用的批（`TestABackgroundRestoreThroughServe`）（P4A 审查 C-M1、B-I1、B-M1）。
   - P3 的交错 5 改读任务行的 `changeset_id`（`interleavings_history_test.go:265`）。
 - **日志**：3.6。page 的每批不另记日志（P2、P3 的同步用例照旧各记一条）。
 
 ### 3.11 大小与实测
 
+实施之后照实测改写。数是 P4A 审查的修复一轮的（共用的 Apple M5 Max，负载写在各处）；第一轮的数标明。
+
 - **一批的界线**照导入：100 个节点、8 MiB、20,000 条链接，另加历史至多 `MaxUnitHistory`。一批持笔记本行约是导入的一批（导入的取值本就为了不挡保存，M7 4.11）。撤销的一批比恢复多三样：读整本活着的树、只含这一批的再计划、要恢复的组第一次出现时带着整组读。
-- **`MaxJobItems`**：请求与任务开始时各读一遍 C 的全部条目、节点、组、正文的哈希与树，并跑 `PlanRevert`；请求有 15 秒的期限。
-  - 规则同 `MaxUnitNodes`：满负载下不超过 5 秒的最大一档，向下取整，取下面三项的最小者：
-    1. **请求**（`BenchmarkStartRevert`，`bootstrap/background_cost_test.go`，`//go:build !race`，经 `heavy.sh` 手动运行）：
-       - C 的形状：导入的根下平铺、一个最上层下 5 层、带文件夹的真实形状（每 6 篇一个文件夹）；一次删除的一组；很多组（撤销一次平铺导入的撤销：N 个一个节点的组；根下 N 个附件的同样，A-I1）。
-       - 大小：5 万、10 万、20 万个条目，平铺另量 55 万（2.2 的 N）。
-       - 满负载（ANALYZE 之后）与无统计两档（B 过度设计 3）。
-       - 量请求（`startRevert`）的时间。
-    2. **最大的一步**（`BenchmarkBackgroundSteps`）：深的导入的撤销，一个最上层下 `MaxJobItems` 个满负载的页（带正文、链接、附件）一个单元的删除；撤销里一组 `MaxJobItems` 个节点的第一批（锁下读整组的条目、节点、哈希与整棵树，再计划）。两者都随 C 的条目增长，超过 5 秒就取更低的一档。5 秒而不是请求的 15 秒：持笔记本行时，同期的保存要在请求的期限里做完自己的工作（A-M5）。
-    3. 计划的内存（下面）在 `jobs.import_workers` = 8 时不超过 1 GiB。
-  - 很多组的形状在合并读之后仍超过 5 秒、而别的形状不超过时，另设实测的 `MaxJobGroups`：取很多组的形状不超过 5 秒的最大一档，`NodesNow` 之后、读组之前以 `RevertGroups` 的个数比，超过答 422。3.5 的"撤销 R 再整组撤销 C"与第 8 节 M11 的移交照写"在它之内"。
-  - 实测的 `MaxJobItems` 与 2.2 的 N 比，照 2.2 做。
-  - 预计在 5 万以上：P3A 测得 1 万个条目时读 C 约 140–280 ms、读树与计划各约 60–80 ms（03 号文档 3.11 的表），P2A 测得一个单元删 5 万个节点约 2 秒。
+- **满负载**（P4A 审查 C-I1 之后定下，负责人可以改判）：2 KiB 正文、每页 20 条解析的链接（指向这次导入的别的页）、十分之一的节点是附件。实施者第一轮取每页 10 条（偏离 22：P2 的满负载每页 84 KiB、200 条链接，9 万页是 7.5 GB，过了导入的 4 GiB）；审查 C 指出这对正文成立、对链接不成立（每页 200 条链接只要 2–3 KiB 正文，没有导入的上限限住链接），而负载正决定 2.2 走哪一支。
+- **`MaxJobItems` = 60,000**：请求与任务开始时各读一遍 C 的全部条目、节点、组、正文的哈希与树，并跑 `PlanRevert`；最大的一步（深的导入的一个最上层的删除；撤销它的撤销，一组的第一批）随 C 的条目增长。规则同 `MaxUnitNodes`：最大的一步每次运行都不超过 5 秒的最大的万位一档（P3A 的先例：每次运行，不是中位数）。5 秒而不是请求的 15 秒：持笔记本行时，同期的保存要在请求的期限里做完自己的工作（A-M5）。
+  - `BenchmarkBackgroundSteps/top`（深的导入：一个最上层下 5 层；ms，三次，无统计 / ANALYZE 之后，负载 5–14）：
+
+    | 节点 | 最上层的删除 | 撤销的撤销：一组的第一批 | 撤销的撤销的请求 |
+    |---|---|---|---|
+    | 60,000 | 3,611、3,544、3,981 / 4,642、4,220、4,571 | 1,364、1,281、1,555 / 1,874、2,203、1,295 | 642、628、737 / 1,231、908、620 |
+    | 70,000 | 6,907、3,973、4,147 / 4,564、4,267、4,369 | 3,210、1,561、1,840 / 1,670、1,490、1,632 | 1,636、688、772 / 645、645、662 |
+    | 80,000 | 4,361、4,278、4,325 / 5,946、6,108、5,999 | 2,137、1,968、2,328 / 2,065、2,695、2,205 | 896、730、867 / 1,007、884、1,004 |
+
+  - 6 万处三次都在 5 秒之内（至多 4,642 ms；修复核对另三次 3.5–3.8 秒）。7 万处有一次 6,907 ms：那次每一步都慢，机器忙，但照"每次运行"的规则 7 万不取。8 万处 ANALYZE 之后 5.9–6.1 秒，9 万处 6,465、6,508 ms。6 万在 5 万以上、小于 2.2 的 N：照 (a)，导入的节点上限 60,000（3.6）。
+  - **每条链接**（6 万个节点，ANALYZE 之后，ms）：每页 10 条，删除 3,227、3,317、3,299，一组的第一批 927、1,088、1,106；20 条 4,642、4,220、4,571 与 1,874、2,203、1,295；40 条 5,864、6,244、5,930 与 2,798、2,860、3,773。约 1.6 µs 一条（10 到 20 条之间 2.4 µs，20 到 40 条之间 1.3 µs）。每页多于 20 条时这一步随链接增长、过 5 秒，接受：用户 `DeleteNode` 同一个最上层是同一个单元，一样长。界线的注释与基准写明它成立的链接密度与每条的代价。
+  - **让删除的链接便宜**（审查 C 的 (d)，先试）：9 万个节点、每页 20 条、ANALYZE 之后逐条计时，`DeleteNodes` 2,211 ms、`LinksReached` 1,378、`RecordItems` 933、`DeleteLinksOf` 879，整个删除 6,508；不把已删的页当来源读的候选 6,489，在噪声之内（一组的第一批 2,559 对 2,475）。`DeleteLinksOf` 之后 `LinksReached` 经 `page_links_pkey` 的索引扫描 1.27 秒、答 0 行（命中 106 万个缓冲、读 57 万个）：规划器估 156 万行，导入的链接指向自己的页，已删的页自己的链接正对上它的键与目标。换次序、换参数，它都要走过这个单元刚删的每一条链接的索引项：没有便宜的改法，不留。
+  - **请求**（`BenchmarkStartRevert`，6 万处三次，ms，无统计 / ANALYZE 之后）：平铺 324–358 / 273–310，深 417–663 / 353–592，带文件夹 338–386 / 292–308，很多组（根下 6 万个附件的导入的撤销的撤销）744–836 / 736–807；一组的撤销的撤销（上表）至多 1,231。请求至多约 1.2 秒；两种撤销的撤销平均差不多长。第一轮的平铺 ANALYZE 之后 9 万处 0.5 秒、20 万处 1.0 秒、55 万处 3.3 秒。
+  - **没有 `MaxJobGroups`**：很多组的形状（平铺的导入与附件的导入的撤销的撤销，一两个节点的组）请求不比一组的长，恢复一批 70–411 ms（第一轮，9 万处）。3.5 的"撤销 R 再整组撤销 C"至多 `MaxJobItems` 组。
+- **计划的内存**（第一轮，深的导入，ANALYZE 之后，回收之后的堆）：撤销的计划 5 万、9 万、55 万处 271 ms 不到 1 MiB、488 ms 3 MiB、3,662 ms 18 MiB；恢复的计划 101 ms 1 MiB、198 ms 2 MiB、1,045 ms 15 MiB；撤销的撤销（一组含每个节点）的计划 5 万、10 万、20 万处 7、14、29 MiB。约每个条目 150 字节（原来估约 1 KB）；8 个 worker 也远在 1 GiB 之内，不是取更低一档的理由。
 - **恢复的大步**：
-  - 一页 100 万行历史的恢复，与它的删除比，核对 2.1 第 1 条的 1.2–1.9 倍。超过 5 秒写进 M12 的移交第 14 项：删除这一页也没有界线，这一步分不开。
-  - 一页下几千个附件时一批的 `markFrontier`：每批设根的数受扇出而不受批的节点数限，量它，写明。
-- **整个任务**（`BenchmarkBackgroundJobs`）：
-  - 量这几种：`MaxJobItems` 个条目的导入（平铺、一个最上层、带文件夹三种，页带正文与链接）的撤销；撤销它的撤销（恢复很多组 / 一组）；5 万个节点的一项的恢复。
-  - 各量任务的总时间、批数、每批持行的最大与 p95，有统计与无统计两档（任务每 10,000 个节点 `ANALYZE`，"无统计"只在第一批之前成立）。
-  - 每批的时间若随笔记本或已删的节点增长（P3A 的超线性：每个最上层经整本笔记本的标题的部分索引读子树），在 P4A 里加 `Subtrees`，一起读一批的最上层，守住它的成本测试照 P3A。不增长就不加（B 过度设计 1）。
-- **计划的内存**：
-  - `runtime.MemStats` 量恢复的计划在 5 万、55 万个节点的一项，撤销的计划在 `MaxJobItems` 处。
-  - 按 3.4 的骨架约每个节点 40 字节；撤销的计划带着条目、节点与组，约每个条目 1 KB。
-  - 写下来；若撤销的计划在 `MaxJobItems` 处超过 128 MiB，它也是取更低一档的理由（上面第 3 项）。
-- **数组语句的两种计划**（P2A 的教训）：`TrashNodesAt`、`TrashChildrenAt`、`TrashShapeOfAll`、`ChangesetItemsOf`、`ChangesetVersionsOf`、`MarkTrashRoots`、`NodesNow` 的新例外，在 1 万与 5 万个 id 上比缓存的通用计划与按参数的。它们都先经 `s.planned`；不慢的才改回缓存。计划测试（13.4 第 9 条）核对它们走的索引。
-- **守住**（`//go:build !race`，在 `test-go-costs` 里各单独一行，带 `-v`）：
-  - `TestARevertJobOfAnImportAtMaxJobItems`：`MaxJobItems` 个条目、带文件夹的导入（经 SQL 成批写成一个 `import` 变更集，同 P3A 的基准）的撤销任务在时限之内完成，回收站列出它的最上层。本机超过 60 秒时守卫改用 1 万个条目，大的留给基准。
-  - `TestStartRevertAtMaxJobItems`：`MaxJobItems` 个条目的请求在时限之内，多一个答 422；有 `MaxJobGroups` 时另加很多组的形状在它处。生产的接线改了界线就失败（同 P3A 的 `pageDeps` 守卫）。
-  - 时限都照本机实测的三倍：CI 约慢 2.1 倍，留出余量（B-M11）。
+  - 一页 100 万行历史：删除 6,235 ms，后台恢复（一步）8,925 ms，1.43 倍（2.1 第 1 条的 1.2–1.9 倍之内）。两者都过 5 秒、分不开：M12 的性能移交第 14 项。
+  - 一页下 5,000 个附件：第一批把留下的 4,901 个设为各自的项，50 ms；51 批共 710 ms。审查 C 另量了很宽的一层：一页下 4.5 万页与 5 千个附件的后台恢复 501 批，第一批 676 ms、设约 4.5 万个根，每批平均 158–199 ms。每批设根的数受扇出而不受批的节点数限。
+- **整个任务**（`BenchmarkBackgroundJobs`，第一轮：`MaxJobItems` = 90,000、每页 10 条链接；没有在新的负载下重量，批照旧切在 100 个节点，基准的说明保留这张表并标明）：
+  - ANALYZE 之后每批的 p95 与总时间：导入的撤销，平铺 325 ms（901 批，191 秒）、带文件夹 228 ms（926 批，120 秒）、附件 266 ms（900 批，173 秒）、深的一步 5.2 秒；撤销的撤销（恢复），平铺 411 ms（250 秒）、深 252 ms（171 秒）、带文件夹 357 ms（240 秒）、附件 184 ms（108 秒）。
+  - 一项（深的最上层）的后台恢复：计划 276 ms、4 MiB，900 批，p95 310 ms，191 秒；5 万处 84 秒（回收站的读按键之前，计划 56.8 秒、103 秒）。
+  - 无统计的批在任务第一次 ANALYZE（1 万个节点）之前慢 3–4 倍，之后同 ANALYZE 之后；笔记本满的时候一批至多慢约 1.75 倍。
+- **不加 `Subtrees`**：平铺导入的撤销（5 万个节点，ANALYZE 之后）早晚各十批的语句计时：最上层的子树读（`ChildrenOfAll`，约一个最上层一条）409 对 388 ms，`DeleteNodes` 403 对 397 ms，每个最上层不变。随笔记本增长的是每批再计划读整本活着的树（`ListNodes`，5 万个节点活着时一批 24 ms，近空时 3 ms），设计接受（M12 的移交第 15、16 项）。
+- **数组语句的两种计划**（`BenchmarkBackgroundSteps/arrays`，在真的撤销留下的回收站上；ms，按参数 / 通用，1 万 / 5 万个 id）：`TrashNodesAt` 26/30、135/188；`TrashGroups` 25/35、154/210；`ChangesetItemsOf` 13/8、56/45；`ChangesetVersionsOf` 7/9、62/56；`NodesNow` 42/44、270/252；`MarkTrashRoots` 3/9、14/54。没有 P2A 那样灾难性的通用计划；六条新的留在 `planned`，`NodesNow` 照 P3 缓存（3.3）。
+- **实测找到的两个缺陷**：`RecordItems` 与回收站的读按时刻连接，大的删除之前的统计下走 `deleted_at` 的部分索引（3.3）。
+- **守住**（`//go:build !race`，在 `test-go-guards` 里各单独一行、带 `-v`；时限照本机的三倍，同 `8c83ccb7` 给 P2、P3 的守卫定的规则）：
+
+  | 守卫 | 本机 | 时限 |
+  |---|---|---|
+  | `TestStartRevertAtMaxJobItems`：平铺的导入的撤销的请求；多一个节点答 422，在读条目之前、不调用 `Admit` | 298–319 ms | 1 秒 |
+  | 同上，"many groups"：根下 `MaxJobItems` 个附件的导入的撤销的撤销（那次撤销经 SQL 照任务写它的样子写成；300 个附件时与真的任务逐行比过，905 行 0 处不同） | 680–697 ms | 2.1 秒 |
+  | `TestARevertJobOfAnImportAtMaxJobItems`，"in folders"：1 万个节点带文件夹的导入的撤销任务（计划加各批；9 万处本机 93 秒，过了 60 秒，照这一节原来的规则改用 1 万） | 5.6–6.6 秒 | 17 秒 |
+  | 同上，"its largest step"：`MaxJobItems` 处深的最上层的删除（抓到 `RecordItems` 的回归，327 秒） | 3.58–4.52 秒（基准最慢 4.6 秒） | 14 秒 |
+  | 同上：撤销的撤销（一组含每个节点）的第一批，6 万个节点的再计划与它的边缘的设根（修复核对 K-4） | 748–992 ms（基准 1.3–2.2 秒） | 6.6 秒 |
+
+  - `TestMaxJobItemsIsTheMeasuredSize`（`domain/jobs_test.go`）钉住 60,000；`TestTransferDepsLeaveTheBatchesTheImports` 核对组合根不设批、交出两个动作、导入的节点上限是 `page.MaxJobItems`；`TestPageDepsLeaveTheUnitsBoundsTheDomains` 另核对 `MaxJobItems` 为 0（domain 的值）。
 - **CI 的分份**：
-  - 组合根那一份（竞态检测下 9:56–11:07 / 15 分钟）加了 P4 的测试过 13 分钟时，按测试名分成两份（M12 的移交第 15 项的约定）。
-  - 成本那一份（现在 13:22 / 20 分钟）过 15 分钟时同样分（B-M11）。
-- 数字与结论写回本节与 00 号文档 4.9；M12 的性能移交加第 16 项。
+  - 成本那一份在 P4A 之前作业已到 15:00（测试 13:37），过了这一节的 15 分钟：组合根的预算与守卫分出为 `guards`（`make test-go-guards`，偏离 24）。
+  - 组合根竞态检测下那一份三次测试一步 12:00–12:06（`main` 上 7:12），到了 15 分钟的八成（审查 C-M6）：按测试名分成两份，`test-go-bootstrap-1` 跑 `-run '^Test[A-D]'`、`test-go-bootstrap-2` 以同一个表达式 `-skip`（Makefile 的 `BOOTSTRAP_FIRST`），两份之和总是整个包，新的测试落在其中一份；本机两份的测试时间之和 199 与 210 秒。
+  - CI 的服务端成了五份：`race`（组合根之外的包）、`bootstrap-1`、`bootstrap-2`、`costs`、`guards`；`make test-go` 仍一次跑全部。run 38618552830 的测试一步：竞态 6:00、组合根 4:58 与 5:05、成本 8:01、守卫 9:37。
+- 数字与结论写回 00 号文档 4.9；M12 的性能移交第 14、16 项。
 
 ### 3.12 测试
 
 - **domain**：
-  - `PreOrder`：父节点在前；同一父节点下按次序值与 id；与 `TrashGroup` 的同父节点次序相同。
+  - `GroupPreOrder`：父节点在前；同一父节点下按次序值与 id；与 `TrashGroup` 的同父节点次序相同。
   - `GroupCounts`、`Frontier`：一层很宽、跨三层、批的边界正好在一个父节点的孩子中间、组内的附件不算一层、先序时每批的边界至多"层数 × 扇出"。
-  - `MaxJobItems` 的值由测试钉住，`pageDeps` 不设。
+  - `MaxJobItems` 的值由 `TestMaxJobItemsIsTheMeasuredSize` 钉住（60,000），`pageDeps` 不设（`TestPageDepsLeaveTheUnitsBoundsTheDomains`）。
 - **page/app**（假的端口与时钟）：
   - `CheckRestore`、`CheckRevert` 的每个码与次序：含 `MaxJobItems` 的边界、`Admit` 在条目之后且在读之前（`Admit` 失败时什么都没读）、冲突、读不到的版本、锁（别人的会话挡住删除、自己的不挡；任何会话挡住写回；按计划的次序第一个）、两次读之间不在的变更集答 `spec.NotFound`。
   - `RevertChangeset` 改用 `revertCheck` 之后码与次序照旧：P3 的表原样通过，含"读条目之前答 422"（A-M2）。
@@ -789,6 +826,14 @@ CASE WHEN n.trash_root THEN EXISTS (
 - **反向对照**：
   - 每批的核对各去掉一项：期限、根与统计、跳过、父节点、层级、名称、设根、续段的五种与跳过、续段不进再计划、再计划只读这一批的节点、被锁停下、请求里的锁、`Admit` 的位置、`Create`、减半、`Writing` 覆盖三种、开始时占住笔记本、`Held` 按种类、例外按条目的时刻、先序（换成按层，设根数的断言要失败）。测试要失败。
   - 守卫在界线处的变异照 P3A。
+- **审查与修复核对加的**：放置的六种与经 serve 的一例、正好 10 层与附件（恢复与续段）、跳过的成员的孩子不设根、根自己的历史过了界线仍单独恢复（P4A 审查 C-M1–C-M4）；组在计划之后又被删除（单元的两种批与经 serve 的交错 21，A-M1；它的历史按新的时刻数，修复核对 K-1）；续段只列真正的冲突，含孙子（A-M3，K-2）；减半与生产用的批经 serve（B-I1、B-M1）；列表里撤销的报告没有冲突（B-N3）。
+
+### 3.13 审查之后的改动
+
+三位审查者（A：任务的语义与并发；B：契约、transfer 与模块的边界；C：测试、实测与设计的符合）与修复核对的处置见 `reviews/P4A-background-server-review.md`。与上文最初的设计不同之处已改在各节里：
+
+- **实施时定下的**（实施者的 30 条偏离，三位审查者判过）：sqlc 列上 00039、迁移测试的反例（偏离 1、2，3.2）；两个开始用 `claim`，不加 `Uploads.uploading`（偏离 3，3.1、3.6）；`GroupPreOrder`（偏离 4，3.4）；`TrashChildrenAt` 按次序值与 id 排、store 按组分开（偏离 5，3.3）；一批按父节点读兄弟、父节点与深度（偏离 6，3.4）；撤销的再计划按步的种类读（偏离 7，3.5）；设根取组内的子树、不碰跳过的成员的孩子（偏离 8，3.4）；组合根以 `%w: %w` 包两个错误（偏离 9，3.6）；`revertBounds.History`（偏离 10，3.5）；一层的计划测试取一部分父节点（偏离 12，3.3）；计划的统计与根比、第一段取再计划的时刻（偏离 13，3.4、3.5）；假端口的 `NodesNow` 按条目的时刻（偏离 14）；`Problem.locks` 引用 `PageLock`，报告的 `placed`、`lock` 必有且可为空（偏离 15、16，3.9）；`wireApp` 的批（偏离 17，3.6）；`transfer-names.test.ts`（偏离 18）；设计之外修的三处缺陷：续段被清理拿走的版本、`RecordItems` 与回收站的读按键（偏离 20，3.3、3.5）；三个守卫与 CI 的第四份（偏离 23、24，3.11，修复时又改过）；数组语句在组合根的基准里量（偏离 25，3.11）；不加 `Subtrees`（偏离 26，3.11）；交错的写法（偏离 27，3.10）；TR1–TR4 的报告断言（偏离 30，3.1）。偏离 21、22（`MaxJobItems` = 90,000、每页 10 条链接）由审查 C-I1 取代；偏离 28 即审查 A-M2；偏离 11、19、29 是测试的写法与流程。
+- **审查与修复核对带来的**：满负载定为每页 20 条链接，`MaxJobItems` = 60,000，导入的节点上限随之，先试过让删除的链接便宜（C-I1，3.11、3.6）；撤销的一批按组现在的删除时刻读、计划只在单元成功之后取单元的时刻（A-M1、A-N2，3.5、交错 21）；在请求里撤销正在写的撤销任务的 R 答 409，写明（A-M2，3.5、3.10 第 6 条）；续段只列真正的冲突（A-M3，3.5）；减半经组合根的映射、生产用的批经 serve 钉住（B-I1、B-M1、C-N1，3.6）；导入的节点上限写进 `config.yaml` 与 README（B-M2）；上传被挡的文字（B-N1，3.9）；`NodesNow` 照旧缓存（A-N1、C-N2，3.3）；很多组的请求与撤销的撤销的第一批各有守卫（C-M5、修复核对 K-4，3.11）；组合根按测试名分成两份（C-M6，3.11）；测试的补足（C-M1–C-M4、B-N3，修复核对 K-1、K-2，3.12）。
 
 ## 4. B：前端
 
@@ -797,18 +842,19 @@ CASE WHEN n.trash_root THEN EXISTS (
 | 文件 | 内容 |
 |---|---|
 | `web/apps/web/src/services/transfer.service.ts` | `startTrashRestore(notebookId, nodeId)`、`startRevert(notebookId, changesetId, message?)` 与类型 |
-| `web/apps/web/src/stores/transfer.store.ts` | 两个开始（同一时刻一个，答复的任务放在列表最前，同 `start`）；`importing` 改为 `writing`（三种写入任务排队或运行中）；`startedJob(kind, target)`：结果未知时重读列表找这次的任务（4.2） |
+| `web/apps/web/src/stores/transfer.store.ts` | 两个开始（经导出的 `starts` 同一时刻一个，答复的任务放在列表最前一次、在途的读丢掉，同 `start`）；`importing` 改为 `writing`（三种写入任务排队或运行中）；`press()` 记按下时的时刻与持有的任务；`startedJob(kind, target, me, press)`：结果未知时重读列表找这次的任务（4.2） |
 | `web/apps/web/src/pages/notebook/trash-row.tsx`、`trash-page.tsx`、`trash-preview.tsx` | 422 的说明带"在后台恢复「X」"；`useBackgroundRestore`；状态行；预览的开始带路由状态回到回收站页（`StartedState`） |
-| `web/apps/web/src/pages/notebook/revert-dialog.tsx`、`changeset-page.tsx` | 422 之后确认框换成"在后台撤销"；状态行 |
-| `web/apps/web/src/pages/notebook/transfer-names.ts`、`transfer-job-row.tsx`、`transfer-report.tsx`、`settings-layout.tsx`、`import-dialog.tsx` | 两种类型的标题、链接、计数、放置、冲突、持锁人；入口改名；导入的预检认三种写入任务 |
+| `web/apps/web/src/pages/notebook/revert-dialog.tsx`、`changeset-page.tsx`、`changeset-text.ts`；`services/api.ts` | 422 之后确认框换成"在后台撤销"；状态行；`reasonText` 移到 `changeset-text.ts`、`lost()` 移到 `services/api.ts`，任务的报告与回收站不必引用确认框（偏离 6） |
+| `web/apps/web/src/pages/notebook/transfer-job-row.tsx`、`transfer-report.tsx`、`transfer-page.tsx`、`import-dialog.tsx` | 链接、计数、放置、冲突、持锁人、每种停下的说明（两种类型的标题与入口的改名已随 A 的门禁，`transfer-names.ts`、文字）；导入的预检认三种写入任务 |
 | `web/apps/web/src/i18n/messages/{zh-CN,en}.ts` | 文字（前缀 `transfer.`、`trash.`、`history.`） |
-| `web/apps/web/src/test/jobs-server.ts`、`test/trash-server.ts`、`test/history-server.ts` | 假接口的两个开始（码的次序同服务端）与两种任务的状态；回收站的 `tooLarge` 开关 |
-| `e2e/fixtures/db.ts`、`transfer.ts`、`wiki-transfer.ts`、`assert/transfer.ts`、`assert/page.ts`、`trash.ts`、`history.ts`；`e2e/stories/history/hi5-revert-import.spec.ts`、`e2e/stories/trash/tb2-background-restore.spec.ts` | 4.5 |
+| `web/apps/web/src/test/jobs-server.ts`、`test/history-server.ts` | 假接口的两个开始（码的次序同服务端）与两种任务的状态，开关 `startsHeld`、`busy`、`queueFull`、`lost`、`listWaits`、`clockBehind`；导入答 `changeset_id`（P4A 审查 B-N2）；历史的 `jobTooLarge`。回收站的太大用已有的历史计数（`item.history`），不另加开关（偏离 2） |
+| `trash-background.test.tsx`、`revert-background.test.tsx`、`transfer-background.test.tsx`（新）；store、服务、导入、确认框的测试 | 4.4 |
+| `e2e/fixtures/db.ts`、`transfer.ts`、`assert/transfer.ts`、`assert/page.ts`；`e2e/stories/history/hi5-revert-import.spec.ts`、`e2e/stories/trash/tb2-background-restore.spec.ts`、`tb1-trash.spec.ts` | 4.5 |
 
 ### 4.2 422 之后：在后台进行
 
 - **回收站页**：
-  - 恢复答 422 `page.restore_too_large` 时，列表之上的说明（`Alert`）照旧说太大（`trash.tooLarge`），另带按钮"在后台恢复「X」"；行上的"恢复"不变。名称照行上的"恢复"区分同名的两项（`namesOf`，`trash-row.tsx:161-179`，B-N3）。
+  - 恢复答 422 `page.restore_too_large` 时，列表之上的说明（`Alert`）照旧说太大（`trash.tooLarge`），另带按钮"在后台恢复「X」"；行上的"恢复"不变。名称照行上的"恢复"区分同名的两项（`namesOf`，`trash-row.tsx:161-179`，B-N3；同一分钟的带 id 的末尾）。按钮在说明之下，离这一项的行远（偏离 7）。
   - 按下：`transfers.startTrashRestore(id)`，按钮 `aria-disabled` 且 `aria-busy`，一次按下至多一个请求；按钮离开时焦点给 `h1`（`useFocusLeaving`，同 `RestoreButton`）。
   - 202：说明换成状态行（一开始就在的 `<output>`）"已开始在后台恢复「X」。 查看进度"：
     - "查看进度"链到"导入、导出与恢复"，路由状态 `focusJob`，到达时焦点在那一行（`transfer-page.tsx:24-30` 已有）。
@@ -817,27 +863,34 @@ CASE WHEN n.trash_root THEN EXISTS (
     - 409 `transfer.busy`："这本笔记本有进行中的导入、恢复或撤销：等它结束再试"。
     - 503 照 `transfer.queueFull`。
     - `page.*` 的 409 照 `refusalText`。
-    - 403、404 照现有。
-    - 500、网络错误、超时：结果未知，照下面的规则。
+    - 403、404 照现有，另重读笔记本（读者失去按钮）。
+    - 500、网络错误、超时：结果未知，照下面的规则，说在状态行里：有，"已开始……查看进度"；没有，"没有开始在后台恢复「X」，可以再试"，留着按钮；列表读不出，"不知道是否已开始……：任务列表读不出来"，带"查看任务"（偏离 4）。
   - 之后重读回收站与单项（同恢复）。任务进行中，回收站随每批的 `pages` 事件重读，设上根的节点作为项出现、恢复之后消失，不另说明。
 - **预览**（B-M5）：
   - 422 的说明同样带按钮，按下同上。
   - 202 时带路由状态 `{...arrived, started: {name, job}}` 回到回收站页（同同步恢复的 `RestoredState`，`trash-preview.tsx:125-129`），回收站页的 `<output>` 说"已开始……查看进度"。
   - 不留在预览上：第一批恢复了根之后，预览的单项读答 `page.not_in_trash`，会换掉整个外壳。
+  - 按钮在"恢复"旁、标题的一行里（偏离 7）。开始在途时这一项照旧显示，第一批的事件读它已不在也不换（`starting` 算在途）。
+  - 被拒与结果未知说在预览的警示里（它没有自己的状态行，偏离 4），被拒照回收站页的七种（P4B 审查 A-M2、C-M1）：忙与队列满留着按钮、焦点不动；别处已恢复与过期换成"不在了"的视图，回收站的标题取得焦点、由拒绝描述；成了别的项的成员时转到根的预览；403 时"恢复"离开、焦点到标题；笔记本没了时"页面不存在"、重读笔记本。每次开始之后重读这一项。
 - **撤销确认框**：
-  - 撤销答 422 `page.revert_too_large` 时，确认框的内容换成"这次改动太大，不能在这里撤销……它碰过 {n} 个节点。在后台撤销？后台的撤销分批进行，途中停下时已撤销的部分留着。"（第 11 节第 7 条；`{n}` 照同步的 422，上千时是"1,000+"）。按钮"在后台撤销"与"取消"，说明的输入留着；小标题取得焦点（同冲突）。
+  - 撤销答 422 `page.revert_too_large` 时，确认框的内容换成"这次改动太大，不能在这里撤销……它碰过 {n} 个节点。在后台撤销？后台的撤销分批进行，途中停下时已撤销的部分留着。"（第 11 节第 7 条；`{n}` 照同步的 422，上千时是"1,000+"）。按钮"在后台撤销"与"取消"，说明的输入留着；小标题取得焦点（同冲突）。小标题（"……太大……它碰过 {n} 个节点。"）是确认框的描述，问的一段在它之后（两段都作描述进打磨）。
   - 按下：`transfers.startRevert(id, message)`，发送中同确认框（`aria-disabled`、忙的守卫，焦点留在按钮上）。
   - 答复：
     - 202：关闭，单个变更集页的状态行"已开始在后台撤销这次改动。 查看进度"，焦点到 `h1`。
     - 409 `page.revert_conflict`：换成冲突的列表（同步的那一个）。
     - 409 `page.locked`："「页」正在被 X 编辑：等它结束再撤销"（同步的守卫的文字）。
-    - 422（`MaxJobItems`）："这次改动太大，后台也撤销不了。"（不带数：问题里没有它，B-M9）。
-    - 409 `transfer.busy`、503：确认框里的说明，可以再试。
+    - 422（`MaxJobItems`）："这次改动太大，后台也撤销不了。"（不带数：问题里没有它，B-M9）。按钮照旧可按，再按得到同样的答复（偏离 5，只留"取消"进打磨）。
+    - 409 `transfer.busy`、503：确认框里的说明，可以再试（503 只在后台的模式里说队列满，同步的照旧说服务器忙）。
+  - **冲突与进行中的写入任务**（主持者加的，P4A 审查 A-M2）：同步或后台的撤销答 409 `page.revert_conflict` 时，确认框先重读任务列表；这本笔记本有排队或运行中的写入任务（导入、恢复、撤销；导出不算，P4B 审查 A-N2、C-M2），冲突的列表之前另说"这本笔记本有进行中的导入、恢复或撤销：等它结束或取消后再撤销，下面的冲突可能因它而起。"（`history.conflictsWriting`）。局限：列表只给不是管理员的写者他自己的任务，别的账户的任务引起的冲突不带这一句（P4B 审查 A-N1；要服务端的提示，进打磨）。
     - 截掉、403、404：照同步的关闭与说明。
-- **结果未知**（`lost()`，`revert-dialog.tsx:53-55`；两个开始都照它，B-M6）：
-  - 重读这本笔记本的任务列表（`TransferStore.load`），找这次按下之后、自己开始的、这种类型的任务：撤销看 `target_changeset_id = C`，恢复看 `root_id` 是这一项。
-  - 有：说"已开始"与"查看进度"。没有：说"没有开始，可以再试"。
+- **结果未知**（`lost()`，移到 `services/api.ts`；两个开始都照它，B-M6）：
+  - 按下时 store 的 `press()` 记下浏览器的时刻与它持有的任务的 id。答复丢了（500、网络错误、超时）时重读这本笔记本的任务列表（`TransferStore.load`），找这个账户这种类型、这个目标的任务（撤销看 `target_changeset_id = C`，恢复看 `root_id` 是这一项）：
+    - 进行中（排队或运行）的，不论时刻：一本笔记本一次一个写入任务，这次按下要么开始了它，要么因它被拒，说"已开始"对用户都对。
+    - 已结束的，只取按下时 store 没有持有、且创建不早于按下之前一分钟（`clockMargin`）的。
+  - 不比两个时钟：任务行的 `created_at` 是服务端的时钟，按下的时刻是浏览器的。原来的"创建在按下之后"在浏览器快过几百毫秒时就找不到刚开始的任务，说"没有开始"，再按答忙（P4B 审查 A-M1、B-M4、C-M3）。剩下的：两个时钟差过一分钟时可能取错或漏掉已结束的任务；同一账户两个标签页的查找可以取到另一个的（打磨）。
+  - 有：说"已开始"与"查看进度"。没有：说"没有开始，可以再试"。列表读不出：说不知道，带"查看任务"。
   - 不看 C 的 `reverted_by`：任务第一批之前它是空的。
+  - 单个变更集页上，一次的查找的结果只在之后没有别的一次说过什么时才说（`shown`，在 `done()` 里设）：晚到的结果不盖掉较新的一次的；之后的一次在确认框里结束并取消的不挡它（P4B 审查 A-N3、修复核对 F-2）。P3 的"结果未知"（`findOut`）用同一个守卫。
 - 只在 422 之后问：网页先照旧在请求里撤销、恢复（小的一次做完），不按 `node_count` 预先猜。
 
 ### 4.3 任务列表
@@ -846,45 +899,46 @@ CASE WHEN n.trash_root THEN EXISTS (
 - **每行的标题**：
   - 恢复："从回收站恢复「X」"。
   - 撤销："撤销一次{类型}"：`name` 是被撤销的变更集的类型，照 `history.kind.*` 写；英文 "Undo: {Kind}"，不带冠词（B-N9）；同名的照 `jobNames` 带编号。
-  - 状态、进度（"已处理 n / 共 m 个节点"）、发起人与时刻、取消照旧。
+  - 状态、进度（照旧"进度：{done} / {total}"，偏离 1；带单位的写法进打磨）、发起人与时刻、取消照旧。
 - **链接**（可访问的名称带这个任务的名称，同 `transfer.downloadOf`，B-N3）：
-  - "在历史里查看"去任务的变更集的单个变更集页，导入也有。`changeset_id` 不空、且已处理的不为零或任务被中断时才给（A-M7：什么都没写的任务没有变更集；中断时进度可能落后一次心跳）。
+  - "在历史里查看"去任务的变更集的单个变更集页，导入也有。`changeset_id` 不空、且已处理的不为零或任务开始过之后被中断时才给（A-M7：什么都没写的任务没有变更集；中断时进度可能落后一次心跳。队列在开始之前丢掉、救援记为 `interrupted` 的任务 `started_at` 为空，不给，P4B 审查 B-M2）。
   - 撤销另有"被撤销的改动"（`target_changeset_id`）：报告的冲突只列原因与名称，各节点的链接在 C 的确认框里（B 过度设计 5）；任务什么都没写时，这是回到 C 的唯一一条路。
   - 工作区的 slug 经 `useWorkspace()`。
 - **报告**：
   - 恢复的计数：页面、附件、改名、跳过（"别人先恢复了的"）；另一句放在哪里（照回收站的放置文字）。
-  - 撤销的计数：恢复、删除、放回的节点与写回的页、跳过的；没有一步时"没有要撤销的：它碰过的都已回到之前"（A-N5）。
+  - 撤销的计数：恢复、删除、放回的节点与写回的页、跳过的；没有一步时"没有要撤销的：它碰过的都已回到之前"（A-N5），只在成功时说（计划时就停下的撤销也是 0/0，P4B 审查 B-M5）。计数与剩下的数目经 `Intl.NumberFormat`（"1,501"，P4B 审查 B-M3）。
   - 失败的文字各一句，按类型写。`forbidden`、`tree_changed`、`changeset_reverted` 在两种新类型下各有自己的（B-M7）：例如恢复的 `tree_changed` 是"恢复途中，已恢复的部分被删除或移到太深的地方了"。
-  - 停下时说已完成的部分留着与剩下的数目（总数减已处理的），并说可以做什么：
-    - 恢复："剩下的各自在回收站里，可以逐项恢复"。
-    - 撤销："可以在历史里撤销这次撤销，回到之前，再整组撤销"。停在一组中间时这句不对，所以撤销的说明另加一句："回收站里由这次撤销留下的几项，逐项恢复就完成这一组；不要先撤销这次撤销"（A-M4）。
+  - 停下且已处理的不为零时说剩下的数目（总数减已处理的）与可以做什么，按种类与失败只说对它成立的（P4B 审查 B-M1：原来每种停下一样，四种与失败相反）：
+    - 恢复的一般停下（取消、中断、`forbidden` 等）："已恢复的留在笔记本里。剩下的 N 个节点在回收站里，分成几项，每项可以单独恢复。"；`tree_changed` 只说没处理到的在回收站里；`restore_expired` 说剩下的期限已过、不能再恢复；`changeset_reverted` 说"已恢复的又回到了回收站，和没处理到的节点一起。"；`trash_changed` 不另说。
+    - 撤销的一般停下（取消、中断、`revert_conflict`、`page_locked` 等）："已撤销的部分留着，剩下 N 个节点没有处理。要回到之前，可以在历史里撤销这次撤销，之后再整组撤销这次改动。"，另加一句："停在恢复一组的中间时：回收站里由这次撤销留下的几项，逐项恢复就完成这一组；不要先撤销这次撤销。"（A-M4）；`changeset_trimmed` 只说可以撤销这次撤销（清理拿走了一部分，不能再整组撤销）；`changeset_reverted` 不另说（组的中间停下之后"再整组撤销"不总成立，3.10 第 20 条）。
+    - 英文不用复数（"Nodes left: {left}"，00 号文档 4.13）；中文不说"各自"：剩下的是设了根的几项，不是每个节点一项（P4B 审查 B-M3）。
   - `revert_conflict` 列出冲突：原因与名称，至多 100 项与总数，读单个任务时才有；另说"在「被撤销的改动」里重新撤销时列出它们的链接"。
-  - `page_locked` 说"「页」正在被 Ada 编辑"，并链到那一页。
+  - `page_locked` 说"「页」正在被 Ada 编辑"，并链到那一页；树里叫不出名字的页被这个账户自己锁着时说"你正在别处编辑撤销要改的一页。"（P4B 审查 B-N1）。
 - **轮询与预检**：运行中照旧每秒轮询（`pollInterval`），不加事件。导入的对话框的预检（`transfers.writing`）与 409 说"这本笔记本有进行中的导入、恢复或撤销"（`transfer.importBusy`、`problem.transfer.busy` 一起改，3.9）。
 
 ### 4.4 测试（vitest）
 
-- **服务与 store**：两个开始的请求、一次一个、答复的任务放在最前、`writing`、`startedJob` 的匹配（类型、目标、发起人、时刻）。
+- **服务与 store**：两个开始的请求、一次一个、答复的任务放在最前、`writing`（运行中的导出不算）、`press()`、`startedJob` 的匹配（类型、目标、发起人；进行中的不论时刻，已结束的按持有的与一分钟的界线）。
 - **回收站页**：
   - 422 的说明带"在后台恢复"，同名的两项区分。
   - 按下之后的状态行、焦点、"查看进度"的去处与到达时的焦点。
-  - 被拒的每种：`transfer.busy`、503、409 三种、403、404，以及结果未知的两种答案。
+  - 被拒的每种：`transfer.busy`、503、409 三种、403、404，以及结果未知的三种答案（有；没有，带这个账户同一项早已结束的任务；列表读不出），服务端的时钟慢 0、300 ms、3 秒（P4B 审查 A-M1、A-M3）。
   - 连按两下只发一个请求；读者没有按钮。
-- **预览**：202 回到回收站页，状态行与"查看进度"；被拒同回收站页（B-M5）。
+- **预览**：202 回到回收站页，状态行与"查看进度"；被拒同回收站页的七种（B-M5，P4B 审查 A-M2、C-M1）；开始在途时第一批的事件不换掉显示的这一项。
 - **撤销确认框**：
   - 422 之后的内容与焦点。
-  - "在后台撤销"的每种答复：202、冲突、锁、422、409 忙、503、截掉、403、404，以及 500 的结果未知（重读任务列表，找到与找不到）。
+  - "在后台撤销"的每种答复：202、冲突、锁、422、409 忙、503、截掉、403、404，以及 500 的结果未知（重读任务列表，找到、找不到、读不出；晚到的结果不盖掉较新的，之后取消的一次不挡它）；冲突时有写入任务进行的那一句（导出不算）。
   - 说明带过去；只发一次。
 - **任务列表**：
   - 两种类型的标题、同名、英文无冠词。
-  - 链接：导入的"在历史里查看"、撤销的两个链接、什么都没写时不给、中断时给；可访问的名称。
+  - 链接：导入的"在历史里查看"、撤销的两个链接、什么都没写时不给、开始过之后中断时给、开始之前被丢掉的不给；可访问的名称。
   - 进度、报告的计数与放置。
-  - 每种新失败与三种旧失败按类型的文字与可以做什么；冲突的列表（100 项与总数，没有链接）；持锁人。
+  - 每种新失败与三种旧失败按类型的文字与可以做什么，用服务端发得出的状态（`changeset_reverted` 在已处理不为零时）；0/0 停下的撤销没有"没有要撤销的"；冲突的列表（100 项与总数，没有链接；全部列出时不说"前 N 个"，没有冲突时没有那一节）；持锁人（别人、自己、树里叫不出名字的页）；停下的导入逐行核对。
   - 入口的名称；导入的预检与 409 认三种。
 - **假接口**（`test/jobs-server.ts`）照服务端的码的次序：
   - 恢复：404 笔记本 → 403 → 404 节点 → 409 三种 → 409 忙 → 503。
   - 撤销：说明 422 → 404 → 403 → 404 变更集 → 409 截掉 → 422 → 409 忙 → 409 冲突 → 409 截掉（版本）→ 409 锁 → 503。
-  - 开关：`startsHeld`、`busy`、`lost`；任务的状态由测试推进。
+  - 开关：`startsHeld`、`busy`、`queueFull`、`lost`（500 或网络）、`listWaits`、`clockBehind`；历史的 `jobTooLarge`；任务的状态由测试推进，形状同服务端（恢复与撤销从创建起有 `changeset_id`，撤销数节点）。
 
 ### 4.5 e2e
 
@@ -893,24 +947,33 @@ CASE WHEN n.trash_root THEN EXISTS (
     1. 经"导入、导出与恢复"导入一个根下有 1,501 篇空笔记的 zip（夹具生成；1,501 个最上层才过单轮的步数界线，撤销一次导入不解析，页数的界线碰不到它）。
     2. 任务成功之后，行上的"在历史里查看"进单个变更集页：类型导入，节点数显示"1,000+"（`node_count` 只数到 1,000，B-M9）。
     3. "撤销这次改动" → 确认框换成"在后台撤销" → 按下 → 状态行，"查看进度" → 任务的行取得焦点、到"完成"。
-    4. 报告：删除 1,501。回收站列出导入的最上层（第一页 50 项，`trashListed`）；树里没有它们。
+    4. 报告：删除"1,501"（数字分位）。回收站列出导入的最上层（第一页 50 项与"更多"，`trashListed`）；树里没有它们。
   - **接口版本**（PAT）：`startImport` → `revertChangeset` 答 422 → `startRevert` 答 202 → `endedJob` 成功。
   - 两个版本调用同样的断言（`assert/transfer.ts` 的 `expectBackgroundJob`）：
     - 任务行的类型；`target_changeset_id` 是导入的变更集；`changeset_id` 是 `revert` 变更集，它的 `reverts_id` 是导入的；导入的任务行的 `changeset_id`。
-    - 1,501 个回收站的根各有统计（`expectTrashRoot`）；撤销的条目数 1,501（`expectRevert`）——1,501 从数据库与接口读，不从页面读。
+    - 1,501 个回收站的根各有统计（`expectTrashRoot`，每组 {1, 0, 1}）；撤销的条目数 1,501、版本 0（`expectRevert`），`revertsOf` 只有它——1,501 从数据库与接口读，不从页面读。
 - **TB2**（`e2e/stories/trash/tb2-background-restore.spec.ts`，显式的时限）：
-  - 导入一个 `Big/` 下 101 篇笔记（带一个附件、互相的链接）的 zip，从树的菜单删除 `Big`（102 页）。
+  - 经接口导入一个 `Big/` 下 101 篇笔记（成环的链接，第一篇嵌入 `photo.png`）的 zip（两个版本都经接口：这里要的是导入，不是它的界面，偏离 8），从树的菜单删除 `Big`（102 页）。页面版本先建 Index，Big 导入在它之后，打开 Index 再从树的菜单删除：Big 自己的页开着时删除，`links` 事件过 20 个目标、不点名页面，网页重读 Big 的反向链接答 404，夹具的安静页面检查让故事不稳定（P4B 修复核对第一轮 F-1，15 次失败 5 次）。
   - **页面版本**：
     1. 回收站里恢复 → 422 的说明 → "在后台恢复「Big」"。
-    2. 按下之前，测试以一条专用的数据库连接在一个事务里以 `FOR SHARE` 持着笔记本行（`db.hold`，`holdNotebookRow`；`Database` 现在只有连接池的 `query`，`e2e/fixtures/db.ts:24-33`，B-N8）。任务的第一批在它上面等：行显示"运行中"与"已处理 0 / 共 103 个节点"的进度（计划不加锁，总数已在）。
+    2. 按下之前，测试以一条专用的数据库连接在一个事务里以 `FOR SHARE` 持着笔记本行（`db.hold`，`holdNotebookRow`；`Database` 现在只有连接池的 `query`，`e2e/fixtures/db.ts:24-33`，B-N8）。任务的第一批在它上面等：行显示"运行中"与进度"进度：0 / 103"（计划不加锁，总数已在）。核对过：开始只以 `FOR SHARE` 共享笔记本，不被挡；一批是树的单元，笔记本 `FOR NO KEY UPDATE`，被挡；计划与进度不锁笔记本；服务端不设 `lock_timeout`，批等着而不是重试。持着的连接归 `Database` 管，`close()` 在连接池之前结束没放开的，带 `'error'` 监听（P4B 审查 C-N3）。
     3. 放开之后到"完成"。报告：页面 102、附件 1、放在原处；树里有 `Big` 与它的孩子，附件下载 200。
   - **接口版本**：`restoreNode` 答 422 → `startTrashRestore` 202 → `endedJob`。
-  - 断言：一个 `trash_restore` 变更集，103 个恢复的条目，条目的 `created_at` 有两种（两批，100 + 3）；任务行的 `changeset_id` 与报告；`expectSubtreeRestored`（`kind: "trash_restore"`）、`expectAssetsRestored`、`expectIndexedLinks`。
+  - 断言：一个 `trash_restore` 变更集，103 个恢复的条目，条目的 `created_at` 有两种（两批，100 + 3：步各一个节点，Big、Note 001–099 一批，Note 100、101 与 `photo.png` 一批，Note 001 对 `photo.png` 的嵌入跨两批解析）；任务行的 `changeset_id` 与报告；`expectSubtreeRestored`（`kind: "trash_restore"`）、`expectAssetsRestored`、`expectIndexedLinks`。
 - **分批的断言辅助**（B-M10）：
   - `expectSubtreeRestored`：每个节点的 `updated_at` 等于它自己的恢复条目的 `created_at`，不再等于变更集的 `created_at`（`assert/page.ts:213-259`）。
-  - `expectTrashRoot`：一个根的组按"从根往下、以根的时刻删除的子孙"数（同 `checkPages`，`interleavings_page_test.go:74-84`），不再按笔记本与 `deleted_at` 分组（`assert/page.ts:187-199`）。
+  - `expectTrashRoot`：一个根的组按"从根往下、以根的时刻删除的子孙"数（同 `checkPages`，`interleavings_page_test.go:74-84`），不再按笔记本与 `deleted_at` 分组（`assert/page.ts:187-199`），另比页面、附件与高度（偏离 8）。单个删除（TB1 四处、TB2 两处）带 `{ alone: true }`，另核对笔记本里在根的时刻删除的正是这一组（P4B 审查 C-N2）；HI5 一批在同一时刻删除很多最上层，不带。
+  - `endedJob(..., timeout)`：HI5 60 秒、TB2 30 秒，别处照旧 15 秒；两个页面版本 `test.slow()`（偏离 8）。
   - TB1、HI4 照旧通过。
-- **反向对照的 e2e 变异**：开始的按钮去掉、任务行的类型标题、"在历史里查看"的去处、`holdNotebookRow` 不起作用（进度断言要失败）。
+- **反向对照的 e2e 变异**：开始的按钮去掉、任务行的类型标题、"在历史里查看"的去处、`holdNotebookRow` 不起作用（进度断言要失败）。实施时 6 个，都被抓到（第 9 节）。
+
+### 4.6 实施时定下的与审查带来的
+
+三位审查者（A：开始与它们的答复；B：任务列表、文字与假接口；C：测试、e2e 与设计的符合）与两轮修复核对的处置见 `reviews/P4B-background-web-review.md`。与上文最初的设计不同之处已改在各节里：
+
+- **实施时定下的**（实施者的 9 条偏离，审查者判过）：进度的文字照旧（偏离 1，4.3）；假接口另有的开关（偏离 2，4.1、4.4）；结果未知在哪里说（偏离 4，4.2）；确认框里后台的 422 留着按钮（偏离 5，4.2）；`reasonText`、`lost()` 移动（偏离 6，4.1）；按钮的位置（偏离 7，4.2）；TB2 经接口导入、`expectTrashRoot` 另比页面、附件与高度、`endedJob` 带时限（偏离 8，4.5）；主持者加的两项：冲突之前的那一句（P4A 审查 A-M2）与假接口的导入带 `changeset_id`（P4A 审查 B-N2）（偏离 9）。偏离 3（结果未知按两个时钟比较）由审查改掉。
+- **审查与修复核对带来的**：结果未知不比两个时钟（A-M1、B-M4、C-M3，4.2）；报告按失败说（B-M1，4.3）；"在历史里查看"只给开始过的中断任务（B-M2，4.3）；不用复数、数字分位、中文不说"各自"（B-M3，4.3）；晚到的结果只在之后的一次说过什么时才不说（A-N3、修复核对 F-2，4.2）；自己锁着叫不出名字的页（B-N1，4.3）；`expectTrashRoot` 的 `alone`、`Database.hold` 归它管（C-N2、C-N3，4.5）；TB2 的页面版本在 Index 上删除 Big（修复核对 F-1，4.5）；测试的补足（A-M2、A-M3、A-N2、C-M1、C-M2、C-N1、B-M5、B-N2，修复核对 F-3，4.4）。
+- **局限**：不是管理员的写者看不到别的账户的任务，那种冲突不带 A-M2 的那一句（A-N1，要服务端的提示）。
 
 ## 5. 实施步骤
 
@@ -980,21 +1043,44 @@ B（分支 `m8-p4b`，A 合并之后；服务函数随第一次用到它的那�
 ## 8. 交给后面的 Phase
 
 - **P5**：无。恢复与撤销的节点照常进出搜索，靠活着的过滤。
-- **M9**：MCP 开后台任务要先放开 `transfer_jobs.client`；`batch` 的大变更集的撤销同走后台，受 `MaxJobItems` 与每批的再计划；`log` 看得到任务的变更集。
+- **M9**：MCP 开后台任务要先放开 `transfer_jobs.client`；`batch` 的大变更集的撤销同走后台，受 `MaxJobItems` 与每批的再计划；`log` 看得到任务的变更集（[M9 的移交](../M9-mcp/handoffs/M8-P4-background.md)）。
 - **M11**：
   - 回滚一次升级照从新到旧撤销它的变更集，大的走后台的撤销。
-  - 停下时（冲突、被锁、服务重启）：没停在一组中间的，撤销那次撤销回到之前，再整组撤销（有 `MaxJobGroups` 时在它之内）；停在一组中间的，逐项恢复剩下的，不要先撤销那次撤销（3.5）。
+  - 停下时（冲突、被锁、服务重启）：没停在一组中间的，撤销那次撤销回到之前，再整组撤销（至多 `MaxJobItems` 组，没有 `MaxJobGroups`）；停在一组中间的，逐项恢复剩下的，不要先撤销那次撤销（3.5）。
+  - 撤销任务正在写时不在请求里撤销它的变更集（答 409，3.5）：先取消任务或等它结束。
+  - 写进 [M11 的移交](../M11-upgrade/handoffs/M8-P4-background.md)。
 - **M12**：
   - 途中停下的任务"继续"：恢复是一项里剩下的各项一起；撤销是并入同一个 R、跳过 R 已做的节点，也让停在一组中间的撤销能回到之前。
   - 撤销的任务等编辑锁放开而不是停下。
   - 撤销每批读整本活着的树（只读附近的节点，同第 15 项）。
   - 很宽的一层停在中间时回收站里的碎片。
   - 任务没有推送，靠轮询。
-  - 3.11 的实测数与 CI 的分份。
+  - 3.11 的实测数、链接多的导入的最大一步、很大的最上层的同步删除到期限、守卫与 CI 各份的余量（[性能移交](../M12-release/handoffs/M4-performance.md)第 16 项；一页 100 万行历史的一步，第 14 项）。
+  - 卡住的排队任务挡住三种写入任务（[M7 的移交](../M12-release/handoffs/M7-transfer.md)第 5 项）。
+  - B 的打磨（[打磨移交](../M12-release/handoffs/M5-polish.md)第 24 条），含 A-M2 的那一句要服务端的提示。
 
 ## 9. 结果
 
-（实施之后写：A、B 各一节，提交、实测、审查、与设计不同之处、反向对照、门禁、交给后面的。）
+### 9.1 A：服务端（2026-10-15，合并 `2f8077ec`）
+
+- 提交：实施：写入任务的行、共用的分批与任务行的变更集 `d22581dc`，组的先序与设根、任务的读、例外按条目的时刻 `715fa30d`，page 里任务的核对、计划与批 `3942faea`，两个开始与运行 `bb591bbf`，经 serve 的整个程序 `4543eb43`，续段被清理拿走的版本答 `changeset_trimmed` `9a0c22f3`，交错 `f7e6a33d`，删除的条目按键读版本号 `13a80ac6`，回收站的读按键连接 `efdfa36f`，`MaxJobItems` 与导入的节点上限 `4242df86`，实测与守卫 `3e392003`，实测写进基准与界线的注释 `68d452c4`，两批之间的取消等心跳停下 `400eee34`，transfer 故事的报告 `660bc780`（从 `main` 的 `1f732c96` 开始，是 `5f206a38..7727b791`，之后变基到 `main` 的 `3cb0c51e`，补丁不变）；审查的修复：撤销的一批按组现在的删除时刻读、续段只列真正的冲突 `4583ce68`，上传被挡的文字与列表的测试 `3a0f8e44`，减半、根的放置与再删除的组经 serve、生产用的批经 `newApp` `6da921c8`，满负载下的 `MaxJobItems` = 60,000 与很多组的请求的守卫 `3474681b`，组合根按测试名分成两份 `5c1a6ec7`；修复核对的测试、守卫与注释 `f0bafbba`。合并 `2f8077ec`。
+- 实测（3.11）：满负载定为 2 KiB 正文、每页 20 条解析的链接、十分之一是附件；`MaxJobItems` = 60,000（6 万处最大的一步每次都在 5 秒之内，至多 4.6 秒；7 万处有一次 6.9 秒），请求至多约 1.2 秒，没有 `MaxJobGroups`，不加 `Subtrees`；每页多于 20 条链接时最大的一步随链接增长约 1.6 µs 一条，同用户的删除，接受；让删除的链接便宜试过，没有便宜的改法。6 万小于 2.2 的 N（55 万）：照 (a)，导入另有 60,000 的节点上限（`too_many_nodes`）。一页 100 万行历史的恢复一步 8.9 秒（删除 6.2 秒），移交 M12。实测找到 P2、P3 的两个规划器的陷阱（回收站的读与 `RecordItems` 按时刻连接），改为按键。
+- 审查：三位审查者（Opus）。B、C 各一条 Important：`MaxJobItems` = 90,000 只在链接很少的页上成立，负载要在合并之前定（高，C-I1；满负载定为每页 20 条，60,000）；批的减半经组合根的映射没有测试（中高，B-I1）。中低 1 条：撤销任务的一组在计划之后被恢复又删除，开始它的那一批按计划时的时刻读，以假的冲突停下（A-M1）。其余是低（在请求里撤销正在写的撤销任务的变更集答 409，写进文档（A-M2）；续段的冲突列表；生产接线的守卫不会失败；导入的节点上限没写进配置与 README；放置、层级的边界、跳过的成员的孩子、单独一步的四处测试缺口；很多组的请求没有守卫；组合根那一份到了时限的八成）与细节。修复核对一轮，没有行为上的发现：两处测试的缺口与四条细节，补上（`f0bafbba`，另给撤销的撤销的第一批加了守卫）。逐条见[审查记录](reviews/P4A-background-server-review.md)。
+- 与设计不同之处已改在第 3 节（3.1–3.6、3.9–3.12），3.13 分实施时定下的与审查带来的列出；2.2 记下结果；第 8 节加移交的链接。
+- 反向对照：实施之后不经数据库的单元变异 62 个都被抓到，数据库 12 个（1 个第一次存活，补了测试之后被抓到），交错一级 8 个；审查者 B 10 个、C 21 个（存活的即各条测试的缺口或等价），A 以探针代替；审查的修复之后 17 个（`a-m1-no-retime-serve` 经 serve 存活，它的单元测试抓到）；修复核对 24 个（存活的 K-1、K-2 两个补了测试之后被抓到，另一个同上）。
+- 门禁：本机 `7727b791`（变基之前）与 `5c1a6ec7` 上 `make lint-go gen-check test-go`、`make lint-web knip test-web build-web`（3,097 个测试）、`make e2e`（241 个）通过，`f0bafbba` 上改到的单元测试与守卫通过；CI：`56525ed8` 竞态那一份的取消测试不稳定（偏离 29），`176e47b9` 的 e2e 抓到 TR1–TR4 的报告（偏离 30），`7727b791` 全绿；变基之后 `660bc780` 全绿；审查的修复 `5c1a6ec7` 全绿（组合根两份测试一步 4:58、5:05，守卫 9:37）；`f0bafbba`（run 38624976370）全绿。
+- 交给后面的：B（`m8-p4b`）以这份契约为准（`too_many_nodes`；在请求里撤销正在写的撤销任务的变更集答 409，网页在冲突之前说明；假接口的导入带 `changeset_id`）；M9：MCP 开的后台任务、`batch` 的大变更集的撤销（[M9 的移交](../M9-mcp/handoffs/M8-P4-background.md)）；M11：大的回滚走后台的撤销与停下的状态（[M11 的移交](../M11-upgrade/handoffs/M8-P4-background.md)）；M12：[性能移交](../M12-release/handoffs/M4-performance.md)第 14 项（一页 100 万行历史的一步）与第 16 项（3.11 的数、链接多的导入、很大的最上层的同步删除、撤销每批读整本树、很宽的一层的碎片、计划的内存、守卫与 CI 各份的余量），[M7 的移交](../M12-release/handoffs/M7-transfer.md)第 5 项（卡住的排队任务挡住三种写入任务）。
+- 负责人可以改判的取舍：满负载取每页 20 条链接，多于它时最大的一步过 5 秒（同 `DeleteNode`）；导入的节点上限 60,000（2.2 的 (a)，可以宁可降低第 3 节第 5 条的要求而撤掉它）；在请求里撤销正在写的撤销任务的变更集答 409（A-M2，不改服务端与契约）。
+
+### 9.2 B：前端（2026-10-15，合并 `947812e6`）
+
+- 提交：实施：服务、store、回收站页与预览、确认框与单个变更集页、任务列表、导入的预检、文字与假接口 `31b754b7`，HI5、TB2 `aaab10a2`，反向对照找到的测试的缺口 `7fa44cb4`（从 `m8-p4a` 的 `660bc780` 开始）；审查的修复：结果未知不比两个时钟 `71a955f6`，报告按失败说 `6316e2aa`，e2e 的帮手 `e1901710`；之后变基到 `m8-p4a` 的 `5c1a6ec7`，没有冲突，是 `19952930`、`e131a67f`、`52154abe`、`ffc6a3d1`、`30303cd6`、`5bcd2af9`；修复核对第一轮的修复：晚到的结果只在之后的一次说过什么时才不说、三处测试 `35852717`，TB2 在别的页开着时删除 Big `f7fb9f5b`；合并之前再变基到 `m8-p4a` 的 `f0bafbba`，是 `bff9509c`、`183964dc`、`fd7169e2`、`829a9331`、`548fe1da`、`9b65c5c3`、`4e249547`、`cfa9dc8e`。合并 `947812e6`。
+- 审查：三位审查者（Opus），都没有 Important。中低 2 条：结果未知按两个时钟比较，浏览器快过一点就说"没有开始"（A-M1、B-M4、C-M3）；报告的"留下的与要做的"对四种停下说反了（B-M1）。其余是低（"在历史里查看"给了开始之前被丢掉的任务；复数、数字与中文的"各自"；几处测试的缺口）与细节。修复核对两轮：第一轮 TB2（页面）不稳定（审查之前就有，测试的缺陷，中高）、A-N3 的修复太宽（细节）与三处测试的缺口；第二轮没有行为上的发现。逐条见[审查记录](reviews/P4B-background-web-review.md)。
+- 与设计不同之处已改在第 4 节（4.1–4.5），4.6 分实施时定下的与审查带来的列出。
+- 反向对照：实施之后 vitest 76 个（73 个被抓到；补了测试之后另 3 个与新加的 4 个都被抓到）、e2e 6 个都被抓到；审查者 A 7 个、B 18 个、C 15 个（存活的即各条测试的缺口或等价）；审查的修复之后 31 个都被抓到；修复核对第一轮核对者 8 个（存活 3 个即 F-3），它的修复之后 7 个都被抓到；第二轮 15 个都被抓到。
+- 门禁：本机 `7fa44cb4`、`e1901710`、`f7fb9f5b` 上 `make lint-web knip test-web build-web`（3,213、3,237、3,239 个测试）、`make build` 之后整个 e2e 245 个通过；TB2 两个版本连跑 15 次（实施者）与 10 次（核对者）都通过；这一阶段没有服务端与契约的改动。CI：`f7fb9f5b`（run 38622786286）与再变基之后的 `cfa9dc8e`（run 38625107556）全绿。
+- 交给后面的：M12：打磨见审查记录，已写进 [M12 的打磨移交](../M12-release/handoffs/M5-polish.md)第 24 条（含 A-M2 的那一句要服务端的提示）。
+- 负责人可以改判的取舍：结果未知的规则（进行中的不论时刻，已结束的按持有的与一分钟的界线；两个标签页与时钟差过一分钟时可能说错）；不是管理员的写者看不到别的账户的任务时冲突不带那一句（A-N1）；进度的文字照旧（偏离 1）；确认框里后台的 422 之后按钮仍可按（偏离 5）。
 
 ## 附：查过的代码
 

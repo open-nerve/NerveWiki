@@ -129,7 +129,7 @@ asset 的上传与导入读同一种表单：几个小的文字部分、一个�
 - **`startImport`**：`POST /api/v0/notebooks/{notebook_id}/imports`，`x-raw`（代码生成排除，契约测试按描述核对），`multipart/form-data`：`parent_id`（可省，导入到根下）、`file`（zip），依次、各至多一次；文件之前至多读 4 KiB；`Content-Transfer-Encoding` 不解码；答 202 `TransferJob`。
   - 错误码（`x-problem-codes` 列模块的码与 `forbidden`、`server_busy`、`storage_full`）：`notebook.not_found`、`forbidden`（读者）、`page.not_found`（`parent_id` 不是这本笔记本里活着的页）、`transfer.busy`（409：这本笔记本已有排队、运行中或正在上传的导入，任何人的）、`server_busy`（503，排队、运行中的任务与正在上传的导入已满，带 `Retry-After`）、`storage_full`（507：声明的长度与别的上传还没存下的写进去之后余量不够，或写的时候写满）、`payload_too_large`（413：声明的长度超过上限时立即答，否则文件超过 `transfer.import_max_bytes` 时）、`bad_request`（400：表单不对、请求体没读完整或太慢）。读文件之前答出的拒绝关闭连接，客户端可能看到连接被重置。`Create` 再做读文件之前的各项核对，存储的余量除外。
   - 任务的 `root_id` 是导入的位置（`null`：根），`name` 是上传的文件名（经 `FixTitle(_, true)`，空的叫"未命名"）。
-- **`TransferFailure`** 加：`not_zip`（不是 zip，或结尾记录、中央目录坏了、越出文件）、`too_many_entries`（条目超过 `transfer.import_max_entries`，或中央目录超过 64 MiB）、`unpacked_too_large`（解压后的总字节数超过 `transfer.import_max_unpacked_bytes`）、`tree_changed`（导入途中，已导入的页被删除或移走，后面的写不下去）；`root_not_found` 的说明加上"导入的位置已不存在"。
+- **`TransferFailure`** 加：`not_zip`（不是 zip，或结尾记录、中央目录坏了、越出文件）、`too_many_entries`（条目超过 `transfer.import_max_entries`，或中央目录超过 64 MiB）、`unpacked_too_large`（解压后的总字节数超过 `transfer.import_max_unpacked_bytes`）、`too_many_nodes`（M8/P4 加：导入的计划建的节点——条目加路径隐含的文件夹页——超过 `page.MaxJobItems` = 60,000，整包失败、什么都不写：超过它的导入在后台也撤销不了，M8/P4 设计 2.2 的 (a)）、`tree_changed`（导入途中，已导入的页被删除或移走，后面的写不下去）；`root_not_found` 的说明加上"导入的位置已不存在"。
 - **`TransferProblem.code`** 加：`unsafe_path`（越出根：`..`、绝对路径、盘符）、`special_file`（符号链接与其他特殊文件）、`encrypted`、`unsupported_method`（不是 Store、Deflate）、`too_compressed`（压缩比超过 200）、`name_not_utf8`、`invalid_content`（`.md` 不是 UTF-8 或含 NUL）、`too_large`（`.md` 超过 5 MiB、附件超过 `asset.max_bytes`）、`too_deep`（在笔记本里超过 10 层）、`duplicate`（同一路径的第二个条目）、`unreadable`（解压失败、校验和不对、大小与条目头不符）。路径的写法见 3.4。
 - **`TransferCounts`** 的说明：导入的 `pages`、`attachments` 是建了的，`renamed` 是改了名的，`skipped` 是跳过的条目，`missing` 恒为 0；导出被收拾时计数为 0，导入的计数与问题随心跳写（至多每 10 秒），被收拾时保留最后写的。进度：导入的是已处理的节点数 / 要建的节点数（校验完之前总数为 0）。
 - `api/modules/instance.yaml`：`InstanceInfo.import_max_bytes`（必填，至少 1 MiB）。
@@ -192,7 +192,7 @@ asset 的上传与导入读同一种表单：几个小的文字部分、一个�
 worker 只调用用例 `Import.Run(ctx, jobID)`。导出与导入共用任务的骨架（`app/job_run.go`，从 `export.go` 移出）：`queued → running`、每秒的心跳读回取消与删除、`failed` 的原因码、结束时限时写结局。导出的行为不变（它的测试原样通过）。
 
 1. 开始、心跳同导出。判定：以 `Actor{UserID, JobID}` 判定 `transfer.import`（看不到、不是写者：失败 `forbidden`）；笔记本删除时任务行随之软删除，心跳看到之后停下，什么都不写。
-2. 打开 zip（`not_zip`、`too_many_entries`，3.10），分类、读 `meta.json`、校验（3.11），读位置的深度（不在：`root_not_found`），映射（3.12）。进度的总数是要建的节点数，之前是 0；已处理的含跳过的。
+2. 打开 zip（`not_zip`、`too_many_entries`，3.10），分类、读 `meta.json`、校验（3.11），读位置的深度（不在：`root_not_found`），映射（3.12）；计划建的节点超过 `MaxJobItems`（组合根交来的 `ImportDeps.MaxNodes`）：`too_many_nodes`，什么都不写、删掉文件（M8/P4）。进度的总数是要建的节点数，之前是 0；已处理的含跳过的。
 3. **分批**：按计划的次序切批，一批至多 100 个节点、8 MiB 正文、20,000 条链接（链接数来自解析）；一页单独超过的自成一批。每一批：
    1. 停下的检查：心跳已要求取消、行已删，就在这里停（"在两批之间停下"）。
    2. 读这一批的页的正文、解析（`TreeWrites.Parse`，在单元之前、不持锁）：取不到预算（503）时，手上已有解析好的页就先写这一批（放开它们的预算），没有就退避重试（1 秒起、每次加倍、至多 30 秒），直到心跳停下或任务的上下文结束。
@@ -217,7 +217,7 @@ worker 只调用用例 `Import.Run(ctx, jobID)`。导出与导入共用任务的
 | 键 | 默认 | 约束 |
 |---|---|---|
 | `transfer.import_max_bytes` | 512 MiB | 至少 1 MiB；不小于 `asset.max_bytes`；按 `asset.upload_min_rate` 在 3 小时之内传完（`MaxImportTransfer`） |
-| `transfer.import_max_entries` | 50,000 | 1–100,000（64 MiB 的中央目录装得下的量级） |
+| `transfer.import_max_entries` | 50,000 | 1–100,000（64 MiB 的中央目录装得下的量级）；导入建的节点另至多 60,000 个（`page.MaxJobItems`，不是配置，M8/P4） |
 | `transfer.import_max_unpacked_bytes` | 4 GiB | 不小于 `transfer.import_max_bytes` |
 | `jobs.import_workers` | 1 | 1–8，与 `jobs.export_workers` 合起来至多 `database.max_conns` 的一半（`export_workers` 本身合法时才核对） |
 
