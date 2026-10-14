@@ -4,13 +4,22 @@ import { accountIdOf } from "../../fixtures/assert/identity";
 import { expectIndexedLinks } from "../../fixtures/assert/links";
 import { expectRevert, expectVersions, revertsOf } from "../../fixtures/assert/page";
 import { displayNameOf, emailFor, login } from "../../fixtures/auth";
-import { failedToLoad } from "../../fixtures/browser";
+import { answerTo, failedToLoad } from "../../fixtures/browser";
 import type { Database } from "../../fixtures/db";
 import { settleEvents } from "../../fixtures/events";
 import { getChangeset, listChanges, listChangesets, revertChangeset } from "../../fixtures/history";
 import { joinAs } from "../../fixtures/invitations";
 import { createNotebook } from "../../fixtures/notebooks";
-import { createPage, listNodes, moveNode, readContent, renameNode, writeContent } from "../../fixtures/pages";
+import {
+  createPage,
+  endSession,
+  listNodes,
+  moveNode,
+  openSession,
+  readContent,
+  renameNode,
+  writeContent,
+} from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
 import {
   changesetPath,
@@ -19,6 +28,7 @@ import {
   pageHeading,
   revertDialog,
   revertWith,
+  startEditing,
   wikiPagePath,
 } from "../../fixtures/wiki-pages";
 import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
@@ -277,7 +287,7 @@ test("HI3 (API): each write is a changeset of its account and client, listed new
   expect(await readContent(api, pat, of.notes)).toMatchObject({ content: "Again.\n", revision: 4 });
 });
 
-test("HI3 (page): the history in the left column lists the changesets; Only this person and the page menu's history filter it; a rename's page says what it changed; Undo change reverts it, the title focused, saying so, the bytes, the versions and the index following; a changeset whose page changed since is refused in the dialog, naming it, and nothing is written", async ({
+test("HI3 (page): the history in the left column lists the changesets; Only this person and the page menu's history filter it; a rename's page says what it changed; Undo change reverts it, the title focused, saying so, the bytes, the versions and the index following; a changeset whose page changed since is refused in the dialog, naming it, and nothing is written; an edit session's content is reverted, Undo keeping the focus while the undo is out and after a refusal the dialog keeps", async ({
   api,
   db,
   pageWatch,
@@ -366,4 +376,80 @@ test("HI3 (page): the history in the left column lists the changesets; Only this
   ]);
   expect(await revertsOf(db, of.write)).toEqual([]);
   expect(await readContent(api, pat, of.notes)).toMatchObject({ content: "Again.\n", revision: 3 });
+
+  // Notes written through the editor, an edit session: that session's changeset undone (00-M8 section 9).
+  await page.goto(wikiPagePath(workspace.slug, notebook.id, of.notes));
+  await expect(pageHeading(page, "Notes")).toBeVisible();
+  await startEditing(page);
+  await page.keyboard.press("ControlOrMeta+End");
+  await page.keyboard.type("Edited");
+  await main.getByRole("button", { name: "Done", exact: true }).click();
+  await expect(main.getByRole("button", { name: "Edit", exact: true })).toBeFocused();
+  const edited = "Again.\nEdited";
+  expect(await readContent(api, pat, of.notes)).toMatchObject({ content: edited, revision: 4 });
+  const [session] = (await listChangesets(api, pat, notebook.id)).data?.data ?? [];
+  expect(session).toMatchObject({ kind: "edit", client: "web", node_count: 0, content_count: 1 });
+  const sessionId = session?.id ?? "";
+  await page.goto(historyPath(workspace.slug, notebook.id));
+  await expect(listed.nth(0)).toContainText("Wrote “Notes”");
+  await listed.nth(0).getByRole("link").first().click();
+  await expect(page).toHaveURL(changesetPath(workspace.slug, notebook.id, sessionId));
+  const sessionHeading = main.getByRole("heading", { level: 1, name: `Edit · ${displayNameOf(adminEmail)}` });
+  await expect(sessionHeading).toBeVisible();
+
+  // B edits Notes: the undo is refused in the dialog, which stays; Undo keeps the focus while the undo is out and
+  // after (v0.1 design 13.2, item 12; M8/P3B review A-M1).
+  const bSession = await openSession(api, b, of.notes);
+  const revertPath = `/api/v0/changesets/${sessionId}/revert`;
+  // The undos held, each until released.
+  const held: (() => void)[] = [];
+  await page.route(`**${revertPath}`, async (route) => {
+    await new Promise<void>((resolve) => held.push(resolve));
+    await route.continue();
+  });
+  const releaseHeld = async () => {
+    await expect.poll(() => held.length).toBe(1);
+    held.shift()?.();
+  };
+  await main.getByRole("button", { name: "Undo change", exact: true }).click();
+  const sessionDialog = revertDialog(page);
+  const confirm = sessionDialog.locator("button[type=submit]");
+  await confirm.focus();
+  const locked = answerTo(page, "POST", revertPath);
+  await page.keyboard.press("Enter");
+  await expect(confirm).toHaveAttribute("aria-busy", "true");
+  await expect(confirm).toHaveText("Undoing…");
+  await expect(confirm).toBeFocused();
+  await releaseHeld();
+  expect((await locked).status()).toBe(409);
+  pageWatch.expectConsole({ errors: [failedToLoad(409)] });
+  await expect(sessionDialog.getByRole("alert")).toHaveText(`${bName} is editing “Notes”.`);
+  await expect(confirm).toHaveText("Undo");
+  await expect(confirm).toBeFocused();
+  expect(await revertsOf(db, sessionId)).toEqual([]);
+
+  // B done: Enter, pressed twice while the undo is out, sends one undo; the title takes the focus.
+  expect((await endSession(api, b, bSession.id)).response.status).toBe(204);
+  const reverted = answerTo(page, "POST", revertPath);
+  await page.keyboard.press("Enter");
+  await expect(confirm).toHaveAttribute("aria-busy", "true");
+  await page.keyboard.press("Enter");
+  await expect(confirm).toBeFocused();
+  await releaseHeld();
+  expect((await reverted).status()).toBe(200);
+  await expect(main.getByRole("status")).toHaveText("Undone. See the undo");
+  await expect(sessionHeading).toBeFocused();
+  await page.unroute(`**${revertPath}`);
+  expect(pageWatch.apiRequests.filter((each) => each === `POST ${revertPath}`)).toHaveLength(2);
+  const sessionReverts = await revertsOf(db, sessionId);
+  expect(sessionReverts).toHaveLength(1);
+  expect(await readContent(api, pat, of.notes)).toMatchObject({ content: "Again.\n", revision: 5 });
+  await expectVersions(db, of.notes, [
+    { base: null, revision: 1, content: "", kind: "edit", byId: adminId, client: "api" },
+    { base: 1, revision: 2, content: hello, kind: "edit", byId: adminId, client: "web" },
+    { base: 2, revision: 3, content: "Again.\n", kind: "edit", byId: adminId, client: "api" },
+    { base: 3, revision: 4, content: edited, kind: "edit", byId: adminId, client: "web" },
+    { base: 4, revision: 5, content: "Again.\n", kind: "revert", byId: adminId, client: "web", revertsId: sessionId },
+  ]);
+  await expectRevert(db, sessionReverts[0] ?? "", adminId, "web", { revertsId: sessionId, items: 0, versions: 1 });
 });
