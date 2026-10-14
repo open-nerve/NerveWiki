@@ -362,6 +362,24 @@ func pageMatrixRows() []matrixRow {
 					t.Errorf("reverted %s, want the rename put back in a changeset", answer)
 				}
 			},
+			after: func(t *testing.T, c caller, s seeded, get func(string) (int, string)) {
+				t.Helper()
+				nb := notebookOf(c)
+				status, answer := get("/api/v0/notebooks/" + s.notebook(nb).String() + "/nodes")
+				type node struct {
+					ID   string `json:"id"`
+					Name string `json:"name"`
+				}
+				var l struct {
+					Data []node `json:"data"`
+				}
+				decodeAnswer(t, answer, &l)
+				page := s.page(renamedIn(nb)).String()
+				if i := slices.IndexFunc(l.Data, func(n node) bool { return n.ID == page }); status != http.StatusOK || i < 0 ||
+					l.Data[i].Name != wasIn(nb) {
+					t.Errorf("the tree after the revert = %d %s, want the page named %s again", status, answer, wasIn(nb))
+				}
+			},
 		},
 		{
 			op:      "getPageContent",

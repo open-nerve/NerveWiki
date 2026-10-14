@@ -156,8 +156,17 @@ func (tm acmeTeam) reverted(t *testing.T, by, id string) string {
 	if status != http.StatusOK || !r.Changed || r.ChangesetID == nil {
 		t.Fatalf("revert %s as %s = %d %s, want 200, changed", id, by, status, body)
 	}
-	tm.checkTrash(t)
+	tm.checkHistory(t)
 	return *r.ChangesetID
+}
+
+// checkHistory checks what a revert keeps (M8/P3 design 3.10): the
+// trash's invariants, the pages', the attachments' and the notebooks', and
+// the link index's.
+func (tm acmeTeam) checkHistory(t *testing.T) {
+	t.Helper()
+	tm.checkTrash(t)
+	checkLinks(t, tm.pool)
 }
 
 // revertConflict is a RevertConflict answer.

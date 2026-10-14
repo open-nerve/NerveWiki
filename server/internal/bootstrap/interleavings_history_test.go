@@ -62,7 +62,7 @@ func TestRevertingAndWritingAPageOfIt(t *testing.T) {
 					revert.body, write.status, write.code, content)
 			}
 		}
-		tm.checkTrash(t)
+		tm.checkHistory(t)
 	})
 }
 
@@ -95,7 +95,7 @@ func TestRevertingAndRenamingANodeOfIt(t *testing.T) {
 					rename.status, rename.body)
 			}
 		}
-		tm.checkTrash(t)
+		tm.checkHistory(t)
 	})
 }
 
@@ -118,7 +118,7 @@ func TestRevertingWhileAPageOfItIsEdited(t *testing.T) {
 		if now := tm.notebookState(t, nb); now != was || tm.reverts(t, nb) != 0 {
 			t.Errorf("the refused revert changed the notebook:\n%s\nwas\n%s", now, was)
 		}
-		tm.checkTrash(t)
+		tm.checkHistory(t)
 	}
 	for _, holder := range []string{"alice", "bob"} {
 		t.Run("a rename's rewrite, P held by "+holder, func(t *testing.T) {
@@ -190,7 +190,7 @@ func TestRevertingAndPurgingTheChangeset(t *testing.T) {
 			count(t, tm.pool, "SELECT count(*) FROM nodes WHERE id = $1 AND deleted_at IS NOT NULL", b) != 1 {
 			t.Errorf("C has %d items, trimmed %v; want none, trimmed, B still in the trash and no revert", items, trimmed)
 		}
-		tm.checkTrash(t)
+		tm.checkHistory(t)
 	})
 	t.Run("the revert first", func(t *testing.T) {
 		tm, _, b, c := deleted(t)
@@ -204,7 +204,7 @@ func TestRevertingAndPurgingTheChangeset(t *testing.T) {
 		if n := count(t, tm.pool, "SELECT count(*) FROM nodes WHERE id = $1 AND deleted_at IS NULL", b); n != 1 {
 			t.Errorf("B is not back")
 		}
-		tm.checkTrash(t)
+		tm.checkHistory(t)
 	})
 	t.Run("C's row held", func(t *testing.T) {
 		tm, _, _, c := deleted(t)
@@ -227,7 +227,7 @@ func TestRevertingAndPurgingTheChangeset(t *testing.T) {
 		if items, trimmed := itemsOf(t, tm, c); items != 0 || !trimmed {
 			t.Errorf("C let go, the purge left %d items, marked %v; want none, marked", items, trimmed)
 		}
-		tm.checkTrash(t)
+		tm.checkHistory(t)
 	})
 }
 
@@ -321,7 +321,7 @@ func TestTwoRevertsOfAChangeset(t *testing.T) {
 	if n := tm.reverts(t, nb); n != 1 {
 		t.Errorf("%d reverts' changesets, want 1", n)
 	}
-	tm.checkTrash(t)
+	tm.checkHistory(t)
 }
 
 // Interleaving 7: a revert of a deletion and a restore of its item. The
@@ -354,7 +354,7 @@ func TestRevertingADeletionAndRestoringItsItem(t *testing.T) {
 		if n := count(t, tm.pool, "SELECT count(*) FROM nodes WHERE id = $1 AND deleted_at IS NULL", d); n != 1 {
 			t.Errorf("D is not back once")
 		}
-		tm.checkTrash(t)
+		tm.checkHistory(t)
 	})
 }
 
@@ -386,7 +386,7 @@ func TestRevertingADeletionAndDeletingItsParent(t *testing.T) {
 		case "deletion":
 			conflicted(t, "the revert after the deletion", revert, d, "parent_gone")
 		}
-		tm.checkTrash(t)
+		tm.checkHistory(t)
 	})
 }
 
@@ -438,7 +438,7 @@ func TestRevertingAnEditSessionsChangeset(t *testing.T) {
 		if l, _ := tm.history(t, "alice", nb, "limit=2"); len(l) != 2 || l[0].Kind != "edit" || l[0].ID == c || l[1].Kind != "revert" {
 			t.Errorf("the log = %+v, want the new session's changeset, then the revert", l)
 		}
-		tm.checkTrash(t)
+		tm.checkHistory(t)
 	})
 	t.Run("its session net zero", func(t *testing.T) {
 		tm := newAcmeTeam(t, "member", "")
@@ -457,7 +457,7 @@ func TestRevertingAnEditSessionsChangeset(t *testing.T) {
 		if cs := tm.changeset(t, "alice", c); tm.newest(t, nb).ID != c || len(cs.RevertedBy) != 0 {
 			t.Errorf("the save after the revert went elsewhere than C, or C is reverted: %+v", cs)
 		}
-		tm.checkTrash(t)
+		tm.checkHistory(t)
 	})
 }
 
@@ -493,7 +493,7 @@ func TestRevertingADeletionThePurgeIsMidwayThrough(t *testing.T) {
 				tm.reverts(t, nb) + count(t, tm.pool, "SELECT count(*) FROM changesets WHERE id = $1 AND trimmed", c); n != 0 {
 				t.Errorf("%d nodes back, reverts, or C marked; want none", n)
 			}
-			tm.checkTrash(t)
+			tm.checkHistory(t)
 		})
 	}
 }

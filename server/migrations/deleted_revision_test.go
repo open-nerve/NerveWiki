@@ -15,7 +15,8 @@ import (
 // content in the trash at its time (M8/P3 design 3.2): none for a page
 // restored since, or deleted again at another time, nor for an
 // attachment, which has no content. The schema goes down to 00037, the
-// data is written as the program before wrote it, and up again.
+// data is written as the program before wrote it, and up again; then down
+// again, the deletions' revisions cleared.
 func TestTheDeletionsRevisionsAreBackfilled(t *testing.T) {
 	ctx := context.Background()
 	pool := newPool(t, pgtest.NewDatabase(t))
@@ -117,6 +118,26 @@ func TestTheDeletionsRevisionsAreBackfilled(t *testing.T) {
 	for i := range want {
 		if got[i].Node != want[i].Node || !sameInt(got[i].Revision, want[i].Revision) {
 			t.Errorf("item of %s: revision %v, want %v", got[i].Node, deref(got[i].Revision), deref(want[i].Revision))
+		}
+	}
+
+	// Down again over d's revision (M8/P3A review A-4): the deletions' items
+	// lose theirs, which 00037's checks forbid; the creation keeps its own.
+	if back, err := m.Down(ctx); err != nil || back == nil || back.Version != 38 {
+		t.Fatalf("Down() over a deletion's revision = %+v, %v; want 00038 down", back, err)
+	}
+	rows, err = pool.Query(ctx, `SELECT node_id::text, revision FROM changeset_items ORDER BY id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err = pgx.CollectRows(rows, pgx.RowToStructByPos[revised]); err != nil {
+		t.Fatal(err)
+	}
+	want[0].Revision = nil
+	for i := range want {
+		if i >= len(got) || got[i].Node != want[i].Node || !sameInt(got[i].Revision, want[i].Revision) {
+			t.Errorf("after Down, items %+v; want %+v", got, want)
+			break
 		}
 	}
 }

@@ -169,6 +169,10 @@ type matrixRow struct {
 	// check, when set, runs on each answer that is not a problem: what the
 	// answer holds for that caller.
 	check func(t *testing.T, c caller, s seeded, answer string)
+	// after, when set, runs after check on a write's copy: what the write
+	// left there, read through get, a GET as the caller checked against
+	// the contract.
+	after func(t *testing.T, c caller, s seeded, get func(path string) (int, string))
 }
 
 // callers are the row's columns.
@@ -271,6 +275,11 @@ func TestPermissionMatrix(t *testing.T) {
 				if r.check != nil && got.code == "" {
 					r.check(t, c, d.seeded.in(t), answer)
 					checked.Add(1)
+				}
+				if r.after != nil && got.code == "" {
+					r.after(t, c, d.seeded.in(t), func(path string) (int, string) {
+						return ask(t, contract, http.MethodGet, base+path, d.tokens[c], "")
+					})
 				}
 			})
 		}
