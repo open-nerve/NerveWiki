@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync/atomic"
 	"time"
@@ -197,25 +198,29 @@ func (j *IndexSearch) batch(ctx context.Context, queued []QueuedNode, run *Searc
 // transaction that cannot begin: the run's connection is gone, and a node
 // tried alone on it would fail for want of it, not for anything of its
 // own; the run ends with that one error, its nodes left queued (M8/P5A
-// fix check M-1).
+// fix check M-1), holding the batch's failure too, which may be what ended
+// the connection: a FATAL, a COMMIT past its timeout (fix check N2-1).
 func (j *IndexSearch) write(ctx context.Context, rows []SearchRow, deleted []uuid.UUID) (map[uuid.UUID]bool, error) {
 	if len(rows) == 0 && len(deleted) == 0 {
 		return nil, nil
 	}
-	err := j.tx.WithinTx(ctx, func(ctx context.Context) error { return j.index.WriteSearchRows(ctx, rows, deleted) })
-	if err == nil || ctx.Err() != nil || shared.TxNotBegun(err) {
-		return nil, err
+	batchErr := j.tx.WithinTx(ctx, func(ctx context.Context) error { return j.index.WriteSearchRows(ctx, rows, deleted) })
+	if batchErr == nil || ctx.Err() != nil || shared.TxNotBegun(batchErr) {
+		return nil, batchErr
 	}
 	failed := map[uuid.UUID]bool{}
 	one := func(id uuid.UUID, rows []SearchRow, deleted []uuid.UUID) error {
 		err := j.tx.WithinTx(ctx, func(ctx context.Context) error { return j.index.WriteSearchRows(ctx, rows, deleted) })
-		if err != nil && ctx.Err() == nil && !shared.TxNotBegun(err) {
-			failed[id] = true
-			j.logger.LogAttrs(ctx, slog.LevelError, "a node's search row is not written: the node stays queued",
-				slog.String("node_id", id.String()), slog.Any("error", err))
-			return nil
+		switch {
+		case err == nil || ctx.Err() != nil:
+			return err
+		case shared.TxNotBegun(err):
+			return fmt.Errorf("the batch's write: %w; a node's alone: %w", batchErr, err)
 		}
-		return err
+		failed[id] = true
+		j.logger.LogAttrs(ctx, slog.LevelError, "a node's search row is not written: the node stays queued",
+			slog.String("node_id", id.String()), slog.Any("error", err))
+		return nil
 	}
 	for _, r := range rows {
 		if err := one(r.NodeID, []SearchRow{r}, nil); err != nil {

@@ -421,6 +421,10 @@ func TestTheSearchJobEndsWhenATransactionCannotBegin(t *testing.T) {
 			t.Errorf("%d begun: Drain() = %+v, %v; queued %d, rows %d; want begin's error, nothing written or failed, all queued",
 				begins, run, err, len(f.queue), len(f.rows))
 		}
+		// The batch's failure stays in the run's error (fix check N2-1).
+		if begins == 1 && (err == nil || !strings.Contains(err.Error(), "SQLSTATE 54000")) {
+			t.Errorf("%d begun: Drain() = %v, want the batch's failure in it", begins, err)
+		}
 		if strings.Contains(logs.String(), "not written") || slices.Contains(f.calls, "WriteSearchRows 1 0") || tx.refused != 1 {
 			t.Errorf("%d begun: logs %q, calls %v, %d transactions refused; want the first refused alone, no node tried alone, none logged",
 				begins, logs.String(), f.calls, tx.refused)

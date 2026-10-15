@@ -489,7 +489,8 @@ func TestTheSearchsJobRunsOnItsLocksConnection(t *testing.T) {
 // pg_terminate_backend or a reset would, ends with one error: the
 // transaction that could not begin on it. No node is logged as not
 // written, each stays queued, and the next run writes them all (M8/P5A
-// fix check M-1).
+// fix check M-1). The error holds the batch's failure, the termination
+// (fix check N2-1).
 func TestASearchRunWhoseConnectionEndsFailsOnce(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
@@ -515,6 +516,9 @@ func TestASearchRunWhoseConnectionEndsFailsOnce(t *testing.T) {
 	if !shared.TxNotBegun(err) || run.Written != 0 || run.Failed != 0 || strings.Contains(logs.String(), "not written") {
 		t.Errorf("Drain() as its connection ends = %+v, %v, logging %q; want the error of a transaction not begun, no node failed",
 			run, err, logs.String())
+	}
+	if err == nil || !strings.Contains(err.Error(), "SQLSTATE 57P01") {
+		t.Errorf("Drain() = %v, want the batch's failure, the backend's termination, in it (M8/P5A fix check N2-1)", err)
 	}
 	if rows, queued := f.count(t, `SELECT count(*) FROM page_search`), f.count(t, `SELECT count(*) FROM page_search_queue`); rows != 0 ||
 		queued != 5 {
