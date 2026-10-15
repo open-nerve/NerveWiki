@@ -172,9 +172,12 @@ func TestAPageBackAfterTheSearchsJobDeletedItsRow(t *testing.T) {
 			tm := newAcmeTeam(t, "member", "")
 			nb := tm.openNotebook(t, "alice", "Eng")
 			id := tm.createPageWith(t, "alice", nb, "", "Notes", "the wombat")
+			if run := drainSearch(t, tm.pool); run.Written != 1 {
+				t.Fatalf("the run = %+v, want the page's row built", run)
+			}
 			tm.send(t, nodeDeletion("alice", id), http.StatusNoContent)
-			if run := drainSearch(t, tm.pool); run.Written != 0 || count(t, tm.pool, "SELECT count(*) FROM page_search") != 0 {
-				t.Fatalf("the run = %+v, want no row of the deleted page", run)
+			if run := drainSearch(t, tm.pool); run.Deleted != 1 || count(t, tm.pool, "SELECT count(*) FROM page_search") != 0 {
+				t.Fatalf("the run = %+v, want the deleted page's row deleted", run)
 			}
 			back.do(tm, nb, id)
 			tm.finds(t, "bob", "wombat", "Notes")
