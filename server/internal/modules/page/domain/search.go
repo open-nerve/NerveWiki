@@ -50,8 +50,11 @@ const (
 	// MaxSearchLexemeBytes bounds a row's lexemes, their bytes summed: a
 	// tsvector holds at most 1,048,575 and refuses more.
 	MaxSearchLexemeBytes = 1_000_000
-	// MaxSearchWordRunes is the longest run of letters indexed, folded: a
-	// longer one, base64 and the like, is not, nor is a query's.
+	// MaxSearchWordRunes is the longest run of ASCII letters and digits
+	// indexed, folded: a longer one, base64, hex and the like, is not, nor
+	// is a query's. A longer run of another script's letters and marks,
+	// Thai's, Lao's, Khmer's or Burmese's, which part no words by spaces, is
+	// indexed as any other (M8/P5A review A-I1).
 	MaxSearchWordRunes = 64
 	// MinSearchRebuild is how soon after the job built a node's row it
 	// builds it again: a page being edited is saved every few seconds.
@@ -67,12 +70,16 @@ const (
 )
 
 // searchTokenizerVersion is the version of the rules below: a change of
-// them is a new one, whose rows nervewiki reindex queues.
-const searchTokenizerVersion = "1"
+// them is a new one, whose rows nervewiki reindex queues. 2: the cut of
+// long runs to ASCII's, the end of a data: string, Cherokee's case (M8/P5A
+// review A-I1, A-M3, A-M1).
+const searchTokenizerVersion = "2"
 
-// SearchTokenizer names the lexemes a row holds: the rules' version and
-// Go's Unicode version, whose tables classify and fold the characters.
-const SearchTokenizer = searchTokenizerVersion + "/" + unicode.Version
+// SearchTokenizer names the lexemes a row holds: the rules' version, Go's
+// Unicode version, whose tables classify the characters, and x/text's,
+// whose fold and NFC key them (shared.TitleKey): an upgrade of either may
+// change a row's lexemes.
+const SearchTokenizer = searchTokenizerVersion + "/" + unicode.Version + "/" + norm.Version
 
 // searchClasses are the characters' classes (M8/P5 design 3.3) as tables,
 // from Go's: CJK, with ー, ｰ and 〆, of no script but inside Japanese
@@ -201,19 +208,34 @@ func classOf(r rune) searchClass {
 	return classOther
 }
 
-// searchFold is how lexemes and keys compare: shared.TitleKey.
+// searchFold is how lexemes and keys compare: shared.TitleKey, Cherokee's
+// small letters then its capitals. x/text's full folding toggles Cherokee's
+// case, capitals to small letters and small letters to capitals, where
+// Unicode's folds both to the capitals: a query in one case would key the
+// other's lexemes, found while its page waits in the queue and lost once
+// the job built its row (M8/P5A review A-M1). The pattern's orbit class
+// matches either case; the key is now one.
 func searchFold(s string) string {
-	return shared.TitleKey(s)
+	return strings.Map(func(r rune) rune {
+		switch {
+		case 0xAB70 <= r && r <= 0xABBF: // ꭰ–ꮿ: Ꭰ–Ꮿ
+			return r - 0xAB70 + 0x13A0
+		case 0x13F8 <= r && r <= 0x13FD: // ᏸ–ᏽ: Ᏸ–Ᏽ
+			return r - 0x13F8 + 0x13F0
+		}
+		return r
+	}, shared.TitleKey(s))
 }
 
 // SearchTokens are a node's lexemes (M8/P5 design 3.3), in the order they
 // first occur: its name's, the title's, each CJK character and bigram; and
 // a page's name and content's, the body's, nil for an attachment (content
 // nil) alone, each CJK bigram. Both hold each run of letters' trigrams, or the
-// run when it is of one or two. A run longer than MaxSearchWordRunes, a
-// data: string longer than 64 characters (an image in the Markdown), and
-// what follows MaxSearchLexemeBytes are left out: a query finds them only
-// while the node waits in the queue.
+// run when it is of one or two. A run of ASCII letters and digits longer
+// than MaxSearchWordRunes, a data: string longer than 64 characters (an
+// image in the Markdown), up to the first character no data: URL holds,
+// and what follows MaxSearchLexemeBytes are left out: a query finds them
+// only while the node waits in the queue.
 func SearchTokens(name string, content *string) (title, body []string) {
 	t := lexemes{out: []string{}}
 	t.scan(searchFold(name), true)
@@ -262,12 +284,14 @@ func (l *lexemes) scan(s string, unigrams bool) {
 		r, size := utf8.DecodeRuneInString(s[i:])
 		if word < 0 && r == 'd' && strings.HasPrefix(s[i:], "data:") {
 			// A data: URL as a word starts: one longer than 64 characters
-			// is left out up to the next white space.
-			end := strings.IndexFunc(s[i:], unicode.IsSpace)
+			// is left out up to its end, the first character no data: URL
+			// holds, so that the text right after it, a CJK paragraph's
+			// after an image's ")", is not (M8/P5A review A-M3).
+			end := strings.IndexFunc(s[i:], func(r rune) bool { return !inDataURL(r) })
 			if end < 0 {
 				end = len(s) - i
 			}
-			if utf8.RuneCountInString(s[i:i+end]) > 64 {
+			if end > 64 { // bytes: the URL's characters are ASCII
 				prev = -1
 				i += end
 				continue
@@ -300,12 +324,25 @@ func (l *lexemes) scan(s string, unigrams bool) {
 	l.word(s, word, len(s), words)
 }
 
+// inDataURL reports whether a data: URL holds r: ASCII but white space and
+// what ends it in Markdown and HTML, ")", quotes, "<", ">" and "]".
+func inDataURL(r rune) bool {
+	return r < utf8.RuneSelf && !unicode.IsSpace(r) && !strings.ContainsRune(`)"'<>]`, r)
+}
+
+// longASCII reports whether the word run of n characters in b bytes is
+// one MaxSearchWordRunes leaves out: longer, and of ASCII letters and
+// digits alone, a byte each.
+func longASCII(n, b int) bool {
+	return n > MaxSearchWordRunes && b == n
+}
+
 // word adds the lexemes of the word run s[start:end] of n characters: none
-// for no run or one past MaxSearchWordRunes; itself for one of one or two;
-// its trigrams otherwise.
+// for no run or one of ASCII past MaxSearchWordRunes; itself for one of one
+// or two; its trigrams otherwise.
 func (l *lexemes) word(s string, start, end, n int) {
 	switch {
-	case start < 0 || n > MaxSearchWordRunes:
+	case start < 0 || longASCII(n, end-start):
 		return
 	case n <= 2:
 		l.add(s[start:end])
@@ -346,10 +383,10 @@ type SearchTerm struct {
 // ParseSearchQuery parses a search's q (M8/P5 design 3.3): 422 on q when
 // it is missing or blank (required), not UTF-8 or holding NUL
 // (invalid_format), longer than MaxSearchQueryBytes, of more terms than
-// MaxSearchTerms or of a run of letters longer than MaxSearchWordRunes,
-// which no lexeme holds (too_long), or of no key at all: punctuation alone
-// (not_allowed). Its terms are parted by white space, U+3000 too, and
-// those of one folded form are one.
+// MaxSearchTerms or of a run of ASCII letters and digits longer than
+// MaxSearchWordRunes, which no lexeme holds (too_long), or of no key at
+// all: punctuation alone (not_allowed). Its terms are parted by white
+// space, U+3000 too, and those of one folded form are one.
 func ParseSearchQuery(q *string) (SearchQuery, error) {
 	invalid := func(code, message string) (SearchQuery, error) {
 		return SearchQuery{}, shared.Invalid(shared.FieldError{Field: "q", Code: code, Message: message})
@@ -382,7 +419,7 @@ func ParseSearchQuery(q *string) (SearchQuery, error) {
 		}
 		t, ok := parseTerm(text, folded)
 		if !ok {
-			return invalid(shared.FieldTooLong, fmt.Sprintf("must hold at most %d letters in a row", MaxSearchWordRunes))
+			return invalid(shared.FieldTooLong, fmt.Sprintf("must hold at most %d ASCII letters and digits in a row", MaxSearchWordRunes))
 		}
 		keyed = keyed || len(t.keys) > 0 || len(t.unigrams) > 0
 		out.Terms = append(out.Terms, t)
@@ -393,8 +430,8 @@ func ParseSearchQuery(q *string) (SearchQuery, error) {
 	return out, nil
 }
 
-// parseTerm is the term text, folded: false when a word run of it is
-// longer than MaxSearchWordRunes.
+// parseTerm is the term text, folded: false when a word run of it is of
+// ASCII letters and digits longer than MaxSearchWordRunes.
 func parseTerm(text, folded string) (SearchTerm, bool) {
 	t := SearchTerm{Text: text}
 	type run struct {
@@ -427,7 +464,7 @@ func parseTerm(text, folded string) (SearchTerm, bool) {
 				keys.add(tsqueryOperand(x))
 			}
 		case classWord:
-			if g.n > MaxSearchWordRunes {
+			if longASCII(g.n, g.end-g.start) {
 				return SearchTerm{}, false
 			}
 			w := lexemes{}

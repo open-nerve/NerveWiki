@@ -1008,12 +1008,12 @@ paths:
         line, which a reverse proxy may log. A cursor the search cannot
         read is bad_request, before anything else; then a q missing or
         blank (required), longer than 256 bytes, of more than 8 terms or
-        of more than 64 letters in a row (too_long), not UTF-8 or holding
-        NUL (invalid_format), or of no letter, digit or CJK character
-        (not_allowed) is validation_failed; then a workspace that does not
-        exist, is deleted, or that the caller is no active member of is
-        workspace.not_found; a notebook_id the caller does not see,
-        notebook.not_found; a limit outside 1–50 is validation_failed.
+        of more than 64 ASCII letters and digits in a row (too_long), not
+        UTF-8 or holding NUL (invalid_format), or of no letter, digit or
+        CJK character (not_allowed) is validation_failed; then a workspace
+        that does not exist, is deleted, or that the caller is no active
+        member of is workspace.not_found; a notebook_id the caller does not
+        see, notebook.not_found; a limit outside 1–50 is validation_failed.
       security: [{ bearer: [] }]
       x-problem-codes: [bad_request, validation_failed, workspace.not_found, notebook.not_found]
       parameters:

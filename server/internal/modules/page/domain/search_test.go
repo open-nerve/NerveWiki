@@ -12,12 +12,34 @@ import (
 	"unicode/utf8"
 	"uuid"
 
+	"golang.org/x/text/cases"
 	"golang.org/x/text/unicode/norm"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
 )
 
 func ptr[T any](v T) *T { return &v }
+
+// A clause of Thai and one of Khmer, of 73 and 71 code points, letters and
+// marks: their scripts part no words by spaces, each clause one run of
+// word characters (M8/P5A review A-I1).
+const (
+	thaiClause  = "ภาษาไทยเป\u0e47นภาษาท\u0e35\u0e48ม\u0e35ระด\u0e31บเส\u0e35ยงของคำแน\u0e48นอนหร\u0e37อวรรณย\u0e38กต\u0e4cเช\u0e48นเด\u0e35ยวก\u0e31บภาษาจ\u0e35น"
+	khmerClause = "ភ\u17b6ស\u17b6ខ\u17d2ម\u17c2រគ\u17baជ\u17b6ភ\u17b6ស\u17b6ក\u17c6ណ\u17beតរបស\u17cbជនជ\u17b6ត\u17b7ខ\u17d2ម\u17c2រន\u17b7ងជ\u17b6ភ\u17b6ស\u17b6ផ\u17d2ល\u17bcវក\u17b6ររបស\u17cbប\u17d2រទ\u17c1សកម\u17d2ព\u17bbជ\u17b6"
+)
+
+// trigramsOf are the trigrams of run, a run of word characters, in the
+// order they first occur.
+func trigramsOf(run string) []string {
+	r := []rune(run)
+	var out []string
+	for i := 0; i+3 <= len(r); i++ {
+		if x := string(r[i : i+3]); !slices.Contains(out, x) {
+			out = append(out, x)
+		}
+	}
+	return out
+}
 
 // The lexemes of a name and a page (M8/P5 design 3.3): the title holds a
 // CJK run's characters and bigrams, the body its bigrams alone; both a
@@ -42,6 +64,10 @@ func TestSearchTokens(t *testing.T) {
 			[]string{"ラー", "ーメ", "メン", "〆切", "한국"}},
 		// Punctuation, symbols and emoji part words and runs alike.
 		{"a-b", "c++ 😀d", []string{"a", "b"}, []string{"a", "b", "c", "d"}},
+		// A clause of a script that parts no words by spaces, past
+		// MaxSearchWordRunes, is indexed as any run (M8/P5A review A-I1).
+		{thaiClause, "", trigramsOf(thaiClause), trigramsOf(thaiClause)},
+		{"x", khmerClause, []string{"x"}, append([]string{"x"}, trigramsOf(khmerClause)...)},
 	} {
 		title, body := domain.SearchTokens(tt.name, &tt.content)
 		if !slices.Equal(title, tt.title) || !slices.Equal(body, tt.body) {
@@ -76,9 +102,9 @@ func TestSearchTokensOfNoLetter(t *testing.T) {
 	}
 }
 
-// A run of letters past MaxSearchWordRunes, counted folded, and a data:
-// string of more than 64 characters are left out; what surrounds them is
-// not.
+// A run of ASCII letters and digits past MaxSearchWordRunes, counted
+// folded, and a data: string of more than 64 characters are left out;
+// what surrounds them is not.
 func TestSearchTokensLeaveOut(t *testing.T) {
 	at := strings.Repeat("a", domain.MaxSearchWordRunes)
 	past := strings.Repeat("b", domain.MaxSearchWordRunes+1)
@@ -101,6 +127,68 @@ func TestSearchTokensLeaveOut(t *testing.T) {
 		t.Errorf("the data: string of 64 characters is left out: %q", body)
 	case !has("x") || !has("dat") || !has("abc") || !has("zz"):
 		t.Errorf("what surrounds them, a short data: string, is left out: %q", body)
+	}
+}
+
+// A data: string's left out run ends at the first character no data: URL
+// holds: the text right after it is indexed, CJK right after an image's
+// ")" (M8/P5A review A-M3), an HTML image's quote, a non-ASCII character.
+func TestSearchTokensLeaveADataURLOutToItsEnd(t *testing.T) {
+	payload := "data:image/png;base64," + strings.Repeat("iVBORw0KGgo", 8)
+	for _, tt := range []struct {
+		content string
+		after   []string
+	}{
+		{"点击![图](" + payload + ")按钮保存文档", []string{"按钮", "保存", "存文", "文档"}},
+		{`<img src="` + payload + `">caption`, []string{"cap", "ion"}},
+		{"<" + payload + ">tail", []string{"tai", "ail"}},
+		{"[x](" + payload + "]note", []string{"not", "ote"}},
+		{"'" + payload + "'quote", []string{"quo", "ote"}},
+		{payload + "数据库", []string{"数据", "据库"}},
+		{payload + "\nnext", []string{"nex", "ext"}},
+	} {
+		_, body := domain.SearchTokens("x", &tt.content)
+		for _, x := range tt.after {
+			if !slices.Contains(body, x) {
+				t.Errorf("SearchTokens(%q) = %q, want %q after the data: string", tt.content, body, x)
+			}
+		}
+		for _, x := range []string{"ima", "png", "bas", "ivb", "vbo"} {
+			if slices.Contains(body, x) {
+				t.Errorf("SearchTokens(%q) = %q, holds %q of the data: string", tt.content, body, x)
+			}
+		}
+	}
+}
+
+// Every member of every orbit of simple case folding keys as the orbit's
+// others do, the title's lexemes of each alone, which the pattern's class
+// of the orbit matches alike: Cherokee's small letters too, which x/text's
+// fold makes capitals as it makes the capitals small letters (M8/P5A review
+// A-M1).
+func TestEachOrbitKeysAlike(t *testing.T) {
+	orbits := 0
+	for r := rune(0); r <= unicode.MaxRune; r++ {
+		if unicode.SimpleFold(r) == r {
+			continue
+		}
+		orbits++
+		key, _ := domain.SearchTokens(string(r), nil)
+		for o := unicode.SimpleFold(r); o != r; o = unicode.SimpleFold(o) {
+			if other, _ := domain.SearchTokens(string(o), nil); !slices.Equal(other, key) {
+				t.Errorf("%U %q keys %q, its orbit's %U %q keys %q", o, string(o), other, r, string(r), key)
+			}
+		}
+	}
+	if orbits < 2800 {
+		t.Errorf("%d characters with case checked, want the some 2,900 of Unicode", orbits)
+	}
+	capitals := "ᏣᎳᎩ ᎦᏬᏂᎯᏍᏗ ᏰᏴ"
+	small := strings.Map(unicode.ToLower, capitals)
+	title, body := domain.SearchTokens(capitals, &small)
+	if small == capitals || len(title) == 0 || !slices.Equal(body, title) {
+		t.Errorf("Cherokee %q, its content in small letters %q: title %q, body %q; want the body the title's lexemes alone", capitals,
+			small, title, body)
 	}
 }
 
@@ -144,10 +232,14 @@ func TestSearchTokensStopAtTheFirstPastTheBound(t *testing.T) {
 	}
 }
 
-// SearchTokenizer names the rules' version and Go's Unicode version.
+// SearchTokenizer names the rules' version, Go's Unicode version and
+// x/text's, whose fold and NFC are one Unicode version's.
 func TestSearchTokenizer(t *testing.T) {
-	if !strings.HasSuffix(domain.SearchTokenizer, "/"+unicode.Version) || !strings.HasPrefix(domain.SearchTokenizer, "1/") {
-		t.Errorf("SearchTokenizer = %q, want 1/%s", domain.SearchTokenizer, unicode.Version)
+	if want := "2/" + unicode.Version + "/" + norm.Version; domain.SearchTokenizer != want {
+		t.Errorf("SearchTokenizer = %q, want %s", domain.SearchTokenizer, want)
+	}
+	if cases.UnicodeVersion != norm.Version {
+		t.Errorf("x/text's cases are of Unicode %s, its norm of %s: SearchTokenizer names one", cases.UnicodeVersion, norm.Version)
 	}
 }
 
@@ -197,6 +289,7 @@ func TestParseSearchQueryTakes(t *testing.T) {
 		{"an ideographic space", "中国　历史", []string{"中国", "历史"}},
 		{"NFC", "é", []string{"é"}},
 		{"a keyless term beside a keyed one", "锅 #", []string{"锅", "#"}},
+		{"a run of Thai past 64 code points", thaiClause, []string{thaiClause}},
 	} {
 		q, err := domain.ParseSearchQuery(&tt.q)
 		if err != nil {
@@ -354,7 +447,7 @@ func TestSearchQueryMatchesEachOrbit(t *testing.T) {
 func TestTheRecheckImpliesTheKeys(t *testing.T) {
 	alphabet := []string{"a", "b", "c", "s", "k", "i", "A", "B", "S", "K", "I", "1", "2", "0", "中", "国", "数", "据", "库", "ー", "く",
 		" ", "\n", "　", ".", "#", "+", "(", ")", "！", "ß", "ẞ", "İ", "ı", "ſ", "K", "µ", "μ", "ǅ", "Ǆ", "ǆ", "ς", "σ", "Σ", "ﬃ",
-		"é", "É", "é", "ก", "ั", "न", "ि", "द", "ी", "😀", "-", "_", "%", "\\", "["}
+		"é", "É", "é", "ก", "ั", "न", "ि", "द", "ी", "😀", "-", "_", "%", "\\", "[", "Ꭰ", "ꭰ", "Ᏸ", "ᏸ"}
 	text := func(r *rand.Rand, n int) string {
 		var b strings.Builder
 		for range n {
@@ -396,6 +489,26 @@ func TestTheRecheckImpliesTheKeys(t *testing.T) {
 	}
 	if matched < 10_000 {
 		t.Fatalf("%d terms matched, want more for the property to say anything", matched)
+	}
+}
+
+// The terms of a clause of Thai or Khmer, and the whole of it, past 64
+// code points, find its text by their keys (M8/P5A review A-I1).
+func TestTheKeysOfALongRunOfAnotherScript(t *testing.T) {
+	for _, tt := range []struct{ text, q string }{
+		{thaiClause, "ภาษาไทย"}, {thaiClause, "วรรณย\u0e38กต\u0e4c"}, {thaiClause, thaiClause},
+		{khmerClause, "ភ\u17b6ស\u17b6ខ\u17d2ម\u17c2រ"}, {khmerClause, khmerClause},
+	} {
+		q, err := domain.ParseSearchQuery(&tt.q)
+		if err != nil {
+			t.Fatalf("ParseSearchQuery(%q) = %v", tt.q, err)
+		}
+		_, body := domain.SearchTokens("-", &tt.text)
+		if len(q.TitleHits(tt.text)) == 0 || q.BodyKeys() == nil {
+			t.Errorf("%q does not match %q, or has no keys", tt.q, tt.text)
+		} else if missing := missingKeys(*q.BodyKeys(), body); missing != "" {
+			t.Errorf("%q matches %q, whose body lacks %s", tt.q, tt.text, missing)
+		}
 	}
 }
 
