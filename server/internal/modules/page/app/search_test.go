@@ -402,7 +402,8 @@ func TestTheSearchGoesThroughItsTiers(t *testing.T) {
 // The first page's count when the title tier nearly fills the page, the
 // body tier's walk stopped at its first passes (M8/P5A review C-M1, fix
 // check I-1): the walk's rate, its last pass, the one that filled the
-// page, left out, and no sample after it; a sample from the body tier's
+// page, left out, and no sample after it, a rate of fewer than two passes
+// the hits seen at least (fix check F-1); a sample from the body tier's
 // top only when the title tier filled the page, the walk not run. One of
 // 2,000 candidates in 50 passing, the newest among them, the page of 20.
 func TestTheCountOfAShortWalkLeavesItsLastPassOut(t *testing.T) {
@@ -413,7 +414,7 @@ func TestTheCountOfAShortWalkLeavesItsLastPassOut(t *testing.T) {
 	}{
 		{21, true, domain.SearchCount{Value: 61, Kind: domain.CountAbout}},    // the sample's 2 of 100: true 61
 		{20, false, domain.SearchCount{Value: 21, Kind: domain.CountAtLeast}}, // one pass, of 1: true 60
-		{19, false, domain.SearchCount{Value: 59, Kind: domain.CountAbout}},   // 1 of the 50 before the 2nd pass: true 59
+		{19, false, domain.SearchCount{Value: 21, Kind: domain.CountAtLeast}}, // the 2nd pass, its rate's one: true 59
 		{18, false, domain.SearchCount{Value: 58, Kind: domain.CountAbout}},   // 2 of 100: true 58
 		{15, false, domain.SearchCount{Value: 55, Kind: domain.CountAbout}},   // 5 of 250: true 55
 		{10, false, domain.SearchCount{Value: 50, Kind: domain.CountAbout}},   // its bound: 10 of 500, true 50

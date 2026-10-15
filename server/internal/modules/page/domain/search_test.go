@@ -711,8 +711,10 @@ func TestEstimateCount(t *testing.T) {
 		// of 101, which would give 77.
 		{"a walk the full page stopped", domain.SearchTally{Titles: 18, TitlePages: 18, Bodies: 2000, Checked: 101, Passed: 3, Full: true,
 			Found: 21, Bodied: true}, &domain.SearchCount{Value: 58, Kind: domain.CountAbout}},
+		// Stopped at its second pass, the full page's walk's rate rests on
+		// one: at least the hits seen (M8/P5A fix check F-1), not about 59.
 		{"a walk the full page stopped at its second pass", domain.SearchTally{Titles: 19, TitlePages: 19, Bodies: 2000, Checked: 51, Passed: 2,
-			Full: true, Found: 21, Bodied: true}, &domain.SearchCount{Value: 59, Kind: domain.CountAbout}},
+			Full: true, Found: 21, Bodied: true}, &domain.SearchCount{Value: 21, Kind: domain.CountAtLeast}},
 		// A walk its bound stopped rates every pass: 10 of 500, not 9 of
 		// 499, which would give 46.
 		{"a walk its bound stopped", domain.SearchTally{Titles: 10, TitlePages: 10, Bodies: 2000, Checked: 500, Passed: 10, Found: 20,

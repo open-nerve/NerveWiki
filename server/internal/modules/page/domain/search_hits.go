@@ -240,9 +240,11 @@ type SearchTally struct {
 // tells little: one pass gives a count within 2× about one time in two,
 // its 95% interval two orders of magnitude wide, two passes about two
 // times in three (M8/P5A review A-M5); the count is then of the hits
-// seen, at least. A count past MaxSearchCount is MaxSearchCount at least,
-// one of all the body's candidates counted about, to two significant
-// digits; one of them counted to the bound at least, rounded down.
+// seen, at least. The passes counted are the rate's own: a full page's
+// walk stopped at its second pass rests on one (M8/P5A fix check F-1). A
+// count past MaxSearchCount is MaxSearchCount at least, one of all the
+// body's candidates counted about, to two significant digits; one of them
+// counted to the bound at least, rounded down.
 func EstimateCount(t SearchTally) *SearchCount {
 	switch {
 	case t.Titles > MaxSearchCount:
@@ -254,8 +256,12 @@ func EstimateCount(t SearchTally) *SearchCount {
 	}
 	n := float64(t.Titles)
 	kind, round := CountAbout, math.Round
+	passes := t.Passed // the rate's: a full page's walk's last is left out
+	if t.Full {
+		passes--
+	}
 	switch {
-	case !t.Ended && t.Passed < SearchCountPasses:
+	case !t.Ended && passes < SearchCountPasses:
 		n += float64(t.Passed)
 		kind, round = CountAtLeast, math.Floor
 	case t.Checked > 0:
