@@ -307,7 +307,9 @@ func TestParseSearchQueryTakes(t *testing.T) {
 }
 
 // Each kind of term's keys (M8/P5 design 3.3): a single CJK character is
-// found in names alone, and is a key of the title alone in other terms.
+// found in names alone, and is a key of the title alone in other terms;
+// a term of such characters alone is found in names alone only in a query
+// without keys of the body (M8/P5A review A-M2).
 func TestSearchQueryKeys(t *testing.T) {
 	str := func(s *string) string {
 		if s == nil {
@@ -323,6 +325,14 @@ func TestSearchQueryKeys(t *testing.T) {
 		{"锅", "'锅'", "-", "'锅'", false},
 		{"锅！", "'锅'", "-", "'锅'", false},
 		{"锅#锅", "'锅'", "-", "'锅'", false},
+		{"中·国", "'中' & '国'", "-", "'中' & '国'", false},
+		{"锅 中·国", "'锅' & '中' & '国'", "-", "'锅' & '中' & '国'", false},
+		{"中·国 #", "'中' & '国'", "-", "'中' & '国'", true},
+		{"中·国 数据库", "'中' & '国' & '数据' & '据库'", "'数据' & '据库'", "-", true},
+		{"锅#锅 数据库", "'锅' & '数据' & '据库'", "'数据' & '据库'", "-", true},
+		{"タ・ネ api", "'タ' & 'ネ' & 'api'", "'api'", "-", true},
+		{"锅 中·国 api", "'锅' & '中' & '国' & 'api'", "'api'", "'锅'", true},
+		{"a·中", "'a' & '中'", "'a'", "-", true},
 		{"数据库", "'数据' & '据库'", "'数据' & '据库'", "-", true},
 		{"A股", "'a' & '股'", "'a'", "-", true},
 		{"锅 #", "'锅'", "-", "'锅'", true},
@@ -342,6 +352,43 @@ func TestSearchQueryKeys(t *testing.T) {
 		if got := [4]string{q.TitleKeys(), str(q.BodyKeys()), str(q.TitledKeys()), fmt.Sprint(q.Bodied())}; got != [4]string{tt.title, tt.body, tt.titled, fmt.Sprint(tt.bodied)} {
 			t.Errorf("%q: title %s, body %s, titled %s, bodied %s; want %s, %s, %s, %v", tt.q, got[0], got[1], got[2], got[3],
 				tt.title, tt.body, tt.titled, tt.bodied)
+		}
+	}
+}
+
+// Which terms are found in names alone, their patterns checked there, the
+// others' in names or contents (M8/P5 design 3.3; M8/P5A review A-M2): one
+// whose one keyed run is a single CJK character; in a query without keys of
+// the body, one of single CJK characters alone too.
+func TestSearchQueryTermsFoundInNamesAlone(t *testing.T) {
+	for _, tt := range []struct {
+		q              string
+		titled, bodied int
+	}{
+		{"锅", 1, 0},
+		{"锅！ 数据库", 1, 1},
+		{"中·国", 1, 0},
+		{"中·国 数据库", 0, 2},
+		{"タ・ネ api", 0, 2},
+		{"锅 中·国", 2, 0},
+		{"锅 中·国 api", 1, 2},
+		{"中·国 #", 1, 1},
+		{"锅锅", 0, 1},
+	} {
+		q, err := domain.ParseSearchQuery(&tt.q)
+		if err != nil {
+			t.Errorf("ParseSearchQuery(%q) = %v", tt.q, err)
+			continue
+		}
+		var titled int
+		for _, term := range q.Terms {
+			if term.TitlesOnly {
+				titled++
+			}
+		}
+		if got := [3]int{titled, len(q.TitledPatterns()), len(q.BodiedPatterns())}; got != [3]int{tt.titled, tt.titled, tt.bodied} {
+			t.Errorf("%q: %d terms of names alone, %d patterns of names, %d of names or contents; want %d, %d, %d", tt.q,
+				got[0], got[1], got[2], tt.titled, tt.titled, tt.bodied)
 		}
 	}
 }

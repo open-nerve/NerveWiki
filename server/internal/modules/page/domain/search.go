@@ -368,7 +368,10 @@ type SearchQuery struct {
 // SearchTerm is a query's term: its text in NFC; its keys, the lexemes of
 // the title and the body every text it matches holds, and its single CJK
 // characters, keys of the title alone; and whether it is found in names
-// alone: a single CJK character, or such characters alone.
+// alone: one whose one keyed run is a single CJK character ("锅", "锅！"),
+// and, in a query no term of which has a key of the body, one of single
+// CJK characters alone ("中·国"), whose keys the names alone hold (M8/P5
+// design 3.3; M8/P5A review A-M2).
 type SearchTerm struct {
 	Text       string
 	TitlesOnly bool
@@ -427,6 +430,13 @@ func ParseSearchQuery(q *string) (SearchQuery, error) {
 	if !keyed {
 		return invalid(shared.FieldNotAllowed, "must hold a letter, a digit or a CJK character")
 	}
+	if !slices.ContainsFunc(out.Terms, func(t SearchTerm) bool { return len(t.keys) > 0 }) {
+		// No key of the body: the single CJK characters are the body tier's
+		// keys, of the names.
+		for i := range out.Terms {
+			out.Terms[i].TitlesOnly = len(out.Terms[i].unigrams) > 0
+		}
+	}
 	return out, nil
 }
 
@@ -451,7 +461,11 @@ func parseTerm(text, folded string) (SearchTerm, bool) {
 	}
 	keys := lexemes{}
 	unigrams := lexemes{}
+	keyed := 0 // the runs of keys
 	for _, g := range runs {
+		if g.class != classOther {
+			keyed++
+		}
 		switch g.class {
 		case classCJK:
 			if g.n == 1 {
@@ -476,7 +490,7 @@ func parseTerm(text, folded string) (SearchTerm, bool) {
 	}
 	t.unigrams = unigrams.out
 	t.keys = keys.out
-	t.TitlesOnly = len(t.keys) == 0 && len(t.unigrams) > 0
+	t.TitlesOnly = keyed == 1 && len(t.keys) == 0 && len(t.unigrams) == 1
 	if n := len(runs); n > 0 {
 		first, last := runs[0], runs[n-1]
 		t.left = first.class == classWord && first.n <= 2

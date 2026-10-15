@@ -992,12 +992,15 @@ paths:
         (ß and ẞ, σ, ς and Σ), but not a folding's expansion (strasse
         does not find straße), accents, full and half width, nor
         simplified and traditional Chinese. A term of a single CJK
-        character is found in names alone; one of two CJK characters or
-        more, or of three letters or digits or more, anywhere, as a
-        substring (api finds rapid); one of one or two letters or digits
-        as a whole word, CJK characters bounding it (go finds Go语言, 20
-        does not find 2020年); a term of letters and CJK characters as a
-        whole, its short runs of letters at its ends whole words (A股).
+        character is found in names alone; so is one of single CJK
+        characters apart (中·国) in a q no term of which holds a letter, a
+        digit or two CJK characters in a row, and anywhere in another; one
+        of two CJK characters or more, or of three letters or digits or
+        more, anywhere, as a substring (api finds rapid); one of one or two
+        letters or digits as a whole word, CJK characters bounding it (go
+        finds Go语言, 20 does not find 2020年); a term of letters and CJK
+        characters as a whole, its short runs of letters at its ends whole
+        words (A股).
         Signs and punctuation match as written. Each write a user makes is
         found at once, as committed; nodes an import, an upgrade or
         nervewiki reindex wrote are found once the server's job built

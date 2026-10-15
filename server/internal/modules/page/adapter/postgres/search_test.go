@@ -980,6 +980,45 @@ func TestTheSearchReadsContentNotInNFC(t *testing.T) {
 	}
 }
 
+// A term of single CJK characters, several of them (M8/P5 design 3.3;
+// M8/P5A review A-M2): beside a term with keys of the body, it is found in
+// a name or a content, which the body's keys find and the recheck checks;
+// in a query without such keys, in names alone. Queued, then built.
+func TestTheSearchFindsATermOfSingleCJKCharactersInContents(t *testing.T) {
+	f := newFixture(t)
+	var ids []uuid.UUID
+	for _, n := range []struct{ name, content string }{
+		{"Catalog", "这是中·国的数据库"},
+		{"Katakana", "タ・ネの api"},
+		{"中·国", "x"},
+		{"Others", "中国的数据库, タネ api"},
+	} {
+		node := f.page(t, f.eng, nil, n.name, 0)
+		f.write(t, node.ID, n.content, 2, now())
+		ids = append(ids, node.ID)
+	}
+	f.queueSearch(t, f.eng, false, ids...)
+	for _, stage := range []string{"queued", "built"} {
+		if stage == "built" {
+			f.drain(t)
+		}
+		for _, tt := range []struct {
+			q              string
+			titles, bodies []string
+		}{
+			{"中·国 数据库", []string{}, []string{"Catalog"}},
+			{"タ・ネ api", []string{}, []string{"Katakana"}},
+			{"中·国", []string{"中·国"}, []string{}},
+			{"锅 中·国", []string{}, []string{}},
+		} {
+			titles, bodies := f.titlesOf(t, tt.q, f.eng), f.bodiesOf(t, tt.q, f.eng)
+			if !slices.Equal(titles, tt.titles) || !slices.Equal(bodies, tt.bodies) {
+				t.Errorf("%s: %q finds %q and %q, want %q and %q", stage, tt.q, titles, bodies, tt.titles, tt.bodies)
+			}
+		}
+	}
+}
+
 // A tier's nodes go newest first by when the node, or a page's content,
 // last changed, by id below at one time; a page goes on below the last
 // one's position (M8/P5 design 3.5).
