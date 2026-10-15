@@ -383,7 +383,7 @@ func TestTheSearchJobWritesAroundAFailingNode(t *testing.T) {
 // platform/postgres marks it.
 type notBegunTx struct {
 	fakeTx
-	begins int
+	begins, refused int
 }
 
 type txNotBegun struct{}
@@ -396,6 +396,7 @@ func (t *notBegunTx) WithinTx(ctx context.Context, fn func(context.Context) erro
 		return fn(ctx)
 	}
 	if t.begins == 0 {
+		t.refused++
 		return txNotBegun{}
 	}
 	t.begins--
@@ -413,14 +414,16 @@ func TestTheSearchJobEndsWhenATransactionCannotBegin(t *testing.T) {
 		f.page("c", "three")
 		f.fail[bad] = true
 		logs := &bytes.Buffer{}
-		job := app.NewIndexSearch(&notBegunTx{begins: begins}, f, f.clock, slog.New(slog.NewTextHandler(logs, nil)), 0)
+		tx := &notBegunTx{begins: begins}
+		job := app.NewIndexSearch(tx, f, f.clock, slog.New(slog.NewTextHandler(logs, nil)), 0)
 		run, err := job.Drain(context.Background())
 		if !shared.TxNotBegun(err) || run.Written != 0 || run.Failed != 0 || len(f.queue) != 3 || len(f.rows) != 0 {
 			t.Errorf("%d begun: Drain() = %+v, %v; queued %d, rows %d; want begin's error, nothing written or failed, all queued",
 				begins, run, err, len(f.queue), len(f.rows))
 		}
-		if strings.Contains(logs.String(), "not written") || slices.Contains(f.calls, "WriteSearchRows 1 0") {
-			t.Errorf("%d begun: logs %q, calls %v; want no node tried alone, none logged", begins, logs.String(), f.calls)
+		if strings.Contains(logs.String(), "not written") || slices.Contains(f.calls, "WriteSearchRows 1 0") || tx.refused != 1 {
+			t.Errorf("%d begun: logs %q, calls %v, %d transactions refused; want the first refused alone, no node tried alone, none logged",
+				begins, logs.String(), f.calls, tx.refused)
 		}
 	}
 }

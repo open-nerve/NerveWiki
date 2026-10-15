@@ -324,6 +324,20 @@ func TestTheSearchGoesThroughItsTiers(t *testing.T) {
 				calls: []string{"SearchTitles 4", "SearchHitCount", "SearchBodies 4 4 of 6",
 					fmt.Sprintf("SearchTitleCount %d", domain.MaxSearchCount+1), "SearchBodyCount 6 of 6"}}
 		}},
+		{"the walk's bound on a pass", func(s *searchFixture) want {
+			for i := range 6 {
+				s.reads.bodies = append(s.reads.bodies, fakeBody{s.row(fmt.Sprint(i), i, domain.KindPage), i == 1 || i == 3})
+			}
+			s.reads.counts = fakeCounts{bodies: 60}
+			fourth := s.reads.bodies[3].row
+			// The walk's bound stopped it on its second pass, the page not
+			// full: every pass rated, 2 of 4, of 60 candidates; its last
+			// pass left out, 1 of 3, it would give 20.
+			return want{names: []string{"1", "3"}, next: &domain.SearchCursor{Tier: domain.SearchTierBody, At: fourth.SortAt, ID: fourth.Node.ID},
+				count: &domain.SearchCount{Value: 30, Kind: domain.CountAbout},
+				calls: []string{"SearchTitles 4", "SearchHitCount", "SearchBodies 4 4 of 6",
+					fmt.Sprintf("SearchTitleCount %d", domain.MaxSearchCount+1), fmt.Sprintf("SearchBodyCount %d of 6", domain.MaxSearchCountScan)}}
+		}},
 		{"the walk ends with the candidates", func(s *searchFixture) want {
 			for i := range 4 {
 				s.reads.bodies = append(s.reads.bodies, fakeBody{s.row(fmt.Sprint(i), i, domain.KindPage), i%2 == 0})
