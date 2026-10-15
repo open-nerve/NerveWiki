@@ -170,8 +170,8 @@ type tierRow struct {
 // the walk left more to walk, which may leave this page short of limit,
 // even empty; else there is none. The first page's count: exact when it
 // is all there is, else estimated tier by tier (domain.EstimateCount),
-// the body tier sampled when the page's walk checked fewer of its
-// candidates than domain.SearchCountSample and left some.
+// the body tier's walk sampled on when it checked fewer of its candidates
+// than domain.SearchCountSample and left some.
 func (s *Search) read(ctx context.Context, scope SearchScope, limit int, first bool) (searchFound, error) {
 	var out searchFound
 	var tally domain.SearchTally
@@ -226,7 +226,7 @@ func (s *Search) read(ctx context.Context, scope SearchScope, limit int, first b
 		out.next = &domain.SearchCursor{Tier: domain.SearchTierBody, At: walkedTo.SortAt, ID: walkedTo.Node.ID}
 	}
 	if first {
-		count, err := s.count(ctx, scope, bodied, tally, out)
+		count, err := s.count(ctx, scope, bodied, tally, walkedTo, out)
 		if err != nil {
 			return searchFound{}, err
 		}
@@ -250,12 +250,14 @@ func (s *Search) read(ctx context.Context, scope SearchScope, limit int, first b
 
 // count is the first page's count: exact without a next page; else the
 // title tier counted, and, unless its count settles the estimate, the body
-// tier's candidates, its rate sampled from its top when the page's walk
-// checked fewer than domain.SearchCountSample of them and left some: a
-// walk the page's limit stopped at its first passes tells little of the
-// rate (M8/P5A review C-M1). bodied: the scope of its statements.
+// tier's candidates, at the rate of its walk from its top, which, when the
+// page's walk checked fewer than domain.SearchCountSample of them and left
+// some, a sample goes on with, below the page's walk (walkedTo, nil when
+// it walked none) to SearchCountSample checked in all: a walk the page's
+// limit stopped at its first passes tells little of the rate (M8/P5A
+// review C-M1). bodied: the scope of its statements.
 func (s *Search) count(ctx context.Context, scope SearchScope, bodied func() (SearchScope, error), tally domain.SearchTally,
-	out searchFound) (*domain.SearchCount, error) {
+	walkedTo *SearchBodyRow, out searchFound) (*domain.SearchCount, error) {
 	if out.next == nil {
 		return &domain.SearchCount{Value: len(out.rows), Kind: domain.CountExact}, nil
 	}
@@ -276,19 +278,24 @@ func (s *Search) count(ctx context.Context, scope SearchScope, bodied func() (Se
 	tally.BodiesCapped = tally.Bodies >= s.d.CountScan
 	if !tally.Ended && tally.Checked < domain.SearchCountSample {
 		scope.Below = domain.SearchFrom(domain.SearchTierBody)
-		sample, err := s.d.Reads.SearchBodies(ctx, scope, domain.SearchCountSample, domain.SearchCountSample)
+		if walkedTo != nil {
+			scope.Below = domain.SearchCursor{Tier: domain.SearchTierBody, At: walkedTo.SortAt, ID: walkedTo.Node.ID}
+		}
+		n := domain.SearchCountSample - tally.Checked
+		sample, err := s.d.Reads.SearchBodies(ctx, scope, n, n)
 		if err != nil {
 			return nil, err
 		}
-		tally.Checked, tally.Passed, tally.Ended = walkTally(sample)
+		checked, passed, ended := walkTally(sample)
+		tally.Checked, tally.Passed, tally.Ended = tally.Checked+checked, tally.Passed+passed, ended
 	}
 	return domain.EstimateCount(tally), nil
 }
 
-// walkTally is what a walk of the body tier from its top tells the count:
-// how many of its candidates it checked, how many passed, and whether it
-// checked them all, its last row the last of them; a walk of no row found
-// none to check.
+// walkTally is what a walk of the body tier tells the count: how many of
+// its candidates it checked, how many passed, and whether it checked them
+// all, its last row the last of them; a walk of no row found none to
+// check.
 func walkTally(rows []SearchBodyRow) (checked, passed int, ended bool) {
 	if len(rows) == 0 {
 		return 0, 0, true

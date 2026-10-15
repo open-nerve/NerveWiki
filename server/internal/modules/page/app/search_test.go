@@ -236,6 +236,8 @@ func TestTheSearchGoesThroughItsTiers(t *testing.T) {
 		next  *domain.SearchCursor
 		count *domain.SearchCount
 		calls []string
+		// sampled is where the count's sample went on from, if it took one.
+		sampled *domain.SearchCursor
 	}
 	for _, tt := range []struct {
 		name  string
@@ -289,13 +291,13 @@ func TestTheSearchGoesThroughItsTiers(t *testing.T) {
 			}
 			s.reads.counts = fakeCounts{bodies: 6}
 			fourth := s.reads.bodies[3].row
+			below := &domain.SearchCursor{Tier: domain.SearchTierBody, At: fourth.SortAt, ID: fourth.Node.ID}
 			// The walk checked 4 candidates, fewer than the sample, and left
-			// some: the sample checks the 6, 1 passing.
-			return want{names: []string{"1"}, next: &domain.SearchCursor{Tier: domain.SearchTierBody, At: fourth.SortAt, ID: fourth.Node.ID},
-				count: &domain.SearchCount{Value: 1, Kind: domain.CountAbout},
+			// some: the sample goes on below it, to the 6, 1 passing in all.
+			return want{names: []string{"1"}, next: below, count: &domain.SearchCount{Value: 1, Kind: domain.CountAbout},
 				calls: []string{"SearchTitles 4", "SearchHitCount", "SearchBodies 4 4 of 6",
 					fmt.Sprintf("SearchTitleCount %d", domain.MaxSearchCount+1), fmt.Sprintf("SearchBodyCount %d of 6", domain.MaxSearchCountScan),
-					fmt.Sprintf("SearchBodies %d %d of 6", domain.SearchCountSample, domain.SearchCountSample)}}
+					fmt.Sprintf("SearchBodies %d %d of 6", domain.SearchCountSample-4, domain.SearchCountSample-4)}, sampled: below}
 		}},
 		{"the walk finds none yet", func(s *searchFixture) want {
 			for i := range 6 {
@@ -306,7 +308,7 @@ func TestTheSearchGoesThroughItsTiers(t *testing.T) {
 			return want{names: []string{}, next: &domain.SearchCursor{Tier: domain.SearchTierBody, At: fourth.SortAt, ID: fourth.Node.ID},
 				calls: []string{"SearchTitles 4", "SearchHitCount", "SearchBodies 4 4 of 6",
 					fmt.Sprintf("SearchTitleCount %d", domain.MaxSearchCount+1), fmt.Sprintf("SearchBodyCount %d of 6", domain.MaxSearchCountScan),
-					fmt.Sprintf("SearchBodies %d %d of 6", domain.SearchCountSample, domain.SearchCountSample)}}
+					fmt.Sprintf("SearchBodies %d %d of 6", domain.SearchCountSample-4, domain.SearchCountSample-4)}}
 		}},
 		{"the candidates counted to the search's bound", func(s *searchFixture) want {
 			s.countScan = 6
@@ -321,7 +323,7 @@ func TestTheSearchGoesThroughItsTiers(t *testing.T) {
 				count: &domain.SearchCount{Value: 2, Kind: domain.CountAtLeast},
 				calls: []string{"SearchTitles 4", "SearchHitCount", "SearchBodies 4 4 of 6",
 					fmt.Sprintf("SearchTitleCount %d", domain.MaxSearchCount+1), "SearchBodyCount 6 of 6",
-					fmt.Sprintf("SearchBodies %d %d of 6", domain.SearchCountSample, domain.SearchCountSample)}}
+					fmt.Sprintf("SearchBodies %d %d of 6", domain.SearchCountSample-4, domain.SearchCountSample-4)}}
 		}},
 		{"the walk ends with the candidates", func(s *searchFixture) want {
 			for i := range 4 {
@@ -363,6 +365,9 @@ func TestTheSearchGoesThroughItsTiers(t *testing.T) {
 			if !slices.Equal(reads, w.calls) {
 				t.Errorf("reads %v, want %v, each in the snapshot", reads, w.calls)
 			}
+			if sampled := s.reads.scopes[len(s.reads.scopes)-1].Below; w.sampled != nil && sampled != *w.sampled {
+				t.Errorf("the sample went on below %+v, want below the walk's last row, %+v", sampled, *w.sampled)
+			}
 			if next == nil {
 				return
 			}
@@ -386,21 +391,21 @@ func TestTheSearchGoesThroughItsTiers(t *testing.T) {
 
 // The first page's count when the title tier nearly fills the page, the
 // body tier's walk stopped at its first passes (M8/P5A review C-M1): the
-// rate of a sample of SearchCountSample candidates, not of one or two;
-// one of 2,000 candidates in 50 passing, the newest among them, the page
-// of 20.
+// rate of SearchCountSample candidates, the sample going on below the
+// walk, not of one or two; one of 2,000 candidates in 50 passing, the
+// newest among them, the page of 20.
 func TestTheCountOfAShortWalkRestsOnTheSample(t *testing.T) {
 	for _, tt := range []struct {
-		titles  int
-		sampled bool
-		want    domain.SearchCount
+		titles int
+		sample string // the sample's read, if any
+		want   domain.SearchCount
 	}{
-		{20, true, domain.SearchCount{Value: 60, Kind: domain.CountAbout}},  // 2 of the sample's 100 pass: true 60
-		{19, true, domain.SearchCount{Value: 59, Kind: domain.CountAbout}},  // the walk's 2 of 51: true 59
-		{18, false, domain.SearchCount{Value: 77, Kind: domain.CountAbout}}, // the walk's 3 of 101: true 58
-		{15, false, domain.SearchCount{Value: 62, Kind: domain.CountAbout}}, // 6 of 251: true 55
-		{10, false, domain.SearchCount{Value: 50, Kind: domain.CountAbout}}, // 10 of 500: true 50
-		{0, false, domain.SearchCount{Value: 40, Kind: domain.CountAbout}},  // 10 of 500: true 40
+		{20, "SearchBodies 99 99 of 2000", domain.SearchCount{Value: 60, Kind: domain.CountAbout}}, // 1 + 1 of 1 + 99 pass: true 60
+		{19, "SearchBodies 49 49 of 2000", domain.SearchCount{Value: 59, Kind: domain.CountAbout}}, // 2 + 0 of 51 + 49: true 59
+		{18, "", domain.SearchCount{Value: 77, Kind: domain.CountAbout}},                           // the walk's 3 of 101: true 58
+		{15, "", domain.SearchCount{Value: 62, Kind: domain.CountAbout}},                           // 6 of 251: true 55
+		{10, "", domain.SearchCount{Value: 50, Kind: domain.CountAbout}},                           // 10 of 500: true 50
+		{0, "", domain.SearchCount{Value: 40, Kind: domain.CountAbout}},                            // 10 of 500: true 40
 	} {
 		s := newSearchFixture()
 		s.walk = domain.MaxSearchWalk
@@ -416,10 +421,19 @@ func TestTheCountOfAShortWalkRestsOnTheSample(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		sample := fmt.Sprintf("SearchBodies %d %d of %d in tx", domain.SearchCountSample, domain.SearchCountSample, candidates)
-		if page.Count == nil || *page.Count != tt.want || slices.Contains(s.rec.calls, sample) != tt.sampled {
-			t.Errorf("%d titles: count %v, sampled %v; want %v, %v", tt.titles, page.Count, slices.Contains(s.rec.calls, sample), tt.want,
-				tt.sampled)
+		var bodies []string // the walk's read, then the sample's
+		for _, c := range s.rec.calls {
+			if read, ok := strings.CutSuffix(c, " in tx"); ok && strings.HasPrefix(read, "SearchBodies ") {
+				bodies = append(bodies, read)
+			}
+		}
+		sample := ""
+		if len(bodies) == 2 {
+			sample = bodies[1]
+		}
+		if page.Count == nil || *page.Count != tt.want || len(bodies) > 2 || sample != tt.sample {
+			t.Errorf("%d titles: count %v, the walk and the sample %q; want %v, the sample %q", tt.titles, page.Count, bodies, tt.want,
+				tt.sample)
 		}
 	}
 }
