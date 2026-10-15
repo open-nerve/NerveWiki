@@ -45,8 +45,8 @@ SELECT pg_advisory_unlock(6107471706471486842);
 SELECT set_config('work_mem', '64MB', true), set_config('gin_pending_list_limit', '16MB', true);
 
 -- name: QueuedSearch :many
--- The nodes queued exact, or in bulk, after the node after, by id, at most max_rows, with the versions queued: the job's
--- pass, unlocked, the exact nodes' first.
+-- The nodes queued exact, or in bulk, after the node after, by id, at most max_rows, with the versions queued: the
+-- job's pass, unlocked, the exact nodes' first.
 SELECT node_id, version FROM page_search_queue
 WHERE bulk = sqlc.arg(bulk)::boolean AND node_id > sqlc.arg(after)::uuid
 ORDER BY node_id
@@ -99,13 +99,14 @@ ANALYZE page_search;
 -- title holds the keys, or that wait in the queue as a user wrote them, below the cursor, newest first, whose name
 -- holds every term, at most max_rows; then a page's content read by key for the answered rows alone, in NFC as the
 -- patterns are, and the first hit's place in it, its character from 1, with the excerpt around it and the content's
--- characters: 0 and none when the content holds no hit, or the node is an attachment. A content not in NFC is put in
--- it for the read alone, as the job's lexemes are of it (M8/P5A review A-M4); the check of one in NFC, the common
--- case, is all it costs. The candidates are joined to their nodes and contents with the notebooks' condition alone,
--- behind OFFSET 0, and the other checks run above it, on the joined rows. Without statistics the planner sizes the
--- notebooks' nodes by that one condition's default selectivity; with the deleted check's or the patterns' multiplied
--- in, it took a notebook's live nodes for one row and compared each with every candidate. With statistics it joins
--- from the smaller side, a few candidates by key or the notebooks' nodes.
+-- characters: 0 and none when the content holds no hit, or the node is an attachment. A content not in NFC is put in it
+-- for the read alone, as the job's lexemes are of it (M8/P5A review A-M4); one in NFC, the common case, costs the check
+-- alone, some 20 µs a content of 4 KB, five times the read's (measured on the guard's corpus). The candidates are
+-- joined to their nodes and contents with the notebooks' condition alone, behind OFFSET 0, and the other checks run
+-- above it, on the joined rows. Without statistics the planner sizes the notebooks' nodes by that one condition's
+-- default selectivity; with the deleted check's or the patterns' multiplied in, it took a notebook's live nodes for one
+-- row and compared each with every candidate. With statistics it joins from the smaller side, a few candidates by key
+-- or the notebooks' nodes.
 SELECT w.id, w.notebook_id, w.kind, w.name, w.sort_at,
     coalesce(e.at, 0)::integer AS at,
     coalesce(CASE WHEN e.at > 0 THEN substr(b.doc, greatest(e.at - 41, 1), 162) END, '')::text AS excerpt,
@@ -128,7 +129,8 @@ FROM (
     LIMIT sqlc.arg(max_rows)
 ) w
 LEFT JOIN LATERAL (SELECT CASE WHEN r.raw IS NFC NORMALIZED THEN r.raw ELSE normalize(r.raw, NFC) END AS doc
-                   FROM (SELECT c2.content || '' AS raw FROM page_contents c2 WHERE c2.node_id = w.id OFFSET 0) r OFFSET 0) b ON true
+                   FROM (SELECT c2.content || '' AS raw FROM page_contents c2
+                         WHERE c2.node_id = w.id OFFSET 0) r OFFSET 0) b ON true
 LEFT JOIN LATERAL (SELECT min(nullif(regexp_instr(b.doc, p, 1, 1, 0, 'c', 1), 0)) AS at
                    FROM unnest(sqlc.arg(terms)::text[]) p WHERE b.doc IS NOT NULL OFFSET 0) e ON true
 ORDER BY w.sort_at DESC, w.id DESC;
