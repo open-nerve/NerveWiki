@@ -38,9 +38,12 @@ func (SearchIndexArgs) Kind() string { return SearchIndexKind }
 
 // SearchIndexInsertOpts are the job's: on its queue, one queued or running
 // at most. Unlike River's default, a completed run holds back no later one:
-// the schedule's next insert would wait a day behind it.
+// the schedule's next insert would wait a day behind it. One attempt, as
+// the transfer jobs': a failed run is discarded, and the schedule's next
+// is enqueued, where a retry would hold it back for River's backoff, up to
+// hours (M8/P5A review B-I1).
 func SearchIndexInsertOpts() *river.InsertOpts {
-	return &river.InsertOpts{Queue: SearchIndexQueue, UniqueOpts: river.UniqueOpts{ByState: []rivertype.JobState{
+	return &river.InsertOpts{Queue: SearchIndexQueue, MaxAttempts: 1, UniqueOpts: river.UniqueOpts{ByState: []rivertype.JobState{
 		rivertype.JobStateAvailable, rivertype.JobStatePending, rivertype.JobStateRunning, rivertype.JobStateRetryable,
 		rivertype.JobStateScheduled,
 	}}}
@@ -62,20 +65,24 @@ func (*SearchIndexWorker) Timeout(*river.Job[SearchIndexArgs]) time.Duration {
 	return SearchIndexTimeout
 }
 
-// Work runs the job once. A failure makes River retry it; the next run on
-// the schedule goes on from the queue as it is.
+// Work runs the job once. A failure ends the run, of one attempt: the next
+// on the schedule goes on from the queue as it is.
 func (w *SearchIndexWorker) Work(ctx context.Context, _ *river.Job[SearchIndexArgs]) error {
 	_, err := w.uc.Drain(ctx)
 	return err
 }
 
 // SearchIndexJob is the periodic job: when the server starts, then every
-// interval (page.search_index_interval).
+// interval (page.search_index_interval). A run a stopped server left
+// running is discarded as the server starts, before the job is enqueued:
+// unique while it runs, the job would wait for River's rescue, hours
+// later. The job's advisory lock keeps its runs one at a time all the same.
 func SearchIndexJob(uc SearchIndexUseCase, interval time.Duration) jobs.Job {
 	return jobs.Job{
 		Add: func(w *river.Workers) error { return river.AddWorkerSafely(w, NewSearchIndexWorker(uc)) },
 		Periodic: river.NewPeriodicJob(river.PeriodicInterval(interval),
 			func() (river.JobArgs, *river.InsertOpts) { return SearchIndexArgs{}, SearchIndexInsertOpts() },
 			&river.PeriodicJobOpts{ID: SearchIndexKind, RunOnStart: true}),
+		DiscardRunning: SearchIndexKind,
 	}
 }

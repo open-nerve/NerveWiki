@@ -30,6 +30,13 @@ type Job struct {
 	// such as jobs it recorded as running when it stopped (M7/P5 design
 	// 3.2). Its failure fails the start.
 	Start func(ctx context.Context) error
+	// DiscardRunning, when set, is the job's kind, whose rows River holds
+	// running the runner discards as it starts, before River fetches or
+	// enqueues any job: a process that stopped mid-run left them, and a
+	// periodic job unique while it runs would not be enqueued again until
+	// River rescues them, RescueAfter after their start (M8/P5A review
+	// B-I1). v0.1 runs one server: no such row is a live run's.
+	DiscardRunning string
 }
 
 // Config is the runner's settings.
@@ -91,6 +98,10 @@ func New(pool *pgxpool.Pool, cfg Config, jobs []Job) (*Runner, error) {
 		if j.Periodic != nil {
 			periodic = append(periodic, j.Periodic)
 		}
+		if j.DiscardRunning != "" {
+			kind := j.DiscardRunning
+			starts = append(starts, func(ctx context.Context) error { return discardRunning(ctx, pool, cfg.Logger, kind) })
+		}
 		if j.Start != nil {
 			starts = append(starts, j.Start)
 		}
@@ -120,6 +131,22 @@ func New(pool *pgxpool.Pool, cfg Config, jobs []Job) (*Runner, error) {
 	return r, nil
 }
 
+// discardRunning discards the jobs of kind that River holds running, with
+// the reason among their errors, as River's rescue would, and logs how many.
+func discardRunning(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logger, kind string) error {
+	tag, err := pool.Exec(ctx, `UPDATE river_job SET state = 'discarded', finalized_at = now(),
+		errors = array_append(errors, jsonb_build_object('at', now(), 'attempt', attempt,
+			'error', 'left running by a stopped server: discarded as the server started', 'trace', ''))
+		WHERE state = 'running' AND kind = $1`, kind)
+	if err != nil {
+		return fmt.Errorf("discard the %s jobs left running: %w", kind, err)
+	}
+	if n := tag.RowsAffected(); n > 0 {
+		logger.WarnContext(ctx, "jobs left running by a stopped server discarded", slog.String("kind", kind), slog.Int64("jobs", n))
+	}
+	return nil
+}
+
 func newRunner(c client, cfg Config) *Runner {
 	return &Runner{client: c, logger: cfg.Logger, shutdownTimeout: cfg.ShutdownTimeout}
 }
@@ -134,8 +161,9 @@ func newRunner(c client, cfg Config) *Runner {
 // cancelled just as River's Start returns still cancels the context River
 // runs with: interrupting a start under way cannot avoid that window.
 //
-// The jobs' Start run first, in their order, under ctx: the first failure
-// fails the start, the client not started.
+// The jobs' Start run first, in their order, under ctx, a job's discard of
+// its rows left running (Job.DiscardRunning) before its Start: the first
+// failure fails the start, the client not started.
 //
 // Call Start once; call Stop after Start has returned.
 func (r *Runner) Start(ctx context.Context) error {

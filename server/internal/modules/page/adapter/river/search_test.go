@@ -45,7 +45,8 @@ func TestSearchIndexWorkerRunsTheUseCase(t *testing.T) {
 // The job is on its own queue, one queued or running at most; a completed
 // run holds back no later one (M8/P5 design 3.4): River 0.47's default
 // ByState holds completed, and must hold available, pending, running and
-// scheduled.
+// scheduled. Nor does a failed one, of one attempt, nor one a stopped
+// server left running, which the start discards (M8/P5A review B-I1).
 func TestSearchIndexJobIsUniqueButForTheCompleted(t *testing.T) {
 	opts := riveradapter.SearchIndexInsertOpts()
 	states := opts.UniqueOpts.ByState
@@ -55,13 +56,14 @@ func TestSearchIndexJobIsUniqueButForTheCompleted(t *testing.T) {
 			t.Errorf("ByState %v lacks %s", states, s)
 		}
 	}
-	if slices.Contains(states, rivertype.JobStateCompleted) || opts.Queue != riveradapter.SearchIndexQueue {
-		t.Errorf("InsertOpts = %+v, want the queue %s and no completed among ByState", opts, riveradapter.SearchIndexQueue)
+	if slices.Contains(states, rivertype.JobStateCompleted) || opts.Queue != riveradapter.SearchIndexQueue || opts.MaxAttempts != 1 {
+		t.Errorf("InsertOpts = %+v, want the queue %s, one attempt and no completed among ByState", opts, riveradapter.SearchIndexQueue)
 	}
 	job := riveradapter.SearchIndexJob(&fakeDrain{}, time.Second)
 	workers := river.NewWorkers()
-	if err := job.Add(workers); err != nil || job.Periodic == nil {
-		t.Fatalf("Add() = %v, periodic %v; want the worker and a schedule", err, job.Periodic)
+	if err := job.Add(workers); err != nil || job.Periodic == nil || job.DiscardRunning != riveradapter.SearchIndexKind {
+		t.Fatalf("Add() = %v, periodic %v, discards running %q; want the worker, a schedule and its kind's discarded", err, job.Periodic,
+			job.DiscardRunning)
 	}
 	if err := job.Add(workers); err == nil {
 		t.Errorf("a second Add() = nil, want the kind %s refused", riveradapter.SearchIndexKind)

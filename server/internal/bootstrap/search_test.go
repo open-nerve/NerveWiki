@@ -17,6 +17,8 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres/pgtest"
+	"github.com/open-nerve/NerveWiki/server/migrations"
 )
 
 // The full-text search through serve (M8/P5 design 3.10; v0.1 design 13.1,
@@ -437,6 +439,54 @@ func TestTheSearchJobRunsAgainOnItsQueue(t *testing.T) {
 		}
 	}
 	checkPages(t, tm.pool)
+}
+
+// A run of the search's job that a stopped server left running, its row as
+// River holds it, holds no later run back: the next start discards it,
+// before River enqueues the job, unique while it runs, and the job runs at
+// once rather than after River's rescue, hours later (M8/P5A review B-I1).
+func TestASearchRunLeftRunningByAStoppedServerIsDiscardedAtTheStart(t *testing.T) {
+	url := pgtest.NewDatabase(t)
+	pool := connect(t, url)
+	configured := func() config.Config {
+		cfg := testConfig(t, url, false)
+		cfg.Page.SearchIndexInterval = time.Second
+		return cfg
+	}
+	const completed = "SELECT count(*) FROM river_job WHERE kind = 'page.index_search' AND state = 'completed'"
+	first := buildApp(t, configured(), migrations.FS())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- first.run(ctx) }()
+	waitHealthy(t, first.cfg.Server.AddrFile, done)
+	for deadline := time.Now().Add(15 * time.Second); count(t, pool, completed) == 0; time.Sleep(50 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("no run completed within 15s of the first start")
+		}
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatalf("run() = %v, want nil after cancel", err)
+	}
+	// What a server killed mid-run leaves: the run's row running.
+	var stale int64
+	if err := pool.QueryRow(context.Background(), `UPDATE river_job SET state = 'running', finalized_at = NULL, attempted_at = now(),
+		attempt = greatest(attempt, 1) WHERE id = (SELECT max(id) FROM river_job WHERE kind = 'page.index_search')
+		RETURNING id`).Scan(&stale); err != nil {
+		t.Fatal(err)
+	}
+	before := count(t, pool, completed)
+	runApp(t, buildApp(t, configured(), migrations.FS()))
+	for deadline := time.Now().Add(15 * time.Second); count(t, pool, completed) <= before; time.Sleep(50 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatalf("no run completed within 15s of the start; the runs %q", queryStrings(t, pool,
+				"SELECT id || ' ' || state FROM river_job WHERE kind = 'page.index_search' ORDER BY id"))
+		}
+	}
+	if got := queryStrings(t, pool, "SELECT state::text FROM river_job WHERE id = $1", stale); !slices.Equal(got, []string{"discarded"}) {
+		t.Errorf("the run left running is %q, want discarded", got)
+	}
 }
 
 // nervewiki reindex queues a notebook's nodes whose rows are missing or of
