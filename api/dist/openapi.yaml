@@ -1707,7 +1707,7 @@ paths:
       tags:
         - page
       summary: Search a workspace
-      description: 'The pages and attachments of the workspace''s notebooks the caller sees, or of the one notebook_id names, whose name or content holds every term of q, newest change first, a page at a time. Any member can search; a guest sees the notebooks they were added to. Two tiers: the nodes whose name holds every term, then the pages whose name misses one and whose name or content holds each. Folded case matches alike, as do the characters of one simple case folding (ß and ẞ, σ, ς and Σ), but not a folding''s expansion (strasse does not find straße), accents, full and half width, nor simplified and traditional Chinese; terms that fold alike are one, the first as written (ß ss is ß). A term of a single CJK character is found in names alone; so is one of single CJK characters apart (中·国) in a q no term of which holds a letter, a digit or two CJK characters in a row, and anywhere in another; one of two CJK characters or more, or of three letters or digits or more, anywhere, as a substring (api finds rapid); one of one or two letters or digits as a whole word, CJK characters bounding it (go finds Go语言, 20 does not find 2020年); a term of letters and CJK characters as a whole, its short runs of letters at its ends whole words (A股). Signs and punctuation match as written. Each write a user makes is found at once, as committed; nodes an import, an upgrade or nervewiki reindex wrote are found once the server''s job built their index, until when building is true and the hits may be missing some. A page of the content tier checks at most 500 pages'' contents: a page may hold fewer hits than limit, or none, with a next_cursor to search on. q travels in the request line, which a reverse proxy may log. A cursor the search cannot read is bad_request, before anything else; then a q missing or blank (required), longer than 256 bytes, of more than 8 terms or of more than 64 ASCII letters and digits in a row (too_long), not UTF-8 or holding NUL (invalid_format), or of no letter, digit or CJK character (not_allowed) is validation_failed; then a workspace that does not exist, is deleted, or that the caller is no active member of is workspace.not_found; a notebook_id the caller does not see, notebook.not_found; a limit outside 1–50 is validation_failed.'
+      description: 'The pages and attachments of the workspace''s notebooks the caller sees, or of the one notebook_id names, whose name or content holds every term of q, newest change first, a page at a time. Any member can search; a guest sees the notebooks they were added to. Two tiers: the nodes whose name holds every term, then the pages whose name misses one and whose name or content holds each. Folded case matches alike, as do the characters of one simple case folding (ß and ẞ, σ, ς and Σ), but not a folding''s expansion (strasse does not find straße), accents, full and half width, nor simplified and traditional Chinese; terms that fold alike are one, the first as written (ß ss is ß). A term of a single CJK character is found in names alone; so is one of single CJK characters apart (中·国) in a q no term of which holds a key of the content (a letter, digit or mark, or two CJK characters in a row), and anywhere in another; one of two CJK characters or more, or of three letters or digits or more, anywhere, as a substring (api finds rapid); one of one or two letters or digits as a whole word, CJK characters bounding it (go finds Go语言, 20 does not find 2020年); a term of letters and CJK characters as a whole, its short runs of letters at its ends whole words (A股). Signs and punctuation match as written. Each write a user makes through a request is found at once, as committed; nodes an import, a background restore or revert, an upgrade or nervewiki reindex wrote are found once the server''s job built their index, until when building is true and the hits may be missing some. A page of the content tier checks at most 500 pages'' contents: a page may hold fewer hits than limit, or none, with a next_cursor to search on. q travels in the request line, which a reverse proxy may log. A cursor the search cannot read is bad_request, before anything else; then a q missing or blank (required), longer than 256 bytes, of more than 8 terms or of more than 64 ASCII letters and digits in a row (too_long), not UTF-8 or holding NUL (invalid_format), or of no letter, digit or CJK character (not_allowed) is validation_failed; then a workspace that does not exist, is deleted, or that the caller is no active member of is workspace.not_found; a notebook_id the caller does not see, notebook.not_found; a limit outside 1–50 is validation_failed.'
       security:
         - bearer: []
       x-problem-codes:
@@ -4321,7 +4321,7 @@ components:
           type: integer
           minimum: 0
     SearchExcerpt:
-      description: Some 160 characters of a page's content as written, its Markdown left in, its white space collapsed to single spaces, from a little before its first hit; the hits in it.
+      description: Some 160 characters of a page's content as written, composed into Unicode's NFC where it was not (the editor writes NFC), its Markdown left in, its white space collapsed to single spaces, from a little before its first hit; the hits in it.
       type: object
       additionalProperties: false
       required:
@@ -4382,7 +4382,7 @@ components:
             - $ref: '#/components/schemas/AttachmentInfo'
             - type: 'null'
     SearchCount:
-      description: 'A search''s count: exact when the first page held every hit, or when q is found in names alone; about, estimated from the hits checked so far, to two significant digits; at_least, a lower bound: 1000 always, and the hits seen when too few of the contents checked so far held the terms to estimate from.'
+      description: 'A search''s count: exact when the first page held every hit, or when q is found in names alone; about, estimated from the hits checked so far, to two significant digits; at_least, a lower bound: 1000 always; the hits seen when too few of the contents checked so far held the terms; the estimate, rounded down, when the candidates were too many to count.'
       type: object
       additionalProperties: false
       required:
@@ -4421,7 +4421,7 @@ components:
             - $ref: '#/components/schemas/SearchCount'
             - type: 'null'
         building:
-          description: 'The notebooks hold nodes the server''s job has not indexed yet, after an import, an upgrade or nervewiki reindex: the hits may be missing some.'
+          description: 'The notebooks hold nodes the server''s job has not indexed yet, after an import, a background restore or revert, an upgrade or nervewiki reindex: the hits may be missing some.'
           type: boolean
     Backlink:
       description: A page that links to another.

@@ -534,7 +534,7 @@ type PageView struct {
 	Revision int `json:"revision"`
 }
 
-// SearchCount A search's count: exact when the first page held every hit, or when q is found in names alone; about, estimated from the hits checked so far, to two significant digits; at_least, a lower bound: 1000 always, and the hits seen when too few of the contents checked so far held the terms to estimate from.
+// SearchCount A search's count: exact when the first page held every hit, or when q is found in names alone; about, estimated from the hits checked so far, to two significant digits; at_least, a lower bound: 1000 always; the hits seen when too few of the contents checked so far held the terms; the estimate, rounded down, when the candidates were too many to count.
 type SearchCount struct {
 	Kind  SearchCountKind `json:"kind"`
 	Value int             `json:"value"`
@@ -543,7 +543,7 @@ type SearchCount struct {
 // SearchCountKind defines model for SearchCount.Kind.
 type SearchCountKind string
 
-// SearchExcerpt Some 160 characters of a page's content as written, its Markdown left in, its white space collapsed to single spaces, from a little before its first hit; the hits in it.
+// SearchExcerpt Some 160 characters of a page's content as written, composed into Unicode's NFC where it was not (the editor writes NFC), its Markdown left in, its white space collapsed to single spaces, from a little before its first hit; the hits in it.
 type SearchExcerpt struct {
 	// CutEnd The content goes on after text.
 	CutEnd bool `json:"cut_end"`
@@ -591,7 +591,7 @@ type SearchNode struct {
 
 // SearchPage A page of a search's hits, the title tier's first, then the content tier's, each newest change first.
 type SearchPage struct {
-	// Building The notebooks hold nodes the server's job has not indexed yet, after an import, an upgrade or nervewiki reindex: the hits may be missing some.
+	// Building The notebooks hold nodes the server's job has not indexed yet, after an import, a background restore or revert, an upgrade or nervewiki reindex: the hits may be missing some.
 	Building bool `json:"building"`
 
 	// Count How many hits there are, on the first page alone; null on the later pages, and when none was found yet while the search has more to check.
