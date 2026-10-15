@@ -388,6 +388,18 @@ func TestValidateCrossKeyRules(t *testing.T) {
 				"to the requests, at most 1, got 2",
 		},
 		{
+			name:   "a pool too small for an export and the search's job",
+			mutate: func(c *Config) { c.Database.MaxConns = 1 },
+			want: "jobs.export_workers: must leave, with the search's job (1), half of database.max_conns (1) to the requests, " +
+				"which leaves none: database.max_conns must be at least 4, got 1",
+		},
+		{
+			name:   "a pool too small for an import beside the exports and the search's job",
+			mutate: func(c *Config) { c.Jobs.ExportWorkers, c.Database.MaxConns = 2, 6 },
+			want: "jobs.import_workers: must leave, with jobs.export_workers (2) and the search's job (1), half of database.max_conns (6) " +
+				"to the requests, which leaves none: database.max_conns must be at least 8, got 1",
+		},
+		{
 			name:   "more than eight imports at once",
 			mutate: func(c *Config) { c.Jobs.ImportWorkers = 9 },
 			want:   "jobs.import_workers: must be from 1 to 8, got 9",
