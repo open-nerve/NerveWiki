@@ -90,8 +90,8 @@ page:
   # server.request_timeout，且应明显短于它：认证与权限判定也要时间），然后 503 server_busy
   parse_budget_bytes: 8388608
   parse_max_wait: 2s
-  # 后台任务为排队的节点建搜索索引的间隔，1 秒到 10 分钟。用户的写立即搜得到；导入、升级与 reindex 之后的节点在任务建好之前搜不到，
-  # 搜索答复带 building
+  # 后台任务为排队的节点建搜索索引的间隔，1 秒到 10 分钟。用户经请求的写立即搜得到；导入、后台恢复与撤销、升级与 reindex 之后的节点
+  # 在任务建好之前搜不到，搜索答复带 building
   search_index_interval: 5s
 
 events:
@@ -107,9 +107,11 @@ jobs:
   purge_interval: 1h
   # 软删除的行保留这么久之后才被物理删除，至少 1 天。回收站可以恢复的期限是它减 1 小时；其余的期间运维可以从数据库恢复
   purge_retention: 1440h
-  # 同时运行的导出数（各在自己的队列里，不占定时任务），1 到 8，且至多 database.max_conns 的一半：每个导出在快照里占一个数据库连接、写一个文件
+  # 同时运行的导出数（各在自己的队列里，不占定时任务），1 到 8，且与搜索索引任务合起来至多 database.max_conns 的一半：每个导出在快照里占一个数据库连接、
+  # 写一个文件；搜索索引任务运行时占一个连接
   export_workers: 1
-  # 同时运行的导入数（各在自己的队列里），1 到 8；与 export_workers 合起来至多 database.max_conns 的一半
+  # 同时运行的导入数（各在自己的队列里），1 到 8；与 export_workers、搜索索引任务的一个连接合起来至多 database.max_conns 的一半
+  # （默认的一个导出、一个导入，max_conns 至少 6）
   import_workers: 1
 
 storage:
