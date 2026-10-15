@@ -332,7 +332,7 @@ func TestANotebookDeletionEndsItsSessions(t *testing.T) {
 	if err := d.NotebookDeleted(context.Background(), app.NotebookDeleted{WorkspaceID: f.acme, NotebookIDs: []uuid.UUID{f.eng}, By: by, At: at}); err != nil {
 		t.Fatal(err)
 	}
-	if want := []string{"DeleteNotebooksPages", "DeleteNotebookSessions", "EditSessionEnded"}; !slices.Equal(f.rec.calls, want) {
+	if want := []string{"DeleteNotebooksPages", "QueueSearchOfNotebooks", "DeleteNotebookSessions", "EditSessionEnded"}; !slices.Equal(f.rec.calls, want) {
 		t.Errorf("calls = %v, want %v", f.rec.calls, want)
 	}
 	want := []app.SessionEnded{{SessionID: alive.ID, WorkspaceID: f.acme, NotebookID: f.eng, PageID: n.ID, UserID: f.alice,

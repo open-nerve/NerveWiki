@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 	"uuid"
 
@@ -35,6 +36,9 @@ type WriterDeps struct {
 	History       History
 	Changesets    ChangesetWriter
 	SessionWriter SessionWriter
+	// Search queues the nodes a unit changed for the search's job (M8/P5
+	// design 3.4).
+	Search SearchQueue
 	// Names gives the name of who released a session's lock (M5 design
 	// 4.3).
 	Names        Names
@@ -151,8 +155,9 @@ func (w *Writer) workspaceOf(ctx context.Context, spec UnitSpec) (uuid.UUID, err
 // Run runs do in a unit of spec: outside a transaction, the notebook's
 // workspace, unlocked; then, in the unit's transaction, the workspace's row
 // FOR SHARE, the notebook's, the decision, the changeset it merges into,
-// do, the observers. The clock is read once: every row the unit writes has
-// its time. Any error rolls the whole unit back and is returned.
+// do, the search's queue, the observers. The clock is read once: every row
+// the unit writes has its time. Any error rolls the whole unit back and is
+// returned.
 func (w *Writer) Run(ctx context.Context, spec UnitSpec, do func(ctx context.Context, u *Unit) error) (Outcome, error) {
 	if w.d.Tx.InTx(ctx) {
 		return Outcome{}, errors.New("a page write unit opens its own transaction: ctx carries one already")
@@ -204,6 +209,9 @@ func (w *Writer) Run(ctx context.Context, spec UnitSpec, do func(ctx context.Con
 			return err
 		}
 		if err := do(ctx, u); err != nil {
+			return err
+		}
+		if err := u.queueSearch(ctx); err != nil {
 			return err
 		}
 		return u.tell(ctx)
@@ -404,6 +412,26 @@ func (u *Unit) recordRevision(ctx context.Context, c Content, base *int) error {
 		ID: uuid.NewV7(), ChangesetID: u.changeset, NodeID: c.NodeID, Base: base, Revision: c.Revision, Content: c.Content,
 		Hash: c.Hash, ByteSize: c.ByteSize, At: u.write.At,
 	})
+}
+
+// queueSearch queues for the search's job the nodes the unit created,
+// restored, deleted, renamed or wrote the content of (M8/P5 design 3.4), in
+// ascending id order, after all its writes and before the observers (v0.1
+// design 13.1, item 5): in bulk for an import's unit, which a search does
+// not wait for, exact for the others. A move or a reorder leaves a node's
+// lexemes as they were: its path is no part of a match.
+func (u *Unit) queueSearch(ctx context.Context) error {
+	var ids []uuid.UUID
+	for _, c := range u.changes {
+		if c.Before == nil || c.After == nil || c.Before.Name != c.After.Name || c.Revision != 0 {
+			ids = append(ids, c.NodeID)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	slices.SortFunc(ids, uuid.UUID.Compare)
+	return u.w.d.Search.QueueSearch(ctx, u.write.NotebookID, ids, u.write.Kind == domain.ChangesetImport)
 }
 
 // tell has the observers follow the unit's changes, once: none when it

@@ -651,6 +651,7 @@ func TestARevertAtTheUnitsBoundTakesItsTime(t *testing.T) {
 func TestARevertOfManyTopsAtItsBoundTakesItsTime(t *testing.T) {
 	bench := newTrashBench(t, 0, 0)
 	c := bench.tops(t, domain.KindAsset, domain.MaxRevertSteps+1)
+	queueSeeded(t, bench.pool)
 	revert := func(id uuid.UUID) string { return "/api/v0/changesets/" + id.String() + "/revert" }
 	if status, answer := bench.serve(http.MethodPost, revert(c), ""); status != http.StatusUnprocessableEntity ||
 		!strings.Contains(answer, `"code":"page.revert_too_large"`) {

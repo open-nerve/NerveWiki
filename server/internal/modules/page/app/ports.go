@@ -10,6 +10,7 @@ import (
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
+	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
 // ErrNotFound is what a repository returns for a missing row.
@@ -32,9 +33,20 @@ type Tx interface {
 // Workspaces is what the module reads of workspaces: bootstrap hands
 // workspace.NewWorkspaces to it.
 type Workspaces interface {
+	// FindBySlug returns the id of the workspace not deleted with slug,
+	// unlocked, and whether there is one: a search names its workspace.
+	FindBySlug(ctx context.Context, slug string) (uuid.UUID, bool, error)
 	// ShareByID locks the workspace not deleted with id FOR SHARE until the
 	// transaction ends, and reports whether there is one.
 	ShareByID(ctx context.Context, id uuid.UUID) (bool, error)
+}
+
+// VisibleNotebooks lists the notebooks an account sees: bootstrap hands
+// notebook.NewVisibleNotebooks to it.
+type VisibleNotebooks interface {
+	// VisibleIn lists the ids of the notebooks not deleted of workspaceID
+	// that userID, of role there, has a role in, unlocked.
+	VisibleIn(ctx context.Context, workspaceID, userID uuid.UUID, role shared.WorkspaceRole) ([]uuid.UUID, error)
 }
 
 // Notebooks is what the module reads of notebooks: bootstrap hands
@@ -391,6 +403,10 @@ type AttachmentInfos interface {
 // sessions.
 type NotebookPages interface {
 	DeleteNotebooksPages(ctx context.Context, ids []uuid.UUID, by uuid.UUID, at time.Time) error
+	// QueueSearchOfNotebooks queues for the search's job, exact, the
+	// nodes of the notebooks ids that their deletion deleted, those deleted
+	// at its time at (M8/P5 design 3.4).
+	QueueSearchOfNotebooks(ctx context.Context, ids []uuid.UUID, at time.Time) error
 	// DeleteNotebookSessions deletes the notebooks' edit sessions and
 	// returns them.
 	DeleteNotebookSessions(ctx context.Context, ids []uuid.UUID) ([]EditSession, error)
@@ -556,4 +572,154 @@ type PageRef struct {
 	PageID     uuid.UUID
 	Revision   int
 	Deleted    bool
+}
+
+// SearchQueue queues the nodes a write changed for the search's job (M8/P5
+// design 3.4), in the write's transaction.
+type SearchQueue interface {
+	// QueueSearch queues ids, nodes of notebookID in ascending order, each
+	// with a new version; exact unless bulk and every earlier queueing of
+	// the node still queued was bulk.
+	QueueSearch(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID, bulk bool) error
+}
+
+// QueuedNode is a node in the search's queue, at the version it was
+// queued with.
+type QueuedNode struct {
+	ID      uuid.UUID
+	Version int64
+}
+
+// SearchSource is what the search's job decides on for a queued node: the
+// node as it is now, gone when it is deleted or not there; a page's
+// content's revision and size, zero for an attachment; and its row as the
+// job built it, nil when there is none.
+type SearchSource struct {
+	ID       uuid.UUID
+	Gone     bool
+	Kind     domain.Kind
+	Name     string
+	Revision int
+	Bytes    int
+	Built    *BuiltSearchRow
+}
+
+// BuiltSearchRow is a node's row of the search as the job built it: the
+// revision of the content it read, zero for an attachment's, the name and
+// tokenizer, and when.
+type BuiltSearchRow struct {
+	Revision  int
+	Name      string
+	Tokenizer string
+	At        time.Time
+}
+
+// SearchRow is a node's row of the search as the job writes it: its
+// lexemes, a page's body too (nil for an attachment's), of the content at
+// Revision (zero for an attachment).
+type SearchRow struct {
+	NodeID    uuid.UUID
+	Revision  int
+	Name      string
+	Tokenizer string
+	BuiltAt   time.Time
+	Title     []string
+	Body      []string
+}
+
+// SearchIndex is the search's rows and queue as its job keeps them (M8/P5
+// design 3.4). Its statements' errors carry their SQLSTATE alone: a row's
+// lexemes are a page's text.
+type SearchIndex interface {
+	// LockSearch takes the job's lock, on a connection of its own, without
+	// waiting: false when another run holds it. release gives it back.
+	LockSearch(ctx context.Context) (release func(), ok bool, err error)
+	// QueuedSearch reads the queue after the node after, by id, at most
+	// limit nodes, unlocked.
+	QueuedSearch(ctx context.Context, after uuid.UUID, limit int) ([]QueuedNode, error)
+	// SearchSources reads the nodes ids as SearchSource says, by id.
+	SearchSources(ctx context.Context, ids []uuid.UUID) ([]SearchSource, error)
+	// SearchContents reads the contents of the live pages ids, with their
+	// revisions: a page deleted since is not in the answer.
+	SearchContents(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]PageText, error)
+	// WriteSearchRows writes rows and deletes the rows of the nodes
+	// deleted, in ctx's transaction.
+	WriteSearchRows(ctx context.Context, rows []SearchRow, deleted []uuid.UUID) error
+	// DequeueSearch takes the nodes off the queue at the versions read,
+	// those another transaction holds left there.
+	DequeueSearch(ctx context.Context, nodes []QueuedNode) error
+	// AnalyzeSearch updates the rows' statistics.
+	AnalyzeSearch(ctx context.Context) error
+}
+
+// PageText is a page's content at its revision.
+type PageText struct {
+	Content  string
+	Revision int
+}
+
+// SearchScope is what a search's statements read: the notebooks searched,
+// the query's keys and patterns, the cursor's position below which the
+// tier goes on, and, for the body tier's, Hits: its candidates by their
+// lexemes, as SearchHitCount counted them in the read's snapshot.
+type SearchScope struct {
+	Notebooks []uuid.UUID
+	Query     domain.SearchQuery
+	Below     domain.SearchCursor
+	Hits      int
+}
+
+// SearchTitleRow is a node of the title tier: the content's first hit,
+// its character from 1 (0 when the content holds none or the node is an
+// attachment), the excerpt the SQL cut around it, and the content's
+// characters.
+type SearchTitleRow struct {
+	Node    SearchNode
+	SortAt  time.Time
+	At      int
+	Excerpt string
+	Chars   int
+}
+
+// SearchNode is a node a search found.
+type SearchNode struct {
+	ID         uuid.UUID
+	NotebookID uuid.UUID
+	Kind       domain.Kind
+	Name       string
+}
+
+// SearchBodyRow is a page of the body tier's walk: its place in it, from 1,
+// how many the walk took (one more than walk: more to walk), whether it
+// passed, and when it did its first hit as SearchTitleRow's.
+type SearchBodyRow struct {
+	SearchTitleRow
+	Seq, Walked int
+	Passed      bool
+}
+
+// SearchReads are a search's statements (M8/P5 design 3.5), each in the
+// read-only snapshot ctx carries. Their errors carry their SQLSTATE alone:
+// the patterns and keys are the user's text.
+type SearchReads interface {
+	// SearchTitles reads the title tier below s.Below, at most limit nodes.
+	SearchTitles(ctx context.Context, s SearchScope, limit int) ([]SearchTitleRow, error)
+	// SearchHitCount counts the body tier's candidates by their lexemes:
+	// the pages whose row holds q's body keys and titled keys. The body
+	// tier's statements read them all, by the count (SearchScope.Hits),
+	// which tells their plans how many there are: a count of another
+	// snapshot may leave some out.
+	SearchHitCount(ctx context.Context, q domain.SearchQuery) (int, error)
+	// SearchBodies walks the body tier below s.Below: at most walk pages'
+	// contents read, until limit pass.
+	SearchBodies(ctx context.Context, s SearchScope, walk, limit int) ([]SearchBodyRow, error)
+	// SearchTitleCount counts the title tier from its top to limit, and
+	// the pages among them.
+	SearchTitleCount(ctx context.Context, s SearchScope, limit int) (titles, pages int, err error)
+	// SearchBodyCount counts the body tier's candidates, its pages by
+	// their lexemes or queued, to limit, their names unchecked.
+	SearchBodyCount(ctx context.Context, s SearchScope, limit int) (int, error)
+	// SearchBuilding reports whether the notebooks hold nodes queued in
+	// bulk, which no search finds yet.
+	SearchBuilding(ctx context.Context, notebooks []uuid.UUID) (bool, error)
 }

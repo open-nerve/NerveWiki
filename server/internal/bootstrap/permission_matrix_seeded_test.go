@@ -176,14 +176,45 @@ func trashedIn(notebook string) string {
 	return "trashed-" + notebook
 }
 
-// tasksIn is a notebook's page of task items, its content matrixTasks;
-// every other seeded page's is empty.
+// tasksIn is a notebook's page of task items, its content matrixTasks
+// before the mark (matrixContent).
 func tasksIn(notebook string) string {
 	return notebook + "-tasks"
 }
 
 // matrixTasks is the content of the pages of task items: one open at 3.
 const matrixTasks = "- [ ] a\n"
+
+// matrixMark is the word the search finds the seeded nodes by (M8/P5
+// design 3.8): at the end of every seeded page's content, in the trash or
+// not, and in the name of each notebook's attachment markedIn.
+const matrixMark = "quillwort"
+
+// matrixContent is a seeded page's content: the mark alone, or, after the
+// pages of task items' (tasksIn), its own paragraph, the task at 3 still.
+func matrixContent(p matrixPage) string {
+	if p.name == tasksIn(p.notebook) {
+		return matrixTasks + "\n" + matrixMark + "\n"
+	}
+	return matrixMark + "\n"
+}
+
+// seededBytes are the bytes of a notebook's seeded pages not deleted and
+// of its attachments, as the notebooks' sizes count them.
+func seededBytes(notebook string) int {
+	n := 0
+	for _, p := range matrixPages() {
+		if p.notebook == notebook {
+			n += len(matrixContent(p))
+		}
+	}
+	for _, a := range matrixAssets() {
+		if a.notebook == notebook {
+			n += matrixAssetBytes
+		}
+	}
+	return n
+}
 
 // draftOf is the page of a notebook column's own edit session.
 func draftOf(c caller) string {
@@ -605,10 +636,7 @@ func prepareMatrix(t *testing.T) matrixData {
 			exec("INSERT INTO nodes (id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, "+
 				"created_at, updated_at) SELECT $1, n.id, $3, 'page', $4, $4, $6, n.created_by_id, n.created_by_id, $5, $5 "+
 				"FROM notebooks n WHERE n.id = $2", d.seeded.pages[p.name], d.seeded.notebooks[p.notebook], parent, p.name, now, i)
-			content := ""
-			if p.name == tasksIn(p.notebook) {
-				content = matrixTasks
-			}
+			content := matrixContent(p)
 			exec("INSERT INTO page_contents (node_id, content, revision, content_hash, byte_size, updated_by_id, updated_at) "+
 				"SELECT id, $3, 1, sha256(convert_to($3, 'UTF8')), octet_length($3), created_by_id, $2 FROM nodes WHERE id = $1",
 				d.seeded.pages[p.name], now, content)
@@ -630,7 +658,8 @@ func prepareMatrix(t *testing.T) matrixData {
 				"SELECT $1, n.id, 'page', $3, $3, $4, n.created_by_id, n.created_by_id, $5, $5 FROM notebooks n WHERE n.id = $2",
 				id, d.seeded.notebooks[p.notebook], p.name, len(matrixPages())+len(matrixAssets())+i, trashedAt.Add(-time.Hour))
 			exec("INSERT INTO page_contents (node_id, content, revision, content_hash, byte_size, updated_by_id, updated_at) "+
-				"SELECT id, '', 1, sha256(''), 0, created_by_id, created_at FROM nodes WHERE id = $1", id)
+				"SELECT id, $2, 1, sha256(convert_to($2, 'UTF8')), octet_length($2), created_by_id, created_at FROM nodes WHERE id = $1",
+				id, matrixContent(p))
 			exec(seededPageHistory, id)
 			exec("UPDATE nodes SET deleted_at = $2, updated_at = $2, trash_root = true, trash_pages = 1, trash_assets = 0, trash_height = 1 "+
 				"WHERE id = $1", id, trashedAt)
@@ -640,9 +669,14 @@ func prepareMatrix(t *testing.T) matrixData {
 			exec("DELETE FROM indexed_pages WHERE node_id = $1", id)
 		}
 		for i, a := range matrixAssets() {
+			var parent *uuid.UUID
+			if a.parent != "" {
+				id := d.seeded.pages[a.parent]
+				parent = &id
+			}
 			exec("INSERT INTO nodes (id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, "+
 				"created_at, updated_at) SELECT $1, n.id, $3, 'asset', $4, $4, $6, n.created_by_id, n.created_by_id, $5, $5 "+
-				"FROM notebooks n WHERE n.id = $2", d.seeded.assets[a.name], d.seeded.notebooks[a.notebook], d.seeded.pages[a.parent], a.name,
+				"FROM notebooks n WHERE n.id = $2", d.seeded.assets[a.name], d.seeded.notebooks[a.notebook], parent, a.name,
 				now, len(matrixPages())+i)
 			exec("INSERT INTO asset_blobs (id, node_id, notebook_id, mime, byte_size, sha256, created_by_id, created_at) "+
 				"SELECT gen_random_uuid(), id, notebook_id, 'image/png', $3, sha256('abc'), created_by_id, $2 FROM nodes WHERE id = $1",
@@ -683,6 +717,7 @@ func prepareMatrix(t *testing.T) matrixData {
 				exec("DELETE FROM indexed_pages WHERE notebook_id = $1", d.seeded.notebooks[n.name])
 			}
 		}
+		queueSeeded(t, pool)
 		// orphan is ownerless of an account still active in lab, a state no
 		// end makes (its end would have ended its membership of lab): the
 		// rows read the notebook's columns alone.

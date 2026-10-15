@@ -108,7 +108,7 @@ func TestARestoreJobRestoresInBatches(t *testing.T) {
 	want := []string{"TrashHistory", "TrashContents", "Take 5", "Facts", "KeepFacts 5", "Links", "Take 4", "Facts", "KeepFacts 4", "Links",
 		"Take 3", "Facts", "KeepFacts 3", "Links", "WorkspaceOf", "ShareWorkspace in tx", "LockNotebook in tx",
 		"Authorize node.restore in tx", "LockChangeset in tx", "TrashNodesAt 3 in tx", "TrashLines 1 in tx", "Children in tx",
-		"CreateChangeset in tx", "RestoreNodes in tx", "RecordItems 3 in tx", "MarkTrashRoots 3 in tx", "Release 5", "Release 4",
+		"CreateChangeset in tx", "RestoreNodes in tx", "RecordItems 3 in tx", "MarkTrashRoots 3 in tx", "QueueSearch in tx", "Release 5", "Release 4",
 		"Release 3"}
 	if !slices.Equal(f.rec.calls, want) {
 		t.Errorf("calls = %v\nwant %v", f.rec.calls, want)

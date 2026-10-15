@@ -31,7 +31,7 @@ func connect(t testing.TB, url string) *pgxpool.Pool {
 }
 
 // count runs a count query on pool.
-func count(t *testing.T, pool *pgxpool.Pool, query string, args ...any) int {
+func count(t testing.TB, pool *pgxpool.Pool, query string, args ...any) int {
 	t.Helper()
 	var n int
 	if err := pool.QueryRow(context.Background(), query, args...).Scan(&n); err != nil {

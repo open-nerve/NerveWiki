@@ -55,6 +55,7 @@ func TestLogValueMasksDatabaseURL(t *testing.T) {
 		"config.page.edit_session_cleanup_interval=10m0s",
 		"config.page.parse_budget_bytes=8388608",
 		"config.page.parse_max_wait=2s",
+		"config.page.search_index_interval=5s",
 		"config.events.heartbeat_interval=20s",
 		"config.jobs.shutdown_timeout=10s",
 		"config.jobs.purge_interval=1h0m0s",

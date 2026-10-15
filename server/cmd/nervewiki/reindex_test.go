@@ -96,7 +96,9 @@ func TestReindexRebuildsTheNotebooks(t *testing.T) {
 	}
 
 	code, stdout, stderr := execute(ctx, r.environ, "reindex", "--notebook", r.eng.String())
-	if want := fmt.Sprintf("notebook %s: 2 pages, 2 links, 1 unresolved\n", r.eng); code != 0 || stdout != want {
+	// The pages, inserted after 00040 queued the live nodes, have no
+	// search rows: queued.
+	if want := fmt.Sprintf("notebook %s: 2 pages, 2 links, 1 unresolved; 2 nodes queued for the search\n", r.eng); code != 0 || stdout != want {
 		t.Fatalf("reindex --notebook eng = %d, %q, %s; want %q", code, stdout, stderr, want)
 	}
 	if r.indexed(t, r.eng) != 2 || r.indexed(t, r.ops) != 0 {
@@ -108,7 +110,8 @@ func TestReindexRebuildsTheNotebooks(t *testing.T) {
 	expectLinksEvent(t, listener.Conn(), r.eng)
 
 	code, stdout, stderr = execute(ctx, r.environ, "reindex")
-	want := fmt.Sprintf("notebook %s: 2 pages, 2 links, 1 unresolved\nnotebook %s: 1 page, 1 link, 0 unresolved\n", r.eng, r.ops)
+	want := fmt.Sprintf("notebook %s: 2 pages, 2 links, 1 unresolved; 2 nodes queued for the search\n"+
+		"notebook %s: 1 page, 1 link, 0 unresolved; 1 node queued for the search\n", r.eng, r.ops)
 	if code != 0 || stdout != want {
 		t.Fatalf("reindex = %d, %q, %s; want %q", code, stdout, stderr, want)
 	}

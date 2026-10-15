@@ -1252,6 +1252,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v0/workspaces/{slug}/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The workspace's slug. It carries no pattern here: a slug spelled wrong names no workspace, which the operation answers itself. */
+                slug: components["parameters"]["WorkspaceSlug"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Search a workspace
+         * @description The pages and attachments of the workspace's notebooks the caller sees, or of the one notebook_id names, whose name or content holds every term of q, newest change first, a page at a time. Any member can search; a guest sees the notebooks they were added to. Two tiers: the nodes whose name holds every term, then the pages whose name misses one and whose name or content holds each. Folded case matches alike, as do the characters of one simple case folding (ß and ẞ, σ, ς and Σ), but not a folding's expansion (strasse does not find straße), accents, full and half width, nor simplified and traditional Chinese. A term of a single CJK character is found in names alone; one of two CJK characters or more, or of three letters or digits or more, anywhere, as a substring (api finds rapid); one of one or two letters or digits as a whole word, CJK characters bounding it (go finds Go语言, 20 does not find 2020年); a term of letters and CJK characters as a whole, its short runs of letters at its ends whole words (A股). Signs and punctuation match as written. Each write a user makes is found at once, as committed; nodes an import, an upgrade or nervewiki reindex wrote are found once the server's job built their index, until when building is true and the hits may be missing some. A page of the content tier checks at most some thousand pages' contents: a page may hold fewer hits than limit, or none, with a next_cursor to search on. q travels in the request line, which a reverse proxy may log. A cursor the search cannot read is bad_request, before anything else; then a q missing or blank (required), longer than 256 bytes, of more than 8 terms or of more than 64 letters in a row (too_long), not UTF-8 or holding NUL (invalid_format), or of no letter, digit or CJK character (not_allowed) is validation_failed; then a workspace that does not exist, is deleted, or that the caller is no active member of is workspace.not_found; a notebook_id the caller does not see, notebook.not_found; a limit outside 1–50 is validation_failed.
+         */
+        get: operations["searchWorkspace"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v0/pages/{page_id}/backlinks": {
         parameters: {
             query?: never;
@@ -2418,8 +2441,8 @@ export interface components {
             /** @enum {string} */
             reason: "original" | "parent_in_trash" | "too_deep";
         };
-        /** @description An attachment's file in the trash. */
-        TrashAttachment: {
+        /** @description An attachment's file's type and size. */
+        AttachmentInfo: {
             /** @description The file's media type. */
             mime: string;
             /**
@@ -2455,7 +2478,7 @@ export interface components {
             /** @description A page's content's revision as it was deleted, whose version getPageVersionView shows; null for an attachment, and for a page whose content the purge took. */
             revision: number | null;
             /** @description An attachment's type and size; null for a page, and for an attachment whose file the purge took. */
-            asset: components["schemas"]["TrashAttachment"] | null;
+            asset: components["schemas"]["AttachmentInfo"] | null;
         };
         /** @description A page of a notebook's trash, newer first. */
         TrashItemPage: {
@@ -2626,6 +2649,63 @@ export interface components {
             changeset_id: string | null;
             /** @description Whether the revert wrote anything. */
             changed: boolean;
+        };
+        /** @description A page or an attachment a search found. */
+        SearchNode: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            notebook_id: string;
+            kind: components["schemas"]["NodeKind"];
+            /** @description The page's title, or the attachment's file name. */
+            name: string;
+        };
+        /** @description A hit in a text, from start up to end, which it does not hold, in UTF-16 code units, as JavaScript's strings count them. A list's ranges are sorted and do not overlap. */
+        TextRange: {
+            start: number;
+            end: number;
+        };
+        /** @description Some 160 characters of a page's content as written, its Markdown left in, its white space collapsed to single spaces, from a little before its first hit; the hits in it. */
+        SearchExcerpt: {
+            text: string;
+            /** @description The terms' hits in text. */
+            hits: components["schemas"]["TextRange"][];
+            /** @description The content goes on before text. */
+            cut_start: boolean;
+            /** @description The content goes on after text. */
+            cut_end: boolean;
+        };
+        /** @description A node a search found: where it is, its name's hits, a page's content around its first hit, and when it last changed. */
+        SearchHit: {
+            node: components["schemas"]["SearchNode"];
+            /** @description The pages it is under, from the root down to its parent; none at the root. */
+            ancestors: components["schemas"]["Ancestor"][];
+            /** @description The terms' hits in its name. */
+            title_hits: components["schemas"]["TextRange"][];
+            /** @description A page's content around its first hit; null for an attachment, and when the content holds none. */
+            excerpt: components["schemas"]["SearchExcerpt"] | null;
+            /**
+             * Format: date-time
+             * @description When its name, its place or its content last changed: a TreeNode's updated_at leaves out the content's writes.
+             */
+            changed_at: string;
+            /** @description An attachment's type and size; null for a page, and for an attachment whose file is not there. */
+            attachment: components["schemas"]["AttachmentInfo"] | null;
+        };
+        /** @description A search's count: exact when the first page held every hit; about, estimated from the hits checked so far, to two significant digits; at_least, a lower bound, 1000 always at_least. */
+        SearchCount: {
+            value: number;
+            /** @enum {string} */
+            kind: "exact" | "about" | "at_least";
+        };
+        /** @description A page of a search's hits, the title tier's first, then the content tier's, each newest change first. */
+        SearchPage: {
+            data: components["schemas"]["SearchHit"][];
+            next_cursor: components["schemas"]["NextCursor"];
+            /** @description How many hits there are, on the first page alone; null on the later pages, and when none was found yet while the search has more to check. */
+            count: components["schemas"]["SearchCount"] | null;
+            /** @description The notebooks hold nodes the server's job has not indexed yet, after an import, an upgrade or nervewiki reindex: the hits may be missing some. */
+            building: boolean;
         };
         /** @description A page that links to another. */
         Backlink: {
@@ -3110,6 +3190,10 @@ export interface components {
         NodeID: string;
         /** @description The changeset's id. */
         ChangesetID: string;
+        /** @description The workspace's slug. It carries no pattern here: a slug spelled wrong names no workspace, which the operation answers itself. */
+        WorkspaceSlug: string;
+        /** @description The page size, 1–50; 20 when absent: each hit of the content tier is checked in its content. Outside that range the answer is 422 validation_failed on limit. */
+        SearchLimit: number;
         /** @description A tag's name, without its '#', as listTags writes it and a reading view's tag link carries it; a nested tag's '/' is written %2F (a%2Fb). The tag "/" alone cannot be named: the path reads its %2F as a trailing slash, a path no operation has (404 not_found). */
         Tag: string;
         /** @description The job's id. */
@@ -3212,7 +3296,7 @@ export type TaskToggle = components['schemas']['TaskToggle'];
 export type NodeRename = components['schemas']['NodeRename'];
 export type NodeMove = components['schemas']['NodeMove'];
 export type TrashPlacement = components['schemas']['TrashPlacement'];
-export type TrashAttachment = components['schemas']['TrashAttachment'];
+export type AttachmentInfo = components['schemas']['AttachmentInfo'];
 export type TrashItem = components['schemas']['TrashItem'];
 export type TrashItemPage = components['schemas']['TrashItemPage'];
 export type NodeRestored = components['schemas']['NodeRestored'];
@@ -3227,6 +3311,12 @@ export type ChangesetDetail = components['schemas']['ChangesetDetail'];
 export type ChangesetChangePage = components['schemas']['ChangesetChangePage'];
 export type ChangesetRevert = components['schemas']['ChangesetRevert'];
 export type ChangesetReverted = components['schemas']['ChangesetReverted'];
+export type SearchNode = components['schemas']['SearchNode'];
+export type TextRange = components['schemas']['TextRange'];
+export type SearchExcerpt = components['schemas']['SearchExcerpt'];
+export type SearchHit = components['schemas']['SearchHit'];
+export type SearchCount = components['schemas']['SearchCount'];
+export type SearchPage = components['schemas']['SearchPage'];
 export type Backlink = components['schemas']['Backlink'];
 export type BacklinkPage = components['schemas']['BacklinkPage'];
 export type PageProperty = components['schemas']['PageProperty'];
@@ -3278,6 +3368,8 @@ export type ParameterRevision = components['parameters']['Revision'];
 export type ParameterEditSessionId = components['parameters']['EditSessionID'];
 export type ParameterNodeId = components['parameters']['NodeID'];
 export type ParameterChangesetId = components['parameters']['ChangesetID'];
+export type ParameterWorkspaceSlug = components['parameters']['WorkspaceSlug'];
+export type ParameterSearchLimit = components['parameters']['SearchLimit'];
 export type ParameterTag = components['parameters']['Tag'];
 export type ParameterJobId = components['parameters']['JobID'];
 export type HeaderContentDisposition = components['headers']['ContentDisposition'];
@@ -4984,6 +5076,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChangesetReverted"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    searchWorkspace: {
+        parameters: {
+            query?: {
+                /** @description The terms, parted by white space, each found in a node's name or a page's content. Absent or blank is validation_failed on q (required). */
+                q?: string;
+                /** @description The one notebook to search; every notebook the caller sees when absent. */
+                notebook_id?: string;
+                /** @description The next_cursor of the page before; absent for the first page. A cursor that does not decode, has an unknown version or a payload of another shape than this list's, or is not spelled as the server writes it is 400 bad_request on cursor. */
+                cursor?: components["parameters"]["Cursor"];
+                /** @description The page size, 1–50; 20 when absent: each hit of the content tier is checked in its content. Outside that range the answer is 422 validation_failed on limit. */
+                limit?: components["parameters"]["SearchLimit"];
+            };
+            header?: never;
+            path: {
+                /** @description The workspace's slug. It carries no pattern here: a slug spelled wrong names no workspace, which the operation answers itself. */
+                slug: components["parameters"]["WorkspaceSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the search's hits. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchPage"];
                 };
             };
             default: components["responses"]["Problem"];

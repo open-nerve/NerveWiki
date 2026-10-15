@@ -24,8 +24,10 @@ import (
 // index of the notebook id, or, when id is zero, of every notebook not
 // deleted, one at a time and each in a transaction, on the command line's
 // composition: a pool, the Markdown and its budget as serve's, and the
-// linking module's rebuild; no HTTP server or jobs client. A line a
-// notebook goes to out. A notebook whose siblings' title keys would clash,
+// linking module's rebuild; no HTTP server or jobs client. After each, it
+// queues in bulk the notebook's nodes whose search rows are missing or of
+// another tokenizer, which the server's job builds (M8/P5 design 3.4). A
+// line a notebook goes to out. A notebook whose siblings' title keys would clash,
 // or whose rebuild fails, is left as it was, told on errOut, with the
 // logs; when every notebook is rebuilt, the command then fails, after the
 // others.
@@ -45,10 +47,18 @@ func Reindex(ctx context.Context, cfg config.Config, errOut, out io.Writer, id u
 			return err
 		}
 	}
+	search := page.NewSearchIndex(c.pool, cfg.Database.CommitTimeout)
 	failed := 0
 	for _, nb := range ids {
 		r, err := admin.Rebuild(ctx, nb)
 		var line string
+		queued := 0
+		if !errors.Is(err, linking.ErrNoNotebook) && ctx.Err() == nil {
+			var qerr error
+			if queued, qerr = search.Requeue(ctx, nb); qerr != nil {
+				return fmt.Errorf("notebook %s: queue its nodes for the search: %w", nb, qerr)
+			}
+		}
 		switch {
 		case errors.Is(err, linking.ErrNoNotebook) && id == uuid.Nil():
 			continue // deleted since it was listed
@@ -64,7 +74,8 @@ func Reindex(ctx context.Context, cfg config.Config, errOut, out io.Writer, id u
 				return err
 			}
 		default:
-			if err := writeLine(out, fmt.Sprintf("notebook %s: %s, %s, %d unresolved", nb, plural(r.Pages, "page"), plural(r.Links, "link"), r.Unresolved)); err != nil {
+			if err := writeLine(out, fmt.Sprintf("notebook %s: %s, %s, %d unresolved; %s queued for the search", nb, plural(r.Pages, "page"),
+				plural(r.Links, "link"), r.Unresolved, plural(queued, "node"))); err != nil {
 				return err
 			}
 			continue

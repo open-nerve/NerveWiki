@@ -1,7 +1,10 @@
 package bootstrap
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"net/http"
+	"net/url"
 	"slices"
 	"testing"
 	"time"
@@ -155,8 +158,8 @@ func pageMatrixRows() []matrixRow {
 					Revision int    `json:"revision"`
 				}
 				decodeAnswer(t, answer, &v)
-				if v.HTML != "" || v.Revision != 1 {
-					t.Errorf("read %+v, want the seeded empty content at revision 1", v)
+				if v.HTML != matrixMarkHTML || v.Revision != 1 {
+					t.Errorf("read %+v, want the seeded content at revision 1", v)
 				}
 			},
 		},
@@ -197,8 +200,8 @@ func pageMatrixRows() []matrixRow {
 					Revision int    `json:"revision"`
 				}
 				decodeAnswer(t, answer, &v)
-				if v.Content != "" || v.Revision != 1 {
-					t.Errorf("read %+v, want the seeded empty content at revision 1", v)
+				if v.Content != matrixMark+"\n" || v.Revision != 1 {
+					t.Errorf("read %+v, want the seeded content at revision 1", v)
 				}
 			},
 		},
@@ -216,8 +219,8 @@ func pageMatrixRows() []matrixRow {
 					Revision int    `json:"revision"`
 				}
 				decodeAnswer(t, answer, &v)
-				if v.HTML != "" || v.Revision != 1 {
-					t.Errorf("read %+v, want the seeded empty content at revision 1", v)
+				if v.HTML != matrixMarkHTML || v.Revision != 1 {
+					t.Errorf("read %+v, want the seeded content at revision 1", v)
 				}
 			},
 		},
@@ -396,8 +399,9 @@ func pageMatrixRows() []matrixRow {
 					Hash     string `json:"content_hash"`
 				}
 				decodeAnswer(t, answer, &c)
-				if c.Content != "" || c.Revision != 1 || c.Hash != "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" {
-					t.Errorf("read %+v, want the seeded empty content at revision 1, with its hash", c)
+				if sum := sha256.Sum256([]byte(matrixMark + "\n")); c.Content != matrixMark+"\n" || c.Revision != 1 ||
+					c.Hash != hex.EncodeToString(sum[:]) {
+					t.Errorf("read %+v, want the seeded content at revision 1, with its hash", c)
 				}
 			},
 		},
@@ -682,5 +686,112 @@ func ancestorsOf(name string) []string {
 		}
 		out = append([]string{parent}, out...)
 	}
+	return out
+}
+
+// matrixMarkHTML is the reading view of a seeded page's content.
+const matrixMarkHTML = "<p>" + matrixMark + "</p>\n"
+
+// searchMatrixRows are the search's rows (M8/P5 design 3.8): any member
+// searches a workspace, the rest do not see it. The workspace columns
+// search acme, which has no notebook; the notebook columns lab, every
+// notebook each sees, then the one it targets (notebookOf), which a column
+// that does not see it is told is not found. Each finds by the mark
+// (matrixMark) exactly the seeded nodes not deleted of what it searches,
+// through the queue (queueSeeded): the reads' app runs no job.
+func searchMatrixRows() []matrixRow {
+	workspaceNotFound := cell{http.StatusNotFound, "workspace.not_found"}
+	// finds checks that the answer holds the nodes of the notebooks, one
+	// page of them, counted exactly.
+	finds := func(t *testing.T, s seeded, answer string, notebooks ...string) {
+		t.Helper()
+		var a searchAnswer
+		decodeAnswer(t, answer, &a)
+		got, want := slices.Sorted(slices.Values(a.ids())), markedNodes(s, notebooks...)
+		if !slices.Equal(got, want) || a.NextCursor != nil || a.Building || a.Count == nil || a.Count.Value != len(want) ||
+			a.Count.Kind != "exact" {
+			t.Errorf("found %s, want the seeded nodes of %q, %d of them, exactly", answer, notebooks, len(want))
+		}
+	}
+	return []matrixRow{
+		{
+			op: "searchWorkspace",
+			request: func(c caller, _ seeded) (string, string, string) {
+				return http.MethodGet, searchPath(workspaceOf(c), matrixMark, nil), ""
+			},
+			cells: map[caller]cell{
+				callerAdmin: cellOK(), callerMember: cellOK(), callerGuest: cellOK(),
+				callerNever: workspaceNotFound, callerEnded: workspaceNotFound, callerDeleted: workspaceNotFound,
+			},
+			check: func(t *testing.T, _ caller, s seeded, answer string) {
+				t.Helper()
+				finds(t, s, answer)
+			},
+		},
+		{
+			op:      "searchWorkspace",
+			variant: "by the notebook columns",
+			columns: notebookColumns(),
+			request: func(c caller, _ seeded) (string, string, string) {
+				return http.MethodGet, searchPath(workspaceOf(c), matrixMark, url.Values{"limit": {"50"}}), ""
+			},
+			cells: everyNotebookColumn(cellOK(), map[caller]cell{callerOutsideWorkspace: workspaceNotFound}),
+			check: func(t *testing.T, c caller, s seeded, answer string) {
+				t.Helper()
+				var seen []string
+				for _, n := range listedNotebooks(c) {
+					seen = append(seen, n.Name)
+				}
+				finds(t, s, answer, seen...)
+			},
+		},
+		{
+			op:      "searchWorkspace",
+			variant: "in the column's notebook",
+			columns: notebookColumns(),
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodGet, searchPath(workspaceOf(c), matrixMark,
+					url.Values{"notebook_id": {s.notebook(notebookOf(c)).String()}, "limit": {"50"}}), ""
+			},
+			cells: func() map[caller]cell {
+				cells := map[caller]cell{}
+				for _, c := range notebookColumns() {
+					_, seen := roleIn(c)
+					switch {
+					case c == callerOutsideWorkspace:
+						cells[c] = workspaceNotFound
+					case seen:
+						cells[c] = cellOK()
+					default:
+						cells[c] = cell{http.StatusNotFound, "notebook.not_found"}
+					}
+				}
+				return cells
+			}(),
+			check: func(t *testing.T, c caller, s seeded, answer string) {
+				t.Helper()
+				finds(t, s, answer, notebookOf(c))
+			},
+		},
+	}
+}
+
+// markedNodes are the ids of the seeded nodes not deleted of the notebooks
+// that the search finds by the mark, sorted: each page, and the attachment
+// markedIn; a deleted notebook's are deleted with it.
+func markedNodes(s seeded, notebooks ...string) []string {
+	var out []string
+	for _, n := range matrixNotebooks() {
+		if !slices.Contains(notebooks, n.name) || n.deleted {
+			continue
+		}
+		for _, p := range matrixPages() {
+			if p.notebook == n.name {
+				out = append(out, s.page(p.name).String())
+			}
+		}
+		out = append(out, s.asset(markedIn(n.name)).String())
+	}
+	slices.Sort(out)
 	return out
 }

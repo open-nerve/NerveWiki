@@ -56,7 +56,7 @@ func TestRestoreNodeBringsAnItemBack(t *testing.T) {
 		"Take 15", "Facts", "KeepFacts 15", "Links", "Take 5", "Facts", "KeepFacts 5", "Links",
 		"WorkspaceOf", "ShareWorkspace in tx", "LockNotebook in tx", "Authorize node.restore in tx", "FindAnyNode in tx",
 		"TrashGroup in tx", "TrashLines 1 in tx", "Children in tx", "GuardWrite restore in tx", "CreateChangeset in tx",
-		"RestoreNodes in tx", "RecordItems 3 in tx", "Participate restore in tx", "PagesChanged in tx", "Release 15", "Release 5"}
+		"RestoreNodes in tx", "RecordItems 3 in tx", "Participate restore in tx", "QueueSearch in tx", "PagesChanged in tx", "Release 15", "Release 5"}
 	if !slices.Equal(f.rec.calls, want) {
 		t.Errorf("calls = %v\nwant %v", f.rec.calls, want)
 	}

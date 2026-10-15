@@ -4,6 +4,7 @@ import (
 	"context"
 	"maps"
 	"net/http"
+	"net/url"
 	"slices"
 	"testing"
 	"uuid"
@@ -14,7 +15,7 @@ import (
 )
 
 // The tree and the reads agree (M4/P1 design 3.12): on the matrix's data,
-// each column's trees of lab's notebooks hold exactly the pages and the
+// each column's trees of lab's notebooks hold exactly the pages and lab's
 // attachments it reads one by one (M7/P2), by the same name under the same
 // parent, and each page read's ancestors are its chain up the tree. A
 // page's reading view answers as its read does (M4/P3 design 3.9). The
@@ -56,6 +57,7 @@ func TestTheTreeIsWhatEachReadAllows(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	queueSeeded(t, pool)
 	checkPages(t, pool)
 	base := startApp(t, d.config(t, url, nil), migrations.FS())
 	teamPage := s.page("team-page")
@@ -65,10 +67,14 @@ func TestTheTreeIsWhatEachReadAllows(t *testing.T) {
 	checkPages(t, pool)
 	gone := []string{teamPage.String(), extras["team-child"].String(), s.asset("team-page.png").String()}
 	type place struct{ name, parent string }
+	inLab := map[string]bool{} // the notebooks whose trees are read
+	for _, n := range matrixNotebooks() {
+		inLab[n.name] = n.slug == "lab"
+	}
 	for _, c := range allColumns() {
 		tree := map[string]place{} // by id, of the trees c reads
 		for _, n := range matrixNotebooks() {
-			if n.slug != "lab" {
+			if !inLab[n.name] {
 				continue
 			}
 			status, answer := ask(t, contract, http.MethodGet, base+"/api/v0/notebooks/"+s.notebook(n.name).String()+"/nodes", d.tokens[c], "")
@@ -124,8 +130,11 @@ func TestTheTreeIsWhatEachReadAllows(t *testing.T) {
 				t.Fatalf("%s: GET a page = %d %s", c, status, answer)
 			}
 		}
-		for _, id := range s.assets {
-			status, answer := ask(t, contract, http.MethodGet, base+"/api/v0/assets/"+id.String(), d.tokens[c], "")
+		for _, a := range matrixAssets() {
+			if !inLab[a.notebook] {
+				continue // other-nb's, which no tree here holds
+			}
+			status, answer := ask(t, contract, http.MethodGet, base+"/api/v0/assets/"+s.asset(a.name).String(), d.tokens[c], "")
 			switch status {
 			case http.StatusOK:
 				var a struct {
@@ -157,4 +166,143 @@ func deref(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+// The search and the reads agree (M8/P5 design 3.8; v0.1 design 13.1,
+// item 3): on the matrix's data, each column's search by the mark of each
+// seeded workspace it is a member of finds exactly the marked nodes it
+// reads one by one, a page through GET /pages/{id}, an attachment through
+// GET /assets/{id}: never one in the trash, nor one of a deleted notebook.
+// Limited to a notebook it sees, the search finds those of that notebook;
+// to one it does not, notebook.not_found. Twice, each on the state it
+// relies on: before the job, every seeded node queued, deleted or not, and
+// no row built, so that the reads' filter is what turns the deleted and
+// the unseen away; then after a run, the queue empty, every node found
+// through its row. Each runs on the search and the reads of the access
+// module: a search that drifts from the reads fails here.
+func TestTheSearchIsWhatEachReadAllows(t *testing.T) {
+	d := prepareMatrix(t)
+	contract := apitest.Load(t)
+	db := pgtest.NewDatabaseFrom(t, d.url)
+	s := d.seeded.in(t)
+	pool := connect(t, db)
+	base := startApp(t, d.config(t, db, nil), migrations.FS())
+	notebookOfNode := map[string]string{} // the marked nodes' notebooks, by id
+	for _, p := range slices.Concat(matrixPages(), matrixTrash()) {
+		notebookOfNode[s.page(p.name).String()] = p.notebook
+	}
+	assets := map[string]bool{}
+	for _, n := range matrixNotebooks() {
+		id := s.asset(markedIn(n.name)).String()
+		notebookOfNode[id], assets[id] = n.name, true
+	}
+	deleted := map[string]bool{}
+	for _, p := range matrixTrash() {
+		deleted[s.page(p.name).String()] = true
+	}
+	for id, nb := range notebookOfNode {
+		if nb == "gone-nb" {
+			deleted[id] = true
+		}
+	}
+	search := func(t *testing.T, c caller, slug string, notebook *uuid.UUID) (int, searchAnswer, string) {
+		t.Helper()
+		more := url.Values{"limit": {"50"}}
+		if notebook != nil {
+			more.Set("notebook_id", notebook.String())
+		}
+		status, answer := ask(t, contract, http.MethodGet, base+searchPath(slug, matrixMark, more), d.tokens[c], "")
+		var a searchAnswer
+		switch status {
+		case http.StatusOK:
+			decodeAnswer(t, answer, &a)
+			if a.NextCursor != nil || a.Building {
+				t.Errorf("%s: search %s = %s, want one page, not building", c, slug, answer)
+			}
+			return status, a, ""
+		case http.StatusNotFound:
+			return status, a, problemCode(t, answer)
+		}
+		t.Fatalf("%s: search %s = %d %s", c, slug, status, answer)
+		return 0, a, ""
+	}
+	check := func(t *testing.T) {
+		for _, c := range allColumns() {
+			var reads []string
+			for id := range notebookOfNode {
+				path := "/api/v0/pages/" + id
+				if assets[id] {
+					path = "/api/v0/assets/" + id
+				}
+				switch status, answer := ask(t, contract, http.MethodGet, base+path, d.tokens[c], ""); status {
+				case http.StatusOK:
+					reads = append(reads, id)
+				case http.StatusNotFound:
+				default:
+					t.Fatalf("%s: GET %s = %d %s", c, path, status, answer)
+				}
+			}
+			var found []string
+			for _, w := range matrixWorkspaces() {
+				status, a, code := search(t, c, w.slug, nil)
+				if status == http.StatusNotFound && code != "workspace.not_found" {
+					t.Errorf("%s: search %s = 404 %s, want workspace.not_found", c, w.slug, code)
+				}
+				found = append(found, a.ids()...)
+				for _, n := range matrixNotebooks() {
+					if n.slug != w.slug {
+						continue
+					}
+					nb := s.notebook(n.name)
+					inStatus, in, inCode := search(t, c, w.slug, &nb)
+					var want []string
+					for _, id := range reads {
+						if notebookOfNode[id] == n.name {
+							want = append(want, id)
+						}
+					}
+					switch {
+					case status == http.StatusNotFound:
+						if inStatus != http.StatusNotFound || inCode != "workspace.not_found" {
+							t.Errorf("%s: search %s in %s = %d %s, want workspace.not_found", c, w.slug, n.name, inStatus, inCode)
+						}
+					case inStatus == http.StatusNotFound:
+						if inCode != "notebook.not_found" || len(want) != 0 {
+							t.Errorf("%s: search %s in %s = 404 %s, want notebook.not_found, as it reads %d of its nodes", c, w.slug,
+								n.name, inCode, len(want))
+						}
+					default:
+						if got := slices.Sorted(slices.Values(in.ids())); !slices.Equal(got, slices.Sorted(slices.Values(want))) {
+							t.Errorf("%s: search %s in %s found %q, want those of it the column reads, %q", c, w.slug, n.name, got, want)
+						}
+					}
+				}
+			}
+			for _, id := range found {
+				if deleted[id] {
+					t.Errorf("%s found %s, of the trash or of a deleted notebook", c, id)
+				}
+			}
+			if got, want := slices.Sorted(slices.Values(found)), slices.Sorted(slices.Values(reads)); !slices.Equal(got, want) {
+				t.Errorf("%s found %q, want the marked nodes it reads, %q", c, got, want)
+			}
+		}
+	}
+	t.Run("through the queue", func(t *testing.T) {
+		if queued, rows, nodes := count(t, pool, "SELECT count(*) FROM page_search_queue WHERE NOT bulk"), count(t, pool,
+			"SELECT count(*) FROM page_search"), count(t, pool, "SELECT count(*) FROM nodes"); queued != nodes || rows != 0 {
+			t.Fatalf("%d nodes queued exact of %d, %d rows; want every node queued, no row", queued, nodes, rows)
+		}
+		check(t)
+	})
+	drainSearch(t, pool)
+	t.Run("through the index", func(t *testing.T) {
+		if queued, rows, live := count(t, pool, "SELECT count(*) FROM page_search_queue"), count(t, pool,
+			"SELECT count(*) FROM page_search"), count(t, pool, "SELECT count(*) FROM nodes WHERE deleted_at IS NULL"); queued != 0 ||
+			rows != live {
+			t.Fatalf("%d nodes queued, %d rows of %d live nodes; want none queued, a row for each", queued, rows, live)
+		}
+		check(t)
+	})
+	checkPages(t, pool)
 }

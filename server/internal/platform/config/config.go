@@ -156,6 +156,10 @@ type PageConfig struct {
 	// ParseMaxWait is how long a request waits for its share of the budget
 	// before it is answered 503 server_busy.
 	ParseMaxWait time.Duration `koanf:"parse_max_wait"`
+	// SearchIndexInterval is how often the search's job builds the rows of
+	// the nodes queued for it (M8/P5 design 3.4): 1 s to 10 min. A user's
+	// write is found at once; an import's pages once the job built them.
+	SearchIndexInterval time.Duration `koanf:"search_index_interval"`
 }
 
 // EventsConfig configures the event stream (M5 design 4.10).
@@ -345,6 +349,7 @@ func (c Config) LogValue() slog.Value {
 			duration("edit_session_cleanup_interval", c.Page.EditSessionCleanupInterval),
 			slog.Int("parse_budget_bytes", c.Page.ParseBudgetBytes),
 			duration("parse_max_wait", c.Page.ParseMaxWait),
+			duration("search_index_interval", c.Page.SearchIndexInterval),
 		),
 		slog.Group("events",
 			duration("heartbeat_interval", c.Events.HeartbeatInterval),

@@ -24,7 +24,21 @@ func matrixAssets() []matrixPage {
 			out = append(out, a)
 		}
 	}
+	for _, n := range matrixNotebooks() {
+		parent := ""
+		if slices.Contains(sessionNotebooks(), n.name) {
+			parent = tasksIn(n.name)
+		}
+		out = append(out, matrixPage{markedIn(n.name), n.name, parent})
+	}
 	return out
+}
+
+// markedIn is the attachment of each seeded notebook the search finds by
+// its name (M8/P5 design 3.8): under its page of task items, or at the root
+// of other-nb, which has no page.
+func markedIn(notebook string) string {
+	return matrixMark + "-" + notebook + ".png"
 }
 
 // matrixAssetBytes is the size of each seeded attachment.

@@ -205,7 +205,7 @@ func sameRequest(method, path, body string) func(caller, seeded) (string, string
 }
 
 // decodeAnswer decodes a cell's answer into v for a row's check.
-func decodeAnswer(t *testing.T, answer string, v any) {
+func decodeAnswer(t testing.TB, answer string, v any) {
 	t.Helper()
 	if err := json.Unmarshal([]byte(answer), v); err != nil {
 		t.Fatalf("the answer %s: %v", answer, err)
@@ -215,8 +215,8 @@ func decodeAnswer(t *testing.T, answer string, v any) {
 // matrixRows are the rows, each module's from its file.
 func matrixRows() []matrixRow {
 	return slices.Concat(workspaceMatrixRows(), memberMatrixRows(), invitationMatrixRows(), notebookMatrixRows(),
-		notebookMemberMatrixRows(), ownerlessMatrixRows(), pageMatrixRows(), linkingMatrixRows(), assetMatrixRows(),
-		transferMatrixRows())
+		notebookMemberMatrixRows(), ownerlessMatrixRows(), pageMatrixRows(), searchMatrixRows(), linkingMatrixRows(),
+		assetMatrixRows(), transferMatrixRows())
 }
 
 // matrixApps is how many cells may run an app of their own at once: each

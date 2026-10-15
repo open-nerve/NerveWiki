@@ -12,12 +12,14 @@ import (
 )
 
 // Querier runs statements: the transaction WithinTx opened, or the pool.
-// sqlc's generated DBTX interface has the same methods, so repositories pass
-// DB(ctx, pool) to their generated queries.
+// sqlc's generated DBTX interface has the same methods, SendBatch where a
+// module's queries hold a batch, so repositories pass DB(ctx, pool) to their
+// generated queries.
 type Querier interface {
 	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	SendBatch(ctx context.Context, b *pgx.Batch) pgx.BatchResults
 }
 
 type txKey struct{}

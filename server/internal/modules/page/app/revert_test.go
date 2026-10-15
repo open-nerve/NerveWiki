@@ -152,7 +152,7 @@ func TestRevertChangesetRestoresADeletion(t *testing.T) {
 		want = append(want, call+" in tx")
 	}
 	want = append(want, "GuardWrite restore in tx", "CreateChangeset in tx", "RestoreNodes in tx", "RecordItems 3 in tx",
-		"Participate restore in tx", "PagesChanged in tx", "Release 15")
+		"Participate restore in tx", "QueueSearch in tx", "PagesChanged in tx", "Release 15")
 	if !slices.Equal(f.rec.calls, want) {
 		t.Errorf("calls = %v\nwant %v", f.rec.calls, want)
 	}

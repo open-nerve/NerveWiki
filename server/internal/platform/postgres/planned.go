@@ -37,3 +37,10 @@ func (p planned) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, 
 func (p planned) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
 	return p.q.QueryRow(ctx, sql, append([]any{pgx.QueryExecModeDescribeExec}, args...)...)
 }
+
+// SendBatch sends b as q does: a batch's statements are queued with their
+// modes, which Planned does not choose. A batch writes rows; a statement
+// that reads by an array argument is no batch's.
+func (p planned) SendBatch(ctx context.Context, b *pgx.Batch) pgx.BatchResults {
+	return p.q.SendBatch(ctx, b)
+}

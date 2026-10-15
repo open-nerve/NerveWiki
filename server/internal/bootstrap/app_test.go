@@ -79,7 +79,9 @@ func testConfig(t testing.TB, dbURL string, autoMigrate bool) config.Config {
 		Workspace: config.WorkspaceConfig{CreationEnabled: true},
 		// So does the edit sessions' cleanup's. Unset, its interval of 0
 		// would have River enqueue it without pause: nothing validates
-		// this configuration.
+		// this configuration. The search's interval of 0 registers no job
+		// (page.Deps.SearchInterval): the tests run it themselves
+		// (drainSearch), so that what the queue alone answers is seen.
 		Page:   config.PageConfig{EditSessionCleanupInterval: time.Hour, ParseBudgetBytes: 8 << 20, ParseMaxWait: 2 * time.Second},
 		Events: config.EventsConfig{HeartbeatInterval: 20 * time.Second},
 		// The purge's first run starts with the jobs too.

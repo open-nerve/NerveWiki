@@ -141,6 +141,8 @@ paths:
     $ref: "modules/page.yaml#/paths/~1api~1v0~1changesets~1{changeset_id}~1changes"
   /api/v0/changesets/{changeset_id}/revert:
     $ref: "modules/page.yaml#/paths/~1api~1v0~1changesets~1{changeset_id}~1revert"
+  /api/v0/workspaces/{slug}/search:
+    $ref: "modules/page.yaml#/paths/~1api~1v0~1workspaces~1{slug}~1search"
   /api/v0/pages/{page_id}/backlinks:
     $ref: "modules/linking.yaml#/paths/~1api~1v0~1pages~1{page_id}~1backlinks"
   /api/v0/pages/{page_id}/properties:

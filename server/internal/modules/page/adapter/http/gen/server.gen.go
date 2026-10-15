@@ -99,10 +99,40 @@ func (e NodeKind) Valid() bool {
 	}
 }
 
+// Defines values for SearchCountKind.
+const (
+	SearchCountKindAbout   SearchCountKind = "about"
+	SearchCountKindAtLeast SearchCountKind = "at_least"
+	SearchCountKindExact   SearchCountKind = "exact"
+)
+
+// Valid indicates whether the value is a known member of the SearchCountKind enum.
+func (e SearchCountKind) Valid() bool {
+	switch e {
+	case SearchCountKindAbout:
+		return true
+	case SearchCountKindAtLeast:
+		return true
+	case SearchCountKindExact:
+		return true
+	default:
+		return false
+	}
+}
+
 // Ancestor A page above another, on the way from the root.
 type Ancestor struct {
 	ID   uuid.UUID `json:"id"`
 	Name string    `json:"name"`
+}
+
+// AttachmentInfo An attachment's file's type and size.
+type AttachmentInfo struct {
+	// ByteSize The file's size in bytes.
+	ByteSize int64 `json:"byte_size"`
+
+	// Mime The file's media type.
+	Mime string `json:"mime"`
 }
 
 // ChangeContent A version of a page's content a changeset wrote.
@@ -504,6 +534,74 @@ type PageView struct {
 	Revision int `json:"revision"`
 }
 
+// SearchCount A search's count: exact when the first page held every hit; about, estimated from the hits checked so far, to two significant digits; at_least, a lower bound, 1000 always at_least.
+type SearchCount struct {
+	Kind  SearchCountKind `json:"kind"`
+	Value int             `json:"value"`
+}
+
+// SearchCountKind defines model for SearchCount.Kind.
+type SearchCountKind string
+
+// SearchExcerpt Some 160 characters of a page's content as written, its Markdown left in, its white space collapsed to single spaces, from a little before its first hit; the hits in it.
+type SearchExcerpt struct {
+	// CutEnd The content goes on after text.
+	CutEnd bool `json:"cut_end"`
+
+	// CutStart The content goes on before text.
+	CutStart bool `json:"cut_start"`
+
+	// Hits The terms' hits in text.
+	Hits []TextRange `json:"hits"`
+	Text string      `json:"text"`
+}
+
+// SearchHit A node a search found: where it is, its name's hits, a page's content around its first hit, and when it last changed.
+type SearchHit struct {
+	// Ancestors The pages it is under, from the root down to its parent; none at the root.
+	Ancestors []Ancestor `json:"ancestors"`
+
+	// Attachment An attachment's type and size; null for a page, and for an attachment whose file is not there.
+	Attachment nullable.Nullable[AttachmentInfo] `json:"attachment"`
+
+	// ChangedAt When its name, its place or its content last changed: a TreeNode's updated_at leaves out the content's writes.
+	ChangedAt time.Time `json:"changed_at"`
+
+	// Excerpt A page's content around its first hit; null for an attachment, and when the content holds none.
+	Excerpt nullable.Nullable[SearchExcerpt] `json:"excerpt"`
+
+	// Node A page or an attachment a search found.
+	Node SearchNode `json:"node"`
+
+	// TitleHits The terms' hits in its name.
+	TitleHits []TextRange `json:"title_hits"`
+}
+
+// SearchNode A page or an attachment a search found.
+type SearchNode struct {
+	ID uuid.UUID `json:"id"`
+
+	// Kind What a node of the tree is: a page, or an attachment, a file at the root or under a page, which no node is under.
+	Kind NodeKind `json:"kind"`
+
+	// Name The page's title, or the attachment's file name.
+	Name       string    `json:"name"`
+	NotebookID uuid.UUID `json:"notebook_id"`
+}
+
+// SearchPage A page of a search's hits, the title tier's first, then the content tier's, each newest change first.
+type SearchPage struct {
+	// Building The notebooks hold nodes the server's job has not indexed yet, after an import, an upgrade or nervewiki reindex: the hits may be missing some.
+	Building bool `json:"building"`
+
+	// Count How many hits there are, on the first page alone; null on the later pages, and when none was found yet while the search has more to check.
+	Count nullable.Nullable[SearchCount] `json:"count"`
+	Data  []SearchHit                    `json:"data"`
+
+	// NextCursor The cursor of the next page; null on the last page.
+	NextCursor nullable.Nullable[externalRef0.NextCursor] `json:"next_cursor"`
+}
+
 // TaskToggle A tick or a clear of a task item.
 type TaskToggle struct {
 	// BaseRevision The revision the offset was read at, the reading view's.
@@ -516,17 +614,14 @@ type TaskToggle struct {
 	Offset int `json:"offset"`
 }
 
+// TextRange A hit in a text, from start up to end, which it does not hold, in UTF-16 code units, as JavaScript's strings count them. A list's ranges are sorted and do not overlap.
+type TextRange struct {
+	End   int `json:"end"`
+	Start int `json:"start"`
+}
+
 // Title 1–255 bytes after the surrounding blanks are trimmed and the text is in NFC; none of / \ : * ? " < > | # ^ [ ] nor control characters; not starting or ending with a dot; no name Windows reserves (CON, COM1, …). It is the file's name when the notebook is exported. Siblings' titles differ in more than case: they compare by Unicode case folding.
 type Title = string
-
-// TrashAttachment An attachment's file in the trash.
-type TrashAttachment struct {
-	// ByteSize The file's size in bytes.
-	ByteSize int64 `json:"byte_size"`
-
-	// Mime The file's media type.
-	Mime string `json:"mime"`
-}
 
 // TrashItem A trash item: a node deleted with the nodes under it at one time, by its root, as it was deleted, and who deleted it, deleted_by.
 type TrashItem struct {
@@ -534,7 +629,7 @@ type TrashItem struct {
 	Ancestors []Ancestor `json:"ancestors"`
 
 	// Asset An attachment's type and size; null for a page, and for an attachment whose file the purge took.
-	Asset nullable.Nullable[TrashAttachment] `json:"asset"`
+	Asset nullable.Nullable[AttachmentInfo] `json:"asset"`
 
 	// Assets The attachments deleted with it, itself among them when it is an attachment.
 	Assets    int       `json:"assets"`
@@ -644,6 +739,12 @@ type PageID = uuid.UUID
 // Revision defines model for Revision.
 type Revision = int
 
+// SearchLimit defines model for SearchLimit.
+type SearchLimit = int
+
+// WorkspaceSlug defines model for WorkspaceSlug.
+type WorkspaceSlug = string
+
 // Problem RFC 9457 problem details. `title` is the HTTP status phrase, `detail` explains this occurrence, and clients branch on `code`. Must match httpserver.Problem; the platform's contract test checks it.
 type Problem = externalRef0.Problem
 
@@ -690,6 +791,21 @@ type ListPageVersionsParams struct {
 
 	// Cursor The next_cursor of the page before; absent for the first page. A cursor that does not decode, has an unknown version or a payload of another shape than this list's, or is not spelled as the server writes it is 400 bad_request on cursor.
 	Cursor *externalRef0.Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
+// SearchWorkspaceParams defines parameters for SearchWorkspace.
+type SearchWorkspaceParams struct {
+	// Q The terms, parted by white space, each found in a node's name or a page's content. Absent or blank is validation_failed on q (required).
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// NotebookID The one notebook to search; every notebook the caller sees when absent.
+	NotebookID *uuid.UUID `form:"notebook_id,omitempty" json:"notebook_id,omitempty"`
+
+	// Cursor The next_cursor of the page before; absent for the first page. A cursor that does not decode, has an unknown version or a payload of another shape than this list's, or is not spelled as the server writes it is 400 bad_request on cursor.
+	Cursor *externalRef0.Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit The page size, 1–50; 20 when absent: each hit of the content tier is checked in its content. Outside that range the answer is 422 validation_failed on limit.
+	Limit *SearchLimit `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // RevertChangesetJSONRequestBody defines body for RevertChangeset for application/json ContentType.
@@ -796,6 +912,9 @@ type ServerInterface interface {
 	// GetPageView Read a page
 	// (GET /api/v0/pages/{page_id}/view)
 	GetPageView(w http.ResponseWriter, r *http.Request, pageID PageID)
+	// SearchWorkspace Search a workspace
+	// (GET /api/v0/workspaces/{slug}/search)
+	SearchWorkspace(w http.ResponseWriter, r *http.Request, slug WorkspaceSlug, params SearchWorkspaceParams)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -1665,6 +1784,87 @@ func (siw *ServerInterfaceWrapper) GetPageView(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// SearchWorkspace operation middleware
+func (siw *ServerInterfaceWrapper) SearchWorkspace(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "slug" -------------
+	var slug WorkspaceSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "slug", r.PathValue("slug"), &slug, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "slug", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SearchWorkspaceParams
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "notebook_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "notebook_id", r.URL.Query(), &params.NotebookID, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "notebook_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "notebook_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SearchWorkspace(w, r, slug, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -1811,6 +2011,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/changesets/{changeset_id}", wrapper.GetChangeset)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/changesets/{changeset_id}/changes", wrapper.ListChangesetChanges)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/changesets/{changeset_id}/revert", wrapper.RevertChangeset)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/workspaces/{slug}/search", wrapper.SearchWorkspace)
 
 	return m
 }
@@ -3018,6 +3219,53 @@ func (response GetPageViewdefaultApplicationProblemPlusJSONResponse) VisitGetPag
 	return err
 }
 
+type SearchWorkspaceRequestObject struct {
+	Slug   WorkspaceSlug `json:"slug"`
+	Params SearchWorkspaceParams
+}
+
+type SearchWorkspaceResponseObject interface {
+	VisitSearchWorkspaceResponse(w http.ResponseWriter) error
+}
+
+type SearchWorkspace200JSONResponse SearchPage
+
+func (response SearchWorkspace200JSONResponse) VisitSearchWorkspaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SearchWorkspacedefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response SearchWorkspacedefaultApplicationProblemPlusJSONResponse) VisitSearchWorkspaceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// GetChangeset Read a changeset
@@ -3098,6 +3346,9 @@ type StrictServerInterface interface {
 	// GetPageView Read a page
 	// (GET /api/v0/pages/{page_id}/view)
 	GetPageView(ctx context.Context, request GetPageViewRequestObject) (GetPageViewResponseObject, error)
+	// SearchWorkspace Search a workspace
+	// (GET /api/v0/workspaces/{slug}/search)
+	SearchWorkspace(ctx context.Context, request SearchWorkspaceRequestObject) (SearchWorkspaceResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -3877,6 +4128,33 @@ func (sh *strictHandler) GetPageView(w http.ResponseWriter, r *http.Request, pag
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetPageViewResponseObject); ok {
 		if err := validResponse.VisitGetPageViewResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SearchWorkspace operation middleware
+func (sh *strictHandler) SearchWorkspace(w http.ResponseWriter, r *http.Request, slug WorkspaceSlug, params SearchWorkspaceParams) {
+	var request SearchWorkspaceRequestObject
+
+	request.Slug = slug
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SearchWorkspace(ctx, request.(SearchWorkspaceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SearchWorkspace")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SearchWorkspaceResponseObject); ok {
+		if err := validResponse.VisitSearchWorkspaceResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

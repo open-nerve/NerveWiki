@@ -90,6 +90,9 @@ page:
   # server.request_timeout，且应明显短于它：认证与权限判定也要时间），然后 503 server_busy
   parse_budget_bytes: 8388608
   parse_max_wait: 2s
+  # 后台任务为排队的节点建搜索索引的间隔，1 秒到 10 分钟。用户的写立即搜得到；导入、升级与 reindex 之后的节点在任务建好之前搜不到，
+  # 搜索答复带 building
+  search_index_interval: 5s
 
 events:
   # 事件流的心跳与重新认证凭证的间隔，5 到 50 秒。要短于反向代理的读超时（nginx 的 proxy_read_timeout 默认

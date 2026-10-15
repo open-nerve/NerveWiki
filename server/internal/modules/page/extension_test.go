@@ -15,6 +15,7 @@ import (
 	"time"
 	"uuid"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	gast "github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/renderer"
@@ -48,6 +49,15 @@ func (fixedClock) Now() time.Time { return testNow() }
 
 // sqlWorkspaces and sqlNotebooks stand in for the other modules' ports.
 type sqlWorkspaces struct{ pool *pgxpool.Pool }
+
+func (w sqlWorkspaces) FindBySlug(ctx context.Context, slug string) (uuid.UUID, bool, error) {
+	var id uuid.UUID
+	err := postgres.DB(ctx, w.pool).QueryRow(ctx, "SELECT id FROM workspaces WHERE slug = $1 AND deleted_at IS NULL", slug).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return uuid.UUID{}, false, nil
+	}
+	return id, err == nil, err
+}
 
 func (w sqlWorkspaces) ShareByID(ctx context.Context, id uuid.UUID) (bool, error) {
 	return exists(ctx, w.pool, "SELECT 1 FROM workspaces WHERE id = $1 AND deleted_at IS NULL FOR SHARE", id)
@@ -231,8 +241,16 @@ func (f fixture) module(guards []page.WriteGuard, participants []page.Participan
 		Authorizer: aliceWrites{f.alice}, Workspaces: sqlWorkspaces{f.pool}, Notebooks: sqlNotebooks{f.pool}, Names: sqlNames{f.pool},
 		Markdown: f.md, Budget: budget, Guards: guards, Participants: participants, Observers: observers,
 		EditSessionVetoers: f.vetoers, EditSessionSubscribers: f.subscribers, EditSessionCleanupInterval: time.Hour,
-		Retention: 24 * time.Hour, Attachments: noAttachments{},
+		Retention: 24 * time.Hour, Attachments: noAttachments{}, Snapshots: postgres.NewTxManager(f.pool, 5*time.Second),
+		VisibleNotebooks: noNotebooks{},
 	})
+}
+
+// noNotebooks sees no notebook: the registrants' tests search nothing.
+type noNotebooks struct{}
+
+func (noNotebooks) VisibleIn(context.Context, uuid.UUID, uuid.UUID, shared.WorkspaceRole) ([]uuid.UUID, error) {
+	return nil, nil
 }
 
 func (f fixture) createPath() string { return "/api/v0/notebooks/" + f.eng.String() + "/pages" }
@@ -850,7 +868,8 @@ func TestTheBodyLimitsAreTheModulesRoutes(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := page.New(page.Deps{Clock: fixedClock{}, Logger: slog.New(slog.DiscardHandler), Markdown: md, EditSessionCleanupInterval: time.Hour,
-		Budget: markdown.NewBudget(8<<20, time.Second, slog.New(slog.DiscardHandler)), Attachments: noAttachments{}})
+		Budget: markdown.NewBudget(8<<20, time.Second, slog.New(slog.DiscardHandler)), Attachments: noAttachments{},
+		Snapshots: noSnapshots{}, VisibleNotebooks: noNotebooks{}})
 	router := httpserver.NewRouter(slog.New(slog.DiscardHandler))
 	m.Register(router, httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: tokenAuth{}, BodyLimits: m.BodyLimits()}))
 	if len(m.BodyLimits()) == 0 {
@@ -863,18 +882,40 @@ func TestTheBodyLimitsAreTheModulesRoutes(t *testing.T) {
 	}
 }
 
-// A module wired without the attachments' infos fails at its wiring, not
-// at its first read of the trash (M8/P2 design 3.4).
+// A module wired without the attachments' infos, the snapshots or the
+// visible notebooks fails at its wiring, not at its first read of the trash
+// (M8/P2 design 3.4) or its first search (M8/P5 design 3.10).
 func TestTheModuleRefusesNoAttachmentInfos(t *testing.T) {
 	md, err := markdown.New(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
-		if recover() == nil {
-			t.Error("New without Attachments did not panic")
-		}
-	}()
-	page.New(page.Deps{Clock: fixedClock{}, Logger: slog.New(slog.DiscardHandler), Markdown: md, EditSessionCleanupInterval: time.Hour,
-		Budget: markdown.NewBudget(8<<20, time.Second, slog.New(slog.DiscardHandler))})
+	for _, tt := range []struct {
+		name string
+		drop func(d *page.Deps)
+	}{
+		{"Attachments", func(d *page.Deps) { d.Attachments = nil }},
+		{"Snapshots", func(d *page.Deps) { d.Snapshots = nil }},
+		{"VisibleNotebooks", func(d *page.Deps) { d.VisibleNotebooks = nil }},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			d := page.Deps{Clock: fixedClock{}, Logger: slog.New(slog.DiscardHandler), Markdown: md, EditSessionCleanupInterval: time.Hour,
+				Budget: markdown.NewBudget(8<<20, time.Second, slog.New(slog.DiscardHandler)), Attachments: noAttachments{},
+				Snapshots: noSnapshots{}, VisibleNotebooks: noNotebooks{}}
+			tt.drop(&d)
+			defer func() {
+				if recover() == nil {
+					t.Errorf("New without %s did not panic", tt.name)
+				}
+			}()
+			page.New(d)
+		})
+	}
+}
+
+// noSnapshots runs no read: the wiring's tests read nothing.
+type noSnapshots struct{}
+
+func (noSnapshots) WithinSnapshot(context.Context, func(context.Context) error) error {
+	return errors.New("no snapshot")
 }

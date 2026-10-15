@@ -10,14 +10,15 @@ import (
 )
 
 // newReindexCommand is `nervewiki reindex` (M6/P3 design 3.6): it rebuilds
-// the link index of every notebook, or of the one --notebook names. Run it
-// once after an upgrade that asks for it; a notebook's writes wait while
-// its index is rebuilt.
+// the link index of every notebook, or of the one --notebook names, and
+// queues the nodes whose search rows are stale, which the server builds
+// (M8/P5 design 3.4). Run it once after an upgrade that asks for it; a
+// notebook's writes wait while its index is rebuilt.
 func newReindexCommand(load configLoader) *cobra.Command {
 	var notebook string
 	cmd := &cobra.Command{
 		Use:   "reindex [--notebook <id>]",
-		Short: "Rebuild the link index of every notebook, or of one",
+		Short: "Rebuild the link index of every notebook, or of one, and queue its search index's rebuild",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			var id uuid.UUID

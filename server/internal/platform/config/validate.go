@@ -99,6 +99,9 @@ func (c Config) validate() error {
 	if c.Page.EditSessionCleanupInterval < time.Second {
 		fail("page.edit_session_cleanup_interval", "must be at least 1s, got %s", c.Page.EditSessionCleanupInterval)
 	}
+	if c.Page.SearchIndexInterval < time.Second || c.Page.SearchIndexInterval > 10*time.Minute {
+		fail("page.search_index_interval", "must be from 1s to 10m0s, got %s", c.Page.SearchIndexInterval)
+	}
 	if c.Page.ParseBudgetBytes < MinParseBudgetBytes {
 		fail("page.parse_budget_bytes", "must be at least %d, a page's largest content, got %d", MinParseBudgetBytes, c.Page.ParseBudgetBytes)
 	}
