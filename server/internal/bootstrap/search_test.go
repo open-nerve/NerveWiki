@@ -20,14 +20,15 @@ import (
 )
 
 // The full-text search through serve (M8/P5 design 3.10; v0.1 design 13.1,
-// item 21): each write a user makes, through a request or a background
-// job, queues what it changed in its unit, and the search finds it at
-// once, before the job has built its row; an import's nodes, queued in
-// bulk, wait for the job, the answer saying building meanwhile. The job
-// runs on River in its own queue, again after each run; nervewiki reindex
-// queues the rows of another tokenizer. The bootstrap tests register no
-// job (testConfig's page.search_index_interval is 0): they run it
-// themselves (drainSearch), so that what the queue alone answers is seen.
+// item 21): each write a user makes through a request queues what it
+// changed in its unit, and the search finds it at once, before the job has
+// built its row; a background job's nodes, an import's, a restore's or a
+// revert's, queued in bulk, wait for the job, the answer saying building
+// meanwhile. The job runs on River in its own queue, again after each run;
+// nervewiki reindex queues the rows of another tokenizer. The bootstrap
+// tests register no job (testConfig's page.search_index_interval is 0):
+// they run it themselves (drainSearch), so that what the queue alone
+// answers is seen.
 
 // searchRange is a TextRange answer.
 type searchRange struct {
@@ -123,6 +124,15 @@ func (tm acmeTeam) finds(t *testing.T, by, q string, names ...string) searchAnsw
 			a.NextCursor != nil, want)
 	}
 	return a
+}
+
+// building fails t unless by's search of acme for q answers no node, the
+// index being built: a background job's writes wait for the search's job.
+func (tm acmeTeam) building(t *testing.T, by, q string) {
+	t.Helper()
+	if a := tm.search(t, by, q); len(a.Data) != 0 || !a.Building {
+		t.Errorf("search %q = %q, building %t; want none, building", q, a.names(), a.Building)
+	}
 }
 
 // searchIndex is the search's index outside serve's job, on pool.
@@ -245,15 +255,15 @@ func sameLexemes(lexemes, tokens []string) bool {
 	return slices.Equal(slices.Compact(slices.Sorted(slices.Values(lexemes))), slices.Compact(slices.Sorted(slices.Values(tokens))))
 }
 
-// Through the API, each kind of write is found by the next search at
-// once, through the queue: a page and an attachment created, a content
-// written, a rename and its revert, a move, a deletion, a restore from the
-// trash, a version restored, a background restore and a background revert.
-// The job runs before each write, so that the index holds the node as it
-// was and the queue nothing: only the write's own queueing makes the
-// search find it as it is now. An import is not found until the job has
-// built its pages, the answer building meanwhile. The job then leaves the
-// index its nodes'.
+// Through the API, each kind of write a request makes is found by the next
+// search at once, through the queue: a page and an attachment created, a
+// content written, a rename and its revert, a move, a deletion, a restore
+// from the trash, a version restored. The job runs before each write, so
+// that the index holds the node as it was and the queue nothing: only the
+// write's own queueing makes the search find it as it is now. A background
+// job's writes, a restore's, a revert's and an import's, are not found
+// until the job has built them, the answer building meanwhile (M8/P5A
+// review C-I1). The job then leaves the index its nodes'.
 func TestTheSearchFindsEachWriteAtOnce(t *testing.T) {
 	tm := newAcmeTeam(t, "member", "")
 	nb := tm.openNotebook(t, "alice", "Eng")
@@ -318,15 +328,21 @@ func TestTheSearchFindsEachWriteAtOnce(t *testing.T) {
 	if restored.State != "succeeded" {
 		t.Fatalf("the background restore = %s, want it succeeded", restored)
 	}
+	tm.building(t, "bob", "wombat")
+	tm.building(t, "bob", "numbat")
+	drainSearch(t, tm.pool)
 	tm.finds(t, "bob", "wombat", "Quokka notes")
 	tm.finds(t, "bob", "numbat", "numbat.png")
-	drainSearch(t, tm.pool)
 	tm.send(t, contentWrite("alice", id, "the emu walks", tm.content(t, "alice", id).Revision, ""), http.StatusOK)
 	written := tm.newest(t, nb).ID
 	drainSearch(t, tm.pool)
 	if reverted := tm.background(t, revertStart("bob", nb, written, "")); reverted.State != "succeeded" {
 		t.Fatalf("the background revert = %s, want it succeeded", reverted)
 	}
+	// The row is of the emu's content still, which the check refuses.
+	tm.building(t, "bob", "wombat")
+	tm.building(t, "bob", "emu")
+	drainSearch(t, tm.pool)
 	tm.finds(t, "bob", "wombat", "Quokka notes")
 	tm.finds(t, "bob", "emu")
 	tm.send(t, nodeDeletion("alice", id), http.StatusNoContent)
@@ -338,9 +354,7 @@ func TestTheSearchFindsEachWriteAtOnce(t *testing.T) {
 	if ended := tm.endedJob(t, "bob", j.ID); ended.State != "succeeded" {
 		t.Fatalf("the import = %+v, want it succeeded", ended)
 	}
-	if a := tm.search(t, "bob", "kakapo"); len(a.Data) != 0 || !a.Building {
-		t.Errorf("search kakapo before the job = %q, building %t; want none, building", a.names(), a.Building)
-	}
+	tm.building(t, "bob", "kakapo")
 	checkSearch(t, tm.pool)
 	drainSearch(t, tm.pool)
 	tm.finds(t, "bob", "kakapo", "Kiwi")
@@ -351,6 +365,44 @@ func TestTheSearchFindsEachWriteAtOnce(t *testing.T) {
 	if n := count(t, tm.pool, "SELECT count(*) FROM page_search WHERE node_id = $1", photo.ID); n != 0 {
 		t.Errorf("%d rows of the attachment deleted, want none", n)
 	}
+}
+
+// A background restore of more pages than a search walks (M8/P5A review
+// C-I1, at the size of its probe): its nodes, the newest of the notebook,
+// are queued in bulk, no candidates until the job has built them, the
+// answer saying building. The first page of a search of older pages holds
+// their hits at once, counted exact; walked first, the restored pages,
+// none a hit, would have left the hits for a later page, behind pages of
+// none with a cursor to search on.
+func TestABackgroundRestoreLeavesASearchItsHits(t *testing.T) {
+	tm := newAcmeTeam(t, "member", "")
+	nb := tm.openNotebook(t, "alice", "Eng")
+	var old []string
+	for i := range 5 {
+		old = append(old, fmt.Sprintf("Old %d", i))
+		tm.createPageWith(t, "alice", nb, "", old[i], "the quillwort grows")
+	}
+	if j := tm.imported(t, "alice", nb, "", folderImport(t, domain.MaxSearchWalk+100)); j.State != "succeeded" {
+		t.Fatalf("the import = %+v", j)
+	}
+	folder := queryStrings(t, tm.pool, "SELECT id::text FROM nodes WHERE notebook_id = $1 AND name = 'Folder'", nb)[0]
+	drainSearch(t, tm.pool)
+	tm.send(t, nodeDeletion("alice", folder), http.StatusNoContent)
+	drainSearch(t, tm.pool)
+	if j := tm.background(t, trashRestoreStart("bob", nb, folder)); j.State != "succeeded" ||
+		j.counts()["pages"] != domain.MaxSearchWalk+101 {
+		t.Fatalf("the background restore = %s, want the folder's %d pages back", j, domain.MaxSearchWalk+101)
+	}
+	a := tm.search(t, "bob", "quillwort")
+	if got := slices.Sorted(slices.Values(a.names())); !slices.Equal(got, old) || !a.Building || a.NextCursor != nil || a.Count == nil ||
+		a.Count.Value != 5 || a.Count.Kind != "exact" {
+		t.Errorf("search quillwort = %q, building %t, next %v, count %+v; want the five old pages, exact, building", got, a.Building,
+			a.NextCursor != nil, a.Count)
+	}
+	drainSearch(t, tm.pool)
+	tm.finds(t, "bob", "quillwort", old...)
+	tm.finds(t, "bob", "p007", "p006", "p007") // p006 links to p007
+	checkSearchBuilt(t, tm.pool)
 }
 
 // The search's job runs on River in the page_search queue, on serve's

@@ -278,27 +278,35 @@ func TestStaleSearchNodes(t *testing.T) {
 }
 
 // The job reads the queue by id, a batch after another, with the versions
-// queued, and takes the nodes off at the versions it read: one a unit
-// queued again since stays, at its new version (M8/P5 design 3.4).
+// queued, the nodes queued exact apart from those in bulk, and takes the
+// nodes off at the versions it read: one a unit queued again since stays,
+// at its new version (M8/P5 design 3.4).
 func TestDequeueSearchTakesTheVersionsRead(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
 	ids := f.nodes(t, f.eng, "N", 4)
+	imported := f.nodes(t, f.eng, "I", 2)
+	f.queueSearch(t, f.eng, true, imported...)
 	f.queueSearch(t, f.eng, false, ids...)
 	q := f.queued(t)
-	first, err := f.s.QueuedSearch(ctx, uuid.Nil(), 2)
+	bulk, err := f.s.QueuedSearch(ctx, true, uuid.Nil(), 10)
+	if want := []app.QueuedNode{{ID: imported[0], Version: q[imported[0]].version}, {ID: imported[1], Version: q[imported[1]].version}}; err != nil ||
+		!slices.Equal(bulk, want) {
+		t.Fatalf("QueuedSearch(bulk, the start, 10) = %v, %v; want %v, those queued in bulk alone", bulk, err, want)
+	}
+	first, err := f.s.QueuedSearch(ctx, false, uuid.Nil(), 2)
 	if want := []app.QueuedNode{{ID: ids[0], Version: q[ids[0]].version}, {ID: ids[1], Version: q[ids[1]].version}}; err != nil ||
 		!slices.Equal(first, want) {
-		t.Fatalf("QueuedSearch(the start, 2) = %v, %v; want %v", first, err, want)
+		t.Fatalf("QueuedSearch(exact, the start, 2) = %v, %v; want %v", first, err, want)
 	}
-	rest, err := f.s.QueuedSearch(ctx, ids[1], 10)
+	rest, err := f.s.QueuedSearch(ctx, false, ids[1], 10)
 	if want := []app.QueuedNode{{ID: ids[2], Version: q[ids[2]].version}, {ID: ids[3], Version: q[ids[3]].version}}; err != nil ||
 		!slices.Equal(rest, want) {
-		t.Fatalf("QueuedSearch(after the second, 10) = %v, %v; want %v", rest, err, want)
+		t.Fatalf("QueuedSearch(exact, after the second, 10) = %v, %v; want %v", rest, err, want)
 	}
 	f.queueSearch(t, f.eng, false, ids[1])
 	again := f.queued(t)[ids[1]]
-	if err := f.s.DequeueSearch(ctx, append(first, rest[0])); err != nil {
+	if err := f.s.DequeueSearch(ctx, append(append(first, rest[0]), bulk...)); err != nil {
 		t.Fatal(err)
 	}
 	got := f.queued(t)
@@ -318,7 +326,7 @@ func TestDequeueSearchSkipsAHeldRow(t *testing.T) {
 	f := newFixture(t)
 	ids := f.nodes(t, f.eng, "N", 3)
 	f.queueSearch(t, f.eng, false, ids...)
-	read, err := f.s.QueuedSearch(ctx, uuid.Nil(), 10)
+	read, err := f.s.QueuedSearch(ctx, false, uuid.Nil(), 10)
 	if err != nil || len(read) != 3 {
 		t.Fatalf("QueuedSearch = %v, %v", read, err)
 	}
@@ -345,7 +353,7 @@ func TestDequeueSearchSkipsAHeldRow(t *testing.T) {
 	if err := f.s.DequeueSearch(ctx, read); err != nil {
 		t.Fatal(err)
 	}
-	next, err := f.s.QueuedSearch(ctx, uuid.Nil(), 10)
+	next, err := f.s.QueuedSearch(ctx, false, uuid.Nil(), 10)
 	if err != nil || len(next) != 1 || next[0].ID != ids[1] || next[0].Version <= read[1].Version {
 		t.Fatalf("the queue after the unit = %v, %v; want the held node at its new version", next, err)
 	}

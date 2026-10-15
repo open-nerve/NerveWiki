@@ -634,9 +634,9 @@ type SearchIndex interface {
 	// LockSearch takes the job's lock, on a connection of its own, without
 	// waiting: false when another run holds it. release gives it back.
 	LockSearch(ctx context.Context) (release func(), ok bool, err error)
-	// QueuedSearch reads the queue after the node after, by id, at most
-	// limit nodes, unlocked.
-	QueuedSearch(ctx context.Context, after uuid.UUID, limit int) ([]QueuedNode, error)
+	// QueuedSearch reads the nodes queued exact, or in bulk when bulk is
+	// set, after the node after, by id, at most limit nodes, unlocked.
+	QueuedSearch(ctx context.Context, bulk bool, after uuid.UUID, limit int) ([]QueuedNode, error)
 	// SearchSources reads the nodes ids as SearchSource says, by id.
 	SearchSources(ctx context.Context, ids []uuid.UUID) ([]SearchSource, error)
 	// SearchContents reads the contents of the live pages ids, with their

@@ -98,10 +98,14 @@ func (q *Queries) QueueSearchOfNotebooks(ctx context.Context, arg QueueSearchOfN
 }
 
 const queuedSearch = `-- name: QueuedSearch :many
-SELECT node_id, version FROM page_search_queue WHERE node_id > $1::uuid ORDER BY node_id LIMIT $2
+SELECT node_id, version FROM page_search_queue
+WHERE bulk = $1::boolean AND node_id > $2::uuid
+ORDER BY node_id
+LIMIT $3
 `
 
 type QueuedSearchParams struct {
+	Bulk    bool
 	After   uuid.UUID
 	MaxRows int32
 }
@@ -111,9 +115,10 @@ type QueuedSearchRow struct {
 	Version int64
 }
 
-// The queue after the node after, by id, at most max_rows, with the versions queued: the job's pass, unlocked.
+// The nodes queued exact, or in bulk, after the node after, by id, at most max_rows, with the versions queued: the job's
+// pass, unlocked, the exact nodes' first.
 func (q *Queries) QueuedSearch(ctx context.Context, arg QueuedSearchParams) ([]QueuedSearchRow, error) {
-	rows, err := q.db.Query(ctx, queuedSearch, arg.After, arg.MaxRows)
+	rows, err := q.db.Query(ctx, queuedSearch, arg.Bulk, arg.After, arg.MaxRows)
 	if err != nil {
 		return nil, err
 	}

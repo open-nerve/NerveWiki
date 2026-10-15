@@ -78,7 +78,7 @@ func (w *ImportWrites) Parse(ctx context.Context, content string) (Parsed, error
 func (w *ImportWrites) Import(ctx context.Context, spec ImportSpec, do func(ctx context.Context, u *ImportUnit) error) (uuid.UUID, error) {
 	outcome, err := w.writer.Run(ctx, UnitSpec{
 		NotebookID: spec.NotebookID, Action: spec.Action, Tree: true, Client: spec.Client, NotFound: domain.ErrNotebookNotFound,
-		Kind: domain.ChangesetImport, Changeset: spec.Changeset, Create: true,
+		Kind: domain.ChangesetImport, Changeset: spec.Changeset, Create: true, Background: true,
 	}, func(ctx context.Context, u *Unit) error {
 		return do(ctx, &ImportUnit{u: u, under: map[uuid.UUID]*children{}, lines: map[uuid.UUID][]domain.Ancestor{}})
 	})

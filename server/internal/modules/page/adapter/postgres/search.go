@@ -99,8 +99,8 @@ func (s *Store) LockSearch(ctx context.Context) (func(), bool, error) {
 }
 
 // QueuedSearch implements app.SearchIndex.
-func (s *Store) QueuedSearch(ctx context.Context, after uuid.UUID, limit int) ([]app.QueuedNode, error) {
-	rows, err := s.queries(ctx).QueuedSearch(ctx, gen.QueuedSearchParams{After: after, MaxRows: int32(limit)})
+func (s *Store) QueuedSearch(ctx context.Context, bulk bool, after uuid.UUID, limit int) ([]app.QueuedNode, error) {
+	rows, err := s.queries(ctx).QueuedSearch(ctx, gen.QueuedSearchParams{Bulk: bulk, After: after, MaxRows: int32(limit)})
 	if err != nil {
 		return nil, fmt.Errorf("read the search's queue: %w", err)
 	}

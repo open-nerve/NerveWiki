@@ -12,8 +12,9 @@ import (
 
 // A unit queues for the search's job the nodes it creates, deletes, renames
 // or writes the content of, once each, in ascending id order, after its
-// writes and before the observers; exact, but an import's unit in bulk. A
-// move and a reorder queue nothing (M8/P5 design 3.4).
+// writes and before the observers; exact, but an import's unit, through
+// ImportWrites, in bulk. A move and a reorder queue nothing (M8/P5 design
+// 3.4).
 func TestTheUnitQueuesWhatItChanges(t *testing.T) {
 	for _, tt := range []struct {
 		name string
@@ -65,9 +66,7 @@ func TestTheUnitQueuesWhatItChanges(t *testing.T) {
 				return err
 			}
 		}, func(a, b, created domain.Node) []uuid.UUID { return nil }, false, false},
-		{"an import's creation, in bulk", func(f *fixture, a, b domain.Node) func(ctx context.Context, u *app.Unit) error {
-			return create("Imported")
-		}, func(a, b, created domain.Node) []uuid.UUID { return []uuid.UUID{created.ID} }, true, true},
+		{"an import's creation, in bulk", nil, func(a, b, created domain.Node) []uuid.UUID { return []uuid.UUID{created.ID} }, true, true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			f := newFixture()
@@ -75,13 +74,16 @@ func TestTheUnitQueuesWhatItChanges(t *testing.T) {
 			a := f.page("A", nil, 0)
 			b := f.page("B", &a.ID, 0)
 			before := map[uuid.UUID]bool{a.ID: true, b.ID: true}
-			run := f.run
+			var err error
 			if tt.import_ {
-				run = func(ctx context.Context, client domain.Client, do func(ctx context.Context, u *app.Unit) error) (app.Outcome, error) {
-					return f.importUnit(ctx, client, uuid.UUID{}, do)
-				}
+				_, err = f.importAs(uuid.UUID{}, func(ctx context.Context, u *app.ImportUnit) error {
+					_, err := u.CreatePage(ctx, app.ImportedPage{Name: "Imported"})
+					return err
+				})
+			} else {
+				_, err = f.run(f.asAlice(), domain.ClientWeb, tt.do(f, a, b))
 			}
-			if _, err := run(f.asAlice(), domain.ClientWeb, tt.do(f, a, b)); err != nil {
+			if err != nil {
 				t.Fatal(err)
 			}
 			var created domain.Node

@@ -152,6 +152,11 @@ func TestARestoreJobRestoresInBatches(t *testing.T) {
 	if f.store.items[f.a2.ID].At.Equal(f.store.items[f.box.ID].At) {
 		t.Errorf("the items of two batches at one time %s", f.store.items[f.box.ID].At)
 	}
+	// A background job's nodes are queued for the search in bulk, the
+	// search building until its job has built them (M8/P5A review C-I1).
+	if q := f.store.queued; len(q) != 2 || !q[0].bulk || !q[1].bulk || len(q[0].ids)+len(q[1].ids) != 6 {
+		t.Errorf("queued %+v; want each batch's nodes in bulk", q)
+	}
 }
 
 // A batch checks its members again under the lock: the time the item can
@@ -589,6 +594,11 @@ func TestARevertJobRestoresAGroupInBatches(t *testing.T) {
 		if got, ok := f.store.nodes[n.ID]; !ok || !sameParent(got.ParentID, n.ParentID) || got.Name != n.Name {
 			t.Errorf("%s = %+v, want back where it was", n.Name, got)
 		}
+	}
+	// A background job's nodes are queued for the search in bulk (M8/P5A
+	// review C-I1).
+	if q := f.store.queued; len(q) != 3 || slices.ContainsFunc(q, func(q queuing) bool { return !q.bulk || len(q.ids) != 1 }) {
+		t.Errorf("queued %+v; want each batch's node in bulk", q)
 	}
 }
 

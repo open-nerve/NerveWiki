@@ -729,8 +729,18 @@ func TestTheSearchReadsUseTheirIndexes(t *testing.T) {
 		s     statement
 		scans []func(*planNode) bool
 	}{
-		{"QueuedSearch", statementOf(t, func(g *gen.Queries) error {
+		// The exact pass reads the few nodes the users' writes queued beside
+		// a job's thousands: by the key, or by the bulk flag's index, a
+		// bitmap of the few, sorted.
+		{"QueuedSearch exact", statementOf(t, func(g *gen.Queries) error {
 			_, err := g.QueuedSearch(ctx, gen.QueuedSearchParams{After: eng[50], MaxRows: domain.SearchBatchNodes})
+			return err
+		}), []func(*planNode) bool{func(n *planNode) bool {
+			return reads("page_search_queue", "page_search_queue_pkey", "")(n) ||
+				reads("page_search_queue", "page_search_queue_notebook_id_bulk_idx", "")(n)
+		}}},
+		{"QueuedSearch bulk", statementOf(t, func(g *gen.Queries) error {
+			_, err := g.QueuedSearch(ctx, gen.QueuedSearchParams{Bulk: true, After: eng[50], MaxRows: domain.SearchBatchNodes})
 			return err
 		}), []func(*planNode) bool{reads("page_search_queue", "page_search_queue_pkey", "")}},
 		{"SearchSources", statementOf(t, func(g *gen.Queries) error {

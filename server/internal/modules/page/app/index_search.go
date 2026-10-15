@@ -39,14 +39,17 @@ type SearchRun struct {
 	Locked                                  bool
 }
 
-// Drain runs the job once: under its lock, a pass over the queue by node
-// id, each queued node read once, a batch at a time, until the queue's end
-// or domain.SearchRunBudget, after which it starts no batch. A batch's rows
-// are written in one transaction, each alone again when that fails: a node
-// whose write fails then is logged and left queued, still a candidate of
-// every search, for the next run to try again. The nodes it took are taken
-// off in a second, short transaction, at the versions it read: one a unit
-// queued again since stays.
+// Drain runs the job once: under its lock, a pass over the nodes queued
+// exact, those of the users' writes, by node id, then one over those queued
+// in bulk, by node id, so that a user's write never waits behind an
+// import's or a background job's thousands; each queued node read once, a
+// batch at a time, until the queue's end or domain.SearchRunBudget, after
+// which it starts no batch. A batch's rows are written in one transaction,
+// each alone again when that fails: a node whose write fails then is
+// logged and left queued, still a candidate of every search, for the next
+// run to try again. The nodes it took are taken off in a second, short
+// transaction, at the versions it read: one a unit queued again since
+// stays.
 func (j *IndexSearch) Drain(ctx context.Context) (SearchRun, error) {
 	release, ok, err := j.index.LockSearch(ctx)
 	if err != nil {
@@ -58,24 +61,26 @@ func (j *IndexSearch) Drain(ctx context.Context) (SearchRun, error) {
 	defer release()
 	var run SearchRun
 	start := j.clock.Now()
-	after := uuid.Nil()
 	analyzed := 0
-	for j.clock.Now().Sub(start) < domain.SearchRunBudget {
-		queued, err := j.index.QueuedSearch(ctx, after, domain.SearchBatchNodes)
-		if err != nil {
-			return run, err
-		}
-		if len(queued) == 0 {
-			break
-		}
-		if after, err = j.batch(ctx, queued, &run); err != nil {
-			return run, err
-		}
-		if run.Written-analyzed >= domain.SearchAnalyzeRows {
-			if err := j.index.AnalyzeSearch(ctx); err != nil {
+	for _, bulk := range []bool{false, true} {
+		after := uuid.Nil()
+		for j.clock.Now().Sub(start) < domain.SearchRunBudget {
+			queued, err := j.index.QueuedSearch(ctx, bulk, after, domain.SearchBatchNodes)
+			if err != nil {
 				return run, err
 			}
-			analyzed = run.Written
+			if len(queued) == 0 {
+				break
+			}
+			if after, err = j.batch(ctx, queued, &run); err != nil {
+				return run, err
+			}
+			if run.Written-analyzed >= domain.SearchAnalyzeRows {
+				if err := j.index.AnalyzeSearch(ctx); err != nil {
+					return run, err
+				}
+				analyzed = run.Written
+			}
 		}
 	}
 	return run, nil

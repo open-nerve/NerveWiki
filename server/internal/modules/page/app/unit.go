@@ -95,6 +95,13 @@ type UnitSpec struct {
 	// Message is the message of the changeset the unit creates, none when
 	// nil; one it merges into keeps its own.
 	Message *string
+	// Background is a background job's unit: an import's, a background
+	// restore's or revert's (M8/P5 design 3.4). It queues the nodes it
+	// changes for the search in bulk, which no search waits for, the
+	// answer saying the index is building meanwhile: a job brings up to
+	// tens of thousands of nodes, which the search would otherwise walk
+	// before any other. A request's unit queues them exact, found at once.
+	Background bool
 }
 
 // ErrChangesetReverted is a unit that would merge into a changeset a
@@ -204,7 +211,7 @@ func (w *Writer) Run(ctx context.Context, spec UnitSpec, do func(ctx context.Con
 		u = &Unit{w: w, write: Write{
 			WorkspaceID: workspaceID, NotebookID: spec.NotebookID, By: actor.UserID, Client: spec.Client,
 			Options: spec.Options, At: w.d.Clock.Now(), Kind: kind, RevertsID: spec.RevertsID,
-		}, into: spec.Changeset, create: spec.Create, message: spec.Message, merged: map[uuid.UUID]int{}}
+		}, into: spec.Changeset, create: spec.Create, message: spec.Message, bulk: spec.Background, merged: map[uuid.UUID]int{}}
 		if err := u.lockInto(ctx); err != nil {
 			return err
 		}
@@ -235,6 +242,9 @@ type Unit struct {
 	create    bool
 	fresh     bool
 	message   *string
+	// bulk queues the unit's nodes for the search in bulk: a background
+	// job's unit.
+	bulk bool
 	// changes are the unit's, merged by node in the order first changed;
 	// merged indexes them.
 	changes []domain.Change
@@ -417,9 +427,10 @@ func (u *Unit) recordRevision(ctx context.Context, c Content, base *int) error {
 // queueSearch queues for the search's job the nodes the unit created,
 // restored, deleted, renamed or wrote the content of (M8/P5 design 3.4), in
 // ascending id order, after all its writes and before the observers (v0.1
-// design 13.1, item 5): in bulk for an import's unit, which a search does
-// not wait for, exact for the others. A move or a reorder leaves a node's
-// lexemes as they were: its path is no part of a match.
+// design 13.1, item 5): in bulk for a background job's unit, an import's, a
+// background restore's or revert's, which a search does not wait for,
+// exact for the others. A move or a reorder leaves a node's lexemes as they
+// were: its path is no part of a match.
 func (u *Unit) queueSearch(ctx context.Context) error {
 	var ids []uuid.UUID
 	for _, c := range u.changes {
@@ -431,7 +442,7 @@ func (u *Unit) queueSearch(ctx context.Context) error {
 		return nil
 	}
 	slices.SortFunc(ids, uuid.UUID.Compare)
-	return u.w.d.Search.QueueSearch(ctx, u.write.NotebookID, ids, u.write.Kind == domain.ChangesetImport)
+	return u.w.d.Search.QueueSearch(ctx, u.write.NotebookID, ids, u.bulk)
 }
 
 // tell has the observers follow the unit's changes, once: none when it

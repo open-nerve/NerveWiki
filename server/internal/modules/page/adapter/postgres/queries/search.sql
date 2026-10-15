@@ -45,8 +45,12 @@ SELECT pg_advisory_unlock(6107471706471486842);
 SELECT set_config('work_mem', '64MB', true), set_config('gin_pending_list_limit', '16MB', true);
 
 -- name: QueuedSearch :many
--- The queue after the node after, by id, at most max_rows, with the versions queued: the job's pass, unlocked.
-SELECT node_id, version FROM page_search_queue WHERE node_id > sqlc.arg(after)::uuid ORDER BY node_id LIMIT sqlc.arg(max_rows);
+-- The nodes queued exact, or in bulk, after the node after, by id, at most max_rows, with the versions queued: the job's
+-- pass, unlocked, the exact nodes' first.
+SELECT node_id, version FROM page_search_queue
+WHERE bulk = sqlc.arg(bulk)::boolean AND node_id > sqlc.arg(after)::uuid
+ORDER BY node_id
+LIMIT sqlc.arg(max_rows);
 
 -- name: SearchSources :many
 -- What the job decides on for queued nodes, by their keys: each node as it is, deleted or not there (gone), a page's

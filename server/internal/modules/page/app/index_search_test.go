@@ -17,12 +17,14 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
 )
 
-// fakeIndex is the search's rows and queue in memory: the queue by id, the
-// sources the job reads, the rows it writes. Each call is recorded.
+// fakeIndex is the search's rows and queue in memory: the queue by id, its
+// nodes queued in bulk, the sources the job reads, the rows it writes. Each
+// call is recorded.
 type fakeIndex struct {
 	calls   []string
 	locked  bool // another run holds the lock
 	queue   map[uuid.UUID]int64
+	bulk    map[uuid.UUID]bool
 	sources map[uuid.UUID]app.SearchSource
 	texts   map[uuid.UUID]app.PageText
 	rows    map[uuid.UUID]app.SearchRow
@@ -40,8 +42,9 @@ type fakeClock struct{ now time.Time }
 func (c *fakeClock) Now() time.Time { return c.now }
 
 func newFakeIndex() *fakeIndex {
-	return &fakeIndex{queue: map[uuid.UUID]int64{}, sources: map[uuid.UUID]app.SearchSource{}, texts: map[uuid.UUID]app.PageText{},
-		rows: map[uuid.UUID]app.SearchRow{}, fail: map[uuid.UUID]bool{}, failOnce: map[uuid.UUID]bool{},
+	return &fakeIndex{queue: map[uuid.UUID]int64{}, bulk: map[uuid.UUID]bool{}, sources: map[uuid.UUID]app.SearchSource{},
+		texts: map[uuid.UUID]app.PageText{},
+		rows:  map[uuid.UUID]app.SearchRow{}, fail: map[uuid.UUID]bool{}, failOnce: map[uuid.UUID]bool{},
 		clock: &fakeClock{now: time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC)}}
 }
 
@@ -53,12 +56,16 @@ func (f *fakeIndex) LockSearch(context.Context) (func(), bool, error) {
 	return func() { f.calls = append(f.calls, "Release") }, true, nil
 }
 
-func (f *fakeIndex) QueuedSearch(_ context.Context, after uuid.UUID, limit int) ([]app.QueuedNode, error) {
-	f.calls = append(f.calls, "QueuedSearch "+short(after))
+func (f *fakeIndex) QueuedSearch(_ context.Context, bulk bool, after uuid.UUID, limit int) ([]app.QueuedNode, error) {
+	queuing := "exact"
+	if bulk {
+		queuing = "bulk"
+	}
+	f.calls = append(f.calls, "QueuedSearch "+queuing+" "+short(after))
 	f.clock.now = f.clock.now.Add(f.step)
 	var ids []uuid.UUID
 	for id := range f.queue {
-		if id.Compare(after) > 0 {
+		if f.bulk[id] == bulk && id.Compare(after) > 0 {
 			ids = append(ids, id)
 		}
 	}
@@ -116,6 +123,7 @@ func (f *fakeIndex) DequeueSearch(_ context.Context, nodes []app.QueuedNode) err
 	for _, n := range nodes {
 		if f.queue[n.ID] == n.Version {
 			delete(f.queue, n.ID)
+			delete(f.bulk, n.ID)
 		}
 	}
 	return nil
@@ -286,12 +294,39 @@ func TestTheSearchJobPassesOverTheQueueInBatches(t *testing.T) {
 	// Two big pages in the first batch (6 MiB: a third would pass 8), which
 	// goes on after the second; the next two and 96 small ones in the
 	// second; the last two in the third.
-	want := []string{"LockSearch", "QueuedSearch start", "SearchSources 100", "SearchContents 2", "WriteSearchRows 2 0", "DequeueSearch 2",
-		"QueuedSearch " + short(ids[1]), "SearchSources 100", "SearchContents 100", "WriteSearchRows 100 0", "DequeueSearch 100",
-		"QueuedSearch " + short(ids[101]), "SearchSources 2", "SearchContents 2", "WriteSearchRows 2 0", "DequeueSearch 2",
-		"QueuedSearch " + short(ids[103]), "Release"}
+	want := []string{"LockSearch", "QueuedSearch exact start", "SearchSources 100", "SearchContents 2", "WriteSearchRows 2 0",
+		"DequeueSearch 2", "QueuedSearch exact " + short(ids[1]), "SearchSources 100", "SearchContents 100", "WriteSearchRows 100 0",
+		"DequeueSearch 100", "QueuedSearch exact " + short(ids[101]), "SearchSources 2", "SearchContents 2", "WriteSearchRows 2 0",
+		"DequeueSearch 2", "QueuedSearch exact " + short(ids[103]), "QueuedSearch bulk start", "Release"}
 	if !slices.Equal(f.calls, want) || run.Written != len(ids) || len(f.queue) != 0 {
 		t.Errorf("calls %v\nwant %v\nrun %+v, %d left queued", f.calls, want, run, len(f.queue))
+	}
+}
+
+// A run takes the nodes queued exact first, a user's writes, by id, then
+// those queued in bulk, an import's or a background job's, by id: however
+// many the bulk ones and however low their ids, a user's write never waits
+// behind them (M8/P5A review C-I1).
+func TestTheSearchJobTakesTheExactNodesFirst(t *testing.T) {
+	f := newFakeIndex()
+	var bulk []uuid.UUID
+	for i := range domain.SearchBatchNodes + 1 {
+		id := f.page(fmt.Sprintf("imported %d", i), "x")
+		f.bulk[id] = true
+		bulk = append(bulk, id)
+	}
+	exact := []uuid.UUID{f.page("written", "y"), f.page("renamed", "z")}
+	job, _ := f.job(0)
+	run, err := job.Drain(context.Background())
+	if err != nil || run.Written != len(bulk)+len(exact) || len(f.queue) != 0 {
+		t.Fatalf("Drain() = %+v, %v, %d left; want every node built", run, err, len(f.queue))
+	}
+	want := []string{"LockSearch", "QueuedSearch exact start", "SearchSources 2", "SearchContents 2", "WriteSearchRows 2 0", "DequeueSearch 2",
+		"QueuedSearch exact " + short(exact[1]), "QueuedSearch bulk start", "SearchSources 100", "SearchContents 100", "WriteSearchRows 100 0",
+		"DequeueSearch 100", "QueuedSearch bulk " + short(bulk[99]), "SearchSources 1", "SearchContents 1", "WriteSearchRows 1 0",
+		"DequeueSearch 1", "QueuedSearch bulk " + short(bulk[100]), "Release"}
+	if !slices.Equal(f.calls, want) {
+		t.Errorf("calls %v\nwant %v", f.calls, want)
 	}
 }
 
