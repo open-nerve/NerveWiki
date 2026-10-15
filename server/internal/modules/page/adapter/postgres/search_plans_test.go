@@ -415,7 +415,8 @@ func counted(n *planNode) bool {
 // candidates by: its settings leave its statement bitmaps of the GIN
 // indexes alone, which its plan under them reads, each branch as its
 // arguments take it (planned with them, and for any), for a rare key and
-// a common one.
+// a common one; and give the bitmaps the memory to stay exact (M8/P5A
+// review C-M3).
 func (f fixture) checkHits(t *testing.T, stage string) {
 	t.Helper()
 	ctx := context.Background()
@@ -425,7 +426,7 @@ func (f fixture) checkHits(t *testing.T, stage string) {
 		WHERE oid = 'page_search_hits(tsquery, tsquery)'::regprocedure`).Scan(&config, &body); err != nil {
 		t.Fatal(err)
 	}
-	if want := []string{"enable_seqscan=off", "enable_indexscan=off", "enable_indexonlyscan=off"}; !slices.Equal(config, want) {
+	if want := []string{"enable_seqscan=off", "enable_indexscan=off", "enable_indexonlyscan=off", "work_mem=64MB"}; !slices.Equal(config, want) {
 		t.Errorf("page_search_hits is set %q, want %q", config, want)
 	}
 	stmt, begun := strings.CutPrefix(strings.TrimSpace(body), "BEGIN ATOMIC")
