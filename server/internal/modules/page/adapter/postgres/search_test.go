@@ -15,6 +15,7 @@ import (
 	"uuid"
 
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/text/unicode/norm"
 
 	postgresadapter "github.com/open-nerve/NerveWiki/server/internal/modules/page/adapter/postgres"
@@ -368,15 +369,23 @@ func TestDequeueSearchSkipsAHeldRow(t *testing.T) {
 
 // The job's lock is one run's at a time, whichever connection or process
 // asks; an attempt refused gives its connection back; released, the lock
-// goes to the next run (M8/P5 design 3.4).
+// goes to the next run (M8/P5 design 3.4). The run's statements run on the
+// lock's connection (M8/P5A review B-M4).
 func TestLockSearchIsOneRunsAtATime(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
-	release, ok, err := f.s.LockSearch(ctx)
+	run, release, ok, err := f.s.LockSearch(ctx)
 	if err != nil || !ok {
 		t.Fatalf("LockSearch = %v, %v; want the lock", ok, err)
 	}
-	if _, ok, err := f.s.LockSearch(ctx); err != nil || ok {
+	var holder, runs int
+	if err := f.pool.QueryRow(ctx, `SELECT pid FROM pg_locks WHERE locktype = 'advisory' AND granted`).Scan(&holder); err != nil {
+		t.Fatal(err)
+	}
+	if err := postgres.DB(run, f.pool).QueryRow(run, `SELECT pg_backend_pid()`).Scan(&runs); err != nil || runs != holder {
+		t.Errorf("the run's statements on backend %d, %v; want the lock's, %d", runs, err, holder)
+	}
+	if _, _, ok, err := f.s.LockSearch(ctx); err != nil || ok {
 		t.Errorf("LockSearch while a run holds it = %v, %v; want no lock", ok, err)
 	}
 	if held := f.pool.Stat().AcquiredConns(); held != 1 {
@@ -388,21 +397,90 @@ func TestLockSearchIsOneRunsAtATime(t *testing.T) {
 	}
 	t.Cleanup(pool.Close)
 	other := postgresadapter.New(pool)
-	if _, ok, err := other.LockSearch(ctx); err != nil || ok {
+	if _, _, ok, err := other.LockSearch(ctx); err != nil || ok {
 		t.Errorf("another process's LockSearch while a run holds it = %v, %v; want no lock", ok, err)
 	}
 	release()
 	if held := f.pool.Stat().AcquiredConns(); held != 0 {
 		t.Errorf("%d connections held after the release, want none", held)
 	}
-	next, ok, err := other.LockSearch(ctx)
+	_, next, ok, err := other.LockSearch(ctx)
 	if err != nil || !ok {
 		t.Fatalf("another process's LockSearch after the release = %v, %v; want the lock", ok, err)
 	}
-	if _, ok, err := f.s.LockSearch(ctx); err != nil || ok {
+	if _, _, ok, err := f.s.LockSearch(ctx); err != nil || ok {
 		t.Errorf("LockSearch while the other process holds it = %v, %v; want no lock", ok, err)
 	}
 	next()
+}
+
+// onePool is a pool of one connection to f's database.
+func onePool(t *testing.T, f fixture) *pgxpool.Pool {
+	t.Helper()
+	pool, err := postgres.NewPool(context.Background(), config.DatabaseConfig{URL: f.pool.Config().ConnString(), MaxConns: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	return pool
+}
+
+// A run takes one connection of the pool, its lock's, which its
+// statements and transactions run on: on a pool of one connection it
+// builds every row (M8/P5A review B-M4). Its writes' settings hold in
+// their transaction alone, not on the connection after it, nor after the
+// run (M8/P5 design deviation 3; M8/P5A review B-M1).
+func TestTheSearchsJobRunsOnItsLocksConnection(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	var ids []uuid.UUID
+	for i := range 3 {
+		p := f.page(t, f.eng, nil, fmt.Sprintf("Page %d", i), float64(i))
+		f.write(t, p.ID, "the kakapo calls", 2, now())
+		ids = append(ids, p.ID)
+	}
+	f.queueSearch(t, f.eng, false, ids...)
+	one := onePool(t, f)
+	settings := func(ctx context.Context) string {
+		t.Helper()
+		var memory, pending string
+		if err := postgres.DB(ctx, one).QueryRow(ctx, `SELECT current_setting('work_mem'), current_setting('gin_pending_list_limit')`).
+			Scan(&memory, &pending); err != nil {
+			t.Fatal(err)
+		}
+		return memory + " " + pending
+	}
+	defaults := settings(ctx)
+	if defaults == "64MB 16MB" {
+		t.Fatalf("the server's settings are the job's, %s: the test tells nothing", defaults)
+	}
+	s, tm := postgresadapter.New(one), postgres.NewTxManager(one, 5*time.Second)
+	bounded, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	run, err := app.NewIndexSearch(tm, s, clock.System{}, slog.New(slog.DiscardHandler), 0).Drain(bounded)
+	if err != nil || run.Written != 3 {
+		t.Fatalf("Drain on a pool of one connection = %+v, %v; want the 3 rows written", run, err)
+	}
+	if n := f.count(t, `SELECT count(*) FROM page_search_queue`); n != 0 {
+		t.Errorf("the queue holds %d nodes after the run, want none", n)
+	}
+	if got := settings(ctx); got != defaults {
+		t.Errorf("work_mem and gin_pending_list_limit %s on the connection after the run, want %s as before", got, defaults)
+	}
+	var within string
+	if err := tm.WithinTx(ctx, func(ctx context.Context) error {
+		if err := s.WriteSearchRows(ctx, nil, []uuid.UUID{ids[0]}); err != nil {
+			return err
+		}
+		within = settings(ctx)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if after := settings(ctx); within != "64MB 16MB" || after != defaults {
+		t.Errorf("work_mem and gin_pending_list_limit %s before the job's transaction, %s in it, %s after; want 64MB 16MB in it alone",
+			defaults, within, after)
+	}
 }
 
 // The job's rows are its lexemes as tsvectors, a page's body with the

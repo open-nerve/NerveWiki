@@ -72,30 +72,43 @@ func (s *Store) QueueSearchOfNotebooks(ctx context.Context, ids []uuid.UUID, at 
 	return nil
 }
 
+// searchReleaseTimeout bounds the release of the job's lock, and then the
+// close of its connection: a connection that no longer answers (a
+// half-open TCP) must not hold the queue's one worker past its run (M8/P5A
+// review B-N3).
+const searchReleaseTimeout = 5 * time.Second
+
 // LockSearch implements app.SearchIndex: the lock is the session's, of a
-// connection taken from the pool for the run; release gives it back, or,
-// when that fails, closes the connection, which ends the session's lock.
-func (s *Store) LockSearch(ctx context.Context) (func(), bool, error) {
+// connection taken from the pool for the run, which the run's statements
+// run on (postgres.OnConn): the lock is the run's own, and the run takes
+// one connection (M8/P5A review B-M4, B-S3). release gives it back, or,
+// when the unlock fails, closes the connection, which ends the session's
+// lock, each within searchReleaseTimeout.
+func (s *Store) LockSearch(ctx context.Context) (context.Context, func(), bool, error) {
 	conn, err := s.pool.Acquire(ctx)
 	if err != nil {
-		return nil, false, fmt.Errorf("take a connection for the search's job: %w", err)
+		return nil, nil, false, fmt.Errorf("take a connection for the search's job: %w", err)
 	}
 	ok, err := gen.New(conn).TrySearchLock(ctx)
 	if err != nil || !ok {
 		conn.Release()
 		if err != nil {
-			return nil, false, fmt.Errorf("take the search's job's lock: %w", err)
+			return nil, nil, false, fmt.Errorf("take the search's job's lock: %w", err)
 		}
-		return nil, false, nil
+		return nil, nil, false, nil
 	}
 	release := func() {
-		if err := gen.New(conn).ReleaseSearchLock(context.WithoutCancel(ctx)); err != nil {
-			_ = conn.Hijack().Close(context.WithoutCancel(ctx))
+		unlock, cancel := context.WithTimeout(context.WithoutCancel(ctx), searchReleaseTimeout)
+		defer cancel()
+		if err := gen.New(conn).ReleaseSearchLock(unlock); err != nil {
+			closing, cancel := context.WithTimeout(context.WithoutCancel(ctx), searchReleaseTimeout)
+			defer cancel()
+			_ = conn.Hijack().Close(closing)
 			return
 		}
 		conn.Release()
 	}
-	return release, true, nil
+	return postgres.OnConn(ctx, conn), release, true, nil
 }
 
 // QueuedSearch implements app.SearchIndex.

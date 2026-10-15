@@ -39,19 +39,19 @@ type SearchRun struct {
 	Locked                                  bool
 }
 
-// Drain runs the job once: under its lock, a pass over the nodes queued
-// exact, those of the users' writes, by node id, then one over those queued
-// in bulk, by node id, so that a user's write never waits behind an
-// import's or a background job's thousands; each queued node read once, a
-// batch at a time, until the queue's end or domain.SearchRunBudget, after
-// which it starts no batch. A batch's rows are written in one transaction,
-// each alone again when that fails: a node whose write fails then is
-// logged and left queued, still a candidate of every search, for the next
-// run to try again. The nodes it took are taken off in a second, short
-// transaction, at the versions it read: one a unit queued again since
-// stays.
+// Drain runs the job once: under its lock, on its lock's connection, a
+// pass over the nodes queued exact, those of the users' writes, by node
+// id, then one over those queued in bulk, by node id, so that a user's
+// write never waits behind an import's or a background job's thousands;
+// each queued node read once, a batch at a time, until the queue's end or
+// domain.SearchRunBudget, after which it starts no batch. A batch's rows
+// are written in one transaction, each alone again when that fails: a node
+// whose write fails then is logged and left queued, still a candidate of
+// every search, for the next run to try again. The nodes it took are taken
+// off in a second, short transaction, at the versions it read: one a unit
+// queued again since stays.
 func (j *IndexSearch) Drain(ctx context.Context) (SearchRun, error) {
-	release, ok, err := j.index.LockSearch(ctx)
+	ctx, release, ok, err := j.index.LockSearch(ctx)
 	if err != nil {
 		return SearchRun{}, err
 	}

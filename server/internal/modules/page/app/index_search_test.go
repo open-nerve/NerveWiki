@@ -19,7 +19,8 @@ import (
 
 // fakeIndex is the search's rows and queue in memory: the queue by id, its
 // nodes queued in bulk, the sources the job reads, the rows it writes. Each
-// call is recorded.
+// call is recorded, one off the lock's connection, its context not the one
+// LockSearch returned, marked so.
 type fakeIndex struct {
 	calls   []string
 	locked  bool // another run holds the lock
@@ -42,26 +43,43 @@ type fakeClock struct{ now time.Time }
 func (c *fakeClock) Now() time.Time { return c.now }
 
 func newFakeIndex() *fakeIndex {
-	return &fakeIndex{queue: map[uuid.UUID]int64{}, bulk: map[uuid.UUID]bool{}, sources: map[uuid.UUID]app.SearchSource{},
-		texts: map[uuid.UUID]app.PageText{},
-		rows:  map[uuid.UUID]app.SearchRow{}, fail: map[uuid.UUID]bool{}, failOnce: map[uuid.UUID]bool{},
-		clock: &fakeClock{now: time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC)}}
+	return &fakeIndex{
+		queue:    map[uuid.UUID]int64{},
+		bulk:     map[uuid.UUID]bool{},
+		sources:  map[uuid.UUID]app.SearchSource{},
+		texts:    map[uuid.UUID]app.PageText{},
+		rows:     map[uuid.UUID]app.SearchRow{},
+		fail:     map[uuid.UUID]bool{},
+		failOnce: map[uuid.UUID]bool{},
+		clock:    &fakeClock{now: time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC)},
+	}
 }
 
-func (f *fakeIndex) LockSearch(context.Context) (func(), bool, error) {
+// lockKey marks the context LockSearch returns, of the lock's connection.
+type lockKey struct{}
+
+// record records the call, marked when ctx is not the lock's.
+func (f *fakeIndex) record(ctx context.Context, call string) {
+	if ctx.Value(lockKey{}) == nil {
+		call += " off the lock's connection"
+	}
+	f.calls = append(f.calls, call)
+}
+
+func (f *fakeIndex) LockSearch(ctx context.Context) (context.Context, func(), bool, error) {
 	f.calls = append(f.calls, "LockSearch")
 	if f.locked {
-		return nil, false, nil
+		return nil, nil, false, nil
 	}
-	return func() { f.calls = append(f.calls, "Release") }, true, nil
+	return context.WithValue(ctx, lockKey{}, true), func() { f.calls = append(f.calls, "Release") }, true, nil
 }
 
-func (f *fakeIndex) QueuedSearch(_ context.Context, bulk bool, after uuid.UUID, limit int) ([]app.QueuedNode, error) {
+func (f *fakeIndex) QueuedSearch(ctx context.Context, bulk bool, after uuid.UUID, limit int) ([]app.QueuedNode, error) {
 	queuing := "exact"
 	if bulk {
 		queuing = "bulk"
 	}
-	f.calls = append(f.calls, "QueuedSearch "+queuing+" "+short(after))
+	f.record(ctx, "QueuedSearch "+queuing+" "+short(after))
 	f.clock.now = f.clock.now.Add(f.step)
 	var ids []uuid.UUID
 	for id := range f.queue {
@@ -77,8 +95,8 @@ func (f *fakeIndex) QueuedSearch(_ context.Context, bulk bool, after uuid.UUID, 
 	return out, nil
 }
 
-func (f *fakeIndex) SearchSources(_ context.Context, ids []uuid.UUID) ([]app.SearchSource, error) {
-	f.calls = append(f.calls, fmt.Sprintf("SearchSources %d", len(ids)))
+func (f *fakeIndex) SearchSources(ctx context.Context, ids []uuid.UUID) ([]app.SearchSource, error) {
+	f.record(ctx, fmt.Sprintf("SearchSources %d", len(ids)))
 	var out []app.SearchSource
 	for _, id := range ids {
 		if s, ok := f.sources[id]; ok {
@@ -88,8 +106,8 @@ func (f *fakeIndex) SearchSources(_ context.Context, ids []uuid.UUID) ([]app.Sea
 	return out, nil
 }
 
-func (f *fakeIndex) SearchContents(_ context.Context, ids []uuid.UUID) (map[uuid.UUID]app.PageText, error) {
-	f.calls = append(f.calls, fmt.Sprintf("SearchContents %d", len(ids)))
+func (f *fakeIndex) SearchContents(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]app.PageText, error) {
+	f.record(ctx, fmt.Sprintf("SearchContents %d", len(ids)))
 	out := map[uuid.UUID]app.PageText{}
 	for _, id := range ids {
 		if t, ok := f.texts[id]; ok {
@@ -100,7 +118,7 @@ func (f *fakeIndex) SearchContents(_ context.Context, ids []uuid.UUID) (map[uuid
 }
 
 func (f *fakeIndex) WriteSearchRows(ctx context.Context, rows []app.SearchRow, deleted []uuid.UUID) error {
-	f.calls = append(f.calls, fmt.Sprintf("WriteSearchRows %d %d", len(rows), len(deleted)))
+	f.record(ctx, fmt.Sprintf("WriteSearchRows %d %d", len(rows), len(deleted)))
 	if ctx.Value(txKey{}) == nil {
 		return errors.New("outside a transaction")
 	}
@@ -118,8 +136,8 @@ func (f *fakeIndex) WriteSearchRows(ctx context.Context, rows []app.SearchRow, d
 	return nil
 }
 
-func (f *fakeIndex) DequeueSearch(_ context.Context, nodes []app.QueuedNode) error {
-	f.calls = append(f.calls, fmt.Sprintf("DequeueSearch %d", len(nodes)))
+func (f *fakeIndex) DequeueSearch(ctx context.Context, nodes []app.QueuedNode) error {
+	f.record(ctx, fmt.Sprintf("DequeueSearch %d", len(nodes)))
 	for _, n := range nodes {
 		if f.queue[n.ID] == n.Version {
 			delete(f.queue, n.ID)
@@ -129,8 +147,8 @@ func (f *fakeIndex) DequeueSearch(_ context.Context, nodes []app.QueuedNode) err
 	return nil
 }
 
-func (f *fakeIndex) AnalyzeSearch(context.Context) error {
-	f.calls = append(f.calls, "AnalyzeSearch")
+func (f *fakeIndex) AnalyzeSearch(ctx context.Context) error {
+	f.record(ctx, "AnalyzeSearch")
 	return nil
 }
 

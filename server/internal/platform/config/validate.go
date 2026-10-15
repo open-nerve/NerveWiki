@@ -228,25 +228,32 @@ func (a AssetConfig) validate(fail func(key, format string, args ...any)) {
 	}
 }
 
+// SearchJobConns is how many connections the search's job holds as it
+// runs: its lock's, which its statements run on (M8/P5A review B-M4).
+const SearchJobConns = 1
+
 // validate checks the workers of the exports' and imports' queues: each
 // export holds a connection through its snapshot, an import as it writes
-// a batch; half the pool stays the requests' and River's.
+// a batch, and the search's job SearchJobConns as it runs; half the pool
+// stays the requests' and River's.
 func (j JobsConfig) validate(maxConns int32, fail func(key, format string, args ...any)) {
 	exportsOK := false
 	switch n := j.ExportWorkers; {
 	case n < 1 || n > MaxTransferWorkers:
 		fail("jobs.export_workers", "must be from 1 to %d, got %d", MaxTransferWorkers, n)
-	case maxConns >= 1 && 2*n > int(maxConns):
-		fail("jobs.export_workers", "must leave half of database.max_conns (%d) to the requests, at most %d, got %d", maxConns, maxConns/2, n)
+	case maxConns >= 1 && 2*(n+SearchJobConns) > int(maxConns):
+		fail("jobs.export_workers", "must leave, with the search's job (%d), half of database.max_conns (%d) to the requests, at most %d, got %d",
+			SearchJobConns, maxConns, int(maxConns)/2-SearchJobConns, n)
 	default:
 		exportsOK = true
 	}
 	switch n := j.ImportWorkers; {
 	case n < 1 || n > MaxTransferWorkers:
 		fail("jobs.import_workers", "must be from 1 to %d, got %d", MaxTransferWorkers, n)
-	case exportsOK && maxConns >= 1 && 2*(j.ExportWorkers+n) > int(maxConns):
-		fail("jobs.import_workers", "must leave, with jobs.export_workers (%d), half of database.max_conns (%d) to the requests, at most %d, got %d",
-			j.ExportWorkers, maxConns, int(maxConns)/2-j.ExportWorkers, n)
+	case exportsOK && maxConns >= 1 && 2*(j.ExportWorkers+n+SearchJobConns) > int(maxConns):
+		fail("jobs.import_workers",
+			"must leave, with jobs.export_workers (%d) and the search's job (%d), half of database.max_conns (%d) to the requests, at most %d, got %d",
+			j.ExportWorkers, SearchJobConns, maxConns, int(maxConns)/2-j.ExportWorkers-SearchJobConns, n)
 	}
 }
 

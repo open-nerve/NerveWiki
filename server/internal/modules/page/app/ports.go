@@ -632,8 +632,10 @@ type SearchRow struct {
 // lexemes are a page's text.
 type SearchIndex interface {
 	// LockSearch takes the job's lock, on a connection of its own, without
-	// waiting: false when another run holds it. release gives it back.
-	LockSearch(ctx context.Context) (release func(), ok bool, err error)
+	// waiting: false when another run holds it. The run's statements run on
+	// that connection, under the context it returns, so that the lock is
+	// the run's own (M8/P5A review B-M4). release gives it back.
+	LockSearch(ctx context.Context) (run context.Context, release func(), ok bool, err error)
 	// QueuedSearch reads the nodes queued exact, or in bulk when bulk is
 	// set, after the node after, by id, at most limit nodes, unlocked.
 	QueuedSearch(ctx context.Context, bulk bool, after uuid.UUID, limit int) ([]QueuedNode, error)

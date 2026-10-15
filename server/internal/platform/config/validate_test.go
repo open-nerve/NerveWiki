@@ -364,17 +364,28 @@ func TestValidateCrossKeyRules(t *testing.T) {
 			want: "asset.upload_min_rate: must let asset.max_bytes (3686401) arrive within 1h0m0s, at least 1025, got 1024",
 		},
 		{
-			name:   "eight exports and eight imports at once",
+			name:   "eight exports and eight imports at once, with the search's job",
+			mutate: func(c *Config) { c.Jobs.ExportWorkers, c.Jobs.ImportWorkers, c.Database.MaxConns = 8, 8, 34 },
+		},
+		{
+			name:   "eight exports and eight imports at once in a pool of 32",
 			mutate: func(c *Config) { c.Jobs.ExportWorkers, c.Jobs.ImportWorkers, c.Database.MaxConns = 8, 8, 32 },
+			want: "jobs.import_workers: must leave, with jobs.export_workers (8) and the search's job (1), half of database.max_conns (32) " +
+				"to the requests, at most 7, got 8",
 		},
 		{
-			name:   "exports and imports holding half the pool",
-			mutate: func(c *Config) { c.Jobs.ExportWorkers, c.Jobs.ImportWorkers, c.Database.MaxConns = 2, 1, 6 },
+			name:   "exports, imports and the search's job holding half the pool",
+			mutate: func(c *Config) { c.Jobs.ExportWorkers, c.Jobs.ImportWorkers, c.Database.MaxConns = 2, 1, 8 },
 		},
 		{
-			name:   "exports and imports holding more than half the pool",
-			mutate: func(c *Config) { c.Jobs.ExportWorkers, c.Jobs.ImportWorkers, c.Database.MaxConns = 2, 2, 7 },
-			want:   "jobs.import_workers: must leave, with jobs.export_workers (2), half of database.max_conns (7) to the requests, at most 1, got 2",
+			name:   "the least pool of one export and one import",
+			mutate: func(c *Config) { c.Jobs.ExportWorkers, c.Jobs.ImportWorkers, c.Database.MaxConns = 1, 1, 6 },
+		},
+		{
+			name:   "exports, imports and the search's job holding more than half the pool",
+			mutate: func(c *Config) { c.Jobs.ExportWorkers, c.Jobs.ImportWorkers, c.Database.MaxConns = 2, 2, 9 },
+			want: "jobs.import_workers: must leave, with jobs.export_workers (2) and the search's job (1), half of database.max_conns (9) " +
+				"to the requests, at most 1, got 2",
 		},
 		{
 			name:   "more than eight imports at once",
@@ -421,9 +432,9 @@ func TestValidateCrossKeyRules(t *testing.T) {
 			want:   "transfer.import_max_unpacked_bytes: must be at least transfer.import_max_bytes (536870912), got 536870911",
 		},
 		{
-			name:   "exports holding more than half the pool",
-			mutate: func(c *Config) { c.Jobs.ExportWorkers, c.Database.MaxConns = 3, 5 },
-			want:   "jobs.export_workers: must leave half of database.max_conns (5) to the requests, at most 2, got 3",
+			name:   "exports and the search's job holding more than half the pool",
+			mutate: func(c *Config) { c.Jobs.ExportWorkers, c.Database.MaxConns = 3, 7 },
+			want:   "jobs.export_workers: must leave, with the search's job (1), half of database.max_conns (7) to the requests, at most 2, got 3",
 		},
 		{
 			name:   "more than eight exports at once",
