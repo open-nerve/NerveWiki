@@ -25,6 +25,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/platform/clock"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
+	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
 // The search's statements (M8/P5 design 3.4, 3.5, 3.10): its queue, its
@@ -480,6 +481,47 @@ func TestTheSearchsJobRunsOnItsLocksConnection(t *testing.T) {
 	if after := settings(ctx); within != "64MB 16MB" || after != defaults {
 		t.Errorf("work_mem and gin_pending_list_limit %s before the job's transaction, %s in it, %s after; want 64MB 16MB in it alone",
 			defaults, within, after)
+	}
+}
+
+// A run whose connection the server ends as it writes a batch, a trigger
+// terminating its own backend once, as a COMMIT past its timeout, a
+// pg_terminate_backend or a reset would, ends with one error: the
+// transaction that could not begin on it. No node is logged as not
+// written, each stays queued, and the next run writes them all (M8/P5A
+// fix check M-1).
+func TestASearchRunWhoseConnectionEndsFailsOnce(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	var ids []uuid.UUID
+	for i := range 5 {
+		p := f.page(t, f.eng, nil, fmt.Sprintf("Page %d", i), float64(i))
+		f.write(t, p.ID, "the kakapo calls", 2, now())
+		ids = append(ids, p.ID)
+	}
+	f.queueSearch(t, f.eng, false, ids...)
+	f.exec(t, `CREATE SEQUENCE ends_once`)
+	f.exec(t, `CREATE FUNCTION end_once() RETURNS trigger LANGUAGE plpgsql AS $$
+		BEGIN
+			IF nextval('ends_once') = 1 THEN
+				PERFORM pg_terminate_backend(pg_backend_pid());
+			END IF;
+			RETURN NEW;
+		END $$`)
+	f.exec(t, `CREATE TRIGGER end_once BEFORE INSERT ON page_search FOR EACH ROW EXECUTE FUNCTION end_once()`)
+	var logs strings.Builder
+	job := app.NewIndexSearch(postgres.NewTxManager(f.pool, 5*time.Second), f.s, clock.System{}, slog.New(slog.NewTextHandler(&logs, nil)), 0)
+	run, err := job.Drain(ctx)
+	if !shared.TxNotBegun(err) || run.Written != 0 || run.Failed != 0 || strings.Contains(logs.String(), "not written") {
+		t.Errorf("Drain() as its connection ends = %+v, %v, logging %q; want the error of a transaction not begun, no node failed",
+			run, err, logs.String())
+	}
+	if rows, queued := f.count(t, `SELECT count(*) FROM page_search`), f.count(t, `SELECT count(*) FROM page_search_queue`); rows != 0 ||
+		queued != 5 {
+		t.Errorf("%d rows, %d nodes queued after the run; want none, the 5", rows, queued)
+	}
+	if run, err := job.Drain(ctx); err != nil || run.Written != 5 {
+		t.Errorf("the next Drain() = %+v, %v; want the 5 written", run, err)
 	}
 }
 

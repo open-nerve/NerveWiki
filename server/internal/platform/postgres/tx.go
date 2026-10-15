@@ -152,7 +152,7 @@ func (m *TxManager) run(ctx context.Context, opts pgx.TxOptions, fn func(ctx con
 	}
 	tx, err := begin(ctx, opts)
 	if err != nil {
-		return fmt.Errorf("begin transaction: %w", err)
+		return &beginError{err}
 	}
 	returned := false
 	defer func() {
@@ -178,6 +178,21 @@ func (m *TxManager) run(ctx context.Context, opts pgx.TxOptions, fn func(ctx con
 	}
 	return nil
 }
+
+// beginError is run's error when its transaction cannot begin, before fn
+// runs: the connection it was to run on is broken, or the pool closed, or
+// ctx ended. TxNotBegun marks it so, for a caller that tells it from a
+// failure of fn's statements without importing the platform
+// (shared.TxNotBegun): a job whose connection is gone fails its run, not
+// each of its items (M8/P5A fix check M-1).
+type beginError struct{ err error }
+
+func (e *beginError) Error() string { return "begin transaction: " + e.err.Error() }
+
+func (e *beginError) Unwrap() error { return e.err }
+
+// TxNotBegun marks the error as a transaction's that did not begin.
+func (*beginError) TxNotBegun() bool { return true }
 
 // end runs COMMIT or ROLLBACK detached from ctx's cancellation, within the
 // commit timeout.

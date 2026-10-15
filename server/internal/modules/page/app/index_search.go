@@ -8,6 +8,7 @@ import (
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
+	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
 // IndexSearch is the search's job (M8/P5 design 3.4): it builds the rows of
@@ -192,19 +193,23 @@ func (j *IndexSearch) batch(ctx context.Context, queued []QueuedNode, run *Searc
 
 // write writes the rows and deletes the rows of deleted in one transaction;
 // when that fails, each alone in a transaction of its own, and returns those
-// that fail again, which it logs. Only ctx's end fails it.
+// that fail again, which it logs. ctx's end fails it, and so does a
+// transaction that cannot begin: the run's connection is gone, and a node
+// tried alone on it would fail for want of it, not for anything of its
+// own; the run ends with that one error, its nodes left queued (M8/P5A
+// fix check M-1).
 func (j *IndexSearch) write(ctx context.Context, rows []SearchRow, deleted []uuid.UUID) (map[uuid.UUID]bool, error) {
 	if len(rows) == 0 && len(deleted) == 0 {
 		return nil, nil
 	}
 	err := j.tx.WithinTx(ctx, func(ctx context.Context) error { return j.index.WriteSearchRows(ctx, rows, deleted) })
-	if err == nil || ctx.Err() != nil {
+	if err == nil || ctx.Err() != nil || shared.TxNotBegun(err) {
 		return nil, err
 	}
 	failed := map[uuid.UUID]bool{}
 	one := func(id uuid.UUID, rows []SearchRow, deleted []uuid.UUID) error {
 		err := j.tx.WithinTx(ctx, func(ctx context.Context) error { return j.index.WriteSearchRows(ctx, rows, deleted) })
-		if err != nil && ctx.Err() == nil {
+		if err != nil && ctx.Err() == nil && !shared.TxNotBegun(err) {
 			failed[id] = true
 			j.logger.LogAttrs(ctx, slog.LevelError, "a node's search row is not written: the node stays queued",
 				slog.String("node_id", id.String()), slog.Any("error", err))

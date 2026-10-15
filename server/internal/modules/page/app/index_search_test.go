@@ -15,6 +15,7 @@ import (
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/app"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
+	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
 // fakeIndex is the search's rows and queue in memory: the queue by id, its
@@ -374,6 +375,53 @@ func TestTheSearchJobWritesAroundAFailingNode(t *testing.T) {
 	}
 	if !slices.Contains(f.calls, "WriteSearchRows 3 0") || !slices.Contains(f.calls, "WriteSearchRows 1 0") {
 		t.Errorf("calls %v: want the batch's write, then one a node", f.calls)
+	}
+}
+
+// notBegunTx runs its first transactions as fakeTx does, then begins none:
+// the run's connection gone, each is refused before fn runs, as
+// platform/postgres marks it.
+type notBegunTx struct {
+	fakeTx
+	begins int
+}
+
+type txNotBegun struct{}
+
+func (txNotBegun) Error() string    { return "begin transaction: conn closed" }
+func (txNotBegun) TxNotBegun() bool { return true }
+
+func (t *notBegunTx) WithinTx(ctx context.Context, fn func(context.Context) error) error {
+	if t.InTx(ctx) {
+		return fn(ctx)
+	}
+	if t.begins == 0 {
+		return txNotBegun{}
+	}
+	t.begins--
+	return t.fakeTx.WithinTx(ctx, fn)
+}
+
+// A transaction that cannot begin fails the run, with that one error: the
+// connection is gone, not any node's write. No node is tried alone on it,
+// none logged as not written; all stay queued (M8/P5A fix check M-1).
+func TestTheSearchJobEndsWhenATransactionCannotBegin(t *testing.T) {
+	for _, begins := range []int{0, 1} { // the batch's transaction refused; the batch's fails, the first node's refused
+		f := newFakeIndex()
+		f.page("a", "one")
+		bad := f.page("bad", "two")
+		f.page("c", "three")
+		f.fail[bad] = true
+		logs := &bytes.Buffer{}
+		job := app.NewIndexSearch(&notBegunTx{begins: begins}, f, f.clock, slog.New(slog.NewTextHandler(logs, nil)), 0)
+		run, err := job.Drain(context.Background())
+		if !shared.TxNotBegun(err) || run.Written != 0 || run.Failed != 0 || len(f.queue) != 3 || len(f.rows) != 0 {
+			t.Errorf("%d begun: Drain() = %+v, %v; queued %d, rows %d; want begin's error, nothing written or failed, all queued",
+				begins, run, err, len(f.queue), len(f.rows))
+		}
+		if strings.Contains(logs.String(), "not written") || slices.Contains(f.calls, "WriteSearchRows 1 0") {
+			t.Errorf("%d begun: logs %q, calls %v; want no node tried alone, none logged", begins, logs.String(), f.calls)
+		}
 	}
 }
 

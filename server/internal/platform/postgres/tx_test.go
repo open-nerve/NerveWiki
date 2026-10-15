@@ -211,6 +211,44 @@ func TestOnConnRunsTheStatementsOnTheConnection(t *testing.T) {
 	}
 }
 
+// A transaction that cannot begin, its connection gone, says so by
+// TxNotBegun, as shared.TxNotBegun reads it, and wraps the cause; one
+// whose statement fails does not (M8/P5A fix check M-1).
+func TestATransactionThatCannotBeginSaysSo(t *testing.T) {
+	ctx := context.Background()
+	pool := newNotes(t, 2)
+	tm := postgres.NewTxManager(pool, commitTimeout)
+	notBegun := func(err error) bool {
+		var e interface{ TxNotBegun() bool }
+		return errors.As(err, &e) && e.TxNotBegun()
+	}
+	err := tm.WithinTx(ctx, func(ctx context.Context) error { return insertNote(ctx, pool, 1) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = tm.WithinTx(ctx, func(ctx context.Context) error { return insertNote(ctx, pool, 1) })
+	if err == nil || notBegun(err) {
+		t.Errorf("a transaction whose statement fails = %v, want its error, begun", err)
+	}
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Release()
+	if err := conn.Conn().Close(ctx); err != nil {
+		t.Fatal(err)
+	}
+	ran := false
+	err = tm.WithinTx(postgres.OnConn(ctx, conn), func(context.Context) error { ran = true; return nil })
+	if !notBegun(err) || ran || !strings.HasPrefix(err.Error(), "begin transaction: ") {
+		t.Errorf("a transaction on a closed connection = %v, ran %t; want begin transaction's error, not begun, fn not run", err, ran)
+	}
+	var unwrapped interface{ Unwrap() error }
+	if !errors.As(err, &unwrapped) || unwrapped.Unwrap() == nil {
+		t.Errorf("%v wraps no cause", err)
+	}
+}
+
 // The request deadline cancels statements, never the COMMIT of a transaction
 // whose statements have all finished.
 func TestWithinTxCommitsAfterTheContextIsCancelled(t *testing.T) {
