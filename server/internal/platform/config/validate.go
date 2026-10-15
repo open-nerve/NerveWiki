@@ -242,8 +242,8 @@ func (j JobsConfig) validate(maxConns int32, fail func(key, format string, args 
 	case n < 1 || n > MaxTransferWorkers:
 		fail("jobs.export_workers", "must be from 1 to %d, got %d", MaxTransferWorkers, n)
 	case maxConns >= 1 && 2*(n+SearchJobConns) > int(maxConns):
-		fail("jobs.export_workers", "must leave, with the search's job (%d), half of database.max_conns (%d) to the requests, %s, got %d",
-			SearchJobConns, maxConns, poolRoom(int(maxConns)/2-SearchJobConns, 2*(1+SearchJobConns)), n)
+		fail("jobs.export_workers", "must leave, with the search's job (%d), half of database.max_conns (%d) to the requests%s",
+			SearchJobConns, maxConns, poolRoom(int(maxConns)/2-SearchJobConns, 2*(1+SearchJobConns), n))
 	default:
 		exportsOK = true
 	}
@@ -252,19 +252,20 @@ func (j JobsConfig) validate(maxConns int32, fail func(key, format string, args 
 		fail("jobs.import_workers", "must be from 1 to %d, got %d", MaxTransferWorkers, n)
 	case exportsOK && maxConns >= 1 && 2*(j.ExportWorkers+n+SearchJobConns) > int(maxConns):
 		fail("jobs.import_workers",
-			"must leave, with jobs.export_workers (%d) and the search's job (%d), half of database.max_conns (%d) to the requests, %s, got %d",
-			j.ExportWorkers, SearchJobConns, maxConns, poolRoom(int(maxConns)/2-j.ExportWorkers-SearchJobConns, 2*(j.ExportWorkers+1+SearchJobConns)), n)
+			"must leave, with jobs.export_workers (%d) and the search's job (%d), half of database.max_conns (%d) to the requests%s",
+			j.ExportWorkers, SearchJobConns, maxConns, poolRoom(int(maxConns)/2-j.ExportWorkers-SearchJobConns, 2*(j.ExportWorkers+1+SearchJobConns), n))
 	}
 }
 
-// poolRoom is what the rule of the pool's half leaves a queue: at most
-// most workers; when that is none, the database.max_conns, least, that
-// leaves it one (M8/P5A fix check N-5).
-func poolRoom(most, least int) string {
+// poolRoom ends the message of the pool's half for a queue of got
+// workers: the most it leaves; when that is none, the database.max_conns,
+// least, that leaves it one (M8/P5A fix check N-5), got named first so
+// that it does not read as max_conns' (fix check N2-2).
+func poolRoom(most, least, got int) string {
 	if most < 1 {
-		return fmt.Sprintf("which leaves none: database.max_conns must be at least %d", least)
+		return fmt.Sprintf(": got %d, which leaves none; database.max_conns must be at least %d", got, least)
 	}
-	return fmt.Sprintf("at most %d", most)
+	return fmt.Sprintf(", at most %d, got %d", most, got)
 }
 
 // validateImport checks the imports' bounds against each other and the
