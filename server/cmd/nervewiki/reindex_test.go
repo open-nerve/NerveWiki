@@ -122,6 +122,44 @@ func TestReindexRebuildsTheNotebooks(t *testing.T) {
 	expectLinksEvent(t, listener.Conn(), r.ops)
 }
 
+// A notebook whose nodes the search's queue refuses is told on stderr, its
+// links rebuilt all the same, and reindex goes on to the next; the command
+// fails after them. With --notebook, a failed rebuild and the queue's
+// failure are both told (M8/P5A review B-N2).
+func TestReindexTellsANotebookWhoseNodesAreNotQueued(t *testing.T) {
+	r := newReindexed(t)
+	ctx := context.Background()
+	r.exec(t, `CREATE FUNCTION refuse_queue() RETURNS trigger LANGUAGE plpgsql AS $$
+		BEGIN
+			IF NEW.notebook_id = '`+r.eng.String()+`' THEN
+				RAISE EXCEPTION 'the queue refused eng';
+			END IF;
+			RETURN NEW;
+		END $$`)
+	r.exec(t, "CREATE TRIGGER refuse_queue BEFORE INSERT ON page_search_queue FOR EACH ROW EXECUTE FUNCTION refuse_queue()")
+
+	code, stdout, stderr := execute(ctx, r.environ, "reindex")
+	eng := fmt.Sprintf("notebook %s: 2 pages, 2 links, 1 unresolved; its nodes not queued for the search: ", r.eng)
+	ops := fmt.Sprintf("notebook %s: 1 page, 1 link, 0 unresolved; 1 node queued for the search\n", r.ops)
+	if code != 1 || stdout != ops || !strings.Contains(stderr, eng) || !strings.Contains(stderr, "the queue refused eng") ||
+		!strings.Contains(stderr, "nervewiki: 1 notebook not reindexed") {
+		t.Errorf("reindex with eng's nodes refused = %d, %q, %q; want 1, ops's line, and %q", code, stdout, stderr, eng)
+	}
+	if r.indexed(t, r.eng) != 2 || r.indexed(t, r.ops) != 1 {
+		t.Errorf("indexed %d pages of eng, %d of ops; want both notebooks rebuilt", r.indexed(t, r.eng), r.indexed(t, r.ops))
+	}
+
+	// A loop of parents fails eng's rebuild.
+	r.exec(t, "UPDATE nodes SET parent_id = $1 WHERE id = $2", r.other, r.note)
+	r.exec(t, "UPDATE nodes SET parent_id = $1 WHERE id = $2", r.note, r.other)
+	code, stdout, stderr = execute(ctx, r.environ, "reindex", "--notebook", r.eng.String())
+	if code != 1 || stdout != "" || !strings.Contains(stderr, fmt.Sprintf("nervewiki: notebook %s: ", r.eng)) ||
+		!strings.Contains(stderr, "does not reach a root") || !strings.Contains(stderr, "the queue refused eng") {
+		t.Errorf("reindex --notebook eng, its rebuild failing = %d, %q, %q; want 1, the rebuild's failure and the queue's", code, stdout,
+			stderr)
+	}
+}
+
 // expectLinksEvent fails t unless the next notification is a links event
 // of the notebook nb that lists no page.
 func expectLinksEvent(t *testing.T, conn *pgx.Conn, nb uuid.UUID) {
@@ -170,7 +208,7 @@ func TestReindexReportsClashesAndFailuresAndRefusesNoNotebook(t *testing.T) {
 	clash := fmt.Sprintf(`notebook %[1]s: not reindexed: the pages whose titles would share a key: /acme/notebooks/%[1]s/pages/%[2]s, /acme/notebooks/%[1]s/pages/%[3]s`,
 		r.ops, r.plan, twin)
 	failure := fmt.Sprintf("notebook %s: not reindexed: ", r.eng)
-	if code != 1 || stdout != "" || !strings.Contains(stderr, clash+"\n") || !strings.Contains(stderr, failure) ||
+	if code != 1 || stdout != "" || !strings.Contains(stderr, clash+"; 2 nodes queued for the search\n") || !strings.Contains(stderr, failure) ||
 		!strings.Contains(stderr, "nervewiki: 2 notebooks not reindexed") {
 		t.Errorf("reindex with a clash and a loop = %d, %q, %q; want 1, no line, and %q", code, stdout, stderr, clash)
 	}
@@ -211,7 +249,7 @@ func TestReindexReportsClashesAndFailuresAndRefusesNoNotebook(t *testing.T) {
 	r.exec(t, "UPDATE workspaces SET deleted_at = now()")
 	code, stdout, stderr = execute(ctx, r.environ, "reindex", "--notebook", r.ops.String())
 	byID := fmt.Sprintf("notebook %s: not reindexed: the pages whose titles would share a key: %s, %s", r.ops, r.plan, twin)
-	if code != 1 || stdout != "" || !strings.Contains(stderr, byID+"\n") || strings.Contains(stderr, "slug is not read") {
+	if code != 1 || stdout != "" || !strings.Contains(stderr, byID+"; 2 nodes queued for the search\n") || strings.Contains(stderr, "slug is not read") {
 		t.Errorf("reindex of a deleted workspace's notebook = %d, %q, %q; want 1 and %q alone", code, stdout, stderr, byID)
 	}
 }
