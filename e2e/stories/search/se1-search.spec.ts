@@ -25,13 +25,17 @@ import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 /** The bytes of a PDF, which the server takes for one. */
 const pdfBytes = utf8("%PDF-1.4\n% a quarterly report\n");
 
+/** The name of the notebook SE1 searches: as long as Where to look, which lists it, is not wider than a phone. */
+const notebookName =
+  "Quarterly planning notes for the infrastructure and platform engineering group of the company 2026";
+
 /**
  * Writes the notebook SE1 searches, in the workspace of slug, with credential: a page titled 数据库设计; Storage,
- * whose content holds 全文检索, Go语言 and 仓库, its title no 库, with the attachment 季度报告.pdf; Tools, whose content
- * holds "rapid" and "AI" alone; and Quotes, whose content holds "said" alone.
+ * whose content holds 全文检索, Go语言 and 仓库, its title no 库, and under it Reports, with the attachment
+ * 季度报告.pdf; Tools, whose content holds "rapid" and "AI" alone; and Quotes, whose content holds "said" alone.
  */
 async function written(api: ApiClient, credential: string, slug: string) {
-  const notebook = await createNotebook(api, credential, slug, "Plans");
+  const notebook = await createNotebook(api, credential, slug, notebookName);
   await createPage(api, credential, notebook.id, "数据库设计", null, "表与索引。\n");
   const storage = await createPage(
     api,
@@ -43,8 +47,9 @@ async function written(api: ApiClient, credential: string, slug: string) {
   );
   await createPage(api, credential, notebook.id, "Tools", null, "A rapid prototype uses AI to sort pages.\n");
   await createPage(api, credential, notebook.id, "Quotes", null, "She said it works.\n");
-  const report = await uploadAsset(api, credential, notebook.id, { name: "季度报告.pdf", bytes: pdfBytes }, storage.id);
-  return { notebook, storage, report };
+  const reports = await createPage(api, credential, notebook.id, "Reports", storage.id, "Figures by quarter.\n");
+  const report = await uploadAsset(api, credential, notebook.id, { name: "季度报告.pdf", bytes: pdfBytes }, reports.id);
+  return { notebook, storage, reports, report };
 }
 
 /** What a search found: its hits' names in order, what the first hit marks in its name and its excerpt, and how many there are by an exact count. */
@@ -115,7 +120,7 @@ test("SE1 (API): pages are found by their titles and contents, an attachment by 
   api,
 }, testInfo) => {
   const { pat, workspace } = await newTeam(api, testInfo);
-  const { notebook, storage, report } = await written(api, pat, workspace.slug);
+  const { notebook, storage, reports, report } = await written(api, pat, workspace.slug);
 
   for (const { q } of finds) {
     // oxlint-disable-next-line no-await-in-loop -- a query at a time
@@ -141,11 +146,14 @@ test("SE1 (API): pages are found by their titles and contents, an attachment by 
     changed_at: expect.any(String),
     attachment: null,
   });
-  // An attachment's: under its page, its type and size, no excerpt.
+  // An attachment's: under its page, under another, its type and size, no excerpt.
   const filed = (await search(api, pat, workspace.slug, "季度报告")).data?.data[0];
   expect(filed).toEqual({
     node: { id: report.id, notebook_id: notebook.id, kind: "asset", name: "季度报告.pdf" },
-    ancestors: [{ id: storage.id, name: "Storage" }],
+    ancestors: [
+      { id: storage.id, name: "Storage" },
+      { id: reports.id, name: "Reports" },
+    ],
     title_hits: [{ start: 0, end: 4 }],
     excerpt: null,
     changed_at: expect.any(String),
@@ -159,12 +167,12 @@ test("SE1 (API): pages are found by their titles and contents, an attachment by 
   expectFound("检索", foundOf((await search(api, pat, workspace.slug, "检索")).data));
 });
 
-test("SE1 (page): searched from the left column's box, each find is listed, its terms marked and its count said, the title taking the focus; an attachment found opens on its page, its row taking the focus; a page deleted is listed no more as the same tab searches again, and again once restored", async ({
+test("SE1 (page): searched from the left column's box, each find is listed, its terms marked and its count said, the title taking the focus; gone back to at once, the search before is shown; an attachment found opens on its page, its row taking the focus; a page deleted is listed no more as the same tab searches again, and again once restored; on a phone's width the page fits", async ({
   api,
   signedInPage,
 }, testInfo) => {
   const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
-  const { notebook, storage, report } = await written(api, pat, workspace.slug);
+  const { notebook, storage, reports, report } = await written(api, pat, workspace.slug);
   const page = await signedInPage(tokens);
   const main = page.getByRole("main");
   await page.goto(wikiPagePath(workspace.slug, notebook.id, storage.id));
@@ -197,10 +205,19 @@ test("SE1 (page): searched from the left column's box, each find is listed, its 
     expectFound(q, await shownOf(page));
   }
 
-  // The attachment, on the page it is under: its row has the focus.
+  // Back at once, its read within SWR's deduping of it: the search before, read again, shown; Forward, the last.
+  await page.goBack();
+  await expect(main.getByRole("heading", { level: 1, name: "Search “库”", exact: true })).toBeVisible();
+  await expect(searchStatus(page)).toHaveText("Results: 1.");
+  expectFound("库", await shownOf(page));
+  await page.goForward();
+  await expect(main.getByRole("heading", { level: 1, name: "Search “季度报告”", exact: true })).toBeVisible();
+  await expect(searchStatus(page)).toHaveText("Results: 1.");
+
+  // The attachment, on the page it is under, under another: its row has the focus.
   await searchResults(page).getByRole("link", { name: "季度报告.pdf", exact: true }).click();
-  await expect(pageHeading(page, "Storage")).toBeVisible();
-  await expect(page).toHaveURL(wikiPagePath(workspace.slug, notebook.id, storage.id));
+  await expect(pageHeading(page, "Reports")).toBeVisible();
+  await expect(page).toHaveURL(wikiPagePath(workspace.slug, notebook.id, reports.id));
   await expect(page.locator(`[data-attachment="${report.id}"]`)).toBeFocused();
 
   // Deleted in another tab: the same tab's search, asked again, lists it no more; restored, it is back.
@@ -215,4 +232,17 @@ test("SE1 (page): searched from the left column's box, each find is listed, its 
   await expect(searchStatus(page)).toHaveText("Results: 1.");
   expectFound("检索", await shownOf(page));
   expect(await page.evaluate(() => (window as unknown as { se1?: boolean }).se1)).toBe(true);
+
+  // On a phone's width the page fits it: Where to look too, which lists the notebook's long name.
+  await page.setViewportSize({ width: 375, height: 800 });
+  const scope = main.getByRole("combobox", { name: "Where to look", exact: true });
+  await expect(scope.getByRole("option", { name: notebookName, exact: true })).toHaveCount(1);
+  const width = await page.evaluate(() => ({
+    window: document.documentElement.clientWidth,
+    page: document.documentElement.scrollWidth,
+  }));
+  const placed = await scope.boundingBox();
+  expect(width.window).toBe(375);
+  expect(width.page).toBeLessThanOrEqual(width.window);
+  expect((placed?.x ?? 0) + (placed?.width ?? width.window + 1)).toBeLessThanOrEqual(width.window);
 });
