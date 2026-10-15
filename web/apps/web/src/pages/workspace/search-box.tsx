@@ -7,6 +7,7 @@ import { arrived } from "../../app/arrival";
 import type { FieldMessage } from "../../app/problem-messages";
 import { dialogOpen, isModShift, onMac } from "../../app/shortcuts";
 import { useFocusOnInvalid } from "../../components/form-field";
+import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
@@ -18,17 +19,17 @@ import { useNotebooks } from "../../stores/context";
 const maxQueryBytes = 256;
 
 /**
- * queryProblem is the local check of q, trimmed (M8/P5 design 4.2): its
- * bytes and NUL alone, as the server's 422 says them. The terms, the runs
- * of letters and a q of signs alone the server answers, the results page
- * saying why: its folding is not the browser's, which would count terms
- * otherwise (ß and SS).
+ * queryProblem is the local check of q, trimmed (M8/P5 design 4.2): NUL,
+ * then its bytes, alone, as the server checks and says them. The terms,
+ * the runs of letters and a q of signs alone the server answers, the
+ * results page saying why: its folding is not the browser's, which would
+ * count terms otherwise (ß and SS).
  */
 function queryProblem(q: string): FieldMessage | undefined {
-  if (new TextEncoder().encode(q).length > maxQueryBytes) {
-    return "field.q.too_long";
+  if (q.includes("\0")) {
+    return "field.q.invalid_format";
   }
-  return q.includes("\0") ? "field.q.invalid_format" : undefined;
+  return new TextEncoder().encode(q).length > maxQueryBytes ? "field.q.too_long" : undefined;
 }
 
 /** composing tells whether a key press ends or goes into an IME's composition: Safari's Enter after it has 229. */
@@ -50,7 +51,9 @@ function keepComposing(event: KeyboardEvent<HTMLInputElement>): void {
  * it is no useForm's (v0.1 design 13.2, item 12). Where it looks its hint
  * says, which describes the field: in a notebook open, or the one the
  * results page shown searches, else the whole workspace. A q too long or
- * holding NUL it says so under it instead. Submitted from another page,
+ * holding NUL it says so under it instead, as an alert: submitted with
+ * Enter, the field has the focus already, which gives it none to be heard
+ * by (P5B review A-M3). Submitted from another page,
  * the results page's title takes the focus, arrived at; from the results
  * page, it stays in the box. On the results page it holds the address's q
  * as the address changes, unless it was edited since. An Enter that ends
@@ -158,9 +161,10 @@ export const SearchBox = observer(function SearchBox({ workspace }: { workspace:
         </Button>
       </div>
       {problem !== undefined && (
-        <p id={ids.problem} className="text-sm text-destructive">
+        // A new alert each failed submit: the same problem again is said again.
+        <Alert key={failures} id={ids.problem} className="px-2 py-1">
           {t(problem)}
-        </p>
+        </Alert>
       )}
       <p id={ids.hint} className="px-1 text-xs text-muted-foreground">
         {scope === undefined ? t("search.inWorkspace") : t("search.inNotebook", { notebook: scope.name })}
