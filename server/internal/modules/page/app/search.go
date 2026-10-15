@@ -170,8 +170,7 @@ type tierRow struct {
 // the walk left more to walk, which may leave this page short of limit,
 // even empty; else there is none. The first page's count: exact when it
 // is all there is, else estimated tier by tier (domain.EstimateCount),
-// the body tier's walk sampled on when it checked fewer of its candidates
-// than domain.SearchCountSample and left some.
+// the body tier sampled when the page took none of it.
 func (s *Search) read(ctx context.Context, scope SearchScope, limit int, first bool) (searchFound, error) {
 	var out searchFound
 	var tally domain.SearchTally
@@ -204,7 +203,8 @@ func (s *Search) read(ctx context.Context, scope SearchScope, limit int, first b
 		if err != nil {
 			return searchFound{}, err
 		}
-		bodies, err := s.d.Reads.SearchBodies(ctx, b, s.d.Walk, limit+1-len(out.rows))
+		want := limit + 1 - len(out.rows)
+		bodies, err := s.d.Reads.SearchBodies(ctx, b, s.d.Walk, want)
 		if err != nil {
 			return searchFound{}, err
 		}
@@ -215,6 +215,7 @@ func (s *Search) read(ctx context.Context, scope SearchScope, limit int, first b
 			walkedTo = &bodies[i]
 		}
 		tally.Checked, tally.Passed, tally.Ended = walkTally(bodies)
+		tally.Full = tally.Passed == want
 	}
 	tally.Found = len(out.rows)
 	switch {
@@ -226,7 +227,7 @@ func (s *Search) read(ctx context.Context, scope SearchScope, limit int, first b
 		out.next = &domain.SearchCursor{Tier: domain.SearchTierBody, At: walkedTo.SortAt, ID: walkedTo.Node.ID}
 	}
 	if first {
-		count, err := s.count(ctx, scope, bodied, tally, walkedTo, out)
+		count, err := s.count(ctx, scope, bodied, tally, out)
 		if err != nil {
 			return searchFound{}, err
 		}
@@ -250,14 +251,19 @@ func (s *Search) read(ctx context.Context, scope SearchScope, limit int, first b
 
 // count is the first page's count: exact without a next page; else the
 // title tier counted, and, unless its count settles the estimate, the body
-// tier's candidates, at the rate of its walk from its top, which, when the
-// page's walk checked fewer than domain.SearchCountSample of them and left
-// some, a sample goes on with, below the page's walk (walkedTo, nil when
-// it walked none) to SearchCountSample checked in all: a walk the page's
-// limit stopped at its first passes tells little of the rate (M8/P5A
-// review C-M1). bodied: the scope of its statements.
+// tier's candidates, at the rate of the page's walk from its top, or, when
+// the page walked none of them, the title tier filling it, of a sample
+// from its top (bodied: the scope of its statements).
+//
+// A walk that ran, however short, is the rate's: no sample goes on after
+// it. The sample is the body tier's statement again, which reads, joins
+// and sorts every candidate before it checks one: as long as a whole walk
+// however few it checks. At 300,000 pages that is 160 to 250 ms for
+// 参考文献 in all notebooks, whose first page went from 258 ms to some
+// 420 (M8/P5A fix check I-1), for the same at_least 1000. A walk the full
+// page stopped is rated without its last pass instead (EstimateCount).
 func (s *Search) count(ctx context.Context, scope SearchScope, bodied func() (SearchScope, error), tally domain.SearchTally,
-	walkedTo *SearchBodyRow, out searchFound) (*domain.SearchCount, error) {
+	out searchFound) (*domain.SearchCount, error) {
 	if out.next == nil {
 		return &domain.SearchCount{Value: len(out.rows), Kind: domain.CountExact}, nil
 	}
@@ -276,18 +282,13 @@ func (s *Search) count(ctx context.Context, scope SearchScope, bodied func() (Se
 		return nil, err
 	}
 	tally.BodiesCapped = tally.Bodies >= s.d.CountScan
-	if !tally.Ended && tally.Checked < domain.SearchCountSample {
+	if tally.Checked == 0 && !tally.Ended { // the page's walk did not run: a walk of no candidate ended
 		scope.Below = domain.SearchFrom(domain.SearchTierBody)
-		if walkedTo != nil {
-			scope.Below = domain.SearchCursor{Tier: domain.SearchTierBody, At: walkedTo.SortAt, ID: walkedTo.Node.ID}
-		}
-		n := domain.SearchCountSample - tally.Checked
-		sample, err := s.d.Reads.SearchBodies(ctx, scope, n, n)
+		sample, err := s.d.Reads.SearchBodies(ctx, scope, domain.SearchCountSample, domain.SearchCountSample)
 		if err != nil {
 			return nil, err
 		}
-		checked, passed, ended := walkTally(sample)
-		tally.Checked, tally.Passed, tally.Ended = tally.Checked+checked, tally.Passed+passed, ended
+		tally.Checked, tally.Passed, tally.Ended = walkTally(sample)
 	}
 	return domain.EstimateCount(tally), nil
 }

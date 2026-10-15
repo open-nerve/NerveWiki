@@ -704,6 +704,17 @@ func TestEstimateCount(t *testing.T) {
 			Found: 21, Bodied: true}, &domain.SearchCount{Value: 1000, Kind: domain.CountAtLeast}},
 		{"two passed of a walk that left some", domain.SearchTally{Titles: 2, TitlePages: 2, Bodies: 5000, Checked: 500, Passed: 2, Found: 4,
 			Bodied: true}, &domain.SearchCount{Value: 22, Kind: domain.CountAbout}},
+		// The rate of a walk the full page stopped leaves its last pass out
+		// (M8/P5A fix check I-1): 2 of the 100 before the third pass, not 3
+		// of 101, which would give 77.
+		{"a walk the full page stopped", domain.SearchTally{Titles: 18, TitlePages: 18, Bodies: 2000, Checked: 101, Passed: 3, Full: true,
+			Found: 21, Bodied: true}, &domain.SearchCount{Value: 58, Kind: domain.CountAbout}},
+		{"a walk the full page stopped at its second pass", domain.SearchTally{Titles: 19, TitlePages: 19, Bodies: 2000, Checked: 51, Passed: 2,
+			Full: true, Found: 21, Bodied: true}, &domain.SearchCount{Value: 59, Kind: domain.CountAbout}},
+		// A walk its bound stopped rates every pass: 10 of 500, not 9 of
+		// 499, which would give 46.
+		{"a walk its bound stopped", domain.SearchTally{Titles: 10, TitlePages: 10, Bodies: 2000, Checked: 500, Passed: 10, Found: 20,
+			Bodied: true}, &domain.SearchCount{Value: 50, Kind: domain.CountAbout}},
 		{"one passed of a walk that checked them all", domain.SearchTally{Titles: 2, TitlePages: 2, Bodies: 40, Checked: 38, Passed: 1,
 			Ended: true, Found: 3, Bodied: true}, &domain.SearchCount{Value: 3, Kind: domain.CountAbout}},
 		{"past the count's bound", domain.SearchTally{Titles: 10, Bodies: 5000, Checked: 100, Passed: 21, Found: 21, Bodied: true},

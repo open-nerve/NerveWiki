@@ -212,14 +212,15 @@ type SearchCount struct {
 // 1, and its pages among them; the body tier's candidates, counted to the
 // search's bound, which BodiesCapped says they reached, and which hold
 // those pages too; how many of its pages the walk, or the sample, checked
-// from its top, how many passed, and whether they were all it holds
-// (Ended); and the hits the page found.
+// from its top, how many passed, whether they were all it holds (Ended),
+// and whether the walk stopped at its last pass because that filled the
+// page (Full); and the hits the page found.
 type SearchTally struct {
 	Titles, TitlePages int
 	Bodies             int
 	BodiesCapped       bool
 	Checked, Passed    int
-	Ended              bool
+	Ended, Full        bool
 	Found              int
 	// Bodied tells there is a body tier: a term found in contents too.
 	Bodied bool
@@ -228,14 +229,20 @@ type SearchTally struct {
 // EstimateCount is the count of a search with more pages than its first,
 // tier by tier: the title tier's hits, and the body tier's candidates,
 // the title tier's pages taken off, at the rate its walk passed; nil when
-// none passed yet. A rate of fewer than SearchCountPasses passes, of a
-// walk that left candidates unchecked, tells little: one pass gives a
-// count within 2× about one time in two, its 95% interval two orders of
-// magnitude wide, two passes about two times in three (M8/P5A review
-// A-M5); the count is then of the hits seen, at least. A count past
-// MaxSearchCount is MaxSearchCount at least, one of all the body's
-// candidates counted about, to two significant digits; one of them
-// counted to the bound at least, rounded down.
+// none passed yet. A walk that stopped at its bound, or a sample, rates
+// Passed of Checked; one the full page stopped, at its Passed-th pass, is
+// rated (Passed-1)/(Checked-1): its last pass is where it stopped, not a
+// draw, and counted in it biases the rate up, three passes of 101
+// candidates rating 3% where they hold 2% (the unbiased rate of a walk to
+// its k-th pass, M8/P5A fix check I-1). One that checked them all counts
+// the tier: the count is then the hits found. A rate of fewer than
+// SearchCountPasses passes, of a walk that left candidates unchecked,
+// tells little: one pass gives a count within 2× about one time in two,
+// its 95% interval two orders of magnitude wide, two passes about two
+// times in three (M8/P5A review A-M5); the count is then of the hits
+// seen, at least. A count past MaxSearchCount is MaxSearchCount at least,
+// one of all the body's candidates counted about, to two significant
+// digits; one of them counted to the bound at least, rounded down.
 func EstimateCount(t SearchTally) *SearchCount {
 	switch {
 	case t.Titles > MaxSearchCount:
@@ -252,7 +259,11 @@ func EstimateCount(t SearchTally) *SearchCount {
 		n += float64(t.Passed)
 		kind, round = CountAtLeast, math.Floor
 	case t.Checked > 0:
-		n += float64(max(t.Bodies-t.TitlePages, 0)) * float64(t.Passed) / float64(t.Checked)
+		rate := float64(t.Passed) / float64(t.Checked)
+		if t.Full && t.Checked > 1 {
+			rate = float64(t.Passed-1) / float64(t.Checked-1)
+		}
+		n += float64(max(t.Bodies-t.TitlePages, 0)) * rate
 	}
 	if t.BodiesCapped {
 		kind, round = CountAtLeast, math.Floor

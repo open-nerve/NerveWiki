@@ -43,9 +43,9 @@ const (
 	// MaxSearchCount is the count's largest value: one past it is "at
 	// least"; MaxSearchCountScan how many candidates of the body the count
 	// counts at most; SearchCountSample how many it checks for its rate
-	// when the first page checked fewer and left some (M8/P5 design 3.5);
+	// when the first page checked none (M8/P5 design 3.5);
 	// SearchCountPasses how many of those it checked must pass for a rate,
-	// when it did not check them all (M8/P5A review A-M5, C-M1).
+	// when it did not check them all (M8/P5A review A-M5).
 	MaxSearchCount     = 1000
 	MaxSearchCountScan = 20_000
 	SearchCountSample  = 100
