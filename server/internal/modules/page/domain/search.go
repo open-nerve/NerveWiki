@@ -328,9 +328,10 @@ func (l *lexemes) scan(s string, unigrams bool) {
 }
 
 // inDataURL reports whether a data: URL holds r: ASCII but white space and
-// what ends it in Markdown and HTML, ")", quotes, "<", ">" and "]".
+// what ends it in Markdown and HTML, ")", quotes, "<", ">", "]" and the
+// backtick that ends inline code (M8/P5A fix check N-7).
 func inDataURL(r rune) bool {
-	return r < utf8.RuneSelf && !unicode.IsSpace(r) && !strings.ContainsRune(`)"'<>]`, r)
+	return r < utf8.RuneSelf && !unicode.IsSpace(r) && !strings.ContainsRune(")\"'<>]`", r)
 }
 
 // longASCII reports whether the word run of n characters in b bytes is

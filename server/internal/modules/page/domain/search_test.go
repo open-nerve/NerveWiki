@@ -132,7 +132,8 @@ func TestSearchTokensLeaveOut(t *testing.T) {
 
 // A data: string's left out run ends at the first character no data: URL
 // holds: the text right after it is indexed, CJK right after an image's
-// ")" (M8/P5A review A-M3), an HTML image's quote, a non-ASCII character.
+// ")" (M8/P5A review A-M3), an HTML image's quote, inline code's backtick
+// (fix check N-7), a non-ASCII character.
 func TestSearchTokensLeaveADataURLOutToItsEnd(t *testing.T) {
 	payload := "data:image/png;base64," + strings.Repeat("iVBORw0KGgo", 8)
 	for _, tt := range []struct {
@@ -144,6 +145,7 @@ func TestSearchTokensLeaveADataURLOutToItsEnd(t *testing.T) {
 		{"<" + payload + ">tail", []string{"tai", "ail"}},
 		{"[x](" + payload + "]note", []string{"not", "ote"}},
 		{"'" + payload + "'quote", []string{"quo", "ote"}},
+		{"`" + payload + "`word", []string{"wor", "ord"}},
 		{payload + "数据库", []string{"数据", "据库"}},
 		{payload + "\nnext", []string{"nex", "ext"}},
 	} {
