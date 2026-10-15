@@ -110,11 +110,13 @@ export const SearchPage = observer(function SearchPage() {
   );
   useSWR(["notebooks", workspace.id], () => notebooks.load());
   // Only the search shown stays cached: back to it, it shows as it was; back to one before it, it is read again.
+  // Dropped as useLeftRevision drops a version (version-page.tsx), with SWR's revalidation: a key no page reads is
+  // not read, but its read on its way, or answered within SWR's deduping, is forgotten too; else a page back to it
+  // would wait on that read, whose answer the drop made too old to keep, and show Loading for good (P5B review A-I1).
   useEffect(() => {
     void reload(
       (each) => Array.isArray(each) && each[0] === "search" && unstable_serialize(each) !== serial,
-      undefined,
-      { revalidate: false }
+      undefined
     ).catch(() => undefined);
   }, [reload, serial]);
   // What More and Keep looking said last, of the search they read: another shown, it is gone.
