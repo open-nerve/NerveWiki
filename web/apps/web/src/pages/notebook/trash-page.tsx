@@ -15,6 +15,7 @@ import { readPages } from "../../lib/read-pages";
 import type { TrashItem, TrashItemPage } from "../../services/page.service";
 import { usePageTree, useStore } from "../../stores/context";
 import { LoadMoreButton, readNext, useLoadMore } from "../load-more";
+import { openOf } from "../open-node";
 import { watchReader } from "../page/readers-input";
 import { useWorkspace } from "../workspace/workspace-layout";
 import { useNotebook } from "./notebook-layout";
@@ -22,7 +23,6 @@ import type { FocusJob } from "./transfer-page";
 import {
   namesOf,
   offeredOf,
-  openOf,
   refusedText,
   restoredOf,
   restoredText,

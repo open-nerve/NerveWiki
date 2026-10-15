@@ -156,3 +156,33 @@ describe("PageService's history (M8/P3 design 4.1)", () => {
     ]);
   });
 });
+
+describe("PageService's search (M8/P5 design 4.1)", () => {
+  test("searches a workspace twenty hits a page, its q as typed, in a notebook when given, after a cursor for the next", async () => {
+    const asked: string[] = [];
+    const service = new PageService(
+      fakeApi((request) => {
+        const url = new URL(request.url);
+        asked.push(`${request.method} ${url.pathname}${url.search}`);
+        return json({ data: [], next_cursor: null, count: { value: 0, kind: "exact" }, building: false });
+      })
+    );
+
+    expect(await service.search("lab", "Go 语言 & C++")).toEqual({
+      data: [],
+      next_cursor: null,
+      count: { value: 0, kind: "exact" },
+      building: false,
+    });
+    await service.search("lab", "api", { notebookId: "nb1" });
+    await service.search("lab", "api", { notebookId: "nb1", cursor: "next" });
+    await service.search("lab", "api", { cursor: "next" });
+
+    expect(asked).toEqual([
+      "GET /api/v0/workspaces/lab/search?q=Go%20%E8%AF%AD%E8%A8%80%20%26%20C%2B%2B&limit=20",
+      "GET /api/v0/workspaces/lab/search?q=api&limit=20&notebook_id=nb1",
+      "GET /api/v0/workspaces/lab/search?q=api&limit=20&notebook_id=nb1&cursor=next",
+      "GET /api/v0/workspaces/lab/search?q=api&limit=20&cursor=next",
+    ]);
+  });
+});

@@ -19,6 +19,7 @@ import type { Notebook } from "../../services/notebook.service";
 import type { TrashItem } from "../../services/page.service";
 import { usePageTree, useStore } from "../../stores/context";
 import { NotFoundPage } from "../not-found";
+import { openOf } from "../open-node";
 import { BreadcrumbTrail } from "../page/breadcrumbs";
 import { useLeftBehind, VersionView } from "../page/version-view";
 import { useWorkspace } from "../workspace/workspace-layout";
@@ -27,7 +28,6 @@ import {
   ItemIcon,
   namesOf,
   offeredOf,
-  openOf,
   refusedText,
   RestoreButton,
   TrashFacts,

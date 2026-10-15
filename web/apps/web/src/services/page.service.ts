@@ -19,7 +19,11 @@ import type {
   PageVersionPage,
   PageView,
   RevertConflict,
+  SearchCount,
+  SearchHit,
+  SearchPage,
   TaskToggle,
+  TextRange,
   TrashItem,
   TrashItemPage,
   TreeNode,
@@ -46,7 +50,11 @@ export type {
   PageVersionPage,
   PageView,
   RevertConflict,
+  SearchCount,
+  SearchHit,
+  SearchPage,
   TaskToggle,
+  TextRange,
   TrashItem,
   TrashItemPage,
   TreeNode,
@@ -68,6 +76,9 @@ const changesetsPage = 50;
 /** How many changes a page of a changeset's holds: its page's (M8/P3 design 4.3). */
 const changesPage = 100;
 
+/** How many hits a page of a search holds at most: the server's default (M8/P5 design 4.1). */
+const searchPage = 20;
+
 /**
  * LogFilter narrows a notebook's history (M8 design 4.7): one account's
  * changesets (actor, its id), one client's (web, api, cli, mcp:<name>, or
@@ -83,7 +94,8 @@ export type LogFilter = { actor: string; client: string; page: string };
  * design 3.6), and ticks its task items (M5/P6). It reads a page's
  * versions, and restores one (M8/P1 design 3.6); it reads a notebook's
  * trash and an item of it, and restores one (M8/P2 design 4.1); it reads a
- * notebook's history, and reverts a changeset of it (M8/P3 design 4.1).
+ * notebook's history, and reverts a changeset of it (M8/P3 design 4.1); it
+ * searches a workspace (M8/P5 design 4.1).
  */
 export class PageService {
   constructor(private readonly api: ApiClient) {}
@@ -271,6 +283,32 @@ export class PageService {
       await this.api.POST("/api/v0/changesets/{changeset_id}/revert", {
         params: { path: { changeset_id: id } },
         ...(message === undefined ? {} : { body: { message } }),
+      })
+    );
+  }
+
+  /**
+   * search answers a page of the hits of q in the workspace of slug (M8 design 4.12): in the notebook notebookId, or
+   * in every notebook the caller sees without one; the first, or the one after cursor. The hits whose names hold
+   * every term come first, then the pages whose names or contents hold each; a page may hold fewer hits than its
+   * size, or none, with a cursor to go on with.
+   */
+  async search(
+    slug: string,
+    q: string,
+    { notebookId, cursor }: { notebookId?: string; cursor?: string } = {}
+  ): Promise<SearchPage> {
+    return unwrap(
+      await this.api.GET("/api/v0/workspaces/{slug}/search", {
+        params: {
+          path: { slug },
+          query: {
+            q,
+            limit: searchPage,
+            ...(notebookId === undefined ? {} : { notebook_id: notebookId }),
+            ...(cursor === undefined ? {} : { cursor }),
+          },
+        },
       })
     );
   }

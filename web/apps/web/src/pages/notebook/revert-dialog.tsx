@@ -24,11 +24,11 @@ import type { Notebook } from "../../services/notebook.service";
 import type { ChangesetDetail } from "../../services/page.service";
 import { usePageTree, useStore, useTransfers } from "../../stores/context";
 import type { Press } from "../../stores/transfer.store";
+import { openOf } from "../open-node";
 import { watchReader } from "../page/readers-input";
 import { useWorkspace } from "../workspace/workspace-layout";
 import { countText, reasonText } from "./changeset-text";
 import { distinctName } from "./distinct-name";
-import { openOf } from "./trash-row";
 
 /** The most bytes a revert's message holds: the server's (domain.MaxMessageBytes). */
 const messageBytes = 4096;

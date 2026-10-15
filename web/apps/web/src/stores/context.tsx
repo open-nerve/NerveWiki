@@ -14,6 +14,7 @@ import type { NotebookStore } from "./notebook.store";
 import type { OwnerlessStore } from "./ownerless.store";
 import type { PageTreeStore } from "./page-tree.store";
 import type { RootStore } from "./root.store";
+import type { SearchStore } from "./search.store";
 import type { TransferStore } from "./transfer.store";
 import type { WorkspaceStore } from "./workspace.store";
 
@@ -80,6 +81,15 @@ export function useNotebooks(workspace: Workspace): NotebookStore {
     throw new Error("useNotebooks is used outside SignedIn");
   }
   return notebooks;
+}
+
+/** useSearch is the searches of workspace: only for the pages the SignedIn guard shows. */
+export function useSearch(workspace: Workspace): SearchStore {
+  const searches = useStore().searchOf(workspace);
+  if (searches === undefined) {
+    throw new Error("useSearch is used outside SignedIn");
+  }
+  return searches;
 }
 
 /** useNotebookMembers is the members of notebook: only for the pages the SignedIn guard shows. */

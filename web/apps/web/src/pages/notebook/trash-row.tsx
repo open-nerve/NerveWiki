@@ -4,7 +4,6 @@ import { useRef, useState, type Ref } from "react";
 import { Link } from "react-router";
 import { useSWRConfig } from "swr";
 
-import { arrived } from "../../app/arrival";
 import { writesPages } from "../../app/effective-role";
 import { useMounted } from "../../app/mounted";
 import { errorText } from "../../app/problem-messages";
@@ -19,7 +18,7 @@ import type { Notebook } from "../../services/notebook.service";
 import type { TrashItem, TreeNode } from "../../services/page.service";
 import type { TransferJob } from "../../services/transfer.service";
 import { useAccount, usePageTree, useStore, useTransfers } from "../../stores/context";
-import { AssetIcon, type Located } from "../page/attachment-row";
+import { AssetIcon } from "../page/attachment-row";
 import { useWorkspace } from "../workspace/workspace-layout";
 
 // A trash item as the trash's list and its preview show it (M8 design 4.5,
@@ -115,22 +114,6 @@ export function restoredText(restored: TrashRestored, t: Translate): string {
   return restored.renamed
     ? t("trash.restoredAsUnder", { name, parent: parent.name })
     : t("trash.restoredUnder", { name, parent: parent.name });
-}
-
-/**
- * openOf is where Open goes for a node restored, of the notebook whose
- * home is home: a page to itself, arrived at; an attachment to where it
- * is, under parent, its parent page or the notebook's home, its row there
- * taking the focus (Located), as a search's result will (M8 design 4.12).
- */
-export function openOf(
-  { id, kind, parent }: { id: string; kind: TreeNode["kind"]; parent: string | null },
-  home: string
-): { to: string; state: typeof arrived | Located } {
-  if (kind === "page") {
-    return { to: `${home}/pages/${id}`, state: arrived };
-  }
-  return { to: parent === null ? home : `${home}/pages/${parent}`, state: { attachment: id } };
 }
 
 /**

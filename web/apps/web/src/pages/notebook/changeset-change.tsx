@@ -8,8 +8,8 @@ import { shortId } from "../../lib/twins";
 import type { Notebook } from "../../services/notebook.service";
 import type { ChangesetChange } from "../../services/page.service";
 import { usePageTree } from "../../stores/context";
+import { openOf } from "../open-node";
 import { useWorkspace } from "../workspace/workspace-layout";
-import { openOf } from "./trash-row";
 
 /** placeText says where a node was: under a page, by its name now, at the notebook's top level, or under one purged. */
 function placeText(state: NonNullable<ChangesetChange["before"]>, t: Translate): string {

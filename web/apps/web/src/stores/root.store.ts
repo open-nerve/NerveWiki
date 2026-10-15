@@ -39,6 +39,7 @@ import { OwnerlessStore } from "./ownerless.store";
 import { PageEditing } from "./page-editing";
 import { PageTreeStore } from "./page-tree.store";
 import type { PreferencesStore } from "./preferences.store";
+import { SearchStore } from "./search.store";
 import { TransferStore } from "./transfer.store";
 import { WorkspaceStore } from "./workspace.store";
 
@@ -108,6 +109,8 @@ export class RootStore {
   /** The ownerless notebooks and the audit events this generation holds, by workspace id. */
   private readonly ownerlessLists = new Map<string, OwnerlessStore>();
   private readonly auditLists = new Map<string, AuditStore>();
+  /** The searches of each workspace this generation holds, by its id. */
+  private readonly searches = new Map<string, SearchStore>();
   /** The notebook member lists and page trees this generation holds, by notebook id. */
   private readonly notebookMemberLists = new Map<string, NotebookMemberStore>();
   private readonly pageTrees = new Map<string, PageTreeStore>();
@@ -294,6 +297,16 @@ export class RootStore {
   auditOf(workspace: Workspace): AuditStore | undefined {
     const service = this.ownerless;
     return service && once(this.auditLists, workspace.id, () => new AuditStore(service, workspace.slug));
+  }
+
+  /**
+   * searchOf is the searches of workspace, as membersOf is its members (M8/P5
+   * design 4.3): by its id, so that a workspace made with the slug of one
+   * deleted searches its own notebooks.
+   */
+  searchOf(workspace: Workspace): SearchStore | undefined {
+    const service = this.pages;
+    return service && once(this.searches, workspace.id, () => new SearchStore(service, workspace.slug));
   }
 
   /** notebookMembersOf is the members of notebook, the same list for as long as this generation lives. */
