@@ -98,6 +98,10 @@ test("the names' hits come first, then the contents', each newest first, a page 
   expect(third.next).toBeNull();
   // All of it on one page: exact.
   expect((await namesOf(await searchOf(server, "q=数据库"))).page.count).toEqual({ value: 5, kind: "exact" });
+  // A q found in names alone, over pages: as many as the names hold, exact, as the server counts it.
+  const named = await namesOf(await searchOf(server, "q=库&limit=2"));
+  expect(named.next).not.toBeNull();
+  expect(named.page.count).toEqual({ value: 3, kind: "exact" });
 });
 
 test("a single CJK character is looked for in names alone, beside a term of the contents too; letters from three as a substring, one or two as a whole word", async () => {

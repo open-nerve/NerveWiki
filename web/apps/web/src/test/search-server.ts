@@ -16,8 +16,10 @@ import { json, notebookJSON, problem, type Answer } from "./fakes";
 // at most (no bound by default): a page may hold fewer than limit, none
 // even, with a cursor below the last walked. Each tier newest first, by
 // updated_at then id. The first page's count: exact without a next page;
-// else none while none passed, about the hits there are, 1,000 at least
-// past it, unless searchCount says otherwise; building is searchBuilding.
+// else, as the server's EstimateCount: 1,000 at least past it in names;
+// exact for a q found in names alone; none while none passed; about the
+// hits there are, 1,000 at least past it; unless searchCount says
+// otherwise. building is searchBuilding.
 // The codes in the server's order (page/adapter/http/search.go,
 // page/app/search.go): the binding's 400 bad_request, a notebook_id that
 // is no UUID or a limit no integer; a cursor it cannot read 400
@@ -286,6 +288,10 @@ export function searchRoutes(server: SearchState, assetOf: AssetOf): Record<stri
         count = server.searchCount;
       } else if (next === undefined) {
         count = { value: rows.length, kind: "exact" };
+      } else if (all.filter(titled).length > 1000) {
+        count = { value: 1000, kind: "at_least" };
+      } else if (!bodied) {
+        count = { value: all.filter(titled).length, kind: "exact" };
       } else if (rows.length > 0) {
         const total = all.filter((node) => titled(node) || (bodied && candidate(node) && passes(node))).length;
         count = total > 1000 ? { value: 1000, kind: "at_least" } : { value: total, kind: "about" };
