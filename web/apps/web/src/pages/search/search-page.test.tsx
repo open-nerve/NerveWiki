@@ -257,7 +257,7 @@ function hitOf(node: TreeNode): SearchHit {
   };
 }
 
-test("a hit a later page lists again, a rename between them, is listed once, and said as no more", async () => {
+test("a hit a later page lists again, a rename between them, is listed once, and said as no more; what More said goes as another search shows", async () => {
   const user = userEvent.setup();
   const pages: Record<string, SearchPage> = {
     first: {
@@ -272,7 +272,7 @@ test("a hit a later page lists again, a rename between them, is listed once, and
     "GET /api/v0/workspaces/lab/search": (request) =>
       json(pages[new URL(request.url).searchParams.get("cursor") ?? "first"]),
   });
-  renderApp(searchPath("n"), server.app);
+  const { router } = renderApp(searchPath("n"), server.app);
   await screen.findByRole("list", { name: "Search results" });
   expect(statusLine().textContent).toBe("Results: about 3.");
 
@@ -283,6 +283,10 @@ test("a hit a later page lists again, a rename between them, is listed once, and
   expect(statusLine().textContent).toBe("Results: 3.");
   // Read whole, the focus goes to the first it added.
   expect(document.activeElement).toBe(screen.getByRole("link", { name: "Linux" }));
+
+  await act(() => router.navigate(searchPath("m")));
+  await waitFor(() => expect(statusLine().textContent).toBe("Results: about 3."));
+  expect(told().textContent).toBe("");
 });
 
 test("More reads the next page and says what it added; after a stretch that found none it is Keep looking, saying so, again with a space that does not break; the focus stays on it until the last page, then goes to the first hit added", async () => {
@@ -392,9 +396,15 @@ test("Where to look lists all the notebooks, then each; a choice replaces the ad
   expect(document.activeElement).toBe(scope);
 });
 
-test("an address whose notebook_id is no id is not read; one of a notebook not seen is 404: each says the notebook is not found, with Search the whole workspace, which, gone with the focus, gives it to the title", async () => {
+test("an address whose notebook_id is no id is not read; one of a notebook not seen is 404, the notebooks read again: each says the notebook is not found, with Search the whole workspace, which, gone with the focus, gives it to the title", async () => {
   const user = userEvent.setup();
-  const server = searched();
+  let listed = 0;
+  const server = searched({
+    "GET /api/v0/workspaces/lab/notebooks": () => {
+      listed += 1;
+      return json({ data: [notebookJSON] });
+    },
+  });
   const { router } = renderApp(searchPath("数据库", "nope"), server.app);
 
   expect((await screen.findByRole("alert")).textContent).toBe(
@@ -411,12 +421,14 @@ test("an address whose notebook_id is no id is not read; one of a notebook not s
   await screen.findByRole("list", { name: "Search results" });
   expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1 }));
 
+  const before = listed;
   await act(() => router.navigate(searchPath("数据库", ideas.id)));
   expect((await screen.findByRole("alert")).textContent).toBe(
     "This notebook is not found: it does not exist, or you have no access to it."
   );
   expect(reads(server).at(-1)).toBe("GET search 数据库");
   expect(screen.getByRole("link", { name: "Search the whole workspace" })).toBeTruthy();
+  await waitFor(() => expect(listed).toBe(before + 1));
 });
 
 test("a q the server refuses says why, under the title", async () => {
@@ -444,6 +456,43 @@ test("an address without q says how to search, and reads nothing", async () => {
   ).toBeTruthy();
   expect(screen.queryByRole("combobox", { name: "Where to look" })).toBeNull();
   expect(reads(server)).toEqual([]);
+});
+
+test("a search the server fails says why, with Try again, which reads it again", async () => {
+  const user = userEvent.setup();
+  const server = searched();
+  server.searchDown = true;
+  renderApp(searchPath("数据库"), server.app);
+  expect((await screen.findByRole("alert")).textContent).toBe("Something went wrong (internal).");
+  expect(statusLine().textContent).toBe("");
+
+  server.searchDown = false;
+  await user.click(screen.getByRole("button", { name: "Try again" }));
+  await screen.findByRole("list", { name: "Search results" });
+  expect(statusLine().textContent).toBe("Results: 3.");
+});
+
+test("a page More read as another search shows goes to its own: nothing is said of it, nor listed, in the other", async () => {
+  const user = userEvent.setup();
+  const pages = [50, 40, 30].map((minute, i) => changed(pageNode(21 + i, `Page ${(i + 1).toString()}`), minute));
+  const server = pageServer({ nodes: pages });
+  for (const page of pages) {
+    server.contents.set(page.id, { content: "全文检索", revision: 1 });
+  }
+  server.searchWalk = 1;
+  const { router } = renderApp(searchPath("检索"), server.app);
+  await screen.findByRole("list", { name: "Search results" });
+  const held = gate();
+  server.searchWaits.next = held.promise;
+  await user.click(screen.getByRole("button", { name: "More results" }));
+  await waitFor(() => expect(reads(server)).toEqual(["GET search 检索", "GET search 检索 more"]));
+
+  await act(() => router.navigate(searchPath("全文")));
+  await waitFor(() => expect(statusLine().textContent).toBe("Results: about 3."));
+  held.open();
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(hits()).toHaveLength(1);
+  expect(told().textContent).toBe("");
 });
 
 test("a search that fails says why, with Try again; the workspace gone, the shell says the page is not found", async () => {

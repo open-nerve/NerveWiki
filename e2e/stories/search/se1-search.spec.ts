@@ -181,6 +181,10 @@ test("SE1 (page): searched from the left column's box, each find is listed, its 
   await expect(page).toHaveTitle("Search: 检索 · Acme · Nerve Wiki");
   await expect(searchStatus(page)).toHaveText("Results: 1.");
   expectFound("检索", await shownOf(page));
+  // Marked by more than its colour, which is the page's outside a reading view too.
+  const mark = searchResults(page).first().locator("mark").first();
+  expect(await mark.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe("rgba(0, 0, 0, 0)");
+  expect(await mark.evaluate((element) => getComputedStyle(element).fontWeight)).toBe("600");
 
   for (const { q } of finds.slice(1)) {
     // oxlint-disable-next-line no-await-in-loop -- a query at a time, each in the box

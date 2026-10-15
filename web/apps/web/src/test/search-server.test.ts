@@ -48,6 +48,9 @@ test("the codes come in the server's order: the binding's 400, the cursor's, q's
     ["lab", `q=a&notebook_id=${other}&limit=0`, "404 notebook.not_found"],
     ["lab", "q=a&limit=0", "422 validation_failed limit out_of_range"],
     ["lab", "q=a&limit=51", "422 validation_failed limit out_of_range"],
+    // Each of the binding's alone.
+    ["lab", "q=a&notebook_id=nope", "400 bad_request"],
+    ["lab", "q=a&limit=1.5", "400 bad_request"],
   ];
   const codes = await Promise.all(steps.map(async ([slug, query]) => problemOf(await searchOf(server, query, slug))));
   expect(codes).toEqual(steps.map(([, , code]) => code));
@@ -97,7 +100,7 @@ test("the names' hits come first, then the contents', each newest first, a page 
   expect((await namesOf(await searchOf(server, "q=数据库"))).page.count).toEqual({ value: 5, kind: "exact" });
 });
 
-test("a single CJK character is looked for in names alone; letters from three as a substring, one or two as a whole word", async () => {
+test("a single CJK character is looked for in names alone, beside a term of the contents too; letters from three as a substring, one or two as a whole word", async () => {
   const nodes = [
     changed(pageNode(11, "仓库"), 10),
     changed(pageNode(12, "Notes"), 20),
@@ -105,11 +108,14 @@ test("a single CJK character is looked for in names alone; letters from three as
     changed(pageNode(14, "Words"), 40),
   ];
   const server = pageServer({ nodes });
+  server.contents.set(nodes[0]?.id ?? "", { content: "代码的仓库", revision: 1 });
   server.contents.set(nodes[1]?.id ?? "", { content: "代码在仓库里。", revision: 1 });
   server.contents.set(nodes[2]?.id ?? "", { content: "A rapid tool, with AI.", revision: 1 });
   server.contents.set(nodes[3]?.id ?? "", { content: "He said so.", revision: 1 });
 
   expect((await namesOf(await searchOf(server, "q=库"))).names).toEqual(["仓库"]);
+  // 代码 is in both contents: 库 in the name of one.
+  expect((await namesOf(await searchOf(server, "q=库 代码"))).names).toEqual(["仓库"]);
   expect((await namesOf(await searchOf(server, "q=仓库"))).names).toEqual(["仓库", "Notes"]);
   expect((await namesOf(await searchOf(server, "q=api"))).names).toEqual(["English"]);
   expect((await namesOf(await searchOf(server, "q=ai"))).names).toEqual(["English"]);
