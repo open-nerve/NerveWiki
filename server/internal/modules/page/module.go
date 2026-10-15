@@ -48,6 +48,10 @@ type Notebooks = app.Notebooks
 // directory to it.
 type Names = app.Names
 
+// VisibleNotebooks lists the notebooks an account sees, which a search
+// reads: bootstrap hands notebook.NewVisibleNotebooks to it.
+type VisibleNotebooks = app.VisibleNotebooks
+
 // AttachmentInfos reads the attachments' type and size, deleted or not:
 // bootstrap hands the asset module's to it (M8 design 4.1).
 type (
@@ -87,6 +91,10 @@ var ErrTrashChanged = domain.ErrTrashChanged
 // changeset of its first, which a revert was made of as it ran (M8/P3
 // design 3.7): nothing of the unit was written.
 var ErrChangesetReverted = app.ErrChangesetReverted
+
+// SearchQueue is the River queue of the search's job, of one worker: the
+// jobs runner's configuration lists it (M8/P5 design 3.4).
+const SearchQueue = riveradapter.SearchIndexQueue
 
 // TrashMargin is how long before the purge's retention a trash item can no
 // longer be restored: bootstrap tells the instance's retention less it.
@@ -136,6 +144,15 @@ type Deps struct {
 	// reverts: 0 is the domain's, domain.MaxJobItems, measured (M8/P4
 	// design 3.11); production leaves it 0.
 	MaxJobItems int
+	// Snapshots runs a search's reads in one read-only transaction:
+	// bootstrap hands it the Tx's manager. VisibleNotebooks are the
+	// notebooks a search searches. Both must be there.
+	Snapshots        shared.Snapshots
+	VisibleNotebooks VisibleNotebooks
+	// SearchInterval is how often the search's job runs
+	// (page.search_index_interval): 0 registers no job, only in the tests,
+	// which run it themselves (NewSearchIndex's Drain).
+	SearchInterval time.Duration
 }
 
 // Module is the wired page module.
@@ -148,17 +165,24 @@ type Module struct {
 }
 
 // New wires the module: every write runs in the one writer's units. A
-// module without the attachments' infos is a fault of its wiring.
+// module without the attachments' infos, the snapshots or the visible
+// notebooks is a fault of its wiring.
 func New(d Deps) *Module {
-	if d.Attachments == nil {
+	switch {
+	case d.Attachments == nil:
 		panic("page: no attachment infos")
+	case d.Snapshots == nil:
+		panic("page: no snapshots")
+	case d.VisibleNotebooks == nil:
+		panic("page: no visible notebooks")
 	}
 	store := postgresadapter.New(d.Pool)
 	md := markdownadapter.New(d.Markdown)
 	budget := markdownadapter.NewBudget(d.Budget)
 	writer := app.NewWriter(app.WriterDeps{
 		Tx: d.Tx, Clock: d.Clock, Auth: d.Authorizer, Workspaces: d.Workspaces, Notebooks: d.Notebooks,
-		Nodes: store, NodeWriter: store, Trash: store, History: store, Changesets: store, SessionWriter: store, Names: d.Names,
+		Nodes: store, NodeWriter: store, Trash: store, History: store, Changesets: store, SessionWriter: store, Search: store,
+		Names:  d.Names,
 		Guards: d.Guards, Participants: d.Participants, Observers: d.Observers,
 		SessionVetoers: d.EditSessionVetoers, SessionSubscribers: d.EditSessionSubscribers,
 	})
@@ -167,7 +191,7 @@ func New(d Deps) *Module {
 	trash := app.TrashReads{Notebooks: d.Notebooks, Nodes: store, Trash: store, Names: d.Names, Attachments: d.Attachments,
 		Auth: d.Authorizer, Clock: d.Clock, Retention: d.Retention}
 	history := app.HistoryReads{Notebooks: d.Notebooks, History: store, Names: d.Names, Auth: d.Authorizer}
-	return &Module{uc: httpadapter.UseCases{
+	m := &Module{uc: httpadapter.UseCases{
 		ListNodes:       app.NewListNodes(d.Notebooks, store, d.Authorizer),
 		CreatePage:      app.NewCreatePage(writer, store, parser, d.Logger),
 		GetPage:         app.NewGetPage(d.Notebooks, store, d.Authorizer),
@@ -195,14 +219,22 @@ func New(d Deps) *Module {
 		ListChanges:     app.NewListChanges(history),
 		RevertChangeset: app.NewRevertChangeset(trash, store, writer, parser,
 			app.RevertBounds{Nodes: d.MaxUnitNodes, History: d.MaxUnitHistory, Steps: d.MaxRevertSteps}, d.Logger),
+		Search: app.NewSearch(app.SearchDeps{Snapshots: d.Snapshots, Workspaces: d.Workspaces, Visible: d.VisibleNotebooks,
+			Auth: d.Authorizer, Reads: store, Trash: store, Attachments: d.Attachments}),
 	}, jobs: []jobs.Job{
 		riveradapter.CleanupJob(app.NewCleanupEditSessions(store, d.Clock, d.Logger), d.EditSessionCleanupInterval),
 	}, assets: app.NewAssetWrites(writer, store), imports: app.NewImportWrites(writer, parser, md),
 		jobWrites: app.NewJobWrites(trash, store, writer, parser, store, d.MaxJobItems, d.MaxUnitHistory)}
+	if d.SearchInterval > 0 {
+		m.jobs = append(m.jobs, riveradapter.SearchIndexJob(
+			app.NewIndexSearch(d.Tx, store, d.Clock, d.Logger, domain.MinSearchRebuild), d.SearchInterval))
+	}
+	return m
 }
 
 // Jobs are the module's background jobs, for the server's jobs runner: the
-// cleanup of the expired edit sessions.
+// cleanup of the expired edit sessions, and the search's job when its
+// interval is set.
 func (m *Module) Jobs() []jobs.Job {
 	return m.jobs
 }

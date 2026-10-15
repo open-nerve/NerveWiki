@@ -24,11 +24,15 @@ import (
 // index of the notebook id, or, when id is zero, of every notebook not
 // deleted, one at a time and each in a transaction, on the command line's
 // composition: a pool, the Markdown and its budget as serve's, and the
-// linking module's rebuild; no HTTP server or jobs client. A line a
-// notebook goes to out. A notebook whose siblings' title keys would clash,
-// or whose rebuild fails, is left as it was, told on errOut, with the
-// logs; when every notebook is rebuilt, the command then fails, after the
-// others.
+// linking module's rebuild; no HTTP server or jobs client. After each, it
+// queues in bulk the notebook's nodes whose search rows are missing or of
+// another tokenizer, which the server's job builds (M8/P5 design 3.4),
+// whatever became of its rebuild. A line a notebook goes to out, with the
+// nodes queued. A notebook whose siblings' title keys would clash, or whose
+// rebuild fails, is left as it was, told on errOut, with the logs, as is
+// one whose nodes are not queued: the command then fails, after the other
+// notebooks; a rebuild's failure of the notebook --notebook names fails it
+// at once, with the queue's, if any (M8/P5A review B-N2).
 func Reindex(ctx context.Context, cfg config.Config, errOut, out io.Writer, id uuid.UUID) error {
 	c, err := openAdminCommand(ctx, cfg, errOut)
 	if err != nil {
@@ -45,29 +49,49 @@ func Reindex(ctx context.Context, cfg config.Config, errOut, out io.Writer, id u
 			return err
 		}
 	}
+	search := page.NewSearchIndex(c.pool, cfg.Database.CommitTimeout)
 	failed := 0
 	for _, nb := range ids {
 		r, err := admin.Rebuild(ctx, nb)
-		var line string
 		switch {
 		case errors.Is(err, linking.ErrNoNotebook) && id == uuid.Nil():
 			continue // deleted since it was listed
 		case errors.Is(err, linking.ErrNoNotebook):
 			return fmt.Errorf("no notebook %s", nb)
-		case err != nil && (id != uuid.Nil() || ctx.Err() != nil):
-			return fmt.Errorf("notebook %s: %w", nb, err)
+		}
+		var queued int
+		var qerr error
+		if ctx.Err() == nil {
+			if queued, qerr = search.Requeue(ctx, nb); qerr != nil {
+				qerr = fmt.Errorf("its nodes not queued for the search: %w", qerr)
+			}
+		}
+		if (err != nil && id != uuid.Nil()) || ((err != nil || qerr != nil) && ctx.Err() != nil) {
+			return fmt.Errorf("notebook %s: %w", nb, errors.Join(err, qerr))
+		}
+		searched := plural(queued, "node") + " queued for the search"
+		if qerr != nil {
+			searched = qerr.Error()
+		}
+		var line string
+		switch {
 		case err != nil:
-			line = fmt.Sprintf("notebook %s: not reindexed: %v", nb, err)
+			line = fmt.Sprintf("notebook %s: not reindexed: %v; %s", nb, err, searched)
 		case len(r.Clashes) > 0:
 			slugOf := func(ctx context.Context, nb uuid.UUID) (string, error) { return workspaceSlug(ctx, c.pool, nb) }
 			if line, err = clashLine(ctx, c.logger, slugOf, nb, r.Clashes); err != nil {
 				return err
 			}
+			line += "; " + searched
 		default:
-			if err := writeLine(out, fmt.Sprintf("notebook %s: %s, %s, %d unresolved", nb, plural(r.Pages, "page"), plural(r.Links, "link"), r.Unresolved)); err != nil {
-				return err
+			line = fmt.Sprintf("notebook %s: %s, %s, %d unresolved; %s", nb, plural(r.Pages, "page"), plural(r.Links, "link"), r.Unresolved,
+				searched)
+			if qerr == nil {
+				if err := writeLine(out, line); err != nil {
+					return err
+				}
+				continue
 			}
-			continue
 		}
 		failed++
 		if err := writeLine(errOut, line); err != nil {

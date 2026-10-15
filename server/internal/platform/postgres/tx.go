@@ -11,27 +11,46 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Querier runs statements: the transaction WithinTx opened, or the pool.
-// sqlc's generated DBTX interface has the same methods, so repositories pass
-// DB(ctx, pool) to their generated queries.
+// Querier runs statements: the transaction WithinTx opened, the connection
+// OnConn named, or the pool.
+// sqlc's generated DBTX interface has the same methods, SendBatch where a
+// module's queries hold a batch, so repositories pass DB(ctx, pool) to their
+// generated queries.
 type Querier interface {
 	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	SendBatch(ctx context.Context, b *pgx.Batch) pgx.BatchResults
 }
 
 type txKey struct{}
 
+// connKey marks a context whose statements run on one connection, OnConn's.
+type connKey struct{}
+
 // snapshotKey marks a context whose transaction WithinSnapshot opened.
 type snapshotKey struct{}
 
-// DB returns the transaction that TxManager.WithinTx put in ctx, or pool
-// when ctx carries none.
+// DB returns the transaction that TxManager.WithinTx put in ctx; else the
+// connection OnConn put there; else pool.
 func DB(ctx context.Context, pool *pgxpool.Pool) Querier {
 	if tx, ok := ctx.Value(txKey{}).(pgx.Tx); ok {
 		return tx
 	}
+	if conn, ok := ctx.Value(connKey{}).(*pgxpool.Conn); ok {
+		return conn
+	}
 	return pool
+}
+
+// OnConn returns ctx whose statements, DB's and those of the transactions
+// TxManager opens in it, run on conn, not on any connection of the pool: a
+// job that holds a session's lock on conn does its work there, so that the
+// lock is its work's own and the work takes one connection of the pool
+// (M8/P5A review B-M4). conn runs one statement at a time: the caller runs
+// them in turn.
+func OnConn(ctx context.Context, conn *pgxpool.Conn) context.Context {
+	return context.WithValue(ctx, connKey{}, conn)
 }
 
 // InTx reports whether ctx carries a transaction that TxManager.WithinTx
@@ -124,11 +143,16 @@ func (m *TxManager) WithinSnapshot(ctx context.Context, fn func(ctx context.Cont
 	})
 }
 
-// run runs fn in a new transaction of opts, as WithinTx describes.
+// run runs fn in a new transaction of opts, as WithinTx describes: on the
+// connection OnConn put in ctx, else on one of the pool.
 func (m *TxManager) run(ctx context.Context, opts pgx.TxOptions, fn func(ctx context.Context) error) error {
-	tx, err := m.pool.BeginTx(ctx, opts)
+	begin := m.pool.BeginTx
+	if conn, ok := ctx.Value(connKey{}).(*pgxpool.Conn); ok {
+		begin = conn.BeginTx
+	}
+	tx, err := begin(ctx, opts)
 	if err != nil {
-		return fmt.Errorf("begin transaction: %w", err)
+		return &beginError{err}
 	}
 	returned := false
 	defer func() {
@@ -154,6 +178,21 @@ func (m *TxManager) run(ctx context.Context, opts pgx.TxOptions, fn func(ctx con
 	}
 	return nil
 }
+
+// beginError is run's error when its transaction cannot begin, before fn
+// runs: the connection it was to run on is broken, or the pool closed, or
+// ctx ended. TxNotBegun marks it so, for a caller that tells it from a
+// failure of fn's statements without importing the platform
+// (shared.TxNotBegun): a job whose connection is gone fails its run, not
+// each of its items (M8/P5A fix check M-1).
+type beginError struct{ err error }
+
+func (e *beginError) Error() string { return "begin transaction: " + e.err.Error() }
+
+func (e *beginError) Unwrap() error { return e.err }
+
+// TxNotBegun marks the error as a transaction's that did not begin.
+func (*beginError) TxNotBegun() bool { return true }
 
 // end runs COMMIT or ROLLBACK detached from ctx's cancellation, within the
 // commit timeout.

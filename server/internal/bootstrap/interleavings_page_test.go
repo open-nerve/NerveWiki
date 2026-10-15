@@ -39,7 +39,8 @@ import (
 // fix check 2, N-c); an
 // edit session of a page that is not one not deleted of its notebook
 // (M4/P4 design 3.2); two sessions of a page alive at the database's time,
-// which the edit lock refuses (M5/P1 design 3.8).
+// which the edit lock refuses (M5/P1 design 3.8). The links' invariant and
+// the search's (checkSearch, M8/P5 design 3.10) are checked with it.
 func checkPages(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
 	for what, query := range map[string]string{
@@ -106,6 +107,7 @@ func checkPages(t *testing.T, pool *pgxpool.Pool) {
 		}
 	}
 	checkLinks(t, pool)
+	checkSearch(t, pool)
 }
 
 // openNotebook creates a notebook named name in acme as by, open to acme's

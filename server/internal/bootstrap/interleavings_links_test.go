@@ -113,7 +113,7 @@ func TestReindexSkipsANotebookDeletedMeanwhile(t *testing.T) {
 	if err := holder.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err := <-done; err != nil || stdout.String() != fmt.Sprintf("notebook %s: 0 pages, 0 links, 0 unresolved\n", first) {
+	if err := <-done; err != nil || stdout.String() != fmt.Sprintf("notebook %s: 0 pages, 0 links, 0 unresolved; 0 nodes queued for the search\n", first) {
 		t.Errorf("reindex = %q, %v: %s; want the first notebook's line alone", stdout.String(), err, stderr.String())
 	}
 	checkPages(t, tm.pool)

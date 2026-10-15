@@ -87,18 +87,20 @@ func NewJobWrites(reads TrashReads, history History, writer *Writer, parser *Con
 }
 
 // restoreUnit is the unit of a restore's batch of spec: the job's
-// changeset, made by its first batch that writes.
+// changeset, made by its first batch that writes; a background job's, its
+// nodes queued for the search in bulk.
 func restoreUnit(spec JobSpec) UnitSpec {
 	return UnitSpec{NotebookID: spec.NotebookID, Action: domain.ActionRestore, Tree: true, Client: spec.Client,
-		NotFound: domain.ErrNotebookNotFound, Kind: domain.ChangesetTrashRestore, Changeset: spec.Changeset, Create: true}
+		NotFound: domain.ErrNotebookNotFound, Kind: domain.ChangesetTrashRestore, Changeset: spec.Changeset, Create: true, Background: true}
 }
 
 // revertUnit is the unit of a revert's batch of spec, of the changeset
-// reverted: the job's changeset, a revert of it with spec's message.
+// reverted: the job's changeset, a revert of it with spec's message; a
+// background job's, its nodes queued for the search in bulk.
 func revertUnit(spec JobSpec, reverted uuid.UUID) UnitSpec {
 	return UnitSpec{NotebookID: spec.NotebookID, Action: domain.ActionRevert, Tree: true, Client: spec.Client,
 		NotFound: domain.ErrNotebookNotFound, Kind: domain.ChangesetRevert, RevertsID: reverted, Changeset: spec.Changeset, Create: true,
-		Message: spec.Message}
+		Message: spec.Message, Background: true}
 }
 
 // checks are the reverts' unlocked checks over the job's reads.

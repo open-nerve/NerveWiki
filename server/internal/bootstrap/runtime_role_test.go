@@ -343,8 +343,9 @@ func TestTheGrantsFileCoversEveryRelationAndFunction(t *testing.T) {
 		"f": {"EXECUTE"},
 	}
 	tablePrivileges := []string{"SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER", "MAINTAIN"}
-	// The tables an import analyzes (M7/P6 design 3.6).
-	analyzed := map[string]bool{}
+	// The tables an import analyzes (M7/P6 design 3.6), and page_search,
+	// which the search's job analyzes as it builds it (M8/P5 design 3.4).
+	analyzed := map[string]bool{"page_search": true}
 	for _, table := range importAnalyzes() {
 		analyzed[table] = true
 	}

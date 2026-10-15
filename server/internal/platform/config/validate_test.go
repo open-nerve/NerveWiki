@@ -48,11 +48,12 @@ func validConfig() Config {
 			AssetContent:  BucketConfig{PerMinute: 6000, Burst: 1000},
 		},
 		Workspace: WorkspaceConfig{CreationEnabled: true},
-		Page:      PageConfig{EditSessionCleanupInterval: 10 * time.Minute, ParseBudgetBytes: 8 << 20, ParseMaxWait: 2 * time.Second},
-		Events:    EventsConfig{HeartbeatInterval: 20 * time.Second},
-		Jobs:      JobsConfig{ShutdownTimeout: 10 * time.Second, PurgeInterval: time.Hour, PurgeRetention: 1440 * time.Hour, ExportWorkers: 1, ImportWorkers: 1},
-		Storage:   StorageConfig{Dir: "data", MinFreeBytes: 1 << 30},
-		Asset:     AssetConfig{MaxBytes: 50 << 20, UploadMinRate: 64 << 10},
+		Page: PageConfig{EditSessionCleanupInterval: 10 * time.Minute, ParseBudgetBytes: 8 << 20, ParseMaxWait: 2 * time.Second,
+			SearchIndexInterval: 5 * time.Second},
+		Events:  EventsConfig{HeartbeatInterval: 20 * time.Second},
+		Jobs:    JobsConfig{ShutdownTimeout: 10 * time.Second, PurgeInterval: time.Hour, PurgeRetention: 1440 * time.Hour, ExportWorkers: 1, ImportWorkers: 1},
+		Storage: StorageConfig{Dir: "data", MinFreeBytes: 1 << 30},
+		Asset:   AssetConfig{MaxBytes: 50 << 20, UploadMinRate: 64 << 10},
 		Transfer: TransferConfig{ExportTTL: 24 * time.Hour, JobTimeout: 6 * time.Hour, HeartbeatTimeout: 5 * time.Minute, MaxQueued: 20,
 			ImportMaxBytes: 512 << 20, ImportMaxEntries: 50000, ImportMaxUnpackedBytes: 4 << 30},
 		Log: LogConfig{Level: "info", Format: "json"},
@@ -116,6 +117,7 @@ func TestValidateReportsEveryInvalidKey(t *testing.T) {
 		"ratelimit.asset_content.per_minute: must be at least 1, got 0",
 		"ratelimit.asset_content.burst: must be at least 1, got 0",
 		"page.edit_session_cleanup_interval: must be at least 1s, got 0s",
+		"page.search_index_interval: must be from 1s to 10m0s, got 0s",
 		"page.parse_budget_bytes: must be at least 5242880, a page's largest content, got 0",
 		"page.parse_max_wait: must be positive, got 0s",
 		"events.heartbeat_interval: must be from 5s to 50s, got 0s",
@@ -300,6 +302,24 @@ func TestValidateCrossKeyRules(t *testing.T) {
 			want:   "page.edit_session_cleanup_interval: must be at least 1s, got 999ms",
 		},
 		{
+			name:   "a search's job every second",
+			mutate: func(c *Config) { c.Page.SearchIndexInterval = time.Second },
+		},
+		{
+			name:   "a search's job more often",
+			mutate: func(c *Config) { c.Page.SearchIndexInterval = time.Second - time.Millisecond },
+			want:   "page.search_index_interval: must be from 1s to 10m0s, got 999ms",
+		},
+		{
+			name:   "a search's job every ten minutes",
+			mutate: func(c *Config) { c.Page.SearchIndexInterval = 10 * time.Minute },
+		},
+		{
+			name:   "a search's job less often",
+			mutate: func(c *Config) { c.Page.SearchIndexInterval = 10*time.Minute + time.Second },
+			want:   "page.search_index_interval: must be from 1s to 10m0s, got 10m1s",
+		},
+		{
 			name:   "a parse budget of one largest content",
 			mutate: func(c *Config) { c.Page.ParseBudgetBytes = 5 << 20 },
 		},
@@ -344,17 +364,42 @@ func TestValidateCrossKeyRules(t *testing.T) {
 			want: "asset.upload_min_rate: must let asset.max_bytes (3686401) arrive within 1h0m0s, at least 1025, got 1024",
 		},
 		{
-			name:   "eight exports and eight imports at once",
+			name:   "eight exports and eight imports at once, with the search's job",
+			mutate: func(c *Config) { c.Jobs.ExportWorkers, c.Jobs.ImportWorkers, c.Database.MaxConns = 8, 8, 34 },
+		},
+		{
+			name:   "eight exports and eight imports at once in a pool of 32",
 			mutate: func(c *Config) { c.Jobs.ExportWorkers, c.Jobs.ImportWorkers, c.Database.MaxConns = 8, 8, 32 },
+			want: "jobs.import_workers: must leave, with jobs.export_workers (8) and the search's job (1), half of database.max_conns (32) " +
+				"to the requests, at most 7, got 8",
 		},
 		{
-			name:   "exports and imports holding half the pool",
-			mutate: func(c *Config) { c.Jobs.ExportWorkers, c.Jobs.ImportWorkers, c.Database.MaxConns = 2, 1, 6 },
+			name:   "exports, imports and the search's job holding half the pool",
+			mutate: func(c *Config) { c.Jobs.ExportWorkers, c.Jobs.ImportWorkers, c.Database.MaxConns = 2, 1, 8 },
 		},
 		{
-			name:   "exports and imports holding more than half the pool",
-			mutate: func(c *Config) { c.Jobs.ExportWorkers, c.Jobs.ImportWorkers, c.Database.MaxConns = 2, 2, 7 },
-			want:   "jobs.import_workers: must leave, with jobs.export_workers (2), half of database.max_conns (7) to the requests, at most 1, got 2",
+			name:   "the least pool of one export and one import",
+			mutate: func(c *Config) { c.Jobs.ExportWorkers, c.Jobs.ImportWorkers, c.Database.MaxConns = 1, 1, 6 },
+		},
+		{
+			name:   "exports, imports and the search's job holding more than half the pool",
+			mutate: func(c *Config) { c.Jobs.ExportWorkers, c.Jobs.ImportWorkers, c.Database.MaxConns = 2, 2, 9 },
+			want: "jobs.import_workers: must leave, with jobs.export_workers (2) and the search's job (1), half of database.max_conns (9) " +
+				"to the requests, at most 1, got 2",
+		},
+		{
+			name:   "a pool too small for an export and the search's job",
+			mutate: func(c *Config) { c.Database.MaxConns = 1 },
+			want: "jobs.export_workers: must leave, with the search's job (1), half of database.max_conns (1) to the requests: " +
+				"got 1, which leaves none; database.max_conns must be at least 4",
+		},
+		{
+			// The imports' count, 3, named before max_conns', apart from
+			// the 6 of the pool (M8/P5A fix check N2-2).
+			name:   "a pool too small for an import beside the exports and the search's job",
+			mutate: func(c *Config) { c.Jobs.ExportWorkers, c.Jobs.ImportWorkers, c.Database.MaxConns = 2, 3, 6 },
+			want: "jobs.import_workers: must leave, with jobs.export_workers (2) and the search's job (1), half of database.max_conns (6) " +
+				"to the requests: got 3, which leaves none; database.max_conns must be at least 8",
 		},
 		{
 			name:   "more than eight imports at once",
@@ -401,9 +446,9 @@ func TestValidateCrossKeyRules(t *testing.T) {
 			want:   "transfer.import_max_unpacked_bytes: must be at least transfer.import_max_bytes (536870912), got 536870911",
 		},
 		{
-			name:   "exports holding more than half the pool",
-			mutate: func(c *Config) { c.Jobs.ExportWorkers, c.Database.MaxConns = 3, 5 },
-			want:   "jobs.export_workers: must leave half of database.max_conns (5) to the requests, at most 2, got 3",
+			name:   "exports and the search's job holding more than half the pool",
+			mutate: func(c *Config) { c.Jobs.ExportWorkers, c.Database.MaxConns = 3, 7 },
+			want:   "jobs.export_workers: must leave, with the search's job (1), half of database.max_conns (7) to the requests, at most 2, got 3",
 		},
 		{
 			name:   "more than eight exports at once",

@@ -30,7 +30,7 @@ func purgedTables(pool *pgxpool.Pool) []string {
 }
 
 // queryStrings runs a query of one text column on pool.
-func queryStrings(t *testing.T, pool *pgxpool.Pool, query string, args ...any) []string {
+func queryStrings(t testing.TB, pool *pgxpool.Pool, query string, args ...any) []string {
 	t.Helper()
 	rows, err := pool.Query(context.Background(), query, args...)
 	if err != nil {

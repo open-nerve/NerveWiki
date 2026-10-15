@@ -17,13 +17,16 @@ GRANT USAGE ON SCHEMA public TO nervewiki_runtime;
 -- The modules' tables.
 GRANT SELECT, INSERT, UPDATE, DELETE ON users, auth_sessions, api_tokens, workspaces, workspace_members, workspace_invitations,
     notebooks, notebook_members, notebook_audit_events, nodes, page_contents, changesets, changeset_items,
-    page_revisions, edit_sessions, indexed_pages, page_links, page_tags, page_properties, page_aliases, asset_blobs,
-    transfer_jobs TO nervewiki_runtime;
+    page_revisions, edit_sessions, indexed_pages, page_links, page_tags, page_properties, page_aliases, page_search,
+    page_search_queue, asset_blobs, transfer_jobs TO nervewiki_runtime;
+-- The search's queue takes each queueing's version from its sequence (M8/P5 design 3.2).
+GRANT USAGE ON SEQUENCE page_search_queue_version_seq TO nervewiki_runtime;
 
 -- The tables an import writes thousands of rows to: it runs ANALYZE on them as it goes (M7/P6 design 3.6), which
--- takes MAINTAIN (PostgreSQL 17 and later) or ownership. Each module analyzes its own.
+-- takes MAINTAIN (PostgreSQL 17 and later) or ownership. Each module analyzes its own. The search's job analyzes
+-- page_search as it builds it (M8/P5 design 3.4).
 GRANT MAINTAIN ON nodes, page_contents, page_revisions, changesets, changeset_items, indexed_pages, page_links, page_tags,
-    page_properties, page_aliases, asset_blobs TO nervewiki_runtime;
+    page_properties, page_aliases, page_search, asset_blobs TO nervewiki_runtime;
 
 -- River's tables and the sequences of their ids. River rebuilds the indexes of river_job every day with
 -- REINDEX INDEX CONCURRENTLY, which takes MAINTAIN on the table (PostgreSQL 17 and later).

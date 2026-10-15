@@ -204,7 +204,7 @@ func (f *fakes) serve(t *testing.T) http.Handler {
 		GetEditLock: fakeLock{f}, ReleaseEditLock: fakeRelease{f}, ToggleTask: fakeToggle{f}, ListVersions: fakeVersions{f},
 		GetVersion: fakeVersion{f}, GetVersionView: fakeVersionView{f}, RestoreVersion: fakeRestore{f},
 		ListTrash: fakeTrash{f}, GetTrashItem: fakeTrashItem{f}, RestoreNode: fakeRestoreNode{f}, ListChangesets: fakeChangesets{f},
-		GetChangeset: fakeChangeset{f}, ListChanges: fakeChanges{f}, RevertChangeset: fakeRevertChangeset{f},
+		GetChangeset: fakeChangeset{f}, ListChanges: fakeChanges{f}, RevertChangeset: fakeRevertChangeset{f}, Search: fakeSearch{f},
 	})
 	return router
 }

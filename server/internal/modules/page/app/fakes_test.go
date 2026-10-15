@@ -67,10 +67,18 @@ func (r *recorder) record(ctx context.Context, call string) {
 	r.calls = append(r.calls, call)
 }
 
-// fakeWorkspaces shares a workspace unless it is in gone.
+// fakeWorkspaces finds a workspace by its slug and shares it unless it is
+// in gone.
 type fakeWorkspaces struct {
 	*recorder
-	gone map[uuid.UUID]bool
+	slugs map[string]uuid.UUID
+	gone  map[uuid.UUID]bool
+}
+
+func (f fakeWorkspaces) FindBySlug(ctx context.Context, slug string) (uuid.UUID, bool, error) {
+	f.record(ctx, "FindWorkspace")
+	id, ok := f.slugs[slug]
+	return id, ok && !f.gone[id], nil
 }
 
 func (f fakeWorkspaces) ShareByID(ctx context.Context, id uuid.UUID) (bool, error) {
@@ -128,6 +136,10 @@ type fakeStore struct {
 	// holds.
 	sessions map[uuid.UUID]app.EditSession
 	held     map[uuid.UUID]bool
+	// queued are the search's queueings, in order; queuedNotebooks the
+	// notebooks whose deletion queued their nodes.
+	queued          []queuing
+	queuedNotebooks []uuid.UUID
 	// errs fails the calls named: FindNodeIn and Children; WriteContent,
 	// RenameNode and MoveNode.
 	errs map[string]error
@@ -981,6 +993,26 @@ func (f *fakeStore) DeleteNotebooksPages(ctx context.Context, ids []uuid.UUID, _
 	return nil
 }
 
+func (f *fakeStore) QueueSearchOfNotebooks(ctx context.Context, ids []uuid.UUID, _ time.Time) error {
+	f.record(ctx, "QueueSearchOfNotebooks")
+	f.queuedNotebooks = append(f.queuedNotebooks, ids...)
+	return nil
+}
+
+// queuing is a QueueSearch: the nodes of a notebook, in the order given,
+// and whether in bulk.
+type queuing struct {
+	notebook uuid.UUID
+	ids      []uuid.UUID
+	bulk     bool
+}
+
+func (f *fakeStore) QueueSearch(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID, bulk bool) error {
+	f.record(ctx, "QueueSearch")
+	f.queued = append(f.queued, queuing{notebook: notebookID, ids: slices.Clone(ids), bulk: bulk})
+	return nil
+}
+
 func (f *fakeStore) DeleteNotebookSessions(ctx context.Context, ids []uuid.UUID) ([]app.EditSession, error) {
 	f.record(ctx, "DeleteNotebookSessions")
 	var out []app.EditSession
@@ -1183,7 +1215,7 @@ func newFixture() *fixture {
 	rec := &recorder{}
 	f := &fixture{
 		rec: rec, tx: &fakeTx{}, clock: &tickingClock{},
-		workspaces: fakeWorkspaces{recorder: rec, gone: map[uuid.UUID]bool{}},
+		workspaces: fakeWorkspaces{recorder: rec, slugs: map[string]uuid.UUID{}, gone: map[uuid.UUID]bool{}},
 		store: &fakeStore{recorder: rec, nodes: map[uuid.UUID]domain.Node{}, contents: map[uuid.UUID]app.Content{},
 			items: map[uuid.UUID]app.Item{}, touched: map[uuid.UUID]time.Time{}, sessions: map[uuid.UUID]app.EditSession{},
 			held: map[uuid.UUID]bool{}, trash: map[uuid.UUID]app.AnyNode{}, counts: map[uuid.UUID][3]int{},
@@ -1204,7 +1236,7 @@ func (f *fixture) logger() *slog.Logger { return slog.New(slog.NewTextHandler(f.
 func (f *fixture) writer() *app.Writer {
 	return app.NewWriter(app.WriterDeps{
 		Tx: f.tx, Clock: f.clock, Auth: f.auth, Workspaces: f.workspaces, Notebooks: f.notebooks, Nodes: f.store,
-		NodeWriter: f.store, Trash: f.store, History: f.log, Changesets: f.store, SessionWriter: f.store, Names: f.names,
+		NodeWriter: f.store, Trash: f.store, History: f.log, Changesets: f.store, SessionWriter: f.store, Search: f.store, Names: f.names,
 		Guards: f.guards, Participants: f.partakers, Observers: f.observers, SessionVetoers: f.vetoers,
 		SessionSubscribers: f.enders,
 	})

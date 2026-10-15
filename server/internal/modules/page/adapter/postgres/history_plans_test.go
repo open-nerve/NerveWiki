@@ -196,6 +196,12 @@ func (s *statement) QueryRow(_ context.Context, sql string, args ...any) pgx.Row
 	return caughtRow{}
 }
 
+func (s *statement) SendBatch(_ context.Context, b *pgx.Batch) pgx.BatchResults {
+	s.sql = b.QueuedQueries[0].SQL
+	s.args = b.QueuedQueries[0].Arguments
+	return nil
+}
+
 // caughtRow is the row of a caught statement.
 type caughtRow struct{}
 

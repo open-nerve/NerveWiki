@@ -123,6 +123,7 @@ type UseCases struct {
 	GetChangeset    GetChangesetUseCase
 	ListChanges     ListChangesUseCase
 	RevertChangeset RevertChangesetUseCase
+	Search          SearchUseCase
 }
 
 // Register mounts the module's routes on router, the root router from

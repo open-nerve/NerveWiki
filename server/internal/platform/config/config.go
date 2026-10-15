@@ -156,6 +156,10 @@ type PageConfig struct {
 	// ParseMaxWait is how long a request waits for its share of the budget
 	// before it is answered 503 server_busy.
 	ParseMaxWait time.Duration `koanf:"parse_max_wait"`
+	// SearchIndexInterval is how often the search's job builds the rows of
+	// the nodes queued for it (M8/P5 design 3.4): 1 s to 10 min. A user's
+	// write is found at once; an import's pages once the job built them.
+	SearchIndexInterval time.Duration `koanf:"search_index_interval"`
 }
 
 // EventsConfig configures the event stream (M5 design 4.10).
@@ -189,13 +193,13 @@ type JobsConfig struct {
 	// purge deletes it (v0.1 design 7.1).
 	PurgeRetention time.Duration `koanf:"purge_retention"`
 	// ExportWorkers is how many exports run at once, in their queue (M7/P5
-	// design 3.2): from 1 to MaxTransferWorkers, and at most half of
-	// database.max_conns, each export holding a connection through its
-	// snapshot.
+	// design 3.2): from 1 to MaxTransferWorkers, and with the search's job
+	// (SearchJobConns) at most half of database.max_conns, each export
+	// holding a connection through its snapshot.
 	ExportWorkers int `koanf:"export_workers"`
 	// ImportWorkers is how many imports run at once, in their queue (M7/P6
-	// design 3.15): from 1 to MaxTransferWorkers, and with ExportWorkers at
-	// most half of database.max_conns.
+	// design 3.15): from 1 to MaxTransferWorkers, and with ExportWorkers and
+	// the search's job at most half of database.max_conns.
 	ImportWorkers int `koanf:"import_workers"`
 }
 
@@ -345,6 +349,7 @@ func (c Config) LogValue() slog.Value {
 			duration("edit_session_cleanup_interval", c.Page.EditSessionCleanupInterval),
 			slog.Int("parse_budget_bytes", c.Page.ParseBudgetBytes),
 			duration("parse_max_wait", c.Page.ParseMaxWait),
+			duration("search_index_interval", c.Page.SearchIndexInterval),
 		),
 		slog.Group("events",
 			duration("heartbeat_interval", c.Events.HeartbeatInterval),

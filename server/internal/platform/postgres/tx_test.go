@@ -159,6 +159,96 @@ func TestDBOutsideATransactionIsThePool(t *testing.T) {
 	}
 }
 
+// OnConn's statements run on its connection, DB's and those of the
+// transactions WithinTx and WithinSnapshot open in it: the pool's one
+// connection held, they would wait on the pool (M8/P5A review B-M4).
+func TestOnConnRunsTheStatementsOnTheConnection(t *testing.T) {
+	ctx := context.Background()
+	pool := newNotes(t, 1)
+	tm := postgres.NewTxManager(pool, commitTimeout)
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Release()
+	var pid int
+	if err := conn.QueryRow(ctx, "SELECT pg_backend_pid()").Scan(&pid); err != nil {
+		t.Fatal(err)
+	}
+	on, cancel := context.WithTimeout(postgres.OnConn(ctx, conn), 5*time.Second)
+	defer cancel()
+	backend := func(ctx context.Context) error {
+		var got int
+		if err := postgres.DB(ctx, pool).QueryRow(ctx, "SELECT pg_backend_pid()").Scan(&got); err != nil {
+			return err
+		}
+		if got != pid {
+			return fmt.Errorf("on backend %d, want %d", got, pid)
+		}
+		return nil
+	}
+	if err := backend(on); err != nil {
+		t.Errorf("DB(): %v", err)
+	}
+	err = tm.WithinTx(on, func(ctx context.Context) error {
+		if !postgres.InTx(ctx) {
+			return errors.New("no transaction")
+		}
+		if err := backend(ctx); err != nil {
+			return err
+		}
+		return insertNote(ctx, pool, 1)
+	})
+	if err != nil {
+		t.Errorf("WithinTx(): %v", err)
+	}
+	if err := tm.WithinSnapshot(on, backend); err != nil {
+		t.Errorf("WithinSnapshot(): %v", err)
+	}
+	var n int
+	if err := conn.QueryRow(ctx, "SELECT count(*) FROM notes").Scan(&n); err != nil || n != 1 {
+		t.Errorf("%d notes, %v; want the one inserted, committed", n, err)
+	}
+}
+
+// A transaction that cannot begin, its connection gone, says so by
+// TxNotBegun, as shared.TxNotBegun reads it, and wraps the cause; one
+// whose statement fails does not (M8/P5A fix check M-1).
+func TestATransactionThatCannotBeginSaysSo(t *testing.T) {
+	ctx := context.Background()
+	pool := newNotes(t, 2)
+	tm := postgres.NewTxManager(pool, commitTimeout)
+	notBegun := func(err error) bool {
+		var e interface{ TxNotBegun() bool }
+		return errors.As(err, &e) && e.TxNotBegun()
+	}
+	err := tm.WithinTx(ctx, func(ctx context.Context) error { return insertNote(ctx, pool, 1) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = tm.WithinTx(ctx, func(ctx context.Context) error { return insertNote(ctx, pool, 1) })
+	if err == nil || notBegun(err) {
+		t.Errorf("a transaction whose statement fails = %v, want its error, begun", err)
+	}
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Release()
+	if err := conn.Conn().Close(ctx); err != nil {
+		t.Fatal(err)
+	}
+	ran := false
+	err = tm.WithinTx(postgres.OnConn(ctx, conn), func(context.Context) error { ran = true; return nil })
+	if !notBegun(err) || ran || !strings.HasPrefix(err.Error(), "begin transaction: ") {
+		t.Errorf("a transaction on a closed connection = %v, ran %t; want begin transaction's error, not begun, fn not run", err, ran)
+	}
+	var unwrapped interface{ Unwrap() error }
+	if !errors.As(err, &unwrapped) || unwrapped.Unwrap() == nil {
+		t.Errorf("%v wraps no cause", err)
+	}
+}
+
 // The request deadline cancels statements, never the COMMIT of a transaction
 // whose statements have all finished.
 func TestWithinTxCommitsAfterTheContextIsCancelled(t *testing.T) {

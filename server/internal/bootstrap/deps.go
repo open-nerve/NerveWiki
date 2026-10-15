@@ -139,9 +139,10 @@ func pageDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, author
 	md *markdown.Markdown, budget *markdown.Budget,
 ) page.Deps {
 	ext := pageRegistrants(pool)
+	tx := postgres.NewTxManager(pool, cfg.Database.CommitTimeout)
 	return page.Deps{
 		Pool:         pool,
-		Tx:           postgres.NewTxManager(pool, cfg.Database.CommitTimeout),
+		Tx:           tx,
 		Clock:        clock.System{},
 		Logger:       logger,
 		Authorizer:   authorizer,
@@ -159,6 +160,10 @@ func pageDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, author
 		Budget:                     budget,
 		Retention:                  retention(cfg),
 		Attachments:                attachmentInfos{asset.NewAttachmentInfos(pool)},
+		// The search's (M8/P5 design 3.5).
+		Snapshots:        tx,
+		VisibleNotebooks: notebook.NewVisibleNotebooks(pool),
+		SearchInterval:   cfg.Page.SearchIndexInterval,
 	}
 }
 
@@ -230,16 +235,18 @@ func transferDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, au
 }
 
 // jobsConfig is the runner's: the exports and the imports each in a queue
-// of their own, of jobs.export_workers and jobs.import_workers, and
+// of their own, of jobs.export_workers and jobs.import_workers, the
+// search's job in its own, of one worker (M8/P5 design 3.4), and
 // River's rescue of the jobs it takes for stuck past the longest a job
 // runs, transfer.job_timeout, by an hour: a job still running is never
 // taken for stuck.
 func jobsConfig(cfg config.Config, logger *slog.Logger) jobs.Config {
 	return jobs.Config{
 		ShutdownTimeout: cfg.Jobs.ShutdownTimeout,
-		Queues:          map[string]int{transfer.QueueExport: cfg.Jobs.ExportWorkers, transfer.QueueImport: cfg.Jobs.ImportWorkers},
-		RescueAfter:     cfg.Transfer.JobTimeout + time.Hour,
-		Logger:          logger,
+		Queues: map[string]int{transfer.QueueExport: cfg.Jobs.ExportWorkers, transfer.QueueImport: cfg.Jobs.ImportWorkers,
+			page.SearchQueue: 1},
+		RescueAfter: cfg.Transfer.JobTimeout + time.Hour,
+		Logger:      logger,
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -13,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
+	"github.com/riverqueue/river/rivertype"
 
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
@@ -276,5 +278,73 @@ func TestRunnerWorksTwoJobsAtOnce(t *testing.T) {
 	receive(t, running, 5*time.Second, "third job, once the first two returned")
 	if err := stop(t, r, context.Background(), 5*time.Second); err != nil {
 		t.Errorf("Stop() = %v", err)
+	}
+}
+
+type otherArgs struct{}
+
+func (otherArgs) Kind() string { return "jobs_test.other" }
+
+// A job's rows River holds running, which a process that stopped mid-run
+// left, are discarded as the runner starts, the reason among their errors,
+// before River enqueues the job: one unique while it runs runs at once,
+// not after River's rescue, an hour later. Another kind's are left (M8/P5A
+// review B-I1).
+func TestTheJobsLeftRunningAreDiscardedAtTheStart(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	pool := newPool(t, pgtest.NewDatabase(t))
+	unique := func() (river.JobArgs, *river.InsertOpts) {
+		return probeArgs{}, &river.InsertOpts{UniqueOpts: river.UniqueOpts{ByState: []rivertype.JobState{rivertype.JobStateAvailable,
+			rivertype.JobStatePending, rivertype.JobStateRunning, rivertype.JobStateScheduled}}}
+	}
+	inserter, err := NewInserter(pool, slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
+		args, opts := unique()
+		if err := inserter.InsertTx(ctx, tx, args, opts); err != nil {
+			return err
+		}
+		return inserter.InsertTx(ctx, tx, otherArgs{}, nil)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// What a process killed mid-run leaves: its jobs running.
+	if _, err := pool.Exec(ctx, "UPDATE river_job SET state = 'running', attempted_at = now(), attempt = 1"); err != nil {
+		t.Fatal(err)
+	}
+	runs := make(chan struct{}, 10)
+	var logs logBuffer
+	r, err := New(pool, Config{ShutdownTimeout: time.Second, Logger: newLogger(&logs)}, []Job{{
+		Add: func(w *river.Workers) error {
+			return river.AddWorkerSafely(w, &probeWorker{work: func(context.Context) error { runs <- struct{}{}; return nil }})
+		},
+		Periodic: river.NewPeriodicJob(river.PeriodicInterval(time.Hour), unique,
+			&river.PeriodicJobOpts{ID: "jobs_test.probe", RunOnStart: true}),
+		DiscardRunning: "jobs_test.probe",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustStart(t, r)
+	receive(t, runs, 15*time.Second, "run of the job, its last left running")
+	if err := stop(t, r, ctx, 5*time.Second); err != nil {
+		t.Fatalf("Stop() = %v", err)
+	}
+	rows, err := pool.Query(ctx, `SELECT kind || ' ' || state || ' ' || coalesce(errors[array_upper(errors, 1)]->>'error', '-')
+		FROM river_job ORDER BY id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	want := []string{"jobs_test.probe discarded left running by a stopped server: discarded as the server started",
+		"jobs_test.other running -", "jobs_test.probe completed -"}
+	if err != nil || !slices.Equal(got, want) {
+		t.Errorf("the jobs = %q, %v; want %q", got, err, want)
+	}
+	if !strings.Contains(logs.String(), `msg="jobs left running by a stopped server discarded" kind=jobs_test.probe jobs=1`) {
+		t.Errorf("logs lack the discard:\n%s", logs.String())
 	}
 }

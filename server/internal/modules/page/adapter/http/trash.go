@@ -78,13 +78,13 @@ func trashItemOf(it app.TrashItem) gen.TrashItem {
 		ID: root.Node.ID, NotebookID: root.Node.NotebookID, Kind: gen.NodeKind(root.Node.Kind), Name: root.Node.Name,
 		Ancestors: ancestors, DeletedAt: root.DeletedAt, RestorableUntil: it.RestorableUntil, Pages: root.Pages, Assets: root.Assets,
 		DeletedBy: apigen.UserRef{UserID: root.Node.UpdatedBy, DisplayName: it.DeletedByName}, RestoreTo: placementOf(it.Placement),
-		Revision: nullable.NewNullNullable[int](), Asset: nullable.NewNullNullable[gen.TrashAttachment](),
+		Revision: nullable.NewNullNullable[int](), Asset: nullable.NewNullNullable[gen.AttachmentInfo](),
 	}
 	if root.Node.Kind == domain.KindPage && root.Revision > 0 {
 		out.Revision = nullable.NewNullableWithValue(root.Revision)
 	}
 	if it.Asset != nil {
-		out.Asset = nullable.NewNullableWithValue(gen.TrashAttachment{Mime: it.Asset.MIME, ByteSize: it.Asset.Bytes})
+		out.Asset = nullable.NewNullableWithValue(gen.AttachmentInfo{Mime: it.Asset.MIME, ByteSize: it.Asset.Bytes})
 	}
 	return out
 }

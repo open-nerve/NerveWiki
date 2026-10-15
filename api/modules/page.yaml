@@ -974,6 +974,78 @@ paths:
                 $ref: "#/components/schemas/ChangesetReverted"
         default:
           $ref: "#/components/responses/Problem"
+  /api/v0/workspaces/{slug}/search:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceSlug"
+    get:
+      operationId: searchWorkspace
+      tags: [page]
+      summary: Search a workspace
+      description: >-
+        The pages and attachments of the workspace's notebooks the caller
+        sees, or of the one notebook_id names, whose name or content holds
+        every term of q, newest change first, a page at a time. Any member
+        can search; a guest sees the notebooks they were added to. Two
+        tiers: the nodes whose name holds every term, then the pages whose
+        name misses one and whose name or content holds each. Folded case
+        matches alike, as do the characters of one simple case folding (ß
+        and ẞ, σ, ς and Σ), but not a folding's expansion (strasse does not
+        find straße), accents, full and half width, nor simplified and
+        traditional Chinese; terms that fold alike are one, the first as
+        written (ß ss is ß). A term of a single CJK character is found in
+        names alone; so is one of single CJK characters apart (中·国) in a q
+        no term of which holds a key of the content (a letter, digit or
+        mark, or two CJK characters in a row), and anywhere in another; one
+        of two CJK characters or more, or of three letters or digits or
+        more, anywhere, as a substring (api finds rapid); one of one or two
+        letters or digits as a whole word, CJK characters bounding it (go
+        finds Go语言, 20 does not find 2020年); a term of letters and CJK
+        characters as a whole, its short runs of letters at its ends whole
+        words (A股). Signs and punctuation match as written. Each write a
+        user makes through a request is found at once, as committed; nodes
+        an import, a background restore or revert, an upgrade or nervewiki
+        reindex wrote are found once the server's job built their index,
+        until when building is true and the hits may be missing some. A page
+        of the content tier checks at most 500 pages' contents: a page may
+        hold fewer hits than limit, or none, with a next_cursor to search
+        on. q travels in the request line, which a reverse proxy may log. A
+        cursor the search cannot read is bad_request, before anything else;
+        then a q missing or blank (required), longer than 256 bytes, of more
+        than 8 terms or of more than 64 ASCII letters and digits in a row
+        (too_long), not UTF-8 or holding NUL (invalid_format), or of no key,
+        no letter, digit, mark or CJK character (not_allowed) is
+        validation_failed; then a workspace that does not exist, is deleted,
+        or that the caller is no active member of is workspace.not_found; a
+        notebook_id the caller does not see, notebook.not_found; a limit
+        outside 1–50 is validation_failed.
+      security: [{ bearer: [] }]
+      x-problem-codes: [bad_request, validation_failed, workspace.not_found, notebook.not_found]
+      parameters:
+        - name: q
+          in: query
+          description: >-
+            The terms, parted by white space, each found in a node's name or
+            a page's content. Absent or blank is validation_failed on q
+            (required).
+          schema:
+            type: string
+        - name: notebook_id
+          in: query
+          description: The one notebook to search; every notebook the caller sees when absent.
+          schema:
+            type: string
+            format: uuid
+        - $ref: "../common.yaml#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/SearchLimit"
+      responses:
+        "200":
+          description: A page of the search's hits.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchPage"
+        default:
+          $ref: "#/components/responses/Problem"
 components:
   # 与 api/openapi.yaml 的相同：打包时丢掉模块文件的 securitySchemes，oapi-codegen 读这一份
   securitySchemes:
@@ -981,6 +1053,24 @@ components:
       type: http
       scheme: bearer
   parameters:
+    WorkspaceSlug:
+      name: slug
+      in: path
+      required: true
+      description: >-
+        The workspace's slug. It carries no pattern here: a slug spelled
+        wrong names no workspace, which the operation answers itself.
+      schema:
+        type: string
+    SearchLimit:
+      name: limit
+      in: query
+      description: >-
+        The page size, 1–50; 20 when absent: each hit of the content tier is
+        checked in its content. Outside that range the answer is 422
+        validation_failed on limit.
+      schema:
+        type: integer
     NotebookID:
       name: notebook_id
       in: path
@@ -1407,10 +1497,10 @@ components:
         asset:
           description: An attachment's type and size; null for a page, and for an attachment whose file the purge took.
           anyOf:
-            - $ref: "#/components/schemas/TrashAttachment"
+            - $ref: "#/components/schemas/AttachmentInfo"
             - type: "null"
-    TrashAttachment:
-      description: An attachment's file in the trash.
+    AttachmentInfo:
+      description: An attachment's file's type and size.
       type: object
       additionalProperties: false
       required: [mime, byte_size]
@@ -1422,6 +1512,144 @@ components:
           description: The file's size in bytes.
           type: integer
           format: int64
+    SearchPage:
+      description: >-
+        A page of a search's hits, the title tier's first, then the content
+        tier's, each newest change first.
+      type: object
+      additionalProperties: false
+      required: [data, next_cursor, count, building]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchHit"
+        next_cursor:
+          $ref: "../common.yaml#/components/schemas/NextCursor"
+        count:
+          description: >-
+            How many hits there are, on the first page alone; null on the
+            later pages, and when none was found yet while the search has
+            more to check.
+          anyOf:
+            - $ref: "#/components/schemas/SearchCount"
+            - type: "null"
+        building:
+          description: >-
+            The notebooks hold nodes the server's job has not indexed yet,
+            after an import, a background restore or revert, an upgrade or
+            nervewiki reindex: the hits may be missing some.
+          type: boolean
+    SearchCount:
+      description: >-
+        A search's count: exact when the first page held every hit, or when
+        q is found in names alone; about, estimated from the hits checked so
+        far, to two significant digits; at_least, a lower bound: 1000
+        always; the hits seen when too few of the contents checked so far
+        held the terms; the estimate, rounded down, when the candidates were
+        too many to count.
+      type: object
+      additionalProperties: false
+      required: [value, kind]
+      properties:
+        value:
+          type: integer
+          minimum: 0
+          maximum: 1000
+        kind:
+          type: string
+          enum: [exact, about, at_least]
+    SearchHit:
+      description: >-
+        A node a search found: where it is, its name's hits, a page's
+        content around its first hit, and when it last changed.
+      type: object
+      additionalProperties: false
+      required: [node, ancestors, title_hits, excerpt, changed_at, attachment]
+      properties:
+        node:
+          $ref: "#/components/schemas/SearchNode"
+        ancestors:
+          description: The pages it is under, from the root down to its parent; none at the root.
+          type: array
+          items:
+            $ref: "#/components/schemas/Ancestor"
+        title_hits:
+          description: The terms' hits in its name.
+          type: array
+          items:
+            $ref: "#/components/schemas/TextRange"
+        excerpt:
+          description: A page's content around its first hit; null for an attachment, and when the content holds none.
+          anyOf:
+            - $ref: "#/components/schemas/SearchExcerpt"
+            - type: "null"
+        changed_at:
+          description: >-
+            When its name, its place or its content last changed: a
+            TreeNode's updated_at leaves out the content's writes.
+          type: string
+          format: date-time
+        attachment:
+          description: An attachment's type and size; null for a page, and for an attachment whose file is not there.
+          anyOf:
+            - $ref: "#/components/schemas/AttachmentInfo"
+            - type: "null"
+    SearchNode:
+      description: A page or an attachment a search found.
+      type: object
+      additionalProperties: false
+      required: [id, notebook_id, kind, name]
+      properties:
+        id:
+          type: string
+          format: uuid
+        notebook_id:
+          type: string
+          format: uuid
+        kind:
+          $ref: "#/components/schemas/NodeKind"
+        name:
+          description: The page's title, or the attachment's file name.
+          type: string
+    SearchExcerpt:
+      description: >-
+        Some 160 characters of a page's content as written, composed into
+        Unicode's NFC where it was not (the editor writes NFC), its Markdown
+        left in, its white space collapsed to single spaces, from a little
+        before its first hit; the hits in it.
+      type: object
+      additionalProperties: false
+      required: [text, hits, cut_start, cut_end]
+      properties:
+        text:
+          type: string
+        hits:
+          description: The terms' hits in text.
+          type: array
+          items:
+            $ref: "#/components/schemas/TextRange"
+        cut_start:
+          description: The content goes on before text.
+          type: boolean
+        cut_end:
+          description: The content goes on after text.
+          type: boolean
+    TextRange:
+      description: >-
+        A hit in a text, from start up to end, which it does not hold, in
+        UTF-16 code units, as JavaScript's strings count them. A list's
+        ranges are sorted and do not overlap.
+      type: object
+      additionalProperties: false
+      required: [start, end]
+      properties:
+        start:
+          type: integer
+          minimum: 0
+        end:
+          type: integer
+          minimum: 0
     NodeRestored:
       description: What a restore did.
       type: object
