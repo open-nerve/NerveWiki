@@ -641,9 +641,15 @@ func TestSearchHitCount(t *testing.T) {
 // candidates, its hits as counted and the queue, live pages of the
 // notebooks searched, their names not checked, to a bound. As the tiers,
 // they count a node a user's write queued, but none queued in bulk,
-// deleted, or of a notebook not searched.
+// deleted, or of a notebook not searched; the bodies' count no attachment,
+// rapid.png queued again here as a rename would.
 func TestSearchTitleAndBodyCounts(t *testing.T) {
 	f := newSearchScene(t)
+	var png uuid.UUID
+	if err := f.pool.QueryRow(context.Background(), `SELECT id FROM nodes WHERE name = 'rapid.png'`).Scan(&png); err != nil {
+		t.Fatal(err)
+	}
+	f.queueSearch(t, f.eng, false, png)
 	type counts struct{ titles, pages, bodies int }
 	for _, tt := range []struct {
 		q         string

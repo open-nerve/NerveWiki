@@ -139,36 +139,35 @@ func TestTheSearchReadsInTimeAtAnyStatistics(t *testing.T) {
 	g := newSearchOfSomeSize(t)
 	eng := &g.f.eng
 	// The limits are three times the medians on an M-series Mac (M8/P5A).
-	// The slowest reads take 20 to 42 ms. The body tier reads each
-	// candidate's node by key twice: in SearchBodies, with its content, to
-	// sort the candidates for the walk, and in SearchBodyCount to count them.
-	// So eight common terms and "的是", nearly every page a candidate, cost
-	// the most; "theirs" and "中国 database" walk their bound of 500 pages,
-	// reading and checking each content. The rest take 2 to 18 ms. Whatever
-	// the statistics, the candidates drive every join: a read's three stages
-	// are within 1.6 times of each other, planned for any arguments the
-	// slowest.
+	// The slowest reads take 16 to 36 ms, most of it their body tier's: for
+	// eight common terms and "的是" nearly every page is a candidate, joined
+	// to the notebook's nodes and to its content, and sorted for the walk;
+	// "theirs" and "中国 database" walk their bound of 500 pages, reading
+	// and checking each content. The rest take 2 to 18 ms. Without
+	// statistics the scoped join hashes the candidates with the notebook's
+	// nodes, about as fast as analyzed; planned for any arguments, its hits
+	// taken for 100,000, a read takes up to 1.8 times as long.
 	reads := []searchRead{
-		{q: "中国", notebook: eng, page: 1, limits: ms(37, 38, 42)},
-		{q: "中国", notebook: eng, page: 3, limits: ms(25, 25, 26)},
-		{q: "的是", notebook: eng, page: 1, limits: ms(64, 64, 68)},
-		{q: "的是", notebook: eng, page: 3, limits: ms(40, 39, 41)},
-		{q: "latency", notebook: eng, page: 1, limits: ms(44, 43, 55)},
-		{q: "latency", notebook: eng, page: 3, limits: ms(26, 27, 27)},
-		{q: "the", notebook: eng, page: 1, limits: ms(19, 20, 22)},
-		{q: "the", notebook: eng, page: 3, limits: ms(13, 16, 16)},
-		{q: "go", notebook: eng, page: 1, limits: ms(44, 48, 49)},
-		{q: "go", notebook: eng, page: 3, limits: ms(30, 30, 30)},
-		{q: "的", notebook: eng, page: 1, limits: ms(18, 19, 20)},
-		{q: "的", notebook: eng, page: 3, limits: ms(13, 14, 15)},
-		{q: "电", notebook: eng, page: 1, limits: ms(8, 8, 11)},
-		{q: "电 #", notebook: eng, page: 1, limits: ms(12, 13, 18)},
-		{q: "中国 database", notebook: eng, page: 1, limits: ms(61, 61, 86)},
-		{q: "theirs", notebook: eng, page: 1, limits: ms(59, 60, 92)},
-		{q: "theirs", notebook: eng, page: 3, limits: ms(42, 42, 54)},
-		{q: "the of and to in is that for", notebook: eng, page: 1, limits: ms(91, 92, 128)},
-		{q: "中国", page: 1, building: true, limits: ms(37, 39, 50)},
-		{q: "中国", page: 3, building: true, limits: ms(25, 27, 27)},
+		{q: "中国", notebook: eng, page: 1, limits: ms(42, 37, 43)},
+		{q: "中国", notebook: eng, page: 3, limits: ms(26, 23, 26)},
+		{q: "的是", notebook: eng, page: 1, limits: ms(57, 49, 53)},
+		{q: "的是", notebook: eng, page: 3, limits: ms(33, 30, 32)},
+		{q: "latency", notebook: eng, page: 1, limits: ms(40, 39, 55)},
+		{q: "latency", notebook: eng, page: 3, limits: ms(24, 25, 27)},
+		{q: "the", notebook: eng, page: 1, limits: ms(16, 17, 20)},
+		{q: "the", notebook: eng, page: 3, limits: ms(12, 13, 14)},
+		{q: "go", notebook: eng, page: 1, limits: ms(42, 39, 47)},
+		{q: "go", notebook: eng, page: 3, limits: ms(28, 26, 30)},
+		{q: "的", notebook: eng, page: 1, limits: ms(15, 16, 19)},
+		{q: "的", notebook: eng, page: 3, limits: ms(11, 13, 13)},
+		{q: "电", notebook: eng, page: 1, limits: ms(7, 8, 11)},
+		{q: "电 #", notebook: eng, page: 1, limits: ms(12, 13, 22)},
+		{q: "中国 database", notebook: eng, page: 1, limits: ms(58, 58, 90)},
+		{q: "theirs", notebook: eng, page: 1, limits: ms(54, 52, 87)},
+		{q: "theirs", notebook: eng, page: 3, limits: ms(39, 38, 51)},
+		{q: "the of and to in is that for", notebook: eng, page: 1, limits: ms(76, 73, 109)},
+		{q: "中国", page: 1, building: true, limits: ms(45, 38, 56)},
+		{q: "中国", page: 3, building: true, limits: ms(27, 23, 27)},
 	}
 	cursors := map[string]*string{} // the third pages' cursors, by query and notebook
 	key := func(r searchRead) string {
@@ -249,8 +248,8 @@ func TestTheSearchReadsInTimeAtAnyStatistics(t *testing.T) {
 	slices.Sort(took)
 	median := (took[3] + took[4]) / 2
 	t.Logf("QueueSearch of 10,000 nodes: median %s, longest %s", median.Round(time.Microsecond), took[7].Round(time.Microsecond))
-	// 18 ms here.
-	if limit := 55 * time.Millisecond; median > limit {
+	// 19 ms here.
+	if limit := 57 * time.Millisecond; median > limit {
 		t.Errorf("QueueSearch of 10,000 nodes took %s, its median; want within %s", median, limit)
 	}
 }

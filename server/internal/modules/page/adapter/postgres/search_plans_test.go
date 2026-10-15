@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand/v2"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -166,17 +167,20 @@ func (c *searchCorpus) attachments(t *testing.T, f fixture, notebook uuid.UUID, 
 
 // planNode is a node of a plan, as EXPLAIN (FORMAT JSON, VERBOSE) gives it.
 type planNode struct {
-	Type       string     `json:"Node Type"`
-	Parent     string     `json:"Parent Relationship"`
-	Relation   string     `json:"Relation Name"`
-	Alias      string     `json:"Alias"`
-	Index      string     `json:"Index Name"`
-	IndexCond  string     `json:"Index Cond"`
-	Function   string     `json:"Function Name"`
-	Filter     string     `json:"Filter"`
-	JoinFilter string     `json:"Join Filter"`
-	Output     []string   `json:"Output"`
-	Plans      []planNode `json:"Plans"`
+	Type        string     `json:"Node Type"`
+	Parent      string     `json:"Parent Relationship"`
+	Relation    string     `json:"Relation Name"`
+	Alias       string     `json:"Alias"`
+	Index       string     `json:"Index Name"`
+	IndexCond   string     `json:"Index Cond"`
+	RecheckCond string     `json:"Recheck Cond"`
+	Function    string     `json:"Function Name"`
+	Filter      string     `json:"Filter"`
+	JoinFilter  string     `json:"Join Filter"`
+	HashCond    string     `json:"Hash Cond"`
+	MergeCond   string     `json:"Merge Cond"`
+	Output      []string   `json:"Output"`
+	Plans       []planNode `json:"Plans"`
 }
 
 // planTreeOf is the plan of s, scans of whole tables off, and its JSON.
@@ -283,39 +287,107 @@ func wholeSearch(n *planNode) bool {
 	return n.Relation == "page_search" && (n.Type == "Seq Scan" || strings.HasPrefix(n.Type, "Index") && n.IndexCond == "")
 }
 
-// perCandidate is the problems of a plan that reads table as alias other
-// than by index's keys within the inner side of a nested loop whose outer
-// side reads the candidates (candidate): once a candidate, so that no
-// statistics let a plan read a notebook's nodes whole and compare each with
-// every candidate (M8/P5A).
-func perCandidate(root *planNode, table, index, alias string, candidate func(*planNode) bool) []string {
+// aboveFence matches, in a scan's conditions, a check the scoped join runs
+// above its fence on the joined rows (M8/P5A): a deleted one, the kind,
+// the names' patterns or the cursor.
+var aboveFence = regexp.MustCompile(`\b(deleted_at|kind|name|updated_at)\b|~`)
+
+// aboveFenceJoined matches the same checks of nodes, as n, or of contents,
+// as c, in the conditions of a node that scans neither: a join's. Above
+// the fence they read the joined rows' columns, j's.
+var aboveFenceJoined = regexp.MustCompile(`\b[nc]\.(deleted_at|kind|name|updated_at)\b`)
+
+// scanConditions are a scan's conditions as EXPLAIN gives them: its
+// index's, its recheck's, its filter's and those of the bitmaps below it.
+func (n *planNode) scanConditions() string {
+	conds := []string{n.IndexCond, n.RecheckCond, n.Filter}
+	n.each(func(m *planNode) bool {
+		if m != n && m.Type == "Bitmap Index Scan" {
+			conds = append(conds, m.IndexCond)
+		}
+		return true
+	})
+	return strings.Join(conds, " ")
+}
+
+// indexes are the indexes a scan reads: its own, or its bitmaps'.
+func (n *planNode) indexes() []string {
 	var out []string
-	read := 0
-	var walk func(n *planNode, driven bool)
-	walk = func(n *planNode, driven bool) {
-		if n.Relation == table && n.Alias == alias {
-			read++
-			switch {
-			case !reads(table, index, alias)(n):
-				out = append(out, fmt.Sprintf("reads %s as %s otherwise than by the keys of %s", table, alias, index))
-			case !driven:
-				out = append(out, fmt.Sprintf("reads %s as %s outside a loop over the candidates", table, alias))
+	n.each(func(m *planNode) bool {
+		if m.Index != "" {
+			out = append(out, m.Index)
+		}
+		return true
+	})
+	return out
+}
+
+// scoped is the problems of a plan whose fenced join, of the candidates
+// with their nodes as n and contents as c (M8/P5A), does other than join
+// them within the notebooks: a scan of nodes that misses the notebooks'
+// condition, which would read every notebook's; a scan of nodes or
+// contents that runs a check of those above the fence, by its conditions
+// or by reading a partial index whose predicate one implies, which would
+// size the notebooks' nodes by two default selectivities multiplied,
+// without statistics a row; a join that runs one.
+func scoped(root *planNode, partial []string) []string {
+	var out []string
+	root.each(func(n *planNode) bool {
+		fenced := n.Relation == "nodes" && n.Alias == "n" || n.Relation == "page_contents" && n.Alias == "c"
+		switch {
+		case fenced:
+			if m := aboveFence.FindString(n.scanConditions()); m != "" {
+				out = append(out, fmt.Sprintf("reads %s as %s with %q in its conditions", n.Relation, n.Alias, m))
+			}
+			if i := slices.IndexFunc(n.indexes(), func(index string) bool { return slices.Contains(partial, index) }); i >= 0 {
+				out = append(out, fmt.Sprintf("reads %s as %s by the partial index %s", n.Relation, n.Alias, n.indexes()[i]))
+			}
+			if n.Relation == "nodes" && !strings.Contains(n.scanConditions(), "notebook_id = ANY") {
+				out = append(out, "reads nodes as n without the notebooks' condition")
+			}
+		case n.Relation == "":
+			if m := aboveFenceJoined.FindString(strings.Join([]string{n.JoinFilter, n.HashCond, n.MergeCond, n.Filter}, " ")); m != "" {
+				out = append(out, fmt.Sprintf("%s runs %q", n.Type, m))
 			}
 		}
-		outer := false
-		if n.Type == "Nested Loop" {
-			for i := range n.Plans {
-				outer = outer || n.Plans[i].Parent == "Outer" && len(n.Plans[i].all(candidate)) > 0
-			}
+		return true
+	})
+	return out
+}
+
+// candidate matches a read of the tiers' candidates: the titles' hits, the
+// bodies' through page_search_hits, or the queue's.
+func candidate(n *planNode) bool {
+	return n.Relation == "page_search" && n.Alias == "s" || n.Relation == "page_search_queue" && n.Alias == "q" || hits(n)
+}
+
+// rescansCandidates is the problems of a plan with the trap of M8/P5A: a
+// nested loop over nodes or contents, as n or c, whose inner side reads
+// the candidates, or their aggregate or its materialization, again for
+// each of their rows: each node compared with every candidate.
+func rescansCandidates(root *planNode) []string {
+	var out []string
+	root.each(func(n *planNode) bool {
+		if n.Type != "Nested Loop" {
+			return true
 		}
+		var outer, inner *planNode
 		for i := range n.Plans {
-			walk(&n.Plans[i], driven || outer && n.Plans[i].Parent == "Inner")
+			switch n.Plans[i].Parent {
+			case "Outer":
+				outer = &n.Plans[i]
+			case "Inner":
+				inner = &n.Plans[i]
+			}
 		}
-	}
-	walk(root, false)
-	if read == 0 {
-		out = append(out, fmt.Sprintf("does not read %s as %s", table, alias))
-	}
+		fenced := func(m *planNode) bool {
+			return m.Relation == "nodes" && m.Alias == "n" || m.Relation == "page_contents" && m.Alias == "c"
+		}
+		if outer != nil && inner != nil && len(outer.all(fenced)) > 0 && len(inner.all(candidate)) > 0 {
+			out = append(out, "loops over nodes or contents, reading the candidates again for each")
+		}
+		return true
+	})
 	return out
 }
 
@@ -404,22 +476,28 @@ func deref(s *string) string {
 // 3.10), on a few thousand pages and ten times as many attachments, with
 // their rows and statistics, whole tables' scans off but the queue's, the
 // arguments bound as the store binds them; none reads every row of
-// page_search, whose bodies lie out of line. The title tier reads
-// page_search_title_idx, then each candidate's node and content by key in
-// a loop over the candidates, checks the names below its limit and reads
-// the contents by key above it, sorting nothing above it. The body tier
-// reads its candidates by their lexemes through page_search_hits, whose
-// settings leave its statement bitmaps of the GIN indexes alone, by their
-// count (a limit straight over the function); each candidate's node and
-// content by key in a loop over them, no scan of nodes checking the names;
-// its walk a limit straight over its sort, no window below it; it reads
-// the contents by key above the walk, concatenates each once, and sorts
-// nothing outside the walk. The counts read the titles' and the bodies'
-// hits so, and each candidate's node by key in a loop over them; building
-// the queue's index; the job's reads and a hit's line their keys. The
-// search's reads are checked without statistics too, where the planner
-// takes a notebook's live nodes for one row: a plain join of nodes would
-// read them whole and compare each with every candidate.
+// page_search, whose bodies lie out of line, but for a title term in a
+// quarter of the titles. Each joins its candidates to their nodes, and the
+// tiers to their contents, within the notebooks alone (the scoped join):
+// every scan of nodes carries the notebooks' condition, and none of nodes or
+// contents a check that runs above the fence, nor reads a partial index
+// whose predicate one implies; nor does a join run one. Where every page is
+// a candidate ("the"), no nested loop over nodes or contents reads the
+// candidates again for each row; the planner reads page_search whole for so
+// common a title term, so its title tier's fence alone is checked. Otherwise
+// the title tier reads page_search_title_idx, checks the names below its
+// limit and reads the contents by key above it, sorting nothing above it.
+// The body tier reads its candidates by their lexemes through
+// page_search_hits, whose settings leave its statement bitmaps of the GIN
+// indexes alone, by their count (a limit straight over the function); no
+// scan of nodes checks the names; its walk a limit straight over its sort,
+// no window below it; it reads the contents by key above the walk,
+// concatenates each once, and sorts nothing outside the walk. The counts
+// read the titles' and the bodies' hits so; building the queue's index; the
+// job's reads and a hit's line their keys. The search's reads are checked
+// without statistics too, where a check of nodes besides the notebooks' in
+// the join would leave a notebook's live nodes one row to the planner, which
+// would compare each with every candidate.
 func TestTheSearchReadsUseTheirIndexes(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
@@ -486,16 +564,49 @@ func TestTheSearchReadsUseTheirIndexes(t *testing.T) {
 		}
 		return out
 	}
-	// candidates matches a read of the tiers' candidates: the titles'
-	// hits, or the bodies' through page_search_hits.
-	candidates := func(n *planNode) bool { return n.Relation == "page_search" && n.Alias == "s" || hits(n) }
+	// partial are the partial indexes of nodes and page_contents: a read of
+	// one takes a check besides the notebooks' into the scoped join.
+	var partial []string
+	rows, err := f.pool.Query(ctx, `SELECT i.indexrelid::regclass::text FROM pg_index i
+		WHERE i.indrelid IN ('nodes'::regclass, 'page_contents'::regclass) AND i.indpred IS NOT NULL`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if partial, err = pgx.CollectRows(rows, pgx.RowTo[string]); err != nil || len(partial) == 0 {
+		t.Fatalf("the partial indexes of nodes and page_contents = %q, %v", partial, err)
+	}
+	// fence is the problems of a plan's scoped join; and where every page
+	// is a candidate (many), of the trap.
+	fence := func(root *planNode, many bool) []string {
+		out := scoped(root, partial)
+		if many {
+			out = append(out, rescansCandidates(root)...)
+		}
+		return out
+	}
+	// many are the queries of which every page of eng is a candidate.
+	many := map[string]bool{"the": true}
+	// checkFence checks s's scoped join alone, and the trap: the title
+	// tier's, where every page is a candidate. A title term in a quarter
+	// of the titles has the planner read page_search whole, not by its GIN
+	// index, which the checks of the rarer terms keep them from.
+	checkFence := func(name string, s statement) {
+		t.Helper()
+		root, _ := f.planTreeOf(t, s)
+		if problems := fence(&root, true); len(problems) > 0 {
+			t.Errorf("%s: %s:\n%s", name, strings.Join(problems, "; "), strings.Join(f.planOf(t, s), "\n"))
+		}
+	}
 	searchReads := func(stage string) {
 		t.Helper()
-		for _, q := range []string{"database", "数据 系统", "go 电"} {
+		for _, q := range []string{"database", "数据 系统", "go 电", "the"} {
+			if many[q] {
+				checkFence("SearchTitles("+q+") "+stage, titles(q))
+				continue
+			}
 			check("SearchTitles("+q+") "+stage, titles(q), func(root *planNode, _ string) []string {
 				out := uses(root, reads("page_search", "page_search_title_idx", "s"), reads("page_contents", "page_contents_pkey", "c2"))
-				out = append(out, perCandidate(root, "nodes", "nodes_pkey", "n", candidates)...)
-				out = append(out, perCandidate(root, "page_contents", "page_contents_pkey", "c", candidates)...)
+				out = append(out, fence(root, false)...)
 				limits := root.all(func(n *planNode) bool {
 					return n.Type == "Limit" && len(n.all(reads("page_search", "page_search_title_idx", "s"))) > 0
 				})
@@ -518,8 +629,7 @@ func TestTheSearchReadsUseTheirIndexes(t *testing.T) {
 		for _, q := range []string{"database", "数据 系统", "latency 电", "电 #", "the"} {
 			check("SearchBodies("+q+") "+stage, bodies(q), func(root *planNode, _ string) []string {
 				out := uses(root, counted, reads("page_contents", "page_contents_pkey", "c2"))
-				out = append(out, perCandidate(root, "nodes", "nodes_pkey", "n", candidates)...)
-				out = append(out, perCandidate(root, "page_contents", "page_contents_pkey", "c", candidates)...)
+				out = append(out, fence(root, many[q])...)
 				if len(root.all(func(n *planNode) bool { return n.Relation == "nodes" && strings.Contains(n.Filter, "~") })) > 0 {
 					out = append(out, "checks the names in a scan of nodes")
 				}
@@ -561,23 +671,27 @@ func TestTheSearchReadsUseTheirIndexes(t *testing.T) {
 				return out
 			})
 		}
-		for _, q := range []string{"database", "数据 系统", "电 #"} {
+		for _, q := range []string{"database", "数据 系统", "电 #", "the"} {
 			sc := scopeOf(t, q, notebooks...).Query
 			n := hitsOf(sc)
-			check("SearchTitleCount("+q+") "+stage, statementOf(t, func(g *gen.Queries) error {
+			titleCount := statementOf(t, func(g *gen.Queries) error {
 				_, err := g.SearchTitleCount(ctx, gen.SearchTitleCountParams{Keys: sc.TitleKeys(), Notebooks: notebooks, Terms: sc.Patterns(),
 					Cap: domain.MaxSearchCount + 1})
 				return err
-			}), func(root *planNode, _ string) []string {
-				return append(uses(root, reads("page_search", "page_search_title_idx", "s")),
-					perCandidate(root, "nodes", "nodes_pkey", "n", candidates)...)
 			})
+			if many[q] {
+				checkFence("SearchTitleCount("+q+") "+stage, titleCount)
+			} else {
+				check("SearchTitleCount("+q+") "+stage, titleCount, func(root *planNode, _ string) []string {
+					return append(uses(root, reads("page_search", "page_search_title_idx", "s")), fence(root, false)...)
+				})
+			}
 			check("SearchBodyCount("+q+") "+stage, statementOf(t, func(g *gen.Queries) error {
 				_, err := g.SearchBodyCount(ctx, gen.SearchBodyCountParams{BodyKeys: sc.BodyKeys(), TitledKeys: sc.TitledKeys(), Hits: n,
 					Notebooks: notebooks, Cap: domain.MaxSearchCountScan})
 				return err
 			}), func(root *planNode, _ string) []string {
-				return append(uses(root, counted), perCandidate(root, "nodes", "nodes_pkey", "n", candidates)...)
+				return append(uses(root, counted), fence(root, many[q])...)
 			})
 			check("SearchHitCount("+q+") "+stage, statementOf(t, func(g *gen.Queries) error {
 				_, err := g.SearchHitCount(ctx, gen.SearchHitCountParams{BodyKeys: sc.BodyKeys(), TitledKeys: sc.TitledKeys()})
