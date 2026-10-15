@@ -43,8 +43,11 @@ const (
 
 // hits are the term's hits in text, the byte ranges of its group: each
 // search from the last hit's end on, which leaves the character after a
-// hit to the next one's boundary.
-func (t SearchTerm) hits(text string) [][2]int {
+// hit to the next one's boundary. cutStart and cutEnd tell that the
+// content goes on before and after text, which an excerpt's cut leaves
+// out: a hit at text's start, or end, of a term that needs a boundary
+// there has none known, and goes (M8/P5A review A-N2).
+func (t SearchTerm) hits(text string, cutStart, cutEnd bool) [][2]int {
 	padded := "\x00" + text + "\x00"
 	var out [][2]int
 	for pos := 1; pos < len(padded)-1; {
@@ -57,18 +60,22 @@ func (t SearchTerm) hits(text string) [][2]int {
 		if loc == nil {
 			break
 		}
-		out = append(out, [2]int{from + loc[2] - 1, from + loc[3] - 1})
+		h := [2]int{from + loc[2] - 1, from + loc[3] - 1}
 		pos = from + loc[3]
+		if cutStart && t.left && h[0] == 0 || cutEnd && t.right && h[1] == len(text) {
+			continue
+		}
+		out = append(out, h)
 	}
 	return out
 }
 
 // queryHits are the query's terms' hits in text, sorted, those that
-// overlap joined.
-func (q SearchQuery) queryHits(text string) [][2]int {
+// overlap joined; cutStart and cutEnd as hits'.
+func (q SearchQuery) queryHits(text string, cutStart, cutEnd bool) [][2]int {
 	var hits [][2]int
 	for _, t := range q.Terms {
-		hits = append(hits, t.hits(text)...)
+		hits = append(hits, t.hits(text, cutStart, cutEnd)...)
 	}
 	slices.SortFunc(hits, func(a, b [2]int) int { return a[0] - b[0] })
 	var out [][2]int
@@ -91,7 +98,7 @@ func (q SearchQuery) TitleHits(name string) []TextRange {
 		n += utf16.RuneLen(r)
 	}
 	units[len(name)] = n
-	return rangesAt(q.queryHits(name), units)
+	return rangesAt(q.queryHits(name, false, false), units)
 }
 
 // rangesAt are hits, byte ranges, as the ranges of units, which maps their
@@ -110,8 +117,9 @@ func rangesAt(hits [][2]int, units map[int]int) []TextRange {
 // first hit is its character at (1 the first), from text, the SQL's cut:
 // ExcerptBefore characters before at and one more when the content has
 // them, then ExcerptChars and two more. The hits are found in all of
-// text, then the characters around the excerpt go, and its white space
-// collapses to one space, none at its ends.
+// text, those that would need a boundary beyond it dropped, then the
+// characters around the excerpt go, and its white space collapses to one
+// space, none at its ends.
 func (q SearchQuery) Excerpt(text string, at, chars int) SearchExcerpt {
 	first := max(at-ExcerptBefore, 1) // the content's character the excerpt starts at
 	skip := 0                         // the characters of text before it
@@ -140,8 +148,9 @@ func (q SearchQuery) Excerpt(text string, at, chars int) SearchExcerpt {
 		k++
 	}
 	units[len(text)] = n
+	cutStart, cutEnd := first-skip > 1, first-skip+k-1 < chars // the content goes on before text, after it
 	return SearchExcerpt{
-		Text: b.String(), Hits: rangesAt(q.queryHits(text), units),
+		Text: b.String(), Hits: rangesAt(q.queryHits(text, cutStart, cutEnd), units),
 		CutStart: first > 1, CutEnd: first+ExcerptChars-1 < chars,
 	}
 }

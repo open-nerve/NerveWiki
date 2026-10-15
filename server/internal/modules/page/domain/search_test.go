@@ -644,6 +644,19 @@ func TestExcerpt(t *testing.T) {
 			[]domain.TextRange{{0, 2}}, false, false},
 		{"one character past the excerpt", "数据", "数据" + strings.Repeat("x", 159), 1, 161, "数据" + strings.Repeat("x", 158),
 			[]domain.TextRange{{0, 2}}, false, true},
+		// The content "zab yyy…": no word ab (M8/P5A review A-N2).
+		{"a short word on the character before, cut", "数据 ab", "ab " + strings.Repeat("y", 38) + "数据" + after[:3*119], 43, 500,
+			"b " + strings.Repeat("y", 38) + "数据" + after[:3*118], []domain.TextRange{{40, 42}}, true, true},
+		// The content "… ab" then z: no word ab.
+		{"a short word on the character after, cut", "数据 ab", "x" + strings.Repeat("y", 40) + "数据 " + strings.Repeat("y", 115) + " ab",
+			42, 163, strings.Repeat("y", 40) + "数据 " + strings.Repeat("y", 115) + " a", []domain.TextRange{{40, 42}}, true, true},
+		// The content ends with " ab": the word ab.
+		{"a short word on the content's last character", "数据 ab", "x" + strings.Repeat("y", 40) + "数据 " + strings.Repeat("y", 115) + " ab",
+			42, 162, strings.Repeat("y", 40) + "数据 " + strings.Repeat("y", 115) + " a", []domain.TextRange{{40, 42}, {159, 160}}, true, true},
+		// A term of three letters needs no boundary: its hit on the character
+		// before stays.
+		{"a longer word on the character before", "数据 abc", "abc " + strings.Repeat("y", 37) + "数据" + after[:3*119], 43, 500,
+			"bc " + strings.Repeat("y", 37) + "数据" + after[:3*118], []domain.TextRange{{0, 2}, {40, 42}}, true, true},
 	} {
 		q, err := domain.ParseSearchQuery(&tt.q)
 		if err != nil {
