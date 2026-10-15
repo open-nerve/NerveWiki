@@ -91,6 +91,7 @@ sql:
       - migrations/sql/00036_page_changeset_items_restored.sql
       - migrations/sql/00037_page_changesets_log.sql
       - migrations/sql/00038_page_changeset_items_deleted_revision.sql
+      - migrations/sql/00040_page_search.sql
     queries: internal/modules/page/adapter/postgres/queries
     gen:
       go:

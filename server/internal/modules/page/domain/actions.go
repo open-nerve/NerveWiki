@@ -34,10 +34,13 @@ const (
 	// ActionRevert reverts a changeset of the notebook, whoever made it
 	// (M8 design 4.14).
 	ActionRevert shared.Action = "changeset.revert"
+	// ActionSearch searches a workspace, each notebook of it the caller
+	// sees (M8/P5 design 3.8): a workspace's action, any member's.
+	ActionSearch shared.Action = "page.search"
 )
 
 // Actions lists the module's actions.
 func Actions() []shared.Action {
 	return []shared.Action{ActionList, ActionRead, ActionCreate, ActionRename, ActionMove, ActionDelete, ActionWrite, ActionEdit,
-		ActionReleaseEditLock, ActionToggleTask, ActionHistory, ActionRestoreVersion, ActionRestore, ActionRevert}
+		ActionReleaseEditLock, ActionToggleTask, ActionHistory, ActionRestoreVersion, ActionRestore, ActionRevert, ActionSearch}
 }

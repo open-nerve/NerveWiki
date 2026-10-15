@@ -16,6 +16,10 @@ var (
 	// the operations that name a notebook: no notebook has the id, it is
 	// deleted, or the caller has no role in it.
 	ErrNotebookNotFound = shared.NewError(shared.KindNotFound, "notebook.not_found", "No such notebook.")
+	// ErrWorkspaceNotFound: the workspace module's workspace.not_found, for
+	// the operations that name a workspace, a search: no workspace has the
+	// slug, it is deleted, or the caller is not an active member of it.
+	ErrWorkspaceNotFound = shared.NewError(shared.KindNotFound, "workspace.not_found", "No such workspace.")
 	// ErrTitleTaken: a node under the same parent has a title of the same
 	// key.
 	ErrTitleTaken = shared.NewError(shared.KindConflict, "page.title_taken",

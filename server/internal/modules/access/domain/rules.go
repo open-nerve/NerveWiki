@@ -108,6 +108,9 @@ func rules() map[shared.Action]Rule {
 		"page.restore_version": {Level: LevelNotebook, Notebook: writers()},
 		"node.restore":         {Level: LevelNotebook, Notebook: writers()},
 		"changeset.revert":     {Level: LevelNotebook, Notebook: writers()},
+		// The search of a workspace (M8/P5 design 3.8): any member's, of
+		// the notebooks each sees, a guest's those it was added to.
+		"page.search": {Level: LevelWorkspace, Workspace: every()},
 
 		// The link index's reads (M6/P5 design 2): whoever reads the notebook.
 		"backlink.list":      {Level: LevelNotebook, Notebook: readers()},

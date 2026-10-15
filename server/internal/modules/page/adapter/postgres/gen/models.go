@@ -99,3 +99,20 @@ type PageRevision struct {
 	UpdatedAt    time.Time
 	DeletedAt    *time.Time
 }
+
+type PageSearch struct {
+	NodeID    uuid.UUID
+	Revision  *int32
+	Name      string
+	Tokenizer string
+	BuiltAt   time.Time
+	Title     interface{}
+	Body      interface{}
+}
+
+type PageSearchQueue struct {
+	NodeID     uuid.UUID
+	NotebookID uuid.UUID
+	Version    int64
+	Bulk       bool
+}

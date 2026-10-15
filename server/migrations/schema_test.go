@@ -296,6 +296,15 @@ func TestConstraintAndIndexNames(t *testing.T) {
 		"page_revisions_pkey iu",
 		"page_revisions_pkey p",
 		"page_revisions_revision_check c",
+		"page_search_body_check c",
+		"page_search_body_idx i",
+		"page_search_pkey iu",
+		"page_search_pkey p",
+		"page_search_queue_notebook_id_bulk_idx i",
+		"page_search_queue_pkey iu",
+		"page_search_queue_pkey p",
+		"page_search_revision_check c",
+		"page_search_title_idx i",
 		"page_tags_count_check c",
 		"page_tags_notebook_id_tag_key_idx i",
 		"page_tags_pkey iu",
@@ -431,6 +440,12 @@ func TestChecksRejectCounterexamples(t *testing.T) {
 			"('0199a2b4-0000-7000-8000-000000000010', 0, '0199a2b4-0000-7000-8000-000000000008', 'sources', '[\"[[b]]\"]')",
 		"INSERT INTO page_aliases (source_id, alias_key, notebook_id, alias) VALUES " +
 			"('0199a2b4-0000-7000-8000-000000000010', 'al', '0199a2b4-0000-7000-8000-000000000008', 'Al')",
+		// The search's rows of the root and the attachment, and the child in its queue.
+		"INSERT INTO page_search (node_id, revision, name, tokenizer, built_at, title, body) VALUES " +
+			"('0199a2b4-0000-7000-8000-000000000010', 1, 'a', '1/17.0.0', now(), 'a', 'a x'), " +
+			"('0199a2b4-0000-7000-8000-000000000016', NULL, 'a.png', '1/17.0.0', now(), 'a png', NULL)",
+		"INSERT INTO page_search_queue (node_id, notebook_id, bulk) VALUES " +
+			"('0199a2b4-0000-7000-8000-000000000011', '0199a2b4-0000-7000-8000-000000000008', false)",
 		// An export of the notebook, running.
 		"INSERT INTO transfer_jobs (id, notebook_id, kind, state, name, created_by_id, client, progress_done, progress_total, " +
 			"started_at, heartbeat_at, created_at) VALUES ('0199a2b4-0000-7000-8000-000000000018', '0199a2b4-0000-7000-8000-000000000008', " +
@@ -569,6 +584,9 @@ func TestChecksRejectCounterexamples(t *testing.T) {
 		{"a property before the first", "UPDATE page_properties SET position = -1", "page_properties_position_check"},
 		{"an empty alias key", "UPDATE page_aliases SET alias_key = ''", "page_aliases_alias_key_check"},
 		{"an empty alias", "UPDATE page_aliases SET alias = ''", "page_aliases_alias_check"},
+		{"a search row of revision 0", "UPDATE page_search SET revision = 0 WHERE body IS NOT NULL", "page_search_revision_check"},
+		{"an attachment's search row with a body", "UPDATE page_search SET body = title WHERE revision IS NULL", "page_search_body_check"},
+		{"a page's search row without a body", "UPDATE page_search SET body = NULL WHERE revision IS NOT NULL", "page_search_body_check"},
 		{"a file of no type", "UPDATE asset_blobs SET mime = ''", "asset_blobs_mime_check"},
 		{"a file of -1 bytes", "UPDATE asset_blobs SET byte_size = -1", "asset_blobs_byte_size_check"},
 		{"a file's hash of 31 bytes", "UPDATE asset_blobs SET sha256 = substring(sha256 from 2)", "asset_blobs_sha256_check"},
