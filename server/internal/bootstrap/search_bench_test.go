@@ -25,7 +25,7 @@ import (
 // What a search costs on a corpus (M8/P5 design 3.9, step 2): the step 1
 // measurement repeated on the product's code, run by hand,
 //
-//	NERVE_SEARCH_CORPUS=<dir> go test -run '^$' -bench 'BenchmarkSearch' -benchtime 1x -timeout 4h ./internal/bootstrap/
+//	NERVE_SEARCH_CORPUS=<dir> go test -v -run '^$' -bench 'BenchmarkSearch' -benchtime 1x -timeout 4h ./internal/bootstrap/
 //
 // where dir holds step 1's COPY files: notebooks.tsv, nodes.tsv and
 // contents.tsv (the spike's, whose first 12 and 8 columns are the nodes'
@@ -40,7 +40,8 @@ import (
 // counts, and the third; without statistics on the corpus's tables (the
 // job analyzes its own), analyzed, and planned for any arguments. Each
 // cell runs once to warm, then NERVE_SEARCH_REPS times (20 when unset),
-// and logs its median and 99th percentile, nearest rank, in milliseconds.
+// and logs its median and 99th percentile, nearest rank, in milliseconds
+// (-v keeps every line: a benchmark that passes has its log cut to ten).
 func BenchmarkSearch(b *testing.B) {
 	dir := os.Getenv("NERVE_SEARCH_CORPUS")
 	if dir == "" {
@@ -222,14 +223,16 @@ func (b trashBench) searchSizes(tb testing.TB) {
 }
 
 // asGuestOf makes alice a guest of the workspace slug, a reader of the
-// notebooks alone.
+// notebooks alone: at each stage of statistics, her memberships of the
+// stage before kept.
 func (b trashBench) asGuestOf(tb testing.TB, slug string, notebooks []string) {
 	tb.Helper()
 	b.exec(tb, `UPDATE workspace_members SET role = 'guest' WHERE user_id = $1
 		AND workspace_id = (SELECT id FROM workspaces WHERE slug = $2)`, b.alice, slug)
 	for _, nb := range notebooks {
 		b.exec(tb, `INSERT INTO notebook_members (id, notebook_id, user_id, role, created_by_id, updated_by_id, created_at, updated_at)
-			VALUES (gen_random_uuid(), $1, $2, 'reader', $2, $2, now(), now())`, nb, b.alice)
+			VALUES (gen_random_uuid(), $1, $2, 'reader', $2, $2, now(), now()) ON CONFLICT (notebook_id, user_id) WHERE deleted_at IS NULL DO NOTHING`,
+			nb, b.alice)
 	}
 }
 
