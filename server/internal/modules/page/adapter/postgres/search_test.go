@@ -15,6 +15,7 @@ import (
 	"uuid"
 
 	"github.com/jackc/pgx/v5/pgconn"
+	"golang.org/x/text/unicode/norm"
 
 	postgresadapter "github.com/open-nerve/NerveWiki/server/internal/modules/page/adapter/postgres"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/adapter/postgres/gen"
@@ -893,6 +894,89 @@ func TestTheSearchsExcerpts(t *testing.T) {
 		if _, ok := wants[key]; !ok {
 			t.Errorf("%s found; want it not", key)
 		}
+	}
+}
+
+// A page's content not in NFC, as keyboards that type Vietnamese's tones
+// apart and Hangul's jamo write it, is read in NFC by the search, as the
+// job's lexemes are made of it (M8/P5A review A-M4): the query's terms, in
+// NFC, find it while it waits in the queue and once its row is built,
+// each tier, its excerpt and its first hit's place those of its NFC; a
+// term of its base letters alone finds it neither way. The content stays
+// as written.
+func TestTheSearchReadsContentNotInNFC(t *testing.T) {
+	f := newFixture(t)
+	contents := map[string]string{
+		"Vietnamese":  norm.NFD.String("Tiếng Việt là ngôn ngữ của người Việt"),
+		"Hangul":      norm.NFD.String("한국어 데이터베이스"),
+		"Tiếng notes": norm.NFD.String("xin chào Tiếng Việt"),
+	}
+	var ids []uuid.UUID
+	for name, content := range contents {
+		if norm.NFC.IsNormalString(content) {
+			t.Fatalf("the content of %s is in NFC", name)
+		}
+		n := f.page(t, f.eng, nil, name, 0)
+		f.write(t, n.ID, content, 2, now())
+		ids = append(ids, n.ID)
+	}
+	f.queueSearch(t, f.eng, false, ids...)
+	for _, stage := range []string{"queued", "built"} {
+		if stage == "built" {
+			f.drain(t)
+		}
+		for _, tt := range []struct {
+			q              string
+			titles, bodies []string
+		}{
+			{"Việt", []string{}, []string{"Tiếng notes", "Vietnamese"}},
+			{"ngữ", []string{}, []string{"Vietnamese"}},
+			{"한국어", []string{}, []string{"Hangul"}},
+			{"데이터", []string{}, []string{"Hangul"}},
+			{"Tiếng", []string{"Tiếng notes"}, []string{"Vietnamese"}},
+			// Base letters, which the content as written holds, its marks
+			// apart, and its NFC does not.
+			{"Vie", []string{"Vietnamese"}, []string{}},
+			{"ngu", []string{"Hangul"}, []string{}},
+		} {
+			titles, bodies := f.titlesOf(t, tt.q, f.eng), f.bodiesOf(t, tt.q, f.eng)
+			slices.Sort(bodies)
+			if !slices.Equal(titles, tt.titles) || !slices.Equal(bodies, tt.bodies) {
+				t.Errorf("%s: %q finds %q and %q, want %q and %q", stage, tt.q, titles, bodies, tt.titles, tt.bodies)
+			}
+		}
+		// The excerpts and hits' places are of the content in NFC: the
+		// title tier's, the body tier's.
+		sc := scopeOf(t, "Tiếng", f.eng)
+		titles, err := inSnapshot(f, func(ctx context.Context) ([]app.SearchTitleRow, error) { return f.s.SearchTitles(ctx, sc, 50) })
+		if err != nil || len(titles) != 1 {
+			t.Fatalf("%s: SearchTitles(Tiếng) = %+v, %v", stage, titles, err)
+		}
+		if r, want := titles[0], norm.NFC.String(contents["Tiếng notes"]); r.At != 10 || r.Excerpt != want || r.Chars != len([]rune(want)) {
+			t.Errorf("%s: the title tier's Tiếng notes at %d, %q of %d characters; want at 10, %q of %d", stage, r.At, r.Excerpt, r.Chars,
+				want, len([]rune(want)))
+		}
+		walked, err := inSnapshot(f, func(ctx context.Context) ([]app.SearchBodyRow, error) {
+			return f.bodies(ctx, sc, domain.MaxSearchWalk, 50)
+		})
+		var bodies []app.SearchBodyRow
+		for _, r := range walked {
+			if r.Passed {
+				bodies = append(bodies, r)
+			}
+		}
+		if err != nil || len(bodies) != 1 {
+			t.Fatalf("%s: SearchBodies(Tiếng) = %+v, %v; want Vietnamese", stage, walked, err)
+		}
+		if r, want := bodies[0], norm.NFC.String(contents["Vietnamese"]); r.At != 1 || r.Excerpt != want || r.Chars != len([]rune(want)) {
+			t.Errorf("%s: the body tier's Vietnamese at %d, %q of %d characters; want at 1, %q of %d", stage, r.At, r.Excerpt, r.Chars,
+				want, len([]rune(want)))
+		} else if e := sc.Query.Excerpt(r.Excerpt, r.At, r.Chars); !slices.Equal(e.Hits, []domain.TextRange{{Start: 0, End: 5}}) {
+			t.Errorf("%s: the excerpt's hits %v, want Tiếng's first five characters", stage, e.Hits)
+		}
+	}
+	if n := f.count(t, `SELECT count(*) FROM page_contents WHERE node_id = ANY($1) AND content IS NFC NORMALIZED`, ids); n != 0 {
+		t.Errorf("%d contents written in NFC by the search, want them as written", n)
 	}
 }
 

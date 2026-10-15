@@ -175,8 +175,9 @@ FROM (
         LIMIT $9::integer + 1
     ) v
 ) w
-LEFT JOIN LATERAL (SELECT c2.content || '' AS doc FROM page_contents c2
-                   WHERE c2.node_id = w.id AND w.seq <= $9::integer OFFSET 0) b ON true
+LEFT JOIN LATERAL (SELECT CASE WHEN r.raw IS NFC NORMALIZED THEN r.raw ELSE normalize(r.raw, NFC) END AS doc
+                   FROM (SELECT c2.content || '' AS raw FROM page_contents c2
+                         WHERE c2.node_id = w.id AND w.seq <= $9::integer OFFSET 0) r OFFSET 0) b ON true
 LEFT JOIN LATERAL (SELECT NOT EXISTS (SELECT 1 FROM unnest($10::text[]) p
                                       WHERE NOT (w.name ~ p OR b.doc ~ p)) AS passed
                    WHERE b.doc IS NOT NULL OFFSET 0) x ON true
@@ -217,9 +218,9 @@ type SearchBodiesRow struct {
 // The body tier of a search (M8/P5 design 3.5): the live pages of the notebooks given whose lexemes hold the keys,
 // hits of them (SearchHitCount's, all of them), or that wait in the queue as a user wrote them, below the cursor,
 // newest first, whose name misses some term and holds each titles-only one; walk of them at most have their content
-// read, by key, and checked as they are now, until max_rows pass. The candidates are joined to their nodes and
-// contents with the notebooks' condition alone, behind OFFSET 0, as in SearchTitles; the other checks, the patterns
-// among them, run above it on the joined rows, never in a scan of nodes.
+// read, by key, in NFC as SearchTitles reads it, and checked as they are now, until max_rows pass. The candidates are
+// joined to their nodes and contents with the notebooks' condition alone, behind OFFSET 0, as in SearchTitles; the
+// other checks, the patterns among them, run above it on the joined rows, never in a scan of nodes.
 // The sort carries no content; OFFSET 0 keeps each lateral that reads or checks it one subquery too, so the
 // concatenation and the check run once a row. The last row walked comes back passing or not, with walked: more than
 // walk is more to walk. A row that passes has its first hit's place and excerpt as SearchTitles'.
@@ -492,7 +493,8 @@ FROM (
     ORDER BY j.sort_at DESC, j.id DESC
     LIMIT $6
 ) w
-LEFT JOIN LATERAL (SELECT c2.content || '' AS doc FROM page_contents c2 WHERE c2.node_id = w.id OFFSET 0) b ON true
+LEFT JOIN LATERAL (SELECT CASE WHEN r.raw IS NFC NORMALIZED THEN r.raw ELSE normalize(r.raw, NFC) END AS doc
+                   FROM (SELECT c2.content || '' AS raw FROM page_contents c2 WHERE c2.node_id = w.id OFFSET 0) r OFFSET 0) b ON true
 LEFT JOIN LATERAL (SELECT min(nullif(regexp_instr(b.doc, p, 1, 1, 0, 'c', 1), 0)) AS at
                    FROM unnest($5::text[]) p WHERE b.doc IS NOT NULL OFFSET 0) e ON true
 ORDER BY w.sort_at DESC, w.id DESC
@@ -520,13 +522,15 @@ type SearchTitlesRow struct {
 
 // The title tier of a search (M8/P5 design 3.5): the live nodes, pages and attachments, of the notebooks given whose
 // title holds the keys, or that wait in the queue as a user wrote them, below the cursor, newest first, whose name
-// holds every term, at most max_rows; then a page's content read by key for the answered rows alone, and the first
-// hit's place in it, its character from 1, with the excerpt around it and the content's characters: 0 and none when
-// the content holds no hit, or the node is an attachment. The candidates are joined to their nodes and contents with
-// the notebooks' condition alone, behind OFFSET 0, and the other checks run above it, on the joined rows. Without
-// statistics the planner sizes the notebooks' nodes by that one condition's default selectivity; with the deleted
-// check's or the patterns' multiplied in, it took a notebook's live nodes for one row and compared each with every
-// candidate. With statistics it joins from the smaller side, a few candidates by key or the notebooks' nodes.
+// holds every term, at most max_rows; then a page's content read by key for the answered rows alone, in NFC as the
+// patterns are, and the first hit's place in it, its character from 1, with the excerpt around it and the content's
+// characters: 0 and none when the content holds no hit, or the node is an attachment. A content not in NFC is put in
+// it for the read alone, as the job's lexemes are of it (M8/P5A review A-M4); the check of one in NFC, the common
+// case, is all it costs. The candidates are joined to their nodes and contents with the notebooks' condition alone,
+// behind OFFSET 0, and the other checks run above it, on the joined rows. Without statistics the planner sizes the
+// notebooks' nodes by that one condition's default selectivity; with the deleted check's or the patterns' multiplied
+// in, it took a notebook's live nodes for one row and compared each with every candidate. With statistics it joins
+// from the smaller side, a few candidates by key or the notebooks' nodes.
 func (q *Queries) SearchTitles(ctx context.Context, arg SearchTitlesParams) ([]SearchTitlesRow, error) {
 	rows, err := q.db.Query(ctx, searchTitles,
 		arg.Keys,
