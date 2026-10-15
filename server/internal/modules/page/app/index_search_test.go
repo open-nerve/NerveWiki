@@ -390,8 +390,9 @@ func TestTheSearchJobLeavesAPageDeletedMeanwhile(t *testing.T) {
 	}
 }
 
-// The job analyzes page_search each SearchAnalyzeRows rows a run writes,
-// and starts no batch after SearchRunBudget.
+// The job analyzes page_search each SearchAnalyzeRows rows its runs write,
+// counted across them (M8/P5A review B-N4), and starts no batch after
+// SearchRunBudget.
 func TestTheSearchJobAnalyzesAndStopsOnTime(t *testing.T) {
 	f := newFakeIndex()
 	for i := range domain.SearchAnalyzeRows + domain.SearchBatchNodes {
@@ -403,6 +404,22 @@ func TestTheSearchJobAnalyzesAndStopsOnTime(t *testing.T) {
 	}
 	if n := countOf(f.calls, "AnalyzeSearch"); n != 1 || len(f.queue) != 0 {
 		t.Errorf("ANALYZE %d times, %d left queued; want once, none", n, len(f.queue))
+	}
+	// Runs of 3,000 rows each: the fourth analyzes, its 12,000 rows past
+	// the bound, and so does the next run past it again.
+	h := newFakeIndex()
+	job, _ = h.job(0)
+	for run := 1; run <= 7; run++ {
+		for i := range 3000 {
+			h.page(fmt.Sprint(run, i), "x")
+		}
+		before := countOf(h.calls, "AnalyzeSearch")
+		if _, err := job.Drain(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if got, want := countOf(h.calls, "AnalyzeSearch")-before, map[int]int{4: 1, 7: 1}[run]; got != want {
+			t.Errorf("run %d analyzed %d times, want %d: the rows of the runs counted across them", run, got, want)
+		}
 	}
 	g := newFakeIndex()
 	for i := range 5 * domain.SearchBatchNodes {

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"log/slog"
+	"sync/atomic"
 	"time"
 	"uuid"
 
@@ -23,6 +24,11 @@ type IndexSearch struct {
 	// again: domain.MinSearchRebuild for the server's job; none for the
 	// tests' runs, which empty the queue.
 	minRebuild time.Duration
+	// unanalyzed is how many rows the runs wrote since the job last
+	// analyzed page_search: a run of fewer than domain.SearchAnalyzeRows
+	// leaves its count to the next, so that a build in many short runs is
+	// analyzed as one in a few long ones (M8/P5A review B-N4).
+	unanalyzed atomic.Int64
 }
 
 // NewIndexSearch returns the job's use case.
@@ -61,7 +67,6 @@ func (j *IndexSearch) Drain(ctx context.Context) (SearchRun, error) {
 	defer release()
 	var run SearchRun
 	start := j.clock.Now()
-	analyzed := 0
 	for _, bulk := range []bool{false, true} {
 		after := uuid.Nil()
 		for j.clock.Now().Sub(start) < domain.SearchRunBudget {
@@ -72,14 +77,15 @@ func (j *IndexSearch) Drain(ctx context.Context) (SearchRun, error) {
 			if len(queued) == 0 {
 				break
 			}
+			written := run.Written
 			if after, err = j.batch(ctx, queued, &run); err != nil {
 				return run, err
 			}
-			if run.Written-analyzed >= domain.SearchAnalyzeRows {
+			if j.unanalyzed.Add(int64(run.Written-written)) >= domain.SearchAnalyzeRows {
 				if err := j.index.AnalyzeSearch(ctx); err != nil {
 					return run, err
 				}
-				analyzed = run.Written
+				j.unanalyzed.Store(0)
 			}
 		}
 	}
