@@ -217,7 +217,7 @@ export const SearchPage = observer(function SearchPage() {
             id={ids.scope}
             value={notebook ?? ""}
             onChange={(event) => choose(event.target.value)}
-            className="block"
+            className="block max-w-full"
           >
             <option value="">{t("search.everyNotebook")}</option>
             {listed?.map((each) => (
