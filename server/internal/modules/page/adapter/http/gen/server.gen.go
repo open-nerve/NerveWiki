@@ -534,7 +534,7 @@ type PageView struct {
 	Revision int `json:"revision"`
 }
 
-// SearchCount A search's count: exact when the first page held every hit; about, estimated from the hits checked so far, to two significant digits; at_least, a lower bound, 1000 always at_least.
+// SearchCount A search's count: exact when the first page held every hit, or when q is found in names alone; about, estimated from the hits checked so far, to two significant digits; at_least, a lower bound: 1000 always, and the hits seen when too few of the contents checked so far held the terms to estimate from.
 type SearchCount struct {
 	Kind  SearchCountKind `json:"kind"`
 	Value int             `json:"value"`

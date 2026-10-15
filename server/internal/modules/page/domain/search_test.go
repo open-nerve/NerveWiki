@@ -660,7 +660,8 @@ func TestExcerpt(t *testing.T) {
 	}
 }
 
-// The count by tiers (M8/P5 design 3.5).
+// The count by tiers (M8/P5 design 3.5); of the hits seen, at least, when
+// too few passed of a walk that left candidates (M8/P5A review A-M5).
 func TestEstimateCount(t *testing.T) {
 	for _, tt := range []struct {
 		name  string
@@ -676,8 +677,22 @@ func TestEstimateCount(t *testing.T) {
 			&domain.SearchCount{Value: 620, Kind: domain.CountAbout}},
 		{"no less than found", domain.SearchTally{Titles: 2, Bodies: 30, Checked: 30, Passed: 19, Found: 21, Bodied: true},
 			&domain.SearchCount{Value: 21, Kind: domain.CountAbout}},
-		{"the candidates counted to the bound", domain.SearchTally{Bodies: domain.MaxSearchCountScan, Checked: 1000, Passed: 3, Found: 3, Bodied: true},
-			&domain.SearchCount{Value: 60, Kind: domain.CountAtLeast}},
+		{"the candidates counted to the bound", domain.SearchTally{Bodies: 20, BodiesCapped: true, Checked: 10, Passed: 3, Found: 3,
+			Bodied: true}, &domain.SearchCount{Value: 6, Kind: domain.CountAtLeast}},
+		{"the candidates counted below the bound", domain.SearchTally{Bodies: domain.MaxSearchCountScan, Checked: 1000, Passed: 3, Found: 3,
+			Bodied: true}, &domain.SearchCount{Value: 60, Kind: domain.CountAbout}},
+		{"none passed of a walk that left some", domain.SearchTally{Titles: 2, TitlePages: 2, Bodies: 5000, Checked: 500, Found: 2,
+			Bodied: true}, &domain.SearchCount{Value: 2, Kind: domain.CountAtLeast}},
+		{"one passed of a walk that left some", domain.SearchTally{Titles: 2, TitlePages: 2, Bodies: 5000, Checked: 500, Passed: 1, Found: 3,
+			Bodied: true}, &domain.SearchCount{Value: 3, Kind: domain.CountAtLeast}},
+		{"one passed of the sample alone", domain.SearchTally{Bodies: 5000, Checked: 100, Passed: 1, Bodied: true},
+			&domain.SearchCount{Value: 1, Kind: domain.CountAtLeast}},
+		{"the hits seen past the count's bound", domain.SearchTally{Titles: 999, TitlePages: 999, Bodies: 5000, Checked: 500, Passed: 1,
+			Found: 21, Bodied: true}, &domain.SearchCount{Value: 1000, Kind: domain.CountAtLeast}},
+		{"two passed of a walk that left some", domain.SearchTally{Titles: 2, TitlePages: 2, Bodies: 5000, Checked: 500, Passed: 2, Found: 4,
+			Bodied: true}, &domain.SearchCount{Value: 22, Kind: domain.CountAbout}},
+		{"one passed of a walk that checked them all", domain.SearchTally{Titles: 2, TitlePages: 2, Bodies: 40, Checked: 38, Passed: 1,
+			Ended: true, Found: 3, Bodied: true}, &domain.SearchCount{Value: 3, Kind: domain.CountAbout}},
 		{"past the count's bound", domain.SearchTally{Titles: 10, Bodies: 5000, Checked: 100, Passed: 21, Found: 21, Bodied: true},
 			&domain.SearchCount{Value: 1000, Kind: domain.CountAtLeast}},
 		{"the sample of the body", domain.SearchTally{Titles: 21, TitlePages: 21, Bodies: 821, Checked: 100, Passed: 10, Found: 21, Bodied: true},

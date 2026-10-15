@@ -200,13 +200,17 @@ type SearchCount struct {
 
 // SearchTally is what the first page tells of a search with more pages
 // (M8/P5 design 3.5): the title tier's hits, counted to MaxSearchCount +
-// 1, and its pages among them; the body tier's candidates, counted to
-// MaxSearchCountScan, which hold those pages too; how many of its pages
-// the walk checked and how many passed; and the hits the page found.
+// 1, and its pages among them; the body tier's candidates, counted to the
+// search's bound, which BodiesCapped says they reached, and which hold
+// those pages too; how many of its pages the walk, or the sample, checked
+// from its top, how many passed, and whether they were all it holds
+// (Ended); and the hits the page found.
 type SearchTally struct {
 	Titles, TitlePages int
 	Bodies             int
+	BodiesCapped       bool
 	Checked, Passed    int
+	Ended              bool
 	Found              int
 	// Bodied tells there is a body tier: a term found in contents too.
 	Bodied bool
@@ -215,28 +219,36 @@ type SearchTally struct {
 // EstimateCount is the count of a search with more pages than its first,
 // tier by tier: the title tier's hits, and the body tier's candidates,
 // the title tier's pages taken off, at the rate its walk passed; nil when
-// none passed yet. A count past MaxSearchCount is MaxSearchCount at
-// least, one of all the body's candidates counted about, to two
-// significant digits; one of them counted to MaxSearchCountScan at least,
-// rounded down.
+// none passed yet. A rate of fewer than SearchCountPasses passes, of a
+// walk that left candidates unchecked, tells little: one pass gives a
+// count within 2× about one time in two, its 95% interval two orders of
+// magnitude wide, two passes about two times in three (M8/P5A review
+// A-M5); the count is then of the hits seen, at least. A count past
+// MaxSearchCount is MaxSearchCount at least, one of all the body's
+// candidates counted about, to two significant digits; one of them
+// counted to the bound at least, rounded down.
 func EstimateCount(t SearchTally) *SearchCount {
 	switch {
 	case t.Titles > MaxSearchCount:
 		return &SearchCount{Value: MaxSearchCount, Kind: CountAtLeast}
 	case !t.Bodied:
 		return &SearchCount{Value: t.Titles, Kind: CountExact}
-	case t.Found == 0 && t.Titles == 0:
+	case t.Found == 0 && t.Titles == 0 && t.Passed == 0:
 		return nil
 	}
 	n := float64(t.Titles)
-	if t.Checked > 0 {
+	kind, round := CountAbout, math.Round
+	switch {
+	case !t.Ended && t.Passed < SearchCountPasses:
+		n += float64(t.Passed)
+		kind, round = CountAtLeast, math.Floor
+	case t.Checked > 0:
 		n += float64(max(t.Bodies-t.TitlePages, 0)) * float64(t.Passed) / float64(t.Checked)
 	}
-	n = max(n, float64(t.Found))
-	kind, round := CountAbout, math.Round
-	if t.Bodies >= MaxSearchCountScan {
+	if t.BodiesCapped {
 		kind, round = CountAtLeast, math.Floor
 	}
+	n = max(n, float64(t.Found))
 	v := significant(n, round)
 	if v >= MaxSearchCount {
 		return &SearchCount{Value: MaxSearchCount, Kind: CountAtLeast}
