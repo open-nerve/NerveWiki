@@ -68,7 +68,7 @@ test("a page added to a list being read, which is read again, the login's cache 
     (page: Page) => page.data
   );
 
-  expect(read).toEqual({ added: ["b"], whole: true, last: "b" });
+  expect(read).toEqual({ added: ["b"], whole: true, last: "b", appended: true });
   expect(calls).toEqual(["add", "read again"]);
   await act(async () => new Promise((resolve) => setTimeout(resolve, 10)));
   expect(rejections).toEqual([]);

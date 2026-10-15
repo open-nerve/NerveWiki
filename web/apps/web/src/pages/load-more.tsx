@@ -21,7 +21,8 @@ export type LoadMore = ReturnType<typeof useLoadMore>;
  * read again whole. The list shown may have another key by then, a filter
  * chosen (M8/P3B review C-M1): its cursor names a place, not a list, so
  * the page goes to the list it was read for. idsOf are the ids of a page's
- * items.
+ * items. appended tells whether the list took the page: a page of no item
+ * it took adds none, as one it did not take does.
  */
 export async function readNext<T extends ListPage>(
   swr: { cache: Cache; mutate: ScopedMutator },
@@ -29,7 +30,7 @@ export async function readNext<T extends ListPage>(
   cursor: string | undefined,
   read: (cursor: string | undefined) => Promise<T>,
   idsOf: (page: T) => readonly string[]
-): Promise<MoreRead> {
+): Promise<MoreRead & { appended: boolean }> {
   const next = await read(cursor);
   const list = await swr.mutate<T[]>(
     key,
@@ -46,6 +47,7 @@ export async function readNext<T extends ListPage>(
     added: added ? idsOf(next) : [],
     whole: added && next.next_cursor === null,
     last: last === undefined ? undefined : idsOf(last).at(-1),
+    appended: added,
   };
 }
 

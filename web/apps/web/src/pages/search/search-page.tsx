@@ -119,12 +119,16 @@ export const SearchPage = observer(function SearchPage() {
       undefined
     ).catch(() => undefined);
   }, [reload, serial]);
-  // What More and Keep looking said last, of the search they read: another shown, it is gone.
-  const [told, setTold] = useState({ of: "", text: "", again: false });
+  // What More and Keep looking said last, of the search shown: another shown, or the same gone back to, nothing yet.
+  const [told, setTold] = useState({ of: serial, text: "", again: false });
+  if (told.of !== serial) {
+    setTold({ of: serial, text: "", again: false });
+  }
   // The link of the hit the focus falls to as More goes.
   const focused = useRef<HTMLAnchorElement>(null);
   const hits = hitsOf(data ?? []);
   const cursor = data?.at(-1)?.next_cursor ?? undefined;
+  const said = data === undefined ? "" : statusText(data, hits.length, t, locale);
   const more = useLoadMore(
     async () => {
       if (key === null) {
@@ -132,6 +136,7 @@ export const SearchPage = observer(function SearchPage() {
       }
       const of = serial;
       const before = new Set(hits.map((hit) => hit.node.id));
+      const line = said;
       const read = await readNext(
         swr,
         key,
@@ -139,13 +144,23 @@ export const SearchPage = observer(function SearchPage() {
         (after) => searches.search(q, notebook, after),
         (page) => page.data.map((hit) => hit.node.id)
       );
-      // A hit listed before, a rename between the pages, is none added: the focus does not go to it.
+      // A hit listed before, a rename between the pages, is none added: the focus does not go to it, nor to its row.
       const added = read.added.filter((id) => !before.has(id));
-      if (mounted()) {
-        const text = moreText(added.length, t, locale);
-        setTold((said) => ({ of, text, again: said.of === of && said.text === text && !said.again }));
+      const list = (swr.cache.get(serial)?.data as HitPage[] | undefined) ?? [];
+      const listed = hitsOf(list);
+      // A page the list did not take, another search shown or read again meanwhile, says nothing (review B-M1). The
+      // last page that added nothing says the line as it is now, unless the line, changing, says it itself (A-M2).
+      const text = !read.appended
+        ? undefined
+        : !read.whole || added.length > 0
+          ? moreText(added.length, t, locale)
+          : statusText(list, listed.length, t, locale) === line
+            ? line
+            : "";
+      if (mounted() && text !== undefined) {
+        setTold((was) => ({ of, text, again: was.of === of && was.text === text && text !== "" && !was.again }));
       }
-      return { ...read, added };
+      return { ...read, added, last: added.length > 0 ? read.last : listed.at(-1)?.node.id };
     },
     () => focused.current,
     heading,
@@ -175,7 +190,6 @@ export const SearchPage = observer(function SearchPage() {
   const nameTwins = twinsOf(named, (each) => each.name);
   const placeTwins = twinsOf(named, (each) => `${each.name}\n${each.path}`);
   const twinOf = (id: string): Twin => (placeTwins.has(id) ? "id" : nameTwins.has(id) ? "path" : "none");
-  const said = data === undefined ? "" : statusText(data, hits.length, t, locale);
   const notFound =
     !readable || (error instanceof ApiError && error.code === "notebook.not_found")
       ? t("search.notebookNotFound")
@@ -223,7 +237,7 @@ export const SearchPage = observer(function SearchPage() {
       <output id={ids.status} className="block text-sm empty:sr-only">
         {said}
       </output>
-      <output className="sr-only">{told.of === serial ? told.text + (told.again ? again : "") : ""}</output>
+      <output className="sr-only">{told.text + (told.again ? again : "")}</output>
       {!asked ? (
         <p className="text-muted-foreground">{t("search.howTo")}</p>
       ) : notFound !== undefined ? (
