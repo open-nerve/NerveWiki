@@ -167,6 +167,7 @@ func (c *searchCorpus) attachments(t *testing.T, f fixture, notebook uuid.UUID, 
 // planNode is a node of a plan, as EXPLAIN (FORMAT JSON, VERBOSE) gives it.
 type planNode struct {
 	Type       string     `json:"Node Type"`
+	Parent     string     `json:"Parent Relationship"`
 	Relation   string     `json:"Relation Name"`
 	Alias      string     `json:"Alias"`
 	Index      string     `json:"Index Name"`
@@ -282,16 +283,40 @@ func wholeSearch(n *planNode) bool {
 	return n.Relation == "page_search" && (n.Type == "Seq Scan" || strings.HasPrefix(n.Type, "Index") && n.IndexCond == "")
 }
 
-// keyed is a match of the reads of table as alias by keys of any index:
-// an index scan or a bitmap with a condition, not a walk of it whole.
-func keyed(table, alias string) func(*planNode) bool {
-	return func(n *planNode) bool {
-		if n.Relation != table || n.Alias != alias {
-			return false
+// perCandidate is the problems of a plan that reads table as alias other
+// than by index's keys within the inner side of a nested loop whose outer
+// side reads the candidates (candidate): once a candidate, so that no
+// statistics let a plan read a notebook's nodes whole and compare each with
+// every candidate (M8/P5A).
+func perCandidate(root *planNode, table, index, alias string, candidate func(*planNode) bool) []string {
+	var out []string
+	read := 0
+	var walk func(n *planNode, driven bool)
+	walk = func(n *planNode, driven bool) {
+		if n.Relation == table && n.Alias == alias {
+			read++
+			switch {
+			case !reads(table, index, alias)(n):
+				out = append(out, fmt.Sprintf("reads %s as %s otherwise than by the keys of %s", table, alias, index))
+			case !driven:
+				out = append(out, fmt.Sprintf("reads %s as %s outside a loop over the candidates", table, alias))
+			}
 		}
-		return n.IndexCond != "" ||
-			n.Type == "Bitmap Heap Scan" && len(n.all(func(m *planNode) bool { return m.Type == "Bitmap Index Scan" && m.IndexCond != "" })) > 0
+		outer := false
+		if n.Type == "Nested Loop" {
+			for i := range n.Plans {
+				outer = outer || n.Plans[i].Parent == "Outer" && len(n.Plans[i].all(candidate)) > 0
+			}
+		}
+		for i := range n.Plans {
+			walk(&n.Plans[i], driven || outer && n.Plans[i].Parent == "Inner")
+		}
 	}
+	walk(root, false)
+	if read == 0 {
+		out = append(out, fmt.Sprintf("does not read %s as %s", table, alias))
+	}
+	return out
 }
 
 // hits matches the read of the body tier's candidates by their lexemes
@@ -380,39 +405,36 @@ func deref(s *string) string {
 // their rows and statistics, whole tables' scans off but the queue's, the
 // arguments bound as the store binds them; none reads every row of
 // page_search, whose bodies lie out of line. The title tier reads
-// page_search_title_idx and nodes by key, checks the names below its
-// limit and reads the contents by key above it, sorting nothing above it.
-// The body tier reads its candidates by their lexemes through
-// page_search_hits, whose settings leave its statement bitmaps of the GIN
-// indexes alone, by their count (a limit straight over the function);
-// nodes by an index's keys, no scan of them checking the names; its walk a
-// limit straight over its sort, no window below it; it reads the contents
-// by key above the walk, concatenates each once, and sorts nothing outside
-// the walk. The counts read the titles' and the bodies' hits so; building
-// the queue's index; the job's reads and a hit's line their keys.
+// page_search_title_idx, then each candidate's node and content by key in
+// a loop over the candidates, checks the names below its limit and reads
+// the contents by key above it, sorting nothing above it. The body tier
+// reads its candidates by their lexemes through page_search_hits, whose
+// settings leave its statement bitmaps of the GIN indexes alone, by their
+// count (a limit straight over the function); each candidate's node and
+// content by key in a loop over them, no scan of nodes checking the names;
+// its walk a limit straight over its sort, no window below it; it reads
+// the contents by key above the walk, concatenates each once, and sorts
+// nothing outside the walk. The counts read the titles' and the bodies'
+// hits so, and each candidate's node by key in a loop over them; building
+// the queue's index; the job's reads and a hit's line their keys. The
+// search's reads are checked without statistics too, where the planner
+// takes a notebook's live nodes for one row: a plain join of nodes would
+// read them whole and compare each with every candidate.
 func TestTheSearchReadsUseTheirIndexes(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
+	for _, table := range []string{"nodes", "page_contents", "page_search", "page_search_queue"} {
+		f.exec(t, "ALTER TABLE "+table+" SET (autovacuum_enabled = false)")
+	}
 	corpus := newSearchCorpus(20261015)
 	eng := corpus.pages(t, f, f.eng, 3000, 600)
 	ops := corpus.pages(t, f, f.ops, 1000, 600)
 	f.queueSearch(t, f.eng, false, eng...)
 	f.queueSearch(t, f.ops, false, ops...)
 	f.drain(t)
-	f.checkHits(t, "on 4,000 rows without statistics")
-	f.exec(t, "ANALYZE")
-	f.checkHits(t, "on 4,000 rows")
-	// Attachments, many more than pages, as a workspace's often are: the
-	// tables of a size whose whole indexes no statement walks by choice.
-	corpus.attachments(t, f, f.ops, 40_000)
-	// A backlog of writes the job has yet to build, and an import of ops'.
-	f.queueSearch(t, f.eng, false, eng[:100]...)
-	f.queueSearch(t, f.ops, true, corpus.pages(t, f, f.ops, 2000, 100)...)
-	f.exec(t, "ANALYZE")
-	if err := f.s.AnalyzeSearch(ctx); err != nil {
-		t.Fatal(err)
+	if stats := f.count(t, `SELECT count(*) FROM pg_stats WHERE tablename IN ('nodes', 'page_contents', 'page_search', 'page_search_queue')`); stats != 0 {
+		t.Fatalf("the tables have statistics of %d columns", stats)
 	}
-	f.checkHits(t, "on 44,000 rows")
 	notebooks := []uuid.UUID{f.eng}
 	// hitsOf is the count of q's candidates by their lexemes.
 	hitsOf := func(q domain.SearchQuery) int64 {
@@ -464,97 +486,123 @@ func TestTheSearchReadsUseTheirIndexes(t *testing.T) {
 		}
 		return out
 	}
-	for _, q := range []string{"database", "数据 系统", "go 电"} {
-		check("SearchTitles("+q+")", titles(q), func(root *planNode, _ string) []string {
-			out := uses(root, reads("page_search", "page_search_title_idx", "s"), reads("nodes", "nodes_pkey", "n"),
-				reads("page_contents", "page_contents_pkey", "c2"))
-			limits := root.all(func(n *planNode) bool {
-				return n.Type == "Limit" && len(n.all(reads("page_search", "page_search_title_idx", "s"))) > 0
-			})
-			if len(limits) != 1 {
-				return append(out, fmt.Sprintf("has %d limits over its candidates, want one", len(limits)))
-			}
-			limit := limits[0]
-			if len(limit.all(func(n *planNode) bool { return strings.Contains(n.Filter+n.JoinFilter, "n.name ~ ALL") })) == 0 {
-				out = append(out, "checks the names above its limit")
-			}
-			if len(limit.all(reads("page_contents", "page_contents_pkey", "c2"))) > 0 {
-				out = append(out, "reads the contents below its limit")
-			}
-			if sorts := root.outside(limit, isSort); len(sorts) > 0 {
-				out = append(out, "sorts above its limit")
-			}
-			return out
-		})
-	}
-	for _, q := range []string{"database", "数据 系统", "latency 电", "电 #", "the"} {
-		check("SearchBodies("+q+")", bodies(q), func(root *planNode, _ string) []string {
-			out := uses(root, counted, keyed("nodes", "n"), reads("page_contents", "page_contents_pkey", "c2"))
-			if len(root.all(func(n *planNode) bool { return n.Relation == "nodes" && strings.Contains(n.Filter, "~") })) > 0 {
-				out = append(out, "checks the names in a scan of nodes")
-			}
-			walks := root.all(func(n *planNode) bool {
-				return n.Type == "Limit" && len(n.Plans) == 1 && isSort(&n.Plans[0]) && len(n.all(hits)) > 0
-			})
-			if len(walks) != 1 {
-				return append(out, "has no limit straight over a sort of the candidates")
-			}
-			walk := walks[0]
-			if len(walk.all(func(n *planNode) bool { return n.Type == "WindowAgg" })) > 0 {
-				out = append(out, "numbers its walk below its limit")
-			}
-			if len(walk.all(func(n *planNode) bool { return n.Relation == "page_contents" && n.Alias == "c2" })) > 0 {
-				out = append(out, "reads the contents within its walk")
-			}
-			if sorts := root.outside(walk, isSort); len(sorts) > 0 {
-				out = append(out, "sorts outside its walk")
-			}
-			// A node that computes the concatenation outputs it as itself; one
-			// above it outputs what it computed, which EXPLAIN shows in
-			// parentheses of its own.
-			var sites []string
-			computed := 0
-			root.each(func(n *planNode) bool {
-				for _, o := range n.Output {
-					if strings.Contains(o, "c2.content ||") {
-						sites = append(sites, n.Type+": "+o)
-					}
-					if o == "(c2.content || ''::text)" {
-						computed++
-					}
+	// candidates matches a read of the tiers' candidates: the titles'
+	// hits, or the bodies' through page_search_hits.
+	candidates := func(n *planNode) bool { return n.Relation == "page_search" && n.Alias == "s" || hits(n) }
+	searchReads := func(stage string) {
+		t.Helper()
+		for _, q := range []string{"database", "数据 系统", "go 电"} {
+			check("SearchTitles("+q+") "+stage, titles(q), func(root *planNode, _ string) []string {
+				out := uses(root, reads("page_search", "page_search_title_idx", "s"), reads("page_contents", "page_contents_pkey", "c2"))
+				out = append(out, perCandidate(root, "nodes", "nodes_pkey", "n", candidates)...)
+				out = append(out, perCandidate(root, "page_contents", "page_contents_pkey", "c", candidates)...)
+				limits := root.all(func(n *planNode) bool {
+					return n.Type == "Limit" && len(n.all(reads("page_search", "page_search_title_idx", "s"))) > 0
+				})
+				if len(limits) != 1 {
+					return append(out, fmt.Sprintf("has %d limits over its candidates, want one", len(limits)))
 				}
-				return true
+				limit := limits[0]
+				if len(limit.all(func(n *planNode) bool { return strings.Contains(n.Filter+n.JoinFilter, "name ~ ALL") })) == 0 {
+					out = append(out, "checks the names above its limit")
+				}
+				if len(limit.all(reads("page_contents", "page_contents_pkey", "c2"))) > 0 {
+					out = append(out, "reads the contents below its limit")
+				}
+				if sorts := root.outside(limit, isSort); len(sorts) > 0 {
+					out = append(out, "sorts above its limit")
+				}
+				return out
 			})
-			if computed != 1 {
-				out = append(out, fmt.Sprintf("concatenates a content %d times: %q", computed, sites))
-			}
-			return out
-		})
+		}
+		for _, q := range []string{"database", "数据 系统", "latency 电", "电 #", "the"} {
+			check("SearchBodies("+q+") "+stage, bodies(q), func(root *planNode, _ string) []string {
+				out := uses(root, counted, reads("page_contents", "page_contents_pkey", "c2"))
+				out = append(out, perCandidate(root, "nodes", "nodes_pkey", "n", candidates)...)
+				out = append(out, perCandidate(root, "page_contents", "page_contents_pkey", "c", candidates)...)
+				if len(root.all(func(n *planNode) bool { return n.Relation == "nodes" && strings.Contains(n.Filter, "~") })) > 0 {
+					out = append(out, "checks the names in a scan of nodes")
+				}
+				walks := root.all(func(n *planNode) bool {
+					return n.Type == "Limit" && len(n.Plans) == 1 && isSort(&n.Plans[0]) && len(n.all(hits)) > 0
+				})
+				if len(walks) != 1 {
+					return append(out, "has no limit straight over a sort of the candidates")
+				}
+				walk := walks[0]
+				if len(walk.all(func(n *planNode) bool { return n.Type == "WindowAgg" })) > 0 {
+					out = append(out, "numbers its walk below its limit")
+				}
+				if len(walk.all(func(n *planNode) bool { return n.Relation == "page_contents" && n.Alias == "c2" })) > 0 {
+					out = append(out, "reads the contents within its walk")
+				}
+				if sorts := root.outside(walk, isSort); len(sorts) > 0 {
+					out = append(out, "sorts outside its walk")
+				}
+				// A node that computes the concatenation outputs it as itself; one
+				// above it outputs what it computed, which EXPLAIN shows in
+				// parentheses of its own.
+				var sites []string
+				computed := 0
+				root.each(func(n *planNode) bool {
+					for _, o := range n.Output {
+						if strings.Contains(o, "c2.content ||") {
+							sites = append(sites, n.Type+": "+o)
+						}
+						if o == "(c2.content || ''::text)" {
+							computed++
+						}
+					}
+					return true
+				})
+				if computed != 1 {
+					out = append(out, fmt.Sprintf("concatenates a content %d times: %q", computed, sites))
+				}
+				return out
+			})
+		}
+		for _, q := range []string{"database", "数据 系统", "电 #"} {
+			sc := scopeOf(t, q, notebooks...).Query
+			n := hitsOf(sc)
+			check("SearchTitleCount("+q+") "+stage, statementOf(t, func(g *gen.Queries) error {
+				_, err := g.SearchTitleCount(ctx, gen.SearchTitleCountParams{Keys: sc.TitleKeys(), Notebooks: notebooks, Terms: sc.Patterns(),
+					Cap: domain.MaxSearchCount + 1})
+				return err
+			}), func(root *planNode, _ string) []string {
+				return append(uses(root, reads("page_search", "page_search_title_idx", "s")),
+					perCandidate(root, "nodes", "nodes_pkey", "n", candidates)...)
+			})
+			check("SearchBodyCount("+q+") "+stage, statementOf(t, func(g *gen.Queries) error {
+				_, err := g.SearchBodyCount(ctx, gen.SearchBodyCountParams{BodyKeys: sc.BodyKeys(), TitledKeys: sc.TitledKeys(), Hits: n,
+					Notebooks: notebooks, Cap: domain.MaxSearchCountScan})
+				return err
+			}), func(root *planNode, _ string) []string {
+				return append(uses(root, counted), perCandidate(root, "nodes", "nodes_pkey", "n", candidates)...)
+			})
+			check("SearchHitCount("+q+") "+stage, statementOf(t, func(g *gen.Queries) error {
+				_, err := g.SearchHitCount(ctx, gen.SearchHitCountParams{BodyKeys: sc.BodyKeys(), TitledKeys: sc.TitledKeys()})
+				return err
+			}), func(root *planNode, _ string) []string {
+				return uses(root, hits)
+			})
+		}
 	}
-	for _, q := range []string{"database", "数据 系统", "电 #"} {
-		sc := scopeOf(t, q, notebooks...).Query
-		n := hitsOf(sc)
-		check("SearchTitleCount("+q+")", statementOf(t, func(g *gen.Queries) error {
-			_, err := g.SearchTitleCount(ctx, gen.SearchTitleCountParams{Keys: sc.TitleKeys(), Notebooks: notebooks, Terms: sc.Patterns(),
-				Cap: domain.MaxSearchCount + 1})
-			return err
-		}), func(root *planNode, _ string) []string {
-			return uses(root, reads("page_search", "page_search_title_idx", "s"), keyed("nodes", "n"))
-		})
-		check("SearchBodyCount("+q+")", statementOf(t, func(g *gen.Queries) error {
-			_, err := g.SearchBodyCount(ctx, gen.SearchBodyCountParams{BodyKeys: sc.BodyKeys(), TitledKeys: sc.TitledKeys(), Hits: n,
-				Notebooks: notebooks, Cap: domain.MaxSearchCountScan})
-			return err
-		}), func(root *planNode, _ string) []string {
-			return uses(root, counted, keyed("nodes", "n"))
-		})
-		check("SearchHitCount("+q+")", statementOf(t, func(g *gen.Queries) error {
-			_, err := g.SearchHitCount(ctx, gen.SearchHitCountParams{BodyKeys: sc.BodyKeys(), TitledKeys: sc.TitledKeys()})
-			return err
-		}), func(root *planNode, _ string) []string {
-			return uses(root, hits)
-		})
+	f.checkHits(t, "on 4,000 rows without statistics")
+	searchReads("on 4,000 rows without statistics")
+	f.exec(t, "ANALYZE")
+	f.checkHits(t, "on 4,000 rows")
+	// Attachments, many more than pages, as a workspace's often are: the
+	// tables of a size whose whole indexes no statement walks by choice.
+	corpus.attachments(t, f, f.ops, 40_000)
+	// A backlog of writes the job has yet to build, and an import of ops'.
+	f.queueSearch(t, f.eng, false, eng[:100]...)
+	f.queueSearch(t, f.ops, true, corpus.pages(t, f, f.ops, 2000, 100)...)
+	f.exec(t, "ANALYZE")
+	if err := f.s.AnalyzeSearch(ctx); err != nil {
+		t.Fatal(err)
 	}
+	f.checkHits(t, "on 44,000 rows")
+	searchReads("on 44,000 rows")
 	check("SearchBuilding", statementOf(t, func(g *gen.Queries) error {
 		_, err := g.SearchBuilding(ctx, []uuid.UUID{f.eng, f.ops})
 		return err

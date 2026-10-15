@@ -95,23 +95,30 @@ ANALYZE page_search;
 -- title holds the keys, or that wait in the queue as a user wrote them, below the cursor, newest first, whose name
 -- holds every term, at most max_rows; then a page's content read by key for the answered rows alone, and the first
 -- hit's place in it, its character from 1, with the excerpt around it and the content's characters: 0 and none when
--- the content holds no hit, or the node is an attachment.
+-- the content holds no hit, or the node is an attachment. Each candidate's node and content are read by key in a
+-- lateral behind OFFSET 0, so the candidates drive the join at any statistics: no plan reads a notebook's nodes whole
+-- or runs the patterns on them. Without statistics the planner takes a notebook's live nodes for one row, and a plain
+-- join would let it compare every node with every candidate.
 SELECT w.id, w.notebook_id, w.kind, w.name, w.sort_at,
     coalesce(e.at, 0)::integer AS at,
     coalesce(CASE WHEN e.at > 0 THEN substr(b.doc, greatest(e.at - 41, 1), 162) END, '')::text AS excerpt,
     coalesce(length(b.doc), 0)::integer AS chars
 FROM (
-    SELECT n.id, n.notebook_id, n.kind, n.name, greatest(n.updated_at, c.updated_at)::timestamptz AS sort_at
+    SELECT j.id, j.notebook_id, j.kind, j.name, j.sort_at
     FROM (SELECT s.node_id FROM page_search s WHERE s.title @@ sqlc.arg(keys)::text::tsquery
           UNION
           SELECT q.node_id FROM page_search_queue q
           WHERE NOT q.bulk AND q.notebook_id = ANY(sqlc.arg(notebooks)::uuid[])) k
-    JOIN nodes n ON n.id = k.node_id
-    LEFT JOIN page_contents c ON c.node_id = n.id
-    WHERE n.deleted_at IS NULL AND n.notebook_id = ANY(sqlc.arg(notebooks)::uuid[])
-        AND (greatest(n.updated_at, c.updated_at), n.id) < (sqlc.arg(below_at)::timestamptz, sqlc.arg(below_id)::uuid)
-        AND n.name ~ ALL(sqlc.arg(terms)::text[])
-    ORDER BY sort_at DESC, n.id DESC
+    CROSS JOIN LATERAL (SELECT n.id, n.notebook_id, n.kind, n.name,
+                            greatest(n.updated_at, c.updated_at)::timestamptz AS sort_at
+                        FROM nodes n LEFT JOIN page_contents c ON c.node_id = n.id
+                        WHERE n.id = k.node_id AND n.deleted_at IS NULL
+                            AND n.notebook_id = ANY(sqlc.arg(notebooks)::uuid[])
+                            AND (greatest(n.updated_at, c.updated_at), n.id)
+                                < (sqlc.arg(below_at)::timestamptz, sqlc.arg(below_id)::uuid)
+                        OFFSET 0) j
+    WHERE j.name ~ ALL(sqlc.arg(terms)::text[])
+    ORDER BY j.sort_at DESC, j.id DESC
     LIMIT sqlc.arg(max_rows)
 ) w
 LEFT JOIN LATERAL (SELECT c2.content || '' AS doc FROM page_contents c2 WHERE c2.node_id = w.id OFFSET 0) b ON true
@@ -130,11 +137,13 @@ SELECT count(*) FROM page_search_hits(sqlc.narg(body_keys)::text::tsquery, sqlc.
 -- The body tier of a search (M8/P5 design 3.5): the live pages of the notebooks given whose lexemes hold the keys,
 -- hits of them (SearchHitCount's, all of them), or that wait in the queue as a user wrote them, below the cursor,
 -- newest first, whose name misses some term and holds each titles-only one; walk of them at most have their content
--- read, by key, and checked as they are now, until max_rows pass. The names are checked once the candidates are
--- joined, behind OFFSET 0, so that no scan of nodes runs the patterns on every row. The sort carries no content; OFFSET
--- 0 keeps each lateral one subquery, so the concatenation and the check run once a row. The last row walked comes back
--- passing or not, with walked: more than walk is more to walk. A row that passes has its first hit's place and excerpt
--- as SearchTitles'.
+-- read, by key, and checked as they are now, until max_rows pass. Each candidate's node and content are read by key in
+-- a lateral behind OFFSET 0, so the candidates drive the join at any statistics: no plan reads a notebook's nodes
+-- whole or runs the patterns on them. Without statistics the planner takes a notebook's live nodes for one row, and a
+-- plain join would let it compare every node with every candidate. The sort carries no content; OFFSET 0 keeps each
+-- lateral that reads or checks it one subquery too, so the concatenation and the check run once a row. The last row
+-- walked comes back passing or not, with walked: more than walk is more to walk. A row that passes has its first hit's
+-- place and excerpt as SearchTitles'.
 SELECT w.id, w.notebook_id, w.name, w.sort_at, w.seq::integer AS seq, w.walked::integer AS walked,
     coalesce(x.passed, false)::boolean AS passed, coalesce(e.at, 0)::integer AS at,
     coalesce(CASE WHEN e.at > 0 THEN substr(b.doc, greatest(e.at - 41, 1), 162) END, '')::text AS excerpt,
@@ -142,21 +151,21 @@ SELECT w.id, w.notebook_id, w.name, w.sort_at, w.seq::integer AS seq, w.walked::
 FROM (
     SELECT v.*, row_number() OVER (ORDER BY v.sort_at DESC, v.id DESC) AS seq, count(*) OVER () AS walked
     FROM (
-        SELECT j.* FROM (
-            SELECT n.id, n.notebook_id, n.name, greatest(n.updated_at, c.updated_at)::timestamptz AS sort_at
-            FROM ((SELECT h.node_id
-                   FROM page_search_hits(sqlc.narg(body_keys)::text::tsquery, sqlc.narg(titled_keys)::text::tsquery) h (node_id)
-                   LIMIT sqlc.arg(hits)::bigint)
-                  UNION
-                  SELECT q.node_id FROM page_search_queue q
-                  WHERE NOT q.bulk AND q.notebook_id = ANY(sqlc.arg(notebooks)::uuid[])) k
-            JOIN nodes n ON n.id = k.node_id
-            JOIN page_contents c ON c.node_id = n.id
-            WHERE n.deleted_at IS NULL AND c.deleted_at IS NULL
-                AND n.notebook_id = ANY(sqlc.arg(notebooks)::uuid[])
-                AND (greatest(n.updated_at, c.updated_at), n.id) < (sqlc.arg(below_at)::timestamptz, sqlc.arg(below_id)::uuid)
-            OFFSET 0
-        ) j
+        SELECT j.id, j.notebook_id, j.name, j.sort_at
+        FROM ((SELECT h.node_id
+               FROM page_search_hits(sqlc.narg(body_keys)::text::tsquery, sqlc.narg(titled_keys)::text::tsquery) h (node_id)
+               LIMIT sqlc.arg(hits)::bigint)
+              UNION
+              SELECT q.node_id FROM page_search_queue q
+              WHERE NOT q.bulk AND q.notebook_id = ANY(sqlc.arg(notebooks)::uuid[])) k
+        CROSS JOIN LATERAL (SELECT n.id, n.notebook_id, n.name,
+                                greatest(n.updated_at, c.updated_at)::timestamptz AS sort_at
+                            FROM nodes n JOIN page_contents c ON c.node_id = n.id
+                            WHERE n.id = k.node_id AND n.deleted_at IS NULL AND c.deleted_at IS NULL
+                                AND n.notebook_id = ANY(sqlc.arg(notebooks)::uuid[])
+                                AND (greatest(n.updated_at, c.updated_at), n.id)
+                                    < (sqlc.arg(below_at)::timestamptz, sqlc.arg(below_id)::uuid)
+                            OFFSET 0) j
         WHERE NOT j.name ~ ALL(sqlc.arg(terms)::text[]) AND j.name ~ ALL(sqlc.arg(titled)::text[])
         ORDER BY j.sort_at DESC, j.id DESC
         LIMIT sqlc.arg(walk)::integer + 1
@@ -175,21 +184,26 @@ LIMIT sqlc.arg(max_rows);
 
 -- name: SearchTitleCount :one
 -- The first page's count of a search's title tier (M8/P5 design 3.5): its hits, their names checked, counted to cap,
--- and the pages among them.
+-- and the pages among them. Each candidate's node is read by key in a lateral behind OFFSET 0, so the candidates drive
+-- the join at any statistics, as in SearchTitles: no plan reads a notebook's nodes whole or runs the patterns on them.
 SELECT count(*)::integer AS titles, (count(*) FILTER (WHERE a.kind = 'page'))::integer AS title_pages
-FROM (SELECT n.kind
+FROM (SELECT j.kind
       FROM (SELECT s.node_id FROM page_search s WHERE s.title @@ sqlc.arg(keys)::text::tsquery
             UNION
             SELECT q.node_id FROM page_search_queue q
             WHERE NOT q.bulk AND q.notebook_id = ANY(sqlc.arg(notebooks)::uuid[])) k
-      JOIN nodes n ON n.id = k.node_id
-      WHERE n.deleted_at IS NULL AND n.notebook_id = ANY(sqlc.arg(notebooks)::uuid[])
-          AND n.name ~ ALL(sqlc.arg(terms)::text[])
+      CROSS JOIN LATERAL (SELECT n.kind, n.name FROM nodes n
+                          WHERE n.id = k.node_id AND n.deleted_at IS NULL
+                              AND n.notebook_id = ANY(sqlc.arg(notebooks)::uuid[])
+                          OFFSET 0) j
+      WHERE j.name ~ ALL(sqlc.arg(terms)::text[])
       LIMIT sqlc.arg(cap)::integer) a;
 
 -- name: SearchBodyCount :one
 -- The first page's count of a search's body tier (M8/P5 design 3.5): its candidates, SearchBodies' hits and queue,
--- live pages of the notebooks given, their names unchecked, counted to cap.
+-- live pages of the notebooks given, their names unchecked, counted to cap. Each candidate's node is read by key in a
+-- lateral behind OFFSET 0, so the candidates drive the join at any statistics, as in SearchBodies: no plan reads a
+-- notebook's nodes whole.
 SELECT count(*)::integer AS bodies
 FROM (SELECT 1
       FROM ((SELECT h.node_id
@@ -198,8 +212,10 @@ FROM (SELECT 1
             UNION
             SELECT q.node_id FROM page_search_queue q
             WHERE NOT q.bulk AND q.notebook_id = ANY(sqlc.arg(notebooks)::uuid[])) k
-      JOIN nodes n ON n.id = k.node_id
-      WHERE n.deleted_at IS NULL AND n.kind = 'page' AND n.notebook_id = ANY(sqlc.arg(notebooks)::uuid[])
+      CROSS JOIN LATERAL (SELECT 1 FROM nodes n
+                          WHERE n.id = k.node_id AND n.deleted_at IS NULL AND n.kind = 'page'
+                              AND n.notebook_id = ANY(sqlc.arg(notebooks)::uuid[])
+                          OFFSET 0) j
       LIMIT sqlc.arg(cap)::integer) a;
 
 -- name: SearchBuilding :one
