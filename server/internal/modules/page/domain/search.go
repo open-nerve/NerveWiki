@@ -432,7 +432,7 @@ func ParseSearchQuery(q *string) (SearchQuery, error) {
 		out.Terms = append(out.Terms, t)
 	}
 	if !keyed {
-		return invalid(shared.FieldNotAllowed, "must hold a letter, a digit or a CJK character")
+		return invalid(shared.FieldNotAllowed, "must hold a letter, a digit, a mark or a CJK character")
 	}
 	if !slices.ContainsFunc(out.Terms, func(t SearchTerm) bool { return len(t.keys) > 0 }) {
 		// No key of the body: the single CJK characters are the body tier's
