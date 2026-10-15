@@ -55,10 +55,17 @@ test("the box is at the top of the workspace's left column, a search named for i
   expect(box().value).toBe("Plans");
 });
 
-test("in a notebook it searches the notebook, its hint saying so; on the results page, the one the page searches", async () => {
+test("in a notebook it searches the notebook, its hint saying so, on any of its pages; on the results page, the one the page searches", async () => {
   const user = userEvent.setup();
   const server = pageServer();
-  const { router } = renderApp(pagePath(guide.id), server.app);
+  const { router } = renderApp(home, server.app);
+  await waitFor(() => expect(hintOf(box())).toBe("Searches in “Plans”."));
+  await act(() => router.navigate(`${home}/trash`));
+  await screen.findByRole("heading", { level: 1, name: "Trash" });
+  expect(hintOf(box())).toBe("Searches in “Plans”.");
+  await act(() => router.navigate("/lab"));
+  await waitFor(() => expect(hintOf(box())).toBe("Searches the whole workspace."));
+  await act(() => router.navigate(pagePath(guide.id)));
   await screen.findByRole("heading", { level: 1, name: "Guide" });
   await waitFor(() => expect(hintOf(box())).toBe("Searches in “Plans”."));
 
@@ -80,7 +87,7 @@ test("in a notebook it searches the notebook, its hint saying so; on the results
   await waitFor(() => expect(router.state.location.search).toBe("?q=Linux"));
 });
 
-test("a q past 256 bytes or holding NUL is not sent: under the box it says why, the field invalid and taking the focus; one blank does nothing", async () => {
+test("a q past 256 bytes or holding NUL is not sent: under the box it says why, NUL first, as an alert said anew each time, the field invalid and taking the focus; one blank does nothing", async () => {
   const user = userEvent.setup();
   const server = pageServer();
   const { router } = renderApp("/lab", server.app);
@@ -100,6 +107,20 @@ test("a q past 256 bytes or holding NUL is not sent: under the box it says why, 
   await user.click(within(form()).getByRole("button", { name: "Search" }));
   expect(hintOf(field)).toBe("It may not hold a NUL character. | Searches the whole workspace.");
   expect(router.state.location.pathname).toBe("/lab");
+  // Past 256 bytes too: NUL, as the server checks it first.
+  fireEvent.change(field, { target: { value: `${"数".repeat(86)}${String.fromCharCode(0)}` } });
+  await user.click(within(form()).getByRole("button", { name: "Search" }));
+  expect(hintOf(field)).toBe("It may not hold a NUL character. | Searches the whole workspace.");
+
+  // Submitted with Enter, the field keeping the focus: an alert says it, and says it again the next time (P5B review A-M3).
+  const said = within(form()).getByRole("alert");
+  expect(said.textContent).toBe("It may not hold a NUL character.");
+  await user.click(field);
+  await user.keyboard("{Enter}");
+  const again = within(form()).getByRole("alert");
+  expect(again.textContent).toBe("It may not hold a NUL character.");
+  expect(again).not.toBe(said);
+  expect(document.activeElement).toBe(field);
 
   fireEvent.change(field, { target: { value: "   " } });
   await user.click(within(form()).getByRole("button", { name: "Search" }));

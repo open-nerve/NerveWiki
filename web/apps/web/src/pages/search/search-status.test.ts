@@ -50,9 +50,12 @@ test("of more pages, what was read: all of it, how many; a count of none or fewe
   );
   // Nothing yet after Keep looking: the first page's.
   expect(statusText([page(0, true, null), page(0, true)], 0, en, "en")).toBe("None found yet; you can keep looking.");
-  // A count past those found: the first page's.
+  // A count past those found, or as many: the first page's.
   expect(statusText([page(20, true, { value: 240, kind: "about" }), page(20, true)], 40, en, "en")).toBe(
     "Results: about 240."
+  );
+  expect(statusText([page(20, true, { value: 40, kind: "about" }), page(20, true)], 40, en, "en")).toBe(
+    "Results: about 40."
   );
   expect(statusText([page(20, true, { value: 1000, kind: "at_least" }), page(20, true)], 1040, en, "en")).toBe(
     "Found 1,040 so far; there may be more."
