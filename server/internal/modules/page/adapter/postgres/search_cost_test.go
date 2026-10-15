@@ -106,69 +106,19 @@ func newSearchOfSomeSize(t *testing.T) searchOfSomeSize {
 		ctx: shared.WithActor(ctx, shared.Actor{UserID: f.alice, SessionID: uuid.NewV7()})}
 }
 
-// searchRead is a page of a search: its query, the notebook it is limited
-// to, if any, the page (1 or 3), whether it answers building, and how long
-// its median of eight may take at each stage: without statistics,
-// analyzed, planned for any arguments; three times this machine's, the
-// rule of 8c83ccb7.
-type searchRead struct {
-	q        string
-	notebook *uuid.UUID
-	page     int
-	building bool
-	limits   [3]time.Duration
-}
-
-// ms are milliseconds.
-func ms(n ...int) [3]time.Duration {
-	return [3]time.Duration{time.Duration(n[0]) * time.Millisecond, time.Duration(n[1]) * time.Millisecond,
-		time.Duration(n[2]) * time.Millisecond}
-}
-
 // The search reads a page in time whatever the statistics (M8/P5 design
 // 3.9's guard): each class of query's first page, with its count, and its
 // third; the walk that checks its bound of pages and finds none; eight
-// terms; and a search while ops is being built. Each eight times on one
-// connection: without statistics, analyzed, and planned for any arguments,
-// as a server set so would; its median within three times this machine's,
-// a CI's runner slower, well under the request's 15 seconds. The 300 ms
-// target is the benchmark's on 300,000 pages: this guard catches a plan
-// gone wrong, seconds for milliseconds. So do the job's build of 5,000
-// pages and a unit's queueing of 10,000 nodes.
+// terms; and a search while ops is being built (searchReads). Each eight
+// times on one connection: without statistics, analyzed, and planned for
+// any arguments, as a server set so would; its median within searchLimit
+// of this machine's, a CI's runner slower, well under the request's 15
+// seconds. The 300 ms target is the benchmark's on 300,000 pages: this
+// guard catches a plan gone wrong, seconds for milliseconds. So do the
+// job's build of 5,000 pages and a unit's queueing of 10,000 nodes.
 func TestTheSearchReadsInTimeAtAnyStatistics(t *testing.T) {
 	g := newSearchOfSomeSize(t)
-	eng := &g.f.eng
-	// The limits are three times the medians on an M-series Mac (M8/P5A).
-	// The slowest reads take 16 to 36 ms, most of it their body tier's: for
-	// eight common terms and "的是" nearly every page is a candidate, joined
-	// to the notebook's nodes and to its content, and sorted for the walk;
-	// "theirs" and "中国 database" walk their bound of 500 pages, reading
-	// and checking each content. The rest take 2 to 18 ms. Without
-	// statistics the scoped join hashes the candidates with the notebook's
-	// nodes, about as fast as analyzed; planned for any arguments, its hits
-	// taken for 100,000, a read takes up to 1.8 times as long.
-	reads := []searchRead{
-		{q: "中国", notebook: eng, page: 1, limits: ms(42, 37, 43)},
-		{q: "中国", notebook: eng, page: 3, limits: ms(26, 23, 26)},
-		{q: "的是", notebook: eng, page: 1, limits: ms(57, 49, 53)},
-		{q: "的是", notebook: eng, page: 3, limits: ms(33, 30, 32)},
-		{q: "latency", notebook: eng, page: 1, limits: ms(40, 39, 55)},
-		{q: "latency", notebook: eng, page: 3, limits: ms(24, 25, 27)},
-		{q: "the", notebook: eng, page: 1, limits: ms(16, 17, 20)},
-		{q: "the", notebook: eng, page: 3, limits: ms(12, 13, 14)},
-		{q: "go", notebook: eng, page: 1, limits: ms(42, 39, 47)},
-		{q: "go", notebook: eng, page: 3, limits: ms(28, 26, 30)},
-		{q: "的", notebook: eng, page: 1, limits: ms(15, 16, 19)},
-		{q: "的", notebook: eng, page: 3, limits: ms(11, 13, 13)},
-		{q: "电", notebook: eng, page: 1, limits: ms(7, 8, 11)},
-		{q: "电 #", notebook: eng, page: 1, limits: ms(12, 13, 22)},
-		{q: "中国 database", notebook: eng, page: 1, limits: ms(58, 58, 90)},
-		{q: "theirs", notebook: eng, page: 1, limits: ms(54, 52, 87)},
-		{q: "theirs", notebook: eng, page: 3, limits: ms(39, 38, 51)},
-		{q: "the of and to in is that for", notebook: eng, page: 1, limits: ms(76, 73, 109)},
-		{q: "中国", page: 1, building: true, limits: ms(45, 38, 56)},
-		{q: "中国", page: 3, building: true, limits: ms(27, 23, 27)},
-	}
+	reads := searchReads(&g.f.eng)
 	cursors := map[string]*string{} // the third pages' cursors, by query and notebook
 	key := func(r searchRead) string {
 		if r.notebook == nil {
@@ -217,8 +167,8 @@ func TestTheSearchReadsInTimeAtAnyStatistics(t *testing.T) {
 			median := (took[3] + took[4]) / 2
 			t.Logf("%q page %d %s: median %s, longest %s", r.q, r.page, stage, median.Round(time.Microsecond),
 				took[7].Round(time.Microsecond))
-			if median > r.limits[k] {
-				t.Errorf("%q page %d %s took %s, its median; want within %s", r.q, r.page, stage, median, r.limits[k])
+			if limit := searchLimit(r.medians[k]); median > limit {
+				t.Errorf("%q page %d %s took %s, its median; want within %s", r.q, r.page, stage, median, limit)
 			}
 		}
 	}
