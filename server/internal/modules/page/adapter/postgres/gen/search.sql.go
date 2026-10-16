@@ -100,27 +100,27 @@ func (q *Queries) QueueSearchOfNotebooks(ctx context.Context, arg QueueSearchOfN
 }
 
 const queuedSearch = `-- name: QueuedSearch :many
-SELECT node_id, version FROM page_search_queue
-WHERE bulk = $1::boolean AND node_id > $2::uuid
+SELECT node_id, notebook_id, version FROM page_search_queue
+WHERE NOT bulk AND node_id > $1::uuid
 ORDER BY node_id
-LIMIT $3
+LIMIT $2
 `
 
 type QueuedSearchParams struct {
-	Bulk    bool
 	After   uuid.UUID
 	MaxRows int32
 }
 
 type QueuedSearchRow struct {
-	NodeID  uuid.UUID
-	Version int64
+	NodeID     uuid.UUID
+	NotebookID uuid.UUID
+	Version    int64
 }
 
-// The nodes queued exact, or in bulk, after the node after, by id, at most max_rows, with the versions queued: the
-// job's pass, unlocked, the exact nodes' first.
+// The nodes queued exact after the node after, by id, at most max_rows, with their notebooks and the versions queued:
+// the job's first pass, unlocked.
 func (q *Queries) QueuedSearch(ctx context.Context, arg QueuedSearchParams) ([]QueuedSearchRow, error) {
-	rows, err := q.db.Query(ctx, queuedSearch, arg.Bulk, arg.After, arg.MaxRows)
+	rows, err := q.db.Query(ctx, queuedSearch, arg.After, arg.MaxRows)
 	if err != nil {
 		return nil, err
 	}
@@ -128,7 +128,49 @@ func (q *Queries) QueuedSearch(ctx context.Context, arg QueuedSearchParams) ([]Q
 	var items []QueuedSearchRow
 	for rows.Next() {
 		var i QueuedSearchRow
-		if err := rows.Scan(&i.NodeID, &i.Version); err != nil {
+		if err := rows.Scan(&i.NodeID, &i.NotebookID, &i.Version); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const queuedSearchBulk = `-- name: QueuedSearchBulk :many
+SELECT node_id, notebook_id, version FROM page_search_queue
+WHERE bulk AND (notebook_id, node_id) > ($1::uuid, $2::uuid)
+ORDER BY notebook_id, node_id
+LIMIT $3
+`
+
+type QueuedSearchBulkParams struct {
+	AfterNotebook uuid.UUID
+	After         uuid.UUID
+	MaxRows       int32
+}
+
+type QueuedSearchBulkRow struct {
+	NodeID     uuid.UUID
+	NotebookID uuid.UUID
+	Version    int64
+}
+
+// The nodes queued in bulk after the node after of the notebook after_notebook, by notebook, then id, at most
+// max_rows, with their notebooks and the versions queued: the job's second pass, unlocked, notebook by notebook (M8
+// Codex review R1, fix round 2: B-3), by page_search_queue_bulk_idx.
+func (q *Queries) QueuedSearchBulk(ctx context.Context, arg QueuedSearchBulkParams) ([]QueuedSearchBulkRow, error) {
+	rows, err := q.db.Query(ctx, queuedSearchBulk, arg.AfterNotebook, arg.After, arg.MaxRows)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []QueuedSearchBulkRow
+	for rows.Next() {
+		var i QueuedSearchBulkRow
+		if err := rows.Scan(&i.NodeID, &i.NotebookID, &i.Version); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

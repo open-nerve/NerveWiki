@@ -60,6 +60,13 @@ INSERT INTO page_search_queue (node_id, notebook_id, bulk)
 SELECT id, notebook_id, true FROM nodes WHERE deleted_at IS NULL ORDER BY id
 ON CONFLICT (node_id) DO UPDATE SET version = excluded.version, bulk = page_search_queue.bulk AND excluded.bulk;
 
+-- The job's pass over the nodes queued in bulk goes notebook by notebook (QueuedSearchBulk): a notebook's rows written
+-- together touch its keys alone in the GIN indexes, where rows in the order of their ids touch every notebook's, each
+-- page of them again at each checkpoint (this migration's rebuild of 299,200 pages of 5,000 notebooks: 16 minutes and
+-- 439 KB of WAL a page, against 29 minutes and 1.1 MB by id; R1 fix round 2, B-3); and a notebook says it is being
+-- built until its own rows are.
+CREATE INDEX page_search_queue_bulk_idx ON page_search_queue (notebook_id, node_id) WHERE bulk;
+
 -- page_search_hits: the body tier's candidates in the notebooks given by their keys, 00040's three branches, each
 -- condition an ANY over the notebooks' queries (page_search_queries). GIN takes no array: the executor scans the index
 -- once for each notebook's query, into one bitmap, and no key it reads is another notebook's, whatever the plan. A
@@ -107,6 +114,7 @@ END;
 -- +goose StatementEnd
 
 -- +goose Down
+DROP INDEX page_search_queue_bulk_idx;
 DROP FUNCTION page_search_titles(uuid[], text[]);
 DROP FUNCTION page_search_hits(uuid[], text[], text[]);
 -- +goose StatementBegin

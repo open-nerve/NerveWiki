@@ -39,11 +39,20 @@ SELECT pg_try_advisory_lock(6107471706471486842);
 SELECT pg_advisory_unlock(6107471706471486842);
 
 -- name: QueuedSearch :many
--- The nodes queued exact, or in bulk, after the node after, by id, at most max_rows, with the versions queued: the
--- job's pass, unlocked, the exact nodes' first.
-SELECT node_id, version FROM page_search_queue
-WHERE bulk = sqlc.arg(bulk)::boolean AND node_id > sqlc.arg(after)::uuid
+-- The nodes queued exact after the node after, by id, at most max_rows, with their notebooks and the versions queued:
+-- the job's first pass, unlocked.
+SELECT node_id, notebook_id, version FROM page_search_queue
+WHERE NOT bulk AND node_id > sqlc.arg(after)::uuid
 ORDER BY node_id
+LIMIT sqlc.arg(max_rows);
+
+-- name: QueuedSearchBulk :many
+-- The nodes queued in bulk after the node after of the notebook after_notebook, by notebook, then id, at most
+-- max_rows, with their notebooks and the versions queued: the job's second pass, unlocked, notebook by notebook (M8
+-- Codex review R1, fix round 2: B-3), by page_search_queue_bulk_idx.
+SELECT node_id, notebook_id, version FROM page_search_queue
+WHERE bulk AND (notebook_id, node_id) > (sqlc.arg(after_notebook)::uuid, sqlc.arg(after)::uuid)
+ORDER BY notebook_id, node_id
 LIMIT sqlc.arg(max_rows);
 
 -- name: SearchSources :many

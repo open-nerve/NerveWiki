@@ -583,11 +583,11 @@ type SearchQueue interface {
 	QueueSearch(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID, bulk bool) error
 }
 
-// QueuedNode is a node in the search's queue, at the version it was
-// queued with.
+// QueuedNode is a node in the search's queue, of its notebook, at the
+// version it was queued with.
 type QueuedNode struct {
-	ID      uuid.UUID
-	Version int64
+	ID, NotebookID uuid.UUID
+	Version        int64
 }
 
 // SearchSource is what the search's job decides on for a queued node: the
@@ -636,9 +636,10 @@ type SearchIndex interface {
 	// that connection, under the context it returns, so that the lock is
 	// the run's own (M8/P5A review B-M4). release gives it back.
 	LockSearch(ctx context.Context) (run context.Context, release func(), ok bool, err error)
-	// QueuedSearch reads the nodes queued exact, or in bulk when bulk is
-	// set, after the node after, by id, at most limit nodes, unlocked.
-	QueuedSearch(ctx context.Context, bulk bool, after uuid.UUID, limit int) ([]QueuedNode, error)
+	// QueuedSearch reads the nodes queued exact after the node after.ID,
+	// by id; or, when bulk is set, those queued in bulk after after, by
+	// notebook (after.NotebookID), then id; at most limit nodes, unlocked.
+	QueuedSearch(ctx context.Context, bulk bool, after QueuedNode, limit int) ([]QueuedNode, error)
 	// SearchSources reads the nodes ids as SearchSource says, by id.
 	SearchSources(ctx context.Context, ids []uuid.UUID) ([]SearchSource, error)
 	// SearchContents reads the contents of the live pages ids, with their

@@ -300,6 +300,7 @@ func TestConstraintAndIndexNames(t *testing.T) {
 		"page_search_body_idx i",
 		"page_search_pkey iu",
 		"page_search_pkey p",
+		"page_search_queue_bulk_idx iw",
 		"page_search_queue_notebook_id_bulk_idx i",
 		"page_search_queue_pkey iu",
 		"page_search_queue_pkey p",

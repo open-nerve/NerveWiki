@@ -1,6 +1,7 @@
 package postgresadapter_test
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -308,33 +309,52 @@ func TestStaleSearchNodes(t *testing.T) {
 	}
 }
 
-// The job reads the queue by id, a batch after another, with the versions
-// queued, the nodes queued exact apart from those in bulk, and takes the
-// nodes off at the versions it read: one a unit queued again since stays,
-// at its new version (M8/P5 design 3.4).
+// The job reads the queue a batch after another, with the notebooks and
+// the versions queued, the nodes queued exact apart from those in bulk:
+// those by id, these by notebook, then id (M8 Codex review R1, fix round
+// 2: B-3); and takes the nodes off at the versions it read: one a unit
+// queued again since stays, at its new version (M8/P5 design 3.4).
 func TestDequeueSearchTakesTheVersionsRead(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
 	ids := f.nodes(t, f.eng, "N", 4)
-	imported := f.nodes(t, f.eng, "I", 2)
-	f.queueSearch(t, f.eng, true, imported...)
+	// Nodes of eng and ops queued in bulk, their ids in turn.
+	var imported []app.QueuedNode
+	for i := range 4 {
+		notebook := []uuid.UUID{f.eng, f.ops}[i%2]
+		id := f.nodes(t, notebook, fmt.Sprint("I", i), 1)[0]
+		f.queueSearch(t, notebook, true, id)
+		imported = append(imported, app.QueuedNode{ID: id, NotebookID: notebook})
+	}
 	f.queueSearch(t, f.eng, false, ids...)
 	q := f.queued(t)
-	bulk, err := f.s.QueuedSearch(ctx, true, uuid.Nil(), 10)
-	if want := []app.QueuedNode{{ID: imported[0], Version: q[imported[0]].version}, {ID: imported[1], Version: q[imported[1]].version}}; err != nil ||
-		!slices.Equal(bulk, want) {
-		t.Fatalf("QueuedSearch(bulk, the start, 10) = %v, %v; want %v, those queued in bulk alone", bulk, err, want)
+	for i := range imported {
+		imported[i].Version = q[imported[i].ID].version
 	}
-	first, err := f.s.QueuedSearch(ctx, false, uuid.Nil(), 2)
-	if want := []app.QueuedNode{{ID: ids[0], Version: q[ids[0]].version}, {ID: ids[1], Version: q[ids[1]].version}}; err != nil ||
-		!slices.Equal(first, want) {
-		t.Fatalf("QueuedSearch(exact, the start, 2) = %v, %v; want %v", first, err, want)
+	slices.SortFunc(imported, func(a, b app.QueuedNode) int { return cmp.Or(a.NotebookID.Compare(b.NotebookID), a.ID.Compare(b.ID)) })
+	exact := func(i int) app.QueuedNode {
+		return app.QueuedNode{ID: ids[i], NotebookID: f.eng, Version: q[ids[i]].version}
 	}
-	rest, err := f.s.QueuedSearch(ctx, false, ids[1], 10)
-	if want := []app.QueuedNode{{ID: ids[2], Version: q[ids[2]].version}, {ID: ids[3], Version: q[ids[3]].version}}; err != nil ||
-		!slices.Equal(rest, want) {
-		t.Fatalf("QueuedSearch(exact, after the second, 10) = %v, %v; want %v", rest, err, want)
+	for _, tt := range []struct {
+		what  string
+		bulk  bool
+		after app.QueuedNode
+		limit int
+		want  []app.QueuedNode
+	}{
+		{"bulk, the start, 10", true, app.QueuedNode{}, 10, imported},
+		{"bulk, after the first notebook's first, 10", true, imported[0], 10, imported[1:]},
+		{"bulk, after the first notebook, 10", true, app.QueuedNode{NotebookID: imported[0].NotebookID, ID: uuid.Max()}, 10, imported[2:]},
+		{"bulk, after the second notebook, 10", true, app.QueuedNode{NotebookID: imported[2].NotebookID, ID: uuid.Max()}, 10, nil},
+		{"exact, the start, 2", false, app.QueuedNode{}, 2, []app.QueuedNode{exact(0), exact(1)}},
+		{"exact, after the second, 10", false, app.QueuedNode{ID: ids[1]}, 10, []app.QueuedNode{exact(2), exact(3)}},
+	} {
+		if got, err := f.s.QueuedSearch(ctx, tt.bulk, tt.after, tt.limit); err != nil || !slices.Equal(got, tt.want) {
+			t.Fatalf("QueuedSearch(%s) = %v, %v; want %v", tt.what, got, err, tt.want)
+		}
 	}
+	first, rest := []app.QueuedNode{exact(0), exact(1)}, []app.QueuedNode{exact(2), exact(3)}
+	bulk := imported
 	f.queueSearch(t, f.eng, false, ids[1])
 	again := f.queued(t)[ids[1]]
 	if err := f.s.DequeueSearch(ctx, append(append(first, rest[0]), bulk...)); err != nil {
@@ -357,7 +377,7 @@ func TestDequeueSearchSkipsAHeldRow(t *testing.T) {
 	f := newFixture(t)
 	ids := f.nodes(t, f.eng, "N", 3)
 	f.queueSearch(t, f.eng, false, ids...)
-	read, err := f.s.QueuedSearch(ctx, false, uuid.Nil(), 10)
+	read, err := f.s.QueuedSearch(ctx, false, app.QueuedNode{}, 10)
 	if err != nil || len(read) != 3 {
 		t.Fatalf("QueuedSearch = %v, %v", read, err)
 	}
@@ -384,7 +404,7 @@ func TestDequeueSearchSkipsAHeldRow(t *testing.T) {
 	if err := f.s.DequeueSearch(ctx, read); err != nil {
 		t.Fatal(err)
 	}
-	next, err := f.s.QueuedSearch(ctx, false, uuid.Nil(), 10)
+	next, err := f.s.QueuedSearch(ctx, false, app.QueuedNode{}, 10)
 	if err != nil || len(next) != 1 || next[0].ID != ids[1] || next[0].Version <= read[1].Version {
 		t.Fatalf("the queue after the unit = %v, %v; want the held node at its new version", next, err)
 	}

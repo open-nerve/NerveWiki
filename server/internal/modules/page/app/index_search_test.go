@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -19,17 +20,21 @@ import (
 )
 
 // fakeIndex is the search's rows and queue in memory: the queue by id, its
-// nodes queued in bulk, the sources the job reads, the rows it writes. Each
+// nodes queued in bulk, their notebooks (notebook unless set), the
+// sources the job reads, the rows it writes, in the order written. Each
 // call is recorded, one off the lock's connection, its context not the one
 // LockSearch returned, marked so.
 type fakeIndex struct {
-	calls   []string
-	locked  bool // another run holds the lock
-	queue   map[uuid.UUID]int64
-	bulk    map[uuid.UUID]bool
-	sources map[uuid.UUID]app.SearchSource
-	texts   map[uuid.UUID]app.PageText
-	rows    map[uuid.UUID]app.SearchRow
+	calls     []string
+	locked    bool // another run holds the lock
+	queue     map[uuid.UUID]int64
+	bulk      map[uuid.UUID]bool
+	notebooks map[uuid.UUID]uuid.UUID
+	notebook  uuid.UUID // of a node queued without one
+	written   []uuid.UUID
+	sources   map[uuid.UUID]app.SearchSource
+	texts     map[uuid.UUID]app.PageText
+	rows      map[uuid.UUID]app.SearchRow
 	// fail fails a write that holds the node, failOnce the batch's write
 	// that holds it alone, not the node's own.
 	fail     map[uuid.UUID]bool
@@ -45,14 +50,16 @@ func (c *fakeClock) Now() time.Time { return c.now }
 
 func newFakeIndex() *fakeIndex {
 	return &fakeIndex{
-		queue:    map[uuid.UUID]int64{},
-		bulk:     map[uuid.UUID]bool{},
-		sources:  map[uuid.UUID]app.SearchSource{},
-		texts:    map[uuid.UUID]app.PageText{},
-		rows:     map[uuid.UUID]app.SearchRow{},
-		fail:     map[uuid.UUID]bool{},
-		failOnce: map[uuid.UUID]bool{},
-		clock:    &fakeClock{now: time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC)},
+		queue:     map[uuid.UUID]int64{},
+		bulk:      map[uuid.UUID]bool{},
+		notebooks: map[uuid.UUID]uuid.UUID{},
+		notebook:  uuid.NewV7(),
+		sources:   map[uuid.UUID]app.SearchSource{},
+		texts:     map[uuid.UUID]app.PageText{},
+		rows:      map[uuid.UUID]app.SearchRow{},
+		fail:      map[uuid.UUID]bool{},
+		failOnce:  map[uuid.UUID]bool{},
+		clock:     &fakeClock{now: time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC)},
 	}
 }
 
@@ -75,25 +82,34 @@ func (f *fakeIndex) LockSearch(ctx context.Context) (context.Context, func(), bo
 	return context.WithValue(ctx, lockKey{}, true), func() { f.calls = append(f.calls, "Release") }, true, nil
 }
 
-func (f *fakeIndex) QueuedSearch(ctx context.Context, bulk bool, after uuid.UUID, limit int) ([]app.QueuedNode, error) {
-	queuing := "exact"
-	if bulk {
-		queuing = "bulk"
+func (f *fakeIndex) notebookOf(id uuid.UUID) uuid.UUID {
+	if n, ok := f.notebooks[id]; ok {
+		return n
 	}
-	f.record(ctx, "QueuedSearch "+queuing+" "+short(after))
-	f.clock.now = f.clock.now.Add(f.step)
-	var ids []uuid.UUID
-	for id := range f.queue {
-		if f.bulk[id] == bulk && id.Compare(after) > 0 {
-			ids = append(ids, id)
+	return f.notebook
+}
+
+// QueuedSearch reads the exact nodes by id, the bulk ones by notebook, then
+// id, as the store does.
+func (f *fakeIndex) QueuedSearch(ctx context.Context, bulk bool, after app.QueuedNode, limit int) ([]app.QueuedNode, error) {
+	queuing := "exact " + short(after.ID)
+	order := func(a, b app.QueuedNode) int { return a.ID.Compare(b.ID) }
+	if bulk {
+		queuing = "bulk " + short(after.NotebookID) + "/" + short(after.ID)
+		order = func(a, b app.QueuedNode) int {
+			return cmp.Or(a.NotebookID.Compare(b.NotebookID), a.ID.Compare(b.ID))
 		}
 	}
-	slices.SortFunc(ids, uuid.UUID.Compare)
+	f.record(ctx, "QueuedSearch "+queuing)
+	f.clock.now = f.clock.now.Add(f.step)
 	var out []app.QueuedNode
-	for _, id := range ids[:min(limit, len(ids))] {
-		out = append(out, app.QueuedNode{ID: id, Version: f.queue[id]})
+	for id, version := range f.queue {
+		if n := (app.QueuedNode{ID: id, NotebookID: f.notebookOf(id), Version: version}); f.bulk[id] == bulk && order(n, after) > 0 {
+			out = append(out, n)
+		}
 	}
-	return out, nil
+	slices.SortFunc(out, order)
+	return out[:min(limit, len(out))], nil
 }
 
 func (f *fakeIndex) SearchSources(ctx context.Context, ids []uuid.UUID) ([]app.SearchSource, error) {
@@ -130,6 +146,7 @@ func (f *fakeIndex) WriteSearchRows(ctx context.Context, rows []app.SearchRow, d
 	}
 	for _, r := range rows {
 		f.rows[r.NodeID] = r
+		f.written = append(f.written, r.NodeID)
 	}
 	for _, id := range deleted {
 		delete(f.rows, id)
@@ -171,8 +188,11 @@ func (f *fakeIndex) built(id uuid.UUID, revision int, name, tokenizer string, at
 }
 
 func short(id uuid.UUID) string {
-	if id == uuid.Nil() {
+	switch id {
+	case uuid.Nil():
 		return "start"
+	case uuid.Max():
+		return "end"
 	}
 	return id.String()[:8]
 }
@@ -316,7 +336,7 @@ func TestTheSearchJobPassesOverTheQueueInBatches(t *testing.T) {
 	want := []string{"LockSearch", "QueuedSearch exact start", "SearchSources 100", "SearchContents 2", "WriteSearchRows 2 0",
 		"DequeueSearch 2", "QueuedSearch exact " + short(ids[1]), "SearchSources 100", "SearchContents 100", "WriteSearchRows 100 0",
 		"DequeueSearch 100", "QueuedSearch exact " + short(ids[101]), "SearchSources 2", "SearchContents 2", "WriteSearchRows 2 0",
-		"DequeueSearch 2", "QueuedSearch exact " + short(ids[103]), "QueuedSearch bulk start", "Release"}
+		"DequeueSearch 2", "QueuedSearch exact " + short(ids[103]), "QueuedSearch bulk start/start", "Release"}
 	if !slices.Equal(f.calls, want) || run.Written != len(ids) || len(f.queue) != 0 {
 		t.Errorf("calls %v\nwant %v\nrun %+v, %d left queued", f.calls, want, run, len(f.queue))
 	}
@@ -341,11 +361,121 @@ func TestTheSearchJobTakesTheExactNodesFirst(t *testing.T) {
 		t.Fatalf("Drain() = %+v, %v, %d left; want every node built", run, err, len(f.queue))
 	}
 	want := []string{"LockSearch", "QueuedSearch exact start", "SearchSources 2", "SearchContents 2", "WriteSearchRows 2 0", "DequeueSearch 2",
-		"QueuedSearch exact " + short(exact[1]), "QueuedSearch bulk start", "SearchSources 100", "SearchContents 100", "WriteSearchRows 100 0",
-		"DequeueSearch 100", "QueuedSearch bulk " + short(bulk[99]), "SearchSources 1", "SearchContents 1", "WriteSearchRows 1 0",
-		"DequeueSearch 1", "QueuedSearch bulk " + short(bulk[100]), "Release"}
+		"QueuedSearch exact " + short(exact[1]), "QueuedSearch bulk start/start", "SearchSources 100", "SearchContents 100",
+		"WriteSearchRows 100 0", "DequeueSearch 100", "QueuedSearch bulk " + short(f.notebook) + "/" + short(bulk[99]), "SearchSources 1",
+		"SearchContents 1", "WriteSearchRows 1 0", "DequeueSearch 1", "QueuedSearch bulk " + short(f.notebook) + "/" + short(bulk[100]),
+		"Release"}
 	if !slices.Equal(f.calls, want) {
 		t.Errorf("calls %v\nwant %v", f.calls, want)
+	}
+}
+
+// The bulk pass goes notebook by notebook, by notebook id, then node id
+// (M8 Codex review R1, fix round 2: B-3): pages of three notebooks queued
+// in bulk, their ids interleaved, are written a notebook's at a time.
+func TestTheSearchJobBuildsTheBulkNotebookByNotebook(t *testing.T) {
+	f := newFakeIndex()
+	a, b, c := uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
+	var want []uuid.UUID
+	byNotebook := map[uuid.UUID][]uuid.UUID{}
+	for i := range 5 {
+		for _, n := range []uuid.UUID{c, a, b} {
+			id := f.page(fmt.Sprint(n, i), "x")
+			f.bulk[id], f.notebooks[id] = true, n
+			byNotebook[n] = append(byNotebook[n], id)
+		}
+	}
+	for _, n := range []uuid.UUID{a, b, c} {
+		want = append(want, byNotebook[n]...)
+	}
+	job, _ := f.job(0)
+	if run, err := job.Drain(context.Background()); err != nil || run.Written != 15 || len(f.queue) != 0 {
+		t.Fatalf("Drain() = %+v, %v, %d left; want every node built", run, err, len(f.queue))
+	}
+	if !slices.Equal(f.written, want) {
+		t.Errorf("written in the order %v, want %v: a's, b's, then c's, each by id", f.written, want)
+	}
+}
+
+// bulkPages queues count pages of notebook in bulk.
+func (f *fakeIndex) bulkPages(notebook uuid.UUID, count int) []uuid.UUID {
+	var ids []uuid.UUID
+	for i := range count {
+		id := f.page(fmt.Sprint(notebook, i), "x")
+		f.bulk[id], f.notebooks[id] = true, notebook
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+// left is how many of ids are queued.
+func (f *fakeIndex) left(ids []uuid.UUID) int {
+	n := 0
+	for _, id := range ids {
+		if _, ok := f.queue[id]; ok {
+			n++
+		}
+	}
+	return n
+}
+
+// bulkReads are the calls' reads of the bulk queue.
+func bulkReads(calls []string) []string {
+	return slices.DeleteFunc(slices.Clone(calls), func(c string) bool { return !strings.HasPrefix(c, "QueuedSearch bulk") })
+}
+
+// Each run's bulk pass begins after the notebook the last one's ended in,
+// and comes round to it: a notebook queued behind another's thousands
+// waits a run, not until they are built (R1 fix round 2, B-3). Runs that
+// start one batch alone (the clock past their budget at the second): the
+// first builds 100 of a's 150 pages; the next, after a, b's 10; the next,
+// after b, finds none, comes round to the start and builds a's last 50.
+func TestTheSearchJobComesRoundTheNotebooks(t *testing.T) {
+	f := newFakeIndex()
+	a, b := uuid.NewV7(), uuid.NewV7()
+	inA, inB := f.bulkPages(a, 150), f.bulkPages(b, 10)
+	f.step = domain.SearchRunBudget / 2
+	job, _ := f.job(0)
+	for i, want := range []struct {
+		reads         []string
+		inA, inB, all int
+	}{
+		{[]string{"QueuedSearch bulk start/start"}, 50, 10, 100},
+		{[]string{"QueuedSearch bulk " + short(a) + "/end"}, 50, 0, 10},
+		{[]string{"QueuedSearch bulk " + short(b) + "/end", "QueuedSearch bulk start/start"}, 0, 0, 50},
+	} {
+		f.calls = nil
+		run, err := job.Drain(context.Background())
+		if err != nil || !slices.Equal(bulkReads(f.calls), want.reads) || f.left(inA) != want.inA || f.left(inB) != want.inB ||
+			run.Written != want.all {
+			t.Errorf("run %d = %+v, %v, reads %v, %d of a and %d of b left; want %v, %d written, %d and %d left", i+1, run, err,
+				bulkReads(f.calls), f.left(inA), f.left(inB), want.reads, want.all, want.inA, want.inB)
+		}
+	}
+}
+
+// A pass that came round to the start stops at the notebook it began
+// after: a node it decided on in this run is not decided on again. The
+// last run ended in b; this one begins after it, with c's page, built
+// within minRebuild and left queued, comes round to a's, and stops before
+// c's again.
+func TestTheSearchJobComesRoundOnce(t *testing.T) {
+	f := newFakeIndex()
+	a, b, c := uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
+	f.bulkPages(b, 1)
+	job, _ := f.job(time.Hour)
+	if run, err := job.Drain(context.Background()); err != nil || run.Written != 1 {
+		t.Fatalf("Drain() = %+v, %v; want b's page built", run, err)
+	}
+	inA := f.bulkPages(a, 3)
+	recent := f.bulkPages(c, 1)[0]
+	f.built(recent, 1, f.sources[recent].Name, domain.SearchTokenizer, f.clock.now)
+	f.calls = nil
+	run, err := job.Drain(context.Background())
+	want := []string{"QueuedSearch bulk " + short(b) + "/end", "QueuedSearch bulk " + short(c) + "/" + short(recent),
+		"QueuedSearch bulk start/start", "QueuedSearch bulk " + short(a) + "/" + short(inA[2])}
+	if err != nil || run.Written != 3 || run.Skipped != 1 || !slices.Equal(bulkReads(f.calls), want) {
+		t.Errorf("Drain() = %+v, %v, reads %v; want a's 3 built, c's skipped once, reads %v", run, err, bulkReads(f.calls), want)
 	}
 }
 

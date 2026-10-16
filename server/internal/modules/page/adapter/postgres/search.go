@@ -112,14 +112,25 @@ func (s *Store) LockSearch(ctx context.Context) (context.Context, func(), bool, 
 }
 
 // QueuedSearch implements app.SearchIndex.
-func (s *Store) QueuedSearch(ctx context.Context, bulk bool, after uuid.UUID, limit int) ([]app.QueuedNode, error) {
-	rows, err := s.queries(ctx).QueuedSearch(ctx, gen.QueuedSearchParams{Bulk: bulk, After: after, MaxRows: int32(limit)})
+func (s *Store) QueuedSearch(ctx context.Context, bulk bool, after app.QueuedNode, limit int) ([]app.QueuedNode, error) {
+	var out []app.QueuedNode
+	if bulk {
+		rows, err := s.queries(ctx).QueuedSearchBulk(ctx, gen.QueuedSearchBulkParams{AfterNotebook: after.NotebookID, After: after.ID,
+			MaxRows: int32(limit)})
+		if err != nil {
+			return nil, fmt.Errorf("read the search's queue: %w", err)
+		}
+		for _, r := range rows {
+			out = append(out, app.QueuedNode{ID: r.NodeID, NotebookID: r.NotebookID, Version: r.Version})
+		}
+		return out, nil
+	}
+	rows, err := s.queries(ctx).QueuedSearch(ctx, gen.QueuedSearchParams{After: after.ID, MaxRows: int32(limit)})
 	if err != nil {
 		return nil, fmt.Errorf("read the search's queue: %w", err)
 	}
-	out := make([]app.QueuedNode, len(rows))
-	for i, r := range rows {
-		out[i] = app.QueuedNode{ID: r.NodeID, Version: r.Version}
+	for _, r := range rows {
+		out = append(out, app.QueuedNode{ID: r.NodeID, NotebookID: r.NotebookID, Version: r.Version})
 	}
 	return out, nil
 }

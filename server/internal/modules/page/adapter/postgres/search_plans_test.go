@@ -843,10 +843,12 @@ func TestTheSearchReadsUseTheirIndexes(t *testing.T) {
 			return reads("page_search_queue", "page_search_queue_pkey", "")(n) ||
 				reads("page_search_queue", "page_search_queue_notebook_id_bulk_idx", "")(n)
 		}}},
-		{"QueuedSearch bulk", statementOf(t, func(g *gen.Queries) error {
-			_, err := g.QueuedSearch(ctx, gen.QueuedSearchParams{Bulk: true, After: eng[50], MaxRows: domain.SearchBatchNodes})
+		// The bulk pass, notebook by notebook, by the bulk nodes' index in
+		// its order (R1 fix round 2, B-3).
+		{"QueuedSearchBulk", statementOf(t, func(g *gen.Queries) error {
+			_, err := g.QueuedSearchBulk(ctx, gen.QueuedSearchBulkParams{AfterNotebook: f.eng, After: eng[50], MaxRows: domain.SearchBatchNodes})
 			return err
-		}), []func(*planNode) bool{reads("page_search_queue", "page_search_queue_pkey", "")}},
+		}), []func(*planNode) bool{reads("page_search_queue", "page_search_queue_bulk_idx", "")}},
 		{"SearchSources", statementOf(t, func(g *gen.Queries) error {
 			_, err := g.SearchSources(ctx, sources)
 			return err
