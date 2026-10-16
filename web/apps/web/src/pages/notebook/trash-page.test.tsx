@@ -940,6 +940,9 @@ test("an attachment restored, opened, that its page's list read has not on its f
   expect(await screen.findByRole("heading", { level: 1, name: "Guide" })).toBeTruthy();
   const title = await screen.findByRole("heading", { level: 2, name: "Attachments" });
   await waitFor(() => expect(document.activeElement).toBe(title));
+  // On a later page, not gone: nothing says it is (M8 closeout B-M1).
+  expect(screen.queryByText(/The attachment you opened is no longer here/)).toBeNull();
+  expect(title.hasAttribute("aria-describedby")).toBe(false);
 });
 
 test("an item read away, restored elsewhere, as the focus is on its link gives the focus to the title", async () => {

@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 
 import { eventHandlers } from "../../events/handlers";
-import type { Notebook } from "../../services/notebook.service";
+import type { Notebook, NotebookRole } from "../../services/notebook.service";
 import type { SearchHit, SearchPage, TreeNode } from "../../services/page.service";
 import type { Workspace } from "../../services/workspace.service";
 import { SearchStore } from "../../stores/search.store";
@@ -56,10 +56,11 @@ const report = changed(assetNode(13, "数据库备份.pdf", install), 45);
 /**
  * searched is pageServer with Plans' pages, and three that 数据库 finds: the
  * page 数据库设计 and the attachment 数据库备份.pdf by their names, and
- * Storage by its content, far into it; answers answer instead of it.
+ * Storage by its content, far into it; answers answer instead of it. Ada
+ * is role in Plans, its admin by default.
  */
-function searched(answers: Record<string, Answer> = {}) {
-  const server = pageServer({ nodes: [guide, install, linux, notes, database, storage, report], answers });
+function searched(answers: Record<string, Answer> = {}, role?: NotebookRole) {
+  const server = pageServer({ nodes: [guide, install, linux, notes, database, storage, report], answers, role });
   server.contents.set(database.id, { content: "表结构。\n", revision: 1 });
   server.contents.set(storage.id, {
     content: `${"Pages are kept in rows. ".repeat(3)}Our 数据库 keeps them.${" More text.".repeat(20)}`,
@@ -219,45 +220,49 @@ test("a page leads to itself, arrived at; an attachment to its page's attachment
   await waitFor(() => expect(document.activeElement).toBe(page));
 });
 
-// M8 closeout B-M1 (its probe 1): the results are not read again (M8/P5 design 4.13), so a hit may be gone.
-test("a hit deleted elsewhere after the search showed, opened: a page's says the page is not found, its title taking the focus; an attachment's page says it is gone, its attachments' title taking the focus, never the row the list cached before had", async () => {
-  vi.useFakeTimers({ shouldAdvanceTime: true });
-  const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
-  const server = searched();
-  const { router } = renderApp(pagePath(install.id), server.app);
-  // The tree and Install's attachments read, as the tab had them before the search.
-  expect(await screen.findByRole("link", { name: "数据库备份.pdf (opens in a new tab)" })).toBeTruthy();
-  await act(() => router.navigate(searchPath("数据库")));
-  await screen.findByRole("list", { name: "Search results" });
-  server.nodes = server.nodes.filter((node) => node.id !== database.id && node.id !== report.id);
-  await act(() => vi.advanceTimersByTimeAsync(6_000));
+// M8 closeout B-M1 (its probe 1): the results are not read again (M8/P5 design 4.13), so a hit may be gone. A reader's
+// attachments, none left, show to say so.
+test.each(["admin", "reader"] as const)(
+  "a hit deleted elsewhere after the search showed, opened (%s): a page's says the page is not found, its title taking the focus; an attachment's page says it is gone, its attachments' title taking the focus, never the row the list cached before had",
+  async (role) => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+    const server = searched({}, role);
+    const { router } = renderApp(pagePath(install.id), server.app);
+    // The tree and Install's attachments read, as the tab had them before the search.
+    expect(await screen.findByRole("link", { name: "数据库备份.pdf (opens in a new tab)" })).toBeTruthy();
+    await act(() => router.navigate(searchPath("数据库")));
+    await screen.findByRole("list", { name: "Search results" });
+    server.nodes = server.nodes.filter((node) => node.id !== database.id && node.id !== report.id);
+    await act(() => vi.advanceTimersByTimeAsync(6_000));
 
-  await user.click(screen.getByRole("link", { name: "数据库设计" }));
-  const notFound = await screen.findByRole("heading", { level: 1, name: "Page not found" });
-  await waitFor(() => expect(document.activeElement).toBe(notFound));
+    await user.click(screen.getByRole("link", { name: "数据库设计" }));
+    const notFound = await screen.findByRole("heading", { level: 1, name: "Page not found" });
+    await waitFor(() => expect(document.activeElement).toBe(notFound));
 
-  await act(() => router.navigate(-1));
-  const rows: string[] = [];
-  const record = (event: FocusEvent) => {
-    const id = event.target instanceof HTMLElement ? event.target.getAttribute("data-attachment") : null;
-    if (id !== null) {
-      rows.push(id);
-    }
-  };
-  document.addEventListener("focusin", record);
-  onTestFinished(() => document.removeEventListener("focusin", record));
-  await user.click(await screen.findByRole("link", { name: "数据库备份.pdf" }));
-  expect(await heading("Install")).toBeTruthy();
-  const said = await screen.findByText(
-    "The attachment you opened is no longer here: it was deleted or moved, or you no longer have access to it."
-  );
-  expect(said.tagName).toBe("OUTPUT");
-  const title = screen.getByRole("heading", { level: 2, name: "Attachments" });
-  await waitFor(() => expect(document.activeElement).toBe(title));
-  expect(title.getAttribute("aria-describedby")).toBe(said.id);
-  expect(rows).toEqual([]);
-  expect(router.state.location.state).toEqual({ attachment: report.id });
-});
+    await act(() => router.navigate(-1));
+    const rows: string[] = [];
+    const record = (event: FocusEvent) => {
+      const id = event.target instanceof HTMLElement ? event.target.getAttribute("data-attachment") : null;
+      if (id !== null) {
+        rows.push(id);
+      }
+    };
+    document.addEventListener("focusin", record);
+    onTestFinished(() => document.removeEventListener("focusin", record));
+    await user.click(await screen.findByRole("link", { name: "数据库备份.pdf" }));
+    expect(await heading("Install")).toBeTruthy();
+    const said = await screen.findByText(
+      "The attachment you opened is no longer here: it was deleted or moved, or you no longer have access to it."
+    );
+    expect(said.tagName).toBe("OUTPUT");
+    const title = screen.getByRole("heading", { level: 2, name: "Attachments" });
+    await waitFor(() => expect(document.activeElement).toBe(title));
+    expect(title.getAttribute("aria-describedby")).toBe(said.id);
+    expect(rows).toEqual([]);
+    expect(router.state.location.state).toEqual({ attachment: report.id });
+  }
+);
 
 // M8 closeout B-M1: a list cached from before confirms nothing; it is read again, within SWR's deduplication too.
 test("an attachment's hit whose row the list cached before has, opened at once: its row takes the focus once the list read again has it", async () => {
