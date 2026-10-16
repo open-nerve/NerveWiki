@@ -37,15 +37,18 @@ type nfcProbe struct {
 	text string
 }
 
-// pgNFC is texts in NFC as PostgreSQL puts them, in their order, in
-// batches.
-func (f fixture) pgNFC(t *testing.T, texts []string) []string {
+// pgNormalized is texts in form, NFC or NFD, as PostgreSQL puts them, in
+// their order, in batches.
+func (f fixture) pgNormalized(t *testing.T, form string, texts []string) []string {
 	t.Helper()
+	if form != "NFC" && form != "NFD" {
+		t.Fatalf("no form %s", form)
+	}
 	const batch = 100_000
 	out := make([]string, 0, len(texts))
 	for from := 0; from < len(texts); from += batch {
 		rows, err := f.pool.Query(context.Background(),
-			`SELECT normalize(x.t, NFC) FROM unnest($1::text[]) WITH ORDINALITY AS x(t, i) ORDER BY x.i`,
+			`SELECT normalize(x.t, `+form+`) FROM unnest($1::text[]) WITH ORDINALITY AS x(t, i) ORDER BY x.i`,
 			texts[from:min(from+batch, len(texts))])
 		if err != nil {
 			t.Fatal(err)
@@ -63,7 +66,7 @@ func (f fixture) pgNFC(t *testing.T, texts []string) []string {
 		}
 	}
 	if len(out) != len(texts) {
-		t.Fatalf("%d texts in NFC of %d", len(out), len(texts))
+		t.Fatalf("%d texts in %s of %d", len(out), form, len(texts))
 	}
 	return out
 }
@@ -76,7 +79,7 @@ func (f fixture) nfcDiffers(t *testing.T, probes []nfcProbe) map[rune]string {
 	for i, p := range probes {
 		texts[i] = p.text
 	}
-	pg := f.pgNFC(t, texts)
+	pg := f.pgNormalized(t, "NFC", texts)
 	out := map[rune]string{}
 	for i, p := range probes {
 		if goNFC := norm.NFC.String(p.text); goNFC != pg[i] {
@@ -97,15 +100,18 @@ func (f fixture) nfcDiffers(t *testing.T, probes []nfcProbe) map[rune]string {
 // alone, after a starter, among marks of classes 230 and 1, and
 // decomposed: each Go knows as a non-starter, as decomposing, or as
 // combining with the character before it, the primary composites and the
-// Hangul syllables among them; and each no Unicode version Go knows
-// assigns, which a newer PostgreSQL may. Each non-starter is then put
-// after a mark of each class. Left out: the code points of planes 4 to
+// Hangul syllables among them, decomposed by Go; and each no Unicode
+// version Go knows assigns, which a newer PostgreSQL may, decomposed by
+// PostgreSQL too, alone and after a starter: a composite only the newer
+// Unicode has, which PostgreSQL composes and Go does not (M8 Codex fix
+// check 2, C2-2). Each non-starter is then put after a mark of each
+// class. Left out: the code points of planes 4 to
 // 13, which no Unicode version assigns yet, private use and surrogates,
 // which never decompose or combine, and the characters Go knows as plain
 // starters, which keep that in every version (Unicode's stability
 // policy). The code points that differ must be those recorded for the two
 // versions (nfcGaps): a library or image upgrade that opens a gap, or
-// closes one, fails here, naming them.
+// closes one, fails here, naming them and the record to change.
 func TestGoAndPostgreSQLWriteNFCAlikeButForTheGapsRecorded(t *testing.T) {
 	f := newFixture(t)
 	started := time.Now()
@@ -119,7 +125,8 @@ func TestGoAndPostgreSQLWriteNFCAlikeButForTheGapsRecorded(t *testing.T) {
 	}
 	acute, overlay := string(rune(0x0301)), string(rune(0x0334))
 	var probes []nfcProbe
-	var marks []rune // the non-starters Go knows
+	var marks []rune   // the non-starters Go knows
+	var unknown []rune // the code points no Unicode version Go knows assigns
 	points := 0
 	for r := rune(0); r <= unicode.MaxRune; r++ {
 		switch plane := r >> 16; {
@@ -138,6 +145,18 @@ func TestGoAndPostgreSQLWriteNFCAlikeButForTheGapsRecorded(t *testing.T) {
 		}
 		if known && p.CCC() > 0 {
 			marks = append(marks, r)
+		}
+		if !known {
+			unknown = append(unknown, r)
+		}
+	}
+	texts := make([]string, len(unknown))
+	for i, r := range unknown {
+		texts[i] = string(r)
+	}
+	for i, nfd := range f.pgNormalized(t, "NFD", texts) {
+		if nfd != texts[i] {
+			probes = append(probes, nfcProbe{unknown[i], nfd}, nfcProbe{unknown[i], "a" + nfd})
 		}
 	}
 	differ := f.nfcDiffers(t, probes)
@@ -162,11 +181,13 @@ func TestGoAndPostgreSQLWriteNFCAlikeButForTheGapsRecorded(t *testing.T) {
 		}
 	}
 	maps.Copy(differ, f.nfcDiffers(t, after))
-	t.Logf("PostgreSQL's Unicode %s, x/text's %s: %d code points, %d texts, %d marks after %d classes, %d differ, in %v", pgVersion,
-		norm.Version, points, len(probes)+len(after), len(marks), len(byClass), len(differ), time.Since(started))
+	t.Logf("PostgreSQL's Unicode %s, x/text's %s: %d code points (%d unknown to x/text), %d texts, %d marks after %d classes, "+
+		"%d differ, in %v", pgVersion, norm.Version, points, len(unknown), len(probes)+len(after), len(marks), len(byClass), len(differ),
+		time.Since(started))
 
+	key := pgVersion + " " + norm.Version
 	recorded := map[rune]bool{}
-	for _, g := range nfcGaps[pgVersion+" "+norm.Version] {
+	for _, g := range nfcGaps[key] {
 		for r := g[0]; r <= g[1]; r++ {
 			recorded[r] = true
 		}
@@ -190,12 +211,14 @@ func TestGoAndPostgreSQLWriteNFCAlikeButForTheGapsRecorded(t *testing.T) {
 			shown = append(shown, differ[r])
 		}
 		t.Errorf("PostgreSQL's Unicode %s and x/text's %s put %d code points in NFC otherwise, none recorded: %s\n%s\n"+
-			"A term Go's NFC changes takes PostgreSQL's NFC in contents; one Go's NFC leaves as it is does not: review the gap "+
-			"and record it in nfcGaps", pgVersion, norm.Version, len(opened), ranges(opened), strings.Join(shown, "\n"))
+			"A term Go's NFC changes takes PostgreSQL's NFC in contents; one Go's NFC leaves as it is does not. Review the gap: "+
+			"check that a text using them, typed in either order and decomposed, finds itself, queued and built "+
+			"(TestTheSearchFindsATermGosNFCChangesAsWritten); then record them in nfcGaps[%q]",
+			pgVersion, norm.Version, len(opened), ranges(opened), strings.Join(shown, "\n"), key)
 	}
 	if len(closed) > 0 {
-		t.Errorf("PostgreSQL's Unicode %s and x/text's %s put %d code points recorded in nfcGaps in NFC alike now: %s; take them out",
-			pgVersion, norm.Version, len(closed), ranges(closed))
+		t.Errorf("PostgreSQL's Unicode %s and x/text's %s put %d code points recorded in nfcGaps[%q] in NFC alike now: %s; take them out",
+			pgVersion, norm.Version, len(closed), key, ranges(closed))
 	}
 }
 

@@ -383,11 +383,12 @@ type SearchQuery struct {
 // differ from it: Go's writes the Stream-Safe Text Format, a CGJ (U+034F)
 // after 30 non-starters in a row, the run's marks ordered on each side of
 // it alone, which PostgreSQL's does not (M8 Codex review R2); and each
-// follows its own Unicode version, x/text's 17.0 ordering 34 marks
-// PostgreSQL 18's 16.0 does not know (M8 Codex fix check 1, C1-1). A term
-// Go's NFC changes is matched in contents by PostgreSQL's NFC of it, which
-// the use case reads (Written, InContents); in names by Text. A term
-// already in Go's NFC, most of them, is matched by Text in both.
+// follows its own Unicode version, the gaps between them recorded and
+// checked by the PostgreSQL adapter's tests (nfcGaps; M8 Codex fix check
+// 1, C1-1). A term Go's NFC changes is matched in contents by
+// PostgreSQL's NFC of it, which the use case reads (Written, InContents);
+// in names by Text. A term already in Go's NFC, most of them, is matched
+// by Text in both.
 type SearchTerm struct {
 	Text       string
 	TitlesOnly bool
@@ -412,7 +413,10 @@ type SearchTerm struct {
 // MaxSearchTerms or of a run of ASCII letters and digits longer than
 // MaxSearchWordRunes, which no lexeme holds (too_long), or of no key at
 // all: punctuation alone (not_allowed). Its terms are parted by white
-// space, U+3000 too, and those of one folded form are one.
+// space, U+3000 too, and those of one folded form are one, but for a term
+// Go's NFC changes, which is one with each spelling written: a word typed
+// in NFC and again otherwise is two terms, and counts so toward
+// MaxSearchTerms (M8 Codex fix check 2, C2-3).
 func ParseSearchQuery(q *string) (SearchQuery, error) {
 	invalid := func(code, message string) (SearchQuery, error) {
 		return SearchQuery{}, shared.Invalid(shared.FieldError{Field: "q", Code: code, Message: message})
