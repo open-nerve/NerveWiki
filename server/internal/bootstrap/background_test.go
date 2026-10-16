@@ -495,3 +495,34 @@ func TestABackgroundRevertOfADeletionThroughServe(t *testing.T) {
 	}
 	checkBackground(t, tm)
 }
+
+// A background revert's report counts what its batches did as the page
+// module's units count it, through the composition root's RunBatch (v0.1
+// design 13.1, item 21; M8 closeout C-M6): the revert of a rename that
+// wrote two pages' links again puts one name back and writes two pages
+// back, the job's report says so, and the notebook is as before the
+// rename.
+func TestTheBackgroundRevertOfARenameCountsWhatItPutBackAndWrote(t *testing.T) {
+	tm := newAcmeTeam(t, "member", "")
+	nb := tm.openNotebook(t, "alice", "Eng")
+	target := tm.createPage(t, "alice", nb, "", "Target")
+	one := tm.createPageWith(t, "alice", nb, "", "One", "see [[Target]]\n")
+	two := tm.createPageWith(t, "alice", nb, "", "Two", "and [[Target]]\n")
+	before := tm.notebookState(t, nb)
+	tm.send(t, nodeRename("alice", target, "Goal"), http.StatusOK)
+	tm.wrote(t, one, "see [[Goal]]\n", 2)
+	tm.wrote(t, two, "and [[Goal]]\n", 2)
+	rename := tm.newest(t, nb)
+
+	j := tm.background(t, revertStart("bob", nb, rename.ID, ""))
+	if j.State != "succeeded" || j.counts()["put_back"] != 1 || j.counts()["written"] != 2 || j.counts()["deleted"] != 0 ||
+		j.counts()["restored"] != 0 || j.counts()["skipped"] != 0 || j.Progress.Done != 3 {
+		t.Fatalf("the background revert of the rename = %s, want it succeeded, a name put back and two pages written back", j)
+	}
+	if now := tm.notebookState(t, nb); now != before {
+		t.Errorf("the notebook after the revert differs from before the rename")
+	}
+	tm.wrote(t, one, "see [[Target]]\n", 3)
+	tm.wrote(t, two, "and [[Target]]\n", 3)
+	checkBackground(t, tm)
+}

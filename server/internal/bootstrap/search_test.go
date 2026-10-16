@@ -259,13 +259,15 @@ func sameLexemes(lexemes, tokens []string) bool {
 
 // Through the API, each kind of write a request makes is found by the next
 // search at once, through the queue: a page and an attachment created, a
-// content written, a rename and its revert, a move, a deletion, a restore
-// from the trash, a version restored. The job runs before each write, so
-// that the index holds the node as it was and the queue nothing: only the
-// write's own queueing makes the search find it as it is now. A background
-// job's writes, a restore's, a revert's and an import's, are not found
-// until the job has built them, the answer building meanwhile (M8/P5A
-// review C-I1). The job then leaves the index its nodes'.
+// content written, a rename and its revert, a move and its rewrite of a
+// link to the page moved, a task toggled, a deletion, a restore from the
+// trash, a version restored. The job runs before each write, so that the
+// index holds the node as it was and the queue nothing: only the write's
+// own queueing makes the search find it as it is now, a write queued in
+// bulk answering building (M8 closeout A-3). A background job's writes, a
+// restore's, a revert's and an import's, are not found until the job has
+// built them, the answer building meanwhile (M8/P5A review C-I1). The job
+// then leaves the index its nodes'.
 func TestTheSearchFindsEachWriteAtOnce(t *testing.T) {
 	tm := newAcmeTeam(t, "member", "")
 	nb := tm.openNotebook(t, "alice", "Eng")
@@ -302,12 +304,30 @@ func TestTheSearchFindsEachWriteAtOnce(t *testing.T) {
 	tm.finds(t, "bob", "quokka", "Quokka notes")
 	tm.finds(t, "bob", "bilby")
 
-	drainSearch(t, tm.pool)
 	shelf := tm.createPage(t, "alice", nb, "", "Shelf")
+	burrow := tm.createPage(t, "alice", nb, "", "Burrow")
+	echidna := tm.createPage(t, "alice", nb, "", "Echidna")
+	pointer := tm.createPageWith(t, "alice", nb, "", "Pointer", "[e](/Echidna.md)\n")
+	drainSearch(t, tm.pool)
 	tm.send(t, request("alice", http.MethodPost, "/api/v0/nodes/"+id+"/move", `{"parent_id":"`+shelf+`"}`), http.StatusOK)
 	if a := tm.finds(t, "bob", "numbat", "numbat.png"); len(a.Data) == 1 && len(a.Data[0].Ancestors) != 2 {
 		t.Errorf("the hit's ancestors = %+v, want Shelf and Quokka notes", a.Data[0].Ancestors)
 	}
+	// The move's rewrite of Pointer's link, in its unit: found by its new
+	// path at once.
+	tm.send(t, nodeMove("alice", echidna, burrow), http.StatusOK)
+	tm.wrote(t, pointer, "[e](/Burrow/Echidna.md)\n", 2)
+	tm.finds(t, "bob", "burrow", "Burrow", "Pointer")
+	checkSearch(t, tm.pool)
+
+	// A task toggled: its page queued exact, in its unit. A toggle changes
+	// no word, so the search finds the page all the same; checkSearch
+	// fails it if the toggle queued nothing.
+	chores := tm.createPageWith(t, "alice", nb, "", "Chores", "- [ ] feed the platypus\n")
+	drainSearch(t, tm.pool)
+	tm.send(t, taskToggle("bob", chores, 1, 3, true), http.StatusOK)
+	tm.finds(t, "bob", "platypus", "Chores")
+	checkSearch(t, tm.pool)
 
 	drainSearch(t, tm.pool)
 	tm.send(t, nodeDeletion("alice", id), http.StatusNoContent)
@@ -338,8 +358,9 @@ func TestTheSearchFindsEachWriteAtOnce(t *testing.T) {
 	tm.send(t, contentWrite("alice", id, "the emu walks", tm.content(t, "alice", id).Revision, ""), http.StatusOK)
 	written := tm.newest(t, nb).ID
 	drainSearch(t, tm.pool)
-	if reverted := tm.background(t, revertStart("bob", nb, written, "")); reverted.State != "succeeded" {
-		t.Fatalf("the background revert = %s, want it succeeded", reverted)
+	if reverted := tm.background(t, revertStart("bob", nb, written, "")); reverted.State != "succeeded" ||
+		reverted.counts()["written"] != 1 || reverted.counts()["put_back"] != 0 {
+		t.Fatalf("the background revert = %s, want it succeeded, one page written back", reverted)
 	}
 	// The row is of the emu's content still, which the check refuses.
 	tm.building(t, "bob", "wombat")
