@@ -54,7 +54,7 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
 | `migrate status` | 列出迁移及其状态                                               |
 | `users …`        | 服务器管理员的账户命令，见下文"账户与认证"                     |
 | `workspaces …`   | 服务器管理员的工作区命令，见下文"账户与认证"                   |
-| `reindex …`      | 从页面重建链接索引，见下文"链接索引"                           |
+| `reindex …`      | 从页面重建链接索引，让搜索的行重新入队，见下文"链接索引"       |
 | `version`        | 打印版本号与构建信息                                           |
 
 ### 配置
@@ -161,16 +161,22 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
   - `GET /api/v0/notebooks/{notebook_id}/tags`：笔记本的标签与带它的页数；`GET /api/v0/notebooks/{notebook_id}/tags/{tag}`：带这个标签或它下面的标签的页（标签整个编码成一段）；
   - `GET /api/v0/notebooks/{notebook_id}/link-targets`：笔记本的每一页与附件（`kind`）、它的 `link`（链接写成什么才只解析到它；没有扩展名的附件为 `null`）与别名，编辑器的补全用它；
   - `GET /api/v0/pages/{page_id}/link-landing?target=`：只给笔记本的管理员与编辑者，为这一页里一条解析不到的链接新建页时，新页该建在哪个父页下、叫什么，或者已有的页，或者为什么不能建（`reason`；目标是附件的写法时是 `target_is_asset`）。
-- **`nervewiki reindex [--notebook <id>]`**：从页面重建链接索引，不给 `--notebook` 时逐个重建每个没删除的笔记本，每个一行（页数、链接数、解析不到的数）。升级到带链接索引的版本（M6）之后、或发布说明要求时（提取规则的版本 `indexed_pages.extractor` 变了）执行一次。
+- **`nervewiki reindex [--notebook <id>]`**：从页面重建链接索引，不给 `--notebook` 时逐个重建每个没删除的笔记本，每个一行（页数、链接数、解析不到的数，以及搜索入队的节点数）。它同时让这个笔记本里还没有搜索的行、或行的分词版本不同的节点以批量重新入队，由服务在后台重建（见下文"搜索"）：建好之前搜索找不到它们，结果页写明索引正在建立、结果可能不全。升级到带链接索引的版本（M6）之后、或发布说明要求时（提取规则的版本 `indexed_pages.extractor` 变了；搜索的分词版本变了：升级 Go 或 `golang.org/x/text` 的 Unicode 数据之后）执行一次。
   - 每个笔记本一个事务：重建期间这个笔记本的写入在等待；页数上万的笔记本要十几秒，等不到的保存答 500。所以在没人写的时候执行，最好在 `migrate up` 之后、启动服务之前。
-  - 它同时按当前的 Unicode 数据重算标题键：同一父页下有两页会撞键时，这个笔记本不重建、什么也不改，标准错误上列出这些页的标题与 id；改掉其中一个标题之后再执行。别的原因重建失败的笔记本同样原样保留，连同原因列在标准错误上。其余笔记本照常，命令最后以退出码 1 结束。
+  - 它同时按当前的 Unicode 数据重算标题键：同一父页下有两页会撞键时，这个笔记本不重建、什么也不改，标准错误上列出这些页的标题与 id；改掉其中一个标题之后再执行。别的原因重建失败的笔记本同样原样保留，连同原因列在标准错误上。其余笔记本照常，命令最后以退出码 1 结束。撞键的笔记本的搜索照样入队；搜索的入队失败的笔记本在它那一行写明没有入队，命令接着做别的，最后同样以退出码 1 结束。
+
+### 搜索
+
+- `GET /api/v0/workspaces/{slug}/search?q=&notebook_id=&cursor=&limit=`：工作区的任何成员（访客只在被加入的笔记本里）按名称与正文搜索看得到的笔记本里活着的页与附件（附件只按名称），可以限定一本笔记本。名称里有每个词的排在前面，其余的在后，各按最后改动从新到旧；每页 1–50 条（默认 20），正文命中的带摘要与高亮的位置（UTF-16 码元），第一页带约数（`exact`、`about`、`at_least`）。
+- 词按空白分开，每个词都要命中：单个汉字只在名称里找；汉字 2 个起、字母与数字 3 个起按子串（`api` 找得到 `rapid`）；字母与数字 1–2 个按整词（`go` 找得到 `Go语言`）；大小写不敏感；繁简、重音、全角与半角不互通。`q` 至多 256 字节、8 个词、64 个连续的 ASCII 字母与数字。一页至多查 500 页的正文：可能少于 `limit` 条、甚至一条也没有而带 `next_cursor`。
+- 索引由服务的后台任务建（`page.search_index_interval`，默认每 5 秒）：用户在请求里的写立即搜得到；导入、后台的恢复与撤销、升级、`nervewiki reindex` 写的节点在任务建好之前搜不到，答复的 `building` 为真，结果页写明索引正在建立、结果可能不全。
 
 ### 导入与导出
 
 - **导出**（`POST /api/v0/notebooks/{notebook_id}/exports`，可带 `root_id` 只导出一页及其子页）：能读这本笔记本的人都能导出。后台任务在一个快照里把页面写成 `.md`、附件写成原来的文件，按 Obsidian 库的布局打成 zip（有子页的页是同名的文件夹；`.nerve/meta.json` 记着次序），报告列出改了名的与找不到文件的附件。成功之后经签名地址下载（`GET /api/v0/transfer-jobs/{job_id}/download`，不带令牌，计入 `anonymous` 桶，按客户端 IP），保留 `transfer.export_ttl`（默认 24 小时）；每人每本笔记本只留最新的一份，同时只有一个在进行（409 `transfer.busy`）。导出贡献者（之后的 M 注册）加的文件也进 zip，记在 `meta.json` 的 `contributed`，导入时不导入。
 - **导入**（`POST /api/v0/notebooks/{notebook_id}/imports`，`multipart/form-data`：可选的 `parent_id`，然后是 `file`）：笔记本的编辑者与管理员把一个 zip（Obsidian 的库、本系统的导出，或任何 Markdown 文件夹）导入到根或一页之下。`.md` 是页面，文件夹是同名页面的子页面，其余文件是附件；隐藏的文件与文件夹（如 `.obsidian`）、`__MACOSX`、`Thumbs.db` 不导入；不能作为标题的名称修正、已占用的加序号，不能安全导入的条目（越出目录、符号链接、加密、压缩比过大、名称不是 UTF-8、过深、过大等）跳过，报告逐条列出。zip 至多 `transfer.import_max_bytes`（默认 512 MiB）、`import_max_entries` 个条目、解压后 `import_max_unpacked_bytes`，建的节点（条目加路径隐含的文件夹）至多 60,000 个（一次撤销能撤销的上限），超过的整包失败、什么都不写。一本笔记本同时只有一个导入（上传中的也算，第二个在读文件之前答 409 `transfer.busy`）。导入分批写进笔记本（一批至多 100 个节点），整个导入是一个变更集；中途失败、取消或服务重启时，已写的部分留在笔记本里，报告写明。
 - **任务**：从回收站恢复一项（`POST /api/v0/notebooks/{notebook_id}/trash-restores`）与整组撤销一个变更集（`POST /api/v0/notebooks/{notebook_id}/reverts`）在一次请求里做不完时（422 `page.restore_too_large`、`page.revert_too_large`）可以在后台分批进行，同导入是任务：一本笔记本同时只有一个导入、恢复或撤销（409 `transfer.busy`），每批在锁下重新核对，途中停下时已完成的部分留着，报告写明；后台的撤销至多 60,000 个条目，超过答 422。`GET /api/v0/notebooks/{notebook_id}/transfer-jobs` 按游标列出（自己的；笔记本的管理员看到所有人的），`GET /api/v0/transfer-jobs/{job_id}` 读一个与它的报告，`POST /api/v0/transfer-jobs/{job_id}/cancel` 取消（排队的立即取消，运行中的导出在一秒之内，导入、恢复与撤销在两批之间停下）。全部排队与运行中的任务至多 `transfer.max_queued`（默认 20），超出答 503 `server_busy`；一个任务至多运行 `transfer.job_timeout`（默认 6 小时）。不自动重试：失败的说明原因，重新开始即可。服务停机时运行中的任务被打断，记成失败 `interrupted`（导入、恢复与撤销已写的部分留着），重启之后不再运行。进程恰在 River 取到任务、任务开始之前停掉时，任务一直排队，直到 River 的救援（`transfer.job_timeout` 加 1 小时，默认 7 小时）之后才记成失败：其间它占着队列的一个名额，这本笔记本开始不了新的导入、恢复与撤销（导出是同一个人在这本笔记本），答 409 `transfer.busy`；开始它的人与笔记本的管理员可以取消它。
-- **后台任务**：每 5 分钟把心跳停了超过 `transfer.heartbeat_timeout` 的任务记成失败（服务启动时也做一次），每 15 分钟让到期的导出过期并删掉 zip，每天清扫存储里不属于任何任务的 zip。导出与导入在各自的队列里运行（从回收站恢复与整组撤销在导入的队列里），`jobs.export_workers` 与 `jobs.import_workers` 合起来至多 `database.max_conns` 的一半（默认各 1，所以 `max_conns` 至少 4；更小的配置启动失败）。
+- **后台任务**：每 5 分钟把心跳停了超过 `transfer.heartbeat_timeout` 的任务记成失败（服务启动时也做一次），每 15 分钟让到期的导出过期并删掉 zip，每天清扫存储里不属于任何任务的 zip。导出与导入在各自的队列里运行（从回收站恢复与整组撤销在导入的队列里），`jobs.export_workers` 与 `jobs.import_workers` 加上搜索的建索引任务（运行时占一个连接）合起来至多 `database.max_conns` 的一半（默认各 1，所以 `max_conns` 至少 6；更小的配置启动失败）。
 
 ### 事件流
 
@@ -294,13 +300,16 @@ make image-smoke VERSION=0.1.0   # 在镜像上跑 S1、S3：迁移、探针、�
   docker run --rm -e NWIKI_DATABASE__URL=… "${key[@]}" nervewiki:0.1.0 reindex
   ```
 
-- **迁移与服务分用两个数据库角色时**（表的所有者执行迁移，服务用另一个角色登录，`database.auto_migrate` 关闭），服务需要的权限全部写在 [`deploy/runtime-grants.sql`](deploy/runtime-grants.sql)，授予组角色 `nervewiki_runtime`：业务表逐表的读写（不给 `TRUNCATE`、`REFERENCES`、`TRIGGER` 与 DDL），River 的表与序列，`river_job` 的 `MAINTAIN`（River 每天用 `REINDEX INDEX CONCURRENTLY` 重建它的索引，需要 PostgreSQL 17 起），导入写入的 11 张表的 `MAINTAIN`（导入每写 10,000 个节点与结束时对它们 `ANALYZE`；少了它 PostgreSQL 跳过这张表、只发一条 WARNING，导入照常完成，统计等 autovacuum 更新），`goose_db_version` 的读（`/readyz` 靠它判断迁移是否执行完）。函数与类型不在文件里，靠 PostgreSQL 默认给 PUBLIC 的权限。
+- 升级到带搜索的版本（M8）时，迁移让已有的全部节点排队，服务起来之后由后台任务建索引（30 万页约 15–20 分钟），其间搜索找不到它们、页上写明索引正在建立。这次补入与大的工作区的 `nervewiki reindex` 整个重建搜索的索引，写大量的 WAL：`max_wal_size` 是默认的 1 GB 时，重建每一页约 1.7 MB（30 万页的全部重建约 490 GB、约 36 分钟，主要是检查点之后整页的镜像），重建之后 `page_search` 在磁盘上约是原来的 2 倍，空出的地方不还给系统。所以之前调大 `max_wal_size`（例如 16 GB），留出至少 `page_search` 现在那么大的空闲磁盘（新建时约是正文的 2.5 倍）；有 WAL 归档或复制槽时，归档与 `pg_wal` 要容得下这些 WAL。
+
+- **迁移与服务分用两个数据库角色时**（表的所有者执行迁移，服务用另一个角色登录，`database.auto_migrate` 关闭），服务需要的权限全部写在 [`deploy/runtime-grants.sql`](deploy/runtime-grants.sql)，授予组角色 `nervewiki_runtime`：业务表逐表的读写（不给 `TRUNCATE`、`REFERENCES`、`TRIGGER` 与 DDL），River 的表与序列，`river_job` 的 `MAINTAIN`（River 每天用 `REINDEX INDEX CONCURRENTLY` 重建它的索引，需要 PostgreSQL 17 起），导入写入的 11 张表的 `MAINTAIN`（导入每写 10,000 个节点与结束时对它们 `ANALYZE`；少了它 PostgreSQL 跳过这张表、只发一条 WARNING，导入照常完成，统计等 autovacuum 更新），`page_search` 的 `MAINTAIN`（搜索的建索引任务每写 10,000 行对它 `ANALYZE`），`goose_db_version` 的读（`/readyz` 靠它判断迁移是否执行完）。函数与类型不在文件里，靠 PostgreSQL 默认给 PUBLIC 的权限。
   - 组角色建一次，服务登录的角色加入它：`CREATE ROLE nervewiki_runtime NOLOGIN;`、`CREATE ROLE nervewiki_app LOGIN PASSWORD '…' IN ROLE nervewiki_runtime;`。
   - **每次 `migrate up` 之后、启动服务之前**，以表的所有者执行一次这个文件，例如 `psql -v ON_ERROR_STOP=1 -f deploy/runtime-grants.sql`：新的迁移可能加了表，文件逐个列出；重复执行没有影响。
   - 少了业务表的权限时接口答 500；少了 `goose_db_version` 的读时 `/readyz` 是 503，后台任务一直等着不启动。少了 `river_queue` 的权限时 River 启动失败，服务随之退出（`start the jobs: … permission denied`）；少了 River 其他表的，`/readyz` 仍是 200，会话清理、软删除清理与索引重建因 `permission denied` 失败，只记在日志里（`river_notification` 目前 River 不写，少了它看不出来）。`server/internal/bootstrap/runtime_role_test.go` 以恰好这些权限的角色运行服务与管理命令，`public` 里任何表、视图、序列或函数的权限与文件不符时失败。
   - 索引属于表的所有者：停机打断 River 的索引重建时留下的 `*_ccnew` 索引，服务的角色删不掉，River 此后每天记 WARN `Found reindex artifact`，由表的所有者执行 `DROP INDEX CONCURRENTLY` 删除。
 
 - 在反向代理之后运行时设置 `NWIKI_SERVER__TRUSTED_PROXIES`，否则每个客户端都被当成代理。
+  - 搜索的词在请求行里（`GET /api/v0/workspaces/{slug}/search?q=…`），会进反向代理的访问日志（服务自己的访问日志只记路由）：同签名地址，访问日志要照敏感数据保管。
 - 反向代理不能缓冲事件流，读超时要长于心跳间隔（`events.heartbeat_interval`，默认 20 秒）。服务端在流的答复上设了 `X-Accel-Buffering: no`。下面两份配置都验证过：帧在写入答复的同一毫秒到达，心跳让连接一直活着（M5/P2）。
   - Caddy 的默认配置即可；开了 `encode`（`zstd gzip`）也一样：Caddy 不压缩 `text/event-stream`，不必排除它：
 
@@ -329,7 +338,7 @@ make image-smoke VERSION=0.1.0   # 在镜像上跑 S1、S3：迁移、探针、�
 
 - 数据库必须以 builtin provider 的 `C.UTF-8` 初始化，否则服务拒绝启动，见[总体设计](docs/v0.1/v0.1-design.md) 7.1。
 - 探针：存活用 `GET /healthz`（不访问任何依赖），就绪用 `GET /readyz`（数据库可用、迁移已执行完）。镜像里没有 shell 与 curl，所以没有写 `HEALTHCHECK`，由编排系统探测。
-- 后台任务（River：每小时一次的过期会话清理 `auth.session_cleanup_interval`，每小时一次的软删除清理 `jobs.purge_interval`，每 10 分钟一次的过期编辑会话清理 `page.edit_session_cleanup_interval`，每天一次的附件目录清扫，导入导出的收拾、到期与清扫（见上文"导入与导出"））随 `serve` 运行，表在同一条迁移链上。关闭自动迁移时，服务在迁移执行完之前不启动后台任务，迁移之后自动启动，不必重启。River 从连接池里借走一个连接专门监听通知，事件流也借走一个（`LISTEN nwiki_events`，断开后自动重连），数据库要为每个实例多留两个连接（`database.max_conns` + 2）。运行中的导出与导入各占一个连接，所以它们的 worker 合起来至多 `database.max_conns` 的一半。
+- 后台任务（River：每小时一次的过期会话清理 `auth.session_cleanup_interval`，每小时一次的软删除清理 `jobs.purge_interval`，每 10 分钟一次的过期编辑会话清理 `page.edit_session_cleanup_interval`，每天一次的附件目录清扫，导入导出的收拾、到期与清扫（见上文"导入与导出"），每 5 秒一次的搜索的建索引 `page.search_index_interval`（见上文"搜索"））随 `serve` 运行，表在同一条迁移链上。关闭自动迁移时，服务在迁移执行完之前不启动后台任务，迁移之后自动启动，不必重启。River 从连接池里借走一个连接专门监听通知，事件流也借走一个（`LISTEN nwiki_events`，断开后自动重连），数据库要为每个实例多留两个连接（`database.max_conns` + 2）。运行中的导出与导入各占一个连接，搜索的建索引任务运行时也占一个，所以它们合起来至多 `database.max_conns` 的一半（默认的配置下 `max_conns` 至少 6）。搜索的建索引任务被不干净地停下（OOM、`docker kill`、宽限期太短）留在 River 里"运行中"的那一行，下一次 `serve` 启动时丢掉（WARN `jobs left running by a stopped server discarded`）。
 - 停止时发 SIGTERM：服务停止接收新连接，关闭开着的事件流，等正在处理的请求结束（最多 `server.shutdown_timeout`，默认 20 秒），关闭接收通知的连接（最多 2 秒），再等正在执行的后台任务（最多 `jobs.shutdown_timeout`，默认 10 秒，之后取消它们，再宽限 1 秒），最后关闭连接池（最多 5 秒）后退出。停机的宽限期要比这些之和长：`docker stop` 默认只等 10 秒，用 `docker stop -t 40`。启动之后不久就停止时（重启循环、端到端测试），River 通常记一条 ERROR `maintenance.PeriodicJobEnqueuer: Error starting transaction`（`context canceled`，它启动时的定时任务入队被停机打断），退出码仍是 0；运行了一段时间的服务停止时一般没有。
 
 ## Markdown 样例集
