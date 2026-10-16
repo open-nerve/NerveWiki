@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"maps"
+	"math/rand/v2"
 	"slices"
 	"strings"
 	"testing"
@@ -258,5 +259,59 @@ func TestAnUpgradedInstanceBuildsItsSearchAgain(t *testing.T) {
 	f.drain(t)
 	if names, building := find(); !slices.Equal(names, []string{"Alpha", "Beta"}) || building {
 		t.Errorf("once the job ran, the search finds %q, building %v; want both, built", names, building)
+	}
+}
+
+// A row at its bound fits PostgreSQL's tsvector behind the longest prefix
+// a notebook can have (M8 Codex review R1, fix round 2: A-1): a page of
+// random CJK text past MaxSearchLexemeBytes, queued in bulk in a notebook
+// whose prefix is of SearchPrefixBytes, the longest page_search_prefix
+// gives, is written by the job, its notebook no more building, and found by
+// its name and its content. Counted without the prefixes, its lexemes made
+// a tsvector of 1.3 MB, which PostgreSQL refused at every run: the page was
+// never found, and its notebook said it was being built for good.
+func TestARowAtItsBoundFitsBehindTheLongestPrefix(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	var longest int
+	if err := f.pool.QueryRow(ctx, `SELECT length(page_search_prefix(9223372036854775807))`).Scan(&longest); err != nil ||
+		longest != domain.SearchPrefixBytes {
+		t.Fatalf("the longest prefix is of %d bytes, %v; want SearchPrefixBytes, %d", longest, err, domain.SearchPrefixBytes)
+	}
+	// eng's prefix is the sequence's next, the first of seven bytes.
+	f.exec(t, `SELECT setval('page_search_tags_seq', 56800235583, false)`)
+	r := rand.New(rand.NewPCG(1, 2))
+	var b strings.Builder
+	for b.Len() < 4*domain.MaxSearchLexemeBytes/3 {
+		b.WriteRune(rune(0x4E00 + r.IntN(0x5000)))
+	}
+	content := b.String()
+	_, body := domain.SearchTokens("Big", &content)
+	sum := 0
+	for _, x := range body {
+		sum += len(x) + domain.SearchPrefixBytes
+	}
+	if sum < domain.MaxSearchLexemeBytes-6-domain.SearchPrefixBytes {
+		t.Fatalf("the body's lexemes hold %d bytes with their prefixes, want the bound's, %d", sum, domain.MaxSearchLexemeBytes)
+	}
+	p := f.page(t, f.eng, nil, "Big", 0)
+	f.write(t, p.ID, content, 2, now())
+	f.queueSearch(t, f.eng, true, p.ID)
+	f.drain(t)
+	if prefix := f.count(t, `SELECT length(prefix) FROM page_search_tags WHERE notebook_id = $1`, f.eng); prefix != domain.SearchPrefixBytes {
+		t.Fatalf("eng's prefix is of %d bytes, want %d", prefix, domain.SearchPrefixBytes)
+	}
+	if n := f.count(t, `SELECT length(body) FROM page_search WHERE node_id = $1`, p.ID); n != len(body) {
+		t.Errorf("the row holds %d lexemes, want %d", n, len(body))
+	}
+	building, err := inSnapshot(f, func(ctx context.Context) (bool, error) { return f.s.SearchBuilding(ctx, []uuid.UUID{f.eng}) })
+	if err != nil || building {
+		t.Errorf("eng building = %v, %v; want its rows built", building, err)
+	}
+	if got := f.titlesOf(t, "Big", f.eng); !slices.Equal(got, []string{"Big"}) {
+		t.Errorf("the title tier finds %q, want Big", got)
+	}
+	if got := f.bodiesOf(t, body[1], f.eng); !slices.Equal(got, []string{"Big"}) {
+		t.Errorf("the body tier finds %q for %q, want Big", got, body[1])
 	}
 }

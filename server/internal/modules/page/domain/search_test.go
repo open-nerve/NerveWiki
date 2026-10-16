@@ -194,8 +194,8 @@ func TestEachOrbitKeysAlike(t *testing.T) {
 	}
 }
 
-// A row's lexemes stop at MaxSearchLexemeBytes, their bytes summed, in the
-// order they first occur.
+// A row's lexemes stop at MaxSearchLexemeBytes, their bytes and the
+// longest prefix of each summed, in the order they first occur.
 func TestSearchTokensStopAtTheBound(t *testing.T) {
 	var b strings.Builder
 	r := rand.New(rand.NewSource(1))
@@ -206,10 +206,11 @@ func TestSearchTokensStopAtTheBound(t *testing.T) {
 	_, body := domain.SearchTokens("x", &content)
 	sum := 0
 	for _, x := range body {
-		sum += len(x)
+		sum += len(x) + domain.SearchPrefixBytes
 	}
-	if sum > domain.MaxSearchLexemeBytes || sum < domain.MaxSearchLexemeBytes-6 {
-		t.Fatalf("the lexemes hold %d bytes, want at most %d and within a bigram of it", sum, domain.MaxSearchLexemeBytes)
+	if sum > domain.MaxSearchLexemeBytes || sum < domain.MaxSearchLexemeBytes-6-domain.SearchPrefixBytes {
+		t.Fatalf("the lexemes hold %d bytes with their prefixes, want at most %d and within a bigram of it", sum,
+			domain.MaxSearchLexemeBytes)
 	}
 	if first := string([]rune(content)[:2]); body[1] != first {
 		t.Errorf("the first bigram is %q, want %q: the order of occurrence", body[1], first)
@@ -217,27 +218,31 @@ func TestSearchTokensStopAtTheBound(t *testing.T) {
 }
 
 // The lexemes stop at the first that does not fit: none after it, though
-// shorter. The name's x and 166,666 bigrams of 6 bytes fill 999,997; the
-// next bigram does not fit, nor then the q after it, which would.
+// shorter. The name's x and y, of 8 bytes each with their prefixes, and
+// 76,921 bigrams of 13 fill 999,989; the next bigram does not fit, nor
+// then the q after it, which would.
 func TestSearchTokensStopAtTheFirstPastTheBound(t *testing.T) {
+	if domain.SearchPrefixBytes != 7 {
+		t.Fatalf("SearchPrefixBytes = %d: the counts below are of 7", domain.SearchPrefixBytes)
+	}
 	var b strings.Builder
-	for k := range 166_670 {
+	for k := range 76_930 {
 		b.WriteRune(rune(0x4E00 + k/20_000))
 		b.WriteRune(rune(0x4E00 + k%20_000))
 		b.WriteByte(' ')
 	}
 	b.WriteString("q")
 	content := b.String()
-	_, body := domain.SearchTokens("x", &content)
-	if len(body) != 1+166_666 || slices.Contains(body, "q") {
-		t.Errorf("%d lexemes, the last %q; want the name's and 166,666 bigrams, none after", len(body), body[len(body)-1])
+	_, body := domain.SearchTokens("x y", &content)
+	if len(body) != 2+76_921 || slices.Contains(body, "q") {
+		t.Errorf("%d lexemes, the last %q; want the name's two and 76,921 bigrams, none after", len(body), body[len(body)-1])
 	}
 }
 
 // SearchTokenizer names the rules' version, Go's Unicode version and
 // x/text's, whose fold and NFC are one Unicode version's.
 func TestSearchTokenizer(t *testing.T) {
-	if want := "3/" + unicode.Version + "/" + norm.Version; domain.SearchTokenizer != want {
+	if want := "4/" + unicode.Version + "/" + norm.Version; domain.SearchTokenizer != want {
 		t.Errorf("SearchTokenizer = %q, want %s", domain.SearchTokenizer, want)
 	}
 	if cases.UnicodeVersion != norm.Version {

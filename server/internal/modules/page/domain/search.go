@@ -50,9 +50,16 @@ const (
 	MaxSearchCountScan = 20_000
 	SearchCountSample  = 100
 	SearchCountPasses  = 2
-	// MaxSearchLexemeBytes bounds a row's lexemes, their bytes summed: a
-	// tsvector holds at most 1,048,575 and refuses more.
+	// MaxSearchLexemeBytes bounds a row's lexemes as the store writes
+	// them, their bytes summed, each behind SearchPrefixBytes: a tsvector
+	// holds at most 1,048,575 and refuses more.
 	MaxSearchLexemeBytes = 1_000_000
+	// SearchPrefixBytes is the longest prefix the store writes before each
+	// of a row's lexemes, its notebook's (migration 00041's
+	// page_search_prefix: six digits of base 62 at most, and '#'), counted
+	// so for every lexeme toward MaxSearchLexemeBytes: a row fits whichever
+	// notebook it is of (M8 Codex review R1, fix round 2: A-1).
+	SearchPrefixBytes = 7
 	// MaxSearchWordRunes is the longest run of ASCII letters and digits
 	// indexed, folded: a longer one, base64, hex and the like, is not, nor
 	// is a query's. A longer run of another script's letters and marks,
@@ -76,8 +83,9 @@ const (
 // them is a new one, whose rows nervewiki reindex queues. 2: the cut of
 // long runs to ASCII's, the end of a data: string, Cherokee's case (M8/P5A
 // review A-I1, A-M3, A-M1). 3: each lexeme stored behind its notebook's
-// prefix (M8 Codex review R1; migration 00041 rebuilds every row).
-const searchTokenizerVersion = "3"
+// prefix (M8 Codex review R1; migration 00041 rebuilds every row). 4: the
+// bound counts each lexeme's prefix (R1 fix round 2, A-1).
+const searchTokenizerVersion = "4"
 
 // SearchTokenizer names the lexemes a row holds: the rules' version, Go's
 // Unicode version, whose tables classify the characters, and x/text's,
@@ -238,8 +246,9 @@ func searchFold(s string) string {
 // run when it is of one or two. A run of ASCII letters and digits longer
 // than MaxSearchWordRunes, a data: string longer than 64 characters (an
 // image in the Markdown), up to the first character no data: URL holds,
-// and what follows MaxSearchLexemeBytes are left out: a query finds them
-// only while the node waits in the queue.
+// and what follows MaxSearchLexemeBytes, each lexeme counted with
+// SearchPrefixBytes, are left out: a query finds them only while the node
+// waits in the queue.
 func SearchTokens(name string, content *string) (title, body []string) {
 	t := lexemes{out: []string{}}
 	t.scan(searchFold(name), true)
@@ -251,7 +260,8 @@ func SearchTokens(name string, content *string) (title, body []string) {
 	return t.out, b.out
 }
 
-// lexemes collects a row's lexemes, each once, up to MaxSearchLexemeBytes.
+// lexemes collects a row's lexemes, each once, up to MaxSearchLexemeBytes,
+// each counted with SearchPrefixBytes.
 type lexemes struct {
 	seen  map[string]struct{}
 	out   []string
@@ -266,7 +276,7 @@ func (l *lexemes) add(s string) {
 	if _, ok := l.seen[s]; ok {
 		return
 	}
-	if l.bytes+len(s) > MaxSearchLexemeBytes {
+	if l.bytes+len(s)+SearchPrefixBytes > MaxSearchLexemeBytes {
 		l.full = true
 		return
 	}
@@ -275,7 +285,7 @@ func (l *lexemes) add(s string) {
 	}
 	l.seen[s] = struct{}{}
 	l.out = append(l.out, s)
-	l.bytes += len(s)
+	l.bytes += len(s) + SearchPrefixBytes
 }
 
 // scan adds the lexemes of s, folded: its CJK runs' bigrams, and their
