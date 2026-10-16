@@ -24,4 +24,7 @@ M9 的 `batch`（一个单元多个操作）是第一个让一个变更集里有
 另：
 
 - 单个变更集的 `renames`、`moves`（`getChangeset`，网页的撤销据此提示链接不跟着改回、给"改回原名"）只看前 1,000 项条目（`ChangesetMoves`）：M8 的变更集里改名、移动各自只有一项，`batch` 的大变更集里第 1,000 项之后的改名不算，同计数的"或更多"。M9 定下要不要另记。
-- 一个单元里先建后删、删除再恢复同一节点仍按 [M4/P2 一个单元里先建后删](M4-P2-unit-merge.md) 与 [M4 历史、回收站与恢复](../../M8-history-search/handoffs/M4-history.md)第 3 项。
+- 一个单元里先建后删、删除再恢复同一节点仍按 [M4/P2 一个单元里先建后删](M4-P2-unit-merge.md)：它的处理进展写明 M8/P3 之后删除再恢复撞上的检查（M8 收尾 C-M11；原在 [M4 历史、回收站与恢复](../../M8-history-search/handoffs/M4-history.md)第 3 项，那份已关闭）。
+- **`log`**（M8 收尾补上，[M8 收尾审查](../../M8-history-search/reviews/M8-closeout-review.md) C-I2）：调用 page 的 `ListChangesets` 用例（`page/app/list_changesets.go`），筛选与游标已备：`actor`（账户 id）、`client`（`web`、`api`、`cli`，`mcp` 表示全部 MCP 客户端，`mcp:<名>` 某一个，`domain.ParseClientFilter`）、`page_id`（碰过这一页的变更集，回收站里的页照列）、游标 `[created_at, id]`（`domain.ChangesetCursor`）；每条带类型、执行者、说明、撤销的与被哪些撤销过（[M8 总设计](../../M8-history-search/00-M8-design.md) 4.7）。
+- **`batch` 写说明**（同上）：变更集的 `message`（1–4,096 字节，`domain.CheckMessage`）由单元的 `UnitSpec.Message` 写进 `changesets.message`，只在单元建这个变更集时写，并入的变更集保留它自己的；M8 只有撤销写它（`revertChangeset` 与撤销的任务）。`batch` 的说明照此交给 `UnitSpec.Message`。
+- **要不要给 agent 历史、撤销与恢复的工具**（同上；[M8 设计审查](../../M8-history-search/reviews/M8-design-review.md) C-Q4）：总体设计 5.3 说"失败的 ingest 可以整组撤销"，6.3 的工具表只有 `log`。版本、单个变更集、回收站的读与还原、撤销、恢复的用例都在 page（M8 总设计 4.1），MCP 适配器可以直接调用。M9 的设计定给不给、给哪几个，权限照网页（读者读、写者还原撤销恢复），大的撤销与恢复走后台任务时先放开任务的客户端（[M8/P4 的移交](M8-P4-background.md)第 1 条）。

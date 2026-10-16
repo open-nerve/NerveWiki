@@ -19,3 +19,4 @@ M9 引入多操作的单元时一并定下（[P2 审查](../../M4-pages/reviews/
 ## 处理进展
 
 - M7 开工（2026-10-08）：M7 的导入只建不删，不会遇到；M7 的那份以"不适用"关闭，仍由 M9 定下（[M7 总设计](../../M7-assets-transfer/00-M7-design.md) 4.2）。
+- M8 收尾（2026-10-16）：不适用，仍由 M9 定下。M8 的单元不先建后删，也不在同一变更集里删除再恢复同一节点（恢复、撤销各自一个变更集）。M8/P3 起删除的条目带页的版本号，迁移 `00038` 加了 `changeset_items_revision_state_check`（`revision` 只在"前"或"后"为空时可以有值）；条目的合并（`page/adapter/postgres/queries/changesets.sql` 的 `RecordItems`，`ON CONFLICT`）留第一次的"前"，取最后的"后"与 `deleted_at`，`revision` 除合并成删除时取删除的、否则留第一次的，`restored` 不改。所以 `batch` 在一个变更集里删除再恢复同一页时，合并的条目前后都在、带着删除时的版本号，被这条检查拒绝，单元答 500；`Change.Then` 留第一项的 `Restored`（空）。恢复再删除同一节点时前后都空，同上面的建后删。上面"M8 的恢复要看这一点"转给 M9：引入 `batch` 时连同建后删一起定下这几种合并（删除再恢复：前后都在时不带 `revision`，`restored` 照合并之后是不是恢复；恢复再删除：同建后删），在真的数据库上加两个操作的单元的测试（[M8/P3 的移交](M8-P3-revert.md)；[M8 收尾审查](../../M8-history-search/reviews/M8-closeout-review.md) C-M11）。`RecordItem`、`recordItem` 现名 `RecordItems`、`recordItems`。

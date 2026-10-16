@@ -99,7 +99,7 @@ P4 的文档提交随这份文档一起改 `00-M8-design.md`。行号指 `1f0e3a
      - 读者先恢复了、正好在它"前"的位置上的续段成员，跳过（A-M9）。
    - 第一个冲突、第一个被锁的页就停下。
 5. **请求的答复**（4.10 :193、:196；4.14 :244）：
-   - `startRevert` 在请求里未加锁地跑 [P3](03-P3-log-revert.md) 3.6 的第 1–7 步，经 `revertCheck`，各个界线作为参数留在 P3 的位置上：同步的次序不变（A-M2、B-M1）。
+   - `startRevert` 在请求里未加锁地跑 [P3](03-P3-log-revert.md) 3.6 的第 1–7 步，经 `revertChecks.check`，各个界线作为参数留在 P3 的位置上：同步的次序不变（A-M2、B-M1）。
    - 条目的 422 之后、读任何东西之前答 `transfer.busy`（B-M2）。
    - 计划之后、冲突之后：计划要删或要写回的页正被别人编辑的，答 409 `page.locked`（第一页），不开任务（第 11 节第 3 条，B-M3）。
    - 唯一留下的 422 是条目超过 `MaxJobItems`，连后台也做不了；另有实测才定的 `MaxJobGroups`（3.11）。
@@ -185,7 +185,7 @@ P4 的文档提交随这份文档一起改 `00-M8-design.md`。行号指 `1f0e3a
 | `page/app/unit.go` | `UnitSpec.Create`：任务的变更集由它第一个写了东西的单元以给定的 id 建（3.3） |
 | `page/app/jobs.go` | `JobWrites`：`CheckRestore`、`PlanRestore`、`CheckRevert`、`PlanRevert`、`RunBatch`；`JobPlan`、`BatchDone`；每批的读与解析（单元之前） |
 | `page/app/unit_restore.go` | `Unit.RestorePart`（恢复的任务的一批、撤销里一组的一段）：放置（只第一段）、名称、`bringBack`、`markFrontier` |
-| `page/app/unit_revert.go`、`revert_changeset.go` | `Unit.RevertBatch`（只含这一批的节点的再计划、续段的逐个核对、应用，删除走 P3 的路）；`revertReads.groups` 改用 `TrashGroups`；未加锁的核对抽成 `revertCheck(…, revertBounds)`，`RevertChangeset` 与 `CheckRevert` 共用 |
+| `page/app/unit_revert.go`、`revert_changeset.go` | `Unit.RevertBatch`（只含这一批的节点的再计划、续段的逐个核对、应用，删除走 P3 的路）；`revertReads.groups` 改用 `TrashGroups`；未加锁的核对抽成 `revertChecks.check(…, revertBounds)`（P4 时叫 revertCheck，[收尾审查](reviews/M8-closeout-review.md) C-N3），`RevertChangeset` 与 `CheckRevert` 共用 |
 | `page/adapter/postgres/queries/trash.sql`、`nodes.sql`、`history.sql`；`store.go`、`trash.go`、`history.go` | `TrashNodesAt`、`TrashChildrenAt`、`TrashShapeOfAll`、`MarkTrashRoots`、`ChangesetItemsOf`、`ChangesetVersionsOf`；`TrashGroups` 按层；`NodesNow` 的例外按条目的时刻（3.7）；回收站已有的四条读按键连接，`changesets.sql` 的 `RecordItems` 按键读删除的页的版本号（实测找到的两个缺陷，3.3） |
 | `page/tree_writes.go`、`page/module.go` | `TreeWrites` 加五个方法与 `JobSpec`、`JobPlan`、`JobStep`、`BatchDone`；导出 `ActionRestore`、`ActionRevert`、`ErrBatchTooLarge`、`ErrRestoreExpired`、`ErrRevertConflict`、`ErrChangesetTrimmed`、`ErrLocked`；`Deps.MaxJobItems`（0 即 domain 的值） |
 | `transfer/domain/job.go`、`report.go`、`errors.go` | `KindTrashRestore`、`KindRevert`；`Job.ChangesetID`、`TargetChangesetID`、`Message`；报告的 `Placed`、`Conflicts`、`ConflictCount`、`Lock` 与四个新计数；五个新失败；`ErrImportBusy` 改名 `ErrWriting`，详情说写入任务 |
@@ -424,19 +424,18 @@ FROM changeset_items WHERE changeset_id = sqlc.arg(id) AND node_id = ANY(sqlc.ar
 
 ### 3.5 撤销的任务：计划、分批与每批的再计划
 
-**请求里**（`CheckRevert`，不加锁）：[P3](03-P3-log-revert.md) 3.6 的第 1–7 步经 `revertCheck(ctx, c, spec, b)` 共用。各个界线是参数，位置同 P3：
+**请求里**（`CheckRevert`，不加锁）：[P3](03-P3-log-revert.md) 3.6 的第 1–7 步经 `revertChecks.check(ctx, c, spec, b)` 共用。各个界线是参数，位置同 P3：
 
 ```go
 // revertBounds are where a revert's unlocked check stops it (M8/P4 design 3.5): Items before the items are read
 // (MaxUnitNodes, a job's MaxJobItems); Admit right after it, before anything else is read (a job's transfer.busy);
-// Groups after the nodes, before their groups are read (a job's MaxJobGroups; 0 none); Parse at step 6, the unit's
-// pages, bytes and History rows of history (the sync's); Steps after the plan's conflicts (MaxRevertSteps, the
-// sync's; 0 none); Locks after them, page.locked for a page the plan deletes or writes back that an edit session holds (a
-// job's). The 404 of a changeset gone between its reads is spec.NotFound, the one the caller's first read answers.
+// Parse at step 6, the unit's pages, bytes and History rows of history (the sync's); Steps after the plan's conflicts
+// (MaxRevertSteps, the sync's; 0 none); Locks after them, page.locked for a page the plan deletes or writes back that an
+// edit session holds (a job's). The groups have no bound: P4A measured none needed (M8/P4 design 3.11). The 404 of a
+// changeset gone between its reads is spec.NotFound, the one the caller's first read answers.
 type revertBounds struct {
 	Items   int
 	Admit   func(context.Context) error
-	Groups  int
 	Parse   bool
 	History int
 	Steps   int
@@ -445,7 +444,7 @@ type revertBounds struct {
 ```
 
 - **同步**：`{Items: MaxUnitNodes, Parse: true, History: MaxUnitHistory, Steps: MaxRevertSteps}`（历史的行的界线留在 P3 的位置，偏离 10）。次序与 P3 的表原样，3.12 钉住（A-M2、B-M1）。
-- **后台**：`{Items: MaxJobItems, Admit: transfer 的忙, Locks: true}`（没有 `MaxJobGroups`，`Groups` 为 0，3.11）。次序：
+- **后台**：`{Items: MaxJobItems, Admit: transfer 的忙, Locks: true}`（没有 `MaxJobGroups`，3.11；P4 合并时 `revertBounds` 另有一个没人设的 `Groups`，收尾时去掉，代码块照现在的代码，[收尾审查](reviews/M8-closeout-review.md) C-N7）。次序：
   1. 422 说明（`validation_failed`）
   2. 404 `notebook.not_found`
   3. 403 `forbidden`
@@ -661,7 +660,7 @@ CASE WHEN n.trash_root THEN EXISTS (
   - 描述写：恢复的分批、批之间设上根的节点、停下的原因、任务的变更集可以撤销（在 `MaxJobItems` 之内）、码的次序；`node_id` 可以是一个附件的项（B-N13）。
 - **`startRevert`**：
   - `POST /api/v0/notebooks/{notebook_id}/reverts`，请求体 `RevertStart {changeset_id, message?}`，答 202。
-  - `x-problem-codes: [validation_failed, notebook.not_found, forbidden, page.changeset_not_found, page.changeset_trimmed, page.revert_too_large, page.revert_conflict, page.locked, transfer.busy, server_busy]`。
+  - `x-problem-codes: [validation_failed, notebook.not_found, forbidden, page.changeset_not_found, page.changeset_trimmed, page.revert_too_large, transfer.busy, page.revert_conflict, page.locked, server_busy]`（码的次序，同 4.14 与描述；P4 合并时 `transfer.busy` 列在 `page.locked` 之后，收尾照次序改，[收尾审查](reviews/M8-closeout-review.md) C-N1）。
   - 描述写：`revertChangeset` 的核对在请求里先做一遍；只剩条目的 422（`MaxJobItems`）；忙在条目之后；锁在冲突之后、整体拒绝；分批与停下。
 - **`TransferKind`** 加 `trash_restore`、`revert`。
 - **`TransferJob`**、**`TransferJobDetail`**（照旧两处同步改）：
@@ -796,7 +795,7 @@ CASE WHEN n.trash_root THEN EXISTS (
   - `MaxJobItems` 的值由 `TestMaxJobItemsIsTheMeasuredSize` 钉住（60,000），`pageDeps` 不设（`TestPageDepsLeaveTheUnitsBoundsTheDomains`）。
 - **page/app**（假的端口与时钟）：
   - `CheckRestore`、`CheckRevert` 的每个码与次序：含 `MaxJobItems` 的边界、`Admit` 在条目之后且在读之前（`Admit` 失败时什么都没读）、冲突、读不到的版本、锁（别人的会话挡住删除、自己的不挡；任何会话挡住写回；按计划的次序第一个）、两次读之间不在的变更集答 `spec.NotFound`。
-  - `RevertChangeset` 改用 `revertCheck` 之后码与次序照旧：P3 的表原样通过，含"读条目之前答 422"（A-M2）。
+  - `RevertChangeset` 改用 `revertChecks.check` 之后码与次序照旧：P3 的表原样通过，含"读条目之前答 422"（A-M2）。
   - `RunBatch` 的恢复：第一批的根的核对与放置、续批跳过别人恢复的、父节点不活着、太深、名称加序号（含之前的批恢复的同父兄弟）、期限、设根的统计、五个数按批、`ErrBatchTooLarge`（历史在解析之前、链接在解析之后、单独一步不判）。
   - `RunBatch` 的撤销：
     - 再计划只含这一批的节点。
@@ -958,12 +957,12 @@ CASE WHEN n.trash_root THEN EXISTS (
     1. 回收站里恢复 → 422 的说明 → "在后台恢复「Big」"。
     2. 按下之前，测试以一条专用的数据库连接在一个事务里以 `FOR SHARE` 持着笔记本行（`db.hold`，`holdNotebookRow`；`Database` 现在只有连接池的 `query`，`e2e/fixtures/db.ts:24-33`，B-N8）。任务的第一批在它上面等：行显示"运行中"与进度"进度：0 / 103"（计划不加锁，总数已在）。核对过：开始只以 `FOR SHARE` 共享笔记本，不被挡；一批是树的单元，笔记本 `FOR NO KEY UPDATE`，被挡；计划与进度不锁笔记本；服务端不设 `lock_timeout`，批等着而不是重试。持着的连接归 `Database` 管，`close()` 在连接池之前结束没放开的，带 `'error'` 监听（P4B 审查 C-N3）。
     3. 放开之后到"完成"。报告：页面 102、附件 1、放在原处；树里有 `Big` 与它的孩子，附件下载 200。
-  - **接口版本**：`restoreNode` 答 422 → `startTrashRestore` 202 → `endedJob`。
+  - **接口版本**：`restoreNode` 答 422 → `startTrashRestore` 202 → `endedJob`。它不持笔记本行，看得到进度只在页面版本（00 号文档第 9 节的 TB2 那一句是页面上的，[收尾审查](reviews/M8-closeout-review.md) C-N12）。
   - 断言：一个 `trash_restore` 变更集，103 个恢复的条目，条目的 `created_at` 有两种（两批，100 + 3：步各一个节点，Big、Note 001–099 一批，Note 100、101 与 `photo.png` 一批，Note 001 对 `photo.png` 的嵌入跨两批解析）；任务行的 `changeset_id` 与报告；`expectSubtreeRestored`（`kind: "trash_restore"`）、`expectAssetsRestored`、`expectIndexedLinks`。
 - **分批的断言辅助**（B-M10）：
   - `expectSubtreeRestored`：每个节点的 `updated_at` 等于它自己的恢复条目的 `created_at`，不再等于变更集的 `created_at`（`assert/page.ts:213-259`）。
   - `expectTrashRoot`：一个根的组按"从根往下、以根的时刻删除的子孙"数（同 `checkPages`，`interleavings_page_test.go:74-84`），不再按笔记本与 `deleted_at` 分组（`assert/page.ts:187-199`），另比页面、附件与高度（偏离 8）。单个删除（TB1 四处、TB2 两处）带 `{ alone: true }`，另核对笔记本里在根的时刻删除的正是这一组（P4B 审查 C-N2）；HI5 一批在同一时刻删除很多最上层，不带。
-  - `endedJob(..., timeout)`：HI5 60 秒、TB2 30 秒，别处照旧 15 秒；两个页面版本 `test.slow()`（偏离 8）。
+  - `endedJob(..., timeout)`：HI5 60 秒、TB2 30 秒，别处照旧 15 秒；HI5 的两个版本与 TB2 的页面版本 `test.slow()`（偏离 8；原写"两个页面版本"，[收尾审查](reviews/M8-closeout-review.md) C-N12）。
   - TB1、HI4 照旧通过。
 - **反向对照的 e2e 变异**：开始的按钮去掉、任务行的类型标题、"在历史里查看"的去处、`holdNotebookRow` 不起作用（进度断言要失败）。实施时 6 个，都被抓到（第 9 节）。
 
@@ -981,7 +980,7 @@ A（分支 `m8-p4a`）：
 
 1. 迁移与它的测试。transfer 的 domain（类型、列、失败、报告）、`Writing`、`Held` 与收拾、清理的种类。共用的分批从导入抽出，带 `Deps.Batch`；导入改用任务行的 `changeset_id`（导入的测试原样通过）。page 的 `UnitSpec.Create`。
 2. page 的 domain（`PreOrder`、`GroupCounts`、`Frontier`、`MaxJobItems`）、五条查询与 `TrashGroups`（`revertReads` 改用它，P3 的测试原样通过）、`MarkTrashRoots`。`NodesNow` 的例外改比条目的时刻：P3 的测试除 V 外原样通过，V 改为真实的形状，加 P4 的两例。适配器、计划与数组语句的测试。
-3. `revertCheck` 与 `revertBounds` 抽出（`RevertChangeset` 的测试原样通过）；`CheckRestore`、`CheckRevert`（`Admit`、锁）、`PlanRestore`、`PlanRevert`、`RunBatch`、`Unit.RestorePart`、`Unit.RevertBatch`；用例测试。
+3. `revertChecks.check` 与 `revertBounds` 抽出（`RevertChangeset` 的测试原样通过）；`CheckRestore`、`CheckRevert`（`Admit`、锁）、`PlanRestore`、`PlanRevert`、`RunBatch`、`Unit.RestorePart`、`Unit.RevertBatch`；用例测试。
 4. transfer 的两个开始（占住笔记本）与 `Background.Run`、River 的两个种类；组合根的适配与映射、生产接线的守卫；契约、处理器、`make gen`；矩阵的两行；网页的门禁：标题、失败的文字、忙与列表的文字、TR2 的断言、假接口的必有字段（B-N2）。
 5. 整个程序、重启、交错（含每个批的边界）、反向对照；基准实测 `MaxJobItems`（三项）与 `MaxJobGroups`、大步、整个任务、计划的内存（3.11），写回；照 2.2 处理 `MaxJobItems` 与 N 的比较（5 万 ≤ `MaxJobItems` < N 时加导入的节点上限与它的测试，低于 5 万时停下来问）；守卫与 Makefile、CI 的分份。
 6. 门禁、审查。
@@ -1101,7 +1100,7 @@ B（分支 `m8-p4b`，A 合并之后；服务函数随第一次用到它的那�
 | 每批以只含这一批的节点再计划，续段不进去（2.1 第 4 条、3.5） | `domain/revert.go:290-305`（`topOf` 只沿传入的条目往上）、`:318-336`（`rootHolds` 比整组的统计）、`:356-373`（`PlanRevert` 纯函数）、`:413-443`（`left` 按传入的条目）、`:541-623`（`before`）、`:799-848`（`round` 的四步次序）；`app/unit_revert.go:61-118`（`Revert` 的读、计划、应用）、`:190-215`（`parsedAsPlanned`）、`:219-317`（`revertReads`） |
 | 续段跳过读者恢复的（2.1 第 4 条、3.5） | `domain/trash.go:153-165`（`PlacementOf`：父节点活着时回到原处，原来的名称与次序值）；`app/restore_node.go:65-111`（读者恢复设上根的一项） |
 | 一页的正文至多写一次（2.1 第 1 条、3.5） | `domain/revert.go:255-285`（`readReverted` 的 `writes` 只取没新建、恢复、删除的页）；`app/unit_import.go`（导入只新建）；`queries/changesets.sql:43-54`（`RecordRevision` 的版本链守卫） |
-| `revertCheck` 的界线是参数（2.1 第 5 条、3.5） | `app/revert_changeset.go:79-93`（先找变更集，`spec.NotFound` 是 `page.changeset_not_found`）、`:97-103`（条目的 422 在读条目之前）、`:106-114`（不在了时再判定）、`:122-124`（页数、字节、历史的 422 在计划之前）、`:130-136`（步数在冲突与 `Missing` 之后）、`:178-209`（`withinBounds`） |
+| `revertChecks.check` 的界线是参数（2.1 第 5 条、3.5） | `app/revert_changeset.go:79-93`（先找变更集，`spec.NotFound` 是 `page.changeset_not_found`）、`:97-103`（条目的 422 在读条目之前）、`:106-114`（不在了时再判定）、`:122-124`（页数、字节、历史的 422 在计划之前）、`:130-136`（步数在冲突与 `Missing` 之后）、`:178-209`（`withinBounds`） |
 | 请求里的编辑锁（2.1 第 5 条、3.5） | `app/edit_lock.go:38-73`（`GuardWrite`：删除挡别的账户的会话，正文挡别的会话）；`app/ports.go:438`（`AliveSessionsOf`）；`queries/sessions.sql:23`；00 号文档第 11 节第 3、7 条 |
 | `MaxJobItems` 与第 3 节第 5 条的 N（2.1 第 6、17 条、2.2、3.11） | `transfer/domain/import_plan.go:12-15`（`MaxDepth` = 10）、`:64-111`（文件夹由路径隐含地建，每个文件夹一页）；`configs/config.yaml:142`（`import_max_entries: 50000`）；`platform/config/config.go:260`；`app/import.go:128-133`（条目超过上限整包失败 `too_many_entries`）；`03-P3-log-revert.md` 3.11 的表 |
 | 最上层的例外按条目的时刻；V 翻转（2.1 第 8 条、3.7） | `queries/history.sql:148-168`（`deleted_by_revert` 比 `created_at`）；`queries/changesets.sql:1-9`（变更集建在第一个单元的时刻，并入只改 `updated_at`）、`:11-41`（`RecordItems` 的 `DO UPDATE` 改 `updated_at`、不改 `created_at`）；`nodes.sql:129-131`；`adapter/postgres/history_test.go:421-431`（各例的说明）、`:496`（V：`made` 在它的条目之后一小时）、`:525`（期望 S、T、E）；`03-P3-log-revert.md` 第 8 节 P4 的第 8 条 |

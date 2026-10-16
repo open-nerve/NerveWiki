@@ -105,7 +105,7 @@ type Versions interface {
 
 ### 3.7 权限、日志与交错
 
-- `page.history`：读者、编辑者、管理员；`page.restore_version`：编辑者、管理员（`access/domain/rules.go`）；`boot/actions_test.go` 的"规则 = 动作"；权限矩阵（`permission_matrix_test.go`）加四个操作的行，`permission_matrix_coverage_test.go` 随之通过。
+- `page.history`：读者、编辑者、管理员；`page.restore_version`：编辑者、管理员（`access/domain/rules.go`）；`bootstrap/actions_test.go` 的"规则 = 动作"；权限矩阵（`permission_matrix_test.go`）加四个操作的行，`permission_matrix_coverage_test.go` 随之通过。
 - 日志：还原记 `page content restored`，带 ids、版本号、恢复自的版本号、客户端。读不记。
 - 交错（`bootstrap/interleavings_page_test.go` 的写法）：还原与同一页的编辑会话保存（会话持正文行时，还原等它，之后 409 `page.revision_mismatch` 或 `page.locked`）；还原与删除这一页（删除先拿到笔记本的锁时，还原 404）。结束时 `checkPages`、`checkLinks`。
 
@@ -256,5 +256,5 @@ B（分支 `m8-p1b`，A 合并之后）：
 - 与设计不同之处已改在第 4 节（4.1–4.7），4.8 分实施时定下的与审查带来的列出。
 - 反向对照：实施之后 27 个、审查的修复之后 58 个（含 C 存活的 24 个）、核对第一轮的修复之后 20 个，都被测试抓到；手工 2 个（去掉两处发送的守卫；静态导入 `editor/text-diff` 让构建检查失败）；e2e 1 个（三个比较的方向对调），HI1、HI2 的页面版本失败。
 - 门禁（本机）：`make lint-web knip test-web build-web`（`0d252e6`，2,652 个测试）；整个 e2e 234 个通过（`e7b8010`）；`stories/history` 连跑三次通过（`0d252e6`）。
-- 交给后面的：P2：回收站里的页的版本在 P2 的预览里（版本页只找活着的页），`trash_restore` 的标签已有；P3：`revert` 的标签已有，`expectVersions` 已核对 `reverts_id`，HI3、HI4 沿用；打磨的十余条见审查记录，M8 收尾时写进 M12 的打磨移交。
+- 交给后面的：P2：回收站里的页的版本在 P2 的预览里（版本页只找活着的页），`trash_restore` 的标签已有；P3：`revert` 的标签已有，`expectVersions` 已核对 `reverts_id`，HI3、HI4 沿用；打磨的十余条见审查记录，已写进 [M12 的打磨移交](../M12-release/handoffs/M5-polish.md)第 21 条（[收尾审查](reviews/M8-closeout-review.md) C-N6）。
 - 负责人可以改判的取舍：同一对文字在两个视图里各比较一次（不做全局的一个）；Worker 的路径没有 e2e；自己的保存只在离开编辑时立即重读版本列表；标签页手动激活、选的标签页不进地址；"已还原到版本 N"随历史在刷新、返回时再说一次。
