@@ -87,15 +87,21 @@ test("SE2 (API): a member finds the pages of the notebooks open to the workspace
   }
 });
 
-test("SE2 (page): a member's search from a notebook looks in it, as the box's hint says; All notebooks finds the others it sees, not a private one's; a notebook it does not see is not found, with Search the whole workspace", async ({
+test("SE2 (page): a member's search from a notebook looks in it, as the box's hint says; All notebooks finds the others it sees, not a private one's; a notebook it does not see is not found, with Search the whole workspace; a guest's finds the one it was added to alone", async ({
+  anotherPage,
   api,
   pageWatch,
   signedInPage,
 }, testInfo) => {
   const { pat, workspace } = await newTeam(api, testInfo);
   const tokens = await joinOnboarded(api, pat, workspace.slug, emailFor(testInfo, "member"), "member");
-  const guestPat = await joinAs(api, pat, workspace.slug, emailFor(testInfo, "guest"), "guest");
-  const { open, closed } = await notebooksOf(api, pat, workspace.slug, await idOf(api, guestPat));
+  const guestTokens = await joinOnboarded(api, pat, workspace.slug, emailFor(testInfo, "guest"), "guest");
+  const { open, closed, guests, guestPage } = await notebooksOf(
+    api,
+    pat,
+    workspace.slug,
+    await idOf(api, guestTokens.access_token)
+  );
   const openPage = (await search(api, pat, workspace.slug, word, { notebookId: open.id })).data?.data[0]?.node.id ?? "";
   const page = await signedInPage(tokens);
   const main = page.getByRole("main");
@@ -131,4 +137,22 @@ test("SE2 (page): a member's search from a notebook looks in it, as the box's hi
   await expect(searchStatus(page)).toHaveText("Results: 2.");
   expect(await resultNames(page)).toEqual(["Shared plan", "Open plan"]);
   await expect(main.getByRole("heading", { level: 1, name: `Search “${word}”`, exact: true })).toBeFocused();
+
+  // The guest, from the page of the notebook it was added to: it finds that one's alone, which is all Where to look
+  // lists, in it and in all it sees (M8 closeout B-M2, C-M5).
+  const guestTab = await anotherPage(guestTokens);
+  await guestTab.goto(wikiPagePath(workspace.slug, guests.id, guestPage.id));
+  await expect(pageHeading(guestTab, "Guest plan")).toBeVisible();
+  await expect(searchBox(guestTab)).toHaveAccessibleDescription("Searches in “Guests”.");
+  expect((await searchFor(guestTab, word)).status()).toBe(200);
+  await expect(guestTab).toHaveURL(`/${workspace.slug}/search?q=${word}&notebook_id=${guests.id}`);
+  await expect(searchStatus(guestTab)).toHaveText("Results: 1.");
+  expect(await resultNames(guestTab)).toEqual(["Guest plan"]);
+  const guestScope = guestTab.getByRole("main").getByRole("combobox", { name: "Where to look", exact: true });
+  await expect(guestScope.locator("option")).toHaveText(["All notebooks", "Guests"]);
+  await guestScope.focus();
+  await guestScope.selectOption({ label: "All notebooks" });
+  await expect(guestTab).toHaveURL(`/${workspace.slug}/search?q=${word}`);
+  await expect(searchStatus(guestTab)).toHaveText("Results: 1.");
+  expect(await resultNames(guestTab)).toEqual(["Guest plan"]);
 });

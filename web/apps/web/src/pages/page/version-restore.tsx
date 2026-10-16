@@ -48,6 +48,10 @@ type VersionRestoreProps = {
  * lock does elsewhere, its lock's note read again; any other refusal stays
  * in the dialog. Restore sends only what shows: the comparison on screen
  * is with the content whose revision it sends (M8/P1 fix check 1, N1).
+ * Its buttons are not disabled while it is out or a comparison runs, but
+ * aria-disabled, doing nothing: a disabled button drops the focus, which
+ * a refusal the dialog keeps would leave on the page's body (v0.1 design
+ * 13.2, item 12; M8 closeout B-M3).
  */
 export function VersionRestore({ notebook, page, version, said, restored }: VersionRestoreProps) {
   const t = useT();
@@ -115,12 +119,15 @@ function RestoreForm({ notebook, page, version, sending, setSending, close, rest
   // The page's content whose comparison shows: none while one runs.
   const [shown, setShown] = useState<string>();
   const ready = current.data !== undefined && shown === current.data.content;
+  // One restore a press: Restore stays where the focus is while it is out (aria-disabled), so it can be pressed again.
+  const busy = useRef(false);
 
   async function restore(): Promise<void> {
     const read = current.data;
-    if (read === undefined || sending) {
+    if (read === undefined || !ready || busy.current) {
       return;
     }
+    busy.current = true;
     setSending(true);
     setFailure(undefined);
     setRefused(undefined);
@@ -156,6 +163,7 @@ function RestoreForm({ notebook, page, version, sending, setSending, close, rest
         setFailure(error);
       }
     } finally {
+      busy.current = false;
       setSending(false);
     }
   }
@@ -185,12 +193,18 @@ function RestoreForm({ notebook, page, version, sending, setSending, close, rest
       )}
       {failed !== undefined && <Alert>{failed}</Alert>}
       <div className="flex justify-end gap-2">
+        {/* Not disabled while it is out: a disabled button drops the focus. The dialog does not close meanwhile. */}
         <AlertDialogCancel asChild>
-          <Button variant="outline" disabled={sending}>
+          <Button variant="outline" aria-disabled={sending || undefined}>
             {t("page.cancel")}
           </Button>
         </AlertDialogCancel>
-        <Button disabled={sending || !ready} onClick={() => void restore()}>
+        <Button
+          className="aria-disabled:opacity-50"
+          aria-busy={sending || undefined}
+          aria-disabled={sending || !ready || undefined}
+          onClick={() => void restore()}
+        >
           {sending ? t("version.restoring") : t("version.restoreConfirm")}
         </Button>
       </div>

@@ -59,7 +59,7 @@ type searchOfSomeSize struct {
 	pool   *pgxpool.Pool // the search's one connection
 	search *app.Search
 	ctx    context.Context
-	built  time.Duration // the job's run that built eng's rows
+	built  time.Duration // the least of the job's three runs that built eng's rows
 }
 
 func newSearchOfSomeSize(t *testing.T) searchOfSomeSize {
@@ -71,10 +71,21 @@ func newSearchOfSomeSize(t *testing.T) searchOfSomeSize {
 	}
 	corpus := newSearchCorpus(20261013)
 	eng := corpus.pages(t, f, f.eng, 5000, 4000)
-	f.queueSearch(t, f.eng, false, eng...)
-	started := time.Now()
-	f.drain(t)
-	built := time.Since(started)
+	// The job's build of eng's rows, three times from none, the queue and
+	// the rows emptied in between: a run is as fast as it can be in the
+	// least of them (M8 closeout A-1). TRUNCATE leaves no dead row and no
+	// statistics, so the third leaves the tables as the first did.
+	var builds []time.Duration
+	for i := range 3 {
+		if i > 0 {
+			f.exec(t, "TRUNCATE page_search, page_search_queue")
+		}
+		f.queueSearch(t, f.eng, false, eng...)
+		started := time.Now()
+		f.drain(t)
+		builds = append(builds, time.Since(started))
+	}
+	t.Logf("the job built 5,000 pages in %v", builds)
 	backlog := eng[:500]
 	contents, hashes := make([]string, len(backlog)), make([][]byte, len(backlog))
 	for i := range backlog {
@@ -102,7 +113,7 @@ func newSearchOfSomeSize(t *testing.T) searchOfSomeSize {
 	s := postgresadapter.New(pool)
 	search := app.NewSearch(app.SearchDeps{Snapshots: postgres.NewTxManager(pool, 5*time.Second), Workspaces: searchWorkspace{uuid.NewV7()},
 		Visible: searchVisible{f.eng, f.ops}, Auth: searchAllowed{}, Reads: s, Trash: s, Attachments: noAttachments{}})
-	return searchOfSomeSize{f: f, pool: pool, search: search, built: built,
+	return searchOfSomeSize{f: f, pool: pool, search: search, built: slices.Min(builds),
 		ctx: shared.WithActor(ctx, shared.Actor{UserID: f.alice, SessionID: uuid.NewV7()})}
 }
 
@@ -172,13 +183,14 @@ func TestTheSearchReadsInTimeAtAnyStatistics(t *testing.T) {
 			}
 		}
 	}
-	t.Logf("the job built 5,000 pages in %s", g.built.Round(time.Millisecond))
+	t.Logf("the job built 5,000 pages in %s, the least of three runs", g.built.Round(time.Millisecond))
 	// 2.1 s here.
 	if limit := 7 * time.Second; g.built > limit {
-		t.Errorf("the job built 5,000 pages in %s, want within %s", g.built, limit)
+		t.Errorf("the job built 5,000 pages in %s, the least of three runs; want within %s", g.built, limit)
 	}
 	// A unit's queueing of 10,000 nodes, an import's batch or a deletion's
-	// at its bound, in its transaction, rolled back.
+	// at its bound, in its transaction, rolled back: the least of eight
+	// runs, as the build's (M8 closeout A-1).
 	ids := make([]uuid.UUID, 10_000)
 	for i := range ids {
 		ids[i] = uuid.NewV7()
@@ -196,10 +208,10 @@ func TestTheSearchReadsInTimeAtAnyStatistics(t *testing.T) {
 		})
 	}
 	slices.Sort(took)
-	median := (took[3] + took[4]) / 2
-	t.Logf("QueueSearch of 10,000 nodes: median %s, longest %s", median.Round(time.Microsecond), took[7].Round(time.Microsecond))
-	// 19 ms here.
-	if limit := 57 * time.Millisecond; median > limit {
-		t.Errorf("QueueSearch of 10,000 nodes took %s, its median; want within %s", median, limit)
+	t.Logf("QueueSearch of 10,000 nodes: least %s, median %s, longest %s", took[0].Round(time.Microsecond),
+		((took[3] + took[4]) / 2).Round(time.Microsecond), took[7].Round(time.Microsecond))
+	// 19 ms here, the median.
+	if limit := 57 * time.Millisecond; took[0] > limit {
+		t.Errorf("QueueSearch of 10,000 nodes took %s, the least of eight runs; want within %s", took[0], limit)
 	}
 }

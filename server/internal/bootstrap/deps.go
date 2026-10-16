@@ -251,10 +251,16 @@ func jobsConfig(cfg config.Config, logger *slog.Logger) jobs.Config {
 }
 
 // purgeJob is the purge of the modules' soft-deleted rows, on
-// jobs.purge_interval and jobs.purge_retention.
+// purgeConfig.
 func purgeJob(cfg config.Config, pool *pgxpool.Pool, store storage.Store, logger *slog.Logger) jobs.Job {
 	tx := postgres.NewTxManager(pool, cfg.Database.CommitTimeout)
-	return jobs.PurgeJob(purgers(pool, tx, store, logger), jobs.PurgeConfig{Interval: cfg.Jobs.PurgeInterval, Retention: retention(cfg), Logger: logger})
+	return jobs.PurgeJob(purgers(pool, tx, store, logger), purgeConfig(cfg, logger))
+}
+
+// purgeConfig is the purge's: jobs.purge_interval, and the retention the
+// page module's trash and the instance's settings take too (retention).
+func purgeConfig(cfg config.Config, logger *slog.Logger) jobs.PurgeConfig {
+	return jobs.PurgeConfig{Interval: cfg.Jobs.PurgeInterval, Retention: retention(cfg), Logger: logger}
 }
 
 // apiConfig is the per-route middlewares' configuration: the modules'

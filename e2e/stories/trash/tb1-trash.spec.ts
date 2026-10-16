@@ -18,7 +18,7 @@ import {
   trashPath,
   trashStatus,
 } from "../../fixtures/trash";
-import { choosePageAction, pageHeading, treeTitles, wikiPagePath } from "../../fixtures/wiki-pages";
+import { choosePageAction, pageHeading, pageTree, treeTitles, wikiPagePath } from "../../fixtures/wiki-pages";
 import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 
 // TB1, the trash (M8 design 4.5, 4.6, section 9; M8/P2 design 4.7): a
@@ -219,7 +219,7 @@ test("TB1 (API): a subtree deleted with an attachment is one trash item of its c
   expect(kept?.deleted, "the item past its time is still in the trash, the purge's to take").toBe(true);
 });
 
-test("TB1 (page): a page deleted from the tree, its confirmation saying the trash and its days, is in the notebook's trash; its preview's links lead to the pages alive; restored from the trash, it is in the tree of the same tab again, and opens", async ({
+test("TB1 (page): a page deleted from the tree, its confirmation saying the trash and its days, is in the notebook's trash; its preview's links lead to the pages alive; restored from the trash, it is in the tree of the same tab again with its links and attachment, and opens; a page whose parent is in the trash is restored at the top level, one whose name was taken numbered, as the trash says", async ({
   api,
   db,
   nervewiki,
@@ -228,10 +228,12 @@ test("TB1 (page): a page deleted from the tree, its confirmation saying the tras
   const { adminId, pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
   const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
   const guide = await createPage(api, pat, notebook.id, "Guide");
-  await createPage(api, pat, notebook.id, "Elsewhere");
+  const elsewhere = await createPage(api, pat, notebook.id, "Elsewhere");
   const handbook = await createPage(api, pat, notebook.id, "Handbook", guide.id, "Start with [[Elsewhere]].\n");
   const setup = await createPage(api, pat, notebook.id, "Setup", handbook.id);
   const photo = await uploadAsset(api, pat, notebook.id, { name: "photo.png", bytes: pngBytes }, setup.id);
+  const handbookLinks = [{ kind: "wikilink" as const, property: null, target: "Elsewhere", resolved: elsewhere.id }];
+  await expectIndexedLinks(db, handbook.id, handbookLinks);
   const page = await signedInPage(tokens);
   const main = page.getByRole("main");
   await page.goto(wikiPagePath(workspace.slug, notebook.id, handbook.id));
@@ -247,11 +249,12 @@ test("TB1 (page): a page deleted from the tree, its confirmation saying the tras
   await expect(pageHeading(page, "Guide")).toBeFocused();
   await expect.poll(() => treeTitles(page, "Plans")).toEqual(["Guide", "Elsewhere"]);
   await expectTrashRoot(db, handbook.id, { pages: 2, assets: 1, height: 2 }, { alone: true });
+  await expectAssetsDeletedWithNodes(db, [photo.id]);
 
-  await page
+  const toTrash = page
     .getByRole("navigation", { name: "More of Plans", exact: true })
-    .getByRole("link", { name: "Trash", exact: true })
-    .click();
+    .getByRole("link", { name: "Trash", exact: true });
+  await toTrash.click();
   await expect(main.getByRole("heading", { level: 1, name: "Trash", exact: true })).toBeVisible();
   await expect(page).toHaveTitle("Trash · Plans · Nerve Wiki");
   const listed = trashListed(page);
@@ -286,11 +289,55 @@ test("TB1 (page): a page deleted from the tree, its confirmation saying the tras
     { kind: "trash_restore" }
   );
   await expectAssetsRestored(db, nervewiki.storageDir, [photo]);
+  await expectIndexedLinks(db, handbook.id, handbookLinks);
+  const signed = await getAsset(api, pat, photo.id);
+  expect(signed.response.status, JSON.stringify(signed.error)).toBe(200);
+  expect((await download(nervewiki.baseURL, signed.data?.content_url ?? "")).status).toBe(200);
 
   await status.getByRole("link", { name: "Open", exact: true }).click();
   await expect(pageHeading(page, "Handbook")).toBeFocused();
   await expect(page).toHaveURL(wikiPagePath(workspace.slug, notebook.id, handbook.id));
   await expect(main.getByRole("article", { name: "Handbook", exact: true }).getByRole("link")).toHaveText("Elsewhere");
+
+  // A page deleted, then its parent; a page deleted whose name a page made where it was took since (M8 closeout
+  // B-M2, C-M4): the trash says where each goes back, and restored from it, says where each went.
+  const old = await createPage(api, pat, notebook.id, "Old");
+  const older = await createPage(api, pat, notebook.id, "Older", old.id);
+  expect((await deleteNode(api, pat, older.id)).response.status).toBe(204);
+  expect((await deleteNode(api, pat, old.id)).response.status).toBe(204);
+  const notes = await createPage(api, pat, notebook.id, "Notes", guide.id);
+  expect((await deleteNode(api, pat, notes.id)).response.status).toBe(204);
+  await createPage(api, pat, notebook.id, "Notes", guide.id);
+  await toTrash.click();
+  await expect(listed).toHaveCount(3);
+  await expect(listed.filter({ hasText: "Older" })).toContainText(
+    "Restores at the top level: the page it was under is in the trash"
+  );
+  await expect(listed.filter({ hasText: "Notes" })).toContainText("Restores under “Guide”");
+
+  expect((await restoreWith(page, older.id, "Older", "From: Old")).status()).toBe(200);
+  await expect(status).toHaveText("Restored “Older” at the notebook's top level. Open");
+  await expect(pageTree(page, "Plans").getByRole("link", { name: "Older", exact: true })).toBeVisible();
+  await expectSubtreeRestored(
+    db,
+    older.id,
+    [older.id],
+    adminId,
+    { parentId: null, name: "Older" },
+    { kind: "trash_restore" }
+  );
+  expect((await restoreWith(page, notes.id, "Notes", "From: Guide")).status()).toBe(200);
+  await expect(status).toHaveText("Restored as “Notes 2” under “Guide”: a page or attachment there had its name. Open");
+  await expectSubtreeRestored(
+    db,
+    notes.id,
+    [notes.id],
+    adminId,
+    { parentId: guide.id, name: "Notes 2" },
+    { kind: "trash_restore" }
+  );
+  await expect(listed).toHaveCount(1);
+  await expect(listed.first()).toContainText("Old");
 });
 
 // M8/P2B review A-I1, C-I1: the restore's own event reads the item again as the restore's tree read is out.

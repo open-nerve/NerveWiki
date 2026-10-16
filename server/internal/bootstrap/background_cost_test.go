@@ -752,9 +752,12 @@ func (b trashBench) arrays(tb testing.TB, c, r uuid.UUID) string {
 // The guards of a background revert at MaxJobItems (M8/P4 design 3.11),
 // each a line of its own in make test-go-guards, with -v, so that CI's
 // runs log their times: their limits are three times the times measured
-// here, CI being about 2.1 times slower (M8/P4 review B-M11). The bench
-// keeps the composition root's bound: one far from the domain's fails
-// here, and TestPageDepsLeaveTheUnitsBoundsTheDomains pins it exactly.
+// here, CI being about 2.1 times slower (M8/P4 review B-M11). A request's
+// time is the least of three runs (fastestOf): a runner's slow moment once
+// took one past its limit (M8/P5B review, decision 10; M8 closeout A-1).
+// The bench keeps the composition root's bound: one far from the domain's
+// fails here, and TestPageDepsLeaveTheUnitsBoundsTheDomains pins it
+// exactly.
 
 // A background revert's request of an import of MaxJobItems nodes,
 // analyzed, is answered in its time: of the import, its pages at the root
@@ -773,8 +776,8 @@ func TestStartRevertAtMaxJobItems(t *testing.T) {
 		bench := newJobBench(t, 0)
 		r := bench.revertOfAttachments(t, bench.importedAttachments(t, page.MaxJobItems), page.MaxJobItems)
 		bench.analyze(t)
-		took := bench.startRevert(t, r)
-		t.Logf("the request of the revert of a revert of %d groups took %s", page.MaxJobItems, took)
+		took := fastestOf(t, fmt.Sprintf("the request of the revert of a revert of %d groups", page.MaxJobItems),
+			func() time.Duration { return bench.startRevert(t, r) })
 		if took > manyGroupsLimit {
 			t.Errorf("the request of the revert of a revert of %d groups took %s, want %s at most", page.MaxJobItems, took, manyGroupsLimit)
 		}
@@ -782,8 +785,8 @@ func TestStartRevertAtMaxJobItems(t *testing.T) {
 	bench := newJobBench(t, 0)
 	c := bench.importOf(t, shapeFlat, page.MaxJobItems)
 	bench.analyze(t)
-	took := bench.startRevert(t, c)
-	t.Logf("the request of the revert of an import of %d nodes took %s", page.MaxJobItems, took)
+	took := fastestOf(t, fmt.Sprintf("the request of the revert of an import of %d nodes", page.MaxJobItems),
+		func() time.Duration { return bench.startRevert(t, c) })
 	if took > startRevertLimit {
 		t.Errorf("the request of the revert of an import of %d nodes took %s, want %s at most", page.MaxJobItems, took, startRevertLimit)
 	}
@@ -867,6 +870,17 @@ func TestARevertJobOfAnImportAtMaxJobItems(t *testing.T) {
 // most (M8/P4 design 3.11), so 10,000; BenchmarkBackgroundJobs measures
 // the jobs whole.
 const guardJobItems = 10_000
+
+// fastestOf is the least of three runs of what, which run times, each
+// logged: a slower runner's moment slows a run, never speeds one, so that
+// the least of them is the request's own time, and a real regression slows
+// all three (M8 closeout A-1). The limits stay as they were.
+func fastestOf(tb testing.TB, what string, run func() time.Duration) time.Duration {
+	tb.Helper()
+	runs := []time.Duration{run(), run(), run()}
+	tb.Logf("%s took %s, the least of %v", what, slices.Min(runs), runs)
+	return slices.Min(runs)
+}
 
 // The guards' limits, three times the times measured here at the full
 // load (load 6-8): the request 0.3 s, of many groups 0.7 s, the job of

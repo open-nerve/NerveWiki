@@ -440,6 +440,28 @@ func (tm acmeTeam) trashedAgo(t *testing.T, id string, d time.Duration) {
 	}
 }
 
+// The purge, the page module's trash and the instance's settings take one
+// retention, jobs.purge_retention, the instance's less the trash's margin:
+// a restore keeps TrashMargin clear of the purge only when theirs are one
+// (M8/P2 design 3.8). The purge's tests seed rows a day either side of the
+// retention, which a purge an hour or two early passes; this pins it at
+// the last hop (M8 closeout A-2).
+func TestThePurgeTheTrashAndTheInstanceTakeOneRetention(t *testing.T) {
+	cfg := testConfig(t, "", false)
+	cfg.Jobs.PurgeRetention, cfg.Jobs.PurgeInterval = 100*time.Hour+30*time.Minute, 7*time.Minute
+	logger := slog.New(slog.DiscardHandler)
+	purge, trash := purgeConfig(cfg, logger), pageDeps(cfg, nil, logger, nil, nil, nil).Retention
+	instance := instanceDeps(cfg).TrashRetention
+	if purge.Retention != cfg.Jobs.PurgeRetention || trash != cfg.Jobs.PurgeRetention ||
+		instance != cfg.Jobs.PurgeRetention-domain.TrashMargin {
+		t.Errorf("the purge's retention %s, the trash's %s, the instance's %s; want jobs.purge_retention, %s, each, the instance's "+
+			"less TrashMargin", purge.Retention, trash, instance, cfg.Jobs.PurgeRetention)
+	}
+	if purge.Interval != cfg.Jobs.PurgeInterval || purge.Logger != logger {
+		t.Errorf("the purge's interval %s, want jobs.purge_interval, %s, and the server's logger", purge.Interval, cfg.Jobs.PurgeInterval)
+	}
+}
+
 // The composition root leaves a restore's and a revert's bounds the
 // domain's (M8/P2A fix check 2, N-b): the page module takes 0 as the
 // domain's MaxUnitNodes, MaxUnitHistory, MaxRevertSteps and MaxJobItems

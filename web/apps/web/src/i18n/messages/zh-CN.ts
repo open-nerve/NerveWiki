@@ -431,6 +431,7 @@ export const zhCN: Messages = {
   "asset.finishing": "正在完成…",
   "asset.finishingUpload": "正在完成{name}的上传",
   "asset.more": "更多附件",
+  "asset.locatedGone": "要打开的附件已不在这里：它被删除或移走了，或者你已无权访问它。",
   "asset.renameTitle": "给 {name} 改名",
   "asset.name": "名称",
   "asset.renameKeeps": "扩展名 {extension} 保持不变。",

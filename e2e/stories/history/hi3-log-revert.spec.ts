@@ -287,7 +287,8 @@ test("HI3 (API): each write is a changeset of its account and client, listed new
   expect(await readContent(api, pat, of.notes)).toMatchObject({ content: "Again.\n", revision: 4 });
 });
 
-test("HI3 (page): the history in the left column lists the changesets; Only this person and the page menu's history filter it; a rename's page says what it changed; Undo change reverts it, the title focused, saying so, the bytes, the versions and the index following; a changeset whose page changed since is refused in the dialog, naming it, and nothing is written; an edit session's content is reverted, Undo keeping the focus while the undo is out and after a refusal the dialog keeps", async ({
+test("HI3 (page): the history in the left column lists the changesets; Only this person and the page menu's history filter it; a rename's page says what it changed; Undo change reverts it, the title focused, saying so, the bytes, the versions and the index following, and the renamed page's backlinks in another tab; a changeset whose page changed since is refused in the dialog, naming it, and nothing is written; an edit session's content is reverted, Undo keeping the focus while the undo is out and after a refusal the dialog keeps", async ({
+  anotherTab,
   api,
   db,
   pageWatch,
@@ -344,6 +345,16 @@ test("HI3 (page): the history in the left column lists the changesets; Only this
     nodes.nth(1).getByRole("link", { name: "Wrote its content: “Alpha”, version 2", exact: true })
   ).toBeVisible();
 
+  // The renamed page, open in another tab: its backlinks hold Alpha's line as the rename wrote it again.
+  const renamedTab = await anotherTab(page);
+  await renamedTab.goto(wikiPagePath(workspace.slug, notebook.id, of.beta));
+  await expect(pageHeading(renamedTab, "Gamma")).toBeVisible();
+  const backlinks = renamedTab
+    .getByRole("complementary", { name: "About this page", exact: true })
+    .locator("details", { has: renamedTab.getByText("Backlinks", { exact: true }) });
+  await expect(backlinks.getByRole("link")).toHaveText(["Alpha"]);
+  await expect(backlinks.getByText("See [[Gamma]].", { exact: true })).toBeVisible();
+
   await main.getByRole("button", { name: "Undo change", exact: true }).click();
   await expect(revertDialog(page)).toContainText(
     "Links written since to the new names or places are not changed back."
@@ -360,6 +371,11 @@ test("HI3 (page): the history in the left column lists the changesets; Only this
     reverterId: adminId,
     client: "web",
   });
+  // The links event the undo sent has the other tab read the backlinks again: Alpha's line as it was (M8 closeout
+  // B-M2, C-N12); the pages event, its title.
+  await expect(pageHeading(renamedTab, "Beta")).toBeVisible();
+  await expect(backlinks.getByText("See [[Beta]].", { exact: true })).toBeVisible();
+  await renamedTab.close();
 
   // Notes written since the web's write: its undo is refused, the dialog naming Notes and why.
   await writeContent(api, pat, of.notes, { content: "Again.\n", base_revision: 2 });

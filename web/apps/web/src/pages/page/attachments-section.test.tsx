@@ -6,7 +6,7 @@ import type { Asset } from "../../services/asset.service";
 import { archive, attachments, nodes, photo, rows } from "../../test/attachments";
 import { json, notebookJSON, problem } from "../../test/fakes";
 import { readAgain } from "../../test/page-panel";
-import { assetJSON, assetNode, guide, linux, notes, pagePath, pageServer } from "../../test/page-server";
+import { assetJSON, assetNode, guide, install, linux, notes, pagePath, pageServer } from "../../test/page-server";
 import { renderApp } from "../../test/render";
 
 // The attachments of a page and of a notebook's root, listed, and what their rows' menus do (M7/P4 design 3.5);
@@ -659,4 +659,49 @@ test("a page's deletion counts the attachments of its subtree, which go with it"
   await user.click(screen.getByRole("menuitem", { name: "Delete" }));
   dialog = await screen.findByRole("alertdialog", { name: "Delete Install?" });
   expect(dialog.textContent).toContain("The attachments under it go with it: 1.");
+});
+
+// M8 closeout K1-3 (check-1's probe L1): gone, the attachment is said gone, and its title takes the focus only from
+// no one, as the row would.
+test("an attachment gone to that the list read since lacks is said gone, the focus left where the reader put it meanwhile", async () => {
+  const user = userEvent.setup();
+  const gone = assetNode(31, "gone.png", linux);
+  let hold: Promise<void> | undefined;
+  const server = pageServer({
+    nodes: [guide, install, linux, notes, gone],
+    answers: {
+      [assetsPath]: async (request) => {
+        const parent = new URL(request.url).searchParams.get("parent_id");
+        await hold;
+        const data = server.nodes.filter((node) => node.kind === "asset" && node.parent_id === parent);
+        return json({ data: data.map((node) => assetJSON(node)), next_cursor: null });
+      },
+    },
+  });
+  const { router } = renderApp(pagePath(linux.id), server.app);
+  expect(await screen.findByRole("link", { name: "gone.png (opens in a new tab)" })).toBeTruthy();
+  await act(() => router.navigate("/lab"));
+  server.nodes = server.nodes.filter((node) => node.id !== gone.id);
+  let release!: () => void;
+  hold = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+
+  await act(() => router.navigate(pagePath(linux.id), { state: { attachment: gone.id } }));
+  await screen.findByRole("heading", { level: 1, name: "Linux" });
+  // The row cached shows while the list is read again; the reader tabs into the page meanwhile.
+  expect(screen.getByRole("link", { name: "gone.png (opens in a new tab)" })).toBeTruthy();
+  await user.tab();
+  const at = document.activeElement;
+  expect(at).not.toBe(document.body);
+  hold = undefined;
+  act(() => release());
+
+  expect(
+    await screen.findByText(
+      "The attachment you opened is no longer here: it was deleted or moved, or you no longer have access to it."
+    )
+  ).toBeTruthy();
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(document.activeElement).toBe(at);
 });

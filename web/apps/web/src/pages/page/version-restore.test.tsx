@@ -203,11 +203,11 @@ test("the banner of a page written meanwhile goes as Restore is pressed again: a
 test("on a large page, Restore waits for the comparison with the page now: the one before it shows meanwhile, saying so, nothing sent on the newer revision until its own shows", async () => {
   const { user, server, lines, dialog, confirm } = await large();
   await waitFor(() => expect(worker.asked).toHaveLength(1));
-  expect(confirm.hasAttribute("disabled")).toBe(true);
+  expect(confirm.getAttribute("aria-disabled")).toBe("true");
   await answered(0);
   const diff = () => within(dialog).getByRole("textbox", { name: "Changes from the page now to version 4" });
   await waitFor(() => expect(marked(diff()).removed).toEqual(["Install now"]));
-  expect(confirm.hasAttribute("disabled")).toBe(false);
+  expect(confirm.getAttribute("aria-disabled")).toBeNull();
 
   // Someone writes the page: a paragraph the restore would take away.
   server.contents.set(install.id, { content: `${lines}Install now\nA new paragraph\n`, revision: 7 });
@@ -217,7 +217,7 @@ test("on a large page, Restore waits for the comparison with the page now: the o
   expect(marked(diff()).removed).toEqual(["Install now"]);
   expect(within(dialog).getByText("Comparing…")).toBeTruthy();
   expect(within(dialog).queryByText(/The page changed meanwhile/)).toBeNull();
-  expect(confirm.hasAttribute("disabled")).toBe(true);
+  expect(confirm.getAttribute("aria-disabled")).toBe("true");
   await user.click(confirm);
   expect(restores(server.sent)).toEqual(["RESTORE Install 4 on 6"]);
 
@@ -236,7 +236,7 @@ test("a comparison with the page now that failed restores nothing until one show
   const { user, dialog, confirm } = await large();
   await answered(0, "fail");
   expect(await within(dialog).findByText("The comparison failed.")).toBeTruthy();
-  expect(confirm.hasAttribute("disabled")).toBe(true);
+  expect(confirm.getAttribute("aria-disabled")).toBe("true");
 
   // M8/P1 fix check 2, R2-2: a worker of an older build than the server's fails each time; a reload replaces it.
   const retry = within(dialog).getByRole("button", { name: "Try again" });
@@ -245,7 +245,7 @@ test("a comparison with the page now that failed restores nothing until one show
   expect(
     await within(dialog).findByText("The comparison failed again. Reloading the page usually fixes this.")
   ).toBeTruthy();
-  expect(confirm.hasAttribute("disabled")).toBe(true);
+  expect(confirm.getAttribute("aria-disabled")).toBe("true");
   // M8/P1 fix check 3, R3-2: the focus stayed on Try again; Reload follows it.
   expect(document.activeElement).toBe(retry);
   await user.tab();
@@ -254,7 +254,7 @@ test("a comparison with the page now that failed restores nothing until one show
   await user.click(retry);
   await answered(2);
   const diff = await within(dialog).findByRole("textbox", { name: "Changes from the page now to version 4" });
-  expect(confirm.hasAttribute("disabled")).toBe(false);
+  expect(confirm.getAttribute("aria-disabled")).toBeNull();
   // Gone with the focus, the failure gave it to the comparison: a group named as it is (M8/P1 fix check 4, R4-2).
   expect(within(dialog).getAllByRole("group", { name: "Changes from the page now to version 4" })).toContain(
     document.activeElement
@@ -282,14 +282,14 @@ test("a large page the same as the version, compared in no worker, can be restor
   const lines = Array.from({ length: 1200 }, (_, i) => `line ${i.toString()}\n`).join("");
   const { dialog, confirm } = await same(`${lines}Install\nthree\n`, `${lines}Install\nthree\n`);
   expect(await within(dialog).findByText("No changes.")).toBeTruthy();
-  await waitFor(() => expect(confirm.hasAttribute("disabled")).toBe(false));
+  await waitFor(() => expect(confirm.getAttribute("aria-disabled")).toBeNull());
   expect(worker.asked).toHaveLength(0);
 });
 
 test("a page that differs from the version in its line breaks alone can be restored", async () => {
   const { dialog, confirm } = await same("Install\r\nthree\r\n", "Install\nthree\n");
   expect(await within(dialog).findByText("Only the line breaks or the byte order mark differ.")).toBeTruthy();
-  await waitFor(() => expect(confirm.hasAttribute("disabled")).toBe(false));
+  await waitFor(() => expect(confirm.getAttribute("aria-disabled")).toBeNull());
 });
 
 test("a page written since it was read whose content could not be read again says so, claiming no comparison with it", async () => {
@@ -404,11 +404,11 @@ test("the page now that could not be read says why in the dialog, and is read on
   const dialog = await screen.findByRole("alertdialog", { name: "Restore version 4?" });
 
   const retry = await within(dialog).findByRole("button", { name: "Try again" });
-  expect(within(dialog).getByRole("button", { name: "Restore" }).hasAttribute("disabled")).toBe(true);
+  expect(within(dialog).getByRole("button", { name: "Restore" }).getAttribute("aria-disabled")).toBe("true");
   fail = false;
   await user.click(retry);
   expect(await within(dialog).findByRole("textbox", { name: "Changes from the page now to version 4" })).toBeTruthy();
-  expect(within(dialog).getByRole("button", { name: "Restore" }).hasAttribute("disabled")).toBe(false);
+  expect(within(dialog).getByRole("button", { name: "Restore" }).getAttribute("aria-disabled")).toBeNull();
 });
 
 test("another refusal stays in the dialog with its reason", async () => {
@@ -420,6 +420,42 @@ test("another refusal stays in the dialog with its reason", async () => {
 
   expect((await within(dialog).findByRole("alert")).textContent).toBe("You do not have permission to do this.");
   expect(screen.getByRole("alertdialog")).toBe(dialog);
+});
+
+// v0.1 design 13.2, item 12; M8 closeout B-M3: busy, not disabled, as the undo's dialog is (M8/P3B review A-M1).
+test("Restore pressed with Enter keeps the focus while the restore is out, sending one however often it is pressed, and after a refusal the dialog keeps", async () => {
+  const held: (() => void)[] = [];
+  const { user, server, dialog } = await restoring({
+    "POST /api/v0/pages/*/versions/*/restore": async () => {
+      server.sent.push("RESTORE held");
+      await new Promise<void>((resolve) => held.push(resolve));
+      return problem(409, "page.locked", { lock: { page_id: install.id, ...bob } });
+    },
+  });
+  const confirm = within(dialog).getByRole("button", { name: "Restore" });
+  const cancel = within(dialog).getByRole("button", { name: "Cancel" });
+  act(() => confirm.focus());
+
+  await user.keyboard("{Enter}{Enter}");
+  await waitFor(() => expect(confirm.textContent).toBe("Restoring…"));
+  expect([
+    confirm.getAttribute("aria-disabled"),
+    confirm.getAttribute("aria-busy"),
+    confirm.hasAttribute("disabled"),
+  ]).toEqual(["true", "true", false]);
+  expect([cancel.getAttribute("aria-disabled"), cancel.hasAttribute("disabled")]).toEqual(["true", false]);
+  expect(document.activeElement).toBe(confirm);
+  await user.keyboard("{Enter}");
+  expect(restores(server.sent)).toEqual(["RESTORE held"]);
+
+  act(() => held[0]?.());
+  expect((await within(dialog).findByRole("alert")).textContent).toBe("Bob is editing “Install”.");
+  expect(screen.getByRole("alertdialog")).toBe(dialog);
+  expect(confirm.textContent).toBe("Restore");
+  expect([confirm.getAttribute("aria-disabled"), confirm.getAttribute("aria-busy")]).toEqual([null, null]);
+  expect(cancel.getAttribute("aria-disabled")).toBeNull();
+  expect(document.activeElement).toBe(confirm);
+  expect(restores(server.sent)).toEqual(["RESTORE held"]);
 });
 
 test("the restore goes out once, however often Restore is pressed, and nothing closes the dialog meanwhile", async () => {
