@@ -193,6 +193,23 @@ func (f fixture) planTreeOf(t *testing.T, s statement) (planNode, string) {
 // and its JSON.
 func (f fixture) planTreeWith(t *testing.T, s statement, settings ...string) (planNode, string) {
 	t.Helper()
+	return f.explain(t, `EXPLAIN (FORMAT JSON, VERBOSE, COSTS OFF) `+s.sql, s.args, settings)
+}
+
+// genericPlanTree is the plan of sql for any values of its parameters
+// with the settings given, as a plan cache's generic plan, and its JSON:
+// a statement explained with its arguments is planned with them, whatever
+// plan_cache_mode says. The parameters stay unbound: the statement goes
+// as it is, no argument bound.
+func (f fixture) genericPlanTree(t *testing.T, sql string, settings ...string) (planNode, string) {
+	t.Helper()
+	return f.explain(t, `EXPLAIN (GENERIC_PLAN, FORMAT JSON, VERBOSE, COSTS OFF) `+sql, nil, settings)
+}
+
+// explain is the plan explain gives with args and the settings, and its
+// JSON; without args, explain is sent as it is.
+func (f fixture) explain(t *testing.T, explain string, args []any, settings []string) (planNode, string) {
+	t.Helper()
 	ctx := context.Background()
 	var raw string
 	err := pgx.BeginFunc(ctx, f.pool, func(tx pgx.Tx) error {
@@ -202,7 +219,18 @@ func (f fixture) planTreeWith(t *testing.T, s statement, settings ...string) (pl
 				return err
 			}
 		}
-		return tx.QueryRow(ctx, `EXPLAIN (FORMAT JSON, VERBOSE, COSTS OFF) `+s.sql, s.args...).Scan(&raw)
+		if args == nil {
+			results, err := tx.Conn().PgConn().Exec(ctx, explain).ReadAll()
+			if err != nil {
+				return err
+			}
+			if len(results) != 1 || len(results[0].Rows) != 1 {
+				return fmt.Errorf("%s: %d results", explain, len(results))
+			}
+			raw = string(results[0].Rows[0][0])
+			return nil
+		}
+		return tx.QueryRow(ctx, explain, args...).Scan(&raw)
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -358,7 +386,13 @@ func scoped(root *planNode, partial []string) []string {
 // candidate matches a read of the tiers' candidates: the titles' hits, the
 // bodies' through page_search_hits, or the queue's.
 func candidate(n *planNode) bool {
-	return n.Relation == "page_search" && n.Alias == "s" || n.Relation == "page_search_queue" && n.Alias == "q" || hits(n)
+	return titled(n) || n.Relation == "page_search_queue" && n.Alias == "q" || hits(n)
+}
+
+// titled matches the read of the title tier's candidates through
+// page_search_titles (M8 Codex review R1).
+func titled(n *planNode) bool {
+	return n.Type == "Function Scan" && n.Function == "page_search_titles"
 }
 
 // rescansCandidates is the problems of a plan with the trap of M8/P5A: a
@@ -411,66 +445,112 @@ func counted(n *planNode) bool {
 	return hits(c)
 }
 
-// checkHits checks page_search_hits, which the body tier reads its
-// candidates by: its settings leave its statement bitmaps of the GIN
-// indexes alone, which its plan under them reads, each branch as its
-// arguments take it (planned with them, and for any), for a rare key and
-// a common one; and give the bitmaps the memory to stay exact (M8/P5A
-// review C-M3).
+// checkHits checks page_search_hits and page_search_titles, which the
+// body and title tiers read their candidates by: their settings leave
+// their statements bitmaps of the GIN indexes alone, which their plans
+// under them read, by the notebooks' queries alone (M8 Codex review R1),
+// each branch as its arguments take it (planned with them, and for any),
+// for a rare key and a common one; and give the bitmaps the memory to stay
+// exact (M8/P5A review C-M3). Their statements are planned for any
+// arguments, as their settings say, where no condition of a notebook's
+// queries is checked row by row: each row would build and check every
+// notebook's (M8 Codex review R1).
 func (f fixture) checkHits(t *testing.T, stage string) {
 	t.Helper()
-	ctx := context.Background()
-	var config []string
-	var body string
-	if err := f.pool.QueryRow(ctx, `SELECT proconfig, pg_get_function_sqlbody(oid) FROM pg_proc
-		WHERE oid = 'page_search_hits(tsquery, tsquery)'::regprocedure`).Scan(&config, &body); err != nil {
-		t.Fatal(err)
+	rare, common, title := []string{"dat", "ata", "tab", "aba", "bas", "ase"}, []string{"the"}, []string{"数"}
+	type call struct {
+		args    []any
+		indexes []string // one of them at least
 	}
-	if want := []string{"enable_seqscan=off", "enable_indexscan=off", "enable_indexonlyscan=off", "work_mem=64MB"}; !slices.Equal(config, want) {
-		t.Errorf("page_search_hits is set %q, want %q", config, want)
-	}
-	stmt, begun := strings.CutPrefix(strings.TrimSpace(body), "BEGIN ATOMIC")
-	stmt, ended := strings.CutSuffix(strings.TrimSpace(stmt), ";\nEND")
-	if !begun || !ended || !strings.Contains(stmt, "page_search_hits.body_keys") || !strings.Contains(stmt, "page_search_hits.title_keys") {
-		t.Fatalf("page_search_hits is %q, want a statement of its keys", body)
-	}
-	stmt = strings.NewReplacer("page_search_hits.body_keys", "$1::text::tsquery", "page_search_hits.title_keys", "$2::text::tsquery").
-		Replace(stmt)
-	rare, common, title := "'dat' & 'ata' & 'tab' & 'aba' & 'bas' & 'ase'", "'the'", "'数'"
-	for _, tt := range []struct {
-		body, title *string
-		indexes     []string // one of them at least
+	notebooks := []uuid.UUID{f.eng}
+	for _, fn := range []struct {
+		signature string
+		params    []string
+		calls     []call
 	}{
-		{&rare, nil, []string{"page_search_body_idx"}},
-		{&common, nil, []string{"page_search_body_idx"}},
-		{&rare, &title, []string{"page_search_body_idx", "page_search_title_idx"}},
-		{&common, &title, []string{"page_search_body_idx", "page_search_title_idx"}},
-		{nil, &title, []string{"page_search_title_idx"}},
+		{"page_search_hits(uuid[], text[], text[])", []string{"notebooks uuid[]", "body_keys text[]", "title_keys text[]"}, []call{
+			{[]any{notebooks, rare, nil}, []string{"page_search_body_idx"}},
+			{[]any{notebooks, common, nil}, []string{"page_search_body_idx"}},
+			{[]any{notebooks, rare, title}, []string{"page_search_body_idx", "page_search_title_idx"}},
+			{[]any{notebooks, common, title}, []string{"page_search_body_idx", "page_search_title_idx"}},
+			{[]any{notebooks, nil, title}, []string{"page_search_title_idx"}},
+		}},
+		{"page_search_titles(uuid[], text[])", []string{"notebooks uuid[]", "keys text[]"}, []call{
+			{[]any{notebooks, rare}, []string{"page_search_title_idx"}},
+			{[]any{notebooks, common}, []string{"page_search_title_idx"}},
+			{[]any{notebooks, title}, []string{"page_search_title_idx"}},
+		}},
 	} {
-		s := statement{sql: stmt, args: []any{tt.body, tt.title}}
-		for _, generic := range []bool{false, true} {
-			settings := config
-			if generic {
-				settings = append(slices.Clone(config), "plan_cache_mode=force_generic_plan")
+		name, _, _ := strings.Cut(fn.signature, "(")
+		var config []string
+		var body string
+		if err := f.pool.QueryRow(context.Background(), `SELECT proconfig, pg_get_function_sqlbody(oid) FROM pg_proc
+			WHERE oid = $1::regprocedure`, fn.signature).Scan(&config, &body); err != nil {
+			t.Fatal(err)
+		}
+		if want := []string{"enable_seqscan=off", "enable_indexscan=off", "enable_indexonlyscan=off", "work_mem=64MB",
+			"plan_cache_mode=force_generic_plan", "max_parallel_workers_per_gather=0"}; !slices.Equal(config, want) {
+			t.Errorf("%s is set %q, want %q", name, config, want)
+		}
+		stmt, begun := strings.CutPrefix(strings.TrimSpace(body), "BEGIN ATOMIC")
+		stmt, ended := strings.CutSuffix(strings.TrimSpace(stmt), ";\nEND")
+		var replace []string
+		for i, param := range fn.params {
+			arg, typ, _ := strings.Cut(param, " ")
+			if !strings.Contains(stmt, name+"."+arg) {
+				ended = false
 			}
-			root, _ := f.planTreeWith(t, s, settings...)
-			read := slices.ContainsFunc(tt.indexes, func(index string) bool {
-				return len(root.all(reads("page_search", index, ""))) > 0
-			})
-			if !read || len(root.all(wholeSearch)) > 0 {
-				t.Errorf("page_search_hits(%v, %v) %s, planned for any arguments %v, does not read %v alone", deref(tt.body), deref(tt.title),
-					stage, generic, tt.indexes)
+			replace = append(replace, name+"."+arg, fmt.Sprintf("$%d::%s", i+1, typ))
+		}
+		if !begun || !ended {
+			t.Fatalf("%s is %q, want a statement of its notebooks and keys", name, body)
+		}
+		stmt = strings.NewReplacer(replace...).Replace(stmt)
+		for _, c := range fn.calls {
+			s := statement{sql: stmt, args: c.args}
+			for _, generic := range []bool{false, true} {
+				var root planNode
+				var raw string
+				if generic {
+					root, raw = f.genericPlanTree(t, stmt, config...)
+				} else {
+					root, raw = f.planTreeWith(t, s, config...)
+				}
+				read := slices.ContainsFunc(c.indexes, func(index string) bool {
+					return len(root.all(scopedReads(index))) > 0
+				})
+				if !read || len(root.all(wholeSearch)) > 0 || len(root.all(unscopedReads)) > 0 {
+					t.Errorf("%s(%v) %s, planned for any arguments %v, does not read %v by its notebooks' queries alone: %s",
+						name, c.args[1:], stage, generic, c.indexes, raw)
+				}
+				if generic && len(root.all(queriesByRow)) > 0 {
+					t.Errorf("%s(%v) %s, planned for any arguments, checks its notebooks' queries row by row: %s",
+						name, c.args[1:], stage, raw)
+				}
 			}
 		}
 	}
 }
 
-// deref is *s, or "NULL".
-func deref(s *string) string {
-	if s == nil {
-		return "NULL"
+// scopedReads matches a bitmap scan of index whose conditions are the
+// notebooks' queries (page_search_queries) alone: no key of the index is
+// another notebook's (M8 Codex review R1).
+func scopedReads(index string) func(*planNode) bool {
+	return func(n *planNode) bool {
+		return n.Type == "Bitmap Index Scan" && n.Index == index && strings.Contains(n.IndexCond, "page_search_queries(")
 	}
-	return *s
+}
+
+// queriesByRow matches a node that checks the notebooks' queries
+// (page_search_queries) on each row, as a filter.
+func queriesByRow(n *planNode) bool {
+	return strings.Contains(n.Filter, "page_search_queries(") || strings.Contains(n.JoinFilter, "page_search_queries(")
+}
+
+// unscopedReads matches a scan of a GIN index of page_search by a
+// condition other than its notebooks' queries.
+func unscopedReads(n *planNode) bool {
+	return (n.Index == "page_search_body_idx" || n.Index == "page_search_title_idx") && !strings.Contains(n.IndexCond, "page_search_queries(")
 }
 
 // The search's statements read through their indexes (M8/P5 design 3.5,
@@ -517,7 +597,7 @@ func TestTheSearchReadsUseTheirIndexes(t *testing.T) {
 	notebooks := []uuid.UUID{f.eng}
 	// hitsOf is the count of q's candidates by their lexemes.
 	hitsOf := func(q domain.SearchQuery) int64 {
-		n, err := f.s.SearchHitCount(ctx, q)
+		n, err := f.s.SearchHitCount(ctx, app.SearchScope{Notebooks: notebooks, Query: q})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -607,10 +687,10 @@ func TestTheSearchReadsUseTheirIndexes(t *testing.T) {
 				continue
 			}
 			check("SearchTitles("+q+") "+stage, titles(q), func(root *planNode, _ string) []string {
-				out := uses(root, reads("page_search", "page_search_title_idx", "s"), reads("page_contents", "page_contents_pkey", "c2"))
+				out := uses(root, titled, reads("page_contents", "page_contents_pkey", "c2"))
 				out = append(out, fence(root, false)...)
 				limits := root.all(func(n *planNode) bool {
-					return n.Type == "Limit" && len(n.all(reads("page_search", "page_search_title_idx", "s"))) > 0
+					return n.Type == "Limit" && len(n.all(titled)) > 0
 				})
 				if len(limits) != 1 {
 					return append(out, fmt.Sprintf("has %d limits over its candidates, want one", len(limits)))
@@ -685,7 +765,7 @@ func TestTheSearchReadsUseTheirIndexes(t *testing.T) {
 				checkFence("SearchTitleCount("+q+") "+stage, titleCount)
 			} else {
 				check("SearchTitleCount("+q+") "+stage, titleCount, func(root *planNode, _ string) []string {
-					return append(uses(root, reads("page_search", "page_search_title_idx", "s")), fence(root, false)...)
+					return append(uses(root, titled), fence(root, false)...)
 				})
 			}
 			check("SearchBodyCount("+q+") "+stage, statementOf(t, func(g *gen.Queries) error {
@@ -696,7 +776,7 @@ func TestTheSearchReadsUseTheirIndexes(t *testing.T) {
 				return append(uses(root, counted), fence(root, many[q])...)
 			})
 			check("SearchHitCount("+q+") "+stage, statementOf(t, func(g *gen.Queries) error {
-				_, err := g.SearchHitCount(ctx, gen.SearchHitCountParams{BodyKeys: sc.BodyKeys(), TitledKeys: sc.TitledKeys()})
+				_, err := g.SearchHitCount(ctx, gen.SearchHitCountParams{Notebooks: notebooks, BodyKeys: sc.BodyKeys(), TitledKeys: sc.TitledKeys()})
 				return err
 			}), func(root *planNode, _ string) []string {
 				return uses(root, hits)

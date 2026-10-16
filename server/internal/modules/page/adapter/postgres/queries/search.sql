@@ -38,12 +38,6 @@ SELECT pg_try_advisory_lock(6107471706471486842);
 -- The search's job's lock given back.
 SELECT pg_advisory_unlock(6107471706471486842);
 
--- name: SetSearchWriting :exec
--- The job's writes' settings, for its transaction alone (M8/P5A, measured on 300,000 pages): the GIN indexes' pending
--- list flushed in larger merges, each in memory, write a full index about 3.6 times as fast as at the server's
--- defaults (4 MB and 4 MB); the reads then scan a pending list of 16 MB at most.
-SELECT set_config('work_mem', '64MB', true), set_config('gin_pending_list_limit', '16MB', true);
-
 -- name: QueuedSearch :many
 -- The nodes queued exact, or in bulk, after the node after, by id, at most max_rows, with the versions queued: the
 -- job's pass, unlocked, the exact nodes' first.
@@ -69,11 +63,27 @@ SELECT node_id, content, revision FROM page_contents
 WHERE node_id = ANY(sqlc.arg(ids)::uuid[]) AND deleted_at IS NULL
 ORDER BY node_id;
 
+-- name: TagSearchNotebooks :exec
+-- The notebooks of the nodes given that have no prefix yet get the next (M8 Codex review R1): the job's, before it
+-- writes their rows, in its transaction.
+INSERT INTO page_search_tags (notebook_id, prefix)
+SELECT x.notebook_id, page_search_prefix(nextval('page_search_tags_seq'))
+FROM (SELECT DISTINCT n.notebook_id FROM nodes n
+      WHERE n.id = ANY(sqlc.arg(ids)::uuid[])
+          AND NOT EXISTS (SELECT 1 FROM page_search_tags t WHERE t.notebook_id = n.notebook_id)
+      ORDER BY 1) x
+ON CONFLICT (notebook_id) DO NOTHING;
+
 -- name: WriteSearchRow :batchexec
--- A node's row as the job built it: its lexemes as tsvectors, without positions.
+-- A node's row as the job built it: its lexemes as tsvectors, without positions, each after its notebook's prefix
+-- (M8 Codex review R1). A node purged since it was read has no notebook and gets no row.
 INSERT INTO page_search (node_id, revision, name, tokenizer, built_at, title, body)
-VALUES (sqlc.arg(node_id), sqlc.narg(revision), sqlc.arg(name), sqlc.arg(tokenizer), sqlc.arg(built_at)::timestamptz,
-    array_to_tsvector(sqlc.arg(title)::text[]), array_to_tsvector(sqlc.narg(body)::text[]))
+SELECT n.id, sqlc.narg(revision)::integer, sqlc.arg(name)::text, sqlc.arg(tokenizer)::text, sqlc.arg(built_at)::timestamptz,
+    array_to_tsvector(ARRAY(SELECT t.prefix || l FROM unnest(sqlc.arg(title)::text[]) l)),
+    CASE WHEN sqlc.narg(body)::text[] IS NOT NULL
+        THEN array_to_tsvector(ARRAY(SELECT t.prefix || l FROM unnest(sqlc.narg(body)::text[]) l)) END
+FROM nodes n JOIN page_search_tags t ON t.notebook_id = n.notebook_id
+WHERE n.id = sqlc.arg(node_id)::uuid
 ON CONFLICT (node_id) DO UPDATE SET revision = excluded.revision, name = excluded.name, tokenizer = excluded.tokenizer,
     built_at = excluded.built_at, title = excluded.title, body = excluded.body;
 
@@ -124,7 +134,7 @@ FROM (
     SELECT j.id, j.notebook_id, j.kind, j.name, j.sort_at
     FROM (SELECT n.id, n.notebook_id, n.kind, n.name, n.deleted_at,
               greatest(n.updated_at, c.updated_at)::timestamptz AS sort_at
-          FROM (SELECT s.node_id FROM page_search s WHERE s.title @@ sqlc.arg(keys)::text::tsquery
+          FROM (SELECT s.node_id FROM page_search_titles(sqlc.arg(notebooks)::uuid[], sqlc.arg(keys)::text[]) s (node_id)
                 UNION
                 SELECT q.node_id FROM page_search_queue q
                 WHERE NOT q.bulk AND q.notebook_id = ANY(sqlc.arg(notebooks)::uuid[])) k
@@ -149,7 +159,7 @@ ORDER BY w.sort_at DESC, w.id DESC;
 -- titled_keys, or, without body keys, whose title holds titled_keys (page_search_hits, which reads them by the GIN
 -- indexes alone). The statements that read them take the count as their LIMIT, in the same snapshot: the planner's
 -- estimate of their number, which it joins them by.
-SELECT count(*) FROM page_search_hits(sqlc.narg(body_keys)::text::tsquery, sqlc.narg(titled_keys)::text::tsquery);
+SELECT count(*) FROM page_search_hits(sqlc.arg(notebooks)::uuid[], sqlc.narg(body_keys)::text[], sqlc.narg(titled_keys)::text[]);
 
 -- name: SearchBodies :many
 -- The body tier of a search (M8/P5 design 3.5): the live pages of the notebooks given whose lexemes hold the keys,
@@ -174,7 +184,7 @@ FROM (
         FROM (SELECT n.id, n.notebook_id, n.name, n.deleted_at, c.deleted_at AS content_deleted_at,
                   greatest(n.updated_at, c.updated_at)::timestamptz AS sort_at
               FROM ((SELECT h.node_id
-                     FROM page_search_hits(sqlc.narg(body_keys)::text::tsquery, sqlc.narg(titled_keys)::text::tsquery) h (node_id)
+                     FROM page_search_hits(sqlc.arg(notebooks)::uuid[], sqlc.narg(body_keys)::text[], sqlc.narg(titled_keys)::text[]) h (node_id)
                      LIMIT sqlc.arg(hits)::bigint)
                     UNION
                     SELECT q.node_id FROM page_search_queue q
@@ -210,7 +220,7 @@ LIMIT sqlc.arg(max_rows);
 SELECT count(*)::integer AS titles, (count(*) FILTER (WHERE a.kind = 'page'))::integer AS title_pages
 FROM (SELECT j.kind
       FROM (SELECT n.kind, n.name, n.notebook_id, n.deleted_at
-            FROM (SELECT s.node_id FROM page_search s WHERE s.title @@ sqlc.arg(keys)::text::tsquery
+            FROM (SELECT s.node_id FROM page_search_titles(sqlc.arg(notebooks)::uuid[], sqlc.arg(keys)::text[]) s (node_id)
                   UNION
                   SELECT q.node_id FROM page_search_queue q
                   WHERE NOT q.bulk AND q.notebook_id = ANY(sqlc.arg(notebooks)::uuid[])) k
@@ -228,7 +238,7 @@ SELECT count(*)::integer AS bodies
 FROM (SELECT 1
       FROM (SELECT n.kind, n.notebook_id, n.deleted_at
             FROM ((SELECT h.node_id
-                   FROM page_search_hits(sqlc.narg(body_keys)::text::tsquery, sqlc.narg(titled_keys)::text::tsquery) h (node_id)
+                   FROM page_search_hits(sqlc.arg(notebooks)::uuid[], sqlc.narg(body_keys)::text[], sqlc.narg(titled_keys)::text[]) h (node_id)
                    LIMIT sqlc.arg(hits)::bigint)
                   UNION
                   SELECT q.node_id FROM page_search_queue q

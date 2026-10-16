@@ -192,7 +192,9 @@ func checkSearch(t *testing.T, pool *pgxpool.Pool) {
 // checkSearchBuilt runs the job on pool and fails t unless it emptied the
 // queue and left the index its nodes' (M8/P5 design 3.10): a row for each
 // live node and for no other, at its name and content's revision, by the
-// current tokenizer, its lexemes those SearchTokens makes of them now.
+// current tokenizer, its lexemes those SearchTokens makes of them now,
+// each behind the node's notebook's prefix (M8 Codex review R1): a lexeme
+// behind another's is none of the row's.
 func checkSearchBuilt(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
 	drainSearch(t, pool)
@@ -202,14 +204,19 @@ func checkSearchBuilt(t *testing.T, pool *pgxpool.Pool) {
 			AND NOT EXISTS (SELECT 1 FROM page_search s WHERE s.node_id = n.id)`,
 		"rows of no live node": `SELECT count(*) FROM page_search s WHERE NOT EXISTS (
 			SELECT 1 FROM nodes n WHERE n.id = s.node_id AND n.deleted_at IS NULL)`,
+		"rows of a notebook without a prefix": `SELECT count(*) FROM page_search s JOIN nodes n ON n.id = s.node_id
+			WHERE NOT EXISTS (SELECT 1 FROM page_search_tags t WHERE t.notebook_id = n.notebook_id)`,
 	} {
 		if n := count(t, pool, query); n != 0 {
 			t.Errorf("%d %s, want none", n, what)
 		}
 	}
 	rows, err := pool.Query(context.Background(), `SELECT s.node_id::text, n.name, s.name, s.tokenizer, c.revision, s.revision, c.content,
-			tsvector_to_array(s.title), CASE WHEN s.body IS NOT NULL THEN tsvector_to_array(s.body) END
-		FROM page_search s JOIN nodes n ON n.id = s.node_id LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at IS NULL
+			ARRAY(SELECT substr(l, length(t.prefix) + 1) FROM unnest(tsvector_to_array(s.title)) l WHERE starts_with(l, t.prefix)),
+			CASE WHEN s.body IS NOT NULL THEN ARRAY(SELECT substr(l, length(t.prefix) + 1) FROM unnest(tsvector_to_array(s.body)) l
+				WHERE starts_with(l, t.prefix)) END
+		FROM page_search s JOIN nodes n ON n.id = s.node_id JOIN page_search_tags t ON t.notebook_id = n.notebook_id
+			LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at IS NULL
 		ORDER BY s.node_id`)
 	if err != nil {
 		t.Fatal(err)

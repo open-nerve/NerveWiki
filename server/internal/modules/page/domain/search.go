@@ -75,8 +75,9 @@ const (
 // searchTokenizerVersion is the version of the rules below: a change of
 // them is a new one, whose rows nervewiki reindex queues. 2: the cut of
 // long runs to ASCII's, the end of a data: string, Cherokee's case (M8/P5A
-// review A-I1, A-M3, A-M1).
-const searchTokenizerVersion = "2"
+// review A-I1, A-M3, A-M1). 3: each lexeme stored behind its notebook's
+// prefix (M8 Codex review R1; migration 00041 rebuilds every row).
+const searchTokenizerVersion = "3"
 
 // SearchTokenizer names the lexemes a row holds: the rules' version, Go's
 // Unicode version, whose tables classify the characters, and x/text's,
@@ -502,13 +503,13 @@ func parseTerm(text, folded string) (SearchTerm, bool) {
 		switch g.class {
 		case classCJK:
 			if g.n == 1 {
-				unigrams.add(tsqueryOperand(folded[g.start:g.end]))
+				unigrams.add(folded[g.start:g.end])
 				continue
 			}
 			bigrams := lexemes{}
 			bigrams.scan(folded[g.start:g.end], false)
 			for _, x := range bigrams.out {
-				keys.add(tsqueryOperand(x))
+				keys.add(x)
 			}
 		case classWord:
 			if longASCII(g.n, g.end-g.start) {
@@ -517,7 +518,7 @@ func parseTerm(text, folded string) (SearchTerm, bool) {
 			w := lexemes{}
 			w.word(folded, g.start, g.end, g.n)
 			for _, x := range w.out {
-				keys.add(tsqueryOperand(x))
+				keys.add(x)
 			}
 		}
 	}
@@ -572,20 +573,18 @@ func (q SearchQuery) InContents(nfc []string) (SearchQuery, error) {
 	return out, nil
 }
 
-// tsqueryOperand is the lexeme x as a tsquery's operand: quoted, though it
-// holds letters, digits and marks alone.
-func tsqueryOperand(x string) string {
-	return "'" + x + "'"
-}
-
-// TitleKeys is the title's tsquery: each term's keys and characters.
-func (q SearchQuery) TitleKeys() string {
+// TitleKeys are the keys of the title, all of which a title the title tier
+// finds holds: each term's keys and characters, each once. The store's
+// statements put each searched notebook's prefix before each key and AND
+// them, a query for each notebook (M8 Codex review R1); keys are letters,
+// digits and marks alone.
+func (q SearchQuery) TitleKeys() []string {
 	var ops []string
 	for _, t := range q.Terms {
 		ops = append(ops, t.keys...)
 		ops = append(ops, t.unigrams...)
 	}
-	return andOf(ops)
+	return distinct(ops)
 }
 
 // Bodied reports whether the query has a body tier: a term found in
@@ -594,28 +593,28 @@ func (q SearchQuery) Bodied() bool {
 	return slices.ContainsFunc(q.Terms, func(t SearchTerm) bool { return !t.TitlesOnly })
 }
 
-// BodyKeys is the body tier's tsquery of the body, the keys of its terms
-// found in contents too; nil when they have none.
-func (q SearchQuery) BodyKeys() *string {
+// BodyKeys are the body tier's keys of the body, those of its terms found
+// in contents too, each once; nil when they have none.
+func (q SearchQuery) BodyKeys() []string {
 	var ops []string
 	for _, t := range q.Terms {
 		if !t.TitlesOnly {
 			ops = append(ops, t.keys...)
 		}
 	}
-	return orNil(andOf(ops))
+	return distinct(ops)
 }
 
-// TitledKeys is the body tier's tsquery of the title, the characters of
-// its terms found in names alone; nil when it has none.
-func (q SearchQuery) TitledKeys() *string {
+// TitledKeys are the body tier's keys of the title, the characters of its
+// terms found in names alone, each once; nil when it has none.
+func (q SearchQuery) TitledKeys() []string {
 	var ops []string
 	for _, t := range q.Terms {
 		if t.TitlesOnly {
 			ops = append(ops, t.unigrams...)
 		}
 	}
-	return orNil(andOf(ops))
+	return distinct(ops)
 }
 
 // Patterns are the terms' patterns of names, PostgreSQL's (see
@@ -653,8 +652,8 @@ func (q SearchQuery) patterns(keep func(SearchTerm) bool, pattern func(SearchTer
 	return out
 }
 
-// andOf is the tsquery of ops all, each once.
-func andOf(ops []string) string {
+// distinct is ops, each once, in their order; nil for none.
+func distinct(ops []string) []string {
 	seen := map[string]bool{}
 	var out []string
 	for _, o := range ops {
@@ -663,14 +662,7 @@ func andOf(ops []string) string {
 			out = append(out, o)
 		}
 	}
-	return strings.Join(out, " & ")
-}
-
-func orNil(s string) *string {
-	if s == "" {
-		return nil
-	}
-	return &s
+	return out
 }
 
 // Pattern is the term's pattern for PostgreSQL's ~ and regexp_instr, an

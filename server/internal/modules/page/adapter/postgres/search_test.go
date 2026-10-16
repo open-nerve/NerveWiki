@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand/v2"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -132,7 +133,7 @@ func scopeOf(t *testing.T, q string, notebooks ...uuid.UUID) app.SearchScope {
 // bodies walks the body tier of sc as the use case does: its hits counted
 // in ctx's snapshot (SearchHitCount), then read, all of them.
 func (f fixture) bodies(ctx context.Context, sc app.SearchScope, walk, limit int) ([]app.SearchBodyRow, error) {
-	n, err := f.s.SearchHitCount(ctx, sc.Query)
+	n, err := f.s.SearchHitCount(ctx, sc)
 	if err != nil {
 		return nil, err
 	}
@@ -455,9 +456,7 @@ func onePool(t *testing.T, f fixture) *pgxpool.Pool {
 
 // A run takes one connection of the pool, its lock's, which its
 // statements and transactions run on: on a pool of one connection it
-// builds every row (M8/P5A review B-M4). Its writes' settings hold in
-// their transaction alone, not on the connection after it, nor after the
-// run (M8/P5 design deviation 3; M8/P5A review B-M1).
+// builds every row (M8/P5A review B-M4).
 func TestTheSearchsJobRunsOnItsLocksConnection(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
@@ -469,19 +468,6 @@ func TestTheSearchsJobRunsOnItsLocksConnection(t *testing.T) {
 	}
 	f.queueSearch(t, f.eng, false, ids...)
 	one := onePool(t, f)
-	settings := func(ctx context.Context) string {
-		t.Helper()
-		var memory, pending string
-		if err := postgres.DB(ctx, one).QueryRow(ctx, `SELECT current_setting('work_mem'), current_setting('gin_pending_list_limit')`).
-			Scan(&memory, &pending); err != nil {
-			t.Fatal(err)
-		}
-		return memory + " " + pending
-	}
-	defaults := settings(ctx)
-	if defaults == "64MB 16MB" {
-		t.Fatalf("the server's settings are the job's, %s: the test tells nothing", defaults)
-	}
 	s, tm := postgresadapter.New(one), postgres.NewTxManager(one, 5*time.Second)
 	bounded, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
@@ -491,23 +477,6 @@ func TestTheSearchsJobRunsOnItsLocksConnection(t *testing.T) {
 	}
 	if n := f.count(t, `SELECT count(*) FROM page_search_queue`); n != 0 {
 		t.Errorf("the queue holds %d nodes after the run, want none", n)
-	}
-	if got := settings(ctx); got != defaults {
-		t.Errorf("work_mem and gin_pending_list_limit %s on the connection after the run, want %s as before", got, defaults)
-	}
-	var within string
-	if err := tm.WithinTx(ctx, func(ctx context.Context) error {
-		if err := s.WriteSearchRows(ctx, nil, []uuid.UUID{ids[0]}); err != nil {
-			return err
-		}
-		within = settings(ctx)
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if after := settings(ctx); within != "64MB 16MB" || after != defaults {
-		t.Errorf("work_mem and gin_pending_list_limit %s before the job's transaction, %s in it, %s after; want 64MB 16MB in it alone",
-			defaults, within, after)
 	}
 }
 
@@ -556,10 +525,12 @@ func TestASearchRunWhoseConnectionEndsFailsOnce(t *testing.T) {
 	}
 }
 
-// The job's rows are its lexemes as tsvectors, a page's body with the
-// revision it read, none for an attachment's, the name, tokenizer and
+// The job's rows are its lexemes as tsvectors, each behind its node's
+// notebook's prefix, given the first time a row of the notebook is written
+// and another notebook's another (M8 Codex review R1); a page's body with
+// the revision it read, none for an attachment's, the name, tokenizer and
 // time; a node's row written again is replaced, and a deleted node's goes,
-// in the transaction the job opened, which its settings do not outlive.
+// in the transaction the job opened.
 // Its sources are each node as it is, gone when deleted or not there, a
 // page's content's revision and size, and its row as built; its contents
 // those of the live pages alone. Its ANALYZE gives @@ its statistics.
@@ -571,6 +542,7 @@ func TestTheSearchsRowsAndSources(t *testing.T) {
 	f.write(t, p.ID, content, 3, now())
 	x := f.asset(t, f.eng, nil, "x.png", 1)
 	d := f.page(t, f.eng, nil, "Gone", 2)
+	o := f.page(t, f.ops, nil, "Ops page", 0)
 	missing := uuid.NewV7()
 	built := now().Add(time.Minute)
 	row := func(n domain.Node, revision int, content *string) app.SearchRow {
@@ -579,22 +551,32 @@ func TestTheSearchsRowsAndSources(t *testing.T) {
 			Body: body}
 	}
 	empty := ""
-	rows := []app.SearchRow{row(p, 3, &content), row(x, 0, nil), row(d, 1, &empty)}
+	rows := []app.SearchRow{row(p, 3, &content), row(x, 0, nil), row(d, 1, &empty), row(o, 1, &content)}
 	if err := f.s.WriteSearchRows(ctx, rows, nil); err == nil {
-		t.Errorf("WriteSearchRows outside a transaction wrote; want an error, its settings would stay on the pool's connection")
+		t.Errorf("WriteSearchRows outside a transaction wrote; want an error, a row without its notebook's prefix")
 	}
 	f.writeRows(t, rows)
+	var engPrefix, opsPrefix string
+	if err := f.pool.QueryRow(ctx, `SELECT (SELECT prefix FROM page_search_tags WHERE notebook_id = $1),
+			(SELECT prefix FROM page_search_tags WHERE notebook_id = $2)`, f.eng, f.ops).Scan(&engPrefix, &opsPrefix); err != nil ||
+		engPrefix == opsPrefix || !searchPrefix.MatchString(engPrefix) || !searchPrefix.MatchString(opsPrefix) {
+		t.Errorf("the prefixes of eng and ops = %q, %q, %v; want two, each base 62 digits and '#'", engPrefix, opsPrefix, err)
+	}
 	for _, r := range rows {
 		var revision *int // an attachment's none
 		if r.Revision > 0 {
 			revision = &r.Revision
 		}
+		prefix := engPrefix
+		if r.NodeID == o.ID {
+			prefix = opsPrefix
+		}
 		var same bool
 		if err := f.pool.QueryRow(ctx, `SELECT revision IS NOT DISTINCT FROM $2 AND name = $3 AND tokenizer = $4 AND built_at = $5
 				AND title = array_to_tsvector($6::text[]) AND body IS NOT DISTINCT FROM array_to_tsvector($7::text[])
-			FROM page_search WHERE node_id = $1`, r.NodeID, revision, r.Name, r.Tokenizer, r.BuiltAt, r.Title, r.Body).Scan(&same); err != nil ||
-			!same {
-			t.Errorf("the row of %s = %v, %v; want it as written", r.Name, same, err)
+			FROM page_search WHERE node_id = $1`, r.NodeID, revision, r.Name, r.Tokenizer, r.BuiltAt, prefixed(prefix, r.Title),
+			prefixed(prefix, r.Body)).Scan(&same); err != nil || !same {
+			t.Errorf("the row of %s = %v, %v; want it as written, each lexeme behind %q", r.Name, same, err, prefix)
 		}
 	}
 	if err := f.s.DeleteNodes(ctx, deletion([]uuid.UUID{d.ID}, f.alice, now())); err != nil {
@@ -647,6 +629,22 @@ func TestTheSearchsRowsAndSources(t *testing.T) {
 	if got := f.count(t, `SELECT count(*) FROM pg_stats WHERE tablename = 'page_search' AND attname IN ('title', 'body')`); got != 2 {
 		t.Errorf("page_search's lexemes have statistics of %d columns after its ANALYZE, want 2", got)
 	}
+}
+
+// searchPrefix matches a notebook's prefix (migration 00041).
+var searchPrefix = regexp.MustCompile(`^[0-9A-Za-z]+#$`)
+
+// prefixed is each of lexemes behind prefix, as a row holds them; nil for
+// none.
+func prefixed(prefix string, lexemes []string) []string {
+	if lexemes == nil {
+		return nil
+	}
+	out := make([]string, len(lexemes))
+	for i, l := range lexemes {
+		out[i] = prefix + l
+	}
+	return out
 }
 
 // sameSource reports whether two sources are alike, their times equal.
@@ -771,27 +769,35 @@ func TestTheSearchsTiers(t *testing.T) {
 }
 
 // The body tier's candidates by their lexemes, counted (page_search_hits,
-// M8/P5A): the rows whose body holds the body's keys; with titles-only
-// terms too, those whose title also holds their characters; without keys
-// of the body, those whose title holds them; none for keys no row holds.
-// It counts rows, of any node and notebook: the statements that read the
-// hits join the live nodes of the notebooks searched.
+// M8/P5A): the rows of the notebooks searched whose body holds the body's
+// keys; with titles-only terms too, those whose title also holds their
+// characters; without keys of the body, those whose title holds them; none
+// for keys no row holds. It counts the rows of the notebooks searched
+// alone, by their keys (M8 Codex review R1), of any node: the statements
+// that read the hits join the live nodes.
 func TestSearchHitCount(t *testing.T) {
 	f := newSearchScene(t)
 	for _, tt := range []struct {
-		q    string
-		want int
+		q         string
+		notebooks []uuid.UUID
+		want      int
 	}{
-		{"api", 4},     // Rapid notes, Plain, Deleted api and Ops api: Fresh api has no row yet
-		{"锅 中国", 2},    // 锅具 and 中国锅, whose bodies hold 中国 and titles 锅; not 中国, whose title does not
-		{"锅 #", 3},     // 铁锅, 锅具 and 中国锅, whose titles hold 锅
-		{"deleted", 1}, // Deleted api's row, there until the job runs
-		{"ops", 1},     // ops's Ops api
-		{"zzzqqq", 0},
+		{"api", []uuid.UUID{f.eng}, 3},        // Rapid notes, Plain and Deleted api: Fresh api has no row yet
+		{"api", []uuid.UUID{f.ops}, 1},        // Ops api
+		{"api", []uuid.UUID{f.eng, f.ops}, 4}, // the four
+		{"锅 中国", []uuid.UUID{f.eng}, 2},       // 锅具 and 中国锅, whose bodies hold 中国 and titles 锅; not 中国, whose title does not
+		{"锅 #", []uuid.UUID{f.eng}, 3},        // 铁锅, 锅具 and 中国锅, whose titles hold 锅
+		{"deleted", []uuid.UUID{f.eng}, 1},    // Deleted api's row, there until the job runs
+		{"ops", []uuid.UUID{f.eng}, 0},        // ops's Ops api, not searched
+		{"ops", []uuid.UUID{f.ops}, 1},
+		{"api", nil, 0}, // no notebook
+		{"zzzqqq", []uuid.UUID{f.eng, f.ops}, 0},
 	} {
-		got, err := inSnapshot(f, func(ctx context.Context) (int, error) { return f.s.SearchHitCount(ctx, scopeOf(t, tt.q, f.eng).Query) })
+		got, err := inSnapshot(f, func(ctx context.Context) (int, error) {
+			return f.s.SearchHitCount(ctx, scopeOf(t, tt.q, tt.notebooks...))
+		})
 		if err != nil || got != tt.want {
-			t.Errorf("SearchHitCount(%s) = %d, %v; want %d", tt.q, got, err, tt.want)
+			t.Errorf("SearchHitCount(%s in %v) = %d, %v; want %d", tt.q, tt.notebooks, got, err, tt.want)
 		}
 	}
 }
@@ -837,7 +843,7 @@ func TestSearchTitleAndBodyCounts(t *testing.T) {
 			if c.titles, c.pages, err = f.s.SearchTitleCount(ctx, sc, tt.limit); err != nil {
 				return c, err
 			}
-			if sc.Hits, err = f.s.SearchHitCount(ctx, sc.Query); err != nil {
+			if sc.Hits, err = f.s.SearchHitCount(ctx, sc); err != nil {
 				return c, err
 			}
 			c.bodies, err = f.s.SearchBodyCount(ctx, sc, tt.limit)
@@ -931,7 +937,7 @@ func TestTheBodyTiersWalk(t *testing.T) {
 	for _, short := range []int{1, 6} {
 		rows, err := inSnapshot(f, func(ctx context.Context) ([]app.SearchBodyRow, error) {
 			sc := scopeOf(t, "abcd", f.eng)
-			n, err := f.s.SearchHitCount(ctx, sc.Query)
+			n, err := f.s.SearchHitCount(ctx, sc)
 			if err != nil || n != 6 {
 				return nil, fmt.Errorf("SearchHitCount = %d, want the six: %w", n, err)
 			}
@@ -1588,7 +1594,7 @@ func TestSearchStatementErrorsCarryNoQuery(t *testing.T) {
 			return err
 		},
 		"SearchHitCount": func(ctx context.Context, _ int) error {
-			_, err := f.s.SearchHitCount(ctx, sc.Query)
+			_, err := f.s.SearchHitCount(ctx, sc)
 			return err
 		},
 		"SearchBodies": func(ctx context.Context, limit int) error {

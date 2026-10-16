@@ -304,6 +304,10 @@ func TestConstraintAndIndexNames(t *testing.T) {
 		"page_search_queue_pkey iu",
 		"page_search_queue_pkey p",
 		"page_search_revision_check c",
+		"page_search_tags_pkey iu",
+		"page_search_tags_pkey p",
+		"page_search_tags_prefix_key iu",
+		"page_search_tags_prefix_key u",
 		"page_search_title_idx i",
 		"page_tags_count_check c",
 		"page_tags_notebook_id_tag_key_idx i",
@@ -446,6 +450,8 @@ func TestChecksRejectCounterexamples(t *testing.T) {
 			"('0199a2b4-0000-7000-8000-000000000016', NULL, 'a.png', '1/17.0.0', now(), 'a png', NULL)",
 		"INSERT INTO page_search_queue (node_id, notebook_id, bulk) VALUES " +
 			"('0199a2b4-0000-7000-8000-000000000011', '0199a2b4-0000-7000-8000-000000000008', false)",
+		// The notebook's prefix of the search's keys.
+		"INSERT INTO page_search_tags (notebook_id, prefix) VALUES ('0199a2b4-0000-7000-8000-000000000008', '0#')",
 		// An export of the notebook, running.
 		"INSERT INTO transfer_jobs (id, notebook_id, kind, state, name, created_by_id, client, progress_done, progress_total, " +
 			"started_at, heartbeat_at, created_at) VALUES ('0199a2b4-0000-7000-8000-000000000018', '0199a2b4-0000-7000-8000-000000000008', " +

@@ -199,7 +199,7 @@ func (s *Search) read(ctx context.Context, scope SearchScope, limit int, first b
 	// their lexemes counted, once a read, when the first of them runs.
 	bodied := func() (SearchScope, error) {
 		if !counted {
-			n, err := s.d.Reads.SearchHitCount(ctx, scope.Query)
+			n, err := s.d.Reads.SearchHitCount(ctx, scope)
 			if err != nil {
 				return SearchScope{}, err
 			}

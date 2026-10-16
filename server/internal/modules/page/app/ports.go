@@ -711,11 +711,13 @@ type SearchReads interface {
 	// SearchTitles reads the title tier below s.Below, at most limit nodes.
 	SearchTitles(ctx context.Context, s SearchScope, limit int) ([]SearchTitleRow, error)
 	// SearchHitCount counts the body tier's candidates by their lexemes:
-	// the pages whose row holds q's body keys and titled keys. The body
+	// the pages of s's notebooks whose row holds s.Query's body keys and
+	// titled keys, read by those notebooks' keys alone (M8 Codex review
+	// R1): no other notebook's rows change what it reads. The body
 	// tier's statements read them all, by the count (SearchScope.Hits),
 	// which tells their plans how many there are: a count of another
 	// snapshot may leave some out.
-	SearchHitCount(ctx context.Context, q domain.SearchQuery) (int, error)
+	SearchHitCount(ctx context.Context, s SearchScope) (int, error)
 	// SearchBodies walks the body tier below s.Below: at most walk pages'
 	// contents read, until limit pass.
 	SearchBodies(ctx context.Context, s SearchScope, walk, limit int) ([]SearchBodyRow, error)

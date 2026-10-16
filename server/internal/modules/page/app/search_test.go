@@ -68,7 +68,7 @@ func (f *fakeReads) SearchTitles(ctx context.Context, s app.SearchScope, limit i
 	return out, nil
 }
 
-func (f *fakeReads) SearchHitCount(ctx context.Context, _ domain.SearchQuery) (int, error) {
+func (f *fakeReads) SearchHitCount(ctx context.Context, _ app.SearchScope) (int, error) {
 	f.record(ctx, "SearchHitCount")
 	return len(f.bodies), nil
 }

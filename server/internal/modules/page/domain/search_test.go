@@ -237,7 +237,7 @@ func TestSearchTokensStopAtTheFirstPastTheBound(t *testing.T) {
 // SearchTokenizer names the rules' version, Go's Unicode version and
 // x/text's, whose fold and NFC are one Unicode version's.
 func TestSearchTokenizer(t *testing.T) {
-	if want := "2/" + unicode.Version + "/" + norm.Version; domain.SearchTokenizer != want {
+	if want := "3/" + unicode.Version + "/" + norm.Version; domain.SearchTokenizer != want {
 		t.Errorf("SearchTokenizer = %q, want %s", domain.SearchTokenizer, want)
 	}
 	if cases.UnicodeVersion != norm.Version {
@@ -313,11 +313,12 @@ func TestParseSearchQueryTakes(t *testing.T) {
 // a term of such characters alone is found in names alone only in a query
 // without keys of the body (M8/P5A review A-M2).
 func TestSearchQueryKeys(t *testing.T) {
-	str := func(s *string) string {
-		if s == nil {
+	// str is keys as a tsquery's ANDed operands, "-" for none.
+	str := func(keys []string) string {
+		if keys == nil {
 			return "-"
 		}
-		return *s
+		return "'" + strings.Join(keys, "' & '") + "'"
 	}
 	for _, tt := range []struct {
 		q                   string
@@ -351,7 +352,7 @@ func TestSearchQueryKeys(t *testing.T) {
 			t.Errorf("ParseSearchQuery(%q) = %v", tt.q, err)
 			continue
 		}
-		if got := [4]string{q.TitleKeys(), str(q.BodyKeys()), str(q.TitledKeys()), fmt.Sprint(q.Bodied())}; got != [4]string{tt.title, tt.body, tt.titled, fmt.Sprint(tt.bodied)} {
+		if got := [4]string{str(q.TitleKeys()), str(q.BodyKeys()), str(q.TitledKeys()), fmt.Sprint(q.Bodied())}; got != [4]string{tt.title, tt.body, tt.titled, fmt.Sprint(tt.bodied)} {
 			t.Errorf("%q: title %s, body %s, titled %s, bodied %s; want %s, %s, %s, %v", tt.q, got[0], got[1], got[2], got[3],
 				tt.title, tt.body, tt.titled, tt.bodied)
 		}
@@ -530,7 +531,7 @@ func TestTheRecheckImpliesTheKeys(t *testing.T) {
 				t.Fatalf("%q matches the name %q, whose title %q lacks %s", term.Text, s, title, missing)
 			}
 			if keys := one.BodyKeys(); keys != nil {
-				if missing := missingKeys(*keys, body); missing != "" {
+				if missing := missingKeys(keys, body); missing != "" {
 					t.Fatalf("%q matches the content %q, whose body %q lacks %s", term.Text, s, body, missing)
 				}
 			}
@@ -555,7 +556,7 @@ func TestTheKeysOfALongRunOfAnotherScript(t *testing.T) {
 		_, body := domain.SearchTokens("-", &tt.text)
 		if len(q.TitleHits(tt.text)) == 0 || q.BodyKeys() == nil {
 			t.Errorf("%q does not match %q, or has no keys", tt.q, tt.text)
-		} else if missing := missingKeys(*q.BodyKeys(), body); missing != "" {
+		} else if missing := missingKeys(q.BodyKeys(), body); missing != "" {
 			t.Errorf("%q matches %q, whose body lacks %s", tt.q, tt.text, missing)
 		}
 	}
@@ -573,19 +574,18 @@ func TestTheRecheckImpliesTheKeysButWhereLeftOut(t *testing.T) {
 			t.Fatal(err)
 		}
 		_, body := domain.SearchTokens("-", &tt.text)
-		if len(q.TitleHits(tt.text)) == 0 || missingKeys(*q.BodyKeys(), body) == "" {
+		if len(q.TitleHits(tt.text)) == 0 || missingKeys(q.BodyKeys(), body) == "" {
 			t.Errorf("%s: %q matches %v and its keys are there: no exception", tt.name, tt.q, len(q.TitleHits(tt.text)) > 0)
 		}
 	}
 }
 
-// missingKeys are the operands of the tsquery keys, an AND, that lexemes
-// lacks: "" when it holds them all.
-func missingKeys(keys string, lexemes []string) string {
+// missingKeys are the keys lexemes lacks: "" when it holds them all.
+func missingKeys(keys, lexemes []string) string {
 	var missing []string
-	for _, op := range strings.Split(keys, " & ") {
-		if !slices.Contains(lexemes, strings.Trim(op, "'")) {
-			missing = append(missing, op)
+	for _, k := range keys {
+		if !slices.Contains(lexemes, k) {
+			missing = append(missing, k)
 		}
 	}
 	return strings.Join(missing, ", ")
@@ -722,7 +722,8 @@ func TestATermGosNFCChangesIsMatchedInContentsAsPostgreSQLPutsItInNFC(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(in.Patterns(), parsed.Patterns()) || in.TitleKeys() != parsed.TitleKeys() || *in.BodyKeys() != *parsed.BodyKeys() {
+	if !slices.Equal(in.Patterns(), parsed.Patterns()) || !slices.Equal(in.TitleKeys(), parsed.TitleKeys()) ||
+		!slices.Equal(in.BodyKeys(), parsed.BodyKeys()) {
 		t.Error("InContents changed the patterns of names or the keys")
 	}
 	// pg31's pattern: Go's NFC of it would insert the CGJ again. raw31's of

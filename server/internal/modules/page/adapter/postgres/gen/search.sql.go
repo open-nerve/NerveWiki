@@ -159,14 +159,14 @@ FROM (
         FROM (SELECT n.id, n.notebook_id, n.name, n.deleted_at, c.deleted_at AS content_deleted_at,
                   greatest(n.updated_at, c.updated_at)::timestamptz AS sort_at
               FROM ((SELECT h.node_id
-                     FROM page_search_hits($1::text::tsquery, $2::text::tsquery) h (node_id)
-                     LIMIT $3::bigint)
+                     FROM page_search_hits($1::uuid[], $2::text[], $3::text[]) h (node_id)
+                     LIMIT $4::bigint)
                     UNION
                     SELECT q.node_id FROM page_search_queue q
-                    WHERE NOT q.bulk AND q.notebook_id = ANY($4::uuid[])) k
+                    WHERE NOT q.bulk AND q.notebook_id = ANY($1::uuid[])) k
               JOIN nodes n ON n.id = k.node_id
               JOIN page_contents c ON c.node_id = n.id
-              WHERE n.notebook_id = ANY($4::uuid[])
+              WHERE n.notebook_id = ANY($1::uuid[])
               OFFSET 0) j
         WHERE j.deleted_at IS NULL AND j.content_deleted_at IS NULL
             AND (j.sort_at, j.id) < ($5::timestamptz, $6::uuid)
@@ -190,10 +190,10 @@ LIMIT $13
 `
 
 type SearchBodiesParams struct {
-	BodyKeys         *string
-	TitledKeys       *string
-	Hits             int64
 	Notebooks        []uuid.UUID
+	BodyKeys         []string
+	TitledKeys       []string
+	Hits             int64
 	BelowAt          time.Time
 	BelowID          uuid.UUID
 	Terms            []string
@@ -231,10 +231,10 @@ type SearchBodiesRow struct {
 // walk is more to walk. A row that passes has its first hit's place and excerpt as SearchTitles'.
 func (q *Queries) SearchBodies(ctx context.Context, arg SearchBodiesParams) ([]SearchBodiesRow, error) {
 	rows, err := q.db.Query(ctx, searchBodies,
+		arg.Notebooks,
 		arg.BodyKeys,
 		arg.TitledKeys,
 		arg.Hits,
-		arg.Notebooks,
 		arg.BelowAt,
 		arg.BelowID,
 		arg.Terms,
@@ -279,23 +279,23 @@ SELECT count(*)::integer AS bodies
 FROM (SELECT 1
       FROM (SELECT n.kind, n.notebook_id, n.deleted_at
             FROM ((SELECT h.node_id
-                   FROM page_search_hits($1::text::tsquery, $2::text::tsquery) h (node_id)
-                   LIMIT $3::bigint)
+                   FROM page_search_hits($1::uuid[], $2::text[], $3::text[]) h (node_id)
+                   LIMIT $4::bigint)
                   UNION
                   SELECT q.node_id FROM page_search_queue q
-                  WHERE NOT q.bulk AND q.notebook_id = ANY($4::uuid[])) k
+                  WHERE NOT q.bulk AND q.notebook_id = ANY($1::uuid[])) k
             JOIN nodes n ON n.id = k.node_id
-            WHERE n.notebook_id = ANY($4::uuid[])
+            WHERE n.notebook_id = ANY($1::uuid[])
             OFFSET 0) j
       WHERE j.deleted_at IS NULL AND j.kind = 'page'
       LIMIT $5::integer) a
 `
 
 type SearchBodyCountParams struct {
-	BodyKeys   *string
-	TitledKeys *string
-	Hits       int64
 	Notebooks  []uuid.UUID
+	BodyKeys   []string
+	TitledKeys []string
+	Hits       int64
 	Cap        int32
 }
 
@@ -304,10 +304,10 @@ type SearchBodyCountParams struct {
 // with the notebooks' condition alone, behind OFFSET 0, as in SearchBodies.
 func (q *Queries) SearchBodyCount(ctx context.Context, arg SearchBodyCountParams) (int32, error) {
 	row := q.db.QueryRow(ctx, searchBodyCount,
+		arg.Notebooks,
 		arg.BodyKeys,
 		arg.TitledKeys,
 		arg.Hits,
-		arg.Notebooks,
 		arg.Cap,
 	)
 	var bodies int32
@@ -361,12 +361,13 @@ func (q *Queries) SearchContents(ctx context.Context, ids []uuid.UUID) ([]Search
 }
 
 const searchHitCount = `-- name: SearchHitCount :one
-SELECT count(*) FROM page_search_hits($1::text::tsquery, $2::text::tsquery)
+SELECT count(*) FROM page_search_hits($1::uuid[], $2::text[], $3::text[])
 `
 
 type SearchHitCountParams struct {
-	BodyKeys   *string
-	TitledKeys *string
+	Notebooks  []uuid.UUID
+	BodyKeys   []string
+	TitledKeys []string
 }
 
 // The body tier's candidates by their lexemes, counted: the pages whose body holds body_keys and whose title
@@ -374,7 +375,7 @@ type SearchHitCountParams struct {
 // indexes alone). The statements that read them take the count as their LIMIT, in the same snapshot: the planner's
 // estimate of their number, which it joins them by.
 func (q *Queries) SearchHitCount(ctx context.Context, arg SearchHitCountParams) (int64, error) {
-	row := q.db.QueryRow(ctx, searchHitCount, arg.BodyKeys, arg.TitledKeys)
+	row := q.db.QueryRow(ctx, searchHitCount, arg.Notebooks, arg.BodyKeys, arg.TitledKeys)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -467,20 +468,20 @@ const searchTitleCount = `-- name: SearchTitleCount :one
 SELECT count(*)::integer AS titles, (count(*) FILTER (WHERE a.kind = 'page'))::integer AS title_pages
 FROM (SELECT j.kind
       FROM (SELECT n.kind, n.name, n.notebook_id, n.deleted_at
-            FROM (SELECT s.node_id FROM page_search s WHERE s.title @@ $1::text::tsquery
+            FROM (SELECT s.node_id FROM page_search_titles($1::uuid[], $2::text[]) s (node_id)
                   UNION
                   SELECT q.node_id FROM page_search_queue q
-                  WHERE NOT q.bulk AND q.notebook_id = ANY($2::uuid[])) k
+                  WHERE NOT q.bulk AND q.notebook_id = ANY($1::uuid[])) k
             JOIN nodes n ON n.id = k.node_id
-            WHERE n.notebook_id = ANY($2::uuid[])
+            WHERE n.notebook_id = ANY($1::uuid[])
             OFFSET 0) j
       WHERE j.deleted_at IS NULL AND j.name ~ ALL($3::text[])
       LIMIT $4::integer) a
 `
 
 type SearchTitleCountParams struct {
-	Keys      string
 	Notebooks []uuid.UUID
+	Keys      []string
 	Terms     []string
 	Cap       int32
 }
@@ -495,8 +496,8 @@ type SearchTitleCountRow struct {
 // OFFSET 0, as in SearchTitles.
 func (q *Queries) SearchTitleCount(ctx context.Context, arg SearchTitleCountParams) (SearchTitleCountRow, error) {
 	row := q.db.QueryRow(ctx, searchTitleCount,
-		arg.Keys,
 		arg.Notebooks,
+		arg.Keys,
 		arg.Terms,
 		arg.Cap,
 	)
@@ -514,13 +515,13 @@ FROM (
     SELECT j.id, j.notebook_id, j.kind, j.name, j.sort_at
     FROM (SELECT n.id, n.notebook_id, n.kind, n.name, n.deleted_at,
               greatest(n.updated_at, c.updated_at)::timestamptz AS sort_at
-          FROM (SELECT s.node_id FROM page_search s WHERE s.title @@ $1::text::tsquery
+          FROM (SELECT s.node_id FROM page_search_titles($1::uuid[], $2::text[]) s (node_id)
                 UNION
                 SELECT q.node_id FROM page_search_queue q
-                WHERE NOT q.bulk AND q.notebook_id = ANY($2::uuid[])) k
+                WHERE NOT q.bulk AND q.notebook_id = ANY($1::uuid[])) k
           JOIN nodes n ON n.id = k.node_id
           LEFT JOIN page_contents c ON c.node_id = n.id
-          WHERE n.notebook_id = ANY($2::uuid[])
+          WHERE n.notebook_id = ANY($1::uuid[])
           OFFSET 0) j
     WHERE j.deleted_at IS NULL AND (j.sort_at, j.id) < ($3::timestamptz, $4::uuid)
         AND j.name ~ ALL($5::text[])
@@ -536,8 +537,8 @@ ORDER BY w.sort_at DESC, w.id DESC
 `
 
 type SearchTitlesParams struct {
-	Keys       string
 	Notebooks  []uuid.UUID
+	Keys       []string
 	BelowAt    time.Time
 	BelowID    uuid.UUID
 	Terms      []string
@@ -573,8 +574,8 @@ type SearchTitlesRow struct {
 // or the notebooks' nodes.
 func (q *Queries) SearchTitles(ctx context.Context, arg SearchTitlesParams) ([]SearchTitlesRow, error) {
 	rows, err := q.db.Query(ctx, searchTitles,
-		arg.Keys,
 		arg.Notebooks,
+		arg.Keys,
 		arg.BelowAt,
 		arg.BelowID,
 		arg.Terms,
@@ -606,18 +607,6 @@ func (q *Queries) SearchTitles(ctx context.Context, arg SearchTitlesParams) ([]S
 		return nil, err
 	}
 	return items, nil
-}
-
-const setSearchWriting = `-- name: SetSearchWriting :exec
-SELECT set_config('work_mem', '64MB', true), set_config('gin_pending_list_limit', '16MB', true)
-`
-
-// The job's writes' settings, for its transaction alone (M8/P5A, measured on 300,000 pages): the GIN indexes' pending
-// list flushed in larger merges, each in memory, write a full index about 3.6 times as fast as at the server's
-// defaults (4 MB and 4 MB); the reads then scan a pending list of 16 MB at most.
-func (q *Queries) SetSearchWriting(ctx context.Context) error {
-	_, err := q.db.Exec(ctx, setSearchWriting)
-	return err
 }
 
 const staleSearchNodes = `-- name: StaleSearchNodes :many
@@ -660,6 +649,23 @@ func (q *Queries) StaleSearchNodes(ctx context.Context, arg StaleSearchNodesPara
 		return nil, err
 	}
 	return items, nil
+}
+
+const tagSearchNotebooks = `-- name: TagSearchNotebooks :exec
+INSERT INTO page_search_tags (notebook_id, prefix)
+SELECT x.notebook_id, page_search_prefix(nextval('page_search_tags_seq'))
+FROM (SELECT DISTINCT n.notebook_id FROM nodes n
+      WHERE n.id = ANY($1::uuid[])
+          AND NOT EXISTS (SELECT 1 FROM page_search_tags t WHERE t.notebook_id = n.notebook_id)
+      ORDER BY 1) x
+ON CONFLICT (notebook_id) DO NOTHING
+`
+
+// The notebooks of the nodes given that have no prefix yet get the next (M8 Codex review R1): the job's, before it
+// writes their rows, in its transaction.
+func (q *Queries) TagSearchNotebooks(ctx context.Context, ids []uuid.UUID) error {
+	_, err := q.db.Exec(ctx, tagSearchNotebooks, ids)
+	return err
 }
 
 const trySearchLock = `-- name: TrySearchLock :one

@@ -116,3 +116,8 @@ type PageSearchQueue struct {
 	Version    int64
 	Bulk       bool
 }
+
+type PageSearchTag struct {
+	NotebookID uuid.UUID
+	Prefix     string
+}
