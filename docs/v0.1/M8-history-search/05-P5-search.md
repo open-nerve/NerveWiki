@@ -967,16 +967,18 @@ type SearchAnswer struct {
 
 | 文件 | 内容 |
 |---|---|
-| `web/apps/web/src/services/page.service.ts` | `search(slug, q, {notebookId, cursor})`（每页 20）与类型（`SearchPage`、`SearchHit`、`SearchCount`、`TextRange`） |
-| `web/apps/web/src/app/shortcuts.ts` | `isModShift(keys, key, mac)`：Cmd（mac）或 Ctrl 加 Shift、不带 Alt，字母同 `isMod` 按 `key` 或 `code` |
-| `web/apps/web/src/pages/workspace/search-box.tsx`、`workspace-layout.tsx` | 左栏顶部的搜索框、范围的提示、`Mod+Shift+F`、组合中的回车 |
-| `web/apps/web/src/pages/search/search-page.tsx`、`search-hit.tsx`、`search-status.ts` | 结果页、一条结果、状态行的文字 |
+| `web/apps/web/src/services/page.service.ts` | `search(slug, q, {notebookId, cursor})`（每页 20，总带 `limit`，`notebook_id`、`cursor` 只在给了时）与类型（`SearchPage`、`SearchHit`、`SearchCount`、`TextRange`，从 service 再导出） |
+| `web/apps/web/src/stores/search.store.ts`、`root.store.ts`、`context.tsx` | `SearchStore`：一个工作区一代一个（`RootStore.searchOf(workspace)` 按工作区 id 经 `once`，`useSearch`），不存什么，命中只在 SWR 的缓存里（实施时加，偏离 1：总体设计 13.2 第 2 条不让组件直接用 service，第 15 条按工作区 id 缓存） |
+| `web/apps/web/src/app/shortcuts.ts` | `isModShift(keys, key, mac)`：Cmd（mac）或 Ctrl 加 Shift、不带 Alt，字母同 `isMod` 按 `key` 或 `code`，与 `isMod` 共用修饰键与字母的判断（`modOf`、`letterOf`） |
+| `web/apps/web/src/pages/workspace/search-box.tsx`、`workspace-layout.tsx` | 左栏顶部的搜索框、范围的提示、`Mod+Shift+F`、组合中的回车；框按工作区 id 换新 |
+| `web/apps/web/src/pages/search/search-page.tsx`、`search-hit.tsx`、`search-status.ts` | 结果页、一条结果、状态行与"更多"的播报的文字 |
 | `web/apps/web/src/lib/text-ranges.ts` | 按 UTF-16 区间切出 `<mark>` 的段（契约保证排好、不相交，只截到长度） |
-| `web/apps/web/src/lib/open-node.ts` | `openOf` 从 `trash-row.tsx` 移来（回收站与搜索共用） |
+| `web/apps/web/src/pages/open-node.ts` | `openOf` 从 `trash-row.tsx` 移来，回收站页与预览、撤销的确认框、变更集的明细与搜索共用（偏离 2：`.oxlintrc.json` 不许 `lib/` 引用 `app/`、`pages/`，`openOf` 要 `arrived` 与 `Located`） |
+| `web/apps/web/src/pages/load-more.tsx` | `readNext` 另答这一页接上了没有（`appended`，P5B 审查 B-M1） |
 | `web/apps/web/src/reading/reading.css` | `--nw-mark-background` 移到 `:root` 与 `.dark`（结果页在 `.nw-reading` 之外） |
 | `web/apps/web/src/app/routes.tsx` | `:slug` 下的 `search`（与 `notebooks/:id`、`settings` 同级，按需加载） |
-| `web/apps/web/src/i18n/messages/{zh-CN,en}.ts` | 前缀 `search.` |
-| `web/apps/web/src/test/search-server.ts`、`test/page-server.ts` | 假接口：码的次序同服务端；子串与整词的简化语义；两层；`next_cursor` 与走查的界线（`walk` 开关）；`count` 的三种；`building`；开关 `searchWaits`、`searchDown` |
+| `web/apps/web/src/i18n/messages/{zh-CN,en}.ts` | 前缀 `search.`（32 个键）与 `field.q.too_long`、`invalid_format`、`not_allowed` |
+| `web/apps/web/src/test/search-server.ts`、`test/page-server.ts` | 假接口：码的次序同服务端；子串与整词的简化语义；两层；`next_cursor` 与走查的界线（`walk` 开关）；`count` 照 `EstimateCount` 的次序（名称多于 1,000 是 `at_least 1000`，只在名称里找的 `exact`，一个都没通过为空，否则 `about`，取通过的候选的个数而不是比例；P5B 审查 B-N1）；`building`；开关 `searchWaits`、`searchDown`；Ada 看得到的别的笔记本（笔记本的路由列出它们） |
 | `e2e/fixtures/search.ts`、`wiki-search.ts`；`e2e/stories/search/se1-search.spec.ts`、`se2-search-visibility.spec.ts` | 4.6 |
 | `docs/v0.1/M4-pages/manual/P6-ime-checklist.md` | 第 21 步与表头 |
 
@@ -985,24 +987,24 @@ type SearchAnswer struct {
 - **位置**：`WorkspaceLayout` 的左栏最上面、工作区的 `nav` 之前。
   - 00 号文档 4.13 已定。顶栏在 `:slug` 之上，没有工作区的上下文，登录页、个人设置页也显示它。
   - 窄屏时左栏在 `main` 之上，框仍在最上面。
-- **结构**：`<form role="search" aria-label="搜索「工作区」">` 里一个 `<input type="search">`，有看不见的标签（不靠 placeholder）；一个带名称的提交按钮。
-  - 输入框的 `aria-describedby` 指向范围的提示（与本地检查的说明），读屏说出范围。
+- **结构**：`<form role="search" aria-label="搜索「工作区」">` 里一个 `<input type="search">`，有看不见的标签"搜索的词"（不靠 placeholder）；一个带名称的提交按钮（图标，名为"搜索"）。oxlint 的 `prefer-tag-over-role` 在这里关掉并写明原因：`<search>` 会在表单外再包一层。
+  - 输入框的 `aria-describedby` 指向本地检查的说明（有时，在前）与范围的提示，读屏说出范围："在「Plans」里搜索。"、"搜索整个工作区。"。
   - `aria-keyshortcuts` 写 `Control+Shift+F`，mac 上写 `Meta+Shift+F`。
   - 这个表单只导航、不发请求，不经 `useForm`（13.2 第 12 条的例外）。
 - **范围**：
   - 在一本笔记本里（`useMatch("/:slug/notebooks/:id/*")`）时提示"在「笔记本」里搜索"，提交时带 `notebook_id`。不靠 `useParams` 在父路由看得到子路由的参数。
-  - 在结果页时带它当前的 `notebook_id`。
+  - 在结果页时带它当前的 `notebook_id`，要笔记本的列表里有它：列表还没读到时（直接打开结果页的那一会儿，左栏随即读它）提示与提交都是整个工作区（偏离 11）；看不到或不存在的 `notebook_id` 同样。两处的 id 都先转成小写（地址里大写的 id 也是它，P5B 审查 C-N1）。
   - 否则提示"搜索整个工作区"。
 - **提交**：
   - 去掉首尾空白，为空时什么都不做。
-  - 本地只查 256 字节与 NUL，不合时在框下说明（`aria-invalid`），文字同服务端 422 的字段码。词数、字母段的长短与"没有键"由服务端答，结果页说明：JS 做不到服务端的完全折叠，本地数词会与服务端不同（ß/SS）。
+  - 本地只查 NUL 与 256 字节（先 NUL，同服务端的次序，P5B 审查 B-N2），不合时在框下以 `Alert`（`role=alert`）说明、`aria-invalid`，焦点到输入框（`useFocusOnInvalid`）；文字同服务端 422 的字段码。说明每次失败的提交换一个（同样的问题再说一次），仍是输入框的描述：以回车提交时焦点本来就在框里，移焦点不发事件，只有这样读屏才听得到（P5B 审查 A-M3）。词数、字母段的长短与"没有键"由服务端答，结果页说明：JS 做不到服务端的完全折叠，本地数词会与服务端不同（ß/SS）。去首尾空白用 JS 的 `trim()`，与服务端的 `unicode.IsSpace` 只在 U+FEFF、U+0085 上不同，无害（偏离 13）。
   - 合格时去 `/:slug/search?q=…&notebook_id=…`（压入历史）。
   - **焦点**：从别的页提交时带 `arrived`，结果页的 `h1` 取得焦点、经 `aria-describedby` 读出状态行，同快速切换（左栏的笔记本列表没有上限，焦点留在框里要 Tab 过整个导航才到结果）。在结果页上提交时焦点留在框里，状态行礼貌地说出数目。
 - **组合中的回车不提交**：`onKeyDown` 遇到回车时，`nativeEvent.isComposing` 或 `keyCode === 229` 就 `preventDefault`（Safari 在 `compositionend` 之后补发确认用的回车，带 229），阻止隐式提交。
-- **在结果页时**框里是地址的 `q`：地址变了才同步，正在编辑时不覆盖。
+- **在结果页时**框里是地址的 `q`：框记着它最后从地址取的或发出的 `q`，地址的 `q` 变了、框里仍是那个时才换成新的，编辑过的不覆盖。框按工作区 id 换新：换工作区时文字与说明不带过去。
 - **`Mod+Shift+F`**：
   - 框的组件在 `window` 上听 `keydown`，`isModShift(event, "f", mac)`。
-  - `repeat` 或组合中（`isComposing`、`keyCode === 229`）时不管：焦点离开编辑器会让浏览器把半截拼音提交进正文（13.2 第 20 条）。
+  - 组合中（`isComposing`、`keyCode === 229`）时完全不管，连 `preventDefault` 也不做，键留给输入法：焦点离开编辑器会让浏览器把半截拼音提交进正文（13.2 第 20 条）。按住的重复（`repeat`）只 `preventDefault`、焦点不动，挡住浏览器自己的这组键在按住时一再触发（偏离 6）。
   - 确认框开着时只 `preventDefault`（挡住 macOS 上 Firefox 的全屏、Chrome 的工具栏），焦点不动，同快速切换。
   - 否则 `preventDefault`，焦点到框并选中文字。
   - CodeMirror 没有绑定 `Mod-Shift-F`，编辑时同样可用。
@@ -1014,50 +1016,51 @@ type SearchAnswer struct {
 - **路由** `/:slug/search`：在笔记本的外壳之外，没有页面树与 `Ctrl+O`。
   - 文档标题"搜索：q · 工作区"。
   - `h1` "搜索「q」"，`q` 放在 `<bdi>` 里。
-  - 地址里没有 `q` 时只说怎样搜，不读。
+  - 地址里没有 `q` 时只说怎样搜（"在左栏顶部的搜索框里输入要找的文字，按回车。"），不读，没有范围的选择。
 - **范围的选择**（`NativeSelect`"在哪里找"）：
-  - 选项：全部笔记本与看得到的笔记本（`["notebooks", 工作区]` 的列表），同名的带编号（`twinsOf`、`shortId`）。
+  - 选项："全部笔记本"与看得到的笔记本（`["notebooks", 工作区]` 的列表），同名的带编号（"Plans（编号 0000c1）"，`twinsOf`、`shortId`）。地址里的 `notebook_id` 不在列表里时另有一项"找不到的笔记本"（列表还没读到时写"…"）：受控的选择不会显示"全部笔记本"而页在搜别的一本（偏离 8）。选择至多与屏幕同宽（`max-w-full`：98 个字符的笔记本名曾让它在 375 px 的屏幕上 685 px 宽，P5B 审查 A-M4）。
   - 改了就替换地址（不压历史），焦点留在选择上，礼貌地说出数目。
-  - `notebook_id` 不是 UUID 时不读，说"找不到这本笔记本"，给"搜索整个工作区"的链接。404 `notebook.not_found` 同样。
+  - `notebook_id` 不是 UUID 时（先转成小写）不读，说"找不到这本笔记本：它不存在，或者你无权访问它。"，给"搜索整个工作区"的链接（带着焦点离开时交给 `h1`）。404 `notebook.not_found` 同样，另重读笔记本的列表；404 `workspace.not_found` 重读工作区的列表，外壳随之说页面不存在。
 - **读**：
   - SWR 键 `["search", 工作区 id, q, notebook, location.key]`，`revalidateOnFocus`、`revalidateOnReconnect`、`revalidateIfStale` 都关（同版本页的 `unchanging`）。
   - 每次提交压入一个新的历史条目、换一个 `location.key`，所以同样的 `q` 再提交也重新读、重新播报：删掉的页消失，新写的出现。后退回到一个条目时用它的键，显示缓存里的结果与已读的"更多"。
-  - 缓存只留当前的一个搜索键：换键时去掉别的搜索键。后退回到刚离开的结果页仍是缓存，更早的重新读。
+  - 缓存只留当前的一个搜索键：换键时去掉别的搜索键，照版本页的 `useLeftRevision` 用 SWR 默认的重新验证（`mutate(筛选, undefined)`）：它删掉每个去掉的键的在途记录（`FETCH`、`PRELOAD`），没有页在读它们，所以什么也不读。从一条结果后退回到结果页仍是缓存（去掉只在结果页挂着时做），更早的搜索重新读，不论多快。
+  - 实施的第一版去掉时不重新验证（`revalidate: false`）：键的读还在途或答复之后 2 秒之内后退或前进回去，新挂上的页等那次读，它的答复却因去掉而作废，页一直"加载中"（P5B 审查 A-I1、B-I1；偏离 12 原说"显示那次读的答复"，改正）。只设 `dedupingInterval: 0` 盖不住还在途的读（修复核对第一轮 N-1）。
   - 不进事件的处理表与 `refreshedOnConnect`：结果页不随事件、焦点、重连重读（00 号文档 4.13）。
-- **状态行**（一开始就在的 `<output>`，经 `aria-describedby` 描述 `h1`）：
-  - 第一页：`exact` "23 条"、"没有找到"；`about` "约 240 条"；`at_least` "至少 800 条"，1,000 时 "1,000+ 条"；`count` 为空时"还没有找到，可以继续查找"。
+- **状态行**（一开始就在的 `<output>`，只在它说着什么时经 `aria-describedby` 描述 `h1`；读的时候与失败时为空，失败由 `Alert` 说，所以每次新的读都重新说出，偏离 7）：
+  - 第一页：`exact` "23 条。"、"没有找到。"；`about` "约 240 条。"；`at_least` "至少 800 条。"，1,000 时 "1,000+ 条。"；`count` 为空时"还没有找到，可以继续查找。"（文字带句号，偏离 4）。
   - 读了更多页之后由已读的定：读完了（没有游标）是已读的条数；`count` 为空或小于已读的时"已找到 {n} 条，可能还有更多"；否则照第一页的。
-  - `building` 时另加一句"索引正在建立，结果可能不全"。
-  - **播报**：提交、换范围时说状态行；每次"更多"或"继续查找"之后礼貌地说"又找到 3 条"，一条也没加时"这一段没有找到，可以继续查找"。同样的文字再说时加不断行的空格，同历史页。
+  - `building`（读过的任何一页说它）时另加一句，如"2 条。索引正在建立，结果可能不全。"（模板 `{status}…`，中文不加空格，偏离 4）。
+  - **播报**：提交、换范围时说状态行。"更多"与"继续查找"另有一个看不见的、一开始就在的 `<output>`（偏离 3）：之后礼貌地说"又找到 3 条。"，一条也没加时"这一段没有找到，可以继续查找。"；同样的文字再说时加不断行的空格，再一次不加（同历史页）。它只说显示着的搜索接上的一页："更多"读到的一页没接上（显示的搜索已换，或正在重读）时不说，换了显示的搜索或后退回来时清空（P5B 审查 A-M1、B-M1）。最后一页一条也没加时不说"可以继续查找"：状态行不变（准确的数目、只有重复）时说状态行，让这次按下有回答；状态行变了时不说，由状态行自己说（A-M2）。读了更多页、状态行也变时两处都说，一次礼貌的播报就够，留到打磨。
 - **列表**：`<ul aria-label="搜索结果">`，接上的一页按 id 去重（13.2 第 19 条：一次改名可以让节点从名称层移到正文层，又出现一次），每条：
-  - 类型的图标：页 `ScrollText`，附件 `AssetIcon`，`aria-hidden`。
+  - 类型的图标：页 `ScrollText`，附件 `AssetIcon`（文件不在了的附件 `File`），`aria-hidden`。
   - 名称的链接：高亮在 `<bdi>` 里。
   - 路径："笔记本 / A / B"，笔记本名取自列表；读不到时写"笔记本"。
   - 摘要：`<bdi>` 里，截断处加"…"。
   - 最后改动（`changed_at`）：相对时刻，`<time>` 的提示是完整时刻。
-  - 附件另带类型与大小（`formatBytes`）。
-- **高亮**：`text-ranges.ts` 按区间切出 `<mark class="nw-hit">`。底色用 `--nw-mark-background`（移到 `:root`、`.dark` 之后结果页也有），另加粗，不只靠颜色。
+  - 附件另带类型与大小（"PDF · 1 KB"，`formatBytes`）。
+- **高亮**：`text-ranges.ts` 按区间切出 `<mark class="nw-hit">`。底色用 `--nw-mark-background`（移到 `:root`、`.dark` 之后结果页也有），另加粗（`font-semibold`），不只靠颜色；`text-inherit` 免得暗色下 `mark` 的文字是黑的。
 - **去处**：
   - 页去 `/:slug/notebooks/:nb/pages/:id`，带 `arrived`。
-  - 附件经 `openOf` 去它所在的位置：父页的附件一节（读到它那一行时焦点到那一行），根下的在笔记本首页，路由状态 `Located`，同 P2B。
+  - 附件经 `openOf`（`pages/open-node.ts`）去它所在的位置：父页（`ancestors` 的最后一个，即直接的父页，P5B 审查 C-M2）的附件一节（读到它那一行时焦点到那一行），根下的在笔记本首页，路由状态 `Located`，同 P2B。
   - 不签发下载地址。
 - **链接的名称**是节点的名称。
-  - 同名的（同一个名称、不同的位置）带路径："「名称」（笔记本 / A）"，同回收站的 `namesOf`。
-  - 名称与路径都相同时（两本同名的笔记本里）再带编号。
-- **"更多"**：`useLoadMore` 与 `readNext`，读到的一页写进"更多"开始时的那个键。
+  - 同名的（同一个名称、不同的位置）带路径："名称（笔记本 / A）"，同回收站的 `namesOf`。
+  - 名称与路径都相同时（两本同名的笔记本里）再带编号："名称（笔记本 / A，编号 000104）"，行上也写" · 编号 000104"。
+- **"更多"**（按钮写"更多结果"，偏离 5）：`useLoadMore` 与 `readNext`，读到的一页写进"更多"开始时的那个键；新加的不含已列出的（一次改名的重复，偏离 10）。
   - 上一页一项也没有而带着游标时（走查的界线），按钮写"继续查找"。
-  - 焦点：读完最后一页、按钮消失时到第一项新加的（`useLoadMore` 的 `whole`）；还有游标时留在按钮上，由状态行的播报说出结果。
+  - 焦点：读完最后一页、按钮消失时到第一项新加的（`useLoadMore` 的 `whole`），一项也没加时到列表的最后一行（P5B 审查 A-N1）；还有游标时留在按钮上，由播报说出结果。
 - **错误**：
-  - 422：在页上说明（字段码的文字：太长、太多词、连续的字母太多、只有符号）。框下只说本地检查的。
+  - 422：在标题下以 `Alert` 说明（字段码的文字："至多 256 字节、8 个词，连续的英文字母与数字至多 64 个：删减一些。"一句管太长、太多词与连续的字母太多，三者同一个码，偏离 9；"只有符号与标点找不到什么：要含有字母、数字或中日韩文字。"）。框下只说本地检查的。
   - 404 `workspace.not_found`：外壳照旧换成"页面不存在"。
-  - 5xx 与网络：照 `onErrorRetry`，页上给"重试"。
+  - 5xx 与网络：照 `onErrorRetry`，页上给"重试"；400（绑定或游标）同样给"重试"。"更多"的失败在列表下以 `Alert` 说。
 
 ### 4.4 无障碍与文字
 
 - 每个新页面设文档标题；列表有名称；结果的链接名称带区分。
 - 焦点：从别的页提交时到结果页的 `h1`；在结果页提交与换范围时留在控件上；"更多"见 4.3；读者动了就不抢（`watchReader`）。
-- 文字：英文不用复数形式。"Results: {count}"、"Results: about {count}"、"Results: at least {count}"、"Results: {count}+"、"Found {count} so far; there may be more"、"{count} more found"、"Nothing found in this stretch; you can keep looking"、"The index is being built; results may be incomplete"；数字经 `Intl.NumberFormat`（所以是 "1,000+"）。
-- 中文的"约 {count} 条"、"至少 {count} 条"、"{count}+ 条"、"已找到 {count} 条，可能还有更多"、"又找到 {count} 条"、"这一段没有找到，可以继续查找"、"索引正在建立，结果可能不全"、"继续查找"。
+- 文字：英文不用复数形式，句末带句号（偏离 4）："Results: {count}."、"Nothing found."、"Results: about {count}."、"Results: at least {count}."、"Results: {count}+."、"None found yet; you can keep looking."、"Found {count} so far; there may be more."、"{count} more found."、"Nothing found in this stretch; you can keep looking."、"{status} The index is being built; results may be incomplete."；按钮 "More results"、"Keep looking"；数字经 `Intl.NumberFormat`（所以是 "1,000+"）。
+- 中文："{count} 条。"、"没有找到。"、"约 {count} 条。"、"至少 {count} 条。"、"{count}+ 条。"、"还没有找到，可以继续查找。"、"已找到 {count} 条，可能还有更多。"、"又找到 {count} 条。"、"这一段没有找到，可以继续查找。"、"{status}索引正在建立，结果可能不全。"；按钮"更多结果"、"继续查找"。
 
 ### 4.5 测试（vitest）
 
@@ -1081,10 +1084,12 @@ type SearchAnswer struct {
   - 404 与 422 的说明。
   - 获得焦点、重连、`pages` 事件时都不重读（推进时钟之后数请求）。
   - 经组合根到达（`renderApp`，应用自己的路由与事件处理表）。
+  - 审查之后（P5B 审查与修复一轮）：马上后退回到刚读过的搜索（两次回车再后退、换一个再马上后退、后退前进后退各隔 0.4 秒）与读还在途时后退都重新读、不停在"加载中"；从一条结果后退过了 SWR 的 2 秒去重仍不重读；"更多"的播报换了搜索或后退之后不再说，没接上的一页不说；最后一页一条也没加时不说"可以继续查找"、焦点到最后一行；五页里第三次同样的播报不带空格；附件在嵌套的页下；状态行的 `<output>` 一开始就在；大写的 `notebook_id`；框的范围在笔记本首页与回收站；从一个工作区的结果页到另一个的；以回车提交两次，每次一个新的 alert。
 - **假接口**：
-  - 码的次序同服务端：游标 400 → `q` 422 → 工作区 404 → 笔记本 404 → `limit` 422。
+  - 码的次序同服务端：绑定的 400（`notebook_id` 不是 UUID、`limit` 不是整数，每个单独一步）→ 游标 400 → `q` 422（NUL 在去空白之前，字节在之后）→ 工作区 404 → 笔记本 404 → `limit` 422。
   - 两层的次序。
   - 走查的界线开关让一页少于 `limit` 而带游标。
+  - 计数照 `EstimateCount` 的次序（只在名称里找的跨页是 `exact`，P5B 审查 B-N1）。
 
 ### 4.6 e2e
 
@@ -1093,12 +1098,14 @@ type SearchAnswer struct {
     - 标题含"数据库"的页。
     - 正文含"全文检索"、"Go语言"与"仓库"的页（标题里没有"库"）。
     - 正文含 "rapid" 与单独的 "AI" 的英文页；另一页只含 "said"。
-    - 名称为"季度报告.pdf"的附件，在一页下。
-  - 2 个字（"检索"）、3 个字以上（"全文检索"）、混合（"Go语言"）、字母的子串（"api" 找到 rapid；若定为 P，改成 "rap"）、两个字母的整词（"ai" 找到单独的 AI，不找到 "said" 那一页）。
+    - 名称为"季度报告.pdf"的附件，在 Storage 下的 Reports 下（直接的父页不是路径上的第一页，P5B 审查 C-M2）。
+    - 笔记本的名称有 98 个字符（"在哪里找"列出它，P5B 审查 A-M4）。
+  - 2 个字（"检索"）、3 个字以上（"全文检索"）、混合（"Go语言"）、字母的子串（"api" 找到 rapid）、两个字母的整词（"ai" 找到单独的 AI，不找到 "said" 那一页）。
   - 标题与正文的命中、摘要里的高亮、准确的数目（数据小，第一页就走完）。
   - 单个汉字"库"只找到标题含它的页，不找到只在正文里含它的页。
-  - 附件按名称找到，"打开"去父页的附件一节，焦点在它那一行。
+  - 附件按名称找到，"打开"去父页 Reports 的附件一节，焦点在它那一行。
   - 删除那一页之后立即不再出现；从回收站恢复之后立即回来。页面版本在同一个标签页里经左栏的框再搜一次，不重新加载。
+  - 页面版本另核对：从别的页提交时标题取得焦点、文档标题、高亮有底色且加粗；马上后退显示前一个搜索（重新读）、前进显示后一个（P5B 审查 A-I1 的 Chromium 复现）；375 px 宽时页不横向滚动，"在哪里找"不出屏幕。
 - **SE2**（`se2-search-visibility.spec.ts`）：
   - 管理员建：开放可编辑的笔记本、私密笔记本、只把访客显式加入的笔记本，各有带同一个词的页。
   - 成员看不到私密的。
@@ -1117,6 +1124,14 @@ type SearchAnswer struct {
   - 附件的去处。
   - 范围的默认值。
   - "去掉队列的候选"不在 e2e 里做：任务每 5 秒一次，它失败与否看时机；交错 3 确定地核对它。
+  - 实施另加：`--nw-mark-background` 放回 `.nw-reading` 里、高亮不加粗（E6、E7）；审查之后："在哪里找"不限宽、去掉的搜索不重新验证、附件去路径上的第一页（E8–E10）。都被抓到。
+
+### 4.7 实施与审查之后的改动
+
+实施者的偏离与三位审查者（A：界面与无障碍；B：状态与读；C：测试与 e2e）、修复核对的处置见 `reviews/P5B-search-web-review.md`。与上文最初的设计不同之处已改在各节里：
+
+- **实施时定下的**（实施者的 13 条偏离，审查者判过）：`SearchStore`（偏离 1，4.1）；`openOf` 在 `pages/open-node.ts`（偏离 2，4.1）；两个播报区（偏离 3，4.3）；文字带句号、`building` 是模板（偏离 4，4.3、4.4）；"更多结果"（偏离 5，4.3）；按住的 `Mod+Shift+F` 只 `preventDefault`（偏离 6，4.2）；状态行读的时候与失败时为空（偏离 7，4.3）；"在哪里找"给不认识的 `notebook_id` 自己的一项（偏离 8，4.3）；一个 `too_long` 的文字管三种原因（偏离 9，4.3）；"更多"新加的不含已列出的（偏离 10，4.3）；结果页上框的范围要笔记本在列表里（偏离 11，4.2）；去掉的搜索与后退（偏离 12，由审查 A-I1、B-I1 改正，4.3）；`trim()` 与服务端的 `unicode.IsSpace`（偏离 13，4.2）。码的次序与 3.6、3.7 没有不同，假接口照代码。
+- **审查与修复核对带来的**：去掉别的搜索键时重新验证，后退回去的不论多快都重新读（A-I1、B-I1，4.3）；"更多"的播报只说显示着的搜索接上的一页，换了搜索或后退回来时清空（A-M1、B-M1，4.3）；最后一页一条也没加时不说"可以继续查找"、焦点到最后一行（A-M2、A-N1，4.3）；框的本地问题是 alert、先查 NUL（A-M3、B-N2，4.2）；"在哪里找"至多与屏幕同宽（A-M4，4.3）；附件去它直接的父页，测试在嵌套的页下（C-M2，4.3、4.6）；假接口的计数照 `EstimateCount` 的次序（B-N1，4.1）；测试：后退过了 SWR 的去重仍不重读（B-I2、C-I1）、五页的交替（C-M1）、一开始就在的状态行（C-M3）、大写的 id、笔记本首页与回收站的范围、"已找到"的边界、另一个工作区（C-N1–N3、B-N3）、等"更多"的读而不是固定的等待（C-N4），SE1 的马上后退与前进、手机的宽（4.5、4.6）；输入法清单第 21 步（b）的余地（A-N2）。打磨项写进 [M12 的打磨移交](../M12-release/handoffs/M5-polish.md)第 26 条。
 
 ## 5. 实施步骤
 
@@ -1223,7 +1238,7 @@ B（分支 `m8-p5b`，A 合并之后；服务函数与类型随第一次用到�
 
 ## 8. 交给后面的 Phase
 
-- **收尾**：00 号文档 4.12 的数以 A 的第 2 步为准；第 3 节第 6 条逐项对照 3.9。P5A 合并时照第 1、7 步写了。
+- **收尾**：00 号文档 4.12 的数以 A 的第 2 步为准；第 3 节第 6 条逐项对照 3.9。P5A 合并时照第 1、7 步写了。输入法清单第 21 步（P5B 合并时写进 [P6-ime-checklist.md](../M4-pages/manual/P6-ime-checklist.md)）由负责人在 v0.1 的最后统一验收，结果写进 M8 收尾审查记录的"人工验收"一节。
 - **M9**（`grep`、`index`，[M9 的移交](../M9-mcp/handoffs/M8-P5-search.md)）：
   - `grep` 用这个索引：
     - 从正则的字面片段取键：用 `regexp/syntax` 解析，取每段必须出现的字面串，CJK 2 个字起给二元组，字母 3 个起给三元组，大小写按标志。
@@ -1232,7 +1247,7 @@ B（分支 `m8-p5b`，A 合并之后；服务函数与类型随第一次用到�
     - 字母文字定为三元组（T，3.9）：字母与数字的任意子串（3 个起）都取得出键。
   - 队列让刚写的页立即可查，agent 写完即 grep 不会漏。agent 以 batch 大量新建时（导入以外的单元是准确的），看任务的吞吐是否跟得上。
   - MCP 的 `search`（若加）调用同一个 `Search` 用例。
-- **M12**：第 7 节的移交（[性能移交](../M12-release/handoffs/M4-performance.md)第 17 项：3.9 的数、300 ms 的尾巴、更大的语料与并发、命中不按范围、按 NFC 读的代价、任务的吞吐与积压、重建的 WAL 与磁盘……）；搜索的并发上限与按工作区的预算；繁简映射（OpenCC 一类，在分词与复查两边）；NFKC、重音与完全折叠的复查；`TitleKey` 对切罗基文不幂等（P5A 审查 A-M1 的附带发现，[打磨移交](../M12-release/handoffs/M5-polish.md)第 25 条）。
+- **M12**：第 7 节的移交（[性能移交](../M12-release/handoffs/M4-performance.md)第 17 项：3.9 的数、300 ms 的尾巴、更大的语料与并发、命中不按范围、按 NFC 读的代价、任务的吞吐与积压、重建的 WAL 与磁盘……）；搜索的并发上限与按工作区的预算；繁简映射（OpenCC 一类，在分词与复查两边）；NFKC、重音与完全折叠的复查；`TitleKey` 对切罗基文不幂等（P5A 审查 A-M1 的附带发现，[打磨移交](../M12-release/handoffs/M5-polish.md)第 25 条）；B 的打磨项（打磨移交第 26 条）；P4 的守卫在 CI 上的一次摆动（[性能移交](../M12-release/handoffs/M4-performance.md)第 16 项，P5B 合并之前）。
 
 ## 9. 结果
 
@@ -1247,9 +1262,15 @@ B（分支 `m8-p5b`，A 合并之后；服务函数与类型随第一次用到�
 - 交给后面的：B（`m8-p5b`）以这份契约为准（单独的情形；`exact` 含只在名称里找的，`at_least` 的三种；至多 64 个连续的 ASCII 字母与数字；走查至多 500 页的正文；折叠相同的词是一个；后台的恢复与撤销之后带 `building`）；M9：`grep` 用这个索引（[M9 的移交](../M9-mcp/handoffs/M8-P5-search.md)）；M12：[性能移交](../M12-release/handoffs/M4-performance.md)第 17 项（3.9 的数、300 ms 的尾巴、更大的语料与并发、命中不按范围与跨工作区的计时、按 NFC 读的代价、任务的吞吐与积压、重建的 WAL 与磁盘、日期的查询……），[打磨移交](../M12-release/handoffs/M5-polish.md)第 25 条（`TitleKey` 对切罗基文不幂等）。
 - 负责人可以改判的取舍：300 ms 的尾巴接受（重的类）；后台的恢复与撤销以批量入队（其间找不到、带 `building`，直到任务建好）；按 NFC 读的代价（走查 500 页约 20–35 ms）为了对留着；启动时丢掉留在运行中的行（v0.1 只跑一个服务）；计数的取样只在第一页的走查没有跑时、页满时取 (k − 1) / (n − 1)，比例依据的通过少于 2 个时（页满停在第 2 个通过时也是）答 `at_least`。
 
-### 9.2 B：前端
+### 9.2 B：前端（2026-10-16，合并 `ed22439a`）
 
-（P5B 合并之后写。）
+- 提交：实施：服务、store、搜索框与快捷键、结果页、高亮与摘要、去处、文字与假接口 `79bb8fc6`，SE1、SE2 `b91016f5`，反向对照找到的测试的缺口 `bc4f68a3`（从 `m8-p5a` 的 `480c031f` 开始）；变基到 `m8-p5a` 的 `f1b5cb55`；审查的修复：后退回到刚读过的搜索不再停在"加载中" `f4c2aec2`，"更多"的播报 `341adee9`，"在哪里找"的宽 `00644996`，框的说明是 alert、先查 NUL `309e713a`，假接口的计数 `4254e3e0`，审查的复现与没测的 `4e8a148f`，SE1 的马上后退、嵌套的附件与手机的宽 `eb950ae7`；变基到 P5A 的合并 `760757aa` 之后是 `68e75abc`、`96e51b22`、`0fdefe79`、`2ffc70be`、`71f9c7ae`、`8cf63252`、`d3d0c8ee`、`8e55efb8`、`59df311e`、`64999a84`。合并 `ed22439a`。
+- 审查：三位审查者（Opus）。两条 Important：后退或前进到一个刚读过的搜索（答复之后 2 秒之内或读还在途），页一直停在"加载中"（高，A-I1、B-I1；去掉别的搜索键时照 `useLeftRevision` 重新验证）；"从一条结果后退不重读"没有测试守得住（中高（测试），B-I2、C-I1）。中低 1 条："更多"的播报在后退回来时又说，旧的或错的（A-M1、B-M1）。其余是低（最后一页说"可以继续查找"；以回车提交的本地问题听不到；"在哪里找"在手机上比屏幕宽；三处测试的缺口）与细节。修复核对：没有行为上的发现；实施报告说 `dedupingInterval: 0` 也行，不对（它盖不住还在途的读）；以点击提交时本地问题可能读两遍（存疑，打磨）。逐条见[审查记录](reviews/P5B-search-web-review.md)。
+- 与设计不同之处已改在第 4 节（4.1–4.6），4.7 分实施时定下的与审查带来的列出；输入法清单的表头与第 21 步写进 [P6-ime-checklist.md](../M4-pages/manual/P6-ime-checklist.md)。
+- 反向对照：实施之后 vitest 99 个，98 个被抓到，"高亮不加粗"在 jsdom 里存活、e2e 的 E7 抓到；e2e 7 个都被抓到；审查者 B 的 `revalidateIfStale: true` 与 C 的 8 个存活为发现，C18 等价；修复一轮 vitest 28 个与 e2e 3 个都被抓到，实施之后的 99 个重跑 92 个被抓到（6 个因代码改了换掉）；修复核对的 9 个都被抓到（一个只在整个文件里）。
+- 门禁：本机 `bc4f68a3`、`eb950ae7` 与变基之后的 `64999a84` 上网页的门禁（3,314、3,322、3,322 个测试）、`make build` 之后整个 e2e（249 个）、SE1 与 SE2 连跑三次（12 个）通过；CI：`bc4f68a3`（run 38814830244）、`eb950ae7`（run 38821967250：web 3:12、e2e 4:13）全绿；`64999a84`（run 38826261199）只有守卫那一份失败，是 P4 的 `TestStartRevertAtMaxJobItems` 1.075 秒对 1 秒的时限：P5B 不改服务端，本机前后都约 0.28 秒，是 CI 的摆动（记进 M12 的性能移交第 16 项）；合并之后：run 38829397880（`ed22439a`）全绿（守卫 10:14、e2e 4:20）。
+- 交给后面的：输入法清单第 21 步（负责人在 v0.1 的最后统一验收，结果写进 M8 收尾审查记录）；打磨项 18 条（[打磨移交](../M12-release/handoffs/M5-polish.md)第 26 条）；守卫的摆动（[性能移交](../M12-release/handoffs/M4-performance.md)第 16 项）。
+- 负责人可以改判的取舍：打磨项推到 v0.1 之后；读了更多页、状态行也变时两个播报区都说（偏离 3，打磨第 1 条）；守卫在 CI 上的失败当作摆动，不改时限。
 
 ## 附：查过的代码
 
