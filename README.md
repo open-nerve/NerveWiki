@@ -178,7 +178,7 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
 
 - `GET /api/v0/workspaces/{slug}/search?q=&notebook_id=&cursor=&limit=`：工作区的任何成员（访客只在被加入的笔记本里）按名称与正文搜索看得到的笔记本里活着的页与附件（附件只按名称），可以限定一本笔记本。名称里有每个词的排在前面，其余的在后，各按最后改动从新到旧；每页 1–50 条（默认 20），正文命中的带摘要与高亮的位置（UTF-16 码元），第一页带约数（`exact`、`about`、`at_least`）。
 - 词按空白分开，每个词都要命中：单个汉字只在名称里找；汉字 2 个起、字母与数字 3 个起按子串（`api` 找得到 `rapid`）；字母与数字 1–2 个按整词（`go` 找得到 `Go语言`）；大小写不敏感；繁简、重音、全角与半角不互通。`q` 至多 256 字节、8 个词、64 个连续的 ASCII 字母与数字。一页至多查 500 页的正文：可能少于 `limit` 条、甚至一条也没有而带 `next_cursor`。
-- 索引由服务的后台任务建（`page.search_index_interval`，默认每 5 秒）：用户在请求里的写立即搜得到；导入、后台的恢复与撤销、升级、`nervewiki reindex` 写的节点在任务建好之前搜不到，答复的 `building` 为真，结果页写明索引正在建立、结果可能不全。
+- 索引由服务的后台任务建（`page.search_index_interval`，默认每 5 秒）：用户在请求里的写立即搜得到；导入、后台的恢复与撤销、升级、`nervewiki reindex` 写的节点在任务建好之前搜不到，答复的 `building` 为真，结果页写明索引正在建立、结果可能不全。索引里的每个词带它的笔记本的前缀：一次搜索只读它搜的那些笔记本的词，看不到的笔记本里写了什么，既不改变它读什么，也不改变它读多久。
 
 ### 导入与导出
 
@@ -194,7 +194,7 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
   - `hello`：第一帧，`{"heartbeat_seconds"}`；
   - `pages`：一个写入单元，`tree` 说明是否改了树（新建、改名、移动、删除、从回收站恢复），`pages` 是写了正文的页与新版本 `[{id, revision}]`（新建的页在版本 1）；多于 20 页时是 `null`，当作每一页都写过；
   - `lock`：一页的编辑会话开启或结束，`{page_id, session_id}`，去读锁；接管是先结束、再开启的两帧；
-  - `links`：一个写入单元改变了链接索引，`{pages, targets}`：`pages` 是链接改指别的页的页（不含这个单元写了正文的页，它们在 `pages` 帧里），`targets` 是反链变了的页；各自多于 20 页时是 `null`，当作这个笔记本的每一页都变了。`nervewiki reindex` 每个笔记本发一帧，两者都是 `null`；
+  - `links`：一个写入单元改变了链接索引或别名，`{pages, targets, aliases}`：`pages` 是链接改指别的页的页（不含这个单元写了正文的页，它们在 `pages` 帧里），`targets` 是反链变了的页；各自多于 20 页时是 `null`，当作这个笔记本的每一页都变了。`aliases` 说明这个单元是否增加或去掉了某一页的别名（随正文，或随这一页本身）：版本的链接不在索引里、按现在的别名解析，客户端于是重读这个笔记本显示着的每个版本的阅读视图（回收站的预览也是）；别名变了而没有链接改指别处时，`pages`、`targets` 都是空列表。`nervewiki reindex` 每个笔记本发一帧，两个列表都是 `null`，`aliases` 为假（`null` 已当作每一页都变了）；
   - `reset`：`{reason}`，流的最后一帧；
   - 心跳是一行注释 `: heartbeat`。不认识的类型跳过：之后的 M 会加自己的类型。
 - **`reset`**：服务端随即关闭连接，客户端重连并整体刷新（树与打开的页），不补发事件。原因：`access`（看得到的笔记本可能变了：工作区或笔记本的成员身份、笔记本的开放程度、停用与恢复）、`notebooks_deleted`（看得到的笔记本被删除，删工作区也是）、`expired`（凭证到期，续期之后重连）、`unauthenticated`（心跳时重新认证失败：撤销、别处退出登录、停用）、`reconnected`（服务端接收通知的连接断开又连上，期间的事件丢了）、`overflow`（客户端读得太慢，缓冲的 64 个事件满了）。因 `access`、`notebooks_deleted`、`reconnected`、`overflow` 而 `reset` 时，之前已经送到这条流的事件先写出；凭证到期或失效时不再写出。流也可能不带 `reset` 就结束：服务停机、心跳时认证服务出错、客户端一个心跳之内收不下一帧，客户端同样重连并刷新。
@@ -311,9 +311,9 @@ make image-smoke VERSION=0.1.0   # 在镜像上跑 S1、S3：迁移、探针、�
   docker run --rm -e NWIKI_DATABASE__URL=… "${key[@]}" nervewiki:0.1.0 reindex
   ```
 
-- 升级到带搜索的版本（M8）时，迁移让已有的全部节点排队，服务起来之后由后台任务建索引（30 万页约 15–17 分钟），其间搜索找不到它们、页上写明索引正在建立。这次补入与大的工作区的 `nervewiki reindex` 整个重建搜索的索引，写大量的 WAL：`max_wal_size` 是默认的 1 GB 时，重建每一页约 1.7 MB（30 万页的全部重建约 490 GB、约 36 分钟，主要是检查点之后整页的镜像），重建之后 `page_search` 在磁盘上约是原来的 2 倍，空出的地方不还给系统。所以之前调大 `max_wal_size`（例如 16 GB），留出至少 `page_search` 现在那么大的空闲磁盘（新建时约是正文的 2.5 倍）；有 WAL 归档或复制槽时，归档与 `pg_wal` 要容得下这些 WAL。
+- 升级到带搜索的版本（M8）时，迁移让已有的全部节点排队，服务起来之后由后台任务一个笔记本接一个笔记本地建索引（早建的笔记本在前）：一个笔记本建完之前，搜索找不到它里面的这些页、页上写明索引正在建立（其间改过的页立即找得到）。任务每次运行约 1 分钟，停下时所在的那个笔记本余下的页等这一轮转回来再建，一次建完全部的升级里那是最后：30 万页时约 15 个笔记本（多是大的）到全部建完才建好。重建的进度看还在排队的节点数：`SELECT count(*) FROM page_search_queue WHERE bulk`。在我们的测试机上，30 万页（1.9 GB 正文、5,000 个笔记本）约 16 分钟建完，写约 130 GB 的 WAL（每页约 0.44 MB），`max_wal_size` 调到 16 GB 只少约 3%。`nervewiki reindex` 重建一个已有的索引更贵：同样 30 万页约 26 分钟、约 290 GB 的 WAL（每页约 1 MB），重建之后 `page_search` 在磁盘上约是原来的 1.7 倍，空出的地方不还给系统。索引约是正文的 5 倍（笔记本少时更小）：升级时留出约正文 5 倍的空闲磁盘（正文大小：`SELECT pg_size_pretty(sum(byte_size)) FROM page_contents`）；`nervewiki reindex` 前留出至少 `page_search` 现在那么大；有 WAL 归档或复制槽时，归档与 `pg_wal` 要容得下这些 WAL。
 
-- **迁移与服务分用两个数据库角色时**（表的所有者执行迁移，服务用另一个角色登录，`database.auto_migrate` 关闭），服务需要的权限全部写在 [`deploy/runtime-grants.sql`](deploy/runtime-grants.sql)，授予组角色 `nervewiki_runtime`：业务表逐表的读写（不给 `TRUNCATE`、`REFERENCES`、`TRIGGER` 与 DDL），搜索的队列的序列 `page_search_queue_version_seq` 的 `USAGE`（入队时从它取版本），River 的表与序列，`river_job` 的 `MAINTAIN`（River 每天用 `REINDEX INDEX CONCURRENTLY` 重建它的索引，需要 PostgreSQL 17 起），导入与后台的恢复、撤销写入的 11 张表的 `MAINTAIN`（这些任务每写 10,000 个节点与结束时对它们 `ANALYZE`；少了它 PostgreSQL 跳过这张表、只发一条 WARNING，任务照常完成，统计等 autovacuum 更新），`page_search` 的 `MAINTAIN`（搜索的建索引任务每写 10,000 行对它 `ANALYZE`），`goose_db_version` 的读（`/readyz` 靠它判断迁移是否执行完）。函数与类型不在文件里，靠 PostgreSQL 默认给 PUBLIC 的权限。
+- **迁移与服务分用两个数据库角色时**（表的所有者执行迁移，服务用另一个角色登录，`database.auto_migrate` 关闭），服务需要的权限全部写在 [`deploy/runtime-grants.sql`](deploy/runtime-grants.sql)，授予组角色 `nervewiki_runtime`：业务表逐表的读写（不给 `TRUNCATE`、`REFERENCES`、`TRIGGER` 与 DDL），搜索的两个序列 `page_search_queue_version_seq`（入队时从它取版本）与 `page_search_tags_seq`（建索引的任务第一次写一个笔记本的行时从它取这个笔记本的前缀）的 `USAGE`，River 的表与序列，`river_job` 的 `MAINTAIN`（River 每天用 `REINDEX INDEX CONCURRENTLY` 重建它的索引，需要 PostgreSQL 17 起），导入与后台的恢复、撤销写入的 11 张表的 `MAINTAIN`（这些任务每写 10,000 个节点与结束时对它们 `ANALYZE`；少了它 PostgreSQL 跳过这张表、只发一条 WARNING，任务照常完成，统计等 autovacuum 更新），`page_search` 的 `MAINTAIN`（搜索的建索引任务每写 10,000 行对它 `ANALYZE`），`goose_db_version` 的读（`/readyz` 靠它判断迁移是否执行完）。函数与类型不在文件里，靠 PostgreSQL 默认给 PUBLIC 的权限。
   - 组角色建一次，服务登录的角色加入它：`CREATE ROLE nervewiki_runtime NOLOGIN;`、`CREATE ROLE nervewiki_app LOGIN PASSWORD '…' IN ROLE nervewiki_runtime;`。
   - **每次 `migrate up` 之后、启动服务之前**，以表的所有者执行一次这个文件，例如 `psql -v ON_ERROR_STOP=1 -f deploy/runtime-grants.sql`：新的迁移可能加了表，文件逐个列出；重复执行没有影响。
   - 少了业务表的权限时接口答 500；少了 `goose_db_version` 的读时 `/readyz` 是 503，后台任务一直等着不启动。少了 `river_queue` 的权限时 River 启动失败，服务随之退出（`start the jobs: … permission denied`）；少了 River 其他表的，`/readyz` 仍是 200，会话清理、软删除清理与索引重建因 `permission denied` 失败，只记在日志里（`river_notification` 目前 River 不写，少了它看不出来）。`server/internal/bootstrap/runtime_role_test.go` 以恰好这些权限的角色运行服务与管理命令，`public` 里任何表、视图、序列或函数的权限与文件不符时失败。

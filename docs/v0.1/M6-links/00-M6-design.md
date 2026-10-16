@@ -340,7 +340,7 @@ linking 注册为写入单元的参与者，在改名与移动之后调用（`Pa
 
 - 照 [M5 的事件移交](handoffs/M5-events.md)第 1–3 项注册：
   - 按笔记本过滤；
-  - 载荷 `{pages, targets}`，都是页 id 的数组，多于 20 页时为 `null`（照 `pages` 的退化）；
+  - 载荷 `{pages, targets}`，都是页 id 的数组，多于 20 页时为 `null`（照 `pages` 的退化）；M8 加 `aliases`（布尔，必有）：一次写增删了别名的键时为真，只改了别名、没有链接改指向时也发一条（两组都是 `[]`），reindex 发 `false`；网页带 `aliases` 时重读这本笔记本挂着的全部版本视图与回收站的预览（[M8 总设计](../M8-history-search/00-M8-design.md) 4.13，[M8 Codex 评审](../M8-history-search/reviews/M8-codex-review.md)第 9 节 R3）；
   - 在观察者里、调用方的事务中发布。
 - 这个类型按笔记本过滤，不是工作区级的，所以移交第 4 项（不发 `access` 的路径）与它无关。
 
@@ -500,7 +500,7 @@ linking 注册为写入单元的参与者，在改名与移动之后调用（`Pa
 | `GET /api/v0/notebooks/{notebook_id}/link-targets` | `listLinkTargets` | 补全用：`{data: [{id, kind, name, link, aliases}]}`，`kind` 的枚举另起名 `LinkTargetKind` |
 | `GET /api/v0/pages/{page_id}/link-landing?target=` | `getLinkLanding` | 新建未建的页时问落点（P6 A）：`{node_id, landing: {parent_id, title}, reason}`，只给笔记本的管理员与编辑者 |
 | `PATCH /api/v0/nodes/{node_id}`、`POST …/move` | 已有 | 新增 409 `linking.pages_locked`（带 `locks`）与 503 `server_busy` |
-| 事件 `links` | — | `{pages, targets}`，见第 4.8 节 |
+| 事件 `links` | — | `{pages, targets}`，见第 4.8 节（M8 加 `aliases`） |
 
 - 读的权限都是"能读这个笔记本"，落点除外（能写这个笔记本）；access 的规则表加这几个动作，权限矩阵各加一行。
 - 契约是新文件 `api/modules/linking.yaml`；`links` 事件写进 `api/modules/events.yaml` 的事件描述。

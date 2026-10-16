@@ -156,7 +156,7 @@ linking 的 `Index` 实现 `page.PageObserver`，经组合根登记（`pageRegis
 6. **候选链接**：`target_key` 或 `target_alt_key` 在这些键里的；解析到受影响节点（改名、移动、删除的子树）的；出发页在改名、移动的子树里的（出发文件夹变了）；以及第 3 步写入的全部链接。
 7. **解析**（`app.resolver`）：一次切分全部目标，一次 `ByKeys` 取全部候选，一次取别名，一次 `Paths` 取出发页的路径；候选按路径的结尾读进 `domain.Suffixes`（只到目标需要的深度），逐条解析（M6 收尾修复核对 FA-I1、FA2-M1）。
 8. **更新**：只写解析结果真的变了的行。
-9. **事件**：`pages` 是链接状态（解析到的节点）变了的出发页，不含本单元写了正文的页；`targets` 是反链变了的页（变了的行的新旧目标，加上写了正文的页的新旧目标）。都空时不发；是否发按截断之前的两组判断（P3A 审查：两组都多于 20 时曾经不发）。
+9. **事件**：`pages` 是链接状态（解析到的节点）变了的出发页，不含本单元写了正文的页；`targets` 是反链变了的页（变了的行的新旧目标，加上写了正文的页的新旧目标）。都空时不发；是否发按截断之前的两组判断（P3A 审查：两组都多于 20 时曾经不发）。M8 起这一步另数增删的别名键，有时 `aliases` 为真，两组都空也发（[M8 总设计](../M8-history-search/00-M8-design.md) 4.13，[M8 Codex 评审](../M8-history-search/reviews/M8-codex-review.md)第 9 节 R3）。
 
 **为什么候选是全的**：解析结果只取决于（一）最后一段的标题键对应的节点集合，（二）这些节点从根起的路径（键与名称：长度看名称），（三）出发页的位置，（四）别名与有别名的页的路径。（一）由新建、删除、改名、移动的键覆盖；（二）只有改名（含同键不同长度）、移动会改，它们的子树全部计入；（三）只有移动会改，子树计入；（四）由正文写的新旧别名，以及路径变了的页的别名覆盖。这是推理，不是证明，所以有"增量等于重建"的性质测试（第 5 节）；它在第一次运行时就找到了（四）原先漏掉的后半句。
 
@@ -165,7 +165,7 @@ linking 的 `Index` 实现 `page.PageObserver`，经组合根登记（`pageRegis
 ### 3.5 笔记本删除、`links` 事件、组合根
 
 - **笔记本删除**：linking 登记笔记本删除事件（`notebookRegistrants`，排在 page 之后、事件流的 `reset` 之前），在同一个事务里删掉这些笔记本的全部索引行。
-- **`links` 事件**：linking 的端口 `Publisher.LinksChanged(ctx, LinksChanged{WorkspaceID, NotebookID, Pages, Targets})`；多于 20 页的一组为 `null`（linking 里先判断，不靠 `ErrTooLong`）。组合根的 `linkEvents` 经 `events.Publisher.Publish` 发出类型 `links`，载荷 `{"pages": […]|null, "targets": […]|null}`；契约 `api/modules/events.yaml` 加这个类型。
+- **`links` 事件**：linking 的端口 `Publisher.LinksChanged(ctx, LinksChanged{WorkspaceID, NotebookID, Pages, Targets})`；多于 20 页的一组为 `null`（linking 里先判断，不靠 `ErrTooLong`）。组合根的 `linkEvents` 经 `events.Publisher.Publish` 发出类型 `links`，载荷 `{"pages": […]|null, "targets": […]|null}`（M8 加 `"aliases": true|false`）；契约 `api/modules/events.yaml` 加这个类型。
 - **组合根**：
   - `pageRegistrants(pool)` 加 linking 的观察者（只凭连接池与发布者就能构造：它不解析正文），排在事件流之后（一个单元的 `pages` 帧先于 `links` 帧），所以 `users`、`workspaces` 两个命令的笔记本删除也删索引行；
   - page 的 `Event` 经 `bootstrap` 转成 linking 的（两个模块互不导入），`Facts` 经 linking 的模块根 `linking.PageFacts(any)` 转成 linking 的提取结果（实现在 `adapter/markdown`）。
