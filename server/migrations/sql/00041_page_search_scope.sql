@@ -32,10 +32,13 @@ END;
 
 -- page_search_queries: the query of each notebook given that has a prefix, its prefix before each of the keys, the
 -- keys ANDed, each quoted as a tsquery's operand ('' and \\ doubled); none for a notebook without one, which has no
--- row. NULL notebooks or keys give NULL, an empty list no query: a read without them finds nothing.
+-- row. NULL notebooks or keys give NULL, an empty list no query: a read without them finds nothing. Its COST says what
+-- a call costs, a query built for each notebook (0.5 ms for one, 4 to 25 ms for 5,000): at the default 100, a plan
+-- that called it on each row of a small page_search, an empty one after this migration among them, looked cheaper
+-- than a second bitmap, and a search over 5,000 notebooks took 10 s, not 12 ms (M8 Codex review R1, fix round 2).
 -- +goose StatementBegin
 CREATE FUNCTION page_search_queries(notebooks uuid[], keys text[]) RETURNS tsquery[]
-    LANGUAGE sql STABLE STRICT PARALLEL SAFE
+    LANGUAGE sql STABLE STRICT PARALLEL SAFE COST 10000
 BEGIN ATOMIC
     SELECT coalesce(array_agg(q.query), '{}')
     FROM (SELECT string_agg('''' || replace(replace(t.prefix || k.key, '\', '\\'), '''', '''''') || '''', ' & ')::tsquery
@@ -68,14 +71,16 @@ ON CONFLICT (node_id) DO UPDATE SET version = excluded.version, bulk = page_sear
 -- each time), and, an ANY of hundreds of queries estimated to hold most rows, may check the second branch's title or
 -- body row by row, every notebook's query on every row: 的 数据库 over 200 notebooks took 3.5 s, not 10 ms (M8 Codex
 -- review R1, 299,200 pages). Planned for any arguments, each branch reads the indexes' bitmaps, the second their
--- intersection (BitmapAnd). Such a plan takes workers for any key, 2 ms a read to start them, which only a common key
--- over hundreds of notebooks gives back, 3 ms of 30.
+-- intersection (BitmapAnd), at any size of the table, page_search_queries priced as it costs. Such a plan takes
+-- workers for any key, 2 ms a read to start them, which only a common key over hundreds of notebooks gives back, 3 ms
+-- of 30. No JIT: at that price a plan's cost would compile its statements (some 30 ms a call), which the server's
+-- connections never do (jit off) and no other's need.
 DROP FUNCTION page_search_hits(tsquery, tsquery);
 -- +goose StatementBegin
 CREATE FUNCTION page_search_hits(notebooks uuid[], body_keys text[], title_keys text[]) RETURNS SETOF uuid
     LANGUAGE sql STABLE PARALLEL RESTRICTED ROWS 1000000
     SET enable_seqscan = off SET enable_indexscan = off SET enable_indexonlyscan = off SET work_mem = '64MB'
-    SET plan_cache_mode = force_generic_plan SET max_parallel_workers_per_gather = 0
+    SET plan_cache_mode = force_generic_plan SET max_parallel_workers_per_gather = 0 SET jit = off
 BEGIN ATOMIC
     SELECT node_id FROM page_search WHERE title_keys IS NULL AND body_keys IS NOT NULL
         AND body @@ ANY (page_search_queries(notebooks, body_keys))
@@ -95,7 +100,7 @@ END;
 CREATE FUNCTION page_search_titles(notebooks uuid[], keys text[]) RETURNS SETOF uuid
     LANGUAGE sql STABLE PARALLEL RESTRICTED ROWS 1000
     SET enable_seqscan = off SET enable_indexscan = off SET enable_indexonlyscan = off SET work_mem = '64MB'
-    SET plan_cache_mode = force_generic_plan SET max_parallel_workers_per_gather = 0
+    SET plan_cache_mode = force_generic_plan SET max_parallel_workers_per_gather = 0 SET jit = off
 BEGIN ATOMIC
     SELECT node_id FROM page_search WHERE title @@ ANY (page_search_queries(notebooks, keys));
 END;

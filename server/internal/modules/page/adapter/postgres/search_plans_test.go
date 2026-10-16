@@ -489,7 +489,7 @@ func (f fixture) checkHits(t *testing.T, stage string) {
 			t.Fatal(err)
 		}
 		if want := []string{"enable_seqscan=off", "enable_indexscan=off", "enable_indexonlyscan=off", "work_mem=64MB",
-			"plan_cache_mode=force_generic_plan", "max_parallel_workers_per_gather=0"}; !slices.Equal(config, want) {
+			"plan_cache_mode=force_generic_plan", "max_parallel_workers_per_gather=0", "jit=off"}; !slices.Equal(config, want) {
 			t.Errorf("%s is set %q, want %q", name, config, want)
 		}
 		stmt, begun := strings.CutPrefix(strings.TrimSpace(body), "BEGIN ATOMIC")
@@ -553,22 +553,42 @@ func unscopedReads(n *planNode) bool {
 	return (n.Index == "page_search_body_idx" || n.Index == "page_search_title_idx") && !strings.Contains(n.IndexCond, "page_search_queries(")
 }
 
+// The candidate reads, planned for any arguments, read bitmaps and check
+// no notebook's queries row by row on a small page_search too (M8 Codex
+// review R1, fix round 2: B-1): empty, as migration 00041 leaves it, and of
+// 1,000 rows, without statistics and with. Priced at a function's default
+// cost, page_search_queries looked cheap enough to call on each row of so
+// small a table, a second bitmap dearer: a search over 5,000 notebooks then
+// took 10 s. The plan is the same whatever the notebooks tagged, which it
+// does not read.
+func TestTheCandidateReadsAreBitmapsOfASmallTable(t *testing.T) {
+	f := newFixture(t)
+	f.exec(t, "ALTER TABLE page_search SET (autovacuum_enabled = false)")
+	f.checkHits(t, "on an empty page_search")
+	pages := newSearchCorpus(20261017).pages(t, f, f.eng, 1000, 600)
+	f.queueSearch(t, f.eng, false, pages...)
+	f.drain(t)
+	f.checkHits(t, "on 1,000 rows without statistics")
+	f.exec(t, "ANALYZE page_search")
+	f.checkHits(t, "on 1,000 rows")
+}
+
 // The search's statements read through their indexes (M8/P5 design 3.5,
 // 3.10), on a few thousand pages and ten times as many attachments, with
 // their rows and statistics, whole tables' scans off but the queue's, the
 // arguments bound as the store binds them; none reads every row of
-// page_search, whose bodies lie out of line, but for a title term in a
-// quarter of the titles. Each joins its candidates to their nodes, and the
-// tiers to their contents, within the notebooks alone (the scoped join):
-// every scan of nodes carries the notebooks' condition, and none of nodes or
-// contents a check that runs above the fence, nor reads a partial index
-// whose predicate one implies; nor does a join run one. Where every page is
-// a candidate ("the"), no nested loop over nodes or contents reads the
-// candidates again for each row; the planner reads page_search whole for so
-// common a title term, so its title tier's fence alone is checked. Otherwise
-// the title tier reads page_search_title_idx, checks the names below its
-// limit and reads the contents by key above it, sorting nothing above it.
-// The body tier reads its candidates by their lexemes through
+// page_search, whose bodies lie out of line. Each joins its candidates to
+// their nodes, and the tiers to their contents, within the notebooks alone
+// (the scoped join): every scan of nodes carries the notebooks' condition,
+// and none of nodes or contents a check that runs above the fence, nor
+// reads a partial index whose predicate one implies; nor does a join run
+// one. Where every page is a candidate ("the"), no nested loop over nodes
+// or contents reads the candidates again for each row; for so common a
+// title term the title tier's fence is checked, and that it reads its
+// candidates through page_search_titles, alone. Otherwise the title tier
+// reads page_search_title_idx through page_search_titles, checks the names
+// below its limit and reads the contents by key above it, sorting nothing
+// above it. The body tier reads its candidates by their lexemes through
 // page_search_hits, whose settings leave its statement bitmaps of the GIN
 // indexes alone, by their count (a limit straight over the function); no
 // scan of nodes checks the names; its walk a limit straight over its sort,
@@ -577,8 +597,8 @@ func unscopedReads(n *planNode) bool {
 // read the titles' and the bodies' hits so; building the queue's index; the
 // job's reads and a hit's line their keys. The search's reads are checked
 // without statistics too, where a check of nodes besides the notebooks' in
-// the join would leave a notebook's live nodes one row to the planner, which
-// would compare each with every candidate.
+// the join would leave a notebook's live nodes one row to the planner,
+// which would compare each with every candidate.
 func TestTheSearchReadsUseTheirIndexes(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
@@ -669,13 +689,15 @@ func TestTheSearchReadsUseTheirIndexes(t *testing.T) {
 	// many are the queries of which every page of eng is a candidate.
 	many := map[string]bool{"the": true}
 	// checkFence checks s's scoped join alone, and the trap: the title
-	// tier's, where every page is a candidate. A title term in a quarter
-	// of the titles has the planner read page_search whole, not by its GIN
-	// index, which the checks of the rarer terms keep them from.
+	// tier's, where every page is a candidate; and that it reads its
+	// candidates through page_search_titles, which reads them by the GIN
+	// index alone however common the term (M8 Codex review R1), where the
+	// title statements once read page_search whole for a term in a quarter
+	// of the titles.
 	checkFence := func(name string, s statement) {
 		t.Helper()
 		root, _ := f.planTreeOf(t, s)
-		if problems := fence(&root, true); len(problems) > 0 {
+		if problems := append(fence(&root, true), uses(&root, titled)...); len(problems) > 0 {
 			t.Errorf("%s: %s:\n%s", name, strings.Join(problems, "; "), strings.Join(f.planOf(t, s), "\n"))
 		}
 	}
