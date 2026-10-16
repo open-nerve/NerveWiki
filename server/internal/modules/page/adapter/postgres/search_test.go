@@ -562,6 +562,11 @@ func TestTheSearchsRowsAndSources(t *testing.T) {
 		engPrefix == opsPrefix || !searchPrefix.MatchString(engPrefix) || !searchPrefix.MatchString(opsPrefix) {
 		t.Errorf("the prefixes of eng and ops = %q, %q, %v; want two, each base 62 digits and '#'", engPrefix, opsPrefix, err)
 	}
+	// One number of the sequence a notebook, eng's three nodes in the batch
+	// though: the prefixes stay as short as the notebooks are few.
+	if spent := f.count(t, `SELECT last_value FROM page_search_tags_seq`); spent != 2 {
+		t.Errorf("the prefixes of two notebooks spent %d numbers of the sequence, want 2", spent)
+	}
 	for _, r := range rows {
 		var revision *int // an attachment's none
 		if r.Revision > 0 {

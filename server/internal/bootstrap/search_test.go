@@ -193,8 +193,8 @@ func checkSearch(t *testing.T, pool *pgxpool.Pool) {
 // queue and left the index its nodes' (M8/P5 design 3.10): a row for each
 // live node and for no other, at its name and content's revision, by the
 // current tokenizer, its lexemes those SearchTokens makes of them now,
-// each behind the node's notebook's prefix (M8 Codex review R1): a lexeme
-// behind another's is none of the row's.
+// each behind the node's notebook's prefix, and no other (M8 Codex review
+// R1).
 func checkSearchBuilt(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
 	drainSearch(t, pool)
@@ -212,9 +212,7 @@ func checkSearchBuilt(t *testing.T, pool *pgxpool.Pool) {
 		}
 	}
 	rows, err := pool.Query(context.Background(), `SELECT s.node_id::text, n.name, s.name, s.tokenizer, c.revision, s.revision, c.content,
-			ARRAY(SELECT substr(l, length(t.prefix) + 1) FROM unnest(tsvector_to_array(s.title)) l WHERE starts_with(l, t.prefix)),
-			CASE WHEN s.body IS NOT NULL THEN ARRAY(SELECT substr(l, length(t.prefix) + 1) FROM unnest(tsvector_to_array(s.body)) l
-				WHERE starts_with(l, t.prefix)) END
+			t.prefix, tsvector_to_array(s.title), tsvector_to_array(s.body)
 		FROM page_search s JOIN nodes n ON n.id = s.node_id JOIN page_search_tags t ON t.notebook_id = n.notebook_id
 			LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at IS NULL
 		ORDER BY s.node_id`)
@@ -223,14 +221,19 @@ func checkSearchBuilt(t *testing.T, pool *pgxpool.Pool) {
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var id, name, builtName, tokenizer string
+		var id, name, builtName, tokenizer, prefix string
 		var revision, builtRevision *int
 		var content *string
 		var title, body []string
-		if err := rows.Scan(&id, &name, &builtName, &tokenizer, &revision, &builtRevision, &content, &title, &body); err != nil {
+		if err := rows.Scan(&id, &name, &builtName, &tokenizer, &revision, &builtRevision, &content, &prefix, &title, &body); err != nil {
 			t.Fatal(err)
 		}
 		wantTitle, wantBody := domain.SearchTokens(name, content)
+		for _, want := range [][]string{wantTitle, wantBody} {
+			for i := range want {
+				want[i] = prefix + want[i]
+			}
+		}
 		switch {
 		case builtName != name || tokenizer != domain.SearchTokenizer || !equalInts(builtRevision, revision):
 			t.Errorf("the row of %s is of %q at %v by %s, want %q at %v by %s", id, builtName, deref(itoa(builtRevision)), tokenizer, name,

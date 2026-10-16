@@ -65,7 +65,9 @@ ORDER BY node_id;
 
 -- name: TagSearchNotebooks :exec
 -- The notebooks of the nodes given that have no prefix yet get the next (M8 Codex review R1): the job's, before it
--- writes their rows, in its transaction.
+-- writes their rows, in its transaction. One number of the sequence a notebook, not a node: the prefixes stay as
+-- short as the notebooks are few (without the DISTINCT, ON CONFLICT would keep the answers, a batch of 100 nodes of a
+-- new notebook spending 99 numbers).
 INSERT INTO page_search_tags (notebook_id, prefix)
 SELECT x.notebook_id, page_search_prefix(nextval('page_search_tags_seq'))
 FROM (SELECT DISTINCT n.notebook_id FROM nodes n
@@ -101,7 +103,9 @@ WHERE q.node_id = r.node_id AND q.version = r.version
                       ORDER BY x.node_id FOR UPDATE SKIP LOCKED);
 
 -- name: AnalyzeSearch :exec
--- The statistics of the rows the job writes: @@'s selectivity reads them.
+-- The size of page_search as the job writes it, which the candidate reads' plans are made for (planned for any
+-- arguments, M8 Codex review R1): a change of it makes them again. Their @@ reads no statistics of the lexemes, an
+-- ANY of queries no plan knows.
 ANALYZE page_search;
 
 -- name: SearchNFC :many
