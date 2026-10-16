@@ -142,17 +142,16 @@ func (r *RevertChangeset) checks() revertChecks {
 // revertBounds are where a revert's unlocked check stops it (M8/P4 design
 // 3.5): Items before the items are read (MaxUnitNodes, a job's
 // MaxJobItems); Admit right after it, before anything else is read (a
-// job's transfer.busy); Groups after the nodes, before their groups are
-// read (a job's MaxJobGroups; 0 none); Parse at step 6, the unit's pages,
-// bytes and History rows of history (the sync's); Steps after the plan's
-// conflicts (MaxRevertSteps, the sync's; 0 none); Locks after them,
-// page.locked for a page the plan deletes or writes back that an edit
-// session holds (a job's). The 404 of a changeset gone between its reads
-// is spec.NotFound, the one the caller's first read answers.
+// job's transfer.busy); Parse at step 6, the unit's pages, bytes and
+// History rows of history (the sync's); Steps after the plan's conflicts
+// (MaxRevertSteps, the sync's; 0 none); Locks after them, page.locked for
+// a page the plan deletes or writes back that an edit session holds (a
+// job's). The groups have no bound: P4A measured none needed (M8/P4 design
+// 3.11). The 404 of a changeset gone between its reads is spec.NotFound,
+// the one the caller's first read answers.
 type revertBounds struct {
 	Items   int
 	Admit   func(context.Context) error
-	Groups  int
 	Parse   bool
 	History int
 	Steps   int
@@ -183,13 +182,13 @@ type revertChecked struct {
 // past b's items, before they are read; then b's Admit; then its items
 // and versions, and its row again, page.changeset_trimmed when the purge
 // marked or took it meanwhile, spec's 404 or 403 when its notebook went
-// meanwhile, or the caller's role; then its nodes now, page.revert_too_large
-// past b's groups; then the trash items it deleted, each read only when its
-// root passes the check, and with b's Parse, page.revert_too_large past the
-// pages and bytes it parses (a lone page never is) or b's rows of their
-// history; then the state, planned: page.revert_conflict, then
-// page.changeset_trimmed for a version the purge took, then
-// page.revert_too_large past b's steps, then with b's Locks page.locked.
+// meanwhile, or the caller's role; then its nodes now; then the trash
+// items it deleted, each read only when its root passes the check, and
+// with b's Parse, page.revert_too_large past the pages and bytes it parses
+// (a lone page never is) or b's rows of their history; then the state,
+// planned: page.revert_conflict, then page.changeset_trimmed for a version
+// the purge took, then page.revert_too_large past b's steps, then with b's
+// Locks page.locked.
 func (r revertChecks) check(ctx context.Context, c domain.Changeset, spec UnitSpec, b revertBounds) (revertChecked, error) {
 	if c.Trimmed {
 		return revertChecked{}, domain.ErrChangesetTrimmed
@@ -224,11 +223,7 @@ func (r revertChecks) check(ctx context.Context, c domain.Changeset, spec UnitSp
 	if err != nil {
 		return revertChecked{}, err
 	}
-	roots := domain.RevertGroups(items, nodes)
-	if b.Groups > 0 && len(roots) > b.Groups {
-		return revertChecked{}, domain.ErrRevertTooLarge
-	}
-	groups, err := reads.trashGroups(ctx, c.NotebookID, roots)
+	groups, err := reads.trashGroups(ctx, c.NotebookID, domain.RevertGroups(items, nodes))
 	if err != nil {
 		return revertChecked{}, err
 	}

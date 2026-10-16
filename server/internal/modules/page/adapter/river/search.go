@@ -21,8 +21,10 @@ const SearchIndexQueue = "page_search"
 
 // SearchIndexTimeout bounds a run: a run starts no batch after a minute
 // (domain.SearchRunBudget), and River's minute would cut its last batch
-// short. It stays far under the hour after which River takes a job still
-// running for stuck.
+// short. It stays far under River's rescue, which takes a job still
+// running for stuck after jobs.Config's RescueAfter, transfer.job_timeout
+// and an hour; a run a stopped server left running, serve's start
+// discards first (SearchIndexJob).
 const SearchIndexTimeout = 2 * time.Minute
 
 // SearchIndexUseCase is the use case the job runs: app.IndexSearch.

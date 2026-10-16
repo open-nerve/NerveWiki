@@ -28,14 +28,14 @@ CREATE INDEX page_search_body_idx ON page_search USING gin (body);
 -- body_keys and whose title title_keys, or, without body_keys, whose title holds title_keys: read through the GIN
 -- indexes alone (M8/P5A, measured on 300,000 pages). Any other read of the table, a sequential scan or a walk of its
 -- key, reads every row's body, out of line in TOAST (3.7 GB), which the planner does not count: once the index's
--- pending list or a rebuild's dead entries raised its cost a little, it took the scan for a common key, a search
--- 10-28 s. With the scans of the table disabled here, bitmaps of its indexes are its only reads left, and work_mem
--- keeps their heap pages exact: past it a bitmap turns pages lossy, whose every row's body the recheck reads again, a
--- common key's past about 2M rows at the default 4 MB (a bitmap's entry of a page some 64 bytes, some 16,000 pages a
--- MB, 30 rows a page); at 64 MB, past about 30M. The bitmap takes the memory as it grows, 0.6 MB at 300,000 pages
--- (M8/P5A review C-M3). The settings end with the function, the statement around it planned as it would be. A statement
--- reads it with the count of its rows as its LIMIT (SearchHitCount, in the same snapshot), which is its estimate: ROWS
--- is above any count, and the LIMIT never cuts. PARALLEL RESTRICTED: a worker cannot take its settings.
+-- pending list or a rebuild's dead entries raised its cost a little, it took the scan for a common key, a search 5-40 s
+-- (M8/P5 design 3.9). With the scans of the table disabled here, bitmaps of its indexes are its only reads left, and
+-- work_mem keeps their heap pages exact: past it a bitmap turns pages lossy, whose every row's body the recheck reads
+-- again, a common key's past about 2M rows at the default 4 MB (a bitmap's entry of a page some 64 bytes, some 16,000
+-- pages a MB, 30 rows a page); at 64 MB, past about 30M. The bitmap takes the memory as it grows, 0.6 MB at 300,000
+-- pages (M8/P5A review C-M3). The settings end with the function, the statement around it planned as it would be. A
+-- statement reads it with the count of its rows as its LIMIT (SearchHitCount, in the same snapshot), which is its
+-- estimate: ROWS is above any count, and the LIMIT never cuts. PARALLEL RESTRICTED: a worker cannot take its settings.
 -- +goose StatementBegin
 CREATE FUNCTION page_search_hits(body_keys tsquery, title_keys tsquery) RETURNS SETOF uuid
     LANGUAGE sql STABLE PARALLEL RESTRICTED ROWS 1000000
