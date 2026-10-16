@@ -157,11 +157,11 @@ func TestTheSearchReadsInTimeAtAnyStatistics(t *testing.T) {
 		}
 	}
 	t.Logf("the job built 5,000 pages in %s, the least of three runs", g.built.Round(time.Millisecond))
-	// 8.67 s here, the least of three runs of the guard (2.0 s before the
+	// 8.57 s here, the least of three runs of the guard (2.0 s before the
 	// indexes kept no pending list: every key of a row goes into them as it
-	// is written; M8 Codex review R1): three times it, 26.02 s, to the
-	// second above.
-	if limit := 27 * time.Second; g.built > limit {
+	// is written; M8 Codex review R1; measured again in its fix round 2):
+	// three times it, 25.72 s, to the second above.
+	if limit := 26 * time.Second; g.built > limit {
 		t.Errorf("the job built 5,000 pages in %s, the least of three runs; want within %s", g.built, limit)
 	}
 	// A unit's queueing of 10,000 nodes, an import's batch or a deletion's
