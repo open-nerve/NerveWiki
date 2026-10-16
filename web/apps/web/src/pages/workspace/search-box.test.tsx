@@ -5,7 +5,7 @@ import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 import { eventHandlers } from "../../events/handlers";
 import { eventServer, withEvents } from "../../test/event-server";
 import { notebookJSON } from "../../test/fakes";
-import { guide, pagePath, pageServer } from "../../test/page-server";
+import { guide, install, pagePath, pageServer } from "../../test/page-server";
 import { renderApp } from "../../test/render";
 
 // A workspace's search box (M8/P5 design 4.2). jsdom's platform is not macOS: Mod is Ctrl.
@@ -53,6 +53,28 @@ test("the box is at the top of the workspace's left column, a search named for i
   await waitFor(() => expect(title.getAttribute("aria-describedby")).not.toBeNull());
   expect(document.getElementById(title.getAttribute("aria-describedby") ?? "")?.textContent).toBe("Nothing found.");
   expect(box().value).toBe("Plans");
+});
+
+// The arrival focus is the navigation's, not the path's (M8 closeout K2-3): each search submitted from a page arrives
+// at the results anew.
+test("a search submitted from a page, after one before it, takes the focus to its results' title as the first did", async () => {
+  const user = userEvent.setup();
+  const server = pageServer();
+  const { router } = renderApp("/lab", server.app);
+
+  await user.type(await screen.findByRole("searchbox", { name: "Search terms" }), "Install{Enter}");
+  const first = await screen.findByRole("heading", { level: 1, name: "Search “Install”" });
+  await waitFor(() => expect(document.activeElement).toBe(first));
+
+  await act(() => router.navigate(pagePath(install.id)));
+  await screen.findByRole("heading", { level: 1, name: "Install" });
+  await user.clear(box());
+  await user.type(box(), "Linux{Enter}");
+  const second = await screen.findByRole("heading", { level: 1, name: "Search “Linux”" });
+  await waitFor(() => expect(document.activeElement).toBe(second));
+  // And it keeps it.
+  await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
+  expect(document.activeElement).toBe(second);
 });
 
 test("in a notebook it searches the notebook, its hint saying so, on any of its pages; on the results page, the one the page searches", async () => {
