@@ -187,6 +187,9 @@ func (f *fakeIndex) built(id uuid.UUID, revision int, name, tokenizer string, at
 	f.rows[id] = app.SearchRow{NodeID: id, Revision: revision, Name: name, Tokenizer: tokenizer}
 }
 
+// short labels id in the calls recorded: its last eight hex digits, of the
+// random bits of a v7 id, where its first are the bits of its time that
+// ids made in the same minute share (R1 fix round 3, R2-B2).
 func short(id uuid.UUID) string {
 	switch id {
 	case uuid.Nil():
@@ -194,7 +197,8 @@ func short(id uuid.UUID) string {
 	case uuid.Max():
 		return "end"
 	}
-	return id.String()[:8]
+	s := id.String()
+	return s[len(s)-8:]
 }
 
 func (f *fakeIndex) job(minRebuild time.Duration) (*app.IndexSearch, *bytes.Buffer) {
@@ -476,6 +480,63 @@ func TestTheSearchJobComesRoundOnce(t *testing.T) {
 		"QueuedSearch bulk start/start", "QueuedSearch bulk " + short(a) + "/" + short(inA[2])}
 	if err != nil || run.Written != 3 || run.Skipped != 1 || !slices.Equal(bulkReads(f.calls), want) {
 		t.Errorf("Drain() = %+v, %v, reads %v; want a's 3 built, c's skipped once, reads %v", run, err, bulkReads(f.calls), want)
+	}
+}
+
+// A notebook's import longer than a run is built a run at a time (R1 fix
+// round 3, R2-B1): each run's pass begins after the notebook, finds no
+// other, comes round to the start and builds a batch more of it. Runs that
+// start one batch alone build 100, 100, 100, then the last 50 of 350.
+func TestTheSearchJobBuildsALongImportOfOneNotebook(t *testing.T) {
+	f := newFakeIndex()
+	a := uuid.NewV7()
+	inA := f.bulkPages(a, 350)
+	f.step = domain.SearchRunBudget / 2
+	job, _ := f.job(0)
+	for i, want := range []struct {
+		reads   []string
+		written int
+	}{
+		{[]string{"QueuedSearch bulk start/start"}, 100},
+		{[]string{"QueuedSearch bulk " + short(a) + "/end", "QueuedSearch bulk start/start"}, 100},
+		{[]string{"QueuedSearch bulk " + short(a) + "/end", "QueuedSearch bulk start/start"}, 100},
+		{[]string{"QueuedSearch bulk " + short(a) + "/end", "QueuedSearch bulk start/start"}, 50},
+	} {
+		f.calls = nil
+		run, err := job.Drain(context.Background())
+		if err != nil || run.Written != want.written || !slices.Equal(bulkReads(f.calls), want.reads) {
+			t.Errorf("run %d = %+v, %v, reads %v; want %d written, reads %v", i+1, run, err, bulkReads(f.calls), want.written, want.reads)
+		}
+	}
+	if left := f.left(inA); left != 0 {
+		t.Errorf("%d of a's 350 pages left queued after four runs, want none", left)
+	}
+}
+
+// Each run's pass begins after the notebook the last one's ended in, which
+// moves from run to run (R1 fix round 3, R2-B2): of three notebooks of 150
+// pages, runs that start one batch alone begin at the start, then after a,
+// after b, after c.
+func TestTheSearchJobsPassBeginsWhereTheLastEnded(t *testing.T) {
+	f := newFakeIndex()
+	a, b, c := uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
+	for _, n := range []uuid.UUID{a, b, c} {
+		f.bulkPages(n, 150)
+	}
+	f.step = domain.SearchRunBudget / 2
+	job, _ := f.job(0)
+	var firsts []string
+	for range 4 {
+		f.calls = nil
+		if _, err := job.Drain(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		firsts = append(firsts, bulkReads(f.calls)[0])
+	}
+	want := []string{"QueuedSearch bulk start/start", "QueuedSearch bulk " + short(a) + "/end", "QueuedSearch bulk " + short(b) + "/end",
+		"QueuedSearch bulk " + short(c) + "/end"}
+	if !slices.Equal(firsts, want) {
+		t.Errorf("the runs' first reads of the bulk queue %v, want %v", firsts, want)
 	}
 }
 
