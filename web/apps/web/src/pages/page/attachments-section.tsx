@@ -50,8 +50,9 @@ type Dialog = Exclude<AssetAction, "copy">;
  * row's menu, the section's title when the row is gone. A deletion says
  * the attachment goes to the trash, for how long (M8/P2 design 4.5). Gone
  * to for one of its attachments (Located), the section gives its row the
- * focus once a list read has it, or its title once one read since it
- * showed has not (useLocated).
+ * focus once a list read since it showed has it, or its title once one
+ * has not, saying so when that list is whole: the attachment is gone
+ * (useLocated).
  */
 export const AttachmentsSection = observer(function AttachmentsSection({
   notebook,
@@ -74,7 +75,8 @@ export const AttachmentsSection = observer(function AttachmentsSection({
   useExpiry(list, () => void mutate());
   const section = useRef<HTMLElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
-  useLocated(list, section, heading);
+  const gone = useLocated(list, section, heading, () => void mutate().catch(() => undefined));
+  const goneNote = useId();
   const writer = writesPages(notebook.role);
   const uploads = assets.uploads.filter(
     (upload) => upload.parent === parent && !(editorsElsewhere && upload.fromEditor)
@@ -113,7 +115,12 @@ export const AttachmentsSection = observer(function AttachmentsSection({
     heading
   );
 
-  if (!writer && uploads.length === 0 && (list === undefined ? error === undefined : list.assets.length === 0)) {
+  if (
+    !writer &&
+    uploads.length === 0 &&
+    !gone &&
+    (list === undefined ? error === undefined : list.assets.length === 0)
+  ) {
     return null;
   }
 
@@ -182,6 +189,7 @@ export const AttachmentsSection = observer(function AttachmentsSection({
           id={headingId}
           ref={heading}
           tabIndex={-1}
+          aria-describedby={gone ? goneNote : undefined}
           className="text-sm font-medium text-muted-foreground outline-none"
         >
           {t("asset.title")}
@@ -208,6 +216,11 @@ export const AttachmentsSection = observer(function AttachmentsSection({
           </>
         )}
       </div>
+      {gone && (
+        <output id={goneNote} className="block text-sm">
+          {t("asset.locatedGone")}
+        </output>
+      )}
       {/* Said as it changes: what began, what was uploaded, an embed copied. */}
       <p aria-live="polite" className="sr-only">
         {notice.text}
@@ -352,48 +365,70 @@ function saying(text: string) {
 
 /**
  * useLocated gives the focus, once, to the row of the attachment the route
- * state names (Located), as soon as a list read has it: its link, in
- * section; or to the section's title, heading, once a list read since the
- * section showed, which a list cached from before is not, has it not (it
- * is on a later page). Not when the reader did something since the
- * section showed, or the focus is somewhere already (v0.1 design 13.2,
- * item 26, as transfer-page.tsx's useArriving): it gives up then. The
- * section shown again, by Back say, does it again: the state is the
- * entry's.
+ * state names (Located), as soon as a list read since the section showed
+ * has it: its link, in section. A list cached from before is not: the
+ * attachment may have gone meanwhile, its row going with the focus as the
+ * list is read again (M8 closeout B-M1), so that list is read again at
+ * once (reread), SWR's own read on mount waiting out its deduplication.
+ * A list read since that has it not gives the focus to the section's
+ * title, heading: the attachment is on a later page; or, the list whole,
+ * gone, which useLocated answers true for the section to say, its title
+ * taking the focus once that shows. Not when the reader did something
+ * since the section showed, or the focus is somewhere already (v0.1
+ * design 13.2, item 26, as transfer-page.tsx's useArriving): it gives up
+ * then, the attachment gone said all the same. The section shown again,
+ * by Back say, does it again: the state is the entry's.
  */
 function useLocated(
   list: AssetList | undefined,
   section: RefObject<HTMLElement | null>,
-  heading: RefObject<HTMLHeadingElement | null>
-): void {
+  heading: RefObject<HTMLHeadingElement | null>,
+  reread: () => void
+): boolean {
   const located = locatedOf(useLocation().state);
   const shownFirst = useRef(list);
   const done = useRef(false);
   const reader = useRef<ReturnType<typeof watchReader> | undefined>(undefined);
+  const latest = useRef(reread);
+  useEffect(() => {
+    latest.current = reread;
+  });
+  // Whether the attachment is gone, and the title is to take the focus as it says so.
+  const [gone, setGone] = useState<{ focus: boolean } | undefined>(undefined);
   useEffect(() => {
     if (located === undefined) {
       return;
     }
     const watching = watchReader();
     reader.current = watching;
+    if (shownFirst.current !== undefined) {
+      latest.current();
+    }
     return () => watching.end();
   }, [located]);
   useEffect(() => {
-    if (located === undefined || list === undefined || done.current) {
-      return;
-    }
-    const link = section.current?.querySelector<HTMLElement>(`[data-attachment="${located}"]`);
-    if (link == null && list === shownFirst.current) {
+    if (located === undefined || list === undefined || list === shownFirst.current || done.current) {
       return;
     }
     done.current = true;
     const acted = reader.current?.acted() === true;
     reader.current?.end();
     const at = document.activeElement;
-    if (!acted && (at === null || at === document.body)) {
-      (link ?? heading.current)?.focus();
+    const free = !acted && (at === null || at === document.body);
+    if (list.next === null && !list.assets.some((asset) => asset.id === located)) {
+      setGone({ focus: free });
+      return;
+    }
+    if (free) {
+      (section.current?.querySelector<HTMLElement>(`[data-attachment="${located}"]`) ?? heading.current)?.focus();
     }
   }, [located, list, section, heading]);
+  useEffect(() => {
+    if (gone?.focus === true) {
+      heading.current?.focus();
+    }
+  }, [gone, heading]);
+  return gone !== undefined;
 }
 
 /**

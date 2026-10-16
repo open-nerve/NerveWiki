@@ -1,6 +1,6 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 
 import { eventHandlers } from "../../events/handlers";
 import type { Notebook } from "../../services/notebook.service";
@@ -217,6 +217,61 @@ test("a page leads to itself, arrived at; an attachment to its page's attachment
   const page = await heading("数据库设计");
   expect(router.state.location.state).toEqual({ arrived: true });
   await waitFor(() => expect(document.activeElement).toBe(page));
+});
+
+// M8 closeout B-M1 (its probe 1): the results are not read again (M8/P5 design 4.13), so a hit may be gone.
+test("a hit deleted elsewhere after the search showed, opened: a page's says the page is not found, its title taking the focus; an attachment's page says it is gone, its attachments' title taking the focus, never the row the list cached before had", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+  const server = searched();
+  const { router } = renderApp(pagePath(install.id), server.app);
+  // The tree and Install's attachments read, as the tab had them before the search.
+  expect(await screen.findByRole("link", { name: "数据库备份.pdf (opens in a new tab)" })).toBeTruthy();
+  await act(() => router.navigate(searchPath("数据库")));
+  await screen.findByRole("list", { name: "Search results" });
+  server.nodes = server.nodes.filter((node) => node.id !== database.id && node.id !== report.id);
+  await act(() => vi.advanceTimersByTimeAsync(6_000));
+
+  await user.click(screen.getByRole("link", { name: "数据库设计" }));
+  const notFound = await screen.findByRole("heading", { level: 1, name: "Page not found" });
+  await waitFor(() => expect(document.activeElement).toBe(notFound));
+
+  await act(() => router.navigate(-1));
+  const rows: string[] = [];
+  const record = (event: FocusEvent) => {
+    const id = event.target instanceof HTMLElement ? event.target.getAttribute("data-attachment") : null;
+    if (id !== null) {
+      rows.push(id);
+    }
+  };
+  document.addEventListener("focusin", record);
+  onTestFinished(() => document.removeEventListener("focusin", record));
+  await user.click(await screen.findByRole("link", { name: "数据库备份.pdf" }));
+  expect(await heading("Install")).toBeTruthy();
+  const said = await screen.findByText(
+    "The attachment you opened is no longer here: it was deleted or moved, or you no longer have access to it."
+  );
+  expect(said.tagName).toBe("OUTPUT");
+  const title = screen.getByRole("heading", { level: 2, name: "Attachments" });
+  await waitFor(() => expect(document.activeElement).toBe(title));
+  expect(title.getAttribute("aria-describedby")).toBe(said.id);
+  expect(rows).toEqual([]);
+  expect(router.state.location.state).toEqual({ attachment: report.id });
+});
+
+// M8 closeout B-M1: a list cached from before confirms nothing; it is read again, within SWR's deduplication too.
+test("an attachment's hit whose row the list cached before has, opened at once: its row takes the focus once the list read again has it", async () => {
+  const user = userEvent.setup();
+  const server = searched();
+  const { router } = renderApp(pagePath(install.id), server.app);
+  expect(await screen.findByRole("link", { name: "数据库备份.pdf (opens in a new tab)" })).toBeTruthy();
+  await act(() => router.navigate(searchPath("数据库")));
+  await screen.findByRole("list", { name: "Search results" });
+  const before = server.sent.filter((each) => each === "GET assets Install").length;
+
+  await user.click(screen.getByRole("link", { name: "数据库备份.pdf" }));
+  await waitFor(() => expect(document.activeElement?.getAttribute("data-attachment")).toBe(report.id));
+  expect(server.sent.filter((each) => each === "GET assets Install").length).toBe(before + 1);
 });
 
 test("hits of one name are told apart: by where they are, and by the end of their id where that is the same too, as Where to look tells notebooks of one name", async () => {

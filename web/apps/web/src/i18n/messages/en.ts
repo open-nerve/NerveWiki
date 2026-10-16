@@ -444,6 +444,8 @@ export const en = {
   "asset.finishing": "Finishing…",
   "asset.finishingUpload": "Finishing the upload of {name}",
   "asset.more": "More attachments",
+  "asset.locatedGone":
+    "The attachment you opened is no longer here: it was deleted or moved, or you no longer have access to it.",
   "asset.renameTitle": "Rename {name}",
   "asset.name": "Name",
   "asset.renameKeeps": "The extension {extension} stays.",
