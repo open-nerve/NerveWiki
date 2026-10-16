@@ -448,7 +448,7 @@ func (tm acmeTeam) trashedAgo(t *testing.T, id string, d time.Duration) {
 // the last hop (M8 closeout A-2).
 func TestThePurgeTheTrashAndTheInstanceTakeOneRetention(t *testing.T) {
 	cfg := testConfig(t, "", false)
-	cfg.Jobs.PurgeRetention = 100*time.Hour + 30*time.Minute
+	cfg.Jobs.PurgeRetention, cfg.Jobs.PurgeInterval = 100*time.Hour+30*time.Minute, 7*time.Minute
 	logger := slog.New(slog.DiscardHandler)
 	purge, trash := purgeConfig(cfg, logger), pageDeps(cfg, nil, logger, nil, nil, nil).Retention
 	instance := instanceDeps(cfg).TrashRetention
