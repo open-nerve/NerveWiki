@@ -1,6 +1,6 @@
 import type { Asset } from "../services/asset.service";
 import type { BacklinkPage, LinkLanding, PageProperties } from "../services/linking.service";
-import type { NotebookRole } from "../services/notebook.service";
+import type { Notebook, NotebookRole } from "../services/notebook.service";
 import type {
   EditLock,
   NodeMove,
@@ -8,6 +8,7 @@ import type {
   PageContent,
   PageVersionContent,
   PageView,
+  SearchCount,
   TaskToggle,
   TreeNode,
 } from "../services/page.service";
@@ -16,6 +17,7 @@ import { extensionOf } from "../lib/upload-name";
 import { instanceJSON, json, notebookJSON, problem, signedInApp, userJSON, type Answer } from "./fakes";
 import { fakeChangeset, historyRoutes, type FakeChangeset, type HistoryWaits } from "./history-server";
 import { abortedFor, formOf } from "./transfer";
+import { searchRoutes, type SearchWaits } from "./search-server";
 import { putBack, trashed, trashRoutes, type FakeTrashItem, type TrashWaits } from "./trash-server";
 
 /** pageNode is the page n of Plans, titled name, under parent (none: at the root). */
@@ -145,6 +147,10 @@ type PageServerOptions = {
  *
  * The notebook's history is the changesets a test logs (M8/P3), which
  * history-server.ts answers, and reverts.
+ *
+ * The workspace's search (M8/P5) finds Plans' nodes and those of the
+ * other notebooks Ada sees, others, listed with Plans, which
+ * search-server.ts answers.
  */
 export function pageServer({
   role = "admin",
@@ -198,6 +204,19 @@ export function pageServer({
     revertsBusy: false,
     /** Whether reverts wait to be released. */
     revertsHeld: false,
+    /** The notebooks other than Plans Ada sees (M8/P5), listed after it, and their nodes, which the search finds. */
+    others: [] as Notebook[],
+    otherNodes: [] as TreeNode[],
+    /** Whether a search cannot be read. */
+    searchDown: false,
+    /** What the search's reads wait for while a test holds them. */
+    searchWaits: {} as SearchWaits,
+    /** The body tier's candidates a page of a search walks at most. */
+    searchWalk: Number.POSITIVE_INFINITY,
+    /** The first page's count of a search, when not the one the fake counts. */
+    searchCount: undefined as SearchCount | null | undefined,
+    /** Whether a search's answers say the index is being built. */
+    searchBuilding: false,
     /** Whether the history's log and its changesets cannot be read. */
     historyDown: false,
     /** What the history's reads wait for while a test holds them. */
@@ -277,7 +296,7 @@ export function pageServer({
     },
   };
   const app = signedInApp({
-    "GET /api/v0/workspaces/lab/notebooks": () => json({ data: [{ ...notebookJSON, role }] }),
+    "GET /api/v0/workspaces/lab/notebooks": () => json({ data: [{ ...notebookJSON, role }, ...server.others] }),
     [`GET /api/v0/notebooks/${notebookJSON.id}/nodes`]: () => {
       server.sent.push("GET nodes");
       if (server.notebookGone) {
@@ -353,6 +372,7 @@ export function pageServer({
     ...writeRoutes(server),
     ...trashRoutes(server, role, (node) => assetJSON(node)),
     ...historyRoutes(server, role),
+    ...searchRoutes(server, (node) => assetJSON(node)),
     ...assetRoutes(server, role),
     ...contentRoutes(server),
     ...taskRoutes(server),

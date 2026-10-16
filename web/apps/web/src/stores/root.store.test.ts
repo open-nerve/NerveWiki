@@ -161,7 +161,9 @@ test("a signed-out generation has no account, nor its workspaces", () => {
     store.auditOf(workspaceJSON),
     store.assetsOf(notebookJSON),
     store.transfersOf(notebookJSON),
+    store.searchOf(workspaceJSON),
   ]).toEqual([
+    undefined,
     undefined,
     undefined,
     undefined,
@@ -283,6 +285,33 @@ test("a workspace's ownerless notebooks and audit events are the same for the ge
   const next = new RootStore(app, "login-0");
   expect(next.ownerlessOf(workspaceJSON)).not.toBe(ownerless);
   expect(next.auditOf(workspaceJSON)).not.toBe(audit);
+});
+
+// A workspace's searches go by its id (M8/P5 design 4.3): one made with the slug of one deleted searches its own.
+test("a workspace's searches are the same for the generation; another's, or another generation's, are other", async () => {
+  const sent: string[] = [];
+  const app = testApp((request) => {
+    const url = new URL(request.url);
+    sent.push(`${url.pathname}${url.search}`);
+    return url.pathname.endsWith("/search")
+      ? json({ data: [], next_cursor: null, count: { value: 0, kind: "exact" }, building: false })
+      : json(tokensJSON);
+  }, storedSession("login-0"));
+  await app.session.start();
+  const store = new RootStore(app, "login-0");
+
+  const searches = store.searchOf(workspaceJSON);
+
+  expect(searches).toBeDefined();
+  expect(store.searchOf({ ...workspaceJSON, name: "Lab renamed" })).toBe(searches);
+  expect(store.searchOf({ ...workspaceJSON, id: "0199a2b4-0000-7000-8000-0000000000b2" })).not.toBe(searches);
+  expect(new RootStore(app, "login-0").searchOf(workspaceJSON)).not.toBe(searches);
+  await searches?.search("api", notebookJSON.id);
+  await searches?.search("api", undefined, "next");
+  expect(sent.filter((each) => each.includes("/search"))).toEqual([
+    `/api/v0/workspaces/lab/search?q=api&limit=20&notebook_id=${notebookJSON.id}`,
+    "/api/v0/workspaces/lab/search?q=api&limit=20&cursor=next",
+  ]);
 });
 
 // The event stream (M5/P3 design 3.7): one hub for the generation, which

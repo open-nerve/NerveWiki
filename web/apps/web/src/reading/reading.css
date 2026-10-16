@@ -4,9 +4,19 @@
    pages not there, tags, callouts, highlights, embeds: M6/P6 design 12;
    attachments: M7/P3 design 5.5),
    what scrolls sideways in its own region, and the code highlighting's
-   colours, light and, under .dark, dark. */
+   colours, light and, under .dark, dark. A highlight's background is the
+   page's too: a search's hits are marked with it, outside any view (M8/P5
+   design 4.3). */
 
 @layer components {
+  :root {
+    --nw-mark-background: oklch(0.93 0.11 95);
+  }
+
+  .dark {
+    --nw-mark-background: oklch(0.45 0.09 95);
+  }
+
   .nw-reading {
     --nw-code-background: oklch(0.97 0 0);
     --nw-hl-keyword: #cf222e;
@@ -22,7 +32,6 @@
     --nw-hl-deletion-background: #ffebe9;
     --nw-tag: oklch(0.47 0.16 290);
     --nw-tag-background: oklch(0.95 0.03 290);
-    --nw-mark-background: oklch(0.93 0.11 95);
 
     line-height: 1.7;
     overflow-wrap: break-word;
@@ -58,7 +67,6 @@
     --nw-hl-deletion-background: #67060c;
     --nw-tag: oklch(0.82 0.09 290);
     --nw-tag-background: oklch(0.32 0.07 290);
-    --nw-mark-background: oklch(0.45 0.09 95);
   }
 
   .nw-reading > * + * {

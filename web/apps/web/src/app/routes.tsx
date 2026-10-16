@@ -29,7 +29,9 @@ import { RouteError } from "./route-error";
 // design 8); a page's version under the page's, by its revision (M8
 // design 4.3); the notebook's trash beside them, an item's preview under
 // it by its root's id (M8 design 4.5), and its history, a changeset's page
-// under it by its id (M8/P3 design 4.2, 4.3).
+// under it by its id (M8/P3 design 4.2, 4.3). A workspace's search is under
+// its workspace's, beside its notebooks, its query in the address (M8/P5
+// design 4.3).
 export const routes: RouteObject[] = [
   {
     Component: Layout,
@@ -238,6 +240,14 @@ export const routes: RouteObject[] = [
                             ],
                           },
                         ],
+                      },
+                      {
+                        // Outside a notebook's shell: it searches them all, or one it names (M8/P5 design 4.3).
+                        path: "search",
+                        lazy: async () => {
+                          const { SearchPage } = await import("../pages/search/search-page");
+                          return { Component: SearchPage };
+                        },
                       },
                       {
                         path: "settings",

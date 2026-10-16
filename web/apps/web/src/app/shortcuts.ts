@@ -13,11 +13,26 @@ export function onMac(platform = navigator.platform): boolean {
  * at the key's place, as the browsers' own shortcuts take it.
  */
 export function isMod(keys: Keys, key: string, mac: boolean): boolean {
-  const mod = mac ? keys.metaKey && !keys.ctrlKey : keys.ctrlKey && !keys.metaKey;
-  const letter = /^[a-z]$/i.test(keys.key)
-    ? keys.key.toLowerCase()
-    : /^Key[A-Z]$/.exec(keys.code)?.[0].slice(3).toLowerCase();
-  return mod && !keys.altKey && !keys.shiftKey && letter === key;
+  return modOf(keys, mac) && !keys.altKey && !keys.shiftKey && letterOf(keys) === key;
+}
+
+/**
+ * isModShift tells whether keys are Mod, Shift and the letter key (M8/P5
+ * design 4.2): Cmd on macOS, Ctrl elsewhere, with Shift and no other
+ * modifier; the letter as isMod reads it.
+ */
+export function isModShift(keys: Keys, key: string, mac: boolean): boolean {
+  return modOf(keys, mac) && !keys.altKey && keys.shiftKey && letterOf(keys) === key;
+}
+
+/** modOf tells whether keys hold Mod: Cmd without Ctrl on macOS, Ctrl without Cmd elsewhere. */
+function modOf(keys: Keys, mac: boolean): boolean {
+  return mac ? keys.metaKey && !keys.ctrlKey : keys.ctrlKey && !keys.metaKey;
+}
+
+/** letterOf is the letter of keys' key, lower case: its own when Latin, else the Latin one at its place. */
+function letterOf(keys: Keys): string | undefined {
+  return /^[a-z]$/i.test(keys.key) ? keys.key.toLowerCase() : /^Key[A-Z]$/.exec(keys.code)?.[0].slice(3).toLowerCase();
 }
 
 /** dialogOpen tells whether a dialog is open: the page's own shortcuts then leave the keys to it. */

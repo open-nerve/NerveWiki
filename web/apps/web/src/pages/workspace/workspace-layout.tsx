@@ -14,6 +14,7 @@ import type { Workspace } from "../../services/workspace.service";
 import { useStore, useWorkspaces } from "../../stores/context";
 import { NotFoundPage } from "../not-found";
 import { NotebookNav } from "./notebook-nav";
+import { SearchBox } from "./search-box";
 import { WorkspaceSwitcher } from "./workspace-switcher";
 
 /** The workspace WorkspaceLayout shows. */
@@ -52,11 +53,12 @@ const sections: readonly { path: string; label: Extract<MessageKey, `workspace.$
 
 /**
  * WorkspaceLayout is the shell of a workspace's pages (M2/P5 design 3.2):
- * the left column, with the workspace's navigation: the switcher, its
- * pages and its notebooks (M3/P4 design 3.3), beside the page chosen,
- * which is the layout's main. The column is no landmark of its own: the
- * navigation is the one it holds, then a notebook's page tree; it goes
- * into the layout's place for it, outside the main (M4/P5 design 3.2).
+ * the left column, with the workspace's search box (M8/P5 design 4.2),
+ * then its navigation: the switcher, its pages and its notebooks (M3/P4
+ * design 3.3), beside the page chosen, which is the layout's main. The
+ * column is no landmark of its own: the search and the navigation are the
+ * ones it holds, then a notebook's page tree; it goes into the layout's
+ * place for it, outside the main (M4/P5 design 3.2).
  * It finds the workspace of the address in the account's list: a slug the
  * list does not have is no page of the app's, whether the account was
  * never a member or the workspace is gone; one this tab has just deleted
@@ -110,6 +112,7 @@ export const WorkspaceLayout = observer(function WorkspaceLayout() {
       data-shell
       className="space-y-4 border-b p-3 md:w-60 md:shrink-0 md:border-r md:border-b-0 md:[overflow-anchor:none]"
     >
+      <SearchBox key={workspace.id} workspace={workspace} />
       <nav aria-label={workspace.name} className="space-y-4">
         <WorkspaceSwitcher current={workspace} />
         <div className="flex flex-col gap-1">
