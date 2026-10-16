@@ -18,9 +18,9 @@ GRANT USAGE ON SCHEMA public TO nervewiki_runtime;
 GRANT SELECT, INSERT, UPDATE, DELETE ON users, auth_sessions, api_tokens, workspaces, workspace_members, workspace_invitations,
     notebooks, notebook_members, notebook_audit_events, nodes, page_contents, changesets, changeset_items,
     page_revisions, edit_sessions, indexed_pages, page_links, page_tags, page_properties, page_aliases, page_search,
-    page_search_queue, asset_blobs, transfer_jobs TO nervewiki_runtime;
+    page_search_queue, page_search_tags, asset_blobs, transfer_jobs TO nervewiki_runtime;
 -- The search's queue takes each queueing's version from its sequence (M8/P5 design 3.2).
-GRANT USAGE ON SEQUENCE page_search_queue_version_seq TO nervewiki_runtime;
+GRANT USAGE ON SEQUENCE page_search_queue_version_seq, page_search_tags_seq TO nervewiki_runtime;
 
 -- The tables an import, a background restore and a background revert write thousands of rows to: each runs ANALYZE
 -- on them as it goes, every 10,000 nodes and at its end (M7/P6 design 3.6; M8/P4 design 2, the batches the jobs share

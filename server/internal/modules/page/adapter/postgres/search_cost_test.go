@@ -19,33 +19,6 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
-// The use case's ports a search reads besides the store's, as a member of
-// one workspace who sees eng and ops.
-type (
-	searchWorkspace struct{ id uuid.UUID }
-	searchVisible   []uuid.UUID
-	searchAllowed   struct{}
-	noAttachments   struct{}
-)
-
-func (w searchWorkspace) FindBySlug(context.Context, string) (uuid.UUID, bool, error) {
-	return w.id, true, nil
-}
-
-func (searchWorkspace) ShareByID(context.Context, uuid.UUID) (bool, error) { return true, nil }
-
-func (v searchVisible) VisibleIn(context.Context, uuid.UUID, uuid.UUID, shared.WorkspaceRole) ([]uuid.UUID, error) {
-	return v, nil
-}
-
-func (searchAllowed) Authorize(context.Context, shared.Actor, shared.Action, shared.Target) (shared.Grant, error) {
-	return shared.Grant{WorkspaceRole: shared.WorkspaceMember}, nil
-}
-
-func (noAttachments) Of(context.Context, []uuid.UUID) (map[uuid.UUID]app.AttachmentInfo, error) {
-	return map[uuid.UUID]app.AttachmentInfo{}, nil
-}
-
 // searchOfSomeSize is eng of 5,000 synthetic pages of about 4 KB, their
 // rows built by the job, and 500 of them written again since, newest,
 // queued exact: a backlog the job has yet to build; and ops of 5,000 pages
@@ -184,8 +157,11 @@ func TestTheSearchReadsInTimeAtAnyStatistics(t *testing.T) {
 		}
 	}
 	t.Logf("the job built 5,000 pages in %s, the least of three runs", g.built.Round(time.Millisecond))
-	// 2.1 s here.
-	if limit := 7 * time.Second; g.built > limit {
+	// 8.57 s here, the least of three runs of the guard (2.0 s before the
+	// indexes kept no pending list: every key of a row goes into them as it
+	// is written; M8 Codex review R1; measured again in its fix round 2):
+	// three times it, 25.72 s, to the second above.
+	if limit := 26 * time.Second; g.built > limit {
 		t.Errorf("the job built 5,000 pages in %s, the least of three runs; want within %s", g.built, limit)
 	}
 	// A unit's queueing of 10,000 nodes, an import's batch or a deletion's

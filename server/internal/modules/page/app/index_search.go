@@ -31,6 +31,9 @@ type IndexSearch struct {
 	// leaves its count to the next, so that a build in many short runs is
 	// analyzed as one in a few long ones (M8/P5A review B-N4).
 	unanalyzed atomic.Int64
+	// bulkFrom is the notebook the last run's pass over the nodes queued in
+	// bulk ended in, after which the next begins; nil before any.
+	bulkFrom atomic.Pointer[uuid.UUID]
 }
 
 // NewIndexSearch returns the job's use case.
@@ -47,17 +50,24 @@ type SearchRun struct {
 	Locked                                  bool
 }
 
-// Drain runs the job once: under its lock, on its lock's connection, a
-// pass over the nodes queued exact, those of the users' writes, by node
-// id, then one over those queued in bulk, by node id, so that a user's
-// write never waits behind an import's or a background job's thousands;
-// each queued node read once, a batch at a time, until the queue's end or
-// domain.SearchRunBudget, after which it starts no batch. A batch's rows
-// are written in one transaction, each alone again when that fails: a node
-// whose write fails then is logged and left queued, still a candidate of
-// every search, for the next run to try again. The nodes it took are taken
-// off in a second, short transaction, at the versions it read: one a unit
-// queued again since stays.
+// Drain runs the job once: under its lock, on its lock's connection, a pass
+// over the nodes queued exact, those of the users' writes, by node id, then
+// one over those queued in bulk, so that a user's write never waits behind
+// an import's or a background job's thousands; each queued node read once,
+// a batch at a time, until the queue's end or domain.SearchRunBudget, after
+// which it starts no batch. The bulk pass goes notebook by notebook, by
+// notebook id, then node id (M8 Codex review R1, fix round 2: B-3): a
+// notebook's rows written together touch its own keys in the GIN indexes
+// alone, where rows by node id touch every notebook's (an upgrade's rebuild
+// of 299,200 pages of 5,000 notebooks in 16 minutes, not 29, and 0.44 MB of
+// WAL a page, not 1.1), and a notebook is built, and says so, once its own
+// rows are. The pass begins after the notebook the last run's ended in and
+// comes round to it: no notebook's thousands hold the others back more than
+// a run at a time. A batch's rows are written in one transaction, each
+// alone again when that fails: a node whose write fails then is logged and
+// left queued, still a candidate of every search, for the next run to try
+// again. The nodes it took are taken off in a second, short transaction, at
+// the versions it read: one a unit queued again since stays.
 func (j *IndexSearch) Drain(ctx context.Context) (SearchRun, error) {
 	ctx, release, ok, err := j.index.LockSearch(ctx)
 	if err != nil {
@@ -70,11 +80,31 @@ func (j *IndexSearch) Drain(ctx context.Context) (SearchRun, error) {
 	var run SearchRun
 	start := j.clock.Now()
 	for _, bulk := range []bool{false, true} {
-		after := uuid.Nil()
+		// after is the last node decided; the bulk pass's from the notebook
+		// the last run's ended in, past all its nodes, and, once the pass
+		// has come round to the start, until it.
+		var after QueuedNode
+		var from, until *uuid.UUID
+		if bulk {
+			if from = j.bulkFrom.Load(); from != nil {
+				after = QueuedNode{NotebookID: *from, ID: uuid.Max()}
+			}
+		}
 		for j.clock.Now().Sub(start) < domain.SearchRunBudget {
 			queued, err := j.index.QueuedSearch(ctx, bulk, after, domain.SearchBatchNodes)
 			if err != nil {
 				return run, err
+			}
+			if len(queued) == 0 && from != nil && until == nil {
+				// The pass comes round to the start, until the notebook it
+				// began after.
+				until, after = from, QueuedNode{}
+				if queued, err = j.index.QueuedSearch(ctx, bulk, after, domain.SearchBatchNodes); err != nil {
+					return run, err
+				}
+			}
+			if until != nil {
+				queued = queued[:countUntil(queued, *until)]
 			}
 			if len(queued) == 0 {
 				break
@@ -82,6 +112,10 @@ func (j *IndexSearch) Drain(ctx context.Context) (SearchRun, error) {
 			written := run.Written
 			if after, err = j.batch(ctx, queued, &run); err != nil {
 				return run, err
+			}
+			if bulk {
+				notebook := after.NotebookID
+				j.bulkFrom.Store(&notebook)
 			}
 			if j.unanalyzed.Add(int64(run.Written-written)) >= domain.SearchAnalyzeRows {
 				if err := j.index.AnalyzeSearch(ctx); err != nil {
@@ -94,18 +128,28 @@ func (j *IndexSearch) Drain(ctx context.Context) (SearchRun, error) {
 	return run, nil
 }
 
+// countUntil is how many of the queued nodes, in the bulk pass's order,
+// are of notebook or one before it.
+func countUntil(queued []QueuedNode, notebook uuid.UUID) int {
+	n := 0
+	for n < len(queued) && queued[n].NotebookID.Compare(notebook) <= 0 {
+		n++
+	}
+	return n
+}
+
 // batch decides on the queued nodes in order and builds, writes and takes
 // off those it decided on, the contents it reads within
 // domain.SearchBatchBytes; it returns the last node it decided on, after
 // which the pass goes on.
-func (j *IndexSearch) batch(ctx context.Context, queued []QueuedNode, run *SearchRun) (uuid.UUID, error) {
+func (j *IndexSearch) batch(ctx context.Context, queued []QueuedNode, run *SearchRun) (QueuedNode, error) {
 	ids := make([]uuid.UUID, len(queued))
 	for i, q := range queued {
 		ids[i] = q.ID
 	}
 	read, err := j.index.SearchSources(ctx, ids)
 	if err != nil {
-		return uuid.UUID{}, err
+		return QueuedNode{}, err
 	}
 	sources := make(map[uuid.UUID]SearchSource, len(read))
 	for _, s := range read {
@@ -115,7 +159,7 @@ func (j *IndexSearch) batch(ctx context.Context, queued []QueuedNode, run *Searc
 	var deleted, pages []uuid.UUID
 	var build []SearchSource
 	var done []QueuedNode
-	bytes, last := 0, queued[len(queued)-1].ID
+	bytes, last := 0, queued[len(queued)-1]
 	for i, q := range queued {
 		s, ok := sources[q.ID]
 		switch {
@@ -135,7 +179,7 @@ func (j *IndexSearch) batch(ctx context.Context, queued []QueuedNode, run *Searc
 			continue
 		}
 		if len(build) > 0 && bytes+s.Bytes > domain.SearchBatchBytes {
-			last = queued[i-1].ID
+			last = queued[i-1]
 			break
 		}
 		bytes += s.Bytes
@@ -147,7 +191,7 @@ func (j *IndexSearch) batch(ctx context.Context, queued []QueuedNode, run *Searc
 	}
 	contents, err := j.index.SearchContents(ctx, pages)
 	if err != nil {
-		return uuid.UUID{}, err
+		return QueuedNode{}, err
 	}
 	rows := make([]SearchRow, 0, len(build))
 	missing := map[uuid.UUID]bool{}
@@ -169,7 +213,7 @@ func (j *IndexSearch) batch(ctx context.Context, queued []QueuedNode, run *Searc
 	}
 	failed, err := j.write(ctx, rows, deleted)
 	if err != nil {
-		return uuid.UUID{}, err
+		return QueuedNode{}, err
 	}
 	run.Written += len(rows) - countIn(rows, failed, func(r SearchRow) uuid.UUID { return r.NodeID })
 	run.Deleted += len(deleted) - countIn(deleted, failed, func(id uuid.UUID) uuid.UUID { return id })
@@ -186,7 +230,7 @@ func (j *IndexSearch) batch(ctx context.Context, queued []QueuedNode, run *Searc
 	}
 	if len(take) > 0 {
 		if err := j.index.DequeueSearch(ctx, take); err != nil {
-			return uuid.UUID{}, err
+			return QueuedNode{}, err
 		}
 	}
 	return last, nil

@@ -38,7 +38,12 @@ paths:
         targets lists the pages whose backlinks changed. Each is empty for
         none, and null for more than 20 or for all of them, as after
         nervewiki reindex rebuilt the index, when the client takes every
-        page of the notebook as changed.
+        page of the notebook as changed. aliases tells whether the write
+        changed the aliases of the notebook's pages, which links resolve
+        by: a version's links, which the index does not hold, may resolve
+        otherwise, so the client reads the views of the notebook's versions
+        again. A write that changed the aliases alone sends one with both
+        lists empty.
 
         - reset: the last frame; the client reconnects at once and refreshes
         all it shows. reason is access (the caller may see other notebooks
@@ -171,7 +176,7 @@ components:
       description: The data of links, a write's changes of a notebook's link index.
       type: object
       additionalProperties: false
-      required: [workspace_id, notebook_id, pages, targets]
+      required: [workspace_id, notebook_id, pages, targets, aliases]
       properties:
         workspace_id:
           type: string
@@ -200,6 +205,14 @@ components:
           items:
             type: string
             format: uuid
+        aliases:
+          description: >-
+            Whether the write changed the aliases of the notebook's pages,
+            a page's added or dropped by its content, or with the page
+            itself: the links of the pages' versions, which the index does
+            not hold, may resolve otherwise. False for a rebuilt index,
+            whose null lists take every page as changed.
+          type: boolean
     EventReset:
       description: The data of reset, the last frame.
       type: object

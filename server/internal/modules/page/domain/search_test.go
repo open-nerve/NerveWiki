@@ -194,8 +194,8 @@ func TestEachOrbitKeysAlike(t *testing.T) {
 	}
 }
 
-// A row's lexemes stop at MaxSearchLexemeBytes, their bytes summed, in the
-// order they first occur.
+// A row's lexemes stop at MaxSearchLexemeBytes, their bytes and the
+// longest prefix of each summed, in the order they first occur.
 func TestSearchTokensStopAtTheBound(t *testing.T) {
 	var b strings.Builder
 	r := rand.New(rand.NewSource(1))
@@ -206,10 +206,11 @@ func TestSearchTokensStopAtTheBound(t *testing.T) {
 	_, body := domain.SearchTokens("x", &content)
 	sum := 0
 	for _, x := range body {
-		sum += len(x)
+		sum += len(x) + domain.SearchPrefixBytes
 	}
-	if sum > domain.MaxSearchLexemeBytes || sum < domain.MaxSearchLexemeBytes-6 {
-		t.Fatalf("the lexemes hold %d bytes, want at most %d and within a bigram of it", sum, domain.MaxSearchLexemeBytes)
+	if sum > domain.MaxSearchLexemeBytes || sum < domain.MaxSearchLexemeBytes-6-domain.SearchPrefixBytes {
+		t.Fatalf("the lexemes hold %d bytes with their prefixes, want at most %d and within a bigram of it", sum,
+			domain.MaxSearchLexemeBytes)
 	}
 	if first := string([]rune(content)[:2]); body[1] != first {
 		t.Errorf("the first bigram is %q, want %q: the order of occurrence", body[1], first)
@@ -217,27 +218,31 @@ func TestSearchTokensStopAtTheBound(t *testing.T) {
 }
 
 // The lexemes stop at the first that does not fit: none after it, though
-// shorter. The name's x and 166,666 bigrams of 6 bytes fill 999,997; the
-// next bigram does not fit, nor then the q after it, which would.
+// shorter. The name's x and y, of 8 bytes each with their prefixes, and
+// 76,921 bigrams of 13 fill 999,989; the next bigram does not fit, nor
+// then the q after it, which would.
 func TestSearchTokensStopAtTheFirstPastTheBound(t *testing.T) {
+	if domain.SearchPrefixBytes != 7 {
+		t.Fatalf("SearchPrefixBytes = %d: the counts below are of 7", domain.SearchPrefixBytes)
+	}
 	var b strings.Builder
-	for k := range 166_670 {
+	for k := range 76_930 {
 		b.WriteRune(rune(0x4E00 + k/20_000))
 		b.WriteRune(rune(0x4E00 + k%20_000))
 		b.WriteByte(' ')
 	}
 	b.WriteString("q")
 	content := b.String()
-	_, body := domain.SearchTokens("x", &content)
-	if len(body) != 1+166_666 || slices.Contains(body, "q") {
-		t.Errorf("%d lexemes, the last %q; want the name's and 166,666 bigrams, none after", len(body), body[len(body)-1])
+	_, body := domain.SearchTokens("x y", &content)
+	if len(body) != 2+76_921 || slices.Contains(body, "q") {
+		t.Errorf("%d lexemes, the last %q; want the name's two and 76,921 bigrams, none after", len(body), body[len(body)-1])
 	}
 }
 
 // SearchTokenizer names the rules' version, Go's Unicode version and
 // x/text's, whose fold and NFC are one Unicode version's.
 func TestSearchTokenizer(t *testing.T) {
-	if want := "2/" + unicode.Version + "/" + norm.Version; domain.SearchTokenizer != want {
+	if want := "4/" + unicode.Version + "/" + norm.Version; domain.SearchTokenizer != want {
 		t.Errorf("SearchTokenizer = %q, want %s", domain.SearchTokenizer, want)
 	}
 	if cases.UnicodeVersion != norm.Version {
@@ -313,11 +318,12 @@ func TestParseSearchQueryTakes(t *testing.T) {
 // a term of such characters alone is found in names alone only in a query
 // without keys of the body (M8/P5A review A-M2).
 func TestSearchQueryKeys(t *testing.T) {
-	str := func(s *string) string {
-		if s == nil {
+	// str is keys as a tsquery's ANDed operands, "-" for none.
+	str := func(keys []string) string {
+		if keys == nil {
 			return "-"
 		}
-		return *s
+		return "'" + strings.Join(keys, "' & '") + "'"
 	}
 	for _, tt := range []struct {
 		q                   string
@@ -351,7 +357,7 @@ func TestSearchQueryKeys(t *testing.T) {
 			t.Errorf("ParseSearchQuery(%q) = %v", tt.q, err)
 			continue
 		}
-		if got := [4]string{q.TitleKeys(), str(q.BodyKeys()), str(q.TitledKeys()), fmt.Sprint(q.Bodied())}; got != [4]string{tt.title, tt.body, tt.titled, fmt.Sprint(tt.bodied)} {
+		if got := [4]string{str(q.TitleKeys()), str(q.BodyKeys()), str(q.TitledKeys()), fmt.Sprint(q.Bodied())}; got != [4]string{tt.title, tt.body, tt.titled, fmt.Sprint(tt.bodied)} {
 			t.Errorf("%q: title %s, body %s, titled %s, bodied %s; want %s, %s, %s, %v", tt.q, got[0], got[1], got[2], got[3],
 				tt.title, tt.body, tt.titled, tt.bodied)
 		}
@@ -530,7 +536,7 @@ func TestTheRecheckImpliesTheKeys(t *testing.T) {
 				t.Fatalf("%q matches the name %q, whose title %q lacks %s", term.Text, s, title, missing)
 			}
 			if keys := one.BodyKeys(); keys != nil {
-				if missing := missingKeys(*keys, body); missing != "" {
+				if missing := missingKeys(keys, body); missing != "" {
 					t.Fatalf("%q matches the content %q, whose body %q lacks %s", term.Text, s, body, missing)
 				}
 			}
@@ -555,7 +561,7 @@ func TestTheKeysOfALongRunOfAnotherScript(t *testing.T) {
 		_, body := domain.SearchTokens("-", &tt.text)
 		if len(q.TitleHits(tt.text)) == 0 || q.BodyKeys() == nil {
 			t.Errorf("%q does not match %q, or has no keys", tt.q, tt.text)
-		} else if missing := missingKeys(*q.BodyKeys(), body); missing != "" {
+		} else if missing := missingKeys(q.BodyKeys(), body); missing != "" {
 			t.Errorf("%q matches %q, whose body lacks %s", tt.q, tt.text, missing)
 		}
 	}
@@ -573,19 +579,18 @@ func TestTheRecheckImpliesTheKeysButWhereLeftOut(t *testing.T) {
 			t.Fatal(err)
 		}
 		_, body := domain.SearchTokens("-", &tt.text)
-		if len(q.TitleHits(tt.text)) == 0 || missingKeys(*q.BodyKeys(), body) == "" {
+		if len(q.TitleHits(tt.text)) == 0 || missingKeys(q.BodyKeys(), body) == "" {
 			t.Errorf("%s: %q matches %v and its keys are there: no exception", tt.name, tt.q, len(q.TitleHits(tt.text)) > 0)
 		}
 	}
 }
 
-// missingKeys are the operands of the tsquery keys, an AND, that lexemes
-// lacks: "" when it holds them all.
-func missingKeys(keys string, lexemes []string) string {
+// missingKeys are the keys lexemes lacks: "" when it holds them all.
+func missingKeys(keys, lexemes []string) string {
 	var missing []string
-	for _, op := range strings.Split(keys, " & ") {
-		if !slices.Contains(lexemes, strings.Trim(op, "'")) {
-			missing = append(missing, op)
+	for _, k := range keys {
+		if !slices.Contains(lexemes, k) {
+			missing = append(missing, k)
 		}
 	}
 	return strings.Join(missing, ", ")
@@ -672,6 +677,85 @@ func TestExcerpt(t *testing.T) {
 		if n := utf8.RuneCountInString(got.Text); n > domain.ExcerptChars {
 			t.Errorf("%s: the excerpt holds %d characters, past %d", tt.name, n, domain.ExcerptChars)
 		}
+	}
+}
+
+// A term Go's NFC changes (M8 Codex review R2; fix check 1, C1-1) is
+// Written, as written, each once: a run of more than 30 non-starters, in
+// which Go's NFC inserts a CGJ, a decomposed letter, a Unicode 17 mark
+// before an older mark of a lower class, which Go's NFC orders. One
+// written as Go's NFC has it, the CGJ written, is another term, not
+// Written; so are terms typed in Go's NFC, most of them. Until InContents
+// gives its NFC in contents, PostgreSQL's, a term is matched there as in
+// names; then its pattern and hits of contents are of that NFC, and its
+// keys and those of names stay Go's.
+func TestATermGosNFCChangesIsMatchedInContentsAsPostgreSQLPutsItInNFC(t *testing.T) {
+	acute, joiner := string(rune(0x0301)), string(rune(0x034F))
+	raw31 := "a" + strings.Repeat(acute, 31)
+	joined := norm.NFC.String(raw31)
+	pg31 := string(rune(0x00E1)) + strings.Repeat(acute, 30)
+	if !strings.Contains(joined, joiner) {
+		t.Fatalf("Go's NFC of a and 31 acutes = %U, which holds no CGJ", []rune(joined))
+	}
+	for _, q := range []string{norm.NFC.String("a" + strings.Repeat(acute, 30)), joined, "data " + joined, "café"} {
+		parsed, err := domain.ParseSearchQuery(&q)
+		if err != nil || len(parsed.Written()) != 0 || !slices.Equal(parsed.ContentPatterns(), parsed.Patterns()) {
+			t.Errorf("%U: Written %+q, %v; want none, its patterns of contents those of names", []rune(q), parsed.Written(), err)
+		}
+	}
+	for _, q := range []string{"a" + strings.Repeat(acute, 30), "cafe" + acute, "Phona" + string(rune(0x1AD0)) + string(rune(0x0323)) + "tik"} {
+		parsed, err := domain.ParseSearchQuery(&q)
+		if err != nil || !slices.Equal(parsed.Written(), []string{q}) {
+			t.Errorf("%U: Written %+q, %v; want it as written", []rune(q), parsed.Written(), err)
+		}
+	}
+	q := "data " + raw31 + " " + joined + " " + raw31
+	parsed, err := domain.ParseSearchQuery(&q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(parsed.Terms) != 3 || !slices.Equal(parsed.Written(), []string{raw31}) {
+		t.Fatalf("%d terms, Written %+q; want 3, a and 31 acutes once", len(parsed.Terms), parsed.Written())
+	}
+	if !slices.Equal(parsed.ContentPatterns(), parsed.Patterns()) {
+		t.Error("before InContents, the patterns of contents are not those of names")
+	}
+	if _, err := parsed.InContents(nil); err == nil {
+		t.Error("InContents of no text for a term Written did not fail")
+	}
+	in, err := parsed.InContents([]string{pg31})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(in.Patterns(), parsed.Patterns()) || !slices.Equal(in.TitleKeys(), parsed.TitleKeys()) ||
+		!slices.Equal(in.BodyKeys(), parsed.BodyKeys()) {
+		t.Error("InContents changed the patterns of names or the keys")
+	}
+	// pg31's pattern: Go's NFC of it would insert the CGJ again. raw31's of
+	// names, the CGJ's escape taken out.
+	want := slices.Clone(parsed.Patterns())
+	want[1] = strings.Replace(want[1], string('\\')+"u034F", "", 1)
+	if want[1] == parsed.Patterns()[1] {
+		t.Fatalf("the pattern of names %q holds no CGJ", want[1])
+	}
+	if got := in.ContentPatterns(); !slices.Equal(got, want) || !slices.Equal(in.BodiedContentPatterns(), want) {
+		t.Errorf("the patterns of contents %q, want %q", got, want)
+	}
+	if !slices.Equal(parsed.ContentPatterns(), parsed.Patterns()) {
+		t.Error("InContents changed the query it was called on")
+	}
+	// Each finds its NFC: names Go's, contents PostgreSQL's.
+	if got := in.TitleHits(joined); !slices.Equal(got, []domain.TextRange{{Start: 0, End: 32}}) {
+		t.Errorf("the hits in the name %U: %v, want its 32 units", []rune(joined), got)
+	}
+	if got := in.Excerpt("x "+pg31, 3, 33); !slices.Equal(got.Hits, []domain.TextRange{{Start: 2, End: 33}}) {
+		t.Errorf("the hits in the content %U: %v, want its 31 units after 2", []rune("x "+pg31), got.Hits)
+	}
+	if got := in.Excerpt("x "+joined, 3, 34); !slices.Equal(got.Hits, []domain.TextRange{{Start: 2, End: 34}}) {
+		t.Errorf("the hits in the content %U: %v, want the CGJ written's, its 32 units after 2", []rune("x "+joined), got.Hits)
+	}
+	if got := parsed.Excerpt("x "+pg31, 3, 33); len(got.Hits) != 0 {
+		t.Errorf("before InContents, the hits in the content %U: %v, want none", []rune("x "+pg31), got.Hits)
 	}
 }
 

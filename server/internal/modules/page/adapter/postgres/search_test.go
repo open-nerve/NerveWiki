@@ -1,11 +1,13 @@
 package postgresadapter_test
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"log/slog"
 	"math/rand/v2"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -132,7 +134,7 @@ func scopeOf(t *testing.T, q string, notebooks ...uuid.UUID) app.SearchScope {
 // bodies walks the body tier of sc as the use case does: its hits counted
 // in ctx's snapshot (SearchHitCount), then read, all of them.
 func (f fixture) bodies(ctx context.Context, sc app.SearchScope, walk, limit int) ([]app.SearchBodyRow, error) {
-	n, err := f.s.SearchHitCount(ctx, sc.Query)
+	n, err := f.s.SearchHitCount(ctx, sc)
 	if err != nil {
 		return nil, err
 	}
@@ -174,6 +176,33 @@ func (f fixture) bodiesOf(t *testing.T, q string, notebooks ...uuid.UUID) []stri
 		}
 	}
 	return out
+}
+
+// The use case's ports a search reads besides the store's, as a member of
+// one workspace who sees the notebooks listed.
+type (
+	searchWorkspace struct{ id uuid.UUID }
+	searchVisible   []uuid.UUID
+	searchAllowed   struct{}
+	noAttachments   struct{}
+)
+
+func (w searchWorkspace) FindBySlug(context.Context, string) (uuid.UUID, bool, error) {
+	return w.id, true, nil
+}
+
+func (searchWorkspace) ShareByID(context.Context, uuid.UUID) (bool, error) { return true, nil }
+
+func (v searchVisible) VisibleIn(context.Context, uuid.UUID, uuid.UUID, shared.WorkspaceRole) ([]uuid.UUID, error) {
+	return v, nil
+}
+
+func (searchAllowed) Authorize(context.Context, shared.Actor, shared.Action, shared.Target) (shared.Grant, error) {
+	return shared.Grant{WorkspaceRole: shared.WorkspaceMember}, nil
+}
+
+func (noAttachments) Of(context.Context, []uuid.UUID) (map[uuid.UUID]app.AttachmentInfo, error) {
+	return map[uuid.UUID]app.AttachmentInfo{}, nil
 }
 
 // A node queued takes a new version from the sequence, queued again too,
@@ -280,33 +309,52 @@ func TestStaleSearchNodes(t *testing.T) {
 	}
 }
 
-// The job reads the queue by id, a batch after another, with the versions
-// queued, the nodes queued exact apart from those in bulk, and takes the
-// nodes off at the versions it read: one a unit queued again since stays,
-// at its new version (M8/P5 design 3.4).
+// The job reads the queue a batch after another, with the notebooks and
+// the versions queued, the nodes queued exact apart from those in bulk:
+// those by id, these by notebook, then id (M8 Codex review R1, fix round
+// 2: B-3); and takes the nodes off at the versions it read: one a unit
+// queued again since stays, at its new version (M8/P5 design 3.4).
 func TestDequeueSearchTakesTheVersionsRead(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
 	ids := f.nodes(t, f.eng, "N", 4)
-	imported := f.nodes(t, f.eng, "I", 2)
-	f.queueSearch(t, f.eng, true, imported...)
+	// Nodes of eng and ops queued in bulk, their ids in turn.
+	var imported []app.QueuedNode
+	for i := range 4 {
+		notebook := []uuid.UUID{f.eng, f.ops}[i%2]
+		id := f.nodes(t, notebook, fmt.Sprint("I", i), 1)[0]
+		f.queueSearch(t, notebook, true, id)
+		imported = append(imported, app.QueuedNode{ID: id, NotebookID: notebook})
+	}
 	f.queueSearch(t, f.eng, false, ids...)
 	q := f.queued(t)
-	bulk, err := f.s.QueuedSearch(ctx, true, uuid.Nil(), 10)
-	if want := []app.QueuedNode{{ID: imported[0], Version: q[imported[0]].version}, {ID: imported[1], Version: q[imported[1]].version}}; err != nil ||
-		!slices.Equal(bulk, want) {
-		t.Fatalf("QueuedSearch(bulk, the start, 10) = %v, %v; want %v, those queued in bulk alone", bulk, err, want)
+	for i := range imported {
+		imported[i].Version = q[imported[i].ID].version
 	}
-	first, err := f.s.QueuedSearch(ctx, false, uuid.Nil(), 2)
-	if want := []app.QueuedNode{{ID: ids[0], Version: q[ids[0]].version}, {ID: ids[1], Version: q[ids[1]].version}}; err != nil ||
-		!slices.Equal(first, want) {
-		t.Fatalf("QueuedSearch(exact, the start, 2) = %v, %v; want %v", first, err, want)
+	slices.SortFunc(imported, func(a, b app.QueuedNode) int { return cmp.Or(a.NotebookID.Compare(b.NotebookID), a.ID.Compare(b.ID)) })
+	exact := func(i int) app.QueuedNode {
+		return app.QueuedNode{ID: ids[i], NotebookID: f.eng, Version: q[ids[i]].version}
 	}
-	rest, err := f.s.QueuedSearch(ctx, false, ids[1], 10)
-	if want := []app.QueuedNode{{ID: ids[2], Version: q[ids[2]].version}, {ID: ids[3], Version: q[ids[3]].version}}; err != nil ||
-		!slices.Equal(rest, want) {
-		t.Fatalf("QueuedSearch(exact, after the second, 10) = %v, %v; want %v", rest, err, want)
+	for _, tt := range []struct {
+		what  string
+		bulk  bool
+		after app.QueuedNode
+		limit int
+		want  []app.QueuedNode
+	}{
+		{"bulk, the start, 10", true, app.QueuedNode{}, 10, imported},
+		{"bulk, after the first notebook's first, 10", true, imported[0], 10, imported[1:]},
+		{"bulk, after the first notebook, 10", true, app.QueuedNode{NotebookID: imported[0].NotebookID, ID: uuid.Max()}, 10, imported[2:]},
+		{"bulk, after the second notebook, 10", true, app.QueuedNode{NotebookID: imported[2].NotebookID, ID: uuid.Max()}, 10, nil},
+		{"exact, the start, 2", false, app.QueuedNode{}, 2, []app.QueuedNode{exact(0), exact(1)}},
+		{"exact, after the second, 10", false, app.QueuedNode{ID: ids[1]}, 10, []app.QueuedNode{exact(2), exact(3)}},
+	} {
+		if got, err := f.s.QueuedSearch(ctx, tt.bulk, tt.after, tt.limit); err != nil || !slices.Equal(got, tt.want) {
+			t.Fatalf("QueuedSearch(%s) = %v, %v; want %v", tt.what, got, err, tt.want)
+		}
 	}
+	first, rest := []app.QueuedNode{exact(0), exact(1)}, []app.QueuedNode{exact(2), exact(3)}
+	bulk := imported
 	f.queueSearch(t, f.eng, false, ids[1])
 	again := f.queued(t)[ids[1]]
 	if err := f.s.DequeueSearch(ctx, append(append(first, rest[0]), bulk...)); err != nil {
@@ -329,7 +377,7 @@ func TestDequeueSearchSkipsAHeldRow(t *testing.T) {
 	f := newFixture(t)
 	ids := f.nodes(t, f.eng, "N", 3)
 	f.queueSearch(t, f.eng, false, ids...)
-	read, err := f.s.QueuedSearch(ctx, false, uuid.Nil(), 10)
+	read, err := f.s.QueuedSearch(ctx, false, app.QueuedNode{}, 10)
 	if err != nil || len(read) != 3 {
 		t.Fatalf("QueuedSearch = %v, %v", read, err)
 	}
@@ -356,7 +404,7 @@ func TestDequeueSearchSkipsAHeldRow(t *testing.T) {
 	if err := f.s.DequeueSearch(ctx, read); err != nil {
 		t.Fatal(err)
 	}
-	next, err := f.s.QueuedSearch(ctx, false, uuid.Nil(), 10)
+	next, err := f.s.QueuedSearch(ctx, false, app.QueuedNode{}, 10)
 	if err != nil || len(next) != 1 || next[0].ID != ids[1] || next[0].Version <= read[1].Version {
 		t.Fatalf("the queue after the unit = %v, %v; want the held node at its new version", next, err)
 	}
@@ -428,9 +476,7 @@ func onePool(t *testing.T, f fixture) *pgxpool.Pool {
 
 // A run takes one connection of the pool, its lock's, which its
 // statements and transactions run on: on a pool of one connection it
-// builds every row (M8/P5A review B-M4). Its writes' settings hold in
-// their transaction alone, not on the connection after it, nor after the
-// run (M8/P5 design deviation 3; M8/P5A review B-M1).
+// builds every row (M8/P5A review B-M4).
 func TestTheSearchsJobRunsOnItsLocksConnection(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
@@ -442,19 +488,6 @@ func TestTheSearchsJobRunsOnItsLocksConnection(t *testing.T) {
 	}
 	f.queueSearch(t, f.eng, false, ids...)
 	one := onePool(t, f)
-	settings := func(ctx context.Context) string {
-		t.Helper()
-		var memory, pending string
-		if err := postgres.DB(ctx, one).QueryRow(ctx, `SELECT current_setting('work_mem'), current_setting('gin_pending_list_limit')`).
-			Scan(&memory, &pending); err != nil {
-			t.Fatal(err)
-		}
-		return memory + " " + pending
-	}
-	defaults := settings(ctx)
-	if defaults == "64MB 16MB" {
-		t.Fatalf("the server's settings are the job's, %s: the test tells nothing", defaults)
-	}
 	s, tm := postgresadapter.New(one), postgres.NewTxManager(one, 5*time.Second)
 	bounded, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
@@ -464,23 +497,6 @@ func TestTheSearchsJobRunsOnItsLocksConnection(t *testing.T) {
 	}
 	if n := f.count(t, `SELECT count(*) FROM page_search_queue`); n != 0 {
 		t.Errorf("the queue holds %d nodes after the run, want none", n)
-	}
-	if got := settings(ctx); got != defaults {
-		t.Errorf("work_mem and gin_pending_list_limit %s on the connection after the run, want %s as before", got, defaults)
-	}
-	var within string
-	if err := tm.WithinTx(ctx, func(ctx context.Context) error {
-		if err := s.WriteSearchRows(ctx, nil, []uuid.UUID{ids[0]}); err != nil {
-			return err
-		}
-		within = settings(ctx)
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if after := settings(ctx); within != "64MB 16MB" || after != defaults {
-		t.Errorf("work_mem and gin_pending_list_limit %s before the job's transaction, %s in it, %s after; want 64MB 16MB in it alone",
-			defaults, within, after)
 	}
 }
 
@@ -529,10 +545,12 @@ func TestASearchRunWhoseConnectionEndsFailsOnce(t *testing.T) {
 	}
 }
 
-// The job's rows are its lexemes as tsvectors, a page's body with the
-// revision it read, none for an attachment's, the name, tokenizer and
+// The job's rows are its lexemes as tsvectors, each behind its node's
+// notebook's prefix, given the first time a row of the notebook is written
+// and another notebook's another (M8 Codex review R1); a page's body with
+// the revision it read, none for an attachment's, the name, tokenizer and
 // time; a node's row written again is replaced, and a deleted node's goes,
-// in the transaction the job opened, which its settings do not outlive.
+// in the transaction the job opened.
 // Its sources are each node as it is, gone when deleted or not there, a
 // page's content's revision and size, and its row as built; its contents
 // those of the live pages alone. Its ANALYZE gives @@ its statistics.
@@ -544,6 +562,7 @@ func TestTheSearchsRowsAndSources(t *testing.T) {
 	f.write(t, p.ID, content, 3, now())
 	x := f.asset(t, f.eng, nil, "x.png", 1)
 	d := f.page(t, f.eng, nil, "Gone", 2)
+	o := f.page(t, f.ops, nil, "Ops page", 0)
 	missing := uuid.NewV7()
 	built := now().Add(time.Minute)
 	row := func(n domain.Node, revision int, content *string) app.SearchRow {
@@ -552,22 +571,37 @@ func TestTheSearchsRowsAndSources(t *testing.T) {
 			Body: body}
 	}
 	empty := ""
-	rows := []app.SearchRow{row(p, 3, &content), row(x, 0, nil), row(d, 1, &empty)}
+	rows := []app.SearchRow{row(p, 3, &content), row(x, 0, nil), row(d, 1, &empty), row(o, 1, &content)}
 	if err := f.s.WriteSearchRows(ctx, rows, nil); err == nil {
-		t.Errorf("WriteSearchRows outside a transaction wrote; want an error, its settings would stay on the pool's connection")
+		t.Errorf("WriteSearchRows outside a transaction wrote; want an error, a row without its notebook's prefix")
 	}
 	f.writeRows(t, rows)
+	var engPrefix, opsPrefix string
+	if err := f.pool.QueryRow(ctx, `SELECT (SELECT prefix FROM page_search_tags WHERE notebook_id = $1),
+			(SELECT prefix FROM page_search_tags WHERE notebook_id = $2)`, f.eng, f.ops).Scan(&engPrefix, &opsPrefix); err != nil ||
+		engPrefix == opsPrefix || !searchPrefix.MatchString(engPrefix) || !searchPrefix.MatchString(opsPrefix) {
+		t.Errorf("the prefixes of eng and ops = %q, %q, %v; want two, each base 62 digits and '#'", engPrefix, opsPrefix, err)
+	}
+	// One number of the sequence a notebook, eng's three nodes in the batch
+	// though: the prefixes stay as short as the notebooks are few.
+	if spent := f.count(t, `SELECT last_value FROM page_search_tags_seq`); spent != 2 {
+		t.Errorf("the prefixes of two notebooks spent %d numbers of the sequence, want 2", spent)
+	}
 	for _, r := range rows {
 		var revision *int // an attachment's none
 		if r.Revision > 0 {
 			revision = &r.Revision
 		}
+		prefix := engPrefix
+		if r.NodeID == o.ID {
+			prefix = opsPrefix
+		}
 		var same bool
 		if err := f.pool.QueryRow(ctx, `SELECT revision IS NOT DISTINCT FROM $2 AND name = $3 AND tokenizer = $4 AND built_at = $5
 				AND title = array_to_tsvector($6::text[]) AND body IS NOT DISTINCT FROM array_to_tsvector($7::text[])
-			FROM page_search WHERE node_id = $1`, r.NodeID, revision, r.Name, r.Tokenizer, r.BuiltAt, r.Title, r.Body).Scan(&same); err != nil ||
-			!same {
-			t.Errorf("the row of %s = %v, %v; want it as written", r.Name, same, err)
+			FROM page_search WHERE node_id = $1`, r.NodeID, revision, r.Name, r.Tokenizer, r.BuiltAt, prefixed(prefix, r.Title),
+			prefixed(prefix, r.Body)).Scan(&same); err != nil || !same {
+			t.Errorf("the row of %s = %v, %v; want it as written, each lexeme behind %q", r.Name, same, err, prefix)
 		}
 	}
 	if err := f.s.DeleteNodes(ctx, deletion([]uuid.UUID{d.ID}, f.alice, now())); err != nil {
@@ -620,6 +654,22 @@ func TestTheSearchsRowsAndSources(t *testing.T) {
 	if got := f.count(t, `SELECT count(*) FROM pg_stats WHERE tablename = 'page_search' AND attname IN ('title', 'body')`); got != 2 {
 		t.Errorf("page_search's lexemes have statistics of %d columns after its ANALYZE, want 2", got)
 	}
+}
+
+// searchPrefix matches a notebook's prefix (migration 00041).
+var searchPrefix = regexp.MustCompile(`^[0-9A-Za-z]+#$`)
+
+// prefixed is each of lexemes behind prefix, as a row holds them; nil for
+// none.
+func prefixed(prefix string, lexemes []string) []string {
+	if lexemes == nil {
+		return nil
+	}
+	out := make([]string, len(lexemes))
+	for i, l := range lexemes {
+		out[i] = prefix + l
+	}
+	return out
 }
 
 // sameSource reports whether two sources are alike, their times equal.
@@ -744,27 +794,35 @@ func TestTheSearchsTiers(t *testing.T) {
 }
 
 // The body tier's candidates by their lexemes, counted (page_search_hits,
-// M8/P5A): the rows whose body holds the body's keys; with titles-only
-// terms too, those whose title also holds their characters; without keys
-// of the body, those whose title holds them; none for keys no row holds.
-// It counts rows, of any node and notebook: the statements that read the
-// hits join the live nodes of the notebooks searched.
+// M8/P5A): the rows of the notebooks searched whose body holds the body's
+// keys; with titles-only terms too, those whose title also holds their
+// characters; without keys of the body, those whose title holds them; none
+// for keys no row holds. It counts the rows of the notebooks searched
+// alone, by their keys (M8 Codex review R1), of any node: the statements
+// that read the hits join the live nodes.
 func TestSearchHitCount(t *testing.T) {
 	f := newSearchScene(t)
 	for _, tt := range []struct {
-		q    string
-		want int
+		q         string
+		notebooks []uuid.UUID
+		want      int
 	}{
-		{"api", 4},     // Rapid notes, Plain, Deleted api and Ops api: Fresh api has no row yet
-		{"锅 中国", 2},    // 锅具 and 中国锅, whose bodies hold 中国 and titles 锅; not 中国, whose title does not
-		{"锅 #", 3},     // 铁锅, 锅具 and 中国锅, whose titles hold 锅
-		{"deleted", 1}, // Deleted api's row, there until the job runs
-		{"ops", 1},     // ops's Ops api
-		{"zzzqqq", 0},
+		{"api", []uuid.UUID{f.eng}, 3},        // Rapid notes, Plain and Deleted api: Fresh api has no row yet
+		{"api", []uuid.UUID{f.ops}, 1},        // Ops api
+		{"api", []uuid.UUID{f.eng, f.ops}, 4}, // the four
+		{"锅 中国", []uuid.UUID{f.eng}, 2},       // 锅具 and 中国锅, whose bodies hold 中国 and titles 锅; not 中国, whose title does not
+		{"锅 #", []uuid.UUID{f.eng}, 3},        // 铁锅, 锅具 and 中国锅, whose titles hold 锅
+		{"deleted", []uuid.UUID{f.eng}, 1},    // Deleted api's row, there until the job runs
+		{"ops", []uuid.UUID{f.eng}, 0},        // ops's Ops api, not searched
+		{"ops", []uuid.UUID{f.ops}, 1},
+		{"api", nil, 0}, // no notebook
+		{"zzzqqq", []uuid.UUID{f.eng, f.ops}, 0},
 	} {
-		got, err := inSnapshot(f, func(ctx context.Context) (int, error) { return f.s.SearchHitCount(ctx, scopeOf(t, tt.q, f.eng).Query) })
+		got, err := inSnapshot(f, func(ctx context.Context) (int, error) {
+			return f.s.SearchHitCount(ctx, scopeOf(t, tt.q, tt.notebooks...))
+		})
 		if err != nil || got != tt.want {
-			t.Errorf("SearchHitCount(%s) = %d, %v; want %d", tt.q, got, err, tt.want)
+			t.Errorf("SearchHitCount(%s in %v) = %d, %v; want %d", tt.q, tt.notebooks, got, err, tt.want)
 		}
 	}
 }
@@ -810,7 +868,7 @@ func TestSearchTitleAndBodyCounts(t *testing.T) {
 			if c.titles, c.pages, err = f.s.SearchTitleCount(ctx, sc, tt.limit); err != nil {
 				return c, err
 			}
-			if sc.Hits, err = f.s.SearchHitCount(ctx, sc.Query); err != nil {
+			if sc.Hits, err = f.s.SearchHitCount(ctx, sc); err != nil {
 				return c, err
 			}
 			c.bodies, err = f.s.SearchBodyCount(ctx, sc, tt.limit)
@@ -904,7 +962,7 @@ func TestTheBodyTiersWalk(t *testing.T) {
 	for _, short := range []int{1, 6} {
 		rows, err := inSnapshot(f, func(ctx context.Context) ([]app.SearchBodyRow, error) {
 			sc := scopeOf(t, "abcd", f.eng)
-			n, err := f.s.SearchHitCount(ctx, sc.Query)
+			n, err := f.s.SearchHitCount(ctx, sc)
 			if err != nil || n != 6 {
 				return nil, fmt.Errorf("SearchHitCount = %d, want the six: %w", n, err)
 			}
@@ -1101,6 +1159,136 @@ func TestTheSearchReadsContentNotInNFC(t *testing.T) {
 	}
 	if n := f.count(t, `SELECT count(*) FROM page_contents WHERE node_id = ANY($1) AND content IS NFC NORMALIZED`, ids); n != 0 {
 		t.Errorf("%d contents written in NFC by the search, want them as written", n)
+	}
+}
+
+// A term Go's NFC changes otherwise than PostgreSQL's (M8 Codex review R2;
+// fix check 1, C1-1). Go's NFC, a query's and a name's, parts a run of
+// more than 30 non-starters with a CGJ after its 30th, the Stream-Safe
+// Text Format, and orders its marks on each side of it alone; and x/text's
+// Unicode 17 orders marks PostgreSQL 18's Unicode 16 does not know.
+// PostgreSQL's, a content's as the search reads it, does neither. A term
+// Go's NFC changes is matched in names as Go has it and in contents as
+// PostgreSQL has it, through the use case, which reads PostgreSQL's NFC of
+// it: it finds its text in a name or a content, while its page waits in
+// the queue and once its row is built, a run of marks of two classes
+// too, and its excerpts mark it; a Unicode 17 mark before an older one of
+// a lower class, typed and queried as written, too, and one after it. Two
+// such terms, one in a page's name, the other in its content, find it:
+// each is matched by its own NFC. A CGJ written in a text or a query is a
+// character as any other: the query that wrote one finds the texts that
+// hold it, the query that wrote none those that hold none. 30 marks, which
+// Go leaves as they are but for their first, find what holds them, as
+// before.
+func TestTheSearchFindsATermGosNFCChangesAsWritten(t *testing.T) {
+	f := newFixture(t)
+	acute, below, joiner := string(rune(0x0301)), string(rune(0x0323)), string(rune(0x034F))
+	raw31 := "a" + strings.Repeat(acute, 31)
+	raw30 := "a" + strings.Repeat(acute, 30)
+	joined := norm.NFC.String(raw31)
+	mixed := raw30 + below
+	pg31 := string(rune(0x00E1)) + strings.Repeat(acute, 30) // PostgreSQL's NFC of raw31
+	x31 := "x" + strings.Repeat(acute, 31)
+	// A Unicode 17 mark (class 230, 234, 220) before an older one of a lower
+	// class (220, 230), and after one of a higher: the checker's texts.
+	gap1 := "Phona" + string(rune(0x1AD0)) + below + "tik"
+	gap2 := "Lauto" + string(rune(0x1AEB)) + acute + "form"
+	after := "Kontro" + acute + string(rune(0x1ADD)) + "lle"
+	switch {
+	case joined != string(rune(0x00E1))+strings.Repeat(acute, 29)+joiner+acute:
+		t.Fatalf("Go's NFC of a and 31 acutes = %U, want á, 29 acutes, a CGJ and an acute", []rune(joined))
+	case norm.NFC.String(raw30) != string(rune(0x00E1))+strings.Repeat(acute, 29):
+		t.Fatalf("Go's NFC of a and 30 acutes = %U, want á and 29 acutes", []rune(norm.NFC.String(raw30)))
+	case norm.NFC.String(mixed) != string(rune(0x00E1))+strings.Repeat(acute, 29)+joiner+below:
+		t.Fatalf("Go's NFC of a, 30 acutes and a dot below = %U, want á, 29 acutes, a CGJ and the dot", []rune(norm.NFC.String(mixed)))
+	}
+	contents := []struct{ name, content string }{
+		{"Thirty-one", raw31},
+		{"Thirty", raw30},
+		{"Joined", joined},
+		{"Mixed", mixed},
+		{"Excerpted", "Before " + raw31 + " after"},
+		{raw31, "zeta"},
+		{raw31 + " notes", "Notes on " + raw31},
+		{"Gap one", "x " + gap1 + " y"},
+		{"Gap two", "x " + gap2 + " y"},
+		{"After", "x " + after + " y"},
+		{"Xn " + x31, "body " + raw31},
+	}
+	var ids []uuid.UUID
+	names := map[string]string{} // the names as written, as stored
+	for _, c := range contents {
+		n := f.page(t, f.eng, nil, c.name, 0)
+		f.write(t, n.ID, c.content, 2, now())
+		ids = append(ids, n.ID)
+		names[c.name] = n.Name
+	}
+	if names[raw31] != joined {
+		t.Fatalf("the name %U is stored as %U, want Go's NFC", []rune(raw31), []rune(names[raw31]))
+	}
+	search := app.NewSearch(app.SearchDeps{Snapshots: postgres.NewTxManager(f.pool, 5*time.Second), Workspaces: searchWorkspace{uuid.NewV7()},
+		Visible: searchVisible{f.eng}, Auth: searchAllowed{}, Reads: f.s, Trash: f.s, Attachments: noAttachments{}})
+	ctx := shared.WithActor(context.Background(), shared.Actor{UserID: f.alice, SessionID: uuid.NewV7()})
+	f.queueSearch(t, f.eng, false, ids...)
+	for _, stage := range []string{"queued", "built"} {
+		if stage == "built" {
+			f.drain(t)
+		}
+		for _, tt := range []struct {
+			what, q string
+			found   []string
+		}{
+			{"31 acutes", raw31, []string{"Thirty-one", "Excerpted", raw31, raw31 + " notes", "Xn " + x31}},
+			{"30 acutes", raw30, []string{"Thirty", "Thirty-one", "Joined", "Excerpted", raw31, raw31 + " notes", "Xn " + x31}},
+			{"31 acutes, a CGJ written", joined, []string{"Joined", raw31, raw31 + " notes"}},
+			{"30 acutes and a dot below", mixed, []string{"Mixed"}},
+			{"31 acutes in a name, a term in its content", raw31 + " zeta", []string{raw31}},
+			{"a Unicode 17 mark before a dot below", gap1, []string{"Gap one"}},
+			{"a Unicode 17 mark before an acute", gap2, []string{"Gap two"}},
+			{"a Unicode 17 mark after an acute", after, []string{"After"}},
+			{"two such terms, one in the name, one in the content", x31 + " " + raw31, []string{"Xn " + x31}},
+		} {
+			page, err := search.Execute(ctx, "acme", app.SearchRequest{Q: &tt.q})
+			if err != nil {
+				t.Fatalf("%s: %s: %v", stage, tt.what, err)
+			}
+			got := []string{}
+			for _, h := range page.Hits {
+				got = append(got, h.Node.Name)
+			}
+			want := []string{}
+			for _, name := range tt.found {
+				want = append(want, names[name])
+			}
+			slices.Sort(got)
+			slices.Sort(want)
+			if !slices.Equal(got, want) {
+				t.Errorf("%s: %s finds %q, want %q", stage, tt.what, got, want)
+			}
+			if tt.q != raw31 {
+				continue
+			}
+			// The excerpts, of the body tier and of the title tier, and the
+			// name's hits.
+			for _, h := range page.Hits {
+				var text string
+				var hits []domain.TextRange
+				switch h.Node.Name {
+				case "Excerpted":
+					text, hits = "Before "+pg31+" after", []domain.TextRange{{Start: 7, End: 38}}
+				case names[raw31+" notes"]:
+					text, hits = "Notes on "+pg31, []domain.TextRange{{Start: 9, End: 40}}
+					if !slices.Equal(h.TitleHits, []domain.TextRange{{Start: 0, End: 32}}) {
+						t.Errorf("%s: the name's hits %v, want its first 32 units", stage, h.TitleHits)
+					}
+				default:
+					continue
+				}
+				if h.Excerpt == nil || h.Excerpt.Text != text || !slices.Equal(h.Excerpt.Hits, hits) {
+					t.Errorf("%s: %q's excerpt %+v, want %U with the hits %v", stage, h.Node.Name, h.Excerpt, []rune(text), hits)
+				}
+			}
+		}
 	}
 }
 
@@ -1391,8 +1579,9 @@ func characterAt(s string, units int) int {
 
 // A search statement's error carries its SQLSTATE alone (M8/P5 design
 // 3.6): PostgreSQL's message and detail, and pgx's own errors, would bring
-// the patterns, the keys, or a row's name and lexemes, the user's text,
-// into the logs. Each read of a limit fails as its negative limit is
+// the patterns, the keys, the terms put in NFC, or a row's name and
+// lexemes, the user's text, into the logs. Each read of a limit fails as
+// its negative limit is
 // refused; each read in a transaction a statement failed in; the job's
 // write of a row its check refuses, the row in the error's detail; and a
 // read whose context ended keeps that end, for its caller to tell apart.
@@ -1421,12 +1610,16 @@ func TestSearchStatementErrorsCarryNoQuery(t *testing.T) {
 		}
 	}
 	reads := map[string]func(ctx context.Context, limit int) error{
+		"SearchNFC": func(ctx context.Context, _ int) error {
+			_, err := f.s.SearchNFC(ctx, []string{secret, "机密文件"})
+			return err
+		},
 		"SearchTitles": func(ctx context.Context, limit int) error {
 			_, err := f.s.SearchTitles(ctx, sc, limit)
 			return err
 		},
 		"SearchHitCount": func(ctx context.Context, _ int) error {
-			_, err := f.s.SearchHitCount(ctx, sc.Query)
+			_, err := f.s.SearchHitCount(ctx, sc)
 			return err
 		},
 		"SearchBodies": func(ctx context.Context, limit int) error {
@@ -1449,7 +1642,7 @@ func TestSearchStatementErrorsCarryNoQuery(t *testing.T) {
 	tx := postgres.NewTxManager(f.pool, 5*time.Second)
 	rollBack := errors.New("roll back")
 	for name, read := range reads {
-		if name != "SearchBuilding" && name != "SearchHitCount" {
+		if name != "SearchBuilding" && name != "SearchHitCount" && name != "SearchNFC" {
 			check(name+" of a negative limit", tx.WithinSnapshot(ctx, func(ctx context.Context) error { return read(ctx, -1) }), "2201W")
 		}
 	}

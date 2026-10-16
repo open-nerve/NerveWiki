@@ -164,7 +164,7 @@ func linkSteps(steps []page.LinkStep) []linking.Step {
 
 // linkEvents publishes linking's links events on the event stream (M6
 // design 4.8): of the notebook, its data the two sets of pages, each null
-// for too many.
+// for too many, and whether the aliases changed (M8 Codex review R3).
 type linkEvents struct {
 	publisher *events.Publisher
 }
@@ -173,10 +173,11 @@ type linkEvents struct {
 type linksData struct {
 	Pages   []uuid.UUID `json:"pages"`
 	Targets []uuid.UUID `json:"targets"`
+	Aliases bool        `json:"aliases"`
 }
 
 func (l linkEvents) LinksChanged(ctx context.Context, c linking.LinksChanged) error {
-	data, err := json.Marshal(linksData{Pages: c.Pages, Targets: c.Targets})
+	data, err := json.Marshal(linksData{Pages: c.Pages, Targets: c.Targets, Aliases: c.Aliases})
 	if err != nil {
 		return err
 	}

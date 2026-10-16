@@ -695,6 +695,31 @@ test("a links event reads again the views of the versions shown of the pages it 
   expect(versionReads(server.sent)).toEqual(["GET version view Guide 1", "GET version view Guide 1"]);
 });
 
+test("a links event of a write that changed the aliases reads again every version's view shown of its notebook, and only those; one that kept them, or an ordinary save, none it does not name", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const { server, events } = await openVersion(1, [versionJSON(1, null, "Guide\n"), versionJSON(2, 1, "Guide 2\n")]);
+  const of = { workspace_id: workspaceJSON.id, notebook_id: notebookJSON.id };
+
+  events.last().send("pages", pagesEvent(false, [{ id: notes.id, revision: 2 }]));
+  events.last().send("links", { ...of, pages: [notes.id], targets: [guide.id], aliases: false });
+  events.last().send("links", {
+    ...of,
+    notebook_id: "0199a2b4-0000-7000-8000-0000000000b2",
+    pages: [],
+    targets: [],
+    aliases: true,
+  });
+  await settle();
+  expect(versionReads(server.sent).filter((each) => each.startsWith("GET version view"))).toEqual([]);
+
+  server.sent.length = 0;
+  server.versionViews.set(`${guide.id} 1`, { html: "<p>Unresolved now</p>", revision: 1, assets_expire_at: null });
+  events.last().send("links", { ...of, pages: [], targets: [], aliases: true });
+  await waitFor(() => expect(versionArticle().innerHTML).toBe("<p>Unresolved now</p>"));
+  await settle();
+  expect(server.sent).toEqual(["GET version view Guide 1"]);
+});
+
 /** compared is what the comparison of the page now with Guide's version 1 marks. */
 const compared = () => marked(screen.getByRole("textbox", { name: "Changes from the page now to version 1" }));
 

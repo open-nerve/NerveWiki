@@ -38,18 +38,21 @@ SELECT pg_try_advisory_lock(6107471706471486842);
 -- The search's job's lock given back.
 SELECT pg_advisory_unlock(6107471706471486842);
 
--- name: SetSearchWriting :exec
--- The job's writes' settings, for its transaction alone (M8/P5A, measured on 300,000 pages): the GIN indexes' pending
--- list flushed in larger merges, each in memory, write a full index about 3.6 times as fast as at the server's
--- defaults (4 MB and 4 MB); the reads then scan a pending list of 16 MB at most.
-SELECT set_config('work_mem', '64MB', true), set_config('gin_pending_list_limit', '16MB', true);
-
 -- name: QueuedSearch :many
--- The nodes queued exact, or in bulk, after the node after, by id, at most max_rows, with the versions queued: the
--- job's pass, unlocked, the exact nodes' first.
-SELECT node_id, version FROM page_search_queue
-WHERE bulk = sqlc.arg(bulk)::boolean AND node_id > sqlc.arg(after)::uuid
+-- The nodes queued exact after the node after, by id, at most max_rows, with their notebooks and the versions queued:
+-- the job's first pass, unlocked.
+SELECT node_id, notebook_id, version FROM page_search_queue
+WHERE NOT bulk AND node_id > sqlc.arg(after)::uuid
 ORDER BY node_id
+LIMIT sqlc.arg(max_rows);
+
+-- name: QueuedSearchBulk :many
+-- The nodes queued in bulk after the node after of the notebook after_notebook, by notebook, then id, at most
+-- max_rows, with their notebooks and the versions queued: the job's second pass, unlocked, notebook by notebook (M8
+-- Codex review R1, fix round 2: B-3), by page_search_queue_bulk_idx.
+SELECT node_id, notebook_id, version FROM page_search_queue
+WHERE bulk AND (notebook_id, node_id) > (sqlc.arg(after_notebook)::uuid, sqlc.arg(after)::uuid)
+ORDER BY notebook_id, node_id
 LIMIT sqlc.arg(max_rows);
 
 -- name: SearchSources :many
@@ -69,11 +72,29 @@ SELECT node_id, content, revision FROM page_contents
 WHERE node_id = ANY(sqlc.arg(ids)::uuid[]) AND deleted_at IS NULL
 ORDER BY node_id;
 
+-- name: TagSearchNotebooks :exec
+-- The notebooks of the nodes given that have no prefix yet get the next (M8 Codex review R1): the job's, before it
+-- writes their rows, in its transaction. One number of the sequence a notebook, not a node: the prefixes stay as
+-- short as the notebooks are few (without the DISTINCT, ON CONFLICT would keep the answers, a batch of 100 nodes of a
+-- new notebook spending 99 numbers).
+INSERT INTO page_search_tags (notebook_id, prefix)
+SELECT x.notebook_id, page_search_prefix(nextval('page_search_tags_seq'))
+FROM (SELECT DISTINCT n.notebook_id FROM nodes n
+      WHERE n.id = ANY(sqlc.arg(ids)::uuid[])
+          AND NOT EXISTS (SELECT 1 FROM page_search_tags t WHERE t.notebook_id = n.notebook_id)
+      ORDER BY 1) x
+ON CONFLICT (notebook_id) DO NOTHING;
+
 -- name: WriteSearchRow :batchexec
--- A node's row as the job built it: its lexemes as tsvectors, without positions.
+-- A node's row as the job built it: its lexemes as tsvectors, without positions, each after its notebook's prefix
+-- (M8 Codex review R1). A node purged since it was read has no notebook and gets no row.
 INSERT INTO page_search (node_id, revision, name, tokenizer, built_at, title, body)
-VALUES (sqlc.arg(node_id), sqlc.narg(revision), sqlc.arg(name), sqlc.arg(tokenizer), sqlc.arg(built_at)::timestamptz,
-    array_to_tsvector(sqlc.arg(title)::text[]), array_to_tsvector(sqlc.narg(body)::text[]))
+SELECT n.id, sqlc.narg(revision)::integer, sqlc.arg(name)::text, sqlc.arg(tokenizer)::text, sqlc.arg(built_at)::timestamptz,
+    array_to_tsvector(ARRAY(SELECT t.prefix || l FROM unnest(sqlc.arg(title)::text[]) l)),
+    CASE WHEN sqlc.narg(body)::text[] IS NOT NULL
+        THEN array_to_tsvector(ARRAY(SELECT t.prefix || l FROM unnest(sqlc.narg(body)::text[]) l)) END
+FROM nodes n JOIN page_search_tags t ON t.notebook_id = n.notebook_id
+WHERE n.id = sqlc.arg(node_id)::uuid
 ON CONFLICT (node_id) DO UPDATE SET revision = excluded.revision, name = excluded.name, tokenizer = excluded.tokenizer,
     built_at = excluded.built_at, title = excluded.title, body = excluded.body;
 
@@ -91,17 +112,28 @@ WHERE q.node_id = r.node_id AND q.version = r.version
                       ORDER BY x.node_id FOR UPDATE SKIP LOCKED);
 
 -- name: AnalyzeSearch :exec
--- The statistics of the rows the job writes: @@'s selectivity reads them.
+-- The size of page_search as the job writes it, which the candidate reads' plans are made for (planned for any
+-- arguments, M8 Codex review R1): a change of it makes them again. Their @@ reads no statistics of the lexemes, an
+-- ANY of queries no plan knows.
 ANALYZE page_search;
+
+-- name: SearchNFC :many
+-- Texts in NFC as the search's statements read a content in it, PostgreSQL's, in their order: the terms of a query
+-- that Go's NFC changed, whose patterns of contents are built of these. Go's NFC can differ from PostgreSQL's: a CGJ in
+-- a run of more than 30 non-starters, and their Unicode versions (M8 Codex review R2; fix check 1, C1-1).
+SELECT normalize(x.t, NFC)::text AS nfc FROM unnest(sqlc.arg(texts)::text[]) WITH ORDINALITY AS x(t, i) ORDER BY x.i;
 
 -- name: SearchTitles :many
 -- The title tier of a search (M8/P5 design 3.5): the live nodes, pages and attachments, of the notebooks given whose
 -- title holds the keys, or that wait in the queue as a user wrote them, below the cursor, newest first, whose name
 -- holds every term, at most max_rows; then a page's content read by key for the answered rows alone, in NFC as the
--- patterns are, and the first hit's place in it, its character from 1, with the excerpt around it and the content's
--- characters: 0 and none when the content holds no hit, or the node is an attachment. A content not in NFC is put in it
--- for the read alone, as the job's lexemes are of it (M8/P5A review A-M4); one in NFC, the common case, costs the check
--- alone, some 20 µs a content of 4 KB, five times the read's (measured on the guard's corpus). The candidates are
+-- patterns of contents are (in_contents), and the first hit's place in it, its character from 1, with the excerpt
+-- around it and the content's characters: 0 and none when the content holds no hit, or the node is an attachment. The
+-- names are matched by the terms' patterns of names (terms), Go's NFC as the names are, the contents by those of
+-- contents, PostgreSQL's NFC as the contents are read: the two differ for a run of more than 30 non-starters, which
+-- Go's NFC parts with a CGJ, and where their Unicode versions differ (M8 Codex review R2). A content not in NFC is put
+-- in it for the read alone, as the job's lexemes are of it (M8/P5A review A-M4); one in NFC, the common case, costs the
+-- check alone, some 20 µs a content of 4 KB, five times the read's (measured on the guard's corpus). The candidates are
 -- joined to their nodes and contents with the notebooks' condition alone, behind OFFSET 0, and the other checks run
 -- above it, on the joined rows. Without statistics the planner sizes the notebooks' nodes by that one condition's
 -- default selectivity; with the deleted check's or the patterns' multiplied in, it took a notebook's live nodes for one
@@ -115,7 +147,7 @@ FROM (
     SELECT j.id, j.notebook_id, j.kind, j.name, j.sort_at
     FROM (SELECT n.id, n.notebook_id, n.kind, n.name, n.deleted_at,
               greatest(n.updated_at, c.updated_at)::timestamptz AS sort_at
-          FROM (SELECT s.node_id FROM page_search s WHERE s.title @@ sqlc.arg(keys)::text::tsquery
+          FROM (SELECT s.node_id FROM page_search_titles(sqlc.arg(notebooks)::uuid[], sqlc.arg(keys)::text[]) s (node_id)
                 UNION
                 SELECT q.node_id FROM page_search_queue q
                 WHERE NOT q.bulk AND q.notebook_id = ANY(sqlc.arg(notebooks)::uuid[])) k
@@ -132,7 +164,7 @@ LEFT JOIN LATERAL (SELECT CASE WHEN r.raw IS NFC NORMALIZED THEN r.raw ELSE norm
                    FROM (SELECT c2.content || '' AS raw FROM page_contents c2
                          WHERE c2.node_id = w.id OFFSET 0) r OFFSET 0) b ON true
 LEFT JOIN LATERAL (SELECT min(nullif(regexp_instr(b.doc, p, 1, 1, 0, 'c', 1), 0)) AS at
-                   FROM unnest(sqlc.arg(terms)::text[]) p WHERE b.doc IS NOT NULL OFFSET 0) e ON true
+                   FROM unnest(sqlc.arg(in_contents)::text[]) p WHERE b.doc IS NOT NULL OFFSET 0) e ON true
 ORDER BY w.sort_at DESC, w.id DESC;
 
 -- name: SearchHitCount :one
@@ -140,13 +172,15 @@ ORDER BY w.sort_at DESC, w.id DESC;
 -- titled_keys, or, without body keys, whose title holds titled_keys (page_search_hits, which reads them by the GIN
 -- indexes alone). The statements that read them take the count as their LIMIT, in the same snapshot: the planner's
 -- estimate of their number, which it joins them by.
-SELECT count(*) FROM page_search_hits(sqlc.narg(body_keys)::text::tsquery, sqlc.narg(titled_keys)::text::tsquery);
+SELECT count(*) FROM page_search_hits(sqlc.arg(notebooks)::uuid[], sqlc.narg(body_keys)::text[], sqlc.narg(titled_keys)::text[]);
 
 -- name: SearchBodies :many
 -- The body tier of a search (M8/P5 design 3.5): the live pages of the notebooks given whose lexemes hold the keys,
 -- hits of them (SearchHitCount's, all of them), or that wait in the queue as a user wrote them, below the cursor,
 -- newest first, whose name misses some term and holds each titles-only one; walk of them at most have their content
--- read, by key, in NFC as SearchTitles reads it, and checked as they are now, until max_rows pass. The candidates are
+-- read, by key, in NFC as SearchTitles reads it, and checked as they are now, until max_rows pass: each term found in
+-- contents too in the name by its pattern of names (bodied) or in the content by its pattern of contents
+-- (bodied_in_contents), as SearchTitles matches each. The candidates are
 -- joined to their nodes and contents with the notebooks' condition alone, behind OFFSET 0, as in SearchTitles; the
 -- other checks, the patterns among them, run above it on the joined rows, never in a scan of nodes.
 -- The sort carries no content; OFFSET 0 keeps each lateral that reads or checks it one subquery too, so the
@@ -163,7 +197,7 @@ FROM (
         FROM (SELECT n.id, n.notebook_id, n.name, n.deleted_at, c.deleted_at AS content_deleted_at,
                   greatest(n.updated_at, c.updated_at)::timestamptz AS sort_at
               FROM ((SELECT h.node_id
-                     FROM page_search_hits(sqlc.narg(body_keys)::text::tsquery, sqlc.narg(titled_keys)::text::tsquery) h (node_id)
+                     FROM page_search_hits(sqlc.arg(notebooks)::uuid[], sqlc.narg(body_keys)::text[], sqlc.narg(titled_keys)::text[]) h (node_id)
                      LIMIT sqlc.arg(hits)::bigint)
                     UNION
                     SELECT q.node_id FROM page_search_queue q
@@ -182,11 +216,12 @@ FROM (
 LEFT JOIN LATERAL (SELECT CASE WHEN r.raw IS NFC NORMALIZED THEN r.raw ELSE normalize(r.raw, NFC) END AS doc
                    FROM (SELECT c2.content || '' AS raw FROM page_contents c2
                          WHERE c2.node_id = w.id AND w.seq <= sqlc.arg(walk)::integer OFFSET 0) r OFFSET 0) b ON true
-LEFT JOIN LATERAL (SELECT NOT EXISTS (SELECT 1 FROM unnest(sqlc.arg(bodied)::text[]) p
-                                      WHERE NOT (w.name ~ p OR b.doc ~ p)) AS passed
+LEFT JOIN LATERAL (SELECT NOT EXISTS (SELECT 1 FROM generate_subscripts(sqlc.arg(bodied)::text[], 1) i
+                                      WHERE NOT (w.name ~ (sqlc.arg(bodied)::text[])[i]
+                                                 OR b.doc ~ (sqlc.arg(bodied_in_contents)::text[])[i])) AS passed
                    WHERE b.doc IS NOT NULL OFFSET 0) x ON true
 LEFT JOIN LATERAL (SELECT min(nullif(regexp_instr(b.doc, p, 1, 1, 0, 'c', 1), 0)) AS at
-                   FROM unnest(sqlc.arg(terms)::text[]) p WHERE x.passed) e ON true
+                   FROM unnest(sqlc.arg(in_contents)::text[]) p WHERE x.passed) e ON true
 WHERE x.passed OR w.seq = least(w.walked, sqlc.arg(walk)::integer)
 ORDER BY w.sort_at DESC, w.id DESC
 LIMIT sqlc.arg(max_rows);
@@ -198,7 +233,7 @@ LIMIT sqlc.arg(max_rows);
 SELECT count(*)::integer AS titles, (count(*) FILTER (WHERE a.kind = 'page'))::integer AS title_pages
 FROM (SELECT j.kind
       FROM (SELECT n.kind, n.name, n.notebook_id, n.deleted_at
-            FROM (SELECT s.node_id FROM page_search s WHERE s.title @@ sqlc.arg(keys)::text::tsquery
+            FROM (SELECT s.node_id FROM page_search_titles(sqlc.arg(notebooks)::uuid[], sqlc.arg(keys)::text[]) s (node_id)
                   UNION
                   SELECT q.node_id FROM page_search_queue q
                   WHERE NOT q.bulk AND q.notebook_id = ANY(sqlc.arg(notebooks)::uuid[])) k
@@ -216,7 +251,7 @@ SELECT count(*)::integer AS bodies
 FROM (SELECT 1
       FROM (SELECT n.kind, n.notebook_id, n.deleted_at
             FROM ((SELECT h.node_id
-                   FROM page_search_hits(sqlc.narg(body_keys)::text::tsquery, sqlc.narg(titled_keys)::text::tsquery) h (node_id)
+                   FROM page_search_hits(sqlc.arg(notebooks)::uuid[], sqlc.narg(body_keys)::text[], sqlc.narg(titled_keys)::text[]) h (node_id)
                    LIMIT sqlc.arg(hits)::bigint)
                   UNION
                   SELECT q.node_id FROM page_search_queue q

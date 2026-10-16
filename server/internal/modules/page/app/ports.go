@@ -583,11 +583,11 @@ type SearchQueue interface {
 	QueueSearch(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID, bulk bool) error
 }
 
-// QueuedNode is a node in the search's queue, at the version it was
-// queued with.
+// QueuedNode is a node in the search's queue, of its notebook, at the
+// version it was queued with.
 type QueuedNode struct {
-	ID      uuid.UUID
-	Version int64
+	ID, NotebookID uuid.UUID
+	Version        int64
 }
 
 // SearchSource is what the search's job decides on for a queued node: the
@@ -636,9 +636,10 @@ type SearchIndex interface {
 	// that connection, under the context it returns, so that the lock is
 	// the run's own (M8/P5A review B-M4). release gives it back.
 	LockSearch(ctx context.Context) (run context.Context, release func(), ok bool, err error)
-	// QueuedSearch reads the nodes queued exact, or in bulk when bulk is
-	// set, after the node after, by id, at most limit nodes, unlocked.
-	QueuedSearch(ctx context.Context, bulk bool, after uuid.UUID, limit int) ([]QueuedNode, error)
+	// QueuedSearch reads the nodes queued exact after the node after.ID,
+	// by id; or, when bulk is set, those queued in bulk after after, by
+	// notebook (after.NotebookID), then id; at most limit nodes, unlocked.
+	QueuedSearch(ctx context.Context, bulk bool, after QueuedNode, limit int) ([]QueuedNode, error)
 	// SearchSources reads the nodes ids as SearchSource says, by id.
 	SearchSources(ctx context.Context, ids []uuid.UUID) ([]SearchSource, error)
 	// SearchContents reads the contents of the live pages ids, with their
@@ -704,14 +705,20 @@ type SearchBodyRow struct {
 // read-only snapshot ctx carries. Their errors carry their SQLSTATE alone:
 // the patterns and keys are the user's text.
 type SearchReads interface {
+	// SearchNFC is texts in NFC as the statements read a content in it,
+	// in their order: a query's terms Go's NFC changed
+	// (domain.SearchQuery.Written).
+	SearchNFC(ctx context.Context, texts []string) ([]string, error)
 	// SearchTitles reads the title tier below s.Below, at most limit nodes.
 	SearchTitles(ctx context.Context, s SearchScope, limit int) ([]SearchTitleRow, error)
 	// SearchHitCount counts the body tier's candidates by their lexemes:
-	// the pages whose row holds q's body keys and titled keys. The body
+	// the pages of s's notebooks whose row holds s.Query's body keys and
+	// titled keys, read by those notebooks' keys alone (M8 Codex review
+	// R1): no other notebook's rows change what it reads. The body
 	// tier's statements read them all, by the count (SearchScope.Hits),
 	// which tells their plans how many there are: a count of another
 	// snapshot may leave some out.
-	SearchHitCount(ctx context.Context, q domain.SearchQuery) (int, error)
+	SearchHitCount(ctx context.Context, s SearchScope) (int, error)
 	// SearchBodies walks the body tier below s.Below: at most walk pages'
 	// contents read, until limit pass.
 	SearchBodies(ctx context.Context, s SearchScope, walk, limit int) ([]SearchBodyRow, error)

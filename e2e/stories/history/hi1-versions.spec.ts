@@ -181,3 +181,41 @@ test("HI1 (page): two edits, the page left between them, are two more versions i
     { base: 2, revision: 3, content: third, kind: "edit", byId: adminId, client: "web" },
   ]);
 });
+
+// A version's links lead where the notebook resolves them now (M8 design 4.13; M8 Codex review R3): its target's alias
+// dropped, a link by it leads nowhere in a version's view shown, without a reload, whether the page's text now holds the
+// link too, the page the links event names, or the version alone does, which the event reaches by telling that the
+// aliases changed.
+for (const now of [false, true]) {
+  test(`HI1 (page): a version's link by an alias leads nowhere once the alias is dropped, without a reload; ${now ? "the page now links by it too" : "the version alone links by it"}`, async ({
+    api,
+    signedInPage,
+    anotherTab,
+  }, testInfo) => {
+    const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+    const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
+    const target = await createPage(api, pat, notebook.id, "Target", null, "---\naliases: [OldAlias]\n---\nInitial\n");
+    const source = await createPage(api, pat, notebook.id, "Source", null, "[[OldAlias]]\n");
+    await writeContent(api, pat, source.id, {
+      content: now ? "[[OldAlias]]\nNow\n" : "No links now\n",
+      base_revision: 1,
+    });
+    const page = await signedInPage(tokens);
+
+    await page.goto(versionPath(workspace.slug, notebook.id, source.id, 1));
+    const version = page.getByRole("main").getByRole("article", { name: "Version 1", exact: true });
+    await expect(version.getByRole("link", { name: "OldAlias", exact: true })).toHaveAttribute(
+      "href",
+      wikiPagePath(workspace.slug, notebook.id, target.id)
+    );
+    // Another tab shows Target: once it shows the write, the write's events have come.
+    const other = await anotherTab(page);
+    await other.goto(wikiPagePath(workspace.slug, notebook.id, target.id));
+    const shown = other.getByRole("main").getByRole("article", { name: "Target", exact: true });
+    await expect(shown).toContainText("Initial");
+    await writeContent(api, pat, target.id, { content: "Alias removed\n", base_revision: 1 });
+    await expect(shown).toContainText("Alias removed");
+    await expect(version.getByRole("button", { name: "OldAlias", exact: true })).toBeVisible();
+    await expect(version.getByRole("link", { name: "OldAlias", exact: true })).toHaveCount(0);
+  });
+}

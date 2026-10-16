@@ -120,6 +120,7 @@ test("TB1 (API): a subtree deleted with an attachment is one trash item of its c
     ...ofPlans,
     pages: [linker.id],
     targets: [elsewhere.id, photo.id, setup.id].toSorted(),
+    aliases: false,
   });
   await expectSubtreeRestored(
     db,

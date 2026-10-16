@@ -112,14 +112,25 @@ func (s *Store) LockSearch(ctx context.Context) (context.Context, func(), bool, 
 }
 
 // QueuedSearch implements app.SearchIndex.
-func (s *Store) QueuedSearch(ctx context.Context, bulk bool, after uuid.UUID, limit int) ([]app.QueuedNode, error) {
-	rows, err := s.queries(ctx).QueuedSearch(ctx, gen.QueuedSearchParams{Bulk: bulk, After: after, MaxRows: int32(limit)})
+func (s *Store) QueuedSearch(ctx context.Context, bulk bool, after app.QueuedNode, limit int) ([]app.QueuedNode, error) {
+	var out []app.QueuedNode
+	if bulk {
+		rows, err := s.queries(ctx).QueuedSearchBulk(ctx, gen.QueuedSearchBulkParams{AfterNotebook: after.NotebookID, After: after.ID,
+			MaxRows: int32(limit)})
+		if err != nil {
+			return nil, fmt.Errorf("read the search's queue: %w", err)
+		}
+		for _, r := range rows {
+			out = append(out, app.QueuedNode{ID: r.NodeID, NotebookID: r.NotebookID, Version: r.Version})
+		}
+		return out, nil
+	}
+	rows, err := s.queries(ctx).QueuedSearch(ctx, gen.QueuedSearchParams{After: after.ID, MaxRows: int32(limit)})
 	if err != nil {
 		return nil, fmt.Errorf("read the search's queue: %w", err)
 	}
-	out := make([]app.QueuedNode, len(rows))
-	for i, r := range rows {
-		out[i] = app.QueuedNode{ID: r.NodeID, Version: r.Version}
+	for _, r := range rows {
+		out = append(out, app.QueuedNode{ID: r.NodeID, NotebookID: r.NotebookID, Version: r.Version})
 	}
 	return out, nil
 }
@@ -169,18 +180,24 @@ func (s *Store) SearchContents(ctx context.Context, ids []uuid.UUID) (map[uuid.U
 	return out, nil
 }
 
-// WriteSearchRows implements app.SearchIndex: in ctx's transaction, its
-// settings for the job's writes first, the rows as a batch of upserts by
-// node id, then the deletions.
+// WriteSearchRows implements app.SearchIndex: in ctx's transaction, the
+// rows' notebooks' prefixes given first, the rows as a batch of upserts by
+// node id, then the deletions. The GIN indexes keep no pending list
+// (migration 00041): a row's keys go into them as it is written, and no
+// setting of the server's speeds that up (M8 Codex review R1).
 func (s *Store) WriteSearchRows(ctx context.Context, rows []app.SearchRow, deleted []uuid.UUID) error {
 	if !postgres.InTx(ctx) {
-		return errors.New("write the search's rows: outside a transaction, the settings would stay on the pool's connection")
+		return errors.New("write the search's rows: outside a transaction, a row could be written without its notebook's prefix")
 	}
 	q := s.queries(ctx)
-	if err := q.SetSearchWriting(ctx); err != nil {
-		return stateOnly("set the search's writes", err)
-	}
 	if len(rows) > 0 {
+		ids := make([]uuid.UUID, len(rows))
+		for i, r := range rows {
+			ids[i] = r.NodeID
+		}
+		if err := q.TagSearchNotebooks(ctx, ids); err != nil {
+			return stateOnly("tag the search's notebooks", err)
+		}
 		params := make([]gen.WriteSearchRowParams, len(rows))
 		for i, r := range rows {
 			params[i] = gen.WriteSearchRowParams{NodeID: r.NodeID, Name: r.Name, Tokenizer: r.Tokenizer, BuiltAt: r.BuiltAt,
@@ -241,29 +258,39 @@ func (s *Store) StaleSearchNodes(ctx context.Context, notebookID, after uuid.UUI
 }
 
 // searchArgs are a scope's arguments of the search's statements: the
-// notebooks, the patterns and the keys.
+// notebooks, the patterns of names and of contents, and the keys.
 type searchArgs struct {
-	notebooks             []uuid.UUID
-	terms, titled, bodied []string
-	keys                  string
-	bodyKeys, titledKeys  *string
-	hits                  int64
-	belowAt               time.Time
-	belowID               uuid.UUID
+	notebooks                    []uuid.UUID
+	terms, titled, bodied        []string
+	inContents, bodiedInContents []string
+	keys                         []string
+	bodyKeys, titledKeys         []string
+	hits                         int64
+	belowAt                      time.Time
+	belowID                      uuid.UUID
 }
 
 func argsOf(sc app.SearchScope) searchArgs {
 	q := sc.Query
 	return searchArgs{notebooks: sc.Notebooks, terms: q.Patterns(), titled: q.TitledPatterns(), bodied: q.BodiedPatterns(),
-		keys: q.TitleKeys(), bodyKeys: q.BodyKeys(), titledKeys: q.TitledKeys(), hits: int64(sc.Hits), belowAt: sc.Below.At,
-		belowID: sc.Below.ID}
+		inContents: q.ContentPatterns(), bodiedInContents: q.BodiedContentPatterns(), keys: q.TitleKeys(),
+		bodyKeys: q.BodyKeys(), titledKeys: q.TitledKeys(), hits: int64(sc.Hits), belowAt: sc.Below.At, belowID: sc.Below.ID}
+}
+
+// SearchNFC implements app.SearchReads.
+func (s *Store) SearchNFC(ctx context.Context, texts []string) ([]string, error) {
+	nfc, err := s.queries(ctx).SearchNFC(ctx, texts)
+	if err != nil {
+		return nil, stateOnly("put the search's terms in NFC", err)
+	}
+	return nfc, nil
 }
 
 // SearchTitles implements app.SearchReads.
 func (s *Store) SearchTitles(ctx context.Context, sc app.SearchScope, limit int) ([]app.SearchTitleRow, error) {
 	a := argsOf(sc)
 	rows, err := s.planned(ctx).SearchTitles(ctx, gen.SearchTitlesParams{Keys: a.keys, Notebooks: a.notebooks, BelowAt: a.belowAt,
-		BelowID: a.belowID, Terms: a.terms, MaxRows: int32(limit)})
+		BelowID: a.belowID, Terms: a.terms, MaxRows: int32(limit), InContents: a.inContents})
 	if err != nil {
 		return nil, stateOnly("search the titles", err)
 	}
@@ -278,8 +305,10 @@ func (s *Store) SearchTitles(ctx context.Context, sc app.SearchScope, limit int)
 }
 
 // SearchHitCount implements app.SearchReads.
-func (s *Store) SearchHitCount(ctx context.Context, q domain.SearchQuery) (int, error) {
-	n, err := s.planned(ctx).SearchHitCount(ctx, gen.SearchHitCountParams{BodyKeys: q.BodyKeys(), TitledKeys: q.TitledKeys()})
+func (s *Store) SearchHitCount(ctx context.Context, sc app.SearchScope) (int, error) {
+	q := sc.Query
+	n, err := s.planned(ctx).SearchHitCount(ctx, gen.SearchHitCountParams{Notebooks: sc.Notebooks, BodyKeys: q.BodyKeys(),
+		TitledKeys: q.TitledKeys()})
 	if err != nil {
 		return 0, stateOnly("count the search's candidates", err)
 	}
@@ -291,7 +320,7 @@ func (s *Store) SearchBodies(ctx context.Context, sc app.SearchScope, walk, limi
 	a := argsOf(sc)
 	rows, err := s.planned(ctx).SearchBodies(ctx, gen.SearchBodiesParams{BodyKeys: a.bodyKeys, TitledKeys: a.titledKeys,
 		Hits: a.hits, Notebooks: a.notebooks, BelowAt: a.belowAt, BelowID: a.belowID, Terms: a.terms, Titled: a.titled, Walk: int32(walk),
-		Bodied: a.bodied, MaxRows: int32(limit)})
+		Bodied: a.bodied, BodiedInContents: a.bodiedInContents, InContents: a.inContents, MaxRows: int32(limit)})
 	if err != nil {
 		return nil, stateOnly("search the contents", err)
 	}

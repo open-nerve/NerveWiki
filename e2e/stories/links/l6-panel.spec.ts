@@ -67,7 +67,7 @@ test("L6 (API): a page's properties carry where their links lead; its backlinks 
   // Hub's backlinks changed; no page's links lead elsewhere (Other's own view is the pages event's).
   expect(frame).toEqual({
     event: "links",
-    data: { workspace_id: workspace.id, notebook_id: notebook.id, pages: [], targets: [hub.id] },
+    data: { workspace_id: workspace.id, notebook_id: notebook.id, pages: [], targets: [hub.id], aliases: false },
   });
   // By id: Other was made first.
   expect((await listBacklinks(api, pat, hub.id)).data).toEqual({

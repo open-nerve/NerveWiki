@@ -20,8 +20,12 @@ var (
 
 const writeSearchRow = `-- name: WriteSearchRow :batchexec
 INSERT INTO page_search (node_id, revision, name, tokenizer, built_at, title, body)
-VALUES ($1, $2, $3, $4, $5::timestamptz,
-    array_to_tsvector($6::text[]), array_to_tsvector($7::text[]))
+SELECT n.id, $1::integer, $2::text, $3::text, $4::timestamptz,
+    array_to_tsvector(ARRAY(SELECT t.prefix || l FROM unnest($5::text[]) l)),
+    CASE WHEN $6::text[] IS NOT NULL
+        THEN array_to_tsvector(ARRAY(SELECT t.prefix || l FROM unnest($6::text[]) l)) END
+FROM nodes n JOIN page_search_tags t ON t.notebook_id = n.notebook_id
+WHERE n.id = $7::uuid
 ON CONFLICT (node_id) DO UPDATE SET revision = excluded.revision, name = excluded.name, tokenizer = excluded.tokenizer,
     built_at = excluded.built_at, title = excluded.title, body = excluded.body
 `
@@ -33,27 +37,28 @@ type WriteSearchRowBatchResults struct {
 }
 
 type WriteSearchRowParams struct {
-	NodeID    uuid.UUID
 	Revision  *int32
 	Name      string
 	Tokenizer string
 	BuiltAt   time.Time
 	Title     []string
 	Body      []string
+	NodeID    uuid.UUID
 }
 
-// A node's row as the job built it: its lexemes as tsvectors, without positions.
+// A node's row as the job built it: its lexemes as tsvectors, without positions, each after its notebook's prefix
+// (M8 Codex review R1). A node purged since it was read has no notebook and gets no row.
 func (q *Queries) WriteSearchRow(ctx context.Context, arg []WriteSearchRowParams) *WriteSearchRowBatchResults {
 	batch := &pgx.Batch{}
 	for _, a := range arg {
 		vals := []interface{}{
-			a.NodeID,
 			a.Revision,
 			a.Name,
 			a.Tokenizer,
 			a.BuiltAt,
 			a.Title,
 			a.Body,
+			a.NodeID,
 		}
 		batch.Queue(writeSearchRow, vals...)
 	}

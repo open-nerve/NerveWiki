@@ -121,14 +121,18 @@ const pagesChanged: EventHandler = (data, context) => {
  * too many pages to name, and its tags' pages, as after a reindex. Their
  * properties too, whose links lead elsewhere as well, and their versions'
  * views (M8 design 4.13); and the backlinks of the pages whose backlinks
- * changed, its targets (M6/P7 design 11).
+ * changed, its targets (M6/P7 design 11). A write that changed the
+ * notebook's aliases reads every version's view of it shown again, as a
+ * change of the tree does: a version's links, which the index does not
+ * hold, resolve by them, and no page it names says whose changed (M8 Codex
+ * review R3).
  */
 const linksChanged: EventHandler = (data, context) => {
   const { cache, mutate, refresher } = context;
-  const { notebook_id: notebook, pages, targets } = data as EventLinks;
+  const { notebook_id: notebook, pages, targets, aliases } = data as EventLinks;
   readEach("backlinks", notebook, targets, context);
   readEach("page-properties", notebook, pages, context);
-  readVersions("views", notebook, pages, (key) => key[0] === "page-version-view", context);
+  readVersions("views", notebook, aliases ? null : pages, (key) => key[0] === "page-version-view", context);
   if (pages === null) {
     readViews(notebook, context);
     readTagPages(notebook, context);

@@ -135,11 +135,23 @@ func (w *world) resolves(path string, start int, to string, ambiguous bool) {
 	}
 }
 
-// publishedEvent checks the one links event of the last unit, by paths; none
-// when pages and targets are both nil.
+// publishedEvent checks the one links event of the last unit, by paths, of
+// a unit that kept the aliases; none when pages and targets are both nil.
 func (w *world) publishedEvent(pages, targets []string) {
 	w.t.Helper()
-	if pages == nil && targets == nil {
+	w.publishedOf(pages, targets, false)
+}
+
+// publishedAliases checks the one links event of the last unit, by paths,
+// of a unit that changed the aliases (M8 Codex review R3).
+func (w *world) publishedAliases(pages, targets []string) {
+	w.t.Helper()
+	w.publishedOf(pages, targets, true)
+}
+
+func (w *world) publishedOf(pages, targets []string, aliases bool) {
+	w.t.Helper()
+	if pages == nil && targets == nil && !aliases {
 		if len(w.published.events) != 0 {
 			w.t.Errorf("published %+v, want none", w.published.events)
 		}
@@ -151,6 +163,9 @@ func (w *world) publishedEvent(pages, targets []string) {
 	e := w.published.events[0]
 	if e.NotebookID != w.notebook {
 		w.t.Errorf("the event is of notebook %s, want %s", e.NotebookID, w.notebook)
+	}
+	if e.Aliases != aliases {
+		w.t.Errorf("the event's aliases = %v, want %v", e.Aliases, aliases)
 	}
 	if got, want := e.Pages, w.ids(pages); !reflect.DeepEqual(got, want) {
 		w.t.Errorf("the event's pages = %v, want %v", got, pages)
@@ -281,7 +296,8 @@ func TestPagesDeletedLeaveTheIndex(t *testing.T) {
 }
 
 // An alias written or dropped: the links to it resolve anew, as a name
-// alone, after every page's name.
+// alone, after every page's name. Its event tells that the aliases
+// changed, though no link of the index resolves otherwise.
 func TestAnAliasWrittenOrDroppedResolvesTheLinksToIt(t *testing.T) {
 	w := newWorld(t, "X", "Y", "src", "Named")
 	w.run(w.write("src", []string{"nick", "Named", "Y/nick"}))
@@ -289,13 +305,42 @@ func TestAnAliasWrittenOrDroppedResolvesTheLinksToIt(t *testing.T) {
 	w.resolves("src", 0, "X", false)
 	w.resolves("src", 10, "Named", false)
 	w.resolves("src", 20, "", false)
-	w.publishedEvent([]string{"src"}, []string{"X"})
+	w.publishedAliases([]string{"src"}, []string{"X"})
 	w.run(w.write("Y", nil, "nick"))
 	w.resolves("src", 0, "X", true)
-	w.publishedEvent(nil, nil)
+	w.publishedAliases([]string{}, []string{})
 	w.run(w.write("X", nil))
 	w.resolves("src", 0, "Y", false)
-	w.publishedEvent([]string{"src"}, []string{"X", "Y"})
+	w.publishedAliases([]string{"src"}, []string{"X", "Y"})
+}
+
+// A unit that changes the notebook's aliases says so in its links event,
+// one of its own when no link the index holds resolves otherwise: a link
+// of a page's version, which the index does not hold, may resolve by them
+// (M8 Codex review R3). An alias added by a content or with its page, or
+// dropped by a content or with its page, changes them; a content written
+// that keeps its aliases' keys, its case alone changed or its links, does
+// not, and publishes what its links change alone.
+func TestAUnitThatChangesTheAliasesSaysSo(t *testing.T) {
+	w := newWorld(t, "T", "Other")
+	w.run(w.write("T", nil, "OldAlias"))
+	w.publishedAliases([]string{}, []string{})
+	w.run(w.write("T", []string{"Other"}, "OldAlias"))
+	w.publishedEvent([]string{}, []string{"Other"})
+	w.run(w.write("T", nil, "oldalias"))
+	w.publishedEvent([]string{}, []string{"Other"})
+	w.run(w.write("T", nil, "oldalias"))
+	w.publishedEvent(nil, nil)
+	w.run(w.write("T", nil))
+	w.publishedAliases([]string{}, []string{})
+	created := w.create("New")
+	created.Facts.Aliases = domain.AliasesOf([]string{"Nick"})
+	w.run(created)
+	w.publishedAliases([]string{}, []string{})
+	w.run(w.remove("New")...)
+	w.publishedAliases([]string{}, []string{})
+	w.run(w.remove("Other")...)
+	w.publishedEvent(nil, nil)
 }
 
 // A link whose tie alone changes is set, and in no event.
@@ -353,7 +398,7 @@ func TestAContentWrittenReachesItsLinksAndTheAliasesItChanges(t *testing.T) {
 	w.resolves("src", 10, "X", false)
 	w.resolves("src", 20, "", false)
 	w.resolves("src", 30, "X", false)
-	w.publishedEvent([]string{"src"}, []string{"X"})
+	w.publishedAliases([]string{"src"}, []string{"X"})
 }
 
 // A link whose page the tree does not have is a defect: an error, as is a
@@ -383,7 +428,7 @@ func TestAPageDeletedWithAnAliasEndsItsTie(t *testing.T) {
 	w.resolves("src", 0, "Y", true)
 	w.run(w.remove("X")...)
 	w.resolves("src", 0, "Y", false)
-	w.publishedEvent(nil, nil)
+	w.publishedAliases([]string{}, []string{})
 }
 
 // A page with an alias in both of a target's forms is one candidate, no
@@ -405,7 +450,7 @@ func TestAnAliasDroppedEndsItsTie(t *testing.T) {
 	w.resolves("src", 0, "Y", true)
 	w.run(w.write("X", nil))
 	w.resolves("src", 0, "Y", false)
-	w.publishedEvent(nil, nil)
+	w.publishedAliases([]string{}, []string{})
 }
 
 // A target written with ".md" reaches the pages named so, by its second

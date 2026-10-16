@@ -161,7 +161,8 @@ func TestReindexTellsANotebookWhoseNodesAreNotQueued(t *testing.T) {
 }
 
 // expectLinksEvent fails t unless the next notification is a links event
-// of the notebook nb that lists no page.
+// of the notebook nb that lists no page: every page changed, its aliases
+// false, which the null lists cover (M8 Codex review R3).
 func expectLinksEvent(t *testing.T, conn *pgx.Conn, nb uuid.UUID) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -171,7 +172,7 @@ func expectLinksEvent(t *testing.T, conn *pgx.Conn, nb uuid.UUID) {
 		t.Fatalf("no links event of %s: %v", nb, err)
 	}
 	if !strings.Contains(n.Payload, `"type":"links"`) || !strings.Contains(n.Payload, nb.String()) ||
-		!strings.Contains(n.Payload, `"data":{"pages":null,"targets":null}`) {
+		!strings.Contains(n.Payload, `"data":{"pages":null,"targets":null,"aliases":false}`) {
 		t.Errorf("the event %s, want a links event of %s listing no page", n.Payload, nb)
 	}
 }

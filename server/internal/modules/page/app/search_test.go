@@ -27,6 +27,9 @@ type fakeReads struct {
 	counts   fakeCounts
 	building bool
 	scopes   []app.SearchScope
+	// nfc is SearchNFC's text of each it is given; the text itself for
+	// one it does not have.
+	nfc map[string]string
 }
 
 type fakeCounts struct{ titles, titlePages, bodies int }
@@ -41,6 +44,18 @@ func below(r app.SearchTitleRow, c domain.SearchCursor) bool {
 	return r.SortAt.Before(c.At) || r.SortAt.Equal(c.At) && r.Node.ID.Compare(c.ID) < 0
 }
 
+func (f *fakeReads) SearchNFC(ctx context.Context, texts []string) ([]string, error) {
+	f.record(ctx, fmt.Sprintf("SearchNFC %d", len(texts)))
+	out := make([]string, len(texts))
+	for i, t := range texts {
+		out[i] = t
+		if nfc, ok := f.nfc[t]; ok {
+			out[i] = nfc
+		}
+	}
+	return out, nil
+}
+
 func (f *fakeReads) SearchTitles(ctx context.Context, s app.SearchScope, limit int) ([]app.SearchTitleRow, error) {
 	f.record(ctx, fmt.Sprintf("SearchTitles %d", limit))
 	f.scopes = append(f.scopes, s)
@@ -53,7 +68,7 @@ func (f *fakeReads) SearchTitles(ctx context.Context, s app.SearchScope, limit i
 	return out, nil
 }
 
-func (f *fakeReads) SearchHitCount(ctx context.Context, _ domain.SearchQuery) (int, error) {
+func (f *fakeReads) SearchHitCount(ctx context.Context, _ app.SearchScope) (int, error) {
 	f.record(ctx, "SearchHitCount")
 	return len(f.bodies), nil
 }
@@ -482,5 +497,47 @@ func TestTheSearchAssemblesItsHits(t *testing.T) {
 	if p.Excerpt == nil || p.Excerpt.Text != "学Go语言" || !slices.Equal(p.Excerpt.Hits, []domain.TextRange{{Start: 1, End: 3}}) ||
 		p.Attachment != nil || len(p.TitleHits) != 0 {
 		t.Errorf("the page's hit = %+v, excerpt %+v", p, p.Excerpt)
+	}
+}
+
+// A query of a term Go's NFC changes (M8 Codex review R2; fix check 1,
+// C1-1) reads PostgreSQL's NFC of it first in the snapshot, once: the
+// tiers match it in contents by that NFC, and a hit's excerpt marks it; in
+// names by Go's. A query of no such term, typed in NFC, reads none; one of
+// a decomposed letter reads it.
+func TestTheSearchReadsTheNFCOfATermGoWritesOtherwiseFirst(t *testing.T) {
+	acute := string(rune(0x0301))
+	raw31 := "a" + strings.Repeat(acute, 31)
+	pg31 := string(rune(0x00E1)) + strings.Repeat(acute, 30)
+	s := newSearchFixture()
+	s.reads.nfc = map[string]string{raw31: pg31}
+	row := s.row("Notes", 2, domain.KindPage)
+	row.At, row.Excerpt, row.Chars = 3, "x "+pg31, 33
+	s.reads.titles = []app.SearchTitleRow{row}
+	got, err := s.search(app.SearchRequest{Q: ptr("zz " + raw31)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot := slices.Index(s.rec.calls, "WithinSnapshot")
+	if snapshot < 0 || snapshot+1 >= len(s.rec.calls) || s.rec.calls[snapshot+1] != "SearchNFC 1 in tx" ||
+		slices.Index(s.rec.calls[snapshot+2:], "SearchNFC 1 in tx") >= 0 {
+		t.Errorf("calls %q: want SearchNFC of the one term first in the snapshot, once", s.rec.calls)
+	}
+	for _, sc := range s.reads.scopes {
+		in, names := sc.Query.ContentPatterns(), sc.Query.Patterns()
+		if len(in) != 2 || in[0] != names[0] || in[1] == names[1] || strings.Count(in[1], "0301") != 30 || strings.Contains(in[1], "034F") {
+			t.Errorf("the scope's patterns of contents %q, of names %q: want the term's in contents of its NFC there", in, names)
+		}
+	}
+	if len(got.Hits) != 1 || got.Hits[0].Excerpt == nil || !slices.Equal(got.Hits[0].Excerpt.Hits, []domain.TextRange{{Start: 2, End: 33}}) {
+		t.Errorf("Execute() = %+v: want the excerpt's hit of the term", got)
+	}
+	for q, want := range map[string]int{string(rune(0x00E1)) + strings.Repeat(acute, 29): 0, "data": 0, "cafe" + acute: 1} {
+		s = newSearchFixture()
+		_, err := s.search(app.SearchRequest{Q: ptr(q)})
+		if n := len(slices.DeleteFunc(slices.Clone(s.rec.calls), func(c string) bool { return !strings.HasPrefix(c, "SearchNFC") })); err != nil ||
+			n != want {
+			t.Errorf("%U: %v after %q, want %d SearchNFC", []rune(q), err, s.rec.calls, want)
+		}
 	}
 }
