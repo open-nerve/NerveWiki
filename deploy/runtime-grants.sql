@@ -3,10 +3,10 @@
 -- it. Run it as the owner of the tables after every `nervewiki migrate up`: it names each table and sequence, and
 -- a new migration may add one. Running it again changes nothing.
 --
--- Tables get reads and writes (DML) by table: no TRUNCATE, REFERENCES, TRIGGER or DDL. Functions and types get
--- nothing here: PUBLIC may run every function and use every type by default, and River's river_job_state_in_bitmask
--- and river_job_state rely on that. A migration that adds a view grants SELECT on it here; one that takes EXECUTE
--- on a function from PUBLIC grants it here.
+-- Tables get reads and writes (DML) by table: no TRUNCATE, REFERENCES, TRIGGER or DDL. Sequences get USAGE: River's ids
+-- and the search queue's versions. Functions and types get nothing here: PUBLIC may run every function and use every
+-- type by default, and River's river_job_state_in_bitmask and river_job_state rely on that. A migration that adds a
+-- view grants SELECT on it here; one that takes EXECUTE on a function from PUBLIC grants it here.
 --
 -- server/internal/bootstrap/runtime_role_test.go runs nervewiki on a role with exactly these grants (ready, the
 -- API, the administrator's commands, River's jobs, River's reindex), and fails when a table, view, sequence or
@@ -22,9 +22,10 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON users, auth_sessions, api_tokens, worksp
 -- The search's queue takes each queueing's version from its sequence (M8/P5 design 3.2).
 GRANT USAGE ON SEQUENCE page_search_queue_version_seq TO nervewiki_runtime;
 
--- The tables an import writes thousands of rows to: it runs ANALYZE on them as it goes (M7/P6 design 3.6), which
--- takes MAINTAIN (PostgreSQL 17 and later) or ownership. Each module analyzes its own. The search's job analyzes
--- page_search as it builds it (M8/P5 design 3.4).
+-- The tables an import, a background restore and a background revert write thousands of rows to: each runs ANALYZE
+-- on them as it goes, every 10,000 nodes and at its end (M7/P6 design 3.6; M8/P4 design 2, the batches the jobs share
+-- with the import), which takes MAINTAIN (PostgreSQL 17 and later) or ownership. Each module analyzes its own. The
+-- search's job analyzes page_search as it builds it (M8/P5 design 3.4).
 GRANT MAINTAIN ON nodes, page_contents, page_revisions, changesets, changeset_items, indexed_pages, page_links, page_tags,
     page_properties, page_aliases, page_search, asset_blobs TO nervewiki_runtime;
 
