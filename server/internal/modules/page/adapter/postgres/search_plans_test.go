@@ -527,7 +527,7 @@ func TestTheSearchReadsUseTheirIndexes(t *testing.T) {
 		sc := scopeOf(t, q, notebooks...).Query
 		return statementOf(t, func(g *gen.Queries) error {
 			_, err := g.SearchTitles(ctx, gen.SearchTitlesParams{Keys: sc.TitleKeys(), Notebooks: notebooks, BelowAt: now().Add(time.Hour),
-				BelowID: uuid.Max(), Terms: sc.Patterns(), MaxRows: domain.DefaultSearchLimit + 1})
+				BelowID: uuid.Max(), Terms: sc.Patterns(), MaxRows: domain.DefaultSearchLimit + 1, InContents: sc.ContentPatterns()})
 			return err
 		})
 	}
@@ -537,7 +537,8 @@ func TestTheSearchReadsUseTheirIndexes(t *testing.T) {
 		return statementOf(t, func(g *gen.Queries) error {
 			_, err := g.SearchBodies(ctx, gen.SearchBodiesParams{BodyKeys: sc.BodyKeys(), TitledKeys: sc.TitledKeys(), Hits: n,
 				Notebooks: notebooks, BelowAt: now().Add(time.Hour), BelowID: uuid.Max(), Terms: sc.Patterns(), Titled: sc.TitledPatterns(),
-				Walk: domain.MaxSearchWalk, Bodied: sc.BodiedPatterns(), MaxRows: domain.DefaultSearchLimit + 1})
+				Walk: domain.MaxSearchWalk, Bodied: sc.BodiedPatterns(), BodiedInContents: sc.BodiedContentPatterns(),
+				InContents: sc.ContentPatterns(), MaxRows: domain.DefaultSearchLimit + 1})
 			return err
 		})
 	}

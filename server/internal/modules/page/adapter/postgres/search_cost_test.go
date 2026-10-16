@@ -19,33 +19,6 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
-// The use case's ports a search reads besides the store's, as a member of
-// one workspace who sees eng and ops.
-type (
-	searchWorkspace struct{ id uuid.UUID }
-	searchVisible   []uuid.UUID
-	searchAllowed   struct{}
-	noAttachments   struct{}
-)
-
-func (w searchWorkspace) FindBySlug(context.Context, string) (uuid.UUID, bool, error) {
-	return w.id, true, nil
-}
-
-func (searchWorkspace) ShareByID(context.Context, uuid.UUID) (bool, error) { return true, nil }
-
-func (v searchVisible) VisibleIn(context.Context, uuid.UUID, uuid.UUID, shared.WorkspaceRole) ([]uuid.UUID, error) {
-	return v, nil
-}
-
-func (searchAllowed) Authorize(context.Context, shared.Actor, shared.Action, shared.Target) (shared.Grant, error) {
-	return shared.Grant{WorkspaceRole: shared.WorkspaceMember}, nil
-}
-
-func (noAttachments) Of(context.Context, []uuid.UUID) (map[uuid.UUID]app.AttachmentInfo, error) {
-	return map[uuid.UUID]app.AttachmentInfo{}, nil
-}
-
 // searchOfSomeSize is eng of 5,000 synthetic pages of about 4 KB, their
 // rows built by the job, and 500 of them written again since, newest,
 // queued exact: a backlog the job has yet to build; and ops of 5,000 pages

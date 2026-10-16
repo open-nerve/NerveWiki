@@ -376,6 +376,14 @@ type SearchQuery struct {
 // and, in a query no term of which has a key of the body, one of single
 // CJK characters alone ("中·国"), whose keys the names alone hold (M8/P5
 // design 3.3; M8/P5A review A-M2).
+//
+// Text is Go's NFC, x/text's, as a name is (shared.Title) and as the keys
+// are. That is the Stream-Safe Text Format: a CGJ (U+034F) after 30
+// non-starters in a row, which PostgreSQL's normalize, a content's NFC as
+// the search reads it, does not insert, and the run's marks are ordered
+// on each side of it alone. A term whose NFC so differs from what it was
+// written is matched in contents by PostgreSQL's NFC of it, which the use
+// case reads (Written, InContents); in names by Text (M8 Codex review R2).
 type SearchTerm struct {
 	Text       string
 	TitlesOnly bool
@@ -385,7 +393,18 @@ type SearchTerm struct {
 	// there in the text.
 	left, right bool
 	re          *regexp.Regexp
+	// written is the term as the query wrote it when Text holds a CGJ it
+	// did not, "" otherwise; content is the text it is matched with in
+	// contents, Text until InContents gives PostgreSQL's NFC of written,
+	// and contentRE its pattern for Go.
+	written   string
+	content   string
+	contentRE *regexp.Regexp
 }
+
+// cgj is U+034F COMBINING GRAPHEME JOINER, which Go's NFC inserts after 30
+// non-starters in a row.
+const cgj = "\u034f"
 
 // ParseSearchQuery parses a search's q (M8/P5 design 3.3): 422 on q when
 // it is missing or blank (required), not UTF-8 or holding NUL
@@ -417,16 +436,27 @@ func ParseSearchQuery(q *string) (SearchQuery, error) {
 	for _, f := range strings.FieldsFunc(s, unicode.IsSpace) {
 		text := norm.NFC.String(f)
 		folded := searchFold(text)
-		if seen[folded] {
+		// A term whose NFC holds a CGJ it did not is one of its own: matched
+		// in contents by PostgreSQL's NFC of it, which another term of the
+		// same folded NFC, written with the CGJ, is not.
+		streamSafe := strings.Count(text, cgj) > strings.Count(f, cgj)
+		seenAs := folded
+		if streamSafe {
+			seenAs += "\x00" + f
+		}
+		if seen[seenAs] {
 			continue
 		}
-		seen[folded] = true
+		seen[seenAs] = true
 		if len(out.Terms) == MaxSearchTerms {
 			return invalid(shared.FieldTooLong, fmt.Sprintf("must hold at most %d terms", MaxSearchTerms))
 		}
 		t, ok := parseTerm(text, folded)
 		if !ok {
 			return invalid(shared.FieldTooLong, fmt.Sprintf("must hold at most %d ASCII letters and digits in a row", MaxSearchWordRunes))
+		}
+		if streamSafe {
+			t.written = f
 		}
 		keyed = keyed || len(t.keys) > 0 || len(t.unigrams) > 0
 		out.Terms = append(out.Terms, t)
@@ -500,8 +530,47 @@ func parseTerm(text, folded string) (SearchTerm, bool) {
 		t.left = first.class == classWord && first.n <= 2
 		t.right = last.class == classWord && last.n <= 2
 	}
-	t.re = regexp.MustCompile(t.pattern(syntaxRE2))
+	t.re = regexp.MustCompile(t.pattern(syntaxRE2, text))
+	t.content, t.contentRE = text, t.re
 	return t, true
+}
+
+// Written are the terms, as the query wrote them, whose NFC by Go holds a
+// CGJ they did not (SearchTerm), in their order: none for most queries.
+// The use case reads PostgreSQL's NFC of them, in one statement, for
+// InContents.
+func (q SearchQuery) Written() []string {
+	var out []string
+	for _, t := range q.Terms {
+		if t.written != "" {
+			out = append(out, t.written)
+		}
+	}
+	return out
+}
+
+// InContents is q whose terms of Written are matched in contents by nfc,
+// PostgreSQL's NFC of each, in Written's order: their patterns of contents
+// and their hits in excerpts. Their names' patterns stay Text's.
+func (q SearchQuery) InContents(nfc []string) (SearchQuery, error) {
+	out := SearchQuery{Terms: slices.Clone(q.Terms)}
+	k := 0
+	for i, t := range out.Terms {
+		if t.written == "" {
+			continue
+		}
+		if k == len(nfc) {
+			break
+		}
+		t.content = nfc[k]
+		t.contentRE = regexp.MustCompile(t.pattern(syntaxRE2, t.content))
+		out.Terms[i] = t
+		k++
+	}
+	if k != len(nfc) || k != len(q.Written()) {
+		return SearchQuery{}, fmt.Errorf("search: %d texts in NFC for %d terms written", len(nfc), len(q.Written()))
+	}
+	return out, nil
 }
 
 // tsqueryOperand is the lexeme x as a tsquery's operand: quoted, though it
@@ -550,26 +619,36 @@ func (q SearchQuery) TitledKeys() *string {
 	return orNil(andOf(ops))
 }
 
-// Patterns are the terms' patterns, PostgreSQL's (see SearchTerm.Pattern);
-// TitledPatterns those of the terms found in names alone, BodiedPatterns
-// the others'.
+// Patterns are the terms' patterns of names, PostgreSQL's (see
+// SearchTerm.Pattern); TitledPatterns those of the terms found in names
+// alone, BodiedPatterns the others'. ContentPatterns are the terms'
+// patterns of contents (SearchTerm.ContentPattern), BodiedContentPatterns
+// those of BodiedPatterns' terms, in their order.
 func (q SearchQuery) Patterns() []string {
-	return q.patterns(func(SearchTerm) bool { return true })
+	return q.patterns(func(SearchTerm) bool { return true }, SearchTerm.Pattern)
 }
 
 func (q SearchQuery) TitledPatterns() []string {
-	return q.patterns(func(t SearchTerm) bool { return t.TitlesOnly })
+	return q.patterns(func(t SearchTerm) bool { return t.TitlesOnly }, SearchTerm.Pattern)
 }
 
 func (q SearchQuery) BodiedPatterns() []string {
-	return q.patterns(func(t SearchTerm) bool { return !t.TitlesOnly })
+	return q.patterns(func(t SearchTerm) bool { return !t.TitlesOnly }, SearchTerm.Pattern)
 }
 
-func (q SearchQuery) patterns(keep func(SearchTerm) bool) []string {
+func (q SearchQuery) ContentPatterns() []string {
+	return q.patterns(func(SearchTerm) bool { return true }, SearchTerm.ContentPattern)
+}
+
+func (q SearchQuery) BodiedContentPatterns() []string {
+	return q.patterns(func(t SearchTerm) bool { return !t.TitlesOnly }, SearchTerm.ContentPattern)
+}
+
+func (q SearchQuery) patterns(keep func(SearchTerm) bool, pattern func(SearchTerm) string) []string {
 	out := []string{}
 	for _, t := range q.Terms {
 		if keep(t) {
-			out = append(out, t.Pattern())
+			out = append(out, pattern(t))
 		}
 	}
 	return out
@@ -601,9 +680,16 @@ func orNil(s string) *string {
 // rest escaped, in one group; a boundary before it when it starts with a
 // word run that must start there, after it when it ends with one that must
 // end there. A boundary is the text's start or end, or a character of no
-// word. Go's patterns, which give the hits, are built alike.
+// word. Go's patterns, which give the hits, are built alike. It matches
+// names; ContentPattern contents.
 func (t SearchTerm) Pattern() string {
-	return t.pattern(syntaxARE)
+	return t.pattern(syntaxARE, t.Text)
+}
+
+// ContentPattern is the term's pattern of contents: Pattern's of the text
+// it is matched with in contents, Text's unless InContents gave another.
+func (t SearchTerm) ContentPattern() string {
+	return t.pattern(syntaxARE, t.content)
 }
 
 // patternSyntax is a regular expressions' syntax.
@@ -618,7 +704,8 @@ const (
 	syntaxRE2
 )
 
-func (t SearchTerm) pattern(syntax patternSyntax) string {
+// pattern is the term's pattern for syntax of text, Text or content.
+func (t SearchTerm) pattern(syntax patternSyntax, text string) string {
 	var b strings.Builder
 	if t.left {
 		if syntax == syntaxARE {
@@ -628,7 +715,7 @@ func (t SearchTerm) pattern(syntax patternSyntax) string {
 		}
 	}
 	b.WriteByte('(')
-	for _, r := range t.Text {
+	for _, r := range text {
 		orbit := foldOrbit(r)
 		if len(orbit) == 1 {
 			writeEscaped(&b, syntax, r)

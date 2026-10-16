@@ -241,29 +241,39 @@ func (s *Store) StaleSearchNodes(ctx context.Context, notebookID, after uuid.UUI
 }
 
 // searchArgs are a scope's arguments of the search's statements: the
-// notebooks, the patterns and the keys.
+// notebooks, the patterns of names and of contents, and the keys.
 type searchArgs struct {
-	notebooks             []uuid.UUID
-	terms, titled, bodied []string
-	keys                  string
-	bodyKeys, titledKeys  *string
-	hits                  int64
-	belowAt               time.Time
-	belowID               uuid.UUID
+	notebooks                    []uuid.UUID
+	terms, titled, bodied        []string
+	inContents, bodiedInContents []string
+	keys                         string
+	bodyKeys, titledKeys         *string
+	hits                         int64
+	belowAt                      time.Time
+	belowID                      uuid.UUID
 }
 
 func argsOf(sc app.SearchScope) searchArgs {
 	q := sc.Query
 	return searchArgs{notebooks: sc.Notebooks, terms: q.Patterns(), titled: q.TitledPatterns(), bodied: q.BodiedPatterns(),
-		keys: q.TitleKeys(), bodyKeys: q.BodyKeys(), titledKeys: q.TitledKeys(), hits: int64(sc.Hits), belowAt: sc.Below.At,
-		belowID: sc.Below.ID}
+		inContents: q.ContentPatterns(), bodiedInContents: q.BodiedContentPatterns(), keys: q.TitleKeys(), bodyKeys: q.BodyKeys(),
+		titledKeys: q.TitledKeys(), hits: int64(sc.Hits), belowAt: sc.Below.At, belowID: sc.Below.ID}
+}
+
+// SearchNFC implements app.SearchReads.
+func (s *Store) SearchNFC(ctx context.Context, texts []string) ([]string, error) {
+	nfc, err := s.queries(ctx).SearchNFC(ctx, texts)
+	if err != nil {
+		return nil, stateOnly("put the search's terms in NFC", err)
+	}
+	return nfc, nil
 }
 
 // SearchTitles implements app.SearchReads.
 func (s *Store) SearchTitles(ctx context.Context, sc app.SearchScope, limit int) ([]app.SearchTitleRow, error) {
 	a := argsOf(sc)
 	rows, err := s.planned(ctx).SearchTitles(ctx, gen.SearchTitlesParams{Keys: a.keys, Notebooks: a.notebooks, BelowAt: a.belowAt,
-		BelowID: a.belowID, Terms: a.terms, MaxRows: int32(limit)})
+		BelowID: a.belowID, Terms: a.terms, MaxRows: int32(limit), InContents: a.inContents})
 	if err != nil {
 		return nil, stateOnly("search the titles", err)
 	}
@@ -291,7 +301,7 @@ func (s *Store) SearchBodies(ctx context.Context, sc app.SearchScope, walk, limi
 	a := argsOf(sc)
 	rows, err := s.planned(ctx).SearchBodies(ctx, gen.SearchBodiesParams{BodyKeys: a.bodyKeys, TitledKeys: a.titledKeys,
 		Hits: a.hits, Notebooks: a.notebooks, BelowAt: a.belowAt, BelowID: a.belowID, Terms: a.terms, Titled: a.titled, Walk: int32(walk),
-		Bodied: a.bodied, MaxRows: int32(limit)})
+		Bodied: a.bodied, BodiedInContents: a.bodiedInContents, InContents: a.inContents, MaxRows: int32(limit)})
 	if err != nil {
 		return nil, stateOnly("search the contents", err)
 	}

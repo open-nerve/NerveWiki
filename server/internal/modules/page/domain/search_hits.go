@@ -3,6 +3,7 @@ package domain
 import (
 	"encoding/json"
 	"math"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -41,13 +42,14 @@ const (
 	ExcerptChars  = 160
 )
 
-// hits are the term's hits in text, the byte ranges of its group: each
-// search from the last hit's end on, which leaves the character after a
-// hit to the next one's boundary. cutStart and cutEnd tell that the
-// content goes on before and after text, which an excerpt's cut leaves
-// out: a hit at text's start, or end, of a term that needs a boundary
-// there has none known, and goes (M8/P5A review A-N2).
-func (t SearchTerm) hits(text string, cutStart, cutEnd bool) [][2]int {
+// hits are the term's hits in text by re, its pattern of names or of
+// contents, the byte ranges of its group: each search from the last hit's
+// end on, which leaves the character after a hit to the next one's
+// boundary. cutStart and cutEnd tell that the content goes on before and
+// after text, which an excerpt's cut leaves out: a hit at text's start, or
+// end, of a term that needs a boundary there has none known, and goes
+// (M8/P5A review A-N2).
+func (t SearchTerm) hits(re *regexp.Regexp, text string, cutStart, cutEnd bool) [][2]int {
 	padded := "\x00" + text + "\x00"
 	var out [][2]int
 	for pos := 1; pos < len(padded)-1; {
@@ -56,7 +58,7 @@ func (t SearchTerm) hits(text string, cutStart, cutEnd bool) [][2]int {
 			_, size := utf8.DecodeLastRuneInString(padded[:pos])
 			from -= size
 		}
-		loc := t.re.FindStringSubmatchIndex(padded[from:])
+		loc := re.FindStringSubmatchIndex(padded[from:])
 		if loc == nil {
 			break
 		}
@@ -70,12 +72,17 @@ func (t SearchTerm) hits(text string, cutStart, cutEnd bool) [][2]int {
 	return out
 }
 
-// queryHits are the query's terms' hits in text, sorted, those that
-// overlap joined; cutStart and cutEnd as hits'.
-func (q SearchQuery) queryHits(text string, cutStart, cutEnd bool) [][2]int {
+// queryHits are the query's terms' hits in text, a name or, content set,
+// a content's, sorted, those that overlap joined; cutStart and cutEnd as
+// hits'.
+func (q SearchQuery) queryHits(text string, content, cutStart, cutEnd bool) [][2]int {
 	var hits [][2]int
 	for _, t := range q.Terms {
-		hits = append(hits, t.hits(text, cutStart, cutEnd)...)
+		re := t.re
+		if content {
+			re = t.contentRE
+		}
+		hits = append(hits, t.hits(re, text, cutStart, cutEnd)...)
 	}
 	slices.SortFunc(hits, func(a, b [2]int) int { return a[0] - b[0] })
 	var out [][2]int
@@ -89,7 +96,8 @@ func (q SearchQuery) queryHits(text string, cutStart, cutEnd bool) [][2]int {
 	return out
 }
 
-// TitleHits are the query's hits in a name.
+// TitleHits are the query's hits in a name, by the terms' patterns of
+// names.
 func (q SearchQuery) TitleHits(name string) []TextRange {
 	units := make(map[int]int, len(name)+1) // name's byte offsets to UTF-16 units
 	n := 0
@@ -98,7 +106,7 @@ func (q SearchQuery) TitleHits(name string) []TextRange {
 		n += utf16.RuneLen(r)
 	}
 	units[len(name)] = n
-	return rangesAt(q.queryHits(name, false, false), units)
+	return rangesAt(q.queryHits(name, false, false, false), units)
 }
 
 // rangesAt are hits, byte ranges, as the ranges of units, which maps their
@@ -117,7 +125,8 @@ func rangesAt(hits [][2]int, units map[int]int) []TextRange {
 // first hit is its character at (1 the first), from text, the SQL's cut:
 // ExcerptBefore characters before at and one more when the content has
 // them, then ExcerptChars and two more. The hits are found in all of
-// text, those that would need a boundary beyond it dropped, then the
+// text, by the terms' patterns of contents (SearchTerm.ContentPattern),
+// those that would need a boundary beyond it dropped, then the
 // characters around the excerpt go, and its white space collapses to one
 // space, none at its ends.
 func (q SearchQuery) Excerpt(text string, at, chars int) SearchExcerpt {
@@ -150,7 +159,7 @@ func (q SearchQuery) Excerpt(text string, at, chars int) SearchExcerpt {
 	units[len(text)] = n
 	cutStart, cutEnd := first-skip > 1, first-skip+k-1 < chars // the content goes on before text, after it
 	return SearchExcerpt{
-		Text: b.String(), Hits: rangesAt(q.queryHits(text, cutStart, cutEnd), units),
+		Text: b.String(), Hits: rangesAt(q.queryHits(text, true, cutStart, cutEnd), units),
 		CutStart: first > 1, CutEnd: first+ExcerptChars-1 < chars,
 	}
 }

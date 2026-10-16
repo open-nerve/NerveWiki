@@ -81,7 +81,8 @@ func NewSearch(d SearchDeps) *Search {
 // notebook.not_found; then the limit, 422 outside 1–MaxSearchLimit. With
 // no notebook to see it answers an empty page, counted exact. The tiers,
 // the first page's count, building and the hits' paths are read in one
-// read-only snapshot, so that a rename cannot list a node twice in a page;
+// read-only snapshot, so that a rename cannot list a node twice in a page,
+// after the terms' texts in contents when some term's differ (inContents);
 // the hits' ranges and the attachments' infos after it.
 func (s *Search) Execute(ctx context.Context, slug string, r SearchRequest) (SearchPage, error) {
 	below, first := domain.SearchFrom(domain.SearchTierTitle), r.Cursor == nil
@@ -137,6 +138,9 @@ func (s *Search) Execute(ctx context.Context, slug string, r SearchRequest) (Sea
 	var found searchFound
 	err = s.d.Snapshots.WithinSnapshot(ctx, func(ctx context.Context) error {
 		var err error
+		if q, err = s.inContents(ctx, q); err != nil {
+			return err
+		}
 		found, err = s.read(ctx, SearchScope{Notebooks: notebooks, Query: q, Below: below}, limit, first)
 		return err
 	})
@@ -144,6 +148,22 @@ func (s *Search) Execute(ctx context.Context, slug string, r SearchRequest) (Sea
 		return SearchPage{}, err
 	}
 	return s.page(ctx, q, found)
+}
+
+// inContents is q with the texts its terms are matched with in contents:
+// PostgreSQL's NFC of those whose NFC by Go holds a CGJ they did not
+// (domain.SearchQuery.Written), read in one statement; q itself, without
+// one, for the others, most queries (M8 Codex review R2).
+func (s *Search) inContents(ctx context.Context, q domain.SearchQuery) (domain.SearchQuery, error) {
+	written := q.Written()
+	if len(written) == 0 {
+		return q, nil
+	}
+	nfc, err := s.d.Reads.SearchNFC(ctx, written)
+	if err != nil {
+		return domain.SearchQuery{}, err
+	}
+	return q.InContents(nfc)
 }
 
 // searchFound is what a search read in its snapshot: the rows of its page,

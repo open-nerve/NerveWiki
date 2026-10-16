@@ -176,6 +176,33 @@ func (f fixture) bodiesOf(t *testing.T, q string, notebooks ...uuid.UUID) []stri
 	return out
 }
 
+// The use case's ports a search reads besides the store's, as a member of
+// one workspace who sees the notebooks listed.
+type (
+	searchWorkspace struct{ id uuid.UUID }
+	searchVisible   []uuid.UUID
+	searchAllowed   struct{}
+	noAttachments   struct{}
+)
+
+func (w searchWorkspace) FindBySlug(context.Context, string) (uuid.UUID, bool, error) {
+	return w.id, true, nil
+}
+
+func (searchWorkspace) ShareByID(context.Context, uuid.UUID) (bool, error) { return true, nil }
+
+func (v searchVisible) VisibleIn(context.Context, uuid.UUID, uuid.UUID, shared.WorkspaceRole) ([]uuid.UUID, error) {
+	return v, nil
+}
+
+func (searchAllowed) Authorize(context.Context, shared.Actor, shared.Action, shared.Target) (shared.Grant, error) {
+	return shared.Grant{WorkspaceRole: shared.WorkspaceMember}, nil
+}
+
+func (noAttachments) Of(context.Context, []uuid.UUID) (map[uuid.UUID]app.AttachmentInfo, error) {
+	return map[uuid.UUID]app.AttachmentInfo{}, nil
+}
+
 // A node queued takes a new version from the sequence, queued again too,
 // so that the job's take of an older read misses it. A statement takes
 // its ids in ascending order, whatever order they come in (v0.1 design
@@ -1104,6 +1131,116 @@ func TestTheSearchReadsContentNotInNFC(t *testing.T) {
 	}
 }
 
+// A run of more than 30 non-starters (M8 Codex review R2): Go's NFC, a
+// query's and a name's, parts it with a CGJ after its 30th, the
+// Stream-Safe Text Format, and orders its marks on each side of it alone;
+// PostgreSQL's, a content's as the search reads it, does neither. A term
+// so written is matched in names as Go has it and in contents as
+// PostgreSQL has it, through the use case, which reads PostgreSQL's NFC of
+// it: it finds its text in a name or a content, while its page waits in
+// the queue and once its row is built, a run of marks of two classes
+// too, and its excerpts mark it. A CGJ written in a text or a query is a
+// character as any other: the query that wrote one finds the texts that
+// hold it, the query that wrote none those that hold none. 30 marks, which
+// Go leaves as they are, find what holds them, as before.
+func TestTheSearchFindsALongRunOfMarksAsWritten(t *testing.T) {
+	f := newFixture(t)
+	acute, below, joiner := string(rune(0x0301)), string(rune(0x0323)), string(rune(0x034F))
+	raw31 := "a" + strings.Repeat(acute, 31)
+	raw30 := "a" + strings.Repeat(acute, 30)
+	joined := norm.NFC.String(raw31)
+	mixed := raw30 + below
+	pg31 := string(rune(0x00E1)) + strings.Repeat(acute, 30) // PostgreSQL's NFC of raw31
+	switch {
+	case joined != string(rune(0x00E1))+strings.Repeat(acute, 29)+joiner+acute:
+		t.Fatalf("Go's NFC of a and 31 acutes = %U, want á, 29 acutes, a CGJ and an acute", []rune(joined))
+	case norm.NFC.String(raw30) != string(rune(0x00E1))+strings.Repeat(acute, 29):
+		t.Fatalf("Go's NFC of a and 30 acutes = %U, want á and 29 acutes", []rune(norm.NFC.String(raw30)))
+	case norm.NFC.String(mixed) != string(rune(0x00E1))+strings.Repeat(acute, 29)+joiner+below:
+		t.Fatalf("Go's NFC of a, 30 acutes and a dot below = %U, want á, 29 acutes, a CGJ and the dot", []rune(norm.NFC.String(mixed)))
+	}
+	contents := []struct{ name, content string }{
+		{"Thirty-one", raw31},
+		{"Thirty", raw30},
+		{"Joined", joined},
+		{"Mixed", mixed},
+		{"Excerpted", "Before " + raw31 + " after"},
+		{raw31, "zeta"},
+		{raw31 + " notes", "Notes on " + raw31},
+	}
+	var ids []uuid.UUID
+	names := map[string]string{} // the names as written, as stored
+	for _, c := range contents {
+		n := f.page(t, f.eng, nil, c.name, 0)
+		f.write(t, n.ID, c.content, 2, now())
+		ids = append(ids, n.ID)
+		names[c.name] = n.Name
+	}
+	if names[raw31] != joined {
+		t.Fatalf("the name %U is stored as %U, want Go's NFC", []rune(raw31), []rune(names[raw31]))
+	}
+	search := app.NewSearch(app.SearchDeps{Snapshots: postgres.NewTxManager(f.pool, 5*time.Second), Workspaces: searchWorkspace{uuid.NewV7()},
+		Visible: searchVisible{f.eng}, Auth: searchAllowed{}, Reads: f.s, Trash: f.s, Attachments: noAttachments{}})
+	ctx := shared.WithActor(context.Background(), shared.Actor{UserID: f.alice, SessionID: uuid.NewV7()})
+	f.queueSearch(t, f.eng, false, ids...)
+	for _, stage := range []string{"queued", "built"} {
+		if stage == "built" {
+			f.drain(t)
+		}
+		for _, tt := range []struct {
+			what, q string
+			found   []string
+		}{
+			{"31 acutes", raw31, []string{"Thirty-one", "Excerpted", raw31, raw31 + " notes"}},
+			{"30 acutes", raw30, []string{"Thirty", "Thirty-one", "Joined", "Excerpted", raw31, raw31 + " notes"}},
+			{"31 acutes, a CGJ written", joined, []string{"Joined", raw31, raw31 + " notes"}},
+			{"30 acutes and a dot below", mixed, []string{"Mixed"}},
+			{"31 acutes in a name, a term in its content", raw31 + " zeta", []string{raw31}},
+		} {
+			page, err := search.Execute(ctx, "acme", app.SearchRequest{Q: &tt.q})
+			if err != nil {
+				t.Fatalf("%s: %s: %v", stage, tt.what, err)
+			}
+			got := []string{}
+			for _, h := range page.Hits {
+				got = append(got, h.Node.Name)
+			}
+			want := []string{}
+			for _, name := range tt.found {
+				want = append(want, names[name])
+			}
+			slices.Sort(got)
+			slices.Sort(want)
+			if !slices.Equal(got, want) {
+				t.Errorf("%s: %s finds %q, want %q", stage, tt.what, got, want)
+			}
+			if tt.q != raw31 {
+				continue
+			}
+			// The excerpts, of the body tier and of the title tier, and the
+			// name's hits.
+			for _, h := range page.Hits {
+				var text string
+				var hits []domain.TextRange
+				switch h.Node.Name {
+				case "Excerpted":
+					text, hits = "Before "+pg31+" after", []domain.TextRange{{Start: 7, End: 38}}
+				case names[raw31+" notes"]:
+					text, hits = "Notes on "+pg31, []domain.TextRange{{Start: 9, End: 40}}
+					if !slices.Equal(h.TitleHits, []domain.TextRange{{Start: 0, End: 32}}) {
+						t.Errorf("%s: the name's hits %v, want its first 32 units", stage, h.TitleHits)
+					}
+				default:
+					continue
+				}
+				if h.Excerpt == nil || h.Excerpt.Text != text || !slices.Equal(h.Excerpt.Hits, hits) {
+					t.Errorf("%s: %q's excerpt %+v, want %U with the hits %v", stage, h.Node.Name, h.Excerpt, []rune(text), hits)
+				}
+			}
+		}
+	}
+}
+
 // A term of single CJK characters, several of them (M8/P5 design 3.3;
 // M8/P5A review A-M2): beside a term with keys of the body, it is found in
 // a name or a content, which the body's keys find and the recheck checks;
@@ -1391,8 +1528,9 @@ func characterAt(s string, units int) int {
 
 // A search statement's error carries its SQLSTATE alone (M8/P5 design
 // 3.6): PostgreSQL's message and detail, and pgx's own errors, would bring
-// the patterns, the keys, or a row's name and lexemes, the user's text,
-// into the logs. Each read of a limit fails as its negative limit is
+// the patterns, the keys, the terms put in NFC, or a row's name and
+// lexemes, the user's text, into the logs. Each read of a limit fails as
+// its negative limit is
 // refused; each read in a transaction a statement failed in; the job's
 // write of a row its check refuses, the row in the error's detail; and a
 // read whose context ended keeps that end, for its caller to tell apart.
@@ -1421,6 +1559,10 @@ func TestSearchStatementErrorsCarryNoQuery(t *testing.T) {
 		}
 	}
 	reads := map[string]func(ctx context.Context, limit int) error{
+		"SearchNFC": func(ctx context.Context, _ int) error {
+			_, err := f.s.SearchNFC(ctx, []string{secret, "机密文件"})
+			return err
+		},
 		"SearchTitles": func(ctx context.Context, limit int) error {
 			_, err := f.s.SearchTitles(ctx, sc, limit)
 			return err
@@ -1449,7 +1591,7 @@ func TestSearchStatementErrorsCarryNoQuery(t *testing.T) {
 	tx := postgres.NewTxManager(f.pool, 5*time.Second)
 	rollBack := errors.New("roll back")
 	for name, read := range reads {
-		if name != "SearchBuilding" && name != "SearchHitCount" {
+		if name != "SearchBuilding" && name != "SearchHitCount" && name != "SearchNFC" {
 			check(name+" of a negative limit", tx.WithinSnapshot(ctx, func(ctx context.Context) error { return read(ctx, -1) }), "2201W")
 		}
 	}

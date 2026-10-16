@@ -704,6 +704,10 @@ type SearchBodyRow struct {
 // read-only snapshot ctx carries. Their errors carry their SQLSTATE alone:
 // the patterns and keys are the user's text.
 type SearchReads interface {
+	// SearchNFC is texts in NFC as the statements read a content in it,
+	// in their order: a query's terms written otherwise by Go's NFC
+	// (domain.SearchQuery.Written).
+	SearchNFC(ctx context.Context, texts []string) ([]string, error)
 	// SearchTitles reads the title tier below s.Below, at most limit nodes.
 	SearchTitles(ctx context.Context, s SearchScope, limit int) ([]SearchTitleRow, error)
 	// SearchHitCount counts the body tier's candidates by their lexemes:

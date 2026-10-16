@@ -675,6 +675,76 @@ func TestExcerpt(t *testing.T) {
 	}
 }
 
+// A term whose NFC by Go holds a CGJ it did not, a run of more than 30
+// non-starters (M8 Codex review R2), is Written, as written, each once:
+// one written with the CGJ is another term, whose NFC holds none it did
+// not. Until InContents gives its NFC in contents, PostgreSQL's, it is
+// matched there as in names; then its pattern and hits of contents are of
+// that NFC, and its keys and those of names stay Go's. A term of 30 marks,
+// which Go's NFC leaves as they are, is not Written.
+func TestATermInTheStreamSafeFormatIsMatchedInContentsAsWritten(t *testing.T) {
+	acute, joiner := string(rune(0x0301)), string(rune(0x034F))
+	raw31 := "a" + strings.Repeat(acute, 31)
+	joined := norm.NFC.String(raw31)
+	pg31 := string(rune(0x00E1)) + strings.Repeat(acute, 30)
+	if !strings.Contains(joined, joiner) {
+		t.Fatalf("Go's NFC of a and 31 acutes = %U, which holds no CGJ", []rune(joined))
+	}
+	for _, q := range []string{"a" + strings.Repeat(acute, 30), joined, "data " + joined} {
+		parsed, err := domain.ParseSearchQuery(&q)
+		if err != nil || len(parsed.Written()) != 0 || !slices.Equal(parsed.ContentPatterns(), parsed.Patterns()) {
+			t.Errorf("%U: Written %+q, %v; want none, its patterns of contents those of names", []rune(q), parsed.Written(), err)
+		}
+	}
+	q := "data " + raw31 + " " + joined + " " + raw31
+	parsed, err := domain.ParseSearchQuery(&q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(parsed.Terms) != 3 || !slices.Equal(parsed.Written(), []string{raw31}) {
+		t.Fatalf("%d terms, Written %+q; want 3, a and 31 acutes once", len(parsed.Terms), parsed.Written())
+	}
+	if !slices.Equal(parsed.ContentPatterns(), parsed.Patterns()) {
+		t.Error("before InContents, the patterns of contents are not those of names")
+	}
+	if _, err := parsed.InContents(nil); err == nil {
+		t.Error("InContents of no text for a term Written did not fail")
+	}
+	in, err := parsed.InContents([]string{pg31})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(in.Patterns(), parsed.Patterns()) || in.TitleKeys() != parsed.TitleKeys() || *in.BodyKeys() != *parsed.BodyKeys() {
+		t.Error("InContents changed the patterns of names or the keys")
+	}
+	// pg31's pattern: Go's NFC of it would insert the CGJ again. raw31's of
+	// names, the CGJ's escape taken out.
+	want := slices.Clone(parsed.Patterns())
+	want[1] = strings.Replace(want[1], string('\\')+"u034F", "", 1)
+	if want[1] == parsed.Patterns()[1] {
+		t.Fatalf("the pattern of names %q holds no CGJ", want[1])
+	}
+	if got := in.ContentPatterns(); !slices.Equal(got, want) || !slices.Equal(in.BodiedContentPatterns(), want) {
+		t.Errorf("the patterns of contents %q, want %q", got, want)
+	}
+	if !slices.Equal(parsed.ContentPatterns(), parsed.Patterns()) {
+		t.Error("InContents changed the query it was called on")
+	}
+	// Each finds its NFC: names Go's, contents PostgreSQL's.
+	if got := in.TitleHits(joined); !slices.Equal(got, []domain.TextRange{{Start: 0, End: 32}}) {
+		t.Errorf("the hits in the name %U: %v, want its 32 units", []rune(joined), got)
+	}
+	if got := in.Excerpt("x "+pg31, 3, 33); !slices.Equal(got.Hits, []domain.TextRange{{Start: 2, End: 33}}) {
+		t.Errorf("the hits in the content %U: %v, want its 31 units after 2", []rune("x "+pg31), got.Hits)
+	}
+	if got := in.Excerpt("x "+joined, 3, 34); !slices.Equal(got.Hits, []domain.TextRange{{Start: 2, End: 34}}) {
+		t.Errorf("the hits in the content %U: %v, want the CGJ written's, its 32 units after 2", []rune("x "+joined), got.Hits)
+	}
+	if got := parsed.Excerpt("x "+pg31, 3, 33); len(got.Hits) != 0 {
+		t.Errorf("before InContents, the hits in the content %U: %v, want none", []rune("x "+pg31), got.Hits)
+	}
+}
+
 // The count by tiers (M8/P5 design 3.5); of the hits seen, at least, when
 // too few passed of a walk that left candidates (M8/P5A review A-M5).
 func TestEstimateCount(t *testing.T) {

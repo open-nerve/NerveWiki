@@ -178,28 +178,31 @@ FROM (
 LEFT JOIN LATERAL (SELECT CASE WHEN r.raw IS NFC NORMALIZED THEN r.raw ELSE normalize(r.raw, NFC) END AS doc
                    FROM (SELECT c2.content || '' AS raw FROM page_contents c2
                          WHERE c2.node_id = w.id AND w.seq <= $9::integer OFFSET 0) r OFFSET 0) b ON true
-LEFT JOIN LATERAL (SELECT NOT EXISTS (SELECT 1 FROM unnest($10::text[]) p
-                                      WHERE NOT (w.name ~ p OR b.doc ~ p)) AS passed
+LEFT JOIN LATERAL (SELECT NOT EXISTS (SELECT 1 FROM generate_subscripts($10::text[], 1) i
+                                      WHERE NOT (w.name ~ ($10::text[])[i]
+                                                 OR b.doc ~ ($11::text[])[i])) AS passed
                    WHERE b.doc IS NOT NULL OFFSET 0) x ON true
 LEFT JOIN LATERAL (SELECT min(nullif(regexp_instr(b.doc, p, 1, 1, 0, 'c', 1), 0)) AS at
-                   FROM unnest($7::text[]) p WHERE x.passed) e ON true
+                   FROM unnest($12::text[]) p WHERE x.passed) e ON true
 WHERE x.passed OR w.seq = least(w.walked, $9::integer)
 ORDER BY w.sort_at DESC, w.id DESC
-LIMIT $11
+LIMIT $13
 `
 
 type SearchBodiesParams struct {
-	BodyKeys   *string
-	TitledKeys *string
-	Hits       int64
-	Notebooks  []uuid.UUID
-	BelowAt    time.Time
-	BelowID    uuid.UUID
-	Terms      []string
-	Titled     []string
-	Walk       int32
-	Bodied     []string
-	MaxRows    int32
+	BodyKeys         *string
+	TitledKeys       *string
+	Hits             int64
+	Notebooks        []uuid.UUID
+	BelowAt          time.Time
+	BelowID          uuid.UUID
+	Terms            []string
+	Titled           []string
+	Walk             int32
+	Bodied           []string
+	BodiedInContents []string
+	InContents       []string
+	MaxRows          int32
 }
 
 type SearchBodiesRow struct {
@@ -218,7 +221,9 @@ type SearchBodiesRow struct {
 // The body tier of a search (M8/P5 design 3.5): the live pages of the notebooks given whose lexemes hold the keys,
 // hits of them (SearchHitCount's, all of them), or that wait in the queue as a user wrote them, below the cursor,
 // newest first, whose name misses some term and holds each titles-only one; walk of them at most have their content
-// read, by key, in NFC as SearchTitles reads it, and checked as they are now, until max_rows pass. The candidates are
+// read, by key, in NFC as SearchTitles reads it, and checked as they are now, until max_rows pass: each term found in
+// contents too in the name by its pattern of names (bodied) or in the content by its pattern of contents
+// (bodied_in_contents), as SearchTitles matches each. The candidates are
 // joined to their nodes and contents with the notebooks' condition alone, behind OFFSET 0, as in SearchTitles; the
 // other checks, the patterns among them, run above it on the joined rows, never in a scan of nodes.
 // The sort carries no content; OFFSET 0 keeps each lateral that reads or checks it one subquery too, so the
@@ -236,6 +241,8 @@ func (q *Queries) SearchBodies(ctx context.Context, arg SearchBodiesParams) ([]S
 		arg.Titled,
 		arg.Walk,
 		arg.Bodied,
+		arg.BodiedInContents,
+		arg.InContents,
 		arg.MaxRows,
 	)
 	if err != nil {
@@ -373,6 +380,33 @@ func (q *Queries) SearchHitCount(ctx context.Context, arg SearchHitCountParams) 
 	return count, err
 }
 
+const searchNFC = `-- name: SearchNFC :many
+SELECT normalize(x.t, NFC)::text AS nfc FROM unnest($1::text[]) WITH ORDINALITY AS x(t, i) ORDER BY x.i
+`
+
+// Texts in NFC as the search's statements read a content in it, PostgreSQL's, in their order: the terms of a query
+// that Go's NFC wrote otherwise, a CGJ in a run of more than 30 non-starters, whose patterns of contents are built of
+// these (M8 Codex review R2).
+func (q *Queries) SearchNFC(ctx context.Context, texts []string) ([]string, error) {
+	rows, err := q.db.Query(ctx, searchNFC, texts)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var nfc string
+		if err := rows.Scan(&nfc); err != nil {
+			return nil, err
+		}
+		items = append(items, nfc)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const searchSources = `-- name: SearchSources :many
 SELECT i.id::uuid AS id, n.kind, n.name, (n.id IS NULL OR n.deleted_at IS NOT NULL)::boolean AS gone, c.revision, c.byte_size,
     s.revision AS built_revision, s.name AS built_name, s.tokenizer AS built_tokenizer, s.built_at
@@ -497,17 +531,18 @@ LEFT JOIN LATERAL (SELECT CASE WHEN r.raw IS NFC NORMALIZED THEN r.raw ELSE norm
                    FROM (SELECT c2.content || '' AS raw FROM page_contents c2
                          WHERE c2.node_id = w.id OFFSET 0) r OFFSET 0) b ON true
 LEFT JOIN LATERAL (SELECT min(nullif(regexp_instr(b.doc, p, 1, 1, 0, 'c', 1), 0)) AS at
-                   FROM unnest($5::text[]) p WHERE b.doc IS NOT NULL OFFSET 0) e ON true
+                   FROM unnest($7::text[]) p WHERE b.doc IS NOT NULL OFFSET 0) e ON true
 ORDER BY w.sort_at DESC, w.id DESC
 `
 
 type SearchTitlesParams struct {
-	Keys      string
-	Notebooks []uuid.UUID
-	BelowAt   time.Time
-	BelowID   uuid.UUID
-	Terms     []string
-	MaxRows   int32
+	Keys       string
+	Notebooks  []uuid.UUID
+	BelowAt    time.Time
+	BelowID    uuid.UUID
+	Terms      []string
+	MaxRows    int32
+	InContents []string
 }
 
 type SearchTitlesRow struct {
@@ -524,8 +559,11 @@ type SearchTitlesRow struct {
 // The title tier of a search (M8/P5 design 3.5): the live nodes, pages and attachments, of the notebooks given whose
 // title holds the keys, or that wait in the queue as a user wrote them, below the cursor, newest first, whose name
 // holds every term, at most max_rows; then a page's content read by key for the answered rows alone, in NFC as the
-// patterns are, and the first hit's place in it, its character from 1, with the excerpt around it and the content's
-// characters: 0 and none when the content holds no hit, or the node is an attachment. A content not in NFC is put in it
+// patterns of contents are (in_contents), and the first hit's place in it, its character from 1, with the excerpt
+// around it and the content's characters: 0 and none when the content holds no hit, or the node is an attachment. The
+// names are matched by the terms' patterns of names (terms), Go's NFC as the names are, the contents by those of
+// contents, PostgreSQL's NFC as the contents are read: the two differ for a run of more than 30 non-starters, which
+// Go's NFC parts with a CGJ (M8 Codex review R2). A content not in NFC is put in it
 // for the read alone, as the job's lexemes are of it (M8/P5A review A-M4); one in NFC, the common case, costs the check
 // alone, some 20 µs a content of 4 KB, five times the read's (measured on the guard's corpus). The candidates are
 // joined to their nodes and contents with the notebooks' condition alone, behind OFFSET 0, and the other checks run
@@ -541,6 +579,7 @@ func (q *Queries) SearchTitles(ctx context.Context, arg SearchTitlesParams) ([]S
 		arg.BelowID,
 		arg.Terms,
 		arg.MaxRows,
+		arg.InContents,
 	)
 	if err != nil {
 		return nil, err

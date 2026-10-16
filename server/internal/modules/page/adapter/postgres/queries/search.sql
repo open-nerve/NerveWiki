@@ -94,12 +94,21 @@ WHERE q.node_id = r.node_id AND q.version = r.version
 -- The statistics of the rows the job writes: @@'s selectivity reads them.
 ANALYZE page_search;
 
+-- name: SearchNFC :many
+-- Texts in NFC as the search's statements read a content in it, PostgreSQL's, in their order: the terms of a query
+-- that Go's NFC wrote otherwise, a CGJ in a run of more than 30 non-starters, whose patterns of contents are built of
+-- these (M8 Codex review R2).
+SELECT normalize(x.t, NFC)::text AS nfc FROM unnest(sqlc.arg(texts)::text[]) WITH ORDINALITY AS x(t, i) ORDER BY x.i;
+
 -- name: SearchTitles :many
 -- The title tier of a search (M8/P5 design 3.5): the live nodes, pages and attachments, of the notebooks given whose
 -- title holds the keys, or that wait in the queue as a user wrote them, below the cursor, newest first, whose name
 -- holds every term, at most max_rows; then a page's content read by key for the answered rows alone, in NFC as the
--- patterns are, and the first hit's place in it, its character from 1, with the excerpt around it and the content's
--- characters: 0 and none when the content holds no hit, or the node is an attachment. A content not in NFC is put in it
+-- patterns of contents are (in_contents), and the first hit's place in it, its character from 1, with the excerpt
+-- around it and the content's characters: 0 and none when the content holds no hit, or the node is an attachment. The
+-- names are matched by the terms' patterns of names (terms), Go's NFC as the names are, the contents by those of
+-- contents, PostgreSQL's NFC as the contents are read: the two differ for a run of more than 30 non-starters, which
+-- Go's NFC parts with a CGJ (M8 Codex review R2). A content not in NFC is put in it
 -- for the read alone, as the job's lexemes are of it (M8/P5A review A-M4); one in NFC, the common case, costs the check
 -- alone, some 20 µs a content of 4 KB, five times the read's (measured on the guard's corpus). The candidates are
 -- joined to their nodes and contents with the notebooks' condition alone, behind OFFSET 0, and the other checks run
@@ -132,7 +141,7 @@ LEFT JOIN LATERAL (SELECT CASE WHEN r.raw IS NFC NORMALIZED THEN r.raw ELSE norm
                    FROM (SELECT c2.content || '' AS raw FROM page_contents c2
                          WHERE c2.node_id = w.id OFFSET 0) r OFFSET 0) b ON true
 LEFT JOIN LATERAL (SELECT min(nullif(regexp_instr(b.doc, p, 1, 1, 0, 'c', 1), 0)) AS at
-                   FROM unnest(sqlc.arg(terms)::text[]) p WHERE b.doc IS NOT NULL OFFSET 0) e ON true
+                   FROM unnest(sqlc.arg(in_contents)::text[]) p WHERE b.doc IS NOT NULL OFFSET 0) e ON true
 ORDER BY w.sort_at DESC, w.id DESC;
 
 -- name: SearchHitCount :one
@@ -146,7 +155,9 @@ SELECT count(*) FROM page_search_hits(sqlc.narg(body_keys)::text::tsquery, sqlc.
 -- The body tier of a search (M8/P5 design 3.5): the live pages of the notebooks given whose lexemes hold the keys,
 -- hits of them (SearchHitCount's, all of them), or that wait in the queue as a user wrote them, below the cursor,
 -- newest first, whose name misses some term and holds each titles-only one; walk of them at most have their content
--- read, by key, in NFC as SearchTitles reads it, and checked as they are now, until max_rows pass. The candidates are
+-- read, by key, in NFC as SearchTitles reads it, and checked as they are now, until max_rows pass: each term found in
+-- contents too in the name by its pattern of names (bodied) or in the content by its pattern of contents
+-- (bodied_in_contents), as SearchTitles matches each. The candidates are
 -- joined to their nodes and contents with the notebooks' condition alone, behind OFFSET 0, as in SearchTitles; the
 -- other checks, the patterns among them, run above it on the joined rows, never in a scan of nodes.
 -- The sort carries no content; OFFSET 0 keeps each lateral that reads or checks it one subquery too, so the
@@ -182,11 +193,12 @@ FROM (
 LEFT JOIN LATERAL (SELECT CASE WHEN r.raw IS NFC NORMALIZED THEN r.raw ELSE normalize(r.raw, NFC) END AS doc
                    FROM (SELECT c2.content || '' AS raw FROM page_contents c2
                          WHERE c2.node_id = w.id AND w.seq <= sqlc.arg(walk)::integer OFFSET 0) r OFFSET 0) b ON true
-LEFT JOIN LATERAL (SELECT NOT EXISTS (SELECT 1 FROM unnest(sqlc.arg(bodied)::text[]) p
-                                      WHERE NOT (w.name ~ p OR b.doc ~ p)) AS passed
+LEFT JOIN LATERAL (SELECT NOT EXISTS (SELECT 1 FROM generate_subscripts(sqlc.arg(bodied)::text[], 1) i
+                                      WHERE NOT (w.name ~ (sqlc.arg(bodied)::text[])[i]
+                                                 OR b.doc ~ (sqlc.arg(bodied_in_contents)::text[])[i])) AS passed
                    WHERE b.doc IS NOT NULL OFFSET 0) x ON true
 LEFT JOIN LATERAL (SELECT min(nullif(regexp_instr(b.doc, p, 1, 1, 0, 'c', 1), 0)) AS at
-                   FROM unnest(sqlc.arg(terms)::text[]) p WHERE x.passed) e ON true
+                   FROM unnest(sqlc.arg(in_contents)::text[]) p WHERE x.passed) e ON true
 WHERE x.passed OR w.seq = least(w.walked, sqlc.arg(walk)::integer)
 ORDER BY w.sort_at DESC, w.id DESC
 LIMIT sqlc.arg(max_rows);
