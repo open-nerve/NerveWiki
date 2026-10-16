@@ -1,5 +1,12 @@
-import { cleanup } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
 import { afterEach, beforeEach, expect, vi } from "vitest";
+
+// findBy and waitFor give up after 3 seconds, not Testing Library's 1: a
+// file's first test waits for its imports and its first render, which a
+// loaded machine (a load of 30, another suite's race build beside it) held
+// past a second (M8 closeout B-N1). A test whose expectation holds waits no
+// longer for it.
+configure({ asyncUtilTimeout: 3000 });
 
 // jsdom lays nothing out, and has no rectangles of a range: CodeMirror
 // measures one to place its tooltips (the completion's, M6/P7).
