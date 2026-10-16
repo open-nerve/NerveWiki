@@ -248,9 +248,9 @@ paths:
           page.changeset_not_found,
           page.changeset_trimmed,
           page.revert_too_large,
+          transfer.busy,
           page.revert_conflict,
           page.locked,
-          transfer.busy,
           server_busy,
         ]
       requestBody:
