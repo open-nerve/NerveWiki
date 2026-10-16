@@ -22,21 +22,25 @@ import (
 // A search reads nothing of the notebooks it does not search (M8 Codex
 // review R1): ops, another notebook, holds 3,000 pages of one word, in
 // their names and contents, then of another, then of the first again
-// (Codex's A→B→A); eng, which the
-// search reads alone, 300 pages of the corpus and neither word. Each of
-// the search's reads in eng, for either word, fetches the same blocks of
-// each of the search's tables, their indexes and TOAST whichever word ops
-// holds: no posting list it reads holds a row of ops, and what a notebook
-// the reader does not see, or does not search, holds changes neither what
-// a search reads nor, so, how long it takes. Blocks, not time: the count
-// is exact where a time is noise, and the test runs in the suite. But for
-// the GIN indexes' entry trees, which every notebook's keys share: ops's
-// writes may split a page beside eng's keys and add a step to a descent,
-// one block (seen in the first phase, once in a few runs), where a posting
-// list of ops's pages adds hundreds; the indexes are allowed 2. A read of
-// ops's posting lists, or eng's keys behind ops's prefix, change the
-// counts. (The indexes' pending lists, off since 00041, the migrations'
-// test checks: one holds as many entries for either word.)
+// (Codex's A→B→A), and in their names a character found in names alone with
+// each word, 锅, then 囧, then 锅; eng, which the search reads alone, 300
+// pages of the corpus and none of them. Each of the search's reads in eng
+// fetches the same blocks of each of the search's tables, their indexes and
+// TOAST whichever ops holds: for either word; for 锅 with the first, and
+// with lorem, which every page of ops holds; and for 锅 alone:
+// page_search_hits's three branches, body keys alone, titled keys besides
+// them, titled keys alone (fix round 2, A-2). No posting list it reads
+// holds a row of ops, and what a notebook the reader does not see, or does
+// not search, holds changes neither what a search reads nor, so, how long
+// it takes. Blocks, not time: the count is exact where a time is noise, and
+// the test runs in the suite. But for the GIN indexes' entry trees, which
+// every notebook's keys share: ops's writes may split a page beside eng's
+// keys and add a step to a descent, one block (seen in the first phase,
+// once in a few runs), where a posting list of ops's pages adds hundreds;
+// the indexes are allowed 2. A read of ops's posting lists, or eng's keys
+// behind ops's prefix, change the counts. (The indexes' pending lists, off
+// since 00041, the migrations' test checks: one holds as many entries for
+// either word.)
 func TestHiddenNotebooksLeaveTheSearchsReadsAlone(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
@@ -47,15 +51,17 @@ func TestHiddenNotebooksLeaveTheSearchsReadsAlone(t *testing.T) {
 	f.queueSearch(t, f.ops, false, ops...)
 	f.drain(t)
 	words := []string{"quartzalpha", "quartzborta"}
+	chars := map[string]string{words[0]: "锅", words[1]: "囧"}
 	// hold gives every page of ops the word, in its name and its content,
-	// its rows built again.
+	// and the word's character in its name, its rows built again.
 	hold := func(word string) {
 		t.Helper()
 		content := strings.Repeat("lorem ipsum "+word+" dolor ", 8)
 		sum := sha256.Sum256([]byte(content))
 		f.exec(t, `UPDATE page_contents SET content = $2, content_hash = $3, byte_size = octet_length($2), revision = revision + 1
 			WHERE node_id = ANY($1)`, ops, content, sum[:])
-		f.exec(t, `UPDATE nodes SET name = $2 || ' ' || sort_order, name_key = $2 || ' ' || sort_order WHERE id = ANY($1)`, ops, word)
+		f.exec(t, `UPDATE nodes SET name = $3 || ' ' || $2 || ' ' || sort_order, name_key = $3 || ' ' || $2 || ' ' || sort_order
+			WHERE id = ANY($1)`, ops, word, chars[word])
 		f.queueSearch(t, f.ops, false, ops...)
 		f.drain(t)
 		f.exec(t, "VACUUM ANALYZE")
@@ -173,7 +179,7 @@ func TestHiddenNotebooksLeaveTheSearchsReadsAlone(t *testing.T) {
 		// bits, then every read counted.
 		for pass := range 2 {
 			for name, read := range reads {
-				for _, q := range words {
+				for _, q := range []string{words[0], words[1], "锅 " + words[0], "锅 #", "锅 lorem"} {
 					sc := scopeOf(t, q, f.eng)
 					n := blocks(func(ctx context.Context) error { return read(ctx, sc) })
 					if pass == 1 {
