@@ -24,29 +24,35 @@ import (
 // their names and contents, then of another, then of the first again
 // (Codex's A→B→A), and in their names a character found in names alone with
 // each word, 锅, then 囧, then 锅; eng, which the search reads alone, 300
-// pages of the corpus and none of them. Each of the search's reads in eng
-// fetches the same blocks of each of the search's tables, their indexes and
-// TOAST whichever ops holds: for either word; for 锅 with the first, and
-// with lorem, which every page of ops holds; and for 锅 alone:
-// page_search_hits's three branches, body keys alone, titled keys besides
-// them, titled keys alone (fix round 2, A-2). No posting list it reads
-// holds a row of ops, and what a notebook the reader does not see, or does
-// not search, holds changes neither what a search reads nor, so, how long
-// it takes. Blocks, not time: the count is exact where a time is noise, and
-// the test runs in the suite. But for the GIN indexes' entry trees, which
-// every notebook's keys share: ops's writes may split a page beside eng's
-// keys and add a step to a descent, one block (seen in the first phase,
-// once in a few runs), where a posting list of ops's pages adds hundreds;
-// the indexes are allowed 2. A read of ops's posting lists, or eng's keys
-// behind ops's prefix, change the counts. (The indexes' pending lists, off
-// since 00041, the migrations' test checks: one holds as many entries for
-// either word.)
+// pages of the corpus and neither word, 30 of them 锅 in their names. Each
+// of the search's reads in eng fetches the same blocks of each of the
+// search's tables, their indexes and TOAST, and its GIN indexes' scans
+// return the same rows, whichever ops holds: for either word; for 锅 with
+// the first, and with lorem, which every page of ops holds; and for 锅
+// alone: page_search_hits's three branches, body keys alone, titled keys
+// besides them, titled keys alone (fix round 2, A-2). No posting list it
+// reads holds a row of ops, and what a notebook the reader does not see,
+// or does not search, holds changes neither what a search reads nor, so,
+// how long it takes. Blocks and rows, not time: the counts are exact where
+// a time is noise, and the test runs in the suite. But for the GIN
+// indexes' entry trees, which every notebook's keys share: ops's writes may
+// split a page beside eng's keys and add a step to a descent, one block
+// (seen in the first phase, once in a few runs), where a posting list of
+// ops's pages adds hundreds; the indexes are allowed 2 blocks, and no row.
+// A read of ops's posting lists, or eng's keys behind ops's prefix, change
+// the counts. Eng's titles hold 锅 so that the titled branch's bitmap of
+// titles, read first, is not empty, and its bitmap of bodies is read too;
+// the rows count it where ops's posting list of a word fits one page,
+// fetched alike whether it holds 3,000 rows or none (fix round 3, C-1).
+// (The indexes' pending lists, off since 00041, the migrations' test
+// checks: one holds as many entries for either word.)
 func TestHiddenNotebooksLeaveTheSearchsReadsAlone(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
 	corpus := newSearchCorpus(20261016)
 	eng := corpus.pages(t, f, f.eng, 300, 2000)
 	ops := corpus.pages(t, f, f.ops, 3000, 200)
+	f.exec(t, `UPDATE nodes SET name = '锅 ' || name, name_key = '锅 ' || name_key WHERE id = ANY($1)`, eng[:30])
 	f.queueSearch(t, f.eng, false, eng...)
 	f.queueSearch(t, f.ops, false, ops...)
 	f.drain(t)
@@ -67,8 +73,9 @@ func TestHiddenNotebooksLeaveTheSearchsReadsAlone(t *testing.T) {
 		f.exec(t, "VACUUM ANALYZE")
 	}
 	// blocks is the blocks read's transaction fetched of each of the
-	// search's tables, their indexes and TOAST, hits and reads alike, those
-	// it fetched any of: the backend's counts after the read less those
+	// search's tables, their indexes and TOAST, hits and reads alike, and
+	// the rows the GIN indexes' scans returned (":rows"), those it fetched
+	// or returned any of: the backend's counts after the read less those
 	// before, in one transaction, as a backend's counts not yet reported are
 	// the last second's as well.
 	const fetched = `SELECT r::regclass::text, pg_stat_get_xact_blocks_fetched(r) FROM unnest(ARRAY(
@@ -76,7 +83,9 @@ func TestHiddenNotebooksLeaveTheSearchsReadsAlone(t *testing.T) {
 				'page_contents')
 			UNION SELECT c.reltoastrelid FROM pg_class c WHERE c.relname IN ('page_search', 'page_contents')
 			UNION SELECT i.indexrelid FROM pg_index i JOIN pg_class c ON c.oid = i.indrelid
-				WHERE c.relname IN ('page_search', 'page_search_queue', 'page_search_tags', 'nodes', 'page_contents'))) r`
+				WHERE c.relname IN ('page_search', 'page_search_queue', 'page_search_tags', 'nodes', 'page_contents'))) r
+		UNION ALL SELECT c.relname || ':rows', pg_stat_get_xact_tuples_returned(c.oid) FROM pg_class c
+			WHERE c.relname IN ('page_search_title_idx', 'page_search_body_idx')`
 	counts := func(ctx context.Context) (map[string]int64, error) {
 		rows, err := postgres.DB(ctx, f.pool).Query(ctx, fetched)
 		if err != nil {
@@ -118,8 +127,8 @@ func TestHiddenNotebooksLeaveTheSearchsReadsAlone(t *testing.T) {
 		}
 		return out
 	}
-	// same is whether two reads' blocks are the same, but for a step or two
-	// of the GIN indexes' entry trees.
+	// same is whether two reads' blocks and rows are the same, but for a
+	// step or two of the GIN indexes' entry trees.
 	same := func(a, b map[string]int64) bool {
 		names := maps.Clone(a)
 		maps.Copy(names, b)
