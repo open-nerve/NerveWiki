@@ -79,11 +79,12 @@ CREATE INDEX page_search_queue_bulk_idx ON page_search_queue (notebook_id, node_
 -- body row by row, every notebook's query on every row: 的 数据库 over 200 notebooks took 3.5 s, not 10 ms (M8 Codex
 -- review R1, 299,200 pages). Planned for any arguments, each branch reads the indexes' bitmaps, the second their
 -- intersection (BitmapAnd), page_search_queries priced as it costs: measured on an empty table never analyzed and from
--- 100 rows to 299,200, analyzed or not. An analyzed table of 50 rows or fewer still has the second branch check one
--- side row by row, at most 50 rows: 0.23 s with 5,000 notebooks tagged and searched, a few ms with no more notebooks
--- than rows (R1 fix round 3, N-1). Such a plan takes workers for any key, 2 ms a read to start them, which only a
--- common key over hundreds of notebooks gives back, 3 ms of 30. No JIT: at that price a plan's cost would compile its
--- statements (some 30 ms a call), which the server's connections never do (jit off) and no other's need.
+-- 100 rows to 299,200, analyzed or not. An analyzed table of under 100 rows may still have the second branch check one
+-- side row by row (seen at 40, 50 and 70 rows, not at 60 or from 75), at most those rows: 0.23 s at 50 rows with 5,000
+-- notebooks tagged and searched, a few ms with no more notebooks than rows (R1 fix round 3, N-1 and its check). Such
+-- a plan takes workers for any key, 2 ms a read to start them, which only a common key over hundreds of notebooks gives
+-- back, 3 ms of 30. No JIT: at that price a plan's cost would compile its statements (some 30 ms a call), which the
+-- server's connections never do (jit off) and no other's need.
 DROP FUNCTION page_search_hits(tsquery, tsquery);
 -- +goose StatementBegin
 CREATE FUNCTION page_search_hits(notebooks uuid[], body_keys text[], title_keys text[]) RETURNS SETOF uuid
