@@ -31,7 +31,8 @@ type Index struct {
 // what changed. It reaches what domain.Affected does, the pages and
 // attachments under the nodes it renamed, the keys of every alias of those
 // pages and of those it deleted, and the keys of the aliases a content it
-// wrote drops or adds.
+// wrote drops or adds: those two change the notebook's aliases, which the
+// event tells.
 func (x Index) PagesChanged(ctx context.Context, e PagesChanged) error {
 	reach, renamed, ok := domain.Affected(e.Changes)
 	if !ok {
@@ -41,6 +42,7 @@ func (x Index) PagesChanged(ctx context.Context, e PagesChanged) error {
 		return err
 	}
 	var written, deleted, dropped []uuid.UUID
+	aliases := 0 // the keys of the aliases the unit dropped or added
 	for _, c := range e.Changes {
 		switch {
 		case c.After != nil && c.Revision != 0:
@@ -49,7 +51,9 @@ func (x Index) PagesChanged(ctx context.Context, e PagesChanged) error {
 				return err
 			}
 			written, dropped = append(written, c.NodeID), append(dropped, old.Targets...)
-			reach.Keys = append(reach.Keys, changedAliases(old.AliasKeys, c.Facts.Aliases)...)
+			changed := changedAliases(old.AliasKeys, c.Facts.Aliases)
+			reach.Keys = append(reach.Keys, changed...)
+			aliases += len(changed)
 		case c.After == nil && c.Before != nil:
 			deleted = append(deleted, c.NodeID)
 		}
@@ -61,6 +65,7 @@ func (x Index) PagesChanged(ctx context.Context, e PagesChanged) error {
 		}
 		dropped = append(dropped, old.Targets...)
 		reach.Keys = append(reach.Keys, old.AliasKeys...)
+		aliases += len(old.AliasKeys)
 	}
 	reach, err := spread(ctx, x.Store, x.Pages, e.NotebookID, reach, renamed)
 	if err != nil {
@@ -77,7 +82,7 @@ func (x Index) PagesChanged(ctx context.Context, e PagesChanged) error {
 	if err := x.Store.SetResolutions(ctx, changed); err != nil {
 		return err
 	}
-	return x.publish(ctx, e, links, changed, written, dropped)
+	return x.publish(ctx, e, links, changed, written, dropped, aliases > 0)
 }
 
 // spread has reach, a unit's, reach the pages and attachments under the
@@ -109,8 +114,11 @@ func spread(ctx context.Context, store Store, pages Pages, notebookID uuid.UUID,
 // written, which the pages event tells; and the nodes whose backlinks
 // changed, those the links resolved to before or now, and those that
 // written's links resolved to before. A link whose tie alone changed
-// changes neither. Nothing changed publishes nothing.
-func (x Index) publish(ctx context.Context, e PagesChanged, links, changed []Link, written, dropped []uuid.UUID) error {
+// changes neither. aliases tells that the unit changed the notebook's
+// aliases, which a link no page of the index holds may resolve by, a
+// version's (M8 Codex review R3): an event of its own when nothing else
+// changed. Nothing changed publishes nothing.
+func (x Index) publish(ctx context.Context, e PagesChanged, links, changed []Link, written, dropped []uuid.UUID, aliases bool) error {
 	before := make(map[linkKey]domain.Resolution, len(links))
 	for _, l := range links {
 		before[keyOf(l)] = l.Resolution
@@ -128,11 +136,11 @@ func (x Index) publish(ctx context.Context, e PagesChanged, links, changed []Lin
 		targets = append(targets, old.ID, l.Resolution.ID)
 	}
 	targets = slices.DeleteFunc(targets, func(id uuid.UUID) bool { return id == uuid.Nil() })
-	if len(pages) == 0 && len(targets) == 0 {
+	if len(pages) == 0 && len(targets) == 0 && !aliases {
 		return nil
 	}
 	return x.Publisher.LinksChanged(ctx, LinksChanged{
-		WorkspaceID: e.WorkspaceID, NotebookID: e.NotebookID, Pages: eventPages(pages), Targets: eventPages(targets),
+		WorkspaceID: e.WorkspaceID, NotebookID: e.NotebookID, Pages: eventPages(pages), Targets: eventPages(targets), Aliases: aliases,
 	})
 }
 

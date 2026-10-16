@@ -6,6 +6,7 @@ import (
 	"math/rand/v2"
 	"net/http"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -95,9 +96,22 @@ func (tm acmeTeam) resolves(t *testing.T, id string, want ...string) {
 }
 
 // links fails t unless the stream's next frame is a links event of the
-// notebook nb listing pages and targets, in any order; nil is null. The
-// frame is the contract's EventLinks (M6 closeout A-N3).
+// notebook nb listing pages and targets, in any order, nil is null, whose
+// write kept the aliases. The frame is the contract's EventLinks (M6
+// closeout A-N3).
 func (s *eventStream) links(t *testing.T, nb string, pages, targets []string) {
+	t.Helper()
+	s.linksOf(t, nb, pages, targets, false)
+}
+
+// aliasLinks is links of a write that changed the notebook's aliases (M8
+// Codex review R3).
+func (s *eventStream) aliasLinks(t *testing.T, nb string, pages, targets []string) {
+	t.Helper()
+	s.linksOf(t, nb, pages, targets, true)
+}
+
+func (s *eventStream) linksOf(t *testing.T, nb string, pages, targets []string, aliases bool) {
 	t.Helper()
 	f := s.expect(t, "links")
 	apitest.Load(t).CheckSchema(t, "EventLinks", []byte(f.data))
@@ -105,12 +119,13 @@ func (s *eventStream) links(t *testing.T, nb string, pages, targets []string) {
 		NotebookID string    `json:"notebook_id"`
 		Pages      *[]string `json:"pages"`
 		Targets    *[]string `json:"targets"`
+		Aliases    bool      `json:"aliases"`
 	}
 	if err := json.Unmarshal([]byte(f.data), &got); err != nil || got.NotebookID != nb {
 		t.Fatalf("%s's stream: links %s, %v; want one of %s", s.name, f.data, err, nb)
 	}
-	if !sameSet(got.Pages, pages) || !sameSet(got.Targets, targets) {
-		t.Fatalf("%s's stream: links %s; want pages %q, targets %q", s.name, f.data, pages, targets)
+	if !sameSet(got.Pages, pages) || !sameSet(got.Targets, targets) || got.Aliases != aliases {
+		t.Fatalf("%s's stream: links %s; want pages %q, targets %q, aliases %v", s.name, f.data, pages, targets, aliases)
 	}
 }
 
@@ -130,9 +145,10 @@ func sameSet(got *[]string, want []string) bool {
 // links to the pages under it by their new paths, and writes again those
 // that led to them, whose page's links the index takes (M6/P4); a move the
 // links to it by its new path; a content
-// written its own links, and the links to its aliases; a task toggled
-// writes the content again; a subtree deleted the links to its pages. A
-// write that changes no link's resolution publishes no links event.
+// written its own links, and the links to its aliases, its event telling
+// that the aliases changed; a task toggled writes the content again; a
+// subtree deleted the links to its pages, and their aliases. A write that
+// changes no link's resolution and no alias publishes no links event.
 func TestEveryPageWriteKeepsTheIndex(t *testing.T) {
 	tm, nb, marker, s := eventsTeam(t)
 
@@ -162,7 +178,7 @@ func TestEveryPageWriteKeepsTheIndex(t *testing.T) {
 
 	tm.send(t, contentWrite("alice", target, "---\naliases: [Nick]\n---\n", 1, ""), http.StatusOK)
 	s.pages(t, nb)
-	s.links(t, nb, []string{src}, []string{target})
+	s.aliasLinks(t, nb, []string{src}, []string{target})
 	tm.resolves(t, src, target, sub, sub, target, target)
 
 	tasks := tm.createPageWith(t, "alice", nb, "", "Tasks", "- [ ] [[Box]]\n")
@@ -174,7 +190,7 @@ func TestEveryPageWriteKeepsTheIndex(t *testing.T) {
 
 	tm.send(t, nodeDeletion("alice", box), http.StatusNoContent)
 	s.tree(t, nb, map[string]int{})
-	s.links(t, nb, []string{src, tasks}, []string{box, target, sub})
+	s.aliasLinks(t, nb, []string{src, tasks}, []string{box, target, sub})
 	tm.resolves(t, src, "", "", "", "", "")
 	tm.resolves(t, tasks, "")
 
@@ -183,6 +199,47 @@ func TestEveryPageWriteKeepsTheIndex(t *testing.T) {
 	s.links(t, nb, []string{}, []string{tasks})
 	tm.quiet(t, nb, marker, s)
 	checkPages(t, tm.pool)
+}
+
+// A write that changes the aliases says so in its links event, one of its
+// own when no link of the index resolves otherwise (M8 Codex review R3): a
+// page created with one, and the alias dropped by a content written. A
+// version of another page that alone holds a link by the alias, which no
+// set names, leads by it to the page before, and to none after, as its
+// view read again shows. A write that keeps the aliases, its links
+// unchanged, publishes no links event.
+func TestAWriteThatChangesTheAliasesSaysSo(t *testing.T) {
+	tm, nb, marker, s := eventsTeam(t)
+	target := tm.createPageWith(t, "alice", nb, "", "Target", "---\naliases: [OldAlias]\n---\nInitial\n")
+	s.tree(t, nb, map[string]int{target: 1})
+	s.aliasLinks(t, nb, []string{}, []string{})
+	src := tm.createPageWith(t, "alice", nb, "", "Source", "[[OldAlias]]\n")
+	s.tree(t, nb, map[string]int{src: 1})
+	s.links(t, nb, []string{}, []string{target})
+	tm.send(t, contentWrite("alice", src, "No links now\n", 1, ""), http.StatusOK)
+	s.pages(t, nb)
+	s.links(t, nb, []string{}, []string{target})
+	view := func() string {
+		t.Helper()
+		status, body := ask(t, tm.contract, http.MethodGet, tm.base+"/api/v0/pages/"+src+"/versions/1/view", tm.tokens["bob"], "")
+		if status != http.StatusOK {
+			t.Fatalf("Source's version 1's view = %d %s", status, body)
+		}
+		return body
+	}
+	if body := view(); !strings.Contains(body, `data-nw-node=\"`+target+`\"`) || strings.Contains(body, "nw-unresolved") {
+		t.Fatalf("Source's version 1's view = %s, want its link by the alias to Target", body)
+	}
+
+	tm.send(t, contentWrite("alice", target, "Alias removed\n", 1, ""), http.StatusOK)
+	s.pages(t, nb)
+	s.aliasLinks(t, nb, []string{}, []string{})
+	if body := view(); strings.Contains(body, target) || !strings.Contains(body, "nw-unresolved") {
+		t.Errorf("Source's version 1's view = %s, want its link by the alias to none", body)
+	}
+	tm.send(t, contentWrite("alice", target, "Alias removed\nMore\n", 2, ""), http.StatusOK)
+	s.pages(t, nb)
+	tm.quiet(t, nb, marker, s)
 }
 
 // A unit's links event lists no more than 20 pages a set: more are null.

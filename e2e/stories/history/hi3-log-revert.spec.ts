@@ -265,7 +265,7 @@ test("HI3 (API): each write is a changeset of its account and client, listed new
   const tree = await events.expectNext("pages");
   expect(tree).toMatchObject({ ...ofPlans, tree: true });
   expect(tree.pages).toContainEqual({ id: of.alpha, revision: 3 });
-  expect(await events.expectNext("links")).toEqual({ ...ofPlans, pages: [], targets: [of.beta] });
+  expect(await events.expectNext("links")).toEqual({ ...ofPlans, pages: [], targets: [of.beta], aliases: false });
   await expectRenameReverted(api, db, pat, of, {
     adminId,
     renamerId: bId,

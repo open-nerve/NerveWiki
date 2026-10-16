@@ -213,12 +213,17 @@ type Pages interface {
 // LinksChanged is the links event of a unit (M6 design 4.8): the pages
 // whose links resolve otherwise, but for those whose content it wrote, and
 // the pages and attachments whose backlinks changed (M7/P3 design 4.3).
-// Each is empty for none, and nil for more than MaxEventPages.
+// Each is empty for none, and nil for more than MaxEventPages. Aliases
+// tells that the unit changed the aliases of the notebook's pages, a key
+// links resolve by: a link the index does not hold, of a version of a page
+// (M8 design 4.13), may resolve otherwise now, which no set names (M8
+// Codex review R3).
 type LinksChanged struct {
 	WorkspaceID uuid.UUID
 	NotebookID  uuid.UUID
 	Pages       []uuid.UUID
 	Targets     []uuid.UUID
+	Aliases     bool
 }
 
 // MaxEventPages is the most pages a links event lists in each of its sets,
