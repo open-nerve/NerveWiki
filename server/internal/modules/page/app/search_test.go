@@ -500,10 +500,11 @@ func TestTheSearchAssemblesItsHits(t *testing.T) {
 	}
 }
 
-// A query of a term whose NFC by Go holds a CGJ it did not (M8 Codex
-// review R2) reads PostgreSQL's NFC of it first in the snapshot, once: the
+// A query of a term Go's NFC changes (M8 Codex review R2; fix check 1,
+// C1-1) reads PostgreSQL's NFC of it first in the snapshot, once: the
 // tiers match it in contents by that NFC, and a hit's excerpt marks it; in
-// names by Go's. A query of no such term reads none.
+// names by Go's. A query of no such term, typed in NFC, reads none; one of
+// a decomposed letter reads it.
 func TestTheSearchReadsTheNFCOfATermGoWritesOtherwiseFirst(t *testing.T) {
 	acute := string(rune(0x0301))
 	raw31 := "a" + strings.Repeat(acute, 31)
@@ -531,9 +532,12 @@ func TestTheSearchReadsTheNFCOfATermGoWritesOtherwiseFirst(t *testing.T) {
 	if len(got.Hits) != 1 || got.Hits[0].Excerpt == nil || !slices.Equal(got.Hits[0].Excerpt.Hits, []domain.TextRange{{Start: 2, End: 33}}) {
 		t.Errorf("Execute() = %+v: want the excerpt's hit of the term", got)
 	}
-	s = newSearchFixture()
-	if _, err := s.search(app.SearchRequest{Q: ptr("a" + strings.Repeat(acute, 30))}); err != nil || slices.ContainsFunc(s.rec.calls,
-		func(c string) bool { return strings.HasPrefix(c, "SearchNFC") }) {
-		t.Errorf("a query Go's NFC writes as PostgreSQL's: %v after %q, want no SearchNFC", err, s.rec.calls)
+	for q, want := range map[string]int{string(rune(0x00E1)) + strings.Repeat(acute, 29): 0, "data": 0, "cafe" + acute: 1} {
+		s = newSearchFixture()
+		_, err := s.search(app.SearchRequest{Q: ptr(q)})
+		if n := len(slices.DeleteFunc(slices.Clone(s.rec.calls), func(c string) bool { return !strings.HasPrefix(c, "SearchNFC") })); err != nil ||
+			n != want {
+			t.Errorf("%U: %v after %q, want %d SearchNFC", []rune(q), err, s.rec.calls, want)
+		}
 	}
 }

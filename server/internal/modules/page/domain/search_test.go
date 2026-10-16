@@ -675,14 +675,16 @@ func TestExcerpt(t *testing.T) {
 	}
 }
 
-// A term whose NFC by Go holds a CGJ it did not, a run of more than 30
-// non-starters (M8 Codex review R2), is Written, as written, each once:
-// one written with the CGJ is another term, whose NFC holds none it did
-// not. Until InContents gives its NFC in contents, PostgreSQL's, it is
-// matched there as in names; then its pattern and hits of contents are of
-// that NFC, and its keys and those of names stay Go's. A term of 30 marks,
-// which Go's NFC leaves as they are, is not Written.
-func TestATermInTheStreamSafeFormatIsMatchedInContentsAsWritten(t *testing.T) {
+// A term Go's NFC changes (M8 Codex review R2; fix check 1, C1-1) is
+// Written, as written, each once: a run of more than 30 non-starters, in
+// which Go's NFC inserts a CGJ, a decomposed letter, a Unicode 17 mark
+// before an older mark of a lower class, which Go's NFC orders. One
+// written as Go's NFC has it, the CGJ written, is another term, not
+// Written; so are terms typed in Go's NFC, most of them. Until InContents
+// gives its NFC in contents, PostgreSQL's, a term is matched there as in
+// names; then its pattern and hits of contents are of that NFC, and its
+// keys and those of names stay Go's.
+func TestATermGosNFCChangesIsMatchedInContentsAsPostgreSQLPutsItInNFC(t *testing.T) {
 	acute, joiner := string(rune(0x0301)), string(rune(0x034F))
 	raw31 := "a" + strings.Repeat(acute, 31)
 	joined := norm.NFC.String(raw31)
@@ -690,10 +692,16 @@ func TestATermInTheStreamSafeFormatIsMatchedInContentsAsWritten(t *testing.T) {
 	if !strings.Contains(joined, joiner) {
 		t.Fatalf("Go's NFC of a and 31 acutes = %U, which holds no CGJ", []rune(joined))
 	}
-	for _, q := range []string{"a" + strings.Repeat(acute, 30), joined, "data " + joined} {
+	for _, q := range []string{norm.NFC.String("a" + strings.Repeat(acute, 30)), joined, "data " + joined, "café"} {
 		parsed, err := domain.ParseSearchQuery(&q)
 		if err != nil || len(parsed.Written()) != 0 || !slices.Equal(parsed.ContentPatterns(), parsed.Patterns()) {
 			t.Errorf("%U: Written %+q, %v; want none, its patterns of contents those of names", []rune(q), parsed.Written(), err)
+		}
+	}
+	for _, q := range []string{"a" + strings.Repeat(acute, 30), "cafe" + acute, "Phona" + string(rune(0x1AD0)) + string(rune(0x0323)) + "tik"} {
+		parsed, err := domain.ParseSearchQuery(&q)
+		if err != nil || !slices.Equal(parsed.Written(), []string{q}) {
+			t.Errorf("%U: Written %+q, %v; want it as written", []rune(q), parsed.Written(), err)
 		}
 	}
 	q := "data " + raw31 + " " + joined + " " + raw31

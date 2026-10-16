@@ -378,12 +378,15 @@ type SearchQuery struct {
 // design 3.3; M8/P5A review A-M2).
 //
 // Text is Go's NFC, x/text's, as a name is (shared.Title) and as the keys
-// are. That is the Stream-Safe Text Format: a CGJ (U+034F) after 30
-// non-starters in a row, which PostgreSQL's normalize, a content's NFC as
-// the search reads it, does not insert, and the run's marks are ordered
-// on each side of it alone. A term whose NFC so differs from what it was
-// written is matched in contents by PostgreSQL's NFC of it, which the use
-// case reads (Written, InContents); in names by Text (M8 Codex review R2).
+// are. PostgreSQL's normalize, a content's NFC as the search reads it, can
+// differ from it: Go's writes the Stream-Safe Text Format, a CGJ (U+034F)
+// after 30 non-starters in a row, the run's marks ordered on each side of
+// it alone, which PostgreSQL's does not (M8 Codex review R2); and each
+// follows its own Unicode version, x/text's 17.0 ordering 34 marks
+// PostgreSQL 18's 16.0 does not know (M8 Codex fix check 1, C1-1). A term
+// Go's NFC changes is matched in contents by PostgreSQL's NFC of it, which
+// the use case reads (Written, InContents); in names by Text. A term
+// already in Go's NFC, most of them, is matched by Text in both.
 type SearchTerm struct {
 	Text       string
 	TitlesOnly bool
@@ -393,18 +396,14 @@ type SearchTerm struct {
 	// there in the text.
 	left, right bool
 	re          *regexp.Regexp
-	// written is the term as the query wrote it when Text holds a CGJ it
-	// did not, "" otherwise; content is the text it is matched with in
-	// contents, Text until InContents gives PostgreSQL's NFC of written,
-	// and contentRE its pattern for Go.
+	// written is the term as the query wrote it when Go's NFC changed it
+	// (Text is not it), "" otherwise; content is the text it is matched
+	// with in contents, Text until InContents gives PostgreSQL's NFC of
+	// written, and contentRE its pattern for Go.
 	written   string
 	content   string
 	contentRE *regexp.Regexp
 }
-
-// cgj is U+034F COMBINING GRAPHEME JOINER, which Go's NFC inserts after 30
-// non-starters in a row.
-const cgj = "\u034f"
 
 // ParseSearchQuery parses a search's q (M8/P5 design 3.3): 422 on q when
 // it is missing or blank (required), not UTF-8 or holding NUL
@@ -436,12 +435,12 @@ func ParseSearchQuery(q *string) (SearchQuery, error) {
 	for _, f := range strings.FieldsFunc(s, unicode.IsSpace) {
 		text := norm.NFC.String(f)
 		folded := searchFold(text)
-		// A term whose NFC holds a CGJ it did not is one of its own: matched
-		// in contents by PostgreSQL's NFC of it, which another term of the
-		// same folded NFC, written with the CGJ, is not.
-		streamSafe := strings.Count(text, cgj) > strings.Count(f, cgj)
+		// A term Go's NFC changes is one of its own, as written: matched in
+		// contents by PostgreSQL's NFC of it, which another term of the same
+		// folded NFC, written otherwise, need not share.
+		changed := text != f
 		seenAs := folded
-		if streamSafe {
+		if changed {
 			seenAs += "\x00" + f
 		}
 		if seen[seenAs] {
@@ -455,7 +454,7 @@ func ParseSearchQuery(q *string) (SearchQuery, error) {
 		if !ok {
 			return invalid(shared.FieldTooLong, fmt.Sprintf("must hold at most %d ASCII letters and digits in a row", MaxSearchWordRunes))
 		}
-		if streamSafe {
+		if changed {
 			t.written = f
 		}
 		keyed = keyed || len(t.keys) > 0 || len(t.unigrams) > 0
@@ -535,9 +534,9 @@ func parseTerm(text, folded string) (SearchTerm, bool) {
 	return t, true
 }
 
-// Written are the terms, as the query wrote them, whose NFC by Go holds a
-// CGJ they did not (SearchTerm), in their order: none for most queries.
-// The use case reads PostgreSQL's NFC of them, in one statement, for
+// Written are the terms, as the query wrote them, that Go's NFC changed
+// (SearchTerm), in their order: none for most queries, typed in NFC. The
+// use case reads PostgreSQL's NFC of them, in one statement, for
 // InContents.
 func (q SearchQuery) Written() []string {
 	var out []string

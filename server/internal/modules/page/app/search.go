@@ -151,9 +151,9 @@ func (s *Search) Execute(ctx context.Context, slug string, r SearchRequest) (Sea
 }
 
 // inContents is q with the texts its terms are matched with in contents:
-// PostgreSQL's NFC of those whose NFC by Go holds a CGJ they did not
-// (domain.SearchQuery.Written), read in one statement; q itself, without
-// one, for the others, most queries (M8 Codex review R2).
+// PostgreSQL's NFC of those Go's NFC changed (domain.SearchQuery.Written),
+// read in one statement; q itself, without one, for a query typed in NFC,
+// most of them (M8 Codex review R2; fix check 1, C1-1).
 func (s *Search) inContents(ctx context.Context, q domain.SearchQuery) (domain.SearchQuery, error) {
 	written := q.Written()
 	if len(written) == 0 {

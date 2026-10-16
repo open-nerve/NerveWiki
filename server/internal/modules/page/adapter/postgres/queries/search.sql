@@ -96,8 +96,8 @@ ANALYZE page_search;
 
 -- name: SearchNFC :many
 -- Texts in NFC as the search's statements read a content in it, PostgreSQL's, in their order: the terms of a query
--- that Go's NFC wrote otherwise, a CGJ in a run of more than 30 non-starters, whose patterns of contents are built of
--- these (M8 Codex review R2).
+-- that Go's NFC changed, whose patterns of contents are built of these. Go's NFC can differ from PostgreSQL's: a CGJ in
+-- a run of more than 30 non-starters, and their Unicode versions (M8 Codex review R2; fix check 1, C1-1).
 SELECT normalize(x.t, NFC)::text AS nfc FROM unnest(sqlc.arg(texts)::text[]) WITH ORDINALITY AS x(t, i) ORDER BY x.i;
 
 -- name: SearchTitles :many
@@ -108,9 +108,9 @@ SELECT normalize(x.t, NFC)::text AS nfc FROM unnest(sqlc.arg(texts)::text[]) WIT
 -- around it and the content's characters: 0 and none when the content holds no hit, or the node is an attachment. The
 -- names are matched by the terms' patterns of names (terms), Go's NFC as the names are, the contents by those of
 -- contents, PostgreSQL's NFC as the contents are read: the two differ for a run of more than 30 non-starters, which
--- Go's NFC parts with a CGJ (M8 Codex review R2). A content not in NFC is put in it
--- for the read alone, as the job's lexemes are of it (M8/P5A review A-M4); one in NFC, the common case, costs the check
--- alone, some 20 µs a content of 4 KB, five times the read's (measured on the guard's corpus). The candidates are
+-- Go's NFC parts with a CGJ, and where their Unicode versions differ (M8 Codex review R2). A content not in NFC is put
+-- in it for the read alone, as the job's lexemes are of it (M8/P5A review A-M4); one in NFC, the common case, costs the
+-- check alone, some 20 µs a content of 4 KB, five times the read's (measured on the guard's corpus). The candidates are
 -- joined to their nodes and contents with the notebooks' condition alone, behind OFFSET 0, and the other checks run
 -- above it, on the joined rows. Without statistics the planner sizes the notebooks' nodes by that one condition's
 -- default selectivity; with the deleted check's or the patterns' multiplied in, it took a notebook's live nodes for one

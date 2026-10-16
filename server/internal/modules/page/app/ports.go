@@ -705,7 +705,7 @@ type SearchBodyRow struct {
 // the patterns and keys are the user's text.
 type SearchReads interface {
 	// SearchNFC is texts in NFC as the statements read a content in it,
-	// in their order: a query's terms written otherwise by Go's NFC
+	// in their order: a query's terms Go's NFC changed
 	// (domain.SearchQuery.Written).
 	SearchNFC(ctx context.Context, texts []string) ([]string, error)
 	// SearchTitles reads the title tier below s.Below, at most limit nodes.

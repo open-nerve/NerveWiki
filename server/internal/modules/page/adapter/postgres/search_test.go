@@ -1131,19 +1131,25 @@ func TestTheSearchReadsContentNotInNFC(t *testing.T) {
 	}
 }
 
-// A run of more than 30 non-starters (M8 Codex review R2): Go's NFC, a
-// query's and a name's, parts it with a CGJ after its 30th, the
-// Stream-Safe Text Format, and orders its marks on each side of it alone;
+// A term Go's NFC changes otherwise than PostgreSQL's (M8 Codex review R2;
+// fix check 1, C1-1). Go's NFC, a query's and a name's, parts a run of
+// more than 30 non-starters with a CGJ after its 30th, the Stream-Safe
+// Text Format, and orders its marks on each side of it alone; and x/text's
+// Unicode 17 orders marks PostgreSQL 18's Unicode 16 does not know.
 // PostgreSQL's, a content's as the search reads it, does neither. A term
-// so written is matched in names as Go has it and in contents as
+// Go's NFC changes is matched in names as Go has it and in contents as
 // PostgreSQL has it, through the use case, which reads PostgreSQL's NFC of
 // it: it finds its text in a name or a content, while its page waits in
 // the queue and once its row is built, a run of marks of two classes
-// too, and its excerpts mark it. A CGJ written in a text or a query is a
+// too, and its excerpts mark it; a Unicode 17 mark before an older one of
+// a lower class, typed and queried as written, too, and one after it. Two
+// such terms, one in a page's name, the other in its content, find it:
+// each is matched by its own NFC. A CGJ written in a text or a query is a
 // character as any other: the query that wrote one finds the texts that
 // hold it, the query that wrote none those that hold none. 30 marks, which
-// Go leaves as they are, find what holds them, as before.
-func TestTheSearchFindsALongRunOfMarksAsWritten(t *testing.T) {
+// Go leaves as they are but for their first, find what holds them, as
+// before.
+func TestTheSearchFindsATermGosNFCChangesAsWritten(t *testing.T) {
 	f := newFixture(t)
 	acute, below, joiner := string(rune(0x0301)), string(rune(0x0323)), string(rune(0x034F))
 	raw31 := "a" + strings.Repeat(acute, 31)
@@ -1151,6 +1157,12 @@ func TestTheSearchFindsALongRunOfMarksAsWritten(t *testing.T) {
 	joined := norm.NFC.String(raw31)
 	mixed := raw30 + below
 	pg31 := string(rune(0x00E1)) + strings.Repeat(acute, 30) // PostgreSQL's NFC of raw31
+	x31 := "x" + strings.Repeat(acute, 31)
+	// A Unicode 17 mark (class 230, 234, 220) before an older one of a lower
+	// class (220, 230), and after one of a higher: the checker's texts.
+	gap1 := "Phona" + string(rune(0x1AD0)) + below + "tik"
+	gap2 := "Lauto" + string(rune(0x1AEB)) + acute + "form"
+	after := "Kontro" + acute + string(rune(0x1ADD)) + "lle"
 	switch {
 	case joined != string(rune(0x00E1))+strings.Repeat(acute, 29)+joiner+acute:
 		t.Fatalf("Go's NFC of a and 31 acutes = %U, want á, 29 acutes, a CGJ and an acute", []rune(joined))
@@ -1167,6 +1179,10 @@ func TestTheSearchFindsALongRunOfMarksAsWritten(t *testing.T) {
 		{"Excerpted", "Before " + raw31 + " after"},
 		{raw31, "zeta"},
 		{raw31 + " notes", "Notes on " + raw31},
+		{"Gap one", "x " + gap1 + " y"},
+		{"Gap two", "x " + gap2 + " y"},
+		{"After", "x " + after + " y"},
+		{"Xn " + x31, "body " + raw31},
 	}
 	var ids []uuid.UUID
 	names := map[string]string{} // the names as written, as stored
@@ -1191,11 +1207,15 @@ func TestTheSearchFindsALongRunOfMarksAsWritten(t *testing.T) {
 			what, q string
 			found   []string
 		}{
-			{"31 acutes", raw31, []string{"Thirty-one", "Excerpted", raw31, raw31 + " notes"}},
-			{"30 acutes", raw30, []string{"Thirty", "Thirty-one", "Joined", "Excerpted", raw31, raw31 + " notes"}},
+			{"31 acutes", raw31, []string{"Thirty-one", "Excerpted", raw31, raw31 + " notes", "Xn " + x31}},
+			{"30 acutes", raw30, []string{"Thirty", "Thirty-one", "Joined", "Excerpted", raw31, raw31 + " notes", "Xn " + x31}},
 			{"31 acutes, a CGJ written", joined, []string{"Joined", raw31, raw31 + " notes"}},
 			{"30 acutes and a dot below", mixed, []string{"Mixed"}},
 			{"31 acutes in a name, a term in its content", raw31 + " zeta", []string{raw31}},
+			{"a Unicode 17 mark before a dot below", gap1, []string{"Gap one"}},
+			{"a Unicode 17 mark before an acute", gap2, []string{"Gap two"}},
+			{"a Unicode 17 mark after an acute", after, []string{"After"}},
+			{"two such terms, one in the name, one in the content", x31 + " " + raw31, []string{"Xn " + x31}},
 		} {
 			page, err := search.Execute(ctx, "acme", app.SearchRequest{Q: &tt.q})
 			if err != nil {
