@@ -2862,7 +2862,7 @@ export interface components {
             pages: string[] | null;
             /** @description The pages and attachments whose backlinks changed: empty for none, null for more than 20 or for all of them (a rebuilt index). */
             targets: string[] | null;
-            /** @description Whether the write changed the aliases of the notebook's pages, a page's added or dropped by its content, or with the page itself: the links of the pages' versions, which the index does not hold, may resolve otherwise. */
+            /** @description Whether the write changed the aliases of the notebook's pages, a page's added or dropped by its content, or with the page itself: the links of the pages' versions, which the index does not hold, may resolve otherwise. False for a rebuilt index, whose null lists take every page as changed. */
             aliases: boolean;
         };
         /** @description The data of reset, the last frame. */

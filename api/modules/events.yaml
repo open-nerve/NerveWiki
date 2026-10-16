@@ -210,7 +210,8 @@ components:
             Whether the write changed the aliases of the notebook's pages,
             a page's added or dropped by its content, or with the page
             itself: the links of the pages' versions, which the index does
-            not hold, may resolve otherwise.
+            not hold, may resolve otherwise. False for a rebuilt index,
+            whose null lists take every page as changed.
           type: boolean
     EventReset:
       description: The data of reset, the last frame.
