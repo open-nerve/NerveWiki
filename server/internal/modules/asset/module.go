@@ -8,7 +8,7 @@
 // as an export reads them and an import writes them; NewStatistics, the
 // statistics an import updates; Purgers for the purge; ContentKeyInfo, the
 // derivation of the key that signs the contents' addresses; Actions for
-// the composition's checks.
+// the composition's checks; AttachmentReads, MCP's read of an attachment.
 package asset
 
 import (
@@ -87,6 +87,10 @@ type Deps struct {
 	MinFreeBytes int64
 	// ContentBucket is ratelimit.asset_content, the downloads' bucket.
 	ContentBucket httpserver.Limiter
+	// PublicURL is server.public_url without its trailing "/": the origin
+	// of the absolute addresses MCP's read signs (M9/P1 design 3.12); ""
+	// signs none.
+	PublicURL string
 }
 
 // Module is the wired asset module.
@@ -95,24 +99,32 @@ type Module struct {
 	limits httpadapter.Limits
 	logger *slog.Logger
 	jobs   []jobs.Job
+	// MCP's reads of an attachment (AttachmentReads).
+	reads     *app.Reads
+	blobs     *app.Blobs
+	sniffer   app.Sniffer
+	publicURL string
 }
 
 // New wires the module: its files in the store, its rows on the pool.
 func New(d Deps) *Module {
 	files, rows := filesadapter.New(d.Store), postgresadapter.New(d.Pool)
-	blobs := app.NewBlobs(files, rows, sniff.Sniffer{}, d.Logger)
+	sniffer := sniff.Sniffer{}
+	blobs := app.NewBlobs(files, rows, sniffer, d.Logger)
 	signer := macadapter.New(d.ContentKey)
+	reads := app.NewReads(app.ReadsDeps{Authorizer: d.Authorizer, Notebooks: d.Notebooks, Nodes: d.Nodes, Rows: rows, Signer: signer, Links: d.Links,
+		Clock: d.Clock, Logger: d.Logger})
 	return &Module{
 		uc: httpadapter.UseCases{
 			Upload: app.NewUpload(app.UploadDeps{Tree: d.Tree, Blobs: blobs, Files: files, Signer: signer, Links: d.Links, Logger: d.Logger,
 				MaxBytes: d.MaxBytes, MinFree: d.MinFreeBytes}),
-			Reads: app.NewReads(app.ReadsDeps{Authorizer: d.Authorizer, Notebooks: d.Notebooks, Nodes: d.Nodes, Rows: rows, Signer: signer, Links: d.Links,
-				Clock: d.Clock, Logger: d.Logger}),
+			Reads:   reads,
 			Content: app.NewContent(d.Nodes, blobs, signer, d.Clock, d.Logger),
 		},
 		limits: httpadapter.Limits{MaxBytes: d.MaxBytes, MinRate: d.MinRate, ContentBucket: d.ContentBucket},
 		logger: d.Logger,
 		jobs:   []jobs.Job{riveradapter.SweepJob(app.NewSweep(files, rows, d.Clock, d.Logger))},
+		reads:  reads, blobs: blobs, sniffer: sniffer, publicURL: d.PublicURL,
 	}
 }
 

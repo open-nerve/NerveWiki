@@ -60,7 +60,7 @@ type Asset struct {
 	// Sha256 The file's SHA-256, in lower-case hexadecimal.
 	Sha256 string `json:"sha256"`
 
-	// Width An image's width in pixels (PNG, JPEG, GIF), when the server read it; null otherwise.
+	// Width An image's width in pixels (PNG, JPEG, GIF, WebP), when the server read it; null otherwise.
 	Width nullable.Nullable[int] `json:"width"`
 }
 

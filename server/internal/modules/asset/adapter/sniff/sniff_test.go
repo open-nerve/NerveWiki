@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/base64"
 	"image"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/asset/adapter/sniff"
@@ -62,6 +64,42 @@ func TestSniffAndSize(t *testing.T) {
 		}
 	}
 }
+
+// Size reads a WebP's from its RIFF header, each of the three kinds of its
+// first chunk, through a reader of the file; a RIFF that is no WebP goes to
+// the decoders, which tell no size; a GIF shorter than a WebP's header is
+// read all the same (M9/P1 design 3.11.2).
+func TestSizeOfAWebP(t *testing.T) {
+	var s sniff.Sniffer
+	for _, name := range []string{"vp8.webp", "vp8l.webp", "vp8x.webp"} {
+		data, err := os.ReadFile("testdata/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := s.Sniff(data); got != "image/webp" {
+			t.Errorf("Sniff(%s) = %q", name, got)
+		}
+		if w, h, ok := s.Size(bytes.NewReader(data)); !ok || w != 7 || h != 5 {
+			t.Errorf("Size(%s) = %d, %d, %v; want 7×5", name, w, h, ok)
+		}
+		if _, _, ok := s.Size(bytes.NewReader(data[:24])); ok {
+			t.Errorf("Size(%s cut short) read a size", name)
+		}
+	}
+	if _, _, ok := s.Size(strings.NewReader("RIFF\x24\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x44\xac\x00\x00")); ok {
+		t.Error("Size(a WAVE) read a size")
+	}
+	gif, err := base64.StdEncoding.DecodeString(gif1x1)
+	if err != nil || len(gif) >= 30 {
+		t.Fatalf("the GIF is %d bytes, %v", len(gif), err)
+	}
+	if w, h, ok := s.Size(bytes.NewReader(gif)); !ok || w != 1 || h != 1 {
+		t.Errorf("Size(a GIF of %d bytes) = %d, %d, %v; want 1×1", len(gif), w, h, ok)
+	}
+}
+
+// gif1x1 is a GIF of one pixel in 26 bytes: shorter than a WebP's header.
+const gif1x1 = "R0lGODlhAQABAAAAACwAAAAAAQABAAAC"
 
 // Sniff is net/http's over the whole head it is given: signatures longer
 // than a few bytes, and a tag after the blanks a browser skips.

@@ -53,6 +53,12 @@ type ServerConfig struct {
 	// TrustedProxies are the reverse proxies whose X-Forwarded-For names the
 	// client (M1/P1 design 3.5). Empty: the client is the connection's peer.
 	TrustedProxies []netip.Prefix `koanf:"trusted_proxies"`
+	// PublicURL is the instance's origin as its users reach it, e.g.
+	// "https://wiki.example.com": MCP's read signs an attachment's absolute
+	// address from it (M9/P1 design 3.12). Empty: none is given. Never
+	// guessed from a request's Host or X-Forwarded-*, which a proxy set up
+	// wrong would make another's.
+	PublicURL string `koanf:"public_url"`
 }
 
 // DatabaseConfig configures the PostgreSQL pool and schema migrations.
@@ -312,6 +318,7 @@ func (c Config) LogValue() slog.Value {
 			slog.Int64("max_body_bytes", c.Server.MaxBodyBytes),
 			slog.String("addr_file", c.Server.AddrFile),
 			slog.String("trusted_proxies", strings.Join(proxies, ",")),
+			slog.String("public_url", c.Server.PublicURL),
 		),
 		slog.Any("database", c.Database),
 		slog.Group("auth",

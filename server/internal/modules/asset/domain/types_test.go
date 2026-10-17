@@ -104,7 +104,7 @@ func TestServed(t *testing.T) {
 }
 
 func TestHasSize(t *testing.T) {
-	for mime, want := range map[string]bool{"image/png": true, "image/jpeg": true, "image/gif": true, "image/webp": false,
+	for mime, want := range map[string]bool{"image/png": true, "image/jpeg": true, "image/gif": true, "image/webp": true,
 		"image/svg+xml": false, "application/octet-stream": false} {
 		if got := domain.HasSize(mime); got != want {
 			t.Errorf("HasSize(%q) = %v, want %v", mime, got, want)

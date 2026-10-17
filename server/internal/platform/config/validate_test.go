@@ -2,6 +2,7 @@ package config
 
 import (
 	"net/netip"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -18,6 +19,7 @@ func validConfig() Config {
 			ShutdownTimeout:   20 * time.Second,
 			RequestTimeout:    15 * time.Second,
 			MaxBodyBytes:      1 << 20,
+			PublicURL:         "https://wiki.example.com",
 		},
 		Database: DatabaseConfig{
 			URL:           "postgres://nervewiki:secret@localhost:5432/nervewiki",
@@ -513,4 +515,40 @@ func prefixes(ss ...string) []netip.Prefix {
 		out[i] = netip.MustParsePrefix(s)
 	}
 	return out
+}
+
+// server.public_url is empty or an origin alone: http or https, a host, a
+// port and a trailing "/" may come; a path, a query, an empty query, a
+// fragment, a user or no host may not (M9/P1 design 3.12).
+func TestValidatePublicURL(t *testing.T) {
+	for u, ok := range map[string]bool{
+		"":                                 true,
+		"https://wiki.example.com":         true,
+		"http://wiki.example":              true,
+		"https://wiki.example.com:8443":    true,
+		"https://wiki.example.com/":        true,
+		"http://[2001:db8::1]:8080":        true,
+		"ftp://wiki.example.com":           false,
+		"wiki.example.com":                 false,
+		"https://wiki.example.com/wiki":    false,
+		"https://wiki.example.com/?a=1":    false,
+		"https://wiki.example.com?":        false,
+		"https://wiki.example.com/#top":    false,
+		"https://wiki.example.com#":        false,
+		"https://alice@wiki.example.com":   false,
+		"https://alice:x@wiki.example.com": false,
+		"https://":                         false,
+		"https:wiki.example.com":           false,
+	} {
+		cfg := validConfig()
+		cfg.Server.PublicURL = u
+		err := cfg.validate()
+		want := `server.public_url: must be an origin such as "https://wiki.example.com", got ` + strconv.Quote(u)
+		switch {
+		case ok && err != nil:
+			t.Errorf("public_url %q: %v, want valid", u, err)
+		case !ok && (err == nil || err.Error() != want):
+			t.Errorf("public_url %q: %v, want %s", u, err, want)
+		}
+	}
 }
