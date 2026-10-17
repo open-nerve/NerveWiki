@@ -229,7 +229,7 @@ func New(d Deps) *Module {
 		riveradapter.CleanupJob(app.NewCleanupEditSessions(store, d.Clock, d.Logger), d.EditSessionCleanupInterval),
 	}, assets: app.NewAssetWrites(writer, store), imports: app.NewImportWrites(writer, parser, md),
 		jobWrites: app.NewJobWrites(trash, store, writer, parser, store, d.MaxJobItems, d.MaxUnitHistory),
-		list:      app.NewListByPattern(d.Notebooks, store, store, d.Attachments, d.Authorizer, domain.MaxGlobWork),
+		list:      app.NewListByPattern(d.Notebooks, store, store, d.Attachments, d.Authorizer),
 		read:      app.NewReadPath(d.Notebooks, store, store, d.Authorizer)}
 	if d.SearchInterval > 0 {
 		m.jobs = append(m.jobs, riveradapter.SearchIndexJob(

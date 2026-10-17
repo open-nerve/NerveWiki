@@ -163,6 +163,19 @@ func (s *Store) PageStates(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]
 	return out, nil
 }
 
+// AliveNodes implements app.PageStates.
+func (s *Store) AliveNodes(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]bool, error) {
+	alive, err := s.planned(ctx).AliveNodes(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("read the nodes alive: %w", err)
+	}
+	out := make(map[uuid.UUID]bool, len(alive))
+	for _, id := range alive {
+		out[id] = true
+	}
+	return out, nil
+}
+
 // NameCursor is where a list by title key and id goes on: after the node
 // of this key and id.
 type NameCursor struct {

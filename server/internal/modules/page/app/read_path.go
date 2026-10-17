@@ -70,18 +70,7 @@ func (r *ReadPath) Execute(ctx context.Context, notebookID uuid.UUID, path strin
 	if err != nil {
 		return Read{}, err
 	}
-	if notebookID == (uuid.UUID{}) {
-		return Read{}, domain.ErrNotebookNotFound
-	}
-	workspaceID, ok, err := r.notebooks.WorkspaceOf(ctx, notebookID)
-	switch {
-	case err != nil:
-		return Read{}, err
-	case !ok:
-		return Read{}, domain.ErrNotebookNotFound
-	}
-	target := shared.Target{WorkspaceID: workspaceID, NotebookID: notebookID}
-	if _, err := authorize(ctx, r.auth, actor, domain.ActionRead, target, domain.ErrNotebookNotFound); err != nil {
+	if err := decideNotebook(ctx, r.notebooks, r.auth, actor, domain.ActionRead, notebookID); err != nil {
 		return Read{}, err
 	}
 	at, err := r.paths.Find(ctx, notebookID, p)
@@ -94,7 +83,7 @@ func (r *ReadPath) Execute(ctx context.Context, notebookID uuid.UUID, path strin
 	}
 	c, err := r.nodes.PageContent(ctx, at.Node.ID)
 	if err != nil {
-		return Read{}, found(err, domain.ErrNotFound)
+		return Read{}, found(err, &domain.PathNotFound{Path: p.Written})
 	}
 	slice, err := domain.Cut(c.Content, w, m.Room(out.Path), m.Bytes)
 	if err != nil {

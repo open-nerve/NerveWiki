@@ -78,7 +78,9 @@ type globSegment struct {
 // segment's ends.
 func ParseGlob(field, s string) (Glob, error) {
 	if len(s) > MaxGlobBytes {
-		return Glob{}, invalidPath(field, shared.FieldTooLong, fmt.Sprintf("must be at most %d bytes", MaxGlobBytes))
+		return Glob{}, invalidPath(field, shared.FieldTooLong, fmt.Sprintf(
+			`must be at most %d bytes: a node deeper than that is listed by its parent's path and a trailing "/" ("A/B/"), `+
+				"and read by its path", MaxGlobBytes))
 	}
 	if !utf8.ValidString(s) {
 		return Glob{}, invalidPath(field, shared.FieldInvalidFormat, "must be UTF-8")

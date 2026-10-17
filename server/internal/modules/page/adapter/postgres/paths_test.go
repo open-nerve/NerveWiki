@@ -257,3 +257,40 @@ func TestPageStatesReadByTheContentsKey(t *testing.T) {
 		t.Errorf("PageStates' index condition %q lacks node_id", cond)
 	}
 }
+
+// list's attachments alive are read by the nodes' key, a page of 1,000 of
+// a notebook's 50,000 nodes, without statistics and analyzed, with the
+// production settings, planned with its argument as the store plans it
+// (M9/P1 design 3.10.3).
+func TestAliveNodesReadByTheNodesKey(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	ids := f.nodes(t, f.eng, "P", 50000)
+	s := statementOf(t, func(q *gen.Queries) error {
+		_, err := q.AliveNodes(ctx, ids[20000:21000])
+		return err
+	})
+	for _, stage := range []string{"without statistics", "analyzed"} {
+		if stage == "analyzed" {
+			f.exec(t, "ANALYZE nodes")
+		}
+		plan, raw := f.planTreeWith(t, s)
+		scans := plan.all(func(n *planNode) bool { return n.Relation == "nodes" })
+		if len(scans) != 1 || !reads("nodes", "nodes_pkey", "")(scans[0]) {
+			t.Errorf("AliveNodes, %s, does not read nodes by their key:\n%s", stage, raw)
+		}
+	}
+}
+
+// AliveNodes are the nodes not deleted among the ids.
+func TestAliveNodes(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	a, b := f.page(t, f.eng, nil, "A", 0), f.asset(t, f.eng, nil, "b.png", 1)
+	gone := f.asset(t, f.eng, nil, "gone.png", 2)
+	f.exec(t, "UPDATE nodes SET deleted_at = $2 WHERE id = $1", gone.ID, now())
+	got, err := f.s.AliveNodes(ctx, []uuid.UUID{a.ID, b.ID, gone.ID, uuid.NewV7()})
+	if err != nil || len(got) != 2 || !got[a.ID] || !got[b.ID] {
+		t.Errorf("AliveNodes = %v, %v; want A and b.png", got, err)
+	}
+}

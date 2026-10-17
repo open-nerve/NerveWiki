@@ -180,12 +180,17 @@ type PathStore interface {
 	ChildByKey(ctx context.Context, notebookID, parentID uuid.UUID, key string) (domain.Node, bool, error)
 }
 
-// PageStates reads the pages' contents as MCP's list tells them.
+// PageStates reads the pages' contents as MCP's list tells them, and
+// which of its attachments are alive.
 type PageStates interface {
 	// PageStates reads each page's version, size and last write of ids,
 	// alive, unlocked: one statement, planned with its argument (M9
 	// design 4.1). A page without its content alive is not in the answer.
 	PageStates(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]PageState, error)
+	// AliveNodes reads which nodes of ids are not deleted, unlocked: one
+	// statement, planned with its argument. list's attachments, whose
+	// infos AttachmentInfos gives deleted or not (M9/P1 design 3.10.3).
+	AliveNodes(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]bool, error)
 }
 
 // PageState is a page's content as list tells it.

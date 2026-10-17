@@ -288,23 +288,27 @@ func TestTheReadOfAnAttachment(t *testing.T) {
 	}
 }
 
-// An attachment's errors are its reader's: page.not_found when its access
-// went since the node was found, a content's failure as it is.
+// An attachment's errors are its reader's: page.not_found when it or its
+// access went since the node was found, in the module's words for the path
+// as written; a content's failure as it is.
 func TestTheReadOfAnAttachmentFails(t *testing.T) {
 	a := app.Attachment{NodeID: uuid.NewV7(), Name: "x.png", MIME: "image/png", Bytes: 4, URL: "http://wiki.example/x"}
 	boom := errors.New("boom")
 	for _, tt := range []struct {
 		f    *fakeAttachments
 		want error
+		text string
 	}{
-		{&fakeAttachments{a: a, readErr: domain.ErrNotFound}, domain.ErrNotFound},
-		{&fakeAttachments{a: a, contentErr: boom}, boom},
+		{&fakeAttachments{a: a, readErr: domain.ErrNotFound}, domain.ErrNotFound, `page.not_found: Nothing is at "/guide/X.png".`},
+		{&fakeAttachments{a: a, contentErr: boom}, boom, ""},
 	} {
 		tools := tools{uc: UseCases{Read: readFunc(func(uuid.UUID, string, *int, *int, *int, app.TextMeasure) (app.Read, error) {
-			return app.Read{Path: "x.png", Node: domain.Node{ID: a.NodeID}}, nil
+			return app.Read{Path: "Guide/x.png", Node: domain.Node{ID: a.NodeID}}, nil
 		})}, attachments: tt.f}
-		if _, err := tools.read(context.Background(), mcpserver.Call{}, readIn{Path: "x.png"}); !errors.Is(err, tt.want) {
-			t.Errorf("read = %v, want %v", err, tt.want)
+		_, err := tools.read(context.Background(), mcpserver.Call{}, readIn{Path: "/guide/X.png"})
+		var te *mcpserver.ToolError
+		if !errors.Is(err, tt.want) || tt.text != "" && (!errors.As(err, &te) || te.Text != tt.text) {
+			t.Errorf("read = %v, want %v, %q", err, tt.want, tt.text)
 		}
 	}
 }

@@ -15,7 +15,8 @@ import (
 
 // lister is list over the fixture, its glob's work at most maxWork.
 func (f *fixture) lister(maxWork int64) *app.ListByPattern {
-	return app.NewListByPattern(f.notebooks, f.store, f.store, fakeAttachments{recorder: f.rec, infos: f.infos}, f.auth, maxWork)
+	return app.NewListByPattern(f.notebooks, f.store, f.store, fakeAttachments{recorder: f.rec, infos: f.infos}, f.auth).
+		WithMaxWork(maxWork)
 }
 
 // listed are a listing's items' paths.
@@ -89,6 +90,19 @@ func TestListByPatternAnswersInOrder(t *testing.T) {
 	case byPath["Guide/Alpha.md"].HasChildren:
 		t.Errorf("Alpha has children")
 	}
+	// A page whose only child is an attachment has children: list
+	// "Guide/Alpha/" finds it (M9/P1 S2 review, C-M1).
+	alpha := byPath["Guide/Alpha.md"].Node.ID
+	f.infos[f.asset("table.csv", &alpha, 0).ID] = app.AttachmentInfo{MIME: "text/csv", Bytes: 9}
+	got, err = list.Execute(f.asAlice(), f.eng, "Guide/", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range got.Items {
+		if want := item.Path == "Guide/Setup.md" || item.Path == "Guide/Alpha.md"; item.HasChildren != want {
+			t.Errorf("%s has children: %v, want %v", item.Path, item.HasChildren, want)
+		}
+	}
 }
 
 // A page of a list goes on from its cursor: neither an item repeated nor
@@ -98,10 +112,28 @@ func TestListByPatternPagesOnFromItsCursor(t *testing.T) {
 	f := newFixture()
 	f.grant(domain.ActionList)
 	f.guideTree()
+	// Siblings of one sort order, which a restore or a revert gives back
+	// while a page placed meanwhile holds it (M9/P1 S2 review, A-M1): by
+	// id after the order, the ids neither the names' order nor the order
+	// they were stored in: Y's id is the least, stored last.
+	least := uuid.NewV7()
+	tied := f.page("Tied", nil, 1)
+	f.page("A", &tied.ID, 1)
+	f.page("Z", &tied.ID, 2)
+	f.page("X", &tied.ID, 2)
+	y := f.page("Y", &tied.ID, 2)
+	f.page("B", &tied.ID, 3)
+	delete(f.store.nodes, y.ID)
+	content := f.store.contents[y.ID]
+	delete(f.store.contents, y.ID)
+	y.ID, content.NodeID = least, least
+	f.store.nodes[least], f.store.contents[least] = y, content
 	list := f.lister(domain.MaxGlobWork)
 	for pattern, want := range map[string]string{
-		"Guide/":  "Guide/Wide.md Guide/Setup.md Guide/diagram.png Guide/Alpha.md Guide/Long.md",
-		"**":      "Guide.md Guide/Alpha.md Guide/diagram.png Guide/Long.md Guide/Setup.md Guide/Setup/Deep.md Guide/Wide.md",
+		"Guide/": "Guide/Wide.md Guide/Setup.md Guide/diagram.png Guide/Alpha.md Guide/Long.md",
+		"Tied/":  "Tied/A.md Tied/Y.md Tied/Z.md Tied/X.md Tied/B.md",
+		"**": "Guide.md Guide/Alpha.md Guide/diagram.png Guide/Long.md Guide/Setup.md Guide/Setup/Deep.md Guide/Wide.md " +
+			"Tied.md Tied/A.md Tied/B.md Tied/X.md Tied/Y.md Tied/Z.md",
 		"Guide/*": "Guide/Alpha.md Guide/diagram.png Guide/Long.md Guide/Setup.md Guide/Wide.md",
 	} {
 		for _, size := range []int{1, 2, 3} {
@@ -167,7 +199,7 @@ func TestTheListCursorsRefuseTheOtherShape(t *testing.T) {
 func TestListByPatternAnswersInItsOrder(t *testing.T) {
 	f := newFixture()
 	f.grant(domain.ActionList)
-	f.guideTree()
+	guide, _, _ := f.guideTree()
 	list := f.lister(domain.MaxGlobWork)
 	zero := 0
 	bad := "nope"
@@ -199,13 +231,24 @@ func TestListByPatternAnswersInItsOrder(t *testing.T) {
 	}
 	f.rec.calls = nil
 	if _, err := list.Execute(f.asAlice(), f.eng, "Guide/", nil, nil); err != nil ||
-		!slices.Equal(f.rec.calls, []string{"WorkspaceOf", "Authorize node.list", "ListNodes", "PageStates 4", "AttachmentInfos 1"}) {
+		!slices.Equal(f.rec.calls, []string{"WorkspaceOf", "Authorize node.list", "ListNodes", "PageStates 4", "AttachmentInfos 1",
+			"AliveNodes 1"}) {
 		t.Errorf("list read %v, %v; want the decision, the tree, then the page's states and infos", f.rec.calls, err)
 	}
-	_, err := list.Execute(f.asAlice(), f.eng, "Guide/diagram.png/", nil, nil)
-	var missing *domain.PathNotFound
-	if !errors.As(err, &missing) || missing.Path != "Guide/diagram.png/" || !strings.Contains(missing.Hint, `"Guide/diagram.png"`) {
-		t.Errorf("an attachment's children: %v", err)
+	f.asset("Notes", &guide.ID, 5)
+	for pattern, hint := range map[string]string{
+		"Guide/diagram.png/": `That is an attachment: its path is "Guide/diagram.png".`,
+		"Guide.md/":          `Guide.md is a page; list "Guide/" for its children.`,
+		"Guide/Setup.MD/":    `Guide/Setup.md is a page; list "Guide/Setup/" for its children.`,
+		"Guide/notes.md/":    `That is an attachment: its path is "Guide/Notes".`,
+		"Guide/Alpha/Gone/":  "",
+		"Missing.md/":        "",
+	} {
+		_, err := list.Execute(f.asAlice(), f.eng, pattern, nil, nil)
+		var missing *domain.PathNotFound
+		if !errors.As(err, &missing) || missing.Path != pattern || missing.Hint != hint {
+			t.Errorf("list(%q): %v, %+v; want the hint %q", pattern, err, missing, hint)
+		}
 	}
 }
 
@@ -232,13 +275,17 @@ func TestAListOfAPageWithoutItsMdHints(t *testing.T) {
 	}
 }
 
-// A node deleted between the tree's read and its state's is left out.
+// A node deleted between the tree's read and its state's is left out: a
+// page by its content, an attachment by its node, whose info asset gives
+// deleted or not (M9/P1 design 3.10.3).
 func TestAListLeavesOutWhatWentMeanwhile(t *testing.T) {
 	f := newFixture()
 	f.grant(domain.ActionList)
 	_, setup, png := f.guideTree()
-	delete(f.store.contents, setup.ID)
-	delete(f.infos, png.ID)
+	f.rec.before = map[string]func(){
+		"PageStates 4": func() { delete(f.store.contents, setup.ID) },
+		"AliveNodes 1": func() { delete(f.store.nodes, png.ID) },
+	}
 	got, err := f.lister(domain.MaxGlobWork).Execute(f.asAlice(), f.eng, "Guide/", nil, nil)
 	if err != nil || strings.Join(listed(got), " ") != "Guide/Wide.md Guide/Alpha.md Guide/Long.md" {
 		t.Errorf("list = %q, %v", listed(got), err)

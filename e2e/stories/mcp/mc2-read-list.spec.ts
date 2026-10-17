@@ -104,11 +104,11 @@ test("MC2: an agent lists a notebook in the tree's order and by glob, reads page
   const { pat, workspace, adminId } = await newTeam(api, testInfo);
   const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
   const guide = await createPage(api, pat, notebook.id, "Guide", null, guideContent);
-  await createPage(api, pat, notebook.id, "Setup", guide.id);
+  const setup = await createPage(api, pat, notebook.id, "Setup", guide.id);
   await createPage(api, pat, notebook.id, "Alpha", guide.id);
   await createPage(api, pat, notebook.id, "Long", guide.id, longContent);
   const wide = await createPage(api, pat, notebook.id, "Wide", guide.id, wideContent);
-  const uploaded = new Map<string, { id: string; bytes: Uint8Array }>();
+  const uploaded = new Map<string, { id: string; bytes: Uint8Array; mime: string }>();
   for (const file of files) {
     // oxlint-disable-next-line no-await-in-loop -- one upload at a time, in the tree's order
     const asset = await uploadAsset(api, pat, notebook.id, file, guide.id);
@@ -117,8 +117,10 @@ test("MC2: an agent lists a notebook in the tree's order and by glob, reads page
     if (file.name === "dot.webp") {
       expect([asset.width, asset.height], "the upload reads a WebP's sides").toEqual([1, 1]);
     }
-    uploaded.set(file.name, { id: asset.id, bytes: file.bytes });
+    uploaded.set(file.name, { id: asset.id, bytes: file.bytes, mime: asset.mime });
   }
+  // Setup's only child is an attachment: Setup has children all the same.
+  await uploadAsset(api, pat, notebook.id, { name: "table.csv", bytes: utf8("a,b\n") }, setup.id);
   // The tree's order is neither the creations' (the ids') nor the names'.
   await moveNode(api, pat, wide.id, { parent_id: guide.id, after_id: null });
   const children = (await listNodes(api, pat, notebook.id)).filter((n) => n.parent_id === guide.id);
@@ -142,18 +144,18 @@ test("MC2: an agent lists a notebook in the tree's order and by glob, reads page
     children.map((n) => `Guide/${n.name}${n.kind === "page" ? ".md" : ""}`)
   );
   for (const [item, node] of ofGuide.items.map((it, i) => [it, children[i]] as const)) {
-    expect(item.has_children).toBe(false);
+    expect(item.has_children, item.path).toBe(node?.id === setup.id);
     if (node?.kind === "page") {
       expect([item.kind, item.version, typeof item.byte_size]).toEqual(["page", `${node.id}:1`, "number"]);
     } else {
-      expect([item.kind, item.mime === undefined, item.byte_size]).toEqual([
-        "attachment",
-        false,
-        uploaded.get(node?.name ?? "")?.bytes.length,
-      ]);
+      const upload = uploaded.get(node?.name ?? "");
+      expect([item.kind, item.mime, item.byte_size]).toEqual(["attachment", upload?.mime, upload?.bytes.length]);
     }
   }
   expect(ofGuide.next_cursor).toBeNull();
+  expect((await list(agent, { pattern: "Guide/Setup/" })).items.map((item) => item.path)).toEqual([
+    "Guide/Setup/table.csv",
+  ]);
   expect((await list(agent, { pattern: "**/*.md" })).items.map((item) => item.path)).toEqual([
     "Guide.md",
     "Guide/Alpha.md",
@@ -216,6 +218,7 @@ test("MC2: an agent lists a notebook in the tree's order and by glob, reads page
       throw new Error(`read ${name} answered ${JSON.stringify(answer.content)}, want a link`);
     }
     expect(link.uri.startsWith(`${publicOrigin}/api/v0/assets/`), link.uri).toBe(true);
+    expect([link.mimeType, link.size]).toEqual([uploaded.get(name)?.mime, uploaded.get(name)?.bytes.length]);
     const address = new URL(link.uri);
     // oxlint-disable-next-line no-await-in-loop -- its download, at the server's own address
     const got = await download(nervewiki.baseURL, address.pathname + address.search);

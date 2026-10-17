@@ -71,16 +71,18 @@ func randomName(rnd *rand.Rand, asset bool) (string, bool) {
 // lookups read being two implementations (v0.1 design 13.4 items 10, 13;
 // M9/P1 design 3.9.2): on random trees in the store, each alive node's
 // PathOf is in NFC, as its names are, and parses and finds it; written in
-// capitals or in NFD it finds it
-// too, or is too long, its segments' or its bytes past their bounds; as a
-// glob without wildcards it lists it alone; its parent's path with a
-// trailing "/" lists the parent's children as the store's Children has
-// them.
+// capitals or in NFD it finds it too, or is too long, its segments' or its
+// bytes past their bounds; as a glob without wildcards it lists it alone,
+// within MaxGlobBytes; its parent's path with a trailing "/" lists the
+// parent's children as the store's Children has them. A path past
+// MaxGlobBytes, which a node four levels down may have, is refused as a
+// glob, 422 too_long, the message pointing at its parent's children,
+// which list it, and at read, which finds it (M9/P1 S2 review, A-M3).
 func TestEveryNodesPathFindsIt(t *testing.T) {
 	ctx := shared.WithActor(context.Background(), shared.Actor{UserID: uuid.NewV7(), SessionID: uuid.NewV7()})
 	f := newFixture(t)
 	paths := app.NewNodePaths(f.s)
-	list := app.NewListByPattern(inWorkspace{uuid.NewV7()}, f.s, f.s, anyInfo{}, everyone{}, domain.MaxGlobWork)
+	list := app.NewListByPattern(inWorkspace{uuid.NewV7()}, f.s, f.s, anyInfo{}, everyone{})
 	rnd := rand.New(rand.NewPCG(11, 13))
 	keys := map[[3]string]bool{} // a notebook's, a parent's and a key
 	for tree := range 4 {
@@ -136,6 +138,9 @@ func TestEveryNodesPathFindsIt(t *testing.T) {
 			if err != nil || len(got.Items) != 1 || got.Items[0].Node.ID != n.ID || got.Items[0].Path != path {
 				t.Fatalf("list(%q) = %+v, %v; want it alone", path, got.Items, err)
 			}
+			if len(path) > domain.MaxGlobBytes {
+				t.Fatalf("the path of %d bytes is listed as a glob", len(path))
+			}
 			dir := ""
 			if len(ancestors) > 0 {
 				dir = domain.PathOf(ancestors[:len(ancestors)-1], ancestors[len(ancestors)-1])
@@ -151,6 +156,27 @@ func TestEveryNodesPathFindsIt(t *testing.T) {
 				t.Fatalf("list(%q) = %v, %v; want the store's children %v", dir, listedIDs(got), err, nodeIDs(children))
 			}
 		}
+	}
+	// Five levels of titles of 255 bytes: a path of 1,283 bytes.
+	var chain []domain.Node
+	var parent *uuid.UUID
+	for i := range 5 {
+		n := f.page(t, f.eng, parent, strings.Repeat("漢", 84)+string(rune('a'+i))+"x", 0)
+		chain, parent = append(chain, n), &n.ID
+	}
+	deep := chain[len(chain)-1]
+	path := domain.PathOf(chain[:len(chain)-1], deep)
+	findsIt(t, ctx, paths, f.eng, path, deep, false)
+	_, err := list.Execute(ctx, f.eng, path, nil, nil)
+	var e *shared.Error
+	if !errors.As(err, &e) || len(e.Fields) != 1 || e.Fields[0].Field != "pattern" || e.Fields[0].Code != shared.FieldTooLong ||
+		!strings.Contains(e.Fields[0].Message, `("A/B/")`) || !strings.Contains(e.Fields[0].Message, "read") {
+		t.Fatalf("list of a path of %d bytes = %v, want 422 too_long pointing at its parent's children", len(path), err)
+	}
+	dir := strings.TrimSuffix(domain.PathOf(chain[:len(chain)-2], chain[len(chain)-2]), ".md") + "/"
+	got, err := list.Execute(ctx, f.eng, dir, nil, nil)
+	if err != nil || !slices.Equal(listedIDs(got), []uuid.UUID{deep.ID}) {
+		t.Fatalf("list(its parent's children) = %v, %v; want it", listedIDs(got), err)
 	}
 }
 

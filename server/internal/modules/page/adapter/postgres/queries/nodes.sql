@@ -62,6 +62,11 @@ FROM nodes
 WHERE notebook_id = sqlc.arg(notebook_id) AND parent_id = sqlc.arg(parent_id) AND name_key = sqlc.arg(name_key)
     AND deleted_at IS NULL;
 
+-- name: AliveNodes :many
+-- The nodes not deleted among ids (M9/P1 design 3.10.3): list's attachments, whose infos asset reads deleted or not.
+-- The array is a page of list, at most 1,000: the store plans it with its argument.
+SELECT id FROM nodes WHERE id = ANY(sqlc.arg(ids)::uuid[]) AND deleted_at IS NULL;
+
 -- name: AssetsUnder :many
 -- A parent's attachments not deleted (the root's when parent_id is NULL), by title key and id, after the cursor's key
 -- and id when it has one, at most max_rows: a page of the attachments' list (M7/P2 design 3.3). As Children, it

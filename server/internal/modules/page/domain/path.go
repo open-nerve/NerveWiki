@@ -131,3 +131,17 @@ func PageHint(path string) string {
 func AttachmentHint(path string) string {
 	return fmt.Sprintf("That is an attachment: its path is %q.", path)
 }
+
+// TitleHint is PathNotFound's hint for a page's path that names nothing
+// while a page there is titled with its last segment, ".md" and all: that
+// page's path, path, has ".md" twice.
+func TitleHint(path string) string {
+	return fmt.Sprintf("A page there is titled with the .md: its path is %q.", path)
+}
+
+// ChildrenHint is the hint for list's pattern that names a page, at path,
+// where its children were meant: they are listed by its path without
+// ".md" and with a trailing "/".
+func ChildrenHint(path string) string {
+	return fmt.Sprintf("%s is a page; list %q for its children.", path, strings.TrimSuffix(path, pageSuffix)+"/")
+}

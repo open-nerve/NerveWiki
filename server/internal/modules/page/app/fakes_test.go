@@ -94,10 +94,15 @@ type fakeNotebooks struct {
 	workspaces map[uuid.UUID]uuid.UUID
 	gone       map[uuid.UUID]bool
 	waited     func()
+	// err fails WorkspaceOf.
+	err error
 }
 
 func (f fakeNotebooks) WorkspaceOf(ctx context.Context, id uuid.UUID) (uuid.UUID, bool, error) {
 	f.record(ctx, "WorkspaceOf")
+	if f.err != nil {
+		return uuid.UUID{}, false, f.err
+	}
 	ws, ok := f.workspaces[id]
 	return ws, ok, nil
 }
@@ -1298,6 +1303,18 @@ func (f *fakeStore) byKey(notebookID uuid.UUID, parentID *uuid.UUID, key string)
 		}
 	}
 	return domain.Node{}, false, nil
+}
+
+// AliveNodes reads which nodes are in the store, a call with their count.
+func (f *fakeStore) AliveNodes(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]bool, error) {
+	f.record(ctx, fmt.Sprintf("AliveNodes %d", len(ids)))
+	out := map[uuid.UUID]bool{}
+	for _, id := range ids {
+		if _, ok := f.nodes[id]; ok {
+			out[id] = true
+		}
+	}
+	return out, nil
 }
 
 // PageStates reads the pages' contents' states, a call with their count.

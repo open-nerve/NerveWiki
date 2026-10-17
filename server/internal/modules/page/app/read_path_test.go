@@ -42,6 +42,8 @@ func TestFindByPath(t *testing.T) {
 	png := f.asset("diagram.png", &a.ID, 2)
 	f.page("x.md", &a.ID, 3)
 	f.page("Straße", &a.ID, 4)
+	f.page("y.md", &a.ID, 5)
+	f.page("z.md", nil, 1)
 	_ = png
 	paths := app.NewNodePaths(f.store)
 	for _, tt := range []struct{ path, want string }{
@@ -56,6 +58,9 @@ func TestFindByPath(t *testing.T) {
 		{"A", `page.not_found A A page's path ends with .md: "A.md".`},
 		{"A/diagram.png/B.md", "page.not_found A/diagram.png/B.md "},
 		{"A/missing.md", "page.not_found A/missing.md "},
+		{"A/y.md", `page.not_found A/y.md A page there is titled with the .md: its path is "A/y.md.md".`},
+		{"Z.MD", `page.not_found Z.MD A page there is titled with the .md: its path is "z.md.md".`},
+		{"A/diagram.md", "page.not_found A/diagram.md "},
 		{"/B/A.md", "page.not_found /B/A.md "},
 	} {
 		p, err := domain.ParsePath("path", tt.path, false)
@@ -156,8 +161,9 @@ func TestReadPathReadsAPageOrFindsAnAttachment(t *testing.T) {
 		t.Errorf("the attachment read %+v, %v", at, err)
 	}
 	delete(f.store.contents, setup.ID)
-	if _, err := read.Execute(f.asAlice(), f.eng, "Guide/Setup.md", nil, nil, nil, textMeasure(4)); codeOf(err) != "page.not_found" {
-		t.Errorf("a page without its content: %v", err)
+	if _, err := read.Execute(f.asAlice(), f.eng, "guide/setup.md", nil, nil, nil, textMeasure(4)); findOrProblem(app.Found{}, err) !=
+		"page.not_found guide/setup.md " {
+		t.Errorf("a page without its content: %v, want the path not found as written", err)
 	}
 	if !strings.Contains(strings.Join(f.rec.calls, " "), "Authorize page.read") {
 		t.Errorf("read decided %v, want page.read", f.rec.calls)

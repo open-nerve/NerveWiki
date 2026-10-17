@@ -3,7 +3,6 @@ package app
 import (
 	"cmp"
 	"context"
-	"fmt"
 	"slices"
 	"strings"
 	"uuid"
@@ -25,11 +24,11 @@ type ListByPattern struct {
 }
 
 // NewListByPattern returns the use case, its globs' work a call at most
-// maxWork, which production gives domain.MaxGlobWork.
+// domain.MaxGlobWork.
 func NewListByPattern(notebooks Notebooks, nodes Nodes, states PageStates, attachments AttachmentInfos, auth shared.Authorizer,
-	maxWork int64,
 ) *ListByPattern {
-	return &ListByPattern{notebooks: notebooks, nodes: nodes, states: states, attachments: attachments, auth: auth, maxWork: maxWork}
+	return &ListByPattern{notebooks: notebooks, nodes: nodes, states: states, attachments: attachments, auth: auth,
+		maxWork: domain.MaxGlobWork}
 }
 
 // Listing is a page of list: each item with the cursor that goes on after
@@ -97,7 +96,7 @@ func (l *ListByPattern) Execute(ctx context.Context, notebookID uuid.UUID, patte
 	if err != nil {
 		return Listing{}, err
 	}
-	if err := l.decide(ctx, actor, notebookID); err != nil {
+	if err := decideNotebook(ctx, l.notebooks, l.auth, actor, domain.ActionList, notebookID); err != nil {
 		return Listing{}, err
 	}
 	nodes, err := l.nodes.ListNodes(ctx, notebookID)
@@ -117,25 +116,6 @@ func (l *ListByPattern) Execute(ctx context.Context, notebookID uuid.UUID, patte
 	}
 	out.Items, err = l.items(ctx, t, found, children)
 	return out, err
-}
-
-// decide decides node.list on the notebook notebookID: the zero id, an
-// account entry's notebook that is no UUID, is notebook.not_found without a
-// read.
-func (l *ListByPattern) decide(ctx context.Context, actor shared.Actor, notebookID uuid.UUID) error {
-	if notebookID == (uuid.UUID{}) {
-		return domain.ErrNotebookNotFound
-	}
-	workspaceID, ok, err := l.notebooks.WorkspaceOf(ctx, notebookID)
-	switch {
-	case err != nil:
-		return err
-	case !ok:
-		return domain.ErrNotebookNotFound
-	}
-	target := shared.Target{WorkspaceID: workspaceID, NotebookID: notebookID}
-	_, err = authorize(ctx, l.auth, actor, domain.ActionList, target, domain.ErrNotebookNotFound)
-	return err
 }
 
 // walk is the glob's matches after the path key from (from the start
@@ -174,7 +154,8 @@ func globCursor(k string) (string, error) {
 
 // items are the listed of nodes, each with its path and its cursor; a
 // page's state and an attachment's info read for them, an item without
-// either left out: it was deleted after the tree was read.
+// either left out, or an attachment not alive: it was deleted after the
+// tree was read.
 func (l *ListByPattern) items(ctx context.Context, t tree, nodes []*domain.GlobNode, children bool) ([]Listed, error) {
 	var pages, attachments []uuid.UUID
 	for _, n := range nodes {
@@ -186,6 +167,7 @@ func (l *ListByPattern) items(ctx context.Context, t tree, nodes []*domain.GlobN
 	}
 	var states map[uuid.UUID]PageState
 	var infos map[uuid.UUID]AttachmentInfo
+	var alive map[uuid.UUID]bool
 	var err error
 	if len(pages) > 0 {
 		if states, err = l.states.PageStates(ctx, pages); err != nil {
@@ -194,6 +176,9 @@ func (l *ListByPattern) items(ctx context.Context, t tree, nodes []*domain.GlobN
 	}
 	if len(attachments) > 0 {
 		if infos, err = l.attachments.Of(ctx, attachments); err != nil {
+			return nil, err
+		}
+		if alive, err = l.states.AliveNodes(ctx, attachments); err != nil {
 			return nil, err
 		}
 	}
@@ -208,7 +193,7 @@ func (l *ListByPattern) items(ctx context.Context, t tree, nodes []*domain.GlobN
 			item.Page = &state
 		} else {
 			info, ok := infos[n.Node.ID]
-			if !ok {
+			if !ok || !alive[n.Node.ID] {
 				continue
 			}
 			item.Attachment = &info
@@ -286,9 +271,21 @@ func (t tree) keyOf(n *domain.GlobNode) string {
 // cursor after the size-th when one more follows.
 func (t tree) children(dir domain.Path, resumed bool, after domain.ChildrenCursor, size int) ([]*domain.GlobNode, string, error) {
 	level := t.roots
-	for _, key := range dir.Keys {
+	for d, key := range dir.Keys {
 		i := slices.IndexFunc(level, func(n *domain.GlobNode) bool { return n.Node.NameKey == key })
 		switch {
+		case i < 0 && d == len(dir.Keys)-1 && strings.HasSuffix(key, ".md"):
+			// A page's path with "/": its children were meant; or an
+			// attachment's, as Find hints it.
+			stem := strings.TrimSuffix(key, ".md")
+			j := slices.IndexFunc(level, func(n *domain.GlobNode) bool { return n.Node.NameKey == stem })
+			switch {
+			case j < 0:
+				return nil, "", &domain.PathNotFound{Path: dir.Written}
+			case level[j].Node.Kind != domain.KindPage:
+				return nil, "", &domain.PathNotFound{Path: dir.Written, Hint: domain.AttachmentHint(t.pathOf(level[j]))}
+			}
+			return nil, "", &domain.PathNotFound{Path: dir.Written, Hint: domain.ChildrenHint(t.pathOf(level[j]))}
 		case i < 0:
 			return nil, "", &domain.PathNotFound{Path: dir.Written}
 		case level[i].Node.Kind != domain.KindPage:
@@ -329,8 +326,7 @@ func (t tree) pageHint(g domain.Glob) string {
 			return ""
 		}
 		if i == len(keys)-1 {
-			path := t.pathOf(level[j])
-			return fmt.Sprintf("%s is a page; list %q for its children.", path, strings.TrimSuffix(path, ".md")+"/")
+			return domain.ChildrenHint(t.pathOf(level[j]))
 		}
 		level = level[j].Children
 	}

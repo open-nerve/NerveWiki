@@ -91,7 +91,7 @@ func (t tools) read(ctx context.Context, c mcpserver.Call, in readIn) (mcpserver
 		return mcpserver.Result{}, toolErr(err)
 	}
 	if r.Page == nil {
-		return t.readAttachment(ctx, r)
+		return t.readAttachment(ctx, in.Path, r)
 	}
 	p := r.Page
 	meta := pageMeta{Path: r.Path, Kind: "page", Version: p.Version.String(), Offset: p.Window.Offset,
@@ -109,13 +109,17 @@ func (t tools) read(ctx context.Context, c mcpserver.Call, in readIn) (mcpserver
 	return mcpserver.Result{Blocks: []mcpserver.Block{{Text: first}, {Text: p.Slice.Text}}}, nil
 }
 
-// readAttachment is the attachment r found: its metadata, then the image
-// itself or a link to download it (M9/P1 design 3.11.2). An image needs
-// no address: without server.public_url it is given all the same, and
-// what would be a link is a note.
-func (t tools) readAttachment(ctx context.Context, r app.Read) (mcpserver.Result, error) {
+// readAttachment is the attachment r found at path, as written: its
+// metadata, then the image itself or a link to download it (M9/P1 design
+// 3.11.2). An image needs no address: without server.public_url it is
+// given all the same, and what would be a link is a note. An attachment
+// gone since, or its access, is the path not found.
+func (t tools) readAttachment(ctx context.Context, path string, r app.Read) (mcpserver.Result, error) {
 	a, err := t.attachments.Read(ctx, r.Node.ID)
-	if err != nil {
+	switch {
+	case errors.Is(err, domain.ErrNotFound):
+		return mcpserver.Result{}, toolErr(&domain.PathNotFound{Path: path})
+	case err != nil:
 		return mcpserver.Result{}, err
 	}
 	meta := attachmentMeta{Path: r.Path, Kind: "attachment", MIME: a.MIME, Bytes: a.Bytes, SHA256: hex.EncodeToString(a.SHA256)}

@@ -23,11 +23,12 @@ func listOf(l app.Listing) tools {
 // is the listing's, null without one; hint only when set (M9/P1 design
 // 3.10.2).
 func TestTheListAnswersItsItems(t *testing.T) {
-	page, png := uuid.NewV7(), uuid.NewV7()
+	page, png, pdf := uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
 	at := time.Date(2026, 10, 17, 10, 30, 0, 0, time.FixedZone("CEST", 2*3600))
 	l := app.Listing{Items: []app.Listed{
 		{Path: "Guide.md", Node: domain.Node{ID: page}, HasChildren: true, Page: &app.PageState{Revision: 3, Bytes: 1204, UpdatedAt: at}, Cursor: "c1"},
 		{Path: "Guide/diagram.png", Node: domain.Node{ID: png}, Attachment: &app.AttachmentInfo{MIME: "image/png", Bytes: 34567}, Cursor: "c2"},
+		{Path: "Guide/spec.pdf", Node: domain.Node{ID: pdf}, Attachment: &app.AttachmentInfo{MIME: "application/pdf", Bytes: 9}, Cursor: "c3"},
 	}, Next: "next", Hint: "a hint"}
 	res, err := listOf(l).list(context.Background(), mcpserver.Call{}, listIn{})
 	if err != nil {
@@ -36,7 +37,8 @@ func TestTheListAnswersItsItems(t *testing.T) {
 	raw := rawOf(t, res)
 	want := `{"items":[{"path":"Guide.md","kind":"page","has_children":true,"version":"` + page.String() +
 		`:3","byte_size":1204,"updated_at":"2026-10-17T08:30:00Z"},{"path":"Guide/diagram.png","kind":"attachment",` +
-		`"has_children":false,"mime":"image/png","byte_size":34567}],"next_cursor":"next","hint":"a hint"}`
+		`"has_children":false,"mime":"image/png","byte_size":34567},{"path":"Guide/spec.pdf","kind":"attachment",` +
+		`"has_children":false,"mime":"application/pdf","byte_size":9}],"next_cursor":"next","hint":"a hint"}`
 	if raw != want {
 		t.Errorf("the answer is\n%s\nwant\n%s", raw, want)
 	}

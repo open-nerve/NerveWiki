@@ -12,6 +12,32 @@ import (
 	"uuid"
 )
 
+const aliveNodes = `-- name: AliveNodes :many
+SELECT id FROM nodes WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL
+`
+
+// The nodes not deleted among ids (M9/P1 design 3.10.3): list's attachments, whose infos asset reads deleted or not.
+// The array is a page of list, at most 1,000: the store plans it with its argument.
+func (q *Queries) AliveNodes(ctx context.Context, ids []uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, aliveNodes, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const ancestors = `-- name: Ancestors :many
 WITH RECURSIVE chain AS (
     SELECT p.id, p.parent_id, p.name, 1 AS hops
@@ -162,8 +188,9 @@ type ChildByKeyRow struct {
 	UpdatedAt   time.Time
 }
 
-// The child not deleted of parent_id whose title key is name_key: a path's next segment, by the same index.
-// IS NOT DISTINCT FROM would not use it (M9/P1 design 2.1, item 13).
+// The child not deleted of parent_id whose title key is name_key: a path's next segment, by the children's unique
+// index (00042), its two columns equalities, the notebook checked on the row. IS NOT DISTINCT FROM would not use it
+// (M9/P1 design 2.1, item 13).
 func (q *Queries) ChildByKey(ctx context.Context, arg ChildByKeyParams) (ChildByKeyRow, error) {
 	row := q.db.QueryRow(ctx, childByKey, arg.NotebookID, arg.ParentID, arg.NameKey)
 	var i ChildByKeyRow
@@ -770,8 +797,8 @@ type RestoreNodesRow struct {
 // content keeps its writer and time: it did not change. The counts tell what came back, for the unit to check that the
 // purge took nothing: the nodes; the pages' contents, and the versions at their contents' revisions; the versions that
 // created a page, and the versions whose base is not the version before them, a gap in its chain (checkPages' chain).
-// The siblings' unique index is checked a row at a time: the group's other nodes are deleted, out of it, until they
-// are updated, and their names were made unique beforehand.
+// The siblings' unique indexes are checked a row at a time: the group's other nodes are deleted, out of them, until
+// they are updated, and their names were made unique beforehand.
 // The plans hold for an item of any size, at any statistics, planned with the arguments or for any (M8/P2 design
 // 3.11): each form replaced was measured reading rows by rows past the request's 15 seconds. What followed the nodes
 // is reached by its node's id from back, its time compared: back's, which the planner knows nothing of, not the
@@ -829,7 +856,7 @@ type RootByKeyRow struct {
 }
 
 // The node not deleted at the notebook's root whose title key is name_key: a path's first segment (M9/P1 design
-// 3.9.2), by the siblings' unique index, whose NULLS NOT DISTINCT keeps one root per key.
+// 3.9.2), by the roots' unique index (00042), its two columns equalities: a point lookup with statistics or without.
 func (q *Queries) RootByKey(ctx context.Context, arg RootByKeyParams) (RootByKeyRow, error) {
 	row := q.db.QueryRow(ctx, rootByKey, arg.NotebookID, arg.NameKey)
 	var i RootByKeyRow
