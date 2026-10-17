@@ -53,21 +53,26 @@ func (c mcpCell) String() string {
 	return "the tool's error " + c.code
 }
 
-// mcpRows are the rows, each module's: page's list and read (M9/P1
-// design 3.13).
-func mcpRows() []mcpRow { return pageMCPRows() }
+// mcpRows are the rows, each module's: page's list, read (M9/P1 design
+// 3.13) and open_notebook, notebook's notebooks (3.16.4, 3.17.4).
+func mcpRows() []mcpRow { return slices.Concat(pageMCPRows(), notebookMCPRows()) }
 
 // mcpToolCodes are the codes each MCP tool's error may carry besides
 // internal_error (M9 design 4.7; M9/P1 S2 review C's table), beside the
 // matrix's rows: each one the contract declares, each tool of tools.json
 // with its row, and each code of a row answered by
-// TestListAndReadErrorsCarryDeclaredCodes or its tools' own. A call's
-// error with a code its tool's row does not list fails the test that
-// called it (mcpAnswer.toolError). Each step adds its tools' rows.
+// TestTheMCPToolsErrorsCarryTheirCodes. A call's error with a code its
+// tool's row does not list fails the test that called it
+// (mcpAnswer.toolError). Each step adds its tools' rows and their calls:
+// S3's notebooks has no argument to refuse but one it does not take, and
+// open_notebook only its notebook, unseen or no UUID (M9/P1 design
+// 3.17).
 func mcpToolCodes() map[string][]string {
 	return map[string][]string{
-		"list": {"bad_request", "validation_failed", "notebook.not_found", "page.not_found"},
-		"read": {"bad_request", "validation_failed", "notebook.not_found", "page.not_found"},
+		"list":          {"bad_request", "validation_failed", "notebook.not_found", "page.not_found"},
+		"read":          {"bad_request", "validation_failed", "notebook.not_found", "page.not_found"},
+		"notebooks":     {"bad_request"},
+		"open_notebook": {"bad_request", "notebook.not_found"},
 	}
 }
 
@@ -101,7 +106,8 @@ func TestEveryMCPToolHasItsCodes(t *testing.T) {
 // pageMCPRows are page's rows: list of the root's children and read of
 // the column's page, each in both entries; a column that cannot see its
 // notebook is its 404 (mcpRow.want's notebook.not_found, the notebook
-// entry's edge 404 for it), the others' answers holding that page.
+// entry's edge 404 for it), the others' answers holding that page; and
+// open_notebook (openNotebookMCPRow).
 func pageMCPRows() []mcpRow {
 	readers := func(c caller) mcpCell {
 		if _, seen := roleIn(c); seen {
@@ -143,6 +149,7 @@ func pageMCPRows() []mcpRow {
 				}
 			},
 		},
+		openNotebookMCPRow(),
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"slices"
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/asset"
@@ -11,6 +12,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/notebook"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/workspace"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/buildinfo"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
@@ -26,10 +28,10 @@ import (
 const mcpBodyLimit = 6*(page.MaxContentBytes+1<<20) + 64<<10
 
 // mcpTools are the modules' MCP tools, each module's in turn (M9 design
-// 4.1): page's list and read, whose attachments asset reads; notebook's
-// come with M9/P1 S3, linking's with P4.
-func mcpTools(pg *page.Module, as *asset.Module, _ *linking.Module, _ *notebook.Module) []mcpserver.Tool {
-	return pg.Tools(page.ToolDeps{Attachments: pageAttachments{as.AttachmentReads()}})
+// 4.1): page's list, read, whose attachments asset reads, and
+// open_notebook; notebook's notebooks; linking's come with P4.
+func mcpTools(pg *page.Module, as *asset.Module, _ *linking.Module, nb *notebook.Module) []mcpserver.Tool {
+	return slices.Concat(pg.Tools(page.ToolDeps{Attachments: pageAttachments{as.AttachmentReads()}}), nb.Tools())
 }
 
 // pageAttachments is asset's AttachmentReads as page's read calls them
@@ -86,6 +88,27 @@ func mcpCredentials(ctx context.Context) (mcpserver.Credential, bool) {
 		return mcpserver.Credential{}, false
 	}
 	return mcpserver.Credential{UserID: actor.UserID, TokenID: actor.APITokenID}, true
+}
+
+// accountWorkspaces is workspace's Memberships as the notebook module's
+// AccountWorkspaces, which MCP's notebooks reads (M9/P1 design 3.17.1):
+// the two modules do not import each other.
+type accountWorkspaces struct {
+	workspace.Memberships
+}
+
+// WorkspacesOf is the account's workspaces, with its role there and their
+// slugs and names.
+func (a accountWorkspaces) WorkspacesOf(ctx context.Context, userID uuid.UUID) ([]notebook.AccountWorkspace, error) {
+	listed, err := a.Memberships.WorkspacesOf(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]notebook.AccountWorkspace, len(listed))
+	for i, m := range listed {
+		out[i] = notebook.AccountWorkspace{ID: m.WorkspaceID, Slug: m.Slug, Name: m.Name, Role: m.Role}
+	}
+	return out, nil
 }
 
 // mcpNames are identity's client names as mcpserver remembers them, each

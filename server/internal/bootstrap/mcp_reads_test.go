@@ -383,7 +383,7 @@ func TestTheMCPReadsWithAPublicURLEndingInASlash(t *testing.T) {
 	}
 }
 
-// Each error list and read answer carries its code, one its tool's row of
+// Each error an MCP tool answers carries its code, one its tool's row of
 // mcpToolCodes lists, which the contract declares (M9 design 4.7;
 // mcpAnswer.toolError checks both): the arguments' schema, bad_request; a
 // cursor that decodes into no payload, bad_request; a pattern's, a path's
@@ -391,11 +391,14 @@ func TestTheMCPReadsWithAPublicURLEndingInASlash(t *testing.T) {
 // that names nothing, page.not_found; the account entry's notebook not
 // seen, notebook.not_found, before any path in it is looked up. Each code
 // of every row of mcpToolCodes is answered here: a tool's row comes with
-// its calls here (S2 fix check C). Neither tool binds to one REST
-// operation: list answers what listNodes and listAssets do, read what
-// getPageContent and the notebook's decision do, and their arguments are
-// their own.
-func TestListAndReadErrorsCarryDeclaredCodes(t *testing.T) {
+// its calls here (S2 fix check C). Neither list nor read binds to one
+// REST operation: list answers what listNodes and listAssets do, read
+// what getPageContent and the notebook's decision do, and their arguments
+// are their own. S3's notebooks refuses only an argument it does not
+// take; open_notebook a call without its notebook or with an argument it
+// does not take, and a notebook not seen, deleted, of none or no UUID
+// (M9/P1 design 3.17).
+func TestTheMCPToolsErrorsCarryTheirCodes(t *testing.T) {
 	r := startReadsApp(t, publicOrigin)
 	r.createPage(t, "", "Guide", "a\n")
 	unseen := uuid.NewV7().String()
@@ -421,6 +424,13 @@ func TestListAndReadErrorsCarryDeclaredCodes(t *testing.T) {
 		// path, whether a node is there or not.
 		{mcpserver.Pattern, "list", map[string]any{"notebook": r.hidden, "pattern": "Missing/"}, "notebook.not_found"},
 		{mcpserver.Pattern, "read", map[string]any{"notebook": r.hidden, "path": "Missing.md"}, "notebook.not_found"},
+		{mcpserver.Pattern, "notebooks", map[string]any{"notebook": r.notebook}, "bad_request"},
+		{mcpserver.Pattern, "open_notebook", map[string]any{}, "bad_request"},
+		{mcpserver.Pattern, "open_notebook", map[string]any{"notebook": r.notebook, "pattern": "/"}, "bad_request"},
+		{mcpserver.Pattern, "open_notebook", map[string]any{"notebook": r.hidden}, "notebook.not_found"},
+		{mcpserver.Pattern, "open_notebook", map[string]any{"notebook": r.deleted}, "notebook.not_found"},
+		{mcpserver.Pattern, "open_notebook", map[string]any{"notebook": unseen}, "notebook.not_found"},
+		{mcpserver.Pattern, "open_notebook", map[string]any{"notebook": "nope"}, "notebook.not_found"},
 	} {
 		member := r.call(t, tt.path, tt.tool, tt.args).toolError(t)
 		if member["code"] != tt.want {

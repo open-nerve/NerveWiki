@@ -98,8 +98,9 @@ func workspaceDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, a
 }
 
 // notebookDeps are the notebook module's dependencies: the workspace
-// module's ports, identity's directory for the member list, and the
-// registrants of its extension points.
+// module's ports, the account's workspaces among them, identity's
+// directory for the member list, and the registrants of its extension
+// points.
 func notebookDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, authorizer shared.Authorizer) notebook.Deps {
 	ext := notebookRegistrants(pool)
 	return notebook.Deps{
@@ -111,6 +112,7 @@ func notebookDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, au
 		Workspaces:            workspace.NewWorkspaces(pool),
 		WorkspaceMembers:      workspace.NewMemberships(pool),
 		Profiles:              notebookProfiles{identity.NewDirectory(pool)},
+		AccountWorkspaces:     accountWorkspaces{workspace.NewMemberships(pool)},
 		DeletionSubscribers:   ext.deletionSubscribers,
 		VisibilitySubscribers: ext.visibilitySubscribers,
 		ActivitySources:       ext.activitySources,

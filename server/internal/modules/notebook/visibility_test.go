@@ -111,7 +111,7 @@ func (f fixture) serveWith(t *testing.T, w *watcher) http.Handler {
 		Pool: f.pool, Tx: postgres.NewTxManager(f.pool, 5*time.Second), Clock: &tickingClock{}, Logger: slog.New(slog.DiscardHandler),
 		Authorizer: rolesAuthorizer{facts: notebook.NewFacts(f.pool)}, Workspaces: sqlWorkspaces{f.pool},
 		WorkspaceMembers: sqlWorkspaceMembers{f.pool}, Profiles: sqlProfiles{f.pool},
-		VisibilitySubscribers: []notebook.VisibilitySubscriber{w},
+		VisibilitySubscribers: []notebook.VisibilitySubscriber{w}, AccountWorkspaces: noAccountWorkspaces{},
 	}).Register(router, httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: tokenAuth{}}))
 	return router
 }

@@ -3,7 +3,7 @@
 // side; NewFacts for the access module's facts; NewWorkspaceDeletion and
 // NewWorkspaceMemberEvents, its part in the workspace module's deletion,
 // addition and role change; Purgers for the purge; Actions for the
-// composition's checks.
+// composition's checks; Tools, the module's MCP tools.
 package notebook
 
 import (
@@ -12,10 +12,12 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	httpadapter "github.com/open-nerve/NerveWiki/server/internal/modules/notebook/adapter/http"
+	mcpadapter "github.com/open-nerve/NerveWiki/server/internal/modules/notebook/adapter/mcp"
 	postgresadapter "github.com/open-nerve/NerveWiki/server/internal/modules/notebook/adapter/postgres"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/notebook/app"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/notebook/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/mcpserver"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
@@ -29,6 +31,14 @@ type Workspaces = app.Workspaces
 // WorkspaceMembers is what the module reads of a workspace's memberships:
 // bootstrap hands workspace.NewMemberships to it.
 type WorkspaceMembers = app.WorkspaceMembers
+
+// AccountWorkspaces are the workspaces an account is a member of, which
+// MCP's notebooks lists the notebooks of: bootstrap converts workspace's
+// Memberships.
+type (
+	AccountWorkspaces = app.AccountWorkspaces
+	AccountWorkspace  = app.AccountWorkspace
+)
 
 // Profile is what the module reads of an account.
 type Profile = app.Profile
@@ -58,6 +68,9 @@ type Deps struct {
 	Workspaces       Workspaces
 	WorkspaceMembers WorkspaceMembers
 	Profiles         MemberProfiles
+	// AccountWorkspaces are the caller's workspaces of MCP's notebooks: it
+	// must be there.
+	AccountWorkspaces AccountWorkspaces
 	// The registrants of the extension points.
 	DeletionSubscribers   []NotebookDeletionSubscriber
 	VisibilitySubscribers []VisibilitySubscriber
@@ -66,11 +79,16 @@ type Deps struct {
 
 // Module is the wired notebook module.
 type Module struct {
-	uc httpadapter.UseCases
+	uc        httpadapter.UseCases
+	notebooks *app.ListAccountNotebooks // MCP's notebooks (Tools)
 }
 
-// New wires the module.
+// New wires the module. A module without the account's workspaces is a
+// fault of its wiring.
 func New(d Deps) *Module {
+	if d.AccountWorkspaces == nil {
+		panic("notebook: no account workspaces")
+	}
 	store := postgresadapter.New(d.Pool)
 	auth := d.Authorizer
 	visibility := d.VisibilitySubscribers
@@ -119,7 +137,12 @@ func New(d Deps) *Module {
 		ListAuditEvents: app.NewListNotebookAuditEvents(app.ListNotebookAuditEventsDeps{
 			Workspaces: d.Workspaces, Audit: store, Profiles: d.Profiles, Auth: auth,
 		}),
-	}}
+	}, notebooks: app.NewListAccountNotebooks(d.AccountWorkspaces, store)}
+}
+
+// Tools are the module's MCP tools: notebooks (M9 design 4.6).
+func (m *Module) Tools() []mcpserver.Tool {
+	return mcpadapter.Tools(m.notebooks)
 }
 
 // Register mounts the module's API on router, the root router from

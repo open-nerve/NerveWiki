@@ -187,6 +187,19 @@ type AgentsStore interface {
 	AgentsPage(ctx context.Context, notebookID uuid.UUID, key string) (node uuid.UUID, kind domain.Kind, title string, revision int, ok bool, err error)
 }
 
+// OverviewStore reads a notebook's overview for MCP's open_notebook,
+// unlocked (M9/P1 design 3.17.3).
+type OverviewStore interface {
+	// NotebookCounts are the notebook's pages and attachments not deleted.
+	NotebookCounts(ctx context.Context, notebookID uuid.UUID) (pages, attachments int64, err error)
+	// NotebookLastChange is the tree's last write: its changesets' latest
+	// updated_at, the pages' part of the web's activity; nil for a
+	// notebook without a changeset.
+	NotebookLastChange(ctx context.Context, notebookID uuid.UUID) (*time.Time, error)
+	// FirstChildren are the root's first n children, in order.
+	FirstChildren(ctx context.Context, notebookID uuid.UUID, n int) ([]domain.Node, error)
+}
+
 // PageStates reads the pages' contents as MCP's list tells them, and
 // which of its attachments are alive.
 type PageStates interface {

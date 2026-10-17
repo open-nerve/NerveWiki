@@ -12,8 +12,9 @@ import (
 )
 
 // Memberships reads an account's roles in workspaces: the facts of the
-// access module's workspace level, and the workspaces of the event stream
-// (M5 design 4.10), which bootstrap wires to it.
+// access module's workspace level, the workspaces of the event stream
+// (M5 design 4.10) and of MCP's notebooks (M9 design 4.6), which bootstrap
+// wires to it.
 type Memberships interface {
 	// RoleOf returns userID's role in workspaceID, and whether userID is an
 	// active member of it, in the transaction ctx carries.
@@ -24,10 +25,11 @@ type Memberships interface {
 	WorkspacesOf(ctx context.Context, userID uuid.UUID) ([]Membership, error)
 }
 
-// Membership is a workspace an account is an active member of, and its
-// role there.
+// Membership is a workspace an account is an active member of, its role
+// there, and the workspace's slug and name.
 type Membership struct {
 	WorkspaceID uuid.UUID
+	Slug, Name  string
 	Role        shared.WorkspaceRole
 }
 
@@ -53,7 +55,7 @@ func (m memberships) WorkspacesOf(ctx context.Context, userID uuid.UUID) ([]Memb
 	}
 	out := make([]Membership, len(listed))
 	for i, l := range listed {
-		out[i] = Membership{WorkspaceID: l.Workspace.ID, Role: l.Role}
+		out[i] = Membership{WorkspaceID: l.Workspace.ID, Slug: l.Workspace.Slug, Name: l.Workspace.Name, Role: l.Role}
 	}
 	return out, nil
 }

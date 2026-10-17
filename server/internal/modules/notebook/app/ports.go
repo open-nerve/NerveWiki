@@ -39,6 +39,20 @@ type WorkspaceMembers interface {
 	RoleOf(ctx context.Context, workspaceID, userID uuid.UUID) (shared.WorkspaceRole, bool, error)
 }
 
+// AccountWorkspaces are the workspaces an account is an active member of,
+// guests included, with its role there and their slugs and names:
+// bootstrap hands it workspace's Memberships (M9 design 4.1).
+type AccountWorkspaces interface {
+	WorkspacesOf(ctx context.Context, userID uuid.UUID) ([]AccountWorkspace, error)
+}
+
+// AccountWorkspace is a workspace of AccountWorkspaces.
+type AccountWorkspace struct {
+	ID         uuid.UUID
+	Slug, Name string
+	Role       shared.WorkspaceRole
+}
+
 // Profile is what other accounts see of an account.
 type Profile struct {
 	DisplayName string

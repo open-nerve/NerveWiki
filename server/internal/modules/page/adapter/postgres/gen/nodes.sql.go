@@ -635,6 +635,68 @@ func (q *Queries) FindNodeIn(ctx context.Context, arg FindNodeInParams) (FindNod
 	return i, err
 }
 
+const firstChildren = `-- name: FirstChildren :many
+SELECT id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at,
+    updated_at
+FROM nodes
+WHERE notebook_id = $1 AND parent_id IS NULL AND deleted_at IS NULL
+ORDER BY sort_order, id
+LIMIT $2
+`
+
+type FirstChildrenParams struct {
+	NotebookID uuid.UUID
+	N          int32
+}
+
+type FirstChildrenRow struct {
+	ID          uuid.UUID
+	NotebookID  uuid.UUID
+	ParentID    *uuid.UUID
+	Kind        string
+	Name        string
+	NameKey     string
+	SortOrder   float64
+	CreatedByID uuid.UUID
+	UpdatedByID uuid.UUID
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+// The root's first n children not deleted, in order: open_notebook's root, n = MaxOverviewRoot + 1 to tell whether
+// more follow (M9/P1 design 3.17.3). parent_id IS NULL is an index condition; IS NOT DISTINCT FROM is not.
+func (q *Queries) FirstChildren(ctx context.Context, arg FirstChildrenParams) ([]FirstChildrenRow, error) {
+	rows, err := q.db.Query(ctx, firstChildren, arg.NotebookID, arg.N)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []FirstChildrenRow
+	for rows.Next() {
+		var i FirstChildrenRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.NotebookID,
+			&i.ParentID,
+			&i.Kind,
+			&i.Name,
+			&i.NameKey,
+			&i.SortOrder,
+			&i.CreatedByID,
+			&i.UpdatedByID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listNodes = `-- name: ListNodes :many
 SELECT id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at,
     updated_at
@@ -745,6 +807,28 @@ func (q *Queries) MoveNode(ctx context.Context, arg MoveNodeParams) error {
 		arg.ID,
 	)
 	return err
+}
+
+const notebookCounts = `-- name: NotebookCounts :one
+SELECT
+    count(*) FILTER (WHERE n.kind = 'page')::bigint AS pages,
+    count(*) FILTER (WHERE n.kind = 'asset')::bigint AS attachments
+FROM nodes n
+WHERE n.notebook_id = $1 AND n.deleted_at IS NULL
+`
+
+type NotebookCountsRow struct {
+	Pages       int64
+	Attachments int64
+}
+
+// A notebook's pages and attachments not deleted (M9/P1 design 3.17.3): open_notebook's overview, read from the
+// notebook's live nodes by the name keys' partial index.
+func (q *Queries) NotebookCounts(ctx context.Context, notebookID uuid.UUID) (NotebookCountsRow, error) {
+	row := q.db.QueryRow(ctx, notebookCounts, notebookID)
+	var i NotebookCountsRow
+	err := row.Scan(&i.Pages, &i.Attachments)
+	return i, err
 }
 
 const renameNode = `-- name: RenameNode :exec

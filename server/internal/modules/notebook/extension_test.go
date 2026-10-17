@@ -225,6 +225,7 @@ func TestANotebookDeletionPassesTheSubscriber(t *testing.T) {
 					Pool: f.pool, Tx: postgres.NewTxManager(f.pool, 5*time.Second), Clock: &tickingClock{},
 					Logger: slog.New(slog.DiscardHandler), Authorizer: adminsAuthorizer{facts: notebook.NewFacts(f.pool)},
 					Workspaces: sqlWorkspaces{f.pool}, DeletionSubscribers: []notebook.NotebookDeletionSubscriber{s},
+					AccountWorkspaces: noAccountWorkspaces{},
 				}).Register(router, httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: tokenAuth{}}))
 
 				req := httptest.NewRequest(http.MethodDelete, d.path(f), nil)

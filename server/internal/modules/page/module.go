@@ -165,6 +165,7 @@ type Module struct {
 	instructions *app.Instructions  // its handshake's and open_notebook's, with their one cache
 	list         *app.ListByPattern // MCP's list (Tools)
 	read         *app.ReadPath      // MCP's read (Tools)
+	open         *app.OpenNotebook  // MCP's open_notebook (Tools)
 	jobs         []jobs.Job
 	assets       *app.AssetWrites
 	imports      *app.ImportWrites
@@ -235,6 +236,7 @@ func New(d Deps) *Module {
 		list:         app.NewListByPattern(d.Notebooks, store, store, d.Attachments, d.Authorizer),
 		read:         app.NewReadPath(d.Notebooks, store, store, d.Authorizer),
 		instructions: app.NewInstructions(store, store, md, mcpserver.TextBytes)}
+	m.open = app.NewOpenNotebook(m.gate, store, m.instructions)
 	if d.SearchInterval > 0 {
 		m.jobs = append(m.jobs, riveradapter.SearchIndexJob(
 			app.NewIndexSearch(d.Tx, store, d.Clock, d.Logger, domain.MinSearchRebuild), d.SearchInterval))

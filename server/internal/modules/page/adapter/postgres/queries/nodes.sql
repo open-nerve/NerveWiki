@@ -81,6 +81,25 @@ FROM nodes n
 WHERE n.notebook_id = sqlc.arg(notebook_id) AND n.parent_id IS NULL AND n.name_key = sqlc.arg(name_key)
     AND n.deleted_at IS NULL;
 
+-- name: NotebookCounts :one
+-- A notebook's pages and attachments not deleted (M9/P1 design 3.17.3): open_notebook's overview, read from the
+-- notebook's live nodes by the name keys' partial index.
+SELECT
+    count(*) FILTER (WHERE n.kind = 'page')::bigint AS pages,
+    count(*) FILTER (WHERE n.kind = 'asset')::bigint AS attachments
+FROM nodes n
+WHERE n.notebook_id = sqlc.arg(notebook_id) AND n.deleted_at IS NULL;
+
+-- name: FirstChildren :many
+-- The root's first n children not deleted, in order: open_notebook's root, n = MaxOverviewRoot + 1 to tell whether
+-- more follow (M9/P1 design 3.17.3). parent_id IS NULL is an index condition; IS NOT DISTINCT FROM is not.
+SELECT id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at,
+    updated_at
+FROM nodes
+WHERE notebook_id = sqlc.arg(notebook_id) AND parent_id IS NULL AND deleted_at IS NULL
+ORDER BY sort_order, id
+LIMIT sqlc.arg(n);
+
 -- name: AssetsUnder :many
 -- A parent's attachments not deleted (the root's when parent_id is NULL), by title key and id, after the cursor's key
 -- and id when it has one, at most max_rows: a page of the attachments' list (M7/P2 design 3.3). As Children, it
