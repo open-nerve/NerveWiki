@@ -75,7 +75,7 @@ func newAcmeTeamWired(t *testing.T, bobRole, carolRole string, change func(*conf
 	if batch == (transfer.Batch{}) {
 		a, err = newApp(context.Background(), cfg, logger, migrations.FS(), testWebUI())
 	} else {
-		a, err = wireApp(context.Background(), cfg, logger, migrations.FS(), testWebUI(), batch)
+		a, err = wireApp(context.Background(), cfg, logger, migrations.FS(), testWebUI(), wiring{batch: batch})
 	}
 	if err != nil {
 		t.Fatalf("wiring the app: %v", err)
