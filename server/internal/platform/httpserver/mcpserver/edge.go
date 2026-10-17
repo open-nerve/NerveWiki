@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"net/http"
 	"net/url"
@@ -16,15 +17,70 @@ import (
 // owns the string, since its fixed headers key on it (M9/P1 design 3.2.3).
 const Pattern = httpserver.MCPPath
 
-// Bodies is Pattern's body structure: one object, its members unchecked.
+// Bodies is Pattern's body structure: one object, whose params, when
+// there are any, are an object: its name a string, its arguments and its
+// _meta objects, and no inputResponses or requestState, which answer an
+// input-required result that no protocol version of this server's has.
 // An array (a JSON-RPC batch), a member named twice and an unpaired
-// surrogate are 400 before the SDK (M9 design 4.3, 4.4). A function, not
-// a package variable: each caller gets its own table (gochecknoglobals).
+// surrogate are 400 before the SDK (M9 design 4.3, 4.4); so are params
+// the SDK could not read into a request's, whose error repeats them,
+// escaped to four times their size (M9/P1 S1 review A-M1): of a
+// tools/call, which alone may be as long as the route's limit
+// (maxOtherBytes), they cannot fail. Null is the member left out, as the
+// SDK reads it. A function, not a package variable: each caller gets its
+// own table (gochecknoglobals).
 func Bodies() *bodyshape.Table {
-	return &bodyshape.Table{
-		Nodes: []bodyshape.Node{{Types: bodyshape.Object, Extra: bodyshape.Open, Items: bodyshape.Open}},
-		Roots: map[string]int{Pattern: 0},
+	const (
+		message = iota
+		params
+		name
+		object
+		null
+	)
+	open := func(types bodyshape.Type, props map[string]int) bodyshape.Node {
+		return bodyshape.Node{Types: types, Props: props, Extra: bodyshape.Open, Items: bodyshape.Open}
 	}
+	return &bodyshape.Table{
+		Nodes: []bodyshape.Node{
+			message: open(bodyshape.Object, map[string]int{"params": params}),
+			params: open(bodyshape.Object|bodyshape.Null, map[string]int{
+				"name": name, "arguments": object, "_meta": object, "inputResponses": null, "requestState": null,
+			}),
+			name:   open(bodyshape.String, nil),
+			object: open(bodyshape.Object|bodyshape.Null, nil),
+			null:   open(bodyshape.Null, nil),
+		},
+		Roots: map[string]int{Pattern: message},
+	}
+}
+
+// maxOtherBytes bounds the body of every request but a tools/call of a
+// tool's name: a handshake, a ping or a prompt's get is a few hundred
+// bytes, and the SDK's error of params it cannot read repeats them,
+// escaped to four times their size; a tools/call's arguments, which may
+// be a page, it never reads (M9/P1 S1 review A-M1).
+const maxOtherBytes = 64 << 10
+
+// sizeError is the 413 of the body of r, as bodyshape read it, when it is
+// over maxOtherBytes and no tools/call of a tool's name: the error of
+// API.Wrap's body limit over the route's. The body was one JSON object
+// without a name twice: method and params.name are read as the SDK reads
+// them, by their exact names.
+func sizeError(r *http.Request) error {
+	body, ok := bodyshape.Bytes(r)
+	if !ok || len(body) <= maxOtherBytes {
+		return nil
+	}
+	var m struct {
+		Method string `json:"method"`
+		Params struct {
+			Name string `json:"name"`
+		} `json:"params"`
+	}
+	if err := jsonv2.Unmarshal(body, &m); err == nil && m.Method == methodCallTool && toolName.MatchString(m.Params.Name) {
+		return nil
+	}
+	return &http.MaxBytesError{Limit: maxOtherBytes}
 }
 
 // Subtree answers every path below Pattern: 404 problem+json, not the

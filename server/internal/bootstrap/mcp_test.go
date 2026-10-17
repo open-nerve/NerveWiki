@@ -94,14 +94,20 @@ func TestTheMCPEdgeAnswersInOrder(t *testing.T) {
 		t.Errorf("a handshake with Host wiki.example.com = %d %s, want 200", a.status, a.body)
 	}
 
-	// A body of the limit is read, the SDK's own limit no lower; a byte
-	// more is 413 as it streams, with no Content-Length to refuse it by.
+	// A tools/call of the limit is read, the SDK's own limit no lower; a
+	// byte more is 413 as it streams, with no Content-Length to refuse it
+	// by. Any other method is 413 over 64 KiB (M9/P1 S1 review A-M1).
+	call := `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"echo","arguments":{"notebook":"` + m.notebook + `"}}}`
 	ping := `{"jsonrpc":"2.0","id":3,"method":"ping"}`
 	for _, tt := range []struct {
-		size   int
-		status int
-	}{{mcpBodyBytes, http.StatusOK}, {mcpBodyBytes + 1, http.StatusRequestEntityTooLarge}} {
-		body := io.MultiReader(strings.NewReader(ping), io.LimitReader(spaces{}, int64(tt.size-len(ping))))
+		message string
+		size    int
+		status  int
+	}{
+		{call, mcpBodyBytes, http.StatusOK}, {call, mcpBodyBytes + 1, http.StatusRequestEntityTooLarge},
+		{ping, 64 << 10, http.StatusOK}, {ping, 64<<10 + 1, http.StatusRequestEntityTooLarge},
+	} {
+		body := io.MultiReader(strings.NewReader(tt.message), io.LimitReader(spaces{}, int64(tt.size-len(tt.message))))
 		a := m.send(t, context.Background(), http.MethodPost, "/mcp", m.pat, body, afterHandshake())
 		if a.status != tt.status {
 			t.Errorf("a body of %d bytes = %d %.200s, want %d", tt.size, a.status, a.body, tt.status)

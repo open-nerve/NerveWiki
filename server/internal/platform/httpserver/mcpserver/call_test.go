@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -113,6 +114,102 @@ func TestARequestWithoutACredentialIsAFault(t *testing.T) {
 	}
 	if errs := s.logs.at(t, "ERROR"); len(errs) != 1 || !strings.Contains(fmt.Sprint(errs[0]["error"]), "no credential") {
 		t.Errorf("the log has %v at error, want the missing credential", errs)
+	}
+}
+
+// pingOf is a ping of n bytes, n at least 40: spaces after the object.
+func pingOf(n int) string {
+	const ping = `{"jsonrpc":"2.0","id":3,"method":"ping"}`
+	return ping + strings.Repeat(" ", n-len(ping))
+}
+
+// callOf is a tools/call of the tool named name, n bytes long, its
+// arguments the account entry's notebook and spaces.
+func callOf(name string, n int) string {
+	call := `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":` + strconv.Quote(name) +
+		`,"arguments":{"notebook":"` + visible.String() + `"}}}`
+	return call + strings.Repeat(" ", n-len(call))
+}
+
+// Only a tools/call of a tool's name may be as long as the route's limit:
+// any other body over maxOtherBytes is 413, as the route's limit answers,
+// before the 403 of a session's access token as that limit is; method and
+// name are read by their exact names, as the SDK reads them (M9/P1 S1
+// review A-M1).
+func TestOnlyACallMayBeLong(t *testing.T) {
+	s := serveMCP(t, setup{})
+	over := maxOtherBytes + 1
+	tests := []struct {
+		name, token, body string
+		status            int
+	}{
+		{"a ping at the bound", patToken, pingOf(maxOtherBytes), http.StatusOK},
+		{"a ping over it", patToken, pingOf(over), http.StatusRequestEntityTooLarge},
+		{"a handshake over it", patToken, initialize + strings.Repeat(" ", over), http.StatusRequestEntityTooLarge},
+		{"a call at the route's limit", patToken, callOf("echo", bodyLimit), http.StatusOK},
+		{"a call of no tool's name", patToken, callOf("Echo", over), http.StatusRequestEntityTooLarge},
+		{"a call of a name too long", patToken, callOf(strings.Repeat("e", 33), over), http.StatusRequestEntityTooLarge},
+		{"a call of a tool not served", patToken, callOf("missing", over), http.StatusOK},
+		{"a method in another case, after it", patToken, strings.Replace(pingOf(over), `"method":"ping"`,
+			`"method":"ping","METHOD":"tools/call","params":{"name":"echo"}`, 1), http.StatusRequestEntityTooLarge},
+		{"a name in another case, after it", patToken, strings.Replace(callOf("Echo", over), `"name":"Echo"`, `"name":"Echo","NAME":"echo"`, 1),
+			http.StatusRequestEntityTooLarge},
+		{"a session's access token and a ping over the bound", sessionToken, pingOf(over), http.StatusRequestEntityTooLarge},
+		{"a session's access token and a long call", sessionToken, callOf("echo", over), http.StatusForbidden},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := s.post(t, context.Background(), Pattern, tt.token, tt.body, v2025())
+			if a.status != tt.status {
+				t.Fatalf("a body of %d bytes = %d %.300s, want %d", len(tt.body), a.status, a.body, tt.status)
+			}
+			if p := a.decoded(t); tt.status == http.StatusRequestEntityTooLarge && p["code"] != "payload_too_large" {
+				t.Errorf("a body over its bound = %s, want payload_too_large", a.body)
+			}
+		})
+	}
+}
+
+// The params the SDK reads into a request's are shaped before it: an
+// object or null; a string name, objects or null for its arguments and
+// its _meta, no inputResponses or requestState; every other member, and
+// the message's own, unchecked. A tools/call can then not fail the SDK's
+// reading, whose error would repeat it, escaped (M9/P1 S1 review A-M1).
+func TestTheParamsAreShapedBeforeTheSDK(t *testing.T) {
+	s := serveMCP(t, setup{})
+	nb := Pattern + "?notebook=" + visible.String()
+	tests := []struct {
+		name, params string
+		field        string // the 400's, "" for the SDK's answer
+	}{
+		{"a string", `"TOP"`, "params"},
+		{"an array", `[]`, "params"},
+		{"null", `null`, ""},
+		{"a name that is no string", `{"name":1}`, "params.name"},
+		{"a name that is null", `{"name":null}`, "params.name"},
+		{"arguments that are no object", `{"name":"echo","arguments":"TOP"}`, "params.arguments"},
+		{"arguments that are null", `{"name":"echo","arguments":null}`, ""},
+		{"a _meta that is no object", `{"name":"echo","_meta":[1]}`, "params._meta"},
+		{"a _meta that is null", `{"name":"echo","_meta":null}`, ""},
+		{"inputResponses", `{"name":"echo","inputResponses":{}}`, "params.inputResponses"},
+		{"a requestState", `{"name":"echo","requestState":"x"}`, "params.requestState"},
+		{"members of their own", `{"name":"echo","cursor":1,"task":{"ttl":1}}`, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := s.post(t, context.Background(), nb, patToken, `{"jsonrpc":"2.0","id":2,"method":"tools/call","x":1,"params":`+tt.params+`}`, v2025())
+			if tt.field == "" {
+				if a.status != http.StatusOK {
+					t.Errorf("params %s = %d %s, want the SDK's answer", tt.params, a.status, a.body)
+				}
+				return
+			}
+			p := a.decoded(t)
+			fields, _ := p["errors"].([]any)
+			if a.status != http.StatusBadRequest || p["code"] != "bad_request" || len(fields) != 1 || fields[0].(map[string]any)["field"] != tt.field {
+				t.Errorf("params %s = %d %s, want 400 bad_request at %s", tt.params, a.status, a.body, tt.field)
+			}
+		})
 	}
 }
 

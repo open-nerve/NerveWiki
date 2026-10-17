@@ -170,10 +170,11 @@ func (s *Server) serverOf(e Entry) *mcp.Server {
 }
 
 // ServeHTTP serves a request that API.Wrap's middlewares let through, its
-// body read and checked: a session's access token is 403 before anything
-// else; a POST's entry is decided, its notebook gated; then the SDK. Every
-// answer is no-store, and one the SDK never wrote is answered as Write
-// answers why the request's context ended.
+// body read and checked: a body over its method's bound is 413, as one
+// over the route's limit is; a session's access token is 403 before
+// anything else; a POST's entry is decided, its notebook gated; then the
+// SDK. Every answer is no-store, and one the SDK never wrote is answered
+// as Write answers why the request's context ended.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ns := &noStore{ResponseWriter: w}
 	cred, ok := s.credentials(r.Context())
@@ -181,7 +182,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case !ok: // the authentication always ran: a wiring fault
 		s.errors.Write(ns, r, errNoCredential)
 		return
-	case cred.TokenID == (uuid.UUID{}): // a session's access token
+	}
+	if err := sizeError(r); err != nil {
+		s.errors.Write(ns, r, err)
+		return
+	}
+	if cred.TokenID == (uuid.UUID{}) { // a session's access token
 		s.errors.Write(ns, r, notPAT())
 		return
 	}

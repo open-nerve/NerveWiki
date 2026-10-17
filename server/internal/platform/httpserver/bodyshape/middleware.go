@@ -26,7 +26,7 @@ func Middleware(t *Table, onError func(http.ResponseWriter, *http.Request, error
 				onError(w, r, err)
 				return
 			}
-			r.Body = io.NopCloser(bytes.NewReader(body))
+			r.Body = read{Reader: bytes.NewReader(body), body: body}
 			if err := t.Check(r.Pattern, body); err != nil {
 				onError(w, r, err)
 				return
@@ -34,4 +34,21 @@ func Middleware(t *Table, onError func(http.ResponseWriter, *http.Request, error
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// read is a body Middleware read and put back, which Bytes finds.
+type read struct {
+	*bytes.Reader
+	body []byte
+}
+
+func (read) Close() error { return nil }
+
+// Bytes is the body of r as Middleware read and checked it, and true;
+// false when Middleware did not read it. It is the bytes r.Body reads,
+// not a copy, whatever of them r.Body has read since: a handler can look
+// into a large body without reading it twice, and must not change it.
+func Bytes(r *http.Request) ([]byte, bool) {
+	b, ok := r.Body.(read)
+	return b.body, ok
 }

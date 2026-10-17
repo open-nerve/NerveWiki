@@ -68,6 +68,7 @@ func TestEveryAnswerIsNotStored(t *testing.T) {
 		{"a session's access token", http.MethodPost, Pattern, sessionToken, initialize, nil, http.StatusForbidden},
 		{"a notebook alice cannot see", http.MethodPost, Pattern + "?notebook=nope", patToken, initialize, nil, http.StatusNotFound},
 		{"a batch", http.MethodPost, Pattern, patToken, `[` + initialize + `]`, nil, http.StatusBadRequest},
+		{"a ping over its bound", http.MethodPost, Pattern, patToken, pingOf(maxOtherBytes + 1), v2025(), http.StatusRequestEntityTooLarge},
 		{"a path below the route", http.MethodGet, Pattern + "/x", "", "", nil, http.StatusNotFound},
 		{"OAuth's metadata", http.MethodGet, "/.well-known/oauth-protected-resource", "", "", nil, http.StatusNotFound},
 	}

@@ -522,7 +522,6 @@ func TestTheArgumentsAreCheckedAsTheSchemaSays(t *testing.T) {
 		{"null for an optional one", nb, `"arguments":{"path":"a","limit":null}`, "", map[string]any{"path": "a", "limit": nil, "notebook": visible.String()}},
 		{"no arguments", nb, ``, lead + " (path: required: is required)", nil},
 		{"null arguments", nb, `"arguments":null`, lead + " (path: required: is required)", nil},
-		{"arguments that are no object", nb, `"arguments":"TOP"`, lead + " (arguments: invalid_format: has the wrong type or format)", nil},
 		{"the notebook entry's notebook", nb, `"arguments":{"path":"a","notebook":"` + visible.String() + `"}`,
 			lead + " (notebook: not_allowed: is not a property of this request)", nil},
 		{"the account entry without its notebook", Pattern, `"arguments":{"path":"a"}`, lead + " (notebook: required: is required)", nil},
