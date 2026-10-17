@@ -17,11 +17,13 @@ import (
 // 3.10.1). A unit of work is a mask's word stepped over a key's byte;
 // GlobEntryWork is an entry's string, its place in the sort and its
 // state's step, charged for each entry of a parent on entering it. Both
-// are measured: 400 million units are about a second here.
+// are measured: 300 million units are about two thirds of a second here
+// in the slowest shape, keys twice their titles' bytes (M9/P1 S2 review,
+// A-M2), a third of the guard's bound.
 const (
 	MaxGlobBytes     = 1024
 	MaxGlobWildcards = 32
-	MaxGlobWork      = 400_000_000
+	MaxGlobWork      = 300_000_000
 	GlobEntryWork    = 256
 )
 

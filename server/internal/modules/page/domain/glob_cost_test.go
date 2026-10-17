@@ -3,6 +3,7 @@
 package domain_test
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -10,11 +11,13 @@ import (
 	"unicode/utf8"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
+	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
 // globTimeBound is how long a list's matching may take at MaxGlobWork:
-// about three times the slowest walk here (M9/P1 design 3.10.1; the
-// numbers are in its section 9).
+// about three times the slowest walk here, the ligature tree's (M9/P1
+// design 3.10.1; the numbers are in its section 9, and fix round 1 of S2's
+// report).
 const globTimeBound = 2 * time.Second
 
 // guardKey is a key of about 255 bytes made of r repeated, ending in four
@@ -30,20 +33,22 @@ func guardKey(r string, i int) string {
 	return b.String()
 }
 
-// guardTree is review B's guard tree over keys of r: 100,000 paths of 11
-// segments of about 255 bytes, sharing nothing, 1.1 million nodes: each
-// root above a chain of 10 pages, the chains' nodes alike but for their
-// children, whose keys the walk reads as it would any other's.
+// guardTree is review B's guard tree over titles of r: 100,000 paths of
+// 11 segments of about 255 bytes, sharing nothing, 1.1 million nodes:
+// each root above a chain of 10 pages, the chains' nodes alike but for
+// their children, whose keys the walk reads as it would any other's. A
+// key is its title's: of և, which folds to եւ, twice its bytes (M9/P1 S2
+// review, A-M2), the longest a title of 255 bytes has.
 func guardTree(r string) []*domain.GlobNode {
 	chain := make([]*domain.Node, 11)
 	for d := 1; d < 11; d++ {
 		k := guardKey(r, d)
-		chain[d] = &domain.Node{Kind: domain.KindPage, Name: k, NameKey: k}
+		chain[d] = &domain.Node{Kind: domain.KindPage, Name: k, NameKey: shared.TitleKey(k)}
 	}
 	roots := make([]*domain.GlobNode, 100_000)
 	for i := range roots {
 		k := guardKey(r, i)
-		root := &domain.GlobNode{Node: &domain.Node{Kind: domain.KindPage, Name: k, NameKey: k}}
+		root := &domain.GlobNode{Node: &domain.Node{Kind: domain.KindPage, Name: k, NameKey: shared.TitleKey(k)}}
 		cur := root
 		for d := 1; d < 11; d++ {
 			c := &domain.GlobNode{Node: chain[d]}
@@ -124,63 +129,74 @@ func worstGlobs(r string) []string {
 	}
 }
 
-// The worst globs over the guard trees (keys of a, é and 漢: one, two and
-// three bytes a character) and a balanced tree stop at MaxGlobWork, or
-// end before it, within their bound of work, MaxGlobWork and a parent's
-// entries and two steps besides, and of time; so does a call resumed from
-// a cursor near the end of each guard tree, which re-enters its root's
-// 200,000 entries (M9/P1 design 3.10.1, review B I5, N-1, N-2).
+// cursorAt is the cursor of the path down the chain of the root at in
+// the walk's order, from the end when negative.
+func cursorAt(roots []*domain.GlobNode, at int) string {
+	sorted := slices.Clone(roots)
+	slices.SortFunc(sorted, func(a, b *domain.GlobNode) int { return strings.Compare(a.Node.NameKey, b.Node.NameKey) })
+	if at < 0 {
+		at += len(sorted)
+	}
+	var keys []string
+	for n := sorted[at]; n != nil; {
+		keys = append(keys, n.Node.NameKey)
+		if len(n.Children) == 0 {
+			break
+		}
+		n = n.Children[0]
+	}
+	return strings.Join(keys, "/") + ".md"
+}
+
+// The worst globs over the guard trees (titles of a, é and 漢: one, two
+// and three bytes a character; and of և, its keys twice its bytes) and a
+// balanced tree stop at MaxGlobWork, or end before it, within their bound
+// of work, MaxGlobWork and a parent's entries and two steps besides, and
+// of time; so do calls resumed from a cursor in each guard tree, which
+// re-enter its root's 200,000 entries: near the end, where little is left
+// to match, and near the start, where all MaxGlobWork is (M9/P1 design
+// 3.10.1, review B I5, N-1, N-2; S2 review A-M2). Each walk's time is
+// logged, and each tree's slowest, for CI's log under -v.
 func TestTheWorstGlobsStopWithinTheirWork(t *testing.T) {
 	type subject struct {
 		name   string
 		roots  []*domain.GlobNode
-		r      string
-		resume bool // from a cursor near the end too
+		r      string // the literals' character, as its key has it
+		resume bool   // from cursors in it too
 	}
 	for _, s := range []func() subject{
 		func() subject { return subject{"balanced 10×5", balancedTree(10, 5), "a", false} },
 		func() subject { return subject{"guard a", guardTree("a"), "a", true} },
 		func() subject { return subject{"guard é", guardTree("é"), "é", true} },
 		func() subject { return subject{"guard 漢", guardTree("漢"), "漢", true} },
+		func() subject { return subject{"guard և", guardTree("և"), "եւ", true} },
 	} {
 		s := s()
-		entries := 2 * len(s.roots)
-		for _, pattern := range worstGlobs(s.r) {
-			g := mustGlob(t, pattern)
+		// A step runs each of the glob's 45 states at most over a key of
+		// 510 bytes and ".md", at 17 words a segment at most.
+		over := int64(domain.GlobEntryWork*2*len(s.roots)) + 2*45*17*513
+		var slowest time.Duration
+		var slowestOf string
+		check := func(what, cursor string, g domain.Glob, ends bool) {
 			start := time.Now()
-			_, w := walk(t, g, s.roots, "", domain.MaxGlobWork)
+			_, w := walk(t, g, s.roots, cursor, domain.MaxGlobWork)
 			took := time.Since(start)
-			// A step runs each of the glob's 45 states at most over a key
-			// of 255 bytes, at 17 words a segment at most.
-			over := int64(domain.GlobEntryWork*entries) + 2*45*17*258
-			t.Logf("%s: %.40q (%d bytes): %v, work %d, stopped %v", s.name, pattern, len(pattern), took, w.Work, w.Stopped)
-			if took > globTimeBound || w.Work > domain.MaxGlobWork+over {
-				t.Errorf("%s: %.40q took %v and %d units of work", s.name, pattern, took, w.Work)
+			t.Logf("%s: %s: %v, work %d, stopped %v", s.name, what, took, w.Work, w.Stopped)
+			if took > slowest {
+				slowest, slowestOf = took, what
+			}
+			if took > globTimeBound || w.Work > domain.MaxGlobWork+over || ends && w.Stopped {
+				t.Errorf("%s: %s took %v and %d units of work, stopped %v", s.name, what, took, w.Work, w.Stopped)
 			}
 		}
-		if !s.resume {
-			continue
+		for _, pattern := range worstGlobs(s.r) {
+			check(fmt.Sprintf("%.40q (%d bytes)", pattern, len(pattern)), "", mustGlob(t, pattern), false)
 		}
-		pattern := capped("**/*" + piece(s.r, 1000, 20, "b") + "*/**")
-		g := mustGlob(t, pattern)
-		// The root tenth from the end in the walk's order.
-		last := slices.Clone(s.roots)
-		slices.SortFunc(last, func(a, b *domain.GlobNode) int { return strings.Compare(a.Node.NameKey, b.Node.NameKey) })
-		var keys []string
-		for n := last[len(last)-10]; n != nil; {
-			keys = append(keys, n.Node.NameKey)
-			if len(n.Children) == 0 {
-				break
-			}
-			n = n.Children[0]
+		if s.resume {
+			g := mustGlob(t, capped("**/*"+piece(s.r, 1000, 20, "b")+"*/**"))
+			check("resumed at the 10th root from the end", cursorAt(s.roots, -10), g, true)
+			check("resumed at the 10th root from the start", cursorAt(s.roots, 10), g, false)
 		}
-		cursor := strings.Join(keys, "/") + ".md"
-		start := time.Now()
-		_, w := walk(t, g, s.roots, cursor, domain.MaxGlobWork)
-		took := time.Since(start)
-		t.Logf("%s: resumed near the end: %v, work %d, stopped %v", s.name, took, w.Work, w.Stopped)
-		if took > globTimeBound || w.Stopped {
-			t.Errorf("%s: resumed near the end, it took %v and stopped %v", s.name, took, w.Stopped)
-		}
+		t.Logf("%s: the slowest walk %v of %v, %s", s.name, slowest, globTimeBound, slowestOf)
 	}
 }
