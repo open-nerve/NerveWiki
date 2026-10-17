@@ -186,7 +186,8 @@ func wireApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrat
 	as.Register(router, api)
 	tr.Register(router, api)
 	ev.Register(router, api)
-	mountMCP(router, api, mcpServer(cfg, logger, api, pg, slices.Concat(mcpTools(pg, ln, nb), w.mcpTools)))
+	tools := mcpTools(pg, ln, nb)
+	mountMCP(router, api, mcpServer(cfg, logger, api, pg, slices.Concat(tools, w.mcpTools)))
 	// "/" without a method is the least specific pattern: /api/ and the
 	// probes keep their routes, and a wrong method on a page path gets the
 	// frontend's 405 rather than a 404.
@@ -202,6 +203,7 @@ func wireApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrat
 		poolCloseTimeout: poolCloseTimeout,
 		databaseWait:     databaseWait,
 		migrationPoll:    migrationPoll,
+		mcpTools:         tools,
 	}, nil
 }
 

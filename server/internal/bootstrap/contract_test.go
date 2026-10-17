@@ -310,18 +310,26 @@ func TestEveryOperationAcceptsAPersonalAccessToken(t *testing.T) {
 // password being registerAccount's, and returns it.
 func createToken(t *testing.T, contract *apitest.Contract, base, accessToken string) string {
 	t.Helper()
+	_, token := createTokenWithID(t, contract, base, accessToken)
+	return token
+}
+
+// createTokenWithID is createToken, the token's id first: what revokes it.
+func createTokenWithID(t *testing.T, contract *apitest.Contract, base, accessToken string) (id, token string) {
+	t.Helper()
 	req := newRequest(t, http.MethodPost, base+"/api/v0/me/api-tokens", accessToken,
 		[]byte(`{"name":"whole program","current_password":"Tr0ub4dor&3"}`))
 	contract.CheckRequest(t, req)
 	res, body := sendRequest(t, req)
 	contract.CheckResponse(t, req, res)
 	var created struct {
+		ID    string `json:"id"`
 		Token string `json:"token"`
 	}
 	if res.StatusCode != http.StatusCreated || json.Unmarshal(body, &created) != nil {
 		t.Fatalf("create a token = %d %s, want 201 with the token", res.StatusCode, body)
 	}
-	return created.Token
+	return created.ID, created.Token
 }
 
 // authTokens is the AuthTokens answer.
