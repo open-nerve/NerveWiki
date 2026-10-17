@@ -521,30 +521,32 @@ func prefixes(ss ...string) []netip.Prefix {
 // fragment, a user or no host may not (M9/P1 design 3.12).
 func TestValidatePublicURL(t *testing.T) {
 	const origin = `server.public_url: must be an origin such as "https://wiki.example.com", got `
+	const withAt = `a value with an "@", which no origin has (not shown: it may hold a password or a token)`
 	for u, want := range map[string]string{
-		"":                               "",
-		"https://wiki.example.com":       "",
-		"http://wiki.example":            "",
-		"https://wiki.example.com:8443":  "",
-		"https://wiki.example.com/":      "",
-		"http://[2001:db8::1]:8080":      "",
-		"ftp://wiki.example.com":         origin + `"ftp://wiki.example.com"`,
-		"wiki.example.com":               origin + `"wiki.example.com"`,
-		"https://wiki.example.com/wiki":  origin + `"https://wiki.example.com/wiki"`,
-		"https://wiki.example.com/?a=1":  origin + `"https://wiki.example.com/?a=1"`,
-		"https://wiki.example.com?":      origin + `"https://wiki.example.com?"`,
-		"https://wiki.example.com/#top":  origin + `"https://wiki.example.com/#top"`,
-		"https://wiki.example.com#":      origin + `"https://wiki.example.com#"`,
-		"https://alice@wiki.example.com": origin + `"https://alice@wiki.example.com"`,
-		// A user without a password is quoted as written, its empty
-		// fragment too, which url.URL.Redacted would drop.
-		"https://alice@wiki.example.com#": origin + `"https://alice@wiki.example.com#"`,
-		"https://":                        origin + `"https://"`,
-		"https:wiki.example.com":          origin + `"https:wiki.example.com"`,
-		"https://wiki.exa mple.com":       origin + `"https://wiki.exa mple.com"`,
-		// A password is never quoted (M9/P1 S2 review, B-M1).
-		"https://admin:hunter2@wiki.example.com": origin + `"https://admin:xxxxx@wiki.example.com"`,
-		"https://admin:hunter2@wiki example.com": origin + "a value that is no URL",
+		"":                              "",
+		"https://wiki.example.com":      "",
+		"http://wiki.example":           "",
+		"https://wiki.example.com:8443": "",
+		"https://wiki.example.com/":     "",
+		"http://[2001:db8::1]:8080":     "",
+		"ftp://wiki.example.com":        origin + `"ftp://wiki.example.com"`,
+		"wiki.example.com":              origin + `"wiki.example.com"`,
+		"https://wiki.example.com/wiki": origin + `"https://wiki.example.com/wiki"`,
+		"https://wiki.example.com/?a=1": origin + `"https://wiki.example.com/?a=1"`,
+		"https://wiki.example.com?":     origin + `"https://wiki.example.com?"`,
+		"https://wiki.example.com/#top": origin + `"https://wiki.example.com/#top"`,
+		"https://wiki.example.com#":     origin + `"https://wiki.example.com#"`,
+		"https://":                      origin + `"https://"`,
+		"https:wiki.example.com":        origin + `"https:wiki.example.com"`,
+		"https://wiki.exa mple.com":     origin + `"https://wiki.exa mple.com"`,
+		// A value with an @ is never quoted: a password or a token may be
+		// in it, wherever a parser reads it (M9/P1 S2 review, B-M1).
+		"https://alice@wiki.example.com":         origin + withAt,
+		"https://alice@wiki.example.com#":        origin + withAt,
+		"https://admin:hunter2@wiki.example.com": origin + withAt,
+		"https://admin:hunter2@wiki example.com": origin + withAt,
+		"admin:hunter2@wiki.example.com":         origin + withAt,
+		"https://ghp_TOKEN@host":                 origin + withAt,
 	} {
 		cfg := validConfig()
 		cfg.Server.PublicURL = u
@@ -554,8 +556,8 @@ func TestValidatePublicURL(t *testing.T) {
 			t.Errorf("public_url %q: %v, want valid", u, err)
 		case want != "" && (err == nil || err.Error() != want):
 			t.Errorf("public_url %q: %v, want %s", u, err, want)
-		case err != nil && strings.Contains(err.Error(), "hunter2"):
-			t.Errorf("public_url %q: the error %q quotes its password", u, err)
+		case err != nil && (strings.Contains(err.Error(), "hunter2") || strings.Contains(err.Error(), "TOKEN")):
+			t.Errorf("public_url %q: the error %q quotes its secret", u, err)
 		}
 	}
 }
