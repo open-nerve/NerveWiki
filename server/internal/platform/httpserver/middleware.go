@@ -24,6 +24,15 @@ type requestIDKey struct{}
 // are outside it and keep the caching webui sets.
 const apiPrefix = "/api/"
 
+// MCPPath is the MCP route (M9 design 4.4): its answers are a notebook's,
+// and none may be stored either, nor those of the paths below it.
+// mcpserver owns the route and takes the string from here.
+const MCPPath = "/mcp"
+
+// wellKnownPrefix is the tree of /.well-known/, where an MCP client looks
+// for OAuth's metadata (M9 design 4.4): its answers are 404s, not stored.
+const wellKnownPrefix = "/.well-known/"
+
 // middleware wraps h in the platform chain. The order is fixed, outermost
 // first: request ID -> recover -> access log -> security headers.
 func middleware(h http.Handler, logger *slog.Logger) http.Handler {
@@ -40,13 +49,17 @@ func withSecurityHeaders(next http.Handler) http.Handler {
 
 // setFixedHeaders sets the headers of every response: no MIME sniffing, no
 // referrer beyond this site, and no framing by any page. The CSP goes on the
-// HTML pages only, so webui adds it (P5). A response under apiPrefix also
-// gets Cache-Control: no-store.
+// HTML pages only, so webui adds it (P5). A response under apiPrefix, of
+// the MCP route and below it, and under /.well-known/ also gets
+// Cache-Control: no-store. The MCP route is the path itself or a path
+// below it, not every path that starts with it: /mcp-team is a
+// workspace's (M9/P1 design 2.1 item 11).
 func setFixedHeaders(header http.Header, r *http.Request) {
 	header.Set("X-Content-Type-Options", "nosniff")
 	header.Set("Referrer-Policy", "same-origin")
 	header.Set("X-Frame-Options", "DENY")
-	if strings.HasPrefix(r.URL.Path, apiPrefix) {
+	if strings.HasPrefix(r.URL.Path, apiPrefix) || r.URL.Path == MCPPath ||
+		strings.HasPrefix(r.URL.Path, MCPPath+"/") || strings.HasPrefix(r.URL.Path, wellKnownPrefix) {
 		header.Set("Cache-Control", "no-store")
 	}
 }

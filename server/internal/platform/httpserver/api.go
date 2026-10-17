@@ -186,6 +186,19 @@ func (a *API) Middlewares(bodies *bodyshape.Table) []func(http.Handler) http.Han
 	return inOrder
 }
 
+// Wrap wraps h, a route registered on the root router outside the
+// generated code, in the per-route middlewares in their order (M1/P2
+// design 3.3): request meta → request deadline → body limit → failure gate
+// and authentication → rate limit → body structure, the last innermost.
+// bodies holds the route's body schema under its pattern; it must not be
+// nil (bodyshape.Middleware reads its Roots).
+func (a *API) Wrap(h http.Handler, bodies *bodyshape.Table) http.Handler {
+	for _, m := range a.Middlewares(bodies) { // reversed for the generated code: the last wraps outermost
+		h = m(h)
+	}
+	return h
+}
+
 // RequestMeta describes the client of a request.
 type RequestMeta struct {
 	// ClientIP is the client's address: the connection's peer, or what a
