@@ -145,8 +145,16 @@ type pointersIn struct {
 	Ops   []*opIn   `json:"ops"`
 }
 
+// twiceIn has one struct in two fields, which is no cycle: checkFields
+// walks it twice (S1 fix-check C2-N1).
+type twiceIn struct {
+	From opIn   `json:"from"`
+	To   []opIn `json:"to"`
+}
+
 // A required field, an array and an array's items, pointers too, take no
-// null; an optional scalar keeps it, down an array's objects.
+// null; an optional scalar keeps it, down an array's objects. One struct
+// may be in two fields.
 func TestTheInputSchemasTakeNullOnlyForAnOptionalScalar(t *testing.T) {
 	const op = `{"type":"object","properties":{"path":{"type":"string"},"text":{"type":["null","string"]}},` +
 		`"required":["path"],"additionalProperties":false}`
@@ -160,6 +168,8 @@ func TestTheInputSchemasTakeNullOnlyForAnOptionalScalar(t *testing.T) {
 		{reflect.TypeFor[pointersIn](), `{"type":"object","properties":{"path":{"type":"string"},"text":{"type":["null","string"]},` +
 			`"paths":{"type":"array","items":{"type":"string"}},"ops":{"type":"array","items":` + op + `}},` +
 			`"required":["path","paths","ops"],"additionalProperties":false}`},
+		{reflect.TypeFor[twiceIn](), `{"type":"object","properties":{"from":` + op + `,"to":{"type":"array","items":` + op + `}},` +
+			`"required":["from","to"],"additionalProperties":false}`},
 	}
 	for _, tt := range tests {
 		if got := schemaJSON(t, tt.in, false); !reflect.DeepEqual(got, decodeJSON(t, tt.want)) {

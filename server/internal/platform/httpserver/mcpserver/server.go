@@ -181,8 +181,7 @@ func (s *Server) serverOf(e Entry) *mcp.Server {
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ns := &noStore{ResponseWriter: w}
 	cred, ok := s.credentials(r.Context())
-	switch {
-	case !ok: // the authentication always ran: a wiring fault
+	if !ok { // the authentication always ran: a wiring fault
 		s.errors.Write(ns, r, errNoCredential)
 		return
 	}

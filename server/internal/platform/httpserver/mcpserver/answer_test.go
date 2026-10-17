@@ -310,6 +310,7 @@ func TestAMalformedResultIsInternal(t *testing.T) {
 		"both":           {Structured: map[string]any{}, Blocks: []Block{{Text: "a"}}},
 		"two_kinds":      {Blocks: []Block{{Text: "a", Image: &Image{MIME: "image/png"}}}},
 		"image_and_link": {Blocks: []Block{{Image: &Image{MIME: "image/png"}, Link: &Link{URI: "http://wiki.example/a"}}}},
+		"text_and_link":  {Blocks: []Block{{Text: "a", Link: &Link{URI: "http://wiki.example/a"}}}},
 		"unencoded":      {Structured: map[string]any{"f": func() {}}},
 		"an_array":       {Structured: []string{"a"}},
 		"a_typed_nil":    {Structured: (*fitAnswer)(nil)},

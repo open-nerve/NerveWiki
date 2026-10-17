@@ -152,10 +152,9 @@ func (s *Server) internalError(ctx context.Context, message string) *mcp.CallToo
 	if message != internalGone {
 		text += "; request id " + id
 	}
-	res, err := errorAnswer(text, errorMember{"code": httpserver.CodeInternal, "message": text, "request_id": id})
-	if err != nil { // strings alone: never
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: text}}}
-	}
+	// A member of strings alone always encodes: errorAnswer's error is
+	// never set.
+	res, _ := errorAnswer(text, errorMember{"code": httpserver.CodeInternal, "message": text, "request_id": id})
 	return res
 }
 
