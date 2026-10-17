@@ -422,6 +422,36 @@ type AttachmentInfos interface {
 	Of(ctx context.Context, nodeIDs []uuid.UUID) (map[uuid.UUID]AttachmentInfo, error)
 }
 
+// AttachmentReader reads an attachment for MCP's read: bootstrap adapts
+// asset's AttachmentReads to it, asset.not_found to page.not_found and its
+// ErrNoFile to ErrNoAttachmentFile (M9/P1 design 3.11.2).
+type AttachmentReader interface {
+	// Read reads the attachment nodeID, decided on asset.read: its row,
+	// link and download address.
+	Read(ctx context.Context, nodeID uuid.UUID) (Attachment, error)
+	// Content reads a's file, at most max bytes, with the sides known of
+	// it: the row's, or read from its bytes; 0 and 0 when neither.
+	Content(ctx context.Context, a Attachment, max int64) (data []byte, width, height int, err error)
+}
+
+// Attachment is an attachment as read tells it: its node and file, its
+// name, type and how a link writes it ("" without an extension), its size
+// and SHA-256, its row's sides (0 when the server read none), and its
+// content's download address, absolute, with when it expires: "" without
+// server.public_url.
+type Attachment struct {
+	NodeID, BlobID   uuid.UUID
+	Name, MIME, Link string
+	Bytes            int64
+	SHA256           []byte
+	Width, Height    int
+	URL              string
+	Expires          time.Time
+}
+
+// ErrNoAttachmentFile is an attachment whose file is not in the store.
+var ErrNoAttachmentFile = errors.New("page: the attachment's file is not in the store")
+
 // NotebookPages deletes the pages of deleted notebooks, and their edit
 // sessions.
 type NotebookPages interface {

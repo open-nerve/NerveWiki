@@ -1,0 +1,35 @@
+package page
+
+import (
+	mcpadapter "github.com/open-nerve/NerveWiki/server/internal/modules/page/adapter/mcp"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/page/app"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/mcpserver"
+)
+
+// AttachmentReader reads an attachment for read: bootstrap adapts asset's
+// AttachmentReads to it, asset.not_found to ErrNotFound and its ErrNoFile
+// to ErrNoAttachmentFile (M9/P1 design 3.11.2).
+type AttachmentReader = app.AttachmentReader
+
+// Attachment is an attachment as read tells it.
+type Attachment = app.Attachment
+
+// ErrNoAttachmentFile is an attachment whose file is not in the store.
+var ErrNoAttachmentFile = app.ErrNoAttachmentFile
+
+// ErrNotFound is page.not_found.
+var ErrNotFound = domain.ErrNotFound
+
+// ToolDeps are what page's tools need beyond the module's use cases: asset
+// is wired after page (v0.1 design 13.1, item 11).
+type ToolDeps struct{ Attachments AttachmentReader }
+
+// Tools are page's MCP tools, list and read (M9 design 4.9); no
+// Attachments panics.
+func (m *Module) Tools(d ToolDeps) []mcpserver.Tool {
+	if d.Attachments == nil {
+		panic("page: no attachment reader for the MCP tools")
+	}
+	return mcpadapter.Tools(mcpadapter.UseCases{List: m.list, Read: m.read}, d.Attachments)
+}
