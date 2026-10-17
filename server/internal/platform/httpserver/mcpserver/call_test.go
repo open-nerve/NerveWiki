@@ -164,6 +164,7 @@ func TestOnlyACallMayBeLong(t *testing.T) {
 		{"the notebook entry's tool at the account entry", Pattern, patToken, callOf("nb_only", over), http.StatusRequestEntityTooLarge},
 		{"the account entry's tool at the account entry", Pattern, patToken, callOf("acct_only", over), http.StatusOK},
 		{"the account entry's tool at the notebook entry", nb, patToken, callOf("acct_only", over), http.StatusRequestEntityTooLarge},
+		{"the account entry's tool and a parameter of the client's own", Pattern + "?x=1", patToken, callOf("acct_only", over), http.StatusOK},
 		{"the account entry's tool and a query that does not parse", Pattern + "?notebook=%zz", patToken, callOf("acct_only", over),
 			http.StatusRequestEntityTooLarge},
 		{"the notebook entry's tool and a query that does not parse", Pattern + "?notebook=%zz", patToken, callOf("nb_only", over),
