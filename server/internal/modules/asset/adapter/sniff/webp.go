@@ -18,11 +18,13 @@ func isWebP(head []byte) bool {
 // RIFF container (RFC 9649), a file of length bytes: "RIFF", a size, "WEBP",
 // then the first chunk: VP8 (lossy: the frame tag, the start code 9d 01
 // 2a, then 14-bit width and height), VP8L (lossless: the signature 0x2f,
-// then 14-bit width-1 and height-1) or VP8X (extended: 24-bit canvas
+// then 14-bit width-1 and height-1, the alpha bit, and 3 version bits,
+// which must be 0) or VP8X (extended, a chunk of 10 bytes: 24-bit canvas
 // width-1 and height-1). ok is false for anything else, for a header cut
 // short, and for a RIFF larger than the file or a first chunk larger than
 // the RIFF: a file cut short, which a decoder refuses (M9/P1 S2 review,
-// B's suspicion 1).
+// B's suspicion 1); so is a VP8L of another version or a VP8X chunk of
+// another size, which libwebp and x/image refuse (fix check B).
 func webpSize(head []byte, length int64) (width, height int, ok bool) {
 	if !isWebP(head) || len(head) < 20 {
 		return 0, 0, false
@@ -45,9 +47,12 @@ func webpSize(head []byte, length int64) (width, height int, ok bool) {
 			return 0, 0, false
 		}
 		bits := binary.LittleEndian.Uint32(data[1:5])
+		if bits>>29 != 0 {
+			return 0, 0, false
+		}
 		width, height = int(bits&0x3fff)+1, int(bits>>14&0x3fff)+1
 	case "VP8X":
-		if len(data) < 10 {
+		if len(data) < 10 || binary.LittleEndian.Uint32(head[16:20]) != 10 {
 			return 0, 0, false
 		}
 		width = int(uint32(data[4])|uint32(data[5])<<8|uint32(data[6])<<16) + 1

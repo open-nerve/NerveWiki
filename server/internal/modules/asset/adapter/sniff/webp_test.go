@@ -30,10 +30,11 @@ func edited(t testing.TB, name string, edit func(data []byte) []byte) []byte {
 
 // The three kinds of a WebP's first chunk each tell its size: a lossy
 // frame's 14 bits, its 2 scale bits apart; a lossless image's 14 bits less
-// one, its alpha and version bits apart; an extended canvas's 24 bits less
-// one, a canvas wider than 14 bits hold too (M9/P1 design 3.11.2). A
-// broken start code or signature tells none; nor does a RIFF that is no
-// WebP's, a lossy chunk first or not (M9/P1 S2 review, B-M2).
+// one, its alpha bit apart; an extended canvas's 24 bits less one, a
+// canvas wider than 14 bits hold too (M9/P1 design 3.11.2). A broken start
+// code or signature tells none; nor does a RIFF that is no WebP's, a lossy
+// chunk first or not (M9/P1 S2 review, B-M2); nor a lossless image of a
+// version but 0, nor an extended chunk of a size but 10 (fix check B).
 func TestWebPSize(t *testing.T) {
 	scaled := edited(t, "vp8.webp", func(d []byte) []byte { d[27] |= 0xc0; d[29] |= 0xc0; return d })
 	alpha := edited(t, "vp8l.webp", func(d []byte) []byte { d[24] |= 0x10; return d })
@@ -56,6 +57,16 @@ func TestWebPSize(t *testing.T) {
 		{"a lossy frame's start code broken", edited(t, "vp8.webp", func(d []byte) []byte { d[24] = 0x9c; return d }), 0, 0},
 		{"a lossless image's signature 0x2e", edited(t, "vp8l.webp", func(d []byte) []byte { d[20] = 0x2e; return d }), 0, 0},
 		{"an AVI with a lossy chunk first", edited(t, "vp8.webp", func(d []byte) []byte { copy(d[8:12], "AVI "); return d }), 0, 0},
+		{"a lossless image of version 1", edited(t, "vp8l.webp", func(d []byte) []byte { d[24] |= 0x20; return d }), 0, 0},
+		{"a lossless image of version 4", edited(t, "vp8l.webp", func(d []byte) []byte { d[24] |= 0x80; return d }), 0, 0},
+		{"an extended chunk of 12 bytes", edited(t, "vp8x.webp", func(d []byte) []byte {
+			binary.LittleEndian.PutUint32(d[16:20], 12)
+			return d
+		}), 0, 0},
+		{"an extended chunk of 9 bytes", edited(t, "vp8x.webp", func(d []byte) []byte {
+			binary.LittleEndian.PutUint32(d[16:20], 9)
+			return d
+		}), 0, 0},
 	} {
 		w, h, ok := sizeOf(tt.data)
 		if want := tt.w > 0; ok != want || w != tt.w || h != tt.h {
@@ -110,13 +121,14 @@ func TestWebPSizeOfAHeaderCutShort(t *testing.T) {
 }
 
 // Any bytes: no panic, and a size read is within its chunk's bits. The
-// seeds, which go test runs, have the scale and alpha bits set too.
+// seeds, which go test runs, have the scale, alpha and version bits set too.
 func FuzzWebPSize(f *testing.F) {
 	for _, name := range []string{"vp8.webp", "vp8l.webp", "vp8x.webp"} {
 		f.Add(webpFile(f, name))
 	}
 	f.Add(edited(f, "vp8.webp", func(d []byte) []byte { d[27] |= 0xc0; d[29] |= 0xc0; return d }))
-	f.Add(edited(f, "vp8l.webp", func(d []byte) []byte { d[24] |= 0xf0; return d }))
+	f.Add(edited(f, "vp8l.webp", func(d []byte) []byte { d[24] |= 0x10; return d }))
+	f.Add(edited(f, "vp8l.webp", func(d []byte) []byte { d[24] |= 0xe0; return d }))
 	f.Add([]byte("RIFF\x00\x00\x00\x00WEBPVP8X"))
 	f.Fuzz(func(t *testing.T, data []byte) {
 		w, h, ok := sizeOf(data)
