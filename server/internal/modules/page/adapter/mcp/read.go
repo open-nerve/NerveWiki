@@ -113,7 +113,8 @@ func (t tools) read(ctx context.Context, c mcpserver.Call, in readIn) (mcpserver
 // metadata, then the image itself or a link to download it (M9/P1 design
 // 3.11.2). An image needs no address: without server.public_url it is
 // given all the same, and what would be a link is a note. An attachment
-// gone since, or its access, is the path not found.
+// gone since, or its access, before its metadata is read or its bytes, is
+// the path not found.
 func (t tools) readAttachment(ctx context.Context, path string, r app.Read) (mcpserver.Result, error) {
 	a, err := t.attachments.Read(ctx, r.Node.ID)
 	switch {
@@ -133,6 +134,8 @@ func (t tools) readAttachment(ctx context.Context, path string, r app.Read) (mcp
 		switch {
 		case errors.Is(err, app.ErrNoAttachmentFile):
 			meta.Note = noFile
+		case errors.Is(err, domain.ErrNotFound):
+			return mcpserver.Result{}, toolErr(&domain.PathNotFound{Path: path})
 		case err != nil:
 			return mcpserver.Result{}, err
 		case domain.InlineImage(a.MIME, a.Bytes, w, h):

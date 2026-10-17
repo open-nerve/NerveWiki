@@ -300,6 +300,8 @@ func TestTheReadOfAnAttachmentFails(t *testing.T) {
 		text string
 	}{
 		{&fakeAttachments{a: a, readErr: domain.ErrNotFound}, domain.ErrNotFound, `page.not_found: Nothing is at "/guide/X.png".`},
+		// Gone between its metadata and its bytes (M9/P1 S2 fix checks B and C).
+		{&fakeAttachments{a: a, contentErr: domain.ErrNotFound}, domain.ErrNotFound, `page.not_found: Nothing is at "/guide/X.png".`},
 		{&fakeAttachments{a: a, contentErr: boom}, boom, ""},
 	} {
 		tools := tools{uc: UseCases{Read: readFunc(func(uuid.UUID, string, *int, *int, *int, app.TextMeasure) (app.Read, error) {
