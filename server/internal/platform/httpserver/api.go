@@ -69,6 +69,12 @@ type APIConfig struct {
 	Anonymous     Limiter // ratelimit.anonymous: public operations, by client IP
 	Authenticated Limiter // ratelimit.authenticated: the rest, by credential
 	AuthFailure   Limiter // ratelimit.auth_failure: the gate before authentication, by client IP
+	// NoTokenDetails are the route patterns whose 401 without a token says
+	// more than that one is needed, with that detail: an MCP client
+	// without a token shows the detail, and looks for OAuth, which the
+	// route has not (M9/P1 S1 review A). The 401 of a token that fails is
+	// every route's.
+	NoTokenDetails map[string]string
 }
 
 // API is what the platform hands to every module's HTTP adapter: the error
@@ -88,13 +94,15 @@ type API struct {
 	anonymous       Limiter
 	authenticated   Limiter
 	authFailure     Limiter
+	noTokenDetails  map[string]string
 }
 
 // NewAPI returns the API value for cfg. It needs a logger, an
 // authenticator, the three buckets, a body limit and a request timeout
 // above zero, route timeouts above zero and at most the request timeout,
-// route body limits above zero with a body read timeout above zero, and an
-// IPv6 prefix length from 1 to 128.
+// route body limits above zero with a body read timeout above zero, route
+// details of a missing token that are not empty, and an IPv6 prefix length
+// from 1 to 128.
 func NewAPI(cfg APIConfig) (*API, error) {
 	var errs []error
 	for _, dep := range []struct {
@@ -130,6 +138,11 @@ func NewAPI(cfg APIConfig) (*API, error) {
 			errs = append(errs, fmt.Errorf("BodyLimits[%q] %d must be positive", route, n))
 		}
 	}
+	for _, route := range slices.Sorted(maps.Keys(cfg.NoTokenDetails)) {
+		if cfg.NoTokenDetails[route] == "" {
+			errs = append(errs, fmt.Errorf("NoTokenDetails[%q] is empty", route))
+		}
+	}
 	if len(cfg.BodyLimits) > 0 && cfg.BodyReadTimeout <= 0 {
 		errs = append(errs, errors.New("BodyReadTimeout must be positive when BodyLimits relaxes a route"))
 	}
@@ -159,6 +172,7 @@ func NewAPI(cfg APIConfig) (*API, error) {
 		anonymous:       cfg.Anonymous,
 		authenticated:   cfg.Authenticated,
 		authFailure:     cfg.AuthFailure,
+		noTokenDetails:  maps.Clone(cfg.NoTokenDetails),
 	}, nil
 }
 
@@ -310,11 +324,16 @@ func (a *API) authenticate(next http.Handler) http.Handler {
 }
 
 // unauthorized answers 401 with WWW-Authenticate (RFC 6750 3). Why the
-// credential failed goes to the debug log only.
+// credential failed goes to the debug log only. Without a token, the
+// challenge has no error (RFC 6750 3.1), and the detail is the route's of
+// NoTokenDetails when it has one.
 func (a *API) unauthorized(w http.ResponseWriter, r *http.Request, reason error, invalidToken bool) {
 	a.logger.LogAttrs(r.Context(), slog.LevelDebug, "authentication failed",
 		slog.String("request_id", RequestID(r.Context())), slog.String("route", r.Pattern), slog.Any("error", reason))
 	challenge, detail := "Bearer", "This operation requires a bearer token."
+	if d, ok := a.noTokenDetails[r.Pattern]; ok {
+		detail = d
+	}
 	if invalidToken {
 		challenge, detail = `Bearer error="invalid_token"`, "The bearer token is invalid or has expired."
 	}

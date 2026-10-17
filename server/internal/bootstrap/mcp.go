@@ -67,3 +67,10 @@ func mountMCP(router *httpserver.Router, api *httpserver.API, srv *mcpserver.Ser
 // mcpPublicOperations are the MCP routes that need no token: the client
 // that posts its OAuth registration has none.
 func mcpPublicOperations() []string { return []string{mcpserver.RegisterPattern} }
+
+// mcpNoTokenDetails is the detail of /mcp's 401 without a token: the
+// sentence of the 404s under /.well-known/ and of the registration's
+// error, so that a client without OAuth shows what one with it does.
+func mcpNoTokenDetails() map[string]string {
+	return map[string]string{mcpserver.Pattern: mcpserver.NoOAuth}
+}

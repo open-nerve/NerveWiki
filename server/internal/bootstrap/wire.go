@@ -167,10 +167,12 @@ func wireApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrat
 	// /mcp's body is a call's, which can hold a page's content (M9 design 4.4).
 	bodies := maps.Clone(pg.BodyLimits())
 	bodies[mcpserver.Pattern] = mcpBodyLimit
-	api, err := httpserver.NewAPI(apiConfig(cfg, logger, limiter, ident.Authenticator(),
+	apiCfg := apiConfig(cfg, logger, limiter, ident.Authenticator(),
 		slices.Concat(ident.PublicOperations(), inst.PublicOperations(), ws.PublicOperations(), as.PublicOperations(), tr.PublicOperations(),
 			mcpPublicOperations()),
-		ident.RequestTimeouts(), bodies))
+		ident.RequestTimeouts(), bodies)
+	apiCfg.NoTokenDetails = mcpNoTokenDetails()
+	api, err := httpserver.NewAPI(apiCfg)
 	if err != nil {
 		return nil, err
 	}

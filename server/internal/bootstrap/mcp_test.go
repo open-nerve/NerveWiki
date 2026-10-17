@@ -351,6 +351,45 @@ func TestTheMCPRefusesOAuthRegistration(t *testing.T) {
 	}
 }
 
+// Every kind of client without a token is told one sentence: one without
+// OAuth by /mcp's 401, whose challenge stays without an error (RFC 6750
+// 3.1); one with OAuth by the 404s under /.well-known/ and by the
+// registration's error. A token that fails, and REST's 401, say what
+// they said (M9/P1 S1 review A).
+func TestTheMCPTellsEveryClientOneHint(t *testing.T) {
+	m := startMCPApp(t, nil)
+	hint, _ := m.send(t, context.Background(), http.MethodGet, "/.well-known/oauth-protected-resource/mcp", "", http.NoBody, nil).decoded(t)["detail"].(string)
+	var registration struct {
+		Description string `json:"error_description"`
+	}
+	r := m.send(t, context.Background(), http.MethodPost, "/register", "", strings.NewReader("{}"), nil)
+	if err := json.Unmarshal(r.body, &registration); err != nil || registration.Description != hint || !strings.Contains(hint, "personal access token") {
+		t.Fatalf("the 404's detail %q and /register's %s, want one hint", hint, r.body)
+	}
+	tests := []struct {
+		name, path, token string
+		challenge, detail string
+	}{
+		{"/mcp without a token", "/mcp", "", "Bearer", hint},
+		{"its notebook entry", atNotebook(m.notebook), "", "Bearer", hint},
+		{"/mcp with a token that fails", "/mcp", "nwk_pat_" + strings.Repeat("x", 43), `Bearer error="invalid_token"`,
+			"The bearer token is invalid or has expired."},
+		{"REST without a token", "/api/v0/me", "", "Bearer", "This operation requires a bearer token."},
+	}
+	for _, tt := range tests {
+		method, body := http.MethodPost, initializeBody(mcpVersion)
+		if strings.HasPrefix(tt.path, "/api/") {
+			method, body = http.MethodGet, ""
+		}
+		a := m.send(t, context.Background(), method, tt.path, tt.token, strings.NewReader(body), nil)
+		detail, _ := a.decoded(t)["detail"].(string)
+		if a.problem(t, http.StatusUnauthorized) != "unauthorized" || a.header.Get("WWW-Authenticate") != tt.challenge || detail != tt.detail {
+			t.Errorf("%s = %d %s, WWW-Authenticate %q; want 401 %q, %q", tt.name, a.status, a.body, a.header.Get("WWW-Authenticate"),
+				tt.detail, tt.challenge)
+		}
+	}
+}
+
 // The transport is stateless: a client whose server restarts behind the
 // same address calls on, without a handshake of its own.
 func TestTheMCPOutlivesARestart(t *testing.T) {
