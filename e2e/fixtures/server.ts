@@ -145,6 +145,9 @@ function nervewikiEnv(databaseUrl: string): NodeJS.ProcessEnv {
     NWIKI_ENV: "test",
     NWIKI_LOG__LEVEL: "info",
     NWIKI_DATABASE__URL: url.toString(),
+    // The server listens on an address it chooses: MCP's attachment addresses start with this origin, which a story
+    // swaps for baseURL to download them (M9/P1 design 4.1).
+    NWIKI_SERVER__PUBLIC_URL: "http://wiki.example",
   };
 }
 

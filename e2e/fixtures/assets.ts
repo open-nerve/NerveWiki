@@ -87,6 +87,11 @@ export const pngBytes = Uint8Array.from(
   )
 );
 
+/** The bytes of a lossless WebP (VP8L) of 1 × 1 pixel, whose size the server reads from its RIFF header. */
+export const webpBytes = Uint8Array.from(
+  Buffer.from("524946461a000000574542505650384c0e0000002f00000000071011fd0f4444ff03", "hex")
+);
+
 /** The bytes of text, UTF-8. */
 export function utf8(text: string): Uint8Array<ArrayBuffer> {
   return new TextEncoder().encode(text);
