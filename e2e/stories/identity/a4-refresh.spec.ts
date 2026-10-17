@@ -48,10 +48,10 @@ class TabRecorder {
     return this.#accessTokens.map((last) => last());
   }
 
-  /** The refreshes, once every answer is in. */
+  /** The refreshes so far, once every answer is in: a copy, which later refreshes leave as it is. */
   async refreshes(): Promise<Refresh[]> {
     await Promise.all(this.#pending);
-    return this.#refreshes;
+    return [...this.#refreshes];
   }
 
   async #add(request: Request): Promise<void> {
@@ -61,23 +61,33 @@ class TabRecorder {
 }
 
 /**
- * Holds the first refresh the tabs of context send from now on, until another refresh goes out or holdMs
- * pass. With the refresh lock no other refresh can go out meanwhile, and the hold ends at holdMs; without
- * it, the other tab's refresh goes out while this one is held, with the same refresh token.
+ * Routes the refreshes the tabs of context send. The function it resolves holds the first refresh they send
+ * from then on, until another refresh goes out or holdMs pass. With the refresh lock no other refresh can go
+ * out meanwhile, and the hold ends at holdMs; without it, the other tab's refresh goes out while this one is
+ * held, with the same refresh token.
+ *
+ * Route before the tabs load: Playwright reports nothing of a request a page sends while the context's first
+ * route turns interception on (no request, response or requestfinished event, though nervewiki answers it),
+ * and the recorder would miss it. The event stream's leader tab refreshes just then: as its access token
+ * expires, which is when the story stops waiting for the tabs' tokens to expire.
  */
-async function holdFirstRefresh(context: BrowserContext, holdMs: number): Promise<void> {
+async function routeRefreshes(context: BrowserContext, holdMs: number): Promise<() => void> {
+  let holding = false;
   let release: (() => void) | undefined;
   await context.route("**/api/v0/auth/refresh", async (route) => {
-    if (release === undefined) {
+    if (holding && release === undefined) {
       await new Promise<void>((resolve) => {
         release = resolve;
         setTimeout(resolve, holdMs);
       });
     } else {
-      release();
+      release?.();
     }
     await route.continue();
   });
+  return () => {
+    holding = true;
+  };
 }
 
 for (const locks of [true, false]) {
@@ -98,6 +108,8 @@ for (const locks of [true, false]) {
       });
     }
     const recorder = new TabRecorder();
+    // Before the tabs load (see routeRefreshes).
+    const holdFirstRefresh = await routeRefreshes(context, 1_000);
     const tabA = await signedInPage(signedUp, shortLived.baseURL);
     const tabB = await context.newPage();
     const watchB = await watchPage(tabB);
@@ -126,7 +138,7 @@ for (const locks of [true, false]) {
 
     // Both tabs save the step at once: both go on to the next step, neither to the sign-in page. The first
     // refresh is held a while, so that the other tab's would overlap it if nothing kept them apart.
-    await holdFirstRefresh(context, 1_000);
+    holdFirstRefresh();
     expect(await Promise.all([tabA, tabB].map((tab) => saveProfileStep(tab)))).toEqual([200, 200]);
     await Promise.all(
       [tabA, tabB].map(async (tab) => {
@@ -138,14 +150,19 @@ for (const locks of [true, false]) {
     // Every refresh succeeded, and no two of them overlapped: each sent the token the one before it got,
     // so the generations sent are 0, 1, 2 … once each. Two at the same time would send the same token, and
     // nervewiki would take the second for a stolen copy (A5). The browser's timings cannot show it: a held
-    // request's timing counts from when it was let go.
-    const refreshes = await recorder.refreshes();
-    expect(refreshes.length).toBeGreaterThanOrEqual(4);
-    expect(refreshes.map((r) => r.status)).toEqual(refreshes.map(() => 200));
-    expect(refreshes.map((r) => r.generation).toSorted((a, b) => a - b)).toEqual(refreshes.map((_, i) => i));
+    // request's timing counts from when it was let go. The tabs go on refreshing as the story reads, the
+    // event stream's leader as its access token expires and the workspace step as it loads: the refreshes,
+    // the record and the session are read again until they agree. A refresh under way is waited for; a
+    // generation missing or sent twice stays so.
+    await expect(async () => {
+      const refreshes = await recorder.refreshes();
+      expect(refreshes.length).toBeGreaterThanOrEqual(4);
+      expect(refreshes.map((r) => r.status)).toEqual(refreshes.map(() => 200));
+      expect(refreshes.map((r) => r.generation).toSorted((a, b) => a - b)).toEqual(refreshes.map((_, i) => i));
+      const record = await recordOf(tabA);
+      await expectRefreshed(db, record?.refresh_token ?? "", refreshes.length, signedUp.refresh_token_expires_at);
+    }).toPass({ timeout: 10_000 });
     expect(watchB.apiFailures).toEqual([]);
-    const record = await recordOf(tabA);
-    await expectRefreshed(db, record?.refresh_token ?? "", refreshes.length, signedUp.refresh_token_expires_at);
     // Tab A is the test's page, which the page fixture checks as the test ends.
     await expectQuietPage(tabB, watchB);
   });
