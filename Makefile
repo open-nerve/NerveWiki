@@ -188,9 +188,11 @@ test-go: ## 运行 Go 测试，含集成测试与 server/tools（开启竞态检
 # 组合根之外的包由 go list 列出，以后新加的包自动归入第一份。不带竞态检测的那一份在 M8/P4A 之前作业已到 15 分钟
 # （测试一步 13:37），超过 15 分钟就分（M8/P4 设计 3.11）：组合根的预算与守卫各自编译、各起数据库，分作一份。
 # 竞态检测下的组合根在 M8/P4A 的 CI 上测试一步 12:00–12:05，离 go test 的 15 分钟只剩约两成，P5 还要加测试（M8/P4A 审查 C 的 M-6）：
-# 按测试名分成两份，名字以 TestA 到 TestD 开头的一份，其余的一份，本机两份的测试时间之和各约一半（M8 收尾时各自单独跑 201 与 206 秒，在 make test-go 里 213 与 217 秒）。
+# 按测试名分成两份，本机两份的测试时间之和各约一半（M8 收尾时以 TestA 到 TestD 为界，各自单独跑 201 与 206 秒，在 make test-go 里 213 与 217 秒）。
+# M9/P1 S1 的整个程序测试几乎都落在第二份（单独跑 213 与 250 秒），界线照 M9/P1 设计 6.1 往后挪到 TestEveryR 之前：
+# 名字按字母排在它之前的一份（TestA 到 TestD、TestEa 到 TestEu、TestEveryA 到 TestEveryQ），其余的一份；整个 TestE 挪过去第一份就多出三成
 # -run 与 -skip 用同一个表达式：两份之和总是整个包，新加的测试自动落在其中一份；一份变得太慢时改这个表达式
-BOOTSTRAP_FIRST = ^Test[A-D]
+BOOTSTRAP_FIRST = ^Test([A-D]|E([a-u]|very[A-Q]))
 .PHONY: test-go-race
 test-go-race: ## 竞态检测下运行组合根（internal/bootstrap）之外的全部 Go 包（CI 的一份；需要 Docker）
 	cd server && $(GO_TEST_RACE) $$(go list ./... | grep -v '/internal/bootstrap$$')
