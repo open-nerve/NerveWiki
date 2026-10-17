@@ -318,7 +318,8 @@ func TestTheMCPReadsWithoutAPublicURL(t *testing.T) {
 // bad_request; a cursor that decodes into no payload, bad_request; a
 // pattern's, a path's or a window's value, validation_failed; a page's
 // children or a path that names nothing, page.not_found; the account
-// entry's notebook not seen, notebook.not_found. Neither tool binds to
+// entry's notebook not seen, notebook.not_found, before any path in it is
+// looked up. Neither tool binds to
 // one REST operation: list answers what listNodes and listAssets do,
 // read what getPageContent and the notebook's decision do, and their
 // arguments are their own.
@@ -343,6 +344,10 @@ func TestListAndReadErrorsCarryDeclaredCodes(t *testing.T) {
 		{atNotebook(r.notebook), "read", map[string]any{"path": "Guide.md", "column": 9}, "validation_failed"},
 		{atNotebook(r.notebook), "read", map[string]any{"path": "Missing.md"}, "page.not_found"},
 		{mcpserver.Pattern, "read", map[string]any{"notebook": unseen, "path": "Guide.md"}, "notebook.not_found"},
+		// bob's notebook, which alice does not see: the notebook before the
+		// path, whether a node is there or not.
+		{mcpserver.Pattern, "list", map[string]any{"notebook": r.hidden, "pattern": "Missing/"}, "notebook.not_found"},
+		{mcpserver.Pattern, "read", map[string]any{"notebook": r.hidden, "path": "Missing.md"}, "notebook.not_found"},
 	} {
 		if member := toolError(t, r.call(t, tt.path, tt.tool, tt.args).result(t)); member["code"] != tt.want {
 			t.Errorf("%s %v at %s = %v, want %s", tt.tool, tt.args, tt.path, member, tt.want)

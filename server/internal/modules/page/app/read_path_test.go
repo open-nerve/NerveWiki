@@ -74,9 +74,10 @@ func TestFindByPath(t *testing.T) {
 }
 
 // read decides, finds and cuts in its order: the path's 422 before the
-// window's, both before the notebook; the notebook before the node; the
-// column on its line, which only the content tells, after the 404s
-// (M9/P1 design 3.11.1, 6.3).
+// window's, both before the notebook; the notebook before the node, so a
+// notebook the caller may not read answers the same for a path it holds
+// and one it does not; the column on its line, which only the content
+// tells, after the 404s (M9/P1 design 3.11.1, 6.3).
 func TestReadPathAnswersInOrder(t *testing.T) {
 	f := newFixture()
 	f.grant(domain.ActionRead)
@@ -107,9 +108,18 @@ func TestReadPathAnswersInOrder(t *testing.T) {
 	if _, err := read.Execute(f.asAlice(), uuid.UUID{}, "Guide.md", nil, nil, nil, textMeasure(100)); len(f.rec.calls) != 0 || err == nil {
 		t.Errorf("the zero id read %v", f.rec.calls)
 	}
+	f.rec.calls = nil
+	if _, err := read.Execute(f.asAlice(), f.eng, "Guide.md", nil, nil, nil, textMeasure(100)); err != nil ||
+		!slices.Equal(f.rec.calls, []string{"WorkspaceOf", "Authorize page.read", "RootByKey", "PageContent"}) {
+		t.Errorf("read made %v, %v; want the decision, the lookup, then the content", f.rec.calls, err)
+	}
 	delete(f.auth.grants, domain.ActionRead)
-	if _, err := read.Execute(f.asAlice(), f.eng, "Guide.md", nil, nil, nil, textMeasure(100)); codeOf(err) != "notebook.not_found" {
-		t.Errorf("a notebook the caller may not read: %v", err)
+	for _, path := range []string{"Guide.md", "Missing.md"} {
+		f.rec.calls = nil
+		if _, err := read.Execute(f.asAlice(), f.eng, path, nil, nil, nil, textMeasure(100)); codeOf(err) != "notebook.not_found" ||
+			slices.Contains(f.rec.calls, "RootByKey") {
+			t.Errorf("%s in a notebook the caller may not read: %v after %v", path, err, f.rec.calls)
+		}
 	}
 	if _, err := read.Execute(context.Background(), f.eng, "Guide.md", nil, nil, nil, textMeasure(100)); codeOf(err) != "unauthorized" {
 		t.Errorf("no actor: %v", err)
