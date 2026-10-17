@@ -73,7 +73,11 @@ func (c Config) validate() error {
 		}
 	}
 	if u := c.Server.PublicURL; u != "" && !isOrigin(u) {
-		fail("server.public_url", `must be an origin such as "https://wiki.example.com", got %q`, u)
+		if shown, ok := shownURL(u); ok {
+			fail("server.public_url", `must be an origin such as "https://wiki.example.com", got %q`, shown)
+		} else {
+			fail("server.public_url", `must be an origin such as "https://wiki.example.com", got a value that is no URL`)
+		}
 	}
 	if c.Database.URL == "" {
 		fail("database.url", "is required")
@@ -315,6 +319,23 @@ func (t TransferConfig) validate(fail func(key, format string, args ...any)) {
 	if t.MaxQueued < 1 {
 		fail("transfer.max_queued", "must be at least 1, got %d", t.MaxQueued)
 	}
+}
+
+// shownURL is how an error quotes the URL s: as it is, but a password its
+// userinfo holds, which url.URL.Redacted writes xxxxx (v0.1 design 13.1
+// items 10 and 15); not at all, ok false, when s parses into no URL and
+// holds an @, which may be a password's (M9/P1 S2 review, B-M1).
+func shownURL(s string) (string, bool) {
+	u, err := url.Parse(s)
+	switch {
+	case err != nil:
+		return s, !strings.Contains(s, "@")
+	case u.User != nil:
+		if _, ok := u.User.Password(); ok {
+			return u.Redacted(), true
+		}
+	}
+	return s, true
 }
 
 // isOrigin reports whether s is an origin alone (server.public_url): http

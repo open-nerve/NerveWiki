@@ -2,7 +2,6 @@ package config
 
 import (
 	"net/netip"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -521,34 +520,42 @@ func prefixes(ss ...string) []netip.Prefix {
 // port and a trailing "/" may come; a path, a query, an empty query, a
 // fragment, a user or no host may not (M9/P1 design 3.12).
 func TestValidatePublicURL(t *testing.T) {
-	for u, ok := range map[string]bool{
-		"":                                 true,
-		"https://wiki.example.com":         true,
-		"http://wiki.example":              true,
-		"https://wiki.example.com:8443":    true,
-		"https://wiki.example.com/":        true,
-		"http://[2001:db8::1]:8080":        true,
-		"ftp://wiki.example.com":           false,
-		"wiki.example.com":                 false,
-		"https://wiki.example.com/wiki":    false,
-		"https://wiki.example.com/?a=1":    false,
-		"https://wiki.example.com?":        false,
-		"https://wiki.example.com/#top":    false,
-		"https://wiki.example.com#":        false,
-		"https://alice@wiki.example.com":   false,
-		"https://alice:x@wiki.example.com": false,
-		"https://":                         false,
-		"https:wiki.example.com":           false,
+	const origin = `server.public_url: must be an origin such as "https://wiki.example.com", got `
+	for u, want := range map[string]string{
+		"":                               "",
+		"https://wiki.example.com":       "",
+		"http://wiki.example":            "",
+		"https://wiki.example.com:8443":  "",
+		"https://wiki.example.com/":      "",
+		"http://[2001:db8::1]:8080":      "",
+		"ftp://wiki.example.com":         origin + `"ftp://wiki.example.com"`,
+		"wiki.example.com":               origin + `"wiki.example.com"`,
+		"https://wiki.example.com/wiki":  origin + `"https://wiki.example.com/wiki"`,
+		"https://wiki.example.com/?a=1":  origin + `"https://wiki.example.com/?a=1"`,
+		"https://wiki.example.com?":      origin + `"https://wiki.example.com?"`,
+		"https://wiki.example.com/#top":  origin + `"https://wiki.example.com/#top"`,
+		"https://wiki.example.com#":      origin + `"https://wiki.example.com#"`,
+		"https://alice@wiki.example.com": origin + `"https://alice@wiki.example.com"`,
+		// A user without a password is quoted as written, its empty
+		// fragment too, which url.URL.Redacted would drop.
+		"https://alice@wiki.example.com#": origin + `"https://alice@wiki.example.com#"`,
+		"https://":                        origin + `"https://"`,
+		"https:wiki.example.com":          origin + `"https:wiki.example.com"`,
+		"https://wiki.exa mple.com":       origin + `"https://wiki.exa mple.com"`,
+		// A password is never quoted (M9/P1 S2 review, B-M1).
+		"https://admin:hunter2@wiki.example.com": origin + `"https://admin:xxxxx@wiki.example.com"`,
+		"https://admin:hunter2@wiki example.com": origin + "a value that is no URL",
 	} {
 		cfg := validConfig()
 		cfg.Server.PublicURL = u
 		err := cfg.validate()
-		want := `server.public_url: must be an origin such as "https://wiki.example.com", got ` + strconv.Quote(u)
 		switch {
-		case ok && err != nil:
+		case want == "" && err != nil:
 			t.Errorf("public_url %q: %v, want valid", u, err)
-		case !ok && (err == nil || err.Error() != want):
+		case want != "" && (err == nil || err.Error() != want):
 			t.Errorf("public_url %q: %v, want %s", u, err, want)
+		case err != nil && strings.Contains(err.Error(), "hunter2"):
+			t.Errorf("public_url %q: the error %q quotes its password", u, err)
 		}
 	}
 }
