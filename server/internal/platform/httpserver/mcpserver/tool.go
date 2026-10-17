@@ -115,7 +115,7 @@ var toolName = regexp.MustCompile(`^[a-z_]{1,32}$`)
 // structuredContent and wants no output schema: the handler mcpserver
 // wraps around each does that.
 func (s *Server) addTools(tools []Tool) {
-	named := map[Entry]map[string]bool{NotebookEntry: {}, AccountEntry: {}}
+	s.tools = map[Entry]map[string]bool{NotebookEntry: {}, AccountEntry: {}}
 	for _, t := range tools {
 		spec := t.spec
 		switch {
@@ -132,10 +132,10 @@ func (s *Server) addTools(tools []Tool) {
 			if spec.Entry&e == 0 {
 				continue
 			}
-			if named[e][spec.Name] {
+			if s.tools[e][spec.Name] {
 				panic(fmt.Sprintf("mcpserver: tool %s is registered twice in the %s entry", spec.Name, e))
 			}
-			named[e][spec.Name] = true
+			s.tools[e][spec.Name] = true
 			notebook := spec.Notebook && e == AccountEntry
 			schema, table := inputOf(spec.Name, t.in, notebook)
 			s.serverOf(e).AddTool(&mcp.Tool{

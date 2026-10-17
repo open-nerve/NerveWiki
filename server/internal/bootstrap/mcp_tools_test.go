@@ -158,18 +158,21 @@ func TestTheToolListsAreTheContract(t *testing.T) {
 	}
 }
 
+// seam is a test's tool of entry e alone, without arguments, that
+// answers an empty object.
+func seam(name string, e mcpserver.Entry) mcpserver.Tool {
+	return mcpserver.NewTool(mcpserver.Spec{Name: name, Title: "Seam", Description: "A test's tool.", Entry: e},
+		func(context.Context, mcpserver.Call, struct{}) (mcpserver.Result, error) {
+			return mcpserver.Result{Structured: map[string]any{}}, nil
+		})
+}
+
 // The check reads what the app lists and what the file holds, each entry
 // under its own key: a tool of each entry the test registers beside the
 // modules' is that entry's one difference, so that an entry listed for
 // the other, or for both, fails too (M9/P1 design review A-M10, S1
 // review C-M5).
 func TestTheToolListCheckReadsTheApp(t *testing.T) {
-	seam := func(name string, e mcpserver.Entry) mcpserver.Tool {
-		return mcpserver.NewTool(mcpserver.Spec{Name: name, Title: "Seam", Description: "A test's tool.", Entry: e},
-			func(context.Context, mcpserver.Call, struct{}) (mcpserver.Result, error) {
-				return mcpserver.Result{Structured: map[string]any{}}, nil
-			})
-	}
 	want := []string{"the account entry lists seam_account, which the file does not",
 		"the notebook entry lists seam_notebook, which the file does not"}
 	got := toolListDiffOfApp(t, []mcpserver.Tool{seam("seam_notebook", mcpserver.NotebookEntry), seam("seam_account", mcpserver.AccountEntry)})

@@ -31,7 +31,7 @@ const mcpBodyBytes = 37_814_272
 // notebook is looked at; the SDK's 405 for any method but POST, before
 // the notebook; then the notebook entry's 404.
 func TestTheMCPEdgeAnswersInOrder(t *testing.T) {
-	m := startMCPApp(t, mcpTestTools(newMCPSeen()))
+	m := startMCPApp(t, append(mcpTestTools(newMCPSeen()), seam("seam_notebook", mcpserver.NotebookEntry), seam("seam_account", mcpserver.AccountEntry)))
 	revokedID, revoked := createTokenWithID(t, m.contract, m.base, m.access)
 	if status, answer := ask(t, m.contract, http.MethodDelete, m.base+"/api/v0/api-tokens/"+revokedID, m.access, ""); status != http.StatusNoContent {
 		t.Fatalf("revoke a token = %d %s", status, answer)
@@ -96,21 +96,36 @@ func TestTheMCPEdgeAnswersInOrder(t *testing.T) {
 
 	// A tools/call of the limit is read, the SDK's own limit no lower; a
 	// byte more is 413 as it streams, with no Content-Length to refuse it
-	// by. Any other method is 413 over 64 KiB (M9/P1 S1 review A-M1).
+	// by. Any other method is 413 over 64 KiB (M9/P1 S1 review A-M1), and
+	// so is a call of a tool its entry does not serve (S1 fix round 2):
+	// the seam tools are each of one entry.
 	call := `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"echo","arguments":{"notebook":"` + m.notebook + `"}}}`
 	ping := `{"jsonrpc":"2.0","id":3,"method":"ping"}`
+	callOf := func(name string) string {
+		return `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"` + name + `","arguments":{}}}`
+	}
+	nb := atNotebook(m.notebook)
 	for _, tt := range []struct {
-		message string
-		size    int
-		status  int
+		message, path string
+		size          int
+		status        int
 	}{
-		{call, mcpBodyBytes, http.StatusOK}, {call, mcpBodyBytes + 1, http.StatusRequestEntityTooLarge},
-		{ping, 64 << 10, http.StatusOK}, {ping, 64<<10 + 1, http.StatusRequestEntityTooLarge},
+		{call, "/mcp", mcpBodyBytes, http.StatusOK}, {call, "/mcp", mcpBodyBytes + 1, http.StatusRequestEntityTooLarge},
+		{ping, "/mcp", 64 << 10, http.StatusOK}, {ping, "/mcp", 64<<10 + 1, http.StatusRequestEntityTooLarge},
+		{callOf("seam_account"), "/mcp", 64<<10 + 1, http.StatusOK},
+		{callOf("seam_notebook"), "/mcp", 64<<10 + 1, http.StatusRequestEntityTooLarge},
+		{callOf("seam_notebook"), nb, 64<<10 + 1, http.StatusOK},
+		{callOf("seam_account"), nb, 64<<10 + 1, http.StatusRequestEntityTooLarge},
+		{callOf("missing"), "/mcp", 64<<10 + 1, http.StatusRequestEntityTooLarge},
 	} {
 		body := io.MultiReader(strings.NewReader(tt.message), io.LimitReader(spaces{}, int64(tt.size-len(tt.message))))
-		a := m.send(t, context.Background(), http.MethodPost, "/mcp", m.pat, body, afterHandshake())
+		a := m.send(t, context.Background(), http.MethodPost, tt.path, m.pat, body, afterHandshake())
 		if a.status != tt.status {
-			t.Errorf("a body of %d bytes = %d %.200s, want %d", tt.size, a.status, a.body, tt.status)
+			t.Errorf("%.80s to %s, %d bytes = %d %.200s, want %d", tt.message, tt.path, tt.size, a.status, a.body, tt.status)
+		}
+		var answer map[string]any
+		if tt.status == http.StatusOK && (json.Unmarshal(a.body, &answer) != nil || answer["result"] == nil) {
+			t.Errorf("%.80s to %s = %.200s, want the SDK's result", tt.message, tt.path, a.body)
 		}
 		if tt.status == http.StatusRequestEntityTooLarge {
 			if code := a.problem(t, tt.status); code != "payload_too_large" {

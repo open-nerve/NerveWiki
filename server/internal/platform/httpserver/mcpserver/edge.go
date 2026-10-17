@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"encoding/json/jsontext"
 	jsonv2 "encoding/json/v2"
 	"errors"
 	"net/http"
@@ -55,29 +56,49 @@ func Bodies() *bodyshape.Table {
 }
 
 // maxOtherBytes bounds the body of every request but a tools/call of a
-// tool's name: a handshake, a ping or a prompt's get is a few hundred
-// bytes, and the SDK's error of params it cannot read repeats them,
-// escaped to four times their size; a tools/call's arguments, which may
-// be a page, it never reads (M9/P1 S1 review A-M1).
+// tool its entry serves: a handshake, a ping or a prompt's get is a few
+// hundred bytes, and the SDK's error of params it cannot read repeats
+// them, escaped to four times their size; a tools/call's arguments, which
+// may be a page, it never reads (M9/P1 S1 review A-M1).
 const maxOtherBytes = 64 << 10
 
+// maxIDBytes bounds the id of a body over maxOtherBytes, as it is written:
+// the SDK repeats the id in its answer, escaped to as much as twice its
+// bytes (M9/P1 S1 fix-check A F2).
+const maxIDBytes = 256
+
 // sizeError is the 413 of the body of r, as bodyshape read it, when it is
-// over maxOtherBytes and no tools/call of a tool's name: the error of
-// API.Wrap's body limit over the route's. The body was one JSON object
-// without a name twice: method and params.name are read as the SDK reads
-// them, by their exact names.
-func sizeError(r *http.Request) error {
+// over maxOtherBytes and no tools/call that the SDK reads without an
+// answer as long: the error of API.Wrap's body limit over the route's.
+// The body was one JSON object without a name twice, and is read as the
+// SDK reads it. Its jsonrpc is 2.0, as the SDK's error of another tag
+// repeats it, escaped; its id at most maxIDBytes; every number of its
+// params' _meta one that a float64 holds, as the SDK's error of one that
+// none does repeats the params (fix-check A F1, F2); its method is
+// tools/call, of a tool of the entry the query asks for, which alone the
+// SDK reads the whole body for.
+//
+// encoding/json/v2, not encoding/json: it reads names by their exact
+// case, as the SDK's decoder does, where encoding/json would take a
+// METHOD for the method. In go1.27.1 it is behind GOEXPERIMENT jsonv2,
+// which is on by default: a toolchain bump checks that it still is, or
+// that the package has left the experiment.
+func (s *Server) sizeError(r *http.Request) error {
 	body, ok := bodyshape.Bytes(r)
 	if !ok || len(body) <= maxOtherBytes {
 		return nil
 	}
 	var m struct {
-		Method string `json:"method"`
-		Params struct {
-			Name string `json:"name"`
+		JSONRPC string         `json:"jsonrpc"`
+		ID      jsontext.Value `json:"id"`
+		Method  string         `json:"method"`
+		Params  struct {
+			Name string         `json:"name"`
+			Meta map[string]any `json:"_meta"`
 		} `json:"params"`
 	}
-	if err := jsonv2.Unmarshal(body, &m); err == nil && m.Method == methodCallTool && toolName.MatchString(m.Params.Name) {
+	if err := jsonv2.Unmarshal(body, &m); err == nil && m.JSONRPC == "2.0" && len(m.ID) <= maxIDBytes &&
+		m.Method == methodCallTool && s.tools[askedEntry(r.URL)][m.Params.Name] {
 		return nil
 	}
 	return &http.MaxBytesError{Limit: maxOtherBytes}
@@ -165,14 +186,25 @@ func notPAT() error { return forbidden{} }
 // of the gate, never the account entry.
 var errGateLetZero = errors.New("mcpserver: the notebook gate let the zero id through")
 
+// askedEntry is the entry whose server reads the body of a request to u:
+// the account entry's for a query that parses and has no notebook
+// parameter, as entryOf decides; for any other, the notebook entry's, or
+// none, entryOf answering 404 first.
+func askedEntry(u *url.URL) Entry {
+	if query, err := url.ParseQuery(u.RawQuery); err == nil && !query.Has("notebook") {
+		return AccountEntry
+	}
+	return NotebookEntry
+}
+
 // entryOf is the entry of a POST to Pattern (M9 design 4.6): the account
 // entry without a notebook parameter; the notebook entry with exactly one
 // that uuid.Parse takes and that Gate lets through. A query that does not
 // parse, the parameter twice or more, empty, or no UUID is
 // notebook.not_found from Gate on the zero id, which it answers without a
-// read; the query is parsed once, here. url.ParseQuery, not u.Query():
-// that drops a pair it cannot parse, notebook=%zz among them, and the
-// client would land in the account entry. Other parameters are the
+// read. url.ParseQuery, not u.Query(): that drops a pair it cannot parse,
+// notebook=%zz among them, and the client would land in the account
+// entry; askedEntry reads the query alike. Other parameters are the
 // client's own and are not read.
 func (s *Server) entryOf(ctx context.Context, u *url.URL) (Entry, uuid.UUID, error) {
 	query, err := url.ParseQuery(u.RawQuery)

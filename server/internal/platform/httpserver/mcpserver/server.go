@@ -83,6 +83,9 @@ type Server struct {
 	// the SDK's stateless handler that getServer picks one of for.
 	notebookEntry, accountEntry *mcp.Server
 	handler                     http.Handler
+	// tools are the names of each entry's tools: a tools/call over
+	// maxOtherBytes names one of its entry's, or is 413.
+	tools map[Entry]map[string]bool
 }
 
 // errNoCredential is a request that reached the server without the
@@ -183,7 +186,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.errors.Write(ns, r, errNoCredential)
 		return
 	}
-	if err := sizeError(r); err != nil {
+	if err := s.sizeError(r); err != nil {
 		s.errors.Write(ns, r, err)
 		return
 	}

@@ -131,40 +131,73 @@ func callOf(name string, n int) string {
 	return call + strings.Repeat(" ", n-len(call))
 }
 
-// Only a tools/call of a tool's name may be as long as the route's limit:
-// any other body over maxOtherBytes is 413, as the route's limit answers,
-// before the 403 of a session's access token as that limit is; method and
-// name are read by their exact names, as the SDK reads them (M9/P1 S1
-// review A-M1).
+// Only a tools/call of a tool its entry serves may be as long as the
+// route's limit: any other body over 64 KiB is 413, as the route's limit
+// answers, before the 403 of a session's access token as that limit is;
+// method and name are read by their exact names, as the SDK reads them
+// (M9/P1 S1 review A-M1), and so are the jsonrpc, the id and the _meta
+// that the SDK's errors repeat (fix-check A F1, F2); the entry is the one
+// the query asks for. The bound's rows are absolute: a bound of twice
+// 64 KiB fails them (fix-check A, e-bound-128k).
 func TestOnlyACallMayBeLong(t *testing.T) {
-	s := serveMCP(t, setup{})
+	none := func(context.Context, Call, struct{}) (Result, error) {
+		return Result{Structured: map[string]any{}}, nil
+	}
+	s := serveMCP(t, setup{options: func(o *Options) {
+		o.Tools = append(o.Tools, NewTool(Spec{Name: "nb_only", Entry: NotebookEntry}, none), NewTool(Spec{Name: "acct_only", Entry: AccountEntry}, none))
+	}})
+	nb := Pattern + "?notebook=" + visible.String()
 	over := maxOtherBytes + 1
+	long := callOf("echo", over+1024) // over the bound after any row's change
 	tests := []struct {
-		name, token, body string
-		status            int
+		name, path, token, body string
+		status                  int
 	}{
-		{"a ping at the bound", patToken, pingOf(maxOtherBytes), http.StatusOK},
-		{"a ping over it", patToken, pingOf(over), http.StatusRequestEntityTooLarge},
-		{"a handshake over it", patToken, initialize + strings.Repeat(" ", over), http.StatusRequestEntityTooLarge},
-		{"a call at the route's limit", patToken, callOf("echo", bodyLimit), http.StatusOK},
-		{"a call of no tool's name", patToken, callOf("Echo", over), http.StatusRequestEntityTooLarge},
-		{"a call of a name too long", patToken, callOf(strings.Repeat("e", 33), over), http.StatusRequestEntityTooLarge},
-		{"a call of a tool not served", patToken, callOf("missing", over), http.StatusOK},
-		{"a method in another case, after it", patToken, strings.Replace(pingOf(over), `"method":"ping"`,
-			`"method":"ping","METHOD":"tools/call","params":{"name":"echo"}`, 1), http.StatusRequestEntityTooLarge},
-		{"a name in another case, after it", patToken, strings.Replace(callOf("Echo", over), `"name":"Echo"`, `"name":"Echo","NAME":"echo"`, 1),
+		{"a ping of 64 KiB", Pattern, patToken, pingOf(64 << 10), http.StatusOK},
+		{"a ping of 64 KiB and a byte", Pattern, patToken, pingOf(64<<10 + 1), http.StatusRequestEntityTooLarge},
+		{"a handshake over the bound", Pattern, patToken, initialize + strings.Repeat(" ", over), http.StatusRequestEntityTooLarge},
+		{"a call at the route's limit", Pattern, patToken, callOf("echo", bodyLimit), http.StatusOK},
+		{"a call of no tool's name", Pattern, patToken, callOf("Echo", over), http.StatusRequestEntityTooLarge},
+		{"a call of a name too long", Pattern, patToken, callOf(strings.Repeat("e", 33), over), http.StatusRequestEntityTooLarge},
+		{"a call of a tool not served", Pattern, patToken, callOf("missing", over), http.StatusRequestEntityTooLarge},
+		{"the notebook entry's tool at the notebook entry", nb, patToken, callOf("nb_only", over), http.StatusOK},
+		{"the notebook entry's tool at the account entry", Pattern, patToken, callOf("nb_only", over), http.StatusRequestEntityTooLarge},
+		{"the account entry's tool at the account entry", Pattern, patToken, callOf("acct_only", over), http.StatusOK},
+		{"the account entry's tool at the notebook entry", nb, patToken, callOf("acct_only", over), http.StatusRequestEntityTooLarge},
+		{"the account entry's tool and a query that does not parse", Pattern + "?notebook=%zz", patToken, callOf("acct_only", over),
 			http.StatusRequestEntityTooLarge},
-		{"a session's access token and a ping over the bound", sessionToken, pingOf(over), http.StatusRequestEntityTooLarge},
-		{"a session's access token and a long call", sessionToken, callOf("echo", over), http.StatusForbidden},
+		{"the notebook entry's tool and a query that does not parse", Pattern + "?notebook=%zz", patToken, callOf("nb_only", over),
+			http.StatusNotFound},
+		{"a method in another case, after it", Pattern, patToken, strings.Replace(pingOf(over), `"method":"ping"`,
+			`"method":"ping","METHOD":"tools/call","params":{"name":"echo"}`, 1), http.StatusRequestEntityTooLarge},
+		{"a name in another case, after it", Pattern, patToken, strings.Replace(callOf("Echo", over), `"name":"Echo"`, `"name":"Echo","NAME":"echo"`, 1),
+			http.StatusRequestEntityTooLarge},
+		{"a jsonrpc of U+0080", Pattern, patToken, strings.Replace(long, `"jsonrpc":"2.0"`, `"jsonrpc":"`+string(rune(0x80))+`"`, 1),
+			http.StatusRequestEntityTooLarge},
+		{"no jsonrpc", Pattern, patToken, strings.Replace(long, `"jsonrpc":"2.0",`, "", 1), http.StatusRequestEntityTooLarge},
+		{"an id of 256 bytes", Pattern, patToken, strings.Replace(long, `"id":3`, `"id":"`+strings.Repeat("i", 254)+`"`, 1), http.StatusOK},
+		{"an id of 257 bytes, of U+2028", Pattern, patToken, strings.Replace(long, `"id":3`, `"id":"`+strings.Repeat(string(rune(0x2028)), 85)+`"`, 1),
+			http.StatusRequestEntityTooLarge},
+		{"a _meta a float64 holds", Pattern, patToken, strings.Replace(long, `"name":"echo"`, `"name":"echo","_meta":{"x":{"y":1e300}}`, 1), http.StatusOK},
+		{"a _meta of a number no float64 holds", Pattern, patToken, strings.Replace(long, `"name":"echo"`, `"name":"echo","_meta":{"x":{"y":1e400}}`, 1),
+			http.StatusRequestEntityTooLarge},
+		{"a session's access token and a ping over the bound", Pattern, sessionToken, pingOf(over), http.StatusRequestEntityTooLarge},
+		{"a session's access token and a long call", Pattern, sessionToken, callOf("echo", over), http.StatusForbidden},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			a := s.post(t, context.Background(), Pattern, tt.token, tt.body, v2025())
+			a := s.post(t, context.Background(), tt.path, tt.token, tt.body, v2025())
 			if a.status != tt.status {
 				t.Fatalf("a body of %d bytes = %d %.300s, want %d", len(tt.body), a.status, a.body, tt.status)
 			}
-			if p := a.decoded(t); tt.status == http.StatusRequestEntityTooLarge && p["code"] != "payload_too_large" {
+			p := a.decoded(t)
+			switch {
+			case tt.status == http.StatusOK && p["result"] == nil:
+				t.Errorf("a body of %d bytes = %.300s, want the SDK's result", len(tt.body), a.body)
+			case tt.status == http.StatusRequestEntityTooLarge && p["code"] != "payload_too_large":
 				t.Errorf("a body over its bound = %s, want payload_too_large", a.body)
+			case tt.status == http.StatusNotFound && p["code"] != "notebook.not_found":
+				t.Errorf("a body to a query that does not parse = %s, want notebook.not_found", a.body)
 			}
 		})
 	}
