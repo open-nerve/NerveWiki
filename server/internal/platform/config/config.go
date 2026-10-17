@@ -55,9 +55,9 @@ type ServerConfig struct {
 	TrustedProxies []netip.Prefix `koanf:"trusted_proxies"`
 	// PublicURL is the instance's origin as its users reach it, e.g.
 	// "https://wiki.example.com": MCP's read signs an attachment's absolute
-	// address from it (M9/P1 design 3.12). Empty: none is given. Never
-	// guessed from a request's Host or X-Forwarded-*, which a proxy set up
-	// wrong would make another's.
+	// address from it (M9/P1 design 3.12). Empty: none is given, an image
+	// all the same, which needs none. Never guessed from a request's Host
+	// or X-Forwarded-*, which a proxy set up wrong would make another's.
 	PublicURL string `koanf:"public_url"`
 }
 

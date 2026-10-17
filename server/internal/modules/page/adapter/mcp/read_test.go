@@ -187,9 +187,10 @@ func (f *fakeAttachments) Content(_ context.Context, a app.Attachment, maxBytes 
 
 // An attachment is its metadata, then the image for one of the four types
 // within 3 MiB and 8,000 pixels a side, the sides those its content tells
-// when it was read, else a link; without server.public_url its metadata
-// and a note; its file gone a note; its row's sides unknown read from its
-// bytes (M9/P1 design 3.11.2, the inline order).
+// when it was read, else a link; without server.public_url the image all
+// the same, which needs no address, else a note; its file gone a note; its
+// row's sides unknown read from its bytes (M9/P1 design 3.11.2, the inline
+// order).
 func TestTheReadOfAnAttachment(t *testing.T) {
 	expires := time.Date(2026, 10, 17, 12, 0, 0, 0, time.FixedZone("CEST", 2*3600))
 	png := []byte("\x89PNG")
@@ -200,6 +201,9 @@ func TestTheReadOfAnAttachment(t *testing.T) {
 		a := base
 		f(&a)
 		return a
+	}
+	noAddress := func(m map[string]any) bool {
+		return m["link"] == base.Link && m["url"] == nil && m["expires_at"] == nil
 	}
 	tests := []struct {
 		name      string
@@ -227,8 +231,16 @@ func TestTheReadOfAnAttachment(t *testing.T) {
 		{name: "a PNG over 3 MiB", a: with(func(a *app.Attachment) { a.Bytes = domain.MaxInlineImageBytes + 1 }), second: "link", width: 640.0},
 		{name: "an SVG", a: with(func(a *app.Attachment) { a.MIME, a.Width, a.Height = "image/svg+xml", 0, 0 }), second: "link", width: nil},
 		{name: "a PDF", a: with(func(a *app.Attachment) { a.MIME, a.Width, a.Height = "application/pdf", 0, 0 }), second: "link", width: nil},
-		{name: "no public_url", a: with(func(a *app.Attachment) { a.URL, a.Expires = "", time.Time{} }), second: "none",
-			width: 640.0, note: noPublicURL, otherwise: func(m map[string]any) bool { return m["url"] == nil && m["expires_at"] == nil }},
+		{name: "a PNG without public_url", a: with(func(a *app.Attachment) { a.URL, a.Expires = "", time.Time{} }),
+			w: 640, h: 480, read: true, second: "image", width: 640.0, otherwise: noAddress},
+		{name: "a JPEG of 8,001 pixels without public_url", a: with(func(a *app.Attachment) {
+			a.MIME, a.Width, a.Height, a.URL, a.Expires = "image/jpeg", 0, 0, "", time.Time{}
+		}), w: 8001, h: 10, read: true, second: "none", width: 8001.0, note: noPublicURL, otherwise: noAddress},
+		{name: "a PDF without public_url", a: with(func(a *app.Attachment) {
+			a.MIME, a.Width, a.Height, a.URL, a.Expires = "application/pdf", 0, 0, "", time.Time{}
+		}), second: "none", width: nil, note: noPublicURL, otherwise: noAddress},
+		{name: "the file gone without public_url", a: with(func(a *app.Attachment) { a.URL, a.Expires = "", time.Time{} }),
+			err: app.ErrNoAttachmentFile, read: true, second: "none", width: 640.0, note: noFile, otherwise: noAddress},
 		{name: "the file gone", a: base, err: app.ErrNoAttachmentFile, read: true, second: "none", width: 640.0, note: noFile},
 		{name: "no extension", a: with(func(a *app.Attachment) {
 			a.Name, a.MIME, a.Link, a.Width, a.Height = "data", "application/octet-stream", "", 0, 0

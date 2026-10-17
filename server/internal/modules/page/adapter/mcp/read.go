@@ -40,7 +40,7 @@ type pageMeta struct {
 // attachmentMeta is an attachment's first block (M9/P1 design 3.11.2):
 // the sides read decided on, null when unknown; link null without an
 // extension; url and expires_at null without server.public_url, a note
-// then saying so.
+// then saying so when no image follows either.
 type attachmentMeta struct {
 	Path    string     `json:"path"`
 	Kind    string     `json:"kind"`
@@ -110,7 +110,9 @@ func (t tools) read(ctx context.Context, c mcpserver.Call, in readIn) (mcpserver
 }
 
 // readAttachment is the attachment r found: its metadata, then the image
-// itself or a link to download it (M9/P1 design 3.11.2).
+// itself or a link to download it (M9/P1 design 3.11.2). An image needs
+// no address: without server.public_url it is given all the same, and
+// what would be a link is a note.
 func (t tools) readAttachment(ctx context.Context, r app.Read) (mcpserver.Result, error) {
 	a, err := t.attachments.Read(ctx, r.Node.ID)
 	if err != nil {
@@ -122,10 +124,7 @@ func (t tools) readAttachment(ctx context.Context, r app.Read) (mcpserver.Result
 	}
 	width, height := a.Width, a.Height
 	var second *mcpserver.Block
-	switch {
-	case a.URL == "":
-		meta.Note = noPublicURL
-	case mayInline(a):
+	if mayInline(a) {
 		data, w, h, err := t.attachments.Content(ctx, a, domain.MaxInlineImageBytes)
 		switch {
 		case errors.Is(err, app.ErrNoAttachmentFile):
@@ -137,8 +136,12 @@ func (t tools) readAttachment(ctx context.Context, r app.Read) (mcpserver.Result
 			second = &mcpserver.Block{Image: &mcpserver.Image{Data: data, MIME: a.MIME}}
 		default:
 			width, height = w, h
-			second = linkOf(a)
 		}
+	}
+	switch {
+	case second != nil || meta.Note != "":
+	case a.URL == "":
+		meta.Note = noPublicURL
 	default:
 		second = linkOf(a)
 	}

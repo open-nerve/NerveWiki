@@ -300,16 +300,26 @@ func TestTheMCPReadsGiveAttachments(t *testing.T) {
 	}
 }
 
-// Without server.public_url an attachment is its metadata and a note, no
-// address and no second block (M9/P1 design 3.11.2).
+// Without server.public_url an image comes all the same, which needs no
+// address; another attachment is its metadata and a note; neither has an
+// address (M9/P1 design 3.11.2, as fix round 1 of S2 reads it).
 func TestTheMCPReadsWithoutAPublicURL(t *testing.T) {
 	r := startReadsApp(t, "")
-	r.upload(t, "", "x.png", imageOf(t, "png"))
+	png := imageOf(t, "png")
+	r.upload(t, "", "x.png", png)
+	r.upload(t, "", "spec.pdf", []byte("%PDF-1.4\n%%EOF\n"))
 	res := r.entryCall(t, mcpserver.NotebookEntry, "read", map[string]any{"path": "x.png"})
 	blocks, meta := blocksOf(t, res), metaOf(t, res)
-	if len(blocks) != 1 || meta["url"] != nil || meta["expires_at"] != nil || meta["width"] != 2.0 ||
+	if len(blocks) != 2 || blocks[1]["type"] != "image" || blocks[1]["mimeType"] != "image/png" ||
+		blocks[1]["data"] != base64.StdEncoding.EncodeToString(png) || meta["url"] != nil || meta["expires_at"] != nil ||
+		meta["width"] != 2.0 || meta["note"] != nil {
+		t.Errorf("read of a PNG without public_url = %v, want its metadata and its image", res)
+	}
+	res = r.entryCall(t, mcpserver.AccountEntry, "read", map[string]any{"path": "spec.pdf"})
+	blocks, meta = blocksOf(t, res), metaOf(t, res)
+	if len(blocks) != 1 || meta["url"] != nil || meta["expires_at"] != nil ||
 		meta["note"] != "server.public_url is not set, so there is no address to download it; ask the server's admin." {
-		t.Errorf("read without public_url = %v, want its metadata and the note", res)
+		t.Errorf("read of a PDF without public_url = %v, want its metadata and the note", res)
 	}
 }
 
