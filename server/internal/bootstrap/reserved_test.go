@@ -17,20 +17,38 @@ import (
 // takes first; the web app's section is checked by its own test.
 func TestTheReservedServerSlugsAreTheServersTopLevelPaths(t *testing.T) {
 	a := buildApp(t, testConfig(t, unreachableDB, false), sampleMigrations())
+	got := topLevelPaths(a.router.Patterns())
+	want := slices.Sorted(slices.Values(workspace.Reserved().Server))
+	if !slices.Equal(got, want) {
+		t.Errorf("the server's top-level paths = %q, want the reserved list's [server] %q", got, want)
+	}
+}
+
+// topLevelPaths are the first segments of patterns, sorted, with the
+// frontend's directory of built assets. A first segment that starts with a
+// dot is left out: /.well-known/ (M9 design 4.4) is no slug's address, as
+// a slug never starts with one.
+func topLevelPaths(patterns []string) []string {
 	got := []string{webui.AssetsDir}
-	for _, pattern := range a.router.Patterns() {
+	for _, pattern := range patterns {
 		path := pattern
 		if _, rest, ok := strings.Cut(pattern, " "); ok {
 			path = rest
 		}
 		first, _, _ := strings.Cut(strings.TrimPrefix(path, "/"), "/")
-		if first != "" && !slices.Contains(got, first) {
+		if first != "" && !strings.HasPrefix(first, ".") && !slices.Contains(got, first) {
 			got = append(got, first)
 		}
 	}
 	slices.Sort(got)
-	want := slices.Sorted(slices.Values(workspace.Reserved().Server))
-	if !slices.Equal(got, want) {
-		t.Errorf("the server's top-level paths = %q, want the reserved list's [server] %q", got, want)
+	return got
+}
+
+// Only a first segment that starts with a dot is left out: one that merely
+// starts like a reserved name is a top-level path of its own.
+func TestTheReservedCheckLeavesOutOnlyADotsSegment(t *testing.T) {
+	got := topLevelPaths([]string{"GET /healthz", "/.well-known/", "/mcp", "/mcp/", "/mcpx", "POST /api/v0/x", "/"})
+	if want := []string{"api", webui.AssetsDir, "healthz", "mcp", "mcpx"}; !slices.Equal(got, slices.Sorted(slices.Values(want))) {
+		t.Errorf("topLevelPaths() = %q, want %q", got, want)
 	}
 }

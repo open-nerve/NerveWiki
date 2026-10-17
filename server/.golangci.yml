@@ -31,6 +31,18 @@ linters:
             # 末尾的 $ 表示精确匹配：只禁止 log，不影响 log/slog
             - pkg: log$
               desc: 用 log/slog
+        # MCP 的 SDK 与 jsonschema-go 只在 mcpserver 与组合根（M9 总设计 4.1）：生产代码由架构测试的
+        # mcpSDKStaysInMCPServer 检查，它的导入图不含测试文件，这一条连测试文件也管
+        mcp-sdk:
+          files:
+            - $all
+            - "!**/internal/platform/httpserver/mcpserver/**"
+            - "!**/internal/bootstrap/**"
+          deny:
+            - pkg: github.com/modelcontextprotocol/go-sdk
+              desc: MCP SDK 只在 mcpserver 与组合根的测试（M9 4.1）
+            - pkg: github.com/google/jsonschema-go
+              desc: MCP SDK 只在 mcpserver 与组合根的测试（M9 4.1）
 
 formatters:
   enable:

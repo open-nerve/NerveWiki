@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -289,6 +290,47 @@ func TestWriteMapsProblemErrors(t *testing.T) {
 			}
 			if got := sent.Get("Retry-After"); got != tt.retryAfter {
 				t.Errorf("Retry-After = %q, want %q", got, tt.retryAfter)
+			}
+		})
+	}
+}
+
+// ProblemOf is Write's classification, on the context it is given: the
+// problem of a ProblemError and of a body too large, the caller's; whether
+// a cancellation or a deadline is the request's ending, which ctx tells; and
+// anything else the server's. Each fault's problem is internal_error
+// without detail.
+func TestProblemOfClassifiesOnTheContextItIsGiven(t *testing.T) {
+	live := context.Background()
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	expired, cancelExpired := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancelExpired()
+	busy := problemErr{status: http.StatusServiceUnavailable, code: "server_busy", detail: "busy", retry: 1500 * time.Millisecond}
+	internal := Problem{Status: http.StatusInternalServerError, Code: CodeInternal, Title: "Internal Server Error"}
+	tests := []struct {
+		name string
+		ctx  context.Context
+		err  error
+		want Answer
+	}{
+		{"a problem error", live, fmt.Errorf("work: %w", busy), Answer{
+			Problem: Problem{Status: http.StatusServiceUnavailable, Code: "server_busy", Title: "Service Unavailable", Detail: "busy"},
+			Retry:   1500 * time.Millisecond}},
+		{"a body too large", live, &http.MaxBytesError{Limit: 10}, Answer{Problem: Problem{
+			Status: http.StatusRequestEntityTooLarge, Code: CodePayloadTooLarge, Title: "Request Entity Too Large",
+			Detail: "The request body exceeds 10 bytes."}}},
+		{"a cancellation of an ended request", cancelled, fmt.Errorf("query: %w", context.Canceled), Answer{Problem: internal, Fault: FaultGone}},
+		{"a cancellation of a live request", live, context.Canceled, Answer{Problem: internal, Fault: FaultUnknown}},
+		{"the request's deadline", expired, fmt.Errorf("query: %w", context.DeadlineExceeded), Answer{Problem: internal, Fault: FaultDeadline}},
+		{"a deadline of its own", live, context.DeadlineExceeded, Answer{Problem: internal, Fault: FaultUnknown}},
+		{"a deadline of a cancelled request", cancelled, context.DeadlineExceeded, Answer{Problem: internal, Fault: FaultUnknown}},
+		{"any other error", live, errors.New("database is down"), Answer{Problem: internal, Fault: FaultUnknown}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ProblemOf(tt.ctx, tt.err); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("ProblemOf() = %+v, want %+v", got, tt.want)
 			}
 		})
 	}

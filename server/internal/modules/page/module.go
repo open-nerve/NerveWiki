@@ -8,7 +8,8 @@
 // activity; NewEditLock, its registrant of its own extension points;
 // NewAssetNodes, the asset module's reads of the tree; NewExportNodes, the
 // transfer module's; NewStatistics, the statistics an import updates;
-// Purgers for the purge; Actions for the composition's checks.
+// Purgers for the purge; Actions for the composition's checks; MCPEntry,
+// the MCP server's notebook entry.
 package page
 
 import (
@@ -158,6 +159,7 @@ type Deps struct {
 // Module is the wired page module.
 type Module struct {
 	uc        httpadapter.UseCases
+	gate      *app.NotebookGate // MCP's notebook entry (MCPEntry)
 	jobs      []jobs.Job
 	assets    *app.AssetWrites
 	imports   *app.ImportWrites
@@ -221,7 +223,7 @@ func New(d Deps) *Module {
 			app.RevertBounds{Nodes: d.MaxUnitNodes, History: d.MaxUnitHistory, Steps: d.MaxRevertSteps}, d.Logger),
 		Search: app.NewSearch(app.SearchDeps{Snapshots: d.Snapshots, Workspaces: d.Workspaces, Visible: d.VisibleNotebooks,
 			Auth: d.Authorizer, Reads: store, Trash: store, Attachments: d.Attachments}),
-	}, jobs: []jobs.Job{
+	}, gate: app.NewNotebookGate(d.Notebooks, d.Authorizer), jobs: []jobs.Job{
 		riveradapter.CleanupJob(app.NewCleanupEditSessions(store, d.Clock, d.Logger), d.EditSessionCleanupInterval),
 	}, assets: app.NewAssetWrites(writer, store), imports: app.NewImportWrites(writer, parser, md),
 		jobWrites: app.NewJobWrites(trash, store, writer, parser, store, d.MaxJobItems, d.MaxUnitHistory)}

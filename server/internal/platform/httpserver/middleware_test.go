@@ -2,6 +2,7 @@ package httpserver
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -116,8 +117,9 @@ func TestSecurityHeadersOnEveryResponse(t *testing.T) {
 }
 
 // Every response under /api/ carries Cache-Control: no-store: an answer, a
-// problem, the platform's /api/ fallback and the 500 of a panic. Other
-// responses get no caching from the chain: the web UI sets its own.
+// problem, the platform's /api/ fallback and the 500 of a panic; so does
+// every response of /mcp, below it and under /.well-known/ (M9 design 4.4).
+// Other responses get no caching from the chain: the web UI sets its own.
 func TestAPIResponsesAreNotStored(t *testing.T) {
 	discard := slog.New(slog.DiscardHandler)
 	answer := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("{}")) })
@@ -129,22 +131,32 @@ func TestAPIResponsesAreNotStored(t *testing.T) {
 		name, path string
 		h          http.Handler
 		want       string
+		method     string // GET when empty
 	}{
-		{"an answer", "/api/v0/me", answer, "no-store"},
+		{"an answer", "/api/v0/me", answer, "no-store", ""},
 		{"a problem", "/api/v0/me", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			WriteProblem(w, Problem{Status: http.StatusUnauthorized, Code: "unauthorized"})
-		}), "no-store"},
-		{"the fallback", "/api/v0/nope", NewRouter(discard), "no-store"},
-		{"a panic", "/api/v0/me", http.HandlerFunc(func(http.ResponseWriter, *http.Request) { panic("boom") }), "no-store"},
-		{"a page", "/notebooks", page, "no-cache"},
-		{"a probe", "/healthz", NewRouter(discard), ""},
-		{"a path that only starts like the API", "/apis", answer, ""},
+		}), "no-store", ""},
+		{"the fallback", "/api/v0/nope", NewRouter(discard), "no-store", ""},
+		{"a panic", "/api/v0/me", http.HandlerFunc(func(http.ResponseWriter, *http.Request) { panic("boom") }), "no-store", ""},
+		{"a page", "/notebooks", page, "no-cache", ""},
+		{"a probe", "/healthz", NewRouter(discard), "", ""},
+		{"a path that only starts like the API", "/apis", answer, "", ""},
+		{"the MCP route", "/mcp", answer, "no-store", ""},
+		{"a path below the MCP route", "/mcp/x", answer, "no-store", ""},
+		{"a workspace whose slug starts like it", "/mcp-team", page, "no-cache", ""},
+		{"a path that only starts like it", "/mcpx", answer, "", ""},
+		{"OAuth's metadata", "/.well-known/oauth-protected-resource", answer, "no-store", ""},
+		{"OAuth's registration", "/register", answer, "no-store", http.MethodPost},
+		{"a GET of it, a workspace's", "/register", answer, "", ""},
+		{"a POST below it", "/register/x", answer, "", http.MethodPost},
 	}
 	for _, tt := range tests {
-		rec := serve(middleware(tt.h, discard), httptest.NewRequest(http.MethodGet, tt.path, nil))
+		method := cmp.Or(tt.method, http.MethodGet)
+		rec := serve(middleware(tt.h, discard), httptest.NewRequest(method, tt.path, nil))
 
 		if got := rec.Result().Header.Get("Cache-Control"); got != tt.want {
-			t.Errorf("%s (GET %s, %d): Cache-Control = %q, want %q", tt.name, tt.path, rec.Code, got, tt.want)
+			t.Errorf("%s (%s %s, %d): Cache-Control = %q, want %q", tt.name, method, tt.path, rec.Code, got, tt.want)
 		}
 	}
 }

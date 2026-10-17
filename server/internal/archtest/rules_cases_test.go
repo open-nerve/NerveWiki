@@ -26,6 +26,7 @@ func TestRules(t *testing.T) {
 		testOnly = "test helpers (pgtest, apitest, httpservertest, clocktest, markdowntest, storagetest) are imported only by tests"
 		river    = "River is imported only by platform/jobs and a module's adapter/river"
 		md       = "goldmark, golang.org/x/net/html and go.yaml.in/yaml are imported only by platform/markdown"
+		mcp      = "the MCP SDK and jsonschema-go are imported only by platform/httpserver/mcpserver"
 	)
 	tests := []struct {
 		from, to string
@@ -145,6 +146,18 @@ func TestRules(t *testing.T) {
 		{m("internal/platform/httpserver"), "golang.org/x/net/html", []string{md}},
 		{m("internal/platform/config"), "go.yaml.in/yaml/v3", []string{md}},
 		{m("internal/bootstrap"), "golang.org/x/net/http2", nil},
+
+		// The MCP SDK stays in mcpserver: the modules' adapter/mcp register
+		// its Tool values.
+		{m("internal/platform/httpserver/mcpserver"), "github.com/modelcontextprotocol/go-sdk/mcp", nil},
+		{m("internal/platform/httpserver/mcpserver"), "github.com/modelcontextprotocol/go-sdk/jsonrpc", nil},
+		{m("internal/platform/httpserver/mcpserver"), "github.com/google/jsonschema-go/jsonschema", nil},
+		{m("internal/modules/page/adapter/mcp"), "github.com/modelcontextprotocol/go-sdk/mcp", []string{mcp}},
+		{m("internal/modules/page/adapter/mcp"), m("internal/platform/httpserver/mcpserver"), nil},
+		{m("internal/platform/httpserver"), "github.com/google/jsonschema-go/jsonschema", []string{mcp}},
+		{m("internal/bootstrap"), "github.com/modelcontextprotocol/go-sdk/mcp", []string{mcp}},
+		{m("internal/modules/page/app"), "github.com/google/jsonschema-go/jsonschema", []string{pure, mcp}},
+		{m("internal/platform/httpserver/bodyshape"), "github.com/modelcontextprotocol/go-sdk-other", nil},
 	}
 	fired := map[string]bool{}
 	for _, tt := range tests {

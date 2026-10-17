@@ -156,6 +156,20 @@ func mount(api *API) (*Router, *reached) {
 	return router, got
 }
 
+// wrapped is mount through Wrap: thingRoute and openRoute behind api's
+// middlewares as a route outside the generated code is mounted.
+func wrapped(api *API) (*Router, *reached) {
+	got := &reached{}
+	h := api.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got.called = true
+		w.WriteHeader(http.StatusNoContent)
+	}), thingBody())
+	router := NewRouter(slog.New(slog.DiscardHandler))
+	router.Handle(thingRoute, h)
+	router.Handle(openRoute, h)
+	return router, got
+}
+
 // testAPIConfig trusts the proxies of fd00::/8; openRoute is public; its
 // buckets never run out in these tests.
 func testAPIConfig(auth Authenticator, logger *slog.Logger) APIConfig {
@@ -469,5 +483,46 @@ func TestRequestMetaCarriesTheClient(t *testing.T) {
 	want := RequestMeta{ClientIP: netip.MustParseAddr("2001:db8:1:2::7"), IPKey: "2001:db8:1:2::/64", UserAgent: "agent/1.0"}
 	if meta := RequestMetaFrom(got.ctx); meta != want {
 		t.Errorf("meta = %+v, want %+v", meta, want)
+	}
+}
+
+// Wrap runs the per-route middlewares in the order the generated code does
+// (M9/P1 design 3.2.1): a request without a token whose body is broken is
+// 401, not the body check's 400; a body over the limit is 413 with a
+// token; and every request answers as through the generated code's mount.
+func TestWrapRunsTheMiddlewaresInTheirOrder(t *testing.T) {
+	big := `{"name":"` + strings.Repeat("a", 100) + `"}`
+	anonymous := func(r *http.Request) *http.Request { r.Header.Del("Authorization"); return r }
+	badToken := func(r *http.Request) *http.Request { r.Header.Set("Authorization", "Bearer bad"); return r }
+	same := func(r *http.Request) *http.Request { return r }
+	tests := []struct {
+		name   string
+		path   string
+		body   string
+		change func(*http.Request) *http.Request
+		status int
+	}{
+		{"no token, a broken body", "/api/v0/things", "[", anonymous, http.StatusUnauthorized},
+		{"a bad token, a broken body", "/api/v0/things", "[", badToken, http.StatusUnauthorized},
+		{"a token, a body over the limit", "/api/v0/things", big, same, http.StatusRequestEntityTooLarge},
+		{"a token, a body of the wrong shape", "/api/v0/things", `{"extra":1}`, same, http.StatusBadRequest},
+		{"a token, a valid body", "/api/v0/things", `{"name":"a"}`, same, http.StatusNoContent},
+		{"no token, a public route", "/api/v0/open", `{"name":"a"}`, anonymous, http.StatusNoContent},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			viaWrap, _ := wrapped(newTestAPI(t))
+			viaGenerated, _ := mount(newTestAPI(t))
+
+			got := serve(viaWrap, tt.change(post(tt.path, tt.body)))
+			want := serve(viaGenerated, tt.change(post(tt.path, tt.body)))
+
+			if got.Code != tt.status {
+				t.Errorf("through Wrap = %d %s, want %d", got.Code, got.Body, tt.status)
+			}
+			if got.Code != want.Code || got.Body.String() != want.Body.String() {
+				t.Errorf("through Wrap = %d %s, through the generated code's mount = %d %s", got.Code, got.Body, want.Code, want.Body)
+			}
+		})
 	}
 }

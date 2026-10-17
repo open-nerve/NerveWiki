@@ -15,6 +15,7 @@ import (
 
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/mcpserver"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/jobs"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
 )
@@ -48,6 +49,9 @@ type app struct {
 	poolCloseTimeout time.Duration
 	databaseWait     time.Duration
 	migrationPoll    time.Duration
+	// mcpTools are the modules' MCP tools the server was built with: the
+	// wiring test reads their specs (M9/P1 design 3.5).
+	mcpTools []mcpserver.Tool
 }
 
 // run waits for the database, applies pending migrations when

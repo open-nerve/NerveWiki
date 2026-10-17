@@ -101,3 +101,41 @@ func TestAuthenticationRunsUnderTheDeadlineBeforeTheBodyCheck(t *testing.T) {
 		t.Errorf("a broken body without a token: status %d, want 401", rec.Code)
 	}
 }
+
+// A route of NoTokenDetails says its own detail in the 401 of a request
+// without a token, the challenge still without an error (RFC 6750 3.1);
+// a token that fails, and every other route, keep the platform's.
+func TestARouteSaysWhyItNeedsAToken(t *testing.T) {
+	cfg := testAPIConfig(&fakeAuth{}, slog.New(slog.DiscardHandler))
+	cfg.NoTokenDetails = map[string]string{thingRoute: "This route takes a personal access token."}
+	router, _ := mount(buildAPI(t, cfg))
+	other := testAPIConfig(&fakeAuth{}, slog.New(slog.DiscardHandler))
+	other.NoTokenDetails = map[string]string{"POST /api/v0/others": "This route takes a personal access token."}
+	otherRouter, _ := mount(buildAPI(t, other))
+	tests := []struct {
+		name, header      string
+		router            *Router
+		challenge, detail string
+	}{
+		{"no token", "", router, "Bearer", "This route takes a personal access token."},
+		{"another scheme", "Basic dXNlcjpwYXNz", router, "Bearer", "This route takes a personal access token."},
+		{"a token that fails", "Bearer bad", router, `Bearer error="invalid_token"`, "The bearer token is invalid or has expired."},
+		{"no token on another route", "", otherRouter, "Bearer", "This operation requires a bearer token."},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := post("/api/v0/things", `{"name":"a"}`)
+			req.Header.Set("Authorization", tt.header)
+			rec := serve(tt.router, req)
+			p := decodeProblem(t, rec)
+			if challenge := rec.Result().Header.Get("WWW-Authenticate"); rec.Code != 401 || p.Code != CodeUnauthorized ||
+				challenge != tt.challenge || p.Detail != tt.detail {
+				t.Errorf("response = %d %q, WWW-Authenticate %q; want 401 %q, %q", rec.Code, p.Detail, challenge, tt.detail, tt.challenge)
+			}
+		})
+	}
+	other.NoTokenDetails = map[string]string{thingRoute: ""}
+	if _, err := NewAPI(other); err == nil || !strings.Contains(err.Error(), `NoTokenDetails["`+thingRoute+`"] is empty`) {
+		t.Errorf("NewAPI() of an empty detail = %v, want it refused", err)
+	}
+}

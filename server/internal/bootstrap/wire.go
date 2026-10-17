@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"maps"
 	"os"
 	"slices"
 	"time"
@@ -22,6 +23,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/platform/clock"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/mcpserver"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/jobs"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/ratelimit"
@@ -31,25 +33,39 @@ import (
 )
 
 // The platform and the shared kernel meet here by structure: neither imports
-// the other.
+// the other. So do mcpserver and the page module's MCP entry.
 var (
 	_ shared.TxManager        = (*postgres.TxManager)(nil)
 	_ shared.Snapshots        = (*postgres.TxManager)(nil)
 	_ httpserver.ProblemError = (*shared.Error)(nil)
+	_ mcpserver.Notebooks     = page.MCPEntry{}
 )
 
 // newApp wires the server described by cfg around the given migrations and
 // web frontend: the platform routes, each module's API behind the per-route
-// middlewares, and the frontend on every other path. close releases it.
-// The writing jobs' batches are the import's (M8/P4 design 3.6).
+// middlewares, MCP on /mcp, and the frontend on every other path. close
+// releases it. The writing jobs' batches are the import's (M8/P4 design
+// 3.6), and the MCP tools the modules'.
 func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrationFiles, webFiles fs.FS) (*app, error) {
-	return wireApp(ctx, cfg, logger, migrationFiles, webFiles, transfer.Batch{})
+	return wireApp(ctx, cfg, logger, migrationFiles, webFiles, wiring{})
 }
 
-// wireApp is newApp, the writing jobs' batches bounded by batch, zero the
-// import's: the interleavings make them small, so that a few nodes span
-// batches (M8/P4 design 3.10).
-func wireApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrationFiles, webFiles fs.FS, batch transfer.Batch,
+// wiring is what a test may add to the app: a batch of its own for the
+// transfer jobs, and MCP tools beside the modules'. The zero wiring is
+// serve's.
+type wiring struct {
+	// batch bounds the writing jobs' batches, zero the import's: the
+	// interleavings make them small, so that a few nodes span batches
+	// (M8/P4 design 3.10).
+	batch transfer.Batch
+	// mcpTools are registered after the modules': the whole-program tests
+	// reach the MCP platform through them before any module has a tool
+	// (M9/P1 design 3.4.9).
+	mcpTools []mcpserver.Tool
+}
+
+// wireApp is newApp with a test's wiring.
+func wireApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrationFiles, webFiles fs.FS, w wiring,
 ) (_ *app, err error) {
 	signingKey, err := readSigningKey(cfg.Auth.JWT.PrivateKeyFile)
 	if err != nil {
@@ -140,7 +156,7 @@ func wireApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrat
 		return nil, err
 	}
 	trDeps := transferDeps(cfg, pool, logger, authorizer, store, inserter, pg.TreeWrites(), keys.Derive(transfer.DownloadKeyInfo))
-	trDeps.Batch = batch
+	trDeps.Batch = w.batch
 	tr := transfer.New(trDeps)
 	ev, listener := eventsModule(cfg, pool, logger)
 	runner, err := jobs.New(pool, jobsConfig(cfg, logger),
@@ -148,9 +164,15 @@ func wireApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrat
 	if err != nil {
 		return nil, err
 	}
-	api, err := httpserver.NewAPI(apiConfig(cfg, logger, limiter, ident.Authenticator(),
-		slices.Concat(ident.PublicOperations(), inst.PublicOperations(), ws.PublicOperations(), as.PublicOperations(), tr.PublicOperations()),
-		ident.RequestTimeouts(), pg.BodyLimits()))
+	// /mcp's body is a call's, which can hold a page's content (M9 design 4.4).
+	bodies := maps.Clone(pg.BodyLimits())
+	bodies[mcpserver.Pattern] = mcpBodyLimit
+	apiCfg := apiConfig(cfg, logger, limiter, ident.Authenticator(),
+		slices.Concat(ident.PublicOperations(), inst.PublicOperations(), ws.PublicOperations(), as.PublicOperations(), tr.PublicOperations(),
+			mcpPublicOperations()),
+		ident.RequestTimeouts(), bodies)
+	apiCfg.NoTokenDetails = mcpNoTokenDetails()
+	api, err := httpserver.NewAPI(apiCfg)
 	if err != nil {
 		return nil, err
 	}
@@ -167,6 +189,8 @@ func wireApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrat
 	as.Register(router, api)
 	tr.Register(router, api)
 	ev.Register(router, api)
+	tools := mcpTools(pg, ln, nb)
+	mountMCP(router, api, mcpServer(cfg, logger, api, pg, slices.Concat(tools, w.mcpTools)))
 	// "/" without a method is the least specific pattern: /api/ and the
 	// probes keep their routes, and a wrong method on a page path gets the
 	// frontend's 405 rather than a 404.
@@ -182,6 +206,7 @@ func wireApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrat
 		poolCloseTimeout: poolCloseTimeout,
 		databaseWait:     databaseWait,
 		migrationPoll:    migrationPoll,
+		mcpTools:         tools,
 	}, nil
 }
 

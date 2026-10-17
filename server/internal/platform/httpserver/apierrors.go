@@ -181,7 +181,8 @@ func (e APIErrors) BodyError(w http.ResponseWriter, r *http.Request, err error) 
 	})
 }
 
-// Write answers err, returned by a handler or a per-route middleware:
+// Write answers err, returned by a handler or a per-route middleware, as
+// ProblemOf classifies it on the request's context:
 //
 //   - a ProblemError: its status, code, detail, fields and Retry-After; a
 //     401 also carries WWW-Authenticate: Bearer (RFC 9110 15.5.2), unless a
@@ -210,44 +211,77 @@ func (e APIErrors) Write(w http.ResponseWriter, r *http.Request, err error) {
 		e.logger.LogAttrs(r.Context(), slog.LevelWarn, "response failed after it started", attrs...)
 		panic(http.ErrAbortHandler)
 	}
+	a := ProblemOf(r.Context(), err)
+	switch a.Fault {
+	case FaultGone:
+		e.logger.LogAttrs(r.Context(), slog.LevelDebug, "client went away", attrs...)
+		w.WriteHeader(statusClientClosedRequest)
+		return
+	case FaultDeadline:
+		e.logger.LogAttrs(r.Context(), slog.LevelWarn, "API request deadline exceeded", attrs...)
+	case FaultUnknown:
+		e.logger.LogAttrs(r.Context(), slog.LevelError, "API handler failed", attrs...)
+	}
+	if a.Retry > 0 {
+		w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(a.Retry.Seconds()))))
+	}
+	if a.Problem.Status == http.StatusUnauthorized && w.Header().Get("WWW-Authenticate") == "" {
+		w.Header().Set("WWW-Authenticate", "Bearer")
+	}
+	WriteProblem(w, a.Problem)
+}
+
+// Fault is what of an error is the server's (M9/P1 design 3.3.6).
+type Fault uint8
+
+const (
+	FaultNone     Fault = iota // a ProblemError, a body too large: the caller's
+	FaultGone                  // the client went away: debug, nothing to answer
+	FaultDeadline              // the request's deadline: warn, internal_error
+	FaultUnknown               // anything else: error, internal_error
+)
+
+// Answer is how an error is answered.
+type Answer struct {
+	Problem Problem       // internal_error without detail for a fault
+	Retry   time.Duration // Retry-After, when positive
+	Fault   Fault
+}
+
+// ProblemOf classifies err, met while serving the request whose context is
+// ctx, as Write answers it (M9 design 4.1): the one classification of
+// REST and MCP. Whether the client went away or the deadline passed is
+// ctx's: an error that wraps context.Canceled or DeadlineExceeded while ctx
+// lives is the server's own.
+func ProblemOf(ctx context.Context, err error) Answer {
 	var pe ProblemError
 	var tooLarge *http.MaxBytesError
 	switch {
 	case errors.As(err, &pe):
 		p, retry := problemOf(pe)
-		if retry > 0 {
-			w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(retry.Seconds()))))
-		}
-		if p.Status == http.StatusUnauthorized && w.Header().Get("WWW-Authenticate") == "" {
-			w.Header().Set("WWW-Authenticate", "Bearer")
-		}
-		WriteProblem(w, p)
+		return Answer{Problem: p, Retry: retry}
 	case errors.As(err, &tooLarge):
-		WriteProblem(w, Problem{
+		return Answer{Problem: Problem{
 			Status: http.StatusRequestEntityTooLarge,
 			Code:   CodePayloadTooLarge,
 			Title:  http.StatusText(http.StatusRequestEntityTooLarge),
 			Detail: fmt.Sprintf("The request body exceeds %d bytes.", tooLarge.Limit),
-		})
-	case errors.Is(err, context.Canceled) && r.Context().Err() != nil:
-		e.logger.LogAttrs(r.Context(), slog.LevelDebug, "client went away", attrs...)
-		w.WriteHeader(statusClientClosedRequest)
-	case errors.Is(err, context.DeadlineExceeded) && errors.Is(r.Context().Err(), context.DeadlineExceeded):
-		e.logger.LogAttrs(r.Context(), slog.LevelWarn, "API request deadline exceeded", attrs...)
-		writeInternal(w)
-	default:
-		e.logger.LogAttrs(r.Context(), slog.LevelError, "API handler failed", attrs...)
-		writeInternal(w)
+		}}
+	case errors.Is(err, context.Canceled) && ctx.Err() != nil:
+		return Answer{Problem: internalProblem(), Fault: FaultGone}
+	case errors.Is(err, context.DeadlineExceeded) && errors.Is(ctx.Err(), context.DeadlineExceeded):
+		return Answer{Problem: internalProblem(), Fault: FaultDeadline}
 	}
+	return Answer{Problem: internalProblem(), Fault: FaultUnknown}
 }
 
-// writeInternal answers 500 internal_error, without detail.
-func writeInternal(w http.ResponseWriter) {
-	WriteProblem(w, Problem{
+// internalProblem is 500 internal_error, without detail.
+func internalProblem() Problem {
+	return Problem{
 		Status: http.StatusInternalServerError,
 		Code:   CodeInternal,
 		Title:  http.StatusText(http.StatusInternalServerError),
-	})
+	}
 }
 
 // problemOf builds the problem for pe and returns its retry delay.

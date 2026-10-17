@@ -96,3 +96,30 @@ func TestMiddlewareReportsAnOversizedBody(t *testing.T) {
 		t.Errorf("next called %v, error %v; want the *http.MaxBytesError", called, err)
 	}
 }
+
+// Bytes is the whole body the middleware read, after the next handler
+// read some of it; of a route the middleware passed on, there is none.
+func TestBytesIsTheBodyRead(t *testing.T) {
+	body := `{"name":"a","nested":{"a":"y"}}`
+	h := Middleware(things(), func(http.ResponseWriter, *http.Request, error) { t.Error("onError called") })
+	for _, tt := range []struct {
+		pattern string
+		want    string
+		ok      bool
+	}{{pattern, body, true}, {"GET /api/v0/things", "", false}} {
+		var got []byte
+		var ok bool
+		next := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+			if _, err := io.ReadFull(r.Body, make([]byte, 4)); err != nil {
+				t.Fatal(err)
+			}
+			got, ok = Bytes(r)
+		})
+		req := httptest.NewRequest(http.MethodPost, "/api/v0/things", strings.NewReader(body))
+		req.Pattern = tt.pattern
+		h(next).ServeHTTP(httptest.NewRecorder(), req)
+		if string(got) != tt.want || ok != tt.ok {
+			t.Errorf("%s: Bytes() = %q, %v; want %q, %v", tt.pattern, got, ok, tt.want, tt.ok)
+		}
+	}
+}

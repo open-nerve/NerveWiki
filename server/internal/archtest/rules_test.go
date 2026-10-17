@@ -45,6 +45,7 @@ func rules() []rule {
 		{"module packages live in domain, app or adapter, or at the module root", moduleLayoutIsKnown},
 		{"internal/shared imports only the standard library (not net/http or database/sql), Unicode normalization and case folding, and internal/shared", sharedKernelIsPure},
 		{"River is imported only by platform/jobs and a module's adapter/river", riverStaysInJobs},
+		{"the MCP SDK and jsonschema-go are imported only by platform/httpserver/mcpserver", mcpSDKStaysInMCPServer},
 		{"goldmark, golang.org/x/net/html and go.yaml.in/yaml are imported only by platform/markdown", markdownLibrariesStayInMarkdown},
 		{"bootstrap imports only a module's root", bootstrapImportsModuleRoots},
 		{"a module's adapters do not import each other", adaptersAreIndependent},
@@ -331,6 +332,17 @@ func riverStaysInJobs(from, to string) bool {
 	parts := strings.Split(r, "/")
 	// internal/modules/<m>/adapter/river[/...]
 	return len(parts) < 5 || parts[0] != "internal" || parts[1] != "modules" || parts[3] != "adapter" || parts[4] != "river"
+}
+
+// mcpSDKStaysInMCPServer: the MCP SDK and jsonschema-go are imported by
+// platform/httpserver/mcpserver alone (M9 design 4.1): the modules
+// register mcpserver.Tool values and never meet the SDK's types. The graph
+// holds no test files, so bootstrap's tests, which drive the official Go
+// client, are outside it; depguard keeps every other test file from them
+// (server/.golangci.yml).
+func mcpSDKStaysInMCPServer(from, to string) bool {
+	sdk := within(to, "github.com/modelcontextprotocol/go-sdk") || within(to, "github.com/google/jsonschema-go")
+	return sdk && !inModuleDir(from, "internal/platform/httpserver/mcpserver")
 }
 
 // markdownLibrariesStayInMarkdown keeps the Markdown libraries behind
