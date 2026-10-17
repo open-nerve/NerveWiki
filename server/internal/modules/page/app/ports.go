@@ -601,6 +601,9 @@ type Markdown interface {
 	// returned, took: an import's unit holds at most so many (M7/P6
 	// design 3.3).
 	Links(facts Facts) int
+	// FrontmatterEnd is where content's frontmatter ends, past its closing
+	// line, as the parse reads it; 0 without one (M9/P1 design 3.15.3).
+	FrontmatterEnd(content string) int
 }
 
 // Rendered is a reading view: its HTML, and when the attachments'

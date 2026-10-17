@@ -95,6 +95,18 @@ func frontmatterSpan(src []byte) (span, bool) {
 	return span{}, false
 }
 
+// FrontmatterEnd is where src's frontmatter ends, past its closing line,
+// found as the parser finds it (a byte order mark maybe before it); 0
+// without one. What MCP's instructions leave out of an AGENTS page is
+// what a parse reads as its frontmatter (M9/P1 design 3.15.3).
+func FrontmatterEnd(src []byte) int {
+	s, ok := frontmatterSpan(src)
+	if !ok {
+		return 0
+	}
+	return s.end
+}
+
 // frontmatterOf reads the frontmatter of src, and where it ends: 0 without
 // one.
 func frontmatterOf(src []byte) (Frontmatter, int) {

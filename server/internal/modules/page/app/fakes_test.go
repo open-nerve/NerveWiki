@@ -380,6 +380,19 @@ func (f *fakeMarkdown) Facts(content string) app.Facts {
 	return content
 }
 
+// FrontmatterEnd is the end of the content's first line of "---" up to
+// its next one, 0 without both.
+func (f *fakeMarkdown) FrontmatterEnd(content string) int {
+	f.record(context.Background(), "FrontmatterEnd")
+	if !strings.HasPrefix(content, "---\n") {
+		return 0
+	}
+	if i := strings.Index(content[3:], "\n---\n"); i >= 0 {
+		return 3 + i + len("\n---\n")
+	}
+	return 0
+}
+
 // Links counts the content's "[[".
 func (f *fakeMarkdown) Links(facts app.Facts) int {
 	f.record(context.Background(), "Links")

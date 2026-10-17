@@ -100,3 +100,19 @@ func TestTheAdapterCountsTheLinksOfTheFacts(t *testing.T) {
 		}
 	}
 }
+
+// The frontmatter ends where the parse reads it to: after its closing
+// line, a byte order mark before it; 0 without one.
+func TestTheAdapterFindsTheFrontmattersEnd(t *testing.T) {
+	m := newAdapter(t)
+	for content, want := range map[string]int{
+		"---\ntags: [rules]\n---\n\n# Conventions\n": 22,
+		"\xef\xbb\xbf---\r\na: 1\r\n---\r\nbody":     19,
+		"---\na: 1\nno closing line":                 0,
+		"# no frontmatter\n":                         0,
+	} {
+		if got := m.FrontmatterEnd(content); got != want {
+			t.Errorf("FrontmatterEnd(%q) = %d, want %d", content, got, want)
+		}
+	}
+}
