@@ -12,6 +12,18 @@ import (
 	"uuid"
 )
 
+const aPITokenClientName = `-- name: APITokenClientName :one
+SELECT client_name FROM api_tokens WHERE id = $1
+`
+
+// The client name a token's MCP client last told (M9/P1 design 3.16.3).
+func (q *Queries) APITokenClientName(ctx context.Context, id uuid.UUID) (*string, error) {
+	row := q.db.QueryRow(ctx, aPITokenClientName, id)
+	var client_name *string
+	err := row.Scan(&client_name)
+	return client_name, err
+}
+
 const countUsableAPITokens = `-- name: CountUsableAPITokens :one
 SELECT count(*)
 FROM api_tokens
@@ -161,6 +173,33 @@ func (q *Queries) ListAPITokens(ctx context.Context, userID uuid.UUID) ([]ListAP
 		return nil, err
 	}
 	return items, nil
+}
+
+const recordAPITokenClientName = `-- name: RecordAPITokenClientName :execrows
+UPDATE api_tokens
+SET client_name = $1
+WHERE id = (
+    SELECT t.id FROM api_tokens t
+    WHERE t.id = $2 AND t.client_name IS DISTINCT FROM $1
+    FOR NO KEY UPDATE SKIP LOCKED
+)
+`
+
+type RecordAPITokenClientNameParams struct {
+	ClientName *string
+	ID         uuid.UUID
+}
+
+// The client name a token's MCP client told, cleaned (M9/P1 design 3.16.3), written only when it differs: one
+// client's calls write it once. Best effort as TouchAPIToken: a row another transaction holds (a revocation) is
+// skipped rather than waited for; updated_at stays, as a use changes nothing of the token. No row written is a name
+// already there, a row skipped, or no token: the caller tells none apart.
+func (q *Queries) RecordAPITokenClientName(ctx context.Context, arg RecordAPITokenClientNameParams) (int64, error) {
+	result, err := q.db.Exec(ctx, recordAPITokenClientName, arg.ClientName, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const revokeAPIToken = `-- name: RevokeAPIToken :execrows

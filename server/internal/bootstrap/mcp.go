@@ -7,6 +7,7 @@ import (
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/asset"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/identity"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/notebook"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
@@ -64,12 +65,14 @@ func pageAttachmentErr(err error) error {
 
 // mcpServer is the MCP server of both entries: tools, the personal access
 // tokens of the per-route middlewares' authentication, page's notebook
-// entry and the account entry's instructions, and each call's work within
-// server.request_timeout.
-func mcpServer(cfg config.Config, logger *slog.Logger, api *httpserver.API, pg *page.Module, tools []mcpserver.Tool) *mcpserver.Server {
+// entry and the account entry's instructions, the client names on the
+// tokens, and each call's work within server.request_timeout.
+func mcpServer(cfg config.Config, logger *slog.Logger, api *httpserver.API, pg *page.Module, names mcpserver.ClientNames,
+	tools []mcpserver.Tool,
+) *mcpserver.Server {
 	return mcpserver.New(mcpserver.Options{
 		Name: "nervewiki", Version: buildinfo.Get().Version, Tools: tools,
-		Credentials: mcpCredentials, Notebooks: pg.MCPEntry(), Account: page.AccountInstructions(), Errors: api.Errors,
+		Credentials: mcpCredentials, Notebooks: pg.MCPEntry(), Account: page.AccountInstructions(), Names: names, Errors: api.Errors,
 		RequestTimeout: cfg.Server.RequestTimeout, MaxBodyBytes: mcpBodyLimit, Logger: logger,
 	})
 }
@@ -84,6 +87,14 @@ func mcpCredentials(ctx context.Context) (mcpserver.Credential, bool) {
 	}
 	return mcpserver.Credential{UserID: actor.UserID, TokenID: actor.APITokenID}, true
 }
+
+// mcpNames are identity's client names as mcpserver remembers them, each
+// cleaned by shared.CleanClientName first, which the platform does not
+// import (M9 design 4.5; v0.1 design 13.1 item 2).
+type mcpNames struct{ identity.ClientNames }
+
+// Clean is name as a token's client_name holds it: "" for none left.
+func (mcpNames) Clean(name string) string { return shared.CleanClientName(name) }
 
 // mountMCP mounts the MCP server on /mcp behind the per-route middlewares,
 // without a method: GET and DELETE reach the SDK's 405 rather than the web

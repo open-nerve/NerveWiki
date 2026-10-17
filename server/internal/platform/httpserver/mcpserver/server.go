@@ -37,7 +37,7 @@ type Options struct {
 	Credentials   func(ctx context.Context) (Credential, bool)
 	Notebooks     Notebooks   // the notebook entry's gate and instructions
 	Account       string      // the account entry's instructions ("" sends none)
-	Names         ClientNames // the client names (S3; nil: every call's client is UnknownClient)
+	Names         ClientNames // the client names (nil: every call's client is UnknownClient)
 	Errors        httpserver.APIErrors
 	// RequestTimeout is server.request_timeout: a call's work from the
 	// request's body read, MaxBodyBytes the route's body limit.
@@ -77,7 +77,7 @@ type Server struct {
 	credentials    func(ctx context.Context) (Credential, bool)
 	notebooks      Notebooks
 	account        string // the account entry's instructions
-	names          ClientNames
+	names          *names
 	errors         httpserver.APIErrors
 	requestTimeout time.Duration
 	logger         *slog.Logger
@@ -116,7 +116,7 @@ func New(o Options) *Server {
 		panic("mcpserver: the request timeout and the body limit must be positive")
 	}
 	s := &Server{
-		credentials: o.Credentials, notebooks: o.Notebooks, account: o.Account, names: o.Names, errors: o.Errors,
+		credentials: o.Credentials, notebooks: o.Notebooks, account: o.Account, names: newNames(o.Names, o.Logger), errors: o.Errors,
 		requestTimeout: o.RequestTimeout, logger: o.Logger,
 	}
 	sdk := sdkLogger(o.Logger)

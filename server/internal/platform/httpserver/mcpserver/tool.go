@@ -166,7 +166,7 @@ func (s *Server) handlerOf(t Tool, e Entry, notebook bool, table *bodyshape.Tabl
 	return func(ctx context.Context, req *mcp.CallToolRequest) (res *mcp.CallToolResult, err error) {
 		start := time.Now()
 		r := requestOf(ctx)
-		call := Call{Entry: e, Notebook: r.notebook, Client: s.clientOf(req), UserID: r.cred.UserID, TokenID: r.cred.TokenID}
+		call := Call{Entry: e, Notebook: r.notebook, Client: clientOf(ctx), UserID: r.cred.UserID, TokenID: r.cred.TokenID}
 		outcome := outcomeOK
 		defer func() { s.logCall(ctx, name, call, outcome, time.Since(start)) }()
 		defer s.recoverTool(ctx, name, &res, &err, &outcome)
@@ -303,28 +303,4 @@ func encode(v any) (json.RawMessage, error) {
 		return nil, err
 	}
 	return bytes.TrimSuffix(b.Bytes(), []byte("\n")), nil
-}
-
-// clientOf is the name of the client req tells, cleaned (M9 design 4.5);
-// UnknownClient without one, or without the names (S3).
-func (s *Server) clientOf(req mcp.Request) string {
-	if s.names == nil {
-		return UnknownClient
-	}
-	var info *mcp.Implementation
-	switch r := req.(type) {
-	case *mcp.InitializeRequest:
-		if r.Params != nil {
-			info = r.Params.ClientInfo
-		}
-	case interface{ ClientInfo() *mcp.Implementation }:
-		info = r.ClientInfo()
-	}
-	if info == nil {
-		return UnknownClient
-	}
-	if name := s.names.Clean(info.Name); name != "" {
-		return name
-	}
-	return UnknownClient
 }

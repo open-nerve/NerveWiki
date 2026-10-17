@@ -64,7 +64,7 @@ func (s *Server) promptHandler(p Prompt, e Entry) mcp.PromptHandler {
 			}
 		}
 		r := requestOf(ctx)
-		call := Call{Entry: e, Notebook: r.notebook, Client: s.clientOf(req), UserID: r.cred.UserID, TokenID: r.cred.TokenID}
+		call := Call{Entry: e, Notebook: r.notebook, Client: clientOf(ctx), UserID: r.cred.UserID, TokenID: r.cred.TokenID}
 		description, messages, err := p.Get(ctx, call, req.Params.Arguments)
 		if err != nil {
 			s.logger.LogAttrs(ctx, slog.LevelError, "MCP prompt failed", slog.String("prompt", p.Name),

@@ -444,7 +444,8 @@ func TestTheMCPOutlivesARestart(t *testing.T) {
 }
 
 // The notebook entry's tool is given the address's notebook; the account
-// entry's takes its notebook as a required argument.
+// entry's takes its notebook as a required argument. Each call's client
+// is the name the Go client's handshake told.
 func TestTheMCPEntriesGiveTheNotebook(t *testing.T) {
 	m := startMCPApp(t, mcpTestTools(newMCPSeen()))
 	call := func(endpoint string, args map[string]any) *mcp.CallToolResult {
@@ -464,7 +465,7 @@ func TestTheMCPEntriesGiveTheNotebook(t *testing.T) {
 		{"/mcp", map[string]any{"notebook": m.notebook}, "account"},
 	} {
 		sc, _ := call(tt.endpoint, tt.args).StructuredContent.(map[string]any)
-		if sc["entry"] != tt.entry || sc["notebook"] != m.notebook || sc["client"] != mcpserver.UnknownClient {
+		if sc["entry"] != tt.entry || sc["notebook"] != m.notebook || sc["client"] != "whole-program" {
 			t.Errorf("echo at %s = %v, want the %s entry's %s", tt.endpoint, sc, tt.entry, m.notebook)
 		}
 	}

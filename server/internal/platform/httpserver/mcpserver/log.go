@@ -37,28 +37,30 @@ func (h warnAndAbove) WithGroup(name string) slog.Handler {
 	return warnAndAbove{h.Handler.WithGroup(name)}
 }
 
-// handshake fills an initialize's result: the instructions of its entry,
-// read after the SDK answered, so that no other method reads them (M9/P1
-// design 3.15.2), and logs it; it records a client's name told by any
-// request (S3). The result is this request's own: setting its
-// instructions changes no other's. Instructions that fail to read are the
-// handshake's JSON-RPC internal error, never the built-in ones, which
-// would tell an agent the notebook has no conventions.
+// handshake gives every method its call's client, the name a request
+// tells recorded on its token (M9/P1 design 3.16.4); and fills an
+// initialize's result with the instructions of its entry, read after the
+// SDK answered, so that no other method reads them (3.15.2), and logs it.
+// The result is this request's own: setting its instructions changes no
+// other's. Instructions that fail to read are the handshake's JSON-RPC
+// internal error, never the built-in ones, which would tell an agent the
+// notebook has no conventions.
 func (s *Server) handshake(next mcp.MethodHandler) mcp.MethodHandler {
 	return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
+		r := requestOf(ctx)
+		ctx = withClient(ctx, s.names.of(ctx, r.cred.TokenID, toldName(req)))
 		res, err := next(ctx, method, req)
 		init, ok := res.(*mcp.InitializeResult)
 		if !ok || err != nil {
 			return res, err
 		}
-		r := requestOf(ctx)
 		text, err := s.instructionsOf(ctx, r)
 		if err != nil {
 			return nil, s.methodError(ctx, method, fmt.Errorf("mcpserver: the instructions: %w", err))
 		}
 		init.Instructions = text
 		attrs := []slog.Attr{
-			slog.String("client", s.clientOf(req)),
+			slog.String("client", clientOf(ctx)),
 			slog.String("protocol_version", init.ProtocolVersion),
 			slog.String("entry", r.entry.String()),
 		}

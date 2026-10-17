@@ -21,6 +21,7 @@ type ApiToken struct {
 	RevokedAt  *time.Time
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
+	ClientName *string
 }
 
 type AuthSession struct {
