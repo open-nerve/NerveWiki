@@ -57,6 +57,47 @@ func (c mcpCell) String() string {
 // design 3.13).
 func mcpRows() []mcpRow { return pageMCPRows() }
 
+// mcpToolCodes are the codes each MCP tool's error may carry besides
+// internal_error (M9 design 4.7; M9/P1 S2 review C's table), beside the
+// matrix's rows: each one the contract declares, each tool of tools.json
+// with its row, and each code of a row answered by
+// TestListAndReadErrorsCarryDeclaredCodes or its tools' own. A call's
+// error with a code its tool's row does not list fails the test that
+// called it (mcpAnswer.toolError). Each step adds its tools' rows.
+func mcpToolCodes() map[string][]string {
+	return map[string][]string{
+		"list": {"bad_request", "validation_failed", "notebook.not_found", "page.not_found"},
+		"read": {"bad_request", "validation_failed", "notebook.not_found", "page.not_found"},
+	}
+}
+
+// Every tool of tools.json, in either entry, has its row of codes, and
+// no row is a tool's that the file has not; each code of a row is one the
+// contract declares.
+func TestEveryMCPToolHasItsCodes(t *testing.T) {
+	rows := mcpToolCodes()
+	listed := map[string]bool{}
+	for entry, tools := range readToolLists(t) {
+		for _, tool := range tools {
+			spec, _ := tool.(map[string]any)
+			name, _ := spec["name"].(string)
+			if listed[name] = true; rows[name] == nil {
+				t.Errorf("%s of the %s entry has no row of codes", name, entry)
+			}
+		}
+	}
+	for _, name := range slices.Sorted(maps.Keys(rows)) {
+		if !listed[name] {
+			t.Errorf("the codes have a row of %s, which tools.json lists in no entry", name)
+		}
+		for _, code := range rows[name] {
+			if err := undeclaredToolCode(code, declaredCodes(t)); err != nil {
+				t.Errorf("%s: %v", name, err)
+			}
+		}
+	}
+}
+
 // pageMCPRows are page's rows: list of the root's children and read of
 // the column's page, each in both entries; a column that cannot see its
 // notebook is its 404 (mcpRow.want's notebook.not_found, the notebook
@@ -381,9 +422,8 @@ func mcpCellOf(t *testing.T, a mcpAnswer) mcpCell {
 		_ = json.Unmarshal(a.body, &p)
 		return mcpCell{http: a.status, code: p.Code}
 	}
-	r := a.result(t)
-	if r["isError"] == true {
-		code, _ := toolError(t, r)["code"].(string)
+	if r := a.result(t); r["isError"] == true {
+		code, _ := a.toolError(t)["code"].(string)
 		return mcpCell{code: code}
 	}
 	return mcpCell{}

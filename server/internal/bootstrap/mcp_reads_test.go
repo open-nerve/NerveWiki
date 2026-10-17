@@ -7,6 +7,8 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"image"
 	"image/color"
 	"image/gif"
@@ -23,6 +25,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/open-nerve/NerveWiki/server/internal/modules/asset"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/mcpserver"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres/pgtest"
 )
@@ -68,6 +72,18 @@ func (r readsApp) createPage(t *testing.T, parent, title, content string) string
 	status, got := ask(t, r.contract, http.MethodPost, r.base+"/api/v0/notebooks/"+r.notebook+"/pages", r.access, string(b))
 	if status != http.StatusCreated {
 		t.Fatalf("create %s = %d %s", title, status, got)
+	}
+	return idOf(t, answer{body: got})
+}
+
+// createPageFirst creates a page titled title in alice's notebook, first
+// among parent's children, and returns its id.
+func (r readsApp) createPageFirst(t *testing.T, parent, title string) string {
+	t.Helper()
+	b, _ := json.Marshal(map[string]any{"parent_id": parent, "title": title, "after_id": nil})
+	status, got := ask(t, r.contract, http.MethodPost, r.base+"/api/v0/notebooks/"+r.notebook+"/pages", r.access, string(b))
+	if status != http.StatusCreated {
+		t.Fatalf("create %s first = %d %s", title, status, got)
 	}
 	return idOf(t, answer{body: got})
 }
@@ -179,14 +195,16 @@ func webpOf(t *testing.T) []byte {
 }
 
 // list and read reach page's use cases through both entries: the root's
-// children, a page's children in the tree's order, a page's content
-// exactly; null for an optional argument is as if it were not there.
+// children, a page's children in the tree's order, which is neither the
+// names' nor the ids', a page's content exactly; null for an optional
+// argument is as if it were not there.
 func TestTheMCPReadsReachTheUseCases(t *testing.T) {
 	r := startReadsApp(t, publicOrigin)
 	content := "\ufeff---\r\ntitle: Guide\r\n---\r\nLine one\r\n"
 	guide := r.createPage(t, "", "Guide", content)
 	r.createPage(t, guide, "Setup", "")
 	r.createPage(t, guide, "Alpha", "")
+	r.createPageFirst(t, guide, "Beta")
 	for _, entry := range []mcpserver.Entry{mcpserver.NotebookEntry, mcpserver.AccountEntry} {
 		for _, args := range []map[string]any{{}, {"pattern": nil, "limit": nil, "cursor": nil}} {
 			res := r.entryCall(t, entry, "list", args)
@@ -201,10 +219,12 @@ func TestTheMCPReadsReachTheUseCases(t *testing.T) {
 				t.Errorf("list %v through the %s entry: %v", args, entry, item)
 			}
 		}
-		if got := pathsOf(r.entryCall(t, entry, "list", map[string]any{"pattern": "guide/"})); !slices.Equal(got, []string{"Guide/Setup.md", "Guide/Alpha.md"}) {
+		if got := pathsOf(r.entryCall(t, entry, "list", map[string]any{"pattern": "guide/"})); !slices.Equal(got,
+			[]string{"Guide/Beta.md", "Guide/Setup.md", "Guide/Alpha.md"}) {
 			t.Errorf("list guide/ through the %s entry = %v, want the tree's order", entry, got)
 		}
-		if got := pathsOf(r.entryCall(t, entry, "list", map[string]any{"pattern": "**/*.MD"})); !slices.Equal(got, []string{"Guide.md", "Guide/Alpha.md", "Guide/Setup.md"}) {
+		if got := pathsOf(r.entryCall(t, entry, "list", map[string]any{"pattern": "**/*.MD"})); !slices.Equal(got,
+			[]string{"Guide.md", "Guide/Alpha.md", "Guide/Beta.md", "Guide/Setup.md"}) {
 			t.Errorf("list **/*.MD through the %s entry = %v, want the paths' order", entry, got)
 		}
 		for _, args := range []map[string]any{{"path": "/guide.md"}, {"path": "Guide.md", "offset": nil, "column": nil, "limit": nil}} {
@@ -266,13 +286,18 @@ func TestTheMCPReadsGiveAttachments(t *testing.T) {
 			t.Errorf("read %s: the metadata %v", img.name, meta)
 		}
 	}
-	files := map[string][]byte{"spec.pdf": []byte("%PDF-1.4\n%%EOF\n"),
-		"logo.svg": []byte(`<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10"/></svg>`)}
-	for name, content := range files {
+	files := map[string]struct {
+		mime    string
+		content []byte
+	}{"spec.pdf": {"application/pdf", []byte("%PDF-1.4\n%%EOF\n")},
+		"logo.svg": {"image/svg+xml", []byte(`<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10"/></svg>`)}}
+	for name, file := range files {
+		content := file.content
 		r.upload(t, guide, name, content)
 		blocks := blocksOf(t, r.entryCall(t, mcpserver.AccountEntry, "read", map[string]any{"path": "Guide/" + name}))
-		if len(blocks) != 2 || blocks[1]["type"] != "resource_link" || blocks[1]["name"] != name || blocks[1]["size"] != float64(len(content)) {
-			t.Fatalf("read %s = %v, want a link", name, blocks)
+		if len(blocks) != 2 || blocks[1]["type"] != "resource_link" || blocks[1]["name"] != name || blocks[1]["size"] != float64(len(content)) ||
+			blocks[1]["mimeType"] != file.mime {
+			t.Fatalf("read %s = %v, want a link of %s", name, blocks, file.mime)
 		}
 		uri, _ := blocks[1]["uri"].(string)
 		u, err := url.Parse(uri)
@@ -286,6 +311,26 @@ func TestTheMCPReadsGiveAttachments(t *testing.T) {
 			t.Errorf("the download of %s = %d %q, %d bytes; want the file as an attachment", name, res.StatusCode,
 				res.Header.Get("Content-Disposition"), len(body))
 		}
+	}
+	// list answers each attachment's type and size, as uploaded.
+	want := map[string][2]any{}
+	for _, img := range images {
+		want["Guide/"+img.name] = [2]any{img.mime, float64(len(img.bytes))}
+	}
+	for name, file := range files {
+		want["Guide/"+name] = [2]any{file.mime, float64(len(file.content))}
+	}
+	sc, _ := r.entryCall(t, mcpserver.NotebookEntry, "list", map[string]any{"pattern": "Guide/"})["structuredContent"].(map[string]any)
+	items, _ := sc["items"].([]any)
+	for _, it := range items {
+		item, _ := it.(map[string]any)
+		path, _ := item["path"].(string)
+		if w, ok := want[path]; !ok || item["kind"] != "attachment" || item["mime"] != w[0] || item["byte_size"] != w[1] {
+			t.Errorf("list of Guide/ has %v, want an attachment of %v", item, w)
+		}
+	}
+	if len(items) != len(want) {
+		t.Errorf("list of Guide/ has %d items, want %d", len(items), len(want))
 	}
 	gone := r.upload(t, guide, "gone.png", imageOf(t, "png"))
 	if err := os.Remove(storedBlobs(t, r.storage)[gone.Blob]); err != nil {
@@ -323,20 +368,37 @@ func TestTheMCPReadsWithoutAPublicURL(t *testing.T) {
 	}
 }
 
-// Each error list and read answer carries its code, which the contract
-// declares (M9 design 4.7; toolError checks it): the arguments' schema,
-// bad_request; a cursor that decodes into no payload, bad_request; a
-// pattern's, a path's or a window's value, validation_failed; a page's
-// children or a path that names nothing, page.not_found; the account
-// entry's notebook not seen, notebook.not_found, before any path in it is
-// looked up. Neither tool binds to
-// one REST operation: list answers what listNodes and listAssets do,
-// read what getPageContent and the notebook's decision do, and their
-// arguments are their own.
+// server.public_url's trailing "/" is not its addresses': an attachment's
+// link is the origin and the download's path, one "/" between (M9/P1
+// design 3.12; S2 review, B-M3).
+func TestTheMCPReadsWithAPublicURLEndingInASlash(t *testing.T) {
+	r := startReadsApp(t, publicOrigin+"/")
+	r.upload(t, "", "spec.pdf", []byte("%PDF-1.4\n%%EOF\n"))
+	res := r.entryCall(t, mcpserver.NotebookEntry, "read", map[string]any{"path": "spec.pdf"})
+	blocks, meta := blocksOf(t, res), metaOf(t, res)
+	link, _ := meta["url"].(string)
+	if len(blocks) != 2 || blocks[1]["uri"] != link || !strings.HasPrefix(link, publicOrigin+"/api/v0/assets/") ||
+		strings.Contains(strings.TrimPrefix(link, "http://"), "//") {
+		t.Errorf("read with public_url %q = %v, want a link at the origin and one slash", publicOrigin+"/", res)
+	}
+}
+
+// Each error list and read answer carries its code, one its tool's row of
+// mcpToolCodes lists, which the contract declares (M9 design 4.7;
+// mcpAnswer.toolError checks both): the arguments' schema, bad_request; a
+// cursor that decodes into no payload, bad_request; a pattern's, a path's
+// or a window's value, validation_failed; a page's children or a path
+// that names nothing, page.not_found; the account entry's notebook not
+// seen, notebook.not_found, before any path in it is looked up. Each code
+// of each tool's row is answered here. Neither tool binds to one REST
+// operation: list answers what listNodes and listAssets do, read what
+// getPageContent and the notebook's decision do, and their arguments are
+// their own.
 func TestListAndReadErrorsCarryDeclaredCodes(t *testing.T) {
 	r := startReadsApp(t, publicOrigin)
 	r.createPage(t, "", "Guide", "a\n")
 	unseen := uuid.NewV7().String()
+	answered := map[string]map[string]bool{}
 	for _, tt := range []struct {
 		path, tool string
 		args       map[string]any
@@ -359,8 +421,39 @@ func TestListAndReadErrorsCarryDeclaredCodes(t *testing.T) {
 		{mcpserver.Pattern, "list", map[string]any{"notebook": r.hidden, "pattern": "Missing/"}, "notebook.not_found"},
 		{mcpserver.Pattern, "read", map[string]any{"notebook": r.hidden, "path": "Missing.md"}, "notebook.not_found"},
 	} {
-		if member := toolError(t, r.call(t, tt.path, tt.tool, tt.args).result(t)); member["code"] != tt.want {
+		member := r.call(t, tt.path, tt.tool, tt.args).toolError(t)
+		if member["code"] != tt.want {
 			t.Errorf("%s %v at %s = %v, want %s", tt.tool, tt.args, tt.path, member, tt.want)
+		}
+		if answered[tt.tool] == nil {
+			answered[tt.tool] = map[string]bool{}
+		}
+		answered[tt.tool][tt.want] = true
+	}
+	for _, tool := range []string{"list", "read"} {
+		for _, code := range mcpToolCodes()[tool] {
+			if !answered[tool][code] {
+				t.Errorf("%s's row lists %s, which no call here answers", tool, code)
+			}
+		}
+	}
+}
+
+// asset's errors are page's to read, which asked for a path (M9/P1 design
+// 3.11.2): asset.not_found, wrapped or not, page.not_found; a missing
+// file page's; any other as it is (M9/P1 S2 review, B-M3 and C-M3).
+func TestPageAttachmentErrors(t *testing.T) {
+	boom := errors.New("boom")
+	for _, tt := range []struct{ err, want error }{
+		{asset.ErrNotFound, page.ErrNotFound},
+		{fmt.Errorf("read: %w", asset.ErrNotFound), page.ErrNotFound},
+		{asset.ErrNoFile, page.ErrNoAttachmentFile},
+		{fmt.Errorf("open: %w", asset.ErrNoFile), page.ErrNoAttachmentFile},
+		{boom, boom},
+		{nil, nil},
+	} {
+		if got := pageAttachmentErr(tt.err); got != tt.want { //nolint:errorlint // the very error, mapped or not
+			t.Errorf("pageAttachmentErr(%v) = %v, want %v", tt.err, got, tt.want)
 		}
 	}
 }
@@ -370,8 +463,7 @@ func TestListAndReadErrorsCarryDeclaredCodes(t *testing.T) {
 func TestTheMCPReadsRefuseANul(t *testing.T) {
 	r := startReadsApp(t, publicOrigin)
 	for _, c := range []struct{ tool, field string }{{"read", "path"}, {"list", "pattern"}} {
-		res := r.call(t, atNotebook(r.notebook), c.tool, map[string]any{c.field: "a\x00b.md"}).result(t)
-		member := toolError(t, res)
+		member := r.call(t, atNotebook(r.notebook), c.tool, map[string]any{c.field: "a\x00b.md"}).toolError(t)
 		fields, _ := member["fields"].([]any)
 		if member["code"] != "validation_failed" || len(fields) != 1 ||
 			fields[0].(map[string]any)["field"] != c.field || fields[0].(map[string]any)["code"] != "invalid_format" {
