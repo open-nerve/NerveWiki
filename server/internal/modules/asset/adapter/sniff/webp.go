@@ -15,13 +15,20 @@ func isWebP(head []byte) bool {
 }
 
 // webpSize reads a WebP's width and height from the first bytes of its
-// RIFF container (RFC 9649): "RIFF", a size, "WEBP", then the first chunk:
-// VP8 (lossy: the frame tag, the start code 9d 01 2a, then 14-bit width
-// and height), VP8L (lossless: the signature 0x2f, then 14-bit width-1 and
-// height-1) or VP8X (extended: 24-bit canvas width-1 and height-1). ok is
-// false for anything else, and for a header cut short.
-func webpSize(head []byte) (width, height int, ok bool) {
+// RIFF container (RFC 9649), a file of length bytes: "RIFF", a size, "WEBP",
+// then the first chunk: VP8 (lossy: the frame tag, the start code 9d 01
+// 2a, then 14-bit width and height), VP8L (lossless: the signature 0x2f,
+// then 14-bit width-1 and height-1) or VP8X (extended: 24-bit canvas
+// width-1 and height-1). ok is false for anything else, for a header cut
+// short, and for a RIFF larger than the file or a first chunk larger than
+// the RIFF: a file cut short, which a decoder refuses (M9/P1 S2 review,
+// B's suspicion 1).
+func webpSize(head []byte, length int64) (width, height int, ok bool) {
 	if !isWebP(head) || len(head) < 20 {
+		return 0, 0, false
+	}
+	riff, chunk := int64(binary.LittleEndian.Uint32(head[4:8]))+8, int64(binary.LittleEndian.Uint32(head[16:20]))+20
+	if riff > length || chunk > riff {
 		return 0, 0, false
 	}
 	data := head[20:]

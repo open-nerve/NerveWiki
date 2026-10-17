@@ -66,9 +66,10 @@ func TestSniffAndSize(t *testing.T) {
 }
 
 // Size reads a WebP's from its RIFF header, each of the three kinds of its
-// first chunk, through a reader of the file; a RIFF that is no WebP goes to
-// the decoders, which tell no size; a GIF shorter than a WebP's header is
-// read all the same (M9/P1 design 3.11.2).
+// first chunk, through a reader of the file, its sizes within the file's
+// length; a RIFF that is no WebP goes to the decoders, which tell no size,
+// a lossy chunk first or not; a GIF shorter than a WebP's header is read
+// all the same (M9/P1 design 3.11.2; S2 review, B-M2 and its suspicion 1).
 func TestSizeOfAWebP(t *testing.T) {
 	var s sniff.Sniffer
 	for _, name := range []string{"vp8.webp", "vp8l.webp", "vp8x.webp"} {
@@ -82,8 +83,29 @@ func TestSizeOfAWebP(t *testing.T) {
 		if w, h, ok := s.Size(bytes.NewReader(data)); !ok || w != 7 || h != 5 {
 			t.Errorf("Size(%s) = %d, %d, %v; want 7×5", name, w, h, ok)
 		}
-		if _, _, ok := s.Size(bytes.NewReader(data[:24])); ok {
-			t.Errorf("Size(%s cut short) read a size", name)
+		for _, n := range []int{24, 30, len(data) - 1} {
+			if _, _, ok := s.Size(bytes.NewReader(data[:n])); ok {
+				t.Errorf("Size(%s cut to %d bytes) read a size", name, n)
+			}
+		}
+		avi := append([]byte{}, data...)
+		copy(avi[8:12], "AVI ")
+		if _, _, ok := s.Size(bytes.NewReader(avi)); ok {
+			t.Errorf("Size(an AVI with %s's first chunk) read a size", name)
+		}
+	}
+	vp8, err := os.ReadFile("testdata/vp8.webp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	vp8l, err := os.ReadFile("testdata/vp8l.webp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	vp8[27], vp8[29], vp8l[24] = vp8[27]|0xc0, vp8[29]|0xc0, vp8l[24]|0x10 // the scale bits, the alpha bit
+	for name, data := range map[string][]byte{"a lossy frame scaled": vp8, "a lossless image with alpha": vp8l} {
+		if w, h, ok := s.Size(bytes.NewReader(data)); !ok || w != 7 || h != 5 {
+			t.Errorf("Size(%s) = %d, %d, %v; want 7×5", name, w, h, ok)
 		}
 	}
 	if _, _, ok := s.Size(strings.NewReader("RIFF\x24\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x44\xac\x00\x00")); ok {

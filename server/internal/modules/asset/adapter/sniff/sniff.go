@@ -25,15 +25,23 @@ func (Sniffer) Sniff(head []byte) string {
 	return http.DetectContentType(head)
 }
 
-// Size implements app.Sniffer: a WebP's RIFF header, or image.DecodeConfig
-// over the first MiB of r, for PNG, JPEG and GIF. No format is registered
-// with image for WebP: that would change what image.Decode reads in the
-// whole process, and only the size is wanted. A file shorter than a
-// WebP's header is no error: a GIF may be twenty-odd bytes.
-func (Sniffer) Size(r io.Reader) (width, height int, ok bool) {
+// Size implements app.Sniffer: a WebP's RIFF header, its sizes within r's
+// length, or image.DecodeConfig over the first MiB of r, for PNG, JPEG and
+// GIF. No format is registered with image for WebP: that would change
+// what image.Decode reads in the whole process, and only the size is
+// wanted. A file shorter than a WebP's header is no error: a GIF may be
+// twenty-odd bytes.
+func (Sniffer) Size(r io.ReadSeeker) (width, height int, ok bool) {
+	length, err := r.Seek(0, io.SeekEnd)
+	if err != nil {
+		return 0, 0, false
+	}
+	if _, err := r.Seek(0, io.SeekStart); err != nil {
+		return 0, 0, false
+	}
 	b := bufio.NewReader(io.LimitReader(r, maxHeader))
 	if head, _ := b.Peek(webpHeader); isWebP(head) {
-		return webpSize(head)
+		return webpSize(head, length)
 	}
 	cfg, _, err := image.DecodeConfig(b)
 	if err != nil {

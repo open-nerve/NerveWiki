@@ -108,7 +108,7 @@ func (b *Blobs) size(ctx context.Context, id uuid.UUID) (int, int) {
 // ImageSize is the width and height sniffer reads of the image r brings,
 // 0 and 0 when it reads none, or a side is 0 or larger than domain.MaxSide:
 // what a row keeps (M7/P2 design 3.5).
-func ImageSize(sniffer Sniffer, r io.Reader) (int, int) {
+func ImageSize(sniffer Sniffer, r io.ReadSeeker) (int, int) {
 	w, h, ok := sniffer.Size(r)
 	if !ok || w < 1 || h < 1 || w > domain.MaxSide || h > domain.MaxSide {
 		return 0, 0
