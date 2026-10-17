@@ -390,7 +390,8 @@ func TestTheMCPReadsWithAPublicURLEndingInASlash(t *testing.T) {
 // or a window's value, validation_failed; a page's children or a path
 // that names nothing, page.not_found; the account entry's notebook not
 // seen, notebook.not_found, before any path in it is looked up. Each code
-// of each tool's row is answered here. Neither tool binds to one REST
+// of every row of mcpToolCodes is answered here: a tool's row comes with
+// its calls here (S2 fix check C). Neither tool binds to one REST
 // operation: list answers what listNodes and listAssets do, read what
 // getPageContent and the notebook's decision do, and their arguments are
 // their own.
@@ -430,8 +431,8 @@ func TestListAndReadErrorsCarryDeclaredCodes(t *testing.T) {
 		}
 		answered[tt.tool][tt.want] = true
 	}
-	for _, tool := range []string{"list", "read"} {
-		for _, code := range mcpToolCodes()[tool] {
+	for tool, codes := range mcpToolCodes() {
+		for _, code := range codes {
 			if !answered[tool][code] {
 				t.Errorf("%s's row lists %s, which no call here answers", tool, code)
 			}
