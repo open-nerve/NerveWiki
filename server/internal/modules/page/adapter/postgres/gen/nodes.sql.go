@@ -134,6 +134,55 @@ func (q *Queries) AssetsUnder(ctx context.Context, arg AssetsUnderParams) ([]Ass
 	return items, nil
 }
 
+const childByKey = `-- name: ChildByKey :one
+SELECT id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at,
+    updated_at
+FROM nodes
+WHERE notebook_id = $1 AND parent_id = $2 AND name_key = $3
+    AND deleted_at IS NULL
+`
+
+type ChildByKeyParams struct {
+	NotebookID uuid.UUID
+	ParentID   *uuid.UUID
+	NameKey    string
+}
+
+type ChildByKeyRow struct {
+	ID          uuid.UUID
+	NotebookID  uuid.UUID
+	ParentID    *uuid.UUID
+	Kind        string
+	Name        string
+	NameKey     string
+	SortOrder   float64
+	CreatedByID uuid.UUID
+	UpdatedByID uuid.UUID
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+// The child not deleted of parent_id whose title key is name_key: a path's next segment, by the same index.
+// IS NOT DISTINCT FROM would not use it (M9/P1 design 2.1, item 13).
+func (q *Queries) ChildByKey(ctx context.Context, arg ChildByKeyParams) (ChildByKeyRow, error) {
+	row := q.db.QueryRow(ctx, childByKey, arg.NotebookID, arg.ParentID, arg.NameKey)
+	var i ChildByKeyRow
+	err := row.Scan(
+		&i.ID,
+		&i.NotebookID,
+		&i.ParentID,
+		&i.Kind,
+		&i.Name,
+		&i.NameKey,
+		&i.SortOrder,
+		&i.CreatedByID,
+		&i.UpdatedByID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const children = `-- name: Children :many
 SELECT id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at,
     updated_at
@@ -748,6 +797,54 @@ func (q *Queries) RestoreNodes(ctx context.Context, arg RestoreNodesParams) (Res
 		&i.CurrentVersions,
 		&i.Creations,
 		&i.Gaps,
+	)
+	return i, err
+}
+
+const rootByKey = `-- name: RootByKey :one
+SELECT id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at,
+    updated_at
+FROM nodes
+WHERE notebook_id = $1 AND parent_id IS NULL AND name_key = $2
+    AND deleted_at IS NULL
+`
+
+type RootByKeyParams struct {
+	NotebookID uuid.UUID
+	NameKey    string
+}
+
+type RootByKeyRow struct {
+	ID          uuid.UUID
+	NotebookID  uuid.UUID
+	ParentID    *uuid.UUID
+	Kind        string
+	Name        string
+	NameKey     string
+	SortOrder   float64
+	CreatedByID uuid.UUID
+	UpdatedByID uuid.UUID
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+// The node not deleted at the notebook's root whose title key is name_key: a path's first segment (M9/P1 design
+// 3.9.2), by the siblings' unique index, whose NULLS NOT DISTINCT keeps one root per key.
+func (q *Queries) RootByKey(ctx context.Context, arg RootByKeyParams) (RootByKeyRow, error) {
+	row := q.db.QueryRow(ctx, rootByKey, arg.NotebookID, arg.NameKey)
+	var i RootByKeyRow
+	err := row.Scan(
+		&i.ID,
+		&i.NotebookID,
+		&i.ParentID,
+		&i.Kind,
+		&i.Name,
+		&i.NameKey,
+		&i.SortOrder,
+		&i.CreatedByID,
+		&i.UpdatedByID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }

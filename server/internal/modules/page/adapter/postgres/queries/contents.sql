@@ -37,6 +37,12 @@ WHERE node_id = sqlc.arg(node_id) AND deleted_at IS NULL;
 SELECT node_id, byte_size, updated_at FROM page_contents
 WHERE node_id = ANY(sqlc.arg(node_ids)::uuid[]) AND deleted_at IS NULL;
 
+-- name: PageStates :many
+-- The revision, size and last write of each content not deleted of the pages (M9/P1 design 3.10.3): list's pages.
+-- The array is a page of list, at most 1,000: the store plans it with its argument.
+SELECT node_id, revision, byte_size, updated_at FROM page_contents
+WHERE node_id = ANY(sqlc.arg(node_ids)::uuid[]) AND deleted_at IS NULL;
+
 -- name: Contents :many
 -- The contents not deleted of the pages: an export's batch.
 SELECT node_id, content FROM page_contents

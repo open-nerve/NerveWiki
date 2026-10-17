@@ -114,6 +114,42 @@ func (s *Store) Children(ctx context.Context, notebookID uuid.UUID, parentID *uu
 	return out, nil
 }
 
+// RootByKey implements app.PathStore.
+func (s *Store) RootByKey(ctx context.Context, notebookID uuid.UUID, key string) (domain.Node, bool, error) {
+	row, err := s.queries(ctx).RootByKey(ctx, gen.RootByKeyParams{NotebookID: notebookID, NameKey: key})
+	return foundNode(gen.FindNodeRow(row), err, "find a root by key")
+}
+
+// ChildByKey implements app.PathStore.
+func (s *Store) ChildByKey(ctx context.Context, notebookID, parentID uuid.UUID, key string) (domain.Node, bool, error) {
+	row, err := s.queries(ctx).ChildByKey(ctx, gen.ChildByKeyParams{NotebookID: notebookID, ParentID: &parentID, NameKey: key})
+	return foundNode(gen.FindNodeRow(row), err, "find a child by key")
+}
+
+// foundNode is the node of a lookup's row and error: false for no row.
+func foundNode(row gen.FindNodeRow, err error, what string) (domain.Node, bool, error) {
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return domain.Node{}, false, nil
+	case err != nil:
+		return domain.Node{}, false, fmt.Errorf("%s: %w", what, err)
+	}
+	return nodeOf(row), true, nil
+}
+
+// PageStates implements app.PageStates.
+func (s *Store) PageStates(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]app.PageState, error) {
+	rows, err := s.planned(ctx).PageStates(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("read the pages' states: %w", err)
+	}
+	out := make(map[uuid.UUID]app.PageState, len(rows))
+	for _, r := range rows {
+		out[r.NodeID] = app.PageState{Revision: int(r.Revision), Bytes: int(r.ByteSize), UpdatedAt: r.UpdatedAt}
+	}
+	return out, nil
+}
+
 // NameCursor is where a list by title key and id goes on: after the node
 // of this key and id.
 type NameCursor struct {

@@ -43,6 +43,24 @@ WHERE notebook_id = sqlc.arg(notebook_id) AND parent_id IS NOT DISTINCT FROM sql
     AND deleted_at IS NULL
 ORDER BY sort_order, id;
 
+-- name: RootByKey :one
+-- The node not deleted at the notebook's root whose title key is name_key: a path's first segment (M9/P1 design
+-- 3.9.2), by the siblings' unique index, whose NULLS NOT DISTINCT keeps one root per key.
+SELECT id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at,
+    updated_at
+FROM nodes
+WHERE notebook_id = sqlc.arg(notebook_id) AND parent_id IS NULL AND name_key = sqlc.arg(name_key)
+    AND deleted_at IS NULL;
+
+-- name: ChildByKey :one
+-- The child not deleted of parent_id whose title key is name_key: a path's next segment, by the same index.
+-- IS NOT DISTINCT FROM would not use it (M9/P1 design 2.1, item 13).
+SELECT id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at,
+    updated_at
+FROM nodes
+WHERE notebook_id = sqlc.arg(notebook_id) AND parent_id = sqlc.arg(parent_id) AND name_key = sqlc.arg(name_key)
+    AND deleted_at IS NULL;
+
 -- name: AssetsUnder :many
 -- A parent's attachments not deleted (the root's when parent_id is NULL), by title key and id, after the cursor's key
 -- and id when it has one, at most max_rows: a page of the attachments' list (M7/P2 design 3.3). As Children, it

@@ -172,6 +172,29 @@ type Nodes interface {
 	LockContent(ctx context.Context, notebookID, id uuid.UUID) (ContentLock, error)
 }
 
+// PathStore looks nodes up by their title keys, unlocked: a path's
+// segments, one point lookup each (M9/P1 design 3.9.2). The node is not
+// deleted; false for none.
+type PathStore interface {
+	RootByKey(ctx context.Context, notebookID uuid.UUID, key string) (domain.Node, bool, error)
+	ChildByKey(ctx context.Context, notebookID, parentID uuid.UUID, key string) (domain.Node, bool, error)
+}
+
+// PageStates reads the pages' contents as MCP's list tells them.
+type PageStates interface {
+	// PageStates reads each page's version, size and last write of ids,
+	// alive, unlocked: one statement, planned with its argument (M9
+	// design 4.1). A page without its content alive is not in the answer.
+	PageStates(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]PageState, error)
+}
+
+// PageState is a page's content as list tells it.
+type PageState struct {
+	Revision  int
+	Bytes     int
+	UpdatedAt time.Time
+}
+
 // NodeWriter writes nodes in the write unit's transaction. A name its
 // siblings hold already is domain.ErrTitleTaken.
 type NodeWriter interface {

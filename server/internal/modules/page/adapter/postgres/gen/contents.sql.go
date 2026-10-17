@@ -179,6 +179,45 @@ func (q *Queries) PageContent(ctx context.Context, nodeID uuid.UUID) (PageConten
 	return i, err
 }
 
+const pageStates = `-- name: PageStates :many
+SELECT node_id, revision, byte_size, updated_at FROM page_contents
+WHERE node_id = ANY($1::uuid[]) AND deleted_at IS NULL
+`
+
+type PageStatesRow struct {
+	NodeID    uuid.UUID
+	Revision  int32
+	ByteSize  int32
+	UpdatedAt time.Time
+}
+
+// The revision, size and last write of each content not deleted of the pages (M9/P1 design 3.10.3): list's pages.
+// The array is a page of list, at most 1,000: the store plans it with its argument.
+func (q *Queries) PageStates(ctx context.Context, nodeIds []uuid.UUID) ([]PageStatesRow, error) {
+	rows, err := q.db.Query(ctx, pageStates, nodeIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []PageStatesRow
+	for rows.Next() {
+		var i PageStatesRow
+		if err := rows.Scan(
+			&i.NodeID,
+			&i.Revision,
+			&i.ByteSize,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const writeContent = `-- name: WriteContent :exec
 UPDATE page_contents
 SET content = $1, revision = $2, content_hash = $3,
