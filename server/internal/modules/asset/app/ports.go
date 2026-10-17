@@ -54,9 +54,9 @@ var ErrNoFile = errors.New("asset: no file at the key")
 type Sniffer interface {
 	// Sniff is the type net/http's sniffing finds in a file's first bytes.
 	Sniff(head []byte) string
-	// Size reads an image's width and height from r, at most a MiB of it;
-	// false when it reads none.
-	Size(r io.Reader) (width, height int, ok bool)
+	// Size reads an image's width and height from r, a file from its
+	// start, at most a MiB of it and its length; false when it reads none.
+	Size(r io.ReadSeeker) (width, height int, ok bool)
 }
 
 // Rows keeps the attachments' rows: adapter/postgres, in the caller's

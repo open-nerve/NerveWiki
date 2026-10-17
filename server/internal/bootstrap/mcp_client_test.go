@@ -158,6 +158,7 @@ type mcpAnswer struct {
 	header http.Header
 	body   []byte
 	took   time.Duration // from the request's start to its body's end
+	tool   string        // the tool a call named; "" for another request
 }
 
 // afterHandshake is the header of a client's request after a handshake
@@ -218,7 +219,9 @@ func (m *mcpApp) call(t testing.TB, path, tool string, args any) mcpAnswer {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return m.post(t, context.Background(), path, m.pat, string(body), afterHandshake())
+	a := m.post(t, context.Background(), path, m.pat, string(body), afterHandshake())
+	a.tool = tool
+	return a
 }
 
 // atNotebook is the path of the notebook entry of id.
@@ -279,6 +282,20 @@ func toolError(t testing.TB, r map[string]any) map[string]any {
 	code, _ := member["code"].(string)
 	if err := undeclaredToolCode(code, declaredCodes(t)); err != nil {
 		t.Error(err)
+	}
+	return member
+}
+
+// toolError is toolError of a call's result, its code, besides
+// internal_error, one its tool's row of mcpToolCodes lists when the tool
+// has a row: a module's tool answering another's code, though the
+// contract declares it, fails here (M9/P1 S2 review C).
+func (a mcpAnswer) toolError(t testing.TB) map[string]any {
+	t.Helper()
+	member := toolError(t, a.result(t))
+	code, _ := member["code"].(string)
+	if codes, ok := mcpToolCodes()[a.tool]; ok && code != "internal_error" && !slices.Contains(codes, code) {
+		t.Errorf("%s's error has the code %q, which its row of mcpToolCodes does not list", a.tool, code)
 	}
 	return member
 }

@@ -99,6 +99,57 @@ func TestMigrationsGoUpDownAndUpAgain(t *testing.T) {
 	}
 }
 
+// 00042 takes the siblings' unique index (00012) over in two, the roots'
+// and the children's, and drops it; its Down makes it again as 00012 did,
+// and drops the two (M9/P1 S2 fix round 2).
+func TestThePathKeysGoDownToTheSiblingsIndex(t *testing.T) {
+	ctx := context.Background()
+	pool := newPool(t, pgtest.NewEmptyDatabase(t))
+	m, err := postgres.NewMigrator(pool, migrations.FS())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = m.Close() })
+	if _, err := m.Up(ctx); err != nil {
+		t.Fatal(err)
+	}
+	indexes := func() []string {
+		rows, err := pool.Query(ctx, `SELECT indexdef FROM pg_indexes WHERE tablename = 'nodes'
+			AND indexdef LIKE 'CREATE UNIQUE INDEX %' AND indexdef LIKE '%name_key)%' ORDER BY indexname`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defs, err := pgx.CollectRows(rows, pgx.RowTo[string])
+		if err != nil {
+			t.Fatal(err)
+		}
+		return defs
+	}
+	up := []string{
+		"CREATE UNIQUE INDEX nodes_notebook_id_name_key_root_key ON public.nodes USING btree (notebook_id, name_key) " +
+			"WHERE ((parent_id IS NULL) AND (deleted_at IS NULL))",
+		"CREATE UNIQUE INDEX nodes_parent_id_name_key_key ON public.nodes USING btree (parent_id, name_key) " +
+			"WHERE ((parent_id IS NOT NULL) AND (deleted_at IS NULL))",
+	}
+	if got := indexes(); !slices.Equal(got, up) {
+		t.Errorf("the name keys' unique indexes after Up are %q, want %q", got, up)
+	}
+	for {
+		back, err := m.Down(ctx)
+		if err != nil || back == nil {
+			t.Fatalf("Down() = %+v, %v; want down past 00042", back, err)
+		}
+		if back.Version == 42 {
+			break
+		}
+	}
+	down := []string{"CREATE UNIQUE INDEX nodes_notebook_id_parent_id_name_key_idx ON public.nodes USING btree " +
+		"(notebook_id, parent_id, name_key) NULLS NOT DISTINCT WHERE (deleted_at IS NULL)"}
+	if got := indexes(); !slices.Equal(got, down) {
+		t.Errorf("the name keys' unique indexes after 00042's Down are %q, want %q", got, down)
+	}
+}
+
 // Constraint and index names are stable: errors are mapped by them, and later
 // migrations drop them by name. Each index is pinned with what it is too,
 // unique, partial and NULLS NOT DISTINCT or not, so a partial unique key
@@ -217,10 +268,11 @@ func TestConstraintAndIndexNames(t *testing.T) {
 		"nodes_notebook_id_id_key iu",
 		"nodes_notebook_id_id_key u",
 		"nodes_notebook_id_name_key_idx iw",
+		"nodes_notebook_id_name_key_root_key iuw",
 		"nodes_notebook_id_parent_id_fkey f r",
 		"nodes_notebook_id_parent_id_idx i",
-		"nodes_notebook_id_parent_id_name_key_idx iuwn",
 		"nodes_parent_check c",
+		"nodes_parent_id_name_key_key iuw",
 		"nodes_pkey iu",
 		"nodes_pkey p",
 		"nodes_sort_order_check c",

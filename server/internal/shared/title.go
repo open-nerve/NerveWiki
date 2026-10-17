@@ -63,6 +63,14 @@ func windowsReserved(s string) bool {
 // forbidden are the characters a title holds none of.
 const forbidden = `/\:*?"<>|#^[]`
 
+// TitleHolds reports whether a title may hold r, as CheckTitle has it:
+// none of / \ : * ? " < > | # ^ [ ] nor a character unshowable in a name
+// (see unshowable). A glob's literal parts, which match titles' keys,
+// hold no other (M9/P1 design 3.10.1).
+func TitleHolds(r rune) bool {
+	return !strings.ContainsRune(forbidden, r) && !unshowable(r)
+}
+
 // FixTitle mends s into a title (M7/P6 design 3.4): an import's names,
 // which a zip writes as it likes. Bytes that are not UTF-8 become U+FFFD;
 // the rest is put in NFC; white space and dots go from both ends; each

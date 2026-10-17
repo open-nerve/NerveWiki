@@ -43,11 +43,35 @@ WHERE notebook_id = sqlc.arg(notebook_id) AND parent_id IS NOT DISTINCT FROM sql
     AND deleted_at IS NULL
 ORDER BY sort_order, id;
 
+-- name: RootByKey :one
+-- The node not deleted at the notebook's root whose title key is name_key: a path's first segment (M9/P1 design
+-- 3.9.2), by the roots' unique index (00042), its two columns equalities: a point lookup with statistics or without.
+SELECT id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at,
+    updated_at
+FROM nodes
+WHERE notebook_id = sqlc.arg(notebook_id) AND parent_id IS NULL AND name_key = sqlc.arg(name_key)
+    AND deleted_at IS NULL;
+
+-- name: ChildByKey :one
+-- The child not deleted of parent_id whose title key is name_key: a path's next segment, by the children's unique
+-- index (00042), its two columns equalities, the notebook checked on the row: a point lookup once the table is
+-- analyzed. Without statistics the planner may read the notebook's nodes of the key by the titles' index (00019)
+-- instead, 00042's header says why. IS NOT DISTINCT FROM would not use either (M9/P1 design 2.1, item 13).
+SELECT id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at,
+    updated_at
+FROM nodes
+WHERE notebook_id = sqlc.arg(notebook_id) AND parent_id = sqlc.arg(parent_id) AND name_key = sqlc.arg(name_key)
+    AND deleted_at IS NULL;
+
+-- name: AliveNodes :many
+-- The nodes not deleted among ids (M9/P1 design 3.10.3): list's attachments, whose infos asset reads deleted or not.
+-- The array is a page of list, at most 1,000: the store plans it with its argument.
+SELECT id FROM nodes WHERE id = ANY(sqlc.arg(ids)::uuid[]) AND deleted_at IS NULL;
+
 -- name: AssetsUnder :many
 -- A parent's attachments not deleted (the root's when parent_id is NULL), by title key and id, after the cursor's key
 -- and id when it has one, at most max_rows: a page of the attachments' list (M7/P2 design 3.3). As Children, it
--- reaches the notebook's nodes through the siblings' index and filters the parent, which IS NOT DISTINCT FROM does
--- not narrow in an index.
+-- reads the notebook's nodes and filters the parent, which IS NOT DISTINCT FROM does not narrow in an index.
 SELECT id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at,
     updated_at
 FROM nodes
@@ -138,8 +162,8 @@ SELECT n::integer AS stray FROM stray;
 -- content keeps its writer and time: it did not change. The counts tell what came back, for the unit to check that the
 -- purge took nothing: the nodes; the pages' contents, and the versions at their contents' revisions; the versions that
 -- created a page, and the versions whose base is not the version before them, a gap in its chain (checkPages' chain).
--- The siblings' unique index is checked a row at a time: the group's other nodes are deleted, out of it, until they
--- are updated, and their names were made unique beforehand.
+-- The siblings' unique indexes are checked a row at a time: the group's other nodes are deleted, out of them, until
+-- they are updated, and their names were made unique beforehand.
 -- The plans hold for an item of any size, at any statistics, planned with the arguments or for any (M8/P2 design
 -- 3.11): each form replaced was measured reading rows by rows past the request's 15 seconds. What followed the nodes
 -- is reached by its node's id from back, its time compared: back's, which the planner knows nothing of, not the

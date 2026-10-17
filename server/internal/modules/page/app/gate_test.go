@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"testing"
 	"uuid"
@@ -44,5 +45,32 @@ func TestTheNotebookGateOfANotebookNotSeen(t *testing.T) {
 	}
 	if err := gate.Execute(context.Background(), f.eng); codeOf(err) != "unauthorized" {
 		t.Errorf("the gate without an actor = %v, want unauthorized", err)
+	}
+}
+
+// A failure reading the notebook's workspace is answered as it is, not as
+// the notebook not found: by the gate, list and read alike, which decide
+// the notebook by one helper.
+func TestTheNotebooksDecisionAnswersAFailure(t *testing.T) {
+	f := newFixture()
+	f.grant(domain.ActionList, domain.ActionRead)
+	f.page("Guide", nil, 0)
+	boom := errors.New("boom")
+	f.notebooks.err = boom
+	for name, decide := range map[string]func() error{
+		"the gate": func() error { return app.NewNotebookGate(f.notebooks, f.auth).Execute(f.asAlice(), f.eng) },
+		"list": func() error {
+			_, err := f.lister(domain.MaxGlobWork).Execute(f.asAlice(), f.eng, "**", nil, nil)
+			return err
+		},
+		"read": func() error {
+			_, err := app.NewReadPath(f.notebooks, f.store, f.store, f.auth).Execute(f.asAlice(), f.eng, "Guide.md", nil, nil, nil,
+				textMeasure(100))
+			return err
+		},
+	} {
+		if err := decide(); !errors.Is(err, boom) {
+			t.Errorf("%s with WorkspaceOf failing = %v, want its failure", name, err)
+		}
 	}
 }

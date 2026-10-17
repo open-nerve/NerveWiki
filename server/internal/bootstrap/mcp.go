@@ -2,8 +2,11 @@ package bootstrap
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"uuid"
 
+	"github.com/open-nerve/NerveWiki/server/internal/modules/asset"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/notebook"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
@@ -22,10 +25,41 @@ import (
 const mcpBodyLimit = 6*(page.MaxContentBytes+1<<20) + 64<<10
 
 // mcpTools are the modules' MCP tools, each module's in turn (M9 design
-// 4.1): none yet, page's list and read come with M9/P1 S2, notebook's
-// with S3, linking's with P4.
-func mcpTools(*page.Module, *linking.Module, *notebook.Module) []mcpserver.Tool {
-	return nil
+// 4.1): page's list and read, whose attachments asset reads; notebook's
+// come with M9/P1 S3, linking's with P4.
+func mcpTools(pg *page.Module, as *asset.Module, _ *linking.Module, _ *notebook.Module) []mcpserver.Tool {
+	return pg.Tools(page.ToolDeps{Attachments: pageAttachments{as.AttachmentReads()}})
+}
+
+// pageAttachments is asset's AttachmentReads as page's read calls them
+// (M9/P1 design 3.11.2): asset.not_found is page.not_found to the model,
+// which asked for a path, and asset's missing file page's.
+type pageAttachments struct {
+	asset asset.AttachmentReads
+}
+
+func (p pageAttachments) Read(ctx context.Context, nodeID uuid.UUID) (page.Attachment, error) {
+	a, err := p.asset.Read(ctx, nodeID)
+	if err != nil {
+		return page.Attachment{}, pageAttachmentErr(err)
+	}
+	return page.Attachment(a), nil
+}
+
+func (p pageAttachments) Content(ctx context.Context, a page.Attachment, maxBytes int64) ([]byte, int, int, error) {
+	data, width, height, err := p.asset.Content(ctx, asset.Attachment(a), maxBytes)
+	return data, width, height, pageAttachmentErr(err)
+}
+
+// pageAttachmentErr is err, asset's, in page's words.
+func pageAttachmentErr(err error) error {
+	switch {
+	case errors.Is(err, asset.ErrNotFound):
+		return page.ErrNotFound
+	case errors.Is(err, asset.ErrNoFile):
+		return page.ErrNoAttachmentFile
+	}
+	return err
 }
 
 // mcpServer is the MCP server of both entries: tools, the personal access

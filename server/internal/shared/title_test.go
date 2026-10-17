@@ -57,3 +57,19 @@ func TestCheckTitle(t *testing.T) {
 		}
 	}
 }
+
+// TitleHolds holds what CheckTitle keeps inside a title: each ASCII
+// character, the separators, the bidirectional controls, a format
+// character that stays and letters beyond ASCII.
+func TestTitleHolds(t *testing.T) {
+	runes := []rune{0x85, 0xa0, 0xe9, 0x200d, 0x2028, 0x2029, 0x202e, 0x2066, 0x6f22, 0x1f600}
+	for r := rune(0); r < 0x80; r++ {
+		runes = append(runes, r)
+	}
+	for _, r := range runes {
+		_, f := shared.CheckTitle("name", "a"+string(r)+"b")
+		if got, want := shared.TitleHolds(r), f == nil; got != want {
+			t.Errorf("TitleHolds(%U) = %v, but CheckTitle keeps it: %v", r, got, want)
+		}
+	}
+}

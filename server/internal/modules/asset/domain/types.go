@@ -105,9 +105,9 @@ func Inline(mime string, download bool) bool {
 }
 
 // HasSize reports whether the server reads the size in pixels of a file
-// of type mime.
+// of type mime: PNG, JPEG, GIF, and from M9/P1 WebP.
 func HasSize(mime string) bool {
-	return mime == "image/png" || mime == "image/jpeg" || mime == "image/gif"
+	return mime == "image/png" || mime == "image/jpeg" || mime == "image/gif" || mime == "image/webp"
 }
 
 // MaxSide is the largest width or height kept of an image: a larger one is

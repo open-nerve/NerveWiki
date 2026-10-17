@@ -60,9 +60,9 @@ func TestPutWritesTheFileAndTellsWhatItIs(t *testing.T) {
 }
 
 // The type is the domain's of the name and the sniffed bytes; a file
-// shorter than 512 bytes is sniffed whole. Only PNG, JPEG and GIF are
-// read for their size, and a size past 65535, of a side of 0, or none is
-// not kept.
+// shorter than 512 bytes is sniffed whole. Only PNG, JPEG, GIF and from
+// M9/P1 WebP are read for their size, and a size past 65535, of a side of
+// 0, or none is not kept.
 func TestPutTellsTheTypeAndTheSize(t *testing.T) {
 	for _, tt := range []struct {
 		name, file, sniffed string
@@ -72,6 +72,7 @@ func TestPutTellsTheTypeAndTheSize(t *testing.T) {
 		wantW, wantH, reads int
 	}{
 		{"an image", "a.gif", "image/gif", 3, 4, false, "image/gif", 3, 4, 1},
+		{"a WebP", "a.webp", "image/webp", 3, 4, false, "image/webp", 3, 4, 1},
 		{"HTML named as an image", "a.png", "text/html; charset=utf-8", 3, 4, false, "application/octet-stream", 0, 0, 0},
 		{"a PDF", "a.pdf", "application/pdf", 3, 4, false, "application/pdf", 0, 0, 0},
 		{"an image too wide", "a.png", "image/png", 65536, 4, false, "image/png", 0, 0, 1},

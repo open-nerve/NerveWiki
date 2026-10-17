@@ -2897,7 +2897,7 @@ export interface components {
             byte_size: number;
             /** @description The file's SHA-256, in lower-case hexadecimal. */
             sha256: string;
-            /** @description An image's width in pixels (PNG, JPEG, GIF), when the server read it; null otherwise. */
+            /** @description An image's width in pixels (PNG, JPEG, GIF, WebP), when the server read it; null otherwise. */
             width: number | null;
             /** @description An image's height in pixels, as width. */
             height: number | null;

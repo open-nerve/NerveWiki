@@ -341,8 +341,8 @@ func (*memFile) ModTime() time.Time { return now() }
 // sniffer is net/http's sniffing; it reads no image's size.
 type sniffer struct{}
 
-func (sniffer) Sniff(head []byte) string        { return http.DetectContentType(head) }
-func (sniffer) Size(io.Reader) (int, int, bool) { return 0, 0, false }
+func (sniffer) Sniff(head []byte) string            { return http.DetectContentType(head) }
+func (sniffer) Size(io.ReadSeeker) (int, int, bool) { return 0, 0, false }
 
 // memRows keeps the rows by node.
 type memRows struct {

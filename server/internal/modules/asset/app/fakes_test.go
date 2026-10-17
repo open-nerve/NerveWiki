@@ -177,7 +177,7 @@ type sniffer struct {
 
 func (s *sniffer) Sniff([]byte) string { return s.sniffed }
 
-func (s *sniffer) Size(r io.Reader) (int, int, bool) {
+func (s *sniffer) Size(r io.ReadSeeker) (int, int, bool) {
 	s.reads++
 	_, err := io.ReadAll(r)
 	return s.width, s.height, err == nil && !s.unsized

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/url"
+	"strings"
 	"time"
 )
 
@@ -69,6 +71,17 @@ func (c Config) validate() error {
 			// silently match nothing.
 			fail("server.trusted_proxies", "%s is an IPv4-mapped IPv6 prefix, which no address matches: write the IPv4 prefix", p)
 		}
+	}
+	// A refused value with an @ is not quoted: a user, a password or a token
+	// may be in it, wherever a parser would read them, and no origin has one
+	// (v0.1 design 13.1 items 10 and 15; M9/P1 S2 review, B-M1).
+	switch u := c.Server.PublicURL; {
+	case u == "" || isOrigin(u):
+	case strings.Contains(u, "@"):
+		fail("server.public_url", `must be an origin such as "https://wiki.example.com", got a value with an "@", `+
+			"which no origin has (not shown: it may hold a password or a token)")
+	default:
+		fail("server.public_url", `must be an origin such as "https://wiki.example.com", got %q`, u)
 	}
 	if c.Database.URL == "" {
 		fail("database.url", "is required")
@@ -310,4 +323,13 @@ func (t TransferConfig) validate(fail func(key, format string, args ...any)) {
 	if t.MaxQueued < 1 {
 		fail("transfer.max_queued", "must be at least 1, got %d", t.MaxQueued)
 	}
+}
+
+// isOrigin reports whether s is an origin alone (server.public_url): http
+// or https, a host, a port maybe and a trailing "/", nothing else: no
+// user, path, query, empty query or fragment.
+func isOrigin(s string) bool {
+	u, err := url.Parse(s)
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != "" && u.User == nil && u.Opaque == "" &&
+		(u.Path == "" || u.Path == "/") && u.RawQuery == "" && !u.ForceQuery && !strings.Contains(s, "#")
 }

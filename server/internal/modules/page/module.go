@@ -9,7 +9,7 @@
 // NewAssetNodes, the asset module's reads of the tree; NewExportNodes, the
 // transfer module's; NewStatistics, the statistics an import updates;
 // Purgers for the purge; Actions for the composition's checks; MCPEntry,
-// the MCP server's notebook entry.
+// the MCP server's notebook entry, and Tools, the module's MCP tools.
 package page
 
 import (
@@ -159,7 +159,9 @@ type Deps struct {
 // Module is the wired page module.
 type Module struct {
 	uc        httpadapter.UseCases
-	gate      *app.NotebookGate // MCP's notebook entry (MCPEntry)
+	gate      *app.NotebookGate  // MCP's notebook entry (MCPEntry)
+	list      *app.ListByPattern // MCP's list (Tools)
+	read      *app.ReadPath      // MCP's read (Tools)
 	jobs      []jobs.Job
 	assets    *app.AssetWrites
 	imports   *app.ImportWrites
@@ -226,7 +228,9 @@ func New(d Deps) *Module {
 	}, gate: app.NewNotebookGate(d.Notebooks, d.Authorizer), jobs: []jobs.Job{
 		riveradapter.CleanupJob(app.NewCleanupEditSessions(store, d.Clock, d.Logger), d.EditSessionCleanupInterval),
 	}, assets: app.NewAssetWrites(writer, store), imports: app.NewImportWrites(writer, parser, md),
-		jobWrites: app.NewJobWrites(trash, store, writer, parser, store, d.MaxJobItems, d.MaxUnitHistory)}
+		jobWrites: app.NewJobWrites(trash, store, writer, parser, store, d.MaxJobItems, d.MaxUnitHistory),
+		list:      app.NewListByPattern(d.Notebooks, store, store, d.Attachments, d.Authorizer),
+		read:      app.NewReadPath(d.Notebooks, store, store, d.Authorizer)}
 	if d.SearchInterval > 0 {
 		m.jobs = append(m.jobs, riveradapter.SearchIndexJob(
 			app.NewIndexSearch(d.Tx, store, d.Clock, d.Logger, domain.MinSearchRebuild), d.SearchInterval))

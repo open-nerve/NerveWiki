@@ -32,17 +32,5 @@ func (g *NotebookGate) Execute(ctx context.Context, id uuid.UUID) error {
 	if err != nil {
 		return err
 	}
-	if id == (uuid.UUID{}) {
-		return domain.ErrNotebookNotFound
-	}
-	workspaceID, ok, err := g.notebooks.WorkspaceOf(ctx, id)
-	switch {
-	case err != nil:
-		return err
-	case !ok:
-		return domain.ErrNotebookNotFound
-	}
-	target := shared.Target{WorkspaceID: workspaceID, NotebookID: id}
-	_, err = authorize(ctx, g.auth, actor, domain.ActionList, target, domain.ErrNotebookNotFound)
-	return err
+	return decideNotebook(ctx, g.notebooks, g.auth, actor, domain.ActionList, id)
 }

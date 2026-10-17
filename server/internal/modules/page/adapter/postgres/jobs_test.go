@@ -206,7 +206,7 @@ func TestChangesetItemsAndVersionsOfNodes(t *testing.T) {
 
 // The jobs' statements of many keys read by them (M8/P4 design 3.3; v0.1
 // design 13.4, item 9), scans of whole tables off: nodes by their key, a
-// level's children through the siblings' index, a changeset's items and
+// level's children through the parents' index, a changeset's items and
 // versions of nodes by their (changeset_id, node_id) keys; and each is
 // planned with its arguments however many times a connection runs it.
 func TestTheJobsReadsUseTheirIndexes(t *testing.T) {

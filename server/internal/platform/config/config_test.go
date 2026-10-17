@@ -26,6 +26,7 @@ func TestLogValueMasksDatabaseURL(t *testing.T) {
 		"config.server.request_timeout=15s",
 		"config.server.max_body_bytes=1048576",
 		`config.server.addr_file=""`,
+		"config.server.public_url=https://wiki.example.com",
 		"config.database.url=xxxxx",
 		"config.database.max_conns=10",
 		"config.database.auto_migrate=true",

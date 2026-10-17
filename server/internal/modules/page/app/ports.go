@@ -172,6 +172,34 @@ type Nodes interface {
 	LockContent(ctx context.Context, notebookID, id uuid.UUID) (ContentLock, error)
 }
 
+// PathStore looks nodes up by their title keys, unlocked: a path's
+// segments, one point lookup each (M9/P1 design 3.9.2). The node is not
+// deleted; false for none.
+type PathStore interface {
+	RootByKey(ctx context.Context, notebookID uuid.UUID, key string) (domain.Node, bool, error)
+	ChildByKey(ctx context.Context, notebookID, parentID uuid.UUID, key string) (domain.Node, bool, error)
+}
+
+// PageStates reads the pages' contents as MCP's list tells them, and
+// which of its attachments are alive.
+type PageStates interface {
+	// PageStates reads each page's version, size and last write of ids,
+	// alive, unlocked: one statement, planned with its argument (M9
+	// design 4.1). A page without its content alive is not in the answer.
+	PageStates(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]PageState, error)
+	// AliveNodes reads which nodes of ids are not deleted, unlocked: one
+	// statement, planned with its argument. list's attachments, whose
+	// infos AttachmentInfos gives deleted or not (M9/P1 design 3.10.3).
+	AliveNodes(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]bool, error)
+}
+
+// PageState is a page's content as list tells it.
+type PageState struct {
+	Revision  int
+	Bytes     int
+	UpdatedAt time.Time
+}
+
 // NodeWriter writes nodes in the write unit's transaction. A name its
 // siblings hold already is domain.ErrTitleTaken.
 type NodeWriter interface {
@@ -398,6 +426,36 @@ type AttachmentInfo struct {
 type AttachmentInfos interface {
 	Of(ctx context.Context, nodeIDs []uuid.UUID) (map[uuid.UUID]AttachmentInfo, error)
 }
+
+// AttachmentReader reads an attachment for MCP's read: bootstrap adapts
+// asset's AttachmentReads to it, asset.not_found to page.not_found and its
+// ErrNoFile to ErrNoAttachmentFile (M9/P1 design 3.11.2).
+type AttachmentReader interface {
+	// Read reads the attachment nodeID, decided on asset.read: its row,
+	// link and download address.
+	Read(ctx context.Context, nodeID uuid.UUID) (Attachment, error)
+	// Content reads a's file, at most max bytes, with the sides known of
+	// it: the row's, or read from its bytes; 0 and 0 when neither.
+	Content(ctx context.Context, a Attachment, max int64) (data []byte, width, height int, err error)
+}
+
+// Attachment is an attachment as read tells it: its node and file, its
+// name, type and how a link writes it ("" without an extension), its size
+// and SHA-256, its row's sides (0 when the server read none), and its
+// content's download address, absolute, with when it expires: "" without
+// server.public_url.
+type Attachment struct {
+	NodeID, BlobID   uuid.UUID
+	Name, MIME, Link string
+	Bytes            int64
+	SHA256           []byte
+	Width, Height    int
+	URL              string
+	Expires          time.Time
+}
+
+// ErrNoAttachmentFile is an attachment whose file is not in the store.
+var ErrNoAttachmentFile = errors.New("page: the attachment's file is not in the store")
 
 // NotebookPages deletes the pages of deleted notebooks, and their edit
 // sessions.

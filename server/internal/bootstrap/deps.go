@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -187,6 +188,7 @@ func assetDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, autho
 		Links: linking.NewAssetLinks(linkTargets{page.NewLinkTargets(pool)}), ContentKey: contentKey,
 		MaxBytes: cfg.Asset.MaxBytes, MinRate: cfg.Asset.UploadMinRate, MinFreeBytes: cfg.Storage.MinFreeBytes,
 		ContentBucket: bucket(limiter, "asset_content", cfg.RateLimit.AssetContent),
+		PublicURL:     strings.TrimSuffix(cfg.Server.PublicURL, "/"),
 	}
 }
 

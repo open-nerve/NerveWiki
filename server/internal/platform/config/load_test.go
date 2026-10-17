@@ -23,6 +23,7 @@ server:
   max_body_bytes: 1048576
   addr_file: ""
   trusted_proxies: []
+  public_url: ""
 database:
   url: ""
   max_conns: 10

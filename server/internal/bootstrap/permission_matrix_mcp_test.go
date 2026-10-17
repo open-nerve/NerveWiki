@@ -53,9 +53,121 @@ func (c mcpCell) String() string {
 	return "the tool's error " + c.code
 }
 
-// mcpRows are the rows, each module's from its file: none before M9/P1
-// S2's list and read.
-func mcpRows() []mcpRow { return nil }
+// mcpRows are the rows, each module's: page's list and read (M9/P1
+// design 3.13).
+func mcpRows() []mcpRow { return pageMCPRows() }
+
+// mcpToolCodes are the codes each MCP tool's error may carry besides
+// internal_error (M9 design 4.7; M9/P1 S2 review C's table), beside the
+// matrix's rows: each one the contract declares, each tool of tools.json
+// with its row, and each code of a row answered by
+// TestListAndReadErrorsCarryDeclaredCodes or its tools' own. A call's
+// error with a code its tool's row does not list fails the test that
+// called it (mcpAnswer.toolError). Each step adds its tools' rows.
+func mcpToolCodes() map[string][]string {
+	return map[string][]string{
+		"list": {"bad_request", "validation_failed", "notebook.not_found", "page.not_found"},
+		"read": {"bad_request", "validation_failed", "notebook.not_found", "page.not_found"},
+	}
+}
+
+// Every tool of tools.json, in either entry, has its row of codes, and
+// no row is a tool's that the file has not; each code of a row is one the
+// contract declares.
+func TestEveryMCPToolHasItsCodes(t *testing.T) {
+	rows := mcpToolCodes()
+	listed := map[string]bool{}
+	for entry, tools := range readToolLists(t) {
+		for _, tool := range tools {
+			spec, _ := tool.(map[string]any)
+			name, _ := spec["name"].(string)
+			if listed[name] = true; rows[name] == nil {
+				t.Errorf("%s of the %s entry has no row of codes", name, entry)
+			}
+		}
+	}
+	for _, name := range slices.Sorted(maps.Keys(rows)) {
+		if !listed[name] {
+			t.Errorf("the codes have a row of %s, which tools.json lists in no entry", name)
+		}
+		for _, code := range rows[name] {
+			if err := undeclaredToolCode(code, declaredCodes(t)); err != nil {
+				t.Errorf("%s: %v", name, err)
+			}
+		}
+	}
+}
+
+// pageMCPRows are page's rows: list of the root's children and read of
+// the column's page, each in both entries; a column that cannot see its
+// notebook is its 404 (mcpRow.want's notebook.not_found, the notebook
+// entry's edge 404 for it), the others' answers holding that page.
+func pageMCPRows() []mcpRow {
+	readers := func(c caller) mcpCell {
+		if _, seen := roleIn(c); seen {
+			return mcpCell{}
+		}
+		return mcpCell{code: "notebook.not_found"}
+	}
+	return []mcpRow{
+		{
+			tool: "list", entries: mcpserver.BothEntries, want: readers,
+			check: func(t *testing.T, c caller, _ seeded, a mcpAnswer) {
+				t.Helper()
+				var paths []string
+				items, _ := a.result(t)["structuredContent"].(map[string]any)["items"].([]any)
+				for _, item := range items {
+					path, _ := item.(map[string]any)["path"].(string)
+					paths = append(paths, path)
+				}
+				if want := rootPathsOf(notebookOf(c)); !slices.Equal(paths, want) {
+					t.Errorf("listed %v, want the root's %v", paths, want)
+				}
+			},
+		},
+		{
+			tool: "read", entries: mcpserver.BothEntries, want: readers,
+			args: func(c caller, _ seeded) map[string]any { return map[string]any{"path": pagePathOf(c)} },
+			check: func(t *testing.T, c caller, s seeded, a mcpAnswer) {
+				t.Helper()
+				content, _ := a.result(t)["content"].([]any)
+				if len(content) != 2 {
+					t.Fatalf("read answered %v, want two blocks", content)
+				}
+				meta, _ := content[0].(map[string]any)["text"].(string)
+				text, _ := content[1].(map[string]any)["text"].(string)
+				var m struct{ Path, Version string }
+				_ = json.Unmarshal([]byte(meta), &m)
+				if want := s.page(pageOf(c)).String() + ":1"; m.Path != pagePathOf(c) || m.Version != want || text != matrixMark+"\n" {
+					t.Errorf("read %s and %q, want %s at %s and the seeded content", meta, text, pagePathOf(c), want)
+				}
+			},
+		},
+	}
+}
+
+// pagePathOf is the path of a notebook column's page (pageOf).
+func pagePathOf(c caller) string {
+	if notebookOf(c) == "priv" {
+		return "priv-root/" + pageOf(c) + ".md"
+	}
+	return pageOf(c) + ".md"
+}
+
+// rootPathsOf is the paths of a notebook's seeded nodes at its root, in
+// the tree's order: its pages' with .md, its attachments' as they are.
+func rootPathsOf(notebook string) []string {
+	var out []string
+	for _, name := range treeOf(notebook) {
+		if slices.Contains(matrixPages(), matrixPage{name, notebook, ""}) {
+			out = append(out, name+".md")
+		}
+		if slices.Contains(matrixAssets(), matrixPage{name, notebook, ""}) {
+			out = append(out, name)
+		}
+	}
+	return out
+}
 
 // mcpMatrixViolations are the gaps between the rows and the tools the
 // file lists: a file without exactly the two entries' keys, which would
@@ -228,9 +340,6 @@ func gateCells(t *testing.T) map[caller]cell {
 // edge's 404, in the account entry the tool's notebook.not_found.
 func TestThePermissionMatrixOverMCP(t *testing.T) {
 	rows := mcpRows()
-	if len(rows) == 0 {
-		t.Skip("no tool has a row yet: M9/P1 S2 adds list and read")
-	}
 	takes := takesNotebook(readToolLists(t))
 	d := prepareMatrix(t)
 	pats := map[caller]string{}
@@ -313,9 +422,8 @@ func mcpCellOf(t *testing.T, a mcpAnswer) mcpCell {
 		_ = json.Unmarshal(a.body, &p)
 		return mcpCell{http: a.status, code: p.Code}
 	}
-	r := a.result(t)
-	if r["isError"] == true {
-		code, _ := toolError(t, r)["code"].(string)
+	if r := a.result(t); r["isError"] == true {
+		code, _ := a.toolError(t)["code"].(string)
 		return mcpCell{code: code}
 	}
 	return mcpCell{}

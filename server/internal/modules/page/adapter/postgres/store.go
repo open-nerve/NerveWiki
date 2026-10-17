@@ -21,8 +21,12 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
 )
 
-// siblingNameKey is the unique index on siblings' name keys.
-const siblingNameKey = "nodes_notebook_id_parent_id_name_key_idx"
+// The unique indexes on siblings' name keys (00042): the roots' and the
+// children's, which a path's segments are read by.
+const (
+	rootNameKey  = "nodes_notebook_id_name_key_root_key"
+	childNameKey = "nodes_parent_id_name_key_key"
+)
 
 // Store implements the app's repository ports.
 type Store struct {
@@ -45,11 +49,18 @@ func (s *Store) planned(ctx context.Context) *gen.Queries {
 	return gen.New(postgres.Planned(postgres.DB(ctx, s.pool)))
 }
 
-// uniqueViolation reports whether err broke the unique constraint or index
-// name.
-func uniqueViolation(err error, name string) bool {
+// uniqueViolation reports whether err broke one of the unique constraints
+// or indexes names.
+func uniqueViolation(err error, names ...string) bool {
 	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == name
+	return errors.As(err, &pgErr) && pgErr.Code == "23505" && slices.Contains(names, pgErr.ConstraintName)
+}
+
+// nameTaken reports whether err broke a unique index on siblings' name
+// keys: the roots' for a root, the children's for a child, as no row is in
+// both.
+func nameTaken(err error) bool {
+	return uniqueViolation(err, rootNameKey, childNameKey)
 }
 
 // notFound turns no row into app.ErrNotFound.
@@ -110,6 +121,55 @@ func (s *Store) Children(ctx context.Context, notebookID uuid.UUID, parentID *uu
 	out := make([]domain.Node, len(rows))
 	for i, r := range rows {
 		out[i] = nodeOf(gen.FindNodeRow(r))
+	}
+	return out, nil
+}
+
+// RootByKey implements app.PathStore.
+func (s *Store) RootByKey(ctx context.Context, notebookID uuid.UUID, key string) (domain.Node, bool, error) {
+	row, err := s.queries(ctx).RootByKey(ctx, gen.RootByKeyParams{NotebookID: notebookID, NameKey: key})
+	return foundNode(gen.FindNodeRow(row), err, "find a root by key")
+}
+
+// ChildByKey implements app.PathStore.
+func (s *Store) ChildByKey(ctx context.Context, notebookID, parentID uuid.UUID, key string) (domain.Node, bool, error) {
+	row, err := s.queries(ctx).ChildByKey(ctx, gen.ChildByKeyParams{NotebookID: notebookID, ParentID: &parentID, NameKey: key})
+	return foundNode(gen.FindNodeRow(row), err, "find a child by key")
+}
+
+// foundNode is the node of a lookup's row and error: false for no row.
+func foundNode(row gen.FindNodeRow, err error, what string) (domain.Node, bool, error) {
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return domain.Node{}, false, nil
+	case err != nil:
+		return domain.Node{}, false, fmt.Errorf("%s: %w", what, err)
+	}
+	return nodeOf(row), true, nil
+}
+
+// PageStates implements app.PageStates.
+func (s *Store) PageStates(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]app.PageState, error) {
+	rows, err := s.planned(ctx).PageStates(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("read the pages' states: %w", err)
+	}
+	out := make(map[uuid.UUID]app.PageState, len(rows))
+	for _, r := range rows {
+		out[r.NodeID] = app.PageState{Revision: int(r.Revision), Bytes: int(r.ByteSize), UpdatedAt: r.UpdatedAt}
+	}
+	return out, nil
+}
+
+// AliveNodes implements app.PageStates.
+func (s *Store) AliveNodes(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]bool, error) {
+	alive, err := s.planned(ctx).AliveNodes(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("read the nodes alive: %w", err)
+	}
+	out := make(map[uuid.UUID]bool, len(alive))
+	for _, id := range alive {
+		out[id] = true
 	}
 	return out, nil
 }
@@ -224,7 +284,7 @@ func (s *Store) CreateNode(ctx context.Context, n domain.Node) error {
 		SortOrder: n.SortOrder, By: n.CreatedBy, Now: n.CreatedAt,
 	})
 	switch {
-	case uniqueViolation(err, siblingNameKey):
+	case nameTaken(err):
 		return domain.ErrTitleTaken
 	case err != nil:
 		return fmt.Errorf("create node: %w", err)
@@ -260,7 +320,7 @@ func (s *Store) RenameNode(ctx context.Context, n domain.Node) error {
 		ID: n.ID, Name: n.Name, NameKey: n.NameKey, By: n.UpdatedBy, Now: n.UpdatedAt,
 	})
 	switch {
-	case uniqueViolation(err, siblingNameKey):
+	case nameTaken(err):
 		return domain.ErrTitleTaken
 	case err != nil:
 		return fmt.Errorf("rename node: %w", err)
@@ -274,7 +334,7 @@ func (s *Store) MoveNode(ctx context.Context, n domain.Node) error {
 		ID: n.ID, ParentID: n.ParentID, SortOrder: n.SortOrder, By: n.UpdatedBy, Now: n.UpdatedAt,
 	})
 	switch {
-	case uniqueViolation(err, siblingNameKey):
+	case nameTaken(err):
 		return domain.ErrTitleTaken
 	case err != nil:
 		return fmt.Errorf("move node: %w", err)
@@ -305,7 +365,7 @@ func (s *Store) RestoreNodes(ctx context.Context, r app.Restoration) (app.Restor
 		SortOrder: r.SortOrder, DeletedAt: r.DeletedAt,
 	})
 	switch {
-	case uniqueViolation(err, siblingNameKey):
+	case nameTaken(err):
 		return app.RestoredRows{}, fmt.Errorf("restore nodes: a name a sibling holds, though the unit numbered them: %w", err)
 	case err != nil:
 		return app.RestoredRows{}, fmt.Errorf("restore nodes: %w", err)

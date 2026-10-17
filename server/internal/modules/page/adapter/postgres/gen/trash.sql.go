@@ -186,7 +186,7 @@ type TrashChildrenAtRow struct {
 }
 
 // The children of parents of the notebook, each deleted at its parent's time (M8/P4 design 3.3): a level of many trash
-// items' groups in one statement, through the siblings' index as TrashChildrenOfAll reads one group's, in its order:
+// items' groups in one statement, through the parents' index as TrashChildrenOfAll reads one group's, in its order:
 // each group's part of the level is the one TrashGroup reads.
 func (q *Queries) TrashChildrenAt(ctx context.Context, arg TrashChildrenAtParams) ([]TrashChildrenAtRow, error) {
 	rows, err := q.db.Query(ctx, trashChildrenAt, arg.Parents, arg.DeletedAts, arg.NotebookID)
@@ -255,7 +255,7 @@ type TrashChildrenOfAllRow struct {
 
 // The children of parents of the notebook deleted at deleted_at, in order, each page with its content's revision and
 // size, none when the purge took it: a level of a trash item's group, read a level a statement and planned with its
-// parents, as ChildrenOfAll reads a subtree's, through the siblings' index, which holds the deleted rows. A
+// parents, as ChildrenOfAll reads a subtree's, through the parents' index (00012), which holds the deleted rows. A
 // descendant deleted earlier is not of the group: it is an item of its own.
 func (q *Queries) TrashChildrenOfAll(ctx context.Context, arg TrashChildrenOfAllParams) ([]TrashChildrenOfAllRow, error) {
 	rows, err := q.db.Query(ctx, trashChildrenOfAll, arg.NotebookID, arg.Parents, arg.DeletedAt)
