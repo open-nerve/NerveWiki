@@ -158,16 +158,22 @@ func TestTheToolListsAreTheContract(t *testing.T) {
 	}
 }
 
-// The check reads what the app lists and what the file holds: a tool the
-// test registers beside the modules' is the one difference, in both
-// entries (M9/P1 design review A-M10).
+// The check reads what the app lists and what the file holds, each entry
+// under its own key: a tool of each entry the test registers beside the
+// modules' is that entry's one difference, so that an entry listed for
+// the other, or for both, fails too (M9/P1 design review A-M10, S1
+// review C-M5).
 func TestTheToolListCheckReadsTheApp(t *testing.T) {
-	seam := mcpserver.NewTool(mcpserver.Spec{Name: "seam", Title: "Seam", Description: "A test's tool.", Entry: mcpserver.BothEntries},
-		func(context.Context, mcpserver.Call, struct{}) (mcpserver.Result, error) {
-			return mcpserver.Result{Structured: map[string]any{}}, nil
-		})
-	want := []string{"the account entry lists seam, which the file does not", "the notebook entry lists seam, which the file does not"}
-	if got := toolListDiffOfApp(t, []mcpserver.Tool{seam}); !slices.Equal(got, want) {
+	seam := func(name string, e mcpserver.Entry) mcpserver.Tool {
+		return mcpserver.NewTool(mcpserver.Spec{Name: name, Title: "Seam", Description: "A test's tool.", Entry: e},
+			func(context.Context, mcpserver.Call, struct{}) (mcpserver.Result, error) {
+				return mcpserver.Result{Structured: map[string]any{}}, nil
+			})
+	}
+	want := []string{"the account entry lists seam_account, which the file does not",
+		"the notebook entry lists seam_notebook, which the file does not"}
+	got := toolListDiffOfApp(t, []mcpserver.Tool{seam("seam_notebook", mcpserver.NotebookEntry), seam("seam_account", mcpserver.AccountEntry)})
+	if !slices.Equal(got, want) {
 		t.Errorf("the difference = %q, want %q", got, want)
 	}
 }

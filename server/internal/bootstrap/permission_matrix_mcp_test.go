@@ -28,7 +28,7 @@ type mcpRow struct {
 	tool    string
 	entries mcpserver.Entry
 	write   bool                                    // the call writes: its cells run on a copy of the database (P2 on)
-	args    func(c caller, s seeded) map[string]any // the call's arguments, the account entry's notebook added by the runner
+	args    func(c caller, s seeded) map[string]any // the call's arguments, the account entry's notebook added by the runner (takesNotebook)
 	want    func(c caller) mcpCell                  // the cell
 	// check, when set, runs on each answer that is a success: what it
 	// holds for that column.
@@ -169,6 +169,43 @@ func TestMCPMatrixViolationsCatchesEachGap(t *testing.T) {
 	}
 }
 
+// takesNotebook are the tools whose account entry's schema in the file
+// requires a notebook: the runner adds the column's notebook to that
+// entry's call for those alone, a tool of no notebook (S3's notebooks)
+// refusing one as an argument it has not (M9/P1 S1 review B-M1).
+func takesNotebook(lists toolLists) map[string]bool {
+	takes := map[string]bool{}
+	for _, tool := range lists["account"] {
+		spec, _ := tool.(map[string]any)
+		schema, _ := spec["inputSchema"].(map[string]any)
+		required, _ := schema["required"].([]any)
+		name, _ := spec["name"].(string)
+		takes[name] = slices.Contains(required, any("notebook"))
+	}
+	return takes
+}
+
+// The runner gives an account entry's call a notebook only when the
+// file's schema of that entry requires one: list's, not notebooks', nor
+// a schema whose notebook is optional (M9/P1 S1 review B-M1).
+func TestTheMatrixGivesANotebookAsTheFileSays(t *testing.T) {
+	schema := func(required ...any) map[string]any {
+		return map[string]any{"type": "object", "required": required, "properties": map[string]any{"notebook": map[string]any{"type": "string"}}}
+	}
+	lists := toolLists{
+		"notebook": {map[string]any{"name": "notebooks", "inputSchema": schema("notebook")}},
+		"account": {
+			map[string]any{"name": "list", "inputSchema": schema("notebook", "pattern")},
+			map[string]any{"name": "notebooks", "inputSchema": map[string]any{"type": "object", "additionalProperties": false}},
+			map[string]any{"name": "optional", "inputSchema": schema("path")},
+		},
+	}
+	want := map[string]bool{"list": true, "notebooks": false, "optional": false}
+	if got := takesNotebook(lists); !maps.Equal(got, want) {
+		t.Errorf("takesNotebook() = %v, want %v", got, want)
+	}
+}
+
 // gateCells are the notebook columns' cells of REST's listNodes, the
 // rule node.list that lets a call into the notebook entry: a column it
 // answers 404 is the notebook entry's 404 (M9/P1 design 3.6).
@@ -194,6 +231,7 @@ func TestThePermissionMatrixOverMCP(t *testing.T) {
 	if len(rows) == 0 {
 		t.Skip("no tool has a row yet: M9/P1 S2 adds list and read")
 	}
+	takes := takesNotebook(readToolLists(t))
 	d := prepareMatrix(t)
 	pats := map[caller]string{}
 	created := t.Run("tokens", func(t *testing.T) {
@@ -244,7 +282,10 @@ func TestThePermissionMatrixOverMCP(t *testing.T) {
 					}
 					path := atNotebook(notebook)
 					if entry == mcpserver.AccountEntry {
-						path, args["notebook"] = mcpserver.Pattern, notebook
+						path = mcpserver.Pattern
+						if takes[r.tool] {
+							args["notebook"] = notebook
+						}
 					}
 					a := m.call(t, path, r.tool, args)
 					got := mcpCellOf(t, a)

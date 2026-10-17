@@ -103,6 +103,32 @@ func (c *Contract) checkProblemCode(op *openapi3.Operation, header http.Header, 
 	return nil
 }
 
+// ProblemCodes are every code a problem of the contract may carry, once
+// each, sorted: the top level's, each operation's own, and unauthorized
+// when an operation needs a token. An MCP tool's error carries one of
+// them (M9 design 4.7): api/mcp/tools.json declares none of its own.
+func (c *Contract) ProblemCodes(t testing.TB) []string {
+	t.Helper()
+	codes, _, err := problemCodes(c.doc.Extensions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range c.doc.Paths.Map() {
+		for _, op := range item.Operations() {
+			own, _, err := problemCodes(op.Extensions)
+			if err != nil {
+				t.Fatalf("%s: %v", op.OperationID, err)
+			}
+			codes = append(codes, own...)
+			if needsToken(op) {
+				codes = append(codes, "unauthorized")
+			}
+		}
+	}
+	slices.Sort(codes)
+	return slices.Compact(codes)
+}
+
 // answered records, process-wide, the problem codes each operation answered
 // through CheckResponse: Main reads what every test of the binary recorded.
 var answered = &recorder{codes: map[string]map[string]bool{}} //nolint:gochecknoglobals // shared by every test of the binary and Main

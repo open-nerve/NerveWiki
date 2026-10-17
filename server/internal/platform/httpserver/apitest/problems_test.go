@@ -100,6 +100,20 @@ func TestValidateResponseChecksTheProblemCode(t *testing.T) {
 	}
 }
 
+// ProblemCodes are the top level's, every operation's, and unauthorized
+// of the operation that needs a token, once each.
+func TestProblemCodesAreEveryCodeDeclared(t *testing.T) {
+	doc := strings.Replace(thingsContract, "x-problem-codes: []", "x-problem-codes: [things.taken, things.gone]", 1)
+	want := []string{"bad_request", "internal_error", "things.gone", "things.taken", "unauthorized"}
+	if got := contractFrom(t, doc).ProblemCodes(t); !slices.Equal(got, want) {
+		t.Errorf("ProblemCodes() = %q, want %q", got, want)
+	}
+	public := strings.Replace(thingsContract, "security: [{bearer: []}]", "security: []", 1)
+	if got := contractFrom(t, public).ProblemCodes(t); slices.Contains(got, "unauthorized") {
+		t.Errorf("ProblemCodes() of public operations = %q, want no unauthorized", got)
+	}
+}
+
 // forget drops what r recorded for operationID: a test that asserts what the
 // recorder holds starts from nothing, however often -count runs it.
 func (r *recorder) forget(operationID string) {

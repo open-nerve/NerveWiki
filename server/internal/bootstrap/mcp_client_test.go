@@ -3,10 +3,13 @@ package bootstrap
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -265,7 +268,7 @@ func (a mcpAnswer) result(t testing.TB) map[string]any {
 }
 
 // toolError is structuredContent.error of a tool's error, failing on a
-// result that is no error.
+// result that is no error, or on a code the contract does not declare.
 func toolError(t testing.TB, r map[string]any) map[string]any {
 	t.Helper()
 	sc, _ := r["structuredContent"].(map[string]any)
@@ -273,7 +276,37 @@ func toolError(t testing.TB, r map[string]any) map[string]any {
 	if r["isError"] != true || !ok {
 		t.Fatalf("result %v is no tool error", r)
 	}
+	code, _ := member["code"].(string)
+	if err := undeclaredToolCode(code, declaredCodes(t)); err != nil {
+		t.Error(err)
+	}
 	return member
+}
+
+// declared holds the contract's problem codes, read once: every test's
+// tool errors are checked against them.
+var declared struct { //nolint:gochecknoglobals // read once, read only
+	once  sync.Once
+	codes []string
+}
+
+// declaredCodes are the codes a tool's error may carry (M9 design 4.7):
+// the contract's, every operation's (apitest's ProblemCodes); P3 adds
+// page.batch_too_large, MCP's own.
+func declaredCodes(t testing.TB) []string {
+	t.Helper()
+	declared.once.Do(func() { declared.codes = apitest.Load(t).ProblemCodes(t) })
+	return declared.codes
+}
+
+// undeclaredToolCode is the error of a tool error's code that codes do
+// not hold: tools.json has no codes, so a module's adapter could answer
+// one nobody declared (M9/P1 S1 review B).
+func undeclaredToolCode(code string, codes []string) error {
+	if slices.Contains(codes, code) {
+		return nil
+	}
+	return fmt.Errorf("a tool's error has the code %q, which the contract does not declare (M9 design 4.7)", code)
 }
 
 // withToken adds a token to every request of a client.
@@ -364,3 +397,35 @@ func (m *mcpApp) loggedAt(t testing.TB, level string) []map[string]any {
 	}
 	return found
 }
+
+// A tool error's code is one the contract declares: the codes mcpserver
+// answers itself and a module's are; a code of nobody's fails the test
+// that reads it, through toolError, as mcpCellOf does.
+func TestAToolErrorsCodeIsDeclared(t *testing.T) {
+	codes := declaredCodes(t)
+	for _, code := range []string{"bad_request", "internal_error", "notebook.not_found", "page.not_found", "validation_failed", "page.locked"} {
+		if err := undeclaredToolCode(code, codes); err != nil {
+			t.Error(err)
+		}
+	}
+	for _, code := range []string{"page.nope", "", "Bad_Request"} {
+		if undeclaredToolCode(code, codes) == nil {
+			t.Errorf("the code %q passes, want it refused", code)
+		}
+	}
+	for code, failed := range map[string]bool{"page.not_found": false, "page.nope": true} {
+		rec := &recordingTB{TB: t}
+		toolError(rec, map[string]any{"isError": true, "structuredContent": map[string]any{"error": map[string]any{"code": code}}})
+		if (len(rec.errs) != 0) != failed {
+			t.Errorf("toolError of %q failed with %q, want failed %v", code, rec.errs, failed)
+		}
+	}
+}
+
+// recordingTB is t, its errors recorded rather than failing it.
+type recordingTB struct {
+	testing.TB
+	errs []string
+}
+
+func (r *recordingTB) Error(args ...any) { r.errs = append(r.errs, fmt.Sprint(args...)) }
