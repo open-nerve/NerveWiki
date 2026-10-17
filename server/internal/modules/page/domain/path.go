@@ -22,10 +22,11 @@ const pageSuffix = ".md"
 
 // Path is a path from a notebook's root (M9 design 4.8).
 type Path struct {
-	Titles []string // each segment's title, the last a page's title without ".md" or an attachment's name
-	Keys   []string // shared.TitleKey of each
-	Kind   Kind     // the last segment's: KindPage when it ends with ".md", in any case
-	Dir    bool     // list's "A/": the children of the page A; no Titles for the root
+	Written string   // the path as given, which a not found's answer repeats
+	Titles  []string // each segment's title, the last a page's title without ".md" or an attachment's name
+	Keys    []string // shared.TitleKey of each
+	Kind    Kind     // the last segment's: KindPage when it ends with ".md", in any case
+	Dir     bool     // list's "A/": the children of the page A; no Titles for the root
 }
 
 // ParsePath checks s as field, a path: one leading "/" may go; "./", ".."
@@ -37,11 +38,12 @@ func ParsePath(field, s string, dir bool) (Path, error) {
 	if len(s) > MaxPathBytes {
 		return Path{}, invalidPath(field, shared.FieldTooLong, fmt.Sprintf("must be at most %d bytes", MaxPathBytes))
 	}
+	p := Path{Written: s}
 	s = strings.TrimPrefix(s, "/")
-	var p Path
 	switch {
 	case dir && s == "":
-		return Path{Kind: KindPage, Dir: true}, nil
+		p.Kind, p.Dir = KindPage, true
+		return p, nil
 	case dir && strings.HasSuffix(s, "/"):
 		s, p.Dir, p.Kind = strings.TrimSuffix(s, "/"), true, KindPage
 	case strings.HasSuffix(s, "/"):

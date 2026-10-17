@@ -1278,3 +1278,36 @@ func (f *fixture) asAlice() context.Context {
 func (f *fixture) called(call string) bool {
 	return slices.Contains(f.rec.calls, call)
 }
+
+// RootByKey finds a root of the notebook by its key, a call (M9/P1).
+func (f *fakeStore) RootByKey(ctx context.Context, notebookID uuid.UUID, key string) (domain.Node, bool, error) {
+	f.record(ctx, "RootByKey")
+	return f.byKey(notebookID, nil, key)
+}
+
+// ChildByKey finds a child of the parent by its key, a call.
+func (f *fakeStore) ChildByKey(ctx context.Context, notebookID, parentID uuid.UUID, key string) (domain.Node, bool, error) {
+	f.record(ctx, "ChildByKey")
+	return f.byKey(notebookID, &parentID, key)
+}
+
+func (f *fakeStore) byKey(notebookID uuid.UUID, parentID *uuid.UUID, key string) (domain.Node, bool, error) {
+	for _, n := range f.nodes {
+		if n.NotebookID == notebookID && sameParent(n.ParentID, parentID) && n.NameKey == key {
+			return n, true, nil
+		}
+	}
+	return domain.Node{}, false, nil
+}
+
+// PageStates reads the pages' contents' states, a call with their count.
+func (f *fakeStore) PageStates(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]app.PageState, error) {
+	f.record(ctx, fmt.Sprintf("PageStates %d", len(ids)))
+	out := map[uuid.UUID]app.PageState{}
+	for _, id := range ids {
+		if c, ok := f.contents[id]; ok {
+			out[id] = app.PageState{Revision: c.Revision, Bytes: c.ByteSize, UpdatedAt: c.At}
+		}
+	}
+	return out, nil
+}
