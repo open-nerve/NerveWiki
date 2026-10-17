@@ -21,6 +21,8 @@ assets
 healthz
 mcp
 readyz
+# register：OAuth 的客户端找不到元数据时在这里做动态注册，服务端答 OAuth 的错误（M9/P1 S1 的客户端试用）
+register
 
 [reserved]
 admin

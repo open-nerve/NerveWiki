@@ -10,6 +10,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/platform/buildinfo"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/bodyshape"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/mcpserver"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
@@ -52,9 +53,17 @@ func mcpCredentials(ctx context.Context) (mcpserver.Credential, bool) {
 // mountMCP mounts the MCP server on /mcp behind the per-route middlewares,
 // without a method: GET and DELETE reach the SDK's 405 rather than the web
 // app. The paths below it and under /.well-known/ answer 404 problem+json,
-// not the web app's page that a client would read as OAuth's metadata.
+// not the web app's page that a client would read as OAuth's metadata;
+// OAuth's registration at the origin answers OAuth's error, behind the
+// per-route middlewares too, without a token (mcpPublicOperations), its
+// body never read.
 func mountMCP(router *httpserver.Router, api *httpserver.API, srv *mcpserver.Server) {
 	router.Handle(mcpserver.Pattern, api.Wrap(srv, mcpserver.Bodies()))
 	router.Handle(mcpserver.Pattern+"/", mcpserver.Subtree())
 	router.Handle("/.well-known/", mcpserver.WellKnown())
+	router.Handle(mcpserver.RegisterPattern, api.Wrap(mcpserver.Register(), &bodyshape.Table{}))
 }
+
+// mcpPublicOperations are the MCP routes that need no token: the client
+// that posts its OAuth registration has none.
+func mcpPublicOperations() []string { return []string{mcpserver.RegisterPattern} }

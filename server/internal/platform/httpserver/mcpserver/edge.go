@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/url"
@@ -39,6 +40,10 @@ func Subtree() http.Handler {
 	})
 }
 
+// noOAuth is what a client looking for OAuth is told, under /.well-known/
+// and at RegisterPattern alike.
+const noOAuth = "This server has no OAuth: MCP takes a personal access token in the Authorization header."
+
 // WellKnown answers every path under /.well-known/, where an MCP client
 // that got a 401 looks for OAuth's metadata (M9 design 4.4): 404
 // problem+json, so that it finds no OAuth rather than the web app's page.
@@ -48,9 +53,35 @@ func WellKnown() http.Handler {
 			Status: http.StatusNotFound,
 			Code:   httpserver.CodeNotFound,
 			Title:  http.StatusText(http.StatusNotFound),
-			Detail: "This server has no OAuth: MCP takes a personal access token in the Authorization header.",
+			Detail: noOAuth,
 		})
 	})
+}
+
+// RegisterPattern is OAuth's dynamic client registration at the origin,
+// where a client turns when no metadata names an authorization server
+// (the default endpoints of MCP 2025-03-26): the TypeScript SDK posts its
+// registration there after the 404s under /.well-known/, and shows what
+// answers it as an OAuth error (M9/P1 S1's client trial, step 4b).
+const RegisterPattern = "POST /register"
+
+// Register answers RegisterPattern with OAuth's error, 400
+// invalid_client_metadata (RFC 7591 3.2.2), never stored: a client shows
+// its error_description as it is, where the web app's 405 would be a JSON
+// parse error. It reads no body.
+func Register() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(oauthError{Error: "invalid_client_metadata", Description: noOAuth}) // nothing to do if the client is gone
+	})
+}
+
+// oauthError is an OAuth error response (RFC 6749 5.2, RFC 7591 3.2.2).
+type oauthError struct {
+	Error       string `json:"error"`
+	Description string `json:"error_description"`
 }
 
 // forbidden is the 403 of a credential that is valid but no personal

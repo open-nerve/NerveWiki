@@ -216,8 +216,8 @@ func TestTheMCPCallStopsWhenTheClientGoes(t *testing.T) {
 }
 
 // Every answer of the MCP routes is no-store: the SDK's result, its
-// notification's 202 and 405, the edge's problems, and the 404s below
-// /mcp/ and /.well-known/.
+// notification's 202 and 405, the edge's problems, the 404s below /mcp/
+// and /.well-known/, and OAuth's registration's error.
 func TestEveryMCPAnswerIsNotStored(t *testing.T) {
 	m := startMCPApp(t, mcpTestTools(newMCPSeen()))
 	notification := `{"jsonrpc":"2.0","method":"notifications/initialized"}`
@@ -234,6 +234,7 @@ func TestEveryMCPAnswerIsNotStored(t *testing.T) {
 		{"a notebook not seen", http.MethodPost, atNotebook(m.hidden), m.pat, notification, http.StatusNotFound},
 		{"OAuth's metadata", http.MethodGet, "/.well-known/oauth-protected-resource", "", "", http.StatusNotFound},
 		{"below /mcp/", http.MethodGet, "/mcp/x", "", "", http.StatusNotFound},
+		{"OAuth's registration", http.MethodPost, "/register", "", "{}", http.StatusBadRequest},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -300,6 +301,34 @@ func TestTheMCPHasNoOAuthMetadata(t *testing.T) {
 		a := m.send(t, context.Background(), http.MethodGet, path, "", http.NoBody, nil)
 		if code := a.problem(t, http.StatusNotFound); code != "not_found" || bytes.Contains(a.body, []byte("<title>")) {
 			t.Errorf("GET %s = %d %s, want the 404 problem", path, a.status, a.body)
+		}
+	}
+}
+
+// OAuth's registration at the origin, where an OAuth client turns after
+// the 404s under /.well-known/, answers OAuth's error, whose description
+// the client shows as it is: the 404s' sentence, without a token, never
+// stored. Its other methods are a path's nobody serves: the web app's.
+func TestTheMCPRefusesOAuthRegistration(t *testing.T) {
+	m := startMCPApp(t, nil)
+	hint, _ := m.send(t, context.Background(), http.MethodGet, "/.well-known/oauth-authorization-server", "", http.NoBody, nil).decoded(t)["detail"].(string)
+	if !strings.Contains(hint, "personal access token") {
+		t.Fatalf("the 404's detail = %q, want the hint", hint)
+	}
+	a := m.send(t, context.Background(), http.MethodPost, "/register", "",
+		strings.NewReader(`{"client_name":"whole-program","redirect_uris":["http://127.0.0.1:9/callback"],"token_endpoint_auth_method":"none"}`), nil)
+	want := `{"error":"invalid_client_metadata","error_description":"` + hint + `"}` + "\n"
+	if a.status != http.StatusBadRequest || a.header.Get("Content-Type") != "application/json" ||
+		a.header.Get("Cache-Control") != "no-store" || string(a.body) != want {
+		t.Errorf("POST /register = %d %q %q %q, want 400 application/json no-store %q",
+			a.status, a.header.Get("Content-Type"), a.header.Get("Cache-Control"), a.body, want)
+	}
+	for _, method := range []string{http.MethodGet, http.MethodDelete} {
+		got := m.send(t, context.Background(), method, "/register", "", http.NoBody, nil)
+		other := m.send(t, context.Background(), method, "/no-such-page", "", http.NoBody, nil)
+		if got.status != other.status || got.header.Get("Content-Type") != other.header.Get("Content-Type") {
+			t.Errorf("%s /register = %d %q, want what %s of a path nobody serves answers: %d %q",
+				method, got.status, got.header.Get("Content-Type"), method, other.status, other.header.Get("Content-Type"))
 		}
 	}
 }

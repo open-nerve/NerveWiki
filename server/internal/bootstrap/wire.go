@@ -168,7 +168,8 @@ func wireApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrat
 	bodies := maps.Clone(pg.BodyLimits())
 	bodies[mcpserver.Pattern] = mcpBodyLimit
 	api, err := httpserver.NewAPI(apiConfig(cfg, logger, limiter, ident.Authenticator(),
-		slices.Concat(ident.PublicOperations(), inst.PublicOperations(), ws.PublicOperations(), as.PublicOperations(), tr.PublicOperations()),
+		slices.Concat(ident.PublicOperations(), inst.PublicOperations(), ws.PublicOperations(), as.PublicOperations(), tr.PublicOperations(),
+			mcpPublicOperations()),
 		ident.RequestTimeouts(), bodies))
 	if err != nil {
 		return nil, err
