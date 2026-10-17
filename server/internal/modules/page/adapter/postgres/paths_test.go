@@ -83,62 +83,177 @@ func TestPageStates(t *testing.T) {
 	}
 }
 
-// The path's lookups read a notebook's nodes of the one title key, by an
-// index whose condition is the notebook and the key, without statistics:
-// PostgreSQL 18 takes the titles' index (notebook_id, name_key), the
-// smaller of two equal costs, over the siblings' unique index, and checks
-// the parent on the rows (a root's IS NULL, which IS NOT DISTINCT FROM
-// would not narrow, M9/P1 design 2.1 item 13, 3.9.2); list's pages'
-// states read by the contents' key, a page of 1,000 (3.10.3). Scans of
-// whole tables off, as the other plans' tests have them: the tables here
-// are small.
+// lookupPlan is a path lookup's statement and the index it reads by: each
+// column given an equality in the index's condition, the others checked on
+// the row.
+type lookupPlan struct {
+	name    string
+	s       statement
+	index   string
+	columns []string
+	filter  []string
+}
+
+// rootPlan and childPlan are RootByKey's and ChildByKey's lookups.
+func rootPlan(t *testing.T, notebook uuid.UUID, key string) lookupPlan {
+	return lookupPlan{"RootByKey(" + key + ")", statementOf(t, func(q *gen.Queries) error {
+		_, err := q.RootByKey(context.Background(), gen.RootByKeyParams{NotebookID: notebook, NameKey: key})
+		return err
+	}), "nodes_notebook_id_name_key_root_key", []string{"notebook_id", "name_key"}, nil}
+}
+
+func childPlan(t *testing.T, notebook, parent uuid.UUID, key string) lookupPlan {
+	return lookupPlan{"ChildByKey(" + key + ")", statementOf(t, func(q *gen.Queries) error {
+		_, err := q.ChildByKey(context.Background(), gen.ChildByKeyParams{NotebookID: notebook, ParentID: &parent, NameKey: key})
+		return err
+	}), "nodes_parent_id_name_key_key", []string{"parent_id", "name_key"}, []string{"notebook_id"}}
+}
+
+// check fails t unless plan reads nodes once, by l's index, every column
+// of the index an equality of its condition and l's others of the row's.
+func (l lookupPlan) check(t *testing.T, stage string, plan planNode, raw string) {
+	t.Helper()
+	scans := plan.all(func(n *planNode) bool { return n.Relation == "nodes" })
+	if len(scans) != 1 || !reads("nodes", l.index, "")(scans[0]) {
+		t.Errorf("%s, %s, reads nodes by other than %s:\n%s", l.name, stage, l.index, raw)
+		return
+	}
+	cond := scans[0].IndexCond
+	for _, bitmap := range scans[0].all(func(n *planNode) bool { return n.Index == l.index }) {
+		cond += " " + bitmap.IndexCond
+	}
+	for _, column := range l.columns {
+		if !strings.Contains(cond, "(nodes."+column+" = ") {
+			t.Errorf("%s, %s: the index's condition %q has no equality of %s", l.name, stage, cond, column)
+		}
+	}
+	for _, column := range l.filter {
+		if !strings.Contains(scans[0].Filter, "(nodes."+column+" = ") {
+			t.Errorf("%s, %s: the filter %q has no equality of %s", l.name, stage, scans[0].Filter, column)
+		}
+	}
+}
+
+// The path's lookups are point lookups (M9/P1 design 3.9.2): a root read by
+// the roots' unique index (notebook_id, name_key), a child by the
+// children's (parent_id, name_key), 00042's, each column of the index an
+// equality of its condition, with the production settings. On the shapes
+// of data the notebook's other indexes were taken on (M9/P1 S2 review,
+// A-I1 and C-I2), each without statistics and analyzed, each plan for its
+// arguments and generic, as pgx's cached statements get either:
+//   - folders: 1,000 folders, each with C1 to C100 and a README, a root
+//     README, and 50,000 roots in another notebook: keys shared by many
+//     parents' children (the titles' index read every node of the key);
+//   - one key: 20,000 roots, each with a child "notes", a root "notes", and
+//     a root README in each of 2,002 notebooks: a key shared by most nodes,
+//     and by roots across notebooks (analyzed, a root was read by a scan of
+//     the table);
+//   - a wide folder: one of 20,000 children among 20,001 roots, each root
+//     with a child of a key the folder has too (the parents' index read
+//     every child of the parent, and every root; and a folder's share of
+//     the rows times a key's is many rows, but for a unique index).
+//
+// IS NOT DISTINCT FROM, either index gone, or one not unique, fail here.
 func TestThePathLookupsArePointLookups(t *testing.T) {
+	const insert = `INSERT INTO nodes (id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id,
+		created_at, updated_at) `
+	for _, tt := range []struct {
+		name    string
+		seed    func(f fixture)
+		lookups func(f fixture) []lookupPlan
+	}{
+		{"folders", func(f fixture) {
+			f.exec(t, insert+`SELECT uuidv7(), $1, NULL, 'page', 'F' || i, 'f' || i, i, $2, $2, $3, $3 FROM generate_series(1, 1000) i`,
+				f.eng, f.alice, now())
+			f.exec(t, insert+`VALUES (uuidv7(), $1, NULL, 'page', 'README', 'readme', 0, $2, $2, $3, $3)`, f.eng, f.alice, now())
+			f.exec(t, insert+`SELECT uuidv7(), $1, p.id, 'page', 'C' || i, 'c' || i, i, $2, $2, $3, $3
+				FROM nodes p, generate_series(1, 100) i WHERE p.notebook_id = $1 AND p.name LIKE 'F%'`, f.eng, f.alice, now())
+			f.exec(t, insert+`SELECT uuidv7(), $1, p.id, 'page', 'README', 'readme', 0, $2, $2, $3, $3
+				FROM nodes p WHERE p.notebook_id = $1 AND p.parent_id IS NULL AND p.name LIKE 'F%'`, f.eng, f.alice, now())
+			f.exec(t, insert+`SELECT uuidv7(), $1, NULL, 'page', 'O' || i, 'o' || i, i, $2, $2, $3, $3 FROM generate_series(1, 50000) i`,
+				f.ops, f.alice, now())
+		}, func(f fixture) []lookupPlan {
+			f7 := f.idOf(t, f.eng, "F7")
+			return []lookupPlan{rootPlan(t, f.eng, "readme"), rootPlan(t, f.eng, "c7"), childPlan(t, f.eng, f7, "readme"),
+				childPlan(t, f.eng, f7, "c7")}
+		}},
+		{"one key", func(f fixture) {
+			f.exec(t, insert+`SELECT uuidv7(), $1, NULL, 'page', 'R' || i, 'r' || i, i, $2, $2, $3, $3 FROM generate_series(1, 20000) i`,
+				f.eng, f.alice, now())
+			f.exec(t, insert+`SELECT uuidv7(), $1, p.id, 'page', 'notes', 'notes', 0, $2, $2, $3, $3 FROM nodes p WHERE p.notebook_id = $1`,
+				f.eng, f.alice, now())
+			f.exec(t, insert+`VALUES (uuidv7(), $1, NULL, 'page', 'notes', 'notes', 0, $2, $2, $3, $3)`, f.eng, f.alice, now())
+			f.exec(t, `INSERT INTO notebooks (id, workspace_id, name, created_by_id, updated_by_id, created_at, updated_at)
+				SELECT uuidv7(), workspace_id, 'N' || i, $2, $2, $3, $3 FROM notebooks, generate_series(1, 2000) i WHERE id = $1`,
+				f.eng, f.alice, now())
+			f.exec(t, insert+`SELECT uuidv7(), id, NULL, 'page', 'README', 'readme', 0, $1, $1, $2, $2 FROM notebooks`, f.alice, now())
+		}, func(f fixture) []lookupPlan {
+			return []lookupPlan{rootPlan(t, f.eng, "notes"), rootPlan(t, f.eng, "readme"), childPlan(t, f.eng, f.idOf(t, f.eng, "R7"), "notes")}
+		}},
+		{"a wide folder", func(f fixture) {
+			f.exec(t, insert+`SELECT uuidv7(), $1, NULL, 'page', 'R' || i, 'r' || i, i, $2, $2, $3, $3 FROM generate_series(1, 20000) i`,
+				f.eng, f.alice, now())
+			f.exec(t, insert+`VALUES (uuidv7(), $1, NULL, 'page', 'W', 'w', 0, $2, $2, $3, $3)`, f.eng, f.alice, now())
+			f.exec(t, insert+`SELECT uuidv7(), $1, p.id, 'page', 'C' || i, 'c' || i, i, $2, $2, $3, $3
+				FROM nodes p, generate_series(1, 20000) i WHERE p.notebook_id = $1 AND p.name = 'W'`, f.eng, f.alice, now())
+			f.exec(t, insert+`SELECT uuidv7(), $1, p.id, 'page', 'C7', 'c7', 0, $2, $2, $3, $3
+				FROM nodes p WHERE p.notebook_id = $1 AND p.name LIKE 'R%'`, f.eng, f.alice, now())
+		}, func(f fixture) []lookupPlan {
+			return []lookupPlan{rootPlan(t, f.eng, "r7"), childPlan(t, f.eng, f.idOf(t, f.eng, "W"), "c7")}
+		}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newFixture(t)
+			tt.seed(f)
+			lookups := tt.lookups(f)
+			for _, stage := range []string{"without statistics", "analyzed"} {
+				if stage == "analyzed" {
+					f.exec(t, "ANALYZE nodes")
+				}
+				for _, l := range lookups {
+					plan, raw := f.planTreeWith(t, l.s)
+					l.check(t, stage+", for its arguments", plan, raw)
+					plan, raw = f.genericPlanTree(t, l.s.sql)
+					l.check(t, stage+", generic", plan, raw)
+				}
+			}
+		})
+	}
+}
+
+// idOf is the id of the node of notebook named name.
+func (f fixture) idOf(t *testing.T, notebook uuid.UUID, name string) uuid.UUID {
+	t.Helper()
+	var id uuid.UUID
+	if err := f.pool.QueryRow(context.Background(), `SELECT id FROM nodes WHERE notebook_id = $1 AND name = $2`, notebook, name).
+		Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
+// list's pages' states are read by the contents' key, a page of 1,000
+// (M9/P1 design 3.10.3). Scans of whole tables off, as the other plans'
+// tests have them: the table here is small.
+func TestPageStatesReadByTheContentsKey(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
 	ids := f.nodes(t, f.eng, "P", 2000)
-	f.exec(t, `INSERT INTO nodes (id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id,
-			created_at, updated_at)
-		SELECT uuidv7(), $1, $2, 'page', 'C' || i, 'c' || i, i, $3, $3, $4, $4 FROM generate_series(1, 2000) i`, f.eng, ids[0], f.alice, now())
 	f.exec(t, `INSERT INTO page_contents (node_id, content, revision, content_hash, byte_size, updated_by_id, updated_at)
 		SELECT id, '', 1, sha256(''), 0, $2, $3 FROM unnest($1::uuid[]) id`, ids, f.alice, now())
-	byKey := []string{"nodes_notebook_id_name_key_idx", "nodes_notebook_id_parent_id_name_key_idx"}
-	for _, tt := range []struct {
-		name    string
-		s       statement
-		table   string
-		indexes []string
-		columns []string
-	}{
-		{"RootByKey", statementOf(t, func(q *gen.Queries) error {
-			_, err := q.RootByKey(ctx, gen.RootByKeyParams{NotebookID: f.eng, NameKey: "p7"})
-			return err
-		}), "nodes", byKey, []string{"notebook_id", "name_key"}},
-		{"ChildByKey", statementOf(t, func(q *gen.Queries) error {
-			_, err := q.ChildByKey(ctx, gen.ChildByKeyParams{NotebookID: f.eng, ParentID: &ids[0], NameKey: "c7"})
-			return err
-		}), "nodes", byKey, []string{"notebook_id", "name_key"}},
-		{"PageStates", statementOf(t, func(q *gen.Queries) error {
-			_, err := q.PageStates(ctx, ids[:1000])
-			return err
-		}), "page_contents", []string{"page_contents_pkey"}, []string{"node_id"}},
-	} {
-		plan, raw := f.planTreeOf(t, tt.s)
-		var scans []*planNode
-		for _, index := range tt.indexes {
-			scans = append(scans, plan.all(reads(tt.table, index, ""))...)
-		}
-		if len(scans) != 1 || len(plan.all(seqScan)) > 0 {
-			t.Errorf("%s does not read %s by one of %q:\n%s", tt.name, tt.table, tt.indexes, raw)
-			continue
-		}
-		cond := scans[0].IndexCond
-		for _, bitmap := range scans[0].all(func(n *planNode) bool { return n.IndexCond != "" }) {
-			cond += " " + bitmap.IndexCond
-		}
-		for _, column := range tt.columns {
-			if !strings.Contains(cond, "."+column+" ") {
-				t.Errorf("%s's index condition %q lacks %s", tt.name, cond, column)
-			}
-		}
+	plan, raw := f.planTreeOf(t, statementOf(t, func(q *gen.Queries) error {
+		_, err := q.PageStates(ctx, ids[:1000])
+		return err
+	}))
+	scans := plan.all(reads("page_contents", "page_contents_pkey", ""))
+	if len(scans) != 1 || len(plan.all(seqScan)) > 0 {
+		t.Fatalf("PageStates does not read page_contents by its key:\n%s", raw)
+	}
+	cond := scans[0].IndexCond
+	for _, bitmap := range scans[0].all(func(n *planNode) bool { return n.IndexCond != "" }) {
+		cond += " " + bitmap.IndexCond
+	}
+	if !strings.Contains(cond, ".node_id ") {
+		t.Errorf("PageStates' index condition %q lacks node_id", cond)
 	}
 }

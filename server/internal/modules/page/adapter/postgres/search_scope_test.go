@@ -228,8 +228,14 @@ func TestAnUpgradedInstanceBuildsItsSearchAgain(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = m.Close() })
-	if back, err := m.Down(ctx); err != nil || back == nil || back.Version != 41 {
-		t.Fatalf("Down() = %+v, %v; want 00041 undone", back, err)
+	for {
+		back, err := m.Down(ctx)
+		if err != nil || back == nil {
+			t.Fatalf("Down() = %+v, %v; want down to 00040", back, err)
+		}
+		if back.Version == 41 {
+			break
+		}
 	}
 	// The instance before: the rows as 00040's job wrote them, an edit of
 	// Beta's queued exact.

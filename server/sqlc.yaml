@@ -93,6 +93,7 @@ sql:
       - migrations/sql/00038_page_changeset_items_deleted_revision.sql
       - migrations/sql/00040_page_search.sql
       - migrations/sql/00041_page_search_scope.sql
+      - migrations/sql/00042_page_nodes_path_keys.sql
     queries: internal/modules/page/adapter/postgres/queries
     gen:
       go:

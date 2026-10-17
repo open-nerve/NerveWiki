@@ -192,6 +192,58 @@ func TestSiblingNamesAreUnique(t *testing.T) {
 	f.page(t, f.ops, nil, "Straße", 0)
 }
 
+// A name a sibling holds is taken whichever of the siblings' unique
+// indexes tells it: PostgreSQL names the first it checks, in the order
+// they were made, which a database restored from a dump has otherwise.
+// Here the siblings' own index is made again, last: a root's index and a
+// child's tell it first.
+func TestEverySiblingsIndexTellsANameTaken(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	f.exec(t, "DROP INDEX nodes_notebook_id_parent_id_name_key_idx")
+	f.exec(t, `CREATE UNIQUE INDEX nodes_notebook_id_parent_id_name_key_idx ON nodes (notebook_id, parent_id, name_key)
+		NULLS NOT DISTINCT WHERE deleted_at IS NULL`)
+	root := f.page(t, f.eng, nil, "Straße", 0)
+	f.page(t, f.eng, &root.ID, "Notes", 0)
+	other := f.page(t, f.eng, nil, "Other", 1)      // renamed to a root's name
+	child := f.page(t, f.eng, &root.ID, "Child", 1) // renamed to a sibling's name
+	loose := f.page(t, f.eng, nil, "NOTES", 2)      // moved beside its namesake
+	for _, tt := range []struct {
+		name   string
+		parent *uuid.UUID
+		title  string
+		index  string
+	}{
+		{"a root", nil, "STRASSE", "nodes_notebook_id_name_key_root_key"},
+		{"a child", &root.ID, "notes", "nodes_parent_id_name_key_key"},
+	} {
+		title, _ := domain.CheckTitle("title", tt.title)
+		n := domain.Node{ID: uuid.NewV7(), NotebookID: f.eng, ParentID: tt.parent, Kind: domain.KindPage, Name: title.Name,
+			NameKey: title.Key, CreatedBy: f.alice, UpdatedBy: f.alice, CreatedAt: now(), UpdatedAt: now()}
+		_, err := f.pool.Exec(ctx, `INSERT INTO nodes (id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id,
+				updated_by_id, created_at, updated_at) VALUES ($1, $2, $3, 'page', $4, $5, 9, $6, $6, $7, $7)`,
+			n.ID, n.NotebookID, n.ParentID, n.Name, n.NameKey, f.alice, now())
+		if pgErr := (*pgconn.PgError)(nil); !errors.As(err, &pgErr) || pgErr.ConstraintName != tt.index {
+			t.Fatalf("%s named %q beside its sibling breaks %v, want %s first", tt.name, tt.title, err, tt.index)
+		}
+		if err := f.s.CreateNode(ctx, n); !errors.Is(err, domain.ErrTitleTaken) {
+			t.Errorf("CreateNode(%s named %q) = %v, want ErrTitleTaken", tt.name, tt.title, err)
+		}
+	}
+	renamed := []domain.Node{other, child}
+	renamed[0].Name, renamed[0].NameKey = "STRASSE", shared.TitleKey("STRASSE")
+	renamed[1].Name, renamed[1].NameKey = "notes", shared.TitleKey("notes")
+	for _, n := range renamed {
+		if err := f.s.RenameNode(ctx, n); !errors.Is(err, domain.ErrTitleTaken) {
+			t.Errorf("RenameNode(to %q) = %v, want ErrTitleTaken", n.Name, err)
+		}
+	}
+	loose.ParentID = &root.ID
+	if err := f.s.MoveNode(ctx, loose); !errors.Is(err, domain.ErrTitleTaken) {
+		t.Errorf("MoveNode(NOTES beside Notes) = %v, want ErrTitleTaken", err)
+	}
+}
+
 // A parent is in its child's notebook: the foreign key on both columns
 // keeps a tree in one notebook.
 func TestAParentInAnotherNotebook(t *testing.T) {

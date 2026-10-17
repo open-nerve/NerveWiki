@@ -21,8 +21,13 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
 )
 
-// siblingNameKey is the unique index on siblings' name keys.
-const siblingNameKey = "nodes_notebook_id_parent_id_name_key_idx"
+// The unique indexes on siblings' name keys: the siblings' own, and a
+// root's and a child's by a path's segment (00042).
+const (
+	siblingNameKey = "nodes_notebook_id_parent_id_name_key_idx"
+	rootNameKey    = "nodes_notebook_id_name_key_root_key"
+	childNameKey   = "nodes_parent_id_name_key_key"
+)
 
 // Store implements the app's repository ports.
 type Store struct {
@@ -45,11 +50,19 @@ func (s *Store) planned(ctx context.Context) *gen.Queries {
 	return gen.New(postgres.Planned(postgres.DB(ctx, s.pool)))
 }
 
-// uniqueViolation reports whether err broke the unique constraint or index
-// name.
-func uniqueViolation(err error, name string) bool {
+// uniqueViolation reports whether err broke one of the unique constraints
+// or indexes names.
+func uniqueViolation(err error, names ...string) bool {
 	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == name
+	return errors.As(err, &pgErr) && pgErr.Code == "23505" && slices.Contains(names, pgErr.ConstraintName)
+}
+
+// nameTaken reports whether err broke a unique index on siblings' name
+// keys. A name a sibling holds breaks each of them that holds the node, and
+// PostgreSQL names the first it checks, in the order they were made: a
+// database restored from a dump makes them in another.
+func nameTaken(err error) bool {
+	return uniqueViolation(err, siblingNameKey, rootNameKey, childNameKey)
 }
 
 // notFound turns no row into app.ErrNotFound.
@@ -260,7 +273,7 @@ func (s *Store) CreateNode(ctx context.Context, n domain.Node) error {
 		SortOrder: n.SortOrder, By: n.CreatedBy, Now: n.CreatedAt,
 	})
 	switch {
-	case uniqueViolation(err, siblingNameKey):
+	case nameTaken(err):
 		return domain.ErrTitleTaken
 	case err != nil:
 		return fmt.Errorf("create node: %w", err)
@@ -296,7 +309,7 @@ func (s *Store) RenameNode(ctx context.Context, n domain.Node) error {
 		ID: n.ID, Name: n.Name, NameKey: n.NameKey, By: n.UpdatedBy, Now: n.UpdatedAt,
 	})
 	switch {
-	case uniqueViolation(err, siblingNameKey):
+	case nameTaken(err):
 		return domain.ErrTitleTaken
 	case err != nil:
 		return fmt.Errorf("rename node: %w", err)
@@ -310,7 +323,7 @@ func (s *Store) MoveNode(ctx context.Context, n domain.Node) error {
 		ID: n.ID, ParentID: n.ParentID, SortOrder: n.SortOrder, By: n.UpdatedBy, Now: n.UpdatedAt,
 	})
 	switch {
-	case uniqueViolation(err, siblingNameKey):
+	case nameTaken(err):
 		return domain.ErrTitleTaken
 	case err != nil:
 		return fmt.Errorf("move node: %w", err)
@@ -341,7 +354,7 @@ func (s *Store) RestoreNodes(ctx context.Context, r app.Restoration) (app.Restor
 		SortOrder: r.SortOrder, DeletedAt: r.DeletedAt,
 	})
 	switch {
-	case uniqueViolation(err, siblingNameKey):
+	case nameTaken(err):
 		return app.RestoredRows{}, fmt.Errorf("restore nodes: a name a sibling holds, though the unit numbered them: %w", err)
 	case err != nil:
 		return app.RestoredRows{}, fmt.Errorf("restore nodes: %w", err)
