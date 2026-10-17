@@ -382,12 +382,20 @@ func TestAnUnwrittenAnswerIsAProblem(t *testing.T) {
 		t.Errorf("the log has %v, want the deadline at warn", e)
 	}
 
-	gone := serveMCP(t, setup{options: func(o *Options) { o.Tools = append(o.Tools, slow) }})
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
-	defer cancel()
-	gone.post(t, ctx, Pattern, patToken, `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"slow","arguments":{}}}`, v2025())
-	deadline := time.Now().Add(3 * time.Second)
-	for (gone.logs.find(t, "client went away") == nil || gone.logs.find(t, "MCP tool call") == nil) && time.Now().Before(deadline) {
+	// A tool that outlives the client (stubborn) leaves the answer
+	// unwritten, which ServeHTTP logs; one that stops on its context
+	// (slow) logs its call's client gone, and the SDK may or may not
+	// write its error into the closed connection first, so the unwritten
+	// line is not its to promise.
+	gone := serveMCP(t, setup{options: func(o *Options) { o.Tools = append(o.Tools, stubborn, slow) }})
+	for _, tool := range []string{"stubborn", "slow"} {
+		ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+		gone.post(t, ctx, Pattern, patToken, `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"`+tool+`","arguments":{}}}`, v2025())
+		cancel()
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for (gone.logs.find(t, "client went away") == nil || gone.logs.find(t, "MCP client went away") == nil ||
+		callLine(t, gone.logs, "stubborn") == nil) && time.Now().Before(deadline) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	if e := gone.logs.find(t, "client went away"); e == nil || e["level"] != "DEBUG" {
