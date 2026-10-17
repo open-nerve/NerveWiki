@@ -64,11 +64,12 @@ func pageAttachmentErr(err error) error {
 
 // mcpServer is the MCP server of both entries: tools, the personal access
 // tokens of the per-route middlewares' authentication, page's notebook
-// entry, and each call's work within server.request_timeout.
+// entry and the account entry's instructions, and each call's work within
+// server.request_timeout.
 func mcpServer(cfg config.Config, logger *slog.Logger, api *httpserver.API, pg *page.Module, tools []mcpserver.Tool) *mcpserver.Server {
 	return mcpserver.New(mcpserver.Options{
 		Name: "nervewiki", Version: buildinfo.Get().Version, Tools: tools,
-		Credentials: mcpCredentials, Notebooks: pg.MCPEntry(), Errors: api.Errors,
+		Credentials: mcpCredentials, Notebooks: pg.MCPEntry(), Account: page.AccountInstructions(), Errors: api.Errors,
 		RequestTimeout: cfg.Server.RequestTimeout, MaxBodyBytes: mcpBodyLimit, Logger: logger,
 	})
 }

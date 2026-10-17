@@ -36,7 +36,7 @@ type Options struct {
 	Prompts       []Prompt // none in M9's production wiring; the platform test's double (M9/P1 design 3.4.7)
 	Credentials   func(ctx context.Context) (Credential, bool)
 	Notebooks     Notebooks   // the notebook entry's gate and instructions
-	Account       string      // the account entry's instructions (S3; "" sends none)
+	Account       string      // the account entry's instructions ("" sends none)
 	Names         ClientNames // the client names (S3; nil: every call's client is UnknownClient)
 	Errors        httpserver.APIErrors
 	// RequestTimeout is server.request_timeout: a call's work from the
@@ -57,7 +57,8 @@ type Notebooks interface {
 	// answers without a read, are notebook.not_found.
 	Gate(ctx context.Context, notebookID uuid.UUID) error
 	// Instructions are the notebook's instructions for an initialize, ""
-	// for none (S3).
+	// for none: a handshake of the notebook entry reads them, no other
+	// method.
 	Instructions(ctx context.Context, notebookID uuid.UUID) (string, error)
 }
 
@@ -75,6 +76,7 @@ type ClientNames interface {
 type Server struct {
 	credentials    func(ctx context.Context) (Credential, bool)
 	notebooks      Notebooks
+	account        string // the account entry's instructions
 	names          ClientNames
 	errors         httpserver.APIErrors
 	requestTimeout time.Duration
@@ -114,7 +116,7 @@ func New(o Options) *Server {
 		panic("mcpserver: the request timeout and the body limit must be positive")
 	}
 	s := &Server{
-		credentials: o.Credentials, notebooks: o.Notebooks, names: o.Names, errors: o.Errors,
+		credentials: o.Credentials, notebooks: o.Notebooks, account: o.Account, names: o.Names, errors: o.Errors,
 		requestTimeout: o.RequestTimeout, logger: o.Logger,
 	}
 	sdk := sdkLogger(o.Logger)

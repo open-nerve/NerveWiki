@@ -180,6 +180,13 @@ type PathStore interface {
 	ChildByKey(ctx context.Context, notebookID, parentID uuid.UUID, key string) (domain.Node, bool, error)
 }
 
+// AgentsStore finds a notebook's AGENTS page: its root node whose title
+// key is TitleKey("AGENTS"), with its title now and its content's
+// revision, unlocked.
+type AgentsStore interface {
+	AgentsPage(ctx context.Context, notebookID uuid.UUID, key string) (node uuid.UUID, kind domain.Kind, title string, revision int, ok bool, err error)
+}
+
 // PageStates reads the pages' contents as MCP's list tells them, and
 // which of its attachments are alive.
 type PageStates interface {

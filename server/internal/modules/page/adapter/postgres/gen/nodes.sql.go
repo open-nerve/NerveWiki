@@ -12,6 +12,44 @@ import (
 	"uuid"
 )
 
+const agentsPage = `-- name: AgentsPage :one
+SELECT n.id, n.kind, n.name,
+    coalesce((SELECT c.revision FROM page_contents c WHERE c.node_id = n.id AND c.deleted_at IS NULL), 0)::integer
+        AS revision
+FROM nodes n
+WHERE n.notebook_id = $1 AND n.parent_id IS NULL AND n.name_key = $2
+    AND n.deleted_at IS NULL
+`
+
+type AgentsPageParams struct {
+	NotebookID uuid.UUID
+	NameKey    string
+}
+
+type AgentsPageRow struct {
+	ID       uuid.UUID
+	Kind     string
+	Name     string
+	Revision int32
+}
+
+// The notebook's root node whose title key is name_key, TitleKey("AGENTS"), with its title now and its content's
+// revision when it is a page, 0 for none (M9 design 4.6; M9/P1 design 3.15.1): one point lookup by the roots' unique
+// index (00042), as RootByKey, and the content by its key. The revision is a subquery of the node found, not a join: a
+// key that many nodes share, an AGENTS page in each folder, is estimated as many rows once analyzed, and a join of
+// them read the contents of every notebook by a hash.
+func (q *Queries) AgentsPage(ctx context.Context, arg AgentsPageParams) (AgentsPageRow, error) {
+	row := q.db.QueryRow(ctx, agentsPage, arg.NotebookID, arg.NameKey)
+	var i AgentsPageRow
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.Name,
+		&i.Revision,
+	)
+	return i, err
+}
+
 const aliveNodes = `-- name: AliveNodes :many
 SELECT id FROM nodes WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL
 `

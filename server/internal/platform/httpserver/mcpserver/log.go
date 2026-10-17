@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 	"uuid"
@@ -36,23 +37,44 @@ func (h warnAndAbove) WithGroup(name string) slog.Handler {
 	return warnAndAbove{h.Handler.WithGroup(name)}
 }
 
-// handshake fills an initialize's result: the instructions (S3), and
-// logs it; it records a client's name told by any request (S3).
+// handshake fills an initialize's result: the instructions of its entry,
+// read after the SDK answered, so that no other method reads them (M9/P1
+// design 3.15.2), and logs it; it records a client's name told by any
+// request (S3). The result is this request's own: setting its
+// instructions changes no other's. Instructions that fail to read are the
+// handshake's JSON-RPC internal error, never the built-in ones, which
+// would tell an agent the notebook has no conventions.
 func (s *Server) handshake(next mcp.MethodHandler) mcp.MethodHandler {
 	return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
 		res, err := next(ctx, method, req)
-		if init, ok := res.(*mcp.InitializeResult); ok && err == nil {
-			r := requestOf(ctx)
-			attrs := []slog.Attr{
-				slog.String("client", s.clientOf(req)),
-				slog.String("protocol_version", init.ProtocolVersion),
-				slog.String("entry", r.entry.String()),
-			}
-			attrs = append(attrs, credentialAttrs(ctx, r.notebook, r.cred)...)
-			s.logger.LogAttrs(ctx, slog.LevelInfo, "MCP initialize", attrs...)
+		init, ok := res.(*mcp.InitializeResult)
+		if !ok || err != nil {
+			return res, err
 		}
-		return res, err
+		r := requestOf(ctx)
+		text, err := s.instructionsOf(ctx, r)
+		if err != nil {
+			return nil, s.methodError(ctx, method, fmt.Errorf("mcpserver: the instructions: %w", err))
+		}
+		init.Instructions = text
+		attrs := []slog.Attr{
+			slog.String("client", s.clientOf(req)),
+			slog.String("protocol_version", init.ProtocolVersion),
+			slog.String("entry", r.entry.String()),
+		}
+		attrs = append(attrs, credentialAttrs(ctx, r.notebook, r.cred)...)
+		s.logger.LogAttrs(ctx, slog.LevelInfo, "MCP initialize", attrs...)
+		return init, nil
 	}
+}
+
+// instructionsOf are the instructions of r's entry: its notebook's, which
+// the Gate let in, or the account entry's ("" sends none).
+func (s *Server) instructionsOf(ctx context.Context, r *request) (string, error) {
+	if r.entry == NotebookEntry {
+		return s.notebooks.Instructions(ctx, r.notebook)
+	}
+	return s.account, nil
 }
 
 // logCall logs a tool's call: who, through what, what came of it and how

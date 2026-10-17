@@ -68,6 +68,19 @@ WHERE notebook_id = sqlc.arg(notebook_id) AND parent_id = sqlc.arg(parent_id) AN
 -- The array is a page of list, at most 1,000: the store plans it with its argument.
 SELECT id FROM nodes WHERE id = ANY(sqlc.arg(ids)::uuid[]) AND deleted_at IS NULL;
 
+-- name: AgentsPage :one
+-- The notebook's root node whose title key is name_key, TitleKey("AGENTS"), with its title now and its content's
+-- revision when it is a page, 0 for none (M9 design 4.6; M9/P1 design 3.15.1): one point lookup by the roots' unique
+-- index (00042), as RootByKey, and the content by its key. The revision is a subquery of the node found, not a join: a
+-- key that many nodes share, an AGENTS page in each folder, is estimated as many rows once analyzed, and a join of
+-- them read the contents of every notebook by a hash.
+SELECT n.id, n.kind, n.name,
+    coalesce((SELECT c.revision FROM page_contents c WHERE c.node_id = n.id AND c.deleted_at IS NULL), 0)::integer
+        AS revision
+FROM nodes n
+WHERE n.notebook_id = sqlc.arg(notebook_id) AND n.parent_id IS NULL AND n.name_key = sqlc.arg(name_key)
+    AND n.deleted_at IS NULL;
+
 -- name: AssetsUnder :many
 -- A parent's attachments not deleted (the root's when parent_id is NULL), by title key and id, after the cursor's key
 -- and id when it has one, at most max_rows: a page of the attachments' list (M7/P2 design 3.3). As Children, it

@@ -8,6 +8,7 @@ import (
 	"math"
 	"strings"
 
+	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
@@ -197,4 +198,29 @@ func (s *Server) overBound(ctx context.Context, name string, n int) (*mcp.CallTo
 	s.logger.LogAttrs(ctx, slog.LevelError, "MCP answer over its bound",
 		slog.String("tool", name), slog.Int("bytes", n), slog.String("request_id", httpserver.RequestID(ctx)))
 	return s.internalError(ctx, internalFailed), httpserver.CodeInternal
+}
+
+// methodError is the JSON-RPC error of err, met by a method that is no
+// tool's call (the handshake's instructions, M9/P1 design 3.15.2):
+// classified and logged as a tool's error is, an internal error that
+// names the request; a problem, which no such method answers today, in
+// its own words.
+func (s *Server) methodError(ctx context.Context, method string, err error) error {
+	a := httpserver.ProblemOf(ctx, err)
+	id := httpserver.RequestID(ctx)
+	attrs := []slog.Attr{slog.String("method", method), slog.String("request_id", id)}
+	message := internalFailed
+	switch a.Fault {
+	case httpserver.FaultNone:
+		return &jsonrpc.Error{Code: jsonrpc.CodeInternalError, Message: a.Problem.Code + ": " + a.Problem.Detail}
+	case httpserver.FaultGone:
+		s.logger.LogAttrs(ctx, slog.LevelDebug, "MCP client went away", attrs...)
+		return &jsonrpc.Error{Code: jsonrpc.CodeInternalError, Message: httpserver.CodeInternal + ": " + internalGone}
+	case httpserver.FaultDeadline:
+		s.logger.LogAttrs(ctx, slog.LevelWarn, "MCP call deadline exceeded", append(attrs, slog.Any("error", err))...)
+		message = internalDeadline
+	default:
+		s.logger.LogAttrs(ctx, slog.LevelError, "MCP method failed", append(attrs, slog.Any("error", err))...)
+	}
+	return &jsonrpc.Error{Code: jsonrpc.CodeInternalError, Message: httpserver.CodeInternal + ": " + message + "; request id " + id}
 }

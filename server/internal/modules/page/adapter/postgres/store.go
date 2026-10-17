@@ -137,6 +137,19 @@ func (s *Store) ChildByKey(ctx context.Context, notebookID, parentID uuid.UUID, 
 	return foundNode(gen.FindNodeRow(row), err, "find a child by key")
 }
 
+// AgentsPage implements app.AgentsStore: an attachment holding the key
+// has no revision.
+func (s *Store) AgentsPage(ctx context.Context, notebookID uuid.UUID, key string) (uuid.UUID, domain.Kind, string, int, bool, error) {
+	row, err := s.queries(ctx).AgentsPage(ctx, gen.AgentsPageParams{NotebookID: notebookID, NameKey: key})
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return uuid.UUID{}, "", "", 0, false, nil
+	case err != nil:
+		return uuid.UUID{}, "", "", 0, false, fmt.Errorf("find the AGENTS page: %w", err)
+	}
+	return row.ID, domain.Kind(row.Kind), row.Name, int(row.Revision), true, nil
+}
+
 // foundNode is the node of a lookup's row and error: false for no row.
 func foundNode(row gen.FindNodeRow, err error, what string) (domain.Node, bool, error) {
 	switch {
