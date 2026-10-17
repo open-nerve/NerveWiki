@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"math/big"
 	"reflect"
 	"slices"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"time"
 	"uuid"
 
+	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/bodyshape"
 )
 
@@ -134,16 +136,35 @@ type nestedIn struct {
 	Tags *[]string `json:"tags,omitempty"`
 }
 
-// A required field, an array and an array's items take no null; an
-// optional scalar keeps it, down an array's objects.
+// pointersIn has items that are pointers, which jsonschema-go writes as
+// ["null", T], and a struct embedded without a name, whose fields both
+// the schema and the decoder take as its own.
+type pointersIn struct {
+	opIn
+	Paths []*string `json:"paths"`
+	Ops   []*opIn   `json:"ops"`
+}
+
+// A required field, an array and an array's items, pointers too, take no
+// null; an optional scalar keeps it, down an array's objects.
 func TestTheInputSchemasTakeNullOnlyForAnOptionalScalar(t *testing.T) {
-	want := `{"type":"object","properties":{` +
-		`"ops":{"type":"array","items":{"type":"object","properties":{"path":{"type":"string"},"text":{"type":["null","string"]}},` +
-		`"required":["path"],"additionalProperties":false}},` +
-		`"must":{"type":"integer"},"tags":{"type":"array","items":{"type":"string"}}},` +
-		`"required":["ops","must"],"additionalProperties":false}`
-	if got := schemaJSON(t, reflect.TypeFor[nestedIn](), false); !reflect.DeepEqual(got, decodeJSON(t, want)) {
-		t.Errorf("schema = %v, want %s", got, want)
+	const op = `{"type":"object","properties":{"path":{"type":"string"},"text":{"type":["null","string"]}},` +
+		`"required":["path"],"additionalProperties":false}`
+	tests := []struct {
+		in   reflect.Type
+		want string
+	}{
+		{reflect.TypeFor[nestedIn](), `{"type":"object","properties":{"ops":{"type":"array","items":` + op + `},` +
+			`"must":{"type":"integer"},"tags":{"type":"array","items":{"type":"string"}}},` +
+			`"required":["ops","must"],"additionalProperties":false}`},
+		{reflect.TypeFor[pointersIn](), `{"type":"object","properties":{"path":{"type":"string"},"text":{"type":["null","string"]},` +
+			`"paths":{"type":"array","items":{"type":"string"}},"ops":{"type":"array","items":` + op + `}},` +
+			`"required":["path","paths","ops"],"additionalProperties":false}`},
+	}
+	for _, tt := range tests {
+		if got := schemaJSON(t, tt.in, false); !reflect.DeepEqual(got, decodeJSON(t, tt.want)) {
+			t.Errorf("the schema of %v = %v, want %s", tt.in, got, tt.want)
+		}
 	}
 }
 
@@ -197,6 +218,26 @@ type (
 		Notebook string `json:"notebook"`
 	}
 	withDeepTime struct{ Ops []struct{ At *time.Time } }
+	withBigInt   struct {
+		N *big.Int `json:"n,omitempty"`
+	}
+	withFloat32 struct {
+		F *float32 `json:"f,omitempty"`
+	}
+	Paging struct {
+		Cursor *string `json:"cursor,omitempty"`
+	}
+	withNamedEmbedding struct {
+		Paging `json:"paging"`
+	}
+	withItself struct {
+		Kids []withItself `json:"kids"`
+	}
+	withItselfDeep struct {
+		Ops []struct {
+			Next *withItselfDeep `json:"next,omitempty"`
+		} `json:"ops"`
+	}
 )
 
 // A type the schema cannot hold panics, from the Go type when its schema
@@ -211,6 +252,11 @@ func TestTheInputSchemasRefuseWhatTheyCannotHold(t *testing.T) {
 		{"a uuid", reflect.TypeFor[withID](), "JSON form of its own"},
 		{"a time", reflect.TypeFor[withTime](), "JSON form of its own"},
 		{"a time deep down", reflect.TypeFor[withDeepTime](), "JSON form of its own"},
+		{"a pointer's JSON form", reflect.TypeFor[withBigInt](), "JSON form of its own"},
+		{"a float32", reflect.TypeFor[withFloat32](), "narrower than a number"},
+		{"a struct embedded under a name", reflect.TypeFor[withNamedEmbedding](), `embedded under the JSON name "paging"`},
+		{"a type that holds itself", reflect.TypeFor[withItself](), "holds itself"},
+		{"a type that holds itself deep down", reflect.TypeFor[withItselfDeep](), "holds itself"},
 		{"a map", reflect.TypeFor[withMap](), "is a map"},
 		{"an interface", reflect.TypeFor[withAny](), "is a interface"},
 		{"an array", reflect.TypeFor[withArray](), "is a array"},
@@ -305,7 +351,8 @@ func TestAnAccountNotebookToolRegisters(t *testing.T) {
 
 // New refuses each fault of its wiring: a tool's name, its entry, a
 // Notebook tool the account entry has not, a name twice in an entry, a
-// prompt twice or without its handler.
+// tool or a prompt without its handler, a prompt twice, and no errors'
+// writer.
 func TestNewRefusesItsWiringFaults(t *testing.T) {
 	tool := func(name string, e Entry, notebook bool) Tool {
 		return NewTool(Spec{Name: name, Entry: e, Notebook: notebook},
@@ -328,6 +375,7 @@ func TestNewRefusesItsWiringFaults(t *testing.T) {
 		{"twice in an entry", []Tool{tool("a", NotebookEntry, false), tool("a", BothEntries, false)}, nil, "twice in the notebook entry"},
 		{"a prompt twice", nil, []Prompt{{Name: "p", Get: get}, {Name: "p", Get: get}}, "prompt p is registered twice"},
 		{"a prompt without its handler", nil, []Prompt{{Name: "p"}}, "prompt p has no handler"},
+		{"a tool without its handler", []Tool{NewTool[struct{}](Spec{Name: "a", Entry: BothEntries}, nil)}, nil, "tool a has no handler"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -336,13 +384,25 @@ func TestNewRefusesItsWiringFaults(t *testing.T) {
 					t.Errorf("New() panicked with %v, want %q", v, tt.want)
 				}
 			}()
-			New(Options{Tools: tt.tools, Prompts: tt.prompts, Credentials: credentialsOf, Notebooks: &fakeNotebooks{},
-				RequestTimeout: time.Second, MaxBodyBytes: 1, Logger: discard()})
+			o := bare(discard())
+			o.Tools, o.Prompts = tt.tools, tt.prompts
+			New(o)
 		})
 	}
+	t.Run("no errors' writer", func(t *testing.T) {
+		defer func() {
+			if v := recover(); v == nil || !strings.Contains(v.(string), "no errors") {
+				t.Errorf("New() panicked with %v, want no errors", v)
+			}
+		}()
+		o := bare(discard())
+		o.Errors = httpserver.APIErrors{}
+		New(o)
+	})
 	// Each entry's own name: one of each entry is no conflict.
-	New(Options{Tools: []Tool{tool("a", NotebookEntry, false), tool("a", AccountEntry, false)}, Credentials: credentialsOf,
-		Notebooks: &fakeNotebooks{}, RequestTimeout: time.Second, MaxBodyBytes: 1, Logger: discard()})
+	o := bare(discard())
+	o.Tools = []Tool{tool("a", NotebookEntry, false), tool("a", AccountEntry, false)}
+	New(o)
 }
 
 // annotations are a tool's hints on the wire: openWorldHint false always,

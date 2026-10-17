@@ -23,7 +23,12 @@ type ToolError struct {
 	Extra map[string]any
 }
 
-func (e *ToolError) Error() string { return e.Err.Error() }
+func (e *ToolError) Error() string {
+	if e.Err == nil {
+		return "mcpserver: a ToolError without its Err"
+	}
+	return e.Err.Error()
+}
 func (e *ToolError) Unwrap() error { return e.Err }
 
 // outcomeOK is a call's outcome in its log line when it answered a
@@ -46,6 +51,9 @@ type errorMember map[string]any
 // (M9/P1 design 3.3.6): never a protocol error, always a result with
 // isError, its text and structuredContent.error the one classification of
 // REST's; and the code it answers.
+//
+// A ToolError without its Err has nothing to classify: a fault of the
+// tool's, its Text lost, its log's error saying so.
 func (s *Server) toolError(ctx context.Context, name string, err error) (*mcp.CallToolResult, string) {
 	a := httpserver.ProblemOf(ctx, err)
 	attrs := []slog.Attr{slog.String("tool", name), slog.String("request_id", httpserver.RequestID(ctx))}
@@ -103,8 +111,9 @@ func retrySeconds(a httpserver.Answer) int {
 // are no object, at "arguments". Sixteen paths of 256 bytes, each byte of
 // the longest escape, are more than MaxAnswerBytes in the text and the
 // member together: such an answer goes without them, the code and the
-// message still saying what is wrong.
-func argumentsError(e *bodyshape.Error) (*mcp.CallToolResult, string) {
+// message still saying what is wrong, and through errorResult's bound as
+// every error's answer does.
+func (s *Server) argumentsError(ctx context.Context, name string, e *bodyshape.Error) (*mcp.CallToolResult, string) {
 	fields := make([]httpserver.FieldError, 0, len(e.Fields))
 	for _, f := range e.Fields {
 		field := f.Field
@@ -115,11 +124,11 @@ func argumentsError(e *bodyshape.Error) (*mcp.CallToolResult, string) {
 	}
 	const lead = httpserver.CodeBadRequest + ": The arguments do not match the tool's input schema."
 	text := lead + fieldsText(fields)
-	res := errorAnswer(text, errorMember{"code": httpserver.CodeBadRequest, "message": text, "fields": fields})
-	if answerBytes(res) > MaxAnswerBytes {
-		res = errorAnswer(lead, errorMember{"code": httpserver.CodeBadRequest, "message": lead})
+	if res, err := errorAnswer(text, errorMember{"code": httpserver.CodeBadRequest, "message": text, "fields": fields}); err == nil &&
+		answerBytes(res) <= MaxAnswerBytes {
+		return res, httpserver.CodeBadRequest
 	}
-	return res, httpserver.CodeBadRequest
+	return s.errorResult(ctx, name, httpserver.CodeBadRequest, lead, errorMember{"code": httpserver.CodeBadRequest, "message": lead})
 }
 
 // fieldsText is fields as an error's text adds them: " (<field>: <code>:
@@ -143,14 +152,24 @@ func (s *Server) internalError(ctx context.Context, message string) *mcp.CallToo
 	if message != internalGone {
 		text += "; request id " + id
 	}
-	return errorAnswer(text, errorMember{"code": httpserver.CodeInternal, "message": text, "request_id": id})
+	res, err := errorAnswer(text, errorMember{"code": httpserver.CodeInternal, "message": text, "request_id": id})
+	if err != nil { // strings alone: never
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: text}}}
+	}
+	return res
 }
 
 // errorResult is the error answer of text and member, within
-// MaxAnswerBytes, and its code: over the bound, a fault of the tool's,
-// internal_error.
+// MaxAnswerBytes, and its code: a member that does not encode (a tool's
+// Extra) or an answer over the bound is a fault of the tool's,
+// internal_error at once, never a result the SDK could not write.
 func (s *Server) errorResult(ctx context.Context, name, code, text string, member errorMember) (*mcp.CallToolResult, string) {
-	res := errorAnswer(text, member)
+	res, err := errorAnswer(text, member)
+	if err != nil {
+		s.logger.LogAttrs(ctx, slog.LevelError, "MCP tool failed", slog.String("tool", name),
+			slog.String("request_id", httpserver.RequestID(ctx)), slog.Any("error", fmt.Errorf("encoding its error's member: %w", err)))
+		return s.internalError(ctx, internalFailed), httpserver.CodeInternal
+	}
 	if n := answerBytes(res); n > MaxAnswerBytes {
 		return s.overBound(ctx, name, n)
 	}
@@ -158,13 +177,19 @@ func (s *Server) errorResult(ctx context.Context, name, code, text string, membe
 }
 
 // errorAnswer is the result of an error: isError, text, and member as
-// structuredContent.error.
-func errorAnswer(text string, member errorMember) *mcp.CallToolResult {
+// structuredContent.error, encoded once here, so that what the SDK sends
+// is what was measured, and a member that cannot be written is found
+// before the SDK has it.
+func errorAnswer(text string, member errorMember) (*mcp.CallToolResult, error) {
+	structured, err := encode(map[string]any{"error": member})
+	if err != nil {
+		return nil, err
+	}
 	return &mcp.CallToolResult{
 		IsError:           true,
 		Content:           []mcp.Content{&mcp.TextContent{Text: text}},
-		StructuredContent: map[string]any{"error": member},
-	}
+		StructuredContent: structured,
+	}, nil
 }
 
 // overBound is the answer of a tool's answer of n bytes over

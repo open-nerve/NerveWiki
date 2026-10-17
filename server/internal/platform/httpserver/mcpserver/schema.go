@@ -28,14 +28,15 @@ const notebookParameter = "notebook"
 // "notebook" comes first among the properties and the required. A type
 // it cannot hold panics: no struct; a field of a type with a JSON form of
 // its own (uuid.UUID, time.Time: an id is a string field, a time no
-// input), a map or an interface; an optional field that is no pointer,
-// which would refuse null; a field of in named "notebook"; and a keyword
-// the table has no place for.
+// input), a map, an interface or a float32; a struct embedded under a
+// JSON name; a type that holds itself; an optional field that is no
+// pointer, which would refuse null; a field of in named "notebook"; and a
+// keyword the table has no place for.
 func inputOf(name string, in reflect.Type, notebook bool) (*jsonschema.Schema, *bodyshape.Table) {
 	if in.Kind() != reflect.Struct {
 		panic(fmt.Sprintf("mcpserver: tool %s: its input %v is no struct", name, in))
 	}
-	if err := checkFields(in); err != nil {
+	if err := checkFields(in, map[reflect.Type]bool{}); err != nil {
 		panic(fmt.Sprintf("mcpserver: tool %s: its input %v: %v", name, in, err))
 	}
 	schema, err := jsonschema.ForType(in, &jsonschema.ForOptions{})
@@ -73,10 +74,21 @@ func inputOf(name string, in reflect.Type, notebook bool) (*jsonschema.Schema, *
 // pointers and the slices in them, for what inputOf refuses: jsonschema-go
 // writes a type with a JSON form of its own as a string or as an array of
 // bounded integers, which a schema does not tell apart from a string or a
-// slice, so the Go type is read.
-func checkFields(t reflect.Type) error {
+// slice, so the Go type is read. It flattens a struct embedded under a
+// JSON name, which encoding/json decodes as a member of that name. path
+// holds the structs being walked: one met again holds itself, which would
+// walk forever.
+func checkFields(t reflect.Type, path map[reflect.Type]bool) error {
+	if path[t] {
+		return fmt.Errorf("%v holds itself: a schema of properties and items has no cycle", t)
+	}
+	path[t] = true
+	defer delete(path, t)
 	for _, f := range reflect.VisibleFields(t) {
 		name, opts, _ := strings.Cut(f.Tag.Get("json"), ",")
+		if f.Anonymous && name != "" && name != "-" {
+			return fmt.Errorf("field %s is embedded under the JSON name %q: its schema and its decoding differ", f.Name, name)
+		}
 		if !f.IsExported() || f.Anonymous || name == "-" {
 			continue
 		}
@@ -84,15 +96,18 @@ func checkFields(t reflect.Type) error {
 		if optional && f.Type.Kind() != reflect.Pointer {
 			return fmt.Errorf("field %s is optional but no pointer: it would refuse null", f.Name)
 		}
-		if err := checkType(f.Type); err != nil {
+		if err := checkType(f.Type, path); err != nil {
 			return fmt.Errorf("field %s: %w", f.Name, err)
 		}
 	}
 	return nil
 }
 
-// checkType is checkFields for one field's type.
-func checkType(t reflect.Type) error {
+// checkType is checkFields for one field's type. jsonschema-go bounds the
+// integers narrower than int64, keywords the table refuses, but not a
+// float32: the table's number, a float64's, would pass what it cannot
+// hold.
+func checkType(t reflect.Type, path map[reflect.Type]bool) error {
 	for t.Kind() == reflect.Pointer || t.Kind() == reflect.Slice {
 		t = t.Elem()
 	}
@@ -103,8 +118,10 @@ func checkType(t reflect.Type) error {
 		return fmt.Errorf("%v has a JSON form of its own: an id is a string, a time no input", t)
 	case t.Kind() == reflect.Map, t.Kind() == reflect.Interface, t.Kind() == reflect.Array:
 		return fmt.Errorf("%v is a %v: a schema of properties and items holds none", t, t.Kind())
+	case t.Kind() == reflect.Float32:
+		return fmt.Errorf("%v is narrower than a number: a float64 is", t)
 	case t.Kind() == reflect.Struct:
-		return checkFields(t)
+		return checkFields(t, path)
 	}
 	return nil
 }

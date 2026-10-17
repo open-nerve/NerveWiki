@@ -56,6 +56,7 @@ func TestTheMCPEdgeAnswersInOrder(t *testing.T) {
 		{"twice", http.MethodPost, atNotebook(m.notebook) + "&notebook=" + m.notebook, m.pat, initialize, http.StatusNotFound, "notebook.not_found"},
 		{"empty", http.MethodPost, atNotebook(""), m.pat, initialize, http.StatusNotFound, "notebook.not_found"},
 		{"an escape that does not parse", http.MethodPost, "/mcp?notebook=%zz", m.pat, initialize, http.StatusNotFound, "notebook.not_found"},
+		{"a bad pair beside the notebook", http.MethodPost, atNotebook(m.notebook) + "&x=%zz", m.pat, initialize, http.StatusNotFound, "notebook.not_found"},
 		{"a semicolon", http.MethodPost, atNotebook(m.notebook) + ";x=1", m.pat, initialize, http.StatusNotFound, "notebook.not_found"},
 		{"a broken body to a notebook not seen", http.MethodPost, atNotebook(m.hidden), m.pat, `{"jsonrpc":`, http.StatusBadRequest, "bad_request"},
 		{"a session's access token and a broken body", http.MethodPost, "/mcp", m.access, `{"jsonrpc":`, http.StatusBadRequest, "bad_request"},
@@ -86,6 +87,11 @@ func TestTheMCPEdgeAnswersInOrder(t *testing.T) {
 	}
 	if p := m.call(t, "/mcp", "echo", map[string]any{"notebook": m.notebook}); p.status != http.StatusOK {
 		t.Errorf("a call after the refusals = %d %s", p.status, p.body)
+	}
+	// A reverse proxy on the same host forwards its own Host: served, as
+	// mcpserver turns the SDK's protection of localhost off.
+	if a := m.post(t, context.Background(), atNotebook(m.notebook), m.pat, initialize, http.Header{"Host": {"wiki.example.com"}}); a.status != http.StatusOK {
+		t.Errorf("a handshake with Host wiki.example.com = %d %s, want 200", a.status, a.body)
 	}
 
 	// A body of the limit is read, the SDK's own limit no lower; a byte
@@ -158,6 +164,9 @@ func TestTheMCPRecoversAToolsPanic(t *testing.T) {
 	if stack, _ := e["stack"].(string); e == nil || e["level"] != "ERROR" || e["tool"] != "boom" || !strings.Contains(stack, "mcpTestTools") {
 		t.Errorf("the panic logged %v, want an error with the tool and its stack", e)
 	}
+	if line := m.callLogged(t, "boom"); line == nil || line["outcome"] != "internal_error" || line["notebook_id"] != m.notebook {
+		t.Errorf("boom's call line = %v, want its outcome internal_error", line)
+	}
 	r = m.call(t, atNotebook(m.notebook), "echo", map[string]any{}).result(t)
 	if sc, _ := r["structuredContent"].(map[string]any); sc["notebook"] != m.notebook {
 		t.Errorf("echo after the panic = %v, want its notebook", r)
@@ -179,6 +188,9 @@ func TestTheMCPCallRunsOutOfTime(t *testing.T) {
 	}
 	if line := m.waitLogged(t, "MCP call deadline exceeded", time.Second); line == nil || line["level"] != "WARN" {
 		t.Errorf("the log has %v, want the deadline at warn", line)
+	}
+	if line := m.callLogged(t, "slow"); line == nil || line["outcome"] != "internal_error" {
+		t.Errorf("slow's call line = %v, want its outcome internal_error", line)
 	}
 }
 

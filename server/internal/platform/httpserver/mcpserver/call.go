@@ -63,14 +63,16 @@ func (s *Server) outer(next mcp.MethodHandler) mcp.MethodHandler {
 // handler: an error log with the stack, the method, the tool and the
 // request id; a tool error internal_error for tools/call, a JSON-RPC
 // internal error for any other method. It never re-panics: no one above
-// it in this goroutine would recover, and the process would exit.
+// it in this goroutine would recover, and the process would exit. The
+// tool is the client's word: logged only when it is a tool's name, never
+// a name as long as the body.
 func (s *Server) recover(ctx context.Context, method string, req mcp.Request, res *mcp.Result, err *error) {
 	v := recover()
 	if v == nil {
 		return
 	}
 	tool := ""
-	if call, ok := req.(*mcp.CallToolRequest); ok && call.Params != nil {
+	if call, ok := req.(*mcp.CallToolRequest); ok && call.Params != nil && toolName.MatchString(call.Params.Name) {
 		tool = call.Params.Name
 	}
 	s.logPanic(ctx, method, tool, v)

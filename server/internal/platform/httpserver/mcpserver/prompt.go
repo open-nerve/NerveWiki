@@ -45,11 +45,7 @@ func (s *Server) addPrompts(prompts []Prompt) {
 			args[i] = &mcp.PromptArgument{Name: a.Name, Description: a.Description, Required: a.Required}
 		}
 		for _, e := range []Entry{NotebookEntry, AccountEntry} {
-			srv := s.notebookEntry
-			if e == AccountEntry {
-				srv = s.accountEntry
-			}
-			srv.AddPrompt(&mcp.Prompt{Name: p.Name, Title: p.Title, Description: p.Description, Arguments: args}, s.promptHandler(p, e))
+			s.serverOf(e).AddPrompt(&mcp.Prompt{Name: p.Name, Title: p.Title, Description: p.Description, Arguments: args}, s.promptHandler(p, e))
 		}
 	}
 }
@@ -57,7 +53,9 @@ func (s *Server) addPrompts(prompts []Prompt) {
 // promptHandler is p's prompts/get in entry e: a required argument left
 // out is the SDK's -32602, as an unknown tool is; each message is the
 // user's text; an error of the handler is logged and a JSON-RPC internal
-// error.
+// error, any error alike: a problem's classification (ProblemOf) and the
+// answer's bound are M10's, which writes the first prompt (M9/P1 S1
+// review B).
 func (s *Server) promptHandler(p Prompt, e Entry) mcp.PromptHandler {
 	return func(ctx context.Context, req *mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
 		for _, a := range p.Arguments {

@@ -184,6 +184,9 @@ func (m *mcpApp) send(t testing.TB, ctx context.Context, method, path, token str
 	for k, v := range header {
 		req.Header[k] = v
 	}
+	if host := header.Get("Host"); host != "" { // a client sends req.Host
+		req.Host = host
+	}
 	start := time.Now()
 	res, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
 	if err != nil {
@@ -322,6 +325,17 @@ func (m *mcpApp) logged(t testing.TB, msg string) map[string]any {
 	t.Helper()
 	for _, e := range m.logLines(t) {
 		if e["msg"] == msg {
+			return e
+		}
+	}
+	return nil
+}
+
+// callLogged is the first call line of tool, or nil.
+func (m *mcpApp) callLogged(t testing.TB, tool string) map[string]any {
+	t.Helper()
+	for _, e := range m.logLines(t) {
+		if e["msg"] == "MCP tool call" && e["tool"] == tool {
 			return e
 		}
 	}

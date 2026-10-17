@@ -16,6 +16,8 @@ import (
 	"uuid"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/bodyshape"
 )
 
 // wireText is s's bytes in a text block as the SDK writes it, without
@@ -163,22 +165,26 @@ func fitOf(items []string, asked *[]int) func(k int) any {
 
 // Fit answers n items when they fit, or k that fit with k+1 that do not,
 // measured as the answer is: members of quotes count twice escaped. Its
-// candidates gallop then bisect, none past the first over, at most
-// 2 log₂ n + 2 of them.
+// candidates gallop then bisect, none past the first over, about
+// 2 log₂ n + 1 of them (M9/P1 design 3.4.4). When not even the answer of
+// no item fits, it is an error, not an answer over the bound.
 func TestFitHoldsTheAnswersMeasure(t *testing.T) {
 	r := rand.New(rand.NewPCG(3, 4))
 	shapes := []struct {
-		name string
-		item func(i int) string
-		n    int
+		name    string
+		item    func(i int) string
+		n       int
+		nothing bool // not even no item fits
 	}{
-		{"short items, all fit", func(i int) string { return fmt.Sprintf("Page %d.md", i) }, 300},
-		{"quotes and newlines", func(int) string { return strings.Repeat("\"\n", 100) }, 1000},
-		{"HTML's characters", func(int) string { return strings.Repeat("<&>", 50) }, 1000},
-		{"lengths at random", func(int) string { return strings.Repeat("é\"", 1+r.IntN(1400)) }, 1000},
-		{"one item", func(int) string { return "only" }, 1},
-		{"none", func(int) string { return "" }, 0},
-		{"an item over the bound", func(int) string { return strings.Repeat("a", MaxAnswerBytes) }, 5},
+		{"short items, all fit", func(i int) string { return fmt.Sprintf("Page %d.md", i) }, 300, false},
+		{"quotes and newlines", func(int) string { return strings.Repeat("\"\n", 100) }, 1000, false},
+		{"HTML's characters", func(int) string { return strings.Repeat("<&>", 50) }, 1000, false},
+		{"lengths at random", func(int) string { return strings.Repeat("é\"", 1+r.IntN(1400)) }, 1000, false},
+		{"one item", func(int) string { return "only" }, 1, false},
+		{"none", func(int) string { return "" }, 0, false},
+		{"one item over the bound, its cursor not", func(int) string { return strings.Repeat(`"`, 30_000) }, 1, false},
+		{"the gallop's last, n, over the bound", func(int) string { return strings.Repeat(`"`, 5000) }, 3, false},
+		{"the cursor of no item over the bound", func(int) string { return strings.Repeat("a", MaxAnswerBytes) }, 5, true},
 	}
 	for _, sh := range shapes {
 		t.Run(sh.name, func(t *testing.T) {
@@ -189,11 +195,17 @@ func TestFitHoldsTheAnswersMeasure(t *testing.T) {
 			var asked []int
 			build := fitOf(items, &asked)
 			res, k, err := Fit(sh.n, build)
+			if sh.nothing {
+				if !errors.Is(err, errNothingFits) {
+					t.Errorf("Fit = %d items, %v; want %v", k, err, errNothingFits)
+				}
+				return
+			}
 			if err != nil {
 				t.Fatal(err)
 			}
 			text := string(res.Structured.(json.RawMessage))
-			if k < 0 || k > sh.n || (k > 0 && TextBytes(text) > MaxAnswerBytes) {
+			if k < 0 || k > sh.n || TextBytes(text) > MaxAnswerBytes {
 				t.Fatalf("Fit = %d items of %d bytes, want at most %d bytes", k, TextBytes(text), MaxAnswerBytes)
 			}
 			measured := asked
@@ -207,7 +219,7 @@ func TestFitHoldsTheAnswersMeasure(t *testing.T) {
 					t.Errorf("Fit = %d items, but %d fit", k, k+1)
 				}
 			}
-			if bound := 2*int(math.Log2(float64(max(sh.n, 1)))) + 2; len(measured) > bound {
+			if bound := 2*int(math.Ceil(math.Log2(float64(max(sh.n, 2))))) + 1; len(measured) > bound {
 				t.Errorf("Fit measured %d candidates %v, want at most %d", len(measured), measured, bound)
 			}
 			firstOver := sh.n
@@ -266,8 +278,8 @@ func TestTheStructuredResultKeepsHTMLCharacters(t *testing.T) {
 	}})
 	r := result(t, s.call(t, Pattern, "html", nil))
 	text := toolText(t, r)
-	if !strings.Contains(text, `"a<b>&c.md"`) || strings.Contains(text, `\u003c`) {
-		t.Errorf("the text block = %s, want <, > and & as they are", text)
+	if text != `{"line":"x\ny\"z","path":"a<b>&c.md"}` {
+		t.Errorf("the text block = %q, want the JSON, <, > and & as they are, no newline after it", text)
 	}
 	var fromText, structured map[string]any
 	_ = json.Unmarshal([]byte(text), &fromText)
@@ -289,15 +301,18 @@ func TestTheStructuredResultKeepsHTMLCharacters(t *testing.T) {
 	}
 }
 
-// A result neither structured nor of blocks, both, or a block of two
-// kinds is the tool's fault: internal_error, logged.
+// A result neither structured nor of blocks, both, a block of two kinds,
+// or a structured answer that is no JSON object (structuredContent is
+// one) is the tool's fault: internal_error, logged.
 func TestAMalformedResultIsInternal(t *testing.T) {
 	results := map[string]Result{
-		"neither":   {},
-		"both":      {Structured: map[string]any{}, Blocks: []Block{{Text: "a"}}},
-		"two_kinds": {Blocks: []Block{{Text: "a", Image: &Image{MIME: "image/png"}}}},
-		"no_kind":   {Blocks: []Block{{}}},
-		"unencoded": {Structured: map[string]any{"f": func() {}}},
+		"neither":        {},
+		"both":           {Structured: map[string]any{}, Blocks: []Block{{Text: "a"}}},
+		"two_kinds":      {Blocks: []Block{{Text: "a", Image: &Image{MIME: "image/png"}}}},
+		"image_and_link": {Blocks: []Block{{Image: &Image{MIME: "image/png"}, Link: &Link{URI: "http://wiki.example/a"}}}},
+		"unencoded":      {Structured: map[string]any{"f": func() {}}},
+		"an_array":       {Structured: []string{"a"}},
+		"a_typed_nil":    {Structured: (*fitAnswer)(nil)},
 	}
 	s := serveMCP(t, setup{options: func(o *Options) {
 		for name, res := range results {
@@ -315,11 +330,42 @@ func TestAMalformedResultIsInternal(t *testing.T) {
 	}
 }
 
+// A block of neither an image nor a link is a text block, even an empty
+// one: an empty line of a page is an answer, not a fault (B-I1).
+func TestAnEmptyBlockIsText(t *testing.T) {
+	s := serveMCP(t, setup{options: func(o *Options) {
+		o.Tools = append(o.Tools, textTool("empty", Block{}), textTool("lines", Block{Text: "a"}, Block{}, Block{Text: "b"}))
+	}})
+	for name, want := range map[string]string{
+		"empty": `[{"text":"","type":"text"}]`,
+		"lines": `[{"text":"a","type":"text"},{"text":"","type":"text"},{"text":"b","type":"text"}]`,
+	} {
+		r := result(t, s.call(t, Pattern, name, nil))
+		if content, _ := json.Marshal(r["content"]); r["isError"] == true || string(content) != want {
+			t.Errorf("%s = %v, want the content %s", name, r, want)
+		}
+	}
+	if n := countLogs(t, s.logs, "MCP tool failed", "ERROR"); n != 0 {
+		t.Errorf("%d empty blocks logged at error, want none", n)
+	}
+}
+
 // lockProblem is a problem that names a lock, as page.locked will.
 type lockProblem struct{ problem }
 
 func (lockProblem) ProblemLock() (pageID, userID uuid.UUID, displayName string, ok bool) {
 	return visible, alice, "Alice", true
+}
+
+// locksProblem is a problem that names locks, as a batch's will: of
+// visible and of lockedPage.
+type locksProblem struct{ problem }
+
+const lockedPage = "01920000-0000-7000-8000-0000000000b1"
+
+func (locksProblem) ProblemLocks(each func(pageID, userID uuid.UUID, displayName string)) {
+	each(visible, alice, "Alice")
+	each(uuid.MustParse(lockedPage), alice, "Alice")
 }
 
 // Each row of the error table (M9/P1 design 3.3.6): a problem's code and
@@ -357,6 +403,10 @@ func TestTheToolErrorsAreTheTables(t *testing.T) {
 		{"a lock", context.Background(), lockProblem{problem{status: http.StatusConflict, code: "page.locked", detail: "Alice is editing it."}},
 			"page.locked: Alice is editing it.", map[string]any{"code": "page.locked", "message": "page.locked: Alice is editing it.",
 				"lock": map[string]any{"page_id": visible.String(), "user_id": alice.String(), "display_name": "Alice"}}, ""},
+		{"locks", context.Background(), locksProblem{problem{status: http.StatusConflict, code: "page.locked", detail: "Pages are being edited."}},
+			"page.locked: Pages are being edited.", map[string]any{"code": "page.locked", "message": "page.locked: Pages are being edited.",
+				"locks": []any{map[string]any{"page_id": visible.String(), "user_id": alice.String(), "display_name": "Alice"},
+					map[string]any{"page_id": lockedPage, "user_id": alice.String(), "display_name": "Alice"}}}, ""},
 		{"the client gone", cancelled, fmt.Errorf("read: %w", context.Canceled), "internal_error: the client went away",
 			map[string]any{"code": "internal_error", "message": "internal_error: the client went away", "request_id": ""}, "MCP client went away:DEBUG"},
 		{"the deadline", expired, fmt.Errorf("read: %w", context.DeadlineExceeded), "internal_error: the call ran out of time; request id ",
@@ -365,12 +415,15 @@ func TestTheToolErrorsAreTheTables(t *testing.T) {
 		{"another fault", context.Background(), errors.New("database is down"), "internal_error: the server failed; request id ",
 			map[string]any{"code": "internal_error", "message": "internal_error: the server failed; request id ", "request_id": ""},
 			"MCP tool failed:ERROR"},
+		{"a ToolError without its Err", context.Background(), fmt.Errorf("read: %w", &ToolError{Text: "page.not_found: no page."}),
+			"internal_error: the server failed; request id ",
+			map[string]any{"code": "internal_error", "message": "internal_error: the server failed; request id ", "request_id": ""},
+			"MCP tool failed:ERROR"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			logs := &logBuffer{}
-			s := New(Options{Credentials: credentialsOf, Notebooks: &fakeNotebooks{}, RequestTimeout: time.Second, MaxBodyBytes: 1,
-				Logger: jsonLogger(logs)})
+			s := New(bare(jsonLogger(logs)))
 			res, code := s.toolError(tt.ctx, "read", tt.err)
 			b, _ := json.Marshal(res)
 			var r map[string]any
@@ -381,6 +434,11 @@ func TestTheToolErrorsAreTheTables(t *testing.T) {
 			msg, level, _ := strings.Cut(tt.log, ":")
 			if tt.log == "" && len(logs.entries(t)) != 0 || tt.log != "" && countLogs(t, logs, msg, level) != 1 {
 				t.Errorf("the log has %v, want %q", logs.entries(t), tt.log)
+			}
+			for _, e := range logs.entries(t) {
+				if strings.Contains(fmt.Sprint(e["error"]), "PANIC") {
+					t.Errorf("the log's error = %v, want the error's words", e["error"])
+				}
 			}
 		})
 	}
@@ -503,5 +561,70 @@ func TestTheArgumentsAreCheckedAsTheSchemaSays(t *testing.T) {
 	r := result(t, s.call(t, nb, "args", many))
 	if fields := errorOf(t, r)["fields"].([]any); len(fields) != 16 {
 		t.Errorf("17 problems told as %d, want 16", len(fields))
+	}
+	// Sixteen paths of 252 control characters, the longest escape: the
+	// fields are over the bound, so the lead alone is told, within it.
+	wide := map[string]any{"path": "a"}
+	for i := range 16 {
+		wide[fmt.Sprintf("%02d", i)+strings.Repeat("\x01", 300)] = 1
+	}
+	r = result(t, s.call(t, nb, "args", wide))
+	member := errorOf(t, r)
+	structured, _ := json.Marshal(r["structuredContent"])
+	if n := TextBytes(toolText(t, r)) + TextBytes(string(structured)); toolText(t, r) != lead || member["code"] != "bad_request" ||
+		member["message"] != lead || member["fields"] != nil || n > MaxAnswerBytes {
+		t.Errorf("sixteen wide paths = %q %v (%d bytes), want the lead alone within the bound", toolText(t, r), member, n)
+	}
+}
+
+// Arguments that are no object never reach a tool's check, Bodies
+// refusing them at the edge; a problem at their root, should one come, is
+// told at "arguments", not at no field.
+func TestAProblemOfTheArgumentsRootIsAtArguments(t *testing.T) {
+	s := New(bare(discard()))
+	res, code := s.argumentsError(context.Background(), "args", &bodyshape.Error{Fields: []bodyshape.FieldError{{Code: "invalid_format"}}})
+	var structured struct {
+		Error struct {
+			Fields []map[string]string `json:"fields"`
+		} `json:"error"`
+	}
+	raw, _ := res.StructuredContent.(json.RawMessage)
+	if err := json.Unmarshal(raw, &structured); err != nil || code != "bad_request" || len(structured.Error.Fields) != 1 ||
+		structured.Error.Fields[0]["field"] != "arguments" {
+		t.Errorf("argumentsError() = %s %s, %v; want bad_request at arguments", code, raw, err)
+	}
+}
+
+// A tool error whose members do not encode, a ToolError's Extra, is the
+// tool's fault: internal_error at once, logged, never a result the SDK
+// could not write, which would hold the call until its deadline.
+func TestAnUnwritableErrorIsInternalAtOnce(t *testing.T) {
+	notFound := problem{status: http.StatusNotFound, code: "page.not_found", detail: "No such page."}
+	extras := map[string]map[string]any{"a_func": {"x": func() {}}, "a_nan": {"x": math.NaN()}, "a_channel": {"x": make(chan int)}}
+	s := serveMCP(t, setup{options: func(o *Options) {
+		for name, extra := range extras {
+			o.Tools = append(o.Tools, toolOf(name, func(context.Context, Call) (Result, error) {
+				return Result{}, &ToolError{Err: notFound, Extra: extra}
+			}))
+		}
+	}})
+	for name := range extras {
+		start := time.Now()
+		r := result(t, s.call(t, Pattern, name, nil))
+		if member := errorOf(t, r); member["code"] != "internal_error" || time.Since(start) > 2*time.Second {
+			t.Errorf("%s = %v after %v, want internal_error at once", name, r, time.Since(start))
+		}
+		if line := callLine(t, s.logs, name); line == nil || line["outcome"] != "internal_error" {
+			t.Errorf("%s's call line = %v, want internal_error", name, line)
+		}
+	}
+	var failed int
+	for _, e := range s.logs.entries(t) {
+		if e["msg"] == "MCP tool failed" && e["level"] == "ERROR" && strings.Contains(fmt.Sprint(e["error"]), "encoding its error's member") {
+			failed++
+		}
+	}
+	if failed != len(extras) {
+		t.Errorf("%d unwritable errors logged, want %d: %v", failed, len(extras), s.logs.entries(t))
 	}
 }

@@ -55,9 +55,11 @@ func (t Tool) Spec() Spec { return t.spec }
 // fields without omitempty are required, a pointer field is optional and
 // takes null as absent, and a string field is the one way to pass an id.
 func NewTool[In any](s Spec, handle func(ctx context.Context, c Call, in In) (Result, error)) Tool {
-	return Tool{spec: s, in: reflect.TypeFor[In](), handle: func(ctx context.Context, c Call, in any) (Result, error) {
-		return handle(ctx, c, *in.(*In))
-	}}
+	t := Tool{spec: s, in: reflect.TypeFor[In]()}
+	if handle != nil { // New refuses a tool without one
+		t.handle = func(ctx context.Context, c Call, in any) (Result, error) { return handle(ctx, c, *in.(*In)) }
+	}
+	return t
 }
 
 // Call is what a handler is told of its call.
@@ -82,7 +84,10 @@ type Result struct {
 	Blocks     []Block
 }
 
-// Block is one content block: exactly one of its fields is set.
+// Block is one content block: an image with Image, a resource link with
+// Link, a text block otherwise, its Text possibly empty (read's lines of
+// none, M9/P1 design 3.11.1). Text beside an image or a link, or both of
+// them, is no block.
 type Block struct {
 	Text  string
 	Image *Image
@@ -120,6 +125,8 @@ func (s *Server) addTools(tools []Tool) {
 			panic(fmt.Sprintf("mcpserver: tool %s is listed in no entry", spec.Name))
 		case spec.Notebook && spec.Entry&AccountEntry == 0:
 			panic(fmt.Sprintf("mcpserver: tool %s takes a notebook, but only the account entry gives it one", spec.Name))
+		case t.handle == nil:
+			panic(fmt.Sprintf("mcpserver: tool %s has no handler", spec.Name))
 		}
 		for _, e := range []Entry{NotebookEntry, AccountEntry} {
 			if spec.Entry&e == 0 {
@@ -131,11 +138,7 @@ func (s *Server) addTools(tools []Tool) {
 			named[e][spec.Name] = true
 			notebook := spec.Notebook && e == AccountEntry
 			schema, table := inputOf(spec.Name, t.in, notebook)
-			srv := s.notebookEntry
-			if e == AccountEntry {
-				srv = s.accountEntry
-			}
-			srv.AddTool(&mcp.Tool{
+			s.serverOf(e).AddTool(&mcp.Tool{
 				Name: spec.Name, Title: spec.Title, Description: spec.Description, InputSchema: schema,
 				Annotations: annotationsOf(spec.Annotations),
 			}, s.handlerOf(t, e, notebook, table))
@@ -174,7 +177,7 @@ func (s *Server) handlerOf(t Tool, e Entry, notebook bool, table *bodyshape.Tabl
 		var shape *bodyshape.Error
 		switch cerr := table.Check(name, args); {
 		case errors.As(cerr, &shape):
-			res, outcome = argumentsError(shape)
+			res, outcome = s.argumentsError(ctx, name, shape)
 			return res, nil
 		case cerr != nil:
 			res, outcome = s.toolError(ctx, name, fmt.Errorf("mcpserver: tool %s: checking its arguments: %w", name, cerr))
@@ -232,9 +235,10 @@ func takeNotebook(args []byte) (uuid.UUID, []byte, error) {
 
 // answer is result as the SDK sends it, within MaxAnswerBytes: a
 // structured result encoded once, its text block and structuredContent
-// the same bytes; a text result's blocks. Neither or both set, a block of
-// no kind or of two, and an answer over the bound are the tool's fault:
-// internal_error.
+// the same bytes; a text result's blocks. Neither or both set, a
+// structured result that is no JSON object (MCP's structuredContent is
+// one), a block of two kinds, and an answer over the bound are the tool's
+// fault: internal_error.
 func (s *Server) answer(ctx context.Context, name string, result Result) (*mcp.CallToolResult, string) {
 	var res *mcp.CallToolResult
 	switch {
@@ -246,6 +250,9 @@ func (s *Server) answer(ctx context.Context, name string, result Result) (*mcp.C
 		text, err := encode(result.Structured)
 		if err != nil {
 			return s.toolError(ctx, name, fmt.Errorf("mcpserver: tool %s: encoding its result: %w", name, err))
+		}
+		if !bytes.HasPrefix(text, []byte("{")) {
+			return s.toolError(ctx, name, fmt.Errorf("mcpserver: tool %s answered a structured result that is no JSON object", name))
 		}
 		res = &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(text)}}, StructuredContent: text}
 	default:
@@ -266,14 +273,14 @@ func contentOf(blocks []Block) ([]mcp.Content, error) {
 	content := make([]mcp.Content, 0, len(blocks))
 	for i, b := range blocks {
 		kinds := 0
-		for _, set := range []bool{b.Text != "", b.Image != nil, b.Link != nil} {
+		for _, set := range []bool{b.Image != nil, b.Link != nil} {
 			if set {
 				kinds++
 			}
 		}
 		switch {
-		case kinds != 1:
-			return nil, fmt.Errorf("block %d is %d kinds of block, not one", i, kinds)
+		case kinds > 1 || kinds == 1 && b.Text != "":
+			return nil, fmt.Errorf("block %d is of two kinds, not one", i)
 		case b.Image != nil:
 			content = append(content, &mcp.ImageContent{Data: b.Image.Data, MIMEType: b.Image.MIME})
 		case b.Link != nil:

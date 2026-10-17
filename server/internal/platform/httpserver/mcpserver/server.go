@@ -105,6 +105,8 @@ func New(o Options) *Server {
 		panic("mcpserver: no notebooks")
 	case o.Logger == nil:
 		panic("mcpserver: no logger")
+	case o.Errors == (httpserver.APIErrors{}):
+		panic("mcpserver: no errors: the API's are the problems' writer")
 	case o.RequestTimeout <= 0 || o.MaxBodyBytes <= 0:
 		panic("mcpserver: the request timeout and the body limit must be positive")
 	}
@@ -155,7 +157,13 @@ func (s *Server) newEntry(o Options, logger *slog.Logger) *mcp.Server {
 // getServer is the server of the request's entry, which ServeHTTP put in
 // its context. It is never nil: the SDK answers nil with 400.
 func (s *Server) getServer(r *http.Request) *mcp.Server {
-	if requestOf(r.Context()).entry == NotebookEntry {
+	return s.serverOf(requestOf(r.Context()).entry)
+}
+
+// serverOf is the server of entry e: the notebook entry's, or the
+// account entry's for any other.
+func (s *Server) serverOf(e Entry) *mcp.Server {
+	if e == NotebookEntry {
 		return s.notebookEntry
 	}
 	return s.accountEntry

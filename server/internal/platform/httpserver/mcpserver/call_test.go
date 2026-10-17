@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -43,6 +44,7 @@ func TestTheEntryOfAMalformedQueryIsNotFound(t *testing.T) {
 		{"empty", "?notebook=", "", 0},
 		{"no uuid", "?notebook=nope", "", 0},
 		{"an escape that does not parse", "?notebook=%zz", "", 0},
+		{"a bad pair beside the notebook", "?notebook=" + id + "&x=%zz", "", 0},
 		{"a semicolon", "?notebook=" + id + ";x=1", "", 0},
 		{"a semicolon elsewhere", "?a=1;b=2", "", 0},
 	}
@@ -75,6 +77,7 @@ func TestTheEntryOfAMalformedQueryIsNotFound(t *testing.T) {
 }
 
 // Only a POST is gated: GET and DELETE are the SDK's 405 without a read,
+// a version it does not know its 400 before that (M9/P1 design 3.2.2),
 // and a session's access token is 403 before any notebook is looked at.
 func TestTheEntryGatesPostsOnly(t *testing.T) {
 	s := serveMCP(t, setup{})
@@ -84,13 +87,46 @@ func TestTheEntryGatesPostsOnly(t *testing.T) {
 			t.Errorf("%s = %d Allow %q, want 405 Allow POST", method, a.status, a.header.Get("Allow"))
 		}
 	}
-	a := s.post(t, context.Background(), Pattern+"?notebook="+uuid.NewV7().String(), sessionToken, initialize, nil)
+	a := s.send(t, context.Background(), http.MethodGet, Pattern, patToken, "", http.Header{"Mcp-Protocol-Version": {"2024-01-01"}})
+	if a.status != http.StatusBadRequest || !strings.HasPrefix(a.header.Get("Content-Type"), "text/plain") {
+		t.Errorf("a GET of an unknown version = %d %s, want the SDK's 400 before its 405", a.status, a.body)
+	}
+	a = s.post(t, context.Background(), Pattern+"?notebook="+uuid.NewV7().String(), sessionToken, initialize, nil)
 	if p := a.decoded(t); a.status != http.StatusForbidden || p["code"] != "forbidden" ||
 		p["detail"] != "MCP takes a personal access token, not a session's access token." {
 		t.Errorf("a session's access token = %d %s, want 403 forbidden", a.status, a.body)
 	}
 	if n := s.notebooks.gates.Load(); n != 0 {
 		t.Errorf("the gate ran %d times, want none", n)
+	}
+}
+
+// A request without a credential reached the server unauthenticated, a
+// fault of its mount: 500 at error, never the 403 of a session's token.
+func TestARequestWithoutACredentialIsAFault(t *testing.T) {
+	s := serveMCP(t, setup{options: func(o *Options) {
+		o.Credentials = func(context.Context) (Credential, bool) { return Credential{}, false }
+	}})
+	a := s.post(t, context.Background(), Pattern, patToken, initialize, nil)
+	if p := a.decoded(t); a.status != http.StatusInternalServerError || p["code"] != "internal_error" {
+		t.Errorf("no credential = %d %s, want 500 internal_error", a.status, a.body)
+	}
+	if errs := s.logs.at(t, "ERROR"); len(errs) != 1 || !strings.Contains(fmt.Sprint(errs[0]["error"]), "no credential") {
+		t.Errorf("the log has %v at error, want the missing credential", errs)
+	}
+}
+
+// A reverse proxy on the same host forwards its own Host to the loopback
+// listener: it is served, the SDK's protection of localhost being off
+// (M9/P1 design 3.2.2); with it on, the SDK would answer 403 "invalid Host
+// header" to every request of such a deployment.
+func TestAProxysHostIsServed(t *testing.T) {
+	s := serveMCP(t, setup{})
+	for _, path := range []string{Pattern, Pattern + "?notebook=" + visible.String()} {
+		a := s.post(t, context.Background(), path, patToken, initialize, http.Header{"Host": {"wiki.example.com"}})
+		if r := result(t, a); r["protocolVersion"] != "2025-11-25" {
+			t.Errorf("POST %s with Host wiki.example.com = %v, want its handshake", path, r)
+		}
 	}
 }
 
@@ -153,7 +189,7 @@ func TestTheCallContextTakesTheEarlierDeadline(t *testing.T) {
 // outer gives every method the call's context: initialize, ping,
 // tools/list and the rest, the handshake within it.
 func TestEveryMethodGetsTheCallContext(t *testing.T) {
-	s := New(Options{Credentials: credentialsOf, Notebooks: &fakeNotebooks{}, RequestTimeout: time.Second, MaxBodyBytes: 1, Logger: discard()})
+	s := New(bare(discard()))
 	ctx := context.WithValue(context.Background(), requestKey{}, &request{ctx: context.Background(), read: time.Now()})
 	for _, method := range []string{"initialize", "ping", "tools/list", "tools/call", "subscriptions/listen", "prompts/get"} {
 		var ok bool
@@ -265,6 +301,11 @@ func TestRecoveryAnswersEachMethod(t *testing.T) {
 		!strings.Contains(e["stack"].(string), "goroutine") || e["request_id"] == "" {
 		t.Errorf("the log has %v, want the panic at error with the tool, its stack and the request id", e)
 	}
+	// The wrapper's own recovery, before its call line: that line says
+	// what was answered.
+	if e := callLine(t, s.logs, "boom"); e == nil || e["outcome"] != "internal_error" {
+		t.Errorf("boom's call line = %v, want its outcome internal_error", e)
+	}
 	a := s.post(t, context.Background(), Pattern, patToken, `{"jsonrpc":"2.0","id":3,"method":"prompts/get","params":{"name":"panicky"}}`, v2025())
 	if code := rpcErrorCode(t, a); code != -32603 {
 		t.Errorf("a panicking prompts/get = %d %s, want the JSON-RPC internal error -32603", a.status, a.body)
@@ -279,6 +320,30 @@ func TestRecoveryAnswersEachMethod(t *testing.T) {
 		`{"name":"echo","arguments":{"notebook":"x"},"_meta":{"io.modelcontextprotocol/clientInfo":{"name":"meta","version":"1"}}}}`, v2025()))
 	if member := errorOf(t, r); member["code"] != "internal_error" {
 		t.Errorf("a tools/call that panicked outside its handler = %v, want a tool error internal_error", r)
+	}
+}
+
+// A panic's log names the tool only by a tool's name: a client's name of
+// no tool, unbounded, is left out.
+func TestAPanicLogsOnlyAToolsName(t *testing.T) {
+	logs := &logBuffer{}
+	s := New(bare(jsonLogger(logs)))
+	for _, name := range []string{"echo", strings.Repeat("x", 33), "Echo", `a"b`} {
+		func() {
+			var res mcp.Result
+			var err error
+			defer s.recover(context.Background(), methodCallTool, &mcp.CallToolRequest{Params: &mcp.CallToolParamsRaw{Name: name}}, &res, &err)
+			panic("a tool's fault")
+		}()
+	}
+	var tools []any
+	for _, e := range logs.entries(t) {
+		if e["msg"] == "MCP method panicked" {
+			tools = append(tools, e["tool"])
+		}
+	}
+	if len(tools) != 4 || tools[0] != "echo" || tools[1] != nil || tools[2] != nil || tools[3] != nil {
+		t.Errorf("the panics logged the tools %v, want echo and none else", tools)
 	}
 }
 

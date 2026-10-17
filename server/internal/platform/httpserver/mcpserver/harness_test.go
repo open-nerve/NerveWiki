@@ -118,6 +118,12 @@ func nilMap() map[string]int { return nil }
 // discard is a logger that writes nothing.
 func discard() *slog.Logger { return slog.New(slog.DiscardHandler) }
 
+// bare is the least of Options that New takes, served by no route.
+func bare(logger *slog.Logger) Options {
+	return Options{Credentials: credentialsOf, Notebooks: &fakeNotebooks{}, Errors: httpserver.NewAPIErrors(logger),
+		RequestTimeout: time.Second, MaxBodyBytes: 1, Logger: logger}
+}
+
 // unlimited is a bucket that always has a unit.
 type unlimited struct{}
 
@@ -161,6 +167,17 @@ func (l *logBuffer) find(t testing.TB, msg string) map[string]any {
 	t.Helper()
 	for _, e := range l.entries(t) {
 		if e["msg"] == msg {
+			return e
+		}
+	}
+	return nil
+}
+
+// callLine is the first call line of tool, or nil.
+func callLine(t testing.TB, l *logBuffer, tool string) map[string]any {
+	t.Helper()
+	for _, e := range l.entries(t) {
+		if e["msg"] == "MCP tool call" && e["tool"] == tool {
 			return e
 		}
 	}
@@ -296,6 +313,9 @@ func (s *served) send(t testing.TB, ctx context.Context, method, path, token, bo
 	}
 	for k, v := range header {
 		req.Header[k] = v
+	}
+	if host := header.Get("Host"); host != "" { // a client sends req.Host
+		req.Host = host
 	}
 	res, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
 	if err != nil {

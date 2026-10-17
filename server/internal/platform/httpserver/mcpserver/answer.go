@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"encoding/json"
+	"errors"
 	"unicode/utf8"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -95,7 +96,8 @@ func MemberBytes(s string) int {
 }
 
 // answerBytes is res's bytes as MaxAnswerBytes counts them: TextBytes of
-// each text block, and of an error's structuredContent.
+// each text block, and of an error's structuredContent, which errorAnswer
+// encoded.
 func answerBytes(res *mcp.CallToolResult) int {
 	n := 0
 	for _, c := range res.Content {
@@ -103,13 +105,14 @@ func answerBytes(res *mcp.CallToolResult) int {
 			n += TextBytes(t.Text)
 		}
 	}
-	if res.IsError {
-		if text, err := encode(res.StructuredContent); err == nil {
-			n += TextBytes(string(text))
-		}
+	if structured, ok := res.StructuredContent.(json.RawMessage); res.IsError && ok {
+		n += TextBytes(string(structured))
 	}
 	return n
 }
+
+// errNothingFits is a Fit whose answer of no item is over the bound.
+var errNothingFits = errors.New("mcpserver: the answer of no item is over the answer's bound")
 
 // Fit is the answer of k ≤ n items that MaxAnswerBytes holds, where k is
 // n, or k items fit and k+1 do not: build(k) is the answer with the first
@@ -119,7 +122,8 @@ func answerBytes(res *mcp.CallToolResult) int {
 // is encoded as the answer is and measured exactly, so no builder counts
 // on its own. A cursor's length follows the last item, so the measure is
 // not monotone in k, and k need not be the largest that fits.
-// Result.Structured is the encoded JSON.
+// Result.Structured is the encoded JSON. build(0) over the bound is an
+// error: nothing the tool can answer fits.
 func Fit(n int, build func(k int) any) (Result, int, error) {
 	measure := func(k int) (json.RawMessage, bool, error) {
 		text, err := encode(build(k))
@@ -158,9 +162,12 @@ func Fit(n int, build func(k int) any) (Result, int, error) {
 		}
 	}
 	if fit == nil { // no item fits, or there are none
-		text, _, err := measure(0)
-		if err != nil {
+		text, ok, err := measure(0)
+		switch {
+		case err != nil:
 			return Result{}, 0, err
+		case !ok:
+			return Result{}, 0, errNothingFits
 		}
 		fit = text
 	}
