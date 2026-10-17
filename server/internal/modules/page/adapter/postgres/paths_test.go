@@ -85,13 +85,15 @@ func TestPageStates(t *testing.T) {
 
 // lookupPlan is a path lookup's statement and the index it reads by: each
 // column given an equality in the index's condition, the others checked on
-// the row.
+// the row; analyzed, by it once the table is analyzed, whatever it reads
+// by before.
 type lookupPlan struct {
-	name    string
-	s       statement
-	index   string
-	columns []string
-	filter  []string
+	name     string
+	s        statement
+	index    string
+	columns  []string
+	filter   []string
+	analyzed bool
 }
 
 // rootPlan and childPlan are RootByKey's and ChildByKey's lookups.
@@ -99,14 +101,14 @@ func rootPlan(t *testing.T, notebook uuid.UUID, key string) lookupPlan {
 	return lookupPlan{"RootByKey(" + key + ")", statementOf(t, func(q *gen.Queries) error {
 		_, err := q.RootByKey(context.Background(), gen.RootByKeyParams{NotebookID: notebook, NameKey: key})
 		return err
-	}), "nodes_notebook_id_name_key_root_key", []string{"notebook_id", "name_key"}, nil}
+	}), "nodes_notebook_id_name_key_root_key", []string{"notebook_id", "name_key"}, nil, false}
 }
 
 func childPlan(t *testing.T, notebook, parent uuid.UUID, key string) lookupPlan {
 	return lookupPlan{"ChildByKey(" + key + ")", statementOf(t, func(q *gen.Queries) error {
 		_, err := q.ChildByKey(context.Background(), gen.ChildByKeyParams{NotebookID: notebook, ParentID: &parent, NameKey: key})
 		return err
-	}), "nodes_parent_id_name_key_key", []string{"parent_id", "name_key"}, []string{"notebook_id"}}
+	}), "nodes_parent_id_name_key_key", []string{"parent_id", "name_key"}, []string{"notebook_id"}, true}
 }
 
 // check fails t unless plan reads nodes once, by l's index, every column
@@ -135,15 +137,19 @@ func (l lookupPlan) check(t *testing.T, stage string, plan planNode, raw string)
 }
 
 // The path's lookups are point lookups (M9/P1 design 3.9.2): a root read by
-// the roots' unique index (notebook_id, name_key), a child by the
-// children's (parent_id, name_key), 00042's, each column of the index an
-// equality of its condition, with the production settings. On the shapes
-// of data the notebook's other indexes were taken on (M9/P1 S2 review,
-// A-I1 and C-I2), each without statistics and analyzed, each plan for its
-// arguments and generic, as pgx's cached statements get either:
+// the roots' unique index (notebook_id, name_key), without statistics and
+// analyzed; a child by the children's (parent_id, name_key) once the
+// table is analyzed (without statistics, the titles' index may be cheaper:
+// 00042's header). Both are 00042's, each column of the index an equality
+// of its condition, with the production settings. On the shapes of data
+// the notebook's other indexes were taken on (M9/P1 S2 reviews, A-I1 and
+// C-I2; fix check A, A2-M1), each plan for its arguments and generic, as
+// pgx's cached statements get either:
 //   - folders: 1,000 folders, each with C1 to C100 and a README, a root
 //     README, and 50,000 roots in another notebook: keys shared by many
 //     parents' children (the titles' index read every node of the key);
+//   - folders alone: the 1,000 folders, each with C1 to C100, and nothing
+//     else, where the titles' index takes a child without statistics;
 //   - one key: 20,000 roots, each with a child "notes", a root "notes", and
 //     a root README in each of 2,002 notebooks: a key shared by most nodes,
 //     and by roots across notebooks (analyzed, a root was read by a scan of
@@ -153,7 +159,8 @@ func (l lookupPlan) check(t *testing.T, stage string, plan planNode, raw string)
 //     every child of the parent, and every root; and a folder's share of
 //     the rows times a key's is many rows, but for a unique index).
 //
-// IS NOT DISTINCT FROM, either index gone, or one not unique, fail here.
+// IS NOT DISTINCT FROM, either index gone, or one not unique, fail here,
+// analyzed.
 func TestThePathLookupsArePointLookups(t *testing.T) {
 	const insert = `INSERT INTO nodes (id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id,
 		created_at, updated_at) `
@@ -176,6 +183,14 @@ func TestThePathLookupsArePointLookups(t *testing.T) {
 			f7 := f.idOf(t, f.eng, "F7")
 			return []lookupPlan{rootPlan(t, f.eng, "readme"), rootPlan(t, f.eng, "c7"), childPlan(t, f.eng, f7, "readme"),
 				childPlan(t, f.eng, f7, "c7")}
+		}},
+		{"folders alone", func(f fixture) {
+			f.exec(t, insert+`SELECT uuidv7(), $1, NULL, 'page', 'F' || i, 'f' || i, i, $2, $2, $3, $3 FROM generate_series(1, 1000) i`,
+				f.eng, f.alice, now())
+			f.exec(t, insert+`SELECT uuidv7(), $1, p.id, 'page', 'C' || i, 'c' || i, i, $2, $2, $3, $3
+				FROM nodes p, generate_series(1, 100) i WHERE p.notebook_id = $1 AND p.parent_id IS NULL`, f.eng, f.alice, now())
+		}, func(f fixture) []lookupPlan {
+			return []lookupPlan{rootPlan(t, f.eng, "f7"), childPlan(t, f.eng, f.idOf(t, f.eng, "F7"), "c7")}
 		}},
 		{"one key", func(f fixture) {
 			f.exec(t, insert+`SELECT uuidv7(), $1, NULL, 'page', 'R' || i, 'r' || i, i, $2, $2, $3, $3 FROM generate_series(1, 20000) i`,
@@ -211,6 +226,9 @@ func TestThePathLookupsArePointLookups(t *testing.T) {
 					f.exec(t, "ANALYZE nodes")
 				}
 				for _, l := range lookups {
+					if l.analyzed && stage != "analyzed" {
+						continue
+					}
 					plan, raw := f.planTreeWith(t, l.s)
 					l.check(t, stage+", for its arguments", plan, raw)
 					plan, raw = f.genericPlanTree(t, l.s.sql)

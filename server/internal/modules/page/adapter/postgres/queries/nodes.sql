@@ -54,8 +54,9 @@ WHERE notebook_id = sqlc.arg(notebook_id) AND parent_id IS NULL AND name_key = s
 
 -- name: ChildByKey :one
 -- The child not deleted of parent_id whose title key is name_key: a path's next segment, by the children's unique
--- index (00042), its two columns equalities, the notebook checked on the row. IS NOT DISTINCT FROM would not use it
--- (M9/P1 design 2.1, item 13).
+-- index (00042), its two columns equalities, the notebook checked on the row: a point lookup once the table is
+-- analyzed. Without statistics the planner may read the notebook's nodes of the key by the titles' index (00019)
+-- instead, 00042's header says why. IS NOT DISTINCT FROM would not use either (M9/P1 design 2.1, item 13).
 SELECT id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at,
     updated_at
 FROM nodes
@@ -70,8 +71,7 @@ SELECT id FROM nodes WHERE id = ANY(sqlc.arg(ids)::uuid[]) AND deleted_at IS NUL
 -- name: AssetsUnder :many
 -- A parent's attachments not deleted (the root's when parent_id is NULL), by title key and id, after the cursor's key
 -- and id when it has one, at most max_rows: a page of the attachments' list (M7/P2 design 3.3). As Children, it
--- reaches the notebook's nodes through the siblings' index and filters the parent, which IS NOT DISTINCT FROM does
--- not narrow in an index.
+-- reads the notebook's nodes and filters the parent, which IS NOT DISTINCT FROM does not narrow in an index.
 SELECT id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at,
     updated_at
 FROM nodes

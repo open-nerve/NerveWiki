@@ -21,12 +21,11 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
 )
 
-// The unique indexes on siblings' name keys: the siblings' own, and a
-// root's and a child's by a path's segment (00042).
+// The unique indexes on siblings' name keys (00042): the roots' and the
+// children's, which a path's segments are read by.
 const (
-	siblingNameKey = "nodes_notebook_id_parent_id_name_key_idx"
-	rootNameKey    = "nodes_notebook_id_name_key_root_key"
-	childNameKey   = "nodes_parent_id_name_key_key"
+	rootNameKey  = "nodes_notebook_id_name_key_root_key"
+	childNameKey = "nodes_parent_id_name_key_key"
 )
 
 // Store implements the app's repository ports.
@@ -58,11 +57,10 @@ func uniqueViolation(err error, names ...string) bool {
 }
 
 // nameTaken reports whether err broke a unique index on siblings' name
-// keys. A name a sibling holds breaks each of them that holds the node, and
-// PostgreSQL names the first it checks, in the order they were made: a
-// database restored from a dump makes them in another.
+// keys: the roots' for a root, the children's for a child, as no row is in
+// both.
 func nameTaken(err error) bool {
-	return uniqueViolation(err, siblingNameKey, rootNameKey, childNameKey)
+	return uniqueViolation(err, rootNameKey, childNameKey)
 }
 
 // notFound turns no row into app.ErrNotFound.

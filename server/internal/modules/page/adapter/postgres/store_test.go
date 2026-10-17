@@ -192,17 +192,13 @@ func TestSiblingNamesAreUnique(t *testing.T) {
 	f.page(t, f.ops, nil, "Straße", 0)
 }
 
-// A name a sibling holds is taken whichever of the siblings' unique
-// indexes tells it: PostgreSQL names the first it checks, in the order
-// they were made, which a database restored from a dump has otherwise.
-// Here the siblings' own index is made again, last: a root's index and a
-// child's tell it first.
+// A name a sibling holds is taken by either of the siblings' unique
+// indexes (00042): a root's by the roots', a child's by the children's.
+// Their rows are apart, a parent or none, so a name breaks the one alone,
+// in whatever order a database restored from a dump made them.
 func TestEverySiblingsIndexTellsANameTaken(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
-	f.exec(t, "DROP INDEX nodes_notebook_id_parent_id_name_key_idx")
-	f.exec(t, `CREATE UNIQUE INDEX nodes_notebook_id_parent_id_name_key_idx ON nodes (notebook_id, parent_id, name_key)
-		NULLS NOT DISTINCT WHERE deleted_at IS NULL`)
 	root := f.page(t, f.eng, nil, "Straße", 0)
 	f.page(t, f.eng, &root.ID, "Notes", 0)
 	other := f.page(t, f.eng, nil, "Other", 1)      // renamed to a root's name
@@ -224,7 +220,7 @@ func TestEverySiblingsIndexTellsANameTaken(t *testing.T) {
 				updated_by_id, created_at, updated_at) VALUES ($1, $2, $3, 'page', $4, $5, 9, $6, $6, $7, $7)`,
 			n.ID, n.NotebookID, n.ParentID, n.Name, n.NameKey, f.alice, now())
 		if pgErr := (*pgconn.PgError)(nil); !errors.As(err, &pgErr) || pgErr.ConstraintName != tt.index {
-			t.Fatalf("%s named %q beside its sibling breaks %v, want %s first", tt.name, tt.title, err, tt.index)
+			t.Fatalf("%s named %q beside its sibling breaks %v, want %s", tt.name, tt.title, err, tt.index)
 		}
 		if err := f.s.CreateNode(ctx, n); !errors.Is(err, domain.ErrTitleTaken) {
 			t.Errorf("CreateNode(%s named %q) = %v, want ErrTitleTaken", tt.name, tt.title, err)
