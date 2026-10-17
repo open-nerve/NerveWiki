@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
@@ -108,17 +109,33 @@ func regexpOf(pattern string) *regexp.Regexp {
 // patternPieces and titlePieces are the alphabets of the random patterns
 // and titles: runes beyond ASCII, of two and three bytes, some sharing the
 // sieve's low 10 bits (U+04E9 with é, U+6B22 with 漢), folding ones (ß,
-// S), and the dots and ".md" of the path keys.
-func patternPieces() []string {
-	return []string{"a", "b", "é", "漢", "ß", "S", "*", "?", ".md", "x", ".", "-", "!"}
+// S), and the dots and ".md" of the path keys. Long, they hold runs of 62
+// to 65 and 126 to 129 characters too, of ASCII and of two bytes, ? and *
+// among them: a segment's states in two and three words of the masks, and
+// the carry between them (M9/P1 S2 review, A-I2).
+func patternPieces(long bool) []string {
+	short := []string{"a", "b", "é", "漢", "ß", "S", "*", "?", ".md", "x", ".", "-", "!"}
+	if !long {
+		return short
+	}
+	return append(short, strings.Repeat("a", 62), strings.Repeat("a", 63), strings.Repeat("a", 64), strings.Repeat("é", 65),
+		strings.Repeat("a", 62)+"?", "?"+strings.Repeat("é", 63), strings.Repeat("a", 61)+"*b", strings.Repeat("a", 126),
+		strings.Repeat("é", 127), strings.Repeat("a", 63)+"?"+strings.Repeat("a", 64), strings.Repeat("é", 64)+"*"+strings.Repeat("a", 65))
 }
 
-func titlePieces() []string {
-	return []string{"a", "b", "é", string(rune(0x04e9)), "漢", string(rune(0x6b22)), "x.md", ".", "-", "!", "md", "a.md", "ß", "SS", "A"}
+func titlePieces(long bool) []string {
+	short := []string{"a", "b", "é", string(rune(0x04e9)), "漢", string(rune(0x6b22)), "x.md", ".", "-", "!", "md", "a.md", "ß", "SS", "A"}
+	if !long {
+		return short
+	}
+	return append(short, strings.Repeat("a", 62), strings.Repeat("a", 63), strings.Repeat("a", 64), strings.Repeat("a", 65),
+		strings.Repeat("é", 63), strings.Repeat("é", 64), strings.Repeat("a", 63)+"b", strings.Repeat("a", 126),
+		strings.Repeat("a", 127), strings.Repeat("é", 128), strings.Repeat("a", 129))
 }
 
-// randomPattern is a valid glob of up to five segments.
-func randomPattern(rnd *rand.Rand) string {
+// randomPattern is a valid glob of up to five segments, of the long
+// alphabet when long.
+func randomPattern(rnd *rand.Rand, long bool) string {
 	for {
 		segs := make([]string, 1+rnd.IntN(5))
 		for i := range segs {
@@ -127,7 +144,7 @@ func randomPattern(rnd *rand.Rand) string {
 				continue
 			}
 			var b strings.Builder
-			pieces := patternPieces()
+			pieces := patternPieces(long)
 			for range 1 + rnd.IntN(4) {
 				b.WriteString(pieces[rnd.IntN(len(pieces))])
 			}
@@ -140,14 +157,121 @@ func randomPattern(rnd *rand.Rand) string {
 	}
 }
 
-// randomKey is the title key of a title of up to three pieces.
-func randomKey(rnd *rand.Rand) string {
+// randomKey is the title key of a title of up to three pieces, of the long
+// alphabet when long.
+func randomKey(rnd *rand.Rand, long bool) string {
 	var b strings.Builder
-	pieces := titlePieces()
+	pieces := titlePieces(long)
 	for range 1 + rnd.IntN(3) {
 		b.WriteString(pieces[rnd.IntN(len(pieces))])
 	}
 	return shared.TitleKey(b.String())
+}
+
+// The second oracle, a wildcard matcher of its own (M9/P1 S2 review A's):
+// each segment's literal parts folded as the glob folds them, matched to
+// a key rune by rune by the classic table of which pattern prefix matches
+// which key prefix, and the segments to the keys by a memo of the same
+// kind, ** taking any number of keys (one or more at the end).
+type oracleToken struct {
+	kind int // 0 a literal rune, 1 ?, 2 *
+	r    rune
+}
+
+type oracleSegment struct {
+	kind   int // 0 a segment's tokens, 1 **, 2 a trailing ** (one key or more)
+	tokens []oracleToken
+}
+
+func oracleOf(pattern string) []oracleSegment {
+	parts := strings.Split(strings.TrimPrefix(pattern, "/"), "/")
+	out := make([]oracleSegment, 0, len(parts))
+	for i, p := range parts {
+		if p == "**" {
+			kind := 1
+			if i > 0 && i == len(parts)-1 {
+				kind = 2
+			}
+			out = append(out, oracleSegment{kind: kind})
+			continue
+		}
+		var tokens []oracleToken
+		for {
+			j := strings.IndexAny(p, "*?")
+			if j < 0 {
+				j = len(p)
+			}
+			for _, r := range shared.TitleKey(p[:j]) {
+				tokens = append(tokens, oracleToken{0, r})
+			}
+			if j == len(p) {
+				break
+			}
+			if p[j] == '*' {
+				tokens = append(tokens, oracleToken{kind: 2})
+			} else {
+				tokens = append(tokens, oracleToken{kind: 1})
+			}
+			p = p[j+1:]
+		}
+		out = append(out, oracleSegment{tokens: tokens})
+	}
+	return out
+}
+
+// oracleSegmentMatches reports whether tokens match the key's runes s,
+// prev and cur two rows of the table at least as long as s and its end.
+func oracleSegmentMatches(tokens []oracleToken, s []rune, prev, cur []bool) bool {
+	prev, cur = prev[:len(s)+1], cur[:len(s)+1]
+	clear(prev)
+	prev[0] = true // no token matches the empty prefix
+	for _, tok := range tokens {
+		cur[0] = tok.kind == 2 && prev[0]
+		for j := 1; j <= len(s); j++ {
+			switch tok.kind {
+			case 2:
+				cur[j] = prev[j] || cur[j-1]
+			case 1:
+				cur[j] = prev[j-1]
+			default:
+				cur[j] = prev[j-1] && s[j-1] == tok.r
+			}
+		}
+		prev, cur = cur, prev
+	}
+	return prev[len(s)]
+}
+
+// oracleMatches reports whether segments match the path of keys.
+func oracleMatches(segments []oracleSegment, keys []string) bool {
+	runes := make([][]rune, len(keys))
+	longest := 0
+	for i, k := range keys {
+		runes[i] = []rune(k)
+		longest = max(longest, len(runes[i]))
+	}
+	prev, cur := make([]bool, longest+1), make([]bool, longest+1)
+	memo := map[[2]int]bool{}
+	var match func(i, j int) bool
+	match = func(i, j int) bool {
+		if v, ok := memo[[2]int{i, j}]; ok {
+			return v
+		}
+		var v bool
+		switch {
+		case i == len(segments):
+			v = j == len(keys)
+		case segments[i].kind == 1:
+			v = match(i+1, j) || j < len(keys) && match(i, j+1)
+		case segments[i].kind == 2:
+			v = j < len(keys) && (match(i+1, j+1) || match(i, j+1))
+		default:
+			v = j < len(keys) && oracleSegmentMatches(segments[i].tokens, runes[j], prev, cur) && match(i+1, j+1)
+		}
+		memo[[2]int{i, j}] = v
+		return v
+	}
+	return match(0, 0)
 }
 
 // matchPath is the glob's match of a path of keys, segment by segment.
@@ -162,29 +286,38 @@ func matchPath(g domain.Glob, keys []string) bool {
 	return g.Accepts(st)
 }
 
-// The automata match what the regular expression does, on random patterns
-// and paths (M9/P1 design 3.10.1, 3.19).
+// The automata match what the regular expression does, and the second
+// oracle, on random patterns and paths, of the short alphabet and of the
+// long (M9/P1 design 3.10.1, 3.19).
 func TestTheGlobMatchesAsItsRegexpDoes(t *testing.T) {
 	rnd := rand.New(rand.NewPCG(1, 2))
-	differ, pairs := 0, 0
-	for range 20000 {
-		pattern := randomPattern(rnd)
-		g, re := mustGlob(t, pattern), regexpOf(pattern)
+	differ, pairs, matched := 0, 0, 0
+	for i := range 22000 {
+		long := i >= 20000
+		pattern := randomPattern(rnd, long)
+		g, re, segments := mustGlob(t, pattern), regexpOf(pattern), oracleOf(pattern)
 		for range 15 {
 			keys := make([]string, 1+rnd.IntN(6))
 			for i := range keys {
-				keys[i] = randomKey(rnd)
+				keys[i] = randomKey(rnd, long)
 			}
 			pairs++
-			if got, want := matchPath(g, keys), re.MatchString("/"+strings.Join(keys, "/")); got != want {
+			want := re.MatchString("/" + strings.Join(keys, "/"))
+			if oracle := oracleMatches(segments, keys); oracle != want {
+				t.Fatalf("%q over %q: the regexp %v, the second oracle %v", pattern, keys, want, oracle)
+			}
+			if want {
+				matched++
+			}
+			if got := matchPath(g, keys); got != want {
 				if differ++; differ < 5 {
-					t.Errorf("%q over %q: %v, the regexp %v", pattern, keys, got, want)
+					t.Errorf("%q over %q: %v, the oracles %v", pattern, keys, got, want)
 				}
 			}
 		}
 	}
-	if differ > 0 {
-		t.Errorf("%d of %d pairs differ", differ, pairs)
+	if differ > 0 || matched < pairs/50 {
+		t.Errorf("%d of %d pairs differ, %d match", differ, pairs, matched)
 	}
 }
 
@@ -209,12 +342,13 @@ func globNodes(trees []*tree) []*domain.GlobNode {
 }
 
 // randomTree is a tree of up to depth levels, its siblings' keys
-// distinct, no attachment's key ending with ".md".
-func randomTree(rnd *rand.Rand, depth int) []*tree {
+// distinct, no attachment's key ending with ".md", of the long alphabet
+// when long.
+func randomTree(rnd *rand.Rand, depth int, long bool) []*tree {
 	seen := map[string]bool{}
 	var out []*tree
 	for range rnd.IntN(5) + 1 {
-		key := randomKey(rnd)
+		key := randomKey(rnd, long)
 		page := rnd.IntN(3) != 0
 		if !page && strings.HasSuffix(key, ".md") {
 			key += "x"
@@ -225,7 +359,7 @@ func randomTree(rnd *rand.Rand, depth int) []*tree {
 		seen[key] = true
 		n := &tree{key: key, page: page}
 		if page && depth > 1 && rnd.IntN(3) != 0 {
-			n.children = randomTree(rnd, depth-1)
+			n.children = randomTree(rnd, depth-1, long)
 		}
 		out = append(out, n)
 	}
@@ -260,23 +394,30 @@ func walk(t testing.TB, g domain.Glob, roots []*domain.GlobNode, after string, m
 }
 
 // The walk of a tree, each node's state its parent's stepped, is the
-// match of each path on its own, in the paths' joined byte order
-// (M9/P1 design 3.10.1, 3.19).
+// match of each path on its own, in the paths' joined byte order, of the
+// short alphabet and of the long (M9/P1 design 3.10.1, 3.19).
 func TestTheGlobWalkIsThePathsMatch(t *testing.T) {
 	rnd := rand.New(rand.NewPCG(21, 23))
-	for range 3000 {
-		trees := randomTree(rnd, 1+rnd.IntN(11))
+	for i := range 3300 {
+		long, depth := i >= 3000, 1+rnd.IntN(11)
+		if long {
+			depth = 1 + rnd.IntN(4)
+		}
+		trees := randomTree(rnd, depth, long)
 		var paths []string
 		pathKeys(trees, "", &paths)
 		slices.Sort(paths)
 		roots := globNodes(trees)
 		for range 10 {
-			pattern := randomPattern(rnd)
-			re := regexpOf(pattern)
+			pattern := randomPattern(rnd, long)
+			re, segments := regexpOf(pattern), oracleOf(pattern)
 			var want []string
 			for _, p := range paths {
 				if re.MatchString("/" + p) {
 					want = append(want, p)
+				}
+				if long && oracleMatches(segments, strings.Split(p, "/")) != re.MatchString("/"+p) {
+					t.Fatalf("%q over %q: the oracles differ", pattern, p)
 				}
 			}
 			got, w := walk(t, mustGlob(t, pattern), roots, "", 1<<62)
@@ -370,9 +511,9 @@ func maxEntries(trees []*tree) int {
 func TestTheGlobResumesFromItsCursor(t *testing.T) {
 	rnd := rand.New(rand.NewPCG(31, 37))
 	for range 3000 {
-		trees := randomTree(rnd, 1+rnd.IntN(9))
+		trees := randomTree(rnd, 1+rnd.IntN(9), false)
 		roots := globNodes(trees)
-		pattern := randomPattern(rnd)
+		pattern := randomPattern(rnd, false)
 		g := mustGlob(t, pattern)
 		whole, all := walk(t, g, roots, "", 1<<62)
 		bound := int64(1 + rnd.IntN(5000))
@@ -444,8 +585,8 @@ func remove(trees *[]*tree, p string) bool {
 func TestTheGlobResumesAfterADeletedCursor(t *testing.T) {
 	rnd := rand.New(rand.NewPCG(41, 43))
 	for range 3000 {
-		trees := randomTree(rnd, 1+rnd.IntN(7))
-		pattern := randomPattern(rnd)
+		trees := randomTree(rnd, 1+rnd.IntN(7), false)
+		pattern := randomPattern(rnd, false)
 		g, re := mustGlob(t, pattern), regexpOf(pattern)
 		var initial []string
 		pathKeys(trees, "", &initial)
@@ -493,13 +634,35 @@ func TestTheGlobResumesAfterADeletedCursor(t *testing.T) {
 	}
 }
 
-// A glob without wildcards names one path: its keys.
+// A glob without wildcards names one path, its keys, and lists it alone
+// among siblings whose keys share all but its end, titles of 64 folded
+// characters and more among them: a segment's states in two words of the
+// masks and more (M9/P1 S2 review, A-I2).
 func TestALiteralGlobNamesOnePath(t *testing.T) {
 	if keys, ok := mustGlob(t, "/Guide/Straße").Literal(); !ok || !slices.Equal(keys, []string{"guide", "strasse"}) {
 		t.Errorf("Literal() = %q, %v", keys, ok)
 	}
 	if _, ok := mustGlob(t, "Guide/*").Literal(); ok {
 		t.Error("Guide/* is literal")
+	}
+	for _, title := range []string{strings.Repeat("a", 63), strings.Repeat("a", 64), strings.Repeat("a", 70), strings.Repeat("É", 64),
+		strings.Repeat("a", 127) + "b", strings.Repeat("ab", 100) + "c", strings.Repeat("é", 127)} {
+		key := shared.TitleKey(title)
+		cut, _ := utf8.DecodeLastRuneInString(key)
+		alike := []string{key, key[:len(key)-utf8.RuneLen(cut)], key + "a", key[:len(key)-utf8.RuneLen(cut)] + "z"}
+		var under []*tree
+		for _, k := range alike {
+			under = append(under, &tree{key: k, page: true})
+		}
+		var roots []*tree
+		for _, k := range alike {
+			roots = append(roots, &tree{key: k, page: true, children: under})
+		}
+		for pattern, want := range map[string]string{title + ".md": key + ".md", title + "/" + title + ".md": key + "/" + key + ".md"} {
+			if got, _ := walk(t, mustGlob(t, pattern), globNodes(roots), "", 1<<62); !slices.Equal(got, []string{want}) {
+				t.Errorf("%.20q… of %d characters lists %q", pattern, utf8.RuneCountInString(title), got)
+			}
+		}
 	}
 }
 
