@@ -5,6 +5,7 @@ import (
 	"slices"
 	"testing"
 
+	pagemcp "github.com/open-nerve/NerveWiki/server/internal/modules/page/adapter/mcp"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/mcpserver"
 )
 
@@ -34,7 +35,7 @@ type accountNotebook struct {
 // accountNotebooksOf are the notebooks a notebook column sees in every
 // workspace it is in, by workspace, then by name: lab's as REST's list of
 // lab answers them (listedNotebooks), and other-nb of other, whose admin
-// is the column outside lab (M9/P1 design 3.16.4). Each workspace's name
+// is the column outside lab (M9/P1 design 3.17.2). Each workspace's name
 // is its slug.
 func accountNotebooksOf(c caller, s seeded) []accountNotebook {
 	item := func(slug, name, role string) accountNotebook {
@@ -55,7 +56,7 @@ func accountNotebooksOf(c caller, s seeded) []accountNotebook {
 // notebookMCPRows are notebook's row: notebooks, of no notebook, which
 // every notebook column calls with success, its answer the notebooks the
 // column sees across its workspaces, never a deleted one, nor one of an
-// ended membership, nor one it does not see (M9/P1 design 3.16.4).
+// ended membership, nor one it does not see (M9/P1 design 3.17.2, 3.17.4).
 func notebookMCPRows() []mcpRow {
 	return []mcpRow{
 		{
@@ -80,7 +81,8 @@ func notebookMCPRows() []mcpRow {
 // the others' answers that notebook's overview, its seeded pages and
 // attachments counted, its root's nodes in the tree's order, its last
 // change set (each notebook has its changesets), and the built-in
-// instructions, the matrix seeding no AGENTS page (M9/P1 design 3.17.4).
+// instructions, the matrix seeding no AGENTS page (M9/P1 design 3.17.3,
+// 3.17.4).
 func openNotebookMCPRow() mcpRow {
 	return mcpRow{
 		tool: "open_notebook", entries: mcpserver.AccountEntry,
@@ -94,6 +96,7 @@ func openNotebookMCPRow() mcpRow {
 			t.Helper()
 			var got struct {
 				Notebook         string  `json:"notebook"`
+				Instructions     string  `json:"instructions"`
 				InstructionsFrom *string `json:"instructions_from"`
 				Overview         struct {
 					Pages         int     `json:"pages"`
@@ -115,8 +118,9 @@ func openNotebookMCPRow() mcpRow {
 				root = append(root, n.Path)
 			}
 			o := got.Overview
-			if got.Notebook != s.notebook(nb).String() || got.InstructionsFrom != nil || o.Pages != count(matrixPages()) ||
-				o.Attachments != count(matrixAssets()) || o.LastChangedAt == nil || !slices.Equal(root, rootPathsOf(nb)) || got.Truncated {
+			if got.Notebook != s.notebook(nb).String() || got.Instructions != pagemcp.NotebookInstructions || got.InstructionsFrom != nil ||
+				o.Pages != count(matrixPages()) || o.Attachments != count(matrixAssets()) || o.LastChangedAt == nil ||
+				!slices.Equal(root, rootPathsOf(nb)) || got.Truncated {
 				t.Errorf("opened %.600s; want %s of %d pages, %d attachments, the root %v, the built-in instructions", a.body, nb,
 					count(matrixPages()), count(matrixAssets()), rootPathsOf(nb))
 			}

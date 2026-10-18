@@ -823,7 +823,7 @@ type NotebookCountsRow struct {
 }
 
 // A notebook's pages and attachments not deleted (M9/P1 design 3.17.3): open_notebook's overview, read from the
-// notebook's live nodes by the name keys' partial index.
+// notebook's nodes by an index of them.
 func (q *Queries) NotebookCounts(ctx context.Context, notebookID uuid.UUID) (NotebookCountsRow, error) {
 	row := q.db.QueryRow(ctx, notebookCounts, notebookID)
 	var i NotebookCountsRow

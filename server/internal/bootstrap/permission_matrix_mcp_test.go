@@ -54,7 +54,8 @@ func (c mcpCell) String() string {
 }
 
 // mcpRows are the rows, each module's: page's list, read (M9/P1 design
-// 3.13) and open_notebook, notebook's notebooks (3.16.4, 3.17.4).
+// 3.13) and open_notebook (3.17.3), notebook's notebooks (3.17.2); S3's
+// rows are 3.17.4's.
 func mcpRows() []mcpRow { return slices.Concat(pageMCPRows(), notebookMCPRows()) }
 
 // mcpToolCodes are the codes each MCP tool's error may carry besides

@@ -83,7 +83,7 @@ WHERE n.notebook_id = sqlc.arg(notebook_id) AND n.parent_id IS NULL AND n.name_k
 
 -- name: NotebookCounts :one
 -- A notebook's pages and attachments not deleted (M9/P1 design 3.17.3): open_notebook's overview, read from the
--- notebook's live nodes by the name keys' partial index.
+-- notebook's nodes by an index of them.
 SELECT
     count(*) FILTER (WHERE n.kind = 'page')::bigint AS pages,
     count(*) FILTER (WHERE n.kind = 'asset')::bigint AS attachments
