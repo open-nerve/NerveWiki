@@ -12,22 +12,33 @@ import (
 )
 
 // The revert's property through serve (M8/P3 design 3.12): after a random
-// sequence of a notebook's changes through the API, the newest k
+// sequence of a notebook's changes through the API and an agent's moves
+// through MCP (M9/P2 design 3.5.4), the newest k
 // changesets reverted newest first each succeed, and leave the notebook
 // as it was before them: its tree alive, each node's parent, name and
 // place among its siblings, its pages' bytes, its link index and its
 // attachments' rows. What was in the trash before them still is, its
 // time and name perhaps not; what they created is in the trash.
 
-// revertWorld is a notebook alice changes at random through the API, read
-// back through SQL.
+// revertWorld is a notebook alice changes at random through the API and
+// her agent, read back through SQL.
 type revertWorld struct {
 	tm    acmeTeam
 	nb    string
+	agent *mcpApp // alice's, in nb
 	rng   *rand.Rand
 	files int
 	// made counts the changes made by kind, skipped those refused.
 	made, skipped map[string]int
+}
+
+// newRevertWorld is the world of a notebook Eng of alice's in tm, its
+// changes drawn from seed.
+func newRevertWorld(t *testing.T, tm acmeTeam, seed uint64) *revertWorld {
+	t.Helper()
+	nb := tm.openNotebook(t, "alice", "Eng")
+	return &revertWorld{tm: tm, nb: nb, agent: tm.agent(t, "alice", nb), rng: rand.New(rand.NewPCG(seed, 0)),
+		made: map[string]int{}, skipped: map[string]int{}}
 }
 
 // revertTitles are the pages' titles and the targets of their links: few,
@@ -70,9 +81,9 @@ func jsonBody(v any) string {
 // change makes one change of the notebook at random as alice: a page's
 // creation or an attachment's, a rename, a move, a reorder, a deletion, a
 // restore from the trash, a content written, a version restored, a revert
-// of an earlier changeset. One the server refuses as a conflict, 409, is
-// skipped; any other refusal fails t. It reports whether the server
-// answered it.
+// of an earlier changeset, a page moved and renamed in one step by her
+// agent. One the server refuses as a conflict, 409, is skipped; any other
+// refusal fails t. It reports whether the server answered it.
 func (w *revertWorld) change(t *testing.T) bool {
 	t.Helper()
 	nodes := w.alive(t)
@@ -91,11 +102,12 @@ func (w *revertWorld) change(t *testing.T) bool {
 	}
 	title := func() string { titles := revertTitles(); return titles[w.rng.IntN(len(titles))] }
 	var c step
-	op := w.rng.IntN(10)
+	op := w.rng.IntN(11)
 	if len(pages) < 3 {
 		op = 0
 	}
-	kind := [...]string{"creation", "upload", "rename", "move", "reorder", "deletion", "restore", "write", "version", "revert"}[op]
+	kind := [...]string{"creation", "upload", "rename", "move", "reorder", "deletion", "restore", "write", "version", "revert",
+		"agent's move"}[op]
 	switch op {
 	case 1:
 		w.files++
@@ -155,6 +167,12 @@ func (w *revertWorld) change(t *testing.T) bool {
 		ids := queryStrings(t, w.tm.pool, `SELECT id::text FROM changesets WHERE notebook_id = $1 ORDER BY created_at DESC, id DESC
 			LIMIT 20`, w.nb)
 		c = changesetRevert("alice", ids[w.rng.IntN(len(ids))])
+	case 10:
+		to := title() + ".md"
+		if p, ok := parent().(string); ok {
+			to = w.pathOf(t, p) + "/" + to
+		}
+		return w.agentMove(t, kind, w.pathOf(t, pick(pages).id)+".md", to)
 	default:
 		c = request("alice", http.MethodPost, "/api/v0/notebooks/"+w.nb+"/pages",
 			jsonBody(map[string]any{"parent_id": parent(), "title": title(), "content": w.content()}))
@@ -165,6 +183,39 @@ func (w *revertWorld) change(t *testing.T) bool {
 	}
 	if status/100 != 2 {
 		w.skipped[kind]++
+		return false
+	}
+	w.made[kind]++
+	return true
+}
+
+// pathOf is the node id's path from the notebook's root, without a page's
+// .md: its ancestors' names and its own.
+func (w *revertWorld) pathOf(t *testing.T, id string) string {
+	t.Helper()
+	return queryStrings(t, w.tm.pool, `WITH RECURSIVE up AS (
+			SELECT parent_id, name, 1 AS depth FROM nodes WHERE id = $1
+			UNION ALL
+			SELECT n.parent_id, n.name, up.depth + 1 FROM nodes n JOIN up ON n.id = up.parent_id)
+		SELECT string_agg(name, '/' ORDER BY depth DESC) FROM up`, id)[0]
+}
+
+// agentMove is the agent's move of the page at from to the path to, a
+// change of kind: its refusal of a name taken, of a cycle or of a tree too
+// deep, an MCP call's answer rather than a 409, is skipped as a REST
+// conflict is, and a move to where the page is, which changes nothing, is
+// no change (M9/P2 design 3.5.4).
+func (w *revertWorld) agentMove(t *testing.T, kind, from, to string) bool {
+	t.Helper()
+	a := w.agent.use(t, "move", map[string]any{"from": from, "to": to})
+	if a.result(t)["isError"] == true {
+		if code := a.toolError(t)["code"]; code != "page.title_taken" && code != "page.cycle" && code != "page.too_deep" {
+			t.Fatalf("the agent's move of %s to %s = %.300s, want it done or a conflict", from, to, a.body)
+		}
+		w.skipped[kind]++
+		return false
+	}
+	if !answerOf[mcpMoved](t, a).Changed {
 		return false
 	}
 	w.made[kind]++
@@ -183,14 +234,16 @@ func (w *revertWorld) changesets(t *testing.T, after string) []string {
 }
 
 // Of a few seeds, 30 changes, then 12 changesets more, reverted newest
-// first by bob.
+// first by bob; among them, of all the seeds, an agent's move at least.
 func TestRevertingTheNewestChangesetsPutsTheNotebookBack(t *testing.T) {
 	const before, k = 30, 12
-	for _, seed := range []uint64{1, 2, 3, 4} {
+	seeds := []uint64{1, 2, 3, 4}
+	ran, agents := 0, 0
+	for _, seed := range seeds {
 		t.Run(fmt.Sprint("seed ", seed), func(t *testing.T) {
+			ran++
 			tm := newAcmeTeam(t, "member", "")
-			w := &revertWorld{tm: tm, nb: tm.openNotebook(t, "alice", "Eng"), rng: rand.New(rand.NewPCG(seed, 0)),
-				made: map[string]int{}, skipped: map[string]int{}}
+			w := newRevertWorld(t, tm, seed)
 			for done := 0; done < before; {
 				if w.change(t) {
 					done++
@@ -206,12 +259,14 @@ func TestRevertingTheNewestChangesetsPutsTheNotebookBack(t *testing.T) {
 				}
 				w.change(t)
 			}
-			kinds := map[string]int{}
-			for _, c := range w.changesets(t, newest) {
+			kinds, reverted := map[string]int{}, w.changesets(t, newest)
+			agent := count(t, tm.pool, "SELECT count(*) FROM changesets WHERE id::text = ANY($1) AND client LIKE 'mcp:%'", reverted)
+			for _, c := range reverted {
 				kinds[tm.changeset(t, "bob", c).Kind]++
 				tm.reverted(t, "bob", c)
 			}
-			t.Logf("changes made %v, skipped %v; the changesets reverted %v", w.made, w.skipped, kinds)
+			agents += agent
+			t.Logf("changes made %v, skipped %v; the changesets reverted %v, the agent's %d", w.made, w.skipped, kinds, agent)
 			if now := tm.notebookState(t, w.nb); now != was {
 				t.Errorf("the notebook after the reverts:\n%s\nwant as it was:\n%s", now, was)
 			}
@@ -225,5 +280,10 @@ func TestRevertingTheNewestChangesetsPutsTheNotebookBack(t *testing.T) {
 				t.Errorf("%d nodes the reverted changesets created are alive, want each in the trash", n)
 			}
 		})
+	}
+	// The agent's move and rename in one step is the revert's to put back
+	// in one place (M9/P2 design 3.5.4): the seeds revert one at least.
+	if ran == len(seeds) && agents == 0 {
+		t.Error("no seed reverted an agent's move: the property does not reach it")
 	}
 }

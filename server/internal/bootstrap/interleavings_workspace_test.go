@@ -64,12 +64,19 @@ func newAcmeTeamWith(t *testing.T, bobRole, carolRole string, change func(*confi
 // whole-program tests pin the bounds production uses (M8/P4A review B-M1).
 func newAcmeTeamWired(t *testing.T, bobRole, carolRole string, change func(*config.Config), batch transfer.Batch) acmeTeam {
 	t.Helper()
+	return newAcmeTeamLogging(t, bobRole, carolRole, change, batch, slog.New(slog.DiscardHandler))
+}
+
+// newAcmeTeamLogging is newAcmeTeamWired on an app that logs to logger.
+func newAcmeTeamLogging(t *testing.T, bobRole, carolRole string, change func(*config.Config), batch transfer.Batch,
+	logger *slog.Logger,
+) acmeTeam {
+	t.Helper()
 	url := pgtest.NewDatabase(t)
 	cfg := testConfig(t, url, false)
 	if change != nil {
 		change(&cfg)
 	}
-	logger := slog.New(slog.DiscardHandler)
 	var a *app
 	var err error
 	if batch == (transfer.Batch{}) {
