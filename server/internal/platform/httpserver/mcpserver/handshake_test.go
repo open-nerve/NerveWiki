@@ -101,3 +101,47 @@ func TestInstructionsThatFailAreTheHandshakesError(t *testing.T) {
 		t.Error("a handshake that failed logged its initialize")
 	}
 }
+
+// held is fakeNotebooks whose instructions end only when their context
+// does, or a while past any deadline a test sets: ended is what ended
+// them, nil for the while.
+type held struct {
+	*fakeNotebooks
+	ended chan error
+}
+
+func (h *held) Instructions(ctx context.Context, _ uuid.UUID) (string, error) {
+	select {
+	case <-ctx.Done():
+		h.ended <- ctx.Err()
+		return "", ctx.Err()
+	case <-time.After(3 * time.Second):
+		h.ended <- nil
+		return "", errors.New("the instructions outlived the call's deadline")
+	}
+}
+
+// The handshake reads the instructions within the call's deadline,
+// server.request_timeout from the body's read (M9 design 4.14): a read
+// that does not end of itself ends there, the deadline a warning (M9/P1 S3
+// review A-N1).
+func TestTheInstructionsAreReadWithinTheCallsDeadline(t *testing.T) {
+	nb := &held{fakeNotebooks: &fakeNotebooks{}, ended: make(chan error, 1)}
+	s := serveMCP(t, setup{options: func(o *Options) { o.Notebooks, o.RequestTimeout = nb, 300*time.Millisecond }})
+	s.post(t, context.Background(), Pattern+"?notebook="+visible.String(), patToken, initialize, nil)
+	select {
+	case err := <-nb.ended:
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Errorf("the read ended by %v, want its call's deadline", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the read never ended")
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for s.logs.find(t, "MCP call deadline exceeded") == nil && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if line := s.logs.find(t, "MCP call deadline exceeded"); line == nil || line["level"] != "WARN" || line["method"] != "initialize" {
+		t.Errorf("the log line = %v, want the initialize's deadline at warn", line)
+	}
+}
