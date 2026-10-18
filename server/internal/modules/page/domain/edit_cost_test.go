@@ -121,7 +121,7 @@ func craftedRK(t *testing.T, c collision, m int) string {
 const crPlace, lfPlace = 5, 4
 
 // craftedCRLF is an old_string of m bytes, a's but for one bare LF and
-// three bytes, whose CRLF form, the one the CRLF retry looks for, has the
+// three bytes, whose CRLF form, the one the CRLF rule looks for, has the
 // hash of m+1 a's (review B's check, craftedCRLF of review-B/check/kmp).
 func craftedCRLF(t *testing.T, c collision, m int) string {
 	t.Helper()
@@ -192,8 +192,8 @@ type replaceShape struct {
 
 // replaceShapes are the shapes of M9/P2 design 3.9's table, at 5 MiB of
 // content and old_strings of up to 1 MiB: runs that make KMP fall back,
-// review B's crafted shapes, alone, at both ends of the page and in the
-// CRLF and NFC retries, every occurrence replaced, a size reckoned before
+// review B's crafted shapes, alone, at both ends of the page, as CRLF and
+// in the NFC retry, every occurrence replaced, a size reckoned before
 // it is built, and the NFC forms that grow, compose and reorder.
 func replaceShapes(t *testing.T) []replaceShape {
 	const MiB = 1 << 20
@@ -236,7 +236,7 @@ func replaceShapes(t *testing.T) []replaceShape {
 	shapes = append(shapes,
 		replaceShape{"the NFC retry: a* and e U+0301; the crafted old of 120,000 bytes", a[:5*MiB-3] + "e" + acute,
 			craftedRK(t, rk, 120_000), "x", false, notInPage},
-		replaceShape{"the CRLF retry: CRLF and a*; old crafted as CRLF, 120,000 bytes", "\r\n" + a[:5*MiB-2],
+		replaceShape{"the CRLF rule: CRLF and a*; old crafted as CRLF, 120,000 bytes", "\r\n" + a[:5*MiB-2],
 			craftedCRLF(t, crlf, 120_000), "x\n", false, notInPage},
 		replaceShape{"(x CRLF)*; old of bare LFs, found as CRLF", x, "x\nx\nx\n", "y\n", false,
 			foundTimes(strings.Count(x, "x\r\nx\r\nx\r\n"))},
@@ -245,7 +245,7 @@ func replaceShapes(t *testing.T) []replaceShape {
 		replaceShape{"(U+1D160)*, NFC three times the bytes; old of 1 MiB not in it", note, cutAt(note, MiB-8) + "z", "x", false, notInPage},
 		replaceShape{"conjoining jamo, which NFC composes; old of 1 MiB not in it", jamo, cutAt(jamo, MiB-8) + "z", "x", false, notInPage},
 		replaceShape{"marks out of order, which NFC reorders; old of 1 MiB not in it", marks, cutAt(marks, MiB-8) + "z", "x", false, notInPage},
-		replaceShape{"every retry: (e U+0301 CRLF)*; old of 1 MiB of bare LFs not in it", strings.Repeat("e"+acute+"\r\n", 5*MiB/5),
+		replaceShape{"the CRLF rule and the NFC retry: (e U+0301 CRLF)*; old of 1 MiB of bare LFs not in it", strings.Repeat("e"+acute+"\r\n", 5*MiB/5),
 			strings.Repeat("e"+acute+"\n", MiB/4-1) + "e" + acute + "z", "y", false, notInPage},
 	)
 	return shapes
@@ -254,7 +254,7 @@ func replaceShapes(t *testing.T) []replaceShape {
 // Replace keeps within its time on every costly shape (M9/P2 design 3.9,
 // 13.4 item 8): its one matcher is linear in the content and old_string,
 // whatever their bytes, in finding, the second occurrence, counting and
-// replacing, and in the CRLF and NFC retries. Review B's crafted shapes
+// replacing, as CRLF, and in the NFC retry. Review B's crafted shapes
 // make each hash of strings.Index's Rabin–Karp collide: a search there by
 // strings takes seconds to minutes. They are solved here against
 // primeRK, which the toolchain's internal/bytealg is read for first: one

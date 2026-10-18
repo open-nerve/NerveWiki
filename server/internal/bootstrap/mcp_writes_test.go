@@ -232,6 +232,14 @@ func TestTheMCPWritesReachTheUseCases(t *testing.T) {
 			if _, text, _ := readBack(t, use("read", map[string]any{"path": "Lines.md"})); text != "one\r\ntwo\r\nthird\r\n" {
 				t.Errorf("edit of a CRLF page with LF wrote %q, want its CRLF kept", text)
 			}
+			// An old_string that starts with its one LF is matched as CRLF too,
+			// not inside a CRLF: the page stays all CRLF, so the next edit
+			// with LF finds its string (M9/P2 S1 review B-M1).
+			answerOf[mcpEdited](t, use("edit", map[string]any{"path": "Lines.md", "old_string": "\nthird", "new_string": "\n3\nmore"}))
+			answerOf[mcpEdited](t, use("edit", map[string]any{"path": "Lines.md", "old_string": "\ntwo", "new_string": " two"}))
+			if _, text, _ := readBack(t, use("read", map[string]any{"path": "Lines.md"})); text != "one two\r\n3\r\nmore\r\n" {
+				t.Errorf("edits of a CRLF page whose old_string starts with LF wrote %q, want it all CRLF", text)
+			}
 			checked()
 
 			// move: a rename, a move and a rename in one change.

@@ -50,22 +50,24 @@ type Replacement struct {
 // Replace replaces old with new in content, byte for byte (M9 design
 // 4.10): once, when old occurs once (a second occurrence, overlapping or
 // not, makes it ambiguous), or each occurrence with all, left to right as
-// strings.ReplaceAll does. When old does not occur, content's line breaks
-// are all CRLF and old's are bare LF, both are matched and written with
-// each bare LF made CRLF. 422 on old_string when old does not occur
-// (hinting when it would under NFC) or occurs more than once without all;
-// on new_string when the content would pass MaxContentBytes, which it
-// knows before it builds it. Every search is the matcher's: linear in the
-// content and old, whatever their bytes. old is not empty: CheckEdit
-// checks it first.
+// strings.ReplaceAll does. When content's line breaks are all CRLF and
+// old's are bare LF, both are matched and written with each bare LF made
+// CRLF, before any search: there old could match as it is only by its
+// first byte, a LF, inside a CRLF, which a new_string of bare LFs or none
+// would leave mixed or a lone CR (M9/P2 S1 review B-M1); its occurrences
+// as CRLF are those, each a CR longer. 422 on old_string when old does
+// not occur (hinting when it would under NFC) or occurs more than once
+// without all; on new_string when the content would pass MaxContentBytes,
+// which it knows before it builds it. Every search is the matcher's:
+// linear in the content and old, whatever their bytes. old is not empty:
+// CheckEdit checks it first.
 func Replace(content, old, new string, all bool) (Replacement, error) {
-	m, crlf := newMatcher(old), false
-	i := m.index(content, 0)
-	if i < 0 && strings.IndexByte(old, '\n') >= 0 && strings.IndexByte(old, '\r') < 0 && allCRLF(content) {
-		old, new, crlf = bareLFsAsCRLF(old), bareLFsAsCRLF(new), true
-		m = newMatcher(old)
-		i = m.index(content, 0)
+	crlf := strings.IndexByte(old, '\n') >= 0 && strings.IndexByte(old, '\r') < 0 && allCRLF(content)
+	if crlf {
+		old, new = bareLFsAsCRLF(old), bareLFsAsCRLF(new)
 	}
+	m := newMatcher(old)
+	i := m.index(content, 0)
 	if i < 0 {
 		return Replacement{}, notInPage(content, old)
 	}
@@ -145,7 +147,8 @@ func bareLFsAsCRLF(s string) string {
 
 // matcher finds a pattern in a text in time linear in both, whatever their
 // bytes (Knuth–Morris–Pratt): the one search Replace makes, for finding,
-// counting and replacing, and for the CRLF and NFC retries.
+// counting and replacing, of the strings as given or as CRLF, and for the
+// NFC retry.
 // strings.Index is never given an agent's pattern: past bytealg.MaxLen it
 // is Rabin–Karp, quadratic for a crafted one (M9/P2 design review B-I2).
 type matcher struct {

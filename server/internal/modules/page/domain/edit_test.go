@@ -67,9 +67,10 @@ func TestCheckEdit(t *testing.T) {
 // once, a second occurrence overlapping the first making it ambiguous as
 // one apart does (aa is twice in aaa); each, left to right, with all. A
 // page whose line breaks are all CRLF matches an old_string of bare LFs as
-// CRLF, and writes new_string's bare LFs as CRLF; a page of both kinds, or
-// an old_string with a CR, is matched as it is. A byte order mark is the
-// content's.
+// CRLF, and writes new_string's bare LFs as CRLF, also an old_string whose
+// one LF starts it, which as it is matches inside a CRLF (M9/P2 S1 review
+// B-M1); a page of both kinds, or an old_string with a CR, is matched as
+// it is. A byte order mark is the content's.
 func TestReplace(t *testing.T) {
 	for _, tt := range []struct {
 		content, old, new string
@@ -88,6 +89,12 @@ func TestReplace(t *testing.T) {
 		{"a\r\nb\r\na\r\nb", "a\nb", "c", false, foundTimes(2)},
 		// The CRLF rule makes the two strings one: the content stays as it is.
 		{"x\r\na\r\ny", "a\n", "a\r\n", false, `"x\r\na\r\ny" 1 true`},
+		// An old_string that starts with its one LF is matched as CRLF, not
+		// inside a CRLF: its occurrences are the same, each a CR longer.
+		{"a\r\nb\r\n", "\nb", "\nc\nd", false, `"a\r\nc\r\nd\r\n" 1 true`},
+		{"a\r\nb\r\n", "\nb", " b", false, `"a b\r\n" 1 true`},
+		{"a\r\nb\r\n", "\n", "x", false, foundTimes(2)},
+		{"a\r\nb\r\n", "\n", "\n\n", true, `"a\r\n\r\nb\r\n\r\n" 2 true`},
 		// A page of both kinds of line breaks, one without any, an
 		// old_string with a CR: no CRLF rule.
 		{"one\r\ntwo\nthree\r\n", "one\ntwo", "x", false, notInPage},
@@ -213,12 +220,11 @@ func TestTheMatcherIsStrings(t *testing.T) {
 		}
 
 		q, crlf, newAs := p, false, "X\n"
-		occ := occurrences(s, q)
-		if occ == 0 && strings.Contains(p, "\n") && !strings.Contains(p, "\r") && strings.Contains(s, "\r\n") &&
+		if strings.Contains(p, "\n") && !strings.Contains(p, "\r") && strings.Contains(s, "\r\n") &&
 			strings.Count(s, "\n") == strings.Count(s, "\r\n") {
 			q, crlf, newAs = strings.ReplaceAll(p, "\n", "\r\n"), true, "X\r\n"
-			occ = occurrences(s, q)
 		}
+		occ := occurrences(s, q)
 		missing := notInPage
 		if (!norm.NFC.IsNormalString(s) || !norm.NFC.IsNormalString(q)) && strings.Contains(norm.NFC.String(s), norm.NFC.String(q)) {
 			missing += differsInNFC
