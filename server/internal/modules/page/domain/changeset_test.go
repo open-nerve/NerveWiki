@@ -51,6 +51,11 @@ func TestParseClientFilter(t *testing.T) {
 		{"mcp", "", true},
 		{"mcp:claude-code", "mcp:claude-code", false},
 		{"mcp:" + strings.Repeat("名", 128), domain.Client("mcp:" + strings.Repeat("名", 128)), false},
+		// Format characters other than the bidirectional controls are a
+		// name's: a zero-width space, a soft hyphen, a byte order mark.
+		{"mcp:a\u200bb", "mcp:a\u200bb", false},
+		{"mcp:a\u00adb", "mcp:a\u00adb", false},
+		{"mcp:\ufeffa", "mcp:\ufeffa", false},
 	} {
 		client, all, err := domain.ParseClientFilter(tt.in)
 		if err != nil || client != tt.client || all != tt.all {
@@ -58,7 +63,7 @@ func TestParseClientFilter(t *testing.T) {
 		}
 	}
 	for _, in := range []string{"", "WEB", "mobile", "mcp:", "mcp:a\nb", "mcp:" + strings.Repeat("名", 129), "mcp:\xff", "\xff",
-		"mcp:a\x00"} {
+		"mcp:a\x00", "mcp:a\u2028b", "mcp:\u202ea", "mcp:\u061c", "mcp:a\u200e"} {
 		_, _, err := domain.ParseClientFilter(in)
 		var e *shared.Error
 		if !errors.As(err, &e) || e.Code != shared.CodeValidationFailed || len(e.Fields) != 1 || e.Fields[0].Field != "client" {

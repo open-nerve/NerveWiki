@@ -95,6 +95,7 @@ sql:
       - migrations/sql/00040_page_search.sql
       - migrations/sql/00041_page_search_scope.sql
       - migrations/sql/00042_page_nodes_path_keys.sql
+      - migrations/sql/00044_page_client_checks.sql
     queries: internal/modules/page/adapter/postgres/queries
     gen:
       go:

@@ -17,7 +17,7 @@ const MaxTitleBytes = 255
 // folder (v0.1 design 3.5). It returns s without its surrounding white
 // space, in NFC, when s is UTF-8 and that is 1–255 bytes, holds none of
 // / \ : * ? " < > | # ^ [ ] nor a character unshowable in a name (see
-// unshowable), neither starts nor ends with a dot, and is no name Windows
+// Unshowable), neither starts nor ends with a dot, and is no name Windows
 // reserves; otherwise a problem on field. The bytes are counted in NFC,
 // as they are stored.
 func CheckTitle(field, s string) (string, *FieldError) {
@@ -32,7 +32,7 @@ func CheckTitle(field, s string) (string, *FieldError) {
 		return "", &FieldError{Field: field, Code: FieldRequired, Message: "is required"}
 	case len(s) > MaxTitleBytes:
 		return "", &FieldError{Field: field, Code: FieldTooLong, Message: "must be at most 255 bytes"}
-	case strings.ContainsAny(s, forbidden) || strings.ContainsFunc(s, unshowable):
+	case strings.ContainsAny(s, forbidden) || strings.ContainsFunc(s, Unshowable):
 		return "", &FieldError{Field: field, Code: FieldInvalidFormat, Message: `must not contain / \ : * ? " < > | # ^ [ ] or control characters`}
 	case strings.HasPrefix(s, ".") || strings.HasSuffix(s, "."):
 		return "", &FieldError{Field: field, Code: FieldInvalidFormat, Message: "must not start or end with a dot"}
@@ -65,16 +65,16 @@ const forbidden = `/\:*?"<>|#^[]`
 
 // TitleHolds reports whether a title may hold r, as CheckTitle has it:
 // none of / \ : * ? " < > | # ^ [ ] nor a character unshowable in a name
-// (see unshowable). A glob's literal parts, which match titles' keys,
+// (see Unshowable). A glob's literal parts, which match titles' keys,
 // hold no other (M9/P1 design 3.10.1).
 func TitleHolds(r rune) bool {
-	return !strings.ContainsRune(forbidden, r) && !unshowable(r)
+	return !strings.ContainsRune(forbidden, r) && !Unshowable(r)
 }
 
 // FixTitle mends s into a title (M7/P6 design 3.4): an import's names,
 // which a zip writes as it likes. Bytes that are not UTF-8 become U+FFFD;
 // the rest is put in NFC; white space and dots go from both ends; each
-// character left that CheckTitle refuses (see forbidden and unshowable)
+// character left that CheckTitle refuses (see forbidden and Unshowable)
 // becomes "_", and the ends go again; a name Windows reserves takes "_"
 // before its first dot (con is con_, con.txt con_.txt); and one longer
 // than 255 bytes is cut at a character, keeping, when keepExtension is
@@ -84,7 +84,7 @@ func TitleHolds(r rune) bool {
 func FixTitle(s string, keepExtension bool) string {
 	s = trimEnds(norm.NFC.String(strings.ToValidUTF8(s, "\ufffd")))
 	s = strings.Map(func(r rune) rune {
-		if strings.ContainsRune(forbidden, r) || unshowable(r) {
+		if strings.ContainsRune(forbidden, r) || Unshowable(r) {
 			return '_'
 		}
 		return r

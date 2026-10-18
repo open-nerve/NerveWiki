@@ -138,3 +138,11 @@ func TestTheToolsPassTheirArguments(t *testing.T) {
 		t.Errorf("read passed %v and answered %v", read, err)
 	}
 }
+
+// page's domain holds what mcpserver names, which it cannot import: the
+// name of a client that told none (M9/P2 design 3.3.1).
+func TestTheDomainsNamesAreMCPServers(t *testing.T) {
+	if domain.UnknownClientName != mcpserver.UnknownClient {
+		t.Errorf("domain.UnknownClientName = %q, mcpserver.UnknownClient %q", domain.UnknownClientName, mcpserver.UnknownClient)
+	}
+}
