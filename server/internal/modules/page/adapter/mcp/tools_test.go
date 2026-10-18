@@ -81,8 +81,10 @@ func TestTheToolsAreListReadAndOpenNotebook(t *testing.T) {
 }
 
 // A path that names nothing is worded with the path as it was written and
-// its hint (M9/P1 design 3.10.5); page.not_found stays its code; any other
-// error is the use case's.
+// its hint (M9/P1 design 3.10.5), each quoted as it is: the characters a
+// title may hold that %q escapes, U+3000, U+00A0, U+200D and U+00AD, are
+// the path's own (M9/P2 design 3.10.4); page.not_found stays its code; any
+// other error is the use case's.
 func TestAPathThatNamesNothingIsWorded(t *testing.T) {
 	for _, tt := range []struct {
 		missing *domain.PathNotFound
@@ -91,6 +93,11 @@ func TestAPathThatNamesNothingIsWorded(t *testing.T) {
 		{&domain.PathNotFound{Path: "A/B/"}, `page.not_found: Nothing is at "A/B/".`},
 		{&domain.PathNotFound{Path: "Guide", Hint: domain.PageHint("Guide.md")},
 			`page.not_found: Nothing is at "Guide". A page's path ends with .md: "Guide.md".`},
+		{&domain.PathNotFound{Path: "A\u3000B/x\u00a0y.md"}, "page.not_found: Nothing is at \"A\u3000B/x\u00a0y.md\"."},
+		{&domain.PathNotFound{Path: "a\u200db", Hint: domain.PageHint("a\u200db.md")},
+			"page.not_found: Nothing is at \"a\u200db\". A page's path ends with .md: \"a\u200db.md\"."},
+		{&domain.PathNotFound{Path: "so\u00adft.md", Hint: domain.AttachmentHint("so\u00adft")},
+			"page.not_found: Nothing is at \"so\u00adft.md\". That is an attachment: its path is \"so\u00adft\"."},
 	} {
 		var te *mcpserver.ToolError
 		err := toolErr(tt.missing)
@@ -140,9 +147,13 @@ func TestTheToolsPassTheirArguments(t *testing.T) {
 }
 
 // page's domain holds what mcpserver names, which it cannot import: the
-// name of a client that told none (M9/P2 design 3.3.1).
+// name of a client that told none (M9/P2 design 3.3.1), and how many of a
+// refusal's locks have their paths read, the locks an answer holds (3.8.5).
 func TestTheDomainsNamesAreMCPServers(t *testing.T) {
 	if domain.UnknownClientName != mcpserver.UnknownClient {
 		t.Errorf("domain.UnknownClientName = %q, mcpserver.UnknownClient %q", domain.UnknownClientName, mcpserver.UnknownClient)
+	}
+	if domain.MaxNamedLocks != mcpserver.MaxErrorLocks {
+		t.Errorf("domain.MaxNamedLocks = %d, mcpserver.MaxErrorLocks %d", domain.MaxNamedLocks, mcpserver.MaxErrorLocks)
 	}
 }

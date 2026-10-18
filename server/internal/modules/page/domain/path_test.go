@@ -204,3 +204,81 @@ func TestVersionTokenString(t *testing.T) {
 		t.Errorf("the token is %q", got)
 	}
 }
+
+// A version token parses back as String writes it, and in no other
+// spelling: the round trip refuses what uuid.Parse and strconv.Atoi take
+// besides, upper case, braces, 32 hexadecimal digits, a sign and leading
+// zeros (M9/P2 design 3.4). Each refusal is invalid_format on the field,
+// the value not repeated.
+func TestParseVersionToken(t *testing.T) {
+	rnd := rand.New(rand.NewPCG(4, 1))
+	for range 1000 {
+		want := domain.VersionToken{Node: uuid.NewV7(), Revision: 1 + rnd.IntN(domain.MaxRevision)}
+		if got, err := domain.ParseVersionToken("base_version", want.String()); err != nil || got != want {
+			t.Fatalf("ParseVersionToken(%q) = %v, %v", want.String(), got, err)
+		}
+	}
+	id := uuid.NewV7().String()
+	if got, err := domain.ParseVersionToken("base_version", id+":2147483647"); err != nil || got.Revision != domain.MaxRevision {
+		t.Errorf("ParseVersionToken(MaxRevision) = %v, %v", got, err)
+	}
+	if got, err := domain.ParseVersionToken("base_version", uuid.UUID{}.String()+":1"); err != nil || got.Node != (uuid.UUID{}) {
+		t.Errorf("ParseVersionToken(the zero id) = %v, %v: it parses, and is no node", got, err)
+	}
+	for _, bad := range []string{
+		"", ":", "x:1", id, id + ":", id + ":0", id + ":-1", id + ":+1", id + ":01", strings.ToUpper(id) + ":1",
+		"{" + id + "}:1", "urn:uuid:" + id + ":1", strings.ReplaceAll(id, "-", "") + ":1", id + ":2147483648",
+		id + ": 1", id + ":1 ", id + ":" + strings.Repeat("1", 11), id + ":1\x00", strings.Repeat(id+":1", 30000),
+	} {
+		_, err := domain.ParseVersionToken("base_version", bad)
+		var e *shared.Error
+		if !errors.As(err, &e) || problemOf(err) != "validation_failed base_version invalid_format" ||
+			e.Fields[0].Message != `is not a version, "<node id>:<revision>" as read, list and write give it` {
+			t.Errorf("ParseVersionToken(%.60q) = %v, want 422 on base_version", bad, err)
+		}
+	}
+}
+
+// PathOf is PathOfNames of the ancestors' names and the node's.
+func TestPathOfNames(t *testing.T) {
+	for _, tt := range []struct {
+		names []string
+		kind  domain.Kind
+		want  string
+	}{
+		{[]string{"A"}, domain.KindPage, "A.md"},
+		{[]string{"A", "b.md", "c"}, domain.KindPage, "A/b.md/c.md"},
+		{[]string{"A", "x.png"}, domain.KindAsset, "A/x.png"},
+	} {
+		if got := domain.PathOfNames(tt.names, tt.kind); got != tt.want {
+			t.Errorf("PathOfNames(%q, %s) = %q, want %q", tt.names, tt.kind, got, tt.want)
+		}
+		var ancestors []domain.Node
+		for _, n := range tt.names[:len(tt.names)-1] {
+			ancestors = append(ancestors, domain.Node{Kind: domain.KindPage, Name: n})
+		}
+		leaf := domain.Node{Kind: tt.kind, Name: tt.names[len(tt.names)-1]}
+		if got := domain.PathOf(ancestors, leaf); got != tt.want {
+			t.Errorf("PathOf(%q) = %q, want %q", tt.names, got, tt.want)
+		}
+	}
+}
+
+// The hints quote their paths as they are, in double quotes: a title may
+// hold U+3000, U+00A0, U+200D and U+00AD, which %q would write as escapes,
+// and no " or \, so what the quotes hold is the path (M9/P2 design
+// 3.10.4).
+func TestTheHintsQuoteThePathAsItIs(t *testing.T) {
+	p := "A\u3000B/x\u00a0y/z\u200dw/so\u00adft"
+	for _, tt := range []struct{ got, want string }{
+		{domain.Quoted(p), `"` + p + `"`},
+		{domain.PageHint(p + ".md"), "A page's path ends with .md: \"" + p + ".md\"."},
+		{domain.AttachmentHint(p), "That is an attachment: its path is \"" + p + "\"."},
+		{domain.TitleHint(p + ".md.md"), "A page there is titled with the .md: its path is \"" + p + ".md.md\"."},
+		{domain.ChildrenHint(p + ".md"), p + ".md is a page; list \"" + p + "/\" for its children."},
+	} {
+		if tt.got != tt.want {
+			t.Errorf("got %q, want %q", tt.got, tt.want)
+		}
+	}
+}

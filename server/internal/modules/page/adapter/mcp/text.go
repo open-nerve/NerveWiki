@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
@@ -13,13 +12,14 @@ import (
 
 // toolErr is err as a tool answers it (M9/P1 design 3.3.6, 3.10.5): a
 // path that names nothing in the module's words, with the path as it was
-// written and its hint; any other error as it is.
+// written, quoted as it is (M9/P2 design 3.10.4), and its hint; any other
+// error as it is.
 func toolErr(err error) error {
 	var missing *domain.PathNotFound
 	if !errors.As(err, &missing) {
 		return err
 	}
-	text := strings.TrimSpace(fmt.Sprintf("page.not_found: Nothing is at %q. %s", missing.Path, missing.Hint))
+	text := strings.TrimSpace("page.not_found: Nothing is at " + domain.Quoted(missing.Path) + ". " + missing.Hint)
 	return &mcpserver.ToolError{Err: err, Text: text}
 }
 

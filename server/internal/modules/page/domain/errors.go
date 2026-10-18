@@ -2,6 +2,9 @@ package domain
 
 import (
 	"errors"
+	"fmt"
+	"strconv"
+	"strings"
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
@@ -128,6 +131,105 @@ func Locked(pageID, userID uuid.UUID, displayName string) error {
 	e := *ErrLocked
 	e.Lock = &shared.LockHolder{PageID: pageID, UserID: userID, DisplayName: displayName}
 	return &e
+}
+
+// LockedAll is ErrLocked naming each of holders, one at least, the first
+// as Lock too: a delete over MCP that edit sessions in its subtree hold
+// (M9/P2 design 3.6), in the order of what the delete changes.
+func LockedAll(holders []shared.LockHolder) error {
+	e := *ErrLocked
+	first := holders[0]
+	e.Lock, e.Locks = &first, holders
+	return &e
+}
+
+// PathTaken is page.title_taken at a path: a node holds the name the path
+// asks for, a page's or an attachment's (Asset).
+type PathTaken struct {
+	Path  string
+	Asset bool
+}
+
+func (e *PathTaken) Error() string { return ErrTitleTaken.Error() }
+func (e *PathTaken) Unwrap() error { return ErrTitleTaken }
+
+// Mismatch is why a version token is not the page's at a path.
+type Mismatch int
+
+// The reasons.
+const (
+	OtherNode    Mismatch = iota + 1 // the path names another page than the token's
+	Changed                          // the page's content was written since the token's revision
+	KeptChanging                     // it was written again while an edit was made the second time
+)
+
+// VersionMismatch is page.revision_mismatch at a path: why, and the
+// page's version there now.
+type VersionMismatch struct {
+	Path    string
+	Current VersionToken
+	Why     Mismatch
+}
+
+func (e *VersionMismatch) Error() string { return ErrRevisionMismatch.Error() }
+func (e *VersionMismatch) Unwrap() error { return ErrRevisionMismatch }
+
+// LockPaths is a lock's refusal, page.locked or linking.pages_locked, with
+// the paths of the first MaxNamedLocks pages it names, by page id: a page
+// gone since has none, and none has one when they could not be read.
+type LockPaths struct {
+	Err   error
+	Paths map[uuid.UUID]string
+}
+
+func (e *LockPaths) Error() string { return e.Err.Error() }
+func (e *LockPaths) Unwrap() error { return e.Err }
+
+// MaxNamedLocks is how many of a refusal's locks have their paths read:
+// mcpserver.MaxErrorLocks, which page's adapter/mcp holds it to.
+const MaxNamedLocks = 20
+
+// AttachmentOnPath is a path's segment, from 1, that names an attachment
+// where the path goes on under it: no problem of its own, since what it
+// is depends on the field the path is (M9/P2 design 3.7).
+type AttachmentOnPath struct{ Segment int }
+
+func (e *AttachmentOnPath) Error() string {
+	return fmt.Sprintf("page: segment %d of the path is an attachment", e.Segment)
+}
+
+// Recursive is 422 on recursive: a page with Pages pages and Assets
+// assets under it is deleted only with recursive.
+type Recursive struct{ Pages, Assets int }
+
+func (e *Recursive) Error() string { return e.Unwrap().Error() }
+
+// Unwrap is the 422 itself. Its message counts the nodes and names no
+// path (M9/P2 design 3.10.3).
+func (e *Recursive) Unwrap() error {
+	return shared.Invalid(shared.FieldError{Field: "recursive", Code: shared.FieldRequired,
+		Message: "must be true to delete a page with children: " + PagesAndAttachments(e.Pages, e.Assets)})
+}
+
+// PagesAndAttachments is pages and assets counted in words: "3 pages and
+// 2 attachments", "1 page", "2 attachments"; a count of none is left out.
+func PagesAndAttachments(pages, assets int) string {
+	var parts []string
+	if pages > 0 {
+		parts = append(parts, counted(pages, "page"))
+	}
+	if assets > 0 {
+		parts = append(parts, counted(assets, "attachment"))
+	}
+	return strings.Join(parts, " and ")
+}
+
+// counted is n of what, plural but for one.
+func counted(n int, what string) string {
+	if n == 1 {
+		return "1 " + what
+	}
+	return strconv.Itoa(n) + " " + what + "s"
 }
 
 // Unlocked is ErrEditSessionUnlocked naming who released the lock.
