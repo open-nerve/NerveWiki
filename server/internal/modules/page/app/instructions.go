@@ -4,6 +4,7 @@ import (
 	"container/list"
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"uuid"
 
@@ -32,8 +33,8 @@ func NewInstructions(store AgentsStore, nodes Nodes, md Markdown, measure func(s
 	return &Instructions{store: store, nodes: nodes, md: md, measure: measure, cache: newInstructionsCache(maxCachedInstructions)}
 }
 
-// maxCachedInstructions is how many AGENTS texts the cache holds, each at
-// most MaxInstructionsBytes: 8 MiB at most.
+// maxCachedInstructions is how many AGENTS texts the cache holds, each a
+// copy of at most MaxInstructionsBytes: 8 MiB at most.
 const maxCachedInstructions = 256
 
 // Execute reads the notebook's instructions, unlocked: the AGENTS page by
@@ -56,8 +57,11 @@ func (i *Instructions) Execute(ctx context.Context, notebookID uuid.UUID) (a dom
 			return domain.Agents{}, false, err
 		}
 		text.body, text.cut = domain.AgentsBody(pc.Content, i.md.FrontmatterEnd(pc.Content), i.measure)
-		// Written since the lookup, the content read is of a later
-		// revision: it is cached under its own.
+		// The body is a part of the content: cached as a copy, so that an
+		// entry holds its 32 KiB, not the content's 5 MiB. Written since
+		// the lookup, the content read is of a later revision: it is
+		// cached under its own.
+		text.body = strings.Clone(text.body)
 		i.cache.put(instructionsKey{notebook: notebookID, node: node, revision: pc.Revision}, text)
 	}
 	if text.body == "" {

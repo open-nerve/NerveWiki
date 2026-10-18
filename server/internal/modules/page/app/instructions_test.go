@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"context"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -176,4 +177,43 @@ func TestTheInstructionsCacheHoldsTheLastUsed(t *testing.T) {
 	if n := f.reads(); n != 1 {
 		t.Errorf("the 257th notebook's read %d contents, want its own: it went first", n)
 	}
+}
+
+// The cache holds its texts, not the contents they were cut from: an
+// AGENTS page of 1 MiB written 256 times, each revision read once, leaves
+// 256 entries of at most 32 KiB, 8 MiB in all, once the store holds none of
+// the contents; held as parts of their contents, they were 258 MiB (M9/P1
+// design 3.15.1, review A-I1).
+func TestTheInstructionsCacheHoldsItsTextsAlone(t *testing.T) {
+	f := newFixture()
+	ins := f.instructionsOf()
+	ctx := context.Background()
+	agents := f.page("AGENTS", nil, 0)
+	line := strings.Repeat("x", 99) + "\n"
+	before := heapHeld()
+	for revision := 1; revision <= 256; revision++ {
+		f.write(agents, strings.Repeat(line, 1<<20/len(line)), revision) // a string of its own
+		if a, ok, err := ins.Execute(ctx, f.eng); err != nil || !ok || !a.Cut || len(a.Body) > domain.MaxInstructionsBytes {
+			t.Fatalf("revision %d: %d bytes, cut %v, %v, %v", revision, len(a.Body), a.Cut, ok, err)
+		}
+		f.reads()
+	}
+	f.write(agents, "", 256) // none of the contents now; revision 256 is cached
+	if _, ok, err := ins.Execute(ctx, f.eng); !ok || err != nil || f.reads() != 0 {
+		t.Fatalf("revision 256 again: %v, %v, not from the cache", ok, err)
+	}
+	held := heapHeld() - before
+	if bound := int64(256 * domain.MaxInstructionsBytes); held > 2*bound {
+		t.Errorf("the cache holds %.1f MiB, its bound %.0f MiB", float64(held)/(1<<20), float64(bound)/(1<<20))
+	}
+	runtime.KeepAlive(ins)
+}
+
+// heapHeld is the bytes the heap holds after a collection.
+func heapHeld() int64 {
+	runtime.GC()
+	runtime.GC()
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	return int64(m.HeapAlloc)
 }
