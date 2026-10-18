@@ -8,18 +8,21 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unsafe"
 	"uuid"
 )
 
 // fakeNames is ClientNames in memory: Clean trims and drops "!", Recorded
 // reads the names recorded, Record writes one that differs; each counts
-// its calls. skip has Record write nothing, readErr and writeErr fail them.
+// its calls. skip has Record write nothing, readErr and writeErr fail them;
+// afterRead, once, runs between a read and its answer.
 type fakeNames struct {
 	mu                sync.Mutex
 	recorded          map[uuid.UUID]string
 	reads, writes     int
 	skip              bool
 	readErr, writeErr error
+	afterRead         func()
 }
 
 func newFakeNames() *fakeNames { return &fakeNames{recorded: map[uuid.UUID]string{}} }
@@ -30,12 +33,17 @@ func (f *fakeNames) Clean(name string) string {
 
 func (f *fakeNames) Recorded(_ context.Context, tokenID uuid.UUID) (string, error) {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	f.reads++
-	if f.readErr != nil {
-		return "", f.readErr
+	name, err, after := f.recorded[tokenID], f.readErr, f.afterRead
+	f.afterRead = nil
+	f.mu.Unlock()
+	if after != nil {
+		after()
 	}
-	return f.recorded[tokenID], nil
+	if err != nil {
+		return "", err
+	}
+	return name, nil
 }
 
 func (f *fakeNames) Record(_ context.Context, tokenID uuid.UUID, name string) (bool, error) {
@@ -179,24 +187,56 @@ func TestTheNamesRememberAnEmptyName(t *testing.T) {
 	}
 }
 
-// A name whose record wrote nothing (a row skipped) is not remembered:
-// the next call that tells it records it again; the call goes on with it.
-func TestTheNamesRetryASkippedWrite(t *testing.T) {
+// A told name is the token's next calls' at once, those that tell none
+// included, never the name its row held before, while its record writes
+// nothing (another transaction holds the row) or fails: each call, telling
+// it or none, records it again until a record writes it; then none records
+// it again (M9/P1 design 3.16.4, S3 review B-M1).
+func TestTheNamesKeepATellingUnrecorded(t *testing.T) {
+	for _, fault := range []string{"skipped", "failed"} {
+		port := newFakeNames()
+		port.recorded[aliceTok] = "old-client"
+		port.skip = fault == "skipped"
+		if fault == "failed" {
+			port.writeErr = errors.New("the database is gone")
+		}
+		s := withNames(t, port)
+		result(t, s.post(t, context.Background(), Pattern, patToken, handshakeOf("new-client"), nil))
+		for _, told := range []string{"", "new-client"} {
+			if got := s.clientOfEcho(t, told); got != "new-client" {
+				t.Errorf("%s: a call after the handshake telling %q: %q, want the new-client told", fault, told, got)
+			}
+		}
+		if _, writes := port.counts(); writes != 3 || port.of(aliceTok) != "old-client" {
+			t.Errorf("%s: %d records in a handshake and two calls, the row %q; want 3, old-client", fault, writes, port.of(aliceTok))
+		}
+		port.set(func(f *fakeNames) { f.skip, f.writeErr = false, nil })
+		if got := s.clientOfEcho(t, ""); got != "new-client" || port.of(aliceTok) != "new-client" {
+			t.Errorf("%s: once the record can write: the client %q, the row %q; want new-client", fault, got, port.of(aliceTok))
+		}
+		s.clientOfEcho(t, "")
+		s.clientOfEcho(t, "new-client")
+		if _, writes := port.counts(); writes != 4 {
+			t.Errorf("%s: once written, %d records in all, want 4", fault, writes)
+		}
+	}
+}
+
+// A told name the row already holds, as after a restart, writes nothing:
+// one read finds it there, and then neither a call that tells it nor one
+// that tells none reads or writes (M9/P1 design 3.16.4, S3 review C-M2).
+func TestTheNamesFindATellingOnTheRow(t *testing.T) {
 	port := newFakeNames()
-	port.skip = true
+	port.recorded[aliceTok] = "agent-a"
 	s := withNames(t, port)
-	if got := s.clientOfEcho(t, "agent-a"); got != "agent-a" {
-		t.Errorf("a call whose record was skipped: %q, want agent-a", got)
+	result(t, s.post(t, context.Background(), Pattern, patToken, handshakeOf("agent-a"), nil))
+	if got := s.clientOfEcho(t, ""); got != "agent-a" {
+		t.Errorf("a call after the handshake of the recorded name, telling none: %q, want agent-a", got)
 	}
 	s.clientOfEcho(t, "agent-a")
-	if _, writes := port.counts(); writes != 2 {
-		t.Errorf("a skipped record was tried %d times in two calls, want twice", writes)
-	}
-	port.set(func(f *fakeNames) { f.skip = false })
-	s.clientOfEcho(t, "agent-a")
-	s.clientOfEcho(t, "agent-a")
-	if _, writes := port.counts(); writes != 3 {
-		t.Errorf("once written, %d records in all, want 3", writes)
+	s.clientOfEcho(t, "")
+	if reads, writes := port.counts(); reads != 1 || writes != 1 {
+		t.Errorf("%d reads and %d records, want one each: the handshake's record and the read that found it", reads, writes)
 	}
 }
 
@@ -221,6 +261,13 @@ func TestTheNamesRetryAFailedRead(t *testing.T) {
 	if got := s.clientOfEcho(t, "agent-b"); got != "agent-b" {
 		t.Errorf("a call whose record failed: %q, want agent-b", got)
 	}
+	port.set(func(f *fakeNames) { f.writeErr = nil })
+	if got := s.clientOfEcho(t, "agent-b"); got != "agent-b" || port.of(aliceTok) != "agent-b" {
+		t.Errorf("the next call telling agent-b: %q, the row %q; want agent-b recorded again (S3 review B-M2)", got, port.of(aliceTok))
+	}
+	if _, writes := port.counts(); writes != 2 {
+		t.Errorf("%d records, want the failed one and its retry", writes)
+	}
 	time.Sleep(50 * time.Millisecond)
 	for _, msg := range []string{"MCP client name not read", "MCP client name not recorded"} {
 		if line := s.logs.find(t, msg); line == nil || line["level"] != "WARN" || line["token_id"] != aliceTok.String() {
@@ -229,28 +276,108 @@ func TestTheNamesRetryAFailedRead(t *testing.T) {
 	}
 }
 
+// racing is fakeNames whose record of the name first writes, or skips,
+// and then answers only when the test lets it: another told name's call
+// runs in between.
+type racing struct {
+	*fakeNames
+	first           string
+	written, answer chan struct{}
+}
+
+func (r *racing) Record(ctx context.Context, tokenID uuid.UUID, name string) (bool, error) {
+	w, err := r.fakeNames.Record(ctx, tokenID, name)
+	if name == r.first {
+		close(r.written)
+		<-r.answer
+	}
+	return w, err
+}
+
+// Two clients telling names on one token at once: the name told last is
+// the token's calls', the row's once recorded. One record answering after
+// the other's never marks the other's name as on the row: when the later
+// told name's record wrote nothing, it is recorded again (M9/P1 design
+// 3.16.4, S3 review B-M1).
+func TestTheNamesOfTwoClientsAtOnce(t *testing.T) {
+	for _, skipped := range []bool{false, true} {
+		port := &racing{fakeNames: newFakeNames(), first: "A", written: make(chan struct{}), answer: make(chan struct{})}
+		n := newNames(port, discard())
+		ctx := context.Background()
+		var wg sync.WaitGroup
+		wg.Go(func() { n.of(ctx, aliceTok, "A") })
+		<-port.written
+		port.set(func(f *fakeNames) { f.skip = skipped })
+		if got := n.of(ctx, aliceTok, "B"); got != "B" {
+			t.Errorf("skipped %v: B told: %q", skipped, got)
+		}
+		close(port.answer)
+		wg.Wait()
+		port.set(func(f *fakeNames) { f.skip = false })
+		if got := n.of(ctx, aliceTok, ""); got != "B" || port.of(aliceTok) != "B" {
+			t.Errorf("skipped %v: then a call telling none: %q, the row %q; want B, the name told last", skipped, got, port.of(aliceTok))
+		}
+	}
+}
+
+// A name told while a call that tells none reads the row is the token's:
+// the older name the read found is not remembered over it.
+func TestTheNamesKeepATellingOverAReadBeforeIt(t *testing.T) {
+	port := newFakeNames()
+	port.recorded[aliceTok] = "old-client"
+	n := newNames(port, discard())
+	ctx := context.Background()
+	port.afterRead = func() { n.of(ctx, aliceTok, "new-client") }
+	for i := range 2 {
+		if got := n.of(ctx, aliceTok, ""); got != "new-client" {
+			t.Errorf("call %d telling none, new-client told during the first's read: %q", i+1, got)
+		}
+	}
+}
+
 // The names remember 1,024 tokens: the 1,025th puts out the least
-// recently used, whose next call reads it again.
+// recently used, not the first remembered, and its next call reads it
+// again (S3 review B-N1).
 func TestTheNamesForgetTheLeastRecentlyUsed(t *testing.T) {
 	port := newFakeNames()
 	n := newNames(port, discard())
 	ctx := context.Background()
 	tokens := make([]uuid.UUID, maxNamedTokens+1)
-	for i := range tokens {
+	for i := range tokens[:maxNamedTokens] {
 		tokens[i] = uuid.NewV7()
 		n.of(ctx, tokens[i], "")
 	}
+	n.of(ctx, tokens[0], "")
+	tokens[maxNamedTokens] = uuid.NewV7()
+	n.of(ctx, tokens[maxNamedTokens], "")
 	if reads, _ := port.counts(); reads != len(tokens) {
 		t.Fatalf("%d reads, want one a token", reads)
 	}
-	for _, tok := range tokens[1:] {
+	n.of(ctx, tokens[0], "")
+	for _, tok := range tokens[2:] {
 		n.of(ctx, tok, "")
 	}
 	if reads, _ := port.counts(); reads != len(tokens) {
 		t.Errorf("the 1,024 last used read again: %d reads", reads)
 	}
-	n.of(ctx, tokens[0], "")
+	n.of(ctx, tokens[1], "")
 	if reads, _ := port.counts(); reads != len(tokens)+1 {
-		t.Errorf("the first token, put out, was not read again: %d reads", reads)
+		t.Errorf("the least recently used token, put out, was not read again: %d reads", reads)
+	}
+}
+
+// A told name is remembered as a copy of its own: never a part of the
+// request's string, which can be the body's megabyte.
+func TestTheNamesHoldTheirOwnBytes(t *testing.T) {
+	n := newNames(newFakeNames(), discard())
+	told := "agent-a" + strings.Repeat(" ", 1<<20)
+	n.of(context.Background(), aliceTok, told)
+	known, ok := n.remembered(aliceTok)
+	if !ok || known.name != "agent-a" {
+		t.Fatalf("remembered %q, %v", known.name, ok)
+	}
+	start := uintptr(unsafe.Pointer(unsafe.StringData(told)))
+	if at := uintptr(unsafe.Pointer(unsafe.StringData(known.name))); at >= start && at < start+uintptr(len(told)) {
+		t.Error("the name remembered is a part of the told one")
 	}
 }

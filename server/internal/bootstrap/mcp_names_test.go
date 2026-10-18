@@ -39,9 +39,11 @@ func (m *mcpApp) clientOfEcho(t *testing.T, told string) string {
 
 // A token's client is unknown until its client tells a name; the name
 // told, cleaned, is then on the token and each call's client, a call that
-// tells none included; an app started anew on the database reads it; a
-// call's _meta telling another changes it; a name of a bidirectional
-// override and 200 characters is recorded cleaned, 128 of them.
+// tells none included; an app started anew on the database reads it, and
+// keeps it when its client tells it again, a record that writes nothing
+// (M9/P1 S3 review C-M2); a call's _meta telling another changes it; a
+// name of a bidirectional override and 200 characters is recorded
+// cleaned, 128 of them.
 func TestTheClientNameIsTheTokens(t *testing.T) {
 	db := pgtest.NewDatabase(t)
 	logs := &syncBuffer{}
@@ -69,6 +71,12 @@ func TestTheClientNameIsTheTokens(t *testing.T) {
 		notebook: m.notebook}
 	if got := again.clientOfEcho(t, ""); got != "Claude Code" {
 		t.Errorf("an app anew on the database: the client %q, want the recorded Claude Code", got)
+	}
+	restarted := &mcpApp{base: runApp(t, wireMCPApp(t, testConfig(t, db, false), &syncBuffer{}, mcpTestTools(newMCPSeen()))), pat: m.pat,
+		notebook: m.notebook}
+	restarted.handshakeAs(t, "Claude Code") // the name on the token: its record writes nothing
+	if got := restarted.clientOfEcho(t, ""); got != "Claude Code" {
+		t.Errorf("an app anew whose client tells the recorded name, then a call telling none: %q, want Claude Code", got)
 	}
 	if got := again.clientOfEcho(t, "Codex"); got != "Codex" || recorded() != "Codex" || again.clientOfEcho(t, "") != "Codex" {
 		t.Errorf("a call's _meta telling Codex: the client %q, recorded %q; want Codex", got, recorded())
