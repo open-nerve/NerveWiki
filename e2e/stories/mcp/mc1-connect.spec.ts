@@ -4,6 +4,7 @@ import path from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
+import { uploadAsset, utf8 } from "../../fixtures/assets";
 import { createToken, emailFor, login, register } from "../../fixtures/auth";
 import { expectTokenClient } from "../../fixtures/assert/identity";
 import { mcpClient, mcpURL, postMcp } from "../../fixtures/mcp";
@@ -63,8 +64,9 @@ test("MC1: an agent connects with a personal access token, gets its notebook's A
     null,
     "---\ntags: [rules]\n---\n\n# Conventions\nWrite in English.\n"
   );
-  await createPage(api, team.pat, handbook.id, "Guide");
+  const guide = await createPage(api, team.pat, handbook.id, "Guide");
   await createPage(api, team.pat, handbook.id, "Notes");
+  await uploadAsset(api, team.pat, handbook.id, { name: "chart.txt", bytes: utf8("chart\n") }, guide.id);
   const rules = "# Conventions\nWrite in English.";
 
   // 1. The notebook entry: the AGENTS page without its frontmatter, the notebook entry's tools, the client's name.
@@ -74,7 +76,8 @@ test("MC1: an agent connects with a personal access token, gets its notebook's A
   expect(byName(await agent.listTools())).toEqual(byName(toolLists.notebook));
   await expectTokenClient(db, first.id, "e2e-agent");
 
-  // 2. The account entry: its tools, the account's notebooks in its two workspaces and no other team's, one opened.
+  // 2. The account entry: its tools, the account's notebooks in its two workspaces and no other team's, one opened:
+  // its pages and attachments counted, its last change.
   const lab = await createWorkspace(api, team.pat, "Lab", slugFor(testInfo, "lab"));
   const research = await createNotebook(api, team.pat, lab.slug, "Research");
   const other = await register(api, emailFor(testInfo, "other-admin"));
@@ -104,6 +107,8 @@ test("MC1: an agent connects with a personal access token, gets its notebook's A
     instructions_from: "AGENTS.md",
   });
   expect(overview.pages).toBe(3);
+  expect(overview.attachments).toBe(1);
+  expect(overview.last_changed_at).not.toBeNull();
   expect(overview.root.map((n) => n.path)).toContain("AGENTS.md");
 
   // 3. Another AGENTS page: the next handshake has its text; with none, the built-in instructions.
