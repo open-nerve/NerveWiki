@@ -123,10 +123,13 @@ func PathOfNames(names []string, kind Kind) string {
 func Quoted(path string) string { return `"` + path + `"` }
 
 // PathNotFound is page.not_found for a path, with the path as written and
-// a hint, which page's adapter/mcp writes out.
+// a hint, which page's adapter/mcp writes out. ParentOf names the field
+// whose parent Path is, when Path is no path the call gave but its
+// parent's: move's "to" (M9/P2 design 3.11.5).
 type PathNotFound struct {
-	Path string
-	Hint string
+	Path     string
+	Hint     string
+	ParentOf string
 }
 
 func (e *PathNotFound) Error() string { return ErrNotFound.Error() }
