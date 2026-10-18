@@ -4,7 +4,7 @@
 |---|---|
 | Phase | M9/P1 平台与读的工具（三个 Step：S1 平台、传输与边缘；S2 路径、`list` 与 `read`；S3 说明与账户） |
 | 日期 | 2026-10-17 |
-| 状态 | S1、S2 已合并（S1 `384d9f96`、S2 `a36e92df`），S3 进行中；设计稿已按设计审查与它的复核修订两轮（[P1 设计审查](reviews/P1-design-review.md)，第二轮在它的末节），实施与审查之后与代码不同之处照实改在各节（3.20 列出），结果在第 9 节 |
+| 状态 | 已完成（S1 合并 `384d9f96`、S2 合并 `a36e92df`、S3 合并 `c9468e5b`）；设计稿已按设计审查与它的复核修订两轮（[P1 设计审查](reviews/P1-design-review.md)，第二轮在它的末节），实施与审查之后与代码不同之处照实改在各节（3.20 列出），结果在第 9 节 |
 | 上级文档 | [M9 总设计](00-M9-design.md) 4.1、4.3–4.9、4.14–4.16、第 5、8、9、10、11 节与"移交的落实"；[v0.1 总体设计](../v0.1-design.md) 6.1–6.4、7、8.4、10.1、12、13 |
 | 代码位置的写法 | 同 00 号文档：模块写作 `page/app/unit.go:168`（`server/internal/modules/` 之下）；`platform/…`、`bootstrap/…`、`shared/…`、`archtest/…` 在 `server/internal/` 之下；迁移写作 `00012_page_nodes.sql:32`；SDK 写作 `sdk/mcp/streamable.go:400`（`~/go/pkg/mod/github.com/modelcontextprotocol/go-sdk@v1.8.0/`）；jsonschema-go 写作 `jsonschema-go/infer.go:219`（`…/github.com/google/jsonschema-go@v0.4.3/jsonschema/`）；e2e 写作 `e2e/fixtures/server.ts:96` |
 
@@ -52,13 +52,13 @@ e2e 的客户端与 TypeScript SDK 的依赖不随 S1 进来：S1 没有一个�
   - 组合根：`/mcp`（`API.Wrap`、只许对象的结构表、按路由的上限）、`/mcp/` 与 `/.well-known/` 的 404；`mcp` 移到 `[server]`、`reserved_test` 对 `.well-known` 的例外；`mcpTools` 与 `api/mcp/tools.json` 的检查；`wireApp` 的测试接缝。
   - 整个程序的测试：PAT、访问令牌、`notebook` 的 404、边缘的次序、JSON-RPC 的批、panic、期限与断开、`no-store`、协议版本的协商、旧协议的 `subscriptions/listen`、`/.well-known/`、服务重启之后继续调用、接线、按工具的权限矩阵的框架；TypeScript 客户端在仓库之外试传输。
 - **S2**：page 的路径（段的检查、解析、给出、`NodePaths.Find`）、线性的 glob 与 `MaxGlobWork`、`PageStates`、版本令牌、新用例 `ListByPattern` 与 `ReadPath`、page 的 `adapter/mcp`（`list`、`read`）；asset 的 `AttachmentReads`、`Deps.PublicURL` 与 WebP 的宽高（`sniff` 读 RIFF 头、`HasSize`）；`server.public_url`；性质测试、上限处的测试、时间的守卫与计划测试；e2e 的 `mcp.ts` 与 MC2；矩阵的 `list`、`read` 两行；TypeScript 客户端在仓库之外试 `list` 与 `read`。
-- **S3**：`platform/markdown.FrontmatterEnd`；page 的 `Instructions`、说明的缓存、内置的说明、`MCPEntry()`、`OpenNotebook`（计数与最后的变更两条语句、只在根下的 `FirstChildren`）与按剩下的预算填的 `open_notebook`；`shared.CleanClientName`；迁移 `00042`（`api_tokens.client_name`）与 `identity.NewClientNames(pool)`；mcpserver 的名称（来源、按 PAT 的缓存、记下）；workspace 的 `Membership` 带上 slug 与名称、notebook 的 `AccountWorkspaces` 与 `ListAccountNotebooks`、`notebooks`；G16 的五种换法、"列表等于逐项判定"；e2e 的 `@modelcontextprotocol/sdk` 1.32.1 与 MC1；矩阵的 `notebooks`、`open_notebook` 两行。
+- **S3**：`platform/markdown.FrontmatterEnd`；page 的 `Instructions`、说明的缓存、内置的说明、`MCPEntry()`、`OpenNotebook`（计数与最后的变更两条语句、只在根下的 `FirstChildren`）与按剩下的预算填的 `open_notebook`；`shared.CleanClientName`；迁移 `00043`（`api_tokens.client_name`；S2 的修复一轮占了 00042）与 `identity.NewClientNames(pool)`；mcpserver 的名称（来源、按 PAT 的缓存、记下）；workspace 的 `Membership` 带上 slug 与名称、notebook 的 `AccountWorkspaces` 与 `ListAccountNotebooks`、`notebooks`；G16 的五种换法、"列表等于逐项判定"；e2e 的 `@modelcontextprotocol/sdk` 1.32.1 与 MC1；矩阵的 `notebooks`、`open_notebook` 两行。
 
 不做（P2 及以后）：写的工具与版本令牌的解析（P2 写 `ParseVersion`，本文只定写法）；`domain.MCPClient` 与 `changesets.client` 的 `mcp:<名>`（P2，名称的来源与记下在 P1）；`Client.Valid` 与两张表的检查（P2）；`versions`、`log`、`changeset`（P2）；`batch`（P3）；`grep`、`search`、`backlinks`、`index`（P4；`NodePaths.Paths`、`page.NewNodePaths(pool)` 与 linking 经它的最后一跳也在 P4）；真的 prompt（M10；P1 S1 只有最小的 `mcpserver.Prompt` 与它的替身，第 8 节）；接入文档与人工清单（P5）。
 
 ### 2.1 对 00 号文档的修订
 
-P1 的文档提交随这份文档一起改 [`00-M9-design.md`](00-M9-design.md)（主持者以 `scratchpad/m9/p1/apply-00m9.py` 落下，每段原文恰好出现一次才改）。行号指 `e16a98f7` 的，理由在本文各节。第 1–13 条是草稿的，按设计审查改过的在条末注明；第 14–22 条是设计审查之后加的；第 23–31 条是 S1、S2 的实施与审查之后加的，随它们的合并改进 00 号文档（主持者以 `scratchpad/m9/p1docs/m9_doc.py` 落下，同样每段原文恰好出现一次才改），与第 13、15 条不同之处以它们为准。
+P1 的文档提交随这份文档一起改 [`00-M9-design.md`](00-M9-design.md)（主持者以 `scratchpad/m9/p1/apply-00m9.py` 落下，每段原文恰好出现一次才改）。行号指 `e16a98f7` 的，理由在本文各节。第 1–13 条是草稿的，按设计审查改过的在条末注明；第 14–22 条是设计审查之后加的；第 23–31 条是 S1、S2 的实施与审查之后加的，第 32、33 条是 S3 的，随它们的合并改进 00 号文档（主持者以 `scratchpad/m9/p1docs/m9_doc.py`、`m9_s3.py` 落下，同样每段原文恰好出现一次才改），与第 13、15 条不同之处以它们为准。
 
 1. **`notebooks` 的工作区不要 `Summaries`**（4.1"`notebooks` 的读"一行 :81；第 2 节 :35；第 7 节 P1 一行 :426；第 8 节 :506）：`ListWorkspacesOf` 今天就读出 `w.slug`、`w.name`（`workspace/adapter/postgres/queries/workspaces.sql:12-20`），只是 `memberships.WorkspacesOf` 把它们丢了（`workspace/memberships.go:49-59`）。改为 `workspace.Membership` 加 `Slug`、`Name` 两个字段，`AccountWorkspaces` 经组合根只接 `Memberships.WorkspacesOf`：一条语句、不加新的端口与查询。别的调用者（access 的事实、事件流的工作区）只读 id 与角色，加字段不影响它们（3.17.1）。第 2 节改为"workspace：`Membership` 带上 slug 与名称"，第 8 节同。
 2. **`CleanClientName` 的次序与截法**（4.5"清理与检查" :142）：今天写的"按 NFC、先去 `unshowable`、再去空白……"不幂等，答回的也不一定是 NFC：`e`、U+200E、U+0301 按 NFC 不变（U+200E 是起始字符，挡住组合），去掉 U+200E 之后剩下 `e` 加 U+0301，第二次清理把它组合成 `é`。P2 的 `domain.MCPClient` 会对记下的名称再清理一次，两次不同就让 PAT 上的名称与变更集的客户端各说各的。改为：去掉不是 UTF-8 的字节 → 去掉 `unshowable` 的字符 → NFC → 去首尾的空白 → 截到 128 个字符（第 129 个字符之前是规范化的边界时，即它是起始字符、不与前面的组合（`norm.NFC.PropertiesString(string(r[128])).BoundaryBefore()`），截在第 128 个之后；否则截在前 128 个字符的 `norm.NFC.LastBoundary` 处：截下的仍是 NFC、至多 128 个字符，也不多丢一个。设计审查 A-M5 量出草稿在前 128 个字符上取 `LastBoundary` 时 129 个 ASCII 只留 127 个；第一轮修订改为在前 129 个字符上取它，复核 A N-1 量出第 129 个字符之后也是边界时（汉字、数字、`-`、emoji）留下 129 个，`client_name` 的检查就拒绝每次的 `Record`）→ 再去一次首尾的空白；空了答 `""`，由调用者换成 `unknown`。性质测试：幂等、至多 128 个字符、没有 `unshowable`、是 NFC，全是起始字符的长名称恰好留下 128 个（起始字符取自字母、汉字、谚文、数字、标点与 emoji，不只 ASCII 的字母）；表格里有 128 个 `x` 加 `中`、129 个 `中` 两行，都留下 128 个（3.16.1）。
@@ -96,6 +96,8 @@ P1 的文档提交随这份文档一起改 [`00-M9-design.md`](00-M9-design.md)�
 29. **没有 `server.public_url` 时图片照样内联**（4.2 的配置；4.9 的附件；4.14 的内联的图片一行；第 11 节取舍第 7 条的写法）：内联不要地址，只有下载的链接要；别的附件只给元数据并说明（3.11.2）。
 30. **WebP 的宽高只在头合得上文件时给、被拒的 `public_url` 带 `@` 的不照录**（4.2、4.9；第 13 节的配置一条）：RIFF 的大小、第一个块的大小、VP8L 的版本、VP8X 的块的大小（3.11.2）；没有源站带 `@`（3.12）。
 31. **超过 1,024 字节的路径由父节点列出**（4.8 的"以它为模式的 `list` 恰好列出它"）：性质限定为 `MaxGlobBytes` 之内的路径，`too_long` 的消息指向 `"A/B/"` 与 `read`（3.10.1）。
+32. **说明的缓存存副本，`AgentsPage` 的版本号是子查询**（4.6 的说明的缓存）：缓存的是 `strings.Clone` 之后的正文：`AgentsBody` 答的是 pgx 为整个正文分配的一个字符串（至多 5 MiB）的一段，原样缓存时每项钉住整页，"256 项、每项至多 32 KiB"不成立（S3 审查 A-I1，3.15.1）；`AgentsPage` 的版本号是对找到的根的子查询，不是联接：ANALYZE 之后一个常见的键的联接读每本笔记本的正文（实施时的偏离 22，3.15.1）。
+33. **说出的名称立刻记住，到知道在行里为止每次调用再记下**（4.5 第 2 步与两个客户端的一段；第 10 节的一行；S3 审查 B-M1、B-M2、C-M2，修复核对第一轮 B 的 N-1）：取代第一轮的"写了一行才缓存"：说出的名称（清理之后不空）立刻为它的 PAT 记住，标出还不知道在行里；写了一行，或 0 行之后一次点读看到行里是它，才去掉标；标没设时这个令牌的每次调用都再记下；已知在行里的同一个名称不写也不读。两个客户端在同一刻报不同的名称时，进程与行可以停在不同的名称上，直到报出缓存之外的名称、这一项被挤出或进程重启；不加按令牌的锁（3.16.4）。
 
 ### 2.2 需要负责人确认
 
@@ -106,6 +108,7 @@ P1 的文档提交随这份文档一起改 [`00-M9-design.md`](00-M9-design.md)�
 - 设计审查之后的几条也不碰第 11 节：WebP 的宽高（2.1 第 14 条）让取舍第 7 条（"PNG、JPEG、GIF、WebP 在 3 MiB、每边 8,000 像素之内内联"）真的成立，那一条不改；答复的量（第 7 条）只写定 48 KiB 怎么数，48 KiB 不变；glob 的工作上限（第 15 条）不改取舍第 6 条的方言。
 - 2.1 的各条是实现的写定或 00 号文档内部的不一致，都不碰第 11 节的决定，由主持者定（主持者在 [P1 设计审查](reviews/P1-design-review.md) 里的决定，负责人可以改判）。
 - S1、S2 的实施与审查里主持者定下的，同样负责人可以改判，写进 00 号文档第 11 节（主持者的决定第 13–23 条）与两份审查记录的"主持者的决定"：[S1](reviews/P1-S1-platform-review.md) 的 `POST /register`、没有令牌的 401 的提示、超过 64 KiB 的只能是这个入口的工具的调用、内存的界线给 P2、`id` 的回显也限住；[S2](reviews/P1-S2-reads-review.md) 的两个部分唯一索引与去掉兄弟的索引、`ChildByKey` 没有统计时的计划、不论有没有 `public_url` 都内联图片、WebP 的检查、`MaxGlobWork` = 3 亿、守卫那一份的时限 25 分钟、`BOOTSTRAP_FIRST` 到 S3 再动。第 11 节取舍第 7 条只改写法（下载的地址要 `public_url`，内联不要），取舍本身不变。
+- S3 的实施与审查里主持者定下的，同样负责人可以改判，写进 00 号文档第 11 节（主持者的决定第 24–30 条）与 [S3 的审查记录](reviews/P1-S3-account-review.md)的"主持者的决定"：说明的缓存存副本；客户端名称照 B 的方向（说出的立刻记住、到知道在行里为止再记下，热行的规则保住）；两个客户端的镜像的交错只改设计的那一句、不加按令牌的锁；截在最后一个换行、只由看不见的字符组成的名称、客户端走了的 warn 留给 M12 的打磨；组合根两份的界线不再动，以后判断挪不挪取两次的平均；MC1 不加非管理员的角色；任务的等待与竞态那一份的时限在只改测试的分支里改。
 
 ## 3. 服务端
 
@@ -1547,7 +1550,7 @@ type readIn struct {
   - 附件读的最后一跳（13.1 第 21 条；自己一个测试 `TestTheMCPReadsGiveAttachments`，在 `TestTheMCPReadsReachTheUseCases` 旁边，实施时的偏离 15）：上传的 PNG、JPEG、GIF、WebP 经 `read` 答 `image` 块、字节等于上传的（WebP 的行有宽高：上传读出的，3.11.2）；一个行里没有宽高的 WebP（测试在库里把这一行的宽高设回空，代替 P1 之前的上传）照样内联、答复的宽高是读出的；PDF 与 SVG 答 `resource_link`，地址以 `http://wiki.example/api/v0/assets/` 起头、带 `d=1`，把源换成测试服务的地址下载答 200、`Content-Disposition: attachment`、字节相同；`list` 列 `Guide/`，逐项对照上传的 MIME 与大小，`resource_link` 的 `mimeType` 与 `size` 也核对（S2 审查 C-M2、C-N4）；`public_url` 为空的应用（`TestTheMCPReadsWithoutAPublicURL`）：PNG 照样内联，PDF 只给元数据与 `note`；源带结尾的 `/` 的应用（`TestTheMCPReadsWithAPublicURLEndingInASlash`）签出的地址在源之下只有一个 `/`；删了文件的 PNG 答 `note`、记 warn；
   - `read` 带 NUL 的路径、`pattern` 带 NUL 答 422 `invalid_format`（`ParseGlob` 拒绝标题不能有的字符，3.10.1；直接的两个用例断言码），不是 `internal_error`（`TestToolStringsDoNotAnswerInternalErrors`：从两个入口的 `tools/list` 推导出每个字符串参数，含嵌套在数组的对象里的，各取 NUL 调用一次，答复不是 `internal_error`；各取不成对的代理项写进原始的 JSON，答 HTTP 400。反向对照：推导的函数在一个合成的 schema（只在 `ops[].path` 里有字符串）上漏掉它时失败，照 `TestFreeTextParametersDoNotAnswer5xx`，`bootstrap/contract_test.go:247-272`）；
   - 可选参数为 `null`（`limit: null`、`cursor: null`）照没有收下；
-  - **码**（`TestListAndReadErrorsCarryDeclaredCodes`）：每个工具答出它的每个码，`bad_request`（`limit: "two"`、坏的游标、没有 `path`）、`validation_failed`（`limit: 0`、`a/./b`、`Guide/`、`offset: 0`、过了一行的 `column`）、`page.not_found`（`Missing/`、`Missing.md`）、`notebook.not_found`（账户入口里看不到的笔记本，含 bob 真的看不到的笔记本里的 `Missing/` 与 `Missing.md`）；走遍码的表的每一行。**码的表**（S2 审查 C 的提议，主持者的决定）：组合根的 `mcpToolCodes()` 在矩阵的行旁边，`list`、`read` 各是 `bad_request`、`validation_failed`、`notebook.not_found`、`page.not_found`；`TestEveryMCPToolHasItsCodes` 核对 `tools.json` 两个入口的每个工具都有一行、每行都是某个工具的、每个码都是契约声明的；`mcpAnswer.toolError` 拿整个程序读到的每个工具错误对照它的工具的那行（`internal_error` 除外）。S3 与之后的 Phase 随工具加行。不按工具对应的 REST 操作约束（S1 留给 S2 的一种做法）：`list` 答 `listNodes` 不声明的 `validation_failed`、`page.not_found`，`read` 答 `getPageContent` 不声明的 `notebook.not_found`、`validation_failed`，工具拒绝的参数是它们自己的；只按并集查又挡不住一个工具答另一个模块声明的码（`asset.not_found` 的映射就是这样漏的）；
+  - **码**（`TestListAndReadErrorsCarryDeclaredCodes`，S3 改名 `TestTheMCPToolsErrorsCarryTheirCodes`，3.17.4）：每个工具答出它的每个码，`bad_request`（`limit: "two"`、坏的游标、没有 `path`）、`validation_failed`（`limit: 0`、`a/./b`、`Guide/`、`offset: 0`、过了一行的 `column`）、`page.not_found`（`Missing/`、`Missing.md`）、`notebook.not_found`（账户入口里看不到的笔记本，含 bob 真的看不到的笔记本里的 `Missing/` 与 `Missing.md`）；走遍码的表的每一行。**码的表**（S2 审查 C 的提议，主持者的决定）：组合根的 `mcpToolCodes()` 在矩阵的行旁边，`list`、`read` 各是 `bad_request`、`validation_failed`、`notebook.not_found`、`page.not_found`；`TestEveryMCPToolHasItsCodes` 核对 `tools.json` 两个入口的每个工具都有一行、每行都是某个工具的、每个码都是契约声明的；`mcpAnswer.toolError` 拿整个程序读到的每个工具错误对照它的工具的那行（`internal_error` 除外）。S3 与之后的 Phase 随工具加行。不按工具对应的 REST 操作约束（S1 留给 S2 的一种做法）：`list` 答 `listNodes` 不声明的 `validation_failed`、`page.not_found`，`read` 答 `getPageContent` 不声明的 `notebook.not_found`、`validation_failed`，工具拒绝的参数是它们自己的；只按并集查又挡不住一个工具答另一个模块声明的码（`asset.not_found` 的映射就是这样漏的）；
   - `pageAttachmentErr`（`TestPageAttachmentErrors`，组合根的单元测试）：包着与否的 `asset.ErrNotFound` 给 `page.ErrNotFound`，`asset.ErrNoFile` 给 `page.ErrNoAttachmentFile`，别的不变；
   - glob 的工作的上限（这一条在 `page/app` 的用例测试里，替身的树：上限是 `ListByPattern` 的一个字段，`NewListByPattern` 自己设 `MaxGlobWork`，测试经 `export_test.go` 的 `WithMaxWork` 交小的）：200 个节点的树上列 `**/*x?y*/**`，答 `items: []` 与 `next_cursor`，拿游标接着列，几页之后列完，合起来等于不设上限的一次（不重复、不跳过）；每次的 `next_cursor` 严格大于上一次的，调用的次数有上限（每次至少前进一项，至多是节点数：测试以它为循环的上限，到了就失败）；每次调用的工作的界在 `page/domain` 的走查测试里核对（3.10.1，复核 B N-2）。
 
@@ -1560,19 +1563,20 @@ type readIn struct {
 | `page/domain/instructions.go` | page/domain | 新 | `AgentsTitle` = "AGENTS"、`MaxInstructionsBytes` = 32,768、`Agents`、`AgentsBody`、`AgentsText`（计数由调用者交，3.15.3） |
 | `page/app/instructions.go` | page/app | 新 | 用例 `Instructions` 与说明的缓存（3.15.1） |
 | `page/app/open_notebook.go`、`page/domain/overview.go` | page/app、page/domain | 新 | 用例 `OpenNotebook`；`MaxOverviewRoot` = 100（3.17.3） |
-| `page/adapter/postgres/queries/nodes.sql`、`history.sql`、`store.go` | page/adapter/postgres | 改 | `AgentsPage`、`NotebookCounts`、`NotebookLastChange`、`FirstChildren`（只在根下，3.15.1、3.17.3） |
-| `page/adapter/mcp/instructions.go`、`open_notebook.go` | page/adapter/mcp | 新 | 两段内置的说明（3.15.4）；工具 `open_notebook` |
-| `page/mcp_entry.go`、`page/module.go` | page | 改 | `MCPEntry().Instructions`；`AccountInstructions()` |
+| `page/adapter/postgres/queries/nodes.sql`、`history.sql`、`store.go`、`overview.go` | page/adapter/postgres | 改、新 | `AgentsPage`、`NotebookCounts`、`NotebookLastChange`、`FirstChildren`（只在根下，3.15.1、3.17.3） |
+| `page/adapter/mcp/instructions.go`、`open_notebook.go`、`tools.go` | page/adapter/mcp | 新、改 | 两段内置的说明（3.15.4）；工具 `open_notebook`，`UseCases` 加 `Open` |
+| `page/mcp_entry.go`、`page/module.go`、`page/tools.go` | page | 改 | `MCPEntry().Instructions`；`AccountInstructions()`；说明的缓存与 `OpenNotebook` 在 `New` 里各建一个；`Tools` 带上 `open_notebook` |
 | `shared/client_name.go` | shared | 新 | `MaxClientNameChars` = 128、`CleanClientName`（3.16.1） |
-| `server/migrations/sql/00042_identity_api_tokens_client_name.sql`、`server/migrations/schema_test.go`、`server/sqlc.yaml` | — | 新、改 | `api_tokens.client_name`（3.16.2） |
-| `identity/adapter/postgres/queries/api_tokens.sql`、`store.go`、`identity/client_names.go` | identity | 改、新 | `APITokenClientName`、`RecordAPITokenClientName`；`NewClientNames(pool)`（3.16.3） |
-| `platform/httpserver/mcpserver/names.go`、`call.go` | mcpserver | 新、改 | 名称的来源、按 PAT 的缓存、记下；`handshake` 填说明（3.15.2、3.16.4） |
+| `server/migrations/sql/00043_identity_api_tokens_client_name.sql`、`server/migrations/schema_test.go`、`server/sqlc.yaml` | — | 新、改 | `api_tokens.client_name`（3.16.2） |
+| `identity/adapter/postgres/queries/api_tokens.sql`、`api_tokens.go`、`identity/client_names.go` | identity | 改、新 | `APITokenClientName`、`RecordAPITokenClientName`；`NewClientNames(pool)`（3.16.3） |
+| `platform/httpserver/mcpserver/names.go`、`log.go`、`errors.go`、`server.go`、`tool.go`、`prompt.go` | mcpserver | 新、改 | 名称的来源、按 PAT 的缓存、记下（`names.go`）；`handshake` 填说明，方法的错误 `methodError`；`Options.Account`、`Names`；工具与 prompt 的 `Call.Client` 读 ctx（3.15.2、3.16.4） |
 | `workspace/memberships.go` | workspace | 改 | `Membership` 加 `Slug`、`Name`（3.17.1） |
 | `notebook/app/ports.go`、`list_account_notebooks.go`、`notebook/module.go`、`notebook/adapter/mcp/notebooks.go` | notebook | 改、新 | `AccountWorkspaces`；用例 `ListAccountNotebooks`；`Deps.AccountWorkspaces`（交空 panic）；`Tools()`；工具 `notebooks`（3.17.2） |
-| `bootstrap/mcp.go`、`deps.go` | bootstrap | 改 | `mcpTools` 拼上 `nb.Tools()` 与 `open_notebook`；`Options.Names` 是 `mcpNames{identity.NewClientNames(pool)}`（清理经 `shared.CleanClientName`）；`Options.Account` 是 `page.AccountInstructions()`；`notebookDeps` 交 `accountWorkspaces{workspace.NewMemberships(pool)}` |
+| `bootstrap/mcp.go`、`deps.go`、`wire.go` | bootstrap | 改 | `mcpTools` 拼上 `nb.Tools()`（page 的 `Tools` 带上 `open_notebook`）；`mcpServer(cfg, logger, api, pg, names, tools)` 多一个名称的端口（实施时的偏离 10），`wire.go` 交 `mcpNames{identity.NewClientNames(pool)}`（清理经 `shared.CleanClientName`）；`Options.Account` 是 `page.AccountInstructions()`；`notebookDeps` 交 `accountWorkspaces{workspace.NewMemberships(pool)}` |
 | `api/mcp/tools.json` | — | 改 | 账户入口加 `notebooks`、`open_notebook`（3.18） |
-| `bootstrap/mcp_instructions_test.go`、`mcp_names_test.go`、`mcp_account_test.go`、`notebook_visibility_test.go`、`permission_matrix_mcp_test.go`、`mcp_tools_test.go` | bootstrap | 新、改 | 3.15–3.17 的整个程序的测试与矩阵的两行；内置的说明讲到每个工具（3.15.4） |
-| `e2e/package.json`、`pnpm-lock.yaml`、`e2e/fixtures/assert/identity.ts`、`e2e/stories/mcp/mc1-connect.spec.ts` | e2e | 改、新 | `@modelcontextprotocol/sdk` 1.32.1；`expectTokenClient`；MC1（第 4 节） |
+| `bootstrap/mcp_instructions_test.go`、`mcp_names_test.go`、`mcp_account_test.go`、`notebook_visibility_test.go`、`permission_matrix_mcp_test.go`、`permission_matrix_mcp_notebooks_test.go`、`mcp_tools_test.go`、`mcp_reads_test.go` | bootstrap | 新、改 | 3.15–3.17 的整个程序的测试与矩阵的两行（notebook 的一行在自己的文件里，`mcpRows()` 拼起 page 与 notebook 的）；内置的说明讲到每个工具（3.15.4）；码的表加两行，答出码的测试改名 `TestTheMCPToolsErrorsCarryTheirCodes`（3.17.4） |
+| `e2e/package.json`、`pnpm-lock.yaml`、`e2e/fixtures/mcp.ts`、`e2e/fixtures/assert/identity.ts`、`e2e/stories/mcp/mc1-connect.spec.ts` | e2e | 改、新 | `@modelcontextprotocol/sdk` 1.32.1；导出 `mcpURL`；`expectTokenClient`；MC1（第 4 节） |
+| `Makefile` | — | 改 | `test-go-costs` 加概况的守卫 `TestTheOverviewReadsInTimeAsLongAsTheTree`（带 `-v`，3.17.3）；`BOOTSTRAP_FIRST` 移到 `TestEveryS` 之前（6.1） |
 
 ### 3.15 S3：`AGENTS` 与说明
 
@@ -1589,11 +1593,15 @@ type AgentsStore interface {
 
 ```sql
 -- name: AgentsPage :one
--- The notebook's root node whose title key is name_key, TitleKey("AGENTS"), with its content's revision when it is
--- a page (M9 design 4.6; M9/P1 design 3.15.1): one point look-up by the siblings' unique index and the content's key.
-SELECT n.id, n.kind, n.name, c.revision
+-- The notebook's root node whose title key is name_key, TitleKey("AGENTS"), with its title now and its content's
+-- revision when it is a page, 0 for none (M9 design 4.6; M9/P1 design 3.15.1): one point lookup by the roots' unique
+-- index (00042), as RootByKey, and the content by its key. The revision is a subquery of the node found, not a join: a
+-- key that many nodes share, an AGENTS page in each folder, is estimated as many rows once analyzed, and a join of
+-- them read the contents of every notebook by a hash.
+SELECT n.id, n.kind, n.name,
+    coalesce((SELECT c.revision FROM page_contents c WHERE c.node_id = n.id AND c.deleted_at IS NULL), 0)::integer
+        AS revision
 FROM nodes n
-LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at IS NULL
 WHERE n.notebook_id = sqlc.arg(notebook_id) AND n.parent_id IS NULL AND n.name_key = sqlc.arg(name_key)
     AND n.deleted_at IS NULL;
 ```
@@ -1611,8 +1619,12 @@ type Instructions struct {
 	nodes   Nodes
 	md      Markdown
 	measure func(string) int
-	cache   *instructionsCache // 256 entries, a mutex and container/list
+	cache   *instructionsCache // 256 entries, each a copy of at most MaxInstructionsBytes: 8 MiB at most
 }
+
+// NewInstructions returns the use case and its cache: the module builds
+// one, which the notebook entry and open_notebook share.
+func NewInstructions(store AgentsStore, nodes Nodes, md Markdown, measure func(string) int) *Instructions
 
 func (i *Instructions) Execute(ctx context.Context, notebookID uuid.UUID) (a domain.Agents, ok bool, err error)
 
@@ -1623,7 +1635,11 @@ type instructionsKey struct {
 }
 ```
 
-次序：`AgentsPage`（一次点查，带这一页现在的标题）→ 没有或是附件 → `ok` 为假；是页 → 键（笔记本、节点、版本号）命中就答缓存的正文 → 不命中读正文（`Nodes.PageContent`，正文与版本号一起，`contents.sql:12-16`）：读到之前被删了 → `ok` 为假；以读到的版本号（点查之后又有人写了，存的是新的版本号与它的正文）存。缓存的是 `domain.AgentsBody` 的结果：去掉 frontmatter、截到 32 KiB 之内的正文与"截过没有"，**不含**末尾的说明行，也不为它预留；说明行在每次用时以点查读到的现在的标题拼上（3.15.3）。所以只改了大小写的改名（`AGENTS` → `agents`：键、节点、版本号都不变）之后，说明行与 `instructions_from` 说的是新的写法（设计审查 B 的 Nit 1）。每项至多 32 KiB，256 项至多 8 MiB。G16 的五种换法都换了键或文字相同：替换（另一个节点）、改名进出（有、没有或换了节点）、删除（没有）都换键；从回收站恢复回来的是同一个节点、同一个版本号、同样的正文，键与文字都相同；还原版本、撤销写回都是新的版本号。缓存在 `page.New` 里建一个，`MCPEntry` 与 `OpenNotebook` 共用。
+次序：`AgentsPage`（一次点查，带这一页现在的标题）→ 没有或是附件 → `ok` 为假；是页 → 键（笔记本、节点、版本号）命中就答缓存的正文 → 不命中读正文（`Nodes.PageContent`，正文与版本号一起，`contents.sql:12-16`）：读到之前被删了 → `ok` 为假；以读到的版本号（点查之后又有人写了，存的是新的版本号与它的正文）存。缓存的是 `domain.AgentsBody` 的结果：去掉 frontmatter、截到 32 KiB 之内的正文与"截过没有"，**不含**末尾的说明行，也不为它预留；说明行在每次用时以点查读到的现在的标题拼上（3.15.3）。所以只改了大小写的改名（`AGENTS` → `agents`：键、节点、版本号都不变）之后，说明行与 `instructions_from` 说的是新的写法（设计审查 B 的 Nit 1）。缓存的是正文的副本（`strings.Clone`）：`AgentsBody` 答的是 pgx 为整个正文分配的一个字符串（至多 `MaxContentBytes` = 5 MiB）的一段，Go 释放不了一个字符串的一部分，原样缓存时每项钉住整页（S3 审查 A-I1：1 MiB 的页写 256 次、每个版本读一次，缓存留着 256.1 MiB（A 的探针 258.1 MiB），5 MiB 的页约 1.25 GiB；复制之后 8.1 MiB）。所以每项至多 32 KiB，256 项至多 8 MiB。G16 的五种换法都换了键或文字相同：替换（另一个节点）、改名进出（有、没有或换了节点）、删除（没有）都换键；从回收站恢复回来的是同一个节点、同一个版本号、同样的正文，键与文字都相同；还原版本、撤销写回都是新的版本号。缓存在 `page.New` 里建一个，`MCPEntry` 与 `OpenNotebook` 共用。
+
+**版本号是子查询**（实施时的偏离 22）：设计原来写 `LEFT JOIN page_contents`，它只在没有统计时是点查：ANALYZE 之后规划器把一个常见的键（每个文件夹里都有一个 `AGENTS`）的根估作这个键在全表里的份额（实施者的数据上 10,969 行，虽然索引唯一），以 Hash Right Join 顺序扫描 `page_contents`，读每本笔记本的正文。子查询只为找到的那个节点按主键读一次：没有统计与 ANALYZE 之后、定制与通用的计划里都是根的部分唯一索引加 `page_contents_pkey` 的 SubPlan（S3 审查 A 在自己的数据上核对：5,000 本笔记本、111,041 个节点，子查询 8 + 4 个缓冲、0.01–0.02 ms，LEFT JOIN 读 105,041 行、2,594 个缓冲）。答复相同；附件占着这个键时没有正文，版本号是 0，用例按种类答"没有"（偏离 9）。
+
+测试：存储的 `TestTheAgentsPageIsTheRootOfItsKey`（子节点的 `AGENTS`、别的笔记本的、删掉的都不是；附件答版本号 0；标题是节点现在的写法）与计划测试 `TestTheAgentsPageIsAPointLookup`（不许整表的扫描：节点经根的唯一索引 `nodes_notebook_id_name_key_root_key`，两列都是它的条件里的等值，正文经 `page_contents_pkey`；没有统计与 ANALYZE 之后、定制与通用；数据是 20,000 个根各有子节点 `AGENTS`、一个根下的 `AGENTS`、2,000 本笔记本各一个，每页都有正文；写回 LEFT JOIN 的变异在 ANALYZE 之后失败）；用例的（替身）`TestTheInstructionsFollowTheAgentsPage`（G16 的五种换法、只改大小写的改名、附件占着键、去掉 frontmatter 之后为空）、`TestTheInstructionsCacheByTheRevisionRead`（点查与读正文之间写或删掉页：新的正文从不存在旧的键下）、`TestTheInstructionsCacheHoldsTheLastUsed`、`TestTheInstructionsCacheHoldsItsTextsAlone`（A 的方法：1 MiB 的 `AGENTS` 页写 256 次、每个版本读一次，两次回收之后量堆，至多界线的两倍 16 MiB；不复制的变异 256.1 MiB）。
 
 #### 3.15.2 握手时填说明（mcpserver 的 `handshake`）
 
@@ -1631,26 +1647,26 @@ type instructionsKey struct {
 func (s *Server) handshake(next mcp.MethodHandler) mcp.MethodHandler {
 	return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
 		r := requestOf(ctx)
-		ctx = withClient(ctx, s.names.of(ctx, r.cred.TokenID, toldName(method, req))) // 3.16.4
+		ctx = withClient(ctx, s.names.of(ctx, r.cred.TokenID, toldName(req))) // 3.16.4
 		res, err := next(ctx, method, req)
 		init, ok := res.(*mcp.InitializeResult)
 		if !ok || err != nil {
 			return res, err
 		}
-		text, ierr := s.instructionsOf(ctx, r) // the notebook entry: Notebooks.Instructions; the account entry: Options.Account
-		if ierr != nil {
-			return nil, s.methodError(ctx, method, ierr) // a JSON-RPC internal error, classified and logged by ProblemOf
+		text, err := s.instructionsOf(ctx, r) // the notebook entry: Notebooks.Instructions; the account entry: Options.Account
+		if err != nil {
+			return nil, s.methodError(ctx, method, fmt.Errorf("mcpserver: the instructions: %w", err)) // a JSON-RPC internal error, classified and logged by ProblemOf
 		}
 		init.Instructions = text
-		s.logInitialize(ctx, r, init)
+		// one info line "MCP initialize": client (clientOf(ctx)), protocol_version, entry, the credential
 		return init, nil
 	}
 }
 ```
 
-SDK 只在 `initialize` 的结果里发说明（`sdk/mcp/server.go:2078-2107`），结果是这个请求自己的 `*InitializeResult`，改它不影响别的请求（实验：两个入口各拿到自己的说明）。读 `AGENTS` 失败时握手答 JSON-RPC 的内部错误，而不是悄悄发内置的说明：那会让 agent 以为这本笔记本没有约定。page 的 `MCPEntry().Instructions` 在 `ok` 为假时答笔记本入口的内置说明，有时答 `domain.AgentsText(a, fits)`，`fits` 是"`mcpserver.TextBytes` 至多 32,768"（3.15.3），所以 mcpserver 总拿到要发的文字。
+SDK 只在 `initialize` 的结果里发说明（`sdk/mcp/server.go:2078-2107`），结果是这个请求自己的 `*InitializeResult`，改它不影响别的请求（实验：两个入口各拿到自己的说明）。读 `AGENTS` 失败时握手答 JSON-RPC 的内部错误，而不是悄悄发内置的说明：那会让 agent 以为这本笔记本没有约定。失败经新的 `methodError`：同工具的错误一样经 `ProblemOf` 分类与记日志（error 级的"MCP method failed"，期限到了是 warn），答 -32603，文字是 S1 的 `internal_error: …; request id …`；这时不写"MCP initialize"一行（实施时的偏离 5）。page 的 `MCPEntry().Instructions` 在 `ok` 为假时答笔记本入口的内置说明，有时答 `domain.AgentsText(a, fits)`，`fits` 是"`mcpserver.TextBytes` 至多 32,768"（3.15.3），所以 mcpserver 总拿到要发的文字。
 
-测试（mcpserver 的单元测试，一个数调用次数的 `Notebooks` 替身；设计审查 A-M15）：一次握手调 `Instructions` 恰好一次；`ping`、`tools/list`、`tools/call` 一次也不调（6.3 的变异"handshake 在 `next` 之前读说明而不看结果的类型"由它抓住）。
+测试（mcpserver 的单元测试 `handshake_test.go`，一个数调用次数的 `Notebooks` 替身；设计审查 A-M15）：`TestTheHandshakeSendsItsEntrysInstructions`（两个入口各发自己的说明）；`TestTheHandshakeReadsInstructionsOnlyForInitialize`（一次握手调 `Instructions` 恰好一次；`ping`、`tools/list`、`tools/call` 一次也不调；6.3 的变异"handshake 在 `next` 之前读说明而不看结果的类型"由它抓住）；`TestInstructionsThatFailAreTheHandshakesError`（-32603、带请求号，error 级的一行，没有"MCP initialize"）；`TestTheInstructionsAreReadWithinTheCallsDeadline`（S3 审查 A-N1：`Options.RequestTimeout` 300 ms，替身的 `Instructions` 只在 `ctx.Done()` 时结束：读以 `context.DeadlineExceeded` 结束，warn "MCP call deadline exceeded" 带 `method: initialize`；以 `context.WithoutCancel(ctx)` 读的变异失败。测试留着路由的请求体上限，只缩短调用的期限：`noBodyLimit` 时两个期限相等，请求结束先取消调用的 ctx）。
 
 #### 3.15.3 文字
 
@@ -1661,7 +1677,7 @@ SDK 只在 `initialize` 的结果里发说明（`sdk/mcp/server.go:2078-2107`）
 func FrontmatterEnd(src []byte) int
 ```
 
-`platform/markdown` 导出它：今天的 `frontmatterSpan` 未导出（`platform/markdown/frontmatter.go:66-97`），`frontmatterOf` 答的第二个值就是它（`:100-108`），所以去掉的与解析读作 frontmatter 的是同一段。page 的 `app` 不导入平台，经 `Markdown` 端口（`page/app/ports.go:532-546`）调它。
+`platform/markdown` 导出它：今天的 `frontmatterSpan` 未导出（`platform/markdown/frontmatter.go:66-97`），`frontmatterOf` 答的第二个值就是它（`:100-108`），所以去掉的与解析读作 frontmatter 的是同一段。page 的 `app` 不导入平台，经 `Markdown` 端口（`page/app/ports.go:532-546`）调它。`FrontmatterEnd` 读解析自己的 `frontmatterSpan`（实施时的偏离 11）：`TestFrontmatterEndIsWhereTheParseReadsIt` 在每种形式（BOM、CRLF、没有闭合、只有 frontmatter）上对照 `frontmatterOf`；page 的适配器答平台的（`TestTheAdapterFindsTheFrontmattersEnd`）。
 
 ```go
 // MaxInstructionsBytes bounds the initialize instructions, as
@@ -1693,7 +1709,7 @@ func AgentsBody(content string, end int, measure func(string) int) (body string,
 func AgentsText(a Agents, fits func(string) bool) string
 ```
 
-末尾的说明行（英文，13.5 第 4 条）：`(The rest of <title>.md is cut here: read it whole with read, path "<title>.md".)`，前面空一行；`<title>` 是这一页现在的标题（按键找到的可以叫 `agents`）。截法：从 `content[end:]` 去掉开头的 BOM（U+FEFF 不是 `unicode.IsSpace`，`TrimSpace` 不去它），`strings.TrimSpace`；量（`mcpserver.TextBytes`，3.4.4）超过 32,768 时，在 32,768 之内找最后一个 `\n`（找不到就退到字符的边界），截下、去掉末尾的空白：这是缓存的 `Body`，不为说明行预留。用时 `AgentsText` 以这次的 `fits` 再截一次（只在截过或放不下时）：在正文的换行处二分，找最长的、加上空行与说明行仍放得下的前缀（两种量都按字符相加，前缀越长量越大，所以可以二分；约 15 次量、每次至多 32 KiB）。握手的 `fits` 是"`TextBytes` 至多 32,768"，所以说明行用真的标题、留给正文的就是 32,768 减去它与空行；`open_notebook` 的 `fits` 是"`TextBytes` 至多 32,768 而且 `MemberBytes` 至多它剩下的预算"（3.17.3）。第一轮把缓存的正文截到 32,768 减去最长的说明行，再以真的标题截一次只会更短，握手的说明就比"32,768 减去说明行"至多短约 1.5 KiB（复核 B N-7）；`AgentsText` 往回逐个换行地量，在 `open_notebook` 的测试页（32 KiB 的 `"` 与 `\n`）上每次调用要量几千个约 16K 个字符的前缀，这段文字因预算随调用而变也不缓存（复核 A N-6）。两处同一个截法、同一个量的一族（2.1 第 7 条），握手的 32 KiB 规则用的就是答复的量 `TextBytes`。测试：frontmatter 带 BOM 与 `\r\n`、没有闭合的 `---`（不算 frontmatter，照 `frontmatterSpan`）、只有 frontmatter（空了，内置的说明）、量恰好 32,768 不截、多一个字节就截、没有换行的长行、截处是多字节的字符、CRLF 的正文（`\r` 两个字节，不是草稿的六个）、全是引号与换行的正文（按 `TextBytes` 截；`open_notebook` 按 `MemberBytes` 再截）、标题只改了大小写之后说明行用新的写法、截过的说明是放得下说明行的最后一个换行处（与往回逐个换行地量的写法在随机的正文与两种 `fits` 上相同，性质测试）。
+末尾的说明行（英文，13.5 第 4 条）：`(The rest of <title>.md is cut here: read it whole with read, path "<title>.md".)`，前面空一行；`<title>` 是这一页现在的标题（按键找到的可以叫 `agents`）。截法：从 `content[end:]` 去掉开头的 BOM（U+FEFF 不是 `unicode.IsSpace`，`TrimSpace` 不去它），`strings.TrimSpace`；量（`mcpserver.TextBytes`，3.4.4）超过 32,768 时，在 32,768 之内找最后一个 `\n`（找不到就退到字符的边界），截下、去掉末尾的空白：这是缓存的 `Body`，不为说明行预留。用时 `AgentsText` 以这次的 `fits` 再截一次（只在截过或放不下时）：在正文的换行处二分，找最长的、加上空行与说明行仍放得下的前缀（两种量都按字符相加，前缀越长量越大，所以可以二分；约 15 次量、每次至多 32 KiB）。握手的 `fits` 是"`TextBytes` 至多 32,768"，所以说明行用真的标题、留给正文的就是 32,768 减去它与空行；`open_notebook` 的 `fits` 是"`TextBytes` 至多 32,768 而且 `MemberBytes` 至多它剩下的预算"（3.17.3）。第一轮把缓存的正文截到 32,768 减去最长的说明行，再以真的标题截一次只会更短，握手的说明就比"32,768 减去说明行"至多短约 1.5 KiB（复核 B N-7）；`AgentsText` 往回逐个换行地量，在 `open_notebook` 的测试页（32 KiB 的 `"` 与 `\n`）上每次调用要量几千个约 16K 个字符的前缀，这段文字因预算随调用而变也不缓存（复核 A N-6）。两处同一个截法、同一个量的一族（2.1 第 7 条），握手的 32 KiB 规则用的就是答复的量 `TextBytes`。测试：frontmatter 带 BOM 与 `\r\n`、没有闭合的 `---`（不算 frontmatter，照 `frontmatterSpan`）、只有 frontmatter（空了，内置的说明）、量恰好 32,768 不截、多一个字节就截、没有换行的长行、截处是多字节的字符、CRLF 的正文（`\r` 两个字节，不是草稿的六个）、全是引号与换行的正文（按 `TextBytes` 截；`open_notebook` 按 `MemberBytes` 再截）、标题只改了大小写之后说明行用新的写法、截过的说明是放得下说明行的最后一个换行处（与往回逐个换行地量的写法在随机的正文与两种 `fits` 上相同，性质测试）。连一个字符加说明行都放不下时 `AgentsText` 只答说明行（实施时的偏离 7，设计没有说）。测试名：`TestAgentsBody`、`TestAgentsText`、`TestAgentsTextIsTheLastLineBreakThatFits`（性质）；握手一层的上限处是 page 包的 `TestTheHandshakesInstructionsAreWholeUpToTheirBound`（S3 审查 A-M1：`MCPEntry` 接内存的端口与 `mcpserver.TextBytes`，正文是 `<漢 x` 的行、以 `x` 补齐，先核对量恰好是 32,768 与 32,769：前者整个给出、没有说明行，后者截短、以说明行结尾、留下的是正文的前缀；`fits` 写成 `<` 的变异失败）。最后一个换行离界线很远时截下的远少于 32 KiB（一行 7,000 字节、量 12,002 字节，之后一行 20,766 字节跨过界线：只留 12,085 字节）：照设计不改，进 M12 的打磨移交第 30 条（S3 审查 A 的存疑 1，主持者的决定 3）。
 
 #### 3.15.4 内置的说明
 
@@ -1744,8 +1760,8 @@ Tools
 
 两段的"Paths"与"Tools"是同一段文字（一个常量拼进两处）。测试分两处：
 
-- `page/adapter/mcp`：每段至多 4 KiB；笔记本入口那段提到 `AGENTS`。
-- bootstrap 的 `TestTheBuiltInInstructionsNameEveryTool`（挨着 `TestTheToolListsAreTheContract`，设计审查 B-M1）：`api/mcp/tools.json` 每个入口的每个工具，在那个入口的内置说明里有一行以 `- <name>:` 或 `- <name> ` 起头（`(?m)^- <name>[: ]`，锚在行首）。草稿把它放在 `page/adapter/mcp`、工具名取自 page 的 `Tools()`：它看不到 notebook 的 `notebooks`，也看不到 P4 linking 的 `backlinks`、`index`；"`<name> ` 出现在段里的任何地方"在 P2 加了 `write`、`edit`、`move`、`delete` 这些普通的英文词之后会被正文配上，反向对照就不再失败。反向对照：去掉 `read` 那一行、把 `- list:` 改成正文里的 "list" 都失败。账户入口那段因此也要有以 `- notebooks ` 与 `- open_notebook ` 起头的两行（上面的全文有）。
+- `page/adapter/mcp` 的 `TestTheBuiltInInstructionsAreShort`：每段按 `TextBytes` 至多 4 KiB、都含同一段路径与工具；只有笔记本入口那段提到 `AGENTS`。
+- bootstrap 的 `TestTheBuiltInInstructionsNameEveryTool`（挨着 `TestTheToolListsAreTheContract`，设计审查 B-M1）：`api/mcp/tools.json` 每个入口的每个工具，在那个入口的内置说明里有一行以 `- <name>:` 或 `- <name> ` 起头（`(?m)^- <name>[: ]`，锚在行首）。草稿把它放在 `page/adapter/mcp`、工具名取自 page 的 `Tools()`：它看不到 notebook 的 `notebooks`，也看不到 P4 linking 的 `backlinks`、`index`；"`<name> ` 出现在段里的任何地方"在 P2 加了 `write`、`edit`、`move`、`delete` 这些普通的英文词之后会被正文配上，反向对照就不再失败。反向对照（`TestUnnamedToolsCatchesEachGap`）：去掉 `read` 那一行、把 `- list:` 改成正文里的 "list" 都失败；`unnamedTools` 不锚在行首的变异也让它失败。账户入口那段因此也要有以 `- notebooks ` 与 `- open_notebook ` 起头的两行（上面的全文有）。
 
 ### 3.16 S3：客户端名称
 
@@ -1764,9 +1780,9 @@ const MaxClientNameChars = 128
 func CleanClientName(name string) string
 ```
 
-挨着 `unshowable`（`shared/name.go:34-36`：Cc、Zl、Zp、Bidi_Control）。次序与理由见 2.1 第 2 条；截法：多于 128 个字符时（r 是它的字符），第 129 个字符之前是规范化的边界（`norm.NFC.PropertiesString(string(r[128])).BoundaryBefore()`：它是起始字符、不与前面的组合）就截在第 128 个之后；否则截在前 128 个字符的 `norm.NFC.LastBoundary` 处（第 129 个是组合字符，退到它所属的起始字符之前）。截下的仍是 NFC、至多 128 个字符，能留的都留下。`LastBoundary` 答的是前缀里最后一个起始字符之前的边界（那个起始字符还可能接上组合字符），除非前缀的末尾本身就是边界（最后一个字符不会与后面的组合：汉字、数字、`-`、emoji）：草稿在前 128 个字符上取它，ASCII 的名称总是多丢一个（设计审查 A-M5 实测：129 个 ASCII 变成 127 个；127 个 `a` 加 `é` 加 `x` 变成 127 个 `a`，丢了放得下的 `é`）；第一轮修订改成在前 129 个字符上取它，而第 129 个字符之后也是边界时它答整个前缀，留下 129 个（复核 A N-1 实测：128 个 `x` 加 `中`、129 个 `中`、140 个 `-`、140 个 emoji 都留下 129 个），`api_tokens_client_name_check`（`char_length BETWEEN 1 AND 128`）就拒绝每次的 `Record`，`Call.Client` 与日志里的名称也多一个字符。这条规则在审查 A 的 30 万个随机的名称与 2 万个全是起始字符的名称上核对过：幂等、NFC、至多 128 个字符、截在边界上（`review-A/server/internal/shared/cleanclient_exp5_test.go`）。不因名称拒绝调用：名称不是用户写的。测试：表格（控制字符、U+200E 夹在组合之间、BOM、全是空白、恰好 128 个字符、129 个 ASCII 留下 128 个、128 个 `x` 加 `中` 留下 128 个、129 个 `中` 留下 128 个、140 个 `-` 留下 128 个、127 个 `a` 加 `é` 加 `x` 留下 128 个、截在组合字符之间、不是 UTF-8 的字节）与性质测试（随机的码点：幂等、至多 128 个字符、没有 `unshowable`、`norm.NFC.IsNormalString`、首尾没有空白；另：全是起始字符、去掉首尾空白之后不少于 129 个字符的 NFC 名称恰好留下 128 个，起始字符取自字母、汉字、谚文、数字、`-`、`.` 与 emoji）。
+挨着 `unshowable`（`shared/name.go:34-36`：Cc、Zl、Zp、Bidi_Control）。次序与理由见 2.1 第 2 条；截法：多于 128 个字符时（r 是它的字符），第 129 个字符之前是规范化的边界（`norm.NFC.PropertiesString(string(r[128])).BoundaryBefore()`：它是起始字符、不与前面的组合）就截在第 128 个之后；否则截在前 128 个字符的 `norm.NFC.LastBoundary` 处（第 129 个是组合字符，退到它所属的起始字符之前）。截下的仍是 NFC、至多 128 个字符，能留的都留下。`LastBoundary` 答的是前缀里最后一个起始字符之前的边界（那个起始字符还可能接上组合字符），除非前缀的末尾本身就是边界（最后一个字符不会与后面的组合：汉字、数字、`-`、emoji）：草稿在前 128 个字符上取它，ASCII 的名称总是多丢一个（设计审查 A-M5 实测：129 个 ASCII 变成 127 个；127 个 `a` 加 `é` 加 `x` 变成 127 个 `a`，丢了放得下的 `é`）；第一轮修订改成在前 129 个字符上取它，而第 129 个字符之后也是边界时它答整个前缀，留下 129 个（复核 A N-1 实测：128 个 `x` 加 `中`、129 个 `中`、140 个 `-`、140 个 emoji 都留下 129 个），`api_tokens_client_name_check`（`char_length BETWEEN 1 AND 128`）就拒绝每次的 `Record`，`Call.Client` 与日志里的名称也多一个字符。这条规则在审查 A 的 30 万个随机的名称与 2 万个全是起始字符的名称上核对过：幂等、NFC、至多 128 个字符、截在边界上（`review-A/server/internal/shared/cleanclient_exp5_test.go`）。不因名称拒绝调用：名称不是用户写的。测试：表格（`TestCleanClientName`：控制字符、U+200E 夹在组合之间、BOM（留下：U+FEFF 不是控制字符也不是 Bidi_Control，实施时的偏离 8）、全是空白、恰好 128 个字符、129 个 ASCII 留下 128 个、128 个 `x` 加 `中` 留下 128 个、129 个 `中` 留下 128 个、140 个 `-` 留下 128 个、127 个 `a` 加 `é` 加 `x` 留下 128 个、截在组合字符之间、不是 UTF-8 的字节）与性质测试（`TestCleanClientNameIsIdempotent`、`TestCleanClientNameKeepsAllItCan`；随机的码点：幂等、至多 128 个字符、没有 `unshowable`、`norm.NFC.IsNormalString`、首尾没有空白；另：全是起始字符、去掉首尾空白之后不少于 129 个字符的 NFC 名称恰好留下 128 个，起始字符取自字母、汉字、谚文、数字、`-`、`.` 与 emoji）。只由看不见的字符组成的名称（U+200B、U+2060、标签字符 U+E0041 U+E0042、U+00AD、U+FEFF、U+180E、U+3164、U+115F、U+2800）照样留下，日志里显示为空，P2 起是 `mcp:` 后面看不见的东西：同 shared 的名称规则（`CheckName` 对显示名同样留下），进 M12 的打磨移交第 30 条，两处一起改（S3 审查 B-N2，主持者的决定 5）。
 
-#### 3.16.2 迁移 `00042_identity_api_tokens_client_name.sql`
+#### 3.16.2 迁移 `00043_identity_api_tokens_client_name.sql`
 
 ```sql
 -- api_tokens.client_name: the name the token's MCP client last told, as shared.CleanClientName cleans it (M9
@@ -1781,7 +1797,7 @@ ALTER TABLE api_tokens ADD COLUMN client_name text
 ALTER TABLE api_tokens DROP COLUMN client_name;
 ```
 
-可空、没有默认值：不重写表；但 `ADD COLUMN … CHECK` 要在 ACCESS EXCLUSIVE 锁下扫一遍表核对新的约束（新列全是 NULL，核对必过），所以不是"只改目录"（设计审查 A-N13）。`api_tokens` 是小表（每个账户几个令牌），扫一遍是毫秒级，接受。`deploy/runtime-grants.sql` 不改（`api_tokens` 的 DML 已有，`:18`；13.1 第 16 条只管新的表与序列）。`server/sqlc.yaml` 的 identity 一条加上这个文件；`schema_test` 的约束表加 `api_tokens_client_name_check c`（`server/migrations/schema_test.go:137-145`），违反的情形加"空的名称"（`UPDATE api_tokens SET client_name = ''`）与"129 个字符"（`repeat('名', 129)`：按字符数，不按字节）。
+编号是 00043：S2 的修复一轮的 00042 先合并（实施时的偏离 1）。可空、没有默认值：不重写表；但 `ADD COLUMN … CHECK` 要在 ACCESS EXCLUSIVE 锁下扫一遍表核对新的约束（新列全是 NULL，核对必过），所以不是"只改目录"（设计审查 A-N13）。`api_tokens` 是小表（每个账户几个令牌），扫一遍是毫秒级，接受。`deploy/runtime-grants.sql` 不改（`api_tokens` 的 DML 已有，`:18`；13.1 第 16 条只管新的表与序列）。`server/sqlc.yaml` 的 identity 一条加上这个文件；`schema_test` 的约束表加 `api_tokens_client_name_check c`（`server/migrations/schema_test.go:137-145`），违反的情形加"空的名称"（`UPDATE api_tokens SET client_name = ''`）与"129 个字符"（`repeat('名', 129)`：按字符数，不按字节）。
 
 #### 3.16.3 identity 的 `NewClientNames(pool)`
 
@@ -1821,36 +1837,56 @@ WHERE id = (
 );
 ```
 
-一条语句、事务之外，不进加锁的次序（同 `TouchAPIToken`，`identity/adapter/postgres/queries/api_tokens.sql:16-26`）。`:execrows`（设计审查 A-M6）：`:exec` 在 `SKIP LOCKED` 跳过一行时也答 nil，草稿就把没写下的名称当作记下了缓存起来，进程不再重试，重启之后不报名称的调用拿到旧的名称或 `unknown`，正是 00 号文档 4.5 要防的。0 行有三种原因（已是这个名称、被别的事务锁着跳过、令牌没了），mcpserver 一律不缓存（下一条）。注册者的形状照 13.1 第 21 条（只凭连接池，构造函数不叫 `New`）。
+一条语句、事务之外，不进加锁的次序（同 `TouchAPIToken`，`identity/adapter/postgres/queries/api_tokens.sql:16-26`）。`:execrows`（设计审查 A-M6）：`:exec` 在 `SKIP LOCKED` 跳过一行时也答 nil，草稿就把没写下的名称当作记下了缓存起来，进程不再重试，重启之后不报名称的调用拿到旧的名称或 `unknown`，正是 00 号文档 4.5 要防的。0 行有三种原因（已是这个名称、被别的事务锁着跳过、令牌没了），mcpserver 以之后的一次点读分辨行里是不是它（下一条）。注册者的形状照 13.1 第 21 条（只凭连接池，构造函数不叫 `New`）。测试：`TestTheClientNamesRecordTheLastToldOnTheToken`、`TestTheClientNamesSkipARowInUse`。
 
 #### 3.16.4 mcpserver 的名称：来源、缓存与记下
 
 ```go
 // names is the client of each call (M9 design 4.5): the name the request
-// tells; else the name its token last told, from an LRU of 1,024 tokens
-// (a miss reads it; a read that answers, "" too, is remembered, a failed
-// one is not); else UnknownClient. A told name that differs from the
-// remembered one is recorded, best effort, and remembered only when a row
-// was written: a failure is a warning with the token's id.
+// tells; else the name its token last told this process; else, for a
+// token the process has not heard, the name its row holds, read once (""
+// too); else UnknownClient. It remembers 1,024 tokens (an LRU).
+//
+// A told name is remembered at once, so that the token's next calls are
+// its, and recorded, best effort: it is known to be on the row once a
+// record writes it, or once a read after a record that wrote nothing (the
+// name already there, a row another transaction holds, the token gone)
+// finds it there. Until then each call of the token records it again, a
+// failure a warning with the token's id. A told name the row is known to
+// hold is no write and no read. Without a port every call's client is
+// UnknownClient.
 type names struct {
-	port ClientNames
-	mu   sync.Mutex
-	lru  *tokenLRU
+	port   ClientNames
+	logger *slog.Logger
+	mu     sync.Mutex
+	lru    *tokenLRU
 }
 
 func (n *names) of(ctx context.Context, tokenID uuid.UUID, told string) string
 
+// namedToken is a token's client name, and whether its row is known to
+// hold it: a told name is not until it is recorded.
+type namedToken struct {
+	token uuid.UUID
+	name  string
+	onRow bool
+}
+
 // toldName is the client name a request tells: an initialize's
 // clientInfo.name, or any request's _meta clientInfo (ClientInfo()); ""
-// for none, as a call after a stateless initialize tells none.
-func toldName(method string, req mcp.Request) string
+// for none, as a call after a stateless initialize tells none. Only the
+// name, never the title (M9 design 11). An initialize reaches the server
+// as a ServerRequest of InitializeParams: mcp.InitializeRequest is the
+// client's.
+func toldName(req mcp.Request) string
 ```
 
-- **来源**（实验，附录）：`initialize` 的 `req.GetParams().(*mcp.InitializeParams).ClientInfo.Name`；任何请求的 `_meta` 里的 `io.modelcontextprotocol/clientInfo` 经 `req.(interface{ ClientInfo() *mcp.Implementation })` 读到（`sdk/mcp/shared.go:693-708`）；握手之后的无状态调用读到 nil（SDK 合成的参数没有它，`sdk/mcp/streamable.go:504-514`）。只取 `name`，不取 `title`（第 11 节）。
+- **来源**（实验，附录）：`initialize` 的 `req.GetParams().(*mcp.InitializeParams).ClientInfo.Name`；任何请求的 `_meta` 里的 `io.modelcontextprotocol/clientInfo` 经 `req.(interface{ ClientInfo() *mcp.Implementation })` 读到（`sdk/mcp/shared.go:693-708`）；握手之后的无状态调用读到 nil（SDK 合成的参数没有它，`sdk/mcp/streamable.go:504-514`）。只取 `name`，不取 `title`（第 11 节）。`toldName(req)` 只看请求：initialize 由参数的类型 `*mcp.InitializeParams` 认出，不要方法名（实施时的偏离 2）；它在 `next` 之前跑，那时 `ClientInfo()` 对 initialize 还答 nil，所以先读 `GetParams()`（S3 审查 A 的 A15、C 的 C9 与 H12 去掉这一支，都被抓到）。
 - **清理**：`port.Clean(told)`（组合根接 `shared.CleanClientName`），空了当作没有报。
-- **缓存与记下**：报了名称而缓存里不是它 → `Record`（只在不同时写）→ 写了一行才缓存它；0 行或失败都不缓存（失败另记 warn "MCP client name not recorded"，`token_id`），这次调用照样用报来的名称，下一次报名称时再试（0 行而库里已是它时多一次空的写：一条点查，接受；不另读一次去分辨。这是每一次报名称的调用一次：一个每个请求都在 `_meta` 里报名称的客户端，重启之后它的名称从不进缓存，每次都多一次空的写；今天的 2025-11-25 的客户端不这样做，2026-07-28 也没有提供，接受，复核 A 对 A-M6 的 Nit）。没报名称 → 缓存命中就用；不命中就 `Recorded`：读到了（含空的）就缓存；读失败记 warn、这次当作没有、**不缓存**（否则这个令牌在进程的余生里都是 `unknown`）；空的是 `UnknownClient`。一个 PAT 给两个客户端同时用时记的是最后报名称的那个（00 号文档 4.5、第 10 节）。
-- **在哪里记**：`handshake` 中间件，在每个方法之前（3.15.2），用调用的 ctx：握手、带 `_meta` 的调用都记；名称放进 ctx，工具的包装读它写进 `Call.Client` 与日志。P1 只记在 PAT 上、写进日志；`mcp:<名>` 进 `changesets.client` 是 P2 的（`domain.MCPClient`，最后一跳也在 P2）。
-- **测试**（mcpserver 单元，替身的端口，数每个方法被调的次数；设计审查 A-M6、A-M15）：三种来源的优先级；不同时才写；读与写失败只记日志；`Record` 答"没写"（跳过）之后，同一个令牌下一次报同一个名称又调 `Record`；`Recorded` 失败之后，下一次不报名称的调用又调 `Recorded`；一个从没报过名称的令牌两次不报名称的调用只读一次端口（空的结果被缓存；6.3 的变异"不缓存空的结果"由它抓住）；缓存的淘汰（第 1,025 个令牌把最久没用的挤掉，再用时重读）；清理之后为空的名称不写。整个程序（`bootstrap/mcp_names_test.go`）：带 `clientInfo.name` 握手之后 `api_tokens.client_name` 是清理之后的名称；同一个应用里不带名称的调用（测试工具 `echo` 答 `Call.Client`）是它；同一个库上重建应用、不握手的调用仍是它（读库）；一个调用的 `_meta` 带另一个名称时改成它；名称里有 U+202E 与 200 个字符时记下的是清理之后的；组合根交空的名称端口时这些测试失败。
+- **缓存与记下**（S3 审查 B-M1、B-M2、C-M2 之后照 B 的方向，主持者的决定 2）：报了名称（清理之后不空）→ 缓存里已是它、而且已知在行里 → 不写也不读（热行的规则：同一个客户端的调用不碰这一行）；否则立刻记住为 `{name, onRow: false}`（这次与之后的调用都是它），再 `Record`（只在不同时写）：写了一行 → 标 `onRow`；0 行（已是这个名称、被别的事务持着而跳过、令牌没了）→ 一次点读 `Recorded`，行里就是它时标 `onRow`；记下或读失败 → warn（"MCP client name not recorded" / "MCP client name not read"，带 `token_id`、`request_id` 与错误；读的那条是实施时的偏离 6），不标。标没设时这个令牌的每次调用（报不报名称）都再记下：每次至多一次记下与一次读，没有循环；行一直被持着时 1,000 个同时的调用是 1,001 次记下与 1,001 次读，行空出来之后一次写、之后什么也没有（修复核对第一轮 B）。没报名称 → 缓存命中就用（说出的或读到的）；不命中就 `Recorded`：读到了（含空的）就记住为在行里，除非读的期间有说出的名称先记住了（`learn`：读回来的不盖过说出的）；读失败记 warn、这次当作没有、**不记住**（否则这个令牌在进程的余生里都是 `unknown`）；空的是 `UnknownClient`。晚到的记下只标仍是它自己的名称（`tokenLRU.onRow` 比较名称），从不标其间说出的别的名称。记住的名称是一份副本（`strings.Clone`：清理答的是请求里那个字符串的一段，不复制时每项可以钉住整个请求体；S3 审查 A-I1 之后的审计）；读回来的是 pgx 自己的、至多 128 个字符的字符串，不复制。重启之后说出行里已有的名称是一次 0 行的记下与一次读、只一次，之后没有语句（C-M2）。第一轮的写法（写了一行才缓存，0 行或失败都不缓存，接受重启之后每次报名称的调用一次空的写）在跳过或失败之后让这个会话不报名称的调用读到行里的旧名称并缓存（B-M1 的情形 1），失败的记下被缓存也没有测试抓得到（B-M2）。
+- **两个客户端用一个 PAT**：进程里是最后报给它的名称，行里是最后写下的。测过的次序（A 记住并写、B 记住并写、A 的答复晚到）两边都停在最后报的 B，B 的记下被跳过的变体也是（`TestTheNamesOfTwoClientsAtOnce`）；镜像的次序（A 记住而它的语句被推迟，等连接池或调度，B 随后记住、写下、标在行里，A 的语句之后才跑，写下 A）里进程是 `{B, onRow: true}`、行是 A：B 再报不跑语句，修不回来，直到报出缓存之外的名称（例如 A 再报）、这一项被挤出或进程重启（重启之后这个令牌不报名称的调用是 A 的；修复核对第一轮 B 的 N-1）。要两个客户端在同一刻报不同的名称、一个请求在记住与语句之间被推迟；两个名称都是"最后报的"之一，不加按令牌的锁（主持者的决定 8；00 号文档 4.5、第 10 节：接入文档建议一个 agent 一个 PAT）。
+- **在哪里记**：`handshake` 中间件，在每个方法之前（3.15.2），用调用的 ctx：握手、带 `_meta` 的调用都记；名称放进 ctx（`withClient`、`clientOf(ctx)`），工具与 prompt 的包装读它写进 `Call.Client`，调用与握手的日志行也读它。S1 的 `(*Server).clientOf(req)` 删掉：它那一支 `*mcp.InitializeRequest` 是客户端的类型、到不了，但在 `next` 之后它的 `ClientInfo()` 一支会从会话读到名称；S1 的握手一行写 `unknown` 是因为 S1 没有名称（`Options.Names` 为 nil，每个客户端都是 `UnknownClient`；实施时的偏离 3，原因由 S3 审查 A 更正）。P1 只记在 PAT 上、写进日志；`mcp:<名>` 进 `changesets.client` 是 P2 的（`domain.MCPClient`，最后一跳也在 P2）。
+- **测试**（mcpserver 单元 `names_test.go`，替身的端口，数每个方法被调的次数；设计审查 A-M6、A-M15，S3 审查 B-M1、B-M2、C-M2、B-N1）：`TestTheNamesTakeTheirSources`（三种来源的优先级；握手一行的 `client`）；`TestTheNamesRecordOnlyWhatDiffers`（不同时才写；已知在行里的同一个名称不写也不读）；`TestTheNamesRememberAnEmptyName`（从没报过名称的令牌两次不报名称的调用只读一次端口）；`TestTheNamesKeepATellingUnrecorded`（B 的情形 1，跳过与失败都是：行里是 `old-client`、握手报 `new-client`，之后不报名称与报它的调用都答 `new-client`、都再记下，行仍是 `old-client`；能写之后下一次调用写，之后的调用不写也不读）；`TestTheNamesFindATellingOnTheRow`（C-M2：说出行里已有的名称是一次 0 行的记下与一次读，之后不报名称的调用答它、没有语句）；`TestTheNamesRetryAFailedRead`（读失败之后下一次又读；失败的记下下一次重试，行随之是它）；`TestTheNamesOfTwoClientsAtOnce`（上一条的交错与它的变体）；`TestTheNamesKeepATellingOverAReadBeforeIt`（读的期间说出的名称不被读回来的盖过）；`TestTheNamesForgetTheLeastRecentlyUsed`（第 1,025 个令牌之前再用令牌 0：令牌 1 出去、0 留下；FIFO 的变异失败，B-N1）；`TestTheNamesHoldTheirOwnBytes`（说出 `agent-a` 加 1 MiB 的空白：记住的名称不与请求共用内存，以 `unsafe.StringData` 核对，同 linking 的 `sharesMemory`）；清理之后为空的名称不写。整个程序（`bootstrap/mcp_names_test.go` 的 `TestTheClientNameIsTheTokens`）：没报过名称时是 `unknown`；带 `"  Claude Code\t"` 握手之后 `api_tokens.client_name` 是 `Claude Code`，同一个应用里不带名称的调用（测试工具 `echo` 答 `Call.Client`）是它；同一个库上的第二个应用、不握手的调用仍是它（读库）；第三个应用 `restarted` 的客户端说出已记下的 `Claude Code`（记下 0 行），之后不报名称的调用答它（C-M2；0 行之后记住 `""` 的变异经 serve 失败）；一个调用的 `_meta` 带 `Codex` 时改成它；U+202E 加 200 个 `n` 记下的是 128 个 `n`；组合根交空的名称端口时这些测试失败。
 
 ### 3.17 S3：`notebooks` 与 `open_notebook`
 
@@ -1866,7 +1902,7 @@ type Membership struct {
 }
 ```
 
-`memberships.WorkspacesOf` 照抄 `ListWorkspacesOf` 已经读出的 `l.Workspace.Slug`、`l.Workspace.Name`（`workspace/memberships.go:49-59`），语句不变（2.1 第 1 条）。
+`memberships.WorkspacesOf` 照抄 `ListWorkspacesOf` 已经读出的 `l.Workspace.Slug`、`l.Workspace.Name`（`workspace/memberships.go:49-59`），语句不变（2.1 第 1 条）；`TestMembershipsListTheWorkspacesOfAnAccount` 核对两个新字段。
 
 ```go
 // AccountWorkspaces are the workspaces an account is an active member of,
@@ -1883,7 +1919,7 @@ type AccountWorkspace struct {
 }
 ```
 
-`notebook.Deps.AccountWorkspaces`；`notebook.New` 交空时 panic（照 `page.New`，`page/module.go:170-179`），模块根的测试 `TestTheModuleRefusesNoAccountWorkspaces`。
+`notebook.Deps.AccountWorkspaces`；`notebook.New` 交空时 panic（照 `page.New`，`page/module.go:170-179`），模块根的测试 `TestTheModuleRefusesNoAccountWorkspaces`。组合根的 `accountWorkspaces{workspace.NewMemberships(pool)}`（`bootstrap/mcp.go`）把 `Membership` 换成 `AccountWorkspace`：两个模块互不导入。
 
 #### 3.17.2 `ListAccountNotebooks` 与 `notebooks`
 
@@ -1913,7 +1949,7 @@ type AccountNotebook struct {
 const MaxAccountNotebooks = 1000
 ```
 
-次序：`RequireActor` → `WorkspacesOf(actor.UserID)`，按 slug 排 → 每个工作区 `ListNotebooks(ctx, ws.ID, actor.UserID, shared.ReachedByAccess(ws.Role))`、角色 `shared.EffectiveNotebookRole(n.Explicit, n.Notebook.Access, ws.Role)`（同 `notebook/app/list_notebooks.go:36-48`；同事件流按工作区的组合，`events/app/open_stream.go:51-58`）→ 到 1,000 项就停、`Truncated`（不再读余下的工作区）。
+次序：`RequireActor` → `WorkspacesOf(actor.UserID)`，按 slug 排 → 每个工作区 `ListNotebooks(ctx, ws.ID, actor.UserID, shared.ReachedByAccess(ws.Role))`、角色 `shared.EffectiveNotebookRole(n.Explicit, n.Notebook.Access, ws.Role)`（同 `notebook/app/list_notebooks.go:36-48`；同事件流按工作区的组合，`events/app/open_stream.go:51-58`）→ 到 1,000 项就停、`Truncated`（不再读余下的工作区）。一个工作区里照 `ListNotebooks` 的次序（名称的小写、名称、id）。测试：`TestListAccountNotebooksListsEachWorkspaces`、`TestListAccountNotebooksStopsAtItsBound`（含恰好 1,000 项）。
 
 **`MaxAccountNotebooks` 留着**（设计审查 B 的过度设计第 4 条与 Nit 14）：经工具时答复的上限总先到（一项按两次转义计至少约 150 字节，48 KiB 约在 330 项处停），而 `notebooks` 不分页（00 号文档 4.6：笔记本是小的集合，没有游标），所以简报的"答复的上限总先到、而且 `notebooks` 按游标分页时去掉它"的两个条件只满足一个。它管的是用例自己的工作：没有它，一个在很多工作区里、看得到很多笔记本的账户，用例要把它们全读出、拿在内存里，适配器再丢掉 330 项之后的；有它，用例读到 1,000 项就停。所以"1,000 项的截断"是用例一层的测试（替身的端口给 1,001 项），不经工具（6.2）。不经规则表：只涉及调用者自己（13.1 第 3 条的第一类，00 号文档 4.6）；角色与可见性照 `ListNotebooks` 的同一条规则，所以"列表等于逐项判定读取"成立，由集成测试守住。逐个工作区一条语句：一个账户的工作区很少，M12 的性能移交已记（00 号文档"写给后面的 M"）。
 
@@ -1924,7 +1960,7 @@ const MaxAccountNotebooks = 1000
  "truncated": false}
 ```
 
-经 `mcpserver.Fit`（3.4.4）：`build(k)` 是前 k 项，k 小于项数或用例的 `Truncated` 为真时 `truncated` 为真；量是整个答复的 `TextBytes`，适配器不自己数（设计审查 B-I1）。一项的笔记本名称至多 255 字节，工作区的名称是 `varchar(80)` 个字符、至多 320 字节（`00006_workspace_workspaces.sql:12`；B 的 Nit 3），通常一项约 150–300 字节、最贵的字符时至多约 4 KiB，所以至少放得下 10 项、通常两三百项。没有游标：笔记本是小的集合（6.1）。
+经 `mcpserver.Fit`（3.4.4）：`build(k)` 是前 k 项，k 小于项数或用例的 `Truncated` 为真时 `truncated` 为真；量是整个答复的 `TextBytes`，适配器不自己数（设计审查 B-I1）。一项的笔记本名称至多 255 字节，工作区的名称是 `varchar(80)` 个字符、至多 320 字节（`00006_workspace_workspaces.sql:12`；B 的 Nit 3），通常一项约 150–300 字节；S3 审查 B 量出最贵的一项约 2.2 KiB（笔记本的名称是 255 个 `<`、工作区的 80 个），所以至少放得下 20 项、通常两三百项。没有游标：笔记本是小的集合（6.1）。测试：`TestTheNotebooksAnswerTheirItems`、`TestTheNotebooksFitTheirAnswer` 与模块根的 `TestTheModulesToolIsNotebooks`。
 
 #### 3.17.3 `OpenNotebook` 与 `open_notebook`
 
@@ -1932,11 +1968,12 @@ const MaxAccountNotebooks = 1000
 // OpenNotebook opens a notebook for MCP's open_notebook (M9 design 4.6):
 // node.list, then its instructions and an overview, unlocked.
 type OpenNotebook struct {
-	notebooks    Notebooks
+	gate         *NotebookGate // the notebook entry's: one decision for both (node.list)
 	overview     OverviewStore
-	instructions *Instructions
-	auth         shared.Authorizer
+	instructions *Instructions // the entry's, with their one cache
 }
+
+func NewOpenNotebook(gate *NotebookGate, overview OverviewStore, instructions *Instructions) *OpenNotebook
 
 func (o *OpenNotebook) Execute(ctx context.Context, notebookID uuid.UUID) (Opened, error)
 
@@ -1970,7 +2007,7 @@ type OverviewStore interface {
 ```sql
 -- name: NotebookCounts :one
 -- A notebook's pages and attachments not deleted (M9/P1 design 3.17.3): open_notebook's overview, read from the
--- notebook's live nodes by the name keys' partial index.
+-- notebook's nodes by an index of them.
 SELECT
     count(*) FILTER (WHERE n.kind = 'page')::bigint AS pages,
     count(*) FILTER (WHERE n.kind = 'asset')::bigint AS attachments
@@ -1979,8 +2016,8 @@ WHERE n.notebook_id = sqlc.arg(notebook_id) AND n.deleted_at IS NULL;
 
 -- name: NotebookLastChange :one
 -- When a notebook's tree was last written, the pages' part of its activity on the web (activity.sql): the latest
--- updated_at of its changesets, which an edit session's later writes move on (M9/P1 design 3.17.3). GROUP BY answers no row for a
--- notebook without a changeset, which the store maps to nil, so the column is never NULL.
+-- updated_at of its changesets, which an edit session's later writes move on (M9/P1 design 3.17.3). GROUP BY answers
+-- no row for a notebook without a changeset, which the store maps to nil, so the column is never NULL.
 SELECT max(c.updated_at)::timestamptz AS last_change
 FROM changesets c
 WHERE c.notebook_id = sqlc.arg(notebook_id) AND c.deleted_at IS NULL
@@ -1999,9 +2036,9 @@ LIMIT sqlc.arg(n);
 
 **最后的变更是单独的一条语句**（设计审查 B-I2）：草稿把它写成计数语句里的一个标量子查询，sqlc 照 `NOT NULL` 的列把它生成为 `time.Time`（B 在 `review-B/server/` 上实测，加 `::timestamptz` 也一样），没有变更集的笔记本（新建的、空的，`activity.sql:2-4` 说"没有变更集的笔记本从没有过页"）扫描 NULL 失败，`open_notebook` 答 `internal_error`，而这正是 agent 在一本新笔记本里做的第一件事。分开之后，`GROUP BY` 让没有变更集时答零行，存储把 `pgx.ErrNoRows` 换成 nil，列本身从不为 NULL。时刻取网页的活动里页的那一部分（B-M12，复核 B N-4：网页的活动另从笔记本的行自己的 `updated_at` 起，2.1 第 17 条）：变更集的 `max(updated_at)`，编辑会话之后的写会把它往后挪；草稿取的是最后一个变更集**开始**的时刻（`created_at`），长的编辑会话里或之后，`open_notebook` 会把会话的开始说成"最后改动"。代价同网页的活动：读这本笔记本的全部变更集（`notebook_id` 的前缀，`updated_at` 不在索引里），随写增长，交 M12（第 8 节）。
 
-**`FirstChildren` 只在根下**（设计审查 A-M16、B-M3 与 B 的过度设计第 3 条）：它只以根调用，写 `parent_id IS NULL`，是 `nodes_notebook_id_parent_id_idx`（`00012_page_nodes.sql:36`）与兄弟的唯一索引上的索引条件；草稿的 `IS NOT DISTINCT FROM sqlc.narg(parent_id)` 不能做索引条件，计划要读这本笔记本的全部节点再筛（`nodes.sql:47-50` 的 `AssetsUnder` 的注释说的就是它），与 2.1 第 13 条自己的理由相悖。计划测试（13.4 第 9 条，`TestTheOverviewReadsUseTheirIndexes`）：`FirstChildren` 的计划里 `parent_id IS NULL` 是索引条件；`NotebookCounts` 在没有统计时只读这本笔记本的节点（不是整张表）；`NotebookLastChange` 走以 `notebook_id` 起头的一个索引：`changesets_notebook_id_created_at_id_idx` 或部分索引 `changesets_notebook_id_created_by_id_created_at_id_idx`（`WHERE deleted_at IS NULL`，`00037_page_changesets_log.sql:10-11`）都收下，断言计划里没有 `Seq Scan`：两个都合用、大小相近，选哪个随数据（复核 B N-5）。10 万个节点、10 万个变更集的笔记本上两条的耗时进 `test-go-costs` 的守卫（`TestTheOverviewReadsInTimeAsLongAsTheTree`：不超过读整棵树的时间）。
+**`FirstChildren` 只在根下**（设计审查 A-M16、B-M3 与 B 的过度设计第 3 条）：它只以根调用，写 `parent_id IS NULL`：ANALYZE 之后是 `nodes_notebook_id_parent_id_idx`（`00012_page_nodes.sql:36`）上的索引条件；没有统计时规划器读 00042 的根的部分唯一索引 `nodes_notebook_id_name_key_root_key`（`WHERE parent_id IS NULL AND deleted_at IS NULL`），`parent_id IS NULL` 是它的谓词（实施时的偏离 15）；草稿的 `IS NOT DISTINCT FROM sqlc.narg(parent_id)` 不能做索引条件，计划要读这本笔记本的全部节点再筛（`nodes.sql:47-50` 的 `AssetsUnder` 的注释说的就是它），与 2.1 第 13 条自己的理由相悖。计划测试（13.4 第 9 条，`TestTheOverviewReadsUseTheirIndexes`，没有统计与 ANALYZE 之后，不许整表的扫描）：`FirstChildren` 只读根下的，`parent_id IS NULL` 在索引条件里或在所读的索引的谓词里（`IS NOT DISTINCT FROM` 两样都不是，变异失败）；`NotebookCounts` 只读这本笔记本的节点、`NotebookLastChange` 只读它的变更集，各经任何以 `notebook_id` 起头的索引（从 `pg_index` 读，不列名字：去掉列出的节点的索引的变异让规划器取约束的 `nodes_notebook_id_id_key`，同样只读这本笔记本；原来列的 `changesets_notebook_id_idx` 在 00037 之后已没有；实施时的偏离 16），断言计划里没有 `Seq Scan`。10 万个节点、10 万个变更集的笔记本上两条的耗时进 `test-go-costs` 的守卫（`TestTheOverviewReadsInTimeAsLongAsTheTree`，带 `-v`：不超过读整棵树的时间；autovacuum 关掉、在一个连接上，ANALYZE 前后各取 8 次的中位数与 `ListNodes` 的中位数比，一次回收或计划的切换定不了它，实施时的偏离 17）：本机树 57.9 与 55.5 ms、计数 6.3 与 5.6 ms、最后改动 5.7 与 4.3 ms，各次的门禁里树 51–100 ms、计数 6–10 ms、最后改动 4–8 ms，约低 9 倍。`FirstChildren` 读根下的全部节点再取前 101 个（`sort_order` 不在索引里）：一个根下 10 万个节点时 10–18 ms，对读树的 66 ms（S3 审查 B），不在守卫里，交 M12（第 8 节）。存储测试 `TestTheOverviewReadsANotebook`：空的笔记本（0、0、nil、没有节点）；计数不含删掉的与别的笔记本的；最后改动是没删的变更集最新的 `updated_at`；根下的前几个节点按次序、不含根之下的。
 
-**码的次序**：`RequireActor` → 笔记本（零值的 id 不查库、`WorkspaceOf`、判定 `node.list`）`notebook.not_found` → 计数 → 最后的变更 → 根下的节点 → 说明（`Instructions`；没有时是笔记本入口的内置说明）。
+**码的次序**：笔记本入口的 `NotebookGate`（`RequireActor`、零值的 id 不查库、`WorkspaceOf`、判定 `node.list`；看不到的、删掉的、没有的都是 `notebook.not_found`，在读它的任何东西之前；用同一个判定而不另抄一份，实施时的偏离 4）→ 计数 → 最后的变更 → 根下的节点（`FirstChildren(101)`，留 100 个与 `MoreRoot`，路径经 `domain.PathOf`）→ 说明（`Instructions`；没有时是笔记本入口的内置说明）。`TestOpenNotebookAnswersInOrder` 断言调用的次序、看不到的笔记本在判定之后什么也不读；`TestOpenNotebookOfTheRootsFirstNodes`。
 
 工具 `open_notebook`（`page/adapter/mcp/open_notebook.go`）：`Spec{Name: "open_notebook", Title: "Open a notebook", Annotations: {ReadOnly: true}, Entry: AccountEntry, Notebook: true}`，输入只有组合根加的 `notebook`。答复：
 
@@ -2022,14 +2059,15 @@ LIMIT sqlc.arg(n);
 2. **说明**：留给根下的节点 R = 8,192 字节（`openNotebookRootReserve`：放得下 100 个短名称的节点，名称都是 255 字节时 28 个），说明的预算是 49,152 − S − R（S 为 237 时 40,723 字节，约 39.8 KiB），按 `MemberBytes` 计（说明是答复里的一个字符串成员，3.4.4）：`domain.AgentsText(a, fits)`，`fits` 是"`TextBytes` 至多 32,768 而且 `MemberBytes` 至多这个预算"。所以它从不长于同一时刻握手的说明，只在 `AGENTS` 页的引号、换行、反斜杠多到两次转义放不下时更短，那时带说明行（`read` 读全文）。内置的说明约 2–3 KiB，不截。
 3. **根下的节点**：`mcpserver.Fit(len(Root), build)`，`build(k)` 是带前 k 个节点的整个答复（k 小于节点数或 `MoreRoot` 时 `truncated` 为真），用说明之外剩下的全部；说明短时根下的节点可以用到 48 KiB 的几乎全部。
 
-所以答复按构造在 48 KiB 之内，到不了 mcpserver 的"超过上限"那一支。测试（`page/adapter/mcp`，替身的用例；设计审查 B 的用例）：一个 32 KiB（按握手的量）的 `AGENTS` 页、内容全是 `"` 与 `\n`，加根下 100 个 255 字节名称的节点：答复的 `TextBytes` 至多 49,152、不是 `internal_error`；说明以说明行结尾、`MemberBytes` 至多它的预算；根下的节点至少放进 R 能放的个数、`truncated` 为真。另：没有 `AGENTS` 时是内置的说明、根下 100 个短名称的节点全列出、`truncated` 为假；101 个时 `truncated` 为真；标题是 255 字节的 `&` 时骨架变大、说明随之变短而仍在上限之内。
+所以答复按构造在 48 KiB 之内，到不了 mcpserver 的"超过上限"那一支。测试（`page/adapter/mcp`，替身的用例；设计审查 B 的用例）：一个 32 KiB（按握手的量）的 `AGENTS` 页、内容全是 `"` 与 `\n`，加根下 100 个 255 字节名称的节点：答复的 `TextBytes` 至多 49,152、不是 `internal_error`；说明以说明行结尾、`MemberBytes` 至多它的预算；根下的节点至少放进 R 能放的个数、`truncated` 为真。另：没有 `AGENTS` 时是内置的说明、根下 100 个短名称的节点全列出、`truncated` 为假；101 个时 `truncated` 为真；标题是 255 字节的 `&` 时骨架变大、说明随之变短而仍在上限之内。测试名：`TestTheOpenNotebookAnswer`（确切的 JSON；空的情形）与 `TestOpenNotebookFitsItsAnswer`。后者的预算用字面的 8,192（`49,152 − TextBytes(骨架) − 8192`，不用常量本身），并断言截得最长：留下的是正文在换行之前的前缀，多一行加说明行就超过预算或 `TextBytes` 的 32,768；两种标题都核对（S3 审查 C-M1：原来以同一个常量算预算，12 KiB 的余地也过得了每个测试）。余地改为 12 KiB、16 KiB 或 8,192 ± 8（这个测试的一行是 7 个成员字节）都失败：两边都钉到一行；经 serve 的一步在 3.17.4。S3 审查 B 另以 3,000 个随机的正文与标题核对：没有错误，每个答复在 48 KiB 之内，说明总是握手的说明的前缀（带说明行）。
 
 #### 3.17.4 S3 的矩阵与整个程序的测试
 
-- **矩阵**：`notebooks` 一行按列比较列出的笔记本（`check`：同 `listedNotebooks` 的期望，`permission_matrix_notebook_test.go`，不过跨工作区：`lab` 与 `acme` 的、已删除的不在、看不到的不在），它没有目标，每列都答成功；`open_notebook` 一行：看不到的列答工具的 `notebook.not_found`，看得到的答说明与概况（`check` 核对页数）。矩阵的笔记本都种了变更集，测不到空的笔记本（设计审查 B-I2），所以空的笔记本另有三处：整个程序的 `TestOpenNotebookOfAnEmptyNotebook`（`bootstrap/mcp_account_test.go`：经 REST 新建一本笔记本、什么也不写，`open_notebook` 答 `pages: 0`、`attachments: 0`、`last_changed_at: null`、`root: []`、内置的说明，不是 `internal_error`）；`page/adapter/postgres` 的存储测试（空的笔记本 `NotebookLastChange` 答 nil）；MC1 的一步（4.3）。
-- **"列表等于逐项判定读取"**（13.1 第 3 条，`bootstrap/notebook_visibility_test.go` 的 `TestTheAccountsNotebooksAreWhatEachReadAllows`）：种下的每个账户（矩阵的各列与几个跨工作区的账户），MCP 的 `notebooks` 列出的集合等于它逐本 `GET /api/v0/notebooks/{id}` 答 200 的集合，角色等于那个答复的 `role`。
-- **G16 的五种换法**（`bootstrap/mcp_instructions_test.go`，经 serve 的 REST 改、经 MCP 握手读）：替换（把 `AGENTS` 改名走、另建一个 `AGENTS`）、改名进出（`Notes` 改名为 `agents`，再改回）、删除、从回收站恢复（与删除之前的文字相同）、还原版本与撤销（新的版本号、那时的文字）；另有写正文之后的下一次握手、根下叫 `AGENTS` 的附件（内置的说明）、子页里的 `AGENTS`（内置的说明）、frontmatter 去掉、32 KiB 处截断带说明行、去掉 frontmatter 之后为空（内置的说明）。`open_notebook` 的 `instructions` 与同一时刻的握手相同。
-- **最后一跳**（13.1 第 21 条）：`notebooks` 的工作区名称与 slug 经组合根的 `AccountWorkspaces` 到达（交空时 `notebook.New` panic，整个程序的测试随之失败）；客户端名称（3.16.4）。
+- **矩阵**（`permission_matrix_mcp_notebooks_test.go`；`mcpRows()` 拼起 page 与 notebook 的行）：`notebooks` 一行没有目标，每列都答成功，`check` 比较列出的笔记本与 `accountNotebooksOf(c)`：lab 的照 REST 的列表（`listedNotebooks`），在 lab 之外的那一列另有 `other` 的 `other-nb`，按工作区再按名称，各带工作区的 slug 与名称，没有截断；`open_notebook` 一行：看不到的列答工具的 `notebook.not_found`，看得到的 `check` 核对笔记本、内置的说明（`instructions` 解出来与 `pagemcp.NotebookInstructions` 比较，`instructions_from` 为 null；S3 审查 C-N1：原来只看 `instructions_from`）、种下的页与附件的数目、最后改动不为 null、根下的路径照树的次序。矩阵的笔记本都种了变更集，测不到空的笔记本（设计审查 B-I2），所以空的笔记本另有三处：整个程序的 `TestOpenNotebookOfAnEmptyNotebook`（`bootstrap/mcp_account_test.go`：经 REST 新建一本笔记本、什么也不写，`open_notebook` 答 `pages: 0`、`attachments: 0`、`last_changed_at: null`、`root: []`、内置的说明，不是 `internal_error`）；`page/adapter/postgres` 的存储测试（空的笔记本 `NotebookLastChange` 答 nil）；MC1 的一步（4.3）。
+- **"列表等于逐项判定读取"**（13.1 第 3 条，`bootstrap/notebook_visibility_test.go` 的 `TestTheAccountsNotebooksAreWhatEachReadAllows`）：矩阵的数据上每一列（工作区与笔记本的列）各建一个 PAT，MCP 的 `notebooks` 列出的集合（带角色）等于它逐本 `GET /api/v0/notebooks/{id}` 答 200 的集合，角色等于那个答复的 `role`；在自己的副本上让两列跨两个工作区（lab 的笔记本编辑者另是 `other` 的成员、`other-nb` 的读者，lab 之外的那一列另是 lab 的成员），各自断言，不另加账户（实施时的偏离 19）。反向对照 `TestAccountNotebooksDiffReportsEachDifference`（多列一本、少列一本、角色不同）。
+- **G16 的五种换法**（`bootstrap/mcp_instructions_test.go` 的 `TestTheInstructionsFollowTheAGENTSPage`，设计原来叫 `TestTheInstructionsFollowAgents`；经 serve 的 REST 改、经 MCP 握手读）：替换（把 `AGENTS` 改名走、另建一个 `AGENTS`）、改名进出（`Notes` 改名为 `agents`，再改回）、删除、从回收站恢复（与删除之前的文字相同）、还原版本与撤销（新的版本号、那时的文字）；另有写正文之后的下一次握手、根下叫 `AGENTS` 的附件（内置的说明）、子页里的 `AGENTS`（内置的说明）、frontmatter 去掉、32 KiB 处截断带说明行、去掉 frontmatter 之后为空（内置的说明）。`open_notebook` 的 `instructions` 与同一时刻的握手相同。修复一轮加一步（S3 审查 C-M1）：20,000 个 `"` 与换行的页，`open_notebook` 的说明是留出字面的 8,192 之后放得下的最多的行，骨架从答复量（`skeletonOf`）；12 KiB 的余地经 serve 失败（留下 36,621 个成员字节，多一行 36,628，预算 40,718）。
+- **最后一跳**（13.1 第 21 条）：`notebooks` 的工作区名称与 slug 经组合根的 `AccountWorkspaces` 到达（`bootstrap/mcp_account_test.go` 的 `TestNotebooksListsTheAccountsWorkspaces`：名叫 `Zeta Labs`、slug 是 `zeta` 的工作区，删掉的笔记本与 bob 的不列；组合根把名称换成 slug 的变异失败；交空时 `notebook.New` panic，整个程序的测试随之失败）；客户端名称（3.16.4 的 `TestTheClientNameIsTheTokens`）；内置的说明讲到每个工具（3.15.4 的 `TestTheBuiltInInstructionsNameEveryTool`）。
+- **码**（`TestTheMCPToolsErrorsCarryTheirCodes`，S2 的 `TestListAndReadErrorsCarryDeclaredCodes` 改名：S2 修复二轮起它的循环走遍码的表的每一行，S3 的工具的调用也在它的表里；实施时的偏离 23）：`notebooks` 带它不收的参数答 `bad_request`；`open_notebook` 没有 `notebook`、多一个参数答 `bad_request`，看不到的、删掉的、没有的与不是 UUID 的笔记本答 `notebook.not_found`。码的表（3.13 的 `mcpToolCodes()`）加两行：`notebooks: {bad_request}`、`open_notebook: {bad_request, notebook.not_found}`（不是 UUID 的 id 是零值，所以是 `notebook.not_found`）；矩阵的 `open_notebook` 各格也经 `mcpAnswer.toolError` 对照它。
 - **交错**（00 号文档 4.15"握手时 `AGENTS` 页被替换"）：读不加锁，数据库挡不住两次读之间的写，所以确定性的测试在 `page/app`（替身的存储在点查与读正文之间换掉页、写正文）：缓存以读到的版本号存，下一次点查是新的版本号时读新的正文，从不把新的正文存在旧的键下；整个程序一侧由上面的"下一次握手是新的"守住。
 
 ### 3.18 `api/mcp/tools.json` 的全文（P1 结束时）
@@ -2164,7 +2202,7 @@ LIMIT sqlc.arg(n);
 | 答复没写 | 去掉 `ServeHTTP` 的最后一支：短期限、不看 ctx 的方法答空的 200，"500 problem、`no-store`"的断言失败（A-M3）；最后一支写回不看原因的 `errUnwritten`：断开的客户端让日志里出现 error 级的两行，"断开时没有 error 级的行"的断言失败（复核 A N-2） |
 | 不同时返回结果与错误 | 一个直接返回两者的包装：日志收集器里出现 jsonrpc2 的 `%#v` 那一行 |
 | 答复的上限与量 | 恰好上限照答、多一个字节答 `internal_error`；`TextBytes` 或 `MemberBytes` 改掉一条转义的规则（如 `\r` 记 6、`<` 记 1）时，与真的 SDK 编码比较的测试失败；`Fit` 改为按 `len(JSON)` 量时，全是引号的成员的答复超过上限、答 `internal_error`，测试失败（3.4.4，B-I1、A-M4） |
-| `open_notebook` 的预算 | 写回草稿的"说明 32 KiB 加概况 16 KiB"：全是引号与换行的 32 KiB `AGENTS` 加 100 个长名称的节点答 `internal_error`，测试失败（3.17.3） |
+| `open_notebook` 的预算 | 写回草稿的"说明 32 KiB 加概况 16 KiB"：全是引号与换行的 32 KiB `AGENTS` 加 100 个长名称的节点答 `internal_error`，测试失败（3.17.3）；余地改为 12 KiB、16 KiB 或 8,192 ± 8：单元的预算用字面的 8,192 并断言截得最长，经 serve 的引号的一步同样，都失败（S3 审查 C-M1） |
 | 最后的变更 | 写回草稿的标量子查询：空的笔记本 `open_notebook` 答 `internal_error`，`TestOpenNotebookOfAnEmptyNotebook` 失败（B-I2） |
 | 路径的给出与找回 | 故意写错的 `PathOf`（页不带 `.md`、不 NFC）让性质测试失败（3.9.2） |
 | 段的检查 | 去掉"答回的就是它的 NFC"的比较时，首尾带空白的段被收下，表格测试失败 |
@@ -2173,27 +2211,33 @@ LIMIT sqlc.arg(n);
 | WebP 的宽高 | 去掉 VP8L 的 `+1`：三种块的测试里 VP8L 那一条失败；`HasSize` 不加 `image/webp`：上传的 WebP 的行没有宽高，`asset/app` 的测试失败（3.11.2，B-I3）；审查之后：去掉 VP8 的掩码、VP8L 高的掩码、起始码、签名、`WEBP` 的比较、RIFF 与块的大小的检查、VP8L 的版本、VP8X 的大小，`TestWebPSize` 或 `TestSizeOfAWebP` 失败（S2 审查 B-M2 与修复核对） |
 | `CleanClientName` 的幂等 | 照 00 号文档原来的次序写的变体在 `e`、U+200E、U+0301 上不幂等，表格里的这一行失败（2.1 第 2 条） |
 | `CleanClientName` 的截法 | 在前 128 个字符上取 `LastBoundary`：129 个 ASCII 留下 127 个，"恰好留下 128 个"的性质失败（A-M5）；在前 129 个字符上取它（第一轮的写法）：128 个 `x` 加 `中`、129 个 `中` 留下 129 个，表格的这两行与"至多 128 个"的性质失败（复核 A N-1） |
-| 名称的缓存 | `Record` 答"没写"时也缓存：下一次报同一个名称不再调端口，测试失败；读失败也缓存：下一次不再读，测试失败（A-M6） |
-| 内置的说明提到每个工具 | 去掉 `read` 那一行、把 `- list:` 改成正文里的 "list" 时失败（3.15.4，B-M1） |
-| "列表等于逐项判定读取" | 比较的函数在合成的数据上（多列一本、少列一本、角色不同）各报出 |
+| 名称的缓存与记下 | 读失败也缓存：下一次不再读，测试失败（A-M6）。S3 修复一轮的规则下：说出的名称不先记住（第一轮的写法）、失败的记下标作在行里、0 行之后记住 `""` 或不读就标、`onRow` 标任何缓存的名称、不报名称的调用不再记下、同名而不在行里的不再记下、同名而在行里的再记下、读回来的盖过其间说出的名称、去掉 `get` 的 `MoveToFront`（FIFO）、名称留作请求的一段：3.16.4 的各个测试失败（S3 审查 B-M1、B-M2、C-M2、B-N1） |
+| 内置的说明提到每个工具 | `TestUnnamedToolsCatchesEachGap`：去掉 `read` 那一行、把 `- list:` 改成正文里的 "list" 时失败；`unnamedTools` 不锚定也失败（3.15.4，B-M1） |
+| "列表等于逐项判定读取" | `TestAccountNotebooksDiffReportsEachDifference`：比较的函数在合成的数据上（多列一本、少列一本、角色不同）各报出；比较不看角色的变异失败 |
 | `reserved_test` 的例外 | 只跳过以点开头的第一段：合成的模式 `/mcpx` 不在 `[server]` 时仍报出 |
-| 计划测试（`RootByKey`、`ChildByKey`、`AgentsPage`、`PageStates`、`NotebookCounts`、`NotebookLastChange`、`FirstChildren`） | 照已有的计划测试：在测试的事务里去掉所靠的索引，断言的索引名不在计划里时失败；S2 的两条：`ChildByKey` 写回 `IS NOT DISTINCT FROM`、去掉根或子节点的索引（00019 的就被选上）、根的索引不唯一、语句不带 `parent_id IS NULL`、`parent_id` 当文字比、不带 `notebook_id`，`TestThePathLookupsArePointLookups` 在每种形状失败；去掉旧的兄弟的索引、Down 忘了重建它或把它建成 `NULLS DISTINCT`，`TestThePathKeysGoDownToTheSiblingsIndex` 失败；`nameTaken` 不认根或子节点的名字，`TestEverySiblingsIndexTellsANameTaken` 失败；`FirstChildren` 写回 `IS NOT DISTINCT FROM` 时 `parent_id` 不再是索引条件，失败（A-M16、B-M3） |
+| 计划测试（`RootByKey`、`ChildByKey`、`AgentsPage`、`PageStates`、`NotebookCounts`、`NotebookLastChange`、`FirstChildren`） | 照已有的计划测试：在测试的事务里去掉所靠的索引，断言的索引名不在计划里时失败；S2 的两条：`ChildByKey` 写回 `IS NOT DISTINCT FROM`、去掉根或子节点的索引（00019 的就被选上）、根的索引不唯一、语句不带 `parent_id IS NULL`、`parent_id` 当文字比、不带 `notebook_id`，`TestThePathLookupsArePointLookups` 在每种形状失败；去掉旧的兄弟的索引、Down 忘了重建它或把它建成 `NULLS DISTINCT`，`TestThePathKeysGoDownToTheSiblingsIndex` 失败；`nameTaken` 不认根或子节点的名字，`TestEverySiblingsIndexTellsANameTaken` 失败；`FirstChildren` 写回 `IS NOT DISTINCT FROM` 时 `parent_id IS NULL` 既不是索引条件也不是所读的索引的谓词，失败（A-M16、B-M3）；S3 的：去掉根的索引（`FirstChildren` 与 `AgentsPage` 各一次）、去掉以 `notebook_id` 起头的节点的索引、计数或最后改动不按列（`notebook_id::text`）、去掉日志的两个变更集的索引，`TestTheOverviewReadsUseTheirIndexes` 或 `TestTheAgentsPageIsAPointLookup` 失败；`AgentsPage` 写回设计的 LEFT JOIN，ANALYZE 之后有 `page_contents` 的 Seq Scan，失败（实施时的偏离 22） |
 | `public_url` 的校验 | 每种被拒的写法各一行；去掉"路径只许 `/`"时带路径的一行失败；`@` 的检查从不匹配、只对带 scheme 的或只对带密码的，`TestValidatePublicURL` 失败（S2 审查 B-M1） |
-| 按工具的码的表（S2 加的） | 一行少了它答的码、多了不声明的或从不答出的码、少了一个工具的行、一个工具答它的行没有的码：`TestEveryMCPToolHasItsCodes`、`TestListAndReadErrorsCarryDeclaredCodes` 或整个程序读到它的那个测试失败（3.13） |
+| 按工具的码的表（S2 加的） | 一行少了它答的码、多了不声明的或从不答出的码、少了一个工具的行、一个工具答它的行没有的码：`TestEveryMCPToolHasItsCodes`、`TestTheMCPToolsErrorsCarryTheirCodes`（S3 改名）或整个程序读到它的那个测试失败（3.13） |
 | `/register`（S1 加的） | 纯文字的答复、别的码、别的说明、不 `no-store`、不公开、不挂、不分方法：`TestTheMCPRefusesOAuthRegistration` 或 `TestEveryMCPAnswerIsNotStored` 失败（3.2.2） |
 | 没有令牌的提示（S1 加的） | `NoTokenDetails` 不接、给每个路由：`TestTheMCPTellsEveryClientOneHint` 失败；`NoOAuth` 与 `/.well-known/` 的说明不同：它与 `/register` 的测试都失败（3.2.3） |
 | 超过 64 KiB 的请求体（S1 加的） | 界线改为 128 KiB 或 32 KiB、`<` 代 `<=`、去掉名字的查找或写回只看名字像不像的规则、`jsonrpc` 不查或只查非空、`id` 的界线 255、512 或去掉、`_meta` 读作 `json.RawMessage`、入口总取账户的或任一个、只把空的查询串当账户入口：`TestOnlyACallMayBeLong` 的行失败，整个程序的 `TestTheMCPEdgeAnswersInOrder` 也失败（3.2.2） |
 | 工具错误的码、矩阵的 `notebook`（S1 加的） | `toolError` 不查或什么码都收：`TestAToolErrorsCodeIsDeclared` 失败；`takesNotebook` 总答真：`TestTheMatrixGivesANotebookAsTheFileSays` 失败（3.6） |
 | 限流与代理的 Host（S1 加的） | `Wrap` 跳过限流、`/register` 不经 `Wrap`：`TestTheMCPRoutesTakeTheBuckets` 失败；打开 SDK 的本机保护：`TestAProxysHostIsServed` 与整个程序的那一次握手答 403、失败（3.2.2、3.4.8） |
+| 说明的缓存与名称存副本（S3 审查加的） | 不复制正文：`TestTheInstructionsCacheHoldsItsTextsAlone` 量出 256.1 MiB、超过 16 MiB，失败；不复制名称：`TestTheNamesHoldTheirOwnBytes` 失败（3.15.1、3.16.4） |
+| 握手的上限处与期限（S3 审查加的） | 握手的 `fits` 写成 `<`：`TestTheHandshakesInstructionsAreWholeUpToTheirBound` 失败；以 `context.WithoutCancel(ctx)` 读说明：`TestTheInstructionsAreReadWithinTheCallsDeadline` 失败（3.15.2、3.15.3） |
+| 矩阵的 `open_notebook` 的说明（S3 审查加的） | 答账户入口的文字：看得到这本笔记本的列失败（3.17.4） |
+| MC1 的概况（S3 审查加的） | `last_changed_at` 总为 null、不数附件：MC1 的第 2 步失败（4.3） |
 
-### 3.20 实施与审查之后的改动（S1、S2）
+### 3.20 实施与审查之后的改动（S1–S3）
 
-两个 Step 的审查与修复核对见 [S1 的审查记录](reviews/P1-S1-platform-review.md)、[S2 的审查记录](reviews/P1-S2-reads-review.md)。与上文最初的设计不同之处已改在各节里：
+三个 Step 的审查与修复核对见 [S1 的审查记录](reviews/P1-S1-platform-review.md)、[S2 的审查记录](reviews/P1-S2-reads-review.md)、[S3 的审查记录](reviews/P1-S3-account-review.md)。与上文最初的设计不同之处已改在各节里：
 
 - **S1，实施时定下的**（实施者的 22 条偏离，审查 C 判过）：SDK 随第 3 步提交（偏离 1）；ctx 还活着而没写答复时交 `errUnwritten`（2，3.2.2）；参数的错误超过 48 KiB 时丢掉 `fields`（3，3.3.6）；prompt 两个入口都登记、没有 `Get` 的 `Prompt` 在 `New` 里 panic（4，3.4.7）；`Bodies()` 的 `Items: Open`（8，3.2.2）；`/mcp` 的上限在 `wire.go` 合并（10，3.1、3.2.2）；`app.mcpTools`（11，3.1）；`POST /register`（19，3.2.2：试用的第 4b 步，主持者的决定）；提示原是 `/.well-known/` 的 404 的那句（20，修复一轮由 `NoTokenDetails` 取代，3.2.3）；`BOOTSTRAP_FIRST`（21，6.1）；panic 的子进程跑不带包装的 SDK（没列出的，审查 C-N2，3.19）；别的（5–7、9、12–18、22）是写法、测试的形状或流程。
 - **S1，审查与修复核对带来的**：空的文字块（B-I1，3.3.2、3.3.4）；超过 64 KiB 的只能是这个入口登记的工具的 `tools/call`，`params` 的形状，`jsonrpc`、`id` 与 `_meta` 照 SDK 的读法（A-M1、修复核对第一轮 F1、F2 与可选的一条，3.2.2）；没有令牌的 401 的提示（A 的附加问题，3.2.3）；`/register` 的 `no-store` 在边缘（A-N1，3.2.3）；协议版本的例外（A-N3，3.2.2）；编码不了的 `Extra`、`Err` 为 nil、不是对象的结构答复、零项放不下的 `Fit`、拒绝的输入类型、没有处理函数、零值的 `Errors`（B-M2、B 的细节、C-N3，3.3.1–3.3.6、3.4.4）；调用一行的 `outcome` 与 panic 的日志（A-M2、A-N2，3.4.2）；`serverOf`（C-N7，3.3.2）；矩阵的 `notebook` 与工具错误的码（B-M1、B 的存疑，3.6）；两个接缝工具（C-M5，3.5）；测试（A-M3、C-M1–M7、C-N4，3.4.8、3.4.9、3.19、6.3）。修复二轮之后没有剩下的发现。合并之后的测试的修复（`c87caad7`）见 3.4.8。
 - **S2，实施时定下的**（17 条偏离，审查 C 判过）：`domain.VersionToken`（1，3.9.3）；`Walk(ctx)` 与 `GlobWalk`（2，3.10.1）；`Listing` 没有 `More`（3，3.10.4、3.10.5）；`Path.Written`（4）；`InlineType`（5，3.11.2）；`shared.TitleHolds`（6，3.8）；`asset.ErrNotFound` 与 `ImageSize`（7，3.11.2）；WebP 的测试文件由 Chromium 写出（9，3.11.2）；`contentOf` 的空块（11，变基时撤回：S1 的修复做了同样的改动）；`mcpTools(pg, as, ln, nb)`（12，3.8）；第 5 步的提交带 `tools.json` 与矩阵的行（13）；三个 e2e 的类型不导出（14，4.1）；附件的最后一跳自己一个测试（15，3.13、6.3）；为让变异失败加的断言（16）；`link` 是 REST 的链接目标（17，3.11.2）。偏离 8（计划测试接受两种键的索引）不成立，由 00042 取代；偏离 10（没有 `public_url` 时不内联图片）由主持者改回。
 - **S2，审查与修复核对带来的**：00042 的两个部分唯一索引、去掉兄弟的索引、`ChildByKey` 没有统计时的计划（A-I1、C-I2、A2-M1，3.9.2）；多字的段的测试与 DP 预言（A-I2，3.10.1）；`read` 先判定笔记本的测试（C-I1，3.11.1）；`MaxGlobWork` = 3 亿与 `և` 的守卫树、守卫的 `-v` 的行（A-M2，3.10.1）；长路径的列法与几处提示（A-M3、A-N3，3.9.2、3.10.1、3.10.2）；进了回收站的附件不列（A-N2，3.10.2）；游标的大小（A-N4，3.10.2）；`public_url` 的 `@`（B-M1，3.12）；WebP 的检查与测试（B-M2、B 的存疑 1，3.11.2）；`read` 的说明的余地（B-N2，3.18）；组合根的两行与按工具的码的表（B-M3、C-M3、C 的提议，3.13）；`has_children`、`mime`、`resource_link` 的测试（C-M1、C-M2、C-N4，3.13、4.4）；`decideNotebook`（C-N5，3.10.4）；照写的路径的 `page.not_found`（C-N3，3.11.1、3.11.2）；守卫那一份的作业时限（3.8）。修复二轮之后没有剩下的发现。
+- **S3，实施时定下的**（实施者的 24 条偏离，审查 C 判过）：迁移是 00043（1，3.16.2）；`toldName(req)`（2，3.16.4）；S1 潜伏的名称的缺陷（3，原因由审查 A 更正，3.16.4）；`OpenNotebook` 以笔记本入口的 `NotebookGate` 判定（4，3.17.3）；握手读说明失败是 JSON-RPC 的内部错误、不写"MCP initialize"（5，3.15.2）；读行失败另一条 warn（6，3.16.4）；只答说明行（7，3.15.3）；名称留着 BOM（8，3.16.1）；附件的版本号 0（9，3.15.1）；`mcpServer` 多一个名称的端口（10，3.14）；`FrontmatterEnd` 读 `frontmatterSpan`（11，3.15.3）；`FirstChildren` 与计数、最后改动的计划测试的判据（15、16，3.17.3）；概况的守卫比较中位数（17，3.17.3）；MC1 不导入 MCP 的类型（18，4.1）；"列表等于逐项判定读取"覆盖每一列（19，3.17.4）；只改大小写的改名的变异由 page/app 与整个程序抓到（20，6.3）；锁文件加 76 个包（21，4.1）；`AgentsPage` 的子查询（22，3.15.1）；码的测试改名（23，3.17.4）；`BOOTSTRAP_FIRST` 移到 `TestEveryS` 之前（24，6.1）；别的（12–14）是测试的名字与提交的形状。
+- **S3，审查与修复核对带来的**：说明的缓存与名称的 LRU 存副本（A-I1，3.15.1、3.16.4）；握手的上限处与期限的测试（A-M1、A-N1，3.15.2、3.15.3）；说出的名称立刻记住、到知道在行里为止再记下（B-M1、B-M2、C-M2，3.16.4）；LRU 的测试（B-N1，3.16.4）；`open_notebook` 的余地从下面也钉住（C-M1，3.17.3、3.17.4）；矩阵的 `open_notebook` 比较内置的说明（C-N1，3.17.4）；MC1 的附件与最后改动（C-N2，4.3）；Makefile 的注释与 6.1 取两次的平均（C-N4，6.1）；`NotebookCounts` 的注释（B-N3、C-N5，3.17.3）；两个客户端的镜像的交错（修复核对第一轮 B 的 N-1，3.16.4）。修复核对第一轮之后没有 Important 与 Minor；任务的等待与竞态那一份的时限在只改测试的分支 `m9-job-waits` 里改（合并 `0c934bb9`，第 9 节）。
 
 ## 4. 前端：只有 e2e
 
@@ -2207,9 +2251,9 @@ P1 没有网页的改动。e2e 的改动随第一个用它的故事进来（2.1 
 | `e2e/fixtures/server.ts` | S2 | `nervewikiEnv` 加 `NWIKI_SERVER__PUBLIC_URL: "http://wiki.example"`（`e2e/fixtures/server.ts:139-149`）：e2e 的服务端监听 `127.0.0.1:0`，写配置时不知道自己的地址，所以用一个固定的源；断言绝对地址以它起头，下载时把源换成 `baseURL`（签名只盖路径与查询） |
 | `e2e/fixtures/assets.ts` | S2 | `webpBytes`：一张 1×1 的无损 WebP（VP8L，几十个字节），MC2 上传它 |
 | `e2e/stories/mcp/mc2-read-list.spec.ts` | S2 | MC2（4.4） |
-| `e2e/package.json`、`pnpm-lock.yaml` | S3 | `devDependencies` 加 `"@modelcontextprotocol/sdk": "1.32.1"`（精确的版本，13.5 第 2 条）；过仓库的 pnpm 门禁（`minimumReleaseAge: 1440`、`trustPolicy: no-downgrade`、`strictDepBuilds: true`，`pnpm-workspace.yaml`）：设计复核在照搬这三项的临时目录里以 pnpm 12.8.1 装过，新加 92 个包、没有要运行的安装脚本（00 号文档 4.16）；S3 的实施者在仓库里重装一次、核对 `pnpm-lock.yaml` 的差异只有它与它的依赖，其中有它必须的对等依赖 `zod`（`^3.25 || ^4.0`，pnpm 自己装上，门禁的临时目录里是 `zod@4.6.7`；设计审查 B 的 Nit 10） |
+| `e2e/package.json`、`pnpm-lock.yaml` | S3 | `devDependencies` 加 `"@modelcontextprotocol/sdk": "1.32.1"`（精确的版本，13.5 第 2 条）；过仓库的 pnpm 门禁（`minimumReleaseAge: 1440`、`trustPolicy: no-downgrade`、`strictDepBuilds: true`，`pnpm-workspace.yaml`）：设计复核在照搬这三项的临时目录里以 pnpm 12.8.1 装过，新加 92 个包、没有要运行的安装脚本（00 号文档 4.16）；S3 的实施者在仓库里以 `pnpm --filter @nervewiki/e2e add -D -E` 装上，过了门禁（"Lockfile passes supply-chain policies"，没有要允许的构建），`pnpm-lock.yaml` 只加 76 个包、不删包：它与它的依赖（express 5、hono、ajv、jose、eventsource、pkce-challenge、zod-to-json-schema 等），`zod` 等已在锁文件里（实施时的偏离 21）；它必须的对等依赖 `zod`（`^3.25 || ^4.0`）取锁文件里已有的 `zod@4.6.5`（门禁的临时目录里是 `zod@4.6.7`；设计审查 B 的 Nit 10）；`pnpm install --frozen-lockfile` 与 `web` 的 `--offline --frozen-lockfile` 干净 |
 | `e2e/fixtures/assert/identity.ts` | S3 | `expectTokenClient(db, tokenId, name)`：`SELECT client_name FROM api_tokens WHERE id = $1` 等于 `name` |
-| `e2e/fixtures/mcp.ts` | S3 | 导出 `mcpURL`（MC1 的 TypeScript SDK 的传输要地址） |
+| `e2e/fixtures/mcp.ts` | S3 | 导出 `mcpURL`（MC1 的 TypeScript SDK 的传输要地址）；注释改写：`McpContent`、`McpTool`、`McpAnswer` 仍不导出（实施时的偏离 18） |
 | `e2e/stories/mcp/mc1-connect.spec.ts` | S3 | MC1（4.3） |
 
 **knip 在每个 Step 的末尾都要通过**（设计审查 B-M9）：knip 6.38 只在另一个文件导入一个值的导出时才算它被用着（它的 `referencedIn` 只跟类型的引用，`node_modules/knip/dist/typescript/visitors/walk.js:60-72`），仓库没有设 `ignoreExportsUsedInFile`（`knip.jsonc`），`make knip` 带 `--treat-config-hints-as-errors`。所以每个导出都随第一个导入它的故事进来：
@@ -2218,7 +2262,7 @@ P1 没有网页的改动。e2e 的改动随第一个用它的故事进来（2.1 
 |---|---|---|
 | S1 | 无（e2e 没有改动） | — |
 | S2 | `mcp.ts`：值 `mcpClient`、`postMcp`；类型 `McpClient`。`assets.ts`：值 `webpBytes` | MC2 导入 `mcpClient`、`postMcp`（`notebook=nope` 答 404，4.4 第 7 步）与 `webpBytes`；`McpClient` 在 `mcpClient` 的签名里，同今天 `events.ts` 的 `BrowserStreams` 的做法。`McpAnswer`、`McpContent`、`McpTool` 不导出：knip 6.38 数一个被导出的函数的签名用到的类型，不数只被导出的 interface 的成员用到的类型，导出时它们报作没人用（S2 审查 C 核对过；实施时的偏离 14，这张表原来写错了）；`mcp.ts` 的注释写明 |
-| S3 | `mcp.ts`：值 `mcpURL`（S2 里它是文件内的函数）；类型 `McpAnswer`、`McpContent`、`McpTool`（MC1 导入它们时导出）；`assert/identity.ts`：值 `expectTokenClient`；开发依赖 `@modelcontextprotocol/sdk` | MC1 导入这三样 |
+| S3 | `mcp.ts`：值 `mcpURL`（S2 里它是文件内的函数）；`assert/identity.ts`：值 `expectTokenClient`；开发依赖 `@modelcontextprotocol/sdk`。`McpAnswer`、`McpContent`、`McpTool` 仍不导出：MC1 按名称比较 `listTools()` 的答复与文件，不写它们的类型（实施时的偏离 18） | MC1 导入这三样（SDK 的 `Client` 与 `StreamableHTTPClientTransport`）；审查 C 的三个 knip 的对照（不用 `mcpURL`、不导入 SDK、不用 `expectTokenClient`）各让 knip 报出预期的一项 |
 
 草稿在 S2 就导出 `mcpURL` 与 `postMcp`，而 S2 只有 MC2、它不用这两个：S2 的 `make knip` 会失败。
 
@@ -2263,12 +2307,12 @@ export async function mcpClient(
 
 `newTeam` 建团队与它的管理员（`Team` 里没有 PAT 的 id，`e2e/fixtures/workspaces.ts:76-81`），所以 MC1 用的两个 PAT 甲、乙都由管理员以 `login(api, team.adminEmail)` 拿到会话之后经 `createToken(api, session.access_token, {name})` 另建（`e2e/fixtures/auth.ts:35`、`:67-85`，答复带 id；设计审查 B-M10）。"另一个团队"是另一个账户：`newTeam` 每次都注册 `emailFor(testInfo, "admin")`，同一个测试里第二次会撞上，所以第二个团队的管理员以邮箱的标签 `"other-admin"`（`register(api, emailFor(testInfo, "other-admin"))`）注册，再建自己的工作区（`slugFor(testInfo, "other")`，`e2e/fixtures/workspaces.ts:14`）与笔记本：
 
-1. 建笔记本 `Handbook`，根下的页 `AGENTS` 的正文是 `---\ntags: [rules]\n---\n\n# Conventions\nWrite in English.\n` 与另两页。PAT 甲以 `mcpClient(…, {notebook})` 连上：`protocolVersion` 是 `2025-11-25`；`instructions` 等于 `# Conventions\nWrite in English.`（去掉 frontmatter 与首尾的空白）；`listTools()` 解析之后等于 `api/mcp/tools.json` 的 `notebook`（读仓库里的文件，按名称比较）；`expectTokenClient(db, 甲的 id, "e2e-agent")`。
-2. 账户入口（同一个 PAT 甲）：`instructions` 以 `This is Nerve Wiki` 开头；`listTools()` 等于文件的 `account`；同一个账户在另一个工作区里另有一本笔记本，`notebooks` 列出这两本（id、名称、工作区的 slug 与名称、角色 `admin`），不列另一个团队的笔记本，`truncated` 为假；`open_notebook` 以 `Handbook` 的 id 答出与第 1 步相同的说明、`instructions_from` 是 `AGENTS.md`、`overview.pages` 是 3、`root` 里有 `AGENTS.md`。
+1. 建笔记本 `Handbook`，根下的页 `AGENTS` 的正文是 `---\ntags: [rules]\n---\n\n# Conventions\nWrite in English.\n` 与另两页 `Guide`、`Notes`；`Guide` 之下上传附件 `chart.txt`（根下的列表不变；S3 审查 C-N2）。PAT 甲以 `mcpClient(…, {notebook})` 连上：`protocolVersion` 是 `2025-11-25`；`instructions` 等于 `# Conventions\nWrite in English.`（去掉 frontmatter 与首尾的空白）；`listTools()` 解析之后等于 `api/mcp/tools.json` 的 `notebook`（读仓库里的文件，按名称比较）；`expectTokenClient(db, 甲的 id, "e2e-agent")`。
+2. 账户入口（同一个 PAT 甲）：`instructions` 以 `This is Nerve Wiki` 开头；`listTools()` 等于文件的 `account`；同一个账户在另一个工作区里另有一本笔记本，`notebooks` 列出这两本（id、名称、工作区的 slug 与名称、角色 `admin`），不列另一个团队的笔记本，`truncated` 为假；`open_notebook` 以 `Handbook` 的 id 答出与第 1 步相同的说明、`instructions_from` 是 `AGENTS.md`、`overview.pages` 是 3、`attachments` 是 1、`last_changed_at` 不为 null、`root` 里有 `AGENTS.md`（S3 审查 C-N2：`last_changed_at` 总为 null 与不数附件的变异让 MC1 失败）。角色只有 `admin`：别的角色是用例算的，由 Go 的矩阵（`notebooks` 一行比较带角色的整个列表）与"列表等于逐项判定读取"逐列对照 REST，MC1 守的是线上与 SDK 的漂移（主持者的决定 7）。
 3. 换一个 `AGENTS`：经 REST 把它改名为 `Old rules`、另建一页 `AGENTS`（正文 `Second rules.`）：新的握手是 `Second rules.`；删掉它：新的握手以 `This is a notebook of Nerve Wiki` 开头。
 4. 拒绝：会话的访问令牌 `postMcp` 一个 `initialize` 答 403 problem+json `forbidden`；另一个团队的笔记本、已删除的笔记本答 404 `notebook.not_found`；三者都带 `Cache-Control: no-store`。
 4a. 空的笔记本（设计审查 B-I2）：经 REST 新建一本 `Empty`，什么也不写：账户入口的 `open_notebook` 答 `overview.pages` 0、`attachments` 0、`last_changed_at` null、`root` 为空、内置的说明（以 `This is a notebook of Nerve Wiki` 开头）、`instructions_from` null，不是工具的错误。
-5. TypeScript SDK（`@modelcontextprotocol/sdk` 1.32.1 的 `Client` 与 `StreamableHTTPClientTransport`，令牌经 `requestInit.headers`），PAT 乙（同一个 PAT 上 `expectTokenClient` 只看得到最后报的名称，00 号文档 4.5）：`new Client({name: "e2e-sdk-agent", version: "1.0.0"})` 经 `new StreamableHTTPClientTransport(new URL(mcpURL(baseURL, notebook)), …)` 连笔记本入口；`getInstructions()` 是这时的说明；`listTools()` 的名称是 `list`、`read`；`callTool({name: "list", arguments: {}})` 不是错误，`structuredContent.items` 列出根下的页；`close()`；`expectTokenClient(db, 乙的 id, "e2e-sdk-agent")`。它守的是 SDK 或协议的漂移（握手之后它试开 GET 的流、得到 405 就不再试：不报错）。
+5. TypeScript SDK（`@modelcontextprotocol/sdk` 1.32.1 的 `Client` 与 `StreamableHTTPClientTransport`，令牌经 `requestInit.headers`），PAT 乙（同一个 PAT 上 `expectTokenClient` 只看得到最后报的名称，00 号文档 4.5）：`new Client({name: "e2e-sdk-agent", version: "1.0.0"})` 经 `new StreamableHTTPClientTransport(new URL(mcpURL(baseURL, notebook)), …)` 连笔记本入口；`getInstructions()` 是这时的说明；`listTools()` 的名称是 `list`、`read`；`callTool({name: "list", arguments: {}})` 不是错误，`structuredContent.items` 列出根下的页（`Old rules.md`、`Guide.md`、`Notes.md`，树的次序）；`close()`；`expectTokenClient(db, 乙的 id, "e2e-sdk-agent")`。它守的是 SDK 或协议的漂移（握手之后它试开 GET 的流、得到 405 就不再试：不报错）。
 
 ### 4.4 MC2 读与列（S2）
 
@@ -2327,13 +2371,13 @@ export async function mcpClient(
 
 1. `platform/markdown.FrontmatterEnd` 与它的测试（与 `frontmatterOf` 答的位置相同）；page 的 `Markdown` 端口。
 2. `AgentsBody`、`AgentsText`、`AgentsPage`（带标题；计划测试）、`Instructions` 与缓存（替身的存储上的 G16、"读之间换了页"、只改大小写的改名）、两段内置的说明与它们的测试、`MCPEntry().Instructions`；mcpserver 的 `handshake` 填说明（数调用次数的测试）。
-3. `shared.CleanClientName`（129 个字符的截法）与性质测试；迁移 00042、`schema_test`、`sqlc.yaml`；identity 的两条语句（`:execrows`）与 `NewClientNames`；mcpserver 的 `names`（不缓存没写下的与读失败的）；组合根的 `mcpNames`。
+3. `shared.CleanClientName`（截到 128 个字符之内的规范化边界）与性质测试；迁移 00043、`schema_test`、`sqlc.yaml`；identity 的两条语句（`:execrows`）与 `NewClientNames`；mcpserver 的 `names`（实施时不缓存没写下的与读失败的；修复一轮改为说出的立刻记住、到知道在行里为止再记下，3.16.4）；组合根的 `mcpNames`。
 4. workspace 的 `Membership`；notebook 的 `AccountWorkspaces`、`ListAccountNotebooks`、`Tools()` 与 `notebooks`（经 `Fit`）；page 的 `OpenNotebook`、`NotebookCounts`、`NotebookLastChange`、只在根下的 `FirstChildren`（计划测试与守卫）与 `open_notebook`（按剩下的预算填，3.17.3）。
 5. `api/mcp/tools.json` 加 `notebooks`、`open_notebook`；矩阵的两行；整个程序的测试（3.16.4、3.17.4，含空的笔记本）；`TestTheBuiltInInstructionsNameEveryTool`。
 6. e2e：`@modelcontextprotocol/sdk` 1.32.1、`mcp.ts` 导出 `mcpURL`、`expectTokenClient`、MC1。
-7. 反向对照（含 `TestTheMCPToolsBuildBothServers` 对 `New` 的规则的变异）、门禁、审查；收尾的文档（第 7 节）。
+7. 反向对照（含 `TestTheMCPToolsBuildBothServers` 对 `New` 的规则的变异）、门禁、审查；收尾的文档（第 7 节）。组合根两份的界线照 6.1 移到 `TestEveryS` 之前（`19bb107b`）。
 
-**S3 合并时各项证明什么**：工具清单核对账户入口的四个工具（`open_notebook` 只在账户入口、`notebook` 必填）；接线证明 `notebooks`（`AccountEntry`）与 `open_notebook`（`AccountEntry, Notebook: true`）登记得上（设计审查 A-I1、B-I4 的那一处）；矩阵的覆盖核对四行；内置的说明讲到两个入口的每个工具；archtest 与 depguard 证明 notebook 的 `adapter/mcp` 只导入 mcpserver；knip 证明 `mcpURL`、`expectTokenClient` 与 SDK 都被 MC1 用着。
+**S3 合并时各项证明什么**：工具清单核对账户入口的四个工具（`open_notebook` 只在账户入口、`notebook` 必填）；接线证明 `notebooks`（`AccountEntry`）与 `open_notebook`（`AccountEntry, Notebook: true`）登记得上（设计审查 A-I1、B-I4 的那一处）；矩阵的覆盖核对四行；内置的说明讲到两个入口的每个工具；archtest 与 depguard 证明 notebook 的 `adapter/mcp` 只导入 mcpserver；knip 证明 `mcpURL`、`expectTokenClient` 与 SDK 都被 MC1 用着；计划测试证明 `AgentsPage` 在四种计划下是根的索引加正文的主键、概况的三条读只读这本笔记本；守卫证明计数与最后改动不比读树慢；码的表证明 `notebooks`、`open_notebook` 只答它们的行的码。
 
 ## 6. 测试与验证
 
@@ -2341,7 +2385,7 @@ export async function mcpClient(
 
 `make lint-go lint-web knip gen-check test-go test-web build`、e2e 全量，三个 Step 各一遍。`test-go-costs` 加 glob 的守卫与概况的守卫（S2、S3）。
 
-**bootstrap 的两半**（设计审查 A-N9）：`BOOTSTRAP_FIRST = ^Test[A-D]`（`Makefile:198`），本文的整个程序的测试都叫 `TestThe…`、`TestMCP…`、`TestOpen…`、`TestTool…`，全落在第二半，而它在 M8 收尾时已是较大的一半（206 秒对 201 秒）。估计 P1 给第二半加约 25–35 秒：期限的测试至少等 4 秒、断开的一秒、重启的测试建第二个应用（约 2 秒）、矩阵建 13 个 PAT 再调约 100 次、G16 的五种换法各几次握手、名称的测试重建一次应用、MC 之外的整个程序测试约十个。S1 的实施者在 S1 合并之前量两半；第二半超过第一半一成以上时，照 M8/P4A 的分法把 `BOOTSTRAP_FIRST` 的界线往后挪（例如 `^Test[A-F]`），挪了之后两半各自的时间写进 S1 的审查记录；S2、S3 照样再量一次。量的结果（各自单独、竞态下）：S1 原来的 `^Test[A-D]` 212.7 秒与 250.1 秒（+17.6%），移到 `^Test([A-D]|E([a-u]|very[A-Q]))`（`TestEveryR` 之前；整个 `TestE` 51.5 秒都移会让前一份长约三分之一）之后 217.0 秒与 235.9 秒（+8.7%），CI 上前一份反而长（7:10 对 6:02）；S2 没有动：第一次门禁 224.3 秒与 239.9 秒（+7.0%），修复一轮之后 219.7 秒与 242.7 秒（+10.5%；CI 上 6:20 与 6:41），S3 的整个程序的测试也都落在第二份，照主持者的决定在 S3 量了之后移一次（[S2 的审查记录](reviews/P1-S2-reads-review.md)主持者的决定 7）。
+**bootstrap 的两半**（设计审查 A-N9）：`BOOTSTRAP_FIRST = ^Test[A-D]`（`Makefile:198`），本文的整个程序的测试都叫 `TestThe…`、`TestMCP…`、`TestOpen…`、`TestTool…`，全落在第二半，而它在 M8 收尾时已是较大的一半（206 秒对 201 秒）。估计 P1 给第二半加约 25–35 秒：期限的测试至少等 4 秒、断开的一秒、重启的测试建第二个应用（约 2 秒）、矩阵建 13 个 PAT 再调约 100 次、G16 的五种换法各几次握手、名称的测试重建一次应用、MC 之外的整个程序测试约十个。S1 的实施者在 S1 合并之前量两半；第二半超过第一半一成以上时（S3 起按每份单独跑两次的平均，见本段末），照 M8/P4A 的分法把 `BOOTSTRAP_FIRST` 的界线往后挪（例如 `^Test[A-F]`），挪了之后两半各自的时间写进 S1 的审查记录；S2、S3 照样再量一次。量的结果（各自单独、竞态下）：S1 原来的 `^Test[A-D]` 212.7 秒与 250.1 秒（+17.6%），移到 `^Test([A-D]|E([a-u]|very[A-Q]))`（`TestEveryR` 之前；整个 `TestE` 51.5 秒都移会让前一份长约三分之一）之后 217.0 秒与 235.9 秒（+8.7%），CI 上前一份反而长（7:10 对 6:02）；S2 没有动：第一次门禁 224.3 秒与 239.9 秒（+7.0%），修复一轮之后 219.7 秒与 242.7 秒（+10.5%；CI 上 6:20 与 6:41），S3 的整个程序的测试也都落在第二份，照主持者的决定在 S3 量了之后移一次（[S2 的审查记录](reviews/P1-S2-reads-review.md)主持者的决定 7）。S3：变基之前 233.0 与 246.6 秒（+5.9%），在 S2 修复一轮上 213.3 与 241.8 秒（+13.4%：第二份几乎没动，是第一份在两次运行之间从 233.0 降到 213.3 秒），移到 `^Test([A-D]|E([a-u]|very[A-R]))`（`TestEveryS` 之前：`TestEveryR` 开头的 vault 的导出与导入两个、约 18 秒进第一份）之后 237.9 与 228.5 秒，main 上 234.0 与 230.5 秒；是重新平衡，S3 自己的组合根的测试不带竞态约 3 秒。审查 C 在移动之后的界线上跑一次：260.1 与 225.1 秒（第一份 +15.5%）。单独跑一次的时间前后可差一成以上（同一棵树上第一份 213–260 秒，CI 上同一份 5:44 到 7:59），"多过十分之一"在一次运行的摆动之内，所以从 S3 起判断挪不挪取每份单独跑两次的平均（S3 审查 C-N4，主持者的决定 6；Makefile 的注释写明）：修复一轮各两次、交替，236.0 与 250.4 秒、260.1 与 238.3 秒，平均 248.1 与 244.4 秒（第一份 +1.5%），不移。CI 上两份在同一条界线上交替长短（一次第一份长 17%，下一次第二份长 18%）；第二份的 go test 一步到过 7:54（15 分钟的约 53%），P2 的整个程序的测试多半落在第二份，在那里再量（第 8 节）。
 
 **每个 Step 的绿**：第 5 节逐个 Step 写明 lint、knip、工具清单、矩阵的覆盖与 archtest 在那时证明了什么。
 
@@ -2358,9 +2402,9 @@ export async function mcpClient(
 | `read` | 3.11（行、offset、column 的边界与 422、limit、48 KiB 处的切法、零行、连起来等于正文的性质测试；附件的四种图片、3 MiB 与 8,000 像素的上限处、SVG、没有宽高、行里没有宽高的 WebP、没有 `public_url`、PNG 的文件丢了；WebP 的头：三种块、截短、模糊测试） |
 | `server.public_url` | 3.12 |
 | NUL 与代理项的推导、可选参数的 `null` | 3.13 |
-| `AGENTS`、说明、G16 | 3.15（表格、上限处：`TextBytes` 32,768；只改大小写的改名；整个程序的五种换法；交错；`Instructions` 只为 `initialize` 调；内置的说明讲到每个工具） |
-| 客户端名称 | 3.16（性质测试含 128 个字符的截法、迁移与约束、缓存：跳过的写与失败的读不缓存、空的结果缓存、三种来源、重启之后） |
-| `notebooks`、`open_notebook` | 3.17（"列表等于逐项判定读取"、用例一层的 1,000 项、48 KiB 处的截断；`open_notebook` 按剩下的预算填：全是引号与换行的 32 KiB `AGENTS` 加 100 个长名称的根节点、101 个根节点、长标题；空的笔记本；计划测试、守卫） |
+| `AGENTS`、说明、G16 | 3.15（表格、上限处：`TextBytes` 32,768，`AgentsBody` 与握手一层各测；只改大小写的改名；整个程序的五种换法与引号的一步；交错；`Instructions` 只为 `initialize` 调、在调用的期限之内读；缓存存副本（量堆）；内置的说明讲到每个工具） |
+| 客户端名称 | 3.16（性质测试含 128 个字符的截法、迁移与约束；缓存：说出的立刻记住、到知道在行里为止再记下，失败的读不记住，空的结果记住，两个客户端的交错，读的期间说出的名称，LRU 而不是 FIFO，名称的副本；三种来源；重启之后，含说出已记下的名称） |
+| `notebooks`、`open_notebook` | 3.17（"列表等于逐项判定读取"、用例一层的 1,000 项、48 KiB 处的截断；`open_notebook` 按剩下的预算填：全是引号与换行的 32 KiB `AGENTS` 加 100 个长名称的根节点、101 个根节点、长标题，余地用字面的 8,192 而且截得最长（单元与经 serve）；空的笔记本；计划测试、守卫） |
 | e2e | MC1、MC2（第 4 节） |
 
 ### 6.3 反向对照与变异
@@ -2405,25 +2449,34 @@ export async function mcpClient(
 | `InlineImage` 收 SVG、不看宽高 | `TestInlineImage` 的表格（3.11.2） |
 | `webpSize` 的 VP8L 不加 1 | `TestWebPSize` 的三种块（3.11.2） |
 | 绝对地址用请求的 `Host` | `TestTheMCPReadsGiveAttachments`（附件的最后一跳，实施时的偏离 15）：地址以 `http://wiki.example` 起头，测试服务的 `Host` 是 127.0.0.1（3.13） |
-| `read` 先找路径、后判定笔记本（S2 审查加的） | `TestReadPathAnswersInOrder`；整个程序的 `TestListAndReadErrorsCarryDeclaredCodes` 与矩阵（3.11.1） |
+| `read` 先找路径、后判定笔记本（S2 审查加的） | `TestReadPathAnswersInOrder`；整个程序的 `TestTheMCPToolsErrorsCarryTheirCodes`（S3 改名）与矩阵（3.11.1） |
 | 只数页的子节点的 `has_children`、`list` 的附件的 `mime` 写死（S2 审查加的） | `TestListByPatternAnswersInOrder`、`TestTheListAnswersItsItems`、`TestTheMCPReadsGiveAttachments` 与 MC2（3.10.2、4.4） |
 | 子节点的游标不按 id 断平手（S2 审查加的） | `TestListByPatternPagesOnFromItsCursor`：相同的 `sort_order`、id 的次序与名字和存的次序都不同（3.10.2） |
 | 没有 `public_url` 时不内联图片（S2 审查加的） | `read_test.go` 没有地址的各行、`TestTheMCPReadsWithoutAPublicURL`（3.11.2） |
-| `AgentsPage` 不看 `parent_id IS NULL` | `TestTheInstructionsFollowAgents`：子页里的 `AGENTS` 答内置的说明（3.17.4） |
+| `AgentsPage` 不看 `parent_id IS NULL` | `TestTheInstructionsFollowTheAGENTSPage`：子页里的 `AGENTS` 答内置的说明（3.17.4） |
 | 缓存以点查的版本号存 | `TestTheInstructionsCacheByTheRevisionRead`（替身的存储在点查与读正文之间换掉页，3.17.4） |
 | `AgentsBody` 不去 BOM | `TestAgentsBody` 的表格（3.15.3） |
-| 缓存连说明行与标题一起存 | `TestAgentsText` 的"只改大小写的改名"一行（3.15.3） |
+| 缓存连说明行与标题一起存 | page/app 的 `TestTheInstructionsFollowTheAgentsPage` 与整个程序的只改大小写的改名（`TestAgentsText` 看不到它：`AgentsText` 的标题是参数；实施时的偏离 20，3.15.1） |
 | `CleanClientName` 先 NFC 再去 `unshowable` | `TestCleanClientName` 的 `e`、U+200E、U+0301 一行（3.16.1） |
 | `CleanClientName` 在前 128 个字符上取 `LastBoundary` | `TestCleanClientNameKeepsAllItCan`：全是起始字符的长名称恰好留下 128 个（3.16.1） |
 | `CleanClientName` 在前 129 个字符上取 `LastBoundary`（第一轮的写法） | `TestCleanClientName` 的 128 个 `x` 加 `中`、129 个 `中` 两行，与 `TestCleanClientNameKeepsAllItCan` 的汉字、数字、`-` 起始字符（3.16.1，复核 A N-1） |
 | `Record` 每次都写 | `TestTheNamesRecordOnlyWhatDiffers`（3.16.4） |
 | `names` 不缓存空的结果 | `TestTheNamesRememberAnEmptyName`：从没报过名称的令牌两次调用只读一次端口（3.16.4） |
-| `names` 缓存没写下的名称或失败的读 | `TestTheNamesRetryASkippedWrite`、`TestTheNamesRetryAFailedRead`（3.16.4） |
+| `names` 缓存没写下的名称或失败的读（修复一轮之后：写了一行或读到行里是它之前就标作在行里） | `TestTheNamesKeepATellingUnrecorded`（原来的 `TestTheNamesRetryASkippedWrite`）、`TestTheNamesRetryAFailedRead`、`TestTheNamesFindATellingOnTheRow`、`TestTheNamesOfTwoClientsAtOnce`（3.16.4） |
 | `ListAccountNotebooks` 不经 `ReachedByAccess` | `TestTheAccountsNotebooksAreWhatEachReadAllows`（3.17.4） |
 | `open_notebook` 不判定 | `TestThePermissionMatrixOverMCP` 的 `open_notebook` 一行：看不到的列答 `notebook.not_found`（3.17.4） |
-| `open_notebook` 写回固定的 32 KiB 加 16 KiB | `TestOpenNotebookFitsItsAnswer`（3.17.3） |
+| `open_notebook` 写回固定的 32 KiB 加 16 KiB；余地改为 12 KiB、16 KiB 或 8,192 ± 8（S3 审查加的） | `TestOpenNotebookFitsItsAnswer`（3.17.3）；12 KiB 经 serve 由 `TestTheInstructionsFollowTheAGENTSPage` 的引号的一步抓住（3.17.4） |
 | 最后的变更写回标量子查询 | `TestOpenNotebookOfAnEmptyNotebook`（3.17.4） |
 | `FirstChildren` 写回 `IS NOT DISTINCT FROM` | `TestTheOverviewReadsUseTheirIndexes`（3.17.3） |
+| `AgentsPage` 写回设计的 LEFT JOIN（实施时加的） | `TestTheAgentsPageIsAPointLookup`：ANALYZE 之后有 `page_contents` 的 Seq Scan（3.15.1） |
+| 说明的缓存不复制正文（S3 审查加的） | `TestTheInstructionsCacheHoldsItsTextsAlone`（3.15.1） |
+| 名称的 LRU 不复制名称（S3 审查加的） | `TestTheNamesHoldTheirOwnBytes`（3.16.4） |
+| 握手的 `fits` 写成 `<`（S3 审查加的） | `TestTheHandshakesInstructionsAreWholeUpToTheirBound`（3.15.3） |
+| 以 `context.WithoutCancel` 读说明（S3 审查加的） | `TestTheInstructionsAreReadWithinTheCallsDeadline`（3.15.2） |
+| `get` 不 `MoveToFront`（FIFO，S3 审查加的） | `TestTheNamesForgetTheLeastRecentlyUsed`（3.16.4） |
+| 0 行之后记住 `""`、读回来的盖过其间说出的名称、`onRow` 标任何缓存的名称（S3 审查加的） | `TestTheNamesKeepATellingUnrecorded`、`TestTheNamesFindATellingOnTheRow`、`TestTheNamesKeepATellingOverAReadBeforeIt`、`TestTheNamesOfTwoClientsAtOnce`；经 serve 的 `TestTheClientNameIsTheTokens`（3.16.4） |
+| 矩阵的 `open_notebook` 答账户入口的文字（S3 审查加的） | `TestThePermissionMatrixOverMCP` 的 `open_notebook` 一行：看得到的列（3.17.4） |
+| `last_changed_at` 总为 null、不数附件（S3 审查加的） | MC1 的第 2 步（4.3） |
 
 ### 6.4 仓库之外的 TypeScript 客户端试用（第 2–5 步在 S1 的末尾，第 1 步在 S2 的末尾）
 
@@ -2443,7 +2496,7 @@ export async function mcpClient(
 
 - 第 2 节的每一项做完，第 3、4 节的测试通过，门禁全绿；3.19 的反向对照都做过。
 - glob 的工作上限（`MaxGlobWork`，S2 之后 3 亿个单位）与它的实测已在 3.10.1；守卫在 CI 上每次走查的耗时打在成本那一份带 `-v` 的行里，还没人读过（日志要权限才读得到），交 M12（第 8 节）。TypeScript 客户端试用的两次结果写进第 9 节。
-- 审查记录：设计 `reviews/P1-design-review.md`；实施 `reviews/P1-S1-platform-review.md`、`reviews/P1-S2-reads-review.md`、`reviews/P1-S3-instructions-review.md`；00 号文档的进度表与本文档的"结果"一节随每个 Step 的合并更新。
+- 审查记录：设计 `reviews/P1-design-review.md`；实施 `reviews/P1-S1-platform-review.md`、`reviews/P1-S2-reads-review.md`、`reviews/P1-S3-account-review.md`；00 号文档的进度表与本文档的"结果"一节随每个 Step 的合并更新。
 - **P1 的文档提交做的改动**（随本文档一起，主持者以 `apply-00m9.py` 落下）：`00-M9-design.md` 的 2.1 的各条（含 A-M4 对 4.6 转义规则的更正）与它们碰到的文字；进度表 P1 一行指向本文；变更记录一行。
 - **随各 Step 的合并改的**：
   - `v0.1-design.md` 第 13 节（行号以那时的为准）：
@@ -2453,7 +2506,7 @@ export async function mcpClient(
     - 13.1 第 8 条（S1）：工具的错误是 `isError` 的结果，文字与 `structuredContent.error` 同一段，码同 REST；`ProblemOf(ctx, err)` 是 REST 与 MCP 共用的分类；参数的结构错误的字段写法同 REST。
     - 13.1 第 10 条（S1）：MCP 的调用与握手各一行 info 的日志、从不记参数与答复；SDK 的 logger 在 warn 以上。
     - 13.1 第 11 条（S1–S3）：模块根的 `Tools()`（page 的 `Tools(ToolDeps)` 在 asset 之后）、`MCPEntry()`、`(*asset.Module).AttachmentReads()`、`identity.NewClientNames(pool)`、`page.AccountInstructions()`（`page.NewNodePaths(pool)` 随 P4）。
-    - 13.1 第 12 条（S1）：mcpserver 的小接口（凭证、笔记本入口、名称）由组合根按结构接上，平台不读 `shared`。
+    - 13.1 第 12 条（S1、S3）：mcpserver 的小接口（凭证、笔记本入口；S3 的名称，编译期断言在 `wire.go`）由组合根按结构接上，平台不读 `shared`。
     - 13.1 新增第 32 条（S1；设计审查 B-M13，照第 23 条 River 的写法；排在最后，不给第 24–31 条重新编号，另记 `encoding/json/v2` 的实验开关）：MCP SDK（`github.com/modelcontextprotocol/go-sdk`）与 `github.com/google/jsonschema-go` 只由 `platform/httpserver/mcpserver` 与组合根的测试导入：archtest 的 `mcpSDKStaysInMCPServer` 管生产代码，depguard 的规则连测试文件也管；模块登记 `mcpserver.Tool`，不碰 SDK 的类型。
     - 13.1 第 13 条（S1）：MCP 的契约是先写的 `api/mcp/tools.json`，整个程序的测试解析之后比较，没有 `-update`。
     - 13.1 第 14 条（S1）：改写"保持响应的路由"一段：去掉"（SSE、MCP 流）"里的 MCP 与"M9 的 MCP 流照此挂载"；加"`/mcp` 经 `API.Wrap` 挂在根路由器上（逐路由的中间件、只许对象的请求体、按路由的上限），不是保持响应的路由；SDK 在自己的 goroutine 里执行方法，mcpserver 的最外层中间件派生调用的 ctx、恢复 panic；`no-store` 由写者守住"。
@@ -2476,20 +2529,21 @@ export async function mcpClient(
   - `server/configs/config.yaml`：`public_url` 与它的注释（S2），长连接一句的注释（S1）。
   - `docs/README.md`：不改（三个 Step 都写在本文里，没有另开 `specs/`、`plans/`）。
   - **移交**：
-    - M10：新建 `M10-llm-wiki/handoffs/M9-P1-mcp-registry.md`（`status: open`，`from: M9/P1`，`to: M10`），见第 8 节；在它建起之前，`prompts/get` 的 64 KiB 先记在 00 号文档的"写给后面的 M"。
-    - M12：`M12-release/handoffs/M4-performance.md` 加一项（第 18 项，接在 M8/P5 的第 17 项之后），见第 8 节（S1、S2 的部分随它们的合并写进，S3 的随 S3）；同一个文件的第 11 项（阅读视图里的大图，`:37`）的"WebP、SVG、AVIF 不知道宽高"改为"SVG、AVIF 不知道宽高（M9/P1 起 WebP 读 RIFF 头）"（S2，复核 B N-3）。
+    - M10：新建 [`M10-llm-wiki/handoffs/M9-P1-mcp-registry.md`](../M10-llm-wiki/handoffs/M9-P1-mcp-registry.md)（`status: open`，`from: M9/P1`，`to: M10`），见第 8 节；随 S3 的合并建起：第 8 节的 M10 各条都在其中，00 号文档的"写给后面的 M"指向它。
+    - M12：`M12-release/handoffs/M4-performance.md` 加一项（第 18 项，接在 M8/P5 的第 17 项之后），见第 8 节（S1、S2 的部分随它们的合并写进，S3 的随 S3）；同一个文件的第 11 项（阅读视图里的大图，`:37`）的"WebP、SVG、AVIF 不知道宽高"改为"SVG、AVIF 不知道宽高（M9/P1 起 WebP 读 RIFF 头）"（S2，复核 B N-3）。S3 另在打磨移交 `M12-release/handoffs/M5-polish.md` 加第 30 条（三处，第 8 节）。
 
 ## 8. 交给后面的 Phase
 
 - **P2**（写的工具与历史的读）：
   - `ParseVersionToken`（3.9.3 写定的格式，`String()` 的往返；名字随 `domain.VersionToken`）与"令牌的节点是路径的节点"的比较；写的工具在单元的锁下按路径找（经 `NodePaths` 的同一个 `PathStore`，在单元的事务里）。
-  - `domain.MCPClient(Call.Client)`：`Call.Client` 已清理（幂等，3.16.1），`mcp:` 的前缀与 `Client.Valid`、两张表的检查；`mcp:<名>` 的最后一跳（两种来源与重启之后记下的名称：P1 的 `mcp_names_test.go` 已备好三种情形的应用）。
+  - `domain.MCPClient(Call.Client)`：`Call.Client` 已清理（幂等，3.16.1），`mcp:` 的前缀与 `Client.Valid`、两张表的检查；`mcp:<名>` 的最后一跳（两种来源与重启之后记下的名称：P1 的 `mcp_names_test.go` 已备好三种情形的应用）；S3 起说出的名称立刻是这个令牌之后的调用的，记下被跳过或失败时也是（3.16.4）。
   - 工具的错误的文字：`page.locked` 带路径与持锁人、`page.revision_mismatch` 带当前的令牌（`ToolError.Extra` 的 `current_version`）。`structuredContent.error` 的 `lock`、`locks` 与 `Extra` 要有上限（例如 `linking.pages_locked` 至多列 N 页、其余计数）：错误的答复连同它们也在 48 KiB 之内（3.3.6，设计审查 A-N11），P1 的读没有它们。
   - 写的工具在矩阵里的行带 `write`（3.6 的覆盖检查要它：`readOnlyHint` 为假的工具的行没有 `write` 时失败）。
   - 内置的说明的"Tools"一段加写的工具与 `batch`、锁、版本令牌的用法（3.15.4 的测试守住）。
   - 写的工具的矩阵格用库的副本；`read` 与 `write` 之间同一路径换了一页的交错。
   - **超过 64 KiB 的请求体的并发界线**（S1 的主持者的决定，审查 A 的界线）：整个服务同时至多两个超过 64 KiB（`maxOtherBytes`）的请求体，在 httpserver 里、bodyshape 读请求体之前取：有 `Content-Length` 时按它，没有的读过 64 KiB 时；取不到的答 503 `server_busy` 带 `Retry-After`。上限处一个合法的调用峰值约 +0.5 GB、分配约 1.4 GB，四个同时 +1.4 GB（00 号文档第 10 节），两个的界线让峰值约 1 GB；P2 的 `write`、`edit` 的大正文正是这样的请求体。REST 的正文路由（约 31 MiB）同一类，可以共用这份预算。
-  - **按工具的码的表**（3.13）：P2 的每个工具在组合根的 `mcpToolCodes()` 里加一行（它答的每个码，契约声明的），`TestEveryMCPToolHasItsCodes` 要它，`TestListAndReadErrorsCarryDeclaredCodes` 一类的测试答出每行的每个码；P3 的 `page.batch_too_large` 没有 REST 的操作，明列进声明的码（00 号文档 4.7）。
+  - **按工具的码的表**（3.13）：P2 的每个工具在组合根的 `mcpToolCodes()` 里加一行（它答的每个码，契约声明的），`TestEveryMCPToolHasItsCodes` 要它，`TestTheMCPToolsErrorsCarryTheirCodes`（S3 起它走遍码的表的每一行）答出每行的每个码；P3 的 `page.batch_too_large` 没有 REST 的操作，明列进声明的码（00 号文档 4.7）。
+  - **组合根两份在 P2 再量**（6.1）：第二份的 go test 一步到过 7:54（15 分钟的约 53%），P2 的写的矩阵与整个程序的测试多半落在第二份；判断挪不挪取每份单独跑两次的平均。
 - **P3**：`batch` 的 `ops` 是数组里的对象：结构表与 NUL 的推导已覆盖嵌套（3.3.3、3.13）；`page.batch_too_large` 的文字经 `ToolError`。
 - **P4**：
   - `NodePaths.Paths`（按 id 给路径）与模块根的 `page.NewNodePaths(pool)` 随 P4 来（P1 没有使用者，设计审查 B 的过度设计第 1 条，3.9.2）：只为问到的 id 拼路径（B-M2），linking 的 `Deps.NodePaths` 接上、`backlinks` 的最后一跳在 P4。
@@ -2501,19 +2555,23 @@ export async function mcpClient(
 
     > 没有配置令牌时，客户端连不上 `/mcp`，显示的都是同一句提示："This server has no OAuth: MCP takes a personal access token in the Authorization header."：不走 OAuth 的客户端从 401 的说明里读到它；会走 OAuth 的客户端（例如 Claude Code）先找 OAuth 的元数据、再试注册，从注册的错误里读到它。照提示在客户端的配置里加上 `Authorization: Bearer <个人访问令牌>` 即可。
 
-- **M10**（`M9-P1-mcp-registry.md`）：
+- **M10**（[`M9-P1-mcp-registry.md`](../M10-llm-wiki/handoffs/M9-P1-mcp-registry.md)）：
   - `mcpserver.Prompt` 已有，是最小的形状（名称、标题、说明、字符串的参数、返回说明与文字消息的处理函数，3.4.7），M9 以替身证明登记、`prompts/list`、`prompts/get` 与 `prompts.listChanged: false`；M10 要的别的（参数的检查、别的消息的类型）在这个注册表上加。M10 登记 ingest、query、lint 三个 prompt 时写整个程序的最后一跳（经组合根拼起的 prompt 到达处理函数，交空时失败），并把它们加进 `api/mcp/tools.json` 的检查（清单的形状加 `prompts`）。
   - 虚拟的 `index.md`、`log.md` 要进 `list` 与 `read`：`NodePaths.Find` 与 `ListByPattern` 在树之外认得它们（根下的这两个路径），glob 的 `**/*.md` 是否列出它们由 M10 定；写它们答"系统生成"。
   - `AGENTS` 页在 `llm_wiki` 下的保护由模式的守卫做；说明的找法与缓存照 3.15（替换、改名都换键）。
   - `prompts/get` 的请求体同 `tools/call` 之外的每个方法至多 64 KiB（3.2.2）：prompt 的参数要放得下，或者另设例外；`Get` 的错误还没有 `ProblemOf` 的分类与 48 KiB 的上限（3.3.6、3.4.7；S1 审查 B 的细节 7、修复核对第一轮 A）。
 - **M12**（性能移交第 18 项）：
   - `list` 每次读整棵树（`ListNodes`，10 万个节点约 70 ms），内存是树本身与每个父节点排好的项（3.10.4：不再拼每个节点的路径，设计审查 B-M2）；glob 的匹配到 `MaxGlobWork`（S2 之后 3 亿）时本机约 0.2–0.8 秒（3.10.1 的表，主机另有负载；最慢的是键为名字两倍长的 `և` 的树，0.66–0.82 秒），慢的主机按比例，真实负载下的值再量。接着走的每次调用都重新进入游标的祖先所在的父节点、为它们的项建串与排序（照算进上限，复核 B N-8）：B 的守卫树的根 20 万个项约 0.1–0.2 秒，键的公共前缀长时排序比它记的单位贵（3.10.1）；3 亿时守卫树的重进占上限的 17%，一个文件夹约 58.5 万个子节点（117 万个项；4 亿时约 78 万个）时重进就吃掉整个上限，每次调用只前进一项。要时可以把游标之后的项先滤出再排，或按需取出（堆），由 M12 定。
-  - glob 的守卫在 CI 上的耗时没人读过：读一次成本那一份带 `-v` 的行（每次走查一行、每棵树最慢的一行）；本机单次走查的余量 2.45–2.6 倍，与别的耗 CPU 的包一起跑时失败过。守卫那一份的作业到过约 11 分钟（11:08、11:05；时限已提到 25 分钟），同一份代码在不同的 runner 上差约 1.5–2 倍（S2 修复二轮的 CI 上 6:43，上一轮 11:05；组合根两份交替长短）。
+  - glob 的守卫在 CI 上的耗时没人读过：读一次成本那一份带 `-v` 的行（每次走查一行、每棵树最慢的一行）；本机单次走查的余量 2.45–2.6 倍，与别的耗 CPU 的包一起跑时失败过。守卫那一份的作业到过约 11 分钟（11:08、11:05；时限已提到 25 分钟），同一份代码在不同的 runner 上差约 1.5–2 倍（S2 修复二轮的 CI 上 6:43，上一轮 11:05；组合根两份交替长短）。竞态那一份的作业到过 8:17–8:22（S2 的 8:20，S3 修复一轮的 8:17、合并之后的 8:22），时限照约两倍的规则从 15 分钟提到 20 分钟（只改测试的分支 `m9-job-waits`，合并 `0c934bb9`）。
   - `ChildByKey` 没有统计时的计划（3.9.2）：到 autovacuum 第一次 ANALYZE 之前可能经 00019 读这本笔记本里这个键的全部节点；大的导入之后一个变常见的键可能还不在 `nodes` 的 MCV 里，规划器以为它少见（S2 审查 A 的存疑，没有造）。恢复、导入之后先 ANALYZE 已在性能移交第 10 项。
   - `read` 每次读整页的正文（至多 5 MiB）再切：一页 5 MiB 的页依次读完约 110 次调用，从数据库搬约 550 MiB（设计审查 B 的 Nit 13）；按行的范围读正文要存储的新读法，留给 M12 定。
-  - `open_notebook` 的计数读这本笔记本的全部活的节点；最后的变更与网页的活动读的一样，是这本笔记本的全部变更集（`updated_at` 不在索引里，3.17.3）。
-  - `notebooks` 逐个工作区一条语句。
-  - `/mcp` 的大的请求体：上限处一个合法的调用实测分配约 1.4 GB、峰值约 +0.3–0.5 GB（四个同时 +1.4 GB；S1 审查 A 与实施者在同一进程里量的，原来写的"36 MiB 时约 150 MiB"不对），P2 限为同时两个（上面）；压测量负载下的；一个 PAT 的桶仍允许 200 个同时的请求。说明的缓存 256 项至多 8 MiB。
+  - `open_notebook` 的计数读这本笔记本的全部活的节点；最后的变更与网页的活动读的一样，是这本笔记本的全部变更集（`updated_at` 不在索引里，3.17.3）。概况的守卫：10 万个节点、10 万个变更集上本机的中位数是树 51–100 ms、计数 6–10 ms、最后改动 4–8 ms，约低 9 倍。`FirstChildren` 读根下的全部节点再取前 101 个（`sort_order` 不在索引里）：一个根下 10 万个节点时 10–18 ms，对读树的 66 ms（S3 审查 B），不在守卫里。
+  - `notebooks` 逐个工作区一条语句（一个账户的工作区很少），用例读到 1,000 项就停。
+  - `/mcp` 的大的请求体：上限处一个合法的调用实测分配约 1.4 GB、峰值约 +0.3–0.5 GB（四个同时 +1.4 GB；S1 审查 A 与实施者在同一进程里量的，原来写的"36 MiB 时约 150 MiB"不对），P2 限为同时两个（上面）；压测量负载下的；一个 PAT 的桶仍允许 200 个同时的请求。说明的缓存 256 项至多 8 MiB（存副本：原来钉住整页的正文，1 MiB 的页写 256 次留着 256 MiB，S3 审查 A-I1）；名称的 LRU 1,024 项，每项是至多 128 个字符的副本。
+- **M12**（[打磨移交](../M12-release/handoffs/M5-polish.md)第 30 条；S3 审查 A 的存疑 1、B-N2、B 的存疑 1）：
+  - 截在最后一个换行可能远低于 32 KiB：一行 7,000 字节（量 12,002 字节）之后一行 20,766 字节跨过界线，说明只留 12,085 字节；一种改法是最后的换行离界线太远时退回字符的边界，是设计的问题（3.15.3）。
+  - 只由看不见的字符组成的客户端名称照样记下（U+200B、U+2060、标签字符、U+00AD、U+FEFF、U+180E、U+3164、U+115F、U+2800）：`CleanClientName` 与 `CheckName` 一样留下，shared 的 `unshowable` 是 Cc、Zl、Zp 与 Bidi_Control；一种做法是没有图形字符的名称算空，也许另去掉 U+E0000–U+E007F 的标签块，两处一起改（3.16.1）。
+  - 客户端在名称的语句里走了，记 warn（带 `context canceled`），S1 对客户端走了记 debug；标没设时不报名称的调用也记下，一直失败的记下每次调用一行 warn。只是日志的级别与数量（3.16.4）。
 
 ## 9. 结果
 
@@ -2552,9 +2610,17 @@ export async function mcpClient(
 - 交给后面的：S3：`McpContent`、`McpTool`、`McpAnswer` 随 MC1 导出（4.1），`AgentsPage` 读根的索引，`client_name` 的迁移是 00043，它的工具在码的表里加行，`BOOTSTRAP_FIRST` 量了之后移一次；P2：`ParseVersionToken`、码的表（第 8 节）；P5：Claude Code 一侧的两条进人工清单（第 8 节）；M12：glob 的续走与很大的文件夹、守卫在 CI 上的耗时与 runner 的摆动、`ChildByKey` 没有统计时的计划（[性能移交](../M12-release/handoffs/M4-performance.md)第 18 项）；性能移交第 11 项与 README 的 WebP 随合并改了。
 - 负责人可以改判的取舍（主持者的决定）：00042 的两个部分唯一索引与去掉兄弟的索引；`ChildByKey` 没有统计时的计划接受；不论有没有 `server.public_url` 都内联图片；WebP 只在头合得上文件、版本与块的大小对时给宽高，PNG 与 JPEG 坏了的正文照头内联；`MaxGlobWork` = 3 亿；守卫那一份的作业时限 25 分钟；`BOOTSTRAP_FIRST` 到 S3 再动；按工具的码的表。
 
-### 9.3 S3：说明与账户
+### 9.3 S3：说明与账户（2026-10-18，合并 `c9468e5b`）
 
-S3 在实施与审查中（分支 `m9-p1-s3`），结果随它的合并写入。
+- 提交：实施：platform/markdown 的 `FrontmatterEnd` 与 page 的 Markdown 端口 `06980323`，`AGENTS` 页的说明、它的缓存与发它的握手 `6e909994`，客户端名称的清理与记在 PAT 上 `55b7e101`，账户入口的工具 `notebooks` 与 `open_notebook`（带第 5 步的 `tools.json`、矩阵的行与码的行）`dea706ae`，经 serve 的说明、客户端名称与账户的笔记本 `bdeb75c5`，MC1 `4cf22084`，组合根两份的界线移到 `TestEveryS` 之前 `19bb107b`（从 S2 的分支 `4fdadb47` 开始，先后变基到 S2 修复一轮的 `b9a6c7c0`、二轮的 `78b7d2e9` 与 main 的 `a36e92df`；较早的一次推送 `9f9092f4` 在修复一轮上）；审查的修复（接在 `19bb107b` 之后，没有再变基）：说明的缓存存副本 `ab466335`，握手的说明在 32,768 与 32,769 字节 `a4e76a44`，握手在调用的期限之内读说明 `173a6553`，说出的名称立刻是令牌的、到记下为止 `8d82f584`，`open_notebook` 给根下留 8,192 字节、不多不少 `f8a02f49`，矩阵比较 `open_notebook` 的内置说明与照实的注释 `f2a5096e`，MC1 读写过的笔记本的最后改动与附件 `c8542c8e`。合并 `c9468e5b`（第二个父提交 `c8542c8e`，在 S1、S2 的文档提交 `e06db48f` 之后）。之后主持者的只改测试的分支 `m9-job-waits`（`380b890c`，合并 `0c934bb9`）：等 River 的任务结束的五处（`endedJob`、`endedBackground`、`awaitImports`、`awaitExports`、`awaitBackground`，15 或 30 秒）共用一个 `jobWait` = 60 秒，竞态那一份的作业时限从 15 分钟提到 20 分钟。
+- 与设计不同之处已改在第 3 节（3.14–3.17、3.19）、第 4、5、6 节与 2.1 第 32、33 条，3.20 分实施时定下的与审查带来的列出。
+- TypeScript 客户端试用：S3 没有（S1、S2 的末尾各一次）；MC1 的第 5 步是官方 SDK 对 e2e 的服务：连上、读到说明、列出并调用 `list`、关掉，没有错误。
+- 审查：三位审查者（Opus）。一条 Important：说明的缓存钉住每个 `AGENTS` 页的整个正文，"256 项至多 8 MiB"不成立（中高，A-I1：1 MiB 的页写 256 次留着 258.1 MiB，5 MiB 的页约 1.25 GiB；存副本）。中低一条：说出的名称没写下或写失败之后，这个会话里不报名称的调用记成行里的旧名称，两个客户端同时用一个 PAT 时进程与行也会停在不同的名称上（B-M1；照 B 的方向，说出的名称立刻记住、到知道在行里为止每次调用再记下）。低（测试）四条：握手处的 32,768（A-M1）、失败的记下被缓存（B-M2）、`open_notebook` 的余地只从上面钉住（C-M1）、重启之后说出已记下的名称（C-M2）。其余是细节与存疑；审查之前实施者另发现设计的 `AgentsPage` 在 ANALYZE 之后不是点查（偏离 22），与 S1 的握手一行的名称总是 `unknown`（偏离 3，原因由 A 更正：S1 没有名称）。修复核对第一轮：各条都改对了；新的只有细节：镜像的次序里两个客户端的名称在竞态之后仍不同（B 的 N-1：改设计的那一句，不加锁）、竞态那一份的 CI 时限离"约两倍"的规则最近（C：随 `m9-job-waits` 改）。逐条见[审查记录](reviews/P1-S3-account-review.md)。
+- 实测：说明的缓存的堆（`TestTheInstructionsCacheHoldsItsTextsAlone`）：不复制 256.1 MiB（A 的探针 258.1 MiB），复制 8.1 MiB（三次与竞态下相同）。概况的守卫（10 万个节点、10 万个变更集，8 次的中位数，ANALYZE 前后）：本机树 57.9 与 55.5 ms、计数 6.3 与 5.6 ms、最后改动 5.7 与 4.3 ms，门禁里树 51–100 ms、计数 6–10 ms、最后改动 4–8 ms，约低 9 倍。`AgentsPage`（A 的数据：5,000 本笔记本、111,041 个节点）：LEFT JOIN 读 105,041 行、2,594 个缓冲、5 ms，子查询 8 + 4 个缓冲、0.01–0.02 ms。`FirstChildren` 在一个根下 10 万个节点时 10–18 ms（B）。`notebooks` 最贵的一项约 2.2 KiB（B）。
+- 反向对照：实施之后 32 个都被抓到（3.19 与 6.3 的 S3 各行 24 个、计划测试 8 个）；审查者存活的：A 自己 15 个里的 2 个（A01、A13），B 的 10 个里的 2 个（M1、M2；M5 只在单元测试下存活、经 serve 抓到），C 自己 41 个 Go 的变异里的 4 个（C13、H11、C15、H4；另 1 个等价、2 个只由整个程序抓到）；修复一轮自己的 23 个都被抓到，审查者存活的 8 个照它们自己的命令重跑都被抓到，S3 的快的与名称的 17 个在修好的树上都被抓到；修复核对第一轮 A 的 20 个、B 的 9 个都失败，C 的各个对照都失败、快的 6 个与重的 4 个 ALL GOOD。
+- 门禁：本机 `19bb107b`（树 `182bea5a`）上 `make lint-go gen-check knip lint-web`、`test-web`（166 个文件、3,338 个测试）与 `build-web` 通过，`make test-go` 经 `heavy.sh` 14:32（103 个包，竞态下组合根 478.5 秒），S2 修复一轮上 16:52、二轮上 16:06，`make e2e` 都是 253 个（S2 的 252 个加 MC1）；修复一轮 `c8542c8e`：每个提交的树单独 build、vet 与 `go test -short`，`make test-go` 第二次 15:05 通过（第一次在 M8 的 `TestABackgroundRevertOfAnImportThroughServe` 上失败：`endedJob` 等 1,501 页的导入 15 秒，负载 8.9；单独 10.99 秒通过），`make e2e` 253 个。组合根两份：移到 `TestEveryS` 之前之后 237.9 与 228.5 秒、main 上 234.0 与 230.5 秒，修复一轮两次的平均 248.1 与 244.4 秒（6.1）。CI（作业，括号里是测试一步）：`9f9092f4`（run 39072470833）、`19bb107b`（run 39077166122）、`c8542c8e`（run 39092430813）全绿，最后一次竞态 8:17（8:00）、组合根一 6:47（6:26）、组合根二 8:16（7:54）、成本 9:16（测试 6:30）、守卫 11:05（10:42）、web 2:42、e2e 3:40（2:55）、镜像 1:12；合并之后 run 39095183240（`c9468e5b`）全绿：竞态 8:22（7:59）、组合根一 4:59（4:39）、组合根二 5:52（5:34）、成本 9:02（测试 6:24）、守卫 10:45（10:26）、web 2:49、e2e 3:59（3:08）、镜像 1:18。M9/P1 里 `TestABackgroundRevertOfAnImportThroughServe` 在负载下超过 `endedJob` 的 15 秒不止一次（S1 修复一轮负载 16、S3 修复一轮负载 8.9；S2 变基时也失败过一次），`m9-job-waits` 的 60 秒随之（CI run 39095275235 全绿）。各次的作业时间见审查记录的门禁一节。
+- 交给后面的：P2：码的表加行与 `TestTheMCPToolsErrorsCarryTheirCodes`、组合根第二份再量（第 8 节）；M10：P1 给它的各条写进新建的[移交](../M10-llm-wiki/handoffs/M9-P1-mcp-registry.md)（prompt 的注册表与最后一跳、虚拟的 `index.md` 与 `log.md`、`llm_wiki` 下 `AGENTS` 的保护、`prompts/get` 的上限与错误，第 8 节）；M12：`open_notebook` 的概况的读与 `FirstChildren`、`notebooks` 逐个工作区、说明的缓存与名称的 LRU 的内存、竞态那一份的时限（[性能移交](../M12-release/handoffs/M4-performance.md)第 18 项）；截在最后一个换行、只由看不见的字符组成的名称、客户端走了的 warn（[打磨移交](../M12-release/handoffs/M5-polish.md)第 30 条）。
+- 负责人可以改判的取舍（主持者的决定）：说明的缓存存副本；客户端名称照 B 的方向（说出的立刻记住、到知道在行里为止再记下，热行的规则保住）；两个客户端的镜像的交错只改设计的那一句、不加按令牌的锁；"最后一个换行"的截法不改；只由看不见的字符组成的名称照 shared 的名称规则；客户端走了的 warn 不改；组合根两份的界线不再动，判断取两次的平均；MC1 不加非管理员的角色；任务的等待与竞态那一份的时限在只改测试的分支里改。
 
 ## 附：查过的代码
 

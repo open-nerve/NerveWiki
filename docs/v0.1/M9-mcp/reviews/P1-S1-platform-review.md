@@ -79,7 +79,7 @@
   - 超过 64 KiB 的请求体的并发界线（主持者的决定 4）：P2（[01-P1](../01-P1-platform-reads.md)第 8 节）。
   - 按工具约束工具错误的码（B 的存疑）：S2 给每行写它对应的 REST 操作；P3 的 `page.batch_too_large` 明列进声明的码；"声明了而没有一格答出"的 MCP 版本可选，等 P2 的写的工具带来多数的码。
   - Claude Code 与 Codex 没有配置令牌时显示什么、Codex 会不会 `POST /register`、退到 `GET /authorize`、`/token` 时看到什么（A 与 C 的存疑）：P5 的人工清单（00-M9 4.16）。
-  - prompt 的错误的分类与 48 KiB 的上限、`prompts/get` 的 64 KiB：M10（00-M9 第 7 节"写给后面的 M"）。
+  - prompt 的错误的分类与 48 KiB 的上限、`prompts/get` 的 64 KiB：M10（[M10 的移交](../../M10-llm-wiki/handoffs/M9-P1-mcp-registry.md)第 5 条，随 S3 的合并建起；之前记在 00-M9 第 7 节"写给后面的 M"）。
   - 上限处合法调用的内存在负载下（一个 PAT 的桶同时允许 200 个）：M12 的压测（[M12 的性能移交](../../M12-release/handoffs/M4-performance.md)第 18 项）。
 
 ## 反向对照

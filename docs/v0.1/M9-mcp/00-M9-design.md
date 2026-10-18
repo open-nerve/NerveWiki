@@ -4,7 +4,7 @@
 |---|---|
 | 里程碑 | M9 MCP（`M9-mcp`） |
 | 日期 | 2026-10-17 |
-| 状态 | 进行中（P1 的 S1、S2 已合并，S3 进行中） |
+| 状态 | 进行中（P1 完成） |
 | 依赖 | M6、M7、M8 |
 | 上级文档 | [v0.1 总体设计](../v0.1-design.md) 第 3.8、3.9、4.4、4.5、5.3、5.5、5.7、5.8、6.1–6.4、8.3、10.1、11、12.2–12.6、13、14 节 |
 | 代码位置的写法 | 模块写作 `page/app/unit.go:168`（`server/internal/modules/` 之下）；`platform/…`、`bootstrap/…`、`shared/…`、`archtest/…` 在 `server/internal/` 之下；迁移写作 `00014_page_changesets.sql:13`（`server/migrations/sql/`）；SDK 写作 `sdk/mcp/streamable.go:400`（`~/go/pkg/mod/github.com/modelcontextprotocol/go-sdk@v1.8.0/`）；前端写作 `web/…/history-row.tsx:89`（`web/apps/web/src/` 之下）；e2e 写作 `e2e/fixtures/server.ts:96` |
@@ -134,10 +134,10 @@ page 的新用例：读 `ListByPattern`（`list`）、`ReadPath`（`read` 的页
 变更集记 `mcp:<名>`（总体设计 6.3、13.1 第 2 条的"客户端由适配器定"）。名称只取 `clientInfo.name`（Codex 报 `codex-mcp-client`），不取 `title`：显示 `title` 是 v0.1 之后的打磨（第 11 节）。按这个次序取：
 
 1. **这次请求自己的 clientInfo**：`initialize` 的 `clientInfo.name`，或任何请求的 `_meta.clientInfo.name`（`req.ClientInfo()` 两者都读，`sdk/mcp/shared.go:693-708`）。
-2. **这个 PAT 记下的名称**：一个请求带着 clientInfo 时，mcpserver 经组合根接上的名称端口把它写进 `api_tokens.client_name`（端口先以 `shared.CleanClientName` 清理、再交给 `identity.NewClientNames(pool)`）（只在不同时写，尽力而为，失败只记日志，同 `TouchAPIToken`，`identity/app/authenticate.go:101-107`）；没有 clientInfo 的请求按执行者的 PAT 读它（进程内按 PAT 的 LRU，1,024 项：一个账户的 PAT 数目没有上限；记下时更新）。所以重启之后、客户端没有重新握手时，名称还在。
+2. **这个 PAT 记下的名称**：一个请求带着 clientInfo 时，mcpserver 经组合根接上的名称端口把它写进 `api_tokens.client_name`（端口先以 `shared.CleanClientName` 清理、再交给 `identity.NewClientNames(pool)`）（只在不同时写，尽力而为，失败只记日志，同 `TouchAPIToken`，`identity/app/authenticate.go:101-107`）。说出的名称立刻记在进程内按 PAT 的 LRU 里（1,024 项：一个账户的 PAT 数目没有上限），标出还不知道在行里：写了一行，或没写（已是它、行被别的事务持着、令牌没了）之后一次点读看到行里是它，才去掉标；标没设时这个令牌的每次调用（报不报名称）都再记下，所以说过名称的会话从不记成更早的名称；已知在行里的同一个名称不写也不读。没有 clientInfo 的请求用缓存着的名称，没命中才按执行者的 PAT 读行（读到的也记住，空的也是）（[P1](01-P1-platform-reads.md) 3.16.4，P1 的 S3 审查 B-M1、C-M2）。所以重启之后、客户端没有重新握手时，名称还在。
 3. 都没有时是 `unknown`（升级之后一个客户端从没握过手，罕见）。
 
-一个 PAT 给两个客户端同时用时，第 2 步的名称是最后报名称的那个：接入文档建议一个 agent 一个 PAT（同时也是撤销的单位），e2e 的故事一个 PAT 一个名称。
+一个 PAT 给两个客户端同时用时，进程里是最后报给它的名称、行里是最后写下的，通常都是最后报名称的那个；两个客户端在同一刻报不同的名称、一个请求在记住与写之间被推迟时，进程与行可以停在不同的名称上，直到报出缓存之外的名称、这一项被挤出或进程重启（P1 的 S3 修复核对 B 的 N-1；不加按令牌的锁，第 11 节主持者的决定第 26 条）。接入文档建议一个 agent 一个 PAT（同时也是撤销的单位），e2e 的故事一个 PAT 一个名称。
 
 **清理与检查**（M4/P1 的移交第 1 项）：清理的函数在 `shared`，挨着 `unshowable`（`shared.CleanClientName`）：page 的 `domain.MCPClient(name)` 以它清理、加上 `mcp:` 变成客户端，组合根接给 mcpserver 的名称端口在交给 identity 之前也以它清理（mcpserver 是平台包，不导入 `shared`；identity 不导入 page）。清理：去掉不是 UTF-8 的字节、去掉 `unshowable` 的字符、NFC、去掉首尾的空白（`TrimSpace` 不去 U+200E，先去空白会留下它之后的空白）、截到 128 个字符（第 129 个字符之前是规范化的边界时截在第 128 个之后，否则截在前 128 个字符的 `norm.NFC.LastBoundary` 处：截下的仍是 NFC、至多 128 个字符，也不多丢一个）、再去一次首尾的空白，空了就是 `unknown`（先 NFC 再去 `unshowable` 不幂等：`e`、U+200E、U+0301 第二次清理才组合成 `é`，[P1](01-P1-platform-reads.md) 2.1 第 2 条）；不因为名称拒绝调用（名称不是用户写的）。`Client.Valid` 与数据库的检查是同一个集合（4.2），所以单元不会因为客户端答 500（今天答，`page/app/unit.go:172-174`）。记在 PAT 上的就是这个清理之后的名称。
 
@@ -149,9 +149,9 @@ page 的新用例：读 `ListByPattern`（`list`）、`ReadPath`（`read` 的页
 - **调用里的笔记本**：笔记本入口的工具作用于地址里的笔记本，它们的输入 schema 没有 `notebook`（客户端多传答 `bad_request`）；账户入口的这些工具都要 `notebook`（笔记本的 id）。笔记本入口在 SDK 之前经 `Gate` 判定（HTTP 的 404）；账户入口的 `notebook` 由用例照同一条规则判定（`node.list`、`page.read`，读者以上），排在与资源无关的 422 之后（4.15 的通用次序；不是 UUID 时用例不查库就答 `notebook.not_found`）；笔记本入口的用例照常再判定一次，一次点查（[P1](01-P1-platform-reads.md) 2.1 第 4 条）。之后工具才按路径找节点：v0.1 没有按页的权限，能读笔记本的人读得到它的每个节点，所以按路径的寻址在判定之后不泄露什么。用例照旧各自判定自己的动作（写者才能写）。按 id 寻址的读（`changeset`）只认这本笔记本里的（4.9）。
 - **两个 server**：启动时各建一个，`getServer` 按记在 ctx 里的入口选；`tools/list` 两边不同（账户入口的工具多 `notebook`，另有 `notebooks`、`open_notebook`）。
 - **说明只在握手时**：SDK 只在 `initialize` 的结果里发说明（`sdk/mcp/server.go:2105`；2026-07-28 的 `server/discover` 不在服务的版本里）。mcpserver 在两个 server 上各装一个接收的中间件（`AddReceivingMiddleware`，`sdk/mcp/server.go:1860`），对 `initialize` 在结果里填上这次请求的说明：笔记本入口是 `Instructions(ctx, notebook)`，账户入口是内置的账户说明。所以不按笔记本建 server，也就不用回收 server。
-- **说明的缓存**（G16）：`Instructions` 先以一次点查找根下的 `AGENTS` 页（父节点为空、`name_key` 等于 `TitleKey("AGENTS")`、类型是页；用根的部分唯一索引 `nodes_notebook_id_name_key_root_key`，`00042_page_nodes_path_keys.sql`：P1 的 S2 以它与子节点的那个取代了 00012 的兄弟的索引），得到节点的 id 与正文的版本号，键是（笔记本、这个节点的 id 或"没有"、版本号）；命中进程内的 LRU（256 项，每项至多 32 KiB）就不读正文。不命中时正文与版本号一起读（`GetPageContent`），以读到的版本号存（点查之后又有人写了，存的是新的版本号与它的正文，不会把新的正文存在旧的键下）。替换（另一个节点）、改名进出（有、没有或换了节点）、删除（没有）都换了键；从回收站恢复回来的是同一个节点、同一个版本号、同样的正文，键相同、文字也相同；还原版本、撤销写回都是新的版本号。根下名叫 `AGENTS` 的附件占着这个键时就是"没有"。
+- **说明的缓存**（G16）：`Instructions` 先以一次点查找根下的 `AGENTS` 页（父节点为空、`name_key` 等于 `TitleKey("AGENTS")`、类型是页；用根的部分唯一索引 `nodes_notebook_id_name_key_root_key`，`00042_page_nodes_path_keys.sql`：P1 的 S2 以它与子节点的那个取代了 00012 的兄弟的索引），得到节点的 id 与正文的版本号（版本号是对找到的节点的子查询，不是联接：ANALYZE 之后一个常见的键的联接读每本笔记本的正文，[P1](01-P1-platform-reads.md) 3.15.1），键是（笔记本、这个节点的 id 或"没有"、版本号）；命中进程内的 LRU（256 项，每项是至多 32 KiB 的正文的副本：原样缓存的那一段钉住 pgx 读出的整页，P1 的 S3 审查 A-I1）就不读正文。不命中时正文与版本号一起读（`GetPageContent`），以读到的版本号存（点查之后又有人写了，存的是新的版本号与它的正文，不会把新的正文存在旧的键下）。替换（另一个节点）、改名进出（有、没有或换了节点）、删除（没有）都换了键；从回收站恢复回来的是同一个节点、同一个版本号、同样的正文，键相同、文字也相同；还原版本、撤销写回都是新的版本号。根下名叫 `AGENTS` 的附件占着这个键时就是"没有"。
 - **文字**：正文去掉 frontmatter（与解析同一条规则：`platform/markdown` 导出 `FrontmatterEnd`，今天的 `frontmatterSpan` 未导出，`platform/markdown/frontmatter.go:71`），去掉首尾的空白；空了算没有。按答复的量（4.7）长于 32 KiB 时，截到 32,768 之内（含末尾的说明行）最后一个换行（没有换行时截到字符的边界），末尾空一行加一行英文的说明，说出这一页现在的标题："(The rest of agents.md is cut here: read it whole with read, path "agents.md".)"（[P1](01-P1-platform-reads.md) 2.1 第 7 条）。说明只是建议：agent 不一定照做；`AGENTS` 页的保护（不能删除、改名）是 M10 的 `llm_wiki` 模式的（总体设计 5.7）。
-- **内置的说明**（英文，约 1–2 KB，入库、有测试）：笔记本入口讲这本笔记本的路径（4.8）、工具各做什么、`batch` 与说明、版本令牌、锁与 `page.locked`、`grep` 与 `search` 的分工、"写一个 `AGENTS` 页可以给 agent 写约定"；账户入口另讲先 `notebooks` 再 `open_notebook`，每个工具都带 `notebook`。
+- **内置的说明**（英文，约 1–2 KB，入库、有测试）：笔记本入口讲这本笔记本的路径（4.8）、工具各做什么、`batch` 与说明、版本令牌、锁与 `page.locked`、`grep` 与 `search` 的分工、"写一个 `AGENTS` 页可以给 agent 写约定"；账户入口另讲先 `notebooks` 再 `open_notebook`，每个工具都带 `notebook`。P1 的两段讲路径、`list`、`read` 与版本令牌（笔记本入口另讲 `AGENTS`），之后的 Phase 加工具时各自改写"Tools"一段，`TestTheBuiltInInstructionsNameEveryTool` 守住每个工具都有一行（[P1](01-P1-platform-reads.md) 3.15.4）。
 - **`notebooks`**（账户入口）：调用者所在的每个工作区（成员与访客）里看得到的笔记本，每项 id、名称、工作区的 slug 与名称、有效角色；按工作区的 slug、笔记本的名称排，不分页（6.1：笔记本是小的集合），至多 1,000 项、答复至多 48 KiB（4.7），到了就停并标出截断。notebook 的新用例 `ListAccountNotebooks` 经 `AccountWorkspaces`（4.1）读调用者的工作区与它们的名称，再逐个工作区按 `ListNotebooks` 的同一条可见性规则读（`notebook/app/list_notebooks.go:27-50`；同事件流的组合，`events/app/open_stream.go:51-58`）；集成测试核对"列表等于逐项判定读取"（13.1 第 3 条的约定，`bootstrap/notebook_visibility_test.go`）。没有规则行：它只涉及调用者自己（13.1 第 3 条的第一类）。
 - **`open_notebook`**（账户入口，判定 `node.list`）：`notebook` → 这本笔记本的说明（同握手时）与概况：页与附件的数目、根下的节点（路径，至多 100 个，按树的次序）、最后改动的时刻（树的最后一次写：这本笔记本的变更集的最新 `updated_at`，网页的笔记本活动里页的那一部分，编辑会话之后的写会把它往后挪，给笔记本改名不挪它；没有变更集时为 null；单独一条语句，[P1](01-P1-platform-reads.md) 2.1 第 17 条）；答复按剩下的预算填，说明在先：说明（同握手时的截法）再截到 48 KiB 减去骨架、再留 8 KiB 给根下的节点之内，然后放根下的节点直到放满（至多 100 个，放不下就停并标出截断）。量同 4.7：每个字符在答复里由 `encoding/json` 写出的字节，`"`、`\`、`\n`、`\r`、`\t`、`\b`、`\f` 两个字节，别的 U+0000–U+001F 与 U+2028、U+2029 六个，U+007F 一个，C1 控制字符两个，文字块里的 `<`、`>`、`&` 六个；结构的工具的文字块是 JSON 文字，所以说明里的引号与换行转义两次（引号四个字节、换行三个）。这里原来写的"别的控制字符六个"把 `\r`、`\t` 也算成六个，"说明 32 KiB 加概况 16 KiB"也放不进 48 KiB（[P1](01-P1-platform-reads.md) 2.1 第 7 条，P1 的设计审查 A-M4、B-I1）。名称与角色在 `notebooks` 里。
 
@@ -452,18 +452,18 @@ Nerve 没有 MCP 的适配器（只读核对：`nerve-project/server/go.mod` 没
 
 由发现它的 Phase 写进目标 M 的 `handoffs/`，收尾时核对：
 
-- **M10**：
+- **M10**（P1 的几条在 [M10 的移交](../M10-llm-wiki/handoffs/M9-P1-mcp-registry.md)：注册表与 prompt、虚拟的两页进 `list` 与 `read`、`AGENTS` 的保护、`prompts/get`）：
   - 在注册表上登记 `lint`、`pending_sources` 与 ingest、query、lint 三个 prompt（`mcpserver.Prompt`，M9 以测试替身证明；能力照样声明 `prompts.listChanged: false`）。
   - 虚拟的 `index.md`、`log.md` 进 `list` 与 `read`（页的路径解析要认得它们）；写它们由模式的守卫拒绝，答 5.5 的"系统生成"的文字，不答 `page.not_found`。
   - `index.md` 复用 `ListIndex`，也就承袭它的界线：索引里没有的页不在其中、每页至多 20 个标签、入链数到 1,000、一页 100 项、字符串 256 字节；一个文件的虚拟页要读全部，要有它自己的界线与截断的说法。`log.md` 复用 `ListChangesets`。
   - `AGENTS` 页在 `llm_wiki` 下的保护（不能删、改名、移动）由模式的守卫做，说明照 4.6 取。
-  - `prompts/get` 的请求体同 `tools/call` 之外的每个方法至多 64 KiB（4.4）：prompt 的参数要放得下，或者另设例外；`Get` 的错误还没有 `ProblemOf` 的分类与 48 KiB 的上限（P1 的 S1 审查 B 的细节、修复核对第一轮 A；[P1](01-P1-platform-reads.md) 第 8 节，M10 的移交文件建起时一并写进）。
+  - `prompts/get` 的请求体同 `tools/call` 之外的每个方法至多 64 KiB（4.4）：prompt 的参数要放得下，或者另设例外；`Get` 的错误还没有 `ProblemOf` 的分类与 48 KiB 的上限（P1 的 S1 审查 B 的细节、修复核对第一轮 A；[P1](01-P1-platform-reads.md) 第 8 节）。
   - 来源区的守卫要认得 `OpMove` 一步里同时的改名（4.10 的 `Unit.Relocate`）、`batch` 的正文合成之后的一步、撤销里的临时名称（`Write.Kind` 是 `revert`）。
 - **M11**：`upgrade_verify`、`upgrade_submit` 登记在注册表上；冻结的守卫放行发起升级的管理员经 MCP 的写（`Write.Client` 以 `mcp:` 开头、执行者是发起人）与回滚的撤销（`Kind` 是 `revert`），挡其余的（总体设计 5.8 第 2 步）；回滚的撤销经多轮调度（4.12）；升级若要由 MCP 开后台任务，先放开 `transfer_jobs.client`（[M11 的移交](../M11-upgrade/handoffs/M8-P4-background.md)第 5 条，M9 没有放开）。
 - **M12**：
-  - 性能：`list`、`grep`、`index` 每次读整棵树（10 万个节点约 70 ms），`list` 不再拼每个节点的路径；`read` 每次读整页的正文（至多 5 MiB）；`open_notebook` 的最后改动同网页的活动，读这本笔记本的全部变更集；`grep` 的工作与并发的名额按真实的负载再量；`notebooks` 逐个工作区读；MCP 的单个删除没有界线（同 REST）；单个改名改写 5,000 页到期限；上限处一个合法的调用的请求体实测分配约 1.4 GB、峰值约 +0.3–0.5 GB（P1 的 S1 审查 A；P2 限为同时两个超过 64 KiB 的请求体），一个 PAT 至多 200 个同时的请求；glob 的续走的重进（3 亿时 17%，约 58.5 万个子节点的文件夹吃掉整个上限）、`ChildByKey` 没有统计时的计划、glob 的守卫在 CI 上的耗时与 runner 的摆动；batch 计划里的改写。进性能移交（P1 的是第 18 项）。
+  - 性能：`list`、`grep`、`index` 每次读整棵树（10 万个节点约 70 ms），`list` 不再拼每个节点的路径；`read` 每次读整页的正文（至多 5 MiB）；`open_notebook` 的计数读这本笔记本的全部活的节点、最后改动同网页的活动读它的全部变更集、`FirstChildren` 读根下的全部节点（10 万个时 10–18 ms）；`grep` 的工作与并发的名额按真实的负载再量；`notebooks` 逐个工作区读；MCP 的单个删除没有界线（同 REST）；单个改名改写 5,000 页到期限；上限处一个合法的调用的请求体实测分配约 1.4 GB、峰值约 +0.3–0.5 GB（P1 的 S1 审查 A；P2 限为同时两个超过 64 KiB 的请求体），一个 PAT 至多 200 个同时的请求；glob 的续走的重进（3 亿时 17%，约 58.5 万个子节点的文件夹吃掉整个上限）、`ChildByKey` 没有统计时的计划、glob 的守卫在 CI 上的耗时与 runner 的摆动、CI 各份的余量（竞态那一份 P1 之后是 20 分钟）；batch 计划里的改写。进性能移交（P1 的是第 18 项）。
   - 上限：48 KiB 与 3 MiB 两个上限按真实客户端的反馈再看。
-  - 打磨：网页上显示 MCP 的地址与接入的帮助、显示 `clientInfo.title`，进打磨移交。部署文档沿用 4.16 的反向代理说明。
+  - 打磨：网页上显示 MCP 的地址与接入的帮助、显示 `clientInfo.title`，进打磨移交；P1 的 S3 另进它的第 30 条：`AGENTS` 截在最后一个换行可能远低于 32 KiB，只由看不见的字符组成的客户端名称（与 shared 的名称规则一起），客户端在名称的语句里走了记 warn。部署文档沿用 4.16 的反向代理说明。
   - 2026-07-28 的协议：真实的客户端发它时由负责人另定在哪个 M 开（第 11 节）。
 
 ### 总体设计的修订
@@ -600,7 +600,7 @@ M4–M8 的 49 个页面故事里，22 个有 MCP 版本，27 个豁免（表里
 | 无状态的 JSON 答复没有在 Claude Code、Codex 上验证过（M0 的实验是有状态的） | 协议里会话是可选的、JSON 答复是客户端必须支持的；MC1 经 Claude Code 用的 TypeScript SDK 的客户端连接（每次 e2e 都跑）；P1 在仓库之外先试重启与 GET（S1、S2 的试用都相符，会走 OAuth 的客户端由 `POST /register` 显示提示，[P1](01-P1-platform-reads.md) 第 9 节）；人工清单两种客户端各一遍。真的不通时回到 4.3，退回有状态（每次调用的执行者与期限从 `req.Extra` 重建，4.3 的"放弃的方案"） |
 | 协议版本到 2025-11-25：一个只说 2026-07-28 的客户端连不上 | 今天的目标客户端没有；真的出现时由负责人定在哪个 M 开，届时解决持住的答复、缓存与名称（设计审查 A-M3–A-M5，4.3） |
 | 被标出截断的页太多，有键的 `grep` 常答 `incomplete` | P4 在真实的、导入的笔记库上量比例，高时只标出词的上限处的截断（4.13，主持者的决定） |
-| 一个 PAT 给两个客户端用时记的是最后报名称的那个 | `api_tokens.client_name`（4.5）；接入文档建议一个 agent 一个 PAT |
+| 一个 PAT 给两个客户端用时记的是最后报名称的那个；两个在同一刻报不同的名称时，进程与行可以停在不同的名称上，直到报出缓存之外的名称、这一项被挤出或重启（P1 的 S3 修复核对 B 的 N-1） | `api_tokens.client_name`（4.5）；接入文档建议一个 agent 一个 PAT；不加按令牌的锁（第 11 节主持者的决定第 26 条） |
 | `read` 的 48 KiB、答复的 48 KiB 与图片的 3 MiB 对某个客户端太大或太小 | 人工清单核对；常量，M12 按反馈调 |
 | 签出的附件地址进了模型的上下文与对话记录，失去访问之后至多 2 小时仍能下载 | 同 M7 的风险；要立刻撤销时轮换签名的密钥；`server.public_url` 为空时不签地址 |
 | 回环保护关掉之后 Bearer 是唯一的门 | 总体设计 6.3 定的；PAT 只有哈希入库、可撤销；浏览器发不出不经预检的带令牌请求 |
@@ -644,7 +644,7 @@ M4–M8 的 49 个页面故事里，22 个有 MCP 版本，27 个豁免（表里
 11. **被截掉的文字**（C-M6）：搜索任务在每行记下词是否被截掉（上限、留在外面的 64 个以上的字母与数字的串、`data:` 串），要一个新的迁移，在做 `grep` 的 Phase；`grep` 总在界线之内走查这本笔记本里这样的页，走不完时答 `incomplete` 与游标（4.2、4.13）。
 12. **被标出的比例**（修订的复核 N-Q1）：P4 在一个真实的、导入的笔记库上量被标出的页的比例；比例高时只标出 `MaxSearchLexemeBytes` 处的截断，长的连续串与 `data:` 串里的漏找写进工具的说明与 README：P4 的一个实测的决定点（4.2、4.13）。
 
-主持者在 P1 的实施与审查里（2026-10-17、18）定下的，负责人可以改判（[S1 的审查记录](reviews/P1-S1-platform-review.md)、[S2 的审查记录](reviews/P1-S2-reads-review.md)的"主持者的决定"）：
+主持者在 P1 的实施与审查里（2026-10-17、18）定下的，负责人可以改判（[S1 的审查记录](reviews/P1-S1-platform-review.md)、[S2 的审查记录](reviews/P1-S2-reads-review.md)、[S3 的审查记录](reviews/P1-S3-account-review.md)的"主持者的决定"）：
 
 13. **`POST /register` 答 OAuth 的错误**（S1 的试用的发现）：`invalid_client_metadata`，说明是 PAT 的提示；只服务 POST；`register` 进 `[server]`（4.4）。撤回时去掉它，接受 OAuth 客户端显示网页的 405。
 14. **没有令牌的 401 带同一句提示**（S1 审查 A 的附加问题）：`APIConfig.NoTokenDetails`，只给没有令牌的 401（4.4）。
@@ -657,6 +657,13 @@ M4–M8 的 49 个页面故事里，22 个有 MCP 版本，27 个豁免（表里
 21. **`MaxGlobWork` = 3 亿个单位**（S2 审查 A-M2）：照 3 倍的规则；代价是大的笔记本上多约三分之一次 `list` 的调用（4.8）。
 22. **每个 MCP 工具的码一张表**（S2 审查 C 的提议）：组合根的 `mcpToolCodes()` 对照契约声明的码，每行的每个码都要答出过；之后的 Phase 随工具加行。
 23. **CI 的两处**（S2 审查 C 的建议）：守卫那一份的作业时限从 20 分钟提到 25 分钟（S2 时到过约 11 分钟）；组合根两份的界线 `BOOTSTRAP_FIRST`（S1 移过一次）到 S3 量了之后再移。
+24. **说明的缓存存副本**（S3 审查 A-I1）：缓存 `strings.Clone` 之后的正文，"256 项、每项至多 32 KiB"由此成立；名称的 LRU 同样复制；堆的测试照 A 的方法（4.6）。
+25. **客户端名称照 B 的方向**（S3 审查 B-M1、B-M2、C-M2）：说出的名称（清理之后不空）总是为它的 PAT 缓存，标"还不知道在行里"；标没设时之后的调用再记下，写了一行或读到行里是它才去掉标；热行的规则保住（已知在行里的同一个名称不写也不读）；说过名称的会话从不记成更早的名称（4.5）。
+26. **两个客户端的镜像的交错不加锁**（S3 修复核对 B 的 N-1）：两个客户端在同一刻用一个 PAT 报不同的名称时，进程与行可以停在不同的名称上，直到报出缓存之外的名称、这一项被挤出或进程重启；只改设计的那一句，不加按令牌的锁（4.5、第 10 节）。
+27. **留给 M12 的打磨的三处**（S3 审查 A 的存疑 1、B-N2、B 的存疑 1）：截在最后一个换行可能远低于 32 KiB，截法不改；只由看不见的字符组成的名称照 shared 现有的名称规则，与它一起改；客户端在名称的语句里走了记 warn，现在不改（M12 的打磨移交第 30 条）。
+28. **组合根两份的界线 S3 移一次之后不再动**（S3 审查 C-N4）：`^Test([A-D]|E([a-u]|very[A-R]))`；单次运行的摆动超过一成，以后判断挪不挪取每份单独跑两次的平均（[P1](01-P1-platform-reads.md) 6.1）。
+29. **MC1 不加非管理员的角色**（S3 审查 C-N2）：角色由 Go 的矩阵与"列表等于逐项判定读取"逐列对照 REST；MC1 加附件的计数与最后改动。
+30. **任务的等待与竞态那一份的时限**（S3 修复核对 C）：在只改测试的分支 `m9-job-waits` 里改（合并 `0c934bb9`）：等 River 的任务结束的五处共用一个 `jobWait` = 60 秒（防的是挂住、不是代价，任务一结束就返回）；竞态那一份的作业时限照约两倍的规则从 15 分钟提到 20 分钟。
 
 下面是设计里的取舍，负责人可以改判：
 
@@ -678,7 +685,7 @@ M4–M8 的 49 个页面故事里，22 个有 MCP 版本，27 个豁免（表里
 
 | P | Phase 文档 | 状态 | 审查 | 合并 |
 |---|---|---|---|---|
-| P1 平台与读的工具（S1–S3） | [01-P1](01-P1-platform-reads.md) | 进行中（S1、S2 已合并，S3 进行中） | [设计](reviews/P1-design-review.md)、[S1](reviews/P1-S1-platform-review.md)、[S2](reviews/P1-S2-reads-review.md) | S1 `384d9f96`（测试的修复 `cfb48a50`）、S2 `a36e92df` |
+| P1 平台与读的工具（S1–S3） | [01-P1](01-P1-platform-reads.md) | 完成 | [设计](reviews/P1-design-review.md)、[S1](reviews/P1-S1-platform-review.md)、[S2](reviews/P1-S2-reads-review.md)、[S3](reviews/P1-S3-account-review.md) | S1 `384d9f96`（测试的修复 `cfb48a50`）、S2 `a36e92df`、S3 `c9468e5b` |
 | P2 写的工具与历史的读 | — | 未开始 | — | — |
 | P3 batch 与多轮撤销（S1–S3） | — | 未开始 | — | — |
 | P4 grep、search、index、backlinks | — | 未开始 | — | — |
@@ -695,3 +702,4 @@ M4–M8 的 49 个页面故事里，22 个有 MCP 版本，27 个豁免（表里
 | 2026-10-17 | P1 设计：`notebooks` 的工作区经 `Membership` 带上的 slug 与名称（不加 `Summaries`）；`CleanClientName` 先去 `unshowable` 再 NFC、截在 128 个字符之内的规范化边界；参数的错误用 REST 的字段路径；账户入口的笔记本由用例判定；`ProblemOf(ctx, err)`；`read` 的几处写定；答复只有一个量（每块文字在答复里由 `encoding/json` 写出的字节，结构的工具转义两次，4.6 的转义规则更正）与一个帮助函数，`open_notebook` 按剩下的预算填；`tools.json` 的形状；e2e 的客户端随第一个故事、仓库之外的试用分在 S1 与 S2 的末尾；矩阵的 PAT 经接口建；固定头的前缀；段的检查的码；点查是两条语句；上传与 `read` 读 WebP 的宽高（RIFF 头，改了 M7 的上传）；glob 是线性的、一次的匹配有工作的上限 `MaxGlobWork`（接着走只重走游标的祖先）；无状态时通知什么也不做、取消只来自客户端结束请求；最后改动是树的最后一次写；入口的 `notebook` 照 REST 解析、查询串解析不了答 404；`NodePaths` 的按 id 给路径随 P4；最小的 `mcpserver.Prompt`；SDK 的导入规则也管测试文件；边缘的次序写细；第 2、4.1、4.3、4.4、4.5、4.6、4.7、4.8、4.9、4.14、4.15、4.16、7、8、9 节与"写给后面的 M"随之 | [01-P1-platform-reads.md](01-P1-platform-reads.md) 第 2.1、2.2 节、[P1 设计审查](reviews/P1-design-review.md) |
 | 2026-10-18 | P1 的 S1 合并（`384d9f96`，测试的修复 `cfb48a50`）：`POST /register` 答 OAuth 的错误、没有令牌的 401 带同一句提示；超过 64 KiB 的只能是这个入口登记的工具的调用，`params` 的形状在 SDK 之前查；边缘的次序与协议版本的例外；大的请求体的内存改为实测的、界线给 P2；`register` 进保留名单；4.4、4.14、4.15、4.16、第 5、10、11 节与"写给后面的 M"随之 | [P1 S1 审查](reviews/P1-S1-platform-review.md)、[01-P1](01-P1-platform-reads.md) 2.1 第 23–26 条与第 9 节 |
 | 2026-10-18 | P1 的 S2 合并（`a36e92df`）：路径的点查用 00042 的两个部分唯一索引、去掉兄弟的索引，`ChildByKey` 没有统计时的计划接受；`MaxGlobWork` 降为 3 亿、守卫加 `և` 的树；没有 `server.public_url` 时图片照样内联，被拒的值带 `@` 的不照录；WebP 的宽高的检查；长路径的列法与提示；4.2、4.6、4.8、4.9、4.10、4.14、第 10、11 节与"写给后面的 M"随之 | [P1 S2 审查](reviews/P1-S2-reads-review.md)、[01-P1](01-P1-platform-reads.md) 2.1 第 27–31 条与第 9 节 |
+| 2026-10-18 | P1 的 S3 合并（`c9468e5b`），P1 完成：说明的缓存存副本，`AgentsPage` 的版本号是子查询；说出的客户端名称立刻记住、到知道在行里为止再记下，两个客户端的镜像的交错不加锁；留给 M12 的打磨的三处；组合根两份的界线移一次，以后取两次的平均；任务的等待与竞态那一份的时限另在只改测试的分支（`0c934bb9`）；4.5、4.6、第 10、11、12 节与"写给后面的 M"随之 | [P1 S3 审查](reviews/P1-S3-account-review.md)、[01-P1](01-P1-platform-reads.md) 2.1 第 32、33 条与第 9 节 |
