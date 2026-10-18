@@ -185,6 +185,7 @@ func TestConstraintAndIndexNames(t *testing.T) {
 	// DELETE CASCADE, r: RESTRICT, a: NO ACTION), c check. An index is i, then u when it is unique, w
 	// when it is partial (has a WHERE) and n when its NULLs are not distinct.
 	want := []string{
+		"api_tokens_client_name_check c",
 		"api_tokens_expires_at_check c",
 		"api_tokens_name_check c",
 		"api_tokens_pkey iu",
@@ -444,6 +445,8 @@ func TestChecksRejectCounterexamples(t *testing.T) {
 		"UPDATE auth_sessions SET revoked_at = now(), revoke_reason = 'logout'",
 		"INSERT INTO api_tokens (id, user_id, token_hash, name, expires_at, created_at, updated_at) VALUES " +
 			"('0199a2b4-0000-7000-8000-000000000004', " + user + ", sha256('y'), 'CI', now() + interval '1 day', now(), now())",
+		// A client's name is 128 characters at most, not bytes.
+		"UPDATE api_tokens SET client_name = repeat('名', 128)",
 		"INSERT INTO workspaces (id, slug, name, created_by_id, updated_by_id, created_at, updated_at) VALUES " +
 			"('0199a2b4-0000-7000-8000-000000000005', 'acme_2-x', 'Acme 研发', " + user + ", " + user + ", now(), now())",
 		"INSERT INTO workspace_members (id, workspace_id, user_id, role, created_by_id, updated_by_id, created_at, updated_at) VALUES " +
@@ -548,6 +551,8 @@ func TestChecksRejectCounterexamples(t *testing.T) {
 		{"PAT hash not 32 bytes", "UPDATE api_tokens SET token_hash = '\\x00'", "api_tokens_token_hash_check"},
 		{"empty PAT name", "UPDATE api_tokens SET name = ''", "api_tokens_name_check"},
 		{"PAT expiring when created", "UPDATE api_tokens SET expires_at = created_at", "api_tokens_expires_at_check"},
+		{"empty client name", "UPDATE api_tokens SET client_name = ''", "api_tokens_client_name_check"},
+		{"client name of 129 characters", "UPDATE api_tokens SET client_name = repeat('名', 129)", "api_tokens_client_name_check"},
 		{"upper-case slug", "UPDATE workspaces SET slug = 'Acme'", "workspaces_slug_check"},
 		{"slug with a space", "UPDATE workspaces SET slug = 'acme corp'", "workspaces_slug_check"},
 		{"slug with a dot", "UPDATE workspaces SET slug = 'acme.corp'", "workspaces_slug_check"},

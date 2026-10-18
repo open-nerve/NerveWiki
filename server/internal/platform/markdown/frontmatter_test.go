@@ -42,6 +42,35 @@ func TestTheFrontmatterIsWhereRuleOneSaysItIs(t *testing.T) {
 	}
 }
 
+// FrontmatterEnd is where the parse's frontmatter ends: the end
+// frontmatterOf gives, 0 without one.
+func TestFrontmatterEndIsWhereTheParseReadsIt(t *testing.T) {
+	tests := []struct {
+		name, src string
+		end       int
+	}{
+		{"LF", "---\na: 1\n---\nbody", 13},
+		{"CRLF", "---\r\na: 1\r\n---\r\nbody", 16},
+		{"a byte order mark first", "\xef\xbb\xbf---\r\na: [x]\r\n---\r\n\r\n# Rules", 21},
+		{"empty", "---\n---\nbody", 8},
+		{"the closing line last", "---\na: 1\n---", 12},
+		{"a frontmatter alone", "---\ntags: [rules]\n---\n", 22},
+		{"no closing line", "---\na: 1\nbody", 0},
+		{"a byte order mark alone", "\xef\xbb\xbfbody", 0},
+		{"a blank line first", "\n---\na: 1\n---\n", 0},
+		{"none", "# t\n---\n", 0},
+		{"nothing", "", 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, parsed := frontmatterOf([]byte(tt.src))
+			if got := FrontmatterEnd([]byte(tt.src)); got != tt.end || got != parsed {
+				t.Errorf("FrontmatterEnd = %d, want %d, frontmatterOf's %d", got, tt.end, parsed)
+			}
+		})
+	}
+}
+
 // The parse's text is the content with its byte order mark made line
 // breaks and its frontmatter spaces but for the line breaks: every offset
 // stays.

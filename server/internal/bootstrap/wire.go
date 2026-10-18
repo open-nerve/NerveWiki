@@ -33,12 +33,14 @@ import (
 )
 
 // The platform and the shared kernel meet here by structure: neither imports
-// the other. So do mcpserver and the page module's MCP entry.
+// the other. So do mcpserver, the page module's MCP entry and identity's
+// client names.
 var (
 	_ shared.TxManager        = (*postgres.TxManager)(nil)
 	_ shared.Snapshots        = (*postgres.TxManager)(nil)
 	_ httpserver.ProblemError = (*shared.Error)(nil)
 	_ mcpserver.Notebooks     = page.MCPEntry{}
+	_ mcpserver.ClientNames   = mcpNames{}
 )
 
 // newApp wires the server described by cfg around the given migrations and
@@ -190,7 +192,7 @@ func wireApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrat
 	tr.Register(router, api)
 	ev.Register(router, api)
 	tools := mcpTools(pg, as, ln, nb)
-	mountMCP(router, api, mcpServer(cfg, logger, api, pg, slices.Concat(tools, w.mcpTools)))
+	mountMCP(router, api, mcpServer(cfg, logger, api, pg, mcpNames{identity.NewClientNames(pool)}, slices.Concat(tools, w.mcpTools)))
 	// "/" without a method is the least specific pattern: /api/ and the
 	// probes keep their routes, and a wrong method on a page path gets the
 	// frontend's 405 rather than a 404.

@@ -1,7 +1,7 @@
 // Package mcpadapter is the page module's MCP adapter (M9 design 4.1,
-// 4.9): the tools list and read, their arguments, their answers within
-// mcpserver's bound, and the words of their errors. It imports mcpserver,
-// never the SDK.
+// 4.6, 4.9): the tools list, read and open_notebook, their arguments,
+// their answers within mcpserver's bound, and the words of their errors;
+// the built-in instructions. It imports mcpserver, never the SDK.
 package mcpadapter
 
 import (
@@ -26,10 +26,12 @@ type ReadPathUseCase interface {
 type UseCases struct {
 	List ListByPatternUseCase
 	Read ReadPathUseCase
+	Open OpenNotebookUseCase
 }
 
-// Tools are the module's MCP tools, each in both entries, a notebook's:
-// list and read, whose attachments attachments reads.
+// Tools are the module's MCP tools, each a notebook's: list and read, in
+// both entries, read's attachments read by attachments; open_notebook, in
+// the account entry alone, where an agent picks its notebook.
 func Tools(uc UseCases, attachments app.AttachmentReader) []mcpserver.Tool {
 	t := tools{uc: uc, attachments: attachments}
 	return []mcpserver.Tool{
@@ -37,6 +39,8 @@ func Tools(uc UseCases, attachments app.AttachmentReader) []mcpserver.Tool {
 			Annotations: mcpserver.Annotations{ReadOnly: true}, Entry: mcpserver.BothEntries, Notebook: true}, t.list),
 		mcpserver.NewTool(mcpserver.Spec{Name: "read", Title: "Read a page or an attachment", Description: readDescription,
 			Annotations: mcpserver.Annotations{ReadOnly: true}, Entry: mcpserver.BothEntries, Notebook: true}, t.read),
+		mcpserver.NewTool(mcpserver.Spec{Name: "open_notebook", Title: "Open a notebook", Description: openNotebookDescription,
+			Annotations: mcpserver.Annotations{ReadOnly: true}, Entry: mcpserver.AccountEntry, Notebook: true}, t.openNotebook),
 	}
 }
 

@@ -48,6 +48,11 @@ func (m *Markdown) Links(facts app.Facts) int {
 	return len(x.Links)
 }
 
+// FrontmatterEnd implements app.Markdown.
+func (m *Markdown) FrontmatterEnd(content string) int {
+	return markdown.FrontmatterEnd([]byte(content))
+}
+
 // Tasks implements app.Markdown: what the tasks extension took. A Markdown
 // without the extension, or facts that Facts did not return, have none.
 func (m *Markdown) Tasks(facts app.Facts) []app.Task {

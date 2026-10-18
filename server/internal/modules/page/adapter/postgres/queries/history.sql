@@ -201,3 +201,12 @@ JOIN page_revisions r ON r.node_id = v.node_id AND r.revision = v.revision;
 SELECT r.node_id, r.revision, r.content_hash, r.content
 FROM (SELECT unnest(sqlc.arg(node_ids)::uuid[]) AS node_id, unnest(sqlc.arg(revisions)::integer[]) AS revision) v
 JOIN page_revisions r ON r.node_id = v.node_id AND r.revision = v.revision;
+
+-- name: NotebookLastChange :one
+-- When a notebook's tree was last written, the pages' part of its activity on the web (activity.sql): the latest
+-- updated_at of its changesets, which an edit session's later writes move on (M9/P1 design 3.17.3). GROUP BY answers
+-- no row for a notebook without a changeset, which the store maps to nil, so the column is never NULL.
+SELECT max(c.updated_at)::timestamptz AS last_change
+FROM changesets c
+WHERE c.notebook_id = sqlc.arg(notebook_id) AND c.deleted_at IS NULL
+GROUP BY c.notebook_id;

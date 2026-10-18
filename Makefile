@@ -191,8 +191,12 @@ test-go: ## 运行 Go 测试，含集成测试与 server/tools（开启竞态检
 # 按测试名分成两份，本机两份的测试时间之和各约一半（M8 收尾时以 TestA 到 TestD 为界，各自单独跑 201 与 206 秒，在 make test-go 里 213 与 217 秒）。
 # M9/P1 S1 的整个程序测试几乎都落在第二份（单独跑 213 与 250 秒），界线照 M9/P1 设计 6.1 往后挪到 TestEveryR 之前：
 # 名字按字母排在它之前的一份（TestA 到 TestD、TestEa 到 TestEu、TestEveryA 到 TestEveryQ），其余的一份；整个 TestE 挪过去第一份就多出三成
+# M9/P1 S3 时各单独跑一次是 213 与 242 秒（第二份多 13%），界线照设计 6.1 再往后挪到 TestEveryS 之前，是重新平衡，
+# 不是 S3 的测试让第二份变慢（它们不带竞态检测共约 3 秒）：TestEveryR 开头的两个（vault 的导出与导入，约 18 秒）挪到第一份，
+# 挪了之后单独跑 238 与 229 秒。单独跑一次的时间前后可差一成以上（同一棵树上第一份 213 到 260 秒，CI 上同一份 5:44 到 7:59），
+# 以后判断挪不挪，取每份两次的平均（M9/P1 S3 审查 C 的 N-4）
 # -run 与 -skip 用同一个表达式：两份之和总是整个包，新加的测试自动落在其中一份；一份变得太慢时改这个表达式
-BOOTSTRAP_FIRST = ^Test([A-D]|E([a-u]|very[A-Q]))
+BOOTSTRAP_FIRST = ^Test([A-D]|E([a-u]|very[A-R]))
 .PHONY: test-go-race
 test-go-race: ## 竞态检测下运行组合根（internal/bootstrap）之外的全部 Go 包（CI 的一份；需要 Docker）
 	cd server && $(GO_TEST_RACE) $$(go list ./... | grep -v '/internal/bootstrap$$')
@@ -218,6 +222,8 @@ test-go-costs: ## 不带竞态检测的分配、耗时预算与界线的守卫�
 	cd server && go test -count=1 -run '^(TestSubtreeReadsWithoutStatisticsInTimeAsLongAsIt|TestSubtreeOfAFolderOfMostNodesReadsInTimeAsLongAsIt|TestListTrashReadsInTimeAsLongAsAPage|TestTrashLinesReadInTimeAsLongAsAPage|TestRestoreNodesTakesItsTimeAtAnyStatistics|TestTrashHistoryCountsInTimeAtAnyStatistics|TestTheLogReadsInTimeAsLongAsAPage|TestTheRevertsArrayReadsInTimeAtTheUnitsBound)$$' ./internal/modules/page/adapter/postgres
 	@# 搜索的守卫单独一行、带 -v：通过时也打出各个读的中位数，CI 的日志里看得到，下次重新测量有数据（M8/P5A 审查 C 的 M-2）
 	cd server && go test -count=1 -v -run '^TestTheSearchReadsInTimeAtAnyStatistics$$' ./internal/modules/page/adapter/postgres
+	@# 概况的守卫同样带 -v：计数与最后的变更两条语句、读整棵树各自的中位数（M9/P1 设计 3.17.3）
+	cd server && go test -count=1 -v -run '^TestTheOverviewReadsInTimeAsLongAsTheTree$$' ./internal/modules/page/adapter/postgres
 	cd server && go test -count=1 -run '^TestAnImportsUnitNumbersNamesThatCutAlikeInTimeAsLongAsThey$$' ./internal/modules/page/app
 	@# glob 的守卫同样带 -v：最坏的模式在守卫树上走到 MaxGlobWork 的用时（M9/P1 设计 3.10.1）
 	cd server && go test -count=1 -v -run '^TestTheWorstGlobsStopWithinTheirWork$$' ./internal/modules/page/domain

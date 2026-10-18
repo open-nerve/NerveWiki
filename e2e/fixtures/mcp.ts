@@ -7,8 +7,9 @@ import { bearer } from "./auth";
 /** The protocol version the client asks for. */
 const askedVersion = "2025-11-25";
 
-// McpContent, McpTool and McpAnswer are not exported until a story imports them (MC1's listTools, M9/P1 S3): knip
-// counts a type used by an exported function's signature, not by an exported interface's members.
+// McpContent, McpTool and McpAnswer are not exported until a story imports them: MC1 compares listTools' answer
+// with api/mcp/tools.json without naming its type. knip counts a type used by an exported function's signature, not
+// by an exported interface's members.
 
 /** A content block of a tool's answer, as the wire has it. */
 type McpContent =
@@ -42,7 +43,7 @@ export interface McpClient {
 }
 
 /** The MCP address of baseURL: the account entry, or a notebook's. */
-function mcpURL(baseURL: string, notebook?: string): string {
+export function mcpURL(baseURL: string, notebook?: string): string {
   const url = new URL("/mcp", baseURL);
   if (notebook !== undefined) {
     url.searchParams.set("notebook", notebook);

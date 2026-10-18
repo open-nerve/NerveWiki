@@ -55,3 +55,20 @@ WHERE user_id = sqlc.arg(user_id) AND revoked_at IS NULL;
 SELECT count(*)
 FROM api_tokens
 WHERE user_id = sqlc.arg(user_id) AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > sqlc.arg(now)::timestamptz);
+
+-- name: APITokenClientName :one
+-- The client name a token's MCP client last told (M9/P1 design 3.16.3).
+SELECT client_name FROM api_tokens WHERE id = sqlc.arg(id);
+
+-- name: RecordAPITokenClientName :execrows
+-- The client name a token's MCP client told, cleaned (M9/P1 design 3.16.3), written only when it differs: one
+-- client's calls write it once. Best effort as TouchAPIToken: a row another transaction holds (a revocation) is
+-- skipped rather than waited for; updated_at stays, as a use changes nothing of the token. No row written is a name
+-- already there, a row skipped, or no token: the caller tells none apart.
+UPDATE api_tokens
+SET client_name = sqlc.arg(client_name)
+WHERE id = (
+    SELECT t.id FROM api_tokens t
+    WHERE t.id = sqlc.arg(id) AND t.client_name IS DISTINCT FROM sqlc.arg(client_name)
+    FOR NO KEY UPDATE SKIP LOCKED
+);

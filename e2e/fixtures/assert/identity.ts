@@ -320,3 +320,15 @@ export async function countIdentity(db: Database): Promise<IdentityCounts> {
 export async function expectNothingAdded(db: Database, before: IdentityCounts): Promise<void> {
   expect(await countIdentity(db)).toEqual(before);
 }
+
+/**
+ * M9: the personal access token's client_name is name: the last name a
+ * client told with it, cleaned (M9/P1 design 3.16).
+ */
+export async function expectTokenClient(db: Database, tokenId: string, name: string): Promise<void> {
+  const rows = await db.query<{ client_name: string | null }>("SELECT client_name FROM api_tokens WHERE id = $1", [
+    tokenId,
+  ]);
+  expect(rows, `the token ${tokenId}`).toHaveLength(1);
+  expect(rows[0]?.client_name, `the client of the token ${tokenId}`).toBe(name);
+}

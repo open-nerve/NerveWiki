@@ -12,6 +12,44 @@ import (
 	"uuid"
 )
 
+const agentsPage = `-- name: AgentsPage :one
+SELECT n.id, n.kind, n.name,
+    coalesce((SELECT c.revision FROM page_contents c WHERE c.node_id = n.id AND c.deleted_at IS NULL), 0)::integer
+        AS revision
+FROM nodes n
+WHERE n.notebook_id = $1 AND n.parent_id IS NULL AND n.name_key = $2
+    AND n.deleted_at IS NULL
+`
+
+type AgentsPageParams struct {
+	NotebookID uuid.UUID
+	NameKey    string
+}
+
+type AgentsPageRow struct {
+	ID       uuid.UUID
+	Kind     string
+	Name     string
+	Revision int32
+}
+
+// The notebook's root node whose title key is name_key, TitleKey("AGENTS"), with its title now and its content's
+// revision when it is a page, 0 for none (M9 design 4.6; M9/P1 design 3.15.1): one point lookup by the roots' unique
+// index (00042), as RootByKey, and the content by its key. The revision is a subquery of the node found, not a join: a
+// key that many nodes share, an AGENTS page in each folder, is estimated as many rows once analyzed, and a join of
+// them read the contents of every notebook by a hash.
+func (q *Queries) AgentsPage(ctx context.Context, arg AgentsPageParams) (AgentsPageRow, error) {
+	row := q.db.QueryRow(ctx, agentsPage, arg.NotebookID, arg.NameKey)
+	var i AgentsPageRow
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.Name,
+		&i.Revision,
+	)
+	return i, err
+}
+
 const aliveNodes = `-- name: AliveNodes :many
 SELECT id FROM nodes WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL
 `
@@ -597,6 +635,68 @@ func (q *Queries) FindNodeIn(ctx context.Context, arg FindNodeInParams) (FindNod
 	return i, err
 }
 
+const firstChildren = `-- name: FirstChildren :many
+SELECT id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at,
+    updated_at
+FROM nodes
+WHERE notebook_id = $1 AND parent_id IS NULL AND deleted_at IS NULL
+ORDER BY sort_order, id
+LIMIT $2
+`
+
+type FirstChildrenParams struct {
+	NotebookID uuid.UUID
+	N          int32
+}
+
+type FirstChildrenRow struct {
+	ID          uuid.UUID
+	NotebookID  uuid.UUID
+	ParentID    *uuid.UUID
+	Kind        string
+	Name        string
+	NameKey     string
+	SortOrder   float64
+	CreatedByID uuid.UUID
+	UpdatedByID uuid.UUID
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+// The root's first n children not deleted, in order: open_notebook's root, n = MaxOverviewRoot + 1 to tell whether
+// more follow (M9/P1 design 3.17.3). parent_id IS NULL is an index condition; IS NOT DISTINCT FROM is not.
+func (q *Queries) FirstChildren(ctx context.Context, arg FirstChildrenParams) ([]FirstChildrenRow, error) {
+	rows, err := q.db.Query(ctx, firstChildren, arg.NotebookID, arg.N)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []FirstChildrenRow
+	for rows.Next() {
+		var i FirstChildrenRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.NotebookID,
+			&i.ParentID,
+			&i.Kind,
+			&i.Name,
+			&i.NameKey,
+			&i.SortOrder,
+			&i.CreatedByID,
+			&i.UpdatedByID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listNodes = `-- name: ListNodes :many
 SELECT id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at,
     updated_at
@@ -707,6 +807,28 @@ func (q *Queries) MoveNode(ctx context.Context, arg MoveNodeParams) error {
 		arg.ID,
 	)
 	return err
+}
+
+const notebookCounts = `-- name: NotebookCounts :one
+SELECT
+    count(*) FILTER (WHERE n.kind = 'page')::bigint AS pages,
+    count(*) FILTER (WHERE n.kind = 'asset')::bigint AS attachments
+FROM nodes n
+WHERE n.notebook_id = $1 AND n.deleted_at IS NULL
+`
+
+type NotebookCountsRow struct {
+	Pages       int64
+	Attachments int64
+}
+
+// A notebook's pages and attachments not deleted (M9/P1 design 3.17.3): open_notebook's overview, read from the
+// notebook's nodes by an index of them.
+func (q *Queries) NotebookCounts(ctx context.Context, notebookID uuid.UUID) (NotebookCountsRow, error) {
+	row := q.db.QueryRow(ctx, notebookCounts, notebookID)
+	var i NotebookCountsRow
+	err := row.Scan(&i.Pages, &i.Attachments)
+	return i, err
 }
 
 const renameNode = `-- name: RenameNode :exec

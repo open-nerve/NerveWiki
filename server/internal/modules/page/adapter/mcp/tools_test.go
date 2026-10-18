@@ -56,16 +56,19 @@ func blockJSON(t *testing.T, b mcpserver.Block) map[string]any {
 	return out
 }
 
-// The module's tools are list and read, each in both entries, a
-// notebook's, read-only (M9/P1 design 3.10.5, 3.11.3); the composition
-// root's TestTheToolListsAreTheContract holds their schemas to the file.
-func TestTheToolsAreListAndRead(t *testing.T) {
+// The module's tools are list and read, each in both entries, and
+// open_notebook, in the account entry alone, each a notebook's, read-only
+// (M9/P1 design 3.10.5, 3.11.3, 3.17.3); the composition root's
+// TestTheToolListsAreTheContract holds their schemas to the file.
+func TestTheToolsAreListReadAndOpenNotebook(t *testing.T) {
 	tools := Tools(UseCases{}, nil)
 	want := []mcpserver.Spec{
 		{Name: "list", Title: "List nodes", Description: listDescription, Annotations: mcpserver.Annotations{ReadOnly: true},
 			Entry: mcpserver.BothEntries, Notebook: true},
 		{Name: "read", Title: "Read a page or an attachment", Description: readDescription,
 			Annotations: mcpserver.Annotations{ReadOnly: true}, Entry: mcpserver.BothEntries, Notebook: true},
+		{Name: "open_notebook", Title: "Open a notebook", Description: openNotebookDescription,
+			Annotations: mcpserver.Annotations{ReadOnly: true}, Entry: mcpserver.AccountEntry, Notebook: true},
 	}
 	if len(tools) != len(want) {
 		t.Fatalf("%d tools, want %d", len(tools), len(want))

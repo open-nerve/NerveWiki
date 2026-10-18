@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"runtime"
 	"slices"
 	"strings"
@@ -165,6 +166,67 @@ func seam(name string, e mcpserver.Entry) mcpserver.Tool {
 		func(context.Context, mcpserver.Call, struct{}) (mcpserver.Result, error) {
 			return mcpserver.Result{Structured: map[string]any{}}, nil
 		})
+}
+
+// unnamedTools are the tools of the file an entry's built-in instructions
+// have no line of: a line that starts "- <name>:" or "- <name> " (M9/P1
+// design 3.15.4). Anchored at the line's start, so that a tool's name as
+// a word of the text, write or move as list is, names no tool.
+func unnamedTools(lists toolLists, instructions map[string]string) []string {
+	var out []string
+	for _, entry := range slices.Sorted(maps.Keys(lists)) {
+		for _, tool := range lists[entry] {
+			object, _ := tool.(map[string]any)
+			name, _ := object["name"].(string)
+			if !regexp.MustCompile(`(?m)^- ` + regexp.QuoteMeta(name) + `[: ]`).MatchString(instructions[entry]) {
+				out = append(out, fmt.Sprintf("the %s entry's built-in instructions name no %s", entry, name))
+			}
+		}
+	}
+	return out
+}
+
+// Each entry's built-in instructions, as its handshake sends them (the
+// notebook entry's of a notebook without an AGENTS page), have a line of
+// each tool the file lists in it (M9/P1 design 3.15.4, review B-M1): a
+// phase that adds a tool without its line fails here.
+func TestTheBuiltInInstructionsNameEveryTool(t *testing.T) {
+	m := startMCPApp(t, nil)
+	instructions := map[string]string{
+		"notebook": m.instructionsAt(t, atNotebook(m.notebook)),
+		"account":  m.instructionsAt(t, mcpserver.Pattern),
+	}
+	if instructions["notebook"] == instructions["account"] {
+		t.Fatalf("the two entries' instructions are the same: %q", instructions["notebook"])
+	}
+	for _, v := range unnamedTools(readToolLists(t), instructions) {
+		t.Error(v)
+	}
+}
+
+// A tool without its line is reported, and a tool's name in the text
+// names no tool: the instructions without read's line, and with list's
+// line made a word of the text.
+func TestUnnamedToolsCatchesEachGap(t *testing.T) {
+	lists := toolLists{"notebook": {map[string]any{"name": "list"}, map[string]any{"name": "read"}},
+		"account": {map[string]any{"name": "notebooks"}}}
+	text := "Tools\n- list: the children.\n- read: a page's lines.\n"
+	instructions := map[string]string{"notebook": text, "account": "- notebooks lists the notebooks.\n"}
+	if found := unnamedTools(lists, instructions); len(found) != 0 {
+		t.Fatalf("instructions of every tool: %q", found)
+	}
+	for _, tt := range []struct {
+		name, notebook, want string
+	}{
+		{"without read's line", "Tools\n- list: the children.\n", "the notebook entry's built-in instructions name no read"},
+		{"list a word of the text", "Tools\nTo list the children, call list.\n- read: a page's lines.\n",
+			"the notebook entry's built-in instructions name no list"},
+	} {
+		got := unnamedTools(lists, map[string]string{"notebook": tt.notebook, "account": instructions["account"]})
+		if !slices.Equal(got, []string{tt.want}) {
+			t.Errorf("%s: %q, want %q", tt.name, got, tt.want)
+		}
+	}
 }
 
 // The check reads what the app lists and what the file holds, each entry

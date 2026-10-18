@@ -25,11 +25,11 @@ var ErrNotFound = domain.ErrNotFound
 // is wired after page (v0.1 design 13.1, item 11).
 type ToolDeps struct{ Attachments AttachmentReader }
 
-// Tools are page's MCP tools, list and read (M9 design 4.9); no
-// Attachments panics.
+// Tools are page's MCP tools, list, read (M9 design 4.9) and
+// open_notebook (4.6); no Attachments panics.
 func (m *Module) Tools(d ToolDeps) []mcpserver.Tool {
 	if d.Attachments == nil {
 		panic("page: no attachment reader for the MCP tools")
 	}
-	return mcpadapter.Tools(mcpadapter.UseCases{List: m.list, Read: m.read}, d.Attachments)
+	return mcpadapter.Tools(mcpadapter.UseCases{List: m.list, Read: m.read, Open: m.open}, d.Attachments)
 }

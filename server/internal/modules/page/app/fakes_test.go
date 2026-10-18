@@ -380,6 +380,19 @@ func (f *fakeMarkdown) Facts(content string) app.Facts {
 	return content
 }
 
+// FrontmatterEnd is the end of the content's first line of "---" up to
+// its next one, 0 without both.
+func (f *fakeMarkdown) FrontmatterEnd(content string) int {
+	f.record(context.Background(), "FrontmatterEnd")
+	if !strings.HasPrefix(content, "---\n") {
+		return 0
+	}
+	if i := strings.Index(content[3:], "\n---\n"); i >= 0 {
+		return 3 + i + len("\n---\n")
+	}
+	return 0
+}
+
 // Links counts the content's "[[".
 func (f *fakeMarkdown) Links(facts app.Facts) int {
 	f.record(context.Background(), "Links")
@@ -1315,6 +1328,17 @@ func (f *fakeStore) AliveNodes(ctx context.Context, ids []uuid.UUID) (map[uuid.U
 		}
 	}
 	return out, nil
+}
+
+// AgentsPage finds the notebook's root of the key, with its title and its
+// content's revision, a call.
+func (f *fakeStore) AgentsPage(ctx context.Context, notebookID uuid.UUID, key string) (uuid.UUID, domain.Kind, string, int, bool, error) {
+	f.record(ctx, "AgentsPage")
+	n, ok, _ := f.byKey(notebookID, nil, key)
+	if !ok {
+		return uuid.UUID{}, "", "", 0, false, nil
+	}
+	return n.ID, n.Kind, n.Name, f.contents[n.ID].Revision, true, nil
 }
 
 // PageStates reads the pages' contents' states, a call with their count.

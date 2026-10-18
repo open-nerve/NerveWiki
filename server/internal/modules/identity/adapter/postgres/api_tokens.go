@@ -2,9 +2,12 @@ package postgresadapter
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 	"uuid"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity/adapter/postgres/gen"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity/app"
@@ -99,4 +102,31 @@ func (s *Store) CountUsableAPITokens(ctx context.Context, userID uuid.UUID, now 
 		return 0, fmt.Errorf("count usable API tokens: %w", err)
 	}
 	return int(n), nil
+}
+
+// APITokenClientName reads the client name token id's MCP client last
+// told (M9/P1 design 3.16.3): "" for none, and for no such token.
+func (s *Store) APITokenClientName(ctx context.Context, id uuid.UUID) (string, error) {
+	name, err := s.queries(ctx).APITokenClientName(ctx, id)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return "", nil
+	case err != nil:
+		return "", fmt.Errorf("read an API token's client name: %w", err)
+	case name == nil:
+		return "", nil
+	}
+	return *name, nil
+}
+
+// RecordAPITokenClientName writes name as token id's client name when it
+// differs, unless another transaction holds the row: it does not wait for
+// it. written is false when no row was written: the name already there,
+// the row skipped, or no such token.
+func (s *Store) RecordAPITokenClientName(ctx context.Context, id uuid.UUID, name string) (written bool, err error) {
+	n, err := s.queries(ctx).RecordAPITokenClientName(ctx, gen.RecordAPITokenClientNameParams{ID: id, ClientName: &name})
+	if err != nil {
+		return false, fmt.Errorf("record an API token's client name: %w", err)
+	}
+	return n == 1, nil
 }
