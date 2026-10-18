@@ -88,10 +88,16 @@ func (tm acmeTeam) transferJobOf(t *testing.T, by, id string) (int, transferJob)
 	return status, j
 }
 
+// jobWait bounds the waits for River's jobs to end: they guard against a
+// job that hangs, not its cost, and return as soon as it ends. A 1,501-page
+// import took about 11 s under the race detector and ran past 15 s at a
+// load of 9 (M9/P1 S3's checks), so the bound leaves room for a busy host.
+const jobWait = 60 * time.Second
+
 // endedJob waits until the job id has ended, as by reads it.
 func (tm acmeTeam) endedJob(t *testing.T, by, id string) transferJob {
 	t.Helper()
-	for deadline := time.Now().Add(15 * time.Second); ; time.Sleep(50 * time.Millisecond) {
+	for deadline := time.Now().Add(jobWait); ; time.Sleep(50 * time.Millisecond) {
 		status, j := tm.transferJobOf(t, by, id)
 		if status != http.StatusOK {
 			t.Fatalf("read the job %s as %s = %d", id, by, status)

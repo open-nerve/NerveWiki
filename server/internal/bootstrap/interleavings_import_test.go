@@ -75,7 +75,7 @@ func (tm acmeTeam) inBackground(t *testing.T, c step) func() answer {
 // awaitImports waits until River has completed every import.
 func awaitImports(t *testing.T, tm acmeTeam) {
 	t.Helper()
-	for deadline := time.Now().Add(15 * time.Second); count(t, tm.pool,
+	for deadline := time.Now().Add(jobWait); count(t, tm.pool,
 		"SELECT count(*) FROM river_job WHERE kind = 'transfer.import' AND state <> 'completed'") != 0; time.Sleep(50 * time.Millisecond) {
 		if time.Now().After(deadline) {
 			t.Fatalf("imports not completed: %v", queryStrings(t, tm.pool, "SELECT state FROM river_job WHERE kind = 'transfer.import'"))

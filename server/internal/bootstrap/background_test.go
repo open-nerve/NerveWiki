@@ -109,7 +109,7 @@ func (tm acmeTeam) startedJob(t *testing.T, c step) backgroundJob {
 // endedBackground waits until the job id has ended, as by reads it.
 func (tm acmeTeam) endedBackground(t *testing.T, by, id string) backgroundJob {
 	t.Helper()
-	for deadline := time.Now().Add(30 * time.Second); ; time.Sleep(50 * time.Millisecond) {
+	for deadline := time.Now().Add(jobWait); ; time.Sleep(50 * time.Millisecond) {
 		status, answer := ask(t, tm.contract, http.MethodGet, tm.base+"/api/v0/transfer-jobs/"+id, tm.tokens[by], "")
 		if status != http.StatusOK {
 			t.Fatalf("read the job %s as %s = %d %s", id, by, status, answer)
@@ -135,7 +135,7 @@ func (tm acmeTeam) background(t *testing.T, c step) backgroundJob {
 // revert.
 func awaitBackground(t *testing.T, tm acmeTeam) {
 	t.Helper()
-	for deadline := time.Now().Add(15 * time.Second); count(t, tm.pool,
+	for deadline := time.Now().Add(jobWait); count(t, tm.pool,
 		"SELECT count(*) FROM river_job WHERE kind IN ('transfer.trash_restore', 'transfer.revert') AND state <> 'completed'") != 0; time.Sleep(
 		50 * time.Millisecond) {
 		if time.Now().After(deadline) {

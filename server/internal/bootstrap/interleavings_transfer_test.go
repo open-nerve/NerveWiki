@@ -102,7 +102,7 @@ func checkTransfers(t *testing.T, tm acmeTeam) {
 // awaitExports waits until River has completed every export.
 func awaitExports(t *testing.T, tm acmeTeam) {
 	t.Helper()
-	for deadline := time.Now().Add(15 * time.Second); count(t, tm.pool,
+	for deadline := time.Now().Add(jobWait); count(t, tm.pool,
 		"SELECT count(*) FROM river_job WHERE kind = 'transfer.export' AND state <> 'completed'") != 0; time.Sleep(50 * time.Millisecond) {
 		if time.Now().After(deadline) {
 			t.Fatalf("exports not completed: %v", queryStrings(t, tm.pool, "SELECT state FROM river_job WHERE kind = 'transfer.export'"))
