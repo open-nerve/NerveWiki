@@ -3,11 +3,13 @@ import { expectSessionGone, sessionsOf } from "../../fixtures/assert/page";
 import { displayNameOf, emailFor } from "../../fixtures/auth";
 import { failedToLoad } from "../../fixtures/browser";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
+import { errorOf, mcpClient, resultOf } from "../../fixtures/mcp";
 import { notebookHeading } from "../../fixtures/notebook-pages";
 import { createNotebook, deleteNotebook } from "../../fixtures/notebooks";
 import {
   createPage,
   deleteNode,
+  endSession,
   moveNode,
   openSession,
   putContent,
@@ -74,6 +76,73 @@ test("C4 (API): while A edits Notes, a write without A's session, B's or A's own
   await openSession(api, b, other.id);
   expect((await deleteNotebook(api, a, notebook.id)).response.status).toBe(204);
   expect(await sessionsOf(db, other.id)).toEqual([]);
+});
+
+test("C4 (MCP): while A edits Notes, B's agent's write and edit are page.locked by A, the lock with Notes' path, and A's own agent's write by A, as A's; B's deletions of Notes and of its parent, and A's own, are page.locked, A's session alive; B's agent renames and moves Notes and writes the content it holds; once A's session ends, A's agent deletes it", async ({
+  api,
+  db,
+  nervewiki,
+}, testInfo) => {
+  const { adminEmail, adminId, pat: a, workspace } = await newTeam(api, testInfo);
+  const b = await joinAs(api, a, workspace.slug, emailFor(testInfo, "b"), "member");
+  const notebook = await createNotebook(api, a, workspace.slug, "Plans", "editor");
+  const team = await createPage(api, a, notebook.id, "Team");
+  const notes = await createPage(api, a, notebook.id, "Notes", team.id, "Held\n");
+  const session = await openSession(api, a, notes.id);
+  const aAgent = await mcpClient(nervewiki.baseURL, a, { notebook: notebook.id, client: "a-agent" });
+  const bAgent = await mcpClient(nervewiki.baseURL, b, { notebook: notebook.id, client: "b-agent" });
+  const name = displayNameOf(adminEmail);
+  const read = await bAgent.call("read", { path: "Team/Notes.md" });
+  const { version } = JSON.parse(read.text[0] ?? "{}") as { version: string };
+  expect(version).toBe(`${notes.id}:1`);
+
+  const lock = { page_id: notes.id, path: "Team/Notes.md", user_id: adminId, display_name: name, you: false };
+  const theirs = await Promise.all([
+    bAgent.call("write", { path: "Team/Notes.md", content: "Theirs\n", base_version: version }),
+    bAgent.call("edit", { path: "Team/Notes.md", old_string: "Held", new_string: "Theirs" }),
+  ]);
+  for (const [i, answer] of theirs.entries()) {
+    const refused = errorOf(answer, `B's ${["write", "edit"][i]}`);
+    expect([refused.code, refused.lock]).toEqual(["page.locked", lock]);
+    expect(refused.message).toContain(`by ${name} in the web editor`);
+    expect(refused.message).toContain("cannot take the lock over");
+  }
+  const own = errorOf(
+    await aAgent.call("write", { path: "Team/Notes.md", content: "Mine\n", base_version: version }),
+    "A's write"
+  );
+  expect([own.code, own.lock]).toEqual(["page.locked", { ...lock, you: true }]);
+  expect(own.message).toContain("by you, in a browser");
+
+  const { path: _, ...holder } = lock;
+  const deletions = ["Team/Notes.md", "Team.md"];
+  const deleted = await Promise.all(deletions.map((path) => bAgent.call("delete", { path, recursive: true })));
+  for (const [i, answer] of deleted.entries()) {
+    const refused = errorOf(answer, `B's delete of ${deletions[i]}`);
+    expect([refused.code, refused.locks, refused.locks_count, refused.lock]).toEqual([
+      "page.locked",
+      [lock],
+      1,
+      holder,
+    ]);
+  }
+  const mine = errorOf(await aAgent.call("delete", { path: "Team/Notes.md" }), "A's delete");
+  expect([mine.code, mine.locks]).toEqual(["page.locked", [{ ...lock, you: true }]]);
+  await expectAliveSessions(db, notes.id, [session.id]);
+  expect(await readContent(api, a, notes.id)).toMatchObject({ content: "Held\n", revision: 1 });
+
+  resultOf(await bAgent.call("move", { from: "Team/Notes.md", to: "Team/Notes 2.md" }), "B's rename");
+  resultOf(await bAgent.call("move", { from: "Team/Notes 2.md", to: "Notes 2.md" }), "B's move to the root");
+  const same = resultOf<{ changed: boolean; version: string }>(
+    await bAgent.call("write", { path: "Notes 2.md", content: "Held\n", base_version: version }),
+    "B's write of the content Notes holds"
+  );
+  expect([same.changed, same.version]).toEqual([false, version]);
+  await expectAliveSessions(db, notes.id, [session.id]);
+
+  expect((await endSession(api, a, session.id)).response.status).toBe(204);
+  resultOf(await aAgent.call("delete", { path: "Notes 2.md" }), "A's delete once the session ended");
+  expect(await sessionsOf(db, notes.id)).toEqual([]);
 });
 
 test("C4 (page): while A edits Linux, B's deletion of its parent is refused, the dialog naming A and Linux, A's session alive; B renames and moves it, A's editor staying; A deleting it in another tab keeps the editor and its unsaved text, saying the page is gone, until A leaves it, its session gone", async ({

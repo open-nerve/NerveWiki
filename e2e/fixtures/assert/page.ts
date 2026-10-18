@@ -8,18 +8,25 @@ import type { Database } from "../db";
 // The times are compared in SQL, to the microsecond.
 
 /**
- * nodes, page_contents, changesets, changeset_items, page_revisions: created is new, as the API answered it, created by
- * creatorId from client: an empty content at revision 1, and a changeset of its own with its version and its item,
- * which has it from nothing to its name, parent and order.
+ * nodes, page_contents, changesets, changeset_items, page_revisions: created is new, as the API answered it, or as a
+ * test builds it from an MCP write's answer, created by creatorId from client: content (none unless given) at revision
+ * 1, with its size and SHA-256, and a changeset with its version and its item, which has it from nothing to its name,
+ * parent and order.
  */
-export async function expectNewPage(db: Database, created: Page, creatorId: string, client: string): Promise<void> {
+export async function expectNewPage(
+  db: Database,
+  created: Pick<Page, "id" | "notebook_id" | "parent_id" | "name" | "created_at">,
+  creatorId: string,
+  client: string,
+  content = ""
+): Promise<void> {
   const rows = await db.query(
     `SELECT n.notebook_id, n.parent_id, n.kind, n.name, n.created_by_id = $2 AND n.updated_by_id = $2 AS by_creator,
             n.created_at = $3::timestamptz AND n.updated_at = n.created_at AS at_answer, n.deleted_at IS NULL AS live,
-            c.content, c.revision, c.byte_size, c.content_hash = sha256(''::bytea) AS hashed,
+            c.content, c.revision, c.byte_size, c.content_hash = sha256(convert_to($4, 'UTF8')) AS hashed,
             c.updated_by_id = $2 AND c.updated_at = n.created_at AS content_by_creator
        FROM nodes n JOIN page_contents c ON c.node_id = n.id WHERE n.id = $1`,
-    [created.id, creatorId, created.created_at]
+    [created.id, creatorId, created.created_at, content]
   );
   expect(rows).toEqual([
     {
@@ -30,9 +37,9 @@ export async function expectNewPage(db: Database, created: Page, creatorId: stri
       by_creator: true,
       at_answer: true,
       live: true,
-      content: "",
+      content,
       revision: 1,
-      byte_size: 0,
+      byte_size: Buffer.byteLength(content),
       hashed: true,
       content_by_creator: true,
     },
@@ -41,11 +48,11 @@ export async function expectNewPage(db: Database, created: Page, creatorId: stri
     `SELECT s.kind, s.client, s.created_by_id = $2 AS by_creator, s.created_at = $3::timestamptz AS at_creation,
             i.before_name IS NULL AND i.after_name = $4 AND i.after_parent_id IS NOT DISTINCT FROM n.parent_id
               AND i.after_sort_order = n.sort_order AS item,
-            r.base_revision IS NULL AND r.revision = 1 AND r.content = '' AS version
+            r.base_revision IS NULL AND r.revision = 1 AND r.content = $5 AS version
        FROM changesets s JOIN changeset_items i ON i.changeset_id = s.id JOIN nodes n ON n.id = i.node_id
        JOIN page_revisions r ON r.changeset_id = s.id
       WHERE i.node_id = $1 AND r.node_id = $1`,
-    [created.id, creatorId, created.created_at, created.name]
+    [created.id, creatorId, created.created_at, created.name, content]
   );
   expect(changesets).toEqual([
     { kind: "edit", client, by_creator: true, at_creation: true, item: true, version: true },
@@ -138,6 +145,75 @@ export async function expectMoved(db: Database, moved: TreeNode, from: Place, mo
   );
   expect(rows).toEqual([
     { parent_id: moved.parent_id, by_mover: true, at_move: true, from_place: true, to_place: true, same_name: true },
+  ]);
+}
+
+/**
+ * nodes, changesets, changeset_items, page_revisions: the node id was moved and renamed in one step, by moverId in its
+ * last changeset, from from (its parent, order and name, as placeOf and the test have them) to to, which the test gives
+ * rather than reads from the node: that changeset's item has it from the one to the other, the node's row is there
+ * now, at the changeset's time, which is at when given, and the changeset holds no version of it.
+ */
+export async function expectRelocated(
+  db: Database,
+  id: string,
+  from: Place & { name: string },
+  to: { parentId: string | null; name: string },
+  moverId: string,
+  at?: string
+): Promise<void> {
+  const rows = await db.query(
+    `SELECT n.parent_id AS "parentId", n.name, n.updated_by_id = $6 AS by_mover,
+            s.created_by_id = $6 AND s.created_at = n.updated_at AS at_move,
+            ($7::timestamptz IS NULL OR s.created_at = $7::timestamptz) AS at_answer,
+            i.before_parent_id IS NOT DISTINCT FROM $2::uuid AND i.before_sort_order = $3::float8 AND i.before_name = $4
+              AS from_place,
+            i.after_parent_id IS NOT DISTINCT FROM $5::uuid AND i.after_name = $8
+              AND i.after_parent_id IS NOT DISTINCT FROM n.parent_id AND i.after_name = n.name
+              AND i.after_sort_order = n.sort_order AS to_place,
+            NOT EXISTS (SELECT 1 FROM page_revisions r WHERE r.changeset_id = s.id AND r.node_id = n.id) AS content_untouched
+       FROM nodes n JOIN changeset_items i ON i.node_id = n.id JOIN changesets s ON s.id = i.changeset_id
+      WHERE n.id = $1
+      ORDER BY s.created_at DESC, s.id DESC LIMIT 1`,
+    [id, from.parentId, from.sortOrder, from.name, to.parentId, moverId, at ?? null, to.name]
+  );
+  expect(rows).toEqual([
+    {
+      parentId: to.parentId,
+      name: to.name,
+      by_mover: true,
+      at_move: true,
+      at_answer: true,
+      from_place: true,
+      to_place: true,
+      content_untouched: true,
+    },
+  ]);
+}
+
+/** What a changeset holds, as expectChangesetOf checks it: its client and author, its items' nodes, its versions' pages. */
+export interface ChangesetOf {
+  client: string;
+  byId: string;
+  items: string[];
+  versions: string[];
+}
+
+/**
+ * changesets, changeset_items, page_revisions: the changeset id is of want's client by its author, and holds an item of
+ * exactly want's items and a version of exactly its versions, in any order: what one MCP write or move did, the
+ * parents it created and the pages whose links it wrote again among them.
+ */
+export async function expectChangesetOf(db: Database, id: string, want: ChangesetOf): Promise<void> {
+  const rows = await db.query(
+    `SELECT s.client, s.created_by_id AS "byId",
+            ARRAY(SELECT i.node_id::text FROM changeset_items i WHERE i.changeset_id = s.id ORDER BY i.node_id::text) AS items,
+            ARRAY(SELECT r.node_id::text FROM page_revisions r WHERE r.changeset_id = s.id ORDER BY r.node_id::text) AS versions
+       FROM changesets s WHERE s.id = $1`,
+    [id]
+  );
+  expect(rows).toEqual([
+    { client: want.client, byId: want.byId, items: want.items.toSorted(), versions: want.versions.toSorted() },
   ]);
 }
 
@@ -359,12 +435,14 @@ export interface StoredVersion {
   client: string;
   /** The changeset its changeset reverts, a revert's alone: none unless given. */
   revertsId?: string | null;
+  /** The versions its changeset holds: itself alone unless given, as an MCP write's parents created with it are more. */
+  versions?: number;
 }
 
 /**
  * page_revisions, changesets: the versions of the page pageId are versions, oldest first, each a row of its content,
  * with its size and SHA-256, in a changeset of its kind by its writer through its client, reverting the changeset
- * given or none, which holds that version alone.
+ * given or none, which holds that version alone or as many as it says.
  */
 export async function expectVersions(db: Database, pageId: string, versions: StoredVersion[]): Promise<void> {
   const rows = await db.query(
@@ -378,7 +456,7 @@ export async function expectVersions(db: Database, pageId: string, versions: Sto
       ORDER BY r.revision`,
     [pageId]
   );
-  expect(rows).toEqual(versions.map((version) => ({ revertsId: null, ...version, hashed: true, versions: 1 })));
+  expect(rows).toEqual(versions.map((version) => ({ revertsId: null, versions: 1, ...version, hashed: true })));
 }
 
 /** What a revert holds (M8/P3 design 4.8): the changeset it reverts, its items and its versions. */

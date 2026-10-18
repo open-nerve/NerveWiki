@@ -1,3 +1,5 @@
+import { expect } from "@playwright/test";
+
 import { bearer } from "./auth";
 
 // The scripted MCP client of the stories (M9 design 9; M9/P1 design 4.2):
@@ -104,31 +106,40 @@ async function send(url: string, credential: string, version: string | undefined
   return answer.result;
 }
 
-/** credential's client of the entry, initialized as client (default "e2e-agent"), then notifications/initialized sent. */
+/**
+ * credential's client of the entry, initialized as client (default "e2e-agent"), then notifications/initialized sent.
+ * With handshake false it sends neither, its requests carrying the version it asks for, as a client's whose server
+ * restarted (M9/P2 design 4.1): the name its token recorded is then its calls' client.
+ */
 export async function mcpClient(
   baseURL: string,
   credential: string,
-  options: { notebook?: string; client?: string } = {}
+  options: { notebook?: string; client?: string; handshake?: boolean } = {}
 ): Promise<McpClient> {
   const url = mcpURL(baseURL, options.notebook);
   let id = 0;
-  const init = await send(url, credential, undefined, {
-    jsonrpc: "2.0",
-    id: ++id,
-    method: "initialize",
-    params: {
-      protocolVersion: askedVersion,
-      capabilities: {},
-      clientInfo: { name: options.client ?? "e2e-agent", version: "1" },
-    },
-  });
-  const protocolVersion = String(init?.protocolVersion);
-  await send(url, credential, protocolVersion, { jsonrpc: "2.0", method: "notifications/initialized" });
+  let protocolVersion = askedVersion;
+  let instructions: string | undefined;
+  if (options.handshake !== false) {
+    const init = await send(url, credential, undefined, {
+      jsonrpc: "2.0",
+      id: ++id,
+      method: "initialize",
+      params: {
+        protocolVersion: askedVersion,
+        capabilities: {},
+        clientInfo: { name: options.client ?? "e2e-agent", version: "1" },
+      },
+    });
+    protocolVersion = String(init?.protocolVersion);
+    instructions = typeof init?.instructions === "string" ? init.instructions : undefined;
+    await send(url, credential, protocolVersion, { jsonrpc: "2.0", method: "notifications/initialized" });
+  }
   const request = (method: string, params: Record<string, unknown>) =>
     send(url, credential, protocolVersion, { jsonrpc: "2.0", id: ++id, method, params });
   return {
     protocolVersion,
-    instructions: typeof init?.instructions === "string" ? init.instructions : undefined,
+    instructions,
     listTools: async () => ((await request("tools/list", {}))?.tools ?? []) as McpTool[],
     call: async (tool, args = {}) => {
       const result = await request("tools/call", { name: tool, arguments: args });
@@ -141,4 +152,25 @@ export async function mcpClient(
       };
     },
   };
+}
+
+/** A tool's error as its structuredContent.error has it (M9 design 4.7): its code, its text, and its tool's members. */
+export interface McpError {
+  code: string;
+  message: string;
+  [member: string]: unknown;
+}
+
+/** answer's structuredContent, which must be no error; what names the call in a failure. */
+export function resultOf<T>(answer: McpAnswer, what: string): T {
+  expect(answer.isError, `${what}: ${answer.text.join(" ")}`).toBe(false);
+  return answer.structured as T;
+}
+
+/** answer's error, which must be one, its text the error's message; what names the call in a failure. */
+export function errorOf(answer: McpAnswer, what: string): McpError {
+  expect(answer.isError, `${what}: ${JSON.stringify(answer.structured)}`).toBe(true);
+  const { error } = answer.structured as { error: McpError };
+  expect(answer.text, `${what}: the text is the error's message`).toEqual([error.message]);
+  return error;
 }
