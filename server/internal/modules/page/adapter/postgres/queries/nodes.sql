@@ -155,6 +155,14 @@ SET parent_id = sqlc.narg(parent_id), sort_order = sqlc.arg(sort_order), updated
     updated_at = sqlc.arg(now)
 WHERE id = sqlc.arg(id);
 
+-- name: RelocateNode :exec
+-- A node's parent, order and name at once (M9 design 4.10): one statement, the siblings' partial unique indexes
+-- (00042) checking it under its last parent with its last key.
+UPDATE nodes
+SET parent_id = sqlc.narg(parent_id), sort_order = sqlc.arg(sort_order), name = sqlc.arg(name),
+    name_key = sqlc.arg(name_key), updated_by_id = sqlc.arg(by), updated_at = sqlc.arg(now)
+WHERE id = sqlc.arg(id);
+
 -- name: DeleteNodes :one
 -- A subtree's deletion (M4 design 4; M8/P2 design 3.3): the nodes not deleted, and what follows them not deleted, at the
 -- unit's time, by its caller, the root marked as a trash item with its group's counts and height. What an earlier

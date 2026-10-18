@@ -590,6 +590,7 @@ func TestRevertChangesetsDefectsAreUnclassified(t *testing.T) {
 	}{
 		{"RenameNode", domain.ErrTitleTaken},
 		{"MoveNode", domain.ErrTitleTaken},
+		{"RelocateNode", domain.ErrTitleTaken},
 		{"WriteContent", domain.ErrRevisionMismatch},
 	} {
 		f := newFixture()
@@ -599,11 +600,14 @@ func TestRevertChangesetsDefectsAreUnclassified(t *testing.T) {
 		switch tt.call {
 		case "WriteContent":
 			c = f.writing(p.ID, "two")
-		case "MoveNode":
+		case "MoveNode", "RelocateNode":
 			box := f.page("Box", nil, 1)
 			n := f.store.nodes[p.ID]
 			before := n.State()
 			n.ParentID = &box.ID
+			if tt.call == "RelocateNode" { // an MCP move's item: a new parent and a new name
+				n.Name, n.NameKey = "Moved", "moved"
+			}
 			f.store.nodes[p.ID] = n
 			c = f.log.changeset(domain.ChangesetEdit, f.alice, now(), []domain.ChangesetItem{{NodeID: p.ID, Before: &before,
 				After: new(n.State())}})
@@ -614,6 +618,61 @@ func TestRevertChangesetsDefectsAreUnclassified(t *testing.T) {
 		if err == nil || errors.As(err, &e) || !strings.Contains(err.Error(), tt.err.Error()) {
 			t.Errorf("%s answering %v: the revert = %v; want it unclassified", tt.call, tt.err, err)
 		}
+	}
+}
+
+// A revert puts back an item that moved and renamed its node, an MCP
+// move's, in one step of OpMove that one RelocateNode writes, its change
+// carrying the parent and the name of each side (M9/P2 design 3.5.4); an
+// item that moved alone is put back by one MoveNode, one that renamed
+// alone by one RenameNode, as before.
+func TestARevertPutsBackAMoveThatRenamesInOneStep(t *testing.T) {
+	for _, tt := range []struct {
+		name           string
+		moved, renamed bool
+		writes         []string
+		op             domain.Operation
+	}{
+		{"a move that renames", true, true, []string{"RelocateNode"}, domain.OpMove},
+		{"a move", true, false, []string{"MoveNode"}, domain.OpMove},
+		{"a rename", false, true, []string{"RenameNode"}, domain.OpRename},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newFixture()
+			f.grant(domain.ActionRevert)
+			g := &guard{recorder: f.rec}
+			f.guards = []app.WriteGuard{g}
+			drafts, final := f.page("Drafts", nil, 0), f.page("Final", nil, 1)
+			f.page("Plan", &drafts.ID, 0)
+			x := f.page("Plan v2", &drafts.ID, 1)
+			before := x.State()
+			if tt.moved {
+				x.ParentID, x.SortOrder = &final.ID, 0
+			}
+			if tt.renamed {
+				x.Name, x.NameKey = "Plan", "plan"
+			}
+			f.store.nodes[x.ID] = x
+			c := f.log.changeset(domain.ChangesetEdit, f.alice, now(), []domain.ChangesetItem{{NodeID: x.ID, Before: &before,
+				After: new(x.State())}})
+			if _, err := f.revert(c.ID, nil, 0); err != nil {
+				t.Fatal(err)
+			}
+			if got := f.store.nodes[x.ID]; *got.ParentID != drafts.ID || got.Name != "Plan v2" || got.NameKey != "plan v2" ||
+				got.SortOrder != 1 {
+				t.Errorf("after the revert, X = %+v, want Plan v2 under Drafts at 1", got)
+			}
+			if w := f.writes(); !slices.Equal(w, tt.writes) {
+				t.Errorf("writes = %v, want %v", w, tt.writes)
+			}
+			if len(g.steps) != 1 || g.steps[0].Operation != tt.op || g.steps[0].Kind != domain.ChangesetRevert {
+				t.Fatalf("the guard saw %+v, want one %s of a revert", g.steps, tt.op)
+			}
+			back := g.steps[0].Changes[0]
+			if back.NodeID != x.ID || *back.Before != x.State() || *back.After != before {
+				t.Errorf("the step's change = %+v, want X from %+v back to %+v", back, x.State(), before)
+			}
+		})
 	}
 }
 

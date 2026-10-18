@@ -884,6 +884,48 @@ func TestPlanRevertOfASwapIsUnordered(t *testing.T) {
 	}
 }
 
+// An MCP move that renames, Drafts/Plan v2 to Final/Plan, is one item of a
+// new parent and a new name; its revert is one place of both, its last key
+// alone checked (M9/P2 design 3.5.4; review B, B-I1): a move back first
+// with the name it has meets a Plan of Drafts, a rename first a Plan v2 of
+// Final, which a valid state before the changeset may hold. A Plan v2
+// created in Drafts since holds the name it goes back to: a conflict, not
+// an unordered round.
+func TestARevertOfAMoveThatRenamesIsOnePlace(t *testing.T) {
+	for _, tt := range []struct {
+		name      string
+		beside    func(w *world, drafts, final uuid.UUID)
+		ops       []string
+		conflicts []string
+	}{
+		{"a Plan in Drafts", func(w *world, drafts, _ uuid.UUID) { w.page("Plan", &drafts, 0, 1, "other plan") },
+			[]string{"place Plan moved and renamed"}, nil},
+		{"nothing in the way", func(*world, uuid.UUID, uuid.UUID) {}, []string{"place Plan moved and renamed"}, nil},
+		{"a Plan v2 in Final", func(w *world, _, final uuid.UUID) { w.page("Plan v2", &final, 0, 1, "final's") },
+			[]string{"place Plan moved and renamed"}, nil},
+		{"a Plan v2 made in Drafts since", func(w *world, drafts, _ uuid.UUID) { w.page("Plan v2", &drafts, 2, 1, "new") },
+			nil, []string{"title_taken Plan v2 held by Plan v2"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			w := newWorld(t)
+			drafts, final := w.page("Drafts", nil, 0, 1, "d"), w.page("Final", nil, 1, 1, "f")
+			x := w.page("Plan", &final, 1, 1, "x")
+			tt.beside(w, drafts, final)
+			w.placed(x, domain.TreeState{ParentID: &drafts, Name: "Plan v2", SortOrder: 1})
+			plan, err := domain.PlanRevert(w.state())
+			if err != nil {
+				t.Fatalf("PlanRevert = %v, want a plan", err)
+			}
+			if got := w.ops(plan); !slices.Equal(got, tt.ops) {
+				t.Errorf("ops = %q, want %q", got, tt.ops)
+			}
+			if got := w.conflicts(plan); !slices.Equal(got, tt.conflicts) || plan.Count != len(tt.conflicts) {
+				t.Errorf("conflicts = %q (%d), want %q", got, plan.Count, tt.conflicts)
+			}
+		})
+	}
+}
+
 // The trash items a revert reads are its deletions' tops that are still
 // roots of as many pages and attachments; the versions it compares are a
 // restored page's, a deleted page's at its item's revision and its

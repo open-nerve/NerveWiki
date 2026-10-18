@@ -240,6 +240,50 @@ func TestEverySiblingsIndexTellsANameTaken(t *testing.T) {
 	}
 }
 
+// RelocateNode writes a node's parent, order and name in one statement
+// (M9/P2 design 3.5.1): each sibling index tells a name taken under the
+// node's new parent with its new key, the root's and a child's; a name
+// that differs in case alone, under its parent, meets no sibling but
+// itself.
+func TestRelocateNodeMovesAndRenamesAtOnce(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	a, b := f.page(t, f.eng, nil, "A", 0), f.page(t, f.eng, nil, "B", 1)
+	f.page(t, f.eng, &a.ID, "Notes", 0)
+	x := f.page(t, f.eng, &a.ID, "x", 1)
+	at := now().Add(time.Hour)
+	relocated := func(n domain.Node, parent *uuid.UUID, name string, order float64) domain.Node {
+		title, err := domain.CheckTitle("to", name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		n.ParentID, n.SortOrder, n.Name, n.NameKey, n.UpdatedAt = parent, order, title.Name, title.Key, at
+		return n
+	}
+	moved := relocated(x, &b.ID, "Y", 7)
+	if err := f.s.RelocateNode(ctx, moved); err != nil {
+		t.Fatalf("RelocateNode(x to B/Y) = %v", err)
+	}
+	if got, err := f.s.FindNodeIn(ctx, f.eng, x.ID); err != nil || got.ParentID == nil || *got.ParentID != b.ID ||
+		got.Name != "Y" || got.NameKey != shared.TitleKey("Y") || got.SortOrder != 7 || !got.UpdatedAt.Equal(at) {
+		t.Errorf("after RelocateNode, x = %+v, %v; want under B, Y, at 7", got, err)
+	}
+	for _, tt := range []struct {
+		name string
+		n    domain.Node
+	}{
+		{"to the root named as B", relocated(moved, nil, "b", 9)},
+		{"under A named as its Notes", relocated(moved, &a.ID, "NOTES", 9)},
+	} {
+		if err := f.s.RelocateNode(ctx, tt.n); !errors.Is(err, domain.ErrTitleTaken) {
+			t.Errorf("RelocateNode(%s) = %v, want ErrTitleTaken", tt.name, err)
+		}
+	}
+	if err := f.s.RelocateNode(ctx, relocated(moved, &b.ID, "y", 7)); err != nil {
+		t.Errorf("RelocateNode(the case of Y alone) = %v, want it written", err)
+	}
+}
+
 // A parent is in its child's notebook: the foreign key on both columns
 // keeps a tree in one notebook.
 func TestAParentInAnotherNotebook(t *testing.T) {

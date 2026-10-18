@@ -831,6 +831,38 @@ func (q *Queries) NotebookCounts(ctx context.Context, notebookID uuid.UUID) (Not
 	return i, err
 }
 
+const relocateNode = `-- name: RelocateNode :exec
+UPDATE nodes
+SET parent_id = $1, sort_order = $2, name = $3,
+    name_key = $4, updated_by_id = $5, updated_at = $6
+WHERE id = $7
+`
+
+type RelocateNodeParams struct {
+	ParentID  *uuid.UUID
+	SortOrder float64
+	Name      string
+	NameKey   string
+	By        uuid.UUID
+	Now       time.Time
+	ID        uuid.UUID
+}
+
+// A node's parent, order and name at once (M9 design 4.10): one statement, the siblings' partial unique indexes
+// (00042) checking it under its last parent with its last key.
+func (q *Queries) RelocateNode(ctx context.Context, arg RelocateNodeParams) error {
+	_, err := q.db.Exec(ctx, relocateNode,
+		arg.ParentID,
+		arg.SortOrder,
+		arg.Name,
+		arg.NameKey,
+		arg.By,
+		arg.Now,
+		arg.ID,
+	)
+	return err
+}
+
 const renameNode = `-- name: RenameNode :exec
 UPDATE nodes
 SET name = $1, name_key = $2, updated_by_id = $3, updated_at = $4

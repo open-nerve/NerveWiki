@@ -115,12 +115,28 @@ func slotOf(siblings []domain.Node, p Position) (int, error) {
 // unique index would refuse it too, failing the transaction: a unit of
 // several operations could not go on.
 func titleFree(siblings []domain.Node, title domain.Title, self uuid.UUID) error {
-	for _, s := range siblings {
-		if s.ID != self && s.NameKey == title.Key {
-			return domain.ErrTitleTaken
-		}
+	if _, held := holderOf(siblings, title, self); held {
+		return domain.ErrTitleTaken
 	}
 	return nil
+}
+
+// pathFree is titleFree as a path is taken: *domain.PathTaken, of the
+// holder's kind (M9/P2 design 3.5.1), its path its caller's to fill.
+func pathFree(siblings []domain.Node, title domain.Title, self uuid.UUID) error {
+	if h, held := holderOf(siblings, title, self); held {
+		return &domain.PathTaken{Asset: h.Kind == domain.KindAsset}
+	}
+	return nil
+}
+
+// holderOf is the sibling other than self that holds title's key.
+func holderOf(siblings []domain.Node, title domain.Title, self uuid.UUID) (domain.Node, bool) {
+	i := slices.IndexFunc(siblings, func(s domain.Node) bool { return s.ID != self && s.NameKey == title.Key })
+	if i < 0 {
+		return domain.Node{}, false
+	}
+	return siblings[i], true
 }
 
 // placeAmong is where a node goes among siblings, right after the one at

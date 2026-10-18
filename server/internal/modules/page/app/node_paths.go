@@ -8,8 +8,9 @@ import (
 )
 
 // NodePaths finds a notebook's nodes by their paths (M9 design 4.1, 4.8),
-// unlocked; it decides nothing: its callers decided the notebook. P4 adds
-// Paths, the paths of nodes by id, with linking, its one consumer.
+// and writes the paths of nodes by id (M9/P2 design 3.7), unlocked or in
+// the transaction ctx carries; it decides nothing: its callers decided
+// the notebook.
 type NodePaths struct{ store PathStore }
 
 // NewNodePaths returns the paths over store.
@@ -36,14 +37,7 @@ func (p NodePaths) Find(ctx context.Context, notebookID uuid.UUID, path domain.P
 	missing := &domain.PathNotFound{Path: path.Written}
 	var ancestors []domain.Node
 	for i, key := range path.Keys {
-		var n domain.Node
-		var ok bool
-		var err error
-		if i == 0 {
-			n, ok, err = p.store.RootByKey(ctx, notebookID, key)
-		} else {
-			n, ok, err = p.store.ChildByKey(ctx, notebookID, ancestors[i-1].ID, key)
-		}
+		n, ok, err := p.child(ctx, notebookID, ancestors, key)
 		switch {
 		case err != nil:
 			return Found{}, err
@@ -75,14 +69,7 @@ func (p NodePaths) Find(ctx context.Context, notebookID uuid.UUID, path domain.P
 func (p NodePaths) titled(ctx context.Context, notebookID uuid.UUID, ancestors []domain.Node, key string,
 	missing *domain.PathNotFound,
 ) error {
-	var n domain.Node
-	var ok bool
-	var err error
-	if len(ancestors) == 0 {
-		n, ok, err = p.store.RootByKey(ctx, notebookID, key+".md")
-	} else {
-		n, ok, err = p.store.ChildByKey(ctx, notebookID, ancestors[len(ancestors)-1].ID, key+".md")
-	}
+	n, ok, err := p.child(ctx, notebookID, ancestors, key+".md")
 	switch {
 	case err != nil:
 		return err
@@ -90,4 +77,46 @@ func (p NodePaths) titled(ctx context.Context, notebookID uuid.UUID, ancestors [
 		missing.Hint = domain.TitleHint(domain.PathOf(ancestors, n))
 	}
 	return missing
+}
+
+// Walk looks keys up from the notebook's root, one segment after another
+// as Find does, in the transaction ctx carries when it carries one: the
+// nodes found, from the root, up to the first key that names nothing (all
+// of them when each names one). A key before the last that names an
+// attachment is an *AttachmentOnPath of its segment: an attachment holds
+// no nodes; the nodes found end with it then. A write's use case walks in
+// its unit, whose lock of the notebook's row keeps the chain as found
+// (M9 design 4.8), so no hint is looked up.
+func (p NodePaths) Walk(ctx context.Context, notebookID uuid.UUID, keys []string) ([]domain.Node, error) {
+	var found []domain.Node
+	for i, key := range keys {
+		n, ok, err := p.child(ctx, notebookID, found, key)
+		switch {
+		case err != nil:
+			return nil, err
+		case !ok:
+			return found, nil
+		}
+		found = append(found, n)
+		if i < len(keys)-1 && n.Kind != domain.KindPage {
+			return found, &domain.AttachmentOnPath{Segment: i + 1}
+		}
+	}
+	return found, nil
+}
+
+// Paths is the paths of ids' nodes alive in notebookID, by id, as PathOf
+// writes them: one statement whatever their number (PathStore.PathsOf). A
+// node deleted, purged or of another notebook has none.
+func (p NodePaths) Paths(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]string, error) {
+	return p.store.PathsOf(ctx, notebookID, ids)
+}
+
+// child is the node keyed key under the last of chain, the notebook's root
+// for none: one point lookup.
+func (p NodePaths) child(ctx context.Context, notebookID uuid.UUID, chain []domain.Node, key string) (domain.Node, bool, error) {
+	if len(chain) == 0 {
+		return p.store.RootByKey(ctx, notebookID, key)
+	}
+	return p.store.ChildByKey(ctx, notebookID, chain[len(chain)-1].ID, key)
 }

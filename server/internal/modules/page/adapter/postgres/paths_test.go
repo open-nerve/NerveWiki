@@ -2,6 +2,7 @@ package postgresadapter_test
 
 import (
 	"context"
+	"maps"
 	"strings"
 	"testing"
 	"time"
@@ -56,6 +57,35 @@ func TestThePathsLookUpByKey(t *testing.T) {
 		if err != nil || ok != (tt.want != "") || name != tt.want {
 			t.Errorf("%s: %q, %v, %v; want %q", tt.name, name, ok, err, tt.want)
 		}
+	}
+}
+
+// PathsOf writes each node's path as PathOf does, in one statement (M9/P2
+// design 3.7): a page's titles from the root and ".md", a page titled with
+// .md or .MD and one named as an attachment with theirs; an attachment's
+// name as it is. A node in the trash, of another notebook or none has
+// none. TestEveryNodesPathFindsIt holds it to PathOf on random trees.
+func TestThePathsOfNodesAreTheirPaths(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	guide := f.page(t, f.eng, nil, "Guide", 0)
+	md := f.page(t, f.eng, &guide.ID, "notes.md", 0)
+	upper := f.page(t, f.eng, &md.ID, "Draft.MD", 0)
+	png := f.page(t, f.eng, &guide.ID, "x.png", 1)
+	asset := f.asset(t, f.eng, &upper.ID, "diagram.png", 0)
+	gone := f.page(t, f.eng, &guide.ID, "Gone", 2)
+	f.exec(t, "UPDATE nodes SET deleted_at = $2 WHERE id = $1", gone.ID, now())
+	elsewhere := f.page(t, f.ops, nil, "Elsewhere", 0)
+	got, err := f.s.PathsOf(ctx, f.eng, []uuid.UUID{guide.ID, md.ID, upper.ID, png.ID, asset.ID, gone.ID, elsewhere.ID, uuid.NewV7()})
+	want := map[uuid.UUID]string{
+		guide.ID: "Guide.md", md.ID: "Guide/notes.md.md", upper.ID: "Guide/notes.md/Draft.MD.md", png.ID: "Guide/x.png.md",
+		asset.ID: "Guide/notes.md/Draft.MD/diagram.png",
+	}
+	if err != nil || !maps.Equal(got, want) {
+		t.Errorf("PathsOf = %v, %v; want %v", got, err, want)
+	}
+	if got, err := f.s.PathsOf(ctx, f.eng, nil); err != nil || len(got) != 0 {
+		t.Errorf("PathsOf(none) = %v, %v", got, err)
 	}
 }
 

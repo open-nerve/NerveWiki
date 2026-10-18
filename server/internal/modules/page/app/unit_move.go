@@ -61,14 +61,18 @@ func (u *Unit) Move(ctx context.Context, id uuid.UUID, parentID *uuid.UUID, p Po
 	order, _, renumber := u.placeAmong(others, after)
 	moved := n
 	moved.ParentID, moved.SortOrder, moved.UpdatedBy, moved.UpdatedAt = parentID, order, u.write.By, u.write.At
-	return moved, u.moveSubtree(ctx, sub, moved, renumber)
+	return moved, u.moveSubtree(ctx, sub, moved, renumber, u.w.d.NodeWriter.MoveNode)
 }
 
 // moveSubtree moves sub's node to where moved is, its checks passed,
-// before running first in the step's write: the step tells each of its
-// descendants, in a place of the same parent, name and order, and only
-// the node's change is an item. A move and a revert's place share it.
-func (u *Unit) moveSubtree(ctx context.Context, sub domain.Subtree, moved domain.Node, before func(context.Context) error) error {
+// before running first in the step's write and write writing moved: the
+// step tells each of its descendants, in a place of the same parent, name
+// and order, and only the node's change is an item. A move, a relocation
+// and a revert's place share it: a move writes MoveNode, the two others
+// RelocateNode when moved has a new name too (M9/P2 design 3.5.1, 3.5.4).
+func (u *Unit) moveSubtree(ctx context.Context, sub domain.Subtree, moved domain.Node, before func(context.Context) error,
+	write func(context.Context, domain.Node) error,
+) error {
 	from, now := sub[0].Node.State(), moved.State()
 	changes := []domain.Change{{NodeID: moved.ID, Before: &from, After: &now}}
 	for _, d := range sub[1:] {
@@ -79,6 +83,6 @@ func (u *Unit) moveSubtree(ctx context.Context, sub domain.Subtree, moved domain
 		if err := before(ctx); err != nil {
 			return err
 		}
-		return u.w.d.NodeWriter.MoveNode(ctx, moved)
+		return write(ctx, moved)
 	})
 }

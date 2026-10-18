@@ -137,6 +137,28 @@ func (s *Store) ChildByKey(ctx context.Context, notebookID, parentID uuid.UUID, 
 	return foundNode(gen.FindNodeRow(row), err, "find a child by key")
 }
 
+// PathsOf implements app.PathStore: LinkTargetsByIDs' paths, each
+// written by domain.PathOfNames.
+func (s *Store) PathsOf(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]string, error) {
+	paths, err := s.LinkTargetsByIDs(ctx, notebookID, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[uuid.UUID]string, len(paths))
+	for _, p := range paths {
+		names := make([]string, len(p.Steps))
+		for i, step := range p.Steps {
+			names[i] = step.Name
+		}
+		kind := domain.KindPage
+		if p.Asset {
+			kind = domain.KindAsset
+		}
+		out[p.ID] = domain.PathOfNames(names, kind)
+	}
+	return out, nil
+}
+
 // AgentsPage implements app.AgentsStore: an attachment holding the key
 // has no revision.
 func (s *Store) AgentsPage(ctx context.Context, notebookID uuid.UUID, key string) (uuid.UUID, domain.Kind, string, int, bool, error) {
@@ -351,6 +373,21 @@ func (s *Store) MoveNode(ctx context.Context, n domain.Node) error {
 		return domain.ErrTitleTaken
 	case err != nil:
 		return fmt.Errorf("move node: %w", err)
+	}
+	return nil
+}
+
+// RelocateNode implements app.NodeWriter.
+func (s *Store) RelocateNode(ctx context.Context, n domain.Node) error {
+	err := s.queries(ctx).RelocateNode(ctx, gen.RelocateNodeParams{
+		ID: n.ID, ParentID: n.ParentID, SortOrder: n.SortOrder, Name: n.Name, NameKey: n.NameKey, By: n.UpdatedBy,
+		Now: n.UpdatedAt,
+	})
+	switch {
+	case nameTaken(err):
+		return domain.ErrTitleTaken
+	case err != nil:
+		return fmt.Errorf("relocate node: %w", err)
 	}
 	return nil
 }

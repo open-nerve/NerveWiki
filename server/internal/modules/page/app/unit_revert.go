@@ -119,8 +119,9 @@ func (u *Unit) Revert(ctx context.Context, r RevertRead) (RevertDone, error) {
 
 // place puts a node back where a revert's plan says, its checks the
 // plan's: a move with the name it has, its subtree with it, at the order
-// it had, then a rename, keyed by today's rules. A title taken in either
-// write is the plan's defect.
+// it had, then a rename, keyed by today's rules; a move and a rename at
+// once, as one MCP move writes it, in one step of OpMove, one statement
+// (M9/P2 design 3.5.4). A title taken in any write is the plan's defect.
 func (u *Unit) place(ctx context.Context, op domain.RevertOp) error {
 	n, err := u.w.d.Nodes.FindNodeIn(ctx, u.write.NotebookID, op.NodeID)
 	if err != nil {
@@ -132,7 +133,13 @@ func (u *Unit) place(ctx context.Context, op domain.RevertOp) error {
 			return err
 		}
 		n.ParentID, n.SortOrder, n.UpdatedBy, n.UpdatedAt = op.To.ParentID, op.To.SortOrder, u.write.By, u.write.At
-		if err := u.moveSubtree(ctx, sub, n, func(context.Context) error { return nil }); err != nil {
+		write := u.w.d.NodeWriter.MoveNode
+		if op.Rename {
+			// The step renames too: no rename is left after it.
+			n.Name, n.NameKey, write = op.To.Name, shared.TitleKey(op.To.Name), u.w.d.NodeWriter.RelocateNode
+			op.Rename = false
+		}
+		if err := u.moveSubtree(ctx, sub, n, func(context.Context) error { return nil }, write); err != nil {
 			return taken(op.NodeID, err)
 		}
 	}

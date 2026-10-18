@@ -215,10 +215,11 @@ function checkTree(name, list, aliasesOf, assetList = []) {
 
 // A rename case: its keys those the README lists; its pages and attachments a tree as a
 // resolution case's (no pages listed: from, unless it is an attachment, and page, at the root);
-// from a page or an attachment, page a page; to either a rename (the same parent, another title,
-// an attachment's keeping its extension) or a move (the same title, a parent that is a page or
-// the root, out of from's subtree), with no sibling there that has its title key; a
-// nerve-defined case says in its note what Obsidian does.
+// from a page or an attachment, page a page; to a rename (the same parent, another title, an
+// attachment's keeping its extension), a move (another parent, a page or the root, out of
+// from's subtree), or both in one step, as MCP's move makes them (M9/P2 design 3.5.3), with no
+// sibling there that has its title key; a nerve-defined case says in its note what Obsidian
+// does.
 function checkRename(dir, base) {
   const name = `rename/${base}`;
   for (const ext of [".md", ".out.md"]) if (!existsSync(join(dir, base + ext))) fail(name, `missing ${ext}`);
@@ -249,8 +250,6 @@ function checkRename(dir, base) {
   const parent = parentOf(c.to);
   if (parent === parentOf(c.from)) {
     if (titleOf(c.to) === titleOf(c.from)) fail(name, "to is from: nothing is renamed");
-  } else if (titleOf(c.to) !== titleOf(c.from)) {
-    fail(name, "to changes both the parent and the title: a rename or a move does one");
   } else if (parent !== null && (!pages.has(parent) || parent === c.from || parent.startsWith(`${c.from}/`))) {
     fail(name, `to's parent ${parent} must be a page out of from's subtree`);
   }

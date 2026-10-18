@@ -89,9 +89,11 @@ type ContentNow struct {
 // ErrRevertUnordered is a revert whose round cannot apply its changeset's
 // reverse in its fixed order (M8/P3 design 3.5): a step's premise fails at
 // its moment though the state before the changeset is valid. Every
-// changeset of M8 is one kind of operation, which one round reverses; one
-// that is not is M9's batch's (its hand-off), so this is a defect, no
-// problem of the API.
+// changeset of M8 is one kind of operation, which one round reverses, and
+// an item that both moves and renames, as an MCP move writes one, is
+// planned as one place (M9/P2 design 3.5.4); a changeset of several kinds
+// is M9's batch's (its hand-off), so this is a defect, no problem of the
+// API.
 var ErrRevertUnordered = errors.New("page: a revert's round cannot apply its changeset's reverse in its order")
 
 // RevertState is what a revert plans by (M8/P3 design 3.5): the
@@ -861,7 +863,9 @@ func (p *planner) round() ([]RevertOp, error) {
 // place puts back a node the changeset moved, renamed or reordered, where
 // S* differs from now: a move with the name it has, under a parent alive
 // or the root, out of its own subtree, its name's key free there; then a
-// rename, its new key free under its parent.
+// rename, its new key free under its parent. A place that does both, an
+// MCP move's, is one step, its last key alone checked: none in between
+// (M9/P2 design 3.5.4).
 func (p *planner) place(m simulation, id uuid.UUID) (RevertOp, bool, error) {
 	it, ok := p.c.items[id]
 	if !ok || it.Before == nil || it.After == nil || it.Before.Same(*it.After) {
@@ -871,12 +875,19 @@ func (p *planner) place(m simulation, id uuid.UUID) (RevertOp, bool, error) {
 	op := RevertOp{Kind: RevertPlace, NodeID: id, To: to, Move: !SameParent(it.After.ParentID, to.ParentID) ||
 		it.After.SortOrder != to.SortOrder, Rename: it.After.Name != to.Name}
 	if op.Move {
-		if holder, held := m.holder(to.ParentID, now.key); held && holder != id || to.ParentID != nil && !m.alive(*to.ParentID) ||
+		key := now.key
+		if op.Rename {
+			key = shared.TitleKey(to.Name)
+		}
+		if holder, held := m.holder(to.ParentID, key); held && holder != id || to.ParentID != nil && !m.alive(*to.ParentID) ||
 			to.ParentID != nil && p.within(m, *to.ParentID, id) {
 			return RevertOp{}, false, ErrRevertUnordered
 		}
-		now.parent = to.ParentID
+		now.parent, now.key = to.ParentID, key
 		m.set(id, now)
+		if op.Rename {
+			return op, true, nil
+		}
 	}
 	if op.Rename {
 		key := shared.TitleKey(to.Name)
