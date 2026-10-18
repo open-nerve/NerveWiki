@@ -1,14 +1,17 @@
 // Package mcpadapter is the page module's MCP adapter (M9 design 4.1,
-// 4.6, 4.9): the tools list, read and open_notebook, their arguments,
-// their answers within mcpserver's bound, and the words of their errors;
-// the built-in instructions. It imports mcpserver, never the SDK.
+// 4.6, 4.9, 4.10): the tools list, read and open_notebook, and write,
+// edit, move and delete (M9/P2 design 3.11), their arguments, their
+// answers within mcpserver's bound, and the words of their errors; the
+// built-in instructions. It imports mcpserver, never the SDK.
 package mcpadapter
 
 import (
 	"context"
+	"time"
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/app"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/mcpserver"
 )
 
@@ -22,16 +25,43 @@ type ReadPathUseCase interface {
 	Execute(ctx context.Context, notebookID uuid.UUID, path string, offset, column, limit *int, m app.TextMeasure) (app.Read, error)
 }
 
+// WritePathUseCase writes a page's whole content by its path.
+type WritePathUseCase interface {
+	Execute(ctx context.Context, notebookID uuid.UUID, p app.PathWrite, client domain.Client) (app.Written, error)
+}
+
+// EditPageUseCase replaces a string in a page's content.
+type EditPageUseCase interface {
+	Execute(ctx context.Context, notebookID uuid.UUID, p app.PageEdit, client domain.Client) (app.Edited, error)
+}
+
+// RelocatePathUseCase moves or renames a node to its full new path.
+type RelocatePathUseCase interface {
+	Execute(ctx context.Context, notebookID uuid.UUID, p app.PathMove, client domain.Client) (app.Relocated, error)
+}
+
+// DeletePathUseCase puts a node in the trash by its path.
+type DeletePathUseCase interface {
+	Execute(ctx context.Context, notebookID uuid.UUID, p app.PathDelete, client domain.Client) (app.Deleted, error)
+}
+
 // UseCases are the use cases the tools call.
 type UseCases struct {
-	List ListByPatternUseCase
-	Read ReadPathUseCase
-	Open OpenNotebookUseCase
+	List   ListByPatternUseCase
+	Read   ReadPathUseCase
+	Open   OpenNotebookUseCase
+	Write  WritePathUseCase
+	Edit   EditPageUseCase
+	Move   RelocatePathUseCase
+	Delete DeletePathUseCase
 }
 
 // Tools are the module's MCP tools, each a notebook's: list and read, in
 // both entries, read's attachments read by attachments; open_notebook, in
-// the account entry alone, where an agent picks its notebook.
+// the account entry alone, where an agent picks its notebook; write, edit,
+// move and delete, in both entries, each destructive, all but edit
+// idempotent: called again, write writes nothing, move and delete find
+// nothing at their path (M9/P2 design 3.11).
 func Tools(uc UseCases, attachments app.AttachmentReader) []mcpserver.Tool {
 	t := tools{uc: uc, attachments: attachments}
 	return []mcpserver.Tool{
@@ -41,7 +71,24 @@ func Tools(uc UseCases, attachments app.AttachmentReader) []mcpserver.Tool {
 			Annotations: mcpserver.Annotations{ReadOnly: true}, Entry: mcpserver.BothEntries, Notebook: true}, t.read),
 		mcpserver.NewTool(mcpserver.Spec{Name: "open_notebook", Title: "Open a notebook", Description: openNotebookDescription,
 			Annotations: mcpserver.Annotations{ReadOnly: true}, Entry: mcpserver.AccountEntry, Notebook: true}, t.openNotebook),
+		mcpserver.NewTool(mcpserver.Spec{Name: "write", Title: "Write a page", Description: writeDescription,
+			Annotations: mcpserver.Annotations{Destructive: true, Idempotent: true}, Entry: mcpserver.BothEntries, Notebook: true}, t.write),
+		mcpserver.NewTool(mcpserver.Spec{Name: "edit", Title: "Edit a page", Description: editDescription,
+			Annotations: mcpserver.Annotations{Destructive: true}, Entry: mcpserver.BothEntries, Notebook: true}, t.edit),
+		mcpserver.NewTool(mcpserver.Spec{Name: "move", Title: "Move or rename a page or an attachment", Description: moveDescription,
+			Annotations: mcpserver.Annotations{Destructive: true, Idempotent: true}, Entry: mcpserver.BothEntries, Notebook: true}, t.move),
+		mcpserver.NewTool(mcpserver.Spec{Name: "delete", Title: "Delete a page or an attachment", Description: deleteDescription,
+			Annotations: mcpserver.Annotations{Destructive: true, Idempotent: true}, Entry: mcpserver.BothEntries, Notebook: true}, t.delete),
 	}
+}
+
+// changesetOf is a write's changeset and time as an answer gives them:
+// both null when nothing changed, the time in UTC.
+func changesetOf(o app.Outcome) (*string, *time.Time) {
+	if o.ChangesetID == (uuid.UUID{}) {
+		return nil, nil
+	}
+	return new(o.ChangesetID.String()), new(o.At.UTC())
 }
 
 // tools are the handlers of the module's tools.
@@ -51,7 +98,7 @@ type tools struct {
 }
 
 // The tools' descriptions, as api/mcp/tools.json has them (M9/P1 design
-// 3.18).
+// 3.18, M9/P2 design 3.18).
 const (
 	listDescription = `List the notebook's pages and attachments. With pattern empty or "/", the root's children; ` +
 		`with "A/B/", the children of the page A/B.md; both in the tree's order. Any other pattern is a glob over the paths, ` +
@@ -71,4 +118,37 @@ const (
 		`image itself for a PNG, JPEG, GIF or WebP of at most 3 MiB and 8000 pixels a side, or else a link to download ` +
 		`it. Without the server's public address set (server.public_url) there is no download address: an image still ` +
 		`comes itself, any other attachment as its metadata only, with a note saying so.`
+	writeDescription = `Write a page's whole content by its path from the notebook's root; the path ends with .md. Without ` +
+		`base_version, it creates the page, and the parent pages it lacks, empty, in one change; a path that is a ` +
+		`page already is refused. With base_version, the version read, list or write gave, it replaces the ` +
+		`content of the page at the path: refused when the page changed since, or when the path names another ` +
+		`page now; read it again. When the page holds that content already, nothing is written and changed is ` +
+		`false, with an older base_version of that page too, and while the page is being edited. The content is ` +
+		`stored byte for byte: at most 5 MiB of UTF-8, without NUL. A page being edited in the web editor, by you ` +
+		`too, refuses the write, saying by whom; the lock cannot be taken over. The answer has the page's path, ` +
+		`node_id and version, changed (false when nothing was written), the nodes it created, and the changeset's ` +
+		`id and time.`
+	editDescription = `Replace old_string with new_string in a page's content on the server, byte for byte, as a find and ` +
+		`replace: old_string must occur exactly once (occurrences that overlap count), unless replace_all is set, ` +
+		`which replaces each, left to right. Copy old_string from what read gave, with enough of the text around ` +
+		`it to be unique: quotes and spaces are matched as they are. On a page whose line breaks are all CRLF, ` +
+		`old_string and new_string with bare LF are matched and written as CRLF. Without base_version, the edit ` +
+		`applies to the content as it is now, made once more if the page changed while it was made; with ` +
+		`base_version, it is refused when the page changed since. A page being edited in the web editor, by you ` +
+		`too, refuses the edit, saying by whom; the lock cannot be taken over. The answer has the page's version, ` +
+		`how many times old_string was replaced, changed (false when the content stayed as it was), and the ` +
+		`changeset's id and time.`
+	moveDescription = `Move, rename, or both at once, a page or an attachment: from is its path, to the full path it will have, ` +
+		`both from the notebook's root ("Archive/Plan 2026.md"), never a page to move it into. A page's path ends ` +
+		`with .md, and an attachment's keeps an extension, which may change. A page moves with its children. The ` +
+		`page above to must exist: move creates no pages. The links to what moves, and to its pages, are ` +
+		`rewritten to follow it, unless update_links is false, which leaves every page linking to it as it is: ` +
+		`those links may then lead elsewhere, or nowhere. Rewriting the links of a page being edited in the web ` +
+		`editor, by you too, is refused, saying by whom; the lock cannot be taken over. The answer has the new ` +
+		`path, node_id, changed, and the changeset's id and time (null when nothing moved).`
+	deleteDescription = `Put a page or an attachment in the notebook's trash, by its path from the notebook's root: people ` +
+		`restore it from the trash in the web. A page with pages or attachments under it needs recursive set to ` +
+		`true, which puts them in the trash with it. Any of its pages being edited in the web editor, by you too, ` +
+		`refuses the deletion, saying by whom; the locks cannot be taken over. The answer has how many pages and ` +
+		`attachments went to the trash, itself counted, and the changeset's id and time.`
 )

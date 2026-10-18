@@ -88,10 +88,10 @@ func measure() app.TextMeasure {
 func (t tools) read(ctx context.Context, c mcpserver.Call, in readIn) (mcpserver.Result, error) {
 	r, err := t.uc.Read.Execute(ctx, c.Notebook, in.Path, in.Offset, in.Column, in.Limit, measure())
 	if err != nil {
-		return mcpserver.Result{}, toolErr(err)
+		return mcpserver.Result{}, toolErr(err, c, in.Path)
 	}
 	if r.Page == nil {
-		return t.readAttachment(ctx, in.Path, r)
+		return t.readAttachment(ctx, c, in.Path, r)
 	}
 	p := r.Page
 	meta := pageMeta{Path: r.Path, Kind: "page", Version: p.Version.String(), Offset: p.Window.Offset,
@@ -115,11 +115,11 @@ func (t tools) read(ctx context.Context, c mcpserver.Call, in readIn) (mcpserver
 // given all the same, and what would be a link is a note. An attachment
 // gone since, or its access, before its metadata is read or its bytes, is
 // the path not found.
-func (t tools) readAttachment(ctx context.Context, path string, r app.Read) (mcpserver.Result, error) {
+func (t tools) readAttachment(ctx context.Context, c mcpserver.Call, path string, r app.Read) (mcpserver.Result, error) {
 	a, err := t.attachments.Read(ctx, r.Node.ID)
 	switch {
 	case errors.Is(err, domain.ErrNotFound):
-		return mcpserver.Result{}, toolErr(&domain.PathNotFound{Path: path})
+		return mcpserver.Result{}, toolErr(&domain.PathNotFound{Path: path}, c, path)
 	case err != nil:
 		return mcpserver.Result{}, err
 	}
@@ -135,7 +135,7 @@ func (t tools) readAttachment(ctx context.Context, path string, r app.Read) (mcp
 		case errors.Is(err, app.ErrNoAttachmentFile):
 			meta.Note = noFile
 		case errors.Is(err, domain.ErrNotFound):
-			return mcpserver.Result{}, toolErr(&domain.PathNotFound{Path: path})
+			return mcpserver.Result{}, toolErr(&domain.PathNotFound{Path: path}, c, path)
 		case err != nil:
 			return mcpserver.Result{}, err
 		case domain.InlineImage(a.MIME, a.Bytes, w, h):

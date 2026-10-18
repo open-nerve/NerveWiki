@@ -64,6 +64,10 @@ type wiring struct {
 	// reach the MCP platform through them before any module has a tool
 	// (M9/P1 design 3.4.9).
 	mcpTools []mcpserver.Tool
+	// largeBodyWait, when set, is how long a large body waits for its
+	// slot: the large bodies' whole-program tests wait less than
+	// largeBodyWait (M9/P2 design 3.2.5).
+	largeBodyWait time.Duration
 }
 
 // wireApp is newApp with a test's wiring.
@@ -166,13 +170,18 @@ func wireApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrat
 	if err != nil {
 		return nil, err
 	}
-	// /mcp's body is a call's, which can hold a page's content (M9 design 4.4).
+	// /mcp's body is a call's, which can hold a page's content (M9 design
+	// 4.4); past 64 KiB only a tool's call, a large body (M9/P2 design 3.2).
 	bodies := maps.Clone(pg.BodyLimits())
 	bodies[mcpserver.Pattern] = mcpBodyLimit
 	apiCfg := apiConfig(cfg, logger, limiter, ident.Authenticator(),
 		slices.Concat(ident.PublicOperations(), inst.PublicOperations(), ws.PublicOperations(), as.PublicOperations(), tr.PublicOperations(),
 			mcpPublicOperations()),
 		ident.RequestTimeouts(), bodies)
+	apiCfg.LargeBodyAbove = map[string]int64{mcpserver.Pattern: mcpserver.MaxOtherBytes}
+	if w.largeBodyWait > 0 {
+		apiCfg.LargeBodyWait = w.largeBodyWait
+	}
 	apiCfg.NoTokenDetails = mcpNoTokenDetails()
 	api, err := httpserver.NewAPI(apiCfg)
 	if err != nil {

@@ -161,7 +161,9 @@ test("MC1: an agent connects with a personal access token, gets its notebook's A
     })
   );
   expect(client.getInstructions()).toBe(now);
-  expect((await client.listTools()).tools.map((t) => t.name).toSorted()).toEqual(["list", "read"]);
+  expect((await client.listTools()).tools.map((t) => t.name).toSorted()).toEqual(
+    toolLists.notebook.map((t) => t.name).toSorted()
+  );
   const root = await client.callTool({ name: "list", arguments: {} });
   expect(root.isError ?? false, JSON.stringify(root.content)).toBe(false);
   const items = (root.structuredContent as { items: { path: string }[] }).items;

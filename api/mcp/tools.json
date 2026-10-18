@@ -1,6 +1,70 @@
 {
   "notebook": [
     {
+      "name": "delete",
+      "title": "Delete a page or an attachment",
+      "description": "Put a page or an attachment in the notebook's trash, by its path from the notebook's root: people restore it from the trash in the web. A page with pages or attachments under it needs recursive set to true, which puts them in the trash with it. Any of its pages being edited in the web editor, by you too, refuses the deletion, saying by whom; the locks cannot be taken over. The answer has how many pages and attachments went to the trash, itself counted, and the changeset's id and time.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "The path of the page or attachment to delete, from the notebook's root."
+          },
+          "recursive": {
+            "type": ["null", "boolean"],
+            "description": "Delete a page with its children, its pages and attachments. Default false: a page with children is refused."
+          }
+        },
+        "required": ["path"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "edit",
+      "title": "Edit a page",
+      "description": "Replace old_string with new_string in a page's content on the server, byte for byte, as a find and replace: old_string must occur exactly once (occurrences that overlap count), unless replace_all is set, which replaces each, left to right. Copy old_string from what read gave, with enough of the text around it to be unique: quotes and spaces are matched as they are. On a page whose line breaks are all CRLF, old_string and new_string with bare LF are matched and written as CRLF. Without base_version, the edit applies to the content as it is now, made once more if the page changed while it was made; with base_version, it is refused when the page changed since. A page being edited in the web editor, by you too, refuses the edit, saying by whom; the lock cannot be taken over. The answer has the page's version, how many times old_string was replaced, changed (false when the content stayed as it was), and the changeset's id and time.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "The page's path from the notebook's root, as \"A/B.md\": its ancestors' titles, then its own title and \".md\"."
+          },
+          "old_string": {
+            "type": "string",
+            "description": "The text to replace, copied from what read gave, byte for byte: 1 byte to 1 MiB."
+          },
+          "new_string": {
+            "type": "string",
+            "description": "The text to put in its place, which differs from old_string."
+          },
+          "replace_all": {
+            "type": ["null", "boolean"],
+            "description": "Replace every occurrence of old_string, left to right. Default false: old_string must occur exactly once."
+          },
+          "base_version": {
+            "type": ["null", "string"],
+            "description": "The page's version, as read, list or write gave it: the edit is refused when the page changed since. Without it, the edit applies to the content as it is now."
+          }
+        },
+        "required": ["path", "old_string", "new_string"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      }
+    },
+    {
       "name": "list",
       "title": "List nodes",
       "description": "List the notebook's pages and attachments. With pattern empty or \"/\", the root's children; with \"A/B/\", the children of the page A/B.md; both in the tree's order. Any other pattern is a glob over the paths, in path order: * matches within a segment, ? one character, ** any number of segments as a segment of its own (\"**/*.md\" is every page, \"A/**\" everything under A). Matching ignores case. Each item has its path, its kind (page or attachment) and whether it has children; a page also its version, size and last change, an attachment its type and size. An answer holds at most limit items and about 48 KiB, and a costly glob over a large notebook stops after a bounded amount of matching, maybe with no items: whenever next_cursor is set, pass it back as cursor to go on. A path without wildcards that names nothing may come with a hint, as when it names a page without its .md.",
@@ -26,6 +90,36 @@
         "idempotentHint": false,
         "openWorldHint": false,
         "readOnlyHint": true
+      }
+    },
+    {
+      "name": "move",
+      "title": "Move or rename a page or an attachment",
+      "description": "Move, rename, or both at once, a page or an attachment: from is its path, to the full path it will have, both from the notebook's root (\"Archive/Plan 2026.md\"), never a page to move it into. A page's path ends with .md, and an attachment's keeps an extension, which may change. A page moves with its children. The page above to must exist: move creates no pages. The links to what moves, and to its pages, are rewritten to follow it, unless update_links is false, which leaves every page linking to it as it is: those links may then lead elsewhere, or nowhere. Rewriting the links of a page being edited in the web editor, by you too, is refused, saying by whom; the lock cannot be taken over. The answer has the new path, node_id, changed, and the changeset's id and time (null when nothing moved).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "description": "The path of the page or attachment to move, from the notebook's root."
+          },
+          "to": {
+            "type": "string",
+            "description": "The full path it will have, its new name last: never a page to move it into. The page above it must exist."
+          },
+          "update_links": {
+            "type": ["null", "boolean"],
+            "description": "Rewrite the links to what moves, and to its pages, so that they follow it. Default true."
+          }
+        },
+        "required": ["from", "to"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -60,9 +154,111 @@
         "openWorldHint": false,
         "readOnlyHint": true
       }
+    },
+    {
+      "name": "write",
+      "title": "Write a page",
+      "description": "Write a page's whole content by its path from the notebook's root; the path ends with .md. Without base_version, it creates the page, and the parent pages it lacks, empty, in one change; a path that is a page already is refused. With base_version, the version read, list or write gave, it replaces the content of the page at the path: refused when the page changed since, or when the path names another page now; read it again. When the page holds that content already, nothing is written and changed is false, with an older base_version of that page too, and while the page is being edited. The content is stored byte for byte: at most 5 MiB of UTF-8, without NUL. A page being edited in the web editor, by you too, refuses the write, saying by whom; the lock cannot be taken over. The answer has the page's path, node_id and version, changed (false when nothing was written), the nodes it created, and the changeset's id and time.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "The page's path from the notebook's root, as \"A/B.md\": its ancestors' titles, then its own title and \".md\"."
+          },
+          "content": {
+            "type": "string",
+            "description": "The page's whole content, as it will be stored: frontmatter, byte order mark and line breaks included."
+          },
+          "base_version": {
+            "type": ["null", "string"],
+            "description": "The page's version, as read, list or write gave it, to replace its content. Without it, the page is created."
+          }
+        },
+        "required": ["path", "content"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      }
     }
   ],
   "account": [
+    {
+      "name": "delete",
+      "title": "Delete a page or an attachment",
+      "description": "Put a page or an attachment in the notebook's trash, by its path from the notebook's root: people restore it from the trash in the web. A page with pages or attachments under it needs recursive set to true, which puts them in the trash with it. Any of its pages being edited in the web editor, by you too, refuses the deletion, saying by whom; the locks cannot be taken over. The answer has how many pages and attachments went to the trash, itself counted, and the changeset's id and time.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "notebook": {
+            "type": "string",
+            "description": "The notebook's id, from notebooks."
+          },
+          "path": {
+            "type": "string",
+            "description": "The path of the page or attachment to delete, from the notebook's root."
+          },
+          "recursive": {
+            "type": ["null", "boolean"],
+            "description": "Delete a page with its children, its pages and attachments. Default false: a page with children is refused."
+          }
+        },
+        "required": ["notebook", "path"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "edit",
+      "title": "Edit a page",
+      "description": "Replace old_string with new_string in a page's content on the server, byte for byte, as a find and replace: old_string must occur exactly once (occurrences that overlap count), unless replace_all is set, which replaces each, left to right. Copy old_string from what read gave, with enough of the text around it to be unique: quotes and spaces are matched as they are. On a page whose line breaks are all CRLF, old_string and new_string with bare LF are matched and written as CRLF. Without base_version, the edit applies to the content as it is now, made once more if the page changed while it was made; with base_version, it is refused when the page changed since. A page being edited in the web editor, by you too, refuses the edit, saying by whom; the lock cannot be taken over. The answer has the page's version, how many times old_string was replaced, changed (false when the content stayed as it was), and the changeset's id and time.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "notebook": {
+            "type": "string",
+            "description": "The notebook's id, from notebooks."
+          },
+          "path": {
+            "type": "string",
+            "description": "The page's path from the notebook's root, as \"A/B.md\": its ancestors' titles, then its own title and \".md\"."
+          },
+          "old_string": {
+            "type": "string",
+            "description": "The text to replace, copied from what read gave, byte for byte: 1 byte to 1 MiB."
+          },
+          "new_string": {
+            "type": "string",
+            "description": "The text to put in its place, which differs from old_string."
+          },
+          "replace_all": {
+            "type": ["null", "boolean"],
+            "description": "Replace every occurrence of old_string, left to right. Default false: old_string must occur exactly once."
+          },
+          "base_version": {
+            "type": ["null", "string"],
+            "description": "The page's version, as read, list or write gave it: the edit is refused when the page changed since. Without it, the edit applies to the content as it is now."
+          }
+        },
+        "required": ["notebook", "path", "old_string", "new_string"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      }
+    },
     {
       "name": "list",
       "title": "List nodes",
@@ -94,6 +290,40 @@
         "idempotentHint": false,
         "openWorldHint": false,
         "readOnlyHint": true
+      }
+    },
+    {
+      "name": "move",
+      "title": "Move or rename a page or an attachment",
+      "description": "Move, rename, or both at once, a page or an attachment: from is its path, to the full path it will have, both from the notebook's root (\"Archive/Plan 2026.md\"), never a page to move it into. A page's path ends with .md, and an attachment's keeps an extension, which may change. A page moves with its children. The page above to must exist: move creates no pages. The links to what moves, and to its pages, are rewritten to follow it, unless update_links is false, which leaves every page linking to it as it is: those links may then lead elsewhere, or nowhere. Rewriting the links of a page being edited in the web editor, by you too, is refused, saying by whom; the lock cannot be taken over. The answer has the new path, node_id, changed, and the changeset's id and time (null when nothing moved).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "notebook": {
+            "type": "string",
+            "description": "The notebook's id, from notebooks."
+          },
+          "from": {
+            "type": "string",
+            "description": "The path of the page or attachment to move, from the notebook's root."
+          },
+          "to": {
+            "type": "string",
+            "description": "The full path it will have, its new name last: never a page to move it into. The page above it must exist."
+          },
+          "update_links": {
+            "type": ["null", "boolean"],
+            "description": "Rewrite the links to what moves, and to its pages, so that they follow it. Default true."
+          }
+        },
+        "required": ["notebook", "from", "to"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     },
     {
@@ -166,6 +396,40 @@
         "idempotentHint": false,
         "openWorldHint": false,
         "readOnlyHint": true
+      }
+    },
+    {
+      "name": "write",
+      "title": "Write a page",
+      "description": "Write a page's whole content by its path from the notebook's root; the path ends with .md. Without base_version, it creates the page, and the parent pages it lacks, empty, in one change; a path that is a page already is refused. With base_version, the version read, list or write gave, it replaces the content of the page at the path: refused when the page changed since, or when the path names another page now; read it again. When the page holds that content already, nothing is written and changed is false, with an older base_version of that page too, and while the page is being edited. The content is stored byte for byte: at most 5 MiB of UTF-8, without NUL. A page being edited in the web editor, by you too, refuses the write, saying by whom; the lock cannot be taken over. The answer has the page's path, node_id and version, changed (false when nothing was written), the nodes it created, and the changeset's id and time.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "notebook": {
+            "type": "string",
+            "description": "The notebook's id, from notebooks."
+          },
+          "path": {
+            "type": "string",
+            "description": "The page's path from the notebook's root, as \"A/B.md\": its ancestors' titles, then its own title and \".md\"."
+          },
+          "content": {
+            "type": "string",
+            "description": "The page's whole content, as it will be stored: frontmatter, byte order mark and line breaks included."
+          },
+          "base_version": {
+            "type": ["null", "string"],
+            "description": "The page's version, as read, list or write gave it, to replace its content. Without it, the page is created."
+          }
+        },
+        "required": ["notebook", "path", "content"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     }
   ]

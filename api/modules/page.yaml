@@ -39,7 +39,10 @@ paths:
       description: >-
         Creates a page under a parent, or at the notebook's root, with the
         content given, empty when none is, at revision 1; its editors and
-        admins can, a reader cannot (forbidden). A content of more than
+        admins can, a reader cannot (forbidden). Before any check, a body
+        over server.max_body_bytes waits up to 2 seconds for one of the
+        server's two large-body slots, at most one per credential, when they
+        are taken, and is server_busy if none frees. A content of more than
         5 MiB (5,242,880 bytes) or with a NUL character is validation_failed
         first, whatever the notebook. Then a notebook that does not exist,
         is deleted, or that the caller has no role in is notebook.not_found;
@@ -121,9 +124,12 @@ paths:
       description: >-
         Replaces the page's content, byte for byte, on the revision the
         writer read it at; its notebook's editors and admins can, a reader
-        cannot (forbidden). A content of more than 5 MiB (5,242,880 bytes)
-        or with a NUL character is validation_failed first, whatever the
-        page. Then a page that does not exist, is deleted, or whose notebook
+        cannot (forbidden). Before any check, a body over
+        server.max_body_bytes waits up to 2 seconds for one of the server's
+        two large-body slots, at most one per credential, when they are
+        taken, and is server_busy if none frees. A content of more than
+        5 MiB (5,242,880 bytes) or with a NUL character is validation_failed
+        first, whatever the page. Then a page that does not exist, is deleted, or whose notebook
         the caller has no role in is page.not_found; an edit session that is
         not the caller's session of this page, opened from the same client
         (the web or a token), is page.edit_session_ended; then one taken

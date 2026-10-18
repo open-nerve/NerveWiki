@@ -345,6 +345,23 @@ func TestAWriteWaitingForItsLockKeepsItsFactsShare(t *testing.T) {
 // it must answer 200.
 func writeWaitingForItsLock(t *testing.T, tm acmeTeam, id, content string, base int, meanwhile func() answer) answer {
 	t.Helper()
+	var got answer
+	whileAWriteWaitsForItsLock(t, tm, id, content, base, func() {
+		got = meanwhile()
+		if got.res == nil {
+			t.Fatalf("meanwhile: %v", got.err)
+		}
+		tm.contract.CheckResponse(t, got.req, got.res)
+	})
+	return got
+}
+
+// whileAWriteWaitsForItsLock runs meanwhile while a write of content to
+// the page id at base waits for the page's content row, which another
+// transaction holds, the write's facts keeping their share of the parse
+// budget; then lets the write go: it must answer 200.
+func whileAWriteWaitsForItsLock(t *testing.T, tm acmeTeam, id, content string, base int, meanwhile func()) {
+	t.Helper()
 	ctx := context.Background()
 	holder, err := tm.pool.Begin(ctx)
 	if err != nil {
@@ -359,11 +376,7 @@ func writeWaitingForItsLock(t *testing.T, tm acmeTeam, id, content string, base 
 	go func() { written <- send() }()
 	pgtest.WaitForLockWaitsOn(t, tm.pool, "page_contents", 1, interleavingWait)
 
-	got := meanwhile()
-	if got.res == nil {
-		t.Fatalf("meanwhile: %v", got.err)
-	}
-	tm.contract.CheckResponse(t, got.req, got.res)
+	meanwhile()
 	if err := holder.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -375,7 +388,6 @@ func writeWaitingForItsLock(t *testing.T, tm acmeTeam, id, content string, base 
 	case <-time.After(interleavingWait):
 		t.Fatal("the write did not answer")
 	}
-	return got
 }
 
 // The least parse budget the configuration takes is a page's largest

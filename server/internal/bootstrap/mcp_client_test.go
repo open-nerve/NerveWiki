@@ -57,9 +57,15 @@ type mcpApp struct {
 // notebook of hers deleted, and bob's notebook in beta.
 func startMCPApp(t *testing.T, tools []mcpserver.Tool) *mcpApp {
 	t.Helper()
+	return startMCPAppWith(t, wiring{mcpTools: tools})
+}
+
+// startMCPAppWith is startMCPApp of a test's wiring.
+func startMCPAppWith(t *testing.T, w wiring) *mcpApp {
+	t.Helper()
 	url := pgtest.NewDatabase(t)
 	logs := &syncBuffer{}
-	return runMCPApp(t, wireMCPApp(t, testConfig(t, url, false), logs, tools), url, logs)
+	return runMCPApp(t, wireMCPAppWith(t, testConfig(t, url, false), logs, w), url, logs)
 }
 
 // runMCPApp runs a, on the database at url, logging to logs, and prepares
@@ -83,8 +89,14 @@ func runMCPApp(t *testing.T, a *app, url string, logs *syncBuffer) *mcpApp {
 // to logs, and closes it when the test ends.
 func wireMCPApp(t *testing.T, cfg config.Config, logs *syncBuffer, tools []mcpserver.Tool) *app {
 	t.Helper()
+	return wireMCPAppWith(t, cfg, logs, wiring{mcpTools: tools})
+}
+
+// wireMCPAppWith is wireMCPApp of a test's wiring.
+func wireMCPAppWith(t *testing.T, cfg config.Config, logs *syncBuffer, w wiring) *app {
+	t.Helper()
 	logger := slog.New(slog.NewJSONHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	a, err := wireApp(context.Background(), cfg, logger, migrations.FS(), testWebUI(), wiring{mcpTools: tools})
+	a, err := wireApp(context.Background(), cfg, logger, migrations.FS(), testWebUI(), w)
 	if err != nil {
 		t.Fatalf("wiring the app: %v", err)
 	}

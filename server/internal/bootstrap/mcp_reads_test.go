@@ -397,17 +397,15 @@ func TestTheMCPReadsWithAPublicURLEndingInASlash(t *testing.T) {
 // are their own. S3's notebooks refuses only an argument it does not
 // take; open_notebook a call without its notebook or with an argument it
 // does not take, and a notebook not seen, deleted, of none or no UUID
-// (M9/P1 design 3.17).
+// (M9/P1 design 3.17). P2's writes answer each code of the REST writes
+// they are: the reads' app's calls, a reader's forbidden, and server_busy
+// with the parse budget held (writeCodeCalls, carolsWrites, busyWrites).
 func TestTheMCPToolsErrorsCarryTheirCodes(t *testing.T) {
 	r := startReadsApp(t, publicOrigin)
-	r.createPage(t, "", "Guide", "a\n")
+	guide := r.createPage(t, "", "Guide", "a\n")
 	unseen := uuid.NewV7().String()
-	answered := map[string]map[string]bool{}
-	for _, tt := range []struct {
-		path, tool string
-		args       map[string]any
-		want       string
-	}{
+	answered := answeredCodes{}
+	calls := []codeCall{
 		{atNotebook(r.notebook), "list", map[string]any{"limit": "two"}, "bad_request"},
 		{atNotebook(r.notebook), "list", map[string]any{"cursor": "nope"}, "bad_request"},
 		{atNotebook(r.notebook), "list", map[string]any{"limit": 0}, "validation_failed"},
@@ -431,16 +429,17 @@ func TestTheMCPToolsErrorsCarryTheirCodes(t *testing.T) {
 		{mcpserver.Pattern, "open_notebook", map[string]any{"notebook": r.deleted}, "notebook.not_found"},
 		{mcpserver.Pattern, "open_notebook", map[string]any{"notebook": unseen}, "notebook.not_found"},
 		{mcpserver.Pattern, "open_notebook", map[string]any{"notebook": "nope"}, "notebook.not_found"},
-	} {
+	}
+	for _, tt := range append(calls, writeCodeCalls(t, r, guide)...) {
 		member := r.call(t, tt.path, tt.tool, tt.args).toolError(t)
 		if member["code"] != tt.want {
 			t.Errorf("%s %v at %s = %v, want %s", tt.tool, tt.args, tt.path, member, tt.want)
+			continue
 		}
-		if answered[tt.tool] == nil {
-			answered[tt.tool] = map[string]bool{}
-		}
-		answered[tt.tool][tt.want] = true
+		answered.add(tt.tool, tt.want)
 	}
+	r.carolsWrites(t, answered)
+	busyWrites(t, answered)
 	for tool, codes := range mcpToolCodes() {
 		for _, code := range codes {
 			if !answered[tool][code] {
@@ -525,25 +524,76 @@ func typeHolds(s map[string]any, want string) bool {
 	return false
 }
 
-// argumentsAt are arguments that hold value at path, a stringParameters
-// path: the objects and arrays on the way built around it.
-func argumentsAt(path string, value any) map[string]any {
+// withArgumentAt is a deep copy of args holding value at path, a
+// stringParameters path: the objects on the way kept or made, ops[].path
+// the first op's path, an op made when there is none (M9/P2 design
+// 3.13.1).
+func withArgumentAt(args map[string]any, path string, value any) map[string]any {
+	out := clonedArgs(args)
 	parts := strings.Split(path, ".")
-	v := value
-	for i := len(parts) - 1; i >= 0; i-- {
-		name, inArray := strings.CutSuffix(parts[i], "[]")
-		if inArray {
-			v = []any{v}
+	at := out
+	for i, part := range parts {
+		name, inArray := strings.CutSuffix(part, "[]")
+		switch last := i == len(parts)-1; {
+		case last && inArray:
+			at[name] = []any{value}
+		case last:
+			at[name] = value
+		case inArray:
+			items, _ := at[name].([]any)
+			if len(items) == 0 {
+				items = []any{map[string]any{}}
+			}
+			first, ok := items[0].(map[string]any)
+			if !ok {
+				first = map[string]any{}
+				items[0] = first
+			}
+			at[name], at = items, first
+		default:
+			next, ok := at[name].(map[string]any)
+			if !ok {
+				next = map[string]any{}
+				at[name] = next
+			}
+			at = next
 		}
-		v = map[string]any{name: v}
 	}
-	out, _ := v.(map[string]any)
 	return out
+}
+
+// clonedArgs is a deep copy of args, as JSON has them.
+func clonedArgs(args map[string]any) map[string]any {
+	var out map[string]any
+	b, _ := json.Marshal(args)
+	if _ = json.Unmarshal(b, &out); out == nil {
+		out = map[string]any{}
+	}
+	return out
+}
+
+// argumentAt is the value args hold at path, as withArgumentAt puts it.
+func argumentAt(args map[string]any, path string) any {
+	var v any = args
+	for _, part := range strings.Split(path, ".") {
+		name, inArray := strings.CutSuffix(part, "[]")
+		object, _ := v.(map[string]any)
+		v = object[name]
+		if inArray {
+			items, _ := v.([]any)
+			if len(items) == 0 {
+				return nil
+			}
+			v = items[0]
+		}
+	}
+	return v
 }
 
 // The derivation finds a string parameter wherever an argument holds one:
 // on a synthetic schema whose one string is in ops[].path (the shape of
-// P2's edit), it finds it, and the arguments it builds reach it.
+// P3's batch), it finds it, and the arguments it builds reach it, beside
+// the others, which are kept.
 func TestTheStringParametersAreDerivedFromTheSchema(t *testing.T) {
 	var schema map[string]any
 	if err := json.Unmarshal([]byte(`{"type":"object","properties":{"limit":{"type":["null","integer"]},
@@ -553,54 +603,184 @@ func TestTheStringParametersAreDerivedFromTheSchema(t *testing.T) {
 	if got := stringParameters(schema); !slices.Equal(got, []string{"ops[].path"}) {
 		t.Fatalf("stringParameters = %v, want ops[].path", got)
 	}
-	b, _ := json.Marshal(argumentsAt("ops[].path", "x"))
-	if string(b) != `{"ops":[{"path":"x"}]}` {
-		t.Errorf("argumentsAt(ops[].path) = %s", b)
+	for _, tt := range []struct {
+		args map[string]any
+		want string
+	}{
+		{nil, `{"ops":[{"path":"x"}]}`},
+		{map[string]any{"limit": 2, "ops": []any{map[string]any{"path": "a", "n": 1}, map[string]any{"path": "b"}}},
+			`{"limit":2,"ops":[{"n":1,"path":"x"},{"path":"b"}]}`},
+	} {
+		got := withArgumentAt(tt.args, "ops[].path", "x")
+		if b, _ := json.Marshal(got); string(b) != tt.want || argumentAt(got, "ops[].path") != "x" {
+			t.Errorf("withArgumentAt(%v, ops[].path) = %s, want %s", tt.args, b, tt.want)
+		}
+	}
+	if b, _ := json.Marshal(withArgumentAt(map[string]any{"s": "a"}, "t", "x")); string(b) != `{"s":"a","t":"x"}` {
+		t.Errorf("withArgumentAt kept %s", b)
 	}
 }
 
-// No string argument of any tool answers internal_error (M9/P1 design
-// 3.13): each string parameter that both entries' tools/list tell, NUL in
-// it, answers a result or a tool's error of another code; a lone
-// surrogate's escape in it is the edge's 400.
-func TestToolStringsDoNotAnswerInternalErrors(t *testing.T) {
-	r := startReadsApp(t, publicOrigin)
-	cases := 0
-	for entry, tools := range r.listedTools(t) {
-		path := mcpserver.Pattern
-		if mcpEntries()[entry] == mcpserver.NotebookEntry {
-			path = atNotebook(r.notebook)
-		}
-		for _, tool := range tools {
+// validToolArguments are, for each tool, arguments that reach its use
+// case in alice's notebook, where Strings.md holds "x" (M9/P2 design
+// 3.13.1): a tool listed without them fails the check, so that P3's and
+// P4's tools add theirs. The account entry's notebook is added to them.
+func validToolArguments() map[string]map[string]any {
+	return map[string]map[string]any{
+		"notebooks":     {},
+		"open_notebook": {},
+		"list":          {},
+		"read":          {"path": "Strings.md"},
+		"write":         {"path": "Strings.md", "content": "x"},
+		"edit":          {"path": "Strings.md", "old_string": "x", "new_string": "y"},
+		"move":          {"from": "Strings.md", "to": "Moved.md"},
+		"delete":        {"path": "Gone.md"},
+	}
+}
+
+// schemaRefusal starts the text of the arguments' refusal by the tool's
+// input schema (mcpserver's argumentsError), which no use case answers.
+const schemaRefusal = "bad_request: The arguments do not match the tool's input schema."
+
+// nul is what each string parameter is given, its argument checked
+// before the call.
+const nul = "a\x00b"
+
+// toolStringProblems are the ways a NUL in a tool's string argument fails
+// to reach its use case (M9/P2 design 3.13.1): for each tool lists has,
+// each string parameter of its schema, given nul in a copy of the tool's
+// valid arguments, the account entry's notebook among them first, and
+// sent by call: a tool of no valid arguments; arguments that do not hold
+// the NUL where they should; internal_error; and the schema's refusal,
+// which a call that reaches its use case never answers (a use case's 400
+// of a bad cursor, or its 422, does).
+func toolStringProblems(t *testing.T, lists toolLists, valid map[string]map[string]any, notebook string,
+	call func(entry, tool string, args map[string]any) mcpAnswer,
+) []string {
+	t.Helper()
+	var problems []string
+	for _, entry := range slices.Sorted(maps.Keys(lists)) {
+		for _, tool := range lists[entry] {
 			object, _ := tool.(map[string]any)
 			name, _ := object["name"].(string)
 			schema, _ := object["inputSchema"].(map[string]any)
+			args, ok := valid[name]
+			if !ok {
+				problems = append(problems, fmt.Sprintf("the %s entry's %s has no valid arguments", entry, name))
+				continue
+			}
+			props, _ := schema["properties"].(map[string]any)
+			base := clonedArgs(args)
+			if _, takes := props["notebook"]; takes && mcpEntries()[entry] == mcpserver.AccountEntry {
+				base["notebook"] = notebook
+			}
 			for _, param := range stringParameters(schema) {
-				cases++
-				args := argumentsAt(param, "a\x00b")
-				if _, ok := args["notebook"]; !ok && path == mcpserver.Pattern {
-					args["notebook"] = r.notebook
+				sent := withArgumentAt(base, param, nul)
+				if argumentAt(sent, param) != nul {
+					problems = append(problems, fmt.Sprintf("the %s entry's %s: the arguments %v do not hold the NUL at %s", entry, name, sent, param))
+					continue
 				}
-				if code := mcpCellOf(t, r.call(t, path, name, args)).code; code == "internal_error" {
-					t.Errorf("%s %s with a NUL in %s = internal_error", entry, name, param)
-				}
-				const mark = "lone-surrogate-here"
-				args = argumentsAt(param, mark)
-				if _, ok := args["notebook"]; !ok && path == mcpserver.Pattern {
-					args["notebook"] = r.notebook
-				}
-				body, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 7, "method": "tools/call",
-					"params": map[string]any{"name": name, "arguments": args}})
-				raw := strings.Replace(string(body), mark, "a"+`\`+"ud800b", 1)
-				if a := r.post(t, context.Background(), path, r.pat, raw, afterHandshake()); a.status != http.StatusBadRequest {
-					t.Errorf("%s %s with a lone surrogate in %s = %d %s, want 400", entry, name, param, a.status, a.body)
+				a := call(entry, name, sent)
+				switch r := a.result(t); {
+				case mcpCellOf(t, a).code == "internal_error":
+					problems = append(problems, fmt.Sprintf("the %s entry's %s with a NUL in %s = internal_error", entry, name, param))
+				case r["isError"] == true && strings.HasPrefix(fmt.Sprint(a.toolError(t)["message"]), schemaRefusal):
+					problems = append(problems, fmt.Sprintf("the %s entry's %s: %s did not reach its use case", entry, name, param))
 				}
 			}
 		}
+	}
+	return problems
+}
+
+// No string argument of any tool answers internal_error, and each reaches
+// its use case (M9/P1 design 3.13; M9/P2 design 3.13.1): each string
+// parameter that both entries' tools/list tell, NUL in it among the
+// tool's valid arguments, is answered by the tool's use case, not by the
+// schema; a lone surrogate's escape in it is the edge's 400.
+func TestToolStringsDoNotAnswerInternalErrors(t *testing.T) {
+	r := startReadsApp(t, publicOrigin)
+	r.createPage(t, "", "Strings", "x")
+	lists := r.listedTools(t)
+	pathOf := func(entry string) string {
+		if mcpEntries()[entry] == mcpserver.NotebookEntry {
+			return atNotebook(r.notebook)
+		}
+		return mcpserver.Pattern
+	}
+	cases := 0
+	call := func(entry, tool string, args map[string]any) mcpAnswer {
+		cases++
+		return r.call(t, pathOf(entry), tool, args)
+	}
+	for _, p := range toolStringProblems(t, lists, validToolArguments(), r.notebook, call) {
+		t.Error(p)
 	}
 	// read's path is a string in both entries: none found means the
 	// derivation broke.
 	if cases == 0 {
 		t.Fatal("no string parameter derived from the tools' lists")
+	}
+	for _, entry := range slices.Sorted(maps.Keys(lists)) {
+		for _, tool := range lists[entry] {
+			object, _ := tool.(map[string]any)
+			name, _ := object["name"].(string)
+			schema, _ := object["inputSchema"].(map[string]any)
+			for _, param := range stringParameters(schema) {
+				const mark = "lone-surrogate-here"
+				args := withArgumentAt(validToolArguments()[name], param, mark)
+				if _, ok := args["notebook"]; !ok && pathOf(entry) == mcpserver.Pattern {
+					args["notebook"] = r.notebook
+				}
+				body, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 7, "method": "tools/call",
+					"params": map[string]any{"name": name, "arguments": args}})
+				raw := strings.Replace(string(body), mark, "a"+`\`+"ud800b", 1)
+				if a := r.post(t, context.Background(), pathOf(entry), r.pat, raw, afterHandshake()); a.status != http.StatusBadRequest {
+					t.Errorf("%s %s with a lone surrogate in %s = %d %s, want 400", entry, name, param, a.status, a.body)
+				}
+			}
+		}
+	}
+}
+
+// strictArgs are the seam tool strict's arguments: two strings it needs.
+type strictArgs struct {
+	Must string `json:"must" jsonschema:"Required."`
+	S    string `json:"s" jsonschema:"Required too."`
+}
+
+// The check catches each way a string's call does not reach its use case
+// (M9/P2 design 3.13.1, reverse controls): beside the modules' tools, the
+// seam tool strict needs must and s; given strict's valid arguments
+// without must, s's call is the schema's refusal, and only it; without
+// strict's arguments, strict has none. The problems are exactly those:
+// a check that put the NUL alone in the arguments would add must's.
+func TestToolStringsCatchASchemaRefusal(t *testing.T) {
+	strict := mcpserver.NewTool(mcpserver.Spec{Name: "strict", Title: "Strict", Description: "Needs must and s.",
+		Annotations: mcpserver.Annotations{ReadOnly: true}, Entry: mcpserver.AccountEntry},
+		func(context.Context, mcpserver.Call, strictArgs) (mcpserver.Result, error) {
+			return mcpserver.Result{Structured: map[string]any{}}, nil
+		})
+	db := pgtest.NewDatabase(t)
+	logs := &syncBuffer{}
+	m := runMCPApp(t, wireMCPApp(t, testConfig(t, db, false), logs, []mcpserver.Tool{strict}), db, logs)
+	r := readsApp{mcpApp: m}
+	r.createPage(t, "", "Strings", "x")
+	lists := r.listedTools(t)
+	call := func(entry, tool string, args map[string]any) mcpAnswer {
+		path := mcpserver.Pattern
+		if mcpEntries()[entry] == mcpserver.NotebookEntry {
+			path = atNotebook(r.notebook)
+		}
+		return r.call(t, path, tool, args)
+	}
+	valid := validToolArguments()
+	valid["strict"] = map[string]any{"s": "x"}
+	if got, want := toolStringProblems(t, lists, valid, r.notebook, call), []string{"the account entry's strict: s did not reach its use case"}; !slices.Equal(got, want) {
+		t.Errorf("the problems of strict without must = %q, want %q", got, want)
+	}
+	delete(valid, "strict")
+	if got, want := toolStringProblems(t, lists, valid, r.notebook, call), []string{"the account entry's strict has no valid arguments"}; !slices.Equal(got, want) {
+		t.Errorf("the problems of strict without its arguments = %q, want %q", got, want)
 	}
 }

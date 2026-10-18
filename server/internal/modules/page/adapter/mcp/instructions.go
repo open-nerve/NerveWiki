@@ -45,4 +45,15 @@ Tools
 - read: a page's lines exactly as stored, from offset for limit lines, about 45 KiB at most per call. Go on with ` +
 	`next_offset, and with next_column within a line too long for one call. An attachment gives its metadata, and the ` +
 	`image or a link to download it.
-- A page's version, "<node id>:<revision>", tells which content you read.`
+- write: a page's whole content. Without base_version it creates the page and its missing parent pages; with the ` +
+	`version you read, it replaces the content.
+- edit: replaces old_string, which must occur exactly once unless replace_all is set, with new_string, byte for byte.
+- move: moves or renames a page or an attachment to its full new path ("B/x.md", never a page to move it into); ` +
+	`links to it follow unless update_links is false.
+- delete: puts a page or an attachment in the trash; a page with children needs recursive.
+- A page's version, "<node id>:<revision>", tells which content you read. A write or edit with base_version is ` +
+	`refused when the page changed since: read it again.
+- A page being edited in the web editor, by you too, refuses writes, edits, deletes and a move that would rewrite ` +
+	`its links, saying by whom: try again after they leave edit mode. The lock cannot be taken over.
+- Calls over 64 KiB are taken one at a time per token, the next waiting 2 seconds at most: send large writes one ` +
+	`after another, not in parallel.`
