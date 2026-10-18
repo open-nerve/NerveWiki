@@ -182,8 +182,8 @@ func TestTheInstructionsCacheHoldsTheLastUsed(t *testing.T) {
 // The cache holds its texts, not the contents they were cut from: an
 // AGENTS page of 1 MiB written 256 times, each revision read once, leaves
 // 256 entries of at most 32 KiB, 8 MiB in all, once the store holds none of
-// the contents; held as parts of their contents, they were 258 MiB (M9/P1
-// design 3.15.1, review A-I1).
+// the contents; held as parts of their contents, they held 256 MiB (M9/P1
+// design 3.15.1, S3 review A-I1).
 func TestTheInstructionsCacheHoldsItsTextsAlone(t *testing.T) {
 	f := newFixture()
 	ins := f.instructionsOf()
