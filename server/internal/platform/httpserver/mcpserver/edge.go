@@ -27,7 +27,7 @@ const Pattern = httpserver.MCPPath
 // the SDK could not read into a request's, whose error repeats them,
 // escaped to four times their size (M9/P1 S1 review A-M1): of a
 // tools/call, which alone may be as long as the route's limit
-// (maxOtherBytes), they cannot fail. Null is the member left out, as the
+// (MaxOtherBytes), they cannot fail. Null is the member left out, as the
 // SDK reads it. A function, not a package variable: each caller gets its
 // own table (gochecknoglobals).
 func Bodies() *bodyshape.Table {
@@ -55,20 +55,22 @@ func Bodies() *bodyshape.Table {
 	}
 }
 
-// maxOtherBytes bounds the body of every request but a tools/call of a
+// MaxOtherBytes bounds the body of every request but a tools/call of a
 // tool its entry serves: a handshake, a ping or a prompt's get is a few
 // hundred bytes, and the SDK's error of params it cannot read repeats
 // them, escaped to four times their size; a tools/call's arguments, which
-// may be a page, it never reads (M9/P1 S1 review A-M1).
-const maxOtherBytes = 64 << 10
+// may be a page, it never reads (M9/P1 S1 review A-M1). It is Pattern's
+// threshold of the large bodies too, which bootstrap gives the API: past
+// it a body can only be a call (M9/P2 design 3.2).
+const MaxOtherBytes = 64 << 10
 
-// maxIDBytes bounds the id of a body over maxOtherBytes, as it is written:
+// maxIDBytes bounds the id of a body over MaxOtherBytes, as it is written:
 // the SDK repeats the id in its answer, escaped to as much as twice its
 // bytes (M9/P1 S1 fix-check A F2).
 const maxIDBytes = 256
 
 // sizeError is the 413 of the body of r, as bodyshape read it, when it is
-// over maxOtherBytes and no tools/call that the SDK reads without an
+// over MaxOtherBytes and no tools/call that the SDK reads without an
 // answer as long: the error of API.Wrap's body limit over the route's.
 // The body was one JSON object without a name twice, and is read as the
 // SDK reads it. Its jsonrpc is 2.0, as the SDK's error of another tag
@@ -85,7 +87,7 @@ const maxIDBytes = 256
 // that the package has left the experiment.
 func (s *Server) sizeError(r *http.Request) error {
 	body, ok := bodyshape.Bytes(r)
-	if !ok || len(body) <= maxOtherBytes {
+	if !ok || len(body) <= MaxOtherBytes {
 		return nil
 	}
 	var m struct {
@@ -101,7 +103,7 @@ func (s *Server) sizeError(r *http.Request) error {
 		m.Method == methodCallTool && s.tools[askedEntry(r.URL)][m.Params.Name] {
 		return nil
 	}
-	return &http.MaxBytesError{Limit: maxOtherBytes}
+	return &http.MaxBytesError{Limit: MaxOtherBytes}
 }
 
 // Subtree answers every path below Pattern: 404 problem+json, not the

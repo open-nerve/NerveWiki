@@ -25,6 +25,7 @@ const (
 	CodeRateLimited     = "rate_limited"
 	CodeInternal        = "internal_error"
 	CodeNotReady        = "not_ready"
+	CodeServerBusy      = "server_busy" // the large bodies' slots (M9/P2)
 )
 
 // Problem is an RFC 9457 problem details body (v0.1 design 6.1). Code is the

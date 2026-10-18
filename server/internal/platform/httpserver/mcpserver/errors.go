@@ -17,11 +17,38 @@ import (
 
 // ToolError is a tool's error whose words its module writes (M9 design
 // 4.7): Err is classified as any error is; Text, when set, is the
-// answer's message, and Extra adds members to structuredContent.error.
+// answer's message, and Extra adds members to structuredContent.error:
+// those the problem has not, and lock, locks and locks_count over the
+// problem's, which only the module can give paths; code, message, fields
+// and retry_after_seconds are always mcpserver's, as the text says them
+// (M9/P2 design 3.10.1).
 type ToolError struct {
 	Err   error
 	Text  string
 	Extra map[string]any
+	// Fit, when set, builds the error with k of its N items: mcpserver
+	// answers the largest k it finds whose whole answer is within
+	// MaxAnswerBytes; Text and Extra are not read then.
+	Fit *ErrorFit
+}
+
+// ErrorFit is an error of a list, or of parts that may not all fit (M9/P2
+// design 3.10): Build(k) gives the text and the extra members with k of
+// the N items. mcpserver searches k as Fit does; Build(0) over the bound is
+// internal_error.
+type ErrorFit struct {
+	N     int
+	Build func(k int) (text string, extra map[string]any)
+}
+
+// MaxErrorLocks is how many locks an error's structuredContent lists at
+// most (M9/P2 design 3.10): the rest are counted in locks_count.
+const MaxErrorLocks = 20
+
+// reservedMembers are the members of structuredContent.error that Extra
+// never sets: what the text says, the answer's own.
+func reservedMembers() map[string]bool {
+	return map[string]bool{"code": true, "message": true, "fields": true, "retry_after_seconds": true}
 }
 
 func (e *ToolError) Error() string {
@@ -69,22 +96,64 @@ func (s *Server) toolError(ctx context.Context, name string, err error) (*mcp.Ca
 		s.logger.LogAttrs(ctx, slog.LevelError, "MCP tool failed", append(attrs, slog.Any("error", err))...)
 		return s.internalError(ctx, internalFailed), httpserver.CodeInternal
 	}
-	p := a.Problem
-	text := p.Code + ": " + p.Detail + fieldsText(p.Errors)
+	res, n, merr := problemAnswer(a, err)
+	switch {
+	case merr != nil:
+		s.logger.LogAttrs(ctx, slog.LevelError, "MCP tool failed", append(attrs,
+			slog.Any("error", fmt.Errorf("encoding its error's member: %w", merr)))...)
+		return s.internalError(ctx, internalFailed), httpserver.CodeInternal
+	case n > MaxAnswerBytes:
+		return s.overBound(ctx, name, n)
+	}
+	return res, a.Problem.Code
+}
+
+// problemAnswer is the answer of err, a tool's error that a classified as
+// a problem, and its bytes as MaxAnswerBytes counts them: the text, the
+// module's or the problem's code, detail, fields and retry; the member,
+// the problem's and then Extra's (membersOf); for a ToolError with Fit,
+// the answer of the most items it finds within the bound, or of none when
+// even that is over it. The error is a member that does not encode.
+func problemAnswer(a httpserver.Answer, err error) (*mcp.CallToolResult, int, error) {
+	text := a.Problem.Code + ": " + a.Problem.Detail + fieldsText(a.Problem.Errors)
 	if a.Retry > 0 {
 		text += fmt.Sprintf(" Try again in %d s.", retrySeconds(a))
 	}
-	member := errorMember{}
-	var te *ToolError
-	if errors.As(err, &te) {
-		if te.Text != "" {
-			text = te.Text
+	answerOf := func(words string, extra map[string]any) (*mcp.CallToolResult, int, error) {
+		if words == "" {
+			words = text
 		}
-		for k, v := range te.Extra {
-			member[k] = v
+		res, err := errorAnswer(words, membersOf(a, words, extra))
+		if err != nil {
+			return nil, 0, err
 		}
+		return res, answerBytes(res), nil
 	}
-	member["code"], member["message"] = p.Code, text
+	var te *ToolError
+	if !errors.As(err, &te) {
+		return answerOf("", nil)
+	}
+	if te.Fit == nil {
+		return answerOf(te.Text, te.Extra)
+	}
+	type measured struct {
+		res *mcp.CallToolResult
+		n   int
+	}
+	m, _, _, ferr := fitItems(te.Fit.N, func(k int) (measured, bool, error) {
+		res, n, err := answerOf(te.Fit.Build(k))
+		return measured{res, n}, n <= MaxAnswerBytes, err
+	})
+	return m.res, m.n, ferr
+}
+
+// membersOf is structuredContent.error of a problem answered with text:
+// its code, the message and the problem's members, its locks at most
+// MaxErrorLocks with locks_count their number; then extra's, but for the
+// members the answer itself owns (M9/P2 design 3.10.1).
+func membersOf(a httpserver.Answer, text string, extra map[string]any) errorMember {
+	p := a.Problem
+	member := errorMember{"code": p.Code, "message": text}
 	if len(p.Errors) > 0 {
 		member["fields"] = p.Errors
 	}
@@ -92,12 +161,41 @@ func (s *Server) toolError(ctx context.Context, name string, err error) (*mcp.Ca
 		member["lock"] = p.Lock
 	}
 	if len(p.Locks) > 0 {
-		member["locks"] = p.Locks
+		member["locks"] = p.Locks[:min(len(p.Locks), MaxErrorLocks)]
+		member["locks_count"] = len(p.Locks)
 	}
 	if a.Retry > 0 {
 		member["retry_after_seconds"] = retrySeconds(a)
 	}
-	return s.errorResult(ctx, name, p.Code, text, member)
+	reserved := reservedMembers()
+	for k, v := range extra {
+		if !reserved[k] {
+			member[k] = v
+		}
+	}
+	return member
+}
+
+// ErrorAnswerBytes is the code mcpserver answers err with, a tool's
+// error, and the size of that answer (M9/P2 design 3.10.5): err takes
+// the path of a tool's error, Fit's search and the members' writing
+// included, so a module's test measures its errors as they are answered.
+// When even k = 0 is over the bound, code is internal_error and bytes is
+// the size of the answer that went over, which the over-bound line logs:
+// the internal_error answer itself carries the call's request id, which
+// err does not have.
+func ErrorAnswerBytes(err error) (code string, bytes int) {
+	a := httpserver.ProblemOf(context.Background(), err)
+	if a.Fault == httpserver.FaultNone {
+		_, n, merr := problemAnswer(a, err)
+		switch {
+		case merr == nil && n <= MaxAnswerBytes:
+			return a.Problem.Code, n
+		case merr == nil:
+			return httpserver.CodeInternal, n
+		}
+	}
+	return httpserver.CodeInternal, answerBytes(internalAnswer("", internalFailed))
 }
 
 // retrySeconds is a's retry as Retry-After writes it: whole seconds,
@@ -148,7 +246,11 @@ func fieldsText(fields []httpserver.FieldError) string {
 // internalError is internal_error of a fault: message, and the request
 // id the logs carry.
 func (s *Server) internalError(ctx context.Context, message string) *mcp.CallToolResult {
-	id := httpserver.RequestID(ctx)
+	return internalAnswer(httpserver.RequestID(ctx), message)
+}
+
+// internalAnswer is internal_error's answer of message for the request id.
+func internalAnswer(id, message string) *mcp.CallToolResult {
 	text := httpserver.CodeInternal + ": " + message
 	if message != internalGone {
 		text += "; request id " + id

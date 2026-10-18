@@ -147,7 +147,7 @@ func TestOnlyACallMayBeLong(t *testing.T) {
 		o.Tools = append(o.Tools, NewTool(Spec{Name: "nb_only", Entry: NotebookEntry}, none), NewTool(Spec{Name: "acct_only", Entry: AccountEntry}, none))
 	}})
 	nb := Pattern + "?notebook=" + visible.String()
-	over := maxOtherBytes + 1
+	over := MaxOtherBytes + 1
 	long := callOf("echo", over+1024) // over the bound after any row's change
 	tests := []struct {
 		name, path, token, body string

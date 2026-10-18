@@ -125,51 +125,63 @@ var errNothingFits = errors.New("mcpserver: the answer of no item is over the an
 // Result.Structured is the encoded JSON. build(0) over the bound is an
 // error: nothing the tool can answer fits.
 func Fit(n int, build func(k int) any) (Result, int, error) {
-	measure := func(k int) (json.RawMessage, bool, error) {
+	text, k, ok, err := fitItems(n, func(k int) (json.RawMessage, bool, error) {
 		text, err := encode(build(k))
 		if err != nil {
 			return nil, false, err
 		}
 		return text, TextBytes(string(text)) <= MaxAnswerBytes, nil
+	})
+	switch {
+	case err != nil:
+		return Result{}, 0, err
+	case !ok:
+		return Result{}, 0, errNothingFits
 	}
-	lo, over := 0, 0
-	var fit json.RawMessage // the answer of lo items, once measured
+	return Result{Structured: text}, k, nil
+}
+
+// fitItems is Fit's search, which a tool's error of items shares (M9/P2
+// design 3.10.2): measure(k) is the answer of the first k of n items and
+// whether it is within the bound. It is the answer of k items, where k is
+// n or k fit and k+1 do not, and true; when not even the answer of no item
+// is within the bound, that answer, 0 and false.
+func fitItems[T any](n int, measure func(k int) (T, bool, error)) (T, int, bool, error) {
+	var zero, fit T // fit: the answer of lo items, once measured
+	lo, over, fitted := 0, 0, false
 	for k := 1; k <= n; k = min(2*k, n) {
-		text, ok, err := measure(k)
+		a, ok, err := measure(k)
 		switch {
 		case err != nil:
-			return Result{}, 0, err
+			return zero, 0, false, err
 		case !ok:
 			over = k
 		case k == n:
-			return Result{Structured: text}, n, nil
+			return a, n, true, nil
 		default:
-			lo, fit = k, text
+			lo, fit, fitted = k, a, true
 			continue
 		}
 		break
 	}
 	for over-lo > 1 {
 		mid := lo + (over-lo)/2
-		text, ok, err := measure(mid)
+		a, ok, err := measure(mid)
 		switch {
 		case err != nil:
-			return Result{}, 0, err
+			return zero, 0, false, err
 		case ok:
-			lo, fit = mid, text
+			lo, fit, fitted = mid, a, true
 		default:
 			over = mid
 		}
 	}
-	if fit == nil { // no item fits, or there are none
-		text, ok, err := measure(0)
-		switch {
-		case err != nil:
-			return Result{}, 0, err
-		case !ok:
-			return Result{}, 0, errNothingFits
+	if !fitted { // no item fits, or there are none
+		a, ok, err := measure(0)
+		if err != nil {
+			return zero, 0, false, err
 		}
-		fit = text
+		return a, 0, ok, nil
 	}
-	return Result{Structured: fit}, lo, nil
+	return fit, lo, true, nil
 }
