@@ -179,8 +179,13 @@ GO_TEST_RACE = go test -race -count=1 -timeout 15m
 
 .PHONY: test-go
 test-go: ## 运行 Go 测试，含集成测试与 server/tools（开启竞态检测，不用测试缓存；需要 Docker）
-	@# 本机一次跑全部的包，各包并行；CI 分成下面五份并行（M8/P3A 审查 C 的 I-1；M8/P4A 分出组合根的守卫，再把组合根分成两份），五份之和就是这里
-	cd server && $(GO_TEST_RACE) ./...
+	@# 本机与 CI 同样分份（M9/P2 设计 6.5）：组合根之外的包一个 go test，组合根按测试名两份、各一个 go test 二进制、各受 15 分钟，
+	@# 同一条规则管两处（之前组合根是一个二进制，本机 8 到 9.5 分钟，比 CI 的任何一份先到 15 分钟）。下面 CI 的五份依次跑，之和就是这里
+	@# （M8/P3A 审查 C 的 I-1）。M9/P2 S1 各量两次：竞态检测的三个同时跑（-j3）时整个 759 与 754 秒，依次 1031 与 1061 秒，
+	@# 同时的平均只快 4.8 分钟，不到设计定的 5 分钟，所以依次（更简单）：依次时各份 116 与 119、267 与 271、231 与 225、166 与 189、251 与 257 秒
+	@$(MAKE) --no-print-directory test-go-race
+	@$(MAKE) --no-print-directory test-go-bootstrap-1
+	@$(MAKE) --no-print-directory test-go-bootstrap-2
 	@$(MAKE) --no-print-directory test-go-costs
 	@$(MAKE) --no-print-directory test-go-guards
 
@@ -194,9 +199,15 @@ test-go: ## 运行 Go 测试，含集成测试与 server/tools（开启竞态检
 # M9/P1 S3 时各单独跑一次是 213 与 242 秒（第二份多 13%），界线照设计 6.1 再往后挪到 TestEveryS 之前，是重新平衡，
 # 不是 S3 的测试让第二份变慢（它们不带竞态检测共约 3 秒）：TestEveryR 开头的两个（vault 的导出与导入，约 18 秒）挪到第一份，
 # 挪了之后单独跑 238 与 229 秒。单独跑一次的时间前后可差一成以上（同一棵树上第一份 213 到 260 秒，CI 上同一份 5:44 到 7:59），
-# 以后判断挪不挪，取每份两次的平均（M9/P1 S3 审查 C 的 N-4）
-# -run 与 -skip 用同一个表达式：两份之和总是整个包，新加的测试自动落在其中一份；一份变得太慢时改这个表达式
-BOOTSTRAP_FIRST = ^Test([A-D]|E([a-u]|very[A-R]))
+# 以后判断挪不挪，取每份两次的平均（M9/P1 S3 审查 C 的 N-4）。
+# 一份过了线（CI 两次运行的平均里测试一步过了约 7:30，go test 的 -timeout 15m 的一半）时照 M9/P2 设计 6.5 的规则：
+# 只在邻居收下之后两份都在线之下时挪界线，否则按测试名再分一份，从不提高 -timeout。M9/P2 S1 时 CI 的两次运行里第一份的测试一步
+# 6:59 与 6:56（平均 6:57.5），第二份 7:15 与 8:33（平均 7:54），过了线；本机各单独跑两次，第一份 256 与 281 秒，第二份 245 与 247 秒
+# （CI 与本机之比 1.56 与 1.93，合起来 1.73）。第二份按名字排在最前的一段（TestEveryS 到 TestN，本机约 16.5 秒）乘 1.73 约 29 秒，
+# 挪过去之后估计两份约 7:26 与 7:25，都在线之下，所以界线往后挪到 TestO 之前、不分：名字以 TestA 到 TestN 开头的一份，其余的一份；
+# 挪了之后各单独跑两次，267 与 271 秒、231 与 225 秒
+# -run 与 -skip 用同一个表达式：两份之和总是整个包，新加的测试自动落在其中一份；一份过了线时照上面的规则改这个表达式
+BOOTSTRAP_FIRST = ^Test[A-N]
 .PHONY: test-go-race
 test-go-race: ## 竞态检测下运行组合根（internal/bootstrap）之外的全部 Go 包（CI 的一份；需要 Docker）
 	cd server && $(GO_TEST_RACE) $$(go list ./... | grep -v '/internal/bootstrap$$')
@@ -232,7 +243,13 @@ test-go-costs: ## 不带竞态检测的分配、耗时预算与界线的守卫�
 
 .PHONY: test-go-guards
 test-go-guards: ## 不带竞态检测的组合根的预算与界线的守卫（CI 的一份；需要 Docker）
-	cd server && go test -count=1 -run '^(TestTheAppsMarkdownCostsAboutItsSize|TestTheAppsMarkdownRendersCheckedHTML|TestTheAppsLinksAreWithinTheirBound)$$' ./internal/bootstrap
+	@# 这一份的 go test 不带 -timeout，每一行受 Go 默认的每个测试二进制 10 分钟。一行在 CI 上的估计（本机两次的平均乘 2.4，这一份的 CI 与本机之比）
+	@# 过了它的一半就一个测试一行，单独一行仍过的那一行加 -timeout 15m（M9/P2 设计 6.5）。markdown 的三个原先一行，本机 140 到 155 秒；
+	@# M9/P2 S1 各单独跑两次：成本的 125.5 与 127.9 秒，渲染的 3.7 与 4.0 秒，链接的 22.5 与 21.7 秒，之和乘 2.4 约 6.1 分钟，所以拆成三行；
+	@# 成本的一个乘 2.4 约 5.1 分钟，仍过了 Go 默认的每个测试二进制 10 分钟的一半，它的一行加 -timeout 15m
+	cd server && go test -count=1 -timeout 15m -run '^TestTheAppsMarkdownCostsAboutItsSize$$' ./internal/bootstrap
+	cd server && go test -count=1 -run '^TestTheAppsMarkdownRendersCheckedHTML$$' ./internal/bootstrap
+	cd server && go test -count=1 -run '^TestTheAppsLinksAreWithinTheirBound$$' ./internal/bootstrap
 	@# 恢复在单元上限的测试单独一行、带 -v：通过时也打出恢复用的时间，CI 的日志里看得到（M8/P2A 第二轮复核 M-a）
 	cd server && go test -count=1 -v -run '^TestARestoreAtTheUnitsBoundTakesItsTime$$' ./internal/bootstrap
 	@# 撤销在单元上限的测试同样单独一行、带 -v：撤销一次删除用的时间（M8/P3 设计 3.11），与撤销在单轮步数上限时恢复那么多项用的时间（M8/P3A 审查 C 的 I-2）

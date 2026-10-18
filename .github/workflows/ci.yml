@@ -32,7 +32,8 @@ jobs:
           - leg: race
             timeout: 20
           # 组合根的整个程序测试，竞态检测下最慢的一个包，按测试名分成两份（Makefile 的 BOOTSTRAP_FIRST；M8/P4A 审查 C 的 M-6：
-          # 一份时测试一步已到 12 分钟，离 go test 的 15 分钟时限只剩约两成）
+          # 一份时测试一步已到 12 分钟，离 go test 的 15 分钟时限只剩约两成）。一份的测试一步两次运行的平均过了约 7:30 时照 M9/P2 设计 6.5
+          # 挪界线或再分一份：M9/P2 S1 时第二份 7:15 与 8:33、第一份 6:59 与 6:56，界线往后挪（数在 Makefile 的注释里）
           - leg: bootstrap-1
             timeout: 25
           - leg: bootstrap-2
