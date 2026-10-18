@@ -4,7 +4,7 @@
 |---|---|
 | Phase | M9/P1 平台与读的工具（三个 Step：S1 平台、传输与边缘；S2 路径、`list` 与 `read`；S3 说明与账户） |
 | 日期 | 2026-10-17 |
-| 状态 | 设计稿，已按设计审查与它的复核修订两轮（[P1 设计审查](reviews/P1-design-review.md)，第二轮在它的末节） |
+| 状态 | S1、S2 已合并（S1 `384d9f96`、S2 `a36e92df`），S3 进行中；设计稿已按设计审查与它的复核修订两轮（[P1 设计审查](reviews/P1-design-review.md)，第二轮在它的末节），实施与审查之后与代码不同之处照实改在各节（3.20 列出），结果在第 9 节 |
 | 上级文档 | [M9 总设计](00-M9-design.md) 4.1、4.3–4.9、4.14–4.16、第 5、8、9、10、11 节与"移交的落实"；[v0.1 总体设计](../v0.1-design.md) 6.1–6.4、7、8.4、10.1、12、13 |
 | 代码位置的写法 | 同 00 号文档：模块写作 `page/app/unit.go:168`（`server/internal/modules/` 之下）；`platform/…`、`bootstrap/…`、`shared/…`、`archtest/…` 在 `server/internal/` 之下；迁移写作 `00012_page_nodes.sql:32`；SDK 写作 `sdk/mcp/streamable.go:400`（`~/go/pkg/mod/github.com/modelcontextprotocol/go-sdk@v1.8.0/`）；jsonschema-go 写作 `jsonschema-go/infer.go:219`（`…/github.com/google/jsonschema-go@v0.4.3/jsonschema/`）；e2e 写作 `e2e/fixtures/server.ts:96` |
 
@@ -58,7 +58,7 @@ e2e 的客户端与 TypeScript SDK 的依赖不随 S1 进来：S1 没有一个�
 
 ### 2.1 对 00 号文档的修订
 
-P1 的文档提交随这份文档一起改 [`00-M9-design.md`](00-M9-design.md)（主持者以 `scratchpad/m9/p1/apply-00m9.py` 落下，每段原文恰好出现一次才改）。行号指 `e16a98f7` 的，理由在本文各节。第 1–13 条是草稿的，按设计审查改过的在条末注明；第 14–22 条是设计审查之后加的。
+P1 的文档提交随这份文档一起改 [`00-M9-design.md`](00-M9-design.md)（主持者以 `scratchpad/m9/p1/apply-00m9.py` 落下，每段原文恰好出现一次才改）。行号指 `e16a98f7` 的，理由在本文各节。第 1–13 条是草稿的，按设计审查改过的在条末注明；第 14–22 条是设计审查之后加的；第 23–31 条是 S1、S2 的实施与审查之后加的，随它们的合并改进 00 号文档（主持者以 `scratchpad/m9/p1docs/m9_doc.py` 落下，同样每段原文恰好出现一次才改），与第 13、15 条不同之处以它们为准。
 
 1. **`notebooks` 的工作区不要 `Summaries`**（4.1"`notebooks` 的读"一行 :81；第 2 节 :35；第 7 节 P1 一行 :426；第 8 节 :506）：`ListWorkspacesOf` 今天就读出 `w.slug`、`w.name`（`workspace/adapter/postgres/queries/workspaces.sql:12-20`），只是 `memberships.WorkspacesOf` 把它们丢了（`workspace/memberships.go:49-59`）。改为 `workspace.Membership` 加 `Slug`、`Name` 两个字段，`AccountWorkspaces` 经组合根只接 `Memberships.WorkspacesOf`：一条语句、不加新的端口与查询。别的调用者（access 的事实、事件流的工作区）只读 id 与角色，加字段不影响它们（3.17.1）。第 2 节改为"workspace：`Membership` 带上 slug 与名称"，第 8 节同。
 2. **`CleanClientName` 的次序与截法**（4.5"清理与检查" :142）：今天写的"按 NFC、先去 `unshowable`、再去空白……"不幂等，答回的也不一定是 NFC：`e`、U+200E、U+0301 按 NFC 不变（U+200E 是起始字符，挡住组合），去掉 U+200E 之后剩下 `e` 加 U+0301，第二次清理把它组合成 `é`。P2 的 `domain.MCPClient` 会对记下的名称再清理一次，两次不同就让 PAT 上的名称与变更集的客户端各说各的。改为：去掉不是 UTF-8 的字节 → 去掉 `unshowable` 的字符 → NFC → 去首尾的空白 → 截到 128 个字符（第 129 个字符之前是规范化的边界时，即它是起始字符、不与前面的组合（`norm.NFC.PropertiesString(string(r[128])).BoundaryBefore()`），截在第 128 个之后；否则截在前 128 个字符的 `norm.NFC.LastBoundary` 处：截下的仍是 NFC、至多 128 个字符，也不多丢一个。设计审查 A-M5 量出草稿在前 128 个字符上取 `LastBoundary` 时 129 个 ASCII 只留 127 个；第一轮修订改为在前 129 个字符上取它，复核 A N-1 量出第 129 个字符之后也是边界时（汉字、数字、`-`、emoji）留下 129 个，`client_name` 的检查就拒绝每次的 `Record`）→ 再去一次首尾的空白；空了答 `""`，由调用者换成 `unknown`。性质测试：幂等、至多 128 个字符、没有 `unshowable`、是 NFC，全是起始字符的长名称恰好留下 128 个（起始字符取自字母、汉字、谚文、数字、标点与 emoji，不只 ASCII 的字母）；表格里有 128 个 `x` 加 `中`、129 个 `中` 两行，都留下 128 个（3.16.1）。
@@ -87,6 +87,15 @@ P1 的文档提交随这份文档一起改 [`00-M9-design.md`](00-M9-design.md)�
 20. **`mcpserver.Prompt` 是最小的**（4.1"注册表的类型" :77）："`mcpserver.Prompt` 同形"改为"`mcpserver.Prompt` 是最小的：名称、标题、说明、字符串的参数（MCP 的 `PromptArgument`）与返回说明和文字消息的处理函数，M10 按需要在注册表上加"（设计审查 A-M7 与 A 的过度设计第 1 条，3.4.7）。
 21. **SDK 的导入规则也管测试文件**（4.1"SDK 的版本" :84）：archtest 的图不含测试文件，另加一条 depguard 的规则，SDK 与 jsonschema-go 只许 mcpserver 与 bootstrap 之下的文件导入（设计审查 A-N10，3.7）；`segmentio/asm` 是 v1.2.1（goose 要它，MVS 取较新的；A-N6）。
 22. **边缘的次序写细**（4.4"边缘的码的次序" :122；4.15 :364）：认证与限流照 REST 的四步（没有令牌 401 → 失败闸门 429 → 坏的令牌 401 → 桶 429，`api.go:269-277`）；不是 POST 的先过 SDK 的协议版本的检查（不认识的版本答纯文字 400）再 405；POST 的协议版本在 404 之后由 SDK 查（设计审查 A-N1，3.2.2）。
+23. **`POST /register` 答 OAuth 的错误**（4.4 的 `/.well-known/` 一条、"SDK 之前的拒绝是 problem+json"、答复头、保留名单；4.16；第 5 节；第 11 节主持者的决定第 13 条；S1 的试用的第 4b 步）：会走 OAuth 的客户端找完 `/.well-known/` 的元数据还去源站 `POST /register` 注册，拿到网页的 405，看不到提示；`/register` 答 400 `application/json` 的 `invalid_client_metadata`，说明是 PAT 的提示，只服务 POST，公开、契约之外，`register` 进 `[server]`（3.2.2）。
+24. **没有令牌的 401 带同一句提示**（4.4"SDK 之前的拒绝"；4.16）：httpserver 的 `APIConfig.NoTokenDetails`，只给没有令牌的 401，`/mcp` 的 detail 是 `/.well-known/` 的 404 的那句；失败的令牌与 REST 的 401 不变（3.2.3）。
+25. **超过 64 KiB 的只能是工具的调用**（4.4"请求体与期限"与边缘的码的次序；4.14 的请求体一行；4.15 的边缘）：这个入口登记了的工具的 `tools/call`、`jsonrpc` 是 `"2.0"`、`id` 至多 256 字节、`_meta` 的数 float64 放得下时才过，别的 413，在 403 之前；`params` 的形状在 SDK 之前查；`prompts/get` 因此至多 64 KiB（3.2.2）。
+26. **大的请求体的内存**（第 10 节的一行；"写给后面的 M"的 M12）："36 MiB 时约 150 MiB"改为实测的约 1.4 GB 的分配、约 +0.3–0.5 GB 的峰值，P2 限为同时两个（第 8 节）。
+27. **路径的点查用 00042 的两个部分唯一索引**（4.6 的说明的缓存；4.8 的"同一个路径至多一个节点"与"按段一次点查"；第 10 节）：取代第 13 条的"都走兄弟的唯一索引"；去掉 00012 的兄弟的索引；`ChildByKey` 没有统计时的计划接受（3.9.2）。
+28. **`MaxGlobWork` = 3 亿个单位**（4.8 的 glob 的代价；4.14 的 glob 一行；第 10 节）：取代第 15 条的 4 亿；守卫加键是名字两倍长的 `և` 的树，续走的重进占 17%、约 58.5 万个子节点的文件夹吃掉整个预算（3.10.1）。
+29. **没有 `server.public_url` 时图片照样内联**（4.2 的配置；4.9 的附件；4.14 的内联的图片一行；第 11 节取舍第 7 条的写法）：内联不要地址，只有下载的链接要；别的附件只给元数据并说明（3.11.2）。
+30. **WebP 的宽高只在头合得上文件时给、被拒的 `public_url` 带 `@` 的不照录**（4.2、4.9；第 13 节的配置一条）：RIFF 的大小、第一个块的大小、VP8L 的版本、VP8X 的块的大小（3.11.2）；没有源站带 `@`（3.12）。
+31. **超过 1,024 字节的路径由父节点列出**（4.8 的"以它为模式的 `list` 恰好列出它"）：性质限定为 `MaxGlobBytes` 之内的路径，`too_long` 的消息指向 `"A/B/"` 与 `read`（3.10.1）。
 
 ### 2.2 需要负责人确认
 
@@ -96,6 +105,7 @@ P1 的文档提交随这份文档一起改 [`00-M9-design.md`](00-M9-design.md)�
 - 内置的说明只写英文（3.15.4）：照 13.5 第 4 条（Go 的字符串用英文）；MCP 的请求不带区域设置（`initialize` 的 `clientInfo` 只有名称与版本），没有选语言的依据；工具的说明与 schema 也是英文；网页的中英文是按浏览器给人看的，agent 读英文最稳。团队要中文的约定就写一个 `AGENTS` 页，它整个取代内置的说明。
 - 设计审查之后的几条也不碰第 11 节：WebP 的宽高（2.1 第 14 条）让取舍第 7 条（"PNG、JPEG、GIF、WebP 在 3 MiB、每边 8,000 像素之内内联"）真的成立，那一条不改；答复的量（第 7 条）只写定 48 KiB 怎么数，48 KiB 不变；glob 的工作上限（第 15 条）不改取舍第 6 条的方言。
 - 2.1 的各条是实现的写定或 00 号文档内部的不一致，都不碰第 11 节的决定，由主持者定（主持者在 [P1 设计审查](reviews/P1-design-review.md) 里的决定，负责人可以改判）。
+- S1、S2 的实施与审查里主持者定下的，同样负责人可以改判，写进 00 号文档第 11 节（主持者的决定第 13–23 条）与两份审查记录的"主持者的决定"：[S1](reviews/P1-S1-platform-review.md) 的 `POST /register`、没有令牌的 401 的提示、超过 64 KiB 的只能是这个入口的工具的调用、内存的界线给 P2、`id` 的回显也限住；[S2](reviews/P1-S2-reads-review.md) 的两个部分唯一索引与去掉兄弟的索引、`ChildByKey` 没有统计时的计划、不论有没有 `public_url` 都内联图片、WebP 的检查、`MaxGlobWork` = 3 亿、守卫那一份的时限 25 分钟、`BOOTSTRAP_FIRST` 到 S3 再动。第 11 节取舍第 7 条只改写法（下载的地址要 `public_url`，内联不要），取舍本身不变。
 
 ## 3. 服务端
 
@@ -104,9 +114,11 @@ P1 的文档提交随这份文档一起改 [`00-M9-design.md`](00-M9-design.md)�
 | 文件 | 包 | 新/改 | 内容 |
 |---|---|---|---|
 | `server/go.mod`、`go.sum` | — | 改 | 直接依赖 `github.com/modelcontextprotocol/go-sdk v1.8.0` 与 `github.com/google/jsonschema-go v0.4.3`（mcpserver 直接导入它）；新加的间接依赖 `github.com/segmentio/encoding v0.5.4`、`github.com/segmentio/asm v1.2.1`、`github.com/yosida95/uritemplate/v3 v3.0.2`、`golang.org/x/oauth2 v0.35.0`、`golang.org/x/time v0.15.0`。这是 `go mod tidy` 真选的（离线，go1.27.1，在 `exp/tidy/` 的仓库副本上加一个导入 `mcp`、`jsonrpc` 与 `jsonschema` 的包；与设计审查 A 的结果相同）：SDK 的 `go.mod` 要 `asm` v1.1.3，而 goose v3.28.0 要 v1.2.1，MVS 取后者（A-N6）；`golang-jwt/jwt/v5 v5.3.1` 已在，`x/sync`、`x/sys`、`x/tools` 仍是仓库的版本；`go.sum` 只多这七个模块 |
-| `platform/httpserver/api.go` | httpserver | 改 | `API.Wrap(h, bodies)`（3.2.1） |
+| `platform/httpserver/api.go` | httpserver | 改 | `API.Wrap(h, bodies)`（3.2.1）；`APIConfig.NoTokenDetails`：按路由的模式，没有令牌的 401 的说明（3.2.3） |
+| `platform/httpserver/bodyshape/middleware.go` | bodyshape | 改 | `Bytes(r)`：中间件读过、放回的请求体，不复制（`sizeError` 读它，3.2.2） |
+| `platform/httpserver/apitest/problems.go` | apitest | 改 | `(*Contract).ProblemCodes(t)`：契约声明的每个码（顶层与每个操作的 `x-problem-codes`，要令牌的操作加 `unauthorized`），整个程序以它核对工具错误的码（3.6） |
 | `platform/httpserver/apierrors.go` | httpserver | 改 | `ProblemOf(ctx, err) Answer`、`Fault`；`Write` 改用它，行为不变（3.3.6） |
-| `platform/httpserver/middleware.go` | httpserver | 改 | 导出的 `MCPPath`；`setFixedHeaders` 的 `no-store` 加 `/mcp`、`/mcp/…`、`/.well-known/…`（3.2.3） |
+| `platform/httpserver/middleware.go` | httpserver | 改 | 导出的 `MCPPath` 与 `RegisterPath`；`setFixedHeaders` 的 `no-store` 加 `/mcp`、`/mcp/…`、`/.well-known/…` 与对 `/register` 的 POST（3.2.3） |
 | `platform/httpserver/mcpserver/server.go` | mcpserver | 新 | `Options`、`New`、`Server.ServeHTTP`、两个 `*mcp.Server`、`getServer`、SDK 的选项（3.3.1、3.2.2） |
 | `…/mcpserver/tool.go` | mcpserver | 新 | `Entry`、`Annotations`、`Spec`、`Tool`、`NewTool`、`Call`、`Result`、`Block`、`Image`、`Link`；登记与包装（3.3.2–3.3.4） |
 | `…/mcpserver/schema.go` | mcpserver | 新 | 输入 schema 的推导与整理、整理之后的 schema 转成 `bodyshape.Table`（3.3.3） |
@@ -116,20 +128,22 @@ P1 的文档提交随这份文档一起改 [`00-M9-design.md`](00-M9-design.md)�
 | `…/mcpserver/answer.go` | mcpserver | 新 | `MaxAnswerBytes`、`TextBytes`、`MemberBytes`、`Fit`、答复的上限（3.4.4） |
 | `…/mcpserver/prompt.go` | mcpserver | 新 | 最小的 `Prompt`、`PromptArgument` 与它们的登记（3.4.7） |
 | `…/mcpserver/log.go` | mcpserver | 新 | 调用与握手的日志、SDK 的 logger（warn 以上，3.4.5） |
-| `…/mcpserver/edge.go` | mcpserver | 新 | `const Pattern = httpserver.MCPPath`，函数 `Bodies()`、`Subtree()`、`WellKnown()`（两个 404）、`notPAT()`、`notebook` 的解析（3.2） |
+| `…/mcpserver/edge.go` | mcpserver | 新 | `const Pattern = httpserver.MCPPath`，函数 `Bodies()`、`Subtree()`、`WellKnown()`（两个 404）、`notPAT()`、`notebook` 的解析（3.2）；`NoOAuth`、`RegisterPattern` 与 `Register()`（OAuth 的注册的错误）；超过 64 KiB 的请求体的 `sizeError`（`maxOtherBytes`、`maxIDBytes`，以 `encoding/json/v2` 读）与 `askedEntry`（3.2.2） |
 | `…/mcpserver/*_test.go` | mcpserver | 新 | 单元测试：schema 的整理与结构表、参数的 `null`、结果与错误的形状、从不同时返回结果与错误、量与 `Fit`、答复的上限、ctx、答复没写、恢复、`no-store`、`notebook` 的解析、SDK 的 logger、`Prompt` 的替身（3.4.8） |
 | `page/mcp_entry.go`、`page/app/gate.go` | page、page/app | 新 | `(*page.Module).MCPEntry()`：`Gate`（S3 加 `Instructions`），用例 `NotebookGate`（3.3.5） |
-| `bootstrap/mcp.go` | bootstrap | 新 | `mcpTools(pg, ln, nb)`（S1 返回空）、`mcpServer(cfg, …)`、凭证的适配 `mcpCredentials`、`/mcp`、`/mcp/`、`/.well-known/` 的挂载（3.2） |
-| `bootstrap/wire.go`、`deps.go` | bootstrap | 改 | `wireApp` 的最后一个参数改为测试的接缝 `wiring{batch, mcpTools}`；`/mcp` 的按路由上限并进 `apiConfig` 的 `BodyLimits`；挂载在模块注册之后、`/` 之前 |
+| `bootstrap/mcp.go` | bootstrap | 新 | `mcpTools(pg, ln, nb)`（S1 返回空；S2 加 asset，是 `mcpTools(pg, as, ln, nb)`）、`mcpServer(cfg, …)`、凭证的适配 `mcpCredentials`、`/mcp`、`/mcp/`、`/.well-known/` 与 `POST /register` 的挂载（`mountMCP`）、`mcpPublicOperations()`（`/register` 是公开的）与 `mcpNoTokenDetails()`（3.2） |
+| `bootstrap/wire.go`、`app.go` | bootstrap | 改 | `wireApp` 的最后一个参数改为测试的接缝 `wiring{batch, mcpTools}`；`/mcp` 的按路由上限在 `wire.go` 里（调 `apiConfig` 的地方）并进 `BodyLimits`，公开的操作加 `mcpPublicOperations()`，`NoTokenDetails` 交 `mcpNoTokenDetails()`；`app.mcpTools` 留着 `wireApp` 建的模块的工具，接线的测试读它；挂载在模块注册之后、`/` 之前 |
 | `bootstrap/interleavings_workspace_test.go` | bootstrap | 改 | `wireApp` 的调用改交 `wiring{batch: …}` |
-| `bootstrap/reserved_test.go`、`workspace/domain/reserved_slugs.txt` | bootstrap、workspace/domain | 改 | `mcp` 从 `[reserved]` 移到 `[server]`；以点开头的第一段（`.well-known`）不比较，理由写在测试里；名单头的注释（`:9`"mcp 随 M9"）改为说它已在 `[server]` |
+| `bootstrap/reserved_test.go`、`workspace/domain/reserved_slugs.txt` | bootstrap、workspace/domain | 改 | `mcp` 从 `[reserved]` 移到 `[server]`，`register` 加进 `[server]`（OAuth 的注册，3.2.2）；以点开头的第一段（`.well-known`）不比较，理由写在测试里；名单头的注释（`:9`"mcp 随 M9"）改为说它已在 `[server]` |
 | `api/mcp/tools.json` | — | 新 | `{"notebook": [], "account": []}`（S1；3.5） |
 | `bootstrap/mcp_tools_test.go` | bootstrap | 新 | `TestTheToolListsAreTheContract`、`TestTheMCPToolsBuildBothServers` 与反向对照（3.5） |
 | `server/.golangci.yml` | — | 改 | depguard 的一条规则：SDK 与 jsonschema-go 只许 mcpserver 与 bootstrap 之下的文件（含测试）导入（3.7） |
 | `bootstrap/mcp_test.go`、`mcp_client_test.go` | bootstrap | 新 | 整个程序的边缘、传输与恢复（3.4.9）；官方 Go 客户端的帮助函数（令牌经 `HTTPClient.Transport`） |
+| `bootstrap/ratelimit_test.go`、`contract_test.go` | bootstrap | 改 | `TestTheMCPRoutesTakeTheBuckets`（`/mcp` 与 `/register` 的桶，3.4.9）；`createTokenWithID`（撤销的 PAT 的一例） |
 | `bootstrap/permission_matrix_mcp_test.go` | bootstrap | 新 | 按工具的矩阵的框架、`TestThePermissionMatrixCoversEveryTool` 与反向对照（3.6） |
 | `archtest/rules_test.go`、`rules_cases_test.go` | archtest | 改 | `mcpSDKStaysInMCPServer` 与它的合成的边（3.7） |
-| `platform/config/config.go`、`configs/config.yaml` | config | 改 | 只改注释：`server` 一节"长连接路由（SSE、MCP 流）自己解除写上限"改为"长连接路由（SSE）"，`/mcp` 是普通的请求与答复（`configs/config.yaml:7`） |
+| `configs/config.yaml` | — | 改 | 只改注释：`server` 一节"长连接路由（SSE、MCP 流）自己解除写上限"改为"长连接路由（SSE）"，`/mcp` 是普通的请求与答复（`configs/config.yaml:7`；`platform/config/config.go` 没有这条注释） |
+| `Makefile` | — | 改 | `BOOTSTRAP_FIRST` = `^Test([A-D]\|E([a-u]\|very[A-Q]))`：组合根两份的界线移到 `TestEveryR` 之前（6.1） |
 
 ### 3.2 S1：挂载与边缘
 
@@ -160,6 +174,7 @@ func (a *API) Wrap(h http.Handler, bodies *bodyshape.Table) http.Handler {
 router.Handle(mcpserver.Pattern, api.Wrap(mcp, mcpserver.Bodies())) // "/mcp", no method: GET and DELETE reach the SDK's 405
 router.Handle(mcpserver.Pattern+"/", mcpserver.Subtree())            // "/mcp/…": 404 problem+json, not the frontend
 router.Handle("/.well-known/", mcpserver.WellKnown())                // 404 problem+json: no OAuth here
+router.Handle(mcpserver.RegisterPattern, api.Wrap(mcpserver.Register(), &bodyshape.Table{})) // "POST /register": OAuth's error, the PAT hint
 ```
 
 ```go
@@ -167,14 +182,38 @@ router.Handle("/.well-known/", mcpserver.WellKnown())                // 404 prob
 // owns the string, since its fixed headers key on it (3.2.3).
 const Pattern = httpserver.MCPPath
 
-// Bodies is Pattern's body structure: one object, its members unchecked.
+// Bodies is Pattern's body structure: one object, whose params, when
+// there are any, are an object: its name a string, its arguments and its
+// _meta objects, and no inputResponses or requestState, which answer an
+// input-required result that no protocol version of this server's has.
 // An array (a JSON-RPC batch), a member named twice and an unpaired
-// surrogate are 400 before the SDK (M9 design 4.3, 4.4). A function, not
-// a package variable: each caller gets its own table (gochecknoglobals).
+// surrogate are 400 before the SDK (M9 design 4.3, 4.4); so are params
+// the SDK could not read into a request's, whose error repeats them,
+// escaped to four times their size (M9/P1 S1 review A-M1). Null is the
+// member left out, as the SDK reads it. A function, not a package
+// variable: each caller gets its own table (gochecknoglobals).
 func Bodies() *bodyshape.Table {
+	const (
+		message = iota
+		params
+		name
+		object
+		null
+	)
+	open := func(types bodyshape.Type, props map[string]int) bodyshape.Node {
+		return bodyshape.Node{Types: types, Props: props, Extra: bodyshape.Open, Items: bodyshape.Open}
+	}
 	return &bodyshape.Table{
-		Nodes: []bodyshape.Node{{Types: bodyshape.Object, Extra: bodyshape.Open}},
-		Roots: map[string]int{Pattern: 0},
+		Nodes: []bodyshape.Node{
+			message: open(bodyshape.Object, map[string]int{"params": params}),
+			params: open(bodyshape.Object|bodyshape.Null, map[string]int{
+				"name": name, "arguments": object, "_meta": object, "inputResponses": null, "requestState": null,
+			}),
+			name:   open(bodyshape.String, nil),
+			object: open(bodyshape.Object|bodyshape.Null, nil),
+			null:   open(bodyshape.Null, nil),
+		},
+		Roots: map[string]int{Pattern: message},
 	}
 }
 
@@ -182,11 +221,33 @@ func Bodies() *bodyshape.Table {
 // /.well-known/. Both are 404 problem+json.
 func Subtree() http.Handler
 func WellKnown() http.Handler
+
+// NoOAuth is what a client looking for OAuth is told, under /.well-known/
+// and at RegisterPattern alike, and the detail of Pattern's 401 without a
+// token (httpserver.APIConfig's NoTokenDetails).
+const NoOAuth = "This server has no OAuth: MCP takes a personal access token in the Authorization header."
+
+// RegisterPattern is OAuth's dynamic client registration at the origin,
+// where a client turns when no metadata names an authorization server
+// (the default endpoints of MCP 2025-03-26). Register answers it with
+// OAuth's error, 400 invalid_client_metadata (RFC 7591 3.2.2), whose
+// error_description is NoOAuth. It reads no body.
+const RegisterPattern = http.MethodPost + " " + httpserver.RegisterPath
+func Register() http.Handler
 ```
+
+`Bodies()` 的形状是 S1 审查 A-M1 之后的：`params` 是对象或 null，`name` 是字符串，`arguments` 与 `_meta` 是对象或 null，`inputResponses`、`requestState` 只能是 null（它们回答之后的协议版本的 input-required 结果），所以 SDK 读一个 `tools/call` 的参数不会失败；不是对象的 `arguments` 是边缘的 400，不再是工具在 `arguments` 处的 `bad_request`。`Items: Open` 不起作用（根是对象，bodyshape 不读它），无害。
 
 `bodyshape.Middleware` 按 `r.Pattern` 找根（`bodyshape/middleware.go:20`），`router.Handle("/mcp", …)` 的 `r.Pattern` 就是 `"/mcp"`，所以表的键是它。`/mcp?notebook=…` 是同一个模式。表与两个处理器都是函数，不是包级的变量：`server/.golangci.yml:8-12` 开着 `gochecknoglobals`，它只放过以 `err` 开头的错误变量、`_` 与 `version`（设计审查 A-M13；代码库的做法同 `page.BodyLimits()`）。同理，mcpserver 的哨兵错误只有 `errors.New` 的（`errNoCredential`）；要答一个 problem 的写成函数：`notPAT()` 返回 mcpserver 自己的一个未导出的类型的值（`ProblemStatus` 403、`ProblemCode` `"forbidden"`、`Error()` 是 detail），它满足 `httpserver.ProblemError` 这个接口（`apierrors.go:39-43`：那是接口，httpserver 不导出具体的 problem 类型，复核 A N-5）。
 
-**按路由的上限**：组合根算 `mcpBodyLimit = 6*(page.MaxContentBytes+1<<20) + 64<<10`（37,814,272 字节，00 号文档 4.4），并进 `apiConfig` 的 `BodyLimits`（与 page 的两个路由合成一张表，键是模式），交给 mcpserver 的 `Options.MaxBodyBytes`（SDK 的 `MaxRequestBodyBytes`，`sdk/mcp/streamable.go:224`）。`page.MaxContentBytes` 由 page 的模块根导出（今天只在 `page/domain/content.go:12`）。`BodyLimits` 里的路由期限另加 `read_timeout`（`api.go:225-238`）：一个 `/mcp` 请求至多 45 秒。
+**按路由的上限**：组合根算 `mcpBodyLimit = 6*(page.MaxContentBytes+1<<20) + 64<<10`（37,814,272 字节，00 号文档 4.4），并进 `apiConfig` 的 `BodyLimits`（与 page 的两个路由合成一张表，键是模式），交给 mcpserver 的 `Options.MaxBodyBytes`（SDK 的 `MaxRequestBodyBytes`，`sdk/mcp/streamable.go:224`）。`page.MaxContentBytes` 由 page 的模块根导出（今天只在 `page/domain/content.go:12`）。`BodyLimits` 里的路由期限另加 `read_timeout`（`api.go:225-238`）：一个 `/mcp` 请求至多 45 秒。合并在 `wire.go` 里做，那里调 `apiConfig`。
+
+**超过 64 KiB 的只能是工具的调用**（S1 审查 A-M1、修复核对第一轮 F1 与 F2，主持者的决定）：SDK 把读不了的参数照 `%q` 写进 -32602 的消息、再编码一次，请求体里的 `\"` 两个字节答出八个；36 MiB 的请求体答 144 MiB、分配约 2.6 GB，任何 PAT、任何方法都到得了。所以 `ServeHTTP` 在凭据在不在之后、会话令牌的 403 之前调 `sizeError`：请求体（`bodyshape.Bytes(r)`，中间件读过的，不复制）超过 64 KiB（`maxOtherBytes`）时，只有同时满足这几条才过，别的答 413 `payload_too_large`（同请求体的上限）：
+- 是 `tools/call`，`params.name` 是这个入口登记了的工具：`askedEntry` 照 `entryOf` 的读法，查询串解析成功又没有 `notebook` 时是账户入口，别的是笔记本入口（那时 `entryOf` 要么取它、要么在 SDK 读之前答 404）；没有工具服务的名字也是 413，不再是 SDK 的不认识的工具；
+- `jsonrpc` 恰好是 `"2.0"`（SDK 把错的写进它的纯文字 400），`id` 照写的（`jsontext.Value`）至多 256 字节（`maxIDBytes`；SDK 在每个答复里写回 `id`）；
+- `params._meta` 照 SDK 的读法解进 `map[string]any`：float64 放不下的数（`1e400`）在这里失败，SDK 解它失败时会回显整个 `params`。
+
+读法用 `encoding/json/v2`：名字照确切的大小写读，同 SDK 的解码（`encoding/json` 会把 `METHOD` 当作 `method`）；go1.27.1 里它在默认打开的 GOEXPERIMENT `jsonv2` 之后，升级工具链时要核对它仍打开、或已离开实验（`sizeError` 的注释写明）。`prompts/get` 与 `tools/call` 之外的每个方法一样至多 64 KiB：M10 的 prompt 的参数要放得下，或者另设例外。重量（同一进程、`/mcp` 的上限、各在自己的进程里）：这一类的请求答 126–222 字节、分配 113–186 MB（原来 0.8–2.7 GB）；64 KiB 之内的回显至多约 4 × 64 KiB；上限处合法的调用分配约 1.4 GB、峰值约 +0.3–0.5 GB（四个同时 +1.4 GB），不是 00 号文档第 10 节估的约 150 MiB，并发的界线给 P2（第 8 节）。
 
 **`Server.ServeHTTP`**（mcpserver 的入口，在 `API.Wrap` 之内，也就在结构检查读完请求体之后）：
 
@@ -194,11 +255,15 @@ func WellKnown() http.Handler
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ns := &noStore{ResponseWriter: w}                    // 3.4.3
 	cred, ok := s.credentials(r.Context())
-	switch {
-	case !ok:                                            // authenticate always ran: a wiring fault
+	if !ok {                                             // authenticate always ran: a wiring fault
 		s.errors.Write(ns, r, errNoCredential)           // 500, logged at error
 		return
-	case cred.TokenID == (uuid.UUID{}):                  // a session's access token
+	}
+	if err := s.sizeError(r); err != nil {               // over 64 KiB and no tools/call of the entry's tool
+		s.errors.Write(ns, r, err)                       // 413 payload_too_large
+		return
+	}
+	if cred.TokenID == (uuid.UUID{}) {                   // a session's access token
 		s.errors.Write(ns, r, notPAT())                  // 403 forbidden
 		return
 	}
@@ -213,12 +278,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	s.handler.ServeHTTP(ns, r.WithContext(context.WithValue(r.Context(), requestKey{}, req)))
 	if !ns.wrote {                                       // r's context ended while a method ran: nobody wrote
-		s.errors.Write(ns, r, r.Context().Err())         // REST's: gone 499 at debug, deadline 500 at warn, nil 500 at error
+		err := r.Context().Err()                         // REST's: gone 499 at debug, deadline 500 at warn
+		if err == nil {
+			err = errUnwritten                           // a live context nobody wrote for: 500 at error
+		}
+		s.errors.Write(ns, r, err)
 	}
 }
 ```
 
-最后一个分支是设计审查 A-M3 的路径：SDK 的 `hangResponse` 在请求的 ctx 结束时返回（`sdk/mcp/streamable.go:1267-1273`），`defer session.Close()` 等方法做完（jsonrpc2 的 `Close` 等进行中的请求，`sdk/internal/jsonrpc2/conn.go:504-509`），谁也没写头与正文，net/http 就以 SDK 留下的头答一个空的 200（`no-cache, no-transform`、`application/json`）。请求的 ctx 在方法跑着时结束有两种：客户端走了（Ctrl-C、客户端自己的超时、网络断了；复核 A N-2 实测在 `slow` 跑着时断开 5 次，5 次都没写），或方法比请求自己的期限（45 秒）活得久（调用的期限，读完请求体 + 15 秒，通常先结束方法，所以这要一个不看 ctx 的方法，例如 P4 的 `grep` 漏了一次检查）。这一支把 `r.Context().Err()` 交给 `Write`，用 REST 的分类（`apierrors.go:232-237`）：`Canceled` 记 debug "client went away"、答 499（没有人读）；`DeadlineExceeded` 记 warn "API request deadline exceeded"、答 500 problem+json，`no-store` 由 `ns` 守住。ctx 还活着而 SDK 什么也没写时（不该有）`Err()` 为 nil，走 `Write` 的默认分支：error "API handler failed" 与 500，那是一个接线的错。第一轮修订写的是先记 error "MCP answer not written"、再交一个固定的 `errUnwritten`：它走 `Write` 的默认分支，每次断开都记两行 error、往关了的连接里写 500，与 3.3.6 的 `FaultGone`（debug，"没有人读答复"）相悖（复核 A N-2），不要。`noStore.wrote` 在 `WriteHeader` 或第一次 `Write` 时设上（3.4.3）。
+最后一个分支是设计审查 A-M3 的路径：SDK 的 `hangResponse` 在请求的 ctx 结束时返回（`sdk/mcp/streamable.go:1267-1273`），`defer session.Close()` 等方法做完（jsonrpc2 的 `Close` 等进行中的请求，`sdk/internal/jsonrpc2/conn.go:504-509`），谁也没写头与正文，net/http 就以 SDK 留下的头答一个空的 200（`no-cache, no-transform`、`application/json`）。请求的 ctx 在方法跑着时结束有两种：客户端走了（Ctrl-C、客户端自己的超时、网络断了；复核 A N-2 实测在 `slow` 跑着时断开 5 次，5 次都没写），或方法比请求自己的期限（45 秒）活得久（调用的期限，读完请求体 + 15 秒，通常先结束方法，所以这要一个不看 ctx 的方法，例如 P4 的 `grep` 漏了一次检查）。这一支把 `r.Context().Err()` 交给 `Write`，用 REST 的分类（`apierrors.go:232-237`）：`Canceled` 记 debug "client went away"、答 499（没有人读）；`DeadlineExceeded` 记 warn "API request deadline exceeded"、答 500 problem+json，`no-store` 由 `ns` 守住。ctx 还活着而 SDK 什么也没写时（不该有）`Err()` 为 nil，交 `errUnwritten`（nil 的错误没有可记、可分类的），走 `Write` 的默认分支：error "API handler failed" 与 500，那是一个接线的错。第一轮修订写的是先记 error "MCP answer not written"、再总交一个固定的 `errUnwritten`：它走 `Write` 的默认分支，每次断开都记两行 error、往关了的连接里写 500，与 3.3.6 的 `FaultGone`（debug，"没有人读答复"）相悖（复核 A N-2），不要。`noStore.wrote` 在 `WriteHeader` 或第一次 `Write` 时设上（3.4.3）。
 
 `s.handler` 是 `mcp.NewStreamableHTTPHandler(s.getServer, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true, DisableLocalhostProtection: true, MaxRequestBodyBytes: o.MaxBodyBytes, Logger: sdkLogger})`；`getServer` 按记在 ctx 里的入口选两个 server 之一，从不返回 nil（nil 时 SDK 答 400，`sdk/mcp/streamable.go:400-403`）。不按笔记本建 server，也就没有按笔记本、按 `AGENTS` 的 server 缓存：说明在握手时由接收的中间件填（3.15.2），缓存的是说明的文字，键是（笔记本、`AGENTS` 节点或没有、版本号），在 page 里（3.15.1）。
 
@@ -228,28 +297,36 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 |---|---|---|---|
 | 1 | 401（没有令牌）→ 429（失败闸门）→ 401（无效、撤销、过期的令牌）→ 429（`authenticated` 的桶） | `authenticate`、`rateLimit` | 401 是 problem+json 带 `WWW-Authenticate`，429 是 problem+json 带 `Retry-After`；闸门在核对令牌之前（`platform/httpserver/api.go:269-277`），与 REST 相同 |
 | 2 | 413（超过 37,814,272 字节）、400（不是 JSON、不是对象、重复的成员、不成对的代理项、读超时） | `bodyLimit`、`bodyshape` | problem+json |
-| 3 | 403 `forbidden`（会话的访问令牌） | mcpserver | problem+json，detail "MCP takes a personal access token, not a session's access token." |
-| 4 | 不是 POST 的（GET、DELETE 等）：400 `Unsupported protocol version`（`Mcp-Protocol-Version` 头不认识）→ 405 `Allow: POST` | SDK（版本在方法之前，`streamable.go:347-355`；`:381-386`） | 纯文字 |
+| 3 | 413 `payload_too_large`（超过 64 KiB 而不是这个入口登记的工具的 `tools/call`，见上）→ 403 `forbidden`（会话的访问令牌） | mcpserver | problem+json，403 的 detail "MCP takes a personal access token, not a session's access token." |
+| 4 | 不是 POST 的（GET、DELETE 等）：400 `Unsupported protocol version`（`Mcp-Protocol-Version` 头不认识，排在 `2026-07-28` 之前，见下）→ 405 `Allow: POST` | SDK（版本在方法之前，`streamable.go:347-355`；`:381-386`） | 纯文字 |
 | 5 | 404 `notebook.not_found`（查询串解析不了，`notebook` 出现两次以上、为空、不是 UUID、看不到、已删除） | mcpserver 经 page 的 `Gate` | problem+json |
 | 6 | POST 的不认识的协议版本 400、415、Accept 不对的 400、空的请求体的 400 | SDK（`:347-355`、`:388-398`） | 纯文字 |
 | 7 | JSON-RPC 的答复（含工具的错误） | SDK 与工具 | `application/json` |
 
+**不认识的协议版本的例外**（S1 审查 A-N3）：第 4、6 行的"不认识的版本答纯文字 400"只对排在 `2026-07-28` 之前的版本成立：SDK 的检查是 `… && protocolVersion < protocolVersion20260728`（`sdk/mcp/streamable.go:354`），`2026-07-28`、`9999`、`x` 这样的头过得去：GET 答 405，通知的 POST 答 202，调用答 `application/json` 的 JSON-RPC 400（`-32602`、`-32020` 或 `-32022`）；这些里都没有我们的代码在跑。GET 的"不认识的版本 400 在 405 之前"由 `TestTheEntryGatesPostsOnly` 钉住，升级 SDK 改了次序就失败。
+
 `/mcp/` 之下与 `/.well-known/` 之下的任何方法、任何路径都是 404 problem+json `not_found`，不认证（它们不经 `API.Wrap`）：`Subtree` 的 detail "No MCP endpoint at <path>; the endpoint is /mcp."，`WellKnown` 的是 "This server has no OAuth: MCP takes a personal access token in the Authorization header."。两个处理器都经 `httpserver.WriteProblem`；它们也经平台链，固定头因前缀给 `no-store`（3.2.3）。
 
-**限流**：一个 POST 一个 `authenticated` 的单位，与 REST 共用 `pat:<id>` 的桶；403、405 之前单位已取，接受（00 号文档 4.4）。
+**`POST /register`**（S1 的试用的发现，主持者的决定）：会走 OAuth 的客户端（TypeScript SDK 带 OAuth 的 provider，Claude Code 一类）在 401 之后读四个 `/.well-known/` 的元数据，都是 404，就照 MCP 2025-03-26 的默认端点在源站 `POST /register` 动态注册；那里原是网页，答纯文字的 405，客户端报 `HTTP 405: Invalid OAuth error response: SyntaxError …`，看不到提示。所以 `Register` 答 400 `application/json`、`{"error":"invalid_client_metadata","error_description":"This server has no OAuth: MCP takes a personal access token in the Authorization header."}`（RFC 7591 3.2.2，客户端照原样显示 `error_description`），不读请求体。它经 `api.Wrap`（请求信息、期限、请求体上限、公开的跳过认证、匿名的桶），结构表是空的；由组合根的 `mcpPublicOperations()` 声明为公开（契约之外，v0.1 总体设计 13.1 第 17 条的例外）。只服务 POST：GET、HEAD 与别的方法、`/register` 之下的路径照旧落到 `/`（网页），所以名叫 `register` 的已有工作区不被遮住，只拒绝新建的（`register` 进保留名单的 `[server]`，13.1 第 26 条）。负责人要撤回时去掉处理函数、挂载、公开的模式与保留名，接受 OAuth 客户端显示网页的 405。
+
+**限流**：一个 POST 一个 `authenticated` 的单位，与 REST 共用 `pat:<id>` 的桶；403、405 之前单位已取，接受（00 号文档 4.4）。`/register` 是公开的，取 `anonymous` 的桶（按客户端的 IP）；`TestTheMCPRoutesTakeTheBuckets` 核对两个路由的 429（S1 审查 C-M1）。
 
 #### 3.2.3 固定头
 
 ```go
 // setFixedHeaders … A response under apiPrefix, of the MCP route and below
-// it, and under /.well-known/ also gets Cache-Control: no-store.
+// it, under /.well-known/, and of a POST to RegisterPath also gets
+// Cache-Control: no-store.
 	if strings.HasPrefix(r.URL.Path, apiPrefix) || r.URL.Path == MCPPath ||
-		strings.HasPrefix(r.URL.Path, MCPPath+"/") || strings.HasPrefix(r.URL.Path, wellKnownPrefix) {
+		strings.HasPrefix(r.URL.Path, MCPPath+"/") || strings.HasPrefix(r.URL.Path, wellKnownPrefix) ||
+		r.Method == http.MethodPost && r.URL.Path == RegisterPath {
 		header.Set("Cache-Control", "no-store")
 	}
 ```
 
-`MCPPath = "/mcp"`（导出）与 `wellKnownPrefix = "/.well-known/"` 是 httpserver 的常量（平台包不导入 mcpserver：mcpserver 在 httpserver 之下，反过来导入会成环）。mcpserver 写 `const Pattern = httpserver.MCPPath`，两处是同一个常量，不要测试核对（设计审查 A-N3：未导出的常量 mcpserver 的测试读不到）。SDK 在带结果的答复上改写成 `no-cache, no-transform`（`sdk/mcp/streamable.go:1686`），由 3.4.3 的写者设回。
+`MCPPath = "/mcp"`、`RegisterPath = "/register"`（导出）与 `wellKnownPrefix = "/.well-known/"` 是 httpserver 的常量（平台包不导入 mcpserver：mcpserver 在 httpserver 之下，反过来导入会成环）。mcpserver 写 `const Pattern = httpserver.MCPPath`，两处是同一个常量，不要测试核对（设计审查 A-N3：未导出的常量 mcpserver 的测试读不到）。SDK 在带结果的答复上改写成 `no-cache, no-transform`（`sdk/mcp/streamable.go:1686`），由 3.4.3 的写者设回。`/register` 只有 POST 不存：它的 400 与之前边缘的拒绝（429 等）都 `no-store`，`Register` 自己不设；GET 与它之下的路径是网页的、照网页的头（S1 审查 A-N1）。
+
+**没有令牌的 401**（S1 审查 A 对主持者的附加问题，主持者的决定）：平台的 401 是与 REST 共用的 "This operation requires a bearer token."，不走 OAuth 的客户端照原样显示它，看不出要个人访问令牌（试用的第 4a 步）。httpserver 的 `APIConfig.NoTokenDetails`（按路由的模式，同 `RequestTimeouts`、`BodyLimits`；复制一份，空的说明拒绝）给一个路由没有令牌时 401 的说明，`unauthorized()` 在没有令牌时用它；组合根交 `{mcpserver.Pattern: mcpserver.NoOAuth}`。所以 `/mcp` 没有令牌的 401、`/.well-known/` 的 404 与 `/register` 的错误说同一句（`TestTheMCPTellsEveryClientOneHint`）；挑战仍是不带错误参数的 `WWW-Authenticate: Bearer`，失败的令牌的 401（`Bearer error="invalid_token"`）与 REST 的 401 不变。
 
 #### 3.2.4 入口与 `notebook` 的解析
 
@@ -325,7 +402,8 @@ type ClientNames interface {
 // New builds the server: a wiring fault panics (a tool or a prompt named
 // twice, a tool of no entry, an input type that is no struct, a schema it
 // cannot normalize, a Notebook tool that is not in the account entry,
-// where alone the flag adds its "notebook").
+// where alone the flag adds its "notebook"; a tool without its handler, a
+// prompt without its Get; no Credentials, Notebooks, Logger or Errors).
 func New(o Options) *Server
 ```
 
@@ -411,7 +489,9 @@ type Result struct {
 	Blocks     []Block
 }
 
-// Block is one content block: exactly one of its fields is set.
+// Block is one content block: an image, a link, or else text, empty
+// too; text beside an image or a link is a block of two kinds, which
+// the answer refuses (internal_error).
 type Block struct {
 	Text  string
 	Image *Image
@@ -431,7 +511,7 @@ type Link struct {
 
 模块不导入 SDK 的类型：`Result` 到 `*mcp.CallToolResult`、`Annotations` 到 `*mcp.ToolAnnotations`（`ReadOnlyHint`、`IdempotentHint`，`DestructiveHint` 只在 `Destructive` 时为 `&true`，`OpenWorldHint` 总是 `&false`）、`Block` 到 `TextContent`、`ImageContent`、`ResourceLink`（`sdk/mcp/content.go:28`、`:57-78`、`:128-153`）都在 mcpserver 里。`Title` 只写在工具的顶层 `title`，不重复进注解。
 
-`New` 的登记：按 `Entry` 分进两个 server，每个经 SDK 的低层 `Server.AddTool(&mcp.Tool{Name, Title, Description, InputSchema, Annotations}, handler)`（`sdk/mcp/server.go:315`）：低层的登记不校验参数、不写 `structuredContent`、不要输出 schema（`:315-368`），那些都由 mcpserver 做。同一个入口里名称重复 panic（SDK 的 `featureSet.add` 会悄悄替换，`sdk/mcp/features.go:40-44`）；`validateToolName` 不合时 SDK 只记一行 error（`server.go:316-318`），所以 mcpserver 自己先查名称（`^[a-z_]{1,32}$`）并 panic。
+`New` 的登记：按 `Entry` 分进两个 server，每个经 SDK 的低层 `Server.AddTool(&mcp.Tool{Name, Title, Description, InputSchema, Annotations}, handler)`（`sdk/mcp/server.go:315`）：低层的登记不校验参数、不写 `structuredContent`、不要输出 schema（`:315-368`），那些都由 mcpserver 做。同一个入口里名称重复 panic（SDK 的 `featureSet.add` 会悄悄替换，`sdk/mcp/features.go:40-44`）；`validateToolName` 不合时 SDK 只记一行 error（`server.go:316-318`），所以 mcpserver 自己先查名称（`^[a-z_]{1,32}$`）并 panic。server 记下每个入口登记的名字（`s.tools`），超过 64 KiB 的请求体只给它们（3.2.2）；挑两个入口的 server 只在 `serverOf(e)` 一处（`getServer`、`addTools`、`addPrompts` 都用它）。没有处理函数的工具（`NewTool(spec, nil)`）在 `New` 里 panic，不等到调用时（S1 审查 B 的细节 5）。
 
 #### 3.3.3 输入 schema 与参数
 
@@ -441,6 +521,7 @@ type Link struct {
 2. 整理：
    - 必填的字段、数组与数组的项去掉 `"null"`（推导给切片的是 `["null", "array"]`，`jsonschema-go/infer.go:219-240`）；可选的标量保留 `["null", T]`：模型（尤其 Codex 里的 GPT）常对可选参数发 `null`，照"没有"收下。
    - 遇到 `[16]byte`（`uuid.UUID`）、`time.Time`、映射、接口：panic。这一条走 Go 的类型（`reflect` 逐字段），不看推导出的 schema：jsonschema-go 把 `time.Time`、`slog.Level`、`big.Int`/`big.Rat`/`big.Float` 推导成 `{"type":"string"}`（`jsonschema-go/infer.go:383-391`，设计审查 A-N7），在 schema 上认不出来；`[16]byte` 与别的定宽整数在 schema 上带 `minItems`、`maxItems` 或 `minimum`、`maximum`，下面的关键字检查也会拦住。id 一律是字符串字段（00 号文档 4.1），时刻不是输入。
+   - 带 JSON 名字的内嵌结构 panic（jsonschema-go 把它摊平到外层，`encoding/json` 却读作一个成员：schema 说谎；不带名字的内嵌两边读得一样，照收）；含它自己的类型（经指针或切片）panic，不在 `New` 里栈溢出；`float32` panic（表的 `Number` 是 float64 的范围，`1e300` 过得了检查、解不进它；更窄的整数 jsonschema-go 已以 `minimum`、`maximum` 限住，下面的关键字检查拦住它们）。都是 S1 审查 B 的细节 2–4。
    - 不是指针而带 `omitempty` 的字段 panic：它在推导里是可选的、却收不下 `null`，与"可选参数的 `null` 照没有收下"相悖；可选的字段一律写成指针。
    - 账户入口里 `Spec.Notebook` 的工具在属性的最前加 `"notebook": {"type": "string", "description": "The notebook's id, from notebooks."}`，并放在 `required` 的最前（3.18 写 `["notebook", "path"]`，比较时 `required` 按次序）；笔记本入口里没有它（多传答 `bad_request` 的 `not_allowed`）。`In` 本身从不带 `notebook`：两个入口用同一个 Go 类型。
 3. 整理之后的 schema 是 `tools/list` 答出的，也就是 `api/mcp/tools.json` 写的（3.5）。
@@ -470,7 +551,8 @@ func (s *Server) handlerOf(t Tool, e Entry) mcp.ToolHandler {
 #### 3.3.4 两种成功的答复
 
 - **结构的工具**（`Result.Structured`）：mcpserver 以 `json.NewEncoder` 加 `SetEscapeHTML(false)` 编码一次，去掉末尾的换行，`content` 是一块 `TextContent{Text: 这段 JSON}`，`structuredContent` 是同一段字节（`json.RawMessage`）：两份不会各说各的。SDK 的默认 `json.Marshal` 会把路径与正文里的 `<`、`>`、`&` 写成六个字节的转义（`sdk/mcp/server.go:455`），模型读到的就是转义本身；mcpserver 自己编码，模型读到原样的字符。线上的 JSON-RPC 答复仍由 SDK 编码，它在信封里转义这三个字符（实验），客户端解码之后照原样。
-- **文字的工具**（`Result.Blocks`，`read`）：`content` 是这些块，没有 `structuredContent`。
+- 结构的答复编码出来不是 JSON 对象（数组、带类型的 nil 的 `null`）答 `internal_error`，不记那些字节：MCP 2025-11-25 的 `structuredContent` 是对象，严格的客户端（TypeScript SDK 的 schema）会拒绝别的（S1 审查 B 的细节 9）。
+- **文字的工具**（`Result.Blocks`，`read`）：`content` 是这些块，没有 `structuredContent`。没有图片也没有链接的块是文字块，空的也是（线上 `{"text":"","type":"text"}`；`read` 读零行时第二块就是它，S1 审查 B-I1）；文字与图片或链接同在一块答 `internal_error`（`block %d is of two kinds`）。
 - 不声明 `outputSchema`（00 号文档 4.7）。
 
 #### 3.3.5 page 的 `MCPEntry()`
@@ -526,7 +608,12 @@ type ToolError struct {
 	Extra map[string]any
 }
 
-func (e *ToolError) Error() string { return e.Err.Error() }
+func (e *ToolError) Error() string {
+	if e.Err == nil { // a wiring fault: internal_error, its log's error in words
+		return "mcpserver: a ToolError without its Err"
+	}
+	return e.Err.Error()
+}
 func (e *ToolError) Unwrap() error { return e.Err }
 ```
 
@@ -544,6 +631,8 @@ func (e *ToolError) Unwrap() error { return e.Err }
 字段错误的 `field` 用 REST 的写法（bodyshape 的 `tags[1].name`，2.1 第 3 条）；路径为空（`arguments` 本身不是对象）时写作 `arguments`，不写空的括号（设计审查 A-N5 实测草稿的写法给出 `(: invalid_format: …)`）。日志的字段同 13.1 第 10 条，从不带参数（3.4.5）。不认识的工具由 SDK 答 -32602（`sdk/mcp/server.go:1005-1012`；实验）：它在消息里复述工具名，不设上限（3,000 字节的名称答 3,078 字节，设计审查 A-N12），无害：名称是客户端自己写的，答复只回到它那里。
 
 错误的答复同样受 `MaxAnswerBytes` 管（3.4.4）：文字块与 `structuredContent.error` 的 JSON 文字都按同一个量计、合计在上限之内（`structuredContent.error` 按文字块的量计是高估，简单而保守；设计审查 A-N11：Codex 把 `structuredContent` 交给模型）。M9 的读的错误各成员都有界（码、至多 16 个字段、各 256 字节的路径与有界的消息、`request_id`）；`lock`、`locks` 与 `Extra` 只在 P2 的写里有，P2 给它们上限（第 8 节）。超过时同成功的答复：error 日志、答只带码与 `request_id` 的 `internal_error`。
+
+例外是参数不合 schema 的 `bad_request`（实施时的偏离 3，S1 审查 B-M3、C-M3）：16 条路径 × 256 字节 × 6–7 字节的转义约 55 KB，超过上限；这时丢掉 `fields`、只答开头一句 `bad_request: The arguments do not match the tool's input schema.`（70 字节的常量），同样经上限的检查，不记 error（错在客户端）。`structuredContent.error` 编码一次，就是 SDK 发出、上限数的那个 `json.RawMessage`；编码不了时（`Extra` 里的函数、NaN、channel）立刻答 `internal_error`、记 error "MCP tool failed"，不挂到调用的期限（S1 审查 B-M2）。`internalError` 的成员只有字符串，总编码得了：它在 goroutine 最外层的恢复里调用，不能 panic。`Err` 为 nil 的 `ToolError` 是 `internal_error`，日志的错误写成文字（"a ToolError without its Err"），不是 slog 恢复出的 `!PANIC`。prompt 的处理函数的错误不经这张表：记 error "MCP prompt failed"、答 -32603，分类与上限是 M10 的（3.4.7）。
 
 ### 3.4 S1：调用的 ctx、恢复、`no-store`、答复的上限、日志与测试
 
@@ -601,7 +690,7 @@ func (s *Server) recover(ctx context.Context, method string, req mcp.Request, re
 
 JSON-RPC 的内部错误写作 `&jsonrpc.Error{Code: jsonrpc.CodeInternalError, Message: "internal error"}`（`go-sdk/jsonrpc` 是公开的包）：一个普通的 Go 错误出去是 `{"code":0,…}`（设计审查 A-N4 实测）。
 
-工具的包装（3.3.3）另 `defer` 同一个恢复：它在 `callTool` 之内（`sdk/mcp/server.go:1013-1025`），所以 panic 的工具也照常记那一行调用的日志、答出 `internal_error`。两处都从不同时返回结果与错误：`processResult` 在两者都有时以 `%#v` 把结果（含正文）写进 error 级的日志（`sdk/internal/jsonrpc2/conn.go:694-701`，经 `sdk/mcp/transport.go:234`），单元测试逐条核对（含 panic 的路径）。实验（附录）：panic 的调用答 `isError: true` 的 `internal_error`，同一个 server 的下一次调用照常。SDK 自己的代码（参数的解析）在中间件之外 panic 时仍会让进程退出：那是 SDK 的缺陷，不在 v1.8.0 的已知行为里。
+工具的包装（3.3.3）另 `defer` 同一个恢复：它在 `callTool` 之内（`sdk/mcp/server.go:1013-1025`），所以 panic 的工具也照常记那一行调用的日志、答出 `internal_error`。两处都从不同时返回结果与错误：`processResult` 在两者都有时以 `%#v` 把结果（含正文）写进 error 级的日志（`sdk/internal/jsonrpc2/conn.go:694-701`，经 `sdk/mcp/transport.go:234`），单元测试逐条核对（含 panic 的路径）。工具的恢复（`recoverTool`）在调用一行的日志之内：去掉它或换两个 defer 的次序时 panic 落到 `outer` 的恢复，答复仍是 `internal_error`，调用一行却写 `outcome: ok`，所以单元与整个程序的测试都核对 `boom` 一行的 `internal_error`（S1 审查 A-M2、B-M4、C-M4）。`outer` 的 panic 日志只在名字合 `toolName` 时记工具名：客户端发来的名字长度不限（S1 审查 A-N2）。实验（附录）：panic 的调用答 `isError: true` 的 `internal_error`，同一个 server 的下一次调用照常。SDK 自己的代码（参数的解析）在中间件之外 panic 时仍会让进程退出：那是 SDK 的缺陷，不在 v1.8.0 的已知行为里。
 
 #### 3.4.3 `no-store` 的写者
 
@@ -633,7 +722,7 @@ func (w *noStore) Flush()                        // when the underlying writer f
 | `<` `>` `&` | 6（`json.Marshal` 的 HTML 转义） |
 | U+007F | 1（原样） |
 | C1 控制字符 U+0080–U+009F | 2（原样的 UTF-8） |
-| 不是 UTF-8 的字节 | 3（原样的 U+FFFD；正文与名称都是合法的 UTF-8，碰不到） |
+| 不是 UTF-8 的字节 | 3（原样的 U+FFFD；正文与名称都是合法的 UTF-8，碰不到；把它写成六个字节的转义的工具链是 6，S1 审查 B 的存疑） |
 | 别的字符 | 它的 UTF-8 字节数 |
 
 结构的工具的文字块就是结果的 JSON 文字（3.3.4），所以它的字符串被转义两次：mcpserver 的编码（`SetEscapeHTML(false)`）一次、文字块一次。一个成员里的引号与反斜杠是 4 个字节，换行等五个是 3 个，别的控制字符与 U+2028、U+2029 是 7 个，`<>&` 仍是 6 个（第一次原样）。这对线上是诚实的：答复里真有这么多字节。
@@ -667,11 +756,12 @@ func MemberBytes(s string) int
 // is encoded as the answer is and measured exactly, so no builder counts
 // on its own. A cursor's length follows the last item, so the measure is
 // not monotone in k, and k need not be the largest that fits.
-// Result.Structured is the encoded JSON.
+// Result.Structured is the encoded JSON. An answer of no item over the
+// bound is errNothingFits.
 func Fit(n int, build func(k int) any) (Result, int, error)
 ```
 
-**一个帮助函数**：`list`、`notebooks`、`open_notebook` 的根下节点都经 `Fit` 填。候选的 k 从 1 起倍增（1、2、4……，至多 n），到第一个放不下的为止，再在它与上一个放得下的之间二分：答出的 k 是 n，或者 k 项放得下而 k + 1 项放不下。游标的长短随最后一项变（glob 的键至多约 5.6 KiB），量不随 k 单调，所以 k 不一定是放得下的最大的那个，可能少放几项：无害，`next_cursor` 接着列；答出的从不超过上限（复核 A N-3、B N-6：第一轮写的"至多少放一项"不成立）。候选至多约 2 log₂ n + 1 个（`limit` 1,000 时约 21 个），每个是一次编码与一次量；倍增让每个候选至多是第一个放不下的那个，即放得下的一份再加同样多的项：项的大小相近时约 2 × 48 KiB，最坏（后面的项都是 2,818 字节、全是 `&` 的路径）也不超过 `build(n)`。第一轮写的"每次至多约 50 KiB"不对：它先量 `build(n)`，`list` 的 1,000 项通常约 200 KB，最坏约 2.8 MB 的 JSON（复核 A N-3）。适配器从不自己数字节：草稿让 `list`、`notebooks` 的适配器"加上这一项超过上限就停"，没说怎么数，按 `len(JSON)` 数就少算一半（B-I1）。`read` 是文字的工具，它的第二块经 page 的 `Cut` 按 `TextBytes` 切（3.11.1）；`open_notebook` 的说明按 `MemberBytes` 切（3.17.3）。两个计数函数由 page 的模块根或 `adapter/mcp` 交给 page 的 `domain` 与 `app`（一个 `func(string) int` 的参数），page 里没有第二份计数，也就不要草稿的"两份一致"的测试（page 的 `app` 不导入平台，交函数值不算导入）。
+**一个帮助函数**：`list`、`notebooks`、`open_notebook` 的根下节点都经 `Fit` 填。候选的 k 从 1 起倍增（1、2、4……，至多 n），到第一个放不下的为止，再在它与上一个放得下的之间二分：答出的 k 是 n，或者 k 项放得下而 k + 1 项放不下。游标的长短随最后一项变（glob 的键至多约 5.6 KiB，经 JSON 的转义与 base64 之后游标至多 22,484 字节，S2 审查 A-N4），量不随 k 单调，所以 k 不一定是放得下的最大的那个，可能少放几项：无害，`next_cursor` 接着列；答出的从不超过上限（复核 A N-3、B N-6：第一轮写的"至多少放一项"不成立）；连零项的答复都放不下时 `Fit` 答 `errNothingFits`，工具答 `internal_error`（S1 审查 B 的细节 1：测试原来以 `k > 0` 豁免它）。候选至多约 2 log₂ n + 1 个（`limit` 1,000 时约 21 个；测试的界线是 `2⌈log₂ max(n, 2)⌉ + 1`），每个是一次编码与一次量；倍增让每个候选至多是第一个放不下的那个，即放得下的一份再加同样多的项：项的大小相近时约 2 × 48 KiB，最坏（后面的项都是 2,818 字节、全是 `&` 的路径）也不超过 `build(n)`。第一轮写的"每次至多约 50 KiB"不对：它先量 `build(n)`，`list` 的 1,000 项通常约 200 KB，最坏约 2.8 MB 的 JSON（复核 A N-3）。适配器从不自己数字节：草稿让 `list`、`notebooks` 的适配器"加上这一项超过上限就停"，没说怎么数，按 `len(JSON)` 数就少算一半（B-I1）。`read` 是文字的工具，它的第二块经 page 的 `Cut` 按 `TextBytes` 切（3.11.1）；`open_notebook` 的说明按 `MemberBytes` 切（3.17.3）。两个计数函数由 page 的模块根或 `adapter/mcp` 交给 page 的 `domain` 与 `app`（一个 `func(string) int` 的参数），page 里没有第二份计数，也就不要草稿的"两份一致"的测试（page 的 `app` 不导入平台，交函数值不算导入）。
 
 **握手的说明**另有自己的 32 KiB 规则（3.15.3），用同一个量 `TextBytes`：`initialize` 的结果由 jsonrpc2 不带 HTML 转义地编码（`exp/wire`：`"instructions":"<>&\"q\nn"`），所以对说明，`TextBytes` 在 `<>&` 上多算五个字节，是偏保守的上界；一个量好过两个差五个字节的量。
 
@@ -727,7 +817,7 @@ type PromptArgument struct {
 }
 ```
 
-`New` 把它转成 `mcp.Prompt{Name, Title, Description, Arguments: []*mcp.PromptArgument{…}}` 与一个处理函数：缺必填的参数答 `prompts/get` 的 -32602（同 SDK 对工具），`messages` 每条是一个 `role: user` 的 `TextContent`；同样经 `outer` 与恢复。不给参数的类型、结构检查与结果的形状：M10 需要时在这个注册表上加（第 8 节）。`Options.Prompts`（3.3.1）；M9 没有生产的 prompt。mcpserver 的单元测试以一个替身 prompt 证明：登记之后 `initialize` 的能力解码出 `prompts` 且 `listChanged` 为假、`prompts/list` 列出它、`prompts/get` 到达它的处理函数；没有 prompt 时能力里没有 `prompts`。整个程序的最后一跳写进给 M10 的移交（第 8 节）。
+两个入口都登记 prompt；没有 `Get` 的 `Prompt` 在 `New` 里 panic。`Get` 的错误不经 3.3.6 的分类与上限（记 error "MCP prompt failed"、答 -32603），是 M10 的（`promptHandler` 的注释写明，S1 审查 B 的细节 7）；`prompts/get` 的请求体至多 64 KiB（3.2.2）。`New` 把它转成 `mcp.Prompt{Name, Title, Description, Arguments: []*mcp.PromptArgument{…}}` 与一个处理函数：缺必填的参数答 `prompts/get` 的 -32602（同 SDK 对工具），`messages` 每条是一个 `role: user` 的 `TextContent`；同样经 `outer` 与恢复。不给参数的类型、结构检查与结果的形状：M10 需要时在这个注册表上加（第 8 节）。`Options.Prompts`（3.3.1）；M9 没有生产的 prompt。mcpserver 的单元测试以一个替身 prompt 证明：登记之后 `initialize` 的能力解码出 `prompts` 且 `listChanged` 为假、`prompts/list` 列出它、`prompts/get` 到达它的处理函数；没有 prompt 时能力里没有 `prompts`。整个程序的最后一跳写进给 M10 的移交（第 8 节）。
 
 #### 3.4.8 mcpserver 的单元测试
 
@@ -739,12 +829,13 @@ type PromptArgument struct {
 - **错误**：表 3.3.6 的每一行；`ToolError` 的 `Text` 与 `Extra`；处理函数同时返回结果与错误、返回 nil 的结果、panic，包装都只答结果（`err == nil`）；方法的 panic 答 `code` 是 -32603 的 JSON-RPC 错误（不是 0）；错误的答复连同 `structuredContent.error` 也在上限之内。
 - **量与上限**：`TextBytes` 等于真的文字块在答复里的字节（经 SDK 编码一个 `TextContent` 再减去外面的部分），`MemberBytes` 等于真的结构的答复里那个成员的字节，都在随机的字符串上（含 A-M4 表的每一行、`<>&`、U+2028、多字节的字符）；表里每一行另有一个固定的例子。答复恰好 `MaxAnswerBytes` 照答、多一个字节答 `internal_error` 并记 error；`Fit`：n 项全放得下时答 n 项；放不下时答的 k 项放得下而 k + 1 项放不下（测试另量 `build(k)` 与 `build(k+1)` 核对）；替身的 `build` 记下每次的 k：候选至多 2 log₂ n + 1 个，每个不大于第一个放不下的；全是引号与换行的成员按两次转义计。
 - **ctx**：处理函数看到的期限是"读完请求体 + 请求的期限"中较早的；请求的 ctx 取消时处理函数的 ctx 取消，而且很快（在调用的期限之前很久）；握手的中间件也拿到它。
-- **答复没写**（A-M3，复核 A N-2）：请求的期限设得很短、一个不看 ctx 的方法跑过它：答 500 problem+json、`Cache-Control: no-store`、warn 日志 "API request deadline exceeded"（`Write` 对期限的分类，同 REST），不是空的 200；客户端在这个方法跑着时断开：debug "client went away"，日志里没有 error 级的行。
+- **答复没写**（A-M3，复核 A N-2）：请求的期限设得很短、一个不看 ctx 的方法跑过它：答 500 problem+json、`Cache-Control: no-store`、warn 日志 "API request deadline exceeded"（`Write` 对期限的分类，同 REST），不是空的 200；客户端在这个方法跑着时断开：debug "client went away"，日志里没有 error 级的行。断开的一例问两个工具：一个活过客户端，它的答复总是没写、记 debug；一个停在自己的 ctx 上，它的调用记客户端走了；两个都不记 error。只问后一个时 SDK 可能先把它的错误写进已关的连接，就没有"没写"（S1 合并之后 main 的 CI 上竞态的一份摆动一次，测试的修复 `c87caad7`）。
 - **入口**：`notebook` 的取值（没有、一个合规的、大写的与带花括号的（`uuid.Parse` 收下，日志记小写的）、两个、空、不是 UUID、`notebook=%zz`、`notebook=<id>;x=1`）；后两种答 404 而不是落到账户入口；GET、DELETE 是 405 而不调 `Gate`。
 - **两个 server**：两个入口的 `tools/list` 各是自己的工具、能力解码出来 `tools.listChanged` 为假（SDK 把假省掉，写成 `"tools":{}`，测试解码而不找字面，A-N15）、结果带 `cacheScope: "private"`、`ttlMs: 0`；名称重复、不在任何入口、`Notebook` 而不在账户入口（只在笔记本入口）、名称不合规则都 panic。
 - **`no-store`**：`WriteHeader` 之前、只 `Write`、SDK 改写之后都是 `no-store`；`Flush` 与 `Unwrap`。
 - **SDK 的 logger**：一个无状态的 POST 之后，收集器里没有 `component=mcp-sdk` 的 info 行（A-M2）。
 - **`Prompt` 的替身**（3.4.7）。
+- **审查与两轮修复核对加的**：空的文字块（`TestAnEmptyBlockIsText`）与不合格的块（文字与图片或链接同块，`TestAMalformedResultIsInternal`）；编码不了的 `Extra` 立刻 `internal_error`（`TestAnUnwritableErrorIsInternalAtOnce`）；参数超过 48 KiB 的回退（16 条各 252 字节的控制字符的路径）与空的字段写作 `arguments`（`TestAProblemOfTheArgumentsRootIsAtArguments`）；调用一行的 `outcome`（处理函数的问题、panic）与账户入口的 `notebook_id`；不是回环的 Host（`TestAProxysHostIsServed`）；GET 的不认识的版本 400 在 405 之前；`?notebook=<id>&x=%zz`；`Fit` 的跳跃停在 n、零项放不下的 `errNothingFits`；panic 的日志只记合规的工具名；带名字的内嵌、递归的类型、`float32`、没有处理函数、零值的 `Errors` 的 panic；没有凭据的接线的错（`TestARequestWithoutACredentialIsAFault`）；超过 64 KiB 只给这个入口的工具的调用（`TestOnlyACallMayBeLong`：`jsonrpc` 原样的 U+0080 与没有、256 与 257 字节的 `id`、`_meta` 的 `1e300` 与 `1e400`、每个工具在自己的与另一个入口、`?notebook=%zz`、`?x=1`；200 的行另要有 JSON-RPC 的 `result`）与 `params` 的形状（`TestTheParamsAreShapedBeforeTheSDK`）；bodyshape 的 `TestBytesIsTheBodyRead`；httpserver 的 `TestARouteSaysWhyItNeedsAToken` 与 `RegisterPath` 的 `no-store` 的行。
 
 #### 3.4.9 S1 的整个程序的测试
 
@@ -759,13 +850,16 @@ type wiring struct {
 }
 ```
 
-（今天只有 `interleavings_workspace_test.go:78` 交 `batch`），测试登记三个工具：`echo`（两个入口，`Notebook: true`，答 `Call` 的笔记本、客户端与一个字符串参数）、`boom`（panic）、`slow`（等 ctx 结束，答它的错误）。生产的 `newApp` 交零值。
+（今天只有 `interleavings_workspace_test.go:78` 交 `batch`），测试登记三个工具：`echo`（两个入口，`Notebook: true`，答 `Call` 的笔记本、客户端与一个字符串参数）、`boom`（panic）、`slow`（等 ctx 结束，答它的错误）；边缘的测试另登记两个接缝工具 `seam_notebook`、`seam_account`（超过 64 KiB 的请求体，3.2.2）。生产的 `newApp` 交零值。
 
-- **PAT 与边缘**：没有令牌、无效、已撤销的 PAT 答 401 带 `WWW-Authenticate`；会话的访问令牌答 403 `forbidden`（在 `notebook` 之前：带一个看不到的笔记本也是 403）；`notebook` 看不到、已删除、不是 UUID、出现两次、为空、查询串解析不了（`notebook=%zz`、`;` 分隔）答 404 `notebook.not_found`；没有令牌又坏的请求体答 401（次序没有拼反）；超过 37,814,272 字节答 413；GET、DELETE 答 405 `Allow: POST`。
+- **PAT 与边缘**：没有令牌、无效、已撤销的 PAT 答 401 带 `WWW-Authenticate`；会话的访问令牌答 403 `forbidden`（在 `notebook` 之前：带一个看不到的笔记本也是 403）；`notebook` 看不到、已删除、不是 UUID、出现两次、为空、查询串解析不了（`notebook=%zz`、`;` 分隔）答 404 `notebook.not_found`；没有令牌又坏的请求体答 401（次序没有拼反）；超过 37,814,272 字节答 413、恰好 37,814,272 字节的 `tools/call` 照答；64 KiB 的 `ping` 答 200、多一个字节答 413，每个接缝工具在自己的入口 64 KiB 加一个字节答 200、在另一个入口与 `missing` 答 413；`?notebook=<id>&x=%zz` 答 404；`Host: wiki.example.com` 的握手答 200；GET、DELETE 答 405 `Allow: POST`。
 - **JSON-RPC 的批**：一个 `[{…tools/call echo…}, …]` 不带 `Mcp-Protocol-Version` 头、带 2025-03-26、带 2025-11-25 都答 400，`echo` 一次也没有执行（它数被调用的次数）；而且断言答复是 problem+json 的 `bad_request`：带 2025-11-25 时 SDK 自己也拒绝批，却是纯文字的 400（设计审查 A-M8），只看码分不出是边缘拒绝的还是 SDK。
-- **panic**：`boom` 答 `internal_error`、日志里有 error 级的一行带栈（日志收集器，同 `bootstrap` 已有的），同一个应用的下一次 `echo` 照常。
+- **panic**：`boom` 答 `internal_error`、日志里有 error 级的一行带栈（日志收集器，同 `bootstrap` 已有的），它的调用一行的 `outcome` 是 `internal_error`、带它的笔记本，同一个应用的下一次 `echo` 照常。
 - **期限与断开**：`slow` 在 `server.request_timeout`（测试的 4 秒）之后答 `internal_error: the call ran out of time`、记 warn；客户端在 300 ms 时断开，`slow` 的 ctx 在远早于期限时（1 秒之内）取消，日志是 `FaultGone` 的 debug "MCP client went away"，不是期限的 warn（A-M12：只断言"结束了"测不出去掉 `AfterFunc` 的变异，它一样会在期限时结束），而且日志里没有 error 级的行（`ServeHTTP` 的最后一支经 `Write` 的分类记 debug、答 499；复核 A N-2：第一轮的写法每次断开记两行 error，而这个测试只断言有 debug 的那一行，照样通过）。
-- **`no-store`**：200 的 `tools/call`、202 的通知、401、403、404 与 `/.well-known/oauth-protected-resource` 的 404 都带 `Cache-Control: no-store`。
+- **`no-store`**：200 的 `tools/call`、202 的通知、401、403、404、超过 64 KiB 的 413、`/.well-known/oauth-protected-resource` 的 404 与 `/register` 的 400 都带 `Cache-Control: no-store`（`TestEveryMCPAnswerIsNotStored`）。
+- **没有 OAuth**：`TestTheMCPRefusesOAuthRegistration`：`POST /register` 答 400、`application/json`、`no-store` 与确切的 JSON，说明与从服务端读的 `/.well-known/` 的 404 的说明相同，GET 与 DELETE 同没人服务的路径（网页的 200 与 405）；`TestTheMCPTellsEveryClientOneHint`：两个入口没有令牌的 401、`/.well-known/` 的 404 与 `/register` 说同一句，失败的令牌与 REST 的 401 不变，挑战是 `Bearer`。
+- **限流**：`TestTheMCPRoutesTakeTheBuckets`：小的桶用完时 PAT 的第三个 POST、失败的令牌之后的闸门、`/register` 的第二次都答 429 `rate_limited` 带 `Retry-After`，每个答复都 `no-store`（S1 审查 C-M1）。
+- **工具错误的码**：整个程序的测试读到的每个工具错误经 `toolError` 对照契约声明的码（`ProblemCodes`；反向对照 `TestAToolErrorsCodeIsDeclared`），S2 起另对照按工具的码的表（3.13）。
 - **协议版本**：官方 Go 客户端（默认的选项，先试 `server/discover` 再 `initialize`）协商出 2025-11-25；要 2025-06-18 的握手答 2025-06-18；只带 2026-07-28 的 `tools/call` 由 SDK 拒绝（设计审查实测的 400）；能力解码出 `tools` 而 `listChanged` 为假、没有 `logging` 与 `prompts`。
 - **旧协议的 `subscriptions/listen`**：请求体是 `{"notifications":{"toolsListChanged":true,"promptsListChanged":true}}`（真的订阅；`params: {}` 立刻答参数不对、`{"notifications":{}}` 即使 `ListChanged` 为真也立刻答完，那样的测试什么也证明不了，设计审查 A-M9 实测），带 2025-11-25 的头：答 200 `text/event-stream` 并在请求之内答完（1 秒之内，而不是等到期限）。反向对照见 3.19。
 - **`/.well-known/` 与 `/mcp/`**：`/.well-known/oauth-protected-resource`、`/.well-known/oauth-authorization-server`、`/.well-known/openid-configuration`、`/.well-known/x/y` 与 `/mcp/x` 都答 404 problem+json，不是前端的 `index.html`。
@@ -798,11 +892,11 @@ func TestTheToolListsAreTheContract(t *testing.T)
 **反向对照**（13.4 第 1 条）：
 
 - `TestTheToolListCheckCatchesEachDifference`：比较的函数 `toolListDiff(got, want)` 抽出来，在合成的清单上各改一处，它都报出：少一个工具、多一个工具、一个说明不同、一个属性的类型不同、一个注解不同、多一个成员（`outputSchema`）、`required` 的次序不同、两个入口对调。
-- `TestTheToolListCheckReadsTheApp`：经真的路径（serve、两次原始的 POST、读文件、比较），应用经测试的接缝多登记一个 `seam` 工具（`wiring.mcpTools`，两个入口）：比较失败，报出的差异点名 `seam`、两个入口各一次。这一条守的是取数的一段（客户端 → `tools/list` → 映射；文件 → 键）：S1 两边都是空的，没有它，列错入口、读错键、什么也没读都会通过。
+- `TestTheToolListCheckReadsTheApp`：经真的路径（serve、两次原始的 POST、读文件、比较），应用经测试的接缝多登记两个工具，`seam_notebook`（`NotebookEntry`）与 `seam_account`（`AccountEntry`）（`wiring.mcpTools`）：比较失败，报出的差异恰好是"the notebook entry lists seam_notebook…"与"the account entry lists seam_account…"；草稿的一个两个入口都登记的 `seam` 抓不到换掉或重复的入口（S1 审查 C-M5）。这一条守的是取数的一段（客户端 → `tools/list` → 映射；文件 → 键）：S1 两边都是空的，没有它，列错入口、读错键、什么也没读都会通过。
 
 **它在各 Step 证明什么**：S1 两个入口与文件都是空的，主测试只证明"两边都空、文件的两个键在"，真正的证明是上面两条反向对照（取数的路径与比较的函数都会失败）；S2 起它核对 `list`、`read` 的全部成员，S3 再加 `notebooks`、`open_notebook`。
 
-**接线的测试**（设计审查 A-I1、B-I4）：`TestTheMCPToolsBuildBothServers`（`bootstrap/mcp_tools_test.go`）以 serve 的同一条路建应用（`buildApp`，同一个 `mcpTools(pg, ln, nb)`），`mcpserver.New` 的 panic 由测试 `recover` 并以 panic 的文字报出；再对 `mcpTools` 的每个工具的 `Spec()`（mcpserver 的访问器，3.3.2；复核 A N-4：`Tool.spec` 不导出，没有它测试读不到）核对它恰好在 `Entry` 说的入口的 `tools/list` 里、账户入口里 `Notebook` 的工具有必填的 `notebook`。`New` 的 panic 也会让 `TestTheToolListsAreTheContract` 与别的整个程序的测试失败，契约的文件也已定下哪个入口列哪个工具；这个测试多出的是与 `Spec.Entry` 的核对与点名的 panic 文字，留着它，代价是一个访问器。S1 的 `mcpTools` 是空的，它只证明空的工具集建得起两个 server；S2 证明 `list`、`read`（`BothEntries, Notebook: true`）；S3 证明 `notebooks`（`AccountEntry`）与 `open_notebook`（`AccountEntry, Notebook: true`）。变异（S3 核对）：把 `New` 的规则改回草稿的"`Notebook` 而不在笔记本入口就 panic"，这个测试以 `open_notebook` 的 panic 失败。
+**接线的测试**（设计审查 A-I1、B-I4）：`TestTheMCPToolsBuildBothServers`（`bootstrap/mcp_tools_test.go`）以 serve 的同一条路建应用（`buildApp`，同一个 `mcpTools(pg, ln, nb)`，S2 起 `mcpTools(pg, as, ln, nb)`），`mcpserver.New` 的 panic 由测试 `recover` 并以 panic 的文字报出；再对 `mcpTools` 的每个工具的 `Spec()`（mcpserver 的访问器，3.3.2；复核 A N-4：`Tool.spec` 不导出，没有它测试读不到）核对它恰好在 `Entry` 说的入口的 `tools/list` 里、账户入口里 `Notebook` 的工具有必填的 `notebook`。`New` 的 panic 也会让 `TestTheToolListsAreTheContract` 与别的整个程序的测试失败，契约的文件也已定下哪个入口列哪个工具；这个测试多出的是与 `Spec.Entry` 的核对与点名的 panic 文字，留着它，代价是一个访问器。S1 的 `mcpTools` 是空的，它只证明空的工具集建得起两个 server；S2 证明 `list`、`read`（`BothEntries, Notebook: true`）；S3 证明 `notebooks`（`AccountEntry`）与 `open_notebook`（`AccountEntry, Notebook: true`）。变异（S3 核对）：把 `New` 的规则改回草稿的"`Notebook` 而不在笔记本入口就 panic"，这个测试以 `open_notebook` 的 panic 失败。
 
 ### 3.6 S1：按工具的权限矩阵的框架
 
@@ -833,7 +927,9 @@ type mcpCell struct {
 
 - **格**：每列的目标是 `notebookOf(c)`（`permission_matrix_notebook_test.go:154-166`）。笔记本入口里看不到的列（与 REST 的 `listNodes` 一行答 404 的列相同：同一条规则 `node.list`，测试从那一行取期望，不另抄一份）答 HTTP 404 `notebook.not_found`；账户入口里它们答工具的错误 `notebook.not_found`；看得到的列（读者以上）读得到。P1 的工具都只读，没有 `forbidden` 的格；写的格（P2 起）用库的副本。
 - **`TestThePermissionMatrixCoversEveryTool`**：`api/mcp/tools.json` 恰好有 `notebook` 与 `account` 两个键（拼错的键不会让覆盖永远通过）；每个入口的每个工具，在 `mcpRows()` 里恰好有一行、行的 `entries` 是它所在的入口；一行指着清单里没有的工具也报；`annotations.readOnlyHint` 为假的工具，它的行要有 `write`，为真的不能有（照 REST 的 `matrixViolations` 对写的行的检查，`bootstrap/permission_matrix_coverage_test.go:52-55`；设计审查 A-M11：P2 的写会继承这个框架，没有这一条它们的格就在读的那份库上跑）。反向对照 `TestMCPMatrixViolationsCatchesEachGap`：合成的清单与行，各缺一处（少一行、行多一个入口、行指着没有的工具、写的工具的行没有 `write`、读的工具的行有 `write`、文件少一个键）都报出，照 `TestMatrixViolationsCatchesEachGap`（`permission_matrix_coverage_test.go:160`）。
-- **它在各 Step 证明什么**：S1 没有工具，矩阵没有行：覆盖的测试只证明文件的两个键在，函数会失败由反向对照证明（合成的数据）。S2 加 `list`、`read`，S3 加 `notebooks`、`open_notebook`（3.13、3.17.4），覆盖的测试从那时起核对真的清单与行。
+- **账户入口的 `notebook`**（S1 审查 B-M1）：runner 只在 `tools.json` 里这个入口的 schema 要 `notebook` 时给账户入口的调用加列的笔记本（`takesNotebook(readToolLists(t))`），S3 的 `notebooks` 不收它；`TestTheMatrixGivesANotebookAsTheFileSays` 在合成的清单上测（`notebook` 键下放一个诱饵）。S1 的试跑在生产的接线里加两个假的工具（只在账户入口、输入 `struct{}` 的 `nbs`，两个入口的 `echo`）与它们的行：39 格都通过；对照（每个账户入口的调用都加）`nbs` 的 13 格失败。
+- **码**：每格的工具错误经 `toolError` 对照契约声明的码（3.4.9），S2 起另对照按工具的码的表（3.13）。
+- **它在各 Step 证明什么**：S1 没有工具，矩阵没有行（`TestThePermissionMatrixOverMCP` 没有行时跳过）：覆盖的测试只证明文件的两个键在，函数会失败由反向对照证明（合成的数据）。S2 加 `list`、`read`，S3 加 `notebooks`、`open_notebook`（3.13、3.17.4），覆盖的测试从那时起核对真的清单与行。
 
 ### 3.7 S1：archtest
 
@@ -856,26 +952,29 @@ type mcpCell struct {
 | 文件 | 包 | 新/改 | 内容 |
 |---|---|---|---|
 | `page/domain/path.go` | page/domain | 新 | `MaxPathBytes`、`MaxPathSegments`、`Path`、`ParsePath`、`PathOf`、`PathNotFound`（3.9.1–3.9.2） |
-| `page/domain/glob.go` | page/domain | 新 | `MaxGlobBytes`、`MaxGlobWildcards`、`MaxGlobWork`、`GlobEntryWork`、`Glob`、`ParseGlob`、`GlobState`、`Start`、`Step`、`Accepts`、`GlobNode`、`Walk`（按树走与接着走，3.10.1） |
-| `page/domain/version.go` | page/domain | 新 | `Version`（3.9.3） |
-| `page/domain/read.go` | page/domain | 新 | `DefaultReadLines`、`Window`、`CheckWindow`、`Slice`、`Cut`（计数函数由调用者交）、`InlineImage` 与两个上限（3.11） |
+| `page/domain/glob.go` | page/domain | 新 | `MaxGlobBytes`、`MaxGlobWildcards`、`MaxGlobWork`、`GlobEntryWork`、`Glob`、`ParseGlob`、`GlobState`、`Start`、`Step`、`Accepts`、`GlobNode`、`Walk(ctx, …)` 与它答的 `GlobWalk`（按树走与接着走，3.10.1） |
+| `page/domain/version_token.go` | page/domain | 新 | `VersionToken`（3.9.3；M8 的 `domain.Version` 已占 `version.go` 与这个名字） |
+| `page/domain/read.go` | page/domain | 新 | `DefaultReadLines`、`Window`、`CheckWindow`、`Slice`、`Cut`（计数函数由调用者交）、`InlineImage`、`InlineType` 与两个上限（3.11） |
+| `shared/title.go` | shared | 改 | `TitleHolds(r)`：一个字符标题里能不能有，即 `CheckTitle` 逐字符的规则，`ParseGlob` 用它（3.10.1） |
 | `page/domain/list.go` | page/domain | 新 | `DefaultListLimit` = 200、`MaxListLimit` = 1,000、`CheckListLimit`、`ChildrenCursor`、`GlobCursor`（3.10.2） |
-| `page/app/ports.go` | page/app | 改 | `PathStore`、`PageStates`、`PageState`、`AttachmentReader`、`Attachment`、`ErrNoAttachmentFile` |
+| `page/app/ports.go` | page/app | 改 | `PathStore`、`PageStates`、`PageState`、`AliveNodes`、`AttachmentReader`、`Attachment`、`ErrNoAttachmentFile` |
+| `page/app/authorize.go`、`gate.go` | page/app | 改 | `decideNotebook`：`NotebookGate`、`ListByPattern`、`ReadPath` 共用的笔记本的判定（S2 审查 C-N5） |
 | `page/app/node_paths.go` | page/app | 新 | `NodePaths`（`Find`；`Paths` 随 P4，3.9.2） |
 | `page/app/list_by_pattern.go`、`read_path.go` | page/app | 新 | 用例 `ListByPattern`（3.10.4）、`ReadPath`（3.11.1） |
-| `page/adapter/postgres/queries/nodes.sql`、`contents.sql`、`store.go` | page/adapter/postgres | 改 | `RootByKey`、`ChildByKey`、`PageStates`（3.9.2、3.10.3）；`make gen` 重新生成 sqlc |
+| `page/adapter/postgres/queries/nodes.sql`、`contents.sql`、`trash.sql`、`store.go` | page/adapter/postgres | 改 | `RootByKey`、`ChildByKey`、`AliveNodes`、`PageStates`（3.9.2、3.10.3）；`nameTaken` 认 00042 的两个索引；`trash.sql` 的注释（父节点的索引）；`make gen` 重新生成 sqlc |
+| `server/migrations/sql/00042_page_nodes_path_keys.sql`、`migrations/schema_test.go`、`server/sqlc.yaml` | migrations | 新、改 | 根与子节点的部分唯一索引，去掉 00012 的兄弟的索引（3.9.2）；索引的行与 `TestThePathKeysGoDownToTheSiblingsIndex`；sqlc 的 page 一项列上 00042 |
 | `page/adapter/mcp/tools.go`、`list.go`、`read.go`、`text.go` | page/adapter/mcp（新包） | 新 | 工具 `list`、`read`；`PathNotFound` 等错误的文字；元数据行（3.10.5、3.11） |
 | `page/module.go`、`page/tools.go` | page | 改、新 | `Module` 留下 MCP 的用例；`MaxContentBytes` 的别名；`ToolDeps`、`Tools(d)`（`page.NewNodePaths(pool)` 随 P4） |
 | `asset/module.go`、`asset/attachment_reads.go` | asset | 改、新 | `Deps.PublicURL`；`Module` 留下 `reads`、`blobs`、`sniffer`；`AttachmentReads`、`Attachment`（3.11.2） |
-| `asset/adapter/sniff/sniff.go`、`webp.go`、`testdata/*.webp`、`asset/domain/types.go` | asset | 改、新 | `webpSize` 与 `Sniffer.Size` 的分支（`Content` 对旧行以 `Size(bytes.NewReader(data))` 读，同样只留 1–65,535 的边）；`HasSize` 加 `image/webp`（3.11.2） |
+| `asset/adapter/sniff/sniff.go`、`webp.go`、`testdata/*.webp`、`asset/domain/types.go`、`asset/app/blobs.go`、`ports.go` | asset | 改、新 | `webpSize` 与 `Sniffer.Size` 的分支（`Size` 取 `io.ReadSeeker`，以 seek 读文件的长度）；`asset/app.ImageSize(sniffer, r)`：上传与 `Content` 对旧行同一条只留 1–65,535 的边的规则；`HasSize` 加 `image/webp`（3.11.2） |
 | `api/modules/asset.yaml`、生成的 `api.gen.go` 与前端的类型 | — | 改 | `width`、`height` 的说明"(PNG, JPEG, GIF)"加 WebP；`make gen`（3.11.2、第 7 节） |
 | `platform/config/config.go`、`validate.go`、`configs/config.yaml` | config | 改 | `server.public_url`（3.12） |
-| `bootstrap/mcp.go`、`deps.go` | bootstrap | 改 | `mcpTools` 拼上 `pg.Tools(page.ToolDeps{Attachments: pageAttachments{as.AttachmentReads()}})`；`assetDeps` 交 `PublicURL`；`pageAttachments` 的适配（错误的换法） |
+| `bootstrap/mcp.go`、`deps.go`、`wire.go` | bootstrap | 改 | `mcpTools(pg, as, ln, nb)` 拼上 `pg.Tools(page.ToolDeps{Attachments: pageAttachments{as.AttachmentReads()}})`；`assetDeps` 交 `PublicURL`；`pageAttachments` 的适配与它的错误的换法 `pageAttachmentErr`（`asset.ErrNotFound` 到 `page.ErrNotFound`、`ErrNoFile` 到 `ErrNoAttachmentFile`） |
 | `api/mcp/tools.json` | — | 改 | 两个入口加 `list`、`read`（3.18） |
 | `page/domain/*_test.go`、`page/app/*_test.go`、`page/adapter/postgres/*_test.go`、`page/adapter/mcp/*_test.go`、`asset/attachment_reads_test.go`、`asset/adapter/sniff/*_test.go`、`asset/app/blobs_test.go`、`asset/domain/types_test.go` | — | 新、改 | 3.9–3.11 的单元、存储、计划与性质测试，WebP 的头与它的模糊测试，守卫；`TestHasSize` 的 `image/webp` 改为 `true`（`types_test.go:107`，复核 B N-3） |
-| `bootstrap/mcp_reads_test.go`、`permission_matrix_mcp_test.go` | bootstrap | 新、改 | 3.13 |
-| `Makefile` | — | 改 | `test-go-costs` 加 glob 的守卫 `TestTheWorstGlobsStopWithinTheirWork`（3.10.1） |
-| `e2e/fixtures/mcp.ts`、`e2e/fixtures/server.ts`、`e2e/stories/mcp/mc2-read-list.spec.ts` | e2e | 新、改 | 脚本化的客户端、`NWIKI_SERVER__PUBLIC_URL`、MC2（第 4 节） |
+| `bootstrap/mcp_reads_test.go`、`permission_matrix_mcp_test.go`、`mcp_client_test.go` | bootstrap | 新、改 | 3.13；按工具的码的表 `mcpToolCodes()` 与它的检查 |
+| `Makefile`、`.github/workflows/ci.yml` | — | 改 | `test-go-costs` 加 glob 的守卫 `TestTheWorstGlobsStopWithinTheirWork`（3.10.1）；守卫那一份的作业时限由 20 分钟提到 25 分钟（S2 时作业已到 11:05，照约两倍的规则） |
+| `e2e/fixtures/mcp.ts`、`e2e/fixtures/server.ts`、`e2e/fixtures/assets.ts`、`e2e/stories/mcp/mc2-read-list.spec.ts` | e2e | 新、改 | 脚本化的客户端、`NWIKI_SERVER__PUBLIC_URL`、`webpBytes`、MC2（第 4 节） |
 
 ### 3.9 S2：段、路径与版本令牌
 
@@ -945,7 +1044,7 @@ type PathStore interface {
 ```sql
 -- name: RootByKey :one
 -- The node not deleted at the notebook's root whose title key is name_key: a path's first segment (M9/P1 design
--- 3.9.2), by the siblings' unique index, whose NULLS NOT DISTINCT keeps one root per key.
+-- 3.9.2), by the roots' unique index (00042), its two columns equalities: a point lookup with statistics or without.
 SELECT id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at,
     updated_at
 FROM nodes
@@ -953,8 +1052,10 @@ WHERE notebook_id = sqlc.arg(notebook_id) AND parent_id IS NULL AND name_key = s
     AND deleted_at IS NULL;
 
 -- name: ChildByKey :one
--- The child not deleted of parent_id whose title key is name_key: a path's next segment, by the same index.
--- IS NOT DISTINCT FROM would not use it (2.1, item 13).
+-- The child not deleted of parent_id whose title key is name_key: a path's next segment, by the children's unique
+-- index (00042), its two columns equalities, the notebook checked on the row: a point lookup once the table is
+-- analyzed. Without statistics the planner may read the notebook's nodes of the key by the titles' index (00019)
+-- instead, 00042's header says why. IS NOT DISTINCT FROM would not use either (M9/P1 design 2.1, item 13).
 SELECT id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at,
     updated_at
 FROM nodes
@@ -962,7 +1063,9 @@ WHERE notebook_id = sqlc.arg(notebook_id) AND parent_id = sqlc.arg(parent_id) AN
     AND deleted_at IS NULL;
 ```
 
-`Find` 逐段点查（至多 11 条语句，每条一次索引的点查；计划测试 `TestThePathLookupsArePointLookups`：两条语句在没有统计时都以兄弟的唯一索引的 `notebook_id`、`parent_id`、`name_key` 为索引条件）：第 i 段不是最后一段而找到的是附件 → 找不到（附件没有子节点）；最后一段的类型与路径的不同 → 找不到，带提示：路径是附件的写法而找到的是页时"A page's path ends with .md: "A/x.png.md"."，路径是页的写法而找到的是附件时"That is an attachment: its path is "A/x"."（`PathOf` 给出）。错误是
+**两条语句的索引**（S2 审查 A-I1、C-I2 与修复核对，主持者的决定；实施时的偏离 8 由它取代）：设计写的"都走兄弟的唯一索引"不成立。btree 只在每列都有 `=` 时把唯一索引估作一行，根下的 `parent_id IS NULL` 是 NullTest，`NULLS NOT DISTINCT` 的兄弟的索引得不到这份信用：C 量出 2 万个根各有子节点 `notes` 时，没有统计两条语句都走 00019 的 `(notebook_id, name_key)`、滤掉 2 万行，ANALYZE 之后 `RootByKey` 顺序扫描整张表；一个 2 万个子节点的文件夹，没有统计时走 `(notebook_id, parent_id)`。改写语句（`ORDER BY`、行的比较、显式的 `parent_id IS NOT NULL`）都移不动没有统计时的选择。所以迁移 `00042_page_nodes_path_keys.sql` 加两个部分唯一索引，`nodes_notebook_id_name_key_root_key ON nodes (notebook_id, name_key) WHERE parent_id IS NULL AND deleted_at IS NULL` 与 `nodes_parent_id_name_key_key ON nodes (parent_id, name_key) WHERE parent_id IS NOT NULL AND deleted_at IS NULL`，两列都是等值的条件；再去掉 00012 的 `nodes_notebook_id_parent_id_name_key_idx`：两个新的索引合起来就是它的约束（子节点由复合外键 `nodes_notebook_id_parent_id_fkey` 在父节点的笔记本里），行不相交，一个撞名恰好撞一个；留着它只多写的代价（约 1.8%）、多一个错误的名字，还让计划测试脆弱。Down 照 00012 重建它，再去掉两个。`nameTaken` 把两个新名字都认作 `ErrTitleTaken`（新建、改名、移动、恢复）。`RootByKey` 有没有统计、自定义与通用的计划都是根的索引的点查（2–4 个缓冲）。`ChildByKey` 在表 ANALYZE 之后是子节点的索引的点查；之前可能经 00019 的标题索引读这本笔记本里这个键的全部节点（A 的"只有文件夹"：1,000 个文件夹 × C1–C100，滤掉 999 行、1,002 个缓冲）：00019 的索引不唯一，B-tree 的去重把一个键的项折进一个 posting list，比任何唯一的子节点索引浅一层，下降的代价正是决定近乎平手的 0.12；实施者量了五种子节点的索引定义，没有一种补得上。主持者接受这个计划，到 autovacuum 第一次 ANALYZE 为止，不用 A 验证过的 `(notebook_id = $1) IS TRUE` 一类的规划器的技巧（第 8 节交 M12）。
+
+`Find` 逐段点查（至多 11 条语句，每条一次索引的点查；计划测试 `TestThePathLookupsArePointLookups`：A 与 C 的四种形状（共用子节点的键的 1,000 个文件夹另加 5 万个别的笔记本的根、只有文件夹、2,002 本笔记本里共用的根键、2 万个兄弟），没有统计与 ANALYZE 之后、自定义与通用的计划，核对确切的索引名与它的每列都是等值的条件；`ChildByKey` 的各例在 ANALYZE 之后跑；`TestThePathKeysGoDownToTheSiblingsIndex` 核对 Up 与 Down 之后名称键的唯一索引的确切 `indexdef`）：第 i 段不是最后一段而找到的是附件 → 找不到（附件没有子节点）；最后一段的类型与路径的不同 → 找不到，带提示：路径是附件的写法而找到的是页时"A page's path ends with .md: "A/x.png.md"."，路径是页的写法而找到的是附件时"That is an attachment: its path is "A/x"."（`PathOf` 给出）；路径是 `A/y.md` 而那里有标题是 `y.md` 的页时"A page there is titled with the .md: its path is "A/y.md.md"."（多一次点查，S2 审查 A-N3）。错误是
 
 ```go
 // PathNotFound is page.not_found for a path, with the path as written and
@@ -980,24 +1083,25 @@ func (e *PathNotFound) Unwrap() error { return ErrNotFound }
 
 **与链接的规则不同的四处**（00 号文档 4.8 的表，M7 的移交第 3 项）：MCP 的路径不经 `ParseTarget`、`Resolve`，不做后缀匹配、不经别名。`A/x.png` 只指附件（页 `x.png` 写作 `A/x.png.md`）；`A/x.md` 只指页 `A/x`（标题是 `x.md` 的页写作 `A/x.md.md`）；没有扩展名的附件 `A/data` 有路径（`read` 的元数据里 `link` 为 null）；`A/` 只在 `list` 里、是 `A` 的子节点。四种各有表格测试。
 
-**两种实现的一致**（13.4 第 10、13 条，`page/adapter/postgres` 的 `TestEveryNodesPathFindsIt`，真实的数据库）：随机的树（至多 6 层，标题以 `.md`、`.MD` 结尾的页，叫 `x.png` 的页，有与没有扩展名的附件，NFC、NFD 与大小写折叠的变体，`ß` 与 `SS`）上，每个活着的节点：`Find(ParsePath(PathOf(n)))` 找回的就是它；以它为模式的 `list`（不带通配的 glob）恰好列出它；它的父页的 `祖先/` 列出的子节点等于 `Children`。另以大写、NFD 写的路径找回同一个节点。变体可能越过上限（设计审查 B 的 Nit 9）：`ǰ` 大写之后由 2 字节变 3 字节，255 字节的标题就成了太长的段；255 字节的 NFC 韩文在 NFD 里是 510–765 字节，11 段可以超过 4,096。生成器为变体留出余量（变体的每段至多 255 字节、整个至多 4,096 字节才拿去找），越过的变体断言答 `too_long`，不当作找不到。
+**两种实现的一致**（13.4 第 10、13 条，`page/adapter/postgres` 的 `TestEveryNodesPathFindsIt`，真实的数据库）：随机的树（至多 6 层，标题以 `.md`、`.MD` 结尾的页，叫 `x.png` 的页，有与没有扩展名的附件，NFC、NFD 与大小写折叠的变体，`ß` 与 `SS`）上，每个活着的节点：`Find(ParsePath(PathOf(n)))` 找回的就是它；以它为模式的 `list`（不带通配的 glob）恰好列出它（路径在 `MaxGlobBytes` = 1,024 字节之内时；更深的由父节点的 `祖先/` 列出，五层 254 字节的标题的一例核对 `read` 找得到、字面的 `list` 答 `too_long`、父节点列得出它，S2 审查 A-M3）；它的父页的 `祖先/` 列出的子节点等于 `Children`。另以大写、NFD 写的路径找回同一个节点。变体可能越过上限（设计审查 B 的 Nit 9）：`ǰ` 大写之后由 2 字节变 3 字节，255 字节的标题就成了太长的段；255 字节的 NFC 韩文在 NFD 里是 510–765 字节，11 段可以超过 4,096。生成器为变体留出余量（变体的每段至多 255 字节、整个至多 4,096 字节才拿去找），越过的变体断言答 `too_long`，不当作找不到。
 
-#### 3.9.3 版本令牌的写法（`page/domain/version.go`）
+#### 3.9.3 版本令牌的写法（`page/domain/version_token.go`）
 
 ```go
-// Version is a page's version as MCP answers it (M9 design 4.10): its node
-// and its content's revision, written "<node id>:<revision>".
-type Version struct {
+// VersionToken is a page's version as MCP answers it (M9 design 4.10): its
+// node and its content's revision, written "<node id>:<revision>". It is
+// no Version, a row of a page's versions (M8 design 4.3).
+type VersionToken struct {
 	Node     uuid.UUID
 	Revision int
 }
 
 // String is the token: the id in its canonical form, the revision in
 // decimal without a sign or leading zeros.
-func (v Version) String() string { return v.Node.String() + ":" + strconv.Itoa(v.Revision) }
+func (v VersionToken) String() string { return v.Node.String() + ":" + strconv.Itoa(v.Revision) }
 ```
 
-P1 只写它（`list` 的页、`read`）；P2 加 `ParseVersion`：在最后一个 `:` 处分开、`uuid.Parse`、`strconv.Atoi`、版本号至少 1，而且 `String()` 等于原文（大写的 id、`+1`、`01` 都答 422 `base_version` `invalid_format`），所以每个版本恰好一种写法。单元测试核对写法（规范的小写 id、没有前导的零）。
+名字不是设计写的 `Version`：M8 的 `domain.Version`（`version.go`）是一页的版本的一行，已占这个名字（实施时的偏离 1）。P1 只写它（`list` 的页、`read`）；P2 加 `ParseVersionToken`：在最后一个 `:` 处分开、`uuid.Parse`、`strconv.Atoi`、版本号至少 1，而且 `String()` 等于原文（大写的 id、`+1`、`01` 都答 422 `base_version` `invalid_format`），所以每个版本恰好一种写法。单元测试核对写法（规范的小写 id、没有前导的零）。
 
 ### 3.10 S2：glob 与 `list`
 
@@ -1010,7 +1114,7 @@ P1 只写它（`list` 的页、`read`）；P2 加 `ParseVersion`：在最后一�
 const (
 	MaxGlobBytes     = 1024
 	MaxGlobWildcards = 32
-	MaxGlobWork      = 400_000_000 // a word × a key's byte; GlobEntryWork an entry, on entering its parent
+	MaxGlobWork      = 300_000_000 // a word × a key's byte; GlobEntryWork an entry, on entering its parent
 	GlobEntryWork    = 256
 )
 
@@ -1049,21 +1153,37 @@ type GlobNode struct {
 // once its work reaches max, after at least one node was examined in this
 // call, and answers the path key of the last node examined; resuming skips
 // what sorts before after at each level and steps only after's ancestors.
-func (g Glob) Walk(roots []*GlobNode, after string, max int64, each func(keys []string, n *GlobNode) bool) (last string, stopped bool, work int64)
+// Every globCheck entries it looks at ctx, and answers its error once it
+// ended.
+func (g Glob) Walk(ctx context.Context, roots []*GlobNode, after string, max int64, each func(keys []string, n *GlobNode) bool,
+) (GlobWalk, error)
+
+// GlobWalk is what a walk did: the path key of the last node it examined;
+// whether it stopped because its work reached its bound; its work, and
+// the work before it examined its first node, re-entering the cursor's
+// ancestors and the parents on the way.
+type GlobWalk struct {
+	Last    string
+	Stopped bool
+	Work    int64
+	Before  int64
+}
 ```
 
-- **写法**：长于 1,024 字节 → `too_long`；去掉开头的一个 `/`；以 `/` 结尾、空的段、`.`、`..` → `invalid_format`；`[`、`]`、`\` → `invalid_format`（"has no character classes or escapes"）；`**` 不独占一段（`a**b`）→ `invalid_format`；`*`、`?`、`**` 合计多于 32 个 → `invalid_format`（"holds more than 32 wildcards"）；不是 `**` 的段多于 11 个 → `too_long`（同路径的段数，它什么也配不上）。字面的部分里标题不能有的字符（`shared.CheckTitle` 禁的 `` : " < > | # ^ ``，与 `unshowable` 的字符，含 NUL 与控制字符）→ `invalid_format`（"segment 2 holds a character no title can hold"），段的首尾是空白 → `invalid_format`：它们什么也配不上，agent 打错了应当知道，与拒绝 `[ ] \` 是同一个道理（设计审查 B-M5 的 (a)：草稿在 3.13 说 `pattern` 带 NUL 答 422，而 `ParseGlob` 没有这条规则）。`{`、`}`、`,`、`!` 是普通的字符。空的模式、`/` 与以 `/` 结尾的不是 glob：`list` 先把它们当子节点（3.10.2）。
+`Walk` 带 ctx（每 1,024 个项查一次）、答 `GlobWalk` 是实施时的偏离 2：`Work` 与 `Before` 只有测试读，`Before` 让测试给续走的重进定界（`TestTheGlobCountsItsWork` 在 10 万项的父节点里续走，核对 `Before` 恰好是它的项乘 256）。
+
+- **写法**：长于 1,024 字节 → `too_long`，消息说更深的节点由它的父节点的路径加 `/`（`"A/B/"`）列出、由它的路径读（S2 审查 A-M3）；去掉开头的一个 `/`；以 `/` 结尾、空的段、`.`、`..` → `invalid_format`；`[`、`]`、`\` → `invalid_format`（"has no character classes or escapes"）；`**` 不独占一段（`a**b`）→ `invalid_format`；`*`、`?`、`**` 合计多于 32 个 → `invalid_format`（"holds more than 32 wildcards"）；不是 `**` 的段多于 11 个 → `too_long`（同路径的段数，它什么也配不上）。字面的部分里标题不能有的字符（`shared.CheckTitle` 禁的 `` : " < > | # ^ ``，与 `unshowable` 的字符，含 NUL 与控制字符）→ `invalid_format`（"segment 2 holds a character no title can hold"），段的首尾是空白 → `invalid_format`：它们什么也配不上，agent 打错了应当知道，与拒绝 `[ ] \` 是同一个道理（设计审查 B-M5 的 (a)：草稿在 3.13 说 `pattern` 带 NUL 答 422，而 `ParseGlob` 没有这条规则）。`{`、`}`、`,`、`!` 是普通的字符。空的模式、`/` 与以 `/` 结尾的不是 glob：`list` 先把它们当子节点（3.10.2）。
 - **折叠**：每段按通配切成字面的片段，每个片段 `shared.TitleKey`；`.md` 的大小写随之不论。`?` 数的是折叠之后的字符（`ß` 折成 `ss` 是两个）。
 - **一段之内：位并行的自动机**（Shift-And，Baeza-Yates 与 Gonnet）。去掉 `*` 之后一段有 m 个位置（字面的字符与 `?`），状态是 m + 1 位的掩码，⌈(m+1)/64⌉ 个 64 位的字；读键的一个字符是每个字一次"左移、与这个字符的掩码（它在哪些位置上、加上 `?` 的位置）、或上前面有 `*` 的位置（它们读任何字符都留着）"。整段读完、接受的位在就是配上。代价随键的字符数乘字数（计作键的字节数乘字数，见工作的上限），线性，没有回溯，对 `*` 与 `?` 是准确的（不要草稿的"贪心取最左的出现"的论证）。一个 glob 所有的段合计至多 1,024 个位置，所以所有段的字数合计至多约 16 + 段数。
 - **段之间：段上的自动机**。状态 j 是"模式的前 j 段已配上"，`**` 是一个读任何一段都留着、并可以不读就进到下一段的状态，结尾的 `/**` 是"恰好一段"加 `**`（至少一段：`A/**` 是 `A` 之下的全部，不含 `A` 本身，也不含根下一个叫 `A` 的附件），别处的 `**` 可以是零段。状态集至多 11 + 32 + 2 个，放在一个 `uint64` 里。还要 k 段才能接受的状态在深度不够时去掉，所以深的模式在浅的子树里很快就空了。
 - **按树走**：一个节点的状态是父节点的状态读它的键一步；子节点从它开始，所以每个键只读一次，代价随节点数增长，不随节点数乘深度（B-I5 的"按树的节点记住状态"）。状态空了的子树不往下走：模式开头的字面段因此自然地把走查收窄到那棵子树，不要草稿的 `Prefix`（它的定义把最后一段也算进去，`Guide/Setup.md` 会去找一个键是 `setup.md` 的节点，设计审查 B-M4；去掉它，这个问题也就没有了）。
-- **次序**：按路径的键（每段的标题键以 `/` 连起，页的最后一段带 `.md`）走：每个父节点下的项是页自己（`键.md`）、页的子树（块 `键/`）与附件（`键`），按字节排；标题键里没有 `/`，所以一个页的子树在连起的次序里是连续的一块，排好每个父节点的项就是整串的次序（`a/b` 与 `a-c` 比的是 `/` 与 `-`，逐段比较会排错，设计审查 B-M2；这里比的正是整串在那一处的字节）。所以 `list` 按次序产出，不拼每个节点的路径、不排序全部匹配：栈上留着祖先的键（共享的切片），只为答出的那一页（至多 `limit` + 1 项）拼路径。走查是 `page/domain` 的 `Glob.Walk`：用例传读出的树与上限（生产交 `MaxGlobWork`），守卫与走查的测试不连数据库直接调它。
+- **次序**：按路径的键（每段的标题键以 `/` 连起，页的最后一段带 `.md`）走：每个父节点下的项是页自己（`键.md`）、页的子树（块 `键/`）与附件（`键`），按字节排；标题键里没有 `/`，所以一个页的子树在连起的次序里是连续的一块，排好每个父节点的项就是整串的次序（`a/b` 与 `a-c` 比的是 `/` 与 `-`，逐段比较会排错，设计审查 B-M2；这里比的正是整串在那一处的字节）。所以 `list` 按次序产出，不拼每个节点的路径、不排序全部匹配：栈上留着祖先的键（共享的切片），只为答出的那一页（至多 `limit` + 1 项）拼路径。走查是 `page/domain` 的 `Glob.Walk`：用例传读出的树与上限（`NewListByPattern` 自己设 `MaxGlobWork`，测试经 `export_test.go` 的 `WithMaxWork` 换小的；`TestAListsGlobsAreBoundByMaxGlobWork` 钉住生产的值，S2 审查 C-N1），守卫与走查的测试不连数据库直接调它。
 - **为什么不编译成 RE2**：Go 的 `regexp` 也是线性的，但它对每个节点的整条路径从头跑，祖先的前缀不共享，每个字符的代价是程序的大小而不是字数：11 段、2,815 字节的一条路径上，163 字节与 1,024 字节的模式各 1.8 ms 与 1.5 ms（`exp/glob/re2_test.go`），10 万条这样的路径要 150–180 秒。
-- **工作的上限**：一个单位是"一个字乘键的一个字节"，每个项另算 `GlobEntryWork` = 256（项的字符串、它在排序里的位置与状态的一步，本机约 250 ns），在进入父节点时为它的全部项一次算上。一次 `list` 至多 `MaxGlobWork` = 4 亿个单位，在项之间、这一次至少走过一个项之后检查；到了 `list` 就停，答已经配上的与 `next_cursor`（最后走过的那个项的路径键），与答复到 48 KiB 时停下是同一个意思："后面可能还有，拿游标接着列"；这一页可能是空的而有 `next_cursor`。不是错误，不答 422：键的次序已经给了接着走的地方，agent 接着调或先列一个文件夹（工具的说明写明，3.18）。另每 1,024 个项查一次 `ctx.Err()`。
+- **工作的上限**：一个单位是"一个字乘键的一个字节"，每个项另算 `GlobEntryWork` = 256（项的字符串、它在排序里的位置与状态的一步，本机约 250 ns），在进入父节点时为它的全部项一次算上。一次 `list` 至多 `MaxGlobWork` = 3 亿个单位（S2 审查 A-M2 之后由 4 亿降下，见实测），在项之间、这一次至少走过一个项之后检查；到了 `list` 就停，答已经配上的与 `next_cursor`（最后走过的那个项的路径键），与答复到 48 KiB 时停下是同一个意思："后面可能还有，拿游标接着列"；这一页可能是空的而有 `next_cursor`。不是错误，不答 422：键的次序已经给了接着走的地方，agent 接着调或先列一个文件夹（工具的说明写明，3.18）。另每 1,024 个项查一次 `ctx.Err()`。
   - **按字节而不是按字符**（复核 B N-1）：第一轮按字符计，而 ASCII 之外的字符每个约贵 1.6–1.9 倍（B 实测）：它的掩码不在 128 项的表里，要解码 UTF-8 再查映射。按字节计，`é` 记 2 个单位、`漢` 记 3 个，字数的因子照旧在模式那一边，也更便宜算（字数乘 `len(key)`）。另外，模式里不是 ASCII 的字符的低 10 位记进一个 1,024 位的筛子，键里的字符在筛子里没有的就不查映射、直接取 `?` 的掩码：汉字的模式在 `é` 的键上、或反过来，不付映射的查找（`exp/glob` 实测：`é` 的键上 `**/*需求?*/**` 到上限由 1.21 秒降到 0.61 秒）。
   - **进入父节点时算**（复核 B N-8）：每个父节点的项（页 `键.md`、块 `键/`、附件 `键`）在进入它时建好、排好，排序在那时就整个付了；第一轮按走过的项算，一个 10 万项的父节点只走一项就停时，排序不在上限里。现在进入时为每一项算 256。键的公共前缀长时排序比它记的单位贵：B 的守卫树的根 20 万个项、公共前缀约 250 字节，只排序就 0.09–0.23 秒，约是它记的 5,120 万个单位的 2–4 倍（主机负载 7–10 时量的）；仍在下面的用时之内（守卫的每一次都含它）。
 - **接着走**（复核 B N-2）：游标 K 是上一次最后走过的那个项的路径键。从 K 接着走时，每一层只看 K 在这一层的那一段 c（K 的最后一段是项自己的字符串 `键.md` 或附件的 `键`；之前的各段加 `/`，是块 `键/`）：这一层里排在 c 之前的项都跳过，不走、不算它们的步（排好之后二分找到 c）；等于 c 的块进去，在下一层照样找；等于 c 的项上次已走过，跳过；之后的项照常走。所以接着走只重走 K 的祖先：至多 10 个块的一步，加上进入这些父节点时它们的项（照算，排序也照付）。K 的节点被删了或移走了，二分照样落到它之后的第一项：不重复、不跳过别的项。上限只在这一次走过一个项之后检查，所以每次调用至少走过一个新的项，`next_cursor` 总是严格往后（按键的字节序）。
-  - **一次调用的界**：工作至多是 `MaxGlobWork` 加重进的工作，再加一个父节点的项乘 256 与两个项的步（检查在项之间：最后一次检查之后至多再进一个块、它的父节点与一个项）；重进的工作是 K 的祖先所在的至多 11 个父节点的项乘 256，加至多 10 个块的步。每次调用走过第一个新项之后的工作都是新的，所以合起来的新工作不超过一次走完；每次停下的调用的新工作至少是 `MaxGlobWork` 减去重进的工作，调用的次数至多约 ⌈总工作 /（`MaxGlobWork` − 重进）⌉ + 1。B 的守卫树上重进是根的 20 万个项、5,120 万个单位，上限的 13%。一个文件夹要有约 78 万个子节点，重进才吃掉整个上限、每次只前进一项：交 M12（第 8 节）。
+  - **一次调用的界**：工作至多是 `MaxGlobWork` 加重进的工作，再加一个父节点的项乘 256 与两个项的步（检查在项之间：最后一次检查之后至多再进一个块、它的父节点与一个项）；重进的工作是 K 的祖先所在的至多 11 个父节点的项乘 256，加至多 10 个块的步。每次调用走过第一个新项之后的工作都是新的，所以合起来的新工作不超过一次走完；每次停下的调用的新工作至少是 `MaxGlobWork` 减去重进的工作，调用的次数至多约 ⌈总工作 /（`MaxGlobWork` − 重进）⌉ + 1。B 的守卫树上重进是根的 20 万个项、5,120 万个单位，上限的 17%（4 亿时 13%）。一个文件夹要有约 58.5 万个子节点（117 万个项；4 亿时约 78 万个子节点），重进才吃掉整个上限、每次只前进一项：交 M12（第 8 节；S2 修复核对第一轮 A2-N2）。
   - 草稿与第一轮只说"游标之后起"：从根重走而计数，第二次调用把上限花在回到 K 上、`next_cursor` 不动，agent 一直循环；从根重走而不计数，第 n 次调用的真实工作约是 n 倍的上限（B 的守卫树上最后一次就是不设上限的 6.3 秒）。
   - `exp/glob` 的 `TestResumeBoundsEachCall`：3,000 棵随机的树、小的上限，逐次接着走：合起来等于一次走完、游标严格往后、每次在上面的界之内、新工作之和不超过一次走完的。
 - **实测**（`exp/glob/`，Apple M5 Max、go1.27.1，不连数据库；主机同时有别的负载，load average 4–10，各次的值随它浮动；与正则的翻译对照 30 万个随机的模式与路径，0 处不同）。树：真的树（共享祖先）是平衡的 10 叉 5 层（111,110 个节点）、4 叉 8 层（87,380）、10 层的链加 99,990 个叶子、10 万个平铺的，名称都是 255 字节；设计审查 B 的守卫树是 10 万条路径、每条 11 段、每段约 255 字节，彼此不共享（110 万个节点），键各由 `a`、`é`、`漢` 重复而成（1、2、3 个字节的字符，复核 B N-1）。模式：B 的 `**/*a?a?…?b*/**`（28 个 `?`）与 `**/*` 加 126 或 160 个字面字符与 28 个 `?` 加 `*/**`、`**/*u?u*/**`、三或五组 `*u*` 夹在 `**` 之间；草稿的 `**/*a?…?b`、`**/a*a*…*b/**`；1,024 字节上限处的长片段（900–1,000 个字面字符与 20–26 个 `?`）、几组 `*P*` 之间夹 `**`、`**/` 加 1,000 个字面字符加 `?/**`、15 个 `*a` 加 900 个 `a`；汉字的 `**/*需求?*/**`。守卫树上的模式的字面字符换成那棵树的字符。
@@ -1079,12 +1199,25 @@ func (g Glob) Walk(roots []*GlobNode, after string, max int64, each func(keys []
 | 平衡 10 叉 6 层，1,111,110 | — | 停在 0.26–0.46 s |
 | 守卫树，从末尾附近的游标接着走一次（1,024 字节的模式） | — | `a` 0.37 s、`é` 0.33 s、`漢` 0.32 s |
 
-  所以到了上限，一次调用的匹配在本机（负载约 8）至多约 0.8 秒，在慢 2.5 倍的主机上约 2 秒；目标是本机约 1 秒之内。到上限时每个单位 0.75–2.1 ns（单位少的便宜的模式、不是 ASCII 的键每单位更贵，但都在这个用时里）。第一轮的上限是 5 亿个单位、按字符计，`é` 的键上到上限约 1 秒（负载 4–5），所以降到 4 亿。实际的树上，只有 900 字节以上的模式在约 10 万个节点上会停下、要第二次调用。读树（`ListNodes`，10 万个节点约 70 ms）另算，交 M12。对照：草稿的贪心匹配在 B 的守卫树上、B 的形状要 12.1 秒（逐字符）或 3.2–5.9 秒（逐字节）。
-- **时间的守卫**（13.4 第 8 条，`page/domain` 的 `TestTheWorstGlobsStopWithinTheirWork`，不连数据库，加进 `make test-go-costs`，`Makefile:209-221`）：B 的守卫树（键是 `a`、`é`、`漢` 的三棵）与平衡的 10 叉 5 层的树上，上面每个模式各走一次、上限是 `MaxGlobWork`：每次都停下或走完，工作不超过 `MaxGlobWork` 加一个父节点的项乘 256 与两个项的步，用时在 2 秒之内（本机最慢 0.82 秒的约 2.4 倍）；三棵守卫树上各从末尾附近的游标接着走一次（1,024 字节的模式），同样在 2 秒之内。单元测试另核对：单位的计数（`TestTheGlobCountsItsWork`：一段键的字节数乘字数，`é` 与 `漢` 的键按字节；进入父节点时每项 256，只走一项就停的 10 万项的父节点也记下它的全部项）、每段的结果与正则的翻译相同（随机的性质测试）、按树走与逐条路径匹配的结果相同、接着走（`TestTheGlobResumesFromItsCursor`：随机的树、小的上限，合起来等于一次走完、不重复也不跳过，`next_cursor` 严格往后，每次调用在上面的界之内，新工作之和不超过一次走完的；游标的节点被删了时接着走照样落到它之后）。
+  所以到了上限，一次调用的匹配在本机（负载约 8）至多约 0.8 秒，在慢 2.5 倍的主机上约 2 秒；目标是本机约 1 秒之内。到上限时每个单位 0.75–2.1 ns（单位少的便宜的模式、不是 ASCII 的键每单位更贵，但都在这个用时里）。第一轮的上限是 5 亿个单位、按字符计，`é` 的键上到上限约 1 秒（负载 4–5），所以降到 4 亿。
+
+  **S2 之后是 3 亿**（S2 审查 A-M2，主持者的决定）：一个 255 字节的标题的键至多 510 字节（`և` 折叠为 `եւ`；A 扫过每个字符，最多 2 倍），守卫的三棵树的键与名字一样长；父节点的项的排序每项算 256，实际随键的公共前缀增长。同样 15 个最坏的模式在 `և` 的守卫树上 0.90 秒，比 `é` 慢约 1.36 倍，对 2 秒的时限只有 2.2 倍。守卫加 `և` 的树之后交错着量（每种模式取 3 次里最小、15 个模式里取最大，负载 6–19）：
+
+| 树 | 4 亿 | 3 亿 |
+|---|---|---|
+| 平衡 10 叉 5 层 | 260、271 ms | 190、205 ms |
+| 守卫树，键是 `a` | 518、539 ms | 404、414 ms |
+| 同，`é` | 643、634 ms | 545、465 ms |
+| 同，`漢` | 515、543 ms | 398、388 ms |
+| 同，`և`（键是名字的两倍） | 888、879 ms | 684、657 ms |
+| `և`，从末尾第 10 个根接着走 / 从开头附近接着走 | 200 / 327 ms | 206 / 277 ms |
+
+  对 2 秒的时限，4 亿时最慢的 `և` 是 2.25 倍，3 亿时 2.9–3.04 倍；照 3 倍的规则 `MaxGlobWork` = 3 亿，代价是大的笔记本上多约三分之一次 `list` 的调用。实际的树上，只有 900 字节以上的模式在约 10 万个节点上会停下、要第二次调用。读树（`ListNodes`，10 万个节点约 70 ms）另算，交 M12。对照：草稿的贪心匹配在 B 的守卫树上、B 的形状要 12.1 秒（逐字符）或 3.2–5.9 秒（逐字节）。
+- **时间的守卫**（13.4 第 8 条，`page/domain` 的 `TestTheWorstGlobsStopWithinTheirWork`，不连数据库，加进 `make test-go-costs`，`Makefile:209-221`）：B 的守卫树（键是 `a`、`é`、`漢`、`և` 的四棵，键都由 `TitleKey` 取）与平衡的 10 叉 5 层的树上，上面每个模式各走一次、上限是 `MaxGlobWork`：每次都停下或走完，工作不超过 `MaxGlobWork` 加一个父节点的项乘 256 与两个项的步，用时在 2 秒之内；守卫树上从末尾第 10 个根接着走一次（不能停下）、从开头附近再一次（1,024 字节的模式），同样在 2 秒之内。每次走查与每棵树最慢的一次以 `t.Logf` 打出（`-v`），CI 的日志里读得到。余量（3 亿）：门禁里最慢的 `և` 741 ms（负载 6–10，2.7 倍）、710 ms（负载约 5，2.8 倍）；S2 修复核对第一轮 A 单独跑三次（负载 8–13），`և` 0.76–0.82 秒，单次走查是 2.45–2.6 倍（守卫查的就是单次）；取 3 次里最小、正常负载下约 3 倍（0.66–0.68 秒）。与别的耗 CPU 的包在一个 `go test` 里跑时 A 与 C 各见它失败一次（C：32 秒的那一次之后单独跑最慢 745 ms），`make test-go-costs` 与 CI 的成本那一份都单独跑它；CI 上的耗时还没人读过（第 8 节交 M12）。单元测试另核对：单位的计数（`TestTheGlobCountsItsWork`：一段键的字节数乘字数，`é` 与 `漢` 的键按字节；进入父节点时每项 256，只走一项就停的 10 万项的父节点也记下它的全部项）、每段的结果与正则的翻译、与独立的 DP 预言（`oracleSegmentMatches`，取自 S2 审查 A 的测试）都相同（随机的性质测试，22,000 个模式；模式与键另有 62–65 与 126–129 个字符的段，即两个、三个字的状态，S2 审查 A-I2：原来的段都短于 64 个位置，跨字的进位与末位的字没有测试）；字面的 glob 含折叠之后 64 个字符以上的标题与差一个字符的诱饵；按树走与逐条路径匹配的结果相同、接着走（`TestTheGlobResumesFromItsCursor`：随机的树、小的上限，合起来等于一次走完、不重复也不跳过，`next_cursor` 严格往后，每次调用在上面的界之内，新工作之和不超过一次走完的；游标的节点被删了时接着走照样落到它之后）。
 
 #### 3.10.2 `list` 的语义
 
-- `pattern` 为空、`/` 或缺省：根的子节点；`祖先/`（以 `/` 结尾，`ParsePath(…, dir: true)`）：这个页的子节点（一层），这个页在树里按键找（同 `Find` 的规则，在读出的整棵树上），找不到或是附件答 `page.not_found`；子节点按树的次序（`sort_order`，再按 id，同 `PreOrder` 与网页，`page/domain/tree.go:12`）。
+- `pattern` 为空、`/` 或缺省：根的子节点；`祖先/`（以 `/` 结尾，`ParsePath(…, dir: true)`）：这个页的子节点（一层），这个页在树里按键找（同 `Find` 的规则，在读出的整棵树上），找不到或是附件答 `page.not_found`（`Guide.md/` 这样以页的写法加 `/` 的提示 "Guide.md is a page; list "Guide/" for its children."，名字是附件时提示它的路径，S2 审查 A-N3）；子节点按树的次序（`sort_order`，再按 id，同 `PreOrder` 与网页，`page/domain/tree.go:12`）。
 - 别的 `pattern` 是 glob，按路径的键排（每段的标题键以 `/` 连起，页的最后一段带 `.md`；兄弟的键唯一、附件的名称不以 `.md` 结尾，所以没有相等的键）。不带通配的 glob 就是那个节点（至多一项）。没有匹配的答空的列表，不是错误。不带通配的 glob 没有配上、而它加上 `.md` 是一个页时（`list("Guide")`，有 `Guide.md`），答复另带 `hint`："Guide.md is a page; list "Guide/" for its children."（设计审查 B 的 Nit 11：静悄悄的空列表让 agent 以为没有）；走查时顺便知道，不另读。
 - `limit` 1–1,000，默认 200（`domain.MaxListLimit`、`DefaultListLimit`）；之外答 422 `limit` `out_of_range`。
 - **游标**（13.1 第 27 条，`shared.EncodeCursor`）：
@@ -1105,7 +1238,7 @@ type GlobCursor struct {
 }
 ```
 
-  两种载荷各是一个类型、没有 `omitempty`（设计审查 B-M6 与 B 的过度设计第 2 条）：模式先解析，游标解进模式说的那一种；`shared.DecodeCursor` 逐字节地重编码再比（`shared/cursor.go:59`），所以 `{}`、缺 `o` 或 `i`、子节点的模式拿到 `{"k":…}`、glob 拿到 `{"o":…,"i":…}` 都重编码不回原样，答 400 `bad_request`（`cursor`），不要草稿的"形状与模式不配"那一步与它的指针。`float64` 的 JSON 写法往返不变（Go 写出能读回同一个值的最短写法），`sort_order` 排除了 NaN 与无穷（`00012_page_nodes.sql:16-18`）。兄弟的次序值被重新编号时（间隔小于 1e-9，`page/domain/order.go:3-40`）每个兄弟的次序值都变，跨过一次重新编号的（o, i）游标可能重复或跳过别的项：罕见，接受（设计审查 B 的 Nit 12）。glob 的键可以比名称长：完全折叠把 `ŉ`、`İ` 由 2 字节变 3 字节，一段的键至多约 1.5 × 255 字节，游标至多约 5.6 KiB（B 的 Nit 2），仍放得下。
+  两种载荷各是一个类型、没有 `omitempty`（设计审查 B-M6 与 B 的过度设计第 2 条）：模式先解析，游标解进模式说的那一种；`shared.DecodeCursor` 逐字节地重编码再比（`shared/cursor.go:59`），所以 `{}`、缺 `o` 或 `i`、子节点的模式拿到 `{"k":…}`、glob 拿到 `{"o":…,"i":…}` 都重编码不回原样，答 400 `bad_request`（`cursor`），不要草稿的"形状与模式不配"那一步与它的指针。`float64` 的 JSON 写法往返不变（Go 写出能读回同一个值的最短写法），`sort_order` 排除了 NaN 与无穷（`00012_page_nodes.sql:16-18`）。兄弟的次序值被重新编号时（间隔小于 1e-9，`page/domain/order.go:3-40`）每个兄弟的次序值都变，跨过一次重新编号的（o, i）游标可能重复或跳过别的项：罕见，接受（设计审查 B 的 Nit 12）。glob 的键可以比名称长：完全折叠把 `ŉ`、`İ` 由 2 字节变 3 字节，一段的键至多约 1.5 × 255 字节，键至多约 5.6 KiB（B 的 Nit 2）；游标经 JSON 的转义与 base64 之后至多 22,484 字节（S2 审查 A-N4 量的最坏的真的游标），仍放得下。
 - **每项**：
 
 ```json
@@ -1114,7 +1247,7 @@ type GlobCursor struct {
 {"path": "Guide/diagram.png", "kind": "attachment", "has_children": false, "mime": "image/png", "byte_size": 34567}
 ```
 
-  页的 `version`、`byte_size`、`updated_at`（正文的最后改动）来自 `PageStates`；附件的 `mime`、`byte_size` 来自 page 已有的 `Deps.Attachments`（`page/app/ports.go:389-400`）。读树与读状态之间被删除的节点不列（不记日志，同 asset 的列表）。`kind` 对模型写作 `attachment`（不是存储的 `asset`）。
+  页的 `version`、`byte_size`、`updated_at`（正文的最后改动）来自 `PageStates`；附件的 `mime`、`byte_size` 来自 page 已有的 `Deps.Attachments`（`page/app/ports.go:389-400`）。读树与读状态之间被删除的节点不列（不记日志，同 asset 的列表）：页由 `PageStates` 的 `deleted_at IS NULL` 去掉；附件的信息（`AttachmentInfos.Of`）不论删没删，所以这一页有附件时另以一条 `AliveNodes`（`id = ANY($1) AND deleted_at IS NULL`，经 `nodes_pkey`，计划测试 5 万个节点）去掉其间进了回收站的（S2 审查 A-N2）。附件与页一起按 `sort_order` 排，网页在自己的面板里按名字列附件：照设计（S2 审查 A-N4 只是指出）。`kind` 对模型写作 `attachment`（不是存储的 `asset`）。
 - **答复**：`{"items": [...], "next_cursor": "…"}`（另可有 `hint`），`next_cursor` 没有下一页时为 null。它在三种情形下不为 null，意思相同（"后面可能还有，拿它接着列"）：这一页到了 `limit`、答复到了 48 KiB、glob 的匹配用完了 `MaxGlobWork`（3.10.1；这时 `items` 可能是空的）。
 
 #### 3.10.3 `PageStates`
@@ -1152,6 +1285,9 @@ type ListByPattern struct {
 	states      PageStates
 	attachments AttachmentInfos
 	auth        shared.Authorizer
+	// maxWork bounds a glob's matching a call: domain.MaxGlobWork, a
+	// test's less.
+	maxWork int64
 }
 
 // Execute lists the nodes of notebookID that pattern names, the page that
@@ -1159,14 +1295,13 @@ type ListByPattern struct {
 func (l *ListByPattern) Execute(ctx context.Context, notebookID uuid.UUID, pattern string, limit *int, cursor *string) (Listing, error)
 
 // Listing is a page of list: each item with the cursor that goes on after
-// it, so the adapter can stop at the answer's bound; More when the walk
-// found more than the page, and Next, set when the glob's work ran out,
-// the cursor after the last node it examined. Hint is set for a glob
-// without wildcards that matched nothing while its path with ".md" is a
-// page.
+// it, so the adapter can stop at the answer's bound; Next, when more may
+// follow, the cursor after the page: its last item found, or the last node
+// a glob examined when its work ran out, which may be past every item, or
+// with none. Hint is set for a glob without wildcards that matched nothing
+// while its path with ".md" is a page.
 type Listing struct {
 	Items []Listed
-	More  bool
 	Next  string
 	Hint  string
 }
@@ -1181,7 +1316,7 @@ type Listed struct {
 }
 ```
 
-**码的次序**（13.1 第 4 条；00 号文档 4.15 的"通用"）：`RequireActor` → `pattern` 422 → 游标解不开（解进模式说的那一种，3.10.2）400 → `limit` 422 → 笔记本（零值的 id、`WorkspaceOf` 找不到、判定 `node.list` 看不到）`notebook.not_found` → 读树（`ListNodes`）→ `祖先/` 的页 `page.not_found` → 子节点按树的次序取游标之后的 `limit + 1` 项，或 glob 按 3.10.1 走（游标之后起：跳过之前的项、只重走游标的祖先；按路径键的次序、找到 `limit + 1` 项或用完 `MaxGlobWork` 就停）→ `PageStates` 与 `Attachments.Of`（只为这一页的项）。草稿把 400 排在 422 之前、再加一步"游标与模式不配"；两种载荷之后游标要按模式解，所以 `pattern` 的 422 在前（设计审查 B-M6）。
+**码的次序**（13.1 第 4 条；00 号文档 4.15 的"通用"）：`RequireActor` → `pattern` 422 → 游标解不开（解进模式说的那一种，3.10.2）400 → `limit` 422 → 笔记本（零值的 id、`WorkspaceOf` 找不到、判定 `node.list` 看不到）`notebook.not_found`（`decideNotebook`，`Gate` 与 `ReadPath` 共用；`WorkspaceOf` 失败时照原样答）→ 读树（`ListNodes`）→ `祖先/` 的页 `page.not_found` → 子节点按树的次序取游标之后的 `limit + 1` 项，或 glob 按 3.10.1 走（游标之后起：跳过之前的项、只重走游标的祖先；按路径键的次序、找到 `limit + 1` 项或用完 `MaxGlobWork` 就停）→ `PageStates` 与 `Attachments.Of`（只为这一页的项），这一页有附件时再 `AliveNodes`。草稿把 400 排在 422 之前、再加一步"游标与模式不配"；两种载荷之后游标要按模式解，所以 `pattern` 的 422 在前（设计审查 B-M6）。
 
 **不把每个节点的路径拼出来**（设计审查 B-M2）：草稿"树与路径在 Go 里拼一次"在 10 万个节点、10 层长名称的祖先时要约 280 MB 的路径加差不多的键，`**/*.md` 还要全部排序；一个写者可以经导入建出这样的树，调用又是并发的。改为：读出的节点按父节点分组成子节点的列表（指针，一次 O(n)），子节点的模式只看那一个父节点；glob 按 3.10.1 在树上走，栈上留着祖先的键（共享的切片），按路径键的次序产出，路径只为答出的至多 `limit` + 1 项拼。内存是树本身加每个父节点排好的项，不随路径的长度乘节点数。读树本身（`ListNodes`，10 万个节点约 70 ms，[M12 的性能移交](../M12-release/handoffs/M4-performance.md)第 48 行）与它的内存交 M12（第 8 节）。
 
@@ -1195,7 +1330,7 @@ type listIn struct {
 }
 ```
 
-`Spec{Name: "list", Title: "List nodes", Annotations: {ReadOnly: true}, Entry: BothEntries, Notebook: true}`；说明与 schema 见 3.18。处理函数调 `ListByPattern`，再经 `mcpserver.Fit(len(Items), build)`（3.4.4）：`build(k)` 是前 k 项加 `next_cursor`（k 小于项数时是第 k 项的游标；全放下而 `More` 时是最后一项的；全放下、没有 `More` 而有 `Next` 时是 `Next`），量是整个答复的 `TextBytes`，适配器不自己数。一项的路径至多 2,818 字节、全是 `&` 时（标题里能有的最贵的字符，六个字节）至多约 17 KiB，游标至多约 5.6 KiB 再经 base64 与转义，所以最坏也放得下一项；通常一项一两百字节。错误照 3.3.6；`PathNotFound` 写成 `ToolError{Text: "page.not_found: Nothing is at "A/B/". …"}`。
+`Spec{Name: "list", Title: "List nodes", Annotations: {ReadOnly: true}, Entry: BothEntries, Notebook: true}`；说明与 schema 见 3.18。处理函数调 `ListByPattern`，再经 `mcpserver.Fit(len(Items), build)`（3.4.4）：`build(k)` 是前 k 项加 `next_cursor`（k 小于项数时是第 k 项的游标；全放下时是 `Next`，没有时为 null：`Listing` 不另有 `More`，`Next` 在到了 `limit` 或用完工作时都设上，同样的三种情形，实施时的偏离 3），量是整个答复的 `TextBytes`，适配器不自己数。一项的路径至多 2,818 字节、全是 `&` 时（标题里能有的最贵的字符，六个字节）至多约 17 KiB，游标至多 22,484 字节（键至多约 5.6 KiB，经转义与 base64），所以最坏也放得下一项；通常一项一两百字节。错误照 3.3.6；`PathNotFound` 写成 `ToolError{Text: "page.not_found: Nothing is at "A/B/". …"}`。
 
 ### 3.11 S2：`read`
 
@@ -1253,14 +1388,14 @@ type Read struct {
 }
 
 type PageRead struct {
-	Version  domain.Version
+	Version  domain.VersionToken
 	Window   domain.Window
 	Slice    domain.Slice
 	Bytes    int
 }
 ```
 
-**码的次序**：`RequireActor` → `path` 422（`ParsePath`，不收结尾的 `/`）→ `offset`、`column`（正负）、`limit` 422 → 笔记本 `notebook.not_found`（零值的 id 不查库；`WorkspaceOf`；判定 `page.read`，读者以上）→ 节点 `page.not_found`（`NodePaths.Find`）→ 页：正文（`Nodes.PageContent`，读到之前被删了答 `page.not_found`，同 `GetPageContent`，`page/app/get_page_content.go:28-37`）→ `column` 不在边界上或超过这一行 422 → 切。附件：`Read{Path, Node}` 交回适配器（3.11.2）。没有 403：读者以上的每种角色都能读（规则 `page.read`、`asset.read`，`access/domain/rules.go:92-93`、`:129`），看不到的已是 404。不取解析的预算：只读字节，不解析（00 号文档 4.9）。
+**码的次序**：`RequireActor` → `path` 422（`ParsePath`，不收结尾的 `/`）→ `offset`、`column`（正负）、`limit` 422 → 笔记本 `notebook.not_found`（零值的 id 不查库；`WorkspaceOf`；判定 `page.read`，读者以上；`decideNotebook`）→ 节点 `page.not_found`（`NodePaths.Find`）→ 页：正文（`Nodes.PageContent`，读到之前被删了答 `page.not_found`，同 `GetPageContent`，`page/app/get_page_content.go:28-37`；文字是照写的路径 `Nothing is at "<path>".`，不是笼统的 "No such page."，S2 审查 C-N3）→ `column` 不在边界上或超过这一行 422 → 切。附件：`Read{Path, Node}` 交回适配器（3.11.2）。没有 403：读者以上的每种角色都能读（规则 `page.read`、`asset.read`，`access/domain/rules.go:92-93`、`:129`），看不到的已是 404。`TestReadPathAnswersInOrder` 钉住调用的次序 `WorkspaceOf`、`Authorize page.read`、`RootByKey`、`PageContent`：没有授权时存在的 `Guide.md` 与不存在的 `Missing.md` 都答 `notebook.not_found`、不找路径；先找路径的变体会让看不到的笔记本与其中的路径的存在都泄露（S2 审查 C-I1）。不取解析的预算：只读字节，不解析（00 号文档 4.9）。
 
 **答复**（`page/adapter/mcp/read.go`，没有 `structuredContent`）：
 
@@ -1269,7 +1404,7 @@ block 1 (text): {"path":"Guide/Long.md","kind":"page","version":"0192f3a4-…:7"
 block 2 (text): the slice's bytes, exactly
 ```
 
-元数据是一行 JSON（mcpserver 的同一个编码，`SetEscapeHTML(false)`），`lines` 是这次给出的行数（切开的一行算一行），零行时第二块是空的字符串（照样给，客户端少一种情形）。
+元数据是一行 JSON（mcpserver 的同一个编码，`SetEscapeHTML(false)`），`lines` 是这次给出的行数（切开的一行算一行），零行时第二块是空的字符串（照样给，客户端少一种情形；mcpserver 的空的文字块，S1 审查 B-I1）。
 
 #### 3.11.2 附件（`asset` 的 `AttachmentReads`）
 
@@ -1294,8 +1429,8 @@ func (a AttachmentReads) Read(ctx context.Context, nodeID uuid.UUID) (Attachment
 // Content reads the file of at, at most max bytes: ErrNoFile, logged at
 // warn as a download logs it, when the store has none; an error when its
 // size is not its row's. The sides are the row's or, for an image whose
-// row has none (a WebP uploaded before M9/P1), read from data's header;
-// 0 and 0 when neither knows them.
+// row has none (a WebP uploaded before M9/P1), read from data's header by
+// app.ImageSize, the upload's rule; 0 and 0 when neither knows them.
 func (a AttachmentReads) Content(ctx context.Context, at Attachment, max int64) (data []byte, width, height int, err error)
 
 type Attachment struct {
@@ -1309,7 +1444,7 @@ type Attachment struct {
 }
 ```
 
-`Read` 是 `Reads.Get`（`asset/app/reads.go:57-91`：找节点、判定、读行、读链接、签名）加上绝对的地址 `publicURL + httpadapter.ContentURL(n.ID, b.ID, s, true)`（`asset/adapter/http/upload.go:186-194`，模块根可以用自己的适配器）：下载的写法（`d=1`，`Content-Disposition: attachment` 带文件名）。地址是给 agent 取文件的（能看的图片已在第二块内联），存下来的文件因此带它的名称；签名只盖节点、blob、`e` 与 `d`（`asset/adapter/mac/sign.go:44-62`），换源照样成立（设计审查 B 的 Nit 7，两种都行，取下载的）。`Content` 经 `Blobs.Open`（`asset/blobs.go:124-134`）与 `io.LimitReader(f, max+1)`，读到的字节数与行的 `byte_size` 不同时是错误（内部的：文件与它的行不符）。`asset.Deps` 加 `PublicURL string`（组合根交 `cfg.Server.PublicURL`）；`asset.New` 把 `blobs` 与 `reads` 留在 `Module` 上。不经公开的下载路由：不走 `asset_content` 的桶，也不让 MCP 的调用依赖签名的地址。
+`Read` 是 `Reads.Get`（`asset/app/reads.go:57-91`：找节点、判定、读行、读链接、签名）加上绝对的地址 `publicURL + httpadapter.ContentURL(n.ID, b.ID, s, true)`（`asset/adapter/http/upload.go:186-194`，模块根可以用自己的适配器）：下载的写法（`d=1`，`Content-Disposition: attachment` 带文件名）。地址是给 agent 取文件的（能看的图片已在第二块内联），存下来的文件因此带它的名称；签名只盖节点、blob、`e` 与 `d`（`asset/adapter/mac/sign.go:44-62`），换源照样成立（设计审查 B 的 Nit 7，两种都行，取下载的）。`Content` 经 `Blobs.Open`（`asset/blobs.go:124-134`）与 `io.LimitReader(f, max+1)`，读到的字节数与行的 `byte_size` 不同时是错误（内部的：文件与它的行不符）。`asset.ErrNotFound` 是 asset 的 `domain.ErrNotFound` 的别名，组合根的 `pageAttachmentErr` 把它（包着与否）换成 `page.ErrNotFound`、`ErrNoFile` 换成 `ErrNoAttachmentFile`，别的不变（`TestPageAttachmentErrors`，S2 审查 B-M3、C-M3）。`asset.Deps` 加 `PublicURL string`（组合根交去掉结尾的 `/` 的 `cfg.Server.PublicURL`；源带 `/` 的一例经整个程序核对，同上）；`asset.New` 把 `blobs` 与 `reads` 留在 `Module` 上。不经公开的下载路由：不走 `asset_content` 的桶，也不让 MCP 的调用依赖签名的地址。
 
 page 一侧（页不导入 asset）：
 
@@ -1345,15 +1480,15 @@ const (
 **附件的答复**：
 
 ```
-block 1 (text): {"path":"Guide/diagram.png","kind":"attachment","mime":"image/png","byte_size":34567,"sha256":"9f2c…","width":640,"height":480,"link":"![[Guide/diagram.png]]","url":"https://wiki.example.com/api/v0/assets/…/content?b=…&e=…&s=…","expires_at":"2026-10-17T10:00:00Z"}
+block 1 (text): {"path":"Guide/diagram.png","kind":"attachment","mime":"image/png","byte_size":34567,"sha256":"9f2c…","width":640,"height":480,"link":"diagram.png","url":"https://wiki.example.com/api/v0/assets/…/content?b=…&e=…&s=…&d=1","expires_at":"2026-10-17T10:00:00Z"}
 block 2: an image (InlineImage), or a resource_link {uri: url, name, mimeType, size} (not inline, url set), or nothing
 ```
 
-**内联的次序**：MIME 是四种之一、`byte_size` 至多 3 MiB、行的宽高未知或都至多 8,000 时调 `Content`（3 MiB），宽高以它答的为准（行有的就是行的；没有时从读到的字节的头里读出），再 `InlineImage`：宽高已知而且在上限之内才内联，否则给 `resource_link`。所以 P1 之前上传的 WebP（行里没有宽高，下一节）照样内联，不另迁移；宽高读不出时（头坏了）给地址。字节可能白读（读出来的边超过 8,000）：至多 3 MiB，接受。
+**内联的次序**（不论有没有 `server.public_url`：内联不要地址，只有下载的链接要；主持者的决定，实施时的偏离 10 照工具的说明、说明的文字与 3.13 写的"只给元数据"不内联，审查之后改回）：MIME 是四种之一（`InlineType`，读字节之前先看类型）、`byte_size` 至多 3 MiB、行的宽高未知或都至多 8,000 时调 `Content`（3 MiB），宽高以它答的为准（行有的就是行的；没有时从读到的字节的头里读出），再 `InlineImage`：宽高已知而且在上限之内才内联，否则给 `resource_link`。所以 P1 之前上传的 WebP（行里没有宽高，下一节）照样内联，不另迁移；宽高读不出时（头坏了）给地址。字节可能白读（读出来的边超过 8,000）：至多 3 MiB，接受。
 
-`link` 是这个附件在正文里的写法（没有扩展名时 null，同 REST）；`width`、`height` 是内联的判断用的那一对（行的或从字节读出的），都未知时为 null；`url`、`expires_at` 在 `public_url` 为空时为 null，另加 `"note": "server.public_url is not set, so there is no address to download it; ask the server's admin."`；文件丢了（`ErrNoAttachmentFile`）时没有第二块，`note` 是 "The attachment's file is missing from the server's storage."。SVG（`image/svg+xml`）不内联：它是 XML，模型不当图看（00 号文档 4.9）。内联的图片不计入 `MaxAnswerBytes`（它自己有 3 MiB 的上限）；`resource_link` 的成员很短（名称至多 255 字节、地址是源加签名的路径），计入元数据。签出的地址进了模型的上下文，失去访问之后至多 2 小时仍能下载：同 M7 的风险，接受（00 号文档第 10 节）。
+`link` 是 REST 的链接目标，即 `![[…]]` 或 `[[…]]` 里写的那一段（例子里是 `diagram.png`；没有扩展名时 null，同 REST；设计原来的例子 `![[Guide/diagram.png]]` 不是 REST 的值，实施时的偏离 17）；`width`、`height` 是内联的判断用的那一对（行的或从字节读出的），都未知时为 null；`public_url` 为空时没有下载的地址：图片照样内联，`url`、`expires_at` 为 null；不内联的附件另加 `"note": "server.public_url is not set, so there is no address to download it; ask the server's admin."`；文件丢了（`ErrNoAttachmentFile`）时没有第二块，`note` 是 "The attachment's file is missing from the server's storage."。SVG（`image/svg+xml`）不内联：它是 XML，模型不当图看（00 号文档 4.9）。内联的图片不计入 `MaxAnswerBytes`（它自己有 3 MiB 的上限）；`resource_link` 的成员很短（名称至多 255 字节、地址是源加签名的路径），计入元数据。签出的地址进了模型的上下文，失去访问之后至多 2 小时仍能下载：同 M7 的风险，接受（00 号文档第 10 节）。
 
-**码的次序**（附件）：同页到"节点"为止 → `AttachmentReads.Read`（它再判定 `asset.read`，只有并发地失去访问时才答 `asset.not_found`，组合根换成 `page.not_found`）→ 可能内联时 `Content`（3 MiB）。`column` 与 `limit` 对附件不起作用（不答 422）。文件丢了只在调 `Content` 时发现：PDF 与别的不内联的类型不读字节，所以"删了文件的附件答 `note`、记 warn"的测试用一个 PNG（设计审查 B 的 Nit 6）。
+**码的次序**（附件）：同页到"节点"为止 → `AttachmentReads.Read`（它再判定 `asset.read`，只有并发地失去访问时才答 `asset.not_found`，组合根换成 `page.not_found`）→ 可能内联时 `Content`（3 MiB）。`Read` 与 `Content` 各自之前附件走了（进了回收站、失去访问）答照写的路径的 `page.not_found: Nothing is at "<path>".`（S2 审查 C-N3 与修复核对第一轮 B）。`column` 与 `limit` 对附件不起作用（不答 422）。文件丢了只在调 `Content` 时发现：PDF 与别的不内联的类型不读字节，所以"删了文件的附件答 `note`、记 warn"的测试用一个 PNG（设计审查 B 的 Nit 6）。
 
 **WebP 的宽高**（设计审查 B-I3）：今天服务端只读 PNG、JPEG、GIF 的宽高（`asset/domain/types.go:107-111` 的 `HasSize`；`asset/adapter/sniff/sniff.go` 只导入这三个解码器；`asset/app/blobs.go:82` 只在 `HasSize` 时存），WebP 的宽高总是 0，`InlineImage` 就从不内联它，与 00 号文档 4.9、第 11 节的取舍第 7 条（"PNG、JPEG、GIF、WebP 在 3 MiB、每边 8,000 像素之内内联"）相悖。`golang.org/x/image` 不在 `go.mod` 里，也不在模块的缓存里；不加依赖，自己读 RIFF 头：
 
@@ -1362,15 +1497,21 @@ block 2: an image (InlineImage), or a resource_link {uri: url, name, mimeType, s
 // RIFF container (RFC 9649): "RIFF", a size, "WEBP", then the first chunk:
 // VP8 (lossy: the frame tag, the start code 9d 01 2a, then 14-bit width
 // and height), VP8L (lossless: the signature 0x2f, then 14-bit width-1 and
-// height-1) or VP8X (extended: 24-bit canvas width-1 and height-1). ok is
-// false for anything else, and for a header cut short.
-func webpSize(head []byte) (width, height int, ok bool)
+// height-1, the alpha bit, and 3 version bits, which must be 0) or VP8X
+// (extended, a chunk of 10 bytes: 24-bit canvas width-1 and height-1). ok
+// is false for anything else, for a header cut short, and for a RIFF
+// larger than the file (length bytes) or a first chunk larger than the
+// RIFF: a file cut short, which a decoder refuses; so is a VP8L of
+// another version or a VP8X chunk of another size, which libwebp and
+// x/image refuse.
+func webpSize(head []byte, length int64) (width, height int, ok bool)
 ```
 
+- **只凭文件头担保的**（S2 审查 B 的存疑 1、修复核对第一轮 B，主持者的决定）：截短的 WebP、版本位不是 0 的 VP8L 原来也给宽高、也内联；模型的接口拒绝这张图时，客户端的对话可能一直失败（图片留在历史里）。所以 RIFF 的大小加 8 要至多是文件的长度、第一个块的大小加 20 要至多到 RIFF 的末尾（libwebp 的 `ParseRIFF` 与 `ParseVP8Header` 的同两条），VP8L 的版本位要是 0（RFC 9649），VP8X 的块要恰好 10 字节，否则没有宽高、就不内联、给链接。`Sniffer.Size` 取 `io.ReadSeeker`，以 seek 读文件的长度（上传的 `File` 是 `ReadSeekCloser`，`Content` 交整个文件的 `bytes.Reader`）。核对者对 x/image 的差分：没有拒绝一个 x/image 解得出的一致的文件，只多拒绝比它的 RIFF 说的短的文件（缺了填充字节的一类，libwebp 答 NOT_ENOUGH_DATA），是安全的一边。PNG 与 JPEG 正文坏了而头有效的，照头内联：接受。
 - 在 `asset/adapter/sniff` 里、`image.DecodeConfig` 旁边：`Sniffer.Size` 把 1 MiB 的 `LimitReader` 包进一个 `bufio.Reader`，先 `Peek(30)`：以 `RIFF`、`WEBP` 开头的交 `webpSize`，别的照旧交 `image.DecodeConfig`（读同一个 `bufio.Reader`，从头读起）。读到的不足 30 个字节（比 30 个字节短的文件，`Peek` 同时答 `io.EOF`）不是错误：照样看读到的前缀，`webpSize` 对截短的头答 `ok == false`，别的交 `DecodeConfig`；一个合法的 GIF 可以只有二十几个字节（复核 B N-3）。不以 `image.RegisterFormat` 登记一个格式：那会改变整个进程里 `image.Decode` 认得的东西，而我们只要宽高。
 - `asset/domain/types.go:110` 的 `HasSize` 加 `image/webp`：上传从此也记下 WebP 的宽高（同样只留 1–65,535 的边，`blobs.go:97-110`）。**这改了 M7 的上传的行为**（简报写作 M4；上传是 M7/P2 的）：新上传的 WebP 的行有了 `width`、`height`，REST 的附件答复与网页随之看得到它们；写进第 7 节的文档改动（M7/P2 的设计、`api/modules/asset.yaml` 的说明与 `make gen`）与 2.1。
 - 之前上传的、没有宽高的行：不迁移，`read` 从它为内联读的字节里读（上面的 `Content`）；REST 照旧答 null。
-- 测试（`asset/adapter/sniff`）：三种块各一个真实的小文件（`cwebp` 生成，入库在 `testdata/`，各几十字节）的宽高；`VP8X` 的 24 位边（大于 16,383 的画布）；截短的头（每一个长度从 0 到 29）都答 `ok == false`、不 panic；不是 WebP 的 RIFF（`WAVE`）交给 `DecodeConfig`；不足 30 个字节的 GIF 照样答出宽高（`Peek` 的短读不当作错误）；`FuzzWebPSize`：任意的字节不 panic，`ok` 时两边都在 1–16,384（VP8、VP8L）或 1–2^24（VP8X）之内。变异：把 VP8L 的 `+1` 去掉，三种块的测试里 VP8L 那一条失败。`asset/app` 的上传测试加一个 WebP：行有宽高。page 的 `read` 的测试加一个没有宽高的 WebP 行：照样内联、答复的宽高是读出的。
+- 测试（`asset/adapter/sniff`）：三种块各一个真实的小文件（Chromium 的 libwebp 经 `canvas.toDataURL` 写出、去掉 ICC 块，入库在 `testdata/`，100、118、140 字节，都是 7×5；这里没有 `cwebp`，实施时的偏离 9）的宽高；审查之后另有缩放位置上的 VP8、alpha 位置上的 VP8L、坏的起始码、0x2e 的 VP8L 签名、带 `VP8 ` 块的 AVI 的 RIFF、截短一个字节与截在头之后的文件、多两个字节的文件（照收）、超过 RIFF 的块、版本 1 与 4 的 VP8L、12 与 9 字节的 VP8X 块各一行（S2 审查 B-M2：原来三个文件的这些位都是 0，五个变异存活），fuzz 的种子置上缩放位、alpha 位与版本位；`VP8X` 的 24 位边（大于 16,383 的画布）；截短的头（每一个长度从 0 到 29）都答 `ok == false`、不 panic；不是 WebP 的 RIFF（`WAVE`）交给 `DecodeConfig`；不足 30 个字节的 GIF 照样答出宽高（`Peek` 的短读不当作错误）；`FuzzWebPSize`：任意的字节不 panic，`ok` 时两边都在 1–16,384（VP8、VP8L）或 1–2^24（VP8X）之内。变异：把 VP8L 的 `+1` 去掉，三种块的测试里 VP8L 那一条失败。`asset/app` 的上传测试加一个 WebP：行有宽高。page 的 `read` 的测试加一个没有宽高的 WebP 行：照样内联、答复的宽高是读出的。
 - 第 11 节负责人的那一条不变：它说的正是这样的内联。
 
 #### 3.11.3 `read` 的工具
@@ -1390,23 +1531,25 @@ type readIn struct {
 
 | 处 | 内容 |
 |---|---|
-| `configs/config.yaml` 的 `server` 一节 | `public_url: ""`，注释："实例对外的地址，只到源（如 `https://wiki.example.com`，可以带端口与结尾的 `/`）。MCP 的 `read` 给附件的绝对下载地址时用它；为空时只给附件的元数据。服务端不按请求的 `Host` 与 `X-Forwarded-*` 补全：反向代理配错时会签出别人的主机名" |
+| `configs/config.yaml` 的 `server` 一节 | `public_url: ""`，注释："实例对外的地址，只到源（如 `https://wiki.example.com`，可以带端口与结尾的 `/`）。MCP 的 `read` 给附件的绝对下载地址时用它；为空时没有下载地址：图片照样直接给出，别的附件只给元数据。服务端不按请求的 `Host` 与 `X-Forwarded-*` 补全：反向代理配错时会签出别人的主机名"（S2 之后的写法，`config.go` 的注释同） |
 | `platform/config/config.go` | `ServerConfig.PublicURL string \`koanf:"public_url"\``；`LogValue` 在 `server` 组里列出 `public_url`（不是机密） |
-| `platform/config/validate.go` | 为空可以；否则 `url.Parse` 收下、`Scheme` 是 `http` 或 `https`、`Host` 不空、没有 `User`、`Path` 为空或 `/`、没有 `RawQuery`、`ForceQuery`、`Fragment`（原文里不能有 `#`），否则 `server.public_url: must be an origin such as "https://wiki.example.com", got %q` |
+| `platform/config/validate.go` | 为空可以；否则 `url.Parse` 收下、`Scheme` 是 `http` 或 `https`、`Host` 不空、没有 `User`、`Path` 为空或 `/`、没有 `RawQuery`、`ForceQuery`、`Fragment`（原文里不能有 `#`），否则 `server.public_url: must be an origin such as "https://wiki.example.com", got %q`；被拒的值带 `@` 时不引用它：`got a value with an "@", which no origin has (not shown: it may hold a password or a token)`（没有源站带 `@`；S2 审查 B-M1 与修复核对第一轮 B：照录会把 `https://admin:hunter2@…`、没有 scheme 的 `admin:hunter2@…`、以令牌作用户名的 `https://ghp_…@…` 打进启动的日志，主持者的决定） |
 | 组合根 | 交给 asset 的是去掉结尾的 `/` 的值（`strings.TrimSuffix`） |
 | 环境变量 | `NWIKI_SERVER__PUBLIC_URL`；e2e 与 Go 的整个程序测试设 `http://wiki.example`（3.13、第 4 节） |
 
-单元测试：每种被拒的写法（`ftp:`、带路径、带查询、带空的查询 `?`、带片段、带用户信息、没有主机）、两种收下的写法（带端口、带结尾的 `/`）、`LogValue` 列出它。MCP 的其余的量都是代码里的常量（00 号文档 4.14），不进配置（13.1 第 15 条只管配置项）。
+单元测试：每种被拒的写法（`ftp:`、带路径、带查询、带空的查询 `?`、带片段、带用户信息、没有主机）、两种收下的写法（带端口、带结尾的 `/`）、`LogValue` 列出它；带 `@` 的各行（两种 `hunter2`、令牌、`alice@…#`）的错误里出现 `hunter2` 或 `TOKEN` 就失败。MCP 的其余的量都是代码里的常量（00 号文档 4.14），不进配置（13.1 第 15 条只管配置项）。
 
 ### 3.13 S2：矩阵的两行与整个程序的测试
 
-- **矩阵**：`list`（`pattern` 为空）与 `read`（`pageOf(c)` 的路径，`permission_matrix_page_test.go:643-649`；种下的附件没有文件，`permission_matrix_seeded_test.go:681-683`，所以 `read` 的行读页）两个入口各一格：看不到的列 404（笔记本入口在 HTTP，账户入口是工具的 `notebook.not_found`），别的列答复里有那一页（`check` 核对 `list` 列出它、`read` 的路径与版本令牌）。
+- **矩阵**：`list`（`pattern` 为空）与 `read`（`pageOf(c)` 的路径，`permission_matrix_page_test.go:643-649`；种下的附件没有文件，`permission_matrix_seeded_test.go:681-683`，所以 `read` 的行读页）两个入口各一格：看不到的列 404（笔记本入口在 HTTP，账户入口是工具的 `notebook.not_found`），别的列答复里有那一页（`check` 核对 `list` 列出它、`read` 的路径与版本令牌）。`TestThePermissionMatrixOverMCP` 从 S2 起真的跑：2 个工具 × 2 个入口 × 13 列，52 格；两个工具的账户入口的 schema 都要 `notebook`，runner 都给（3.6）。
 - **整个程序**（`bootstrap/mcp_reads_test.go`，`server.public_url` 设 `http://wiki.example`）：
   - `list` 与 `read` 经两个入口到达 page 的用例（组合根交空的 `mcpTools` 时失败）；
-  - 附件读的最后一跳（13.1 第 21 条）：上传的 PNG、JPEG、GIF、WebP 经 `read` 答 `image` 块、字节等于上传的（WebP 的行有宽高：上传读出的，3.11.2）；一个行里没有宽高的 WebP（测试在库里把这一行的宽高设回空，代替 P1 之前的上传）照样内联、答复的宽高是读出的；PDF 与 SVG 答 `resource_link`，地址以 `http://wiki.example/api/v0/assets/` 起头、带 `d=1`，把源换成测试服务的地址下载答 200、`Content-Disposition: attachment`、字节相同；`public_url` 为空的应用只给元数据与 `note`；删了文件的 PNG 答 `note`、记 warn；
+  - 附件读的最后一跳（13.1 第 21 条；自己一个测试 `TestTheMCPReadsGiveAttachments`，在 `TestTheMCPReadsReachTheUseCases` 旁边，实施时的偏离 15）：上传的 PNG、JPEG、GIF、WebP 经 `read` 答 `image` 块、字节等于上传的（WebP 的行有宽高：上传读出的，3.11.2）；一个行里没有宽高的 WebP（测试在库里把这一行的宽高设回空，代替 P1 之前的上传）照样内联、答复的宽高是读出的；PDF 与 SVG 答 `resource_link`，地址以 `http://wiki.example/api/v0/assets/` 起头、带 `d=1`，把源换成测试服务的地址下载答 200、`Content-Disposition: attachment`、字节相同；`list` 列 `Guide/`，逐项对照上传的 MIME 与大小，`resource_link` 的 `mimeType` 与 `size` 也核对（S2 审查 C-M2、C-N4）；`public_url` 为空的应用（`TestTheMCPReadsWithoutAPublicURL`）：PNG 照样内联，PDF 只给元数据与 `note`；源带结尾的 `/` 的应用（`TestTheMCPReadsWithAPublicURLEndingInASlash`）签出的地址在源之下只有一个 `/`；删了文件的 PNG 答 `note`、记 warn；
   - `read` 带 NUL 的路径、`pattern` 带 NUL 答 422 `invalid_format`（`ParseGlob` 拒绝标题不能有的字符，3.10.1；直接的两个用例断言码），不是 `internal_error`（`TestToolStringsDoNotAnswerInternalErrors`：从两个入口的 `tools/list` 推导出每个字符串参数，含嵌套在数组的对象里的，各取 NUL 调用一次，答复不是 `internal_error`；各取不成对的代理项写进原始的 JSON，答 HTTP 400。反向对照：推导的函数在一个合成的 schema（只在 `ops[].path` 里有字符串）上漏掉它时失败，照 `TestFreeTextParametersDoNotAnswer5xx`，`bootstrap/contract_test.go:247-272`）；
   - 可选参数为 `null`（`limit: null`、`cursor: null`）照没有收下；
-  - glob 的工作的上限（这一条在 `page/app` 的用例测试里，替身的树：上限是 `ListByPattern` 的一个字段，生产的构造交 `MaxGlobWork`，测试交小的）：200 个节点的树上列 `**/*x?y*/**`，答 `items: []` 与 `next_cursor`，拿游标接着列，几页之后列完，合起来等于不设上限的一次（不重复、不跳过）；每次的 `next_cursor` 严格大于上一次的，调用的次数有上限（每次至少前进一项，至多是节点数：测试以它为循环的上限，到了就失败）；每次调用的工作的界在 `page/domain` 的走查测试里核对（3.10.1，复核 B N-2）。
+  - **码**（`TestListAndReadErrorsCarryDeclaredCodes`）：每个工具答出它的每个码，`bad_request`（`limit: "two"`、坏的游标、没有 `path`）、`validation_failed`（`limit: 0`、`a/./b`、`Guide/`、`offset: 0`、过了一行的 `column`）、`page.not_found`（`Missing/`、`Missing.md`）、`notebook.not_found`（账户入口里看不到的笔记本，含 bob 真的看不到的笔记本里的 `Missing/` 与 `Missing.md`）；走遍码的表的每一行。**码的表**（S2 审查 C 的提议，主持者的决定）：组合根的 `mcpToolCodes()` 在矩阵的行旁边，`list`、`read` 各是 `bad_request`、`validation_failed`、`notebook.not_found`、`page.not_found`；`TestEveryMCPToolHasItsCodes` 核对 `tools.json` 两个入口的每个工具都有一行、每行都是某个工具的、每个码都是契约声明的；`mcpAnswer.toolError` 拿整个程序读到的每个工具错误对照它的工具的那行（`internal_error` 除外）。S3 与之后的 Phase 随工具加行。不按工具对应的 REST 操作约束（S1 留给 S2 的一种做法）：`list` 答 `listNodes` 不声明的 `validation_failed`、`page.not_found`，`read` 答 `getPageContent` 不声明的 `notebook.not_found`、`validation_failed`，工具拒绝的参数是它们自己的；只按并集查又挡不住一个工具答另一个模块声明的码（`asset.not_found` 的映射就是这样漏的）；
+  - `pageAttachmentErr`（`TestPageAttachmentErrors`，组合根的单元测试）：包着与否的 `asset.ErrNotFound` 给 `page.ErrNotFound`，`asset.ErrNoFile` 给 `page.ErrNoAttachmentFile`，别的不变；
+  - glob 的工作的上限（这一条在 `page/app` 的用例测试里，替身的树：上限是 `ListByPattern` 的一个字段，`NewListByPattern` 自己设 `MaxGlobWork`，测试经 `export_test.go` 的 `WithMaxWork` 交小的）：200 个节点的树上列 `**/*x?y*/**`，答 `items: []` 与 `next_cursor`，拿游标接着列，几页之后列完，合起来等于不设上限的一次（不重复、不跳过）；每次的 `next_cursor` 严格大于上一次的，调用的次数有上限（每次至少前进一项，至多是节点数：测试以它为循环的上限，到了就失败）；每次调用的工作的界在 `page/domain` 的走查测试里核对（3.10.1，复核 B N-2）。
 
 ### 3.14 S3 的文件
 
@@ -1917,7 +2060,7 @@ LIMIT sqlc.arg(n);
     {
       "name": "read",
       "title": "Read a page or an attachment",
-      "description": "Read a page or an attachment by its path from the notebook's root; a page's path ends with .md. A page comes as two text blocks: a line of JSON metadata (path, kind, version, offset, column, lines, total_lines, byte_size, next_offset, next_column), then its lines exactly as stored, frontmatter, byte order mark and CRLF included. offset is the first line, from 1; limit the number of lines, 2000 by default. An answer holds about 45 KiB of text at most: go on from next_offset, and from next_column when a line was too long for one answer; the parts read in turn are the whole content. An attachment comes as its metadata (type, size, SHA-256, width and height, how to link it, a download address valid for an hour or two), then the image itself for a PNG, JPEG, GIF or WebP of at most 3 MiB and 8000 pixels a side, or else a link to download it. Without the server's public address set (server.public_url), an attachment comes as its metadata only, with a note saying so.",
+      "description": "Read a page or an attachment by its path from the notebook's root; a page's path ends with .md. A page comes as two text blocks: a line of JSON metadata (path, kind, version, offset, column, lines, total_lines, byte_size, next_offset, next_column), then its lines exactly as stored, frontmatter, byte order mark and CRLF included. offset is the first line, from 1; limit the number of lines, 2000 by default. An answer holds about 48 KiB at most, its metadata line included: go on from next_offset, and from next_column when a line was too long for one answer; the parts read in turn are the whole content. An attachment comes as its metadata (type, size, SHA-256, width and height, how to link it, a download address valid for an hour or two), then the image itself for a PNG, JPEG, GIF or WebP of at most 3 MiB and 8000 pixels a side, or else a link to download it. Without the server's public address set (server.public_url) there is no download address: an image still comes itself, any other attachment as its metadata only, with a note saying so.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -2005,14 +2148,14 @@ LIMIT sqlc.arg(n);
 
 | 检查 | 反向对照（各改坏一处，测试要失败） |
 |---|---|
-| 工具清单（`TestTheToolListsAreTheContract`） | `toolListDiff` 在合成的清单上：少一个、多一个、说明不同、属性的类型不同、注解不同、多一个成员、`required` 的次序不同、两个入口对调；经真的路径：接缝多登记的 `seam` 工具让比较失败、点名它（3.5，设计审查 A-M10） |
+| 工具清单（`TestTheToolListsAreTheContract`） | `toolListDiff` 在合成的清单上：少一个、多一个、说明不同、属性的类型不同、注解不同、多一个成员、`required` 的次序不同、两个入口对调；经真的路径：接缝多登记的 `seam_notebook`、`seam_account` 各让比较失败、各点名自己的入口（3.5，设计审查 A-M10，S1 审查 C-M5） |
 | 接线（`TestTheMCPToolsBuildBothServers`） | `New` 的规则改回"`Notebook` 而不在笔记本入口就 panic"：S3 的 `open_notebook` 让测试以 panic 的文字失败（3.5，A-I1） |
 | 矩阵覆盖每个工具 | 合成的清单与行：少一行、行多一个入口、行指着没有的工具、写的工具的行没有 `write`、读的工具的行有 `write`、文件少一个键（3.6，A-M11） |
 | archtest 的 SDK 规则 | 合成的边：模块包导入 SDK、httpserver 导入 jsonschema-go 报出，mcpserver 导入不报（3.7）；depguard 的规则：一个模块的 `_test.go` 导入 SDK 时 `make lint-go` 报出（S1 的审查手工核对一次，A-N10） |
 | NUL 与代理项的推导 | 推导的函数在只在 `ops[].path` 里有字符串的合成 schema 上漏掉它时失败（3.13） |
 | `API.Wrap` 的次序 | 以不倒序的 `Middlewares` 手拼的链：没有令牌又坏的请求体答 400，"答 401"的测试失败（3.2.1） |
 | `no-store` | 不包写者的同一个 handler：200 的 `tools/call` 是 `no-cache, no-transform`，断言失败（证明 SDK 确实改写） |
-| 恢复 panic | 子进程里跑不带恢复的同一个 server：一次 `boom` 让进程以 2 退出（`os/exec` 跑测试二进制自己，环境变量选这一支）；带恢复时进程活着 |
+| 恢复 panic | 子进程里跑不带 mcpserver 的包装的 SDK 的 server（不是不带恢复的同一个 server；证明等价，S1 审查 C-N2）：一次 `boom` 让进程以 2 退出（`os/exec` 跑测试二进制自己，环境变量选这一支）；带恢复时进程活着 |
 | JSON-RPC 的批 | 结构表的根改成 `Any`：同一个批不带 `Mcp-Protocol-Version` 头（或带 2025-03-26）时 `echo` 被执行（计数大于 0）；带 2025-11-25 的那一次由 SDK 自己拒绝，所以反向对照不用它，整个程序的测试另断言 problem+json（A-M8） |
 | 旧协议的 listen | `Capabilities.Tools.ListChanged` 改为真：带真的订阅（`toolsListChanged: true`）的 listen 一直持到调用的期限，"1 秒之内答完"的断言失败（A-M9） |
 | 调用的期限 | 处理函数直接用 SDK 交的 ctx 时 `Deadline()` 答没有（单元测试同时断言两者） |
@@ -2025,17 +2168,32 @@ LIMIT sqlc.arg(n);
 | 最后的变更 | 写回草稿的标量子查询：空的笔记本 `open_notebook` 答 `internal_error`，`TestOpenNotebookOfAnEmptyNotebook` 失败（B-I2） |
 | 路径的给出与找回 | 故意写错的 `PathOf`（页不带 `.md`、不 NFC）让性质测试失败（3.9.2） |
 | 段的检查 | 去掉"答回的就是它的 NFC"的比较时，首尾带空白的段被收下，表格测试失败 |
-| glob 的匹配 | 与正则的翻译在随机的模式与路径上比较（差分测试，`exp/glob` 30 万对、0 处不同）；改坏一处（`*` 的位置不留着、结尾的 `/**` 收零段）时失败；按树走与逐条路径匹配比较，状态不从父节点接时失败 |
+| glob 的匹配 | 与正则的翻译在随机的模式与路径上比较（差分测试，`exp/glob` 30 万对、0 处不同）；改坏一处（`*` 的位置不留着、结尾的 `/**` 收零段）时失败；按树走与逐条路径匹配比较，状态不从父节点接时失败；去掉跨字的进位、末位放在第一个字里时，两个、三个字的段对正则与 DP 预言失败（S2 审查 A-I2） |
 | glob 的工作上限 | 不检查上限：`TestTheWorstGlobsStopWithinTheirWork` 在 B 的守卫树上超过 2 秒、工作超过上限，失败（3.10.1，B-I5）；接着走时从根重走：计数时 `next_cursor` 不前进，不计数时守卫里接着走的那一次超过 2 秒，失败；单位按字符计、父节点的项在走过时才计：`TestTheGlobCountsItsWork` 失败（复核 B N-1、N-2、N-8） |
-| WebP 的宽高 | 去掉 VP8L 的 `+1`：三种块的测试里 VP8L 那一条失败；`HasSize` 不加 `image/webp`：上传的 WebP 的行没有宽高，`asset/app` 的测试失败（3.11.2，B-I3） |
+| WebP 的宽高 | 去掉 VP8L 的 `+1`：三种块的测试里 VP8L 那一条失败；`HasSize` 不加 `image/webp`：上传的 WebP 的行没有宽高，`asset/app` 的测试失败（3.11.2，B-I3）；审查之后：去掉 VP8 的掩码、VP8L 高的掩码、起始码、签名、`WEBP` 的比较、RIFF 与块的大小的检查、VP8L 的版本、VP8X 的大小，`TestWebPSize` 或 `TestSizeOfAWebP` 失败（S2 审查 B-M2 与修复核对） |
 | `CleanClientName` 的幂等 | 照 00 号文档原来的次序写的变体在 `e`、U+200E、U+0301 上不幂等，表格里的这一行失败（2.1 第 2 条） |
 | `CleanClientName` 的截法 | 在前 128 个字符上取 `LastBoundary`：129 个 ASCII 留下 127 个，"恰好留下 128 个"的性质失败（A-M5）；在前 129 个字符上取它（第一轮的写法）：128 个 `x` 加 `中`、129 个 `中` 留下 129 个，表格的这两行与"至多 128 个"的性质失败（复核 A N-1） |
 | 名称的缓存 | `Record` 答"没写"时也缓存：下一次报同一个名称不再调端口，测试失败；读失败也缓存：下一次不再读，测试失败（A-M6） |
 | 内置的说明提到每个工具 | 去掉 `read` 那一行、把 `- list:` 改成正文里的 "list" 时失败（3.15.4，B-M1） |
 | "列表等于逐项判定读取" | 比较的函数在合成的数据上（多列一本、少列一本、角色不同）各报出 |
 | `reserved_test` 的例外 | 只跳过以点开头的第一段：合成的模式 `/mcpx` 不在 `[server]` 时仍报出 |
-| 计划测试（`RootByKey`、`ChildByKey`、`AgentsPage`、`PageStates`、`NotebookCounts`、`NotebookLastChange`、`FirstChildren`） | 照已有的计划测试：在测试的事务里去掉所靠的索引，断言的索引名不在计划里时失败；`FirstChildren` 写回 `IS NOT DISTINCT FROM` 时 `parent_id` 不再是索引条件，失败（A-M16、B-M3） |
-| `public_url` 的校验 | 每种被拒的写法各一行；去掉"路径只许 `/`"时带路径的一行失败 |
+| 计划测试（`RootByKey`、`ChildByKey`、`AgentsPage`、`PageStates`、`NotebookCounts`、`NotebookLastChange`、`FirstChildren`） | 照已有的计划测试：在测试的事务里去掉所靠的索引，断言的索引名不在计划里时失败；S2 的两条：`ChildByKey` 写回 `IS NOT DISTINCT FROM`、去掉根或子节点的索引（00019 的就被选上）、根的索引不唯一、语句不带 `parent_id IS NULL`、`parent_id` 当文字比、不带 `notebook_id`，`TestThePathLookupsArePointLookups` 在每种形状失败；去掉旧的兄弟的索引、Down 忘了重建它或把它建成 `NULLS DISTINCT`，`TestThePathKeysGoDownToTheSiblingsIndex` 失败；`nameTaken` 不认根或子节点的名字，`TestEverySiblingsIndexTellsANameTaken` 失败；`FirstChildren` 写回 `IS NOT DISTINCT FROM` 时 `parent_id` 不再是索引条件，失败（A-M16、B-M3） |
+| `public_url` 的校验 | 每种被拒的写法各一行；去掉"路径只许 `/`"时带路径的一行失败；`@` 的检查从不匹配、只对带 scheme 的或只对带密码的，`TestValidatePublicURL` 失败（S2 审查 B-M1） |
+| 按工具的码的表（S2 加的） | 一行少了它答的码、多了不声明的或从不答出的码、少了一个工具的行、一个工具答它的行没有的码：`TestEveryMCPToolHasItsCodes`、`TestListAndReadErrorsCarryDeclaredCodes` 或整个程序读到它的那个测试失败（3.13） |
+| `/register`（S1 加的） | 纯文字的答复、别的码、别的说明、不 `no-store`、不公开、不挂、不分方法：`TestTheMCPRefusesOAuthRegistration` 或 `TestEveryMCPAnswerIsNotStored` 失败（3.2.2） |
+| 没有令牌的提示（S1 加的） | `NoTokenDetails` 不接、给每个路由：`TestTheMCPTellsEveryClientOneHint` 失败；`NoOAuth` 与 `/.well-known/` 的说明不同：它与 `/register` 的测试都失败（3.2.3） |
+| 超过 64 KiB 的请求体（S1 加的） | 界线改为 128 KiB 或 32 KiB、`<` 代 `<=`、去掉名字的查找或写回只看名字像不像的规则、`jsonrpc` 不查或只查非空、`id` 的界线 255、512 或去掉、`_meta` 读作 `json.RawMessage`、入口总取账户的或任一个、只把空的查询串当账户入口：`TestOnlyACallMayBeLong` 的行失败，整个程序的 `TestTheMCPEdgeAnswersInOrder` 也失败（3.2.2） |
+| 工具错误的码、矩阵的 `notebook`（S1 加的） | `toolError` 不查或什么码都收：`TestAToolErrorsCodeIsDeclared` 失败；`takesNotebook` 总答真：`TestTheMatrixGivesANotebookAsTheFileSays` 失败（3.6） |
+| 限流与代理的 Host（S1 加的） | `Wrap` 跳过限流、`/register` 不经 `Wrap`：`TestTheMCPRoutesTakeTheBuckets` 失败；打开 SDK 的本机保护：`TestAProxysHostIsServed` 与整个程序的那一次握手答 403、失败（3.2.2、3.4.8） |
+
+### 3.20 实施与审查之后的改动（S1、S2）
+
+两个 Step 的审查与修复核对见 [S1 的审查记录](reviews/P1-S1-platform-review.md)、[S2 的审查记录](reviews/P1-S2-reads-review.md)。与上文最初的设计不同之处已改在各节里：
+
+- **S1，实施时定下的**（实施者的 22 条偏离，审查 C 判过）：SDK 随第 3 步提交（偏离 1）；ctx 还活着而没写答复时交 `errUnwritten`（2，3.2.2）；参数的错误超过 48 KiB 时丢掉 `fields`（3，3.3.6）；prompt 两个入口都登记、没有 `Get` 的 `Prompt` 在 `New` 里 panic（4，3.4.7）；`Bodies()` 的 `Items: Open`（8，3.2.2）；`/mcp` 的上限在 `wire.go` 合并（10，3.1、3.2.2）；`app.mcpTools`（11，3.1）；`POST /register`（19，3.2.2：试用的第 4b 步，主持者的决定）；提示原是 `/.well-known/` 的 404 的那句（20，修复一轮由 `NoTokenDetails` 取代，3.2.3）；`BOOTSTRAP_FIRST`（21，6.1）；panic 的子进程跑不带包装的 SDK（没列出的，审查 C-N2，3.19）；别的（5–7、9、12–18、22）是写法、测试的形状或流程。
+- **S1，审查与修复核对带来的**：空的文字块（B-I1，3.3.2、3.3.4）；超过 64 KiB 的只能是这个入口登记的工具的 `tools/call`，`params` 的形状，`jsonrpc`、`id` 与 `_meta` 照 SDK 的读法（A-M1、修复核对第一轮 F1、F2 与可选的一条，3.2.2）；没有令牌的 401 的提示（A 的附加问题，3.2.3）；`/register` 的 `no-store` 在边缘（A-N1，3.2.3）；协议版本的例外（A-N3，3.2.2）；编码不了的 `Extra`、`Err` 为 nil、不是对象的结构答复、零项放不下的 `Fit`、拒绝的输入类型、没有处理函数、零值的 `Errors`（B-M2、B 的细节、C-N3，3.3.1–3.3.6、3.4.4）；调用一行的 `outcome` 与 panic 的日志（A-M2、A-N2，3.4.2）；`serverOf`（C-N7，3.3.2）；矩阵的 `notebook` 与工具错误的码（B-M1、B 的存疑，3.6）；两个接缝工具（C-M5，3.5）；测试（A-M3、C-M1–M7、C-N4，3.4.8、3.4.9、3.19、6.3）。修复二轮之后没有剩下的发现。合并之后的测试的修复（`c87caad7`）见 3.4.8。
+- **S2，实施时定下的**（17 条偏离，审查 C 判过）：`domain.VersionToken`（1，3.9.3）；`Walk(ctx)` 与 `GlobWalk`（2，3.10.1）；`Listing` 没有 `More`（3，3.10.4、3.10.5）；`Path.Written`（4）；`InlineType`（5，3.11.2）；`shared.TitleHolds`（6，3.8）；`asset.ErrNotFound` 与 `ImageSize`（7，3.11.2）；WebP 的测试文件由 Chromium 写出（9，3.11.2）；`contentOf` 的空块（11，变基时撤回：S1 的修复做了同样的改动）；`mcpTools(pg, as, ln, nb)`（12，3.8）；第 5 步的提交带 `tools.json` 与矩阵的行（13）；三个 e2e 的类型不导出（14，4.1）；附件的最后一跳自己一个测试（15，3.13、6.3）；为让变异失败加的断言（16）；`link` 是 REST 的链接目标（17，3.11.2）。偏离 8（计划测试接受两种键的索引）不成立，由 00042 取代；偏离 10（没有 `public_url` 时不内联图片）由主持者改回。
+- **S2，审查与修复核对带来的**：00042 的两个部分唯一索引、去掉兄弟的索引、`ChildByKey` 没有统计时的计划（A-I1、C-I2、A2-M1，3.9.2）；多字的段的测试与 DP 预言（A-I2，3.10.1）；`read` 先判定笔记本的测试（C-I1，3.11.1）；`MaxGlobWork` = 3 亿与 `և` 的守卫树、守卫的 `-v` 的行（A-M2，3.10.1）；长路径的列法与几处提示（A-M3、A-N3，3.9.2、3.10.1、3.10.2）；进了回收站的附件不列（A-N2，3.10.2）；游标的大小（A-N4，3.10.2）；`public_url` 的 `@`（B-M1，3.12）；WebP 的检查与测试（B-M2、B 的存疑 1，3.11.2）；`read` 的说明的余地（B-N2，3.18）；组合根的两行与按工具的码的表（B-M3、C-M3、C 的提议，3.13）；`has_children`、`mime`、`resource_link` 的测试（C-M1、C-M2、C-N4，3.13、4.4）；`decideNotebook`（C-N5，3.10.4）；照写的路径的 `page.not_found`（C-N3，3.11.1、3.11.2）；守卫那一份的作业时限（3.8）。修复二轮之后没有剩下的发现。
 
 ## 4. 前端：只有 e2e
 
@@ -2059,8 +2217,8 @@ P1 没有网页的改动。e2e 的改动随第一个用它的故事进来（2.1 
 | Step | 新的导出 | 谁导入 |
 |---|---|---|
 | S1 | 无（e2e 没有改动） | — |
-| S2 | `mcp.ts`：值 `mcpClient`、`postMcp`；类型 `McpClient`、`McpAnswer`、`McpContent`、`McpTool`。`assets.ts`：值 `webpBytes` | MC2 导入 `mcpClient`、`postMcp`（`notebook=nope` 答 404，4.4 第 7 步）与 `webpBytes`；四个类型在 `mcpClient` 的签名里（`McpClient` 的成员带 `McpTool`、`McpAnswer` 带 `McpContent`），同今天 `events.ts` 的 `BrowserStreams` 的做法 |
-| S3 | `mcp.ts`：值 `mcpURL`（S2 里它是文件内的函数）；`assert/identity.ts`：值 `expectTokenClient`；开发依赖 `@modelcontextprotocol/sdk` | MC1 导入这三样 |
+| S2 | `mcp.ts`：值 `mcpClient`、`postMcp`；类型 `McpClient`。`assets.ts`：值 `webpBytes` | MC2 导入 `mcpClient`、`postMcp`（`notebook=nope` 答 404，4.4 第 7 步）与 `webpBytes`；`McpClient` 在 `mcpClient` 的签名里，同今天 `events.ts` 的 `BrowserStreams` 的做法。`McpAnswer`、`McpContent`、`McpTool` 不导出：knip 6.38 数一个被导出的函数的签名用到的类型，不数只被导出的 interface 的成员用到的类型，导出时它们报作没人用（S2 审查 C 核对过；实施时的偏离 14，这张表原来写错了）；`mcp.ts` 的注释写明 |
+| S3 | `mcp.ts`：值 `mcpURL`（S2 里它是文件内的函数）；类型 `McpAnswer`、`McpContent`、`McpTool`（MC1 导入它们时导出）；`assert/identity.ts`：值 `expectTokenClient`；开发依赖 `@modelcontextprotocol/sdk` | MC1 导入这三样 |
 
 草稿在 S2 就导出 `mcpURL` 与 `postMcp`，而 S2 只有 MC2、它不用这两个：S2 的 `make knip` 会失败。
 
@@ -2116,11 +2274,11 @@ export async function mcpClient(
 
 经 REST 建笔记本 `Plans`：根下页 `Guide`（正文 `\uFEFF---\r\ntitle: Guide\r\n---\r\nLine one\r\nLine two\r\n` 的字节：BOM 与 CRLF，在测试里以 `"\ufeff"` 的转义写出），它下面依次建 `Setup`、`Alpha`、`Long`（3,000 行、每行 40 个字节）、`Wide`（一行 100,000 个 `x`、换行、`end`、换行），上传附件 `diagram.png`（`pngBytes`）、`dot.webp`（`webpBytes`）、`spec.pdf`、`logo.svg`；再经 REST 把 `Wide` 移到 `Setup` 之前（`moveNode`，`e2e/fixtures/pages.ts:91`）：树的次序从此是 `Wide`、`Setup`、`Alpha`、`Long`，既不是建的次序与 id 的次序（v7，随时间增长：`Setup`、`Alpha`、`Long`、`Wide`），也不是名称的次序（`Alpha`、`Long`、`Setup`、`Wide`），按 id 或按名称排兄弟的错误都测得出来（设计审查 B-M11）。四个上传各以 `expectUploaded`（`e2e/fixtures/assert/asset.ts:31`）核对它的行（00 号文档第 9 节"MC2 核对附件的行"；`dot.webp` 的上传另断言答复的 `width === 1 && height === 1`：`expectUploaded` 拿行与接口的答复比，两边都是 null 也通过；P1 起上传读 WebP 的宽高，复核 B N-3）。笔记本入口：
 
-1. `list`（`pattern` 缺省）答 `Guide.md`，`has_children` 为真；`list("Guide/")` 答 `Guide` 的八个子节点，次序等于 REST 的 `listNodes` 里它们的次序（树的次序，`e2e/fixtures/pages.ts:75`；`Wide` 在最前），每项的 `has_children` 为假，页带 `version`（`<id>:1`）与 `byte_size`，附件带 `mime`；`list("**/*.md")` 按路径的键答 `Guide.md`、`Guide/Alpha.md`、`Guide/Long.md`、`Guide/Setup.md`、`Guide/Wide.md`（按键的字母序，与上面树的次序不同，所以两种次序都证明了）；`list("guide/*.PNG")` 答 `Guide/diagram.png`（不论大小写）；`list("Guide/", limit 2)` 答两项与 `next_cursor`，带它再列得到其后的两项。
+1. `list`（`pattern` 缺省）答 `Guide.md`，`has_children` 为真；`list("Guide/")` 答 `Guide` 的八个子节点，次序等于 REST 的 `listNodes` 里它们的次序（树的次序，`e2e/fixtures/pages.ts:75`；`Wide` 在最前），只有 `Setup` 的 `has_children` 为真（它下面只有一个附件 `table.csv`，`list("Guide/Setup/")` 答它；S2 审查 C-M1），页带 `version`（`<id>:1`）与 `byte_size`，附件带 `mime` 与 `byte_size`，都等于上传的（S2 审查 C-M2）；`list("**/*.md")` 按路径的键答 `Guide.md`、`Guide/Alpha.md`、`Guide/Long.md`、`Guide/Setup.md`、`Guide/Wide.md`（按键的字母序，与上面树的次序不同，所以两种次序都证明了）；`list("guide/*.PNG")` 答 `Guide/diagram.png`（不论大小写）；`list("Guide/", limit 2)` 答两项与 `next_cursor`，带它再列得到其后的两项。
 2. `read("Guide.md")`：没有 `structuredContent`，第一块的 JSON 里 `total_lines` 是 5、`next_offset` 为 null，第二块的字节等于正文（BOM 与 `\r` 原样）；`read("/Guide.md", offset 2, limit 1)` 答第二行 `title: Guide\r\n`。
 3. `read("Guide/Long.md")`：第一次的第二块至多 48 KiB、`next_offset` 不为 null；依次带 `next_offset` 读到它为 null，连起来等于正文。
 4. `read("Guide/Wide.md")`：第一次答 1 行、`next_offset` 是 1、`next_column` 大于 0；依次带 `offset` 与 `column` 读完，连起来等于正文。
-5. 附件：`read("Guide/diagram.png")` 与 `read("Guide/dot.webp")` 的第二块是 `image`、`mimeType` 各是 `image/png`、`image/webp`，`data` 解码之后等于上传的字节，元数据的 `mime`、`byte_size`、`sha256`、`width`、`height` 等于库里那一行的；`read("Guide/spec.pdf")` 与 `read("Guide/logo.svg")` 的第二块是 `resource_link`，`uri` 以 `http://wiki.example/api/v0/assets/` 起头，把源换成 `baseURL` 下载答 200、`Content-Disposition` 是 `attachment`、字节等于上传的（`download`，`e2e/fixtures/assets.ts:69-71`）。
+5. 附件：`read("Guide/diagram.png")` 与 `read("Guide/dot.webp")` 的第二块是 `image`、`mimeType` 各是 `image/png`、`image/webp`，`data` 解码之后等于上传的字节，元数据的 `mime`、`byte_size`、`sha256`、`width`、`height` 等于库里那一行的；`read("Guide/spec.pdf")` 与 `read("Guide/logo.svg")` 的第二块是 `resource_link`，`mimeType` 与 `size` 等于上传的（S2 审查 C-N4），`uri` 以 `http://wiki.example/api/v0/assets/` 起头，把源换成 `baseURL` 下载答 200、`Content-Disposition` 是 `attachment`、字节等于上传的（`download`，`e2e/fixtures/assets.ts:69-71`）。
 6. `read("Guide")`（附件的写法、有同名的页）答工具的错误：文字以 `page.not_found` 起头并提示 `Guide.md`；`list("Guide")`（不带通配、没有配上）答空的 `items` 与提示 `Guide.md` 的 `hint`。
 7. `postMcp` 一个 `initialize` 到 `notebook=nope`：404 problem+json `notebook.not_found`、`Cache-Control: no-store`。
 
@@ -2131,14 +2289,14 @@ export async function mcpClient(
 ### S1（分支 `m9-p1-s1`，从 `main`）
 
 1. `go get github.com/modelcontextprotocol/go-sdk@v1.8.0`，`go mod tidy`（3.1 的版本，`asm` 是 v1.2.1）；archtest 的规则与合成的边、depguard 的规则（3.7）；`archtest/binary_test.go` 照样通过。
-2. httpserver：`ProblemOf`、`Fault`、`Answer`，`Write` 改用它（已有的测试照旧通过）；`API.Wrap` 与它的测试；导出的 `MCPPath`、`setFixedHeaders` 的前缀与它的测试。
+2. httpserver：`ProblemOf`、`Fault`、`Answer`，`Write` 改用它（已有的测试照旧通过）；`API.Wrap` 与它的测试；导出的 `MCPPath`、`setFixedHeaders` 的前缀与它的测试（审查之后另有 `RegisterPath`、`APIConfig.NoTokenDetails`、bodyshape 的 `Bytes` 与 apitest 的 `ProblemCodes`）。
 3. mcpserver：类型（3.3.2）、schema 的推导、整理与结构表（3.3.3）、两个 server 与 `ServeHTTP`（含"答复没写"的一支，3.2.2、3.3.1）、调用的 ctx 与恢复（3.4.1–3.4.2）、`no-store`（3.4.3）、量、`Fit` 与答复的上限（3.4.4）、错误（3.3.6）、日志与 SDK 的 logger（3.4.5）、`handshake` 的日志部分、最小的 `Prompt` 与替身（3.4.7）；单元测试（3.4.8）。包级的东西只有 `errors.New` 的哨兵与常量（`Bodies()`、`Subtree()`、`WellKnown()`、`notPAT()` 是函数）。
 4. page：`NotebookGate`、`MCPEntry()`（`Instructions` 答 `""`），导出 `MaxContentBytes`。
-5. 组合根：`bootstrap/mcp.go`、`/mcp` 的挂载与上限、两个 404、`wiring` 的接缝；`mcp` 移到 `[server]`、`reserved_test` 的例外；`configs/config.yaml` 的注释。
+5. 组合根：`bootstrap/mcp.go`、`/mcp` 的挂载与上限、两个 404、`wiring` 的接缝；`mcp` 移到 `[server]`、`reserved_test` 的例外；`configs/config.yaml` 的注释。试用之后加 `POST /register`：挂载、公开的操作、`register` 进 `[server]`（3.2.2）。
 6. `api/mcp/tools.json`（空的两个数组）、`TestTheToolListsAreTheContract`、`TestTheMCPToolsBuildBothServers` 与两条反向对照（3.5）；矩阵的框架与覆盖、反向对照（3.6）。
 7. 整个程序的测试（3.4.9）；各检查的反向对照（3.19 的 S1 部分）。
-8. 仓库之外的 TypeScript 客户端试用的传输的几步（6.4 的第 2–5 步，S1 的二进制）：结果写进本文第 9 节；发现的不合在 S1 合并之前改。
-9. 门禁、审查。
+8. 仓库之外的 TypeScript 客户端试用的传输的几步（6.4 的第 2–5 步，S1 的二进制）：结果写进本文第 9 节；发现的不合在 S1 合并之前改（会走 OAuth 的客户端在 `/register` 拿到网页的 405：实施者停下，主持者定了 `POST /register`，`e40142e8`，第三次运行核对）。
+9. 门禁、审查。组合根两份的界线照 6.1 移到 `TestEveryR` 之前（`043185ba`）。
 
 **S1 合并时各项证明什么**：
 
@@ -2146,24 +2304,24 @@ export async function mcpClient(
 |---|---|
 | `make lint-go` | 新代码没有包级的可变状态（`gochecknoglobals`）；只有 mcpserver 与 bootstrap 的文件导入 SDK，测试文件也算（depguard） |
 | `make knip` | e2e 没有改动，照旧通过（不证明 MCP 的什么） |
-| 工具清单 | 两个入口与文件都是空的、文件恰好两个键：主测试只证明"都空"；`TestTheToolListCheckCatchesEachDifference`（比较的函数会失败）与 `TestTheToolListCheckReadsTheApp`（取数的路径读的真是应用的两个入口与文件的两个键，接缝的 `seam` 工具让它失败）是这一 Step 的证明 |
+| 工具清单 | 两个入口与文件都是空的、文件恰好两个键：主测试只证明"都空"；`TestTheToolListCheckCatchesEachDifference`（比较的函数会失败）与 `TestTheToolListCheckReadsTheApp`（取数的路径读的真是应用的两个入口与文件的两个键，接缝的 `seam_notebook`、`seam_account` 各让它失败、点名自己的入口）是这一 Step 的证明 |
 | 接线 | 空的工具集建得起两个 server；`New` 的规则由 mcpserver 的单元测试证明（只在账户入口的 `Notebook` 工具登记得上） |
 | 矩阵的覆盖 | 没有行也没有工具：只证明文件的两个键在；`TestMCPMatrixViolationsCatchesEachGap` 在合成的数据上证明它会失败（含 `write` 的两种） |
 | archtest | 真的：SDK 已在 `go.mod` 里，只有 mcpserver 导入它；合成的边证明它会失败 |
-| 整个程序的测试 | 边缘、传输、恢复、期限与断开、批、listen、`no-store`、重启，经接缝的测试工具，是真的 |
+| 整个程序的测试 | 边缘、传输、恢复、期限与断开、批、listen、`no-store`、重启，经接缝的测试工具，是真的；审查之后另有 `/register` 与没有令牌的提示、两个路由的桶、超过 64 KiB 的请求体、代理的 Host |
 
 ### S2（分支 `m9-p1-s2`，S1 合并之后）
 
-1. page 的 domain：`ParsePath`、`PathOf`、`PathNotFound`、`Version`、`ParseGlob` 与位并行的匹配（3.10.1；与正则的差分测试、按树走与逐条路径的对照、单位的计数、接着走的界）、`CheckWindow`、`Cut`（计数函数由调用者交）、`InlineImage`、`ChildrenCursor`、`GlobCursor` 与上限；单元与性质测试；`TestTheWorstGlobsStopWithinTheirWork` 加进 `make test-go-costs`（`MaxGlobWork` 已定，3.10.1 的实测）。
-2. page 的存储：`RootByKey`、`ChildByKey`、`PageStates`，`make gen`；存储的测试与计划测试。
+1. page 的 domain：`ParsePath`、`PathOf`、`PathNotFound`、`VersionToken`、`ParseGlob` 与位并行的匹配（3.10.1；与正则的差分测试、按树走与逐条路径的对照、单位的计数、接着走的界）、`CheckWindow`、`Cut`（计数函数由调用者交）、`InlineImage`、`ChildrenCursor`、`GlobCursor` 与上限；单元与性质测试；`TestTheWorstGlobsStopWithinTheirWork` 加进 `make test-go-costs`（`MaxGlobWork` 已定，3.10.1 的实测）。
+2. page 的存储：`RootByKey`、`ChildByKey`、`PageStates`，`make gen`；存储的测试与计划测试。审查之后：迁移 00042（根与子节点的部分唯一索引，去掉兄弟的索引；`schema_test`、`sqlc.yaml`）、`nameTaken`、`AliveNodes`（3.9.2、3.10.2）。
 3. page 的用例：`NodePaths.Find`、`ListByPattern`（按树走、不拼全部的路径、工作的上限、`hint`）、`ReadPath`；表格测试（码的次序）；`TestEveryNodesPathFindsIt`。
 4. asset：`webpSize`、`Sniffer.Size` 的分支、`HasSize` 加 `image/webp`（模糊测试、三种块、截短的头，3.11.2）；`api/modules/asset.yaml` 的说明、`make gen`；`Deps.PublicURL`、`AttachmentReads`（`Read`、`Content` 与旧行的宽高）与它的测试（真实的库与存储）；config 的 `server.public_url`（校验、`LogValue`、`config.yaml`）。
 5. page 的 `adapter/mcp`（`list` 经 `Fit`、`read` 经 `Cut` 与 `TextBytes`、错误的文字、元数据行）与它的测试；`Tools(ToolDeps)`；组合根的 `mcpTools`、`pageAttachments`。
 6. `api/mcp/tools.json` 加 `list`、`read`；矩阵的两行；整个程序的测试（3.13）。
-7. e2e：`mcp.ts`（导出 `mcpClient`、`postMcp` 与四个类型）、`assets.ts` 的 `webpBytes`、`server.ts` 的环境变量、MC2。
-8. 仓库之外的 TypeScript 客户端试用的读的一步（6.4 的第 1 步：`list`、`read`），结果写进第 9 节；反向对照、门禁、审查。
+7. e2e：`mcp.ts`（导出 `mcpClient`、`postMcp` 与类型 `McpClient`；另三个类型 S3 才导出，4.1）、`assets.ts` 的 `webpBytes`、`server.ts` 的环境变量、MC2。
+8. 仓库之外的 TypeScript 客户端试用的读的一步（6.4 的第 1 步：`list`、`read`），结果写进第 9 节；反向对照、门禁、审查。审查之后另有按工具的码的表（3.13）与守卫那一份的作业时限（3.8）。
 
-**S2 合并时各项证明什么**：工具清单核对 `list`、`read` 在两个入口的全部成员（账户入口的 `notebook` 在 `required` 的最前）；接线证明 `BothEntries, Notebook: true` 的两个工具进了两个 server、账户入口里有必填的 `notebook`；矩阵的覆盖核对两行在、`entries` 对、都没有 `write`（两个都是 `readOnlyHint`）；archtest 与 depguard 证明 page 的 `adapter/mcp` 只导入 mcpserver；knip 证明 `mcp.ts` 与 `assets.ts` 的每个新导出都被 MC2 导入（4.1 的表）；lint 同 S1。
+**S2 合并时各项证明什么**：工具清单核对 `list`、`read` 在两个入口的全部成员（账户入口的 `notebook` 在 `required` 的最前）；接线证明 `BothEntries, Notebook: true` 的两个工具进了两个 server、账户入口里有必填的 `notebook`；矩阵的覆盖核对两行在、`entries` 对、都没有 `write`（两个都是 `readOnlyHint`）；archtest 与 depguard 证明 page 的 `adapter/mcp` 只导入 mcpserver；knip 证明 `mcp.ts` 与 `assets.ts` 的每个新导出都被 MC2 导入（4.1 的表）；lint 同 S1；计划测试证明两条点查在四种形状上用的是 00042 的索引（`ChildByKey` 在 ANALYZE 之后）；码的表证明 `list`、`read` 只答它们的行的码。
 
 ### S3（分支 `m9-p1-s3`，S2 合并之后）
 
@@ -2183,7 +2341,7 @@ export async function mcpClient(
 
 `make lint-go lint-web knip gen-check test-go test-web build`、e2e 全量，三个 Step 各一遍。`test-go-costs` 加 glob 的守卫与概况的守卫（S2、S3）。
 
-**bootstrap 的两半**（设计审查 A-N9）：`BOOTSTRAP_FIRST = ^Test[A-D]`（`Makefile:198`），本文的整个程序的测试都叫 `TestThe…`、`TestMCP…`、`TestOpen…`、`TestTool…`，全落在第二半，而它在 M8 收尾时已是较大的一半（206 秒对 201 秒）。估计 P1 给第二半加约 25–35 秒：期限的测试至少等 4 秒、断开的一秒、重启的测试建第二个应用（约 2 秒）、矩阵建 13 个 PAT 再调约 100 次、G16 的五种换法各几次握手、名称的测试重建一次应用、MC 之外的整个程序测试约十个。S1 的实施者在 S1 合并之前量两半；第二半超过第一半一成以上时，照 M8/P4A 的分法把 `BOOTSTRAP_FIRST` 的界线往后挪（例如 `^Test[A-F]`），挪了之后两半各自的时间写进 S1 的审查记录；S2、S3 照样再量一次。
+**bootstrap 的两半**（设计审查 A-N9）：`BOOTSTRAP_FIRST = ^Test[A-D]`（`Makefile:198`），本文的整个程序的测试都叫 `TestThe…`、`TestMCP…`、`TestOpen…`、`TestTool…`，全落在第二半，而它在 M8 收尾时已是较大的一半（206 秒对 201 秒）。估计 P1 给第二半加约 25–35 秒：期限的测试至少等 4 秒、断开的一秒、重启的测试建第二个应用（约 2 秒）、矩阵建 13 个 PAT 再调约 100 次、G16 的五种换法各几次握手、名称的测试重建一次应用、MC 之外的整个程序测试约十个。S1 的实施者在 S1 合并之前量两半；第二半超过第一半一成以上时，照 M8/P4A 的分法把 `BOOTSTRAP_FIRST` 的界线往后挪（例如 `^Test[A-F]`），挪了之后两半各自的时间写进 S1 的审查记录；S2、S3 照样再量一次。量的结果（各自单独、竞态下）：S1 原来的 `^Test[A-D]` 212.7 秒与 250.1 秒（+17.6%），移到 `^Test([A-D]|E([a-u]|very[A-Q]))`（`TestEveryR` 之前；整个 `TestE` 51.5 秒都移会让前一份长约三分之一）之后 217.0 秒与 235.9 秒（+8.7%），CI 上前一份反而长（7:10 对 6:02）；S2 没有动：第一次门禁 224.3 秒与 239.9 秒（+7.0%），修复一轮之后 219.7 秒与 242.7 秒（+10.5%；CI 上 6:20 与 6:41），S3 的整个程序的测试也都落在第二份，照主持者的决定在 S3 量了之后移一次（[S2 的审查记录](reviews/P1-S2-reads-review.md)主持者的决定 7）。
 
 **每个 Step 的绿**：第 5 节逐个 Step 写明 lint、knip、工具清单、矩阵的覆盖与 archtest 在那时证明了什么。
 
@@ -2223,12 +2381,17 @@ export async function mcpClient(
 | 恢复不区分 `tools/call` | `TestRecoveryAnswersEachMethod`：`tools/call` 的 panic 是 `isError`，`initialize` 的是 -32603 的 JSON-RPC 错误（3.4.8） |
 | 结构的工具用 SDK 的 `json.Marshal` | `TestTheStructuredResultKeepsHTMLCharacters`：解码 `content` 的文字之后 `<>&` 原样（3.4.8） |
 | `sdkLogger` 写回 `.With(…)` | `TestTheSDKLogsOnlyWarnings`（3.4.5） |
-| `ServeHTTP` 不管没写的答复 | `TestAnUnwrittenAnswerIsAProblem`（3.4.8） |
+| `ServeHTTP` 不管没写的答复 | `TestAnUnwrittenAnswerIsAProblem`（3.4.8；问两个工具，`c87caad7`） |
 | `ServeHTTP` 的最后一支不看原因（写回第一轮的 `errUnwritten`） | `TestTheMCPCallStopsWhenTheClientGoes`：断开时日志里有 error 级的行，失败（3.4.9，复核 A N-2） |
 | `Fit` 按 `len(JSON)` 量 | `TestFitHoldsTheAnswersMeasure`：全是引号的成员（3.4.8） |
+| 去掉 `recoverTool`、换两个 defer 的次序（S1 审查加的） | `TestTheCallsAndHandshakesLogOneLineEach`、`TestRecoveryAnswersEachMethod` 与整个程序的 `TestTheMCPRecoversAToolsPanic`：`boom` 一行的 `outcome` 是 `internal_error`（3.4.2） |
+| 空的文字块被拒、文字与图片或链接同块被收（S1 审查加的） | `TestAnEmptyBlockIsText`、`TestAMalformedResultIsInternal`（3.3.4） |
+| 错误的成员不编码一次交给 SDK、参数超过 48 KiB 时不回退（S1 审查加的） | `TestAnUnwritableErrorIsInternalAtOnce`；`TestTheArgumentsAreCheckedAsTheSchemaSays`（3.3.6） |
+| `/register` 与没有令牌的提示（S1 加的） | `TestTheMCPRefusesOAuthRegistration`、`TestEveryMCPAnswerIsNotStored`、`TestTheMCPTellsEveryClientOneHint`（3.4.9） |
+| 超过 64 KiB 的请求体的各条（S1 审查加的） | `TestOnlyACallMayBeLong`、`TestTheParamsAreShapedBeforeTheSDK`，整个程序的 `TestTheMCPEdgeAnswersInOrder`（3.2.2） |
 | `TextBytes` 把 `\r` 记 6、`<` 记 1 | `TestTheMeasuresAreTheWires`：与真的 SDK 编码比较（3.4.8） |
 | `ParsePath` 不去开头的 `/`、收结尾的 `/` | `TestParsePath` 的表格（3.9.1） |
-| `ChildByKey` 不带 `notebook_id` | `TestThePathLookupsArePointLookups`：计划里兄弟的唯一索引的三列都是索引条件（3.9.2） |
+| `ChildByKey` 不带 `notebook_id` | `TestThePathLookupsArePointLookups`：计划是子节点的唯一索引、两列都是等值的条件，`notebook_id` 在行的过滤里（3.9.2；S2 之前写的"兄弟的唯一索引的三列"随 00042 不再成立） |
 | `Find` 不查最后一段的类型 | `TestFindByPath` 的四种情形（3.9.2） |
 | `list` 的子节点按名称或按 id 排 | `TestListByPatternAnswersInOrder` 的表格（替身的树，次序值与名称、id 的次序都不同）与 MC2 第 1 步（4.4） |
 | 两种游标解进同一个结构 | `TestTheListCursorsRefuseTheOtherShape`：`{}`、子节点的模式拿到 glob 的游标、反过来，都答 400（3.10.2） |
@@ -2241,7 +2404,11 @@ export async function mcpClient(
 | `column` 的检查放到笔记本之前 | `TestReadPathAnswersInOrder`：看不到的笔记本上不在边界的 `column` 答 404（3.11.1） |
 | `InlineImage` 收 SVG、不看宽高 | `TestInlineImage` 的表格（3.11.2） |
 | `webpSize` 的 VP8L 不加 1 | `TestWebPSize` 的三种块（3.11.2） |
-| 绝对地址用请求的 `Host` | `TestTheMCPReadsReachTheUseCases`：地址以 `http://wiki.example` 起头，测试服务的 `Host` 是 127.0.0.1（3.13） |
+| 绝对地址用请求的 `Host` | `TestTheMCPReadsGiveAttachments`（附件的最后一跳，实施时的偏离 15）：地址以 `http://wiki.example` 起头，测试服务的 `Host` 是 127.0.0.1（3.13） |
+| `read` 先找路径、后判定笔记本（S2 审查加的） | `TestReadPathAnswersInOrder`；整个程序的 `TestListAndReadErrorsCarryDeclaredCodes` 与矩阵（3.11.1） |
+| 只数页的子节点的 `has_children`、`list` 的附件的 `mime` 写死（S2 审查加的） | `TestListByPatternAnswersInOrder`、`TestTheListAnswersItsItems`、`TestTheMCPReadsGiveAttachments` 与 MC2（3.10.2、4.4） |
+| 子节点的游标不按 id 断平手（S2 审查加的） | `TestListByPatternPagesOnFromItsCursor`：相同的 `sort_order`、id 的次序与名字和存的次序都不同（3.10.2） |
+| 没有 `public_url` 时不内联图片（S2 审查加的） | `read_test.go` 没有地址的各行、`TestTheMCPReadsWithoutAPublicURL`（3.11.2） |
 | `AgentsPage` 不看 `parent_id IS NULL` | `TestTheInstructionsFollowAgents`：子页里的 `AGENTS` 答内置的说明（3.17.4） |
 | 缓存以点查的版本号存 | `TestTheInstructionsCacheByTheRevisionRead`（替身的存储在点查与读正文之间换掉页，3.17.4） |
 | `AgentsBody` 不去 BOM | `TestAgentsBody` 的表格（3.15.3） |
@@ -2270,74 +2437,124 @@ export async function mcpClient(
 
 分两次跑（设计审查 A-M14、B-M14）：第 2–5 步只要 S1 的二进制（握手与空的 `tools/list` 已经活着），在 S1 的末尾、合并之前跑：00 号文档第 10 节靠的"P1 在仓库之外先试重启与 GET"就在无状态的传输与边缘进 `main`、S2 建在它们之上之前做了；第 1 步要真的工具，在 S2 的末尾跑。代码用完丢掉，结果（版本、每一步的请求与提示的原文）写进第 9 节；与 00 号文档 4.3、4.4 的假设不符的（例如它对 405 报错、对 404 的 OAuth 元数据当成配置错误）先停下，改设计再合并那个 Step。
 
+**结果**（逐步的原文在第 9 节）：S1 跑了四次。第 4b 步（带 OAuth 的 provider）不符：四个 `/.well-known/` 的 404 之后客户端 `POST /register`，拿到网页的 405；实施者停下，主持者定了 `POST /register`（3.2.2），第三次运行核对；修复一轮的 `NoTokenDetails`（3.2.3）之后第四次运行核对第 4a 步也显示同一句。第 2、3、5 步与假设相符。S2 的第 1 步没有不符。
+
 ## 7. 完成标准
 
 - 第 2 节的每一项做完，第 3、4 节的测试通过，门禁全绿；3.19 的反向对照都做过。
-- glob 的工作上限（`MaxGlobWork` = 4 亿个单位）与它的实测已在 3.10.1；实施时在 CI 的机器上再量一次守卫，数值写进第 9 节。TypeScript 客户端试用的两次结果写进第 9 节。
+- glob 的工作上限（`MaxGlobWork`，S2 之后 3 亿个单位）与它的实测已在 3.10.1；守卫在 CI 上每次走查的耗时打在成本那一份带 `-v` 的行里，还没人读过（日志要权限才读得到），交 M12（第 8 节）。TypeScript 客户端试用的两次结果写进第 9 节。
 - 审查记录：设计 `reviews/P1-design-review.md`；实施 `reviews/P1-S1-platform-review.md`、`reviews/P1-S2-reads-review.md`、`reviews/P1-S3-instructions-review.md`；00 号文档的进度表与本文档的"结果"一节随每个 Step 的合并更新。
 - **P1 的文档提交做的改动**（随本文档一起，主持者以 `apply-00m9.py` 落下）：`00-M9-design.md` 的 2.1 的各条（含 A-M4 对 4.6 转义规则的更正）与它们碰到的文字；进度表 P1 一行指向本文；变更记录一行。
 - **随各 Step 的合并改的**：
   - `v0.1-design.md` 第 13 节（行号以那时的为准）：
     - 13.1 第 2 条（S3）：MCP 的客户端名称取请求的 `clientInfo.name`（`initialize` 或 `_meta`），否则这个 PAT 记下的（`api_tokens.client_name`，进程内按 PAT 的缓存），都没有时 `unknown`；清理是 `shared.CleanClientName`（次序与幂等），组合根在交给 identity 之前清理。
     - 13.1 第 3 条（S1、S3）：`notebooks` 没有规则行，进"列表等于逐项判定读取"的测试（`TestTheAccountsNotebooksAreWhatEachReadAllows`）；MCP 的矩阵按工具（`permission_matrix_mcp_test.go`，13 列各有 PAT），`TestThePermissionMatrixCoversEveryTool`。
-    - 13.1 第 4 条（S1–S3）：`/mcp` 边缘的次序（没有令牌 401 → 闸门 429 → 坏的令牌 401 → 桶 429 → 413、400 → 403 → 不是 POST 的 400（协议版本）、405 → 404）；查询串解析不了、`notebook` 出现两次、为空、`uuid.Parse` 不收时答 404 不查库；账户入口的笔记本由用例判定、排在与资源无关的 422 之后；`list`、`read`、`notebooks`、`open_notebook` 的次序（3.10.4、3.11.1、3.17.2、3.17.3）。
+    - 13.1 第 4 条（S1–S3）：`/mcp` 边缘的次序（没有令牌 401 → 闸门 429 → 坏的令牌 401 → 桶 429 → 413、400 → 413（超过 64 KiB 而不是这个入口的工具的调用）→ 403 → 不是 POST 的 400（协议版本）、405 → 404）；查询串解析不了、`notebook` 出现两次、为空、`uuid.Parse` 不收时答 404 不查库；账户入口的笔记本由用例判定、排在与资源无关的 422 之后；`list`、`read`、`notebooks`、`open_notebook` 的次序（3.10.4、3.11.1、3.17.2、3.17.3）。
     - 13.1 第 8 条（S1）：工具的错误是 `isError` 的结果，文字与 `structuredContent.error` 同一段，码同 REST；`ProblemOf(ctx, err)` 是 REST 与 MCP 共用的分类；参数的结构错误的字段写法同 REST。
     - 13.1 第 10 条（S1）：MCP 的调用与握手各一行 info 的日志、从不记参数与答复；SDK 的 logger 在 warn 以上。
     - 13.1 第 11 条（S1–S3）：模块根的 `Tools()`（page 的 `Tools(ToolDeps)` 在 asset 之后）、`MCPEntry()`、`(*asset.Module).AttachmentReads()`、`identity.NewClientNames(pool)`、`page.AccountInstructions()`（`page.NewNodePaths(pool)` 随 P4）。
     - 13.1 第 12 条（S1）：mcpserver 的小接口（凭证、笔记本入口、名称）由组合根按结构接上，平台不读 `shared`。
-    - 13.1 第 23 条之后另起一条（S1；设计审查 B-M13，照第 23 条 River 的写法）：MCP SDK（`github.com/modelcontextprotocol/go-sdk`）与 `github.com/google/jsonschema-go` 只由 `platform/httpserver/mcpserver` 与组合根的测试导入：archtest 的 `mcpSDKStaysInMCPServer` 管生产代码，depguard 的规则连测试文件也管；模块登记 `mcpserver.Tool`，不碰 SDK 的类型。
+    - 13.1 新增第 32 条（S1；设计审查 B-M13，照第 23 条 River 的写法；排在最后，不给第 24–31 条重新编号，另记 `encoding/json/v2` 的实验开关）：MCP SDK（`github.com/modelcontextprotocol/go-sdk`）与 `github.com/google/jsonschema-go` 只由 `platform/httpserver/mcpserver` 与组合根的测试导入：archtest 的 `mcpSDKStaysInMCPServer` 管生产代码，depguard 的规则连测试文件也管；模块登记 `mcpserver.Tool`，不碰 SDK 的类型。
     - 13.1 第 13 条（S1）：MCP 的契约是先写的 `api/mcp/tools.json`，整个程序的测试解析之后比较，没有 `-update`。
     - 13.1 第 14 条（S1）：改写"保持响应的路由"一段：去掉"（SSE、MCP 流）"里的 MCP 与"M9 的 MCP 流照此挂载"；加"`/mcp` 经 `API.Wrap` 挂在根路由器上（逐路由的中间件、只许对象的请求体、按路由的上限），不是保持响应的路由；SDK 在自己的 goroutine 里执行方法，mcpserver 的最外层中间件派生调用的 ctx、恢复 panic；`no-store` 由写者守住"。
-    - 13.1 第 15 条（S2）：`server.public_url`（只到源，为空时不签绝对地址）。
-    - 13.1 第 17 条（S1）：`/mcp` 只收 PAT，会话的访问令牌答 403 `forbidden`（不是 401：凭证本身有效）；`/mcp` 不在契约里，`TestEveryOperationAcceptsAPersonalAccessToken` 不涉及它。
+    - 13.1 第 15 条（S2）：`server.public_url`（只到源，为空时不签绝对地址、图片照样内联；被拒的值带 `@` 的不照录）。
+    - 13.1 第 17 条（S1）：`/mcp` 只收 PAT，会话的访问令牌答 403 `forbidden`（不是 401：凭证本身有效）；`/mcp` 不在契约里，`TestEveryOperationAcceptsAPersonalAccessToken` 不涉及它；`POST /register` 与 `/.well-known/` 是组合根挂的、契约之外的公开路由（公开的操作只由模块声明的例外）。
     - 13.1 第 20 条（S1）：一个 `/mcp` 的 POST 一个 `authenticated` 的单位，与 REST 共用 `pat:<id>` 的桶，没有 MCP 自己的桶。
     - 13.1 第 21 条（S1–S3）：MCP 工具与 prompt 的注册表的形状与最后一跳（附件读、`AccountWorkspaces`、名称；prompt 以替身证明，最后一跳写给 M10；`NodePaths` 的最后一跳在 P4）。
-    - 13.1 第 26 条（S1）：`mcp` 在 `[server]`；`/.well-known/` 之下答 404，`reserved_test` 不比较以点开头的第一段。
+    - 13.1 第 26 条（S1）：`mcp` 与 `register` 在 `[server]`（`register` 只服务 POST，不遮住已有的同名工作区）；`/.well-known/` 之下答 404，`reserved_test` 不比较以点开头的第一段。
     - 13.1 第 27 条（S2）：`list` 的游标是两种载荷（子节点的次序值与 id、glob 的路径键），按模式解；glob 的匹配用完工作的上限时同样答 `next_cursor`。
-    - 13.1 第 28 条（S2）：MCP 的路径与 glob 按段以 `TitleKey` 比较。
+    - 13.1 第 28 条（S2）：MCP 的路径与 glob 按段以 `TitleKey` 比较；兄弟的唯一改由 00042 的根与子节点的两个部分唯一索引兜底（00012 的兄弟的索引去掉）。
     - 13.1 第 31 条（S1–S3）：MCP 的上限（答复 48 KiB，按每块文字在答复里由 `encoding/json` 写出的字节、结构的工具的字符串转义两次，经 mcpserver 的 `Fit` 一个帮助函数填；路径；glob 的长度、通配与一次的工作 `MaxGlobWork`；`list`、`read`、内联的图片、说明、`notebooks`、`open_notebook`、客户端名称）。
     - 13.4 第 1 条：3.19 的反向对照；第 3 条：e2e 的 MCP 客户端 `fixtures/mcp.ts`，MC1 另经 TypeScript SDK 的客户端；第 5 条：工具清单、PAT、NUL 与不成对的代理项、JSON-RPC 的批、panic、`no-store` 的整个程序测试；第 6 条：按工具的矩阵；第 8 条：glob 的最坏形状到工作的上限（B 的守卫树）与概况的守卫；第 9 条：路径的点查、`AgentsPage`、`PageStates`、`NotebookCounts`、`NotebookLastChange`、`FirstChildren` 的计划测试；第 10 条与第 13 条：路径的给出与找回、glob 按树走与逐条路径的匹配、量与真的编码。
   - 第 13 节之外的总体设计：6.3 与 8.4 已随 M9 的总设计改过，P1 不另改；P1 偏离的写法（2.1 第 1、3、4 条）不在总体设计里；WebP 的宽高（2.1 第 14 条）：总体设计的 :273、:724 只说"宽高"，不列类型，不改。
   - **M7 的上传读 WebP 的宽高**（S2，2.1 第 14 条）：这改了 M7 的上传的行为（新上传的 WebP 的行有了宽高），也碰到 Obsidian 的导入（同一条 `Blobs.Put`：导入的 WebP 也有宽高）与阅读视图（嵌入的 WebP 写出 `width`、`height`）：都是想要的，在下面 M7/P2 的那一句里一并说（复核 B N-3）。契约 `api/modules/asset.yaml:403-407` 的 `width`、`height` 的说明"(PNG, JPEG, GIF)"加 WebP，`make gen` 重新生成（S2 的一步）；`docs/v0.1/M7-assets-transfer/02-P2-assets-server.md:206` 是 M7/P2 那时的设计记录，不改写，在它的"宽高"一条后加一句"M9/P1 起 WebP 也读（RIFF 头；上传与 Obsidian 的导入都是，阅读视图随之写出它的宽高，[M9/P1](../M9-mcp/01-P1-platform-reads.md) 3.11.2）"，同前面的 M 被后面的 Phase 改动时的做法。
   - `README.md`：
     - "运行后端"加一小节"MCP"（S3）：两种地址（`/mcp`、`/mcp?notebook=<id>`）、只收 PAT（会话的访问令牌 403）、无状态的 JSON 答复（协议版本到 2025-11-25）、P1 的四个工具、`AGENTS` 页与内置的说明、`server.public_url`；"接入 Claude Code、Codex"的配置与反向代理的要求在 P5 写（00 号文档 4.16）。
-    - "附件"的"签名地址"一段（S2）：MCP 的 `read` 给的是 `server.public_url` 起头的绝对地址，为空时只给元数据。
+    - "附件"的"签名地址"一段（S2）：MCP 的 `read` 给的是 `server.public_url` 起头的绝对地址，为空时没有地址：图片照样内联，别的附件只给元数据。
+    - 没有配置令牌时客户端显示的那一句（S1 的试用第 4 次运行之后的写法，第 8 节 P5）：00 号文档 4.16 把"401、403、404、429 各说明什么"放在 P5 的接入一节，留到那里，按人工清单里 Claude Code 与 Codex 真的显示的核对。
     - "上传"一段（`README.md:143`，S2）："PNG、JPEG、GIF 读出宽高"加 WebP。
   - `server/configs/config.yaml`：`public_url` 与它的注释（S2），长连接一句的注释（S1）。
   - `docs/README.md`：不改（三个 Step 都写在本文里，没有另开 `specs/`、`plans/`）。
   - **移交**：
-    - M10：新建 `M10-llm-wiki/handoffs/M9-P1-mcp-registry.md`（`status: open`，`from: M9/P1`，`to: M10`），见第 8 节。
-    - M12：`M12-release/handoffs/M4-performance.md` 加一项（第 18 项，接在 M8/P5 的第 17 项之后），见第 8 节；同一个文件的第 11 项（阅读视图里的大图，`:37`）的"WebP、SVG、AVIF 不知道宽高"改为"SVG、AVIF 不知道宽高（M9/P1 起 WebP 读 RIFF 头）"（S2，复核 B N-3）。
+    - M10：新建 `M10-llm-wiki/handoffs/M9-P1-mcp-registry.md`（`status: open`，`from: M9/P1`，`to: M10`），见第 8 节；在它建起之前，`prompts/get` 的 64 KiB 先记在 00 号文档的"写给后面的 M"。
+    - M12：`M12-release/handoffs/M4-performance.md` 加一项（第 18 项，接在 M8/P5 的第 17 项之后），见第 8 节（S1、S2 的部分随它们的合并写进，S3 的随 S3）；同一个文件的第 11 项（阅读视图里的大图，`:37`）的"WebP、SVG、AVIF 不知道宽高"改为"SVG、AVIF 不知道宽高（M9/P1 起 WebP 读 RIFF 头）"（S2，复核 B N-3）。
 
 ## 8. 交给后面的 Phase
 
 - **P2**（写的工具与历史的读）：
-  - `ParseVersion`（3.9.3 写定的格式，`String()` 的往返）与"令牌的节点是路径的节点"的比较；写的工具在单元的锁下按路径找（经 `NodePaths` 的同一个 `PathStore`，在单元的事务里）。
+  - `ParseVersionToken`（3.9.3 写定的格式，`String()` 的往返；名字随 `domain.VersionToken`）与"令牌的节点是路径的节点"的比较；写的工具在单元的锁下按路径找（经 `NodePaths` 的同一个 `PathStore`，在单元的事务里）。
   - `domain.MCPClient(Call.Client)`：`Call.Client` 已清理（幂等，3.16.1），`mcp:` 的前缀与 `Client.Valid`、两张表的检查；`mcp:<名>` 的最后一跳（两种来源与重启之后记下的名称：P1 的 `mcp_names_test.go` 已备好三种情形的应用）。
   - 工具的错误的文字：`page.locked` 带路径与持锁人、`page.revision_mismatch` 带当前的令牌（`ToolError.Extra` 的 `current_version`）。`structuredContent.error` 的 `lock`、`locks` 与 `Extra` 要有上限（例如 `linking.pages_locked` 至多列 N 页、其余计数）：错误的答复连同它们也在 48 KiB 之内（3.3.6，设计审查 A-N11），P1 的读没有它们。
   - 写的工具在矩阵里的行带 `write`（3.6 的覆盖检查要它：`readOnlyHint` 为假的工具的行没有 `write` 时失败）。
   - 内置的说明的"Tools"一段加写的工具与 `batch`、锁、版本令牌的用法（3.15.4 的测试守住）。
   - 写的工具的矩阵格用库的副本；`read` 与 `write` 之间同一路径换了一页的交错。
+  - **超过 64 KiB 的请求体的并发界线**（S1 的主持者的决定，审查 A 的界线）：整个服务同时至多两个超过 64 KiB（`maxOtherBytes`）的请求体，在 httpserver 里、bodyshape 读请求体之前取：有 `Content-Length` 时按它，没有的读过 64 KiB 时；取不到的答 503 `server_busy` 带 `Retry-After`。上限处一个合法的调用峰值约 +0.5 GB、分配约 1.4 GB，四个同时 +1.4 GB（00 号文档第 10 节），两个的界线让峰值约 1 GB；P2 的 `write`、`edit` 的大正文正是这样的请求体。REST 的正文路由（约 31 MiB）同一类，可以共用这份预算。
+  - **按工具的码的表**（3.13）：P2 的每个工具在组合根的 `mcpToolCodes()` 里加一行（它答的每个码，契约声明的），`TestEveryMCPToolHasItsCodes` 要它，`TestListAndReadErrorsCarryDeclaredCodes` 一类的测试答出每行的每个码；P3 的 `page.batch_too_large` 没有 REST 的操作，明列进声明的码（00 号文档 4.7）。
 - **P3**：`batch` 的 `ops` 是数组里的对象：结构表与 NUL 的推导已覆盖嵌套（3.3.3、3.13）；`page.batch_too_large` 的文字经 `ToolError`。
 - **P4**：
   - `NodePaths.Paths`（按 id 给路径）与模块根的 `page.NewNodePaths(pool)` 随 P4 来（P1 没有使用者，设计审查 B 的过度设计第 1 条，3.9.2）：只为问到的 id 拼路径（B-M2），linking 的 `Deps.NodePaths` 接上、`backlinks` 的最后一跳在 P4。
   - `grep` 的 glob 复用 `domain.Glob` 的位并行的匹配与按树走（3.10.1，设计审查 B-I5）：它在走查之前与候选取交，同一个 `MaxGlobWork` 管它的匹配（与 `grep` 自己的工作分开计），守卫加 `grep` 的形状。
   - `grep` 与 `search` 的答复经 `mcpserver.Fit` 停在 48 KiB（3.4.4），不自己数字节。
 - **P5**：接入文档、反向代理（`/mcp` 不是 SSE，`client_max_body_size` 不小于约 36 MiB，`proxy_read_timeout` 不短于 45 秒）、人工清单；第 9 节的 TypeScript 客户端试用的结果供接入文档的"401、403、404、429 各说明什么"。
+  - **人工清单加的几步**（00 号文档 4.16；S1 审查 A、C 与 S2 审查 B 的存疑）：Claude Code 与 Codex 没有配置令牌时各显示什么（401 的说明、`/register` 的错误；Codex（rmcp）会不会 `POST /register`，退到源站的 `GET /authorize`、`/token` 时拿到的是网页的 200 `index.html`）；一个请求里 20 张以上的图片时每张的上限降为 2,000 像素，Claude Code 把工具结果的图片留在历史里，读过 20 张以上、其中一张宽过 2,000 像素之后的请求会不会被拒；Claude Code 是否把 3 MiB 的内联图片（4 MiB 的 base64）算进它的 MCP 输出上限（约 25,000 个 token）、截断或拒绝。
+  - **接入文档里没有令牌时的那一句**（S1 的试用第 4 次运行之后的写法，留到 P5 的接入一节，照人工清单里两个客户端真的显示的核对、改写）：
+
+    > 没有配置令牌时，客户端连不上 `/mcp`，显示的都是同一句提示："This server has no OAuth: MCP takes a personal access token in the Authorization header."：不走 OAuth 的客户端从 401 的说明里读到它；会走 OAuth 的客户端（例如 Claude Code）先找 OAuth 的元数据、再试注册，从注册的错误里读到它。照提示在客户端的配置里加上 `Authorization: Bearer <个人访问令牌>` 即可。
+
 - **M10**（`M9-P1-mcp-registry.md`）：
   - `mcpserver.Prompt` 已有，是最小的形状（名称、标题、说明、字符串的参数、返回说明与文字消息的处理函数，3.4.7），M9 以替身证明登记、`prompts/list`、`prompts/get` 与 `prompts.listChanged: false`；M10 要的别的（参数的检查、别的消息的类型）在这个注册表上加。M10 登记 ingest、query、lint 三个 prompt 时写整个程序的最后一跳（经组合根拼起的 prompt 到达处理函数，交空时失败），并把它们加进 `api/mcp/tools.json` 的检查（清单的形状加 `prompts`）。
   - 虚拟的 `index.md`、`log.md` 要进 `list` 与 `read`：`NodePaths.Find` 与 `ListByPattern` 在树之外认得它们（根下的这两个路径），glob 的 `**/*.md` 是否列出它们由 M10 定；写它们答"系统生成"。
   - `AGENTS` 页在 `llm_wiki` 下的保护由模式的守卫做；说明的找法与缓存照 3.15（替换、改名都换键）。
+  - `prompts/get` 的请求体同 `tools/call` 之外的每个方法至多 64 KiB（3.2.2）：prompt 的参数要放得下，或者另设例外；`Get` 的错误还没有 `ProblemOf` 的分类与 48 KiB 的上限（3.3.6、3.4.7；S1 审查 B 的细节 7、修复核对第一轮 A）。
 - **M12**（性能移交第 18 项）：
-  - `list` 每次读整棵树（`ListNodes`，10 万个节点约 70 ms），内存是树本身与每个父节点排好的项（3.10.4：不再拼每个节点的路径，设计审查 B-M2）；glob 的匹配到 `MaxGlobWork` 时本机约 0.3–0.8 秒（3.10.1 的表，主机另有负载），慢的主机按比例，真实负载下的值再量。接着走的每次调用都重新进入游标的祖先所在的父节点、为它们的项建串与排序（照算进上限，复核 B N-8）：B 的守卫树的根 20 万个项约 0.1–0.2 秒，键的公共前缀长时排序比它记的单位贵（3.10.1）；一个文件夹约 78 万个子节点时重进就吃掉整个上限，每次调用只前进一项。要时可以把游标之后的项先滤出再排，或按需取出（堆），由 M12 定。
+  - `list` 每次读整棵树（`ListNodes`，10 万个节点约 70 ms），内存是树本身与每个父节点排好的项（3.10.4：不再拼每个节点的路径，设计审查 B-M2）；glob 的匹配到 `MaxGlobWork`（S2 之后 3 亿）时本机约 0.2–0.8 秒（3.10.1 的表，主机另有负载；最慢的是键为名字两倍长的 `և` 的树，0.66–0.82 秒），慢的主机按比例，真实负载下的值再量。接着走的每次调用都重新进入游标的祖先所在的父节点、为它们的项建串与排序（照算进上限，复核 B N-8）：B 的守卫树的根 20 万个项约 0.1–0.2 秒，键的公共前缀长时排序比它记的单位贵（3.10.1）；3 亿时守卫树的重进占上限的 17%，一个文件夹约 58.5 万个子节点（117 万个项；4 亿时约 78 万个）时重进就吃掉整个上限，每次调用只前进一项。要时可以把游标之后的项先滤出再排，或按需取出（堆），由 M12 定。
+  - glob 的守卫在 CI 上的耗时没人读过：读一次成本那一份带 `-v` 的行（每次走查一行、每棵树最慢的一行）；本机单次走查的余量 2.45–2.6 倍，与别的耗 CPU 的包一起跑时失败过。守卫那一份的作业到过约 11 分钟（11:08、11:05；时限已提到 25 分钟），同一份代码在不同的 runner 上差约 1.5–2 倍（S2 修复二轮的 CI 上 6:43，上一轮 11:05；组合根两份交替长短）。
+  - `ChildByKey` 没有统计时的计划（3.9.2）：到 autovacuum 第一次 ANALYZE 之前可能经 00019 读这本笔记本里这个键的全部节点；大的导入之后一个变常见的键可能还不在 `nodes` 的 MCV 里，规划器以为它少见（S2 审查 A 的存疑，没有造）。恢复、导入之后先 ANALYZE 已在性能移交第 10 项。
   - `read` 每次读整页的正文（至多 5 MiB）再切：一页 5 MiB 的页依次读完约 110 次调用，从数据库搬约 550 MiB（设计审查 B 的 Nit 13）；按行的范围读正文要存储的新读法，留给 M12 定。
   - `open_notebook` 的计数读这本笔记本的全部活的节点；最后的变更与网页的活动读的一样，是这本笔记本的全部变更集（`updated_at` 不在索引里，3.17.3）。
   - `notebooks` 逐个工作区一条语句。
-  - `/mcp` 的请求体在内存里至少四份（结构检查的缓冲、SDK 读两遍、参数再解码），36 MiB 时约 150 MiB；说明的缓存 256 项至多 8 MiB。
+  - `/mcp` 的大的请求体：上限处一个合法的调用实测分配约 1.4 GB、峰值约 +0.3–0.5 GB（四个同时 +1.4 GB；S1 审查 A 与实施者在同一进程里量的，原来写的"36 MiB 时约 150 MiB"不对），P2 限为同时两个（上面）；压测量负载下的；一个 PAT 的桶仍允许 200 个同时的请求。说明的缓存 256 项至多 8 MiB。
 
 ## 9. 结果
 
-（各 Step 合并之后填写：S1、S2、S3 的合并提交，实施与设计的偏离，TypeScript 客户端试用的结果（6.4），glob 的守卫的数值。）
+### 9.1 S1：平台、传输与边缘（2026-10-18，合并 `384d9f96`）
+
+- 提交：实施：httpserver 的 `ProblemOf`、`API.Wrap` 与 `/mcp`、`/.well-known/` 的 `no-store` `d2955e9f`，mcpserver 与 SDK v1.8.0、archtest 与 depguard 的规则 `3d080ec4`，page 的 `NotebookGate` 与 `MCPEntry` `398894b8`，组合根挂载 `/mcp`、它的请求体上限与两个 404 `9cd54989`，整个程序的 MCP 测试、工具清单的契约与矩阵的框架 `4346eed8`，`POST /register` 答 OAuth 的错误与 PAT 的提示 `e40142e8`，组合根两份的界线移到 `TestEveryR` 之前 `043185ba`（从 `main` 的 `7f03403c` 开始）；审查的修复：空的块是文字、工具的答复的每种错立刻答出 `0f5beb11`，只有 `tools/call` 可以长到 `/mcp` 的上限、`params` 的形状在 SDK 之前查 `19cd0aba`，没有令牌的 401 带提示、`/register` 的答复在边缘不存 `b216368e`，两个路由的桶、每个入口一个接缝工具、矩阵的 `notebook` 照文件、工具错误的码 `da48b92a`；修复核对第一轮之后的修复二轮：超过 64 KiB 只给这个入口的工具、`jsonrpc`、`id`、`_meta` 照 SDK 的读法 `03898697`，C 的四条细节 `abb045dd`，带客户端自己的参数的长调用是账户入口的 `d1d6e923`。合并 `384d9f96`（第二个父提交 `d1d6e923`）。合并之后 main 的 CI 上 `TestAnUnwrittenAnswerIsAProblem` 在竞态的一份失败（run 39053755609）：测试的竞态，SDK 可能先把停下的工具的错误写进已关的连接；测试改为两个工具 `c87caad7`，合并 `cfb48a50`。
+- 与设计不同之处已改在第 3 节（3.1–3.7、3.19）、第 5、6 节与 2.1 第 23–26 条，3.20 分实施时定下的与审查带来的列出。
+- TypeScript 客户端试用（6.4 的第 2–5 步）：在仓库之外的临时目录（用完删掉）照搬三项门禁（`minimumReleaseAge: 1440`、`strictDepBuilds: true`、`trustPolicy: no-downgrade`），pnpm 12.8.1 装 `@modelcontextprotocol/sdk@1.32.1`（92 个包、没有安装脚本），Node v24.15.0；服务是 `heavy.sh make build` 的 `bin/nervewiki` 0.1.0-dev（第 1、2 次运行 `4346eed8`，第 3 次 `e40142e8`，第 4 次 `da48b92a`），`NWIKI_ENV=test`、固定的端口，自己的 `postgres:18.6-trixie` 容器；账户、工作区、笔记本与 PAT 经 REST 建。四次运行：1 加 `/register` 之前；2 在客户端的 fetch 里模拟 `/register` 的答复；3 加 `/register` 之后；4 修复一轮的 `NoTokenDetails` 之后。
+  - 第 2 步（握手与 GET，各次相同）：协商出 2025-11-25；`serverInfo` `{"name":"nervewiki","version":"0.1.0-dev"}`，能力 `{"tools":{}}`，没有说明、没有会话；握手之后 GET 答 405 `text/plain` `Allow: POST`，之后 5 秒里什么也没有，`transport.onerror` 与 `client.onerror` 都没有调；`tools/list` 答 `{"tools":[],"ttlMs":0,"cacheScope":"private"}`。
+  - 第 3 步（客户端进程活着时以 SIGTERM 停掉服务、在同一个端口重启）：`tools/list` 与 `ping` 都答 200，没有新的 `initialize`；`close()` 什么也不发（没有会话可删）。
+  - 第 5 步（会话的访问令牌）：`connect threw StreamableHTTPError: Streamable HTTP error: Error POSTing to endpoint: {"status":403,"code":"forbidden","title":"Forbidden","detail":"MCP takes a personal access token, not a session's access token."}`。
+  - 第 4a 步（没有令牌、没有 OAuth 的 provider）：第 1、3 次是平台的 401 `{"status":401,"code":"unauthorized","title":"Unauthorized","detail":"This operation requires a bearer token."}`（带 `WWW-Authenticate: Bearer`）；第 4 次 detail 是 "This server has no OAuth: MCP takes a personal access token in the Authorization header."。
+  - 第 4b 步（没有令牌、带 OAuth 的 provider，同 Claude Code）：401 之后依次 `GET /.well-known/oauth-protected-resource/mcp?notebook=<id>`、`/.well-known/oauth-protected-resource`、`/.well-known/oauth-authorization-server`、`/.well-known/openid-configuration`，都是 404 problem+json（detail 是上面那一句），然后 `POST /register`。第 1 次那里是网页：`405 text/plain; charset=utf-8 Allow: GET, HEAD`，客户端报 `ServerError: HTTP 405: Invalid OAuth error response: SyntaxError: Unexpected token 'M', "Method Not Allowed" is not valid JSON. Raw body: Method Not Allowed`，与 00 号文档 4.4 的"给出平常的失败"不符：实施者停下，主持者定了 `POST /register`（3.2.2）。第 2 次模拟 `/register` 答我们的 404 problem+json：客户端照样报 OAuth 的错误的格式不对（`HTTP 404: Invalid OAuth error response: [ { "expected": "string", "code": "invalid_type", "path": ["error"], … } ]`）。第 3、4 次：`POST /register` 答 `400 application/json {"error":"invalid_client_metadata","error_description":"This server has no OAuth: MCP takes a personal access token in the Authorization header."}`，客户端报 `InvalidClientMetadataError: This server has no OAuth: MCP takes a personal access token in the Authorization header.`。
+  - 对照 00 号文档 4.3、4.4：GET 的 405、重启、403 的文字、不走 OAuth 的客户端的 401 都相符；会走 OAuth 的客户端的失败只在有 `/register` 之后相符；第 4 次之后两种客户端显示同一句。服务端的日志：每次握手一行"MCP initialize"（S1 里 `client: unknown`）；唯一的 error 行是编排停掉服务时 River 的 `PeriodicJobEnqueuer: Error starting transaction: context canceled`，不是我们的。
+- 审查：三位审查者（Opus）。一条 Important：空的文字块被拒，S2 的 `read` 读零行时正要发它（中高，B-I1）。中低一条：SDK 把读不了的参数四倍地回显进 -32602，任何方法、任何 PAT，36 MiB 的请求体答 144 MiB、分配约 2.6 GB（A-M1；除了这个入口的工具的调用，每个方法至多 64 KiB，`params` 的形状在 SDK 之前查）。其余是低（矩阵的 `notebook`、编码不了的 `Extra` 挂到期限、几处没测的路径与 `register` 的保留名的约定）与细节；A 对附加问题的回答：没有令牌的 401 带提示。修复核对第一轮：A-M1 只改对一部分，一个工具名的 `tools/call` 仍能经 `_meta` 里 float64 放不下的数让 SDK 4 倍地回显整个请求体（F1）、经 `jsonrpc` 与 `id` 2–3 倍（F2），各记中低；别的都改对了；C 的四条新的细节；修复二轮照改，并只让这个入口登记了的工具名过 64 KiB；第二轮：没有新的发现。逐条见[审查记录](reviews/P1-S1-platform-review.md)。
+- 实测（实施者照 A 的测试，客户端与服务在同一个进程里，`/mcp` 的上限 37,814,272 字节，每种情形各在自己的进程里）：A 的情形之前答 144 MiB、分配 2,594 MB，之后 400、217 字节、113 MB；这一类的请求答 126–222 字节、分配 113–186 MB（原来 0.8–2.7 GB）；修复核对的 F1 之前 151,256,615 字节（4 倍）、2,666 MB，F2 的 `jsonrpc` 113,442,438 字节（3 倍）、`id` 75,628,667 字节（2 倍），之后都是 413、126 字节、150–186 MB；上限处合法的调用分配 1,381 MB、峰值 +298 MB（A 量的 +532 MB、1,417 MB，四个同时 +1,393 MB、5,670 MB）；`sizeError` 解码 `_meta`，大头在 `_meta` 里的合法调用多分配 54 MB（1,417 → 1,471 MB），峰值不变。
+- 反向对照：实施之后 57 个都被抓到（单元 32、整个程序 18、`/register` 7）；审查者存活的：A 的 3 个与整个程序的 1 个、B 的 8 个（另有 `fit-zero-unmeasured-err`）、C 自己 22 个里的 10 个；修复一轮单元 99 个（94 个被抓到，2 个等价，3 个由整个程序抓到）、整个程序 20 个都被抓到；修复核对第一轮 A、C 的都被抓到（`e-bound-128k` 在单元之下存活、整个程序抓到）；修复二轮单元 26 个、整个程序 4 个都被抓到；修复核对第二轮 A 的 5 个都被抓到；测试的修复的 2 个都被抓到。
+- 门禁：本机 `043185ba`、`da48b92a`、`d1d6e923` 上 `make lint-go gen-check knip`（`043185ba` 另有 `lint-web`）通过，`make test-go` 经 `heavy.sh` 888、873、864 秒（`da48b92a` 上第一次在 M8 的 `TestABackgroundRevertOfAnImportThroughServe` 上失败，负载 16，审查 C 判为负载下的摆动），`make e2e` 都是 251 个；修复一轮的每个提交单独 build、vet、lint 与快的测试。组合根两份 212.7、250.1 秒（+17.6%）移到 `^Test([A-D]|E([a-u]|very[A-Q]))` 之后 217.0、235.9 秒（+8.7%）。CI（作业，括号里是测试一步）：`043185ba`（run 39032853170）全绿，组合根一 7:30（7:10）、组合根二 6:17（6:02）、守卫 10:36（10:17）、e2e 4:44（3:54）；`da48b92a`（run 39044005262）全绿，组合根一 6:38（6:16）、组合根二 5:41（5:22）；`d1d6e923`（run 39052310544）全绿，竞态 4:30（4:13）、组合根一 6:13（5:51）、组合根二 7:38（7:20）、成本 8:04、守卫 9:01（8:40）、web 3:08、e2e 4:10、镜像 1:28；合并之后 run 39053755609（`384d9f96`）竞态的一份失败（上面的摆动），测试的修复的分支 run 39054910759 全绿，run 39056005809（`cfb48a50`）e2e 的 A4 失败（M1 的故事：事件流重连的刷新恰在第一次 `context.route` 打开拦截时发出，Playwright 对那个窗口里发出的请求不报事件；不是产品的缺陷，只改测试 `07ae13a0`，合并 `c0636ec3`），run 39063742977（`c0636ec3`）全绿。各次的作业时间见审查记录的门禁一节。
+- 交给后面的：P2：超过 64 KiB 的请求体同时至多两个、码的表加行（第 8 节）；P5：人工清单的几步与没有令牌时的那一句（第 8 节）；M10：`prompts/get` 至多 64 KiB，prompt 的错误的分类与上限（第 8 节，00 号文档"写给后面的 M"）；M12：大的请求体的内存（[性能移交](../M12-release/handoffs/M4-performance.md)第 18 项）。
+- 负责人可以改判的取舍（主持者的决定）：`POST /register` 答 OAuth 的错误（撤回时去掉它，接受 OAuth 客户端显示网页的 405）；没有令牌的 401 带同一句提示；超过 64 KiB 的只能是这个入口登记的工具的调用，`jsonrpc`、`id`、`_meta` 照 SDK 的读法；内存的界线给 P2；64 KiB 之内的回显至多约 4 × 64 KiB 接受。
+
+### 9.2 S2：路径、`list` 与 `read`（2026-10-18，合并 `a36e92df`）
+
+- 提交：实施：page 的路径、线性的 glob、版本令牌、`read` 的切与 `list` 的游标，存储按标题键找节点与读 `list` 的页的状态，`NodePaths`、`ListByPattern` 与 `ReadPath`，WebP 的宽高、asset 的 `AttachmentReads` 与 `server.public_url`，MCP 的工具 `list` 与 `read`，经 serve 的 `list` 与 `read`、附件的最后一跳，MC2（从 S1 的分支 `043185ba` 开始是 `ed9822fd`–`c2bf398c`，变基到 S1 修复一轮之后的 `da48b92a` 是 `0d4d2573`–`4fdadb47`，审查时在它上面；之后变基到 main 的 `384d9f96` 与 `cfb48a50`，`0e0ca836`–`56990e8c`）；审查的修复（在 `cfb48a50` 上 `4007513d`–`b9a6c7c0`，修复二轮之前变基到 `c0636ec3`）：路径的段由自己的唯一索引读 `647014d5`，`read` 先判定笔记本再找路径 `1a5914ca`，两个、三个字的段 `3d4ea5cc`，没有 `server.public_url` 时图片照样内联 `36384951`，`list` 的匹配 3 亿个单位、守卫有最长的键 `82f5b1da`，WebP 的 RIFF 的大小 `5e46873a`，`public_url` 的错误不引用密码 `0fa5a3d7`，几处细节（进了回收站的附件、提示、文字）`c44222e2`，按工具的码的表 `17491384`；修复核对第一轮之后的修复二轮：00042 去掉兄弟的索引 `58a0fab1`，带 `@` 的被拒的 `public_url` 不引用 `913e3eef`，别的版本的 VP8L 与别的大小的 VP8X 没有宽高 `9fd67a1e`，读字节之前走了的附件答它的路径 `988b3423`，码的表的每一行都答出 `970f72f2`，守卫那一份的时限 25 分钟 `78b7d2e9`。main 上实施的七个提交是 `3c91620d`、`8762c077`、`ee0e7a65`、`a1ffa3fa`、`4e2787e6`、`a1f49285`、`05335d97`。合并 `a36e92df`（第二个父提交 `78b7d2e9`）。
+- 与设计不同之处已改在第 3 节（3.8–3.13、3.18、3.19）、第 4、5、6 节与 2.1 第 27–31 条，3.20 分实施时定下的与审查带来的列出；S3 的 `client_name` 的迁移随之是 00043。
+- glob（3.10.1）：实施时照 4 亿，本机的门禁里守卫最慢的走查 0.68 秒（2.9 倍）；审查 A 加了键是名字两倍长的 `և` 的树之后 4 亿只有 2.25 倍，降为 3 亿（2.9–3.04 倍，每种取 3 次里最小）；门禁里最慢的 `և` 741 ms（2.7 倍）、710 ms（2.8 倍），修复核对第一轮 A 单独跑的单次走查 0.76–0.82 秒（2.45–2.6 倍）；续走的重进占 17%；守卫在 CI 的成本那一份里每次都过，每次走查的耗时还没读。
+- TypeScript 客户端试用（6.4 的第 1 步，S1 的同样的门禁与 SDK）：服务是 `f9080d3c`（`c2bf398c` 的树，变基之前）的 `bin/nervewiki`，`NWIKI_SERVER__PUBLIC_URL=http://127.0.0.1:18765`、固定的端口 18765，自己的 PostgreSQL 容器；经 REST 建笔记本 `Plans`、页 `Guide`（BOM 与 CRLF）、`Setup`、`Long`（3,000 行 × 40 字节）、`Wide`（10 万个 `x`），附件 `diagram.png`、`spec.pdf`；客户端 `new Client({name: "trial-agent", version: "1.0.0"})` 与 `StreamableHTTPClientTransport(/mcp?notebook=<id>)`，令牌经 `requestInit.headers`。
+  - 握手同 S1（2025-11-25、没有说明、没有会话，GET 的 405 只试一次、不报错）；`tools/list` 的两个工具与 `api/mcp/tools.json` 逐字相同，SDK 收下 `["null","string"]` 一类的类型。
+  - `list`：每次一个 POST、200 `application/json`、一个文字块，`structuredContent` 是同一段 JSON；`list {}` 答 `{"items":[{"path":"Guide.md","kind":"page","has_children":true,"version":"01a14a4b-ad80-…:1","byte_size":47,"updated_at":"2026-10-17T14:37:16.031388Z"}],"next_cursor":null}`；`Guide/` 照树的次序、`**/*.md` 照路径的次序；`limit` 2 给 `next_cursor`、带它接着列；`list {"pattern":"Guide"}` 答空的 `items` 与 `"hint":"Guide.md is a page; list \"Guide/\" for its children."`。
+  - `read`：`Guide.md` 两个文字块、没有 `structuredContent`，元数据 `{"path":"Guide.md","kind":"page","version":"…:1","offset":1,"column":0,"lines":5,"total_lines":5,"byte_size":47,"next_offset":null,"next_column":null}`，正文与存的字节相同（BOM 与每个 `\r` 经 SDK 不变）；`Long.md` 三次（1,190、1,190、620 行）、`Wide.md` 三次（`next_column` 48,791、97,582），连起来都等于正文；`diagram.png` 答文字块与 `image`（`image/png`、73 字节、等于上传的；`"link":"diagram.png"`、带 `d=1` 的绝对地址）；`spec.pdf` 答 `resource_link`（`mimeType` `application/pdf`、`size` 15）。
+  - 错误的原文：`read {"path":"Guide"}` 答 `page.not_found: Nothing is at "Guide". A page's path ends with .md: "Guide.md".`；`read {"path":"Guide/Missing.md"}` 答 `page.not_found: Nothing is at "Guide/Missing.md".`；`list {"limit":0}` 答 `validation_failed: The request has invalid values. (limit: out_of_range: must be between 1 and 1000)`；`list {"limit":"two"}` 答 `bad_request: The arguments do not match the tool's input schema. (limit: invalid_format: has the wrong type or format)`；`read {}` 答 `bad_request: The arguments do not match the tool's input schema. (path: required: is required)`。SDK 自己不校验参数，错误都是带 `isError` 的结果，不是异常。
+  - 对照 00 号文档 4.3、4.4：没有不符。服务端的日志：1 行"MCP initialize"与 20 行"MCP tool call"（各带工具、笔记本、用户、令牌、`client: unknown`、结果、1–3 ms）。审查 C 核对过：结论都出自记下的消息；它跑在变基之前的树上，S1 的修复一轮只改 S2 已经照做的块的规则；它没有读零行（SDK v1.8.0 的 `TextContent` 空的也写 `"text"`）。
+- 审查：三位审查者（Opus）。四条 Important：路径的点查不是点查、计划测试抓不到设计点名的回退（中高，A-I1、C-I2；00042 的两个部分唯一索引，修复二轮去掉兄弟的索引）；多字的段没有测试（中高（测试），A-I2）；`read` 先找路径、后判定笔记本没有测试抓得到（中高（测试），C-I1）。中低 2 条：守卫没有最长的键（A-M2；3 亿）；被拒的 `public_url` 照录密码（B-M1）。其余是低与细节；审查之前的偏离 10 由主持者改为照样内联图片。修复核对第一轮：没有统计时 `ChildByKey` 在"只有文件夹"的形状上仍读这个键的全部节点（中低，A2-M1，接受）、B-M1 剩下两种照录（中低），几条细节，修复二轮照改；第二轮：没有新的发现。逐条见[审查记录](reviews/P1-S2-reads-review.md)。
+- 反向对照：实施之后 42 个都被抓到（2 个第一次存活，加断言之后抓到）；审查者存活的：A 的 4 个（另 1 个等价）、B 的 7 个、C 自己 28 个里的 7 个；修复一轮 82 个都被抓到（5 个在补了测试之后），审查者存活的都重跑抓到（等价的除外）；修复核对第一轮 A、B、C 的都被抓到（B 的 `chunk-with-pad` 过：算上填充字节的更严的块的结尾，同样说得通，不改）；修复二轮 30 次运行都照应有的失败（`child-index-not-unique` 由兄弟撞名的测试与约束名的测试抓到）；修复核对第二轮 A、B 的都被抓到。
+- 门禁：本机 `c2bf398c`、`4fdadb47`、`b9a6c7c0`、`78b7d2e9` 上 `make lint-go gen-check knip lint-web`（`c2bf398c` 另有 `test-web` 3,338 个测试与 `build-web`）通过，`make test-go` 经 `heavy.sh` 878、899、910、871 秒，变基到 `384d9f96` 之后 910 秒（`c2bf398c` 上第一次在 S1 的 `TestAnUnwrittenAnswerIsAProblem` 上失败；变基到 `384d9f96` 时第 4、5 次在 M8 的 `TestABackgroundRevertOfAnImportThroughServe` 与 `platform/jobs` 连不上 Docker 上失败，单独重跑都通过；`b9a6c7c0` 上第一次在 archtest 的 `TestSQLCSchemaScope` 上失败，`sqlc.yaml` 漏了 00042，改进 `4007513d`），`make e2e` 都是 252 个；组合根两份 224.3、239.9 秒（+7.0%），修复一轮之后 219.7、242.7 秒（+10.5%，照主持者的决定不动）。CI（作业，括号里是测试一步）：`c2bf398c`（run 39047015191）、`4fdadb47`（run 39050604095）、`b9a6c7c0`（run 39067326556）、`78b7d2e9`（run 39073889832）全绿，最后一次竞态 7:53（7:34）、组合根一 4:25（4:09）、组合根二 7:59（7:35）、成本 6:09（测试 4:10）、守卫 6:43（6:27，上一次 11:05）、web 4:05、e2e 3:31（2:48）、镜像 1:18；合并之后 run 39075360591（`a36e92df`）全绿。各次的作业时间见审查记录的门禁一节。
+- 交给后面的：S3：`McpContent`、`McpTool`、`McpAnswer` 随 MC1 导出（4.1），`AgentsPage` 读根的索引，`client_name` 的迁移是 00043，它的工具在码的表里加行，`BOOTSTRAP_FIRST` 量了之后移一次；P2：`ParseVersionToken`、码的表（第 8 节）；P5：Claude Code 一侧的两条进人工清单（第 8 节）；M12：glob 的续走与很大的文件夹、守卫在 CI 上的耗时与 runner 的摆动、`ChildByKey` 没有统计时的计划（[性能移交](../M12-release/handoffs/M4-performance.md)第 18 项）；性能移交第 11 项与 README 的 WebP 随合并改了。
+- 负责人可以改判的取舍（主持者的决定）：00042 的两个部分唯一索引与去掉兄弟的索引；`ChildByKey` 没有统计时的计划接受；不论有没有 `server.public_url` 都内联图片；WebP 只在头合得上文件、版本与块的大小对时给宽高，PNG 与 JPEG 坏了的正文照头内联；`MaxGlobWork` = 3 亿；守卫那一份的作业时限 25 分钟；`BOOTSTRAP_FIRST` 到 S3 再动；按工具的码的表。
+
+### 9.3 S3：说明与账户
+
+S3 在实施与审查中（分支 `m9-p1-s3`），结果随它的合并写入。
 
 ## 附：查过的代码
 

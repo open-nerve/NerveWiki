@@ -203,7 +203,7 @@ CREATE INDEX asset_blobs_deleted_at_idx ON asset_blobs (deleted_at) WHERE delete
 | pdf | `application/pdf` | `application/pdf` |
 
 - 扩展名在表里，且嗅探的结果属于同一种容器或嗅探不出（`application/octet-stream`、`text/plain`）→ 用扩展名的类型；扩展名不认识、嗅探的结果在表里 → 用嗅探的；其余 → `application/octet-stream`。嗅探出 HTML（`text/html`）的一律 `application/octet-stream`。
-- **宽高**：`image/png`、`image/jpeg`、`image/gif` 在 `Commit` 之后 `Open`、`image.DecodeConfig`（至多读 1 MiB），读不出不记；宽或高超过 65,535 不记。
+- **宽高**：`image/png`、`image/jpeg`、`image/gif` 在 `Commit` 之后 `Open`、`image.DecodeConfig`（至多读 1 MiB），读不出不记；宽或高超过 65,535 不记。M9/P1 起 WebP 也读（RIFF 头；上传与 Obsidian 的导入都是，阅读视图随之写出它的宽高，[M9/P1](../M9-mcp/01-P1-platform-reads.md) 3.11.2）。
 
 ### 3.6 签名与下载
 
