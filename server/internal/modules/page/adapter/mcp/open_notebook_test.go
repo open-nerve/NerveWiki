@@ -78,10 +78,11 @@ func longRoot(n int) []app.RootNode {
 // The answer is filled against what is left of the bound, the
 // instructions first: an AGENTS page of 32 KiB as the handshake counts it,
 // all quotes and line breaks, which a member writes escaped twice, is cut
-// further to leave the root its reserve, ends with its note, and the
-// answer is within the bound, never internal_error; the root's nodes fill
-// the rest, truncated when they do not all fit (M9/P1 design 3.17.3,
-// review B-I1).
+// further to leave the root its reserve of 8,192 bytes, no more, at its
+// last line break that fits, ends with its note, and the answer is within
+// the bound, never internal_error; the root's nodes fill the rest,
+// truncated when they do not all fit (M9/P1 design 3.17.3, review B-I1,
+// S3 review C-M1).
 func TestOpenNotebookFitsItsAnswer(t *testing.T) {
 	body, cut := domain.AgentsBody(strings.Repeat("\"\n", 20000), 0, mcpserver.TextBytes)
 	if !cut || mcpserver.TextBytes(body) > domain.MaxInstructionsBytes || mcpserver.TextBytes(body) < domain.MaxInstructionsBytes-4 {
@@ -96,14 +97,24 @@ func TestOpenNotebookFitsItsAnswer(t *testing.T) {
 		skeleton := a
 		skeleton.Instructions, skeleton.Overview.Root, skeleton.Truncated = "", []rootItem{}, false
 		s, _ := line(skeleton)
-		budget := mcpserver.MaxAnswerBytes - mcpserver.TextBytes(s) - openNotebookRootReserve
+		budget := mcpserver.MaxAnswerBytes - mcpserver.TextBytes(s) - 8192
+		note := "\n\n(The rest of " + title + `.md is cut here: read it whole with read, path "` + title + `.md".)`
+		kept := strings.TrimSuffix(a.Instructions, note)
+		next := strings.IndexByte(body[min(len(kept)+1, len(body)):], '\n')
+		if !strings.HasPrefix(body, kept) || next < 0 {
+			t.Fatalf("%.10s: the instructions keep %d bytes, not a prefix of the body ended by a line break", title, len(kept))
+		}
+		longer := strings.TrimSpace(body[:len(kept)+1+next]) + note
 		switch {
 		case mcpserver.TextBytes(raw) > mcpserver.MaxAnswerBytes:
 			t.Errorf("%.10s: the answer is %d bytes, over the bound", title, mcpserver.TextBytes(raw))
-		case !strings.HasSuffix(a.Instructions, `read it whole with read, path "`+title+`.md".)`):
+		case !strings.HasSuffix(a.Instructions, note):
 			t.Errorf("%.10s: the instructions end %q, want the note", title, a.Instructions[max(0, len(a.Instructions)-80):])
 		case mcpserver.MemberBytes(a.Instructions) > budget:
 			t.Errorf("%.10s: the instructions are %d bytes as a member, over their %d", title, mcpserver.MemberBytes(a.Instructions), budget)
+		case mcpserver.MemberBytes(longer) <= budget && mcpserver.TextBytes(longer) <= domain.MaxInstructionsBytes:
+			t.Errorf("%.10s: the instructions are %d bytes as a member; a line more, %d, fits their %d", title,
+				mcpserver.MemberBytes(a.Instructions), mcpserver.MemberBytes(longer), budget)
 		case len(a.Overview.Root) < 28 || !a.Truncated:
 			t.Errorf("%.10s: %d root nodes, truncated %v; want the reserve's 28 at least, truncated", title, len(a.Overview.Root), a.Truncated)
 		}

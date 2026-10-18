@@ -72,7 +72,8 @@ func cutNote(title string) string {
 // it below the root (neither is it), the frontmatter dropped, a content
 // empty without it (the built-in ones), a cut at 32 KiB with its note. At
 // each, open_notebook gives the handshake's instructions, and where they
-// come from.
+// come from; of a page of quotes, which it cuts further, as many lines as
+// fit with the root's reserve.
 func TestTheInstructionsFollowTheAGENTSPage(t *testing.T) {
 	r := startReadsApp(t, "")
 	builtIn := r.instructionsAt(t, atNotebook(r.notebook))
@@ -156,4 +157,38 @@ func TestTheInstructionsFollowTheAGENTSPage(t *testing.T) {
 	expect("cut at 32 KiB", cut, "AGENTS.md")
 	rename(newer, "Agents")
 	expect("the cut's note in the title's case now", strings.TrimSuffix(cut, cutNote("AGENTS"))+cutNote("Agents"), "Agents.md")
+
+	// Quotes and line breaks, which a member writes escaped twice:
+	// open_notebook cuts them further than the handshake, to the most of
+	// their lines that leaves the root 8,192 bytes of the answer (3.17.3,
+	// S3 review C-M1).
+	quotes := strings.Repeat("\"\n", 20000)
+	r.write(t, newer, quotes)
+	o := r.opened(t, r.notebook)
+	got, _ := o["instructions"].(string)
+	kept, ok := strings.CutSuffix(got, cutNote("Agents"))
+	budget := mcpserver.MaxAnswerBytes - mcpserver.TextBytes(skeletonOf(t, o)) - 8192
+	longer := kept + "\n\"" + cutNote("Agents")
+	if !ok || !strings.HasPrefix(quotes, kept+"\n") || mcpserver.MemberBytes(got) > budget ||
+		(mcpserver.MemberBytes(longer) <= budget && mcpserver.TextBytes(longer) <= 32<<10) {
+		t.Errorf("a page of quotes: open_notebook's instructions are %d bytes as a member, a line more %d, their budget %d",
+			mcpserver.MemberBytes(got), mcpserver.MemberBytes(longer), budget)
+	}
+}
+
+// skeletonOf is open_notebook's answer o without its instructions and its
+// root's nodes, as its text block writes it.
+func skeletonOf(t *testing.T, o map[string]any) string {
+	t.Helper()
+	overview, _ := o["overview"].(map[string]any)
+	skeleton := map[string]any{"notebook": o["notebook"], "instructions": "", "instructions_from": o["instructions_from"],
+		"overview": map[string]any{"pages": overview["pages"], "attachments": overview["attachments"],
+			"last_changed_at": overview["last_changed_at"], "root": []any{}}, "truncated": false}
+	var b strings.Builder
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(skeleton); err != nil || len(o) != len(skeleton) || len(overview) != 4 {
+		t.Fatalf("the skeleton of %v: %v", o, err)
+	}
+	return strings.TrimSuffix(b.String(), "\n")
 }
