@@ -260,6 +260,50 @@ func TestEditPageRedoesOnceWithoutAToken(t *testing.T) {
 	}
 }
 
+// A write that lands after an attempt's read and before its unit locks
+// the content, here at the unit's path lookup, is a change since that
+// read, as one in the unit is: without a token the edit is made again on
+// it, with one it is 409 changed; on the redo, 409 kept changing; it is
+// never written over (M9/P2 S1 review C-M5). The unit's base is the read's
+// revision, not one the unit reads.
+func TestEditPageChecksItsWriteAgainstItsRead(t *testing.T) {
+	f := newFixture()
+	f.grant(domain.ActionRead, domain.ActionWrite)
+	notes := f.page("Notes", nil, 0)
+	f.content(notes.ID, "one two", 2)
+	f.rec.before = map[string]func(){"RootByKey in tx": func() { f.writeAs(notes.ID, "one two three") }}
+	got, err := f.editPage(f.eng, app.PageEdit{Path: "Notes.md", Old: "two", New: "2"})
+	if err != nil || !got.Redone || f.store.contents[notes.ID].Content != "one 2 three" {
+		t.Errorf("an edit after a write before its unit = %+v, %v, Notes %q; want it made again on the new content",
+			got, err, f.store.contents[notes.ID].Content)
+	}
+
+	f = newFixture()
+	f.grant(domain.ActionRead, domain.ActionWrite)
+	notes = f.page("Notes", nil, 0)
+	f.content(notes.ID, "one two", 2)
+	f.rec.before = map[string]func(){"RootByKey in tx": func() { f.writeAs(notes.ID, "one two three") }}
+	if _, err := f.editPage(f.eng, app.PageEdit{Path: "Notes.md", Old: "two", New: "2", Base: tokenOf(notes.ID, 2)}); mismatchOf(err) !=
+		"Notes.md changed "+notes.ID.String()+":3" || f.store.contents[notes.ID].Content != "one two three" {
+		t.Errorf("an edit on its token after a write before its unit = %v, Notes %q; want 409 changed, nothing written",
+			mismatchOf(err), f.store.contents[notes.ID].Content)
+	}
+
+	f = newFixture()
+	f.grant(domain.ActionRead, domain.ActionWrite)
+	notes = f.page("Notes", nil, 0)
+	f.content(notes.ID, "one two", 2)
+	f.rec.before = map[string]func(){"LockContent in tx": func() {
+		f.writeAs(notes.ID, "one two three")
+		f.rec.before["RootByKey in tx"] = func() { f.writeAs(notes.ID, "one two three four") }
+	}}
+	if _, err := f.editPage(f.eng, app.PageEdit{Path: "Notes.md", Old: "two", New: "2"}); mismatchOf(err) !=
+		"Notes.md kept changing "+notes.ID.String()+":4" || f.store.contents[notes.ID].Content != "one two three four" {
+		t.Errorf("a redo after a write before its unit = %v, Notes %q; want 409 kept changing, nothing written",
+			mismatchOf(err), f.store.contents[notes.ID].Content)
+	}
+}
+
 // A token's edit whose unit finds another page at the path, at the
 // token's revision, is 409 of another node, the version there read again
 // outside the unit: nothing is written on it.
