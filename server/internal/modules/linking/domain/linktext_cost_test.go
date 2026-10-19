@@ -22,8 +22,13 @@ import (
 // written with ".md" after the path. Joining the pages of the two keys
 // anew for each writing allocated GBs (review r1-3, r2-L3, c4). The race
 // detector slows the code too much for a bound in time: make test-go runs
-// it in a build without.
+// it in a build without. -short skips it too: go test -short ./... runs
+// the packages side by side, whose load sways a bound in time (M9/P2 S1
+// fix round 2).
 func TestTheLinktextsOfManyPagesOfOneTitleAreCheap(t *testing.T) {
+	if testing.Short() {
+		t.Skip("a bound in time, measured alone by make test-go-costs")
+	}
 	const folders = 10_000
 	for _, tt := range []struct {
 		title, root, want string

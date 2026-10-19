@@ -156,8 +156,14 @@ func cursorAt(roots []*domain.GlobNode, at int) string {
 // re-enter its root's 200,000 entries: near the end, where little is left
 // to match, and near the start, where all MaxGlobWork is (M9/P1 design
 // 3.10.1, review B I5, N-1, N-2; S2 review A-M2). Each walk's time is
-// logged, and each tree's slowest, for CI's log under -v.
+// logged, and each tree's slowest, for CI's log under -v. -short skips it:
+// go test -short ./... runs the packages side by side, whose load sways a
+// bound in time (CI's short leg took 2.6 s for a walk bound at 2; M9/P2 S1
+// fix round 2), and make test-go-costs runs it alone.
 func TestTheWorstGlobsStopWithinTheirWork(t *testing.T) {
+	if testing.Short() {
+		t.Skip("a bound in time, measured alone by make test-go-costs")
+	}
 	type subject struct {
 		name   string
 		roots  []*domain.GlobNode

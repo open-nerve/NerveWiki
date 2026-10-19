@@ -123,11 +123,17 @@ func logKept(t *testing.T, m *markdown.Markdown, name string, content []byte) {
 // as (M6/P2 review M1): the pathological inputs' at 512 KB and at
 // factsSizes, the Amplifying inputs' at AmplifyingSize.
 // The race detector makes the code several times slower: under it the
-// check is skipped, and make test-go runs it in a build without.
+// check is skipped, and make test-go runs it in a build without. -short
+// skips it too: go test -short ./... runs the packages side by side, whose
+// load sways a bound in time (M9/P2 S1 fix round 2), and make test-go runs
+// each caller alone.
 func CheckCosts(t *testing.T, m *markdown.Markdown) {
 	t.Helper()
 	if Race {
 		t.Skip("costs are checked without the race detector (make test-go runs it)")
+	}
+	if testing.Short() {
+		t.Skip("costs are bounded in time, measured alone by make test-go")
 	}
 	paths := false
 	for _, in := range Amplifying() {

@@ -259,8 +259,12 @@ func replaceShapes(t *testing.T) []replaceShape {
 // strings takes seconds to minutes. They are solved here against
 // primeRK, which the toolchain's internal/bytealg is read for first: one
 // with another base would make them plain shapes. Each shape's time is
-// logged, for CI's log under -v.
+// logged, for CI's log under -v. -short skips it, as it does the globs'
+// guard: make test-go-costs runs it alone.
 func TestReplaceStaysWithinItsTime(t *testing.T) {
+	if testing.Short() {
+		t.Skip("a bound in time, measured alone by make test-go-costs")
+	}
 	if got := bytealgPrimeRK(t); got != strconv.Itoa(primeRK) {
 		t.Fatalf("internal/bytealg's primeRK is %s, not %d: solve the crafted shapes again for it", got, primeRK)
 	}
