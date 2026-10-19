@@ -241,7 +241,6 @@ func TestRevertingTheNewestChangesetsPutsTheNotebookBack(t *testing.T) {
 	ran, agents := 0, 0
 	for _, seed := range seeds {
 		t.Run(fmt.Sprint("seed ", seed), func(t *testing.T) {
-			ran++
 			tm := newAcmeTeam(t, "member", "")
 			w := newRevertWorld(t, tm, seed)
 			for done := 0; done < before; {
@@ -279,10 +278,12 @@ func TestRevertingTheNewestChangesetsPutsTheNotebookBack(t *testing.T) {
 				w.nb, known); n != 0 {
 				t.Errorf("%d nodes the reverted changesets created are alive, want each in the trash", n)
 			}
+			ran++ // at its end: a seed skipped (go test -short, no database) or stopped by a Fatal is not counted
 		})
 	}
 	// The agent's move and rename in one step is the revert's to put back
-	// in one place (M9/P2 design 3.5.4): the seeds revert one at least.
+	// in one place (M9/P2 design 3.5.4): the seeds revert one at least, when
+	// every seed ran to its end.
 	if ran == len(seeds) && agents == 0 {
 		t.Error("no seed reverted an agent's move: the property does not reach it")
 	}
