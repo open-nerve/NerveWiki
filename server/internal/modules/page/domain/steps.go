@@ -25,9 +25,9 @@ type Creation struct {
 // found from the root (M9 design 4.10): the leaf when it is there, else
 // the segments to create, from the first missing one. 422 on field: a
 // found node before the last segment that is an attachment, or a missing
-// ancestor ending with .md; 409 page.title_taken (*PathTaken) for an
-// attachment that holds the leaf's name, and page.too_deep for a path of
-// more than MaxDepth pages.
+// ancestor ending with .md (MissingAncestors); 409 page.title_taken
+// (*PathTaken) for an attachment that holds the leaf's name, and
+// page.too_deep for a path of more than MaxDepth pages.
 func CreationOf(field string, path Path, found []Node) (Creation, error) {
 	last := len(path.Keys) - 1
 	for i, n := range found {
@@ -42,12 +42,8 @@ func CreationOf(field string, path Path, found []Node) (Creation, error) {
 		}
 		return Creation{Leaf: &leaf}, nil
 	}
-	for i := len(found); i < last; i++ {
-		// A page titled A.md is found by its title: it is no missing one.
-		if t := path.Titles[i]; len(t) >= len(pageSuffix) && strings.EqualFold(t[len(t)-len(pageSuffix):], pageSuffix) {
-			return Creation{}, NotAllowed(field,
-				fmt.Sprintf("segment %d ends with .md: an ancestor is written by its title, without .md", i+1))
-		}
+	if err := MissingAncestors(field, path, len(found)); err != nil {
+		return Creation{}, err
 	}
 	if len(path.Keys) > MaxDepth {
 		return Creation{}, ErrTooDeep
@@ -58,6 +54,22 @@ func CreationOf(field string, path Path, found []Node) (Creation, error) {
 		c.Parent = &parent
 	}
 	return c, nil
+}
+
+// MissingAncestors is 422 on field when an ancestor of path that Walk did
+// not find, from the found-th segment on, ends with .md: an ancestor is
+// written by its title, and a page titled A.md is found by its title, so
+// is no missing one. write's creation and move's parent both ask it, so
+// that the mistake of a parent written as a page's path gets one answer,
+// and not move's 404 with its hint to write the parent first (M9/P2 S1
+// review B-N2).
+func MissingAncestors(field string, path Path, found int) error {
+	for i := found; i < len(path.Keys)-1; i++ {
+		if t := path.Titles[i]; len(t) >= len(pageSuffix) && strings.EqualFold(t[len(t)-len(pageSuffix):], pageSuffix) {
+			return NotAllowed(field, fmt.Sprintf("segment %d ends with .md: an ancestor is written by its title, without .md", i+1))
+		}
+	}
+	return nil
 }
 
 // MoveKinds is 422 on to when from and to are not of one kind: a page's

@@ -126,7 +126,9 @@ func (m *RelocatePath) Execute(ctx context.Context, notebookID uuid.UUID, p Path
 // the root, walked in the unit's transaction: the first segment that fails
 // decides. One that names an attachment is 422 on to, an attachment holds
 // no nodes; one that names nothing is page.not_found at to's parent's
-// path, a move creating no parent pages.
+// path, a move creating no parent pages, unless a segment that names
+// nothing ends with .md: then write's 422 on to, the parent written as a
+// page's path (domain.MissingAncestors).
 func (m *RelocatePath) parentOf(ctx context.Context, notebookID uuid.UUID, to domain.Path) ([]domain.Node, error) {
 	keys := to.Keys[:len(to.Keys)-1]
 	chain, err := m.paths.Walk(ctx, notebookID, keys)
@@ -137,6 +139,9 @@ func (m *RelocatePath) parentOf(ctx context.Context, notebookID uuid.UUID, to do
 	case err != nil:
 		return nil, err
 	case len(chain) < len(keys):
+		if err := domain.MissingAncestors("to", to, len(chain)); err != nil {
+			return nil, err
+		}
 		return nil, &domain.PathNotFound{Path: domain.PathOfNames(to.Titles[:len(keys)], domain.KindPage),
 			Hint: domain.MoveParentHint, ParentOf: "to"}
 	case len(chain) > 0 && chain[len(chain)-1].Kind != domain.KindPage:

@@ -145,9 +145,11 @@ func TestRelocatePathMovesAndRenames(t *testing.T) {
 
 // move refuses in its unit, to's parent first: the first segment of it
 // that fails decides, an attachment's 422 on to, a missing one's 404 at
-// the parent's path with the hint that a move creates no parent; then
-// Relocate's 422 on to and its 409s, a name taken answered at to with
-// the holder's kind (M9/P2 design 3.8.3).
+// the parent's path with the hint that a move creates no parent, unless
+// a missing one ends with .md: write's 422 on to, the parent written as a
+// page's path (M9/P2 S1 review B-N2); then Relocate's 422 on to and its
+// 409s, a name taken answered at to with the holder's kind (M9/P2 design
+// 3.8.3).
 func TestRelocatePathRefuses(t *testing.T) {
 	f := newMoveTree()
 	f.grant(domain.ActionRead, domain.ActionRename, domain.ActionMove)
@@ -159,6 +161,8 @@ func TestRelocatePathRefuses(t *testing.T) {
 		{"an attachment without its extension", "A/flow.png", "A/flow", "validation_failed to not_allowed"},
 		{"a parent missing", "A/x.md", "C/x.md", "page.not_found C.md to"},
 		{"a parent missing under one there", "A/x.md", "B/missing/x.md", "page.not_found B/missing.md to"},
+		{"a parent written as a page's path", "A/x.md", "B.md/x.md", "validation_failed to not_allowed"},
+		{"a parent missing under one there, written so", "A/x.md", "B/missing.MD/x.md", "validation_failed to not_allowed"},
 		{"an attachment, then a missing segment", "A/x.md", "A/img.png/missing/z.md", "validation_failed to not_allowed"},
 		{"a missing segment, then an attachment", "A/x.md", "A/missing/img.png/z.md", "page.not_found A/missing/img.png.md to"},
 		{"an attachment as the parent", "A/x.md", "A/img.png/z.md", "validation_failed to not_allowed"},
@@ -189,6 +193,20 @@ func TestRelocatePathRefuses(t *testing.T) {
 	if !strings.Contains(fieldMessage(f.movePath(f.eng, app.PathMove{From: "A/x.md", To: "A/img.png/missing/z.md"})),
 		"segment 2 is an attachment, which holds no nodes") {
 		t.Error("the attachment's 422 does not name its segment")
+	}
+	if got := fieldMessage(f.movePath(f.eng, app.PathMove{From: "A/x.md", To: "B.md/x.md"})); got !=
+		"segment 1 ends with .md: an ancestor is written by its title, without .md" {
+		t.Errorf("the 422 of a parent written as a page's path says %q, want write's", got)
+	}
+	// A page titled B.md is found by its title: no missing segment, under
+	// it the first missing one is 404 as any other.
+	titled := f.page("B.md", nil, 2)
+	_, err := f.movePath(f.eng, app.PathMove{From: "A/x.md", To: "B.md/missing/x.md"})
+	if missing := (*domain.PathNotFound)(nil); !errors.As(err, &missing) || missing.Path != "B.md/missing.md" {
+		t.Errorf("a move under a missing page under the page titled B.md = %v, want page.not_found at B.md/missing.md", err)
+	}
+	if got, err := f.movePath(f.eng, app.PathMove{From: "A/x.md", To: "B.md/x.md"}); err != nil || *got.Node.ParentID != titled.ID {
+		t.Errorf("a move under the page titled B.md = %+v, %v; want x under it", got, err)
 	}
 }
 
