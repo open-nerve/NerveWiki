@@ -184,6 +184,11 @@ type PathStore interface {
 	// number (M9/P2 design 3.7). A node deleted, purged or of another
 	// notebook has none.
 	PathsOf(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]string, error)
+	// LinePaths is the paths of ids' nodes not deleted of notebookID, by
+	// id, as PathsOf reads them, each step its node's id, title key and
+	// name, its own last: a batch's former parents as its unit begins
+	// (M9/P3 design 3.6.2).
+	LinePaths(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID][]domain.PathStep, error)
 }
 
 // AgentsStore finds a notebook's AGENTS page: its root node whose title
@@ -219,11 +224,14 @@ type PageStates interface {
 	AliveNodes(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]bool, error)
 }
 
-// PageState is a page's content as list tells it.
+// PageState is a page's content as list tells it, and its hash, by which
+// a batch's plan tells a write of the bytes a page holds (M9/P3 design
+// 3.4.4).
 type PageState struct {
 	Revision  int
 	Bytes     int
 	UpdatedAt time.Time
+	Hash      []byte
 }
 
 // NodeWriter writes nodes in the write unit's transaction. A name its
@@ -324,6 +332,11 @@ type ChangesetWriter interface {
 	// on another's write would break the chain of the page's versions, an
 	// error.
 	RecordRevision(ctx context.Context, r Revision) error
+	// DropUnchanged deletes the items of the changeset id whose node is
+	// where it was, its parent, name and order, then the changeset when it
+	// holds no item and no version, which it answers (M9/P3 design 3.5.4):
+	// a batch's node moved and moved back.
+	DropUnchanged(ctx context.Context, id uuid.UUID) (bool, error)
 }
 
 // Versions reads a page's versions (M8/P1 design 3.4), alive or in the

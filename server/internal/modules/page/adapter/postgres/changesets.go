@@ -118,3 +118,17 @@ func (s *Store) RecordRevision(ctx context.Context, r app.Revision) error {
 	}
 	return nil
 }
+
+// DropUnchanged implements app.ChangesetWriter: two statements, the items
+// then the changeset.
+func (s *Store) DropUnchanged(ctx context.Context, id uuid.UUID) (bool, error) {
+	q := s.queries(ctx)
+	if err := q.DropUnchangedItems(ctx, id); err != nil {
+		return false, fmt.Errorf("drop the unchanged items: %w", err)
+	}
+	n, err := q.DropEmptyChangeset(ctx, id)
+	if err != nil {
+		return false, fmt.Errorf("drop the empty changeset: %w", err)
+	}
+	return n > 0, nil
+}

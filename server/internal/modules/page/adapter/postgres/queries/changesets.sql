@@ -56,6 +56,21 @@ SET revision = excluded.revision, content = excluded.content, content_hash = exc
     byte_size = excluded.byte_size, updated_at = excluded.updated_at
 WHERE page_revisions.revision = excluded.base_revision;
 
+-- name: DropUnchangedItems :exec
+-- A batch's items whose node is where it was, its parent, name and order (M9/P3 design 3.5.4): a node moved and moved
+-- back, merged into one item of the same before and after, which the history would tell as reordered.
+DELETE FROM changeset_items
+WHERE changeset_id = sqlc.arg(changeset_id) AND before_name IS NOT NULL AND after_name IS NOT NULL
+    AND before_parent_id IS NOT DISTINCT FROM after_parent_id AND before_name = after_name
+    AND before_sort_order = after_sort_order;
+
+-- name: DropEmptyChangeset :execrows
+-- The changeset when it holds no item and no version, once DropUnchangedItems ran: a batch that left nothing.
+DELETE FROM changesets c
+WHERE c.id = sqlc.arg(id)
+    AND NOT EXISTS (SELECT 1 FROM changeset_items i WHERE i.changeset_id = c.id)
+    AND NOT EXISTS (SELECT 1 FROM page_revisions r WHERE r.changeset_id = c.id);
+
 -- name: LockChangeset :one
 -- A changeset a unit merges into (M7/P6 design 3.2), locked until the unit ends: an import's later units write in
 -- its first's. reverted tells whether a revert of it was made, through the partial index on reverts_id: one reverted

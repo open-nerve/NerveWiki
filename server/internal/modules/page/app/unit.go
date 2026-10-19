@@ -102,6 +102,10 @@ type UnitSpec struct {
 	// tens of thousands of nodes, which the search would otherwise walk
 	// before any other. A request's unit queues them exact, found at once.
 	Background bool
+	// DeferParticipants is a batch's unit (M9/P3 design 3.7.1): its
+	// operations call no participant; its use case has them follow the
+	// unit's renames and moves once, after all of them (Unit.Participate).
+	DeferParticipants bool
 }
 
 // ErrChangesetReverted is a unit that would merge into a changeset a
@@ -211,7 +215,8 @@ func (w *Writer) Run(ctx context.Context, spec UnitSpec, do func(ctx context.Con
 		u = &Unit{w: w, write: Write{
 			WorkspaceID: workspaceID, NotebookID: spec.NotebookID, By: actor.UserID, Client: spec.Client,
 			Options: spec.Options, At: w.d.Clock.Now(), Kind: kind, RevertsID: spec.RevertsID,
-		}, into: spec.Changeset, create: spec.Create, message: spec.Message, bulk: spec.Background, merged: map[uuid.UUID]int{}}
+		}, into: spec.Changeset, create: spec.Create, message: spec.Message, bulk: spec.Background, merged: map[uuid.UUID]int{},
+			deferring: spec.DeferParticipants}
 		if err := u.lockInto(ctx); err != nil {
 			return err
 		}
@@ -251,6 +256,18 @@ type Unit struct {
 	merged  map[uuid.UUID]int
 	// deferred are what participants have Run call once the unit is over.
 	deferred []func()
+	// deferring is a batch's unit, whose participants follow its renames
+	// and moves once, at its end: followed are those of its operations, by
+	// node in the order first changed, followedAt indexes them; frozen
+	// the nodes a move kept the links of (keepLinks, Placement.KeepLinks),
+	// none of whose changes are followed; carried the nodes under each
+	// moved one, by the nodes that carried them.
+	deferring  bool
+	followed   []domain.Change
+	followedAt map[uuid.UUID]int
+	frozen     map[uuid.UUID]bool
+	carried    map[uuid.UUID][]uuid.UUID
+	keepLinks  bool
 }
 
 // step is an operation of the unit.
@@ -280,6 +297,10 @@ func (u *Unit) apply(ctx context.Context, s Step, participate bool, write func(c
 		return err
 	}
 	if !participate {
+		return nil
+	}
+	if u.deferring {
+		u.follow(s)
 		return nil
 	}
 	for _, p := range u.w.d.Participants {
@@ -364,9 +385,15 @@ func (u *Unit) ensureChangeset(ctx context.Context) error {
 // recordItems merges a step's changes into the unit's, and those that move
 // their node into the changeset's items of their nodes, in one write: none
 // when none does (M8/P2 design 3.3). A step changes each node once; one
-// that changes a node twice is its caller's defect. No unit of M4 creates
-// a node and deletes it: their item would have neither state, which the
-// table refuses (M4/P2 design 3.2).
+// that changes a node twice is its caller's defect. A batch's unit merges
+// more (M9/P3 design 3.5.1): a node it creates and then renames, moves or
+// writes the content of is the creation's item; one whose content it
+// writes and then deletes is the deletion's, with the revision deleted.
+// None creates a node and deletes it, nor deletes one it renamed or moved:
+// a batch's plan refuses both (B1, B3), and one that came through would
+// be the item the table refuses, of neither state, the defect it is
+// (M4/P2 design 3.2). A node moved and moved back is an item of the same
+// before and after, which the unit drops at its end (DropUnchanged).
 func (u *Unit) recordItems(ctx context.Context, changes []domain.Change) error {
 	items := make([]Item, 0, len(changes))
 	seen := make(map[uuid.UUID]bool, len(changes))
@@ -389,6 +416,113 @@ func (u *Unit) recordItems(ctx context.Context, changes []domain.Change) error {
 		return nil
 	}
 	return u.w.d.Changesets.RecordItems(ctx, items)
+}
+
+// follow records s, an operation of a unit whose participants follow it
+// at its end (deferring): a rename or a move, merged into the changes they
+// follow, unless it keeps links (Placement.KeepLinks), its node then
+// followed in none; and the nodes a move carries, with the node that
+// carried them.
+func (u *Unit) follow(s Step) {
+	if s.Operation != domain.OpMove && s.Operation != domain.OpRename {
+		return
+	}
+	if u.followedAt == nil {
+		u.followedAt, u.frozen, u.carried = map[uuid.UUID]int{}, map[uuid.UUID]bool{}, map[uuid.UUID][]uuid.UUID{}
+	}
+	for _, c := range s.Changes[1:] {
+		u.carried[c.NodeID] = append(u.carried[c.NodeID], s.Changes[0].NodeID)
+	}
+	if u.keepLinks {
+		u.frozen[s.Changes[0].NodeID] = true
+		return
+	}
+	for _, c := range s.Changes {
+		if i, ok := u.followedAt[c.NodeID]; ok {
+			u.followed[i] = u.followed[i].Then(c)
+		} else {
+			u.followedAt[c.NodeID] = len(u.followed)
+			u.followed = append(u.followed, c)
+		}
+	}
+}
+
+// Participate has the participants follow the unit's changes once, as one
+// operation: those of the nodes alive before and after it that a rename
+// or a move changed with every op's update_links true, merged, with no
+// revision (M9 design 4.11), and the nodes under the moved ones as they
+// are; b. Its appends go through the guards as any; it answers how many
+// pages they wrote, which the batch's log line counts.
+func (u *Unit) Participate(ctx context.Context, b BatchRewrite) (int, error) {
+	if !u.deferring {
+		return 0, errors.New("a page write unit's participants follow it at its end: its spec defers them")
+	}
+	var changes []domain.Change
+	for _, c := range u.followed {
+		i, ok := u.merged[c.NodeID]
+		if u.frozen[c.NodeID] || !ok || u.changes[i].After == nil {
+			continue // a node a move kept the links of, or one deleted since
+		}
+		changes = append(changes, domain.Change{NodeID: c.NodeID, Before: c.Before, After: c.After})
+	}
+	s := u.step(domain.OpMove, changes...)
+	s.Batch = &b
+	counted := &countedAppender{appender: appender{u}}
+	for _, p := range u.w.d.Participants {
+		if err := p.Participate(ctx, s, counted); err != nil {
+			return 0, err
+		}
+	}
+	return counted.written, nil
+}
+
+// countedAppender is the unit's appender, counting the contents it writes.
+type countedAppender struct {
+	appender
+	written int
+}
+
+func (a *countedAppender) WriteContent(ctx context.Context, w ContentWrite) (int, error) {
+	revision, err := a.appender.WriteContent(ctx, w)
+	if err == nil {
+		a.written++
+	}
+	return revision, err
+}
+
+// DropUnchanged drops, at a batch's end, what the unit changed and then
+// changed back (M9/P3 design 3.5.4): the changeset's items whose node is
+// where it was, its parent, name and order; the changeset itself when no
+// item and no version is left, the unit then of none; and of its changes,
+// those of a node where it was, but for a node whose content it wrote,
+// which the observers index again, and one a move carried, while that
+// move is one: they follow the node under its new parent.
+func (u *Unit) DropUnchanged(ctx context.Context) error {
+	if u.changeset != (uuid.UUID{}) {
+		dropped, err := u.w.d.Changesets.DropUnchanged(ctx, u.changeset)
+		if err != nil {
+			return err
+		}
+		if dropped {
+			u.changeset = uuid.UUID{}
+		}
+	}
+	moved := func(id uuid.UUID) bool {
+		i, ok := u.merged[id]
+		return ok && u.changes[i].Moves()
+	}
+	var kept []domain.Change
+	for _, c := range u.changes {
+		if c.Before != nil && c.After != nil && c.Before.Same(*c.After) && c.Revision == 0 && !slices.ContainsFunc(u.carried[c.NodeID], moved) {
+			continue
+		}
+		kept = append(kept, c)
+	}
+	u.changes, u.merged = kept, make(map[uuid.UUID]int, len(kept))
+	for i, c := range kept {
+		u.merged[c.NodeID] = i
+	}
+	return nil
 }
 
 // content is the page nodeID's content text at revision, as the unit

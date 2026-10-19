@@ -370,6 +370,61 @@ func TestRecordItemKeepsTheTreeStates(t *testing.T) {
 	}
 }
 
+// DropUnchanged deletes a changeset's items whose node is where it was,
+// its parent, name and order, and keeps the others, a reorder too; then
+// the changeset, but only once no item and no version is left (M9/P3
+// design 3.5.4).
+func TestDropUnchangedDropsTheItemsOfNodesWhereTheyWere(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	p, q := f.page(t, f.eng, nil, "P", 0), f.page(t, f.eng, nil, "Q", 1)
+	back, reordered, moved := f.page(t, f.eng, &p.ID, "Back", 1), f.page(t, f.eng, &p.ID, "Reordered", 2), f.page(t, f.eng, &p.ID, "Moved", 3)
+	changeset := func(items ...domain.Change) uuid.UUID {
+		cs := app.Changeset{ID: uuid.NewV7(), NotebookID: f.eng, Kind: "edit", Client: domain.ClientWeb, By: f.alice, At: now()}
+		if err := f.s.CreateChangeset(ctx, cs); err != nil {
+			t.Fatal(err)
+		}
+		for _, c := range items {
+			if err := f.s.RecordItems(ctx, []app.Item{{ID: uuid.NewV7(), ChangesetID: cs.ID, Change: c, At: now()}}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return cs.ID
+	}
+	state := func(n domain.Node) *domain.TreeState { s := n.State(); return &s }
+	later := domain.TreeState{ParentID: &p.ID, Name: "Reordered", SortOrder: 9}
+	elsewhere := domain.TreeState{ParentID: &q.ID, Name: "Moved", SortOrder: 1}
+	cs := changeset(domain.Change{NodeID: back.ID, Before: state(back), After: state(back)},
+		domain.Change{NodeID: reordered.ID, Before: state(reordered), After: &later},
+		domain.Change{NodeID: moved.ID, Before: state(moved), After: &elsewhere})
+	if dropped, err := f.s.DropUnchanged(ctx, cs); err != nil || dropped {
+		t.Fatalf("DropUnchanged = %v, %v; want the changeset kept", dropped, err)
+	}
+	if got := f.count(t, "SELECT count(*) FROM changeset_items WHERE changeset_id = $1", cs); got != 2 {
+		t.Errorf("%d items left, want the reorder's and the move's", got)
+	}
+	if got := f.count(t, "SELECT count(*) FROM changeset_items WHERE changeset_id = $1 AND node_id = $2", cs, back.ID); got != 0 {
+		t.Error("the item of the node back where it was is left")
+	}
+	empty := changeset(domain.Change{NodeID: back.ID, Before: state(back), After: state(back)})
+	if dropped, err := f.s.DropUnchanged(ctx, empty); err != nil || !dropped {
+		t.Fatalf("DropUnchanged of a changeset of nothing = %v, %v; want it dropped", dropped, err)
+	}
+	if got := f.count(t, "SELECT count(*) FROM changesets WHERE id = $1", empty); got != 0 {
+		t.Error("the changeset of nothing is left")
+	}
+	versioned := changeset(domain.Change{NodeID: back.ID, Before: state(back), After: state(back)})
+	sum := sha256.Sum256([]byte("x"))
+	one := 1
+	if err := f.s.RecordRevision(ctx, app.Revision{ID: uuid.NewV7(), ChangesetID: versioned, NodeID: back.ID, Base: &one, Revision: 2,
+		Content: "x", Hash: sum[:], ByteSize: 1, At: now()}); err != nil {
+		t.Fatal(err)
+	}
+	if dropped, err := f.s.DropUnchanged(ctx, versioned); err != nil || dropped {
+		t.Errorf("DropUnchanged of a changeset with a version = %v, %v; want it kept", dropped, err)
+	}
+}
+
 // A rename writes who and when, and keeps the creation's.
 func TestRenameNodeWritesItsAuthor(t *testing.T) {
 	ctx := context.Background()

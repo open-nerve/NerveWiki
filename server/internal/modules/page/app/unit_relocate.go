@@ -12,11 +12,14 @@ import (
 
 // Placement is where Relocate puts a node: under ParentID (nil: the
 // notebook's root), named Name; Field is the field a 422 on the name
-// names (move's "to"; P3's ops[i].to).
+// names (move's "to"; P3's ops[i].to). KeepLinks is a batch's move with
+// update_links false (M9/P3 design 3.7.1): its unit's deferred rewrite
+// follows neither the node nor what it carries.
 type Placement struct {
-	ParentID *uuid.UUID
-	Name     string
-	Field    string
+	ParentID  *uuid.UUID
+	Name      string
+	Field     string
+	KeepLinks bool
 }
 
 // Relocate moves the node id under p's parent and names it p's name, in
@@ -32,6 +35,8 @@ type Placement struct {
 // nothing; a name that differs in case alone is written, as a rename's
 // is.
 func (u *Unit) Relocate(ctx context.Context, id uuid.UUID, p Placement) (domain.Node, error) {
+	u.keepLinks = p.KeepLinks
+	defer func() { u.keepLinks = false }()
 	n, err := u.w.d.Nodes.FindNodeIn(ctx, u.write.NotebookID, id)
 	if err != nil {
 		return domain.Node{}, found(err, domain.ErrNotFound)

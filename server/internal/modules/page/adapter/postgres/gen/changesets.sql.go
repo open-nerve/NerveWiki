@@ -43,6 +43,36 @@ func (q *Queries) CreateChangeset(ctx context.Context, arg CreateChangesetParams
 	return err
 }
 
+const dropEmptyChangeset = `-- name: DropEmptyChangeset :execrows
+DELETE FROM changesets c
+WHERE c.id = $1
+    AND NOT EXISTS (SELECT 1 FROM changeset_items i WHERE i.changeset_id = c.id)
+    AND NOT EXISTS (SELECT 1 FROM page_revisions r WHERE r.changeset_id = c.id)
+`
+
+// The changeset when it holds no item and no version, once DropUnchangedItems ran: a batch that left nothing.
+func (q *Queries) DropEmptyChangeset(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, dropEmptyChangeset, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const dropUnchangedItems = `-- name: DropUnchangedItems :exec
+DELETE FROM changeset_items
+WHERE changeset_id = $1 AND before_name IS NOT NULL AND after_name IS NOT NULL
+    AND before_parent_id IS NOT DISTINCT FROM after_parent_id AND before_name = after_name
+    AND before_sort_order = after_sort_order
+`
+
+// A batch's items whose node is where it was, its parent, name and order (M9/P3 design 3.5.4): a node moved and moved
+// back, merged into one item of the same before and after, which the history would tell as reordered.
+func (q *Queries) DropUnchangedItems(ctx context.Context, changesetID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, dropUnchangedItems, changesetID)
+	return err
+}
+
 const lockChangeset = `-- name: LockChangeset :one
 SELECT c.id, c.notebook_id, c.kind, c.reverts_id, c.client, c.created_by_id,
     EXISTS (SELECT 1 FROM changesets r WHERE r.reverts_id = c.id AND r.deleted_at IS NULL) AS reverted

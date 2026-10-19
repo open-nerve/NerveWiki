@@ -49,6 +49,39 @@ type Step struct {
 	// 3.3), for the guards (M10: a schema's rules of a notebook's files);
 	// nil for any other operation.
 	Asset *AssetMeta
+	// Batch is what a batch's deferred step has its participants follow
+	// besides its changes (M9/P3 design 3.7.1); nil for any other step.
+	Batch *BatchRewrite
+}
+
+// BatchRewrite is what a batch's deferred participants follow besides its
+// changes (M9 design 4.11; M9/P3 design 3.7): each page the batch wrote,
+// alive after it; the paths the moved and renamed nodes' former parents
+// had as the unit began; the nodes the unit deleted; the most pages the
+// rewrite may write; and the first op that renames or moves with
+// update_links, which a refusal names.
+type BatchRewrite struct {
+	Written   map[uuid.UUID]WrittenPage
+	Parents   map[uuid.UUID][]domain.PathStep
+	Gone      []uuid.UUID
+	MaxPages  int
+	FirstMove int
+}
+
+// WrittenPage is a page a batch wrote, for its deferred rewrite: where its
+// links led at its last content op, on the plan's tree after that op; its
+// own changes, the renames and moves after that op, merged node by node
+// with no revision, of the nodes alive then, or created since, and alive
+// after the unit, that no op after it moves with update_links false: those
+// nodes alone, the participant reading the subtree of each it renames or
+// moves once for the batch (M9/P3 design 3.7.2 (e)), so that a moved
+// folder's nodes are held once, not once a page; and the facts DecidedAll
+// kept for its final content, which the rewrite takes its links from
+// instead of parsing it again.
+type WrittenPage struct {
+	Before  domain.LinksBefore
+	Changes []domain.Change
+	Facts   Facts
 }
 
 // AssetMeta is what an attachment's file is: its type, as the server

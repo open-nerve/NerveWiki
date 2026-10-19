@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"log/slog"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -430,12 +431,19 @@ type fakeBudget struct {
 	held     int
 	released int
 	waits    []time.Duration
+	// capacity, when set, is the budget's bytes: a take past what is left
+	// of them waits for its context's end, as nothing else gives back.
+	capacity int
 }
 
 func (b *fakeBudget) Take(ctx context.Context, n int) (app.BudgetHold, error) {
 	b.record(ctx, fmt.Sprintf("Take %d", n))
 	if b.err != nil {
 		return nil, b.err
+	}
+	if b.capacity > 0 && b.held+n > b.capacity {
+		<-ctx.Done()
+		return nil, ctx.Err()
 	}
 	if len(b.waits) > 0 {
 		wait := b.waits[0]
@@ -1340,6 +1348,49 @@ func (f *fakeStore) PathsOf(ctx context.Context, notebookID uuid.UUID, ids []uui
 	return out, nil
 }
 
+// LinePaths writes the paths of the nodes of the notebook among ids step
+// by step, as PathsOf does, a call with their count.
+func (f *fakeStore) LinePaths(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID][]domain.PathStep, error) {
+	f.record(ctx, fmt.Sprintf("LinePaths %d", len(ids)))
+	out := map[uuid.UUID][]domain.PathStep{}
+	for _, id := range ids {
+		n, ok := f.nodes[id]
+		if !ok || n.NotebookID != notebookID {
+			continue
+		}
+		var steps []domain.PathStep
+		for cur := &n; cur != nil; {
+			steps = append([]domain.PathStep{{ID: cur.ID, Key: cur.NameKey, Name: cur.Name}}, steps...)
+			if cur.ParentID == nil {
+				break
+			}
+			p := f.nodes[*cur.ParentID]
+			cur = &p
+		}
+		out[id] = steps
+	}
+	return out, nil
+}
+
+// DropUnchanged deletes the changeset's items whose node is where it was,
+// then the changeset when it holds no item and no version, as the two
+// statements do.
+func (f *fakeStore) DropUnchanged(ctx context.Context, id uuid.UUID) (bool, error) {
+	f.record(ctx, "DropUnchanged")
+	same := func(it app.Item) bool {
+		c := it.Change
+		return it.ChangesetID == id && c.Before != nil && c.After != nil && c.Before.Same(*c.After)
+	}
+	f.recorded = slices.DeleteFunc(f.recorded, same)
+	maps.DeleteFunc(f.items, func(_ uuid.UUID, it app.Item) bool { return same(it) })
+	if slices.ContainsFunc(f.recorded, func(it app.Item) bool { return it.ChangesetID == id }) ||
+		slices.ContainsFunc(f.revisions, func(r app.Revision) bool { return r.ChangesetID == id }) {
+		return false, nil
+	}
+	f.changesets = slices.DeleteFunc(f.changesets, func(c app.Changeset) bool { return c.ID == id })
+	return true, nil
+}
+
 func (f *fakeStore) byKey(notebookID uuid.UUID, parentID *uuid.UUID, key string) (domain.Node, bool, error) {
 	for _, n := range f.nodes {
 		if n.NotebookID == notebookID && sameParent(n.ParentID, parentID) && n.NameKey == key {
@@ -1378,7 +1429,7 @@ func (f *fakeStore) PageStates(ctx context.Context, ids []uuid.UUID) (map[uuid.U
 	out := map[uuid.UUID]app.PageState{}
 	for _, id := range ids {
 		if c, ok := f.contents[id]; ok {
-			out[id] = app.PageState{Revision: c.Revision, Bytes: c.ByteSize, UpdatedAt: c.At}
+			out[id] = app.PageState{Revision: c.Revision, Bytes: c.ByteSize, UpdatedAt: c.At, Hash: c.Hash}
 		}
 	}
 	return out, nil
