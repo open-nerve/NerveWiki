@@ -59,9 +59,11 @@ type Replacement struct {
 // its occurrences as CRLF are those, each a CR longer, and an old without
 // a LF is the same bytes either way. new is written as CRLF whatever old
 // holds, a CR in it kept: models drop \r in new_string as in old_string,
-// and so the page stays all CRLF under every edit made without a CR
-// (M9/P2 S1 fix round 2, B2-M1). An old with a CR is matched, and new
-// written, as given: old "\r\n" and new "\n" with all turn a page to LF.
+// and so the page stays all CRLF under every edit made without a CR,
+// while it keeps a line break (M9/P2 S1 fix round 2, B2-M1; B3-N1: an
+// edit that removes its last one leaves no rule). An old with a CR is
+// matched, and new written, as given: old "\r\n" and new "\n" with all
+// turn a page to LF.
 // 422 on old_string when old does not occur (hinting when it would under
 // NFC) or occurs more than once without all; on new_string when the
 // content would pass MaxContentBytes, which it knows before it builds it.
