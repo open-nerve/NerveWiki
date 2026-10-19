@@ -240,6 +240,15 @@ func TestTheMCPWritesReachTheUseCases(t *testing.T) {
 			if _, text, _ := readBack(t, use("read", map[string]any{"path": "Lines.md"})); text != "one two\r\n3\r\nmore\r\n" {
 				t.Errorf("edits of a CRLF page whose old_string starts with LF wrote %q, want it all CRLF", text)
 			}
+			// Lines added after a word, its old_string without a LF: new_string's
+			// bare LFs are written as CRLF all the same, so the page stays all
+			// CRLF and an edit with LF across its CRLFs still finds its string
+			// (M9/P2 S1 fix round 2, B2-M1).
+			answerOf[mcpEdited](t, use("edit", map[string]any{"path": "Lines.md", "old_string": "more", "new_string": "more\n\n## Next\nlast"}))
+			answerOf[mcpEdited](t, use("edit", map[string]any{"path": "Lines.md", "old_string": "more\n\n## Next", "new_string": "more\n\n## Then"}))
+			if _, text, _ := readBack(t, use("read", map[string]any{"path": "Lines.md"})); text != "one two\r\n3\r\nmore\r\n\r\n## Then\r\nlast\r\n" {
+				t.Errorf("edits adding lines to a CRLF page after a word wrote %q, want it all CRLF", text)
+			}
 			checked()
 
 			// move: a rename, a move and a rename in one change.

@@ -67,10 +67,11 @@ func TestCheckEdit(t *testing.T) {
 // once, a second occurrence overlapping the first making it ambiguous as
 // one apart does (aa is twice in aaa); each, left to right, with all. A
 // page whose line breaks are all CRLF matches an old_string of bare LFs as
-// CRLF, and writes new_string's bare LFs as CRLF, also an old_string whose
-// one LF starts it, which as it is matches inside a CRLF (M9/P2 S1 review
-// B-M1); a page of both kinds, or an old_string with a CR, is matched as
-// it is. A byte order mark is the content's.
+// CRLF, also one whose one LF starts it, which as it is matches inside a
+// CRLF (M9/P2 S1 review B-M1), and writes new_string's bare LFs as CRLF
+// whenever old_string has no CR, with a LF or without, a CR in new_string
+// kept (fix round 2, B2-M1); a page of both kinds, or an old_string with a
+// CR, is matched and written as given. A byte order mark is the content's.
 func TestReplace(t *testing.T) {
 	for _, tt := range []struct {
 		content, old, new string
@@ -95,12 +96,22 @@ func TestReplace(t *testing.T) {
 		{"a\r\nb\r\n", "\nb", " b", false, `"a b\r\n" 1 true`},
 		{"a\r\nb\r\n", "\n", "x", false, foundTimes(2)},
 		{"a\r\nb\r\n", "\n", "\n\n", true, `"a\r\n\r\nb\r\n\r\n" 2 true`},
+		// An old_string without a LF: new_string's bare LFs are written as
+		// CRLF all the same, the page staying all CRLF; a CR in new_string
+		// stays, alone or before its LF (fix round 2, B2-M1).
+		{"a\r\nb\r\n", "b", "b\nc", false, `"a\r\nb\r\nc\r\n" 1 true`},
+		{"a\r\nb\r\n", "b", "b\r\nc\nd\re", false, `"a\r\nb\r\nc\r\nd\re\r\n" 1 true`},
+		{"a\r\nb\r\na\r\n", "a", "\nx", true, `"\r\nx\r\nb\r\n\r\nx\r\n" 2 true`},
 		// A page of both kinds of line breaks, one without any, an
-		// old_string with a CR: no CRLF rule.
+		// old_string with a CR: no CRLF rule, both strings as given.
 		{"one\r\ntwo\nthree\r\n", "one\ntwo", "x", false, notInPage},
+		{"one\r\ntwo\nthree\r\n", "two", "2\n3", false, `"one\r\n2\n3\nthree\r\n" 1 false`},
 		{"one\ntwo", "one\ntwo", "x", false, `"x" 1 false`},
 		{"no breaks", "a\nb", "x", false, notInPage},
+		{"no breaks", "breaks", "breaks\nhere", false, `"no breaks\nhere" 1 false`},
 		{"a\r\nb\r\n", "\r\na\nb", "x", false, notInPage},
+		{"a\r\nb\r\n", "a\r\nb", "x\ny", false, `"x\ny\r\n" 1 false`},
+		{"a\r\nb\r\n", "\r\n", "\n", true, `"a\nb\n" 2 false`},
 		{"\ufeffhello", "hello", "bye", false, `"\ufeffbye" 1 false`},
 		{"\ufeffhello", "\ufeffh", "H", false, `"Hello" 1 false`},
 	} {
@@ -146,15 +157,21 @@ func TestReplaceReckonsTheSize(t *testing.T) {
 	if got := replaced(short, "b", "xyz", false); got != pageTooLong {
 		t.Errorf("a content past 5 MiB = %.60s, want %s", got, pageTooLong)
 	}
-	// All of n bytes, all CRLF, a\r\nb in it once.
+	// All of n bytes, all CRLF, a\r\nb in it once. Each pair grows the
+	// content by 5 as CRLF, by 3 as given: old's bare LFs and new's, and
+	// new's alone for an old without a LF (fix round 2, B2-M1).
 	page := func(n int) string { return "a\r\nb\r\n" + strings.Repeat("c", n-6) }
-	old, new := "a\nb", "x\ny\nz\n" // as CRLF, 4 and 9 bytes: the content grows by 5, by 3 as given
-	if got := replaced(page(domain.MaxContentBytes-3), old, new, false); got != pageTooLong {
-		t.Errorf("a new_string past 5 MiB as CRLF = %.60s, want %s", got, pageTooLong)
-	}
-	r, err := domain.Replace(page(domain.MaxContentBytes-5), old, new, false)
-	if err != nil || len(r.Content) != domain.MaxContentBytes || !r.CRLF {
-		t.Errorf("a new_string of exactly 5 MiB as CRLF = %d bytes, CRLF %v, %v", len(r.Content), r.CRLF, err)
+	for _, tt := range []struct{ old, new string }{
+		{"a\nb", "x\ny\nz\n"}, // as CRLF, 4 and 9 bytes
+		{"b", "x\ny\n"},       // as CRLF, 1 and 6 bytes
+	} {
+		if got := replaced(page(domain.MaxContentBytes-3), tt.old, tt.new, false); got != pageTooLong {
+			t.Errorf("%q for %q, a new_string past 5 MiB as CRLF = %.60s, want %s", tt.new, tt.old, got, pageTooLong)
+		}
+		r, err := domain.Replace(page(domain.MaxContentBytes-5), tt.old, tt.new, false)
+		if err != nil || len(r.Content) != domain.MaxContentBytes || !r.CRLF {
+			t.Errorf("%q for %q, a new_string of exactly 5 MiB as CRLF = %d bytes, CRLF %v, %v", tt.new, tt.old, len(r.Content), r.CRLF, err)
+		}
 	}
 	// Refused for its size, a content of 8 MiB is never built: Replace
 	// allocates a few bytes. Not parallel: TotalAlloc counts the whole
@@ -163,7 +180,7 @@ func TestReplaceReckonsTheSize(t *testing.T) {
 	runtime.GC()
 	var before, after runtime.MemStats
 	runtime.ReadMemStats(&before)
-	_, err = domain.Replace(as, "a", bs, true)
+	_, err := domain.Replace(as, "a", bs, true)
 	runtime.ReadMemStats(&after)
 	if got := after.TotalAlloc - before.TotalAlloc; said(err) != pageTooLong || got > 1<<20 {
 		t.Errorf("a content of 8 MiB refused for its size: %v, after %d KiB allocated", err, got>>10)
@@ -219,9 +236,11 @@ func TestTheMatcherIsStrings(t *testing.T) {
 			t.Fatalf("MatchIndex(%q, %q, %d) = %d, want %d", s, p, from, got, want)
 		}
 
+		// The CRLF rule: on a page whose line breaks are all CRLF, an old
+		// without a CR is matched as CRLF, and new's LF is written as CRLF,
+		// whether old has a LF or not.
 		q, crlf, newAs := p, false, "X\n"
-		if strings.Contains(p, "\n") && !strings.Contains(p, "\r") && strings.Contains(s, "\r\n") &&
-			strings.Count(s, "\n") == strings.Count(s, "\r\n") {
+		if !strings.Contains(p, "\r") && strings.Contains(s, "\r\n") && strings.Count(s, "\n") == strings.Count(s, "\r\n") {
 			q, crlf, newAs = strings.ReplaceAll(p, "\n", "\r\n"), true, "X\r\n"
 		}
 		occ := occurrences(s, q)

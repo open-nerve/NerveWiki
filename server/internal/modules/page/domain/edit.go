@@ -40,7 +40,8 @@ func CheckEdit(old, new string) error {
 }
 
 // Replacement is an edit's content: the page's with old_string replaced,
-// how many times, and whether the two were matched as CRLF.
+// how many times, and whether the CRLF rule took the two strings' bare
+// LFs as CRLF.
 type Replacement struct {
 	Content string
 	Count   int
@@ -50,19 +51,24 @@ type Replacement struct {
 // Replace replaces old with new in content, byte for byte (M9 design
 // 4.10): once, when old occurs once (a second occurrence, overlapping or
 // not, makes it ambiguous), or each occurrence with all, left to right as
-// strings.ReplaceAll does. When content's line breaks are all CRLF and
-// old's are bare LF, both are matched and written with each bare LF made
-// CRLF, before any search: there old could match as it is only by its
-// first byte, a LF, inside a CRLF, which a new_string of bare LFs or none
-// would leave mixed or a lone CR (M9/P2 S1 review B-M1); its occurrences
-// as CRLF are those, each a CR longer. 422 on old_string when old does
-// not occur (hinting when it would under NFC) or occurs more than once
-// without all; on new_string when the content would pass MaxContentBytes,
-// which it knows before it builds it. Every search is the matcher's:
-// linear in the content and old, whatever their bytes. old is not empty:
-// CheckEdit checks it first.
+// strings.ReplaceAll does. The CRLF rule: when content's line breaks are
+// all CRLF and old has no CR, each bare LF of old and of new is made CRLF,
+// before any search. old is then matched as CRLF only: as it is, it could
+// match only by its first byte, a LF, inside a CRLF, which a new_string of
+// bare LFs or none would leave mixed or a lone CR (M9/P2 S1 review B-M1);
+// its occurrences as CRLF are those, each a CR longer, and an old without
+// a LF is the same bytes either way. new is written as CRLF whatever old
+// holds, a CR in it kept: models drop \r in new_string as in old_string,
+// and so the page stays all CRLF under every edit made without a CR
+// (M9/P2 S1 fix round 2, B2-M1). An old with a CR is matched, and new
+// written, as given: old "\r\n" and new "\n" with all turn a page to LF.
+// 422 on old_string when old does not occur (hinting when it would under
+// NFC) or occurs more than once without all; on new_string when the
+// content would pass MaxContentBytes, which it knows before it builds it.
+// Every search is the matcher's: linear in the content and old, whatever
+// their bytes. old is not empty: CheckEdit checks it first.
 func Replace(content, old, new string, all bool) (Replacement, error) {
-	crlf := strings.IndexByte(old, '\n') >= 0 && strings.IndexByte(old, '\r') < 0 && allCRLF(content)
+	crlf := strings.IndexByte(old, '\r') < 0 && allCRLF(content)
 	if crlf {
 		old, new = bareLFsAsCRLF(old), bareLFsAsCRLF(new)
 	}
@@ -129,8 +135,12 @@ func allCRLF(s string) bool {
 	return seen
 }
 
-// bareLFsAsCRLF is s with each LF that follows no CR made CRLF.
+// bareLFsAsCRLF is s with each LF that follows no CR made CRLF: s itself,
+// not a copy, when it has no LF, as most strings of an edit on one line.
 func bareLFsAsCRLF(s string) string {
+	if strings.IndexByte(s, '\n') < 0 {
+		return s
+	}
 	var b strings.Builder
 	b.Grow(len(s) + strings.Count(s, "\n"))
 	last := 0
