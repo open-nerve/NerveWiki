@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -57,7 +58,13 @@ type largeServer struct {
 
 func serveLarge(t *testing.T, cfg APIConfig) *largeServer {
 	t.Helper()
-	api := buildAPI(t, cfg)
+	return serveLargeAPI(t, buildAPI(t, cfg))
+}
+
+// serveLargeAPI is serveLarge of an API the test has built, and changed
+// before it serves.
+func serveLargeAPI(t *testing.T, api *API) *largeServer {
+	t.Helper()
 	s := &largeServer{api: api, in: map[string]chan struct{}{}, out: map[string]chan struct{}{}, called: map[string]int{}}
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
@@ -458,6 +465,43 @@ func TestTheSlotComesBackOnEveryPath(t *testing.T) {
 			}
 		})
 	}
+}
+
+// One timer bounds both of a request's waits, for its credential's slot
+// and the server's (M9/P2 design 3.2.1; S1 review C-N1). B and C hold the
+// server's two; A1, on a route of a deadline of 1 s, holds its
+// credential's slot while it waits for the server's; A2 of the same
+// credential waits for that one, which A1 gives back at its deadline, and
+// then for the server's, still full, until its wait runs out: on the
+// timer it made for the first. A timer a wait would make three, its 503
+// two seconds later. The timers are counted, never timed.
+func TestOneTimerBoundsBothWaits(t *testing.T) {
+	api := buildAPI(t, largeAPIConfig(slog.New(slog.DiscardHandler), 2, 2*time.Second))
+	var timers atomic.Int32
+	api.large.newTimer = func(d time.Duration) *time.Timer {
+		timers.Add(1)
+		return time.NewTimer(d)
+	}
+	s := serveLargeAPI(t, api)
+	b := s.start(t, held("b", "/big", 2*threshold, "b1"))
+	c := s.start(t, held("c", "/big", 2*threshold, "c1"))
+	a1 := s.start(t, sized("a", "/late", 2*threshold))
+	waitUntil(t, "A1 waiting for the server's slot", a1, func() bool { return api.large.waiting.Load() == 1 })
+	a2 := s.start(t, sized("a", "/big", 2*threshold))
+	waitUntil(t, "A2 waiting for its credential's slot", a2, func() bool { return api.large.refs("session:a") == 2 })
+	if got := answered(t, a1); got.status != http.StatusInternalServerError {
+		t.Errorf("A1 at its deadline = %d %s (%v), want 500", got.status, got.body, got.err)
+	}
+	if got := answered(t, a2); !isBusy(got) {
+		t.Errorf("A2 = %d %s (%v), want 503 once its one wait ran out", got.status, got.body, got.err)
+	}
+	if n := timers.Load(); n != 2 {
+		t.Errorf("the timers made = %d, want 2: A1's, and A2's one for both its waits", n)
+	}
+	s.release("b1")
+	s.release("c1")
+	answered(t, b)
+	answered(t, c)
 }
 
 // A large body waits for its turn: with both slots held by other

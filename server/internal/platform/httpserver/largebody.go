@@ -19,7 +19,8 @@ import (
 // credential's one, in a table that mu guards, an entry counted by the
 // requests holding or waiting for it and gone with the last of them; the
 // holders of the server's slots, for the saturated line alone; and how
-// many requests wait now.
+// many requests wait now. newTimer makes a request's one timer for both
+// its waits: time.NewTimer, which a test counts.
 type largeBodies struct {
 	server      chan struct{}
 	wait        time.Duration
@@ -29,6 +30,7 @@ type largeBodies struct {
 	credentials map[string]*credentialSlot
 	holders     map[uint64]largeHolder
 	held        uint64 // the holders' last key
+	newTimer    func(time.Duration) *time.Timer
 }
 
 // credentialSlot is a credential's one slot, and how many requests hold or
@@ -61,6 +63,7 @@ func newLargeBodies(n int, wait time.Duration, above map[string]int64) *largeBod
 		above:       maps.Clone(above),
 		credentials: map[string]*credentialSlot{},
 		holders:     map[uint64]largeHolder{},
+		newTimer:    time.NewTimer,
 	}
 }
 
@@ -201,7 +204,7 @@ func (a *API) takeLarge(ctx context.Context, credential, route string) (func(), 
 		l.waiting.Add(1)
 		defer l.waiting.Add(-1)
 		if timer == nil {
-			timer = time.NewTimer(l.wait)
+			timer = l.newTimer(l.wait)
 		}
 		select {
 		case slot <- struct{}{}:
