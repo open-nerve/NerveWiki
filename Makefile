@@ -180,13 +180,12 @@ GO_TEST_RACE = go test -race -count=1 -timeout 15m
 .PHONY: test-go
 test-go: ## 运行 Go 测试，含集成测试与 server/tools（开启竞态检测，不用测试缓存；需要 Docker）
 	@# 本机与 CI 同样分份（M9/P2 设计 6.5）：组合根之外的包一个 go test，组合根按测试名三份、各一个 go test 二进制、各受 15 分钟，
-	@# 同一条规则管两处（之前组合根是一个二进制，本机 8 到 9.5 分钟，比 CI 的任何一份先到 15 分钟）。下面 CI 的六份依次跑，之和就是这里
-	@# （M8/P3A 审查 C 的 I-1）。M9/P2 S1 在两份时各量两次：竞态检测的三个同时跑（-j3）时整个 759 与 754 秒，依次 1031 与 1061 秒，
-	@# 同时的平均只快 4.8 分钟，不到设计定的 5 分钟，所以依次（更简单）：依次时各份 116 与 119、267 与 271、231 与 225、166 与 189、251 与 257 秒
-	@$(MAKE) --no-print-directory test-go-race
-	@$(MAKE) --no-print-directory test-go-bootstrap-1
-	@$(MAKE) --no-print-directory test-go-bootstrap-2
-	@$(MAKE) --no-print-directory test-go-bootstrap-3
+	@# 同一条规则管两处（之前组合根是一个二进制，本机 8 到 9.5 分钟，比 CI 的任何一份先到 15 分钟）。竞态检测的这四个同时跑
+	@# （-j4，随份数；macOS 的 make 3.81 也有 -j），之后不带竞态检测的两份依次跑，不与竞态检测下的构建抢 CPU；各份之和就是下面 CI 的六份
+	@# （M8/P3A 审查 C 的 I-1）。M9/P2 S1 各量两次：两份时竞态检测的三个同时跑（-j3）整个 759 与 754 秒、依次 1031 与 1061 秒，
+	@# 只快 4.8 分钟，不到设计定的 5 分钟，所以先是依次；分成三份之后（S1 修复第一轮）四个同时跑整个 698 与 730 秒、依次 1024 与 1058 秒，
+	@# 同时的平均快 5.45 分钟，过了 5 分钟，所以同时（四个里第一份最长，284 与 319 秒）。同时跑的输出交错：找 --- FAIL、FAIL 与 make 的 Error 三种行
+	@$(MAKE) --no-print-directory -j4 test-go-race test-go-bootstrap-1 test-go-bootstrap-2 test-go-bootstrap-3
 	@$(MAKE) --no-print-directory test-go-costs
 	@$(MAKE) --no-print-directory test-go-guards
 
