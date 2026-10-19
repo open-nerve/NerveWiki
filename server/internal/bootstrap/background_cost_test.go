@@ -300,7 +300,7 @@ func (b trashBench) runJob(tb testing.TB, plan func(ctx context.Context, spec pa
 			at := time.Now()
 			_, err := b.jobs.RunBatch(ctx, spec, p, from, to)
 			var e *shared.Error
-			if errors.Is(err, page.ErrBatchTooLarge) && to-from > 1 {
+			if errors.Is(err, page.ErrJobBatchTooLarge) && to-from > 1 {
 				to = from + (to-from)/2
 				continue
 			}

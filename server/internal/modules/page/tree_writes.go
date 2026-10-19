@@ -54,7 +54,7 @@ const (
 // conflicts (Conflicts, ConflictCount); a changeset the purge trimmed;
 // and ErrLocked, a page under another's edit lock (Lock).
 var (
-	ErrBatchTooLarge    = domain.ErrBatchTooLarge
+	ErrJobBatchTooLarge = domain.ErrJobBatchTooLarge
 	ErrRestoreExpired   = domain.ErrRestoreExpired
 	ErrRevertConflict   = domain.ErrRevertConflict
 	ErrChangesetTrimmed = domain.ErrChangesetTrimmed
@@ -111,7 +111,7 @@ type TreeWrites interface {
 	PlanRestore(ctx context.Context, spec JobSpec, nodeID uuid.UUID) (JobPlan, error)
 	PlanRevert(ctx context.Context, spec JobSpec, changesetID uuid.UUID) (JobPlan, error)
 	// RunBatch writes the plan's steps from to to (not included) in a
-	// unit of spec merged into the job's changeset: ErrBatchTooLarge to
+	// unit of spec merged into the job's changeset: ErrJobBatchTooLarge to
 	// halve, server_busy to try again; the restores' ErrTrashChanged,
 	// ErrRestoreExpired, ErrNoParent and ErrTooDeep; the reverts'
 	// ErrRevertConflict, ErrChangesetTrimmed and ErrLocked;

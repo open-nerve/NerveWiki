@@ -459,7 +459,7 @@ func TestARestoreJobsBatchPastTheTimeIsExpired(t *testing.T) {
 }
 
 // A batch of more than one step past the rows of history a unit restores
-// is ErrBatchTooLarge before any content is parsed, and so is one whose
+// is ErrJobBatchTooLarge before any content is parsed, and so is one whose
 // pages hold more links than a unit's once they are; a lone step never,
 // though its own history is past the bound: its deletion was one unit, and
 // no batch is smaller (M8/P4A review C-M4).
@@ -472,8 +472,8 @@ func TestABatchTooLargeIsHalved(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.rec.calls = nil
-	if _, err := w.RunBatch(f.asJob(), spec, plan, 0, 2); !errors.Is(err, domain.ErrBatchTooLarge) || f.called("Facts") {
-		t.Errorf("RunBatch(two steps past the history) = %v, calls %v; want ErrBatchTooLarge before a parse", err, f.rec.calls)
+	if _, err := w.RunBatch(f.asJob(), spec, plan, 0, 2); !errors.Is(err, domain.ErrJobBatchTooLarge) || f.called("Facts") {
+		t.Errorf("RunBatch(two steps past the history) = %v, calls %v; want ErrJobBatchTooLarge before a parse", err, f.rec.calls)
 	}
 	if _, err := w.RunBatch(f.asJob(), spec, plan, 0, 1); err != nil {
 		t.Errorf("RunBatch(the root alone, its history past the bound) = %v, want it restored", err)
@@ -482,8 +482,8 @@ func TestABatchTooLargeIsHalved(t *testing.T) {
 	f.store.trashed[f.a.ID] = app.Content{NodeID: f.a.ID, Content: strings.Repeat("[[x]]", 10_001), Revision: 2}
 	f.store.trashed[f.a1.ID] = app.Content{NodeID: f.a1.ID, Content: strings.Repeat("[[x]]", 10_000), Revision: 2}
 	f.store.history = nil
-	if _, err := w.RunBatch(f.asJob(), spec, plan, 1, 3); !errors.Is(err, domain.ErrBatchTooLarge) {
-		t.Errorf("RunBatch(two pages past the links) = %v, want ErrBatchTooLarge", err)
+	if _, err := w.RunBatch(f.asJob(), spec, plan, 1, 3); !errors.Is(err, domain.ErrJobBatchTooLarge) {
+		t.Errorf("RunBatch(two pages past the links) = %v, want ErrJobBatchTooLarge", err)
 	}
 	if n := f.store.trash[f.a.ID]; !n.DeletedAt.Equal(*trashed.DeletedAt) || f.budget.held != 0 {
 		t.Errorf("A after a batch too large = %+v, the budget holding %d; want it in the trash, nothing held", n, f.budget.held)
@@ -743,8 +743,8 @@ func TestARevertJobOfAGroupDeletedAgainSinceThePlan(t *testing.T) {
 	f.restoredMeanwhile(f.box.ID, f.doc.ID, f.scan.ID)
 	f.trashed(f.box.ID, now().Add(-time.Minute), f.alice)
 	f.store.history = map[uuid.UUID]int{f.box.ID: 6, f.doc.ID: 6}
-	if _, err := w.RunBatch(f.asJob(), spec, plan, 0, 3); !errors.Is(err, domain.ErrBatchTooLarge) {
-		t.Errorf("RunBatch(the group, 12 rows of history at its new time, 10 a unit) = %v, want ErrBatchTooLarge", err)
+	if _, err := w.RunBatch(f.asJob(), spec, plan, 0, 3); !errors.Is(err, domain.ErrJobBatchTooLarge) {
+		t.Errorf("RunBatch(the group, 12 rows of history at its new time, 10 a unit) = %v, want ErrJobBatchTooLarge", err)
 	}
 	if _, err := f.runJob(w, spec, plan, 1); err != nil {
 		t.Errorf("a member a batch = %v, want the group back", err)
