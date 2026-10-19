@@ -90,7 +90,7 @@ func (r *RestoreNode) Execute(ctx context.Context, id uuid.UUID, client domain.C
 			pages, bytes = append(pages, m.Node.ID), bytes+m.Bytes
 		}
 	}
-	if domain.UnitTooLarge(len(pages), bytes, 0) {
+	if domain.UnitTooLarge(len(pages), len(pages), bytes, 0) {
 		return NodeRestored{}, domain.ErrRestoreTooLarge
 	}
 	history, err := r.reads.Trash.TrashHistory(ctx, ids, root.DeletedAt, r.bounds.History+1)

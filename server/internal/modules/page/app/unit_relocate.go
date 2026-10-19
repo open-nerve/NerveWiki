@@ -56,7 +56,7 @@ func (u *Unit) Relocate(ctx context.Context, id uuid.UUID, p Placement) (domain.
 		return domain.Node{}, err
 	}
 	var holder *domain.Node
-	if h, held := holderOf(siblings, title, n.ID); held {
+	if h, held := domain.HolderOf(siblings, title, n.ID); held {
 		holder = &h
 	}
 	if err := domain.RelocationOf(sub, p.ParentID, line, holder); err != nil {

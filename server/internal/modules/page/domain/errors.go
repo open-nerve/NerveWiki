@@ -118,16 +118,27 @@ func BatchTooLarge(what string, n, max int, hint string) error {
 }
 
 // OpFailed is an op of a batch that failed, the batch written in none of
-// it (M9 design 4.11): Op, its place from 0, and its tool; Err as that
-// tool's use case has it, its 422s' fields at ops[Op].
+// it (M9 design 4.11): Op, its place from 0, and its tool, none for an op
+// whose op names none; Err as that tool's use case has it, its 422s'
+// fields at ops[Op].
 type OpFailed struct {
 	Op   int
 	Tool OpKind
 	Err  error
 }
 
-func (e *OpFailed) Error() string { return fmt.Sprintf("ops[%d] (%s): %v", e.Op, e.Tool, e.Err) }
+func (e *OpFailed) Error() string { return e.Place() + ": " + e.Err.Error() }
 func (e *OpFailed) Unwrap() error { return e.Err }
+
+// Place is where the op is in its batch, as an answer says it: "ops[3]
+// (move)", or "ops[3]" for an op of no tool.
+func (e *OpFailed) Place() string {
+	place := fmt.Sprintf("ops[%d]", e.Op)
+	if e.Tool != "" {
+		place += " (" + string(e.Tool) + ")"
+	}
+	return place
+}
 
 // BatchChanged is page.revision_mismatch at a batch's op of the tree: the
 // notebook changed while the batch was planned, and again after it was

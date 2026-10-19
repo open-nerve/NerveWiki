@@ -122,7 +122,7 @@ func (c *ContentParser) DecidedAll(ctx context.Context, contents map[uuid.UUID]s
 		facts := c.markdown.Facts(content)
 		hold.KeepFacts(facts)
 		out[id] = facts
-		if links += c.markdown.Links(facts); domain.UnitTooLarge(len(contents), 0, links) {
+		if links += c.markdown.Links(facts); domain.UnitTooLarge(len(contents), len(contents), 0, links) {
 			return nil, nil, tooLarge
 		}
 	}

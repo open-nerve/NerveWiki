@@ -1,0 +1,673 @@
+package domain
+
+import (
+	"crypto/sha256"
+	"errors"
+	"fmt"
+	"uuid"
+)
+
+// A batch's plan (M9 design 4.11; M9/P3 design 3.4): its ops simulated in
+// their order on the notebook's tree as read unlocked, in two passes, the
+// tree's and then the contents', the first op that fails deciding the
+// answer, before its unit does them again under the notebook's lock.
+
+const (
+	// MaxBatchReadBytes bounds the contents a batch's plan reads whole,
+	// those of the pages whose first content op is an edit, counted by
+	// their sizes before any is read (M9/P3 design 3.4.4, 3.8): what a
+	// unit writes and what a batch brings, MaxUnitBytes and
+	// MaxBatchStringBytes. A page read past them would have to lose more
+	// than its edits bring for the unit to be within its bounds.
+	MaxBatchReadBytes = MaxUnitBytes + MaxBatchStringBytes
+	// MaxBatchParseBytes bounds the contents a batch's plan parses to
+	// rewrite links before the final ones, each page and hash once, a lone
+	// page's too (M9/P3 design 3.4.4): the largest page rewritten once,
+	// its content and the read back of what the rewrite wrote.
+	MaxBatchParseBytes = 2 * MaxContentBytes
+)
+
+// PathStep is a node on a path from the root: its id, title key and name.
+type PathStep struct {
+	ID        uuid.UUID
+	Key, Name string
+}
+
+// Lead is where a link led at a moment of a batch's plan: the node it
+// resolved to, none for nothing; whether ambiguously, the least id
+// deciding between paths equally short; whether to an attachment. As
+// linking's Resolution, which bootstrap copies field by field: a link
+// ambiguous before and after is not written again (M9/P3 review A-M3).
+type Lead struct {
+	ID        uuid.UUID
+	Ambiguous bool
+	Asset     bool
+}
+
+// LinksBefore is where a page's links led at a moment of a batch's plan
+// (M9/P3 design 3.4.4, 3.7): each link, by where its target starts, and
+// the nodes they led to as they were then, their paths from the root.
+type LinksBefore struct {
+	Leads   map[int]Lead
+	Targets map[uuid.UUID][]PathStep
+}
+
+// PageText is a page's content and its revision, read in one statement.
+type PageText struct {
+	Content  string
+	Revision int
+}
+
+// PageHead is a page's revision, size and content hash, read in one
+// statement without its content: a page whose first content op in a batch
+// is a write, which replaces it whole with base_version, and without one
+// holds its bytes already or is PathTaken, as write tells by size and hash.
+type PageHead struct {
+	Revision int
+	Bytes    int
+	Hash     []byte
+}
+
+// LinkRewriter writes again, for a batch's plan, a page's links that the
+// renames and moves since its content was read reach (M9 design 4.11).
+// Its parses are the plan's (ContentParser.Planned): facts kept by page
+// and hash, so that a content parsed once is parsed no more; each parse
+// is admitted by the plan first (BatchPlan.Admit), within its bounds.
+type LinkRewriter interface {
+	// Indexed is where the links of the page id led by the index as the
+	// batch began, at revision: false when the index is not of revision or
+	// not of the current extractor (M6's skips), its links then not
+	// written again.
+	Indexed(id uuid.UUID, revision int) (LinksBefore, bool, error)
+	// Resolve is where the links of content, the page id's, lead on the
+	// tree after the op at: the before of the page's next rewrite, and of
+	// the deferred one (M9/P3 design 3.7).
+	Resolve(id uuid.UUID, content string, at int) (LinksBefore, error)
+	// Rewrite is content, the page id's, its links resolved as before
+	// tells at the op since (-1: the index before the batch), written
+	// again so that each leads where it led on the tree after the op
+	// until: as the participant writes them (M6/P4), through the renames
+	// and moves between the two (BatchPlan.MovesBetween).
+	Rewrite(id uuid.UUID, content string, before LinksBefore, since, until int) (string, error)
+}
+
+// BatchPlan is a batch planned (M9 design 4.11): each op on the tree its
+// plan simulates, the first op that fails and why, what the unit
+// changes and parses, and, after Contents, each page's content.
+type BatchPlan struct {
+	Steps  []PlannedStep
+	Failed *OpFailed // the first op that fails, of either pass; nil for none
+	Items  int       // the changeset's items: created, deleted (merged deletions' too), moved and renamed nodes
+	tree   *batchTree
+	steps  []BatchStep
+	// final is a failure that ends the plan where it is, its contents'
+	// pass not run: the items' bound, the reads'.
+	final     bool
+	pages     map[uuid.UUID]*plannedPage
+	order     []uuid.UUID // the pages, by their first content op
+	createdBy map[uuid.UUID]int
+	movedBy   map[uuid.UUID]int
+	// parses are the contents the plan parsed, by page and hash, and their
+	// bytes; multi tells that the batch writes more pages than one, whose
+	// parses the unit's bounds count too; at is the op being planned.
+	parses     map[parseKey]int
+	parseBytes int
+	multi      bool
+	at         int
+}
+
+// PlannedStep is an op on the simulated tree: the node it acts on (a
+// write's page, created or there; an edit's; what a move moves; what a
+// delete deletes) and its path after the op, as written; the nodes its
+// path, or a move's from, walked, the last the node when it was there;
+// the pages a move's to's parent's line walked; the pages a write creates,
+// root first, each with the id the use case gave it; the subtree a delete
+// takes with the deletions merged into it, and its pages and attachments;
+// where it merged into a later delete; where a move puts its node; for a
+// content op, the content op of the same page before it (-1 for none) and
+// whether a rename or a move between them reaches the page's links
+// (Contents rewrites them first); what the op's tool would answer as
+// changed at its step, and an edit's replacements.
+type PlannedStep struct {
+	Node          uuid.UUID
+	Path          string
+	Found         []uuid.UUID
+	Chain         []uuid.UUID
+	Created       []CreatedPage
+	Subtree       []uuid.UUID
+	Pages, Assets int
+	MergedInto    int // -1 for none
+	To            Destination
+	Previous      int
+	Moved         bool
+	Changed       bool
+	Replacements  int
+}
+
+// CreatedPage is a page a batch's write creates: its id, given by the use
+// case, its parent, nil for the root, and its title.
+type CreatedPage struct {
+	ID       uuid.UUID
+	ParentID *uuid.UUID
+	Title    string
+}
+
+// Destination is where a batch's move puts its node: under ParentID, nil
+// for the root, named Name. (Placement is a trash item's.)
+type Destination struct {
+	ParentID *uuid.UUID
+	Name     string
+}
+
+// PlannedPage is a page whose content a batch's ops write: its first and
+// last content ops; whether the batch created it; its revision as the
+// plan read it, none for one it created; and its content after its last
+// content op, which the unit writes at its first.
+type PlannedPage struct {
+	ID          uuid.UUID
+	First, Last int
+	Created     bool
+	Revision    int
+	Content     string
+}
+
+// plannedPage is a page's content as the contents' pass goes: its head
+// for a page whose first content op is a write, until a write gives it
+// its content.
+type plannedPage struct {
+	id          uuid.UUID
+	created     bool
+	first, last int
+	revision    int
+	content     string
+	known       bool
+	head        *PageHead
+}
+
+// parseKey is a content the plan parsed: its page and its hash.
+type parseKey struct {
+	page uuid.UUID
+	hash [sha256.Size]byte
+}
+
+// deletion is a delete's group: its op, the node it deleted and that
+// node's parent then, nil at the root, the nodes it and the deletions
+// merged into it take, their pages and attachments, and the later delete
+// it merged into, -1 for none.
+type deletion struct {
+	op            int
+	parent        *uuid.UUID
+	group         []uuid.UUID
+	pages, assets int
+	into          int
+}
+
+// PlanBatch simulates steps in their order on nodes, the notebook's tree
+// alive as read unlocked (M9 design 4.11, the tree's pass), as each tool
+// would on the tree the steps before it leave: a step's paths found on it,
+// P2's rules (CreationOf, ParentChainOf, MoveKinds, RenameTitle, RelocationOf,
+// DeletionOf), a delete that takes a subtree an earlier delete took from
+// merged into it, B1 and B3. ids are the use case's, a UUIDv7 a segment
+// of each write's path: a page a write creates at its segment d takes
+// ids[i][d], the id its unit creates it with. A write without
+// base_version at a page there is left to Contents, which compares its
+// content. It counts the items as it goes: past MaxUnitNodes the op that
+// passes them fails. The first op that fails ends the pass, its error at
+// its op in Failed.
+func PlanBatch(nodes []Node, steps []BatchStep, ids [][]uuid.UUID) *BatchPlan {
+	p := &BatchPlan{Steps: make([]PlannedStep, len(steps)), tree: newBatchTree(nodes), steps: steps,
+		pages: map[uuid.UUID]*plannedPage{}, createdBy: map[uuid.UUID]int{}, movedBy: map[uuid.UUID]int{},
+		parses: map[parseKey]int{}}
+	for i := range p.Steps {
+		p.Steps[i].MergedInto, p.Steps[i].Previous = -1, -1
+	}
+	pass := &treePass{p: p, cur: p.tree.view(-1), ids: ids, counted: map[uuid.UUID]bool{}}
+	for i, s := range steps {
+		err := pass.plan(i, s)
+		if err == nil && p.Items > MaxUnitNodes {
+			err, p.final = BatchTooLarge("nodes changed", p.Items, MaxUnitNodes, "split the batch"), true
+		}
+		if err != nil {
+			p.Failed = &OpFailed{Op: i, Tool: s.Kind, Err: err}
+			break
+		}
+	}
+	return p
+}
+
+// treePass is the tree's pass as it goes: the view it walks, the ids
+// given, the nodes counted as items, and the deletions so far.
+type treePass struct {
+	p         *BatchPlan
+	cur       *treeView
+	ids       [][]uuid.UUID
+	counted   map[uuid.UUID]bool
+	deletions []*deletion
+}
+
+// plan is the op i, s, on the tree: its error is the op's.
+func (t *treePass) plan(i int, s BatchStep) error {
+	switch {
+	case s.Kind == OpKindWrite && s.Base == nil:
+		return t.create(i, s)
+	case s.Kind == OpKindWrite || s.Kind == OpKindEdit:
+		return t.content(i, s)
+	case s.Kind == OpKindMove:
+		return t.move(i, s)
+	}
+	return t.delete(i, s)
+}
+
+// count counts id once as an item.
+func (t *treePass) count(id uuid.UUID) {
+	if !t.counted[id] {
+		t.counted[id] = true
+		t.p.Items++
+	}
+}
+
+// create is write without base_version: the pages its path lacks, the
+// last with its content, or the page there, whose content Contents
+// compares.
+func (t *treePass) create(i int, s BatchStep) error {
+	ps := &t.p.Steps[i]
+	found, err := WalkPath(s.Path.Keys, t.cur.lookup)
+	if on := (*AttachmentOnPath)(nil); err != nil && !errors.As(err, &on) {
+		return err
+	}
+	c, err := CreationOf(s.Args, s.Path, found)
+	if err != nil {
+		return err
+	}
+	ps.Found = idsOf(found)
+	names := make([]string, 0, len(s.Path.Keys))
+	for _, n := range found {
+		names = append(names, n.Name)
+	}
+	if c.Leaf != nil {
+		ps.Node, ps.Path = c.Leaf.ID, PathOfNames(names, KindPage)
+		t.p.contentOp(i, c.Leaf.ID)
+		return nil
+	}
+	parent := c.Parent
+	for d, title := range c.Titles {
+		n := Node{ID: t.ids[i][len(found)+d], ParentID: parent, Kind: KindPage, Name: title,
+			NameKey: s.Path.Keys[len(found)+d], SortOrder: t.cur.lastOrder(parent)}
+		t.cur.record(treeEdit{op: i, after: &n, updateLinks: true})
+		t.p.createdBy[n.ID] = i
+		t.count(n.ID)
+		ps.Created = append(ps.Created, CreatedPage{ID: n.ID, ParentID: parent, Title: title})
+		names = append(names, title)
+		parent = &n.ID
+	}
+	ps.Node, ps.Path, ps.Changed = *parent, PathOfNames(names, KindPage), true
+	t.p.contentOp(i, ps.Node)
+	return nil
+}
+
+// content is write with base_version or edit: the page its path names,
+// which a base_version refers to before the batch: one the batch created
+// is 422, another page's 409.
+func (t *treePass) content(i int, s BatchStep) error {
+	ps := &t.p.Steps[i]
+	n, ancestors, err := FindPath(s.Path, t.cur.lookup)
+	if err != nil {
+		return err
+	}
+	if s.Base != nil {
+		if k, created := t.p.createdBy[n.ID]; created {
+			return NotAllowed(s.Args.Field("base_version"),
+				fmt.Sprintf("refers to the notebook before the batch: ops[%d] created this page", k))
+		}
+		if s.Base.Node != n.ID {
+			return &VersionMismatch{Path: s.Path.Written, Current: VersionToken{Node: n.ID}, Why: OtherNode}
+		}
+	}
+	ps.Node, ps.Found, ps.Path = n.ID, append(idsOf(ancestors), n.ID), PathOf(ancestors, n)
+	t.p.contentOp(i, n.ID)
+	return nil
+}
+
+// move is move: the node from names, to's parent's line, the new name,
+// then Unit.Relocate's checks: under its parent the name alone, reading no
+// subtree; under another, RelocationOf. One there and so named already is
+// unchanged.
+func (t *treePass) move(i int, s BatchStep) error {
+	ps := &t.p.Steps[i]
+	n, ancestors, err := FindPath(s.From, t.cur.lookup)
+	if err != nil {
+		return err
+	}
+	chain, err := WalkPath(s.To.Keys[:len(s.To.Keys)-1], t.cur.lookup)
+	var on *AttachmentOnPath
+	if err != nil && !errors.As(err, &on) {
+		return err
+	}
+	if err := ParentChainOf(s.Args, s.To, chain, on); err != nil {
+		return err
+	}
+	var parent *uuid.UUID
+	if len(chain) > 0 {
+		parent = new(chain[len(chain)-1].ID)
+	}
+	title, err := RenameTitle(s.Args.Field("to"), n, s.To.Titles[len(s.To.Titles)-1])
+	if err != nil {
+		return err
+	}
+	ps.Node, ps.Found, ps.Chain = n.ID, append(idsOf(ancestors), n.ID), idsOf(chain)
+	ps.To, ps.Path = Destination{ParentID: parent, Name: title.Name}, PathOf(ancestors, n)
+	moved := n
+	switch {
+	case SameParent(n.ParentID, parent) && title.Name == n.Name:
+		return nil
+	case SameParent(n.ParentID, parent):
+		if h, held := HolderOf(t.cur.children(parent), title, n.ID); held && title.Key != n.NameKey {
+			return &PathTaken{Path: s.To.Written, Asset: h.Kind == KindAsset}
+		}
+	default:
+		var holder *Node
+		if h, held := HolderOf(t.cur.children(parent), title, n.ID); held {
+			holder = &h
+		}
+		if err := RelocationOf(t.cur.subtree(n.ID), parent, t.cur.line(parent), holder); err != nil {
+			if taken := (*PathTaken)(nil); errors.As(err, &taken) {
+				taken.Path = s.To.Written // to is the whole new path, which the answer says
+			}
+			return err
+		}
+		moved.ParentID, moved.SortOrder = parent, t.cur.lastOrder(parent)
+	}
+	moved.Name, moved.NameKey = title.Name, title.Key
+	t.cur.record(treeEdit{op: i, after: &moved, before: &n, updateLinks: s.UpdateLinks})
+	if _, ok := t.p.movedBy[n.ID]; !ok {
+		t.p.movedBy[n.ID] = i
+	}
+	t.count(n.ID)
+	ps.Path, ps.Changed = PathOf(chain, moved), true
+	return nil
+}
+
+// delete is delete: the node its path names and its subtree, recursive's
+// rule on it, the earlier deletions under it merged into it (M9 design
+// 4.11's normalization), then B1 and B3 on all it takes.
+func (t *treePass) delete(i int, s BatchStep) error {
+	ps := &t.p.Steps[i]
+	n, ancestors, err := FindPath(s.Path, t.cur.lookup)
+	if err != nil {
+		return err
+	}
+	sub := t.cur.subtree(n.ID)
+	if err := DeletionOf(s.Args, sub, s.Recursive); err != nil {
+		return err
+	}
+	d := &deletion{op: i, parent: n.ParentID, group: make([]uuid.UUID, 0, len(sub)), into: -1}
+	d.pages, d.assets = sub.Counts()
+	in := make(map[uuid.UUID]bool, len(sub))
+	for _, m := range sub {
+		in[m.Node.ID] = true
+		d.group = append(d.group, m.Node.ID)
+	}
+	var merged []*deletion
+	for _, e := range t.deletions {
+		if e.into < 0 && e.parent != nil && in[*e.parent] {
+			merged = append(merged, e)
+			d.group = append(d.group, e.group...)
+			d.pages, d.assets = d.pages+e.pages, d.assets+e.assets
+		}
+	}
+	if err := t.p.deletesWhatItChanged(s.Args, d.group); err != nil {
+		return err
+	}
+	for _, e := range merged {
+		e.into = i
+		for k := range t.p.Steps {
+			if k == e.op || t.p.Steps[k].MergedInto == e.op {
+				t.p.Steps[k].MergedInto, t.p.Steps[k].Pages, t.p.Steps[k].Assets = i, 0, 0
+			}
+		}
+	}
+	for _, m := range sub {
+		t.cur.record(treeEdit{op: i, before: &m.Node, updateLinks: true})
+		t.count(m.Node.ID)
+	}
+	t.deletions = append(t.deletions, d)
+	ps.Node, ps.Found, ps.Path = n.ID, append(idsOf(ancestors), n.ID), PathOf(ancestors, n)
+	ps.Subtree, ps.Pages, ps.Assets, ps.Changed = d.group, d.pages, d.assets, true
+	return nil
+}
+
+// deletesWhatItChanged is B1 and B3 (M9 design 4.11), 422 at the op a: a
+// node of group, what it deletes, that the batch created, or else moved
+// or renamed: the change would hold a node neither before nor after it,
+// or one whose revert goes two ways.
+func (p *BatchPlan) deletesWhatItChanged(a Args, group []uuid.UUID) error {
+	for _, id := range group {
+		if k, ok := p.createdBy[id]; ok {
+			return NotAllowed(a.Op(), fmt.Sprintf("deletes a page that ops[%d] created: a batch may not delete what it creates "+
+				"(the change would hold a node that is neither before nor after it); leave both out, or delete it in a later call", k))
+		}
+	}
+	for _, id := range group {
+		if k, ok := p.movedBy[id]; ok {
+			what := "a page"
+			if n, ok := p.tree.base[id]; ok && n.Kind == KindAsset {
+				what = "an attachment"
+			}
+			return NotAllowed(a.Op(), fmt.Sprintf("deletes %s that ops[%d] moved or renamed: a batch may not delete what it moves "+
+				"or renames; leave both out, or delete it in a later call", what, k))
+		}
+	}
+	return nil
+}
+
+// contentOp records the op i as a content op of the page id.
+func (p *BatchPlan) contentOp(i int, id uuid.UUID) {
+	pg := p.pages[id]
+	if pg == nil {
+		_, created := p.createdBy[id]
+		pg = &plannedPage{id: id, created: created, first: i, last: -1}
+		p.pages[id] = pg
+		p.order = append(p.order, id)
+	}
+	p.Steps[i].Previous, pg.last = pg.last, i
+}
+
+// idsOf is the ids of nodes, in their order.
+func idsOf(nodes []Node) []uuid.UUID {
+	out := make([]uuid.UUID, len(nodes))
+	for i, n := range nodes {
+		out[i] = n.ID
+	}
+	return out
+}
+
+// TreeAt is the plan's tree after the op k, the batch's tree before any
+// for -1: the tree before the batch with the edits of the ops up to k.
+func (p *BatchPlan) TreeAt(k int) PlanTree { return PlanTree{v: p.tree.view(k)} }
+
+// MovesBetween is the renames and moves of the ops after k up to j,
+// merged node by node, the first before and the last after (as
+// Change.Then merges them), with no revision: of the nodes alive after k,
+// or created since, and alive after j, that no op among them moves with
+// update_links false; a node created among them has its place after its
+// creation as its before (M9/P3 design 3.7.1). A node back where it was,
+// so named, is left out: no link follows it.
+func (p *BatchPlan) MovesBetween(k, j int) []Change {
+	type merged struct {
+		before, after *Node
+		off, gone     bool
+	}
+	m := map[uuid.UUID]*merged{}
+	var order []uuid.UUID
+	for _, e := range p.tree.edits {
+		if e.op <= k {
+			continue
+		}
+		if e.op > j {
+			break
+		}
+		id := idOf(e)
+		x := m[id]
+		if x == nil {
+			x = &merged{}
+			m[id], order = x, append(order, id)
+		}
+		switch {
+		case e.after == nil:
+			x.gone = true
+		case e.before == nil:
+			x.before, x.after = e.after, e.after
+		default:
+			if x.before == nil {
+				x.before = e.before
+			}
+			x.after, x.off = e.after, x.off || !e.updateLinks
+		}
+	}
+	var out []Change
+	for _, id := range order {
+		x := m[id]
+		if x.gone || x.off || x.before.Name == x.after.Name && SameParent(x.before.ParentID, x.after.ParentID) {
+			continue
+		}
+		before, after := x.before.State(), x.after.State()
+		out = append(out, Change{NodeID: id, Before: &before, After: &after})
+	}
+	return out
+}
+
+// ParentsAt is the paths of the parents the nodes changes moved had
+// before, at the op k (FormerParents' nodes, as linking's PathBefore takes
+// them): on the tree after k, or for a node the batch created after k, on
+// the tree after its creation.
+func (p *BatchPlan) ParentsAt(k int, changes []Change) map[uuid.UUID][]PathStep {
+	out := map[uuid.UUID][]PathStep{}
+	at := p.tree.view(k)
+	for _, c := range changes {
+		if c.Before == nil || c.After == nil || c.Before.ParentID == nil || SameParent(c.Before.ParentID, c.After.ParentID) {
+			continue
+		}
+		id := *c.Before.ParentID
+		if path, ok := at.path(id); ok {
+			out[id] = path
+		} else if op, created := p.createdBy[c.NodeID]; created {
+			if path, ok := p.tree.view(op).path(id); ok {
+				out[id] = path
+			}
+		}
+	}
+	return out
+}
+
+// Reads is what the contents' pass reads of the pages before the batch
+// that the ops before Failed's write: texts, those whose first content op
+// is an edit, read whole; heads, those whose first is a write, of which
+// the head alone; each in their first content ops' order.
+func (p *BatchPlan) Reads() (texts, heads []uuid.UUID) {
+	for _, id := range p.order {
+		pg := p.pages[id]
+		switch {
+		case pg.created:
+		case p.steps[pg.first].Kind == OpKindEdit:
+			texts = append(texts, id)
+		default:
+			heads = append(heads, id)
+		}
+	}
+	return texts, heads
+}
+
+// CheckReads is the bound on the contents the plan reads whole (M9/P3
+// design 3.4.4): the sizes of Reads' texts, by their heads, read before
+// any of them, summed in their first content ops' order; past
+// MaxBatchReadBytes, page.batch_too_large at the op of the page that
+// passes it, in Failed, and the contents' pass is not run. It answers
+// that failure, nil for none; a plan that failed for good already is
+// left as it is.
+func (p *BatchPlan) CheckReads(heads map[uuid.UUID]PageHead) *OpFailed {
+	if p.final {
+		return nil
+	}
+	texts, _ := p.Reads()
+	sum := 0
+	for _, id := range texts {
+		if sum += heads[id].Bytes; sum > MaxBatchReadBytes {
+			first := p.pages[id].first
+			p.Failed = &OpFailed{Op: first, Tool: p.steps[first].Kind,
+				Err: BatchTooLarge("bytes in the pages its ops read", sum, MaxBatchReadBytes, "split the batch")}
+			p.final = true
+			return p.Failed
+		}
+	}
+	return nil
+}
+
+// Admit counts content, the page id's, as one the plan parses, before the
+// parse (M9/P3 design 3.4.4): each page and hash once. Past
+// MaxBatchParseBytes, or, when the batch writes more pages than one, past
+// the unit's pages or bytes, it is page.batch_too_large, the parse not
+// done, at the op being planned.
+func (p *BatchPlan) Admit(id uuid.UUID, content string) error {
+	key := parseKey{page: id, hash: sha256.Sum256([]byte(content))}
+	if _, ok := p.parses[key]; ok {
+		return nil
+	}
+	bytes := p.parseBytes + len(content)
+	switch {
+	case bytes > MaxBatchParseBytes:
+		return BatchTooLarge("bytes of contents the plan parses to rewrite links", bytes, MaxBatchParseBytes,
+			"send the renames and moves in a call apart from the edits after them")
+	case p.multi && len(p.parses)+1 > MaxUnitPages:
+		return BatchTooLarge("contents of the pages the batch writes and the plan parses to rewrite their links",
+			len(p.parses)+1, MaxUnitPages, "send the renames and moves in a call apart from the edits after them")
+	case p.multi && bytes > MaxUnitBytes:
+		return BatchTooLarge("bytes in the pages the batch writes and the contents its plan parses to rewrite their links",
+			bytes, MaxUnitBytes, "send the renames and moves in a call apart from the edits after them")
+	}
+	p.parses[key], p.parseBytes = len(content), bytes
+	return nil
+}
+
+// CheckUnit is the unit's bounds on what the batch parses (M9/P3 design
+// 3.4.4, 3.8): its pages' final contents and the plan's parses, each page
+// and hash once, past MaxUnitPages or MaxUnitBytes unless it writes a
+// lone page, page.batch_too_large at no op.
+func (p *BatchPlan) CheckUnit() error {
+	copies := make(map[parseKey]int, len(p.parses)+len(p.order))
+	for k, n := range p.parses {
+		copies[k] = n
+	}
+	for _, id := range p.order {
+		pg := p.pages[id]
+		copies[parseKey{page: id, hash: sha256.Sum256([]byte(pg.content))}] = len(pg.content)
+	}
+	bytes := 0
+	for _, n := range copies {
+		bytes += n
+	}
+	hint := "split the batch"
+	if len(p.parses) > 0 {
+		hint = "send the renames and moves in a call apart from the edits after them"
+	}
+	switch {
+	case !UnitTooLarge(len(p.order), len(copies), bytes, 0):
+		return nil
+	case len(copies) > MaxUnitPages:
+		return BatchTooLarge("contents of the pages the batch writes and the plan parses to rewrite their links",
+			len(copies), MaxUnitPages, hint)
+	}
+	return BatchTooLarge("bytes in the pages the batch writes and the contents its plan parses to rewrite their links",
+		bytes, MaxUnitBytes, hint)
+}
+
+// Pages is the pages whose content the batch writes, by their first
+// content ops, as Contents left them.
+func (p *BatchPlan) Pages() []PlannedPage {
+	out := make([]PlannedPage, 0, len(p.order))
+	for _, id := range p.order {
+		pg := p.pages[id]
+		out = append(out, PlannedPage{ID: id, First: pg.first, Last: pg.last, Created: pg.created, Revision: pg.revision,
+			Content: pg.content})
+	}
+	return out
+}

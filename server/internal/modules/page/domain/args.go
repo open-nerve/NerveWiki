@@ -1,6 +1,9 @@
 package domain
 
-import "strconv"
+import (
+	"strconv"
+	"strings"
+)
 
 // Args is where a write's arguments are in its call, as its 422s name
 // them (M9/P3 design 3.2): the zero value for a tool's own call, whose
@@ -14,3 +17,7 @@ func OpArgs(i int) Args { return Args{prefix: "ops[" + strconv.Itoa(i) + "]."} }
 
 // Field is the field of the argument name: "to", or "ops[3].to".
 func (a Args) Field(name string) string { return a.prefix + name }
+
+// Op is the op itself, "ops[3]", which a refusal of the whole op names:
+// none for a tool's own call.
+func (a Args) Op() string { return strings.TrimSuffix(a.prefix, ".") }

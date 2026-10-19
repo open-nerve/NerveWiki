@@ -2,6 +2,7 @@ package domain
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"uuid"
 )
@@ -120,6 +121,16 @@ func RenameTitle(field string, n Node, name string) (Title, error) {
 		return CheckAssetRename(field, n.Name, name)
 	}
 	return CheckTitle(field, name)
+}
+
+// HolderOf is the sibling other than self that holds title's key: the
+// node a rename or a move to title would take the name of.
+func HolderOf(siblings []Node, title Title, self uuid.UUID) (Node, bool) {
+	i := slices.IndexFunc(siblings, func(s Node) bool { return s.ID != self && s.NameKey == title.Key })
+	if i < 0 {
+		return Node{}, false
+	}
+	return siblings[i], true
 }
 
 // RelocationOf checks a node's move under another parent, as a unit and a

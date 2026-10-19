@@ -142,8 +142,8 @@ func namedFields(err error) []string {
 
 // notCounted are the functions of page/domain that answer a 422 but are no
 // rule of a batch's op, each with why (M9/P3 design 3.2): the other tools'
-// arguments, which a batch never takes, and the batch's own message, of no
-// op.
+// arguments, which a batch never takes, the batch's own message, of no op,
+// and the batch's own refusals, which no tool's own call answers.
 func notCounted() map[string]string {
 	return map[string]string{
 		"ParseActor":          "log's actor",
@@ -159,6 +159,14 @@ func notCounted() map[string]string {
 		"CheckRevision":       "versions' revision",
 		"CheckVersionsArgs":   "versions' two calls",
 		"CheckMessage":        "batch's message, of no op: CheckBatch checks it as message",
+		// The batch's own refusals, which only a batch's op answers, at
+		// ops[i] by construction: TestCheckBatch and TestPlanBatch check
+		// their fields.
+		"CheckBatch":                        "batch's ops, too_short at ops",
+		"checkOp":                           "batch's ops[i].op",
+		"checkMembers":                      "batch's ops[i] members a tool requires or takes not",
+		"(*treePass).content":               "batch's ops[i].base_version for a page the batch created",
+		"(*BatchPlan).deletesWhatItChanged": "batch's ops[i], B1 and B3",
 	}
 }
 
@@ -177,8 +185,9 @@ func constructors() map[string]string {
 
 // refusing are the functions of the package's non-test files in dir that
 // answer a 422 of their own: those that call NotAllowed, shared.Invalid or
-// invalidPath, or write a *Recursive or a *PathNotFound, which carry a
-// field; a method named "(*T).M" or "T.M" by its receiver.
+// invalidPath, or write a *Recursive or a *PathNotFound with a ParentOf,
+// which carry a field (a page.not_found without one names a path, no
+// field); a method named "(*T).M" or "T.M" by its receiver.
 func refusing(t *testing.T, dir string) map[string]string {
 	t.Helper()
 	entries, err := os.ReadDir(dir)
@@ -213,7 +222,7 @@ func refusing(t *testing.T, dir string) map[string]string {
 					}
 				case *ast.CompositeLit:
 					id, ok := x.Type.(*ast.Ident)
-					found = found || ok && (id.Name == "Recursive" || id.Name == "PathNotFound")
+					found = found || ok && (id.Name == "Recursive" || id.Name == "PathNotFound" && keyed(x, "ParentOf"))
 				}
 				return true
 			})
@@ -223,6 +232,18 @@ func refusing(t *testing.T, dir string) map[string]string {
 		}
 	}
 	return out
+}
+
+// keyed reports whether the composite literal lit sets the field key.
+func keyed(lit *ast.CompositeLit, key string) bool {
+	return slices.ContainsFunc(lit.Elts, func(e ast.Expr) bool {
+		kv, ok := e.(*ast.KeyValueExpr)
+		if !ok {
+			return false
+		}
+		id, ok := kv.Key.(*ast.Ident)
+		return ok && id.Name == key
+	})
 }
 
 // methodName is fd's name: a method's with its receiver, "(*T).M" or "T.M".
