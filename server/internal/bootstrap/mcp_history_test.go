@@ -416,11 +416,13 @@ func (m *mcpApp) changesByOnes(t *testing.T, id string, n int) []any {
 
 // versionLines are the lines of m's version holding revision of the page
 // at path, read a line at a time from next_offset to the end, each answer
-// the version's own revision own and the page's version now current.
+// the version's own revision own and the page's version now current. Each
+// line fits in one answer: a version that goes on past its total_lines
+// reads fails.
 func (m *mcpApp) versionLines(t *testing.T, path string, revision, own int, current string) string {
 	t.Helper()
 	var lines strings.Builder
-	for offset, column := 1, 0; offset > 0; {
+	for offset, column, reads := 1, 0, 1; offset > 0; reads++ {
 		args := map[string]any{"path": path, "revision": revision, "offset": offset, "limit": 1}
 		if column > 0 {
 			args["column"] = column
@@ -433,6 +435,7 @@ func (m *mcpApp) versionLines(t *testing.T, path string, revision, own int, curr
 			Kind           string `json:"kind"`
 			Revision       int    `json:"revision"`
 			CurrentVersion string `json:"current_version"`
+			TotalLines     int    `json:"total_lines"`
 			NextOffset     *int   `json:"next_offset"`
 			NextColumn     *int   `json:"next_column"`
 		}
@@ -449,6 +452,9 @@ func (m *mcpApp) versionLines(t *testing.T, path string, revision, own int, curr
 		}
 		if meta.NextColumn != nil {
 			column = *meta.NextColumn
+		}
+		if offset > 0 && reads >= meta.TotalLines {
+			t.Fatalf("versions %v goes on at line %d after %d reads of its %d lines", args, offset, reads, meta.TotalLines)
 		}
 	}
 	return lines.String()
