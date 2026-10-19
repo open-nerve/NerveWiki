@@ -21,6 +21,10 @@ export type EventStreamBody = {
  */
 export function eventServer() {
   const streams: EventStreamBody[] = [];
+  // Each stream's request, kept: undici's Request follows the signal it is made with only through a weak reference
+  // to its own signal's controller, and nothing else holds the request once answered, so a garbage collection would
+  // take the listener below with it, and the tab's abort would never end the stream (S2 review C-M1).
+  const requests: Request[] = [];
   const answer: Answer = (request) => {
     let controller!: ReadableStreamDefaultController<Uint8Array>;
     const body = new ReadableStream<Uint8Array>({ start: (c) => void (controller = c) });
@@ -35,6 +39,7 @@ export function eventServer() {
       controller.error(new DOMException("The request was aborted.", "AbortError"));
     });
     streams.push(stream);
+    requests.push(request);
     return new Response(body, { status: 200, headers: { "Content-Type": "text/event-stream" } });
   };
   return {
