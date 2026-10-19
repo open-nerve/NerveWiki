@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"uuid"
@@ -163,6 +164,7 @@ func TestRelocatePathRefuses(t *testing.T) {
 		{"a parent missing under one there", "A/x.md", "B/missing/x.md", "page.not_found B/missing.md to"},
 		{"a parent written as a page's path", "A/x.md", "B.md/x.md", "validation_failed to not_allowed"},
 		{"a parent missing under one there, written so", "A/x.md", "B/missing.MD/x.md", "validation_failed to not_allowed"},
+		{"a parent missing, then one written as a page's path", "A/x.md", "C/D.md/x.md", "validation_failed to not_allowed"},
 		{"an attachment, then a missing segment", "A/x.md", "A/img.png/missing/z.md", "validation_failed to not_allowed"},
 		{"a missing segment, then an attachment", "A/x.md", "A/missing/img.png/z.md", "page.not_found A/missing/img.png.md to"},
 		{"an attachment as the parent", "A/x.md", "A/img.png/z.md", "validation_failed to not_allowed"},
@@ -194,9 +196,12 @@ func TestRelocatePathRefuses(t *testing.T) {
 		"segment 2 is an attachment, which holds no nodes") {
 		t.Error("the attachment's 422 does not name its segment")
 	}
-	if got := fieldMessage(f.movePath(f.eng, app.PathMove{From: "A/x.md", To: "B.md/x.md"})); got !=
-		"segment 1 ends with .md: an ancestor is written by its title, without .md" {
-		t.Errorf("the 422 of a parent written as a page's path says %q, want write's", got)
+	for to, segment := range map[string]int{"B.md/x.md": 1, "C/D.md/x.md": 2} {
+		// Past the first missing segment too (fix round 2, B2-N2).
+		if got, want := fieldMessage(f.movePath(f.eng, app.PathMove{From: "A/x.md", To: to})),
+			fmt.Sprintf("segment %d ends with .md: an ancestor is written by its title, without .md", segment); got != want {
+			t.Errorf("the 422 of %s, a parent written as a page's path, says %q, want write's: %q", to, got, want)
+		}
 	}
 	// A page titled B.md is found by its title: no missing segment, under
 	// it the first missing one is 404 as any other.

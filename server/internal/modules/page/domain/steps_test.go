@@ -57,6 +57,7 @@ func TestCreationOf(t *testing.T) {
 		{"an attachment passed at the root", "x.png/C.md", stepNodes("x.png"), nil, "validation_failed path not_allowed: segment 1 is an attachment, which holds no pages"},
 		{"a missing ancestor ending with .md", "A/B.md/C.md", stepNodes("A"), nil, "validation_failed path not_allowed: segment 2 ends with .md: an ancestor is written by its title, without .md"},
 		{"a missing ancestor ending with .MD", "A.MD/C.md", nil, nil, "validation_failed path not_allowed: segment 1 ends with .md: an ancestor is written by its title, without .md"},
+		{"a missing ancestor, then one ending with .md", "A/B/C.md/D.md", stepNodes("A"), nil, "validation_failed path not_allowed: segment 3 ends with .md: an ancestor is written by its title, without .md"},
 		{"an ancestor titled with .md there", "A.md/C.md", stepNodes("A.md"), []string{"C"}, ""},
 		{"a leaf titled with .md", "A/B.md.md", stepNodes("A"), []string{"B.md"}, ""},
 		{"eleven levels", deep, stepNodes(strings.Split(strings.Repeat("a/", 10), "/")[:10]...), nil, "page.too_deep"},
