@@ -45,6 +45,13 @@ const maxNamedHolders = 3
 // holders, c's caller as "you, in a browser", and never their pages'
 // paths but path.
 func lockErr(err error, l *domain.LockPaths, c mcpserver.Call, path string) error {
+	return lockErrOf(err, l, c, path, "Moving "+domain.Quoted(path))
+}
+
+// lockErrOf is lockErr, its linking.pages_locked saying what would rewrite
+// the links: mover, a move's "Moving <path>", or a batch's renames and
+// moves, which the first op that moves need not be (M9/P3 design 3.9.2).
+func lockErrOf(err error, l *domain.LockPaths, c mcpserver.Call, path, mover string) error {
 	var e *shared.Error
 	if !errors.As(l.Err, &e) || e.Lock == nil && len(e.Locks) == 0 {
 		return err
@@ -76,7 +83,7 @@ func lockErr(err error, l *domain.LockPaths, c mcpserver.Call, path string) erro
 		}}}
 	}
 	pages, names := domain.PagesAndAttachments(len(e.Locks), 0), holdersText(e.Locks, c.UserID)
-	text := "linking.pages_locked: Moving " + at + " would rewrite links in " + pages + " being edited in the web editor, " +
+	text := "linking.pages_locked: " + mover + " would rewrite links in " + pages + " being edited in the web editor, " +
 		names + ". Try again after they leave edit mode, or move with update_links false to leave their links as they are; " +
 		"the agent cannot take the locks over."
 	if errors.Is(err, domain.ErrLocked) {

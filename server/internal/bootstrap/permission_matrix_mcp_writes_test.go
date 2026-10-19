@@ -46,9 +46,10 @@ func readBack(t *testing.T, a mcpAnswer) (meta struct{ Path, Version string }, t
 // pageWriteMCPRows are page's writes over MCP (M9/P2 design 3.13.2), each
 // in both entries, writers' alone: write creates a page, edit, move and
 // delete act on the column's page, which no seeded session or link holds;
-// each cell's after reads back what it wrote.
+// batch creates a page and moves the column's (M9/P3 design 3.13.2); each
+// cell's after reads back what it wrote.
 func pageWriteMCPRows() []mcpRow {
-	const written = "mcp-written.md"
+	const written, batched = "mcp-written.md", "mcp-batched.md"
 	moved := func(c caller) string {
 		p := pagePathOf(c)
 		dir := path.Dir(p)
@@ -151,6 +152,64 @@ func pageWriteMCPRows() []mcpRow {
 				t.Helper()
 				if _, _, code := readBack(t, call("read", map[string]any{"path": pagePathOf(c)})); code != "page.not_found" {
 					t.Errorf("read of the page deleted = %s, want page.not_found", code)
+				}
+			},
+		},
+		{
+			// Two ops, so that each cell's unit is one of several steps: a
+			// creation and a move (M9/P3 design 3.13.2).
+			tool: "batch", entries: mcpserver.BothEntries, write: true, want: writers,
+			args: func(c caller, _ seeded) map[string]any {
+				return map[string]any{"ops": []any{
+					map[string]any{"op": "write", "path": batched, "content": matrixMark + ", batched\n"},
+					map[string]any{"op": "move", "from": pagePathOf(c), "to": moved(c)},
+				}, "message": "matrix"}
+			},
+			check: func(t *testing.T, c caller, _ seeded, a mcpAnswer) {
+				t.Helper()
+				var got struct {
+					ChangesetID  *string `json:"changeset_id"`
+					Changed      bool    `json:"changed"`
+					ResultsCount int     `json:"results_count"`
+					Results      []struct {
+						Path string `json:"path"`
+					} `json:"results"`
+				}
+				structuredOf(t, a, &got)
+				if !got.Changed || got.ResultsCount != 2 || len(got.Results) != 2 || got.Results[0].Path != batched ||
+					got.Results[1].Path != moved(c) || got.ChangesetID == nil || *got.ChangesetID == "" {
+					t.Errorf("batch answered %.300s, want %s created and the page at %s, in one changeset", a.body, batched, moved(c))
+				}
+			},
+			after: func(t *testing.T, c caller, _ seeded, call func(string, map[string]any) mcpAnswer) {
+				t.Helper()
+				if _, text, code := readBack(t, call("read", map[string]any{"path": batched})); code != "" || text != matrixMark+", batched\n" {
+					t.Errorf("read of the page batched = %q %s", text, code)
+				}
+				if _, text, code := readBack(t, call("read", map[string]any{"path": moved(c)})); code != "" || text != matrixMark+"\n" {
+					t.Errorf("read of the page the batch moved = %q %s", text, code)
+				}
+				var log struct {
+					Changesets []struct {
+						ID string `json:"id"`
+					} `json:"changesets"`
+				}
+				// The newest of an agent's: the seeded renames are a second after
+				// the seeding, which a cell may well come within.
+				structuredOf(t, call("log", map[string]any{"client": "mcp", "limit": 1}), &log)
+				if len(log.Changesets) != 1 {
+					t.Fatalf("log of the batch = %+v", log)
+				}
+				var cs struct {
+					Changeset struct {
+						Kind    string  `json:"kind"`
+						Message *string `json:"message"`
+					} `json:"changeset"`
+					Changes []any `json:"changes"`
+				}
+				structuredOf(t, call("changeset", map[string]any{"id": log.Changesets[0].ID}), &cs)
+				if cs.Changeset.Kind != "edit" || cs.Changeset.Message == nil || *cs.Changeset.Message != "matrix" || len(cs.Changes) != 2 {
+					t.Errorf("the batch's changeset = %+v, want an edit of two changes, its message", cs)
 				}
 			},
 		},

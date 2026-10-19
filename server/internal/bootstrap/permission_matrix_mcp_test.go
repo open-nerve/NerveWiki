@@ -74,7 +74,8 @@ func mcpRows() []mcpRow { return slices.Concat(pageMCPRows(), pageWriteMCPRows()
 // open_notebook only its notebook, unseen or no UUID (M9/P1 design
 // 3.17); P2's writes the codes of the REST writes they are (M9/P2 design
 // 3.13.1), its history's reads those of the REST reads they are
-// (3.17.1).
+// (3.17.1); P3's batch the union of the writes' and its own
+// page.batch_too_large (M9/P3 design 3.13.1).
 func mcpToolCodes() map[string][]string {
 	return map[string][]string{
 		"list":          {"bad_request", "validation_failed", "notebook.not_found", "page.not_found"},
@@ -87,7 +88,10 @@ func mcpToolCodes() map[string][]string {
 			"page.revision_mismatch", "page.locked"},
 		"move": {"bad_request", "validation_failed", "notebook.not_found", "page.not_found", "forbidden", "server_busy",
 			"page.title_taken", "page.cycle", "page.too_deep", "linking.pages_locked"},
-		"delete":    {"bad_request", "validation_failed", "notebook.not_found", "page.not_found", "forbidden", "page.locked"},
+		"delete": {"bad_request", "validation_failed", "notebook.not_found", "page.not_found", "forbidden", "page.locked"},
+		"batch": {"bad_request", "validation_failed", "notebook.not_found", "page.not_found", "forbidden", "server_busy",
+			"page.title_taken", "page.cycle", "page.too_deep", "page.revision_mismatch", "page.locked", "linking.pages_locked",
+			"page.batch_too_large"},
 		"versions":  {"bad_request", "validation_failed", "notebook.not_found", "page.not_found", "page.version_not_found"},
 		"log":       {"bad_request", "validation_failed", "notebook.not_found", "page.not_found"},
 		"changeset": {"bad_request", "validation_failed", "notebook.not_found", "page.changeset_not_found"},

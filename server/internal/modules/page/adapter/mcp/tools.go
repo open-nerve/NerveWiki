@@ -94,9 +94,10 @@ type UseCases struct {
 // the account entry alone, where an agent picks its notebook; write, edit,
 // move and delete, in both entries, each destructive, all but edit
 // idempotent: called again, write writes nothing, move and delete find
-// nothing at their path (M9/P2 design 3.11); versions, log and changeset,
-// in both entries, read-only: the history is read here, restored and
-// reverted in the web (3.16).
+// nothing at their path (M9/P2 design 3.11); batch, in both entries,
+// destructive and, as edit, not idempotent (M9/P3 design 3.12); versions,
+// log and changeset, in both entries, read-only: the history is read
+// here, restored and reverted in the web (M9/P2 design 3.16).
 func Tools(uc UseCases, attachments app.AttachmentReader) []mcpserver.Tool {
 	t := tools{uc: uc, attachments: attachments}
 	return []mcpserver.Tool{
@@ -114,6 +115,8 @@ func Tools(uc UseCases, attachments app.AttachmentReader) []mcpserver.Tool {
 			Annotations: mcpserver.Annotations{Destructive: true, Idempotent: true}, Entry: mcpserver.BothEntries, Notebook: true}, t.move),
 		mcpserver.NewTool(mcpserver.Spec{Name: "delete", Title: "Delete a page or an attachment", Description: deleteDescription,
 			Annotations: mcpserver.Annotations{Destructive: true, Idempotent: true}, Entry: mcpserver.BothEntries, Notebook: true}, t.delete),
+		mcpserver.NewTool(mcpserver.Spec{Name: "batch", Title: "Apply several writes as one change", Description: batchDescription,
+			Annotations: mcpserver.Annotations{Destructive: true}, Entry: mcpserver.BothEntries, Notebook: true}, t.batch),
 		mcpserver.NewTool(mcpserver.Spec{Name: "versions", Title: "List or read a page's versions", Description: versionsDescription,
 			Annotations: mcpserver.Annotations{ReadOnly: true}, Entry: mcpserver.BothEntries, Notebook: true}, t.versions),
 		mcpserver.NewTool(mcpserver.Spec{Name: "log", Title: "List the notebook's changes", Description: logDescription,

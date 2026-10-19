@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"context"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -13,7 +14,8 @@ import (
 )
 
 // The calls that answer each code of the writes' rows of mcpToolCodes
-// (M9/P2 design 3.13.1), for TestTheMCPToolsErrorsCarryTheirCodes: the
+// (M9/P2 design 3.13.1), batch's too (M9/P3 design 3.13.1), for
+// TestTheMCPToolsErrorsCarryTheirCodes: the
 // reads' app's, a reader's of a notebook open to its workspace, and the
 // parse budget's, which another app holds.
 
@@ -86,7 +88,32 @@ func writeCodeCalls(t *testing.T, r readsApp, guide string) []codeCall {
 		{mcpserver.Pattern, "delete", hidden(map[string]any{"path": "Guide.md"}), "notebook.not_found"},
 		{nb, "delete", map[string]any{"path": "Missing.md"}, "page.not_found"},
 		{nb, "delete", map[string]any{"path": "Locked.md"}, "page.locked"},
+		{nb, "batch", map[string]any{"ops": "x", "message": "m"}, "bad_request"},
+		{nb, "batch", batched(), "validation_failed"},
+		{nb, "batch", batched(map[string]any{"op": "rename"}), "validation_failed"},
+		{mcpserver.Pattern, "batch", hidden(batched(map[string]any{"op": "write", "path": "New.md", "content": "x"})),
+			"notebook.not_found"},
+		{nb, "batch", batched(map[string]any{"op": "edit", "path": "Missing.md", "old_string": "a", "new_string": "b"}),
+			"page.not_found"},
+		{nb, "batch", batched(map[string]any{"op": "write", "path": "Guide.md", "content": "another"}), "page.title_taken"},
+		{nb, "batch", batched(map[string]any{"op": "move", "from": "Guide.md", "to": "Guide/Sub/Guide.md"}), "page.cycle"},
+		{nb, "batch", batched(map[string]any{"op": "write", "path": "A/B/C/D/E/F/G/H/I/J/K.md", "content": "x"}), "page.too_deep"},
+		{nb, "batch", batched(map[string]any{"op": "write", "path": "Guide.md", "content": "x", "base_version": guide + ":99"}),
+			"page.revision_mismatch"},
+		{nb, "batch", batched(map[string]any{"op": "write", "path": "Batched.md", "content": "b"},
+			map[string]any{"op": "write", "path": "Locked.md", "content": "x", "base_version": lockedAt}), "page.locked"},
+		{nb, "batch", batched(map[string]any{"op": "move", "from": "Target.md", "to": "Target 2.md"}), "linking.pages_locked"},
+		{nb, "batch", batched(slices.Repeat([]map[string]any{{"op": "delete", "path": "Missing.md"}}, 101)...),
+			"page.batch_too_large"},
 	}
+}
+
+// batched is batch's arguments of ops, with a message.
+func batched(ops ...map[string]any) map[string]any {
+	if ops == nil {
+		ops = []map[string]any{}
+	}
+	return map[string]any{"ops": ops, "message": "m"}
 }
 
 // carolsWrites has carol, a member of acme, write through the notebook
@@ -116,6 +143,7 @@ func (r readsApp) carolsWrites(t *testing.T, answered answeredCodes) {
 		{tool: "edit", args: map[string]any{"path": "Shared.md", "old_string": "s", "new_string": "t"}},
 		{tool: "move", args: map[string]any{"from": "Shared.md", "to": "Moved.md"}},
 		{tool: "delete", args: map[string]any{"path": "Shared.md"}},
+		{tool: "batch", args: batched(map[string]any{"op": "write", "path": "New.md", "content": "x"})},
 	} {
 		if member := m.call(t, atNotebook(readers), c.tool, c.args).toolError(t); member["code"] != "forbidden" {
 			t.Errorf("carol's %s in a notebook she views = %v, want forbidden", c.tool, member)
@@ -125,14 +153,15 @@ func (r readsApp) carolsWrites(t *testing.T, answered answeredCodes) {
 	}
 }
 
-// busyWrites calls write, edit and move while the server's parse budget
-// is held, in an app of its own whose budget is 64 KiB, waited for 300 ms:
-// a REST write of ten times the budget keeps all of it while it waits for
-// its page's lock (TestAWriteWaitingForItsLockKeepsItsFactsShare). write's
-// and edit's content is parsed before their units, in the notebook whose
-// row the waiting write shares; move's rewrite takes the budget without
-// waiting, in its unit, so its page is in another notebook, whose row the
-// move locks (M9/P2 design 3.13.1).
+// busyWrites calls write, edit, move and batch while the server's parse
+// budget is held, in an app of its own whose budget is 64 KiB, waited for
+// 300 ms: a REST write of ten times the budget keeps all of it while it
+// waits for its page's lock (TestAWriteWaitingForItsLockKeepsItsFactsShare).
+// write's, edit's and batch's contents are parsed before their units, in
+// the notebook whose row the waiting write shares; move's rewrite takes
+// the budget without waiting, in its unit, so its page is in another
+// notebook, whose row the move locks (M9/P2 design 3.13.1; M9/P3 design
+// 3.13.1).
 func busyWrites(t *testing.T, answered answeredCodes) {
 	t.Helper()
 	tm := newAcmeTeamWith(t, "member", "", func(c *config.Config) {
@@ -150,6 +179,7 @@ func busyWrites(t *testing.T, answered answeredCodes) {
 			{atNotebook(eng), "write", map[string]any{"path": "Busy.md", "content": large}, "server_busy"},
 			{atNotebook(eng), "edit", map[string]any{"path": "Edited.md", "old_string": "e", "new_string": large}, "server_busy"},
 			{atNotebook(other), "move", map[string]any{"from": "Target.md", "to": "Target 2.md"}, "server_busy"},
+			{atNotebook(eng), "batch", batched(map[string]any{"op": "write", "path": "Busy.md", "content": large}), "server_busy"},
 		} {
 			if member := m.call(t, c.path, c.tool, c.args).toolError(t); member["code"] != c.want {
 				t.Errorf("%s with the parse budget held = %v, want %s", c.tool, member, c.want)
