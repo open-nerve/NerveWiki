@@ -407,7 +407,7 @@ func TestTheToolErrorsAreTheTables(t *testing.T) {
 		{"locks", context.Background(), locksProblem{problem{status: http.StatusConflict, code: "page.locked", detail: "Pages are being edited."}},
 			"page.locked: Pages are being edited.", map[string]any{"code": "page.locked", "message": "page.locked: Pages are being edited.",
 				"locks": []any{map[string]any{"page_id": visible.String(), "user_id": alice.String(), "display_name": "Alice"},
-					map[string]any{"page_id": lockedPage, "user_id": alice.String(), "display_name": "Alice"}}}, ""},
+					map[string]any{"page_id": lockedPage, "user_id": alice.String(), "display_name": "Alice"}}, "locks_count": float64(2)}, ""},
 		{"the client gone", cancelled, fmt.Errorf("read: %w", context.Canceled), "internal_error: the client went away",
 			map[string]any{"code": "internal_error", "message": "internal_error: the client went away", "request_id": ""}, "MCP client went away:DEBUG"},
 		{"the deadline", expired, fmt.Errorf("read: %w", context.DeadlineExceeded), "internal_error: the call ran out of time; request id ",

@@ -98,23 +98,38 @@ func invalidPath(field, code, message string) error {
 // PathOf is the path of node, whose ancestors from the root are ancestors:
 // their titles, then its own, with ".md" for a page.
 func PathOf(ancestors []Node, node Node) string {
-	var b strings.Builder
+	names := make([]string, 0, len(ancestors)+1)
 	for _, a := range ancestors {
-		b.WriteString(a.Name)
-		b.WriteByte('/')
+		names = append(names, a.Name)
 	}
-	b.WriteString(node.Name)
-	if node.Kind == KindPage {
-		b.WriteString(pageSuffix)
-	}
-	return b.String()
+	return PathOfNames(append(names, node.Name), node.Kind)
 }
 
+// PathOfNames is the path of a node of kind whose names, from its root's
+// to its own, are names: the one place a path is written (M9/P2 design
+// 3.7).
+func PathOfNames(names []string, kind Kind) string {
+	p := strings.Join(names, "/")
+	if kind == KindPage {
+		p += pageSuffix
+	}
+	return p
+}
+
+// Quoted is path in double quotes as it is, as an answer quotes it (M9/P2
+// design 3.10.4): no title holds " or \ (shared.CheckTitle), so what the
+// quotes hold is the path, byte for byte, which %q would write with
+// escapes for the characters a title may hold, U+3000 or U+00AD.
+func Quoted(path string) string { return `"` + path + `"` }
+
 // PathNotFound is page.not_found for a path, with the path as written and
-// a hint, which page's adapter/mcp writes out.
+// a hint, which page's adapter/mcp writes out. ParentOf names the field
+// whose parent Path is, when Path is no path the call gave but its
+// parent's: move's "to" (M9/P2 design 3.11.5).
 type PathNotFound struct {
-	Path string
-	Hint string
+	Path     string
+	Hint     string
+	ParentOf string
 }
 
 func (e *PathNotFound) Error() string { return ErrNotFound.Error() }
@@ -123,25 +138,29 @@ func (e *PathNotFound) Unwrap() error { return ErrNotFound }
 // PageHint is PathNotFound's hint for an attachment's path that names a
 // page, whose path is path.
 func PageHint(path string) string {
-	return fmt.Sprintf("A page's path ends with .md: %q.", path)
+	return "A page's path ends with .md: " + Quoted(path) + "."
 }
 
 // AttachmentHint is PathNotFound's hint for a page's path that names an
 // attachment, whose path is path.
 func AttachmentHint(path string) string {
-	return fmt.Sprintf("That is an attachment: its path is %q.", path)
+	return "That is an attachment: its path is " + Quoted(path) + "."
 }
 
 // TitleHint is PathNotFound's hint for a page's path that names nothing
 // while a page there is titled with its last segment, ".md" and all: that
 // page's path, path, has ".md" twice.
 func TitleHint(path string) string {
-	return fmt.Sprintf("A page there is titled with the .md: its path is %q.", path)
+	return "A page there is titled with the .md: its path is " + Quoted(path) + "."
 }
+
+// MoveParentHint is PathNotFound's hint for the parent of move's to,
+// which names nothing: a move makes no pages (M9/P2 design 3.8.3).
+const MoveParentHint = "move creates no parent pages: write the parent first, or move to an existing page's path."
 
 // ChildrenHint is the hint for list's pattern that names a page, at path,
 // where its children were meant: they are listed by its path without
 // ".md" and with a trailing "/".
 func ChildrenHint(path string) string {
-	return fmt.Sprintf("%s is a page; list %q for its children.", path, strings.TrimSuffix(path, pageSuffix)+"/")
+	return path + " is a page; list " + Quoted(strings.TrimSuffix(path, pageSuffix)+"/") + " for its children."
 }

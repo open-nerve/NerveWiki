@@ -27,9 +27,10 @@ const Pattern = httpserver.MCPPath
 // the SDK could not read into a request's, whose error repeats them,
 // escaped to four times their size (M9/P1 S1 review A-M1): of a
 // tools/call, which alone may be as long as the route's limit
-// (maxOtherBytes), they cannot fail. Null is the member left out, as the
-// SDK reads it. A function, not a package variable: each caller gets its
-// own table (gochecknoglobals).
+// (MaxOtherBytes), they cannot fail; and so is a body of more than
+// MaxBodyValues JSON values, of any method and size. Null is the member
+// left out, as the SDK reads it. A function, not a package variable:
+// each caller gets its own table (gochecknoglobals).
 func Bodies() *bodyshape.Table {
 	const (
 		message = iota
@@ -51,24 +52,46 @@ func Bodies() *bodyshape.Table {
 			object: open(bodyshape.Object|bodyshape.Null, nil),
 			null:   open(bodyshape.Null, nil),
 		},
-		Roots: map[string]int{Pattern: message},
+		Roots:     map[string]int{Pattern: message},
+		MaxValues: MaxBodyValues,
 	}
 }
 
-// maxOtherBytes bounds the body of every request but a tools/call of a
+// MaxBodyValues bounds the JSON values of every body to Pattern, whatever
+// its method and size: bodyshape's first scan stops at the first value
+// past it and answers 400, before anything decodes the body (M9/P2 S1
+// review A2-I1). Within the route's limit, a body of many small values
+// costs far more than its bytes: 37.8 MB of [[],[],…] in _meta, most of
+// it the SDK's generic decode of _meta into maps and slices, cost about
+// 5 GiB a call, against about 0.5 GiB of one long string, which the two
+// slots of design 3.2.4, about 1 GB, assume. The largest call M9 makes is
+// P3's batch at its 100 operations (M9 design 4.11), an operation an
+// object of op and at most edit's five arguments, 7 values: about 700
+// values, a few more with the envelope, the batch's own arguments and a
+// client's _meta; initialize with its capabilities is a few dozen.
+// 10,000 is 14 times that. At it, the worst shapes measured cost what one
+// long string does: two such calls at once and a third waiting peaked at
+// +680 to +873 MiB in the whole program, two writes of one long string
+// at +801 to +924 MiB; three bodies of the limit past it, refused, at
+// +156 to +192 MiB (M9/P2 S1 fix round 1).
+const MaxBodyValues = 10_000
+
+// MaxOtherBytes bounds the body of every request but a tools/call of a
 // tool its entry serves: a handshake, a ping or a prompt's get is a few
 // hundred bytes, and the SDK's error of params it cannot read repeats
 // them, escaped to four times their size; a tools/call's arguments, which
-// may be a page, it never reads (M9/P1 S1 review A-M1).
-const maxOtherBytes = 64 << 10
+// may be a page, it never reads (M9/P1 S1 review A-M1). It is Pattern's
+// threshold of the large bodies too, which bootstrap gives the API: past
+// it a body can only be a call (M9/P2 design 3.2).
+const MaxOtherBytes = 64 << 10
 
-// maxIDBytes bounds the id of a body over maxOtherBytes, as it is written:
+// maxIDBytes bounds the id of a body over MaxOtherBytes, as it is written:
 // the SDK repeats the id in its answer, escaped to as much as twice its
 // bytes (M9/P1 S1 fix-check A F2).
 const maxIDBytes = 256
 
 // sizeError is the 413 of the body of r, as bodyshape read it, when it is
-// over maxOtherBytes and no tools/call that the SDK reads without an
+// over MaxOtherBytes and no tools/call that the SDK reads without an
 // answer as long: the error of API.Wrap's body limit over the route's.
 // The body was one JSON object without a name twice, and is read as the
 // SDK reads it. Its jsonrpc is 2.0, as the SDK's error of another tag
@@ -85,7 +108,7 @@ const maxIDBytes = 256
 // that the package has left the experiment.
 func (s *Server) sizeError(r *http.Request) error {
 	body, ok := bodyshape.Bytes(r)
-	if !ok || len(body) <= maxOtherBytes {
+	if !ok || len(body) <= MaxOtherBytes {
 		return nil
 	}
 	var m struct {
@@ -101,7 +124,7 @@ func (s *Server) sizeError(r *http.Request) error {
 		m.Method == methodCallTool && s.tools[askedEntry(r.URL)][m.Params.Name] {
 		return nil
 	}
-	return &http.MaxBytesError{Limit: maxOtherBytes}
+	return &http.MaxBytesError{Limit: MaxOtherBytes}
 }
 
 // Subtree answers every path below Pattern: 404 problem+json, not the

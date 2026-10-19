@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
+
+	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/bodyshape"
 )
 
 // Operation is one operation of the contract, as the whole-program tests of
@@ -202,6 +204,9 @@ const rawMark = "nwiki_raw_value"
 //     own, together: every problem in one answer. Left out when the schema
 //     has only the first kind. 7–9 are not in it: a body read two ways gets
 //     only those answers, before its structure is checked.
+//  11. an undeclared property of 1s that makes the body bodyshape.MaxRESTValues
+//     JSON values: read whole, the property not_allowed;
+//  12. one 1 more: too_long at the body itself, the empty path, read no further.
 func (o Operation) BodyCases() []BodyCase {
 	s := o.body
 	valid := validValue(s).(map[string]any)
@@ -335,7 +340,32 @@ func (o Operation) BodyCases() []BodyCase {
 		out, _ := json.Marshal(body)
 		cases = append(cases, BodyCase{Name: "every problem at once", Body: out, Fields: all})
 	}
+
+	// Cases 11 and 12: the valid body, the undeclared array and its items.
+	ones := bodyshape.MaxRESTValues - values(valid) - 1
+	cases = append(cases,
+		BodyCase{Name: "values at the bound", Body: with(func(b map[string]any) { b[unknownField] = slices.Repeat([]any{1}, ones) }),
+			Fields: []FieldProblem{{unknownField, "not_allowed"}}},
+		BodyCase{Name: "values past the bound", Body: with(func(b map[string]any) { b[unknownField] = slices.Repeat([]any{1}, ones+1) }),
+			Fields: []FieldProblem{{"", "too_long"}}})
 	return cases
+}
+
+// values is how many JSON values v holds as json.Marshal writes it: itself,
+// and in an object or an array each value in it, down to the scalars.
+func values(v any) int {
+	n := 1
+	switch v := v.(type) {
+	case map[string]any:
+		for _, x := range v {
+			n += values(x)
+		}
+	case []any:
+		for _, x := range v {
+			n += values(x)
+		}
+	}
+	return n
 }
 
 // validValue is a value that s's structure accepts: every required

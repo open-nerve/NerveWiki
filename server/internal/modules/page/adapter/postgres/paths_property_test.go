@@ -70,7 +70,8 @@ func randomName(rnd *rand.Rand, asset bool) (string, bool) {
 // Every node's path finds it, the path a node gives and the path the
 // lookups read being two implementations (v0.1 design 13.4 items 10, 13;
 // M9/P1 design 3.9.2): on random trees in the store, each alive node's
-// PathOf is in NFC, as its names are, and parses and finds it; written in
+// PathOf is in NFC, as its names are, is the path Paths writes of it (M9/P2
+// design 3.7), and parses and finds it; written in
 // capitals or in NFD it finds it too, or is too long, its segments' or its
 // bytes past their bounds; as a glob without wildcards it lists it alone,
 // within MaxGlobBytes; its parent's path with a trailing "/" lists the
@@ -122,6 +123,10 @@ func TestEveryNodesPathFindsIt(t *testing.T) {
 		for _, n := range nodes {
 			byID[n.ID] = n
 		}
+		written, err := paths.Paths(ctx, notebook, nodeIDs(nodes))
+		if err != nil || len(written) != len(nodes) {
+			t.Fatalf("Paths of %d nodes = %d, %v", len(nodes), len(written), err)
+		}
 		for _, n := range nodes {
 			var ancestors []domain.Node
 			for p := n.ParentID; p != nil; p = byID[*p].ParentID {
@@ -130,6 +135,9 @@ func TestEveryNodesPathFindsIt(t *testing.T) {
 			path := domain.PathOf(ancestors, n)
 			if !norm.NFC.IsNormalString(path) {
 				t.Fatalf("the path %q of %s is not in NFC, as its names are", path, n.Name)
+			}
+			if written[n.ID] != path {
+				t.Fatalf("Paths writes %q for %s, PathOf %q", written[n.ID], n.Name, path)
 			}
 			findsIt(t, ctx, paths, notebook, path, n, false)
 			findsIt(t, ctx, paths, notebook, strings.ToUpper(path), n, true)

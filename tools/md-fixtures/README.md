@@ -140,7 +140,7 @@ obsidian/verify-export.mjs   解析样例经导出的库与真实的 Obsidian �
 
 - `pages`：照解析样例；可选，没有时树只有 `from` 与 `page` 两页（`from` 是附件时只有 `page`），都在根下。`aliases`、`assets` 同解析样例。
 - `page`：`.md` 是哪一页的正文，默认 `src`。一个样例一页正文。
-- `from`、`to`：页面或附件的路径。父页相同是改名，名称相同是移动；两者都变的不是一次操作。附件改名不能去掉扩展名。
+- `from`、`to`：页面或附件的路径。父页相同是改名，名称相同是移动；两者都变的是 MCP 的 `move` 的一步（M9/P2 设计 3.5.3，样例 047），Obsidian 与 REST 里是两次操作，这样的样例是 `nerve-defined`。附件改名不能去掉扩展名。
 - `nerve-defined` 的样例在 `note` 里写明 Obsidian 的结果与理由。
 
 改写哪些链接：

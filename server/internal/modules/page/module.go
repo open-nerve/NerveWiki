@@ -166,6 +166,10 @@ type Module struct {
 	list         *app.ListByPattern // MCP's list (Tools)
 	read         *app.ReadPath      // MCP's read (Tools)
 	open         *app.OpenNotebook  // MCP's open_notebook (Tools)
+	write        *app.WritePath     // MCP's write (Tools)
+	edit         *app.EditPage      // MCP's edit (Tools)
+	move         *app.RelocatePath  // MCP's move (Tools)
+	remove       *app.DeletePath    // MCP's delete (Tools)
 	jobs         []jobs.Job
 	assets       *app.AssetWrites
 	imports      *app.ImportWrites
@@ -199,6 +203,7 @@ func New(d Deps) *Module {
 	trash := app.TrashReads{Notebooks: d.Notebooks, Nodes: store, Trash: store, Names: d.Names, Attachments: d.Attachments,
 		Auth: d.Authorizer, Clock: d.Clock, Retention: d.Retention}
 	history := app.HistoryReads{Notebooks: d.Notebooks, History: store, Names: d.Names, Auth: d.Authorizer}
+	locks := app.NewLockHolders(store, d.Names) // edit's precheck (M9/P2 design 3.8.2)
 	m := &Module{uc: httpadapter.UseCases{
 		ListNodes:       app.NewListNodes(d.Notebooks, store, d.Authorizer),
 		CreatePage:      app.NewCreatePage(writer, store, parser, d.Logger),
@@ -235,6 +240,10 @@ func New(d Deps) *Module {
 		jobWrites:    app.NewJobWrites(trash, store, writer, parser, store, d.MaxJobItems, d.MaxUnitHistory),
 		list:         app.NewListByPattern(d.Notebooks, store, store, d.Attachments, d.Authorizer),
 		read:         app.NewReadPath(d.Notebooks, store, store, d.Authorizer),
+		write:        app.NewWritePath(writer, parser, store, store, store, d.Notebooks, d.Authorizer, d.Logger),
+		edit:         app.NewEditPage(writer, parser, store, store, store, locks, d.Notebooks, d.Authorizer, d.Clock, d.Logger),
+		move:         app.NewRelocatePath(writer, store, d.Notebooks, d.Authorizer, d.Logger),
+		remove:       app.NewDeletePath(writer, store, d.Notebooks, d.Authorizer, d.Logger),
 		instructions: app.NewInstructions(store, store, md, mcpserver.TextBytes)}
 	m.open = app.NewOpenNotebook(m.gate, store, m.instructions)
 	if d.SearchInterval > 0 {

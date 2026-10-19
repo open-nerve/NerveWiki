@@ -3,10 +3,12 @@ package migrations_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"slices"
 	"strings"
 	"testing"
+	"unicode"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -15,6 +17,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres/pgtest"
+	"github.com/open-nerve/NerveWiki/server/internal/shared"
 	"github.com/open-nerve/NerveWiki/server/migrations"
 )
 
@@ -432,10 +435,10 @@ func TestConstraintAndIndexNames(t *testing.T) {
 	}
 }
 
-// The CHECKs accept what the domain writes and reject what bypasses it.
-func TestChecksRejectCounterexamples(t *testing.T) {
-	ctx := context.Background()
-	pool := newPool(t, pgtest.NewDatabase(t))
+// checkedRows writes a row of each table the CHECKs guard, as the domain
+// writes them: the CHECKs accept them.
+func checkedRows(t *testing.T, pool *pgxpool.Pool) {
+	t.Helper()
 	const user = "'0199a2b4-0000-7000-8000-000000000001'"
 	for _, stmt := range []string{
 		"INSERT INTO users (id, email, password, display_name, onboarding_steps, created_at, updated_at) VALUES (" +
@@ -513,10 +516,17 @@ func TestChecksRejectCounterexamples(t *testing.T) {
 			"started_at, heartbeat_at, created_at) VALUES ('0199a2b4-0000-7000-8000-000000000018', '0199a2b4-0000-7000-8000-000000000008', " +
 			"'export', 'running', 'n', " + user + ", 'web', 1, 2, now(), now(), now())",
 	} {
-		if _, err := pool.Exec(ctx, stmt); err != nil {
+		if _, err := pool.Exec(context.Background(), stmt); err != nil {
 			t.Fatalf("%s: %v", stmt, err)
 		}
 	}
+}
+
+// The CHECKs accept what the domain writes and reject what bypasses it.
+func TestChecksRejectCounterexamples(t *testing.T) {
+	ctx := context.Background()
+	pool := newPool(t, pgtest.NewDatabase(t))
+	checkedRows(t, pool)
 	insertUser := func(email, displayName string) string {
 		return "INSERT INTO users (id, email, password, display_name, created_at, updated_at) VALUES (gen_random_uuid(), " +
 			email + ", 'x', " + displayName + ", now(), now())"
@@ -605,6 +615,12 @@ func TestChecksRejectCounterexamples(t *testing.T) {
 		{"an MCP client without a name", "UPDATE changesets SET client = 'mcp:'", "changesets_client_check"},
 		{"an MCP client's name with a newline", `UPDATE changesets SET client = E'mcp:a\nb'`, "changesets_client_check"},
 		{"an MCP client's name of 129 characters", "UPDATE changesets SET client = 'mcp:' || repeat('名', 129)", "changesets_client_check"},
+		// The four characters of the M4/P1 hand-off: C1 controls and DEL, which [:cntrl:] took or refused by the
+		// locale, and a line separator, which it took (M9/P2 design 3.3.2).
+		{"an MCP client's name with U+0085", "UPDATE changesets SET client = 'mcp:a' || chr(133)", "changesets_client_check"},
+		{"an MCP client's name with U+009F", "UPDATE changesets SET client = 'mcp:a' || chr(159)", "changesets_client_check"},
+		{"an MCP client's name with U+007F", "UPDATE changesets SET client = 'mcp:a' || chr(127)", "changesets_client_check"},
+		{"an MCP client's name with U+2028", "UPDATE changesets SET client = 'mcp:a' || chr(8232)", "changesets_client_check"},
 		{"an empty message", "UPDATE changesets SET message = ''", "changesets_message_check"},
 		{"a message of 4097 bytes", "UPDATE changesets SET message = repeat('a', 4097)", "changesets_message_check"},
 		{"half a state after", "UPDATE changeset_items SET after_sort_order = NULL", "changeset_items_state_check"},
@@ -623,6 +639,14 @@ func TestChecksRejectCounterexamples(t *testing.T) {
 		{"a version's size other than its content's", "UPDATE page_revisions SET byte_size = 2", "page_revisions_byte_size_check"},
 		{"a version over 5 MB", "UPDATE page_revisions SET content = repeat('a', 5242881), byte_size = 5242881", "page_revisions_byte_size_check"},
 		{"a session's unknown client", "UPDATE edit_sessions SET client = 'mobile'", "edit_sessions_client_check"},
+		{"a session's MCP client without a name", "UPDATE edit_sessions SET client = 'mcp:'", "edit_sessions_client_check"},
+		{"a session's MCP client's name with a newline", `UPDATE edit_sessions SET client = E'mcp:a\nb'`, "edit_sessions_client_check"},
+		{"a session's MCP client's name of 129 characters", "UPDATE edit_sessions SET client = 'mcp:' || repeat('名', 129)",
+			"edit_sessions_client_check"},
+		{"a session's MCP client's name with U+0085", "UPDATE edit_sessions SET client = 'mcp:a' || chr(133)", "edit_sessions_client_check"},
+		{"a session's MCP client's name with U+009F", "UPDATE edit_sessions SET client = 'mcp:a' || chr(159)", "edit_sessions_client_check"},
+		{"a session's MCP client's name with U+007F", "UPDATE edit_sessions SET client = 'mcp:a' || chr(127)", "edit_sessions_client_check"},
+		{"a session's MCP client's name with U+2028", "UPDATE edit_sessions SET client = 'mcp:a' || chr(8232)", "edit_sessions_client_check"},
 		{"a session's changeset without its revision", "UPDATE edit_sessions SET revision = NULL", "edit_sessions_written_check"},
 		{"a session's revision without its changeset", "UPDATE edit_sessions SET changeset_id = NULL", "edit_sessions_written_check"},
 		{"a session's revision 0", "UPDATE edit_sessions SET revision = 0", "edit_sessions_written_check"},
@@ -712,5 +736,71 @@ func TestChecksRejectCounterexamples(t *testing.T) {
 				t.Errorf("%s = %v, want check_violation (23514) of %s", tt.stmt, err, tt.constraint)
 			}
 		})
+	}
+	// Each client check, as the database holds it, refuses exactly the code points shared.Unshowable refuses
+	// in a name, but NUL, which text holds not (M9/P2 design 3.3.2): one statement a table, PostgreSQL reading
+	// its own expression. A Go of another Unicode, whose set differs, fails here: a migration follows it
+	// (v0.1 design 13.4 rule 13).
+	var unshowable []int32
+	for r := rune(1); r <= unicode.MaxRune; r++ {
+		if (r < 0xd800 || r > 0xdfff) && shared.Unshowable(r) {
+			unshowable = append(unshowable, r)
+		}
+	}
+	for _, check := range []string{"changesets_client_check", "edit_sessions_client_check"} {
+		var expr string
+		if err := pool.QueryRow(ctx, "SELECT pg_get_expr(conbin, conrelid) FROM pg_constraint WHERE conname = $1", check).Scan(&expr); err != nil {
+			t.Fatalf("%s: %v", check, err)
+		}
+		rows, err := pool.Query(ctx, "SELECT n FROM (SELECT n, 'mcp:a' || chr(n) AS client FROM generate_series(1, 1114111) n "+
+			"WHERE n < 55296 OR n > 57343) s WHERE NOT ("+expr+") ORDER BY n")
+		if err != nil {
+			t.Fatalf("%s: %v", check, err)
+		}
+		refused, err := pgx.CollectRows(rows, pgx.RowTo[int32])
+		if err != nil {
+			t.Fatalf("%s: %v", check, err)
+		}
+		if !slices.Equal(refused, unshowable) {
+			t.Errorf("%s refuses %d code points, shared.Unshowable %d; the first that differ: %v",
+				check, len(refused), len(unshowable), firstDifferences(refused, unshowable))
+		}
+	}
+}
+
+// firstDifferences are the first few code points of one list and not the
+// other, as U+XXXX.
+func firstDifferences(a, b []int32) []string {
+	var diff []string
+	for _, pair := range [][2][]int32{{a, b}, {b, a}} {
+		for _, r := range pair[0] {
+			if _, found := slices.BinarySearch(pair[1], r); !found && len(diff) < 10 {
+				diff = append(diff, fmt.Sprintf("U+%04X", r))
+			}
+		}
+	}
+	return diff
+}
+
+// The client checks take a name of what Client.Valid takes: a space, a
+// no-break space, the format characters but the bidirectional controls (a
+// soft hyphen, the zero-width space and joiners, a byte order mark, the
+// separators U+2027 and U+202F, the invisible operators and the deprecated
+// format characters), and 128 characters. Client.Valid is shared.Unshowable
+// with mcp: and the length, checked by page/domain's tests; these import no
+// module (v0.1 design 13.1 rule 11).
+func TestTheClientChecksTakeWhatValidTakes(t *testing.T) {
+	ctx := context.Background()
+	pool := newPool(t, pgtest.NewDatabase(t))
+	checkedRows(t, pool)
+	for _, table := range []string{"changesets", "edit_sessions"} {
+		for _, n := range []int{32, 160, 173, 8203, 8204, 8205, 8231, 8239, 8293, 8298, 65279} {
+			if _, err := pool.Exec(ctx, "UPDATE "+table+" SET client = 'mcp:a' || chr($1)", n); err != nil {
+				t.Errorf("%s's client with U+%04X: %v", table, n, err)
+			}
+		}
+		if _, err := pool.Exec(ctx, "UPDATE "+table+" SET client = 'mcp:' || repeat('名', 128)"); err != nil {
+			t.Errorf("%s's client of 128 characters: %v", table, err)
+		}
 	}
 }

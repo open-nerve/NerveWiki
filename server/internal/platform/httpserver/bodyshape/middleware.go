@@ -12,8 +12,9 @@ import (
 // back unchanged.
 //
 // onError answers a body that could not be read (the read error, e.g.
-// *http.MaxBytesError) and Check's errors: ErrNotJSON and *Error. A body that
-// Check has nothing to say about, such as an empty one, is passed on.
+// *http.MaxBytesError) and Check's errors: ErrNotJSON, *TooManyValues and
+// *Error. A body that Check has nothing to say about, such as an empty one,
+// is passed on.
 func Middleware(t *Table, onError func(http.ResponseWriter, *http.Request, error)) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

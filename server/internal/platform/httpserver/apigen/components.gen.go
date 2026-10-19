@@ -104,7 +104,7 @@ type FieldError struct {
 	// Code What is wrong with the field.
 	Code FieldErrorCode `json:"code"`
 
-	// Field The field's path in the request, e.g. title or properties.status. A path longer than 256 bytes is cut short and ends with `…`.
+	// Field The field's path in the request, e.g. title or properties.status. A path longer than 256 bytes is cut short and ends with `…`. The empty path is the request body itself: a JSON body of more than 1,000 JSON values (each object, array, string, number, true, false and null is one) is bad_request with this one field, too_long, read no further.
 	Field   string `json:"field"`
 	Message string `json:"message"`
 }

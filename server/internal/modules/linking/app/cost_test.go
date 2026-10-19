@@ -14,8 +14,13 @@ import (
 // M1 and its fix check): 100 000 links to a name a thousand pages have,
 // each in a case of its own, resolve in well under a second, where one
 // resolution a link took five. The race detector slows the code too much
-// for a bound in time: make test-go runs it in a build without.
+// for a bound in time: make test-go runs it in a build without. -short
+// skips it too: go test -short ./... runs the packages side by side, whose
+// load sways a bound in time (M9/P2 S1 fix round 2).
 func TestALinkWrittenManyTimesResolvesOnce(t *testing.T) {
+	if testing.Short() {
+		t.Skip("a bound in time, measured alone by make test-go-costs")
+	}
 	const name = "abcdefghijklmnopq"
 	w := newWorld(t, "src")
 	for i := range 1000 {
@@ -54,8 +59,12 @@ func TestALinkWrittenManyTimesResolvesOnce(t *testing.T) {
 // pages whose path ends as theirs (M6 closeout FA-I1): 50,000 pages named
 // x, each under a page of its own, and a page with a link to each by its
 // path resolve in well under a second, where each link read every page
-// named x: seconds every time the page was read.
+// named x: seconds every time the page was read. It runs as the one above
+// does: in a build without the race detector, and not under -short.
 func TestDistinctPathsToPagesOfOneTitleResolveInTimeAsLongAsThey(t *testing.T) {
+	if testing.Short() {
+		t.Skip("a bound in time, measured alone by make test-go-costs")
+	}
 	const n = 50_000
 	w := newWorld(t, "src")
 	targets := make([]string, n)

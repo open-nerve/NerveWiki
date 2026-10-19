@@ -23,11 +23,20 @@ func (u *Unit) rename(ctx context.Context, id uuid.UUID, name string, participat
 	if err != nil {
 		return domain.Node{}, found(err, domain.ErrNotFound)
 	}
-	title, err := nameOf(n, name)
-	switch {
-	case err != nil:
+	title, err := nameOf(n, name, "name")
+	if err != nil {
 		return domain.Node{}, err
-	case title.Name == n.Name:
+	}
+	return u.renameTo(ctx, n, title, participate, titleFree, u.w.d.NodeWriter.RenameNode)
+}
+
+// renameTo renames n to title under its parent, title checked: nothing
+// written when n is so named; a key that changes checked by free among
+// the siblings; one step of OpRename, its write write's.
+func (u *Unit) renameTo(ctx context.Context, n domain.Node, title domain.Title, participate bool,
+	free func(siblings []domain.Node, title domain.Title, self uuid.UUID) error, write func(context.Context, domain.Node) error,
+) (domain.Node, error) {
+	if title.Name == n.Name {
 		return n, nil
 	}
 	if title.Key != n.NameKey {
@@ -35,7 +44,7 @@ func (u *Unit) rename(ctx context.Context, id uuid.UUID, name string, participat
 		if err != nil {
 			return domain.Node{}, err
 		}
-		if err := titleFree(siblings, title, n.ID); err != nil {
+		if err := free(siblings, title, n.ID); err != nil {
 			return domain.Node{}, err
 		}
 	}
@@ -43,16 +52,14 @@ func (u *Unit) rename(ctx context.Context, id uuid.UUID, name string, participat
 	renamed.Name, renamed.NameKey, renamed.UpdatedBy, renamed.UpdatedAt = title.Name, title.Key, u.write.By, u.write.At
 	before, after := n.State(), renamed.State()
 	step := u.step(domain.OpRename, domain.Change{NodeID: n.ID, Before: &before, After: &after})
-	err = u.apply(ctx, step, participate, func(ctx context.Context) error {
-		return u.w.d.NodeWriter.RenameNode(ctx, renamed)
-	})
+	err := u.apply(ctx, step, participate, func(ctx context.Context) error { return write(ctx, renamed) })
 	return renamed, err
 }
 
-// nameOf checks name as n's new name, by n's kind.
-func nameOf(n domain.Node, name string) (domain.Title, error) {
+// nameOf checks name as n's new name, by n's kind, as field.
+func nameOf(n domain.Node, name, field string) (domain.Title, error) {
 	if n.Kind == domain.KindAsset {
-		return domain.CheckAssetRename("name", n.Name, name)
+		return domain.CheckAssetRename(field, n.Name, name)
 	}
-	return domain.CheckTitle("name", name)
+	return domain.CheckTitle(field, name)
 }

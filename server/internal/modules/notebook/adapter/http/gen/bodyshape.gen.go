@@ -5,8 +5,9 @@ package gen
 import "github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/bodyshape"
 
 // BodyShapes returns the structure of every JSON request body of this module,
-// by route pattern. The platform's bodyshape middleware checks each request
-// body against it before the strict handler decodes it.
+// by route pattern, and the REST API's bound on a body's JSON values. The
+// platform's bodyshape middleware checks each request body against it before
+// the strict handler decodes it.
 func BodyShapes() *bodyshape.Table {
 	return &bodyshape.Table{
 		Nodes: []bodyshape.Node{
@@ -25,5 +26,6 @@ func BodyShapes() *bodyshape.Table {
 			"POST /api/v0/notebooks/{notebook_id}/members":        5,
 			"POST /api/v0/workspaces/{slug}/notebooks":            7,
 		},
+		MaxValues: bodyshape.MaxRESTValues,
 	}
 }

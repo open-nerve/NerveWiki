@@ -228,17 +228,20 @@ const matrixApps = 8
 // Each cell of the matrix, in parallel: a reading cell on the reads' copy,
 // a cell with an app of its own (a writing cell, or one whose row has a
 // config) on its copy, at most matrixApps of those at once. Every answer a
-// row's check is for is checked, and counted: a harness that skipped the
-// checks would fail.
+// row's check or after is for is checked, and counted: a harness that
+// skipped them would fail (M9/P2 design 3.13.2).
 func TestPermissionMatrix(t *testing.T) {
 	d := prepareMatrix(t)
 	contract := apitest.Load(t)
 	reads := startApp(t, d.config(t, pgtest.NewDatabaseFrom(t, d.url), nil), migrations.FS())
 	apps := make(chan struct{}, matrixApps)
-	var checked, toCheck atomic.Int64
+	var checked, toCheck, aftered, toAfter atomic.Int64
 	t.Cleanup(func() {
 		if !t.Failed() && checked.Load() != toCheck.Load() {
 			t.Errorf("%d answers checked, want %d", checked.Load(), toCheck.Load())
+		}
+		if !t.Failed() && aftered.Load() != toAfter.Load() {
+			t.Errorf("%d writes read back, want %d", aftered.Load(), toAfter.Load())
 		}
 	})
 	for _, r := range matrixRows() {
@@ -253,6 +256,9 @@ func TestPermissionMatrix(t *testing.T) {
 				// their checks.
 				if r.check != nil && want.code == "" {
 					toCheck.Add(1)
+				}
+				if r.after != nil && want.code == "" {
+					toAfter.Add(1)
 				}
 				base := reads
 				if r.write || r.config != nil {
@@ -280,6 +286,7 @@ func TestPermissionMatrix(t *testing.T) {
 					r.after(t, c, d.seeded.in(t), func(path string) (int, string) {
 						return ask(t, contract, http.MethodGet, base+path, d.tokens[c], "")
 					})
+					aftered.Add(1)
 				}
 			})
 		}

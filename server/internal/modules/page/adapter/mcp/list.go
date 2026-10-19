@@ -50,7 +50,7 @@ func (t tools) list(ctx context.Context, c mcpserver.Call, in listIn) (mcpserver
 	}
 	l, err := t.uc.List.Execute(ctx, c.Notebook, pattern, in.Limit, in.Cursor)
 	if err != nil {
-		return mcpserver.Result{}, toolErr(err)
+		return mcpserver.Result{}, toolErr(err, c, pattern)
 	}
 	items := make([]listItem, len(l.Items))
 	for i, it := range l.Items {

@@ -146,7 +146,7 @@ type fakeStore struct {
 	queued          []queuing
 	queuedNotebooks []uuid.UUID
 	// errs fails the calls named: FindNodeIn and Children; WriteContent,
-	// RenameNode and MoveNode.
+	// RenameNode, MoveNode and RelocateNode.
 	errs map[string]error
 	// trash are the nodes deleted, with when and whether each is a trash
 	// item's root, which FindAnyNode and the trash's reads read; counts
@@ -513,6 +513,15 @@ func (f *fakeStore) RenameNode(ctx context.Context, n domain.Node) error {
 func (f *fakeStore) MoveNode(ctx context.Context, n domain.Node) error {
 	f.record(ctx, "MoveNode")
 	if err := f.errs["MoveNode"]; err != nil {
+		return err
+	}
+	f.nodes[n.ID] = n
+	return nil
+}
+
+func (f *fakeStore) RelocateNode(ctx context.Context, n domain.Node) error {
+	f.record(ctx, "RelocateNode")
+	if err := f.errs["RelocateNode"]; err != nil {
 		return err
 	}
 	f.nodes[n.ID] = n
@@ -1307,6 +1316,28 @@ func (f *fakeStore) RootByKey(ctx context.Context, notebookID uuid.UUID, key str
 func (f *fakeStore) ChildByKey(ctx context.Context, notebookID, parentID uuid.UUID, key string) (domain.Node, bool, error) {
 	f.record(ctx, "ChildByKey")
 	return f.byKey(notebookID, &parentID, key)
+}
+
+// PathsOf writes the paths of the nodes of the notebook among ids, a call
+// with their count; errs["PathsOf"] fails it.
+func (f *fakeStore) PathsOf(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]string, error) {
+	f.record(ctx, fmt.Sprintf("PathsOf %d", len(ids)))
+	if err := f.errs["PathsOf"]; err != nil {
+		return nil, err
+	}
+	out := map[uuid.UUID]string{}
+	for _, id := range ids {
+		n, ok := f.nodes[id]
+		if !ok || n.NotebookID != notebookID {
+			continue
+		}
+		var ancestors []domain.Node
+		for p := n.ParentID; p != nil; p = f.nodes[*p].ParentID {
+			ancestors = append([]domain.Node{f.nodes[*p]}, ancestors...)
+		}
+		out[id] = domain.PathOf(ancestors, n)
+	}
+	return out, nil
 }
 
 func (f *fakeStore) byKey(notebookID uuid.UUID, parentID *uuid.UUID, key string) (domain.Node, bool, error) {

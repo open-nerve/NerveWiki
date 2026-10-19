@@ -86,7 +86,7 @@ type Server struct {
 	notebookEntry, accountEntry *mcp.Server
 	handler                     http.Handler
 	// tools are the names of each entry's tools: a tools/call over
-	// maxOtherBytes names one of its entry's, or is 413.
+	// MaxOtherBytes names one of its entry's, or is 413.
 	tools map[Entry]map[string]bool
 }
 

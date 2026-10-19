@@ -282,6 +282,8 @@ func apiConfig(cfg config.Config, logger *slog.Logger, limiter *ratelimit.Limite
 		RequestTimeout:   cfg.Server.RequestTimeout,
 		RequestTimeouts:  timeouts,
 		BodyLimits:       bodies,
+		LargeBodies:      largeBodies,
+		LargeBodyWait:    largeBodyWait,
 		BodyReadTimeout:  cfg.Server.ReadTimeout,
 		WriteTimeout:     cfg.Server.WriteTimeout,
 		TrustedProxies:   cfg.Server.TrustedProxies,

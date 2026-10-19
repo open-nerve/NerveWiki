@@ -1,0 +1,14 @@
+{
+  "description": "一步里换了父页、名称只改大小写（MCP 的 move）：x 在笔记本里唯一，入链写成新的名称；目标带 / 而显示文字与最后一段相同的跟着改。",
+  "source": "nerve-defined",
+  "pages": [
+    "a",
+    "a/x",
+    "b",
+    "src"
+  ],
+  "page": "src",
+  "from": "a/x",
+  "to": "b/X",
+  "note": "Obsidian 与 REST 的移动与改名各是一次操作；MCP 的 move 一步同时换父页与名称，这里是这一步照 M6 的规则的结果（M9/P2 设计 3.5.3）：[[a/x|x]] 得 [[X|X]]，先移动、再改大小写的两步得 [[X|x]]。没有与 Obsidian 核对。"
+}

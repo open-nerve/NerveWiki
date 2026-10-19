@@ -17,7 +17,9 @@ server:
   request_timeout: 15s
   # 接口请求体的上限（字节），超出时 413 payload_too_large。页面正文的两个路由（写正文、带正文新建）
   # 与 /mcp（一次调用可以带一页的正文）另有自己的上限，期限另加 read_timeout，给请求体传完的时间：
-  # 5 MiB 的正文在 30 秒内传完约需 1.4 Mbit/s 的上行，更慢的链路调大 read_timeout 与 write_timeout
+  # 5 MiB 的正文在 30 秒内传完约需 1.4 Mbit/s 的上行，更慢的链路调大 read_timeout 与 write_timeout。
+  # 它也是那两个正文路由的大请求体的门槛（/mcp 的是 64 KiB）：整个服务同时至多读两个超过门槛的请求体、
+  # 每个凭证至多一个，取不到的至多等 2 秒，然后 503 server_busy（名额与等候是代码里的常量）
   max_body_bytes: 1048576
   # 非空时，监听成功后把实际地址写进这个文件（端到端测试用 127.0.0.1:0 监听）
   addr_file: ""

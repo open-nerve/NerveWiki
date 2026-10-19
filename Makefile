@@ -136,7 +136,7 @@ gen-check-web: gen-web ## 重新生成 api/dist 和 TS 类型并检查（持续�
 	@$(call check-committed,$(GEN_WEB_OUT))
 
 .PHONY: check
-check: lint knip test build-web ## 静态检查、未使用代码检查、测试、前端构建（生成物一致性另跑 gen-check）
+check: lint knip test test-go-short build-web ## 静态检查、未使用代码检查、测试、go test -short 的单元测试（CI 的 short 一份）、前端构建（生成物一致性另跑 gen-check）
 
 .PHONY: lint
 lint: lint-go lint-web ## 全部静态检查
@@ -168,7 +168,8 @@ knip: ## 检查未使用的文件、导出和依赖（需要 Node）
 	pnpm exec knip --treat-config-hints-as-errors
 
 # -race 需要 cgo：macOS 需要 Xcode 命令行工具，Linux 需要 gcc。
-# 集成测试用 testcontainers 启动 PostgreSQL，需要 Docker；只跑单元测试用 cd server && go test -short ./...
+# 集成测试用 testcontainers 启动 PostgreSQL，需要 Docker；只跑单元测试用 make test-go-short（cd server && go test -short ./...，
+# README 的写法；make check 与 CI 的 short 一份都跑它）
 # 不用测试缓存：它不跟踪 server/ 之外的文件，契约测试读取的 api/dist/openapi.yaml 改了也会重放旧结果。
 # server/tools 是嵌套的独立模块，另跑一次
 .PHONY: test
@@ -179,12 +180,17 @@ GO_TEST_RACE = go test -race -count=1 -timeout 15m
 
 .PHONY: test-go
 test-go: ## 运行 Go 测试，含集成测试与 server/tools（开启竞态检测，不用测试缓存；需要 Docker）
-	@# 本机一次跑全部的包，各包并行；CI 分成下面五份并行（M8/P3A 审查 C 的 I-1；M8/P4A 分出组合根的守卫，再把组合根分成两份），五份之和就是这里
-	cd server && $(GO_TEST_RACE) ./...
+	@# 本机与 CI 同样分份（M9/P2 设计 6.5）：组合根之外的包一个 go test，组合根按测试名三份、各一个 go test 二进制、各受 15 分钟，
+	@# 同一条规则管两处（之前组合根是一个二进制，本机 8 到 9.5 分钟，比 CI 的任何一份先到 15 分钟）。竞态检测的这四个同时跑
+	@# （-j4，随份数；macOS 的 make 3.81 也有 -j），之后不带竞态检测的两份依次跑，不与竞态检测下的构建抢 CPU；各份之和就是下面 CI 的六份
+	@# （M8/P3A 审查 C 的 I-1）。M9/P2 S1 各量两次：两份时竞态检测的三个同时跑（-j3）整个 759 与 754 秒、依次 1031 与 1061 秒，
+	@# 只快 4.8 分钟，不到设计定的 5 分钟，所以先是依次；分成三份之后（S1 修复第一轮）四个同时跑整个 698 与 730 秒、依次 1024 与 1058 秒，
+	@# 同时的平均快 5.45 分钟，过了 5 分钟，所以同时（四个里第一份最长，284 与 319 秒）。同时跑的输出交错：找 --- FAIL、FAIL 与 make 的 Error 三种行
+	@$(MAKE) --no-print-directory -j4 test-go-race test-go-bootstrap-1 test-go-bootstrap-2 test-go-bootstrap-3
 	@$(MAKE) --no-print-directory test-go-costs
 	@$(MAKE) --no-print-directory test-go-guards
 
-# CI 的五份：一个作业跑全部时超过了 25 分钟的时限（M8/P3A，竞态检测下的组合根占了一半）。
+# CI 的六份（short 是第七份，只跑单元测试，不在 make test-go 里，见 test-go-short）：一个作业跑全部时超过了 25 分钟的时限（M8/P3A，竞态检测下的组合根占了一半）。
 # 组合根之外的包由 go list 列出，以后新加的包自动归入第一份。不带竞态检测的那一份在 M8/P4A 之前作业已到 15 分钟
 # （测试一步 13:37），超过 15 分钟就分（M8/P4 设计 3.11）：组合根的预算与守卫各自编译、各起数据库，分作一份。
 # 竞态检测下的组合根在 M8/P4A 的 CI 上测试一步 12:00–12:05，离 go test 的 15 分钟只剩约两成，P5 还要加测试（M8/P4A 审查 C 的 M-6）：
@@ -194,28 +200,48 @@ test-go: ## 运行 Go 测试，含集成测试与 server/tools（开启竞态检
 # M9/P1 S3 时各单独跑一次是 213 与 242 秒（第二份多 13%），界线照设计 6.1 再往后挪到 TestEveryS 之前，是重新平衡，
 # 不是 S3 的测试让第二份变慢（它们不带竞态检测共约 3 秒）：TestEveryR 开头的两个（vault 的导出与导入，约 18 秒）挪到第一份，
 # 挪了之后单独跑 238 与 229 秒。单独跑一次的时间前后可差一成以上（同一棵树上第一份 213 到 260 秒，CI 上同一份 5:44 到 7:59），
-# 以后判断挪不挪，取每份两次的平均（M9/P1 S3 审查 C 的 N-4）
-# -run 与 -skip 用同一个表达式：两份之和总是整个包，新加的测试自动落在其中一份；一份变得太慢时改这个表达式
+# 以后判断挪不挪，取每份两次的平均（M9/P1 S3 审查 C 的 N-4）。
+# 一份过了线（CI 两次运行的平均里测试一步过了约 7:30，go test 的 -timeout 15m 的一半）时照 M9/P2 设计 6.5 的规则：
+# 只在邻居收下之后两份都在线之下时挪界线，否则按测试名再分一份，从不提高 -timeout。M9/P2 S1 时 CI 的两次运行里第一份的测试一步
+# 6:59 与 6:56（平均 6:57.5），第二份 7:15 与 8:33（平均 7:54），过了线；本机各单独跑两次，第一份 256 与 281 秒，第二份 245 与 247 秒。
+# S1 先把界线往后挪到 TestO 之前（第二份最前的一段，本机约 16.5 秒，乘 CI 与本机之比 1.73 约 29 秒，估计两份约 7:26 与 7:25）；
+# 挪了之后 CI 的三次运行里两份是 7:25 与 7:54、5:25 与 5:27、7:25 与 7:45，第二次两份都快，看作 runner 的离群（S1 修复第一轮，
+# 主持者的判断）：第二份照旧过线、第一份就在线上，这次挪动不成立，照规则撤回、按测试名再分一份。第一份回到 TestEveryS 之前，
+# 原来的第二份以 BOOTSTRAP_THIRD 分成两份：名字以 TheF 到 TheZ、Ti 到 Tz、U 到 Z 开头的一份，其余的一份（竞态下编译的 374 个测试
+# 依次 168、104、102 个，S1 的两次 -json 运行里每个测试的用时之和 265.0、125.1、118.7 秒，新的两份差 5%，在一成之内）；
+# 分了之后各单独跑两次，第一份 254 与 246 秒、第二份 121 与 132 秒、第三份 121 与 131 秒（平均 250、126.5 与 126 秒，新的两份差 0.4%）；
+# CI 的两次运行里三份的测试一步 5:51 与 7:07（平均 6:29）、5:13 与 4:20（平均 4:46.5）、3:12 与 3:49（平均 3:30.5），都在线之下，
+# 这次分照规则成立。第一份离线最近（这个界线上 CI 的四次是 6:59、6:56、5:51、7:07），过了线时照规则先看第二份收不收得下它的一段
+# -run 与 -skip 用同一组表达式：第一、第三份 -run 各自的表达式，第二份 -skip 它们的并，三份之和总是整个包，新加的测试
+# 自动落在其中一份；一份过了线时照 M9/P2 设计 6.5 的规则改这些表达式
 BOOTSTRAP_FIRST = ^Test([A-D]|E([a-u]|very[A-R]))
+# M9/P2 S1：第二份的测试一步过了 go test 的 15 分钟的一半（CI 的两次运行 7:15 与 8:33），照规则按测试名再分一份，不提高 -timeout（M9/P2 设计 6.5）
+BOOTSTRAP_THIRD = ^Test(The[F-Z]|T[i-z]|[U-Z])
 .PHONY: test-go-race
 test-go-race: ## 竞态检测下运行组合根（internal/bootstrap）之外的全部 Go 包（CI 的一份；需要 Docker）
 	cd server && $(GO_TEST_RACE) $$(go list ./... | grep -v '/internal/bootstrap$$')
 
 .PHONY: test-go-bootstrap
-test-go-bootstrap: test-go-bootstrap-1 test-go-bootstrap-2 ## 竞态检测下运行组合根的整个程序测试，两份依次（需要 Docker）
+test-go-bootstrap: test-go-bootstrap-1 test-go-bootstrap-2 test-go-bootstrap-3 ## 竞态检测下运行组合根的整个程序测试，三份依次（需要 Docker）
 
 .PHONY: test-go-bootstrap-1
 test-go-bootstrap-1: ## 竞态检测下运行组合根的整个程序测试中名字匹配 BOOTSTRAP_FIRST 的（CI 的一份；需要 Docker）
 	cd server && $(GO_TEST_RACE) -run '$(BOOTSTRAP_FIRST)' ./internal/bootstrap
 
 .PHONY: test-go-bootstrap-2
-test-go-bootstrap-2: ## 竞态检测下运行组合根的整个程序测试中其余的（CI 的一份；需要 Docker）
-	cd server && $(GO_TEST_RACE) -skip '$(BOOTSTRAP_FIRST)' ./internal/bootstrap
+test-go-bootstrap-2: ## 竞态检测下运行组合根的整个程序测试中名字既不匹配 BOOTSTRAP_FIRST 也不匹配 BOOTSTRAP_THIRD 的（CI 的一份；需要 Docker）
+	cd server && $(GO_TEST_RACE) -skip '$(BOOTSTRAP_FIRST)|$(BOOTSTRAP_THIRD)' ./internal/bootstrap
+
+.PHONY: test-go-bootstrap-3
+test-go-bootstrap-3: ## 竞态检测下运行组合根的整个程序测试中名字匹配 BOOTSTRAP_THIRD 的（CI 的一份；需要 Docker）
+	cd server && $(GO_TEST_RACE) -run '$(BOOTSTRAP_THIRD)' ./internal/bootstrap
 
 .PHONY: test-go-costs
 test-go-costs: ## 不带竞态检测的分配、耗时预算与界线的守卫，以及 server/tools（CI 的一份；需要 Docker）
 	@# 竞态检测让同一段代码的分配多出数倍、耗时慢数倍：分配与耗时的预算，以及阅读视图在各种解析下的 HTML 检查与体积上限，在不带它的构建中另测一次
 	cd server && go test -count=1 -run '^TestCheckCostsAboutTheBody$$' ./internal/platform/httpserver/bodyshape
+	@# /mcp 的请求体的 JSON 值有上限，扫描过了它就停：路由上限那么长（37.8 MB）的 [[],[],…] 被拒时只分配几 KiB（M9/P2 S1 审查 A2-I1）；这个测试只在不带竞态检测的构建里
+	cd server && go test -count=1 -run '^TestTheValuesBoundStopsTheScanEarly$$' ./internal/platform/httpserver/mcpserver
 	cd server && go test -count=1 -run '^TestTheCostsAreAboutTheSize$$' ./internal/platform/markdown
 	cd server && go test -count=1 -run '^(TestALinkWrittenManyTimesResolvesOnce|TestDistinctPathsToPagesOfOneTitleResolveInTimeAsLongAsThey)$$' ./internal/modules/linking/app
 	cd server && go test -count=1 -run '^TestTheLinktextsOfManyPagesOfOneTitleAreCheap$$' ./internal/modules/linking/domain
@@ -225,14 +251,20 @@ test-go-costs: ## 不带竞态检测的分配、耗时预算与界线的守卫�
 	@# 概况的守卫同样带 -v：计数与最后的变更两条语句、读整棵树各自的中位数（M9/P1 设计 3.17.3）
 	cd server && go test -count=1 -v -run '^TestTheOverviewReadsInTimeAsLongAsTheTree$$' ./internal/modules/page/adapter/postgres
 	cd server && go test -count=1 -run '^TestAnImportsUnitNumbersNamesThatCutAlikeInTimeAsLongAsThey$$' ./internal/modules/page/app
-	@# glob 的守卫同样带 -v：最坏的模式在守卫树上走到 MaxGlobWork 的用时（M9/P1 设计 3.10.1）
-	cd server && go test -count=1 -v -run '^TestTheWorstGlobsStopWithinTheirWork$$' ./internal/modules/page/domain
+	@# glob 的守卫同样带 -v：最坏的模式在守卫树上走到 MaxGlobWork 的用时（M9/P1 设计 3.10.1）；edit 的匹配的守卫也在这一行：每种形状的用时（M9/P2 设计 3.9）
+	cd server && go test -count=1 -v -run '^(TestReplaceStaysWithinItsTime|TestTheWorstGlobsStopWithinTheirWork)$$' ./internal/modules/page/domain
 	cd server && go test -count=1 -run '^TestPagesWhoseNamesCutAlikeAreRenamedInTimeAsLongAsThey$$' ./internal/modules/transfer/domain
 	go -C server/tools test -race -count=1 ./...
 
 .PHONY: test-go-guards
 test-go-guards: ## 不带竞态检测的组合根的预算与界线的守卫（CI 的一份；需要 Docker）
-	cd server && go test -count=1 -run '^(TestTheAppsMarkdownCostsAboutItsSize|TestTheAppsMarkdownRendersCheckedHTML|TestTheAppsLinksAreWithinTheirBound)$$' ./internal/bootstrap
+	@# 这一份的 go test 不带 -timeout，每一行受 Go 默认的每个测试二进制 10 分钟。一行在 CI 上的估计（本机两次的平均乘 2.4，这一份的 CI 与本机之比）
+	@# 过了它的一半就一个测试一行，单独一行仍过的那一行加 -timeout 15m（M9/P2 设计 6.5）。markdown 的三个原先一行，本机 140 到 155 秒；
+	@# M9/P2 S1 各单独跑两次：成本的 125.5 与 127.9 秒，渲染的 3.7 与 4.0 秒，链接的 22.5 与 21.7 秒，之和乘 2.4 约 6.1 分钟，所以拆成三行；
+	@# 成本的一个乘 2.4 约 5.1 分钟，仍过了 Go 默认的每个测试二进制 10 分钟的一半，它的一行加 -timeout 15m
+	cd server && go test -count=1 -timeout 15m -run '^TestTheAppsMarkdownCostsAboutItsSize$$' ./internal/bootstrap
+	cd server && go test -count=1 -run '^TestTheAppsMarkdownRendersCheckedHTML$$' ./internal/bootstrap
+	cd server && go test -count=1 -run '^TestTheAppsLinksAreWithinTheirBound$$' ./internal/bootstrap
 	@# 恢复在单元上限的测试单独一行、带 -v：通过时也打出恢复用的时间，CI 的日志里看得到（M8/P2A 第二轮复核 M-a）
 	cd server && go test -count=1 -v -run '^TestARestoreAtTheUnitsBoundTakesItsTime$$' ./internal/bootstrap
 	@# 撤销在单元上限的测试同样单独一行、带 -v：撤销一次删除用的时间（M8/P3 设计 3.11），与撤销在单轮步数上限时恢复那么多项用的时间（M8/P3A 审查 C 的 I-2）
@@ -240,6 +272,16 @@ test-go-guards: ## 不带竞态检测的组合根的预算与界线的守卫（C
 	@# 后台撤销在 MaxJobItems 的守卫各单独一行、带 -v：请求，整个任务（1 万个条目）与最大的一步（一个最上层的删除）用的时间（M8/P4 设计 3.11）
 	cd server && go test -count=1 -v -run '^TestStartRevertAtMaxJobItems$$' ./internal/bootstrap
 	cd server && go test -count=1 -v -run '^TestARevertJobOfAnImportAtMaxJobItems$$' ./internal/bootstrap
+
+.PHONY: test-go-short
+test-go-short: ## 只跑 server 的单元测试：go test -short，不带竞态检测，不起数据库（README 的写法；make check 与 CI 的一份跑它，不在 make test-go 里）
+	@# pgtest 在 -short 下跳过要数据库的测试；按耗时判定的守卫也跳过：-short 的各包同时跑、抢 CPU，CI 上一个 2 秒的界线到过 2.6 秒
+	@# （S1 修复第二轮），它们由 test-go-costs 与 test-go-guards 各自单独一行跑。别的照常跑。README 与上面的注释答应过贡献者这样跑得通，
+	@# 以前没有哪个门禁跑它：M9/P2 S1 的一个测试在 -short 下失败，到 S1 的修复第一轮才被看见（修复第二轮，审查 C 的 C2-M1），
+	@# 所以 CI 单独一份跑它。最慢的包本机约 28 秒（组合根与 httpserver），乘 2.4 约 70 秒，远在 Go 默认的每个测试二进制 10 分钟的一半之下，
+	@# 不加 -timeout（M9/P2 设计 6.5）。本机整个 53 与 38 秒。make check 也跑它：check 与 gen-check 合起来是 CI 的 server、web 任务的门禁
+	@# （文件头与 README），少了这一份就不是（修复第三轮，审查 C 的 C3-M1）
+	cd server && go test -short -count=1 ./...
 
 .PHONY: test-web
 test-web: ## 运行前端各包的测试（vitest；需要 Node）

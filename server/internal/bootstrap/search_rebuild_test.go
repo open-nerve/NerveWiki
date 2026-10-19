@@ -2,15 +2,15 @@ package bootstrap
 
 import (
 	"fmt"
-	"math/rand/v2"
 	"testing"
 )
 
 // The search's index is its rebuild (M8/P5 design 3.10; v0.1 design 13.4,
 // item 10): after a random sequence of a notebook's changes through the
-// API, the revert's property's (revertWorld: pages and attachments
-// created, renamed, moved, reordered, deleted, restored, written, their
-// versions restored, changesets reverted) and an import among them, a run
+// API and an agent's moves through MCP, the revert's property's
+// (revertWorld: pages and attachments created, renamed, moved, reordered,
+// deleted, restored, written, their versions restored, changesets
+// reverted, pages moved and renamed in one step) and an import among them, a run
 // of the job at random points leaves each live node's row what
 // SearchTokens makes of it from scratch, and no other (checkSearchBuilt);
 // between the runs, each node is indexed as it is or queued
@@ -20,8 +20,7 @@ func TestTheSearchIndexIsItsRebuild(t *testing.T) {
 	for _, seed := range []uint64{1, 2, 3} {
 		t.Run(fmt.Sprint("seed ", seed), func(t *testing.T) {
 			tm := newAcmeTeam(t, "member", "")
-			w := &revertWorld{tm: tm, nb: tm.openNotebook(t, "alice", "Eng"), rng: rand.New(rand.NewPCG(seed, 0)),
-				made: map[string]int{}, skipped: map[string]int{}}
+			w := newRevertWorld(t, tm, seed)
 			runs := 0
 			for i := range changes {
 				w.change(t)

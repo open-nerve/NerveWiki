@@ -59,6 +59,19 @@ type APIConfig struct {
 	// RequestTimeout, so that a slow upload does not eat its handler's time
 	// (M4/P4 review P3). A stream route's deadlines start from it (Stream).
 	BodyReadTimeout time.Duration
+	// LargeBodies is how many large request bodies the server reads and
+	// serves at once (M9 design 4.14, 10; M9/P2 design 3.2): a route of
+	// BodyLimits whose body is longer than its threshold takes one before
+	// its body is read, and gives it back when it has been served; each
+	// credential holds at most one of them. Zero bounds none.
+	LargeBodies int
+	// LargeBodyAbove is a route's threshold when it is not MaxBodyBytes:
+	// /mcp's is the 64 KiB past which only a tool's call may go.
+	LargeBodyAbove map[string]int64
+	// LargeBodyWait is how long a large body waits for its credential's
+	// slot and the server's, both together: then it is 503 server_busy,
+	// retry after a second.
+	LargeBodyWait time.Duration
 	// WriteTimeout is server.write_timeout: a stream route's write deadline
 	// follows its read deadline by WriteTimeout − BodyReadTimeout (Stream).
 	// When set, it must exceed BodyReadTimeout + RequestTimeout.
@@ -95,14 +108,17 @@ type API struct {
 	authenticated   Limiter
 	authFailure     Limiter
 	noTokenDetails  map[string]string
+	large           *largeBodies // nil when LargeBodies bounds none
 }
 
 // NewAPI returns the API value for cfg. It needs a logger, an
 // authenticator, the three buckets, a body limit and a request timeout
 // above zero, route timeouts above zero and at most the request timeout,
 // route body limits above zero with a body read timeout above zero, route
-// details of a missing token that are not empty, and an IPv6 prefix length
-// from 1 to 128.
+// details of a missing token that are not empty, an IPv6 prefix length
+// from 1 to 128, large bodies not negative, waiting above zero when there
+// are some, and thresholds of routes of BodyLimits, each above zero and
+// below its route's limit.
 func NewAPI(cfg APIConfig) (*API, error) {
 	var errs []error
 	for _, dep := range []struct {
@@ -150,6 +166,7 @@ func NewAPI(cfg APIConfig) (*API, error) {
 		errs = append(errs, fmt.Errorf("WriteTimeout %v must exceed a positive BodyReadTimeout %v and RequestTimeout %v together",
 			cfg.WriteTimeout, cfg.BodyReadTimeout, cfg.RequestTimeout))
 	}
+	errs = append(errs, largeBodiesErrs(cfg)...)
 	if len(errs) > 0 {
 		return nil, fmt.Errorf("httpserver: APIConfig: %w", errors.Join(errs...))
 	}
@@ -173,15 +190,41 @@ func NewAPI(cfg APIConfig) (*API, error) {
 		authenticated:   cfg.Authenticated,
 		authFailure:     cfg.AuthFailure,
 		noTokenDetails:  maps.Clone(cfg.NoTokenDetails),
+		large:           newLargeBodies(cfg.LargeBodies, cfg.LargeBodyWait, cfg.LargeBodyAbove),
 	}, nil
+}
+
+// largeBodiesErrs are cfg's faults of the large bodies: a negative count,
+// slots without a wait, a threshold of no route of BodyLimits or outside
+// (0, its route's limit).
+func largeBodiesErrs(cfg APIConfig) []error {
+	var errs []error
+	if cfg.LargeBodies < 0 {
+		errs = append(errs, fmt.Errorf("LargeBodies %d must not be negative", cfg.LargeBodies))
+	}
+	if cfg.LargeBodies > 0 && cfg.LargeBodyWait <= 0 {
+		errs = append(errs, errors.New("LargeBodyWait must be positive when LargeBodies bounds the large bodies"))
+	}
+	for _, route := range slices.Sorted(maps.Keys(cfg.LargeBodyAbove)) {
+		n := cfg.LargeBodyAbove[route]
+		limit, ok := cfg.BodyLimits[route]
+		switch limit = max(limit, cfg.MaxBodyBytes); {
+		case !ok:
+			errs = append(errs, fmt.Errorf("LargeBodyAbove[%q] is no route of BodyLimits", route))
+		case n <= 0 || n >= limit:
+			errs = append(errs, fmt.Errorf("LargeBodyAbove[%q] %d is outside (0, the route's limit %d)", route, n, limit))
+		}
+	}
+	return errs
 }
 
 // Middlewares returns the per-route middlewares for a module's generated
 // StdHTTPServerOptions.Middlewares; bodies is the module's generated
-// bodyshape table. They run in this order (M1/P2 design 3.3):
+// bodyshape table. They run in this order (M1/P2 design 3.3, M9/P2 design
+// 3.2):
 //
 //	request meta → request deadline → body limit → failure gate and
-//	authentication → rate limit → body structure
+//	authentication → rate limit → large bodies → body structure
 //
 // The generated code wraps the last middleware of its list outermost, so
 // the list is in reverse. Only API operations get them: a long-lived route
@@ -194,6 +237,7 @@ func (a *API) Middlewares(bodies *bodyshape.Table) []func(http.Handler) http.Han
 		a.bodyLimit,
 		a.authenticate,
 		a.rateLimit,
+		a.largeBody,
 		bodyshape.Middleware(bodies, a.Errors.BodyError),
 	}
 	slices.Reverse(inOrder)
@@ -203,7 +247,8 @@ func (a *API) Middlewares(bodies *bodyshape.Table) []func(http.Handler) http.Han
 // Wrap wraps h, a route registered on the root router outside the
 // generated code, in the per-route middlewares in their order (M1/P2
 // design 3.3): request meta → request deadline → body limit → failure gate
-// and authentication → rate limit → body structure, the last innermost.
+// and authentication → rate limit → large bodies → body structure, the
+// last innermost.
 // bodies holds the route's body schema under its pattern; it must not be
 // nil (bodyshape.Middleware reads its Roots).
 func (a *API) Wrap(h http.Handler, bodies *bodyshape.Table) http.Handler {

@@ -33,6 +33,11 @@ type mcpRow struct {
 	// check, when set, runs on each answer that is a success: what it
 	// holds for that column.
 	check func(t *testing.T, c caller, s seeded, a mcpAnswer)
+	// after, when set, runs on each answer that is a success, on the copy
+	// of the database the cell wrote: call is a call as the cell's caller,
+	// through the cell's entry, to read back what it wrote (M9/P2 design
+	// 3.13.2).
+	after func(t *testing.T, c caller, s seeded, call func(tool string, args map[string]any) mcpAnswer)
 }
 
 // mcpCell is how a call answers: an HTTP status before the SDK, or a tool
@@ -54,9 +59,9 @@ func (c mcpCell) String() string {
 }
 
 // mcpRows are the rows, each module's: page's list, read (M9/P1 design
-// 3.13) and open_notebook (3.17.3), notebook's notebooks (3.17.2); S3's
-// rows are 3.17.4's.
-func mcpRows() []mcpRow { return slices.Concat(pageMCPRows(), notebookMCPRows()) }
+// 3.13) and open_notebook (3.17.3), and its writes (M9/P2 design 3.13.2),
+// notebook's notebooks (3.17.2); S3's rows are 3.17.4's.
+func mcpRows() []mcpRow { return slices.Concat(pageMCPRows(), pageWriteMCPRows(), notebookMCPRows()) }
 
 // mcpToolCodes are the codes each MCP tool's error may carry besides
 // internal_error (M9 design 4.7; M9/P1 S2 review C's table), beside the
@@ -67,13 +72,21 @@ func mcpRows() []mcpRow { return slices.Concat(pageMCPRows(), notebookMCPRows())
 // (mcpAnswer.toolError). Each step adds its tools' rows and their calls:
 // S3's notebooks has no argument to refuse but one it does not take, and
 // open_notebook only its notebook, unseen or no UUID (M9/P1 design
-// 3.17).
+// 3.17); P2's writes the codes of the REST writes they are (M9/P2 design
+// 3.13.1).
 func mcpToolCodes() map[string][]string {
 	return map[string][]string{
 		"list":          {"bad_request", "validation_failed", "notebook.not_found", "page.not_found"},
 		"read":          {"bad_request", "validation_failed", "notebook.not_found", "page.not_found"},
 		"notebooks":     {"bad_request"},
 		"open_notebook": {"bad_request", "notebook.not_found"},
+		"write": {"bad_request", "validation_failed", "notebook.not_found", "page.not_found", "forbidden", "server_busy",
+			"page.title_taken", "page.too_deep", "page.revision_mismatch", "page.locked"},
+		"edit": {"bad_request", "validation_failed", "notebook.not_found", "page.not_found", "forbidden", "server_busy",
+			"page.revision_mismatch", "page.locked"},
+		"move": {"bad_request", "validation_failed", "notebook.not_found", "page.not_found", "forbidden", "server_busy",
+			"page.title_taken", "page.cycle", "page.too_deep", "linking.pages_locked"},
+		"delete": {"bad_request", "validation_failed", "notebook.not_found", "page.not_found", "forbidden", "page.locked"},
 	}
 }
 
@@ -364,10 +377,13 @@ func TestThePermissionMatrixOverMCP(t *testing.T) {
 	gate := gateCells(t)
 	reads := startApp(t, d.config(t, pgtest.NewDatabaseFrom(t, d.url), nil), migrations.FS())
 	apps := make(chan struct{}, matrixApps)
-	var checked, toCheck atomic.Int64
+	var checked, toCheck, aftered, toAfter atomic.Int64
 	t.Cleanup(func() {
 		if !t.Failed() && checked.Load() != toCheck.Load() {
 			t.Errorf("%d answers checked, want %d", checked.Load(), toCheck.Load())
+		}
+		if !t.Failed() && aftered.Load() != toAfter.Load() {
+			t.Errorf("%d writes read back, want %d", aftered.Load(), toAfter.Load())
 		}
 	})
 	for _, r := range rows {
@@ -385,6 +401,9 @@ func TestThePermissionMatrixOverMCP(t *testing.T) {
 					if r.check != nil && want == (mcpCell{}) {
 						toCheck.Add(1)
 					}
+					if r.after != nil && want == (mcpCell{}) {
+						toAfter.Add(1)
+					}
 					m := &mcpApp{base: reads, pat: pats[c]}
 					if r.write {
 						apps <- struct{}{}
@@ -398,13 +417,16 @@ func TestThePermissionMatrixOverMCP(t *testing.T) {
 						maps.Copy(args, r.args(c, s))
 					}
 					path := atNotebook(notebook)
-					if entry == mcpserver.AccountEntry {
-						path = mcpserver.Pattern
-						if takes[r.tool] {
+					call := func(tool string, args map[string]any) mcpAnswer {
+						if entry == mcpserver.AccountEntry && takes[tool] {
 							args["notebook"] = notebook
 						}
+						return m.call(t, path, tool, args)
 					}
-					a := m.call(t, path, r.tool, args)
+					if entry == mcpserver.AccountEntry {
+						path = mcpserver.Pattern
+					}
+					a := call(r.tool, args)
 					got := mcpCellOf(t, a)
 					if got != want {
 						t.Errorf("%s at %s = %s (%d %.300s), want %s", r.tool, path, got, a.status, a.body, want)
@@ -413,6 +435,10 @@ func TestThePermissionMatrixOverMCP(t *testing.T) {
 					if r.check != nil && got == (mcpCell{}) {
 						r.check(t, c, s, a)
 						checked.Add(1)
+					}
+					if r.after != nil && got == (mcpCell{}) {
+						r.after(t, c, s, call)
+						aftered.Add(1)
 					}
 				})
 			}

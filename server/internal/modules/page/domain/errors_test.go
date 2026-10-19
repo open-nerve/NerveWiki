@@ -76,3 +76,72 @@ func TestRevertConflictsCarryTheirMembers(t *testing.T) {
 		t.Error("RevertConflicts set its members on the shared error")
 	}
 }
+
+// LockedAll names every holder, the first as lock too, in the order given,
+// matches page.locked, and leaves the shared error without them.
+func TestLockedAllNamesEveryHolder(t *testing.T) {
+	holders := []shared.LockHolder{
+		{PageID: uuid.NewV7(), UserID: uuid.NewV7(), DisplayName: "Ada"},
+		{PageID: uuid.NewV7(), UserID: uuid.NewV7(), DisplayName: "Grace"},
+		{PageID: uuid.NewV7(), UserID: uuid.NewV7(), DisplayName: "Ada"},
+	}
+	var e *shared.Error
+	if err := domain.LockedAll(holders); !errors.As(err, &e) || !errors.Is(err, domain.ErrLocked) {
+		t.Fatalf("LockedAll() = %v, want page.locked", err)
+	}
+	if p, u, name, ok := e.ProblemLock(); !ok || p != holders[0].PageID || u != holders[0].UserID || name != "Ada" {
+		t.Errorf("LockedAll's lock = %s %s %q %v, want the first holder", p, u, name, ok)
+	}
+	var got []shared.LockHolder
+	e.ProblemLocks(func(p, u uuid.UUID, name string) {
+		got = append(got, shared.LockHolder{PageID: p, UserID: u, DisplayName: name})
+	})
+	if len(got) != 3 || got[0] != holders[0] || got[1] != holders[1] || got[2] != holders[2] {
+		t.Errorf("LockedAll's locks = %+v, want %+v", got, holders)
+	}
+	if domain.ErrLocked.Lock != nil || domain.ErrLocked.Locks != nil {
+		t.Error("LockedAll set its members on the shared error")
+	}
+}
+
+// The errors that carry what an MCP answer says are their codes' problems
+// under errors.Is and errors.As (M9/P2 design 3.8.5): page.title_taken,
+// page.revision_mismatch, the lock's refusal they wrap, and the 422 on
+// recursive, which counts the nodes in words and names no path.
+func TestTheWritesErrorsAreTheirCodes(t *testing.T) {
+	var e *shared.Error
+	for _, tt := range []struct {
+		err  error
+		want *shared.Error
+	}{
+		{&domain.PathTaken{Path: "A.md"}, domain.ErrTitleTaken},
+		{&domain.VersionMismatch{Path: "A.md", Why: domain.Changed}, domain.ErrRevisionMismatch},
+		{&domain.LockPaths{Err: domain.Locked(uuid.NewV7(), uuid.NewV7(), "Ada")}, domain.ErrLocked},
+	} {
+		if !errors.Is(tt.err, tt.want) || !errors.As(tt.err, &e) || e.Code != tt.want.Code || tt.err.Error() != tt.want.Error() {
+			t.Errorf("%T is %v, want %s", tt.err, tt.err, tt.want.Code)
+		}
+	}
+	for _, tt := range []struct {
+		pages, assets int
+		want          string
+	}{
+		{3, 2, "3 pages and 2 attachments"},
+		{1, 1, "1 page and 1 attachment"},
+		{2, 0, "2 pages"},
+		{0, 1, "1 attachment"},
+	} {
+		var err error = &domain.Recursive{Pages: tt.pages, Assets: tt.assets}
+		if !errors.As(err, &e) || e.Code != shared.CodeValidationFailed || len(e.Fields) != 1 || e.Fields[0].Field != "recursive" ||
+			e.Fields[0].Code != shared.FieldRequired || e.Fields[0].Message != "must be true to delete a page with children: "+tt.want ||
+			err.Error() != e.Error() {
+			t.Errorf("Recursive{%d, %d} = %+v", tt.pages, tt.assets, e)
+		}
+		if got := domain.PagesAndAttachments(tt.pages, tt.assets); got != tt.want {
+			t.Errorf("PagesAndAttachments(%d, %d) = %q, want %q", tt.pages, tt.assets, got, tt.want)
+		}
+	}
+	if err := error(&domain.AttachmentOnPath{Segment: 2}); errors.As(err, &e) {
+		t.Errorf("AttachmentOnPath is the problem %s: it has none of its own", e.Code)
+	}
+}

@@ -1,9 +1,11 @@
 // Command bodyshapegen writes the request-body structure table of one module
 // (M0/P4 design 3.4): for every operation with a JSON request body, the
 // schema's JSON types, properties, required properties, additionalProperties
-// and the string formats the generated code decodes into Go types. The
-// platform's bodyshape middleware checks each request body against it before
-// the generated strict handler decodes the body.
+// and the string formats the generated code decodes into Go types, and for
+// the module the REST API's bound on a body's JSON values,
+// bodyshape.MaxRESTValues (M9/P2 S1 review A2-I1). The platform's bodyshape
+// middleware checks each request body against it before the generated strict
+// handler decodes the body.
 //
 // It reads the module's API description with oapi-codegen's own loader and
 // the module's oapi-codegen configuration, so the formats follow the same

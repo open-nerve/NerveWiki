@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"slices"
+	"time"
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/asset"
@@ -26,6 +27,18 @@ import (
 // text an edit replaces, a message), each byte at JSON's longest escape of
 // one byte, "\u00XX", and room for the rest of the request.
 const mcpBodyLimit = 6*(page.MaxContentBytes+1<<20) + 64<<10
+
+// The large request bodies' bounds (M9/P2 design 3.2): largeBodies the
+// server reads and serves at once, at most one of them a credential's,
+// each waiting largeBodyWait at most for its slot, then 503. A call at
+// /mcp's limit peaks at about +0.5 GB, so two together at about 1 GB (M9
+// design 10); two is the owner's (M9 design 11, item 16), and the wait
+// is page.parse_max_wait's default. /mcp's threshold is
+// mcpserver.MaxOtherBytes, REST's server.max_body_bytes.
+const (
+	largeBodies   = 2
+	largeBodyWait = 2 * time.Second
+)
 
 // mcpTools are the modules' MCP tools, each module's in turn (M9 design
 // 4.1): page's list, read, whose attachments asset reads, and

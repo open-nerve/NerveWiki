@@ -308,8 +308,7 @@ func TestTheReadOfAnAttachmentFails(t *testing.T) {
 			return app.Read{Path: "Guide/x.png", Node: domain.Node{ID: a.NodeID}}, nil
 		})}, attachments: tt.f}
 		_, err := tools.read(context.Background(), mcpserver.Call{}, readIn{Path: "/guide/X.png"})
-		var te *mcpserver.ToolError
-		if !errors.Is(err, tt.want) || tt.text != "" && (!errors.As(err, &te) || te.Text != tt.text) {
+		if text, _ := wordsOf(err); !errors.Is(err, tt.want) || text != tt.text {
 			t.Errorf("read = %v, want %v, %q", err, tt.want, tt.text)
 		}
 	}

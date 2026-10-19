@@ -21,22 +21,40 @@ import (
 // ambiguities reports to p what lets value, one valid JSON value, be read two
 // ways: a member name repeated in its object (duplicate, once per name) and a
 // string that is not valid Unicode (invalid_format), each at its JSON path.
-// It stops when p is full.
-func ambiguities(value []byte, p *problems) {
-	s := scanner{data: value, p: p}
+// It stops when p is full, and at the first value past most, when most is
+// positive: it then answers false, the rest of value unread. It counts
+// every value it begins, the body's own and each object, array, string,
+// number and literal in it, so that what it keeps, a name for each member
+// of the objects it is in, grows with the values it has read, never with
+// those past most.
+func ambiguities(value []byte, p *problems, most int) bool {
+	s := scanner{data: value, p: p, most: most}
 	s.value()
+	return !s.over()
 }
 
 // scanner reads a valid JSON value byte by byte; it does not check the
 // syntax again. It decodes member names only: a value's string is checked on
 // its bytes.
 type scanner struct {
-	data []byte
-	pos  int
-	p    *problems
+	data   []byte
+	pos    int
+	p      *problems
+	values int // the values begun
+	most   int // the bound on values; 0 for none
 }
 
+// over reports whether the scan has begun a value past s.most.
+func (s *scanner) over() bool { return s.most > 0 && s.values > s.most }
+
+// done reports whether the scan stops: p is full, or a value is past the
+// bound.
+func (s *scanner) done() bool { return s.p.full() || s.over() }
+
 func (s *scanner) value() {
+	if s.values++; s.over() {
+		return
+	}
 	s.space()
 	switch s.data[s.pos] {
 	case '{':
@@ -78,7 +96,7 @@ func (s *scanner) object() {
 		s.pos++ // :
 		s.value()
 		s.p.leave()
-		if s.p.full() {
+		if s.done() {
 			return
 		}
 		s.space()
@@ -99,7 +117,7 @@ func (s *scanner) array() {
 		s.p.enterItem(i)
 		s.value()
 		s.p.leave()
-		if s.p.full() {
+		if s.done() {
 			return
 		}
 		s.space()

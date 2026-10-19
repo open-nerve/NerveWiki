@@ -172,12 +172,18 @@ type Nodes interface {
 	LockContent(ctx context.Context, notebookID, id uuid.UUID) (ContentLock, error)
 }
 
-// PathStore looks nodes up by their title keys, unlocked: a path's
-// segments, one point lookup each (M9/P1 design 3.9.2). The node is not
-// deleted; false for none.
+// PathStore looks nodes up by their title keys: a path's segments, one
+// point lookup each (M9/P1 design 3.9.2), the node not deleted, false for
+// none; and writes nodes' paths. It reads in the transaction ctx carries,
+// unlocked when it carries none.
 type PathStore interface {
 	RootByKey(ctx context.Context, notebookID uuid.UUID, key string) (domain.Node, bool, error)
 	ChildByKey(ctx context.Context, notebookID, parentID uuid.UUID, key string) (domain.Node, bool, error)
+	// PathsOf is the paths of ids' nodes not deleted of notebookID, by id,
+	// as domain.PathOfNames writes them, in one statement whatever their
+	// number (M9/P2 design 3.7). A node deleted, purged or of another
+	// notebook has none.
+	PathsOf(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]string, error)
 }
 
 // AgentsStore finds a notebook's AGENTS page: its root node whose title
@@ -230,6 +236,9 @@ type NodeWriter interface {
 	RenameNode(ctx context.Context, n domain.Node) error
 	// MoveNode puts n under its ParentID at its SortOrder.
 	MoveNode(ctx context.Context, n domain.Node) error
+	// RelocateNode puts n under its ParentID at its SortOrder, named its
+	// Name, in one statement (M9 design 4.10).
+	RelocateNode(ctx context.Context, n domain.Node) error
 	SetSortOrder(ctx context.Context, id uuid.UUID, order float64) error
 	// DeleteNodes deletes the deletion's nodes not deleted and what follows
 	// them, its root a trash item with its counts. A node deleted at its

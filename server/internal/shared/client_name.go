@@ -25,7 +25,7 @@ const MaxClientNameChars = 128
 // with.
 func CleanClientName(name string) string {
 	s := strings.Map(func(r rune) rune {
-		if unshowable(r) {
+		if Unshowable(r) {
 			return -1
 		}
 		return r

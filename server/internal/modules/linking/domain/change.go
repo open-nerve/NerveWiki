@@ -51,8 +51,8 @@ func sameParent(a, b *uuid.UUID) bool {
 	return a == nil && b == nil || a != nil && b != nil && *a == *b
 }
 
-// Recased is the page a rename gave a title that differs in case alone,
-// its key the same, and that title; the zero id for none.
+// Recased is the page a rename or a move gave a title that differs in case
+// alone, its key the same, and that title; the zero id for none.
 type Recased struct {
 	ID   uuid.UUID
 	Name string
@@ -62,8 +62,9 @@ type Recased struct {
 // of a page write unit (M6/P4 design 2, 4.1): relocates when each keeps its
 // node and writes no content, one renaming or moving it where links
 // resolve by the tree, as a rename or a move does; and recased, the page a
-// rename changed the case of the title of only. Creating, deleting and
-// writing a content rewrite nothing.
+// rename or a move changed the case of the title of only, under its parent
+// or another (an MCP move's one step, M9/P2 design 3.5.3). Creating,
+// deleting and writing a content rewrite nothing.
 func Relocation(changes []Change) (relocates bool, recased Recased) {
 	if len(changes) == 0 || slices.ContainsFunc(changes, func(c Change) bool {
 		return c.Before == nil || c.After == nil || c.Revision != 0
@@ -71,8 +72,7 @@ func Relocation(changes []Change) (relocates bool, recased Recased) {
 		return false, Recased{}
 	}
 	for _, c := range changes {
-		if c.Before.Name != c.After.Name && shared.TitleKey(c.Before.Name) == shared.TitleKey(c.After.Name) &&
-			sameParent(c.Before.ParentID, c.After.ParentID) {
+		if c.Before.Name != c.After.Name && shared.TitleKey(c.Before.Name) == shared.TitleKey(c.After.Name) {
 			recased = Recased{ID: c.NodeID, Name: c.After.Name}
 		}
 	}

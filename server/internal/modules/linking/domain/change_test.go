@@ -84,9 +84,10 @@ func TestAReachAddsNodesAndCompacts(t *testing.T) {
 }
 
 // What a rewrite follows: a rename or a move that relocates a node, a
-// rename of the case alone (with the length too: "ß" to "SS"), and nothing
-// else: a move among siblings, a rename to itself, a creation, a deletion,
-// a content written.
+// rename of the case alone (with the length too: "ß" to "SS"), a move that
+// changes the case alone too (M9/P2 design 3.5.3), and nothing else: a
+// move among siblings, a rename to itself, a creation, a deletion, a
+// content written.
 func TestRelocationIsWhatARewriteFollows(t *testing.T) {
 	a, b, root := uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
 	at := func(parent *uuid.UUID, name string) *domain.Place { return &domain.Place{ParentID: parent, Name: name} }
@@ -104,6 +105,12 @@ func TestRelocationIsWhatARewriteFollows(t *testing.T) {
 		{"the case alone", []domain.Change{{NodeID: a, Before: at(nil, "Old"), After: at(nil, "old")}}, false, domain.Recased{ID: a, Name: "old"}},
 		{"the case alone, another length", []domain.Change{{NodeID: a, Before: at(nil, "ß"), After: at(nil, "SS")}}, true,
 			domain.Recased{ID: a, Name: "SS"}},
+		{"a move that changes the case alone", []domain.Change{
+			{NodeID: a, Before: at(nil, "x"), After: at(&root, "X")},
+			{NodeID: b, Before: at(&a, "y"), After: at(&a, "y")},
+		}, true, domain.Recased{ID: a, Name: "X"}},
+		{"a move under another parent, the name kept", []domain.Change{{NodeID: a, Before: at(nil, "x"), After: at(&root, "x")}}, true,
+			domain.Recased{}},
 		{"a move among siblings", []domain.Change{{NodeID: a, Before: at(&root, "x"), After: at(&root, "x")}}, false, domain.Recased{}},
 		{"a creation", []domain.Change{{NodeID: a, After: at(nil, "x"), Revision: 1}}, false, domain.Recased{}},
 		{"a deletion", []domain.Change{{NodeID: a, Before: at(nil, "x")}}, false, domain.Recased{}},

@@ -85,10 +85,13 @@ func rewrite(t *testing.T, m *markdown.Markdown, c renameCase, content string) (
 	for i, l := range facts.Links {
 		links[i] = domain.Resolved{Link: l, Before: was.resolve(l, c.Page), After: now.resolve(l, moved(c.Page))}
 	}
-	var recased domain.Recased
-	if parentOf(c.From) == parentOf(c.To) && shared.TitleKey(lastOf(c.From)) == shared.TitleKey(lastOf(c.To)) {
-		recased = domain.Recased{ID: was.ids[c.From], Name: lastOf(c.To)}
-	}
+	// What is recased is the production's rule's, of the case's change as
+	// the unit makes it: one step, the node's parent and name before and
+	// after (M9/P2 design 3.5.3).
+	_, recased := domain.Relocation([]domain.Change{{NodeID: was.ids[c.From],
+		Before: &domain.Place{ParentID: was.parentID(c.From), Name: lastOf(c.From)},
+		After:  &domain.Place{ParentID: now.parentID(moved(c.From)), Name: lastOf(c.To)},
+	}})
 	tree := rewriteTree(was, now, links, recased)
 	w := domain.Rewrite(content, now.paths[moved(c.Page)], links, tree, recased)
 	written, left, ok, err := w.Written(content, facts, now.paths[moved(c.Page)], tree, func(s string) (domain.Facts, error) {
@@ -183,6 +186,16 @@ func (p pages) resolve(l domain.Link, from string) domain.Resolution {
 // parentOf is a path's parent's, "" at the root; lastOf its last name.
 func parentOf(path string) string {
 	return path[:max(strings.LastIndexByte(path, '/'), 0)]
+}
+
+// parentID is the id of the parent of the node at path, nil at the root.
+func (p pages) parentID(path string) *uuid.UUID {
+	parent := parentOf(path)
+	if parent == "" {
+		return nil
+	}
+	id := p.ids[parent]
+	return &id
 }
 
 func lastOf(path string) string {

@@ -138,13 +138,20 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   },
   // Every test's page is watched from before its first navigation, and a test that passes must have left it
   // quiet (expectQuietPage): the check runs as the test ends, so no story can forget it. What the page asked
-  // of the API stays each story's to assert, through pageWatch.
+  // of the API stays each story's to assert, through pageWatch. A page that fails the check is reported as one
+  // whose test failed: its state names the requests that failed, which the console's messages do not (M9/P2 S1
+  // fix round 2, review C's C2-N1). anotherPage and anotherTab do the same for theirs.
   page: async ({ page, pageStates }, use, testInfo) => {
     const watch = await watchPage(page);
     watches.set(page, watch);
     await use(page);
     if (testInfo.status === testInfo.expectedStatus) {
-      await expectQuietPage(page, watch);
+      try {
+        await expectQuietPage(page, watch);
+      } catch (error) {
+        await pageStates.add([["page", page, watch]]);
+        throw error;
+      }
     } else {
       await pageStates.add([["page", page, watch]]);
     }
@@ -217,19 +224,30 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       watched.push([page, watch]);
       return page;
     });
+    const named = (): [string, Page, PageWatch][] =>
+      watched.map(([page, watch], i) => [`another page ${i + 1}`, page, watch]);
     try {
       if (testInfo.status === testInfo.expectedStatus) {
-        await Promise.all(
-          watched.filter(([page]) => !page.isClosed()).map(([page, watch]) => expectQuietPage(page, watch))
-        );
+        try {
+          await Promise.all(
+            watched.filter(([page]) => !page.isClosed()).map(([page, watch]) => expectQuietPage(page, watch))
+          );
+        } catch (error) {
+          await pageStates.add(named());
+          throw error;
+        }
       } else {
-        await pageStates.add(watched.map(([page, watch], i) => [`another page ${i + 1}`, page, watch]));
+        await pageStates.add(named());
       }
     } finally {
       await Promise.all(contexts.map((context) => context.close()));
     }
   },
-  anotherTab: async ({ pageStates }, use, testInfo) => {
+  // A tab closes with the context of the page it was opened beside: page's, or one of anotherPage's. Playwright
+  // tears a fixture down before those it depends on, so anotherTab depends on both, and checks its tabs while
+  // they are open. Before, a story that named anotherTab before page or signedInPage (all but HI1's two) had them
+  // closed by then, and their checks did not run (M9/P2 S1 fix round 2, found while checking C2-N1; round 3).
+  anotherTab: async ({ anotherPage: _anotherPage, page: _page, pageStates }, use, testInfo) => {
     const watched: [Page, PageWatch][] = [];
     await use(async (page) => {
       const tab = await page.context().newPage();
@@ -238,10 +256,19 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       watched.push([tab, watch]);
       return tab;
     });
+    const named = (): [string, Page, PageWatch][] =>
+      watched.map(([tab, watch], i) => [`another tab ${i + 1}`, tab, watch]);
     if (testInfo.status === testInfo.expectedStatus) {
-      await Promise.all(watched.filter(([tab]) => !tab.isClosed()).map(([tab, watch]) => expectQuietPage(tab, watch)));
+      try {
+        await Promise.all(
+          watched.filter(([tab]) => !tab.isClosed()).map(([tab, watch]) => expectQuietPage(tab, watch))
+        );
+      } catch (error) {
+        await pageStates.add(named());
+        throw error;
+      }
     } else {
-      await pageStates.add(watched.map(([tab, watch], i) => [`another tab ${i + 1}`, tab, watch]));
+      await pageStates.add(named());
     }
   },
   databaseSnapshot: [
