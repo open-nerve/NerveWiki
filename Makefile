@@ -275,11 +275,12 @@ test-go-guards: ## 不带竞态检测的组合根的预算与界线的守卫（C
 
 .PHONY: test-go-short
 test-go-short: ## 只跑 server 的单元测试：go test -short，不带竞态检测，不起数据库（README 的写法；CI 的一份，不在 make test-go 里）
-	@# pgtest 在 -short 下跳过要数据库的测试，别的照常跑。README 与上面的注释答应过贡献者这样跑得通，以前没有哪个门禁跑它：
-	@# M9/P2 S1 的一个测试在 -short 下失败，到 S1 的修复第一轮才被看见（修复第二轮，审查 C 的 C2-M1），所以 CI 单独一份跑它。
-	@# 不带竞态检测时组合根的 markdown 的三个守卫也跑（本机 123、20 与 2.8 秒，整个组合根 148 秒），乘 2.4 约 5.9 分钟，过了 Go 默认的
-	@# 每个测试二进制 10 分钟的一半，照 M9/P2 设计 6.5 的规则加 -timeout 15m；README 的写法在本机照旧跑得完。本机整个 180 与 163 秒
-	cd server && go test -short -count=1 -timeout 15m ./...
+	@# pgtest 在 -short 下跳过要数据库的测试；按耗时判定的守卫也跳过：-short 的各包同时跑、抢 CPU，CI 上一个 2 秒的界线到过 2.6 秒
+	@# （S1 修复第二轮），它们由 test-go-costs 与 test-go-guards 各自单独一行跑。别的照常跑。README 与上面的注释答应过贡献者这样跑得通，
+	@# 以前没有哪个门禁跑它：M9/P2 S1 的一个测试在 -short 下失败，到 S1 的修复第一轮才被看见（修复第二轮，审查 C 的 C2-M1），
+	@# 所以 CI 单独一份跑它。最慢的包本机约 28 秒（组合根与 httpserver），乘 2.4 约 70 秒，远在 Go 默认的每个测试二进制 10 分钟的一半之下，
+	@# 不加 -timeout（M9/P2 设计 6.5）。本机整个 53 与 38 秒
+	cd server && go test -short -count=1 ./...
 
 .PHONY: test-web
 test-web: ## 运行前端各包的测试（vitest；需要 Node）
