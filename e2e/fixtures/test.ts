@@ -243,7 +243,11 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       await Promise.all(contexts.map((context) => context.close()));
     }
   },
-  anotherTab: async ({ pageStates }, use, testInfo) => {
+  // A tab closes with the context of the page it was opened beside: page's, or one of anotherPage's. Playwright
+  // tears a fixture down before those it depends on, so anotherTab depends on both, and checks its tabs while
+  // they are open. Before, the contexts had closed them by then, and their checks never ran (M9/P2 S1 fix round
+  // 2, found while checking C2-N1).
+  anotherTab: async ({ anotherPage: _anotherPage, page: _page, pageStates }, use, testInfo) => {
     const watched: [Page, PageWatch][] = [];
     await use(async (page) => {
       const tab = await page.context().newPage();
