@@ -65,12 +65,14 @@ func TestCheckRevision(t *testing.T) {
 	}
 }
 
-// Each argument of versions' other call is not_allowed, one field each:
-// with revision, cursor; without it, offset and column. limit and the
-// call's own arguments pass, whatever their values (M9/P2 design
-// 3.16.1).
+// Each argument of versions' other call is not_allowed, one field each,
+// telling which call it is for: with revision, cursor; without it, offset
+// and column. limit and the call's own arguments pass, whatever their
+// values (M9/P2 design 3.16.1).
 func TestCheckVersionsArgs(t *testing.T) {
 	zero, two, cursor := 0, 2, "c"
+	tells := map[string]string{"cursor": "is for the list of versions, without revision",
+		"offset": "is for reading a version, with revision", "column": "is for reading a version, with revision"}
 	for _, tt := range []struct {
 		name                     string
 		revision, offset, column *int
@@ -89,20 +91,18 @@ func TestCheckVersionsArgs(t *testing.T) {
 		{"the list, an offset and a column", nil, &two, &zero, nil, []string{"offset not_allowed", "column not_allowed"}},
 		{"the list on from a cursor, and an offset", nil, &two, nil, &cursor, []string{"offset not_allowed"}},
 	} {
-		if got := fieldsOf(t, domain.CheckVersionsArgs(tt.revision, tt.offset, tt.column, tt.cursor)); !slices.Equal(got, tt.want) {
+		err := domain.CheckVersionsArgs(tt.revision, tt.offset, tt.column, tt.cursor)
+		if got := fieldsOf(t, err); !slices.Equal(got, tt.want) {
 			t.Errorf("%s: CheckVersionsArgs = %v, want %v", tt.name, got, tt.want)
 		}
-	}
-	for _, tt := range []struct {
-		err  error
-		want string
-	}{
-		{domain.CheckVersionsArgs(&two, nil, nil, &cursor), "is for the list of versions, without revision"},
-		{domain.CheckVersionsArgs(nil, &two, &two, nil), "is for reading a version, with revision"},
-	} {
 		var e *shared.Error
-		if !errors.As(tt.err, &e) || e.Fields[0].Message != tt.want {
-			t.Errorf("%v tells %q", tt.err, tt.want)
+		if !errors.As(err, &e) {
+			continue
+		}
+		for _, f := range e.Fields {
+			if f.Message != tells[f.Field] {
+				t.Errorf("%s: %s tells %q, want %q", tt.name, f.Field, f.Message, tells[f.Field])
+			}
 		}
 	}
 }
