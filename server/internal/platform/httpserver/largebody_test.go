@@ -238,11 +238,13 @@ func (l *largeBodies) refs(credential string) int {
 	return 0
 }
 
-// idle is whether no slot is held or waited for.
+// idle is whether no slot is held or waited for, and no holder recorded:
+// a holder left behind would be named by every saturated line after
+// (M9/P2 S1 review C-M2).
 func (l *largeBodies) idle() bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	return len(l.server) == 0 && len(l.credentials) == 0
+	return len(l.server) == 0 && len(l.credentials) == 0 && len(l.holders) == 0
 }
 
 // isBusy reports whether a is the slots' 503: server_busy, Retry-After 1,

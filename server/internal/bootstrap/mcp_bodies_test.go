@@ -240,8 +240,11 @@ func TestTheLargeBodiesShareTwoSlots(t *testing.T) {
 	if a := passing(pats[1], "p2-second", large); !isBusy(a) {
 		t.Errorf("P2's second large call = %d %.200s, want 503: it waits for its own", a.status, a.body)
 	}
-	if line := m.saturatedOf(t, "pat:"+ids[1]); line == nil || line["own"] != true {
-		t.Errorf("the saturated line of P2's second = %v, want its own slot", line)
+	// P1 let go, the line names P2's first alone (M9/P2 S1 review C-M2).
+	line = m.saturatedOf(t, "pat:"+ids[1])
+	if holders, _ := json.Marshal(line["holders"]); line == nil || line["own"] != true ||
+		string(holders) != `[{"credential":"pat:`+ids[1]+`","route":"`+mcpserver.Pattern+`"}]` {
+		t.Errorf("the saturated line of P2's second = %v, want its own slot, P2's first its one holder", line)
 	}
 	p3 := m.calling(t, ctx, pats[2], "hold", keyed("p3", large))
 	h.waitIn(t, "p3")
