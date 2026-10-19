@@ -482,6 +482,10 @@ func historyCodeCalls(t *testing.T, r readsApp) []codeCall {
 		{nb, "changeset", map[string]any{"id": theirs, "cursor": "x"}, "bad_request"},
 		{nb, "changeset", map[string]any{"id": theirs, "limit": 0}, "validation_failed"},
 		{mcpserver.Pattern, "changeset", map[string]any{"notebook": r.hidden, "id": theirs}, "notebook.not_found"},
+		// An id that is no UUID is the use case's too: its earlier checks
+		// answer first.
+		{nb, "changeset", map[string]any{"id": "not-a-uuid", "limit": 0}, "validation_failed"},
+		{mcpserver.Pattern, "changeset", map[string]any{"notebook": r.hidden, "id": "not-a-uuid"}, "notebook.not_found"},
 		{nb, "changeset", map[string]any{"id": uuid.NewV7().String()}, "page.changeset_not_found"},
 		{nb, "changeset", map[string]any{"id": "not-a-uuid"}, "page.changeset_not_found"},
 		{nb, "changeset", map[string]any{"id": theirs}, "page.changeset_not_found"},

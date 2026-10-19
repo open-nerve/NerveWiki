@@ -525,7 +525,9 @@ func TestTheChangesetAnswersItsShape(t *testing.T) {
 
 // changeset's id is read as uuid.Parse reads one; anything else is the
 // zero id, which the use case finds no changeset of; its errors are as
-// they are (M9/P2 design 3.16.3).
+// they are (M9/P2 design 3.16.3). Each id reaches the use case, whose
+// checks of the cursor, the limit and the notebook come first: what the
+// use case was given is forgotten before each call (S2 review C-M3).
 func TestTheChangesetsIDIsAUUIDOrNone(t *testing.T) {
 	id := uuid.MustParse("0199f3a2-7c4d-7e21-9a3b-5f6e7d8c9b0a")
 	var got uuid.UUID
@@ -536,8 +538,11 @@ func TestTheChangesetsIDIsAUUIDOrNone(t *testing.T) {
 	for in, want := range map[string]uuid.UUID{
 		id.String(): id, strings.ToUpper(id.String()): id, "{" + id.String() + "}": id, "not-a-uuid": {}, "": {}, id.String() + " ": {},
 	} {
-		_, err := tools.changeset(context.Background(), mcpserver.Call{}, changesetIn{ID: in})
-		if got != want || !errors.Is(err, domain.ErrChangesetNotFound) {
+		got = uuid.Max() // no id the use case is given: still Max, it was not called
+		switch _, err := tools.changeset(context.Background(), mcpserver.Call{}, changesetIn{ID: in}); {
+		case got == uuid.Max():
+			t.Errorf("changeset(%q) answered %v without its use case, want the use case given %s", in, err, want)
+		case got != want || !errors.Is(err, domain.ErrChangesetNotFound):
 			t.Errorf("changeset(%q) passed %s and answered %v, want %s and its use case's error", in, got, err, want)
 		}
 	}
