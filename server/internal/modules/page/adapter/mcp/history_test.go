@@ -461,7 +461,7 @@ func TestTheLogFitsItsAnswer(t *testing.T) {
 // changeset answers the changeset on its first page, REST's getChangeset
 // without its changes and with renames and moves, null with a cursor; its
 // changes are REST's, each node's kind "attachment" for REST's "asset",
-// with its path now, null in the trash or gone (M9/P2 design 3.16.3).
+// with its path now, null in the trash (M9/P2 design 3.16.3).
 func TestTheChangesetAnswersItsShape(t *testing.T) {
 	cs, notebook, alice, guide, png, plan := uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
 	at := time.Date(2026, 10, 17, 10, 30, 0, 0, time.FixedZone("CEST", 2*3600))

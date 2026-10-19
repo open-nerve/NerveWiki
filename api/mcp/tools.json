@@ -3,7 +3,7 @@
     {
       "name": "changeset",
       "title": "Read a changeset",
-      "description": "Read one of the notebook's changesets by the id log gives: its kind, client, author, times, message, counts, what it reverts and what reverted it, and whether it renames or moves nodes; then what it did to each node it changed, a page at a time by node id: where the node was before and after in the tree, the revision of the content it wrote, and the node's current path (null when it is in the trash or gone). The changeset itself comes on the first page, without cursor; go on with next_cursor while it is set. A changeset of another notebook is not found here. History is read-only here: people revert changesets in the web.",
+      "description": "Read one of the notebook's changesets by the id log gives: its kind, client, author, times, message, counts, what it reverts and what reverted it, and whether it renames or moves nodes; then what it did to each node it changed, a page at a time by node id: where the node was before and after in the tree, the revision of the content it wrote, and the node's current path (null when it is in the trash). The changeset itself comes on the first page, without cursor; go on with next_cursor while it is set. A changeset of another notebook is not found here. History is read-only here: people revert changesets in the web.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -124,7 +124,7 @@
     {
       "name": "log",
       "title": "List the notebook's changes",
-      "description": "List the notebook's changesets, newest first: what people and agents changed, each with its kind, client, author (id and display name), times, message, how many nodes and contents it changed, what it reverts and what reverted it, and its first three changes; a changeset too large for the answer comes alone, its changes cut to fit and changes_cut true. path keeps the changesets that changed that page or attachment; actor those of an account, \"me\" for yours; client those of a client, \"mcp\" for every agent. Go on with next_cursor while it is set. changeset reads one in full. History is read-only here: people restore versions and revert changesets in the web.",
+      "description": "List the notebook's changesets, newest first: what people and agents changed, each with its kind, client, author (id and display name), times, message, how many nodes and contents it changed, what it reverts and what reverted it, and its first three changes; a changeset too large for the answer comes alone, its changes cut to fit and changes_cut true. path keeps the changesets that changed that page or attachment; actor those of an account, \"me\" for yours; client those of a client, \"mcp\" for every agent. A page or an attachment in the trash has no path: find its changesets in the whole log. Go on with next_cursor while it is set. changeset reads one in full. History is read-only here: people restore versions and revert changesets in the web.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -296,7 +296,7 @@
     {
       "name": "changeset",
       "title": "Read a changeset",
-      "description": "Read one of the notebook's changesets by the id log gives: its kind, client, author, times, message, counts, what it reverts and what reverted it, and whether it renames or moves nodes; then what it did to each node it changed, a page at a time by node id: where the node was before and after in the tree, the revision of the content it wrote, and the node's current path (null when it is in the trash or gone). The changeset itself comes on the first page, without cursor; go on with next_cursor while it is set. A changeset of another notebook is not found here. History is read-only here: people revert changesets in the web.",
+      "description": "Read one of the notebook's changesets by the id log gives: its kind, client, author, times, message, counts, what it reverts and what reverted it, and whether it renames or moves nodes; then what it did to each node it changed, a page at a time by node id: where the node was before and after in the tree, the revision of the content it wrote, and the node's current path (null when it is in the trash). The changeset itself comes on the first page, without cursor; go on with next_cursor while it is set. A changeset of another notebook is not found here. History is read-only here: people revert changesets in the web.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -434,7 +434,7 @@
     {
       "name": "log",
       "title": "List the notebook's changes",
-      "description": "List the notebook's changesets, newest first: what people and agents changed, each with its kind, client, author (id and display name), times, message, how many nodes and contents it changed, what it reverts and what reverted it, and its first three changes; a changeset too large for the answer comes alone, its changes cut to fit and changes_cut true. path keeps the changesets that changed that page or attachment; actor those of an account, \"me\" for yours; client those of a client, \"mcp\" for every agent. Go on with next_cursor while it is set. changeset reads one in full. History is read-only here: people restore versions and revert changesets in the web.",
+      "description": "List the notebook's changesets, newest first: what people and agents changed, each with its kind, client, author (id and display name), times, message, how many nodes and contents it changed, what it reverts and what reverted it, and its first three changes; a changeset too large for the answer comes alone, its changes cut to fit and changes_cut true. path keeps the changesets that changed that page or attachment; actor those of an account, \"me\" for yours; client those of a client, \"mcp\" for every agent. A page or an attachment in the trash has no path: find its changesets in the whole log. Go on with next_cursor while it is set. changeset reads one in full. History is read-only here: people restore versions and revert changesets in the web.",
       "inputSchema": {
         "type": "object",
         "properties": {

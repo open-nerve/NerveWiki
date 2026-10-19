@@ -158,7 +158,8 @@ type changeNode struct {
 }
 
 // pathNode is a changed node with its path now: null for a node in the
-// trash or gone, which no tool reaches by a path (M9/P2 design 2.1 item 8).
+// trash, which no tool reaches by a path (M9/P2 design 2.1 item 8). A node
+// the purge took is not listed: its items and versions go before it.
 type pathNode struct {
 	changeNode
 	Path *string `json:"path"`
