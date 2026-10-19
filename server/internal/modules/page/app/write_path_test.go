@@ -170,8 +170,9 @@ func TestWritePathCreatesThePageAndItsParents(t *testing.T) {
 
 // write without a token at a page there writes nothing when the page
 // holds the content already, its version the answer; another content
-// there is page.title_taken at the path, and so is an attachment that
-// holds the name (M9/P2 design 3.8.1, 2.1 item 11).
+// there, of another size or the same, is page.title_taken at the path,
+// and so is an attachment that holds the name (M9/P2 design 3.8.1, 2.1
+// item 11).
 func TestWritePathAtAPageThere(t *testing.T) {
 	f := newFixture()
 	f.grant(domain.ActionCreate)
@@ -185,13 +186,15 @@ func TestWritePathAtAPageThere(t *testing.T) {
 		t.Errorf("a write of the same content = %+v, %v after %v; want Guide as it is, nothing written", got, err, f.rec.calls)
 	}
 	for _, tt := range []struct {
-		name, path string
-		asset      bool
+		name, path, content string
+		asset               bool
 	}{
-		{"another content", "Guide.md", false},
-		{"an attachment's name", "Guide/img.png.md", true},
+		{"another content", "Guide.md", "other", false},
+		// The same size, another hash (M9/P2 S1 review C-M3).
+		{"another content of the same size", "Guide.md", "# Guidf\n", false},
+		{"an attachment's name", "Guide/img.png.md", "other", true},
 	} {
-		_, err := f.writePath(f.eng, app.PathWrite{Path: tt.path, Content: "other"})
+		_, err := f.writePath(f.eng, app.PathWrite{Path: tt.path, Content: tt.content})
 		var taken *domain.PathTaken
 		if codeOf(err) != "page.title_taken" || !errors.As(err, &taken) || taken.Path != tt.path || taken.Asset != tt.asset {
 			t.Errorf("%s: write = %v, want page.title_taken at %s, an attachment's %v", tt.name, err, tt.path, tt.asset)
