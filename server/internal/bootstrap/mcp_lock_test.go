@@ -33,7 +33,9 @@ func lockOf(l mcpLock) string {
 // bob's sessions and Child in alice's (10), alice's deletion of Beside is
 // page.locked by all three in the subtree's order, one level after
 // another (11); once they end (12), it puts the four pages in the trash
-// (13). No session is ever an agent's.
+// (13). No session is ever an agent's: counted before cell 12, while
+// every session the test opened is there, as ending a session and
+// deleting its page both remove its row (M9/P2 S1 review C-M1).
 func TestTheEditLockReachesEveryMCPWrite(t *testing.T) {
 	tm := newAcmeTeam(t, "member", "")
 	nb := tm.openNotebook(t, "alice", "Eng")
@@ -114,15 +116,15 @@ func TestTheEditLockReachesEveryMCPWrite(t *testing.T) {
 		t.Errorf("cell 11: delete of Beside = %+v, locks %q; want page.locked by %q, its lock Notes2 without a path", r, locks, want)
 	}
 
+	if n := count(t, tm.pool, "SELECT count(*) FROM edit_sessions WHERE client LIKE 'mcp:%'"); n != 0 {
+		t.Errorf("%d edit sessions are an agent's, want none", n)
+	}
 	for i, by := range []string{"bob", "bob", "alice"} {
 		tm.send(t, request(by, http.MethodDelete, "/api/v0/edit-sessions/"+sessions[i], ""), http.StatusNoContent)
 	}
 	if gone := answerOf[mcpDeleted](t, alice.use(t, "delete", map[string]any{"path": "Beside.md", "recursive": true})); gone.NodeID != beside ||
 		gone.Pages != 4 {
 		t.Errorf("cell 13: delete of Beside once the sessions ended = %+v, want its four pages", gone)
-	}
-	if n := count(t, tm.pool, "SELECT count(*) FROM edit_sessions WHERE client LIKE 'mcp:%'"); n != 0 {
-		t.Errorf("%d edit sessions are an agent's, want none", n)
 	}
 	checkPages(t, tm.pool)
 }
