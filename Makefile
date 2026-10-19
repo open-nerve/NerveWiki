@@ -168,7 +168,8 @@ knip: ## 检查未使用的文件、导出和依赖（需要 Node）
 	pnpm exec knip --treat-config-hints-as-errors
 
 # -race 需要 cgo：macOS 需要 Xcode 命令行工具，Linux 需要 gcc。
-# 集成测试用 testcontainers 启动 PostgreSQL，需要 Docker；只跑单元测试用 cd server && go test -short ./...
+# 集成测试用 testcontainers 启动 PostgreSQL，需要 Docker；只跑单元测试用 make test-go-short（cd server && go test -short ./...，
+# README 的写法，CI 的 short 一份照它跑）
 # 不用测试缓存：它不跟踪 server/ 之外的文件，契约测试读取的 api/dist/openapi.yaml 改了也会重放旧结果。
 # server/tools 是嵌套的独立模块，另跑一次
 .PHONY: test
@@ -189,7 +190,7 @@ test-go: ## 运行 Go 测试，含集成测试与 server/tools（开启竞态检
 	@$(MAKE) --no-print-directory test-go-costs
 	@$(MAKE) --no-print-directory test-go-guards
 
-# CI 的六份：一个作业跑全部时超过了 25 分钟的时限（M8/P3A，竞态检测下的组合根占了一半）。
+# CI 的六份（short 是第七份，只跑单元测试，不在 make test-go 里，见 test-go-short）：一个作业跑全部时超过了 25 分钟的时限（M8/P3A，竞态检测下的组合根占了一半）。
 # 组合根之外的包由 go list 列出，以后新加的包自动归入第一份。不带竞态检测的那一份在 M8/P4A 之前作业已到 15 分钟
 # （测试一步 13:37），超过 15 分钟就分（M8/P4 设计 3.11）：组合根的预算与守卫各自编译、各起数据库，分作一份。
 # 竞态检测下的组合根在 M8/P4A 的 CI 上测试一步 12:00–12:05，离 go test 的 15 分钟只剩约两成，P5 还要加测试（M8/P4A 审查 C 的 M-6）：
@@ -271,6 +272,14 @@ test-go-guards: ## 不带竞态检测的组合根的预算与界线的守卫（C
 	@# 后台撤销在 MaxJobItems 的守卫各单独一行、带 -v：请求，整个任务（1 万个条目）与最大的一步（一个最上层的删除）用的时间（M8/P4 设计 3.11）
 	cd server && go test -count=1 -v -run '^TestStartRevertAtMaxJobItems$$' ./internal/bootstrap
 	cd server && go test -count=1 -v -run '^TestARevertJobOfAnImportAtMaxJobItems$$' ./internal/bootstrap
+
+.PHONY: test-go-short
+test-go-short: ## 只跑 server 的单元测试：go test -short，不带竞态检测，不起数据库（README 的写法；CI 的一份，不在 make test-go 里）
+	@# pgtest 在 -short 下跳过要数据库的测试，别的照常跑。README 与上面的注释答应过贡献者这样跑得通，以前没有哪个门禁跑它：
+	@# M9/P2 S1 的一个测试在 -short 下失败，到 S1 的修复第一轮才被看见（修复第二轮，审查 C 的 C2-M1），所以 CI 单独一份跑它。
+	@# 不带竞态检测时组合根的 markdown 的三个守卫也跑（本机 123、20 与 2.8 秒，整个组合根 148 秒），乘 2.4 约 5.9 分钟，过了 Go 默认的
+	@# 每个测试二进制 10 分钟的一半，照 M9/P2 设计 6.5 的规则加 -timeout 15m；README 的写法在本机照旧跑得完。本机整个 180 与 163 秒
+	cd server && go test -short -count=1 -timeout 15m ./...
 
 .PHONY: test-web
 test-web: ## 运行前端各包的测试（vitest；需要 Node）
