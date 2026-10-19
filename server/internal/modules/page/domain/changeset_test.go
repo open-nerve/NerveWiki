@@ -76,6 +76,37 @@ func TestParseClientFilter(t *testing.T) {
 	}
 }
 
+// The log's actor over MCP is "me", the caller, or an account's id in any
+// spelling uuid.Parse reads; anything else, "me" in another case or with
+// a blank among them, is 422 on actor (M9/P2 design 3.17.4).
+func TestParseActor(t *testing.T) {
+	me, id := uuid.NewV7(), uuid.MustParse("0199f3a2-7c4d-7e21-9a3b-5f6e7d8c9b0a")
+	for _, tt := range []struct {
+		in   string
+		want uuid.UUID
+	}{
+		{"me", me},
+		{id.String(), id},
+		{strings.ToUpper(id.String()), id},
+		{"{" + id.String() + "}", id},
+		{"urn:uuid:" + id.String(), id},
+		{strings.ReplaceAll(id.String(), "-", ""), id},
+		{me.String(), me},
+	} {
+		if got, err := domain.ParseActor(tt.in, me); err != nil || got != tt.want {
+			t.Errorf("ParseActor(%q) = %s, %v; want %s", tt.in, got, err, tt.want)
+		}
+	}
+	for _, in := range []string{"", "ME", "Me", "me ", " me", "you", "mine", "a\x00b", id.String() + " ", id.String()[:35], "not-a-uuid"} {
+		_, err := domain.ParseActor(in, me)
+		var e *shared.Error
+		if !errors.As(err, &e) || e.Code != shared.CodeValidationFailed || len(e.Fields) != 1 || e.Fields[0] !=
+			(shared.FieldError{Field: "actor", Code: shared.FieldInvalidFormat, Message: `is an account's id or "me"`}) {
+			t.Errorf("ParseActor(%q) = %v, want 422 invalid_format on actor", in, err)
+		}
+	}
+}
+
 // A message is 1–4,096 bytes of UTF-8 without NUL.
 func TestCheckMessage(t *testing.T) {
 	for _, ok := range []string{"a", strings.Repeat("a", 4096), strings.Repeat("名", 1365), "line\nline"} {
