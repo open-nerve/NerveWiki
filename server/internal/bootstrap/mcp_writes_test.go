@@ -88,8 +88,9 @@ type mcpLock struct {
 }
 
 // mcpRefusal is a tool's error, as these tests read it: its code, its
-// text, the version there now, and the locks that refused it; lockPath
-// whether its lock member has a path.
+// text, the version there now, the locks that refused it, and a batch's
+// op it refused at (M9/P3 design 3.9.2); lockPath whether its lock member
+// has a path.
 type mcpRefusal struct {
 	Code           string    `json:"code"`
 	Message        string    `json:"message"`
@@ -97,6 +98,7 @@ type mcpRefusal struct {
 	Lock           *mcpLock  `json:"lock"`
 	Locks          []mcpLock `json:"locks"`
 	LocksCount     int       `json:"locks_count"`
+	Op             *int      `json:"op"`
 	lockPath       bool
 }
 
@@ -431,7 +433,8 @@ func TestAMoveWithoutItsLinksLeavesThemAndTheIndex(t *testing.T) {
 // The writes' lines name ids and counts, never a path, a title, a content
 // or an old_string (M9/P2 design 3.14): each use case's line, of the
 // agent's client, beside each call's, with every path and content of the
-// marker letters, which no line holds.
+// marker letters, which no line holds; a batch's too, its message of them
+// (M9/P3 design 3.11).
 func TestTheMCPWritesLogNoPathOrContent(t *testing.T) {
 	m := startMCPApp(t, nil)
 	m.handshakeAs(t, "whole-program")
@@ -443,6 +446,9 @@ func TestTheMCPWritesLogNoPathOrContent(t *testing.T) {
 	answerOf[mcpWritten](t, m.use(t, "write", map[string]any{"path": "Jqj.md", "content": "qj"}))
 	answerOf[mcpMoved](t, m.use(t, "move", map[string]any{"from": "Jqj.md", "to": "Qjq/Jqj.md", "update_links": false}))
 	answerOf[mcpDeleted](t, m.use(t, "delete", map[string]any{"path": "Qjq.md", "recursive": true}))
+	batch := answerOf[mcpBatched](t, m.use(t, "batch", map[string]any{"message": "qjqj qj", "ops": []map[string]any{
+		opWrite("Qjb/Qjbq.md", "qjqj"), opEdit("Qjb/Qjbq.md", "qjqj", "jqjq"), opMove("Qjb/Qjbq.md", "Qjb/Jqjb.md"),
+	}}))
 	for _, tt := range []struct {
 		msg  string
 		want map[string]any
@@ -453,9 +459,13 @@ func TestTheMCPWritesLogNoPathOrContent(t *testing.T) {
 		{"node renamed", map[string]any{"update_links": true}},
 		{"node moved", map[string]any{"update_links": false}},
 		{"node deleted", map[string]any{"nodes": 3.0, "pages": 3.0, "assets": 0.0}},
+		{"batch applied", map[string]any{"changeset_id": *batch.ChangesetID, "ops": 3.0, "pages_written": 1.0, "created": 2.0, "deleted": 0.0,
+			"moved": 1.0, "rewritten": 0.0}},
 	} {
 		line := m.logged(t, tt.msg)
-		if line == nil || line["client"] != "mcp:whole-program" || line["node_id"] == nil || line["changeset_id"] == nil {
+		// A batch's line names no node: its ops' are many (M9/P3 design 3.11).
+		if line == nil || line["client"] != "mcp:whole-program" || (line["node_id"] == nil) != (tt.msg == "batch applied") ||
+			line["changeset_id"] == nil {
 			t.Errorf("the line %q = %v, want the agent's client, the node and the changeset", tt.msg, line)
 			continue
 		}
@@ -465,7 +475,7 @@ func TestTheMCPWritesLogNoPathOrContent(t *testing.T) {
 			}
 		}
 	}
-	for _, tool := range []string{"write", "edit", "move", "delete"} {
+	for _, tool := range []string{"write", "edit", "move", "delete", "batch"} {
 		if line := m.callLogged(t, tool); line == nil || line["outcome"] != "ok" {
 			t.Errorf("the call line of %s = %v, want one, ok", tool, line)
 		}
