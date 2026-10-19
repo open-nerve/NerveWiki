@@ -238,3 +238,61 @@ func TestAnErrorOfTheLongestPathFits(t *testing.T) {
 		t.Errorf("the hint without Fit = %s in %d bytes, want internal_error: it is over the bound", code, bytes)
 	}
 }
+
+// An error's place, At, follows its code in whatever words answer it (M9/P3
+// design 3.9.2): the problem's own with its fields, the module's Text,
+// each k of Fit's; the member's message is the same words. Words that
+// start without their code get the code and At before them, and an error
+// line says so.
+func TestAnErrorsPlaceFollowsItsCode(t *testing.T) {
+	notFound := problem{status: http.StatusNotFound, code: "page.not_found", detail: "No such page.",
+		fields: []error{fieldProblem{"ops[3].from", "invalid_format", "is odd"}}}
+	s := New(bare(discard()))
+	for _, tt := range []struct {
+		name string
+		err  *ToolError
+		want string
+	}{
+		{"the problem's own words", &ToolError{Err: notFound, At: "ops[3] (move)"},
+			"page.not_found: ops[3] (move): No such page. (ops[3].from: invalid_format: is odd)"},
+		{"the module's", &ToolError{Err: notFound, Text: `page.not_found: Nothing is at "A.md".`, At: "ops[3] (move)"},
+			`page.not_found: ops[3] (move): Nothing is at "A.md".`},
+		{"none", &ToolError{Err: notFound, Text: "page.not_found: Nothing."}, "page.not_found: Nothing."},
+	} {
+		r := decodedAnswer(t, s, tt.err)
+		if toolText(t, r) != tt.want || errorOf(t, r)["message"] != tt.want {
+			t.Errorf("%s: the text %q, the message %q; want %q", tt.name, toolText(t, r), errorOf(t, r)["message"], tt.want)
+		}
+	}
+	for _, n := range []int{30, 3} {
+		fit := itemsError(n, 4000, false)
+		fit.At = "ops[0] (delete)"
+		r := decodedAnswer(t, s, fit)
+		items, _ := errorOf(t, r)["items"].([]any)
+		text, extra := itemsError(n, 4000, false).Fit.Build(len(items))
+		want := strings.Replace(text, "page.locked: ", "page.locked: ops[0] (delete): ", 1)
+		if toolText(t, r) != want || len(items) == 0 {
+			t.Errorf("%d items: %q, want %q", n, toolText(t, r), want)
+		}
+		if _, bytes := ErrorAnswerBytes(fit); bytes > MaxAnswerBytes {
+			t.Errorf("%d items with their place: %d bytes, over the bound", n, bytes)
+		}
+		if k := len(items); k < n {
+			if code, _ := ErrorAnswerBytes(&ToolError{Err: fit.Err, Text: want, Extra: extra}); code == "internal_error" {
+				t.Errorf("%d items: the %d answered do not fit with their place", n, k)
+			}
+		}
+	}
+	served := serveMCP(t, setup{options: func(o *Options) {
+		o.Tools = append(o.Tools, toolOf("stray", func(context.Context, Call) (Result, error) {
+			return Result{}, &ToolError{Err: notFound, Text: "Nothing is here.", At: "ops[1] (edit)"}
+		}))
+	}})
+	r := result(t, served.call(t, Pattern, "stray", nil))
+	line := served.logs.find(t, "MCP error's words start without their code")
+	if toolText(t, r) != "page.not_found: ops[1] (edit): Nothing is here." || line == nil || line["tool"] != "stray" ||
+		line["level"] != "ERROR" {
+		t.Errorf("words without their code = %q, the line %v; want the code and the place before them, an error line",
+			toolText(t, r), line)
+	}
+}
