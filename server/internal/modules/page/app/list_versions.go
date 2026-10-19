@@ -15,7 +15,9 @@ type VersionList struct {
 	NextCursor string
 }
 
-// VersionReads are what the reads of a page's versions need.
+// VersionReads are what the reads of a page's versions need; by its path,
+// MCP's versions (M9/P2 design 3.16.1), Paths finding the page and States
+// reading its version now.
 type VersionReads struct {
 	Notebooks Notebooks
 	Nodes     Nodes
@@ -23,6 +25,8 @@ type VersionReads struct {
 	Names     Names
 	Auth      shared.Authorizer
 	Clock     Clock
+	Paths     PathStore
+	States    PageStates
 }
 
 // ListVersions lists a page's versions, a page of them at a time: GET
@@ -46,17 +50,9 @@ func NewListVersions(r VersionReads) *ListVersions {
 // session whose changeset it is is alive. A read takes no lock and opens
 // no transaction.
 func (l *ListVersions) Execute(ctx context.Context, id uuid.UUID, limit *int, cursor *string) (VersionList, error) {
-	// From the newest: below a revision none has.
-	below := domain.MaxRevision + 1
-	if cursor != nil {
-		var c domain.VersionCursor
-		if err := shared.DecodeCursor(*cursor, &c); err != nil {
-			return VersionList{}, err
-		}
-		if c.Below < 1 || c.Below > domain.MaxRevision {
-			return VersionList{}, shared.InvalidCursor()
-		}
-		below = c.Below
+	below, err := versionsBelow(cursor)
+	if err != nil {
+		return VersionList{}, err
 	}
 	n, err := readableAny(ctx, l.r.Notebooks, l.r.Nodes, l.r.Auth, id, domain.ActionHistory)
 	if err != nil {
@@ -66,7 +62,108 @@ func (l *ListVersions) Execute(ctx context.Context, id uuid.UUID, limit *int, cu
 	if err != nil {
 		return VersionList{}, err
 	}
-	versions, err := l.r.Versions.ListVersions(ctx, n.ID, below, size+1)
+	return l.r.list(ctx, n.ID, below, size, cursor == nil)
+}
+
+// PathVersionList is versions' list (M9 design 4.9): the page at its
+// path, its version now, and a page of its versions, each with the cursor
+// that goes on after it.
+type PathVersionList struct {
+	Path       string
+	Node       domain.Node
+	Current    domain.VersionToken
+	Versions   []domain.Version
+	Cursors    []string
+	NextCursor string
+}
+
+// AtPath lists the versions of the page at path in notebookID as Execute
+// lists a page's (M9/P2 design 3.16.1): the page alive, found by its path,
+// unlocked. Its order: the actor; the cursor, 400; the path, 422, an
+// attachment's refused; the limit, 422; the notebook, notebook.not_found
+// (page.history, which every role may: no 403); the page, page.not_found;
+// then Execute's reads, and the page's version now, page.not_found when
+// the page went since it was found.
+func (l *ListVersions) AtPath(ctx context.Context, notebookID uuid.UUID, path string, limit *int, cursor *string) (
+	PathVersionList, error,
+) {
+	actor, err := shared.RequireActor(ctx)
+	if err != nil {
+		return PathVersionList{}, err
+	}
+	below, err := versionsBelow(cursor)
+	if err != nil {
+		return PathVersionList{}, err
+	}
+	p, err := versionsPath(path)
+	if err != nil {
+		return PathVersionList{}, err
+	}
+	size, err := shared.PageSize(limit)
+	if err != nil {
+		return PathVersionList{}, err
+	}
+	if err := decideNotebook(ctx, l.r.Notebooks, l.r.Auth, actor, domain.ActionHistory, notebookID); err != nil {
+		return PathVersionList{}, err
+	}
+	at, err := NewNodePaths(l.r.Paths).Find(ctx, notebookID, p)
+	if err != nil {
+		return PathVersionList{}, err
+	}
+	list, err := l.r.list(ctx, at.Node.ID, below, size, cursor == nil)
+	if err != nil {
+		return PathVersionList{}, err
+	}
+	cursors, err := cursorsAfter(list.Versions, func(v domain.Version) any { return domain.VersionCursor{Below: v.Revision} })
+	if err != nil {
+		return PathVersionList{}, err
+	}
+	current, err := l.r.current(ctx, at.Node.ID, p)
+	if err != nil {
+		return PathVersionList{}, err
+	}
+	return PathVersionList{Path: domain.PathOf(at.Ancestors, at.Node), Node: at.Node, Current: current,
+		Versions: list.Versions, Cursors: cursors, NextCursor: list.NextCursor}, nil
+}
+
+// versionsBelow is the revision a page of versions lists below: cursor's,
+// from the newest without one. A cursor that does not decode, or names no
+// revision a version may have, is 400 bad_request.
+func versionsBelow(cursor *string) (int, error) {
+	if cursor == nil {
+		return domain.MaxRevision + 1, nil // below a revision none has
+	}
+	var c domain.VersionCursor
+	if err := shared.DecodeCursor(*cursor, &c); err != nil {
+		return 0, err
+	}
+	if c.Below < 1 || c.Below > domain.MaxRevision {
+		return 0, shared.InvalidCursor()
+	}
+	return c.Below, nil
+}
+
+// versionsPath is path as versions takes it (M9/P2 design 3.16.1): a
+// page's, 422 on path otherwise; an attachment's name never ends with
+// ".md", so a page's path finds pages alone.
+func versionsPath(path string) (domain.Path, error) {
+	p, err := domain.ParsePath("path", path, false)
+	if err != nil {
+		return domain.Path{}, err
+	}
+	if p.Kind != domain.KindPage {
+		return domain.Path{}, domain.NotAllowed("path", "is an attachment's path: attachments have no versions")
+	}
+	return p, nil
+}
+
+// list is a page of the page id's versions, newer first, below the
+// revision below, size at most: one version more is read to tell whether
+// another follows. On the first page the newest is marked editing while
+// the edit session whose changeset it is is alive. Their actors' names
+// are read at once.
+func (r VersionReads) list(ctx context.Context, id uuid.UUID, below, size int, first bool) (VersionList, error) {
+	versions, err := r.Versions.ListVersions(ctx, id, below, size+1)
 	if err != nil {
 		return VersionList{}, err
 	}
@@ -77,18 +174,32 @@ func (l *ListVersions) Execute(ctx context.Context, id uuid.UUID, limit *int, cu
 			return VersionList{}, err
 		}
 	}
-	if cursor == nil && len(versions) > 0 {
-		alive, err := l.r.Versions.AliveChangesetOf(ctx, n.ID, l.r.Clock.Now())
+	if first && len(versions) > 0 {
+		alive, err := r.Versions.AliveChangesetOf(ctx, id, r.Clock.Now())
 		if err != nil {
 			return VersionList{}, err
 		}
 		versions[0].Editing = alive != (uuid.UUID{}) && alive == versions[0].Changeset.ID
 	}
-	if err := named(ctx, l.r.Names, versions); err != nil {
+	if err := named(ctx, r.Names, versions); err != nil {
 		return VersionList{}, err
 	}
 	out.Versions = versions
 	return out, nil
+}
+
+// current is the page id's version now, as list and read give it: a page
+// that went since it was found at p is not found there.
+func (r VersionReads) current(ctx context.Context, id uuid.UUID, p domain.Path) (domain.VersionToken, error) {
+	states, err := r.States.PageStates(ctx, []uuid.UUID{id})
+	if err != nil {
+		return domain.VersionToken{}, err
+	}
+	s, ok := states[id]
+	if !ok {
+		return domain.VersionToken{}, &domain.PathNotFound{Path: p.Written}
+	}
+	return domain.VersionToken{Node: id, Revision: s.Revision}, nil
 }
 
 // named fills the display names of the versions' changesets' actors, read

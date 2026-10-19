@@ -47,17 +47,5 @@ func (l *ListChanges) Execute(ctx context.Context, id uuid.UUID, limit *int, cur
 	if err != nil {
 		return ChangeList{}, err
 	}
-	changes, err := l.r.History.ListChanges(ctx, c.ID, after.After, size+1)
-	if err != nil {
-		return ChangeList{}, err
-	}
-	var out ChangeList
-	if len(changes) > size {
-		changes = changes[:size]
-		if out.NextCursor, err = shared.EncodeCursor(domain.ChangeCursor{After: changes[size-1].NodeID}); err != nil {
-			return ChangeList{}, err
-		}
-	}
-	out.Changes = changes
-	return out, nil
+	return l.r.changes(ctx, c.ID, after.After, size)
 }
