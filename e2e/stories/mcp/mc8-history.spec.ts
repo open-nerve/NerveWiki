@@ -141,8 +141,9 @@ test("MC8 (MCP): an agent reads the notebook's log narrowed by client, actor and
   expect(page.next_cursor).toBeNull();
 
   // 5. Another notebook's changeset, which the admin reads there, is not found here.
-  const [elsewhere] = await restLog(other.id, {});
-  expect(errorOf(await agent.call("changeset", { id: String(elsewhere?.id) }), "changeset of Other's").code).toBe(
+  const elsewhere = await restLog(other.id, {});
+  expect(elsewhere, "Other's log: the admin's page").toHaveLength(1);
+  expect(errorOf(await agent.call("changeset", { id: String(elsewhere[0]?.id) }), "changeset of Other's").code).toBe(
     "page.changeset_not_found"
   );
 
