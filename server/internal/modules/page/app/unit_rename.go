@@ -23,7 +23,7 @@ func (u *Unit) rename(ctx context.Context, id uuid.UUID, name string, participat
 	if err != nil {
 		return domain.Node{}, found(err, domain.ErrNotFound)
 	}
-	title, err := nameOf(n, name, "name")
+	title, err := domain.RenameTitle("name", n, name)
 	if err != nil {
 		return domain.Node{}, err
 	}
@@ -54,12 +54,4 @@ func (u *Unit) renameTo(ctx context.Context, n domain.Node, title domain.Title, 
 	step := u.step(domain.OpRename, domain.Change{NodeID: n.ID, Before: &before, After: &after})
 	err := u.apply(ctx, step, participate, func(ctx context.Context) error { return write(ctx, renamed) })
 	return renamed, err
-}
-
-// nameOf checks name as n's new name, by n's kind, as field.
-func nameOf(n domain.Node, name, field string) (domain.Title, error) {
-	if n.Kind == domain.KindAsset {
-		return domain.CheckAssetRename(field, n.Name, name)
-	}
-	return domain.CheckTitle(field, name)
 }

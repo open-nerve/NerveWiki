@@ -14,11 +14,11 @@ import (
 // design 3.3.6, 3.10.5; M9/P2 design 3.10.4, 3.11.5), each path quoted as
 // it is (domain.Quoted): a path that names nothing, with its hint while
 // the answer holds it; a version token that is not the page's version,
-// with the version there now; a page deleted without recursive, counted;
-// a refusal of edit locks, with each page's path and whether c's caller
-// holds the lock. path is the path the call names, which the last two
-// quote: write's, edit's and delete's path, move's from. Any other error
-// is as it is.
+// with the version there now; a page deleted without recursive, counted,
+// at the field the call names it (a batch's op's own); a refusal of edit
+// locks, with each page's path and whether c's caller holds the lock.
+// path is the path the call names, which the last two quote: write's,
+// edit's and delete's path, move's from. Any other error is as it is.
 func toolErr(err error, c mcpserver.Call, path string) error {
 	var (
 		missing  *domain.PathNotFound
@@ -35,7 +35,7 @@ func toolErr(err error, c mcpserver.Call, path string) error {
 	case errors.As(err, &children):
 		return &mcpserver.ToolError{Err: err, Text: "validation_failed: " + domain.Quoted(path) + " has " +
 			domain.PagesAndAttachments(children.Pages, children.Assets) +
-			" under it: set recursive to true to put them in the trash with it."}
+			" under it: set " + children.Field + " to true to put them in the trash with it."}
 	case errors.As(err, &locks):
 		return lockErr(err, locks, c, path)
 	}

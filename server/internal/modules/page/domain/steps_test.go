@@ -66,7 +66,7 @@ func TestCreationOf(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			path := mustPath(t, tt.path)
-			c, err := domain.CreationOf("path", path, tt.found)
+			c, err := domain.CreationOf(domain.Args{}, path, tt.found)
 			var taken *domain.PathTaken
 			got := ""
 			switch {
@@ -124,7 +124,7 @@ func TestMoveKinds(t *testing.T) {
 		{"A.md", "B/x.png", refused},
 		{"A/x.png", "B/x.png.md", refused},
 	} {
-		err := domain.MoveKinds(mustPath(t, tt.from), mustPath(t, tt.to))
+		err := domain.MoveKinds(domain.Args{}, mustPath(t, tt.from), mustPath(t, tt.to))
 		if got := ""; err != nil {
 			got = said(err)
 			if got != tt.want {
@@ -161,13 +161,159 @@ func TestDeletionOf(t *testing.T) {
 		{"a page with an attachment", sub(p, a), false, 0, 1, true},
 		{"a page with children, recursive", sub(p, p, a), true, 0, 0, false},
 	} {
-		err := domain.DeletionOf(tt.sub, tt.recursive)
+		err := domain.DeletionOf(domain.Args{}, tt.sub, tt.recursive)
 		var r *domain.Recursive
 		switch {
 		case !tt.refused && err != nil:
 			t.Errorf("%s: DeletionOf = %v, want nil", tt.name, err)
 		case tt.refused && (!errors.As(err, &r) || r.Pages != tt.pages || r.Assets != tt.assets):
 			t.Errorf("%s: DeletionOf = %v, want *Recursive{%d, %d}", tt.name, err, tt.pages, tt.assets)
+		}
+	}
+}
+
+// ParentChainOf judges the pages Walk found towards move's parent (M9/P2
+// design 3.8.3): the root, and a line of pages found whole, are the
+// parent; a segment that is an attachment, where to goes on, is 422 on to,
+// whether Walk stopped at it or found it last; a parent that names nothing
+// is page.not_found at the parent's path, hinted that move makes no pages,
+// unless a missing segment ends with .md, write's 422 on to.
+func TestParentChainOf(t *testing.T) {
+	a, b := stepNodes("A")[0], stepNodes("B")[0]
+	img := stepNodes("x.png")[0]
+	for _, tt := range []struct {
+		name, to string
+		chain    []domain.Node
+		on       *domain.AttachmentOnPath
+		want     string
+	}{
+		{"the root", "C.md", nil, nil, ""},
+		{"a line found whole", "A/B/C.md", []domain.Node{a, b}, nil, ""},
+		{"an attachment Walk stopped at", "A/x.png/C.md", []domain.Node{a, img}, &domain.AttachmentOnPath{Segment: 2},
+			"validation_failed to not_allowed: segment 2 is an attachment, which holds no nodes"},
+		{"an attachment found last", "x.png/C.md", []domain.Node{img}, nil,
+			"validation_failed to not_allowed: segment 1 is an attachment, which holds no nodes"},
+		{"a parent that names nothing", "A/B/C.md", []domain.Node{a}, nil, `not found "A/B.md", to's parent`},
+		{"a missing segment ending with .md", "A/B.md/C.md", []domain.Node{a}, nil,
+			"validation_failed to not_allowed: segment 2 ends with .md: an ancestor is written by its title, without .md"},
+	} {
+		err := domain.ParentChainOf(domain.Args{}, mustPath(t, tt.to), tt.chain, tt.on)
+		got := ""
+		var missing *domain.PathNotFound
+		switch {
+		case errors.As(err, &missing):
+			got = `not found "` + missing.Path + `", ` + missing.ParentOf + "'s parent"
+			if missing.Hint != domain.MoveParentHint || !errors.Is(err, domain.ErrNotFound) {
+				t.Errorf("%s: the hint %q of %v, want MoveParentHint's page.not_found", tt.name, missing.Hint, err)
+			}
+		case err != nil:
+			got = said(err)
+		}
+		if got != tt.want {
+			t.Errorf("%s: ParentChainOf = %s, want %s", tt.name, got, tt.want)
+		}
+	}
+}
+
+// PagePath lets write and edit take a page's path, ending with .md in any
+// case, and refuses an attachment's on path in the tool's own words.
+func TestPagePath(t *testing.T) {
+	for _, tt := range []struct{ path, tool, want string }{
+		{"A/B.md", "write", ""},
+		{"A/B.MD", "edit", ""},
+		{"A/x.png", "write",
+			"validation_failed path not_allowed: is an attachment's path: write writes pages, whose paths end with .md; attachments are uploaded in the web"},
+		{"x.png", "edit",
+			"validation_failed path not_allowed: is an attachment's path: edit edits pages, whose paths end with .md; attachments are uploaded in the web"},
+	} {
+		got := ""
+		if err := domain.PagePath(domain.Args{}, mustPath(t, tt.path), tt.tool); err != nil {
+			got = said(err)
+		}
+		if got != tt.want {
+			t.Errorf("PagePath(%q, %s) = %q, want %q", tt.path, tt.tool, got, tt.want)
+		}
+	}
+}
+
+// RenameTitle checks a new name by the node's kind: a page's by the title's
+// rules, an attachment's by an attachment's, its extension kept and no
+// page's .md.
+func TestRenameTitle(t *testing.T) {
+	page, img := stepNodes("Plan")[0], stepNodes("x.png")[0]
+	for _, tt := range []struct {
+		node       domain.Node
+		name, want string
+	}{
+		{page, "Plan 2", "Plan 2"},
+		{page, "x.md", "x.md"},
+		{img, "y.jpg", "y.jpg"},
+		{page, "a/b", `validation_failed name invalid_format: must not contain / \ : * ? " < > | # ^ [ ] or control characters`},
+		{img, "y", "validation_failed name not_allowed: An attachment's new name must keep an extension: its type is told by it."},
+		{img, "y.md", `validation_failed name not_allowed: An attachment's name must not end with ".md", which names a page's file.`},
+	} {
+		title, err := domain.RenameTitle("name", tt.node, tt.name)
+		got := title.Name
+		if err != nil {
+			got = said(err)
+		}
+		if got != tt.want {
+			t.Errorf("RenameTitle(%s, %q) = %q, want %q", tt.node.Name, tt.name, got, tt.want)
+		}
+	}
+}
+
+// RelocationOf answers a move's 409s in Move's order (M4/P1 design 3.6;
+// M9/P2 design 3.5.1), which Unit.Relocate and a batch's plan share: a
+// parent in the node's subtree first, then a sibling holding the name, of
+// its kind, then a subtree too deep there, an attachment no level; the
+// root is no parent in any subtree.
+func TestRelocationOfIsMovesOrder(t *testing.T) {
+	ids := stepNodes("N", "C", "img.png")
+	n, c, img := ids[0], ids[1], ids[2]
+	sub := domain.Subtree{{Node: n, Level: 1}, {Node: c, Level: 2}}
+	withImage := domain.Subtree{{Node: n, Level: 1}, {Node: img, Level: 2}}
+	line := func(depth int) []domain.Ancestor {
+		out := make([]domain.Ancestor, depth)
+		for i := range out {
+			out[i] = domain.Ancestor{ID: uuid.NewV7(), Name: "L"}
+		}
+		return out
+	}
+	held, heldAsset := stepNodes("Plan")[0], stepNodes("Plan.png")[0]
+	elsewhere := uuid.NewV7()
+	for _, tt := range []struct {
+		name   string
+		sub    domain.Subtree
+		parent *uuid.UUID
+		line   []domain.Ancestor
+		holder *domain.Node
+		want   string
+	}{
+		{"free", sub, &elsewhere, line(2), nil, ""},
+		{"to the root", sub, nil, nil, nil, ""},
+		{"under itself", sub, &n.ID, line(1), nil, "page.cycle"},
+		{"under its child, the name held, too deep", sub, &c.ID, line(9), &held, "page.cycle"},
+		{"the name held by a page, too deep", sub, &elsewhere, line(9), &held, "taken page"},
+		{"the name held by an attachment", sub, &elsewhere, line(1), &heldAsset, "taken attachment"},
+		{"its children past the tenth level", sub, &elsewhere, line(9), nil, "page.too_deep"},
+		{"its attachment no level", withImage, &elsewhere, line(9), nil, ""},
+	} {
+		err := domain.RelocationOf(tt.sub, tt.parent, tt.line, tt.holder)
+		var taken *domain.PathTaken
+		got := ""
+		switch {
+		case errors.As(err, &taken) && errors.Is(err, domain.ErrTitleTaken):
+			got = map[bool]string{false: "taken page", true: "taken attachment"}[taken.Asset]
+		case errors.Is(err, domain.ErrCycle):
+			got = "page.cycle"
+		case errors.Is(err, domain.ErrTooDeep):
+			got = "page.too_deep"
+		case err != nil:
+			got = err.Error()
+		}
+		if got != tt.want {
+			t.Errorf("%s: RelocationOf = %q, want %q", tt.name, got, tt.want)
 		}
 	}
 }

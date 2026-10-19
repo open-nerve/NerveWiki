@@ -81,9 +81,8 @@ func (w *WritePath) Execute(ctx context.Context, notebookID uuid.UUID, p PathWri
 	if err != nil {
 		return Written{}, err
 	}
-	if path.Kind != domain.KindPage {
-		return Written{}, domain.NotAllowed("path",
-			"is an attachment's path: write writes pages, whose paths end with .md; attachments are uploaded in the web")
+	if err := domain.PagePath(domain.Args{}, path, "write"); err != nil {
+		return Written{}, err
 	}
 	if err := domain.CheckContent("content", p.Content); err != nil {
 		return Written{}, err
@@ -131,7 +130,7 @@ func (w *WritePath) create(ctx context.Context, actor shared.Actor, notebookID u
 		if on := (*domain.AttachmentOnPath)(nil); err != nil && !errors.As(err, &on) {
 			return err // an attachment on the way is CreationOf's to refuse
 		}
-		c, err := domain.CreationOf("path", path, found)
+		c, err := domain.CreationOf(domain.Args{}, path, found)
 		if err != nil {
 			return err
 		}

@@ -36,7 +36,7 @@ func (u *Unit) Relocate(ctx context.Context, id uuid.UUID, p Placement) (domain.
 	if err != nil {
 		return domain.Node{}, found(err, domain.ErrNotFound)
 	}
-	title, err := nameOf(n, p.Name, p.Field)
+	title, err := domain.RenameTitle(p.Field, n, p.Name)
 	if err != nil {
 		return domain.Node{}, err
 	}
@@ -55,16 +55,12 @@ func (u *Unit) Relocate(ctx context.Context, id uuid.UUID, p Placement) (domain.
 	if err != nil {
 		return domain.Node{}, err
 	}
-	// The 409s in Move's order: the cycle, the name, the depth.
-	if p.ParentID != nil && sub.Holds(*p.ParentID) {
-		return domain.Node{}, domain.ErrCycle
+	var holder *domain.Node
+	if h, held := holderOf(siblings, title, n.ID); held {
+		holder = &h
 	}
-	if err := pathFree(siblings, title, n.ID); err != nil {
+	if err := domain.RelocationOf(sub, p.ParentID, line, holder); err != nil {
 		return domain.Node{}, err
-	}
-	// The subtree's deepest node lands Height - 1 levels below the node.
-	if domain.Depth(line)+sub.Height()-1 > domain.MaxDepth {
-		return domain.Node{}, domain.ErrTooDeep
 	}
 	order, _, renumber := u.placeAmong(siblings, len(siblings)-1)
 	moved := n

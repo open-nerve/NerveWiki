@@ -272,7 +272,7 @@ func TestReplaceStaysWithinItsTime(t *testing.T) {
 	var slowestOf string
 	for _, s := range replaceShapes(t) {
 		start := time.Now()
-		r, err := domain.Replace(s.content, s.old, s.new, s.all)
+		r, err := domain.Replace(domain.Args{}, s.content, s.old, s.new, s.all)
 		took := time.Since(start)
 		t.Logf("%s: %v, %s", s.name, took, outcome(r, err))
 		if took > slowest {

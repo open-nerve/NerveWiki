@@ -16,25 +16,25 @@ const MaxEditOldBytes = 1 << 20
 
 // CheckEdit checks an edit's two strings, given (M9 design 4.10):
 // old_string of 1 to MaxEditOldBytes bytes, new_string of at most
-// MaxContentBytes, both UTF-8 without NUL, and different; 422 on the one
-// that is not. A value is never repeated: it may be megabytes.
-func CheckEdit(old, new string) error {
+// MaxContentBytes, both UTF-8 without NUL, and different; 422 on a's field
+// of the one that is not. A value is never repeated: it may be megabytes.
+func CheckEdit(a Args, old, new string) error {
 	switch {
 	case old == "":
-		return shared.Invalid(shared.FieldError{Field: "old_string", Code: shared.FieldTooShort, Message: "must not be empty"})
+		return shared.Invalid(shared.FieldError{Field: a.Field("old_string"), Code: shared.FieldTooShort, Message: "must not be empty"})
 	case len(old) > MaxEditOldBytes:
-		return shared.Invalid(shared.FieldError{Field: "old_string", Code: shared.FieldTooLong,
+		return shared.Invalid(shared.FieldError{Field: a.Field("old_string"), Code: shared.FieldTooLong,
 			Message: "must be at most 1 MiB (1,048,576 bytes)"})
 	}
 	// Within the bound, CheckContent answers old_string's format alone.
-	if err := CheckContent("old_string", old); err != nil {
+	if err := CheckContent(a.Field("old_string"), old); err != nil {
 		return err
 	}
-	if err := CheckContent("new_string", new); err != nil {
+	if err := CheckContent(a.Field("new_string"), new); err != nil {
 		return err
 	}
 	if old == new {
-		return NotAllowed("new_string", "must differ from old_string")
+		return NotAllowed(a.Field("new_string"), "must differ from old_string")
 	}
 	return nil
 }
@@ -64,12 +64,13 @@ type Replacement struct {
 // edit that removes its last one leaves no rule). An old with a CR is
 // matched, and new written, as given: old "\r\n" and new "\n" with all
 // turn a page to LF.
-// 422 on old_string when old does not occur (hinting when it would under
-// NFC) or occurs more than once without all; on new_string when the
-// content would pass MaxContentBytes, which it knows before it builds it.
+// 422 on a's old_string when old does not occur (hinting when it would
+// under NFC) or occurs more than once without all; on a's new_string when
+// the content would pass MaxContentBytes, which it knows before it builds
+// it.
 // Every search is the matcher's: linear in the content and old, whatever
 // their bytes. old is not empty: CheckEdit checks it first.
-func Replace(content, old, new string, all bool) (Replacement, error) {
+func Replace(a Args, content, old, new string, all bool) (Replacement, error) {
 	crlf := strings.IndexByte(old, '\r') < 0 && allCRLF(content)
 	if crlf {
 		old, new = bareLFsAsCRLF(old), bareLFsAsCRLF(new)
@@ -77,18 +78,18 @@ func Replace(content, old, new string, all bool) (Replacement, error) {
 	m := newMatcher(old)
 	i := m.index(content, 0)
 	if i < 0 {
-		return Replacement{}, notInPage(content, old)
+		return Replacement{}, notInPage(a, content, old)
 	}
 	count := 1
 	switch {
 	case all:
 		count = m.count(content)
 	case m.index(content, i+1) >= 0:
-		return Replacement{}, NotAllowed("old_string",
+		return Replacement{}, NotAllowed(a.Field("old_string"),
 			fmt.Sprintf("is found %d times; add context to make it unique, or set replace_all", max(m.count(content), 2)))
 	}
 	if len(content)+count*(len(new)-len(old)) > MaxContentBytes {
-		return Replacement{}, shared.Invalid(shared.FieldError{Field: "new_string", Code: shared.FieldTooLong,
+		return Replacement{}, shared.Invalid(shared.FieldError{Field: a.Field("new_string"), Code: shared.FieldTooLong,
 			Message: "would make the page longer than 5 MiB (5,242,880 bytes)"})
 	}
 	if !all {
@@ -106,17 +107,17 @@ func Replace(content, old, new string, all bool) (Replacement, error) {
 	return Replacement{Content: b.String(), Count: count, CRLF: crlf}, nil
 }
 
-// notInPage is 422 on old_string, which content does not hold: with the
-// hint that it would under NFC when content or old is not in NFC and
+// notInPage is 422 on a's old_string, which content does not hold: with
+// the hint that it would under NFC when content or old is not in NFC and
 // their NFC forms match, as the matcher finds them too.
-func notInPage(content, old string) error {
+func notInPage(a Args, content, old string) error {
 	message := "is not in the page: copy it from what read gave, byte for byte"
 	if !norm.NFC.IsNormalString(content) || !norm.NFC.IsNormalString(old) {
 		if newMatcher(norm.NFC.String(old)).index(norm.NFC.String(content), 0) >= 0 {
 			message += "; the page's text and old_string differ in Unicode normalization (NFC)"
 		}
 	}
-	return NotAllowed("old_string", message)
+	return NotAllowed(a.Field("old_string"), message)
 }
 
 // allCRLF reports whether s's line breaks are all CRLF: it has one, and

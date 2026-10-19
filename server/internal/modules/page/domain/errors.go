@@ -198,16 +198,20 @@ func (e *AttachmentOnPath) Error() string {
 	return fmt.Sprintf("page: segment %d of the path is an attachment", e.Segment)
 }
 
-// Recursive is 422 on recursive: a page with Pages pages and Assets
-// assets under it is deleted only with recursive.
-type Recursive struct{ Pages, Assets int }
+// Recursive is 422 on Field, the call's recursive (DeletionOf's Args): a
+// page with Pages pages and Assets assets under it is deleted only with
+// recursive.
+type Recursive struct {
+	Field         string
+	Pages, Assets int
+}
 
 func (e *Recursive) Error() string { return e.Unwrap().Error() }
 
 // Unwrap is the 422 itself. Its message counts the nodes and names no
 // path (M9/P2 design 3.10.3).
 func (e *Recursive) Unwrap() error {
-	return shared.Invalid(shared.FieldError{Field: "recursive", Code: shared.FieldRequired,
+	return shared.Invalid(shared.FieldError{Field: e.Field, Code: shared.FieldRequired,
 		Message: "must be true to delete a page with children: " + PagesAndAttachments(e.Pages, e.Assets)})
 }
 

@@ -131,7 +131,7 @@ func TestTheWritesErrorsAreTheirCodes(t *testing.T) {
 		{2, 0, "2 pages"},
 		{0, 1, "1 attachment"},
 	} {
-		var err error = &domain.Recursive{Pages: tt.pages, Assets: tt.assets}
+		var err error = &domain.Recursive{Field: "recursive", Pages: tt.pages, Assets: tt.assets}
 		if !errors.As(err, &e) || e.Code != shared.CodeValidationFailed || len(e.Fields) != 1 || e.Fields[0].Field != "recursive" ||
 			e.Fields[0].Code != shared.FieldRequired || e.Fields[0].Message != "must be true to delete a page with children: "+tt.want ||
 			err.Error() != e.Error() {

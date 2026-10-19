@@ -122,10 +122,21 @@ func PathOfNames(names []string, kind Kind) string {
 // escapes for the characters a title may hold, U+3000 or U+00AD.
 func Quoted(path string) string { return `"` + path + `"` }
 
+// PagePath is 422 on a's path when p is an attachment's: tool, write or
+// edit, writes pages, whose paths end with .md (M9/P2 design 3.8.1,
+// 3.8.2); attachments are uploaded in the web.
+func PagePath(a Args, p Path, tool string) error {
+	if p.Kind != KindPage {
+		return NotAllowed(a.Field("path"),
+			"is an attachment's path: "+tool+" "+tool+"s pages, whose paths end with .md; attachments are uploaded in the web")
+	}
+	return nil
+}
+
 // PathNotFound is page.not_found for a path, with the path as written and
 // a hint, which page's adapter/mcp writes out. ParentOf names the field
 // whose parent Path is, when Path is no path the call gave but its
-// parent's: move's "to" (M9/P2 design 3.11.5).
+// parent's: move's "to", a batch's "ops[i].to" (M9/P2 design 3.11.5).
 type PathNotFound struct {
 	Path     string
 	Hint     string

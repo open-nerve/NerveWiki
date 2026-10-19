@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"slices"
 	"uuid"
@@ -65,7 +64,7 @@ func (m *RelocatePath) Execute(ctx context.Context, notebookID uuid.UUID, p Path
 	if err != nil {
 		return Relocated{}, err
 	}
-	if err := domain.MoveKinds(from, to); err != nil {
+	if err := domain.MoveKinds(domain.Args{}, from, to); err != nil {
 		return Relocated{}, err
 	}
 	if err := decideNotebook(ctx, m.notebooks, m.auth, actor, domain.ActionRead, notebookID); err != nil {
@@ -123,35 +122,16 @@ func (m *RelocatePath) Execute(ctx context.Context, notebookID uuid.UUID, p Path
 }
 
 // parentOf is the pages from the root to the parent to asks for, none for
-// the root, walked in the unit's transaction: the first segment that fails
-// decides. One that names an attachment is 422 on to, an attachment holds
-// no nodes; one that names nothing is page.not_found at to's parent's
-// path, a move creating no parent pages, unless a segment that names
-// nothing ends with .md: then write's 422 on to, the parent written as a
-// page's path (domain.MissingAncestors).
+// the root, walked in the unit's transaction, as domain.ParentChainOf
+// judges them: the first segment that fails decides.
 func (m *RelocatePath) parentOf(ctx context.Context, notebookID uuid.UUID, to domain.Path) ([]domain.Node, error) {
-	keys := to.Keys[:len(to.Keys)-1]
-	chain, err := m.paths.Walk(ctx, notebookID, keys)
+	chain, err := m.paths.Walk(ctx, notebookID, to.Keys[:len(to.Keys)-1])
 	var on *domain.AttachmentOnPath
-	switch {
-	case errors.As(err, &on):
-		return nil, holdsNoNodes(on.Segment)
-	case err != nil:
+	if err != nil && !errors.As(err, &on) {
 		return nil, err
-	case len(chain) < len(keys):
-		if err := domain.MissingAncestors("to", to, len(chain)); err != nil {
-			return nil, err
-		}
-		return nil, &domain.PathNotFound{Path: domain.PathOfNames(to.Titles[:len(keys)], domain.KindPage),
-			Hint: domain.MoveParentHint, ParentOf: "to"}
-	case len(chain) > 0 && chain[len(chain)-1].Kind != domain.KindPage:
-		return nil, holdsNoNodes(len(chain))
+	}
+	if err := domain.ParentChainOf(domain.Args{}, to, chain, on); err != nil {
+		return nil, err
 	}
 	return chain, nil
-}
-
-// holdsNoNodes is 422 on to: its segment segment names an attachment,
-// where to goes on under it.
-func holdsNoNodes(segment int) error {
-	return domain.NotAllowed("to", fmt.Sprintf("segment %d is an attachment, which holds no nodes", segment))
 }
