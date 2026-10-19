@@ -151,6 +151,41 @@ type (
 // refuses: the appender wraps the lock's error with it.
 var ErrGuardLocked = app.ErrGuardLocked
 
+// A batch's links (M9/P3 design 3.7): what its deferred rewrite follows
+// besides its changes, and the rewrite of its plan.
+type (
+	// WrittenPage is a page a batch wrote, as its deferred rewrite follows
+	// it.
+	WrittenPage = app.WrittenPage
+	// LinksBefore is where a page's links led at a moment of a batch's
+	// plan.
+	LinksBefore = app.LinksBefore
+	// Resolution is where a link leads.
+	Resolution = domain.Resolution
+	// TooManyRewrites is a batch's deferred rewrite past its bound, with
+	// the pages counted.
+	TooManyRewrites = app.TooManyRewrites
+	// BatchLinks resolves and rewrites links for a batch's plan.
+	BatchLinks = app.BatchLinks
+	// LinksOn is a content of a page of a batch's plan to resolve.
+	LinksOn = app.LinksOn
+	// LinksMoved is a content of a page of a batch's plan to rewrite.
+	LinksMoved = app.LinksMoved
+	// Link is a link of a page's content, as its facts hold it.
+	Link = domain.Link
+)
+
+// ErrTooManyRewrites is a batch's deferred rewrite past Moved.MaxPages,
+// which bootstrap answers as the page module's page.batch_too_large.
+var ErrTooManyRewrites = app.ErrTooManyRewrites
+
+// NewBatchLinks returns the plan's links over the pool alone (M9 design
+// 4.1): the tree it resolves on is its caller's, the plan's, and its parse
+// its caller's too; maxContent is the most bytes of a page's content.
+func NewBatchLinks(pool *pgxpool.Pool, maxContent int, logger *slog.Logger) BatchLinks {
+	return app.BatchLinks{Store: postgresadapter.New(pool), MaxContent: maxContent, Logger: logger}
+}
+
 // Rewrite is the page module's participant that writes again the links a
 // rename or a move would lead elsewhere (M6/P4).
 type Rewrite = app.Rewrite

@@ -39,24 +39,100 @@ type rewritten struct {
 // rename or a move of nodes that relocates one, or a rename of a title's
 // case alone. It finds the links of the index the operation reaches that
 // it writes again (domain.Rewrites tells each), on the pages the index has
-// with the current extractor; refuses with linking.pages_locked when one
-// of these pages is being edited, the caller's own too; then writes each
-// again, one page after another by id, its contents parsed with the budget
-// taken now (server_busy). A page whose content was written since its
-// index, and a link no writing leads back, are logged and left.
+// with the current extractor; and of a batch's (M9/P3 design 3.7.2), the
+// pages it wrote whose own changes move something, which it follows from
+// their contents. It counts them against m.MaxPages before it refuses or
+// parses any (ErrTooManyRewrites); refuses with linking.pages_locked when
+// one of these pages is being edited, the caller's own too; then writes
+// each again, one page after another, the batch's first, its contents
+// parsed with the budget taken now (server_busy). A page whose content
+// was written since its index, a link whose page led to is gone, and a
+// link no writing leads back, are logged and left.
 func (r Rewrite) Participate(ctx context.Context, m Moved, u Appender) error {
-	relocates, recased := domain.Relocation(m.Changes)
-	if !m.UpdateLinks || !relocates && recased.ID == (uuid.UUID{}) {
+	if !m.UpdateLinks {
 		return nil
 	}
-	reached, targets, err := r.reached(ctx, m, relocates, recased)
-	if err != nil || len(reached) == 0 {
+	gone := make(map[uuid.UUID]bool, len(m.Gone))
+	for _, id := range m.Gone {
+		gone[id] = true
+	}
+	index, err := r.followed(ctx, m, gone)
+	if err != nil {
 		return err
+	}
+	var written []uuid.UUID
+	for _, id := range slices.SortedFunc(maps.Keys(m.Written), uuid.UUID.Compare) {
+		if relocates, recased := domain.Relocation(m.Written[id].Changes); !gone[id] && (relocates || len(recased) > 0) {
+			written = append(written, id)
+		}
+	}
+	all := slices.Concat(index.pages, written)
+	switch {
+	case m.MaxPages > 0 && len(all) > m.MaxPages:
+		return &TooManyRewrites{Pages: len(all), Max: m.MaxPages}
+	case len(all) == 0:
+		return nil
+	}
+	if err := r.refuseLocked(ctx, all, m); err != nil {
+		return err
+	}
+	// The pages the batch wrote first: their read backs, of contents up to
+	// a page's largest, are taken while the budget holds none of the
+	// shares the facts of the writes before keep to the unit's end.
+	sub := &subtrees{store: r.Store, pages: r.Pages, notebookID: m.NotebookID, read: map[uuid.UUID]subtree{}}
+	for _, id := range written {
+		err := r.followWritten(ctx, m, id, m.Written[id], gone, sub, u)
+		if errors.Is(err, ErrGuardLocked) {
+			return r.guardLocked(ctx, all, m, err)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	for _, id := range index.pages {
+		err := r.rewrite(ctx, id, index.indexed[id].Revision, nil, index.reached[id], index.from[id], index.tree, index.recased, u)
+		if errors.Is(err, ErrGuardLocked) {
+			return r.guardLocked(ctx, all, m, err)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// followedPages is what a rewrite follows of the index: the pages to
+// write, those of reached with a current index, by id, with their indexed
+// revisions, their links to write, by where their targets start, and
+// their paths after the operation; the tree they are written on, and the
+// pages whose titles' case alone the operation changed.
+type followedPages struct {
+	pages   []uuid.UUID
+	indexed map[uuid.UUID]Indexed
+	reached map[uuid.UUID]map[int]rewritten
+	from    map[uuid.UUID][]domain.Step
+	tree    domain.Tree
+	recased domain.Recased
+}
+
+// followed is the pages of the index m's changes reach whose links it
+// writes again: none when they relocate and re-case nothing. The rows of
+// the pages a batch deleted (gone) or wrote are not followed from the
+// index: the first are gone, the second followed from their contents.
+// A link whose target before is gone is dropped (dropDead).
+func (r Rewrite) followed(ctx context.Context, m Moved, gone map[uuid.UUID]bool) (followedPages, error) {
+	relocates, recased := domain.Relocation(m.Changes)
+	if !relocates && len(recased) == 0 {
+		return followedPages{}, nil
+	}
+	reached, targets, err := r.reached(ctx, m, relocates, recased, gone)
+	if err != nil || len(reached) == 0 {
+		return followedPages{}, err
 	}
 	ids := slices.SortedFunc(maps.Keys(reached), uuid.UUID.Compare)
 	indexed, err := r.Store.IndexedOf(ctx, ids)
 	if err != nil {
-		return err
+		return followedPages{}, err
 	}
 	pages := slices.DeleteFunc(ids, func(id uuid.UUID) bool {
 		if x, ok := indexed[id]; ok && x.Extractor == domain.Extractor {
@@ -67,35 +143,26 @@ func (r Rewrite) Participate(ctx context.Context, m Moved, u Appender) error {
 		return true
 	})
 	if len(pages) == 0 {
-		return nil
+		return followedPages{}, nil
 	}
-	if err := r.refuseLocked(ctx, pages, m); err != nil {
-		return err
-	}
-	tree, from, err := r.tree(ctx, m, targets, pages)
+	tree, from, err := treeOf(ctx, r.Pages, m, targets, pages)
 	if err != nil {
-		return err
+		return followedPages{}, err
 	}
-	for _, id := range pages {
-		err := r.rewrite(ctx, id, indexed[id].Revision, reached[id], from[id], tree, recased, u)
-		if errors.Is(err, ErrGuardLocked) {
-			return r.guardLocked(ctx, pages, m, err)
-		}
-		if err != nil {
-			return err
-		}
-	}
-	return nil
+	pages = slices.DeleteFunc(pages, func(id uuid.UUID) bool { return dropDead(ctx, r.Logger, id, reached[id], tree, gone) })
+	return followedPages{pages: pages, indexed: indexed, reached: reached, from: from, tree: tree, recased: recased}, nil
 }
 
 // reached is the links of the index m reaches that it writes again, as
 // domain.Rewrites tells from the index's rows, by their page and where
 // their target starts; with the pages they resolved to. recased is the
-// page whose title's case alone m changed.
-func (r Rewrite) reached(ctx context.Context, m Moved, relocates bool, recased domain.Recased) (
+// pages whose titles' case alone m changed; the rows of the pages gone,
+// or written by a batch, are not among them, and the aliases of those gone
+// are none.
+func (r Rewrite) reached(ctx context.Context, m Moved, relocates bool, recased domain.Recased, gone map[uuid.UUID]bool) (
 	map[uuid.UUID]map[int]rewritten, []uuid.UUID, error,
 ) {
-	reach := domain.Reach{Targets: []uuid.UUID{recased.ID}}
+	reach := domain.Reach{Targets: slices.SortedFunc(maps.Keys(recased), uuid.UUID.Compare)}
 	if relocates {
 		var renamed []uuid.UUID
 		reach, renamed, _ = domain.Affected(m.Changes)
@@ -108,7 +175,11 @@ func (r Rewrite) reached(ctx context.Context, m Moved, relocates bool, recased d
 	if err != nil {
 		return nil, nil, err
 	}
-	after, missing, err := resolutions(ctx, r.Store, r.Pages, m.NotebookID, links, nil)
+	links = slices.DeleteFunc(links, func(l Link) bool {
+		_, written := m.Written[l.SourceID]
+		return written || gone[l.SourceID]
+	})
+	after, missing, err := resolutions(ctx, r.Store, r.Pages, m.NotebookID, links, nil, gone)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -129,6 +200,201 @@ func (r Rewrite) reached(ctx context.Context, m Moved, relocates bool, recased d
 		targets = append(targets, before.ID)
 	}
 	return out, targets, nil
+}
+
+// followWritten writes again the links of the page id, which a batch
+// wrote (M9/P3 design 3.7.2): those its own changes, w.Changes, reach and
+// move, from its final content, the unit's, its links taken from w.Facts
+// unparsed (a); whatever its index's revision (b), on its current one
+// (c); each matched by where its target starts to where it led at the
+// page's last content op, its target's path then its was (d).
+func (r Rewrite) followWritten(ctx context.Context, m Moved, id uuid.UUID, w WrittenPage, gone map[uuid.UUID]bool, sub *subtrees,
+	u Appender,
+) error {
+	reached, recased, err := ownLinks(ctx, r.Store, r.Pages, sub, m.NotebookID, id, w.Facts.Links, w.Before, w.Changes, gone)
+	if err != nil || len(reached) == 0 {
+		return err
+	}
+	tree, from, err := writtenTree(ctx, r.Pages, m.NotebookID, id, reached, w.Before)
+	if err != nil {
+		return err
+	}
+	if dropDead(ctx, r.Logger, id, reached, tree, gone) {
+		return nil
+	}
+	return r.rewrite(ctx, id, 0, &w.Facts, reached, from, tree, recased, u)
+}
+
+// ownLinks is the links, of the page id's links, that changes, a page a
+// batch wrote's own, reach and write again (M9/P3 design 3.7.2 (a), (e)):
+// matched by where their targets start to before's leads; reached as the
+// index's rows are, by Affected and spread, which reads the subtree of
+// each node changes rename or move, once for the batch (sub); resolved
+// after on pages, the aliases of gone none; those domain.Rewrites tells,
+// with the pages changes re-cased.
+func ownLinks(ctx context.Context, store Store, pages Pages, sub *subtrees, notebookID, id uuid.UUID, links []domain.Link,
+	before LinksBefore, changes []domain.Change, gone map[uuid.UUID]bool,
+) (map[int]rewritten, domain.Recased, error) {
+	relocates, recased := domain.Relocation(changes)
+	if !relocates && len(recased) == 0 {
+		return nil, nil, nil
+	}
+	reach := domain.Reach{Targets: slices.SortedFunc(maps.Keys(recased), uuid.UUID.Compare)}
+	if relocates {
+		var renamed []uuid.UUID
+		reach, renamed, _ = domain.Affected(changes)
+		var err error
+		if reach, err = sub.spread(ctx, reach, append(renamed, movedOf(changes)...)); err != nil {
+			return nil, nil, err
+		}
+	}
+	var rows []Link
+	var befores []domain.Resolution
+	for _, l := range links {
+		if lead, ok := before.Leads[l.Start]; ok && reachedBy(reach, id, l, lead) {
+			rows = append(rows, Link{SourceID: id, Start: l.Start, Target: l.Target, Aliases: l.Aliases})
+			befores = append(befores, lead)
+		}
+	}
+	if len(rows) == 0 {
+		return nil, recased, nil
+	}
+	after, missing, err := resolutions(ctx, store, pages, notebookID, rows, nil, gone)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(missing) > 0 {
+		return nil, nil, fmt.Errorf("linking: the pages %v of links or aliases are not pages of %s", missing, notebookID)
+	}
+	out := map[int]rewritten{}
+	for i, l := range rows {
+		if domain.Rewrites(domain.Link{Target: l.Target, Aliases: l.Aliases}, befores[i], after[i], recased) {
+			out[l.Start] = rewritten{before: befores[i], after: after[i]}
+		}
+	}
+	return out, recased, nil
+}
+
+// reachedBy reports whether reach meets l, a link of the page id that led
+// to before, as Store.Links tells of an index's row: by its target's keys,
+// by the node it led to, or by its page.
+func reachedBy(reach domain.Reach, id uuid.UUID, l domain.Link, before domain.Resolution) bool {
+	return slices.ContainsFunc(l.Keys(), func(k string) bool { return slices.Contains(reach.Keys, k) }) ||
+		slices.Contains(reach.Targets, before.ID) || slices.Contains(reach.Sources, id)
+}
+
+// movedOf is the nodes changes move under another parent.
+func movedOf(changes []domain.Change) []uuid.UUID {
+	var out []uuid.UUID
+	for _, c := range changes {
+		if c.Before != nil && c.After != nil && !sameParent(c.Before.ParentID, c.After.ParentID) {
+			out = append(out, c.NodeID)
+		}
+	}
+	return out
+}
+
+// sameParent reports whether a and b are one parent, the root for nil.
+func sameParent(a, b *uuid.UUID) bool {
+	return a == nil && b == nil || a != nil && b != nil && *a == *b
+}
+
+// subtrees is the subtrees spread reads for the pages a batch wrote, each
+// node's once for the batch, with the keys of its nodes' aliases (M9/P3
+// design 3.7.2 (e)): a moved folder's nodes held once, not once a page.
+type subtrees struct {
+	store      Store
+	pages      Pages
+	notebookID uuid.UUID
+	read       map[uuid.UUID]subtree
+}
+
+// subtree is a node's subtree as spread reads it, and its aliases' keys.
+type subtree struct {
+	steps []domain.Step
+	keys  []string
+}
+
+// spread is the package's spread for a page a batch wrote: reach with the
+// subtrees of nodes, each read once for the batch, and the aliases' keys
+// of reach's own targets and of the subtrees' nodes.
+func (s *subtrees) spread(ctx context.Context, reach domain.Reach, nodes []uuid.UUID) (domain.Reach, error) {
+	own, err := s.store.AliasKeys(ctx, reach.Targets)
+	if err != nil {
+		return domain.Reach{}, err
+	}
+	for _, id := range nodes {
+		sub, ok := s.read[id]
+		if !ok {
+			steps, err := s.pages.Subtree(ctx, s.notebookID, id)
+			if err != nil {
+				return domain.Reach{}, err
+			}
+			ids := make([]uuid.UUID, len(steps))
+			for i, st := range steps {
+				ids[i] = st.ID
+			}
+			keys, err := s.store.AliasKeys(ctx, ids)
+			if err != nil {
+				return domain.Reach{}, err
+			}
+			sub = subtree{steps: steps, keys: keys}
+			s.read[id] = sub
+		}
+		reach.Add(sub.steps...)
+		reach.Keys = append(reach.Keys, sub.keys...)
+	}
+	reach.Keys = append(reach.Keys, own...)
+	reach.Compact()
+	return reach, nil
+}
+
+// writtenTree is what the rewrite of a page a batch wrote reads of the
+// tree on pages (M9/P3 design 3.7.2 (d)): the targets reached led to,
+// after, and before, as its last content op left them, their paths then;
+// and its own path.
+func writtenTree(ctx context.Context, pages Pages, notebookID, id uuid.UUID, reached map[int]rewritten, before LinksBefore) (
+	domain.Tree, []domain.Step, error,
+) {
+	var targets []uuid.UUID
+	for _, x := range reached {
+		targets = append(targets, x.before.ID)
+	}
+	tree, from, err := treeOf(ctx, pages, Moved{NotebookID: notebookID}, targets, []uuid.UUID{id})
+	if err != nil {
+		return domain.Tree{}, nil, err
+	}
+	for t, n := range tree.Before {
+		if path, ok := before.Targets[t]; ok {
+			tree.Before[t] = domain.Node{ID: t, Path: path, Asset: n.Asset}
+		} else {
+			delete(tree.Before, t)
+		}
+	}
+	return tree, from[id], nil
+}
+
+// dropDead drops, of links, the page id's, those whose target before is
+// not on tree now (M9/P3 design 3.7.2): deleted by the batch, gone, at
+// info; by another since the batch's plan read it, at warn. It tells
+// whether none is left.
+func dropDead(ctx context.Context, logger *slog.Logger, id uuid.UUID, links map[int]rewritten, tree domain.Tree,
+	gone map[uuid.UUID]bool,
+) bool {
+	for _, start := range slices.Sorted(maps.Keys(links)) {
+		target := links[start].before.ID
+		if _, alive := tree.After[target]; alive {
+			continue
+		}
+		level := slog.LevelWarn
+		if gone[target] {
+			level = slog.LevelInfo
+		}
+		logger.LogAttrs(ctx, level, "a link is not rewritten: where it led is gone",
+			slog.String("page_id", id.String()), slog.Int("start", start))
+		delete(links, start)
+	}
+	return len(links) == 0
 }
 
 // refuseLocked is linking.pages_locked naming the edit locks of pages,
@@ -160,16 +426,21 @@ func (r Rewrite) guardLocked(ctx context.Context, pages []uuid.UUID, m Moved, er
 	return err
 }
 
-// tree is what the rewrite reads of the pages: those targets are, at their
-// paths after m and before it, and the pages with the keys a writing of
-// them reads; and the paths after m of sources, the pages written.
-func (r Rewrite) tree(ctx context.Context, m Moved, targets, sources []uuid.UUID) (
+// treeOf is what a rewrite reads of the pages: those targets are, at
+// their paths after m and before it, and the pages with the keys a writing
+// of them reads; and the paths after m of sources, the pages written. The
+// paths the moved nodes' former parents had are m's Parents, as the unit
+// began, or read now, which a unit of one operation left as they were.
+func treeOf(ctx context.Context, pages Pages, m Moved, targets, sources []uuid.UUID) (
 	domain.Tree, map[uuid.UUID][]domain.Step, error,
 ) {
 	parents := domain.FormerParents(m.Changes)
-	ids := slices.Concat(targets, sources, parents)
+	ids := slices.Concat(targets, sources)
+	if m.Parents == nil {
+		ids = append(ids, parents...)
+	}
 	slices.SortFunc(ids, uuid.UUID.Compare)
-	nodes, err := r.Pages.Paths(ctx, m.NotebookID, slices.Compact(ids))
+	nodes, err := pages.Paths(ctx, m.NotebookID, slices.Compact(ids))
 	if err != nil {
 		return domain.Tree{}, nil, err
 	}
@@ -179,7 +450,11 @@ func (r Rewrite) tree(ctx context.Context, m Moved, targets, sources []uuid.UUID
 	}
 	before := make(map[uuid.UUID][]domain.Step, len(parents))
 	for _, id := range parents {
-		before[id] = byID[id].Path
+		if m.Parents != nil {
+			before[id] = m.Parents[id]
+		} else {
+			before[id] = byID[id].Path
+		}
 	}
 	tree := domain.Tree{Before: map[uuid.UUID]domain.Node{}, After: map[uuid.UUID]domain.Node{}, Named: map[string][]domain.Node{}}
 	var keys []string
@@ -190,7 +465,7 @@ func (r Rewrite) tree(ctx context.Context, m Moved, targets, sources []uuid.UUID
 		}
 	}
 	slices.Sort(keys)
-	named, err := r.Pages.ByKeys(ctx, m.NotebookID, slices.Compact(keys))
+	named, err := pages.ByKeys(ctx, m.NotebookID, slices.Compact(keys))
 	if err != nil {
 		return domain.Tree{}, nil, err
 	}
@@ -212,9 +487,11 @@ func (r Rewrite) tree(ctx context.Context, m Moved, targets, sources []uuid.UUID
 // share of the budget the unit's end gives back. A content written since,
 // which the unit's lock keeps out, is logged and left; so is a link no
 // writing leads back, a writing past MaxContent, and one whose links do
-// not read back as the content's.
-func (r Rewrite) rewrite(ctx context.Context, id uuid.UUID, revision int, reached map[int]rewritten, from []domain.Step,
-	tree domain.Tree, recased domain.Recased, u Appender,
+// not read back as the content's. A page a batch wrote has its content's
+// facts given, which no parse takes again, and is written on its current
+// revision, newer than its index's (M9/P3 design 3.7.2 (a)-(c)).
+func (r Rewrite) rewrite(ctx context.Context, id uuid.UUID, revision int, given *domain.Facts, reached map[int]rewritten,
+	from []domain.Step, tree domain.Tree, recased domain.Recased, u Appender,
 ) error {
 	content, current, ok, err := r.Contents.Content(ctx, id)
 	switch {
@@ -224,30 +501,36 @@ func (r Rewrite) rewrite(ctx context.Context, id uuid.UUID, revision int, reache
 		// The unit's lock of the notebook keeps its pages.
 		return fmt.Errorf("the content of page %s, which the rewrite reads, is gone", id)
 	}
-	if current != revision {
-		r.Logger.LogAttrs(ctx, slog.LevelWarn, "the links of a page are not rewritten: its content is not the index's",
-			slog.String("page_id", id.String()), slog.Int("revision", current), slog.Int("indexed", revision))
-		return nil
+	var facts domain.Facts // what a writing is read back against
+	if given != nil {
+		facts, revision = domain.Facts{Links: given.Links, Aliases: given.Aliases}, current
+	} else {
+		if current != revision {
+			r.Logger.LogAttrs(ctx, slog.LevelWarn, "the links of a page are not rewritten: its content is not the index's",
+				slog.String("page_id", id.String()), slog.Int("revision", current), slog.Int("indexed", revision))
+			return nil
+		}
+		was, err := r.Parser.ParseNow(ctx, content)
+		if err != nil {
+			return err
+		}
+		defer was.release() // given back below; again, on a panic before, nothing held stays (M6 closeout A-M4)
+		// The content's share goes back before a writing's parse takes its
+		// own, its links and aliases kept for Written uncounted until then,
+		// within some tenth of what that parse holds
+		// (markdown.Hold.KeepFacts); the rest of its facts go. Held, the two
+		// would ask more than the smallest budget, a page's largest content,
+		// for a page at its largest, which no wait would free (M6/P4 fix
+		// check c1, c5-6).
+		was.Release()
+		facts = domain.Facts{Links: was.Facts.Links, Aliases: was.Facts.Aliases}
 	}
-	was, err := r.Parser.ParseNow(ctx, content)
-	if err != nil {
-		return err
-	}
-	defer was.release() // given back below; again, on a panic before, nothing held stays (M6 closeout A-M4)
 	var links []domain.Resolved
-	for _, l := range was.Facts.Links {
+	for _, l := range facts.Links {
 		if x, ok := reached[l.Start]; ok {
 			links = append(links, domain.Resolved{Link: l, Before: x.before, After: x.after})
 		}
 	}
-	// The content's share goes back before a writing's parse takes its own,
-	// its links and aliases kept for Written uncounted until then, within
-	// some tenth of what that parse holds (markdown.Hold.KeepFacts); the
-	// rest of its facts go. Held, the two would ask more than the smallest
-	// budget, a page's largest content, for a page at its largest, which no
-	// wait would free (M6/P4 fix check c1, c5-6).
-	was.Release()
-	facts := domain.Facts{Links: was.Facts.Links, Aliases: was.Facts.Aliases} // what a writing is read back against
 	rewriting := domain.Rewrite(content, from, links, tree, recased)
 	for _, l := range rewriting.Left {
 		r.left(ctx, "no writing leads where it led", id, l)

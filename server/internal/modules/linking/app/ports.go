@@ -238,13 +238,55 @@ type Publisher interface {
 // Moved is an operation of a page write unit as a rewrite of links follows
 // it (M6/P4 design 4.1): its notebook, its unit's time, whether the unit
 // rewrites links, and what it changed. bootstrap converts the page
-// module's step, field by field.
+// module's step, field by field. A batch's deferred rewrite has the rest
+// (M9/P3 design 3.7): each page the batch wrote, alive after it, which is
+// followed from its own content and changes; the paths the moved nodes'
+// former parents had as the unit began; the nodes it deleted; and the
+// most pages the rewrite may write, none for 0 (a unit of one operation).
 type Moved struct {
 	NotebookID  uuid.UUID
 	At          time.Time
 	UpdateLinks bool
 	Changes     []domain.Change
+	Written     map[uuid.UUID]WrittenPage
+	Parents     map[uuid.UUID][]domain.Step
+	Gone        []uuid.UUID
+	MaxPages    int
 }
+
+// WrittenPage is a page a batch wrote, as its deferred rewrite follows it
+// (M9/P3 design 3.7.2): where its links led at its last content op, on the
+// plan's tree then; its own changes, the renames and moves after that op,
+// merged node by node, of the nodes those ops moved alone; and the facts
+// of its final content, which its links are taken from, unparsed.
+type WrittenPage struct {
+	Before  LinksBefore
+	Changes []domain.Change
+	Facts   domain.Facts
+}
+
+// LinksBefore is where a page's links led at a moment of a batch's plan:
+// each link, by where its target starts, and the nodes they led to, at
+// their paths from the root then.
+type LinksBefore struct {
+	Leads   map[int]domain.Resolution
+	Targets map[uuid.UUID][]domain.Step
+}
+
+// ErrTooManyRewrites is a batch's deferred rewrite past Moved.MaxPages
+// (M9/P3 design 3.7.2): counted before any page is parsed or refused for
+// its lock. TooManyRewrites carries the count; bootstrap answers it as the
+// page module's page.batch_too_large.
+var ErrTooManyRewrites = errors.New("linking: the batch's renames and moves would rewrite the links of more pages than it may")
+
+// TooManyRewrites is ErrTooManyRewrites with the pages the rewrite would
+// write, at most, and the bound.
+type TooManyRewrites struct {
+	Pages, Max int
+}
+
+func (e *TooManyRewrites) Error() string { return ErrTooManyRewrites.Error() }
+func (e *TooManyRewrites) Unwrap() error { return ErrTooManyRewrites }
 
 // Appender adds a content write to the unit a rewrite follows: the page
 // module's, which bootstrap adapts. WriteContent's error is ErrGuardLocked,

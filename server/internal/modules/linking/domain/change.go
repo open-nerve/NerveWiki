@@ -51,29 +51,32 @@ func sameParent(a, b *uuid.UUID) bool {
 	return a == nil && b == nil || a != nil && b != nil && *a == *b
 }
 
-// Recased is the page a rename or a move gave a title that differs in case
-// alone, its key the same, and that title; the zero id for none.
-type Recased struct {
-	ID   uuid.UUID
-	Name string
-}
+// Recased is the pages a rename or a move gave a title that differs in
+// case alone, its key the same, each by id with that title (M9/P3 design
+// 3.7.2): none for none. A unit of one operation re-cases one at most; a
+// batch's, merged, may re-case several.
+type Recased map[uuid.UUID]string
 
 // Relocation is what a rewrite of links follows of changes, an operation
 // of a page write unit (M6/P4 design 2, 4.1): relocates when each keeps its
 // node and writes no content, one renaming or moving it where links
-// resolve by the tree, as a rename or a move does; and recased, the page a
-// rename or a move changed the case of the title of only, under its parent
-// or another (an MCP move's one step, M9/P2 design 3.5.3). Creating,
-// deleting and writing a content rewrite nothing.
+// resolve by the tree, as a rename or a move does; and recased, each page
+// a rename or a move changed the case of the title of only, under its
+// parent or another (an MCP move's one step, M9/P2 design 3.5.3; a batch's
+// several, M9/P3 design 3.7.2). Creating, deleting and writing a content
+// rewrite nothing.
 func Relocation(changes []Change) (relocates bool, recased Recased) {
 	if len(changes) == 0 || slices.ContainsFunc(changes, func(c Change) bool {
 		return c.Before == nil || c.After == nil || c.Revision != 0
 	}) {
-		return false, Recased{}
+		return false, nil
 	}
 	for _, c := range changes {
 		if c.Before.Name != c.After.Name && shared.TitleKey(c.Before.Name) == shared.TitleKey(c.After.Name) {
-			recased = Recased{ID: c.NodeID, Name: c.After.Name}
+			if recased == nil {
+				recased = Recased{}
+			}
+			recased[c.NodeID] = c.After.Name
 		}
 	}
 	return slices.ContainsFunc(changes, Change.relocates), recased
@@ -93,32 +96,37 @@ func FormerParents(changes []Change) []uuid.UUID {
 	return out
 }
 
-// PathBefore is n, at its path after changes, a rename or a move, at its
-// path before them: the node renamed has its name before on the path of
-// each page under it, its own too; the pages under the node moved have
-// its former parent's path, from parents (FormerParents), before theirs.
-// A page off the nodes changes relocated has the path it has.
+// PathBefore is n, at its path after changes, at its path before them
+// (M9/P3 design 3.7.3): below the deepest node on its path that changes
+// moved, the path parents gives that node's former parent, then its name
+// before; each node under it, and each on a path no change moved, with
+// its name before. parents are the former parents' paths as the unit
+// began (FormerParents' nodes), read before any of its ops. A page off the
+// nodes changes relocated has the path it has, a copy.
 func PathBefore(n Node, changes []Change, parents map[uuid.UUID][]Step) Node {
+	byID := make(map[uuid.UUID]Change, len(changes))
 	for _, c := range changes {
-		if c.Before == nil || c.After == nil || c.Before.Name == c.After.Name && sameParent(c.Before.ParentID, c.After.ParentID) {
-			continue
+		if c.Before != nil && c.After != nil {
+			byID[c.NodeID] = c
 		}
-		at := slices.IndexFunc(n.Path, func(s Step) bool { return s.ID == c.NodeID })
-		if at < 0 {
-			continue
-		}
-		path := slices.Clone(n.Path[at:])
-		path[0] = Step{ID: c.NodeID, Key: shared.TitleKey(c.Before.Name), Name: c.Before.Name}
-		if sameParent(c.Before.ParentID, c.After.ParentID) {
-			return Node{ID: n.ID, Path: append(slices.Clone(n.Path[:at]), path...), Asset: n.Asset}
-		}
-		var parent []Step
-		if c.Before.ParentID != nil {
-			parent = parents[*c.Before.ParentID]
-		}
-		return Node{ID: n.ID, Path: append(slices.Clone(parent), path...), Asset: n.Asset}
 	}
-	return n
+	from, path := 0, []Step(nil)
+	for i := len(n.Path) - 1; i >= 0; i-- {
+		if c, ok := byID[n.Path[i].ID]; ok && !sameParent(c.Before.ParentID, c.After.ParentID) {
+			if c.Before.ParentID != nil {
+				path = slices.Clone(parents[*c.Before.ParentID])
+			}
+			from = i
+			break
+		}
+	}
+	for _, s := range n.Path[from:] {
+		if c, ok := byID[s.ID]; ok && c.Before.Name != c.After.Name {
+			s = Step{ID: s.ID, Key: shared.TitleKey(c.Before.Name), Name: c.Before.Name}
+		}
+		path = append(path, s)
+	}
+	return Node{ID: n.ID, Path: path, Asset: n.Asset}
 }
 
 // Reach is the links a page write unit may resolve anew (M6/P3 design 3.4,
