@@ -211,6 +211,51 @@ type OverviewStore interface {
 	FirstChildren(ctx context.Context, notebookID uuid.UUID, n int) ([]domain.Node, error)
 }
 
+// BatchLinks resolves and rewrites links for a batch's plan, on the tree
+// the plan simulates (M9 design 4.1, 4.11; M9/P3 design 3.7.4):
+// linking's, which bootstrap adapts from linking.NewBatchLinks(pool). It
+// reads the index's rows and aliases as the batch began, on the pool; the
+// tree and the parse are its caller's.
+type BatchLinks interface {
+	// Indexed is where the links of the page id led by the index, at its
+	// revision, with their targets at their paths on tree, the plan's
+	// before the batch: false when the index is not of revision or not of
+	// the current extractor (M6's skips), its links then not rewritten.
+	Indexed(ctx context.Context, notebookID, id uuid.UUID, revision int, tree domain.PlanTree) (domain.LinksBefore, bool, error)
+	// Resolve is where each link of q's content, the page's at its path on
+	// q's tree, leads there, by where its target starts, with the targets
+	// as they are there.
+	Resolve(ctx context.Context, q LinksOn) (domain.LinksBefore, error)
+	// Rewrite is q's content with its links that led where q.Before tells
+	// written again, as the participant writes them, so that each leads
+	// where it led on q's tree after q's changes.
+	Rewrite(ctx context.Context, q LinksMoved) (string, error)
+}
+
+// LinksOn is a content of a page of a batch's plan to resolve its links
+// on: the notebook and the page; the plan's tree at the moment, whose
+// deleted nodes' aliases are none (PlanTree.Gone); and the plan's parse,
+// which admits a content within the plan's bounds and keeps its facts by
+// page and hash (ContentParser.Planned).
+type LinksOn struct {
+	NotebookID uuid.UUID
+	PageID     uuid.UUID
+	Content    string
+	Tree       domain.PlanTree
+	Parse      func(ctx context.Context, content string) (Facts, error)
+}
+
+// LinksMoved is a content of a page of a batch's plan to rewrite, on the
+// tree after the op it is rewritten for (LinksOn): where its links led
+// when its content was read (Before), the renames and moves since, merged
+// node by node, and the paths their former parents had then.
+type LinksMoved struct {
+	LinksOn
+	Before  domain.LinksBefore
+	Changes []domain.Change
+	Parents map[uuid.UUID][]domain.PathStep
+}
+
 // PageStates reads the pages' contents as MCP's list tells them, and
 // which of its attachments are alive.
 type PageStates interface {

@@ -25,6 +25,12 @@ const (
 	// page's too (M9/P3 design 3.4.4): the largest page rewritten once,
 	// its content and the read back of what the rewrite wrote.
 	MaxBatchParseBytes = 2 * MaxContentBytes
+	// MaxBatchRewrites bounds the pages a batch's deferred rewrite writes
+	// again (M9/P3 design 3.8.2): the pages of the index whose links its
+	// renames and moves reach, and the pages it wrote whose own changes
+	// move anything. Counted before any is parsed; past it the batch is
+	// page.batch_too_large. A single move is not bounded, as REST's.
+	MaxBatchRewrites = 200
 )
 
 // PathStep is a node on a path from the root: its id, title key and name.
@@ -562,8 +568,12 @@ func (p *BatchPlan) ParentsAt(k int, changes []Change) map[uuid.UUID][]PathStep 
 // Reads is what the contents' pass reads of the pages before the batch
 // that the ops before Failed's write: texts, those whose first content op
 // is an edit, read whole; heads, those whose first is a write, of which
-// the head alone; each in their first content ops' order.
+// the head alone; each in their first content ops' order. A plan past its
+// items' bound reads none.
 func (p *BatchPlan) Reads() (texts, heads []uuid.UUID) {
+	if p.final {
+		return nil, nil // past the items' bound: nothing is read
+	}
 	for _, id := range p.order {
 		pg := p.pages[id]
 		switch {

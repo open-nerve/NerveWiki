@@ -519,7 +519,8 @@ func TestAParseSessionWaitsOnceForTheRequest(t *testing.T) {
 	if _, err := s.Parse(context.Background(), a, "aa"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.DecidedAll(context.Background(), map[uuid.UUID]string{b: "bbbb"}, errors.New("too large")); codeOf(err) != "server_busy" {
+	if _, err := s.DecidedAll(context.Background(), map[uuid.UUID]string{b: "bbbb"}, tooLargeOf(errors.New("too large"))); codeOf(err) !=
+		"server_busy" {
 		t.Errorf("DecidedAll after the plan waited 150 ms of 200 = %v, want server_busy: one wait for the request", err)
 	}
 	s.NewPlan()
@@ -545,7 +546,7 @@ func TestAParseSessionGivesItsSharesBackBeforeEachTake(t *testing.T) {
 	if facts, err := s.Parse(context.Background(), b, "bbbbb"); err != nil || facts != "bbbbb" {
 		t.Fatalf("a second page's parse on a full budget = %v, %v", facts, err)
 	}
-	facts, err := s.DecidedAll(context.Background(), map[uuid.UUID]string{a: "aaaaa", c: "ccccc"}, errors.New("too large"))
+	facts, err := s.DecidedAll(context.Background(), map[uuid.UUID]string{a: "aaaaa", c: "ccccc"}, tooLargeOf(errors.New("too large")))
 	if err != nil || facts[a] != "aaaaa" || facts[c] != "ccccc" {
 		t.Fatalf("DecidedAll = %v, %v", facts, err)
 	}
@@ -561,14 +562,20 @@ func TestAParseSessionGivesItsSharesBackBeforeEachTake(t *testing.T) {
 	f.budget.capacity = 0
 	s = f.parser().Planned()
 	defer s.Release()
-	tooLarge := errors.New("too large")
+	tooLarge, counted := errors.New("too large"), 0
+	told := func(links int) error { counted = links; return tooLarge }
 	if _, err := s.Parse(context.Background(), a, links); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.DecidedAll(context.Background(), map[uuid.UUID]string{a: links, b: "x"}, tooLarge); err != nil {
+	if _, err := s.DecidedAll(context.Background(), map[uuid.UUID]string{a: links, b: "x"}, told); err != nil {
 		t.Errorf("a final content the plan parsed, counted once: %v", err)
 	}
-	if _, err := s.DecidedAll(context.Background(), map[uuid.UUID]string{c: links, b: "x"}, tooLarge); !errors.Is(err, tooLarge) {
-		t.Errorf("the plan's links and the final ones past the bound: %v, want too large", err)
+	if _, err := s.DecidedAll(context.Background(), map[uuid.UUID]string{c: links, b: "x"}, told); !errors.Is(err, tooLarge) ||
+		counted != 2*(domain.MaxUnitLinks/2+1) {
+		t.Errorf("the plan's links and the final ones past the bound: %v, %d links told; want too large, both pages' links", err,
+			counted)
 	}
 }
+
+// tooLargeOf is a DecidedAll's bound answering err.
+func tooLargeOf(err error) func(int) error { return func(int) error { return err } }

@@ -46,6 +46,12 @@ type DeletePathUseCase interface {
 	Execute(ctx context.Context, notebookID uuid.UUID, p app.PathDelete, client domain.Client) (app.Deleted, error)
 }
 
+// BatchUseCase applies a batch of writes as one changeset (M9 design
+// 4.11).
+type BatchUseCase interface {
+	Execute(ctx context.Context, notebookID uuid.UUID, p app.PathBatch, client domain.Client) (app.Batched, error)
+}
+
 // VersionsUseCase lists the versions of the page at a path.
 type VersionsUseCase interface {
 	AtPath(ctx context.Context, notebookID uuid.UUID, path string, limit *int, cursor *string) (app.PathVersionList, error)
@@ -76,6 +82,7 @@ type UseCases struct {
 	Edit      EditPageUseCase
 	Move      RelocatePathUseCase
 	Delete    DeletePathUseCase
+	Batch     BatchUseCase
 	Versions  VersionsUseCase
 	Version   VersionUseCase
 	Log       LogUseCase

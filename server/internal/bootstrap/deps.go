@@ -167,6 +167,8 @@ func pageDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, author
 		Snapshots:        tx,
 		VisibleNotebooks: notebook.NewVisibleNotebooks(pool),
 		SearchInterval:   cfg.Page.SearchIndexInterval,
+		// MCP's batch's links on its plan (M9/P3 design 3.7.4).
+		BatchLinks: batchLinks{linking.NewBatchLinks(pool, page.MaxContentBytes, logger)},
 	}
 }
 

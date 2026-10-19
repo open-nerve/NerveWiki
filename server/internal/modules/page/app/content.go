@@ -239,8 +239,10 @@ func (s *ParseSession) giveBack() {
 // shares of the plan's parses given back before the first; facts the
 // session has are taken as they are. Unless they are a lone page, their
 // links, with the plan's, each page and hash once, past the unit's bound
-// are tooLarge.
-func (s *ParseSession) DecidedAll(ctx context.Context, contents map[uuid.UUID]string, tooLarge error) (map[uuid.UUID]Facts, error) {
+// are tooLarge's error, told how many.
+func (s *ParseSession) DecidedAll(ctx context.Context, contents map[uuid.UUID]string, tooLarge func(links int) error) (
+	map[uuid.UUID]Facts, error,
+) {
 	s.giveBack()
 	ids := make([]uuid.UUID, 0, len(contents))
 	for id := range contents {
@@ -258,7 +260,7 @@ func (s *ParseSession) DecidedAll(ctx context.Context, contents map[uuid.UUID]st
 		if !s.planned[key] {
 			s.planned[key] = true
 			if s.links += s.c.markdown.Links(f); domain.UnitTooLarge(len(contents), 0, 0, s.links) {
-				return nil, tooLarge
+				return nil, tooLarge(s.links)
 			}
 		}
 	}

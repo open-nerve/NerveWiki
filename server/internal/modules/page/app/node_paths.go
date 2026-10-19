@@ -57,6 +57,21 @@ func (p NodePaths) Paths(ctx context.Context, notebookID uuid.UUID, ids []uuid.U
 	return p.store.PathsOf(ctx, notebookID, ids)
 }
 
+// Lines is the paths of ids' nodes alive in notebookID, by id, each step
+// its node's id, title key and name, in one statement (PathStore.LinePaths):
+// a batch's former parents as its unit begins (M9/P3 design 3.6.2). It is
+// never nil: a batch's participant reads the former parents from it alone.
+func (p NodePaths) Lines(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID][]domain.PathStep, error) {
+	if len(ids) == 0 {
+		return map[uuid.UUID][]domain.PathStep{}, nil
+	}
+	out, err := p.store.LinePaths(ctx, notebookID, ids)
+	if out == nil && err == nil {
+		out = map[uuid.UUID][]domain.PathStep{}
+	}
+	return out, err
+}
+
 // lookup is the store's point lookup in notebookID: the node keyed key
 // under the last of chain, the notebook's root for none.
 func (p NodePaths) lookup(ctx context.Context, notebookID uuid.UUID) domain.Lookup {

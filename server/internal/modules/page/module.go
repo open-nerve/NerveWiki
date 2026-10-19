@@ -85,6 +85,42 @@ type (
 	EditSessionSubscriber = app.EditSessionSubscriber
 )
 
+// A batch's links (M9/P3 design 3.7): what its plan asks linking of the
+// links on its simulated tree, and what its deferred rewrite follows
+// besides its changes; bootstrap converts them to linking's, field by
+// field.
+type (
+	// BatchLinks resolves and rewrites links for a batch's plan: bootstrap
+	// adapts linking.NewBatchLinks to it.
+	BatchLinks = app.BatchLinks
+	// LinksOn is a content of a page of a batch's plan to resolve.
+	LinksOn = app.LinksOn
+	// LinksMoved is a content of a page of a batch's plan to rewrite.
+	LinksMoved = app.LinksMoved
+	// PlanTree is the tree of a batch's plan after one of its ops.
+	PlanTree = domain.PlanTree
+	// NodePath is a node of a PlanTree with its path.
+	NodePath = domain.NodePath
+	// PathStep is a node on a path from the root.
+	PathStep = domain.PathStep
+	// LinksBefore is where a page's links led at a moment of a batch.
+	LinksBefore = domain.LinksBefore
+	// Lead is where a link led at a moment of a batch.
+	Lead = domain.Lead
+	// BatchRewrite is what a batch's deferred participants follow besides
+	// its changes (Step.Batch).
+	BatchRewrite = app.BatchRewrite
+	// WrittenPage is a page a batch wrote, for its deferred rewrite.
+	WrittenPage = app.WrittenPage
+)
+
+// BatchTooLarge is page.batch_too_large saying which bound: what, n of
+// it, at most max, and what to do. Bootstrap answers linking's
+// TooManyRewrites with it.
+func BatchTooLarge(what string, n, max int, hint string) error {
+	return domain.BatchTooLarge(what, n, max, hint)
+}
+
 // ErrTrashChanged is a trash item's restore that found the item changed
 // since it read it: an observer answers it for a row of the item the purge
 // took (M8/P2 design 3.6).
@@ -156,6 +192,9 @@ type Deps struct {
 	// (page.search_index_interval): 0 registers no job, only in the tests,
 	// which run it themselves (NewSearchIndex's Drain).
 	SearchInterval time.Duration
+	// BatchLinks are linking's links of a batch's plan (M9/P3 design
+	// 3.7.4), which MCP's batch resolves and rewrites links with.
+	BatchLinks BatchLinks
 }
 
 // Module is the wired page module.
@@ -170,6 +209,7 @@ type Module struct {
 	edit         *app.EditPage       // MCP's edit (Tools)
 	move         *app.RelocatePath   // MCP's move (Tools)
 	remove       *app.DeletePath     // MCP's delete (Tools)
+	batch        *app.ApplyBatch     // MCP's batch (Tools)
 	versions     *app.ListVersions   // REST's and MCP's versions (Tools)
 	version      *app.GetVersion     // REST's and MCP's versions with a revision (Tools)
 	log          *app.ListChangesets // REST's and MCP's log (Tools)
@@ -213,6 +253,8 @@ func New(d Deps) *Module {
 	// design 3.15).
 	listVersions, getVersion := app.NewListVersions(versions), app.NewGetVersion(versions)
 	listChangesets, getChangeset := app.NewListChangesets(history), app.NewGetChangeset(history)
+	// MCP's batch (M9/P3 design 3.6), its links' on the plan linking's.
+	batch := app.NewApplyBatch(writer, parser, store, store, store, d.BatchLinks, locks, d.Notebooks, d.Authorizer, d.Clock, d.Logger)
 	m := &Module{uc: httpadapter.UseCases{
 		ListNodes:       app.NewListNodes(d.Notebooks, store, d.Authorizer),
 		CreatePage:      app.NewCreatePage(writer, store, parser, d.Logger),
@@ -253,6 +295,7 @@ func New(d Deps) *Module {
 		edit:         app.NewEditPage(writer, parser, store, store, store, locks, d.Notebooks, d.Authorizer, d.Clock, d.Logger),
 		move:         app.NewRelocatePath(writer, store, d.Notebooks, d.Authorizer, d.Logger),
 		remove:       app.NewDeletePath(writer, store, d.Notebooks, d.Authorizer, d.Logger),
+		batch:        batch,
 		versions:     listVersions,
 		version:      getVersion,
 		log:          listChangesets,
