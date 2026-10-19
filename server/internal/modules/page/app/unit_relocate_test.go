@@ -80,9 +80,10 @@ func TestRelocateMovesAndRenamesInOneStep(t *testing.T) {
 }
 
 // Under its parent, Relocate is a rename, OpRename written by
-// RelocateNode, its place kept; a name that differs in case alone is
-// written without reading the siblings, its key its own; the name it has
-// writes nothing and takes no step.
+// RelocateNode, its place kept, the guard's step and the participants',
+// so that links follow it (M9/P2 S1 review B-N1); a name that differs in
+// case alone is written without reading the siblings, its key its own;
+// the name it has writes nothing and takes no step.
 func TestRelocateUnderItsParentRenames(t *testing.T) {
 	for _, tt := range []struct {
 		name, to string
@@ -96,8 +97,8 @@ func TestRelocateUnderItsParentRenames(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			f := newFixture()
 			f.grant(domain.ActionRename)
-			g := &guard{recorder: f.rec}
-			f.guards = []app.WriteGuard{g}
+			g, p := &guard{recorder: f.rec}, &participant{recorder: f.rec}
+			f.guards, f.partakers = []app.WriteGuard{g}, []app.Participant{p}
 			parent := f.page("Parent", nil, 0)
 			f.page("First", &parent.ID, 0)
 			n := f.page("Plan", &parent.ID, 1)
@@ -113,10 +114,13 @@ func TestRelocateUnderItsParentRenames(t *testing.T) {
 				t.Errorf("the siblings read: %v, want %v", read, tt.children)
 			}
 			switch {
-			case tt.writes == nil && len(g.steps) != 0:
-				t.Errorf("the guard saw %d steps, want none", len(g.steps))
+			case tt.writes == nil && (len(g.steps) != 0 || len(p.steps) != 0):
+				t.Errorf("the guard saw %d steps, the participant %d; want none", len(g.steps), len(p.steps))
 			case tt.writes != nil && (len(g.steps) != 1 || g.steps[0].Operation != domain.OpRename):
 				t.Errorf("the guard saw %+v, want one OpRename", g.steps)
+			case tt.writes != nil && (len(p.steps) != 1 || p.steps[0].Operation != domain.OpRename ||
+				len(p.steps[0].Changes) != 1 || p.steps[0].Changes[0].After.Name != tt.to):
+				t.Errorf("the participant saw %+v, want one OpRename to %s", p.steps, tt.to)
 			}
 			if got := childNames(f, &parent.ID); !slices.Equal(got, []string{"First", tt.to, "Last"}) {
 				t.Errorf("Parent holds %v, want the order kept", got)
