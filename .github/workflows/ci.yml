@@ -20,7 +20,7 @@ jobs:
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-24.04
     # 一个作业跑全部的 Go 测试在 M8/P3A 时超过了 25 分钟的时限：分成几份并行，各占一个 runner（Makefile 的
-    # test-go-race、test-go-bootstrap-1 与 -2、test-go-costs、test-go-guards，几份之和是 make test-go）。不带竞态检测的耗时守卫也因此不与竞态检测下的构建抢 CPU。
+    # test-go-race、test-go-bootstrap-1、-2 与 -3、test-go-costs、test-go-guards，几份之和是 make test-go）。不带竞态检测的耗时守卫也因此不与竞态检测下的构建抢 CPU。
     # 一份失败不取消别的：各自的失败都看得到。时限约为各份在 CI 上实测的两倍（M8/P3A，作业 6:20、10:58、9:26）：
     # 组合根那一份里 go test 的 -timeout 15m 先到，打出卡住的测试
     strategy:
@@ -28,15 +28,19 @@ jobs:
       matrix:
         include:
           # 组合根之外的全部包（go list 列出，新加的包自动在内）。M9/P1 S3 时作业已到 8:17，时限照约两倍的规则从 15 分钟提到
-          # 20 分钟：go test 的 -timeout 15m 先到，打出卡住的测试（同组合根那两份）
+          # 20 分钟：go test 的 -timeout 15m 先到，打出卡住的测试（同组合根那几份）
           - leg: race
             timeout: 20
-          # 组合根的整个程序测试，竞态检测下最慢的一个包，按测试名分成两份（Makefile 的 BOOTSTRAP_FIRST；M8/P4A 审查 C 的 M-6：
-          # 一份时测试一步已到 12 分钟，离 go test 的 15 分钟时限只剩约两成）。一份的测试一步两次运行的平均过了约 7:30 时照 M9/P2 设计 6.5
-          # 挪界线或再分一份：M9/P2 S1 时第二份 7:15 与 8:33、第一份 6:59 与 6:56，界线往后挪（数在 Makefile 的注释里）
+          # 组合根的整个程序测试，竞态检测下最慢的一个包，按测试名分成三份（Makefile 的 BOOTSTRAP_FIRST 与 BOOTSTRAP_THIRD；
+          # M8/P4A 审查 C 的 M-6：一份时测试一步已到 12 分钟，离 go test 的 15 分钟时限只剩约两成）。一份的测试一步两次运行的平均
+          # 过了约 7:30 时照 M9/P2 设计 6.5 挪界线或再分一份：M9/P2 S1 时第二份 7:15 与 8:33、第一份 6:59 与 6:56，界线往后挪之后
+          # 第二份照旧过线（7:54、7:45，中间一次两份都快的看作离群），撤回、再分一份（数在 Makefile 的注释里）
           - leg: bootstrap-1
             timeout: 25
           - leg: bootstrap-2
+            timeout: 25
+          # M9/P2 S1：第二份的测试一步过了 go test 的 15 分钟的一半，按测试名再分一份（Makefile 的 BOOTSTRAP_THIRD）
+          - leg: bootstrap-3
             timeout: 25
           # 不带竞态检测的预算与界线的守卫、server/tools；静态检查与生成物的检查也只在这一份里跑一次
           - leg: costs
