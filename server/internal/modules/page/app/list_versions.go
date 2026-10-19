@@ -145,14 +145,19 @@ func versionsBelow(cursor *string) (int, error) {
 
 // versionsPath is path as versions takes it (M9/P2 design 3.16.1): a
 // page's, 422 on path otherwise; an attachment's name never ends with
-// ".md", so a page's path finds pages alone.
+// ".md", so a page's path finds pages alone. The refusal comes before any
+// read, so it cannot tell a page's path written without ".md" from an
+// attachment's: it tells the rule of the hint read and log give for a
+// page there (S2 review B-N1). It quotes no path: MCP's answer holds a
+// field's message three times, and with the longest path that is over
+// the answer's bound, where a not found's hint is dropped to fit.
 func versionsPath(path string) (domain.Path, error) {
 	p, err := domain.ParsePath("path", path, false)
 	if err != nil {
 		return domain.Path{}, err
 	}
 	if p.Kind != domain.KindPage {
-		return domain.Path{}, domain.NotAllowed("path", "is an attachment's path: attachments have no versions")
+		return domain.Path{}, domain.NotAllowed("path", "is an attachment's path: attachments have no versions. "+domain.PageRule+".")
 	}
 	return p, nil
 }

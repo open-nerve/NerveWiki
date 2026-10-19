@@ -135,10 +135,15 @@ type PathNotFound struct {
 func (e *PathNotFound) Error() string { return ErrNotFound.Error() }
 func (e *PathNotFound) Unwrap() error { return ErrNotFound }
 
+// PageRule is the rule PageHint tells, which versions' refusal of an
+// attachment's path tells too, without a path: the refusal comes before
+// any lookup (M9/P2 S2 review B-N1).
+const PageRule = "A page's path ends with .md"
+
 // PageHint is PathNotFound's hint for an attachment's path that names a
 // page, whose path is path.
 func PageHint(path string) string {
-	return "A page's path ends with .md: " + Quoted(path) + "."
+	return PageRule + ": " + Quoted(path) + "."
 }
 
 // AttachmentHint is PathNotFound's hint for a page's path that names an

@@ -1,6 +1,7 @@
 package app_test
 
 import (
+	"errors"
 	"maps"
 	"slices"
 	"strconv"
@@ -184,6 +185,31 @@ func TestListVersionsAtPathAnswersItsCodesInOrder(t *testing.T) {
 	f.rec.before = map[string]func(){"PageStates 1": func() { delete(f.store.contents, n.ID) }}
 	if _, err := app.NewListVersions(f.pathVersionReads()).AtPath(f.asAlice(), f.eng, "Notes.md", nil, nil); codeOf(err) != "page.not_found" {
 		t.Errorf("a page gone once found = %v, want page.not_found", err)
+	}
+}
+
+// versions on a path without ".md", maybe a page's written without it, is
+// 422 on path before any read, for the list and a version, with the rule
+// of the hint read and log give for a page there (S2 review B-N1).
+func TestVersionsOfAPathWithoutMDHintAPagesPath(t *testing.T) {
+	f := newFixture()
+	f.grant(domain.ActionHistory)
+	guide := f.page("Guide", nil, 0)
+	n := f.page("Notes", &guide.ID, 0)
+	f.history(n.ID, 2)
+	f.rec.calls = nil
+	_, list := app.NewListVersions(f.pathVersionReads()).AtPath(f.asAlice(), f.eng, "Guide/Notes", nil, nil)
+	_, read := app.NewGetVersion(f.pathVersionReads()).AtPath(f.asAlice(), f.eng, "Guide/Notes", 1, nil, nil, nil, textMeasure(100))
+	want := shared.FieldError{Field: "path", Code: shared.FieldNotAllowed,
+		Message: "is an attachment's path: attachments have no versions. A page's path ends with .md."}
+	for name, err := range map[string]error{"the list": list, "a version": read} {
+		var e *shared.Error
+		if !errors.As(err, &e) || e.Code != shared.CodeValidationFailed || !slices.Equal(e.Fields, []shared.FieldError{want}) {
+			t.Errorf("%s of Guide/Notes = %v, want 422 %+v", name, err, want)
+		}
+	}
+	if len(f.rec.calls) != 0 {
+		t.Errorf("the refusals read %v first", f.rec.calls)
 	}
 }
 
