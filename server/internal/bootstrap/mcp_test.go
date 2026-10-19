@@ -27,12 +27,13 @@ import (
 const mcpBodyBytes = 37_814_272
 
 // The edge answers in its order (M9/P1 design 3.2.2): the credential's
-// 401; the body's 413 and 400; a session's access token's 403, before any
-// notebook is looked at; the SDK's 405 for any method but POST, before
-// the notebook; then the notebook entry's 404. With the large bodies'
-// slots taken, a declared length past the limit is 413 at once, and a
-// large body waits for its slot, then 503, before its shape is read
-// (M9/P2 design 3.2.3).
+// 401; the body's 413 and 400, a body of more values than
+// mcpserver.MaxBodyValues among them (M9/P2 S1 review A2-I1); a session's
+// access token's 403, before any notebook is looked at; the SDK's 405 for
+// any method but POST, before the notebook; then the notebook entry's
+// 404. With the large bodies' slots taken, a declared length past the
+// limit is 413 at once, and a large body waits for its slot, then 503,
+// before its shape is read (M9/P2 design 3.2.3).
 func TestTheMCPEdgeAnswersInOrder(t *testing.T) {
 	h := newHolding()
 	m := startHoldingApp(t, h, append(mcpTestTools(newMCPSeen()), seam("seam_notebook", mcpserver.NotebookEntry),
@@ -42,6 +43,8 @@ func TestTheMCPEdgeAnswersInOrder(t *testing.T) {
 		t.Fatalf("revoke a token = %d %s", status, answer)
 	}
 	initialize := initializeBody(mcpVersion)
+	// A handshake of 20,007 values in 39 KiB: past the bound, not past 64 KiB.
+	values := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"_meta":{"a":[1` + strings.Repeat(",1", 19_999) + `]}}}`
 	tests := []struct {
 		name, method, path, token, body string
 		status                          int
@@ -52,6 +55,7 @@ func TestTheMCPEdgeAnswersInOrder(t *testing.T) {
 		{"a revoked token", http.MethodPost, "/mcp", revoked, initialize, http.StatusUnauthorized, "unauthorized"},
 		{"no token and a broken body", http.MethodPost, "/mcp", "", `{"jsonrpc":`, http.StatusUnauthorized, "unauthorized"},
 		{"no token and a batch", http.MethodPost, atNotebook(m.hidden), "", "[" + initialize + "]", http.StatusUnauthorized, "unauthorized"},
+		{"no token and too many values", http.MethodPost, "/mcp", "", values, http.StatusUnauthorized, "unauthorized"},
 		{"a session's access token", http.MethodPost, "/mcp", m.access, initialize, http.StatusForbidden, "forbidden"},
 		{"a session's access token and a notebook not seen", http.MethodPost, atNotebook(m.hidden), m.access, initialize,
 			http.StatusForbidden, "forbidden"},
@@ -65,6 +69,8 @@ func TestTheMCPEdgeAnswersInOrder(t *testing.T) {
 		{"a semicolon", http.MethodPost, atNotebook(m.notebook) + ";x=1", m.pat, initialize, http.StatusNotFound, "notebook.not_found"},
 		{"a broken body to a notebook not seen", http.MethodPost, atNotebook(m.hidden), m.pat, `{"jsonrpc":`, http.StatusBadRequest, "bad_request"},
 		{"a session's access token and a broken body", http.MethodPost, "/mcp", m.access, `{"jsonrpc":`, http.StatusBadRequest, "bad_request"},
+		{"too many values to a notebook not seen", http.MethodPost, atNotebook(m.hidden), m.pat, values, http.StatusBadRequest, "bad_request"},
+		{"a session's access token and too many values", http.MethodPost, "/mcp", m.access, values, http.StatusBadRequest, "bad_request"},
 		{"a session's GET", http.MethodGet, "/mcp", m.access, "", http.StatusForbidden, "forbidden"},
 		{"GET of a notebook not seen", http.MethodGet, atNotebook(m.hidden), m.pat, "", http.StatusMethodNotAllowed, ""},
 		{"DELETE", http.MethodDelete, "/mcp", m.pat, "", http.StatusMethodNotAllowed, ""},

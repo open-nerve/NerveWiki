@@ -259,6 +259,59 @@ func TestTheLargeBodiesShareTwoSlots(t *testing.T) {
 	}
 }
 
+// A large call of more JSON values than mcpserver.MaxBodyValues is 400
+// once its body is read, and gives its slot back as it is answered (M9/P2
+// S1 review A2-I1): with P2's hold in one of the server's two slots, P1's
+// refused call took the other and its credential's, so P1's next large
+// call takes both only if they came back; one kept would turn it away
+// after the wait. The refusal is logged as bodyshape's other refusals
+// are, by its access line, and no line holds anything of the body.
+func TestABodyOfTooManyValuesGivesItsSlotBack(t *testing.T) {
+	h := newHolding()
+	m := startHoldingApp(t, h)
+	var pats [2]string
+	for i := range pats {
+		_, pats[i] = createTokenWithID(t, m.contract, m.base, m.access)
+	}
+	ctx := context.Background()
+	p2 := m.calling(t, ctx, pats[1], "hold", keyed("p2", 70<<10))
+	h.waitIn(t, "p2")
+
+	// 70 KiB of [[],[],…] in its _meta: about 24,000 values.
+	over := `{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"hold","arguments":{"s":"p1-over:"},` +
+		`"_meta":{"a":[[]` + strings.Repeat(",[]", 70<<10/3) + `]}}}`
+	a := m.post(t, ctx, mcpserver.Pattern, pats[0], over, afterHandshake())
+	var p struct {
+		Code   string `json:"code"`
+		Errors []struct {
+			Field, Code, Message string
+		} `json:"errors"`
+	}
+	if a.status != http.StatusBadRequest || json.Unmarshal(a.body, &p) != nil || p.Code != "bad_request" || len(p.Errors) != 1 ||
+		p.Errors[0].Field != "" || p.Errors[0].Code != "too_long" || !strings.Contains(p.Errors[0].Message, "more than 10,000 JSON values") {
+		t.Errorf("P1's large call of too many values = %d %.300s, want 400 bad_request, the body too_long", a.status, a.body)
+	}
+	p1 := m.calling(t, ctx, pats[0], "hold", keyed("p1", 70<<10))
+	h.waitIn(t, "p1")
+	h.let("p1")
+	h.let("p2")
+	for _, done := range []<-chan mcpAnswer{p1, p2} {
+		if a := <-done; !resulted(t, a) {
+			t.Errorf("a hold, let go = %d %.200s, want its result", a.status, a.body)
+		}
+	}
+
+	refused := 0
+	for _, e := range m.logLines(t) {
+		if e["msg"] == "http request" && e["path"] == mcpserver.Pattern && e["status"] == float64(http.StatusBadRequest) {
+			refused++
+		}
+	}
+	if refused != 1 || strings.Contains(m.logs.String(), "[],[]") || strings.Contains(m.logs.String(), "p1-over") {
+		t.Errorf("the log has %d access lines of a 400 at %s, or a part of the body: %s", refused, mcpserver.Pattern, m.logs.String())
+	}
+}
+
 // mustAsk is ask of m's app, the answer's status want, its body.
 func mustAsk(t *testing.T, m *mcpApp, method, path, token, body string, want int) string {
 	t.Helper()

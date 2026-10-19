@@ -1723,7 +1723,7 @@ export interface components {
         };
         /** @description One invalid field of a request. Clients show text looked up by `code`; `message` is an English explanation for developers. Must match httpserver.FieldError and the field codes of internal/shared. */
         FieldError: {
-            /** @description The field's path in the request, e.g. title or properties.status. A path longer than 256 bytes is cut short and ends with `…`. */
+            /** @description The field's path in the request, e.g. title or properties.status. A path longer than 256 bytes is cut short and ends with `…`. The empty path is the request body itself: a JSON body of more than 1,000 JSON values (each object, array, string, number, true, false and null is one) is bad_request with this one field, too_long, read no further. */
             field: string;
             /**
              * @description What is wrong with the field.

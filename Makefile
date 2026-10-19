@@ -228,6 +228,8 @@ test-go-bootstrap-2: ## 竞态检测下运行组合根的整个程序测试中�
 test-go-costs: ## 不带竞态检测的分配、耗时预算与界线的守卫，以及 server/tools（CI 的一份；需要 Docker）
 	@# 竞态检测让同一段代码的分配多出数倍、耗时慢数倍：分配与耗时的预算，以及阅读视图在各种解析下的 HTML 检查与体积上限，在不带它的构建中另测一次
 	cd server && go test -count=1 -run '^TestCheckCostsAboutTheBody$$' ./internal/platform/httpserver/bodyshape
+	@# /mcp 的请求体的 JSON 值有上限，扫描过了它就停：路由上限那么长（37.8 MB）的 [[],[],…] 被拒时只分配几 KiB（M9/P2 S1 审查 A2-I1）；这个测试只在不带竞态检测的构建里
+	cd server && go test -count=1 -run '^TestTheValuesBoundStopsTheScanEarly$$' ./internal/platform/httpserver/mcpserver
 	cd server && go test -count=1 -run '^TestTheCostsAreAboutTheSize$$' ./internal/platform/markdown
 	cd server && go test -count=1 -run '^(TestALinkWrittenManyTimesResolvesOnce|TestDistinctPathsToPagesOfOneTitleResolveInTimeAsLongAsThey)$$' ./internal/modules/linking/app
 	cd server && go test -count=1 -run '^TestTheLinktextsOfManyPagesOfOneTitleAreCheap$$' ./internal/modules/linking/domain

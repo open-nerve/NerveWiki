@@ -2,6 +2,7 @@ package apitest
 
 import (
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -194,6 +195,8 @@ func TestBodyCases(t *testing.T) {
 	}
 	const owner = `"owner_id":"00000000-0000-0000-0000-000000000000"`
 	valid := `"name":"x",` + owner
+	// The valid body is 3 values, the undeclared array 1: 996 ones make 1,000.
+	ones := func(n int) string { return strings.TrimSuffix(strings.Repeat("1,", n), ",") }
 	want := []string{
 		`undeclared property {"name":"x","nwiki_undeclared":1,` + owner + `}`,
 		`undeclared property in settings {` + valid + `,"settings":{"nwiki_undeclared":1}}`,
@@ -208,11 +211,18 @@ func TestBodyCases(t *testing.T) {
 		`settings.notify twice {` + valid + `,"settings":{"notify":false,"notify":false}}`,
 		"not UTF-8 in kind {\"kind\":\"\xff\"," + valid + `}`,
 		`every problem at once {"count":null,"nwiki_undeclared":1,"owner_id":"not-a-uuid","settings":{"nwiki_undeclared":1}}`,
+		`values at the bound {"name":"x","nwiki_undeclared":[` + ones(996) + `],` + owner + `}`,
+		`values past the bound {"name":"x","nwiki_undeclared":[` + ones(997) + `],` + owner + `}`,
 	}
 	if !slices.Equal(got, want) {
 		t.Errorf("BodyCases() =\n%q\nwant\n%q", got, want)
 	}
-	last := post.BodyCases()[len(want)-1]
+	cases := post.BodyCases()
+	if at, past := cases[len(want)-2].Fields, cases[len(want)-1].Fields; !slices.Equal(at, []FieldProblem{{"nwiki_undeclared", "not_allowed"}}) ||
+		!slices.Equal(past, []FieldProblem{{"", "too_long"}}) {
+		t.Errorf("the values cases expect %v and %v, want the undeclared property and the body's too_long", at, past)
+	}
+	last := cases[len(want)-3]
 	wantFields := []FieldProblem{{"count", "invalid_format"}, {"name", "required"}, {"nwiki_undeclared", "not_allowed"},
 		{"owner_id", "invalid_format"}, {"settings.nwiki_undeclared", "not_allowed"}}
 	if !slices.Equal(last.Fields, wantFields) {

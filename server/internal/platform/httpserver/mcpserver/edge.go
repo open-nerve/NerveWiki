@@ -27,9 +27,10 @@ const Pattern = httpserver.MCPPath
 // the SDK could not read into a request's, whose error repeats them,
 // escaped to four times their size (M9/P1 S1 review A-M1): of a
 // tools/call, which alone may be as long as the route's limit
-// (MaxOtherBytes), they cannot fail. Null is the member left out, as the
-// SDK reads it. A function, not a package variable: each caller gets its
-// own table (gochecknoglobals).
+// (MaxOtherBytes), they cannot fail; and so is a body of more than
+// MaxBodyValues JSON values, of any method and size. Null is the member
+// left out, as the SDK reads it. A function, not a package variable:
+// each caller gets its own table (gochecknoglobals).
 func Bodies() *bodyshape.Table {
 	const (
 		message = iota
@@ -51,9 +52,29 @@ func Bodies() *bodyshape.Table {
 			object: open(bodyshape.Object|bodyshape.Null, nil),
 			null:   open(bodyshape.Null, nil),
 		},
-		Roots: map[string]int{Pattern: message},
+		Roots:     map[string]int{Pattern: message},
+		MaxValues: MaxBodyValues,
 	}
 }
+
+// MaxBodyValues bounds the JSON values of every body to Pattern, whatever
+// its method and size: bodyshape's first scan stops at the first value
+// past it and answers 400, before anything decodes the body (M9/P2 S1
+// review A2-I1). Within the route's limit, a body of many small values
+// costs far more than its bytes: 37.8 MB of [[],[],…] in _meta, most of
+// it the SDK's generic decode of _meta into maps and slices, cost about
+// 5 GiB a call, against about 0.5 GiB of one long string, which the two
+// slots of design 3.2.4, about 1 GB, assume. The largest call M9 makes is
+// P3's batch at its 100 operations (M9 design 4.11), an operation an
+// object of op and at most edit's five arguments, 7 values: about 700
+// values, a few more with the envelope, the batch's own arguments and a
+// client's _meta; initialize with its capabilities is a few dozen.
+// 10,000 is 14 times that. At it, the worst shapes measured cost what one
+// long string does: two such calls at once and a third waiting peaked at
+// +680 to +873 MiB in the whole program, two writes of one long string
+// at +801 to +924 MiB; three bodies of the limit past it, refused, at
+// +156 to +192 MiB (M9/P2 S1 fix round 1).
+const MaxBodyValues = 10_000
 
 // MaxOtherBytes bounds the body of every request but a tools/call of a
 // tool its entry serves: a handshake, a ping or a prompt's get is a few

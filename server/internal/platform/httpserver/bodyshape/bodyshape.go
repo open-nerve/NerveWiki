@@ -1,12 +1,13 @@
 // Package bodyshape checks the structure of JSON request bodies at the API
 // boundary, before the generated strict handler decodes them: first that the
-// body can be read one way only (no member name twice in an object, no
-// string that is not valid Unicode), then JSON types, undeclared properties,
-// null where the contract does not allow it, missing required properties,
-// and the string formats that the generated code decodes into Go types. The
-// problems of a kind are collected in one pass, each once, at most
-// maxProblems of them, at paths of at most maxPath bytes. Values (lengths,
-// enums, ranges, e-mail syntax) are the domain's.
+// body holds no more JSON values than its table's bound and can be read one
+// way only (no member name twice in an object, no string that is not valid
+// Unicode), then JSON types, undeclared properties, null where the contract
+// does not allow it, missing required properties, and the string formats
+// that the generated code decodes into Go types. The problems of a kind are
+// collected in one pass, each once, at most maxProblems of them, at paths of
+// at most maxPath bytes. Values (lengths, enums, ranges, e-mail syntax) are
+// the domain's.
 //
 // The tables are generated per module from the API description by
 // server/tools/bodyshapegen, next to the module's server.gen.go. The package
@@ -83,7 +84,26 @@ type Node struct {
 type Table struct {
 	Nodes []Node
 	Roots map[string]int // route pattern, e.g. "POST /api/v0/auth/register" → body node
+	// MaxValues bounds the JSON values of a body of these routes: the
+	// body's own value and each object, array, string, number and literal
+	// in it count one. The first scan stops at the first value past it,
+	// before anything has grown with the rest of the body, and Check
+	// answers *TooManyValues: a body of many small values costs far more
+	// to decode than its bytes, here and in every decoder after (M9/P2 S1
+	// review A2-I1). Zero bounds none.
+	MaxValues int
 }
+
+// MaxRESTValues is the MaxValues of the REST API's tables, which
+// bodyshapegen writes: well above its largest JSON body, register's with
+// an invitation, of 6 values (the object, email, password, the
+// invitation, its id and its token), as apitest's body cases hold every
+// operation to it. At server.max_body_bytes, 1 MiB, the check of a body
+// of small members peaked at about 24 MiB without it, and a credential
+// may have 200 requests in flight; with it, about 3 MiB at most (a
+// thousand names of 1 KiB, each decoded twice), and 0.1 MiB past it
+// (M9/P2 S1 fix round 1).
+const MaxRESTValues = 1000
 
 // Field codes, the subset of the closed set of api/common.yaml FieldError
 // that the structure check produces.
@@ -92,6 +112,7 @@ const (
 	codeInvalidFormat = "invalid_format"
 	codeNotAllowed    = "not_allowed"
 	codeDuplicate     = "duplicate"
+	codeTooLong       = "too_long"
 )
 
 // FieldError is one structural problem. Field is the JSON path, e.g.
@@ -144,6 +165,49 @@ func (e *Error) ProblemFields() []error {
 	return errs
 }
 
+// TooManyValues is Check's answer for a body of more JSON values than its
+// table's MaxValues. It satisfies httpserver.ProblemError by structure as
+// *Error does: 400 bad_request, its one field the body itself (the empty
+// path), too_long, the message naming the bound.
+type TooManyValues struct {
+	Most int // the table's MaxValues
+}
+
+func (e *TooManyValues) Error() string { return "The request body does not match the API description." }
+
+// ProblemStatus is 400: the request breaks the contract's structure.
+func (e *TooManyValues) ProblemStatus() int { return 400 }
+
+// ProblemCode is the platform's bad_request.
+func (e *TooManyValues) ProblemCode() string { return "bad_request" }
+
+// ProblemFields is the body's too_long.
+func (e *TooManyValues) ProblemFields() []error { return []error{valuesField(e.Most)} }
+
+// valuesField is TooManyValues' field: the body, too_long, of more values
+// than the bound it holds.
+type valuesField int
+
+func (f valuesField) Error() string {
+	return "has more than " + grouped(int(f)) + " JSON values: each object, array, string, number, true, false and null is one"
+}
+
+// ProblemField is the empty path, the body itself.
+func (valuesField) ProblemField() string { return "" }
+
+// ProblemCode is too_long.
+func (valuesField) ProblemCode() string { return codeTooLong }
+
+// grouped is n, not negative, in decimal with a comma between each three
+// digits, as the API's messages write numbers: 10,000.
+func grouped(n int) string {
+	s := strconv.Itoa(n)
+	for i := len(s) - 3; i > 0; i -= 3 {
+		s = s[:i] + "," + s[i:]
+	}
+	return s
+}
+
 // jsonSpace is JSON's insignificant whitespace (RFC 8259 §2): space, tab, CR
 // and LF. Other spaces, such as a form feed or U+00A0, are not JSON: the
 // decoder rejects a body that starts with one, and so does this package.
@@ -156,6 +220,9 @@ var ErrNotJSON = errors.New("the request body is not valid JSON")
 // returns nil when there is nothing to check: a pattern without a root has no
 // JSON body, and an empty body, or one of only JSON whitespace, is left to the
 // generated decoder. A body that is not one valid JSON document is ErrNotJSON.
+// One whose scan meets more JSON values than t.MaxValues is *TooManyValues,
+// whatever the scan found before: it stops at the first value past them
+// (a scan that stops first, at maxProblems ambiguities, answers those).
 // One that can be read two ways (ambiguity.go) is an *Error with its
 // ambiguities: its structure is checked once it has one reading. One that
 // breaks the structure is an *Error with its problems.
@@ -179,7 +246,9 @@ func (t *Table) Check(pattern string, body []byte) error {
 		return ErrNotJSON
 	}
 	var p problems
-	ambiguities(value, &p)
+	if !ambiguities(value, &p, t.MaxValues) {
+		return &TooManyValues{Most: t.MaxValues}
+	}
 	if len(p.errs) == 0 {
 		t.walk(root, value, &p)
 	}
