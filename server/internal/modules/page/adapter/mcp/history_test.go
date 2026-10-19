@@ -143,6 +143,13 @@ func TestTheVersionsListAnswersItsShape(t *testing.T) {
 	if raw := rawOf(t, res); raw != want {
 		t.Errorf("the answer is\n%s\nwant\n%s", raw, want)
 	}
+	// The last page: its versions, next_cursor null (S2 review C-M2).
+	l.NextCursor = ""
+	res, err = tools.versions(context.Background(), mcpserver.Call{}, versionsIn{Path: "Guide.md"})
+	if raw := rawOf(t, res); err != nil || !strings.HasSuffix(raw, `"editing":false,"changeset":{"id":"`+c1.String()+`","kind":"import",`+
+		`"client":"web","created_at":"2026-10-17T08:30:00Z",`+alices+`}}],"next_cursor":null}`) {
+		t.Errorf("the last page = %s, %v", raw, err)
+	}
 	l.Versions, l.Cursors, l.NextCursor = nil, nil, ""
 	res, err = tools.versions(context.Background(), mcpserver.Call{}, versionsIn{Path: "Guide.md"})
 	if raw := rawOf(t, res); err != nil || !strings.HasSuffix(raw, `"versions":[],"next_cursor":null}`) {
@@ -495,6 +502,12 @@ func TestTheChangesetAnswersItsShape(t *testing.T) {
 		`"renames":true,"moves":false},` + changesJSON
 	if raw := rawOf(t, res); raw != want {
 		t.Errorf("the answer is\n%s\nwant\n%s", raw, want)
+	}
+	// A changeset that moves a node across parents (S2 review C-M2).
+	p.Detail.Moves = domain.ChangesetMoves{Moves: true}
+	res, err = tools.changeset(context.Background(), mcpserver.Call{}, changesetIn{ID: cs.String()})
+	if raw := rawOf(t, res); err != nil || !strings.Contains(raw, `"content_count":0,"renames":false,"moves":true},`) {
+		t.Errorf("a changeset that moves = %s, %v", raw, err)
 	}
 	// With a cursor, no changeset.
 	p.Detail = nil

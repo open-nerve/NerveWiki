@@ -204,14 +204,16 @@ func withPaths(changes []any, paths map[string]string) []any {
 // changeset and versions, and through REST, where they are the same
 // (M9/P2 design 3.17.3): alice writes, edits, moves and deletes over MCP,
 // uploads an attachment through REST and moves it over MCP; bob writes
-// and renames through REST, and reverts alice's edit with a message; an
-// import; an edit session's two saves, one version. The log, whole and
-// narrowed by a path, an actor ("me" alice), a client and a limit, is
-// REST's listChangesets; each changeset is REST's getChangeset without its
-// first changes, its changes listChangesetChanges' with their nodes'
-// paths, a change at a time too; versions are listPageVersions', each
-// version's lines getPageVersion's content. A page deleted has no path,
-// its change none; another notebook's changeset is not found here.
+// and renames through REST, and reverts alice's edit with a message;
+// alice moves bob's page into Guide over MCP, the one move across
+// parents; an import; an edit session's two saves, one version. The log,
+// whole and narrowed by a path, an actor ("me" alice), a client and a
+// limit, is REST's listChangesets; each changeset is REST's getChangeset
+// without its first changes, its changes listChangesetChanges' with their
+// nodes' paths, a change at a time too; versions are listPageVersions',
+// whole and two at a time to a null next_cursor, each version's lines
+// getPageVersion's content. A page deleted has no path, its change none;
+// another notebook's changeset is not found here.
 func TestTheMCPHistoryIsRESTs(t *testing.T) {
 	tm := newAcmeTeam(t, "member", "")
 	nb := tm.openNotebook(t, "alice", "Eng")
@@ -236,6 +238,10 @@ func TestTheMCPHistoryIsRESTs(t *testing.T) {
 	answerOf[mcpMoved](t, alice.use(t, "move", map[string]any{"from": "Guide/flow.png", "to": "Guide/flow-1.png"}))
 	notes := tm.createPageWith(t, "bob", nb, "", "Notes", "n\n")
 	tm.send(t, nodeRename("bob", notes, "Minutes"), http.StatusOK)
+	across := answerOf[mcpMoved](t, alice.use(t, "move", map[string]any{"from": "Minutes.md", "to": "Guide/Minutes.md"}))
+	if across.ChangesetID == nil {
+		t.Fatal("the move of Minutes into Guide wrote no changeset")
+	}
 	if j := tm.imported(t, "alice", nb, "", vaultZip(t, vaultFile{"Imported.md", "imported\n"})); j.State != "succeeded" {
 		t.Fatalf("the import = %+v", j)
 	}
@@ -279,16 +285,19 @@ func TestTheMCPHistoryIsRESTs(t *testing.T) {
 		for _, row := range all {
 			kinds[row.(map[string]any)["kind"]] = true
 		}
-		if !kinds["import"] || !kinds["revert"] || len(all) != 13 {
-			t.Errorf("the log has %d changesets of the kinds %v, want 13, the import and the revert among them", len(all), kinds)
+		if !kinds["import"] || !kinds["revert"] || len(all) != 14 {
+			t.Errorf("the log has %d changesets of the kinds %v, want 14, the import and the revert among them", len(all), kinds)
 		}
 	})
 	t.Run("changeset", func(t *testing.T) {
-		paths, attachments := tm.treePaths(t, "alice", nb), 0
+		paths, attachments, moves := tm.treePaths(t, "alice", nb), 0, map[string]bool{}
 		for _, row := range all {
 			id, _ := row.(map[string]any)["id"].(string)
 			want := asMCP(tm.restOf(t, "alice", "/api/v0/changesets/"+id)).(map[string]any)
 			delete(want, "changes")
+			if want["moves"] == true {
+				moves[id] = true
+			}
 			changes := withPaths(tm.restPages(t, "alice", "/api/v0/changesets/"+id+"/changes", "limit=100"), paths)
 			a := alice.use(t, "changeset", map[string]any{"id": id})
 			within(t, a)
@@ -303,10 +312,17 @@ func TestTheMCPHistoryIsRESTs(t *testing.T) {
 				if node := c.(map[string]any)["node"].(map[string]any); node["id"] == flow && node["kind"] == "attachment" {
 					attachments++
 				}
+				if c.(map[string]any)["kind"] == "moved" && !moves[id] {
+					t.Errorf("changeset %s moves a node across parents and says moves %v", id, want["moves"])
+				}
 			}
 		}
 		if attachments < 2 {
 			t.Errorf("%d changes of flow.png are an attachment's, want its upload and its move", attachments)
+		}
+		if len(moves) != 1 || !moves[*across.ChangesetID] {
+			t.Errorf("the changesets that move a node across parents are %v, want the move of Minutes alone, %s", moves,
+				*across.ChangesetID)
 		}
 		other := tm.openNotebook(t, "alice", "Other")
 		elsewhere := answerOf[mcpWritten](t, tm.agent(t, "alice", other).use(t, "write", map[string]any{"path": "Elsewhere.md",
@@ -328,9 +344,16 @@ func TestTheMCPHistoryIsRESTs(t *testing.T) {
 		s := structured(t, a)
 		versions := tm.restPages(t, "alice", "/api/v0/pages/"+roadmap+"/versions", "limit=100")
 		sameJSON(t, "the versions of Roadmap", s["versions"], versions)
-		if s["path"] != "Guide/Roadmap.md" || s["node_id"] != roadmap || s["current_version"] != meta.Version || len(versions) != 5 {
-			t.Errorf("versions = %v %v %v and %d versions, want Guide/Roadmap.md, %s, %s and 5", s["path"], s["node_id"],
-				s["current_version"], len(versions), roadmap, meta.Version)
+		if s["path"] != "Guide/Roadmap.md" || s["node_id"] != roadmap || s["current_version"] != meta.Version || len(versions) != 5 ||
+			s["next_cursor"] != nil {
+			t.Errorf("versions = %v %v %v and %d versions, next_cursor %v; want Guide/Roadmap.md, %s, %s and 5, null", s["path"],
+				s["node_id"], s["current_version"], len(versions), s["next_cursor"], roadmap, meta.Version)
+		}
+		// Two at a time: REST's, the last page's next_cursor null.
+		twos, pages := mcpPages(t, alice, "versions", "versions", map[string]any{"path": "Guide/Roadmap.md", "limit": 2})
+		sameJSON(t, "the versions of Roadmap two at a time", twos, versions)
+		if len(pages) != (len(versions)+1)/2 {
+			t.Errorf("the versions of Roadmap two at a time are %d pages, want %d", len(pages), (len(versions)+1)/2)
 		}
 		for _, v := range versions {
 			revision := int(v.(map[string]any)["revision"].(float64))
