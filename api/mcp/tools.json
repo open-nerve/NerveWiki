@@ -1,6 +1,35 @@
 {
   "notebook": [
     {
+      "name": "changeset",
+      "title": "Read a changeset",
+      "description": "Read one of the notebook's changesets by the id log gives: its kind, client, author, times, message, counts, what it reverts and what reverted it, and whether it renames or moves nodes; then what it did to each node it changed, a page at a time by node id: where the node was before and after in the tree, the revision of the content it wrote, and the node's current path (null when it is in the trash). The changeset itself comes on the first page, without cursor; go on with next_cursor while it is set. A changeset of another notebook is not found here. History is read-only here: people revert changesets in the web.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The changeset's id, as log gives it."
+          },
+          "limit": {
+            "type": ["null", "integer"],
+            "description": "At most this many changes, 1 to 100. Default 50."
+          },
+          "cursor": {
+            "type": ["null", "string"],
+            "description": "next_cursor of the previous answer, to go on from there."
+          }
+        },
+        "required": ["id"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      }
+    },
+    {
       "name": "delete",
       "title": "Delete a page or an attachment",
       "description": "Put a page or an attachment in the notebook's trash, by its path from the notebook's root: people restore it from the trash in the web. A page with pages or attachments under it needs recursive set to true, which puts them in the trash with it. Any of its pages being edited in the web editor, by you too, refuses the deletion, saying by whom; the locks cannot be taken over. The answer has how many pages and attachments went to the trash, itself counted, and the changeset's id and time.",
@@ -93,6 +122,42 @@
       }
     },
     {
+      "name": "log",
+      "title": "List the notebook's changes",
+      "description": "List the notebook's changesets, newest first: what people and agents changed, each with its kind, client, author (id and display name), times, message, how many nodes and contents it changed, what it reverts and what reverted it, and its first three changes; a changeset too large for the answer comes alone, its changes cut to fit and changes_cut true. path keeps the changesets that changed that page or attachment; actor those of an account, \"me\" for yours; client those of a client, \"mcp\" for every agent. A page or an attachment in the trash has no path: find its changesets in the whole log. Go on with next_cursor while it is set. changeset reads one in full. History is read-only here: people restore versions and revert changesets in the web.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": ["null", "string"],
+            "description": "Only the changesets that changed the page or attachment at this path, from the notebook's root."
+          },
+          "actor": {
+            "type": ["null", "string"],
+            "description": "Only the changesets by this account: its id, or \"me\" for yours."
+          },
+          "client": {
+            "type": ["null", "string"],
+            "description": "Only the changesets of this client: \"web\", \"api\", \"cli\", \"mcp:<name>\" for an agent, or \"mcp\" for every agent."
+          },
+          "limit": {
+            "type": ["null", "integer"],
+            "description": "At most this many changesets, 1 to 100. Default 50."
+          },
+          "cursor": {
+            "type": ["null", "string"],
+            "description": "next_cursor of the previous answer, to go on from there."
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      }
+    },
+    {
       "name": "move",
       "title": "Move or rename a page or an attachment",
       "description": "Move, rename, or both at once, a page or an attachment: from is its path, to the full path it will have, both from the notebook's root (\"Archive/Plan 2026.md\"), never a page to move it into. A page's path ends with .md, and an attachment's keeps an extension, which may change. A page moves with its children. The page above to must exist: move creates no pages. The links to what moves, and to its pages, are rewritten to follow it, unless update_links is false, which leaves every page linking to it as it is: those links may then lead elsewhere, or nowhere. Rewriting the links of a page being edited in the web editor, by you too, is refused, saying by whom; the lock cannot be taken over. The answer has the new path, node_id, changed, and the changeset's id and time (null when nothing moved).",
@@ -156,6 +221,47 @@
       }
     },
     {
+      "name": "versions",
+      "title": "List or read a page's versions",
+      "description": "Without revision, list a page's versions, newest first: each with its revision, size, times, and the changeset that wrote it (its kind, client and author); the answer also has the page's current version. Go on with next_cursor while it is set. With revision, read that version's content as read reads a page: two text blocks, a line of JSON metadata (path, kind, revision, current_version, offset, column, lines, total_lines, byte_size, next_offset, next_column), then its lines exactly as stored; go on from next_offset, and next_column. The version answered has its own revision, which may be above the one asked for: an edit session's saves share one version. Revisions are for reading: write and edit take the page's version, from read. A page in the trash has no path: its versions are read in the web.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "The page's path from the notebook's root, as \"A/B.md\"."
+          },
+          "revision": {
+            "type": ["null", "integer"],
+            "description": "The revision to read, from 1. Without it, the list of the page's versions."
+          },
+          "offset": {
+            "type": ["null", "integer"],
+            "description": "With revision: the first line, from 1. Default 1."
+          },
+          "column": {
+            "type": ["null", "integer"],
+            "description": "With revision: the byte of the first line to start from, from 0: next_column of the previous answer. Default 0."
+          },
+          "limit": {
+            "type": ["null", "integer"],
+            "description": "Without revision: at most this many versions, 1 to 100, default 50. With revision: at most this many lines, from 1, default 2000."
+          },
+          "cursor": {
+            "type": ["null", "string"],
+            "description": "Without revision: next_cursor of the previous answer, to go on from there."
+          }
+        },
+        "required": ["path"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      }
+    },
+    {
       "name": "write",
       "title": "Write a page",
       "description": "Write a page's whole content by its path from the notebook's root; the path ends with .md. Without base_version, it creates the page, and the parent pages it lacks, empty, in one change; a path that is a page already is refused. With base_version, the version read, list or write gave, it replaces the content of the page at the path: refused when the page changed since, or when the path names another page now; read it again. When the page holds that content already, nothing is written and changed is false, with an older base_version of that page too, and while the page is being edited. The content is stored byte for byte: at most 5 MiB of UTF-8, without NUL. A page being edited in the web editor, by you too, refuses the write, saying by whom; the lock cannot be taken over. The answer has the page's path, node_id and version, changed (false when nothing was written), the nodes it created, and the changeset's id and time.",
@@ -187,6 +293,39 @@
     }
   ],
   "account": [
+    {
+      "name": "changeset",
+      "title": "Read a changeset",
+      "description": "Read one of the notebook's changesets by the id log gives: its kind, client, author, times, message, counts, what it reverts and what reverted it, and whether it renames or moves nodes; then what it did to each node it changed, a page at a time by node id: where the node was before and after in the tree, the revision of the content it wrote, and the node's current path (null when it is in the trash). The changeset itself comes on the first page, without cursor; go on with next_cursor while it is set. A changeset of another notebook is not found here. History is read-only here: people revert changesets in the web.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "notebook": {
+            "type": "string",
+            "description": "The notebook's id, from notebooks."
+          },
+          "id": {
+            "type": "string",
+            "description": "The changeset's id, as log gives it."
+          },
+          "limit": {
+            "type": ["null", "integer"],
+            "description": "At most this many changes, 1 to 100. Default 50."
+          },
+          "cursor": {
+            "type": ["null", "string"],
+            "description": "next_cursor of the previous answer, to go on from there."
+          }
+        },
+        "required": ["notebook", "id"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      }
+    },
     {
       "name": "delete",
       "title": "Delete a page or an attachment",
@@ -277,6 +416,47 @@
           "limit": {
             "type": ["null", "integer"],
             "description": "At most this many items, 1 to 1000. Default 200."
+          },
+          "cursor": {
+            "type": ["null", "string"],
+            "description": "next_cursor of the previous answer, to go on from there."
+          }
+        },
+        "required": ["notebook"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "log",
+      "title": "List the notebook's changes",
+      "description": "List the notebook's changesets, newest first: what people and agents changed, each with its kind, client, author (id and display name), times, message, how many nodes and contents it changed, what it reverts and what reverted it, and its first three changes; a changeset too large for the answer comes alone, its changes cut to fit and changes_cut true. path keeps the changesets that changed that page or attachment; actor those of an account, \"me\" for yours; client those of a client, \"mcp\" for every agent. A page or an attachment in the trash has no path: find its changesets in the whole log. Go on with next_cursor while it is set. changeset reads one in full. History is read-only here: people restore versions and revert changesets in the web.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "notebook": {
+            "type": "string",
+            "description": "The notebook's id, from notebooks."
+          },
+          "path": {
+            "type": ["null", "string"],
+            "description": "Only the changesets that changed the page or attachment at this path, from the notebook's root."
+          },
+          "actor": {
+            "type": ["null", "string"],
+            "description": "Only the changesets by this account: its id, or \"me\" for yours."
+          },
+          "client": {
+            "type": ["null", "string"],
+            "description": "Only the changesets of this client: \"web\", \"api\", \"cli\", \"mcp:<name>\" for an agent, or \"mcp\" for every agent."
+          },
+          "limit": {
+            "type": ["null", "integer"],
+            "description": "At most this many changesets, 1 to 100. Default 50."
           },
           "cursor": {
             "type": ["null", "string"],
@@ -387,6 +567,51 @@
           "limit": {
             "type": ["null", "integer"],
             "description": "At most this many lines, from 1. Default 2000."
+          }
+        },
+        "required": ["notebook", "path"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "versions",
+      "title": "List or read a page's versions",
+      "description": "Without revision, list a page's versions, newest first: each with its revision, size, times, and the changeset that wrote it (its kind, client and author); the answer also has the page's current version. Go on with next_cursor while it is set. With revision, read that version's content as read reads a page: two text blocks, a line of JSON metadata (path, kind, revision, current_version, offset, column, lines, total_lines, byte_size, next_offset, next_column), then its lines exactly as stored; go on from next_offset, and next_column. The version answered has its own revision, which may be above the one asked for: an edit session's saves share one version. Revisions are for reading: write and edit take the page's version, from read. A page in the trash has no path: its versions are read in the web.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "notebook": {
+            "type": "string",
+            "description": "The notebook's id, from notebooks."
+          },
+          "path": {
+            "type": "string",
+            "description": "The page's path from the notebook's root, as \"A/B.md\"."
+          },
+          "revision": {
+            "type": ["null", "integer"],
+            "description": "The revision to read, from 1. Without it, the list of the page's versions."
+          },
+          "offset": {
+            "type": ["null", "integer"],
+            "description": "With revision: the first line, from 1. Default 1."
+          },
+          "column": {
+            "type": ["null", "integer"],
+            "description": "With revision: the byte of the first line to start from, from 0: next_column of the previous answer. Default 0."
+          },
+          "limit": {
+            "type": ["null", "integer"],
+            "description": "Without revision: at most this many versions, 1 to 100, default 50. With revision: at most this many lines, from 1, default 2000."
+          },
+          "cursor": {
+            "type": ["null", "string"],
+            "description": "Without revision: next_cursor of the previous answer, to go on from there."
           }
         },
         "required": ["notebook", "path"],

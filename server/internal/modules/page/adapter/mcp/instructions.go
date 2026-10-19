@@ -51,6 +51,9 @@ Tools
 - move: moves or renames a page or an attachment to its full new path ("B/x.md", never a page to move it into); ` +
 	`links to it follow unless update_links is false.
 - delete: puts a page or an attachment in the trash; a page with children needs recursive.
+- versions: a page's versions, or with revision one version's lines.
+- log: the notebook's changes, newest first; path, actor ("me") and client ("mcp") narrow it.
+- changeset: one change in full. History is read-only here: people restore and revert in the web.
 - A page's version, "<node id>:<revision>", tells which content you read. A write or edit with base_version is ` +
 	`refused when the page changed since: read it again.
 - A page being edited in the web editor, by you too, refuses writes, edits, deletes and a move that would rewrite ` +

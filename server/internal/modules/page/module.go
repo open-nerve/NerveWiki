@@ -161,15 +161,19 @@ type Deps struct {
 // Module is the wired page module.
 type Module struct {
 	uc           httpadapter.UseCases
-	gate         *app.NotebookGate  // MCP's notebook entry (MCPEntry)
-	instructions *app.Instructions  // its handshake's and open_notebook's, with their one cache
-	list         *app.ListByPattern // MCP's list (Tools)
-	read         *app.ReadPath      // MCP's read (Tools)
-	open         *app.OpenNotebook  // MCP's open_notebook (Tools)
-	write        *app.WritePath     // MCP's write (Tools)
-	edit         *app.EditPage      // MCP's edit (Tools)
-	move         *app.RelocatePath  // MCP's move (Tools)
-	remove       *app.DeletePath    // MCP's delete (Tools)
+	gate         *app.NotebookGate   // MCP's notebook entry (MCPEntry)
+	instructions *app.Instructions   // its handshake's and open_notebook's, with their one cache
+	list         *app.ListByPattern  // MCP's list (Tools)
+	read         *app.ReadPath       // MCP's read (Tools)
+	open         *app.OpenNotebook   // MCP's open_notebook (Tools)
+	write        *app.WritePath      // MCP's write (Tools)
+	edit         *app.EditPage       // MCP's edit (Tools)
+	move         *app.RelocatePath   // MCP's move (Tools)
+	remove       *app.DeletePath     // MCP's delete (Tools)
+	versions     *app.ListVersions   // REST's and MCP's versions (Tools)
+	version      *app.GetVersion     // REST's and MCP's versions with a revision (Tools)
+	log          *app.ListChangesets // REST's and MCP's log (Tools)
+	changeset    *app.GetChangeset   // REST's and MCP's changeset (Tools)
 	jobs         []jobs.Job
 	assets       *app.AssetWrites
 	imports      *app.ImportWrites
@@ -199,11 +203,16 @@ func New(d Deps) *Module {
 		SessionVetoers: d.EditSessionVetoers, SessionSubscribers: d.EditSessionSubscribers,
 	})
 	parser := app.NewContentParser(writer, md, budget, d.Budget.Wait())
-	versions := app.VersionReads{Notebooks: d.Notebooks, Nodes: store, Versions: store, Names: d.Names, Auth: d.Authorizer, Clock: d.Clock}
+	versions := app.VersionReads{Notebooks: d.Notebooks, Nodes: store, Versions: store, Names: d.Names, Auth: d.Authorizer, Clock: d.Clock,
+		Paths: store, States: store}
 	trash := app.TrashReads{Notebooks: d.Notebooks, Nodes: store, Trash: store, Names: d.Names, Attachments: d.Attachments,
 		Auth: d.Authorizer, Clock: d.Clock, Retention: d.Retention}
-	history := app.HistoryReads{Notebooks: d.Notebooks, History: store, Names: d.Names, Auth: d.Authorizer}
+	history := app.HistoryReads{Notebooks: d.Notebooks, History: store, Names: d.Names, Auth: d.Authorizer, Paths: store}
 	locks := app.NewLockHolders(store, d.Names) // edit's precheck (M9/P2 design 3.8.2)
+	// The history's reads, REST's and MCP's the same use cases (M9/P2
+	// design 3.15).
+	listVersions, getVersion := app.NewListVersions(versions), app.NewGetVersion(versions)
+	listChangesets, getChangeset := app.NewListChangesets(history), app.NewGetChangeset(history)
 	m := &Module{uc: httpadapter.UseCases{
 		ListNodes:       app.NewListNodes(d.Notebooks, store, d.Authorizer),
 		CreatePage:      app.NewCreatePage(writer, store, parser, d.Logger),
@@ -220,15 +229,15 @@ func New(d Deps) *Module {
 		GetEditLock:     app.NewGetEditLock(d.Notebooks, store, store, d.Names, d.Authorizer, d.Clock),
 		ReleaseEditLock: app.NewReleaseEditLock(writer, store, d.Logger),
 		ToggleTask:      app.NewToggleTask(writer, store, parser, md, d.Logger),
-		ListVersions:    app.NewListVersions(versions),
-		GetVersion:      app.NewGetVersion(versions),
+		ListVersions:    listVersions,
+		GetVersion:      getVersion,
 		GetVersionView:  app.NewGetVersionView(versions, md, budget),
 		RestoreVersion:  app.NewRestoreVersion(versions, writer, parser, d.Logger),
 		ListTrash:       app.NewListTrash(trash),
 		GetTrashItem:    app.NewGetTrashItem(trash),
 		RestoreNode:     app.NewRestoreNode(trash, writer, parser, app.RestoreBounds{Nodes: d.MaxUnitNodes, History: d.MaxUnitHistory}, d.Logger),
-		ListChangesets:  app.NewListChangesets(history),
-		GetChangeset:    app.NewGetChangeset(history),
+		ListChangesets:  listChangesets,
+		GetChangeset:    getChangeset,
 		ListChanges:     app.NewListChanges(history),
 		RevertChangeset: app.NewRevertChangeset(trash, store, writer, parser,
 			app.RevertBounds{Nodes: d.MaxUnitNodes, History: d.MaxUnitHistory, Steps: d.MaxRevertSteps}, d.Logger),
@@ -244,6 +253,10 @@ func New(d Deps) *Module {
 		edit:         app.NewEditPage(writer, parser, store, store, store, locks, d.Notebooks, d.Authorizer, d.Clock, d.Logger),
 		move:         app.NewRelocatePath(writer, store, d.Notebooks, d.Authorizer, d.Logger),
 		remove:       app.NewDeletePath(writer, store, d.Notebooks, d.Authorizer, d.Logger),
+		versions:     listVersions,
+		version:      getVersion,
+		log:          listChangesets,
+		changeset:    getChangeset,
 		instructions: app.NewInstructions(store, store, md, mcpserver.TextBytes)}
 	m.open = app.NewOpenNotebook(m.gate, store, m.instructions)
 	if d.SearchInterval > 0 {

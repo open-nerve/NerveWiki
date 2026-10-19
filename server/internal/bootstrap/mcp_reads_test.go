@@ -430,7 +430,7 @@ func TestTheMCPToolsErrorsCarryTheirCodes(t *testing.T) {
 		{mcpserver.Pattern, "open_notebook", map[string]any{"notebook": unseen}, "notebook.not_found"},
 		{mcpserver.Pattern, "open_notebook", map[string]any{"notebook": "nope"}, "notebook.not_found"},
 	}
-	for _, tt := range append(calls, writeCodeCalls(t, r, guide)...) {
+	for _, tt := range slices.Concat(calls, writeCodeCalls(t, r, guide), historyCodeCalls(t, r)) {
 		member := r.call(t, tt.path, tt.tool, tt.args).toolError(t)
 		if member["code"] != tt.want {
 			t.Errorf("%s %v at %s = %v, want %s", tt.tool, tt.args, tt.path, member, tt.want)
@@ -446,6 +446,49 @@ func TestTheMCPToolsErrorsCarryTheirCodes(t *testing.T) {
 				t.Errorf("%s's row lists %s, which no call here answers", tool, code)
 			}
 		}
+	}
+}
+
+// historyCodeCalls are the history's calls in alice's notebook of r,
+// beside its page Guide (M9/P2 design 3.17.1): a changeset of another
+// notebook of alice's, Other, where she reads it, is not found in this
+// one.
+func historyCodeCalls(t *testing.T, r readsApp) []codeCall {
+	t.Helper()
+	other := r.createNotebook(t, r.access, "acme", "Other")
+	elsewhere := answerOf[mcpWritten](t, r.call(t, atNotebook(other), "write", map[string]any{"path": "Elsewhere.md", "content": "e"}))
+	if elsewhere.ChangesetID == nil {
+		t.Fatal("the write in Other wrote no changeset")
+	}
+	nb, theirs := atNotebook(r.notebook), *elsewhere.ChangesetID
+	return []codeCall{
+		{nb, "versions", map[string]any{"path": 7}, "bad_request"},
+		{nb, "versions", map[string]any{"path": "Guide.md", "cursor": "x"}, "bad_request"},
+		{nb, "versions", map[string]any{"path": "Guide.md", "revision": 0}, "validation_failed"},
+		{nb, "versions", map[string]any{"path": "Guide.md", "revision": 1, "cursor": "x"}, "validation_failed"},
+		{nb, "versions", map[string]any{"path": "Guide.md", "offset": 1}, "validation_failed"},
+		{nb, "versions", map[string]any{"path": "Guide.md", "limit": 101}, "validation_failed"},
+		{nb, "versions", map[string]any{"path": "Guide/diagram.png"}, "validation_failed"},
+		{mcpserver.Pattern, "versions", map[string]any{"notebook": r.hidden, "path": "Guide.md"}, "notebook.not_found"},
+		{nb, "versions", map[string]any{"path": "Missing.md"}, "page.not_found"},
+		{nb, "versions", map[string]any{"path": "Guide.md", "revision": 99}, "page.version_not_found"},
+		{nb, "log", map[string]any{"cursor": "x"}, "bad_request"},
+		{nb, "log", map[string]any{"limit": "x"}, "bad_request"},
+		{nb, "log", map[string]any{"actor": "you"}, "validation_failed"},
+		{nb, "log", map[string]any{"client": "mobile"}, "validation_failed"},
+		{nb, "log", map[string]any{"limit": 0}, "validation_failed"},
+		{mcpserver.Pattern, "log", map[string]any{"notebook": r.hidden}, "notebook.not_found"},
+		{nb, "log", map[string]any{"path": "Missing.md"}, "page.not_found"},
+		{nb, "changeset", map[string]any{"id": theirs, "cursor": "x"}, "bad_request"},
+		{nb, "changeset", map[string]any{"id": theirs, "limit": 0}, "validation_failed"},
+		{mcpserver.Pattern, "changeset", map[string]any{"notebook": r.hidden, "id": theirs}, "notebook.not_found"},
+		// An id that is no UUID is the use case's too: its earlier checks
+		// answer first.
+		{nb, "changeset", map[string]any{"id": "not-a-uuid", "limit": 0}, "validation_failed"},
+		{mcpserver.Pattern, "changeset", map[string]any{"notebook": r.hidden, "id": "not-a-uuid"}, "notebook.not_found"},
+		{nb, "changeset", map[string]any{"id": uuid.NewV7().String()}, "page.changeset_not_found"},
+		{nb, "changeset", map[string]any{"id": "not-a-uuid"}, "page.changeset_not_found"},
+		{nb, "changeset", map[string]any{"id": theirs}, "page.changeset_not_found"},
 	}
 }
 
@@ -622,10 +665,11 @@ func TestTheStringParametersAreDerivedFromTheSchema(t *testing.T) {
 }
 
 // validToolArguments are, for each tool, arguments that reach its use
-// case in alice's notebook, where Strings.md holds "x" (M9/P2 design
-// 3.13.1): a tool listed without them fails the check, so that P3's and
-// P4's tools add theirs. The account entry's notebook is added to them.
-func validToolArguments() map[string]map[string]any {
+// case in alice's notebook, where Strings.md holds "x", which the
+// changeset created created (M9/P2 design 3.13.1, 3.17.1): a tool listed
+// without them fails the check, so that P3's and P4's tools add theirs.
+// The account entry's notebook is added to them.
+func validToolArguments(created string) map[string]map[string]any {
 	return map[string]map[string]any{
 		"notebooks":     {},
 		"open_notebook": {},
@@ -635,7 +679,28 @@ func validToolArguments() map[string]map[string]any {
 		"edit":          {"path": "Strings.md", "old_string": "x", "new_string": "y"},
 		"move":          {"from": "Strings.md", "to": "Moved.md"},
 		"delete":        {"path": "Gone.md"},
+		"versions":      {"path": "Strings.md"},
+		"log":           {},
+		"changeset":     {"id": created},
 	}
+}
+
+// createStrings creates Strings.md, holding "x", in alice's notebook of
+// r, and answers the changeset that created it, the newest of the
+// notebook as REST's listChangesets lists it.
+func (r readsApp) createStrings(t *testing.T) string {
+	t.Helper()
+	r.createPage(t, "", "Strings", "x")
+	status, got := ask(t, r.contract, http.MethodGet, r.base+"/api/v0/notebooks/"+r.notebook+"/changesets?limit=1", r.access, "")
+	var l struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(got), &l); status != http.StatusOK || err != nil || len(l.Data) != 1 {
+		t.Fatalf("the log of alice's notebook = %d %s", status, got)
+	}
+	return l.Data[0].ID
 }
 
 // schemaRefusal starts the text of the arguments' refusal by the tool's
@@ -700,7 +765,7 @@ func toolStringProblems(t *testing.T, lists toolLists, valid map[string]map[stri
 // schema; a lone surrogate's escape in it is the edge's 400.
 func TestToolStringsDoNotAnswerInternalErrors(t *testing.T) {
 	r := startReadsApp(t, publicOrigin)
-	r.createPage(t, "", "Strings", "x")
+	valid := validToolArguments(r.createStrings(t))
 	lists := r.listedTools(t)
 	pathOf := func(entry string) string {
 		if mcpEntries()[entry] == mcpserver.NotebookEntry {
@@ -713,7 +778,7 @@ func TestToolStringsDoNotAnswerInternalErrors(t *testing.T) {
 		cases++
 		return r.call(t, pathOf(entry), tool, args)
 	}
-	for _, p := range toolStringProblems(t, lists, validToolArguments(), r.notebook, call) {
+	for _, p := range toolStringProblems(t, lists, valid, r.notebook, call) {
 		t.Error(p)
 	}
 	// read's path is a string in both entries: none found means the
@@ -728,7 +793,7 @@ func TestToolStringsDoNotAnswerInternalErrors(t *testing.T) {
 			schema, _ := object["inputSchema"].(map[string]any)
 			for _, param := range stringParameters(schema) {
 				const mark = "lone-surrogate-here"
-				args := withArgumentAt(validToolArguments()[name], param, mark)
+				args := withArgumentAt(valid[name], param, mark)
 				if _, ok := args["notebook"]; !ok && pathOf(entry) == mcpserver.Pattern {
 					args["notebook"] = r.notebook
 				}
@@ -765,7 +830,7 @@ func TestToolStringsCatchASchemaRefusal(t *testing.T) {
 	logs := &syncBuffer{}
 	m := runMCPApp(t, wireMCPApp(t, testConfig(t, db, false), logs, []mcpserver.Tool{strict}), db, logs)
 	r := readsApp{mcpApp: m}
-	r.createPage(t, "", "Strings", "x")
+	valid := validToolArguments(r.createStrings(t))
 	lists := r.listedTools(t)
 	call := func(entry, tool string, args map[string]any) mcpAnswer {
 		path := mcpserver.Pattern
@@ -774,7 +839,6 @@ func TestToolStringsCatchASchemaRefusal(t *testing.T) {
 		}
 		return r.call(t, path, tool, args)
 	}
-	valid := validToolArguments()
 	valid["strict"] = map[string]any{"s": "x"}
 	if got, want := toolStringProblems(t, lists, valid, r.notebook, call), []string{"the account entry's strict: s did not reach its use case"}; !slices.Equal(got, want) {
 		t.Errorf("the problems of strict without must = %q, want %q", got, want)

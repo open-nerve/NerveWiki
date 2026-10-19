@@ -141,6 +141,22 @@ func clientFilterInvalid(message string) error {
 	return shared.Invalid(shared.FieldError{Field: "client", Code: shared.FieldInvalidFormat, Message: message})
 }
 
+// ParseActor is the log's actor s (M9 design 4.9): "me", the caller me,
+// which an agent has no other way to name, or an account's id as
+// uuid.Parse reads one; 422 on actor otherwise. The account is not looked
+// up, as REST's actor is not: one of no changeset keeps none.
+func ParseActor(s string, me uuid.UUID) (uuid.UUID, error) {
+	if s == "me" {
+		return me, nil
+	}
+	id, err := uuid.Parse(s)
+	if err != nil {
+		return uuid.UUID{}, shared.Invalid(shared.FieldError{Field: "actor", Code: shared.FieldInvalidFormat,
+			Message: `is an account's id or "me"`})
+	}
+	return id, nil
+}
+
 // CheckMessage checks a changeset's message, given: 1–MaxMessageBytes
 // bytes of UTF-8 without NUL, which the changesets table takes; 422 on
 // message otherwise.

@@ -72,13 +72,14 @@ func blockJSON(t *testing.T, b mcpserver.Block) map[string]any {
 
 // The module's tools are list and read, each in both entries, and
 // open_notebook, in the account entry alone, each a notebook's, read-only
-// (M9/P1 design 3.10.5, 3.11.3, 3.17.3); and write, edit, move and delete,
+// (M9/P1 design 3.10.5, 3.11.3, 3.17.3); write, edit, move and delete,
 // in both entries, destructive, all but edit idempotent (M9/P2 design
-// 3.11). The composition root's TestTheToolListsAreTheContract holds their
-// schemas to the file.
+// 3.11); and versions, log and changeset, in both entries, read-only
+// (3.16). The composition root's TestTheToolListsAreTheContract holds
+// their schemas to the file.
 func TestTheToolsAreTheReadsAndTheWrites(t *testing.T) {
 	tools := Tools(UseCases{}, nil)
-	write := mcpserver.Annotations{Destructive: true, Idempotent: true}
+	write, read := mcpserver.Annotations{Destructive: true, Idempotent: true}, mcpserver.Annotations{ReadOnly: true}
 	want := []mcpserver.Spec{
 		{Name: "list", Title: "List nodes", Description: listDescription, Annotations: mcpserver.Annotations{ReadOnly: true},
 			Entry: mcpserver.BothEntries, Notebook: true},
@@ -93,6 +94,12 @@ func TestTheToolsAreTheReadsAndTheWrites(t *testing.T) {
 		{Name: "move", Title: "Move or rename a page or an attachment", Description: moveDescription, Annotations: write,
 			Entry: mcpserver.BothEntries, Notebook: true},
 		{Name: "delete", Title: "Delete a page or an attachment", Description: deleteDescription, Annotations: write,
+			Entry: mcpserver.BothEntries, Notebook: true},
+		{Name: "versions", Title: "List or read a page's versions", Description: versionsDescription, Annotations: read,
+			Entry: mcpserver.BothEntries, Notebook: true},
+		{Name: "log", Title: "List the notebook's changes", Description: logDescription, Annotations: read,
+			Entry: mcpserver.BothEntries, Notebook: true},
+		{Name: "changeset", Title: "Read a changeset", Description: changesetDescription, Annotations: read,
 			Entry: mcpserver.BothEntries, Notebook: true},
 	}
 	if len(tools) != len(want) {
