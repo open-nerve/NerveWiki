@@ -4,7 +4,7 @@
 |---|---|
 | Phase | M9/P2 写的工具与历史的读（两个 Step：S1 写的工具；S2 历史的读） |
 | 日期 | 2026-10-18 |
-| 状态 | S1 已合并（`804c3561`），S2 进行中；设计稿已按设计审查与它的两次复核修订（[P2 设计审查](reviews/P2-design-review.md)，含"第二轮复核"与"第三轮复核"），实施与审查之后与代码不同之处照实改在各节（3.22 列出），结果在第 9 节 |
+| 状态 | 已完成（S1 合并 `804c3561`、S2 合并 `f3854b9a`）；设计稿已按设计审查与它的两次复核修订（[P2 设计审查](reviews/P2-design-review.md)，含"第二轮复核"与"第三轮复核"），实施与审查之后与代码不同之处照实改在各节（3.22 列出），结果在第 9 节 |
 | 上级文档 | [M9 总设计](00-M9-design.md) 4.1、4.2、4.5、4.7、4.8、4.10、4.12、4.14、4.15、第 5、7、9、10、11 节与"移交的落实"；[P1](01-P1-platform-reads.md) 3.3、3.4、3.9、3.13、3.16、3.19 与第 8、9 节；[v0.1 总体设计](../v0.1-design.md) 6.1–6.4、7、8.4、10.1、12、13 |
 | 代码位置的写法 | 同 00 号文档：模块写作 `page/app/unit.go:168`（`server/internal/modules/` 之下）；`platform/…`、`bootstrap/…`、`shared/…`、`archtest/…` 在 `server/internal/` 之下；迁移写作 `00014_page_changesets.sql:13`（`server/migrations/sql/`）；SDK 写作 `sdk/mcp/streamable.go:440`（`~/go/pkg/mod/github.com/modelcontextprotocol/go-sdk@v1.8.0/`）；Go 的标准库写作 `$GOROOT/src/net/http/request.go:1234`（go1.27.1）；前端写作 `web/…/history-filters.tsx:17`；e2e 写作 `e2e/fixtures/mcp.ts:108` |
 
@@ -12,7 +12,7 @@
 
 ## 0. 分两个 Step
 
-照 00 号文档第 7 节，P2 中等大小。分两个 Step，各自一个分支、一次审查与修复核对、一次合并；后一个从前一个合并之后的 `main` 开始。两个都在服务端与 e2e，没有网页的改动：网页的历史已能按 MCP 筛选、显示"MCP（名）"（`web/…/history-filters.tsx:17-18`、`:114-115`，`web/…/changeset-text.ts:34-46`）。
+照 00 号文档第 7 节，P2 中等大小。分两个 Step，各自一个分支、一次审查与修复核对、一次合并；后一个从前一个合并之后的 `main` 开始。两个都在服务端与 e2e，没有网页的改动（S2 只改了网页的测试的假的事件服务器，S2 审查 C-M1）：网页的历史已能按 MCP 筛选、显示"MCP（名）"（`web/…/history-filters.tsx:17-18`、`:114-115`，`web/…/changeset-text.ts:34-46`）。
 
 - **S1 写的工具**（分支 `m9-p2-s1`）：
   - 大的请求体的界线：整个服务两个名额、每个凭证至多一个，httpserver 的逐路由中间件，REST 的两个正文路由共用（3.2）；请求体的 JSON 值的上限（S1 审查 A2-I1，3.2.6）；
@@ -29,7 +29,8 @@
 - **S2 历史的读**（分支 `m9-p2-s2`）：
   - 用例的按路径与按笔记本的入口：`ListVersions.AtPath`、`GetVersion.AtPath`、`ListChangesets.AtPath`、`GetChangeset.InNotebook`（3.16）；
   - 工具 `versions`、`log`、`changeset`，`tools.json`、内置的说明、码的表与矩阵的三行（3.16、3.17）；
-  - e2e：MC8（4.6）。
+  - e2e：MC8（4.6）；
+  - 网页的测试：假的事件服务器持有每个流的请求，一次垃圾回收不再丢掉标签页的中止（S2 审查 C-M1，修复一轮；9.2）。
 
 **界线为什么在 S1**：S1 带来第一批真的大的写（`write`、`edit` 的 5 MiB 正文），界线与它们一起进 `main`，`main` 在每次合并时都有它。大的请求体今天就进得来：P1 的 `list`、`read` 的调用收至多 37,814,272 字节的请求体（`bootstrap/mcp.go:24-28`、`mcpserver/edge.go:100-104`），一个 36 MB 的 `path` 在 `ParsePath` 拒绝之前被检查、解码（`mcpserver/tool.go:178`、`:194-197`，schema 没有 `maxLength`），P1 的 S1 审查 A 量的 1,381–1,471 MB 正是这一种（[P1](01-P1-platform-reads.md) 第 9 节）：S1 把它们一起管住。P1 留下的接缝工具只在测试里登记（`bootstrap/wire.go:58-67`）。
 
@@ -114,7 +115,7 @@
 
 ### 2.1 对 00 号文档的修订
 
-P2 的文档提交随这份文档一起改 [`00-M9-design.md`](00-M9-design.md)（照 P1 的做法，以脚本落下，每段原文恰好出现一次才改，`scratchpad/m9/p2/apply-00m9.py`）。行号指 `2a888a6f` 的 00 号文档（P1 的 S3 的文档改了它的九处，都在原地，这里引的行没有挪；第 11 节在 :660 之后多了七条，第 12、13 节随之后移七行）。第 23–29 条是 S1 的实施与审查之后加的，随它的合并改进 00 号文档（主持者以 `scratchpad/m9/p2s1docs/s4_m9design.py` 落下，同样每段原文恰好出现一次才改；行号指 `804c3561` 的），与第 3、5、6、22 条不同之处以它们为准。
+P2 的文档提交随这份文档一起改 [`00-M9-design.md`](00-M9-design.md)（照 P1 的做法，以脚本落下，每段原文恰好出现一次才改，`scratchpad/m9/p2/apply-00m9.py`）。行号指 `2a888a6f` 的 00 号文档（P1 的 S3 的文档改了它的九处，都在原地，这里引的行没有挪；第 11 节在 :660 之后多了七条，第 12、13 节随之后移七行）。第 23–29 条是 S1 的实施与审查之后加的，随它的合并改进 00 号文档（主持者以 `scratchpad/m9/p2s1docs/s4_m9design.py` 落下，同样每段原文恰好出现一次才改；行号指 `804c3561` 的），与第 3、5、6、22 条不同之处以它们为准。第 30–36 条是 S2 的实施与审查之后加的，随它的合并改进 00 号文档（主持者以 `scratchpad/m9/p2s2docs/s3_m9design.py` 落下，同样每段原文恰好出现一次才改；行号指 `f3854b9a` 的），与第 8、9、19 条不同之处以它们为准。
 
 1. **新建补建父页不经缓存**（4.10 的 `write` 一条 :228）："照 `ImportUnit` 在单元里缓存兄弟与祖先"改为：单元里以 `NodePaths.Walk` 逐段点查（同 `Find` 的 `RootByKey`、`ChildByKey`，经单元的事务），缺的祖先与叶子依次以 `Unit.CreatePage` 建。一条链至多 10 段，十段都缺时约 70 条语句（每个 `CreatePage` 约七条：`FindNodeIn`、`Ancestors`、`Children`、`CreateNode`、`CreateContent`、`RecordRevision`、`RecordItems`，`unit_create.go:28-82`、`unit_place.go:40-63`、`unit.go:264-291`；另有 `Walk`、变更集、搜索的入队与观察者）；`ImportUnit` 的缓存为一个单元里上百页的导入而设（`page/app/unit_import.go:12-18`），它的序号与"太深就跳过"的规则 `write` 都不要（撞名拒绝、太深 409）。缓存与它在移动、改名、删除之后的作废是 P3 的 batch 的事（3.20）。P1 第 8 节写的"同一个 `PathStore`、在单元的事务里"照做。
 2. **锁的成员**（4.7 的"锁的拒绝" :178；4.10 的锁表之后 :254）：`lock` 是 `{page_id, path, user_id, display_name, you}`；MCP 的删除被拒时另有 `locks`（子树里每个被持着的页，子树的次序：逐层、每层按次序值）与 `locks_count`，这时 `lock` 是 `locks` 的第一项而不带 `path`（路径在 `locks` 里，不重复）；`linking.pages_locked` 的 `locks` 同形。`structuredContent.error` 的 `locks` 至多 20 项（`MaxErrorLocks`），多的只数在 `locks_count` 里；带路径的项由 `ToolError.Fit` 放到 48 KiB 之内（3.10）。文字只引这次调用自己的路径，以 `"` 原样引起（不用 `%q`：它把 U+3000、U+00A0、U+200D 一类写成转义，文字就不是路径，标题里没有 `"` 与 `\`，原样引起不会有歧义，2.1 第 4 条），别的页的路径只在结构里（3.10.3 的计算：一个最贵的路径在文字与 `message` 里各一份已是约 33.7 KB）。
@@ -123,7 +124,7 @@ P2 的文档提交随这份文档一起改 [`00-M9-design.md`](00-M9-design.md)�
 5. **`edit` 的上限、唯一与匹配**（4.10 的 `edit` :232-237；4.14 的"一次调用的字符串参数"一行 :341）：`old_string` 1 字节到 1 MiB（`MaxEditOldBytes`，`/mcp` 的请求体上限给"正文之外的 1 MiB"留的就是它，`bootstrap/mcp.go:24-28`），`new_string` 至多 5 MiB，替换之后的正文至多 5 MiB（`new_string` `too_long`，在替换之前算出、不先拼出来；CRLF 的规则之下以换过的两个串算）；两者都是 UTF-8、不含 NUL。唯一按"第一处之后还有没有一处"判断，重叠的也算（`aa` 在 `aaa` 里是两处；Claude Code 按不重叠的计数，这里更严，写进说明）；"found N times"的 N 是不重叠的计数与 2 中较大的。**匹配是线性的**：查找、第二处、计数、`replace_all`、CRLF 的规则与 NFC 的再找都经同一个 KMP 的匹配器，从不以 `strings`、`bytes` 的查找、切分与替换（`Index`、`Count`、`ReplaceAll` 这一族）拿 agent 给的串作模式（它们对长的模式走 Rabin–Karp，一个构造的 1 MiB 的 `old_string` 在 5 MiB 的页上约 70 秒，设计审查 B-I2 与它的复核实测 70.2 秒），也不拿它编 `regexp`（模式就是程序，k 个字节的 `old` 让匹配是 O(n·k)：1 MiB 的 `a` 的页上 1,000 个 `a` 加 `b` 4.8 秒，第二次复核 B 实测）；最坏的一次调用本机约 0.16 秒（3.9），所以不在匹配里看期限（输入的上限管着它，3.9）。`write` 的正文至多 5 MiB、路径至多 4,096 字节，所以一次调用的字符串参数合计在 6 MiB 加一个路径之内。
 6. **大的请求体的界线**（4.14 的请求体一行 :340；4.15 的"边缘" :364；第 10 节的内存一行 :607；第 11 节主持者的决定第 16 条 :652）：整个服务同时至多两个大的请求体，**每个凭证（限流的键：`pat:<id>`、`session:<id>`）至多一个**；按路由的门槛：`/mcp` 是 64 KiB（`mcpserver.MaxOtherBytes`），REST 的两个正文路由是 `server.max_body_bytes`（1 MiB）：任何路由都收 1 MiB 的请求体，在这之下计数挡不住什么，而 `/mcp` 的放大约 40 倍（37.8 MB 的请求体分配约 1.4 GB），64 KiB 起就要算。同一个凭证的第二个大的请求体在 2 秒之内等它的第一个，别的凭证的不等它；取不到名额的至多等 2 秒（同 `page.parse_max_wait` 的默认），然后 503 `server_busy`、`Retry-After: 1`，info 的一行点名持着名额的凭证与路由；`Content-Length` 超过路由的上限的立刻 413、不取名额。`/mcp` 的边缘次序在 413（bodyshape）之前多两步：413（声明的长度超过路由的上限）→ 503（没有名额）（3.2）。第 11 节第 16 条与第 10 节的那一行随之写细：REST 的两个正文路由的门槛是 1 MiB 而不是 64 KiB（第 10 节说它们"可以共用这份预算"）；取不到的先等 2 秒再答 503（不等的话，一个 agent 并行的第二个大的写立刻就是传输的失败，3.2.1）；每个凭证至多一个。第 10 节另加一行**剩下的风险**：两个凭证（一个账户的两个 PAT 也算）仍占得满两个名额，每个慢的请求体占着它至多 `read_timeout` 30 秒，每 30 秒两个请求、每分钟 4 个，按凭证的桶（每分钟 1,200 个）看不到；其间超过门槛的 MCP 调用与超过 1 MiB 的网页保存等 2 秒后 503（网页重试三次，约 11 秒后失败）；info 的一行点名凭证，管理员撤销那个 PAT 或结束会话；缓冲请求体的反向代理把慢的发送者挡在应用之外，P5 的接入文档按路由写：`/mcp` 与 page 的两个正文路由缓冲（nginx 的 `proxy_request_buffering on`，它的默认），上传与导入照 README 的部署一节不缓冲（`README.md:357`）；Caddy 默认不缓冲请求体，直接暴露也不，用它们时这个风险照旧（设计审查的复核 A 的 MN-2）；写给 M12（`read_timeout` 不改）。**每个凭证一个名额的代价**（复核 A 的 MN-1，主持者接受）：名额在读请求体之前取，一个大的写占着它的是上传加处理，10 Mbit/s 上 5 MiB 约 4.2 秒、1 Mbit/s 上过约 250 KB 就过 2 秒，所以同一个凭证并行的第二个大的写在慢的上行上等满 2 秒、答 503（修订之前它会拿空着的第二个名额）；一般的页（100 KiB 在 10 Mbit/s 上约 80 ms）不受影响。照旧每个凭证一个、等 2 秒、503，不加长等候、不加按凭证的队列；第 10 节的那一行与 M12 的移交写上它，说明加一行叫 agent 一个接一个地发大的写（3.12），P5 的人工清单加一次限速的上行的试用。
 7. **按 id 给路径随 P2**（第 7 节 P1 一行 :427、P4 一行 :430；[P1](01-P1-platform-reads.md) 2.1 第 19 条与 `page/app/node_paths.go:10-12` 的注释）：`NodePaths.Paths`（按 id 给活着的节点的路径，一条语句：已有的 `LinkTargetsByIDs`，`page/adapter/postgres/queries/links.sql:25-42`）随 P2 进 page：`move` 的 `linking.pages_locked` 与 `changeset` 的各项要它。模块根的 `page.NewNodePaths(pool)` 与 linking 的 `Deps.NodePaths` 仍随 P4。
-8. **`changeset` 的各项带路径，节点的类型是 `attachment`**（4.9 的 `changeset` :220；第 5 节的工具表 :410）：每项的节点另带它现在的路径（活着的；回收站里的与清理掉的为 null），由 `NodePaths.Paths` 为这一页的节点读一次：agent 只能按路径调别的工具，没有路径的 id 走不下去。节点的类型同别的工具写 `page` 或 `attachment`（REST 的 `asset` 在适配器里换，同 `list`、`read`）。`log` 的前三项变化照 M8 4.7 的形状，不带路径（它是概要）。
+8. **`changeset` 的各项带路径，节点的类型是 `attachment`**（4.9 的 `changeset` :220；第 5 节的工具表 :410）：每项的节点另带它现在的路径（活着的；回收站里的为 null。清理先删节点的条目与版本，再删节点，所以清理掉的节点不再列出，它的变更集记为 `trimmed`；S2 审查 A-N1），由 `NodePaths.Paths` 为这一页的节点读一次：agent 只能按路径调别的工具，没有路径的 id 走不下去。节点的类型同别的工具写 `page` 或 `attachment`（REST 的 `asset` 在适配器里换，同 `list`、`read`）。`log` 的前三项变化照 M8 4.7 的形状，不带路径（它是概要）。
 9. **`versions` 读一个版本的元数据与它的次序**（4.9 的 `versions` :218；4.15 的"通用" :365）：第一块是 `{path, kind, revision, current_version, offset, column, lines, total_lines, byte_size, next_offset, next_column}`：`revision` 是答出的版本自己的号，可能大于问的（一个版本行覆盖它的变更集里连续写的几个版本号，`page/app/get_version.go:27-33`）；`current_version` 是这一页现在的令牌。`limit` 在列表里是版本数（1–100，默认 50），读一个版本时是行数（默认 2,000）；`cursor` 只用于列表、`offset` 与 `column` 只用于读，用错了答 422 `not_allowed`；`revision` 不在 1–2,147,483,647 之间是与资源无关的 422（P1 2.1 第 6 条的规则；REST 的 `getPageVersion` 对它们答 `page.version_not_found`，不改）。用错了模式的 422 排在一切之前，带着它们的调用不读游标：所以读一个版本时坏的 `cursor` 答 422 而不是游标的 400，是 4.15 通用次序（`bad_request` 在先）的例外，4.15 加这一句。
 10. **`write` 覆盖时内容相同**（4.10 的 `write` 第二条 :229）："与当前相同不写、答 `changed: false`"写细：先比令牌的节点（不是路径的节点就 409），节点相同而内容相同时，即使令牌的版本号过时也答 `changed: false` 与当前的令牌（同 REST 的 `unit_content.go:62-64`：内容已经是调用者要的样子，答 409 只会让它重读、再写同样的内容）；同样的写也不被打开的编辑器拒绝（不经守卫，13.1 第 29 条）。
 11. **`write` 的答复**（4.10 的 `write` 的答复 :231）：`{path, node_id, version, changed, created, created_count, changeset_id, at}`：`path` 是这一页现在的路径（找到的祖先的名称照库里的大小写）；`created` 是这次建的节点，从根往下、这一页在最后（覆盖与未改动时为空），经 `Fit` 填、`created_count` 是总数；未改动时 `changeset_id`、`at` 为 null。
@@ -145,6 +146,13 @@ P2 的文档提交随这份文档一起改 [`00-M9-design.md`](00-M9-design.md)�
 27. **大的请求体的内存的实测**（第 10 节的内存一行 :607；"写给后面的 M"的 M12 一条 :464；第 11 节主持者的决定第 36 条）：没有 JSON 值的上限时的形状与有了之后的数（3.2.6、第 9 节），"峰值约 1 GB"照留（S1 审查 A2-M1）；M12 一条另加慢的发送者、每个凭证一个名额的代价、名额与等候是常量与 `edit` 的最坏的一次调用（第 8 节）。
 28. **人工清单与接入文档**（4.16 的"步骤" :378 与"接入文档" :380）：第 8 节 P5 的几项写进 00 号文档，P5 照它核对：503 的表现、并行的大的写与限速的上行、`edit` 的唯一、`move` 的 `to`、写的四个工具在各审批选项下；名额与 503、JSON 值的上限、按路由缓冲、`base_version`、锁不能接管。`manual/P5-mcp-clients-checklist.md` 随 P5 建（第 7 节第 7 条）。
 29. **组合根的三份与 `short` 一份**（第 11 节主持者的决定第 28 条 :665 与第 31、38 条；第 10 节的 glob 的守卫一行 :609；"写给后面的 M"的 M12 一条 :464）：第 22 条的规则第一次用上：挪动照规则撤回、分出第三份（6.5）；`go test -short ./...` 有自己的门禁，按耗时判定、不要数据库的守卫在 `-short` 下跳过（6.4、6.5）。
+30. **`changeset` 的节点的路径**（4.9 的 `changeset` :220）："回收站里的与清理掉的为 null"改为"回收站里的为 null"：清理先删节点的条目与版本、再删节点，清理掉的节点不再列出，它的变更集记为 `trimmed`（S2 审查 A-N1；第 8 条、3.16.3）。
+31. **`versions` 与 `log` 的路径**（4.9 的 `versions` :218 与 `log` :219）：`versions` 对不以 `.md` 结尾的路径答的 422 带上页的路径的规则（"A page's path ends with .md."，`domain.PageRule`），不带路径（S2 审查 B-N1，主持者的决定，3.16.1）；回收站里的页与附件没有路径，`log` 的描述说在整个日志里找它们的变更集（S2 审查 B-N2，3.18）。
+32. **历史的三个工具的码的次序**（4.15 的"通用" :365；第 11 节"设计里的取舍"第 9 条 :691）：三个都是 `page.history`，读者以上，没有 403；`changeset` 只认调用的那本笔记本的，两个入口都是（账户入口是 `notebook` 指的那本），别的笔记本的与不存在的都答 `page.changeset_not_found`；`id` 不是 UUID 时当作零值交给用例，排在游标、`limit` 与笔记本之后，不查库（S2 审查 C-M3，3.16.3）。
+33. **建成的历史的读**（4.1 的用例 :86；4.11 的"答复" :282；4.14 的表 :353；"移交的落实"的 M8/P4 一行 :446）：复用的用例加按路径与按笔记本的入口，`Execute` 的后半共用（3.15、3.16）；`batch` 的答复里截掉的步由 `changeset` 一页一页地读；4.14 的表给三个工具一行：`limit` 1–100、默认 50，`log` 与 `changeset` 的退回（3.16.4），按页面的日志不另设界线；任务的变更集照常读到（3.17.3 里有一个导入的）。
+34. **按页面的日志的代价与历史的打磨**（第 10 节加一行；"写给后面的 M"的 M12 的性能 :464 与打磨 :466）：`log {path}` 每次调用读这一页的全部历史，带 `revision` 的 `versions` 读整个版本，v0.1 不改代码，M12 压测并考虑结构的改法（S2 审查 B-M1，第 8 节）；`log {path: ""}` 的拒绝进 M12 的打磨移交第 30 条（S2 审查 A-N2 的后一半）。
+35. **主持者在 S2 里定下的**（第 11 节第 39 条之后）：第 40–43 条，照 S1 的那一段的写法（2.2）。
+36. **接入文档写历史只读**（4.16 的"接入文档" :380）：第 8 节 P5 的"历史只读"写进 00 号文档：还原与撤销在网页上，经 MCP 的移动加改名在网页上一步撤销。
 
 ### 2.2 需要负责人确认
 
@@ -153,6 +161,7 @@ P2 的文档提交随这份文档一起改 [`00-M9-design.md`](00-M9-design.md)�
 - 第 11 节负责人的四个决定照做：agent 只读历史（`versions`、`log`、`changeset`，没有还原、恢复、撤销，3.16；3.5.4 修的是网页上的撤销，人做的）；MCP 的写不开会话，被编辑的页（本人的编辑器也算）拒绝写、编辑与删除，答 `page.locked` 并说出持锁人，不能接管（3.6、3.11.5）；`AGENTS` 与说明不变；MCP 不开后台任务。
 - 2.1 的各条是实现的写定、P1 实现之后的更正或 00 号文档内部的不一致，不碰第 11 节负责人的决定，由主持者定（负责人可以改判）。第 6 条是主持者的决定第 16 条的实现，写细了它的三处（REST 的门槛 1 MiB、等 2 秒、每个凭证一个）并写下剩下的风险，都是主持者一级的；第 20 条把 4.12 的一部分从 P3 挪到 P2，Phase 的划分是主持者的；组合根分出第三份（6.5）与第 22 条对第 28 条的改写（过了线的一份只在邻居挪过之后仍在线之下时把测试给它，否则再分一份，从不提高 `-timeout`；本机照同样的份跑）都是主持者为 P2 定的规则，第 28 条本身是主持者的决定，不是负责人的。第 6 条剩下的风险是任何一个账户都能造成的可用性的风险（设计审查的复核 A），主持者接受、交 M12；负责人在 00 号文档第 10 节与 M12 的移交里看得到它。第 5 条的 `old_string` 1 MiB 是 4.14 的"其中正文与 `new_string` 合计 5 MiB"之外那 1 MiB 的写定。
 - S1 的实施与审查里主持者定下的，同样负责人可以改判，写进 00 号文档第 11 节（主持者的决定第 31–39 条）与 [S1 的审查记录](reviews/P2-S1-writes-review.md)的"主持者的决定"：组合根照规则撤回挪动、分出第三份；`move` 的父页写成页的路径答 `write` 那样的 422；422 的字段名的写法交 P3；样例 047 的 README 一句随样例提交；请求体的 JSON 值的上限；最高的一次 +961 MiB 读作在"约 1 GB"之内；全是 CRLF 的页上 `new_string` 的单独的 `\n` 照 CRLF 写；`go test -short ./...` 有自己的门禁；C4 (page) 的摆动记在审查记录。
+- S2 的实施与审查里主持者定下的，同样负责人可以改判，写进 00 号文档第 11 节（主持者的决定第 40–43 条）与 [S2 的审查记录](reviews/P2-S2-history-review.md)的"主持者的决定"：按页面的日志的代价 v0.1 不改代码，交 M12 的压测与结构的改法；`log {path: ""}` 的拒绝留给 v0.1 之后的打磨；web 的那个摆动在 S2 里改（在它的范围之外，任何分支都可能碰上）；`versions` 对不以 `.md` 结尾的路径的提示只写规则、不带路径。
 
 ## 3. 服务端
 
@@ -1272,7 +1281,7 @@ Tools
 
 最后一行是设计审查的复核 A 的 MN-1（主持者让它可选：放得下、而且与客户端给 agent 看到的相符才加）。放得下：它加 146 字节（`TextBytes`），上表是加了它之后的量，P3、P4 的五行（下一段）在账户入口剩下的 1,065 字节里照旧放得下。相符：它只说服务的行为与做法，不说 agent 会看到什么。`/mcp` 的 503 是 HTTP 的错误，未必以文字到达模型：Go 的 SDK v1.8.0 的客户端把 503 当作暂时的错误，只答"Service Unavailable"、不读答复的正文（`sdk/mcp/streamable.go:2583-2587`、`:2821-2833`），`server_busy` 与 `Retry-After` 都到不了模型；Claude Code 与 Codex 怎样表现离线核对不了，由 P5 的人工清单看（第 8 节）。所以在说明里事先说：说明在握手时就交给客户端，不靠 503 的文字。
 
-P3 的 `batch` 一行（00 号文档"移交的落实"的 M8/P3 一行）与 P4 的 `grep`、`search`、`backlinks`、`index` 四行，每行约 100–200 字节，放得下；超过时 `TestTheBuiltInInstructionsAreShort` 失败，由加行的 Phase 收短。实施时以测试的 `TextBytes` 复核这几个数（照实际的字句，差几个字节不改结论）。
+P3 的 `batch` 一行（00 号文档"移交的落实"的 M8/P3 一行）与 P4 的 `grep`、`search`、`backlinks`、`index` 四行，每行约 100–200 字节，放得下；超过时 `TestTheBuiltInInstructionsAreShort` 失败，由加行的 Phase 收短。实施时以测试的 `TextBytes` 复核这几个数（照实际的字句，差几个字节不改结论）。S2 实测与上表的"S2 之后"一栏相同（2,961 与 3,031，9.2）。
 
 ### 3.13 S1：码的表、矩阵与整个程序的测试
 
@@ -1444,28 +1453,30 @@ M6/P4 的移交第 2 项（`bootstrap/mcp_writes_test.go` 的 `TestAMoveWithoutI
 
 | 文件 | 包 | 新/改 | 内容 |
 |---|---|---|---|
-| `page/app/history.go` | app | 改 | `HistoryReads` 加 `Paths PathStore`；按笔记本读一个变更集的 `changesetIn` |
+| `page/app/history.go` | app | 改 | `HistoryReads` 加 `Paths PathStore`；与 REST 共用的后半 `detail`（`logged` 与 `ChangesetMoves`）与 `changes`（一页变化），这一页活着的节点的路径 `alivePaths`，每项之后的游标 `cursorsAfter`（S2 审查 B-N3：设计写的 `changesetIn` 没有建，按笔记本读一个变更集在 `GetChangeset.InNotebook` 里） |
 | `page/app/list_changesets.go` | app | 改 | `PathLogQuery`、`PathLog`、`ListChangesets.AtPath`；`Execute` 的后半（读、截断、游标、`logged`）抽成两者共用的 `page` |
-| `page/app/get_changeset.go` | app | 改 | `ChangesetPage`、`GetChangeset.InNotebook` |
-| `page/app/list_versions.go`、`get_version.go` | app | 改 | `VersionReads` 加 `Paths PathStore`、`States PageStates`；`PathVersionList`、`ListVersions.AtPath`；`PathVersion`、`GetVersion.AtPath`；`Execute` 的读抽成共用的函数 |
-| `page/app/*_test.go` | app | 改 | 四个入口（两个 `AtPath`、`ListChangesets.AtPath`、`InNotebook`）的码的次序（3.17.4） |
+| `page/app/get_changeset.go`、`list_changes.go` | app | 改 | `ChangesetPage`、`GetChangeset.InNotebook`；两个 `Execute` 改用共用的 `detail`、`changes` |
+| `page/app/list_versions.go`、`get_version.go` | app | 改 | `VersionReads` 加 `Paths PathStore`、`States PageStates`；`PathVersionList`、`ListVersions.AtPath`；`PathVersion`、`GetVersion.AtPath`；`Execute` 的读抽成共用的 `VersionReads.list`，游标的检查 `versionsBelow` 也共用；两个 `AtPath` 的路径与它的 422 `versionsPath`；这一页现在的令牌 `VersionReads.current` |
+| `page/app/path_history_test.go` | app | 新 | 四个入口（两个 `AtPath`、`ListChangesets.AtPath`、`InNotebook`）的码的次序与读（3.17.4） |
 | `page/domain/changeset.go`、`changeset_test.go` | domain | 改 | `ParseActor` |
 | `page/domain/version.go`、`version_test.go` | domain | 改 | `CheckRevision`、`CheckVersionsArgs` |
-| `page/adapter/mcp/versions.go`、`log.go`、`changeset.go`、`history.go` 与各自的测试 | mcpadapter | 新 | 三个工具；`history.go` 是 REST 的形状在 MCP 里的写法（`changesetRow`、`changeRow`、`versionRow`；节点的类型写作 `attachment`，3.16.3） |
-| `page/adapter/mcp/tools.go`、`instructions.go` | mcpadapter | 改 | `UseCases` 加四个入口；说明的三行（3.12） |
+| `page/domain/path.go` | domain | 改 | `PageRule`（"A page's path ends with .md"），`PageHint` 与 `versionsPath` 的 422 共用（S2 审查 B-N1） |
+| `page/adapter/mcp/versions.go`、`log.go`、`changeset.go`、`history.go` 与各自的测试 | mcpadapter | 新 | 三个工具；`history.go` 是 REST 的形状在 MCP 里的写法（`versionRow`；`changesetFields` 由 `log` 的 `changesetRow` 与 `changeset` 的 `changesetHeader` 共用；`change[N]` 的节点是 `changeNode` 或带路径的 `pathNode`；节点的类型写作 `attachment`，3.16.3） |
+| `page/adapter/mcp/tools.go`、`instructions.go`、`read.go` | mcpadapter | 改 | `UseCases` 加四个入口；说明的三行（3.12）；`read.go` 的 `measure` 抽成 `measureOf(first)`，`versions` 读一个版本时共用（偏离 3） |
 | `page/module.go`、`page/tools.go` | page | 改 | `VersionReads`、`HistoryReads` 带上 `store`；REST 与 MCP 共用同一个用例的值 |
 | `api/mcp/tools.json` | 契约 | 改 | 三个工具，两个入口（3.18） |
 | `bootstrap/mcp_history_test.go` | bootstrap | 新 | 3.17.3：`TestTheMCPHistoryIsRESTs`、`TestTheMCPHistoryAnswersGoOn` 与它种下长的历史的 `seedLongHistory` |
 | `bootstrap/mcp_reads_test.go`、`permission_matrix_mcp_test.go` | bootstrap | 改 | 码的表的三行与它们的调用、矩阵的三行、工具的字符串的合法参数的三项（3.13.1） |
 | `e2e/stories/mcp/mc8-history.spec.ts` | e2e | 新 | 4.6 |
+| `web/apps/web/src/test/event-server.ts` | web 的测试 | 改 | 假的事件服务器持有每个流的请求（S2 审查 C-M1，修复一轮） |
 
 ### 3.16 S2：三个工具与它们的用例
 
 三个都是只读的（`Annotations{ReadOnly: true}`，`tools.json` 里是 `readOnlyHint: true`、`idempotentHint: false`，同 P1 的 `list`、`read`），在两个入口（`BothEntries`）、`Notebook: true`。判定都是这本笔记本上的 `page.history`（`decideNotebook(…, domain.ActionHistory, notebookID)`，任何角色）：看不到的是 `notebook.not_found`，没有 403。都不加锁、不开事务（同 M8 的读）。都只认活着的节点：回收站里的页没有路径（00 号文档 4.9），网页读得到它的版本。
 
-入口是 M8 的用例的四个新方法：判定与资源的读照 MCP 的次序（00 号文档 4.15：参数的形状 400 → 与资源无关的 422 → 笔记本 → 资源；`versions` 用错了模式的 422 是例外，在游标的 400 之前，3.16.1），之后调与 REST 相同的读。REST 的 `Execute` 不改行为，只把后半抽成共用的函数（M8 的表格测试照旧通过）。
+入口是 M8 的用例的四个新方法：判定与资源的读照 MCP 的次序（00 号文档 4.15：参数的形状 400 → 与资源无关的 422 → 笔记本 → 资源；`versions` 用错了模式的 422 是例外，在游标的 400 之前，3.16.1），之后调与 REST 相同的读。REST 的 `Execute` 不改行为，只把后半抽成共用的函数（M8 的表格测试照旧通过）：`VersionReads.list`、`ListChangesets.page`、`HistoryReads.detail` 与 `changes`；审查 B 以只跑 M8 的表的 9 个变异核对过。
 
-**S2 不加 SQL**（设计审查 C-N10）：三个工具的读都是已有的语句，它们的计划都已有测试守着：P1 的 `RootByKey`、`ChildByKey` 与 `PageStates`，M8 的日志与版本的读，`LinkTargetsByIDs`（按参数做计划、没有统计时，`page/adapter/postgres/store_test.go:459-494`、`links_test.go:225-260`）。后者在 `changeset` 的一页里至多 100 个 id（`shared.PageSize` 的上限），在锁的拒绝里至多 20 个（`MaxNamedLocks`）。
+**S2 不加 SQL**（设计审查 C-N10）：三个工具的读都是已有的语句，它们的计划都已有测试守着：P1 的 `RootByKey`、`ChildByKey` 与 `PageStates`，M8 的日志与版本的读，`LinkTargetsByIDs`（按参数做计划、没有统计时，`page/adapter/postgres/store_test.go:459-494`、`links_test.go:225-260`）。后者在 `changeset` 的一页里至多 100 个 id（`shared.PageSize` 的上限），在锁的拒绝里至多 20 个（`MaxNamedLocks`）。按页面的日志是例外：`log {path}` 的每一页都读这一页的全部历史（M8 的语句，M8 接受它时它是少用的路），S2 审查 B-M1 量过，v0.1 不改，交 M12（3.16.2、第 8 节）。
 
 #### 3.16.1 `versions`
 
@@ -1522,8 +1533,8 @@ func (g *GetVersion) AtPath(ctx context.Context, notebookID uuid.UUID, path stri
 
 - **两种调用**：有 `revision` 是读一个版本，没有是列表（00 号文档 4.9）。用错了模式的参数最先答 422，由适配器调 `domain.CheckVersionsArgs(revision, offset, column, cursor)`：读一个版本时的 `cursor` 是 `not_allowed` "is for the list of versions, without revision"，列表时的 `offset`、`column` 是 `not_allowed` "is for reading a version, with revision"，每个用错的参数一项（2.1 第 9 条）。它们不属于这一次调用，所以排在一切之前，带着它们的调用不读游标：这是 4.15 的"400 在先"的一个例外，00 号文档 4.15 与 13.1 第 4 条照写（2.1 第 9 条、第 7 节）。`limit` 两种都收：列表的版本数（1–100，默认 50，`shared.PageSize`）、读的行数（≥ 1，默认 2,000，`domain.CheckWindow`）。
 - **`revision` 的范围**：小于 1 或大于 `domain.MaxRevision`（`page/domain/version.go:11`）是 422 `revision` `out_of_range` "must be from 1 to 2147483647"（`domain.CheckRevision`）：与资源无关（P1 2.1 第 6 条的同一条规则）。REST 的 `getPageVersion` 对它们答 `page.version_not_found`（`api/modules/page.yaml:370`），不改。
-- **路径**：`domain.ParsePath("path", path, false)`；不以 `.md` 结尾的是 422 `path` `not_allowed` "is an attachment's path: attachments have no versions"（附件的名称从不以 `.md` 结尾，所以 `.md` 的路径只找得到页）。
-- **读**：列表照 `Execute` 的读（`Versions.ListVersions`、第一页的 `Editing`、`named`，`page/app/list_versions.go:48-92`），游标是每项之后的 `VersionCursor{Below: v.Revision}`；读一个版本照 `findVersion`（`list_versions.go:121-133`），切行照 `ReadPath`（`domain.Cut`，`page/app/read_path.go:88-92`），不读 `Editing` 与显示名（读的元数据里没有它们）。`Current` 由 `States.PageStates(ctx, [节点])` 读（`page/app/ports.go:203-221`）；其间被删了答 `page.not_found`。
+- **路径**：`domain.ParsePath("path", path, false)`；不以 `.md` 结尾的是 422 `path` `not_allowed` "is an attachment's path: attachments have no versions. A page's path ends with .md."（附件的名称从不以 `.md` 结尾，所以 `.md` 的路径只找得到页；后一句是 `read` 与 `log` 对这样的路径给的提示的规则 `domain.PageRule`，`PageHint` 也用它；不带路径：字段的说明在 MCP 的答复里出现三次，带上最长的路径会过答复的界线；S2 审查 B-N1，主持者的决定）。
+- **读**：列表与 `Execute` 共用 `VersionReads.list`（`Versions.ListVersions`、第一页的 `Editing`、`named`），游标是每项之后的 `VersionCursor{Below: v.Revision}`（`cursorsAfter`）；读一个版本照 `findVersion`（`list_versions.go:121-133`），切行照 `ReadPath`（`domain.Cut`，`page/app/read_path.go:88-92`），不读 `Editing` 与显示名（读的元数据里没有它们）。`Current` 由 `VersionReads.current` 经 `States.PageStates(ctx, [节点])` 读（`page/app/ports.go:203-221`）；其间被删了答 `page.not_found`。
 - **列表的答复**（结构）：
 
 ```go
@@ -1536,8 +1547,8 @@ type versionsAnswer struct {
 }
 ```
 
-  `versionRow` 是 REST 的 `PageVersion` 的成员（`id`、`revision`、`base_revision`、`byte_size`、`created_at`、`updated_at`、`editing`、`changeset{id, kind, client, created_at, created_by{user_id, display_name}}`，`page/adapter/http/versions.go:90-103`）。项经 `mcpserver.Fit`，放不下的从 `Cursors[k-1]` 接着读（同 P1 的 `list`，`page/adapter/mcp/list.go:44-80`）。
-- **读一个版本的答复**（文字，两块，同 `read`）：第一块是一行 JSON `{path, kind, revision, current_version, offset, column, lines, total_lines, byte_size, next_offset, next_column}`，第二块是这些行。`TextMeasure.Room` 量的是这一行在最宽的取值时（`revision` 与令牌的版本号取 `math.MinInt64`，同 `page/adapter/mcp/read.go:70`）。
+  `versionRow` 是 REST 的 `PageVersion` 的成员（`id`、`revision`、`base_revision`、`byte_size`、`created_at`、`updated_at`、`editing`、`changeset{id, kind, client, created_at, created_by{user_id, display_name}}`，`page/adapter/http/versions.go:90-103`）。项经 `mcpserver.Fit`，放不下的从 `Cursors[k-1]` 接着读（同 P1 的 `list`，`page/adapter/mcp/list.go:44-80`）；连第一项都放不下时答工具的错误 `errNoVersionFits`（同 P1 的 `errNoItemFits`；3.16.4 算过到不了，偏离 2）。
+- **读一个版本的答复**（文字，两块，同 `read`）：第一块是一行 JSON `{path, kind, revision, current_version, offset, column, lines, total_lines, byte_size, next_offset, next_column}`，第二块是这些行。`TextMeasure.Room` 量的是这一行在最宽的取值时（`widestVersion`：`revision` 与令牌的版本号取 `math.MinInt64`，同 `read` 的 `widest`；`read.go` 的 `measure` 抽成 `measureOf(first)`，两者共用，偏离 3）。
 
 #### 3.16.2 `log`
 
@@ -1582,7 +1593,7 @@ func ParseActor(s string, me uuid.UUID) (uuid.UUID, error)
 
 - **次序**：`RequireActor` → 游标（`domain.ChangesetFrom()` 起，解不开 400，`page/app/list_changesets.go:52-57`）→ `path`（`ParsePath`，422，末尾的 `/` 拒绝）→ `actor`（`ParseActor`，422）→ `client`（`domain.ParseClientFilter`，422，`page/domain/changeset.go:124-138`）→ `limit`（`shared.PageSize`，422）→ `decideNotebook(ActionHistory)`（`notebook.not_found`）→ `paths.Find`（不加锁，活着的页或附件，`page.not_found` 带 P1 的提示）→ 共用的 `page`：`History.ListChangesets(notebookID, LogFilter{Actor, Client, AllMCP, PageID}, below, size+1)`、截断、每项之后的游标 `ChangesetCursor{At, ID}`、`logged`（`list_changesets.go:92-107`）。REST 的 `Execute` 的次序（404 在 422 之前）不变。
 - **`actor: "me"`**：调用者自己（`shared.RequireActor` 的账户）：agent 没有别的办法知道自己的 id（00 号文档 4.9）。按执行者筛的是变更集的作者 `created_by_id`（`page/adapter/postgres/queries/history.sql:30`、`:57`）：PAT 的写的作者是 PAT 的账户，所以"我的"含这个账户在网页里与经 MCP 的写；只要 agent 的写，再加 `client: "mcp"`。
-- **`path`**：照 `page_id` 的意思（这个节点的条目与版本所在的变更集，回收站里的行照收，`history.sql:37-61`），只是节点按路径找、只找活着的。
+- **`path`**：照 `page_id` 的意思（这个节点的条目与版本所在的变更集，回收站里的行照收，`history.sql:37-61`），只是节点按路径找、只找活着的。回收站里的页或附件没有路径：`log` 的描述说在整个日志里找它的变更集（S2 审查 B-N2，3.18）。这个语句先读这个节点的条目与版本的每一个变更集、逐个按键查，才排序取一页，游标不减少这份工作：agent 的每次写是一个变更集，一页 40,000 个变更集约 35–47 ms、300,000 个约 225–452 ms，线性；v0.1 不改，交 M12 的压测与结构的改法（S2 审查 B-M1，主持者的决定，第 8 节）。
 - **答复**（结构）：
 
 ```go
@@ -1592,7 +1603,7 @@ type logAnswer struct {
 }
 ```
 
-  `changesetRow` 是 REST 的 `Changeset` 的成员（`id`、`notebook_id`、`kind`、`client`、`message`、`created_by`、`created_at`、`updated_at`、`reverts`、`reverted_by`、`trimmed`、`node_count`、`content_count`、`changes`，`page/adapter/http/history.go:108-156`），`changes` 是前三项变化（`loggedChanges`，`page/app/history.go:33`），不带路径（2.1 第 8 条），节点的类型照 3.16.3 写作 `attachment`；另加一个成员 `changes_cut`（`bool`，`omitempty`）。行经 `Fit`；**连一行都放不下时**（3.16.4：一行带三项变化最坏约 59.7 KB；2.1 第 19 条），答第一行，它的 `changes` 再经一次 `Fit` 取放得下的前几项，并写上 `changes_cut: true`；`next_cursor` 是 `Cursors[0]`（只有这一行时是 `NextCursor`）。所以每次调用至少前进一行，省去了变化的一行明说省去了（13.1 第 31 条的"标出截断"），`changeset` 读得到全部。草稿以"`changes` 少于 `min(3, node_count)`"让 agent 自己推断，不对：`node_count` 只数条目，变化却是条目与版本合起来的（`history.sql:63-71`、`:110-130`），一个移动加两个正文写的变更集 `node_count` 是 1、变化有三项（设计审查 C-M4）。`changes_cut` 只由退回写，别的行没有这个成员。
+  `changesetRow` 是 REST 的 `Changeset` 的成员（`id`、`notebook_id`、`kind`、`client`、`message`、`created_by`、`created_at`、`updated_at`、`reverts`、`reverted_by`、`trimmed`、`node_count`、`content_count`、`changes`，`page/adapter/http/history.go:108-156`；`changes` 之外的成员是 `changesetFields`，与 `changeset` 的头 `changesetHeader` 共用），`changes` 是前三项变化（`loggedChanges`，`page/app/history.go:33`），不带路径（`change[changeNode]`，2.1 第 8 条），节点的类型照 3.16.3 写作 `attachment`；另加一个成员 `changes_cut`（`bool`，`omitempty`）。行经 `Fit`；**连一行都放不下时**（3.16.4：一行带三项变化最坏约 59.7 KB；2.1 第 19 条），答第一行，它的 `changes` 再经一次 `Fit` 取放得下的前几项，并写上 `changes_cut: true`；`next_cursor` 是 `Cursors[0]`（只有这一行时是 `NextCursor`）。所以每次调用至少前进一行，省去了变化的一行明说省去了（13.1 第 31 条的"标出截断"），`changeset` 读得到全部。草稿以"`changes` 少于 `min(3, node_count)`"让 agent 自己推断，不对：`node_count` 只数条目，变化却是条目与版本合起来的（`history.sql:63-71`、`:110-130`），一个移动加两个正文写的变更集 `node_count` 是 1、变化有三项（设计审查 C-M4）。`changes_cut` 只由退回写，别的行没有这个成员。
 - **任务的变更集**（M8/P4 的移交第 3 项）：导入、后台的恢复与撤销写的是普通的变更集，照常列出（3.17.3 里有一个导入的）。
 
 #### 3.16.3 `changeset`
@@ -1630,20 +1641,20 @@ type ChangesetPage struct {
 func (g *GetChangeset) InNotebook(ctx context.Context, notebookID, id uuid.UUID, limit *int, cursor *string) (ChangesetPage, error)
 ```
 
-- **`id`** 在输入里是字符串（mcpserver 不收 `uuid.UUID` 的字段，`mcpserver/schema.go:21-34`），适配器以 `uuid.Parse` 读：不是 UUID 的是零值的 id，答 `page.changeset_not_found`（同 P1 的 `notebook`，`mcpserver/tool.go:212-234`，零值的 id 不查库）。
+- **`id`** 在输入里是字符串（mcpserver 不收 `uuid.UUID` 的字段，`mcpserver/schema.go:21-34`），适配器以 `uuid.Parse` 读：不是 UUID 的是零值的 id，答 `page.changeset_not_found`（同 P1 的 `notebook`，`mcpserver/tool.go:212-234`，零值的 id 不查库）。零值的 id 照样交给用例：游标的 400、`limit` 的 422 与笔记本的判定都在它之前（码的表的两个调用，S2 审查 C-M3）。
 - **判定**：`decideNotebook(ActionHistory, notebookID)` 之后 `History.FindChangeset(id)`（活着的笔记本里没删的，`queries/history.sql:3-9`），`c.NotebookID != notebookID` 也是 `page.changeset_not_found`（00 号文档 4.9："入口是 cd 进去"）。`readableChangeset` 在变更集自己的笔记本上判定（`page/app/history.go:39-60`），这里判定的是调用的笔记本、再要求变更集在它里面，两者对这本笔记本里的变更集一致。
-- **读**：没有游标时 `logged` 与 `ChangesetMoves`（同 `GetChangeset.Execute`，`get_changeset.go:34-48`）；`History.ListChanges(c.ID, after, size+1)`，游标是每项之后的 `ChangeCursor{After: NodeID}`，`Start` 是 `ChangeCursor{After: uuid.Nil}`（从头列，同没有游标的那一页的变化，`list_changes.go:35-63`）；这一页里活着的节点经 `NodePaths.Paths` 读一次路径（3.7）。
+- **读**：没有游标时 `HistoryReads.detail`（`logged` 与 `ChangesetMoves`，与 `GetChangeset.Execute` 共用）；`HistoryReads.changes`（`History.ListChanges(c.ID, after, size+1)`，与 `ListChanges.Execute` 共用），游标由 `cursorsAfter` 写成每项之后的 `ChangeCursor{After: NodeID}`，`Start` 是 `ChangeCursor{After: uuid.Nil}`（从头列，同没有游标的那一页的变化，`list_changes.go:35-63`）；这一页里活着的节点经 `HistoryReads.alivePaths`（`NodePaths.Paths`）读一次路径（3.7）。按笔记本读一个变更集就在 `InNotebook` 里，没有另一个 `changesetIn`（S2 审查 B-N3；上面的 `changesetIn` 是适配器的输入）。
 - **答复**（结构）：
 
 ```go
 type changesetAnswer struct {
-	Changeset  *changesetHeader `json:"changeset"` // null with a cursor
-	Changes    []changeRow      `json:"changes"`
-	NextCursor *string          `json:"next_cursor"`
+	Changeset  *changesetHeader   `json:"changeset"` // null with a cursor
+	Changes    []change[pathNode] `json:"changes"`
+	NextCursor *string            `json:"next_cursor"`
 }
 ```
 
-  `changesetHeader` 是 REST 的 `getChangeset` 的成员去掉 `changes`（前三项在 `changes` 里本来就有），加 `renames`、`moves`；`changeRow` 是 REST 的 `ChangesetChange`（`node{id, kind, name, alive}`、`kind`、`before`、`after`、`content`，`page/adapter/http/history.go:129-156`），`node` 另带 `path`：活着的节点现在的路径，回收站里的与清理掉的为 null（2.1 第 8 条）。变化经 `Fit`；第一页连一项都放不下时（变更集最坏约 35.6 KB，一项带路径最坏约 25.1 KB，3.16.4；2.1 第 19 条）答 `changes: []` 与 `next_cursor: Start`：带游标的页没有变更集，一项总放得下，所以每次调用至少前进一项（第一页的那一次前进的是变更集本身）。
+  `changesetHeader` 是 REST 的 `getChangeset` 的成员去掉 `changes`（前三项在 `changes` 里本来就有），加 `renames`、`moves`；变化是 `change[pathNode]`：REST 的 `ChangesetChange`（`node{id, kind, name, alive}`、`kind`、`before`、`after`、`content`，`page/adapter/http/history.go:129-156`；`log` 的前三项是同样的 `change[changeNode]`），`node` 另带 `path`：活着的节点现在的路径，回收站里的为 null（清理掉的节点不再列出，2.1 第 8 条）。变化经 `Fit`；第一页连一项都放不下时（变更集最坏约 35.6 KB，一项带路径最坏约 25.1 KB，3.16.4；2.1 第 19 条）答 `changes: []` 与 `next_cursor: Start`：带游标的页没有变更集，一项总放得下，所以每次调用至少前进一项（第一页的那一次前进的是变更集本身）。带游标的页连一项都放不下时答工具的错误 `errNoChangeFits`（3.16.4 算过到不了；答 `Start` 会从头再来，偏离 2）。
 - **节点的类型**（设计审查 C-M5）：`node.kind` 是 `page` 或 `attachment`。REST 的 `gen.NodeKind` 写 `asset`（`page/adapter/http/history.go:144`），P1 的工具都说 attachment 并说了为什么（`page/adapter/mcp/list.go:83-86`、`read.go:126`、`open_notebook.go:99-105`），所以 `history.go` 在这里换，`log` 的 `changes` 同样。变化本身的 `kind`（`created`、`moved` 等）照 REST。
 
 #### 3.16.4 答复的上限：计算
@@ -1660,7 +1671,7 @@ type changesetAnswer struct {
 | `versions` 的列表，路径加一项 | 18,995（每多一项约 1,856） | 放得下 |
 | `versions` 读一个版本 | 同 P1 的 `read`（元数据一行之外至少约 31 KiB） | 放得下 |
 
-所以三个工具每次调用都前进；没有 `internal_error` 的情形（`Fit` 的 `build(0)` 过界只在形状写错时，`mcpserver/answer.go:117-175`）。`log` 的一行与 `changeset` 的第一页是 00 号文档 4.7 的"单项不会超过它"的例外，2.1 第 19 条把那一句改为"一项可能超过它：`log` 的一行与 `changeset` 的第一页各有退回（4.9）；别的工具的单项都不会"（设计审查 C-M13）。
+所以三个工具每次调用都前进；没有 `internal_error` 的情形（`Fit` 的 `build(0)` 过界只在形状写错时，`mcpserver/answer.go:117-175`）。`log` 的一行与 `changeset` 的第一页是 00 号文档 4.7 的"单项不会超过它"的例外，2.1 第 19 条把那一句改为"一项可能超过它：`log` 的一行与 `changeset` 的第一页各有退回（4.9）；别的工具的单项都不会"（设计审查 C-M13）。S2 实测（9.2）：适配器的替身上的最坏的值与上表逐个相同，一个答复放得下 17 个最坏的版本；审查 A 以独立的模型算的最坏的行（取最贵的 `reordered` 与 `trimmed: false`）比上表多 1–31 字节，结论都成立；真的库上 A 的探针（显示名 100 个 `&`、`delete` 的 61 项与撤销它的 61 项、10 段的页的 62 个版本）最大的答复是 `changeset` 47,553、`log` 48,430、读一个版本 49,005。
 
 ### 3.17 S2：码的表、矩阵与测试
 
@@ -1686,11 +1697,11 @@ type changesetAnswer struct {
 | | `notebook.not_found` | 同上 |
 | | `page.not_found` | `path: "Missing.md"` |
 | `changeset` | `bad_request` | `cursor: "x"` |
-| | `validation_failed` | `limit: 0` |
-| | `notebook.not_found` | 同上 |
+| | `validation_failed` | `limit: 0`；`id: "not-a-uuid"` 与 `limit: 0`（不是 UUID 的 id 也交给用例，它先查限额） |
+| | `notebook.not_found` | 同上；看不到的笔记本里的 `id: "not-a-uuid"` |
 | | `page.changeset_not_found` | 随机的 UUID；`"not-a-uuid"`；alice 的另一本笔记本里的变更集（她在那本里读得到） |
 
-工具的字符串的合法参数的表（3.13.1）加三项：`versions {path: "Strings.md"}`、`log {}`、`changeset {id: …}`。
+工具的字符串的合法参数的表（3.13.1）加三项：`versions {path: "Strings.md"}`、`log {}`、`changeset {id: …}`（`id` 是建 `Strings.md` 的变更集，`createStrings` 从 REST 的日志读，`validToolArguments` 因此带一个参数；偏离 4）。
 
 #### 3.17.2 矩阵的三行
 
@@ -1704,30 +1715,30 @@ type changesetAnswer struct {
 
 #### 3.17.3 整个程序的测试
 
-`bootstrap/mcp_history_test.go`，`newAcmeTeam(t, "member", "")`、alice 与 bob 的 PAT，笔记本 Eng：
+`bootstrap/mcp_history_test.go`，`newAcmeTeam(t, "member", "")`、alice 与 bob 的 PAT，笔记本 Eng；两个测试的 agent 先以 `whole-program` 握手（`handshakeAs`：不握手时变更集的客户端是 `mcp:unknown`，`client: "mcp:whole-program"` 会比两个空的列表；偏离 5）：
 
-- `TestTheMCPHistoryIsRESTs`：备好的历史：alice 经 MCP 写（`write` 新建两层、覆盖、`edit`、`move`、`delete`），alice 以 REST 上传一个附件 `Guide/flow.png` 再经 MCP `move` 它为 `Guide/flow-1.png`（历史里有附件，设计审查 C-M5），bob 经 REST 写与改名，bob 撤销 alice 的一个变更集（REST，它带说明），一个导入（`tm.imported`，`bootstrap/transfer_import_test.go:97`）。然后逐个比较（REST 的一方以 `tm.history`，`bootstrap/history_test.go:89-106`；JSON 照成员比较，节点的类型把 REST 的 `asset` 当作 `attachment`，这是唯一换的成员）：
-  - `log` 不带筛选、`path`（对 `page_id`）、`actor: "me"`（对 `actor=<alice 的 id>`）、`actor: <bob 的 id>`、`client: "mcp"`、`client: "mcp:whole-program"`、`limit: 2` 一页一页地读完：行与 REST 的 `listChangesets` 相同、次序相同，`next_cursor` 读完的集合与 REST 的相同；导入的变更集在里面（`kind: import`）。
-  - `changeset` 每个变更集：变更集等于 REST 的 `getChangeset` 减去 `changes`；变化逐项等于 `listChangesetChanges` 加 `node.path`，`path` 等于 `NodePaths.Paths` 给的、删了的节点为 null；附件的移动的变化 `node.kind` 是 `attachment`；`limit: 1` 读完。别的笔记本的变更集、不是 UUID 的 id：`page.changeset_not_found`。
-  - `versions` 列表等于 REST 的 `listPageVersions`，`current_version` 是 `read` 给的令牌；读每个版本（`limit` 小，经 `next_offset` 读完）连起来等于 REST 的 `getPageVersion` 的 `content`；问一个被会话合并的中间版本号，答出的 `revision` 是那个版本自己的（同 REST）。
+- `TestTheMCPHistoryIsRESTs`：备好的历史：alice 经 MCP 写（`write` 新建两层、覆盖、`edit`、`move`、`delete`），alice 以 REST 上传一个附件 `Guide/flow.png` 再经 MCP `move` 它为 `Guide/flow-1.png`（历史里有附件，设计审查 C-M5），bob 经 REST 写与改名，alice 经 MCP 把 bob 的那一页 `move` 进 `Guide`（跨父页的移动：它的变更集 `moves` 为真、变化是 `moved`，只有它 `moves` 为真；S2 审查 C-M2），bob 撤销 alice 的一个变更集（REST，它带说明），一个导入（`tm.imported`，`bootstrap/transfer_import_test.go:97`）。然后逐个比较（REST 的一方以 `tm.history`，`bootstrap/history_test.go:89-106`；JSON 照成员比较，节点的类型把 REST 的 `asset` 当作 `attachment`，这是唯一换的成员）：
+  - `log` 不带筛选、`path`（对 `page_id`）、`actor: "me"`（对 `actor=<alice 的 id>`）、`actor: <bob 的 id>`、`client: "mcp"`、`client: "mcp:whole-program"`、`limit: 2` 一页一页地读完：行与 REST 的 `listChangesets` 相同、次序相同，`next_cursor` 读完的集合与 REST 的相同；导入的变更集在里面（`kind: import`）。另比附件的路径换了大小写（`guide/FLOW-1.png`）与 `actor: "me"` 加 `client: "mcp"`，以 `limit: 2` 读完；每个筛选的 REST 的答复都不空（空了就失败），一共 14 个变更集（含导入、撤销与 S2 审查 C-M2 加的跨父页的移动；偏离 6）。
+  - `changeset` 每个变更集：变更集等于 REST 的 `getChangeset` 减去 `changes`；变化逐项等于 `listChangesetChanges` 加 `node.path`，`path` 等于由 REST 的树算出的路径（`treePaths`，与 `NodePaths.Paths` 无关的预言；偏离 6）、删了的节点为 null；附件的移动的变化 `node.kind` 是 `attachment`；`limit: 1` 读完。别的笔记本的变更集、不是 UUID 的 id：`page.changeset_not_found`。
+  - `versions` 列表等于 REST 的 `listPageVersions`（整读时 `next_cursor` 为 null；以 `limit: 2` 一页一页读完，3 页，最后一页 `next_cursor` 为 null；S2 审查 C-M2；一共 5 个版本），`current_version` 是 `read` 给的令牌；读每个版本（`limit` 小，经 `next_offset` 读完；读过版本的 `total_lines` 次还要往下读就失败，S2 审查 C-N3）连起来等于 REST 的 `getPageVersion` 的 `content`；问一个被会话合并的中间版本号，答出的 `revision` 是那个版本自己的（同 REST）。
   - 删了的页：`versions` 与 `log` 的 `path` 答 `page.not_found`；它的变化在 `changeset` 里 `path` 为 null。
 - `TestTheMCPHistoryAnswersGoOn`（两种退回在真的库上都走到，设计审查 C-M3、C-M11）。P2 与 REST 能写的变更集到不了 `log` 的退回（一行要三项各带五个长名称的移动或改名，P2 的 `move` 只记移动的那一个节点；创建、恢复、删除只有一边），`changeset` 的退回要变更集带说明（MCP 的写没有，REST 的撤销有：它的说明是请求的，`api/modules/page.yaml:899`）而节点的路径至少 8 段长的。所以这个测试以 `seedLongHistory` 备下历史，`log` 的那一种以 SQL 种下（写的路径不必是真的）：
-  1. **`log` 的退回**：经 MCP `write` 建 `P`（根下，标题 255 个 `&`）、`P/Q`（同样）与 Q 下的三页 X1–X3（标题 254 个 `&` 加一位数字，兄弟的键不同）；以 SQL 加两个变更集 W1、W2（`kind` `edit`、`client` `mcp:whole-program`、作者 alice、`message` 是 4,096 个 `\x01`、时刻比别的都新），各三个 `changeset_items`：X1–X3 从（P，255 个 `&`）移到（Q，255 个 `&`）。`FirstChanges` 以连接读节点与父页的名称（`history.sql:110-130`），所以它们是真的节点、名称是长的；条目不必与树一致，这个测试不跑 `checkPages`。照 `exp/sizes/seeded.py` 量：W1 的一行 53,299 字节，过界；退回的一行带两项变化与 `changes_cut` 45,321。
-  2. **`changeset` 的退回**（真的写，设计审查 C-M3 的建议）：经 MCP `write` 建一条 10 层的链，每段 254 个 `&` 加一位数字（路径约 2,562 字节，JSON 里约 15,316），再经 MCP `move` 把叶子在原地改名，然后 bob 经 REST 撤销这个变更集，说明是 4,096 个 `\x01`：撤销的变更集 C1 有一个条目（叶子改回原来的名称），节点的路径是那条长路径。第一页带这一项约 52,850，过界；退回的 `changes: []` 与 `Start` 约 29,526；带游标的一页约 23,500（以 bob 的 REST 撤销的真样子量：`kind` `revert`、`client` `api`、带 `reverts`；草稿照一个没有 `reverts` 的 MCP 的 `edit` 量，少约 194 字节，设计审查的复核 C 的 N3，`review-C/check/c1_sizes.py`，`exp/sizes/seeded.py` 随之）。
-  3. 断言：`log` 以 `limit: 2` 从头读完：W1、W2 各自单独一页、`changes_cut: true`、两项变化；被截的两行（W1、W2）的 `changes` 是 REST 的前三项里的前两项、带 `changes_cut: true`，别的成员与 REST 的相同；其余的行与 REST 的 `listChangesets` 的全部相同；次序相同（REST 每个变更集列前三项变化，`api/modules/page.yaml:785-800`，所以被截的行不能整行相同，复核 C 的 N5）。最坏的两行在一页里的最前：`limit: 2` 的第一页本该有 W1、W2，退回只答 W1；退回的 `next_cursor` 若写成 `NextCursor`（存储的，在 W2 之后），W2 被跳过（它后面的一行照读），测试失败（6.3 第 43 条；复核 C 的 N4）。`changeset` C1 以 `limit: 1` 读完：第一页 `changes: []`、`next_cursor` 是 `Start`，第二页是那一项、`node.path` 是那条长路径，与 REST 的相同。每个答复在 48 KiB 之内。
+  1. **`log` 的退回**：经 MCP `write` 建 `P`（根下，标题 255 个 `&`）、`P/Q`（同样）与 Q 下的三页 X1–X3（标题 254 个 `&` 加一位数字，兄弟的键不同）；以 SQL 加两个变更集 W1、W2（`kind` `edit`、`client` `mcp:whole-program`、作者 alice、`message` 是 4,096 个 `\x01`、时刻比别的都新），各三个 `changeset_items`：X1–X3 从（P，255 个 `&`）移到（Q，255 个 `&`）。`FirstChanges` 以连接读节点与父页的名称（`history.sql:110-130`），所以它们是真的节点、名称是长的；条目不必与树一致，这个测试不跑 `checkPages`。照 `exp/sizes/seeded.py` 量：W1 的一行 53,299 字节，过界；退回的一行带两项变化与 `changes_cut` 45,321（实测 53,284 与 45,314，9.2）。
+  2. **`changeset` 的退回**（真的写，设计审查 C-M3 的建议）：经 MCP `write` 建一条 10 层的链，每段 254 个 `&` 加一位数字（路径约 2,562 字节，JSON 里约 15,316），再经 MCP `move` 把叶子在原地改名，然后 bob 经 REST 撤销这个变更集，说明是 4,096 个 `\x01`：撤销的变更集 C1 有一个条目（叶子改回原来的名称），节点的路径是那条长路径。第一页带这一项约 52,850，过界；退回的 `changes: []` 与 `Start` 约 29,526；带游标的一页约 23,500（实测 52,777、29,486、23,307，9.2；以 bob 的 REST 撤销的真样子量：`kind` `revert`、`client` `api`、带 `reverts`；草稿照一个没有 `reverts` 的 MCP 的 `edit` 量，少约 194 字节，设计审查的复核 C 的 N3，`review-C/check/c1_sizes.py`，`exp/sizes/seeded.py` 随之）。
+  3. 断言：`log` 以 `limit: 2` 从头读完：W1、W2 各自单独一页、`changes_cut: true`、两项变化；被截的两行（W1、W2）的 `changes` 是 REST 的前三项里的前两项、带 `changes_cut: true`，别的成员与 REST 的相同；其余的行与 REST 的 `listChangesets` 的全部相同；次序相同（REST 每个变更集列前三项变化，`api/modules/page.yaml:785-800`，所以被截的行不能整行相同，复核 C 的 N5）。最坏的两行在一页里的最前：`limit: 2` 的第一页本该有 W1、W2，退回只答 W1；退回的 `next_cursor` 若写成 `NextCursor`（存储的，在 W2 之后），W2 被跳过（它后面的一行照读），测试失败（6.3 第 43 条；复核 C 的 N4）。`changeset` C1 以 `limit: 1` 读完：第一页 `changes: []`、`next_cursor` 是 `Start`，第二页是那一项、`node.path` 是那条长路径，与 REST 的相同。每个答复在 48 KiB 之内。答复的字节数只记进日志，不断言等于 `seeded.py` 的；断言的是本该的整行与第一页过界（两种退回都走到）、每个答复在界线之内（偏离 7）。
   最坏的取值（显示名 100 个 `&`、路径 10 段都长而再带说明）只由适配器的测试在替身上量（3.17.4）；这个测试在真的库上核对两种退回都前进、都不跳行（6.2 照此改写）。
 
 #### 3.17.4 用例与适配器的测试
 
-- `page/app`：四个入口的表格测试，每步一行、前一步的错误挡住后一步（例如坏的游标与看不到的笔记本：400；`actor` 坏而笔记本看不到：422；看得到的笔记本里不存在的路径：`page.not_found`；别的笔记本的变更集：`page.changeset_not_found`；`versions` 用错了模式的 `offset` 与坏的游标：422）；`AtPath` 与 `Execute` 对同一页、同一个筛选给同样的行；`InNotebook` 带游标时没有 `Detail`、`Start` 从头列。
-- `page/domain`：`ParseActor`（`me`、大写的 `ME` 拒绝、各种 UUID 的写法照 `uuid.Parse`、空串、`me ` 拒绝）；`CheckRevision`（0、1、`MaxRevision`、`MaxRevision+1`）；`CheckVersionsArgs`（每种用错的组合一项）。
-- `page/adapter/mcp`：三个答复的形状；`Fit` 截断之后的 `next_cursor` 是第 k 项的游标；节点的类型 `asset` 写作 `attachment`（`log` 的 `changes` 与 `changeset` 的变化）；`log` 的退回：替身给一页两行、最坏的一行在前（显示名 100 个 `&`、说明 4,096 个 `\x01`、三项变化各五个 255 个 `&` 的名称）：答复只有它、`changes_cut: true`、`next_cursor` 是第一行的游标（不是 `NextCursor`）；没有退回的行没有 `changes_cut`；`changeset` 的第一页（同上的变更集加一项 10 层长路径的变化）答 `changes: []` 与 `Start`；各自的答复在 48 KiB 之内且前进；`id` 不是 UUID 时交给用例的是零值。
+- `page/app`：四个入口的表格测试，每步一行、前一步的错误挡住后一步（例如坏的游标与看不到的笔记本：400；`actor` 坏而笔记本看不到：422；看得到的笔记本里不存在的路径：`page.not_found`；别的笔记本的变更集：`page.changeset_not_found`）；`AtPath` 与 `Execute` 对同一页、同一个筛选给同样的行；`InNotebook` 带游标时没有 `Detail`、`Start` 从头列，每一页（第一页、`Start`、第二页）的路径各读一次（S2 审查 C-N1）；`versions` 对不以 `.md` 结尾的路径的 422 的说明（两个入口，在任何读之前，S2 审查 B-N1）。`versions` 用错了模式的 `offset` 与坏的游标（422）不在这张表：模式由适配器查，用例的签名不收另一种调用的参数，由适配器的 `TestTheVersionsRefuseTheOtherCallsArgumentsFirst`（两个用例都没有被调）与 domain 的 `TestCheckVersionsArgs` 测（偏离 1）。
+- `page/domain`：`ParseActor`（`me`、大写的 `ME` 拒绝、各种 UUID 的写法照 `uuid.Parse`、空串、`me ` 拒绝）；`CheckRevision`（0、1、`MaxRevision`、`MaxRevision+1`）；`CheckVersionsArgs`（每种用错的组合一项，每个被拒的字段的说明，S2 审查 C-N4）。
+- `page/adapter/mcp`：三个答复的形状；`Fit` 截断之后的 `next_cursor` 是第 k 项的游标；节点的类型 `asset` 写作 `attachment`（`log` 的 `changes` 与 `changeset` 的变化）；`log` 的退回：替身给一页两行、最坏的一行在前（显示名 100 个 `&`、说明 4,096 个 `\x01`、三项变化各五个 255 个 `&` 的名称）：答复只有它、`changes_cut: true`、`next_cursor` 是第一行的游标（不是 `NextCursor`）；没有退回的行没有 `changes_cut`；`changeset` 的第一页（同上的变更集加一项 10 层长路径的变化）答 `changes: []` 与 `Start`；各自的答复在 48 KiB 之内且前进；`id` 不是 UUID 时交给用例的是零值（每次调用前重置记下的 id，S2 审查 C-M3）；`versions` 两种调用的 `page.not_found` 的文字（路径与 P1 的提示，S2 审查 A-M1）；`changeset` 的头 `moves` 为真、`versions` 的最后一页 `next_cursor` 为 null（S2 审查 C-M2）；`versions` 的模式在两个用例之前查。
 
 ### 3.18 `api/mcp/tools.json` 加的条目
 
 照 P1 的写法：每个入口的工具按名称排（文件今天的次序），工具的成员是 `name`、`title`、`description`、`inputSchema`、`annotations`，参数照 Go 的字段的次序，必填的不收 null、可选的是 `["null", T]`，`additionalProperties: false`，账户入口的 `notebook` 排在参数与 `required` 的最前（`mcpserver/schema.go:21-60`）；注解照 `annotationsOf`（`mcpserver/tool.go:150-156`）。说明的字句就是 Go 里的常量与 `jsonschema` 标签：`TestTheToolListsAreTheContract` 逐个成员比较应用答的与文件里的（`bootstrap/mcp_tools_test.go:152-160`）。格式照 oxfmt（`.oxfmtrc.json` 的 120 列，`make fmt`）。S1 加 `write`、`edit`、`move`、`delete`，S2 加 `versions`、`log`、`changeset`；两个入口的条目除 `notebook` 之外相同，全文如下（以 `scratchpad/m9/p2/exp/toolsjson/gen2.py` 生成、解析核对过）。
 
-按设计审查改过的字句：`write` 说内容相同时什么也不写、`changed` 为假，带着这一页过时的 `base_version`、页正被编辑时也是（A-N7、B-N6）；`edit` 说 `changed` 为假的时候；`move` 说附件保留一个扩展名、扩展名可以换（B-M6），被编辑的页本人的也算；`log` 说一个放不下的变更集单独来、`changes_cut` 为真（C-M4）。
+按设计审查改过的字句：`write` 说内容相同时什么也不写、`changed` 为假，带着这一页过时的 `base_version`、页正被编辑时也是（A-N7、B-N6）；`edit` 说 `changed` 为假的时候；`move` 说附件保留一个扩展名、扩展名可以换（B-M6），被编辑的页本人的也算；`log` 说一个放不下的变更集单独来、`changes_cut` 为真（C-M4）。S2 的修复一轮另改两处（S2 审查 A-N1、B-N2）：`changeset` 的节点的路径只在回收站里为 null（原来是"in the trash or gone"）；`log` 加一句回收站里的页与附件没有路径、在整个日志里找它们的变更集。下面的全文是合并时的，与 `tools.json` 逐个成员相同。
 
 **笔记本入口**（`"notebook"` 的数组里，与 `list`、`read` 一起按名称排：`changeset`、`delete`、`edit`、`list`、`log`、`move`、`read`、`versions`、`write`）：
 
@@ -1735,7 +1746,7 @@ type changesetAnswer struct {
     {
       "name": "changeset",
       "title": "Read a changeset",
-      "description": "Read one of the notebook's changesets by the id log gives: its kind, client, author, times, message, counts, what it reverts and what reverted it, and whether it renames or moves nodes; then what it did to each node it changed, a page at a time by node id: where the node was before and after in the tree, the revision of the content it wrote, and the node's current path (null when it is in the trash or gone). The changeset itself comes on the first page, without cursor; go on with next_cursor while it is set. A changeset of another notebook is not found here. History is read-only here: people revert changesets in the web.",
+      "description": "Read one of the notebook's changesets by the id log gives: its kind, client, author, times, message, counts, what it reverts and what reverted it, and whether it renames or moves nodes; then what it did to each node it changed, a page at a time by node id: where the node was before and after in the tree, the revision of the content it wrote, and the node's current path (null when it is in the trash). The changeset itself comes on the first page, without cursor; go on with next_cursor while it is set. A changeset of another notebook is not found here. History is read-only here: people revert changesets in the web.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1828,7 +1839,7 @@ type changesetAnswer struct {
     {
       "name": "log",
       "title": "List the notebook's changes",
-      "description": "List the notebook's changesets, newest first: what people and agents changed, each with its kind, client, author (id and display name), times, message, how many nodes and contents it changed, what it reverts and what reverted it, and its first three changes; a changeset too large for the answer comes alone, its changes cut to fit and changes_cut true. path keeps the changesets that changed that page or attachment; actor those of an account, \"me\" for yours; client those of a client, \"mcp\" for every agent. Go on with next_cursor while it is set. changeset reads one in full. History is read-only here: people restore versions and revert changesets in the web.",
+      "description": "List the notebook's changesets, newest first: what people and agents changed, each with its kind, client, author (id and display name), times, message, how many nodes and contents it changed, what it reverts and what reverted it, and its first three changes; a changeset too large for the answer comes alone, its changes cut to fit and changes_cut true. path keeps the changesets that changed that page or attachment; actor those of an account, \"me\" for yours; client those of a client, \"mcp\" for every agent. A page or an attachment in the trash has no path: find its changesets in the whole log. Go on with next_cursor while it is set. changeset reads one in full. History is read-only here: people restore versions and revert changesets in the web.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1970,7 +1981,7 @@ type changesetAnswer struct {
     {
       "name": "changeset",
       "title": "Read a changeset",
-      "description": "Read one of the notebook's changesets by the id log gives: its kind, client, author, times, message, counts, what it reverts and what reverted it, and whether it renames or moves nodes; then what it did to each node it changed, a page at a time by node id: where the node was before and after in the tree, the revision of the content it wrote, and the node's current path (null when it is in the trash or gone). The changeset itself comes on the first page, without cursor; go on with next_cursor while it is set. A changeset of another notebook is not found here. History is read-only here: people revert changesets in the web.",
+      "description": "Read one of the notebook's changesets by the id log gives: its kind, client, author, times, message, counts, what it reverts and what reverted it, and whether it renames or moves nodes; then what it did to each node it changed, a page at a time by node id: where the node was before and after in the tree, the revision of the content it wrote, and the node's current path (null when it is in the trash). The changeset itself comes on the first page, without cursor; go on with next_cursor while it is set. A changeset of another notebook is not found here. History is read-only here: people revert changesets in the web.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -2075,7 +2086,7 @@ type changesetAnswer struct {
     {
       "name": "log",
       "title": "List the notebook's changes",
-      "description": "List the notebook's changesets, newest first: what people and agents changed, each with its kind, client, author (id and display name), times, message, how many nodes and contents it changed, what it reverts and what reverted it, and its first three changes; a changeset too large for the answer comes alone, its changes cut to fit and changes_cut true. path keeps the changesets that changed that page or attachment; actor those of an account, \"me\" for yours; client those of a client, \"mcp\" for every agent. Go on with next_cursor while it is set. changeset reads one in full. History is read-only here: people restore versions and revert changesets in the web.",
+      "description": "List the notebook's changesets, newest first: what people and agents changed, each with its kind, client, author (id and display name), times, message, how many nodes and contents it changed, what it reverts and what reverted it, and its first three changes; a changeset too large for the answer comes alone, its changes cut to fit and changes_cut true. path keeps the changesets that changed that page or attachment; actor those of an account, \"me\" for yours; client those of a client, \"mcp\" for every agent. A page or an attachment in the trash has no path: find its changesets in the whole log. Go on with next_cursor while it is set. changeset reads one in full. History is read-only here: people restore versions and revert changesets in the web.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -2298,11 +2309,11 @@ P3 加 `batch` 的那一行说明（2.1 第 12 条）。P2 不预留 batch 的�
 | 说明的每个工具一行 | 少一行 | `TestTheBuiltInInstructionsNameEveryTool`（它的反向对照 `TestUnnamedToolsCatchesEachGap` 已在） |
 | 最后一跳 | 页的适配器交 `ClientAPI` | `TestTheClientNameIsTheTokens` 的 `SELECT client` |
 | MC1 第 5 步照 `tools.json` | 写死的名单 | 写死的在 S1 加了工具之后失败；照文件的照旧通过 |
-| `log` 的 `actor: "me"` | 当作字面的 id | `TestTheMCPHistoryIsRESTs`；`ParseActor` 的表 |
-| `changeset` 只认这本笔记本的 | 照 `readableChangeset` 在变更集自己的笔记本上判定 | `TestTheMCPHistoryIsRESTs` 的别的笔记本；`InNotebook` 的表格测试 |
-| 历史的答复的退回 | 不退回；退回的 `next_cursor` 是 `NextCursor`；不写 `changes_cut` | `TestTheMCPHistoryAnswersGoOn`（种下的历史，3.17.3）；适配器的测试（3.17.4） |
-| 历史里节点的类型 | 照抄 REST 的 `asset` | `TestTheMCPHistoryIsRESTs` 的附件；适配器的测试 |
-| `versions` 的模式 | 读一个版本时收 `cursor` | `CheckVersionsArgs` 的表；码的表的调用 |
+| `log` 的 `actor: "me"` | 当作字面的 id | `TestTheMCPHistoryIsRESTs`；`ParseActor` 的表；`TestListChangesetsAtPathListsAsExecute`；MC8 的第 2 步 |
+| `changeset` 只认这本笔记本的 | 照 `readableChangeset` 在变更集自己的笔记本上判定 | `TestTheMCPHistoryIsRESTs` 的别的笔记本；`InNotebook` 的表格测试（`TestGetChangesetInNotebook` 与它的码的次序）；MC8 的第 5 步 |
+| 历史的答复的退回 | 不退回；退回的 `next_cursor` 是 `NextCursor`；不写 `changes_cut` | `TestTheMCPHistoryAnswersGoOn`（种下的历史，3.17.3）；适配器的 `TestTheLogFitsItsAnswer`（3.17.4） |
+| 历史里节点的类型 | 照抄 REST 的 `asset` | `TestTheMCPHistoryIsRESTs` 的附件；适配器的 `TestTheLogAnswersItsShape`、`TestTheChangesetAnswersItsShape` |
+| `versions` 的模式 | 读一个版本时收 `cursor`；在用例之后才查（坏的游标的 400 在先） | `CheckVersionsArgs` 的表；码的表的调用；适配器的 `TestTheVersionsRefuseTheOtherCallsArgumentsFirst` |
 | 请求体的 JSON 值的上限（S1 审查 A2-I1，3.2.6） | 扫描不停（过了上限仍读下去）；不拒；差一；只数对象与数组；`/mcp` 或 REST 没有上限；生成器不写上限；被拒的请求体不还名额 | 成本那一份的 `TestTheValuesBoundStopsTheScanEarly`；bodyshape 的 `TestABodyPastMaxValuesIsTooManyValues`；mcpserver 的 `TestABodyPastMaxBodyValuesIs400`；边缘的三行；每个操作的请求体的第 11、12 种；`TestGenerateMatchesTheGoldenFile`；`TestABodyOfTooManyValuesGivesItsSlotBack` |
 | 名额还时去掉持有者的记录（S1 审查 C-M2） | 还时留着持有者 | `TestTheSlotComesBackOnEveryPath`（`idle()` 要没有持有者）；`TestTheLargeBodiesShareTwoSlots` 的第 5 步（满了的一行只点名 P2 的第一个） |
 | 一个计时器管两次等候（S1 审查 C-N1） | 每次等候各一个计时器 | `TestOneTimerBoundsBothWaits`（数 `newTimer`：两个，不是三个） |
@@ -2310,13 +2321,22 @@ P3 加 `batch` 的那一行说明（2.1 第 12 条）。P2 不预留 batch 的�
 | 锁的格里没有 agent 的会话（S1 审查 C-M1） | 在第 12 格之后才数 | `TestTheEditLockReachesEveryMCPWrite`（第 11 格种一个过期的 `mcp:demo` 行时失败） |
 | 同一父节点的改名到达链接的参与者（S1 审查 B-N1） | 改名的一步不交给参与者（`renameTo(…, false, …)`） | `TestRelocateUnderItsParentRenames` 的"another name"与"the case alone" |
 | `go test -short ./...` 通过（S1 修复第二轮，审查 C 的 C2-M1） | 撤销的性质测试在种子开头就计数 | `make test-go-short`（`make check` 与 CI 的 `short` 一份跑它） |
+| `versions` 的 `page.not_found` 的文字（S2 审查 A-M1） | 答用例的错误本身（`toolErr` 换成 `err`），列表或读一个版本 | `TestTheVersionsListAnswersItsShape`、`TestTheVersionsReadAVersionAsReadReadsAPage`（路径与 P1 的提示） |
+| `changeset` 的头的 `moves`、`versions` 的最后一页（S2 审查 C-M2） | `moves` 总为假；没有下一页时仍答最后一项的游标 | 适配器的 `TestTheChangesetAnswersItsShape`、`TestTheVersionsListAnswersItsShape`；`TestTheMCPHistoryIsRESTs` 的 `changeset`（跨父页的移动）与 `versions`（两个一页）；MC8 |
+| 不是 UUID 的 id 交给用例（S2 审查 C-M3） | 解析失败时不经用例就答 `page.changeset_not_found` | `TestTheChangesetsIDIsAUUIDOrNone`（每次调用前重置，`-count=40` 都失败）；码的表的两个调用（`{id: "not-a-uuid", limit: 0}`、账户入口里看不到的笔记本） |
+| `versions` 对不以 `.md` 结尾的路径的说明（S2 审查 B-N1） | 不带规则；`PageRule` 改字；在笔记本之后才查 | `TestVersionsOfAPathWithoutMDHintAPagesPath`（两个入口，在任何读之前；`PageRule` 改字时 `PageHint` 的测试也失败） |
+| `changeset` 每一页的路径（S2 审查 C-N1） | 只在没有游标时读路径 | `TestGetChangesetInNotebook`（第一页、`Start` 的、第二页各读一次 `PathsOf`） |
+| `CheckVersionsArgs` 每个被拒的字段的说明（S2 审查 C-N4） | `column` 给列表的说明；`offset`、`cursor` 的说明对调 | `TestCheckVersionsArgs` |
+| 两个描述（S2 审查 A-N1、B-N2） | `changeset` 的描述回到"or gone"；`log` 的描述没有回收站的一句；只改 Go 或只改一个入口 | `TestTheToolListsAreTheContract` |
 
-### 3.22 实施与审查之后的改动（S1）
+### 3.22 实施与审查之后的改动（S1、S2）
 
-S1 的审查与修复核对见 [S1 的审查记录](reviews/P2-S1-writes-review.md)。与上文最初的设计不同之处已改在各节里：
+S1、S2 的审查与修复核对见 [S1 的审查记录](reviews/P2-S1-writes-review.md)与 [S2 的审查记录](reviews/P2-S2-history-review.md)。与上文最初的设计不同之处已改在各节里：
 
 - **S1，实施时定下的**（实施者的 23 条偏离，审查 C 判过）：`CreationOf` 对附件的叶子答 `PathTaken{Asset: true}`（偏离 1，3.8、3.8.1）；差分测试的第五种字母表（2，3.9）；`TestReplaceReckonsTheSize` 的分配的检查（3，3.9）；`export_test.go` 导出 `MatchIndex`（4，3.1）；`PathNotFound` 的 `ParentOf`（5，3.8.3、3.8.5）；锁的路径在单元与解析的预算之后读（7，3.8）；`toolErr` 带调用的路径，`writeErr`、`moveErr`（8，3.10.4、3.11）；持锁人的名字（9，3.11.5）；`lockErr` 以 `ErrLocked` 分两个码（10，3.10.4）；`edit`、`move`、`delete` 的答复不经 `Fit`（11，3.11）；码的调用里 carol 的笔记本是 `viewer`（14，3.13.1）；名额的整个程序测试里要答复的调用经放开的 `hold`（15，3.2.5）；帮助函数与两个新的测试文件（16，3.1、3.13.1）；交错 2、3 用 `interleaveOn`（17，3.13.4）；撤销的性质测试断言种子合起来至少撤销一次 agent 的移动、搜索的性质测试建同一个世界（18，3.5.4）；日志的测试核对五个用例与四个工具（19，3.14）；e2e 的 `resultOf`、`errorOf`、`expectVersions` 的 `versions`、不写的拒绝一起发、历史的行的 `toContainText`（21，4.1、4.2）；第 9 步的每个测试的用时（22，6.5）。偏离 6（样例 047 的 README 一句留到合并）由修复第一轮随样例提交（3.5.3，主持者的决定）；偏离 23（第 9 步挪界线、不分）由修复第一轮撤回、分出第三份（6.5，主持者的决定）；别的（12、13、20）是测试的名字、变异 54 的写法与设计已写的 2 与 2 秒（6.3）。
 - **S1，审查与修复核对带来的**：请求体的 JSON 值的上限（A2-I1，3.1、3.2.3、3.2.6、6.1）与全部形状的重量（A2-M1，3.2.4、3.2.6、6.2）；全是 CRLF 的页上在任何查找之前定 CRLF 的规则（B-M1，3.9）、`new_string` 的单独的 LF 不论 `old_string` 都照 CRLF 写（修复核对第一轮 B2-M1，3.9、3.18）与它们的文字（B2-N1、B3-N1，2.1 第 5 条、3.9、3.13.6、3.21、6.2、6.3）；同一父节点的改名到达链接的参与者的测试（B-N1，3.5.1）；`move` 的父页写成页的路径答 `write` 那样的 422（B-N2、B2-N2，3.8、3.8.3、3.8.6、3.21）；名额还时去掉持有者的记录、一个计时器管两次等候（C-M2、C-N1，3.2.5）；同样长而内容不同的写、读与单元之间的写（C-M3、C-M5，3.8.6、3.21）；锁的格在第 12 格之前数（C-M1，3.13.3）；组合根的第三份与 `make test-go` 同时跑（C-M4、C-N2，6.5）；`go test -short ./...` 的门禁与按耗时判定的守卫在 `-short` 下跳过（修复核对第一轮 C2-M1、第二轮 C3-M1，3.1、6.5）；e2e 的安静检查失败时打出页的状态与 `anotherTab` 的次序（C2-N1 与实施者自己找到的，4.1）；撤销的性质测试在 `-short` 下的计数（实施者自己找到的，3.5.4）。B-N3 交 P3（第 8 节）。修复核对第三轮之后没有剩下的发现。
+- **S2，实施时定下的**（实施者的 8 条偏离，审查 C 判过）：`versions` 用错了模式的检查在适配器与 domain 测（偏离 1，3.17.4）；`versions` 的列表与 `changeset` 带游标的页连一项都放不下时答工具的错误（2，3.16.1、3.16.3、3.16.4）；`read.go` 的 `measureOf(first)`（3，3.15、3.16.1）；合法参数里 `changeset` 的 `id`（4，3.17.1）；整个程序的两个测试的 agent 以 `whole-program` 握手（5，3.17.3）；`TestTheMCPHistoryIsRESTs` 多比的几处与它的预言（6，3.17.3）；`TestTheMCPHistoryAnswersGoOn` 只记答复的字节数（7，3.17.3）；MC8 比整行、用 `newTeam`（8，4.6）。3.15 的 `changesetIn` 没有建，文件表照建成的写（审查 B-N3）。
+- **S2，审查与修复核对带来的**：`versions` 两种调用的 `page.not_found` 的文字的测试（A-M1，3.17.4、3.21）；跨父页的移动与 `versions` 两个一页地读完（C-M2，3.17.3、3.17.4、3.21）；不是 UUID 的 id 的测试与码的表的两个调用（C-M3，3.16.3、3.17.1、3.17.4、3.21）；网页的测试的假的事件服务器（C-M1，第 0 节、3.15）；`changeset` 的节点的路径只在回收站里为 null（A-N1，2.1 第 8 条、3.16.3、3.18）；`log` 的描述加回收站的一句（B-N2，3.16.2、3.18）；`versions` 的 422 带页的路径的规则、不带路径（B-N1 与 A-N2 的前一半，3.15、3.16.1、3.21）；`InNotebook` 每一页的路径、MC8 第 5 步先断言、`versionLines` 有界、每个被拒的字段的说明（C-N1–N4，3.17.3、3.17.4、3.21、4.6）；按页面的日志的代价交 M12（B-M1，3.16、3.16.2、第 8 节）；`log {path: ""}` 交打磨（A-N2 的后一半，第 8 节）。修复核对一轮之后没有剩下的发现。
 
 ## 4. e2e
 
@@ -2390,21 +2410,21 @@ S1 的审查与修复核对见 [S1 的审查记录](reviews/P2-S1-writes-review.
 
 ### 4.6 MC8 历史的读（`e2e/stories/mcp/mc8-history.spec.ts`，S2）
 
-管理员 A（PAT、`e2e-agent`）与成员 B（`joinAs(…, "member")`，`e2e/fixtures/invitations.ts:106-117`）；笔记本 Handbook（以 `workspace_access: "editor"` 建，`fixtures/notebooks.ts:18`，所以 B 是它的编辑者，设计审查 C-N5）与另一本 Other。A 以 REST 建 Guides；A 经 MCP `write` 建 Plan 与 `Archive/Index.md`（补建 Archive）、覆盖 Plan、`edit`、`move` 到 `Archive/Plan.md`；B 以 REST 把 Guides 改名为 Guide；A 在 Other 里以 REST 写一页（那个变更集给第 5 步）：
+管理员 A（PAT、`e2e-agent`）与成员 B（`joinAs(…, "member")`，`e2e/fixtures/invitations.ts:106-117`）；笔记本 Handbook（以 `workspace_access: "editor"` 建，`fixtures/notebooks.ts:18`，所以 B 是它的编辑者，设计审查 C-N5）与另一本 Other。A 以 REST 建 Guides；A 经 MCP `write` 建 Plan 与 `Archive/Index.md`（补建 Archive）、覆盖 Plan、`edit`、`move` 到 `Archive/Plan.md`；B 以 REST 把 Guides 改名为 Guide；A 在 Other 里以 REST 写一页（那个变更集给第 5 步）。故事以 `newTeam` 建这些，没有浏览器的步骤；第 1–3 步比较整行，不只 id 与次序（偏离 8）：
 
 | # | 动作 | 断言（对照 REST 的 `listChangesets`、`getChangeset`、`listChanges`、`getVersions`、`getVersion`，`e2e/fixtures/history.ts:19-50`、`pages.ts:202-215`） |
 |---|---|---|
-| 1 | `log` `{client: "mcp"}` | 行的 id 与次序等于 REST 的 `client=mcp`，每行的 `client` 是 `mcp:e2e-agent`；B 的改名不在其中 |
+| 1 | `log` `{client: "mcp"}` | 整行与次序等于 REST 的 `client=mcp`，五行的 `client` 都是 `mcp:e2e-agent`；B 的改名不在其中 |
 | 2 | `log` `{actor: "me"}`；`log` `{actor: <B 的 id>}` | 等于 REST 的 `actor=<A 的 id>`、`actor=<B 的 id>`（后者只有改名的那一个） |
-| 3 | `log` `{path: "Archive/Plan.md", limit: 1}`，接着 `next_cursor` | 读完的行等于 REST 的 `page_id=<Plan>` |
+| 3 | `log` `{path: "Archive/Plan.md", limit: 1}`，接着 `next_cursor` | 读完的整行等于 REST 的 `page_id=<Plan>`（四行） |
 | 4 | `changeset` 移动的那一个 | `changeset.moves` 为真；`changes` 的一项 `node.path` 是 `Archive/Plan.md`、`node.kind` 是 `page`；其余成员等于 REST 的 `getChangeset` 与 `listChanges` |
-| 5 | `changeset` Other 的变更集的 id | `isError`，`page.changeset_not_found`（00 号文档 :548："别的笔记本的变更集答 404"） |
-| 6 | `versions` `{path: "Archive/Plan.md"}` | 等于 REST 的版本列表；`current_version` 等于 `read` 给的 `version` |
+| 5 | Other 的日志（REST）有一行，管理员的那一页；`changeset` 它的 id | `isError`，`page.changeset_not_found`（00 号文档 :548："别的笔记本的变更集答 404"） |
+| 6 | `versions` `{path: "Archive/Plan.md"}` | 等于 REST 的版本列表（三个，`next_cursor` 为 null）；`current_version` 等于 `read` 给的 `version` |
 | 7 | `versions` `{path, revision: 1}` | 两个文字块；元数据的 `revision` 1、`current_version` 同上；第二块是第一次 `write` 的正文 |
 
 ### 4.7 e2e 的时间
 
-五个新的测试（MC3 的两个、MC4、C4（MCP）、MC8，设计审查 C-N2）与 MC1 的一行在 e2e 的作业里。`main` 最近两次运行（`39098913463`，`2a888a6f`；`39096175708`，`0c934bb9`）的 E2E 一步是 3:28 与 3:31（时限 20 分钟）；P2 的五个故事都只有几十次调用，预计加起来约一分钟，到约 4:30。实施者把合并时的作业时间写进第 9 节。
+五个新的测试（MC3 的两个、MC4、C4（MCP）、MC8，设计审查 C-N2）与 MC1 的一行在 e2e 的作业里。`main` 最近两次运行（`39098913463`，`2a888a6f`；`39096175708`，`0c934bb9`）的 E2E 一步是 3:28 与 3:31（时限 20 分钟）；P2 的五个故事都只有几十次调用，预计加起来约一分钟，到约 4:30。实施者把合并时的作业时间写进第 9 节。S2 实测：MC8 进来之后 E2E 一步 3:32、3:38（S2 的分支）与 3:24（合并之后的 `main`），S1 合并之后的 `main` 3:35（9.2）。
 
 ## 5. 实施步骤
 
@@ -2440,6 +2460,8 @@ S1 里容易空过的检查（设计审查各自指出的），每个都有能�
 5. **e2e**：MC8（4.6）。
 6. **测量与报告**：同 S1 的第 9 步：组合根的各份（S1 分了就是三份）各两次的平均与 CI 的测试一步；一份过了线，照 6.5 的同一条规则（00 号文档第 11 节第 28 条，2.1 第 22 条）：只在一个邻居挪过之后仍在线之下时挪它们之间的界线（`BOOTSTRAP_FIRST` 在第一、第二份之间，`BOOTSTRAP_THIRD` 在第二、第三份之间），否则在 S2 里按测试名再分一份（照第三份的写法，本机的 `-j` 随份数），不提高 `-timeout`。界线、每份本机的两次运行与它们的平均、CI 的测试一步写进 S2 的审查记录。
 
+   S2 照做的结果（9.2、S2 的审查记录）：第 6 条的三份都在线之下（本机平均 253.7、125.9、123.1 秒，CI 的测试一步平均 5:03.5、5:12、3:24），没有挪界线、没有分；S2 的测试按名字落在第三份。修复一轮的运行里第一份 7:09（这一份的测试没有改），合并之后 6:58，最近两次平均 7:03.5，仍在线之下；修复核对一轮 C：之后往第一份加测试的 Step 照约 7:10 估计（6.5）。
+
 ## 6. 测试与验证
 
 ### 6.1 各项与它们的测试
@@ -2466,14 +2488,14 @@ S1 里容易空过的检查（设计审查各自指出的），每个都有能�
 本文没有跑需要数据库的东西（草稿的规则），所以：
 
 - **`edit` 的代价**：离线的 Go 实验量了（`scratchpad/m9/p2/exp/kmp`：KMP 的匹配器、`Replace`、对照 `strings` 的差分 257,204 例、3.9 的表；`exp/nfc`；B 的 `review-B/rk`）。最坏的一次调用是 NFC 的提示把 U+1D160 的页放大三倍到 15 MiB 的那一种，本机 149–162 ms；B 的构造串 1 MiB 在 5 MiB 的页上 9.0–9.1 ms，同一个输入 `strings.Index` 70.2 秒（设计审查 B 的复核实测；12 万字节处 9.85 秒）；CRLF 的规则与 NFC 的再找在构造的形状上 13–18 ms（`strings` 在 12 万字节处约 9 秒，复核 B 实测）；每字节 1.05–1.30 ns，随长度成正比（设计审查 B-I2 要的重量）。CI 上由 `TestReplaceStaysWithinItsTime`（`!race`，`test-go-costs` 的 page/domain 一行，带 `-v`）守着每种形状 2 秒；CI 上打出的值在作业的日志里，要认证，没有记下，本机的在第 9 节。
-- **答复的上限**：照编码算出的最坏（3.10.3、3.16.4，`exp/sizes/worst.py`；错误的文字照设计审查 A 量的 `review-A/sizes-output.txt`），由适配器的测试在替身上以最坏的取值核对（`TestEachErrorFitsAtItsWorst`、3.17.4 的退回）与 mcpserver 的 `TestAnErrorOfTheLongestPathFits`，不是抽样。真的库上的 `TestTheMCPHistoryAnswersGoOn` 核对的是两种退回在种下的历史上都前进、不跳行（53,299 退到 45,321；52,850 退到 29,526 加 23,500，`exp/sizes/seeded.py`；C1 照 REST 的撤销的真样子量，复核 C 的 N3），不是最坏（草稿说它在最坏的取值处核对，不对：P2 与 REST 能写的数据到不了退回，设计审查 C-M3）。
+- **答复的上限**：照编码算出的最坏（3.10.3、3.16.4，`exp/sizes/worst.py`；错误的文字照设计审查 A 量的 `review-A/sizes-output.txt`），由适配器的测试在替身上以最坏的取值核对（`TestEachErrorFitsAtItsWorst`、3.17.4 的退回）与 mcpserver 的 `TestAnErrorOfTheLongestPathFits`，不是抽样。真的库上的 `TestTheMCPHistoryAnswersGoOn` 核对的是两种退回在种下的历史上都前进、不跳行（53,299 退到 45,321；52,850 退到 29,526 加 23,500，`exp/sizes/seeded.py`；C1 照 REST 的撤销的真样子量，复核 C 的 N3），不是最坏（草稿说它在最坏的取值处核对，不对：P2 与 REST 能写的数据到不了退回，设计审查 C-M3）。S2 实测：53,284 退到 45,314，52,777 退到 29,486 加 23,307（9.2）；适配器的替身上的最坏的值与 3.16.4 的表逐个相同。
 - **内置的说明**：量了（3.12），`TestTheBuiltInInstructionsAreShort` 守着 4 KiB。
 - **大的请求体的内存**：3.2.4 是估计；名额的数目是主持者的决定（第 11 节第 16 条），不是量出来的界线。实施者在本机以一次性的测试（不入库）量满载的情形（设计审查 C-M14）：两个同时在上限处的请求体加一个等着的，两种组合：两个 `/mcp` 的 37,814,272 字节的调用；一个 `/mcp` 的与一个 REST 的正文写（5 MiB 的正文，JSON 最贵的转义）。量 `runtime.ReadMemStats` 的峰值与分配，写进第 9 节；负载下的测量是 M12 的（第 8 节）。S1 的修复第一轮另量许多小的 JSON 值的形状：上限处与过了上限的形状照 9.1 的两种做法量（3.2.6；审查 A2-M1：只量一个长字符串，少算了最坏的情形 2.5 到约 10 倍）。
 - **组合根的各份与 CI 的各份**：6.5 是估计与规则，实施者量（5.1 的第 9 步）。
 
 ### 6.3 变异
 
-实施者逐个做下面的改动（每个之后还原），确认右边的测试失败，结果写进第 9 节（照 P1 的 6.3；S1 的各条都失败，审查与修复各轮另加的变异见 S1 的审查记录的"反向对照"）。每个变异列出的测试都能因它失败（设计审查 C-M10 指出草稿里有四处列了不会失败的一步，已改）。草稿是第 1–41 条，设计审查之后加了第 42–59 条（18 条），复核之后加了第 60–62 条（3 条），第二次复核之后加了第 63 条：
+实施者逐个做下面的改动（每个之后还原），确认右边的测试失败，结果写进第 9 节（照 P1 的 6.3；S1、S2 的各条都失败，审查与修复各轮另加的变异见 S1、S2 的审查记录的"反向对照"）。每个变异列出的测试都能因它失败（设计审查 C-M10 指出草稿里有四处列了不会失败的一步，已改）。草稿是第 1–41 条，设计审查之后加了第 42–59 条（18 条），复核之后加了第 60–62 条（3 条），第二次复核之后加了第 63 条：
 
 | # | 变异 | 应失败的测试 |
 |---|---|---|
@@ -2513,11 +2535,11 @@ S1 里容易空过的检查（设计审查各自指出的），每个都有能�
 | 34 | 码的表少 `page.locked`（`write` 一行） | `TestTheMCPToolsErrorsCarryTheirCodes`（答了表外的码） |
 | 35 | 矩阵的 `write` 一行去掉 `write: true` | `TestThePermissionMatrixCoversEveryTool` |
 | 36 | 说明少 `delete` 一行 | `TestTheBuiltInInstructionsNameEveryTool` |
-| 37 | `ParseActor` 不认 `me` | `TestTheMCPHistoryIsRESTs`；MC8 的第 2 步 |
-| 38 | `InNotebook` 不比笔记本 | `TestTheMCPHistoryIsRESTs`；MC8 的第 5 步 |
-| 39 | `log` 不退回 | `TestTheMCPHistoryAnswersGoOn`（种下的 W1）；适配器的测试 |
-| 40 | `changeset` 带游标的页也带变更集 | `TestTheMCPHistoryAnswersGoOn`（C1 的第二页过界）；适配器的测试 |
-| 41 | `versions` 的列表收 `offset` | `CheckVersionsArgs` 的表；码的表的调用 |
+| 37 | `ParseActor` 不认 `me` | `TestParseActor`、`TestListChangesetsAtPathListsAsExecute`；`TestTheMCPHistoryIsRESTs`；MC8 的第 2 步 |
+| 38 | `InNotebook` 不比笔记本 | `InNotebook` 的两张表；`TestTheMCPHistoryIsRESTs`；MC8 的第 5 步 |
+| 39 | `log` 不退回 | `TestTheMCPHistoryAnswersGoOn`（种下的 W1）；适配器的 `TestTheLogFitsItsAnswer` |
+| 40 | `changeset` 带游标的页也带变更集 | `TestGetChangesetInNotebook`；`TestTheMCPHistoryAnswersGoOn`（C1 的第二页过界，又退回）；`TestTheMCPHistoryIsRESTs`（第二页带着变更集）。变异在用例里，适配器的替身看不到它（S2 实测，原来写的"适配器的测试"不对） |
+| 41 | `versions` 的列表收 `offset` | `CheckVersionsArgs` 的表；适配器的 `TestTheVersionsRefuseTheOtherCallsArgumentsFirst`；码的表的调用 |
 | 42 | `Replace` 以 `strings.Index`、`strings.Count` 找 | `TestReplaceStaysWithinItsTime` 的 B 的构造串（几秒到几十秒，过 2 秒）；`TestReplaceSearchesOnlyWithItsMatcher` |
 | 43 | `log` 的退回的 `next_cursor` 是 `NextCursor` | `TestTheMCPHistoryAnswersGoOn`（W2 被跳过，与 REST 的全部不等）；适配器的测试（一页两行） |
 | 44 | 退回不写 `changes_cut` | 适配器的测试；`TestTheMCPHistoryAnswersGoOn` |
@@ -2561,7 +2583,7 @@ S1 里容易空过的检查（设计审查各自指出的），每个都有能�
 
 **组合根的规则**（主持者为 P2 定的，设计审查 C-M1 与它的复核 C-NM2；00 号文档第 11 节第 28 条照它改写、管组合根的每一份，2.1 第 22 条）：一份**过了线**，是两次运行的平均里它在 CI 的测试一步过了约 7.5 分钟（`-timeout 15m` 的一半）。测试一步含竞态检测的构建，go test 自己跑的比它短，所以按测试一步判断是有意偏严的。**过了线的一份，只在一个邻居挪过之后两次运行的平均仍在线之下时，才挪它们之间的界线、把测试给那个邻居（`BOOTSTRAP_FIRST` 在第一、第二份之间，`BOOTSTRAP_THIRD` 在第二、第三份之间）；否则那个 Step 按测试名把它再分一份，S1、S2 都一样；从不提高 `-timeout`。** 挪之前以本机的数估计邻居挪过之后的 CI 测试一步（移过去的测试在本机的用时乘组合根的 CI 与本机之比，两次运行的平均约 1.6），挪之后以 CI 的两次运行核对，核对出邻居过了线就撤回这次挪动、改为分。界线只在这时与分出一份之后紧接着重新平衡时移动，都凭两次运行的平均（本机每份单独跑两次、CI 的两次运行）。第 28 条原先的"S3 移一次之后不再动"防的是凭一次运行的摆动去挪（单独跑一次的时间前后可差一成以上），不是冻结。界线、每份本机的两次运行与它们的平均、CI 的测试一步写进那个 Step 的审查记录，Makefile 与 `ci.yml` 的注释照旧写量出的数。
 
-- **会落在哪里**：组合根的测试是一个接一个跑的（只有矩阵的格 `t.Parallel()`），所以一份的时间约是它的测试之和。P2 的整个程序测试按名字：`TestA…`、`TestAn…` 落在第一份；`TestThe…`、`TestTo…` 与 `TestReverting…` 落在第二份（`BOOTSTRAP_FIRST` 的 `-skip`）。第二份因此多出约 +30–50 秒（本机），按 CI 与本机之比（两次运行的平均约 1.6，单次 1.35–1.91，设计审查的复核 C 算的），CI 上约 +0:45–1:30。
+- **会落在哪里**：组合根的测试是一个接一个跑的（只有矩阵的格 `t.Parallel()`），所以一份的时间约是它的测试之和。P2 的整个程序测试按名字：`TestA…`、`TestAn…` 落在第一份；`TestThe…`、`TestTo…` 与 `TestReverting…` 落在第二份（`BOOTSTRAP_FIRST` 的 `-skip`）。第二份因此多出约 +30–50 秒（本机），按 CI 与本机之比（两次运行的平均约 1.6，单次 1.35–1.91，设计审查的复核 C 算的），CI 上约 +0:45–1:30。S1 分出第三份之后，S2 的两个整个程序的测试与矩阵的 78 格按名字落在第三份（`The[F-Z]`），三份都在线之下（9.2）。修复核对一轮 C 的观察：第一份的测试一步在不变的代码上分成两群（约 4:39–5:08 与约 6:41–7:12），慢的两次平均约 7:10、离线约 20 秒，自己过不了线；之后往第一份加测试（名字是 A–D、Ea–Eu 或 EveryA–R）的 Step 照约 7:10 估计，不照平均。
 - **第三份的形状**（照已有的两份的写法；`exp/shards` 核对过：`-run`、`-skip` 的表达式顶层的 `|` 照正则的意思，三份互不重叠、合起来是整个包）：
 
 ```make
@@ -2655,23 +2677,25 @@ test-go-bootstrap-3: ## 竞态检测下运行组合根的整个程序测试中�
   - 人工清单（`manual/P5-mcp-clients-checklist.md`）加：Claude Code、Codex 遇到 `/mcp` 的 HTTP 503 `server_busy`（`Retry-After: 1`）怎样表现（重试、报错还是断开），一个 agent 并行几个大的写时（每个凭证一个名额，第二个等 2 秒）是否照样走得通，其中一次在限速的上行上（例如 1 Mbit/s，两个各约 1 MiB 的并行的 `write`：第二个预期等满 2 秒后 503），记下 agent 看到什么、是否照说明一个接一个地重发（设计审查的复核 A 的 MN-1）；`edit` 的唯一比 Claude Code 的 Edit 严（重叠也算）、不折叠引号，真实的 agent 是否照说明重试；`move` 的 `to` 是完整的新路径，agent 是否写成"移进去"；破坏性的工具在各审批选项下的表现。
   - 接入文档写上：大的请求体的名额（整个服务两个、每个凭证一个，超过时等 2 秒后 503）；**部署建议按路由缓冲请求体**（设计审查 A-I1、复核 A 的 MN-2，2.1 第 6 条）：`/mcp` 与 page 的两个正文路由（`PUT /api/v0/pages/{page_id}/content`、`POST /api/v0/notebooks/{notebook_id}/pages`）缓冲（nginx 的 `proxy_request_buffering on`，它的默认），把慢的发送者挡在应用之外；上传与导入照 README 的部署一节不缓冲（`README.md:357`）；Caddy 默认不缓冲请求体、直接暴露也不，用它们时剩下的风险照旧（复核 A 提到 Caddy 的 `request_buffers` 也许能为一个路由缓冲，离线核对不了：P5 核对过才写）；`base_version` 的用法；锁的拒绝不能接管；历史只读。
   - 其余故事的 MCP 版本照 P2 的断言（`expectRelocated` 带目的地、`expectChangesetOf`、`expectNewPage` 由答复建出的 `created`）。
-  - S1 合并时，人工清单的这几项与接入文档的名额、按路由缓冲已写进 00 号文档 4.16，P5 照它核对。
-- **M12（发布）**，写进 `M12-release/handoffs/M4-performance.md` 的第 18 项（S1 合并时已写进，带 S1 的数）：
+  - S1 合并时，人工清单的这几项与接入文档的名额、按路由缓冲已写进 00 号文档 4.16；S2 合并时，历史只读（还原与撤销在网页上，经 MCP 的移动加改名在网页上一步撤销）同样写进；P5 照它核对。
+- **M12（发布）**，写进 `M12-release/handoffs/M4-performance.md` 的第 18 项（S1、S2 合并时已写进，带它们的数）：
   - **慢的发送者**（剩下的风险，2.1 第 6 条，设计审查 A-I1）：两个凭证（一个账户的两个 PAT 也算）仍占得满两个名额，每个慢的请求体占着它至多 `server.read_timeout` 30 秒，每 30 秒两个请求、每分钟 4 个，按凭证的桶（每分钟 1,200 个）看不到；其间超过门槛的 MCP 调用与超过 1 MiB 的网页保存等 2 秒后 503（网页重试三次，约 11 秒后失败）。info 的一行点名持着名额的凭证，管理员能撤销那个 PAT 或结束会话；`read_timeout` 不改。压测时量，并定要不要按账户而不是按凭证、要不要配置项。
   - **每个凭证一个名额的代价**（2.1 第 6 条，设计审查的复核 A 的 MN-1，主持者接受）：名额在读请求体之前取，上传也占着它：10 Mbit/s 上 5 MiB 约 4.2 秒、1 Mbit/s 上过约 250 KB 就过 2 秒，同一个凭证并行的第二个大的写在慢的上行上等满 2 秒后 503（一般的页不受影响）；压测时与 P5 的限速的一次一起看，再定要不要按凭证排队或放宽等候。
   - 大的请求体的内存在负载下的测量（6.2 的一次性测量之后；S1 量过两个名额加一个等着的 +680 到 +961 MiB，有了 JSON 值的上限，3.2.6）；名额与等候的配置项（今天是常量，3.19）。
   - `edit` 的匹配：最坏的一次调用本机约 0.16 秒（S1 实测 159–174 ms），守卫在 CI 上每种形状的值没有记下（作业的日志要认证，第 9 节）；单个 `delete` 没有大小的界线（M12 的性能移交第 14 项，同 REST）。
+  - **按页面的日志**（S2 审查 B-M1，主持者的决定）：`log {path}` 每次调用读这一页的全部历史（M8 的按页面的日志，游标不减少这份工作），agent 的每次写是一个变更集：一页 40,000 个变更集约 35–47 ms、300,000 个约 225–452 ms，线性，约 130,000–250,000 个时过 M8 的读的 200 ms；带 `revision` 的 `versions` 每次读整个版本（同 `read`）。v0.1 不改代码；压测加一页由 agent 写出的长历史（10⁵–10⁶ 个变更集，连同 `log {path, actor}`、`{path, client}`），并考虑结构的改法：变更集的时刻抄进条目与版本、两张表各按节点建索引，一页取每张表游标之下的 limit+1 行再合并（审查 B 的原型一页至多 6.0 ms，迁移每一百万个版本约 7–8 秒、2.3 GB 的 WAL；性能移交第 18 项）。
+- **v0.1 之后的打磨**（S2 审查 A-N2 的后一半，主持者的决定）：`log {path: ""}` 或 `{path: "/"}` 在一个可选的参数上答 422 "path is required"，写进 `M12-release/handoffs/M5-polish.md` 的第 30 项。
 
 ## 9. 结果
 
-要记下的数（设计里先写了预计；S1 的记在 9.1，S2 的随它的合并）：
+要记下的数（设计里先写了预计；S1 的记在 9.1，S2 的记在 9.2）：
 
 - P1 的 `page.not_found` 修好之前与之后：11 段的路径上带 `AttachmentHint` 67,590 字节、10 层的页上带 `PageHint` 61,448 字节（今天答 `internal_error`），修好之后去掉提示 33,818 字节（设计审查 A 实测）。S1 记下（9.1）：修好之后四种提示在最坏的路径上都由 `Fit` 去掉、33,818 字节，`to` 的父的那一种 34,024。
-- 组合根的各份：每份单独跑两次的平均、CI 的测试一步；分没分第三份、界线与量出的数（6.5 估计第二份约 7:25–8:10）；本机的 `make test-go` 同时与依次各两次的用时与平均（6.5 估计竞态检测的部分约 4.5–5 分钟对约 10.5 分钟）；守卫的 markdown 一行拆开之后三个测试各自在本机的两次。S1 记下（9.1、S1 的审查记录）：第二份 7:15、8:33（平均 7:54），过了线；先挪界线，修复第一轮撤回、分出第三份，三份本机平均 250、126.5、126 秒，CI 的平均 6:29、4:46.5、3:30.5；`make test-go` 三份时同时 698、730 秒对依次 1024、1058 秒，同时跑；守卫的三个测试各两次，拆成三行。
+- 组合根的各份：每份单独跑两次的平均、CI 的测试一步；分没分第三份、界线与量出的数（6.5 估计第二份约 7:25–8:10）；本机的 `make test-go` 同时与依次各两次的用时与平均（6.5 估计竞态检测的部分约 4.5–5 分钟对约 10.5 分钟）；守卫的 markdown 一行拆开之后三个测试各自在本机的两次。S1 记下（9.1、S1 的审查记录）：第二份 7:15、8:33（平均 7:54），过了线；先挪界线，修复第一轮撤回、分出第三份，三份本机平均 250、126.5、126 秒，CI 的平均 6:29、4:46.5、3:30.5；`make test-go` 三份时同时 698、730 秒对依次 1024、1058 秒，同时跑；守卫的三个测试各两次，拆成三行。S2 记下（9.2、S2 的审查记录）：三份本机平均 253.7、125.9、123.1 秒，CI 的平均 5:03.5、5:12、3:24，没有挪、没有分；第一份之后的修复一轮 7:09、合并之后 6:58（平均 7:03.5）。
 - `edit` 的守卫在 CI 上每种形状的用时，与 page/domain 那一行的用时。S1：CI 的作业日志要认证，没有记下，只有成本那一份的测试一步；本机的每种形状与这一行在 9.1。
 - 大的请求体的内存：两种组合的峰值与分配（6.2）。S1 记下（9.1、3.2.6）：两种组合 +896.7、+800.7 与 +704.5、+704.3 MiB；修复第一轮另量许多小的 JSON 值的形状，两个名额加一个等着的 +680 到 +961 MiB。
 - 迁移 00044 在已有的行上的用时（设计审查 A 在 20 万行上 Up 9–16 ms）。S1 记下（9.1）：20 万行上 Up 632.5 ms、Down 623.4 ms、再 Up 625.5 ms。
-- 种下的历史的两种退回的答复的大小（预计 45,321 与 29,526、23,500，3.17.3）。S2 记下。
+- 种下的历史的两种退回的答复的大小（预计 45,321 与 29,526、23,500，3.17.3）。S2 记下（9.2）：W1 的退回 45,314 字节（整行本该 53,284），C1 的退回 29,486、带游标的一页 23,307（第一页本该 52,777）；差在真的值（名称每个少 5 字节、C1 的变化是 `renamed`、真的游标）。
 
 ### 9.1 S1：写的四个工具（2026-10-19，合并 `804c3561`）
 
@@ -2705,9 +2729,32 @@ test-go-bootstrap-3: ## 竞态检测下运行组合根的整个程序测试中�
 - 交给后面的：P3：422 的字段名的写法（B-N3）、`batch` 的上限要写 `mcpserver.MaxBodyValues`、`MissingAncestors`（第 8 节）；P5：Claude Code 与 Codex 遇到 503 `server_busy` 怎样表现、一个 agent 并行几个大的写（其中一次在限速的上行上）、`edit` 与 `move` 的写法、破坏性的工具，接入文档的名额与按路由缓冲（第 8 节，00 号文档 4.16）；M12：慢的发送者、每个凭证一个名额的代价、大的请求体在负载下的内存（有了 JSON 值的上限）、`edit` 的最坏的一次调用、单个 `delete` 没有大小的界线、名额与等候是常量（[性能移交](../M12-release/handoffs/M4-performance.md)第 18 项）；S2：种下的历史的两种退回的答复的大小（3.17.3），组合根的份照同一条规则再看。CI 的作业日志要认证，`edit` 的守卫在 CI 上每种形状的用时与各行在 CI 上自己的 `ok` 没有记下，只有每一步的时间。
 - 负责人可以改判的取舍（主持者的决定）：组合根照规则撤回挪动、分出第三份（B2 看作 runner 的离群）；`move` 的父页写成页的路径答 `write` 那样的 422；422 的字段名的写法交 P3；样例 047 的 README 一句随样例提交；请求体的 JSON 值的上限（`/mcp` 10,000、REST 1,000，扫描到上限就停，契约写明，全部形状重量）；最高的 +961 MiB 读作在"约 1 GB"之内，00 号文档第 10 节的那一行不改写；全是 CRLF 的页上 `new_string` 的单独的 LF 照 CRLF 写（B 的 (a)）；`go test -short ./...` 有自己的门禁（`make test-go-short`、CI 的 `short` 一份、`make check`），按耗时判定的守卫在 `-short` 下跳过，时限 20 分钟；C4 (page) 的摆动记在审查记录。逐条见审查记录的"主持者的决定"。
 
-### 9.2 S2：历史的读
+### 9.2 S2：历史的读（2026-10-19，合并 `f3854b9a`）
 
-S2 在实施与审查中（分支 `m9-p2-s2`），结果随它的合并写入。
+- 提交（从 `main` 的 `804c3561` 开始）：page 的 domain 的 `ParseActor`、`CheckRevision` 与 `CheckVersionsArgs` `489a3878`；用例的四个入口（`ListVersions.AtPath`、`GetVersion.AtPath`、`ListChangesets.AtPath`、`GetChangeset.InNotebook`），`VersionReads` 的 `Paths` 与 `States`、`HistoryReads` 的 `Paths`，`Execute` 的后半抽成共用的读（`VersionReads.list`、`ListChangesets.page`、`HistoryReads.detail`、`HistoryReads.changes`），四个入口的表格测试 `103a178a`；三个工具（`versions.go`、`log.go`、`changeset.go`，REST 的形状在 `history.go`）与适配器的测试、`tools.json` 的六个条目、说明的三行、接线、码的表的三行与它们的调用、矩阵的三行、工具的字符串的合法参数的三项 `38f83ab0`；`TestTheMCPHistoryIsRESTs`、`TestTheMCPHistoryAnswersGoOn` 与 `seedLongHistory` `3e49d438`；MC8 `5ba1623b`。每个提交单独在一个工作树里 build、vet 与它碰到的包的 `go test -short` 都通过。组合根的份没有改（下面的"组合根的各份"一条）。修复一轮的十个提交见下面的修复一轮。合并 `f3854b9a`（第二个父提交 `08d3ef06`），一共 15 个提交。
+- 与设计不同之处（实施时定下的 8 条，审查 C 判过；都是最小的改动，已改在各节，3.22 列出）：(1) `versions` 用错了模式的检查在适配器（3.16.1 写定由适配器调 `CheckVersionsArgs`，用例的签名不收另一种调用的参数），所以 3.17.4 列在 page/app 的表里的"`offset` 与坏的游标：422"由适配器的 `TestTheVersionsRefuseTheOtherCallsArgumentsFirst`（两个用例都没有被调）与 domain 的 `TestCheckVersionsArgs` 测；(2) `versions` 的列表连一项都放不下、`changeset` 带游标的页连一项变化都放不下时答错误（`errNoVersionFits`、`errNoChangeFits`，同 P1 的 `list` 的 `errNoItemFits`）：3.16.4 算过到不了，带游标的页若也答 `Start` 就会从头再来；(3) `read.go` 的 `measure` 抽成 `measureOf(first)`，`versions` 读一个版本时以 `widestVersion` 量；(4) 工具的字符串的合法参数里 `changeset` 的 `id` 是建 `Strings.md` 的变更集（`createStrings` 从 REST 的日志读），`validToolArguments` 因此带一个参数；(5) 整个程序的两个测试的 agent 先以 `whole-program` 握手（`handshakeAs`）：`tm.agent` 不握手时变更集的客户端是 `mcp:unknown`，`client: "mcp:whole-program"` 那一行比的是两个空的列表（第一次运行看到的）；(6) `TestTheMCPHistoryIsRESTs` 多比了附件的路径（换了大小写的 `guide/FLOW-1.png`）与 `actor: "me"` 加 `client: "mcp"` 的两个一页，另核对 13 个变更集（含导入与撤销；修复一轮加一次跨父页的移动，14 个）、5 个版本；变化的 `node.path` 对照的是由 REST 的树算出的路径，不是 `NodePaths.Paths` 本身；(7) `TestTheMCPHistoryAnswersGoOn` 不断言答复的字节数等于 `seeded.py` 的，只记进日志，断言的是本该的整行与第一页过界（两种退回都走到了）、每个答复在界线之内；(8) MC8 的第 1–3 步比较整行（不只 id 与次序），它没有浏览器的步骤，用 `newTeam`。
+- 实测：说明 2,961 与 3,031 字节，同 3.12 的表。最坏的值（适配器的替身，照 `worst.py`）：`log` 的一行没有变化 35,581、三项变化 59,727，`changeset` 的变更集 35,610、加一项带路径的变化 60,515、带游标的一页一项 25,081，`versions` 最长的路径加一项 18,995，与 3.16.4 的表逐个相同；一个答复放得下 17 个最坏的版本。种下的历史（真的库）：W1 整行 53,284（预计 53,299），退回的答复 45,314（45,321），带两项变化；C1 带那一项的第一页 52,777（约 52,850），退回 29,486（约 29,526），带游标的一页 23,307（约 23,500）。差在真的值：X1–X3 与链的名称是 254 个 `&` 加一个字符（每个少 5 字节），C1 的变化是 `renamed`；退回的答复与带游标的页带真的游标，C1 的第二页的 `next_cursor` 是 null（`seeded.py` 都以 120 字节的游标量，整行与第一页照它量）。
+- 反向对照：62 个，都被抓到（domain、用例与适配器 37 个，整个程序 23 个，MC8 2 个）。6.3 的 S2 各条：#37（`TestParseActor`、`TestTheMCPHistoryIsRESTs` 的 `log`、MC8 第 2 步答 422）、#38（用例的两张表、`TestTheMCPHistoryIsRESTs` 的 `changeset`、MC8 第 5 步答出了 Other 的变更集；3.21 的另一种写法"照 `readableChangeset` 在变更集自己的笔记本上判定"同样被两处抓到）、#39（`TestTheLogFitsItsAnswer`、`TestTheMCPHistoryAnswersGoOn`；第一次写成 `if true` 编不过（`k` 没用上），改为 `k >= 0`）、#40（`TestGetChangesetInNotebook`、`TestTheMCPHistoryAnswersGoOn`（C1 的第二页又退回）、`TestTheMCPHistoryIsRESTs`（第二页带着变更集）；变异在用例里，适配器的替身看不到它）、#41 与"读一个版本时收 `cursor`"（domain 的表、适配器的测试、码的表的调用）、模式在用例之后才查（适配器的测试）、#43（适配器的一页两行、`TestTheMCPHistoryAnswersGoOn` 跳过了 W2）、#44（同两处）、#56（适配器的两个形状、`TestTheMCPHistoryIsRESTs` 的 `log` 与 `changeset`）；`TestTheMCPHistoryIsRESTs` 对错的成员（`content_count` 取节点数、`updated_at` 取 `created_at`）与错的次序（`log` 的行倒过来、变化倒过来）都失败。S1 的检查在 S2 的部分缺了时都失败：应用不列 `versions`、文件不列 `log`（`TestTheToolListsAreTheContract`），矩阵少 `log` 一行（`TestThePermissionMatrixCoversEveryTool`），码的表少 `changeset` 一行（`TestEveryMCPToolHasItsCodes`）、少 `page.version_not_found` 一个码或它的调用（`TestTheMCPToolsErrorsCarryTheirCodes`），说明少 `versions` 一行（`TestTheBuiltInInstructionsNameEveryTool`），合法参数少 `changeset` 一项（`TestToolStringsDoNotAnswerInternalErrors`）。另有 domain 与用例的 15 个（`me` 不分大小写、版本号的两端、码的次序、每项的游标、`Start`、只读活着的节点的路径、答问的版本号而不是版本自己的等）。
+- 门禁（本机，`5ba1623b`）：`make lint-go gen-check knip` 与 `make lint-web knip` 通过，`make build` 通过，`make test-web` 166 个文件、3,338 个测试（web 没有改，为核对 CI 的那次失败跑的）；经 `heavy.sh`：`make test-go` 685 秒（11:25）通过（竞态下组合根三份与别的包同时 284.8、150.1、151.9 秒，成本的 page/domain 一行 27.0 秒，守卫的各行 113.1、3.5、19.1、24.0、27.8、15.5、22.6 秒），`make test-go-short` 51 秒，`make e2e` 258 个（S1 之后的 257 个加 MC8；Playwright 35.4 秒）。
+- 组合根的各份（6.5 的规则）：本机单独两次（go test 自己的时间）：第一份 248.6、258.8 秒，平均 253.7；第二份 124.7、127.1，平均 125.9；第三份 126.2、119.9，平均 123.1（S1 的平均 250、126.5、126；S2 的测试按名字落在第三份，两个整个程序的测试约 2 秒与 0.2 秒，矩阵的 78 格并行）。CI 的测试一步两次（run 39224375932，`3e49d438`；run 39226185609，`5ba1623b`）：第一份 4:59、5:08，平均 5:03.5；第二份 5:13、5:11，平均 5:12；第三份 3:33、3:15，平均 3:24：都在 7:30 之下，界线不动、不分、不提高 `-timeout`。CI 与本机之比（测试一步的平均比本机的平均，测试一步含竞态检测的构建）1.20、2.48、1.66。S2 没有按时间的守卫，成本与守卫的行都没有碰。修复一轮与合并之后的第一份见下面的两条。
+- CI（作业，括号里是测试一步）：run 39226185609（`5ba1623b`）全绿：竞态 8:24（8:00）、组合根一 5:28（5:08）、组合根二 5:30（5:11）、组合根三 3:44（3:15）、成本 7:14（测试 5:05）、守卫 10:46（10:25）、short 2:57（2:35）、web 3:50（3:17）、e2e 4:23（E2E 一步 3:32；4.7 估计 P2 之后约 4:30，S1 合并之后的 `main` 3:35）、镜像 1:17。run 39224375932（`3e49d438`，还没有 MC8）：web 的 `event-stream.test.tsx` 的 "the stream ends with the generation" 失败一次（登出之后 `waitFor` 等流结束；web 没有改，本机与 run 39226185609 都通过；原因与修复见修复一轮的 C-M1），镜像与 e2e 因此跳过；其余全绿：竞态 8:44（8:25）、组合根一 5:18（4:59）、二 5:31（5:13）、三 3:52（3:33）、成本 7:43（测试 5:23）、守卫 10:25（10:07）、short 3:15（2:56）。
+- 修复一轮（2026-10-19，`5ba1623b` 之上的十个提交，分支推到 `08d3ef06`）：三份审查（A：工具、答复、界线与错误；B：用例、可见性、M8 不变；C：测试、e2e、门禁、CI）都没有 Important，Minor 5 个、Nit 9 个；照主持者的决定改：
+  - A-M1 `ea07137f`：`versions` 两种调用的 `page.not_found` 的文字有了测试（路径与 P1 的提示，同 `log` 的测试）；A 的两个变异（`toolErr` 换成 `err`）此前过了所有测试。
+  - C-M2 `0ea47b17`：`TestTheMCPHistoryIsRESTs` 加 alice 经 MCP 把 bob 的 `Minutes.md` 移进 `Guide`（历史里唯一跨父页的移动，变更集由 13 个变为 14 个）：它的变更集 `moves` 为真、变化是 `moved`，经 `changeset` 读出的与 REST 的相同，且只有它 `moves` 为真；`versions` 整读时 `next_cursor` 为 null，再两个一页读完（3 页，等于 REST 的 5 个）。适配器的形状测试另加 `moves` 为真的变更集与 `next_cursor` 为 null 的最后一页。C 的 c1（`moves` 总为假）与 c3（最后一页带游标）此前只有 MC8 抓得到，现在适配器与整个程序的测试都失败。
+  - C-M3 `e920d893`：适配器的 `TestTheChangesetsIDIsAUUIDOrNone` 每次调用前把记下的 id 置为 `uuid.Max()`，用例没被调用时失败并说明；码的表加两个调用：`{id: "not-a-uuid", limit: 0}` 答 `validation_failed`，账户入口里看不到的笔记本加这样的 id 答 `notebook.not_found`。C 的 c4（id 不是 UUID 时不经用例就答 `page.changeset_not_found`）此前约八次过一次，现在 `-count=40` 的 40 次都失败，码的表的两个新调用也失败。
+  - C-M1 `ff8858bf`（`test(web)`，主持者的决定：S2 之外，任何分支都可能碰上）：CI 上 web 的那一次失败（run 39224375932，"the stream ends with the generation"）是一次垃圾回收：假的事件服务器在 Request 自己的 signal 上等中止，undici 让这个 signal 只经弱引用跟随创建时给的 signal，答复之后没有谁再持有 Request，一次主回收就把监听一起收走，标签页的中止到不了，流不结束。`eventServer` 现在把每个流的请求留在一个列表里（不导出，knip 通过）。C 的强制回收的探针在不改时 4 次都失败、改后 4 次都通过（探针不提交）。
+  - A-N1 与 B-N2 `0451b4fe`：先核对了 A 的说法：清理先删节点的条目与版本（`PurgeChangesetItems`、`PurgePageRevisions`，并把变更集记为 `trimmed`），`PurgeNodeLeaves` 只删没有条目、版本、内容与子节点指向的节点，外键的级联是兜底；别的语句都不删节点；工作区与笔记本的删除让三个工具先答 `notebook.not_found`；导入失败或取消时留下已写的（每个单元连同条目一起提交）。所以列出的变化的节点都在，`path` 为 null 只表示它在回收站里。`changeset` 的描述改为 "(null when it is in the trash)"；`log` 的描述加 "A page or an attachment in the trash has no path: find its changesets in the whole log."；`tools.go` 与 `tools.json` 的两个入口一起改。
+  - B-N1（与 A-N2 的前一半）`28d041f5`：`versions` 对不以 `.md` 结尾的路径答的 422 加上 `read` 与 `log` 的提示的规则："is an attachment's path: attachments have no versions. A page's path ends with .md."，与 `PageHint` 共用 `domain.PageRule`。与说明不同的一处：不带路径（主持者收下）。字段的说明在 MCP 的答复里出现三次，带上最长的路径（11 段，各 255 个 `&`）时答复 51,085 字节，过 49,152 的界线而成 `internal_error`；`page.not_found` 的提示放不下时由 `Fit` 去掉，字段的说明没有这一步。次序不变（这个 422 仍在笔记本之前）。
+  - C 的 Nit：`TestGetChangesetInNotebook` 核对每一页（`Start` 的那一页也是）的路径与一次 `PathsOf`，两页合起来有 A 与 C（`A/C.md`）的路径 `d4bfc7b8`（C-N1：c2 现在 page/app 就失败）；MC8 第 5 步先断言 Other 的日志有管理员的那一页 `cbfb6726`（C-N2：去掉那一页时故事在这里失败，改前会空过）；`versionLines` 读过版本的 `total_lines` 次还要往下读就失败 `17834f7f`（C-N3：最后一行之后 `next_offset` 为 1 的变异 5.5 秒就失败，改前会一直读到 go test 的时限）；`TestCheckVersionsArgs` 核对每个被拒的字段的说明 `08d3ef06`（C-N4：c5 与另两个说明对调的变异都失败）。
+  - 不在这一轮：B-M1（`log {path}` 每次调用读这一页的全部历史：B 测得 40,000 个变更集时 35–47 毫秒，300,000 个时 225–452 毫秒，线性，离 15 秒的期限很远）记进 M12 的性能移交的第 18 项，v0.1 的压测加一页由 agent 写出的长历史，代码不改；A-N2 的后一半（`log {path: ""}` 答 "path is required"）留给 v0.1 之后的打磨（M12 的打磨移交第 30 项）；B-N3（3.15 的 `changesetIn` 没有建）在合并的文档里照建成的写（3.15）。
+  - 反向对照 18 个，都被抓到：A 的两个；C 的 c1 与 c3，各在适配器与整个程序；c4 的 40 次与码的表；c5 与另两个说明；c2；MC8 的空日志；`next_offset` 不结束；规则去掉或改字；描述只改 Go 的一边，两个。另有 web 的探针。
+  - 门禁（`08d3ef06`）：`make lint-go gen-check knip lint-web` 通过；`make test-web` 166 个文件、3,338 个测试；经 `heavy.sh`：`make test-go` 698 秒（竞态下组合根三份同时跑：293.4、147.6、153.5 秒），`make test-go-short` 76 秒，`make e2e` 258 个（Playwright 36.5 秒）；十个提交各自 build、vet 与碰到的包的 short 测试都通过。
+  - CI：run 39239603768（`08d3ef06`）全绿，组合根的份没有改，跑一次。作业（括号里是测试一步）：竞态 8:23（8:02）、组合根一 7:32（7:09）、组合根二 5:14（4:47）、组合根三 3:57（3:41）、成本 9:22（测试 6:39）、守卫 11:23（11:04）、short 3:11（2:48）、web 3:09（2:41）、e2e 4:33（E2E 一步 3:38）、镜像 1:27。组合根一的测试一步 7:09（上一次 5:08）：这一轮没有改它的测试（改了的整个程序的测试按名字都在第三份），是运行机器的差别（审查 C 记下同一份在不变的代码上从 4:39 到 7:25；S1 的最后两次 7:10、7:12）；最近两次的平均 6:08.5，在 6.5 的约 7:30 之下。修复核对一轮 C 更正实施报告的"两次慢的运行接连就可能过线"：第一份在不变的代码上分成两群（约 4:39–5:08 与约 6:41–7:12），两次慢的运行平均约 7:10、离线约 20 秒，自己过不了线；之后往第一份加测试（名字是 A–D、Ea–Eu 或 EveryA–R）的 Step 照约 7:10 估计，不照平均。
+- 修复核对一轮（A、B、C，2026-10-19）：三位都没有新的发现（Important、Minor、Nit 都是 0）。A 在 SQL 与迁移里再核对 A-N1 的说法，重量偏离（页的路径至多 10 段，10 段以内带路径也放得下，不带仍更好）；B 以原型核对实施者提的按页面的日志的结构的改法（答复逐页相同，一页至多 6.0 毫秒对 551 毫秒，迁移每一百万个版本约 7–8 秒、2.3 GB 的 WAL，四处细化），写进 M12 的性能移交；C 重跑 C-M1 的探针与各个变异，核对 C-M1 的列表有界。
+- 合并之后：`main` 的 CI（run 39245208047，`f3854b9a`）十个作业全绿（作业，括号里是测试一步）：竞态 6:31（6:09）、组合根一 7:21（6:58）、组合根二 4:48（4:32）、组合根三 3:52（3:24）、成本 8:53（6:17）、守卫 6:53（6:35）、short 2:01（1:43）、web 3:52（3:21）、e2e 4:15（E2E 一步 3:24）、镜像 1:26。组合根第一份：最近两次（修复一轮的 7:09、合并之后的 6:58）平均 7:03.5，在 7:30 之下，与修复核对一轮 C 的约 7:10 相近。E2E 一步合并之后 3:24。
+- 审查：三位审查者（Opus）：A（工具、答复、界线与错误）、B（用例、domain、可见性与 M8 不变）、C（测试、e2e、门禁、CI 与约定）。没有 Important。中低一条：`log {path}` 把 M8 按页面的日志放到 agent 常走的路上，每一页都读这一页的全部历史（B-M1，不改代码，交 M12）。其余是低（`versions` 的 `page.not_found` 的文字没有测试，A-M1；两种错的答复只有 MC8 抓得到，C-M2；不是 UUID 的 id 不经用例就答的变异约八次过一次，C-M3；web 的那一次失败是一次垃圾回收，C-M1）与细节。修复核对一轮三位都没有新的发现。逐条见[审查记录](reviews/P2-S2-history-review.md)。
+- 交给后面的：M12：按页面的日志与带 `revision` 的 `versions` 的代价、结构的改法与压测（[性能移交](../M12-release/handoffs/M4-performance.md)第 18 项）；v0.1 之后的打磨：`log {path: ""}` 的拒绝（[打磨移交](../M12-release/handoffs/M5-polish.md)第 30 项）；P5：接入文档写历史只读（第 8 节，00 号文档 4.16）。CI 的作业日志要认证，每个测试在 CI 上的用时没有记下，只有每一步的时间。
+- 负责人可以改判的取舍（主持者的决定）：按页面的日志的代价 v0.1 不改代码，交 M12 的压测与结构的改法；`log {path: ""}` 的拒绝留给 v0.1 之后的打磨；web 的那个摆动在 S2 里改（在它的范围之外，任何分支都可能碰上）；`versions` 对不以 `.md` 结尾的路径的提示只写规则、不带路径。逐条见审查记录的"主持者的决定"。
 
 ## 附录：核对过的代码与 SDK
 

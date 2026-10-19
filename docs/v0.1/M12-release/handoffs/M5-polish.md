@@ -222,9 +222,10 @@ created: 2026-10-03
     - 经左栏的树来到的页不是到达：后退离开、再前进回到它时，焦点落在 `body` 上。M8 之前就有（第三轮）。
 29. **M8 Codex 评审的修复核对找到的一处**（[M8 Codex 评审](../../M8-history-search/reviews/M8-codex-review.md)第 9 节，R2、R3 的修复核对第一轮）：
     - 版本页的阅读视图与回收站的预览重读之后 HTML 变了时，`useLayoutEffect` 整篇换掉文章的 `innerHTML`（`version-view.tsx`）：键盘的读者焦点在其中的一个链接上时落到 `body`（读代码推出）。树的变化本来就会这样，R3 让一次写增删了别名也触发它（别名很少改）。改法：换之前记下拿着焦点的链接（按 `href` 与它在文章里的次序），换之后把焦点放回同一个链接。
-30. **MCP 的几处**（[M9/P1 S3 审查](../../M9-mcp/reviews/P1-S3-account-review.md)主持者的决定 3、5、9；[M9/P1](../../M9-mcp/01-P1-platform-reads.md) 3.15.3、3.16.1、3.16.4）：
+30. **MCP 的几处**（[M9/P1 S3 审查](../../M9-mcp/reviews/P1-S3-account-review.md)主持者的决定 3、5、9；[M9/P1](../../M9-mcp/01-P1-platform-reads.md) 3.15.3、3.16.1、3.16.4；[M9/P2 S2 审查](../../M9-mcp/reviews/P2-S2-history-review.md)主持者的决定 2、A-N2）：
     - `AGENTS` 的说明截在 32 KiB 之内最后一个换行处，最后的换行离界线远时留下的远少于 32 KiB：一行 7,000 字节（按答复的量 12,002 字节）之后一行 20,766 字节跨过界线，说明只留 12,085 字节，本可以 32,768（S3 审查 A 的存疑 1）。一种改法是最后的换行离界线太远时退回字符的边界，是设计的问题。
     - 只由看不见的字符组成的客户端名称照样记下：`CleanClientName` 留下 U+200B、U+2060、标签字符（U+E0041 U+E0042）、U+00AD、U+FEFF、U+180E、U+3164、U+115F、U+2800，日志里显示为空，P2 起是 `mcp:` 后面看不见的东西，标签字符还能把看不见的文字带进网页的变更集（S3 审查 B-N2）。`CheckName` 对显示名同样留下：shared 的 `unshowable` 是 Cc、Zl、Zp 与 Bidi_Control。两处一条规则：没有图形字符的名称算空，也许另去掉 U+E0000–U+E007F 的标签块。
     - 客户端在名称的语句（记下或读）运行时走了，记 warn（"MCP client name not recorded" 或 "not read"，带 `context canceled`），S1 对客户端走了记 debug；还不知道名称在行里时不报名称的调用也记下，所以比修复之前常见，一直失败的记下每次调用一行 warn（S3 审查 B 的存疑，修复核对第一轮 B）。只是日志的级别与数量。
+    - `log` 的 `path` 是可选的，`log {path: ""}` 或 `{path: "/"}` 却答 422 "path is required"（`ParsePath` 的空路径）：说明教 agent 以 `""` 与 `"/"` 表示 `list` 的根，agent 可能以它们表示"整本笔记本"（M9/P2 的 S2 审查 A-N2 的后一半）。两种改法：当作没有筛选，或在说明与文字里说 `path` 指一页或一个附件。
 
 之后的 M 推迟的体验事项照样追加到这份移交。
