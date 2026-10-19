@@ -136,7 +136,7 @@ gen-check-web: gen-web ## 重新生成 api/dist 和 TS 类型并检查（持续�
 	@$(call check-committed,$(GEN_WEB_OUT))
 
 .PHONY: check
-check: lint knip test build-web ## 静态检查、未使用代码检查、测试、前端构建（生成物一致性另跑 gen-check）
+check: lint knip test test-go-short build-web ## 静态检查、未使用代码检查、测试、go test -short 的单元测试（CI 的 short 一份）、前端构建（生成物一致性另跑 gen-check）
 
 .PHONY: lint
 lint: lint-go lint-web ## 全部静态检查
@@ -169,7 +169,7 @@ knip: ## 检查未使用的文件、导出和依赖（需要 Node）
 
 # -race 需要 cgo：macOS 需要 Xcode 命令行工具，Linux 需要 gcc。
 # 集成测试用 testcontainers 启动 PostgreSQL，需要 Docker；只跑单元测试用 make test-go-short（cd server && go test -short ./...，
-# README 的写法，CI 的 short 一份照它跑）
+# README 的写法；make check 与 CI 的 short 一份都跑它）
 # 不用测试缓存：它不跟踪 server/ 之外的文件，契约测试读取的 api/dist/openapi.yaml 改了也会重放旧结果。
 # server/tools 是嵌套的独立模块，另跑一次
 .PHONY: test
@@ -274,12 +274,13 @@ test-go-guards: ## 不带竞态检测的组合根的预算与界线的守卫（C
 	cd server && go test -count=1 -v -run '^TestARevertJobOfAnImportAtMaxJobItems$$' ./internal/bootstrap
 
 .PHONY: test-go-short
-test-go-short: ## 只跑 server 的单元测试：go test -short，不带竞态检测，不起数据库（README 的写法；CI 的一份，不在 make test-go 里）
+test-go-short: ## 只跑 server 的单元测试：go test -short，不带竞态检测，不起数据库（README 的写法；make check 与 CI 的一份跑它，不在 make test-go 里）
 	@# pgtest 在 -short 下跳过要数据库的测试；按耗时判定的守卫也跳过：-short 的各包同时跑、抢 CPU，CI 上一个 2 秒的界线到过 2.6 秒
 	@# （S1 修复第二轮），它们由 test-go-costs 与 test-go-guards 各自单独一行跑。别的照常跑。README 与上面的注释答应过贡献者这样跑得通，
 	@# 以前没有哪个门禁跑它：M9/P2 S1 的一个测试在 -short 下失败，到 S1 的修复第一轮才被看见（修复第二轮，审查 C 的 C2-M1），
 	@# 所以 CI 单独一份跑它。最慢的包本机约 28 秒（组合根与 httpserver），乘 2.4 约 70 秒，远在 Go 默认的每个测试二进制 10 分钟的一半之下，
-	@# 不加 -timeout（M9/P2 设计 6.5）。本机整个 53 与 38 秒
+	@# 不加 -timeout（M9/P2 设计 6.5）。本机整个 53 与 38 秒。make check 也跑它：check 与 gen-check 合起来是 CI 的 server、web 任务的门禁
+	@# （文件头与 README），少了这一份就不是（修复第三轮，审查 C 的 C3-M1）
 	cd server && go test -short -count=1 ./...
 
 .PHONY: test-web
