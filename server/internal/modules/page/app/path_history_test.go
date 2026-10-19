@@ -461,9 +461,10 @@ func TestListChangesetsAtPathAnswersItsCodesInOrder(t *testing.T) {
 
 // changeset in a notebook reads the changeset as GetChangeset does, on its
 // first page alone, and its changes as ListChanges does, each with its
-// cursor, the paths of the nodes alive read once a page; Start goes on as
-// no cursor does, without the changeset. A changeset of another notebook,
-// one the caller reads there, is not found here; the zero id is not read.
+// cursor, the paths of the nodes alive read once a page, on every page;
+// Start goes on as no cursor does, without the changeset. A changeset of
+// another notebook, one the caller reads there, is not found here; the
+// zero id is not read.
 func TestGetChangesetInNotebook(t *testing.T) {
 	f := newLogFixture()
 	c := f.page("C", &f.a.ID, 0)
@@ -498,29 +499,57 @@ func TestGetChangesetInNotebook(t *testing.T) {
 			t.Errorf("change %d's cursor goes on after %s, want %s", i, p.After, ch.NodeID)
 		}
 	}
+	// pathsOf are the paths a page of changes has: its alive nodes', none
+	// for B in the trash; readOnce whether the calls since f.rec.calls was
+	// emptied read them at once, and none for none.
 	paths := map[uuid.UUID]string{f.a.ID: "A.md", c.ID: "A/C.md"}
-	wantPaths := map[uuid.UUID]string{}
-	for _, ch := range first.Changes {
-		if p, ok := paths[ch.NodeID]; ok {
-			wantPaths[ch.NodeID] = p
+	pathsOf := func(changes []domain.ChangeRow) map[uuid.UUID]string {
+		out := map[uuid.UUID]string{}
+		for _, ch := range changes {
+			if p, ok := paths[ch.NodeID]; ok {
+				out[ch.NodeID] = p
+			}
 		}
+		return out
 	}
-	if !maps.Equal(first.Paths, wantPaths) {
-		t.Errorf("paths = %v, want %v: the alive nodes', none for B in the trash", first.Paths, wantPaths)
+	readOnce := func(want map[uuid.UUID]string) bool {
+		var reads []string
+		for _, call := range f.rec.calls {
+			if strings.HasPrefix(call, "PathsOf ") {
+				reads = append(reads, call)
+			}
+		}
+		if len(want) == 0 {
+			return len(reads) == 0
+		}
+		return slices.Equal(reads, []string{"PathsOf " + strconv.Itoa(len(want))})
 	}
-	if !f.called("ChangesetMoves") || !f.called("PathsOf "+strconv.Itoa(len(wantPaths))) {
-		t.Errorf("calls = %v, want the changeset's moves and one read of the alive nodes' paths", f.rec.calls)
+	if want := pathsOf(first.Changes); !maps.Equal(first.Paths, want) || !f.called("ChangesetMoves") || !readOnce(want) {
+		t.Errorf("the first page's paths = %v after %v; want %v, read once, and the changeset's moves", first.Paths, f.rec.calls,
+			want)
 	}
 	f.rec.calls = nil
 	start, err := uc.InNotebook(f.asAlice(), f.eng, three.ID, &two, &first.Start)
 	if err != nil || start.Detail != nil || !slices.EqualFunc(start.Changes, first.Changes, sameChangeRow) ||
-		start.NextCursor != first.NextCursor || f.called("ChangesetMoves") || f.called("ChangesetFacts 1") {
-		t.Errorf("from Start = %+v, %v after %v; want the first page's changes without the changeset", start, err, f.rec.calls)
+		start.NextCursor != first.NextCursor || f.called("ChangesetMoves") || f.called("ChangesetFacts 1") ||
+		!maps.Equal(start.Paths, first.Paths) || !readOnce(start.Paths) {
+		t.Errorf("from Start = %+v, %v after %v; want the first page's changes and paths without the changeset", start, err,
+			f.rec.calls)
 	}
+	f.rec.calls = nil
 	rest, err := uc.InNotebook(f.asAlice(), f.eng, three.ID, &two, &first.NextCursor)
 	if err != nil || rest.Detail != nil || len(rest.Changes) != 1 || rest.NextCursor != "" ||
 		rest.Changes[0].NodeID != slices.MaxFunc([]uuid.UUID{f.a.ID, f.b.ID, c.ID}, uuid.UUID.Compare) {
 		t.Errorf("the second page = %+v, %v; want the last change alone", rest, err)
+	}
+	if want := pathsOf(rest.Changes); !maps.Equal(rest.Paths, want) || !readOnce(want) {
+		t.Errorf("the second page's paths = %v after %v, want %v, read once", rest.Paths, f.rec.calls, want)
+	}
+	// Between them, the pages give both alive nodes' paths, C's under A.
+	both := maps.Clone(first.Paths)
+	maps.Copy(both, rest.Paths)
+	if !maps.Equal(both, paths) {
+		t.Errorf("the pages' paths are %v, want %v", both, paths)
 	}
 	other := uuid.NewV7()
 	f.notebooks.workspaces[other] = f.acme
