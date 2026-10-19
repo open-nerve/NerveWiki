@@ -250,7 +250,7 @@ func Register() http.Handler
 - `jsonrpc` 恰好是 `"2.0"`（SDK 把错的写进它的纯文字 400），`id` 照写的（`jsontext.Value`）至多 256 字节（`maxIDBytes`；SDK 在每个答复里写回 `id`）；
 - `params._meta` 照 SDK 的读法解进 `map[string]any`：float64 放不下的数（`1e400`）在这里失败，SDK 解它失败时会回显整个 `params`。
 
-读法用 `encoding/json/v2`：名字照确切的大小写读，同 SDK 的解码（`encoding/json` 会把 `METHOD` 当作 `method`）；go1.27.1 里它在默认打开的 GOEXPERIMENT `jsonv2` 之后，升级工具链时要核对它仍打开、或已离开实验（`sizeError` 的注释写明）。`prompts/get` 与 `tools/call` 之外的每个方法一样至多 64 KiB：M10 的 prompt 的参数要放得下，或者另设例外。重量（同一进程、`/mcp` 的上限、各在自己的进程里）：这一类的请求答 126–222 字节、分配 113–186 MB（原来 0.8–2.7 GB）；64 KiB 之内的回显至多约 4 × 64 KiB；上限处合法的调用分配约 1.4 GB、峰值约 +0.3–0.5 GB（四个同时 +1.4 GB），不是 00 号文档第 10 节估的约 150 MiB，并发的界线给 P2（第 8 节）。
+读法用 `encoding/json/v2`：名字照确切的大小写读，同 SDK 的解码（`encoding/json` 会把 `METHOD` 当作 `method`）；go1.27.1 里它在默认打开的 GOEXPERIMENT `jsonv2` 之后，升级工具链时要核对它仍打开、或已离开实验（`sizeError` 的注释写明）。`prompts/get` 与 `tools/call` 之外的每个方法一样至多 64 KiB：M10 的 prompt 的参数要放得下，或者另设例外。重量（同一进程、`/mcp` 的上限、各在自己的进程里）：这一类的请求答 126–222 字节、分配 113–186 MB（原来 0.8–2.7 GB）；64 KiB 之内的回显至多约 4 × 64 KiB；上限处合法的调用分配约 1.4 GB、峰值约 +0.3–0.5 GB（四个同时 +1.4 GB），不是 00 号文档第 10 节估的约 150 MiB，并发的界线给 P2（第 8 节）。P2 的 S1 照它加了大的请求体的名额（整个服务两个、每个凭证一个）与请求体的 JSON 值的上限（[P2](02-P2-writes-history.md) 3.2、3.2.6）。
 
 **`Server.ServeHTTP`**（mcpserver 的入口，在 `API.Wrap` 之内，也就在结构检查读完请求体之后）：
 
@@ -299,7 +299,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 | 次序 | 答复 | 谁答 | 形状 |
 |---|---|---|---|
 | 1 | 401（没有令牌）→ 429（失败闸门）→ 401（无效、撤销、过期的令牌）→ 429（`authenticated` 的桶） | `authenticate`、`rateLimit` | 401 是 problem+json 带 `WWW-Authenticate`，429 是 problem+json 带 `Retry-After`；闸门在核对令牌之前（`platform/httpserver/api.go:269-277`），与 REST 相同 |
-| 2 | 413（超过 37,814,272 字节）、400（不是 JSON、不是对象、重复的成员、不成对的代理项、读超时） | `bodyLimit`、`bodyshape` | problem+json |
+| 2 | 413（声明的长度超过 37,814,272 字节，不取名额）→ 503 `server_busy`（超过 64 KiB 而等了 2 秒仍取不到大的请求体的名额；M9/P2 S1，[P2](02-P2-writes-history.md) 3.2）→ 413、400（bodyshape：读到超过 37,814,272 字节；不是一个 JSON 文档；JSON 值多过 `mcpserver.MaxBodyValues` = 10,000 个（P2 S1 审查 A2-I1，P2 3.2.6）；名称重复、不是合法的 Unicode；结构；读超时） | `largeBody`、`bodyLimit`、`bodyshape` | problem+json，503 带 `Retry-After: 1` |
 | 3 | 413 `payload_too_large`（超过 64 KiB 而不是这个入口登记的工具的 `tools/call`，见上）→ 403 `forbidden`（会话的访问令牌） | mcpserver | problem+json，403 的 detail "MCP takes a personal access token, not a session's access token." |
 | 4 | 不是 POST 的（GET、DELETE 等）：400 `Unsupported protocol version`（`Mcp-Protocol-Version` 头不认识，排在 `2026-07-28` 之前，见下）→ 405 `Allow: POST` | SDK（版本在方法之前，`streamable.go:347-355`；`:381-386`） | 纯文字 |
 | 5 | 404 `notebook.not_found`（查询串解析不了，`notebook` 出现两次以上、为空、不是 UUID、看不到、已删除） | mcpserver 经 page 的 `Gate` | problem+json |

@@ -4,7 +4,7 @@
 |---|---|
 | Phase | M9/P2 写的工具与历史的读（两个 Step：S1 写的工具；S2 历史的读） |
 | 日期 | 2026-10-18 |
-| 状态 | 设计稿，按设计审查与它的两次复核修订（[P2 设计审查](reviews/P2-design-review.md)，含"第二轮复核"与"第三轮复核"）；没有遗留的 Important 与 Minor |
+| 状态 | S1 已合并（`804c3561`），S2 进行中；设计稿已按设计审查与它的两次复核修订（[P2 设计审查](reviews/P2-design-review.md)，含"第二轮复核"与"第三轮复核"），实施与审查之后与代码不同之处照实改在各节（3.22 列出），结果在第 9 节 |
 | 上级文档 | [M9 总设计](00-M9-design.md) 4.1、4.2、4.5、4.7、4.8、4.10、4.12、4.14、4.15、第 5、7、9、10、11 节与"移交的落实"；[P1](01-P1-platform-reads.md) 3.3、3.4、3.9、3.13、3.16、3.19 与第 8、9 节；[v0.1 总体设计](../v0.1-design.md) 6.1–6.4、7、8.4、10.1、12、13 |
 | 代码位置的写法 | 同 00 号文档：模块写作 `page/app/unit.go:168`（`server/internal/modules/` 之下）；`platform/…`、`bootstrap/…`、`shared/…`、`archtest/…` 在 `server/internal/` 之下；迁移写作 `00014_page_changesets.sql:13`（`server/migrations/sql/`）；SDK 写作 `sdk/mcp/streamable.go:440`（`~/go/pkg/mod/github.com/modelcontextprotocol/go-sdk@v1.8.0/`）；Go 的标准库写作 `$GOROOT/src/net/http/request.go:1234`（go1.27.1）；前端写作 `web/…/history-filters.tsx:17`；e2e 写作 `e2e/fixtures/mcp.ts:108` |
 
@@ -15,7 +15,7 @@
 照 00 号文档第 7 节，P2 中等大小。分两个 Step，各自一个分支、一次审查与修复核对、一次合并；后一个从前一个合并之后的 `main` 开始。两个都在服务端与 e2e，没有网页的改动：网页的历史已能按 MCP 筛选、显示"MCP（名）"（`web/…/history-filters.tsx:17-18`、`:114-115`，`web/…/changeset-text.ts:34-46`）。
 
 - **S1 写的工具**（分支 `m9-p2-s1`）：
-  - 大的请求体的界线：整个服务两个名额、每个凭证至多一个，httpserver 的逐路由中间件，REST 的两个正文路由共用（3.2）；
+  - 大的请求体的界线：整个服务两个名额、每个凭证至多一个，httpserver 的逐路由中间件，REST 的两个正文路由共用（3.2）；请求体的 JSON 值的上限（S1 审查 A2-I1，3.2.6）；
   - 归属：`domain.MCPClient`、`Client.IsMCP`、`Client.Valid` 改用 `shared.Unshowable`、迁移 00044 的显式范围（3.3）；
   - 版本令牌的解析 `ParseVersionToken`（3.4）；
   - 单元的操作：`Unit.Relocate` 与一条语句的 `RelocateNode`、`Unit.Subtree` 与 `Unit.DeleteSubtree`；linking 的 `Relocation` 的大小写改名不看父节点；撤销的一步的放回（移动加改名是一步，3.5）；
@@ -25,7 +25,7 @@
   - 工具 `write`、`edit`、`move`、`delete`，`api/mcp/tools.json`、内置的说明、码的表与矩阵的四行（3.11–3.13）；
   - 整个程序的测试：最后一跳、锁的每一格、交错、`update_links=false`、撤销 MCP 的移动加改名、大的请求体、NUL 的检查到达用例（3.13）；
   - e2e：MC3、MC4、C4（MCP），MC1 第 5 步改为照 `tools.json`（第 4 节）；
-  - CI：组合根的每一份照 6.5 的规则：过了线（CI 的测试一步约 7.5 分钟）的一份，只在一个邻居挪过之后仍在线之下时把测试给它，否则按测试名再分一份（第二份预计要分出第三份），从不提高 `-timeout`；本机的 `make test-go` 照同样的份跑组合根，竞态检测的几个二进制同时跑；`edit` 的时间的守卫并进成本那一份的 page/domain 一行；成本与守卫的行在 CI 上的估计过了 Go 默认的 10 分钟的一半就一个测试一行（守卫的 markdown 一行多半要拆）。
+  - CI：组合根的每一份照 6.5 的规则：过了线（CI 的测试一步约 7.5 分钟）的一份，只在一个邻居挪过之后仍在线之下时把测试给它，否则按测试名再分一份（第二份预计要分出第三份），从不提高 `-timeout`；本机的 `make test-go` 照同样的份跑组合根，竞态检测的几个二进制同时跑；`edit` 的时间的守卫并进成本那一份的 page/domain 一行；成本与守卫的行在 CI 上的估计过了 Go 默认的 10 分钟的一半就一个测试一行（守卫的 markdown 一行多半要拆）；`make test-go-short` 与 CI 的 `short` 一份（S1 修复第二轮，6.5）。
 - **S2 历史的读**（分支 `m9-p2-s2`）：
   - 用例的按路径与按笔记本的入口：`ListVersions.AtPath`、`GetVersion.AtPath`、`ListChangesets.AtPath`、`GetChangeset.InNotebook`（3.16）；
   - 工具 `versions`、`log`、`changeset`，`tools.json`、内置的说明、码的表与矩阵的三行（3.16、3.17）；
@@ -114,13 +114,13 @@
 
 ### 2.1 对 00 号文档的修订
 
-P2 的文档提交随这份文档一起改 [`00-M9-design.md`](00-M9-design.md)（照 P1 的做法，以脚本落下，每段原文恰好出现一次才改，`scratchpad/m9/p2/apply-00m9.py`）。行号指 `2a888a6f` 的 00 号文档（P1 的 S3 的文档改了它的九处，都在原地，这里引的行没有挪；第 11 节在 :660 之后多了七条，第 12、13 节随之后移七行）。
+P2 的文档提交随这份文档一起改 [`00-M9-design.md`](00-M9-design.md)（照 P1 的做法，以脚本落下，每段原文恰好出现一次才改，`scratchpad/m9/p2/apply-00m9.py`）。行号指 `2a888a6f` 的 00 号文档（P1 的 S3 的文档改了它的九处，都在原地，这里引的行没有挪；第 11 节在 :660 之后多了七条，第 12、13 节随之后移七行）。第 23–29 条是 S1 的实施与审查之后加的，随它的合并改进 00 号文档（主持者以 `scratchpad/m9/p2s1docs/s4_m9design.py` 落下，同样每段原文恰好出现一次才改；行号指 `804c3561` 的），与第 3、5、6、22 条不同之处以它们为准。
 
 1. **新建补建父页不经缓存**（4.10 的 `write` 一条 :228）："照 `ImportUnit` 在单元里缓存兄弟与祖先"改为：单元里以 `NodePaths.Walk` 逐段点查（同 `Find` 的 `RootByKey`、`ChildByKey`，经单元的事务），缺的祖先与叶子依次以 `Unit.CreatePage` 建。一条链至多 10 段，十段都缺时约 70 条语句（每个 `CreatePage` 约七条：`FindNodeIn`、`Ancestors`、`Children`、`CreateNode`、`CreateContent`、`RecordRevision`、`RecordItems`，`unit_create.go:28-82`、`unit_place.go:40-63`、`unit.go:264-291`；另有 `Walk`、变更集、搜索的入队与观察者）；`ImportUnit` 的缓存为一个单元里上百页的导入而设（`page/app/unit_import.go:12-18`），它的序号与"太深就跳过"的规则 `write` 都不要（撞名拒绝、太深 409）。缓存与它在移动、改名、删除之后的作废是 P3 的 batch 的事（3.20）。P1 第 8 节写的"同一个 `PathStore`、在单元的事务里"照做。
 2. **锁的成员**（4.7 的"锁的拒绝" :178；4.10 的锁表之后 :254）：`lock` 是 `{page_id, path, user_id, display_name, you}`；MCP 的删除被拒时另有 `locks`（子树里每个被持着的页，子树的次序：逐层、每层按次序值）与 `locks_count`，这时 `lock` 是 `locks` 的第一项而不带 `path`（路径在 `locks` 里，不重复）；`linking.pages_locked` 的 `locks` 同形。`structuredContent.error` 的 `locks` 至多 20 项（`MaxErrorLocks`），多的只数在 `locks_count` 里；带路径的项由 `ToolError.Fit` 放到 48 KiB 之内（3.10）。文字只引这次调用自己的路径，以 `"` 原样引起（不用 `%q`：它把 U+3000、U+00A0、U+200D 一类写成转义，文字就不是路径，标题里没有 `"` 与 `\`，原样引起不会有歧义，2.1 第 4 条），别的页的路径只在结构里（3.10.3 的计算：一个最贵的路径在文字与 `message` 里各一份已是约 33.7 KB）。
 3. **`move` 的码的次序**（4.15 的"通用" :365）：通用的次序把 503 排在单元里的 422、409 之前；`move` 的 503 来自参与者在单元里不排队地取预算（`linking/app/rewrite.go:236`；13.1 第 19 条的"持着锁时不排队"），在 409 之后。`move` 的完整次序：`bad_request` → 取值 422（两个路径、两者的类型）→ 笔记本 → 节点（`from`，不加锁）→ 403 → 单元里：节点（`from`）→ `to` 的父页链（第一个不成的段决定：缺的 `page.not_found`、路过附件的 422；设计审查的复核 B 的 BC-N6）→ 422（名称的规则）→ 409（成环、名称、太深）→ `linking.pages_locked`（预检）→ 503（改写的解析）→ `linking.pages_locked`（守卫）（3.8.3）。`write`、`edit` 的 503 照旧在单元之前；`write` 新建的 409 `page.too_deep` 排在要补建的祖先的 422 之后（3.8.1）。
 4. **错误的答复的上限与引路径的写法**（4.7 的"要读资源的文字由模块写" :177）：加一句"列出或重复路径的错误经 `ToolError.Fit` 填，路径以 `"` 原样引起"：mcpserver 按与 `Fit` 同样的找法（倍增、二分）取放得下的 k，`build(0)` 也放不下才是 `internal_error`（3.10.2）。P1 的 `page.not_found` 的文字带写下的路径与提示里的另一个路径，今天在 `main` 上就过 48 KiB、答 `internal_error`（设计审查 A 实测：11 段的路径上的 `AttachmentHint` 67,590 字节，10 层的页上的 `PageHint` 61,448 字节；`page/adapter/mcp/text.go:22`、`page/domain/path.go:123-147`）：S1 改为经 `ToolError.Fit`，放不下时去掉提示（33,818 字节，3.10.4），并以 `"` 原样引路径（P1 的文字与四个提示都改，3.11.5）；第 9 节记下修好之前与之后的量。
-5. **`edit` 的上限、唯一与匹配**（4.10 的 `edit` :232-237；4.14 的"一次调用的字符串参数"一行 :341）：`old_string` 1 字节到 1 MiB（`MaxEditOldBytes`，`/mcp` 的请求体上限给"正文之外的 1 MiB"留的就是它，`bootstrap/mcp.go:24-28`），`new_string` 至多 5 MiB，替换之后的正文至多 5 MiB（`new_string` `too_long`，在替换之前算出、不先拼出来；CRLF 的规则之下以换过的两个串算）；两者都是 UTF-8、不含 NUL。唯一按"第一处之后还有没有一处"判断，重叠的也算（`aa` 在 `aaa` 里是两处；Claude Code 按不重叠的计数，这里更严，写进说明）；"found N times"的 N 是不重叠的计数与 2 中较大的。**匹配是线性的**：查找、第二处、计数、`replace_all` 与 CRLF、NFC 的再找都经同一个 KMP 的匹配器，从不以 `strings`、`bytes` 的查找、切分与替换（`Index`、`Count`、`ReplaceAll` 这一族）拿 agent 给的串作模式（它们对长的模式走 Rabin–Karp，一个构造的 1 MiB 的 `old_string` 在 5 MiB 的页上约 70 秒，设计审查 B-I2 与它的复核实测 70.2 秒），也不拿它编 `regexp`（模式就是程序，k 个字节的 `old` 让匹配是 O(n·k)：1 MiB 的 `a` 的页上 1,000 个 `a` 加 `b` 4.8 秒，第二次复核 B 实测）；最坏的一次调用本机约 0.16 秒（3.9），所以不在匹配里看期限（输入的上限管着它，3.9）。`write` 的正文至多 5 MiB、路径至多 4,096 字节，所以一次调用的字符串参数合计在 6 MiB 加一个路径之内。
+5. **`edit` 的上限、唯一与匹配**（4.10 的 `edit` :232-237；4.14 的"一次调用的字符串参数"一行 :341）：`old_string` 1 字节到 1 MiB（`MaxEditOldBytes`，`/mcp` 的请求体上限给"正文之外的 1 MiB"留的就是它，`bootstrap/mcp.go:24-28`），`new_string` 至多 5 MiB，替换之后的正文至多 5 MiB（`new_string` `too_long`，在替换之前算出、不先拼出来；CRLF 的规则之下以换过的两个串算）；两者都是 UTF-8、不含 NUL。唯一按"第一处之后还有没有一处"判断，重叠的也算（`aa` 在 `aaa` 里是两处；Claude Code 按不重叠的计数，这里更严，写进说明）；"found N times"的 N 是不重叠的计数与 2 中较大的。**匹配是线性的**：查找、第二处、计数、`replace_all`、CRLF 的规则与 NFC 的再找都经同一个 KMP 的匹配器，从不以 `strings`、`bytes` 的查找、切分与替换（`Index`、`Count`、`ReplaceAll` 这一族）拿 agent 给的串作模式（它们对长的模式走 Rabin–Karp，一个构造的 1 MiB 的 `old_string` 在 5 MiB 的页上约 70 秒，设计审查 B-I2 与它的复核实测 70.2 秒），也不拿它编 `regexp`（模式就是程序，k 个字节的 `old` 让匹配是 O(n·k)：1 MiB 的 `a` 的页上 1,000 个 `a` 加 `b` 4.8 秒，第二次复核 B 实测）；最坏的一次调用本机约 0.16 秒（3.9），所以不在匹配里看期限（输入的上限管着它，3.9）。`write` 的正文至多 5 MiB、路径至多 4,096 字节，所以一次调用的字符串参数合计在 6 MiB 加一个路径之内。
 6. **大的请求体的界线**（4.14 的请求体一行 :340；4.15 的"边缘" :364；第 10 节的内存一行 :607；第 11 节主持者的决定第 16 条 :652）：整个服务同时至多两个大的请求体，**每个凭证（限流的键：`pat:<id>`、`session:<id>`）至多一个**；按路由的门槛：`/mcp` 是 64 KiB（`mcpserver.MaxOtherBytes`），REST 的两个正文路由是 `server.max_body_bytes`（1 MiB）：任何路由都收 1 MiB 的请求体，在这之下计数挡不住什么，而 `/mcp` 的放大约 40 倍（37.8 MB 的请求体分配约 1.4 GB），64 KiB 起就要算。同一个凭证的第二个大的请求体在 2 秒之内等它的第一个，别的凭证的不等它；取不到名额的至多等 2 秒（同 `page.parse_max_wait` 的默认），然后 503 `server_busy`、`Retry-After: 1`，info 的一行点名持着名额的凭证与路由；`Content-Length` 超过路由的上限的立刻 413、不取名额。`/mcp` 的边缘次序在 413（bodyshape）之前多两步：413（声明的长度超过路由的上限）→ 503（没有名额）（3.2）。第 11 节第 16 条与第 10 节的那一行随之写细：REST 的两个正文路由的门槛是 1 MiB 而不是 64 KiB（第 10 节说它们"可以共用这份预算"）；取不到的先等 2 秒再答 503（不等的话，一个 agent 并行的第二个大的写立刻就是传输的失败，3.2.1）；每个凭证至多一个。第 10 节另加一行**剩下的风险**：两个凭证（一个账户的两个 PAT 也算）仍占得满两个名额，每个慢的请求体占着它至多 `read_timeout` 30 秒，每 30 秒两个请求、每分钟 4 个，按凭证的桶（每分钟 1,200 个）看不到；其间超过门槛的 MCP 调用与超过 1 MiB 的网页保存等 2 秒后 503（网页重试三次，约 11 秒后失败）；info 的一行点名凭证，管理员撤销那个 PAT 或结束会话；缓冲请求体的反向代理把慢的发送者挡在应用之外，P5 的接入文档按路由写：`/mcp` 与 page 的两个正文路由缓冲（nginx 的 `proxy_request_buffering on`，它的默认），上传与导入照 README 的部署一节不缓冲（`README.md:357`）；Caddy 默认不缓冲请求体，直接暴露也不，用它们时这个风险照旧（设计审查的复核 A 的 MN-2）；写给 M12（`read_timeout` 不改）。**每个凭证一个名额的代价**（复核 A 的 MN-1，主持者接受）：名额在读请求体之前取，一个大的写占着它的是上传加处理，10 Mbit/s 上 5 MiB 约 4.2 秒、1 Mbit/s 上过约 250 KB 就过 2 秒，所以同一个凭证并行的第二个大的写在慢的上行上等满 2 秒、答 503（修订之前它会拿空着的第二个名额）；一般的页（100 KiB 在 10 Mbit/s 上约 80 ms）不受影响。照旧每个凭证一个、等 2 秒、503，不加长等候、不加按凭证的队列；第 10 节的那一行与 M12 的移交写上它，说明加一行叫 agent 一个接一个地发大的写（3.12），P5 的人工清单加一次限速的上行的试用。
 7. **按 id 给路径随 P2**（第 7 节 P1 一行 :427、P4 一行 :430；[P1](01-P1-platform-reads.md) 2.1 第 19 条与 `page/app/node_paths.go:10-12` 的注释）：`NodePaths.Paths`（按 id 给活着的节点的路径，一条语句：已有的 `LinkTargetsByIDs`，`page/adapter/postgres/queries/links.sql:25-42`）随 P2 进 page：`move` 的 `linking.pages_locked` 与 `changeset` 的各项要它。模块根的 `page.NewNodePaths(pool)` 与 linking 的 `Deps.NodePaths` 仍随 P4。
 8. **`changeset` 的各项带路径，节点的类型是 `attachment`**（4.9 的 `changeset` :220；第 5 节的工具表 :410）：每项的节点另带它现在的路径（活着的；回收站里的与清理掉的为 null），由 `NodePaths.Paths` 为这一页的节点读一次：agent 只能按路径调别的工具，没有路径的 id 走不下去。节点的类型同别的工具写 `page` 或 `attachment`（REST 的 `asset` 在适配器里换，同 `list`、`read`）。`log` 的前三项变化照 M8 4.7 的形状，不带路径（它是概要）。
@@ -138,6 +138,13 @@ P2 的文档提交随这份文档一起改 [`00-M9-design.md`](00-M9-design.md)�
 20. **撤销的一步的放回在 P2**（4.12 第 2 条 :296 与测试一条 :307；第 7 节 P2、P3 两行 :428–429；"移交的落实"的 M8/P3 一行 :445）：单个 `move` 是第一个写出"新的父节点与新的名称同在一个条目里"的操作，撤销它时计划先模拟"带着现在的名称移到旧的父节点下"，撞上那里叫这个名字的兄弟就是 `ErrRevertUnordered`，网页答 500（设计审查 B-I1 复现：`Drafts` 下有 `Plan` 与 `Plan v2`，`move Drafts/Plan v2.md → Final/Plan.md` 之后撤销它）。所以 4.12 第 2 条里单个节点的部分随 P2：一个既移动又改名的放回是一步，经 `moveSubtree` 与 `RelocateNode`（父节点、次序与名称一起改），计划只核对最后的键（`holder(to.ParentID, TitleKey(to.Name))`），连同父节点活着、不在自己的子树里（3.5.4）；P3 只留多轮的调度、三条后备、临时名称、写回的 `Base` 与后台的切批。:307 的"移动加改名的中间态"一项由 P2 测（单个 `move` 的），P3 测 batch 里的。第 7 节的 P2 一行加"撤销的一步的放回"（连同大的请求体的界线、线性的匹配与"两个 Step"），P3 一行的 S2 去掉"一条语句的放回"；"移交的落实"的第 2 项写明 P2；"写给后面的 M"里来源区的守卫的一条（:461）在 4.10 的 `Unit.Relocate` 之外加"与撤销的一步的放回，4.12"（设计审查的复核 B 的 BC-N2）。
 21. **一步的移动加改名与 REST 的两步**（4.10 的 `move` 的"一步" :239）："只改大小写的名称……与 REST 的两步（移动、再改大小写）结果相同"写细：只有一种写法不同：名称在笔记本里唯一时，带路径的 wikilink 以旧的末段作显示的文字（`[[A/x|x]]`），一步的移动加改名得 `[[X|X]]`，REST 的两步得 `[[X|x]]`（M6 的显示规则只在目标带 `/` 时跟着改，两步的第一步已把目标改成不带 `/` 的名称，`linking/domain/rewrite.go:387`）；另有同名的页时两者都写带路径的 `[[b/X|X]]`（设计审查的复核 B 的 BC-M2）。一步只用一次 M6 的规则，结果更好，样例 047 照一步在名称唯一的树上写出、整个程序的比较避开这种写法（设计审查 B-M1，3.5.3）。同一条的 `Unit.Relocate(id, parent, position, name)` 改为 P2 的 `Unit.Relocate(id, Placement{parent, name, field})`（没有次序：在新的兄弟里排在最后，3.5.1；复核 B 的 BC-N2）。
 22. **组合根各份的界线与分份**（第 11 节主持者的决定第 28 条 :664）："组合根两份的界线 S3 移一次之后不再动"没有说一份过线时怎样动：P2 的第二份多半要分出第三份（6.5），别的份也可能过线。"不再动"防的是凭一次运行的摆动去挪界线（单独跑一次的时间前后可差一成以上），不是冻结（P2 的设计审查之后主持者写明）。改写为一条管组合根每一份的规则（设计审查的复核 C 的 C-NM2，主持者的决定）：一份**过了线**，是两次运行的平均里它在 CI 的测试一步过了约 7.5 分钟（go test 的 15 分钟的一半）；过了线的一份，只在一个邻居挪过之后两次运行的平均仍在线之下时，才挪它们之间的界线、把测试给那个邻居，否则那个 Step 按测试名把它再分一份；从不提高 `-timeout`。界线只在这时与分出一份之后紧接着重新平衡时移动，都凭两次运行的平均（本机每份单独跑两次、CI 的两次运行）；界线、每份本机的两次运行与它们的平均、CI 的测试一步写进那个 Step 的审查记录。本机的 `make test-go` 以同样的份跑组合根（P2 的 S1 起，复核 C 的 C-NM3），同一条规则管两处。条目的来历（S3 审查 C-N4、S3 移到的 `^Test([A-D]|E([a-u]|very[A-R]))`、[P1](01-P1-platform-reads.md) 6.1）留着（6.5）。
+23. **大的请求体的名额在 4.4 的两处**（4.4 的"普通的路由" :121 与"边缘的码的次序" :122）：4.15 的边缘已有"413（声明的长度）→ 503"，4.4 的中间件的串与边缘的次序没有：串在限流与请求体的结构之间加"大的请求体的名额"（`api.go` 的 `Middlewares`），次序在 bodyshape 的 413、400 之前加 413（声明的长度超过路由的上限，不取名额）与 503 `server_busy`（3.2.3）。
+24. **请求体的 JSON 值的上限**（4.4 的"普通的路由" :121；4.14 的请求体一行 :340；4.15 的"边缘" :364；第 10 节的内存一行 :607；第 11 节主持者的决定第 16 条 :653 与第 35 条）：bodyshape 的第一遍扫描数 JSON 值，过了路由的上限（`/mcp` 10,000，REST 1,000）就停，答 400 `bad_request`、请求体本身 `too_long`（S1 审查 A2-I1，3.2.6）。
+25. **`edit` 的 CRLF 的规则**（4.10 的 `edit` :233、:234；第 11 节主持者的决定第 37 条）：取代"`old_string` 里只有 `\n` 而原样匹配不到时……再匹配"：在任何查找之前照 CRLF 找、照 CRLF 写（S1 审查 B-M1）；`new_string` 里单独的 `\n` 不论 `old_string` 有没有 `\n` 都照 CRLF 写，它里面的 `\r` 照留（修复第二轮，B2-M1）；只要还留着一个换行（修复第三轮，B3-N1）；"CRLF、NFC 的再找"改为"CRLF 的规则与 NFC 的再找"（3.9）。
+26. **`move` 的父页写成页的路径**（4.10 的 `move` :238；4.15 的"通用"里 `move` 的次序 :365；第 11 节主持者的决定第 32 条）：补第 3 条的次序：`to` 的缺的段以 `.md` 结尾（不论大小写）时答 `write` 那样的 422（`domain.MissingAncestors`），不答 `page.not_found`（S1 审查 B-N2、修复核对 B2-N2，3.8.3）。
+27. **大的请求体的内存的实测**（第 10 节的内存一行 :607；"写给后面的 M"的 M12 一条 :464；第 11 节主持者的决定第 36 条）：没有 JSON 值的上限时的形状与有了之后的数（3.2.6、第 9 节），"峰值约 1 GB"照留（S1 审查 A2-M1）；M12 一条另加慢的发送者、每个凭证一个名额的代价、名额与等候是常量与 `edit` 的最坏的一次调用（第 8 节）。
+28. **人工清单与接入文档**（4.16 的"步骤" :378 与"接入文档" :380）：第 8 节 P5 的几项写进 00 号文档，P5 照它核对：503 的表现、并行的大的写与限速的上行、`edit` 的唯一、`move` 的 `to`、写的四个工具在各审批选项下；名额与 503、JSON 值的上限、按路由缓冲、`base_version`、锁不能接管。`manual/P5-mcp-clients-checklist.md` 随 P5 建（第 7 节第 7 条）。
+29. **组合根的三份与 `short` 一份**（第 11 节主持者的决定第 28 条 :665 与第 31、38 条；第 10 节的 glob 的守卫一行 :609；"写给后面的 M"的 M12 一条 :464）：第 22 条的规则第一次用上：挪动照规则撤回、分出第三份（6.5）；`go test -short ./...` 有自己的门禁，按耗时判定、不要数据库的守卫在 `-short` 下跳过（6.4、6.5）。
 
 ### 2.2 需要负责人确认
 
@@ -145,6 +152,7 @@ P2 的文档提交随这份文档一起改 [`00-M9-design.md`](00-M9-design.md)�
 
 - 第 11 节负责人的四个决定照做：agent 只读历史（`versions`、`log`、`changeset`，没有还原、恢复、撤销，3.16；3.5.4 修的是网页上的撤销，人做的）；MCP 的写不开会话，被编辑的页（本人的编辑器也算）拒绝写、编辑与删除，答 `page.locked` 并说出持锁人，不能接管（3.6、3.11.5）；`AGENTS` 与说明不变；MCP 不开后台任务。
 - 2.1 的各条是实现的写定、P1 实现之后的更正或 00 号文档内部的不一致，不碰第 11 节负责人的决定，由主持者定（负责人可以改判）。第 6 条是主持者的决定第 16 条的实现，写细了它的三处（REST 的门槛 1 MiB、等 2 秒、每个凭证一个）并写下剩下的风险，都是主持者一级的；第 20 条把 4.12 的一部分从 P3 挪到 P2，Phase 的划分是主持者的；组合根分出第三份（6.5）与第 22 条对第 28 条的改写（过了线的一份只在邻居挪过之后仍在线之下时把测试给它，否则再分一份，从不提高 `-timeout`；本机照同样的份跑）都是主持者为 P2 定的规则，第 28 条本身是主持者的决定，不是负责人的。第 6 条剩下的风险是任何一个账户都能造成的可用性的风险（设计审查的复核 A），主持者接受、交 M12；负责人在 00 号文档第 10 节与 M12 的移交里看得到它。第 5 条的 `old_string` 1 MiB 是 4.14 的"其中正文与 `new_string` 合计 5 MiB"之外那 1 MiB 的写定。
+- S1 的实施与审查里主持者定下的，同样负责人可以改判，写进 00 号文档第 11 节（主持者的决定第 31–39 条）与 [S1 的审查记录](reviews/P2-S1-writes-review.md)的"主持者的决定"：组合根照规则撤回挪动、分出第三份；`move` 的父页写成页的路径答 `write` 那样的 422；422 的字段名的写法交 P3；样例 047 的 README 一句随样例提交；请求体的 JSON 值的上限；最高的一次 +961 MiB 读作在"约 1 GB"之内；全是 CRLF 的页上 `new_string` 的单独的 `\n` 照 CRLF 写；`go test -short ./...` 有自己的门禁；C4 (page) 的摆动记在审查记录。
 
 ## 3. 服务端
 
@@ -153,23 +161,26 @@ P2 的文档提交随这份文档一起改 [`00-M9-design.md`](00-M9-design.md)�
 | 文件 | 包 | 新/改 | 内容 |
 |---|---|---|---|
 | `platform/httpserver/api.go` | httpserver | 改 | `APIConfig` 加 `LargeBodies`、`LargeBodyAbove`、`LargeBodyWait`；`NewAPI` 的检查；`Middlewares` 在限流与结构检查之间加 `largeBody`（3.2） |
-| `platform/httpserver/largebody.go` | httpserver | 新 | 整个服务的名额与每个凭证的一个、`largeBody`、`takeLarge`、`serverBusy`、满了时的 info 一行、读过门槛的前缀之后接回请求体 |
+| `platform/httpserver/largebody.go` | httpserver | 新 | 整个服务的名额与每个凭证的一个、`largeBody`、`takeLarge`、`serverBusy`、满了时的 info 一行、读过门槛的前缀之后接回请求体；两次等候共用的一个计时器经 `newTimer` 建（测试数它，S1 审查 C-N1） |
 | `platform/httpserver/problem.go` | httpserver | 改 | 平台码加 `CodeServerBusy` |
 | `platform/httpserver/largebody_test.go`、`api_test.go` | httpserver | 新、改 | 3.2.5 的测试；`TestNewAPIRequiresItsSettings` 照旧 |
-| `platform/httpserver/mcpserver/edge.go` | mcpserver | 改 | `maxOtherBytes` 导出为 `MaxOtherBytes`（组合根拿它作 `/mcp` 的门槛） |
+| `platform/httpserver/mcpserver/edge.go` | mcpserver | 改 | `maxOtherBytes` 导出为 `MaxOtherBytes`（组合根拿它作 `/mcp` 的门槛）；`MaxBodyValues` = 10,000，`Bodies()` 的表带它（S1 审查 A2-I1，3.2.6） |
 | `platform/httpserver/mcpserver/errors.go`、`answer.go` | mcpserver | 改 | `ToolError.Fit` 与 `ErrorFit`；`ErrorAnswerBytes`（模块的测试以它量错误的答复，3.10.2）；`Extra` 只补问题没有的成员与 `lock`、`locks`、`locks_count`；`locks` 至多 `MaxErrorLocks` 项加 `locks_count`；`Fit` 与错误共用找 k 的函数（3.10） |
 | `platform/httpserver/mcpserver/errors_test.go` 等 | mcpserver | 改 | 3.10.5 的测试 |
+| `platform/httpserver/mcpserver/values_test.go`、`values_cost_test.go` | mcpserver | 新 | `TestABodyPastMaxBodyValuesIs400`；成本那一份的 `TestTheValuesBoundStopsTheScanEarly`（`//go:build !race`，3.2.6） |
+| `platform/httpserver/bodyshape/ambiguity.go`、`bodyshape.go`、`middleware.go`、`values_test.go` | bodyshape | 改、新 | 第一遍扫描数 JSON 值、过了表的 `MaxValues` 就停，`Check` 答 `*TooManyValues`（400 `bad_request`，请求体本身 `too_long`）；`MaxRESTValues` = 1,000（S1 审查 A2-I1，3.2.6） |
+| `platform/httpserver/apitest/operations.go`、`server/tools/bodyshapegen/`、`api/common.yaml`（与 `make gen` 的生成物） | apitest、生成器、契约 | 改 | 每个操作的请求体的第 11、12 种（恰在上限、多一个值）；生成器把 `MaxRESTValues` 写进每个模块的表（金文件随之）；`FieldError.field` 写明空路径是请求体本身与这个上限（3.2.6） |
 | `bootstrap/deps.go`、`bootstrap/wire.go`、`bootstrap/mcp.go` | bootstrap | 改 | `apiConfig` 的名额 2、等 2 秒，`/mcp` 并进 `BodyLimits` 的那一处加它的门槛；测试的接缝 `wiring.largeBodyWait` |
 | `bootstrap/api_config_test.go` | bootstrap | 新 | `TestTheAPIConfigBoundsTheLargeBodies`：`apiConfig` 给的名额与等候（不起应用、不连库） |
-| `shared/name.go`、`shared/client_name.go`、`shared/export_test.go` | shared | 改、删 | `unshowable` 改名导出为 `Unshowable`，导出它的测试文件删去（3.3.1） |
+| `shared/name.go`、`shared/title.go`、`shared/client_name.go`、`shared/export_test.go` | shared | 改、删 | `unshowable` 改名导出为 `Unshowable`，导出它的测试文件删去（3.3.1） |
 | `page/domain/client.go`、`client_test.go` | domain | 改、新 | `Valid` 用 `shared.Unshowable`；`IsMCP`、`MCPClient`、`UnknownClientName`（3.3.1） |
 | `server/migrations/sql/00044_page_client_checks.sql` | 迁移 | 新 | 两张表的客户端检查（3.3.2） |
 | `server/sqlc.yaml`、`server/migrations/schema_test.go` | — | 改 | page 的一条加 00044；`TestChecksRejectCounterexamples` 以一条语句核对每个码位（3.3.2） |
 | `page/domain/version_token.go`、`path_test.go` | domain | 改 | `ParseVersionToken`、`NotAVersion`（3.4） |
-| `page/domain/edit.go`、`edit_test.go`、`edit_cost_test.go` | domain | 新 | `MaxEditOldBytes`、`CheckEdit`、线性的匹配器、`Replace`、`Replacement` 与它们的错误；与 `strings` 的差分测试；时间的守卫；只许匹配器拿 agent 的模式的静态检查（读 `old_string` 经过的三个包的非测试文件，3.9） |
-| `page/domain/steps.go`、`steps_test.go` | domain | 新 | 每一步的规则：`CreationOf`、`MoveKinds`、`DeletionOf`（3.8，P3 的 `PlanBatch` 照用） |
+| `page/domain/edit.go`、`edit_test.go`、`edit_search_test.go`、`edit_cost_test.go`、`export_test.go` | domain | 新 | `MaxEditOldBytes`、`CheckEdit`、线性的匹配器、`Replace`、`Replacement` 与它们的错误；与 `strings` 的差分测试；时间的守卫；只许匹配器拿 agent 的模式的静态检查（`edit_search_test.go`，读 `old_string` 经过的三个包的非测试文件，3.9）；`export_test.go` 为包外的测试导出 `MatchIndex` |
+| `page/domain/steps.go`、`steps_test.go` | domain | 新 | 每一步的规则：`CreationOf`、`MoveKinds`、`DeletionOf`，与 `CreationOf` 和 `move` 的父页链共用的 `MissingAncestors`（3.8，S1 审查 B-N2；P3 的 `PlanBatch` 照用） |
 | `page/domain/errors.go` | domain | 改 | `PathTaken`、`VersionMismatch`、`LockPaths`、`LockedAll`、`Recursive`、`AttachmentOnPath`（3.8、3.11） |
-| `page/domain/path.go` | domain | 改 | `PathOfNames`（`PathOf` 改用它）、`MoveParentHint`、`Quoted`；四个提示以 `"` 原样引路径（3.7、3.10.4、3.11.5） |
+| `page/domain/path.go` | domain | 改 | `PathOfNames`（`PathOf` 改用它）、`MoveParentHint`、`Quoted`；四个提示以 `"` 原样引路径；`PathNotFound` 加 `ParentOf`（3.11.5 的", to's parent"）（3.7、3.10.4、3.11.5） |
 | `page/domain/revert.go`、`revert_test.go` | domain | 改 | 计划的 `place`：移动加改名是一个放回，只核对最后的键；`ErrRevertUnordered` 的注释（3.5.4） |
 | `page/app/ports.go` | app | 改 | `PathStore.PathsOf`、`NodeWriter.RelocateNode` |
 | `page/app/node_paths.go` | app | 改 | `Walk`、`Paths`（3.7） |
@@ -178,9 +189,9 @@ P2 的文档提交随这份文档一起改 [`00-M9-design.md`](00-M9-design.md)�
 | `page/app/unit_revert.go` | app | 改 | 单元的 `place`：移动加改名是一步，经 `moveSubtree` 与 `RelocateNode`（3.5.4） |
 | `page/app/unit_delete.go` | app | 改 | `Unit.Subtree`、`Unit.DeleteSubtree`，`Delete` 是两者（3.5.2） |
 | `page/app/edit_lock.go` | app | 改 | MCP 的删除被任何活着的会话拒绝，答出全部（3.6） |
-| `page/app/write_path.go`、`edit_page.go`、`relocate_path.go`、`delete_path.go` | app | 新 | 四个用例（3.8） |
+| `page/app/write_path.go`、`edit_page.go`、`relocate_path.go`、`delete_path.go`、`path_writes.go` | app | 新 | 四个用例（3.8）；`path_writes.go` 是它们共用的：锁的拒绝的路径（`withLockPaths`）与一页现在的版本 |
 | `page/app/*_test.go` | app | 新、改 | 用例的表格测试（码的次序）、`Relocate`、`Subtree`、守卫、`Walk`、撤销的一步的放回（`revert_test.go`） |
-| `page/adapter/postgres/queries/nodes.sql`、`store.go`、`links.go`、`gen/` | postgres | 改 | `RelocateNode`；`PathsOf` 经已有的 `LinkTargetsByIDs`；`make gen` |
+| `page/adapter/postgres/queries/nodes.sql`、`store.go`、`gen/` | postgres | 改 | `RelocateNode`；`PathsOf` 经已有的 `LinkTargetsByIDs`；`make gen` |
 | `page/adapter/postgres/*_test.go` | postgres | 改 | `RelocateNode` 的唯一索引与 `nameTaken`；`PathsOf` |
 | `page/adapter/mcp/tools.go`、`write.go`、`edit.go`、`move.go`、`delete.go` | mcpadapter | 改、新 | 四个工具（3.11） |
 | `page/adapter/mcp/text.go`、`locks.go` 与它们的测试 | mcpadapter | 改、新 | 错误的文字与结构，路径以 `"` 原样引起；每个错误在最坏的取值处量（3.10.4、3.10.5、3.11.5） |
@@ -188,12 +199,14 @@ P2 的文档提交随这份文档一起改 [`00-M9-design.md`](00-M9-design.md)�
 | `page/module.go`、`page/tools.go` | page | 改 | 建四个用例，交给 `mcpadapter.UseCases` |
 | `linking/domain/change.go`、`change_test.go`、`rename_cases_test.go` | domain | 改 | `Relocation` 的大小写改名不看父节点；样例的 harness 的 `recased` 取自 `Relocation`（3.5.3） |
 | `tools/md-fixtures/rename/047-move-and-recase.{json,md,out.md}` | 样例 | 新 | 跨父节点的大小写改名，含 `[[a/x\|x]]` |
+| `tools/md-fixtures/README.md`、`check.mjs` | 样例 | 改 | 父节点与名称都变的是 MCP 的 `move` 的一步（047）、`nerve-defined`；`check.mjs` 认它为一步的结果（README 的一句随 S1 的修复第一轮提交，主持者的决定，3.5.3） |
 | `api/mcp/tools.json` | 契约 | 改 | 四个写的工具，两个入口（3.18） |
 | `api/modules/page.yaml`（与 `make gen` 的生成物） | 契约 | 改 | `createPage`、`putPageContent` 的说明加大的请求体的一句（3.2.3） |
-| `bootstrap/mcp_writes_test.go`、`mcp_lock_test.go`、`interleavings_mcp_test.go`、`mcp_bodies_test.go`、`mcp_revert_test.go` | bootstrap | 新 | 3.13 的整个程序测试与交错，3.2.5 与 3.5.4 的整个程序测试 |
-| `bootstrap/mcp_names_test.go`、`mcp_reads_test.go`、`mcp_client_test.go`、`mcp_test.go`、`permission_matrix_mcp_test.go`、`permission_matrix_test.go`、`revert_property_test.go` | bootstrap | 改 | 最后一跳、码的表的调用、工具的字符串的合法参数的表与它的反向对照、接缝工具 `hold`、`strict` 与调用的帮助函数、边缘的次序、矩阵的四行与 `after` 的计数（REST 的 `after` 同样计数）、撤销的性质测试的 MCP 移动加改名 |
+| `bootstrap/mcp_writes_test.go`、`mcp_lock_test.go`、`interleavings_mcp_test.go`、`mcp_bodies_test.go`、`mcp_revert_test.go`、`mcp_write_codes_test.go`、`permission_matrix_mcp_writes_test.go` | bootstrap | 新 | 3.13 的整个程序测试与交错，3.2.5、3.2.6 与 3.5.4 的整个程序测试；码的表的写的调用与矩阵的四行各在自己的文件里（S1 实施时分出） |
+| `bootstrap/mcp_names_test.go`、`mcp_reads_test.go`、`mcp_client_test.go`、`mcp_test.go`、`permission_matrix_mcp_test.go`、`permission_matrix_test.go`、`revert_property_test.go`、`search_rebuild_test.go`、`page_content_test.go`、`interleavings_workspace_test.go` | bootstrap | 改 | 最后一跳、码的表的调用、工具的字符串的合法参数的表与它的反向对照、接缝工具 `hold`、`strict` 与调用的帮助函数、边缘的次序、矩阵的四行与 `after` 的计数（REST 的 `after` 同样计数）、撤销的性质测试的 MCP 移动加改名，搜索的性质测试建同一个世界（`newRevertWorld`）；交错与码的调用的帮助函数照已有的抽出 |
 | `server/configs/config.yaml` | 配置 | 改 | `server.max_body_bytes` 的注释写上大的请求体的名额（没有新键） |
-| `Makefile`、`.github/workflows/ci.yml` | — | 改 | `test-go-costs` 的 page/domain 一行加 `TestReplaceStaysWithinItsTime`；组合根的每一份照 6.5 的规则（过了线的一份把测试给挪过之后仍在线下的邻居，否则再分一份，多半分出第三份）；`test-go` 照 CI 的份跑组合根、竞态检测的几个二进制同时跑；成本与守卫的行照 6.5 的"时限的一半"，`test-go-guards` 的 markdown 一行多半拆成一个测试一行 |
+| `Makefile`、`.github/workflows/ci.yml` | — | 改 | `test-go-costs` 的 page/domain 一行加 `TestReplaceStaysWithinItsTime`，另一行跑 `TestTheValuesBoundStopsTheScanEarly`；组合根分成三份（`BOOTSTRAP_THIRD`、`test-go-bootstrap-3`、`ci.yml` 的 `bootstrap-3`：S1 先照 6.5 的规则挪界线，修复第一轮撤回、分出第三份，6.5）；`test-go` 照 CI 的份跑组合根，竞态检测的四个二进制同时跑（`-j4`），之后成本与守卫依次；`test-go-guards` 的 markdown 一行拆成三行、成本的一个加 `-timeout 15m`；`test-go-short` 与 CI 的 `short` 一份，`make check` 也跑它（修复第二、第三轮，6.5） |
+| `page/domain/glob_cost_test.go`、`edit_cost_test.go`，`linking/app/cost_test.go`、`linking/domain/linktext_cost_test.go`，`platform/markdown/markdowntest/costs.go` | 各包 | 改 | 按耗时判定、不要数据库的守卫在 `-short` 下跳过（S1 修复第二轮；`test-go-costs` 与 `test-go-guards` 照旧不带 `-short`、各自单独一行跑它们，6.5） |
 | `e2e/…` | e2e | 新、改 | 第 4 节 |
 
 ### 3.2 S1：大的请求体的界线
@@ -278,12 +291,14 @@ func (b serverBusy) RetryAfter() time.Duration  { return time.Duration(b) }
 #### 3.2.3 契约与边缘的次序
 
 - **REST**：`createPage` 与 `putPageContent` 已声明 `server_busy`（`api/modules/page.yaml:56`、`:156`），`Retry-After` 是每个模块的 `Problem` 答复的头（`page.yaml:1122-1131`），`apitest` 的 `checkProblemCode` 收操作自己声明的码（`platform/httpserver/apitest/problems.go:76-104`）：码不改。两个操作的说明写的次序是"先查正文，不论笔记本或页"、`server_busy` 只因为解析的预算（`page.yaml:39-55`、`:121-145`），S1 起不对了，所以各加一句，放在"先查正文"那一句之前（S1 的实施，`make gen` 随之；句子照设计审查的复核 A 的 NN-6，不让它读成每个这样的请求体都是 `server_busy`）："Before any check, a body over server.max_body_bytes waits up to 2 seconds for one of the server's two large-body slots, at most one per credential, when they are taken, and is server_busy if none frees." 不加进顶层的 `x-problem-codes`：只有这两个操作会答它，都已声明。`Problem` 的 `code` 的说明已列着 `server_busy`（`api/common.yaml:47-54`）。v0.1 总体设计 13.1 第 4 条的这两个操作的次序随 P2 的合并改（第 7 节）。
-- **MCP**：`/mcp` 不在 OpenAPI 的契约里（`bootstrap/contract_test.go:24-49`），503 是 HTTP 一层的拒绝、不是工具的错误（00 号文档 4.7），不进 `mcpToolCodes()`。边缘的次序（00 号文档 4.15，`TestTheMCPEdgeAnswersInOrder`，`bootstrap/mcp_test.go:29-136`）改为：401 → 429 → 401 → 429 → **413（声明的长度超过上限）→ 503（没有名额）** → 413、400（bodyshape）→ 413（超过 64 KiB 而不是这个入口的工具的调用）→ 403（不是 PAT）→ 400、405 → 404（2.1 第 6 条）。
+- **MCP**：`/mcp` 不在 OpenAPI 的契约里（`bootstrap/contract_test.go:24-49`），503 是 HTTP 一层的拒绝、不是工具的错误（00 号文档 4.7），不进 `mcpToolCodes()`。边缘的次序（00 号文档 4.15，`TestTheMCPEdgeAnswersInOrder`，`bootstrap/mcp_test.go:29-136`）改为：401 → 429 → 401 → 429 → **413（声明的长度超过上限）→ 503（没有名额）** → 413、400（bodyshape：不是一个 JSON 文档；JSON 值多过 `mcpserver.MaxBodyValues` = 10,000 个；名称重复、不是合法的 Unicode；结构；3.2.6）→ 413（超过 64 KiB 而不是这个入口的工具的调用）→ 403（不是 PAT）→ 400、405 → 404（2.1 第 6 条）。
 - 答复照平台的出口：problem+json、`no-store`（`/mcp` 与 `/api/` 都由 `setFixedHeaders` 设，`middleware.go:56-72`）。
 
 #### 3.2.4 内存与测量
 
 两个名额时，大的请求体同时至多两个：上限处的 MCP 调用各约 +0.5 GB 的峰值，合计约 1 GB（00 号文档第 10 节）。这是估计：P1 的 S1 审查 A 量的是一个。实施者照它的做法（同一进程里 `runtime.ReadMemStats` 的峰值、`GOGC` 默认，一次性的测试、不入库）量界线本身：两个同时在上限处的请求体、第三个在等，两种组合各一次：两个 `/mcp` 的 37,814,272 字节的 `write`（5 MiB 的正文、全是最贵的转义）；一个 `/mcp` 加一个 REST 的 `PUT …/content` 的 31,522,816 字节。峰值写进第 9 节；超过 1 GB 的，第 10 节的那一行随之改写。一个 PAT 的桶仍允许 200 个同时的请求（小的请求体不受这个界线管），压测交 M12。
+
+S1 的修复第一轮量了许多小的 JSON 值的请求体（审查 A2-I1、A2-M1）：没有上限时 `/mcp` 的一个调用到约 +5 GiB，所以 bodyshape 的第一遍扫描数 JSON 值、过了路由的上限（`/mcp` 10,000，REST 1,000）就停，什么都不再解码（3.2.6）；有了上限，上限处的各种形状与一个长字符串一样贵，两个名额加一个等着的在整个程序里 +680 到 +924 MiB（9.1）。
 
 #### 3.2.5 测试
 
@@ -296,10 +311,11 @@ httpserver（`largebody_test.go`，`testAPIConfig` 加一个 `BodyLimits` 的路
 | `TestTheSaturatedLineNamesTheHolders` | 满了时答 503 的那一次记一行 info：消息、路由、这个请求的凭证、`own`、等着的数目与两个持有者的凭证与路由；不记请求体 |
 | `TestABodyOfNoLengthTakesASlotPastItsThreshold` | 分块的请求体（客户端的 `io.MultiReader`，没有 `Content-Length`）2 KiB 占名额、1 KiB 不占；处理函数读到的请求体与发出的逐字节相同（前缀接回去了），一个 bodyshape 的路由同样 |
 | `TestADeclaredLengthPastTheLimitIs413WithoutASlot` | 名额满时，`Content-Length` 超过路由上限的请求答 413（不是 503）、处理函数没被调用、名额数不变；`Content-Length` 等于上限的照常排队 |
-| `TestTheSlotComesBackOnEveryPath` | 一个名额的应用：处理函数正常返回、返回错误的答复、panic（经平台的 `middleware` 链，答 500）、客户端在请求体中途关掉（声明的 `Content-Length` 过门槛，发了一半就 `CloseWithError`，答 400：取名额在读请求体之前）、请求的期限到了（处理函数等 ctx）：每一种在进行中时，另一个凭证的探针请求等满、答 503（证明这一种持着名额）；结束之后，另一个凭证的新请求拿到名额、照常答，同一个凭证的新请求也是（凭证的名额也还了）：漏了的名额让它等满、答 503，所以只看答复、不计时（`-j4` 之下竞态检测的 httpserver 与组合根的几份同时跑，几十毫秒的上限会偶尔失败；名额在 `ServeHTTP` 返回之后才还，客户端先读到答复也是正常的；设计审查的第二次复核 A 的 NN3-2） |
+| `TestTheSlotComesBackOnEveryPath` | 一个名额的应用：处理函数正常返回、返回错误的答复、panic（经平台的 `middleware` 链，答 500）、客户端在请求体中途关掉（声明的 `Content-Length` 过门槛，发了一半就 `CloseWithError`，答 400：取名额在读请求体之前）、请求的期限到了（处理函数等 ctx）：每一种在进行中时，另一个凭证的探针请求等满、答 503（证明这一种持着名额）；结束之后，另一个凭证的新请求拿到名额、照常答，同一个凭证的新请求也是（凭证的名额也还了），包内的 `idle()` 也要没有持有者的记录（满了的一行读它，S1 审查 C-M2）：漏了的名额让它等满、答 503，所以只看答复、不计时（`-j4` 之下竞态检测的 httpserver 与组合根的几份同时跑，几十毫秒的上限会偶尔失败；名额在 `ServeHTTP` 返回之后才还，客户端先读到答复也是正常的；设计审查的第二次复核 A 的 NN3-2） |
 | `TestALargeBodyWaitsForItsTurn` | 两个别的凭证的大的请求持着两个名额；第三个凭证的请求在等时（包内的测试读凭证的表里有它）放开其中一个：等着的请求拿到它、照常答，不是 503（不靠睡 20 ms，同第二次复核 A 的 NN3-2；只持着一个名额时，等着的不等就拿到空着的那个，变异 45 就活下来；设计审查的复核 A 的 NN-3） |
 | `TestTheSlotsAreTakenAfterTheBuckets` | 名额满时，没有令牌的大请求体答 401、坏的令牌 401、桶用完的 429，不是 503（先取名额的话它们会等满、答 503：只看答复）；名额只被认得出的账户取（`Wrap` 的次序，照 `TestWrapRunsTheMiddlewaresInTheirOrder`，`api_test.go:489-528`） |
 | `TestARouteOutsideBodyLimitsTakesNoSlot` | 名额满时，一个普通路由的 1 MiB 请求体照常答 |
+| `TestOneTimerBoundsBothWaits` | A2 先等它的凭证的名额（A1 持着它、等整个服务的名额，到 `/late` 的 1 秒期限放手），再等整个服务的名额（B、C 持到最后），用它第一次等候时做的那一个计时器：一共两个计时器，不是三个（`largeBodies.newTimer`，S1 审查 C-N1；不计时） |
 | `TestNewAPIChecksTheLargeBodies` | 负的名额、有名额而没有等候、门槛的路由不在 `BodyLimits` 里、门槛不在（0，上限）之间：各一行，错误的文字照 `TestNewAPIRequiresItsSettings` 的写法 |
 
 整个程序（`bootstrap/mcp_bodies_test.go` 的 `TestTheLargeBodiesShareTwoSlots`，接缝工具 `hold` 经 `wiring.mcpTools` 登记：收一个字符串 `s`，进来时告诉测试（测试由此知道它持着名额），等测试的通道或它的 ctx；`wiring.largeBodyWait` = 250 ms，2 秒本身由 `TestTheAPIConfigBoundsTheLargeBodies` 钉住；alice 的三个 PAT P1、P2、P3 是三个凭证）：
@@ -307,11 +323,25 @@ httpserver（`largebody_test.go`，`testAPIConfig` 加一个 `BodyLimits` 的路
 1. P1、P2 的 `hold`，`s` 各 70 KiB：持着两个名额。
 2. P3 的 70 KiB 的 `hold`：等候之后 HTTP 503，problem+json `server_busy`、`Retry-After: 1`、`Cache-Control: no-store`；info 的一行点名 P1、P2 的凭证与 `/mcp`。
 3. P3 的 REST 的 `PUT …/content`，正文 1.1 MiB：503 `server_busy`（契约核对过）；正文 100 KiB：200（在门槛之下）。
-4. P3 的 `echo`，`s` 60 KiB：答结果（在门槛之下）。
-5. 放开 P1 的：P2 的第二个 70 KiB 的调用等候之后 503（`own`：整个服务空着一个，它不拿），P3 的 70 KiB 的 `hold` 拿到空着的那个：进了工具，放开之后答结果，不是 503（只看答复，不计时，设计审查的第二次复核 A 的 NN3-2）。
+4. P3 的 60 KiB 的 `hold`，测试先放开它：答结果（在门槛之下）。答复要过 48 KiB 的不用 `echo`：它把 `s` 照样答回来，60–70 KiB 过了答复的上限，是 `internal_error`；所以要答复的调用都经 `hold`、在它进来之前就放开（S1 实施时定下）。
+5. 放开 P1 的：P2 的第二个 70 KiB 的调用等候之后 503（`own`：整个服务空着一个，它不拿；满了的一行恰好只点名 P2 的第一个，P1 的已还：S1 审查 C-M2），P3 的 70 KiB 的 `hold` 拿到空着的那个：进了工具，放开之后答结果，不是 503（只看答复，不计时，设计审查的第二次复核 A 的 NN3-2）。
 6. P2 的持着的 `hold` 的客户端取消它的请求（P3 的仍持着另一个），名额回来：P1 的一个 70 KiB 的调用答结果，不是 503（它要的正是回来的那个；名额在 P2 的工具的处理函数结束之后才还，P1 的调用在它 250 ms 的等候里拿到）。
 
-边缘的次序（`TestTheMCPEdgeAnswersInOrder`）加两行：名额满时声明的长度超过 `mcpBodyBytes` 答 413；名额满时一个 70 KiB 而不合 JSON 的请求体答 503（不是 bodyshape 的 400）。
+边缘的次序（`TestTheMCPEdgeAnswersInOrder`）加两行：名额满时声明的长度超过 `mcpBodyBytes` 答 413；名额满时一个 70 KiB 而不合 JSON 的请求体答 503（不是 bodyshape 的 400）。JSON 值的上限另加三行（3.2.6）。
+
+#### 3.2.6 请求体的 JSON 值的上限（S1 的修复第一轮）
+
+S1 审查 A2 量出许多小的 JSON 值的请求体比一个长字符串贵得多（A2-I1）：`/mcp` 的上限之内一个 `tools/call` 的 `_meta` 是许多小的成员时峰值约 +1,269 MiB、9.2 秒的 CPU，`_meta.a = [[],…]` 约 +5,025–5,489 MiB，两个名额约 +9,399 MiB，大头在锁定的 SDK v1.8.0 把 `_meta` 泛型地解码成 map 与 slice（`extractRequestMeta`、`CallToolParamsRaw.Meta`），许多成员的那一种约一半在 bodyshape 的 walk 与 `seen` 的表、`sizeError` 对 `_meta` 的解码；一个长字符串（3.2.4 依据的那一种）约 +496 MiB。3.2.4 的"两个约 1 GB"因此不成立。主持者的决定：
+
+- **在哪里停**：bodyshape 的第一遍扫描（`ambiguity.go`）数它开始读的每一个 JSON 值（请求体本身、其中的每个对象、数组、字符串、数字与字面量），过了表的 `MaxValues` 就停，`Check` 答 `*bodyshape.TooManyValues`，在 walk、`mcpserver.sizeError` 对 `_meta` 的解码与 SDK 之前；扫描留着的（它所在的对象的每个成员的名称、`seen` 的表）随读过的值增长，不过上限。`json.Valid` 照旧先走整个请求体（不分配、过了 10,000 层就停）。零是没有上限（工具的参数的表：参数的对象在 `/mcp` 的有上限的请求体里）。
+- **拒绝**：400 `bad_request`，bodyshape 的 detail，一个字段：空路径（请求体本身，同 bodyshape 写请求体的类型不对）、`too_long`，消息写出上限（"has more than 10,000 JSON values: each object, array, string, number, true, false and null is one"，REST 是 1,000）；经 `BodyError` → `Write`，同 `*bodyshape.Error`：只有访问日志的一行，不记请求体。`/mcp` 上它是 HTTP 的拒绝、不是工具的错误，不进 `mcpToolCodes()`（同 3.2.3 的 503）。大的请求体取了名额才读请求体，所以被拒的只在读它与扫描的时候占着名额。
+- **`/mcp` 的上限 10,000**（`mcpserver.MaxBodyValues`，不论方法与大小）：M9 最大的合法调用是 P3 的 `batch` 的 100 项（00 号文档 4.11），每项是 `op` 与至多 `edit` 的五个参数的对象、7 个值，共约 700，加 batch 自己的参数、信封与客户端的 `_meta` 约 715；带能力与 `clientInfo` 的 `initialize` 几十个；今天的工具至多 6 个标量。10,000 是 `batch` 的 14 倍；上限处由数目决定的那一部分在扫描里约 1 MiB（10,000 个名称与它们的表）、在 SDK 的泛型解码里几 MiB，比字节的几百 MiB 小得多。以后带列表的工具要远在它之下（它的注释写明为什么；P3，第 8 节）。
+- **REST 的上限 1,000**（`bodyshape.MaxRESTValues`，`bodyshapegen` 写进每个模块的表）：REST 最大的合法的 JSON 请求体是带邀请的注册，6 个值，别的至多 5 个，今天没有带列表或开放的 map 的请求体；可是 1 MiB（`server.max_body_bytes`）的许多小成员在检查里峰值约 +23.6 MiB、分配 52.6 MiB，一个凭证的桶同时允许 200 个，约 4.7 GiB，所以 REST 也要上限。有了它，上限之下最坏的（997 个 1 KiB 的名称，扫描与 walk 各解码一次）约 +2.7 MiB，过了上限的约 0.1 MiB。
+- **声明**：契约的 `FieldError.field` 写明空路径是请求体本身与这个上限（`api/common.yaml`，`make gen` 随之）；`/mcp` 的写在 `Bodies()` 与 `MaxBodyValues` 的注释里与边缘的次序（3.2.3）。
+
+测试：bodyshape 的 `TestABodyPastMaxValuesIsTooManyValues`（`MaxRESTValues` 与 2,500；许多成员、嵌套的空数组、长的平的数组；恰在上限是 nil、多一个是 `*TooManyValues`，没有上限的同一个请求体是 nil；两种读法或过了上限之后坏了的请求体照样是过多的值）与 `TestTooManyValuesIsTheBodysTooLong`（问题的状态、码、detail、字段与消息，上限按千位分组）；mcpserver 的 `TestABodyPastMaxBodyValuesIs400`（三种形状作 `tools/call` 与 ping 的 `_meta`，10,000 与 10,001 个值；过了 64 KiB 的许多成员的 ping 在上限处是 413、过了是 400；会话的访问令牌在上限处 403、过了是 400）；成本那一份（`//go:build !race`）的 `TestTheValuesBoundStopsTheScanEarly`：1 MiB 与 37,814,272 字节的 `[[],…]` 在 8.6 与 8.3 KB 之内被拒，许多成员的在约 1.07 MB 之内（上限的名称与表），不论长短；没有上限时上限那么长的请求体单 walk 就分配 108 MiB。整个程序：边缘的三行（没有令牌先 401；看不到的笔记本先 400 再 404；会话的访问令牌先 400 再 403）；`TestABodyOfTooManyValuesGivesItsSlotBack`（P2 的 `hold` 占着一个名额，P1 的约 24,000 个值、70 KiB 的调用被拒之后，P1 的下一个大的调用立刻拿到整个服务的与它的凭证的名额；一行 400 的访问日志，没有一行带请求体的任何部分）；`TestBodiesThatBreakTheStructureAnswer400` 让每个操作的请求体在上限处与多一个值各发一次（apitest 的第 11、12 种）；生成器的金文件。
+
+重量（审查 A2-M1；主持者的决定）：两种做法，都是 `GOGC` 默认、不带竞态检测、峰值的 `HeapInuse` 比 GC 之后的基线；A 是审查 A2 的一次性测试（同一进程里组合根挂的链：路由、`API.Wrap` 带名额的中间件、mcpserver、SDK、一个不做 domain 的写的工具），B 是 S1 的 6.2 的一次性测试（整个程序连数据库）。一个调用：上限处的各种形状 +496–498 MiB，与一个长字符串相同；过了上限的各种形状答 400、+78–79 MiB（读请求体与 50–80 ms 的扫描）。两个名额加一个等着的：A 里一个长字符串 +713 到 +897 MiB，上限处的各种形状 +771 到 +961 MiB，过了上限的 +192–195 MiB；B 里一个长字符串 +800.6、+924.2 MiB，上限处 +681.0 到 +872.8 MiB，`/mcp` 在上限处加一个过了 REST 上限的 `PUT …/content` +680.1、+748.1 MiB，过了上限的 +155.8、+191.8 MiB。最高的一次 +961 MiB（1.008 × 10⁹ 字节）读作在 3.2.4 的"约 1 GB"之内：3.2.4 的单位是"各约 +0.5 GB"（量出是 496 MiB），整个程序最高 +924.2 MiB，同一形状的几次可差约 190 MiB（主持者的决定，修复核对第一轮 A2 同意，它自己量的同一形状 +772 MiB）；00 号文档第 10 节的"峰值约 1 GB"不改，各个数记在那里与第 9 节。
 
 ### 3.3 S1：客户端与 `mcp:<名>`
 
@@ -487,7 +517,7 @@ WHERE id = sqlc.arg(id);
 
 `NodeWriter` 加 `RelocateNode(ctx, n domain.Node) error`；存储同 `RenameNode`、`MoveNode` 以 `nameTaken` 译成 `domain.ErrTitleTaken`（`page/adapter/postgres/store.go:330-357`）。按主键改一行，没有计划的问题。存储的测试：改父节点与名称一次成功；撞根下与子节点的两个索引各答 `ErrTitleTaken`（照 `TestEverySiblingsIndexTellsANameTaken`）；只改大小写不撞自己。
 
-单元的测试（`page/app/unit_relocate_test.go`，替身的存储）：同一父节点的改名、只改大小写、名称不变（不写、没有步）、移动加改名一步（守卫与参与者各看到一步，`OpMove`，改动带新的父节点与名称；`NodeWriter` 只收到一次 `RelocateNode`）、子孙随它而只有它记条目、排在新兄弟的最后、只改名时次序不变、附件改名换扩展名（成）与去掉扩展名（422 落在 `p.Field`）、环、新兄弟里的名称（409，占着的是页与是附件各一行，替身的 `RootByKey`/`ChildByKey` 没被调用）、新兄弟里只改大小写的同键（409：别的节点）、层级（附件不算一层）。
+单元的测试（`page/app/unit_relocate_test.go`，替身的存储）：同一父节点的改名、只改大小写、名称不变（不写、没有步）、移动加改名一步（守卫与参与者各看到一步，`OpMove`，改动带新的父节点与名称；`NodeWriter` 只收到一次 `RelocateNode`）、子孙随它而只有它记条目、排在新兄弟的最后、只改名时次序不变、附件改名换扩展名（成）与去掉扩展名（422 落在 `p.Field`）、环、新兄弟里的名称（409，占着的是页与是附件各一行，替身的 `RootByKey`/`ChildByKey` 没被调用）、新兄弟里只改大小写的同键（409：别的节点）、层级（附件不算一层）。同一父节点的改名另给单元一个参与者，要它看到一步 `OpRename`（`TestRelocateUnderItsParentRenames` 的"another name"与"the case alone"两行：`renameTo(…, false, …)` 时参与者收不到这一步，之前只有 e2e 的 MC4 抓得到；S1 审查 B-N1）。
 
 #### 3.5.2 `Unit.Subtree` 与 `Unit.DeleteSubtree`
 
@@ -514,7 +544,7 @@ func (u *Unit) Delete(ctx context.Context, id uuid.UUID) (domain.Subtree, error)
 
 - **与 REST 的两步不同的一处**（设计审查 B-M1）：名称在笔记本里唯一、带路径的 wikilink 以旧的末段作显示的文字时（`[[A/x|x]]`），一步的移动加改名得 `[[X|X]]`，REST 的两步（移动、再改大小写）得 `[[X|x]]`（另有同名的页时两者都写带路径的 `[[b/X|X]]`，设计审查的复核 B 的 BC-M2）；改成别的键也一样（`[[A/x|x]]` 一步得 `[[y|y]]`、两步得 `[[y|x]]`）。`relink` 只对带 `/` 的目标让显示的文字跟着改（`linking/domain/rewrite.go:387`），REST 的第一步已把目标改成不带 `/` 的名称，第二步就不再跟。一步只用一次 M6 的规则，结果更好；别的写法两者相同（设计审查 B 在 `review-B/exp-linking` 上照本节的改法跑过 46 个改名的样例与 linking 的两层测试，都通过）。00 号文档 4.10 的"与 REST 的两步结果相同"随之写细（2.1 第 21 条）。
 - `TestRelocationIsWhatARewriteFollows`（`linking/domain/change_test.go:90-122`）加一行："a move that changes the case alone"，`relocates` 真、`recased` 是它；同一个名称的纯移动 `recased` 仍为假（`change.go:74` 要名称不同）。
-- 改写的样例加 `tools/md-fixtures/rename/047-move-and-recase`：页是 `a`、`a/x`、`b` 与来源页 `src`（`x` 这个名称在笔记本里唯一），`from` `a/x`、`to` `b/X`；来源页是 `[[a/x]] [[x]] [[a/x|alias]] [[a/x|x]] ![[a/x]] [t](a/x.md)`，`.out.md` 是一步在这棵树上的结果 `[[X]] [[X]] [[X|alias]] [[X|X]] ![[X]] [t](X.md)`：`x` 唯一，所以 M6 写名称的形式（同样例 009 的 `[[A/x]]` → `[[x]]`）；再有一个 `c/x` 时一步写 `[[b/X]] [[b/X]] [[b/X|alias]] [[b/X|X]] ![[b/X]] [t](b/X.md)`。草稿手写的是两棵树混起来的，哪一棵都不这样写（设计审查的复核 B 的 BC-M2，在两棵树上以 linking 的改名的 harness 跑过，`review-B/check/tests/linking_domain_zz_check_b_test.go`）。`.out.md` 不由 REST 的两步得出；变异 24 在这棵树上让 `[[x]]` 留作 `[[x]]`，样例失败。
+- 改写的样例加 `tools/md-fixtures/rename/047-move-and-recase`：页是 `a`、`a/x`、`b` 与来源页 `src`（`x` 这个名称在笔记本里唯一），`from` `a/x`、`to` `b/X`；来源页是 `[[a/x]] [[x]] [[a/x|alias]] [[a/x|x]] ![[a/x]] [t](a/x.md)`，`.out.md` 是一步在这棵树上的结果 `[[X]] [[X]] [[X|alias]] [[X|X]] ![[X]] [t](X.md)`：`x` 唯一，所以 M6 写名称的形式（同样例 009 的 `[[A/x]]` → `[[x]]`）；再有一个 `c/x` 时一步写 `[[b/X]] [[b/X]] [[b/X|alias]] [[b/X|X]] ![[b/X]] [t](b/X.md)`。草稿手写的是两棵树混起来的，哪一棵都不这样写（设计审查的复核 B 的 BC-M2，在两棵树上以 linking 的改名的 harness 跑过，`review-B/check/tests/linking_domain_zz_check_b_test.go`）。`.out.md` 不由 REST 的两步得出；变异 24 在这棵树上让 `[[x]]` 留作 `[[x]]`，样例失败。`tools/md-fixtures/README.md` 原说"两者都变的不是一次操作"，S1 的修复第一轮随样例改为"两者都变的是 MCP 的 `move` 的一步（M9/P2 设计 3.5.3，样例 047），Obsidian 与 REST 里是两次操作，这样的样例是 `nerve-defined`"，`check.mjs` 认它为一步的结果（主持者的决定：实施的规则"不提交 README"说的只是仓库顶层的 `README.md`）。
 - 样例的 harness 的 `recased` 改为取自 `domain.Relocation` 对这个样例的改动（今天 `rename_cases_test.go:88-91` 按样例的路径自己算、不调生产的代码，所以 047 抓不住"`recased` 仍要同一父节点"的变异，只去掉父节点的比较又会让 harness 对同名的纯移动也设上它）：样例于是经生产的规则。
 - 别的调用者：`Relocation` 只在 `Rewrite.Participate`（`linking/app/rewrite.go:48`）。REST 没有一步同时换父节点与名称的操作（改名与移动是两个单元，撤销的单元交 `Options{}`、参与者在 `:49` 返回），M6 的单元测试与 `TestTheIndexIsItsRebuild` 照常通过即是证明。整个程序里与 REST 的两步比较的（3.13.6 的跨父节点只改大小写）不用 `[[A/x|x]]` 这种写法。
 
@@ -529,7 +559,7 @@ M8 的撤销假定一个变更集只有一种操作（`page/domain/revert.go:89-
   - `page/domain/revert_test.go` 的 `TestARevertOfAMoveThatRenamesIsOnePlace`（B 的复现改成单元测试）：`Drafts` 下另有一个与 X 现在的名称同名的 `Plan` 时，计划是一个放回、`Move` 与 `Rename` 都真、没有错误（今天是 `ErrRevertUnordered`）；没有它时同样；`Final` 下另有一个叫 `Plan v2` 的（先改名的中间态会撞上它）时同样；此刻 `Drafts` 下另有人新建了 `Plan v2` 时是冲突 `title_taken`，不是 `ErrRevertUnordered`。
   - `page/app/revert_test.go`（M8 的撤销的单元测试在这里，`TestRevertChangesetPutsEachChangeBack` 一类，`:199`；没有 `unit_revert_test.go`，设计审查的复核 B 的 BC-N3）：这样的放回是一步（替身的守卫看到一个 `OpMove`，改动的"前""后"各带父节点与名称），`NodeWriter` 只收到一次 `RelocateNode`；只移动的、只改名的照旧各一次 `MoveNode`、`RenameNode`；`TestRevertChangesetsDefectsAreUnclassified`（`:586`）照 `RenameNode`、`MoveNode` 的两行加一行 `RelocateNode` 答 `ErrTitleTaken`：撞名照旧是不分类的缺陷。`ErrRevertUnordered` 的注释（`page/domain/revert.go:89-95`，"Every changeset of M8 is one kind of operation"）改为说一个既移动又改名的条目计划成一个放回。
   - 整个程序（`bootstrap/mcp_revert_test.go` 的 `TestARevertPutsBackAnMCPMoveThatRenames`）：两本笔记本，每本里 `Drafts` 下有 `Plan` 与 `Plan v2`（X）、`Final` 下有一页 `Plan v2`；alice 经 MCP `move` `Drafts/Plan v2.md` → `Final/Plan.md`；第一本经 REST 同步地撤销（`changesetRevert`，`bootstrap/history_test.go:138`），第二本经后台的撤销（`POST /api/v0/notebooks/{id}/reverts`：`revertStart`，`bootstrap/background_test.go:35-40`，经 `tm.background` 等到任务结束）：都成，X 回到 `Drafts`、叫 `Plan v2`、次序值是原来的，`Drafts/Plan` 与 `Final/Plan v2` 不变，撤销的变更集一个条目；`checkPages`、`checkLinks`，后台的另 `checkBackground`。
-  - 撤销的性质测试（`bootstrap/revert_property_test.go:76-170`，操作在 `:94-162`）的操作加一种"经 MCP 的移动加改名"：alice 的 PAT 调 `move`，`from` 是一页的路径（不取附件：附件的 `to` 要以它的扩展名结尾），`to` 是一个随机的父页的路径加另一个标题（与 REST 的改名同取 `revertTitles()`）与 `.md`；`change` 只把 HTTP 409 当作跳过（`:163`），而 MCP 的拒绝是带码的 HTTP 200，所以 `page.title_taken`、`page.cycle`、`page.too_deep` 记作跳过，`changed: false`（同一个父页、同一个标题）记作没有改动（设计审查的复核 B 的 BC-N4）；从新到旧连续撤销之后照旧等于之前。
+  - 撤销的性质测试（`bootstrap/revert_property_test.go:76-170`，操作在 `:94-162`）的操作加一种"经 MCP 的移动加改名"：alice 的 PAT 调 `move`，`from` 是一页的路径（不取附件：附件的 `to` 要以它的扩展名结尾），`to` 是一个随机的父页的路径加另一个标题（与 REST 的改名同取 `revertTitles()`）与 `.md`；`change` 只把 HTTP 409 当作跳过（`:163`），而 MCP 的拒绝是带码的 HTTP 200，所以 `page.title_taken`、`page.cycle`、`page.too_deep` 记作跳过，`changed: false`（同一个父页、同一个标题）记作没有改动（设计审查的复核 B 的 BC-N4）；从新到旧连续撤销之后照旧等于之前。这些种子合起来至少撤销一次 agent 的移动：种子 1–4 里 agent 各移动 3、2、1、3 次，撤销碰到 agent 的变更集的各是 0、0、1、1 次（种子固定，结果确定，一次都不碰就失败，"no seed reverted an agent's move"）；一个种子跑完才计数，`-short` 下 pgtest 跳过的不算（S1 的修复第一轮，实施者自己找到的：原来在种子开头就计数，`go test -short` 下四个都计、没有一个撤销，这条断言从 `880757c0` 起在 `-short` 下失败）。搜索的性质测试 `TestTheSearchIndexIsItsRebuild` 建同一个世界（`newRevertWorld`），也经 MCP 移动（S1 实施时定下）。
 
 ### 3.6 S1：编辑锁对 MCP 删除的规则
 
@@ -609,9 +639,19 @@ func (p NodePaths) Paths(ctx context.Context, notebookID uuid.UUID, ids []uuid.U
 // found from the root (M9 design 4.10): the leaf when it is there, else
 // the segments to create, from the first missing one. 422 on field: a
 // found node before the last segment that is an attachment, or a missing
-// ancestor ending with .md; 409 page.too_deep for a path of more than
-// MaxDepth pages.
+// ancestor ending with .md (MissingAncestors); 409 page.title_taken
+// (*PathTaken) for an attachment that holds the leaf's name, and
+// page.too_deep for a path of more than MaxDepth pages.
 func CreationOf(field string, path Path, found []Node) (Creation, error)
+
+// MissingAncestors is 422 on field when an ancestor of path that Walk did
+// not find, from the found-th segment on, ends with .md: an ancestor is
+// written by its title, and a page titled A.md is found by its title, so
+// is no missing one. write's creation and move's parent both ask it, so
+// that the mistake of a parent written as a page's path gets one answer,
+// and not move's 404 with its hint to write the parent first (M9/P2 S1
+// review B-N2).
+func MissingAncestors(field string, path Path, found int) error
 
 // MoveKinds is 422 on to when from and to are not of one kind: a page's
 // path to a page's, an attachment's to an attachment's.
@@ -622,9 +662,9 @@ func MoveKinds(from, to Path) error
 func DeletionOf(sub Subtree, recursive bool) error
 ```
 
-  `write` 的叶子是页还是附件、内容同不同（3.8.1 第 3.4 步）要读正文的哈希，在用例里；`to` 的父页链的附件由 `Walk` 的 `AttachmentOnPath` 给出，`RelocatePath` 照 `to` 的字段换成 422。`steps_test.go` 的表格测试每条规则一行，P3 的计划测试照用。
+  `write` 的叶子是附件时的 409 在 `CreationOf` 里（叶子的类型是一步的规则，S1 实施时从用例挪来）；是页时内容同不同（3.8.1 第 3.4 步）要读正文的哈希，在用例里。`to` 的父页链的附件由 `Walk` 的 `AttachmentOnPath` 给出，`RelocatePath` 照 `to` 的字段换成 422；缺的父段以 `.md` 结尾时它与 `write` 一样问 `MissingAncestors`（3.8.3 第 6.2 步）。`steps_test.go` 的表格测试每条规则一行（`TestCreationOf` 另有缺的祖先之后再一个以 `.md` 结尾的一行，第 3 段：S1 修复第二轮，审查 B2-N2），P3 的计划测试照用。
 - **客户端**：适配器交 `domain.MCPClient(Call.Client)`；`Options{UpdateLinks: true}`，只有 `move` 由参数定。
-- **锁的拒绝的路径**：`Run` 以 `page.locked` 或 `linking.pages_locked` 失败时，以及 `edit` 的锁的预检拒绝时（它在 `Run` 之前，3.8.2 第 4.6 步：调用之前就开着的编辑器是最常见的一种，设计审查 A-M4、B-M2、C-M9），用例在单元之外、不加锁地以 `NodePaths.Paths` 读这些页现在的路径（至多 `domain.MaxNamedLocks` = 20 个，按错误里的次序），以 `domain.LockPaths{Err, Paths}` 包着交给适配器（3.8.5）；读不到的（其间被删了）没有路径。这次读本身失败时（ctx 结束、连接池出错）记 warn"lock paths not read"（带错误与页数），答 `LockPaths{Err, Paths: nil}`：每个路径为 null，拒绝照旧是 `page.locked`、带持锁人与"是你"，不变成 `internal_error`，也不丢掉文字。
+- **锁的拒绝的路径**：`Run` 以 `page.locked` 或 `linking.pages_locked` 失败时，以及 `edit` 的锁的预检拒绝时（它在 `Run` 之前，3.8.2 第 4.6 步：调用之前就开着的编辑器是最常见的一种，设计审查 A-M4、B-M2、C-M9），用例在单元之外、不加锁地以 `NodePaths.Paths` 读这些页现在的路径（至多 `domain.MaxNamedLocks` = 20 个，按错误里的次序），以 `domain.LockPaths{Err, Paths}` 包着交给适配器（3.8.5）；读不到的（其间被删了）没有路径。读在 `Execute` 里、单元回滚之后，`WritePath` 与 `EditPage` 另在放回解析的预算之后，慢的读从不占着预算（`withLockPaths`，`page/app/path_writes.go`，以错误的 `Lock`、`Locks` 成员认出锁的拒绝；S1 实施时定下）。这次读本身失败时（ctx 结束、连接池出错）记 warn"lock paths not read"（带错误与页数），答 `LockPaths{Err, Paths: nil}`：每个路径为 null，拒绝照旧是 `page.locked`、带持锁人与"是你"，不变成 `internal_error`，也不丢掉文字。
 - **日志**：照 REST 的 `logged(o, n, client)`（`page/app/create_page.go:61-69`：工作区、笔记本、节点、变更集、执行者与客户端的 id），什么都没写时不记，从不记路径与标题（3.14）。
 
 #### 3.8.1 `WritePath`
@@ -677,9 +717,9 @@ func (w *WritePath) Execute(ctx context.Context, notebookID uuid.UUID, p PathWri
    2. `parser.Decided(ctx, p.Content)`：503（解析的预算，单元之前取，13.1 第 19 条）；`defer release()`。空的父页的提取结果是 `parser.Decided(ctx, "")`（空的正文不取预算，`page/app/content.go:55-58`）。
    3. `Run(UnitSpec{NotebookID, Action: ActionCreate, Tree: true, Client, Options{UpdateLinks: true}, NotFound: ErrNotebookNotFound}, do)`，`do` 里：
       1. `found := paths.Walk(ctx, notebookID, path.Keys)`。
-      2. `domain.CreationOf("path", path, found)`：路过的附件答 422 `path` `not_allowed`："segment N is an attachment, which holds no pages"；缺的祖先（`found` 之后、最后一段之前的每一段）以 `.md` 结尾（ASCII 不区分大小写）时答 422 `path` `not_allowed`："segment N ends with .md: an ancestor is written by its title, without .md"（00 号文档 4.10；有一页就叫 `A.md` 时它在 `found` 里，不补建）；`len(path.Keys) > domain.MaxDepth`：409 `page.too_deep`（一页的层数就是它的段数，`page/domain/node.go:22-23`；先于写任何东西）。
+      2. `domain.CreationOf("path", path, found)`：路过的附件答 422 `path` `not_allowed`："segment N is an attachment, which holds no pages"；缺的祖先（`found` 之后、最后一段之前的每一段）以 `.md` 结尾（ASCII 不区分大小写）时答 422 `path` `not_allowed`："segment N ends with .md: an ancestor is written by its title, without .md"（00 号文档 4.10；有一页就叫 `A.md` 时它在 `found` 里，不补建）；`len(path.Keys) > domain.MaxDepth`：409 `page.too_deep`（一页的层数就是它的段数，`page/domain/node.go:22-23`；先于写任何东西）。叶子在而是附件时它答 409 `page.title_taken`（`PathTaken{Path, Asset: true}`：叶子的类型是一步的规则，S1 实施时从第 4 步挪进 `CreationOf`）。
       3. （同上）。
-      4. 叶子已在（`Creation` 给出它）：是页时以 `Nodes.LockContent` 读它的哈希与字节数（改树的单元里锁正文行无害），与 `p.Content` 的 SHA-256 与长度都相同就什么也不写，答它的版本令牌；不同答 409 `page.title_taken`（`domain.PathTaken{Path, Asset: false}`）；是附件答 409 `PathTaken{Asset: true}`。撞名不加序号（与导入不同）。
+      4. 叶子已在（`Creation` 给出它）：是页时以 `Nodes.LockContent` 读它的哈希与字节数（改树的单元里锁正文行无害），与 `p.Content` 的 SHA-256 与长度都相同就什么也不写，答它的版本令牌；不同答 409 `page.title_taken`（`domain.PathTaken{Path, Asset: false}`）（是附件的已在第 2 步答 409）。撞名不加序号（与导入不同）。
       5. 从第一个缺的段起，依次 `u.CreatePage(ctx, PageDraft{ParentID: 上一个, Title: path.Titles[i], Content: "", Facts: 空的})`（最后，`Position{}`），叶子带 `p.Content` 与它的提取结果；每个照常经守卫（新建放行）、条目、版本（`base_revision` 为空、版本号 1）、参与者（新建不改写，`linking/domain/change.go:68-72`）。一个变更集、一个时刻、一次 `pages` 事件。`CreatePage` 自己的检查（标题、父页、名称、层级，`unit_create.go:28-53`）在这里都不会答：段已查过、父页刚找到或刚建、名称在锁下是空的、层级已比过。
 4. **覆盖**（有 `Base`）：
    1. `decideNotebook(ActionRead)`：`notebook.not_found`。
@@ -784,7 +824,7 @@ func (m *RelocatePath) Execute(ctx context.Context, notebookID uuid.UUID, p Path
 5. 动作：`to` 的父段的键与 `from` 的父段的键相同（同一个父节点）是 `ActionRename`，否则 `ActionMove`（两者都是写者，`access/domain/rules.go`）；`decideNotebook(动作)`：403。键相同就是同一个父节点：锁下按路径找到的父节点唯一。
 6. `Run(UnitSpec{NotebookID, Action: 动作, Tree: true, Client, Options{UpdateLinks: p.UpdateLinks}, NotFound: ErrNotebookNotFound}, do)`，`do` 里：
    1. `paths.Find(from)`（锁下）：`page.not_found`。
-   2. `to` 的父页链：一段的 `to` 是根；否则 `paths.Walk(to.Keys[:n-1])`，第一个不成的段决定（`Walk` 停在那里，3.7；设计审查的复核 B 的 BC-N6）：缺的答 `page.not_found`（`PathNotFound{Path: to 的父页的路径, Hint: domain.MoveParentHint}`："move creates no parent pages: write the parent first, or move to an existing page's path"）；路过的附件、或父段本身是附件，答 422 `to` `not_allowed`："segment N is an attachment, which holds no nodes"。所以 `A/img.png/missing/y.md` 是 422（`AttachmentOnPath{2}`），`A/missing/img.png/y.md` 是 404。
+   2. `to` 的父页链：一段的 `to` 是根；否则 `paths.Walk(to.Keys[:n-1])`，第一个不成的段决定（`Walk` 停在那里，3.7；设计审查的复核 B 的 BC-N6）：缺的答 `page.not_found`（`PathNotFound{Path: to 的父页的路径, Hint: domain.MoveParentHint, ParentOf: "to"}`："move creates no parent pages: write the parent first, or move to an existing page's path"），除非从第一个缺的段起有一个父段以 `.md` 结尾（不论大小写）：那是父页写成了页的路径（`to: "B.md/x.md"`，B 是页），照提示写会在根下建一页叫 `B.md`，所以答 `write` 那样的 422 `to` `not_allowed`："segment N ends with .md: an ancestor is written by its title, without .md"（`domain.MissingAncestors`，与 `CreationOf` 共用；一页就叫 `B.md` 时它按标题找到、是父页，`B.md/missing/x.md` 是 `B.md/missing.md` 的 404；S1 审查 B-N2，主持者的决定）；路过的附件、或父段本身是附件，答 422 `to` `not_allowed`："segment N is an attachment, which holds no nodes"。所以 `A/img.png/missing/y.md` 是 422（`AttachmentOnPath{2}`），`A/missing/img.png/y.md` 是 404。
    3. `u.Relocate(ctx, from 的节点, Placement{ParentID: 父页, Name: to 的最后一段的标题或名称, Field: "to"})`（3.5.1）：422 `to`（附件改名去掉了扩展名等）→ 409 `page.cycle`、`page.title_taken`、`page.too_deep`。`page.title_taken` 是 `Relocate` 答的 `*domain.PathTaken{Asset}`（占着的兄弟的类型，取自它读过的兄弟），用例填上 `Path: to`：文字说 `to` 是完整的新路径。只改大小写的 `a/x.md → a/X.md` 在 `to` 按键找到的就是这个节点，不算撞名；`a/x.md → b/X.md` 换了父节点，在新的兄弟里看（`b` 下有 `x` 就撞）。
    4. 参与者（改写链接，只在 `UpdateLinks`）：预检的 `linking.pages_locked`（要改写的页被编辑，本人的也算）→ 解析的 503（单元里不排队地取预算，`linking/app/rewrite.go:236`）→ 写回时守卫的 `page.locked` 换成的 `linking.pages_locked`（`:147-161`）。`UpdateLinks` 为假时参与者什么都不做、也不预检锁（`rewrite.go:48-51`），所以被编辑的页不拒；观察者照样重新解析（`bootstrap/linking.go:25-38`），链接可能断开或指向别处（3.13.5）。
 7. 答复的路径：`to` 的父页链（找到的名称）加移动之后的节点，`domain.PathOf`。移到它已在的地方、名称不变：什么也不写，答原来的路径，`changeset_id` 为 null。
@@ -876,15 +916,15 @@ type Recursive struct{ Pages, Assets int }
 func LockedAll(holders []shared.LockHolder) error
 ```
 
-`PathTaken`、`VersionMismatch`、`Recursive` 的 `Error()` 是被包着的码的说明（同 `PathNotFound`，`page/domain/path.go:115-121`），`Unwrap()` 是 `ErrTitleTaken`、`ErrRevisionMismatch` 与 `recursive` 的 422（`shared.Invalid(FieldError{Field: "recursive", Code: required, Message: "must be true to delete a page with children: 3 pages and 2 attachments"})`，字段的消息不写路径，3.10.3）；`LockPaths` 的 `Unwrap()` 是 `Err`。适配器以 `errors.As` 认出它们、读出计数（设计审查 A-M5：一个答错误的函数给不出计数）。`MaxNamedLocks` 与 `mcpserver.MaxErrorLocks` 相等由 page 的 `adapter/mcp` 的测试核对（page 的 domain 不导入 mcpserver）。
+`PathTaken`、`VersionMismatch`、`Recursive` 的 `Error()` 是被包着的码的说明（同 `PathNotFound`，`page/domain/path.go:115-121`），`Unwrap()` 是 `ErrTitleTaken`、`ErrRevisionMismatch` 与 `recursive` 的 422（`shared.Invalid(FieldError{Field: "recursive", Code: required, Message: "must be true to delete a page with children: 3 pages and 2 attachments"})`，字段的消息不写路径，3.10.3）；`LockPaths` 的 `Unwrap()` 是 `Err`。适配器以 `errors.As` 认出它们、读出计数（设计审查 A-M5：一个答错误的函数给不出计数）。`MaxNamedLocks` 与 `mcpserver.MaxErrorLocks` 相等由 page 的 `adapter/mcp` 的测试核对（page 的 domain 不导入 mcpserver）。P1 的 `PathNotFound` 加 `ParentOf`：`move` 的父页不在时是 `"to"`，文字写", to's parent"（3.11.5；S1 实施时定下）。
 
 #### 3.8.6 用例的测试
 
 `page/app` 的表格测试（替身的端口，照 P1 的 `ReadPath` 的测试）：每个用例的每一步各一行，按次序：前一步的错误挡住后一步（例如没有笔记本时坏的令牌仍是 422、看不到的笔记本里不存在的路径是 `notebook.not_found`、读者对不存在的路径是 `page.not_found` 而对存在的是 403、`edit` 的读者对不匹配的 `old_string` 是 403）。另有：
 
-- `write`：建三层（两个缺的祖先）是一个单元、一个变更集，`Created` 从根往下；已有的父页按库里的大小写给出路径；内容相同答未改动、不建变更集；令牌的节点不同、版本号过时、两者都对而内容相同（未改动）；祖先以 `.md` 结尾而缺（422）与它已在（找到）；路过附件；11 段（409）；叶子是附件（409，`Asset`）。
-- `edit`：唯一、多处、`replace_all`、CRLF（3.9）；预检的锁（不占解析的预算，拒绝带这一页的路径）；第一次单元里版本号变了而第二次成（`Redone`，替身的 `PageContent` 读了两次）；两次都变（`KeptChanging`）；有 `Base` 时单元里版本号变了：409 `Changed`、`PageContent` 只读了一次（不重做，6.3 第 22 条）；单元里路径换了节点（重做，第二次在新的节点上，`old_string` 不在里面答 422）；读与单元之间别人的写恰好写成替换的结果（`changed` 为假）。
-- `move`：同一父节点的改名（`node.rename`）、换父节点（`node.move`）、两者、只改大小写、跨父节点只改大小写、附件换扩展名（成）与去掉扩展名（422）、`to` 的父页缺（提示）、穿过附件、第一个不成的段决定（`A/img.png/missing/y.md` 是 422、`A/missing/img.png/y.md` 是 404）、类型不同、`to` 被页占与被附件占（`PathTaken` 的 `Asset` 与 `Path`）、环、太深；`UpdateLinks` 交到 `UnitSpec.Options`（替身的参与者看到它）。
+- `write`：建三层（两个缺的祖先）是一个单元、一个变更集，`Created` 从根往下；已有的父页按库里的大小写给出路径；内容相同答未改动、不建变更集；令牌的节点不同、版本号过时、两者都对而内容相同（未改动）；祖先以 `.md` 结尾而缺（422）与它已在（找到）；路过附件；11 段（409）；叶子是附件（409，`Asset`）；同样长而内容不同的页（`TestWritePathAtAPageThere` 的 `"# Guidf\n"` 盖 `"# Guide\n"`：409 `page.title_taken`，只比大小的写法在这里失败，S1 审查 C-M3）。
+- `edit`：唯一、多处、`replace_all`、CRLF（3.9）；预检的锁（不占解析的预算，拒绝带这一页的路径）；第一次单元里版本号变了而第二次成（`Redone`，替身的 `PageContent` 读了两次）；两次都变（`KeptChanging`）；有 `Base` 时单元里版本号变了：409 `Changed`、`PageContent` 只读了一次（不重做，6.3 第 22 条）；单元里路径换了节点（重做，第二次在新的节点上，`old_string` 不在里面答 422）；读与单元之间别人的写恰好写成替换的结果（`changed` 为假）；读与单元之间（预检、解析的预算、单元的开始与按路径找）别人的写：`TestEditPageChecksItsWriteAgainstItsRead` 的替身在单元的按路径找时写这一页，不带令牌的从读起重做、在新的正文上成，带令牌的答 409 `Changed`、什么都不写，接在第一次的冲突之后、重做也撞上的答 409 `KeptChanging`（单元的 `Base` 是它读到的版本号，不是单元里读的：S1 审查 C-M5）。
+- `move`：同一父节点的改名（`node.rename`）、换父节点（`node.move`）、两者、只改大小写、跨父节点只改大小写、附件换扩展名（成）与去掉扩展名（422）、`to` 的父页缺（提示）、穿过附件、第一个不成的段决定（`A/img.png/missing/y.md` 是 422、`A/missing/img.png/y.md` 是 404）、类型不同、`to` 被页占与被附件占（`PathTaken` 的 `Asset` 与 `Path`）、环、太深；`UpdateLinks` 交到 `UnitSpec.Options`（替身的参与者看到它）；`to` 的父页写成页的路径（`B.md/x.md`，B 是页）与它的大小写（`B/missing.MD/x.md`）、缺的段之后再一个以 `.md` 结尾的（`C/D.md/x.md`，C 缺）都是 422 `to`，一页就叫 `B.md` 时 `B.md/missing/x.md` 是 404（`TestRelocatePathRefuses`，核对消息；S1 审查 B-N2、B2-N2）。
 - `delete`：单个页、单个附件、有子节点而没有 `recursive`（`*domain.Recursive` 的计数）、带它；`MCP` 的客户端交到守卫（替身的守卫看到 `Write.Client`）。
 - 锁的拒绝的路径：`Run` 的拒绝、`edit` 的预检的拒绝都带路径；`PathsOf` 失败时拒绝照旧是 `page.locked`、`Paths` 为 nil、记一行 warn（替身的 `PathStore` 答错误）。
 
@@ -903,7 +943,8 @@ const MaxEditOldBytes = 1 << 20
 func CheckEdit(old, new string) error
 
 // Replacement is an edit's content: the page's with old_string replaced,
-// how many times, and whether the two were matched as CRLF.
+// how many times, and whether the CRLF rule took the two strings' bare
+// LFs as CRLF.
 type Replacement struct {
 	Content string
 	Count   int
@@ -913,18 +954,30 @@ type Replacement struct {
 // Replace replaces old with new in content, byte for byte (M9 design
 // 4.10): once, when old occurs once (a second occurrence, overlapping or
 // not, makes it ambiguous), or each occurrence with all, left to right as
-// strings.ReplaceAll does. When old does not occur, content's line breaks
-// are all CRLF and old's are bare LF, both are matched and written with
-// each bare LF made CRLF. 422 on old_string when old does not occur
-// (hinting when it would under NFC) or occurs more than once without all;
-// on new_string when the content would pass MaxContentBytes, which it
-// knows before it builds it. Every search is the matcher's: linear in the
-// content and old, whatever their bytes.
+// strings.ReplaceAll does. The CRLF rule: when content's line breaks are
+// all CRLF and old has no CR, each bare LF of old and of new is made CRLF,
+// before any search. old is then matched as CRLF only: as it is, it could
+// match only by its first byte, a LF, inside a CRLF, which a new_string of
+// bare LFs or none would leave mixed or a lone CR (M9/P2 S1 review B-M1);
+// its occurrences as CRLF are those, each a CR longer, and an old without
+// a LF is the same bytes either way. new is written as CRLF whatever old
+// holds, a CR in it kept: models drop \r in new_string as in old_string,
+// and so the page stays all CRLF under every edit made without a CR,
+// while it keeps a line break (M9/P2 S1 fix round 2, B2-M1; B3-N1: an
+// edit that removes its last one leaves no rule). An old with a CR is
+// matched, and new written, as given: old "\r\n" and new "\n" with all
+// turn a page to LF.
+// 422 on old_string when old does not occur (hinting when it would under
+// NFC) or occurs more than once without all; on new_string when the
+// content would pass MaxContentBytes, which it knows before it builds it.
+// Every search is the matcher's: linear in the content and old, whatever
+// their bytes. old is not empty: CheckEdit checks it first.
 func Replace(content, old, new string, all bool) (Replacement, error)
 
 // matcher finds a pattern in a text in time linear in both, whatever their
 // bytes (Knuth–Morris–Pratt): the one search Replace makes, for finding,
-// counting and replacing, and for the CRLF and NFC retries.
+// counting and replacing, of the strings as given or as CRLF, and for the
+// NFC retry.
 // strings.Index is never given an agent's pattern: past bytealg.MaxLen it
 // is Rabin–Karp, quadratic for a crafted one (M9/P2 design review B-I2).
 type matcher struct {
@@ -942,15 +995,15 @@ func (m matcher) index(s string, from int) int
 ```
 
 - **`CheckEdit` 的码**：`old_string` 空：`too_short` "must not be empty"；过 1 MiB：`too_long` "must be at most 1 MiB (1,048,576 bytes)"；`new_string` 过 5 MiB：`too_long`（`CheckContent` 的文字）；不是 UTF-8 或带 NUL：`invalid_format`（同 `CheckContent`）；两者相同：`new_string` `not_allowed` "must differ from old_string"。都不复述取值。
-- **匹配**：`m := newMatcher(old)`，`i := m.index(content, 0)`。没有：页的换行全是 `\r\n`（至少一个 `\r\n`，每个 `\n` 前面都是 `\r`）、`old` 里有 `\n` 而没有 `\r` 时，把 `old` 与 `new` 里单独的 `\n`（前面不是 `\r` 的）换成 `\r\n`，以换过的 `old` 建一个新的匹配器再找一次（`CRLF` 为真；混用两种换行的页不这样做，00 号文档 4.10）。还没有：`old_string` `not_allowed` "is not in the page: copy it from what read gave, byte for byte"；页或 `old` 不是 NFC（`norm.NFC.IsNormalString`）而两者的 NFC 以同一种匹配器配得上时另加 "; the page's text and old_string differ in Unicode normalization (NFC)"。BOM 是正文的字节，照原样。
+- **匹配**：CRLF 的规则在前：页的换行全是 `\r\n`（至少一个 `\r\n`，每个 `\n` 前面都是 `\r`）、`old` 里没有 `\r` 时，在任何查找之前把 `old` 与 `new` 里单独的 `\n`（前面不是 `\r` 的）换成 `\r\n`（`CRLF` 为真）：`old` 只照换过的找，原样只会靠开头的 `\n` 在一个 CRLF 里配上（S1 审查 B-M1），`new` 不论 `old` 有没有 `\n` 都照换过的写，它里面的 `\r` 照留（S1 修复第二轮，审查 B2-M1）；`old` 里有 `\r`、混用两种换行的页与没有换行的页照原样（00 号文档 4.10）。然后 `m := newMatcher(old)`，`i := m.index(content, 0)`。没有：`old_string` `not_allowed` "is not in the page: copy it from what read gave, byte for byte"；页或 `old` 不是 NFC（`norm.NFC.IsNormalString`）而两者的 NFC 以同一种匹配器配得上时另加 "; the page's text and old_string differ in Unicode normalization (NFC)"。BOM 是正文的字节，照原样。
 - **唯一**：不带 `all` 时 `m.index(content, i+1)`（重叠的也找得到：`aa` 在 `aaa` 里是两处）；有就是 `old_string` `not_allowed` "is found N times; add context to make it unique, or set replace_all"，N 是不重叠的计数与 2 中较大的。**计数**是 `for j := m.index(s, 0); j >= 0; j = m.index(s, j+len(old))`：从左到右、不重叠，同 `strings.Count` 与 Claude Code 的 `replace_all`；每次从上一处的末尾接着扫，扫过的范围互不重叠，合起来至多 2n 次比较（唯一的检查从 i+1 再扫，至多多扫 `len(old)` 个字节）；带 `all` 时次数是它，替换以同样的循环拼出（`strings.Builder` 先 `Grow` 到算好的大小，不存每一处的位置）。
-- **大小**：`len(content) + count*(len(new)-len(old))` 过 `MaxContentBytes` 时答 `new_string` `too_long` "would make the page longer than 5 MiB (5,242,880 bytes)"，不先拼出来；CRLF 的规则之下以换过的两个串算（设计审查 B-N2）。
-- **只有匹配器拿 agent 的串作模式**：找、切与换的一族都不收 `old` 或它的 CRLF、NFC 的形式。一族是 `strings` 与 `bytes` 里名字以 `Index`、`LastIndex`、`Contains`、`Count`、`Cut`、`Split`、`Replace` 起头的、`NewReplacer` 与 `Trim`、`TrimLeft`、`TrimRight`（cutset 不是 ASCII 时每个字节查一遍 cutset），加 `regexp` 的 `Compile`、`MustCompile`、`CompilePOSIX`、`MustCompilePOSIX`、`Match`、`MatchString`、`MatchReader`：模式就是程序，`regexp.MustCompile(regexp.QuoteMeta(old))` 是 O(n·k)，1 MiB 的 `a` 的页上 1,000 个 `a` 加 `b` 的 `old` 4.8 秒（设计审查的第二次复核 B 实测，`review-B/check/kmp/zz_b4_test.go`）。`TestReplaceSearchesOnlyWithItsMatcher` 以 `go/parser` 读 `old_string` 经过的三个包（page 的 `adapter/mcp`、`page/app`、`page/domain`）的每个非测试文件，不只是 `edit.go`：放在别的文件里的再找的帮助函数也读得到。包按每个文件的导入路径认：别名（`import s "strings"` 之后的 `s.Index`）与点导入（不带前缀的 `Index`）都算。这一族的调用，模式的实参（`Index` 的第二个、`Replace` 的 `old`、`NewReplacer` 的每个旧串、`Trim` 的 cutset、`regexp` 的模式……）都是至多 32 字节的字面量（字符串、字符、数，或字面量的 `[]byte(...)`；任何找法每扫一个字节至多比模式那么多次，32 次之内是线性的）的照用；别的都要在一张明确的表里（`allowedSearches`：文件、所在的函数、调用的源码与理由），否则测试失败；这一族的函数不作调用的函数而被引用的（`f := strings.Index`、当作值传出去）同样要在表里；表里的一项对不上任何调用也失败，不留过时的项（设计审查的复核 B 的 BC-M1，主持者的决定；第二次复核 B 的 CN-1）。S1 时表里八项，照 S1 改过之后的源码写（照今天的源码写的项到 S1 就对不上，测试失败；第二次复核 B 的 CN-4），理由照括号里的写：匹配器在没有配上前缀时跳过不可能起头的字节的 `strings.IndexByte(s[i:], m.p[0])`（模式的一个字节，线性的；照实际的源码写）；`Client.Valid` 的 `strings.CutPrefix(string(c), mcpPrefix)`（4 字节的常量）与 `strings.ContainsFunc(name, shared.Unshowable)`（一个函数），都是 3.3.1 写的；`ParseGlob` 的 `strings.ContainsFunc(seg, func…)`（`glob.go:114`）与 `lexemes.scan` 的 `strings.IndexFunc(s[i:], func…)`（`search.go:304`），模式是一个函数；`inDataURL` 的 `strings.ContainsRune(…, r)`（在一个七个字节的常量里找一个字符，`search.go:345`）；`parseTerm` 与 `SearchQuery.InContents` 的 `regexp.MustCompile(t.pattern(syntaxRE2, …))`（`search.go:547`、`:580`，M8 的搜索的词，查询至多 `MaxSearchQueryBytes` = 256 字节）。三个包今天别的这一族的调用都以短的字面量作模式（`glob.go`、`path.go` 的 `"/"`，`read.go` 的换行，`content.go`、`changeset.go` 的 0……，最长的是 `client.go` 的 4 字节的 `"mcp:"`，S1 起是 `mcpPrefix`）；page 的 `adapter/mcp` 与 `page/app` 没有这一族的调用，三个包都没有别名、点导入或当作值的引用（第二次复核 B 扫过，`review-B/check2/scan/`）。它的反向对照：合成的源码里，另一个文件的帮助函数的 `strings.LastIndex(content, old)`、以参数作分隔的 `bytes.SplitN(b, sep, 2)`、`strings.NewReplacer(old, new)`、`strings.CutPrefix(s, p)`、`regexp.MustCompile(regexp.QuoteMeta(old))`、`import s "strings"` 之后的 `s.Index(content, old)`、点导入的 `bytes` 的 `Index(b, sep)`、`f := strings.Index` 与一个 33 字节的字面量的模式各被报出；表里有的照用；表里多一项而源码里没有的被报出。时间的守卫另以构造的形状核对每一处的找法，含 CRLF 与 NFC 的再找（下面）。
+- **大小**：`len(content) + count*(len(new)-len(old))` 过 `MaxContentBytes` 时答 `new_string` `too_long` "would make the page longer than 5 MiB (5,242,880 bytes)"，不先拼出来；CRLF 的规则之下以换过的两个串算（设计审查 B-N2；不带 `\n` 的 `old_string` 也以换过的 `new_string` 算，S1 修复第二轮）。
+- **只有匹配器拿 agent 的串作模式**：找、切与换的一族都不收 `old` 或它的 CRLF、NFC 的形式。一族是 `strings` 与 `bytes` 里名字以 `Index`、`LastIndex`、`Contains`、`Count`、`Cut`、`Split`、`Replace` 起头的、`NewReplacer` 与 `Trim`、`TrimLeft`、`TrimRight`（cutset 不是 ASCII 时每个字节查一遍 cutset），加 `regexp` 的 `Compile`、`MustCompile`、`CompilePOSIX`、`MustCompilePOSIX`、`Match`、`MatchString`、`MatchReader`：模式就是程序，`regexp.MustCompile(regexp.QuoteMeta(old))` 是 O(n·k)，1 MiB 的 `a` 的页上 1,000 个 `a` 加 `b` 的 `old` 4.8 秒（设计审查的第二次复核 B 实测，`review-B/check/kmp/zz_b4_test.go`）。`TestReplaceSearchesOnlyWithItsMatcher` 以 `go/parser` 读 `old_string` 经过的三个包（page 的 `adapter/mcp`、`page/app`、`page/domain`）的每个非测试文件，不只是 `edit.go`：放在别的文件里的再找的帮助函数也读得到。包按每个文件的导入路径认：别名（`import s "strings"` 之后的 `s.Index`）与点导入（不带前缀的 `Index`）都算。这一族的调用，模式的实参（`Index` 的第二个、`Replace` 的 `old`、`NewReplacer` 的每个旧串、`Trim` 的 cutset、`regexp` 的模式……）都是至多 32 字节的字面量（字符串、字符、数，或字面量的 `[]byte(...)`；任何找法每扫一个字节至多比模式那么多次，32 次之内是线性的）的照用；别的都要在一张明确的表里（`allowedSearches`：文件、所在的函数、调用的源码与理由），否则测试失败；这一族的函数不作调用的函数而被引用的（`f := strings.Index`、当作值传出去）同样要在表里；表里的一项对不上任何调用也失败，不留过时的项（设计审查的复核 B 的 BC-M1，主持者的决定；第二次复核 B 的 CN-1）。S1 时表里八项，照 S1 改过之后的源码写（照今天的源码写的项到 S1 就对不上，测试失败；第二次复核 B 的 CN-4），理由照括号里的写：匹配器在没有配上前缀时跳过不可能起头的字节的 `strings.IndexByte(s[i:], m.p[0])`（模式的一个字节，线性的；照实际的源码写）；`Client.Valid` 的 `strings.CutPrefix(string(c), mcpPrefix)`（4 字节的常量）与 `strings.ContainsFunc(name, shared.Unshowable)`（一个函数），都是 3.3.1 写的；`ParseGlob` 的 `strings.ContainsFunc(seg, func…)`（`glob.go:114`）与 `lexemes.scan` 的 `strings.IndexFunc(s[i:], func…)`（`search.go:304`），模式是一个函数；`inDataURL` 的 `strings.ContainsRune(…, r)`（在一个七个字节的常量里找一个字符，`search.go:345`）；`parseTerm` 与 `SearchQuery.InContents` 的 `regexp.MustCompile(t.pattern(syntaxRE2, …))`（`search.go:547`、`:580`，M8 的搜索的词，查询至多 `MaxSearchQueryBytes` = 256 字节）。三个包今天别的这一族的调用都以短的字面量作模式（`glob.go`、`path.go` 的 `"/"`，`read.go` 的换行，`content.go`、`changeset.go` 的 0……，最长的是 `client.go` 的 4 字节的 `"mcp:"`，S1 起是 `mcpPrefix`）；page 的 `adapter/mcp` 与 `page/app` 没有这一族的调用，三个包都没有别名、点导入或当作值的引用（第二次复核 B 扫过，`review-B/check2/scan/`）。它的反向对照：合成的源码里，另一个文件的帮助函数的 `strings.LastIndex(content, old)`、以参数作分隔的 `bytes.SplitN(b, sep, 2)`、`strings.NewReplacer(old, new)`、`strings.CutPrefix(s, p)`、`regexp.MustCompile(regexp.QuoteMeta(old))`、`import s "strings"` 之后的 `s.Index(content, old)`、点导入的 `bytes` 的 `Index(b, sep)`、`f := strings.Index` 与一个 33 字节的字面量的模式各被报出；表里有的照用；表里多一项而源码里没有的被报出。时间的守卫另以构造的形状核对每一处的找法，含 CRLF 的规则与 NFC 的再找（下面）。
 - **与 Claude Code 的 Edit 不同的**（写进工具的说明，人工清单核对，00 号文档 4.16）：它把弯引号与直引号互相匹配、`new_string` 为空时连 `old_string` 之后的换行一起删；这里只按字节。唯一按"有没有第二处"判断，比它按不重叠的计数严。
 - **CRLF 的规则把两个串变成同一个**（`old` 是 `a\n`、`new` 是 `a\r\n`，页全是 CRLF）：替换之后的正文等于原来的，`WriteContent` 什么也不写，答复 `changed: false`、`changeset_id` 为 null。
-- **正确**：`TestTheMatcherIsStrings`（`edit_test.go`）：10 万个随机的（正文至多 40 字节、模式至多 6 字节，字母表 `ab`、`abc`、`a\r\n`、`aé`）：`index`（从 0 与随机的起点）、计数、全部替换等于 `strings.Index`、`Count`、`ReplaceAll`（只在测试里作预言）；`Replace` 的唯一、多处（含重叠）、CRLF 的再找与 `replace_all` 等于逐个位置比较的预言。草稿区的实验上 257,204 例都相同（`scratchpad/m9/p2/exp/kmp`；复核 B 以更宽的字母表与起点另跑 376,287 例，也都相同）。`edit_test.go` 另有（设计审查的复核 B 的 BC-N5）：**CRLF 的大小一行**：全是 CRLF 的页里有 `a\r\nb`，`old_string` 是 `a\nb`（LF 的两边有字：单独一个 `\n` 在页的每个 CRLF 里都找得到，第一次就找到、走不到 CRLF 的规则，设计审查的第二次复核 B 的 CN-3），`new_string` 带几个单独的 LF，页的长短取得让 `new_string` 换成 CRLF 之后页过 5 MiB、不换时恰好不过：答 `new_string` `too_long`（以换过的两个串算；变异 59 以没换的两个串算就不答）；**NFC 的提示两行**：页与 `old_string` 的 NFC 配得上时文字带提示，配不上时不带。
+- **正确**：`TestTheMatcherIsStrings`（`edit_test.go`）：10 万个随机的（正文至多 40 字节、模式至多 6 字节，字母表 `ab`、`abc`、`a\r\n`、`aé`，与 `e` 加 U+0301 的字节：NFC 的提示也在差分里，S1 实施时加的）：`index`（从 0 与随机的起点）、计数、全部替换等于 `strings.Index`、`Count`、`ReplaceAll`（只在测试里作预言）；`Replace` 的唯一、多处（含重叠）、CRLF 的规则与 `replace_all` 等于逐个位置比较的预言（预言里 `new` 照 CRLF 写，不要 `old_string` 带 `\n`：S1 修复第二轮）。草稿区的实验上 257,204 例都相同（`scratchpad/m9/p2/exp/kmp`；复核 B 以更宽的字母表与起点另跑 376,287 例，也都相同）。`edit_test.go` 另有（设计审查的复核 B 的 BC-N5）：**CRLF 的大小一行**：全是 CRLF 的页里有 `a\r\nb`，`old_string` 是 `a\nb`，`new_string` 带几个单独的 LF，页的长短取得让 `new_string` 换成 CRLF 之后页过 5 MiB、不换时恰好不过：答 `new_string` `too_long`（以换过的两个串算；变异 59 以没换的两个串算就不答）；另一对是 `old_string` `b`（不带 LF）、`new_string` `x\ny\n`，以换过的 `new_string` 算：照 CRLF 过 5 MiB 两个字节时答 `too_long`（照原样算恰是 5 MiB），照 CRLF 恰是 5 MiB 时写成（S1 修复第二轮，B2-M1）；被拒的 8 MiB 的结果分配不到 1 MiB（S1 实施时加的：变异 20 之下守卫那一腿拼出约 5 TiB、在内存的上限处中止，不是守卫的断言）；**NFC 的提示两行**：页与 `old_string` 的 NFC 配得上时文字带提示，配不上时不带。`TestReplace` 另有 S1 审查 B-M1 的两行（全是 CRLF 的页 `"a\r\nb\r\n"` 上以单独的 LF 开头的 `old_string`：`"\nb"` → `"\nc\nd"`、`" b"`，照 CRLF 配上，页仍全是 CRLF）与修复第二轮的几行（3.21）。
 
-**代价与期限**（13.4 第 8 条；时间的守卫 `TestReplaceStaysWithinItsTime`，`page/domain/edit_cost_test.go`，`//go:build !race`，进 `make test-go-costs` 的 page/domain 一行，6.5）：每种形状跑一次、2 秒的时限，`-v` 打出每种的用时。本机实测（Apple M5 Max，负载 1.5–3.9，离线的 Go 实验 `scratchpad/m9/p2/exp/kmp`，KMP 的匹配器与 `Replace` 照本节写，不连库；每种取三次里最快的）：
+**代价与期限**（13.4 第 8 条；时间的守卫 `TestReplaceStaysWithinItsTime`，`page/domain/edit_cost_test.go`，`//go:build !race`，进 `make test-go-costs` 的 page/domain 一行，6.5）：每种形状跑一次、2 秒的时限，`-v` 打出每种的用时；`go test -short` 下跳过（S1 修复第二轮：`-short` 的各包同时跑，CPU 不是它的，6.5）。本机实测（Apple M5 Max，负载 1.5–3.9，离线的 Go 实验 `scratchpad/m9/p2/exp/kmp`，KMP 的匹配器与 `Replace` 照本节写，不连库；每种取三次里最快的）：
 
 | 形状（正文 5 MiB） | 答复 | 实测 |
 |---|---|---|
@@ -960,19 +1013,19 @@ func (m matcher) index(s string, from int) int
 | **B 的构造串**（`review-B/rk`：k 个 `a` 改三个字节，对 `primeRK` 让每个窗的 Rabin–Karp 的哈希都撞），120,000 字节、1 MiB | 没有 | 7.1–7.4 ms、9.0–9.1 ms（`strings.Index`：120 KB 9.85 秒，1 MiB 70.2 秒，B 与它的复核实测） |
 | B 的构造串在正文的两端各一次、中间每个窗都撞，3 万、12 万、1 MiB 字节，不带与带 `replace_all` | 找到 2 处；替换 2 处 | 11.5–16.2 ms（`strings.Index`、从 i+1 再找与 `strings.Count`：3 万字节就 3.01 秒） |
 | **NFC 的再找**：正文是 5 MiB − 3 字节的 `a` 加 `e` 与 U+0301（不是 NFC），`old` 是 B 的构造串（12 万字节） | 没有 | 16.6–17.9 ms（NFC 的再找改用 `strings.Contains`：3 万字节 1.64 秒、12 万字节 8.90 秒；复核 B 实测） |
-| **CRLF 的再找**：正文是一个 CRLF 加 5 MiB − 2 字节的 `a`，`old` 带一个单独的 LF，它的 CRLF 形式的哈希对 `primeRK` 解成与 m + 1 个 `a` 的相同（目标 84·b⁵ + 87·b⁴：CR 与 LF 在末尾往前第 5、4 个字节，`a` 减 CR 是 84、减 LF 是 87），12 万字节 | 没有 | 13.4–16.1 ms（CRLF 的再找改用 `strings.Index`：3 万字节 1.62 秒、12 万字节 9.00 秒；复核 B 实测） |
+| **CRLF 的规则**：正文是一个 CRLF 加 5 MiB − 2 字节的 `a`，`old` 带一个单独的 LF，它的 CRLF 形式的哈希对 `primeRK` 解成与 m + 1 个 `a` 的相同（目标 84·b⁵ + 87·b⁴：CR 与 LF 在末尾往前第 5、4 个字节，`a` 减 CR 是 84、减 LF 是 87），12 万字节 | 没有 | 13.4–16.1 ms（CRLF 的规则之下的查找改用 `strings.Index`：3 万字节 1.62 秒、12 万字节 9.00 秒；复核 B 实测） |
 | 深的回退链（`a` 重复，`old` 是 1,024 段 1,023 个 `a` 加 `b`；每种形状每扫一个字节至多比两次，一处最深的回退链来自 Fibonacci 串，设计审查的复核 B 的 BC-N5） | 没有 | 7.7–8.2 ms |
 | `a` 重复，`old` 是 `a`、`replace_all`（5,242,880 处） | 替换 | 73–74 ms |
 | `a` 重复，`old` 是 `a`、`new` 是 1 MiB、`replace_all`（拼出来约 5 TiB） | 422，大小先算出 | 35.7 ms（计数的一遍） |
-| `x\r\n` 重复，`old` 带单独的 `\n`：换成 CRLF 再找到（多处）；1 MiB 的单独 `\n` 的 `old`（没有） | 422；没有 | 30.2–30.5 ms；36.5–37.6 ms |
+| `x\r\n` 重复，`old` 带单独的 `\n`：换成 CRLF 找到（多处）；1 MiB 的单独 `\n` 的 `old`（没有） | 422；没有 | 30.2–30.5 ms；36.5–37.6 ms |
 | `e` 加 U+0301 重复（不是 NFC），`old` 没有：NFC 的提示 | 没有 | 113–118 ms |
 | U+1D160 重复（NFC 是它的三个字符，15 MiB），`old` 没有 | 没有 | 149–162 ms |
 | 韩文的组合字母（NFC 合成）；顺序不对的组合符号（NFC 重排） | 没有 | 75–85 ms |
-| 每一种再找都走一遍：CRLF 而不是 NFC 的页，1 MiB 的单独 `\n` 的 `old` 没有 | 没有 | 107 ms |
+| CRLF 的规则与 NFC 的再找都走一遍：CRLF 而不是 NFC 的页，1 MiB 的单独 `\n` 的 `old` 没有 | 没有 | 107 ms |
 
-- **线性**：同一个匹配器在 1、2.5、5、20 MiB 的正文上、对 12 万与 1 MiB 的构造串，每字节 1.05–1.30 ns，随长度成正比。一次调用至多八遍扫描：查找、第二处、计数、拼出；CRLF 的检查与再找；NFC 的检查、规整与再找。每遍对至多 15 MiB 的文字（NFC 至多放大 3 倍）线性；模式的表是每字节一个 `int32`：`old` 的 4 MiB、CRLF 的至多 8 MiB、NFC 的至多 12 MiB，连同规整过的正文，NFC 的提示那一路暂时多约 35 MiB（另外两条路至多 8 MiB），在请求体之外。
+- **线性**：同一个匹配器在 1、2.5、5、20 MiB 的正文上、对 12 万与 1 MiB 的构造串，每字节 1.05–1.30 ns，随长度成正比。一次调用至多八遍扫描：查找、第二处、计数、拼出；CRLF 的检查（`allCRLF`；规则之下只照换过的找）；NFC 的检查、规整与再找。每遍对至多 15 MiB 的文字（NFC 至多放大 3 倍）线性；模式的表是每字节一个 `int32`：`old` 的 4 MiB、CRLF 的至多 8 MiB、NFC 的至多 12 MiB，连同规整过的正文，NFC 的提示那一路暂时多约 35 MiB（另外两条路至多 8 MiB），在请求体之外。
 - **期限：输入的上限让匹配不必看 ctx**。最坏的一次调用本机约 0.16 秒（复核 B 另量了表外的三种：U+1D160 的 CRLF 页上 1 MiB 的单独 LF 的 `old`，两种再找与 NFC 的三倍都走，158.5 ms；5 MiB 的一个组合符号 69 ms；30 个一段、类别递减的组合符号 86 ms），重做一次（3.8.2 第 5 步）约 0.33 秒；CI 的 runner 慢 2.5–3 倍时约 1 秒。调用的期限是读完请求体之后的 `server.request_timeout` 15 秒（00 号文档 4.3），留着 15 倍以上，所以匹配器里不查 ctx（每 N 个字节查一次反而让最常见的情形变慢）；`Replace` 之后的下一步 `parser.Decided` 与 `Run` 都带 ctx，期限到了在那里停下。匹配在单元之前，不持任何锁、不占连接；大于 64 KiB 的调用另受大的请求体的名额管（3.2）。
-- 守卫的形状就是上表（B 的构造串在测试里以三个字节对 `primeRK` 解出，同 `review-B/rk`；CRLF 的那一种同样在测试里解出，照 `review-B/check/kmp/zz_b_test.go` 的 `craftedCRLF`），在 CI 上打出的值由实施者写进第 9 节。守卫先以 `go/parser` 读 `go env GOROOT` 之下的 `src/internal/bytealg/bytealg.go`，断言 `primeRK` 仍是 16777619（go1.27.1 的 `:33`）：换了它的工具链会让构造串悄悄变成普通的串，那时守卫失败、要重新解（复核 B 的可选的建议，采纳）。`Replace` 的任何一处（查找、计数、CRLF 与 NFC 的再找）若改用 `strings` 的查找，构造串的几种在守卫里就是几秒到几十秒，守卫失败（6.3 第 42、61、62 条）。解析在单元之前、有预算（13.1 第 19 条），不在这里算。
+- 守卫的形状就是上表（B 的构造串在测试里以三个字节对 `primeRK` 解出，同 `review-B/rk`；CRLF 的那一种同样在测试里解出，照 `review-B/check/kmp/zz_b_test.go` 的 `craftedCRLF`），在 CI 上打出的值在作业的日志里，要认证，没有记下（第 9 节）。守卫先以 `go/parser` 读 `go env GOROOT` 之下的 `src/internal/bytealg/bytealg.go`，断言 `primeRK` 仍是 16777619（go1.27.1 的 `:33`）：换了它的工具链会让构造串悄悄变成普通的串，那时守卫失败、要重新解（复核 B 的可选的建议，采纳）。`Replace` 的任何一处（查找、计数、CRLF 的规则之下的查找与 NFC 的再找）若改用 `strings` 的查找，构造串的几种在守卫里就是几秒到几十秒，守卫失败（6.3 第 42、61、62 条）。解析在单元之前、有预算（13.1 第 19 条），不在这里算。
 
 ### 3.10 S1：mcpserver 的错误
 
@@ -1034,12 +1087,12 @@ func ErrorAnswerBytes(err error) (code string, bytes int)
 
 #### 3.10.4 page 的 `adapter/mcp`：错误的写法
 
-`toolErr(err error, c mcpserver.Call) error`（`page/adapter/mcp/text.go`，今天只认 `PathNotFound`、以 `%q` 引路径）按错误的类型写，路径一律以 `"` 加路径加 `"` 写出（`domain.Quoted(path)`，在 `page/domain/path.go` 挨着提示；P1 的 `Nothing is at %q`（`text.go:22`）与四个提示（`PageHint`、`AttachmentHint`、`TitleHint`、`ChildrenHint`，`path.go:123-147`）同样改，设计审查 A-M2：`%q` 把标题里能有的 U+3000、U+00A0、U+200D、U+00AD 与私用区的字符写成 `\`、`u` 加四位的转义，文字就不再是路径）：
+`toolErr(err error, c mcpserver.Call, path string) error`（`page/adapter/mcp/text.go`，今天只认 `PathNotFound`、以 `%q` 引路径；`path` 是这次调用点名的路径，`Recursive` 与锁的文字引它：`write`、`edit`、`delete` 的 `path`，`move` 的 `from`，S1 实施时定下）按错误的类型写，路径一律以 `"` 加路径加 `"` 写出（`domain.Quoted(path)`，在 `page/domain/path.go` 挨着提示；P1 的 `Nothing is at %q`（`text.go:22`）与四个提示（`PageHint`、`AttachmentHint`、`TitleHint`、`ChildrenHint`，`path.go:123-147`）同样改，设计审查 A-M2：`%q` 把标题里能有的 U+3000、U+00A0、U+200D、U+00AD 与私用区的字符写成 `\`、`u` 加四位的转义，文字就不再是路径）：
 
 - `*domain.PathNotFound`：`Fit{N: 1}`：k = 1 带提示，k = 0 不带（P1 的工具同样经它，修正 2.1 第 4 条的那个超过；`list` 的 `ChildrenHint` 在 `PathNotFound` 里时同样）。
-- `*domain.PathTaken`、`*domain.VersionMismatch`、`*domain.Recursive`：`Text`（3.11.5 的文字）；`VersionMismatch` 另有 `Extra` 的 `current_version`，`Recursive` 的计数写进文字。
+- `*domain.VersionMismatch`、`*domain.Recursive`：`Text`（3.11.5 的文字）；`VersionMismatch` 另有 `Extra` 的 `current_version`，`Recursive` 的计数写进文字。`*domain.PathTaken` 由 `write` 与 `move` 各自的 `writeErr`、`moveErr` 照它们的工具写（3.11.5 的两种文字），别的错误它们交给 `toolErr`（S1 实施时定下）。
 - `*domain.LockPaths` 包着的 `page.locked`：只有一个锁（`write`、`edit`）时 `Fit{N: 1}`，`lock` 是 `{page_id, path, user_id, display_name, you}`，k = 0 时没有 `path`；MCP 的删除（`Locks` 多于零）时 `Fit{N: min(len(Locks), MaxErrorLocks)}`，`locks` 是前 k 项、各带 `path`（读不到的为 null），`lock` 是第一项而不带 `path`（它的路径在 `locks` 里，设计审查 A-N4），`locks_count` 是 `len(Locks)`。
-- `*domain.LockPaths` 包着的 `linking.pages_locked`：同删除的列表，没有 `lock`。
+- `*domain.LockPaths` 包着的 `linking.pages_locked`：同删除的列表，没有 `lock`。适配器不能导入 linking，所以 `lockErr` 这样分：有 `Locks` 的拒绝里，`errors.Is(err, domain.ErrLocked)` 的照删除的 `page.locked` 写，别的照 `linking.pages_locked` 写（S1 实施时定下）。
 - `you` 是 `holder.UserID == c.UserID`。
 - 别的错误照旧交给 mcpserver（`code: detail (fields)`）。
 
@@ -1059,7 +1112,7 @@ page 的 `adapter/mcp`（`text_test.go`）：每种错误的文字与结构（3.
 
 ### 3.11 S1：四个写的工具
 
-四个都在两个入口（`BothEntries`）、`Notebook: true`（账户入口另带 `notebook`，`mcpserver/tool.go:33-41`），处理函数调各自的用例、以 `domain.MCPClient(c.Client)` 交客户端、错误经 `toolErr(err, c)`（3.10.4）。输入的 Go 类型照 P1 的写法（必填的字段没有 `omitempty`；可选的是指针，`null` 当作没有，`mcpserver/schema.go:21-145`）；`jsonschema` 的标签就是 `tools.json` 的参数说明（3.18）。说明与标题都是英文（13.5 第 4 条）。
+四个都在两个入口（`BothEntries`）、`Notebook: true`（账户入口另带 `notebook`，`mcpserver/tool.go:33-41`），处理函数调各自的用例、以 `domain.MCPClient(c.Client)` 交客户端、错误经 `toolErr(err, c, path)`（`write`、`move` 经 `writeErr`、`moveErr`，3.10.4）；答复里只有 `write` 的 `created` 是列表、经 `Fit`（3.11.1），`edit`、`move`、`delete` 答普通的结构（S1 实施时定下）。输入的 Go 类型照 P1 的写法（必填的字段没有 `omitempty`；可选的是指针，`null` 当作没有，`mcpserver/schema.go:21-145`）；`jsonschema` 的标签就是 `tools.json` 的参数说明（3.18）。说明与标题都是英文（13.5 第 4 条）。
 
 | 工具 | 标题 | 注解 | 用例 |
 |---|---|---|---|
@@ -1183,9 +1236,9 @@ type deleteAnswer struct {
 | `page.locked` | `write`、`edit` 碰上别人的编辑器（`edit` 的预检与单元里的守卫同样） | `page.locked: "A/B.md" is being edited by Alice in the web editor; try again after they leave edit mode. The agent cannot take the lock over.` | `lock`：`{page_id, path, user_id, display_name, you: false}`（`Fit{N: 1}`：`path` 放不下时省去；路径读不到时为 null） |
 | `page.locked` | 同上，持锁人是调用者本人 | `page.locked: "A/B.md" is being edited by you, in a browser; try again after you leave edit mode. The agent cannot take the lock over.` | `lock` 同上，`you: true` |
 | `page.locked` | MCP 的删除碰上子树里的编辑器 | `page.locked: "A.md" has 2 pages being edited in the web editor, by Alice and by you, in a browser: deleting it would end their edits. Try again after they leave edit mode; the agent cannot take the locks over.` | `lock`（第一项，不带 `path`：它的路径在 `locks` 里，设计审查 A-N4）、`locks`（至多 20 项，各带 `path`，读不到的为 null，子树的次序）、`locks_count` |
-| `linking.pages_locked` | `move` 要改写的页被编辑（本人的也算） | `linking.pages_locked: Moving "A.md" would rewrite links in 3 pages being edited in the web editor, by Alice, Bob and you, in a browser. Try again after they leave edit mode, or move with update_links false to leave their links as they are; the agent cannot take the locks over.` | `locks`、`locks_count`（同上；次序是页 id 的，`LockHolders.Of`，`page/app/lock_holders.go:27-51`） |
+| `linking.pages_locked` | `move` 要改写的页被编辑（本人的也算） | `linking.pages_locked: Moving "A.md" would rewrite links in 3 pages being edited in the web editor, by Alice, Bob and by you, in a browser. Try again after they leave edit mode, or move with update_links false to leave their links as they are; the agent cannot take the locks over.` | `locks`、`locks_count`（同上；次序是页 id 的，`LockHolders.Of`，`page/app/lock_holders.go:27-51`） |
 
-- 名字：同一个人只说一次，按锁的次序，至多三个，多的写"and N others"；本人写"you, in a browser"（00 号文档 4.7）。不说"自动重试"：锁跟着编辑器开着，关掉浏览器之后至多 120 秒才过期（`page/domain/session.go:14`）。
+- 名字（S1 实施时写定）：别人在前，同一个人只说一次，按锁的次序；连本人至多三个（本人在其中时别人至多两个），多的写"N others"（一个时"1 other"）；本人写"by you, in a browser"、放在最后；有别人时整串以"by"起头，以", "与" and "连起（"by Alice, Bob and by you, in a browser"；锁的第 11 格钉住"by bob and by you, in a browser"）；空的显示名写"someone"（00 号文档 4.7）。不说"自动重试"：锁跟着编辑器开着，关掉浏览器之后至多 120 秒才过期（`page/domain/session.go:14`）。
 - 一页时写"page"、一个时写"attachment"，单复数照数目；数目从 1 起。
 - `page.locked` 的 `locks` 与 `locks_count` 只在 MCP 的删除里出现；`write`、`edit` 的只有 `lock`（`Locks` 为空，3.6）。
 - 结构里的 `code`、`message`、`fields`、`retry_after_seconds` 总是 mcpserver 写的，与文字一致（3.10.1）。
@@ -1237,7 +1290,7 @@ P3 的 `batch` 一行（00 号文档"移交的落实"的 M8/P3 一行）与 P4 �
 "delete": {"bad_request", "validation_failed", "notebook.not_found", "page.not_found", "forbidden", "page.locked"},
 ```
 
-`TestTheMCPToolsErrorsCarryTheirCodes`（`bootstrap/mcp_reads_test.go:401-451`）的表加每个码的调用（`answered` 要每行的每个码都答出过）。读的应用（`startReadsApp`）另注册 carol、以 SQL 加进 alice 的工作区（同 `acmeTeam.join`，`interleavings_workspace_test.go:108-118`）、alice 建一本 `workspace_access` 为 reader 的笔记本，carol 的 PAT 答 `forbidden` 的格；`server_busy` 的格在同一个测试里另起一个应用（`ParseBudgetBytes` 64 KiB、`ParseMaxWait` 300 ms，同 `TestAWriteWaitingForItsLockKeepsItsFactsShare`，`page_content_test.go:302-340`），预算由一个等在正文行锁上的 REST 写持着（`writeWaitingForItsLock`，`:342-379`）：
+`TestTheMCPToolsErrorsCarryTheirCodes`（`bootstrap/mcp_reads_test.go:401-451`）的表加每个码的调用（`answered` 要每行的每个码都答出过；写的四行的调用在 `mcp_write_codes_test.go`，S1 实施时分出）。读的应用（`startReadsApp`）另注册 carol、以 SQL 加进 alice 的工作区（同 `acmeTeam.join`，`interleavings_workspace_test.go:108-118`）、alice 建一本 `workspace_access` 为 `viewer` 的笔记本（契约的取值；设计原写 reader），carol 的 PAT 答 `forbidden` 的格；`server_busy` 的格在同一个测试里另起一个应用（`ParseBudgetBytes` 64 KiB、`ParseMaxWait` 300 ms，同 `TestAWriteWaitingForItsLockKeepsItsFactsShare`，`page_content_test.go:302-340`），预算由一个等在正文行锁上的 REST 写持着（`whileAWriteWaitsForItsLock`，`page_content_test.go:363`，照 `writeWaitingForItsLock` 写）：
 
 | 工具 | 码 | 调用 |
 |---|---|---|
@@ -1245,7 +1298,7 @@ P3 的 `batch` 一行（00 号文档"移交的落实"的 M8/P3 一行）与 P4 �
 | | `validation_failed` | `path: "Guide"`（附件的路径）；`a/./b.md`；带 NUL 的正文；`base_version: "nope"` |
 | | `notebook.not_found` | 账户入口里 bob 的笔记本 |
 | | `page.not_found` | 带 `base_version` 而 `Missing.md` |
-| | `forbidden` | carol 写 reader 的笔记本 |
+| | `forbidden` | carol 写 `viewer` 的笔记本 |
 | | `server_busy` | 预算被持着时 100 KiB 的正文 |
 | | `page.title_taken` | 不带 `base_version` 写已有的 `Guide.md`、内容不同 |
 | | `page.too_deep` | 11 段的页路径 |
@@ -1327,7 +1380,7 @@ P3 的 `batch` 一行（00 号文档"移交的落实"的 M8/P3 一行）与 P4 �
 | 11 | alice | `delete` `Beside.md`（`recursive`） | `page.locked`，`locks` 依次是 Notes2（bob，`Beside/Notes2.md`）、Late（bob，`Beside/Late.md`）、Child（alice，`Beside/Notes2/Child.md`，`you: true`）：子树的次序（逐层、每层按次序值），不是页 id 的次序（Notes2、Child、Late）；`locks_count` 3，`lock` 是 Notes2、不带 `path`；文字说"3 pages being edited in the web editor, by bob and by you, in a browser" |
 | 12 | bob、alice | 以 REST 结束三个会话 | 各 204 |
 | 13 | alice | `delete` `Beside.md`（`recursive`） | 成；`pages` 4 |
-| — | — | 整个测试里 | `edit_sessions` 里从没有 `mcp:` 的行（MCP 不开会话）；最后 `checkPages` |
+| — | — | 第 12 格之前 | `edit_sessions` 里没有 `mcp:` 的行（MCP 不开会话；第 12 格结束会话、第 13 格删掉它们的页都删掉会话的行，之后再数就空过：S1 审查 C-M1，在第 11 格种一个过期的 `mcp:demo` 行时测试失败）；最后 `checkPages` |
 
 第 11 格是整个程序里唯一看到两个以上的锁的一处：`lockedAll` 只答第一个、或按页 id 排的，在这里失败（6.3 第 28 条；设计审查 C-M10、B-N5）。`move` 的 `linking.pages_locked` 里本人的锁与两个锁的次序（页 id 的）在 3.13.5。
 
@@ -1338,14 +1391,14 @@ P3 的 `batch` 一行（00 号文档"移交的落实"的 M8/P3 一行）与 P4 �
 | 测试 | 持的行 | 两步 | 期望 |
 |---|---|---|---|
 | `TestAnMCPWriteMeetsAnOpening`（两种次序） | `contentRow(Notes)` | bob 开会话；alice 的 `write`（带 `base_version`） | 开会话在先：`write` 答 `page.locked`（bob），正文不变、会话活着；`write` 在先：写成、之后开会话成（照交错 51，`interleavings_lock_test.go:223-252`） |
-| `TestAnMCPEditMeetsAnOpeningAfterItsRead` | `contentRow(Notes)`，`interleaveBehind` | bob 开会话（等着行）；alice 的 `edit`（不加锁的读与预检都过了，等在 `LockContent` 上） | 放开之后会话先拿到行；`edit` 的单元里守卫答 `page.locked`（"读与写之间锁被取"），带 `lock.path`，正文不变、会话活着 |
-| `TestAnMCPEditRedoesAfterAConcurrentWrite` | `contentRow(Notes)`，`interleaveBehind` | REST 的正文写（等着行）；alice 的 `edit`（读到 r，等在 `LockContent` 上） | 放开之后 REST 写出 r + 1；`edit` 的 `Base: r` 不符，从读起重做一次，成：`redone`（日志）、版本号 r + 2、正文是 REST 的加替换；带 `base_version` 的同样的一步答 409、`current_version` 是 r + 1 |
+| `TestAnMCPEditMeetsAnOpeningAfterItsRead` | `contentRow(Notes)`，`interleaveOn` | bob 开会话（等着行）；alice 的 `edit`（不加锁的读与预检都过了，等在 `LockContent` 上） | 放开之后会话先拿到行；`edit` 的单元里守卫答 `page.locked`（"读与写之间锁被取"），带 `lock.path`，正文不变、会话活着 |
+| `TestAnMCPEditRedoesAfterAConcurrentWrite` | `contentRow(Notes)`，`interleaveOn` | REST 的正文写（等着行）；alice 的 `edit`（读到 r，等在 `LockContent` 上） | 放开之后 REST 写出 r + 1；`edit` 的 `Base: r` 不符，从读起重做一次，成：`redone`（日志）、版本号 r + 2、正文是 REST 的加替换；带 `base_version` 的同样的一步答 409、`current_version` 是 r + 1 |
 | `TestAnMCPDeleteMeetsItsCallersOpening`（两种次序） | `notebookRow(Eng)` | bob 开 Notes 的会话；bob 的 `delete` Notes | 开会话在先：`delete` 答 `page.locked`、`you: true`、会话活着；`delete` 在先：页进回收站，开会话答 `page.not_found`（照交错 50，`interleavings_lock_test.go:192-221`） |
 | `TestAnMCPCreateMeetsACreationOfItsName`（两种次序） | `notebookRow(Eng)` | alice 的 `write` `Plan.md`（新建）；bob 的 REST 新建 Plan | 后到的答 `page.title_taken`（MCP 的文字说"is a page already"，REST 的 409）；只有一个 Plan |
 | `TestAnMCPDeleteSeesAChildAddedBeforeItsUnit`（两种次序） | `notebookRow(Eng)` | alice 的 `delete` `Notes.md`（不带 `recursive`，它没有子节点：不加锁的几步都过了）；bob 的 REST 在 Notes 下新建 | 新建在先：`delete` 的单元里读的子树有新的子页，答 422 `recursive`（"1 page"），什么都没删；`delete` 在先：Notes 进回收站，新建答 422 `validation_failed`（父页已不是这本笔记本的页，`page/app/unit_create.go:24-27`）。在单元之外数子节点的写法在第一种次序里把新的子页一起删了（2.1 第 13 条） |
 | `TestAnMCPWriteFindsItsPathUnderTheLock`（两种次序） | `notebookRow(Eng)` | bob 的 REST 改名 Notes 为 Old；alice 的 `write` `Notes.md`（带 Notes 的令牌） | 改名在先：`write` 在锁下找不到，答 `page.not_found`，Old 的正文不变；`write` 在先：写成，之后改名 |
 
-`TestAnMCPEditRedoesAfterAConcurrentWrite` 的最后一步（带 `base_version`）守的是"有 `Base` 时答 409、不写"；"有 `Base` 时也重做"的变异在这里照样答同样的 409（重做读到 r + 1，令牌仍不符），所以由 `EditPage` 的表格测试数 `PageContent` 的读抓住（3.8.6，6.3 第 22 条，设计审查 C-M10）。
+第 2、3 个用 `interleaveOn` 而不是 `interleaveBehind`：两步都等在内容行的元组上（`edit` 的不改树的单元与开会话一样只共享笔记本行），`WaitForLockWaitsOn` 数得到它们（S1 实施时定下）。`TestAnMCPEditRedoesAfterAConcurrentWrite` 的最后一步（带 `base_version`）守的是"有 `Base` 时答 409、不写"；"有 `Base` 时也重做"的变异在这里照样答同样的 409（重做读到 r + 1，令牌仍不符），所以由 `EditPage` 的表格测试数 `PageContent` 的读抓住（3.8.6，6.3 第 22 条，设计审查 C-M10）。
 
 两种没有并发的窗口、顺序的测试（在 `mcp_writes_test.go`）：
 
@@ -1368,7 +1421,7 @@ M6/P4 的移交第 2 项（`bootstrap/mcp_writes_test.go` 的 `TestAMoveWithoutI
 
 - `write` 新建 `Projects/Q3/Plan.md`（两个缺的父页）：一个变更集（类型 `edit`、客户端 `mcp:whole-program`、执行者 alice），三个条目、三个版本行（父页的空正文、叶子的正文，`base_revision` 为空、版本号 1）；`created` 是三项、从根往下；再写一次同样的：`changed: false`、没有新的变更集；内容不同：409。
 - `write` 覆盖：带 `read` 给的令牌写成、版本号 2；以旧的令牌再写：409，`current_version` 是 `:2`。CRLF、BOM 与结尾的空白原样（`read` 读回逐字节相同）。
-- `edit`：唯一的一处；多处不带 `replace_all`（422，"found 3 times"）；带它（3 处）；CRLF 的页上以 LF 的 `old_string` 编辑（写回的是 CRLF）；版本令牌在答复里。
+- `edit`：唯一的一处；多处不带 `replace_all`（422，"found 3 times"）；带它（3 处）；CRLF 的页上以 LF 的 `old_string` 编辑（写回的是 CRLF）；以 LF 开头的 `old_string`（照 CRLF 配上，不在一个 CRLF 里配上，页仍全是 CRLF：S1 审查 B-M1）；在一个词之后加几行（`old_string` 不带 LF，`new_string` 的 LF 照 CRLF 写：修复第二轮，审查 B2-M1）；版本令牌在答复里。
 - `move`：同一父节点的改名、移动加改名（一个变更集、一个条目，条目带新的父节点与名称）、跨父节点只改大小写（`a/x.md → b/X.md`：链到它的页里的 `[[x]]`、`[[x|别名]]`、`[[x#h]]` 与 REST 两步的结果相同；不用 `[[a/x|x]]`，一步与两步在它上面不同，3.5.3，设计审查 B-M1）、附件改名换扩展名（`flow.png → flow.jpg`）。
 - `delete`：有子节点而没有 `recursive`（422，计数）；带它：进回收站（`nodes.trash_root`、`trash_pages`、`trash_assets`，网页的回收站列得出）。
 - 每步之后 `checkPages`、`checkLinks`，最后 `Drain` 再 `checkSearch`（MCP 写的立即在搜索的队列里，13.1 第 1 条的入队）。
@@ -1385,7 +1438,7 @@ M6/P4 的移交第 2 项（`bootstrap/mcp_writes_test.go` 的 `TestAMoveWithoutI
 | `RelocatePath` | `node moved` 或 `node renamed` | `update_links` |
 | `DeletePath` | `node deleted` | `nodes`、`pages`、`assets` |
 
-公共的属性是 `logged(o, n, client)`（`page/app/create_page.go:61-69`），`client` 是 `mcp:<名>`。什么都没写时不记（同 REST）。另有两行：锁的拒绝的路径读不到时的 warn"lock paths not read"（错误与页数，3.8），大的请求体的名额满时的 info（路由、这个请求的凭证、`own`、等着的数目、两个持有者的凭证与路由，3.2.1）：凭证是限流的键（`pat:<id>`、`session:<id>`），13.1 第 10 条允许记的 id。日志的测试照 P1 的 `callLogged`（`bootstrap/mcp_client_test.go:385`）：一次 `write` 的两行都在、都不带路径与正文（以全是标记字符的路径与正文核对）。
+公共的属性是 `logged(o, n, client)`（`page/app/create_page.go:61-69`），`client` 是 `mcp:<名>`。什么都没写时不记（同 REST）。另有两行：锁的拒绝的路径读不到时的 warn"lock paths not read"（错误与页数，3.8），大的请求体的名额满时的 info（路由、这个请求的凭证、`own`、等着的数目、两个持有者的凭证与路由，3.2.1）：凭证是限流的键（`pat:<id>`、`session:<id>`），13.1 第 10 条允许记的 id。日志的测试（`mcp_writes_test.go` 的 `TestTheMCPWritesLogNoPathOrContent`，照 P1 的 `callLogged`，`bootstrap/mcp_client_test.go:385`）：五个用例的六种行（新建、覆盖、编辑、改名、移动、删除，各带它的数目、节点、变更集与 `mcp:<名>`）与四个工具的调用行都在，没有一行带路径与正文（路径与正文都以记号的字母 `q`、`j` 拼成，日志里找不到它们；S1 实施时比设计多核对了用例的行）。
 
 ### 3.15 S2 的文件
 
@@ -1737,7 +1790,7 @@ type changesetAnswer struct {
     {
       "name": "edit",
       "title": "Edit a page",
-      "description": "Replace old_string with new_string in a page's content on the server, byte for byte, as a find and replace: old_string must occur exactly once (occurrences that overlap count), unless replace_all is set, which replaces each, left to right. Copy old_string from what read gave, with enough of the text around it to be unique: quotes and spaces are matched as they are. On a page whose line breaks are all CRLF, old_string and new_string with bare LF are matched and written as CRLF. Without base_version, the edit applies to the content as it is now, made once more if the page changed while it was made; with base_version, it is refused when the page changed since. A page being edited in the web editor, by you too, refuses the edit, saying by whom; the lock cannot be taken over. The answer has the page's version, how many times old_string was replaced, changed (false when the content stayed as it was), and the changeset's id and time.",
+      "description": "Replace old_string with new_string in a page's content on the server, byte for byte, as a find and replace: old_string must occur exactly once (occurrences that overlap count), unless replace_all is set, which replaces each, left to right. Copy old_string from what read gave, with enough of the text around it to be unique: quotes and spaces are matched as they are. On a page whose line breaks are all CRLF and an old_string without CR, old_string's bare LFs are matched as CRLF and new_string's are written as CRLF (a CR in new_string stays); with a CR in old_string, both are taken as given. Without base_version, the edit applies to the content as it is now, made once more if the page changed while it was made; with base_version, it is refused when the page changed since. A page being edited in the web editor, by you too, refuses the edit, saying by whom; the lock cannot be taken over. The answer has the page's version, how many times old_string was replaced, changed (false when the content stayed as it was), and the changeset's id and time.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1980,7 +2033,7 @@ type changesetAnswer struct {
     {
       "name": "edit",
       "title": "Edit a page",
-      "description": "Replace old_string with new_string in a page's content on the server, byte for byte, as a find and replace: old_string must occur exactly once (occurrences that overlap count), unless replace_all is set, which replaces each, left to right. Copy old_string from what read gave, with enough of the text around it to be unique: quotes and spaces are matched as they are. On a page whose line breaks are all CRLF, old_string and new_string with bare LF are matched and written as CRLF. Without base_version, the edit applies to the content as it is now, made once more if the page changed while it was made; with base_version, it is refused when the page changed since. A page being edited in the web editor, by you too, refuses the edit, saying by whom; the lock cannot be taken over. The answer has the page's version, how many times old_string was replaced, changed (false when the content stayed as it was), and the changeset's id and time.",
+      "description": "Replace old_string with new_string in a page's content on the server, byte for byte, as a find and replace: old_string must occur exactly once (occurrences that overlap count), unless replace_all is set, which replaces each, left to right. Copy old_string from what read gave, with enough of the text around it to be unique: quotes and spaces are matched as they are. On a page whose line breaks are all CRLF and an old_string without CR, old_string's bare LFs are matched as CRLF and new_string's are written as CRLF (a CR in new_string stays); with a CR in old_string, both are taken as given. Without base_version, the edit applies to the content as it is now, made once more if the page changed while it was made; with base_version, it is refused when the page changed since. A page being edited in the web editor, by you too, refuses the edit, saying by whom; the lock cannot be taken over. The answer has the page's version, how many times old_string was replaced, changed (false when the content stayed as it was), and the changeset's id and time.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -2186,7 +2239,7 @@ P3 的 `batch` 照 00 号文档 4.11 在一个单元里做多步，复用 P2 的
 | P2 的 | P3 怎样用 |
 |---|---|
 | `domain.ParsePath`、`ParseVersionToken`、`CheckEdit`、`Replace`（线性的匹配器）、`CheckContent` | 每一步的参数检查与 `edit` 的替换（batch 的 `edit` 在合成的正文上做，4.11） |
-| `domain.CreationOf`、`MoveKinds`、`DeletionOf`（每一步的规则，3.8，设计审查 B-M7） | `PlanBatch` 在它模拟的树上调同样的函数：缺的祖先以 `.md` 结尾、路过附件、太深、叶子的类型、`from` 与 `to` 的类型、有子节点而没有 `recursive`，一条规则一份 |
+| `domain.CreationOf`、`MissingAncestors`、`MoveKinds`、`DeletionOf`（每一步的规则，3.8，设计审查 B-M7；`MissingAncestors` 随 S1 审查 B-N2） | `PlanBatch` 在它模拟的树上调同样的函数：缺的祖先以 `.md` 结尾（`move` 的父页同样）、路过附件、太深、叶子的类型、`from` 与 `to` 的类型、有子节点而没有 `recursive`，一条规则一份 |
 | `NodePaths.Walk`（单元里逐段点查） | batch 的每一步在单元里按路径找；P3 在它之上加单元里的缓存与移动、改名、删除之后的作废（2.1 第 1 条留给 P3 的） |
 | `Unit.Relocate`、`RelocateNode`（一条语句、`Placement.Field`） | batch 的 `move` |
 | 撤销的一步的放回（`moveSubtree` 加 `NodeWriter.RelocateNode`、计划只核对最后的键，3.5.4） | P3 的多轮调度、临时名称与后备的每一个放回都走它；不是 `Unit.Relocate`：它总把节点放在最后，放不回 S\* 的次序（设计审查 B-M7） |
@@ -2221,17 +2274,17 @@ P3 加 `batch` 的那一行说明（2.1 第 12 条）。P2 不预留 batch 的�
 | `RelocateNode` 撞名 | 不经 `nameTaken` | 存储的测试（照 `TestEverySiblingsIndexTellsANameTaken`，3.5.1） |
 | `Relocation` 的大小写改名不看父节点 | 改回只在同一父节点 | `TestRelocationIsWhatARewriteFollows` 加的一行；样例 `047-move-and-recase`（改名的用例的 `recased` 取自 `domain.Relocation`，3.5.3）；`TestTheMCPWritesReachTheUseCases` 的跨父节点的一步 |
 | 撤销的一步的放回 | 改回先移动、后改名 | `TestARevertOfAMoveThatRenamesIsOnePlace`；`revert_test.go` 的一步与 `RelocateNode` 的不分类的一行；`TestARevertPutsBackAnMCPMoveThatRenames`（同步与后台）；撤销的性质测试 |
-| 每一步的规则在 domain | 缺的祖先以 `.md` 结尾也补建；类型不同也移动 | `steps_test.go` 的表；四个用例的表格测试 |
+| 每一步的规则在 domain | 缺的祖先以 `.md` 结尾也补建；类型不同也移动；`move` 的父页链不问 `MissingAncestors`；只查第一个缺的段 | `steps_test.go` 的表（`TestCreationOf` 的第 3 段一行）；四个用例的表格测试（`TestRelocatePathRefuses` 的 `B.md/x.md`、`B/missing.MD/x.md`、`B.md/missing/x.md`、`C/D.md/x.md`：S1 审查 B-N2、B2-N2） |
 | MCP 的删除被本人的会话拒绝 | MCP 也只看别的账户 | `TestTheEditLockGuardsByOperation` 的 `mcp:x` 一行；锁的每一格的第 6 格；`TestAnMCPDeleteMeetsItsCallersOpening` |
 | MCP 的删除答出全部的锁、子树的次序 | 只答第一个；按页 id 排 | `TestTheEditLockGuardsByOperation`（改动的次序 Top、Mid、Side、Low，`Locks` 是 Top、Side、Low）；锁的每一格的第 11 格（Notes2、Late、Child） |
 | 锁的拒绝带路径 | `edit` 的预检的拒绝不包；路径读不到时答 `internal_error` | `EditPage` 的表格测试的两行（3.8.6）；锁的第 2 格；C4（MCP）第 1 步 |
 | `delete` 的 `recursive` 在单元里 | 在单元之前、不加锁地数 | `TestAnMCPDeleteSeesAChildAddedBeforeItsUnit` 的第一种次序 |
-| `write` 新建时内容相同不写 | 总答 `title_taken` | `TestTheMCPWritesReachTheUseCases` 的第二次写；MC3 |
+| `write` 新建时内容相同不写，同样长而内容不同的是 `page.title_taken` | 总答 `title_taken`；只比大小 | `TestTheMCPWritesReachTheUseCases` 的第二次写；MC3；`TestWritePathAtAPageThere` 的 `"# Guidf\n"` 盖 `"# Guide\n"`（S1 审查 C-M3） |
 | `write` 覆盖时内容相同不写（令牌过时也是） | 先比版本号 | 锁的每一格的第 7 格；`WritePath` 的表格测试（3.8.6） |
-| `edit` 只以线性的匹配器找 | 任何一处（查找、计数、CRLF 与 NFC 的再找）用 `strings` 的查找；帮助函数放在别的文件；用 `LastIndex`、`SplitN`、`NewReplacer` 这一族的别的；以 `regexp` 编 `old`；经别名、点导入或当作值的引用 | `TestReplaceStaysWithinItsTime` 的 B 的构造串与两种再找的形状（几秒到几十秒）；`TestReplaceSearchesOnlyWithItsMatcher`（三个包的每个非测试文件、按导入路径认包、明确的表；它的反向对照） |
+| `edit` 只以线性的匹配器找 | 任何一处（查找、计数、CRLF 的规则之下的查找与 NFC 的再找）用 `strings` 的查找；帮助函数放在别的文件；用 `LastIndex`、`SplitN`、`NewReplacer` 这一族的别的；以 `regexp` 编 `old`；经别名、点导入或当作值的引用 | `TestReplaceStaysWithinItsTime` 的 B 的构造串与 CRLF 的规则与 NFC 的再找的形状（几秒到几十秒）；`TestReplaceSearchesOnlyWithItsMatcher`（三个包的每个非测试文件、按导入路径认包、明确的表；它的反向对照） |
 | `edit` 的匹配器是对的 | 回退表错一位；计数重叠 | `TestTheMatcherIsStrings`（10 万例对照 `strings`） |
 | `edit` 的唯一（重叠也算） | 用不重叠的计数 | `page/domain/edit_test.go` 的 `aa` 在 `aaa` 里一行 |
-| `edit` 的 CRLF | 不转换；混用的页也转换 | `edit_test.go` 的两行；`TestTheMCPWritesReachTheUseCases` 的 CRLF 一步 |
+| `edit` 的 CRLF | 不转换；混用的页也转换；先原样找、配不上才照 CRLF 再找（S1 审查 B-M1）；`old` 带 LF 才转换 `new`；丢掉 `new` 里的 CR；`old` 带 CR 也转换（修复第二轮） | `edit_test.go` 的各行（`TestReplace` 另有 `old_string` 不带 LF、`new_string` 带 LF 照 CRLF 写，`new_string` 里的 CR 照留，`old_string` 带 CR 两个串照原样三种）与差分测试的预言；`TestTheMCPWritesReachTheUseCases` 的三个 CRLF 步（以 LF 的 `old_string` 编辑、以 LF 开头的 `old_string`、在一个词之后加几行） |
 | `edit` 的 NFC 的提示 | 总给；从不给 | `edit_test.go` 的两行（3.9） |
 | `edit` 的大小在拼之前 | 先拼再比；CRLF 之下以没换的串算 | `TestReplaceStaysWithinItsTime` 的 `replace_all` 一种（拼出来约 5 TiB）；`edit_test.go` 的 CRLF 的大小一行 |
 | `edit` 的重做一次 | 不重做；重做多次；有 `Base` 也重做 | `TestAnMCPEditRedoesAfterAConcurrentWrite`；`EditPage` 的表格测试的 `KeptChanging` 与"有 `Base` 只读一次" |
@@ -2250,6 +2303,20 @@ P3 加 `batch` 的那一行说明（2.1 第 12 条）。P2 不预留 batch 的�
 | 历史的答复的退回 | 不退回；退回的 `next_cursor` 是 `NextCursor`；不写 `changes_cut` | `TestTheMCPHistoryAnswersGoOn`（种下的历史，3.17.3）；适配器的测试（3.17.4） |
 | 历史里节点的类型 | 照抄 REST 的 `asset` | `TestTheMCPHistoryIsRESTs` 的附件；适配器的测试 |
 | `versions` 的模式 | 读一个版本时收 `cursor` | `CheckVersionsArgs` 的表；码的表的调用 |
+| 请求体的 JSON 值的上限（S1 审查 A2-I1，3.2.6） | 扫描不停（过了上限仍读下去）；不拒；差一；只数对象与数组；`/mcp` 或 REST 没有上限；生成器不写上限；被拒的请求体不还名额 | 成本那一份的 `TestTheValuesBoundStopsTheScanEarly`；bodyshape 的 `TestABodyPastMaxValuesIsTooManyValues`；mcpserver 的 `TestABodyPastMaxBodyValuesIs400`；边缘的三行；每个操作的请求体的第 11、12 种；`TestGenerateMatchesTheGoldenFile`；`TestABodyOfTooManyValuesGivesItsSlotBack` |
+| 名额还时去掉持有者的记录（S1 审查 C-M2） | 还时留着持有者 | `TestTheSlotComesBackOnEveryPath`（`idle()` 要没有持有者）；`TestTheLargeBodiesShareTwoSlots` 的第 5 步（满了的一行只点名 P2 的第一个） |
+| 一个计时器管两次等候（S1 审查 C-N1） | 每次等候各一个计时器 | `TestOneTimerBoundsBothWaits`（数 `newTimer`：两个，不是三个） |
+| 编辑的写对照它自己的读（S1 审查 C-M5） | 单元的 `Base` 取单元里读的版本号；只在重做时这样 | `TestEditPageChecksItsWriteAgainstItsRead` |
+| 锁的格里没有 agent 的会话（S1 审查 C-M1） | 在第 12 格之后才数 | `TestTheEditLockReachesEveryMCPWrite`（第 11 格种一个过期的 `mcp:demo` 行时失败） |
+| 同一父节点的改名到达链接的参与者（S1 审查 B-N1） | 改名的一步不交给参与者（`renameTo(…, false, …)`） | `TestRelocateUnderItsParentRenames` 的"another name"与"the case alone" |
+| `go test -short ./...` 通过（S1 修复第二轮，审查 C 的 C2-M1） | 撤销的性质测试在种子开头就计数 | `make test-go-short`（`make check` 与 CI 的 `short` 一份跑它） |
+
+### 3.22 实施与审查之后的改动（S1）
+
+S1 的审查与修复核对见 [S1 的审查记录](reviews/P2-S1-writes-review.md)。与上文最初的设计不同之处已改在各节里：
+
+- **S1，实施时定下的**（实施者的 23 条偏离，审查 C 判过）：`CreationOf` 对附件的叶子答 `PathTaken{Asset: true}`（偏离 1，3.8、3.8.1）；差分测试的第五种字母表（2，3.9）；`TestReplaceReckonsTheSize` 的分配的检查（3，3.9）；`export_test.go` 导出 `MatchIndex`（4，3.1）；`PathNotFound` 的 `ParentOf`（5，3.8.3、3.8.5）；锁的路径在单元与解析的预算之后读（7，3.8）；`toolErr` 带调用的路径，`writeErr`、`moveErr`（8，3.10.4、3.11）；持锁人的名字（9，3.11.5）；`lockErr` 以 `ErrLocked` 分两个码（10，3.10.4）；`edit`、`move`、`delete` 的答复不经 `Fit`（11，3.11）；码的调用里 carol 的笔记本是 `viewer`（14，3.13.1）；名额的整个程序测试里要答复的调用经放开的 `hold`（15，3.2.5）；帮助函数与两个新的测试文件（16，3.1、3.13.1）；交错 2、3 用 `interleaveOn`（17，3.13.4）；撤销的性质测试断言种子合起来至少撤销一次 agent 的移动、搜索的性质测试建同一个世界（18，3.5.4）；日志的测试核对五个用例与四个工具（19，3.14）；e2e 的 `resultOf`、`errorOf`、`expectVersions` 的 `versions`、不写的拒绝一起发、历史的行的 `toContainText`（21，4.1、4.2）；第 9 步的每个测试的用时（22，6.5）。偏离 6（样例 047 的 README 一句留到合并）由修复第一轮随样例提交（3.5.3，主持者的决定）；偏离 23（第 9 步挪界线、不分）由修复第一轮撤回、分出第三份（6.5，主持者的决定）；别的（12、13、20）是测试的名字、变异 54 的写法与设计已写的 2 与 2 秒（6.3）。
+- **S1，审查与修复核对带来的**：请求体的 JSON 值的上限（A2-I1，3.1、3.2.3、3.2.6、6.1）与全部形状的重量（A2-M1，3.2.4、3.2.6、6.2）；全是 CRLF 的页上在任何查找之前定 CRLF 的规则（B-M1，3.9）、`new_string` 的单独的 LF 不论 `old_string` 都照 CRLF 写（修复核对第一轮 B2-M1，3.9、3.18）与它们的文字（B2-N1、B3-N1，2.1 第 5 条、3.9、3.13.6、3.21、6.2、6.3）；同一父节点的改名到达链接的参与者的测试（B-N1，3.5.1）；`move` 的父页写成页的路径答 `write` 那样的 422（B-N2、B2-N2，3.8、3.8.3、3.8.6、3.21）；名额还时去掉持有者的记录、一个计时器管两次等候（C-M2、C-N1，3.2.5）；同样长而内容不同的写、读与单元之间的写（C-M3、C-M5，3.8.6、3.21）；锁的格在第 12 格之前数（C-M1，3.13.3）；组合根的第三份与 `make test-go` 同时跑（C-M4、C-N2，6.5）；`go test -short ./...` 的门禁与按耗时判定的守卫在 `-short` 下跳过（修复核对第一轮 C2-M1、第二轮 C3-M1，3.1、6.5）；e2e 的安静检查失败时打出页的状态与 `anotherTab` 的次序（C2-N1 与实施者自己找到的，4.1）；撤销的性质测试在 `-short` 下的计数（实施者自己找到的，3.5.4）。B-N3 交 P3（第 8 节）。修复核对第三轮之后没有剩下的发现。
 
 ## 4. e2e
 
@@ -2259,9 +2326,12 @@ P3 加 `batch` 的那一行说明（2.1 第 12 条）。P2 不预留 batch 的�
 
 | 文件 | 改动 |
 |---|---|
-| `e2e/fixtures/mcp.ts` | `mcpClient` 的 `options` 加 `handshake?: boolean`（默认真；假时不发 `initialize` 与 `notifications/initialized`，之后的请求照样带 `MCP-Protocol-Version: 2025-11-25`）：MC3 的"没有重新握手的一次调用"。`McpAnswer` 在故事的帮助函数的签名要它时导出（`mcp.ts:10-12` 的规则，knip 只认别的文件的导入） |
-| `e2e/fixtures/assert/page.ts` | `expectNewPage(db, created, creatorId, client, content = "")`：`created` 的类型改为 `Pick<Page, "id" \| "notebook_id" \| "parent_id" \| "name" \| "created_at">`（已有的调用照样传 `Page`），正文、字节数、哈希与版本行的正文照 `content`（`page.ts:15-53` 今天写死空串）。新的 `expectRelocated(db, id, from: Place & { name: string }, to: { parentId: string \| null; name: string }, moverId, at?: string)`：节点最后一个变更集的条目从 `from`（父节点、次序值、名称）一步到 `to`（父节点与名称由测试给出，不从节点的行读），节点的行现在也是 `to`，正文不动；给了 `at` 时变更集的时刻在 SQL 里等于它（`expectMoved` 要名称不变、`expectRenamed` 要位置不变，`page.ts:128-147`、`:59-80`，都不合一步的移动加改名）。新的 `expectChangesetOf(db, id, { client, byId, items, versions })`：变更集的客户端与作者，它的条目恰是 `items` 这些节点的、版本行恰是 `versions` 这些页的（一次 `write` 补建的三个节点、一次 `move` 与它改写的页都在一个变更集里） |
+| `e2e/fixtures/mcp.ts` | `mcpClient` 的 `options` 加 `handshake?: boolean`（默认真；假时不发 `initialize` 与 `notifications/initialized`，之后的请求照样带 `MCP-Protocol-Version: 2025-11-25`）：MC3 的"没有重新握手的一次调用"。`resultOf`、`errorOf`（一个答复的结构化结果、它的工具错误）也在这里，故事照用，所以 `McpAnswer` 不导出（`mcp.ts:10-12` 的规则，knip 只认别的文件的导入；S1 实施时定下） |
+| `e2e/fixtures/assert/page.ts` | `expectNewPage(db, created, creatorId, client, content = "")`：`created` 的类型改为 `Pick<Page, "id" \| "notebook_id" \| "parent_id" \| "name" \| "created_at">`（已有的调用照样传 `Page`），正文、字节数、哈希与版本行的正文照 `content`（`page.ts:15-53` 今天写死空串）。新的 `expectRelocated(db, id, from: Place & { name: string }, to: { parentId: string \| null; name: string }, moverId, at?: string)`：节点最后一个变更集的条目从 `from`（父节点、次序值、名称）一步到 `to`（父节点与名称由测试给出，不从节点的行读），节点的行现在也是 `to`，正文不动；给了 `at` 时变更集的时刻在 SQL 里等于它（`expectMoved` 要名称不变、`expectRenamed` 要位置不变，`page.ts:128-147`、`:59-80`，都不合一步的移动加改名）。新的 `expectChangesetOf(db, id, { client, byId, items, versions })`：变更集的客户端与作者，它的条目恰是 `items` 这些节点的、版本行恰是 `versions` 这些页的（一次 `write` 补建的三个节点、一次 `move` 与它改写的页都在一个变更集里）。`expectVersions` 的每个版本可带 `versions`：它的变更集里的版本数，默认只有它自己，一次 MCP 的 `write` 与它补建的父页同一个变更集（S1 实施时定下） |
+| `e2e/fixtures/test.ts` | 页的安静检查本身失败时，先把这一页的状态（地址与失败的 API 请求）加进报告再失败，不只在测试本身失败时（`page`、`anotherPage`、`anotherTab` 同样；S1 修复第二轮，审查 C 的 C2-N1）；`anotherTab` 依赖 `page` 与 `anotherPage`，在它们之前拆，它的标签页还开着时受检查：之前它只依赖 `pageStates`，Playwright 照故事写 fixture 的次序建、反过来拆，故事先写 `anotherTab` 时（HI1 的两个之外都是）它在标签页随上下文关掉之后才拆，检查没有跑（同一轮实施者自己找到的，修复第三轮改正说法，审查 C 的 C3-N1） |
 | `e2e/fixtures/assert/links.ts`、`fixtures/pages.ts`、`fixtures/history.ts`、`fixtures/trash.ts` | 不改：`expectIndexedLinks`（`assert/links.ts:34`）、REST 的帮助函数（`pages.ts`、`history.ts:10-52`）、`trashPath`、`trashListed`（`trash.ts:37-50`）照用 |
+
+不写东西的几个拒绝一起发（`Promise.all`：MC4 的第 3 步、C4（MCP）的第 1、3 步；oxlint 的 `no-await-in-loop`，S1 实施时定下）。
 
 ### 4.2 MC3 写与编辑（`e2e/stories/mcp/mc3-write-edit.spec.ts`，S1）
 
@@ -2281,7 +2351,7 @@ P3 加 `batch` 的那一行说明（2.1 第 12 条）。P2 不预留 batch 的�
 | 8 | `edit` `- [ ]` → `- [x]`，不带 `replace_all` | `validation_failed`，文字含 `found 2 times`；带 `replace_all`：`replacements` 2 |
 | 9 | REST 建 Notes，正文 `a\r\nb\r\n`；`edit` `a\nb` → `a\nc` | `readContent` 是 `a\r\nc\r\n` |
 | 10 | `later = mcpClient(…, { notebook, handshake: false })`，`write` `Later.md` | `expectChangesetOf` 的客户端是 `mcp:e2e-agent`（PAT 记下的名称，00 号文档 4.5） |
-| 11 | 浏览器打开历史（`historyPath(slug, notebook, { client: "mcp" })`） | `historyListed` 的每一行以 `MCP (e2e-agent) · ` 起头，行数是 MCP 写的变更集数；Notes 的 REST 的写不在其中 |
+| 11 | 浏览器打开历史（`historyPath(slug, notebook, { client: "mcp" })`） | `historyListed` 是六行，即 MCP 写的变更集数，每一行的客户端一段以 `MCP (e2e-agent) · ` 起头（`toContainText`，S1 实施时定下）；Notes 的 REST 的写不在其中 |
 | — | 整个测试里 | `expectVersions(db, plan, …)` 的每个版本的客户端是 `mcp:e2e-agent` |
 
 **"MC3 (activity)"**（PG14 的 API 版本的形状，`e2e/stories/page/pg14-notebook-activity.spec.ts:16-43`，2.1 第 16 条）：成员以 `joinAs` 的 PAT 建笔记本 Plans，经 MCP `write` Intro（新建）与 Notes（新建再覆盖）；管理员移出她（`removeMember`）；`ownerlessNotebooks` 列出 Plans，大小是两页正文的字节数，`last_activity_at` 在 SQL 里等于最后那次 `write` 答的 `at`（`SELECT $1::timestamptz = $2::timestamptz`）。PG14 的页面版本照旧（P5 另写 MCP 的一遍，00 号文档 :570）。
@@ -2359,6 +2429,8 @@ S1 里容易空过的检查（设计审查各自指出的），每个都有能�
    4. 成本与守卫那两份的行（6.5 的"时限的一半"）：守卫的 markdown 一行的三个测试各单独跑两次、取平均，乘 CI 与本机之比 2.4（守卫那一份的，S3 的五次本机运行的中位数，各次 1.9–2.7，偏高）；这一行的估计过了 5 分钟（Go 默认的每个测试二进制 10 分钟的一半），就照 `test-go-guards` 已有的写法拆成一个测试一行，单独一行仍过 5 分钟的那一行加 `-timeout 15m`，Makefile 的注释写明为什么与数（照 6.5 的估计约 6 分钟，多半要拆）。`test-go-costs` 的 page/domain 一行照同样的规则，并读 CI 日志里两个守卫的 `-v` 输出与这一行的用时（作业的日志要认证，读不到时只记每一步的时间）。数写进 S1 的审查记录。
    5. 大的请求体的内存（6.2）；6.3 的变异逐个跑；结果写进第 9 节。
 
+   S1 照做的结果（第 9 节、S1 的审查记录）：第 2 条先挪了 `BOOTSTRAP_FIRST`（第二份只是刚过线），挪了之后 CI 的三次运行里一次两份都快，主持者看作 runner 的离群，修复第一轮照规则撤回、分出第三份；第 3 条两份时同时只快 4.8 分钟、先是依次，三份之后快 5.45 分钟、同时跑；第 4 条守卫的 markdown 一行拆成三行、成本的一个加 `-timeout 15m`，成本的 page/domain 一行不改；CI 的作业日志要认证，`-v` 的输出没有读到，只记每一步的时间。
+
 ### 5.2 S2（`m9-p2-s2`）
 
 1. **domain**：`ParseActor`、`CheckRevision`、`CheckVersionsArgs` 与测试。
@@ -2374,7 +2446,8 @@ S1 里容易空过的检查（设计审查各自指出的），每个都有能�
 
 | 项 | 单元与包的测试 | 整个程序 | e2e |
 |---|---|---|---|
-| 大的请求体的界线（3.2） | 3.2.5 的 httpserver 一表（含两个凭证、一个名额的应用、满了的一行） | `TestTheLargeBodiesShareTwoSlots`（三个 PAT）、`TestTheMCPEdgeAnswersInOrder` 的两行 | — |
+| 大的请求体的界线（3.2） | 3.2.5 的 httpserver 一表（含两个凭证、一个名额的应用、满了的一行、一个计时器） | `TestTheLargeBodiesShareTwoSlots`（三个 PAT）、`TestTheMCPEdgeAnswersInOrder` 的两行 | — |
+| 请求体的 JSON 值的上限（3.2.6，S1 审查 A2-I1） | bodyshape 的 `TestABodyPastMaxValuesIsTooManyValues`、`TestTooManyValuesIsTheBodysTooLong`，mcpserver 的 `TestABodyPastMaxBodyValuesIs400`，成本那一份的 `TestTheValuesBoundStopsTheScanEarly`，生成器的金文件 | `TestTheMCPEdgeAnswersInOrder` 的三行、`TestABodyOfTooManyValuesGivesItsSlotBack`、每个操作的请求体的第 11、12 种（`TestBodiesThatBreakTheStructureAnswer400`） | — |
 | 客户端（3.3） | `client_test.go`、`changeset_test.go` 的表、`schema_test` 的逐码点的查询与两个一致性测试 | 最后一跳（3.13.3） | MC3 的第 10 步 |
 | 版本令牌（3.4） | `TestParseVersionToken` | 两个顺序的测试（3.13.4） | MC3 的第 6 步 |
 | 单元的操作（3.5） | `unit_relocate_test.go`、`RelocateNode` 的存储测试、`TestRelocationIsWhatARewriteFollows`、样例 047 | `TestTheMCPWritesReachTheUseCases` | MC4 |
@@ -2385,22 +2458,22 @@ S1 里容易空过的检查（设计审查各自指出的），每个都有能�
 | `edit` 的匹配（3.9） | `edit_test.go`、`TestTheMatcherIsStrings`、`TestReplaceSearchesOnlyWithItsMatcher`、`TestReplaceStaysWithinItsTime` | `TestTheMCPWritesReachTheUseCases`、`TestAnMCPEditRedoesAfterAConcurrentWrite` | MC3 的第 7–9 步 |
 | mcpserver 的错误（3.10） | 3.10.5 的两表、`TestEachErrorFitsAtItsWorst` | 锁的每一格的 `lock` 与 `locks` | C4（MCP） |
 | 四个工具（3.11）与说明（3.12） | page 的 `adapter/mcp` 的测试 | 码的表、矩阵（`after` 计数）、清单、说明、工具的字符串的检查与它的反向对照 | MC1、MC3、MC4 |
-| 日志（3.14） | 用例的日志测试 | `callLogged` 的一次 `write`；满了的一行在 `TestTheLargeBodiesShareTwoSlots` | — |
+| 日志（3.14） | 用例的日志测试 | `TestTheMCPWritesLogNoPathOrContent`（五个用例的行与四个工具的调用行）；满了的一行在 `TestTheLargeBodiesShareTwoSlots` | — |
 | 历史的读（3.16） | 3.17.4 | 3.17.1–3.17.3（种下的历史） | MC8 |
 
 ### 6.2 P2 怎样量它的界线
 
 本文没有跑需要数据库的东西（草稿的规则），所以：
 
-- **`edit` 的代价**：离线的 Go 实验量了（`scratchpad/m9/p2/exp/kmp`：KMP 的匹配器、`Replace`、对照 `strings` 的差分 257,204 例、3.9 的表；`exp/nfc`；B 的 `review-B/rk`）。最坏的一次调用是 NFC 的提示把 U+1D160 的页放大三倍到 15 MiB 的那一种，本机 149–162 ms；B 的构造串 1 MiB 在 5 MiB 的页上 9.0–9.1 ms，同一个输入 `strings.Index` 70.2 秒（设计审查 B 的复核实测；12 万字节处 9.85 秒）；CRLF 与 NFC 的再找在构造的形状上 13–18 ms（`strings` 在 12 万字节处约 9 秒，复核 B 实测）；每字节 1.05–1.30 ns，随长度成正比（设计审查 B-I2 要的重量）。CI 上由 `TestReplaceStaysWithinItsTime`（`!race`，`test-go-costs` 的 page/domain 一行，带 `-v`）守着每种形状 2 秒，实施者把 CI 上打出的值写进第 9 节。
+- **`edit` 的代价**：离线的 Go 实验量了（`scratchpad/m9/p2/exp/kmp`：KMP 的匹配器、`Replace`、对照 `strings` 的差分 257,204 例、3.9 的表；`exp/nfc`；B 的 `review-B/rk`）。最坏的一次调用是 NFC 的提示把 U+1D160 的页放大三倍到 15 MiB 的那一种，本机 149–162 ms；B 的构造串 1 MiB 在 5 MiB 的页上 9.0–9.1 ms，同一个输入 `strings.Index` 70.2 秒（设计审查 B 的复核实测；12 万字节处 9.85 秒）；CRLF 的规则与 NFC 的再找在构造的形状上 13–18 ms（`strings` 在 12 万字节处约 9 秒，复核 B 实测）；每字节 1.05–1.30 ns，随长度成正比（设计审查 B-I2 要的重量）。CI 上由 `TestReplaceStaysWithinItsTime`（`!race`，`test-go-costs` 的 page/domain 一行，带 `-v`）守着每种形状 2 秒；CI 上打出的值在作业的日志里，要认证，没有记下，本机的在第 9 节。
 - **答复的上限**：照编码算出的最坏（3.10.3、3.16.4，`exp/sizes/worst.py`；错误的文字照设计审查 A 量的 `review-A/sizes-output.txt`），由适配器的测试在替身上以最坏的取值核对（`TestEachErrorFitsAtItsWorst`、3.17.4 的退回）与 mcpserver 的 `TestAnErrorOfTheLongestPathFits`，不是抽样。真的库上的 `TestTheMCPHistoryAnswersGoOn` 核对的是两种退回在种下的历史上都前进、不跳行（53,299 退到 45,321；52,850 退到 29,526 加 23,500，`exp/sizes/seeded.py`；C1 照 REST 的撤销的真样子量，复核 C 的 N3），不是最坏（草稿说它在最坏的取值处核对，不对：P2 与 REST 能写的数据到不了退回，设计审查 C-M3）。
 - **内置的说明**：量了（3.12），`TestTheBuiltInInstructionsAreShort` 守着 4 KiB。
-- **大的请求体的内存**：3.2.4 是估计；名额的数目是主持者的决定（第 11 节第 16 条），不是量出来的界线。实施者在本机以一次性的测试（不入库）量满载的情形（设计审查 C-M14）：两个同时在上限处的请求体加一个等着的，两种组合：两个 `/mcp` 的 37,814,272 字节的调用；一个 `/mcp` 的与一个 REST 的正文写（5 MiB 的正文，JSON 最贵的转义）。量 `runtime.ReadMemStats` 的峰值与分配，写进第 9 节；负载下的测量是 M12 的（第 8 节）。
+- **大的请求体的内存**：3.2.4 是估计；名额的数目是主持者的决定（第 11 节第 16 条），不是量出来的界线。实施者在本机以一次性的测试（不入库）量满载的情形（设计审查 C-M14）：两个同时在上限处的请求体加一个等着的，两种组合：两个 `/mcp` 的 37,814,272 字节的调用；一个 `/mcp` 的与一个 REST 的正文写（5 MiB 的正文，JSON 最贵的转义）。量 `runtime.ReadMemStats` 的峰值与分配，写进第 9 节；负载下的测量是 M12 的（第 8 节）。S1 的修复第一轮另量许多小的 JSON 值的形状：上限处与过了上限的形状照 9.1 的两种做法量（3.2.6；审查 A2-M1：只量一个长字符串，少算了最坏的情形 2.5 到约 10 倍）。
 - **组合根的各份与 CI 的各份**：6.5 是估计与规则，实施者量（5.1 的第 9 步）。
 
 ### 6.3 变异
 
-实施者逐个做下面的改动（每个之后还原），确认右边的测试失败，结果写进第 9 节（照 P1 的 6.3）。每个变异列出的测试都能因它失败（设计审查 C-M10 指出草稿里有四处列了不会失败的一步，已改）。草稿是第 1–41 条，设计审查之后加了第 42–59 条（18 条），复核之后加了第 60–62 条（3 条），第二次复核之后加了第 63 条：
+实施者逐个做下面的改动（每个之后还原），确认右边的测试失败，结果写进第 9 节（照 P1 的 6.3；S1 的各条都失败，审查与修复各轮另加的变异见 S1 的审查记录的"反向对照"）。每个变异列出的测试都能因它失败（设计审查 C-M10 指出草稿里有四处列了不会失败的一步，已改）。草稿是第 1–41 条，设计审查之后加了第 42–59 条（18 条），复核之后加了第 60–62 条（3 条），第二次复核之后加了第 63 条：
 
 | # | 变异 | 应失败的测试 |
 |---|---|---|
@@ -2457,7 +2530,7 @@ S1 里容易空过的检查（设计审查各自指出的），每个都有能�
 | 51 | 矩阵的 runner 不调 `after` | `TestThePermissionMatrixOverMCP` 的计数（`toAfter` 与 `aftered` 不等，设计审查 A-M7） |
 | 52 | 撤销的放回改回先移动、后改名（计划查现在的键） | `TestARevertOfAMoveThatRenamesIsOnePlace`；`revert_test.go` 的一步；`TestARevertPutsBackAnMCPMoveThatRenames`（同步与后台都答 500） |
 | 53 | `lockedAll` 按页 id 排 | 锁的每一格的第 11 格（Notes2、Child、Late 而不是 Notes2、Late、Child）；`TestTheEditLockGuardsByOperation`（改动的次序 Top、Mid、Side、Low：`Locks` 成了 Top、Low、Side 而不是 Top、Side、Low；设计审查的复核 B 的 BC-M3） |
-| 54 | `edit` 的预检的拒绝不包 `LockPaths` | `EditPage` 的表；锁的第 2 格；C4（MCP）的第 1 步 |
+| 54 | `edit` 的预检的拒绝不包 `LockPaths`（S1 里预检的拒绝与单元的拒绝共用 `Execute` 的一处包装，变异去掉它） | `EditPage` 的表；锁的第 2 格；C4（MCP）的第 1 步 |
 | 55 | 锁的路径读不到时答它的错误 | 用例的表（`PathsOf` 失败的一行：照旧 `page.locked`、`Paths` 为 nil、一行 warn） |
 | 56 | 历史里节点的类型照抄 REST 的 `asset` | `TestTheMCPHistoryIsRESTs` 的附件；适配器的测试 |
 | 57 | 路径改回以 `%q` 引起 | `text_test.go` 的 U+3000、U+00A0、U+200D、U+00AD 的标题 |
@@ -2465,12 +2538,12 @@ S1 里容易空过的检查（设计审查各自指出的），每个都有能�
 | 59 | CRLF 的规则之下以没换的两个串算大小 | `edit_test.go` 的 CRLF 的大小一行 |
 | 60 | 等整个服务的名额等满而 503 时不还凭证的名额 | `TestTwoLargeBodiesAreServedAtOnce` 的最后一句（第三个凭证答过 503 之后，它的下一个拿到名额）；`TestTheLargeBodiesShareTwoSlots` 的第 5 步（P3 在第 2、3 步答过 503，它的 `hold` 拿到空着的那个、不是 503；设计审查的复核 A 的 NN-4） |
 | 61 | NFC 的再找以 `strings.Contains` 找 | `TestReplaceStaysWithinItsTime` 的 NFC 的再找一种（12 万字节 8.90 秒，过 2 秒；第二轮的守卫没有这种形状、抓不住它，复核 B 的 BC-M1）；`TestReplaceSearchesOnlyWithItsMatcher` |
-| 62 | CRLF 的再找以 `strings.Index` 找，写在 page/domain 的另一个文件的帮助函数里 | `TestReplaceStaysWithinItsTime` 的 CRLF 的再找一种（12 万字节 9.00 秒）；`TestReplaceSearchesOnlyWithItsMatcher`（读那个文件；第二轮的检查只读 `edit.go`，复核 B 的 BC-M1） |
+| 62 | CRLF 的规则之下的查找以 `strings.Index` 找，写在 page/domain 的另一个文件的帮助函数里 | `TestReplaceStaysWithinItsTime` 的 CRLF 的规则一种（12 万字节 9.00 秒）；`TestReplaceSearchesOnlyWithItsMatcher`（读那个文件；第二轮的检查只读 `edit.go`，复核 B 的 BC-M1） |
 | 63 | 账户入口的 `notebook` 在换那一个参数之后才加 | `TestToolStringsDoNotAnswerInternalErrors`（每一项发出之前的断言：换 `notebook` 的那几项最后的参数里没有 NUL；设计审查的第二次复核 C 的 N9） |
 
 ### 6.4 门禁
 
-每个 Step 合并之前，本机：`make lint`（`lint-go`、`lint-web`）、`make knip`、`make gen-check`、`make test-go`（竞态检测下的全部、`test-go-costs` 与 `test-go-guards`，`Makefile:180-185`，设计审查 C-N8；S1 起组合根照 CI 的份、各一个二进制，6.5）、`make test-web`、`make build`、`make e2e`，都通过；CI 的各份都是绿的。之后照 M9 的做法：审查（Opus）、修复、核对、合并、推送 `main`。
+每个 Step 合并之前，本机：`make lint`（`lint-go`、`lint-web`）、`make knip`、`make gen-check`、`make test-go`（竞态检测下的全部、`test-go-costs` 与 `test-go-guards`，`Makefile:180-185`，设计审查 C-N8；S1 起组合根照 CI 的份、各一个二进制，6.5）、`make test-go-short`（S1 的修复第二轮起，6.5）、`make test-web`、`make build`、`make e2e`，都通过；CI 的各份都是绿的。之后照 M9 的做法：审查（Opus）、修复、核对、合并、推送 `main`。
 
 ### 6.5 CI 的余量
 
@@ -2504,7 +2577,7 @@ test-go: ## 运行 Go 测试，含集成测试与 server/tools（开启竞态检
 # -run 与 -skip 用同一组表达式：第一、第三份 -run 各自的表达式，第二份 -skip 它们的并，三份之和总是整个包，新加的测试
 # 自动落在其中一份；一份过了线时照 M9/P2 设计 6.5 的规则改这些表达式
 BOOTSTRAP_FIRST = ^Test([A-D]|E([a-u]|very[A-R]))
-# M9/P2 S1：第二份的测试一步过了 go test 的 15 分钟的一半（<量出的数>），照规则按测试名再分一份，不提高 -timeout（M9/P2 设计 6.5）
+# M9/P2 S1：第二份的测试一步过了 go test 的 15 分钟的一半（CI 的两次运行 7:15 与 8:33），照规则按测试名再分一份，不提高 -timeout（M9/P2 设计 6.5）
 BOOTSTRAP_THIRD = ^Test(The[F-Z]|T[i-z]|[U-Z])
 
 .PHONY: test-go-bootstrap
@@ -2530,18 +2603,19 @@ test-go-bootstrap-3: ## 竞态检测下运行组合根的整个程序测试中�
 ```
 
   `test-go` 照上面改写（下面的"本机的门禁"）；`Makefile:187` 的"CI 的五份"改为六份，`:198` 的"-run 与 -skip 用同一个表达式：两份之和总是整个包"改为上面的两行（设计审查的复核 C 的 N8）；`ci.yml` 的矩阵在 `bootstrap-2` 之后加 `- leg: bootstrap-3`、`timeout: 25`，组合根那一段的注释写"按测试名分成三份"与量出的数；作业的注释里列的 `make` 目标加 `-3`。
-- **界线怎样选**：S1 以一次 `go test -race -json` 的整个组合根（`Makefile:186-199` 的做法）取每个顶层测试的 `Elapsed`；矩阵的父测试的 `Elapsed` 不含它并行的格（Go 的父测试在它并行的子测试跑之前就记下了时间：`exp/partime` 里四个各 0.4 秒的并行子测试，go1.27.1 给父测试记 0.10 秒），所以矩阵另以它的格的第一个开始到最后一个结束计。在今天的第二份上，按 M9/P1 S3 的一次 `-v` 运行（本机，`TestEveryS…` 之后的 201 个）加上 P2 的估计，`The[F-Z]` 起的一段约 124 秒、其余约 120 秒（不含包的启动），两份在一成之内；之前的候选 `T[h-z]` 是 156 对 88。S1 照量出的数再挪，三份各单独跑两次核对，两份新的之差在一成之内为止。以后分出的一份照同样的写法：一个按测试名的表达式、`-run` 它的一个目标与 `ci.yml` 的一份，第二份（不以表达式选的那一份）的 `-skip` 是所有表达式的并；从第一、第三份里分时，它的表达式减去分出的一段。S1 照 `exp/shards` 的做法核对各份互不重叠、合起来是整个包：复核 C 照 go1.27.1 的匹配（`$GOROOT/src/testing/match.go`）把今天的三个表达式用在组合根的 361 个测试函数上，竞态下编译的 356 个各落在一份里（156、102、98），另 5 个在 `//go:build !race` 的文件里、在守卫那一份；第二份的 `-skip` 在顶层的 `|` 处分成两段，各凭顶层的名字决定，跳过的测试的子测试随它。
+- **界线怎样选**：S1 以一次 `go test -race -json` 的整个组合根（`Makefile:186-199` 的做法）取每个顶层测试的 `Elapsed`（S1 实施时改为取两份各自带 `-json` 的运行、各两次：同样的测试照各份那样计时，一个测试的用时从它的 `run` 到它最后的事件，矩阵并行的格算在里面）；矩阵的父测试的 `Elapsed` 不含它并行的格（Go 的父测试在它并行的子测试跑之前就记下了时间：`exp/partime` 里四个各 0.4 秒的并行子测试，go1.27.1 给父测试记 0.10 秒），所以矩阵另以它的格的第一个开始到最后一个结束计。在今天的第二份上，按 M9/P1 S3 的一次 `-v` 运行（本机，`TestEveryS…` 之后的 201 个）加上 P2 的估计，`The[F-Z]` 起的一段约 124 秒、其余约 120 秒（不含包的启动），两份在一成之内；之前的候选 `T[h-z]` 是 156 对 88。S1 照量出的数再挪，三份各单独跑两次核对，两份新的之差在一成之内为止。以后分出的一份照同样的写法：一个按测试名的表达式、`-run` 它的一个目标与 `ci.yml` 的一份，第二份（不以表达式选的那一份）的 `-skip` 是所有表达式的并；从第一、第三份里分时，它的表达式减去分出的一段。S1 照 `exp/shards` 的做法核对各份互不重叠、合起来是整个包：复核 C 照 go1.27.1 的匹配（`$GOROOT/src/testing/match.go`）把今天的三个表达式用在组合根的 361 个测试函数上，竞态下编译的 356 个各落在一份里（156、102、98），另 5 个在 `//go:build !race` 的文件里、在守卫那一份；第二份的 `-skip` 在顶层的 `|` 处分成两段，各凭顶层的名字决定，跳过的测试的子测试随它。
 - **每一份的邻居**（同一条规则）：第一份的邻居是第二份（`BOOTSTRAP_FIRST` 往前挪：第一份按名字排在最后的测试，今天是 `TestEvery…` 的一段，进第二份）；第二份的邻居是第一份（`BOOTSTRAP_FIRST` 往后挪）与第三份（`BOOTSTRAP_THIRD` 往前挪）；第三份的邻居是第二份（`BOOTSTRAP_THIRD` 往后挪）。挪动要让两份在挪过之后都在线之下：收的一份不过线，给的一份也回到线下，否则那个 Step 分。第二份要给出的是它过线的部分，照估计（7:25–8:10）至多约 0:40；第一份 P2 之后约 7:05–7:15，离线约 15–25 秒，只收得下第二份刚过线的那几种情形（第二份约 7:45–7:55 之下）。所以 S1 的第二份过线时多半分出第三份；第二份只是刚过线时，规则把 `BOOTSTRAP_FIRST` 往后挪、不分，那时 S2 的两个 `TestTheMCPHistory…` 落进第二份（没有第三份），S2 照同一条规则再看（设计审查的第二次复核 C 的 N10）。
 - **本机的门禁**（设计审查的复核 C 的 C-NM3，主持者的决定）：今天的 `make test-go` 以一个 `$(GO_TEST_RACE) ./...` 跑全部的包（`Makefile:183`），组合根是一个二进制、受同样的 15 分钟：S3 的六次本机运行里它 479–573 秒（7:58–9:33，每次都过了 7:30，`scratchpad/m9/p1s3/test-go-*.log`），P2 再加约 45–70 秒，约 8:45–10:45；第三份对它没有用，之后每个 Phase 的测试也都整个落在这里，它比 CI 的任何一份先到 15 分钟。所以 S1 把 `test-go` 改为与 CI 同样分份（上面的 `make` 一段）：组合根之外的包一个 `go test`（`test-go-race`），组合根的各份各一个 `go test` 二进制、各受同样的 15 分钟，同一条规则管两处，`make test-go` 照旧是 CI 各份之和。耗时的守卫（成本与守卫两份）照旧在竞态检测的二进制之后跑、不与它们同时（CI 的注释的理由：不与竞态检测下的构建抢 CPU，`ci.yml:23`）。
-  - **同时还是依次**（本机 18 核、128 GB；以 S3 的日志估计，没有实测）：组合根之外的包最长的一个约 101–103 秒（`page/adapter/http`，四次）；第一份单独跑 236–260 秒（S3 的修复一轮，两次，`halves-f1.log`），P2 之后约 250–280 秒；第二、第三份照 6.5 的界线各约 120–124 秒加包的启动。依次跑约 100 + 265 + 2 × 128 ≈ 620 秒，约 10.5 分钟；以 `$(MAKE) -j4` 同时跑（macOS 的 make 3.81 也有 `-j`），约是最长的第一份 250–280 秒加一点争用（今天组合根的一个二进制与别的 86 个包同时跑，也几乎是两份单独跑之和：479–492 秒对 486–498 秒），约 4.5–5 分钟。依次比同时每次门禁多约 5.5–6 分钟，过了主持者的约 5 分钟：取同时跑。整个 `make test-go` 约 11–14 分钟（今天约 15 分钟：`test-go-f1b` 从 8:42 到 8:57）。S1 两种各实测两次、取平均（5.1 第 9 步）：单独跑一次的时间前后可差一成以上，约是依次的 ±1 分钟，比估计的余量（0.5–1 分钟）大，一次定不了（设计审查的第二次复核 C 的 N11）；同时的平均不比依次的快 5 分钟以上就改回依次。
+  - **同时还是依次**（本机 18 核、128 GB；以 S3 的日志估计，没有实测）：组合根之外的包最长的一个约 101–103 秒（`page/adapter/http`，四次）；第一份单独跑 236–260 秒（S3 的修复一轮，两次，`halves-f1.log`），P2 之后约 250–280 秒；第二、第三份照 6.5 的界线各约 120–124 秒加包的启动。依次跑约 100 + 265 + 2 × 128 ≈ 620 秒，约 10.5 分钟；以 `$(MAKE) -j4` 同时跑（macOS 的 make 3.81 也有 `-j`），约是最长的第一份 250–280 秒加一点争用（今天组合根的一个二进制与别的 86 个包同时跑，也几乎是两份单独跑之和：479–492 秒对 486–498 秒），约 4.5–5 分钟。依次比同时每次门禁多约 5.5–6 分钟，过了主持者的约 5 分钟：取同时跑。整个 `make test-go` 约 11–14 分钟（今天约 15 分钟：`test-go-f1b` 从 8:42 到 8:57）。S1 两种各实测两次、取平均（5.1 第 9 步）：单独跑一次的时间前后可差一成以上，约是依次的 ±1 分钟，比估计的余量（0.5–1 分钟）大，一次定不了（设计审查的第二次复核 C 的 N11）；同时的平均不比依次的快 5 分钟以上就改回依次。S1 实测（S1 的审查记录）：两份时同时 759、754 秒、依次 1031、1061 秒，只快 4.8 分钟，先是依次；分出第三份之后（修复第一轮，审查 C-M4）同时 698、730 秒、依次 1024、1058 秒，快 5.45 分钟，同时跑；同时跑的一段 284、319 秒，第一份最长。
   - **失败找得到**：make 3.81 没有 `--output-sync`，四个 `go test` 的输出交错；但不带 `-v` 的 `go test` 在包列表的模式里先把一个包的输出存着（`$GOROOT/src/cmd/go/internal/test/test.go:1467-1507`），跑完时以一次 `os.Stdout.Write` 写出（`builderPrintTest`，`:2257-2268`），失败的一段有 `--- FAIL: <测试名>` 与 `FAIL <包>`；make 另打出 `*** [test-go-bootstrap-2] Error 1` 点名那一份，并等别的跑完（`Waiting for unfinished jobs`）。组合根的三份打出同样的 `FAIL …/internal/bootstrap`，是哪一份由 make 的那一行与测试名看出。所以找 `--- FAIL`、`FAIL` 与 `Error` 三种行就知道是哪一份、哪个测试。经管道时（例如 `make test-go | tee`），长过 `PIPE_BUF`（macOS 是 512 字节，`getconf PIPE_BUF /`）的一次写不是原子的，别的份的一行短的 `ok` 可能落进一段长的失败里，这三种行照样找得到（设计审查的第二次复核 C 的 N12）。
 - **守卫那一份**：作业的时限够：测试一步 10:33、9:47，作业的 25 分钟的约 42%，P2 不加守卫。它的行另受下一条的规则：最长的一行（P2 之前就有的）是 markdown 的三个测试 `^(TestTheAppsMarkdownCostsAboutItsSize|TestTheAppsMarkdownRendersCheckedHTML|TestTheAppsLinksAreWithinTheirBound)$`，本机 151.2 秒（M9/P1 S3 的一次；五次是 139–200 秒），照下一条的比在 CI 上约 6 分钟，已过 Go 默认的 10 分钟的一半，S1 照规则量、多半拆开。
 - **成本与守卫那两份的每一行**（主持者为 P2 定的规则，修订之后的回答）：它们的 `go test` 不带 `-timeout`，每一行另受 Go 默认的每个测试二进制 10 分钟。**P2 碰到的每一行，CI 上的估计过了 5 分钟（这 10 分钟的一半），S1 就照 `test-go-guards` 已有的写法拆成一个测试一行；单独一行仍过 5 分钟的那个测试，那一行加 `-timeout 15m`（同 `GO_TEST_RACE`），Makefile 的注释写明为什么与量出的数。** 组合根的份是再分而不提高 `-timeout`；一个测试的一行分不下去，所以给它竞态检测的那几份同样的 15 分钟。
   - **估计**：这一行的测试各单独跑两次、取平均（本机），乘 CI 与本机之比 **2.4**。这个比是守卫那一份的：`main` 的两次运行里测试一步的平均 10:10（10:33、9:47），比它的五行在本机之和。S3 的五次本机运行是 228.7–317.4 秒（`costs-guards-1.log` 与 `test-go-r1`–`r3`、`test-go-f1b`），2.4 是中位数 254.4 秒的比，各次是 1.9–2.7（设计审查的复核 C 的 N2）。它偏高：分子含每一行的编译与起库，分母只是测试二进制自己的时间。CI 的作业日志里每一行打着 `ok …/internal/bootstrap <秒>`，是这一行在 CI 上自己的时间，但作业的日志要认证才读得到，这里读不到，读得到的只是每一步的时间，所以不用它。结论不随这个摆动变：各次自己的比给 markdown 的一行的估计是 6.0–6.4 分钟，固定的 2.4 乘它在本机的 139–200 秒是 5.6–8.0 分钟，都过 5 分钟。成本那一份自己的比是 1.4–2.3（测试一步 3:58、6:22 比本机之和 169 秒），它的行也用 2.4，偏严。
-  - **守卫的 markdown 一行**：S1 把三个测试各单独跑两次（`cd server && go test -count=1 -run '^<名>$' ./internal/bootstrap`），三个的平均之和乘 2.4。照今天的 151 秒约 6 分钟，多半过线：`test-go-guards` 的这一行换成三行，一行一个测试名，注释写三个的数与拆的理由；拆开之后一个测试单独仍过 5 分钟（本机两次的平均约 125 秒以上），它的那一行加 `-timeout 15m`，注释写"本机两次 <a>、<b> 秒，乘 2.4 约 <c> 分钟，过了 Go 默认的每个测试二进制 10 分钟的一半"。
+  - **守卫的 markdown 一行**：S1 把三个测试各单独跑两次（`cd server && go test -count=1 -run '^<名>$' ./internal/bootstrap`），三个的平均之和乘 2.4。照今天的 151 秒约 6 分钟，多半过线：`test-go-guards` 的这一行换成三行，一行一个测试名，注释写三个的数与拆的理由；拆开之后一个测试单独仍过 5 分钟（本机两次的平均约 125 秒以上），它的那一行加 `-timeout 15m`，注释写量出的数（S1：成本的 125.5 与 127.9 秒，"乘 2.4 约 5.1 分钟，仍过了 Go 默认的每个测试二进制 10 分钟的一半，它的一行加 -timeout 15m"；三个之和乘 2.4 约 6.1 分钟，拆成三行）。
   - **成本的 page/domain 一行**：P2 加的时间的守卫只有一个，`edit` 的 `TestReplaceStaysWithinItsTime`（page/domain，不连库、不带竞态检测）：**并进 `test-go-costs` 已有的 page/domain 一行**，与 glob 的守卫同一个二进制、依次跑：`go test -count=1 -v -run '^(TestReplaceStaysWithinItsTime|TestTheWorstGlobsStopWithinTheirWork)$$' ./internal/modules/page/domain`。这一行今天本机 20.1 秒（glob 的守卫 19.7 秒，M9/P1 S3 的一次），加 `edit` 的约 3–4 秒，乘 2.4 连编译约 1–1.5 分钟，远在 5 分钟之下。照同样的规则，它若过了 5 分钟，`edit` 的守卫单独一行，单独仍过的那一行加 `-timeout 15m`。
   - 拆行与 `-timeout` 随 S1 的 CI 的提交（5.1 第 9 步），量的数写进 S1 的审查记录。P2 加的别的检查（匹配器的差分、`TestReplaceSearchesOnlyWithItsMatcher`、`TestEachErrorFitsAtItsWorst`）是普通的单元测试，在竞态那一份里。
 - **竞态那一份**：P2 加的包的测试都是秒级的，离每个包的 15 分钟与作业的 20 分钟都远。
+- **`short` 一份**（S1 的修复第二轮、第三轮，审查 C 的 C2-M1、C3-M1；主持者的决定）：README 告诉贡献者以 `cd server && go test -short ./...` 只跑单元测试，以前没有哪个门禁跑它，S1 的 `880757c0` 让它失败、到修复第一轮才看见。`make test-go-short` 跑 `cd server && go test -short -count=1 ./...`（README 的写法，不带 `-timeout`），CI 的 `short` 一份跑它，`make check` 也跑它（`check: lint knip test test-go-short build-web`，修复第三轮：`make check` 加 `make gen-check` 仍是 CI 的 server、web 任务的门禁，README 与 Makefile 的文件头照原文成立）。它不在 `make test-go` 的各份之和里，也不进组合根的份（那几份的规则读它们的测试一步）。**按耗时判定、不要数据库的守卫在 `-short` 下跳过**（`if testing.Short() { t.Skip(…) }`，`markdowntest.CheckCosts` 同）：`-short` 的各包同时跑，CPU 不是它们的，CI 上 glob 的守卫 2 秒的界线在那里到过 2.62 秒（修复第二轮的第二次运行）；`test-go-costs` 与 `test-go-guards` 照旧不带 `-short`、各自单独一行跑它们；按分配、大小判定的照跑。以后新加的这类守卫同样要在 `-short` 下跳过，否则这一份又会随机失败。本机整个 53、38 秒，最慢的包（组合根与 httpserver）约 28 秒，乘 2.4 约 70 秒，照上面的规则不加 `-timeout`。时限 20 分钟，不是作业的两倍（CI 上作业 2:38）：Go 默认的每个测试二进制 10 分钟要在构建之后先到、打出卡住的测试，同别的各份；Go 的缓存冷时（例如 `go.sum` 改了）构建慢得多、各个二进制开始得晚，15 分钟可能先到（修复第二轮定 15 分钟，修复第三轮照审查 C 的观察改为 20）。
 
 ## 7. 完成标准
 
@@ -2573,29 +2647,67 @@ test-go-bootstrap-3: ## 竞态检测下运行组合根的整个程序测试中�
   - 撤销：一个既移动又改名的放回已在 P2 是一步（`moveSubtree` 加 `RelocateNode`，3.5.4），P3 只做多轮的调度、三条后备、临时名称、写回的 `Base` 与后台的切批；
   - **工具的字符串的检查**（3.13.1）：`batch` 加自己的一项合法的参数（`ops` 里一个合法的 `write`），没有它测试失败；`ops[].path` 等嵌套的参数只换第一个 `op` 里的。P1 第 8 节说"结构表与 NUL 的推导已覆盖嵌套"，不对：每个 `op` 有必填的成员，只放一个参数的调用都是结构表的 `bad_request`，到不了用例（设计审查 C-I1）；
   - 说明的 `batch` 一行（4 KiB 之下约 1 KiB 的余地，账户入口 1,065 字节，与 P4 的四行共用，3.12）；码的表、矩阵（带 `write` 与计数的 `after`）、`tools.json` 的条目照 P2 的写法。
+  - **422 的字段名的写法**（S1 审查 B-N3，主持者的决定）：P2 给 P3 复用的每一步的规则写 422 的字段名的方法不一：`CreationOf` 与 `Placement.Field` 收字段名，`MoveKinds` 写死 `"to"`、`DeletionOf`（`Recursive`）写死 `"recursive"`，`CheckEdit` 与 `Replace` 写死 `"old_string"`、`"new_string"`；`batch` 要 `ops[3].path` 一类。P3 的设计定一种写法（每条规则收字段，或一个改写 `shared.FieldError` 的字段的函数），不为 `batch` 另写一份规则。
+  - **`batch` 的上限要写 `mcpserver.MaxBodyValues`**（S1 审查 A2-I1，3.2.6）：`/mcp` 的请求体至多 10,000 个 JSON 值，是 P3 最大的合法的 `batch`（100 项，约 715 个值）的 14 倍；P3 定 `batch` 的上限时点名它，以后带列表的工具要远在它之下（它的注释写明为什么）。REST 的 1,000 由 apitest 的请求体的第 11、12 种守着每个操作。
+  - `move` 的父页写成页的路径答 `write` 那样的 422（`domain.MissingAncestors`，S1 审查 B-N2）：`batch` 的 `move` 照用（3.20）。
 - **P4（grep、search、index、backlinks）**：模块根的 `page.NewNodePaths(pool)` 与 linking 的 `Deps.NodePaths` 复用 P2 的 `NodePaths.Paths`（`PathStore.PathsOf` 经 `LinkTargetsByIDs`），不另写给路径的语句（2.1 第 7 条）；四个工具的说明的行与工具的字符串的合法参数的项；`backlinks` 的来源页带路径同 `changeset` 的 `node.path`；它们的错误照 3.10.3 的规则（文字只引这次调用自己的路径，原样引起）。
 - **P5（其余的 MCP 版本与接入文档）**：
   - 人工清单（`manual/P5-mcp-clients-checklist.md`）加：Claude Code、Codex 遇到 `/mcp` 的 HTTP 503 `server_busy`（`Retry-After: 1`）怎样表现（重试、报错还是断开），一个 agent 并行几个大的写时（每个凭证一个名额，第二个等 2 秒）是否照样走得通，其中一次在限速的上行上（例如 1 Mbit/s，两个各约 1 MiB 的并行的 `write`：第二个预期等满 2 秒后 503），记下 agent 看到什么、是否照说明一个接一个地重发（设计审查的复核 A 的 MN-1）；`edit` 的唯一比 Claude Code 的 Edit 严（重叠也算）、不折叠引号，真实的 agent 是否照说明重试；`move` 的 `to` 是完整的新路径，agent 是否写成"移进去"；破坏性的工具在各审批选项下的表现。
   - 接入文档写上：大的请求体的名额（整个服务两个、每个凭证一个，超过时等 2 秒后 503）；**部署建议按路由缓冲请求体**（设计审查 A-I1、复核 A 的 MN-2，2.1 第 6 条）：`/mcp` 与 page 的两个正文路由（`PUT /api/v0/pages/{page_id}/content`、`POST /api/v0/notebooks/{notebook_id}/pages`）缓冲（nginx 的 `proxy_request_buffering on`，它的默认），把慢的发送者挡在应用之外；上传与导入照 README 的部署一节不缓冲（`README.md:357`）；Caddy 默认不缓冲请求体、直接暴露也不，用它们时剩下的风险照旧（复核 A 提到 Caddy 的 `request_buffers` 也许能为一个路由缓冲，离线核对不了：P5 核对过才写）；`base_version` 的用法；锁的拒绝不能接管；历史只读。
   - 其余故事的 MCP 版本照 P2 的断言（`expectRelocated` 带目的地、`expectChangesetOf`、`expectNewPage` 由答复建出的 `created`）。
-- **M12（发布）**，写进 `M12-release/handoffs/M4-performance.md` 的第 18 项：
+  - S1 合并时，人工清单的这几项与接入文档的名额、按路由缓冲已写进 00 号文档 4.16，P5 照它核对。
+- **M12（发布）**，写进 `M12-release/handoffs/M4-performance.md` 的第 18 项（S1 合并时已写进，带 S1 的数）：
   - **慢的发送者**（剩下的风险，2.1 第 6 条，设计审查 A-I1）：两个凭证（一个账户的两个 PAT 也算）仍占得满两个名额，每个慢的请求体占着它至多 `server.read_timeout` 30 秒，每 30 秒两个请求、每分钟 4 个，按凭证的桶（每分钟 1,200 个）看不到；其间超过门槛的 MCP 调用与超过 1 MiB 的网页保存等 2 秒后 503（网页重试三次，约 11 秒后失败）。info 的一行点名持着名额的凭证，管理员能撤销那个 PAT 或结束会话；`read_timeout` 不改。压测时量，并定要不要按账户而不是按凭证、要不要配置项。
   - **每个凭证一个名额的代价**（2.1 第 6 条，设计审查的复核 A 的 MN-1，主持者接受）：名额在读请求体之前取，上传也占着它：10 Mbit/s 上 5 MiB 约 4.2 秒、1 Mbit/s 上过约 250 KB 就过 2 秒，同一个凭证并行的第二个大的写在慢的上行上等满 2 秒后 503（一般的页不受影响）；压测时与 P5 的限速的一次一起看，再定要不要按凭证排队或放宽等候。
-  - 大的请求体的内存在负载下的测量（6.2 的一次性测量之后）；名额与等候的配置项（今天是常量，3.19）。
-  - `edit` 的匹配：最坏的一次调用本机约 0.16 秒，守卫在 CI 上的值（第 9 节）；单个 `delete` 没有大小的界线（M12 的性能移交第 14 项，同 REST）。
+  - 大的请求体的内存在负载下的测量（6.2 的一次性测量之后；S1 量过两个名额加一个等着的 +680 到 +961 MiB，有了 JSON 值的上限，3.2.6）；名额与等候的配置项（今天是常量，3.19）。
+  - `edit` 的匹配：最坏的一次调用本机约 0.16 秒（S1 实测 159–174 ms），守卫在 CI 上每种形状的值没有记下（作业的日志要认证，第 9 节）；单个 `delete` 没有大小的界线（M12 的性能移交第 14 项，同 REST）。
 
 ## 9. 结果
 
-（实施之后填写：每个 Step 的提交、偏离与理由、测量的数、变异的结果、CI 各份的时间、审查与修复。）
+要记下的数（设计里先写了预计；S1 的记在 9.1，S2 的随它的合并）：
 
-要记下的数（设计里先写了预计）：
+- P1 的 `page.not_found` 修好之前与之后：11 段的路径上带 `AttachmentHint` 67,590 字节、10 层的页上带 `PageHint` 61,448 字节（今天答 `internal_error`），修好之后去掉提示 33,818 字节（设计审查 A 实测）。S1 记下（9.1）：修好之后四种提示在最坏的路径上都由 `Fit` 去掉、33,818 字节，`to` 的父的那一种 34,024。
+- 组合根的各份：每份单独跑两次的平均、CI 的测试一步；分没分第三份、界线与量出的数（6.5 估计第二份约 7:25–8:10）；本机的 `make test-go` 同时与依次各两次的用时与平均（6.5 估计竞态检测的部分约 4.5–5 分钟对约 10.5 分钟）；守卫的 markdown 一行拆开之后三个测试各自在本机的两次。S1 记下（9.1、S1 的审查记录）：第二份 7:15、8:33（平均 7:54），过了线；先挪界线，修复第一轮撤回、分出第三份，三份本机平均 250、126.5、126 秒，CI 的平均 6:29、4:46.5、3:30.5；`make test-go` 三份时同时 698、730 秒对依次 1024、1058 秒，同时跑；守卫的三个测试各两次，拆成三行。
+- `edit` 的守卫在 CI 上每种形状的用时，与 page/domain 那一行的用时。S1：CI 的作业日志要认证，没有记下，只有成本那一份的测试一步；本机的每种形状与这一行在 9.1。
+- 大的请求体的内存：两种组合的峰值与分配（6.2）。S1 记下（9.1、3.2.6）：两种组合 +896.7、+800.7 与 +704.5、+704.3 MiB；修复第一轮另量许多小的 JSON 值的形状，两个名额加一个等着的 +680 到 +961 MiB。
+- 迁移 00044 在已有的行上的用时（设计审查 A 在 20 万行上 Up 9–16 ms）。S1 记下（9.1）：20 万行上 Up 632.5 ms、Down 623.4 ms、再 Up 625.5 ms。
+- 种下的历史的两种退回的答复的大小（预计 45,321 与 29,526、23,500，3.17.3）。S2 记下。
 
-- P1 的 `page.not_found` 修好之前与之后：11 段的路径上带 `AttachmentHint` 67,590 字节、10 层的页上带 `PageHint` 61,448 字节（今天答 `internal_error`），修好之后去掉提示 33,818 字节（设计审查 A 实测）。
-- 组合根的各份：每份单独跑两次的平均、CI 的测试一步；分没分第三份、界线与量出的数（6.5 估计第二份约 7:25–8:10）；本机的 `make test-go` 同时与依次各两次的用时与平均（6.5 估计竞态检测的部分约 4.5–5 分钟对约 10.5 分钟）；守卫的 markdown 一行拆开之后三个测试各自在本机的两次。
-- `edit` 的守卫在 CI 上每种形状的用时，与 page/domain 那一行的用时。
-- 大的请求体的内存：两种组合的峰值与分配（6.2）。
-- 迁移 00044 在已有的行上的用时（设计审查 A 在 20 万行上 Up 9–16 ms）。
-- 种下的历史的两种退回的答复的大小（预计 45,321 与 29,526、23,500，3.17.3）。
+### 9.1 S1：写的四个工具（2026-10-19，合并 `804c3561`）
+
+- 提交（从 `main` 的 `79895f87` 开始）：实施：平台的大的请求体的名额与 mcpserver 的错误（`Extra` 只补、`locks` 至多 20 项、`Fit`）`c87ab688`，客户端 `mcp:<名>`、`Unshowable` 与迁移 00044 `5198bb92`，page 的 domain（线性的匹配器、版本令牌、每一步的规则、写的错误）`026c58e6`，单元与存储（一步的移动加改名、子树与它的删除、MCP 删除的锁、按 id 的路径；linking 的 `Relocation` 与样例 047；撤销的一步的放回）`565aa749`，四个用例 `2f1ae27c`，四个工具与它们的文字、说明、`tools.json`、码的表、矩阵、工具的字符串、MC1 第 5 步、组合根的名额 `02096d8a`，整个程序的测试 `880757c0`，e2e（MC3、MC4、C4 的 MCP 版本）`9c254164`，CI 的份与行（组合根的界线挪到 `TestO` 之前，守卫的 markdown 三个测试各一行、成本的一行加 `-timeout 15m`，`test-go` 照 CI 的份依次跑）`06bfdbf8`，界线的注释记下挪了之后 CI 的第一次运行 `3bec6dd7`（它的推送是核对要的第二次运行）与两次的结果 `48c52ffe`；修复三轮的 27 个提交见下面的修复第一轮到第三轮（界线的挪动与依次跑由修复第一轮改掉）。合并 `804c3561`（第二个父提交 `3d29eaf4`），一共 38 个提交。
+- 与设计不同之处（实施时定下的 23 条，审查 C 判过；已改在各节，3.22 列出）：`CreationOf` 对附件的叶子答 `PathTaken{Asset}`（叶子的类型是 3.20 的一步的规则）；`TestTheMatcherIsStrings` 多一种字母表（`e` 与 U+0301 的字节，NFC 的提示也在差分里）；`TestReplaceReckonsTheSize` 加分配的检查（被拒的 8 MiB 分配不到 1 MiB，抓变异 20；守卫那一腿拼出约 5 TiB、在内存上限处中止）；`PathNotFound` 加 `ParentOf`（3.11.5 的 ", to's parent"）；锁的路径在单元与解析的预算之后读；持锁人的名字"others 在前、按锁的次序、至多 3 个，`by you, in a browser` 在最后，每一部分带 by"（锁的第 11 格钉住 `by bob and by you, in a browser`；3.11.5 的示例写的是 `by Alice, Bob and you, in a browser`），空的显示名写 `someone`；适配器以 `errors.Is(ErrLocked)` 分 `page.locked` 与 `linking.pages_locked`（不能导入 linking）；`edit`、`move`、`delete` 答普通的结构，只有 `write` 的 `created` 经 `Fit`；码的调用里 carol 的笔记本 `workspace_access` 是契约的 `viewer`；`TestTheLargeBodiesShareTwoSlots` 要答复的调用经 `hold`（先放行），`echo` 会把 60–70 KiB 回显过 48 KiB 的上限；交错 2、3 用 `interleaveOn`（两步都等内容行的元组）；撤销的性质测试断言这些种子合起来至少撤销一次 agent 的移动（种子 3、4 各一次），搜索的性质测试同一个世界、也经 MCP 移动；日志的测试核对五个用例的行；e2e 的 `resultOf`/`errorOf` 在 `fixtures/mcp.ts`（`McpAnswer` 不导出）、`expectVersions` 可带 `versions`。`tools/md-fixtures/README.md` 里"两者都变的不是一次操作"一句留到合并（047），修复第一轮随样例提交（主持者的决定）。第 9 步：每个测试的时间取两份各自带 `-json` 的运行（各两次），不是整个包的一次；为了旧的分法有两次 Go 测试相同的 CI 运行，先只推了第 7 个提交；第二份只是刚过线、第一份收得下，规则走的是挪界线那一支，没有 `BOOTSTRAP_THIRD`（6.5 估计的是分），`Makefile:187` 的"五份"与 `:198` 的一个表达式照旧成立，`:198` 改为指向规则；`test-go` 依次跑，一个子 make 一行；挪动的核对要挪了之后的第二次 CI 运行，所以第 9 步有三个提交（第 10 个把第一次运行写进注释、它的推送是第二次，第 11 个写下结果）；挪动由修复第一轮撤回、分出第三份，`test-go` 改为同时跑（下面）。
+- 实测（本机 18 核、128 GB，经 `heavy.sh`）：`edit` 的守卫（不带竞态检测，27 种形状，每种 2 秒）最慢的一次 160.4、159.3、172.0 ms（三次运行，都是 U+1D160 经 NFC 变三倍的那一种、1 MiB 的 `old` 不在页里），整个测试 1.19–1.31 秒；B 的构造串 1 MiB 在 5 MiB 的页上 9.8 ms，两端的构造串 12.5–15.4 ms，NFC、CRLF 的再找 18.0、14.8 ms，与 6.2 的离线实验一致；CI 上这一行的 `-v` 在作业的日志里，要认证（接口答 403），只记得到成本那一份的测试一步（6:35、5:34）。P1 的 `page.not_found` 修好之前与之后：之前 11 段的路径上带 `AttachmentHint` 67,590 字节、10 层的页上带 `PageHint` 61,448 字节（答 `internal_error`，设计审查 A 实测）；之后四种提示在最坏的路径上都由 `Fit` 去掉、33,818 字节，`to` 的父的那一种 34,024；别的错误在最坏的取值处（`TestEachErrorFitsAtItsWorst` 打出的）：`validation_failed`（`recursive`）34,191，`page.title_taken` 33,940–34,022，`page.revision_mismatch` 34,170–34,224，`page.locked` 35,960（一个锁）与 38,522（删除的 25 个），`linking.pages_locked` 37,910，都在 48 KiB 之内（与设计审查 A 量的差在 30 字节之内）。大的请求体的内存（一次性的测试、不入库：同一进程，`GOGC` 默认，不带竞态检测，每 2 ms 一次 `ReadMemStats`，三个 PAT，两个同时、第三个晚 100 ms，各两次）：两个 `/mcp` 的 37,814,272 字节的 `write`（5 MiB 的正文，每个字节都是 `<` 的六字节转义）峰值比基线多 896.7、800.7 MiB，共分配 4,689 MiB；一个 `/mcp` 加一个 REST 的 31,522,816 字节的 `PUT …/content` 多 704.5、704.3 MiB；都在 3.2.4 估计的约 1 GB 之内，第 10 节的那一行不改；第三个都在 2 秒之内拿到名额、答 200（这一轮只量了一个长字符串的形状；许多小的 JSON 值的形状见修复第一轮）。00044 在 20 万个变更集（一半是 `mcp:Claude Code <n>`，CHECK 的正则读它们；别的与会话的 `web`、`api` 在 `IN` 处就定了）与 20 万个编辑会话上（ANALYZE 过）：Up 632.5 ms，Down 623.4 ms，再 Up 625.5 ms，每张表在它的 `ALTER` 的锁下扫一次（设计审查 A 在 20 万行上 9–16 ms），仍远在一秒之下。种下的历史的两种退回的答复的大小是 S2 的（3.17.3）。
+- 组合根的份（6.5，5.1 第 9 步）：S1 的分支上 CI 的两次运行（先只推第 7 个提交 `880757c0`，再推 `9c254164`，Go 的测试相同）第一份的测试一步 6:59、6:56（平均 6:57.5），第二份 7:15、8:33（平均 7:54），**第二份过了线**；本机各单独跑两次（照 make 的目标、加 `-json`），第一份 256、281 秒，第二份 245、247 秒，CI 与本机之比 1.56、1.93，合起来 1.73（6.5 估计约 1.6）。照规则先看挪：第二份按名字排在最前的 `TestEveryS` 到 `TestN`（本机 16.5 秒，其中 `TestEveryVisibilityChangeResetsItsStreams` 10.0 秒）乘 1.73 约 29 秒，挪过之后估计 7:26 与 7:25，都在线之下（照 1.6 是 7:24 与 7:28，照各自的比是 7:23 与 7:22），所以 **`BOOTSTRAP_FIRST` 改为 `^Test[A-N]`、不分第三份**（5.1 第 9 步的"第二份只是刚过线时挪"）；`^Test[A-M]`、`^Test[A-O]` 不如它均衡。两份 187 与 186 个测试，竞态下编译的 373 个各在一份里（另 5 个在 `!race` 的文件里）。挪了之后本机各单独跑两次（5.1 第 9 步第 3 条的依次跑）：第一份 267、271 秒，第二份 231、225 秒（平均 269 与 228 秒；第二份少了它给出的约 16.5 秒，第一份的平均没变，挪之前的 280.9 秒是慢的一次；照各自的比约 6:58 与 7:19，换一种估计也在线之下）。**挪之后以 CI 的两次运行核对**：挪了之后的第一次运行（B1）两份 7:25 与 7:54，第二份这一次仍过线（估计 7:25）；规则凭两次的平均，所以第 10 个提交把 B1 的数写进界线的注释、它的推送就是第二次（B2）：5:25 与 5:27。**两次的平均 6:25 与 6:40.5，都在线之下，这次挪动成立**，没有第三份（第 11 个提交把结果写进注释）。同一份在 CI 上一次运行可差两分钟以上（第二份 7:15、8:33、7:54、5:27），所以只凭平均。核对不过时规则会撤回挪动、改为分：6.5 的 `BOOTSTRAP_THIRD = ^Test(The[F-Z]|T[i-z]|[U-Z])` 在今天的测试上把原来的第二份分成 125.1 与 118.7 秒。这个布局里 S2 的 `TestTheMCPHistory…` 与 78 个读的格落在第二份（分了之后落在第三份），S2 照同一条规则再看。第三次运行（B3，第 11 个提交的推送）7:25 与 7:45：`^Test[A-N]` 上三次运行第一份 7:25、5:25、7:25（平均 6:45），第二份 7:54、5:27、7:45（平均 7:02），最近两次 6:25 与 6:36，照规则的两次的平均与三次的平均挪动都成立；但 B2 上两份都快（每个作业各有自己的 runner，B2 别的作业照常），第二份单独的三次里有两次过了 7:30（只算 B1 与 B3 是 7:49.5）：主持者把 B2 看作离群，修复第一轮照规则撤回、分出第三份（下面）。
+- 守卫与成本的行：守卫的 markdown 一行的三个测试各单独跑两次，成本的 125.5、127.9 秒，渲染的 3.7、4.0 秒，链接的 22.5、21.7 秒，之和 152.7 秒乘 2.4 约 6.1 分钟，**拆成三行**；成本的一个乘 2.4 约 5.07 分钟，仍过 5 分钟，**它的一行加 `-timeout 15m`**（原来的一行本机 139.9、154.5 秒）。成本的 page/domain 一行（`edit` 的守卫与 glob 的守卫）29.2、27.8 秒，乘 2.4 约 1.1 分钟，不改。
+- 本机的门禁（5.1 第 9 步的第 3 条）：`make test-go` 照 CI 的份跑组合根。在第 9 个提交的树上交替量（同时、依次、同时、依次）：竞态检测的三个同时跑（`-j3`）时整个 759、754 秒（平均 12:36），依次 1031、1061 秒（平均 17:26），同时只快 4.8 分钟，不到 5 分钟，所以**依次**（一个子 make 一行，外面的 `make -j` 也不让它们同时）。6.5 估计竞态检测的部分同时约 4.5–5 分钟、依次约 10.5 分钟，实测 5.5–5.6 与 10.2 分钟（614、615 秒；同时跑时两份互相拖慢约两成）。依次时各份：竞态 116、119，第一份 267、271，第二份 231、225，成本 166、189，守卫 251、257 秒；守卫的 markdown 拆开之后的三行：成本的 119.5、124.8，渲染的 3.5、3.3，链接的 20.5、20.9 秒。原来的 `make test-go`（一个 `go test ./...`）在第 8 个提交上 943 秒。分出第三份之后修复第一轮重量，改为同时跑（下面）。
+- 反向对照：6.3 的 S1 的各条（1–36、42、45–55、57–63）与 3.21 的 S1 的各行都失败，整个程序与 e2e 的腿也都照点名的测试失败；另有静态检查的 9 个反向对照与 30 多个补充的变异，都失败；两处测试自己的问题在途中找到并改了（`mEdit-unlocked-node` 第一次存活：换上的页的版本号与读到的不同；`m58c` 第一版的改动是空的）。MC1 第 5 步写死 `["list", "read"]` 时失败、照文件时通过。
+- 门禁：每个提交各自是绿的（`make lint-go` 每个提交都过；动过的包各自跑，不连库的直接跑、别的经 `heavy.sh`；组合根整个在竞态检测下，第 6、7 个提交上 489.5、492.7 秒）。第一次推之前在第 8 个提交上 `make lint-go`、`gen-check`、`lint-web`、`knip` 都干净，`make test-go` 943 秒、`make e2e` 257 个通过（37.1 秒）；第二次推之前在第 9 个提交上 `make lint-go`、`gen-check`、`knip` 干净，新的 `make test-go` 1052 秒（第一份 267.8、第二份 235.9 秒）、`make e2e` 257 个通过（37.3 秒）；第三、第四次推之前（第 10、11 个提交，各改 Makefile 的一行注释）同样的门禁，`make test-go` 1076、1027 秒，`make e2e` 都是 257 个通过。
+- CI（测试一步 / 作业）：A0 `39156055468`（`880757c0`）与 A1 `39157350738`（`9c254164`）全绿：竞态 6:11 / 6:35、8:05 / 8:24，第一份 6:59 / 7:18、6:56 / 7:18，第二份 7:15 / 7:34、8:33 / 8:55，成本 6:35 / 9:20、5:34 / 7:50，守卫 10:32 / 10:56、7:03 / 7:19，e2e 3:29 / 4:15、2:49 / 3:35，web 3:37 / 4:11、2:53 / 3:36，镜像 1:28、1:16。新的界线上：B1 `39164978920`（`06bfdbf8`）与 B2 `39167799599`（`3bec6dd7`）全绿：竞态 8:01 / 8:20、6:10 / 6:31，第一份 7:25 / 7:43、5:25 / 5:44，第二份 7:54 / 8:14、5:27 / 5:42，成本 5:21 / 7:40、6:27 / 9:07，守卫 10:28 / 10:47、10:06 / 10:25（markdown 拆成三行之后作业照旧在 25 分钟的一半之下），e2e 3:22 / 4:14、3:17 / 4:14，web 2:37 / 3:05、2:19 / 2:45，镜像 1:19、1:19；B3 `39170387993`（`48c52ffe`，分支的头）全绿：竞态 5:06 / 5:26，第一份 7:25 / 7:42，第二份 7:45 / 8:07，成本 6:27 / 9:12，守卫 10:31 / 10:49，e2e 3:26 / 4:12，web 3:38 / 4:12，镜像 1:19。
+- 修复第一轮（审查 B、C 与 A2，2026-10-19）：
+  - 提交：B-M1 `7088cbef`（全是 CRLF 的页上，带 LF、不带 CR 的 `old_string` 在任何查找之前就照 CRLF 找、照 CRLF 写：只靠开头的 LF 会在一个 CRLF 里匹配上，`"\nb"` 换成 `"\nc\nd"` 或 `" b"` 会留下混着的换行或孤立的 CR）；A2-I1 `804c6c75`（请求体的 JSON 值的上限，下一条）；样例 047 的 README 一句 `0c6d0f47`；B-N1 `f81a54f5`（同一父页下的改名到达链接的参与者，一个 `OpRename`）；B-N2 `2a3eb8c7`（`move` 的父页写成页的路径，`to: "B.md/x.md"`，答 write 那样的 422：`domain.MissingAncestors`，`CreationOf` 与 `move` 的父页链共用）；C-M2 `dde21437`、C-N1 `fa5da575`、C-M3 `d7ba88f0`、C-M5 `6177345c`、C-M1 `e17405cd`（测试的缺口：名额还时去掉持有者的记录、一个计时器管两次等候、同样长而内容不同的写是 `page.title_taken`、读与单元之间的写是变化、锁的格在第 12 格之前数 agent 的会话）；组合根分出第三份 `e6dc96f9`，`make test-go` 同时跑 `8dc96ec0`，撤销的性质测试在 `go test -short` 下的计数 `7ccc11e6`（逐个提交以 `-short` 核对时找到的：S1 的 `880757c0` 起它在 `-short` 下失败，pgtest 跳过每个种子之前就数了它；改为种子跑完才数。四个种子里 agent 各移动 3、2、1、3 次，撤销碰到 agent 的变更集的各是 0、0、1、1 次，所以这条性质靠种子 3、4：种子固定，结果确定，一旦都不碰就响亮地失败，"no seed reverted an agent's move"），CI 的数 `3fdfc815`、`81c4d195`。B-N3 交 P3。
+  - **请求体的 JSON 值的上限**（审查 A2-I1；主持者的决定）：许多小的 JSON 值的请求体比一个长字符串贵得多。审查 A2 实测，`/mcp` 37.8 MB 的请求体里 `_meta` 是许多小的成员时一个调用峰值约 +1,269 MiB、9.2 秒的 CPU，`_meta.a = [[],[],…]` 约 +5,025–5,489 MiB，两个名额约 +9,399 MiB，多半是锁定的 SDK v1.8.0 把 `_meta` 泛型地解码成 map 与 slice（`extractRequestMeta`、`CallToolParamsRaw.Meta`）；一个长字符串约 +496 MiB。所以 bodyshape 的第一遍扫描（`ambiguity.go`）数它开始读的每一个 JSON 值（请求体本身、其中的每个对象、数组、字符串、数字与字面量），过了表的 `MaxValues` 就停，`Check` 答 `*bodyshape.TooManyValues`：400 `bad_request`，bodyshape 的 detail，一个字段，空路径（请求体本身）、`too_long`，消息写出上限（"has more than 10,000 JSON values: each object, array, string, number, true, false and null is one"）。它在 walk、`sizeError` 对 `_meta` 的解码与 SDK 之前；扫描留着的（每个成员的名称与 `seen` 的表）随读过的值增长，不过上限。记日志同 bodyshape 别的拒绝：只有访问日志的一行，不记请求体。大的请求体取了名额才读请求体，所以被拒的只在读它与扫描的时间里占着名额（整个程序的测试核对它之后同一个凭证的下一个大的调用立刻拿到名额）。**`/mcp` 的上限 10,000**（`mcpserver.MaxBodyValues`，不论方法与大小）：M9 最大的合法调用是 P3 的 `batch` 的 100 项，每项是 `op` 与至多 `edit` 的五个参数的对象、7 个值，共约 700，加 batch 自己的参数、信封与客户端的 `_meta` 约 715；带能力的 `initialize` 几十个；10,000 是它的 14 倍。**REST 的上限 1,000**（`bodyshape.MaxRESTValues`，`bodyshapegen` 写进每个模块的表）：REST 最大的 JSON 请求体是带邀请的注册，6 个值，别的至多 5 个，今天没有带列表或开放的 map 的请求体；1 MiB 的许多小成员在检查里峰值约 +23.6 MiB，一个凭证同时 200 个约 4.7 GiB，所以 REST 也要上限；有了它，上限之下最坏的（997 个 1 KiB 的名称，扫描与 walk 各解码一次）约 +2.7 MiB，过了上限的 0.1 MiB；契约的 `FieldError.field` 写明空路径是请求体本身与这个上限，apitest 的请求体样例让每个操作在上限处与多一个值时各发一次（整个程序）。
+  - **大的请求体的内存，有了上限之后**（审查 A2-M1；3.2.4、6.2）：两种做法，都是 `GOGC` 默认、不带竞态检测、峰值的 `HeapInuse` 比 GC 之后的基线。A：审查 A2 的一次性测试（同一进程里 bootstrap 挂的链：路由、`API.Wrap` 带名额的中间件、mcpserver、SDK、一个不做 domain 的写的工具；每 1 ms 一次 `ReadMemStats`；请求体都是 37,814,272 字节），各形状一个调用，再两个凭证同时、第三个晚 100 ms（两个名额占满、第三个等着），三次。B：S1 的 6.2 的一次性测试（整个程序连数据库，三个 PAT，两个同时、第三个晚 100 ms），两次。一个调用（A）：6.2 的一个长字符串 +496 MiB；过了上限的各形状（`_meta` 的许多成员，`_meta.a` 的 `[1,…]`、`[{},…]`、`[[],…]`、`["a",…]`，`clientInfo` 里的数组，`arguments`、`params`、消息本身的许多成员，根上的数组）都答 400、+78–79 MiB（读请求体，`io.ReadAll` 增长时约两倍于它，扫描 50–80 ms）；上限处（`_meta` 的 9,990 个长字符串、长名称、六字节转义的成员，`_meta.a` 的 9,989 个长字符串，`arguments` 的 9,992 个长名称的成员，6.2 的正文加 `_meta` 的 9,990 个小成员）都是 +496–498 MiB，与一个长字符串相同。两个名额加一个等着的：A 里一个长字符串 +713、+817、+897 MiB，上限处的各形状 +771 到 +961 MiB（最高的一次是 6.2 的正文加 `_meta` 的 9,990 个小成员，三次 +771、+929、+961），过了上限的 +192–195 MiB；B 里一个长字符串 +800.6、+924.2 MiB（S1 是 +896.7、+800.7），上限处的 6.2 的正文加 `_meta` +832.6、+768.6，`_meta` 的长字符串 +681.0、+872.8，`/mcp` 在上限处加一个过了 REST 上限的 31.5 MB 的 `PUT …/content` +680.1、+748.1，过了上限的三个 +155.8、+191.8，`/mcp` 加 REST（S1 的）+704.4、+704.1 MiB。**没有形状超过 3.2.4 的约 1 GB**：上限处每种形状与一个长字符串（3.2.4 依据的那一种）一样贵，过了上限的请求体只花读它与一遍有界的扫描；峰值是 GC 对随字节增长的垃圾的节奏，同一形状的几次可差 190 MiB，比上限处各形状与长字符串之差还大。
+  - 组合根的份（6.5，主持者的决定，审查 C 的 N2）：挪到 `^Test[A-N]` 之后 CI 的三次运行里两份是 7:25 与 7:54、5:25 与 5:27、7:25 与 7:45，第二次看作 runner 的离群：第二份照旧过线、第一份就在线上，这次挪动不成立，照规则撤回（`BOOTSTRAP_FIRST` 回到 `^Test([A-D]|E([a-u]|very[A-R]))`），以 6.5 的 `BOOTSTRAP_THIRD = ^Test(The[F-Z]|T[i-z]|[U-Z])` 把原来的第二份再分一份（`test-go-bootstrap-3`、`ci.yml` 的 `bootstrap-3`、25 分钟，第二份 `-skip` 两个表达式的并），不提高 `-timeout`。竞态下编译的 374 个测试三份依次 168、104、102 个，互不重叠、合起来是整个包（`go test -race -list`）。本机各单独跑两次：第一份 254、246 秒（平均 250），第二份 121、132 秒（平均 126.5），第三份 121、131 秒（平均 126），新的两份差 0.4%。CI 的两次运行：C1 `39186719057`（`8dc96ec0`）与 C2 `39189381412`（`3fdfc815`，Go 的测试只差第 24 个提交的一行计数）：第一份 5:51、7:07（平均 6:29），第二份 5:13、4:20（平均 4:46.5），第三份 3:12、3:49（平均 3:30.5），都在线之下，这次分照规则成立；第二份在本机与第三份相当、在 CI 上慢一些（带着 REST 的矩阵，审查 C 的估计）。第一份离线最近：这个界线上 CI 的四次是 6:59、6:56、5:51、7:07（平均 6:43），以后它过了线，照规则先看第二份收不收得下 `TestE…` 的一段（本机 38.9 秒，审查 C）。`main` 没有分支保护（公开的接口答 `protected: false`），没有要加 `server (bootstrap-3)` 的必需检查的列表（审查 C 没有核对的那一条）。
+  - 本机的门禁（5.1 第 9 步第 3 条，审查 C 的 M4）：分成三份之后在分份的树上交替量（同时、依次、同时、依次）：竞态检测的四个同时跑（`-j4`）、之后成本与守卫依次，整个 698、730 秒（平均 11:54）；六份依次 1024、1058 秒（平均 17:21）；同时快 327 秒、5.45 分钟，过了 5 分钟，所以 **`test-go` 照 6.5 的形状同时跑**（两份时只快 4.8 分钟，S1 先是依次）。同时跑的一段 284、319 秒，第一份最长（单独跑 245–253 秒）；第二、第三份 144–180 秒（单独跑 120–132 秒）。
+  - 反向对照：修复的每一条都有它的变异失败（30 个，S1 的审查记录的"反向对照"）。
+  - 门禁与 CI：推之前在第 23、25、26 个提交上 `make lint-go`、`gen-check`、`knip` 干净（第 23 个另有 `lint-web`），`make test-go` 724、756、783 秒（同时跑的形状），`make e2e` 都是 257 个通过（第 25 个提交上第一次跑时 C4 (page) 多看到一个 404 而失败，单独跑 20 次与再跑全部都通过：这一轮没有碰它的代码，偶发的，记在 S1 的审查记录，主持者的决定 9）；每个提交单独 build、vet，碰到的包的 `-short` 测试除了第 24 个提交修的那一个都过。CI：C1 `39186719057`、C2 `39189381412`、C3 `39191823284`（`81c4d195`）全绿（各份的数见 S1 的审查记录的"门禁"）。
+- 修复第二轮（审查 A2、B、C 核对修复第一轮，2026-10-19）：
+  - 提交：B2-M1 `ebd23791`（全是 CRLF 的页上，`old_string` 里没有 `\r` 时，`new_string` 里单独的 `\n` 不论 `old_string` 有没有 `\n` 都照 CRLF 写，它里面的 `\r` 照留；工具的说明照规则写，`tools.json` 同）；B2-N2 `371eb3a6`（`MissingAncestors` 过了第一个缺的段也照规则：`TestCreationOf` 的第 3 段、`TestRelocatePathRefuses` 的第 2 段）；C2-M1 `8825f34f`（`make test-go-short` 与 CI 的 `short` 一份）；C2-N1 `285ed100`（页的安静检查本身失败时也打出页的状态）；`short` 一份的第一次 CI 运行与时限的理由写进注释 `9b01e355`；它的第二次 CI 运行失败之后（下面），按耗时判定的守卫在 `-short` 下跳过 `9e33ae11`，`test-go-short` 就是 README 的写法、不带 `-timeout`，`short` 一份的时限 15 分钟 `2cb74687`；`anotherTab` 的安静检查在故事先写 `anotherTab` 时（HI1 的两个之外都是）没有跑 `a5aecf7e`（它只依赖 `pageStates`，fixture 照故事写它们的次序建，它在标签页随上下文关掉之后才拆；改为依赖 `page` 与 `anotherPage`，自己找到的；修复第三轮改正，审查 C 的 C3-N1）。A2 的一个 Nit 不改。
+  - B2-M1 的理由（主持者的决定，审查 B 的 (a)）：最常见的加几行的编辑，`old_string` 是一行、不带 `\n`，`new_string` 带 `\n`；00 号文档 4.10 的理由"模型常丢掉 `\r`"对 `new_string` 与 `old_string` 一样；工具的说明本来就这样答应；这样全是 CRLF 的页在不带 `\r` 的编辑之下一直全是 CRLF（只要还留着一个换行），之后只用 `\n` 的编辑照样配得上。反向的变异（写的一半又要 `old_string` 带 `\n`）让新的行、预言与整个程序的一行失败。
+  - `go test -short`：README 与 Makefile 告诉贡献者这样只跑单元测试，以前没有哪个门禁跑它，S1 的 `880757c0` 让它失败、到修复第一轮才看见（审查 C 的 C2-M1）。`make test-go-short` 跑 `cd server && go test -short -count=1 ./...`，即 README 的写法；CI 的 `short` 一份跑它，不在 `make test-go` 的各份之和里，也不进组合根的份。第一次照它跑时不带竞态检测的守卫也在 `-short` 下跑（组合根的 markdown 的三个本机 123、20、2.8 秒），所以那一行先带过 `-timeout 15m`、时限 20 分钟；第一次 CI 运行通过（作业 6:04、测试一步 5:47），第二次失败：`TestTheWorstGlobsStopWithinTheirWork` 的一次走 2.6 秒，过了它 2 秒的界线（单独跑时本机最慢 0.66 秒，同一次运行里成本那一份也通过）：`-short` 的各包同时跑，CI 的 runner 上四个一起，别的包的成本守卫抢走了 CPU。所以按耗时判定、不要数据库的守卫在 `-short` 下跳过（glob 与 `Replace` 的守卫，linking 的三个，`markdowntest.CheckCosts`：Go 的 `-short` 本来就是让长的测试缩短，README 也说只跑单元测试），`test-go-costs` 与 `test-go-guards` 照旧不带 `-short`、各自单独一行跑它们；按分配、大小判定的照跑，别的进程左右不了它们。之后本机整个 53、38 秒，最慢的包约 28 秒，乘 2.4 约 70 秒，照 6.5 的规则不加 `-timeout`；时限 15 分钟，不是作业的两倍：Go 默认的每个测试二进制 10 分钟要在构建之后先到、打出卡住的测试，同别的各份（修复第三轮改为 20 分钟：Go 的缓存冷时构建慢得多、各个二进制开始得晚，15 分钟可能先到）。CI 上作业 2:38、测试一步 2:16（D3），两倍约 5 分钟。控制：把第 24 个提交的计数放回种子开头，`make test-go-short` 失败（改前 162 秒、改后 38 秒）。
+  - 门禁与 CI：推之前在第 31 个提交上 `make lint-go`、`gen-check`、`knip`、`lint-web` 干净；`make test-go` 710 秒、`make test-go-short` 145 秒（87 个包）、`make e2e` 257 个通过（第一次跑 `make test-go` 时 asset 的适配器的包起不来它的 PostgreSQL 容器，Docker 的接口超时，是机器的，不是测试的；再跑三样都过）；第二次推之前在第 32 个提交上同样干净，`make test-go` 691 秒、`make test-go-short` 148 秒、`make e2e` 257 个通过；第三次推之前在第 34 个提交上 `make lint-go`、`gen-check`、`knip` 干净，`make test-go` 695 秒（成本那一份照旧跑 glob 与 `Replace` 的守卫）、`make test-go-short` 51 秒、`make e2e` 257 个通过；每个新提交单独 build、vet、碰到的包的 `-short` 测试都过。CI：D1 `39200409361`（`a5aecf7e`）全绿；D2 `39203185170`（`9b01e355`）的 short 一份失败（上一条）；D3 `39206796754`（`2cb74687`）全绿（各份的数见 S1 的审查记录的"门禁"）。
+- 修复第三轮（审查 B、C 核对修复第二轮，2026-10-19）：
+  - 提交：C3-M1 `1a972f31`（`make check` 也跑 `make test-go-short`：`check: lint knip test test-go-short build-web`，`test` 照旧是 `test-go test-web`；`make check` 与 `make gen-check` 合起来仍是 CI 的 server、web 任务的门禁，README:24 与 Makefile 的文件头照原文成立）；`short` 一份的时限 20 分钟 `56e0c7c4`（Go 的缓存冷时，例如 `go.sum` 改了，构建慢得多、各个二进制开始得晚，15 分钟可能先于 Go 默认的 10 分钟，丢掉卡住的测试的栈；同竞态那一份的 20）；C3-N1 `d50937ca`（`anotherTab` 的注释：之前只在故事先写 `anotherTab` 时检查没有跑，HI1 的两个先写 `signedInPage`、检查跑了）；B3-N1 `3d29eaf4`（`Replace` 的注释：页在不带 `\r` 的编辑之下一直全是 CRLF，只要还留着一个换行）。第 31 个提交的说明已推送，照旧，审查记录写下改正。
+  - 门禁与 CI：`make lint-go`、`gen-check`、`knip`、`lint-web` 干净；`make -n check` 里 `test-go-short` 的 `go test` 一行在 `test` 的之后；`make test-go-short` 59 秒（87 个包）；每个新提交单独 build、vet、碰到的包的 `-short` 测试都过。CI：E1 `39212738460`（`3d29eaf4`）全绿（short 一份作业 3:14；各份的数见 S1 的审查记录的"门禁"）。
+- 合并之后：`main` 的 CI（run 39215266203，`804c3561`）十个作业全绿（作业，括号里是测试一步）：web 3:15（2:44）、竞态 6:31（6:13）、组合根一 4:58（4:39）、组合根二 5:39（5:15）、组合根三 2:45（2:28）、成本 9:26（6:37）、守卫 8:52（8:29）、short 2:33（2:12）、镜像 1:21、e2e 4:21（3:35）。组合根第一份离线最近：修复核对第三轮 C 的观察是最近两次（D2 7:10、E1 7:12）平均 7:11，离线 19 秒；合并之后最近两次（E1、`main` 4:39）平均约 5:56。S2 的测试多半落在第三份。
+- 审查：三位审查者（Opus）：A2（边缘、大的请求体、错误与归属；审查 A 的第一次运行在写报告时停下，只留下残稿，A2 照同样的范围重做）、B（写的语义、单元、锁、链接与匹配器）、C（测试、e2e、门禁、CI 与约定）。一条 Important，记为高：许多小的 JSON 值的请求体比一个长字符串贵得多，`/mcp` 的一个调用到约 +5 GiB、两个名额约 +9.4 GiB（A2-I1：请求体的 JSON 值的上限，3.2.6）。中低两条：全是 CRLF 的页上以单独的 LF 开头的 `old_string` 在一个 CRLF 里配上（B-M1）；修复核对第一轮 B 另见 `new_string` 的单独的 LF 照原样写（B2-M1）。其余是低（名额还时的持有者、同样长而内容不同的写、读与单元之间的写、锁的格的计数都没有能失败的测试，C-M1–M3、C-M5；三份之后的 `make test-go` 要重量，C-M4；没有门禁跑 README 的 `go test -short ./...`，修复核对第一轮 C2-M1；`make check` 因此不再是 CI 的门禁，第二轮 C3-M1；A2-M1 的记录）与细节。实施者自己另找到两处（`7ccc11e6`、`a5aecf7e`）。修复核对三轮，第三轮没有 Important 与 Minor。逐条见[审查记录](reviews/P2-S1-writes-review.md)。
+- 交给后面的：P3：422 的字段名的写法（B-N3）、`batch` 的上限要写 `mcpserver.MaxBodyValues`、`MissingAncestors`（第 8 节）；P5：Claude Code 与 Codex 遇到 503 `server_busy` 怎样表现、一个 agent 并行几个大的写（其中一次在限速的上行上）、`edit` 与 `move` 的写法、破坏性的工具，接入文档的名额与按路由缓冲（第 8 节，00 号文档 4.16）；M12：慢的发送者、每个凭证一个名额的代价、大的请求体在负载下的内存（有了 JSON 值的上限）、`edit` 的最坏的一次调用、单个 `delete` 没有大小的界线、名额与等候是常量（[性能移交](../M12-release/handoffs/M4-performance.md)第 18 项）；S2：种下的历史的两种退回的答复的大小（3.17.3），组合根的份照同一条规则再看。CI 的作业日志要认证，`edit` 的守卫在 CI 上每种形状的用时与各行在 CI 上自己的 `ok` 没有记下，只有每一步的时间。
+- 负责人可以改判的取舍（主持者的决定）：组合根照规则撤回挪动、分出第三份（B2 看作 runner 的离群）；`move` 的父页写成页的路径答 `write` 那样的 422；422 的字段名的写法交 P3；样例 047 的 README 一句随样例提交；请求体的 JSON 值的上限（`/mcp` 10,000、REST 1,000，扫描到上限就停，契约写明，全部形状重量）；最高的 +961 MiB 读作在"约 1 GB"之内，00 号文档第 10 节的那一行不改写；全是 CRLF 的页上 `new_string` 的单独的 LF 照 CRLF 写（B 的 (a)）；`go test -short ./...` 有自己的门禁（`make test-go-short`、CI 的 `short` 一份、`make check`），按耗时判定的守卫在 `-short` 下跳过，时限 20 分钟；C4 (page) 的摆动记在审查记录。逐条见审查记录的"主持者的决定"。
+
+### 9.2 S2：历史的读
+
+S2 在实施与审查中（分支 `m9-p2-s2`），结果随它的合并写入。
 
 ## 附录：核对过的代码与 SDK
 
