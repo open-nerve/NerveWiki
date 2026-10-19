@@ -145,3 +145,42 @@ func TestTheWritesErrorsAreTheirCodes(t *testing.T) {
 		t.Errorf("AttachmentOnPath is the problem %s: it has none of its own", e.Code)
 	}
 }
+
+// A batch's errors (M9/P3 design 3.9.2): page.batch_too_large saying which
+// bound, on a copy, never the shared error; an op's failure, which is the
+// error it wraps under errors.Is and errors.As and names the op and its
+// tool; and page.revision_mismatch at a tree op the notebook kept
+// changing under.
+func TestTheBatchErrorsAreTheirCodes(t *testing.T) {
+	var e *shared.Error
+	for _, tt := range []struct {
+		err  error
+		want string
+	}{
+		{domain.BatchTooLarge("ops", 101, 100, "split the batch"), "101 ops, at most 100: split the batch."},
+		{domain.BatchTooLarge("bytes of strings", 7, 6, ""), "7 bytes of strings, at most 6."},
+	} {
+		if !errors.Is(tt.err, domain.ErrBatchTooLarge) || !errors.As(tt.err, &e) || e.Code != "page.batch_too_large" ||
+			e.Kind != shared.KindInvalid || e.Detail != tt.want || len(e.Fields) != 0 {
+			t.Errorf("BatchTooLarge = %+v, want page.batch_too_large %q", tt.err, tt.want)
+		}
+	}
+	if domain.ErrBatchTooLarge.Detail != "The batch is too large for one change." {
+		t.Errorf("BatchTooLarge set its detail on the shared error: %q", domain.ErrBatchTooLarge.Detail)
+	}
+	inner := &domain.PathTaken{Path: "A.md"}
+	var err error = &domain.OpFailed{Op: 3, Tool: domain.OpKindMove, Err: inner}
+	var taken *domain.PathTaken
+	if !errors.Is(err, domain.ErrTitleTaken) || !errors.As(err, &taken) || taken != inner ||
+		err.Error() != "ops[3] (move): "+domain.ErrTitleTaken.Error() {
+		t.Errorf("OpFailed = %v, want ops[3] (move) wrapping page.title_taken", err)
+	}
+	changed := domain.BatchChanged()
+	if !errors.Is(changed, domain.ErrRevisionMismatch) || !errors.As(changed, &e) || e.Kind != shared.KindConflict ||
+		e.Detail != "the notebook changed while the batch was planned, twice: read it again and send the batch again." {
+		t.Errorf("BatchChanged = %+v, want page.revision_mismatch saying the notebook changed twice", changed)
+	}
+	if domain.ErrRevisionMismatch.Detail != "The page was changed since it was read." {
+		t.Errorf("BatchChanged set its detail on the shared error: %q", domain.ErrRevisionMismatch.Detail)
+	}
+}

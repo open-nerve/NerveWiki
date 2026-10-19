@@ -98,6 +98,47 @@ var (
 		"Nodes the changeset changed changed since, or cannot go back as they were.")
 )
 
+// ErrBatchTooLarge: a batch is past one of its bounds (M9 design 4.11,
+// 4.14): MCP's own code, which no REST operation answers. BatchTooLarge
+// returns it saying which bound.
+var ErrBatchTooLarge = shared.NewError(shared.KindInvalid, "page.batch_too_large", "The batch is too large for one change.")
+
+// BatchTooLarge is ErrBatchTooLarge saying which bound (M9/P3 design
+// 3.9.2): n of what, a count with its unit ("ops", "nodes changed",
+// "bytes of strings"), at most max, and what to do, hint, when there is
+// something.
+func BatchTooLarge(what string, n, max int, hint string) error {
+	e := *ErrBatchTooLarge
+	e.Detail = fmt.Sprintf("%d %s, at most %d", n, what, max)
+	if hint != "" {
+		e.Detail += ": " + hint
+	}
+	e.Detail += "."
+	return &e
+}
+
+// OpFailed is an op of a batch that failed, the batch written in none of
+// it (M9 design 4.11): Op, its place from 0, and its tool; Err as that
+// tool's use case has it, its 422s' fields at ops[Op].
+type OpFailed struct {
+	Op   int
+	Tool OpKind
+	Err  error
+}
+
+func (e *OpFailed) Error() string { return fmt.Sprintf("ops[%d] (%s): %v", e.Op, e.Tool, e.Err) }
+func (e *OpFailed) Unwrap() error { return e.Err }
+
+// BatchChanged is page.revision_mismatch at a batch's op of the tree: the
+// notebook changed while the batch was planned, and again after it was
+// planned once more, so that the op found other nodes under the lock than
+// its plan had (M9/P3 design 3.6.2). A content op's is a *VersionMismatch.
+func BatchChanged() error {
+	e := *ErrRevisionMismatch
+	e.Detail = "the notebook changed while the batch was planned, twice: read it again and send the batch again."
+	return &e
+}
+
 // ErrJobBatchTooLarge is a background job's batch of more than one step past
 // what a unit writes besides its nodes (M8/P4 design 3.3): the rows of
 // history it restores, counted before its contents are parsed, or the
