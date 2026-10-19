@@ -75,8 +75,14 @@ func widest(path string) pageMeta {
 // measure is what the answer leaves a page's slice: mcpserver counts
 // the text, the room is the bound less the widest first block.
 func measure() app.TextMeasure {
+	return measureOf(func(path string) any { return widest(path) })
+}
+
+// measureOf is what the answer leaves a slice whose first block, at path,
+// is never wider than first(path): read's page's, versions' version's.
+func measureOf(first func(path string) any) app.TextMeasure {
 	return app.TextMeasure{Bytes: mcpserver.TextBytes, Room: func(path string) int {
-		meta, err := line(widest(path))
+		meta, err := line(first(path))
 		if err != nil {
 			return 0 // Cut answers ErrNoRoom: the tool fails
 		}

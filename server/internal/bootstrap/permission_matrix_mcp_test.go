@@ -73,7 +73,8 @@ func mcpRows() []mcpRow { return slices.Concat(pageMCPRows(), pageWriteMCPRows()
 // S3's notebooks has no argument to refuse but one it does not take, and
 // open_notebook only its notebook, unseen or no UUID (M9/P1 design
 // 3.17); P2's writes the codes of the REST writes they are (M9/P2 design
-// 3.13.1).
+// 3.13.1), its history's reads those of the REST reads they are
+// (3.17.1).
 func mcpToolCodes() map[string][]string {
 	return map[string][]string{
 		"list":          {"bad_request", "validation_failed", "notebook.not_found", "page.not_found"},
@@ -86,7 +87,10 @@ func mcpToolCodes() map[string][]string {
 			"page.revision_mismatch", "page.locked"},
 		"move": {"bad_request", "validation_failed", "notebook.not_found", "page.not_found", "forbidden", "server_busy",
 			"page.title_taken", "page.cycle", "page.too_deep", "linking.pages_locked"},
-		"delete": {"bad_request", "validation_failed", "notebook.not_found", "page.not_found", "forbidden", "page.locked"},
+		"delete":    {"bad_request", "validation_failed", "notebook.not_found", "page.not_found", "forbidden", "page.locked"},
+		"versions":  {"bad_request", "validation_failed", "notebook.not_found", "page.not_found", "page.version_not_found"},
+		"log":       {"bad_request", "validation_failed", "notebook.not_found", "page.not_found"},
+		"changeset": {"bad_request", "validation_failed", "notebook.not_found", "page.changeset_not_found"},
 	}
 }
 
@@ -120,8 +124,12 @@ func TestEveryMCPToolHasItsCodes(t *testing.T) {
 // pageMCPRows are page's rows: list of the root's children and read of
 // the column's page, each in both entries; a column that cannot see its
 // notebook is its 404 (mcpRow.want's notebook.not_found, the notebook
-// entry's edge 404 for it), the others' answers holding that page; and
-// open_notebook (openNotebookMCPRow).
+// entry's edge 404 for it), the others' answers holding that page;
+// open_notebook (openNotebookMCPRow); and the history's reads, as the
+// readers' too, in both entries (M9/P2 design 3.17.2): versions of the
+// column's page, its one version; log, the seeded rename first, as REST's
+// listChangesets; changeset of the seeded rename, its one change with its
+// node's path.
 func pageMCPRows() []mcpRow {
 	readers := func(c caller) mcpCell {
 		if _, seen := roleIn(c); seen {
@@ -164,7 +172,80 @@ func pageMCPRows() []mcpRow {
 			},
 		},
 		openNotebookMCPRow(),
+		{
+			tool: "versions", entries: mcpserver.BothEntries, want: readers,
+			args: func(c caller, _ seeded) map[string]any { return map[string]any{"path": pagePathOf(c)} },
+			check: func(t *testing.T, c caller, s seeded, a mcpAnswer) {
+				t.Helper()
+				var v struct {
+					Path           string `json:"path"`
+					CurrentVersion string `json:"current_version"`
+					Versions       []struct {
+						Revision int `json:"revision"`
+					} `json:"versions"`
+				}
+				structuredOf(t, a, &v)
+				want := s.page(pageOf(c)).String() + ":1"
+				if v.Path != pagePathOf(c) || v.CurrentVersion != want || len(v.Versions) != 1 || v.Versions[0].Revision != 1 {
+					t.Errorf("versions answered %.500s, want %s's one version, revision 1, and %s", a.body, pagePathOf(c), want)
+				}
+			},
+		},
+		{
+			tool: "log", entries: mcpserver.BothEntries, want: readers,
+			check: func(t *testing.T, c caller, s seeded, a mcpAnswer) {
+				t.Helper()
+				var l struct {
+					Changesets []changesetAnswer `json:"changesets"`
+				}
+				structuredOf(t, a, &l)
+				if len(l.Changesets) == 0 || !l.Changesets[0].isRename(s.changeset(notebookOf(c))) {
+					t.Errorf("log answered %.500s, want the seeded rename first", a.body)
+				}
+			},
+		},
+		{
+			tool: "changeset", entries: mcpserver.BothEntries, want: readers,
+			args: func(c caller, s seeded) map[string]any {
+				return map[string]any{"id": s.changeset(notebookOf(c)).String()}
+			},
+			check: func(t *testing.T, c caller, s seeded, a mcpAnswer) {
+				t.Helper()
+				var p mcpChangesetPage
+				structuredOf(t, a, &p)
+				nb := notebookOf(c)
+				switch {
+				case p.Changeset == nil || p.Changeset.ID != s.changeset(nb).String() || !p.Changeset.Renames || p.Changeset.Moves:
+					t.Errorf("changeset answered %.500s, want the seeded rename, renaming and moving nothing", a.body)
+				case len(p.Changes) != 1 || p.Changes[0].Node.ID != s.page(renamedIn(nb)).String() || p.Changes[0].Node.Path == nil ||
+					*p.Changes[0].Node.Path != renamedIn(nb)+".md":
+					t.Errorf("changeset's changes are %.500s, want %s.md's rename", a.body, renamedIn(nb))
+				}
+			},
+		},
 	}
+}
+
+// mcpChangesetPage is changeset's answer, as these tests read it: the
+// changeset on the first page, and its changes, each node with its path.
+type mcpChangesetPage struct {
+	Changeset  *changesetAnswer `json:"changeset"`
+	Changes    []mcpChange      `json:"changes"`
+	NextCursor *string          `json:"next_cursor"`
+}
+
+// mcpChange is a change of changeset's answer: REST's, its node's kind
+// "attachment" for REST's "asset", with its path, null for a node in the
+// trash or gone.
+type mcpChange struct {
+	Node struct {
+		ID    string  `json:"id"`
+		Kind  string  `json:"kind"`
+		Name  string  `json:"name"`
+		Alive bool    `json:"alive"`
+		Path  *string `json:"path"`
+	} `json:"node"`
+	Kind string `json:"kind"`
 }
 
 // pagePathOf is the path of a notebook column's page (pageOf).

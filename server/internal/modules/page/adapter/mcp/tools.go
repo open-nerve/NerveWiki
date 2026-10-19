@@ -1,8 +1,9 @@
 // Package mcpadapter is the page module's MCP adapter (M9 design 4.1,
-// 4.6, 4.9, 4.10): the tools list, read and open_notebook, and write,
-// edit, move and delete (M9/P2 design 3.11), their arguments, their
-// answers within mcpserver's bound, and the words of their errors; the
-// built-in instructions. It imports mcpserver, never the SDK.
+// 4.6, 4.9, 4.10): the tools list, read and open_notebook, write, edit,
+// move and delete (M9/P2 design 3.11), and versions, log and changeset,
+// the history's reads (3.16), their arguments, their answers within
+// mcpserver's bound, and the words of their errors; the built-in
+// instructions. It imports mcpserver, never the SDK.
 package mcpadapter
 
 import (
@@ -45,15 +46,40 @@ type DeletePathUseCase interface {
 	Execute(ctx context.Context, notebookID uuid.UUID, p app.PathDelete, client domain.Client) (app.Deleted, error)
 }
 
+// VersionsUseCase lists the versions of the page at a path.
+type VersionsUseCase interface {
+	AtPath(ctx context.Context, notebookID uuid.UUID, path string, limit *int, cursor *string) (app.PathVersionList, error)
+}
+
+// VersionUseCase reads a version of the page at a path.
+type VersionUseCase interface {
+	AtPath(ctx context.Context, notebookID uuid.UUID, path string, revision int, offset, column, limit *int, m app.TextMeasure) (
+		app.PathVersion, error)
+}
+
+// LogUseCase lists a notebook's changesets, a node by its path.
+type LogUseCase interface {
+	AtPath(ctx context.Context, notebookID uuid.UUID, q app.PathLogQuery) (app.PathLog, error)
+}
+
+// ChangesetUseCase reads a notebook's changeset and a page of its changes.
+type ChangesetUseCase interface {
+	InNotebook(ctx context.Context, notebookID, id uuid.UUID, limit *int, cursor *string) (app.ChangesetPage, error)
+}
+
 // UseCases are the use cases the tools call.
 type UseCases struct {
-	List   ListByPatternUseCase
-	Read   ReadPathUseCase
-	Open   OpenNotebookUseCase
-	Write  WritePathUseCase
-	Edit   EditPageUseCase
-	Move   RelocatePathUseCase
-	Delete DeletePathUseCase
+	List      ListByPatternUseCase
+	Read      ReadPathUseCase
+	Open      OpenNotebookUseCase
+	Write     WritePathUseCase
+	Edit      EditPageUseCase
+	Move      RelocatePathUseCase
+	Delete    DeletePathUseCase
+	Versions  VersionsUseCase
+	Version   VersionUseCase
+	Log       LogUseCase
+	Changeset ChangesetUseCase
 }
 
 // Tools are the module's MCP tools, each a notebook's: list and read, in
@@ -61,7 +87,9 @@ type UseCases struct {
 // the account entry alone, where an agent picks its notebook; write, edit,
 // move and delete, in both entries, each destructive, all but edit
 // idempotent: called again, write writes nothing, move and delete find
-// nothing at their path (M9/P2 design 3.11).
+// nothing at their path (M9/P2 design 3.11); versions, log and changeset,
+// in both entries, read-only: the history is read here, restored and
+// reverted in the web (3.16).
 func Tools(uc UseCases, attachments app.AttachmentReader) []mcpserver.Tool {
 	t := tools{uc: uc, attachments: attachments}
 	return []mcpserver.Tool{
@@ -79,6 +107,12 @@ func Tools(uc UseCases, attachments app.AttachmentReader) []mcpserver.Tool {
 			Annotations: mcpserver.Annotations{Destructive: true, Idempotent: true}, Entry: mcpserver.BothEntries, Notebook: true}, t.move),
 		mcpserver.NewTool(mcpserver.Spec{Name: "delete", Title: "Delete a page or an attachment", Description: deleteDescription,
 			Annotations: mcpserver.Annotations{Destructive: true, Idempotent: true}, Entry: mcpserver.BothEntries, Notebook: true}, t.delete),
+		mcpserver.NewTool(mcpserver.Spec{Name: "versions", Title: "List or read a page's versions", Description: versionsDescription,
+			Annotations: mcpserver.Annotations{ReadOnly: true}, Entry: mcpserver.BothEntries, Notebook: true}, t.versions),
+		mcpserver.NewTool(mcpserver.Spec{Name: "log", Title: "List the notebook's changes", Description: logDescription,
+			Annotations: mcpserver.Annotations{ReadOnly: true}, Entry: mcpserver.BothEntries, Notebook: true}, t.log),
+		mcpserver.NewTool(mcpserver.Spec{Name: "changeset", Title: "Read a changeset", Description: changesetDescription,
+			Annotations: mcpserver.Annotations{ReadOnly: true}, Entry: mcpserver.BothEntries, Notebook: true}, t.changeset),
 	}
 }
 
@@ -152,4 +186,27 @@ const (
 		`true, which puts them in the trash with it. Any of its pages being edited in the web editor, by you too, ` +
 		`refuses the deletion, saying by whom; the locks cannot be taken over. The answer has how many pages and ` +
 		`attachments went to the trash, itself counted, and the changeset's id and time.`
+	versionsDescription = `Without revision, list a page's versions, newest first: each with its revision, size, ` +
+		`times, and the changeset that wrote it (its kind, client and author); the answer also has the page's ` +
+		`current version. Go on with next_cursor while it is set. With revision, read that version's content as ` +
+		`read reads a page: two text blocks, a line of JSON metadata (path, kind, revision, current_version, ` +
+		`offset, column, lines, total_lines, byte_size, next_offset, next_column), then its lines exactly as ` +
+		`stored; go on from next_offset, and next_column. The version answered has its own revision, which may be ` +
+		`above the one asked for: an edit session's saves share one version. Revisions are for reading: write and ` +
+		`edit take the page's version, from read. A page in the trash has no path: its versions are read in the ` +
+		`web.`
+	logDescription = `List the notebook's changesets, newest first: what people and agents changed, each with its ` +
+		`kind, client, author (id and display name), times, message, how many nodes and contents it changed, what ` +
+		`it reverts and what reverted it, and its first three changes; a changeset too large for the answer comes ` +
+		`alone, its changes cut to fit and changes_cut true. path keeps the changesets that changed that page or ` +
+		`attachment; actor those of an account, "me" for yours; client those of a client, "mcp" for every agent. ` +
+		`Go on with next_cursor while it is set. changeset reads one in full. History is read-only here: people ` +
+		`restore versions and revert changesets in the web.`
+	changesetDescription = `Read one of the notebook's changesets by the id log gives: its kind, client, author, ` +
+		`times, message, counts, what it reverts and what reverted it, and whether it renames or moves nodes; then ` +
+		`what it did to each node it changed, a page at a time by node id: where the node was before and after in ` +
+		`the tree, the revision of the content it wrote, and the node's current path (null when it is in the trash ` +
+		`or gone). The changeset itself comes on the first page, without cursor; go on with next_cursor while it ` +
+		`is set. A changeset of another notebook is not found here. History is read-only here: people revert ` +
+		`changesets in the web.`
 )
