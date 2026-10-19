@@ -104,7 +104,9 @@ func textOf(t *testing.T, v any) int {
 
 // A list of versions is REST's PageVersion for each, newest first, times
 // in UTC, with the page's path, node id and version now; next_cursor the
-// list's, null without one (M9/P2 design 3.16.1).
+// list's, null without one (M9/P2 design 3.16.1). A path that names
+// nothing is page.not_found in the module's words: the path, and the hint
+// P1's lookup gives (S2 review A-M1).
 func TestTheVersionsListAnswersItsShape(t *testing.T) {
 	node, v1, v3, c1, c3, alice := uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
 	at := time.Date(2026, 10, 17, 10, 30, 0, 0, time.FixedZone("CEST", 2*3600))
@@ -148,6 +150,14 @@ func TestTheVersionsListAnswersItsShape(t *testing.T) {
 	}
 	if passed[2] != (*int)(nil) || passed[3] != (*string)(nil) {
 		t.Errorf("versions without a limit or a cursor passed %v", passed)
+	}
+	// A path that names nothing is page.not_found at it, with its hint.
+	tools.uc.Versions = versionsFunc(func(uuid.UUID, string, *int, *string) (app.PathVersionList, error) {
+		return app.PathVersionList{}, &domain.PathNotFound{Path: "Guide.md", Hint: domain.AttachmentHint("Guide")}
+	})
+	_, err = tools.versions(context.Background(), mcpserver.Call{}, versionsIn{Path: "Guide.md"})
+	if text, _ := wordsOf(err); text != `page.not_found: Nothing is at "Guide.md". That is an attachment: its path is "Guide".` {
+		t.Errorf("a path that names nothing = %v, %q", err, text)
 	}
 }
 
@@ -193,7 +203,8 @@ func TestTheVersionsListFitsItsAnswer(t *testing.T) {
 // With revision, versions reads the version as read reads a page: its
 // first block, a line of the version's revision and the page's version
 // now beside read's members, then its lines; the slice's room leaves the
-// widest such block (M9/P2 design 3.16.1).
+// widest such block (M9/P2 design 3.16.1). A path that names nothing is
+// page.not_found at the path, with its hint, as for the list.
 func TestTheVersionsReadAVersionAsReadReadsAPage(t *testing.T) {
 	node, notebook := uuid.NewV7(), uuid.NewV7()
 	var passed []any
@@ -232,6 +243,14 @@ func TestTheVersionsReadAVersionAsReadReadsAPage(t *testing.T) {
 	res, err = tools.versions(context.Background(), mcpserver.Call{}, versionsIn{Path: "A.md", Revision: &revision})
 	if err != nil || !strings.HasSuffix(res.Blocks[0].Text, `"next_offset":1,"next_column":9}`) {
 		t.Errorf("a line cut = %+v, %v", res.Blocks, err)
+	}
+	// A path that names nothing is page.not_found at it, with its hint.
+	tools.uc.Version = versionFunc(func(uuid.UUID, string, int, *int, *int, *int, app.TextMeasure) (app.PathVersion, error) {
+		return app.PathVersion{}, &domain.PathNotFound{Path: "Guide.md", Hint: domain.TitleHint("Guide.md.md")}
+	})
+	_, err = tools.versions(context.Background(), mcpserver.Call{}, versionsIn{Path: "Guide.md", Revision: &revision})
+	if text, _ := wordsOf(err); text != `page.not_found: Nothing is at "Guide.md". A page there is titled with the .md: its path is "Guide.md.md".` {
+		t.Errorf("a path that names nothing = %v, %q", err, text)
 	}
 }
 
