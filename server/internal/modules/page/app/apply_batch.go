@@ -1,6 +1,7 @@
 package app
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -60,16 +61,22 @@ type ApplyBatch struct {
 	locks     *LockHolders
 	notebooks Notebooks
 	auth      shared.Authorizer
-	clock     Clock
-	logger    *slog.Logger
+	// maxRewrites bounds the pages the deferred rewrite writes: 0 is the
+	// domain's, domain.MaxBatchRewrites, which only a measurement raises
+	// (M9/P3 design 3.8.2).
+	maxRewrites int
+	clock       Clock
+	logger      *slog.Logger
 }
 
-// NewApplyBatch returns the use case.
+// NewApplyBatch returns the use case, its deferred rewrite bounded at
+// maxRewrites pages, 0 for the domain's.
 func NewApplyBatch(writer *Writer, parser *ContentParser, paths PathStore, nodes Nodes, states PageStates, links BatchLinks,
-	locks *LockHolders, notebooks Notebooks, auth shared.Authorizer, clock Clock, logger *slog.Logger,
+	locks *LockHolders, notebooks Notebooks, auth shared.Authorizer, maxRewrites int, clock Clock, logger *slog.Logger,
 ) *ApplyBatch {
 	return &ApplyBatch{writer: writer, parser: parser, paths: NewNodePaths(paths), nodes: nodes, states: states, links: links,
-		locks: locks, notebooks: notebooks, auth: auth, clock: clock, logger: logger}
+		locks: locks, notebooks: notebooks, auth: auth, maxRewrites: cmp.Or(maxRewrites, domain.MaxBatchRewrites), clock: clock,
+		logger: logger}
 }
 
 // replanned is a batch's unit that found the notebook other than its plan
@@ -667,8 +674,7 @@ func (a *batchAttempt) participate(ctx context.Context, u *Unit, parents map[uui
 		}
 	}
 	a.session.Release()
-	n, err := u.Participate(ctx, BatchRewrite{Written: written, Parents: parents, Gone: gone, MaxPages: domain.MaxBatchRewrites,
-		FirstMove: first})
+	n, err := u.Participate(ctx, BatchRewrite{Written: written, Parents: parents, Gone: gone, MaxPages: a.b.maxRewrites, FirstMove: first})
 	var problem *shared.Error
 	if errors.As(err, &problem) {
 		return &domain.OpFailed{Op: first, Tool: a.steps[first].Kind, Err: err}

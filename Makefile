@@ -272,6 +272,8 @@ test-go-guards: ## 不带竞态检测的组合根的预算与界线的守卫（C
 	@# 后台撤销在 MaxJobItems 的守卫各单独一行、带 -v：请求，整个任务（1 万个条目）与最大的一步（一个最上层的删除）用的时间（M8/P4 设计 3.11）
 	cd server && go test -count=1 -v -run '^TestStartRevertAtMaxJobItems$$' ./internal/bootstrap
 	cd server && go test -count=1 -v -run '^TestARevertJobOfAnImportAtMaxJobItems$$' ./internal/bootstrap
+	@# batch 的推后的改写在 MaxBatchRewrites 的守卫单独一行、带 -v：界线上的单元与整个调用用的时间（M9/P3 设计 3.8.2）
+	cd server && go test -count=1 -v -run '^TestABatchAtItsRewriteBoundTakesItsTime$$' ./internal/bootstrap
 
 .PHONY: test-go-short
 test-go-short: ## 只跑 server 的单元测试：go test -short，不带竞态检测，不起数据库（README 的写法；make check 与 CI 的一份跑它，不在 make test-go 里）

@@ -25,6 +25,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/workspace"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/clock"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
@@ -46,7 +47,8 @@ import (
 
 // trashBench is a notebook of alice's on a database of its own whose
 // tables keep no statistics until analyzed, and the page module on it, its
-// writes of the background jobs among them.
+// writes of the background jobs among them; its configuration, its API and
+// its module, which a bench may mount more on (batch_cost_test.go).
 type trashBench struct {
 	pool   *pgxpool.Pool
 	router http.Handler
@@ -54,12 +56,22 @@ type trashBench struct {
 	jobs   page.TreeWrites
 	alice  uuid.UUID
 	nb     uuid.UUID
+	cfg    config.Config
+	mux    *httpserver.Router
+	api    *httpserver.API
+	pg     *page.Module
 }
 
-// benchAuth authenticates every token as the user's session.
+// benchAuth authenticates every token as the user's session, but "pat",
+// one of the user's personal access tokens, which MCP takes
+// (batch_cost_test.go).
 type benchAuth struct{ user uuid.UUID }
 
-func (a benchAuth) Authenticate(ctx context.Context, _ string) (context.Context, string, error) {
+func (a benchAuth) Authenticate(ctx context.Context, token string) (context.Context, string, error) {
+	if token == "pat" {
+		actor := shared.Actor{UserID: a.user, APITokenID: uuid.NewV7()}
+		return shared.WithActor(ctx, actor), "pat:" + actor.APITokenID.String(), nil
+	}
 	actor := shared.Actor{UserID: a.user, SessionID: uuid.NewV7()}
 	return shared.WithActor(ctx, actor), "session:" + actor.SessionID.String(), nil
 }
@@ -142,6 +154,7 @@ func newTrashBenchWith(tb testing.TB, set func(d *page.Deps)) trashBench {
 	}
 	pg.Register(router, api)
 	b.router, b.md, b.jobs = router, md, pg.TreeWrites()
+	b.cfg, b.mux, b.api, b.pg = cfg, router, api, pg
 	return b
 }
 

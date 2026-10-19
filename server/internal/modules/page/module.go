@@ -183,6 +183,10 @@ type Deps struct {
 	// reverts: 0 is the domain's, domain.MaxJobItems, measured (M8/P4
 	// design 3.11); production leaves it 0.
 	MaxJobItems int
+	// MaxBatchRewrites bounds the pages a batch's deferred rewrite writes:
+	// 0 is the domain's, domain.MaxBatchRewrites, which only a measurement
+	// raises (M9/P3 design 3.8.2); production leaves it 0.
+	MaxBatchRewrites int
 	// Snapshots runs a search's reads in one read-only transaction:
 	// bootstrap hands it the Tx's manager. VisibleNotebooks are the
 	// notebooks a search searches. Both must be there.
@@ -254,7 +258,8 @@ func New(d Deps) *Module {
 	listVersions, getVersion := app.NewListVersions(versions), app.NewGetVersion(versions)
 	listChangesets, getChangeset := app.NewListChangesets(history), app.NewGetChangeset(history)
 	// MCP's batch (M9/P3 design 3.6), its links' on the plan linking's.
-	batch := app.NewApplyBatch(writer, parser, store, store, store, d.BatchLinks, locks, d.Notebooks, d.Authorizer, d.Clock, d.Logger)
+	batch := app.NewApplyBatch(writer, parser, store, store, store, d.BatchLinks, locks, d.Notebooks, d.Authorizer, d.MaxBatchRewrites,
+		d.Clock, d.Logger)
 	m := &Module{uc: httpadapter.UseCases{
 		ListNodes:       app.NewListNodes(d.Notebooks, store, d.Authorizer),
 		CreatePage:      app.NewCreatePage(writer, store, parser, d.Logger),

@@ -29,8 +29,15 @@ const (
 	// again (M9/P3 design 3.8.2): the pages of the index whose links its
 	// renames and moves reach, and the pages it wrote whose own changes
 	// move anything. Counted before any is parsed; past it the batch is
-	// page.batch_too_large. A single move is not bounded, as REST's.
-	MaxBatchRewrites = 200
+	// page.batch_too_large. A single move is not bounded, as REST's. M8's
+	// rule sets it: the largest tier of bootstrap's BenchmarkBatchRewrites
+	// whose unit takes about 4 s at most here, pages of the full load (84
+	// KB, 200 links), the median of three: 100 pages 0.86 s, 200 1.90 s,
+	// 250 2.24 s, 300 2.70 s, 400 3.56 s, 500 4.44 s; 1,000 answered
+	// server_busy, the shares of the parse budget the unit holds for the
+	// pages it wrote, until its end, past the budget (2026-10-20, Apple M5
+	// Max).
+	MaxBatchRewrites = 400
 )
 
 // PathStep is a node on a path from the root: its id, title key and name.

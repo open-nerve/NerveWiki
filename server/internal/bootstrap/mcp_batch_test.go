@@ -12,6 +12,8 @@ import (
 	"time"
 	"uuid"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/transfer"
@@ -188,21 +190,27 @@ func (tm acmeTeam) reindex(t *testing.T, nb string) {
 // name and its content.
 type sqlPage struct{ parent, name, content string }
 
-// seedSQL makes pages in the notebook nb through SQL, as a creation of its
-// creator's makes them, in one changeset, last among their siblings in
-// their order: each page's node, content, version and item, its row of the
-// index, without links, and its place in the search's queue.
+// seedSQL makes pages in the notebook nb through SQL (seedPagesSQL).
 func (tm acmeTeam) seedSQL(t *testing.T, nb string, pages []sqlPage) {
 	t.Helper()
+	seedPagesSQL(t, tm.pool, nb, pages)
+}
+
+// seedPagesSQL makes pages in the notebook nb through SQL, as a creation
+// of its creator's makes them, in one changeset, after their siblings in
+// their order: each page's node, content, version and item, its row of the
+// index, without links, and its place in the search's queue.
+func seedPagesSQL(tb testing.TB, pool *pgxpool.Pool, nb string, pages []sqlPage) {
+	tb.Helper()
 	ctx := context.Background()
 	ids, parents, names, contents := make([]string, len(pages)), make([]string, len(pages)), make([]string, len(pages)),
 		make([]string, len(pages))
 	for i, p := range pages {
 		ids[i], parents[i], names[i], contents[i] = uuid.NewV7().String(), p.parent, p.name, p.content
 	}
-	tx, err := tm.pool.Begin(ctx)
+	tx, err := pool.Begin(ctx)
 	if err != nil {
-		t.Fatal(err)
+		tb.Fatal(err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	c := uuid.NewV7()
@@ -232,11 +240,11 @@ func (tm acmeTeam) seedSQL(t *testing.T, nb string, pages []sqlPage) {
 			[]any{ids}},
 	} {
 		if _, err := tx.Exec(ctx, q.sql, q.args...); err != nil {
-			t.Fatalf("%v: %s", err, q.sql)
+			tb.Fatalf("%v: %s", err, q.sql)
 		}
 	}
 	if err := tx.Commit(ctx); err != nil {
-		t.Fatal(err)
+		tb.Fatal(err)
 	}
 }
 
