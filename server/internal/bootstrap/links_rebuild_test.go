@@ -73,8 +73,7 @@ func TestTheIndexIsItsRebuild(t *testing.T) {
 				t.Fatal(err)
 			}
 			w := writer{t: t, tm: tm, nb: tm.openNotebook(t, "alice", "Eng"), rnd: rand.New(rand.NewPCG(seed, 6))}
-			b := &batcher{w: writer{t: t, tm: tm, nb: w.nb, rnd: rand.New(rand.NewPCG(seed, 13))}, m: tm.agent(t, "alice", w.nb), logs: logs,
-				skipped: map[string]int{}}
+			b := &batcher{w: writer{t: t, tm: tm, nb: w.nb, rnd: rand.New(rand.NewPCG(seed, 13))}, m: tm.agent(t, "alice", w.nb), logs: logs}
 			written, aliased := 0, false // aliased: a link was a value of the aliases after some step
 			for step := range 60 {
 				led := tm.ledTo(t, w.nb)
@@ -110,7 +109,6 @@ func TestTheIndexIsItsRebuild(t *testing.T) {
 			if written < 30 {
 				t.Errorf("serve took %d of the 60 writes, want most: the run tests little", written)
 			}
-			t.Logf("the batches refused, by code: %v", b.skipped)
 			// REST's renames and moves, not the batches' (M9/P3 design 3.14.6).
 			rewritten += count(t, tm.pool, `SELECT count(*) FROM page_revisions r JOIN changesets c ON c.id = r.changeset_id AND c.client = 'web'
 				WHERE EXISTS (SELECT 1 FROM changeset_items i WHERE i.changeset_id = r.changeset_id AND i.node_id <> r.node_id

@@ -25,9 +25,6 @@ type batcher struct {
 	w    writer // the vocabulary, of the batches' own random source
 	m    *mcpApp
 	logs *syncBuffer
-	// skipped counts the batches refused, by code: a refusal the model did
-	// not foresee, which writes nothing.
-	skipped map[string]int
 }
 
 // modelNode is a node alive in a batch's model: its parent ("" for the
@@ -393,9 +390,11 @@ func (b *batcher) directed(t *testing.T, step int) *batchRun {
 type batchSeen struct{ done, rewrote, checked, followed int }
 
 // run makes the batch r, and when it is done checks 4.11's rule on the
-// notebook before and after it, counting into seen. A refusal of a
-// version, which a batch alone in its notebook never meets, fails t: the
-// plan and the unit disagree (v0.1 design 13.4, item 13).
+// notebook before and after it, counting into seen. Any refusal fails t:
+// the model makes only batches it foresees done, and a refusal of a
+// version, which a batch alone in its notebook never meets, would be the
+// plan and the unit disagreeing (v0.1 design 13.4, item 13; M9/P3 review
+// C-N1).
 func (b *batcher) run(t *testing.T, r *batchRun, seen *batchSeen) string {
 	t.Helper()
 	tm, nb := b.w.tm, b.w.nb
@@ -403,12 +402,7 @@ func (b *batcher) run(t *testing.T, r *batchRun, seen *batchSeen) string {
 	a := b.m.batch(t, r.ops...)
 	what := fmt.Sprintf("a batch of %v", r.ops)
 	if a.result(t)["isError"] == true {
-		code, _ := a.toolError(t)["code"].(string)
-		if code == "page.revision_mismatch" || code == "internal_error" {
-			t.Fatalf("%s = %.500s", what, a.body)
-		}
-		b.skipped[code]++
-		return what + " = " + code
+		t.Fatalf("%s = %.500s; want it done, as its model foresees", what, a.body)
 	}
 	done := answerOf[mcpBatched](t, a)
 	seen.done++
@@ -431,7 +425,6 @@ func (b *batcher) run(t *testing.T, r *batchRun, seen *batchSeen) string {
 		written[actual(id)] = true
 	}
 	// aliased are the pages whose aliases the batch wrote.
-	// aliased are the pages whose aliases the batch wrote.
 	now, after, aliased := tm.linkRows(t, nb), tm.aliasesOf(t, nb), map[string]bool{}
 	for page := range written {
 		if !slices.Equal(after[page], aliases[page]) {
@@ -453,8 +446,12 @@ func (b *batcher) run(t *testing.T, r *batchRun, seen *batchSeen) string {
 		for i, l := range links {
 			// A link that led to a page by an alias the batch took away
 			// resolves again, as one whose target it created or deleted
-			// (M9 design 4.11): a write's aliases are no rename.
-			byAlias := aliased[l.to] && (slices.Contains(aliases[l.to], l.key) || slices.Contains(aliases[l.to], l.alt))
+			// (M9 design 4.11): a write's aliases are no rename. One by an
+			// alias the page kept is checked (M9/P3 review B-N3).
+			takenAway := func(key string) bool {
+				return slices.Contains(aliases[l.to], key) && !slices.Contains(after[l.to], key)
+			}
+			byAlias := aliased[l.to] && (takenAway(l.key) || takenAway(l.alt))
 			if l.to != "" && !l.alias && !byAlias && !kept(l.to, now[page][i].to) {
 				t.Fatalf("after %s, the link %d of %s, not written, leads to %q, led to %q", what, i, page, now[page][i].to, l.to)
 			}
