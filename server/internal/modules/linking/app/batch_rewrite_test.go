@@ -786,23 +786,25 @@ func TestABatchCountsAPageItWroteAsItsWeight(t *testing.T) {
 // before it reads the tree, a lock or a content, as its pages (M9/P3
 // review B1-M3: the unit's time follows the links): Q1's two of the index
 // and the one of W, written, that its own change meets, 3; at a bound of 3
-// the three are written, past one of 2 the refusal says 3; 0 bounds
-// nothing.
+// the three are written, past one of 2 the refusal says 3, the paths of
+// their target, A, not read (M9/P3 fix check 2, F2-2); 0 bounds nothing.
 func TestABatchCountsTheLinksItWouldWrite(t *testing.T) {
-	batch := func(max int) (*rewriting, *parses, *appender, error) {
+	batch := func(max int) (*rewriting, *parses, *askedPaths, *appender, error) {
 		w := newRewriting(t, "A", "Q1", "W")
 		w.write("Q1", "[[A]] and [[A]]\n")
 		parser := &parses{RewriteParser: w.rewrite.Parser}
 		w.rewrite.Parser = parser
+		tree := &askedPaths{Pages: w.tree}
+		w.rewrite.Pages = tree
 		before := w.before("w [[A]]\n", "A")
 		facts := w.wrote("W", "w [[A]]\n")
 		merged := w.rename("A", "B")
 		u, err := w.batch(app.Moved{Changes: []domain.Change{merged}, MaxLinks: max, MaxPages: 10, WrittenWeight: 2,
 			Written: map[uuid.UUID]app.WrittenPage{w.id("W"): {Before: before, Changes: []domain.Change{w.renamed("B", "A", "B")},
 				Facts: facts}}})
-		return w, parser, u, err
+		return w, parser, tree, u, err
 	}
-	w, parser, _, err := batch(2)
+	w, parser, tree, _, err := batch(2)
 	var many *app.TooManyRewrites
 	if !errors.As(err, &many) || !errors.Is(err, app.ErrTooManyRewrites) || many.Links != 3 || many.Max != 2 || many.Pages != 0 {
 		t.Fatalf("past the links' bound: %v %+v, want TooManyRewrites of 3 links at most 2", err, many)
@@ -810,13 +812,25 @@ func TestABatchCountsTheLinksItWouldWrite(t *testing.T) {
 	if w.locks.reads != 0 || len(parser.contents) != 0 {
 		t.Errorf("the locks read %d times and %d contents parsed before the count", w.locks.reads, len(parser.contents))
 	}
-	for _, max := range []int{3, 0} {
-		w, _, u, err := batch(max)
-		if err != nil {
-			t.Fatalf("at most %d links: %v", max, err)
+	// The tree's read of the links' target, A, comes after the count, as
+	// the pages'.
+	for _, ids := range tree.asked {
+		if slices.Contains(ids, w.id("B")) {
+			t.Errorf("the paths of %v were read before the links' count", ids)
 		}
+	}
+	if w, _, tree, u, err := batch(3); err != nil || !slices.ContainsFunc(tree.asked, func(ids []uuid.UUID) bool {
+		return slices.Contains(ids, w.id("B"))
+	}) {
+		t.Fatalf("at most 3 links: %v, the paths read %v; want A's read", err, tree.asked)
+	} else {
 		w.written(u, map[string]string{"Q1": "[[B]] and [[B]]\n", "W": "w [[B]]\n"})
 	}
+	w, _, _, u, err := batch(0)
+	if err != nil {
+		t.Fatalf("no links' bound: %v", err)
+	}
+	w.written(u, map[string]string{"Q1": "[[B]] and [[B]]\n", "W": "w [[B]]\n"})
 }
 
 // askedPaths is Pages that records the ids each read of paths asks for.
