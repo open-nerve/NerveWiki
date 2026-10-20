@@ -339,9 +339,12 @@ func TestABatchsParticipantsFollowItOnceItsOpsDone(t *testing.T) {
 // A batch's unit that finds the notebook other than its plan had it is
 // made again once, from the read of the tree (M9/P3 design 3.6.2): a page
 // written since, a node at a path that is another since, two names
-// traded; then page.revision_mismatch at the first op that differs, a
-// content op's with the version there and why as its edit's, a tree op's
-// the notebook changed twice. A guard's refusal is answered as it is.
+// traded, and each op's compare of what it found: a content op's page, a
+// delete's subtree, a creation's parent and a move's destination parent,
+// each another since; then page.revision_mismatch at the first op that
+// differs, a content op's with the version there and why as its edit's, a
+// tree op's the notebook changed twice. A guard's refusal is answered as
+// it is.
 func TestABatchIsPlannedAgainOnce(t *testing.T) {
 	f := newFixture()
 	p := f.page("P", nil, 1)
@@ -399,6 +402,91 @@ func TestABatchIsPlannedAgainOnce(t *testing.T) {
 		f.store.nodes[a.ID].Name != "A" || f.store.nodes[b.ID].Name != "B" || f.count("ListNodes") != 2 {
 		t.Errorf("a batch whose names were traded twice = %v after %v; want ops[0]'s notebook changed twice, nothing moved", err,
 			f.rec.calls)
+	}
+
+	// Each op's compare of the nodes it found (M9/P3 review C-I1), the
+	// notebook changed at the unit's first lookup: a content op's page,
+	// another at the revision the plan read.
+	f = newFixture()
+	a = f.page("A", nil, 1)
+	f.content(a.ID, "one two", 1)
+	var other domain.Node
+	f.rec.before = map[string]func(){"RootByKey in tx": func() {
+		delete(f.store.nodes, a.ID)
+		delete(f.store.contents, a.ID)
+		other = f.page("A", nil, 1)
+		f.content(other.ID, "one two three", 1)
+		f.rec.before["RootByKey in tx"] = func() {}
+	}}
+	if _, err := f.applyBatch(&fakeLinks{recorder: f.rec}, editOp("A.md", "two", "2")); err != nil ||
+		f.store.contents[other.ID].Content != "one 2 three" || f.count("ListNodes") != 2 {
+		t.Errorf("an edit whose page is another since the plan, at the same revision = %v, that page %q after %v; want the edit "+
+			"planned again and done on it", err, f.store.contents[other.ID].Content, f.rec.calls)
+	}
+
+	// A delete's subtree, a child since the plan: refused as the delete
+	// alone refuses it.
+	f = newFixture()
+	folder := f.page("F", nil, 1)
+	var child domain.Node
+	f.rec.before = map[string]func(){"RootByKey in tx": func() {
+		child = f.page("Y", &folder.ID, 1)
+		f.rec.before["RootByKey in tx"] = func() {}
+	}}
+	_, err = f.applyBatch(&fakeLinks{recorder: f.rec}, deleteOp("F.md", false))
+	if _, trashed := f.store.trash[child.ID]; opOf(err) != "0 validation_failed ops[0].recursive" || trashed ||
+		len(f.store.deletions) != 0 || f.count("ListNodes") != 2 {
+		t.Errorf("a delete whose page has a child since the plan = %v (%s) after %v; want it planned again, ops[0]'s recursive "+
+			"refused, nothing deleted", err, opOf(err), f.rec.calls)
+	}
+
+	// A creation's parent: F renamed G and another F made, the path F
+	// another page's.
+	f = newFixture()
+	old := f.page("F", nil, 1)
+	var now domain.Node
+	replace := func() {
+		g := f.store.nodes[old.ID]
+		g.Name, g.NameKey = "G", "g"
+		f.store.nodes[old.ID] = g
+		now = f.page("F", nil, 9)
+		f.rec.before["RootByKey in tx"] = func() {}
+	}
+	f.rec.before = map[string]func(){"RootByKey in tx": replace}
+	out, err := f.applyBatch(&fakeLinks{recorder: f.rec}, writeOp("F/X.md", "x"))
+	if err != nil || len(out.Ops) != 1 || f.store.nodes[out.Ops[0].Node.ID].ParentID == nil ||
+		*f.store.nodes[out.Ops[0].Node.ID].ParentID != now.ID || f.count("ListNodes") != 2 {
+		t.Errorf("a write under a parent another since the plan = %+v, %v after %v; want it planned again, X under the new F %s",
+			out.Ops, err, f.rec.calls, now.ID)
+	}
+
+	// A move's destination parent, F replaced so: the move done under the
+	// new F, and the rewrite of the page written before it given the move
+	// to the new F, not to G (M9/P3 review C-S3).
+	f = newFixture()
+	a, old = f.page("A", nil, 1), f.page("F", nil, 2)
+	w := f.page("W", nil, 3)
+	f.content(w.ID, "see [[A]]", 2)
+	seen := f.store.contents[w.ID]
+	rewrite := &participant{recorder: f.rec}
+	f.partakers = []app.Participant{rewrite}
+	f.rec.before = map[string]func(){"RootByKey in tx": func() {
+		replace()
+		// The first unit's write of W undone by the second plan, as the
+		// unit's rollback undoes it: the fakes keep it.
+		f.rec.before["ListNodes"] = func() { f.store.contents[w.ID] = seen }
+	}}
+	_, err = f.applyBatch(&fakeLinks{recorder: f.rec}, editOp("W.md", "see", "look"), moveOp("A.md", "F/A.md"))
+	if err != nil || f.store.nodes[a.ID].ParentID == nil || *f.store.nodes[a.ID].ParentID != now.ID || f.count("ListNodes") != 2 ||
+		len(rewrite.steps) != 1 {
+		t.Fatalf("a move to a parent another since the plan = %v, A under %v after %v; want it planned again, A under the new F %s",
+			err, f.store.nodes[a.ID].ParentID, f.rec.calls, now.ID)
+	}
+	for _, changes := range [][]domain.Change{rewrite.steps[0].Changes, rewrite.steps[0].Batch.Written[w.ID].Changes} {
+		if len(changes) != 1 || changes[0].NodeID != a.ID || changes[0].After == nil || changes[0].After.ParentID == nil ||
+			*changes[0].After.ParentID != now.ID {
+			t.Errorf("the changes followed = %+v; want A's, to the new F %s, not to G %s", changes, now.ID, old.ID)
+		}
 	}
 
 	f = newFixture()

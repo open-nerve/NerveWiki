@@ -19,8 +19,11 @@ import (
 // rename is page.not_found, nothing written; or, of other ops, it is done
 // on the new tree, the rename's rewrite of its page kept. The batch first:
 // the rename waits for it, and its rewrite reaches the page the batch
-// wrote. A path that turns to another node is apply_batch_test.go's (M9/P3
-// review C-M1).
+// wrote. A path that turns to another node is TestABatchIsPlannedAgainOnce's,
+// on the fakes, for each op's compare of what it found: a content op's page
+// and its revision, a creation's parent, a move's node and its
+// destination's parent, a delete's subtree, its node among it (M9/P3
+// reviews C-M1, C-I1).
 func TestTheMCPBatchMeetsAWebRename(t *testing.T) {
 	t.Run("the rename first, the batch's path gone", func(t *testing.T) {
 		tm := newAcmeTeam(t, "member", "")
