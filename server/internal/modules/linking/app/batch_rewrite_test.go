@@ -283,9 +283,10 @@ func TestABatchLeavesThePagesItDeleted(t *testing.T) {
 }
 
 // A batch's rewrite counts the pages it would write against MaxPages
-// before it reads a lock or parses a content (M9/P3 design 3.7.2): past
-// it, ErrTooManyRewrites with the count, a page being edited among them or
-// not; 0 bounds nothing.
+// before it reads the tree they are written on, a lock or a content
+// (M9/P3 design 3.7.2; review B-I1: a refusal paid for the tree first):
+// past it, ErrTooManyRewrites with the count, a page being edited among
+// them or not; 0 bounds nothing.
 func TestABatchCountsItsRewritesFirst(t *testing.T) {
 	setUp := func() *rewriting {
 		w := newRewriting(t, "A", "Q1", "Q2")
@@ -296,7 +297,10 @@ func TestABatchCountsItsRewritesFirst(t *testing.T) {
 	w := setUp()
 	parser := &parses{RewriteParser: w.rewrite.Parser}
 	w.rewrite.Parser = parser
+	tree := &askedPaths{Pages: w.tree}
+	w.rewrite.Pages = tree
 	w.locks.held[w.id("Q1")] = shared.LockHolder{PageID: w.id("Q1"), UserID: uuid.NewV7(), DisplayName: "Ada"}
+	a := w.id("A")
 	_, err := w.batch(app.Moved{Changes: []domain.Change{w.rename("A", "B")}, MaxPages: 1})
 	var many *app.TooManyRewrites
 	if !errors.As(err, &many) || !errors.Is(err, app.ErrTooManyRewrites) || many.Pages != 2 || many.Max != 1 {
@@ -304,6 +308,13 @@ func TestABatchCountsItsRewritesFirst(t *testing.T) {
 	}
 	if w.locks.reads != 0 || len(parser.contents) != 0 {
 		t.Errorf("the locks read %d times and %d contents parsed before the count", w.locks.reads, len(parser.contents))
+	}
+	// The tree's read of the links' targets, A, comes after the count; the
+	// reads before it resolve the links, by their pages.
+	for _, ids := range tree.asked {
+		if slices.Contains(ids, a) {
+			t.Errorf("the paths of %v were read before the count", ids)
+		}
 	}
 	for _, max := range []int{0, 2} {
 		w := setUp()
@@ -313,6 +324,17 @@ func TestABatchCountsItsRewritesFirst(t *testing.T) {
 		}
 		w.written(u, map[string]string{"Q1": "[[B]]\n", "Q2": "[[B]]\n"})
 	}
+}
+
+// askedPaths is Pages that records the ids each read of paths asks for.
+type askedPaths struct {
+	app.Pages
+	asked [][]uuid.UUID
+}
+
+func (a *askedPaths) Paths(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) ([]domain.Node, error) {
+	a.asked = append(a.asked, slices.Clone(ids))
+	return a.Pages.Paths(ctx, notebookID, ids)
 }
 
 // A batch's rewrite writes the pages it wrote again first (M9/P3 design

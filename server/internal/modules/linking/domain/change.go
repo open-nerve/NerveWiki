@@ -102,14 +102,32 @@ func FormerParents(changes []Change) []uuid.UUID {
 // before; each node under it, and each on a path no change moved, with
 // its name before. parents are the former parents' paths as the unit
 // began (FormerParents' nodes), read before any of its ops. A page off the
-// nodes changes relocated has the path it has, a copy.
+// nodes changes relocated has the path it has, a copy. It indexes changes
+// for n alone: the paths of many nodes take BeforesOf's, built once.
 func PathBefore(n Node, changes []Change, parents map[uuid.UUID][]Step) Node {
-	byID := make(map[uuid.UUID]Change, len(changes))
+	return BeforesOf(changes).PathBefore(n, parents)
+}
+
+// Befores is changes by node, those that keep their node, for the paths
+// before them of many nodes: a move of a folder has a change for each
+// node under it, which an index built again for each link it reaches
+// made a work of the links times the nodes (M9/P3 review B-I1).
+type Befores map[uuid.UUID]Change
+
+// BeforesOf is changes indexed by node for PathBefore, once.
+func BeforesOf(changes []Change) Befores {
+	byID := make(Befores, len(changes))
 	for _, c := range changes {
 		if c.Before != nil && c.After != nil {
 			byID[c.NodeID] = c
 		}
 	}
+	return byID
+}
+
+// PathBefore is n at its path before the changes byID indexes, as the
+// package's PathBefore tells.
+func (byID Befores) PathBefore(n Node, parents map[uuid.UUID][]Step) Node {
 	from, path := 0, []Step(nil)
 	for i := len(n.Path) - 1; i >= 0; i-- {
 		if c, ok := byID[n.Path[i].ID]; ok && !sameParent(c.Before.ParentID, c.After.ParentID) {
