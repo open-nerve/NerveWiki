@@ -162,12 +162,13 @@ var (
 var ErrChangesetReverted = errors.New("transfer: the changeset the job writes in was reverted")
 
 // The background jobs' sentinels (M8/P4 design 3.6), each a stop but the
-// first, which halves the batch: the rows of history or links of a batch
-// past a unit's; a restore's trash item changed since it started, or past
-// the time it can be restored in; a revert's conflicts, which the page
-// module's problem it wraps names (shared.Error's Conflicts and
-// ConflictCount); its changeset trimmed by the purge; a page of its batch
-// under an edit lock, which the problem names (Lock).
+// first, which halves the batch, down to a revert's segment of steps no
+// batch splits, which it stops (M9/P3 design 3.23): the rows of history or
+// links of a batch past a unit's; a restore's trash item changed since it
+// started, or past the time it can be restored in; a revert's conflicts,
+// which the page module's problem it wraps names (shared.Error's
+// Conflicts and ConflictCount); its changeset trimmed by the purge; a page
+// of its batch under an edit lock, which the problem names (Lock).
 var (
 	ErrBatchTooLarge    = errors.New("transfer: the batch is past a unit's history or links")
 	ErrTrashChanged     = errors.New("transfer: the trash item changed")

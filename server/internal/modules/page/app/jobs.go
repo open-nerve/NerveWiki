@@ -293,8 +293,7 @@ type revertGroup struct {
 // the changeset, page.changeset_trimmed for one gone since, then the
 // revert's check as CheckRevert has it (page.revert_conflict,
 // page.changeset_trimmed, page.locked), its schedule's steps as the job
-// keeps them (revertSteps). A schedule whose steps a batch must not split,
-// which M8's batches would, is errUnsplit, nothing written (see unsplit).
+// keeps them, in segments no batch splits (revertSteps).
 func (w *JobWrites) PlanRevert(ctx context.Context, spec JobSpec, changesetID uuid.UUID) (JobPlan, error) {
 	unit := revertUnit(spec, changesetID)
 	if err := w.writer.Allowed(ctx, unit); err != nil {
@@ -314,41 +313,7 @@ func (w *JobWrites) PlanRevert(ctx context.Context, spec JobSpec, changesetID uu
 	if err != nil {
 		return JobPlan{}, err
 	}
-	if unsplit(checked) {
-		return JobPlan{}, errUnsplit
-	}
 	return revertSteps(c.ID, checked), nil
-}
-
-// errUnsplit is S2's temporary refusal of a background revert whose steps
-// its batches would split (unsplit), until S3's segments: no defect of the
-// schedule, though ErrRevertUnordered is what errors.Is finds in it, the
-// job's failure, internal, as S1's request's was (M9/P3 S2 fix round 1,
-// A-N4).
-var errUnsplit = fmt.Errorf("page: a background revert of steps its batches would split, refused until M9/P3 S3: %w",
-	domain.ErrRevertUnordered)
-
-// unsplit reports whether the schedule checked has steps no batch may
-// split (M9/P3 design section 0, S2's temporary refusal, which S3's
-// segments replace): a step aside, which its node's place must follow in
-// the batch; a write back of a page the schedule restores first, or
-// deletes after. M8's batches split a plan between any two steps and plan
-// each again alone, which these are not: a job of them fails, internal,
-// before it writes, as S1's request did.
-func unsplit(checked revertChecked) bool {
-	items := make(map[uuid.UUID]domain.ChangesetItem, len(checked.state.Items))
-	for _, it := range checked.state.Items {
-		items[it.NodeID] = it
-	}
-	for _, op := range checked.plan.Ops {
-		switch it, ok := items[op.NodeID]; {
-		case op.Kind == domain.RevertAside:
-			return true
-		case op.Kind == domain.RevertContent && ok && (it.Before == nil || it.After == nil):
-			return true
-		}
-	}
-	return false
 }
 
 // revertSteps are the steps of the plan checked of the revert of the

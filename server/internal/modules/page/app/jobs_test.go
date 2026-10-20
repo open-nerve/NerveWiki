@@ -3,6 +3,7 @@ package app_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -31,15 +32,21 @@ func (f *fixture) jobSpec() app.JobSpec {
 }
 
 // runJob runs the plan's steps a batch of size at a time, as the job's
-// worker cuts them, and answers each batch's, up to the first error.
+// worker cuts them, each grown to the end of its segment (M9/P3 design
+// 3.23), and answers each batch's, up to the first error.
 func (f *fixture) runJob(w *app.JobWrites, spec app.JobSpec, plan app.JobPlan, size int) ([]app.BatchDone, error) {
 	var out []app.BatchDone
-	for from := 0; from < len(plan.Steps()); from += size {
-		done, err := w.RunBatch(f.asJob(), spec, plan, from, min(from+size, len(plan.Steps())))
+	steps := plan.Steps()
+	for from := 0; from < len(steps); {
+		to := min(from+size, len(steps))
+		for to < len(steps) && steps[to-1].Joined {
+			to++
+		}
+		done, err := w.RunBatch(f.asJob(), spec, plan, from, to)
 		if err != nil {
 			return out, err
 		}
-		out = append(out, done)
+		out, from = append(out, done), to
 	}
 	return out, nil
 }
@@ -923,18 +930,20 @@ func TestARevertJobsBatchErrors(t *testing.T) {
 	}
 }
 
-// Until S3 cuts a background revert's batches only between segments, a
-// job refuses a schedule whose steps a batch must not split (M9/P3 design
-// section 0): a step aside, a page restored then written back, a page
-// written back then deleted. Its plan is ErrRevertUnordered, its text
-// S2's refusal until S3, the job's internal failure, and nothing is
-// written; a request reverts each, its log line counting its steps, those
-// aside too (M9/P3 design 3.21.3).
-func TestARevertJobRefusesTheStepsItsBatchesWouldSplit(t *testing.T) {
+// A background revert does what S2's job refused until its batches kept
+// segments whole (M9/P3 design section 0, 3.22.2): a step aside to its
+// node's place, a page restored then written back, a page written back
+// then deleted, each a segment, joined, its batches a step each grown to
+// keep it whole, the notebook as before the changeset. A request reverts
+// each too, its log line counting its steps, those aside too (M9/P3
+// design 3.21.3).
+func TestARevertJobKeepsItsSegmentsWhole(t *testing.T) {
 	for _, tt := range []struct {
-		name  string
-		build func(f *fixture) uuid.UUID
-		steps string // the request's log line's counts
+		name   string
+		build  func(f *fixture) uuid.UUID
+		joined []bool
+		done   func(f *fixture) string // what is not as before the changeset
+		steps  string                  // the request's log line's counts
 	}{
 		{"a swap of names: a step aside", func(f *fixture) uuid.UUID {
 			a, b := f.page("A", nil, 5), f.page("B", nil, 6)
@@ -943,6 +952,16 @@ func TestARevertJobRefusesTheStepsItsBatchesWouldSplit(t *testing.T) {
 			f.store.nodes[a.ID], f.store.nodes[b.ID] = a, b
 			return f.log.changeset(domain.ChangesetEdit, f.alice, now(), []domain.ChangesetItem{
 				{NodeID: a.ID, Before: &sa, After: new(a.State())}, {NodeID: b.ID, Before: &sb, After: new(b.State())}}).ID
+		}, []bool{true, true, false}, func(f *fixture) string {
+			var names []string
+			for _, n := range f.store.nodes {
+				names = append(names, fmt.Sprintf("%s@%v", n.Name, n.SortOrder))
+			}
+			slices.Sort(names)
+			if !slices.Equal(names, []string{"A@5", "B@6"}) {
+				return fmt.Sprintf("the pages %v", names)
+			}
+			return ""
 		}, "placed=2 deleted=0 restored=0 written=0 aside=1"},
 		{"a page written, then deleted: restored, then written back", func(f *fixture) uuid.UUID {
 			p := f.page("P", nil, 0)
@@ -952,6 +971,13 @@ func TestARevertJobRefusesTheStepsItsBatchesWouldSplit(t *testing.T) {
 			f.trashed(p.ID, at, f.alice)
 			return f.log.changeset(domain.ChangesetEdit, f.alice, at, []domain.ChangesetItem{{NodeID: p.ID, Before: new(p.State()),
 				Revision: 2}}, f.log.version(p.ID, 1, 2, "written")).ID
+		}, []bool{true, false}, func(f *fixture) string {
+			for _, c := range f.store.contents {
+				if c.Content != "before" || c.Revision != 3 || len(f.store.trash) != 0 {
+					return fmt.Sprintf("P's content %q at %d, the trash %v", c.Content, c.Revision, f.store.trash)
+				}
+			}
+			return ""
 		}, "placed=0 deleted=0 restored=1 written=1 aside=0"},
 		{"a page restored and written, a revert's: written back, then deleted", func(f *fixture) uuid.UUID {
 			p := f.page("P", nil, 0)
@@ -959,24 +985,39 @@ func TestARevertJobRefusesTheStepsItsBatchesWouldSplit(t *testing.T) {
 			f.content(p.ID, "written", 2)
 			return f.log.changeset(domain.ChangesetRevert, f.alice, now(), []domain.ChangesetItem{{NodeID: p.ID, After: new(p.State()),
 				Restored: true, Revision: 2}}, f.log.version(p.ID, 1, 2, "written")).ID
+		}, []bool{true, false}, func(f *fixture) string {
+			for _, c := range f.store.trashed {
+				if c.Content != "restored" || len(f.store.nodes) != 0 {
+					return fmt.Sprintf("P's content in the trash %q, alive %v", c.Content, f.store.nodes)
+				}
+			}
+			return ""
 		}, "placed=0 deleted=1 restored=0 written=1 aside=0"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			f := newFixture()
 			f.grant(domain.ActionRevert)
 			id := tt.build(f)
-			calls := len(f.rec.calls)
-			if _, err := f.jobs(now(), 0, 0).PlanRevert(f.asJob(), f.jobSpec(), id); !errors.Is(err, domain.ErrRevertUnordered) ||
-				!strings.Contains(err.Error(), "steps its batches would split, refused until M9/P3 S3") {
-				t.Errorf("PlanRevert = %v, want ErrRevertUnordered, told as S2's refusal until S3", err)
+			w, spec, plan := f.revertJob(t, id, nil, now())
+			var joined []bool
+			for _, s := range plan.Steps() {
+				joined = append(joined, s.Joined)
 			}
-			if slices.ContainsFunc(f.rec.calls[calls:], func(c string) bool { return strings.HasSuffix(c, " in tx") }) {
-				t.Errorf("the refused plan wrote: %v", f.rec.calls[calls:])
+			if !slices.Equal(joined, tt.joined) {
+				t.Errorf("the steps joined %v, want %v", joined, tt.joined)
 			}
-			if _, err := f.revert(id, nil, 0); err != nil {
+			if done, err := f.runJob(w, spec, plan, 1); err != nil || len(done) != 1 {
+				t.Fatalf("runJob(a step a batch) = %+v, %v; want one batch, the segment whole", done, err)
+			}
+			if bad := tt.done(f); bad != "" {
+				t.Errorf("after the job: %s", bad)
+			}
+			g := newFixture()
+			g.grant(domain.ActionRevert)
+			if _, err := g.revert(tt.build(g), nil, 0); err != nil {
 				t.Errorf("the request's revert = %v, want it done", err)
 			}
-			if logs := f.logs.String(); !strings.Contains(logs, "changeset reverted") || !strings.Contains(logs, tt.steps) {
+			if logs := g.logs.String(); !strings.Contains(logs, "changeset reverted") || !strings.Contains(logs, tt.steps) {
 				t.Errorf("the request's log %q, want %s", logs, tt.steps)
 			}
 		})

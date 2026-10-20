@@ -216,10 +216,12 @@ func createdNode(n page.NodeInfo) transfer.CreatedNode {
 }
 
 // treeError is the page module's error as the jobs read it: a page too
-// deep, a parent gone, the job's changeset reverted; a batch to halve, a
-// trash item changed or expired, a changeset trimmed; a revert's conflicts
-// and the lock it met, which keep the page module's problem, wrapped, for
-// the report to read its conflicts and lock from.
+// deep, a parent gone, the job's changeset reverted; a batch to halve,
+// which keeps the page module's, wrapped, for the log of a revert it stops
+// to say which bound (M9/P3 design 3.23); a trash item changed or expired,
+// a changeset trimmed; a revert's conflicts and the lock it met, which
+// keep the page module's problem, wrapped, for the report to read its
+// conflicts and lock from.
 func treeError(err error) error {
 	switch {
 	case errors.Is(err, page.ErrTooDeep):
@@ -229,7 +231,7 @@ func treeError(err error) error {
 	case errors.Is(err, page.ErrChangesetReverted):
 		return transfer.ErrChangesetReverted
 	case errors.Is(err, page.ErrJobBatchTooLarge):
-		return transfer.ErrBatchTooLarge
+		return fmt.Errorf("%w: %w", transfer.ErrBatchTooLarge, err)
 	case errors.Is(err, page.ErrTrashChanged):
 		return transfer.ErrTrashChanged
 	case errors.Is(err, page.ErrRestoreExpired):
