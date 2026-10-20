@@ -122,10 +122,21 @@ func PathOfNames(names []string, kind Kind) string {
 // escapes for the characters a title may hold, U+3000 or U+00AD.
 func Quoted(path string) string { return `"` + path + `"` }
 
+// PagePath is 422 on a's path when p is an attachment's: tool, write or
+// edit, writes pages, whose paths end with .md (M9/P2 design 3.8.1,
+// 3.8.2); attachments are uploaded in the web.
+func PagePath(a Args, p Path, tool string) error {
+	if p.Kind != KindPage {
+		return NotAllowed(a.Field("path"),
+			"is an attachment's path: "+tool+" "+tool+"s pages, whose paths end with .md; attachments are uploaded in the web")
+	}
+	return nil
+}
+
 // PathNotFound is page.not_found for a path, with the path as written and
 // a hint, which page's adapter/mcp writes out. ParentOf names the field
 // whose parent Path is, when Path is no path the call gave but its
-// parent's: move's "to" (M9/P2 design 3.11.5).
+// parent's: move's "to", a batch's "ops[i].to" (M9/P2 design 3.11.5).
 type PathNotFound struct {
 	Path     string
 	Hint     string
@@ -168,4 +179,84 @@ const MoveParentHint = "move creates no parent pages: write the parent first, or
 // ".md" and with a trailing "/".
 func ChildrenHint(path string) string {
 	return path + " is a page; list " + Quoted(strings.TrimSuffix(path, pageSuffix)+"/") + " for its children."
+}
+
+// Lookup is a point lookup of a notebook's tree: the node keyed key under
+// the last of chain, the notebook's root for none. NodePaths looks up the
+// store, a batch's plan the tree it simulates (M9/P3 design 3.4.1).
+type Lookup func(chain []Node, key string) (Node, bool, error)
+
+// FindPath is the node path names, with its ancestors from the root, a
+// lookup a segment: page.not_found, a *PathNotFound, for none, for an
+// attachment where the path has a page or the other way round, which its
+// hint tells, and for a path through an attachment. A page's path that
+// names nothing looks its last segment up once more, ".md" and all: a page
+// titled so is hinted (NodePaths.Find; M9/P1 design 3.9.2).
+func FindPath(path Path, child Lookup) (Node, []Node, error) {
+	missing := &PathNotFound{Path: path.Written}
+	var ancestors []Node
+	for i, key := range path.Keys {
+		n, ok, err := child(ancestors, key)
+		switch {
+		case err != nil:
+			return Node{}, nil, err
+		case !ok && i == len(path.Keys)-1 && path.Kind == KindPage:
+			return Node{}, nil, titled(child, ancestors, key, missing)
+		case !ok:
+			return Node{}, nil, missing
+		case i < len(path.Keys)-1:
+			if n.Kind != KindPage {
+				return Node{}, nil, missing // an attachment has no children
+			}
+			ancestors = append(ancestors, n)
+			continue
+		case n.Kind != path.Kind && n.Kind == KindPage:
+			missing.Hint = PageHint(PathOf(ancestors, n))
+			return Node{}, nil, missing
+		case n.Kind != path.Kind:
+			missing.Hint = AttachmentHint(PathOf(ancestors, n))
+			return Node{}, nil, missing
+		}
+		return n, ancestors, nil
+	}
+	return Node{}, nil, missing
+}
+
+// titled is missing, hinted when the parent of ancestors' end, the root
+// for none, has a page titled key with ".md", the path's last segment as
+// it was written.
+func titled(child Lookup, ancestors []Node, key string, missing *PathNotFound) error {
+	n, ok, err := child(ancestors, key+pageSuffix)
+	switch {
+	case err != nil:
+		return err
+	case ok && n.Kind == KindPage:
+		missing.Hint = TitleHint(PathOf(ancestors, n))
+	}
+	return missing
+}
+
+// WalkPath looks keys up from the notebook's root, one segment after
+// another as FindPath does: the nodes found, from the root, up to the
+// first key that names nothing (all of them when each names one). A key
+// before the last that names an attachment is an *AttachmentOnPath of its
+// segment: an attachment holds no nodes; the nodes found end with it then.
+// No hint is looked up: a write walks under its notebook's lock, which
+// keeps the chain as found (M9 design 4.8).
+func WalkPath(keys []string, child Lookup) ([]Node, error) {
+	var found []Node
+	for i, key := range keys {
+		n, ok, err := child(found, key)
+		switch {
+		case err != nil:
+			return nil, err
+		case !ok:
+			return found, nil
+		}
+		found = append(found, n)
+		if i < len(keys)-1 && n.Kind != KindPage {
+			return found, &AttachmentOnPath{Segment: i + 1}
+		}
+	}
+	return found, nil
 }

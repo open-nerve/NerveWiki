@@ -679,6 +679,7 @@ func validToolArguments(created string) map[string]map[string]any {
 		"edit":          {"path": "Strings.md", "old_string": "x", "new_string": "y"},
 		"move":          {"from": "Strings.md", "to": "Moved.md"},
 		"delete":        {"path": "Gone.md"},
+		"batch":         {"ops": []any{map[string]any{"op": "write", "path": "Strings.md", "content": "x"}}, "message": "strings"},
 		"versions":      {"path": "Strings.md"},
 		"log":           {},
 		"changeset":     {"id": created},

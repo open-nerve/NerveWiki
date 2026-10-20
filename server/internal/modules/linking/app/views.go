@@ -71,7 +71,7 @@ func (v Views) resolveDeleted(ctx context.Context, p Page, links []Link) (map[in
 func (v Views) resolved(ctx context.Context, p Page, links []Link, known []domain.Node, out map[int]domain.Resolution) (
 	map[int]domain.Resolution, error,
 ) {
-	rs, _, err := resolutions(ctx, v.Store, v.Pages, p.NotebookID, links, known)
+	rs, _, err := resolutions(ctx, v.Store, v.Pages, p.NotebookID, links, known, nil)
 	if err != nil {
 		return nil, err
 	}

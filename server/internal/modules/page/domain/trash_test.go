@@ -40,21 +40,24 @@ func TestRestorable(t *testing.T) {
 }
 
 // A unit is too large past any of its bounds, but for a lone page, which
-// one request wrote.
+// one request wrote, however many copies of it it parses (M9/P3 design
+// 3.8): the exemption is by pages, the bound by copies.
 func TestUnitTooLarge(t *testing.T) {
 	for _, tt := range []struct {
-		name                string
-		pages, bytes, links int
-		want                bool
+		name                        string
+		pages, copies, bytes, links int
+		want                        bool
 	}{
-		{"none", 0, 0, 0, false},
-		{"at every bound", domain.MaxUnitPages, domain.MaxUnitBytes, domain.MaxUnitLinks, false},
-		{"a page more", domain.MaxUnitPages + 1, 0, 0, true},
-		{"a byte more", 2, domain.MaxUnitBytes + 1, 0, true},
-		{"a link more", 2, 0, domain.MaxUnitLinks + 1, true},
-		{"a lone page past the bytes and links", 1, domain.MaxUnitBytes + 1, domain.MaxUnitLinks + 1, false},
+		{"none", 0, 0, 0, 0, false},
+		{"at every bound", domain.MaxUnitPages, domain.MaxUnitPages, domain.MaxUnitBytes, domain.MaxUnitLinks, false},
+		{"a page more", domain.MaxUnitPages + 1, domain.MaxUnitPages + 1, 0, 0, true},
+		{"a copy more", 2, domain.MaxUnitPages + 1, 0, 0, true},
+		{"a byte more", 2, 2, domain.MaxUnitBytes + 1, 0, true},
+		{"a link more", 2, 2, 0, domain.MaxUnitLinks + 1, true},
+		{"a lone page past the bytes and links", 1, 1, domain.MaxUnitBytes + 1, domain.MaxUnitLinks + 1, false},
+		{"two copies of a lone page past the bytes", 1, 2, domain.MaxUnitBytes + 1, 0, false},
 	} {
-		if got := domain.UnitTooLarge(tt.pages, tt.bytes, tt.links); got != tt.want {
+		if got := domain.UnitTooLarge(tt.pages, tt.copies, tt.bytes, tt.links); got != tt.want {
 			t.Errorf("%s: UnitTooLarge() = %v, want %v", tt.name, got, tt.want)
 		}
 	}

@@ -184,6 +184,11 @@ type PathStore interface {
 	// number (M9/P2 design 3.7). A node deleted, purged or of another
 	// notebook has none.
 	PathsOf(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]string, error)
+	// LinePaths is the paths of ids' nodes not deleted of notebookID, by
+	// id, as PathsOf reads them, each step its node's id, title key and
+	// name, its own last: a batch's former parents as its unit begins
+	// (M9/P3 design 3.6.2).
+	LinePaths(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID][]domain.PathStep, error)
 }
 
 // AgentsStore finds a notebook's AGENTS page: its root node whose title
@@ -206,6 +211,79 @@ type OverviewStore interface {
 	FirstChildren(ctx context.Context, notebookID uuid.UUID, n int) ([]domain.Node, error)
 }
 
+// BatchLinks resolves and rewrites links for a batch's plan, on the tree
+// the plan simulates (M9 design 4.1, 4.11; M9/P3 design 3.7.4):
+// linking's, which bootstrap adapts from linking.NewBatchLinks(pool). It
+// reads the index's rows and aliases as the batch began, on the pool; the
+// tree and the parse are its caller's.
+type BatchLinks interface {
+	// Indexed is where the links of the page id led by the index, at its
+	// revision, with their targets at their paths on tree, the plan's
+	// before the batch: false when the index is not of revision or not of
+	// the current extractor (M6's skips), its links then not rewritten.
+	Indexed(ctx context.Context, notebookID, id uuid.UUID, revision int, tree domain.PlanTree) (domain.LinksBefore, bool, error)
+	// Reached reports whether changes, the renames and moves of a batch's
+	// ops before a page's first content op, a write, reach a link of the
+	// page id by the index at revision, on tree after them, as Rewrite
+	// would write it again (M9/P3 review A-I1), those that led to the
+	// nodes of frozen left, the nodes of createdAfter out of the subtrees
+	// of the nodes they key (BatchRewrite.CreatedAfter): the plan then
+	// reads the page whole and compares the write with its content
+	// rewritten for them. False when the index is not of revision or not
+	// of the current extractor, as Indexed. What it reads of tree it keeps
+	// in reads.
+	Reached(ctx context.Context, notebookID, id uuid.UUID, revision int, changes []domain.Change, frozen []uuid.UUID,
+		createdAfter map[uuid.UUID][]uuid.UUID, tree domain.PlanTree, reads *TreeReads) (bool, error)
+	// Resolve is where each link of q's content, the page's at its path on
+	// q's tree, leads there, by where its target starts, with the targets
+	// as they are there.
+	Resolve(ctx context.Context, q LinksOn) (domain.LinksBefore, error)
+	// Rewrite is q's content with its links that led where q.Before tells
+	// written again, as the participant writes them, so that each leads
+	// where it led on q's tree after q's changes.
+	Rewrite(ctx context.Context, q LinksMoved) (string, error)
+}
+
+// LinksOn is a content of a page of a batch's plan to resolve its links
+// on: the notebook and the page; the plan's tree at the moment, whose
+// deleted nodes' aliases are none (PlanTree.Gone); and the plan's parse,
+// which admits a content within the plan's bounds and keeps its facts by
+// page and hash (ContentParser.Planned).
+type LinksOn struct {
+	NotebookID uuid.UUID
+	PageID     uuid.UUID
+	Content    string
+	Tree       domain.PlanTree
+	Parse      func(ctx context.Context, content string) (Facts, error)
+}
+
+// LinksMoved is a content of a page of a batch's plan to rewrite, on the
+// tree after the op it is rewritten for (LinksOn): where its links led
+// when its content was read (Before), and the renames and moves since,
+// merged node by node; Frozen the nodes those ops rename or move with
+// update_links false, the links that led to them left as they are (M9
+// design 4.11; M9/P3 review B-M1); CreatedAfter, for each node those ops
+// rename or move, the nodes they create after the last that does, out of
+// its subtree (BatchRewrite.CreatedAfter); and the reads of its tree kept
+// for the calls on it (TreeReads).
+type LinksMoved struct {
+	LinksOn
+	Before       domain.LinksBefore
+	Changes      []domain.Change
+	Frozen       []uuid.UUID
+	CreatedAfter map[uuid.UUID][]uuid.UUID
+	Reads        *TreeReads
+}
+
+// TreeReads is what the links read of one tree of a batch's plan, kept
+// for the calls on that tree: the content ops between two of the batch's
+// moves or deletes share one, the creations between them aside, so that a
+// folder moved before them is read once, not once an op (M9/P3 review
+// B-N2; fix check 2, A's F2-1). Held is the links' own, opaque here.
+type TreeReads struct {
+	Held any
+}
+
 // PageStates reads the pages' contents as MCP's list tells them, and
 // which of its attachments are alive.
 type PageStates interface {
@@ -219,11 +297,14 @@ type PageStates interface {
 	AliveNodes(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]bool, error)
 }
 
-// PageState is a page's content as list tells it.
+// PageState is a page's content as list tells it, and its hash, by which
+// a batch's plan tells a write of the bytes a page holds (M9/P3 design
+// 3.4.4).
 type PageState struct {
 	Revision  int
 	Bytes     int
 	UpdatedAt time.Time
+	Hash      []byte
 }
 
 // NodeWriter writes nodes in the write unit's transaction. A name its
@@ -324,6 +405,11 @@ type ChangesetWriter interface {
 	// on another's write would break the chain of the page's versions, an
 	// error.
 	RecordRevision(ctx context.Context, r Revision) error
+	// DropUnchanged deletes the items of the changeset id whose node is
+	// where it was, its parent, name and order, then the changeset when it
+	// holds no item and no version, which it answers (M9/P3 design 3.5.4):
+	// a batch's node moved and moved back.
+	DropUnchanged(ctx context.Context, id uuid.UUID) (bool, error)
 }
 
 // Versions reads a page's versions (M8/P1 design 3.4), alive or in the

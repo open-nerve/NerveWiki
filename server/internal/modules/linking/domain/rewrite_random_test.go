@@ -239,7 +239,7 @@ func randomCase(r *rand.Rand) randomCaseOf {
 	if parentOf(from) == parentOf(to) && shared.TitleKey(lastOf(from)) == shared.TitleKey(lastOf(to)) {
 		var id uuid.UUID
 		id[15] = byte(slices.Index(c.nodes(), from) + 1)
-		c.recased = domain.Recased{ID: id, Name: lastOf(to)}
+		c.recased = domain.Recased{id: lastOf(to)}
 	}
 	var body, properties []string
 	for range 1 + r.IntN(8) {

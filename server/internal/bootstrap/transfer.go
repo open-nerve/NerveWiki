@@ -228,7 +228,7 @@ func treeError(err error) error {
 		return transfer.ErrNoParent
 	case errors.Is(err, page.ErrChangesetReverted):
 		return transfer.ErrChangesetReverted
-	case errors.Is(err, page.ErrBatchTooLarge):
+	case errors.Is(err, page.ErrJobBatchTooLarge):
 		return transfer.ErrBatchTooLarge
 	case errors.Is(err, page.ErrTrashChanged):
 		return transfer.ErrTrashChanged

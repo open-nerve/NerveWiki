@@ -74,8 +74,9 @@ func blockJSON(t *testing.T, b mcpserver.Block) map[string]any {
 // open_notebook, in the account entry alone, each a notebook's, read-only
 // (M9/P1 design 3.10.5, 3.11.3, 3.17.3); write, edit, move and delete,
 // in both entries, destructive, all but edit idempotent (M9/P2 design
-// 3.11); and versions, log and changeset, in both entries, read-only
-// (3.16). The composition root's TestTheToolListsAreTheContract holds
+// 3.11); batch, in both entries, destructive, not idempotent (M9/P3 design
+// 3.12); and versions, log and changeset, in both entries, read-only
+// (M9/P2 design 3.16). The composition root's TestTheToolListsAreTheContract holds
 // their schemas to the file.
 func TestTheToolsAreTheReadsAndTheWrites(t *testing.T) {
 	tools := Tools(UseCases{}, nil)
@@ -95,6 +96,8 @@ func TestTheToolsAreTheReadsAndTheWrites(t *testing.T) {
 			Entry: mcpserver.BothEntries, Notebook: true},
 		{Name: "delete", Title: "Delete a page or an attachment", Description: deleteDescription, Annotations: write,
 			Entry: mcpserver.BothEntries, Notebook: true},
+		{Name: "batch", Title: "Apply several writes as one change", Description: batchDescription,
+			Annotations: mcpserver.Annotations{Destructive: true}, Entry: mcpserver.BothEntries, Notebook: true},
 		{Name: "versions", Title: "List or read a page's versions", Description: versionsDescription, Annotations: read,
 			Entry: mcpserver.BothEntries, Notebook: true},
 		{Name: "log", Title: "List the notebook's changes", Description: logDescription, Annotations: read,

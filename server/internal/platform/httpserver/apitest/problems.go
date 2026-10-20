@@ -106,7 +106,8 @@ func (c *Contract) checkProblemCode(op *openapi3.Operation, header http.Header, 
 // ProblemCodes are every code a problem of the contract may carry, once
 // each, sorted: the top level's, each operation's own, and unauthorized
 // when an operation needs a token. An MCP tool's error carries one of
-// them (M9 design 4.7): api/mcp/tools.json declares none of its own.
+// them (M9 design 4.7), but for bootstrap's mcpOwnCodes:
+// api/mcp/tools.json declares none of its own.
 func (c *Contract) ProblemCodes(t testing.TB) []string {
 	t.Helper()
 	codes, _, err := problemCodes(c.doc.Extensions)

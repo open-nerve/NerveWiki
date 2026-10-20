@@ -14,7 +14,7 @@ import (
 // Under the notebook's lock, a link or an alias of a page the notebook
 // does not have is a defect: an error.
 func (x Index) resolve(ctx context.Context, notebookID uuid.UUID, links []Link) ([]Link, error) {
-	rs, missing, err := resolutions(ctx, x.Store, x.Pages, notebookID, links, nil)
+	rs, missing, err := resolutions(ctx, x.Store, x.Pages, notebookID, links, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -51,7 +51,11 @@ const checkEvery = 4096
 // paths the caller read, a page in the trash's (M8/P2 design 3.7): their
 // links resolve from them, which Paths, of the pages alive, would not
 // find; the candidates and the aliases are still the pages alive alone.
-func resolutions(ctx context.Context, store Store, pages Pages, notebookID uuid.UUID, links []Link, known []domain.Node) (
+// gone are pages deleted whose rows the index still has: their aliases
+// are none (M9/P3 design 3.7.2, a batch's deferred rewrite and its plan).
+func resolutions(ctx context.Context, store Store, pages Pages, notebookID uuid.UUID, links []Link, known []domain.Node,
+	gone map[uuid.UUID]bool,
+) (
 	[]domain.Resolution, []uuid.UUID, error,
 ) {
 	if len(links) == 0 {
@@ -89,6 +93,9 @@ func resolutions(ctx context.Context, store Store, pages Pages, notebookID uuid.
 	}
 	aliasedBy := make(map[string][]uuid.UUID)
 	for _, a := range aliases {
+		if gone[a.PageID] {
+			continue
+		}
 		aliasedBy[a.Key] = append(aliasedBy[a.Key], a.PageID)
 		ids = append(ids, a.PageID)
 	}

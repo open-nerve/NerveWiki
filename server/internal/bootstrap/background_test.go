@@ -266,7 +266,7 @@ func TestABackgroundRestorePlacesItsRoot(t *testing.T) {
 
 // A batch whose pages hold more links than a unit's is halved through
 // the composition root (M8/P4A review B-I1): the page module's
-// ErrBatchTooLarge, which treeError hands the run as the transfer
+// ErrJobBatchTooLarge, which treeError hands the run as the transfer
 // module's. The first batch of the restore of a page with 101 pages of
 // 210 links each under it, the item's root and 99 of them, holds 20,790,
 // past 20,000: halved, the job writes its 102 restores in two units.

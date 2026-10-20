@@ -80,11 +80,10 @@ func (e *EditPage) Execute(ctx context.Context, notebookID uuid.UUID, p PageEdit
 	if err != nil {
 		return Edited{}, err
 	}
-	if path.Kind != domain.KindPage {
-		return Edited{}, domain.NotAllowed("path",
-			"is an attachment's path: edit edits pages, whose paths end with .md; attachments are uploaded in the web")
+	if err := domain.PagePath(domain.Args{}, path, "edit"); err != nil {
+		return Edited{}, err
 	}
-	if err := domain.CheckEdit(p.Old, p.New); err != nil {
+	if err := domain.CheckEdit(domain.Args{}, p.Old, p.New); err != nil {
 		return Edited{}, err
 	}
 	var base *domain.VersionToken
@@ -146,7 +145,7 @@ func (e *EditPage) attempt(ctx context.Context, actor shared.Actor, notebookID u
 	case base != nil && base.Revision != version.Revision:
 		return Edited{}, &domain.VersionMismatch{Path: path.Written, Current: version, Why: domain.Changed}
 	}
-	r, err := domain.Replace(read.Content, p.Old, p.New, p.All)
+	r, err := domain.Replace(domain.Args{}, read.Content, p.Old, p.New, p.All)
 	if err != nil {
 		return Edited{}, err
 	}

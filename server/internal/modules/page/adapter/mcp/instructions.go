@@ -51,6 +51,10 @@ Tools
 - move: moves or renames a page or an attachment to its full new path ("B/x.md", never a page to move it into); ` +
 	`links to it follow unless update_links is false.
 - delete: puts a page or an attachment in the trash; a page with children needs recursive.
+- batch: up to 100 write, edit, move and delete ops as one change with a message, all or none; each op sees what ` +
+	`the ones before it did; base_version is from before the batch. Unlike separate calls, links follow its renames and ` +
+	`moves as one, from where they led before the batch or at their page's last write, blind to what ops did between, ` +
+	`its aliases included. A page it writes that is being edited refuses at that write.
 - versions: a page's versions, or with revision one version's lines.
 - log: the notebook's changes, newest first; path, actor ("me") and client ("mcp") narrow it.
 - changeset: one change in full. History is read-only here: people restore and revert in the web.

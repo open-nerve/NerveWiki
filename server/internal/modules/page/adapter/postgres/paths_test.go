@@ -1,15 +1,18 @@
 package postgresadapter_test
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"maps"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/adapter/postgres/gen"
-	"github.com/open-nerve/NerveWiki/server/internal/modules/page/app"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
@@ -89,8 +92,31 @@ func TestThePathsOfNodesAreTheirPaths(t *testing.T) {
 	}
 }
 
-// PageStates reads each page's revision, size and last write: not of a
-// deleted content, nor of an attachment, which has none.
+// LinePaths reads the paths PathsOf writes, step by step: each node's id,
+// title key and name from the root, its own last (M9/P3 design 3.6.2).
+func TestLinePathsAreThePathsStepByStep(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	guide := f.page(t, f.eng, nil, "Guide", 0)
+	notes := f.page(t, f.eng, &guide.ID, "Notes", 0)
+	asset := f.asset(t, f.eng, &notes.ID, "diagram.png", 0)
+	gone := f.page(t, f.eng, &guide.ID, "Gone", 1)
+	f.exec(t, "UPDATE nodes SET deleted_at = $2 WHERE id = $1", gone.ID, now())
+	got, err := f.s.LinePaths(ctx, f.eng, []uuid.UUID{notes.ID, asset.ID, gone.ID})
+	step := func(n domain.Node) domain.PathStep { return domain.PathStep{ID: n.ID, Key: n.NameKey, Name: n.Name} }
+	want := map[uuid.UUID][]domain.PathStep{
+		notes.ID: {step(guide), step(notes)},
+		asset.ID: {step(guide), step(notes), step(asset)},
+	}
+	if err != nil || len(got) != len(want) || !slices.Equal(got[notes.ID], want[notes.ID]) || !slices.Equal(got[asset.ID], want[asset.ID]) {
+		t.Errorf("LinePaths = %+v, %v; want %+v", got, err, want)
+	}
+}
+
+// PageStates reads each page's revision, size, content hash and last
+// write: not of a deleted content, nor of an attachment, which has none.
+// Field by field: a PageState holds a hash, which == does not compare
+// (M9/P3 design 3.14.1).
 func TestPageStates(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
@@ -98,17 +124,19 @@ func TestPageStates(t *testing.T) {
 	gone := f.page(t, f.eng, nil, "Gone", 2)
 	photo := f.asset(t, f.eng, nil, "photo.png", 3)
 	later := now().Add(time.Hour)
-	f.exec(t, "UPDATE page_contents SET revision = 7, content = 'twelve bytes', byte_size = 12, updated_at = $2 WHERE node_id = $1", b.ID, later)
+	f.exec(t, "UPDATE page_contents SET revision = 7, content = 'twelve bytes', byte_size = 12, "+
+		"content_hash = sha256('twelve bytes'::bytea), updated_at = $2 WHERE node_id = $1", b.ID, later)
 	f.exec(t, "UPDATE page_contents SET deleted_at = $2 WHERE node_id = $1", gone.ID, now())
 	got, err := f.s.PageStates(ctx, []uuid.UUID{a.ID, b.ID, gone.ID, photo.ID, uuid.NewV7()})
+	empty, twelve := sha256.Sum256(nil), sha256.Sum256([]byte("twelve bytes"))
 	switch {
 	case err != nil:
 		t.Fatal(err)
 	case len(got) != 2:
 		t.Errorf("PageStates = %+v, want A's and B's", got)
-	case got[a.ID] != (app.PageState{Revision: 1, Bytes: 0, UpdatedAt: now()}):
+	case got[a.ID].Revision != 1 || got[a.ID].Bytes != 0 || !got[a.ID].UpdatedAt.Equal(now()) || !bytes.Equal(got[a.ID].Hash, empty[:]):
 		t.Errorf("A's state is %+v", got[a.ID])
-	case got[b.ID].Revision != 7 || got[b.ID].Bytes != 12 || !got[b.ID].UpdatedAt.Equal(later):
+	case got[b.ID].Revision != 7 || got[b.ID].Bytes != 12 || !got[b.ID].UpdatedAt.Equal(later) || !bytes.Equal(got[b.ID].Hash, twelve[:]):
 		t.Errorf("B's state is %+v", got[b.ID])
 	}
 }

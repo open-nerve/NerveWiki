@@ -360,9 +360,9 @@ func revertSteps(reverted uuid.UUID, checked revertChecked) JobPlan {
 // RunBatch writes the plan's steps from to to (not included) in a unit
 // of spec, merged into the job's changeset (M8/P4 design 3.3): before it,
 // the rows of history they restore are counted, and past MaxUnitHistory
-// for more than one step are ErrBatchTooLarge; the contents they write
+// for more than one step are ErrJobBatchTooLarge; the contents they write
 // read and parsed, largest first, server_busy when the waits run out,
-// ErrBatchTooLarge past the unit's links for more than one page; then the
+// ErrJobBatchTooLarge past the unit's links for more than one page; then the
 // unit, which checks each step again under the lock (Unit.RestorePart,
 // Unit.RevertBatch). It answers those sentinels and the unit's errors: a
 // revert's trash rows the purge took, page.trash_changed in the unit, is
@@ -399,7 +399,7 @@ func (w *JobWrites) restoreBatch(ctx context.Context, spec JobSpec, p *restorePl
 	if err != nil {
 		return BatchDone{}, err
 	}
-	facts, release, err := w.parser.DecidedAll(ctx, contents, domain.ErrBatchTooLarge)
+	facts, release, err := w.parser.DecidedAll(ctx, contents, domain.ErrJobBatchTooLarge)
 	if err != nil {
 		return BatchDone{}, err
 	}
@@ -419,7 +419,7 @@ func (w *JobWrites) restoreBatch(ctx context.Context, spec JobSpec, p *restorePl
 
 // withinHistory checks a batch of steps steps restores at most
 // maxHistory rows of history, the nodes deleted at each time's: more than
-// one step past it is ErrBatchTooLarge, before anything is parsed. A lone
+// one step past it is ErrJobBatchTooLarge, before anything is parsed. A lone
 // step is never past it: its page's deletion was one unit.
 func (w *JobWrites) withinHistory(ctx context.Context, steps int, deleted map[time.Time][]uuid.UUID) error {
 	if steps == 1 {
@@ -432,7 +432,7 @@ func (w *JobWrites) withinHistory(ctx context.Context, steps int, deleted map[ti
 			return err
 		}
 		if rows += n; rows > w.maxHistory {
-			return domain.ErrBatchTooLarge
+			return domain.ErrJobBatchTooLarge
 		}
 	}
 	return nil
@@ -475,7 +475,7 @@ func (w *JobWrites) revertBatch(ctx context.Context, spec JobSpec, p *revertPlan
 	if err != nil {
 		return BatchDone{}, err
 	}
-	facts, release, err := w.parser.DecidedAll(ctx, contents, domain.ErrBatchTooLarge)
+	facts, release, err := w.parser.DecidedAll(ctx, contents, domain.ErrJobBatchTooLarge)
 	if err != nil {
 		return BatchDone{}, err
 	}

@@ -78,7 +78,7 @@ func (d *DeletePath) Execute(ctx context.Context, notebookID uuid.UUID, p PathDe
 		if err != nil {
 			return err
 		}
-		if err := domain.DeletionOf(sub, p.Recursive); err != nil {
+		if err := domain.DeletionOf(domain.Args{}, sub, p.Recursive); err != nil {
 			return err
 		}
 		out.Path, out.Node = domain.PathOf(at.Ancestors, at.Node), at.Node

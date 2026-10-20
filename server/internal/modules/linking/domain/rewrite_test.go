@@ -121,7 +121,7 @@ func TestACaseOnlyRenameRewritesNoLinkWrittenAsNow(t *testing.T) {
 		{"X", map[string]bool{"X": false, "X.md": false, "X.MD": false, "x": true, "x.md": true}},
 	} {
 		for target, want := range recased.targets {
-			if got := domain.Rewrites(domain.Link{Target: target}, at, at, domain.Recased{ID: id, Name: recased.name}); got != want {
+			if got := domain.Rewrites(domain.Link{Target: target}, at, at, domain.Recased{id: recased.name}); got != want {
 				t.Errorf("a rename to %q: [[%s]] rewrites %t, want %t", recased.name, target, got, want)
 			}
 		}

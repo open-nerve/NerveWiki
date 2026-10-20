@@ -159,6 +159,24 @@ func (s *Store) PathsOf(ctx context.Context, notebookID uuid.UUID, ids []uuid.UU
 	return out, nil
 }
 
+// LinePaths implements app.PathStore: LinkTargetsByIDs' paths, as PathsOf
+// reads them, step by step.
+func (s *Store) LinePaths(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID][]domain.PathStep, error) {
+	paths, err := s.LinkTargetsByIDs(ctx, notebookID, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[uuid.UUID][]domain.PathStep, len(paths))
+	for _, p := range paths {
+		steps := make([]domain.PathStep, len(p.Steps))
+		for i, step := range p.Steps {
+			steps[i] = domain.PathStep{ID: step.ID, Key: step.Key, Name: step.Name}
+		}
+		out[p.ID] = steps
+	}
+	return out, nil
+}
+
 // AgentsPage implements app.AgentsStore: an attachment holding the key
 // has no revision.
 func (s *Store) AgentsPage(ctx context.Context, notebookID uuid.UUID, key string) (uuid.UUID, domain.Kind, string, int, bool, error) {
@@ -191,7 +209,7 @@ func (s *Store) PageStates(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]
 	}
 	out := make(map[uuid.UUID]app.PageState, len(rows))
 	for _, r := range rows {
-		out[r.NodeID] = app.PageState{Revision: int(r.Revision), Bytes: int(r.ByteSize), UpdatedAt: r.UpdatedAt}
+		out[r.NodeID] = app.PageState{Revision: int(r.Revision), Bytes: int(r.ByteSize), UpdatedAt: r.UpdatedAt, Hash: r.ContentHash}
 	}
 	return out, nil
 }

@@ -98,12 +98,64 @@ var (
 		"Nodes the changeset changed changed since, or cannot go back as they were.")
 )
 
-// ErrBatchTooLarge is a background job's batch of more than one step past
+// ErrBatchTooLarge: a batch is past one of its bounds (M9 design 4.11,
+// 4.14): MCP's own code, which no REST operation answers. BatchTooLarge
+// returns it saying which bound.
+var ErrBatchTooLarge = shared.NewError(shared.KindInvalid, "page.batch_too_large", "The batch is too large for one change.")
+
+// BatchTooLarge is ErrBatchTooLarge saying which bound (M9/P3 design
+// 3.9.2): n of what, a count with its unit ("ops", "nodes changed",
+// "bytes of strings"), at most max, and what to do, hint, when there is
+// something.
+func BatchTooLarge(what string, n, max int, hint string) error {
+	e := *ErrBatchTooLarge
+	e.Detail = fmt.Sprintf("%d %s, at most %d", n, what, max)
+	if hint != "" {
+		e.Detail += ": " + hint
+	}
+	e.Detail += "."
+	return &e
+}
+
+// OpFailed is an op of a batch that failed, the batch written in none of
+// it (M9 design 4.11): Op, its place from 0, and its tool, none for an op
+// whose op names none; Err as that tool's use case has it, its 422s'
+// fields at ops[Op].
+type OpFailed struct {
+	Op   int
+	Tool OpKind
+	Err  error
+}
+
+func (e *OpFailed) Error() string { return e.Place() + ": " + e.Err.Error() }
+func (e *OpFailed) Unwrap() error { return e.Err }
+
+// Place is where the op is in its batch, as an answer says it: "ops[3]
+// (move)", or "ops[3]" for an op of no tool.
+func (e *OpFailed) Place() string {
+	place := fmt.Sprintf("ops[%d]", e.Op)
+	if e.Tool != "" {
+		place += " (" + string(e.Tool) + ")"
+	}
+	return place
+}
+
+// BatchChanged is page.revision_mismatch at a batch's op of the tree: the
+// notebook changed while the batch was planned, and again after it was
+// planned once more, so that the op found other nodes under the lock than
+// its plan had (M9/P3 design 3.6.2). A content op's is a *VersionMismatch.
+func BatchChanged() error {
+	e := *ErrRevisionMismatch
+	e.Detail = "the notebook changed while the batch was planned, twice: read it again and send the batch again."
+	return &e
+}
+
+// ErrJobBatchTooLarge is a background job's batch of more than one step past
 // what a unit writes besides its nodes (M8/P4 design 3.3): the rows of
 // history it restores, counted before its contents are parsed, or the
 // links they hold, once they are. No problem of the API: the job halves
 // the batch and tries again; a lone step never is.
-var ErrBatchTooLarge = errors.New("page: a background job's batch is past the unit's history or links")
+var ErrJobBatchTooLarge = errors.New("page: a background job's batch is past the unit's history or links")
 
 // RevertConflicts is ErrRevertConflict naming the conflicts, the first
 // MaxConflicts of count.
@@ -198,16 +250,20 @@ func (e *AttachmentOnPath) Error() string {
 	return fmt.Sprintf("page: segment %d of the path is an attachment", e.Segment)
 }
 
-// Recursive is 422 on recursive: a page with Pages pages and Assets
-// assets under it is deleted only with recursive.
-type Recursive struct{ Pages, Assets int }
+// Recursive is 422 on Field, the call's recursive (DeletionOf's Args): a
+// page with Pages pages and Assets assets under it is deleted only with
+// recursive.
+type Recursive struct {
+	Field         string
+	Pages, Assets int
+}
 
 func (e *Recursive) Error() string { return e.Unwrap().Error() }
 
 // Unwrap is the 422 itself. Its message counts the nodes and names no
 // path (M9/P2 design 3.10.3).
 func (e *Recursive) Unwrap() error {
-	return shared.Invalid(shared.FieldError{Field: "recursive", Code: shared.FieldRequired,
+	return shared.Invalid(shared.FieldError{Field: e.Field, Code: shared.FieldRequired,
 		Message: "must be true to delete a page with children: " + PagesAndAttachments(e.Pages, e.Assets)})
 }
 

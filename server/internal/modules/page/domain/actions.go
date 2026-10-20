@@ -37,10 +37,17 @@ const (
 	// ActionSearch searches a workspace, each notebook of it the caller
 	// sees (M8/P5 design 3.8): a workspace's action, any member's.
 	ActionSearch shared.Action = "page.search"
+	// ActionBatch writes a batch of a notebook over MCP, its ops one change
+	// (M9 design 4.11): a writer's, as each op's own action is, page.create,
+	// page.write, node.move, node.rename and node.delete, so that its ops
+	// are not decided one by one. When one of those comes to have another
+	// rule than a writer's, the batch decides each op's (M9/P3 design
+	// 3.13.4).
+	ActionBatch shared.Action = "page.batch"
 )
 
 // Actions lists the module's actions.
 func Actions() []shared.Action {
 	return []shared.Action{ActionList, ActionRead, ActionCreate, ActionRename, ActionMove, ActionDelete, ActionWrite, ActionEdit,
-		ActionReleaseEditLock, ActionToggleTask, ActionHistory, ActionRestoreVersion, ActionRestore, ActionRevert, ActionSearch}
+		ActionReleaseEditLock, ActionToggleTask, ActionHistory, ActionRestoreVersion, ActionRestore, ActionRevert, ActionSearch, ActionBatch}
 }

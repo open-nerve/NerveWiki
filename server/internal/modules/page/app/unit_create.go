@@ -14,6 +14,9 @@ import (
 // takes Content checked, and Facts its facts, both before its
 // transaction.
 type PageDraft struct {
+	// ID is the page's id when its caller gives one, a batch's plan's
+	// (M9/P3 design 3.4.2); a new UUIDv7 for none.
+	ID       uuid.UUID
 	ParentID *uuid.UUID
 	Title    string
 	Position Position
@@ -59,8 +62,12 @@ func (u *Unit) insertPage(ctx context.Context, d PageDraft, title domain.Title, 
 	domain.Node, []float64, error,
 ) {
 	order, renumbered, renumber := u.placeAmong(siblings, after)
+	id := d.ID
+	if id == (uuid.UUID{}) {
+		id = uuid.NewV7()
+	}
 	n := domain.Node{
-		ID: uuid.NewV7(), NotebookID: u.write.NotebookID, ParentID: d.ParentID, Kind: domain.KindPage, Name: title.Name,
+		ID: id, NotebookID: u.write.NotebookID, ParentID: d.ParentID, Kind: domain.KindPage, Name: title.Name,
 		NameKey: title.Key, SortOrder: order, CreatedBy: u.write.By, UpdatedBy: u.write.By, CreatedAt: u.write.At, UpdatedAt: u.write.At,
 	}
 	state := n.State()

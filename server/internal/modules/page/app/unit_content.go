@@ -38,7 +38,9 @@ type ContentWrite struct {
 // new changeset, so that no version holds another's change between its
 // base and its revision. A unit that writes several pages' contents under
 // the notebook's FOR SHARE locks them in their ids' order (M4 design 4);
-// M4's units write one.
+// M4's units write one. A unit that changes the tree, under the notebook's
+// FOR NO KEY UPDATE, writes them in its operations' order: the notebook's
+// row orders the notebook's writes already (M9's batch, M9/P3 design 3.10).
 func (u *Unit) WriteContent(ctx context.Context, w ContentWrite) (int, error) {
 	return u.writeContent(ctx, w, true)
 }

@@ -103,10 +103,10 @@ func TestTheWritesErrorsAreWorded(t *testing.T) {
 		text  string
 		extra string
 	}{
-		{"a deletion of a page with children", toolErr(&domain.Recursive{Pages: 3, Assets: 2}, me, "A.md"), "validation_failed",
+		{"a deletion of a page with children", toolErr(&domain.Recursive{Field: "recursive", Pages: 3, Assets: 2}, me, "A.md"), "validation_failed",
 			`validation_failed: "A.md" has 3 pages and 2 attachments under it: set recursive to true to put them in the trash with it.`,
 			""},
-		{"a deletion of a page with one child", toolErr(&domain.Recursive{Pages: 1}, me, "a\u00a0b.md"), "validation_failed",
+		{"a deletion of a page with one child", toolErr(&domain.Recursive{Field: "recursive", Pages: 1}, me, "a\u00a0b.md"), "validation_failed",
 			"validation_failed: \"a\u00a0b.md\" has 1 page under it: set recursive to true to put them in the trash with it.", ""},
 		{"a write's page there", writeErr(&domain.PathTaken{Path: "A/B.md"}, me, "A/B.md"), "page.title_taken",
 			`page.title_taken: "A/B.md" is a page already. To replace its content, write it with base_version, the version read gave.`,
@@ -264,7 +264,7 @@ func TestEachErrorFitsAtItsWorst(t *testing.T) {
 			"page.not_found"},
 		{"to's parent", toolErr(&domain.PathNotFound{Path: worst, Hint: domain.MoveParentHint, ParentOf: "to"}, me, worst),
 			"page.not_found"},
-		{"recursive", toolErr(&domain.Recursive{Pages: 1 << 30, Assets: 1 << 30}, me, worst), "validation_failed"},
+		{"recursive", toolErr(&domain.Recursive{Field: "recursive", Pages: 1 << 30, Assets: 1 << 30}, me, worst), "validation_failed"},
 		{"a write's page there", writeErr(&domain.PathTaken{Path: worst}, me, worst), "page.title_taken"},
 		{"a write's attachment there", writeErr(&domain.PathTaken{Path: worst, Asset: true}, me, worst), "page.title_taken"},
 		{"a move's to taken", moveErr(&domain.PathTaken{Path: worst, Asset: true}, me, worst), "page.title_taken"},

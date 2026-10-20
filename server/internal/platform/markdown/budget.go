@@ -57,6 +57,19 @@ func (b *Budget) Wait() time.Duration {
 	return b.wait
 }
 
+// Size is the budget's bytes, page.parse_budget_bytes.
+func (b *Budget) Size() int {
+	return b.size
+}
+
+// Takes is the bytes a take for a content of n bytes holds, as Take and
+// TakeNow hold them: none for an empty one, at least minTake, at most the
+// budget. A caller that keeps facts' shares while it parses more tells
+// by it a take that could not fit beside them (M9/P3 fix round 6, B3-M1).
+func (b *Budget) Takes(n int) int {
+	return b.hold(n).n
+}
+
 // minTake is the least a content takes (M6/P2 fix check 3 L1): however
 // short, a frontmatter's aliases may expand to the YAML's limit of values,
 // whose facts keep up to some 480 KB, the parse not much more; 4 KiB counts
@@ -131,6 +144,14 @@ type Hold struct {
 // frontmatter's aliases keep is within.
 func (h *Hold) KeepFacts(f Facts) {
 	h.keep((f.Limit(h.content) + parseRatio - 1) / parseRatio)
+}
+
+// Held is the bytes h holds: its take's, its facts' once KeepFacts kept
+// them, none once released.
+func (h *Hold) Held() int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.n
 }
 
 // Release gives back what is held; again, nothing.

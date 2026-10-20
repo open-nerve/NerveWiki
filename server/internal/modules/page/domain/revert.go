@@ -242,16 +242,18 @@ func membersOf(groups map[uuid.UUID][]TrashMember) map[uuid.UUID]TrashMember {
 
 // reverted is a changeset as a revert reads it: its items and versions by
 // node; every node it changed, by id; its deletions' tops, by id, the top
-// of each node it deleted and each top's deleted nodes, by id; and the
-// versions whose bases a revert writes back, by page.
+// of each node it deleted and each top's deleted nodes, by id; the
+// versions whose bases a revert writes back, by page; and whether it
+// wrote a page it then deleted, which the round cannot revert.
 type reverted struct {
-	items    map[uuid.UUID]ChangesetItem
-	versions map[uuid.UUID]ChangesetVersion
-	ids      []uuid.UUID
-	tops     []uuid.UUID
-	top      map[uuid.UUID]uuid.UUID
-	members  map[uuid.UUID][]uuid.UUID
-	writes   []ChangesetVersion
+	items     map[uuid.UUID]ChangesetItem
+	versions  map[uuid.UUID]ChangesetVersion
+	ids       []uuid.UUID
+	tops      []uuid.UUID
+	top       map[uuid.UUID]uuid.UUID
+	members   map[uuid.UUID][]uuid.UUID
+	writes    []ChangesetVersion
+	unordered bool
 }
 
 func readReverted(items []ChangesetItem, versions []ChangesetVersion) reverted {
@@ -279,8 +281,18 @@ func readReverted(items []ChangesetItem, versions []ChangesetVersion) reverted {
 	}
 	for _, id := range c.ids {
 		v, ok := c.versions[id]
-		if it, item := c.items[id]; ok && v.Base != nil && (!item || it.Before != nil && it.After != nil) {
+		it, item := c.items[id]
+		switch {
+		case !ok || v.Base == nil:
+		case !item || it.Before != nil && it.After != nil:
 			c.writes = append(c.writes, v)
+		case it.Before != nil:
+			// A page written on a base, then deleted: a batch's (M9/P3
+			// design section 0, S1's temporary check). The round restores it
+			// at the content it was deleted at, writing nothing back, a
+			// wrong content no one sees; until S2 writes it back after its
+			// restore, the revert is unordered.
+			c.unordered = true
 		}
 	}
 	return c
@@ -358,6 +370,9 @@ func (c reverted) rootHolds(top uuid.UUID, nodes map[uuid.UUID]NodeNow) bool {
 func PlanRevert(s RevertState) (RevertPlan, error) {
 	p := planner{s: s, c: readReverted(s.Items, s.Versions), reasons: map[uuid.UUID]revertReason{}, missing: map[uuid.UUID]bool{},
 		members: membersOf(s.Groups)}
+	if p.c.unordered {
+		return RevertPlan{}, ErrRevertUnordered
+	}
 	p.left()
 	if len(s.Items) > 0 {
 		p.before()

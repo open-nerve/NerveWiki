@@ -29,13 +29,22 @@ import (
 // each, in a transaction that rolls back, the notebook's index before its
 // rebuild is the index after. After a rename or a move, each link that led
 // to a node leads to it still, the links its rewrite wrote among them (M6/P4
-// design 8).
+// design 8). Among the writes, about every 13 steps a random batch through
+// MCP, of these writes, and every 20 a page's link to a title, then that
+// title's rename, in one batch: after one done, a link that led to a node
+// leads to it still, in a page it wrote by where the link led when the
+// batch wrote it, unless the batch deleted the node, created the one the
+// link leads to or wrote its alias (M9 design 4.11; M9/P3 design 3.14.6).
+// Over the runs, 20 batches done at least, 5 whose deferred rewrite wrote
+// a page, and 10 links of written pages checked past a rename or a move
+// after their write.
 func TestTheIndexIsItsRebuild(t *testing.T) {
 	if testing.Short() {
 		t.Skip("runs of writes through serve against a database")
 	}
 	rewritten, flagged := 0, 0        // flagged: the runs where a link was a value of the aliases after some step
 	toAssets, assetsRewritten := 0, 0 // toAssets: the steps after which a link resolved to an attachment
+	var seen batchSeen
 	defer func() {
 		if !t.Failed() && rewritten < 20 {
 			t.Errorf("the renames and moves wrote %d pages again, want more: the runs test little of the rewrite", rewritten)
@@ -48,15 +57,23 @@ func TestTheIndexIsItsRebuild(t *testing.T) {
 		if !t.Failed() && flagged == 0 {
 			t.Errorf("no link was a value of the aliases: the runs test little of the index's flag")
 		}
+		// The batches done, not those tried (M9/P3 design 3.14.6).
+		t.Logf("%d batches done, %d of them rewrote pages; %d links of pages they wrote checked, %d past a rename or a move", seen.done,
+			seen.rewrote, seen.checked, seen.followed)
+		if !t.Failed() && (seen.done < 20 || seen.rewrote < 5 || seen.followed < 10) {
+			t.Errorf("%d batches were done, %d of them rewrote pages, and %d links of pages they wrote were checked past a rename or a "+
+				"move after their write; want 20, 5 and 10 at least: the runs test little of the batches", seen.done, seen.rewrote, seen.followed)
+		}
 	}()
 	for seed := range uint64(6) {
 		t.Run(fmt.Sprint(seed), func(t *testing.T) {
-			tm := newAcmeTeam(t, "member", "")
+			tm, logs := newAcmeTeamLogged(t)
 			admin, err := reindexAdmin(tm.pool, testConfig(t, tm.url, false), slog.New(slog.NewTextHandler(io.Discard, nil)))
 			if err != nil {
 				t.Fatal(err)
 			}
 			w := writer{t: t, tm: tm, nb: tm.openNotebook(t, "alice", "Eng"), rnd: rand.New(rand.NewPCG(seed, 6))}
+			b := &batcher{w: writer{t: t, tm: tm, nb: w.nb, rnd: rand.New(rand.NewPCG(seed, 13))}, m: tm.agent(t, "alice", w.nb), logs: logs}
 			written, aliased := 0, false // aliased: a link was a value of the aliases after some step
 			for step := range 60 {
 				led := tm.ledTo(t, w.nb)
@@ -75,16 +92,30 @@ func TestTheIndexIsItsRebuild(t *testing.T) {
 				if now := tm.ledTo(t, w.nb); ok && relocates && !leadStill(led, now) {
 					t.Fatalf("after step %d, %s, a link leads elsewhere:\n%v\nwas\n%v", step, what, now, led)
 				}
+				var r *batchRun
+				switch {
+				case step%20 == 19:
+					r = b.directed(t, step)
+				case step%13 == 12:
+					r = b.random(t)
+				}
+				if r != nil {
+					what := b.run(t, r, &seen)
+					if before, after := tm.rebuilt(t, admin, w.nb); !slices.Equal(before, after) {
+						t.Fatalf("after step %d, %s, the index is not its rebuild:\n%s", step, what, diff(before, after))
+					}
+				}
 			}
 			if written < 30 {
 				t.Errorf("serve took %d of the 60 writes, want most: the run tests little", written)
 			}
-			rewritten += count(t, tm.pool, `SELECT count(*) FROM page_revisions r WHERE EXISTS (SELECT 1 FROM changeset_items i
-				WHERE i.changeset_id = r.changeset_id AND i.node_id <> r.node_id AND i.before_name IS NOT NULL
-				AND i.after_name IS NOT NULL)`)
-			assetsRewritten += count(t, tm.pool, `SELECT count(*) FROM page_revisions r WHERE EXISTS (SELECT 1 FROM changeset_items i
-				JOIN nodes n ON n.id = i.node_id AND n.kind = 'asset'
-				WHERE i.changeset_id = r.changeset_id AND i.before_name IS NOT NULL AND i.after_name IS NOT NULL)`)
+			// REST's renames and moves, not the batches' (M9/P3 design 3.14.6).
+			rewritten += count(t, tm.pool, `SELECT count(*) FROM page_revisions r JOIN changesets c ON c.id = r.changeset_id AND c.client = 'web'
+				WHERE EXISTS (SELECT 1 FROM changeset_items i WHERE i.changeset_id = r.changeset_id AND i.node_id <> r.node_id
+					AND i.before_name IS NOT NULL AND i.after_name IS NOT NULL)`)
+			assetsRewritten += count(t, tm.pool, `SELECT count(*) FROM page_revisions r JOIN changesets c ON c.id = r.changeset_id AND c.client = 'web'
+				WHERE EXISTS (SELECT 1 FROM changeset_items i JOIN nodes n ON n.id = i.node_id AND n.kind = 'asset'
+					WHERE i.changeset_id = r.changeset_id AND i.before_name IS NOT NULL AND i.after_name IS NOT NULL)`)
 			if aliased {
 				flagged++
 			}

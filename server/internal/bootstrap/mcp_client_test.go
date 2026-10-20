@@ -320,12 +320,23 @@ var declared struct { //nolint:gochecknoglobals // read once, read only
 }
 
 // declaredCodes are the codes a tool's error may carry (M9 design 4.7):
-// the contract's, every operation's (apitest's ProblemCodes); P3 adds
-// page.batch_too_large, MCP's own.
+// the contract's, every operation's (apitest's ProblemCodes), and MCP's
+// own (mcpOwnCodes).
 func declaredCodes(t testing.TB) []string {
 	t.Helper()
-	declared.once.Do(func() { declared.codes = apitest.Load(t).ProblemCodes(t) })
+	declared.once.Do(func() {
+		codes := append(apitest.Load(t).ProblemCodes(t), mcpOwnCodes()...)
+		slices.Sort(codes)
+		declared.codes = slices.Compact(codes)
+	})
 	return declared.codes
+}
+
+// mcpOwnCodes are the codes an MCP tool's error carries that no REST
+// operation answers: MCP has one more (M9 design 4.7), batch's bound
+// (M9/P3 design 3.13.1).
+func mcpOwnCodes() []string {
+	return []string{"page.batch_too_large"}
 }
 
 // undeclaredToolCode is the error of a tool error's code that codes do

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"errors"
 	"slices"
 	"strconv"
 	"strings"
@@ -503,3 +504,78 @@ func TestCreatePageWithAContent(t *testing.T) {
 		t.Errorf("events = %+v, want the creation with its facts", o.events)
 	}
 }
+
+// A batch's parse session (M9/P3 design 3.4.5): its plan's takes and its
+// DecidedAll wait, together, the budget's wait once, so that what the plan
+// waited DecidedAll has not; a plan made again finds the contents parsed
+// before, parsing none again.
+func TestAParseSessionWaitsOnceForTheRequest(t *testing.T) {
+	f := newFixture()
+	a, b := uuid.NewV7(), uuid.NewV7()
+	f.wait = 200 * time.Millisecond
+	f.budget.waits = []time.Duration{150 * time.Millisecond, 100 * time.Millisecond}
+	s := f.parser().Planned()
+	defer s.Release()
+	if _, err := s.Parse(context.Background(), a, "aa"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.DecidedAll(context.Background(), map[uuid.UUID]string{b: "bbbb"}, tooLargeOf(errors.New("too large"))); codeOf(err) !=
+		"server_busy" {
+		t.Errorf("DecidedAll after the plan waited 150 ms of 200 = %v, want server_busy: one wait for the request", err)
+	}
+	s.NewPlan()
+	takes := len(f.rec.calls)
+	if facts, err := s.Parse(context.Background(), a, "aa"); err != nil || facts != "aa" || !slices.Equal(f.rec.calls[takes:], []string{"Links"}) {
+		t.Errorf("a plan made again: %v (%v), want the facts kept, their links counted anew", f.rec.calls[takes:], err)
+	}
+}
+
+// A session gives back the shares it holds before each take, their facts
+// kept, uncounted (M9/P3 review A2-M2): on a budget of one page's bytes two
+// pages' parses take it in turn; DecidedAll takes the facts kept as they
+// are; its links count the plan's, each page and hash once.
+func TestAParseSessionGivesItsSharesBackBeforeEachTake(t *testing.T) {
+	f := newFixture()
+	a, b, c := uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
+	f.wait = 50 * time.Millisecond
+	f.budget.capacity = 5
+	s := f.parser().Planned()
+	if _, err := s.Parse(context.Background(), a, "aaaaa"); err != nil {
+		t.Fatal(err)
+	}
+	if facts, err := s.Parse(context.Background(), b, "bbbbb"); err != nil || facts != "bbbbb" {
+		t.Fatalf("a second page's parse on a full budget = %v, %v", facts, err)
+	}
+	facts, err := s.DecidedAll(context.Background(), map[uuid.UUID]string{a: "aaaaa", c: "ccccc"}, tooLargeOf(errors.New("too large")))
+	if err != nil || facts[a] != "aaaaa" || facts[c] != "ccccc" {
+		t.Fatalf("DecidedAll = %v, %v", facts, err)
+	}
+	if want := []string{"Take 5", "Facts", "KeepFacts 5", "Links", "Release 5", "Take 5", "Facts", "KeepFacts 5", "Links",
+		"Release 5", "Take 5", "Facts", "KeepFacts 5", "Links"}; !slices.Equal(f.rec.calls, want) {
+		t.Errorf("calls = %v, want %v", f.rec.calls, want)
+	}
+	s.Release()
+	if f.budget.held != 0 {
+		t.Errorf("the budget holds %d after the release", f.budget.held)
+	}
+	links := strings.Repeat("[[x]]", domain.MaxUnitLinks/2+1)
+	f.budget.capacity = 0
+	s = f.parser().Planned()
+	defer s.Release()
+	tooLarge, counted := errors.New("too large"), 0
+	told := func(links int) error { counted = links; return tooLarge }
+	if _, err := s.Parse(context.Background(), a, links); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.DecidedAll(context.Background(), map[uuid.UUID]string{a: links, b: "x"}, told); err != nil {
+		t.Errorf("a final content the plan parsed, counted once: %v", err)
+	}
+	if _, err := s.DecidedAll(context.Background(), map[uuid.UUID]string{c: links, b: "x"}, told); !errors.Is(err, tooLarge) ||
+		counted != 2*(domain.MaxUnitLinks/2+1) {
+		t.Errorf("the plan's links and the final ones past the bound: %v, %d links told; want too large, both pages' links", err,
+			counted)
+	}
+}
+
+// tooLargeOf is a DecidedAll's bound answering err.
+func tooLargeOf(err error) func(int) error { return func(int) error { return err } }

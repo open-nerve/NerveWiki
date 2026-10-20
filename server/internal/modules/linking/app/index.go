@@ -67,7 +67,7 @@ func (x Index) PagesChanged(ctx context.Context, e PagesChanged) error {
 		reach.Keys = append(reach.Keys, old.AliasKeys...)
 		aliases += len(old.AliasKeys)
 	}
-	reach, err := spread(ctx, x.Store, x.Pages, e.NotebookID, reach, renamed)
+	reach, err := spread(ctx, x.Store, x.Pages, e.NotebookID, reach, renamed, nil)
 	if err != nil {
 		return err
 	}
@@ -88,16 +88,18 @@ func (x Index) PagesChanged(ctx context.Context, e PagesChanged) error {
 // spread has reach, a unit's, reach the pages and attachments under the
 // nodes renamed, their links and those to them, and the keys of every
 // alias of the pages it reaches: a page's path decides between the pages
-// with an alias as between those with a name.
-func spread(ctx context.Context, store Store, pages Pages, notebookID uuid.UUID, reach domain.Reach, renamed []uuid.UUID) (
-	domain.Reach, error,
-) {
+// with an alias as between those with a name. The nodes of after, by the
+// node renamed, which a batch created after its rename, are not reached
+// (Moved.CreatedAfter); a unit's observers give none.
+func spread(ctx context.Context, store Store, pages Pages, notebookID uuid.UUID, reach domain.Reach, renamed []uuid.UUID,
+	after map[uuid.UUID]map[uuid.UUID]bool,
+) (domain.Reach, error) {
 	for _, id := range renamed {
 		sub, err := pages.Subtree(ctx, notebookID, id)
 		if err != nil {
 			return domain.Reach{}, err
 		}
-		reach.Add(sub...)
+		reach.Add(stepsNot(sub, after[id])...)
 	}
 	aliasKeys, err := store.AliasKeys(ctx, reach.Targets)
 	if err != nil {

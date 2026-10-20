@@ -233,7 +233,7 @@ func TestTheWritesWordTheirErrors(t *testing.T) {
 		Write: writeFunc(func(uuid.UUID, app.PathWrite, domain.Client) (app.Written, error) { return app.Written{}, taken }),
 		Move:  moveFunc(func(uuid.UUID, app.PathMove, domain.Client) (app.Relocated, error) { return app.Relocated{}, taken }),
 		Delete: deleteFunc(func(uuid.UUID, app.PathDelete, domain.Client) (app.Deleted, error) {
-			return app.Deleted{}, &domain.Recursive{Pages: 1, Assets: 1}
+			return app.Deleted{}, &domain.Recursive{Field: "recursive", Pages: 1, Assets: 1}
 		}),
 		Edit: editFunc(func(uuid.UUID, app.PageEdit, domain.Client) (app.Edited, error) {
 			return app.Edited{}, &domain.LockPaths{Err: domain.Locked(uuid.NewV7(), uuid.NewV7(), "Bob")}

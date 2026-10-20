@@ -270,7 +270,7 @@ func (r revertChecks) withinBounds(ctx context.Context, items []domain.Changeset
 			}
 		}
 	}
-	if domain.UnitTooLarge(pages, bytes, 0) {
+	if domain.UnitTooLarge(pages, pages, bytes, 0) {
 		return domain.ErrRevertTooLarge
 	}
 	for root, g := range groups {

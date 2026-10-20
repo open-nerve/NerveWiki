@@ -1,6 +1,83 @@
 {
   "notebook": [
     {
+      "name": "batch",
+      "title": "Apply several writes as one change",
+      "description": "Apply up to 100 writes as one change, all or none, with a message the history shows. Each op is a write, edit, move or delete: op names the tool and its other members are that tool's arguments; it acts on the notebook as the ops before it left it, their paths and contents. base_version is a page's version from before the batch; a page the batch creates takes none. A refused op writes nothing at all: the error has its op, from 0, and that tool's code. A delete of a page whose descendants an earlier op deleted takes them in one deletion, the earlier op answering merged_into; a batch may not delete what it creates, renames or moves. Unlike separate calls, links follow the batch's renames and moves, merged node by node, from where they led before the batch, or, in a page the batch writes, at its latest write before them (on the tree then, with the aliases from before the batch): what other ops did in between to where they lead (creating, renaming, moving or deleting a page) is not seen, nor any alias the batch changed. A page the batch writes or deletes that is being edited in the web editor refuses at the first op that writes or deletes it, as page.locked; one that only the links' rewrite of its renames and moves reaches is checked after those, as linking.pages_locked at its first rename or move. The answer has the changeset's id and time and each op's result, as many as fit, results_count all of them: changeset reads the rest. What the batch writes reaches the search some seconds after it: building says it is on its way. Each op's changed is what its tool would answer at that step; the batch's tells whether it left a change.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ops": {
+            "type": "array",
+            "description": "The writes, applied in their order as one change: 1 to 100.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "op": {
+                  "type": "string",
+                  "description": "The tool this op is: write, edit, move or delete. Its other members are that tool's arguments."
+                },
+                "path": {
+                  "type": ["null", "string"],
+                  "description": "write, edit and delete: the path, from the notebook's root, as that tool takes it."
+                },
+                "content": {
+                  "type": ["null", "string"],
+                  "description": "write: the page's whole content, as it will be stored."
+                },
+                "base_version": {
+                  "type": ["null", "string"],
+                  "description": "write and edit: the page's version as read before the batch. None for a page the batch creates."
+                },
+                "old_string": {
+                  "type": ["null", "string"],
+                  "description": "edit: the text to replace, byte for byte, which must occur exactly once unless replace_all is set."
+                },
+                "new_string": {
+                  "type": ["null", "string"],
+                  "description": "edit: the text to put in its place."
+                },
+                "replace_all": {
+                  "type": ["null", "boolean"],
+                  "description": "edit: replace every occurrence of old_string. Default false."
+                },
+                "from": {
+                  "type": ["null", "string"],
+                  "description": "move: the path of the page or attachment that moves."
+                },
+                "to": {
+                  "type": ["null", "string"],
+                  "description": "move: the full path it will have, never a page to move it into."
+                },
+                "update_links": {
+                  "type": ["null", "boolean"],
+                  "description": "move: rewrite the links to what moves so that they follow it. Default true."
+                },
+                "recursive": {
+                  "type": ["null", "boolean"],
+                  "description": "delete: delete a page with its children. Default false."
+                }
+              },
+              "required": ["op"],
+              "additionalProperties": false
+            }
+          },
+          "message": {
+            "type": "string",
+            "description": "Why the batch is made, shown with its change in the history: 1 to 4,096 bytes."
+          }
+        },
+        "required": ["ops", "message"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      }
+    },
+    {
       "name": "changeset",
       "title": "Read a changeset",
       "description": "Read one of the notebook's changesets by the id log gives: its kind, client, author, times, message, counts, what it reverts and what reverted it, and whether it renames or moves nodes; then what it did to each node it changed, a page at a time by node id: where the node was before and after in the tree, the revision of the content it wrote, and the node's current path (null when it is in the trash). The changeset itself comes on the first page, without cursor; go on with next_cursor while it is set. A changeset of another notebook is not found here. History is read-only here: people revert changesets in the web.",
@@ -293,6 +370,87 @@
     }
   ],
   "account": [
+    {
+      "name": "batch",
+      "title": "Apply several writes as one change",
+      "description": "Apply up to 100 writes as one change, all or none, with a message the history shows. Each op is a write, edit, move or delete: op names the tool and its other members are that tool's arguments; it acts on the notebook as the ops before it left it, their paths and contents. base_version is a page's version from before the batch; a page the batch creates takes none. A refused op writes nothing at all: the error has its op, from 0, and that tool's code. A delete of a page whose descendants an earlier op deleted takes them in one deletion, the earlier op answering merged_into; a batch may not delete what it creates, renames or moves. Unlike separate calls, links follow the batch's renames and moves, merged node by node, from where they led before the batch, or, in a page the batch writes, at its latest write before them (on the tree then, with the aliases from before the batch): what other ops did in between to where they lead (creating, renaming, moving or deleting a page) is not seen, nor any alias the batch changed. A page the batch writes or deletes that is being edited in the web editor refuses at the first op that writes or deletes it, as page.locked; one that only the links' rewrite of its renames and moves reaches is checked after those, as linking.pages_locked at its first rename or move. The answer has the changeset's id and time and each op's result, as many as fit, results_count all of them: changeset reads the rest. What the batch writes reaches the search some seconds after it: building says it is on its way. Each op's changed is what its tool would answer at that step; the batch's tells whether it left a change.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "notebook": {
+            "type": "string",
+            "description": "The notebook's id, from notebooks."
+          },
+          "ops": {
+            "type": "array",
+            "description": "The writes, applied in their order as one change: 1 to 100.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "op": {
+                  "type": "string",
+                  "description": "The tool this op is: write, edit, move or delete. Its other members are that tool's arguments."
+                },
+                "path": {
+                  "type": ["null", "string"],
+                  "description": "write, edit and delete: the path, from the notebook's root, as that tool takes it."
+                },
+                "content": {
+                  "type": ["null", "string"],
+                  "description": "write: the page's whole content, as it will be stored."
+                },
+                "base_version": {
+                  "type": ["null", "string"],
+                  "description": "write and edit: the page's version as read before the batch. None for a page the batch creates."
+                },
+                "old_string": {
+                  "type": ["null", "string"],
+                  "description": "edit: the text to replace, byte for byte, which must occur exactly once unless replace_all is set."
+                },
+                "new_string": {
+                  "type": ["null", "string"],
+                  "description": "edit: the text to put in its place."
+                },
+                "replace_all": {
+                  "type": ["null", "boolean"],
+                  "description": "edit: replace every occurrence of old_string. Default false."
+                },
+                "from": {
+                  "type": ["null", "string"],
+                  "description": "move: the path of the page or attachment that moves."
+                },
+                "to": {
+                  "type": ["null", "string"],
+                  "description": "move: the full path it will have, never a page to move it into."
+                },
+                "update_links": {
+                  "type": ["null", "boolean"],
+                  "description": "move: rewrite the links to what moves so that they follow it. Default true."
+                },
+                "recursive": {
+                  "type": ["null", "boolean"],
+                  "description": "delete: delete a page with its children. Default false."
+                }
+              },
+              "required": ["op"],
+              "additionalProperties": false
+            }
+          },
+          "message": {
+            "type": "string",
+            "description": "Why the batch is made, shown with its change in the history: 1 to 4,096 bytes."
+          }
+        },
+        "required": ["notebook", "ops", "message"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      }
+    },
     {
       "name": "changeset",
       "title": "Read a changeset",

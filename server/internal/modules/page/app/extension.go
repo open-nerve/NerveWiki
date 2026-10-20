@@ -49,6 +49,68 @@ type Step struct {
 	// 3.3), for the guards (M10: a schema's rules of a notebook's files);
 	// nil for any other operation.
 	Asset *AssetMeta
+	// Batch is what a batch's deferred step has its participants follow
+	// besides its changes (M9/P3 design 3.7.1); nil for any other step.
+	Batch *BatchRewrite
+}
+
+// BatchRewrite is what a batch's deferred participants follow besides its
+// changes (M9 design 4.11; M9/P3 design 3.7): each page the batch wrote,
+// alive after it; the paths the moved and renamed nodes' former parents
+// had as the unit began; the nodes the unit deleted; the most pages the
+// rewrite may write, a page of Written counting WrittenWeight (M9/P3
+// review B-M3), the most links (review B1-M3), and the most bytes of the
+// pages it writes (M9/P3 fix round 5, B2-M1); and the first op that
+// renames or moves with update_links, which a refusal names.
+type BatchRewrite struct {
+	Written       map[uuid.UUID]WrittenPage
+	Parents       map[uuid.UUID][]domain.PathStep
+	Gone          []uuid.UUID
+	MaxPages      int
+	WrittenWeight int
+	MaxLinks      int
+	MaxBytes      int
+	FirstMove     int
+	// Frozen is the nodes an op of the batch renamed or moved with
+	// update_links false, in id order, which Unit.Participate sets: the
+	// links that led to them are left as they are, in every page, whatever
+	// their ancestors' changes (M9 design 4.11; M9/P3 review B-M1).
+	Frozen []uuid.UUID
+	// CreatedAfter is, for each node an op of the batch renamed or moved
+	// with update_links, the nodes it created after the last such op of
+	// it: no link reached them then, so the rewrite of the pages it did not
+	// write leaves them out of that node's subtree, which it reads as the
+	// unit left it (domain.BatchPlan.CreatedAfterMoves; M9 design 4.11: a
+	// creation only resolves again; M9/P3 review B1-M1).
+	CreatedAfter map[uuid.UUID][]uuid.UUID
+	// FrozenMoves is the renames and moves of the nodes of Frozen, merged
+	// node by node over the batch (domain.BatchPlan.FrozenMovesBetween): not
+	// followed, but where they were, which the paths before of the nodes
+	// under them that the rewrite follows take their names and former
+	// parents from, those parents' paths among Parents (M9/P3 review
+	// B1-N1: a Markdown link's text that was the old path is recognized).
+	FrozenMoves []domain.Change
+}
+
+// WrittenPage is a page a batch wrote, for its deferred rewrite: where its
+// links led at its last content op, on the plan's tree after that op; its
+// own changes, the renames and moves after that op, merged node by node
+// with no revision, of the nodes alive then, or created since, and alive
+// after the unit, that no op after it moves with update_links false: those
+// nodes alone, the participant reading the subtree of each it renames or
+// moves once for the batch (M9/P3 design 3.7.2 (e)), so that a moved
+// folder's nodes are held once, not once a page; and the facts DecidedAll
+// kept for its final content, which the rewrite takes its links from
+// instead of parsing it again. Frozen is the nodes the ops after that op
+// rename or move with update_links false, whose links it leaves;
+// CreatedAfter, for each node they rename or move, the nodes they create
+// after the last that does, out of its subtree (BatchRewrite.CreatedAfter).
+type WrittenPage struct {
+	Before       domain.LinksBefore
+	Changes      []domain.Change
+	Facts        Facts
+	Frozen       []uuid.UUID
+	CreatedAfter map[uuid.UUID][]uuid.UUID
 }
 
 // AssetMeta is what an attachment's file is: its type, as the server

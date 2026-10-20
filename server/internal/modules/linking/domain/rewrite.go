@@ -52,9 +52,9 @@ type Rewriting struct {
 // Rewrites tells whether a rename or move writes l again (M6/P4 design 2):
 // l, no value of the aliases, resolved to a node before it, and resolves
 // after it to another, to none, or ambiguously where it did not; or l
-// resolved to recased, the page a rename changed the case of the title of
-// only, and names it by its title not as now written, with ".md" or
-// without, a title that ends with ".md" too.
+// resolved to a page of recased, one a rename changed the case of the
+// title of only, and names it by its title not as now written, with ".md"
+// or without, a title that ends with ".md" too.
 func Rewrites(l Link, before, after Resolution, recased Recased) bool {
 	switch {
 	case before.ID == (uuid.UUID{}) || l.Aliases:
@@ -62,15 +62,15 @@ func Rewrites(l Link, before, after Resolution, recased Recased) bool {
 	case after.ID != before.ID || after.Ambiguous && !before.Ambiguous:
 		return true
 	}
+	name, ok := recased[before.ID]
 	written := last(l.Target)
-	return before.ID == recased.ID && byKey(l, shared.TitleKey(recased.Name)) &&
-		written != recased.Name && stem(written) != recased.Name
+	return ok && byKey(l, shared.TitleKey(name)) && written != name && stem(written) != name
 }
 
 // Rewrite is how the links of content, the page's at from (its path after
 // the change), are written again to lead where they led before a rename or
-// move (M6/P4 design 2, 3): those Rewrites tells, recased the page a rename
-// changed the case of the title of only.
+// move (M6/P4 design 2, 3): those Rewrites tells, recased the pages a
+// rename changed the case of the title of only.
 func Rewrite(content string, from []Step, links []Resolved, tree Tree, recased Recased) Rewriting {
 	w := Rewriting{Leads: map[int]Node{}}
 	for _, r := range links {

@@ -27,7 +27,7 @@ func foundTimes(n int) string {
 // replaced is Replace's answer in one line: the content, the count and
 // whether CRLF matched; or its refusal.
 func replaced(content, old, new string, all bool) string {
-	r, err := domain.Replace(content, old, new, all)
+	r, err := domain.Replace(domain.Args{}, content, old, new, all)
 	if err != nil {
 		return said(err)
 	}
@@ -54,7 +54,7 @@ func TestCheckEdit(t *testing.T) {
 		{"same", "same", "validation_failed new_string not_allowed: must differ from old_string"},
 	} {
 		got := ""
-		if err := domain.CheckEdit(tt.old, tt.new); err != nil {
+		if err := domain.CheckEdit(domain.Args{}, tt.old, tt.new); err != nil {
 			got = said(err)
 		}
 		if got != tt.want {
@@ -168,7 +168,7 @@ func TestReplaceReckonsTheSize(t *testing.T) {
 		if got := replaced(page(domain.MaxContentBytes-3), tt.old, tt.new, false); got != pageTooLong {
 			t.Errorf("%q for %q, a new_string past 5 MiB as CRLF = %.60s, want %s", tt.new, tt.old, got, pageTooLong)
 		}
-		r, err := domain.Replace(page(domain.MaxContentBytes-5), tt.old, tt.new, false)
+		r, err := domain.Replace(domain.Args{}, page(domain.MaxContentBytes-5), tt.old, tt.new, false)
 		if err != nil || len(r.Content) != domain.MaxContentBytes || !r.CRLF {
 			t.Errorf("%q for %q, a new_string of exactly 5 MiB as CRLF = %d bytes, CRLF %v, %v", tt.new, tt.old, len(r.Content), r.CRLF, err)
 		}
@@ -180,7 +180,7 @@ func TestReplaceReckonsTheSize(t *testing.T) {
 	runtime.GC()
 	var before, after runtime.MemStats
 	runtime.ReadMemStats(&before)
-	_, err := domain.Replace(as, "a", bs, true)
+	_, err := domain.Replace(domain.Args{}, as, "a", bs, true)
 	runtime.ReadMemStats(&after)
 	if got := after.TotalAlloc - before.TotalAlloc; said(err) != pageTooLong || got > 1<<20 {
 		t.Errorf("a content of 8 MiB refused for its size: %v, after %d KiB allocated", err, got>>10)

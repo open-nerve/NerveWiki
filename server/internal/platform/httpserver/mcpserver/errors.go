@@ -30,6 +30,13 @@ type ToolError struct {
 	// answers the largest k it finds whose whole answer is within
 	// MaxAnswerBytes; Text and Extra are not read then.
 	Fit *ErrorFit
+	// At, when set, is where in the call the error is, as a batch's op
+	// "ops[3] (move)" (M9/P3 design 3.9.2): mcpserver writes it after the
+	// code in whatever words answer, "<code>: <At>: <the rest>", the
+	// module's Text, each of Fit's and the problem's own, so that every k
+	// of Fit carries it. A module's words that do not start with "<code>: "
+	// are its fault: At and the code go before them, an error line says so.
+	At string
 }
 
 // ErrorFit is an error of a list, or of parts that may not all fit (M9/P2
@@ -96,7 +103,10 @@ func (s *Server) toolError(ctx context.Context, name string, err error) (*mcp.Ca
 		s.logger.LogAttrs(ctx, slog.LevelError, "MCP tool failed", append(attrs, slog.Any("error", err))...)
 		return s.internalError(ctx, internalFailed), httpserver.CodeInternal
 	}
-	res, n, merr := problemAnswer(a, err)
+	res, n, stray, merr := problemAnswer(a, err)
+	if stray {
+		s.logger.LogAttrs(ctx, slog.LevelError, "MCP error's words start without their code", attrs...)
+	}
 	switch {
 	case merr != nil:
 		s.logger.LogAttrs(ctx, slog.LevelError, "MCP tool failed", append(attrs,
@@ -110,31 +120,41 @@ func (s *Server) toolError(ctx context.Context, name string, err error) (*mcp.Ca
 
 // problemAnswer is the answer of err, a tool's error that a classified as
 // a problem, and its bytes as MaxAnswerBytes counts them: the text, the
-// module's or the problem's code, detail, fields and retry; the member,
-// the problem's and then Extra's (membersOf); for a ToolError with Fit,
-// the answer of the most items it finds within the bound, or of none when
-// even that is over it. The error is a member that does not encode.
-func problemAnswer(a httpserver.Answer, err error) (*mcp.CallToolResult, int, error) {
+// module's or the problem's code, detail, fields and retry, a ToolError's
+// At after its code (placed); the member, the problem's and then Extra's
+// (membersOf); for a ToolError with Fit, the answer of the most items it
+// finds within the bound, or of none when even that is over it. stray
+// tells that a module's words with At did not start with their code. The
+// error is a member that does not encode.
+func problemAnswer(a httpserver.Answer, err error) (res *mcp.CallToolResult, n int, stray bool, merr error) {
 	text := a.Problem.Code + ": " + a.Problem.Detail + fieldsText(a.Problem.Errors)
 	if a.Retry > 0 {
 		text += fmt.Sprintf(" Try again in %d s.", retrySeconds(a))
+	}
+	var te *ToolError
+	at := ""
+	if errors.As(err, &te) {
+		at = te.At
 	}
 	answerOf := func(words string, extra map[string]any) (*mcp.CallToolResult, int, error) {
 		if words == "" {
 			words = text
 		}
+		words, wrong := placed(a.Problem.Code, at, words)
+		stray = stray || wrong
 		res, err := errorAnswer(words, membersOf(a, words, extra))
 		if err != nil {
 			return nil, 0, err
 		}
 		return res, answerBytes(res), nil
 	}
-	var te *ToolError
-	if !errors.As(err, &te) {
-		return answerOf("", nil)
+	if te == nil {
+		res, n, merr = answerOf("", nil)
+		return res, n, stray, merr
 	}
 	if te.Fit == nil {
-		return answerOf(te.Text, te.Extra)
+		res, n, merr = answerOf(te.Text, te.Extra)
+		return res, n, stray, merr
 	}
 	type measured struct {
 		res *mcp.CallToolResult
@@ -144,7 +164,21 @@ func problemAnswer(a httpserver.Answer, err error) (*mcp.CallToolResult, int, er
 		res, n, err := answerOf(te.Fit.Build(k))
 		return measured{res, n}, n <= MaxAnswerBytes, err
 	})
-	return m.res, m.n, ferr
+	return m.res, m.n, stray, ferr
+}
+
+// placed is words with at after their code: "<code>: <at>: <the rest>";
+// words as they are for no at. Words that do not start with "<code>: " get
+// both before them, and wrong tells it.
+func placed(code, at, words string) (out string, wrong bool) {
+	if at == "" {
+		return words, false
+	}
+	lead := code + ": "
+	if rest, ok := strings.CutPrefix(words, lead); ok {
+		return lead + at + ": " + rest, false
+	}
+	return lead + at + ": " + words, true
 }
 
 // membersOf is structuredContent.error of a problem answered with text:
@@ -187,7 +221,7 @@ func membersOf(a httpserver.Answer, text string, extra map[string]any) errorMemb
 func ErrorAnswerBytes(err error) (code string, bytes int) {
 	a := httpserver.ProblemOf(context.Background(), err)
 	if a.Fault == httpserver.FaultNone {
-		_, n, merr := problemAnswer(a, err)
+		_, n, _, merr := problemAnswer(a, err)
 		switch {
 		case merr == nil && n <= MaxAnswerBytes:
 			return a.Problem.Code, n

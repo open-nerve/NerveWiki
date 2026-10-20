@@ -43,7 +43,7 @@ func newRewriting(t *testing.T, pages ...string) *rewriting {
 		budget: markdown.NewBudget(1<<20, time.Hour, slog.New(slog.DiscardHandler)),
 	}
 	w.rewrite = app.Rewrite{
-		Store: w.store, Pages: w.tree, Contents: w.contents, Locks: w.locks,
+		Store: w.store, Pages: w.tree, Contents: w.contents, Sizes: w.contents, Locks: w.locks,
 		Parser: markdownadapter.NewParser(md, w.budget), Logger: slog.New(slog.NewTextHandler(w.logs, nil)),
 		MaxContent: 1 << 10,
 	}
@@ -106,6 +106,16 @@ type pageContents map[uuid.UUID]page
 func (c pageContents) Content(_ context.Context, id uuid.UUID) (string, int, bool, error) {
 	p, ok := c[id]
 	return p.content, p.revision, ok, nil
+}
+
+func (c pageContents) ContentSizes(_ context.Context, ids []uuid.UUID) (map[uuid.UUID]int, error) {
+	out := map[uuid.UUID]int{}
+	for _, id := range ids {
+		if p, ok := c[id]; ok {
+			out[id] = len(p.content)
+		}
+	}
+	return out, nil
 }
 
 // locks are the pages' edit locks, and how often they were read; after

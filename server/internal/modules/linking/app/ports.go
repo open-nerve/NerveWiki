@@ -237,14 +237,93 @@ type Publisher interface {
 
 // Moved is an operation of a page write unit as a rewrite of links follows
 // it (M6/P4 design 4.1): its notebook, its unit's time, whether the unit
-// rewrites links, and what it changed. bootstrap converts the page
-// module's step, field by field.
+// rewrites links, and what it changed. bootstrap converts the page module's
+// step, field by field. A batch's deferred rewrite has the rest (M9/P3
+// design 3.7): each page the batch wrote, alive after it, which is followed
+// from its own content and changes; the paths the moved nodes' former
+// parents had as the unit began; the nodes it deleted; the most pages the
+// rewrite may write, none for 0 (a unit of one operation), a page of Written
+// with a link its own changes meet counting WrittenWeight, 1 for 0 (M9/P3
+// review B-M3: its rewrite costs more than an index page's; B1-M2: one with
+// none counts nothing); the most links it may write, none for 0 (M9/P3
+// review B1-M3); the most bytes of the pages it writes, none for 0 (M9/P3
+// fix round 5, B2-M1: the facts each keeps of the parse budget follow
+// them); and the nodes an op of it renamed or moved with
+// update_links false, the links that led to them left as they are, in every
+// page, whatever their ancestors' changes (M9 design 4.11; M9/P3 review
+// B-M1), and their renames and moves merged, not followed, but which the
+// paths before of the nodes under them take their names and former parents
+// from (M9/P3 review B1-N1); and, for each node an op of it renamed or
+// moved, the nodes it created after the last such op of the node, which the
+// subtree spread reads of it leaves out: that op reached none of them, and a
+// creation only resolves links again (M9 design 4.11; M9/P3 review B1-M1).
 type Moved struct {
-	NotebookID  uuid.UUID
-	At          time.Time
-	UpdateLinks bool
-	Changes     []domain.Change
+	NotebookID    uuid.UUID
+	At            time.Time
+	UpdateLinks   bool
+	Changes       []domain.Change
+	Written       map[uuid.UUID]WrittenPage
+	Parents       map[uuid.UUID][]domain.Step
+	Gone          []uuid.UUID
+	MaxPages      int
+	WrittenWeight int
+	MaxLinks      int
+	MaxBytes      int
+	Frozen        []uuid.UUID
+	FrozenMoves   []domain.Change
+	CreatedAfter  map[uuid.UUID][]uuid.UUID
 }
+
+// WrittenPage is a page a batch wrote, as its deferred rewrite follows it
+// (M9/P3 design 3.7.2): where its links led at its last content op, on the
+// plan's tree then; its own changes, the renames and moves after that op,
+// merged node by node, of the nodes those ops moved alone; the facts of
+// its final content, which its links are taken from, unparsed; the nodes
+// those ops rename or move with update_links false, whose links it leaves
+// (Moved.Frozen); and, for each node they rename or move, the nodes they
+// create after the last that does, out of its subtree
+// (Moved.CreatedAfter).
+type WrittenPage struct {
+	Before       LinksBefore
+	Changes      []domain.Change
+	Facts        domain.Facts
+	Frozen       []uuid.UUID
+	CreatedAfter map[uuid.UUID][]uuid.UUID
+}
+
+// LinksBefore is where a page's links led at a moment of a batch's plan:
+// each link, by where its target starts, and the nodes they led to, at
+// their paths from the root then.
+type LinksBefore struct {
+	Leads   map[int]domain.Resolution
+	Targets map[uuid.UUID][]domain.Step
+}
+
+// ErrTooManyRewrites is a batch's deferred rewrite past Moved.MaxPages,
+// Moved.MaxLinks or Moved.MaxBytes (M9/P3 design 3.7.2; review B1-M3; fix
+// round 5, B2-M1): counted before the tree is read, and any page parsed or
+// refused for its lock; or one whose next parse would not fit in the
+// parse budget beside the shares its own pages' facts keep (fix round 6,
+// B3-M1). TooManyRewrites carries the count; bootstrap answers it as the
+// page module's page.batch_too_large.
+var ErrTooManyRewrites = errors.New("linking: the batch's renames and moves would rewrite more links or pages than it may")
+
+// TooManyRewrites is ErrTooManyRewrites with the pages the rewrite would
+// write, at most, as the bound counts them, and the bound; Weight is what
+// a page the batch wrote counted, when one was and counted more than one.
+// Links, when set, is the links it would write, past Max, Moved.MaxLinks,
+// its pages within theirs; Bytes, when set, the bytes of the pages it
+// would write, past Max, Moved.MaxBytes, its pages and links within
+// theirs. Kept, when set, is the bytes of the parse budget the facts of
+// the pages it wrote keep with the take of the parse it needs next, past
+// Max, the budget's size: that parse can never be taken beside them,
+// whatever others give back (M9/P3 fix round 6, B3-M1).
+type TooManyRewrites struct {
+	Pages, Max, Weight, Links, Bytes, Kept int
+}
+
+func (e *TooManyRewrites) Error() string { return ErrTooManyRewrites.Error() }
+func (e *TooManyRewrites) Unwrap() error { return ErrTooManyRewrites }
 
 // Appender adds a content write to the unit a rewrite follows: the page
 // module's, which bootstrap adapts. WriteContent's error is ErrGuardLocked,
@@ -260,6 +339,18 @@ type Appender interface {
 // which bootstrap wires. False for a page deleted.
 type PageContents interface {
 	Content(ctx context.Context, id uuid.UUID) (string, int, bool, error)
+}
+
+// PageSizes reads the sizes of pages' contents, their heads, not the
+// contents, in the transaction ctx carries: the page module's, which
+// bootstrap wires. A batch's deferred rewrite counts the bytes of the
+// pages it would write by them before it reads any (M9/P3 fix round 5,
+// B2-M1).
+type PageSizes interface {
+	// ContentSizes is the bytes of the content of each page of ids, alive,
+	// by id, in one statement; a page without its content alive is not in
+	// it.
+	ContentSizes(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]int, error)
 }
 
 // Rewritten is a page's content a rewrite writes on its revision Base,
@@ -283,11 +374,12 @@ type Locks interface {
 }
 
 // Parsed is a content's parse a rewrite reads or writes: its facts as the
-// index keeps them and as the page module's write takes them, and the
-// release of the parse budget the facts hold.
+// index keeps them and as the page module's write takes them, the bytes of
+// the parse budget the facts hold (Kept), and the release of them.
 type Parsed struct {
 	Facts   domain.Facts
 	Written any
+	Kept    int
 	Release func()
 }
 
@@ -297,4 +389,8 @@ type Parsed struct {
 // on the budget would wait behind.
 type RewriteParser interface {
 	ParseNow(ctx context.Context, content string) (Parsed, error)
+	// Takes is the bytes ParseNow takes of the budget for a content of n
+	// bytes, as it parses, and the budget's size (M9/P3 fix round 6,
+	// B3-M1).
+	Takes(n int) (take, size int)
 }

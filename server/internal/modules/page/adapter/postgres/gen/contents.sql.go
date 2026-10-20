@@ -180,18 +180,20 @@ func (q *Queries) PageContent(ctx context.Context, nodeID uuid.UUID) (PageConten
 }
 
 const pageStates = `-- name: PageStates :many
-SELECT node_id, revision, byte_size, updated_at FROM page_contents
+SELECT node_id, revision, byte_size, updated_at, content_hash FROM page_contents
 WHERE node_id = ANY($1::uuid[]) AND deleted_at IS NULL
 `
 
 type PageStatesRow struct {
-	NodeID    uuid.UUID
-	Revision  int32
-	ByteSize  int32
-	UpdatedAt time.Time
+	NodeID      uuid.UUID
+	Revision    int32
+	ByteSize    int32
+	UpdatedAt   time.Time
+	ContentHash []byte
 }
 
-// The revision, size and last write of each content not deleted of the pages (M9/P1 design 3.10.3): list's pages.
+// The revision, size, last write and hash of each content not deleted of the pages (M9/P1 design 3.10.3): list's
+// pages, and a batch's (M9/P3 design 3.4.4), which tells a write of the bytes a page holds by its size and hash.
 // The array is a page of list, at most 1,000: the store plans it with its argument.
 func (q *Queries) PageStates(ctx context.Context, nodeIds []uuid.UUID) ([]PageStatesRow, error) {
 	rows, err := q.db.Query(ctx, pageStates, nodeIds)
@@ -207,6 +209,7 @@ func (q *Queries) PageStates(ctx context.Context, nodeIds []uuid.UUID) ([]PageSt
 			&i.Revision,
 			&i.ByteSize,
 			&i.UpdatedAt,
+			&i.ContentHash,
 		); err != nil {
 			return nil, err
 		}

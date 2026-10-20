@@ -108,6 +108,9 @@ func rules() map[shared.Action]Rule {
 		"page.restore_version": {Level: LevelNotebook, Notebook: writers()},
 		"node.restore":         {Level: LevelNotebook, Notebook: writers()},
 		"changeset.revert":     {Level: LevelNotebook, Notebook: writers()},
+		// A batch over MCP (M9/P3 design 3.13.4): its writers', each op a
+		// writer's own write.
+		"page.batch": {Level: LevelNotebook, Notebook: writers()},
 		// The search of a workspace (M8/P5 design 3.8): any member's, of
 		// the notebooks each sees, a guest's those it was added to.
 		"page.search": {Level: LevelWorkspace, Workspace: every()},

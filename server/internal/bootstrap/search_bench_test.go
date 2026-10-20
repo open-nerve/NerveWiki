@@ -18,6 +18,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"uuid"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
 )
@@ -42,6 +45,24 @@ import (
 // cell runs once to warm, then NERVE_SEARCH_REPS times (20 when unset),
 // and logs its median and 99th percentile, nearest rank, in milliseconds
 // (-v keeps every line: a benchmark that passes has its log cut to ten).
+//
+// NERVE_SEARCH_BACKLOG, numbers of pages parted by commas (0,100,1600,2200),
+// has each cell timed once for each number n, in its order, behind an
+// exact backlog of n pages (M9/P3 design 3.10.1: the nodes a batch's unit
+// queues exact, which the job has not built yet): once the index is built,
+// before the cell, the first n live pages by id of the notebook with the
+// most of those the cell searches (the largest for 200 and 10 of 200, the
+// one notebook for the third), all of them when it has fewer, are queued
+// exact as a unit queues them and made the newest of their notebook, as a
+// batch's unit leaves what it queues (M9/P3 review C-I2: the walks take
+// their candidates newest first); the job does not run, and the pages come
+// off the queue, their times put back, once the cell is timed. Unset, n is
+// 0 alone. Each line
+// says n, how many pages were queued, and whether the page came back empty
+// with a cursor: no hit and a next page, which a walk run out on the
+// backlog leaves. The run ends with how many first pages did, for each n,
+// stage and visibility, which the design's rule reads. Four numbers take
+// four times as long: -timeout 6h.
 func BenchmarkSearch(b *testing.B) {
 	dir := os.Getenv("NERVE_SEARCH_CORPUS")
 	if dir == "" {
@@ -51,6 +72,9 @@ func BenchmarkSearch(b *testing.B) {
 	if n, err := strconv.Atoi(os.Getenv("NERVE_SEARCH_REPS")); err == nil && n > 0 {
 		reps = n
 	}
+	backlogs := searchBacklogs(b, os.Getenv("NERVE_SEARCH_BACKLOG"))
+	stages := []string{"without statistics", "analyzed", "planned for any arguments"}
+	visibilities := []string{"200 of 200", "10 of 200", "one notebook"}
 	for range b.N {
 		bench := newTrashBench(b, 0, 0)
 		corpusWorkspace := bench.loadCorpus(b, dir)
@@ -59,19 +83,30 @@ func BenchmarkSearch(b *testing.B) {
 		notebooks := queryStrings(b, bench.pool, `SELECT notebook_id::text FROM nodes WHERE deleted_at IS NULL
 			GROUP BY notebook_id ORDER BY count(*) DESC, notebook_id`)
 		one := notebooks[len(notebooks)/2]
-		for _, stats := range []string{"without statistics", "analyzed", "planned for any arguments"} {
+		// The backlogs' pages: of the largest notebook, among those the first
+		// two visibilities search, and of the one notebook.
+		pages := map[string][]uuid.UUID{}
+		for _, nb := range []string{notebooks[0], one} {
+			pages[nb] = bench.livePages(b, nb, slices.Max(backlogs))
+			b.Logf("backlogs %v from %s, a notebook of %d live pages", backlogs, nb, count(b, bench.pool,
+				"SELECT count(*) FROM nodes WHERE notebook_id = $1 AND kind = 'page' AND deleted_at IS NULL", nb))
+		}
+		empty := map[searchCell]int{}
+		for _, stats := range stages {
 			switch stats {
 			case "analyzed":
 				bench.exec(b, "ANALYZE")
 			case "planned for any arguments":
 				bench.generic(b)
 			}
-			for _, vis := range []string{"200 of 200", "10 of 200", "one notebook"} {
+			for _, vis := range visibilities {
+				backlogged := notebooks[0]
 				switch vis {
 				case "10 of 200":
 					bench.asGuestOf(b, corpusWorkspace, notebooks[:10])
 				case "one notebook":
 					bench.exec(b, "UPDATE workspace_members SET role = 'admin' WHERE user_id = $1", bench.alice)
+					backlogged = one
 				}
 				for _, q := range searchBenchQueries() {
 					for _, shape := range []string{"first", "third"} {
@@ -79,13 +114,152 @@ func BenchmarkSearch(b *testing.B) {
 						if vis == "one notebook" {
 							more.Set("notebook_id", one)
 						}
-						took, last := bench.searchTimes(b, q, more, shape == "third", reps)
-						b.Logf("%-26s %-12s %-26s %-5s p50 %8.1f p99 %8.1f  %s", stats, vis, q, shape, nearestRank(took, 0.5),
-							nearestRank(took, 0.99), last)
+						for _, n := range backlogs {
+							queued := pages[backlogged][:min(n, len(pages[backlogged]))]
+							putBack := bench.makeNewest(b, queued)
+							bench.queueExact(b, backlogged, queued)
+							took, last, emptied := bench.searchTimes(b, q, more, shape == "third", reps)
+							bench.dequeue(b, queued)
+							putBack()
+							b.Logf("%-26s %-12s %-26s %-5s backlog %4d, %4d queued: p50 %8.1f p99 %8.1f  %s, empty with a cursor %t",
+								stats, vis, q, shape, n, len(queued), nearestRank(took, 0.5), nearestRank(took, 0.99), last, emptied)
+							if shape == "first" && emptied {
+								empty[searchCell{n: n, stats: stats, vis: vis}]++
+							}
+						}
 					}
 				}
 			}
 		}
+		queries := len(searchBenchQueries())
+		for _, n := range backlogs {
+			all := 0
+			for _, stats := range stages {
+				in := 0
+				var each []string
+				for _, vis := range visibilities {
+					k := empty[searchCell{n: n, stats: stats, vis: vis}]
+					in += k
+					each = append(each, fmt.Sprintf("%s %d", vis, k))
+				}
+				all += in
+				b.Logf("backlog %4d, %-26s first pages empty with a cursor, of %d a visibility: %s; %d of %d", n, stats,
+					queries, strings.Join(each, ", "), in, queries*len(visibilities))
+			}
+			b.Logf("backlog %4d, at every stage: %d of %d first pages empty with a cursor", n, all,
+				queries*len(visibilities)*len(stages))
+		}
+	}
+}
+
+// searchBacklogs are the numbers of pages list names, parted by commas, in
+// its order (BenchmarkSearch's NERVE_SEARCH_BACKLOG): 0 alone when it is
+// empty.
+func searchBacklogs(tb testing.TB, list string) []int {
+	tb.Helper()
+	if strings.TrimSpace(list) == "" {
+		return []int{0}
+	}
+	var out []int
+	for _, s := range strings.Split(list, ",") {
+		n, err := strconv.Atoi(strings.TrimSpace(s))
+		if err != nil || n < 0 {
+			tb.Fatalf("NERVE_SEARCH_BACKLOG=%q: %q is no number of pages", list, s)
+		}
+		out = append(out, n)
+	}
+	return out
+}
+
+// searchCell is a stage of statistics and a visibility behind a backlog
+// of n pages, whose first pages BenchmarkSearch counts.
+type searchCell struct {
+	n          int
+	stats, vis string
+}
+
+// livePages are the first n live pages of the notebook nb by id.
+func (b trashBench) livePages(tb testing.TB, nb string, n int) []uuid.UUID {
+	tb.Helper()
+	rows, err := b.pool.Query(context.Background(), `SELECT id FROM nodes
+		WHERE notebook_id = $1 AND kind = 'page' AND deleted_at IS NULL ORDER BY id LIMIT $2`, nb, n)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	ids, err := pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
+	if err != nil {
+		tb.Fatal(err)
+	}
+	return ids
+}
+
+// queueExact queues the pages of the notebook nb exact, by the statement a
+// unit that wrote them queues them with (QueueSearch, M8/P5 design 3.4):
+// each is then a candidate of every search of nb, its content read and
+// checked, until the job builds its row, which it does not here (M9/P3
+// design 3.10.1).
+func (b trashBench) queueExact(tb testing.TB, nb string, pages []uuid.UUID) {
+	tb.Helper()
+	if len(pages) == 0 {
+		return
+	}
+	b.exec(tb, `INSERT INTO page_search_queue (node_id, notebook_id, bulk)
+		SELECT unnest($1::uuid[]), $2::uuid, false
+		ORDER BY 1
+		ON CONFLICT (node_id) DO UPDATE SET version = excluded.version, bulk = page_search_queue.bulk AND excluded.bulk`, pages, nb)
+}
+
+// makeNewest makes the pages the newest of their notebook, as a batch's
+// unit leaves the pages it writes, creates, renames and rewrites (M9/P3
+// review C-I2): their nodes' and contents' updated_at now, which the
+// search's walks order their candidates by, newest first. What it answers
+// puts their times back.
+func (b trashBench) makeNewest(tb testing.TB, pages []uuid.UUID) func() {
+	tb.Helper()
+	if len(pages) == 0 {
+		return func() {}
+	}
+	type was struct {
+		ids []uuid.UUID
+		at  []time.Time
+	}
+	read := func(table, key string) was {
+		rows, err := b.pool.Query(context.Background(), "SELECT "+key+", updated_at FROM "+table+" WHERE "+key+" = ANY($1) ORDER BY 1",
+			pages)
+		if err != nil {
+			tb.Fatal(err)
+		}
+		var w was
+		for rows.Next() {
+			var id uuid.UUID
+			var at time.Time
+			if err := rows.Scan(&id, &at); err != nil {
+				tb.Fatal(err)
+			}
+			w.ids, w.at = append(w.ids, id), append(w.at, at)
+		}
+		if err := rows.Err(); err != nil {
+			tb.Fatal(err)
+		}
+		return w
+	}
+	nodes, contents := read("nodes", "id"), read("page_contents", "node_id")
+	b.exec(tb, "UPDATE nodes SET updated_at = now() WHERE id = ANY($1)", pages)
+	b.exec(tb, "UPDATE page_contents SET updated_at = now() WHERE node_id = ANY($1)", pages)
+	return func() {
+		b.exec(tb, `UPDATE nodes n SET updated_at = v.at FROM unnest($1::uuid[], $2::timestamptz[]) AS v(id, at)
+			WHERE n.id = v.id`, nodes.ids, nodes.at)
+		b.exec(tb, `UPDATE page_contents c SET updated_at = v.at FROM unnest($1::uuid[], $2::timestamptz[]) AS v(id, at)
+			WHERE c.node_id = v.id`, contents.ids, contents.at)
+	}
+}
+
+// dequeue takes the pages off the search's queue: a cell's backlog, once
+// the cell is timed.
+func (b trashBench) dequeue(tb testing.TB, pages []uuid.UUID) {
+	tb.Helper()
+	if len(pages) > 0 {
+		b.exec(tb, "DELETE FROM page_search_queue WHERE node_id = ANY($1)", pages)
 	}
 }
 
@@ -238,9 +412,11 @@ func (b trashBench) asGuestOf(tb testing.TB, slug string, notebooks []string) {
 
 // searchTimes sends alice's search of the corpus for q with more, reps
 // times after a warm one, and answers how long each took and what the last
-// answered: its hits, its count, whether it says building. The third page
-// follows the first's cursors, untimed; a page without a cursor ends there.
-func (b trashBench) searchTimes(tb testing.TB, q string, more url.Values, third bool, reps int) ([]time.Duration, string) {
+// answered: its hits, its count, whether it says building, and whether it
+// came back empty with a cursor, no hit and a next page (M9/P3 design
+// 3.10.1). The third page follows the first's cursors, untimed; a page
+// without a cursor ends there.
+func (b trashBench) searchTimes(tb testing.TB, q string, more url.Values, third bool, reps int) ([]time.Duration, string, bool) {
 	tb.Helper()
 	path := searchPath("corpus", q, more)
 	if third {
@@ -252,7 +428,7 @@ func (b trashBench) searchTimes(tb testing.TB, q string, more url.Values, third 
 			}
 			decodeAnswer(tb, body, &a)
 			if a.NextCursor == nil {
-				return nil, "no third page"
+				return nil, "no third page", false
 			}
 			v := url.Values{}
 			for k, vs := range more {
@@ -264,6 +440,7 @@ func (b trashBench) searchTimes(tb testing.TB, q string, more url.Values, third 
 	}
 	var took []time.Duration
 	var last string
+	var empty bool
 	for i := range reps + 1 {
 		at := time.Now()
 		status, body := b.serve(http.MethodGet, path, "")
@@ -282,8 +459,9 @@ func (b trashBench) searchTimes(tb testing.TB, q string, more url.Values, third 
 			count = fmt.Sprintf("%s %d", a.Count.Kind, a.Count.Value)
 		}
 		last = fmt.Sprintf("hits %d, next %t, count %s, building %t", len(a.Data), a.NextCursor != nil, count, a.Building)
+		empty = len(a.Data) == 0 && a.NextCursor != nil
 	}
-	return took, last
+	return took, last, empty
 }
 
 // nearestRank is the p-th quantile of took by the nearest rank, in

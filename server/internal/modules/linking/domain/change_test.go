@@ -1,6 +1,7 @@
 package domain_test
 
 import (
+	"maps"
 	"reflect"
 	"slices"
 	"testing"
@@ -97,27 +98,27 @@ func TestRelocationIsWhatARewriteFollows(t *testing.T) {
 		relocates bool
 		recased   domain.Recased
 	}{
-		{"a rename", []domain.Change{{NodeID: a, Before: at(nil, "x"), After: at(nil, "y")}}, true, domain.Recased{}},
+		{"a rename", []domain.Change{{NodeID: a, Before: at(nil, "x"), After: at(nil, "y")}}, true, nil},
 		{"a move with its subtree", []domain.Change{
 			{NodeID: a, Before: at(nil, "x"), After: at(&root, "x")},
 			{NodeID: b, Before: at(&a, "y"), After: at(&a, "y")},
-		}, true, domain.Recased{}},
-		{"the case alone", []domain.Change{{NodeID: a, Before: at(nil, "Old"), After: at(nil, "old")}}, false, domain.Recased{ID: a, Name: "old"}},
+		}, true, nil},
+		{"the case alone", []domain.Change{{NodeID: a, Before: at(nil, "Old"), After: at(nil, "old")}}, false, domain.Recased{a: "old"}},
 		{"the case alone, another length", []domain.Change{{NodeID: a, Before: at(nil, "ß"), After: at(nil, "SS")}}, true,
-			domain.Recased{ID: a, Name: "SS"}},
+			domain.Recased{a: "SS"}},
 		{"a move that changes the case alone", []domain.Change{
 			{NodeID: a, Before: at(nil, "x"), After: at(&root, "X")},
 			{NodeID: b, Before: at(&a, "y"), After: at(&a, "y")},
-		}, true, domain.Recased{ID: a, Name: "X"}},
+		}, true, domain.Recased{a: "X"}},
 		{"a move under another parent, the name kept", []domain.Change{{NodeID: a, Before: at(nil, "x"), After: at(&root, "x")}}, true,
-			domain.Recased{}},
-		{"a move among siblings", []domain.Change{{NodeID: a, Before: at(&root, "x"), After: at(&root, "x")}}, false, domain.Recased{}},
-		{"a creation", []domain.Change{{NodeID: a, After: at(nil, "x"), Revision: 1}}, false, domain.Recased{}},
-		{"a deletion", []domain.Change{{NodeID: a, Before: at(nil, "x")}}, false, domain.Recased{}},
-		{"a content", []domain.Change{{NodeID: a, Before: at(nil, "x"), After: at(nil, "x"), Revision: 2}}, false, domain.Recased{}},
-		{"nothing", nil, false, domain.Recased{}},
+			nil},
+		{"a move among siblings", []domain.Change{{NodeID: a, Before: at(&root, "x"), After: at(&root, "x")}}, false, nil},
+		{"a creation", []domain.Change{{NodeID: a, After: at(nil, "x"), Revision: 1}}, false, nil},
+		{"a deletion", []domain.Change{{NodeID: a, Before: at(nil, "x")}}, false, nil},
+		{"a content", []domain.Change{{NodeID: a, Before: at(nil, "x"), After: at(nil, "x"), Revision: 2}}, false, nil},
+		{"nothing", nil, false, nil},
 	} {
-		if relocates, recased := domain.Relocation(tt.changes); relocates != tt.relocates || recased != tt.recased {
+		if relocates, recased := domain.Relocation(tt.changes); relocates != tt.relocates || !maps.Equal(recased, tt.recased) {
 			t.Errorf("%s: relocates %t, recased %v; want %t, %v", tt.name, relocates, recased, tt.relocates, tt.recased)
 		}
 	}
@@ -171,5 +172,76 @@ func TestAPathBeforeARenameOrAMove(t *testing.T) {
 	}
 	if got := domain.FormerParents(append(append(moved, toRoot...), fromRoot...)); !slices.Equal(got, []uuid.UUID{a}) {
 		t.Errorf("former parents %v, want %v", got, []uuid.UUID{a})
+	}
+}
+
+// A path before a batch's changes, merged, undoes each on the path from
+// the root (M9/P3 design 3.7.3): a folder renamed and a node under it
+// renamed too, each its name before; a node moved out of a folder renamed,
+// its former parent's path as the unit began; the deepest node moved
+// decides, the nodes under it with their names before; a path no change
+// moved, each name before from the root.
+func TestPathBeforeUndoesEveryChangeFromTheRoot(t *testing.T) {
+	f, x, y, a, p, q, b := uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
+	step := func(id uuid.UUID, name string) domain.Step {
+		return domain.Step{ID: id, Key: shared.TitleKey(name), Name: name}
+	}
+	at := func(parent *uuid.UUID, name string) *domain.Place { return &domain.Place{ParentID: parent, Name: name} }
+	node := func(steps ...domain.Step) domain.Node { return domain.Node{ID: steps[len(steps)-1].ID, Path: steps} }
+	parents := map[uuid.UUID][]domain.Step{f: {step(f, "F")}, q: {step(q, "Q")}, b: {step(b, "B")}}
+	renames := []domain.Change{
+		{NodeID: f, Before: at(nil, "F"), After: at(nil, "G")},
+		{NodeID: x, Before: at(&f, "X"), After: at(&f, "Y")},
+	}
+	outOfRenamed := []domain.Change{
+		{NodeID: f, Before: at(nil, "F"), After: at(nil, "G")},
+		{NodeID: x, Before: at(&f, "X"), After: at(&b, "X2")},
+	}
+	twoLevels := []domain.Change{
+		{NodeID: a, Before: at(nil, "A"), After: at(&p, "A")},
+		{NodeID: x, Before: at(&q, "X"), After: at(&a, "X")},
+		{NodeID: y, Before: at(&x, "Y"), After: at(&x, "Y2")},
+	}
+	for _, tt := range []struct {
+		name    string
+		n       domain.Node
+		changes []domain.Change
+		want    domain.Node
+	}{
+		{"a folder and the node under it renamed", node(step(f, "G"), step(x, "Y")), renames, node(step(f, "F"), step(x, "X"))},
+		{"a node moved out of a folder renamed", node(step(b, "B"), step(x, "X2")), outOfRenamed, node(step(f, "F"), step(x, "X"))},
+		{"the deepest node moved", node(step(p, "P"), step(a, "A"), step(x, "X")), twoLevels, node(step(q, "Q"), step(x, "X"))},
+		{"a node renamed under the deepest moved", node(step(p, "P"), step(a, "A"), step(x, "X"), step(y, "Y2")), twoLevels,
+			node(step(q, "Q"), step(x, "X"), step(y, "Y"))},
+		{"the shallower node moved alone", node(step(p, "P"), step(a, "A")), twoLevels, node(step(a, "A"))},
+	} {
+		if got := domain.PathBefore(tt.n, tt.changes, parents); !reflect.DeepEqual(got, tt.want) {
+			t.Errorf("%s: %+v, want %+v", tt.name, got, tt.want)
+		}
+	}
+}
+
+// A batch's changes may re-case several pages (M9/P3 design 3.7.2):
+// Relocation answers each, and Rewrites writes again a link to each named
+// as it was; a unit of one operation re-cases one, as before.
+func TestRelocationRecasesEveryPage(t *testing.T) {
+	notes, plan := uuid.NewV7(), uuid.NewV7()
+	at := func(name string) *domain.Place { return &domain.Place{Name: name} }
+	relocates, recased := domain.Relocation([]domain.Change{
+		{NodeID: notes, Before: at("Notes"), After: at("notes")},
+		{NodeID: plan, Before: at("Plan"), After: at("plan")},
+	})
+	if relocates || !maps.Equal(recased, domain.Recased{notes: "notes", plan: "plan"}) {
+		t.Fatalf("Relocation = %t, %v; want both pages re-cased", relocates, recased)
+	}
+	for id, target := range map[uuid.UUID]string{notes: "Notes", plan: "Plan"} {
+		r := domain.Resolution{ID: id}
+		if !domain.Rewrites(domain.Link{Target: target}, r, r, recased) {
+			t.Errorf("[[%s]] is not written again", target)
+		}
+	}
+	_, one := domain.Relocation([]domain.Change{{NodeID: notes, Before: at("Notes"), After: at("notes")}})
+	if !maps.Equal(one, domain.Recased{notes: "notes"}) {
+		t.Errorf("one operation re-cases %v", one)
 	}
 }

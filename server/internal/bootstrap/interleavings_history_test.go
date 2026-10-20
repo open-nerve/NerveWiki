@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/open-nerve/NerveWiki/server/internal/platform/jobs"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres/pgtest"
 )
 
@@ -155,7 +156,11 @@ func TestRevertingWhileAPageOfItIsEdited(t *testing.T) {
 // empty plan would have answered changed false). The revert first: B is
 // back, and the purge takes nothing of it. A transaction holding C's row
 // keeps the purge off C's items and mark; once it ends, the purge takes
-// and marks them.
+// and marks them. The server's own purge runs once as its jobs start, at a
+// moment River picks (2-3.6 s after the start here), and its last
+// statement deletes, whatever their time, the changesets a purge marked
+// and emptied of items and versions: the cases whose purge marks C wait
+// for it first, or it could take C between their purge and their check.
 func TestRevertingAndPurgingTheChangeset(t *testing.T) {
 	deleted := func(t *testing.T) (tm acmeTeam, nb, b, c string) {
 		t.Helper()
@@ -179,6 +184,7 @@ func TestRevertingAndPurgingTheChangeset(t *testing.T) {
 	}
 	t.Run("the purge first", func(t *testing.T) {
 		tm, nb, b, c := deleted(t)
+		awaitJob(t, tm.pool, jobs.PurgeKind)
 		holder := tm.holdNotebook(t, nb)
 		got := tm.waitingFor(t, "notebooks", changesetRevert("bob", c), func() {
 			ahead(t, tm)
@@ -209,6 +215,7 @@ func TestRevertingAndPurgingTheChangeset(t *testing.T) {
 	})
 	t.Run("C's row held", func(t *testing.T) {
 		tm, _, _, c := deleted(t)
+		awaitJob(t, tm.pool, jobs.PurgeKind)
 		ctx := context.Background()
 		holder, err := tm.pool.Begin(ctx)
 		if err != nil {

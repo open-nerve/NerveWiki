@@ -3,6 +3,7 @@ package app
 import (
 	"cmp"
 	"context"
+	"crypto/sha256"
 	"slices"
 	"time"
 	"uuid"
@@ -122,7 +123,7 @@ func (c *ContentParser) DecidedAll(ctx context.Context, contents map[uuid.UUID]s
 		facts := c.markdown.Facts(content)
 		hold.KeepFacts(facts)
 		out[id] = facts
-		if links += c.markdown.Links(facts); domain.UnitTooLarge(len(contents), 0, links) {
+		if links += c.markdown.Links(facts); domain.UnitTooLarge(len(contents), len(contents), 0, links) {
 			return nil, nil, tooLarge
 		}
 	}
@@ -141,3 +142,132 @@ func (c *ContentParser) take(ctx context.Context, n int, left time.Duration) (Bu
 	}
 	return hold, err
 }
+
+// ParseSession is the parses of one request, a batch's (M9/P3 design
+// 3.4.5): its plans' parses, each taking the budget as Decided does and
+// keeping its facts' share alone, the facts kept by page and hash until
+// the request ends, so that a content parsed once, in a plan made again
+// too, is parsed no more; and its final contents' DecidedAll. Its takes
+// wait, together, what is left of the budget's wait, once for the
+// request. Before each take it gives back the shares it holds, their facts
+// kept, uncounted: a parse never waits for the session's own facts.
+type ParseSession struct {
+	c     *ContentParser
+	left  time.Duration
+	facts map[parsedKey]Facts
+	holds []BudgetHold
+	// planned are the contents of the plan being made, each page and hash
+	// once, and their links: a unit's bound counts them with the final
+	// contents'.
+	planned map[parsedKey]bool
+	links   int
+}
+
+// parsedKey is a content the session parsed: its page and its hash.
+type parsedKey struct {
+	page uuid.UUID
+	hash [sha256.Size]byte
+}
+
+// Planned is a parse session for a request: a batch's plans and its
+// final contents.
+func (c *ContentParser) Planned() *ParseSession {
+	return &ParseSession{c: c, left: c.wait, facts: map[parsedKey]Facts{}, planned: map[parsedKey]bool{}}
+}
+
+// NewPlan starts the counting of a plan made again: its contents counted
+// from none, those parsed before found as they are.
+func (s *ParseSession) NewPlan() {
+	s.planned, s.links = map[parsedKey]bool{}, 0
+}
+
+// Parse is the facts of content, the page id's, for the plan: kept ones
+// when the session has them, else parsed within the budget, the shares the
+// session holds given back first.
+func (s *ParseSession) Parse(ctx context.Context, id uuid.UUID, content string) (Facts, error) {
+	key := parsedKey{page: id, hash: sha256.Sum256([]byte(content))}
+	f, err := s.factsOf(ctx, key, content, true)
+	if err != nil {
+		return nil, err
+	}
+	if !s.planned[key] {
+		s.planned[key] = true
+		s.links += s.c.markdown.Links(f)
+	}
+	return f, nil
+}
+
+// factsOf is the facts of content, keyed key: those the session kept, else
+// parsed, taking its bytes within what is left of the wait, the shares the
+// session holds given back first when giveBack, its own share then held.
+func (s *ParseSession) factsOf(ctx context.Context, key parsedKey, content string, giveBack bool) (Facts, error) {
+	if f, ok := s.facts[key]; ok {
+		return f, nil
+	}
+	if content == "" {
+		f := s.c.markdown.Facts(content)
+		s.facts[key] = f
+		return f, nil
+	}
+	if giveBack {
+		s.giveBack()
+	}
+	started := time.Now()
+	hold, err := s.c.take(ctx, len(content), s.left)
+	s.left -= time.Since(started)
+	if err != nil {
+		return nil, err
+	}
+	s.holds = append(s.holds, hold) // given back by Release, on a panic of the parse too
+	f := s.c.markdown.Facts(content)
+	hold.KeepFacts(f)
+	s.facts[key] = f
+	return f, nil
+}
+
+// giveBack gives back the shares the session holds, their facts kept.
+func (s *ParseSession) giveBack() {
+	for _, h := range s.holds {
+		h.Release()
+	}
+	s.holds = nil
+}
+
+// DecidedAll is the facts of contents, by page, the final ones of a batch,
+// as ContentParser.DecidedAll takes them: the largest first, each share
+// held until Release, within what is left of the session's wait, the
+// shares of the plan's parses given back before the first; facts the
+// session has are taken as they are. Unless they are a lone page, their
+// links, with the plan's, each page and hash once, past the unit's bound
+// are tooLarge's error, told how many.
+func (s *ParseSession) DecidedAll(ctx context.Context, contents map[uuid.UUID]string, tooLarge func(links int) error) (
+	map[uuid.UUID]Facts, error,
+) {
+	s.giveBack()
+	ids := make([]uuid.UUID, 0, len(contents))
+	for id := range contents {
+		ids = append(ids, id)
+	}
+	slices.SortFunc(ids, func(a, b uuid.UUID) int { return cmp.Or(len(contents[b])-len(contents[a]), a.Compare(b)) })
+	out := make(map[uuid.UUID]Facts, len(contents))
+	for _, id := range ids {
+		key := parsedKey{page: id, hash: sha256.Sum256([]byte(contents[id]))}
+		f, err := s.factsOf(ctx, key, contents[id], false)
+		if err != nil {
+			return nil, err
+		}
+		out[id] = f
+		if !s.planned[key] {
+			s.planned[key] = true
+			if s.links += s.c.markdown.Links(f); domain.UnitTooLarge(len(contents), 0, 0, s.links) {
+				return nil, tooLarge(s.links)
+			}
+		}
+	}
+	return out, nil
+}
+
+// Release gives back every share the session holds, its facts kept: before
+// a batch's deferred rewrite, whose read backs it must not stand in the
+// way of, and as the request ends.
+func (s *ParseSession) Release() { s.giveBack() }

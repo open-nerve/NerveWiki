@@ -191,30 +191,92 @@ export async function expectRelocated(
   ]);
 }
 
-/** What a changeset holds, as expectChangesetOf checks it: its client and author, its items' nodes, its versions' pages. */
+/**
+ * What a changeset holds, as expectChangesetOf checks it: its client and author, its items' nodes, its versions' pages;
+ * and, when given, its message (null for none) and kind (M9/P3 design 4.1).
+ */
 export interface ChangesetOf {
   client: string;
   byId: string;
   items: string[];
   versions: string[];
+  message?: string | null;
+  kind?: string;
 }
 
 /**
  * changesets, changeset_items, page_revisions: the changeset id is of want's client by its author, and holds an item of
  * exactly want's items and a version of exactly its versions, in any order: what one MCP write or move did, the
- * parents it created and the pages whose links it wrote again among them.
+ * parents it created and the pages whose links it wrote again among them; of want's message and kind when it gives
+ * them.
  */
 export async function expectChangesetOf(db: Database, id: string, want: ChangesetOf): Promise<void> {
-  const rows = await db.query(
+  const rows = await db.query<{
+    client: string;
+    byId: string;
+    items: string[];
+    versions: string[];
+    message: string | null;
+    kind: string;
+  }>(
     `SELECT s.client, s.created_by_id AS "byId",
             ARRAY(SELECT i.node_id::text FROM changeset_items i WHERE i.changeset_id = s.id ORDER BY i.node_id::text) AS items,
-            ARRAY(SELECT r.node_id::text FROM page_revisions r WHERE r.changeset_id = s.id ORDER BY r.node_id::text) AS versions
+            ARRAY(SELECT r.node_id::text FROM page_revisions r WHERE r.changeset_id = s.id ORDER BY r.node_id::text) AS versions,
+            s.message, s.kind
        FROM changesets s WHERE s.id = $1`,
     [id]
   );
-  expect(rows).toEqual([
-    { client: want.client, byId: want.byId, items: want.items.toSorted(), versions: want.versions.toSorted() },
+  // The message and the kind are compared when want gives them.
+  const compared = (changeset: Omit<(typeof rows)[number], "message" | "kind"> & Partial<(typeof rows)[number]>) => {
+    const out: Record<string, unknown> = {
+      client: changeset.client,
+      byId: changeset.byId,
+      items: changeset.items,
+      versions: changeset.versions,
+    };
+    if (want.message !== undefined) {
+      out.message = changeset.message;
+    }
+    if (want.kind !== undefined) {
+      out.kind = changeset.kind;
+    }
+    return out;
+  };
+  expect(rows.map(compared)).toEqual([
+    compared({ ...want, items: want.items.toSorted(), versions: want.versions.toSorted() }),
   ]);
+}
+
+/**
+ * The names a revert puts nodes aside under (M9/P3 design 3.17): a node's name, " ~", 8 or 32 hex digits of its id, the
+ * 32 maybe with a count ("-2"), and an attachment's extension.
+ */
+const asideName = String.raw` ~[0-9a-f]{8}([0-9a-f]{24}(-[0-9]+)?)?(\.[^./]+)?$`;
+
+/**
+ * nodes, changeset_items: no node of the notebook notebookId, alive or in the trash, has a name a revert puts aside,
+ * nor does an item of its changesets, before or after (M9/P3 design 4.1). The query's regex is first shown to match
+ * names made as a revert makes them, lest it match nothing at all (M9/P3 review C-N7).
+ */
+export async function expectNoAsideNames(db: Database, notebookId: string): Promise<void> {
+  const made = ["Plan ~1a2b3c4d", `Plan ~${"0123456789abcdef".repeat(2)}-2`, "photo ~1a2b3c4d.png"];
+  const matched = await db.query<{ matches: boolean }>(`SELECT name ~ $1 AS matches FROM unnest($2::text[]) AS name`, [
+    asideName,
+    made,
+  ]);
+  expect(
+    matched.map((row) => row.matches),
+    "the regex matches names put aside"
+  ).toEqual(made.map(() => true));
+  const rows = await db.query(
+    `SELECT name FROM nodes WHERE notebook_id = $1 AND name ~ $2
+     UNION ALL
+     SELECT coalesce(i.before_name, '') || ' / ' || coalesce(i.after_name, '') FROM changeset_items i
+       JOIN changesets s ON s.id = i.changeset_id
+      WHERE s.notebook_id = $1 AND (i.before_name ~ $2 OR i.after_name ~ $2)`,
+    [notebookId, asideName]
+  );
+  expect(rows).toEqual([]);
 }
 
 /**

@@ -66,10 +66,12 @@ const (
 	MaxUnitHistory = 400_000
 )
 
-// UnitTooLarge reports whether a unit's pages, their content's bytes or
-// their links are past its bounds: a lone page's never are.
-func UnitTooLarge(pages, bytes, links int) bool {
-	return pages > 1 && (pages > MaxUnitPages || bytes > MaxUnitBytes || links > MaxUnitLinks)
+// UnitTooLarge reports whether a unit's contents, copies of them, their
+// bytes or their links are past its bounds: those of a lone page never
+// are, however many copies of it the unit parses. pages is how many pages
+// the contents are of (M9/P3 design 3.8, 3.18.4).
+func UnitTooLarge(pages, copies, bytes, links int) bool {
+	return pages > 1 && (copies > MaxUnitPages || bytes > MaxUnitBytes || links > MaxUnitLinks)
 }
 
 // TrashRoot is a trash item: its root node, which UpdatedBy deleted at
