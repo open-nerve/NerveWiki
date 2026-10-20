@@ -238,48 +238,63 @@ func (w *JobWrites) PlanRestore(ctx context.Context, spec JobSpec, nodeID uuid.U
 }
 
 // revertPlan is a background revert's (M8/P4 design 3.5): the changeset
-// it reverts, its schedule's steps, and the groups its restores bring
-// back.
+// it reverts, its schedule's steps as the job keeps them, and the groups
+// its restores bring back.
 type revertPlan struct {
 	changeset uuid.UUID
 	steps     []revertStep
 	groups    []revertGroup
 }
 
-// revertStep is a step of a background revert: a place of node, a
-// deletion of the top node's subtree, a restore of the member of a group,
-// or a write back of the page node. A batch plans it again with the
-// changeset's items and versions of nodes: a deletion's top and the
-// changeset's nodes in its subtree; a group's, its first member's step;
-// none for a later member of the group (a continuation's, checked alone).
-// A place plans again with its node's item, a write back with its page's
-// version.
+// revertStep is a step of a background revert as its job keeps it from
+// the plan at its start (M9/P3 design 3.22.1): its kind and place in the
+// schedule (seq); a place's or a step aside's node, and its parent (the
+// zero id for the root), name and order there; a write back's page, base
+// and hash; a deletion's top and its subtree at the deletion's moment; a
+// restore's member, its node, and its group, whose members
+// revertPlan.groups keeps (-1 for none). A group's members share their
+// restore's seq. A restore's time and states, and every item and version,
+// are the batch's reads.
 type revertStep struct {
 	kind   domain.RevertOpKind
+	seq    int32
 	node   uuid.UUID
+	parent uuid.UUID
+	name   string
+	order  float64
+	base   int32
+	hash   []byte
 	nodes  []uuid.UUID
-	group  int
-	member int
+	group  int32
+	member int32
+}
+
+// groupIDs are the ids of the members of the plan's group g, in its
+// pre-order.
+func (p *revertPlan) groupIDs(g int32) []uuid.UUID {
+	nodes := p.groups[g].nodes
+	ids := make([]uuid.UUID, len(nodes))
+	for i, n := range nodes {
+		ids[i] = n.ID
+	}
+	return ids
 }
 
 // revertGroup is a trash item a background revert restores: its root,
-// deleted at at, and its group in pre-order with its counts, whose member
-// first is the restore's first step.
+// deleted at at as the plan read it, and its group in pre-order with its
+// counts.
 type revertGroup struct {
 	at    time.Time
 	nodes []domain.GroupNode
-	first int
 }
 
 // PlanRevert plans the background revert of the changeset changesetID in
 // spec's notebook, unlocked, as its job starts: the decision first, then
 // the changeset, page.changeset_trimmed for one gone since, then the
 // revert's check as CheckRevert has it (page.revert_conflict,
-// page.changeset_trimmed, page.locked), its schedule's steps in their
-// order: each place one node; each deletion its top's subtree alive now;
-// each restore its group in pre-order, a node a step; each write back a
-// page. A schedule whose steps a batch must not split, which M8's
-// batches would, is errUnsplit, nothing written (see unsplit).
+// page.changeset_trimmed, page.locked), its schedule's steps as the job
+// keeps them (revertSteps). A schedule whose steps a batch must not split,
+// which M8's batches would, is errUnsplit, nothing written (see unsplit).
 func (w *JobWrites) PlanRevert(ctx context.Context, spec JobSpec, changesetID uuid.UUID) (JobPlan, error) {
 	unit := revertUnit(spec, changesetID)
 	if err := w.writer.Allowed(ctx, unit); err != nil {
@@ -337,12 +352,25 @@ func unsplit(checked revertChecked) bool {
 }
 
 // revertSteps are the steps of the plan checked of the revert of the
-// changeset reverted.
+// changeset reverted, in the schedule's order (M9/P3 design 3.22): a place
+// or a step aside a node each; a deletion its subtree at its moment; a
+// restore its group in pre-order, a member a step, each page's write back
+// right after its member's restore; a write back a page. The steps no
+// batch splits are joined (segments).
 func revertSteps(reverted uuid.UUID, checked revertChecked) JobPlan {
-	children := map[uuid.UUID][]uuid.UUID{}
-	for _, n := range checked.state.Tree {
-		if n.ParentID != nil {
-			children[*n.ParentID] = append(children[*n.ParentID], n.ID)
+	ops := checked.plan.Ops
+	restored := map[uuid.UUID]bool{}
+	for _, op := range ops {
+		if op.Kind == domain.RevertRestore {
+			for _, m := range op.Group {
+				restored[m.Node.ID] = true
+			}
+		}
+	}
+	after := map[uuid.UUID]domain.RevertOp{}
+	for _, op := range ops {
+		if op.Kind == domain.RevertContent && restored[op.NodeID] {
+			after[op.NodeID] = op
 		}
 	}
 	bases := map[uuid.UUID]int{}
@@ -354,43 +382,178 @@ func revertSteps(reverted uuid.UUID, checked revertChecked) JobPlan {
 	add := func(s revertStep, step domain.JobStep) {
 		p.steps, steps = append(p.steps, s), append(steps, step)
 	}
-	for _, op := range checked.plan.Ops {
+	write := func(op domain.RevertOp) {
+		add(revertStep{kind: op.Kind, seq: int32(op.Seq), node: op.NodeID, base: int32(op.Base), hash: op.Hash, group: -1},
+			domain.JobStep{Nodes: 1, Bytes: int64(bases[op.NodeID])})
+	}
+	members := func(g, from, to int, seq int32) {
+		for i := from; i < to; i++ {
+			n := p.groups[g].nodes[i]
+			add(revertStep{kind: domain.RevertRestore, seq: seq, node: n.ID, group: int32(g), member: int32(i)},
+				domain.JobStep{Nodes: 1, Bytes: int64(n.Bytes)})
+			if op, ok := after[n.ID]; ok {
+				write(op)
+			}
+		}
+	}
+	// A restore within a segment of steps aside brings back the members
+	// later steps of the segment need; the rest come right after it.
+	type rest struct {
+		group, from int
+		seq         int32
+	}
+	spans := asideSpans(ops)
+	ends := map[int]int{}
+	for _, sp := range spans {
+		for i := sp[0]; i < sp[1]; i++ {
+			ends[i] = sp[1]
+		}
+	}
+	later := map[int][]rest{}
+	starts := make(map[int]int, len(spans))
+	for _, sp := range spans {
+		starts[sp[1]] = sp[0]
+	}
+	first := make([]int, len(ops))
+	var joins [][2]int
+	for i, op := range ops {
+		first[i] = len(p.steps)
 		switch op.Kind {
-		case domain.RevertPlace:
-			add(revertStep{kind: op.Kind, node: op.NodeID, group: -1}, domain.JobStep{Nodes: 1})
+		case domain.RevertPlace, domain.RevertAside:
+			to := op.To
+			add(revertStep{kind: op.Kind, seq: int32(op.Seq), node: op.NodeID, parent: parentOf(to.ParentID), name: to.Name,
+				order: to.SortOrder, group: -1}, domain.JobStep{Nodes: 1})
 		case domain.RevertDelete:
-			sub := []uuid.UUID{op.NodeID}
-			for at := 0; at < len(sub); at++ {
-				sub = append(sub, children[sub[at]]...)
-			}
-			add(revertStep{kind: op.Kind, node: op.NodeID, nodes: sub, group: -1}, domain.JobStep{Nodes: len(sub)})
+			add(revertStep{kind: op.Kind, seq: int32(op.Seq), node: op.NodeID, nodes: op.Subtree, group: -1},
+				domain.JobStep{Nodes: len(op.Subtree)})
 		case domain.RevertRestore:
-			below := make([]domain.ShapeNode, 0, len(op.Group)-1)
-			for _, m := range op.Group[1:] {
-				below = append(below, domain.ShapeNode{ID: m.Node.ID, ParentID: *m.Node.ParentID, Asset: m.Node.Kind == domain.KindAsset,
-					Bytes: m.Bytes})
-			}
-			top := op.Group[0]
-			nodes := domain.GroupPreOrder(domain.ShapeNode{ID: top.Node.ID, Asset: top.Node.Kind == domain.KindAsset, Bytes: top.Bytes}, below)
-			domain.GroupCounts(nodes)
-			ids := make([]uuid.UUID, len(nodes))
-			for i, n := range nodes {
-				ids[i] = n.ID
-			}
 			g := len(p.groups)
-			p.groups = append(p.groups, revertGroup{at: op.DeletedAt, nodes: nodes, first: len(p.steps)})
-			for i, n := range nodes {
-				s := revertStep{kind: op.Kind, node: n.ID, group: g, member: i}
-				if i == 0 {
-					s.nodes = ids
+			p.groups = append(p.groups, revertGroup{at: op.DeletedAt, nodes: groupNodes(op.Group)})
+			n := len(p.groups[g].nodes)
+			if end, ok := ends[i]; ok {
+				if n = needed(ops[i+1:end+1], p.groups[g].nodes); n < len(p.groups[g].nodes) {
+					later[end] = append(later[end], rest{group: g, from: n, seq: int32(op.Seq)})
 				}
-				add(s, domain.JobStep{Nodes: 1, Bytes: int64(n.Bytes)})
 			}
+			members(g, 0, n, int32(op.Seq))
 		case domain.RevertContent:
-			add(revertStep{kind: op.Kind, node: op.NodeID, group: -1}, domain.JobStep{Nodes: 1, Bytes: int64(bases[op.NodeID])})
+			if _, ok := after[op.NodeID]; !ok {
+				write(op)
+			}
+		}
+		if start, ok := starts[i]; ok {
+			joins = append(joins, [2]int{first[start], len(p.steps) - 1})
+		}
+		for _, r := range later[i] {
+			members(r.group, r.from, len(p.groups[r.group].nodes), r.seq)
+		}
+	}
+	for _, j := range append(joins, pageJoins(p.steps)...) {
+		for k := j[0]; k < j[1]; k++ {
+			steps[k].Joined = true
 		}
 	}
 	return JobPlan{steps: steps, revert: p}
+}
+
+// parentOf is the id of parent, the zero id for the root.
+func parentOf(parent *uuid.UUID) uuid.UUID {
+	if parent == nil {
+		return uuid.UUID{}
+	}
+	return *parent
+}
+
+// groupNodes are the members of a group, as the plan read them, in its
+// pre-order with their counts.
+func groupNodes(group []domain.TrashMember) []domain.GroupNode {
+	below := make([]domain.ShapeNode, 0, len(group)-1)
+	for _, m := range group[1:] {
+		below = append(below, domain.ShapeNode{ID: m.Node.ID, ParentID: *m.Node.ParentID, Asset: m.Node.Kind == domain.KindAsset,
+			Bytes: m.Bytes})
+	}
+	top := group[0]
+	nodes := domain.GroupPreOrder(domain.ShapeNode{ID: top.Node.ID, Asset: top.Node.Kind == domain.KindAsset, Bytes: top.Bytes}, below)
+	domain.GroupCounts(nodes)
+	return nodes
+}
+
+// asideSpans are the segments of a schedule's steps aside (M9/P3 design
+// 3.22.2), by the ops' places in it: from each step aside to its node's
+// last place, which follows it (T1), the steps between included, those
+// that overlap merged.
+func asideSpans(ops []domain.RevertOp) [][2]int {
+	last := map[uuid.UUID]int{}
+	for i, op := range ops {
+		if op.Kind == domain.RevertPlace {
+			last[op.NodeID] = i
+		}
+	}
+	var out [][2]int
+	for i, op := range ops {
+		if op.Kind != domain.RevertAside {
+			continue
+		}
+		end := max(i, last[op.NodeID])
+		if n := len(out); n > 0 && i <= out[n-1][1] {
+			out[n-1][1] = max(out[n-1][1], end)
+		} else {
+			out = append(out, [2]int{i, end})
+		}
+	}
+	return out
+}
+
+// needed is how many of a group's members, in its pre-order, its restore
+// within a segment of steps aside brings back there (M9/P3 design
+// 3.22.2): up to the last one a later step of the segment needs alive, a
+// place's or a step aside's parent, a restore's parent in S*, a page
+// written back; the group's root at least.
+func needed(later []domain.RevertOp, nodes []domain.GroupNode) int {
+	at := make(map[uuid.UUID]int, len(nodes))
+	for i, n := range nodes {
+		at[n.ID] = i
+	}
+	n := 1
+	need := func(id *uuid.UUID) {
+		if i, ok := at[parentOf(id)]; id != nil && ok {
+			n = max(n, i+1)
+		}
+	}
+	for _, op := range later {
+		switch op.Kind {
+		case domain.RevertPlace, domain.RevertAside, domain.RevertRestore:
+			need(op.To.ParentID)
+		case domain.RevertContent:
+			need(&op.NodeID)
+		}
+	}
+	return n
+}
+
+// pageJoins are the segments of a page's steps (M9/P3 design 3.22.2), by
+// their places among the steps: its restore and its write back right
+// after; its write back and a later deletion that takes it, the steps
+// between included.
+func pageJoins(steps []revertStep) [][2]int {
+	var out [][2]int
+	written := map[uuid.UUID]int{}
+	for k, s := range steps {
+		switch s.kind {
+		case domain.RevertContent:
+			if k > 0 && steps[k-1].kind == domain.RevertRestore && steps[k-1].node == s.node {
+				out = append(out, [2]int{k - 1, k})
+			}
+			written[s.node] = k
+		case domain.RevertDelete:
+			for _, id := range s.nodes {
+				if j, ok := written[id]; ok {
+					out = append(out, [2]int{j, k})
+				}
+			}
+		}
+	}
+	return out
 }
 
 // RunBatch writes the plan's steps from to to (not included) in a unit
@@ -518,10 +681,10 @@ func (w *JobWrites) revertBatch(ctx context.Context, spec JobSpec, p *revertPlan
 	defer release()
 	parsed := parsedContents(contents, facts)
 	var done BatchDone
-	var retimed map[int]time.Time
+	var retimed map[int32]time.Time
 	if _, err := w.writer.Run(ctx, revertUnit(spec, p.changeset), func(ctx context.Context, u *Unit) error {
 		var err error
-		retimed = map[int]time.Time{}
+		retimed = map[int32]time.Time{}
 		done, err = u.RevertBatch(ctx, RevertPart{plan: p, from: from, to: to, parsed: parsed, retention: w.reads.Retention,
 			retimed: retimed})
 		return err
@@ -537,14 +700,14 @@ func (w *JobWrites) revertBatch(ctx context.Context, spec JobSpec, p *revertPlan
 // begun are the times the roots of the groups the steps begin are
 // deleted at now, by the group's index, read at once: the plan's for a
 // root not deleted, or not there, which the batch's unit tells.
-func (w *JobWrites) begun(ctx context.Context, p *revertPlan, steps []revertStep) (map[int]time.Time, error) {
+func (w *JobWrites) begun(ctx context.Context, p *revertPlan, steps []revertStep) (map[int32]time.Time, error) {
 	var roots []uuid.UUID
 	for _, s := range steps {
 		if s.kind == domain.RevertRestore && s.member == 0 {
 			roots = append(roots, s.node)
 		}
 	}
-	out := make(map[int]time.Time, len(roots))
+	out := make(map[int32]time.Time, len(roots))
 	if len(roots) == 0 {
 		return out, nil
 	}

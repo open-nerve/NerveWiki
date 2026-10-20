@@ -403,7 +403,7 @@ type RevertPart struct {
 	from, to  int
 	parsed    map[domain.ContentRef]ParsedContent
 	retention time.Duration
-	retimed   map[int]time.Time
+	retimed   map[int32]time.Time
 }
 
 // stepKey is a step of a revert's schedule by its kind and node: a node
@@ -438,7 +438,7 @@ func (u *Unit) RevertBatch(ctx context.Context, r RevertPart) (BatchDone, error)
 	steps := r.plan.steps[r.from:r.to]
 	var items, versions, conts []uuid.UUID
 	var contSteps []revertStep
-	opened := map[int]bool{}
+	opened := map[int32]bool{}
 	for _, s := range steps {
 		switch {
 		case s.kind == domain.RevertPlace:
@@ -449,11 +449,11 @@ func (u *Unit) RevertBatch(ctx context.Context, r RevertPart) (BatchDone, error)
 			if !opened[s.group] {
 				conts, contSteps = append(conts, s.node), append(contSteps, s)
 			}
+		case s.kind == domain.RevertRestore:
+			ids := r.plan.groupIDs(s.group)
+			items, versions, opened[s.group] = append(items, ids...), append(versions, ids...), true
 		default:
 			items, versions = append(items, s.nodes...), append(versions, s.nodes...)
-			if s.kind == domain.RevertRestore {
-				opened[s.group] = true
-			}
 		}
 	}
 	planned, befores, plans, err := u.batchChangeset(ctx, r.plan.changeset, items, versions, conts)
@@ -788,7 +788,7 @@ func (u *Unit) restoreSegment(ctx context.Context, r RevertPart, steps []revertS
 	cont restoring, trashed map[uuid.UUID][]byte,
 ) (int, int, error) {
 	g := r.plan.groups[steps[0].group]
-	from, to := steps[0].member, steps[len(steps)-1].member+1
+	from, to := int(steps[0].member), int(steps[len(steps)-1].member)+1
 	deletedAt := g.at
 	var members []domain.TrashMember
 	var states []domain.TreeState

@@ -289,20 +289,18 @@ func (r revertChecks) withinBounds(ctx context.Context, items []domain.Changeset
 
 // locked is page.locked for the first page, in the plan's order, that an
 // edit session holds and the plan deletes or writes back (M8/P4 design
-// 3.5, review B-M3), read once: a deletion's pages, those of each top's
-// subtree alive now, held by another account's session, the reverter's
-// own ending with their pages, as the guard of a deletion has it; a page
-// written back held by any.
+// 3.5, review B-M3), read once: a deletion's pages, those of its subtree
+// at its moment in the schedule (M9/P3 design 3.22.1: a page the revert
+// moves out of it first only moves, as an edit lock lets it), held by
+// another account's session, the reverter's own ending with their pages,
+// as the guard of a deletion has it; a page written back held by any.
 func (r revertChecks) locked(ctx context.Context, plan domain.RevertPlan, state domain.RevertState) error {
 	actor, err := requireActor(ctx)
 	if err != nil {
 		return err
 	}
-	children, pages := map[uuid.UUID][]uuid.UUID{}, map[uuid.UUID]bool{}
+	pages := map[uuid.UUID]bool{}
 	for _, n := range state.Tree {
-		if n.ParentID != nil {
-			children[*n.ParentID] = append(children[*n.ParentID], n.ID)
-		}
 		pages[n.ID] = n.Kind == domain.KindPage
 	}
 	var ids []uuid.UUID
@@ -310,11 +308,10 @@ func (r revertChecks) locked(ctx context.Context, plan domain.RevertPlan, state 
 	for _, op := range plan.Ops {
 		switch op.Kind {
 		case domain.RevertDelete:
-			for sub, at := []uuid.UUID{op.NodeID}, 0; at < len(sub); at++ {
-				if id := sub[at]; pages[id] {
+			for _, id := range op.Subtree {
+				if pages[id] {
 					ids, deleted[id] = append(ids, id), true
 				}
-				sub = append(sub, children[sub[at]]...)
 			}
 		case domain.RevertContent:
 			ids = append(ids, op.NodeID)
