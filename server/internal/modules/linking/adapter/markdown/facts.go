@@ -263,5 +263,11 @@ func (p Parser) ParseNow(ctx context.Context, content string) (app.Parsed, error
 		return app.Parsed{}, err
 	}
 	taken = true
-	return app.Parsed{Facts: facts, Written: f, Release: hold.Release}, nil
+	return app.Parsed{Facts: facts, Written: f, Kept: hold.Held(), Release: hold.Release}, nil
+}
+
+// Takes implements app.RewriteParser: what ParseNow takes of the budget for
+// a content of n bytes, and the budget's size.
+func (p Parser) Takes(n int) (int, int) {
+	return p.budget.Takes(n), p.budget.Size()
 }

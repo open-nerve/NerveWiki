@@ -95,7 +95,9 @@ func TestAShortContentTakesAtLeastMinTake(t *testing.T) {
 // release; but no more than the content took: all of the budget for a
 // content larger than it, math.MaxInt bytes too, the limit not wrapping
 // around; MinTake for a frontmatter whose aliases' share is more. A
-// negative size holds and keeps nothing.
+// negative size holds and keeps nothing. A hold tells what it holds, its
+// take's as Takes says, then its facts', then none (M9/P3 fix round 6,
+// B3-M1).
 func TestAHoldKeepsItsFactsShare(t *testing.T) {
 	const size = 20 * markdown.MinTake
 	b := markdown.NewBudget(size, 20*time.Millisecond, slog.New(slog.DiscardHandler))
@@ -131,8 +133,14 @@ func TestAHoldKeepsItsFactsShare(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if held, takes := h.Held(), b.Takes(tt.n); held != takes || held != min(max(tt.n, markdown.MinTake), size) {
+			t.Errorf("%s: the take holds %d, Takes says %d, want %d", tt.name, held, takes, min(max(tt.n, markdown.MinTake), size))
+		}
 		h.KeepFacts(tt.facts)
 		h.KeepFacts(tt.facts) // keeping again gives nothing more back
+		if held := h.Held(); held != tt.kept {
+			t.Errorf("%s: its facts hold %d, want %d", tt.name, held, tt.kept)
+		}
 		if tt.kept < size {
 			if rest, err := b.Take(ctx, size-tt.kept); err != nil {
 				t.Errorf("the budget beside the facts of %s: %v", tt.name, err)
@@ -144,6 +152,12 @@ func TestAHoldKeepsItsFactsShare(t *testing.T) {
 			t.Errorf("a byte more beside %s = %v, want busy: the facts keep %d bytes", tt.name, err, tt.kept)
 		}
 		h.Release()
+		if held := h.Held(); held != 0 {
+			t.Errorf("%s: released, it holds %d", tt.name, held)
+		}
+	}
+	if b.Size() != size || b.Takes(0) != 0 || b.Takes(-1000) != 0 {
+		t.Errorf("Size %d, Takes(0) %d, Takes(-1000) %d; want %d, 0, 0", b.Size(), b.Takes(0), b.Takes(-1000), size)
 	}
 
 	all, err := b.Take(ctx, size)

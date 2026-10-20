@@ -76,6 +76,10 @@ func (l linkRewrite) Participate(ctx context.Context, s page.Step, u page.Append
 		if tooMany.Bytes > 0 {
 			return page.BatchTooLarge("bytes of pages the batch's renames and moves would rewrite", tooMany.Bytes, tooMany.Max, hint)
 		}
+		if tooMany.Kept > 0 {
+			return page.BatchTooLarge("bytes of the parse budget the pages the batch's renames and moves rewrite would hold",
+				tooMany.Kept, tooMany.Max, hint)
+		}
 		what := "pages whose links the batch's renames and moves would rewrite"
 		if tooMany.Weight > 0 {
 			what += fmt.Sprintf(", each page the batch wrote counting %d", tooMany.Weight)

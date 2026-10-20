@@ -53,9 +53,11 @@ type rewritten struct {
 // bytes); refuses with linking.pages_locked when one of these
 // pages is being edited, the caller's own too; then writes each again, one
 // page after another, the batch's first, its contents parsed with the budget
-// taken now (server_busy). A page whose content was written since its index,
-// a link whose page led to is gone, and a link no writing leads back, are
-// logged and left.
+// taken now (server_busy). A batch's parse that would not fit in the budget
+// beside the shares its rewrite's own pages keep is refused before it is
+// taken (keptShares; fix round 6, B3-M1). A page whose content was written
+// since its index, a link whose page led to is gone, and a link no writing
+// leads back, are logged and left.
 func (r Rewrite) Participate(ctx context.Context, m Moved, u Appender) error {
 	if !m.UpdateLinks {
 		return nil
@@ -100,6 +102,10 @@ func (r Rewrite) Participate(ctx context.Context, m Moved, u Appender) error {
 	if err := r.refuseLocked(ctx, all, m); err != nil {
 		return err
 	}
+	var shares *keptShares // the single rename or move's parses take the budget as M6/P4 left them
+	if m.MaxBytes > 0 {
+		shares = &keptShares{parser: r.Parser}
+	}
 	// The pages the batch wrote first: their read backs, of contents up to
 	// a page's largest, are taken while the budget holds none of the
 	// shares the facts of the writes before keep to the unit's end.
@@ -112,7 +118,7 @@ func (r Rewrite) Participate(ctx context.Context, m Moved, u Appender) error {
 		return err
 	}
 	for _, id := range met.pages {
-		err := r.followWritten(ctx, id, m.Written[id], own[id], trees, gone, u)
+		err := r.followWritten(ctx, id, m.Written[id], own[id], trees, gone, shares, u)
 		if errors.Is(err, ErrGuardLocked) {
 			return r.guardLocked(ctx, all, m, err)
 		}
@@ -121,7 +127,8 @@ func (r Rewrite) Participate(ctx context.Context, m Moved, u Appender) error {
 		}
 	}
 	for _, id := range index.pages {
-		err := r.rewrite(ctx, id, index.indexed[id].Revision, nil, index.reached[id], index.from[id], index.tree, index.recased, u)
+		err := r.rewrite(ctx, id, index.indexed[id].Revision, nil, index.reached[id], index.from[id], index.tree, index.recased,
+			shares, u)
 		if errors.Is(err, ErrGuardLocked) {
 			return r.guardLocked(ctx, all, m, err)
 		}
@@ -419,7 +426,7 @@ func (r Rewrite) ownWritten(ctx context.Context, m Moved, met writtenMet, gone m
 // page's last content op, its target's path then its was (d), on the tree
 // read once for all the pages the batch wrote (trees).
 func (r Rewrite) followWritten(ctx context.Context, id uuid.UUID, w WrittenPage, own ownReach, trees writtenTrees,
-	gone map[uuid.UUID]bool, u Appender,
+	gone map[uuid.UUID]bool, shares *keptShares, u Appender,
 ) error {
 	if len(own.reached) == 0 {
 		return nil
@@ -428,7 +435,7 @@ func (r Rewrite) followWritten(ctx context.Context, id uuid.UUID, w WrittenPage,
 	if dropDead(ctx, r.Logger, id, own.reached, tree, gone) {
 		return nil
 	}
-	return r.rewrite(ctx, id, 0, &w.Facts, own.reached, from, tree, own.recased, u)
+	return r.rewrite(ctx, id, 0, &w.Facts, own.reached, from, tree, own.recased, shares, u)
 }
 
 // ownLinks is the links, of the page id's links, that changes, a page a
@@ -844,9 +851,11 @@ func treeOf(ctx context.Context, pages Pages, m Moved, targets, sources []uuid.U
 // writing leads back, a writing past MaxContent, and one whose links do
 // not read back as the content's. A page a batch wrote has its content's
 // facts given, which no parse takes again, and is written on its current
-// revision, newer than its index's (M9/P3 design 3.7.2 (a)-(c)).
+// revision, newer than its index's (M9/P3 design 3.7.2 (a)-(c)). A batch's
+// rewrite has each parse fit beside the shares its pages keep (shares), and
+// adds the page's to them.
 func (r Rewrite) rewrite(ctx context.Context, id uuid.UUID, revision int, given *domain.Facts, reached map[int]rewritten,
-	from []domain.Step, tree domain.Tree, recased domain.Recased, u Appender,
+	from []domain.Step, tree domain.Tree, recased domain.Recased, shares *keptShares, u Appender,
 ) error {
 	content, current, ok, err := r.Contents.Content(ctx, id)
 	switch {
@@ -864,6 +873,9 @@ func (r Rewrite) rewrite(ctx context.Context, id uuid.UUID, revision int, given 
 			r.Logger.LogAttrs(ctx, slog.LevelWarn, "the links of a page are not rewritten: its content is not the index's",
 				slog.String("page_id", id.String()), slog.Int("revision", current), slog.Int("indexed", revision))
 			return nil
+		}
+		if err := shares.fit(len(content)); err != nil {
+			return err
 		}
 		was, err := r.Parser.ParseNow(ctx, content)
 		if err != nil {
@@ -909,6 +921,9 @@ func (r Rewrite) rewrite(ctx context.Context, id uuid.UUID, revision int, given 
 			large = len(writing)
 			return domain.Facts{}, domain.ErrTooLarge
 		}
+		if err := shares.fit(len(writing)); err != nil {
+			return domain.Facts{}, err
+		}
 		var err error
 		now, err = r.Parser.ParseNow(ctx, writing)
 		read = true
@@ -943,8 +958,41 @@ func (r Rewrite) rewrite(ctx context.Context, id uuid.UUID, revision int, given 
 		r.left(ctx, "no writing of the page with it was kept", id, l, sizes...)
 	}
 	u.Defer(now.Release)
+	shares.add(now)
 	written = true
 	return u.WriteContent(ctx, Rewritten{PageID: id, Base: revision, Content: writing, Facts: now.Written})
+}
+
+// keptShares is the bytes of the parse budget the facts of the pages a
+// batch's rewrite wrote keep, to the unit's end (M9/P3 fix round 6,
+// B3-M1). A parse whose take would not fit in the budget beside them
+// never will, whatever others give back, nor would a wait: it is refused
+// at once, TooManyRewrites; one that would fit, but does not now, is
+// others' shares', server_busy. Nil, for a single rename or move, refuses
+// nothing.
+type keptShares struct {
+	parser RewriteParser
+	n      int
+}
+
+// fit is nil when the take of a content of n bytes fits in the budget
+// beside the shares k keeps, or k is nil; else TooManyRewrites, of the
+// two together, at most the budget's size.
+func (k *keptShares) fit(n int) error {
+	if k == nil {
+		return nil
+	}
+	if take, size := k.parser.Takes(n); k.n+take > size {
+		return &TooManyRewrites{Kept: k.n + take, Max: size}
+	}
+	return nil
+}
+
+// add counts the share p's facts keep to the unit's end.
+func (k *keptShares) add(p Parsed) {
+	if k != nil {
+		k.n += p.Kept
+	}
 }
 
 // left logs l, a link of the page id not rewritten, why, and attrs: by

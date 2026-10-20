@@ -302,8 +302,10 @@ type LinksBefore struct {
 // ErrTooManyRewrites is a batch's deferred rewrite past Moved.MaxPages,
 // Moved.MaxLinks or Moved.MaxBytes (M9/P3 design 3.7.2; review B1-M3; fix
 // round 5, B2-M1): counted before the tree is read, and any page parsed or
-// refused for its lock. TooManyRewrites carries the count; bootstrap
-// answers it as the page module's page.batch_too_large.
+// refused for its lock; or one whose next parse would not fit in the
+// parse budget beside the shares its own pages' facts keep (fix round 6,
+// B3-M1). TooManyRewrites carries the count; bootstrap answers it as the
+// page module's page.batch_too_large.
 var ErrTooManyRewrites = errors.New("linking: the batch's renames and moves would rewrite more links or pages than it may")
 
 // TooManyRewrites is ErrTooManyRewrites with the pages the rewrite would
@@ -312,9 +314,12 @@ var ErrTooManyRewrites = errors.New("linking: the batch's renames and moves woul
 // Links, when set, is the links it would write, past Max, Moved.MaxLinks,
 // its pages within theirs; Bytes, when set, the bytes of the pages it
 // would write, past Max, Moved.MaxBytes, its pages and links within
-// theirs.
+// theirs. Kept, when set, is the bytes of the parse budget the facts of
+// the pages it wrote keep with the take of the parse it needs next, past
+// Max, the budget's size: that parse can never be taken beside them,
+// whatever others give back (M9/P3 fix round 6, B3-M1).
 type TooManyRewrites struct {
-	Pages, Max, Weight, Links, Bytes int
+	Pages, Max, Weight, Links, Bytes, Kept int
 }
 
 func (e *TooManyRewrites) Error() string { return ErrTooManyRewrites.Error() }
@@ -369,11 +374,12 @@ type Locks interface {
 }
 
 // Parsed is a content's parse a rewrite reads or writes: its facts as the
-// index keeps them and as the page module's write takes them, and the
-// release of the parse budget the facts hold.
+// index keeps them and as the page module's write takes them, the bytes of
+// the parse budget the facts hold (Kept), and the release of them.
 type Parsed struct {
 	Facts   domain.Facts
 	Written any
+	Kept    int
 	Release func()
 }
 
@@ -383,4 +389,8 @@ type Parsed struct {
 // on the budget would wait behind.
 type RewriteParser interface {
 	ParseNow(ctx context.Context, content string) (Parsed, error)
+	// Takes is the bytes ParseNow takes of the budget for a content of n
+	// bytes, as it parses, and the budget's size (M9/P3 fix round 6,
+	// B3-M1).
+	Takes(n int) (take, size int)
 }

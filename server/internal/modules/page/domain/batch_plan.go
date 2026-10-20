@@ -84,7 +84,14 @@ const (
 	// MaxContentBytes, parsed last beside the shares of the rest: of the
 	// bound's 32.8 MiB, the 399 pages before a page of 5 MiB keep some 2.8
 	// MiB, 7.8 MiB with its parse, below the configuration's budget, 8 MiB
-	// (a smaller budget narrows it, as every rewrite's). M8's rule alone
+	// (a smaller budget narrows it, as every rewrite's). The 219 KiB left
+	// take a writing's ordinary growth, some tens of bytes a link, and the
+	// shares of frontmatters' values. The bound counts the pages, not their
+	// writings, which grow by the path of each link's new place, up to some
+	// 2.5 KiB a link in a deep tree of long names: what it does not see the
+	// rewrite refuses, page.batch_too_large too, at a parse that would not
+	// fit in the budget beside the shares its own pages keep, before it
+	// takes it (fix round 6, B3-M1). M8's rule alone
 	// sets more: the bytes' tiers of bootstrap's
 	// BenchmarkBatchRewrites, 400 pages of the index of one link each into
 	// a folder of 10,000 moved alone, the median of three, in two runs: 76

@@ -960,6 +960,109 @@ func TestABatchRewritesThePagesItWroteFirst(t *testing.T) {
 	}
 }
 
+// A batch's rewrite refuses a parse that would not fit in the parse budget
+// beside the shares its own pages' facts keep to the unit's end, before it
+// takes it, waiting for nothing (M9/P3 fix round 6, B3-M1): no wait would
+// free them. Pages R0 … R5 of the index, each of a link to A and some 20
+// KiB, A renamed. In a budget a byte short of what three writings' facts
+// keep and one page more, the fourth page's read is refused,
+// TooManyRewrites of the two, at most the budget, three pages written, the
+// read not taken; when the rename writes each page longer, in a budget of
+// the three and a page exactly, the fourth's read is taken and its writing
+// refused. A budget of what five keep and a page fits the six. Others'
+// shares are not the rewrite's: with them in the way of the same parse,
+// its own leaving room for it, it is server_busy; so it is for a single
+// rename (no MaxBytes), whatever stands in the way. The budget's wait is an
+// hour, the call's context ten seconds, which none of them runs out: a
+// refusal that waited first would.
+func TestABatchRefusesAParseItsOwnSharesLeaveNoRoomFor(t *testing.T) {
+	const pages, fit = 6, 3 // the pages; those whose facts the tight budgets fit with one page more
+	content := "[[A]]\n" + strings.Repeat("r", 20<<10) + "\n"
+	discard := slog.New(slog.DiscardHandler)
+	md := newRewriting(t).md
+	kept := func(writing string) int { // what a writing's facts keep of the budget
+		p, err := markdownadapter.NewParser(md, markdown.NewBudget(1<<20, time.Hour, discard)).ParseNow(context.Background(), writing)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer p.Release()
+		return p.Kept
+	}
+	type outcome struct {
+		u      *appender
+		parsed []string
+		budget *markdown.Budget
+		err    error
+		waited bool // whether the call ran its context out
+	}
+	follow := func(to string, size, others, maxBytes int) outcome {
+		names := []string{"A"}
+		for i := range pages {
+			names = append(names, fmt.Sprint("R", i))
+		}
+		w := newRewriting(t, names...)
+		for i := range pages {
+			w.write(fmt.Sprint("R", i), content)
+		}
+		budget := markdown.NewBudget(size, time.Hour, discard)
+		parser := &parses{RewriteParser: markdownadapter.NewParser(w.md, budget)}
+		w.rewrite.Parser, w.rewrite.MaxContent = parser, 64<<10
+		if others > 0 {
+			hold, err := budget.TakeNow(context.Background(), others)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(hold.Release)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		u := &appender{}
+		err := w.rewrite.Participate(ctx, app.Moved{NotebookID: w.notebook, At: time.Now(), UpdateLinks: true,
+			Changes: []domain.Change{w.rename("A", to)}, MaxBytes: maxBytes}, u)
+		return outcome{u: u, parsed: parser.contents, budget: budget, err: err, waited: ctx.Err() != nil}
+	}
+	// refused checks o refused at the fourth page, its facts' shares, k each,
+	// held and nothing more: the refused parse took none.
+	refused := func(name string, o outcome, k int, want app.TooManyRewrites, parsed int) {
+		t.Helper()
+		var many *app.TooManyRewrites
+		if !errors.As(o.err, &many) || *many != want || len(o.u.writes) != fit || len(o.parsed) != parsed || o.waited {
+			t.Errorf("%s: %v %+v, %d written, %d parsed, waited %t; want TooManyRewrites %+v, %d written, %d parsed, at once",
+				name, o.err, many, len(o.u.writes), len(o.parsed), o.waited, want, fit, parsed)
+		}
+		free := want.Max - fit*k
+		if hold, err := o.budget.TakeNow(context.Background(), free); err != nil {
+			t.Errorf("%s: the %d bytes beside the shares of the pages written: %v", name, free, err)
+		} else {
+			hold.Release()
+		}
+		if _, err := o.budget.TakeNow(context.Background(), free+1); err == nil {
+			t.Errorf("%s: a byte more than the %d beside the shares of the pages written was free", name, free)
+		}
+	}
+	busy := func(name string, o outcome) {
+		t.Helper()
+		var problem *shared.Error
+		if !errors.As(o.err, &problem) || problem.Code != "server_busy" || len(o.u.writes) != fit || o.waited {
+			t.Errorf("%s: %v, %d written, waited %t; want server_busy at once, %d written", name, o.err, len(o.u.writes), o.waited, fit)
+		}
+	}
+
+	k := kept("[[B]]" + content[len("[[A]]"):])
+	tight := fit*k + len(content) - 1
+	refused("the read", follow("B", tight, 0, 1<<30), k, app.TooManyRewrites{Kept: tight + 1, Max: tight}, 2*fit)
+	longer := "B" + strings.Repeat("b", 200)
+	writing := "[[" + longer + "]]" + content[len("[[A]]"):]
+	kl := kept(writing)
+	exact := fit*kl + len(content)
+	refused("the writing", follow(longer, exact, 0, 1<<30), kl, app.TooManyRewrites{Kept: fit*kl + len(writing), Max: exact}, 2*fit+1)
+	if o := follow("B", (pages-1)*k+len(content), 0, 1<<30); o.err != nil || len(o.u.writes) != pages {
+		t.Errorf("in a budget of what five keep and a page: %v, %d written; want the %d", o.err, len(o.u.writes), pages)
+	}
+	busy("others' shares in the way", follow("B", (pages-1)*k+len(content), (pages-1-fit)*k+1, 1<<30))
+	busy("a single rename", follow("B", tight, 0, 0))
+}
+
 // The plan's links resolve and rewrite by the participant's rules, on the
 // tree they are given (M9/P3 design 3.7.4): the bytes a page the batch
 // wrote is written again with; the aliases of the pages the batch deleted
