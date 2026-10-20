@@ -333,9 +333,10 @@ func mismatchOf(err error) *domain.VersionMismatch {
 
 // The reads' bound (M9/P3 design 3.4.4): the pages read whole, by their
 // heads' sizes in their first ops' order, at MaxBatchReadBytes and a byte
-// past it, at the op of the page that passes it; pages read by their heads
-// alone are not counted, but those whose writes the moves before them
-// reach are read whole and counted (ReadWhole, M9/P3 review A-I1).
+// past it, at the op of the page that passes it, "split the batch"; pages
+// read by their heads alone are not counted, but those whose writes the
+// moves before them reach are read whole and counted (ReadWhole, M9/P3
+// review A-I1), the refusal saying why (review A's N3).
 func TestBatchPlanChecksItsReads(t *testing.T) {
 	nb := newNotebook("P1.md", "P2.md", "P3.md")
 	ids := []uuid.UUID{nb.id(t, "P1.md"), nb.id(t, "P2.md"), nb.id(t, "P3.md")}
@@ -352,7 +353,8 @@ func TestBatchPlanChecksItsReads(t *testing.T) {
 		t.Errorf("at the bound: %v", failed)
 	}
 	p, _ = planOf(t, nb, editOp("P1.md", "o", "n"), editOp("P2.md", "o", "n"), editOp("P3.md", "o", "n"))
-	if failed := p.CheckReads(heads(five, five, domain.MaxBatchReadBytes-2*five+1)); failed == nil || failed.Op != 2 || p.Failed != failed {
+	if failed := p.CheckReads(heads(five, five, domain.MaxBatchReadBytes-2*five+1)); failed == nil || failed.Op != 2 || p.Failed != failed ||
+		!strings.HasSuffix(failed.Error(), "at most 14680064: split the batch.") {
 		t.Errorf("a byte past: %v", failed)
 	}
 	if err := p.Contents(nil, nil, &fakeRewriter{p: p}); err != nil || p.Failed.Op != 2 {
@@ -368,8 +370,10 @@ func TestBatchPlanChecksItsReads(t *testing.T) {
 	for _, id := range ids {
 		p.ReadWhole(id)
 	}
-	if failed := p.CheckReads(heads(five, five, five)); failed == nil || failed.Op != 2 {
-		t.Errorf("writes read whole: %v, want the bound at ops[2]", failed)
+	if failed := p.CheckReads(heads(five, five, five)); failed == nil || failed.Op != 2 || !strings.HasSuffix(failed.Error(),
+		"at most 14680064: a write after a rename or move that reaches its page reads the page whole: send the renames or moves in "+
+			"another batch.") {
+		t.Errorf("writes read whole: %v, want the bound at ops[2], saying why", failed)
 	}
 }
 

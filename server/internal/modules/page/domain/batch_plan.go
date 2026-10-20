@@ -689,20 +689,27 @@ func (p *BatchPlan) ReadWhole(id uuid.UUID) {
 // design 3.4.4): the sizes of Reads' texts, by their heads, read before
 // any of them, summed in their first content ops' order; past
 // MaxBatchReadBytes, page.batch_too_large at the op of the page that
-// passes it, in Failed, and the contents' pass is not run. It answers
-// that failure, nil for none; a plan that failed for good already is
-// left as it is.
+// passes it, in Failed, and the contents' pass is not run. Among them a
+// write read whole for the renames and moves before it (ReadWhole), the
+// refusal says why, a read the agent did not ask for (M9/P3 review A's
+// N3). It answers that failure, nil for none; a plan that failed for good
+// already is left as it is.
 func (p *BatchPlan) CheckReads(heads map[uuid.UUID]PageHead) *OpFailed {
 	if p.final {
 		return nil
 	}
 	texts, _ := p.Reads()
-	sum := 0
+	sum, whole := 0, false
 	for _, id := range texts {
+		first := p.pages[id].first
+		whole = whole || p.steps[first].Kind != OpKindEdit
 		if sum += heads[id].Bytes; sum > MaxBatchReadBytes {
-			first := p.pages[id].first
+			hint := "split the batch"
+			if whole {
+				hint = "a write after a rename or move that reaches its page reads the page whole: send the renames or moves in another batch"
+			}
 			p.Failed = &OpFailed{Op: first, Tool: p.steps[first].Kind,
-				Err: BatchTooLarge("bytes in the pages its ops read", sum, MaxBatchReadBytes, "split the batch")}
+				Err: BatchTooLarge("bytes in the pages its ops read", sum, MaxBatchReadBytes, hint)}
 			p.final = true
 			return p.Failed
 		}
