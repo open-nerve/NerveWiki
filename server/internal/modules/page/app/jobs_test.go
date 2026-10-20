@@ -927,11 +927,13 @@ func TestARevertJobsBatchErrors(t *testing.T) {
 // job refuses a schedule whose steps a batch must not split (M9/P3 design
 // section 0): a step aside, a page restored then written back, a page
 // written back then deleted. Its plan is ErrRevertUnordered, the job's
-// internal failure, and nothing is written; a request reverts each.
+// internal failure, and nothing is written; a request reverts each, its
+// log line counting its steps, those aside too (M9/P3 design 3.21.3).
 func TestARevertJobRefusesTheStepsItsBatchesWouldSplit(t *testing.T) {
 	for _, tt := range []struct {
 		name  string
 		build func(f *fixture) uuid.UUID
+		steps string // the request's log line's counts
 	}{
 		{"a swap of names: a step aside", func(f *fixture) uuid.UUID {
 			a, b := f.page("A", nil, 5), f.page("B", nil, 6)
@@ -940,7 +942,7 @@ func TestARevertJobRefusesTheStepsItsBatchesWouldSplit(t *testing.T) {
 			f.store.nodes[a.ID], f.store.nodes[b.ID] = a, b
 			return f.log.changeset(domain.ChangesetEdit, f.alice, now(), []domain.ChangesetItem{
 				{NodeID: a.ID, Before: &sa, After: new(a.State())}, {NodeID: b.ID, Before: &sb, After: new(b.State())}}).ID
-		}},
+		}, "placed=2 deleted=0 restored=0 written=0 aside=1"},
 		{"a page written, then deleted: restored, then written back", func(f *fixture) uuid.UUID {
 			p := f.page("P", nil, 0)
 			f.content(p.ID, "before", 1)
@@ -949,14 +951,14 @@ func TestARevertJobRefusesTheStepsItsBatchesWouldSplit(t *testing.T) {
 			f.trashed(p.ID, at, f.alice)
 			return f.log.changeset(domain.ChangesetEdit, f.alice, at, []domain.ChangesetItem{{NodeID: p.ID, Before: new(p.State()),
 				Revision: 2}}, f.log.version(p.ID, 1, 2, "written")).ID
-		}},
+		}, "placed=0 deleted=0 restored=1 written=1 aside=0"},
 		{"a page restored and written, a revert's: written back, then deleted", func(f *fixture) uuid.UUID {
 			p := f.page("P", nil, 0)
 			f.content(p.ID, "restored", 1)
 			f.content(p.ID, "written", 2)
 			return f.log.changeset(domain.ChangesetRevert, f.alice, now(), []domain.ChangesetItem{{NodeID: p.ID, After: new(p.State()),
 				Restored: true, Revision: 2}}, f.log.version(p.ID, 1, 2, "written")).ID
-		}},
+		}, "placed=0 deleted=1 restored=0 written=1 aside=0"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			f := newFixture()
@@ -971,6 +973,9 @@ func TestARevertJobRefusesTheStepsItsBatchesWouldSplit(t *testing.T) {
 			}
 			if _, err := f.revert(id, nil, 0); err != nil {
 				t.Errorf("the request's revert = %v, want it done", err)
+			}
+			if logs := f.logs.String(); !strings.Contains(logs, "changeset reverted") || !strings.Contains(logs, tt.steps) {
+				t.Errorf("the request's log %q, want %s", logs, tt.steps)
 			}
 		})
 	}

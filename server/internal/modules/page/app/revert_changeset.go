@@ -126,7 +126,7 @@ func (r *RevertChangeset) Execute(ctx context.Context, id uuid.UUID, message *st
 		slog.String("user_id", outcome.By.String()), slog.String("changeset_id", outcome.ChangesetID.String()),
 		slog.String("reverted_id", c.ID.String()), slog.String("notebook_id", c.NotebookID.String()), slog.Int("placed", done.Placed),
 		slog.Int("deleted", done.Deleted), slog.Int("restored", done.Restored), slog.Int("written", done.Written),
-		slog.String("client", string(client)))
+		slog.Int("aside", done.Aside), slog.String("client", string(client)))
 	return ChangesetReverted{ChangesetID: outcome.ChangesetID, Changed: true}, nil
 }
 

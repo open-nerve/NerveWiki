@@ -39,9 +39,10 @@ type RevertRead struct {
 }
 
 // RevertDone is what a revert's unit did: how many nodes it put back,
-// subtrees it deleted, trash items it restored and pages it wrote back.
+// subtrees it deleted, trash items it restored and pages it wrote back,
+// and the steps aside it took on the way (M9/P3 design 3.21.3).
 type RevertDone struct {
-	Placed, Deleted, Restored, Written int
+	Placed, Deleted, Restored, Written, Aside int
 }
 
 // Revert reverts the changeset r names, under the notebook's lock: it is
@@ -99,6 +100,7 @@ func (u *Unit) Revert(ctx context.Context, r RevertRead) (RevertDone, error) {
 			done.Placed++
 		case domain.RevertAside:
 			err = u.place(ctx, op)
+			done.Aside++
 		case domain.RevertDelete:
 			_, err = u.Delete(ctx, op.NodeID)
 			done.Deleted++

@@ -181,7 +181,7 @@ func TestRevertChangesetRestoresADeletion(t *testing.T) {
 		}
 	}
 	logs := f.logs.String()
-	for _, part := range []string{"changeset reverted", "restored=1", "placed=0", "deleted=0", "written=0", f.c.ID.String(),
+	for _, part := range []string{"changeset reverted", "restored=1", "placed=0", "deleted=0", "written=0", "aside=0", f.c.ID.String(),
 		cs[0].ID.String(), f.eng.String(), "client=web", "workspace_id=" + f.acme.String(), "user_id=" + f.alice.String()} {
 		if !strings.Contains(logs, part) || strings.Contains(logs, "Doc") {
 			t.Errorf("log %q, want %s and no name", logs, part)
