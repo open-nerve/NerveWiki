@@ -587,7 +587,10 @@ func TestABatchLeavesThePagesItDeleted(t *testing.T) {
 // before it reads the tree they are written on, a lock or a content
 // (M9/P3 design 3.7.2; review B-I1: a refusal paid for the tree first):
 // past it, ErrTooManyRewrites with the count, a page being edited among
-// them or not; 0 bounds nothing.
+// them or not; 0 bounds nothing. A page whose links all led to a page the
+// batch deleted is not counted, nor are those links (review B1-N2): Q1
+// and Q2 to B, deleted, its name taken by A's rename, within bounds of 1,
+// nothing written.
 func TestABatchCountsItsRewritesFirst(t *testing.T) {
 	setUp := func() *rewriting {
 		w := newRewriting(t, "A", "Q1", "Q2")
@@ -625,6 +628,16 @@ func TestABatchCountsItsRewritesFirst(t *testing.T) {
 		}
 		w.written(u, map[string]string{"Q1": "[[B]]\n", "Q2": "[[B]]\n"})
 	}
+	w = newRewriting(t, "A", "B", "Q1", "Q2")
+	w.write("Q1", "[[B]]\n")
+	w.write("Q2", "[[B]]\n")
+	b := w.id("B")
+	w.remove("B")
+	u, err := w.batch(app.Moved{Changes: []domain.Change{w.rename("A", "B")}, Gone: []uuid.UUID{b}, MaxPages: 1, MaxLinks: 1})
+	if err != nil {
+		t.Fatalf("the links to a page the batch deleted counted: %v", err)
+	}
+	w.written(u, map[string]string{})
 }
 
 // A page the batch wrote counts WrittenWeight against MaxPages (M9/P3

@@ -238,8 +238,10 @@ func TestTheLinksOfABatchAreThoseOfSeparateCalls(t *testing.T) {
 // as they are, in every page, whatever its ancestors' changes (M9/P3
 // review B-M1), dangling where separate calls write them first, the same
 // where the node's op comes first (d1r, d3r); the node's own op with
-// update_links, its ancestor's without, followed (d2, d4). (c) A page
-// written after the plan rewrote it. (2) The lock's code.
+// update_links, its ancestor's without, followed (d2, d4); the plan's
+// rewrite leaving them too, an edit's old_string and a write's bytes
+// judged on the links left (d6, d6w). (c) A page written after the plan
+// rewrote it. (2) The lock's code.
 func TestTheWaysABatchDiffersFromSeparateCalls(t *testing.T) {
 	tm, logs := newAcmeTeamLogged(t)
 	agent := tm.agent(t, "alice", "")
@@ -324,6 +326,37 @@ func TestTheWaysABatchDiffersFromSeparateCalls(t *testing.T) {
 		checkPages(t, tm.pool)
 		noErrorLogged(t, logs)
 	})
+	// The plan's rewrite leaves the links to a node frozen after an
+	// ancestor's move as the participant does (M9/P3 review B1-N2, B's d6
+	// and d6w): Q's [[Top/F/X]], X renamed without update_links after F's
+	// move, matched by an edit's old_string, and judged the same by a
+	// base-less write of its bytes; separate calls rewrote it at F's move,
+	// the edit's old_string not there, the write's bytes not the page's.
+	for i, third := range []map[string]any{opEdit("Q.md", "[[Top/F/X]] q", "[[Top/F/X]] y"), opWrite("Q.md", "[[Top/F/X]] q")} {
+		name := map[int]string{0: "d6 an edit of a linker to a node frozen after its folder's move",
+			1: "d6w a base-less write of the linker's bytes"}[i]
+		t.Run(name, func(t *testing.T) {
+			pages := []restPage{{"Top", ""}, {"Top/F", ""}, {"Top/F/X", ""}, {"G", ""}, {"Q", "[[Top/F/X]] q"}}
+			batch, apart := tm.twins(t, len(cases)+2+i, pages)
+			ops := []map[string]any{opMove("Top/F.md", "G/F.md"), frozen(opMove("G/F/X.md", "G/F/Y.md")), third}
+			agent.in(batch).batchDone(t, ops...)
+			want := map[int]string{0: "[[Top/F/X]] y", 1: "[[Top/F/X]] q"}[i]
+			if q := tm.linkedState(t, batch)["Q.md"]; q != (pageState{want, "-"}) {
+				t.Errorf("Q after the batch = %+v, want %q, its link left", q, want)
+			}
+			m := agent.in(apart)
+			m.separately(t, ops[:2]...)
+			args := maps.Clone(third)
+			tool, _ := args["op"].(string)
+			delete(args, "op")
+			code := map[int]string{0: "validation_failed", 1: "page.title_taken"}[i]
+			if r := refusalOf(t, m.use(t, tool, args)); r.Code != code {
+				t.Errorf("the %s alone after the moves = %+v, want %s", tool, r, code)
+			}
+			checkPages(t, tm.pool)
+			noErrorLogged(t, logs)
+		})
+	}
 	t.Run("2 the lock's code", func(t *testing.T) {
 		batch, apart := tm.twins(t, len(cases)+1, []restPage{{"A", ""}, {"Q", "[[A]]"}})
 		for _, nb := range []string{batch, apart} {
