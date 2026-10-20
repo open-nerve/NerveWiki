@@ -15,7 +15,8 @@ import (
 
 // 00045 gives each changeset whether it renames a node, or moves one to
 // another parent, of all its items (M9/P3 design 3.20.1): a rename, a
-// move, a move and rename, a creation, a deletion and a reorder, and one
+// move, a move and rename, a creation and a deletion under a page (a
+// parent on one side alone, the other none: no move), a reorder, and one
 // whose rename is its 1,001st item by node id, which the read before took
 // from the first 1,000 alone. The schema goes down to 00044, the data is
 // written as the program before wrote it, and up again; then down again,
@@ -44,8 +45,8 @@ func TestTheChangesetsMovesAreBackfilled(t *testing.T) {
 		{"renamed", []string{"a", "b"}},
 		{"moved", []string{"a", "P/a"}},
 		{"moved and renamed", []string{"a", "P/b"}},
-		{"created", []string{"", "a"}},
-		{"deleted", []string{"a", ""}},
+		{"created", []string{"", "P/a"}},
+		{"deleted", []string{"P/a", ""}},
 		{"reordered", []string{"a", "a@2"}},
 	}
 	exec := func(stmt string, args ...any) {
