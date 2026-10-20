@@ -39,8 +39,8 @@ import (
 // is not idle: the first fallback, the second, a write back before a
 // deletion, and a step of an attachment each come up at least as often
 // as the floors count them for as many trials; the third, a defence no
-// reachable state needs, never does in the full run
-// (TestTheThirdFallbackMovesAPlaceOffTheRoot tests it).
+// reachable state needs, never does, nor in a run without the second
+// (fix round 1, C-N2; TestTheThirdFallbackMovesAPlaceOffTheRoot tests it).
 func TestScheduleEndsAndPutsTheNotebookBack(t *testing.T) {
 	trials, secondFloor := 20_000, 50
 	if testing.Short() {
@@ -62,6 +62,9 @@ func TestScheduleEndsAndPutsTheNotebookBack(t *testing.T) {
 		"written back then deleted %d, steps of an attachment %d, restores holding one %d; most steps aside in a revert %d, "+
 		"most steps %d", trials, counts.reverts, counts.first, counts.second, counts.third, counts.writeThenDelete, counts.assets,
 		counts.assetRestores, counts.mostAside, counts.mostSteps)
+	if counts.third != 0 {
+		t.Errorf("moved aside otherwise %d times, want never: the third fallback is a defence no reachable state needs", counts.third)
+	}
 	if counts.first < 50 || counts.second < secondFloor || counts.writeThenDelete < 50 || counts.assets < 50 {
 		t.Errorf("idle: renamed aside %d (want 50), moved aside from a deletion %d (want %d), written back then deleted %d "+
 			"(want 50), steps of an attachment %d (want 50)", counts.first, counts.second, secondFloor, counts.writeThenDelete,
