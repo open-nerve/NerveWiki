@@ -46,15 +46,18 @@ import (
 // and logs its median and 99th percentile, nearest rank, in milliseconds
 // (-v keeps every line: a benchmark that passes has its log cut to ten).
 //
-// NERVE_SEARCH_BACKLOG, numbers of pages parted by commas (0,100,1200,2200),
+// NERVE_SEARCH_BACKLOG, numbers of pages parted by commas (0,100,1600,2200),
 // has each cell timed once for each number n, in its order, behind an
 // exact backlog of n pages (M9/P3 design 3.10.1: the nodes a batch's unit
 // queues exact, which the job has not built yet): once the index is built,
 // before the cell, the first n live pages by id of the notebook with the
 // most of those the cell searches (the largest for 200 and 10 of 200, the
 // one notebook for the third), all of them when it has fewer, are queued
-// exact as a unit queues them; the job does not run, and the pages come
-// off the queue once the cell is timed. Unset, n is 0 alone. Each line
+// exact as a unit queues them and made the newest of their notebook, as a
+// batch's unit leaves what it queues (M9/P3 review C-I2: the walks take
+// their candidates newest first); the job does not run, and the pages come
+// off the queue, their times put back, once the cell is timed. Unset, n is
+// 0 alone. Each line
 // says n, how many pages were queued, and whether the page came back empty
 // with a cursor: no hit and a next page, which a walk run out on the
 // backlog leaves. The run ends with how many first pages did, for each n,
@@ -113,9 +116,11 @@ func BenchmarkSearch(b *testing.B) {
 						}
 						for _, n := range backlogs {
 							queued := pages[backlogged][:min(n, len(pages[backlogged]))]
+							putBack := bench.makeNewest(b, queued)
 							bench.queueExact(b, backlogged, queued)
 							took, last, emptied := bench.searchTimes(b, q, more, shape == "third", reps)
 							bench.dequeue(b, queued)
+							putBack()
 							b.Logf("%-26s %-12s %-26s %-5s backlog %4d, %4d queued: p50 %8.1f p99 %8.1f  %s, empty with a cursor %t",
 								stats, vis, q, shape, n, len(queued), nearestRank(took, 0.5), nearestRank(took, 0.99), last, emptied)
 							if shape == "first" && emptied {
@@ -202,6 +207,51 @@ func (b trashBench) queueExact(tb testing.TB, nb string, pages []uuid.UUID) {
 		SELECT unnest($1::uuid[]), $2::uuid, false
 		ORDER BY 1
 		ON CONFLICT (node_id) DO UPDATE SET version = excluded.version, bulk = page_search_queue.bulk AND excluded.bulk`, pages, nb)
+}
+
+// makeNewest makes the pages the newest of their notebook, as a batch's
+// unit leaves the pages it writes, creates, renames and rewrites (M9/P3
+// review C-I2): their nodes' and contents' updated_at now, which the
+// search's walks order their candidates by, newest first. What it answers
+// puts their times back.
+func (b trashBench) makeNewest(tb testing.TB, pages []uuid.UUID) func() {
+	tb.Helper()
+	if len(pages) == 0 {
+		return func() {}
+	}
+	type was struct {
+		ids []uuid.UUID
+		at  []time.Time
+	}
+	read := func(table, key string) was {
+		rows, err := b.pool.Query(context.Background(), "SELECT "+key+", updated_at FROM "+table+" WHERE "+key+" = ANY($1) ORDER BY 1",
+			pages)
+		if err != nil {
+			tb.Fatal(err)
+		}
+		var w was
+		for rows.Next() {
+			var id uuid.UUID
+			var at time.Time
+			if err := rows.Scan(&id, &at); err != nil {
+				tb.Fatal(err)
+			}
+			w.ids, w.at = append(w.ids, id), append(w.at, at)
+		}
+		if err := rows.Err(); err != nil {
+			tb.Fatal(err)
+		}
+		return w
+	}
+	nodes, contents := read("nodes", "id"), read("page_contents", "node_id")
+	b.exec(tb, "UPDATE nodes SET updated_at = now() WHERE id = ANY($1)", pages)
+	b.exec(tb, "UPDATE page_contents SET updated_at = now() WHERE node_id = ANY($1)", pages)
+	return func() {
+		b.exec(tb, `UPDATE nodes n SET updated_at = v.at FROM unnest($1::uuid[], $2::timestamptz[]) AS v(id, at)
+			WHERE n.id = v.id`, nodes.ids, nodes.at)
+		b.exec(tb, `UPDATE page_contents c SET updated_at = v.at FROM unnest($1::uuid[], $2::timestamptz[]) AS v(id, at)
+			WHERE c.node_id = v.id`, contents.ids, contents.at)
+	}
 }
 
 // dequeue takes the pages off the search's queue: a cell's backlog, once
