@@ -238,7 +238,8 @@ func (w *JobWrites) PlanRestore(ctx context.Context, spec JobSpec, nodeID uuid.U
 }
 
 // revertPlan is a background revert's (M8/P4 design 3.5): the changeset
-// it reverts, its round's steps, and the groups its restores bring back.
+// it reverts, its schedule's steps, and the groups its restores bring
+// back.
 type revertPlan struct {
 	changeset uuid.UUID
 	steps     []revertStep
@@ -274,9 +275,11 @@ type revertGroup struct {
 // spec's notebook, unlocked, as its job starts: the decision first, then
 // the changeset, page.changeset_trimmed for one gone since, then the
 // revert's check as CheckRevert has it (page.revert_conflict,
-// page.changeset_trimmed, page.locked), its round's steps in their order:
-// each place one node; each deletion its top's subtree alive now; each
-// restore its group in pre-order, a node a step; each write back a page.
+// page.changeset_trimmed, page.locked), its schedule's steps in their
+// order: each place one node; each deletion its top's subtree alive now;
+// each restore its group in pre-order, a node a step; each write back a
+// page. A schedule whose steps a batch must not split, which M8's
+// batches would, is ErrRevertUnordered, nothing written (see unsplit).
 func (w *JobWrites) PlanRevert(ctx context.Context, spec JobSpec, changesetID uuid.UUID) (JobPlan, error) {
 	unit := revertUnit(spec, changesetID)
 	if err := w.writer.Allowed(ctx, unit); err != nil {
@@ -296,7 +299,33 @@ func (w *JobWrites) PlanRevert(ctx context.Context, spec JobSpec, changesetID uu
 	if err != nil {
 		return JobPlan{}, err
 	}
+	if unsplit(checked) {
+		return JobPlan{}, domain.ErrRevertUnordered
+	}
 	return revertSteps(c.ID, checked), nil
+}
+
+// unsplit reports whether the schedule checked has steps no batch may
+// split (M9/P3 design section 0, S2's temporary refusal, which S3's
+// segments replace): a step aside, which its node's place must follow in
+// the batch; a write back of a page the schedule restores first, or
+// deletes after. M8's batches split a plan between any two steps and plan
+// each again alone, which these are not: a job of them fails, internal,
+// before it writes, as S1's request did.
+func unsplit(checked revertChecked) bool {
+	items := make(map[uuid.UUID]domain.ChangesetItem, len(checked.state.Items))
+	for _, it := range checked.state.Items {
+		items[it.NodeID] = it
+	}
+	for _, op := range checked.plan.Ops {
+		switch it, ok := items[op.NodeID]; {
+		case op.Kind == domain.RevertAside:
+			return true
+		case op.Kind == domain.RevertContent && ok && (it.Before == nil || it.After == nil):
+			return true
+		}
+	}
+	return false
 }
 
 // revertSteps are the steps of the plan checked of the revert of the
