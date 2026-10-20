@@ -92,8 +92,8 @@ func TestAUnitOfTwoOperationsTellsOnce(t *testing.T) {
 // A unit marks its changeset as renaming or moving a node from its merged
 // changes (M9/P3 design 3.20.2), once, before the observers: a node alive
 // before and after it of another name renames, under another parent
-// moves; a creation renamed, a reorder and a content's write neither, and
-// mark nothing.
+// moves, at the root or under a folder alike; a creation renamed, a
+// reorder and a content's write neither, and mark nothing.
 func TestAUnitMarksItsChangesetsRenamesAndMoves(t *testing.T) {
 	for _, tt := range []struct {
 		name string
@@ -115,6 +115,23 @@ func TestAUnitMarksItsChangesetsRenamesAndMoves(t *testing.T) {
 			_, err := u.Rename(ctx, a.ID, "A")
 			return err
 		}, &domain.ChangesetMoves{Moves: true}},
+		{"a reorder at the root", func(ctx context.Context, u *app.Unit, f *fixture) error {
+			a, b := f.page("A", nil, 0), f.page("B", nil, 1)
+			_, err := u.Move(ctx, a.ID, nil, app.After(b.ID))
+			return err
+		}, nil},
+		{"a rename under a folder", func(ctx context.Context, u *app.Unit, f *fixture) error {
+			p := f.page("P", nil, 0)
+			_, err := u.Rename(ctx, f.page("A", &p.ID, 0).ID, "B")
+			return err
+		}, &domain.ChangesetMoves{Renames: true}},
+		{"a reorder under a folder", func(ctx context.Context, u *app.Unit, f *fixture) error {
+			p := f.page("P", nil, 0)
+			a, b := f.page("A", &p.ID, 0), f.page("B", &p.ID, 1)
+			parent := p.ID // the request's own, as a call brings it
+			_, err := u.Move(ctx, a.ID, &parent, app.After(b.ID))
+			return err
+		}, nil},
 		{"a creation renamed", func(ctx context.Context, u *app.Unit, f *fixture) error {
 			created, err := u.CreatePage(ctx, app.PageDraft{Title: "Draft"})
 			if err != nil {

@@ -9,13 +9,14 @@ import (
 
 // The units mark their changesets' renames and moves, of all their items
 // (M9/P3 design 3.20.2, 3.21.4): after a REST rename and a REST move, an
-// agent's move and rename, a batch whose rename is its 1,002nd item by
-// node id, past a thousand pages seeded smaller (their folder, then them)
-// that it deletes, an import, and a background revert of a renaming
-// batch, each changeset's renames and moves are the items' own: one of
-// them alive before and after it under another name, or under another
-// parent. Each is checked by what it does too. The background revert of
-// a shape with a step aside comes in S3: S2's job refuses it.
+// agent's move and rename, a REST rename and a REST reorder under a
+// folder (renames only, then neither), a batch whose rename is its
+// 1,002nd item by node id, past a thousand pages seeded smaller (their
+// folder, then them) that it deletes, an import, and a background revert
+// of a renaming batch, each changeset's renames and moves are the items'
+// own: one of them alive before and after it under another name, or under
+// another parent. Each is checked by what it does too. The background
+// revert of a shape with a step aside comes in S3: S2's job refuses it.
 func TestTheChangesetsRenamesCountEveryItem(t *testing.T) {
 	tm := newAcmeTeam(t, "member", "")
 	nb := tm.openNotebook(t, "alice", "Eng")
@@ -36,6 +37,15 @@ func TestTheChangesetsRenamesCountEveryItem(t *testing.T) {
 		t.Fatalf("the agent's move = %.300s", a.body)
 	}
 	newest(true, true)
+	tm.send(t, nodeRename("alice", ids["Moved"], "Moved 2"), http.StatusOK)
+	newest(true, false)
+	tm.send(t, request("alice", http.MethodPost, "/api/v0/nodes/"+ids["Moved"]+"/move",
+		jsonBody(map[string]any{"parent_id": ids["Folder"], "after_id": ids["Agent"]})), http.StatusOK)
+	newest(false, false)
+	if got := count(t, tm.pool, `SELECT count(*) FROM changeset_items WHERE changeset_id = $1 AND before_parent_id = after_parent_id
+			AND before_name = after_name AND before_sort_order <> after_sort_order`, tm.newest(t, nb).ID); got != 1 {
+		t.Fatalf("the reorder's items reordering under Folder: %d, want 1", got)
+	}
 	pages := make([]sqlPage, 1000)
 	for i := range pages {
 		pages[i] = sqlPage{ids["Thousand"], fmt.Sprint("p", i), "x"}
@@ -81,7 +91,7 @@ func TestTheChangesetsRenamesCountEveryItem(t *testing.T) {
 			}
 		}
 	}
-	if checked != len(want) || len(want) != 8 || !slices.Contains(rows, *b.ChangesetID+" true false true false") {
+	if checked != len(want) || len(want) != 10 || !slices.Contains(rows, *b.ChangesetID+" true false true false") {
 		t.Errorf("%d changesets checked by what each does, of %d; the batch's row missing from %d", checked, len(want), len(rows))
 	}
 }
