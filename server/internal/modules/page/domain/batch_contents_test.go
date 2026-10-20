@@ -420,9 +420,11 @@ func TestBatchPlanChecksTheUnit(t *testing.T) {
 // without update_links left out, one back where it was, one deleted; one
 // created among them before as created; the nodes moved without
 // update_links, frozen (M9/P3 review B-M1), with their moves merged (review
-// B1-N1); and the nodes created after
-// each node's last rename or move, each page of a write's path it lacked
-// (M9/P3 review B1-M1).
+// B1-N1); and the nodes created under each node after its last rename or
+// move, as the window's last tree holds them, each page of a write's path
+// it lacked (M9/P3 review B1-M1): one created between two of its moves
+// not among them (review B2-N2), nor one created elsewhere (fix check 2,
+// A's F2-1).
 func TestBatchPlanMovesBetween(t *testing.T) {
 	nb := newNotebook("A.md", "B.md", "F.md", "F/X.md", "W.md")
 	p, ids := planOf(t, nb,
@@ -434,16 +436,19 @@ func TestBatchPlanMovesBetween(t *testing.T) {
 		moveOp("N.md", "A2/N.md"), // 4: and moved
 		moveOp("B.md", "B2.md"),   // 5
 		moveOp("B2.md", "B.md"),   // 6: back
-		moveOp("X.md", "X2.md"),   // 7: X again
-		deleteOp("W.md"),          // 8
-		writeOp("H/I.md", "i"),    // 9: H and I created
+		writeOp("X/Y.md", "y"),    // 7: Y created under X, between its moves
+		moveOp("X.md", "X2.md"),   // 8: X again
+		deleteOp("W.md"),          // 9
+		writeOp("X2/H/I.md", "i"), // 10: H and I created under X
+		writeOp("G/J.md", "j"),    // 11: J under F
+		writeOp("K.md", "k"),      // 12: K under none
 	)
 	if p.Failed != nil {
 		t.Fatal(p.Failed)
 	}
 	f, x, a2 := nb.id(t, "F.md"), nb.id(t, "F/X.md"), nb.id(t, "A.md")
 	n := ids[3][0]
-	got := p.MovesBetween(-1, 8)
+	got := p.MovesBetween(-1, 9)
 	want := []struct {
 		id           uuid.UUID
 		beforeParent *uuid.UUID
@@ -465,43 +470,45 @@ func TestBatchPlanMovesBetween(t *testing.T) {
 			t.Errorf("change %d = %+v %+v -> %+v, want %+v", i, c.NodeID, *c.Before, *c.After, w)
 		}
 	}
-	if got := p.MovesBetween(3, 8); len(got) != 2 || got[0].NodeID != n || got[0].Before.Name != "N" || got[1].NodeID != x ||
+	if got := p.MovesBetween(3, 9); len(got) != 2 || got[0].NodeID != n || got[0].Before.Name != "N" || got[1].NodeID != x ||
 		got[1].Before.Name != "X" || !domain.SameParent(got[1].Before.ParentID, nil) {
-		t.Errorf("MovesBetween(3, 8) = %+v", got)
+		t.Errorf("MovesBetween(3, 9) = %+v", got)
 	}
 	if got := p.MovesBetween(-1, 0); len(got) != 1 || got[0].NodeID != f {
 		t.Errorf("MovesBetween(-1, 0) = %+v", got)
 	}
-	if got := p.FrozenBetween(-1, 8); !slices.Equal(got, []uuid.UUID{a2}) {
-		t.Errorf("FrozenBetween(-1, 8) = %v, want A, moved without update_links", got)
+	if got := p.FrozenBetween(-1, 9); !slices.Equal(got, []uuid.UUID{a2}) {
+		t.Errorf("FrozenBetween(-1, 9) = %v, want A, moved without update_links", got)
 	}
-	if got := p.FrozenBetween(2, 8); len(got) != 0 {
-		t.Errorf("FrozenBetween(2, 8) = %v, want none after A's move", got)
+	if got := p.FrozenBetween(2, 9); len(got) != 0 {
+		t.Errorf("FrozenBetween(2, 9) = %v, want none after A's move", got)
 	}
 	if got := p.FrozenBetween(-1, 1); len(got) != 0 {
 		t.Errorf("FrozenBetween(-1, 1) = %v, want none before A's move", got)
 	}
-	if got := p.FrozenMovesBetween(-1, 8); len(got) != 1 || got[0].NodeID != a2 || got[0].Before.Name != "A" ||
+	if got := p.FrozenMovesBetween(-1, 9); len(got) != 1 || got[0].NodeID != a2 || got[0].Before.Name != "A" ||
 		got[0].After.Name != "A2" || !domain.SameParent(got[0].Before.ParentID, nil) || !domain.SameParent(got[0].After.ParentID, nil) {
-		t.Errorf("FrozenMovesBetween(-1, 8) = %+v, want A's rename to A2 alone", got)
+		t.Errorf("FrozenMovesBetween(-1, 9) = %+v, want A's rename to A2 alone", got)
 	}
-	if got := p.FrozenMovesBetween(2, 8); len(got) != 0 {
-		t.Errorf("FrozenMovesBetween(2, 8) = %+v, want none after A's move", got)
+	if got := p.FrozenMovesBetween(2, 9); len(got) != 0 {
+		t.Errorf("FrozenMovesBetween(2, 9) = %+v, want none after A's move", got)
 	}
-	hi := slices.SortedFunc(slices.Values(ids[9]), uuid.UUID.Compare)
-	all := slices.SortedFunc(slices.Values(append([]uuid.UUID{n}, hi...)), uuid.UUID.Compare)
-	b := nb.id(t, "B.md")
+	y, j := ids[7][1], ids[11][1]
+	hi := slices.SortedFunc(slices.Values(ids[10][1:]), uuid.UUID.Compare)
 	for _, c := range []struct {
 		k, j int
 		want map[uuid.UUID][]uuid.UUID
 	}{
-		// F, X and B moved before N's creation, X again after it; N moved
-		// after its own creation; A's move without update_links none.
-		{-1, 9, map[uuid.UUID][]uuid.UUID{f: all, b: hi, x: hi, n: hi}},
-		{-1, 3, map[uuid.UUID][]uuid.UUID{f: {n}, x: {n}}},
-		{-1, 2, map[uuid.UUID][]uuid.UUID{}},
-		{3, 9, map[uuid.UUID][]uuid.UUID{b: hi, x: hi, n: hi}},
-		{8, 9, map[uuid.UUID][]uuid.UUID{}},
+		// F renamed before J's creation under it; X moved before Y's
+		// creation under it and again after it, before H's and I's; N
+		// created, then moved, B renamed, none created under them; A's
+		// move without update_links none; K under none of them.
+		{-1, 12, map[uuid.UUID][]uuid.UUID{f: {j}, x: hi}},
+		{-1, 7, map[uuid.UUID][]uuid.UUID{x: {y}}},
+		{-1, 8, map[uuid.UUID][]uuid.UUID{}},
+		{-1, 3, map[uuid.UUID][]uuid.UUID{}},
+		{3, 12, map[uuid.UUID][]uuid.UUID{x: hi}},
+		{9, 12, map[uuid.UUID][]uuid.UUID{}},
 	} {
 		if got := p.CreatedAfterMoves(c.k, c.j); !maps.EqualFunc(got, c.want, slices.Equal) {
 			t.Errorf("CreatedAfterMoves(%d, %d) = %v, want %v", c.k, c.j, got, c.want)

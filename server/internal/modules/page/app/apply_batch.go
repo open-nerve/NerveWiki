@@ -837,18 +837,24 @@ func (r *planLinks) Rewrite(id uuid.UUID, content string, before domain.LinksBef
 }
 
 // readsAt is the links' reads of the plan's tree after the op until: one
-// for the ops since the last op up to until that changes the tree, a move,
-// a delete or a write that creates (M9/P3 review B-N2). Only the last
-// tree's are kept: the plan asks for its trees in their ops' order, the
-// reads' check and then the contents' pass, so a tree's reads go once it
-// has passed it, and a tree asked for again is read again. A batch of many
-// renames of a large folder holds one tree's subtrees and reaches, not one
-// a rename (M9/P3 fix round 3: 50 renames of a folder of 100,000, each with
-// a content op after it, held some 1.1 to 1.45 GB).
+// for the ops since the last op up to until that changes a node's place
+// or presence, a move or a delete (M9/P3 review B-N2). A creation changes
+// nothing those reads hold (M9/P3 fix check 2, A's F2-1): the subtree of a
+// node the ops since renamed or moved, read before it, lacks only nodes
+// created after the node's last such op, which its spread leaves out
+// anyway (CreatedAfterMoves); a creation before a later move is read
+// anew with that move. Only the last tree's are kept: the plan asks for
+// its trees in their ops' order, the reads' check and then the contents'
+// pass, so a tree's reads go once it has passed it, and a tree asked for
+// again is read again. A batch of many renames of a large folder holds one
+// tree's subtrees and reaches, not one a rename (M9/P3 fix round 3: 50
+// renames of a folder of 100,000, each with a content op after it, held
+// some 1.1 to 1.45 GB); one rename and many creations between its content
+// ops, one (fix round 5: 49 creations, 3.75 s and 15.2 GB of plan).
 func (a *batchAttempt) readsAt(until int) *TreeReads {
 	made := -1
 	for k := until; k >= 0; k-- {
-		if s := a.steps[k]; s.Kind == domain.OpKindMove || s.Kind == domain.OpKindDelete || len(a.plan.Steps[k].Created) > 0 {
+		if s := a.steps[k]; s.Kind == domain.OpKindMove || s.Kind == domain.OpKindDelete {
 			made = k
 			break
 		}

@@ -632,12 +632,16 @@ func (p *BatchPlan) FrozenBetween(k, j int) []uuid.UUID {
 
 // CreatedAfterMoves is, for each node an op after k up to j renames or
 // moves with update_links, the nodes the ops after the last such op of it,
-// up to j, create, in id order; a node with none is not in it. The
-// rewrites that follow it reach its subtree as that op left it, these
-// nodes out of it: no link reached them then, and their creation only
-// resolves links again (M9 design 4.11; M9/P3 review B1-M1). A node
-// created before the op, and one created after but renamed or moved
-// itself, is reached as the op would reach it (3.14.4 (1a); 3.14.3's 17).
+// up to j, create under it, as the tree after j holds them, in id order; a
+// node with none is not in it. The rewrites that follow it reach its
+// subtree as that op left it, these nodes out of it: no link reached them
+// then, and their creation only resolves links again (M9 design 4.11;
+// M9/P3 review B1-M1). A node created before the op, and one created
+// after but renamed or moved itself, is reached as the op would reach it
+// (3.14.4 (1a); 3.14.3's 17). Those created elsewhere are not in the
+// subtree the rewrites read, on that tree, and are not listed: the reach
+// of the same changes, keyed by them, serves the content ops between
+// creations elsewhere (M9/P3 fix check 2, A's F2-1).
 func (p *BatchPlan) CreatedAfterMoves(k, j int) map[uuid.UUID][]uuid.UUID {
 	last := map[uuid.UUID]int{}
 	var created []treeEdit
@@ -654,9 +658,13 @@ func (p *BatchPlan) CreatedAfterMoves(k, j int) map[uuid.UUID][]uuid.UUID {
 		}
 	}
 	out := map[uuid.UUID][]uuid.UUID{}
+	if len(last) == 0 || len(created) == 0 {
+		return out
+	}
+	tree := p.tree.view(j)
 	for id, op := range last {
 		for _, c := range created {
-			if c.op > op {
+			if c.op > op && tree.under(c.after.ID, id) {
 				out[id] = append(out[id], c.after.ID)
 			}
 		}

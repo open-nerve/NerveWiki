@@ -277,9 +277,9 @@ type LinksMoved struct {
 
 // TreeReads is what the links read of one tree of a batch's plan, kept
 // for the calls on that tree: the content ops between two of the batch's
-// ops that change the tree share one, so that a folder moved before them is
-// read once, not once an op (M9/P3 review B-N2). Held is the links' own,
-// opaque here.
+// moves or deletes share one, the creations between them aside, so that a
+// folder moved before them is read once, not once an op (M9/P3 review
+// B-N2; fix check 2, A's F2-1). Held is the links' own, opaque here.
 type TreeReads struct {
 	Held any
 }

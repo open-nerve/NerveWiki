@@ -461,12 +461,14 @@ func TestABatchsPlanLeavesTheLinksToTheNodesItFroze(t *testing.T) {
 }
 
 // The links are given, for each node a rename or move with update_links
-// moves, the nodes the batch created after its last such op, in the
-// window they follow a page's links in (M9 design 4.11; M9/P3 review
-// B1-M1): the plan's reach of R, written after A's move and N's creation,
-// and rewrite of Q, edited after them, N after A's; the participant's
-// follow of P, edited before the move, N, M and K after A's; of Q, edited
-// after it, none; the index's pages, those of the whole batch.
+// moves, the nodes the batch created under it after its last such op, in
+// the window they follow a page's links in (M9 design 4.11; M9/P3 review
+// B1-M1): the plan's reach of R, written after A's move and N's creation
+// under it, and rewrite of Q, edited after them, N under A's; the
+// participant's follow of P, edited before the move, N, M and K under A's;
+// of Q, edited after it, none; the index's pages, those of the whole
+// batch. Z, created elsewhere, is none of them (M9/P3 fix check 2, A's
+// F2-1).
 func TestABatchsLinksLeaveOutTheNodesItCreatedAfterAMove(t *testing.T) {
 	f := newFixture()
 	a := f.page("A", nil, 1)
@@ -477,14 +479,14 @@ func TestABatchsLinksLeaveOutTheNodesItCreatedAfterAMove(t *testing.T) {
 	part := &participant{recorder: f.rec}
 	f.partakers = []app.Participant{part}
 	links := &fakeLinks{recorder: f.rec, reached: true}
-	out, err := f.applyBatch(links, editOp("P.md", "p", "p2"), moveOp("A.md", "B.md"), writeOp("N.md", "n"), editOp("Q.md", "q", "q2"),
-		writeOn("R.md", "[[A]] r", tokenOf(r.ID, 1)), writeOp("M/K.md", "k"))
+	out, err := f.applyBatch(links, editOp("P.md", "p", "p2"), moveOp("A.md", "B.md"), writeOp("Z.md", "z"), writeOp("B/N.md", "n"),
+		editOp("Q.md", "q", "q2"), writeOn("R.md", "[[A]] r", tokenOf(r.ID, 1)), writeOp("B/M/K.md", "k"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	n := out.Ops[2].Node.ID
+	n := out.Ops[3].Node.ID
 	var nmk []uuid.UUID
-	for _, c := range out.Ops[5].Created {
+	for _, c := range out.Ops[6].Created {
 		nmk = append(nmk, c.Node.ID)
 	}
 	nmk = slices.SortedFunc(slices.Values(append(nmk, n)), uuid.UUID.Compare)
@@ -505,6 +507,36 @@ func TestABatchsLinksLeaveOutTheNodesItCreatedAfterAMove(t *testing.T) {
 		!eq(b.Written[q.ID].CreatedAfter, map[uuid.UUID][]uuid.UUID{}) {
 		t.Errorf("the participants were given %v, P's %v, Q's %v; want N, M and K after A, P's those, Q's none", b.CreatedAfter,
 			b.Written[p.ID].CreatedAfter, b.Written[q.ID].CreatedAfter)
+	}
+}
+
+// The plan's links share one read of its tree across the creations
+// between the content ops after a rename (M9/P3 fix check 2, A's F2-1: a
+// creation changes nothing those reads hold; 49 of them made the reads,
+// and the reach, anew for each write after the rename of a folder of
+// 100,000, 3.75 s and 15.2 GB): A renamed, then N1, P written, N2, Q
+// edited, N3 and R written, Ns created at the root: the reads' check and
+// the contents' pass are given one read, and none of the nodes created
+// elsewhere, so that one reach serves them.
+func TestABatchsPlanReadsATreeAcrossItsCreations(t *testing.T) {
+	f := newFixture()
+	a := f.page("A", nil, 1)
+	for i, name := range []string{"P", "Q", "R"} {
+		f.content(f.page(name, nil, float64(i+2)).ID, "[[A]] x", 1)
+	}
+	links := &fakeLinks{recorder: f.rec, reached: true}
+	if _, err := f.applyBatch(links, moveOp("A.md", "B.md"), writeOp("N1.md", "n"), writeOp("P.md", "[[A]] x"), writeOp("N2.md", "n"),
+		editOp("Q.md", "x", "q"), writeOp("N3.md", "n"), writeOp("R.md", "[[A]] x")); err != nil {
+		t.Fatal(err)
+	}
+	r := links.reads
+	if len(r) != 5 || r[0] == nil || slices.ContainsFunc(r, func(x *app.TreeReads) bool { return x != r[0] }) {
+		t.Errorf("Reached and Rewrite were given the reads %v; want P's and R's reach, then P's, Q's and R's rewrites one", r)
+	}
+	for call, created := range links.created {
+		if len(created) != 0 {
+			t.Errorf("%s was given %v created after %s's rename; want none", call, created, a.ID)
+		}
 	}
 }
 

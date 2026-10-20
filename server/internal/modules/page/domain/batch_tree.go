@@ -230,6 +230,19 @@ func (v *treeView) ancestors(id uuid.UUID) []Node {
 	return out
 }
 
+// under reports whether id's node is alive under anc's node, at any depth,
+// in the view.
+func (v *treeView) under(id, anc uuid.UUID) bool {
+	n, ok := v.node(id)
+	for ok && n.ParentID != nil {
+		if *n.ParentID == anc {
+			return true
+		}
+		n, ok = v.node(*n.ParentID)
+	}
+	return false
+}
+
 // line is the ancestors a child of parent has, from the root down to the
 // parent itself: none at the root, as lineOf reads them.
 func (v *treeView) line(parent *uuid.UUID) []Ancestor {
