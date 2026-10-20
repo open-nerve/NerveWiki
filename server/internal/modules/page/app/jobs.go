@@ -279,7 +279,7 @@ type revertGroup struct {
 // order: each place one node; each deletion its top's subtree alive now;
 // each restore its group in pre-order, a node a step; each write back a
 // page. A schedule whose steps a batch must not split, which M8's
-// batches would, is ErrRevertUnordered, nothing written (see unsplit).
+// batches would, is errUnsplit, nothing written (see unsplit).
 func (w *JobWrites) PlanRevert(ctx context.Context, spec JobSpec, changesetID uuid.UUID) (JobPlan, error) {
 	unit := revertUnit(spec, changesetID)
 	if err := w.writer.Allowed(ctx, unit); err != nil {
@@ -300,10 +300,18 @@ func (w *JobWrites) PlanRevert(ctx context.Context, spec JobSpec, changesetID uu
 		return JobPlan{}, err
 	}
 	if unsplit(checked) {
-		return JobPlan{}, domain.ErrRevertUnordered
+		return JobPlan{}, errUnsplit
 	}
 	return revertSteps(c.ID, checked), nil
 }
+
+// errUnsplit is S2's temporary refusal of a background revert whose steps
+// its batches would split (unsplit), until S3's segments: no defect of the
+// schedule, though ErrRevertUnordered is what errors.Is finds in it, the
+// job's failure, internal, as S1's request's was (M9/P3 S2 fix round 1,
+// A-N4).
+var errUnsplit = fmt.Errorf("page: a background revert of steps its batches would split, refused until M9/P3 S3: %w",
+	domain.ErrRevertUnordered)
 
 // unsplit reports whether the schedule checked has steps no batch may
 // split (M9/P3 design section 0, S2's temporary refusal, which S3's

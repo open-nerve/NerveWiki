@@ -926,9 +926,10 @@ func TestARevertJobsBatchErrors(t *testing.T) {
 // Until S3 cuts a background revert's batches only between segments, a
 // job refuses a schedule whose steps a batch must not split (M9/P3 design
 // section 0): a step aside, a page restored then written back, a page
-// written back then deleted. Its plan is ErrRevertUnordered, the job's
-// internal failure, and nothing is written; a request reverts each, its
-// log line counting its steps, those aside too (M9/P3 design 3.21.3).
+// written back then deleted. Its plan is ErrRevertUnordered, its text
+// S2's refusal until S3, the job's internal failure, and nothing is
+// written; a request reverts each, its log line counting its steps, those
+// aside too (M9/P3 design 3.21.3).
 func TestARevertJobRefusesTheStepsItsBatchesWouldSplit(t *testing.T) {
 	for _, tt := range []struct {
 		name  string
@@ -965,8 +966,9 @@ func TestARevertJobRefusesTheStepsItsBatchesWouldSplit(t *testing.T) {
 			f.grant(domain.ActionRevert)
 			id := tt.build(f)
 			calls := len(f.rec.calls)
-			if _, err := f.jobs(now(), 0, 0).PlanRevert(f.asJob(), f.jobSpec(), id); !errors.Is(err, domain.ErrRevertUnordered) {
-				t.Errorf("PlanRevert = %v, want ErrRevertUnordered", err)
+			if _, err := f.jobs(now(), 0, 0).PlanRevert(f.asJob(), f.jobSpec(), id); !errors.Is(err, domain.ErrRevertUnordered) ||
+				!strings.Contains(err.Error(), "steps its batches would split, refused until M9/P3 S3") {
+				t.Errorf("PlanRevert = %v, want ErrRevertUnordered, told as S2's refusal until S3", err)
 			}
 			if slices.ContainsFunc(f.rec.calls[calls:], func(c string) bool { return strings.HasSuffix(c, " in tx") }) {
 				t.Errorf("the refused plan wrote: %v", f.rec.calls[calls:])
