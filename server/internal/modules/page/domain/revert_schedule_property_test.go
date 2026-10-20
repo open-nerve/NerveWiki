@@ -26,7 +26,8 @@ import (
 // schedule() moves: each step the plan answers is done on the model in
 // turn, checked as a store would check it (its parent alive, no cycle,
 // its name free, a restore's group and states as its deletion left them,
-// a write back on the page's revision, of the version's content) and the
+// a write back on the page's revision, of the version's content, a
+// deletion's subtree the one the step keeps, M9/P3 design 3.22.1) and the
 // model counted no deeper than MaxDepth after it, an attachment a level
 // more (T5), an attachment's step aside keeping its extension; each node
 // renamed aside, moved aside and placed at most once each, its place
@@ -535,6 +536,14 @@ func (p *propTrial) batch() (t0, now propModel, items []domain.ChangesetItem, ve
 	return t0, m, items, versions
 }
 
+// sameIDs reports whether a and b hold the same ids, in any order.
+func sameIDs(a, b []uuid.UUID) bool {
+	a, b = slices.Clone(a), slices.Clone(b)
+	slices.SortFunc(a, uuid.UUID.Compare)
+	slices.SortFunc(b, uuid.UUID.Compare)
+	return slices.Equal(a, b)
+}
+
 func pointers(ids []uuid.UUID) []*uuid.UUID {
 	out := make([]*uuid.UUID, len(ids))
 	for i, id := range ids {
@@ -754,6 +763,9 @@ func (p *propTrial) judge(pre, m propModel, plan domain.RevertPlan, at time.Time
 				return nil, fmt.Sprintf("step %d: a deletion of a node not alive", i)
 			}
 			sub := p.subtree(m, op.NodeID)
+			if len(op.Subtree) == 0 || op.Subtree[0] != op.NodeID || !sameIDs(op.Subtree, sub) {
+				return nil, fmt.Sprintf("step %d: a deletion keeping the subtree %v, its moment's %v", i, op.Subtree, sub)
+			}
 			if slices.ContainsFunc(sub, func(id uuid.UUID) bool { return written[id] }) {
 				counts.writeThenDelete++
 			}

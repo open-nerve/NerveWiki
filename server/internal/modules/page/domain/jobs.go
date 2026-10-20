@@ -28,14 +28,16 @@ import (
 // background revert can undo any import (M8/P4 design 2.2 (a)).
 const MaxJobItems = 60_000
 
-// JobStep is a step of a background job (M8/P4 design 3.3), a write no
-// batch splits: a restore's node; a revert's place of a node, deletion of
-// a top's subtree, node of a group it restores or page it writes back.
-// Nodes are the nodes it writes, a write back's 1; Bytes the content it
-// parses.
+// JobStep is a step of a background job (M8/P4 design 3.3; M9/P3 design
+// 3.22), a write no batch splits: a restore's node; a revert's place of a
+// node or step aside, deletion of a top's subtree, node of a group it
+// restores or page it writes back. Nodes are the nodes it writes, a write
+// back's 1; Bytes the content it parses; Joined that the next step is in
+// its batch too: a segment of steps no batch splits.
 type JobStep struct {
-	Nodes int
-	Bytes int64
+	Nodes  int
+	Bytes  int64
+	Joined bool
 }
 
 // ShapeNode is a node of a trash item's group as a background restore's

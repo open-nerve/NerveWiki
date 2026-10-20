@@ -68,11 +68,13 @@ type JobPlan interface {
 	Total() int
 }
 
-// JobStep is a step of a background job: the nodes it writes and the
-// content's bytes it parses.
+// JobStep is a step of a background job: the nodes it writes, the
+// content's bytes it parses, and whether the next step is in its batch
+// too (M9/P3 design 3.22): a revert's segment, steps no batch splits.
 type JobStep struct {
-	Nodes int
-	Bytes int64
+	Nodes  int
+	Bytes  int64
+	Joined bool
 }
 
 // BatchDone is what a background job's batch did: the nodes it wrote; a

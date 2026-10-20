@@ -382,14 +382,18 @@ func (s *revertSim) place(kind RevertOpKind, id uuid.UUID, to TreeState) RevertO
 	return op
 }
 
-// delete is the deletion of the subtree of top, done on s.
+// delete is the deletion of the subtree of top, done on s: the step keeps
+// the subtree as it is at its moment, top first, the rest by id (M9/P3
+// design 3.22.1), the nodes a background revert's step deletes.
 func (s *revertSim) delete(top uuid.UUID) RevertOp {
-	for _, id := range s.subtree(top) {
+	sub := s.subtree(top)
+	slices.SortFunc(sub[1:], uuid.UUID.Compare)
+	for _, id := range sub {
 		n := s.nodes[id]
 		n.alive = false
 		s.set(id, n)
 	}
-	return RevertOp{Kind: RevertDelete, NodeID: top}
+	return RevertOp{Kind: RevertDelete, NodeID: top, Subtree: sub}
 }
 
 // restore is the restore of the trash item of top, done on s: each member
