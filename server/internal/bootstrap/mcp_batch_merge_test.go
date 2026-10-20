@@ -29,18 +29,19 @@ func (tm acmeTeam) versionsIn(t *testing.T, id string) []string {
 // Each kind of a batch's merges holds on the database (M9/P3 design
 // 3.14.2): through MCP's batch, its changeset's items and versions, read
 // back. A page created and moved is one item of its creation where it
-// ended, one version; created and edited, one version of the edit; renamed
-// and written, or written and renamed, one item and one version on the
-// revision before the batch; written and deleted, the deletion's item at
-// the batch's revision. A page's descendant deleted, then the page, is one
-// deletion, its root the page, the first op merged into the second. The
-// deferred rewrite of a page the batch wrote updates its version, two past
-// the batch's base; of one it created, its version 2, its item 1. A page
-// renamed and back is no item and, alone, no change; with another page's
-// edit, the edit alone, no reorder in the history; with its own edit
-// between, the edit, its index of its new content. A write of the bytes a
-// page holds on a stale version changes nothing, as a write alone. The
-// invariants hold after each, and no line is logged at ERROR.
+// ended, one version, the write's created at its path after the batch, as a
+// folder's created and renamed; created and edited, one version of the
+// edit; renamed and written, or written and renamed, one item and one
+// version on the revision before the batch; written and deleted, the
+// deletion's item at the batch's revision. A page's descendant deleted,
+// then the page, is one deletion, its root the page, the first op merged
+// into the second. The deferred rewrite of a page the batch wrote updates
+// its version, two past the batch's base; of one it created, its version 2,
+// its item 1. A page renamed and back is no item and, alone, no change;
+// with another page's edit, the edit alone, no reorder in the history; with
+// its own edit between, the edit, its index of its new content. A write of
+// the bytes a page holds on a stale version changes nothing, as a write
+// alone. The invariants hold after each, and no line is logged at ERROR.
 func TestTheMergesOfABatchHoldOnTheDatabase(t *testing.T) {
 	tm, logs := newAcmeTeamLogged(t)
 	agent := tm.agent(t, "alice", "")
@@ -82,6 +83,20 @@ func TestTheMergesOfABatchHoldOnTheDatabase(t *testing.T) {
 		}
 		if b.Results[0].Path != "F/Y.md" || b.Results[1].Path != "F/Y.md" {
 			t.Errorf("the results' paths are %q and %q, want F/Y.md", b.Results[0].Path, b.Results[1].Path)
+		}
+		if c := b.Results[0].Created; len(c) != 1 || c[0].Path != "F/Y.md" || c[0].NodeID != x {
+			t.Errorf("the write created %+v, want X at F/Y.md, where the batch left it (M9/P3 review C-M1)", c)
+		}
+	})
+	each("a folder created, then renamed", nil, func(t *testing.T, _ map[string]string, m *mcpApp) {
+		b := m.batchDone(t, opWrite("N/X.md", "x"), opMove("N.md", "M.md"))
+		var paths []string
+		for _, c := range b.Results[0].Created {
+			paths = append(paths, c.Path)
+		}
+		if !slices.Equal(paths, []string{"M.md", "M/X.md"}) || b.Results[0].Path != "M/X.md" || b.Results[1].Path != "M.md" {
+			t.Errorf("the write created %v at %s, the move %s; want M.md and M/X.md, where the batch left them", paths,
+				b.Results[0].Path, b.Results[1].Path)
 		}
 	})
 	each("created, then edited", nil, func(t *testing.T, _ map[string]string, m *mcpApp) {
