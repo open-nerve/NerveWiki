@@ -1,16 +1,19 @@
 import { displayNameOf, emailFor } from "../../fixtures/auth";
 import { expectIndexedLinks } from "../../fixtures/assert/links";
-import { expectChangesetOf, expectNoAsideNames } from "../../fixtures/assert/page";
+import { expectChangesetOf, expectNoAsideNames, revertsOf } from "../../fixtures/assert/page";
 import { joinAs } from "../../fixtures/invitations";
 import { errorOf, mcpClient, resultOf } from "../../fixtures/mcp";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, openSession, readContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
-import { newTeam } from "../../fixtures/workspaces";
+import { changesetPath, revertDialog, revertWith, treeTitles } from "../../fixtures/wiki-pages";
+import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 
-// MC5, an agent's batch (M9 design 9; M9/P3 design 4.2): many writes as one
-// change with a message, the links following its rename once, and a batch
-// refused whole at the op whose page a teammate is editing.
+// MC5, an agent's batch (M9 design 9; M9/P3 design 4.2, 4.3): many writes as
+// one change with a message, the links following its rename once, and a
+// batch refused whole at the op whose page a teammate is editing; and the
+// web's revert of a batch that swapped two names, in rounds, a name aside on
+// the way that none of the notebook keeps.
 
 /** An op's result in batch's answer, as the tool's structuredContent has it. */
 interface OpResult {
@@ -119,4 +122,72 @@ test("MC5 (MCP): an agent ingests two papers in one batch with a message, one ch
   expect(await db.query(`SELECT id FROM nodes WHERE notebook_id = $1 AND name = 'Paper C'`, [notebook.id])).toEqual([]);
   expect(await changesets()).toBe(before);
   await expectNoAsideNames(db, notebook.id);
+});
+
+test("MC5 (page): the web reverts an agent's batch that swapped two pages' names and renamed a page before creating another of its name, the tree, the contents and the links back, no name of the revert left", async ({
+  api,
+  db,
+  nervewiki,
+  signedInPage,
+}, testInfo) => {
+  const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const notebook = await createNotebook(api, pat, workspace.slug, "Research");
+  const notes = await createPage(api, pat, notebook.id, "Notes", null, "notes\n");
+  const glossary = await createPage(api, pat, notebook.id, "Glossary", null, "terms\n");
+  const plan = await createPage(api, pat, notebook.id, "Plan", null, "plan v1\n");
+  const index = await createPage(api, pat, notebook.id, "Index", null, "[[Notes]] [[Glossary]] [[Plan]]\n");
+  const pages = [notes, glossary, plan, index];
+  const before = await Promise.all(pages.map(async (p) => (await readContent(api, pat, p.id)).content));
+  const agent = await mcpClient(nervewiki.baseURL, pat, { notebook: notebook.id });
+
+  const reorganized = resultOf<Batched>(
+    await agent.call("batch", {
+      message: "Reorganize",
+      ops: [
+        { op: "move", from: "Notes.md", to: "Swap.md" },
+        { op: "move", from: "Glossary.md", to: "Notes.md" },
+        { op: "move", from: "Swap.md", to: "Glossary.md" },
+        { op: "move", from: "Plan.md", to: "Plan 2025.md" },
+        { op: "write", path: "Plan.md", content: "plan v2\n" },
+      ],
+    }),
+    "the batch"
+  );
+  const batch = String(reorganized.changeset_id);
+  const made = reorganized.results[4]?.node_id ?? "";
+  expect((await readContent(api, pat, index.id)).content).toBe("[[Glossary]] [[Notes]] [[Plan 2025]]\n");
+
+  const page = await signedInPage(tokens);
+  const main = page.getByRole("main");
+  await page.goto(changesetPath(workspace.slug, notebook.id, batch));
+  await main.getByRole("button", { name: "Undo change", exact: true }).click();
+  await expect(revertDialog(page)).toContainText(
+    "Links written since to the new names or places are not changed back."
+  );
+  const undone = await revertWith(page, batch);
+  expect(undone.status()).toBe(200);
+  const { changeset_id: revert } = (await undone.json()) as { changeset_id: string };
+  await expect(main.getByRole("status")).toHaveText("Undone. See the undo");
+
+  // Each by id, the page the batch made last, in the trash.
+  const names = await db.query<{ name: string; trashed: boolean }>(
+    "SELECT n.name, n.deleted_at IS NOT NULL AS trashed FROM unnest($1::uuid[]) WITH ORDINALITY AS u(id, at) JOIN nodes n ON n.id = u.id ORDER BY u.at",
+    [[...pages.map((p) => p.id), made]]
+  );
+  expect(names.map((n) => [n.name, n.trashed])).toEqual([
+    ["Notes", false],
+    ["Glossary", false],
+    ["Plan", false],
+    ["Index", false],
+    ["Plan", true],
+  ]);
+  expect(await Promise.all(pages.map(async (p) => (await readContent(api, pat, p.id)).content))).toEqual(before);
+  await expectIndexedLinks(db, index.id, [
+    { kind: "wikilink", property: null, target: "Notes", resolved: notes.id },
+    { kind: "wikilink", property: null, target: "Glossary", resolved: glossary.id },
+    { kind: "wikilink", property: null, target: "Plan", resolved: plan.id },
+  ]);
+  expect(await revertsOf(db, batch)).toEqual([revert]);
+  await expectNoAsideNames(db, notebook.id);
+  await expect.poll(() => treeTitles(page, "Research")).toEqual(["Notes", "Glossary", "Plan", "Index"]);
 });
