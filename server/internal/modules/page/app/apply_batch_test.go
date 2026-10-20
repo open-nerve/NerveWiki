@@ -440,6 +440,29 @@ func TestABatchsPlanHoldsOneTreesReads(t *testing.T) {
 	}
 }
 
+// A delete between two content ops renews the plan's reads of the tree,
+// as a move does (M9/P3 fix check 3, A's F3-1): a delete inside a renamed
+// folder takes a node out of its subtree, which a reach made before still
+// held, and a write after it read its page whole for a link the delete
+// leaves dangling. F renamed G, then P edited, G/X deleted, Q edited: P's
+// rewrite and Q's are given a read each.
+func TestABatchsPlanReadsATreeAgainAfterADelete(t *testing.T) {
+	f := newFixture()
+	folder := f.page("F", nil, 1)
+	f.page("X", &folder.ID, 1)
+	for i, name := range []string{"P", "Q"} {
+		f.content(f.page(name, nil, float64(i+2)).ID, "[[F/X]] x", 1)
+	}
+	links := &fakeLinks{recorder: f.rec}
+	if _, err := f.applyBatch(links, moveOp("F.md", "G.md"), editOp("P.md", "x", "p"), deleteOp("G/X.md", false),
+		editOp("Q.md", "x", "q")); err != nil {
+		t.Fatal(err)
+	}
+	if r := links.reads; len(r) != 2 || r[0] == nil || r[1] == nil || r[1] == r[0] {
+		t.Errorf("the rewrites were given the reads %v; want P's one, Q's another", r)
+	}
+}
+
 // The plan's links are given the nodes the ops before frozen, moved with
 // update_links false, whose links they leave (M9/P3 review B-M1): the
 // reach of a page written after the moves, and the rewrite of one edited
