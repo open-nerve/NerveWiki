@@ -357,6 +357,19 @@ test.each<[string, TransferJob, string, string[]]>([
     "Failed · The purge took part of the change: it can no longer be undone.",
     ["What it undid stays. Nodes not undone: 1,201. To go back to before, undo this undo in the history."],
   ],
+  [
+    "a revert failed as a part of it that had to be done at once was more than a batch",
+    revertOf(1, {
+      state: "failed",
+      report: reportOf("revert_too_large", { put_back: 1 }),
+      progress: { done: 1, total: 105 },
+    }),
+    "Failed · Part of the undo had to be done at once and is more than one batch can write: the history or links it brings back. What was undone before it stays.",
+    [
+      "What it undid stays. Nodes not undone: 104. To go back to before, undo this undo in the history; then the change can be undone whole again.",
+      "If it stopped in the middle of restoring a group, restoring the items it left in the trash one by one completes that group: do not undo this undo first.",
+    ],
+  ],
 ])("%s says why, and what became of what it did, what is left and what to do", async (_, job, state, says) => {
   const user = userEvent.setup();
   const server = jobsServer({ jobs: [job] });

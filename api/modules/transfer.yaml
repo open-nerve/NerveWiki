@@ -866,8 +866,10 @@ components:
         listing them); changeset_trimmed (the purge took part of the
         changeset, a version it writes back or restores, or a trash item it
         restores); page_locked (an edit session holds a page it was about to
-        delete or write back, the report's lock). What a job wrote before
-        it failed is kept.
+        delete or write back, the report's lock); revert_too_large (one of
+        its segments, steps that must be in one batch, holds more history
+        or links than one batch writes). What a job wrote before it failed
+        is kept.
       type: string
       enum:
         [
@@ -889,6 +891,7 @@ components:
           revert_conflict,
           changeset_trimmed,
           page_locked,
+          revert_too_large,
         ]
     TransferCounts:
       description: >-

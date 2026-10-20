@@ -20,7 +20,7 @@ type Report = NonNullable<TransferJob["report"]>;
 /** A count a report shows, each with a text of its own. */
 type ShownCount = keyof Report["counts"];
 
-/** The text of each failure's code (M7/P5 design 4.4, P6 design 3.8; M8/P4 design 3.9). */
+/** The text of each failure's code (M7/P5 design 4.4, P6 design 3.8; M8/P4 design 3.9; M9/P3 design 3.25). */
 const failures: Record<TransferFailure, PlainKey> = {
   interrupted: "transfer.failure.interrupted",
   timeout: "transfer.failure.timeout",
@@ -40,6 +40,7 @@ const failures: Record<TransferFailure, PlainKey> = {
   revert_conflict: "transfer.failure.revert_conflict",
   changeset_trimmed: "transfer.failure.changeset_trimmed",
   page_locked: "transfer.failure.page_locked",
+  revert_too_large: "transfer.failure.revert_too_large",
 };
 
 /**

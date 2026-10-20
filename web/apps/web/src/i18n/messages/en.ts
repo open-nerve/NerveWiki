@@ -693,6 +693,8 @@ export const en = {
   "transfer.failure.revert_conflict": "What the change touched changed since, or could not go back.",
   "transfer.failure.changeset_trimmed": "The purge took part of the change: it can no longer be undone.",
   "transfer.failure.page_locked": "Someone is editing a page the undo was about to change.",
+  "transfer.failure.revert_too_large":
+    "Part of the undo had to be done at once and is more than one batch can write: the history or links it brings back. What was undone before it stays.",
   "transfer.failure.unknown": "The job failed.",
   "transfer.problemsTitle": "Where the vault differs",
   "transfer.problem.renamed": "{path} is written as {to}: links to its old name do not reach it in Obsidian.",

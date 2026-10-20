@@ -42,12 +42,23 @@ test.each([
   ["revert", "revert_conflict", "What the change touched changed since, or could not go back."],
   ["revert", "changeset_trimmed", "The purge took part of the change: it can no longer be undone."],
   ["revert", "page_locked", "Someone is editing a page the undo was about to change."],
+  [
+    "revert",
+    "revert_too_large",
+    "Part of the undo had to be done at once and is more than one batch can write: the history or links it brings back. What was undone before it stays.",
+  ],
   ["revert", "forbidden", "The person who started it could no longer edit the notebook."],
   ["revert", "tree_changed", "While the undo ran, the pages it was undoing changed."],
   ["revert", "changeset_reverted", "What the undo had done was itself undone while it ran."],
   ["revert", "gremlins", "The job failed."],
 ] as const)("a failure of an %s, %s, says what befell it", (kind, failure, says) => {
   expect(failureText(kind, failure, t)).toBe(says);
+});
+
+test("a revert one of whose parts done at once is past a batch says so in Chinese too", () => {
+  expect(failureText("revert", "revert_too_large", translator("zh-CN"))).toBe(
+    "撤销中必须一次做完的一段太大，一批写不下（它带回的历史或链接）。在它之前撤销的部分留着。"
+  );
 });
 
 test.each([
