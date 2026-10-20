@@ -119,7 +119,13 @@ func titled(renamed bool, more ...restPage) []restPage {
 // a node followed under a node renamed, or moved under another, without
 // update_links after its folder's move or rename: its Markdown link's
 // text, its path before, written as M6 writes it (M9/P3 review B1-N1: its
-// d5 and d5r; d5k).
+// d5 and d5r; d5k); (24) a page created under a folder between two of its
+// renames or moves, whose title's link it takes by neither (the paths
+// equally long, the older page's id the less), the second carrying it to
+// a shorter path: the second's rewrite writes the link back where it led,
+// on a page the batch did not write (K4r: renames, the index's spread) and
+// on one it wrote before (K4tw) (M9/P3 fix check 2, B2-N2: the window of a
+// node is from its last rename or move, not its first).
 func TestTheLinksOfABatchAreThoseOfSeparateCalls(t *testing.T) {
 	tm, logs := newAcmeTeamLogged(t)
 	agent := tm.agent(t, "alice", "")
@@ -210,6 +216,14 @@ func TestTheLinksOfABatchAreThoseOfSeparateCalls(t *testing.T) {
 			{"Top/F/X/D", ""}, {"Top/F/K", ""}, {"G", ""}, {"Q", "[Top/F/X/D](Top/F/X/D.md)"}},
 			[]map[string]any{opMove("Top/F.md", "G/F.md"), opWith(opMove("G/F/X.md", "G/F/K/X.md"), "update_links", false)},
 			map[string]string{"Q.md": "[D](D.md)"}, true},
+		{"24 created between two renames of its folder, a linker not written (K4r)", []restPage{{"A", ""}, {"A/B", ""},
+			{"A/B/C", ""}, {"A/B/C/D", ""}, {"A/B/C/D/N", ""}, {"Top", ""}, {"Top/FFF", ""}, {"Top/FFF/X", ""}, {"Q", "[[N]] q"}},
+			[]map[string]any{opMove("Top/FFF.md", "Top/EEE.md"), opWrite("Top/EEE/N.md", "n"), opMove("Top/EEE.md", "Top/E.md")},
+			map[string]string{"Q.md": "[[A/B/C/D/N]] q"}, true},
+		{"24 created between two moves of its folder, the linker written first (K4tw)", titled(false, restPage{"P", "p"}),
+			[]map[string]any{opEdit("P.md", "p", "p [[N]]"), opMove("Top/F.md", "Top/E.md"), opWrite("Top/E/N.md", "n"),
+				opMove("Top/E.md", "G/E.md")},
+			map[string]string{"P.md": "p [[A/B/C/N]]"}, true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			batch, apart := tm.twins(t, i, tt.pages)
