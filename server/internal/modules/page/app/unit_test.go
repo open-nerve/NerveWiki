@@ -90,10 +90,11 @@ func TestAUnitOfTwoOperationsTellsOnce(t *testing.T) {
 }
 
 // A unit marks its changeset as renaming or moving a node from its merged
-// changes (M9/P3 design 3.20.2), once, before the observers: a node alive
-// before and after it of another name renames, under another parent
-// moves, at the root or under a folder alike; a creation renamed, a
-// reorder and a content's write neither, and mark nothing.
+// changes (M9/P3 design 3.20.2), once, before the search queue, when it
+// queues one, and the observers: a node alive before and after it of
+// another name renames, under another parent moves, at the root or under
+// a folder alike; a creation renamed, a reorder and a content's write
+// neither, and mark nothing.
 func TestAUnitMarksItsChangesetsRenamesAndMoves(t *testing.T) {
 	for _, tt := range []struct {
 		name string
@@ -156,9 +157,11 @@ func TestAUnitMarksItsChangesetsRenamesAndMoves(t *testing.T) {
 				t.Fatal(err)
 			}
 			got, marked := f.store.marked[outcome.ChangesetID]
+			queued, observed := slices.Index(f.rec.calls, "QueueSearch in tx"), slices.Index(f.rec.calls, "PagesChanged in tx")
 			if marks := slices.Index(f.rec.calls, "MarkChangesetMoves in tx"); tt.want == nil && (marked || marks >= 0) ||
-				tt.want != nil && (got != *tt.want || marks < 0 || marks > slices.Index(f.rec.calls, "PagesChanged in tx")) {
-				t.Errorf("marked %+v (%v), calls %v; want %+v, before the observers", got, marked, f.rec.calls, tt.want)
+				tt.want != nil && (got != *tt.want || marks < 0 || queued >= 0 && marks > queued || marks > observed) {
+				t.Errorf("marked %+v (%v), calls %v; want %+v, before the search queue and the observers", got, marked, f.rec.calls,
+					tt.want)
 			}
 		})
 	}
