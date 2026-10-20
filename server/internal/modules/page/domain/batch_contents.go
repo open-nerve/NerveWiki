@@ -20,7 +20,9 @@ import (
 // and hash, the unit's sha256), which is unchanged, as write's own is; a
 // write's content (a write without base_version of the bytes the page holds
 // is still the page's content op, writing nothing); an edit's Replace on
-// the page's content as the ops before it leave it. A write or an edit sees
+// the page's content as the ops before it leave it, unchanged when it
+// leaves the bytes as they were, as edit's own is (M9/P3 review A-M3). A
+// write or an edit sees
 // the page's content rewritten first by rw where a rename or a move between
 // its content ops reaches its links, as separate calls would leave it
 // (M9/P3 review A-I1: a write's bytes too); a creation's content is
@@ -99,7 +101,7 @@ func (p *BatchPlan) content(j int, texts map[uuid.UUID]PageText, heads map[uuid.
 		if err != nil {
 			return err
 		}
-		pg.content, ps.Replacements, ps.Changed = r.Content, r.Count, true
+		pg.content, ps.Replacements, ps.Changed = r.Content, r.Count, r.Content != content
 	}
 	return nil
 }

@@ -156,6 +156,18 @@ func TestBatchPlanContents(t *testing.T) {
 			t.Errorf("a write of other bytes: Failed = %+v", got)
 		}
 	})
+	t.Run("an edit that leaves the bytes as they were", func(t *testing.T) {
+		// The CRLF rule makes old_string and new_string the page's CRLF,
+		// one string: unchanged, as the edit alone answers (M9/P3 review
+		// A-M3); the page's next edit changes it.
+		p, _ := planOf(t, nb, editOp("P.md", "a\n", "a\r\n"), editOp("P.md", "b", "c"))
+		contentsOf(t, p, text("a\r\nb\r\n", 2), nil, &fakeRewriter{})
+		if p.Failed != nil || p.Steps[0].Changed || p.Steps[0].Replacements != 1 || !p.Steps[1].Changed ||
+			p.Pages()[0].Content != "a\r\nc\r\n" {
+			t.Errorf("Failed = %v, changed %v and %v, replacements %d, content %q", p.Failed, p.Steps[0].Changed, p.Steps[1].Changed,
+				p.Steps[0].Replacements, p.Pages()[0].Content)
+		}
+	})
 	t.Run("an edit on its content rewritten for a move before it", func(t *testing.T) {
 		p, _ := planOf(t, nb, moveOp("A.md", "B.md"), editOp("P.md", "[[B]]", "[[C]]"))
 		rw := &fakeRewriter{subs: map[string]string{"[[A]]": "[[B]]"}}
