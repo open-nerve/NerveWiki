@@ -178,12 +178,16 @@ func TestTheRevertOfEachBatchShape(t *testing.T) {
 	tm, logs := newAcmeTeamLogged(t)
 	agent := tm.agent(t, "alice", "")
 	notebooks := 0
+	// own is the log lines of the subtest running, from its start (fix
+	// round 1, C-N3): one's error fails it alone.
+	var own func() *syncBuffer
 	each := func(name string, pages []restPage, test func(t *testing.T, nb string, ids map[string]string, m *mcpApp)) {
 		t.Run(name, func(t *testing.T) {
+			own = logsFrom(logs)
 			notebooks++
 			nb := tm.openNotebook(t, "alice", fmt.Sprint("Eng ", notebooks))
 			test(t, nb, tm.seed(t, nb, pages...), agent.in(nb))
-			noErrorLogged(t, logs)
+			noErrorLogged(t, own())
 		})
 	}
 	batch := func(t *testing.T, m *mcpApp, ops ...map[string]any) func() string {
@@ -271,7 +275,7 @@ func TestTheRevertOfEachBatchShape(t *testing.T) {
 			at(t, ids[longer], "/"+longer)
 			at(t, photos[0], ids["F1"]+"/photo.png")
 			at(t, photos[1], ids["F2"]+"/photo.png")
-			if lines := (&mcpApp{logs: logs}).loggedAt(t, "INFO"); !slices.ContainsFunc(lines, func(e map[string]any) bool {
+			if lines := (&mcpApp{logs: own()}).loggedAt(t, "INFO"); !slices.ContainsFunc(lines, func(e map[string]any) bool {
 				return e["msg"] == "changeset reverted" && e["aside"] == float64(3)
 			}) {
 				t.Errorf("no revert logged three steps aside: a name renamed aside and two attachments moved aside")
@@ -290,6 +294,7 @@ func TestTheRevertOfEachBatchShape(t *testing.T) {
 		written, writtenNB = ids["X"], nb
 	})
 	t.Run("that revert's revert", func(t *testing.T) {
+		own = logsFrom(logs)
 		if writtenRevert == "" {
 			t.Skip("the revert it reverts failed")
 		}
@@ -297,7 +302,7 @@ func TestTheRevertOfEachBatchShape(t *testing.T) {
 		if !tm.trashedNow(t, written) || queryStrings(t, tm.pool, "SELECT content FROM page_contents WHERE node_id = $1", written)[0] != "edited" {
 			t.Errorf("X is not in the trash with the content the batch deleted")
 		}
-		noErrorLogged(t, logs)
+		noErrorLogged(t, own())
 	})
 	each("two trash items one under the other, seeded", []restPage{{"A", "a"}, {"A/X", "x"}, {"A/X/B", "b"}},
 		func(t *testing.T, nb string, ids map[string]string, m *mcpApp) {
@@ -333,6 +338,17 @@ func TestTheRevertOfEachBatchShape(t *testing.T) {
 			}
 			tm.checkHistory(t)
 		})
+}
+
+// logsFrom is the lines logs holds from now on, each time it is called,
+// as a buffer of their own.
+func logsFrom(logs *syncBuffer) func() *syncBuffer {
+	from := len(logs.String())
+	return func() *syncBuffer {
+		out := &syncBuffer{}
+		_, _ = out.Write([]byte(logs.String()[from:]))
+		return out
+	}
 }
 
 // The revert of a lone page a batch wrote and then deleted, both its
