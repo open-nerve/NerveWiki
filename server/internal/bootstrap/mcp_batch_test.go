@@ -248,18 +248,18 @@ func seedPagesSQL(tb testing.TB, pool *pgxpool.Pool, nb string, pages []sqlPage)
 	}
 }
 
-// A batch refused writes nothing (M9/P3 design 3.14.5): after each
-// refusal the notebook's nodes, contents, index and changesets are as they
-// were, the answer's code and op as 3.9.3 orders them: an op not found
-// after a creation and a move; an edit session's page.locked at the guard
-// of the op that writes the page; a move's linking.pages_locked; B1 and
-// B3; a version of a page the batch creates. And at the bounds (3.8): 101
-// ops; strings past 6 MiB, each op valid; 10,001 nodes deleted; pages read
-// for edits past 14 MiB, where 14 MiB is done; the plan's parses past 10
-// MiB, which stop it at once; and past 100 pages. The app's deadlines are
-// production's (3.8): the 8 MiB the plan parses before it stops take the
-// race detector seconds, past the tests' 4 s on a slower machine or beside
-// the other shards.
+// A batch refused writes nothing (M9/P3 design 3.14.5): after each refusal
+// the notebook's nodes, contents, index and changesets are as they were,
+// the answer's code and op as 3.9.3 orders them: an op not found after a
+// creation and a move; an edit session's page.locked at the guard of the op
+// that writes the page; a move's linking.pages_locked; B1 and B3; a version
+// of a page the batch creates. And at the bounds (3.8): 101 ops; strings
+// past 6 MiB, each op valid; 10,001 nodes deleted; pages read for edits
+// past 14 MiB, where 14 MiB is done; the plan's parses past 10 MiB, which
+// stop it at once; past 100 pages; and moves carrying past 10,000 nodes.
+// The app's deadlines are production's (3.8): the 8 MiB the plan parses
+// before it stops take the race detector seconds, past the tests' 4 s on a
+// slower machine or beside the other shards.
 func TestTheMCPBatchIsRefusedWhole(t *testing.T) {
 	logs := &syncBuffer{}
 	tm := newAcmeTeamLogging(t, "member", "", func(c *config.Config) {
@@ -348,6 +348,24 @@ func TestTheMCPBatchIsRefusedWhole(t *testing.T) {
 		tm.seedSQL(t, nb, under)
 		refused(t, nb, m, "page.batch_too_large", 1, opWrite("N.md", "n"), opDeleteAll("R.md"))
 	})
+	// Two folders of 5,000 and 5,001 nodes moved to another parent: the
+	// nodes the moves carry past 10,000, at the second move (M9/P3 review
+	// A-I2).
+	each("moves carrying past 10,000 nodes", []restPage{{"F", ""}, {"H", ""}, {"G", ""}},
+		func(t *testing.T, nb string, ids map[string]string, m *mcpApp) {
+			var under []sqlPage
+			for i := range domain.MaxUnitNodes/2 - 1 {
+				under = append(under, sqlPage{ids["F"], fmt.Sprint("f", i), ""})
+			}
+			for i := range domain.MaxUnitNodes / 2 {
+				under = append(under, sqlPage{ids["H"], fmt.Sprint("h", i), ""})
+			}
+			tm.seedSQL(t, nb, under)
+			r := refused(t, nb, m, "page.batch_too_large", 1, opMove("F.md", "G/F.md"), opMove("H.md", "G/H.md"))
+			if !strings.Contains(r.Message, "10001 nodes the batch's moves carry, at most 10000") {
+				t.Errorf("the refusal = %q, want the nodes the moves carry", r.Message)
+			}
+		})
 	// Three pages of a title line and a unit of 1 KiB repeated, 14 MiB in
 	// all, and a byte more: each edit takes every unit away, read for it.
 	const unit = 1 << 10

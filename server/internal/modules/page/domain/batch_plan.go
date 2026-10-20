@@ -226,9 +226,12 @@ type deletion struct {
 // of each write's path: a page a write creates at its segment d takes
 // ids[i][d], the id its unit creates it with. A write without
 // base_version at a page there is left to Contents, which compares its
-// content. It counts the items as it goes: past MaxUnitNodes the op that
-// passes them fails. The first op that fails ends the pass, its error at
-// its op in Failed.
+// content. It counts the items as it goes, and the nodes the moves to
+// another parent carry, their subtrees, each move's again (M9/P3 review
+// A-I2: the plan and the unit read and change each move's subtree again):
+// past MaxUnitNodes either fails the op that passes it, the second for
+// more moves than one, a lone move as P2's move. The first op that fails
+// ends the pass, its error at its op in Failed.
 func PlanBatch(nodes []Node, steps []BatchStep, ids [][]uuid.UUID) *BatchPlan {
 	p := &BatchPlan{Steps: make([]PlannedStep, len(steps)), tree: newBatchTree(nodes), steps: steps,
 		pages: map[uuid.UUID]*plannedPage{}, createdBy: map[uuid.UUID]int{}, movedBy: map[uuid.UUID]int{},
@@ -251,13 +254,16 @@ func PlanBatch(nodes []Node, steps []BatchStep, ids [][]uuid.UUID) *BatchPlan {
 }
 
 // treePass is the tree's pass as it goes: the view it walks, the ids
-// given, the nodes counted as items, and the deletions so far.
+// given, the nodes counted as items, the deletions so far, and the moves
+// to another parent and the nodes they carried.
 type treePass struct {
 	p         *BatchPlan
 	cur       *treeView
 	ids       [][]uuid.UUID
 	counted   map[uuid.UUID]bool
 	deletions []*deletion
+	moves     int
+	carried   int
 }
 
 // plan is the op i, s, on the tree: its error is the op's.
@@ -384,7 +390,13 @@ func (t *treePass) move(i int, s BatchStep) error {
 		if h, held := HolderOf(t.cur.children(parent), title, n.ID); held {
 			holder = &h
 		}
-		if err := RelocationOf(t.cur.subtree(n.ID), parent, t.cur.line(parent), holder); err != nil {
+		sub := t.cur.subtree(n.ID)
+		if t.moves, t.carried = t.moves+1, t.carried+len(sub); t.moves > 1 && t.carried > MaxUnitNodes {
+			t.p.final = true
+			return BatchTooLarge("nodes the batch's moves carry", t.carried, MaxUnitNodes,
+				"move each folder once, or in separate calls")
+		}
+		if err := RelocationOf(sub, parent, t.cur.line(parent), holder); err != nil {
 			if taken := (*PathTaken)(nil); errors.As(err, &taken) {
 				taken.Path = s.To.Written // to is the whole new path, which the answer says
 			}

@@ -261,12 +261,13 @@ type Unit struct {
 	// node in the order first changed, followedAt indexes them; frozen
 	// the nodes a move kept the links of (keepLinks, Placement.KeepLinks),
 	// none of whose changes are followed; carried the nodes under each
-	// moved one, by the nodes that carried them.
+	// moved one, with the nodes that carried them, each once (M9/P3 review
+	// A-I2: a folder moved a hundred times is no hundred carriers).
 	deferring  bool
 	followed   []domain.Change
 	followedAt map[uuid.UUID]int
 	frozen     map[uuid.UUID]bool
-	carried    map[uuid.UUID][]uuid.UUID
+	carried    map[uuid.UUID]map[uuid.UUID]bool
 	keepLinks  bool
 }
 
@@ -428,10 +429,13 @@ func (u *Unit) follow(s Step) {
 		return
 	}
 	if u.followedAt == nil {
-		u.followedAt, u.frozen, u.carried = map[uuid.UUID]int{}, map[uuid.UUID]bool{}, map[uuid.UUID][]uuid.UUID{}
+		u.followedAt, u.frozen, u.carried = map[uuid.UUID]int{}, map[uuid.UUID]bool{}, map[uuid.UUID]map[uuid.UUID]bool{}
 	}
 	for _, c := range s.Changes[1:] {
-		u.carried[c.NodeID] = append(u.carried[c.NodeID], s.Changes[0].NodeID)
+		if u.carried[c.NodeID] == nil {
+			u.carried[c.NodeID] = map[uuid.UUID]bool{}
+		}
+		u.carried[c.NodeID][s.Changes[0].NodeID] = true
 	}
 	if u.keepLinks {
 		u.frozen[s.Changes[0].NodeID] = true
@@ -507,13 +511,17 @@ func (u *Unit) DropUnchanged(ctx context.Context) error {
 			u.changeset = uuid.UUID{}
 		}
 	}
-	moved := func(id uuid.UUID) bool {
-		i, ok := u.merged[id]
-		return ok && u.changes[i].Moves()
+	moved := func(ids map[uuid.UUID]bool) bool {
+		for id := range ids {
+			if i, ok := u.merged[id]; ok && u.changes[i].Moves() {
+				return true
+			}
+		}
+		return false
 	}
 	var kept []domain.Change
 	for _, c := range u.changes {
-		if c.Before != nil && c.After != nil && c.Before.Same(*c.After) && c.Revision == 0 && !slices.ContainsFunc(u.carried[c.NodeID], moved) {
+		if c.Before != nil && c.After != nil && c.Before.Same(*c.After) && c.Revision == 0 && !moved(u.carried[c.NodeID]) {
 			continue
 		}
 		kept = append(kept, c)

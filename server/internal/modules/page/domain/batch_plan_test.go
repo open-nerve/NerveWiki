@@ -381,6 +381,49 @@ func TestPlanBatchAnswersItsItemsInTheTreesPass(t *testing.T) {
 	}
 }
 
+// The nodes a batch's moves to another parent carry, each move's subtree
+// again, are bounded at MaxUnitNodes once there is more than one such
+// move (M9/P3 review A-I2): F of 5,000 nodes and H of 5,000 moved are at
+// the bound, H of 5,001 past it at its move, the contents' pass not run;
+// a lone move of a larger folder, and moves among siblings, are not.
+func TestPlanBatchBoundsWhatItsMovesCarry(t *testing.T) {
+	half := domain.MaxUnitNodes / 2
+	folders := func(f, h int) *notebook {
+		nb := newNotebook("G.md", "F.md", "H.md")
+		for i := range f - 1 {
+			nb.add("F/f" + itoa(i) + ".png")
+		}
+		for i := range h - 1 {
+			nb.add("H/h" + itoa(i) + ".png")
+		}
+		return nb
+	}
+	p, _ := planOf(t, folders(half, half), moveOp("F.md", "G/F.md"), moveOp("H.md", "G/H.md"))
+	if p.Failed != nil {
+		t.Errorf("at the bound: Failed = %v", p.Failed)
+	}
+	p, _ = planOf(t, folders(half, half+1), editOp("P.md", "o", "n"), moveOp("F.md", "G/F.md"), moveOp("H.md", "G/H.md"))
+	if got := failed(t, p); got.code != "page.not_found" || got.at != 0 {
+		t.Errorf("an op before: Failed = %+v, want its 404 at 0", got)
+	}
+	p, _ = planOf(t, folders(half, half+1), moveOp("F.md", "G/F.md"), moveOp("H.md", "G/H.md"), editOp("G/F.md", "o", "n"))
+	if got := failed(t, p); got != (refusal{"page.batch_too_large", "", "", 1}) ||
+		!strings.Contains(p.Failed.Error(), "10001 nodes the batch's moves carry, at most 10000: move each folder once, or in separate calls") {
+		t.Fatalf("a node past: Failed = %+v (%v)", got, p.Failed)
+	}
+	if texts, heads := p.Reads(); len(texts)+len(heads) != 0 {
+		t.Errorf("past the bound, Reads = %v, %v: the contents' pass would run", texts, heads)
+	}
+	p, _ = planOf(t, folders(domain.MaxUnitNodes+1, 1), moveOp("F.md", "G/F.md"))
+	if p.Failed != nil {
+		t.Errorf("a lone move of %d nodes: Failed = %v", domain.MaxUnitNodes+1, p.Failed)
+	}
+	p, _ = planOf(t, folders(domain.MaxUnitNodes, domain.MaxUnitNodes), moveOp("F.md", "F2.md"), moveOp("H.md", "H2.md"))
+	if p.Failed != nil {
+		t.Errorf("renames of two folders of %d nodes: Failed = %v", domain.MaxUnitNodes, p.Failed)
+	}
+}
+
 // itoa is n in decimal.
 func itoa(n int) string {
 	if n == 0 {
