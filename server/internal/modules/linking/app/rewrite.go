@@ -83,9 +83,16 @@ func (r Rewrite) Participate(ctx context.Context, m Moved, u Appender) error {
 	// The pages the batch wrote first: their read backs, of contents up to
 	// a page's largest, are taken while the budget holds none of the
 	// shares the facts of the writes before keep to the unit's end.
-	sub := &subtrees{store: r.Store, pages: r.Pages, notebookID: m.NotebookID, read: map[uuid.UUID]subtree{}}
+	own, err := r.ownWritten(ctx, m, written, gone)
+	if err != nil {
+		return err
+	}
+	trees, err := readWritten(ctx, r.Pages, m.NotebookID, own)
+	if err != nil {
+		return err
+	}
 	for _, id := range written {
-		err := r.followWritten(ctx, m, id, m.Written[id], gone, sub, u)
+		err := r.followWritten(ctx, id, m.Written[id], own[id], trees, gone, u)
 		if errors.Is(err, ErrGuardLocked) {
 			return r.guardLocked(ctx, all, m, err)
 		}
@@ -237,28 +244,53 @@ func (r Rewrite) reached(ctx context.Context, m Moved, relocates bool, recased d
 	return out, targets, nil
 }
 
+// ownReach is the links of a page a batch wrote that its own changes
+// reach and write again (ownLinks), with the pages they re-cased.
+type ownReach struct {
+	reached map[int]rewritten
+	recased domain.Recased
+}
+
+// ownWritten is, of the pages a batch wrote, written, the links each one's
+// own changes reach and write again (ownLinks), the subtrees spread reads
+// read once for the batch; the pages with none are not in it.
+func (r Rewrite) ownWritten(ctx context.Context, m Moved, written []uuid.UUID, gone map[uuid.UUID]bool) (
+	map[uuid.UUID]ownReach, error,
+) {
+	sub := &subtrees{store: r.Store, pages: r.Pages, notebookID: m.NotebookID, read: map[uuid.UUID]subtree{}}
+	out := make(map[uuid.UUID]ownReach, len(written))
+	for _, id := range written {
+		w := m.Written[id]
+		reached, recased, err := ownLinks(ctx, r.Store, r.Pages, sub, m.NotebookID, id, w.Facts.Links, w.Before, w.Changes,
+			setOf(w.Frozen), gone)
+		if err != nil {
+			return nil, err
+		}
+		if len(reached) > 0 {
+			out[id] = ownReach{reached: reached, recased: recased}
+		}
+	}
+	return out, nil
+}
+
 // followWritten writes again the links of the page id, which a batch
 // wrote (M9/P3 design 3.7.2): those its own changes, w.Changes, reach and
-// move, from its final content, the unit's, its links taken from w.Facts
-// unparsed (a); whatever its index's revision (b), on its current one
-// (c); each matched by where its target starts to where it led at the
-// page's last content op, its target's path then its was (d).
-func (r Rewrite) followWritten(ctx context.Context, m Moved, id uuid.UUID, w WrittenPage, gone map[uuid.UUID]bool, sub *subtrees,
-	u Appender,
+// move (own), from its final content, the unit's, its links taken from
+// w.Facts unparsed (a); whatever its index's revision (b), on its current
+// one (c); each matched by where its target starts to where it led at the
+// page's last content op, its target's path then its was (d), on the tree
+// read once for all the pages the batch wrote (trees).
+func (r Rewrite) followWritten(ctx context.Context, id uuid.UUID, w WrittenPage, own ownReach, trees writtenTrees,
+	gone map[uuid.UUID]bool, u Appender,
 ) error {
-	reached, recased, err := ownLinks(ctx, r.Store, r.Pages, sub, m.NotebookID, id, w.Facts.Links, w.Before, w.Changes,
-		setOf(w.Frozen), gone)
-	if err != nil || len(reached) == 0 {
-		return err
-	}
-	tree, from, err := writtenTree(ctx, r.Pages, m.NotebookID, id, reached, w.Before)
-	if err != nil {
-		return err
-	}
-	if dropDead(ctx, r.Logger, id, reached, tree, gone) {
+	if len(own.reached) == 0 {
 		return nil
 	}
-	return r.rewrite(ctx, id, 0, &w.Facts, reached, from, tree, recased, u)
+	tree, from := trees.of(id, own.reached, w.Before)
+	if dropDead(ctx, r.Logger, id, own.reached, tree, gone) {
+		return nil
+	}
+	return r.rewrite(ctx, id, 0, &w.Facts, own.reached, from, tree, own.recased, u)
 }
 
 // ownLinks is the links, of the page id's links, that changes, a page a
@@ -393,22 +425,54 @@ func (s *subtrees) spread(ctx context.Context, reach domain.Reach, nodes []uuid.
 func writtenTree(ctx context.Context, pages Pages, notebookID, id uuid.UUID, reached map[int]rewritten, before LinksBefore) (
 	domain.Tree, []domain.Step, error,
 ) {
-	var targets []uuid.UUID
-	for _, x := range reached {
-		targets = append(targets, x.before.ID)
-	}
-	tree, from, err := treeOf(ctx, pages, Moved{NotebookID: notebookID}, targets, []uuid.UUID{id})
+	trees, err := readWritten(ctx, pages, notebookID, map[uuid.UUID]ownReach{id: {reached: reached}})
 	if err != nil {
 		return domain.Tree{}, nil, err
 	}
-	for t, n := range tree.Before {
-		if path, ok := before.Targets[t]; ok {
-			tree.Before[t] = domain.Node{ID: t, Path: path, Asset: n.Asset}
-		} else {
-			delete(tree.Before, t)
+	tree, from := trees.of(id, reached, before)
+	return tree, from, nil
+}
+
+// writtenTrees is what the rewrites of the pages a batch wrote read of the
+// tree, once for all of them (M9/P3 review B-M3): their reached links'
+// targets at their paths after, the pages with the keys a writing of them
+// reads, and the pages' own paths.
+type writtenTrees struct {
+	tree domain.Tree
+	from map[uuid.UUID][]domain.Step
+}
+
+// readWritten reads the tree the pages of own are written on: one read of
+// the paths of their targets and of the pages, one of the keys.
+func readWritten(ctx context.Context, pages Pages, notebookID uuid.UUID, own map[uuid.UUID]ownReach) (writtenTrees, error) {
+	if len(own) == 0 {
+		return writtenTrees{}, nil
+	}
+	var targets []uuid.UUID
+	sources := slices.SortedFunc(maps.Keys(own), uuid.UUID.Compare)
+	for _, id := range sources {
+		for _, x := range own[id].reached {
+			targets = append(targets, x.before.ID)
 		}
 	}
-	return tree, from[id], nil
+	tree, from, err := treeOf(ctx, pages, Moved{NotebookID: notebookID}, targets, sources)
+	return writtenTrees{tree: tree, from: from}, err
+}
+
+// of is the tree the page id is written on, its links reached: the
+// targets after and the pages by their keys as read for all, the targets
+// before at the paths before gives them, as its last content op left them,
+// a target before does not name left out; and its own path.
+func (w writtenTrees) of(id uuid.UUID, reached map[int]rewritten, before LinksBefore) (domain.Tree, []domain.Step) {
+	tree := domain.Tree{Before: make(map[uuid.UUID]domain.Node, len(reached)), After: w.tree.After, Named: w.tree.Named}
+	for _, x := range reached {
+		t := x.before.ID
+		n, alive := w.tree.After[t]
+		if path, ok := before.Targets[t]; ok && alive {
+			tree.Before[t] = domain.Node{ID: t, Path: path, Asset: n.Asset}
+		}
+	}
+	return tree, w.from[id]
 }
 
 // dropDead drops, of links, the page id's, those whose target before is

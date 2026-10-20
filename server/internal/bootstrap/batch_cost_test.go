@@ -143,11 +143,71 @@ func (b batchBench) applied(tb testing.TB, a mcpAnswer, rewrote int) map[string]
 	return line
 }
 
+// mixed makes, through SQL, the worst mix of a batch at its rewrites' bound
+// (M9/P3 review B-M3): the folder Top/F of X0 … X{folder-1}, G, O0 … O99,
+// and written pages P0 … and indexed ones R… of some 76 KB, each with 200
+// links, its first 100 into distinct X by their full paths, the rest to
+// the O; then rebuilds the notebook's index. Its ops edit each P, then
+// move F under G, with update_links: the rewrite writes every P and R.
+func (b batchBench) mixed(tb testing.TB, written, indexed, folder int) []map[string]any {
+	tb.Helper()
+	nb := b.nb.String()
+	id := func(name string) string {
+		return queryStrings(tb, b.pool, "SELECT id::text FROM nodes WHERE notebook_id = $1 AND name = $2", nb, name)[0]
+	}
+	seedPagesSQL(tb, b.pool, nb, []sqlPage{{"", "Top", ""}, {"", "G", ""}})
+	seedPagesSQL(tb, b.pool, nb, []sqlPage{{id("Top"), "F", ""}})
+	f := id("F")
+	var xs, others, pages []sqlPage
+	for k := range folder {
+		xs = append(xs, sqlPage{f, fmt.Sprint("X", k), ""})
+	}
+	for k := range 100 {
+		others = append(others, sqlPage{"", fmt.Sprint("O", k), ""})
+	}
+	page := func(name string, p int) sqlPage {
+		var c strings.Builder
+		c.WriteString("MARK\n")
+		for k := range 200 {
+			target := fmt.Sprintf("O%d", k%100)
+			if k < 100 {
+				target = fmt.Sprintf("Top/F/X%d", (p*100+k)%folder)
+			}
+			fmt.Fprintf(&c, "Line %d of page %d: %s [[%s]]\n", k, p, strings.Repeat("lorem ipsum dolor sit amet ", 13), target)
+		}
+		return sqlPage{"", name, c.String()}
+	}
+	var ops []map[string]any
+	for p := range written {
+		pages = append(pages, page(fmt.Sprint("P", p), p))
+		ops = append(ops, opEdit(fmt.Sprint("P", p, ".md"), "MARK", "MARK2"))
+	}
+	for p := range indexed {
+		pages = append(pages, page(fmt.Sprint("R", written+p), written+p))
+	}
+	seedPagesSQL(tb, b.pool, nb, xs)
+	seedPagesSQL(tb, b.pool, nb, others)
+	seedPagesSQL(tb, b.pool, nb, pages)
+	admin, err := reindexAdmin(b.pool, b.cfg, slog.New(slog.DiscardHandler))
+	if err != nil {
+		tb.Fatal(err)
+	}
+	if _, err := admin.Rebuild(context.Background(), b.nb); err != nil {
+		tb.Fatal(err)
+	}
+	return append(ops, opMove("Top/F.md", "G/F.md"))
+}
+
 // BenchmarkBatchRewrites times a batch that rewrites n pages, for each tier
 // n (M9/P3 design 3.8.2): two edits and a rename of the page they link to,
 // between them, n-1 pages of the full load and P1 rewritten; each
-// iteration after a vacuum, untimed. It reports the median of the unit and
-// of the call, in milliseconds.
+// iteration after a vacuum, untimed. Then the worst mix at the bound
+// (mixed): 99 pages written, the most a batch's 100 ops write with the
+// move, and 301 of the index, the move of a folder of 10,000 after the
+// edits; and its halves, the written pages alone and 400 of the index
+// alone, whose costs a page are the ratio a written page counts for; each
+// iteration on a bench of its own, made untimed. It reports the median of
+// the unit and of the call, in milliseconds.
 func BenchmarkBatchRewrites(b *testing.B) {
 	for _, n := range []int{100, 200, 250, 300, 400, 500, 1000} {
 		bench := newBatchBench(b, 1<<20)
@@ -164,6 +224,25 @@ func BenchmarkBatchRewrites(b *testing.B) {
 				b.StopTimer()
 				round++
 				units = append(units, bench.applied(b, a, n)["unit_ms"].(float64))
+				calls = append(calls, float64(took)/float64(time.Millisecond))
+				b.StartTimer()
+			}
+			b.ReportMetric(median(units), "unit-ms")
+			b.ReportMetric(median(calls), "call-ms")
+		})
+	}
+	for _, m := range []struct{ written, indexed int }{{99, 301}, {99, 0}, {0, 400}} {
+		b.Run(fmt.Sprintf("mixed: %d written, %d indexed, a folder of 10,000 moved", m.written, m.indexed), func(b *testing.B) {
+			var units, calls []float64
+			for range b.N {
+				b.StopTimer()
+				bench := newBatchBench(b, 1<<20)
+				ops := bench.mixed(b, m.written, m.indexed, 10000)
+				bench.vacuumed(b)
+				b.StartTimer()
+				a, took := bench.batch(b, ops...)
+				b.StopTimer()
+				units = append(units, bench.applied(b, a, m.written+m.indexed)["unit_ms"].(float64))
 				calls = append(calls, float64(took)/float64(time.Millisecond))
 				b.StartTimer()
 			}

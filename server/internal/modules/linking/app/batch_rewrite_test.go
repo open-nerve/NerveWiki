@@ -3,6 +3,7 @@ package app_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"slices"
 	"strings"
@@ -213,6 +214,52 @@ func TestABatchReachesTheNodesUnderThoseAPageItWroteMoves(t *testing.T) {
 	// changes, which list F's nodes; once for the two it wrote.
 	if asked != 2 {
 		t.Errorf("the aliases' keys of F's subtree asked %d times, want twice", asked)
+	}
+}
+
+// treeReads is the tree as a rewrite reads it, counting its reads of paths
+// and of keys.
+type treeReads struct {
+	app.Pages
+	paths, keys int
+}
+
+func (r *treeReads) Paths(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) ([]domain.Node, error) {
+	r.paths++
+	return r.Pages.Paths(ctx, notebookID, ids)
+}
+
+func (r *treeReads) ByKeys(ctx context.Context, notebookID uuid.UUID, keys []string) ([]domain.Node, error) {
+	r.keys++
+	return r.Pages.ByKeys(ctx, notebookID, keys)
+}
+
+// The pages a batch wrote are written on one read of the tree (M9/P3
+// review B-M3): of the paths and of the keys, once for them all, past the
+// reads each page's links resolve with, not once a page.
+func TestABatchWritesThePagesItWroteOnOneTree(t *testing.T) {
+	w := newRewriting(t, "Top", "Top/F", "Top/F/X0", "Top/F/X1", "Top/F/X2", "G", "W0", "W1", "W2")
+	reads := &treeReads{Pages: w.tree}
+	w.rewrite.Pages = reads
+	written := map[uuid.UUID]app.WrittenPage{}
+	for i := range 3 {
+		link := fmt.Sprintf("[[Top/F/X%d]]\n", i)
+		before := w.before(link, fmt.Sprint("Top/F/X", i))
+		written[w.id(fmt.Sprint("W", i))] = app.WrittenPage{Before: before, Facts: w.wrote(fmt.Sprint("W", i), link)}
+	}
+	changes := w.move("Top/F", "G")
+	for id, p := range written {
+		p.Changes = changes[:1]
+		written[id] = p
+	}
+	u, err := w.batch(app.Moved{Changes: changes, Written: written})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.written(u, map[string]string{"W0": "[[X0]]\n", "W1": "[[X1]]\n", "W2": "[[X2]]\n"})
+	if reads.paths != 3+1 || reads.keys != 3+1 {
+		t.Errorf("the tree's paths read %d times, its keys %d; want 3 for the pages' links and 1 for the tree, each", reads.paths,
+			reads.keys)
 	}
 }
 
