@@ -884,6 +884,42 @@ func TestABatchCountsTheBytesItWouldWrite(t *testing.T) {
 	}
 }
 
+// A batch's rewrite counts its pages, then their links, then their bytes
+// (M9/P3 design 3.9.3, step 12; fix check 2, A's F2-3): Q1's two links of
+// the index and W, written, its own change meeting its one: 3 pages, W
+// weighing 2, 3 links and their bytes. Past all three bounds the pages'
+// refusal, past the links' and the bytes' the links', past the bytes'
+// alone the bytes'.
+func TestABatchCountsItsPagesThenTheirLinksThenTheirBytes(t *testing.T) {
+	const q1, wc = "[[A]] and [[A]]\n", "w [[A]]\n"
+	batch := func(pages, links, bytes int) error {
+		w := newRewriting(t, "A", "Q1", "W")
+		w.write("Q1", q1)
+		before := w.before(wc, "A")
+		facts := w.wrote("W", wc)
+		merged := w.rename("A", "B")
+		_, err := w.batch(app.Moved{Changes: []domain.Change{merged}, MaxPages: pages, MaxLinks: links, MaxBytes: bytes,
+			WrittenWeight: 2, Written: map[uuid.UUID]app.WrittenPage{w.id("W"): {Before: before,
+				Changes: []domain.Change{w.renamed("B", "A", "B")}, Facts: facts}}})
+		return err
+	}
+	sum := len(q1) + len(wc)
+	for _, c := range []struct {
+		name                string
+		pages, links, bytes int
+		want                app.TooManyRewrites
+	}{
+		{"past all three", 2, 2, sum - 1, app.TooManyRewrites{Pages: 3, Max: 2, Weight: 2}},
+		{"past the links' and the bytes'", 3, 2, sum - 1, app.TooManyRewrites{Links: 3, Max: 2}},
+		{"past the bytes' alone", 3, 3, sum - 1, app.TooManyRewrites{Bytes: sum, Max: sum - 1}},
+	} {
+		var many *app.TooManyRewrites
+		if err := batch(c.pages, c.links, c.bytes); !errors.As(err, &many) || *many != c.want {
+			t.Errorf("%s: %v %+v, want %+v", c.name, err, many, c.want)
+		}
+	}
+}
+
 // askedPaths is Pages that records the ids each read of paths asks for.
 type askedPaths struct {
 	app.Pages
