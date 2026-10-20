@@ -356,41 +356,35 @@ func logsFrom(logs *syncBuffer) func() *syncBuffer {
 // two contents of the page parsed (M9/P3 design 3.18.4): at the least
 // parse budget the configuration takes, a page's largest content, the
 // second's take cannot fit beside the first's share, which the revert
-// gives back first (fix round 1, B-M1); at the default budget it fits.
-// The app's deadlines are production's, as TestTheMCPBatchIsRefusedWhole's
-// are: the batch that writes the 5 MiB content takes some 2.5 s under the
-// race detector here, past the tests' 4 s on CI (run 39481193146).
+// gives back first (fix round 1, B-M1). The default budget's case, both
+// shares kept, is TestDecidedAllGivesItsSharesBackBeforeATakeThatCannotFit's:
+// a row of it here could fail under neither mutant of the give-back (fix
+// round 2, C's N2). The app's deadlines are production's, as
+// TestTheMCPBatchIsRefusedWhole's are: the batch that writes the 5 MiB
+// content takes some 2.5 s under the race detector here, past the tests'
+// 4 s on CI (run 39481193146).
 func TestTheRevertOfALonePagesTwoContentsAtTheLeastBudget(t *testing.T) {
 	size := domain.MaxContentBytes - 64
 	fill := func(tag string) string { return (tag + "\n" + strings.Repeat("a", size))[:size] }
-	for _, tt := range []struct {
-		name   string
-		budget int
-	}{{"the least budget", config.MinParseBudgetBytes}, {"the default budget", 0}} {
-		t.Run(tt.name, func(t *testing.T) {
-			tm := newAcmeTeamWith(t, "member", "", func(c *config.Config) {
-				c.Server.WriteTimeout, c.Server.RequestTimeout = 60*time.Second, 15*time.Second
-				if tt.budget > 0 {
-					c.Page.ParseBudgetBytes = tt.budget
-				}
-			})
-			nb := tm.openNotebook(t, "alice", "Eng")
-			before, written := fill("before"), fill("written")
-			ids := tm.seed(t, nb, restPage{"X", before})
-			b := tm.agent(t, "alice", nb).batchDone(t, opWriteOn("X.md", written, versionOf(ids["X"], 1)), opDelete("X.md"))
-			if b.ChangesetID == nil {
-				t.Fatalf("the batch = %+v, want a changeset", b)
-			}
-			c := changesetRevert("alice", *b.ChangesetID)
-			started := time.Now()
-			status, body := ask(t, tm.contract, c.method, tm.base+c.path, tm.tokens["alice"], c.body)
-			t.Logf("the revert answered in %v", time.Since(started))
-			if status != http.StatusOK {
-				t.Fatalf("the revert = %d %.300s, want 200", status, body)
-			}
-			if got := tm.content(t, "alice", ids["X"]); got.Content != before {
-				t.Errorf("X = revision %d, %d bytes; want the content before", got.Revision, len(got.Content))
-			}
-		})
+	tm := newAcmeTeamWith(t, "member", "", func(c *config.Config) {
+		c.Server.WriteTimeout, c.Server.RequestTimeout = 60*time.Second, 15*time.Second
+		c.Page.ParseBudgetBytes = config.MinParseBudgetBytes
+	})
+	nb := tm.openNotebook(t, "alice", "Eng")
+	before, written := fill("before"), fill("written")
+	ids := tm.seed(t, nb, restPage{"X", before})
+	b := tm.agent(t, "alice", nb).batchDone(t, opWriteOn("X.md", written, versionOf(ids["X"], 1)), opDelete("X.md"))
+	if b.ChangesetID == nil {
+		t.Fatalf("the batch = %+v, want a changeset", b)
+	}
+	c := changesetRevert("alice", *b.ChangesetID)
+	started := time.Now()
+	status, body := ask(t, tm.contract, c.method, tm.base+c.path, tm.tokens["alice"], c.body)
+	t.Logf("the revert answered in %v", time.Since(started))
+	if status != http.StatusOK {
+		t.Fatalf("the revert = %d %.300s, want 200", status, body)
+	}
+	if got := tm.content(t, "alice", ids["X"]); got.Content != before {
+		t.Errorf("X = revision %d, %d bytes; want the content before", got.Revision, len(got.Content))
 	}
 }
