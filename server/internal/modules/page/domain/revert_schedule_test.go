@@ -422,35 +422,58 @@ func TestTheSecondFallbackTakesTheLeastFirst(t *testing.T) {
 
 // A schedule's rounds can be more than its steps pending as it begins,
 // plus one, which the bound's 2N, a step aside a node each fallback,
-// leaves room for (T2; M9/P3 S2 fix round 1, A-M1). Reviewer A's shape
-// (its generator "cycles", MaxDepth 3, seed 400): S* is /b (A), A/b (B),
-// B/x.png (the attachment C); the batch left /b (B), /tmp.png (C),
-// B/x.png (the page A) and A/x.png (a new attachment D). D is deleted;
-// C waits for its key, which A holds, A for B's, and B for A, under B:
-// two steps aside and four places, in six rounds, of four steps pending.
-// Without D, five rounds of three, its bound with no 2N (N, 3) at four.
+// leaves room for (T2; M9/P3 S2 fix rounds 1 and 2, A-M1, A's N1). All at
+// MaxDepth 3, from reviewer A's generator "cycles". Seed 400: S* is /b
+// (A), A/b (B), B/x.png (the attachment C); the batch left /b (B),
+// /tmp.png (C), B/x.png (the page A) and A/x.png (a new attachment D). D
+// is deleted; C waits for its key, which A holds, A for B's, and B for A,
+// under B: two steps aside and four places, in six rounds, of four steps
+// pending. Without D, five rounds of three, its bound with no 2N (N, 3)
+// at four. Seed 5111: three pages trade places across levels, S* /c (P),
+// P/A (Q), Q/c (R), now /c (Q), Q/c (P), P/A (R) and a new Q/a: seven
+// rounds of four steps pending, past a bound of N/3 (N, 4). The bound is
+// (T2)'s proof and a larger one is harmless: the tests pin it from below
+// as far as the shapes A found reach, not N for 2N, nor the +1.
 func TestAScheduleTakesMoreRoundsThanItsSteps(t *testing.T) {
+	seed400 := func(withD bool) func(w *world) {
+		return func(w *world) {
+			c := w.asset("tmp.png", nil, 1)
+			b := w.page("b", nil, 0, 1, "b")
+			a := w.page("x.png", &b, 0, 1, "a")
+			if withD {
+				w.created(w.asset("x.png", &a, 0))
+			}
+			w.placed(c, domain.TreeState{ParentID: &b, Name: "x.png"})
+			w.placed(b, domain.TreeState{ParentID: &a, Name: "b"})
+			w.placed(a, domain.TreeState{Name: "b"})
+		}
+	}
 	for _, tt := range []struct {
 		name            string
-		withD           bool
+		build           func(w *world)
 		want            []string
 		rounds, pending int
 	}{
-		{"reviewer A's shape", true, []string{"delete x.png", "aside x.png renamed", "place tmp.png moved and renamed",
-			"aside b renamed", "place x.png moved and renamed", "place b moved and renamed"}, 6, 4},
-		{"the same without D", false, []string{"aside x.png renamed", "place tmp.png moved and renamed", "aside b renamed",
-			"place x.png moved and renamed", "place b moved and renamed"}, 5, 3},
+		{"reviewer A's seed 400", seed400(true), []string{"delete x.png", "aside x.png renamed",
+			"place tmp.png moved and renamed", "aside b renamed", "place x.png moved and renamed", "place b moved and renamed"}, 6, 4},
+		{"the same without D", seed400(false), []string{"aside x.png renamed", "place tmp.png moved and renamed",
+			"aside b renamed", "place x.png moved and renamed", "place b moved and renamed"}, 5, 3},
+		{"reviewer A's seed 5111", func(w *world) {
+			// Made in the ids' order Q, R, P, the new page last: R stands
+			// at the root until P is made.
+			q := w.page("c", nil, 0, 1, "q")
+			r := w.page("A", nil, 1, 1, "r")
+			p := w.page("c", &q, 0, 1, "p")
+			w.move(r, &p, 0)
+			w.created(w.page("a", &q, 1, 1, "new a"))
+			w.placed(p, domain.TreeState{Name: "c"})
+			w.placed(q, domain.TreeState{ParentID: &p, Name: "A"})
+			w.placed(r, domain.TreeState{ParentID: &q, Name: "c"})
+		}, []string{"delete a", "aside A renamed", "aside c renamed", "place A moved and renamed", "aside c renamed",
+			"place c moved and renamed", "place c moved and renamed"}, 7, 4},
 	} {
 		w := newWorld(t)
-		c := w.asset("tmp.png", nil, 1)
-		b := w.page("b", nil, 0, 1, "b")
-		a := w.page("x.png", &b, 0, 1, "a")
-		if tt.withD {
-			w.created(w.asset("x.png", &a, 0))
-		}
-		w.placed(c, domain.TreeState{ParentID: &b, Name: "x.png"})
-		w.placed(b, domain.TreeState{ParentID: &a, Name: "b"})
-		w.placed(a, domain.TreeState{Name: "b"})
+		tt.build(w)
 		ops, rounds, pending, err := domain.ScheduleRounds(w.state(), 3)
 		if err != nil {
 			t.Errorf("%s: schedule = %v, want it planned", tt.name, err)
