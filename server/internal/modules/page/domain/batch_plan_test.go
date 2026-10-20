@@ -387,7 +387,9 @@ func TestPlanBatchAnswersItsItemsInTheTreesPass(t *testing.T) {
 // the bound, H of 5,001 past it at its move, the contents' pass not run;
 // one folder moved there and back, each move counted, at the bound with
 // 5,000 nodes and past it with 5,001 (review A's N2); a lone move of a
-// larger folder, and moves among siblings, are not.
+// larger folder, and moves among siblings, are not. A move past it that
+// its own checks refuse answers their refusal, as the items' bound waits
+// for its op (review A's N4): H moved under its own child, a cycle's 409.
 func TestPlanBatchBoundsWhatItsMovesCarry(t *testing.T) {
 	half := domain.MaxUnitNodes / 2
 	folders := func(f, h int) *notebook {
@@ -428,6 +430,12 @@ func TestPlanBatchBoundsWhatItsMovesCarry(t *testing.T) {
 	p, _ = planOf(t, folders(domain.MaxUnitNodes+1, 1), moveOp("F.md", "G/F.md"))
 	if p.Failed != nil {
 		t.Errorf("a lone move of %d nodes: Failed = %v", domain.MaxUnitNodes+1, p.Failed)
+	}
+	nb := folders(domain.MaxUnitNodes+1, 10)
+	nb.add("H/K.md")
+	p, _ = planOf(t, nb, moveOp("F.md", "G/F.md"), moveOp("H.md", "H/K/H.md"))
+	if got := failed(t, p); got.code != "page.cycle" || got.at != 1 {
+		t.Errorf("a cycle past the bound: Failed = %+v (%v), want its 409 at ops[1]", got, p.Failed)
 	}
 	p, _ = planOf(t, folders(domain.MaxUnitNodes, domain.MaxUnitNodes), moveOp("F.md", "F2.md"), moveOp("H.md", "H2.md"))
 	if p.Failed != nil {

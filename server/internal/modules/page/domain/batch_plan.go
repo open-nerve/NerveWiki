@@ -383,8 +383,8 @@ func (t *treePass) content(i int, s BatchStep) error {
 
 // move is move: the node from names, to's parent's line, the new name,
 // then Unit.Relocate's checks: under its parent the name alone, reading no
-// subtree; under another, RelocationOf. One there and so named already is
-// unchanged.
+// subtree; under another, RelocationOf, then the nodes the batch's moves
+// carry (MaxUnitNodes). One there and so named already is unchanged.
 func (t *treePass) move(i int, s BatchStep) error {
 	ps := &t.p.Steps[i]
 	n, ancestors, err := FindPath(s.From, t.cur.lookup)
@@ -423,16 +423,18 @@ func (t *treePass) move(i int, s BatchStep) error {
 			holder = &h
 		}
 		sub := t.cur.subtree(n.ID)
-		if t.moves, t.carried = t.moves+1, t.carried+len(sub); t.moves > 1 && t.carried > MaxUnitNodes {
-			t.p.final = true
-			return BatchTooLarge("nodes the batch's moves carry", t.carried, MaxUnitNodes,
-				"move each folder once, or in separate calls")
-		}
 		if err := RelocationOf(sub, parent, t.cur.line(parent), holder); err != nil {
 			if taken := (*PathTaken)(nil); errors.As(err, &taken) {
 				taken.Path = s.To.Written // to is the whole new path, which the answer says
 			}
 			return err
+		}
+		// After the move's own checks, as the items' bound waits for its op
+		// (M9/P3 review A's N4): a cycle past it answers its 409.
+		if t.moves, t.carried = t.moves+1, t.carried+len(sub); t.moves > 1 && t.carried > MaxUnitNodes {
+			t.p.final = true
+			return BatchTooLarge("nodes the batch's moves carry", t.carried, MaxUnitNodes,
+				"move each folder once, or in separate calls")
 		}
 		moved.ParentID, moved.SortOrder = parent, t.cur.lastOrder(parent)
 	}
