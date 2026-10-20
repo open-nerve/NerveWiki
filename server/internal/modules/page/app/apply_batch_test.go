@@ -27,6 +27,7 @@ type fakeLinks struct {
 	notIndexed bool
 	reached    bool
 	frozen     map[string][]uuid.UUID // the frozen nodes Reached and Rewrite were last given
+	reads      []*app.TreeReads       // the reads Reached and Rewrite were given, in their order
 }
 
 func (l *fakeLinks) Indexed(ctx context.Context, _, _ uuid.UUID, _ int, _ domain.PlanTree) (domain.LinksBefore, bool, error) {
@@ -34,9 +35,10 @@ func (l *fakeLinks) Indexed(ctx context.Context, _, _ uuid.UUID, _ int, _ domain
 	return domain.LinksBefore{Leads: map[int]domain.Lead{}, Targets: map[uuid.UUID][]domain.PathStep{}}, !l.notIndexed, nil
 }
 
-func (l *fakeLinks) Reached(ctx context.Context, _, _ uuid.UUID, _ int, _ []domain.Change, frozen []uuid.UUID, _ domain.PlanTree) (
-	bool, error,
-) {
+func (l *fakeLinks) Reached(ctx context.Context, _, _ uuid.UUID, _ int, _ []domain.Change, frozen []uuid.UUID, _ domain.PlanTree,
+	reads *app.TreeReads,
+) (bool, error) {
+	l.kept("Reached", reads)
 	l.record(ctx, "Reached")
 	l.saw("Reached", frozen)
 	return l.reached && !l.notIndexed, nil
@@ -53,6 +55,7 @@ func (l *fakeLinks) Resolve(ctx context.Context, q app.LinksOn) (domain.LinksBef
 func (l *fakeLinks) Rewrite(ctx context.Context, q app.LinksMoved) (string, error) {
 	l.record(ctx, "Rewrite")
 	l.saw("Rewrite", q.Frozen)
+	l.kept("Rewrite", q.Reads)
 	if _, err := q.Parse(ctx, q.Content); err != nil {
 		return "", err
 	}
@@ -66,6 +69,11 @@ func (l *fakeLinks) Rewrite(ctx context.Context, q app.LinksMoved) (string, erro
 		}
 	}
 	return out, nil
+}
+
+// kept keeps the reads call was given.
+func (l *fakeLinks) kept(_ string, reads *app.TreeReads) {
+	l.reads = append(l.reads, reads)
 }
 
 // saw keeps the frozen nodes call was given.
@@ -347,6 +355,25 @@ func TestABatchsParticipantsFollowItOnceItsOpsDone(t *testing.T) {
 	}
 	if created := b.Written[n]; len(created.Changes) != 4 || created.Facts != "n" || !slices.Equal(created.Frozen, []uuid.UUID{h.ID}) {
 		t.Errorf("N's rewrite = %+v, want the moves after its creation, its facts, H frozen", created)
+	}
+}
+
+// The plan's rewrites of the content ops between two ops that change the
+// tree share one of the links' reads of it (M9/P3 review B-N2): P's and
+// Q's after A's move, R's after B's move another.
+func TestABatchsPlanReadsATreeOnce(t *testing.T) {
+	f := newFixture()
+	f.page("A", nil, 1)
+	for i, name := range []string{"P", "Q", "R"} {
+		f.content(f.page(name, nil, float64(i+2)).ID, "[[A]] x", 1)
+	}
+	links := &fakeLinks{recorder: f.rec}
+	if _, err := f.applyBatch(links, moveOp("A.md", "B.md"), editOp("P.md", "x", "p"), editOp("Q.md", "x", "q"), moveOp("B.md", "C.md"),
+		editOp("R.md", "x", "r")); err != nil {
+		t.Fatal(err)
+	}
+	if r := links.reads; len(r) != 3 || r[0] == nil || r[1] != r[0] || r[2] == r[0] || r[2] == nil {
+		t.Errorf("the rewrites were given the reads %v; want P's and Q's one, R's another", r)
 	}
 }
 

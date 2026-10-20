@@ -228,9 +228,10 @@ type BatchLinks interface {
 	// would write it again (M9/P3 review A-I1), those that led to the
 	// nodes of frozen left: the plan then reads the page whole and compares
 	// the write with its content rewritten for them. False when the index
-	// is not of revision or not of the current extractor, as Indexed.
+	// is not of revision or not of the current extractor, as Indexed. What
+	// it reads of tree it keeps in reads.
 	Reached(ctx context.Context, notebookID, id uuid.UUID, revision int, changes []domain.Change, frozen []uuid.UUID,
-		tree domain.PlanTree) (bool, error)
+		tree domain.PlanTree, reads *TreeReads) (bool, error)
 	// Resolve is where each link of q's content, the page's at its path on
 	// q's tree, leads there, by where its target starts, with the targets
 	// as they are there.
@@ -259,12 +260,23 @@ type LinksOn struct {
 // when its content was read (Before), and the renames and moves since,
 // merged node by node; Frozen the nodes those ops rename or move with
 // update_links false, the links that led to them left as they are (M9
-// design 4.11; M9/P3 review B-M1).
+// design 4.11; M9/P3 review B-M1); and the reads of its tree kept for the
+// calls on it (TreeReads).
 type LinksMoved struct {
 	LinksOn
 	Before  domain.LinksBefore
 	Changes []domain.Change
 	Frozen  []uuid.UUID
+	Reads   *TreeReads
+}
+
+// TreeReads is what the links read of one tree of a batch's plan, kept
+// for the calls on that tree: the content ops between two of the batch's
+// ops that change the tree share one, so that a folder moved before them is
+// read once, not once an op (M9/P3 review B-N2). Held is the links' own,
+// opaque here.
+type TreeReads struct {
+	Held any
 }
 
 // PageStates reads the pages' contents as MCP's list tells them, and

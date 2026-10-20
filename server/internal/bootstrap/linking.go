@@ -153,9 +153,9 @@ func (b batchLinks) Indexed(ctx context.Context, notebookID, id uuid.UUID, revis
 }
 
 func (b batchLinks) Reached(ctx context.Context, notebookID, id uuid.UUID, revision int, changes []page.Change,
-	frozen []uuid.UUID, tree page.PlanTree,
+	frozen []uuid.UUID, tree page.PlanTree, reads *page.TreeReads,
 ) (bool, error) {
-	return b.links.Reached(ctx, notebookID, id, revision, linkChanges(changes), frozen, planPages{tree}, tree.Gone())
+	return b.links.Reached(ctx, notebookID, id, revision, linkChanges(changes), frozen, planPages{tree}, tree.Gone(), treeReads(reads))
 }
 
 func (b batchLinks) Resolve(ctx context.Context, q page.LinksOn) (page.LinksBefore, error) {
@@ -165,7 +165,16 @@ func (b batchLinks) Resolve(ctx context.Context, q page.LinksOn) (page.LinksBefo
 
 func (b batchLinks) Rewrite(ctx context.Context, q page.LinksMoved) (string, error) {
 	return b.links.Rewrite(ctx, linking.LinksMoved{LinksOn: linksOn(q.LinksOn), Before: linkLinksBefore(q.Before),
-		Changes: linkChanges(q.Changes), Frozen: q.Frozen})
+		Changes: linkChanges(q.Changes), Frozen: q.Frozen, Reads: treeReads(q.Reads)})
+}
+
+// treeReads is where linking keeps what it reads of a tree of the plan,
+// nil for none.
+func treeReads(r *page.TreeReads) *any {
+	if r == nil {
+		return nil
+	}
+	return &r.Held
 }
 
 // linksOn is a content of a batch's plan as linking resolves it: on the

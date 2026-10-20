@@ -43,11 +43,14 @@ type LinksOn struct {
 // merged node by node, and the nodes those ops rename or move with
 // update_links false, whose links it leaves (Moved.Frozen). The paths
 // before are Before's: the moved nodes' former parents are not read.
+// Reads, when set, keeps the subtrees read of the tree for the caller's
+// next calls on it (M9/P3 review B-N2).
 type LinksMoved struct {
 	LinksOn
 	Before  LinksBefore
 	Changes []domain.Change
 	Frozen  []uuid.UUID
+	Reads   *any
 }
 
 // Indexed is where the links of the page id of notebookID led by the
@@ -71,9 +74,10 @@ func (b BatchLinks) Indexed(ctx context.Context, notebookID, id uuid.UUID, revis
 // index's rows of the page (M9/P3 review A-I1). The plan then reads the
 // page whole, to compare a write with its content rewritten for them.
 // False when the index is not of revision or of the current extractor,
-// whose links the plan does not rewrite, as Indexed.
+// whose links the plan does not rewrite, as Indexed. The subtrees it reads
+// of tree are kept in reads, when set, as Rewrite's.
 func (b BatchLinks) Reached(ctx context.Context, notebookID, id uuid.UUID, revision int, changes []domain.Change,
-	frozen []uuid.UUID, tree Pages, gone []uuid.UUID,
+	frozen []uuid.UUID, tree Pages, gone []uuid.UUID, reads *any,
 ) (bool, error) {
 	if relocates, recased := domain.Relocation(changes); !relocates && len(recased) == 0 {
 		return false, nil
@@ -92,7 +96,7 @@ func (b BatchLinks) Reached(ctx context.Context, notebookID, id uuid.UUID, revis
 			links = append(links, domain.Link{Start: l.Start, Target: l.Target, Aliases: l.Aliases})
 		}
 	}
-	sub := &subtrees{store: b.Store, pages: tree, notebookID: notebookID, read: map[uuid.UUID]subtree{}}
+	sub := b.subtreesOf(notebookID, tree, reads)
 	reached, _, err := ownLinks(ctx, b.Store, tree, sub, notebookID, id, links, LinksBefore{Leads: x.Resolutions}, changes,
 		setOf(frozen), setOf(gone))
 	return len(reached) > 0, err
@@ -137,7 +141,7 @@ func (b BatchLinks) Rewrite(ctx context.Context, q LinksMoved) (string, error) {
 		return "", err
 	}
 	gone := setOf(q.Gone)
-	sub := &subtrees{store: b.Store, pages: q.Tree, notebookID: q.NotebookID, read: map[uuid.UUID]subtree{}}
+	sub := b.subtreesOf(q.NotebookID, q.Tree, q.Reads)
 	reached, recased, err := ownLinks(ctx, b.Store, q.Tree, sub, q.NotebookID, q.PageID, facts.Links, q.Before, q.Changes,
 		setOf(q.Frozen), gone)
 	if err != nil || len(reached) == 0 {
@@ -171,6 +175,21 @@ func (b BatchLinks) Rewrite(ctx context.Context, q LinksMoved) (string, error) {
 		return q.Content, err
 	}
 	return written, nil
+}
+
+// subtreesOf is the subtrees spread reads of tree, those reads keeps when
+// set: made there by the first call on the tree.
+func (b BatchLinks) subtreesOf(notebookID uuid.UUID, tree Pages, reads *any) *subtrees {
+	if reads != nil {
+		if sub, ok := (*reads).(*subtrees); ok {
+			return sub
+		}
+	}
+	sub := &subtrees{store: b.Store, pages: tree, notebookID: notebookID, read: map[uuid.UUID]subtree{}}
+	if reads != nil {
+		*reads = sub
+	}
+	return sub
 }
 
 // withTargets is leads with the nodes they lead to at their paths on tree.

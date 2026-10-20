@@ -312,7 +312,7 @@ func TestABatchLeavesTheLinksToTheNodesItFroze(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				reached, err := links.Reached(context.Background(), w.notebook, q, revision, changes, frozen, w.tree, nil)
+				reached, err := links.Reached(context.Background(), w.notebook, q, revision, changes, frozen, w.tree, nil, nil)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -330,6 +330,37 @@ func TestABatchLeavesTheLinksToTheNodesItFroze(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// The plan's rewrites on one tree read the subtrees of the nodes their
+// changes move once, kept in the reads their caller gives (M9/P3 review
+// B-N2): two content ops after a folder's move, one read of its subtree;
+// without the reads, one each.
+func TestBatchLinksKeepTheirReadsOfATree(t *testing.T) {
+	w := newRewriting(t, "Top", "Top/F", "Top/F/X", "G", "P", "Q")
+	before := w.before("[[Top/F/X]]\n", "Top/F/X")
+	f := w.id("Top/F")
+	changes := w.move("Top/F", "G")[:1]
+	pages := &counted{Pages: w.tree, subtrees: map[uuid.UUID]int{}}
+	links := app.BatchLinks{Store: w.store, Logger: w.rewrite.Logger, MaxContent: 1 << 10}
+	parse := func(_ context.Context, content string) (domain.Facts, error) { return w.facts(content), nil }
+	rewrite := func(page string, reads *any) string {
+		got, err := links.Rewrite(context.Background(), app.LinksMoved{LinksOn: app.LinksOn{NotebookID: w.notebook, PageID: w.id(page),
+			Content: "[[Top/F/X]]\n", Tree: pages, Parse: parse}, Before: before, Changes: changes, Reads: reads})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+	var reads any
+	if p, q := rewrite("P", &reads), rewrite("Q", &reads); p != "[[X]]\n" || q != p || pages.subtrees[f] != 1 {
+		t.Errorf("two rewrites on one tree = %q and %q, F's subtree read %d times; want [[X]] both, once", p, q, pages.subtrees[f])
+	}
+	rewrite("P", nil)
+	rewrite("Q", nil)
+	if pages.subtrees[f] != 3 {
+		t.Errorf("two rewrites without reads read F's subtree %d times in all, want once each", pages.subtrees[f]-1)
 	}
 }
 

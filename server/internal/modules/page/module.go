@@ -97,6 +97,8 @@ type (
 	LinksOn = app.LinksOn
 	// LinksMoved is a content of a page of a batch's plan to rewrite.
 	LinksMoved = app.LinksMoved
+	// TreeReads is what the links read of one tree of a batch's plan.
+	TreeReads = app.TreeReads
 	// PlanTree is the tree of a batch's plan after one of its ops.
 	PlanTree = domain.PlanTree
 	// NodePath is a node of a PlanTree with its path.

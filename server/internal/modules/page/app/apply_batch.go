@@ -201,6 +201,7 @@ type batchAttempt struct {
 	facts      map[uuid.UUID]Facts
 	empty      Facts
 	befores    map[uuid.UUID]WrittenPage
+	reads      map[int]*TreeReads // the links' reads of the plan's trees, by the op that made each (readsAt)
 	// The unit's: each op's node and path as it found them, the pages it
 	// wrote and their revisions then, and its counts and time.
 	done      []OpDone
@@ -326,7 +327,7 @@ func (a *batchAttempt) read(ctx context.Context) (map[uuid.UUID]domain.PageText,
 			continue
 		}
 		reached, err := a.b.links.Reached(ctx, a.notebookID, id, read[id].Revision, moves, a.plan.FrozenBetween(-1, firsts[id]),
-			a.plan.TreeAt(firsts[id]))
+			a.plan.TreeAt(firsts[id]), a.readsAt(firsts[id]))
 		if err != nil {
 			return nil, nil, err
 		}
@@ -819,8 +820,30 @@ func (r *planLinks) Rewrite(id uuid.UUID, content string, before domain.LinksBef
 	changes := r.a.plan.MovesBetween(since, until)
 	return r.a.b.links.Rewrite(r.ctx, LinksMoved{
 		LinksOn: LinksOn{NotebookID: r.a.notebookID, PageID: id, Content: content, Tree: r.a.plan.TreeAt(until), Parse: r.parse(id)},
-		Before:  before, Changes: changes, Frozen: r.a.plan.FrozenBetween(since, until),
+		Before:  before, Changes: changes, Frozen: r.a.plan.FrozenBetween(since, until), Reads: r.a.readsAt(until),
 	})
+}
+
+// readsAt is the links' reads of the plan's tree after the op until: one
+// for the ops since the last op up to until that changes the tree, a move,
+// a delete or a write that creates (M9/P3 review B-N2).
+func (a *batchAttempt) readsAt(until int) *TreeReads {
+	made := -1
+	for k := until; k >= 0; k-- {
+		if s := a.steps[k]; s.Kind == domain.OpKindMove || s.Kind == domain.OpKindDelete || len(a.plan.Steps[k].Created) > 0 {
+			made = k
+			break
+		}
+	}
+	if a.reads == nil {
+		a.reads = map[int]*TreeReads{}
+	}
+	r, ok := a.reads[made]
+	if !ok {
+		r = &TreeReads{}
+		a.reads[made] = r
+	}
+	return r
 }
 
 // parse is the plan's parse of the page id's contents: admitted by the
