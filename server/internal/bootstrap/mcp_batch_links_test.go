@@ -115,7 +115,11 @@ func titled(renamed bool, more ...restPage) []restPage {
 // created before the move, which carries it, its title's link not taken
 // by the creation (the paths equally long, the older page's id the less),
 // the move's rewrite keeps it; (22) such a page under a folder renamed,
-// and the rename with update_links false (K3b and the control K3c).
+// and the rename with update_links false (K3b and the control K3c); (23)
+// a node followed under a node renamed, or moved under another, without
+// update_links after its folder's move or rename: its Markdown link's
+// text, its path before, written as M6 writes it (M9/P3 review B1-N1: its
+// d5 and d5r; d5k).
 func TestTheLinksOfABatchAreThoseOfSeparateCalls(t *testing.T) {
 	tm, logs := newAcmeTeamLogged(t)
 	agent := tm.agent(t, "alice", "")
@@ -195,6 +199,17 @@ func TestTheLinksOfABatchAreThoseOfSeparateCalls(t *testing.T) {
 		{"22 the rename with update_links false (K3c)", titled(true, restPage{"Q", "[[N]] q"}),
 			[]map[string]any{opWith(opMove("F.md", "G.md"), "update_links", false), opWrite("G/N.md", "n")},
 			map[string]string{"Q.md": "[[N]] q"}, true},
+		{"23 a node followed under one frozen, a Markdown link by its old path (d5)", []restPage{{"Top", ""}, {"Top/F", ""},
+			{"Top/F/X", ""}, {"Top/F/X/D", ""}, {"G", ""}, {"Q", "[[Top/F/X/D]] [Top/F/X/D](Top/F/X/D.md)"}},
+			[]map[string]any{opMove("Top/F.md", "G/F.md"), opWith(opMove("G/F/X.md", "G/F/Y.md"), "update_links", false)},
+			map[string]string{"Q.md": "[[D]] [D](D.md)"}, true},
+		{"23 the folder renamed (d5r)", []restPage{{"F", ""}, {"F/X", ""}, {"F/X/D", ""}, {"Q", "[F/X/D](F/X/D.md)"}},
+			[]map[string]any{opMove("F.md", "G.md"), opWith(opMove("G/X.md", "G/Y.md"), "update_links", false)},
+			map[string]string{"Q.md": "[D](D.md)"}, true},
+		{"23 the frozen node moved under another (d5k)", []restPage{{"Top", ""}, {"Top/F", ""}, {"Top/F/X", ""},
+			{"Top/F/X/D", ""}, {"Top/F/K", ""}, {"G", ""}, {"Q", "[Top/F/X/D](Top/F/X/D.md)"}},
+			[]map[string]any{opMove("Top/F.md", "G/F.md"), opWith(opMove("G/F/X.md", "G/F/K/X.md"), "update_links", false)},
+			map[string]string{"Q.md": "[D](D.md)"}, true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			batch, apart := tm.twins(t, i, tt.pages)
@@ -224,24 +239,25 @@ func TestTheLinksOfABatchAreThoseOfSeparateCalls(t *testing.T) {
 // moves, merged node by node, from where they led before it, or, in a page
 // it writes, at its latest write before them, on the tree then with the
 // aliases from before the batch; what other ops did between to where they
-// lead is not seen, nor an alias the batch changed. A page not written:
-// (1a) a creation before a move, (1b) a dangling link that a rename takes
-// before another rename, (1c) a link taken and freed again, (a) a deletion
-// that turns a link to another page, (b) an alias taken away; (1a2) a
-// creation under a folder before its rename, which the rename reaches as
-// separate calls' does, the link the creation took written back where it
-// led before the batch (M9/P3 review B1-M1: one created after the rename
-// is not reached, 3.14.3's 22). A written
-// page: (e1) a creation after its write, (e2) an alias the batch changed,
-// (e3) a name merged away. (d) update_links false on a node, its ancestor
-// renamed or moved with update_links: the links that led to the node left
-// as they are, in every page, whatever its ancestors' changes (M9/P3
-// review B-M1), dangling where separate calls write them first, the same
-// where the node's op comes first (d1r, d3r); the node's own op with
-// update_links, its ancestor's without, followed (d2, d4); the plan's
-// rewrite leaving them too, an edit's old_string and a write's bytes
-// judged on the links left (d6, d6w). (c) A page written after the plan
-// rewrote it. (2) The lock's code.
+// lead is not seen, nor an alias the batch changed. A page not written: (1a)
+// a creation before a move, (1b) a dangling link that a rename takes before
+// another rename, (1c) a link taken and freed again, (a) a deletion that
+// turns a link to another page, (b) an alias taken away; (1a2) a creation
+// under a folder before its rename, which the rename reaches as separate
+// calls' does, the link the creation took written back where it led before
+// the batch (M9/P3 review B1-M1: one created after the rename is not
+// reached, 3.14.3's 22). A written page: (e1) a creation after its write,
+// (e2) an alias the batch changed, (e3) a name merged away. (d) update_links
+// false on a node, its ancestor renamed or moved with update_links: the
+// links that led to the node left as they are, in every page, whatever its
+// ancestors' changes (M9/P3 review B-M1), dangling where separate calls
+// write them first, the same where the node's op comes first (d1r, d3r); the
+// node's own op with update_links, its ancestor's without, followed (d2,
+// d4), a Markdown link's text by its path before, the frozen ancestor's name
+// in it, as M6 writes it (d2m; M9/P3 review B1-N1); the plan's rewrite
+// leaving them too, an edit's old_string and a write's bytes judged on the
+// links left (d6, d6w). (c) A page written after the plan rewrote it. (2)
+// The lock's code.
 func TestTheWaysABatchDiffersFromSeparateCalls(t *testing.T) {
 	tm, logs := newAcmeTeamLogged(t)
 	agent := tm.agent(t, "alice", "")
@@ -297,6 +313,9 @@ func TestTheWaysABatchDiffersFromSeparateCalls(t *testing.T) {
 		{"d4 a folder moved without update_links, its page renamed", []restPage{{"Top", ""}, {"Top/F", ""}, {"Top/F/X", ""}, {"G", ""},
 			{"Q", "[[Top/F/X]]"}}, []map[string]any{frozen(opMove("Top/F.md", "G/F.md")), opMove("G/F/X.md", "G/F/Y.md")}, "Q.md",
 			pageState{"[[Y]]", "G/F/Y.md"}, pageState{"[[Top/F/X]]", "-"}},
+		{"d2m d2 by a Markdown link's path, its text the path before", []restPage{{"F", ""}, {"F/X", ""}, {"Q", "[F/X](F/X.md)"}},
+			[]map[string]any{frozen(opMove("F.md", "G.md")), opMove("G/X.md", "G/Y.md")}, "Q.md", pageState{"[Y](Y.md)", "G/Y.md"},
+			pageState{"[F/X](F/X.md)", "-"}},
 	}
 	for i, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {

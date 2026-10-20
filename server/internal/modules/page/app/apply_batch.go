@@ -462,9 +462,8 @@ func (a *batchAttempt) linksBefore(ctx context.Context) error {
 // what it changed back dropped; and the answer's reads.
 func (a *batchAttempt) apply(ctx context.Context, u *Unit) error {
 	last := len(a.steps) - 1
-	moves := a.plan.MovesBetween(-1, last)
 	var formers []uuid.UUID
-	for _, c := range moves {
+	for _, c := range slices.Concat(a.plan.MovesBetween(-1, last), a.plan.FrozenMovesBetween(-1, last)) {
 		if c.Before.ParentID != nil && !domain.SameParent(c.Before.ParentID, c.After.ParentID) {
 			formers = append(formers, *c.Before.ParentID)
 		}
@@ -716,7 +715,9 @@ func (a *batchAttempt) delete(ctx context.Context, u *Unit, i int) error {
 // once (M9/P3 design 3.7.1): the pages the unit wrote, alive after it,
 // with their own changes and links before; the former parents' paths; the
 // nodes it deleted, and those it created after each rename or move (M9/P3
-// review B1-M1); its bounds, of pages and of links (review B1-M3).
+// review B1-M1); the renames and moves of the nodes it froze, for the paths
+// before alone (review B1-N1); its bounds, of pages and of links (review
+// B1-M3).
 // None follows a batch without a rename or a
 // move with update_links. The facts' shares the batch holds are given back
 // first, the facts kept: the rewrite's read backs must find the budget. Its
@@ -744,7 +745,7 @@ func (a *batchAttempt) participate(ctx context.Context, u *Unit, parents map[uui
 	a.session.Release()
 	n, err := u.Participate(ctx, BatchRewrite{Written: written, Parents: parents, Gone: gone, MaxPages: a.b.maxRewrites,
 		WrittenWeight: domain.WrittenRewriteWeight, MaxLinks: a.b.maxLinks, FirstMove: first,
-		CreatedAfter: a.plan.CreatedAfterMoves(-1, len(a.steps)-1)})
+		CreatedAfter: a.plan.CreatedAfterMoves(-1, len(a.steps)-1), FrozenMoves: a.plan.FrozenMovesBetween(-1, len(a.steps)-1)})
 	var problem *shared.Error
 	if errors.As(err, &problem) {
 		return &domain.OpFailed{Op: first, Tool: a.steps[first].Kind, Err: err}

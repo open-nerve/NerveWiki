@@ -554,6 +554,21 @@ func (p *BatchPlan) TreeAt(k int) PlanTree { return PlanTree{v: p.tree.view(k)} 
 // creation as its before (M9/P3 design 3.7.1). A node back where it was,
 // so named, is left out: no link follows it.
 func (p *BatchPlan) MovesBetween(k, j int) []Change {
+	return p.mergedMoves(k, j, false)
+}
+
+// FrozenMovesBetween is the renames and moves of the ops after k up to j of
+// the nodes FrozenBetween names, merged as MovesBetween merges them: not
+// followed, but where those nodes were and are, which the paths before of
+// the nodes under them that a rewrite follows take their names and former
+// parents from (M9/P3 review B1-N1).
+func (p *BatchPlan) FrozenMovesBetween(k, j int) []Change {
+	return p.mergedMoves(k, j, true)
+}
+
+// mergedMoves is MovesBetween's, of the nodes an op among them moves with
+// update_links false when frozen, of the others when not.
+func (p *BatchPlan) mergedMoves(k, j int, frozen bool) []Change {
 	type merged struct {
 		before, after *Node
 		off, gone     bool
@@ -588,7 +603,7 @@ func (p *BatchPlan) MovesBetween(k, j int) []Change {
 	var out []Change
 	for _, id := range order {
 		x := m[id]
-		if x.gone || x.off || x.before.Name == x.after.Name && SameParent(x.before.ParentID, x.after.ParentID) {
+		if x.gone || x.off != frozen || x.before.Name == x.after.Name && SameParent(x.before.ParentID, x.after.ParentID) {
 			continue
 		}
 		before, after := x.before.State(), x.after.State()

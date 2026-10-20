@@ -725,7 +725,9 @@ func (r Rewrite) guardLocked(ctx context.Context, pages []uuid.UUID, m Moved, er
 // their paths after m and before it, and the pages with the keys a writing
 // of them reads; and the paths after m of sources, the pages written. The
 // paths the moved nodes' former parents had are m's Parents, as the unit
-// began, or read now, which a unit of one operation left as they were.
+// began, or read now, which a unit of one operation left as they were. A
+// path before takes the names and former parents of the nodes a batch
+// froze from their moves (Moved.FrozenMoves), as of those it follows.
 // Each target, one for each link reached, is looked at once, on m's
 // changes indexed once (M9/P3 review B-I1).
 func treeOf(ctx context.Context, pages Pages, m Moved, targets, sources []uuid.UUID) (
@@ -734,7 +736,8 @@ func treeOf(ctx context.Context, pages Pages, m Moved, targets, sources []uuid.U
 	targets = slices.Clone(targets)
 	slices.SortFunc(targets, uuid.UUID.Compare)
 	targets = slices.Compact(targets)
-	parents := domain.FormerParents(m.Changes)
+	changes := slices.Concat(m.Changes, m.FrozenMoves)
+	parents := domain.FormerParents(changes)
 	ids := slices.Concat(targets, sources)
 	if m.Parents == nil {
 		ids = append(ids, parents...)
@@ -758,7 +761,7 @@ func treeOf(ctx context.Context, pages Pages, m Moved, targets, sources []uuid.U
 	}
 	tree := domain.Tree{Before: map[uuid.UUID]domain.Node{}, After: map[uuid.UUID]domain.Node{}, Named: map[string][]domain.Node{}}
 	var keys []string
-	befores := domain.BeforesOf(m.Changes)
+	befores := domain.BeforesOf(changes)
 	for _, id := range targets {
 		if n, ok := byID[id]; ok {
 			tree.After[id], tree.Before[id] = n, befores.PathBefore(n, before)

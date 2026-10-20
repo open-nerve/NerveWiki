@@ -249,10 +249,12 @@ type Publisher interface {
 // review B1-M3); and the nodes an op of it renamed or moved with
 // update_links false, the links that led to them left as they are, in every
 // page, whatever their ancestors' changes (M9 design 4.11; M9/P3 review
-// B-M1); and, for each node an op of it renamed or moved, the nodes it
-// created after the last such op of the node, which the subtree spread reads
-// of it leaves out: that op reached none of them, and a creation only
-// resolves links again (M9 design 4.11; M9/P3 review B1-M1).
+// B-M1), and their renames and moves merged, not followed, but which the
+// paths before of the nodes under them take their names and former parents
+// from (M9/P3 review B1-N1); and, for each node an op of it renamed or
+// moved, the nodes it created after the last such op of the node, which the
+// subtree spread reads of it leaves out: that op reached none of them, and a
+// creation only resolves links again (M9 design 4.11; M9/P3 review B1-M1).
 type Moved struct {
 	NotebookID    uuid.UUID
 	At            time.Time
@@ -265,6 +267,7 @@ type Moved struct {
 	WrittenWeight int
 	MaxLinks      int
 	Frozen        []uuid.UUID
+	FrozenMoves   []domain.Change
 	CreatedAfter  map[uuid.UUID][]uuid.UUID
 }
 

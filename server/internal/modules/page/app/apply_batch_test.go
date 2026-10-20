@@ -311,7 +311,8 @@ func TestABatchWritesAPageOnceAtItsFirstContentOp(t *testing.T) {
 // wrote, alive after it, with its own changes, those after its last
 // content op of the nodes they rename or move alone, its links then and
 // its final content's facts; the former parents' paths, the nodes gone,
-// the bound and the first op that moves.
+// the nodes it froze with their moves merged (M9/P3 review B1-N1), the
+// bound and the first op that moves.
 func TestABatchsParticipantsFollowItOnceItsOpsDone(t *testing.T) {
 	f := newFixture()
 	a, folder, g, h := f.page("A", nil, 1), f.page("F", nil, 2), f.page("G", nil, 3), f.page("H", nil, 4)
@@ -351,9 +352,10 @@ func TestABatchsParticipantsFollowItOnceItsOpsDone(t *testing.T) {
 	if b.MaxPages != domain.MaxBatchRewrites || b.WrittenWeight != domain.WrittenRewriteWeight || b.MaxLinks != domain.MaxBatchRewriteLinks ||
 		b.FirstMove != 1 ||
 		!slices.Equal(b.Gone, []uuid.UUID{d.ID}) || len(b.Parents) != 1 || len(b.Parents[e.ID]) != 1 || b.Parents[e.ID][0].Name != "E" ||
-		!slices.Equal(b.Frozen, []uuid.UUID{h.ID}) {
-		t.Errorf("the batch's rewrite = max %d, weight %d, links %d, first %d, gone %v, parents %v, frozen %v", b.MaxPages,
-			b.WrittenWeight, b.MaxLinks, b.FirstMove, b.Gone, b.Parents, b.Frozen)
+		!slices.Equal(b.Frozen, []uuid.UUID{h.ID}) || len(b.FrozenMoves) != 1 || b.FrozenMoves[0].NodeID != h.ID ||
+		b.FrozenMoves[0].Before.Name != "H" || b.FrozenMoves[0].After.Name != "H2" {
+		t.Errorf("the batch's rewrite = max %d, weight %d, links %d, first %d, gone %v, parents %v, frozen %v, %+v", b.MaxPages,
+			b.WrittenWeight, b.MaxLinks, b.FirstMove, b.Gone, b.Parents, b.Frozen, b.FrozenMoves)
 	}
 	if len(b.Written) != 2 {
 		t.Fatalf("the pages written = %v, want W and N", b.Written)

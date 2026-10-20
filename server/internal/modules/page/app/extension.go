@@ -81,6 +81,13 @@ type BatchRewrite struct {
 	// unit left it (domain.BatchPlan.CreatedAfterMoves; M9 design 4.11: a
 	// creation only resolves again; M9/P3 review B1-M1).
 	CreatedAfter map[uuid.UUID][]uuid.UUID
+	// FrozenMoves is the renames and moves of the nodes of Frozen, merged
+	// node by node over the batch (domain.BatchPlan.FrozenMovesBetween): not
+	// followed, but where they were, which the paths before of the nodes
+	// under them that the rewrite follows take their names and former
+	// parents from, those parents' paths among Parents (M9/P3 review
+	// B1-N1: a Markdown link's text that was the old path is recognized).
+	FrozenMoves []domain.Change
 }
 
 // WrittenPage is a page a batch wrote, for its deferred rewrite: where its

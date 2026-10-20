@@ -88,9 +88,10 @@ func (l linkRewrite) Participate(ctx context.Context, s page.Step, u page.Append
 // it leaves the links to; the former parents' paths, never nil, which the
 // rewrite reads them from alone; the nodes it deleted; its bounds, of pages,
 // and what a page it wrote counts in it (M9/P3 review B-M3), and of links
-// (review B1-M3); the nodes whose links it leaves (M9/P3 review B-M1); and
-// those it created after each node's last rename or move, out of its subtree
-// (M9/P3 review B1-M1).
+// (review B1-M3); the nodes whose links it leaves (M9/P3 review B-M1), with
+// their moves, for the paths before alone (review B1-N1); and those it
+// created after each node's last rename or move, out of its subtree (M9/P3
+// review B1-M1).
 func batchMoved(m *linking.Moved, b page.BatchRewrite) error {
 	m.Written = make(map[uuid.UUID]linking.WrittenPage, len(b.Written))
 	for id, w := range b.Written {
@@ -103,7 +104,7 @@ func batchMoved(m *linking.Moved, b page.BatchRewrite) error {
 	}
 	m.Parents = linkParents(b.Parents)
 	m.Gone, m.MaxPages, m.WrittenWeight, m.MaxLinks = b.Gone, b.MaxPages, b.WrittenWeight, b.MaxLinks
-	m.Frozen, m.CreatedAfter = b.Frozen, b.CreatedAfter
+	m.Frozen, m.FrozenMoves, m.CreatedAfter = b.Frozen, linkChanges(b.FrozenMoves), b.CreatedAfter
 	return nil
 }
 

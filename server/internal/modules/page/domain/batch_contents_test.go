@@ -419,7 +419,8 @@ func TestBatchPlanChecksTheUnit(t *testing.T) {
 // design 3.7.1): the first before and the last after; a node moved
 // without update_links left out, one back where it was, one deleted; one
 // created among them before as created; the nodes moved without
-// update_links, frozen (M9/P3 review B-M1); and the nodes created after
+// update_links, frozen (M9/P3 review B-M1), with their moves merged (review
+// B1-N1); and the nodes created after
 // each node's last rename or move, each page of a write's path it lacked
 // (M9/P3 review B1-M1).
 func TestBatchPlanMovesBetween(t *testing.T) {
@@ -479,6 +480,13 @@ func TestBatchPlanMovesBetween(t *testing.T) {
 	}
 	if got := p.FrozenBetween(-1, 1); len(got) != 0 {
 		t.Errorf("FrozenBetween(-1, 1) = %v, want none before A's move", got)
+	}
+	if got := p.FrozenMovesBetween(-1, 8); len(got) != 1 || got[0].NodeID != a2 || got[0].Before.Name != "A" ||
+		got[0].After.Name != "A2" || !domain.SameParent(got[0].Before.ParentID, nil) || !domain.SameParent(got[0].After.ParentID, nil) {
+		t.Errorf("FrozenMovesBetween(-1, 8) = %+v, want A's rename to A2 alone", got)
+	}
+	if got := p.FrozenMovesBetween(2, 8); len(got) != 0 {
+		t.Errorf("FrozenMovesBetween(2, 8) = %+v, want none after A's move", got)
 	}
 	hi := slices.SortedFunc(slices.Values(ids[9]), uuid.UUID.Compare)
 	all := slices.SortedFunc(slices.Values(append([]uuid.UUID{n}, hi...)), uuid.UUID.Compare)

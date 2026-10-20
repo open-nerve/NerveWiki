@@ -447,6 +447,43 @@ func TestABatchLeavesOutTheNodesItCreatedAfterAMove(t *testing.T) {
 	w.written(u, map[string]string{"Q": "[[G/Y]]\n"})
 }
 
+// A path before of a node the rewrite follows takes the name and the
+// former parent of a node above it that the batch froze from that node's
+// moves (M9/P3 review B1-N1): D, under X, which F's move carried, X then
+// renamed to Y, or moved under K beside it, without update_links; Q's
+// Markdown link to D by its old path, Top/F/X/D, has that text, so it is
+// written as M6 writes it, the text with the target. Without the frozen
+// moves, the path before named X Y, or had K above it, and the text, no
+// path D had, was kept.
+func TestABatchTakesThePathsBeforeFromTheNodesItFroze(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		freeze func(w *rewriting) domain.Change
+	}{
+		{"renamed", func(w *rewriting) domain.Change { return w.rename("G/F/X", "Y") }},
+		{"moved under K", func(w *rewriting) domain.Change { return w.move("G/F/X", "G/F/K")[0] }},
+	} {
+		for _, given := range []bool{true, false} {
+			w := newRewriting(t, "Top", "Top/F", "Top/F/X", "Top/F/X/D", "Top/F/K", "G", "Q")
+			w.write("Q", "[Top/F/X/D](Top/F/X/D.md)\n")
+			x, f, top := w.id("Top/F/X"), w.id("Top/F"), w.id("Top")
+			parents := map[uuid.UUID][]domain.Step{top: w.tree.path(top), f: w.tree.path(f)} // as the unit began
+			moved := w.move("Top/F", "G")
+			changes := slices.DeleteFunc(moved, func(c domain.Change) bool { return c.NodeID == x }) // X's the unit drops: it froze X
+			m := app.Moved{Changes: changes, Frozen: []uuid.UUID{x}, Parents: parents}
+			if frozen := c.freeze(w); given {
+				m.FrozenMoves = []domain.Change{frozen}
+			}
+			u, err := w.batch(m)
+			if err != nil {
+				t.Fatal(c.name, err)
+			}
+			want := map[bool]string{true: "[D](D.md)\n", false: "[Top/F/X/D](D.md)\n"}[given]
+			w.written(u, map[string]string{"Q": want})
+		}
+	}
+}
+
 // The plan's rewrites on one tree read the subtrees of the nodes their
 // changes move once, kept in the reads their caller gives (M9/P3 review
 // B-N2), and spread them once, the reach kept with them (review A's N1):
