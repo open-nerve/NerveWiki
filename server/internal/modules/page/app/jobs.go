@@ -3,7 +3,6 @@ package app
 import (
 	"cmp"
 	"context"
-	"crypto/sha256"
 	"errors"
 	"fmt"
 	"time"
@@ -475,16 +474,12 @@ func (w *JobWrites) revertBatch(ctx context.Context, spec JobSpec, p *revertPlan
 	if err != nil {
 		return BatchDone{}, err
 	}
-	facts, release, err := w.parser.DecidedAll(ctx, contents, domain.ErrJobBatchTooLarge)
+	facts, release, err := w.parser.DecidedContents(ctx, contents, domain.ErrJobBatchTooLarge)
 	if err != nil {
 		return BatchDone{}, err
 	}
 	defer release()
-	parsed := make(map[uuid.UUID]ParsedContent, len(contents))
-	for page, content := range contents {
-		sum := sha256.Sum256([]byte(content))
-		parsed[page] = ParsedContent{Hash: sum[:], Content: content, Facts: facts[page]}
-	}
+	parsed := parsedContents(contents, facts)
 	var done BatchDone
 	var retimed map[int]time.Time
 	if _, err := w.writer.Run(ctx, revertUnit(spec, p.changeset), func(ctx context.Context, u *Unit) error {
@@ -532,22 +527,22 @@ func (w *JobWrites) begun(ctx context.Context, p *revertPlan, steps []revertStep
 }
 
 // revertContents are the contents a revert's batch restores or writes
-// back, by page: those of the pages in the trash at each time (one
-// someone restored meanwhile is not among them, which the unit tells),
-// and the bases of the changeset's versions of the pages written, read by
-// their changeset's versions; one the purge took is
+// back, by page and hash: those of the pages in the trash at each time
+// (one someone restored meanwhile is not among them, which the unit
+// tells), and the bases of the changeset's versions of the pages written,
+// read by their changeset's versions; one the purge took is
 // page.changeset_trimmed.
 func (w *JobWrites) revertContents(ctx context.Context, reverted uuid.UUID, trashed map[time.Time][]uuid.UUID, written []uuid.UUID) (
-	map[uuid.UUID]string, error,
+	map[domain.ContentRef]string, error,
 ) {
-	out := map[uuid.UUID]string{}
+	out := map[domain.ContentRef]string{}
 	for at, pages := range trashed {
 		contents, err := w.reads.Trash.TrashContents(ctx, pages, at)
 		if err != nil {
 			return nil, err
 		}
 		for page, content := range contents {
-			out[page] = content
+			out[contentOf(page, content)] = content
 		}
 	}
 	if len(written) == 0 {
@@ -571,7 +566,7 @@ func (w *JobWrites) revertContents(ctx context.Context, reverted uuid.UUID, tras
 		return nil, domain.ErrChangesetTrimmed
 	}
 	for ref, v := range bases {
-		out[ref.NodeID] = v.Content
+		out[contentOf(ref.NodeID, v.Content)] = v.Content
 	}
 	return out, nil
 }

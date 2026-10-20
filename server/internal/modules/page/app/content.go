@@ -88,11 +88,33 @@ const busyAfter = time.Second
 func (c *ContentParser) DecidedAll(ctx context.Context, contents map[uuid.UUID]string, tooLarge error) (
 	map[uuid.UUID]Facts, func(), error,
 ) {
-	ids := make([]uuid.UUID, 0, len(contents))
-	for id := range contents {
-		ids = append(ids, id)
+	return decidedAll(ctx, c, contents, func(id uuid.UUID) uuid.UUID { return id }, uuid.UUID.Compare, tooLarge)
+}
+
+// DecidedContents is DecidedAll of contents by page and hash (M9/P3
+// design 3.18.3, 3.18.4): a revert's, which may restore a page at its
+// content in the trash and write another back on it, two contents of the
+// page, each parsed and counted; those of a lone page, however many, are
+// past no bound.
+func (c *ContentParser) DecidedContents(ctx context.Context, contents map[domain.ContentRef]string, tooLarge error) (
+	map[domain.ContentRef]Facts, func(), error,
+) {
+	return decidedAll(ctx, c, contents, func(r domain.ContentRef) uuid.UUID { return r.NodeID }, func(a, b domain.ContentRef) int {
+		return cmp.Or(a.NodeID.Compare(b.NodeID), cmp.Compare(a.Hash, b.Hash))
+	}, tooLarge)
+}
+
+// decidedAll is DecidedAll of contents by key, each the content of the
+// page pageOf names, in compare's order among those of a size.
+func decidedAll[K comparable](ctx context.Context, c *ContentParser, contents map[K]string, pageOf func(K) uuid.UUID,
+	compare func(a, b K) int, tooLarge error,
+) (map[K]Facts, func(), error) {
+	keys := make([]K, 0, len(contents))
+	pages := map[uuid.UUID]bool{}
+	for k := range contents {
+		keys, pages[pageOf(k)] = append(keys, k), true
 	}
-	slices.SortFunc(ids, func(a, b uuid.UUID) int { return cmp.Or(len(contents[b])-len(contents[a]), a.Compare(b)) })
+	slices.SortFunc(keys, func(a, b K) int { return cmp.Or(len(contents[b])-len(contents[a]), compare(a, b)) })
 	var holds []BudgetHold
 	release := func() {
 		for _, h := range holds {
@@ -105,12 +127,12 @@ func (c *ContentParser) DecidedAll(ctx context.Context, contents map[uuid.UUID]s
 			release()
 		}
 	}()
-	out := make(map[uuid.UUID]Facts, len(contents))
+	out := make(map[K]Facts, len(contents))
 	left, links := c.wait, 0
-	for _, id := range ids {
-		content := contents[id]
+	for _, k := range keys {
+		content := contents[k]
 		if content == "" {
-			out[id] = c.markdown.Facts(content)
+			out[k] = c.markdown.Facts(content)
 			continue
 		}
 		started := time.Now()
@@ -122,8 +144,8 @@ func (c *ContentParser) DecidedAll(ctx context.Context, contents map[uuid.UUID]s
 		holds = append(holds, hold)
 		facts := c.markdown.Facts(content)
 		hold.KeepFacts(facts)
-		out[id] = facts
-		if links += c.markdown.Links(facts); domain.UnitTooLarge(len(contents), len(contents), 0, links) {
+		out[k] = facts
+		if links += c.markdown.Links(facts); domain.UnitTooLarge(len(pages), len(contents), 0, links) {
 			return nil, nil, tooLarge
 		}
 	}

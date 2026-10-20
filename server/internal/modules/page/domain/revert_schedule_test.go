@@ -314,6 +314,17 @@ func TestScheduleRevertsEachBatchShape(t *testing.T) {
 			w.placed(p, domain.TreeState{Name: "B", SortOrder: 1})
 			w.placed(h, domain.TreeState{ParentID: &q, Name: "A"})
 		}, []string{"aside B renamed", "place A moved and renamed", "place B moved and renamed", "restore X"}},
+		{"a content written, then the page deleted: restored, then written back on its revision in the trash", 0, func(w *world) {
+			x := w.page("X", nil, 0, 3, "written")
+			w.wrote(x, 2, "before")
+			w.trash(x, deletedAt)
+			w.deleted(x)
+		}, []string{"restore X", "content X"}},
+		{"a revert's revert: written back, then deleted", 0, func(w *world) {
+			x := w.page("X", nil, 0, 3, "written back by the revert")
+			w.restored(x)
+			w.wrote(x, 2, "deleted by the batch")
+		}, []string{"content X", "delete X"}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			w := newWorld(t)
@@ -328,6 +339,38 @@ func TestScheduleRevertsEachBatchShape(t *testing.T) {
 			if got := w.ops(plan); !slices.Equal(got, tt.want) {
 				t.Errorf("steps = %q, want %q", got, tt.want)
 			}
+			// A write back is on the revision the page has as it comes to it:
+			// alive, its content's; restored, its revision in the trash.
+			for _, op := range plan.Ops {
+				if op.Kind == domain.RevertContent && (op.Base != 2 || op.Current != 3) {
+					t.Errorf("the write back = %+v, want version 2 on revision 3", op)
+				}
+			}
 		})
+	}
+}
+
+// The versions a revert writes back are every one of the changeset on a
+// base (M9/P3 design 3.18.1): a page it wrote, renamed or not, or wrote
+// then deleted; not a page it created.
+func TestRevertWritesAreEveryVersionOnABase(t *testing.T) {
+	w := newWorld(t)
+	created := w.page("Created", nil, 0, 1, "c")
+	w.created(created)
+	deleted := w.page("Deleted", nil, 1, 3, "d")
+	w.wrote(deleted, 2, "d before")
+	w.trash(deleted, w.at.Add(-time.Hour))
+	w.deleted(deleted)
+	renamed := w.page("Renamed", nil, 2, 5, "r")
+	w.placed(renamed, domain.TreeState{Name: "Was", SortOrder: 2})
+	w.wrote(renamed, 4, "r before")
+	written := w.page("Written", nil, 3, 7, "w")
+	w.wrote(written, 6, "w before")
+	var got []uuid.UUID
+	for _, v := range domain.RevertWrites(w.items, w.versions) {
+		got = append(got, v.NodeID)
+	}
+	if want := []uuid.UUID{deleted, renamed, written}; !slices.Equal(got, want) {
+		t.Errorf("RevertWrites = %v, want the deleted, renamed and written pages' %v", got, want)
 	}
 }

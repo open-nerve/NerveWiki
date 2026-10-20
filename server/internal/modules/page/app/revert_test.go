@@ -567,6 +567,41 @@ func TestRevertChangesetsConflictsNameTheNodes(t *testing.T) {
 	}
 }
 
+// A page a changeset wrote and then deleted, a batch's, is restored at
+// its content in the trash, then written back on its revision there (M9/P3
+// design 3.18): two contents of the page, each parsed, each step with its
+// own facts; past MaxUnitBytes together, but a lone page's, refused by no
+// bound (3.18.4).
+func TestARevertRestoresAPageThenWritesItBack(t *testing.T) {
+	f := newFixture()
+	f.grant(domain.ActionRevert)
+	o := &observer{recorder: f.rec}
+	f.observers = []app.PageObserver{o}
+	before := "[[Before]] " + strings.Repeat("b", domain.MaxContentBytes-len("[[Before]] "))
+	written := "[[Written]] " + strings.Repeat("w", domain.MaxContentBytes-len("[[Written]] "))
+	p := f.page("P", nil, 0)
+	f.content(p.ID, before, 1)
+	f.content(p.ID, written, 2)
+	at := now().Add(-time.Hour)
+	f.trashed(p.ID, at, f.alice)
+	c := f.log.changeset(domain.ChangesetEdit, f.alice, at, []domain.ChangesetItem{{NodeID: p.ID, Before: new(p.State()), Revision: 2}},
+		f.log.version(p.ID, 1, 2, written))
+	if _, err := f.revert(c.ID, nil, 0); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.store.contents[p.ID]; got.Content != before || got.Revision != 3 {
+		t.Errorf("P = revision %d of %d bytes, want the bytes before the write at revision 3", got.Revision, len(got.Content))
+	}
+	if len(o.events) != 1 || len(o.events[0].Changes) != 1 {
+		t.Fatalf("events = %+v, want one of P", o.events)
+	}
+	// The unit's change of P: its restore, then its write, the facts of
+	// the content written back.
+	if c := o.events[0].Changes[0]; c.Restored == nil || c.Revision != 3 || c.Facts != before {
+		t.Errorf("P's change = restored %v, revision %d, its facts the content before: %v", c.Restored, c.Revision, c.Facts == before)
+	}
+}
+
 // Under the lock a page in the trash at another revision of the bytes
 // parsed is no conflict: it goes back at the revision the unit reads.
 func TestRevertChangesetRestoresAtTheRevisionItReads(t *testing.T) {

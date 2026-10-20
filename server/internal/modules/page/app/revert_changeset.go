@@ -3,7 +3,6 @@ package app
 import (
 	"cmp"
 	"context"
-	"crypto/sha256"
 	"errors"
 	"log/slog"
 	"uuid"
@@ -101,17 +100,13 @@ func (r *RevertChangeset) Execute(ctx context.Context, id uuid.UUID, message *st
 	if err != nil {
 		return ChangesetReverted{}, err
 	}
-	facts, release, err := r.parser.DecidedAll(ctx, contents, domain.ErrRevertTooLarge)
+	facts, release, err := r.parser.DecidedContents(ctx, contents, domain.ErrRevertTooLarge)
 	if err != nil {
 		return ChangesetReverted{}, err
 	}
 	defer release()
-	read := RevertRead{Changeset: c.ID, Parsed: make(map[uuid.UUID]ParsedContent, len(contents)), Retention: r.reads.Retention,
-		MaxItems: r.bounds.Nodes, MaxSteps: r.bounds.Steps}
-	for page, content := range contents {
-		sum := sha256.Sum256([]byte(content))
-		read.Parsed[page] = ParsedContent{Hash: sum[:], Content: content, Facts: facts[page]}
-	}
+	read := RevertRead{Changeset: c.ID, Parsed: parsedContents(contents, facts), Retention: r.reads.Retention, MaxItems: r.bounds.Nodes,
+		MaxSteps: r.bounds.Steps}
 	var done RevertDone
 	outcome, err := r.writer.Run(ctx, spec, func(ctx context.Context, u *Unit) error {
 		var err error
@@ -254,23 +249,25 @@ func (r revertChecks) check(ctx context.Context, c domain.Changeset, spec UnitSp
 
 // withinBounds checks a revert parses at most the unit's pages and bytes,
 // those of the versions it writes back and of the pages of the trash
-// items it restores, a page each, and restores at most history rows of
-// history, its items' roots' at their time: page.revert_too_large.
+// items it restores, a content each, a page restored and written back
+// two (a lone page's never past them, M9/P3 design 3.18.4), and restores
+// at most history rows of history, its items' roots' at their time:
+// page.revert_too_large.
 func (r revertChecks) withinBounds(ctx context.Context, items []domain.ChangesetItem, versions []domain.ChangesetVersion,
 	nodes map[uuid.UUID]domain.NodeNow, groups map[uuid.UUID][]domain.TrashMember, history int,
 ) error {
-	pages, bytes, rows := 0, 0, 0
+	pages, copies, bytes, rows := map[uuid.UUID]bool{}, 0, 0, 0
 	for _, v := range domain.RevertWrites(items, versions) {
-		pages, bytes = pages+1, bytes+v.BaseBytes
+		pages[v.NodeID], copies, bytes = true, copies+1, bytes+v.BaseBytes
 	}
 	for _, g := range groups {
 		for _, m := range g {
 			if m.Node.Kind == domain.KindPage {
-				pages, bytes = pages+1, bytes+m.Bytes
+				pages[m.Node.ID], copies, bytes = true, copies+1, bytes+m.Bytes
 			}
 		}
 	}
-	if domain.UnitTooLarge(pages, pages, bytes, 0) {
+	if domain.UnitTooLarge(len(pages), copies, bytes, 0) {
 		return domain.ErrRevertTooLarge
 	}
 	for root, g := range groups {
@@ -347,11 +344,12 @@ func (r revertChecks) locked(ctx context.Context, plan domain.RevertPlan, state 
 	return nil
 }
 
-// contents are the contents the plan writes back or restores, by page: a
-// version's, a page's in the trash at its item's time. One the purge took
-// is page.changeset_trimmed, not parsed.
-func (r *RevertChangeset) contents(ctx context.Context, plan domain.RevertPlan) (map[uuid.UUID]string, error) {
-	out := map[uuid.UUID]string{}
+// contents are the contents the plan writes back or restores, by page and
+// hash: a version's, a page's in the trash at its item's time, both of a
+// page it restores and then writes back. One the purge took is
+// page.changeset_trimmed, not parsed.
+func (r *RevertChangeset) contents(ctx context.Context, plan domain.RevertPlan) (map[domain.ContentRef]string, error) {
+	out := map[domain.ContentRef]string{}
 	var refs []domain.VersionRef
 	for _, op := range plan.Ops {
 		switch op.Kind {
@@ -372,7 +370,7 @@ func (r *RevertChangeset) contents(ctx context.Context, plan domain.RevertPlan) 
 				return nil, domain.ErrChangesetTrimmed
 			}
 			for page, content := range trashed {
-				out[page] = content
+				out[contentOf(page, content)] = content
 			}
 		}
 	}
@@ -387,7 +385,7 @@ func (r *RevertChangeset) contents(ctx context.Context, plan domain.RevertPlan) 
 		return nil, domain.ErrChangesetTrimmed
 	}
 	for ref, v := range versions {
-		out[ref.NodeID] = v.Content
+		out[contentOf(ref.NodeID, v.Content)] = v.Content
 	}
 	return out, nil
 }

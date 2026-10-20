@@ -3,7 +3,6 @@ package domain_test
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"slices"
 	"testing"
@@ -266,15 +265,12 @@ func (w *world) plan() domain.RevertPlan {
 	return plan
 }
 
-// unordered is the ops of a revert PlanRevert answers ErrRevertUnordered.
-const unordered = "ErrRevertUnordered"
-
 // A revert reverses each kind of change in one round: a creation is
 // deleted, from its highest node; a deletion restored, each of its trash
 // items whole, where it was; a restore deleted again; a rename, a move, a
 // reorder put back; a written page's version before it written back. A
-// page written, then deleted, a batch's, is unordered until S2 (M9/P3
-// design section 0, 3.21.1).
+// page written, then deleted, a batch's, is restored, then written back
+// (M9/P3 design 3.18, 3.21.1).
 func TestPlanRevertReversesEachChange(t *testing.T) {
 	deletedAt := time.Date(2026, 10, 14, 11, 0, 0, 0, time.UTC)
 	for _, tt := range []struct {
@@ -345,12 +341,12 @@ func TestPlanRevertReversesEachChange(t *testing.T) {
 			w.restored(p)
 			w.restored(q)
 		}, []string{"delete P"}},
-		{"a page written, then deleted (M9's shape): unordered, which the round restores at the content it was deleted at", func(w *world) {
+		{"a page written, then deleted (M9's shape): restored, then written back", func(w *world) {
 			p := w.page("P", nil, 0, 2, "two")
 			w.wrote(p, 1, "one")
 			w.trash(p, deletedAt)
 			w.deleted(p)
-		}, []string{unordered}},
+		}, []string{"restore P", "content P"}},
 		{"a deletion whose item a restore put at the root, numbered, and the restore's revert deleted there", func(w *world) {
 			f := w.page("F", nil, 0, 1, "f")
 			p := w.page("P", &f, 3, 1, "p")
@@ -386,12 +382,6 @@ func TestPlanRevertReversesEachChange(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			w := newWorld(t)
 			tt.build(w)
-			if slices.Equal(tt.want, []string{unordered}) {
-				if _, err := domain.PlanRevert(w.state()); !errors.Is(err, domain.ErrRevertUnordered) {
-					t.Errorf("PlanRevert() = %v, want ErrRevertUnordered", err)
-				}
-				return
-			}
 			plan := w.plan()
 			if plan.Count != 0 || len(plan.Conflicts) != 0 || len(plan.Missing) != 0 {
 				t.Fatalf("conflicts %v, %d missing; want none", w.conflicts(plan), len(plan.Missing))

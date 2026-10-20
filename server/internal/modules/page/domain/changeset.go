@@ -212,6 +212,14 @@ type VersionRef struct {
 	Revision int
 }
 
+// ContentRef is a page's content by its hash: what a revert parses, as a
+// page may come back with one content and be written back with another
+// in one revert (M9 design 4.12; M9/P3 design 3.18.3).
+type ContentRef struct {
+	NodeID uuid.UUID
+	Hash   string // hex, as a map key
+}
+
 // ChangeKind is what a changeset did to a node, as its changes tell it.
 type ChangeKind string
 

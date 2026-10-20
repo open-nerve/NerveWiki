@@ -1,8 +1,9 @@
 package app
 
 import (
-	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"slices"
@@ -25,11 +26,13 @@ type ParsedContent struct {
 
 // RevertRead is what a revert read before its unit, unlocked: the
 // changeset it reverts, the contents it writes back or restores parsed,
-// by page, the purge's retention, and the bounds of the changeset's items
-// and of its schedule's steps (domain.RevertPlan.Steps).
+// by page and hash (a page may come back at one and be written back with
+// another, M9/P3 design 3.18.3), the purge's retention, and the bounds of
+// the changeset's items and of its schedule's steps
+// (domain.RevertPlan.Steps).
 type RevertRead struct {
 	Changeset uuid.UUID
-	Parsed    map[uuid.UUID]ParsedContent
+	Parsed    map[domain.ContentRef]ParsedContent
 	Retention time.Duration
 	MaxItems  int
 	MaxSteps  int
@@ -56,7 +59,8 @@ type RevertDone struct {
 // with it, then renames it, and a step aside so too, to its name for a
 // while; a deletion deletes a subtree; a restore brings a trash item back
 // where the changeset deleted it, at its time; a content writes the
-// version back on the revision the unit read. Their checks are the
+// version back on the revision the plan has it at, the unit's read of an
+// alive page's, a restored one's in the trash. Their checks are the
 // plan's: a name taken or a revision moved in its write is a defect,
 // unclassified, as the purge's take of what a restore brings back is
 // page.trash_changed, which the use case answers.
@@ -101,14 +105,14 @@ func (u *Unit) Revert(ctx context.Context, r RevertRead) (RevertDone, error) {
 		case domain.RevertRestore:
 			keys, facts := make([]string, len(op.Group)), map[uuid.UUID]Facts{}
 			for i, m := range op.Group {
-				keys[i], facts[m.Node.ID] = shared.TitleKey(op.States[i].Name), r.Parsed[m.Node.ID].Facts
+				keys[i] = shared.TitleKey(op.States[i].Name)
+				facts[m.Node.ID] = r.Parsed[refOf(m.Node.ID, state.Hashes[domain.VersionRef{NodeID: m.Node.ID, Revision: m.Revision}])].Facts
 			}
 			err = u.bringBack(ctx, op.Group, op.DeletedAt, op.States, keys, facts, func(context.Context) error { return nil })
 			done.Restored++
 		case domain.RevertContent:
-			parsed := r.Parsed[op.NodeID]
-			_, err = u.WriteContent(ctx, ContentWrite{NodeID: op.NodeID, Content: parsed.Content, Facts: parsed.Facts,
-				Base: state.Contents[op.NodeID].Revision})
+			parsed := r.Parsed[refOf(op.NodeID, op.Hash)]
+			_, err = u.WriteContent(ctx, ContentWrite{NodeID: op.NodeID, Content: parsed.Content, Facts: parsed.Facts, Base: op.Current})
 			if errors.Is(err, domain.ErrRevisionMismatch) {
 				err = unclassified(fmt.Sprintf("a revert's write back of page %s", op.NodeID), err)
 			}
@@ -195,20 +199,43 @@ func planned(state domain.RevertState) (domain.RevertPlan, error) {
 
 // parsedAsPlanned checks each content the plan writes back or restores
 // was parsed before the unit at the hash it writes now: a version
-// written back, a page's content in the trash. One that was not, or
-// differs, is a page changed between the two reads, a conflict, listed
-// by node id; one of the same bytes at another revision is none, its
-// revision the unit's.
-func parsedAsPlanned(plan domain.RevertPlan, state domain.RevertState, parsed map[uuid.UUID]ParsedContent) error {
+// written back, a page's content in the trash, each by page and hash. One
+// that was not is a page changed between the two reads, a conflict,
+// listed by node id; one of the same bytes at another revision is none,
+// its revision the unit's.
+func parsedAsPlanned(plan domain.RevertPlan, state domain.RevertState, parsed map[domain.ContentRef]ParsedContent) error {
 	return parsedAs(plannedContents(plan, state, nil), parsed)
 }
 
+// refOf is the content of the page id that hashes to hash.
+func refOf(id uuid.UUID, hash []byte) domain.ContentRef {
+	return domain.ContentRef{NodeID: id, Hash: hex.EncodeToString(hash)}
+}
+
+// parsedContents are contents parsed, by page and hash, with their facts.
+func parsedContents(contents map[domain.ContentRef]string, facts map[domain.ContentRef]Facts) map[domain.ContentRef]ParsedContent {
+	out := make(map[domain.ContentRef]ParsedContent, len(contents))
+	for ref, content := range contents {
+		sum := sha256.Sum256([]byte(content))
+		out[ref] = ParsedContent{Hash: sum[:], Content: content, Facts: facts[ref]}
+	}
+	return out
+}
+
+// contentOf is the page id's content text, by its hash.
+func contentOf(id uuid.UUID, text string) domain.ContentRef {
+	sum := sha256.Sum256([]byte(text))
+	return refOf(id, sum[:])
+}
+
 // writtenContent is a content a revert writes: its page, the page's name
-// and the hash it writes.
+// and the hash it writes, and whether it restores it, else writes it
+// back.
 type writtenContent struct {
-	id   uuid.UUID
-	name string
-	hash []byte
+	id       uuid.UUID
+	name     string
+	hash     []byte
+	restores bool
 }
 
 // plannedContents are the contents the plan writes back or restores, of
@@ -221,7 +248,7 @@ func plannedContents(plan domain.RevertPlan, state domain.RevertState, within fu
 			for i, m := range op.Group {
 				if m.Node.Kind == domain.KindPage && (within == nil || within(m.Node.ID)) {
 					out = append(out, writtenContent{id: m.Node.ID, name: op.States[i].Name,
-						hash: state.Hashes[domain.VersionRef{NodeID: m.Node.ID, Revision: m.Revision}]})
+						hash: state.Hashes[domain.VersionRef{NodeID: m.Node.ID, Revision: m.Revision}], restores: true})
 				}
 			}
 		case domain.RevertContent:
@@ -232,12 +259,12 @@ func plannedContents(plan domain.RevertPlan, state domain.RevertState, within fu
 }
 
 // parsedAs checks each content was parsed at the hash it writes: one that
-// was not, or differs, is changed, all of them listed in their order, by
-// node id, as the plan's.
-func parsedAs(contents []writtenContent, parsed map[uuid.UUID]ParsedContent) error {
+// was not is changed, all of them listed in their order, by node id, as
+// the plan's.
+func parsedAs(contents []writtenContent, parsed map[domain.ContentRef]ParsedContent) error {
 	var changed []domain.RevertConflict
 	for _, c := range contents {
-		if p, ok := parsed[c.id]; !ok || !bytes.Equal(p.Hash, c.hash) {
+		if _, ok := parsed[refOf(c.id, c.hash)]; !ok {
 			changed = append(changed, domain.RevertConflict{NodeID: c.id, Name: c.name, Reason: domain.ConflictChanged})
 		}
 	}
@@ -365,13 +392,14 @@ func (r revertReads) state(ctx context.Context, notebookID, reverted uuid.UUID, 
 
 // RevertPart is a background revert's batch (M8/P4 design 3.5): the steps
 // from to to (not included) of the job's plan; the contents they restore
-// or write back, parsed before the unit, by page; the purge's retention;
+// or write back, parsed before the unit, by page and hash; the purge's
+// retention;
 // and retimed, where the unit tells the time it restored each group it
 // begins at, by its index, which the plan takes once the unit commits.
 type RevertPart struct {
 	plan      *revertPlan
 	from, to  int
-	parsed    map[uuid.UUID]ParsedContent
+	parsed    map[domain.ContentRef]ParsedContent
 	retention time.Duration
 	retimed   map[int]time.Time
 }
@@ -449,9 +477,16 @@ func (u *Unit) RevertBatch(ctx context.Context, r RevertPart) (BatchDone, error)
 			restored[s.node] = true
 		}
 	}
-	written := plannedContents(plan, state, func(id uuid.UUID) bool { return restored[id] })
-	if err := parsedAs(append(written, restoring.contents...), r.parsed); err != nil {
+	written := append(plannedContents(plan, state, func(id uuid.UUID) bool { return restored[id] }), restoring.contents...)
+	if err := parsedAs(written, r.parsed); err != nil {
 		return BatchDone{}, err
+	}
+	// The pages the batch restores, each at its content in the trash.
+	trashed := map[uuid.UUID][]byte{}
+	for _, c := range written {
+		if c.restores {
+			trashed[c.id] = c.hash
+		}
 	}
 	var done BatchDone
 	for at := 0; at < len(steps); {
@@ -471,13 +506,13 @@ func (u *Unit) RevertBatch(ctx context.Context, r RevertPart) (BatchDone, error)
 				end++
 			}
 			var n, skipped int
-			n, skipped, err = u.restoreSegment(ctx, r, steps[at:end], ops, restoring)
+			n, skipped, err = u.restoreSegment(ctx, r, steps[at:end], ops, restoring, trashed)
 			done.Restored, done.Skipped = done.Restored+n, done.Skipped+skipped
 			at = end - 1
 		case domain.RevertContent:
-			op, parsed := ops[stepKey{s.kind, s.node}], r.parsed[s.node]
-			_, err = u.WriteContent(ctx, ContentWrite{NodeID: s.node, Content: parsed.Content, Facts: parsed.Facts,
-				Base: state.Contents[op.NodeID].Revision})
+			op := ops[stepKey{s.kind, s.node}]
+			parsed := r.parsed[refOf(s.node, op.Hash)]
+			_, err = u.WriteContent(ctx, ContentWrite{NodeID: s.node, Content: parsed.Content, Facts: parsed.Facts, Base: op.Current})
 			done.Written++
 		}
 		if err != nil {
@@ -680,7 +715,7 @@ func (u *Unit) continuation(ctx context.Context, r RevertPart, conts []revertSte
 				// The purge took the version it restores, as planned's.
 				return restoring{}, domain.ErrChangesetTrimmed
 			}
-			out.contents = append(out.contents, writtenContent{id: ref.NodeID, name: out.states[ref.NodeID].Name, hash: hash})
+			out.contents = append(out.contents, writtenContent{id: ref.NodeID, name: out.states[ref.NodeID].Name, hash: hash, restores: true})
 		}
 	}
 	return out, nil
@@ -743,11 +778,12 @@ func (c contPlaces) check(ctx context.Context, id uuid.UUID, kind domain.Kind, b
 // group's pre-order: from its first member the whole group's restore as
 // planned again, each member where the changeset deleted it, at the time
 // the group is deleted at now, which r.retimed tells; else the
-// continuation's members it restores, as they are. Then the nodes under
-// them later batches restore become trash items of their own. It answers
-// how many it restored and skipped.
+// continuation's members it restores, as they are; each page with the
+// facts of its content in the trash, which trashed hashes. Then the nodes
+// under them later batches restore become trash items of their own. It
+// answers how many it restored and skipped.
 func (u *Unit) restoreSegment(ctx context.Context, r RevertPart, steps []revertStep, ops map[stepKey]domain.RevertOp,
-	cont restoring,
+	cont restoring, trashed map[uuid.UUID][]byte,
 ) (int, int, error) {
 	g := r.plan.groups[steps[0].group]
 	from, to := steps[0].member, steps[len(steps)-1].member+1
@@ -792,7 +828,7 @@ func (u *Unit) restoreSegment(ctx context.Context, r RevertPart, steps []revertS
 	}
 	keys, facts := make([]string, len(members)), map[uuid.UUID]Facts{}
 	for i, m := range members {
-		keys[i], facts[m.Node.ID] = shared.TitleKey(states[i].Name), r.parsed[m.Node.ID].Facts
+		keys[i], facts[m.Node.ID] = shared.TitleKey(states[i].Name), r.parsed[refOf(m.Node.ID, trashed[m.Node.ID])].Facts
 	}
 	if err := u.bringBack(ctx, members, deletedAt, states, keys, facts, func(context.Context) error { return nil }); err != nil {
 		return 0, 0, err

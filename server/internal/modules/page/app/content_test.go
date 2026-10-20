@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"slices"
 	"strconv"
@@ -579,3 +580,32 @@ func TestAParseSessionGivesItsSharesBackBeforeEachTake(t *testing.T) {
 
 // tooLargeOf is a DecidedAll's bound answering err.
 func tooLargeOf(err error) func(int) error { return func(int) error { return err } }
+
+// A revert's contents are parsed by page and hash (M9/P3 design 3.18.3,
+// 3.18.4): a page restored and written back is two, each with its facts,
+// their links counted together; a lone page's are past no bound, the
+// same links on two pages are.
+func TestARevertsContentsAreParsedByPageAndHash(t *testing.T) {
+	f := newFixture()
+	a, b := uuid.NewV7(), uuid.NewV7()
+	links := strings.Repeat("[[x]]", domain.MaxUnitLinks/2+1)
+	trashed, base := links+"trashed", links+"base"
+	ref := func(id uuid.UUID, content string) domain.ContentRef {
+		sum := sha256.Sum256([]byte(content))
+		return domain.ContentRef{NodeID: id, Hash: hex.EncodeToString(sum[:])}
+	}
+	tooLarge := errors.New("too large")
+	facts, release, err := f.parser().DecidedContents(context.Background(),
+		map[domain.ContentRef]string{ref(a, trashed): trashed, ref(a, base): base}, tooLarge)
+	if err != nil || facts[ref(a, trashed)] != trashed || facts[ref(a, base)] != base {
+		t.Fatalf("a lone page's two contents = %v, %v; want each with its facts, past no bound", facts, err)
+	}
+	release()
+	if _, _, err := f.parser().DecidedContents(context.Background(),
+		map[domain.ContentRef]string{ref(a, trashed): trashed, ref(b, base): base}, tooLarge); !errors.Is(err, tooLarge) {
+		t.Errorf("two pages' contents past the links = %v, want too large", err)
+	}
+	if f.budget.held != 0 {
+		t.Errorf("the budget holds %d", f.budget.held)
+	}
+}

@@ -192,8 +192,11 @@ func RevertGroups(items []ChangesetItem, nodes map[uuid.UUID]NodeNow) map[uuid.U
 	return out
 }
 
-// RevertWrites are the versions whose bases a revert writes back: those
-// of pages the changeset neither created, restored nor deleted, on a base.
+// RevertWrites are the versions whose bases a revert writes back (M9
+// design 4.12): every version of the changeset on a base. A page the
+// changeset created has none, its version a first one; a page it deleted
+// after writing it is restored, then written back; a page it restored
+// and wrote, a revert's, is written back, then deleted.
 func RevertWrites(items []ChangesetItem, versions []ChangesetVersion) []ChangesetVersion {
 	return readReverted(items, versions).writes
 }
@@ -245,18 +248,16 @@ func membersOf(groups map[uuid.UUID][]TrashMember) map[uuid.UUID]TrashMember {
 
 // reverted is a changeset as a revert reads it: its items and versions by
 // node; every node it changed, by id; its deletions' tops, by id, the top
-// of each node it deleted and each top's deleted nodes, by id; the
-// versions whose bases a revert writes back, by page; and whether it
-// wrote a page it then deleted, which the round cannot revert.
+// of each node it deleted and each top's deleted nodes, by id; and the
+// versions whose bases a revert writes back, by page.
 type reverted struct {
-	items     map[uuid.UUID]ChangesetItem
-	versions  map[uuid.UUID]ChangesetVersion
-	ids       []uuid.UUID
-	tops      []uuid.UUID
-	top       map[uuid.UUID]uuid.UUID
-	members   map[uuid.UUID][]uuid.UUID
-	writes    []ChangesetVersion
-	unordered bool
+	items    map[uuid.UUID]ChangesetItem
+	versions map[uuid.UUID]ChangesetVersion
+	ids      []uuid.UUID
+	tops     []uuid.UUID
+	top      map[uuid.UUID]uuid.UUID
+	members  map[uuid.UUID][]uuid.UUID
+	writes   []ChangesetVersion
 }
 
 func readReverted(items []ChangesetItem, versions []ChangesetVersion) reverted {
@@ -283,19 +284,8 @@ func readReverted(items []ChangesetItem, versions []ChangesetVersion) reverted {
 		}
 	}
 	for _, id := range c.ids {
-		v, ok := c.versions[id]
-		it, item := c.items[id]
-		switch {
-		case !ok || v.Base == nil:
-		case !item || it.Before != nil && it.After != nil:
+		if v, ok := c.versions[id]; ok && v.Base != nil {
 			c.writes = append(c.writes, v)
-		case it.Before != nil:
-			// A page written on a base, then deleted: a batch's (M9/P3
-			// design section 0, S1's temporary check). The round restores it
-			// at the content it was deleted at, writing nothing back, a
-			// wrong content no one sees; until S2 writes it back after its
-			// restore, the revert is unordered.
-			c.unordered = true
 		}
 	}
 	return c
@@ -377,9 +367,6 @@ func PlanRevert(s RevertState) (RevertPlan, error) {
 func planRevert(s RevertState, maxDepth int) (RevertPlan, error) {
 	p := planner{s: s, c: readReverted(s.Items, s.Versions), reasons: map[uuid.UUID]revertReason{}, missing: map[uuid.UUID]bool{},
 		members: membersOf(s.Groups), maxDepth: maxDepth}
-	if p.c.unordered {
-		return RevertPlan{}, ErrRevertUnordered
-	}
 	p.left()
 	if len(s.Items) > 0 {
 		p.before()
