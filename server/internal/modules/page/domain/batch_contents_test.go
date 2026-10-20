@@ -182,6 +182,51 @@ func TestBatchPlanContents(t *testing.T) {
 			t.Errorf("the content was asked %d and parsed %d times, want 2 and 1", rw.asked[key], rw.parsed[key])
 		}
 	})
+	// A write after a move that reaches its page is judged on the page as
+	// the move leaves it, as separate calls are (M9/P3 review A-I1): its
+	// page read whole (ReadWhole), its content rewritten from the index
+	// before the batch. 1a: the bytes the move leaves, without a token,
+	// unchanged; 1d: with the current token, unchanged; the bytes from
+	// before the move, without a token, the page's 409, as write alone
+	// answers. A write that no move reaches is judged on its head.
+	t.Run("a write after a move that reaches its page", func(t *testing.T) {
+		heads := map[uuid.UUID]domain.PageHead{pID: headOf("[[A]] p", 4)}
+		for _, tt := range []struct {
+			name    string
+			base    *string
+			content string
+			want    refusal
+		}{
+			{"1a, without a token", nil, "[[B]] p", refusal{}},
+			{"1d, with the current token", tokenOf(pID, 4), "[[B]] p", refusal{}},
+			{"the bytes from before the move", nil, "[[A]] p", refusal{"page.title_taken", "", "", 1}},
+		} {
+			p, _ := planOf(t, nb, moveOp("A.md", "B.md"), with(writeOp("P.md", tt.content), func(o *domain.BatchArgs) { o.Base = tt.base }))
+			p.ReadWhole(pID)
+			if texts, heads := p.Reads(); !slices.Equal(texts, []uuid.UUID{pID}) || len(heads) != 0 {
+				t.Fatalf("%s: Reads = %v, %v; want P whole", tt.name, texts, heads)
+			}
+			rw := &fakeRewriter{subs: map[string]string{"[[A]]": "[[B]]"}}
+			contentsOf(t, p, text("[[A]] p", 4), heads, rw)
+			if p.Failed == nil && tt.want != (refusal{}) || p.Failed != nil && failed(t, p) != tt.want {
+				t.Errorf("%s: Failed = %v, want %+v", tt.name, p.Failed, tt.want)
+			}
+			if p.Failed == nil && (p.Steps[1].Changed || !p.Steps[1].Moved || p.Pages()[0].Content != tt.content) {
+				t.Errorf("%s: changed %v, moved %v, content %q; want unchanged, its content rewritten first", tt.name, p.Steps[1].Changed,
+					p.Steps[1].Moved, p.Pages()[0].Content)
+			}
+			if want := []string{"indexed 4", "rewrite -1 1"}; !slices.Equal(rw.calls, want) {
+				t.Errorf("%s: calls = %q, want %q", tt.name, rw.calls, want)
+			}
+		}
+		p, _ := planOf(t, nb, moveOp("A.md", "B.md"), writeOp("P.md", "[[A]] p"))
+		rw := &fakeRewriter{subs: map[string]string{"[[A]]": "[[B]]"}}
+		contentsOf(t, p, nil, heads, rw)
+		if p.Failed != nil || p.Steps[1].Changed || len(rw.calls) != 0 {
+			t.Errorf("a write no move reaches: Failed = %v, changed %v, calls %q; want its head's bytes, unchanged", p.Failed,
+				p.Steps[1].Changed, rw.calls)
+		}
+	})
 	t.Run("a move without update_links", func(t *testing.T) {
 		p, _ := planOf(t, nb, with(moveOp("A.md", "B.md"), func(o *domain.BatchArgs) { o.UpdateLinks = flag(false) }),
 			editOp("P.md", "[[A]]", "[[C]]"))
@@ -276,7 +321,8 @@ func mismatchOf(err error) *domain.VersionMismatch {
 // The reads' bound (M9/P3 design 3.4.4): the pages read whole, by their
 // heads' sizes in their first ops' order, at MaxBatchReadBytes and a byte
 // past it, at the op of the page that passes it; pages read by their heads
-// alone are not counted.
+// alone are not counted, but those whose writes the moves before them
+// reach are read whole and counted (ReadWhole, M9/P3 review A-I1).
 func TestBatchPlanChecksItsReads(t *testing.T) {
 	nb := newNotebook("P1.md", "P2.md", "P3.md")
 	ids := []uuid.UUID{nb.id(t, "P1.md"), nb.id(t, "P2.md"), nb.id(t, "P3.md")}
@@ -305,6 +351,12 @@ func TestBatchPlanChecksItsReads(t *testing.T) {
 	p, _ = planOf(t, nb, write("P1.md", ids[0]), write("P2.md", ids[1]), write("P3.md", ids[2]))
 	if failed := p.CheckReads(heads(five, five, five)); failed != nil {
 		t.Errorf("heads alone: %v", failed)
+	}
+	for _, id := range ids {
+		p.ReadWhole(id)
+	}
+	if failed := p.CheckReads(heads(five, five, five)); failed == nil || failed.Op != 2 {
+		t.Errorf("writes read whole: %v, want the bound at ops[2]", failed)
 	}
 }
 

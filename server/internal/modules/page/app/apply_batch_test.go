@@ -19,16 +19,23 @@ import (
 // its [[...]], each leading by its text's key to the first node of the
 // plan's tree so keyed; a rewrite writes each as subs tells. Each content
 // it resolves or rewrites goes through the plan's parse, a rewrite's read
-// back too.
+// back too. The renames and moves before a write reach its page when
+// reached says so.
 type fakeLinks struct {
 	*recorder
 	subs       map[string]string
 	notIndexed bool
+	reached    bool
 }
 
 func (l *fakeLinks) Indexed(ctx context.Context, _, _ uuid.UUID, _ int, _ domain.PlanTree) (domain.LinksBefore, bool, error) {
 	l.record(ctx, "Indexed")
 	return domain.LinksBefore{Leads: map[int]domain.Lead{}, Targets: map[uuid.UUID][]domain.PathStep{}}, !l.notIndexed, nil
+}
+
+func (l *fakeLinks) Reached(ctx context.Context, _, _ uuid.UUID, _ int, _ []domain.Change, _ domain.PlanTree) (bool, error) {
+	l.record(ctx, "Reached")
+	return l.reached && !l.notIndexed, nil
 }
 
 func (l *fakeLinks) Resolve(ctx context.Context, q app.LinksOn) (domain.LinksBefore, error) {
@@ -170,6 +177,30 @@ func TestABatchCreatesThePagesItPlanned(t *testing.T) {
 	if len(created) != 2 || created[0].Path != "F.md" || created[1].Path != "F/N.md" || !known(created[1].Node.ID) ||
 		b.Written[created[1].Node.ID].Facts != "see [[A]]" || out.Ops[1].Path != "F/B.md" || out.Ops[1].Node.ID != a.ID {
 		t.Errorf("the ops' outcomes = %+v; want F.md and F/N.md created, A at F/B.md", out.Ops)
+	}
+}
+
+// A write after a move that reaches its page by the index is judged on the
+// page as the move leaves it, as separate calls are (M9/P3 review A-I1):
+// the page is read whole, and the write of the bytes the move leaves is
+// unchanged. A write that no move reaches reads the page's head alone, as
+// before: its bytes are not the page's.
+func TestABatchsWriteSeesItsPageAsTheMovesBeforeItLeaveIt(t *testing.T) {
+	for _, reached := range []bool{true, false} {
+		f := newFixture()
+		f.page("A", nil, 1)
+		p := f.page("P", nil, 2)
+		f.content(p.ID, "[[A]] p", 3)
+		links := &fakeLinks{recorder: f.rec, subs: map[string]string{"[[A]]": "[[B]]"}, reached: reached}
+		out, err := f.applyBatch(links, moveOp("A.md", "B.md"), writeOp("P.md", "[[B]] p"))
+		switch {
+		case reached && (err != nil || out.Ops[1].Changed || f.store.contents[p.ID].Content != "[[B]] p" || f.count("Reached") != 1 ||
+			f.count("PageContent") != 1):
+			t.Errorf("reached: %v, %+v, P %q, Reached asked %d times, %d contents read; want done, unchanged, P read whole", err,
+				out.Ops, f.store.contents[p.ID].Content, f.count("Reached"), f.count("PageContent"))
+		case !reached && (opOf(err) != "1 page.title_taken" || f.count("PageContent") != 0):
+			t.Errorf("not reached: %v, %d contents read; want ops[1]'s PathTaken on P's head", err, f.count("PageContent"))
+		}
 	}
 }
 

@@ -14,7 +14,8 @@ import (
 
 const (
 	// MaxBatchReadBytes bounds the contents a batch's plan reads whole,
-	// those of the pages whose first content op is an edit, counted by
+	// those of the pages whose first content op is an edit, or a write
+	// that the renames and moves before it reach (ReadWhole), counted by
 	// their sizes before any is read (M9/P3 design 3.4.4, 3.8): what a
 	// unit writes and what a batch brings, MaxUnitBytes and
 	// MaxBatchStringBytes. A page read past them would have to lose more
@@ -186,7 +187,7 @@ type PlannedPage struct {
 
 // plannedPage is a page's content as the contents' pass goes: its head
 // for a page whose first content op is a write, until a write gives it
-// its content.
+// its content; its text for one read whole (ReadWhole), as an edit's.
 type plannedPage struct {
 	id          uuid.UUID
 	created     bool
@@ -194,6 +195,7 @@ type plannedPage struct {
 	revision    int
 	content     string
 	known       bool
+	whole       bool
 	head        *PageHead
 }
 
@@ -574,9 +576,9 @@ func (p *BatchPlan) ParentsAt(k int, changes []Change) map[uuid.UUID][]PathStep 
 
 // Reads is what the contents' pass reads of the pages before the batch
 // that the ops before Failed's write: texts, those whose first content op
-// is an edit, read whole; heads, those whose first is a write, of which
-// the head alone; each in their first content ops' order. A plan past its
-// items' bound reads none.
+// is an edit, or a write ReadWhole names, read whole; heads, those whose
+// first is a write, of which the head alone; each in their first content
+// ops' order. A plan past its items' bound reads none.
 func (p *BatchPlan) Reads() (texts, heads []uuid.UUID) {
 	if p.final {
 		return nil, nil // past the items' bound: nothing is read
@@ -585,13 +587,24 @@ func (p *BatchPlan) Reads() (texts, heads []uuid.UUID) {
 		pg := p.pages[id]
 		switch {
 		case pg.created:
-		case p.steps[pg.first].Kind == OpKindEdit:
+		case p.steps[pg.first].Kind == OpKindEdit || pg.whole:
 			texts = append(texts, id)
 		default:
 			heads = append(heads, id)
 		}
 	}
 	return texts, heads
+}
+
+// ReadWhole has the plan read the page id whole, though its first content
+// op is a write: one that the renames and moves of the ops before it
+// reach by the index, as its caller tells (M9/P3 review A-I1). Reads then
+// lists it with the texts, CheckReads counts it, and Contents compares the
+// write with the page's content rewritten for them, as an edit's.
+func (p *BatchPlan) ReadWhole(id uuid.UUID) {
+	if pg, ok := p.pages[id]; ok && !pg.created {
+		pg.whole = true
+	}
 }
 
 // CheckReads is the bound on the contents the plan reads whole (M9/P3

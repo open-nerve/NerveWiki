@@ -288,9 +288,11 @@ func (a *batchAttempt) planned(ctx context.Context) error {
 
 // read is what the contents' pass reads of the pages before the batch
 // (M9/P3 design 3.4.4): the heads of the pages its content ops write, one
-// statement, the bound on the contents read whole checked on their sizes,
-// then those contents, each with its revision in one statement. A page
-// gone since the tree's read is page.not_found at its first content op.
+// statement; the pages whose first content op is a write that the renames
+// and moves before it reach by the index, read whole (M9/P3 review A-I1);
+// the bound on the contents read whole checked on their sizes, then those
+// contents, each with its revision in one statement. A page gone since the
+// tree's read is page.not_found at its first content op.
 func (a *batchAttempt) read(ctx context.Context) (map[uuid.UUID]domain.PageText, map[uuid.UUID]domain.PageHead, error) {
 	texts, heads := a.plan.Reads()
 	if len(texts)+len(heads) == 0 {
@@ -316,9 +318,23 @@ func (a *batchAttempt) read(ctx context.Context) (map[uuid.UUID]domain.PageText,
 		}
 		read[id] = domain.PageHead{Revision: s.Revision, Bytes: s.Bytes, Hash: s.Hash}
 	}
+	for _, id := range heads {
+		moves := a.plan.MovesBetween(-1, firsts[id])
+		if len(moves) == 0 {
+			continue
+		}
+		reached, err := a.b.links.Reached(ctx, a.notebookID, id, read[id].Revision, moves, a.plan.TreeAt(firsts[id]))
+		if err != nil {
+			return nil, nil, err
+		}
+		if reached {
+			a.plan.ReadWhole(id)
+		}
+	}
 	if failed := a.plan.CheckReads(read); failed != nil {
 		return nil, nil, failed
 	}
+	texts, _ = a.plan.Reads()
 	out := make(map[uuid.UUID]domain.PageText, len(texts))
 	for _, id := range texts {
 		c, err := a.b.nodes.PageContent(ctx, id)

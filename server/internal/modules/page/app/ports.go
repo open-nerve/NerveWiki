@@ -222,6 +222,14 @@ type BatchLinks interface {
 	// before the batch: false when the index is not of revision or not of
 	// the current extractor (M6's skips), its links then not rewritten.
 	Indexed(ctx context.Context, notebookID, id uuid.UUID, revision int, tree domain.PlanTree) (domain.LinksBefore, bool, error)
+	// Reached reports whether changes, the renames and moves of a batch's
+	// ops before a page's first content op, a write, reach a link of the
+	// page id by the index at revision, on tree after them, as Rewrite
+	// would write it again (M9/P3 review A-I1): the plan then reads the
+	// page whole and compares the write with its content rewritten for
+	// them. False when the index is not of revision or not of the current
+	// extractor, as Indexed.
+	Reached(ctx context.Context, notebookID, id uuid.UUID, revision int, changes []domain.Change, tree domain.PlanTree) (bool, error)
 	// Resolve is where each link of q's content, the page's at its path on
 	// q's tree, leads there, by where its target starts, with the targets
 	// as they are there.

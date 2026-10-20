@@ -61,6 +61,39 @@ func (b BatchLinks) Indexed(ctx context.Context, notebookID, id uuid.UUID, revis
 	return before, err == nil, err
 }
 
+// Reached reports whether changes, the renames and moves of a batch's
+// ops before a page's first content op, reach a link of the page id by the
+// index at revision, on tree after them, the nodes gone by then none: by
+// the rule the plan's Rewrite and the deferred participant follow them
+// (ownLinks), on the index's rows of the page (M9/P3 review A-I1). The
+// plan then reads the page whole, to compare a write with its content
+// rewritten for them. False when the index is not of revision or of the
+// current extractor, whose links the plan does not rewrite, as Indexed.
+func (b BatchLinks) Reached(ctx context.Context, notebookID, id uuid.UUID, revision int, changes []domain.Change, tree Pages,
+	gone []uuid.UUID,
+) (bool, error) {
+	if relocates, recased := domain.Relocation(changes); !relocates && len(recased) == 0 {
+		return false, nil
+	}
+	x, ok, err := b.Store.View(ctx, id)
+	if err != nil || !ok || x.Revision != revision || x.Extractor != domain.Extractor {
+		return false, err
+	}
+	rows, err := b.Store.Links(ctx, notebookID, domain.Reach{Sources: []uuid.UUID{id}})
+	if err != nil {
+		return false, err
+	}
+	links := make([]domain.Link, 0, len(rows))
+	for _, l := range rows {
+		if l.SourceID == id {
+			links = append(links, domain.Link{Start: l.Start, Target: l.Target, Aliases: l.Aliases})
+		}
+	}
+	sub := &subtrees{store: b.Store, pages: tree, notebookID: notebookID, read: map[uuid.UUID]subtree{}}
+	reached, _, err := ownLinks(ctx, b.Store, tree, sub, notebookID, id, links, LinksBefore{Leads: x.Resolutions}, changes, setOf(gone))
+	return len(reached) > 0, err
+}
+
 // Resolve is where each link of q's content leads on q's tree, by where
 // its target starts, with the targets at their paths there: the before of
 // the page's next rewrite, and of the deferred one.

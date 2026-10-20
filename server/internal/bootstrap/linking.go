@@ -150,6 +150,12 @@ func (b batchLinks) Indexed(ctx context.Context, notebookID, id uuid.UUID, revis
 	return pageLinksBefore(before), ok, err
 }
 
+func (b batchLinks) Reached(ctx context.Context, notebookID, id uuid.UUID, revision int, changes []page.Change,
+	tree page.PlanTree,
+) (bool, error) {
+	return b.links.Reached(ctx, notebookID, id, revision, linkChanges(changes), planPages{tree}, tree.Gone())
+}
+
 func (b batchLinks) Resolve(ctx context.Context, q page.LinksOn) (page.LinksBefore, error) {
 	before, err := b.links.Resolve(ctx, linksOn(q))
 	return pageLinksBefore(before), err

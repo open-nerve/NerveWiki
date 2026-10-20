@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"fmt"
 	"maps"
+	"net/http"
 	"slices"
 	"strings"
 	"testing"
@@ -265,4 +266,98 @@ func TestTheWaysABatchDiffersFromSeparateCalls(t *testing.T) {
 		checkPages(t, tm.pool)
 		noErrorLogged(t, logs)
 	})
+}
+
+// A write after a rename or a move that reaches its page is judged on the
+// page as they leave it, as separate calls judge it (M9/P3 review A-I1):
+// (1a) the bytes a move leaves, without a token, unchanged; (1c) an edit,
+// a move and the bytes they leave; (1e) a stale token, the page changed
+// and changed back on the web, and the bytes a move leaves, unchanged;
+// (1b) the bytes from before the move, without a token: the page's 409 at
+// the write. Each in two notebooks alike, the batch and the same ops apart:
+// each op's changed and the pages and their links the same, or the same
+// refusal at the same op.
+func TestTheWritesOfABatchAreJudgedAsSeparateCallsJudgeThem(t *testing.T) {
+	tm, logs := newAcmeTeamLogged(t)
+	agent := tm.agent(t, "alice", "")
+	for i, tt := range []struct {
+		name string
+		web  bool // P changed and changed back on the web first
+		ops  func(p string) []map[string]any
+		code string // the refusal of the last op, "" for none
+	}{
+		{"1a a move, then the bytes it leaves", false, func(string) []map[string]any {
+			return []map[string]any{opMove("A.md", "B.md"), opWrite("P.md", "[[B]] p")}
+		}, ""},
+		{"1c an edit, a move, then the bytes they leave", false, func(string) []map[string]any {
+			return []map[string]any{opEdit("P.md", "p", "q"), opMove("A.md", "B.md"), opWrite("P.md", "[[B]] q")}
+		}, ""},
+		{"1e a stale token, the bytes a move leaves", true, func(p string) []map[string]any {
+			return []map[string]any{opMove("A.md", "B.md"), opWriteOn("P.md", "[[B]] p", versionOf(p, 1))}
+		}, ""},
+		{"1b a move, then the bytes from before it", false, func(string) []map[string]any {
+			return []map[string]any{opMove("A.md", "B.md"), opWrite("P.md", "[[A]] p")}
+		}, "page.title_taken"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var nbs [2]string
+			var ops [2][]map[string]any
+			for k, which := range []string{"Batch", "Apart"} {
+				nbs[k] = tm.openNotebook(t, "alice", fmt.Sprint(which, " ", i))
+				ids := tm.seed(t, nbs[k], restPage{"A", ""}, restPage{"P", "[[A]] p"})
+				if tt.web {
+					tm.send(t, contentWrite("alice", ids["P"], "[[A]] x", 1, ""), http.StatusOK)
+					tm.send(t, contentWrite("alice", ids["P"], "[[A]] p", 2, ""), http.StatusOK)
+				}
+				ops[k] = tt.ops(ids["P"])
+			}
+			a := agent.in(nbs[0]).batch(t, ops[0]...)
+			changed, at, code := agent.in(nbs[1]).apart(t, ops[1]...)
+			last := len(ops[0]) - 1
+			if tt.code != "" {
+				r := refusalOf(t, a)
+				if r.Code != tt.code || refusedAt(r) != last || code != tt.code || at != last {
+					t.Errorf("the batch = %s at op %d, apart %s at op %d; want %s at op %d both", r.Code, refusedAt(r), code, at, tt.code,
+						last)
+				}
+				return
+			}
+			b := answerOf[mcpBatched](t, a)
+			if code != "" {
+				t.Fatalf("apart, ops[%d] answered %s", at, code)
+			}
+			for k, r := range b.Results {
+				if r.Changed != changed[k] {
+					t.Errorf("ops[%d] in the batch: changed %v, apart %v", k, r.Changed, changed[k])
+				}
+			}
+			if bs, as := tm.linkedState(t, nbs[0]), tm.linkedState(t, nbs[1]); !maps.Equal(bs, as) {
+				t.Errorf("the batch left\n%sseparate calls\n%s", shown(bs), shown(as))
+			}
+			checkPages(t, tm.pool)
+			noErrorLogged(t, logs)
+		})
+	}
+}
+
+// apart makes each op of ops by its tool alone, in their order, until one
+// is refused: each op's changed, and the op refused with its code, -1 and
+// "" for none.
+func (m *mcpApp) apart(t *testing.T, ops ...map[string]any) (changed []bool, at int, code string) {
+	t.Helper()
+	for i, op := range ops {
+		args := maps.Clone(op)
+		tool, _ := args["op"].(string)
+		delete(args, "op")
+		a := m.use(t, tool, args)
+		if a.result(t)["isError"] == true {
+			return changed, i, refusalOf(t, a).Code
+		}
+		var answer struct {
+			Changed bool `json:"changed"`
+		}
+		structuredOf(t, a, &answer)
+		changed = append(changed, answer.Changed)
+	}
+	return changed, -1, ""
 }

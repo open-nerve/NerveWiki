@@ -12,21 +12,24 @@ import (
 
 // Contents is the plan's contents' pass, of the ops before its failed one
 // (M9 design 4.11), on the pages before the batch, read unlocked, by id:
-// texts those whose first content op is an edit, heads those whose first is
-// a write. A base_version against the page's revision then: past,
+// texts those whose first content op is an edit, or a write the renames and
+// moves before it reach (ReadWhole), heads the other writes'. A
+// base_version against the page's revision then: past,
 // page.revision_mismatch, unless the op is a write of the bytes the page
-// holds at that op (its first content op compares the head's size and hash,
-// the unit's sha256), which is unchanged, as write's own is; a write's
-// content (a write without base_version of the bytes the page holds is
-// still the page's content op, writing nothing); an edit's Replace on the
-// page's content as the ops before it leave it, rewritten first by rw where
-// a rename or a move between its content ops reaches its links; a
-// creation's content compared with a page there by its head's size and
-// hash. Each page's content at its last content op is the one the unit
-// writes. A failure of an op before Failed's replaces it, so that the first
-// op that fails decides; its error is a problem's, rw's too (its parses'
-// bounds and budget). Any other error of rw's is Contents' own. A plan
-// that failed for good, past its items or its reads, is not run.
+// holds at that op (a page read by its head alone compares the head's size
+// and hash, the unit's sha256), which is unchanged, as write's own is; a
+// write's content (a write without base_version of the bytes the page holds
+// is still the page's content op, writing nothing); an edit's Replace on
+// the page's content as the ops before it leave it. A write or an edit sees
+// the page's content rewritten first by rw where a rename or a move between
+// its content ops reaches its links, as separate calls would leave it
+// (M9/P3 review A-I1: a write's bytes too); a creation's content is
+// compared with a page there by its head's size and hash. Each page's
+// content at its last content op is the one the unit writes. A failure of
+// an op before Failed's replaces it, so that the first op that fails
+// decides; its error is a problem's, rw's too (its parses' bounds and
+// budget). Any other error of rw's is Contents' own. A plan that failed for
+// good, past its items or its reads, is not run.
 func (p *BatchPlan) Contents(texts map[uuid.UUID]PageText, heads map[uuid.UUID]PageHead, rw LinkRewriter) error {
 	if p.final {
 		return nil
@@ -68,14 +71,14 @@ func (p *BatchPlan) content(j int, texts map[uuid.UUID]PageText, heads map[uuid.
 	switch {
 	case s.Kind == OpKindWrite && len(ps.Created) > 0:
 		pg.content, pg.known = s.Content, true
-	case s.Kind == OpKindWrite && s.Base == nil:
-		if !pg.holds(s.Content) {
-			return &PathTaken{Path: s.Path.Written}
-		}
-		pg.content, pg.known = s.Content, true
 	case s.Kind == OpKindWrite:
-		same := pg.holds(s.Content)
-		if s.Base.Revision != pg.revision && !same {
+		same, err := p.holdsAt(pg, j, rw, s.Content)
+		switch {
+		case err != nil:
+			return err
+		case s.Base == nil && !same:
+			return &PathTaken{Path: s.Path.Written}
+		case s.Base != nil && s.Base.Revision != pg.revision && !same:
 			return &VersionMismatch{Path: s.Path.Written, Current: VersionToken{Node: pg.id, Revision: pg.revision}, Why: Changed}
 		}
 		pg.content, pg.known, ps.Changed = s.Content, true, !same
@@ -102,13 +105,14 @@ func (p *BatchPlan) content(j int, texts map[uuid.UUID]PageText, heads map[uuid.
 }
 
 // load is the page's content as the plan read it, at its first content op
-// of kind: a page the batch created, empty until written; an edit's, its
-// text; a write's, its head, the content then the write's.
+// of kind: a page the batch created, empty until written; an edit's, and a
+// write's read whole, its text; another write's, its head, the content
+// then the write's.
 func (pg *plannedPage) load(kind OpKind, texts map[uuid.UUID]PageText, heads map[uuid.UUID]PageHead) error {
 	switch {
 	case pg.created:
 		pg.known = true
-	case kind == OpKindEdit:
+	case kind == OpKindEdit || pg.whole:
 		t, ok := texts[pg.id]
 		if !ok {
 			return fmt.Errorf("page: the plan has no text of the page %s", pg.id)
@@ -122,6 +126,24 @@ func (pg *plannedPage) load(kind OpKind, texts map[uuid.UUID]PageText, heads map
 		pg.head, pg.revision = &h, h.Revision
 	}
 	return nil
+}
+
+// holdsAt reports whether the page holds content's bytes at the op j: its
+// content as the ops before leave it, rewritten for the renames and moves
+// since its previous content op where they reach its links, as an edit's
+// is (M9/P3 review A-I1); its head's size and hash for a page the plan read
+// no text of, which none of them reaches.
+func (p *BatchPlan) holdsAt(pg *plannedPage, j int, rw LinkRewriter, content string) (bool, error) {
+	ps := &p.Steps[j]
+	if !pg.known || len(p.MovesBetween(ps.Previous, j)) == 0 {
+		return pg.holds(content), nil
+	}
+	ps.Moved = true
+	rewritten, err := p.rewrite(pg, ps.Previous, j, rw)
+	if err != nil {
+		return false, err
+	}
+	return rewritten == content, nil
 }
 
 // holds reports whether the page holds content's bytes as the batch has it
