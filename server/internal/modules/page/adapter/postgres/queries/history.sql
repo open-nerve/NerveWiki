@@ -71,14 +71,10 @@ SELECT u.id::uuid AS id,
 FROM (SELECT unnest(sqlc.arg(ids)::uuid[]) AS id) u;
 
 -- name: ChangesetMoves :one
--- Whether a changeset's first 1,000 items by node id rename or move a node, which the web's revert warns of (links
--- written to the new place stay) and its conflicts offer to undo by hand: the single changeset's alone, as a log page
--- of 100 large changesets would read some 100,000 item rows for it. A range of its key.
-SELECT coalesce(bool_or(i.before_name <> i.after_name), false)::boolean AS renames,
-    coalesce(bool_or(i.before_name IS NOT NULL AND i.after_name IS NOT NULL
-        AND i.before_parent_id IS DISTINCT FROM i.after_parent_id), false)::boolean AS moves
-FROM (SELECT before_name, after_name, before_parent_id, after_parent_id FROM changeset_items
-      WHERE changeset_id = sqlc.arg(id) ORDER BY node_id LIMIT 1000) i;
+-- Whether a changeset renames or moves a node, of all its items (M9/P3 design 3.20), which the web's revert warns of
+-- (links written to the new place stay) and its conflicts offer to undo by hand: the columns its units set as they
+-- end.
+SELECT renames, moves FROM changesets WHERE id = sqlc.arg(id);
 
 -- name: ListChanges :many
 -- A changeset's changes by node id after after (M8 design 4.7): its items' and its versions' node ids, each a range of

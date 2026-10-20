@@ -2,8 +2,11 @@ package postgresadapter
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"uuid"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/adapter/postgres/gen"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/app"
@@ -90,10 +93,14 @@ func (s *Store) ChangesetFacts(ctx context.Context, ids []uuid.UUID) (map[uuid.U
 	return out, nil
 }
 
-// ChangesetMoves implements app.History.
+// ChangesetMoves implements app.History: a changeset gone since it was
+// read, which the purge took, neither.
 func (s *Store) ChangesetMoves(ctx context.Context, id uuid.UUID) (domain.ChangesetMoves, error) {
 	r, err := s.queries(ctx).ChangesetMoves(ctx, id)
-	if err != nil {
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return domain.ChangesetMoves{}, nil
+	case err != nil:
 		return domain.ChangesetMoves{}, fmt.Errorf("changeset moves: %w", err)
 	}
 	return domain.ChangesetMoves{Renames: r.Renames, Moves: r.Moves}, nil

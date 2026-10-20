@@ -81,9 +81,9 @@ type ChangesetFacts struct {
 	RevertedBy []uuid.UUID
 }
 
-// ChangesetMoves tell whether a changeset's first MaxLogCount items rename
-// a node or move one to another parent: the web's revert warns that the
-// links written to the new place stay.
+// ChangesetMoves tell whether a changeset renames a node or moves one to
+// another parent, of all its items (M9/P3 design 3.20): the web's revert
+// warns that the links written to the new place stay.
 type ChangesetMoves struct {
 	Renames bool
 	Moves   bool

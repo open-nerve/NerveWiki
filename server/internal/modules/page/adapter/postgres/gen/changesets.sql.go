@@ -109,6 +109,24 @@ func (q *Queries) LockChangeset(ctx context.Context, id uuid.UUID) (LockChangese
 	return i, err
 }
 
+const markChangesetMoves = `-- name: MarkChangesetMoves :exec
+UPDATE changesets SET renames = renames OR $1::boolean, moves = moves OR $2::boolean
+WHERE id = $3 AND ($1::boolean OR $2::boolean)
+`
+
+type MarkChangesetMovesParams struct {
+	Renames bool
+	Moves   bool
+	ID      uuid.UUID
+}
+
+// A unit's renames and moves, from its merged changes, kept once true (M9/P3 design 3.20): the units of a job's
+// changeset each add theirs.
+func (q *Queries) MarkChangesetMoves(ctx context.Context, arg MarkChangesetMovesParams) error {
+	_, err := q.db.Exec(ctx, markChangesetMoves, arg.Renames, arg.Moves, arg.ID)
+	return err
+}
+
 const recordItems = `-- name: RecordItems :exec
 INSERT INTO changeset_items (id, changeset_id, node_id, before_parent_id, before_name, before_sort_order,
     after_parent_id, after_name, after_sort_order, restored, revision, created_at, updated_at, deleted_at)

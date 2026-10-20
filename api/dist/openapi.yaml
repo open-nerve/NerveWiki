@@ -1623,7 +1623,7 @@ paths:
       tags:
         - page
       summary: Read a changeset
-      description: The changeset as listChangesets lists it, and whether its first 1,000 changes rename or move a node, whose revert leaves the links written to the new names and places as they are. Any role in its notebook can read it. A changeset that does not exist, whose notebook is deleted, or whose notebook the caller has no role in is page.changeset_not_found.
+      description: The changeset as listChangesets lists it, and whether it renames or moves a node, whose revert leaves the links written to the new names and places as they are. Any role in its notebook can read it. A changeset that does not exist, whose notebook is deleted, or whose notebook the caller has no role in is page.changeset_not_found.
       security:
         - bearer: []
       x-problem-codes:
@@ -4163,7 +4163,7 @@ components:
         next_cursor:
           $ref: '#/components/schemas/NextCursor'
     ChangesetDetail:
-      description: A changeset, as Changeset, and whether its first 1,000 changes rename or move a node.
+      description: A changeset, as Changeset, and whether it renames or moves a node.
       type: object
       additionalProperties: false
       required:
@@ -4242,10 +4242,10 @@ components:
           items:
             $ref: '#/components/schemas/ChangesetChange'
         renames:
-          description: Whether its first 1,000 changes rename a node.
+          description: Whether it renames a node.
           type: boolean
         moves:
-          description: Whether its first 1,000 changes move a node under another parent.
+          description: Whether it moves a node under another parent.
           type: boolean
     ChangesetChangePage:
       description: A page of a changeset's changes, by node id.

@@ -89,6 +89,64 @@ func TestAUnitOfTwoOperationsTellsOnce(t *testing.T) {
 	}
 }
 
+// A unit marks its changeset as renaming or moving a node from its merged
+// changes (M9/P3 design 3.20.2), once, before the observers: a node alive
+// before and after it of another name renames, under another parent
+// moves; a creation renamed, a reorder and a content's write neither, and
+// mark nothing.
+func TestAUnitMarksItsChangesetsRenamesAndMoves(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		do   func(ctx context.Context, u *app.Unit, f *fixture) error
+		want *domain.ChangesetMoves
+	}{
+		{"a rename", func(ctx context.Context, u *app.Unit, f *fixture) error {
+			_, err := u.Rename(ctx, f.page("A", nil, 0).ID, "B")
+			return err
+		}, &domain.ChangesetMoves{Renames: true}},
+		{"a move, then a rename back", func(ctx context.Context, u *app.Unit, f *fixture) error {
+			a, p := f.page("A", nil, 0), f.page("P", nil, 1)
+			if _, err := u.Rename(ctx, a.ID, "B"); err != nil {
+				return err
+			}
+			if _, err := u.Move(ctx, a.ID, &p.ID, app.First()); err != nil {
+				return err
+			}
+			_, err := u.Rename(ctx, a.ID, "A")
+			return err
+		}, &domain.ChangesetMoves{Moves: true}},
+		{"a creation renamed", func(ctx context.Context, u *app.Unit, f *fixture) error {
+			created, err := u.CreatePage(ctx, app.PageDraft{Title: "Draft"})
+			if err != nil {
+				return err
+			}
+			_, err = u.Rename(ctx, created.ID, "Final")
+			return err
+		}, nil},
+		{"a content's write", func(ctx context.Context, u *app.Unit, f *fixture) error {
+			p := f.page("P", nil, 0)
+			f.content(p.ID, "one", 1)
+			_, err := u.WriteContent(ctx, app.ContentWrite{NodeID: p.ID, Content: "two", Facts: "two", Base: 1})
+			return err
+		}, nil},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newFixture()
+			f.grant(domain.ActionRename)
+			f.observers = []app.PageObserver{&observer{recorder: f.rec}}
+			outcome, err := f.run(f.asAlice(), domain.ClientWeb, func(ctx context.Context, u *app.Unit) error { return tt.do(ctx, u, f) })
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, marked := f.store.marked[outcome.ChangesetID]
+			if marks := slices.Index(f.rec.calls, "MarkChangesetMoves in tx"); tt.want == nil && (marked || marks >= 0) ||
+				tt.want != nil && (got != *tt.want || marks < 0 || marks > slices.Index(f.rec.calls, "PagesChanged in tx")) {
+				t.Errorf("marked %+v (%v), calls %v; want %+v, before the observers", got, marked, f.rec.calls, tt.want)
+			}
+		})
+	}
+}
+
 // An operation a participant adds runs through the guards, into the same
 // changeset and the same event, and calls no participant.
 func TestAParticipantAddsToTheUnit(t *testing.T) {

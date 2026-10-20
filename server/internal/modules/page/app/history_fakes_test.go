@@ -159,11 +159,13 @@ func (h *fakeHistory) ChangesetFacts(ctx context.Context, ids []uuid.UUID) (map[
 	return out, nil
 }
 
+// ChangesetMoves are what the changeset's units marked: whether any of
+// its items renames or moves a node.
 func (h *fakeHistory) ChangesetMoves(ctx context.Context, id uuid.UUID) (domain.ChangesetMoves, error) {
 	h.record(ctx, "ChangesetMoves")
 	var out domain.ChangesetMoves
 	if c := h.find(id); c != nil {
-		for _, i := range c.items[:min(len(c.items), domain.MaxLogCount)] {
+		for _, i := range c.items {
 			if i.Before != nil && i.After != nil {
 				out.Renames = out.Renames || i.Before.Name != i.After.Name
 				out.Moves = out.Moves || !domain.SameParent(i.Before.ParentID, i.After.ParentID)

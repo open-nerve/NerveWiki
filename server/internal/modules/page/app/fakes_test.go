@@ -136,8 +136,10 @@ type fakeStore struct {
 	items     map[uuid.UUID]app.Item
 	recorded  []app.Item
 	revisions []app.Revision
-	// touched are the changesets written again, with when.
+	// touched are the changesets written again, with when; marked their
+	// renames and moves, as the units marked them.
 	touched map[uuid.UUID]time.Time
+	marked  map[uuid.UUID]domain.ChangesetMoves
 	// sessions are the edit sessions; held are those another transaction
 	// holds.
 	sessions map[uuid.UUID]app.EditSession
@@ -1252,9 +1254,9 @@ func newFixture() *fixture {
 		rec: rec, tx: &fakeTx{}, clock: &tickingClock{},
 		workspaces: fakeWorkspaces{recorder: rec, slugs: map[string]uuid.UUID{}, gone: map[uuid.UUID]bool{}},
 		store: &fakeStore{recorder: rec, nodes: map[uuid.UUID]domain.Node{}, contents: map[uuid.UUID]app.Content{},
-			items: map[uuid.UUID]app.Item{}, touched: map[uuid.UUID]time.Time{}, sessions: map[uuid.UUID]app.EditSession{},
-			held: map[uuid.UUID]bool{}, trash: map[uuid.UUID]app.AnyNode{}, counts: map[uuid.UUID][3]int{},
-			trashed: map[uuid.UUID]app.Content{}, firsts: map[[2]uuid.UUID]time.Time{}},
+			items: map[uuid.UUID]app.Item{}, touched: map[uuid.UUID]time.Time{}, marked: map[uuid.UUID]domain.ChangesetMoves{},
+			sessions: map[uuid.UUID]app.EditSession{}, held: map[uuid.UUID]bool{}, trash: map[uuid.UUID]app.AnyNode{},
+			counts: map[uuid.UUID][3]int{}, trashed: map[uuid.UUID]app.Content{}, firsts: map[[2]uuid.UUID]time.Time{}},
 		auth: &fakeAuthorizer{recorder: rec, grants: map[shared.Action]bool{}, forbidden: map[shared.Action]bool{}},
 		logs: &bytes.Buffer{}, names: fakeNames{}, alice: uuid.NewV7(), acme: uuid.NewV7(), eng: uuid.NewV7(),
 	}
@@ -1370,6 +1372,15 @@ func (f *fakeStore) LinePaths(ctx context.Context, notebookID uuid.UUID, ids []u
 		out[id] = steps
 	}
 	return out, nil
+}
+
+// MarkChangesetMoves marks the changeset's renames and moves, each kept
+// once set, as the statement does; each a call.
+func (f *fakeStore) MarkChangesetMoves(ctx context.Context, id uuid.UUID, m domain.ChangesetMoves) error {
+	f.record(ctx, "MarkChangesetMoves")
+	was := f.marked[id]
+	f.marked[id] = domain.ChangesetMoves{Renames: was.Renames || m.Renames, Moves: was.Moves || m.Moves}
+	return nil
 }
 
 // DropUnchanged deletes the changeset's items whose node is where it was,

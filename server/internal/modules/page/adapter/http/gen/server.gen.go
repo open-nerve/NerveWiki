@@ -249,7 +249,7 @@ type ChangesetChangePage struct {
 	NextCursor nullable.Nullable[externalRef0.NextCursor] `json:"next_cursor"`
 }
 
-// ChangesetDetail A changeset, as Changeset, and whether its first 1,000 changes rename or move a node.
+// ChangesetDetail A changeset, as Changeset, and whether it renames or moves a node.
 type ChangesetDetail struct {
 	// Changes Its first three changes, by node id.
 	Changes []ChangesetChange `json:"changes"`
@@ -273,14 +273,14 @@ type ChangesetDetail struct {
 	// Message Why it was made, as a revert's request said; null for none.
 	Message nullable.Nullable[string] `json:"message"`
 
-	// Moves Whether its first 1,000 changes move a node under another parent.
+	// Moves Whether it moves a node under another parent.
 	Moves bool `json:"moves"`
 
 	// NodeCount How many nodes it changed in the tree, counted up to 1000: 1000 is as many or more.
 	NodeCount  int       `json:"node_count"`
 	NotebookID uuid.UUID `json:"notebook_id"`
 
-	// Renames Whether its first 1,000 changes rename a node.
+	// Renames Whether it renames a node.
 	Renames bool `json:"renames"`
 
 	// RevertedBy The reverts of it, newer first, the newest 100.

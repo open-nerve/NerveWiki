@@ -410,6 +410,10 @@ type ChangesetWriter interface {
 	// holds no item and no version, which it answers (M9/P3 design 3.5.4):
 	// a batch's node moved and moved back.
 	DropUnchanged(ctx context.Context, id uuid.UUID) (bool, error)
+	// MarkChangesetMoves sets that the changeset id renames, or moves, a
+	// node, as m has it, each kept once set (M9/P3 design 3.20): the units
+	// of a job's changeset each add theirs.
+	MarkChangesetMoves(ctx context.Context, id uuid.UUID, m domain.ChangesetMoves) error
 }
 
 // Versions reads a page's versions (M8/P1 design 3.4), alive or in the
@@ -501,8 +505,9 @@ type History interface {
 	// ChangesetFacts are the changesets' counts, each to MaxLogCount, and
 	// their reverts, newest first, MaxRevertedBy at most, by changeset.
 	ChangesetFacts(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]domain.ChangesetFacts, error)
-	// ChangesetMoves is whether the changeset's first MaxLogCount items
-	// rename or move a node: the single changeset's.
+	// ChangesetMoves is whether the changeset renames or moves a node, of
+	// all its items, as its units marked it (M9/P3 design 3.20): the single
+	// changeset's.
 	ChangesetMoves(ctx context.Context, id uuid.UUID) (domain.ChangesetMoves, error)
 	// ListChanges are the changeset's changes by node id after after, at
 	// most limit; FirstChanges the first n of each changeset's, by

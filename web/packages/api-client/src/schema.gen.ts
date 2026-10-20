@@ -1195,7 +1195,7 @@ export interface paths {
         };
         /**
          * Read a changeset
-         * @description The changeset as listChangesets lists it, and whether its first 1,000 changes rename or move a node, whose revert leaves the links written to the new names and places as they are. Any role in its notebook can read it. A changeset that does not exist, whose notebook is deleted, or whose notebook the caller has no role in is page.changeset_not_found.
+         * @description The changeset as listChangesets lists it, and whether it renames or moves a node, whose revert leaves the links written to the new names and places as they are. Any role in its notebook can read it. A changeset that does not exist, whose notebook is deleted, or whose notebook the caller has no role in is page.changeset_not_found.
          */
         get: operations["getChangeset"];
         put?: never;
@@ -2594,7 +2594,7 @@ export interface components {
             data: components["schemas"]["Changeset"][];
             next_cursor: components["schemas"]["NextCursor"];
         };
-        /** @description A changeset, as Changeset, and whether its first 1,000 changes rename or move a node. */
+        /** @description A changeset, as Changeset, and whether it renames or moves a node. */
         ChangesetDetail: {
             /** Format: uuid */
             id: string;
@@ -2628,9 +2628,9 @@ export interface components {
             content_count: number;
             /** @description Its first three changes, by node id. */
             changes: components["schemas"]["ChangesetChange"][];
-            /** @description Whether its first 1,000 changes rename a node. */
+            /** @description Whether it renames a node. */
             renames: boolean;
-            /** @description Whether its first 1,000 changes move a node under another parent. */
+            /** @description Whether it moves a node under another parent. */
             moves: boolean;
         };
         /** @description A page of a changeset's changes, by node id. */

@@ -239,42 +239,34 @@ func TestChangesetFactsCountTo1000(t *testing.T) {
 	}
 }
 
-// A changeset renames when an item's names differ, moves when its parents
-// do, a reorder neither, a creation or a deletion neither; among its first
-// 1,000 items by node id alone.
+// A changeset's renames and moves are what its units marked, each kept
+// once set (M9/P3 design 3.20): a mark of neither changes nothing; another
+// changeset's are its own; a changeset gone since has neither.
 func TestChangesetMoves(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
-	p := f.page(t, f.eng, nil, "P", 0)
-	n := f.page(t, f.eng, nil, "N", 1)
-	from := n.State()
+	cs, other := f.changeset(t, f.eng, f.alice, domain.ClientWeb, now()), f.changeset(t, f.eng, f.alice, domain.ClientWeb, now())
 	for _, tt := range []struct {
-		name string
-		to   domain.TreeState
-		want domain.ChangesetMoves
+		name       string
+		mark, want domain.ChangesetMoves
 	}{
-		{"a rename", domain.TreeState{Name: "M", SortOrder: 1}, domain.ChangesetMoves{Renames: true}},
-		{"a move", domain.TreeState{ParentID: &p.ID, Name: "N", SortOrder: 1}, domain.ChangesetMoves{Moves: true}},
-		{"a move and rename", domain.TreeState{ParentID: &p.ID, Name: "M", SortOrder: 1}, domain.ChangesetMoves{Renames: true, Moves: true}},
-		{"a reorder", domain.TreeState{Name: "N", SortOrder: 5}, domain.ChangesetMoves{}},
+		{"none marked", domain.ChangesetMoves{}, domain.ChangesetMoves{}},
+		{"a rename", domain.ChangesetMoves{Renames: true}, domain.ChangesetMoves{Renames: true}},
+		{"a move after it", domain.ChangesetMoves{Moves: true}, domain.ChangesetMoves{Renames: true, Moves: true}},
+		{"neither after them", domain.ChangesetMoves{}, domain.ChangesetMoves{Renames: true, Moves: true}},
 	} {
-		cs := f.changeset(t, f.eng, f.alice, domain.ClientWeb, now())
-		f.item(t, cs.ID, now(), domain.Change{NodeID: n.ID, Before: &from, After: &tt.to})
-		f.item(t, cs.ID, now(), domain.Change{NodeID: p.ID, Before: new(p.State())})
+		if err := f.s.MarkChangesetMoves(ctx, cs.ID, tt.mark); err != nil {
+			t.Fatal(err)
+		}
 		if got, err := f.s.ChangesetMoves(ctx, cs.ID); err != nil || got != tt.want {
 			t.Errorf("%s = %+v, %v; want %+v", tt.name, got, err, tt.want)
 		}
 	}
-	nodes := f.nodes(t, f.eng, "X", 1001)
-	cs := f.changeset(t, f.eng, f.alice, domain.ClientWeb, now())
-	f.bulk(t, cs.ID, nodes, nil, 1)
-	f.exec(t, "UPDATE changeset_items SET before_name = 'Old', before_sort_order = 0 WHERE changeset_id = $1 AND node_id = $2", cs.ID, nodes[1000])
-	if got, err := f.s.ChangesetMoves(ctx, cs.ID); err != nil || got != (domain.ChangesetMoves{}) {
-		t.Errorf("a rename as the 1,001st item = %+v, %v; want none", got, err)
+	if got, err := f.s.ChangesetMoves(ctx, other.ID); err != nil || got != (domain.ChangesetMoves{}) {
+		t.Errorf("another changeset's = %+v, %v; want neither", got, err)
 	}
-	f.exec(t, "UPDATE changeset_items SET before_name = 'Old', before_sort_order = 0 WHERE changeset_id = $1 AND node_id = $2", cs.ID, nodes[999])
-	if got, err := f.s.ChangesetMoves(ctx, cs.ID); err != nil || !got.Renames {
-		t.Errorf("a rename as the 1,000th item = %+v, %v; want it", got, err)
+	if got, err := f.s.ChangesetMoves(ctx, uuid.NewV7()); err != nil || got != (domain.ChangesetMoves{}) {
+		t.Errorf("a changeset gone = %+v, %v; want neither", got, err)
 	}
 }
 

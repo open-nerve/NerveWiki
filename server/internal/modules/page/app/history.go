@@ -79,8 +79,7 @@ func (r HistoryReads) readableChangeset(ctx context.Context, id uuid.UUID) (doma
 }
 
 // detail is c as GetChangeset reads it: as the log lists it, and whether
-// its first items rename or move a node, which the log's lines do not
-// read.
+// it renames or moves a node, which the log's lines do not read.
 func (r HistoryReads) detail(ctx context.Context, c domain.Changeset) (ChangesetDetail, error) {
 	logged, err := r.logged(ctx, []domain.Changeset{c})
 	if err != nil {
