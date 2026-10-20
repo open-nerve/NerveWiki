@@ -472,7 +472,7 @@ func (p *planner) aside(s *revertSim, id uuid.UUID, toRoot bool) (RevertOp, bool
 	}
 	n := p.s.Nodes[id]
 	under, star := s.under[parentOf(parent)], s.star[parentOf(parent)]
-	name := AsideName(n.Name, id, func(key string) bool {
+	name := AsideName(n.Name, id, n.Kind == KindAsset, func(key string) bool {
 		holder, held := under[key]
 		return held && holder != id || star[key]
 	})

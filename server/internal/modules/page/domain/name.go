@@ -93,8 +93,12 @@ func numbered(name, number string, asset bool) string {
 // began, with " ~" and the last 8 hex digits of id, which a UUIDv7 draws
 // at random (its first ones are its time, those of a batch's nodes
 // alike); else all 32; else all 32 and "-2", "-3" and on: the first whose
-// key taken says is free.
-func AsideName(name string, id uuid.UUID, taken func(key string) bool) string {
+// key taken says is free. Built as Numbered builds a name, "~" and the
+// digits for the number: name cut at a UTF-8 boundary so that the whole
+// is at most shared.MaxTitleBytes, an attachment's extension kept after
+// the digits ("photo ~1a2b3c4d.png"), one too long for that numbered as a
+// page's name is.
+func AsideName(name string, id uuid.UUID, asset bool, taken func(key string) bool) string {
 	digits := hex.EncodeToString(id[:])
 	for n := 0; ; n++ {
 		mark := digits
@@ -104,7 +108,7 @@ func AsideName(name string, id uuid.UUID, taken func(key string) bool) string {
 		case n > 1:
 			mark += "-" + strconv.Itoa(n)
 		}
-		if aside := name + " ~" + mark; !taken(shared.TitleKey(aside)) {
+		if aside := numbered(name, "~"+mark, asset); !taken(shared.TitleKey(aside)) {
 			return aside
 		}
 	}
