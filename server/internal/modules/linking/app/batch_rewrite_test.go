@@ -976,6 +976,16 @@ func TestABatchRewritesThePagesItWroteFirst(t *testing.T) {
 // rename (no MaxBytes), whatever stands in the way. The budget's wait is an
 // hour, the call's context ten seconds, which none of them runs out: a
 // refusal that waited first would.
+//
+// The pages the batch wrote keep their shares as well, and are checked at
+// their writings, the one parse they take (fix round 7, B4-N1 = C's
+// N1-f4): three of them, W0 … W2, before R0's read, and a fourth's writing,
+// each refused a byte short and done at the budget. A page under MinTake
+// takes MinTake, which its check counts (B's and C's mutant of the
+// adapter's Takes). A writing past MaxContent is left before the check
+// (C's N2-f4): the last page by id, of MaxContent bytes, written 200 bytes
+// longer in a budget that fits its read and not its writing, is logged and
+// left, the three before written, no refusal.
 func TestABatchRefusesAParseItsOwnSharesLeaveNoRoomFor(t *testing.T) {
 	const pages, fit = 6, 3 // the pages; those whose facts the tight budgets fit with one page more
 	content := "[[A]]\n" + strings.Repeat("r", 20<<10) + "\n"
@@ -989,21 +999,47 @@ func TestABatchRefusesAParseItsOwnSharesLeaveNoRoomFor(t *testing.T) {
 		defer p.Release()
 		return p.Kept
 	}
+	minTake := markdown.NewBudget(1<<20, time.Hour, discard).Takes(1)
 	type outcome struct {
 		u      *appender
 		parsed []string
 		budget *markdown.Budget
 		err    error
 		waited bool // whether the call ran its context out
+		logs   string
 	}
-	follow := func(to string, size, others, maxBytes int) outcome {
+	// run has a batch rename A to "to" with update_links, after it wrote
+	// written pages W0 …, each of content, with the index's pages of index,
+	// in the order of their ids, the rewrite's; in a budget of size bytes,
+	// others of them held by another.
+	run := func(to string, written int, index []string, size, others, maxBytes int) outcome {
 		names := []string{"A"}
-		for i := range pages {
+		for i := range written {
+			names = append(names, fmt.Sprint("W", i))
+		}
+		for i := range index {
 			names = append(names, fmt.Sprint("R", i))
 		}
 		w := newRewriting(t, names...)
-		for i := range pages {
-			w.write(fmt.Sprint("R", i), content)
+		var ids []uuid.UUID
+		for i := range index {
+			ids = append(ids, w.id(fmt.Sprint("R", i)))
+		}
+		slices.SortFunc(ids, uuid.UUID.Compare)
+		for i := range index {
+			name := fmt.Sprint("R", i)
+			w.write(name, index[slices.Index(ids, w.id(name))])
+		}
+		before := w.before(content, "A")
+		facts := map[string]domain.Facts{}
+		for i := range written {
+			facts[fmt.Sprint("W", i)] = w.wrote(fmt.Sprint("W", i), content)
+		}
+		merged := w.rename("A", to)
+		own := []domain.Change{w.renamed(to, "A", to)}
+		ws := map[uuid.UUID]app.WrittenPage{}
+		for name, f := range facts {
+			ws[w.id(name)] = app.WrittenPage{Before: before, Changes: own, Facts: f}
 		}
 		budget := markdown.NewBudget(size, time.Hour, discard)
 		parser := &parses{RewriteParser: markdownadapter.NewParser(w.md, budget)}
@@ -1019,11 +1055,16 @@ func TestABatchRefusesAParseItsOwnSharesLeaveNoRoomFor(t *testing.T) {
 		defer cancel()
 		u := &appender{}
 		err := w.rewrite.Participate(ctx, app.Moved{NotebookID: w.notebook, At: time.Now(), UpdateLinks: true,
-			Changes: []domain.Change{w.rename("A", to)}, MaxBytes: maxBytes}, u)
-		return outcome{u: u, parsed: parser.contents, budget: budget, err: err, waited: ctx.Err() != nil}
+			Changes: []domain.Change{merged}, Written: ws, MaxBytes: maxBytes}, u)
+		return outcome{u: u, parsed: parser.contents, budget: budget, err: err, waited: ctx.Err() != nil, logs: w.logs.String()}
 	}
-	// refused checks o refused at the fourth page, its facts' shares, k each,
-	// held and nothing more: the refused parse took none.
+	follow := func(to string, size, others, maxBytes int) outcome { // the six pages of the index
+		return run(to, 0, slices.Repeat([]string{content}, pages), size, others, maxBytes)
+	}
+	// refused checks o refused after three pages written, their facts'
+	// shares, k each, held and nothing more: the refused parse took none (a
+	// take of what is free beside them, when it is MinTake at least, which
+	// a take holds however short; and of a byte more).
 	refused := func(name string, o outcome, k int, want app.TooManyRewrites, parsed int) {
 		t.Helper()
 		var many *app.TooManyRewrites
@@ -1032,10 +1073,12 @@ func TestABatchRefusesAParseItsOwnSharesLeaveNoRoomFor(t *testing.T) {
 				name, o.err, many, len(o.u.writes), len(o.parsed), o.waited, want, fit, parsed)
 		}
 		free := want.Max - fit*k
-		if hold, err := o.budget.TakeNow(context.Background(), free); err != nil {
-			t.Errorf("%s: the %d bytes beside the shares of the pages written: %v", name, free, err)
-		} else {
-			hold.Release()
+		if free >= minTake {
+			if hold, err := o.budget.TakeNow(context.Background(), free); err != nil {
+				t.Errorf("%s: the %d bytes beside the shares of the pages written: %v", name, free, err)
+			} else {
+				hold.Release()
+			}
 		}
 		if _, err := o.budget.TakeNow(context.Background(), free+1); err == nil {
 			t.Errorf("%s: a byte more than the %d beside the shares of the pages written was free", name, free)
@@ -1048,20 +1091,51 @@ func TestABatchRefusesAParseItsOwnSharesLeaveNoRoomFor(t *testing.T) {
 			t.Errorf("%s: %v, %d written, waited %t; want server_busy at once, %d written", name, o.err, len(o.u.writes), o.waited, fit)
 		}
 	}
+	done := func(name string, o outcome, written int) {
+		t.Helper()
+		if o.err != nil || len(o.u.writes) != written {
+			t.Errorf("%s: %v, %d written; want the %d", name, o.err, len(o.u.writes), written)
+		}
+	}
 
-	k := kept("[[B]]" + content[len("[[A]]"):])
+	writing := "[[B]]" + content[len("[[A]]"):]
+	k := kept(writing)
 	tight := fit*k + len(content) - 1
 	refused("the read", follow("B", tight, 0, 1<<30), k, app.TooManyRewrites{Kept: tight + 1, Max: tight}, 2*fit)
 	longer := "B" + strings.Repeat("b", 200)
-	writing := "[[" + longer + "]]" + content[len("[[A]]"):]
-	kl := kept(writing)
+	longerWriting := "[[" + longer + "]]" + content[len("[[A]]"):]
+	kl := kept(longerWriting)
 	exact := fit*kl + len(content)
-	refused("the writing", follow(longer, exact, 0, 1<<30), kl, app.TooManyRewrites{Kept: fit*kl + len(writing), Max: exact}, 2*fit+1)
-	if o := follow("B", (pages-1)*k+len(content), 0, 1<<30); o.err != nil || len(o.u.writes) != pages {
-		t.Errorf("in a budget of what five keep and a page: %v, %d written; want the %d", o.err, len(o.u.writes), pages)
-	}
+	refused("the writing", follow(longer, exact, 0, 1<<30), kl, app.TooManyRewrites{Kept: fit*kl + len(longerWriting), Max: exact},
+		2*fit+1)
+	done("in a budget of what five keep and a page", follow("B", (pages-1)*k+len(content), 0, 1<<30), pages)
 	busy("others' shares in the way", follow("B", (pages-1)*k+len(content), (pages-1-fit)*k+1, 1<<30))
 	busy("a single rename", follow("B", tight, 0, 0))
+
+	// The pages the batch wrote: their writings alone are parsed.
+	refused("R0's read beside three written pages' shares", run("B", fit, []string{content}, tight, 0, 1<<30), k,
+		app.TooManyRewrites{Kept: tight + 1, Max: tight}, fit)
+	done("R0's read beside three written pages' shares, at the budget", run("B", fit, []string{content}, tight+1, 0, 1<<30), fit+1)
+	beside := fit*k + len(writing) - 1
+	refused("a written page's writing beside three written pages' shares", run("B", fit+1, nil, beside, 0, 1<<30), k,
+		app.TooManyRewrites{Kept: beside + 1, Max: beside}, fit)
+	done("a written page's writing beside three written pages' shares, at the budget", run("B", fit+1, nil, beside+1, 0, 1<<30),
+		fit+1)
+
+	// A page under MinTake.
+	short := "[[A]]\n" + strings.Repeat("s", 1<<10) + "\n"
+	ks := kept("[[B]]" + short[len("[[A]]"):])
+	under := fit*ks + minTake - 1
+	refused("a short page's read", run("B", 0, slices.Repeat([]string{short}, fit+1), under, 0, 1<<30), ks,
+		app.TooManyRewrites{Kept: under + 1, Max: under}, 2*fit)
+
+	// A writing past MaxContent, the last page's.
+	large := "[[A]]\n" + strings.Repeat("l", 64<<10-len("[[A]]\n"))
+	o := run(longer, 0, append(slices.Repeat([]string{content}, fit), large), fit*kl+len(large)+100, 0, 1<<30)
+	if o.err != nil || len(o.u.writes) != fit || !strings.Contains(o.logs, "it would hold more than a page may") {
+		t.Errorf("a writing past MaxContent beside the shares: %v, %d written, logged %s; want the %d before it written, it left",
+			o.err, len(o.u.writes), o.logs, fit)
+	}
 }
 
 // The plan's links resolve and rewrite by the participant's rules, on the
