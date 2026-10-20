@@ -3,6 +3,7 @@ package domain_test
 import (
 	"crypto/sha256"
 	"errors"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -413,8 +414,10 @@ func TestBatchPlanChecksTheUnit(t *testing.T) {
 // The renames and moves between two ops, merged node by node (M9/P3
 // design 3.7.1): the first before and the last after; a node moved
 // without update_links left out, one back where it was, one deleted; one
-// created among them before as created; and the nodes moved without
-// update_links, frozen (M9/P3 review B-M1).
+// created among them before as created; the nodes moved without
+// update_links, frozen (M9/P3 review B-M1); and the nodes created after
+// each node's last rename or move, each page of a write's path it lacked
+// (M9/P3 review B1-M1).
 func TestBatchPlanMovesBetween(t *testing.T) {
 	nb := newNotebook("A.md", "B.md", "F.md", "F/X.md", "W.md")
 	p, ids := planOf(t, nb,
@@ -428,6 +431,7 @@ func TestBatchPlanMovesBetween(t *testing.T) {
 		moveOp("B2.md", "B.md"),   // 6: back
 		moveOp("X.md", "X2.md"),   // 7: X again
 		deleteOp("W.md"),          // 8
+		writeOp("H/I.md", "i"),    // 9: H and I created
 	)
 	if p.Failed != nil {
 		t.Fatal(p.Failed)
@@ -471,6 +475,25 @@ func TestBatchPlanMovesBetween(t *testing.T) {
 	}
 	if got := p.FrozenBetween(-1, 1); len(got) != 0 {
 		t.Errorf("FrozenBetween(-1, 1) = %v, want none before A's move", got)
+	}
+	hi := slices.SortedFunc(slices.Values(ids[9]), uuid.UUID.Compare)
+	all := slices.SortedFunc(slices.Values(append([]uuid.UUID{n}, hi...)), uuid.UUID.Compare)
+	b := nb.id(t, "B.md")
+	for _, c := range []struct {
+		k, j int
+		want map[uuid.UUID][]uuid.UUID
+	}{
+		// F, X and B moved before N's creation, X again after it; N moved
+		// after its own creation; A's move without update_links none.
+		{-1, 9, map[uuid.UUID][]uuid.UUID{f: all, b: hi, x: hi, n: hi}},
+		{-1, 3, map[uuid.UUID][]uuid.UUID{f: {n}, x: {n}}},
+		{-1, 2, map[uuid.UUID][]uuid.UUID{}},
+		{3, 9, map[uuid.UUID][]uuid.UUID{b: hi, x: hi, n: hi}},
+		{8, 9, map[uuid.UUID][]uuid.UUID{}},
+	} {
+		if got := p.CreatedAfterMoves(c.k, c.j); !maps.EqualFunc(got, c.want, slices.Equal) {
+			t.Errorf("CreatedAfterMoves(%d, %d) = %v, want %v", c.k, c.j, got, c.want)
+		}
 	}
 }
 

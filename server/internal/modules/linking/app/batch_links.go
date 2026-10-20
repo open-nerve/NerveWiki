@@ -40,17 +40,20 @@ type LinksOn struct {
 // LinksMoved is a content of a page of a batch's plan to rewrite, on the
 // tree after the op it is rewritten for (LinksOn): where its links led at
 // the moment its content was read (Before), the renames and moves since,
-// merged node by node, and the nodes those ops rename or move with
-// update_links false, whose links it leaves (Moved.Frozen). The paths
-// before are Before's: the moved nodes' former parents are not read.
-// Reads, when set, keeps the subtrees read of the tree for the caller's
-// next calls on it (M9/P3 review B-N2).
+// merged node by node, the nodes those ops rename or move with
+// update_links false, whose links it leaves (Moved.Frozen), and the nodes
+// they create after a node's last rename or move, out of its subtree
+// (Moved.CreatedAfter). The paths before are Before's:
+// the moved nodes' former parents are not read. Reads, when set, keeps
+// the subtrees read of the tree for the caller's next calls on it (M9/P3
+// review B-N2).
 type LinksMoved struct {
 	LinksOn
-	Before  LinksBefore
-	Changes []domain.Change
-	Frozen  []uuid.UUID
-	Reads   *any
+	Before       LinksBefore
+	Changes      []domain.Change
+	Frozen       []uuid.UUID
+	CreatedAfter map[uuid.UUID][]uuid.UUID
+	Reads        *any
 }
 
 // Indexed is where the links of the page id of notebookID led by the
@@ -69,15 +72,16 @@ func (b BatchLinks) Indexed(ctx context.Context, notebookID, id uuid.UUID, revis
 // Reached reports whether changes, the renames and moves of a batch's
 // ops before a page's first content op, reach a link of the page id by the
 // index at revision, on tree after them, the nodes gone by then none, the
-// links that led to the nodes of frozen left: by the rule the plan's
-// Rewrite and the deferred participant follow them (ownLinks), on the
-// index's rows of the page (M9/P3 review A-I1). The plan then reads the
-// page whole, to compare a write with its content rewritten for them.
-// False when the index is not of revision or of the current extractor,
-// whose links the plan does not rewrite, as Indexed. The subtrees it reads
-// of tree are kept in reads, when set, as Rewrite's.
+// links that led to the nodes of frozen left, the nodes of createdAfter
+// out of the subtrees of the nodes they key (Moved.CreatedAfter): by the
+// rule the plan's Rewrite and the deferred participant follow them
+// (ownLinks), on the index's rows of the page (M9/P3 review A-I1). The plan then reads the page whole, to
+// compare a write with its content rewritten for them. False when the
+// index is not of revision or of the current extractor, whose links the
+// plan does not rewrite, as Indexed. The subtrees it reads of tree are
+// kept in reads, when set, as Rewrite's.
 func (b BatchLinks) Reached(ctx context.Context, notebookID, id uuid.UUID, revision int, changes []domain.Change,
-	frozen []uuid.UUID, tree Pages, gone []uuid.UUID, reads *any,
+	frozen []uuid.UUID, createdAfter map[uuid.UUID][]uuid.UUID, tree Pages, gone []uuid.UUID, reads *any,
 ) (bool, error) {
 	if relocates, recased := domain.Relocation(changes); !relocates && len(recased) == 0 {
 		return false, nil
@@ -98,7 +102,7 @@ func (b BatchLinks) Reached(ctx context.Context, notebookID, id uuid.UUID, revis
 	}
 	sub := b.subtreesOf(notebookID, tree, reads)
 	reached, _, err := ownLinks(ctx, b.Store, tree, sub, notebookID, id, links, LinksBefore{Leads: x.Resolutions}, changes,
-		setOf(frozen), setOf(gone))
+		setOf(frozen), setOf(gone), setsOf(createdAfter))
 	return len(reached) > 0, err
 }
 
@@ -143,7 +147,7 @@ func (b BatchLinks) Rewrite(ctx context.Context, q LinksMoved) (string, error) {
 	gone := setOf(q.Gone)
 	sub := b.subtreesOf(q.NotebookID, q.Tree, q.Reads)
 	reached, recased, err := ownLinks(ctx, b.Store, q.Tree, sub, q.NotebookID, q.PageID, facts.Links, q.Before, q.Changes,
-		setOf(q.Frozen), gone)
+		setOf(q.Frozen), gone, setsOf(q.CreatedAfter))
 	if err != nil || len(reached) == 0 {
 		return q.Content, err
 	}
@@ -210,6 +214,15 @@ func withTargets(ctx context.Context, tree Pages, notebookID uuid.UUID, leads ma
 		out.Targets[n.ID] = n.Path
 	}
 	return out, nil
+}
+
+// setsOf is ids, by node, as sets.
+func setsOf(ids map[uuid.UUID][]uuid.UUID) map[uuid.UUID]map[uuid.UUID]bool {
+	out := make(map[uuid.UUID]map[uuid.UUID]bool, len(ids))
+	for id, of := range ids {
+		out[id] = setOf(of)
+	}
+	return out
 }
 
 // setOf is ids as a set.

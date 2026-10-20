@@ -54,10 +54,7 @@ func (r Rewrite) Participate(ctx context.Context, m Moved, u Appender) error {
 	if !m.UpdateLinks {
 		return nil
 	}
-	gone := make(map[uuid.UUID]bool, len(m.Gone))
-	for _, id := range m.Gone {
-		gone[id] = true
-	}
+	gone := setOf(m.Gone)
 	var written []uuid.UUID
 	for _, id := range slices.SortedFunc(maps.Keys(m.Written), uuid.UUID.Compare) {
 		if relocates, recased := domain.Relocation(m.Written[id].Changes); !gone[id] && (relocates || len(recased) > 0) {
@@ -206,6 +203,9 @@ func (r Rewrite) followed(ctx context.Context, m Moved, gone map[uuid.UUID]bool)
 // pages whose titles' case alone m changed; the rows of the pages gone,
 // or written by a batch, are not among them, nor those that led to a node
 // a batch froze (Moved.Frozen), and the aliases of those gone are none.
+// The nodes a batch created after a node's rename are not spread under it
+// (Moved.CreatedAfter); those a move carried are among its changes as the
+// move left them.
 func (r Rewrite) reached(ctx context.Context, m Moved, relocates bool, recased domain.Recased, gone map[uuid.UUID]bool) (
 	map[uuid.UUID]map[int]rewritten, []uuid.UUID, error,
 ) {
@@ -214,7 +214,7 @@ func (r Rewrite) reached(ctx context.Context, m Moved, relocates bool, recased d
 		var renamed []uuid.UUID
 		reach, renamed, _ = domain.Affected(m.Changes)
 		var err error
-		if reach, err = spread(ctx, r.Store, r.Pages, m.NotebookID, reach, renamed); err != nil {
+		if reach, err = spread(ctx, r.Store, r.Pages, m.NotebookID, reach, renamed, setsOf(m.CreatedAfter)); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -268,7 +268,7 @@ func (r Rewrite) ownWritten(ctx context.Context, m Moved, written []uuid.UUID, g
 	for _, id := range written {
 		w := m.Written[id]
 		reached, recased, err := ownLinks(ctx, r.Store, r.Pages, sub, m.NotebookID, id, w.Facts.Links, w.Before, w.Changes,
-			setOf(w.Frozen), gone)
+			setOf(w.Frozen), gone, setsOf(w.CreatedAfter))
 		if err != nil {
 			return nil, err
 		}
@@ -304,11 +304,13 @@ func (r Rewrite) followWritten(ctx context.Context, id uuid.UUID, w WrittenPage,
 // matched by where their targets start to before's leads; reached as the
 // index's rows are, by Affected and spread, which reads the subtree of
 // each node changes rename or move, once for the batch (sub), but those
-// that led to a node of frozen, which are left (Moved.Frozen); resolved
-// after on pages, the aliases of gone none; those domain.Rewrites tells,
-// with the pages changes re-cased.
+// that led to a node of frozen, which are left (Moved.Frozen), the nodes
+// of unspread out of the subtrees of the nodes they key
+// (Moved.CreatedAfter);
+// resolved after on pages, the aliases of gone none; those domain.Rewrites
+// tells, with the pages changes re-cased.
 func ownLinks(ctx context.Context, store Store, pages Pages, sub *subtrees, notebookID, id uuid.UUID, links []domain.Link,
-	before LinksBefore, changes []domain.Change, frozen, gone map[uuid.UUID]bool,
+	before LinksBefore, changes []domain.Change, frozen, gone map[uuid.UUID]bool, unspread map[uuid.UUID]map[uuid.UUID]bool,
 ) (map[int]rewritten, domain.Recased, error) {
 	relocates, recased := domain.Relocation(changes)
 	if !relocates && len(recased) == 0 {
@@ -319,7 +321,7 @@ func ownLinks(ctx context.Context, store Store, pages Pages, sub *subtrees, note
 		var renamed []uuid.UUID
 		reach, renamed, _ = domain.Affected(changes)
 		var err error
-		if reach, err = sub.spread(ctx, reach, append(renamed, movedOf(changes)...)); err != nil {
+		if reach, err = sub.spread(ctx, reach, append(renamed, movedOf(changes)...), unspread); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -358,6 +360,21 @@ func reachedBy(reach domain.Reach, id uuid.UUID, l domain.Link, before domain.Re
 		slices.Contains(reach.Targets, before.ID) || slices.Contains(reach.Sources, id)
 }
 
+// stepsNot is steps, a node's subtree as spread reads it after a batch's
+// renames and moves, but the nodes of after, which the batch created after
+// the node's last rename or move (Moved.CreatedAfter): the subtree as that
+// op left it, of the nodes it holds still. Its rewrite reached none of
+// them, and their creation only resolves links again (M9 design 4.11), so
+// their keys, the shorter paths of which may take links that led
+// elsewhere, would have those written back (M9/P3 review B1-M1). steps
+// itself for none.
+func stepsNot(steps []domain.Step, after map[uuid.UUID]bool) []domain.Step {
+	if len(after) == 0 {
+		return steps
+	}
+	return slices.DeleteFunc(slices.Clone(steps), func(s domain.Step) bool { return after[s.ID] })
+}
+
 // movedOf is the nodes changes move under another parent.
 func movedOf(changes []domain.Change) []uuid.UUID {
 	var out []uuid.UUID
@@ -391,9 +408,12 @@ type subtree struct {
 }
 
 // spread is the package's spread for a page a batch wrote: reach with the
-// subtrees of nodes, each read once for the batch, and the aliases' keys
-// of reach's own targets and of the subtrees' nodes.
-func (s *subtrees) spread(ctx context.Context, reach domain.Reach, nodes []uuid.UUID) (domain.Reach, error) {
+// subtrees of nodes, each read once for the batch, as their last rename or
+// move left them (stepsNot), and the aliases' keys of reach's own targets
+// and of the subtrees' nodes, which a node the batch created has none of.
+func (s *subtrees) spread(ctx context.Context, reach domain.Reach, nodes []uuid.UUID, after map[uuid.UUID]map[uuid.UUID]bool) (
+	domain.Reach, error,
+) {
 	own, err := s.store.AliasKeys(ctx, reach.Targets)
 	if err != nil {
 		return domain.Reach{}, err
@@ -416,7 +436,7 @@ func (s *subtrees) spread(ctx context.Context, reach domain.Reach, nodes []uuid.
 			sub = subtree{steps: steps, keys: keys}
 			s.read[id] = sub
 		}
-		reach.Add(sub.steps...)
+		reach.Add(stepsNot(sub.steps, after[id])...)
 		reach.Keys = append(reach.Keys, sub.keys...)
 	}
 	reach.Keys = append(reach.Keys, own...)

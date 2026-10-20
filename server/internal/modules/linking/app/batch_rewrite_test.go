@@ -312,7 +312,7 @@ func TestABatchLeavesTheLinksToTheNodesItFroze(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				reached, err := links.Reached(context.Background(), w.notebook, q, revision, changes, frozen, w.tree, nil, nil)
+				reached, err := links.Reached(context.Background(), w.notebook, q, revision, changes, frozen, nil, w.tree, nil, nil)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -331,6 +331,120 @@ func TestABatchLeavesTheLinksToTheNodesItFroze(t *testing.T) {
 			}
 		})
 	}
+}
+
+// The nodes a batch created after a node's last rename or move are out of
+// the subtree its rewrite spreads (M9 design 4.11: a creation only
+// resolves again; M9/P3 review B1-M1): N, created under H after H is
+// renamed to H2, or under F after F is moved under G, takes [[N]] from
+// A/B/C/D/N, by the shorter path; the index's Q (K3b), the written P (K2),
+// the plan's rewrite of Q (K1r) and its reach leave it. Without them, the
+// subtree, read as the batch left it, reaches N's key, and [[N]] is written
+// back to A/B/C/D/N. They are left out of the subtree of the node they are
+// keyed by alone: N, created under K/S2 after S's rename and before K's,
+// is in K's, as K's rename reached it.
+func TestABatchLeavesOutTheNodesItCreatedAfterAMove(t *testing.T) {
+	type world struct {
+		w       *rewriting
+		changes []domain.Change
+		after   map[uuid.UUID][]uuid.UUID
+	}
+	setUp := func(t *testing.T, how string) world {
+		w := newRewriting(t, "A", "A/B", "A/B/C", "A/B/C/D", "A/B/C/D/N", "Top", "Top/F", "Top/F/X", "G", "H", "H/Y", "K", "K/S", "P",
+			"Q")
+		w.write("Q", "[[N]] q\n")
+		switch how {
+		case "renamed":
+			h := w.id("H")
+			changes := []domain.Change{w.rename("H", "H2")}
+			return world{w, changes, map[uuid.UUID][]uuid.UUID{h: {w.tree.add("H2/N")}}}
+		case "moved":
+			f := w.id("Top/F")
+			changes := w.move("Top/F", "G")[:1] // a written page's own: F's alone
+			return world{w, changes, map[uuid.UUID][]uuid.UUID{f: {w.tree.add("G/F/N")}}}
+		}
+		s := w.id("K/S")
+		changes := []domain.Change{w.rename("K/S", "S2")}
+		n := w.tree.add("K/S2/N")
+		return world{w, append(changes, w.rename("K", "K2")), map[uuid.UUID][]uuid.UUID{s: {n}}}
+	}
+	for _, given := range []bool{true, false} {
+		t.Run(fmt.Sprint("given ", given), func(t *testing.T) {
+			after := func(x world) map[uuid.UUID][]uuid.UUID {
+				if given {
+					return x.after
+				}
+				return nil
+			}
+			rewrote := func(page, to string) map[string]string {
+				if given {
+					return map[string]string{}
+				}
+				return map[string]string{page: to}
+			}
+			// The index's Q, H renamed (K3b): reached spreads renamed nodes
+			// alone.
+			x := setUp(t, "renamed")
+			u, err := x.w.batch(app.Moved{Changes: x.changes, CreatedAfter: after(x)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			x.w.written(u, rewrote("Q", "[[A/B/C/D/N]] q\n"))
+			// The written P, F moved after its edit (K2).
+			x = setUp(t, "moved")
+			before := x.w.before("p [[N]]\n", "A/B/C/D/N")
+			facts := x.w.wrote("P", "p [[N]]\n")
+			u, err = x.w.batch(app.Moved{Changes: x.changes, CreatedAfter: after(x), Written: map[uuid.UUID]app.WrittenPage{
+				x.w.id("P"): {Before: before, Changes: x.changes, Facts: facts, CreatedAfter: after(x)},
+			}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			x.w.written(u, rewrote("P", "p [[A/B/C/D/N]]\n"))
+			// The plan's Q, edited after the move and the creation (K1r), and
+			// its reach for a write after them.
+			x = setUp(t, "moved")
+			q := x.w.id("Q")
+			links := app.BatchLinks{Store: x.w.store, Logger: x.w.rewrite.Logger, MaxContent: 1 << 10}
+			parse := func(_ context.Context, content string) (domain.Facts, error) { return x.w.facts(content), nil }
+			on := app.LinksOn{NotebookID: x.w.notebook, PageID: q, Content: "[[N]] q\n", Tree: x.w.tree, Parse: parse}
+			planned, err := links.Rewrite(context.Background(), app.LinksMoved{LinksOn: on, Before: x.w.before("[[N]] q\n", "A/B/C/D/N"),
+				Changes: x.changes, CreatedAfter: after(x)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			reached, err := links.Reached(context.Background(), x.w.notebook, q, x.w.contents[q].revision, x.changes, nil, after(x),
+				x.w.tree, nil, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if want := map[bool]string{true: "[[N]] q\n", false: "[[A/B/C/D/N]] q\n"}[given]; planned != want || reached == given {
+				t.Errorf("the plan wrote Q %q, reached it %t; want %q, reached %t", planned, reached, want, !given)
+			}
+			// N under K/S2, created after S's rename, before K's: K's
+			// subtree holds it, for P and for the index's Q.
+			x = setUp(t, "nested")
+			before = x.w.before("p [[N]]\n", "A/B/C/D/N")
+			facts = x.w.wrote("P", "p [[N]]\n")
+			u, err = x.w.batch(app.Moved{Changes: x.changes, CreatedAfter: after(x), Written: map[uuid.UUID]app.WrittenPage{
+				x.w.id("P"): {Before: before, Changes: x.changes, Facts: facts, CreatedAfter: after(x)},
+			}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			x.w.written(u, map[string]string{"P": "p [[A/B/C/D/N]]\n", "Q": "[[A/B/C/D/N]] q\n"})
+		})
+	}
+	// X created, then renamed to Y: its own change is followed, [[Y]] kept
+	// at G/Y (3.14.3's 17).
+	w := newRewriting(t, "G", "G/Y", "Q")
+	w.write("Q", "[[Y]]\n")
+	w.tree.add("X")
+	u, err := w.batch(app.Moved{Changes: []domain.Change{w.rename("X", "Y")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.written(u, map[string]string{"Q": "[[G/Y]]\n"})
 }
 
 // The plan's rewrites on one tree read the subtrees of the nodes their

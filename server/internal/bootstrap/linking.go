@@ -83,8 +83,10 @@ func (l linkRewrite) Participate(ctx context.Context, s page.Step, u page.Append
 // its links before, its own changes, its final content's facts and the
 // nodes it leaves the links to; the former parents' paths, never nil,
 // which the rewrite reads them from alone; the nodes it deleted; its
-// bound, and what a page it wrote counts in it (M9/P3 review B-M3); and
-// the nodes whose links it leaves (M9/P3 review B-M1).
+// bound, and what a page it wrote counts in it (M9/P3 review B-M3); the
+// nodes whose links it leaves (M9/P3 review B-M1); and those it created
+// after each node's last rename or move, out of its subtree (M9/P3 review
+// B1-M1).
 func batchMoved(m *linking.Moved, b page.BatchRewrite) error {
 	m.Written = make(map[uuid.UUID]linking.WrittenPage, len(b.Written))
 	for id, w := range b.Written {
@@ -93,10 +95,10 @@ func batchMoved(m *linking.Moved, b page.BatchRewrite) error {
 			return fmt.Errorf("the facts of page %s: %w", id, err)
 		}
 		m.Written[id] = linking.WrittenPage{Before: linkLinksBefore(w.Before), Changes: linkChanges(w.Changes), Facts: facts,
-			Frozen: w.Frozen}
+			Frozen: w.Frozen, CreatedAfter: w.CreatedAfter}
 	}
 	m.Parents = linkParents(b.Parents)
-	m.Gone, m.MaxPages, m.WrittenWeight, m.Frozen = b.Gone, b.MaxPages, b.WrittenWeight, b.Frozen
+	m.Gone, m.MaxPages, m.WrittenWeight, m.Frozen, m.CreatedAfter = b.Gone, b.MaxPages, b.WrittenWeight, b.Frozen, b.CreatedAfter
 	return nil
 }
 
@@ -157,9 +159,10 @@ func (b batchLinks) Indexed(ctx context.Context, notebookID, id uuid.UUID, revis
 }
 
 func (b batchLinks) Reached(ctx context.Context, notebookID, id uuid.UUID, revision int, changes []page.Change,
-	frozen []uuid.UUID, tree page.PlanTree, reads *page.TreeReads,
+	frozen []uuid.UUID, createdAfter map[uuid.UUID][]uuid.UUID, tree page.PlanTree, reads *page.TreeReads,
 ) (bool, error) {
-	return b.links.Reached(ctx, notebookID, id, revision, linkChanges(changes), frozen, planPages{tree}, tree.Gone(), treeReads(reads))
+	return b.links.Reached(ctx, notebookID, id, revision, linkChanges(changes), frozen, createdAfter, planPages{tree}, tree.Gone(),
+		treeReads(reads))
 }
 
 func (b batchLinks) Resolve(ctx context.Context, q page.LinksOn) (page.LinksBefore, error) {
@@ -169,7 +172,7 @@ func (b batchLinks) Resolve(ctx context.Context, q page.LinksOn) (page.LinksBefo
 
 func (b batchLinks) Rewrite(ctx context.Context, q page.LinksMoved) (string, error) {
 	return b.links.Rewrite(ctx, linking.LinksMoved{LinksOn: linksOn(q.LinksOn), Before: linkLinksBefore(q.Before),
-		Changes: linkChanges(q.Changes), Frozen: q.Frozen, Reads: treeReads(q.Reads)})
+		Changes: linkChanges(q.Changes), Frozen: q.Frozen, CreatedAfter: q.CreatedAfter, Reads: treeReads(q.Reads)})
 }
 
 // treeReads is where linking keeps what it reads of a tree of the plan,

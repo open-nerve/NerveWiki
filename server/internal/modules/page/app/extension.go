@@ -73,6 +73,13 @@ type BatchRewrite struct {
 	// links that led to them are left as they are, in every page, whatever
 	// their ancestors' changes (M9 design 4.11; M9/P3 review B-M1).
 	Frozen []uuid.UUID
+	// CreatedAfter is, for each node an op of the batch renamed or moved
+	// with update_links, the nodes it created after the last such op of
+	// it: no link reached them then, so the rewrite of the pages it did not
+	// write leaves them out of that node's subtree, which it reads as the
+	// unit left it (domain.BatchPlan.CreatedAfterMoves; M9 design 4.11: a
+	// creation only resolves again; M9/P3 review B1-M1).
+	CreatedAfter map[uuid.UUID][]uuid.UUID
 }
 
 // WrittenPage is a page a batch wrote, for its deferred rewrite: where its
@@ -85,12 +92,15 @@ type BatchRewrite struct {
 // folder's nodes are held once, not once a page; and the facts DecidedAll
 // kept for its final content, which the rewrite takes its links from
 // instead of parsing it again. Frozen is the nodes the ops after that op
-// rename or move with update_links false, whose links it leaves.
+// rename or move with update_links false, whose links it leaves;
+// CreatedAfter, for each node they rename or move, the nodes they create
+// after the last that does, out of its subtree (BatchRewrite.CreatedAfter).
 type WrittenPage struct {
-	Before  domain.LinksBefore
-	Changes []domain.Change
-	Facts   Facts
-	Frozen  []uuid.UUID
+	Before       domain.LinksBefore
+	Changes      []domain.Change
+	Facts        Facts
+	Frozen       []uuid.UUID
+	CreatedAfter map[uuid.UUID][]uuid.UUID
 }
 
 // AssetMeta is what an attachment's file is: its type, as the server

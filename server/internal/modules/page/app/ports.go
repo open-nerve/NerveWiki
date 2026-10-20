@@ -226,12 +226,14 @@ type BatchLinks interface {
 	// ops before a page's first content op, a write, reach a link of the
 	// page id by the index at revision, on tree after them, as Rewrite
 	// would write it again (M9/P3 review A-I1), those that led to the
-	// nodes of frozen left: the plan then reads the page whole and compares
-	// the write with its content rewritten for them. False when the index
-	// is not of revision or not of the current extractor, as Indexed. What
-	// it reads of tree it keeps in reads.
+	// nodes of frozen left, the nodes of createdAfter out of the subtrees
+	// of the nodes they key (BatchRewrite.CreatedAfter): the plan then
+	// reads the page whole and compares the write with its content
+	// rewritten for them. False when the index is not of revision or not
+	// of the current extractor, as Indexed. What it reads of tree it keeps
+	// in reads.
 	Reached(ctx context.Context, notebookID, id uuid.UUID, revision int, changes []domain.Change, frozen []uuid.UUID,
-		tree domain.PlanTree, reads *TreeReads) (bool, error)
+		createdAfter map[uuid.UUID][]uuid.UUID, tree domain.PlanTree, reads *TreeReads) (bool, error)
 	// Resolve is where each link of q's content, the page's at its path on
 	// q's tree, leads there, by where its target starts, with the targets
 	// as they are there.
@@ -260,14 +262,17 @@ type LinksOn struct {
 // when its content was read (Before), and the renames and moves since,
 // merged node by node; Frozen the nodes those ops rename or move with
 // update_links false, the links that led to them left as they are (M9
-// design 4.11; M9/P3 review B-M1); and the reads of its tree kept for the
-// calls on it (TreeReads).
+// design 4.11; M9/P3 review B-M1); CreatedAfter, for each node those ops
+// rename or move, the nodes they create after the last that does, out of
+// its subtree (BatchRewrite.CreatedAfter); and the reads of its tree kept
+// for the calls on it (TreeReads).
 type LinksMoved struct {
 	LinksOn
-	Before  domain.LinksBefore
-	Changes []domain.Change
-	Frozen  []uuid.UUID
-	Reads   *TreeReads
+	Before       domain.LinksBefore
+	Changes      []domain.Change
+	Frozen       []uuid.UUID
+	CreatedAfter map[uuid.UUID][]uuid.UUID
+	Reads        *TreeReads
 }
 
 // TreeReads is what the links read of one tree of a batch's plan, kept

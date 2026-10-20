@@ -596,6 +596,43 @@ func (p *BatchPlan) FrozenBetween(k, j int) []uuid.UUID {
 	return slices.Compact(out)
 }
 
+// CreatedAfterMoves is, for each node an op after k up to j renames or
+// moves with update_links, the nodes the ops after the last such op of it,
+// up to j, create, in id order; a node with none is not in it. The
+// rewrites that follow it reach its subtree as that op left it, these
+// nodes out of it: no link reached them then, and their creation only
+// resolves links again (M9 design 4.11; M9/P3 review B1-M1). A node
+// created before the op, and one created after but renamed or moved
+// itself, is reached as the op would reach it (3.14.4 (1a); 3.14.3's 17).
+func (p *BatchPlan) CreatedAfterMoves(k, j int) map[uuid.UUID][]uuid.UUID {
+	last := map[uuid.UUID]int{}
+	var created []treeEdit
+	for _, e := range p.tree.edits {
+		if e.op > j {
+			break
+		}
+		switch {
+		case e.op <= k:
+		case e.before == nil && e.after != nil:
+			created = append(created, e)
+		case e.before != nil && e.after != nil && e.updateLinks:
+			last[e.after.ID] = e.op
+		}
+	}
+	out := map[uuid.UUID][]uuid.UUID{}
+	for id, op := range last {
+		for _, c := range created {
+			if c.op > op {
+				out[id] = append(out[id], c.after.ID)
+			}
+		}
+		if ids, ok := out[id]; ok {
+			slices.SortFunc(ids, uuid.UUID.Compare)
+		}
+	}
+	return out
+}
+
 // Reads is what the contents' pass reads of the pages before the batch
 // that the ops before Failed's write: texts, those whose first content op
 // is an edit, or a write ReadWhole names, read whole; heads, those whose

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -26,8 +27,9 @@ type fakeLinks struct {
 	subs       map[string]string
 	notIndexed bool
 	reached    bool
-	frozen     map[string][]uuid.UUID // the frozen nodes Reached and Rewrite were last given
-	reads      []*app.TreeReads       // the reads Reached and Rewrite were given, in their order
+	frozen     map[string][]uuid.UUID               // the frozen nodes Reached and Rewrite were last given
+	created    map[string]map[uuid.UUID][]uuid.UUID // the nodes created after moves they were last given, by call and page
+	reads      []*app.TreeReads                     // the reads Reached and Rewrite were given, in their order
 }
 
 func (l *fakeLinks) Indexed(ctx context.Context, _, _ uuid.UUID, _ int, _ domain.PlanTree) (domain.LinksBefore, bool, error) {
@@ -35,12 +37,13 @@ func (l *fakeLinks) Indexed(ctx context.Context, _, _ uuid.UUID, _ int, _ domain
 	return domain.LinksBefore{Leads: map[int]domain.Lead{}, Targets: map[uuid.UUID][]domain.PathStep{}}, !l.notIndexed, nil
 }
 
-func (l *fakeLinks) Reached(ctx context.Context, _, _ uuid.UUID, _ int, _ []domain.Change, frozen []uuid.UUID, _ domain.PlanTree,
-	reads *app.TreeReads,
+func (l *fakeLinks) Reached(ctx context.Context, _, id uuid.UUID, _ int, _ []domain.Change, frozen []uuid.UUID,
+	created map[uuid.UUID][]uuid.UUID, _ domain.PlanTree, reads *app.TreeReads,
 ) (bool, error) {
 	l.kept("Reached", reads)
 	l.record(ctx, "Reached")
 	l.saw("Reached", frozen)
+	l.made("Reached", id, created)
 	return l.reached && !l.notIndexed, nil
 }
 
@@ -55,6 +58,7 @@ func (l *fakeLinks) Resolve(ctx context.Context, q app.LinksOn) (domain.LinksBef
 func (l *fakeLinks) Rewrite(ctx context.Context, q app.LinksMoved) (string, error) {
 	l.record(ctx, "Rewrite")
 	l.saw("Rewrite", q.Frozen)
+	l.made("Rewrite", q.PageID, q.CreatedAfter)
 	l.kept("Rewrite", q.Reads)
 	if _, err := q.Parse(ctx, q.Content); err != nil {
 		return "", err
@@ -82,6 +86,15 @@ func (l *fakeLinks) saw(call string, frozen []uuid.UUID) {
 		l.frozen = map[string][]uuid.UUID{}
 	}
 	l.frozen[call] = frozen
+}
+
+// made keeps the nodes created after moves call was given for the page
+// id.
+func (l *fakeLinks) made(call string, id uuid.UUID, created map[uuid.UUID][]uuid.UUID) {
+	if l.created == nil {
+		l.created = map[string]map[uuid.UUID][]uuid.UUID{}
+	}
+	l.created[call+" "+id.String()] = created
 }
 
 // leadsOn is where content's [[...]] lead on tree, by where each starts.
@@ -415,6 +428,54 @@ func TestABatchsPlanLeavesTheLinksToTheNodesItFroze(t *testing.T) {
 	}
 	if !slices.Equal(links.frozen["Reached"], []uuid.UUID{x.ID}) || !slices.Equal(links.frozen["Rewrite"], []uuid.UUID{x.ID}) {
 		t.Errorf("the plan's links were given frozen %v; want X for Reached and Rewrite", links.frozen)
+	}
+}
+
+// The links are given, for each node a rename or move with update_links
+// moves, the nodes the batch created after its last such op, in the
+// window they follow a page's links in (M9 design 4.11; M9/P3 review
+// B1-M1): the plan's reach of R, written after A's move and N's creation,
+// and rewrite of Q, edited after them, N after A's; the participant's
+// follow of P, edited before the move, N, M and K after A's; of Q, edited
+// after it, none; the index's pages, those of the whole batch.
+func TestABatchsLinksLeaveOutTheNodesItCreatedAfterAMove(t *testing.T) {
+	f := newFixture()
+	a := f.page("A", nil, 1)
+	p, q, r := f.page("P", nil, 2), f.page("Q", nil, 3), f.page("R", nil, 4)
+	f.content(p.ID, "[[A]] p", 1)
+	f.content(q.ID, "[[A]] q", 1)
+	f.content(r.ID, "[[A]] r", 1)
+	part := &participant{recorder: f.rec}
+	f.partakers = []app.Participant{part}
+	links := &fakeLinks{recorder: f.rec, reached: true}
+	out, err := f.applyBatch(links, editOp("P.md", "p", "p2"), moveOp("A.md", "B.md"), writeOp("N.md", "n"), editOp("Q.md", "q", "q2"),
+		writeOn("R.md", "[[A]] r", tokenOf(r.ID, 1)), writeOp("M/K.md", "k"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := out.Ops[2].Node.ID
+	var nmk []uuid.UUID
+	for _, c := range out.Ops[5].Created {
+		nmk = append(nmk, c.Node.ID)
+	}
+	nmk = slices.SortedFunc(slices.Values(append(nmk, n)), uuid.UUID.Compare)
+	eq := func(got map[uuid.UUID][]uuid.UUID, want map[uuid.UUID][]uuid.UUID) bool {
+		return maps.EqualFunc(got, want, slices.Equal)
+	}
+	if got := links.created["Reached "+r.ID.String()]; !eq(got, map[uuid.UUID][]uuid.UUID{a.ID: {n}}) {
+		t.Errorf("R's reach was given %v, want N after A", got)
+	}
+	if got := links.created["Rewrite "+q.ID.String()]; !eq(got, map[uuid.UUID][]uuid.UUID{a.ID: {n}}) {
+		t.Errorf("Q's rewrite was given %v, want N after A", got)
+	}
+	if len(part.steps) != 1 || len(nmk) != 3 {
+		t.Fatalf("the participants followed %d steps, created %v", len(part.steps), nmk)
+	}
+	b := part.steps[0].Batch
+	if !eq(b.CreatedAfter, map[uuid.UUID][]uuid.UUID{a.ID: nmk}) || !eq(b.Written[p.ID].CreatedAfter, map[uuid.UUID][]uuid.UUID{a.ID: nmk}) ||
+		!eq(b.Written[q.ID].CreatedAfter, map[uuid.UUID][]uuid.UUID{}) {
+		t.Errorf("the participants were given %v, P's %v, Q's %v; want N, M and K after A, P's those, Q's none", b.CreatedAfter,
+			b.Written[p.ID].CreatedAfter, b.Written[q.ID].CreatedAfter)
 	}
 }
 

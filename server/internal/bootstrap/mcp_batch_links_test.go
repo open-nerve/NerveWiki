@@ -77,6 +77,18 @@ func (tm acmeTeam) twins(t *testing.T, i int, pages []restPage) (batch, apart st
 	return batch, apart
 }
 
+// titled is the pages of B1-M1's cases (M9/P3 review), and more: A/B/C/N,
+// which a link [[N]] leads to, and the folder Top/F of X to move under G,
+// or, renamed, the folder F of X to rename. A page N created under G/F or
+// G is nearer the root, and takes [[N]] by its shorter path.
+func titled(renamed bool, more ...restPage) []restPage {
+	pages := []restPage{{"A", ""}, {"A/B", ""}, {"A/B/C", ""}, {"A/B/C/N", ""}, {"Top", ""}, {"Top/F", ""}, {"Top/F/X", ""}, {"G", ""}}
+	if renamed {
+		pages = append(pages[:4], restPage{"F", ""}, restPage{"F/X", ""})
+	}
+	return append(pages, more...)
+}
+
 // The links of a batch are those of separate calls (M9/P3 design 3.14.3):
 // for each case, each page's bytes and where each of its links leads are
 // the same in both notebooks, and as the case says; the batch is one
@@ -94,7 +106,16 @@ func (tm acmeTeam) twins(t *testing.T, i int, pages []restPage) (batch, apart st
 // page followed, its other links not written back; (15) two renames in
 // one unit; (16) two recases; (17) a creation renamed, taking a link of a
 // page not written, and (18) of a written one; (19) a written page's link
-// into a folder moved after.
+// into a folder moved after; (20) a page created under a folder moved
+// before, which takes a link of its title, the linker edited after it,
+// its old_string with the link or without, or created where nothing
+// moved, and (21) edited before the move: the creation resolves the link
+// again, none is written back where it led (M9 design 4.11; M9/P3 review
+// B1-M1, its K1r, K1r2, K2 and the control K0); and when the page is
+// created before the move, which carries it, its title's link not taken
+// by the creation (the paths equally long, the older page's id the less),
+// the move's rewrite keeps it; (22) such a page under a folder renamed,
+// and the rename with update_links false (K3b and the control K3c).
 func TestTheLinksOfABatchAreThoseOfSeparateCalls(t *testing.T) {
 	tm, logs := newAcmeTeamLogged(t)
 	agent := tm.agent(t, "alice", "")
@@ -155,6 +176,25 @@ func TestTheLinksOfABatchAreThoseOfSeparateCalls(t *testing.T) {
 			map[string]string{"W.md": "w [[G/Y]]"}, false},
 		{"19 a written page's link into a folder moved after", []restPage{{"Top", ""}, {"Top/F", ""}, {"Top/F/X", ""}, {"G", ""}, {"P", "p"}},
 			[]map[string]any{opEdit("P.md", "p", "[[Top/F/X]] more"), opMove("Top/F.md", "G/F.md")}, map[string]string{"P.md": "[[X]] more"}, false},
+		{"20 a page created under a folder moved, its title's linker edited after (K1r)", titled(false, restPage{"R", "[[N]] r"}, restPage{"Q", "[[N]] q"}),
+			[]map[string]any{opMove("Top/F.md", "G/F.md"), opWrite("G/F/N.md", "n"), opEdit("R.md", "[[N]] r", "[[N]] r2")},
+			map[string]string{"R.md": "[[N]] r2", "Q.md": "[[N]] q"}, true},
+		{"20 and the edit's old_string without the link (K1r2)", titled(false, restPage{"R", "[[N]] r"}),
+			[]map[string]any{opMove("Top/F.md", "G/F.md"), opWrite("G/F/N.md", "n"), opEdit("R.md", "r", "r2")},
+			map[string]string{"R.md": "[[N]] r2"}, true},
+		{"20 created where nothing moved (K0)", titled(false, restPage{"H", ""}, restPage{"R", "[[N]] r"}),
+			[]map[string]any{opMove("Top/F.md", "G/F.md"), opWrite("H/N.md", "n"), opEdit("R.md", "[[N]] r", "[[N]] r2")},
+			map[string]string{"R.md": "[[N]] r2"}, true},
+		{"21 the linker edited before the move (K2)", titled(false, restPage{"P", "p"}),
+			[]map[string]any{opEdit("P.md", "p", "p [[N]]"), opMove("Top/F.md", "G/F.md"), opWrite("G/F/N.md", "n")},
+			map[string]string{"P.md": "p [[N]]"}, true},
+		{"21 created before the move, which carries it", titled(false, restPage{"Q", "[[N]] q"}),
+			[]map[string]any{opWrite("Top/F/N.md", "n"), opMove("Top/F.md", "G/F.md")}, map[string]string{"Q.md": "[[A/B/C/N]] q"}, true},
+		{"22 a page created under a folder renamed, a linker not written (K3b)", titled(true, restPage{"Q", "[[N]] q"}),
+			[]map[string]any{opMove("F.md", "G.md"), opWrite("G/N.md", "n")}, map[string]string{"Q.md": "[[N]] q"}, true},
+		{"22 the rename with update_links false (K3c)", titled(true, restPage{"Q", "[[N]] q"}),
+			[]map[string]any{opWith(opMove("F.md", "G.md"), "update_links", false), opWrite("G/N.md", "n")},
+			map[string]string{"Q.md": "[[N]] q"}, true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			batch, apart := tm.twins(t, i, tt.pages)
@@ -187,7 +227,11 @@ func TestTheLinksOfABatchAreThoseOfSeparateCalls(t *testing.T) {
 // lead is not seen, nor an alias the batch changed. A page not written:
 // (1a) a creation before a move, (1b) a dangling link that a rename takes
 // before another rename, (1c) a link taken and freed again, (a) a deletion
-// that turns a link to another page, (b) an alias taken away. A written
+// that turns a link to another page, (b) an alias taken away; (1a2) a
+// creation under a folder before its rename, which the rename reaches as
+// separate calls' does, the link the creation took written back where it
+// led before the batch (M9/P3 review B1-M1: one created after the rename
+// is not reached, 3.14.3's 22). A written
 // page: (e1) a creation after its write, (e2) an alias the batch changed,
 // (e3) a name merged away. (d) update_links false on a node, its ancestor
 // renamed or moved with update_links: the links that led to the node left
@@ -209,6 +253,9 @@ func TestTheWaysABatchDiffersFromSeparateCalls(t *testing.T) {
 	}{
 		{"1a a creation before a move", []restPage{{"F", ""}, {"F/X", ""}, {"G", ""}, {"Q", "[[X]]"}},
 			[]map[string]any{opWrite("X.md", "x"), opMove("F/X.md", "G/X.md")}, "Q.md", pageState{"[[G/X]]", "G/X.md"}, pageState{"[[X]]", "X.md"}},
+		{"1a2 a creation under a folder before its rename", titled(true, restPage{"Q", "[[N]] q"}),
+			[]map[string]any{opWrite("F/N.md", "n"), opMove("F.md", "G.md")}, "Q.md", pageState{"[[A/B/C/N]] q", "A/B/C/N.md"},
+			pageState{"[[N]] q", "G/N.md"}},
 		{"1b a dangling link a rename takes, renamed again", []restPage{{"A", ""}, {"Q", "[[B]]"}},
 			[]map[string]any{opMove("A.md", "B.md"), opMove("B.md", "C.md")}, "Q.md", pageState{"[[B]]", "-"}, pageState{"[[C]]", "C.md"}},
 		{"1c a link taken and freed", []restPage{{"A", ""}, {"F", ""}, {"F/X", ""}, {"Q", "[[X]]"}},

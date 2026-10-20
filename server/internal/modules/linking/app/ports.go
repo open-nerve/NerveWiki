@@ -247,7 +247,11 @@ type Publisher interface {
 // rewrite costs more than an index page's); and the nodes an op of it
 // renamed or moved with update_links false, the links that led to them
 // left as they are, in every page, whatever their ancestors' changes (M9
-// design 4.11; M9/P3 review B-M1).
+// design 4.11; M9/P3 review B-M1); and, for each node an op of it renamed
+// or moved, the nodes it created after the last such op of the node,
+// which the subtree spread reads of it leaves out: that op reached none of
+// them, and a creation only resolves links again (M9 design 4.11; M9/P3
+// review B1-M1).
 type Moved struct {
 	NotebookID    uuid.UUID
 	At            time.Time
@@ -259,20 +263,24 @@ type Moved struct {
 	MaxPages      int
 	WrittenWeight int
 	Frozen        []uuid.UUID
+	CreatedAfter  map[uuid.UUID][]uuid.UUID
 }
 
 // WrittenPage is a page a batch wrote, as its deferred rewrite follows it
 // (M9/P3 design 3.7.2): where its links led at its last content op, on the
 // plan's tree then; its own changes, the renames and moves after that op,
 // merged node by node, of the nodes those ops moved alone; the facts of
-// its final content, which its links are taken from, unparsed; and the
-// nodes those ops rename or move with update_links false, whose links it
-// leaves (Moved.Frozen).
+// its final content, which its links are taken from, unparsed; the nodes
+// those ops rename or move with update_links false, whose links it leaves
+// (Moved.Frozen); and, for each node they rename or move, the nodes they
+// create after the last that does, out of its subtree
+// (Moved.CreatedAfter).
 type WrittenPage struct {
-	Before  LinksBefore
-	Changes []domain.Change
-	Facts   domain.Facts
-	Frozen  []uuid.UUID
+	Before       LinksBefore
+	Changes      []domain.Change
+	Facts        domain.Facts
+	Frozen       []uuid.UUID
+	CreatedAfter map[uuid.UUID][]uuid.UUID
 }
 
 // LinksBefore is where a page's links led at a moment of a batch's plan:

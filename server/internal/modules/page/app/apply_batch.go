@@ -330,7 +330,7 @@ func (a *batchAttempt) read(ctx context.Context) (map[uuid.UUID]domain.PageText,
 			continue
 		}
 		reached, err := a.b.links.Reached(ctx, a.notebookID, id, read[id].Revision, moves, a.plan.FrozenBetween(-1, firsts[id]),
-			a.plan.TreeAt(firsts[id]), a.readsAt(firsts[id]))
+			a.plan.CreatedAfterMoves(-1, firsts[id]), a.plan.TreeAt(firsts[id]), a.readsAt(firsts[id]))
 		if err != nil {
 			return nil, nil, err
 		}
@@ -439,7 +439,8 @@ func (a *batchAttempt) linksBefore(ctx context.Context) error {
 		if slices.Contains(gone, id) {
 			continue // a page a later op deleted: no rewrite follows it
 		}
-		w := WrittenPage{Changes: a.plan.MovesBetween(pg.Last, last), Facts: a.facts[id], Frozen: a.plan.FrozenBetween(pg.Last, last)}
+		w := WrittenPage{Changes: a.plan.MovesBetween(pg.Last, last), Facts: a.facts[id], Frozen: a.plan.FrozenBetween(pg.Last, last),
+			CreatedAfter: a.plan.CreatedAfterMoves(pg.Last, last)}
 		if len(w.Changes) > 0 {
 			facts := a.facts[id]
 			before, err := a.b.links.Resolve(ctx, LinksOn{NotebookID: a.notebookID, PageID: id, Content: pg.Content,
@@ -713,7 +714,9 @@ func (a *batchAttempt) delete(ctx context.Context, u *Unit, i int) error {
 // participate has the unit's participants follow its renames and moves
 // once (M9/P3 design 3.7.1): the pages the unit wrote, alive after it,
 // with their own changes and links before; the former parents' paths; the
-// nodes it deleted; its bound. None follows a batch without a rename or a
+// nodes it deleted, and those it created after each rename or move (M9/P3
+// review B1-M1); its bound.
+// None follows a batch without a rename or a
 // move with update_links. The facts' shares the batch holds are given back
 // first, the facts kept: the rewrite's read backs must find the budget. Its
 // errors are at the first such op.
@@ -739,7 +742,7 @@ func (a *batchAttempt) participate(ctx context.Context, u *Unit, parents map[uui
 	}
 	a.session.Release()
 	n, err := u.Participate(ctx, BatchRewrite{Written: written, Parents: parents, Gone: gone, MaxPages: a.b.maxRewrites,
-		WrittenWeight: domain.WrittenRewriteWeight, FirstMove: first})
+		WrittenWeight: domain.WrittenRewriteWeight, FirstMove: first, CreatedAfter: a.plan.CreatedAfterMoves(-1, len(a.steps)-1)})
 	var problem *shared.Error
 	if errors.As(err, &problem) {
 		return &domain.OpFailed{Op: first, Tool: a.steps[first].Kind, Err: err}
@@ -824,7 +827,8 @@ func (r *planLinks) Rewrite(id uuid.UUID, content string, before domain.LinksBef
 	changes := r.a.plan.MovesBetween(since, until)
 	return r.a.b.links.Rewrite(r.ctx, LinksMoved{
 		LinksOn: LinksOn{NotebookID: r.a.notebookID, PageID: id, Content: content, Tree: r.a.plan.TreeAt(until), Parse: r.parse(id)},
-		Before:  before, Changes: changes, Frozen: r.a.plan.FrozenBetween(since, until), Reads: r.a.readsAt(until),
+		Before:  before, Changes: changes, Frozen: r.a.plan.FrozenBetween(since, until),
+		CreatedAfter: r.a.plan.CreatedAfterMoves(since, until), Reads: r.a.readsAt(until),
 	})
 }
 
