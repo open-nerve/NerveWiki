@@ -97,12 +97,17 @@ func TestNumbered(t *testing.T) {
 		{strings.Repeat("名", 85), 2, false, strings.Repeat("名", 84) + " 2"},
 		// An extension that leaves no room: numbered as a page's name.
 		{"a." + long[:253], 2, true, ("a." + long[:253])[:253] + " 2"},
+		// One that leaves room for no character of the stem, its first
+		// three bytes (fix round 1, A-N1): as a page's name too; one that
+		// leaves room for its first, two bytes, keeps it.
+		{"中." + long[:251], 2, true, ("中." + long[:251])[:253] + " 2"},
+		{"ü." + long[:250], 2, true, "ü 2." + long[:250]},
 	} {
 		got := domain.Numbered(tt.name, tt.n, tt.asset)
 		if got != tt.want {
 			t.Errorf("Numbered(%q, %d, %t) = %q, want %q", tt.name, tt.n, tt.asset, got, tt.want)
 		}
-		if _, f := shared.CheckTitle("name", got); f != nil {
+		if title, f := shared.CheckTitle("name", got); f != nil || title != got {
 			t.Errorf("Numbered(%q, %d, %t) = %q, not a title: %+v", tt.name, tt.n, tt.asset, got, f)
 		}
 		// Its family: the number's digits '#'s.
@@ -148,6 +153,9 @@ func TestAsideName(t *testing.T) {
 		{long[:251] + ".png", true, nil, long[:241] + " ~" + last + ".png"},
 		// An extension that leaves no room: as a page's name.
 		{"a." + long[:253], true, nil, ("a." + long[:253])[:245] + " ~" + last},
+		// One that leaves room for no character of the stem (fix round 1,
+		// A-N1): as a page's name too, never " ~…" and the extension.
+		{"中." + long[:242], true, nil, ("中." + long[:242])[:245] + " ~" + last},
 	} {
 		taken := map[string]bool{}
 		for _, n := range tt.taken {
