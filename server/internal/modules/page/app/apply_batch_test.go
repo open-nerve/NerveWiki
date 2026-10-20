@@ -790,8 +790,15 @@ func TestABatchAnswersEachOpAtItsStep(t *testing.T) {
 	}
 }
 
+// refusing is a participant that refuses with err.
+type refusing struct{ err error }
+
+func (r refusing) Participate(context.Context, app.Step, app.Appender) error { return r.err }
+
 // Each error of an op is an OpFailed at it, of its tool; one of the batch
-// as a whole is at none (M9/P3 design 3.9.2).
+// as a whole is at none (M9/P3 design 3.9.2); the deferred rewrite's at the
+// first op that renames or moves with update_links, a move that changes
+// nothing not one (M9/P3 review C-N3).
 func TestABatchsErrorsAreAtTheirOps(t *testing.T) {
 	for _, tt := range []struct {
 		name string
@@ -818,6 +825,15 @@ func TestABatchsErrorsAreAtTheirOps(t *testing.T) {
 		}
 	}
 	f := newFixture()
+	f.page("A", nil, 1)
+	f.page("B", nil, 2)
+	f.partakers = []app.Participant{refusing{shared.NewError(shared.KindConflict, "linking.pages_locked", "")}}
+	if _, err := f.applyBatch(&fakeLinks{recorder: f.rec}, moveOp("A.md", "A.md"), moveOp("B.md", "C.md")); opOf(err) !=
+		"1 linking.pages_locked" {
+		t.Errorf("a move to its own path, then the rewrite's refusal = %s, want it at ops[1], the move that changes", opOf(err))
+	}
+
+	f = newFixture()
 	f.grant(domain.ActionRead)
 	f.auth.forbidden[domain.ActionBatch] = true
 	if _, err := f.batcher(&fakeLinks{recorder: f.rec}).Execute(f.asAlice(), f.eng, app.PathBatch{Ops: []domain.BatchArgs{
