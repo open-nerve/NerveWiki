@@ -616,7 +616,11 @@ func TestARevertsContentsAreParsedByPageAndHash(t *testing.T) {
 // back, at the least budget, a page's largest content. One that fits
 // keeps them, at the default budget, and for M8's worst, two pages of
 // half the unit's bytes, at the least; when others' shares stand in the
-// way, it waits, and is 503 server_busy, as before.
+// way, it waits, and is 503 server_busy, as before. At its edges (fix
+// round 2, B's N1 and N2): shares and take exactly the budget's size keep
+// them, a byte more gives them back; after a give-back the call keeps the
+// shares taken since, a third content's beside the second's when that
+// fits, though not beside the first's too.
 func TestDecidedAllGivesItsSharesBackBeforeATakeThatCannotFit(t *testing.T) {
 	f := newFixture()
 	a, b := uuid.NewV7(), uuid.NewV7()
@@ -630,19 +634,30 @@ func TestDecidedAllGivesItsSharesBackBeforeATakeThatCannotFit(t *testing.T) {
 	}
 	largest := domain.MaxContentBytes - 64
 	trashed, base := of('t', largest), of('b', largest)
-	two := map[domain.ContentRef]string{ref(a, trashed): trashed, ref(a, base): base}
+	const four = 4_000_000 // a share of 400,000 beside a take of 4,000,000: 4,400,000
 	for _, tt := range []struct {
 		name     string
 		capacity int
+		contents []string // of the page a
 		held     int
 	}{
-		{"the least budget", domain.MaxContentBytes, largest / 10},
-		{"the default budget", 8 << 20, 2 * (largest / 10)},
+		{"the least budget", domain.MaxContentBytes, []string{trashed, base}, largest / 10},
+		{"the default budget", 8 << 20, []string{trashed, base}, 2 * (largest / 10)},
+		{"shares and take exactly the budget's size", 4_400_000, []string{of('t', four), of('b', four)}, 2 * (four / 10)},
+		{"a byte more", 4_400_000 - 1, []string{of('t', four), of('b', four)}, four / 10},
+		{"a third, small, after a give-back", domain.MaxContentBytes, []string{trashed, base, of('s', 1<<10)},
+			largest/10 + (1<<10)/10},
+		{"a third that fits beside the second's share, not beside both", domain.MaxContentBytes,
+			[]string{trashed, base, of('s', 4_500_000)}, largest/10 + 4_500_000/10},
 	} {
 		budget := &tenthBudget{capacity: tt.capacity}
-		facts, release, err := parser(budget).DecidedContents(context.Background(), two, errors.New("too large"))
-		if err != nil || facts[ref(a, trashed)] != trashed || facts[ref(a, base)] != base {
-			t.Errorf("%s: a lone page's two largest contents = %v; want both facts", tt.name, err)
+		contents := map[domain.ContentRef]string{}
+		for _, c := range tt.contents {
+			contents[ref(a, c)] = c
+		}
+		facts, release, err := parser(budget).DecidedContents(context.Background(), contents, errors.New("too large"))
+		if err != nil || len(facts) != len(contents) {
+			t.Errorf("%s: a lone page's %d contents = %d facts, %v; want each's", tt.name, len(contents), len(facts), err)
 			continue
 		}
 		if budget.held != tt.held {
@@ -671,8 +686,7 @@ func TestDecidedAllGivesItsSharesBackBeforeATakeThatCannotFit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	four := 4 << 20
-	trashed, base = of('t', four), of('b', four)
+	trashed, base = of('t', 4<<20), of('b', 4<<20)
 	if _, _, err := parser(budget).DecidedContents(context.Background(),
 		map[domain.ContentRef]string{ref(a, trashed): trashed, ref(a, base): base}, errors.New("too large")); codeOf(err) != "server_busy" ||
 		budget.held != 1<<20 {
