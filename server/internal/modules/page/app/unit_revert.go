@@ -406,8 +406,8 @@ type RevertPart struct {
 	retimed   map[int]time.Time
 }
 
-// stepKey is a step of a revert's round by its kind and node: a node may
-// be put back and written back.
+// stepKey is a step of a revert's schedule by its kind and node: a node
+// may be put back and written back.
 type stepKey struct {
 	kind domain.RevertOpKind
 	node uuid.UUID
