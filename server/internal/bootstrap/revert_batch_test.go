@@ -357,6 +357,9 @@ func logsFrom(logs *syncBuffer) func() *syncBuffer {
 // parse budget the configuration takes, a page's largest content, the
 // second's take cannot fit beside the first's share, which the revert
 // gives back first (fix round 1, B-M1); at the default budget it fits.
+// The app's deadlines are production's, as TestTheMCPBatchIsRefusedWhole's
+// are: the batch that writes the 5 MiB content takes some 2.5 s under the
+// race detector here, past the tests' 4 s on CI (run 39481193146).
 func TestTheRevertOfALonePagesTwoContentsAtTheLeastBudget(t *testing.T) {
 	size := domain.MaxContentBytes - 64
 	fill := func(tag string) string { return (tag + "\n" + strings.Repeat("a", size))[:size] }
@@ -366,6 +369,7 @@ func TestTheRevertOfALonePagesTwoContentsAtTheLeastBudget(t *testing.T) {
 	}{{"the least budget", config.MinParseBudgetBytes}, {"the default budget", 0}} {
 		t.Run(tt.name, func(t *testing.T) {
 			tm := newAcmeTeamWith(t, "member", "", func(c *config.Config) {
+				c.Server.WriteTimeout, c.Server.RequestTimeout = 60*time.Second, 15*time.Second
 				if tt.budget > 0 {
 					c.Page.ParseBudgetBytes = tt.budget
 				}
