@@ -412,9 +412,10 @@ func (p *planner) restore(s *revertSim, top uuid.UUID) RevertOp {
 // S* is alive and whose key there a node to place holds that is not
 // renamed aside yet: that holder renamed aside where it is. Second, of
 // the nodes S* keeps alive under a node the revert deletes, the deletions
-// pending, those not moved aside yet, the least by id moved aside to the
-// root: it is to be placed, its parent in S* alive while the one it is
-// under now is none of S*'s. Third, a defence: of the nodes to place, not
+// pending, those to place and not moved aside yet, the least by id moved
+// aside to the root: it is to be placed, its parent in S* alive while the
+// one it is under now is none of S*'s; one not to place, which only a
+// defect has there, it never takes, to end unplaced under a name aside. Third, a defence: of the nodes to place, not
 // at the root and not moved aside yet, the least by id moved aside to the
 // root. A node moved aside is renamed too, from its name as the plan
 // began, never another aside name on one; it stays to be placed.
@@ -434,7 +435,7 @@ func (p *planner) fallback(s *revertSim) (RevertOp, bool) {
 	var kept []uuid.UUID
 	for _, top := range p.tops(s) {
 		for _, id := range s.subtree(top) {
-			if _, ok := p.star[id]; ok && !s.movedAside[id] && s.nodes[id].parent != nil && p.c.gone(*s.nodes[id].parent) {
+			if _, ok := p.star[id]; ok && !s.movedAside[id] && s.places[id] && s.nodes[id].parent != nil && p.c.gone(*s.nodes[id].parent) {
 				kept = append(kept, id)
 			}
 		}

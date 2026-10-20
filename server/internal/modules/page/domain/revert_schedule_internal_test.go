@@ -99,6 +99,24 @@ func TestTheThirdFallbackMovesAPlaceOffTheRoot(t *testing.T) {
 	}
 }
 
+// The second fallback moves aside only a node to place (M9/P3 design
+// 3.16.3; fix round 1, A-N2): of two nodes of S* under T, which the
+// changeset created, X, the lesser id, is not to place, which only a
+// defect has there; moved aside, it would end at the root under a name
+// aside. Y, to place, is the one moved aside.
+func TestTheSecondFallbackMovesOnlyANodeToPlace(t *testing.T) {
+	top, x, y := uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
+	p, s := simWith(nil, simAlive{top, nil, "T"}, simAlive{x, &top, "X"}, simAlive{y, &top, "Y"})
+	p.c = readReverted([]ChangesetItem{{NodeID: top, After: &TreeState{Name: "T"}},
+		{NodeID: y, Before: &TreeState{Name: "Y", SortOrder: 1}, After: &TreeState{ParentID: &top, Name: "Y"}}}, nil)
+	p.star = map[uuid.UUID]starNode{x: {name: "X", key: "x", kind: KindPage}, y: {name: "Y", key: "y", kind: KindPage}}
+	s.places[y] = true
+	op, ok := p.fallback(s)
+	if !ok || op.Kind != RevertAside || op.NodeID != y || op.To.ParentID != nil || !op.Move {
+		t.Errorf("fallback() = %+v, %v; want Y moved aside to the root, X not to place left where it is", op, ok)
+	}
+}
+
 // (T4): a schedule stuck with no fallback applying answers
 // ErrRevertUnordered, no loop and no other step (M9/P3 design 3.16.4).
 // Only a defect gets there: here S* holds two nodes of one key under the
