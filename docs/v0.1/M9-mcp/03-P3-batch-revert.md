@@ -3,10 +3,10 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M9/P3 batch 与多轮撤销（三个 Step：S1 batch；S2 撤销的调度；S3 后台撤销） |
-| 日期 | 2026-10-19（修订 2026-10-20） |
-| 状态 | S1 已合并（`f19d0b6f`），下一步是 S2；设计已审查（三位审查者），照主持者的处置修订一轮，复核三轮（"第一轮复核"、"第二轮复核"、"第三轮复核"），前两轮之后再修订，第三轮的两处由主持者直接改；审查记录 [P3-design-review.md](reviews/P3-design-review.md)；S1 的审查记录 [P3-S1-batch-review.md](reviews/P3-S1-batch-review.md)，实施与审查之后与代码不同之处照实改在各节（3.28 列出），结果在第 9 节 |
+| 日期 | 2026-10-19（修订 2026-10-20、2026-10-21） |
+| 状态 | S1 已合并（`f19d0b6f`），S2 已合并（`43b03b36`），下一步是 S3；设计已审查（三位审查者），照主持者的处置修订一轮，复核三轮（"第一轮复核"、"第二轮复核"、"第三轮复核"），前两轮之后再修订，第三轮的两处由主持者直接改；审查记录 [P3-design-review.md](reviews/P3-design-review.md)；S1 的审查记录 [P3-S1-batch-review.md](reviews/P3-S1-batch-review.md)、S2 的 [P3-S2-revert-review.md](reviews/P3-S2-revert-review.md)，实施与审查之后与代码不同之处照实改在各节（3.28、3.29 列出），结果在第 9 节 |
 | 上级文档 | [M9 总设计](00-M9-design.md) 4.1、4.2、4.5、4.7、4.10、4.11、4.12、4.14、4.15、第 5、7、9、10、11 节与"移交的落实"；[P1](01-P1-platform-reads.md) 第 8 节；[P2](02-P2-writes-history.md) 3.5、3.8、3.10、3.11、3.13、3.18、3.20、3.22 与第 6、8、9 节；[v0.1 总体设计](../v0.1-design.md) 4.5、5.3、6.1–6.4、13.1、13.2、13.4 |
-| 代码位置的写法 | 同 00 号文档与 P2：模块写作 `page/app/unit.go:168`（`server/internal/modules/` 之下）；`platform/…`、`bootstrap/…`、`shared/…` 在 `server/internal/` 之下；迁移写作 `00014_page_changesets.sql:13`（`server/migrations/sql/`）；前端写作 `web/…/transfer-report.tsx:24`；e2e 写作 `e2e/fixtures/mcp.ts:114`。代码的行号是 `f3854b9a` 的（P2 的 S2 合并；之后的 `f1733403` 只改文档），00 号文档、P2 与 v0.1 总体设计的行号是 `f1733403` 的；S1 合并时照实改的各处是 `f19d0b6f` 的（2.1 第 36–47 条引的 00 号文档的行号也是） |
+| 代码位置的写法 | 同 00 号文档与 P2：模块写作 `page/app/unit.go:168`（`server/internal/modules/` 之下）；`platform/…`、`bootstrap/…`、`shared/…` 在 `server/internal/` 之下；迁移写作 `00014_page_changesets.sql:13`（`server/migrations/sql/`）；前端写作 `web/…/transfer-report.tsx:24`；e2e 写作 `e2e/fixtures/mcp.ts:114`。代码的行号是 `f3854b9a` 的（P2 的 S2 合并；之后的 `f1733403` 只改文档），00 号文档、P2 与 v0.1 总体设计的行号是 `f1733403` 的；S1 合并时照实改的各处是 `f19d0b6f` 的（2.1 第 36–47 条引的 00 号文档的行号也是），S2 合并时照实改的各处是 `43b03b36` 的（2.1 第 48–56 条引的 00 号文档的行号也是） |
 | 模拟与原型 | 撤销的调度的随机模拟在 `scratchpad/m9/p3/sim/`（`schedule.py`、`ce.py`、`ce2.py` 与各次的输出 `out-*.txt`），照设计复核 B 的模拟（`scratchpad/m9/review-B/`）改写：加了正文、回收站里的正文、"先写回、再删除"、临时名称避开 S\* 的键与段的量（3.16.4、3.22.2）。审查之后的复核在 `scratchpad/m9/p3/sim2/`（`run_all.sh` 跑全部，结果在 `results.txt`）：每条后备的计数与轮数的上限（`schedule_cap.py`）、`-short` 的下限（`short_floor.py`）、每批的核对（`batches_rev.py`；复核之后的 `delcheck`、`reads` 与注入 `movegone` 由 `run_r2.sh` 跑，第二轮复核的 `naming` 由 `run_r3.sh` 跑）、减半（`halving_rev.py`）、恢复的循环（`restore_loop_rev.py`）。链接的规则的原型在 `scratchpad/m9/p3/exp/`（`f1733403` 的 `server/` 的副本里的 `zz_p3*.go`，`go test -short`，不要数据库，3.7.1；复核之后加的在 `results.txt` 的 ROUND 2 与 ROUND 3） |
 
 ---
@@ -41,7 +41,7 @@
 **为什么这样分、每一步怎样单独是绿的**：S1 是新的写的工具与它的单元，S2 改网页的整组撤销（同步的单元与计划），S3 改后台的撤销与 transfer。
 
 - **S1** 合并时 `batch` 的变更集已能在网页上撤销，但 M8 的单轮只做得了 M8 的形状：batch 里有名称环、"新建同名再移入"一类时 `round()` 的前提不成立，是 `ErrRevertUnordered`（`page/domain/revert.go:89-97`，网页 500，单元回滚、什么都不写）；"先改正文、再删除"（B3 不拦它，4.12）的撤销今天会以删除时的正文恢复这一页、悄悄地给错的正文（`RevertWrites` 不取删除的页，`:280-286`）。S1 不让 `main` 有悄悄写错的路：`readReverted` 加一条临时的检查，C 删除的页有带 `Base` 的版本行时 `PlanRevert` 答 `ErrRevertUnordered`（M8 的变更集从没有这种形状：编辑会话只写正文，导入只建，M8 的撤销与恢复不先写再删；`page/domain/revert.go:257-290`），S2 以"先恢复、再写回"换掉它；钉住这种形状的 `page/domain/revert_test.go:342-347` 一行在加检查的同一个提交里改期望（3.21.1）。S1 的测试只撤销 M8 的单轮做得了的 batch（撤销的性质测试在 S2 才加 `batch`；`TestTheSearchIndexIsItsRebuild` 在 S1 打开 `batch` 但不撤销 batch 的变更集，3.14.6），所以是绿的；S1 与 S2 之间网页撤销这些形状答 500，不发版（v0.1 在 M12 才发）。
-- **S2** 合并时同步的撤销完整。后台的路径 S2 也换成 `schedule()` 的步，但 transfer 还会在任何两步之间切批（S3 才认段）：临时名称会在两批之间提交、`RevertBatch` 的重新计划也对不上临时的步。所以 S2 在任务的计划（`page/app/jobs.go:281-301`）里加一条临时的拒绝：计划里有临时的步、恢复之后的写回或"写回再删除"时，`PlanRevert` 照 S1 的样子以 `ErrRevertUnordered` 拒绝（任务以 `internal` 失败，什么都没写；M8 与 S1 时这些形状同样失败，见上一条），其余的照 M8 切批、照 M8 每批重新计划。这样 S2 的 `main` 从不提交临时名称，也不写错正文；S3 之前，几种 batch 的形状的后台撤销还可能以假的冲突停下（审查 B-I1 的"移入新建的文件夹"），停下时已写的照 M8 留着、报告写明，同样不写错。
+- **S2** 合并时同步的撤销完整。后台的路径 S2 也换成 `schedule()` 的步，但 transfer 还会在任何两步之间切批（S3 才认段）：临时名称会在两批之间提交、`RevertBatch` 的重新计划也对不上临时的步。所以 S2 在任务的计划（`page/app/jobs.go:281-301`）里加一条临时的拒绝：计划里有临时的步、恢复之后的写回或"写回再删除"时，`PlanRevert` 照 S1 的样子以 `ErrRevertUnordered` 拒绝（任务以 `internal` 失败，什么都没写；M8 与 S1 时这些形状同样失败，见上一条），其余的照 M8 切批、照 M8 每批重新计划。这样 S2 的 `main` 从不提交临时名称，也不写错正文；S3 之前，几种 batch 的形状的后台撤销还可能以假的冲突停下（审查 B-I1 的"移入新建的文件夹"），停下时已写的照 M8 留着、报告写明，同样不写错。建成的拒绝是 `errUnsplit`：以 "a background revert of steps its batches would split, refused until M9/P3 S3" 包住 `ErrRevertUnordered`（`errors.Is` 仍认得它），说出它是什么，不把运维引向调度的缺陷（S2 审查 A-N4，主持者的决定 6）。每批的重新计划也跑 `schedule()`：在一部分的状态上它原则上能排出整个计划里没有的临时的步，`batchOps` 让那一批失败、任务以 `internal` 失败，之前的批已提交、没写错；这同属 S3 之前接受的假的冲突，S3 换掉每批的重新计划（S2 审查 A 的存疑，主持者的决定 11）。
 - **S3** 只动后台：任务的计划与段、transfer 的切批、`RevertBatch` 的核对、报告的失败与网页的一条文字。S2 那条临时的拒绝留到 S3 的第 5 步（transfer 认段）才删去：之前的提交里 transfer 还在任何两步之间切，而 M8 的形状没有多于一步的段（没有临时的步、恢复的页不写回、没有"写回再删除"），每一步都是段的边界，所以前四步的每个提交对 M8 的形状与今天切得一样（5.3）。
 
 ## 1. 基线
@@ -95,13 +95,13 @@
 | [M4/P2 一个单元里先建后删](handoffs/M4-P2-unit-merge.md) | 条目的检查、事件与守卫的值、删除再恢复、恢复再删除 | 新建后删除由 B1 拒绝（422），先删子孙再删祖先被规范化，改名或移动又回到原处的条目在单元结束时删去（3.5.4）；事件与守卫的值：同一页的几个正文操作合成一个版本行、守卫看到一次最后的正文（3.5.2），事件一个单元一次、取合并之后的改动（3.10.2）；删除再恢复、恢复再删除不会在一个单元里相遇（batch 没有恢复的操作；撤销的一个单元里一个节点至多删除或恢复一次，4.12）；每种合并在真的库上有多操作的单元的测试（3.14.2）；`recordItems` 的注释改写（3.5.3） |
 | [M5 编辑锁与 MCP 的写](handoffs/M5-locks.md) | 2 batch 整个回滚，答复说出第几步 | 锁的预检与守卫在某一步拒绝时整个单元回滚，答 `page.locked` 带 `op` 与持锁人（3.4.5、3.9）；预检也看每个删除的子树里的页，按项的次序（S1 审查 A-M1）；MC5 第三步（第 4 节） |
 | [M6/P4 链接改写](handoffs/M6-P4-rewrite.md) | 1 一个单元里几次改名；3 大笔记本的改名 | 1：推后的一次调用；没写的页照合并的改动（含新建之后又被移动的节点），写了的页照它最后一个正文操作之后自己的改动，(a)–(e)；删除了的页的行与别名在 `resolutions` 之前去掉；`Recased` 是集合；`PathBefore` 从根撤回，原来的父节点的路径在单元开始时读出（3.7）；整个程序的测试：24 种（两种次序、"改名、改正文、再改名"、嵌套的改名、移出再删除、删除链到被改名的页的页、改名再改回、新建之后拿走链接、写了的页链进只被移动的文件夹；第 20–24 种是 S1 的修正加的：移动、改名之后新建，冻住的节点之下，3.14.3）；3：`MaxBatchRewrites` 照 M8 的规则以满负载的页实测为 400（写了的页算 2），另有改写的链接（120,000）与页的字节（34,406,400）的界线和改写过的页留下的解析额度的检查（3.8、3.8.2）；单个 `move` 不受它们限，一个共用的界线留给 M12 |
-| [M8/P3 batch 的整组撤销](handoffs/M8-P3-revert.md) | 1–9 与"另" | 1：3.16（第 3 条后备留作防御，轮数的上限写进代码）；2：一步的放回在 P2（[P2](02-P2-writes-history.md) 3.5.4），多轮的经它，batch 里"移动加改名的中间态"在真的库上测（3.21.2）；3：3.17；4：调度让恢复等它的父组，B3 让"移出再删除"的折叠不出现（3.4.3），"恢复到另一组之下"以 SQL 种下（batch 与撤销都做不出它，3.21.2）；5、7：3.18；6：B3（3.4.3）与 `store_test.go:757` 的合并照留；8：3.19；9：3.21；"另"：`renames`、`moves` 3.20；`batch` 的说明经 `UnitSpec.Message`（3.6） |
+| [M8/P3 batch 的整组撤销](handoffs/M8-P3-revert.md) | 1–9 与"另" | 1：3.16（第 3 条后备留作防御，轮数的上限写进代码）；2：一步的放回在 P2（[P2](02-P2-writes-history.md) 3.5.4），多轮的经它，batch 里"移动加改名的中间态"在真的库上测（3.21.2）；3：3.17；4：调度让恢复等它的父组（以构造的计划者核对，`TestARestoreWaitsForTheGroupItGoesUnder`），B3 让"移出再删除"的折叠不出现（3.4.3），"恢复到另一组之下"以 SQL 种下（batch 与撤销都做不出它）：M8 的 L 把上下相套的两个回收站项读成一组，撤销答 409 `page.revert_conflict`、什么都不写（3.21.2，S2 的主持者的决定 1）；5、7：3.18；6：B3（3.4.3）与 `store_test.go:757` 的合并照留；8：3.19；9：3.21；"另"：`renames`、`moves` 3.20；`batch` 的说明经 `UnitSpec.Message`（3.6） |
 | [M8/P4 MCP 开的后台任务](handoffs/M8-P4-background.md) | 2 batch 的大撤销 | 3.22–3.24：紧凑的计划、删除照那一刻的子树、段、只在段的边界上切批与减半、每批的 L 与按次序的前提、一组在一批里一次恢复、`revert_too_large` |
 | [M8/P5 grep 用搜索的索引](handoffs/M8-P5-search.md) | 2 写完即搜 | batch 批量入队（`UnitSpec.BulkSearch`），答复带 `building`：积压的最坏（约 1,200 个加推后的改写写的页，`MaxBatchRewrites` = 400 时约 1,600 个）照 3.10.1 实测；S1 的第 0 步照常量没过线，修正的第 1 轮以最新的页的积压重量，n = 2,200 多 16 个，过了 10 个（S1 审查 C-I2） |
 
 ### 2.1 对 00 号文档的修订
 
-P3 的文档提交随这份文档一起改 [`00-M9-design.md`](00-M9-design.md)（照 P1、P2 的做法，以脚本落下：`scratchpad/m9/p3/apply-00m9.py`，每段原文恰好出现一次才改、全部对上才写，`--check` 核对过）。行号指 `f1733403` 的 00 号文档（P2 的 S2 的文档提交之后）。每条说 00 号文档里改什么、理由在哪一节；改了的原文在脚本里。第 36–47 条是 S1 的实施与审查之后加的，随它的合并改进 00 号文档（主持者以 `scratchpad/m9/p3s1docs/s3_m9design.py` 落下，同样每段原文恰好出现一次才改；行号指 `f19d0b6f` 的），与第 2、6、7、15、19、21、25、33 条不同之处以它们为准。
+P3 的文档提交随这份文档一起改 [`00-M9-design.md`](00-M9-design.md)（照 P1、P2 的做法，以脚本落下：`scratchpad/m9/p3/apply-00m9.py`，每段原文恰好出现一次才改、全部对上才写，`--check` 核对过）。行号指 `f1733403` 的 00 号文档（P2 的 S2 的文档提交之后）。每条说 00 号文档里改什么、理由在哪一节；改了的原文在脚本里。第 36–47 条是 S1 的实施与审查之后加的，随它的合并改进 00 号文档（主持者以 `scratchpad/m9/p3s1docs/s3_m9design.py` 落下，同样每段原文恰好出现一次才改；行号指 `f19d0b6f` 的），与第 2、6、7、15、19、21、25、33 条不同之处以它们为准。第 48–56 条是 S2 的实施与审查之后加的，随它的合并改进 00 号文档（以 `scratchpad/m9/p3s2docs/03_m9.py` 落下，同样每段原文恰好出现一次才改；行号指 `43b03b36` 的），与第 8、9、13、34、35 条不同之处以它们为准。
 
 1. **字段名的写法**（第 11 节主持者的决定第 33 条 :675；4.11 的"约束" :266）：第 33 条加"P3 定：每条规则收字段"（`domain.Args`，3.2）。
 2. **计划的两遍与它的码的次序**（4.11 的"两段"第 1 条 :264；4.15 的 `batch` :368）：4.11 写明两遍：第一遍在不加锁的整棵树上模拟每一步，结束时答条目与读的界线（第 25 条），都在任何正文的读之前；第二遍只跑第一遍出错的项之前的，更早的项出错时取代第一遍的；给新建的页带 `base_version` 的 422 在令牌的节点不是这一页的 409 之前；计划之后以 `Locks.Of` 预检（3.4、3.4.5）。4.15 的 `batch` 一条照 3.9.3 写成："……→ 403 → 计划的第一遍按项的次序（第一个出错的项的 404、422、409；条目的 422）→ 读的 422（以大小）→ 计划的第二遍按项的次序（第一个出错的项的 422、409，与它要的计划里的解析的 422、503）→ 锁的预检的 `page.locked` → 422（页数、字节）→ 503 → 422（链接）→ 单元里按发生的次序：409（重新计划之后仍不同）、守卫的 `page.locked`、推后的改写的 422（改写的页数）、`linking.pages_locked`、503"。
@@ -150,6 +150,15 @@ P3 的文档提交随这份文档一起改 [`00-M9-design.md`](00-M9-design.md)�
 45. **"写给后面的 M"的 M12、第 9 节与第 10 节**（:467、:522、:619 之后加一行；第 11 节主持者的决定第 47、52 条）：M12 的性能一条加推后的改写的三个界线、界线之内仍慢的形状（很重的页、许多次改名之间的带链接的页）、单个 `move` 的同样的风险与共用的界线，P3 的 S1 也写进性能移交第 18 项；第 9 节的界线的测试加移动带着走的节点、推后的改写的三个界线与解析额度；第 10 节加这些慢的形状的一行（接受，3.8）。
 46. **第 11 节主持者的决定第 44–55 条**（:692 之后）：S1 的实施与审查里主持者定下的（[S1 的审查记录](reviews/P3-S1-batch-review.md)的"主持者的决定"，第 2.2 节）。
 47. **状态与第 12、13 节**（:7、:716、:735 之后）：状态"进行中（P1、P2 完成，P3 的 S1 已合并）"；第 12 节 P3 一行"进行中（S1 已合并）"、S1 的审查记录与合并 `f19d0b6f`；第 13 节加 S1 合并的一行。
+48. **调度与后备**（4.12 的"按依赖的调度" :289 与"卡住时的三条后备" :290-295；第 11 节主持者的决定第 57、62 条）：`schedule()` 建成（`page/domain/revert_schedule.go`），`round()` 删去；钉住 M9 的形状的三处里用例的那一处改为存着的缺陷"比 `MaxDepth` 深的页被改名"（S2 的实施的偏离 2）；第 2 条后备只取待放回的、没有临时移动过的节点，先取 id 最小的（S2 审查 A-N2、C-N1）；"临时改名两次"与"名称取计划开始时的"在合法的状态里到不了，各有构造的测试（偏离 8、审查 C-N5）；轮数的上限从下面钉住（审查 A-M1、修复核对 A 的 N1，3.16.4）。
+49. **临时名称**（4.12 的"临时名称" :297；第 11 节第 59、65 条）：扩展名长到连主干的第一个字符都放不下时照页的名称，M7 的 `Numbered` 一并改（S2 审查 A-N1，3.17）；守卫只凭名称认得临时的步，M10 可以在 `Step` 上带步的种类或一个标记（审查 B-N4，3.17、第 8 节）。
+50. **先恢复、再写回**（4.12 的"先恢复、再写回" :298；第 11 节第 58 条）：守卫看到恢复的一步的事实，链接索引、搜索与事件看到单元合并的改动、它的事实是写回的（S2 审查 B-N2，3.18.3）；一页的两份正文在最小的解析预算下先还掉本次调用留着的份额（审查 B-M1，3.18.4）。
+51. **4.12 的测试**（:309；第 11 节第 56 条）："恢复到另一组之下"以 SQL 种下，断言 M8 的 L 的拒绝（409，什么都不写）；domain 的那一条是包里构造的计划者（S2 的实施的偏离 1，3.21.1、3.21.2）。
+52. **4.2 的 `changesets` 一行、4.14 的撤销的步与 4.15 的日志**（:96、:361、:373；第 11 节第 66 条）：00045 的补值的用时与它持着的锁（3.20.1）；`Steps()` 数临时的步、写回不算，S2 的任务拒绝有临时的步的计划（第 0 节、3.19）；"changeset reverted" 那一行的 `aside`（3.21.3）。
+53. **4.11 的"事件"**（:281；第 11 节第 60 条）：写过的页只在单元之后活着时列出（S2 审查 B-N3，3.10.2）。
+54. **"移交的落实"的 M8/P3 一行、"写给后面的 M"与第 10 节**（:448、:464、:465、:467、:622-623；第 11 节第 65、66 条）：M8/P3 一行照 S2 建成的写上落实（M8/P4 第 2 条是 S3 的）；M10 的守卫只凭名称认得临时的步，M11 的回滚用 `schedule()`，M12 的 00045 的用时与锁；风险的"多轮调度与临时名称的正确性"一行加上限的钉住与构造的测试，加 00045 的锁一行（第 8 节）。
+55. **第 11 节主持者的决定第 56–66 条**（:708 之后）：S2 的实施与审查里主持者定下的（[S2 的审查记录](reviews/P3-S2-revert-review.md)的"主持者的决定"，第 2.2 节）。
+56. **状态与第 12、13 节**（:7、:732、:752 之后）：状态"进行中（P1、P2 完成，P3 的 S1、S2 已合并）"；第 12 节 P3 一行"进行中（S1、S2 已合并）"、S2 的审查记录与合并 `43b03b36`；第 13 节加 S2 合并的一行。
 
 ### 2.2 需要负责人确认
 
@@ -158,6 +167,7 @@ P3 的文档提交随这份文档一起改 [`00-M9-design.md`](00-M9-design.md)�
 - 负责人的四个决定照做：agent 只读历史，`batch` 的变更集在网页上整组撤销（S2、S3 兑现 5.3）；锁拒绝、不能接管（batch 里的写照 P2 的锁的规则，3.9）；`AGENTS` 与说明不变（只加 `batch` 的一行）；MCP 不开后台任务。
 - 2.1 的各条是实现的写定、代码查出的更正或 00 号文档里的说法写细，由主持者定（负责人可以改判）。第 10 条改的是 4.12 的一个论断（段只有几步），主持者的决定第 10 条（"后台撤销里放不进一批的不可分的段以 `revert_too_large` 停下"）照旧成立，只是这样的段比 4.12 说的多两种来源（3.23 写明，并进第 10 节的风险）。第 19、32 条把"不同的两处"改成一条规则：它细化的是主持者的决定第 4 条（B-Q1）与第 11 节设计的取舍第 13 条，两者都是主持者的（修订的简报），第 4 条照旧成立；不在计划里为每次移动另算"之前"照旧。第 8 条把第 3 条后备留作防御，不改负责人批准的 4.12；去掉它要改 4.12，是负责人的事，本文不提。S1 与 S2、S2 与 S3 之间的临时的拒绝（第 0 节）不发版，是主持者一级的。
 - S1 的实施与审查里主持者定下的，同样负责人可以改判，写进 00 号文档第 11 节（主持者的决定第 44–55 条）与 [S1 的审查记录](reviews/P3-S1-batch-review.md)的"主持者的决定"：搜索批量入队、答复带 `building`；冻住的节点的链接从不改写；改写的页数的数法（写了的页算 2）；三个新的界线（移动带着走的节点、碰到的链接、改写的页的字节）与改写过的页留下的解析额度的检查；之前的改名、移动碰到它的页的 `write` 读整页；新建的节点不在跟随的操作的触及里；改名的改写碰到被编辑的页只在单元里查到；计划一次只留一棵树的读；许多次改名之间的带链接的页、界线之内的重页与单个链接密的移动 v0.1 接受、交 M12；M8 的清理测试的摆动在 S1 里改；成本那一份的时限、batch 的守卫在 CI 上的余量与组合根第一份现在不动；River 重选时的疑点记下、不改。
+- S2 的实施与审查里主持者定下的，同样负责人可以改判，写进 00 号文档第 11 节（主持者的决定第 56–66 条）与 [S2 的审查记录](reviews/P3-S2-revert-review.md)的"主持者的决定"：上下相套的回收站项照 M8 的 L 拒绝；(T1) 的判断留着、以构造的测试为反向对照；一页的两份正文在最小的解析预算下先还掉本次调用留着的份额；空的主干照页的名称（M7 的 `Numbered` 一并改）；页面事件只列单元之后活着的写过的页；后台撤销的临时的拒绝说出它是什么；轮数的上限从下面钉住；测试加强的几处；CI（两份正文的测试用生产的期限，第一份过线时把 `TestEvery[M-R]` 挪到第三份）；给 M10 的一条（守卫只凭名称认得临时的步）；A 的存疑、00045 的锁与成本、守卫两份的时限记下、不改。
 
 ## 3. 服务端
 
@@ -1171,7 +1181,7 @@ func BatchTooLarge(what string, n, max int, hint string) error
 
 #### 3.10.2 事件
 
-一个单元一次（观察者在单元的最后，`unit.go:450-461`）：`pages` 多于 20 页时为 `null`（`events/app/publisher.go:50-64`），网页整体重读；`links` 同 M6。中间态不发：同一页的几个操作合成一个改动（`Change.Then`）。
+一个单元一次（观察者在单元的最后，`unit.go:450-461`）：`pages` 多于 20 页时为 `null`（`events/app/publisher.go:50-64`），网页整体重读；`links` 同 M6。中间态不发：同一页的几个操作合成一个改动（`Change.Then`）。S2 的修正的第 1 轮起，写过的页只在它的改动有"后"（单元之后还活着）时列出（`bootstrap/events_registrants.go`，S2 审查 B-N3，`TestThePagesEventListsNoPageInTheTrash`）：batch 编辑再删除的页、撤销的撤销里写回再删除的页不再列作写过的；网页照删除读这样的事件（树变了、没有写过的页），M5 起就这样。
 
 ### 3.11 日志与配置
 
@@ -1583,15 +1593,19 @@ mcpserver.NewTool(mcpserver.Spec{Name: "batch", Title: "Apply several writes as 
 | page/domain | `name.go` | 改 | `AsideName`（3.17） |
 | page/domain | `changeset.go` | 改 | `ContentRef`；`ChangesetMoves` 的注释（3.18、3.20） |
 | page/app | `unit_revert.go` | 改 | 临时的步（`RevertAside`）经 `place`；写回以 `op.Current` 为基；解析好的正文按 `ContentRef`（`RevertRead.Parsed`、`plannedContents`、`parsedAs`）（3.18） |
-| page/app | `revert_test.go` | 改 | "a round out of order"（`:456-464`）改为 (T4) 的构造的缺陷（3.21.1） |
+| page/app | `revert_test.go` | 改 | "a round out of order"（`:456-464`）改为存着的缺陷"比 `MaxDepth` 深的页被改名"（3.21.1，S2 的实施的偏离 2） |
 | page/app | `history.go` | 改 | `HistoryReads.detail` 的注释（`:85-87`，3.20.3） |
-| page/app | `revert_changeset.go`、`content.go` | 改 | 两份正文都解析、按（页、哈希）数界线（3.18.4）；"changeset reverted"那一行加 `aside`（临时的步的个数，3.21.3） |
-| page/app | `jobs.go` | 改 | 任务的计划的临时的拒绝（第 0 节；S3 换掉）；`revertContents` 按 `ContentRef` |
+| page/app | `revert_changeset.go`、`content.go` | 改 | 两份正文都解析、按（页、哈希）数界线（3.18.4）；`DecidedContents`，一次取放不下本次调用留着的份额时先还掉它们（3.18.4，S2 的修正的第 1 轮，审查 B-M1）；"changeset reverted"那一行加 `aside`（临时的步的个数，3.21.3） |
+| page/app | `jobs.go` | 改 | 任务的计划的临时的拒绝 `errUnsplit`（第 0 节；S3 换掉）；`revertContents` 按 `ContentRef` |
 | page/app | `unit.go` | 改 | 单元结束时设变更集的 `renames`、`moves`（3.20.2） |
 | page/adapter/postgres | `queries/changesets.sql`、`queries/history.sql`、`store.go`、生成的 sqlc | 改 | `MarkChangesetMoves`；`ChangesetMoves` 读列（3.20） |
 | migrations | `00045_page_changesets_moves.sql`、`changesets_moves_test.go` | 新 | 两列与补值（3.20.1） |
 | api | `api/modules/page.yaml`、生成的 Go 与 TS | 改 | `renames`、`moves` 的说明（"前 1,000 项"去掉） |
-| bootstrap（测试） | `revert_batch_test.go`、`revert_property_test.go`、`changesets_moves_test.go`、`interleavings_revert_test.go` | 新、改 | 3.21 |
+| page/domain（测试） | `revert_schedule_test.go`、`revert_schedule_internal_test.go`、`revert_schedule_property_test.go`、`export_test.go`、`name_test.go` | 新、改 | 3.21.1（包里的测试构造 `revertSim` 与计划者；`export_test.go` 的 `ScheduleRounds` 与 `planRevert` 共用 `scheduled`） |
+| page/app | `ports.go` | 改 | `ParseBudget.Takes`、`BudgetHold.Held`（3.18.4，S2 的修正的第 1 轮）；`ChangesetMoves` 的注释（3.20.3） |
+| page/adapter/markdown | `budget.go` | 改 | 以平台的 `Budget.Takes`、`Budget.Size` 与 `Hold.Held` 答（S2 的修正的第 1 轮） |
+| bootstrap | `events_registrants.go` | 改 | 页面事件只列单元之后活着的写过的页（3.10.2，S2 的修正的第 1 轮） |
+| bootstrap（测试） | `revert_batch_test.go`、`revert_property_test.go`、`changesets_moves_test.go`、`interleavings_revert_test.go`、`events_pages_test.go`、`permission_matrix_seeded_test.go` | 新、改 | 3.21；页面事件（3.10.2）；矩阵以 SQL 种下的改名的变更集带 `renames`（S2 的实施的偏离 4） |
 | e2e | `stories/mcp/mc5-batch-revert.spec.ts` | 改 | MC5 (page)（第 4 节） |
 
 ### 3.16 `schedule()`：按依赖分轮
@@ -1642,7 +1656,19 @@ M8 的单轮从不需要层级的前提（它只做一种操作），所以 `rou
 func (p *planner) schedule(s *revertSim) ([]RevertOp, error)
 
 // fallback is the first of the three that applies to s stuck, the step it
-// takes and the node it moves; false for none.
+// takes and the node it moves; false for none (M9/P3 design 3.16.3):
+// first, each place and restore pending in turn, by id, whose parent in
+// S* is alive and whose key there a node to place holds that is not
+// renamed aside yet: that holder renamed aside where it is. Second, of
+// the nodes S* keeps alive under a node the revert deletes, the deletions
+// pending, those to place and not moved aside yet, the least by id moved
+// aside to the root: it is to be placed, its parent in S* alive while the
+// one it is under now is none of S*'s; one not to place, which only a
+// defect has there, it never takes, to end unplaced under a name aside.
+// Third, a defence: of the nodes to place, not at the root and not moved
+// aside yet, the least by id moved aside to the root. A node moved aside
+// is renamed too, from its name as the plan began, never another aside
+// name on one; it stays to be placed.
 func (p *planner) fallback(s *revertSim) (RevertOp, bool)
 ```
 
@@ -1651,7 +1677,7 @@ M8 的每种变更集照旧一轮做完、次序与 `round()` 相同：一轮里
 三条后备（4.12，照模拟写定细节，`sim/schedule.py:228-370`）：
 
 1. 依次看待做的放回与恢复（各按 id）：它的 S\* 父节点活着、它的键被一个**待放回**的节点 h 占着、h 没有临时改过名：h 在原地改成临时名称（`RevertAside`，`Move` 为假）。
-2. 否则：此刻各个待删除的子树里，S\* 里活着、此刻的父节点是待删除的节点（C 新建或恢复的）、没有临时移动过的节点里，id 最小的那个带临时名称移到根下（`RevertAside`，`Move` 为真，次序值不变）。它一定是待放回的：S\* 里它的父节点活着，而此刻的父节点是 S\* 里不存在的节点。
+2. 否则：此刻各个待删除的子树里，S\* 里活着、此刻的父节点是待删除的节点（C 新建或恢复的）、待放回而没有临时移动过的节点里，id 最小的那个（候选先按 id 排，S2 审查 C-N1）带临时名称移到根下（`RevertAside`，`Move` 为真，次序值不变）。合法的状态里这样的节点一定是待放回的：S\* 里它的父节点活着，而此刻的父节点是 S\* 里不存在的节点；条件里仍写明"待放回"（S2 审查 A-N2）：一个让它取到不待放回的节点的缺陷，会把那个节点带着临时名称移到根下、不放回就结束，悄悄提交临时名称；有了这一条它不取那个节点（`TestTheSecondFallbackMovesOnlyANodeToPlace`）。
 3. 否则：待放回的、此刻不在根下、没有临时移动过的节点里，id 最小的那个带临时名称移到根下。**这一条是防御性的**：有第 2 条时，没有一个可达的状态用到过它（3.16.4 的计数：所有的生成器、审查 B 与 C 的对抗的生成器、穷举的搜索，都是 0 次）；00-M9 4.12（负责人批准的）有它，留作防御，测试以构造的状态直接调 `fallback()` 核对它（3.21.1）。
 
 后备之后被挪的节点在 S\* 的位置之外，回到 P（它本来就在 P 里：第 1、3 条只取 P 里的，第 2 条取到的也在 P 里）。三条的标记各记在节点上：第 1 条用掉"临时改名"，第 2、3 条用掉"临时移动"（第 2、3 条移到根下时也改了名，同时用掉两个：之后不会再在临时名称上再加一层）。
@@ -1662,35 +1688,37 @@ M8 的每种变更集照旧一轮做完、次序与 `round()` 相同：一轮里
 
 4.12 的论证落成下面几条，每条都在 domain 的性质测试（3.21.1）的每一次运行里核对，不只靠推理：
 
-- **(T1) 一个节点至多一次临时改名、一次临时移动、一次放回，放回在它的临时的步之后**：第 1 条只取没改过名的、第 2、3 条只取没移动过的；后备只取 P 里的节点，所以已放回的节点不会再被挪开（P 只因后备而增加，而后备只挪 P 里的）。所以一个节点的树的步至多三个（4.12 的"一个节点至多三步"），后备至多 2N 次（N 是 C 碰过的节点数）。
-- **(T2) 每一轮要么做成至少一步，要么用掉一次后备，要么结束**；做成的步离开待做的集合，只有后备让一个放回回到 P。所以轮数至多是步数加后备的次数加一，步数至多是 |P₀| + |D₀| + |R₀| + |W₀| 加后备的次数：调度一定结束。**这个上限写成代码**：过了 |P₀| + |D₀| + |R₀| + |W₀| + 2N + 1 轮，`schedule()` 答 `ErrRevertUnordered`（审查 C-I1）。没有一次撤销到得了它；一个打转的缺陷或变异因此在锁下答 500，而不是在笔记本的锁下空转到请求的期限（`planned()` 在锁下跑 `PlanRevert`，`page/app/unit_revert.go:78`、`:178-179`），测试也不会挂到 go test 的超时：这就是测试依靠的轮数的上限。
+- **(T1) 一个节点至多一次临时改名、一次临时移动、一次放回，放回在它的临时的步之后**：第 1 条只取没改过名的、第 2、3 条只取没移动过的；后备只取 P 里的节点，所以已放回的节点不会再被挪开（P 只因后备而增加，而后备只挪 P 里的）。所以一个节点的树的步至多三个（4.12 的"一个节点至多三步"），后备至多 2N 次（N 是 C 碰过的节点数）。"临时改名两次"在合法的状态里到不了：临时名称从不被等着的步要，第 1 条只改名 S\* 里父节点活着（或在根下）的占着者，第 2 条只取父节点要被删除的节点，只有防御的第 3 条会移开一个临时改过名的节点；这条判断留着，它的反向对照是构造的 `TestAFallbackRenamesANodeAsideOnce`（S2 的实施的偏离 8，主持者的决定 2）。
+- **(T2) 每一轮要么做成至少一步，要么用掉一次后备，要么结束**；做成的步离开待做的集合，只有后备让一个放回回到 P。所以轮数至多是步数加后备的次数加一，步数至多是 |P₀| + |D₀| + |R₀| + |W₀| 加后备的次数：调度一定结束。**这个上限写成代码**：过了 |P₀| + |D₀| + |R₀| + |W₀| + 2N + 1 轮，`schedule()` 答 `ErrRevertUnordered`（审查 C-I1）。没有一次撤销到得了它；一个打转的缺陷或变异因此在锁下答 500，而不是在笔记本的锁下空转到请求的期限（`planned()` 在锁下跑 `PlanRevert`，`page/app/unit_revert.go:78`、`:178-179`），测试也不会挂到 go test 的超时：这就是测试依靠的轮数的上限。S2 建成：开始时待做的步记在 `revertSim.pending`、上限由它算，调度开始的轮数记在 `revertSim.rounds`；`planRevert` 与测试的钩子 `ScheduleRounds`（`export_test.go`）共用 `scheduled`，计划者的构造、L、S\* 的核对与计划只写一处（修复核对 A 的 N4）。上限的大小由 `TestAScheduleTakesMoreRoundsThanItsSteps` 从下面钉住：审查 A 找到的形状要 6 轮与 7 轮、开始时待做 4 步（多于待做的步数加一），另一行没有 D、要 5 轮；以 `len(p.c.ids)/4` 或 `/3` 为后备项的上限让它们答 `ErrRevertUnordered`。上限的准确大小是 (T2) 的证明，大一些无害：以 N 代 2N、上限不加 1 不测（S2 审查 A-M1、修复核对 A 的 N1，主持者的决定 7）。
 - **(T3) 卡住只能是 4.12 的三种边之一**：等待的种类只有表里那几种；恢复等恢复的链沿着 S\* 的树向上（S\* 是树，没有环）；等写回的只有删除，写回只等页活着（只等恢复），不在环里；占着键的只能是待删除的（C 新建或恢复的）或待放回的节点（S\* 是合法的树）。所以一个卡住的环经过"等一个待放回的占着者"（第 1 条拆）、"删除等子树里 S\* 的节点移出"（第 2 条拆）或"等父节点移出子树或上移"（第 3 条拆）。性质测试断言随机的合法输入从不得到 `ErrRevertUnordered`。
 - **(T4) `ErrRevertUnordered` 只是缺陷**：三条都不适用而仍卡住时答它（不打转：(T1)、(T2) 保证）。测试以一个非法的状态构造它（S\* 里同一父节点下两个同键的节点，只有缺陷才会有），断言答 `ErrRevertUnordered` 而不是循环或别的步。
 - **(T5) 每一步之后不超过层级**：放回、临时的步、恢复的层级前提；测试把每一步用在它自己的模型上之后数一次层级（3.21.1）。
 
 **模拟的核对**（`scratchpad/m9/p3/sim/`；照设计复核 B 的 `sched*.py` 改写：加了正文与回收站里的正文、先写正文再删除的 batch、"先写回、再删除"、临时名称避开 S\* 的键、规范化、B1 与 B3，以及上面各条与段的量）：MaxDepth 2、3、4 的短 batch（1–6 项）与 MaxDepth 3、4 的长 batch（8–24 项、5–12 个节点）各 10 万次，每次连撤四层（C→R1→R2→R3→R4），**0 次失败**：每层之后树、活着的页的正文与 C 之前就有的节点在回收站里的正文都回到 S\*，没有超过层级的中间态，(T1) 与后备至多 2N 都成立。审查的反例照设计走出 `[临时移动 y, 删除新的 G, 恢复 G, 放回 x, 放回 y]`（`sim/ce.py`）。变异（MaxDepth 3 的短 batch，2 万次）：不"先写回、再删除"7,494 次失败（R2 的写回落在已删除的页上，答 `ErrRevertUnordered`）；恢复不核对层级 49 次超过层级；`RevertWrites` 照 M8 只取活着的页 7,555 次正文不对；临时名称不避开 S\* 的键 0 次（防御性的：S\* 的键被占时放回本来就要等，3.17）。
 
-**复核**（`scratchpad/m9/p3/sim2/`，`schedule_cap.py` 加每条后备的计数与 (T2) 的轮数上限，`sh run_all.sh` 重跑；表与各次的数在 `sim2/results.txt` 与审查记录）：五种设置各 2 万次与审查 B 的对抗的生成器 12 万次，0 次失败、0 次到上限，轮数至多是上限的一半。第 3 条在这些、审查 B 的 20 万次搜索与审查 C 的约 405 万对的穷举里都没有用到：它是防御性的，测试以构造的状态直接调 `fallback()`、不计它的次数（变异"第 3 条取根下的节点"在随机的运行里只多走一步、仍正确，抓不到，3.21.1）。第 2 条的下限：完整的一次（2 万次）至少 50 次（最少的设置 204 次）；`-short` 的 2,000 次轮流跑五种设置，至少 20 次（200 个种子里最少 34 次；只跑一种设置时有低于 20 的种子）。次数成对出现：用到第 2 条的一次运行在 R1 与 R3（或 R2 与 R4）各用一次。
+**复核**（`scratchpad/m9/p3/sim2/`，`schedule_cap.py` 加每条后备的计数与 (T2) 的轮数上限，`sh run_all.sh` 重跑；表与各次的数在 `sim2/results.txt` 与审查记录）：五种设置各 2 万次与审查 B 的对抗的生成器 12 万次，0 次失败、0 次到上限，轮数至多是上限的一半。第 3 条在这些、审查 B 的 20 万次搜索与审查 C 的约 405 万对的穷举里都没有用到：它是防御性的，测试以构造的状态直接调 `fallback()`、不计它的次数（变异"第 3 条取根下的节点"在随机的运行里只多走一步、仍正确，抓不到，3.21.1）。S2 的修正的第 1 轮起，domain 的性质测试的全量一次另断言没有一步把节点从根或 S\* 里活着的父节点下移到根下：只有第 3 条后备会这样移，检查按移动的样子数，不按哪条后备（S2 审查 C-N2、修复核对 C 的 N1）。去掉第 2 条时第 3 条接过它的全部 584 次移动，其中 582 次的样子同第 2 条的，2 次看得出，所以第 75 条变异在全量里也被抓到，`-short` 下由 `TestTheSecondFallbackPicksTheNodeItFrees` 抓到。第 2 条的下限：完整的一次（2 万次）至少 50 次（最少的设置 204 次）；`-short` 的 2,000 次轮流跑五种设置，至少 20 次（200 个种子里最少 34 次；只跑一种设置时有低于 20 的种子）。次数成对出现：用到第 2 条的一次运行在 R1 与 R3（或 R2 与 R4）各用一次。
 
 ### 3.17 临时名称
 
 ```go
 // AsideName is the name a revert moves a node aside with for a while (M9
 // design 4.12; M9/P3 design 3.17): name, the node's as the revert's plan
-// began, with " ~" and the last 8 hex digits of id; else all 32; else all
-// 32 and "-2", "-3" and on: the first whose key taken says is free. Built
-// as Numbered builds a name, "~" and the digits for the number: name cut
-// at a UTF-8 boundary so that the whole is at most shared.MaxTitleBytes,
-// an attachment's extension kept after the digits ("photo ~1a2b3c4d.png"),
-// one too long for that numbered as a page's name is.
+// began, with " ~" and the last 8 hex digits of id, which a UUIDv7 draws
+// at random (its first ones are its time, those of a batch's nodes
+// alike); else all 32; else all 32 and "-2", "-3" and on: the first whose
+// key taken says is free. Built as Numbered builds a name, "~" and the
+// digits for the number: name cut at a UTF-8 boundary so that the whole
+// is at most shared.MaxTitleBytes, an attachment's extension kept after
+// the digits ("photo ~1a2b3c4d.png"), one too long for that numbered as a
+// page's name is.
 func AsideName(name string, id uuid.UUID, asset bool, taken func(key string) bool) string
 ```
 
 - **后面的 8 位**：`hex.EncodeToString(id[12:])`。UUIDv7 的前 48 位是毫秒的时刻（`uuid.NewV7`），前 8 个十六进制字符约 65 秒不变，一次导入或一个 batch 建的节点都相同；后面是随机的（4.12）。冲突时取全部 32 位（`id` 的 `%x`），再冲突时接 `-2`、`-3`……（一个人或 agent 可以把一页叫作 `x ~<另一个节点的 32 位>`，`-2` 一条为它）。
 - **`taken(key)`**：此刻在目标父节点下有别的节点占着这个键，或它是 S\* 在那个父节点下的任何一个节点的键。后一半让临时名称从不挡住一个之后的放回（模拟的变异 `temp-ignores-star` 0 次失败：被挡住的放回会以第 1 条再挪开它；这条让那种额外的一步不出现）。
-- **名称取计划开始时的**：节点先被第 1 条改成临时名称、后又被第 2、3 条移到根下时，根下的临时名称仍从它原来的名称造，不在临时名称上再加一层。
-- **长度**：`numbered`（`page/domain/name.go:70-87`）照字节截在 UTF-8 的边界上：整个至多 255 字节（`shared.MaxTitleBytes`；今天的写法从 246 字节起超出 `nodes_name_check`，`00012_page_nodes.sql:14`，00-M9 4.12 已更正移交写的 250）。后缀 `" ~" + 8` 是 10 字节、`" ~" + 32` 是 34 字节，所以 245 字节的名称正好放得下（245 + 10 = 255），从 246 字节起被截短（取 32 位时从 222 字节起）。附件的扩展名长到连一个字符的主干都放不下时照页的名称处理（`numbered` 的同一条）。
-- **只在单元之中**：同一个节点之后的放回改成 S\* 的名称；条目合并成第一次的"前"与最后的"后"，观察者拿到合并的改动，所以临时名称不进条目、索引、搜索与事件（4.12）。守卫看得到每一步：M10、M11 的守卫要认得撤销里的临时名称（`Write.Kind` 是 `revert`，第 8 节）。撤销不经链接的参与者（`Options{}`，`page/app/revert_changeset.go:89-90`），临时名称不会被改写进链接。后台的撤销里一段整个在一批里（3.22），批与批之间也没有临时名称留下。
+- **名称取计划开始时的**：节点先被第 1 条改成临时名称、后又被第 2、3 条移到根下时，根下的临时名称仍从它原来的名称造，不在临时名称上再加一层。这在合法的状态里到不了：第 1 条只改名 S\* 里父节点活着或在根下的占着者，第 2 条只取父节点要被删除的节点，只有防御的第 3 条会移开一个临时改过名的节点；`TestTheThirdFallbackMovesAPlaceOffTheRoot` 以构造的状态核对它（S2 审查 C-N5，主持者的决定 2）。
+- **长度**：`numbered`（`page/domain/name.go:70-87`）照字节截在 UTF-8 的边界上：整个至多 255 字节（`shared.MaxTitleBytes`；今天的写法从 246 字节起超出 `nodes_name_check`，`00012_page_nodes.sql:14`，00-M9 4.12 已更正移交写的 250）。后缀 `" ~" + 8` 是 10 字节、`" ~" + 32` 是 34 字节，所以 245 字节的名称正好放得下（245 + 10 = 255），从 246 字节起被截短（取 32 位时从 222 字节起）。附件的扩展名长到连主干的第一个字符都放不下时，照页的名称处理：整个名称截短，编号接在后面（`numbered` 的同一条）。`numbered` 先截主干，截空了就照页的名称。以前只在一个字节都不剩时才这样；编号与扩展名只给主干留下 1 到 3 个字节、而主干的第一个字符更宽时，主干被截空，名称以空格开头，不是标题：`中.` 加 242 个 a 的附件，临时名称是 `" ~d3e4f5a6.aaa…"`。M7 的 `Numbered` 是同一条：`中.` 加 251 个 a 的两个附件，第二个的名称造成 `" 2.aaa…"`，导入经 `CheckTitle` 去掉开头的空格，存下的是 `2.aaa…`（一个也没有以空格开头）。两处一并改正，存下的名称一个也不改，改的只是很少见的新名称怎么造：现在是 `中.aaa…a 2`（修正的第 1 轮，审查 A 的 A-N1；修正的第 2 轮更正了"存成以空格开头"的说法）。
+- **只在单元之中**：同一个节点之后的放回改成 S\* 的名称；条目合并成第一次的"前"与最后的"后"，观察者拿到合并的改动，所以临时名称不进条目、索引、搜索与事件（4.12）。同一单元里先恢复、再写回的页也是这样：守卫看到恢复的一步与它的事实（回收站里的正文的），链接索引、搜索与事件只看到单元合并的改动，它的事实是写回的（S2 审查 B-N2，3.18.3）。守卫看得到每一步：M10、M11 的守卫要认得撤销里的临时名称（`Write.Kind` 是 `revert`，第 8 节）；它们只凭名称认得：临时的步以普通的 `OpRename` 或 `OpMove` 的一步到达守卫（S2 审查 B-N4，第 8 节）。撤销不经链接的参与者（`Options{}`，`page/app/revert_changeset.go:89-90`），临时名称不会被改写进链接。后台的撤销里一段整个在一批里（3.22），批与批之间也没有临时名称留下。
 
 ### 3.18 先恢复、再写回；撤销的撤销
 
@@ -1715,23 +1743,33 @@ func RevertWrites(items []ChangesetItem, versions []ChangesetVersion) []Changese
 
 #### 3.18.3 解析按（页、哈希）
 
-一页可以在一次撤销里解析两份正文：恢复的一步要回收站里那份正文的 Facts（索引在恢复时以它重建），写回要 `Base` 的。今天解析好的正文按页 id（`RevertRead.Parsed`，`unit_revert.go:30-36`；`parsedAs`，`:232-244`；任务的 `revertContents`，`jobs.go:540`），第二份会盖掉第一份。改为按 `ContentRef`：
+一页可以在一次撤销里解析两份正文：恢复的一步要回收站里那份正文的 Facts，写回要 `Base` 的。守卫看到恢复的一步与它的 Facts；链接索引是观察者，一个单元照合并的改动跑一次，它的 Facts 是写回的（`Change.Then`，`page/domain/change.go:67-73`；`linking/app/index.go:46-55`），所以索引、搜索与事件只看到写回的正文，恢复的那份只到守卫（S2 审查 B-N2）。这也是第 81 条变异在组合根的"先写正文再删除"那一行看不出的原因：由 `TestARevertRestoresAPageThenWritesItBack` 读守卫看到的每一步的事实抓到（S2 的实施的偏离 10）。今天解析好的正文按页 id（`RevertRead.Parsed`，`unit_revert.go:30-36`；`parsedAs`，`:232-244`；任务的 `revertContents`，`jobs.go:540`），第二份会盖掉第一份。改为按 `ContentRef`：
 
 ```go
 // ContentRef is a page's content by its hash: what a revert parses, as a
 // page may come back with one content and be written back with another
-// in one revert (M9 design 4.12).
+// in one revert (M9 design 4.12; M9/P3 design 3.18.3).
 type ContentRef struct {
 	NodeID uuid.UUID
 	Hash   string // hex, as a map key
 }
 ```
 
-`RevertRead.Parsed map[ContentRef]Parsed`；`plannedContents`、`parsedAs` 按它配对：锁下的计划要的一份在不加锁时没有以同一个哈希解析过，照今天答 `changed` 的冲突（`parsedAs` 的约定，`unit_revert.go:191-196`：其间别人改了那一页），不改成缺陷（审查 B-N3）；恢复的一步取（成员、回收站的哈希），写回取（页、`Base` 的哈希）。`DecidedAll` 本来就按条目解析（`page/app/content.go:87-131`），两份是两条。
+`RevertRead.Parsed map[ContentRef]Parsed`；`plannedContents`、`parsedAs` 按它配对：锁下的计划要的一份在不加锁时没有以同一个哈希解析过，照今天答 `changed` 的冲突（`parsedAs` 的约定，`unit_revert.go:191-196`：其间别人改了那一页），不改成缺陷（审查 B-N3）；恢复的一步取（成员、回收站的哈希），写回取（页、`Base` 的哈希）。`DecidedAll` 本来就按条目解析（`page/app/content.go:87-131`），两份是两条：`DecidedContents` 是 `DecidedAll` 旁的泛型（两者都是 `decidedAll[K]`），按 `ContentRef` 交回；`DecidedAll` 的签名不改，回收站的恢复不动（S2 的实施的偏离 5）。
 
 #### 3.18.4 界线
 
 两份都算进页数与字节（`withinBounds` 已分开数恢复与写回，`page/app/revert_changeset.go:259-275`）；链接是两份的链接之和。"只有一页时不限"按不同的页：`domain.UnitTooLarge`（`page/domain/trash.go:69-73`）今天按份数判一页的例外，同一页恢复与写回的两份 5 MiB 的正文会被当作两页、以 10 MiB 拒绝，所以它加一个参数，份数与不同的页数分开传，只有一个不同的页时不限（batch 的界线用同一个，2.1 第 5 条）。所以"先写正文、再删除"的一页在撤销里算两份，比 M8 多：100 页的这种 batch 的撤销是 200 份、过了页数的界线，在后台做（同 M8 的大的撤销，4.9）。
+
+同一页的两份正文在一次 `DecidedContents` 里依次取解析的预算（大的先）。第一份解析完，留着它的事实的份额（约十分之一），第二份的取要在这份额旁边放得下。预算取配置收的最小值 5 MiB（`config.MinParseBudgetBytes`，一页最大的正文）时，两份都接近 5 MiB 的一页（各过约 4.55 MiB）放不下；即使没有别的请求在解析也一样，撤销每次都答 503 `server_busy`（修正的第 1 轮，审查 B 的 B-M1）。
+
+所以 `decidedAll`（`DecidedAll` 与 `DecidedContents` 共用）在一次取因本次调用留着的份额而放不进预算的大小时，先把这些份额还掉，事实留着、不再计入，同 S1 的 `ParseSession` 每次取之前还掉（3.4.5）。放得下时，或挡着的是别的请求的份额时，照旧等、答 `server_busy`。页模块的端口为此加 `ParseBudget.Takes` 与 `BudgetHold.Held`，适配器以平台的 `Budget.Takes`、`Budget.Size` 与 `Hold.Held` 答（S1 为 batch 的改写加的）。
+
+M8 的撤销与回收站的恢复走不到这一条，照旧解析：
+- 一页只有一份正文；
+- 几页时，所有的份数都在单元的 8 MiB 之内，大的先取：下一次取的 x 至多 4 MiB，前面的份额约是 8 − x 的十分之一，合起来至多约 4.4 MiB，在最小的预算之内。
+
+S3 的任务的 `revertBatch` 用同一个 `DecidedContents`，一并得到。
 
 #### 3.18.5 撤销的撤销："先写回、再删除"
 
@@ -1777,7 +1815,7 @@ WHERE m.changeset_id = c.id AND (m.renames OR m.moves);
 ALTER TABLE changesets DROP COLUMN renames, DROP COLUMN moves;
 ```
 
-补值是一次对 `changeset_items` 的整表聚合（同 00038 的补值，`00038_page_changeset_items_deleted_revision.sql:13-16`）：大的库上它是迁移的一部分，写进升级的说明（M12 的部署文档已有"迁移在启动时跑"的说明，不另加）。默认值 `false` 让列在加的那一刻对所有行都成立，`NOT NULL`。
+补值是一次对 `changeset_items` 的整表聚合（同 00038 的补值，`00038_page_changeset_items_deleted_revision.sql:13-16`）：大的库上它是迁移的一部分，写进升级的说明（M12 的部署文档已有"迁移在启动时跑"的说明，不另加）。默认值 `false` 让列在加的那一刻对所有行都成立，`NOT NULL`。S2 量了补值：00044 的库上 100 万个变更集、各 3 项（300 万条条目，十分之一改名、十分之一移到别的父节点），升到 00045 用 1.87 与 2.19 秒（审查 C 重量 2.08、3.10 秒）；`ADD COLUMN … DEFAULT false` 是常量的默认值，不重写表。补值在 goose 的一个事务里持着 `changesets` 的 ACCESS EXCLUSIVE 锁，只在启动时：约每条条目 0.6 µs，5,000 万条约 30 秒（审查 B 的注记，主持者的决定 11），写进 [M12 的性能移交](../M12-release/handoffs/M4-performance.md)第 18 项。
 
 #### 3.20.2 单元结束时设上
 
@@ -1791,29 +1829,35 @@ UPDATE changesets SET renames = renames OR sqlc.arg(renames)::boolean, moves = m
 WHERE id = sqlc.arg(id) AND (sqlc.arg(renames)::boolean OR sqlc.arg(moves)::boolean);
 ```
 
-`Writer.Run` 在 `do` 之后、搜索的入队之前（`unit.go:218-221` 之间），以单元合并的改动（`recordItems` 的同一份）算：有一个改动前后都在而名称不同是 `renames`，前后都在而父节点不同是 `moves`（同补值的两个条件）；都没有就不发语句。"一旦为真就留着"对跨单元的变更集是准的：编辑会话只写正文；导入只建；后台的恢复只恢复；后台的撤销里一个节点的树的步（临时的改名、移动与它的放回）在同一段、同一批（3.22），所以不会有一批改了名、另一批又改回的（它的写回可以在别的批，不碰名称与父节点）。batch 的单元在最后删去回到原处的条目（3.5.4），它们的改动也不算。`TestTheChangesetsRenamesCountEveryItem`（3.21.4）核对这一点。
+`Writer.Run` 在 `do` 之后、搜索的入队之前（`unit.go:218-221` 之间），以单元合并的改动（`recordItems` 的同一份）算：有一个改动前后都在而名称不同是 `renames`，前后都在而父节点不同是 `moves`（同补值的两个条件）；都没有就不发语句。根下与文件夹下的换次序都不设，文件夹下的改名只设 `renames`；单元测试 `TestAUnitMarksItsChangesetsRenamesAndMoves` 核对这几种，并断言标记在 `PagesChanged` 与搜索的入队之前（S2 审查 B-M2、C-M2、B-N1 = C-N4）。"一旦为真就留着"对跨单元的变更集是准的：编辑会话只写正文；导入只建；后台的恢复只恢复；后台的撤销里一个节点的树的步（临时的改名、移动与它的放回）在同一段、同一批（3.22），所以不会有一批改了名、另一批又改回的（它的写回可以在别的批，不碰名称与父节点）。batch 的单元在最后删去回到原处的条目（3.5.4），它们的改动也不算。`TestTheChangesetsRenamesCountEveryItem`（3.21.4）核对这一点。
 
 #### 3.20.3 读它的
 
 - `ChangesetMoves` 的语句（`history.sql:73-81`）改为读这两列（`SELECT renames, moves FROM changesets WHERE id = $1`），端口与类型的注释去掉"前 `MaxLogCount` 项"（`page/app/ports.go:418-420`、`page/domain/changeset.go:84-90`），`HistoryReads.detail` 的注释（"whether its first items rename or move a node"，`page/app/history.go:85-87`）同改，用例照旧（`page/app/history.go:89-93`）。读它的三处不改代码：REST 的 `getChangeset`（`page/adapter/http/history.go:63`）、MCP 的 `changeset`（`page/adapter/mcp/changeset.go:49`）、网页的撤销对话框。
 - **一处 REST 的答复会变**（审查 B-N7）：被清理截过的变更集，今天的读照清理留下的条目算，列留着它当初的值（"改过名"）。被截的变更集撤销不了（`page.changeset_trimmed`），对话框不会为它打开，所以无害；契约的说明照列写。
-- 契约：`api/modules/page.yaml:1867-1872` 的两个说明改为"Whether it renames a node."、"Whether it moves a node under another parent."；重新生成 Go 与 TS（`make gen`，`gen-check` 照常核对）。README 的"日志"一条（`README.md:172`）"另答前 1,000 项里有没有改名、移动"改为"另答它有没有改名、移动"；v0.1 总体设计 13.1 第 31 条"单个变更集的 `renames`、`moves` 只看前 1,000 项条目"删去（第 7 节）。
+- 契约：`api/modules/page.yaml:1867-1872` 的两个说明改为"Whether it renames a node."、"Whether it moves a node under another parent."；重新生成 Go 与 TS（`make gen`，`gen-check` 照常核对）。`getChangeset` 与 `ChangesetDetail` 的说明也写着"前 1,000 项"，一并改为全部条目（S2 的实施的偏离 3）。README 的"日志"一条（`README.md:172`）"另答前 1,000 项里有没有改名、移动"改为"另答它有没有改名、移动"；v0.1 总体设计 13.1 第 31 条"单个变更集的 `renames`、`moves` 只看前 1,000 项条目"删去（第 7 节）。
 
 ### 3.21 S2 的测试
 
 #### 3.21.1 domain（不要数据库）
 
 - **钉住 M8 的行为的三处**（审查 C-M3），各 Step 的期望：
-  - `page/domain/revert_test.go:342-347` "a page written, then deleted (M9's shape)"（今天要 `[]string{"restore P"}`）：S1 是 `ErrRevertUnordered`（临时的检查，这一行在 S1 改期望）；S2 是 `restore P`、`write P`（先恢复、再写回）。
+  - `page/domain/revert_test.go:342-347` "a page written, then deleted (M9's shape)"（今天要 `[]string{"restore P"}`）：S1 是 `ErrRevertUnordered`（临时的检查，这一行在 S1 改期望）；S2 是 `restore P`、`content P`（先恢复、再写回；测试的清单把写回记作 `content`）。
   - `revert_test.go:864-886` `TestPlanRevertOfASwapIsUnordered`（名称互换、两个同名的页互换父节点，今天要 `ErrRevertUnordered`）：S2 两种都排得出，都是第 1 条后备（把一个占着键的待放回的节点临时改名，再两次放回）；测试改名 `TestPlanRevertOfASwapGoesAside`，断言步的清单。
-  - `page/app/revert_test.go:456-464` "a round out of order"（一次名称互换，今天要 `ErrRevertUnordered`）：S2 改为 (T4) 的构造的缺陷（S\* 里同一父节点下两个同键的节点），仍要 `ErrRevertUnordered`：用例那一条 500 的路照旧有测试。
+  - `page/app/revert_test.go:456-464` "a round out of order"（一次名称互换，今天要 `ErrRevertUnordered`）：S2 改为一个存着的缺陷"比 `MaxDepth` 深的页被改名"（"a defect's schedule: a page deeper than MaxDepth renamed"）：放回在临时的步前后都放不下，仍要 `ErrRevertUnordered`，用例那一条 500 的路照旧有测试。S\* 里同一父节点下两个同键的节点在用例上到不了调度（`before()` 先答 `title_taken`），那个构造在 domain 的 `TestScheduleAnswersUnorderedForADefect`（S2 的实施的偏离 2）。
 - `TestScheduleIsTheRoundForM8sChangesets`：M8 的每种一种操作的变更集（导入、编辑会话、改名、移动、删除、恢复、撤销的撤销、MCP 的移动加改名）的步与 `round()` 的逐个相同（搬 `revert_test.go` 的样例，在 `round()` 删去之前以它生成期望的清单，写进测试里；上面第一处不搬，它不是 M8 的形状）。
-- `TestScheduleRevertsEachBatchShape`：4.12 的每种在 domain 里：互换名称（在根下，断言步的清单：在文件夹下时去掉第 1 条后备，第 3 条会以别的步接住，第 74 条变异（去掉第 1 条）就抓不到，审查 C-N14）、改名之后新建同名、删除之后新建同名、移入新建的文件夹、移动加改名的中间态、审查的反例（步的清单恰是 3.16.4 的那五步）、先写正文再删除（恢复、写回，`Current` 是回收站的版本号）、撤销的撤销（写回、删除）、恢复到另一组之下（以构造的状态；真的库上的那一行以 SQL 种下，3.21.2）、层级（父节点一线先上移才放得下的放回与恢复）。
-- `TestScheduleEndsAndPutsTheNotebookBack`（性质，模拟的 Go 版）：随机的树与 batch（短的 1–6 项、长的 8–24 项，规范化、B1、B3 与生成器同模拟），连撤四层，`planner.maxDepth` 取 2、3、4（测试注入；生产是 `MaxDepth`）。**判定不用被测的模拟**（审查 C-M7）：测试有它自己的模型（节点到父节点、名称、活着与否、正文的哈希），把 `schedule()` 答的每一步依次用在它上面，每一步之后数层级（(T5)），每层之后与生成器的 T0（S\*）比：树、活着的页的正文哈希、回收站里的正文哈希；下一层的变更集也由用上的步造（同模拟造每一层的变更集）。名称或父节点写错的步、漏掉的步都会让比较失败，`schedule()` 自己推进的 `revertSim` 不作判定。(T1)–(T4) 每一步核对；从不得到 `ErrRevertUnordered`（轮数的上限让打转的变异答它，而不是挂住）。一共 2 万次（本机约 1–2 秒；`-short` 下 2,000 次）。不空转的计数：第 1 条后备与"先写回、再删除"各至少 50 次（都在几千次，`-short` 下也是）；第 2 条在完整的一次至少 50 次，`-short` 下（2,000 次，五种设置轮流）至少 20 次（3.16.4 的量：200 个种子里最少 34）；第 3 条不计（它不可达，下下一条测试它）。
+- `TestScheduleRevertsEachBatchShape`：4.12 的每种在 domain 里：互换名称（在根下，断言步的清单：在文件夹下时去掉第 1 条后备，第 3 条会以别的步接住，第 74 条变异（去掉第 1 条）就抓不到，审查 C-N14）、改名之后新建同名、删除之后新建同名、移入新建的文件夹、移动加改名的中间态、审查的反例（步的清单恰是 3.16.4 的那五步）、先写正文再删除（恢复、写回，`Current` 是回收站的版本号）、撤销的撤销（写回、删除）、层级（父节点一线先上移才放得下的放回与恢复）、MaxDepth 上带附件的页被删除、再恢复（MaxDepth 2 的 `Q/P/a.png`：恢复的层级不数附件，S2 审查 A-M2）。恢复到另一组之下不在其中：M8 的 L 把上下相套的两个回收站项读成一组，`PlanRevert` 在调度之前就答冲突；"恢复等它的父组"由包里构造的计划者 `TestARestoreWaitsForTheGroupItGoesUnder` 核对（恢复 B 等 A 的那一组一轮），真的库上的那一行以 SQL 种下、断言 409（3.21.2；S2 的实施的偏离 1，主持者的决定 1）。
+- `TestScheduleEndsAndPutsTheNotebookBack`（性质，模拟的 Go 版）：随机的树与 batch（短的 1–6 项、长的 8–24 项，规范化、B1、B3 与生成器同模拟），连撤四层，`planner.maxDepth` 取 2、3、4（测试注入；生产是 `MaxDepth`）。**判定不用被测的模拟**（审查 C-M7）：测试有它自己的模型（节点到父节点、名称、活着与否、正文的哈希），把 `schedule()` 答的每一步依次用在它上面，每一步之后数层级（(T5)），每层之后与生成器的 T0（S\*）比：树、活着的页的正文哈希、回收站里的正文哈希；下一层的变更集也由用上的步造（同模拟造每一层的变更集）。名称或父节点写错的步、漏掉的步都会让比较失败，`schedule()` 自己推进的 `revertSim` 不作判定。S2 的修正的第 1 轮起模型里有附件（审查 A-M2）：附件照 `Subtree.Height` 不算一层（可以在 MaxDepth 的页下多一层），附件的放回与临时的步要留着扩展名。(T1)–(T4) 每一步核对；从不得到 `ErrRevertUnordered`（轮数的上限让打转的变异答它，而不是挂住）。一共 2 万次（本机约 1–2 秒；`-short` 下 2,000 次）。不空转的计数：第 1 条后备与"先写回、再删除"各至少 50 次（都在几千次，`-short` 下也是）；第 2 条在完整的一次至少 50 次，`-short` 下（2,000 次，五种设置轮流）至少 20 次（3.16.4 的量：200 个种子里最少 34）；第 3 条：全量的一次断言没有一步把节点从根或 S\* 里活着的父节点下移到根下（只有第 3 条会这样移；按移动的样子数，S2 审查 C-N2）；它不可达，下下一条以构造的状态测它。
 - `TestTheSecondFallbackPicksTheNodeItFrees`（构造：两个待放回的节点，id 小的那个与卡住无关、不在根下；卡住的是待删除的子树里 id 大的那个）：步的清单是第 2 条挪 id 大的那一个；去掉第 2 条时第 3 条先挪 id 小的，清单不同。
-- `TestTheThirdFallbackMovesAPlaceOffTheRoot`（审查 C-I1 的做法，生产的代码里不加开关）：包里的测试构造一个卡住的 `revertSim`（第 1、2 条都不适用：没有占着键的待放回的节点、没有待删除的子树），直接交给 `fallback()`：它挪的是待放回的、不在根下、没有临时移动过的节点里 id 最小的那个，带临时名称到根下；在根下的、临时移动过的从不被取（构造里放一个 id 更小的在根下的、一个 id 更小的已临时移动过的）。
+- `TestTheSecondFallbackTakesTheLeastFirst`（S2 审查 C-N1）：新的 G 下五个候选、照 id 的反序放，计划 20 次，第 2 条每次先挪 id 最小的：候选不排序时它照 map 的次序取，计划不确定（S3 按 `Seq` 从任务开始时的计划取步，那时确定性要紧）。
+- `TestTheSecondFallbackMovesOnlyANodeToPlace`（S2 审查 A-N2；包里的）：一个不待放回的、id 更小的 S\* 节点在待删除的父节点下，第 2 条不取它。
+- `TestTheThirdFallbackMovesAPlaceOffTheRoot`（审查 C-I1 的做法，生产的代码里不加开关）：包里的测试构造一个卡住的 `revertSim`（第 1、2 条都不适用：没有占着键的待放回的节点、没有待删除的子树），直接交给 `fallback()`：它挪的是待放回的、不在根下、没有临时移动过的节点里 id 最小的那个，带临时名称到根下；在根下的、临时移动过的从不被取（构造里放一个 id 更小的在根下的、一个 id 更小的已临时移动过的）。最小的候选已临时改成 32 位的那种名称，期望根下的名称是 `AsideName("L", …)`：3.17 的"名称取计划开始时的"由它核对（S2 审查 C-N5）。
 - `TestScheduleAnswersUnorderedForADefect`：(T4) 的构造。
-- `TestAsideName`：后 8 位；与兄弟的键冲突时 32 位；再冲突时 `-2`（兄弟里有一页叫 `x ~<这个 id 的 32 位>`）；是 S\* 的键时同样换下一个；245（不截）、246、254、255 字节的名称（截短在 UTF-8 的边界上，结果 ≤ 255 字节、是合法的标题）；附件保留扩展名、扩展名太长时照页的名称；`~` 与标题的规则（`shared` 的标题检查通过）。
+- `TestAFallbackRenamesANodeAsideOnce`（包里的）：(T1) 的"临时改名两次"的反向对照，性质测试在合法的状态里到不了它（S2 的实施的偏离 8）。
+- `TestAStepAsideTakesNoKeyOfS`（包里的）：临时名称避开 S\* 的键（`AsideName` 的 `taken` 由调用者给，S\* 的那一半在 `aside()`；S2 的实施的偏离 7）。
+- `TestARestoreWaitsForTheGroupItGoesUnder`（包里构造的计划者）：恢复等它的父组。
+- `TestAScheduleTakesMoreRoundsThanItsSteps`（S2 审查 A-M1、修复核对 A 的 N1）：审查 A 的种子 400 的形状 6 轮、没有 D 的 5 轮、种子 5111 的 7 轮，开始时待做 4、3、4 步，都多于步数加一；经 `ScheduleRounds` 读轮数与开始时待做的步。
+- `TestAsideName`：后 8 位；与兄弟的键冲突时 32 位；再冲突时 `-2`（兄弟里有一页叫 `x ~<这个 id 的 32 位>`）；是 S\* 的键时同样换下一个；245（不截）、246、254、255 字节的名称（截短在 UTF-8 的边界上，结果 ≤ 255 字节、是合法的标题）；附件保留扩展名、扩展名太长时照页的名称；`~` 与标题的规则（`shared` 的标题检查通过）；空的主干照页的名称（`中.` 加 242 个 a 的附件；`ü.` 加 250 个 a 留它两个字节的主干），每个结果原样过 `CheckTitle`，`TestNumbered` 同样（S2 审查 A-N1）。
 - `TestRevertWritesAreEveryVersionOnABase`：新建的页没有、删除的有、改名并写正文的有、只写正文的有。
 - `TestStepsCountTheStepsAside`：临时的两种都算，写回不算。
 
@@ -1827,14 +1871,16 @@ WHERE id = sqlc.arg(id) AND (sqlc.arg(renames)::boolean OR sqlc.arg(moves)::bool
 | 改名之后新建同名 | `move Plan.md → Old.md`、`write Plan.md` | 新的 Plan 在回收站、原来的 Plan 回到 Plan |
 | 删除之后新建同名 | `delete X.md`、`write X.md` | 新的 X 在回收站、原来的 X 恢复 |
 | 移入新建的文件夹 | `write F.md`、`move X.md → F/X.md` | X 回到原处、F 在回收站 |
-| 移动加改名的中间态 | 目标父节点下有节点占着要移动的节点现在的名称 | 一步的放回（P2）之外，batch 里的那种也成立 |
+| 移动加改名的中间态 | `move F/B.md → G/B.md`、`move G/B.md → G/A.md`：两项，batch 合并成一个移动加改名的条目，F 下的 A 占着它在 G 下的名称（S2 的实施的偏离 12） | B、A 回到 F 下原处；一步的放回（P2）之外，batch 里的那种也成立 |
 | 审查的反例 | G 下有 x、y：移出 x、移出 y、删除 G、新建 G、把 y 移进新的 G | 新的 G 在回收站，G、x、y 回到原处 |
-| 长名称与附件 | 名称 246–255 字节的两页互换名称；两个文件夹里的同名附件一起要临时移到根下：上传的接口排不出同一毫秒，以 SQL 种下这两个节点，id 的时刻前缀相同（审查 C-N18） | 临时名称不超过 255 字节、彼此不撞；都回到原处 |
+| 长名称与附件 | 名称 246–255 字节的两页互换名称；两个文件夹里的同名附件一起要临时移到根下：上传的接口排不出同一毫秒，以 SQL 种下这两个节点，id 的时刻前缀相同（审查 C-N18） | 临时名称不超过 255 字节、彼此不撞；都回到原处；"changeset reverted" 那一行记 `aside` 3（附件的文件经 `storage.OpenLocal` 写进应用的目录，同 `assets_jobs_test.go`，S2 的实施的偏离 13） |
 | 先写正文再删除 | `edit X.md`、`delete X.md` | X 恢复、正文是 batch 之前的（不是删除时的） |
 | 撤销的撤销 | 上一行的撤销 R1 再撤销 | X 在回收站、回收站里的正文是 C 删除时的 |
-| 恢复到另一组之下 | 经接口做不出（batch 的规范化把"先删子孙、再删祖先"并成一组，B3 拒绝"移出再删"；撤销只删最上层，撤销的撤销至多恢复并列的组，审查 B-M4、C-M11）：以 SQL 种下这个变更集，它的条目与回收站的行（同 3.14.5 以 SQL 种 10,001 个节点），两组一上一下 | 两组各回到原处；移交的"在真的数据库上"由这一行满足，domain 的那一条留着 |
+| 恢复到另一组之下 | 经接口做不出（batch 的规范化把"先删子孙、再删祖先"并成一组，B3 拒绝"移出再删"；撤销只删最上层，撤销的撤销至多恢复并列的组，审查 B-M4、C-M11）：以 SQL 种下这个变更集，它的条目与回收站的行（同 3.14.5 以 SQL 种 10,001 个节点），两组一上一下 | M8 的 L（`readReverted.topOf`）把上下相套的两个回收站项读成一组，外面那一项只有它自己的成员：撤销答 409 `page.revert_conflict`（A、B 都是 `changed`），什么都不写（S2 的实施的偏离 1，主持者的决定 1）；"恢复等它的父组"由 domain 的构造的计划者核对（3.21.1） |
 
-每个子测试核对：树（父节点、名称、次序值）、每页正文的字节、回收站里的正文的字节、索引（`checkRebuilt`）、`checkPages`、`checkLinks`、`checkSearch`；撤销的变更集是一个、类型 `revert`。
+每个子测试核对：树（父节点、名称、次序值）、每页正文的字节、回收站里的正文的字节、索引（`checkRebuilt`）、`checkPages`、`checkLinks`、`checkSearch`；撤销的变更集是一个、类型 `revert`；日志里没有 error 级的行，每个子测试只读它开始之后的日志（`logsFrom`，S2 审查 C-N3）。
+
+另有 `TestTheRevertOfALonePagesTwoContentsAtTheLeastBudget`（`TestTheR…`，第三份；S2 的修正的第 1 轮，审查 B-M1）：页 X 约 5 MiB，agent 的 batch 把它写成另一份同样大小的正文、再删除它，在最小的解析预算（`MinParseBudgetBytes`，5 MiB）下网页整组撤销答 200，X 恢复、正文是 batch 之前的。应用用生产的期限（请求 15 秒、写 60 秒），同 `TestTheMCPBatchIsRefusedWhole`：写 5 MiB 正文的 batch 在 CI 的竞态检测下过了测试的 4 秒（run 39481193146）；默认预算的那一种在单元测试里（修正的第 2 轮，S2 修复核对 C 的 N2）。
 
 #### 3.21.3 撤销的性质测试
 
@@ -1842,13 +1888,14 @@ WHERE id = sqlc.arg(id) AND (sqlc.arg(renames)::boolean OR sqlc.arg(moves)::bool
 
 - 操作的表（`:81-190`，今天 `IntN(11)`，`:105`）加两种：`batch`（打开 `revertWorld.batches`，3.14.6；随机的 2–6 项，经 MCP 的 `batch`，生成器照 B1、B3 与规范化避开会被拒的形状，被拒的照 `agentMove` 的做法以它自己的码跳过：`title_taken`、`cycle`、`too_deep`、`not_allowed`）与定向的生成器，轮流发两种 batch：移出、删除父节点、新建同名、移回（4.12）；`edit X`、`delete X`（"先写正文再删除"：随机的 2–6 项里少见，审查 C-M5 估一个种子撤销到它一次或一次都没有，而 S2 的"先恢复、再写回"与"先写回、再删除"正是为它）。第 9 种（撤销）在 S2 也挑 batch 的变更集。
 - 比较：`notebookState`（活着的树、正文的 md5、`page_links`、`asset_blobs`）之外加回收站里的正文：只比撤销之前就在回收站里的页，按 id（`trashContents`：每个这样的页在回收站里的正文的 md5），从新到旧连续撤销 k 个之后等于之前的（4.12）。撤销之后回收站里还多了被撤销的变更集新建的页，今天的测试另核对它们（`revert_property_test.go:272-281`），所以不比整个回收站（审查 C-M5）。
-- 不空转（照 `:281-289` 的"没有种子撤销过 agent 的移动"）：种子合起来至少撤销过 3 个 batch 的变更集、至少一次用到了临时的步、至少一个"先写正文再删除"的变更集。临时的步从"changeset reverted"那一行 info 日志数（`page/app/revert_changeset.go:129-133`）：它在 `placed`、`deleted`、`restored`、`written` 之外加 `aside`（临时的步的个数，生产的日志里也有用），测试经一个记日志的团队读它（`newAcmeTeamLogging`，`bootstrap/interleavings_workspace_test.go:71`）。不从条目里认：条目合并成第一次的"前"与最后的"后"，临时名称到不了条目（`changesets.sql:11-44`）；也不数守卫的写：那要测试的应用没有的接缝（`bootstrap/wire.go:58-71`）（审查 C-M5、B-N4）。
-- 用时：本机今天 5.2–5.8 秒，加两种操作约 +2–4 秒。
+- 不空转（照 `:281-289` 的"没有种子撤销过 agent 的移动"）：种子合起来至少撤销过 3 个 batch 的变更集、至少一次用到了临时的步、至少一个"先写正文再删除"的变更集（S2 建成的按种类数，见下面的"S2 建成"）。临时的步从"changeset reverted"那一行 info 日志数（`page/app/revert_changeset.go:129-133`）：它在 `placed`、`deleted`、`restored`、`written` 之外加 `aside`（临时的步的个数，生产的日志里也有用），测试经一个记日志的团队读它（`newAcmeTeamLogging`，`bootstrap/interleavings_workspace_test.go:71`）。不从条目里认：条目合并成第一次的"前"与最后的"后"，临时名称到不了条目（`changesets.sql:11-44`）；也不数守卫的写：那要测试的应用没有的接缝（`bootstrap/wire.go:58-71`）（审查 C-M5、B-N4）。
+- S2 建成（实施的偏离 9，审查 C-M1）：两种定向的 batch 在 k 个变更集的开头先做（每种至多试三次）；"先写正文再删除"的那个 batch 立即撤销一次，从新到旧连续撤销时链里就有撤销的撤销（先写回、再删除），不这样，第 72 条变异在这个测试里活下来。下限按种类数：世界记下每个 batch 的变更集的种类，k 阶段先做的另记为"强制的"；agent 的移动是不属于任何 batch 的 MCP 变更集（S2 打开 batch 之后每个 batch 都是 MCP 的变更集，原来的数法让"agent 的移动"的下限永不失败）。四个种子合起来至少：agent 的移动 2、agent 的随机 batch 1、定向的 batch 1、强制的 4，临时的步与先写正文再删除的各 1（今天 3、2、2、8、5、5）。
+- 用时：本机今天 5.2–5.8 秒，加两种操作约 +2–4 秒。S2 建成时竞态下 5.28–5.45 秒（随机的序列随新的两种操作变了，`main` 上 8.0–9.1 秒），修正的第 1 轮之后 7.02 秒。
 
 #### 3.21.4 迁移与列
 
-- `TestTheChangesetsMovesAreBackfilled`（`server/migrations/changesets_moves_test.go`，照 `TestTheDeletionsRevisionsAreBackfilled` 的写法，`downTo(t, m, 45)`：`downTo` 撤销它点名的那一版，`server/migrations/background_jobs_test.go:14-25`；00038 的测试以 `downTo(t, m, 38)` 写成 00037 的样子）：以 00044 的样子写下改名的、移动的、只建的、只删的、第 1,001 项才改名的变更集，升到 00045：列等于各自全部条目的；降回去两列不在。
-- `TestTheChangesetsRenamesCountEveryItem`（`bootstrap`；`TestTheC…`，第二份）：REST 的改名与移动、MCP 的移动、`batch`（改名在按节点 id 的第 1,001 项之后：以 SQL 种下 1,000 个更小 id 的节点给它删）、导入、后台的撤销任务之后，每个变更集的两列等于它全部条目的 `bool_or`。S2 里的后台的撤销任务撤销一个没有临时的步、也没有"先恢复、再写回"的变更集（一个改名的 batch）：S2 的临时的拒绝会让别的形状的任务失败（审查 C-N15）；带临时的步的那一种在 S3 加进这个测试。
+- `TestTheChangesetsMovesAreBackfilled`（`server/migrations/changesets_moves_test.go`，照 `TestTheDeletionsRevisionsAreBackfilled` 的写法，`downTo(t, m, 45)`：`downTo` 撤销它点名的那一版，`server/migrations/background_jobs_test.go:14-25`；00038 的测试以 `downTo(t, m, 38)` 写成 00037 的样子）：以 00044 的样子写下改名的、移动的、只建的、只删的、第 1,001 项才改名的变更集，升到 00045：列等于各自全部条目的；降回去两列不在。只建、只删的两行放在 P 之下（父节点不为 NULL），去掉补值的两条 `IS NOT NULL` 守卫（任一条也是）时失败（S2 审查 B-M3）。
+- `TestTheChangesetsRenamesCountEveryItem`（`bootstrap`；`TestTheC…`，第二份）：REST 的改名与移动、MCP 的移动、`batch`（改名在按节点 id 的第 1,001 项之后：以 SQL 种下 1,000 个更小 id 的节点给它删）、导入、后台的撤销任务之后，每个变更集的两列等于它全部条目的 `bool_or`。S2 里的后台的撤销任务撤销一个没有临时的步、也没有"先恢复、再写回"的变更集（一个改名的 batch）：S2 的临时的拒绝会让别的形状的任务失败（审查 C-N15）；带临时的步的那一种在 S3 加进这个测试。S2 的修正的第 1 轮加经 REST 的 `Folder` 下的改名（`renames` 真、`moves` 假）与换次序（两个都假），以每个变更集做了什么核对 10 个（S2 审查 B-M2、C-M2）。
 
 #### 3.21.5 交错
 
@@ -2000,7 +2047,7 @@ func CheckRevertPart(s RevertState) RevertPlan
     - 第二个子测试（第 94 条变异；批的大小 1：第 1 批放回 O、第 2 批删除新的 Plan、第 3 批写回 E）：持着 O 与新的 Plan。第 1 批等着时网页把 E 改成别的字节，放开 O；看到第 2 批在新的 Plan 上等之后，网页再把 E 改回 C 写的字节，放开新的 Plan：两次写各落在一批之后，第二次在第一次提交之后。E 的版本号比任务开始时多 2、哈希等于 C 的：第 3 批的 L 放行，写回写在刚核对过的版本号上，任务做完，E 是 batch 之前的正文。写回以任务开始时的 `Current` 为基时，`WriteContent` 看到别的字节与过时的基，答 `ErrRevisionMismatch`，任务以 `internal` 失败（审查 N-M3 = NC-M1：只存一次相同的字节不会有新的版本号，`unit_content.go:61-64`）。
   - `TestTheBackgroundRevertOfASegmentPastABatchStops`：G 下有 101 页（各 210 条链接，同 `TestABackgroundBatchPastTheLinksIsHalved`）与最后一个子页 K，K 下有 x、y；batch：先改名另一页 O（不相干的一步，第一批就是它）、移出 x、移出 y、删除 G、新建同名的 G、把 y 移进新的 G。撤销的段从临时移动 y 到放回 y，K 在 G 的先序的最后，所以段里有 G 这一组的 103 个成员（G、101 页、K；同恢复的成员的数法，G 算一个）、21,210 条链接：任务以 `revert_too_large` 停下，报告说它；O 的改名已撤销、留着（O 的改名是更早的一批，"之前的批做的留着"才有东西可核对，审查 C-M8）。网页的报告里那条文字由 vitest 核对。
   - `TestTheBackgroundRevertOfALargeFolderHoldsItsGroup`（审查 B-I1 的第 4 条与 B-I2 的测试；批的大小 10，各子测试的文件夹 F 有 15 页：多于一批，生产的每批 100 个节点只是更大的同一种）：(1) 移出 F 里先序靠后的 `q/x.md`、再删除 F（4.11 的"移出文件夹再删掉它"：q 的续接与 x 的放回落在同一批，每批建 S\* 时答 `parent_gone`）；(2) `edit` F 里先序靠后的 z、再删除 F（z 的恢复与写回在第 2 批，照活着的页核对写回时答 `changed`）；(3) 写一个文件夹 D、把 12 页移进去，撤销的放回与删除 D 分在两批（删除照计划时的子树时答 `changed` 或 `title_taken`）；(4) `edit F`、删除 F（F 的写回把一组的成员隔开，只恢复连着的一段时只恢复了 F）。每个都：任务成功、树、正文与回收站里的正文等于 batch 之前的、没有成员留在回收站里；(3) 里有人正编辑一页被移动的页时，任务不在开始时答 `page.locked`（删除的步只算那一刻的子树）。
-  - 恢复到另一组之下：domain 的那一条，加 3.21.2 以 SQL 种下的那一行。
+  - 恢复到另一组之下：domain 的那一条（`TestARestoreWaitsForTheGroupItGoesUnder`）；3.21.2 以 SQL 种下的那一行在 S2 改为断言 409 的拒绝（M8 的 L 把上下相套的回收站项读成一组，S2 的主持者的决定 1）。
   - HI5（e2e）照旧通过：平铺的 1,501 个笔记的导入的撤销没有段，切批同今天。
 - **交错**：`TestTheBackgroundRevertStopsAtAWriteBetweenItsBatches` 就是 4.15 的"后台撤销一个带名称环的 batch 变更集与批之间的写"（结束时 `checkPages`、`checkLinks`、`checkSearch`）。
 - **`batchOps` 按 `seq`**：按种类与节点取步的变异不列：临时的步是它自己的种类（`RevertAside`），(临时, x) 与 (放回, x) 不相撞；要相撞得有一个节点既被第 1 条临时改名、又被临时移动，而第 1 条之后它的父节点在 S\* 里活着、第 2 条只取父节点要被删除的节点，第 2、3 条又同时用掉两个标记，第 3 条没有一个可达的状态用到过：没有一个变更集给得出（审查 B、C 的模型都数过，0 个节点有两种临时的步）。按 `seq` 取步的次序由 `TestTheJobsStepsReplayToStar` 守。
@@ -2059,18 +2106,20 @@ func CheckRevertPart(s RevertState) RevertPlan
 | 先改写写了的页（3.7.2 (a)，实施的偏差 27） | 两段对调 | `TestABatchRewritesThePagesItWroteFirst` |
 | 一棵树的读（3.7.2、3.7.4，修正的第 3 轮，复核 A 的 F3-1） | 所有的树共用一份；每棵树的读都留着；删除之后不重来 | `TestABatchsPlanHoldsOneTreesReads`、`TestABatchsRewritesHoldOneReach`、`TestABatchsPlanReadsATreeAgainAfterADelete` |
 | 批量入队与 `building`（3.9.1、3.10.1，S1 审查 C-I2） | 准确入队；答复不带 `building` | `TestABatchQueuesForTheSearchInBulk`；适配器的 `TestTheBatchAnswersEachOp`；`TestTheMCPBatchReachesItsUseCase` |
-| `schedule()` 的前提（3.16.2） | 恢复不核对层级；删除不等写回；放回不核对环 | `TestScheduleEndsAndPutsTheNotebookBack`（模拟的变异：49、7,494 次失败）；`TestScheduleRevertsEachBatchShape` |
-| 三条后备（3.16.3） | 去掉第 1 条；去掉第 2 条；第 3 条取根下的节点 | `TestScheduleRevertsEachBatchShape` 的互换名称（在根下）与审查的反例；`TestTheSecondFallbackPicksTheNodeItFrees`；`TestTheThirdFallbackMovesAPlaceOffTheRoot` |
-| 轮数的上限（3.16.4 (T2)） | 去掉它：正确的代码到不了它，没有单独的变异；"去掉第 2 条"与"第 3 条不论"合在一起时，有它，性质测试以 `ErrRevertUnordered` 失败，没有它就挂到 go test 的超时 | `TestScheduleEndsAndPutsTheNotebookBack`（与那两个变异合在一起；模拟：随机的 2 万次里短的 1 次、长的 14 次到上限） |
-| (T1)–(T4)（3.16.4） | 一个节点临时改名两次；卡住时不答 `ErrRevertUnordered` | `TestScheduleEndsAndPutsTheNotebookBack`（以测试自己的模型判定）；`TestScheduleAnswersUnorderedForADefect` |
-| 临时名称（3.17） | 取前 8 位；不截短；附件的扩展名丢掉；不避开 S\* 的键 | `TestAsideName`；`TestTheRevertOfEachBatchShape` 的长名称与附件 |
-| `RevertWrites`、先恢复再写回（3.18） | 照 M8 只取活着的页；写回以 `state.Contents` 为基；解析按页 id | `TestRevertWritesAreEveryVersionOnABase`；`TestTheRevertOfEachBatchShape` 的"先写正文再删除"（错的正文、500）；性质测试（模拟的变异：7,555 次失败） |
+| `schedule()` 的前提（3.16.2） | 恢复不核对层级；删除不等写回；放回不核对环；恢复的层级数附件（S2 审查 A-M2） | `TestScheduleEndsAndPutsTheNotebookBack`（模拟的变异：49、7,494 次失败；放回不核对环只有它抓到，`TestScheduleRevertsEachBatchShape` 与 `TestPlanRevertOfASwapGoesAside` 单独都抓不到）；`TestScheduleRevertsEachBatchShape`；数附件：它的"MaxDepth 上带附件的页被删除"一行与修正的第 1 轮起的性质测试 |
+| 三条后备（3.16.3） | 去掉第 1 条；去掉第 2 条；第 3 条取根下的节点；第 2 条不按 id 排（S2 审查 C-N1）；第 2 条取不待放回的节点（S2 审查 A-N2） | `TestScheduleRevertsEachBatchShape` 的互换名称（在根下）与审查的反例；`TestTheSecondFallbackPicksTheNodeItFrees`（修正的第 1 轮起也有性质测试的全量一次，按移动的样子，S2 审查 C-N2）；`TestTheThirdFallbackMovesAPlaceOffTheRoot`；`TestTheSecondFallbackTakesTheLeastFirst`；`TestTheSecondFallbackMovesOnlyANodeToPlace` |
+| 轮数的上限（3.16.4 (T2)） | 去掉它：正确的代码到不了它，没有单独的变异；"去掉第 2 条"与"第 3 条不论"合在一起时，有它，性质测试以 `ErrRevertUnordered` 失败，没有它就挂到 go test 的超时 | `TestScheduleEndsAndPutsTheNotebookBack`（与那两个变异合在一起；模拟：随机的 2 万次里短的 1 次、长的 14 次到上限；S2 建成：0.18 秒失败，没有上限时挂到 `-timeout 90s`）；上限太小（没有 `2N`、以 `len(p.c.ids)/4` 或 `/3` 代它、开始时待做的步不记）：`TestAScheduleTakesMoreRoundsThanItsSteps`（S2 审查 A-M1、修复核对 A 的 N1、N4；以 N 代 2N、不加 1 不测，主持者的决定 7） |
+| (T1)–(T4)（3.16.4） | 一个节点临时改名两次；卡住时不答 `ErrRevertUnordered` | 临时改名两次：`TestAFallbackRenamesANodeAsideOnce`（构造的；性质测试抓不到，合法的状态里到不了，S2 的实施的偏离 8、审查 C-N6，主持者的决定 2）；卡住时不答：`TestScheduleAnswersUnorderedForADefect`；其余由 `TestScheduleEndsAndPutsTheNotebookBack` 以测试自己的模型判定 |
+| 临时名称（3.17） | 取前 8 位；不截短；附件的扩展名丢掉；不避开 S\* 的键；空的主干留着（S2 审查 A-N1）；名称取此刻的（S2 审查 C-N5） | `TestAsideName`；`TestTheRevertOfEachBatchShape` 的长名称与附件（不截短）；扩展名丢掉：`TestAsideName` 与修正的第 1 轮起的 domain 的性质测试，组合根的附件那一行抓不到（丢了扩展名仍是合法的标题，只在单元之中，S2 的实施的偏离 11、审查 C-N6）；不避开 S\* 的键：包里的 `TestAStepAsideTakesNoKeyOfS`（偏离 7）；空的主干：`TestNumbered`、`TestAsideName`；名称取此刻的：`TestTheThirdFallbackMovesAPlaceOffTheRoot` |
+| `RevertWrites`、先恢复再写回（3.18） | 照 M8 只取活着的页；写回以 `state.Contents` 为基；解析按页 id | `TestRevertWritesAreEveryVersionOnABase`；`TestTheRevertOfEachBatchShape` 的"先写正文再删除"（错的正文、500）；性质测试（模拟的变异：7,555 次失败）；解析按页 id：`TestARevertRestoresAPageThenWritesItBack`（读守卫看到的每一步的事实）与 M8 的两个用例的测试（`TestRevertChangesetAnswersItsCodesInOrder` 的 "a page in the trash at other bytes meanwhile"、`TestRevertChangesetsLockedConflictsComeByNodeID`），组合根的那一行看不出（恢复的事实只到守卫，S2 的实施的偏离 10、审查 B-N2、C-N6） |
 | 撤销的撤销（3.18.5） | 先删除、再写回 | `TestTheRevertOfEachBatchShape` 的"撤销的撤销"（回收站里的正文不对）；撤销的性质测试（比回收站里的正文） |
-| 一页的例外按不同的页（3.18.4） | 按份数 | `revert_changeset` 的界线测试：一页恢复与写回两份 5 MiB 的正文不被拒 |
+| 一页的例外按不同的页（3.18.4） | 按份数 | `TestARevertRestoresAPageThenWritesItBack`：一页恢复与写回两份近 5 MiB 的正文，合起来过了 `MaxUnitBytes`，不被拒 |
+| 一页的两份正文在最小的预算下（3.18.4，S2 审查 B-M1、修复核对 B 的 N1、N2） | 不还份额；总是还；早还；还掉之后不清零；适配器的 `Held` 答 0、`Takes` 答原数 | `TestDecidedAllGivesItsSharesBackBeforeATakeThatCannotFit`（恰好等于预算的大小、多一个字节、还掉之后的第三份）；`TestTheAdapterKeepsTheFactsShare`；`TestTheRevertOfALonePagesTwoContentsAtTheLeastBudget`（不还：503） |
 | 步数含临时的步（3.19） | 不数 | `TestStepsCountTheStepsAside` |
-| `renames`、`moves`（3.20） | 补值只看前 1,000 项；单元不设；读还走旧的语句 | `TestTheChangesetsMovesAreBackfilled`；`TestTheChangesetsRenamesCountEveryItem` |
+| `renames`、`moves`（3.20） | 补值只看前 1,000 项；单元不设；读还走旧的语句；换次序设 `moves`、任何有父节点的节点设 `moves`（S2 审查 B-M2、C-M2）；补值去掉 NULL 守卫（审查 B-M3）；标记挪到搜索的入队之后（审查 B-N1 = C-N4） | `TestTheChangesetsMovesAreBackfilled`；`TestTheChangesetsRenamesCountEveryItem`；`TestAUnitMarksItsChangesetsRenamesAndMoves`；读：适配器的 `TestChangesetMoves` |
 | 临时的步的计数（3.21.3） | "changeset reverted"那一行不带 `aside` | 撤销的性质测试的不空转（没有一个种子用到临时的步） |
-| S1、S2 的临时的拒绝（第 0 节） | 去掉 | S1：`revert_test.go` 的"先写正文再删除"一行（S1 答 `ErrRevertUnordered`）；S2：`jobs_test.go` 的一行（任务的计划拒绝带临时的步的） |
+| S1、S2 的临时的拒绝（第 0 节） | 去掉 | S1：`revert_test.go` 的"先写正文再删除"一行（S1 答 `ErrRevertUnordered`）；S2：`TestARevertJobRefusesTheStepsItsBatchesWouldSplit`（任务的计划拒绝带临时的步、恢复之后的写回或"写回再删除"的；拒绝不包文字也失败，S2 审查 A-N4） |
+| 页面事件只列单元之后活着的写过的页（3.10.2，S2 审查 B-N3） | 照样列 | `TestThePagesEventListsNoPageInTheTrash` |
 | 删除照那一刻的子树（3.22.1） | 照计划时的树 | `revertSteps` 的表；`TestTheBackgroundRevertOfALargeFolderHoldsItsGroup` 的 (3)（假冲突、开始时的 `page.locked`） |
 | 紧凑的计划（3.22.1） | 恢复的时刻与组取开始时的计划 | `TestARevertJobOfAGroupDeletedAgainSinceThePlan`（`page/app/jobs_test.go:714`，M8/P4A 审查 A-M1 的那一个） |
 | 段（3.22） | 不标 `Joined`；恢复不截；写回不紧跟恢复 | `TestTheJobsStepsReplayToStar`；`TestTheBackgroundRevertOfANameCycleKeepsItsSegments`（批的边界上看得见临时名称） |
@@ -2086,6 +2135,13 @@ S1 的审查与修复核对见 [S1 的审查记录](reviews/P3-S1-batch-review.m
 
 - **S1，实施时定下的**（实施者的 27 条偏差，S1 审查 C 判过；修正的第 1 轮去掉第 9、12 条，改了第 18 条）：`OpKind` 的值叫 `OpKindWrite` 等（1，3.3.2）；`PlannedStep.To` 是 `Destination`（2，3.4.2）；`LinkRewriter` 的 `Indexed` 与 `Rewrite` 的 `since`（3，3.4.4）；计划分在四个文件（4，3.1）；P2 的 `TestRelocateRefuses` 照旧留着（5，3.14.1）；`DropUnchanged` 留下被一次移动带着走的节点的改动（6，3.5.4）；`ApplyBatch` 另收锁的持有者、时钟与 `maxRewrites`（7，3.4.5、3.11）；`OpDone.Created` 是 `[]Placed`（8，3.6）；第二次的单元里正文操作的路径上没有页答 `BatchChanged`（10，3.6.2、3.9.2）；`LinksOn` 没有 `Gone`（11，3.7.4）；`DecidedAll` 的界线是 `func(links int) error`（13，3.8）；"batch applied" 每次成功都记（14，3.11）；`BatchTooLarge` 的文字（15，3.9.2）；第 0 步在造出来的语料上量（16，3.10.1）；基准经 MCP 的工具调用例（17，3.8.2）；守卫与基准数进 P1（18，3.8.2）；4.11 的性质也允许经被 batch 的写拿掉的别名的链接重新解析（19，3.14.6）；计划的解析的时限在竞态检测下乘 6，`TestTheMCPBatchIsRefusedWhole` 用生产的期限（20，3.14.5）；MC5 (MCP) 末尾用 `expectNoAsideNames`（21，4.1、4.2）；`fixtures/mcp.ts` 没改（22，3.1、4.1）；矩阵的 batch 一行以 `client: "mcp"` 读 `log`（23，3.13.2）；第 15、16 条变异的写法（24，6.3）；`TestBatchPlanContents` 加一页过 10 MiB 一个字节（25，3.14.1）；第 14 种之后再改名（26，3.14.3、6.3 第 49 条）；推后的改写先改写 batch 写了的页（27，3.7.2 (a)）。
 - **S1，审查与修复核对带来的**（编号是 S1 的审查记录的；主持者的决定见 2.2 与 00 号文档第 11 节第 44–55 条）：之前的改名、移动碰到它的页的 `write` 读整页、照改写之后的正文判（A-I1 = B-M2、A 的 N3、N5，3.4.4、3.8）；移动带着走的节点的界线（A-I2、A 的 N2、N4，3.4.3、3.8）；锁的预检取删除的子树、按项的次序（A-M1，3.4.5、3.9.3、3.12.1）；两次读之间页被删除也重新计划一次（A-M2，3.6.2）；`edit` 留下相同的字节答未改动（A-M3，3.4.4、3.6.3）；一次改写只建一次改动的表、改写的页数在读树之前数（B-I1，3.7.2、3.7.3）；冻住的节点的链接从不改写，它们的改名与移动交给"之前"的路径（B-M1、B1-N1，3.7.1–3.7.4、3.14.4）；写了的页一共读一次树，在 `MaxBatchRewrites` 里算 2 页，只在它自己的改动碰到它的链接时才数（B-M3、B1-M2、B1-N3，3.7.2、3.8.2）；新建的节点不进之前的改名、移动的触及（B1-M1、复核 A 的 F2-1，3.7.2、3.14.3、3.14.4）；`MaxBatchRewriteLinks`（B1-M3，3.8、3.8.2）；`MaxBatchRewriteBytes` 与三个数的次序（复核 B 的 B2-M1，复核 A 的 F2-2、F2-3，3.8、3.8.2、3.9.3）；改写过的页留下的解析额度的检查（复核 B 的 B3-M1、B4-N1，复核 C 的 N1-f4、N2-f4，3.7.2、3.8.2、3.9.2）；计划一次只留一棵树的读，删除之后重来（修正的第 3 轮、A 的 N1、复核 A 的 F3-1，3.7.2、3.7.4）；搜索批量入队、答复带 `building`（C-I2，3.9.1、3.10.1、3.12、6.3 第 45 条）；单元的重做的四种比较、合并的 `created` 与版本、错误的位置的测试（C-I1、C-M1、C-N2、C-N3，3.6.2、3.14.2、3.14.5）；性质的 batch 被拒就失败、种子合起来至少 3 个 batch（C-N1、C-M2，3.14.6）；M8 的清理测试等启动时的清理（修正的第 4 轮，9.1）；守卫那一份的时限 30 分钟（复核 C 的 N3-f4，3.1、6.5）。没有交给 v0.1 之后的打磨的。
+
+### 3.29 S2 的实施对设计的修正
+
+S2 的审查与修复核对见 [S2 的审查记录](reviews/P3-S2-revert-review.md)，结果在 9.2。与上文最初的设计不同之处已改在各节里：
+
+- **S2，实施时定下的**（实施者的 13 条偏离，S2 审查 A、B、C 各在自己的范围里判过）：上下相套的回收站项照 M8 的 L 拒绝（1，3.21.1、3.21.2、3.26）；用例的 (T4) 一行是存着的缺陷"比 `MaxDepth` 深的页被改名"（2，3.15、3.21.1、5.2）；契约里 `getChangeset` 与 `ChangesetDetail` 的说明一并改为全部条目（3，3.20.3）；钉住旧的读法的三个测试（适配器的 `TestChangesetMoves`、`TestTheLogReadsUseTheirIndexes`、权限矩阵种下的变更集，4，3.15）；`DecidedContents` 是 `DecidedAll` 旁的泛型（5，3.18.3）；MC5 (page) 的树照兄弟的次序（6，4.3）；临时名称避开 S\* 的键由包里的 `TestAStepAsideTakesNoKeyOfS` 核对（7，3.21.1、3.27）；(T1) 的"临时改名两次"只有构造的测试抓到（8，3.16.4、3.21.1、3.27）；性质测试的两种定向的 batch 先做、"先写正文再删除"的立即撤销（9，3.21.3、6.3 第 72 条）；第 81 条在组合根的那一行看不出（10，3.18.3、3.27、6.3）；第 79 条同样（11，3.27、6.3）；"移动加改名的中间态"以两项写出（12，3.21.2）；同一毫秒的两个附件的文件经 `storage.OpenLocal` 写（13，3.21.2）。
+- **S2，审查与修复核对带来的**（编号是 S2 的审查记录的；主持者的决定见 2.2 与 00 号文档第 11 节第 56–66 条）：一页的两份正文在最小的解析预算下解析，`decidedAll` 先还掉本次调用留着的份额（B-M1、修复核对 B 的 N1、N2，3.15、3.18.4、3.27）；轮数的上限从下面钉住、开始时待做的步只写一处（A-M1、修复核对 A 的 N1、N4，3.16.4、3.21.1、3.27）；domain 的性质测试的模型有附件（A-M2，3.21.1、3.27、6.3 第 79 条）；换次序与文件夹下的改名、换次序的标记（B-M2、C-M2，3.20.2、3.21.4）；迁移测试的 NULL 守卫（B-M3，3.21.4）；组合根的性质测试的下限按种类数（C-M1，3.21.3）；空的主干照页的名称，M7 的 `Numbered` 一并改（A-N1，3.17）；第 2 条后备只取待放回的、先取 id 最小的（A-N2、C-N1，3.16.3、3.21.1）；任务的临时的拒绝说出它是什么（A-N4，第 0 节、3.15、3.27）；标记在搜索的入队之前（B-N1 = C-N4，3.20.2）；恢复的事实只到守卫（B-N2，3.17、3.18.3）；页面事件只列单元之后活着的写过的页（B-N3，3.10.2、3.15、3.27）；守卫只凭名称认得临时的步（B-N4，3.17、第 8 节）；第 3 条后备的检查按移动的样子数（C-N2、修复核对 A 的 N3 = C 的 N1，3.16.4、3.21.1、6.3 第 75 条）；每个子测试只读自己的日志（C-N3，3.21.2）；"名称取计划开始时的"的构造的测试（C-N5，3.17、3.21.1）；3.27 与 6.3 的第 79、81 条与 (T1) 照建成的测试写（C-N6）；两份正文的组合根测试用生产的期限、只留最小预算那一行（修复一轮的 CI 的红、修复核对 C 的 N2，3.21.2）；第一份过线时把 `TestEvery[M-R]` 挪到第三份、第二份的估计（修复核对 C 的 N3，6.5）。没有交给 v0.1 之后的打磨的。
 
 ## 4. e2e
 
@@ -2116,11 +2172,11 @@ MC5（00 号文档第 9 节）是两个测试，在同一个文件里：S1 加 M
 1. 种下：页 `Notes`（"notes\n"）、`Glossary`（"terms\n"）、`Plan`（"plan v1\n"）、`Index`（`[[Notes]] [[Glossary]] [[Plan]]\n`）；记下它们的节点 id 与 Index 的字节。
 2. agent 的 `batch`（说明 `"Reorganize"`）：`move Notes.md → Swap.md`、`move Glossary.md → Notes.md`、`move Swap.md → Glossary.md`、`move Plan.md → Plan 2025.md`、`write Plan.md`（"plan v2\n"）。断言 Index 被改写成链到新名称（`[[Glossary]] [[Notes]] [[Plan 2025]]`）。
 3. 写者在网页上打开这个变更集，`revertWith` 撤销；点"撤销"之前断言对话框里有改名、移动的提醒（`history.revertLinks` 的文字 "Links written since to the new names or places are not changed back."，`web/apps/web/src/i18n/messages/en.ts:340`；`renames || moves` 时显示，`web/apps/web/src/pages/notebook/revert-dialog.tsx:315`；今天没有一个 e2e 断言它，审查 C-N6）。
-4. 断言：三个原来的节点各回到原来的名称（按 id）；新建的 `Plan` 在回收站；每页的正文与 batch 之前的字节相同，Index 的字节等于第 1 步记下的（撤销写回它）；`expectIndexedLinks`：Index 的三条解析到原来的三个节点；撤销的变更集一个、`reverts_id` 是 batch 的；`expectNoAsideNames`；树上的标题是 `Glossary`、`Index`、`Notes`、`Plan`（`treeTitles`）。
+4. 断言：三个原来的节点各回到原来的名称（按 id）；新建的 `Plan` 在回收站；每页的正文与 batch 之前的字节相同，Index 的字节等于第 1 步记下的（撤销写回它）；`expectIndexedLinks`：Index 的三条解析到原来的三个节点；撤销的变更集一个、`reverts_id` 是 batch 的；`expectNoAsideNames`；树上的标题照兄弟的次序是 `Notes`、`Glossary`、`Plan`、`Index`（`treeTitles`；也核对撤销放回了次序值，S2 的实施的偏离 6）。
 
 ### 4.4 e2e 的时间
 
-两个测试各约 6–8 秒（P2 的 MC3、MC4 约 5–7 秒；撤销多一次网页的往返），e2e 约 +15 秒；CI 的 E2E 一步今天 3:35–4:17，作业 20 分钟，不受影响。S1 实测：MC5 (MCP) 约 0.2 秒（210 毫秒），E2E 一步在 S1 与各轮里 2:50–3:39（9.1）。HI5 不改，S3 照旧跑它（`e2e/stories/history/hi5-revert-import.spec.ts`）。
+两个测试各约 6–8 秒（P2 的 MC3、MC4 约 5–7 秒；撤销多一次网页的往返），e2e 约 +15 秒；CI 的 E2E 一步今天 3:35–4:17，作业 20 分钟，不受影响。S1 实测：MC5 (MCP) 约 0.2 秒（210 毫秒），E2E 一步在 S1 与各轮里 2:50–3:39（9.1）。S2 实测：MC5 (page) 在整个 e2e 里 524 毫秒（单独 587 毫秒），E2E 一步在 S2 与各轮里 2:56–3:43（9.2）。HI5 不改，S3 照旧跑它（`e2e/stories/history/hi5-revert-import.spec.ts`）。
 
 ## 5. 实施步骤
 
@@ -2146,9 +2202,9 @@ MC5（00 号文档第 9 节）是两个测试，在同一个文件里：S1 加 M
 
 ### 5.2 S2（`m9-p3-s2`）
 
-1. **`revertSim` 与四个前提**，`schedule()`（轮数的上限）与三条后备、`RevertAside`、`Seq`、`Current`，`round()` 删去；单元执行 `RevertAside`（经 `place`，`unit_revert.go`：没有它，带临时的步的计划没有执行的人，审查 C-M2）；`TestScheduleIsTheRoundForM8sChangesets` 先以 `round()` 生成期望（同一个提交里删去 `round()`）；同一个提交改 `TestPlanRevertOfASwapIsUnordered`（改名 `TestPlanRevertOfASwapGoesAside`，断言步）与 `page/app/revert_test.go:456-464`（改为 (T4) 的构造的缺陷），审查 C-M3。
+1. **`revertSim` 与四个前提**，`schedule()`（轮数的上限）与三条后备、`RevertAside`、`Seq`、`Current`，`round()` 删去；单元执行 `RevertAside`（经 `place`，`unit_revert.go`：没有它，带临时的步的计划没有执行的人，审查 C-M2）；`TestScheduleIsTheRoundForM8sChangesets` 先以 `round()` 生成期望（同一个提交里删去 `round()`）；同一个提交改 `TestPlanRevertOfASwapIsUnordered`（改名 `TestPlanRevertOfASwapGoesAside`，断言步）与 `page/app/revert_test.go:456-464`（改为存着的缺陷"比 `MaxDepth` 深的页被改名"，S2 的实施的偏离 2），审查 C-M3。
 2. **`AsideName`** 与它的表。
-3. **`RevertWrites`**、`ContentRef`、写回以 `op.Current` 为基、两份正文的界线（`UnitTooLarge` 的不同的页），S1 的临时检查删去；`revert_test.go:342-347` 那一行改为 `restore P`、`write P`（同一个提交）。
+3. **`RevertWrites`**、`ContentRef`、写回以 `op.Current` 为基、两份正文的界线（`UnitTooLarge` 的不同的页），S1 的临时检查删去；`revert_test.go:342-347` 那一行改为 `restore P`、`content P`（同一个提交）。
 4. **步数**：`Steps()` 与 `MaxRevertSteps` 的注释。
 5. **任务的临时的拒绝**（第 0 节）与 `jobs_test.go` 的一行。
 6. **迁移 00045** 与它的测试；`MarkChangesetMoves`、单元结束时设上、`ChangesetMoves` 读列、`HistoryReads.detail` 的注释；契约的两个说明、生成。
@@ -2181,15 +2237,15 @@ MC5（00 号文档第 9 节）是两个测试，在同一个文件里：S1 加 M
 | 推后的改写（3.7） | `rewrite_test.go`、`TestPathBeforeUndoesEveryChangeFromTheRoot`、`TestRelocationRecasesEveryPage`、`BatchLinks` 的测试、`batch_rewrite_test.go`（冻住的节点、新建的节点、先改写写了的页、一棵树的读） | `TestTheLinksOfABatchAreThoseOfSeparateCalls`、`TestTheWaysABatchDiffersFromSeparateCalls`、`TestTheBatchsRewriteMeetsAnOpening` | MC5 (MCP) 第 2 步 |
 | 界线（3.8） | `TestCheckBatch`、`TestBatchPlanContents`、`apply_batch_test.go`、`content_test.go`、`batch_rewrite_test.go` 的三个数与解析额度 | `TestTheMCPBatchIsRefusedWhole`、`TestTheLargestBatchIsFarWithinTheValuesBound`；守卫那一行的 `TestABatchAtItsRewriteBoundTakesItsTime`、`TestABatchPastItsLinksBoundIsRefused`、`TestABatchPastItsBytesBoundIsRefused`、`TestABatchCountsThePagesItWroteAtTheirFinalSize`、`TestABatchWhosePagesOutgrowTheParseBudgetIsRefused` | — |
 | 答复与错误（3.9） | 适配器的 `batch_test.go`、`TestAnErrorsPlaceFollowsItsCode` | 码的调用、`TestTheMCPBatchIsRefusedWhole` | MC5 (MCP) 第 3 步 |
-| 搜索与事件（3.10） | `TestABatchQueuesForTheSearchInBulk` | `TestTheMCPBatchReachesItsUseCase`、`TestTheSearchIndexIsItsRebuild` | — |
+| 搜索与事件（3.10） | `TestABatchQueuesForTheSearchInBulk` | `TestTheMCPBatchReachesItsUseCase`、`TestTheSearchIndexIsItsRebuild`、`TestThePagesEventListsNoPageInTheTrash`（S2） | — |
 | 工具、清单、说明（3.12） | `tools_test.go`、`instructions_test.go` | `TestTheToolListsAreTheContract`、说明的两个测试 | MC1 第 5 步（照文件） |
 | 码的表、矩阵、字符串、动作（3.13） | — | 3.13 的四处 | — |
 | 4.11 的性质（3.14.6） | — | `TestTheIndexIsItsRebuild` 的 batch 一步 | — |
-| 调度（3.16） | `TestScheduleIsTheRoundForM8sChangesets`、`TestScheduleRevertsEachBatchShape`、`TestScheduleEndsAndPutsTheNotebookBack`、`TestTheSecondFallbackPicksTheNodeItFrees`、`TestTheThirdFallbackMovesAPlaceOffTheRoot`、`TestScheduleAnswersUnorderedForADefect`、`TestPlanRevertOfASwapGoesAside` | `TestTheRevertOfEachBatchShape`、撤销的性质测试、`TestTheMultiRoundRevertMeetsAWrite` | MC5 (page) |
-| 临时名称（3.17） | `TestAsideName` | `TestTheRevertOfEachBatchShape` 的长名称与附件 | MC5 (page) 的 `expectNoAsideNames` |
-| 先恢复再写回、撤销的撤销（3.18） | `TestRevertWritesAreEveryVersionOnABase`、`revert_changeset` 的界线 | `TestTheRevertOfEachBatchShape` 的两行、撤销的性质测试（回收站里的正文） | — |
+| 调度（3.16） | `TestScheduleIsTheRoundForM8sChangesets`、`TestScheduleRevertsEachBatchShape`、`TestScheduleEndsAndPutsTheNotebookBack`、`TestTheSecondFallbackPicksTheNodeItFrees`、`TestTheThirdFallbackMovesAPlaceOffTheRoot`、`TestScheduleAnswersUnorderedForADefect`、`TestPlanRevertOfASwapGoesAside`、`TestTheSecondFallbackTakesTheLeastFirst`、`TestTheSecondFallbackMovesOnlyANodeToPlace`、`TestAFallbackRenamesANodeAsideOnce`、`TestARestoreWaitsForTheGroupItGoesUnder`、`TestAScheduleTakesMoreRoundsThanItsSteps` | `TestTheRevertOfEachBatchShape`、撤销的性质测试、`TestTheMultiRoundRevertMeetsAWrite` | MC5 (page) |
+| 临时名称（3.17） | `TestAsideName`、`TestNumbered`、`TestAStepAsideTakesNoKeyOfS` | `TestTheRevertOfEachBatchShape` 的长名称与附件 | MC5 (page) 的 `expectNoAsideNames` |
+| 先恢复再写回、撤销的撤销（3.18） | `TestRevertWritesAreEveryVersionOnABase`、`TestARevertRestoresAPageThenWritesItBack`、`TestARevertsContentsAreParsedByPageAndHash`、`TestDecidedAllGivesItsSharesBackBeforeATakeThatCannotFit`、适配器的 `TestTheAdapterKeepsTheFactsShare` | `TestTheRevertOfEachBatchShape` 的两行、`TestTheRevertOfALonePagesTwoContentsAtTheLeastBudget`、撤销的性质测试（回收站里的正文） | — |
 | 步数（3.19） | `TestStepsCountTheStepsAside` | — | HI5（S3） |
-| `renames`、`moves`（3.20） | `TestTheChangesetsMovesAreBackfilled` | `TestTheChangesetsRenamesCountEveryItem` | MC5 (page) 的对话框提醒 |
+| `renames`、`moves`（3.20） | `TestTheChangesetsMovesAreBackfilled`、`TestAUnitMarksItsChangesetsRenamesAndMoves`、适配器的 `TestChangesetMoves` | `TestTheChangesetsRenamesCountEveryItem` | MC5 (page) 的对话框提醒 |
 | 后台的段、切批与核对（3.22–3.24） | `TestTheJobsStepsReplayToStar`、`revertSteps` 与 `unit_revert` 的表、transfer 的 `background_test.go`、`TestARevertJobOfAGroupDeletedAgainSinceThePlan`、`TestARevertJobsBatchPlansItsOwnNodes` | `TestTheBackgroundRevertOfANameCycleKeepsItsSegments`、`TestTheBackgroundRevertStopsAtAWriteBetweenItsBatches`、`TestTheBackgroundRevertOfASegmentPastABatchStops`、`TestTheBackgroundRevertOfALargeFolderHoldsItsGroup` | HI5 |
 | 网页的一条文字（3.25） | `transfer-report.test.ts`、`messages.test.ts` | — | — |
 
@@ -2284,20 +2340,20 @@ MC5（00 号文档第 9 节）是两个测试，在同一个文件里：S1 加 M
 | 69 | `DropUnchanged` 也去掉写了正文的、回到原处的节点的改动 | `TestTheMergesOfABatchHoldOnTheDatabase` 的"改名再改回，中间写它"（`checkLinks`：A 的链接的索引是旧的正文的） |
 | 70 | `PageStates` 不填 `Hash`（`store.go:194`） | `TestPageStates`（A 与 B 的哈希）；`TestTheMergesOfABatchHoldOnTheDatabase` 的"过期的令牌、相同的字节"（答 `page.revision_mismatch`） |
 | 71 | 恢复不核对层级 | `TestScheduleEndsAndPutsTheNotebookBack`（模拟：49 次） |
-| 72 | 删除不等写回 | `TestScheduleEndsAndPutsTheNotebookBack`（模拟：7,494 次）；`TestTheRevertOfEachBatchShape` 的撤销的撤销 |
+| 72 | 删除不等写回 | `TestScheduleEndsAndPutsTheNotebookBack`（模拟：7,494 次）；`TestTheRevertOfEachBatchShape` 的撤销的撤销；撤销的性质测试（"先写正文再删除"的 batch 立即撤销一次之后，S2 的实施的偏离 9） |
 | 73 | `RevertWrites` 照 M8 | `TestRevertWritesAreEveryVersionOnABase`；`TestTheRevertOfEachBatchShape` 的"先写正文再删除"（模拟：7,555 次） |
 | 74 | 去掉第 1 条后备 | `TestScheduleRevertsEachBatchShape` 的互换名称（在根下）；`TestTheRevertOfEachBatchShape` |
-| 75 | 去掉第 2 条后备 | `TestTheSecondFallbackPicksTheNodeItFrees` |
+| 75 | 去掉第 2 条后备 | `TestTheSecondFallbackPicksTheNodeItFrees`；S2 的修正的第 1 轮起也有 domain 的性质测试的全量一次（按移动的样子，审查 C-N2） |
 | 76 | 第 3 条后备取根下的节点 | `TestTheThirdFallbackMovesAPlaceOffTheRoot` |
 | 77 | 临时名称取前 8 位 | `TestAsideName` |
 | 78 | 临时名称不截短 | `TestAsideName`；`TestTheRevertOfEachBatchShape` 的长名称（`nodes_name_check`） |
-| 79 | 附件的临时名称丢掉扩展名 | `TestAsideName`；同上的附件 |
+| 79 | 附件的临时名称丢掉扩展名 | `TestAsideName`；S2 的修正的第 1 轮起也有 domain 的性质测试（模型的附件要留着扩展名，审查 A-M2）；组合根的附件那一行抓不到：丢了扩展名仍是合法的标题，只在单元之中（S2 的实施的偏离 11，审查 C-N6） |
 | 80 | 写回以 `state.Contents` 为基 | `TestTheRevertOfEachBatchShape` 的"先写正文再删除"（500） |
-| 81 | 解析好的正文按页 id | 同上（`parsedAs` 的冲突或错的 Facts，`checkRebuilt`） |
+| 81 | 解析好的正文按页 id | `TestARevertRestoresAPageThenWritesItBack`（读守卫看到的每一步的事实）；M8 的两个用例的测试：`TestRevertChangesetAnswersItsCodesInOrder` 的 "a page in the trash at other bytes meanwhile" 与 `TestRevertChangesetsLockedConflictsComeByNodeID`（键里没有哈希时 `parsedAs` 看不出两次读之间改了的正文）；组合根的"先写正文再删除"那一行看不出：恢复的事实只到守卫，索引照写回的（S2 的实施的偏离 10，审查 B-N2、C-N6） |
 | 82 | `Steps()` 不数临时的步 | `TestStepsCountTheStepsAside` |
 | 83 | 补值只看前 1,000 项 | `TestTheChangesetsMovesAreBackfilled` |
-| 84 | 单元结束时不设两列 | `TestTheChangesetsRenamesCountEveryItem` |
-| 85 | S2 的任务的临时的拒绝去掉（在 S2 里） | `jobs_test.go` 的一行 |
+| 84 | 单元结束时不设两列 | `TestTheChangesetsRenamesCountEveryItem`；`TestAUnitMarksItsChangesetsRenamesAndMoves` |
+| 85 | S2 的任务的临时的拒绝去掉（在 S2 里） | `TestARevertJobRefusesTheStepsItsBatchesWouldSplit` |
 | 86 | "changeset reverted"那一行不带 `aside` | 撤销的性质测试的不空转 |
 | 87 | 不标 `Joined` | `TestTheJobsStepsReplayToStar`；`TestTheBackgroundRevertOfANameCycleKeepsItsSegments`（批的边界上的临时名称） |
 | 88 | 恢复不截到要的成员 | `revertSteps` 的表 |
@@ -2332,7 +2388,7 @@ MC5（00 号文档第 9 节）是两个测试，在同一个文件里：S1 加 M
 | 份 | 现在（测试一步） | S1 加的（本机，竞态） | S2 加的 | S3 加的 | P3 之后的估计（CI） |
 |---|---|---|---|---|---|
 | `bootstrap-1` | 7:09、6:58（约 7:04） | 无（`TestEveryMCPToolHasItsCodes` 多一行，只读文件；守卫不在这一份，上一段） | 无 | 无（`TestABackgroundBatchPastTheLinksIsHalved` 在这一份：它是回收站的恢复的任务，恢复的步没有段，每一步是一个边界，减半的新规则对它与今天相同，用时不变） | 不变，约 7:04 |
-| `bootstrap-2` | 4:32 | `TestTheBatchsRewriteMeetsAnOpening` 约 2 秒、`TestTheBatchIsPlannedAgainAfterAWrite` 约 3 秒（两个子测试）：约 +5 秒 | 撤销的性质测试 +2–4 秒（今天本机 5.2–5.8 秒，3.21.3）；`TestTheChangesetsRenamesCountEveryItem` 约 3 秒（含一个导入与一个后台任务）：约 +5–7 秒 | 四个 `TestTheBackgroundRevert…`：名称环约 3–4 秒、批之间的写约 5 秒（两个子测试，第二个的批的大小 1）、一段过了一批约 3 秒（101 页、各 210 条链接的种子）、大的文件夹约 7–8 秒（四个子测试）：约 +18–20 秒 | +28–32 秒本机，乘这一份的比约 1.93：约 5:26–5:34 |
+| `bootstrap-2` | 4:32 | `TestTheBatchsRewriteMeetsAnOpening` 约 2 秒、`TestTheBatchIsPlannedAgainAfterAWrite` 约 3 秒（两个子测试）：约 +5 秒 | 撤销的性质测试 +2–4 秒（今天本机 5.2–5.8 秒，3.21.3）；`TestTheChangesetsRenamesCountEveryItem` 约 3 秒（含一个导入与一个后台任务）：约 +5–7 秒 | 四个 `TestTheBackgroundRevert…`：名称环约 3–4 秒、批之间的写约 5 秒（两个子测试，第二个的批的大小 1）、一段过了一批约 3 秒（101 页、各 210 条链接的种子）、大的文件夹约 7–8 秒（四个子测试）：约 +18–20 秒 | S1、S2 实测本机 +10.3 秒（131.4 → 141.7 秒，S2 的修正的第 1 轮之后），S3 估计 +18–20 秒；乘这一份最近的比约 2.33（329.5 ÷ 141.7）：约 6:12–6:17（S2 的修复核对 C 的 N3；原估计乘 1.93 约 5:26–5:34） |
 | `bootstrap-3` | 3:24 | `TestTheMCPBatchReachesItsUseCase` 约 3 秒、`TestTheMergesOfABatchHoldOnTheDatabase` 约 4 秒（加了改名再改回的两行与过期的令牌的一行）、`TestTheLinksOfABatchAreThoseOfSeparateCalls` 约 10–12 秒（19 种，每种两本笔记本）、`TestTheWaysABatchDiffersFromSeparateCalls` 约 5–6 秒（十种）、`TestTheMCPBatchIsRefusedWhole` 约 7–9 秒（10,001 个节点与 14 MiB 以 SQL 种下、50 对）、`TestTheMCPBatchMeetsAWebRename` 约 2 秒、`TestTheLargestBatchIsFarWithinTheValuesBound` 约 1 秒；`TestTheIndexIsItsRebuild` +3 秒、`TestTheSearchIndexIsItsRebuild` +1 秒；矩阵 +26 格约 +5–8 秒、码的调用 +1–2 秒、工具的字符串、清单与日志约 +1 秒：约 +43–52 秒 | `TestTheRevertOfEachBatchShape` 约 12–14 秒、`TestTheMultiRoundRevertMeetsAWrite` 约 2 秒：约 +14–16 秒 | 无 | +57–68 秒本机，CI ×1.6–1.9 约 +1:31–2:09：约 4:55–5:33 |
 | `guards` | 作业约 10–11 分钟 / 25 | `TestABatchAtItsRewriteBoundTakesItsTime` 单独一行、带 `-v`（不带竞态，本机约 8–10 秒：R 页、T 与两页以 SQL 种下并建索引，界线上的 batch，过界的 batch，3.8.2），乘这一份的比 2.4 约 19–24 秒 | 无 | 无 | 作业约 +0.5 分钟；这一行远在 Go 默认的 10 分钟的一半之下，不加 `-timeout` |
 | `race`（组合根之外的包） | 作业约 8 分钟 / 20 | domain、app、linking、mcpserver、适配器的测试约 +5–10 秒 | 调度的性质测试 2 万次（不带竞态本机约 1–2 秒，竞态下按 5–10 倍约 5–20 秒）、迁移的测试约 1 秒 | `TestTheJobsStepsReplayToStar` 约 1 秒、transfer 的测试 | 约 +15–35 秒，作业仍在 20 分钟的一半之下 |
@@ -2343,7 +2399,9 @@ S1 之后，守卫那一份的作业在修正的第 6 轮到了 12:47（batch �
 
 S1 合并时（9.1）：三份本机单独两次的平均 250.6、131.4、145.3 秒；CI 上第二、三份的测试一步在 3:41–5:33 与 3:20–4:56 之间，第一份没有 S1 的测试，在 5:01 与 7:17 之间摆动，合并之后最近两次（第 7 轮的 5:47 与 `main` 的 7:00）平均 6:23.5：都在线下，界线没有挪、没有分、没有提高 `-timeout`。
 
-**每个 Step 的做法**：合并之前以本机每份单独跑两次的平均乘这一份的 CI 与本机之比估计，合并之后以 CI 的两次运行核对，写进那个 Step 的审查记录（同 P2）。第二、第三份在 P3 之后都离线约 2 分钟，不用挪界线、也不用分；万一第一份因 runner 的摆动或别人的改动过了线，照规则先看第二份能否接过 `BOOTSTRAP_FIRST` 末尾的 `TestEvery[M-R]…`（第二份 P3 之后约 5:30，挪过去几十秒之后仍在线之下就挪，否则分），这不是 P3 的测试引起的，但由发现它的那个 Step 照规则做。`ci.yml` 不为新的一行改（审查 C-N12）：它跑 `make "test-go-${{ matrix.leg }}"`（`.github/workflows/ci.yml:95`），守卫的新的一行在 `Makefile` 里；S1 只改了守卫那一份的时限，由 25 分钟提到 30 分钟（修正的第 7 轮，S1 复核 C 的 N3-f4）。
+S2 合并时（9.2）：三份本机单独两次的平均 251.9、133.0、153.0 秒（S1 的 +1.3、+1.6、+7.7；估计第二、三份 +5–7、+14–16：`TestTheRevertOfEachBatchShape` 竞态下 1.3 秒，不是估计的 12–14 秒，一个团队与一个库服务每一行）；修正的第 1 轮之后第二、三份 141.7、168.3 秒，第 2 轮之后第三份 161.1 秒。CI 上第二份的测试一步在 3:45–5:31、第三份在 3:24–5:20 之间（运行机的摆动：3:24 那次与本机之比 1.33，5:20 那次 1.90）；第一份没有 S2 与各轮的测试，修正的第 1 轮的两次 7:12、7:07，平均 7:09.5，离线约 20 秒，第 2 轮之后最近两次 7:07、6:08，平均 6:37.5：都在线下，界线没有挪、没有分、没有提高 `-timeout`。
+
+**每个 Step 的做法**：合并之前以本机每份单独跑两次的平均乘这一份的 CI 与本机之比估计，合并之后以 CI 的两次运行核对，写进那个 Step 的审查记录（同 P2）。第二份在 P3 之后约 6:12–6:17、离线一分多钟，第三份 S2 之后最近两次平均 5:17（修正的第 1 轮之后）与 4:25（第 2 轮之后），不用挪界线、也不用分。万一第一份因 runner 的摆动或别人的改动过了线，`BOOTSTRAP_FIRST` 末尾的 `TestEvery[M-R]…`（本机竞态下 28.4 秒：两个 vault 的测试 10.75、7.79 秒，`TestEveryPageWriteKeepsTheIndex` 3.84 秒，`TestEveryOperationAcceptsAPersonalAccessToken` 2.57 秒）挪到**第三份**：`BOOTSTRAP_FIRST = ^Test([A-D]|E([a-u]|very[A-L]))`、`BOOTSTRAP_THIRD = ^Test(The[F-Z]|T[i-z]|[U-Z]|Every[M-R])`，第二份的 `-skip` 照旧对。第三份接过它们约 (168.3 + 28.4) × 1.88 ≈ 6:10，第一份降到约 7:09.5 − 28.4 × 1.71 ≈ 6:21；第二份接过它们约 7:18–7:23，离线只约 10 秒，所以不是第二份（S2 的修复核对 C 的 N3，主持者的决定 9）。这不是 P3 的测试引起的，但由发现它的那个 Step 照规则做；S3 照这一条记第一份的两次运行。`ci.yml` 不为新的一行改（审查 C-N12）：它跑 `make "test-go-${{ matrix.leg }}"`（`.github/workflows/ci.yml:95`），守卫的新的一行在 `Makefile` 里；S1 只改了守卫那一份的时限，由 25 分钟提到 30 分钟（修正的第 7 轮，S1 复核 C 的 N3-f4）。
 
 ## 7. 完成标准
 
@@ -2380,13 +2438,13 @@ S1 合并时（9.1）：三份本机单独两次的平均 250.6、131.4、145.3 
   - 3.10.1 的实测改了 `batch` 的入队（批量、带 `building`，S1 的审查记录的主持者的决定 1），`grep` 与 `search` 的说明照它写"刚写的可能还没进索引"；
   - 码的表、矩阵、工具的字符串、`tools.json` 照 P2、P3 的写法；新的整个程序测试照 6.5 取名、以 `-race` 的 `go test -list` 核对落在第二、第三份。
 - **P5（其余故事的 MCP 版本与接入文档）**：接入文档写 `batch`、4.11 的与分开调用的不同（那一条规则）与说明的别名；人工清单在真实的客户端里试 `batch`（破坏性、非幂等的工具的审批提示）。
-- **M10（守卫）**：一个 batch 的单元里守卫看到每一项的写，同一页的正文在它第一个正文操作的位置以最后的正文出现一次，推后的改写的追加写另经守卫；撤销的步带 `Write.Kind = revert`，其中有临时名称（带 ` ~` 与 id 的一段），模式守卫要认得它们（写进"写给后面的 M"）。
+- **M10（守卫）**：一个 batch 的单元里守卫看到每一项的写，同一页的正文在它第一个正文操作的位置以最后的正文出现一次，推后的改写的追加写另经守卫；撤销的步带 `Write.Kind = revert`，其中有临时名称（带 ` ~` 与 id 的一段），模式守卫要认得它们（写进"写给后面的 M"）。S2 建成时守卫只凭名称认得临时的步：它以普通的 `OpRename` 或 `OpMove` 的一步到达守卫（经 `place`，`page/app/unit_revert.go`），`Write.Kind` 是 `revert`、临时名称在 `Changes[0].After`，步上没有它是临时的步的标记；模式 `" ~<hex>"` 也是合法的用户标题，放回一个真叫 `x ~1a2b3c4d` 的节点的撤销在守卫看来相同。M10 可以在 `Step` 上带步的种类（`RevertOpKind`）或一个 `Aside` 标记（S2 审查 B-N4，主持者的决定 10）。同一单元里先恢复、再写回的页，守卫先看到恢复的一步与它的事实（回收站里的正文的），再看到写回（S2 审查 B-N2，3.18.3）。
 - **M11（冻结与回滚）**：回滚一组变更集时用 `schedule()`（按依赖的调度与后备对任何变更集都成立，轮数的上限让缺陷答 `ErrRevertUnordered` 而不打转）。
-- **M12（发布）**：第 7 节的性能移交各项；`revert_too_large` 的两种来源（一段里大的恢复、撤销的撤销里写回的链接）进风险（第 10 节）；00045 的补值在大的库上要几分钟时写进升级的说明。
+- **M12（发布）**：第 7 节的性能移交各项；`revert_too_large` 的两种来源（一段里大的恢复、撤销的撤销里写回的链接）进风险（第 10 节）；00045 的补值写进升级的说明：100 万个变更集、300 万条条目约 2 秒，5,000 万条约 30 秒，其间持着 `changesets` 的 ACCESS EXCLUSIVE 锁（goose 的一个事务，只在启动时；S2 实测与审查 B 的注记，3.20.1，[性能移交](../M12-release/handoffs/M4-performance.md)第 18 项）。
 
 ## 9. 结果
 
-（各 Step 合并时写：合并、偏离、量出的数——`MaxBatchRewrites` 的各档、搜索的第一页、各份的用时、变异的结果。S1 的在 9.1：`MaxBatchRewrites` 400 与碰到的链接、改写的页的字节的两个界线，搜索的第一页与它的判断，各份没有挪、没有分，变异与各轮的反向对照都被抓到。）
+（各 Step 合并时写：合并、偏离、量出的数——`MaxBatchRewrites` 的各档、搜索的第一页、各份的用时、变异的结果。S1 的在 9.1：`MaxBatchRewrites` 400 与碰到的链接、改写的页的字节的两个界线，搜索的第一页与它的判断，各份没有挪、没有分，变异与各轮的反向对照都被抓到。S2 的在 9.2：调度与它的上限、临时名称、一页的两份正文在最小的预算下、`renames` 与 `moves` 的迁移与它的用时，各份没有挪、没有分（第一份过线时改为挪到第三份），变异与各轮的反向对照都被抓到，C 的两个上限的变异照决定存活。）
 
 ### 9.1 S1：batch（2026-10-20，合并 `f19d0b6f`）
 
@@ -2505,7 +2563,127 @@ S1 合并时（9.1）：三份本机单独两次的平均 250.6、131.4、145.3 
 - 交给后面的：M12：batch 的计划与最坏的 batch、`MaxBatchRewrites` 与它的守卫、batch 之后的搜索、许多次改名之间的带链接的页与正文的一遍的再展开、链接密与页的字节的曲线、很重的页、单个 `move` 的同样的风险与一个共用的界线（连同写出的长度与界线的提示），[性能移交](../M12-release/handoffs/M4-performance.md)第 18 项；P4：`grep` 与 `search` 的说明写刚写的可能还没进索引（第 8 节）；S2：组合根第一份照它最近的平均估计。没有交给 v0.1 之后的打磨的。CI 的作业日志要认证，每个测试在 CI 上的用时（batch 的守卫的单元在内）没有记下，只有每一步的时间。
 - 负责人可以改判的取舍（主持者的决定）：搜索批量入队、答复带 `building`（由 3.10.1 的规则定）；冻住的节点的链接从不改写；写了的页在 `MaxBatchRewrites` 里算 2；移动带着走的节点、碰到的链接与改写的页的字节三个新的界线与改写过的页留下的解析额度的检查，单个 `move` 照旧不受限；之前的改名、移动碰到它的页的 `write` 读整页；新建的节点不在跟随的操作的触及里；改名的改写碰到被编辑的页只在单元里查到；计划一次只留一棵树的读；许多次改名之间的带链接的页、界线之内的重页与单个链接密的移动 v0.1 接受、交 M12；M8 的清理测试的摆动在 S1 里改；成本那一份的时限、batch 的守卫在 CI 上的余量与组合根第一份现在不动；River 重选时的疑点记下、不改。逐条见审查记录的"主持者的决定"（00 号文档第 11 节第 44–55 条）。
 
-### 9.2 S2：撤销的调度
+### 9.2 S2：撤销的调度（2026-10-21，合并 `43b03b36`）
+
+- 提交（从 main 的 `9ee2f5bd` 开始，照 5.2 的次序，11 个）：
+  - `revertSim` 与四个前提、`schedule()`（轮数的上限在代码里）与三条后备、`RevertAside`、`Seq`、`Current`、`planner.maxDepth`。单元经 `place` 执行临时的步；`round()` 删去，`TestScheduleIsTheRoundForM8sChangesets` 的期望在删去之前以它生成。同一提交改 `TestPlanRevertOfASwapGoesAside` 与用例的 (T4) 一行（`a47c22da`）。
+  - `AsideName` 照 `numbered` 截短、留扩展名（`a682e52c`）。
+  - `RevertWrites`、`ContentRef`、写回在 `Current` 上、按（页、哈希）解析、`DecidedContents`，界线按页数与份数分开。S1 的临时检查删去，`revert_test.go:342-347` 同一提交改为 `restore P`、`content P`（`1626301f`）。
+  - `Steps()` 数临时的步（`d13c717e`）。
+  - 任务的临时的拒绝 `unsplit`（`600bc0f1`）。
+  - 迁移 00045、`MarkChangesetMoves`、单元结束时设上、`ChangesetMoves` 读列、契约的说明与生成（`d32b8ed4`）。
+  - "changeset reverted" 那一行的 `aside`（`f475e642`）。
+  - domain 的性质测试与构造的测试（`90ddd8cc`）。
+  - 组合根的四个测试（`d9738402`）。
+  - MC5 (page)（`96ab099d`）。
+  - 第 72、81 条变异先活下来之后加强的两个测试（`59bd9e23`）。
+  - 每个提交单独在一个工作树里 build、vet 与它碰到的包的 `go test -short` 都通过。第一次 `make test-go` 抓到权限矩阵以 SQL 种下的改名的变更集没设 `renames`，这一处改在迁移的提交里（原 `83694ef2`，现 `d32b8ed4`），之后的提交照次序重新摘取；审查 C 把重新摘取的每个提交各自核对过。
+  - 修正的两轮另有 22 个（第 1 轮 17 个、第 2 轮 5 个，下面各轮），一共 33 个，合并 `43b03b36`（第二个父提交 `03ef0c0b`）。组合根的份没有改（下面"组合根的各份"一条）。
+- 与设计不同之处（实施时定下的，都是最小的改动；已改在各节，3.29 列出）：
+  1. "恢复到另一组之下"撤销不了（留给主持者）。L（M8 的 `readReverted.topOf`）把删除的节点沿它删除之前的父节点、只要也被这个变更集删除就一直往上找顶，两个上下相套的回收站项读成一组。`rootHolds`、`groupIsDeleted` 拿外面那一项比，它只有自己的成员，所以顶与里面的根都是 `changed`。真的库上的那一行以两次 REST 的删除、再在 SQL 里并成一个变更集种下，断言 409 `page.revert_conflict`（A、B `changed`）、什么都没写。domain 的那一条是包里构造的计划者（`TestARestoreWaitsForTheGroupItGoesUnder`）：恢复 B 等 A 的那一组一轮。要让它撤销得了，得改 M8 的 L，没改：batch 与撤销都做不出它，只有手写的数据。
+  2. 用例的 (T4) 一行不用"S\* 里两个同键的节点"：用例上 `before()` 先把它答成 `title_taken`，到不了调度。改为存着的缺陷"比 `MaxDepth` 深的页被改名"：放回在临时的步前后都放不下，答 `ErrRevertUnordered`（500 的路）。同键的构造在 domain 的 `TestScheduleAnswersUnorderedForADefect`。
+  3. 契约里 `getChangeset` 与 `ChangesetDetail` 的说明也写着"前 1,000 项"，一并改为全部条目。
+  4. 钉住旧的读法的测试：
+     - 适配器的 `TestChangesetMoves` 重写（设上之后留着、别的变更集、没有了的变更集）。
+     - `TestTheLogReadsUseTheirIndexes` 的 `ChangesetMoves` 走 `changesets_pkey`。
+     - 权限矩阵种下的改名的变更集带 `renames = true`（照它的单元会设的）。
+  5. `DecidedContents` 是 `DecidedAll` 旁的泛型，不改 `DecidedAll` 的签名，回收站的恢复不动。
+  6. MC5 (page) 的树照次序列出，是 `Notes, Glossary, Plan, Index`，不是按名称的 `Glossary, Index, Notes, Plan`。
+  7. 临时名称避开 S\* 的键由 `TestAStepAsideTakesNoKeyOfS`（包里的）核对：`AsideName` 的 `taken` 由调用者给，S\* 的那一半在 `aside()`。
+  8. (T1) "临时改名两次"的变异在性质测试里活下来，与"不避开 S\* 的键"合在一起也一样（2 万次）：临时名称从不被等着的步要，这条判断在合法的状态里到不了。加了构造的 `TestAFallbackRenamesANodeAsideOnce` 抓它。
+  9. 撤销的性质测试：
+     - 两种定向的 batch 在 k 个变更集的开头先做（每种至多试三次）。
+     - "先写正文再删除"的那个 batch 立即撤销一次：从新到旧连续撤销时链里就有撤销的撤销（先写回、再删除）。不这样，第 72 条变异在 3.27 点名的性质测试里活下来。
+  10. 第 81 条变异（按页 id 解析）在组合根的那一行里结束时一样：恢复的事实在同一个单元里被写回的换掉。`TestARevertRestoresAPageThenWritesItBack` 加读守卫看到的每一步的事实，抓到它。审查 B 核对：链接索引、搜索与事件看到的是单元合并的改动，它的事实是写回的，恢复的事实只到守卫（审查 B-N2，3.18.3）。
+  11. 第 79 条变异在组合根的附件那一行活下来：附件的临时名称丢了扩展名仍是合法的标题，只是暂时的。`TestAsideName` 抓到它。
+  12. 组合根的"移动加改名的中间态"以两项（`F/B → G/B → G/A`）写出，batch 合并成一个移动加改名的条目。
+  13. 同一毫秒的两个附件以 SQL 种下，文件经 `storage.OpenLocal` 写进应用的目录（同 `assets_jobs_test.go`；那时没有上传在写）。
+- 实测：
+  - 00045 的补值：在 00044 的库上以 `generate_series` 造 100 万个变更集、各 3 项（300 万条条目，10 万页上；十分之一改名、十分之一移到别的父节点、其余新建或换次序）。升到 00045 用 1.87 与 2.19 秒，设上的改名、移动各 10 万。
+  - 最大的 batch 的撤销（本机，不带竞态，各两次）：
+    - 经第三个名称互换 33 对（99 项）：99 步（33 个临时的步、66 个放回），写回 66 页（链接的改写），171–206 毫秒。
+    - 审查的反例 20 个（100 项）：100 步（20 个临时的步、20 个删除、20 个恢复、40 个放回），112–137 毫秒。
+    - 33 页先写正文再删除、再新建（99 项）：66 步加写回 33 页，118 毫秒。
+    - 都远在 `MaxRevertSteps` 的 1,500 之内。
+    - 删除约 1 万个节点、再建回文件夹的 batch，请求照 M8 以单元的页数答 `page.revert_too_large`，它的撤销是后台的（S3）。
+  - 性质测试：
+    - domain 的 2 万次 0.94–0.99 秒，竞态下 6.15–6.22 秒；`-short` 的 2,000 次 0.11 秒，竞态下 0.62–0.63 秒。
+    - 次数（确定的）：临时改名 18,570、从待删除的子树移到根下 616、别的移到根下 0、先写回再删除 21,052；`-short` 下 1,928、44、0、2,080。一次撤销至多 3 个临时的步、19 步。
+    - 组合根的撤销的性质测试竞态下 5.28–5.45 秒（main 上 8.0–9.1 秒，随机的序列随新的两种操作变了），`TestTheSearchIndexIsItsRebuild` 3.23–3.26 秒。
+    - 新的组合根测试竞态下：`TestTheRevertOfEachBatchShape` 1.28–1.30 秒、`TestTheMultiRoundRevertMeetsAWrite` 1.16–1.17 秒、`TestTheChangesetsRenamesCountEveryItem` 2.44–2.68 秒。
+  - MC5 (page) 在整个 e2e 里 524 毫秒（单独 587 毫秒），4.4 估计 6–8 秒。
+- 反向对照：
+  - 6.3 的第 71–86 条都被它点名的测试，或为它加的测试抓到。
+  - 第 72 条起初在组合根的性质测试里活下来，第 81 条在组合根的那一行活下来，各加强一个测试之后都抓到（上面第 9、10 条）。第 79 条组合根那一行抓不到，`TestAsideName` 抓到。
+  - 3.27 的 S2 各行：
+    - 放回不核对环：性质测试抓到（`TestScheduleRevertsEachBatchShape` 单独抓不到）。
+    - 轮数的上限：与"去掉第 2 条""第 3 条不论"合在一起时，性质测试以 `ErrRevertUnordered` 失败；去掉上限挂到 `-timeout 90s`。
+    - 卡住时不答 `ErrRevertUnordered`、临时名称不避开 S\* 的键、恢复不等它的父组、读还走旧的语句、按份数算一页的例外：都被抓到。
+    - "临时改名两次"见第 8 条。
+- 门禁（本机，`59bd9e23`）：
+  - `make lint-go`、`gen-check`、`knip`、`lint-web`、`test-web`、`build-web`、`build` 都通过。
+  - `make test-go-short` 56 秒。
+  - `make test-go` 737 秒（第一次失败在权限矩阵的种子上，改后通过）。
+  - `make e2e` 260 个 36.5 秒。
+- 组合根的各份（6.5 的规则）：
+  - 本机单独两次的平均 251.9、133.0、153.0 秒（S1 的 250.6、131.4、145.3：+1.3、+1.6、+7.7 秒；设计估计第二、三份 +5–7、+14–16 秒）。
+  - `go test -race -list` 核对：`TestTheRevertOfEachBatchShape`、`TestTheMultiRoundRevertMeetsAWrite` 在第三份；`TestTheChangesetsRenamesCountEveryItem`、`TestRevertingTheNewestChangesetsPutsTheNotebookBack` 在第二份；第一份没有新的。
+  - CI 的测试一步 4:49、5:25、3:24（与本机之比 1.15、2.44、1.33），都在约 7:30 的线下。界线没有挪、没有分、没有提高 `-timeout`，CI 的文件没改。
+- CI（分支的 run 39463166210，`59bd9e23`，作业，括号里是测试一步）：竞态 5:19（5:01）、组合根一 5:10（4:49）、二 5:46（5:25）、三 3:43（3:24）、守卫 12:13（11:54，时限 30 分钟）、成本 10:06（6:59）、short 2:14（1:56）、web 4:19（3:37）、e2e 4:31（E2E 一步 3:34）、镜像 1:24，都是绿的。
+- 实施时留给审查与主持者的，都在下面的修正里定了："恢复到另一组之下"（上面第 1 条）照现在的 L 拒绝（409，什么都不写；3.21.2 的那一行改为这样）；(T1) 的那条判断（第 8 条）留着，构造的测试是它的反向对照；README、v0.1 总体设计与本文的 S2 的文字由主持者写；M12 的性能移交记"00045 的补值：100 万个变更集、300 万条条目约 2 秒，`changesets` 的 ACCESS EXCLUSIVE 锁在那几秒里，只在启动时"。
+- **修正的第 1 轮**（2026-10-21，分支 `m9-p3-s2` 的 `5b7c9a33`；三份审查与主持者的决定，`fix-brief-1.md`）：从 `59bd9e23` 起 17 个提交，每项一个，加 CI 的一个；每个提交单独 build、vet 与碰到的包的 short 测试都通过。
+  - 实施时留下的两条：上下相套的回收站项照现在拒绝（(a)，3.21.2 的那一行合并时改）；(T1) 的那条判断留着，构造的测试是它的反向对照。
+  - 次要的：
+    - B-M1 `aa17adaf`：一次撤销里一页的两份正文，在最小的预算下也解析得了。`decidedAll` 在一次取放不下本次调用留着的份额时先还掉它们（3.18.4）。
+    - B-M2 与 C-M2 `cefbfa63`：根下与文件夹下的换次序都不设标记，文件夹下的改名只设 `renames`；组合根的测试加经 REST 的文件夹下的改名与换次序。
+    - B-M3 `3bc452ac`：迁移的测试里新建与删除的条目放在 P 之下。
+    - C-M1 `70374a74`：撤销的性质测试按种类数。agent 自己的移动不算 batch 的；强制的定向 batch 另算；随机的 batch 与 op 12 的各有下限。
+    - A-M1 `ebf52ca6`：A 的形状要 6 轮，开始时待做 4 步；没有 D 的要 5 轮、3 步。轮数记在 `revertSim.rounds`，由 `export_test.go` 的 `ScheduleRounds` 交给测试。
+    - A-M2 `f60e68c2`：`TestScheduleRevertsEachBatchShape` 加一行"MaxDepth 上带附件的页被删除、再恢复"；domain 的性质测试的模型有了附件，层数照 `Subtree.Height` 不算附件，附件的临时名称要留着扩展名。
+  - 小问题：
+    - B-N1 = C-N4 `5795d2f9`：标记在搜索入队之前。
+    - B-N3 `294ba2f2`：页面事件只列单元之后活着的写过的页；网页不用改，同删除。
+    - C-N1 `cde45547`：第 2 条后备按 id 从小到大。
+    - C-N2 `cb07812b`：性质测试断言没有一步把节点从根或 S\* 里活着的父节点下移到根下（只有第 3 条后备会这样移；按移动的样子数，不按哪条后备）。
+    - C-N3 `63900811`：每一行只读自己开始之后的日志。
+    - C-N5 `26bd04e5`：临时改过名再移到根下的节点，名称从计划开始时的造。
+    - A-N1 `bdd85857`：3.17 的空主干，M7 的 `Numbered` 一并改（存下的名称一个也不改：导入经 `CheckTitle` 去掉开头的空格，从来没有以空格开头的名称存下；改的只是很少见的新名称怎么造）。
+    - A-N2 `044dcc4c`：第 2 条后备只取待放回的节点。
+    - A-N3 `07d984e8`：`stepKey` 的注释。
+    - A-N4 `62187eda`：任务的临时的拒绝包一层文字，`errors.Is` 仍找得到 `ErrRevertUnordered`。
+  - 实测：
+    - B 的形状（真的库）：竞态下 5 MiB 的预算 833–894 毫秒、8 MiB 846–894 毫秒答 200（修之前 5 MiB 每次 503）；不带竞态 177 与 165 毫秒。
+    - domain 的性质测试 2 万次：77,784 次撤销，临时改名 13,142、从待删除的子树移到根下 584、别的移到根下 0、先写回再删除 15,912、附件的步 35,262、带附件的恢复 28,328；0.99–1.00 秒，竞态下 6.31–6.32 秒；`-short` 0.13 秒，竞态下 0.70 秒。
+    - 组合根的性质测试（四个种子）：agent 自己的移动 3、它的随机 batch 2、op 12 的定向 batch 2、强制的 8；下限 2、1、1、4。
+    - 组合根的第二、三份单独两次的平均 141.7、168.3 秒（S2 的 133.0、153.0 秒），第三份多的主要是两份正文的那个测试（竞态下约 11 秒）。
+  - 反向对照，都被抓到：
+    - 审查者的：B 的"换次序设移动"；C 的 A6、A6b、A5、C6、C24、C24b、75（没有第 2 条后备时，第 3 条后备接过它的 584 次移动，其中 582 次的样子同第 2 条的，2 次不是：全量的性质测试抓到这 2 次，`-short` 由 `TestTheSecondFallbackPicksTheNodeItFrees` 抓到）。
+    - 这一轮的：两条 `IS NOT NULL` 去掉；不还份额与总是还；没有 `2N` 与 `N/4`；`canRestore` 数附件；生成器不做 `agentBatch`，或不做 agent 的移动；空主干留着；`places` 的条件去掉；拒绝不包文字。
+  - 门禁（本机，`62187eda`）：
+    - `make lint-go gen-check knip` 通过；
+    - 经 `heavy.sh`：`make test-go` 749 秒，`make test-go-short` 52 秒；
+    - 17 个提交各自 build、vet 与碰到的包的 short 测试都通过。
+  - CI：
+    - run 39481193146（`62187eda`）红：组合根第三份里新加的两份正文的测试，最小预算那一行的 batch（写 5 MiB 的正文）答"the call ran out of time"，过了测试的 4 秒的请求期限（本机竞态下约 2.5 秒，CI 慢 1.7–2.5 倍）；别的作业都绿，e2e 与镜像没跑。实施者照修复说明在红的运行处停下，主持者同意之后才推 `5b7c9a33`。
+    - 修在 `5b7c9a33`：这个测试的应用用生产的期限（请求 15 秒、写 60 秒），同 S1 的 `TestTheMCPBatchIsRefusedWhole`。写 5 MiB 正文的 batch（写、再删除）不带竞态约 0.25 秒、竞态下约 2.5 秒，与 `main` 相同：给这个测试生产的期限不藏慢。
+    - run 39483864444（`5b7c9a33`）全绿，共 17 分钟（作业，括号里是测试一步）：竞态 6:59（6:30）、组合根一 7:28（7:07）、二 5:52（5:31）、三 5:42（5:20）、守卫 13:08（12:50）、成本 9:41（6:44）、short 3:16（2:55）、web 3:43（3:12）、e2e 3:42（E2E 一步 2:56）、镜像 1:22。第三份的测试一步比 S2 的 run 39463166210 的 3:24 多 1:56：本机单独只多约 15 秒，其余是运行机的摆动（这次与本机之比 1.90，同 6.5 的 1.93），在 7:30 之下。
+    - 组合根第一份没有 S2 与这一轮的测试，最近两次 7:12、7:07，平均 7:09.5，在 7:30 之下约 20 秒：界线不挪；S3 照 6.5 记它两次，过了线时把 `TestEvery[M-R]` 挪到第三份。
+- **修正的第 2 轮**（2026-10-21，分支 `m9-p3-s2` 的 `03ef0c0b`；三份修正核对与主持者的决定，`fix-brief-2.md`）：修正核对没有重要的与次要的，从 `5b7c9a33` 起 5 个提交，都是小问题；每个提交单独 build、vet 与碰到的包的 short 测试都通过。
+  - B 的 N1、N2 `2b4a1b1b`：还份额的边界。份额与取恰好等于预算的大小时留着，多一个字节就还掉；还掉之后，第三份正文的份额留在第二份的旁边。第三份是 1 KiB 的那一行看不出"计数不清零"（两份的份额加起来仍远在预算之内），4.5 MB 的那一行看得出。
+  - A 的 N4 与 C 对界线各项的意见 `997ceeef`：`planRevert` 与测试的钩子共用 `scheduled`，计划者的构造、L、S\* 的核对、计划只写一处；调度记下开始时待做的步数（`revertSim.pending`），界线由它算，测试也核对它。
+  - A 的 N1 `428cc10a`：A 的 seed 5111 的形状（三页跨层换位，S\* `/c (P)`、`P/A (Q)`、`Q/c (R)`，之后 `/c (Q)`、`Q/c (P)`、`P/A (R)` 与新建的 `Q/a`）要 7 轮，开始时待做 4 步，N = 4：`N/3` 的界线答 `ErrRevertUnordered`。C 的两个活下来的变异（以 N 代 2N、界线不加 1）照主持者的决定不加测试：界线是 (T2) 的证明，大一些无害，测试从下面钉住它，到 A 找到的形状为止。
+  - A 的 N2、N3 = C 的 N1 `d84c32c4`：注释重排；性质测试的第 3 条后备的检查按移动的样子数（没有一步把节点从根或 S\* 里活着的父节点下移到根下），注释与报错照实说。
+  - C 的 N2 `03ef0c0b`：两份正文的组合根测试只留最小预算那一行。默认预算的那一行在哪个还份额的变异下都不失败，单元测试的那一行已管它。
+  - C 的 N3：S3 的简报与文档的事，代码不改；6.5 照改（第一份过线时 `TestEvery[M-R]` 挪到第三份，第二份的估计随之，主持者的决定 9）。
+  - 实测：两份正文的组合根测试竞态下 6.47 秒（第 1 轮 11.2 秒），撤销答 200 用 860 毫秒；第三份单独两次 158.0、164.2 秒，平均 161.1 秒（第 1 轮之后 168.3 秒）。
+  - 反向对照：B 的 F6（早还半个 MiB）、F7（还掉之后计数不清零）、以 `len(p.c.ids)/3` 为界线的那一项、没有 `2N`、`pending` 不记、不还份额（真的库上最小预算那一行）、没有第 2 条后备（全量的性质测试）都被抓到；C 的两个界线的变异照决定活着。
+  - 门禁：本机，`03ef0c0b`：`make lint-go gen-check knip` 通过，碰到的包的 short 测试通过，5 个提交各自 build、vet 与碰到的包的 short 测试都通过；经 `heavy.sh`：改了的组合根测试与它的变异、第三份单独两次。
+  - CI：run 39491800113（`03ef0c0b`）全绿，共 15 分钟（作业，括号里是测试一步）：竞态 6:42（6:25）、组合根一 6:28（6:08）、二 4:02（3:45）、三 3:47（3:30）、守卫 10:03（9:43）、成本 6:42（4:35）、short 2:22（2:02）、web 3:54（3:22）、e2e 4:35（E2E 一步 3:43）、镜像 1:23。组合根第一份最近两次 7:07、6:08，平均 6:37.5，在 7:30 之下。
+  - 主持者的核对（这一轮只有 Nit）：五个提交的差异、上面的 CI 运行与三个变异（还掉之后 `kept` 不清零、上限以 `len(p.c.ids)/3`、不还），各被这一轮的测试抓到。
+- 合并之后：`main` 的 CI run 39494589373（`43b03b36`，合并之后的 `main`，合并的树与 `03ef0c0b` 的相同）全绿：竞态 8:37（8:17）、组合根一 6:49（6:28）、组合根二 5:58（5:33）、组合根三 5:52（5:30）、守卫 10:29（10:04）、成本 10:24（7:10）、short 3:17（2:53）、web 4:04（3:31）、e2e 4:20（3:34）、镜像 1:26。组合根第一份最近两次 6:08、6:28，平均 6:18。
+- 审查：三位审查者（Opus）：A（调度、前提与后备、临时名称与任务的拒绝，另有对抗的生成器与 `main` 的 `round()` 的逐个比较）、B（单元、正文、迁移与读，另有真的库上的探针）、C（测试、变异、e2e、实测与 CI）。没有 Important，三位都没有找到答错的结果。Minor 七条：记为中低的一条，最小的解析预算下一页先恢复、再写回的撤销每次都答 503（B-M1）；其余六条是低，都是测试的空当（A-M1、A-M2、B-M2、B-M3、C-M1、C-M2；B-M2 与 C-M2 一个修复）。细节 14 条（C-N4 同 B-N1）。修复两轮：第一轮由三位核对，已没有 Important 与 Minor（细节 10 条，A 的 N3 同 C 的 N1）；第二轮只有 Nit，由主持者核对。逐条见 [S2 的审查记录](reviews/P3-S2-revert-review.md)。
+- 交给后面的：M10：守卫只凭名称认得临时的步，可以在 `Step` 上带步的种类或标记（第 8 节）；M11：回滚一组变更集时用 `schedule()`（第 8 节）；M12：00045 的补值的用时与锁，[性能移交](../M12-release/handoffs/M4-performance.md)第 18 项；S3：任务的临时的拒绝在第 5 步删去，组合根第一份照 6.5 记两次、过线时 `TestEvery[M-R]` 挪到第三份，`TestTheChangesetsRenamesCountEveryItem` 加带临时的步的后台撤销。没有交给 v0.1 之后的打磨的。CI 的作业日志要认证，每个测试在 CI 上的用时没有记下，只有每一步的时间。
+- 负责人可以改判的取舍（主持者的决定）：上下相套的回收站项照 M8 的 L 拒绝；(T1) 的判断留着、以构造的测试为反向对照；一页的两份正文在最小的解析预算下先还掉本次调用的份额；空的主干照页的名称（M7 的 `Numbered` 一并改）；页面事件只列单元之后活着的写过的页；后台撤销的临时的拒绝说出它是什么；轮数的上限从下面钉住；测试加强的几处；CI：两份正文的测试用生产的期限，第一份过线时挪到第三份；给 M10 的一条；A 的存疑、00045 的锁与成本、守卫两份的时限记下、不改。逐条见审查记录的"主持者的决定"（00 号文档第 11 节第 56–66 条）。
 
 ### 9.3 S3：后台撤销
 
