@@ -628,20 +628,25 @@ func TestABatchCountsItsRewritesFirst(t *testing.T) {
 }
 
 // A page the batch wrote counts WrittenWeight against MaxPages (M9/P3
-// review B-M3: its rewrite costs more than an index page's): with Q1 and
-// Q2 of the index and W written, its own change reaching its link, a
-// weight of 2 counts 4, past a bound of 3, the refusal saying the weight;
-// a bound of 4 writes the three; a weight of 0 counts W once.
+// review B-M3: its rewrite costs more than an index page's), when its own
+// changes meet one of its links, and not at all when they meet none
+// (review B1-M2): with Q1 and Q2 of the index, W written, its own change
+// reaching its link, and V written, its own change reaching none of its,
+// a weight of 2 counts 4, past a bound of 3, the refusal saying the
+// weight; a bound of 4 writes the three, V left; a weight of 0 counts W
+// once.
 func TestABatchCountsAPageItWroteAsItsWeight(t *testing.T) {
 	batch := func(max, weight int) (*rewriting, *appender, error) {
-		w := newRewriting(t, "A", "Q1", "Q2", "W")
+		w := newRewriting(t, "A", "Q1", "Q2", "W", "V", "Z")
 		w.write("Q1", "[[A]]\n")
 		w.write("Q2", "[[A]]\n")
-		before := w.before("w [[A]]\n", "A")
-		facts := w.wrote("W", "w [[A]]\n")
-		u, err := w.batch(app.Moved{Changes: []domain.Change{w.rename("A", "B")}, MaxPages: max, WrittenWeight: weight,
-			Written: map[uuid.UUID]app.WrittenPage{w.id("W"): {Before: before, Changes: []domain.Change{w.renamed("B", "A", "B")},
-				Facts: facts}}})
+		before, vBefore := w.before("w [[A]]\n", "A"), w.before("v [[Z]]\n", "Z")
+		facts, vFacts := w.wrote("W", "w [[A]]\n"), w.wrote("V", "v [[Z]]\n")
+		merged := w.rename("A", "B")
+		own := []domain.Change{w.renamed("B", "A", "B")}
+		u, err := w.batch(app.Moved{Changes: []domain.Change{merged}, MaxPages: max, WrittenWeight: weight,
+			Written: map[uuid.UUID]app.WrittenPage{w.id("W"): {Before: before, Changes: own, Facts: facts},
+				w.id("V"): {Before: vBefore, Changes: own, Facts: vFacts}}})
 		return w, u, err
 	}
 	_, _, err := batch(3, 2)

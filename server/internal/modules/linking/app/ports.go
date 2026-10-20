@@ -237,21 +237,21 @@ type Publisher interface {
 
 // Moved is an operation of a page write unit as a rewrite of links follows
 // it (M6/P4 design 4.1): its notebook, its unit's time, whether the unit
-// rewrites links, and what it changed. bootstrap converts the page
-// module's step, field by field. A batch's deferred rewrite has the rest
-// (M9/P3 design 3.7): each page the batch wrote, alive after it, which is
-// followed from its own content and changes; the paths the moved nodes'
-// former parents had as the unit began; the nodes it deleted; the most
-// pages the rewrite may write, none for 0 (a unit of one operation), a
-// page of Written counting WrittenWeight, 1 for 0 (M9/P3 review B-M3: its
-// rewrite costs more than an index page's); and the nodes an op of it
-// renamed or moved with update_links false, the links that led to them
-// left as they are, in every page, whatever their ancestors' changes (M9
-// design 4.11; M9/P3 review B-M1); and, for each node an op of it renamed
-// or moved, the nodes it created after the last such op of the node,
-// which the subtree spread reads of it leaves out: that op reached none of
-// them, and a creation only resolves links again (M9 design 4.11; M9/P3
-// review B1-M1).
+// rewrites links, and what it changed. bootstrap converts the page module's
+// step, field by field. A batch's deferred rewrite has the rest (M9/P3
+// design 3.7): each page the batch wrote, alive after it, which is followed
+// from its own content and changes; the paths the moved nodes' former
+// parents had as the unit began; the nodes it deleted; the most pages the
+// rewrite may write, none for 0 (a unit of one operation), a page of Written
+// with a link its own changes meet counting WrittenWeight, 1 for 0 (M9/P3
+// review B-M3: its rewrite costs more than an index page's; B1-M2: one with
+// none counts nothing); and the nodes an op of it renamed or moved with
+// update_links false, the links that led to them left as they are, in every
+// page, whatever their ancestors' changes (M9 design 4.11; M9/P3 review
+// B-M1); and, for each node an op of it renamed or moved, the nodes it
+// created after the last such op of the node, which the subtree spread reads
+// of it leaves out: that op reached none of them, and a creation only
+// resolves links again (M9 design 4.11; M9/P3 review B1-M1).
 type Moved struct {
 	NotebookID    uuid.UUID
 	At            time.Time
