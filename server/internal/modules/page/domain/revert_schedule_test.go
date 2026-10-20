@@ -375,6 +375,51 @@ func TestTheSecondFallbackPicksTheNodeItFrees(t *testing.T) {
 	}
 }
 
+// A schedule's rounds can be more than its steps pending as it begins,
+// plus one, which the bound's 2N, a step aside a node each fallback,
+// leaves room for (T2; M9/P3 S2 fix round 1, A-M1). Reviewer A's shape
+// (its generator "cycles", MaxDepth 3, seed 400): S* is /b (A), A/b (B),
+// B/x.png (the attachment C); the batch left /b (B), /tmp.png (C),
+// B/x.png (the page A) and A/x.png (a new attachment D). D is deleted;
+// C waits for its key, which A holds, A for B's, and B for A, under B:
+// two steps aside and four places, in six rounds, of four steps pending.
+// Without D, five rounds of three, its bound with no 2N (N, 3) at four.
+func TestAScheduleTakesMoreRoundsThanItsSteps(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		withD  bool
+		want   []string
+		rounds int
+	}{
+		{"reviewer A's shape", true, []string{"delete x.png", "aside x.png renamed", "place tmp.png moved and renamed",
+			"aside b renamed", "place x.png moved and renamed", "place b moved and renamed"}, 6},
+		{"the same without D", false, []string{"aside x.png renamed", "place tmp.png moved and renamed", "aside b renamed",
+			"place x.png moved and renamed", "place b moved and renamed"}, 5},
+	} {
+		w := newWorld(t)
+		c := w.asset("tmp.png", nil, 1)
+		b := w.page("b", nil, 0, 1, "b")
+		a := w.page("x.png", &b, 0, 1, "a")
+		if tt.withD {
+			w.created(w.asset("x.png", &a, 0))
+		}
+		w.placed(c, domain.TreeState{ParentID: &b, Name: "x.png"})
+		w.placed(b, domain.TreeState{ParentID: &a, Name: "b"})
+		w.placed(a, domain.TreeState{Name: "b"})
+		ops, rounds, pending, err := domain.ScheduleRounds(w.state(), 3)
+		if err != nil {
+			t.Errorf("%s: schedule = %v, want it planned", tt.name, err)
+			continue
+		}
+		if got := w.ops(domain.RevertPlan{Ops: ops}); !slices.Equal(got, tt.want) {
+			t.Errorf("%s: steps = %q, want %q", tt.name, got, tt.want)
+		}
+		if rounds != tt.rounds || rounds <= pending+1 {
+			t.Errorf("%s: %d rounds of %d steps pending, want %d, more than %d", tt.name, rounds, pending, tt.rounds, pending+1)
+		}
+	}
+}
+
 // The versions a revert writes back are every one of the changeset on a
 // base (M9/P3 design 3.18.1): a page it wrote, renamed or not, or wrote
 // then deleted; not a page it created.

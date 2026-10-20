@@ -28,6 +28,9 @@ type revertSim struct {
 	// aside, and the second or third moved aside to the root, renamed too:
 	// each at most once by each (T1).
 	renamed, movedAside map[uuid.UUID]bool
+	// rounds is how many the schedule began, for the test of its bound
+	// (T2).
+	rounds int
 }
 
 // simNode is a node in a revert's simulation: where it is, its name and
@@ -293,6 +296,7 @@ func (p *planner) schedule(s *revertSim) ([]RevertOp, error) {
 		if round > bound {
 			return nil, ErrRevertUnordered
 		}
+		s.rounds = round
 		n := len(ops)
 		for _, id := range p.c.ids {
 			if !s.places[id] {
