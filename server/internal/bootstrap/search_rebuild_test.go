@@ -15,9 +15,11 @@ import (
 // of the job at random points leaves each live node's row what
 // SearchTokens makes of it from scratch, and no other (checkSearchBuilt);
 // between the runs, each node is indexed as it is or queued
-// (checkSearch).
+// (checkSearch). The seeds make 3 batches at least, together (M9/P3 review
+// C-M2): a generator that stops making them, or batches refused, fail it.
 func TestTheSearchIndexIsItsRebuild(t *testing.T) {
 	const changes = 40
+	seeds, batches := 0, 0
 	for _, seed := range []uint64{1, 2, 3} {
 		t.Run(fmt.Sprint("seed ", seed), func(t *testing.T) {
 			tm := newAcmeTeam(t, "member", "")
@@ -41,7 +43,11 @@ func TestTheSearchIndexIsItsRebuild(t *testing.T) {
 			}
 			checkSearchBuilt(t, tm.pool)
 			checkPages(t, tm.pool)
+			seeds, batches = seeds+1, batches+w.made["agent's batch"]
 			t.Logf("changes made %v, skipped %v; %d runs of the job between them", w.made, w.skipped, runs)
 		})
+	}
+	if seeds == 3 && batches < 3 {
+		t.Errorf("the seeds made %d batches, want 3 at least", batches)
 	}
 }
