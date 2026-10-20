@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"maps"
 	"slices"
+	"strings"
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/domain"
@@ -306,22 +307,23 @@ func (r Rewrite) followWritten(ctx context.Context, id uuid.UUID, w WrittenPage,
 // each node changes rename or move, once for the batch (sub), but those
 // that led to a node of frozen, which are left (Moved.Frozen), the nodes
 // of unspread out of the subtrees of the nodes they key
-// (Moved.CreatedAfter);
-// resolved after on pages, the aliases of gone none; those domain.Rewrites
-// tells, with the pages changes re-cased.
+// (Moved.CreatedAfter); resolved after on pages, the aliases of gone none;
+// those domain.Rewrites tells, with the pages changes re-cased. A page of
+// no links reaches none, and spreads nothing for it (M9/P3 review A's N1).
 func ownLinks(ctx context.Context, store Store, pages Pages, sub *subtrees, notebookID, id uuid.UUID, links []domain.Link,
 	before LinksBefore, changes []domain.Change, frozen, gone map[uuid.UUID]bool, unspread map[uuid.UUID]map[uuid.UUID]bool,
 ) (map[int]rewritten, domain.Recased, error) {
+	if len(links) == 0 {
+		return nil, nil, nil
+	}
 	relocates, recased := domain.Relocation(changes)
 	if !relocates && len(recased) == 0 {
 		return nil, nil, nil
 	}
 	reach := domain.Reach{Targets: slices.SortedFunc(maps.Keys(recased), uuid.UUID.Compare)}
 	if relocates {
-		var renamed []uuid.UUID
-		reach, renamed, _ = domain.Affected(changes)
 		var err error
-		if reach, err = sub.spread(ctx, reach, append(renamed, movedOf(changes)...), unspread); err != nil {
+		if reach, err = sub.reach(ctx, changes, unspread); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -352,12 +354,18 @@ func ownLinks(ctx context.Context, store Store, pages Pages, sub *subtrees, note
 	return out, recased, nil
 }
 
-// reachedBy reports whether reach meets l, a link of the page id that led
-// to before, as Store.Links tells of an index's row: by its target's keys,
-// by the node it led to, or by its page.
+// reachedBy reports whether reach, compacted (sorted), meets l, a link of
+// the page id that led to before, as Store.Links tells of an index's row:
+// by its target's keys, by the node it led to, or by its page; each looked
+// up in its sorted keys or ids, not walked (a folder's subtree spread may
+// hold a hundred thousand).
 func reachedBy(reach domain.Reach, id uuid.UUID, l domain.Link, before domain.Resolution) bool {
-	return slices.ContainsFunc(l.Keys(), func(k string) bool { return slices.Contains(reach.Keys, k) }) ||
-		slices.Contains(reach.Targets, before.ID) || slices.Contains(reach.Sources, id)
+	_, byTarget := slices.BinarySearchFunc(reach.Targets, before.ID, uuid.UUID.Compare)
+	_, bySource := slices.BinarySearchFunc(reach.Sources, id, uuid.UUID.Compare)
+	return byTarget || bySource || slices.ContainsFunc(l.Keys(), func(k string) bool {
+		_, ok := slices.BinarySearch(reach.Keys, k)
+		return ok
+	})
 }
 
 // stepsNot is steps, a node's subtree as spread reads it after a batch's
@@ -393,18 +401,72 @@ func sameParent(a, b *uuid.UUID) bool {
 
 // subtrees is the subtrees spread reads for the pages a batch wrote, each
 // node's once for the batch, with the keys of its nodes' aliases (M9/P3
-// design 3.7.2 (e)): a moved folder's nodes held once, not once a page.
+// design 3.7.2 (e)): a moved folder's nodes held once, not once a page;
+// and the reaches made of them, each once for the changes it was made of
+// and the nodes left out (M9/P3 review A's N1): the content ops after a
+// rename of a folder, on one tree, spread its subtree once, not once each.
 type subtrees struct {
 	store      Store
 	pages      Pages
 	notebookID uuid.UUID
 	read       map[uuid.UUID]subtree
+	reaches    map[string]domain.Reach
 }
 
 // subtree is a node's subtree as spread reads it, and its aliases' keys.
 type subtree struct {
 	steps []domain.Step
 	keys  []string
+}
+
+// reach is what changes, relocating, reach on the tree s reads, as ownLinks
+// follows them: Affected's, with the subtrees of the nodes they rename or
+// move spread, the nodes of unspread out of them, compacted; made once for
+// the same changes and unspread on the tree, then shared, read alone.
+func (s *subtrees) reach(ctx context.Context, changes []domain.Change, unspread map[uuid.UUID]map[uuid.UUID]bool) (
+	domain.Reach, error,
+) {
+	key := reachKey(changes, unspread)
+	if r, ok := s.reaches[key]; ok {
+		return r, nil
+	}
+	reach, renamed, _ := domain.Affected(changes)
+	reach, err := s.spread(ctx, reach, append(renamed, movedOf(changes)...), unspread)
+	if err != nil {
+		return domain.Reach{}, err
+	}
+	if s.reaches == nil {
+		s.reaches = map[string]domain.Reach{}
+	}
+	s.reaches[key] = reach
+	return reach, nil
+}
+
+// reachKey is changes, and the nodes unspread leaves out under each of
+// theirs, written out whole, each name quoted: the key of their reach on a
+// tree.
+func reachKey(changes []domain.Change, unspread map[uuid.UUID]map[uuid.UUID]bool) string {
+	var b strings.Builder
+	place := func(p *domain.Place) {
+		switch {
+		case p == nil:
+			b.WriteString(" -")
+		case p.ParentID == nil:
+			fmt.Fprintf(&b, " root %q", p.Name)
+		default:
+			fmt.Fprintf(&b, " %s %q", p.ParentID, p.Name)
+		}
+	}
+	for _, c := range changes {
+		b.WriteString(c.NodeID.String())
+		place(c.Before)
+		place(c.After)
+		for _, id := range slices.SortedFunc(maps.Keys(unspread[c.NodeID]), uuid.UUID.Compare) {
+			b.WriteString(" " + id.String())
+		}
+		b.WriteByte(';')
+	}
+	return b.String()
 }
 
 // spread is the package's spread for a page a batch wrote: reach with the
