@@ -385,7 +385,9 @@ func TestPlanBatchAnswersItsItemsInTheTreesPass(t *testing.T) {
 // again, are bounded at MaxUnitNodes once there is more than one such
 // move (M9/P3 review A-I2): F of 5,000 nodes and H of 5,000 moved are at
 // the bound, H of 5,001 past it at its move, the contents' pass not run;
-// a lone move of a larger folder, and moves among siblings, are not.
+// one folder moved there and back, each move counted, at the bound with
+// 5,000 nodes and past it with 5,001 (review A's N2); a lone move of a
+// larger folder, and moves among siblings, are not.
 func TestPlanBatchBoundsWhatItsMovesCarry(t *testing.T) {
 	half := domain.MaxUnitNodes / 2
 	folders := func(f, h int) *notebook {
@@ -413,6 +415,15 @@ func TestPlanBatchBoundsWhatItsMovesCarry(t *testing.T) {
 	}
 	if texts, heads := p.Reads(); len(texts)+len(heads) != 0 {
 		t.Errorf("past the bound, Reads = %v, %v: the contents' pass would run", texts, heads)
+	}
+	p, _ = planOf(t, folders(half, 1), moveOp("F.md", "G/F.md"), moveOp("G/F.md", "F.md"))
+	if p.Failed != nil {
+		t.Errorf("a folder of %d there and back: Failed = %v", half, p.Failed)
+	}
+	p, _ = planOf(t, folders(half+1, 1), moveOp("F.md", "G/F.md"), moveOp("G/F.md", "F.md"))
+	if got := failed(t, p); got != (refusal{"page.batch_too_large", "", "", 1}) ||
+		!strings.Contains(p.Failed.Error(), "10002 nodes the batch's moves carry, at most 10000") {
+		t.Errorf("a folder of %d there and back: Failed = %+v (%v), want the bound at its way back", half+1, got, p.Failed)
 	}
 	p, _ = planOf(t, folders(domain.MaxUnitNodes+1, 1), moveOp("F.md", "G/F.md"))
 	if p.Failed != nil {

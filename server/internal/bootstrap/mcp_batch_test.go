@@ -259,7 +259,8 @@ func seedPagesSQL(tb testing.TB, pool *pgxpool.Pool, nb string, pages []sqlPage)
 // linking.pages_locked; B1 and B3; a version of a page the batch creates. And at the bounds (3.8): 101 ops; strings
 // past 6 MiB, each op valid; 10,001 nodes deleted; pages read for edits
 // past 14 MiB, where 14 MiB is done; the plan's parses past 10 MiB, which
-// stop it at once; past 100 pages; and moves carrying past 10,000 nodes.
+// stop it at once; past 100 pages; and moves carrying past 10,000 nodes,
+// of two folders, and of one folder moved there and back.
 // The app's deadlines are production's (3.8): the 8 MiB the plan parses
 // before it stops take the race detector seconds, past the tests' 4 s on a
 // slower machine or beside the other shards.
@@ -376,6 +377,21 @@ func TestTheMCPBatchIsRefusedWhole(t *testing.T) {
 			r := refused(t, nb, m, "page.batch_too_large", 1, opMove("F.md", "G/F.md"), opMove("H.md", "G/H.md"))
 			if !strings.Contains(r.Message, "10001 nodes the batch's moves carry, at most 10000") {
 				t.Errorf("the refusal = %q, want the nodes the moves carry", r.Message)
+			}
+		})
+	// One folder of 5,001 nodes moved there and back, each move's subtree
+	// counted again: 10,002, past the bound at its way back (M9/P3 review
+	// A's N2).
+	each("one folder moved there and back past 10,000 nodes", []restPage{{"F", ""}, {"G", ""}},
+		func(t *testing.T, nb string, ids map[string]string, m *mcpApp) {
+			var under []sqlPage
+			for i := range domain.MaxUnitNodes / 2 {
+				under = append(under, sqlPage{ids["F"], fmt.Sprint("f", i), ""})
+			}
+			tm.seedSQL(t, nb, under)
+			r := refused(t, nb, m, "page.batch_too_large", 1, opMove("F.md", "G/F.md"), opMove("G/F.md", "F.md"))
+			if !strings.Contains(r.Message, "10002 nodes the batch's moves carry, at most 10000") {
+				t.Errorf("the refusal = %q, want the nodes the moves carry, each move's again", r.Message)
 			}
 		})
 	// Three pages of a title line and a unit of 1 KiB repeated, 14 MiB in
