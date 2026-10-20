@@ -28,9 +28,10 @@ type revertSim struct {
 	// aside, and the second or third moved aside to the root, renamed too:
 	// each at most once by each (T1).
 	renamed, movedAside map[uuid.UUID]bool
-	// rounds is how many the schedule began, for the test of its bound
-	// (T2).
-	rounds int
+	// pending is the steps pending as the schedule began, and rounds how
+	// many rounds it began: its bound's terms and what the bound is
+	// compared with, for the test of the bound (T2).
+	pending, rounds int
 }
 
 // simNode is a node in a revert's simulation: where it is, its name and
@@ -290,7 +291,8 @@ func (p *planner) canWrite(s *revertSim, page uuid.UUID) ConflictReason {
 // which no revert reaches and a defect would otherwise spin past under
 // the notebook's lock. The steps are numbered in their order (Seq).
 func (p *planner) schedule(s *revertSim) ([]RevertOp, error) {
-	bound := len(s.places) + len(p.tops(s)) + len(s.restores) + len(s.writes) + 2*len(p.c.ids) + 1
+	s.pending = len(s.places) + len(p.tops(s)) + len(s.restores) + len(s.writes)
+	bound := s.pending + 2*len(p.c.ids) + 1
 	var ops []RevertOp
 	for round := 1; ; round++ {
 		if round > bound {

@@ -431,15 +431,15 @@ func TestTheSecondFallbackTakesTheLeastFirst(t *testing.T) {
 // Without D, five rounds of three, its bound with no 2N (N, 3) at four.
 func TestAScheduleTakesMoreRoundsThanItsSteps(t *testing.T) {
 	for _, tt := range []struct {
-		name   string
-		withD  bool
-		want   []string
-		rounds int
+		name            string
+		withD           bool
+		want            []string
+		rounds, pending int
 	}{
 		{"reviewer A's shape", true, []string{"delete x.png", "aside x.png renamed", "place tmp.png moved and renamed",
-			"aside b renamed", "place x.png moved and renamed", "place b moved and renamed"}, 6},
+			"aside b renamed", "place x.png moved and renamed", "place b moved and renamed"}, 6, 4},
 		{"the same without D", false, []string{"aside x.png renamed", "place tmp.png moved and renamed", "aside b renamed",
-			"place x.png moved and renamed", "place b moved and renamed"}, 5},
+			"place x.png moved and renamed", "place b moved and renamed"}, 5, 3},
 	} {
 		w := newWorld(t)
 		c := w.asset("tmp.png", nil, 1)
@@ -459,8 +459,9 @@ func TestAScheduleTakesMoreRoundsThanItsSteps(t *testing.T) {
 		if got := w.ops(domain.RevertPlan{Ops: ops}); !slices.Equal(got, tt.want) {
 			t.Errorf("%s: steps = %q, want %q", tt.name, got, tt.want)
 		}
-		if rounds != tt.rounds || rounds <= pending+1 {
-			t.Errorf("%s: %d rounds of %d steps pending, want %d, more than %d", tt.name, rounds, pending, tt.rounds, pending+1)
+		if rounds != tt.rounds || pending != tt.pending || rounds <= pending+1 {
+			t.Errorf("%s: %d rounds of %d steps pending, want %d of %d, more than the steps plus one", tt.name, rounds, pending,
+				tt.rounds, tt.pending)
 		}
 	}
 }

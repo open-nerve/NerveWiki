@@ -368,6 +368,15 @@ func PlanRevert(s RevertState) (RevertPlan, error) {
 // planRevert is PlanRevert with pages nesting maxDepth deep: MaxDepth, but
 // in the tests that check the schedule on small trees.
 func planRevert(s RevertState, maxDepth int) (RevertPlan, error) {
+	plan, _, err := scheduled(s, maxDepth)
+	return plan, err
+}
+
+// scheduled is planRevert's plan and the simulation its schedule ran on,
+// nil when the plan stops at its conflicts or missing versions: the test
+// of the schedule's bound reads the rounds and the steps pending there
+// (ScheduleRounds), the plan made as PlanRevert makes it.
+func scheduled(s RevertState, maxDepth int) (RevertPlan, *revertSim, error) {
 	p := planner{s: s, c: readReverted(s.Items, s.Versions), reasons: map[uuid.UUID]revertReason{}, missing: map[uuid.UUID]bool{},
 		members: membersOf(s.Groups), maxDepth: maxDepth}
 	p.left()
@@ -376,14 +385,15 @@ func planRevert(s RevertState, maxDepth int) (RevertPlan, error) {
 	}
 	plan := p.plan()
 	if plan.Count > 0 || len(plan.Missing) > 0 {
-		return plan, nil
+		return plan, nil, nil
 	}
-	ops, err := p.schedule(p.newRevertSim())
+	sim := p.newRevertSim()
+	ops, err := p.schedule(sim)
 	if err != nil {
-		return RevertPlan{}, err
+		return RevertPlan{}, sim, err
 	}
 	plan.Ops = ops
-	return plan, nil
+	return plan, sim, nil
 }
 
 // revertReason is a node's conflict: its reason and, for a title_taken,
