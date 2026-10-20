@@ -385,6 +385,41 @@ func TestTheSecondFallbackPicksTheNodeItFrees(t *testing.T) {
 	}
 }
 
+// The second fallback takes its candidates by id, the least first (M9/P3
+// design 3.16.3; fix round 1, C-N1): five nodes go back under G, which
+// the batch deleted and made again, each from under the new G, made in
+// turn. Stuck, it moves them aside to the root one a round, in their ids'
+// order, whatever order the tree holds them in; the plan is the same each
+// time it is made.
+func TestTheSecondFallbackTakesTheLeastFirst(t *testing.T) {
+	for range 20 {
+		w := newWorld(t)
+		g := w.page("G", nil, 0, 1, "g")
+		var hs []uuid.UUID
+		for i := range 5 {
+			hs = append(hs, w.page(fmt.Sprint("h", i), &g, float64(i), 1, fmt.Sprint("h", i)))
+		}
+		for i, h := range hs {
+			w.move(h, nil, float64(1+i))
+		}
+		w.trash(g, time.Date(2026, 10, 14, 11, 0, 0, 0, time.UTC))
+		w.deleted(g)
+		newG := w.page("G", nil, 9, 1, "new g")
+		w.created(newG)
+		var want, places []string
+		for i, h := range hs {
+			w.move(h, &newG, float64(4-i))
+			w.placed(h, domain.TreeState{ParentID: &g, Name: fmt.Sprint("h", i), SortOrder: float64(i)})
+			want = append(want, fmt.Sprintf("aside h%d moved and renamed", i))
+			places = append(places, fmt.Sprintf("place h%d moved and renamed", i))
+		}
+		want = append(append(want, "delete G", "restore G"), places...)
+		if got := w.ops(w.plan()); !slices.Equal(got, want) {
+			t.Fatalf("steps = %q, want %q", got, want)
+		}
+	}
+}
+
 // A schedule's rounds can be more than its steps pending as it begins,
 // plus one, which the bound's 2N, a step aside a node each fallback,
 // leaves room for (T2; M9/P3 S2 fix round 1, A-M1). Reviewer A's shape
