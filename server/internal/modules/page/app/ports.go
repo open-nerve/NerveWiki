@@ -410,6 +410,10 @@ type ChangesetWriter interface {
 	// holds no item and no version, which it answers (M9/P3 design 3.5.4):
 	// a batch's node moved and moved back.
 	DropUnchanged(ctx context.Context, id uuid.UUID) (bool, error)
+	// MarkChangesetMoves sets that the changeset id renames, or moves, a
+	// node, as m has it, each kept once set (M9/P3 design 3.20): the units
+	// of a job's changeset each add theirs.
+	MarkChangesetMoves(ctx context.Context, id uuid.UUID, m domain.ChangesetMoves) error
 }
 
 // Versions reads a page's versions (M8/P1 design 3.4), alive or in the
@@ -501,8 +505,9 @@ type History interface {
 	// ChangesetFacts are the changesets' counts, each to MaxLogCount, and
 	// their reverts, newest first, MaxRevertedBy at most, by changeset.
 	ChangesetFacts(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]domain.ChangesetFacts, error)
-	// ChangesetMoves is whether the changeset's first MaxLogCount items
-	// rename or move a node: the single changeset's.
+	// ChangesetMoves is whether the changeset renames or moves a node, of
+	// all its items, as its units marked it (M9/P3 design 3.20): the single
+	// changeset's.
 	ChangesetMoves(ctx context.Context, id uuid.UUID) (domain.ChangesetMoves, error)
 	// ListChanges are the changeset's changes by node id after after, at
 	// most limit; FirstChanges the first n of each changeset's, by
@@ -686,17 +691,23 @@ type ExpiredSessions interface {
 // facts kept of it (M4/P4 review P2; M6 design 4.7): the largest content's
 // parse can hold some 300 times its size in memory, its facts a tenth of
 // that. Take holds a content's n bytes for its parse; it waits a while for
-// them, then answers shared.ServerBusy. The composition root hands the
-// module the one budget of the server.
+// them, then answers shared.ServerBusy. Takes is what Take holds for a
+// content of n bytes, and the budget's size: a caller that keeps facts'
+// shares while it parses more tells by them a take that could never fit
+// beside its own (M9/P3 S2 fix round 1, B-M1). The composition root hands
+// the module the one budget of the server.
 type ParseBudget interface {
 	Take(ctx context.Context, n int) (BudgetHold, error)
+	Takes(n int) (take, size int)
 }
 
 // BudgetHold is the bytes of the budget a content holds: KeepFacts gives
-// back what its parse held beyond what facts, its facts, hold; Release all
-// of it.
+// back what its parse held beyond what facts, its facts, hold; Held is
+// what it holds, its take's, then its facts' share, none once released;
+// Release gives back all of it.
 type BudgetHold interface {
 	KeepFacts(facts Facts)
+	Held() int
 	Release()
 }
 

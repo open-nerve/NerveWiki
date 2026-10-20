@@ -119,6 +119,14 @@ func (s *Store) RecordRevision(ctx context.Context, r app.Revision) error {
 	return nil
 }
 
+// MarkChangesetMoves implements app.ChangesetWriter.
+func (s *Store) MarkChangesetMoves(ctx context.Context, id uuid.UUID, m domain.ChangesetMoves) error {
+	if err := s.queries(ctx).MarkChangesetMoves(ctx, gen.MarkChangesetMovesParams{ID: id, Renames: m.Renames, Moves: m.Moves}); err != nil {
+		return fmt.Errorf("mark the changeset's moves: %w", err)
+	}
+	return nil
+}
+
 // DropUnchanged implements app.ChangesetWriter: two statements, the items
 // then the changeset.
 func (s *Store) DropUnchanged(ctx context.Context, id uuid.UUID) (bool, error) {

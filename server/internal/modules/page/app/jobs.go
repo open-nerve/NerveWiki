@@ -3,7 +3,6 @@ package app
 import (
 	"cmp"
 	"context"
-	"crypto/sha256"
 	"errors"
 	"fmt"
 	"time"
@@ -239,7 +238,8 @@ func (w *JobWrites) PlanRestore(ctx context.Context, spec JobSpec, nodeID uuid.U
 }
 
 // revertPlan is a background revert's (M8/P4 design 3.5): the changeset
-// it reverts, its round's steps, and the groups its restores bring back.
+// it reverts, its schedule's steps, and the groups its restores bring
+// back.
 type revertPlan struct {
 	changeset uuid.UUID
 	steps     []revertStep
@@ -275,9 +275,11 @@ type revertGroup struct {
 // spec's notebook, unlocked, as its job starts: the decision first, then
 // the changeset, page.changeset_trimmed for one gone since, then the
 // revert's check as CheckRevert has it (page.revert_conflict,
-// page.changeset_trimmed, page.locked), its round's steps in their order:
-// each place one node; each deletion its top's subtree alive now; each
-// restore its group in pre-order, a node a step; each write back a page.
+// page.changeset_trimmed, page.locked), its schedule's steps in their
+// order: each place one node; each deletion its top's subtree alive now;
+// each restore its group in pre-order, a node a step; each write back a
+// page. A schedule whose steps a batch must not split, which M8's
+// batches would, is errUnsplit, nothing written (see unsplit).
 func (w *JobWrites) PlanRevert(ctx context.Context, spec JobSpec, changesetID uuid.UUID) (JobPlan, error) {
 	unit := revertUnit(spec, changesetID)
 	if err := w.writer.Allowed(ctx, unit); err != nil {
@@ -297,7 +299,41 @@ func (w *JobWrites) PlanRevert(ctx context.Context, spec JobSpec, changesetID uu
 	if err != nil {
 		return JobPlan{}, err
 	}
+	if unsplit(checked) {
+		return JobPlan{}, errUnsplit
+	}
 	return revertSteps(c.ID, checked), nil
+}
+
+// errUnsplit is S2's temporary refusal of a background revert whose steps
+// its batches would split (unsplit), until S3's segments: no defect of the
+// schedule, though ErrRevertUnordered is what errors.Is finds in it, the
+// job's failure, internal, as S1's request's was (M9/P3 S2 fix round 1,
+// A-N4).
+var errUnsplit = fmt.Errorf("page: a background revert of steps its batches would split, refused until M9/P3 S3: %w",
+	domain.ErrRevertUnordered)
+
+// unsplit reports whether the schedule checked has steps no batch may
+// split (M9/P3 design section 0, S2's temporary refusal, which S3's
+// segments replace): a step aside, which its node's place must follow in
+// the batch; a write back of a page the schedule restores first, or
+// deletes after. M8's batches split a plan between any two steps and plan
+// each again alone, which these are not: a job of them fails, internal,
+// before it writes, as S1's request did.
+func unsplit(checked revertChecked) bool {
+	items := make(map[uuid.UUID]domain.ChangesetItem, len(checked.state.Items))
+	for _, it := range checked.state.Items {
+		items[it.NodeID] = it
+	}
+	for _, op := range checked.plan.Ops {
+		switch it, ok := items[op.NodeID]; {
+		case op.Kind == domain.RevertAside:
+			return true
+		case op.Kind == domain.RevertContent && ok && (it.Before == nil || it.After == nil):
+			return true
+		}
+	}
+	return false
 }
 
 // revertSteps are the steps of the plan checked of the revert of the
@@ -475,16 +511,12 @@ func (w *JobWrites) revertBatch(ctx context.Context, spec JobSpec, p *revertPlan
 	if err != nil {
 		return BatchDone{}, err
 	}
-	facts, release, err := w.parser.DecidedAll(ctx, contents, domain.ErrJobBatchTooLarge)
+	facts, release, err := w.parser.DecidedContents(ctx, contents, domain.ErrJobBatchTooLarge)
 	if err != nil {
 		return BatchDone{}, err
 	}
 	defer release()
-	parsed := make(map[uuid.UUID]ParsedContent, len(contents))
-	for page, content := range contents {
-		sum := sha256.Sum256([]byte(content))
-		parsed[page] = ParsedContent{Hash: sum[:], Content: content, Facts: facts[page]}
-	}
+	parsed := parsedContents(contents, facts)
 	var done BatchDone
 	var retimed map[int]time.Time
 	if _, err := w.writer.Run(ctx, revertUnit(spec, p.changeset), func(ctx context.Context, u *Unit) error {
@@ -532,22 +564,22 @@ func (w *JobWrites) begun(ctx context.Context, p *revertPlan, steps []revertStep
 }
 
 // revertContents are the contents a revert's batch restores or writes
-// back, by page: those of the pages in the trash at each time (one
-// someone restored meanwhile is not among them, which the unit tells),
-// and the bases of the changeset's versions of the pages written, read by
-// their changeset's versions; one the purge took is
+// back, by page and hash: those of the pages in the trash at each time
+// (one someone restored meanwhile is not among them, which the unit
+// tells), and the bases of the changeset's versions of the pages written,
+// read by their changeset's versions; one the purge took is
 // page.changeset_trimmed.
 func (w *JobWrites) revertContents(ctx context.Context, reverted uuid.UUID, trashed map[time.Time][]uuid.UUID, written []uuid.UUID) (
-	map[uuid.UUID]string, error,
+	map[domain.ContentRef]string, error,
 ) {
-	out := map[uuid.UUID]string{}
+	out := map[domain.ContentRef]string{}
 	for at, pages := range trashed {
 		contents, err := w.reads.Trash.TrashContents(ctx, pages, at)
 		if err != nil {
 			return nil, err
 		}
 		for page, content := range contents {
-			out[page] = content
+			out[contentOf(page, content)] = content
 		}
 	}
 	if len(written) == 0 {
@@ -571,7 +603,7 @@ func (w *JobWrites) revertContents(ctx context.Context, reverted uuid.UUID, tras
 		return nil, domain.ErrChangesetTrimmed
 	}
 	for ref, v := range bases {
-		out[ref.NodeID] = v.Content
+		out[contentOf(ref.NodeID, v.Content)] = v.Content
 	}
 	return out, nil
 }

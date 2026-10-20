@@ -2,7 +2,7 @@ package domain_test
 
 import (
 	"crypto/sha256"
-	"errors"
+	"encoding/hex"
 	"fmt"
 	"slices"
 	"testing"
@@ -265,15 +265,12 @@ func (w *world) plan() domain.RevertPlan {
 	return plan
 }
 
-// unordered is the ops of a revert PlanRevert answers ErrRevertUnordered.
-const unordered = "ErrRevertUnordered"
-
 // A revert reverses each kind of change in one round: a creation is
 // deleted, from its highest node; a deletion restored, each of its trash
 // items whole, where it was; a restore deleted again; a rename, a move, a
 // reorder put back; a written page's version before it written back. A
-// page written, then deleted, a batch's, is unordered until S2 (M9/P3
-// design section 0, 3.21.1).
+// page written, then deleted, a batch's, is restored, then written back
+// (M9/P3 design 3.18, 3.21.1).
 func TestPlanRevertReversesEachChange(t *testing.T) {
 	deletedAt := time.Date(2026, 10, 14, 11, 0, 0, 0, time.UTC)
 	for _, tt := range []struct {
@@ -344,12 +341,12 @@ func TestPlanRevertReversesEachChange(t *testing.T) {
 			w.restored(p)
 			w.restored(q)
 		}, []string{"delete P"}},
-		{"a page written, then deleted (M9's shape): unordered, which the round restores at the content it was deleted at", func(w *world) {
+		{"a page written, then deleted (M9's shape): restored, then written back", func(w *world) {
 			p := w.page("P", nil, 0, 2, "two")
 			w.wrote(p, 1, "one")
 			w.trash(p, deletedAt)
 			w.deleted(p)
-		}, []string{unordered}},
+		}, []string{"restore P", "content P"}},
 		{"a deletion whose item a restore put at the root, numbered, and the restore's revert deleted there", func(w *world) {
 			f := w.page("F", nil, 0, 1, "f")
 			p := w.page("P", &f, 3, 1, "p")
@@ -385,12 +382,6 @@ func TestPlanRevertReversesEachChange(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			w := newWorld(t)
 			tt.build(w)
-			if slices.Equal(tt.want, []string{unordered}) {
-				if _, err := domain.PlanRevert(w.state()); !errors.Is(err, domain.ErrRevertUnordered) {
-					t.Errorf("PlanRevert() = %v, want ErrRevertUnordered", err)
-				}
-				return
-			}
 			plan := w.plan()
 			if plan.Count != 0 || len(plan.Conflicts) != 0 || len(plan.Missing) != 0 {
 				t.Fatalf("conflicts %v, %d missing; want none", w.conflicts(plan), len(plan.Missing))
@@ -873,15 +864,24 @@ func TestPlanRevertsRoundGoesInItsOrder(t *testing.T) {
 }
 
 // A changeset of two nodes trading names, or parents, which only M9's
-// batch makes, reverts to a valid state no round in the fixed order
-// reaches: the first rename, or move, meets the other's name.
-func TestPlanRevertOfASwapIsUnordered(t *testing.T) {
+// batch makes, reverts with a step aside: the first fallback renames
+// aside the node holding the name the other goes back to, then both are
+// placed (M9/P3 design 3.21.1), no aside name left.
+func TestPlanRevertOfASwapGoesAside(t *testing.T) {
 	w := newWorld(t)
 	a, b := w.page("B", nil, 0, 1, "a"), w.page("A", nil, 1, 1, "b")
 	w.placed(a, domain.TreeState{Name: "A"})
 	w.placed(b, domain.TreeState{Name: "B", SortOrder: 1})
-	if _, err := domain.PlanRevert(w.state()); !errors.Is(err, domain.ErrRevertUnordered) {
-		t.Errorf("PlanRevert(a swap) = %v, want ErrRevertUnordered", err)
+	plan := w.plan()
+	want := []string{"aside A renamed", "place B renamed", "place A renamed"}
+	if got := w.ops(plan); !slices.Equal(got, want) {
+		t.Errorf("ops of a swap = %q, want %q", got, want)
+	}
+	if aside := plan.Ops[0]; aside.NodeID != b || aside.To.ParentID != nil || aside.To.Name != "A ~"+hex.EncodeToString(b[12:]) {
+		t.Errorf("the step aside = %+v, want B's node renamed A ~<its last 8 digits> where it is", aside)
+	}
+	if last := plan.Ops[2]; last.NodeID != b || last.To.Name != "B" || plan.Ops[1].NodeID != a || plan.Ops[1].To.Name != "A" {
+		t.Errorf("the places = %+v, %+v", plan.Ops[1], last)
 	}
 
 	// Two pages of one name trading parents: the first move meets the other.
@@ -890,8 +890,19 @@ func TestPlanRevertOfASwapIsUnordered(t *testing.T) {
 	x, y := w.page("N", &g, 0, 1, "x"), w.page("N", &f, 0, 1, "y")
 	w.placed(x, domain.TreeState{ParentID: &f, Name: "N"})
 	w.placed(y, domain.TreeState{ParentID: &g, Name: "N"})
-	if _, err := domain.PlanRevert(w.state()); !errors.Is(err, domain.ErrRevertUnordered) {
-		t.Errorf("PlanRevert(a swap of parents) = %v, want ErrRevertUnordered", err)
+	plan = w.plan()
+	want = []string{"aside N renamed", "place N moved", "place N moved and renamed"}
+	if got := w.ops(plan); !slices.Equal(got, want) {
+		t.Errorf("ops of a swap of parents = %q, want %q", got, want)
+	}
+	if ids := []uuid.UUID{plan.Ops[0].NodeID, plan.Ops[1].NodeID, plan.Ops[2].NodeID}; !slices.Equal(ids, []uuid.UUID{y, x, y}) ||
+		!domain.SameParent(plan.Ops[0].To.ParentID, &f) || !domain.SameParent(plan.Ops[2].To.ParentID, &g) || plan.Ops[2].To.Name != "N" {
+		t.Errorf("steps of a swap of parents = %+v", plan.Ops)
+	}
+	for i, op := range plan.Ops {
+		if op.Seq != i {
+			t.Errorf("step %d's Seq = %d", i, op.Seq)
+		}
 	}
 }
 

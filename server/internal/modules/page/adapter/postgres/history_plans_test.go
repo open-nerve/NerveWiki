@@ -19,7 +19,8 @@ import (
 // whole tables' scans off and the arguments bound as the store binds them:
 // the log and one actor's a range of their own index each, already in its
 // order; one page's its items' and versions' by node; a changeset's
-// changes, counts and moves its two keys; a trash root's deletion by the
+// changes and counts its two keys, its moves the changesets' key (M9/P3
+// design 3.20.1); a trash root's deletion by the
 // revert of its restore the items' index on node_id, by the items' own
 // times (M8/P4 design 3.7), the changesets' key and the items' keys, the
 // deletions between the items' index on node_id; what reverted a
@@ -68,7 +69,7 @@ func TestTheLogReadsUseTheirIndexes(t *testing.T) {
 		{"ChangesetMoves", statementOf(t, func(q *gen.Queries) error {
 			_, err := q.ChangesetMoves(ctx, id)
 			return err
-		}), []string{"changeset_items_changeset_id_node_id_key"}, false},
+		}), []string{"changesets_pkey"}, false},
 		{"ListChanges", statementOf(t, func(q *gen.Queries) error {
 			_, err := q.ListChanges(ctx, gen.ListChangesParams{ID: id, After: uuid.UUID{}, MaxRows: 100})
 			return err

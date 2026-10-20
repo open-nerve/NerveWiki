@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
@@ -96,12 +97,17 @@ func TestNumbered(t *testing.T) {
 		{strings.Repeat("名", 85), 2, false, strings.Repeat("名", 84) + " 2"},
 		// An extension that leaves no room: numbered as a page's name.
 		{"a." + long[:253], 2, true, ("a." + long[:253])[:253] + " 2"},
+		// One that leaves room for no character of the stem, its first
+		// three bytes (fix round 1, A-N1): as a page's name too; one that
+		// leaves room for its first, two bytes, keeps it.
+		{"中." + long[:251], 2, true, ("中." + long[:251])[:253] + " 2"},
+		{"ü." + long[:250], 2, true, "ü 2." + long[:250]},
 	} {
 		got := domain.Numbered(tt.name, tt.n, tt.asset)
 		if got != tt.want {
 			t.Errorf("Numbered(%q, %d, %t) = %q, want %q", tt.name, tt.n, tt.asset, got, tt.want)
 		}
-		if _, f := shared.CheckTitle("name", got); f != nil {
+		if title, f := shared.CheckTitle("name", got); f != nil || title != got {
 			t.Errorf("Numbered(%q, %d, %t) = %q, not a title: %+v", tt.name, tt.n, tt.asset, got, f)
 		}
 		// Its family: the number's digits '#'s.
@@ -109,6 +115,58 @@ func TestNumbered(t *testing.T) {
 		want := strings.Replace(tt.want, " "+number, " "+strings.Repeat("#", len(number)), 1)
 		if got := domain.Family(tt.name, tt.n, tt.asset); got != want {
 			t.Errorf("Family(%q, %d, %t) = %q, want %q", tt.name, tt.n, tt.asset, got, want)
+		}
+	}
+}
+
+// A step aside's name (M9/P3 design 3.17): " ~" and the id's last 8 hex
+// digits; all 32 when those are taken, by key, then -2 and on; built as
+// Numbered builds a name, cut at a character within 255 bytes, an
+// attachment's extension kept; always a title.
+func TestAsideName(t *testing.T) {
+	id := uuid.MustParse("0192f3a4-5b6c-7d8e-9fa0-b1c2d3e4f5a6")
+	const last, all = "d3e4f5a6", "0192f3a45b6c7d8e9fa0b1c2d3e4f5a6"
+	long := strings.Repeat("a", 260)
+	for _, tt := range []struct {
+		name  string
+		asset bool
+		taken []string
+		want  string
+	}{
+		{"Plan", false, nil, "Plan ~" + last},
+		{"Plan", false, []string{"Plan ~" + last}, "Plan ~" + all},
+		// A sibling of another case holds the key.
+		{"Plan", false, []string{"PLAN ~" + strings.ToUpper(last)}, "Plan ~" + all},
+		// Someone named a page so: the next number.
+		{"Plan", false, []string{"Plan ~" + last, "Plan ~" + all}, "Plan ~" + all + "-2"},
+		{"Plan", false, []string{"Plan ~" + last, "Plan ~" + all, "Plan ~" + all + "-2"}, "Plan ~" + all + "-3"},
+		{long[:245], false, nil, long[:245] + " ~" + last},
+		{long[:246], false, nil, long[:245] + " ~" + last},
+		{long[:254], false, nil, long[:245] + " ~" + last},
+		{long[:255], false, nil, long[:245] + " ~" + last},
+		{long[:255], false, []string{long[:245] + " ~" + last}, long[:221] + " ~" + all},
+		{strings.Repeat("名", 85), false, nil, strings.Repeat("名", 81) + " ~" + last},
+		{"photo.png", true, nil, "photo ~" + last + ".png"},
+		{"photo.png", true, []string{"photo ~" + last + ".png"}, "photo ~" + all + ".png"},
+		{"photo.png", false, nil, "photo.png ~" + last},
+		{"README", true, nil, "README ~" + last},
+		{long[:251] + ".png", true, nil, long[:241] + " ~" + last + ".png"},
+		// An extension that leaves no room: as a page's name.
+		{"a." + long[:253], true, nil, ("a." + long[:253])[:245] + " ~" + last},
+		// One that leaves room for no character of the stem (fix round 1,
+		// A-N1): as a page's name too, never " ~…" and the extension.
+		{"中." + long[:242], true, nil, ("中." + long[:242])[:245] + " ~" + last},
+	} {
+		taken := map[string]bool{}
+		for _, n := range tt.taken {
+			taken[shared.TitleKey(n)] = true
+		}
+		got := domain.AsideName(tt.name, id, tt.asset, func(key string) bool { return taken[key] })
+		if got != tt.want {
+			t.Errorf("AsideName(%q, %t, taken %q) = %q, want %q", tt.name, tt.asset, tt.taken, got, tt.want)
+		}
+		if title, f := shared.CheckTitle("name", got); f != nil || title != got {
+			t.Errorf("AsideName(%q, %t) = %q, not a title: %+v", tt.name, tt.asset, got, f)
 		}
 	}
 }

@@ -8,6 +8,12 @@ VALUES (sqlc.arg(id), sqlc.arg(notebook_id), sqlc.arg(kind), sqlc.narg(reverts_i
 -- activity reads.
 UPDATE changesets SET updated_at = sqlc.arg(now) WHERE id = sqlc.arg(id);
 
+-- name: MarkChangesetMoves :exec
+-- A unit's renames and moves, from its merged changes, kept once true (M9/P3 design 3.20): the units of a job's
+-- changeset each add theirs.
+UPDATE changesets SET renames = renames OR sqlc.arg(renames)::boolean, moves = moves OR sqlc.arg(moves)::boolean
+WHERE id = sqlc.arg(id) AND (sqlc.arg(renames)::boolean OR sqlc.arg(moves)::boolean);
+
 -- name: RecordItems :exec
 -- A step's changes of nodes in a changeset, one statement (M8/P2 design 3.3): each node's first one inserts its before
 -- and after, a later one moves the after on and keeps the before, restored and revision (M4 design 4). An item that

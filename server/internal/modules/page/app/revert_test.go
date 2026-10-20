@@ -181,7 +181,7 @@ func TestRevertChangesetRestoresADeletion(t *testing.T) {
 		}
 	}
 	logs := f.logs.String()
-	for _, part := range []string{"changeset reverted", "restored=1", "placed=0", "deleted=0", "written=0", f.c.ID.String(),
+	for _, part := range []string{"changeset reverted", "restored=1", "placed=0", "deleted=0", "written=0", "aside=0", f.c.ID.String(),
 		cs[0].ID.String(), f.eng.String(), "client=web", "workspace_id=" + f.acme.String(), "user_id=" + f.alice.String()} {
 		if !strings.Contains(logs, part) || strings.Contains(logs, "Doc") {
 			t.Errorf("log %q, want %s and no name", logs, part)
@@ -454,13 +454,20 @@ func TestRevertChangesetAnswersItsCodesInOrder(t *testing.T) {
 			f.trashedContent(f.box.ID, links)
 			return f.c.ID
 		}, nil, 0, 0, "page.revert_too_large"},
-		{"a round out of order", func(f revertFixture) uuid.UUID {
-			a, b := f.page("A", nil, 5), f.page("B", nil, 6)
-			sa, sb := a.State(), b.State()
-			a.Name, a.NameKey, b.Name, b.NameKey = "B", "b", "A", "a"
-			f.store.nodes[a.ID], f.store.nodes[b.ID] = a, b
+		{"a defect's schedule: a page deeper than MaxDepth renamed", func(f revertFixture) uuid.UUID {
+			// No write leaves a page deeper than MaxDepth, which S* keeps:
+			// the rename's place back never fits, before or after its step
+			// aside (M9/P3 design 3.16.4, (T4)), and no fallback is left.
+			var parent *uuid.UUID
+			for i := range domain.MaxDepth {
+				parent = new(f.page(fmt.Sprintf("D%d", i+1), parent, 0).ID)
+			}
+			x := f.page("Old", parent, 0)
+			before := x.State()
+			x.Name, x.NameKey = "New", "new"
+			f.store.nodes[x.ID] = x
 			return f.log.changeset(domain.ChangesetEdit, f.alice, now(), []domain.ChangesetItem{
-				{NodeID: a.ID, Before: &sa, After: new(a.State())}, {NodeID: b.ID, Before: &sb, After: new(b.State())}}).ID
+				{NodeID: x.ID, Before: &before, After: new(x.State())}}).ID
 		}, nil, 0, 0, domain.ErrRevertUnordered.Error()},
 		{"trimmed meanwhile", func(f revertFixture) uuid.UUID {
 			f.notebooks.waited = func() { f.c.Trimmed = true }
@@ -557,6 +564,50 @@ func TestRevertChangesetsConflictsNameTheNodes(t *testing.T) {
 		e.Conflicts[0].NodeID != f.box.ID || e.Conflicts[0].Name != "Box" || e.Conflicts[0].Reason != "title_taken" ||
 		*e.Conflicts[0].HolderID != f.other.ID {
 		t.Errorf("revert = %v, %+v; want Box's title_taken held by BOX", err, e)
+	}
+}
+
+// A page a changeset wrote and then deleted, a batch's, is restored at
+// its content in the trash, then written back on its revision there (M9/P3
+// design 3.18): two contents of the page, each parsed, each step with its
+// own facts, as the guards see them, by page and hash; past MaxUnitBytes
+// together, but a lone page's, refused by no bound (3.18.4).
+func TestARevertRestoresAPageThenWritesItBack(t *testing.T) {
+	f := newFixture()
+	f.grant(domain.ActionRevert)
+	o, g := &observer{recorder: f.rec}, &guard{recorder: f.rec}
+	f.observers, f.guards = []app.PageObserver{o}, []app.WriteGuard{g}
+	before := "[[Before]] " + strings.Repeat("b", domain.MaxContentBytes-len("[[Before]] "))
+	written := "[[Written]] " + strings.Repeat("w", domain.MaxContentBytes-len("[[Written]] "))
+	p := f.page("P", nil, 0)
+	f.content(p.ID, before, 1)
+	f.content(p.ID, written, 2)
+	at := now().Add(-time.Hour)
+	f.trashed(p.ID, at, f.alice)
+	c := f.log.changeset(domain.ChangesetEdit, f.alice, at, []domain.ChangesetItem{{NodeID: p.ID, Before: new(p.State()), Revision: 2}},
+		f.log.version(p.ID, 1, 2, written))
+	if _, err := f.revert(c.ID, nil, 0); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.store.contents[p.ID]; got.Content != before || got.Revision != 3 {
+		t.Errorf("P = revision %d of %d bytes, want the bytes before the write at revision 3", got.Revision, len(got.Content))
+	}
+	if len(o.events) != 1 || len(o.events[0].Changes) != 1 {
+		t.Fatalf("events = %+v, want one of P", o.events)
+	}
+	// The unit's change of P: its restore, then its write, the facts of
+	// the content written back.
+	if c := o.events[0].Changes[0]; c.Restored == nil || c.Revision != 3 || c.Facts != before {
+		t.Errorf("P's change = restored %v, revision %d, its facts the content before: %v", c.Restored, c.Revision, c.Facts == before)
+	}
+	var steps []string
+	for _, s := range g.steps {
+		for _, c := range s.Changes {
+			steps = append(steps, fmt.Sprintf("%s %d %v", s.Operation, c.Revision, c.Facts == written))
+		}
+	}
+	if want := []string{"restore 2 true", "content 3 false"}; !slices.Equal(steps, want) {
+		t.Errorf("the guards saw %q, want the restore at 2 with the facts of its content in the trash, then the write back", steps)
 	}
 }
 

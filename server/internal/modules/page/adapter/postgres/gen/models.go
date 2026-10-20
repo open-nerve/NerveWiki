@@ -22,6 +22,8 @@ type Changeset struct {
 	DeletedAt   *time.Time
 	RevertsID   *uuid.UUID
 	Trimmed     bool
+	Renames     bool
+	Moves       bool
 }
 
 type ChangesetItem struct {

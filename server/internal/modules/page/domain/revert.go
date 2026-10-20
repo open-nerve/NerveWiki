@@ -38,14 +38,17 @@ const (
 // design 4.14): the first, with how many there are.
 const MaxConflicts = 100
 
-// MaxRevertSteps bounds a revert's round by its steps that are each a
-// unit's operation on the tree, its places, deletions and restores (M8/P3A
-// review C I-2): each reads and writes its node's subtree or its trash
-// item, so a changeset of many tops, a flat import's creation or the
-// revert of its revert, which restores as many trash items, takes its
-// time by their number, within the unit's nodes. Measured as MaxUnitNodes
-// is: BenchmarkRevertOfManyTops, on the same machine beside a load of 4 to
-// 16, in notebooks of 0 and 100,000 more nodes, at the three statistics.
+// MaxRevertSteps bounds a revert by its steps that are each a unit's
+// operation on the tree, its places, deletions and restores (M8/P3A
+// review C I-2), and its steps aside among them (M9/P3 design 3.19): each
+// reads and writes its node's subtree or its trash item, so a changeset
+// of many tops, a flat import's creation or the revert of its revert,
+// which restores as many trash items, takes its time by their number,
+// within the unit's nodes. A node takes at most three of them, a step
+// aside of each kind and its place, so a batch's revert is far within.
+// Measured as MaxUnitNodes is: BenchmarkRevertOfManyTops, on the same
+// machine beside a load of 4 to 16, in notebooks of 0 and 100,000 more
+// nodes, at the three statistics.
 // The revert of 1,000, 2,000 and 3,000 pages' creations at the root took
 // 1.6-1.8, 2.9-3.8 and 4.2-5.8 s; of attachments' 1.2-1.8, 2.5-3.6 and
 // 3.3-5.3 s; the restore of as many trash items, the revert of that
@@ -86,15 +89,12 @@ type ContentNow struct {
 	Hash     []byte
 }
 
-// ErrRevertUnordered is a revert whose round cannot apply its changeset's
-// reverse in its fixed order (M8/P3 design 3.5): a step's premise fails at
-// its moment though the state before the changeset is valid. Every
-// changeset of M8 is one kind of operation, which one round reverses, and
-// an item that both moves and renames, as an MCP move writes one, is
-// planned as one place (M9/P2 design 3.5.4); a changeset of several kinds
-// is M9's batch's (its hand-off), so this is a defect, no problem of the
-// API.
-var ErrRevertUnordered = errors.New("page: a revert's round cannot apply its changeset's reverse in its order")
+// ErrRevertUnordered is a revert whose schedule finds no step to take,
+// none of its fallbacks applying, or runs past its rounds' bound, though
+// the state before the changeset is valid (M9/P3 design 3.16.4, (T2) and
+// (T4)): from a valid state some step or fallback always applies, and the
+// rounds end within the bound, so this is a defect, no problem of the API.
+var ErrRevertUnordered = errors.New("page: a revert's schedule finds no step to take")
 
 // RevertState is what a revert plans by (M8/P3 design 3.5): the
 // changeset's items and versions, by node; its nodes as they are now, one
@@ -119,7 +119,7 @@ type RevertState struct {
 // RevertPlan is a revert's plan: its conflicts, the first MaxConflicts in
 // their order, and how many there are; the pages whose versions it
 // compares or writes back the purge took, by id; and, with neither, its
-// round's steps in their order.
+// schedule's steps in their order.
 type RevertPlan struct {
 	Conflicts []RevertConflict
 	Count     int
@@ -128,8 +128,8 @@ type RevertPlan struct {
 }
 
 // Steps is how many of the plan's steps MaxRevertSteps bounds: its
-// places, deletions and restores. A content's write is bounded as the
-// pages a unit parses are.
+// places, its steps aside, deletions and restores. A content's write is
+// bounded as the pages a unit parses are.
 func (p RevertPlan) Steps() int {
 	n := 0
 	for _, op := range p.Ops {
@@ -140,26 +140,31 @@ func (p RevertPlan) Steps() int {
 	return n
 }
 
-// RevertOpKind is what a step of a revert's round does.
+// RevertOpKind is what a step of a revert does.
 type RevertOpKind string
 
-// The steps, in the round's order (M8/P3 design 3.5).
+// The steps, in the order a round of the schedule tries them (M8/P3
+// design 3.5; M9/P3 design 3.16), and the step aside a fallback takes.
 const (
 	RevertPlace   RevertOpKind = "place"
 	RevertDelete  RevertOpKind = "delete"
 	RevertRestore RevertOpKind = "restore"
 	RevertContent RevertOpKind = "content"
+	RevertAside   RevertOpKind = "aside"
 )
 
-// RevertOp is a step of a revert's round: a place puts the node NodeID
-// back at To, a move when Move (its parent or order differ), then a
-// rename when Rename; a delete deletes the subtree of NodeID; a restore
+// RevertOp is a step of a revert, Seq its place in the schedule: a place
+// puts the node NodeID back at To, a move when Move (its parent or order
+// differ), then a rename when Rename; a step aside puts it at To for a
+// while, under the root when Move, under its parent otherwise, renamed,
+// as a place does; a delete deletes the subtree of NodeID; a restore
 // brings Group back, the trash item of the root NodeID deleted at
 // DeletedAt, each member to its state in States, the root's To; a
-// content writes the version Base of the page NodeID back, whose content
-// hashes to Hash.
+// content writes the version Base of the page NodeID back on its revision
+// Current, whose content hashes to Hash.
 type RevertOp struct {
 	Kind         RevertOpKind
+	Seq          int
 	NodeID       uuid.UUID
 	To           TreeState
 	Move, Rename bool
@@ -167,6 +172,7 @@ type RevertOp struct {
 	States       []TreeState
 	DeletedAt    time.Time
 	Base         int
+	Current      int
 	Hash         []byte
 }
 
@@ -189,8 +195,11 @@ func RevertGroups(items []ChangesetItem, nodes map[uuid.UUID]NodeNow) map[uuid.U
 	return out
 }
 
-// RevertWrites are the versions whose bases a revert writes back: those
-// of pages the changeset neither created, restored nor deleted, on a base.
+// RevertWrites are the versions whose bases a revert writes back (M9
+// design 4.12): every version of the changeset on a base. A page the
+// changeset created has none, its version a first one; a page it deleted
+// after writing it is restored, then written back; a page it restored
+// and wrote, a revert's, is written back, then deleted.
 func RevertWrites(items []ChangesetItem, versions []ChangesetVersion) []ChangesetVersion {
 	return readReverted(items, versions).writes
 }
@@ -242,18 +251,16 @@ func membersOf(groups map[uuid.UUID][]TrashMember) map[uuid.UUID]TrashMember {
 
 // reverted is a changeset as a revert reads it: its items and versions by
 // node; every node it changed, by id; its deletions' tops, by id, the top
-// of each node it deleted and each top's deleted nodes, by id; the
-// versions whose bases a revert writes back, by page; and whether it
-// wrote a page it then deleted, which the round cannot revert.
+// of each node it deleted and each top's deleted nodes, by id; and the
+// versions whose bases a revert writes back, by page.
 type reverted struct {
-	items     map[uuid.UUID]ChangesetItem
-	versions  map[uuid.UUID]ChangesetVersion
-	ids       []uuid.UUID
-	tops      []uuid.UUID
-	top       map[uuid.UUID]uuid.UUID
-	members   map[uuid.UUID][]uuid.UUID
-	writes    []ChangesetVersion
-	unordered bool
+	items    map[uuid.UUID]ChangesetItem
+	versions map[uuid.UUID]ChangesetVersion
+	ids      []uuid.UUID
+	tops     []uuid.UUID
+	top      map[uuid.UUID]uuid.UUID
+	members  map[uuid.UUID][]uuid.UUID
+	writes   []ChangesetVersion
 }
 
 func readReverted(items []ChangesetItem, versions []ChangesetVersion) reverted {
@@ -280,19 +287,8 @@ func readReverted(items []ChangesetItem, versions []ChangesetVersion) reverted {
 		}
 	}
 	for _, id := range c.ids {
-		v, ok := c.versions[id]
-		it, item := c.items[id]
-		switch {
-		case !ok || v.Base == nil:
-		case !item || it.Before != nil && it.After != nil:
+		if v, ok := c.versions[id]; ok && v.Base != nil {
 			c.writes = append(c.writes, v)
-		case it.Before != nil:
-			// A page written on a base, then deleted: a batch's (M9/P3
-			// design section 0, S1's temporary check). The round restores it
-			// at the content it was deleted at, writing nothing back, a
-			// wrong content no one sees; until S2 writes it back after its
-			// restore, the revert is unordered.
-			c.unordered = true
 		}
 	}
 	return c
@@ -364,29 +360,40 @@ func (c reverted) rootHolds(top uuid.UUID, nodes map[uuid.UUID]NodeNow) bool {
 // was, the rest as it is. The conflicts come in their reasons' order,
 // then by node id, one a node, each named as S* names it, or as the node
 // is now where S* has none. Without conflicts or missing versions, it
-// simulates the round from now, whose order is fixed: places, deletions,
-// restores, contents; a step whose premise fails at its moment is
-// ErrRevertUnordered.
+// schedules the steps from now (schedule): ErrRevertUnordered is a defect.
 func PlanRevert(s RevertState) (RevertPlan, error) {
+	return planRevert(s, MaxDepth)
+}
+
+// planRevert is PlanRevert with pages nesting maxDepth deep: MaxDepth, but
+// in the tests that check the schedule on small trees.
+func planRevert(s RevertState, maxDepth int) (RevertPlan, error) {
+	plan, _, err := scheduled(s, maxDepth)
+	return plan, err
+}
+
+// scheduled is planRevert's plan and the simulation its schedule ran on,
+// nil when the plan stops at its conflicts or missing versions: the test
+// of the schedule's bound reads the rounds and the steps pending there
+// (ScheduleRounds), the plan made as PlanRevert makes it.
+func scheduled(s RevertState, maxDepth int) (RevertPlan, *revertSim, error) {
 	p := planner{s: s, c: readReverted(s.Items, s.Versions), reasons: map[uuid.UUID]revertReason{}, missing: map[uuid.UUID]bool{},
-		members: membersOf(s.Groups)}
-	if p.c.unordered {
-		return RevertPlan{}, ErrRevertUnordered
-	}
+		members: membersOf(s.Groups), maxDepth: maxDepth}
 	p.left()
 	if len(s.Items) > 0 {
 		p.before()
 	}
 	plan := p.plan()
 	if plan.Count > 0 || len(plan.Missing) > 0 {
-		return plan, nil
+		return plan, nil, nil
 	}
-	ops, err := p.round()
+	sim := p.newRevertSim()
+	ops, err := p.schedule(sim)
 	if err != nil {
-		return RevertPlan{}, err
+		return RevertPlan{}, sim, err
 	}
 	plan.Ops = ops
-	return plan, nil
+	return plan, sim, nil
 }
 
 // revertReason is a node's conflict: its reason and, for a title_taken,
@@ -407,7 +414,7 @@ type starNode struct {
 
 // planner plans a revert: its conflicts by node, the first reason each
 // met, and its pages missing; S* by node, with its children by parent
-// once read.
+// once read; and how deep pages nest, MaxDepth.
 type planner struct {
 	s        RevertState
 	c        reverted
@@ -417,6 +424,7 @@ type planner struct {
 	star     map[uuid.UUID]starNode
 	children map[uuid.UUID][]uuid.UUID
 	heights  map[uuid.UUID]int
+	maxDepth int
 }
 
 func (p *planner) conflict(id uuid.UUID, reason ConflictReason, holder *uuid.UUID) {
@@ -633,7 +641,7 @@ func (p *planner) before() {
 			if p.closes(id) {
 				p.conflict(id, ConflictCycle, nil)
 			}
-		case depth+p.height(id, 0)-1 > MaxDepth:
+		case depth+p.height(id, 0)-1 > p.maxDepth:
 			p.conflict(id, ConflictTooDeep, nil)
 		}
 	}
@@ -775,199 +783,4 @@ func (p *planner) nameOf(id uuid.UUID) string {
 		return it.After.Name
 	}
 	return ""
-}
-
-// simNode is a node in the round's simulation: where it is, its name's
-// key, and whether it is alive.
-type simNode struct {
-	parent *uuid.UUID
-	key    string
-	alive  bool
-}
-
-// simulation is the notebook's tree as the round leaves it so far: its
-// nodes, and the keys alive under each parent, the root's the zero id.
-type simulation struct {
-	nodes map[uuid.UUID]simNode
-	under map[uuid.UUID]map[string]uuid.UUID
-}
-
-func parentOf(parent *uuid.UUID) uuid.UUID {
-	if parent == nil {
-		return uuid.UUID{}
-	}
-	return *parent
-}
-
-// holder is the node alive under parent whose name's key is key.
-func (m simulation) holder(parent *uuid.UUID, key string) (uuid.UUID, bool) {
-	id, ok := m.under[parentOf(parent)][key]
-	return id, ok
-}
-
-func (m simulation) set(id uuid.UUID, n simNode) {
-	if old, ok := m.nodes[id]; ok && old.alive {
-		delete(m.under[parentOf(old.parent)], old.key)
-	}
-	m.nodes[id] = n
-	if n.alive {
-		at := parentOf(n.parent)
-		if m.under[at] == nil {
-			m.under[at] = map[string]uuid.UUID{}
-		}
-		m.under[at][n.key] = id
-	}
-}
-
-func (m simulation) alive(id uuid.UUID) bool {
-	return m.nodes[id].alive
-}
-
-// round simulates the revert's round from now and answers its steps.
-func (p *planner) round() ([]RevertOp, error) {
-	m := simulation{nodes: make(map[uuid.UUID]simNode, len(p.s.Tree)), under: map[uuid.UUID]map[string]uuid.UUID{}}
-	for _, n := range p.s.Tree {
-		m.set(n.ID, simNode{parent: n.ParentID, key: n.NameKey, alive: true})
-	}
-	if len(p.s.Items) == 0 {
-		for _, id := range p.c.ids {
-			if n := p.s.Nodes[id]; n.DeletedAt == nil {
-				m.set(id, simNode{parent: n.ParentID, key: n.NameKey, alive: true})
-			}
-		}
-	}
-	var ops []RevertOp
-	for _, id := range p.c.ids {
-		op, ok, err := p.place(m, id)
-		if err != nil {
-			return nil, err
-		}
-		if ok {
-			ops = append(ops, op)
-		}
-	}
-	for _, id := range p.c.ids {
-		if parent := m.nodes[id].parent; !p.c.gone(id) || parent != nil && p.c.gone(*parent) {
-			continue
-		}
-		if err := p.deleteSubtree(m, id); err != nil {
-			return nil, err
-		}
-		ops = append(ops, RevertOp{Kind: RevertDelete, NodeID: id})
-	}
-	for _, top := range p.c.tops {
-		op, err := p.restore(m, top)
-		if err != nil {
-			return nil, err
-		}
-		ops = append(ops, op)
-	}
-	for _, v := range p.c.writes {
-		hash := p.s.Hashes[VersionRef{NodeID: v.NodeID, Revision: *v.Base}]
-		switch {
-		case bytes.Equal(p.s.Contents[v.NodeID].Hash, hash):
-			continue
-		case !m.alive(v.NodeID):
-			return nil, ErrRevertUnordered
-		}
-		ops = append(ops, RevertOp{Kind: RevertContent, NodeID: v.NodeID, Base: *v.Base, Hash: hash})
-	}
-	return ops, nil
-}
-
-// place puts back a node the changeset moved, renamed or reordered, where
-// S* differs from now: a move with the name it has, under a parent alive
-// or the root, out of its own subtree, its name's key free there; then a
-// rename, its new key free under its parent. A place that does both, an
-// MCP move's, is one step, its last key alone checked: none in between
-// (M9/P2 design 3.5.4).
-func (p *planner) place(m simulation, id uuid.UUID) (RevertOp, bool, error) {
-	it, ok := p.c.items[id]
-	if !ok || it.Before == nil || it.After == nil || it.Before.Same(*it.After) {
-		return RevertOp{}, false, nil
-	}
-	to, now := *it.Before, m.nodes[id]
-	op := RevertOp{Kind: RevertPlace, NodeID: id, To: to, Move: !SameParent(it.After.ParentID, to.ParentID) ||
-		it.After.SortOrder != to.SortOrder, Rename: it.After.Name != to.Name}
-	if op.Move {
-		key := now.key
-		if op.Rename {
-			key = shared.TitleKey(to.Name)
-		}
-		if holder, held := m.holder(to.ParentID, key); held && holder != id || to.ParentID != nil && !m.alive(*to.ParentID) ||
-			to.ParentID != nil && p.within(m, *to.ParentID, id) {
-			return RevertOp{}, false, ErrRevertUnordered
-		}
-		now.parent, now.key = to.ParentID, key
-		m.set(id, now)
-		if op.Rename {
-			return op, true, nil
-		}
-	}
-	if op.Rename {
-		key := shared.TitleKey(to.Name)
-		if holder, held := m.holder(now.parent, key); held && holder != id {
-			return RevertOp{}, false, ErrRevertUnordered
-		}
-		now.key = key
-		m.set(id, now)
-	}
-	return op, true, nil
-}
-
-// within reports whether the node at is the node id or under it, now.
-func (p *planner) within(m simulation, at, id uuid.UUID) bool {
-	for range len(m.nodes) + 1 {
-		if at == id {
-			return true
-		}
-		n, ok := m.nodes[at]
-		if !ok || n.parent == nil {
-			return false
-		}
-		at = *n.parent
-	}
-	return false
-}
-
-// deleteSubtree deletes the subtree of a node the changeset created or
-// restored, highest among them: every node alive under it is one too.
-func (p *planner) deleteSubtree(m simulation, id uuid.UUID) error {
-	sub, at := []uuid.UUID{id}, 0
-	for ; at < len(sub); at++ {
-		for _, child := range m.under[sub[at]] {
-			sub = append(sub, child)
-		}
-	}
-	for _, n := range sub {
-		if !p.c.gone(n) || !m.alive(n) {
-			return ErrRevertUnordered
-		}
-	}
-	for _, n := range sub {
-		m.set(n, simNode{parent: m.nodes[n].parent, key: m.nodes[n].key})
-	}
-	return nil
-}
-
-// restore brings back a trash item the changeset deleted, every node of
-// its group where the changeset deleted it, its root under a parent alive
-// or the root, each name's key free where it goes.
-func (p *planner) restore(m simulation, top uuid.UUID) (RevertOp, error) {
-	group := p.s.Groups[top]
-	op := RevertOp{Kind: RevertRestore, NodeID: top, To: *p.c.items[top].Before, Group: group, States: make([]TreeState, len(group)),
-		DeletedAt: *p.s.Nodes[top].DeletedAt}
-	if op.To.ParentID != nil && !m.alive(*op.To.ParentID) {
-		return RevertOp{}, ErrRevertUnordered
-	}
-	for i, member := range group {
-		state := *p.c.items[member.Node.ID].Before
-		key := shared.TitleKey(state.Name)
-		if _, held := m.holder(state.ParentID, key); held {
-			return RevertOp{}, ErrRevertUnordered
-		}
-		m.set(member.Node.ID, simNode{parent: state.ParentID, key: key, alive: true})
-		op.States[i] = state
-	}
-	return op, nil
 }

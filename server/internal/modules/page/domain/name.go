@@ -1,9 +1,11 @@
 package domain
 
 import (
+	"encoding/hex"
 	"strconv"
 	"strings"
 	"unicode/utf8"
+	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
@@ -51,8 +53,9 @@ func hasExtension(name string) bool {
 // name a sibling holds (M7/P6 design 3.4): "name n" for a page, and for an
 // attachment with an extension the number before it, "stem n.ext"; the
 // name, or its stem, cut at a character so that the whole fits a title's
-// bytes. An extension too long to leave room for a character of the stem
-// is numbered as a page's name is.
+// bytes. An extension too long to leave room for a character of the stem,
+// its first, is numbered as a page's name is: a name of no stem, " n.ext",
+// would start with a space, no title (M9/P3 S2 fix round 1, A-N1).
 func Numbered(name string, n int, asset bool) string {
 	return numbered(name, strconv.Itoa(n), asset)
 }
@@ -67,21 +70,50 @@ func Family(name string, n int, asset bool) string {
 
 // numbered is Numbered with the number written number.
 func numbered(name, number string, asset bool) string {
-	stem, ext := name, ""
 	if asset && hasExtension(name) {
 		i := strings.LastIndexByte(name, '.')
-		stem, ext = name[:i], name[i:]
-	}
-	suffix := " " + number + ext
-	if len(suffix) >= shared.MaxTitleBytes {
-		stem, suffix = name, " "+number
-	}
-	room := shared.MaxTitleBytes - len(suffix)
-	if len(stem) > room {
-		for room > 0 && !utf8.RuneStart(stem[room]) {
-			room--
+		if stem := cut(name[:i], shared.MaxTitleBytes-len(" "+number+name[i:])); stem != "" {
+			return stem + " " + number + name[i:]
 		}
-		stem = stem[:room]
 	}
-	return stem + suffix
+	return cut(name, shared.MaxTitleBytes-len(" "+number)) + " " + number
+}
+
+// cut is s cut at a character so that it is at most room bytes long:
+// none of it when room is not one.
+func cut(s string, room int) string {
+	if len(s) <= room {
+		return s
+	}
+	room = max(room, 0)
+	for room > 0 && !utf8.RuneStart(s[room]) {
+		room--
+	}
+	return s[:room]
+}
+
+// AsideName is the name a revert moves a node aside with for a while (M9
+// design 4.12; M9/P3 design 3.17): name, the node's as the revert's plan
+// began, with " ~" and the last 8 hex digits of id, which a UUIDv7 draws
+// at random (its first ones are its time, those of a batch's nodes
+// alike); else all 32; else all 32 and "-2", "-3" and on: the first whose
+// key taken says is free. Built as Numbered builds a name, "~" and the
+// digits for the number: name cut at a UTF-8 boundary so that the whole
+// is at most shared.MaxTitleBytes, an attachment's extension kept after
+// the digits ("photo ~1a2b3c4d.png"), one too long for that numbered as a
+// page's name is.
+func AsideName(name string, id uuid.UUID, asset bool, taken func(key string) bool) string {
+	digits := hex.EncodeToString(id[:])
+	for n := 0; ; n++ {
+		mark := digits
+		switch {
+		case n == 0:
+			mark = digits[len(digits)-8:]
+		case n > 1:
+			mark += "-" + strconv.Itoa(n)
+		}
+		if aside := numbered(name, "~"+mark, asset); !taken(shared.TitleKey(aside)) {
+			return aside
+		}
+	}
 }

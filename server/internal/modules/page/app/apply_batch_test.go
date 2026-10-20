@@ -1037,6 +1037,15 @@ func (h *tenthHold) KeepFacts(app.Facts) {
 	h.n = kept
 }
 
+func (b *tenthBudget) Takes(n int) (int, int) { return n, b.capacity }
+
+func (h *tenthHold) Held() int {
+	if h.done {
+		return 0
+	}
+	return h.n
+}
+
 func (h *tenthHold) Release() {
 	if !h.done {
 		h.done = true

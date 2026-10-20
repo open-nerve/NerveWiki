@@ -160,11 +160,7 @@ func (q *Queries) ChangesetItemsOf(ctx context.Context, arg ChangesetItemsOfPara
 }
 
 const changesetMoves = `-- name: ChangesetMoves :one
-SELECT coalesce(bool_or(i.before_name <> i.after_name), false)::boolean AS renames,
-    coalesce(bool_or(i.before_name IS NOT NULL AND i.after_name IS NOT NULL
-        AND i.before_parent_id IS DISTINCT FROM i.after_parent_id), false)::boolean AS moves
-FROM (SELECT before_name, after_name, before_parent_id, after_parent_id FROM changeset_items
-      WHERE changeset_id = $1 ORDER BY node_id LIMIT 1000) i
+SELECT renames, moves FROM changesets WHERE id = $1
 `
 
 type ChangesetMovesRow struct {
@@ -172,9 +168,9 @@ type ChangesetMovesRow struct {
 	Moves   bool
 }
 
-// Whether a changeset's first 1,000 items by node id rename or move a node, which the web's revert warns of (links
-// written to the new place stay) and its conflicts offer to undo by hand: the single changeset's alone, as a log page
-// of 100 large changesets would read some 100,000 item rows for it. A range of its key.
+// Whether a changeset renames or moves a node, of all its items (M9/P3 design 3.20), which the web's revert warns of
+// (links written to the new place stay) and its conflicts offer to undo by hand: the columns its units set as they
+// end.
 func (q *Queries) ChangesetMoves(ctx context.Context, id uuid.UUID) (ChangesetMovesRow, error) {
 	row := q.db.QueryRow(ctx, changesetMoves, id)
 	var i ChangesetMovesRow
@@ -712,7 +708,7 @@ WITH touched AS (
 ), changed AS (
     SELECT x.id, x.notebook_id, x.kind, x.reverts_id, x.client, x.message, x.created_by_id, x.created_at, x.updated_at,
         x.trimmed, x.deleted_at
-    FROM touched t CROSS JOIN LATERAL (SELECT id, notebook_id, kind, client, message, created_by_id, created_at, updated_at, deleted_at, reverts_id, trimmed FROM changesets WHERE id = t.changeset_id LIMIT 1) x
+    FROM touched t CROSS JOIN LATERAL (SELECT id, notebook_id, kind, client, message, created_by_id, created_at, updated_at, deleted_at, reverts_id, trimmed, renames, moves FROM changesets WHERE id = t.changeset_id LIMIT 1) x
 )
 SELECT c.id, c.notebook_id, c.kind, c.reverts_id, c.client, c.message, c.created_by_id, c.created_at, c.updated_at,
     c.trimmed, v.kind AS reverts_kind, v.created_by_id AS reverts_by, v.created_at AS reverts_at

@@ -643,8 +643,9 @@ func prepareMatrix(t *testing.T) matrixData {
 			exec(seededPageHistory, d.seeded.pages[p.name])
 		}
 		for _, nb := range matrixRevert() {
-			exec("INSERT INTO changesets (id, notebook_id, kind, client, created_by_id, created_at, updated_at) "+
-				"SELECT $1, n.notebook_id, 'edit', 'web', n.created_by_id, $3, $3 FROM nodes n WHERE n.id = $2",
+			// A rename's changeset, marked so as its unit marks it (M9/P3 design 3.20.2).
+			exec("INSERT INTO changesets (id, notebook_id, kind, client, created_by_id, created_at, updated_at, renames) "+
+				"SELECT $1, n.notebook_id, 'edit', 'web', n.created_by_id, $3, $3, true FROM nodes n WHERE n.id = $2",
 				d.seeded.changesets[nb], d.seeded.pages[renamedIn(nb)], now.Add(time.Second))
 			exec("INSERT INTO changeset_items (id, changeset_id, node_id, before_parent_id, before_name, before_sort_order, "+
 				"after_parent_id, after_name, after_sort_order, created_at, updated_at) "+

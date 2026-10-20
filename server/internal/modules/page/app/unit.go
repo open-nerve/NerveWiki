@@ -178,7 +178,8 @@ func (w *Writer) workspaceOf(ctx context.Context, spec UnitSpec) (uuid.UUID, err
 // Run runs do in a unit of spec: outside a transaction, the notebook's
 // workspace, unlocked; then, in the unit's transaction, the workspace's row
 // FOR SHARE, the notebook's, the decision, the changeset it merges into,
-// do, the search's queue, the observers. The clock is read once: every row
+// do, the changeset's renames and moves, the search's queue, the
+// observers. The clock is read once: every row
 // the unit writes has its time. Any error rolls the whole unit back and is
 // returned.
 func (w *Writer) Run(ctx context.Context, spec UnitSpec, do func(ctx context.Context, u *Unit) error) (Outcome, error) {
@@ -233,6 +234,9 @@ func (w *Writer) Run(ctx context.Context, spec UnitSpec, do func(ctx context.Con
 			return err
 		}
 		if err := do(ctx, u); err != nil {
+			return err
+		}
+		if err := u.markMoves(ctx); err != nil {
 			return err
 		}
 		if err := u.queueSearch(ctx); err != nil {
@@ -578,6 +582,29 @@ func (u *Unit) recordRevision(ctx context.Context, c Content, base *int) error {
 		ID: uuid.NewV7(), ChangesetID: u.changeset, NodeID: c.NodeID, Base: base, Revision: c.Revision, Content: c.Content,
 		Hash: c.Hash, ByteSize: c.ByteSize, At: u.write.At,
 	})
+}
+
+// markMoves marks the unit's changeset as renaming, or moving, a node,
+// from its merged changes, those recordItems merges (M9/P3 design 3.20.2):
+// a node alive before and after it under another name renames, under
+// another parent moves; marks kept once set, as each unit of a job's
+// changeset adds its own. A unit of neither, or of no changeset, marks
+// none.
+func (u *Unit) markMoves(ctx context.Context) error {
+	if u.changeset == (uuid.UUID{}) {
+		return nil
+	}
+	var m domain.ChangesetMoves
+	for _, c := range u.changes {
+		if c.Before != nil && c.After != nil {
+			m.Renames = m.Renames || c.Before.Name != c.After.Name
+			m.Moves = m.Moves || !domain.SameParent(c.Before.ParentID, c.After.ParentID)
+		}
+	}
+	if !m.Renames && !m.Moves {
+		return nil
+	}
+	return u.w.d.Changesets.MarkChangesetMoves(ctx, u.changeset, m)
 }
 
 // queueSearch queues for the search's job the nodes the unit created,
