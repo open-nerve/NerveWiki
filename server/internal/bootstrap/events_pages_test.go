@@ -132,6 +132,28 @@ func TestEveryPageWriteReachesTheStreams(t *testing.T) {
 	tm.quiet(t, nb, marker, s)
 }
 
+// A page a unit writes, then deletes, is in the trash after it: its pages
+// event lists no page written, as a deletion's (M9/P3 S2 fix round 1,
+// B-N3). S1's batch that writes a page, then deletes it; the web's revert
+// of it, which restores the page and writes it back, lists it at the
+// revision written; that revert's revert, which writes it back, then
+// deletes it, lists none.
+func TestThePagesEventListsNoPageInTheTrash(t *testing.T) {
+	tm, nb, marker, s := eventsTeam(t)
+	x := tm.createPage(t, "alice", nb, "", "X")
+	s.tree(t, nb, map[string]int{x: 1})
+	b := tm.agent(t, "alice", nb).batchDone(t, opWriteOn("X.md", "# X written", versionOf(x, 1)), opDelete("X.md"))
+	if b.ChangesetID == nil {
+		t.Fatalf("the batch = %+v, want a changeset", b)
+	}
+	s.tree(t, nb, map[string]int{})
+	r1 := tm.reverted(t, "alice", *b.ChangesetID)
+	s.tree(t, nb, map[string]int{x: 3})
+	tm.reverted(t, "alice", r1)
+	s.tree(t, nb, map[string]int{})
+	tm.quiet(t, nb, marker, s)
+}
+
 // The session subscriber's last hop (M4/P4 handoff item 8): each opening
 // and each end of an alive session reaches the stream as a lock event of
 // its page and session: an opening, a take-over (the end, then the

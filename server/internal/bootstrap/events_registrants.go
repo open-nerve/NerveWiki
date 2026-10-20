@@ -16,10 +16,17 @@ type pageEvents struct {
 	publisher *events.Publisher
 }
 
+// PagesChanged lists a page written only when it is alive after the unit:
+// one it wrote, then deleted (a batch's edit, then deletion; a revert's
+// revert that writes a page back, then deletes it) is in the trash, a
+// deletion's as any other (M9/P3 S2 fix round 1, B-N3).
 func (p pageEvents) PagesChanged(ctx context.Context, e page.Event) error {
 	changes := make([]events.PageChange, len(e.Changes))
 	for i, c := range e.Changes {
-		changes[i] = events.PageChange{PageID: c.NodeID, Tree: c.Moves(), Revision: c.Revision}
+		changes[i] = events.PageChange{PageID: c.NodeID, Tree: c.Moves()}
+		if c.After != nil {
+			changes[i].Revision = c.Revision
+		}
 	}
 	return p.publisher.PagesWritten(ctx, events.PagesWritten{WorkspaceID: e.WorkspaceID, NotebookID: e.NotebookID, Changes: changes})
 }
