@@ -41,7 +41,9 @@ type OpDone struct {
 }
 
 // Batched is a batch's outcome: each op's, in their order, and the unit's.
-// Outcome's ChangesetID is zero when the batch left nothing.
+// Outcome's ChangesetID is zero when the batch left nothing; its Building
+// is set when the batch queued nodes for the search, in bulk (M9/P3 design
+// 3.10.1).
 type Batched struct {
 	Ops     []OpDone
 	Outcome Outcome
@@ -221,7 +223,8 @@ func (a *batchAttempt) run(ctx context.Context) (Batched, error) {
 		return Batched{}, err
 	}
 	spec := UnitSpec{NotebookID: a.notebookID, Action: domain.ActionBatch, Tree: true, Client: a.client,
-		Options: Options{UpdateLinks: true}, Message: &a.message, NotFound: domain.ErrNotebookNotFound, DeferParticipants: true}
+		Options: Options{UpdateLinks: true}, Message: &a.message, NotFound: domain.ErrNotebookNotFound, DeferParticipants: true,
+		BulkSearch: true}
 	started := time.Now()
 	outcome, err := a.b.writer.Run(ctx, spec, a.apply)
 	a.unit = time.Since(started)

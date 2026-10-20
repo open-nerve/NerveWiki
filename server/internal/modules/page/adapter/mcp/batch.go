@@ -27,8 +27,9 @@ const batchDescription = `Apply up to 100 writes as one change, all or none, wit
 	`the first op that writes or deletes it, as page.locked; one that only the links' rewrite of its renames and moves ` +
 	`reaches is checked after those, as linking.pages_locked at its first rename or move. The answer has the ` +
 	`changeset's id and time and each op's result, as many as fit, results_count ` +
-	`all of them: changeset reads the rest. Each op's changed is what its tool would answer at that step; the batch's ` +
-	`tells whether it left a change.`
+	`all of them: changeset reads the rest. What the batch writes reaches the search some seconds after it: building ` +
+	`says it is on its way. Each op's changed is what its tool would answer at that step; the batch's tells whether it ` +
+	`left a change.`
 
 // batchIn is batch's arguments (M9 design 4.11; M9/P3 design 3.3): ops,
 // each one flat object, op naming the tool and its other members that
@@ -56,13 +57,16 @@ type batchOp struct {
 }
 
 // batchAnswer is batch's answer (M9 design 4.7, 4.11; M9/P3 design
-// 3.9.1): the changeset's id and time, null when nothing changed; the ops'
-// results in their order, as many as fit, with the nodes each write
-// created; results_count all of them, the rest read with changeset.
+// 3.9.1): the changeset's id and time, null when nothing changed; building,
+// whether it queued nodes for the search, in bulk, which the search finds
+// once its index has taken them (3.10.1); the ops' results in their order,
+// as many as fit, with the nodes each write created; results_count all of
+// them, the rest read with changeset.
 type batchAnswer struct {
 	ChangesetID  *string    `json:"changeset_id"`
 	At           *time.Time `json:"at"`
 	Changed      bool       `json:"changed"`
+	Building     bool       `json:"building"`
 	Results      []opResult `json:"results"`
 	ResultsCount int        `json:"results_count"`
 }
@@ -127,7 +131,8 @@ func (t tools) batch(ctx context.Context, c mcpserver.Call, in batchIn) (mcpserv
 			last := &out[len(out)-1]
 			last.Created = append(last.Created, results[it.op].Created[it.created])
 		}
-		return batchAnswer{ChangesetID: changeset, At: at, Changed: changeset != nil, Results: out, ResultsCount: len(results)}
+		return batchAnswer{ChangesetID: changeset, At: at, Changed: changeset != nil, Building: b.Outcome.Building, Results: out,
+			ResultsCount: len(results)}
 	})
 	return res, err
 }

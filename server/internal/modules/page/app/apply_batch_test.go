@@ -358,6 +358,26 @@ func TestABatchsParticipantsFollowItOnceItsOpsDone(t *testing.T) {
 	}
 }
 
+// A batch's unit queues the nodes it changes for the search in bulk, its
+// outcome Building (M9/P3 design 3.10.1: its step 0's measure); one that
+// queues none, a move under another parent, is not building.
+func TestABatchQueuesForTheSearchInBulk(t *testing.T) {
+	f := newFixture()
+	p := f.page("P", nil, 1)
+	f.content(p.ID, "p", 1)
+	folder := f.page("F", nil, 2)
+	out, err := f.applyBatch(&fakeLinks{recorder: f.rec}, editOp("P.md", "p", "q"), writeOp("N.md", "n"))
+	if err != nil || len(f.store.queued) != 1 || !f.store.queued[0].bulk || len(f.store.queued[0].ids) != 2 || !out.Outcome.Building {
+		t.Errorf("a batch's queue = %+v, building %t, %v; want P and N in bulk, building", f.store.queued, out.Outcome.Building, err)
+	}
+	f.store.queued = nil
+	out, err = f.applyBatch(&fakeLinks{recorder: f.rec}, moveOp("P.md", "F/P.md"))
+	if err != nil || len(f.store.queued) != 0 || out.Outcome.Building || f.store.nodes[p.ID].ParentID == nil ||
+		*f.store.nodes[p.ID].ParentID != folder.ID {
+		t.Errorf("a batch of a move = %+v, building %t, %v; want none queued, not building", f.store.queued, out.Outcome.Building, err)
+	}
+}
+
 // The plan's rewrites of the content ops between two ops that change the
 // tree share one of the links' reads of it (M9/P3 review B-N2): P's and
 // Q's after A's move, R's after B's move another.

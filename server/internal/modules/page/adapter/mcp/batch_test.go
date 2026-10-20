@@ -69,8 +69,9 @@ func TestTheBatchPassesItsOps(t *testing.T) {
 // batch answers its changeset and each op as its tool would, without the
 // changeset (M9/P3 design 3.9.1): write's version and created, edit's
 // version and replacements, move's path alone, delete's counts, merged
-// into a later one with none of its own; a batch that changed nothing has
-// no changeset.
+// into a later one with none of its own; building, the search's queue in
+// bulk (M9/P3 design 3.10.1); a batch that changed nothing has no
+// changeset.
 func TestTheBatchAnswersEachOp(t *testing.T) {
 	changeset, at := uuid.NewV7(), time.Date(2026, 10, 20, 9, 0, 0, 0, time.FixedZone("x", 3600))
 	page, folder := domain.Node{ID: uuid.NewV7()}, domain.Node{ID: uuid.NewV7()}
@@ -84,14 +85,14 @@ func TestTheBatchAnswersEachOp(t *testing.T) {
 		{Kind: domain.OpKindDelete, Path: "H.md", Node: folder, Changed: true, Pages: 2, Assets: 1, MergedInto: -1},
 	}
 	tools := batchOf(func(uuid.UUID, app.PathBatch, domain.Client) (app.Batched, error) {
-		return app.Batched{Ops: ops, Outcome: app.Outcome{ChangesetID: changeset, At: at}}, nil
+		return app.Batched{Ops: ops, Outcome: app.Outcome{ChangesetID: changeset, At: at, Building: true}}, nil
 	})
 	res, err := tools.batch(context.Background(), mcpserver.Call{}, batchIn{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	p, f := page.ID.String(), folder.ID.String()
-	want := `{"changeset_id":"` + changeset.String() + `","at":"2026-10-20T08:00:00Z","changed":true,"results":[` +
+	want := `{"changeset_id":"` + changeset.String() + `","at":"2026-10-20T08:00:00Z","changed":true,"building":true,"results":[` +
 		`{"op":"write","path":"F/P.md","node_id":"` + p + `","changed":true,"version":"` + token.String() + `",` +
 		`"created":[{"path":"F.md","node_id":"` + f + `"},{"path":"F/P.md","node_id":"` + p + `"}],"created_count":2},` +
 		`{"op":"edit","path":"F/P.md","node_id":"` + p + `","changed":true,"version":"` + token.String() + `","replacements":3},` +
@@ -106,7 +107,7 @@ func TestTheBatchAnswersEachOp(t *testing.T) {
 		return app.Batched{Ops: ops[2:3]}, nil
 	})
 	if res, err = tools.batch(context.Background(), mcpserver.Call{}, batchIn{}); err != nil ||
-		!strings.HasPrefix(rawOf(t, res), `{"changeset_id":null,"at":null,"changed":false,"results":[{"op":"move"`) {
+		!strings.HasPrefix(rawOf(t, res), `{"changeset_id":null,"at":null,"changed":false,"building":false,"results":[{"op":"move"`) {
 		t.Errorf("a batch that changed nothing = %s, %v; want no changeset", rawOf(t, res), err)
 	}
 }

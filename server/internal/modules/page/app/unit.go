@@ -103,6 +103,14 @@ type UnitSpec struct {
 	// tens of thousands of nodes, which the search would otherwise walk
 	// before any other. A request's unit queues them exact, found at once.
 	Background bool
+	// BulkSearch has the unit queue the nodes it changes for the search in
+	// bulk, as Background does, and is nothing else of Background's: a
+	// batch's unit (M9/P3 design 3.10.1). Its backlog, up to some 1,600
+	// nodes, queued exact would leave more of the search's first pages
+	// empty with a cursor than the rule allows (its step 0, the queued
+	// pages the newest: 16 more of 90 at 1,600 nodes, past 10). Its
+	// Outcome says Building when it queued any.
+	BulkSearch bool
 	// DeferParticipants is a batch's unit (M9/P3 design 3.7.1): its
 	// operations call no participant; its use case has them follow the
 	// unit's renames and moves once, after all of them (Unit.Participate).
@@ -116,12 +124,15 @@ type UnitSpec struct {
 var ErrChangesetReverted = errors.New("page: the changeset the unit merges into was reverted")
 
 // Outcome is what a unit did: in which workspace, by whom, its changeset
-// (zero when the unit changed nothing) and its time.
+// (zero when the unit changed nothing) and its time; and whether it queued
+// nodes for the search in bulk (Building), which a search finds once its
+// job has built them, answering building meanwhile.
 type Outcome struct {
 	WorkspaceID uuid.UUID
 	By          uuid.UUID
 	ChangesetID uuid.UUID
 	At          time.Time
+	Building    bool
 }
 
 // Allowed decides spec as Run does, unlocked: the same 404 and 403, for a
@@ -216,8 +227,8 @@ func (w *Writer) Run(ctx context.Context, spec UnitSpec, do func(ctx context.Con
 		u = &Unit{w: w, write: Write{
 			WorkspaceID: workspaceID, NotebookID: spec.NotebookID, By: actor.UserID, Client: spec.Client,
 			Options: spec.Options, At: w.d.Clock.Now(), Kind: kind, RevertsID: spec.RevertsID,
-		}, into: spec.Changeset, create: spec.Create, message: spec.Message, bulk: spec.Background, merged: map[uuid.UUID]int{},
-			deferring: spec.DeferParticipants}
+		}, into: spec.Changeset, create: spec.Create, message: spec.Message, bulk: spec.Background || spec.BulkSearch,
+			merged: map[uuid.UUID]int{}, deferring: spec.DeferParticipants}
 		if err := u.lockInto(ctx); err != nil {
 			return err
 		}
@@ -232,7 +243,7 @@ func (w *Writer) Run(ctx context.Context, spec UnitSpec, do func(ctx context.Con
 	if err != nil {
 		return Outcome{}, err
 	}
-	return Outcome{WorkspaceID: workspaceID, By: actor.UserID, ChangesetID: u.changeset, At: u.write.At}, nil
+	return Outcome{WorkspaceID: workspaceID, By: actor.UserID, ChangesetID: u.changeset, At: u.write.At, Building: u.building}, nil
 }
 
 // Unit is a write unit's operations: a use case calls them in Run's do.
@@ -249,8 +260,9 @@ type Unit struct {
 	fresh     bool
 	message   *string
 	// bulk queues the unit's nodes for the search in bulk: a background
-	// job's unit.
-	bulk bool
+	// job's unit, or a batch's; building is that it queued any.
+	bulk     bool
+	building bool
 	// changes are the unit's, merged by node in the order first changed;
 	// merged indexes them.
 	changes []domain.Change
@@ -572,9 +584,10 @@ func (u *Unit) recordRevision(ctx context.Context, c Content, base *int) error {
 // restored, deleted, renamed or wrote the content of (M8/P5 design 3.4), in
 // ascending id order, after all its writes and before the observers (v0.1
 // design 13.1, item 5): in bulk for a background job's unit, an import's, a
-// background restore's or revert's, which a search does not wait for,
-// exact for the others. A move or a reorder leaves a node's lexemes as they
-// were: its path is no part of a match.
+// background restore's or revert's, and a batch's (M9/P3 design 3.10.1),
+// which a search does not wait for, exact for the others. A move or a
+// reorder leaves a node's lexemes as they were: its path is no part of a
+// match.
 func (u *Unit) queueSearch(ctx context.Context) error {
 	var ids []uuid.UUID
 	for _, c := range u.changes {
@@ -586,6 +599,7 @@ func (u *Unit) queueSearch(ctx context.Context) error {
 		return nil
 	}
 	slices.SortFunc(ids, uuid.UUID.Compare)
+	u.building = u.bulk
 	return u.w.d.Search.QueueSearch(ctx, u.write.NotebookID, ids, u.bulk)
 }
 

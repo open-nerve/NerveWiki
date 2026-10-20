@@ -22,18 +22,20 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown/markdowntest"
 )
 
-// The MCP tool batch over the whole program (M9/P3 design 3.14.2–3.14.6):
-// a batch refused is refused whole, at its bounds too; the largest batch
-// is far within the values' bound; and the tool reaches its use case in
-// both entries, its pages found by the search at once. Its merges on the
-// database are in mcp_batch_merge_test.go, its links in
-// mcp_batch_links_test.go, its interleavings in interleavings_batch_test.go.
+// The MCP tool batch over the whole program (M9/P3 design 3.14.2–3.14.6): a
+// batch refused is refused whole, at its bounds too; the largest batch is
+// far within the values' bound; and the tool reaches its use case in both
+// entries, its pages found by the search once its job has built them. Its
+// merges on the database are in mcp_batch_merge_test.go, its links in
+// mcp_batch_links_test.go, its interleavings in
+// interleavings_batch_test.go.
 
 // mcpBatched is batch's answer, as these tests read it.
 type mcpBatched struct {
 	ChangesetID  *string       `json:"changeset_id"`
 	At           *time.Time    `json:"at"`
 	Changed      bool          `json:"changed"`
+	Building     bool          `json:"building"`
 	Results      []mcpOpResult `json:"results"`
 	ResultsCount int           `json:"results_count"`
 }
@@ -501,7 +503,9 @@ func TestTheLargestBatchIsFarWithinTheValuesBound(t *testing.T) {
 // ingest's batch, three pages created, one edited, one renamed, one
 // deleted, with a message, answers each op; it is one changeset, an edit,
 // of its message and the agent's client, which log and changeset read;
-// and the search finds the pages it created at once, queued exact (3.10.1).
+// and the search finds the pages it created once its job has built them,
+// queued in bulk, the answer saying building and the search too meanwhile
+// (3.10.1, as its step 0 measured in fix round 1).
 func TestTheMCPBatchReachesItsUseCase(t *testing.T) {
 	for _, entry := range []mcpserver.Entry{mcpserver.NotebookEntry, mcpserver.AccountEntry} {
 		t.Run(entry.String(), func(t *testing.T) {
@@ -523,8 +527,8 @@ func TestTheMCPBatchReachesItsUseCase(t *testing.T) {
 				a = m.use(t, "batch", args)
 			}
 			b := answerOf[mcpBatched](t, a)
-			if b.ChangesetID == nil || b.At == nil || !b.Changed || b.ResultsCount != 6 || len(b.Results) != 6 {
-				t.Fatalf("the batch = %+v, want a changeset and six results", b)
+			if b.ChangesetID == nil || b.At == nil || !b.Changed || !b.Building || b.ResultsCount != 6 || len(b.Results) != 6 {
+				t.Fatalf("the batch = %+v, want a changeset, building, and six results", b)
 			}
 			r := b.Results
 			if meeting := r[0]; meeting.Op != "write" || meeting.Path != "Inbox/Meeting.md" || meeting.CreatedCount == nil ||
@@ -555,6 +559,8 @@ func TestTheMCPBatchReachesItsUseCase(t *testing.T) {
 			if header["kind"] != "edit" || header["client"] != "mcp:whole-program" || header["renames"] != true {
 				t.Errorf("changeset's header = %v, want the batch's edit, its rename", header)
 			}
+			tm.building(t, "alice", "zebrafish")
+			drainSearch(t, tm.pool)
 			tm.finds(t, "alice", "zebrafish", "Meeting", "Actions", "Decisions")
 			checkPages(t, tm.pool)
 		})
