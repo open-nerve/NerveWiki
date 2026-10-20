@@ -26,7 +26,7 @@ type ParsedContent struct {
 // RevertRead is what a revert read before its unit, unlocked: the
 // changeset it reverts, the contents it writes back or restores parsed,
 // by page, the purge's retention, and the bounds of the changeset's items
-// and of its round's steps (domain.RevertPlan.Steps).
+// and of its schedule's steps (domain.RevertPlan.Steps).
 type RevertRead struct {
 	Changeset uuid.UUID
 	Parsed    map[uuid.UUID]ParsedContent
@@ -47,17 +47,19 @@ type RevertDone struct {
 // the bound of its items, merged into meanwhile; then the state, planned
 // at the unit's time, the plan this one, which is authoritative:
 // page.revert_conflict, page.changeset_trimmed for a version the purge
-// took, page.revert_too_large past the bound of its round's steps. Each content it writes back or restores must have been parsed at
-// the hash it writes now, else its page is changed. Then its round's
+// took, page.revert_too_large past the bound of its schedule's steps.
+// Each content it writes back or restores must have been parsed at the
+// hash it writes now, else its page is changed. Then its schedule's
 // steps, each a unit's operation through the guards (page.locked for a
 // page under another's lock, or the caller's elsewhere), its write, the
 // changeset and the participants: a place moves the node, its subtree
-// with it, then renames it; a deletion deletes a subtree; a restore
-// brings a trash item back where the changeset deleted it, at its time;
-// a content writes the version back on the revision the unit read. Their
-// checks are the plan's: a name taken or a revision moved in its write is
-// a defect, unclassified, as the purge's take of what a restore brings
-// back is page.trash_changed, which the use case answers.
+// with it, then renames it, and a step aside so too, to its name for a
+// while; a deletion deletes a subtree; a restore brings a trash item back
+// where the changeset deleted it, at its time; a content writes the
+// version back on the revision the unit read. Their checks are the
+// plan's: a name taken or a revision moved in its write is a defect,
+// unclassified, as the purge's take of what a restore brings back is
+// page.trash_changed, which the use case answers.
 func (u *Unit) Revert(ctx context.Context, r RevertRead) (RevertDone, error) {
 	reads := revertReads{history: u.w.d.History, trash: u.w.d.Trash, nodes: u.w.d.Nodes}
 	items, versions, err := reads.changeset(ctx, r.Changeset)
@@ -91,6 +93,8 @@ func (u *Unit) Revert(ctx context.Context, r RevertRead) (RevertDone, error) {
 		case domain.RevertPlace:
 			err = u.place(ctx, op)
 			done.Placed++
+		case domain.RevertAside:
+			err = u.place(ctx, op)
 		case domain.RevertDelete:
 			_, err = u.Delete(ctx, op.NodeID)
 			done.Deleted++
@@ -117,10 +121,11 @@ func (u *Unit) Revert(ctx context.Context, r RevertRead) (RevertDone, error) {
 	return done, nil
 }
 
-// place puts a node back where a revert's plan says, its checks the
-// plan's: a move with the name it has, its subtree with it, at the order
-// it had, then a rename, keyed by today's rules; a move and a rename at
-// once, as one MCP move writes it, in one step of OpMove, one statement
+// place puts a node back where a revert's plan says, or aside for a while
+// (M9/P3 design 3.16.3), its checks the plan's: a move with the name it
+// has, its subtree with it, at the order it had, then a rename, keyed by
+// today's rules; a move and a rename at once, as one MCP move writes it
+// and every step aside to the root, in one step of OpMove, one statement
 // (M9/P2 design 3.5.4). A title taken in any write is the plan's defect.
 func (u *Unit) place(ctx context.Context, op domain.RevertOp) error {
 	n, err := u.w.d.Nodes.FindNodeIn(ctx, u.write.NotebookID, op.NodeID)

@@ -1,9 +1,11 @@
 package domain
 
 import (
+	"encoding/hex"
 	"strconv"
 	"strings"
 	"unicode/utf8"
+	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
@@ -84,4 +86,26 @@ func numbered(name, number string, asset bool) string {
 		stem = stem[:room]
 	}
 	return stem + suffix
+}
+
+// AsideName is the name a revert moves a node aside with for a while (M9
+// design 4.12; M9/P3 design 3.17): name, the node's as the revert's plan
+// began, with " ~" and the last 8 hex digits of id, which a UUIDv7 draws
+// at random (its first ones are its time, those of a batch's nodes
+// alike); else all 32; else all 32 and "-2", "-3" and on: the first whose
+// key taken says is free.
+func AsideName(name string, id uuid.UUID, taken func(key string) bool) string {
+	digits := hex.EncodeToString(id[:])
+	for n := 0; ; n++ {
+		mark := digits
+		switch {
+		case n == 0:
+			mark = digits[len(digits)-8:]
+		case n > 1:
+			mark += "-" + strconv.Itoa(n)
+		}
+		if aside := name + " ~" + mark; !taken(shared.TitleKey(aside)) {
+			return aside
+		}
+	}
 }

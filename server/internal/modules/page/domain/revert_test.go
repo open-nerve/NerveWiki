@@ -2,6 +2,7 @@ package domain_test
 
 import (
 	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"slices"
@@ -873,15 +874,24 @@ func TestPlanRevertsRoundGoesInItsOrder(t *testing.T) {
 }
 
 // A changeset of two nodes trading names, or parents, which only M9's
-// batch makes, reverts to a valid state no round in the fixed order
-// reaches: the first rename, or move, meets the other's name.
-func TestPlanRevertOfASwapIsUnordered(t *testing.T) {
+// batch makes, reverts with a step aside: the first fallback renames
+// aside the node holding the name the other goes back to, then both are
+// placed (M9/P3 design 3.21.1), no aside name left.
+func TestPlanRevertOfASwapGoesAside(t *testing.T) {
 	w := newWorld(t)
 	a, b := w.page("B", nil, 0, 1, "a"), w.page("A", nil, 1, 1, "b")
 	w.placed(a, domain.TreeState{Name: "A"})
 	w.placed(b, domain.TreeState{Name: "B", SortOrder: 1})
-	if _, err := domain.PlanRevert(w.state()); !errors.Is(err, domain.ErrRevertUnordered) {
-		t.Errorf("PlanRevert(a swap) = %v, want ErrRevertUnordered", err)
+	plan := w.plan()
+	want := []string{"aside A renamed", "place B renamed", "place A renamed"}
+	if got := w.ops(plan); !slices.Equal(got, want) {
+		t.Errorf("ops of a swap = %q, want %q", got, want)
+	}
+	if aside := plan.Ops[0]; aside.NodeID != b || aside.To.ParentID != nil || aside.To.Name != "A ~"+hex.EncodeToString(b[12:]) {
+		t.Errorf("the step aside = %+v, want B's node renamed A ~<its last 8 digits> where it is", aside)
+	}
+	if last := plan.Ops[2]; last.NodeID != b || last.To.Name != "B" || plan.Ops[1].NodeID != a || plan.Ops[1].To.Name != "A" {
+		t.Errorf("the places = %+v, %+v", plan.Ops[1], last)
 	}
 
 	// Two pages of one name trading parents: the first move meets the other.
@@ -890,8 +900,19 @@ func TestPlanRevertOfASwapIsUnordered(t *testing.T) {
 	x, y := w.page("N", &g, 0, 1, "x"), w.page("N", &f, 0, 1, "y")
 	w.placed(x, domain.TreeState{ParentID: &f, Name: "N"})
 	w.placed(y, domain.TreeState{ParentID: &g, Name: "N"})
-	if _, err := domain.PlanRevert(w.state()); !errors.Is(err, domain.ErrRevertUnordered) {
-		t.Errorf("PlanRevert(a swap of parents) = %v, want ErrRevertUnordered", err)
+	plan = w.plan()
+	want = []string{"aside N renamed", "place N moved", "place N moved and renamed"}
+	if got := w.ops(plan); !slices.Equal(got, want) {
+		t.Errorf("ops of a swap of parents = %q, want %q", got, want)
+	}
+	if ids := []uuid.UUID{plan.Ops[0].NodeID, plan.Ops[1].NodeID, plan.Ops[2].NodeID}; !slices.Equal(ids, []uuid.UUID{y, x, y}) ||
+		!domain.SameParent(plan.Ops[0].To.ParentID, &f) || !domain.SameParent(plan.Ops[2].To.ParentID, &g) || plan.Ops[2].To.Name != "N" {
+		t.Errorf("steps of a swap of parents = %+v", plan.Ops)
+	}
+	for i, op := range plan.Ops {
+		if op.Seq != i {
+			t.Errorf("step %d's Seq = %d", i, op.Seq)
+		}
 	}
 }
 

@@ -454,13 +454,20 @@ func TestRevertChangesetAnswersItsCodesInOrder(t *testing.T) {
 			f.trashedContent(f.box.ID, links)
 			return f.c.ID
 		}, nil, 0, 0, "page.revert_too_large"},
-		{"a round out of order", func(f revertFixture) uuid.UUID {
-			a, b := f.page("A", nil, 5), f.page("B", nil, 6)
-			sa, sb := a.State(), b.State()
-			a.Name, a.NameKey, b.Name, b.NameKey = "B", "b", "A", "a"
-			f.store.nodes[a.ID], f.store.nodes[b.ID] = a, b
+		{"a defect's schedule: a page deeper than MaxDepth renamed", func(f revertFixture) uuid.UUID {
+			// No write leaves a page deeper than MaxDepth, which S* keeps:
+			// the rename's place back never fits, before or after its step
+			// aside (M9/P3 design 3.16.4, (T4)), and no fallback is left.
+			var parent *uuid.UUID
+			for i := range domain.MaxDepth {
+				parent = new(f.page(fmt.Sprintf("D%d", i+1), parent, 0).ID)
+			}
+			x := f.page("Old", parent, 0)
+			before := x.State()
+			x.Name, x.NameKey = "New", "new"
+			f.store.nodes[x.ID] = x
 			return f.log.changeset(domain.ChangesetEdit, f.alice, now(), []domain.ChangesetItem{
-				{NodeID: a.ID, Before: &sa, After: new(a.State())}, {NodeID: b.ID, Before: &sb, After: new(b.State())}}).ID
+				{NodeID: x.ID, Before: &before, After: new(x.State())}}).ID
 		}, nil, 0, 0, domain.ErrRevertUnordered.Error()},
 		{"trimmed meanwhile", func(f revertFixture) uuid.UUID {
 			f.notebooks.waited = func() { f.c.Trimmed = true }
