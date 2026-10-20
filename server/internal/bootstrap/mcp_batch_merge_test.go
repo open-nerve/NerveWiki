@@ -36,12 +36,13 @@ func (tm acmeTeam) versionsIn(t *testing.T, id string) []string {
 // deletion's item at the batch's revision. A page's descendant deleted,
 // then the page, is one deletion, its root the page, the first op merged
 // into the second. The deferred rewrite of a page the batch wrote updates
-// its version, two past the batch's base; of one it created, its version 2,
-// its item 1. A page renamed and back is no item and, alone, no change;
-// with another page's edit, the edit alone, no reorder in the history; with
-// its own edit between, the edit, its index of its new content. A write of
-// the bytes a page holds on a stale version changes nothing, as a write
-// alone. The invariants hold after each, and no line is logged at ERROR.
+// its version, two past the batch's base, which the edit answers; of one it
+// created, its version 2, its item 1. A page renamed and back is no item
+// and, alone, no change; with another page's edit, the edit alone, no
+// reorder in the history; with its own edit between, the edit, its index of
+// its new content. A write of the bytes a page holds on a stale version
+// changes nothing, as a write alone. The invariants hold after each, and no
+// line is logged at ERROR.
 func TestTheMergesOfABatchHoldOnTheDatabase(t *testing.T) {
 	tm, logs := newAcmeTeamLogged(t)
 	agent := tm.agent(t, "alice", "")
@@ -131,6 +132,9 @@ func TestTheMergesOfABatchHoldOnTheDatabase(t *testing.T) {
 	each("the deferred rewrite of a page the batch wrote", []restPage{{"A", ""}, {"P", "p"}}, func(t *testing.T, ids map[string]string, m *mcpApp) {
 		b := m.batchDone(t, opEdit("P.md", "p", "p [[A]]"), opMove("A.md", "B.md"))
 		in(t, b, []string{ids["A"] + " /A /B -"}, []string{ids["P"] + " 1 3 p [[B]]"})
+		if v := b.Results[0].Version; v == nil || *v != versionOf(ids["P"], 3) {
+			t.Errorf("the edit answered the version %v, want P's after the rewrite, 3 (M9/P3 review C-N2)", v)
+		}
 	})
 	each("the deferred rewrite of a page the batch created", []restPage{{"A", ""}}, func(t *testing.T, ids map[string]string, m *mcpApp) {
 		b := m.batchDone(t, opWrite("N.md", "[[A]]"), opMove("A.md", "B.md"))
