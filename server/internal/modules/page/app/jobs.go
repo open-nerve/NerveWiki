@@ -559,11 +559,14 @@ func pageJoins(steps []revertStep) [][2]int {
 // RunBatch writes the plan's steps from to to (not included) in a unit
 // of spec, merged into the job's changeset (M8/P4 design 3.3): before it,
 // the rows of history they restore are counted, and past MaxUnitHistory
-// for more than one step are ErrJobBatchTooLarge; the contents they write
-// read and parsed, largest first, server_busy when the waits run out,
-// ErrJobBatchTooLarge past the unit's links for more than one page; then the
-// unit, which checks each step again under the lock (Unit.RestorePart,
-// Unit.RevertBatch). It answers those sentinels and the unit's errors: a
+// for steps of more than one node are ErrJobBatchTooLarge; the contents
+// they write read and parsed, largest first, server_busy when the waits
+// run out, ErrJobBatchTooLarge past the unit's links for more than one
+// page; then the unit, which checks each step again under the lock
+// (Unit.RestorePart, Unit.RevertBatch). A node's steps are never past the
+// bounds (M9/P3 design 3.23): its restore's history is its page's, its
+// write back's links its content's, as M8's lone step's were. It answers
+// those sentinels, each saying which bound, and the unit's errors: a
 // revert's trash rows the purge took, page.trash_changed in the unit, is
 // page.changeset_trimmed.
 func (w *JobWrites) RunBatch(ctx context.Context, spec JobSpec, plan JobPlan, from, to int) (BatchDone, error) {
@@ -589,7 +592,7 @@ func (w *JobWrites) restoreBatch(ctx context.Context, spec JobSpec, p *restorePl
 			pages = append(pages, n.ID)
 		}
 	}
-	if err := w.withinHistory(ctx, to-from, map[time.Time][]uuid.UUID{p.at: ids}); err != nil {
+	if err := w.withinHistory(ctx, len(ids), map[time.Time][]uuid.UUID{p.at: ids}); err != nil {
 		return BatchDone{}, err
 	}
 	// A page someone restored meanwhile is not among them: the unit skips
@@ -598,7 +601,7 @@ func (w *JobWrites) restoreBatch(ctx context.Context, spec JobSpec, p *restorePl
 	if err != nil {
 		return BatchDone{}, err
 	}
-	facts, release, err := w.parser.DecidedAll(ctx, contents, domain.ErrJobBatchTooLarge)
+	facts, release, err := w.parser.DecidedAll(ctx, contents, errPastLinks)
 	if err != nil {
 		return BatchDone{}, err
 	}
@@ -616,12 +619,21 @@ func (w *JobWrites) restoreBatch(ctx context.Context, spec JobSpec, p *restorePl
 		Skipped: part.Skipped, Placed: part.Placement}, nil
 }
 
-// withinHistory checks a batch of steps steps restores at most
-// maxHistory rows of history, the nodes deleted at each time's: more than
-// one step past it is ErrJobBatchTooLarge, before anything is parsed. A lone
-// step is never past it: its page's deletion was one unit.
-func (w *JobWrites) withinHistory(ctx context.Context, steps int, deleted map[time.Time][]uuid.UUID) error {
-	if steps == 1 {
+// The bounds a background job's batch is past, ErrJobBatchTooLarge, each
+// saying which (M9/P3 design 3.23): the rows of history it restores, the
+// links of the contents it parses.
+var (
+	errPastHistory = fmt.Errorf("%w: past a unit's rows of history", domain.ErrJobBatchTooLarge)
+	errPastLinks   = fmt.Errorf("%w: past a unit's links", domain.ErrJobBatchTooLarge)
+)
+
+// withinHistory checks a batch of steps that write nodes nodes restores at
+// most maxHistory rows of history, the nodes deleted at each time's: of
+// more than one node, past it is errPastHistory, before anything is
+// parsed. A lone node is never past it: its page's deletion was one unit,
+// and no batch is smaller.
+func (w *JobWrites) withinHistory(ctx context.Context, nodes int, deleted map[time.Time][]uuid.UUID) error {
+	if nodes == 1 {
 		return nil
 	}
 	rows := 0
@@ -631,7 +643,7 @@ func (w *JobWrites) withinHistory(ctx context.Context, steps int, deleted map[ti
 			return err
 		}
 		if rows += n; rows > w.maxHistory {
-			return domain.ErrJobBatchTooLarge
+			return errPastHistory
 		}
 	}
 	return nil
@@ -650,7 +662,12 @@ func (w *JobWrites) revertBatch(ctx context.Context, spec JobSpec, p *revertPlan
 	}
 	deleted, trashed := map[time.Time][]uuid.UUID{}, map[time.Time][]uuid.UUID{}
 	var written []uuid.UUID
+	nodes := map[uuid.UUID]bool{}
 	for _, s := range steps {
+		nodes[s.node] = true
+		for _, id := range s.nodes {
+			nodes[id] = true
+		}
 		switch s.kind {
 		case domain.RevertRestore:
 			g := p.groups[s.group]
@@ -667,14 +684,14 @@ func (w *JobWrites) revertBatch(ctx context.Context, spec JobSpec, p *revertPlan
 			written = append(written, s.node)
 		}
 	}
-	if err := w.withinHistory(ctx, len(steps), deleted); err != nil {
+	if err := w.withinHistory(ctx, len(nodes), deleted); err != nil {
 		return BatchDone{}, err
 	}
 	contents, err := w.revertContents(ctx, p.changeset, trashed, written)
 	if err != nil {
 		return BatchDone{}, err
 	}
-	facts, release, err := w.parser.DecidedContents(ctx, contents, domain.ErrJobBatchTooLarge)
+	facts, release, err := w.parser.DecidedContents(ctx, contents, errPastLinks)
 	if err != nil {
 		return BatchDone{}, err
 	}
