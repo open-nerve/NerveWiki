@@ -284,10 +284,9 @@ func (r jobRun) maxBatch() time.Duration {
 }
 
 // runJob plans a job with plan and writes its batches as the transfer
-// module's run cuts them with the import's bounds: up to 100 nodes and
-// 8 MiB, a step past them alone; a batch past a unit's history or links
-// halved; a busy server waited for; the statistics refreshed every 10,000
-// nodes written.
+// module's run cuts them with the import's bounds (cut): a batch past a
+// unit's history or links halved (halve); a busy server waited for; the
+// statistics refreshed every 10,000 nodes written.
 func (b trashBench) runJob(tb testing.TB, plan func(ctx context.Context, spec page.JobSpec) (page.JobPlan, error)) jobRun {
 	tb.Helper()
 	ctx := b.asJob()
@@ -300,8 +299,8 @@ func (b trashBench) runJob(tb testing.TB, plan func(ctx context.Context, spec pa
 			at := time.Now()
 			_, err := b.jobs.RunBatch(ctx, spec, p, from, to)
 			var e *shared.Error
-			if errors.Is(err, page.ErrJobBatchTooLarge) && to-from > 1 {
-				to = from + (to-from)/2
+			if errors.Is(err, page.ErrJobBatchTooLarge) && to > segment(steps, from) {
+				to = halve(steps, from, to)
 				continue
 			}
 			if errors.As(err, &e) && e.Kind == shared.KindUnavailable {
@@ -329,14 +328,51 @@ func (b trashBench) runJob(tb testing.TB, plan func(ctx context.Context, spec pa
 }
 
 // cut is the end of the batch from the step from, as the transfer
-// module's run cuts it with the import's bounds: up to 100 nodes and
-// 8 MiB, a step past them alone.
+// module's run cuts it with the import's bounds (M9/P3 design 3.23): its
+// segments, a run of steps each Joined to the next, up to 100 nodes and
+// 8 MiB, the first always in it.
 func cut(steps []page.JobStep, from int) int {
-	to, nodes, bytes := from+1, steps[from].Nodes, steps[from].Bytes
-	for ; to < len(steps) && nodes+steps[to].Nodes <= 100 && bytes+steps[to].Bytes <= 8<<20; to++ {
-		nodes, bytes = nodes+steps[to].Nodes, bytes+steps[to].Bytes
+	to := segment(steps, from)
+	nodes, bytes := weighed(steps[from:to])
+	for to < len(steps) {
+		next := segment(steps, to)
+		n, b := weighed(steps[to:next])
+		if nodes+n > 100 || bytes+b > 8<<20 {
+			break
+		}
+		to, nodes, bytes = next, nodes+n, bytes+b
 	}
 	return to
+}
+
+// segment is where the segment of steps from at ends: past the first step
+// not Joined to the next.
+func segment(steps []page.JobStep, at int) int {
+	for at < len(steps)-1 && steps[at].Joined {
+		at++
+	}
+	return at + 1
+}
+
+// weighed is the nodes and bytes of steps.
+func weighed(steps []page.JobStep) (int, int64) {
+	nodes, bytes := 0, int64(0)
+	for _, s := range steps {
+		nodes, bytes = nodes+s.Nodes, bytes+s.Bytes
+	}
+	return nodes, bytes
+}
+
+// halve is where a batch of the steps from to to past a unit's history or
+// links ends instead, as the transfer module's run halves it: the later of
+// its first segment's end and the last segment's end at most half way.
+func halve(steps []page.JobStep, from, to int) int {
+	first := segment(steps, from)
+	half, end := from+(to-from)/2, first
+	for at := first; at <= half && at < to; at = segment(steps, at) {
+		end = at
+	}
+	return end
 }
 
 // revertJob runs the background revert of c.
