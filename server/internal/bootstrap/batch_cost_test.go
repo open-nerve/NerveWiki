@@ -640,6 +640,56 @@ func TestABatchPastItsBytesBoundIsRefused(t *testing.T) {
 	checkPages(t, bench.pool)
 }
 
+// A batch's rewrite counts a page the batch wrote by its final content's
+// size, which it reads in the unit's transaction, not by its size before
+// the batch (M9/P3 fix check 3, B's B3-N1): P edited from a line to some
+// 600 KB, then F moved, Q's and P's final bytes refused a byte under
+// them and done at them; P edited from some 600 KB to a line, the same.
+// Each batch on a bench of its own, the bytes' bound its.
+func TestABatchCountsThePagesItWroteAtTheirFinalSize(t *testing.T) {
+	if testing.Short() {
+		t.Skip("a bound against a database")
+	}
+	filler := strings.Repeat("lorem ipsum dolor sit amet, consectetur adipiscing elit\n", 600_000/56)
+	small, big, q := "p [[F/X]]\n", "p [[F/X]]\n"+filler, "[[F/X]] q\n"
+	batch := func(maxBytes int, p string, ops ...map[string]any) string {
+		bench := newBatchBench(t, 1<<20, 1<<30, maxBytes)
+		nb := bench.nb.String()
+		seedPagesSQL(t, bench.pool, nb, []sqlPage{{"", "F", ""}, {"", "Q", q}, {"", "P", p}})
+		f := queryStrings(t, bench.pool, "SELECT id::text FROM nodes WHERE notebook_id = $1 AND name = 'F'", nb)[0]
+		seedPagesSQL(t, bench.pool, nb, []sqlPage{{f, "X", ""}})
+		admin, err := reindexAdmin(bench.pool, bench.cfg, slog.New(slog.DiscardHandler))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := admin.Rebuild(context.Background(), bench.nb); err != nil {
+			t.Fatal(err)
+		}
+		a, _ := bench.batch(t, ops...)
+		if a.result(t)["isError"] != true {
+			return "done"
+		}
+		return fmt.Sprint(a.toolError(t)["message"])
+	}
+	for _, c := range []struct {
+		name    string
+		p       string
+		ops     []map[string]any
+		counted int
+	}{
+		{"grown", small, []map[string]any{opEdit("P.md", "p [[F/X]]\n", big), opMove("F.md", "G.md")}, len(q) + len(big)},
+		{"shrunk", big, []map[string]any{opEdit("P.md", filler, ""), opMove("F.md", "G.md")}, len(q) + len(small)},
+	} {
+		past := fmt.Sprintf("%d bytes of pages the batch's renames and moves would rewrite, at most %d", c.counted, c.counted-1)
+		if got := batch(c.counted-1, c.p, c.ops...); !strings.Contains(got, past) {
+			t.Errorf("P %s, a byte under its final bytes and Q's: %s, want %q", c.name, got, past)
+		}
+		if got := batch(c.counted, c.p, c.ops...); got != "done" {
+			t.Errorf("P %s, at its final bytes and Q's: %s, want done", c.name, got)
+		}
+	}
+}
+
 // A batch's rewrite whose pages keep more of the parse budget than it has,
 // within its three bounds, is refused at the parse that would not fit
 // beside their shares, at once (M9/P3 fix round 6, B3-M1): 400 pages of the

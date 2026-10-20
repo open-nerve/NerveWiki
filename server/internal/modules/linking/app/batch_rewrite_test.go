@@ -688,10 +688,11 @@ func TestABatchLeavesThePagesItDeleted(t *testing.T) {
 // (M9/P3 design 3.7.2; review B-I1: a refusal paid for the tree first):
 // past it, ErrTooManyRewrites with the count, a page being edited among
 // them or not; 0 bounds nothing. A page whose links all led to a page the
-// batch deleted is not counted, nor are those links (review B1-N2): Q1
-// and Q2 to B, deleted, its name taken by A's rename, and W, written, its
-// own change meeting its two links to B (review B1-M2, B1-M3), within
-// bounds of 1, each page written weighing 2, nothing written.
+// batch deleted is not counted, nor are those links (review B1-N2), nor
+// its bytes (fix check 3, C's N1-f3 and B's B3-N1): Q1 and Q2 to B,
+// deleted, its name taken by A's rename, and W, written, its own change
+// meeting its two links to B (review B1-M2, B1-M3), within bounds of 1
+// page, link and byte, each page written weighing 2, nothing written.
 func TestABatchCountsItsRewritesFirst(t *testing.T) {
 	setUp := func() *rewriting {
 		w := newRewriting(t, "A", "Q1", "Q2")
@@ -737,9 +738,9 @@ func TestABatchCountsItsRewritesFirst(t *testing.T) {
 	b := w.id("B")
 	w.remove("B")
 	merged := w.rename("A", "B")
-	u, err := w.batch(app.Moved{Changes: []domain.Change{merged}, Gone: []uuid.UUID{b}, MaxPages: 1, MaxLinks: 1, WrittenWeight: 2,
-		Written: map[uuid.UUID]app.WrittenPage{w.id("W"): {Before: before, Changes: []domain.Change{w.renamed("B", "A", "B")},
-			Facts: facts}}})
+	u, err := w.batch(app.Moved{Changes: []domain.Change{merged}, Gone: []uuid.UUID{b}, MaxPages: 1, MaxLinks: 1, MaxBytes: 1,
+		WrittenWeight: 2, Written: map[uuid.UUID]app.WrittenPage{w.id("W"): {Before: before,
+			Changes: []domain.Change{w.renamed("B", "A", "B")}, Facts: facts}}})
 	if err != nil {
 		t.Fatalf("the links to a page the batch deleted counted: %v", err)
 	}
