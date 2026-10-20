@@ -570,13 +570,13 @@ func TestRevertChangesetsConflictsNameTheNodes(t *testing.T) {
 // A page a changeset wrote and then deleted, a batch's, is restored at
 // its content in the trash, then written back on its revision there (M9/P3
 // design 3.18): two contents of the page, each parsed, each step with its
-// own facts; past MaxUnitBytes together, but a lone page's, refused by no
-// bound (3.18.4).
+// own facts, as the guards see them, by page and hash; past MaxUnitBytes
+// together, but a lone page's, refused by no bound (3.18.4).
 func TestARevertRestoresAPageThenWritesItBack(t *testing.T) {
 	f := newFixture()
 	f.grant(domain.ActionRevert)
-	o := &observer{recorder: f.rec}
-	f.observers = []app.PageObserver{o}
+	o, g := &observer{recorder: f.rec}, &guard{recorder: f.rec}
+	f.observers, f.guards = []app.PageObserver{o}, []app.WriteGuard{g}
 	before := "[[Before]] " + strings.Repeat("b", domain.MaxContentBytes-len("[[Before]] "))
 	written := "[[Written]] " + strings.Repeat("w", domain.MaxContentBytes-len("[[Written]] "))
 	p := f.page("P", nil, 0)
@@ -599,6 +599,15 @@ func TestARevertRestoresAPageThenWritesItBack(t *testing.T) {
 	// the content written back.
 	if c := o.events[0].Changes[0]; c.Restored == nil || c.Revision != 3 || c.Facts != before {
 		t.Errorf("P's change = restored %v, revision %d, its facts the content before: %v", c.Restored, c.Revision, c.Facts == before)
+	}
+	var steps []string
+	for _, s := range g.steps {
+		for _, c := range s.Changes {
+			steps = append(steps, fmt.Sprintf("%s %d %v", s.Operation, c.Revision, c.Facts == written))
+		}
+	}
+	if want := []string{"restore 2 true", "content 3 false"}; !slices.Equal(steps, want) {
+		t.Errorf("the guards saw %q, want the restore at 2 with the facts of its content in the trash, then the write back", steps)
 	}
 }
 

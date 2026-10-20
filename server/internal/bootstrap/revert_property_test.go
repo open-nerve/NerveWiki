@@ -367,7 +367,8 @@ func livePages(nodes []liveNode) []liveNode {
 }
 
 // Of a few seeds, 30 changes, then 12 changesets more, the first the two
-// directed batches' where they apply, reverted newest first by bob. Among
+// directed batches' where they apply, the second's revert after it,
+// reverted newest first by bob. Among
 // them, of all the seeds, an agent's move at least, three batches, a
 // revert in rounds with a step aside, as its log line counts them, and a
 // batch's page written, then deleted (M9/P3 design 3.21.3).
@@ -391,9 +392,15 @@ func TestRevertingTheNewestChangesetsPutsTheNotebookBack(t *testing.T) {
 			trashedContents := tm.trashContents(t, w.nb)
 			known := queryStrings(t, tm.pool, "SELECT id::text FROM nodes WHERE notebook_id = $1", w.nb)
 			newest := tm.newest(t, w.nb).ID
+			// The directed shapes first, each where it applies; the page
+			// written, then deleted, its revert made at once: reverted newest
+			// first, that revert's revert writes the page back, then deletes it.
 			for _, moveOut := range []bool{true, false} {
 				for range 3 {
 					if w.directedBatch(t, "directed batch", livePages(w.alive(t)), moveOut) {
+						if !moveOut {
+							tm.reverted(t, "alice", tm.newest(t, w.nb).ID)
+						}
 						break
 					}
 				}
