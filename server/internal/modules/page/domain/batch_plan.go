@@ -582,29 +582,6 @@ func (p *BatchPlan) FrozenBetween(k, j int) []uuid.UUID {
 	return slices.Compact(out)
 }
 
-// ParentsAt is the paths of the parents the nodes changes moved had
-// before, at the op k (FormerParents' nodes, as linking's PathBefore takes
-// them): on the tree after k, or for a node the batch created after k, on
-// the tree after its creation.
-func (p *BatchPlan) ParentsAt(k int, changes []Change) map[uuid.UUID][]PathStep {
-	out := map[uuid.UUID][]PathStep{}
-	at := p.tree.view(k)
-	for _, c := range changes {
-		if c.Before == nil || c.After == nil || c.Before.ParentID == nil || SameParent(c.Before.ParentID, c.After.ParentID) {
-			continue
-		}
-		id := *c.Before.ParentID
-		if path, ok := at.path(id); ok {
-			out[id] = path
-		} else if op, created := p.createdBy[c.NodeID]; created {
-			if path, ok := p.tree.view(op).path(id); ok {
-				out[id] = path
-			}
-		}
-	}
-	return out
-}
-
 // Reads is what the contents' pass reads of the pages before the batch
 // that the ops before Failed's write: texts, those whose first content op
 // is an edit, or a write ReadWhole names, read whole; heads, those whose

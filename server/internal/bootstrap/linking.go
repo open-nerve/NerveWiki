@@ -165,7 +165,7 @@ func (b batchLinks) Resolve(ctx context.Context, q page.LinksOn) (page.LinksBefo
 
 func (b batchLinks) Rewrite(ctx context.Context, q page.LinksMoved) (string, error) {
 	return b.links.Rewrite(ctx, linking.LinksMoved{LinksOn: linksOn(q.LinksOn), Before: linkLinksBefore(q.Before),
-		Changes: linkChanges(q.Changes), Parents: linkParents(q.Parents), Frozen: q.Frozen})
+		Changes: linkChanges(q.Changes), Frozen: q.Frozen})
 }
 
 // linksOn is a content of a batch's plan as linking resolves it: on the

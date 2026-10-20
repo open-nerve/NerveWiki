@@ -40,14 +40,13 @@ type LinksOn struct {
 // LinksMoved is a content of a page of a batch's plan to rewrite, on the
 // tree after the op it is rewritten for (LinksOn): where its links led at
 // the moment its content was read (Before), the renames and moves since,
-// merged node by node, the paths their former parents had then, and the
-// nodes those ops rename or move with update_links false, whose links it
-// leaves (Moved.Frozen).
+// merged node by node, and the nodes those ops rename or move with
+// update_links false, whose links it leaves (Moved.Frozen). The paths
+// before are Before's: the moved nodes' former parents are not read.
 type LinksMoved struct {
 	LinksOn
 	Before  LinksBefore
 	Changes []domain.Change
-	Parents map[uuid.UUID][]domain.Step
 	Frozen  []uuid.UUID
 }
 

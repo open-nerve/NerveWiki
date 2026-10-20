@@ -819,7 +819,7 @@ func (r *planLinks) Rewrite(id uuid.UUID, content string, before domain.LinksBef
 	changes := r.a.plan.MovesBetween(since, until)
 	return r.a.b.links.Rewrite(r.ctx, LinksMoved{
 		LinksOn: LinksOn{NotebookID: r.a.notebookID, PageID: id, Content: content, Tree: r.a.plan.TreeAt(until), Parse: r.parse(id)},
-		Before:  before, Changes: changes, Parents: r.a.plan.ParentsAt(since, changes), Frozen: r.a.plan.FrozenBetween(since, until),
+		Before:  before, Changes: changes, Frozen: r.a.plan.FrozenBetween(since, until),
 	})
 }
 
