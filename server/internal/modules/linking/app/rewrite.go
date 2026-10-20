@@ -324,11 +324,22 @@ func (w writtenMet) linked(gone map[uuid.UUID]bool) int {
 }
 
 // ownMet is writtenMet of m's pages, the subtrees spread reads read once
-// for the batch, each reach made once for the same changes (subtrees).
+// for the batch, each reach made once for the same changes (subtrees): the
+// pages are met in the order of their own changes, so that those with the
+// same ones, which one reach serves, come one after another while the
+// subtrees hold that reach alone (M9/P3 fix round 3), and are listed in id
+// order.
 func (r Rewrite) ownMet(ctx context.Context, m Moved, gone map[uuid.UUID]bool) (writtenMet, error) {
 	sub := &subtrees{store: r.Store, pages: r.Pages, notebookID: m.NotebookID, read: map[uuid.UUID]subtree{}}
+	ids := slices.SortedFunc(maps.Keys(m.Written), uuid.UUID.Compare)
+	keys := make(map[uuid.UUID]string, len(ids))
+	for _, id := range ids {
+		keys[id] = reachKey(m.Written[id].Changes, setsOf(m.Written[id].CreatedAfter))
+	}
+	byChanges := slices.Clone(ids)
+	slices.SortStableFunc(byChanges, func(a, b uuid.UUID) int { return strings.Compare(keys[a], keys[b]) })
 	out := writtenMet{met: map[uuid.UUID]metRows{}}
-	for _, id := range slices.SortedFunc(maps.Keys(m.Written), uuid.UUID.Compare) {
+	for _, id := range byChanges {
 		if gone[id] {
 			continue
 		}
@@ -338,8 +349,12 @@ func (r Rewrite) ownMet(ctx context.Context, m Moved, gone map[uuid.UUID]bool) (
 			return writtenMet{}, err
 		}
 		if len(met.rows) > 0 {
-			out.pages = append(out.pages, id)
 			out.met[id] = met
+		}
+	}
+	for _, id := range ids {
+		if _, ok := out.met[id]; ok {
+			out.pages = append(out.pages, id)
 		}
 	}
 	return out, nil
@@ -505,15 +520,19 @@ func sameParent(a, b *uuid.UUID) bool {
 // subtrees is the subtrees spread reads for the pages a batch wrote, each
 // node's once for the batch, with the keys of its nodes' aliases (M9/P3
 // design 3.7.2 (e)): a moved folder's nodes held once, not once a page;
-// and the reaches made of them, each once for the changes it was made of
-// and the nodes left out (M9/P3 review A's N1): the content ops after a
-// rename of a folder, on one tree, spread its subtree once, not once each.
+// and the last reach made of them, with the changes it was made of and the
+// nodes left out (M9/P3 review A's N1): the content ops after a rename of
+// a folder, on one tree, one after another, spread its subtree once, not
+// once each. One reach is held, not one for each changes: a reach is as
+// large as the subtrees it spreads (M9/P3 fix round 3: the pages a batch
+// wrote between 50 renames of a folder of 100,000 held one each).
 type subtrees struct {
 	store      Store
 	pages      Pages
 	notebookID uuid.UUID
 	read       map[uuid.UUID]subtree
-	reaches    map[string]domain.Reach
+	reachKey   string
+	reached    *domain.Reach
 }
 
 // subtree is a node's subtree as spread reads it, and its aliases' keys.
@@ -525,23 +544,22 @@ type subtree struct {
 // reach is what changes, relocating, reach on the tree s reads, as ownLinks
 // follows them: Affected's, with the subtrees of the nodes they rename or
 // move spread, the nodes of unspread out of them, compacted; made once for
-// the same changes and unspread on the tree, then shared, read alone.
+// the same changes and unspread asked for one after another on the tree,
+// then shared, read alone. A reach for other changes takes its place.
 func (s *subtrees) reach(ctx context.Context, changes []domain.Change, unspread map[uuid.UUID]map[uuid.UUID]bool) (
 	domain.Reach, error,
 ) {
 	key := reachKey(changes, unspread)
-	if r, ok := s.reaches[key]; ok {
-		return r, nil
+	if s.reached != nil && s.reachKey == key {
+		return *s.reached, nil
 	}
+	s.reached = nil // the last reach goes before the next is made
 	reach, renamed, _ := domain.Affected(changes)
 	reach, err := s.spread(ctx, reach, append(renamed, movedOf(changes)...), unspread)
 	if err != nil {
 		return domain.Reach{}, err
 	}
-	if s.reaches == nil {
-		s.reaches = map[string]domain.Reach{}
-	}
-	s.reaches[key] = reach
+	s.reachKey, s.reached = key, &reach
 	return reach, nil
 }
 

@@ -414,6 +414,32 @@ func TestABatchsPlanReadsATreeOnce(t *testing.T) {
 	}
 }
 
+// The plan holds one tree's reads of the links at a time (M9/P3 fix round
+// 3: one kept for each tree held a renamed folder's subtree and reach for
+// each rename): the reads' check asks for the trees after A's move and
+// after B's, then the contents' pass for them again, each given anew once
+// the plan has passed it, the ops between two moves sharing one: P's and
+// R's reach, each its own; P's write and Q's edit, R's write and S's edit,
+// one each, none the check's.
+func TestABatchsPlanHoldsOneTreesReads(t *testing.T) {
+	f := newFixture()
+	f.page("A", nil, 1)
+	for i, name := range []string{"P", "Q", "R", "S"} {
+		f.content(f.page(name, nil, float64(i+2)).ID, "[[A]] x", 1)
+	}
+	links := &fakeLinks{recorder: f.rec, reached: true}
+	if _, err := f.applyBatch(links, moveOp("A.md", "B.md"), writeOp("P.md", "[[A]] x"), editOp("Q.md", "x", "q"),
+		moveOp("B.md", "C.md"), writeOp("R.md", "[[A]] x"), editOp("S.md", "x", "s")); err != nil {
+		t.Fatal(err)
+	}
+	r := links.reads
+	if len(r) != 6 || slices.Contains(r, nil) || r[1] == r[0] || r[3] != r[2] || r[5] != r[4] || r[4] == r[2] ||
+		slices.Contains(r[:2], r[2]) || slices.Contains(r[:2], r[4]) {
+		t.Errorf("Reached and Rewrite were given the reads %v; want P's reach and R's, then P's and Q's rewrites one, R's and "+
+			"S's another, each new", r)
+	}
+}
+
 // The plan's links are given the nodes the ops before frozen, moved with
 // update_links false, whose links they leave (M9/P3 review B-M1): the
 // reach of a page written after the moves, and the rewrite of one edited

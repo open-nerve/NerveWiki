@@ -204,7 +204,8 @@ type batchAttempt struct {
 	facts      map[uuid.UUID]Facts
 	empty      Facts
 	befores    map[uuid.UUID]WrittenPage
-	reads      map[int]*TreeReads // the links' reads of the plan's trees, by the op that made each (readsAt)
+	reads      *TreeReads // the links' reads of the plan's tree made by the op readsMade, the last one asked for (readsAt)
+	readsMade  int
 	// The unit's: each op's node and path as it found them, the pages it
 	// wrote and their revisions then, and its counts and time.
 	done      []OpDone
@@ -837,7 +838,13 @@ func (r *planLinks) Rewrite(id uuid.UUID, content string, before domain.LinksBef
 
 // readsAt is the links' reads of the plan's tree after the op until: one
 // for the ops since the last op up to until that changes the tree, a move,
-// a delete or a write that creates (M9/P3 review B-N2).
+// a delete or a write that creates (M9/P3 review B-N2). Only the last
+// tree's are kept: the plan asks for its trees in their ops' order, the
+// reads' check and then the contents' pass, so a tree's reads go once it
+// has passed it, and a tree asked for again is read again. A batch of many
+// renames of a large folder holds one tree's subtrees and reaches, not one
+// a rename (M9/P3 fix round 3: 50 renames of a folder of 100,000, each with
+// a content op after it, held some 1.1 to 1.45 GB).
 func (a *batchAttempt) readsAt(until int) *TreeReads {
 	made := -1
 	for k := until; k >= 0; k-- {
@@ -846,15 +853,10 @@ func (a *batchAttempt) readsAt(until int) *TreeReads {
 			break
 		}
 	}
-	if a.reads == nil {
-		a.reads = map[int]*TreeReads{}
+	if a.reads == nil || a.readsMade != made {
+		a.reads, a.readsMade = &TreeReads{}, made
 	}
-	r, ok := a.reads[made]
-	if !ok {
-		r = &TreeReads{}
-		a.reads[made] = r
-	}
-	return r
+	return a.reads
 }
 
 // parse is the plan's parse of the page id's contents: admitted by the

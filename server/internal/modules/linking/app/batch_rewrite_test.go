@@ -519,6 +519,69 @@ func TestBatchLinksKeepTheirReadsOfATree(t *testing.T) {
 	}
 }
 
+// The subtrees a batch's rewrites read hold one reach at a time, made for
+// the changes asked for (M9/P3 fix round 3: one kept for each changes, a
+// reach of a renamed folder's subtree for each page written between its
+// renames, held some 1.1 to 1.45 GB): on one tree, a rewrite for F's
+// rename after one for H's makes F's reach again, the aliases' keys asked
+// once more (F's subtree read once all the same); the participant meets
+// the pages a batch wrote in the order of their own changes, so that W's
+// first and last by id, after F's rename, share one reach though the
+// middle one, after H's, lies between them: two reaches, not three.
+func TestABatchsRewritesHoldOneReach(t *testing.T) {
+	t.Run("the plan's", func(t *testing.T) {
+		w := newRewriting(t, "F", "F/X", "H", "H/Y", "P", "Q")
+		fx, hy := w.before("[[F/X]]\n", "F/X"), w.before("[[H/Y]]\n", "H/Y")
+		f, h := w.rename("F", "F2"), w.rename("H", "H2")
+		pages := &counted{Pages: w.tree, subtrees: map[uuid.UUID]int{}}
+		store := &countedStore{Store: w.store}
+		links := app.BatchLinks{Store: store, Logger: w.rewrite.Logger, MaxContent: 1 << 10}
+		parse := func(_ context.Context, content string) (domain.Facts, error) { return w.facts(content), nil }
+		var reads any
+		rewrite := func(page, content string, before app.LinksBefore, changes ...domain.Change) string {
+			got, err := links.Rewrite(context.Background(), app.LinksMoved{LinksOn: app.LinksOn{NotebookID: w.notebook,
+				PageID: w.id(page), Content: content, Tree: pages, Parse: parse}, Before: before, Changes: changes, Reads: &reads})
+			if err != nil {
+				t.Fatal(err)
+			}
+			return got
+		}
+		got := []string{rewrite("P", "[[F/X]]\n", fx, f), rewrite("Q", "[[H/Y]]\n", hy, h), rewrite("P", "[[F/X]]\n", fx, f)}
+		if !slices.Equal(got, []string{"[[X]]\n", "[[Y]]\n", "[[X]]\n"}) || len(store.asked) != 5 || pages.subtrees[f.NodeID] != 1 {
+			t.Errorf("three rewrites on one tree = %q, the aliases' keys asked %d times, F's subtree read %d times; want "+
+				"[[X]], [[Y]], [[X]], five (F's and H's subtrees, three reaches), once", got, len(store.asked), pages.subtrees[f.NodeID])
+		}
+	})
+	t.Run("the participant's", func(t *testing.T) {
+		w := newRewriting(t, "F", "F/X", "H", "H/Y", "W1", "W2", "W3")
+		names := []string{"W1", "W2", "W3"}
+		slices.SortFunc(names, func(a, b string) int { return w.id(a).Compare(w.id(b)) })
+		content := map[string]string{names[0]: "[[F/X]]\n", names[1]: "[[H/Y]]\n", names[2]: "[[F/X]]\n"}
+		target := map[string]string{names[0]: "F/X", names[1]: "H/Y", names[2]: "F/X"}
+		befores := map[string]app.LinksBefore{}
+		facts := map[string]domain.Facts{}
+		for _, n := range names {
+			befores[n], facts[n] = w.before(content[n], target[n]), w.wrote(n, content[n])
+		}
+		f, h := w.rename("F", "F2"), w.rename("H", "H2")
+		own := map[string]domain.Change{names[0]: f, names[1]: h, names[2]: f}
+		written := map[uuid.UUID]app.WrittenPage{}
+		for _, n := range names {
+			written[w.id(n)] = app.WrittenPage{Before: befores[n], Changes: []domain.Change{own[n]}, Facts: facts[n]}
+		}
+		store := &countedStore{Store: w.store}
+		w.rewrite.Store = store
+		u, err := w.batch(app.Moved{Written: written})
+		if err != nil {
+			t.Fatal(err)
+		}
+		w.written(u, map[string]string{names[0]: "[[X]]\n", names[1]: "[[Y]]\n", names[2]: "[[X]]\n"})
+		if len(store.asked) != 4 {
+			t.Errorf("the aliases' keys asked %d times, want four: F's and H's subtrees, a reach for each changes", len(store.asked))
+		}
+	})
+}
+
 // A page of no links spreads nothing for the changes before it (M9/P3
 // review A's N1: the plan spread a renamed folder's subtree for each
 // content op of a page with none): its reach by the index, its rewrite in
