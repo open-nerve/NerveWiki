@@ -102,14 +102,15 @@ func (r *replanned) Error() string {
 // pages its edits read, past MaxBatchReadBytes at the op that passes them,
 // before any content is read; the contents' pass (Contents): the first op
 // that fails, its parses' bounds (422) and budget (503) at it; the edit
-// locks of the pages it writes, page.locked at the first op that meets one;
-// the unit's bounds on what it parses, page.batch_too_large; the final
-// contents parsed, 503; their links, page.batch_too_large; then the unit,
-// which does each op again under the notebook's lock and must find what
-// the plan found: else the whole of it once more from the plan, in the
-// same parse session, and then page.revision_mismatch at the first op that
-// differs. A refusal of an edit lock carries its pages' paths and the op
-// it met.
+// locks of the pages it writes or deletes, page.locked at the first op that
+// meets one; the unit's bounds on what it parses, page.batch_too_large; the
+// final contents parsed, 503; their links, page.batch_too_large; then the
+// unit, which does each op again under the notebook's lock and must find
+// what the plan found: else, as for a page gone between the plan's reads of
+// the tree and of the contents, the whole of it once more from the plan,
+// in the same parse session, and then page.revision_mismatch at the first
+// op that differs. A refusal of an edit lock carries its pages' paths and
+// the op it met.
 func (b *ApplyBatch) Execute(ctx context.Context, notebookID uuid.UUID, p PathBatch, client domain.Client) (Batched, error) {
 	actor, err := shared.RequireActor(ctx)
 	if err != nil {
@@ -292,7 +293,9 @@ func (a *batchAttempt) planned(ctx context.Context) error {
 // and moves before it reach by the index, read whole (M9/P3 review A-I1);
 // the bound on the contents read whole checked on their sizes, then those
 // contents, each with its revision in one statement. A page gone since the
-// tree's read is page.not_found at its first content op.
+// tree's read is a difference as the unit finds one (replanned): the batch
+// is planned once more, whose tree's pass answers at the op the page's
+// absence refuses (M9/P3 review A-M2).
 func (a *batchAttempt) read(ctx context.Context) (map[uuid.UUID]domain.PageText, map[uuid.UUID]domain.PageHead, error) {
 	texts, heads := a.plan.Reads()
 	if len(texts)+len(heads) == 0 {
@@ -303,8 +306,7 @@ func (a *batchAttempt) read(ctx context.Context) (map[uuid.UUID]domain.PageText,
 		firsts[pg.ID] = pg.First
 	}
 	gone := func(id uuid.UUID) error {
-		first := firsts[id]
-		return &domain.OpFailed{Op: first, Tool: a.steps[first].Kind, Err: domain.ErrNotFound}
+		return a.differs(firsts[id], "page", nil, nil)
 	}
 	states, err := a.b.states.PageStates(ctx, append(slices.Clone(texts), heads...))
 	if err != nil {

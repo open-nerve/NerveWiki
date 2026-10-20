@@ -375,7 +375,8 @@ func TestABatchsPlanLeavesTheLinksToTheNodesItFroze(t *testing.T) {
 // written since, a node at a path that is another since, two names
 // traded, and each op's compare of what it found: a content op's page, a
 // delete's subtree, a creation's parent and a move's destination parent,
-// each another since; then page.revision_mismatch at the first op that
+// each another since; a page gone between the plan's reads; then
+// page.revision_mismatch at the first op that
 // differs, a content op's with the version there and why as its edit's, a
 // tree op's the notebook changed twice. A guard's refusal is answered as
 // it is.
@@ -520,6 +521,25 @@ func TestABatchIsPlannedAgainOnce(t *testing.T) {
 		if len(changes) != 1 || changes[0].NodeID != a.ID || changes[0].After == nil || changes[0].After.ParentID == nil ||
 			*changes[0].After.ParentID != now.ID {
 			t.Errorf("the changes followed = %+v; want A's, to the new F %s, not to G %s", changes, now.ID, old.ID)
+		}
+	}
+
+	// A page gone between the plan's reads of the tree and of its head or
+	// its content is such a difference (M9/P3 review A-M2): the second
+	// plan answers at the op its absence refuses, with its path.
+	for _, read := range []string{"PageStates 1", "PageContent"} {
+		f = newFixture()
+		p = f.page("P", nil, 1)
+		f.content(p.ID, "p", 2)
+		f.rec.before = map[string]func(){read: func() {
+			delete(f.store.nodes, p.ID)
+			delete(f.store.contents, p.ID)
+		}}
+		_, err = f.applyBatch(&fakeLinks{recorder: f.rec}, moveOp("P.md", "R.md"), editOp("R.md", "p", "q"))
+		var missing *domain.PathNotFound
+		if opOf(err) != "0 page.not_found" || !errors.As(err, &missing) || missing.Path != "P.md" || f.count("ListNodes") != 2 {
+			t.Errorf("a page gone before %s = %v (%s) after %v; want it planned again, ops[0]'s P.md not found", read, err,
+				opOf(err), f.rec.calls)
 		}
 	}
 
