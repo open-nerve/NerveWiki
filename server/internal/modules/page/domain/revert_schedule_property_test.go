@@ -16,31 +16,37 @@ import (
 )
 
 // The schedule ends and puts the notebook back (M9/P3 design 3.16.4,
-// 3.21.1): a random tree of pages and attachments, an attachment's
-// levels counted as Subtree.Height counts them, none, so that it may be
-// a level below a page at MaxDepth (fix round 1, A-M2), a batch on it as
-// 4.11 lets one be (each
-// operation on the tree as it is then, B1, B3, a deletion of a child then
-// of its parent one group, a write then a deletion), its changeset
-// reverted, that revert reverted, four levels down. The test judges by a
-// model of its own, never the simulation schedule() moves: each step the
-// plan answers is done on the model in turn, checked as a store would
-// check it (its parent alive, no cycle, its name free, a restore's group
-// and states as its deletion left them, a write back on the page's
-// revision, of the version's content) and the model counted no deeper
-// than MaxDepth after it, an attachment a level more (T5), an
-// attachment's step aside keeping its extension; each node renamed aside, moved aside and
-// placed at most once each, its place after its steps aside (T1); the
-// steps aside at most 2N; the schedule never ErrRevertUnordered (T2-T4).
-// After each level the model is the notebook before the changeset: the
-// tree, the contents of its pages, and of those in the trash. The next
-// level's changeset is the one those steps record. Five settings in
-// turn: short batches at MaxDepth 2, 3 and 4, long ones at 3 and 4. It
-// is not idle: the first fallback, the second, a write back before a
-// deletion, and a step of an attachment each come up at least as often
-// as the floors count them for as many trials; the third, a defence no
-// reachable state needs, never does, nor in a run without the second
-// (fix round 1, C-N2; TestTheThirdFallbackMovesAPlaceOffTheRoot tests it).
+// 3.21.1): a random tree of pages and attachments, an attachment's levels
+// counted as Subtree.Height counts them, none, so that it may be a level
+// below a page at MaxDepth (fix round 1, A-M2), a batch on it as 4.11
+// lets one be (each operation on the tree as it is then, B1, B3, a
+// deletion of a child then of its parent one group, a write then a
+// deletion), its changeset reverted, that revert reverted, four levels
+// down. The test judges by a model of its own, never the simulation
+// schedule() moves: each step the plan answers is done on the model in
+// turn, checked as a store would check it (its parent alive, no cycle,
+// its name free, a restore's group and states as its deletion left them,
+// a write back on the page's revision, of the version's content) and the
+// model counted no deeper than MaxDepth after it, an attachment a level
+// more (T5), an attachment's step aside keeping its extension; each node
+// renamed aside, moved aside and placed at most once each, its place
+// after its steps aside (T1); the steps aside at most 2N; the schedule
+// never ErrRevertUnordered (T2-T4). After each level the model is the
+// notebook before the changeset: the tree, the contents of its pages, and
+// of those in the trash. The next level's changeset is the one those
+// steps record. Five settings in turn: short batches at MaxDepth 2, 3 and
+// 4, long ones at 3 and 4. It is not idle: the first fallback, the
+// second, a write back before a deletion, and a step of an attachment
+// each come up at least as often as the floors count them for as many
+// trials. No step moves a node aside from the root or from under a parent
+// S* keeps alive, which only the third fallback, a defence no reachable
+// state needs, would do. The test counts a move aside by its shape, not
+// by the fallback that took it: in a run without the second, the third
+// makes the second's moves, counted as the second's, and the two of them
+// from under a live parent, in 77,784 reverts, fail it (fix rounds 1 and
+// 2, C-N2, C's N1). TestTheThirdFallbackMovesAPlaceOffTheRoot tests the
+// third; TestTheSecondFallbackPicksTheNodeItFrees catches a schedule
+// without the second, -short too.
 func TestScheduleEndsAndPutsTheNotebookBack(t *testing.T) {
 	trials, secondFloor := 20_000, 50
 	if testing.Short() {
@@ -63,7 +69,8 @@ func TestScheduleEndsAndPutsTheNotebookBack(t *testing.T) {
 		"most steps %d", trials, counts.reverts, counts.first, counts.second, counts.third, counts.writeThenDelete, counts.assets,
 		counts.assetRestores, counts.mostAside, counts.mostSteps)
 	if counts.third != 0 {
-		t.Errorf("moved aside otherwise %d times, want never: the third fallback is a defence no reachable state needs", counts.third)
+		t.Errorf("moved aside from the root or a live parent %d times, want never: only the third fallback, a defence no reachable "+
+			"state needs, moves so", counts.third)
 	}
 	if counts.first < 50 || counts.second < secondFloor || counts.writeThenDelete < 50 || counts.assets < 50 {
 		t.Errorf("idle: renamed aside %d (want 50), moved aside from a deletion %d (want %d), written back then deleted %d "+

@@ -417,10 +417,11 @@ func (p *planner) restore(s *revertSim, top uuid.UUID) RevertOp {
 // pending, those to place and not moved aside yet, the least by id moved
 // aside to the root: it is to be placed, its parent in S* alive while the
 // one it is under now is none of S*'s; one not to place, which only a
-// defect has there, it never takes, to end unplaced under a name aside. Third, a defence: of the nodes to place, not
-// at the root and not moved aside yet, the least by id moved aside to the
-// root. A node moved aside is renamed too, from its name as the plan
-// began, never another aside name on one; it stays to be placed.
+// defect has there, it never takes, to end unplaced under a name aside.
+// Third, a defence: of the nodes to place, not at the root and not moved
+// aside yet, the least by id moved aside to the root. A node moved aside
+// is renamed too, from its name as the plan began, never another aside
+// name on one; it stays to be placed.
 func (p *planner) fallback(s *revertSim) (RevertOp, bool) {
 	waiting := slices.Concat(p.pending(s.places), p.pending(s.restores))
 	for _, id := range waiting {
