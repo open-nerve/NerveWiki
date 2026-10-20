@@ -3,6 +3,7 @@ package app_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 	"uuid"
@@ -44,9 +45,11 @@ func (t *tree) RunBatch(context.Context, app.JobSpec, app.JobPlan, int, int) (ap
 // let it go on. steps are the plan, planErr refuses it; planned are the
 // item or changeset each plan was of. Each batch is recorded with its
 // spec and actor; busy answers as many batches 503 first; halving answers
-// ErrBatchTooLarge to a batch of more steps than it, none when 0; fail
-// refuses the batch from a step; onBatch runs as each batch starts, its
-// number from 1; wrote are the batches written.
+// ErrBatchTooLarge to a batch of more steps than it, none when 0; history,
+// when set, answers it to a batch whose steps restore more rows of it
+// than history.bound, of more than one node, as the page module does
+// (M9/P3 design 3.23); fail refuses the batch from a step; onBatch runs
+// as each batch starts, its number from 1; wrote are the batches written.
 type jobTree struct {
 	*tree
 	rec          *recorder
@@ -64,6 +67,7 @@ type jobTree struct {
 	actors  []shared.Actor
 	busy    int
 	halving int
+	history *jobHistory
 	fail    map[int]error
 	onBatch func(n int)
 }
@@ -131,6 +135,8 @@ func (t *jobTree) RunBatch(ctx context.Context, spec app.JobSpec, p app.JobPlan,
 		return app.BatchDone{}, shared.ServerBusy(time.Second)
 	case t.halving > 0 && to-from > t.halving:
 		return app.BatchDone{}, app.ErrBatchTooLarge
+	case t.history.past(from, to):
+		return app.BatchDone{}, fmt.Errorf("%w: past a unit's rows of history", app.ErrBatchTooLarge)
 	case t.fail[from] != nil:
 		return app.BatchDone{}, t.fail[from]
 	}
@@ -144,6 +150,31 @@ func (t *jobTree) RunBatch(ctx context.Context, spec app.JobSpec, p app.JobPlan,
 		done.Placed = &domain.Placement{Reason: "original"}
 	}
 	return done, nil
+}
+
+// jobHistory is the rows of history each step restores, by step, and the
+// node each writes, by step, its own when not set; bound is a unit's.
+type jobHistory struct {
+	rows  map[int]int
+	node  map[int]int
+	bound int
+}
+
+// past reports whether the steps from to to restore more rows than the
+// bound, and are of more than one node: a node's steps never are.
+func (h *jobHistory) past(from, to int) bool {
+	if h == nil {
+		return false
+	}
+	rows, nodes := 0, map[int]bool{}
+	for k := from; k < to; k++ {
+		node, ok := h.node[k]
+		if !ok {
+			node = k
+		}
+		rows, nodes[node] = rows+h.rows[k], true
+	}
+	return rows > h.bound && len(nodes) > 1
 }
 
 // written are the batches asked so far, each its first step and the one
