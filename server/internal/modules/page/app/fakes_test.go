@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"math"
 	"slices"
 	"strings"
 	"time"
@@ -472,6 +473,21 @@ type fakeHold struct {
 func (h *fakeHold) KeepFacts(f app.Facts) {
 	content, _ := f.(string)
 	h.budget.record(context.Background(), fmt.Sprintf("KeepFacts %d", len(content)))
+}
+
+// Takes is n, and the capacity, or no bound: a fake hold keeps its take.
+func (b *fakeBudget) Takes(n int) (int, int) {
+	if b.capacity > 0 {
+		return n, b.capacity
+	}
+	return n, math.MaxInt
+}
+
+func (h *fakeHold) Held() int {
+	if h.done {
+		return 0
+	}
+	return h.n
 }
 
 func (h *fakeHold) Release() {

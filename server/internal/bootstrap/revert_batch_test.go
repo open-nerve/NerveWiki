@@ -8,8 +8,11 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 	"uuid"
 
+	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/storage"
 )
 
@@ -330,4 +333,44 @@ func TestTheRevertOfEachBatchShape(t *testing.T) {
 			}
 			tm.checkHistory(t)
 		})
+}
+
+// The revert of a lone page a batch wrote and then deleted, both its
+// contents near the largest, restores the one and writes the other back,
+// two contents of the page parsed (M9/P3 design 3.18.4): at the least
+// parse budget the configuration takes, a page's largest content, the
+// second's take cannot fit beside the first's share, which the revert
+// gives back first (fix round 1, B-M1); at the default budget it fits.
+func TestTheRevertOfALonePagesTwoContentsAtTheLeastBudget(t *testing.T) {
+	size := domain.MaxContentBytes - 64
+	fill := func(tag string) string { return (tag + "\n" + strings.Repeat("a", size))[:size] }
+	for _, tt := range []struct {
+		name   string
+		budget int
+	}{{"the least budget", config.MinParseBudgetBytes}, {"the default budget", 0}} {
+		t.Run(tt.name, func(t *testing.T) {
+			tm := newAcmeTeamWith(t, "member", "", func(c *config.Config) {
+				if tt.budget > 0 {
+					c.Page.ParseBudgetBytes = tt.budget
+				}
+			})
+			nb := tm.openNotebook(t, "alice", "Eng")
+			before, written := fill("before"), fill("written")
+			ids := tm.seed(t, nb, restPage{"X", before})
+			b := tm.agent(t, "alice", nb).batchDone(t, opWriteOn("X.md", written, versionOf(ids["X"], 1)), opDelete("X.md"))
+			if b.ChangesetID == nil {
+				t.Fatalf("the batch = %+v, want a changeset", b)
+			}
+			c := changesetRevert("alice", *b.ChangesetID)
+			started := time.Now()
+			status, body := ask(t, tm.contract, c.method, tm.base+c.path, tm.tokens["alice"], c.body)
+			t.Logf("the revert answered in %v", time.Since(started))
+			if status != http.StatusOK {
+				t.Fatalf("the revert = %d %.300s, want 200", status, body)
+			}
+			if got := tm.content(t, "alice", ids["X"]); got.Content != before {
+				t.Errorf("X = revision %d, %d bytes; want the content before", got.Revision, len(got.Content))
+			}
+		})
+	}
 }

@@ -44,7 +44,8 @@ func TestTheAdapterAnswersABusyBudget(t *testing.T) {
 
 // A hold the adapter gives keeps the share of the facts it is handed, the
 // platform's: with its frontmatter's values; facts of elsewhere keep the
-// content's share alone.
+// content's share alone. Held tells what it holds, the take's as Takes
+// tells it, then the share, then none.
 func TestTheAdapterKeepsTheFactsShare(t *testing.T) {
 	m, err := markdown.New(nil)
 	if err != nil {
@@ -61,11 +62,21 @@ func TestTheAdapterKeepsTheFactsShare(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			const size = 10_000
 			b := markdown.NewBudget(size, 20*time.Millisecond, slog.New(slog.DiscardHandler))
-			hold, err := markdownadapter.NewBudget(b).Take(context.Background(), len(content))
+			adapted := markdownadapter.NewBudget(b)
+			if take, all := adapted.Takes(len(content)); take != b.Takes(len(content)) || all != size {
+				t.Errorf("Takes(%d) = %d, %d; want %d, %d", len(content), take, all, b.Takes(len(content)), size)
+			}
+			hold, err := adapted.Take(context.Background(), len(content))
 			if err != nil {
 				t.Fatal(err)
 			}
+			if held := hold.Held(); held != b.Takes(len(content)) {
+				t.Errorf("the take holds %d, want %d", held, b.Takes(len(content)))
+			}
 			hold.KeepFacts(tt.facts)
+			if held := hold.Held(); held != tt.kept {
+				t.Errorf("the facts hold %d, want %d", held, tt.kept)
+			}
 			rest, err := b.Take(context.Background(), size-tt.kept)
 			if err != nil {
 				t.Fatalf("the budget beside the facts' %d bytes: %v", tt.kept, err)
@@ -75,6 +86,9 @@ func TestTheAdapterKeepsTheFactsShare(t *testing.T) {
 				t.Errorf("a byte more = %v, want busy: the facts keep %d bytes", err, tt.kept)
 			}
 			hold.Release()
+			if held := hold.Held(); held != 0 {
+				t.Errorf("released, the hold holds %d", held)
+			}
 		})
 	}
 }

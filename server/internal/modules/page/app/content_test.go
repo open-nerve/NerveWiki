@@ -609,3 +609,75 @@ func TestARevertsContentsAreParsedByPageAndHash(t *testing.T) {
 		t.Errorf("the budget holds %d", f.budget.held)
 	}
 }
+
+// A take that could not fit in the budget beside the shares its call
+// keeps is preceded by their give back, their facts kept, uncounted
+// (M9/P3 S2 fix round 1, B-M1): a revert's lone page, restored and written
+// back, at the least budget, a page's largest content. One that fits
+// keeps them, at the default budget, and for M8's worst, two pages of
+// half the unit's bytes, at the least; when others' shares stand in the
+// way, it waits, and is 503 server_busy, as before.
+func TestDecidedAllGivesItsSharesBackBeforeATakeThatCannotFit(t *testing.T) {
+	f := newFixture()
+	a, b := uuid.NewV7(), uuid.NewV7()
+	ref := func(id uuid.UUID, content string) domain.ContentRef {
+		sum := sha256.Sum256([]byte(content))
+		return domain.ContentRef{NodeID: id, Hash: hex.EncodeToString(sum[:])}
+	}
+	of := func(c byte, n int) string { return strings.Repeat(string(c), n) }
+	parser := func(budget *tenthBudget) *app.ContentParser {
+		return app.NewContentParser(f.writer(), f.md, budget, 50*time.Millisecond)
+	}
+	largest := domain.MaxContentBytes - 64
+	trashed, base := of('t', largest), of('b', largest)
+	two := map[domain.ContentRef]string{ref(a, trashed): trashed, ref(a, base): base}
+	for _, tt := range []struct {
+		name     string
+		capacity int
+		held     int
+	}{
+		{"the least budget", domain.MaxContentBytes, largest / 10},
+		{"the default budget", 8 << 20, 2 * (largest / 10)},
+	} {
+		budget := &tenthBudget{capacity: tt.capacity}
+		facts, release, err := parser(budget).DecidedContents(context.Background(), two, errors.New("too large"))
+		if err != nil || facts[ref(a, trashed)] != trashed || facts[ref(a, base)] != base {
+			t.Errorf("%s: a lone page's two largest contents = %v; want both facts", tt.name, err)
+			continue
+		}
+		if budget.held != tt.held {
+			t.Errorf("%s: the shares held %d, want %d", tt.name, budget.held, tt.held)
+		}
+		release()
+		if budget.held != 0 {
+			t.Errorf("%s: released, the budget holds %d", tt.name, budget.held)
+		}
+	}
+
+	half := domain.MaxUnitBytes / 2
+	budget := &tenthBudget{capacity: domain.MaxContentBytes}
+	facts, release, err := parser(budget).DecidedAll(context.Background(), map[uuid.UUID]string{a: of('a', half), b: of('b', half)},
+		errors.New("too large"))
+	if err != nil || len(facts) != 2 || budget.held != 2*(half/10) {
+		t.Errorf("two pages of half the unit's bytes at the least budget = %v, %d held; want their facts, both shares kept", err,
+			budget.held)
+	}
+	if release != nil {
+		release()
+	}
+
+	budget = &tenthBudget{capacity: domain.MaxContentBytes}
+	other, err := budget.Take(context.Background(), 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	four := 4 << 20
+	trashed, base = of('t', four), of('b', four)
+	if _, _, err := parser(budget).DecidedContents(context.Background(),
+		map[domain.ContentRef]string{ref(a, trashed): trashed, ref(a, base): base}, errors.New("too large")); codeOf(err) != "server_busy" ||
+		budget.held != 1<<20 {
+		t.Errorf("two contents of 4 MiB beside another's 1 MiB = %v, %d held; want server_busy, the other's alone held", err,
+			budget.held)
+	}
+	other.Release()
+}

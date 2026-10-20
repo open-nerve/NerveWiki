@@ -78,11 +78,19 @@ const busyAfter = time.Second
 
 // DecidedAll is the facts of contents, by page, as Decided takes them for a
 // unit its caller decided already, which writes them all (M8/P2 design
-// 3.5): the largest first, so that the smaller ones after it always find
-// room, each kept until release; the waits of their takes, together, at
-// most the budget's wait, as a request has the time of one: a take that
-// runs out of what is left of it while the request has time is 503
-// server_busy. Unless they are a lone page, it counts their links as it
+// 3.5): the largest first, each share kept until release; the waits of
+// their takes, together, at most the budget's wait, as a request has the
+// time of one: a take that runs out of what is left of it while the
+// request has time is 503 server_busy. A take that could not fit in the
+// budget beside the shares the call keeps never would, whoever else gives
+// back: the call gives them back first, their facts kept, uncounted, as a
+// ParseSession does (M9/P3 S2 fix round 1, B-M1). Only a revert's lone
+// page, restored and written back, two contents near the largest each, at
+// a budget near the least, meets it: the copies of several pages are
+// within the unit's 8 MiB, so that, the largest first, their shares and
+// the next take hold some 4.4 MiB at most (a tenth of 8 - x, and x, of
+// 4 MiB at most), within the least budget's 5; any other lone page has
+// one content. Unless they are a lone page, it counts their links as it
 // goes, and past the unit's bound gives back what it holds and answers
 // tooLarge: their number is known only once they are parsed.
 func (c *ContentParser) DecidedAll(ctx context.Context, contents map[uuid.UUID]string, tooLarge error) (
@@ -116,10 +124,12 @@ func decidedAll[K comparable](ctx context.Context, c *ContentParser, contents ma
 	}
 	slices.SortFunc(keys, func(a, b K) int { return cmp.Or(len(contents[b])-len(contents[a]), compare(a, b)) })
 	var holds []BudgetHold
+	kept := 0 // the bytes holds keep
 	release := func() {
 		for _, h := range holds {
 			h.Release()
 		}
+		holds, kept = nil, 0
 	}
 	done := false
 	defer func() {
@@ -135,6 +145,9 @@ func decidedAll[K comparable](ctx context.Context, c *ContentParser, contents ma
 			out[k] = c.markdown.Facts(content)
 			continue
 		}
+		if take, size := c.budget.Takes(len(content)); kept+take > size {
+			release() // the facts parsed are kept in out, uncounted
+		}
 		started := time.Now()
 		hold, err := c.take(ctx, len(content), left)
 		left -= time.Since(started)
@@ -144,6 +157,7 @@ func decidedAll[K comparable](ctx context.Context, c *ContentParser, contents ma
 		holds = append(holds, hold)
 		facts := c.markdown.Facts(content)
 		hold.KeepFacts(facts)
+		kept += hold.Held()
 		out[k] = facts
 		if links += c.markdown.Links(facts); domain.UnitTooLarge(len(pages), len(contents), 0, links) {
 			return nil, nil, tooLarge

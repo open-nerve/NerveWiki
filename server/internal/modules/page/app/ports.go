@@ -691,17 +691,23 @@ type ExpiredSessions interface {
 // facts kept of it (M4/P4 review P2; M6 design 4.7): the largest content's
 // parse can hold some 300 times its size in memory, its facts a tenth of
 // that. Take holds a content's n bytes for its parse; it waits a while for
-// them, then answers shared.ServerBusy. The composition root hands the
-// module the one budget of the server.
+// them, then answers shared.ServerBusy. Takes is what Take holds for a
+// content of n bytes, and the budget's size: a caller that keeps facts'
+// shares while it parses more tells by them a take that could never fit
+// beside its own (M9/P3 S2 fix round 1, B-M1). The composition root hands
+// the module the one budget of the server.
 type ParseBudget interface {
 	Take(ctx context.Context, n int) (BudgetHold, error)
+	Takes(n int) (take, size int)
 }
 
 // BudgetHold is the bytes of the budget a content holds: KeepFacts gives
-// back what its parse held beyond what facts, its facts, hold; Release all
-// of it.
+// back what its parse held beyond what facts, its facts, hold; Held is
+// what it holds, its take's, then its facts' share, none once released;
+// Release gives back all of it.
 type BudgetHold interface {
 	KeepFacts(facts Facts)
+	Held() int
 	Release()
 }
 
