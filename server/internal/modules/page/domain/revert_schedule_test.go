@@ -314,6 +314,16 @@ func TestScheduleRevertsEachBatchShape(t *testing.T) {
 			w.placed(p, domain.TreeState{Name: "B", SortOrder: 1})
 			w.placed(h, domain.TreeState{ParentID: &q, Name: "A"})
 		}, []string{"aside B renamed", "place A moved and renamed", "place B moved and renamed", "restore X"}},
+		{"a deletion of a page at MaxDepth with an attachment under it: restored, its levels the page's", 2, func(w *world) {
+			// Q/P, P at MaxDepth, P/a.png a level below (fix round 1, A-M2).
+			q := w.page("Q", nil, 0, 1, "q")
+			p := w.page("P", &q, 0, 1, "p")
+			w.asset("a.png", &p, 0)
+			w.trash(p, deletedAt)
+			for _, id := range w.subtree(p) {
+				w.deleted(id)
+			}
+		}, []string{"restore P"}},
 		{"a content written, then the page deleted: restored, then written back on its revision in the trash", 0, func(w *world) {
 			x := w.page("X", nil, 0, 3, "written")
 			w.wrote(x, 2, "before")

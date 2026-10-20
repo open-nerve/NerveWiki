@@ -16,7 +16,10 @@ import (
 )
 
 // The schedule ends and puts the notebook back (M9/P3 design 3.16.4,
-// 3.21.1): a random tree, a batch on it as 4.11 lets one be (each
+// 3.21.1): a random tree of pages and attachments, an attachment's
+// levels counted as Subtree.Height counts them, none, so that it may be
+// a level below a page at MaxDepth (fix round 1, A-M2), a batch on it as
+// 4.11 lets one be (each
 // operation on the tree as it is then, B1, B3, a deletion of a child then
 // of its parent one group, a write then a deletion), its changeset
 // reverted, that revert reverted, four levels down. The test judges by a
@@ -25,17 +28,19 @@ import (
 // check it (its parent alive, no cycle, its name free, a restore's group
 // and states as its deletion left them, a write back on the page's
 // revision, of the version's content) and the model counted no deeper
-// than MaxDepth after it (T5); each node renamed aside, moved aside and
+// than MaxDepth after it, an attachment a level more (T5), an
+// attachment's step aside keeping its extension; each node renamed aside, moved aside and
 // placed at most once each, its place after its steps aside (T1); the
 // steps aside at most 2N; the schedule never ErrRevertUnordered (T2-T4).
 // After each level the model is the notebook before the changeset: the
 // tree, the contents of its pages, and of those in the trash. The next
 // level's changeset is the one those steps record. Five settings in
 // turn: short batches at MaxDepth 2, 3 and 4, long ones at 3 and 4. It
-// is not idle: the first fallback, the second, and a write back before a
-// deletion each come up at least as often as the simulation counts them
-// for as many trials; the third, a defence no reachable state needs, is
-// not counted (TestTheThirdFallbackMovesAPlaceOffTheRoot tests it).
+// is not idle: the first fallback, the second, a write back before a
+// deletion, and a step of an attachment each come up at least as often
+// as the floors count them for as many trials; the third, a defence no
+// reachable state needs, never does in the full run
+// (TestTheThirdFallbackMovesAPlaceOffTheRoot tests it).
 func TestScheduleEndsAndPutsTheNotebookBack(t *testing.T) {
 	trials, secondFloor := 20_000, 50
 	if testing.Short() {
@@ -54,30 +59,34 @@ func TestScheduleEndsAndPutsTheNotebookBack(t *testing.T) {
 		}
 	}
 	t.Logf("%d trials, %d reverts: renamed aside %d, moved aside from a deletion %d, moved aside otherwise %d, "+
-		"written back then deleted %d; most steps aside in a revert %d, most steps %d", trials, counts.reverts, counts.first,
-		counts.second, counts.third, counts.writeThenDelete, counts.mostAside, counts.mostSteps)
-	if counts.first < 50 || counts.second < secondFloor || counts.writeThenDelete < 50 {
+		"written back then deleted %d, steps of an attachment %d, restores holding one %d; most steps aside in a revert %d, "+
+		"most steps %d", trials, counts.reverts, counts.first, counts.second, counts.third, counts.writeThenDelete, counts.assets,
+		counts.assetRestores, counts.mostAside, counts.mostSteps)
+	if counts.first < 50 || counts.second < secondFloor || counts.writeThenDelete < 50 || counts.assets < 50 {
 		t.Errorf("idle: renamed aside %d (want 50), moved aside from a deletion %d (want %d), written back then deleted %d "+
-			"(want 50)", counts.first, counts.second, secondFloor, counts.writeThenDelete)
+			"(want 50), steps of an attachment %d (want 50)", counts.first, counts.second, secondFloor, counts.writeThenDelete,
+			counts.assets)
 	}
 }
 
 // propCounts are what the trials did: reverts planned; the steps aside by
 // fallback, the first renaming a holder where it is, the second moving a
 // node from under one the revert deletes, the third any other move; the
-// write backs of a page a later step deletes; and the most steps aside
-// and steps of one revert.
+// write backs of a page a later step deletes; the places and steps aside
+// of an attachment, and the restores of a group holding one; and the
+// most steps aside and steps of one revert.
 type propCounts struct {
-	reverts, first, second, third, writeThenDelete, mostAside, mostSteps int
+	reverts, first, second, third, writeThenDelete, assets, assetRestores, mostAside, mostSteps int
 }
 
-// propNode is a node of the model, every one a page: where it is, alive
-// or in the trash item of the root trash, and its content at its
-// revision.
+// propNode is a node of the model, a page or an attachment (asset): where
+// it is, alive or in the trash item of the root trash, and a page's
+// content at its revision.
 type propNode struct {
 	parent   *uuid.UUID
 	name     string
 	order    float64
+	asset    bool
 	alive    bool
 	trash    uuid.UUID
 	revision int
@@ -221,7 +230,12 @@ func (p *propTrial) depthUnder(m propModel, parent *uuid.UUID) int {
 	return d
 }
 
+// height is how many levels of pages the subtree of id spans, as
+// Subtree.Height counts them: an attachment's is none.
 func (p *propTrial) height(m propModel, id uuid.UUID) int {
+	if m.nodes[id].asset {
+		return 0
+	}
 	h := 0
 	for _, c := range p.children(m, id) {
 		h = max(h, p.height(m, c))
@@ -229,15 +243,25 @@ func (p *propTrial) height(m propModel, id uuid.UUID) int {
 	return h + 1
 }
 
-// deepest is the depth of the deepest node alive.
+// deepest is the depth of the deepest node alive, an attachment's a level
+// less: one under a page at MaxDepth is within it.
 func (p *propTrial) deepest(m propModel) int {
 	d := 0
 	for _, id := range p.ids {
 		if n := m.nodes[id]; n.alive {
-			d = max(d, p.depthUnder(m, n.parent))
+			d = max(d, p.depthUnder(m, n.parent)-p.levels(n))
 		}
 	}
 	return d
+}
+
+// levels is 1 for an attachment, a level it may be below MaxDepth; 0 for a
+// page.
+func (p *propTrial) levels(n propNode) int {
+	if n.asset {
+		return 1
+	}
+	return 0
 }
 
 func (p *propTrial) alive(m propModel) []uuid.UUID {
@@ -251,13 +275,31 @@ func (p *propTrial) alive(m propModel) []uuid.UUID {
 }
 
 // create makes a page under parent named name, its first content its
-// version 1.
-func (p *propTrial) create(m propModel, parent *uuid.UUID, name string) uuid.UUID {
+// version 1; or an attachment, asset, of no content.
+func (p *propTrial) create(m propModel, parent *uuid.UUID, name string, asset bool) uuid.UUID {
 	id := p.newID()
+	if asset {
+		m.nodes[id] = propNode{parent: parent, name: name, order: float64(len(p.ids)), asset: true, alive: true}
+		return id
+	}
 	content := "c" + id.String()
 	m.nodes[id] = propNode{parent: parent, name: name, order: float64(len(p.ids)), alive: true, revision: 1, content: content}
 	p.write(id, 1, content)
 	return id
+}
+
+// pages are the pages of ids, by pointer.
+func (p *propTrial) pages(m propModel, ids []uuid.UUID) []*uuid.UUID {
+	return pointers(slices.DeleteFunc(slices.Clone(ids), func(id uuid.UUID) bool { return m.nodes[id].asset }))
+}
+
+// nameOf is name as the node x, or an attachment, asset, made, takes it:
+// an attachment's ends with its extension.
+func nameOf(name string, asset bool) string {
+	if asset && !strings.HasSuffix(name, ".png") {
+		return name + ".png"
+	}
+	return name
 }
 
 // propSlot is a place a node left: its parent and name.
@@ -275,16 +317,16 @@ func (p *propTrial) batch() (t0, now propModel, items []domain.ChangesetItem, ve
 		size = p.between(5, 12)
 	}
 	for range size {
-		parents := append([]*uuid.UUID{nil}, pointers(p.ids)...)
-		parent := parents[p.rng.IntN(len(parents))]
-		if p.depthUnder(m, parent) > p.maxDepth {
+		parents := append([]*uuid.UUID{nil}, p.pages(m, p.ids)...)
+		parent, asset := parents[p.rng.IntN(len(parents))], p.rng.IntN(4) == 0
+		if p.depthUnder(m, parent) > p.maxDepth+p.levels(propNode{asset: asset}) {
 			continue
 		}
-		name := string("abc"[p.rng.IntN(3)])
+		name := nameOf(string("abc"[p.rng.IntN(3)]), asset)
 		if _, held := p.holder(m, parent, p.key(name)); held {
 			continue
 		}
-		p.create(m, parent, name)
+		p.create(m, parent, name, asset)
 	}
 	t0 = m.clone()
 	created, moved, written := map[uuid.UUID]bool{}, map[uuid.UUID]bool{}, map[uuid.UUID]bool{}
@@ -305,7 +347,7 @@ func (p *propTrial) batch() (t0, now propModel, items []domain.ChangesetItem, ve
 	}
 	okMove := func(x uuid.UUID, parent *uuid.UUID, name string) bool {
 		n := m.nodes[x]
-		if parent != nil && (!m.nodes[*parent].alive || p.within(m, *parent, x)) {
+		if parent != nil && (!m.nodes[*parent].alive || m.nodes[*parent].asset || p.within(m, *parent, x)) {
 			return false
 		}
 		if h, held := p.holder(m, parent, p.key(name)); held && h != x || domain.SameParent(n.parent, parent) && n.name == name {
@@ -314,6 +356,7 @@ func (p *propTrial) batch() (t0, now propModel, items []domain.ChangesetItem, ve
 		return p.depthUnder(m, parent)+p.height(m, x)-1 <= p.maxDepth
 	}
 	move := func(x uuid.UUID, parent *uuid.UUID, name string) bool {
+		name = nameOf(name, m.nodes[x].asset)
 		if !okMove(x, parent, name) {
 			return false
 		}
@@ -323,10 +366,12 @@ func (p *propTrial) batch() (t0, now propModel, items []domain.ChangesetItem, ve
 		m.nodes[x], moved[x] = n, true
 		return true
 	}
-	create := func(parent *uuid.UUID, name string) {
-		if _, held := p.holder(m, parent, p.key(name)); p.aliveOrRoot(m, parent) && !held && p.depthUnder(m, parent) <= p.maxDepth {
-			id := p.create(m, parent, name)
-			created[id], written[id] = true, true
+	create := func(parent *uuid.UUID, name string, asset bool) {
+		name = nameOf(name, asset)
+		if _, held := p.holder(m, parent, p.key(name)); p.aliveOrRoot(m, parent) && !held &&
+			p.depthUnder(m, parent) <= p.maxDepth+p.levels(propNode{asset: asset}) {
+			id := p.create(m, parent, name, asset)
+			created[id], written[id] = true, !asset
 		}
 	}
 	write := func(x uuid.UUID) {
@@ -385,12 +430,12 @@ func (p *propTrial) batch() (t0, now propModel, items []domain.ChangesetItem, ve
 		case 0: // recreate a name a node left
 			if len(freed) > 0 {
 				s := freed[p.rng.IntN(len(freed))]
-				create(s.parent, s.name)
+				create(s.parent, s.name, strings.HasSuffix(s.name, ".png"))
 			}
 		case 1: // into a page the batch made
 			var made []uuid.UUID
 			for _, id := range alive {
-				if created[id] {
+				if created[id] && !m.nodes[id].asset {
 					made = append(made, id)
 				}
 			}
@@ -439,7 +484,7 @@ func (p *propTrial) batch() (t0, now propModel, items []domain.ChangesetItem, ve
 				j := (i + 1 + p.rng.IntN(len(ids)-1)) % len(ids)
 				a, b := ids[i], ids[j]
 				ka, kb := m.nodes[a].name, m.nodes[b].name
-				if move(a, at, "t") && move(b, at, ka) {
+				if m.nodes[a].asset == m.nodes[b].asset && move(a, at, "t") && move(b, at, ka) {
 					move(a, at, kb)
 				}
 			}
@@ -451,16 +496,18 @@ func (p *propTrial) batch() (t0, now propModel, items []domain.ChangesetItem, ve
 		case 5:
 			del(pick())
 		case 6:
-			parents := append([]*uuid.UUID{nil}, pointers(alive)...)
+			parents := append([]*uuid.UUID{nil}, p.pages(m, alive)...)
 			move(pick(), parents[p.rng.IntN(len(parents))], namePick())
 		case 7:
-			parents := append([]*uuid.UUID{nil}, pointers(alive)...)
-			create(parents[p.rng.IntN(len(parents))], namePick())
+			parents := append([]*uuid.UUID{nil}, p.pages(m, alive)...)
+			create(parents[p.rng.IntN(len(parents))], namePick(), p.rng.IntN(4) == 0)
 		case 8:
-			write(pick())
+			if x := pick(); !m.nodes[x].asset {
+				write(x)
+			}
 		case 9: // written, then deleted
 			x := pick()
-			if !touchedByB(p.subtree(m, x)) {
+			if !m.nodes[x].asset && !touchedByB(p.subtree(m, x)) {
 				write(x)
 				del(x)
 			}
@@ -508,7 +555,7 @@ func (p *propTrial) changesetOf(pre, post propModel, written map[uuid.UUID]bool)
 		}
 		_, existed := pre.nodes[id]
 		it := domain.ChangesetItem{NodeID: id, Before: b, After: a, Restored: b == nil && existed}
-		if a == nil || b == nil || written[id] {
+		if !post.nodes[id].asset && (a == nil || b == nil || written[id]) {
 			it.Revision = post.nodes[id].revision
 		}
 		items = append(items, it)
@@ -532,14 +579,20 @@ func (p *propTrial) state(m propModel, items []domain.ChangesetItem, versions []
 	s := domain.RevertState{Items: items, Versions: versions, Nodes: map[uuid.UUID]domain.NodeNow{}, Contents: map[uuid.UUID]domain.ContentNow{},
 		Hashes: p.hashes, Groups: map[uuid.UUID][]domain.TrashMember{}, At: at, Retention: retention}
 	node := func(id uuid.UUID, at domain.TreeState) domain.Node {
-		return domain.Node{ID: id, ParentID: at.ParentID, Kind: domain.KindPage, Name: at.Name, NameKey: p.key(at.Name), SortOrder: at.SortOrder}
+		kind := domain.KindPage
+		if m.nodes[id].asset {
+			kind = domain.KindAsset
+		}
+		return domain.Node{ID: id, ParentID: at.ParentID, Kind: kind, Name: at.Name, NameKey: p.key(at.Name), SortOrder: at.SortOrder}
 	}
 	for _, id := range p.ids {
 		n, ok := m.nodes[id]
 		if !ok || !n.alive {
 			continue
 		}
-		s.Contents[id] = domain.ContentNow{Revision: n.revision, Hash: p.hashes[domain.VersionRef{NodeID: id, Revision: n.revision}]}
+		if !n.asset {
+			s.Contents[id] = domain.ContentNow{Revision: n.revision, Hash: p.hashes[domain.VersionRef{NodeID: id, Revision: n.revision}]}
+		}
 		if len(items) > 0 {
 			s.Tree = append(s.Tree, node(id, n.state()))
 		}
@@ -551,7 +604,14 @@ func (p *propTrial) state(m propModel, items []domain.ChangesetItem, versions []
 			tr := m.trash[n.trash]
 			now.DeletedAt = new(tr.at)
 			if n.trash == id {
-				now.TrashRoot, now.TrashPages = true, len(tr.members)
+				now.TrashRoot = true
+				for member := range tr.members {
+					if m.nodes[member].asset {
+						now.TrashAssets++
+					} else {
+						now.TrashPages++
+					}
+				}
 			}
 		}
 		s.Nodes[id] = now
@@ -637,6 +697,12 @@ func (p *propTrial) judge(pre, m propModel, plan domain.RevertPlan, at time.Time
 		if op.Seq != i {
 			return nil, fmt.Sprintf("step %d's Seq %d", i, op.Seq)
 		}
+		if n := m.nodes[op.NodeID]; n.asset && (op.Kind == domain.RevertAside || op.Kind == domain.RevertPlace) {
+			counts.assets++
+			if !strings.HasSuffix(op.To.Name, ".png") {
+				return nil, fmt.Sprintf("step %d: an attachment put at %q, without its extension", i, op.To.Name)
+			}
+		}
 		switch op.Kind {
 		case domain.RevertAside:
 			aside++
@@ -689,6 +755,9 @@ func (p *propTrial) judge(pre, m propModel, plan domain.RevertPlan, at time.Time
 			}
 			m.trash[op.NodeID] = propTrash{at: at, members: members}
 		case domain.RevertRestore:
+			if slices.ContainsFunc(op.Group, func(member domain.TrashMember) bool { return member.Node.Kind == domain.KindAsset }) {
+				counts.assetRestores++
+			}
 			if bad := p.restore(m, op); bad != "" {
 				return nil, fmt.Sprintf("step %d: %s", i, bad)
 			}
