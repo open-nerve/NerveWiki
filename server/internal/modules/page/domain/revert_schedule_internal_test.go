@@ -67,12 +67,19 @@ func TestAStepAsideTakesNoKeyOfS(t *testing.T) {
 // and no deletion pending. Of the nodes to place, it moves the least by
 // id that is not at the root and not moved aside yet to the root, renamed
 // aside; a lesser one at the root, and a lesser one moved aside already,
-// are never taken.
+// are never taken. The least is renamed aside already, which no reachable
+// state does before a move aside: its name aside is made of its name as
+// the plan began, never of the one aside (3.17; fix round 1, C-N5).
 func TestTheThirdFallbackMovesAPlaceOffTheRoot(t *testing.T) {
 	folder, gone := uuid.NewV7(), uuid.NewV7()
 	atRoot, movedAside, least, other := uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
+	renamed := "L ~" + hex.EncodeToString(least[:]) // its last digits were taken under F
 	p, s := simWith(nil, simAlive{folder, nil, "F"}, simAlive{atRoot, nil, "R"}, simAlive{movedAside, &folder, "M"},
-		simAlive{least, &folder, "L"}, simAlive{other, &folder, "O"})
+		simAlive{least, &folder, renamed}, simAlive{other, &folder, "O"})
+	began := p.s.Nodes[least]
+	began.Name, began.NameKey = "L", shared.TitleKey("L")
+	p.s.Nodes[least] = began
+	s.renamed[least] = true
 	var items []ChangesetItem
 	for _, id := range []uuid.UUID{atRoot, movedAside, least, other} {
 		items = append(items, ChangesetItem{NodeID: id, Before: &TreeState{ParentID: &gone, Name: p.s.Nodes[id].Name},
