@@ -350,6 +350,31 @@ func TestScheduleRevertsEachBatchShape(t *testing.T) {
 	}
 }
 
+// The second fallback picks the node that frees the deletion it waits on
+// (M9/P3 design 3.16.3): two nodes go back under G, which the batch
+// deleted and made again, the lesser by id, L, from a folder, the other,
+// H, from under the new G. Stuck, the second moves H aside to the root;
+// the third alone, by id, would move L first, a step for nothing.
+func TestTheSecondFallbackPicksTheNodeItFrees(t *testing.T) {
+	w := newWorld(t)
+	g := w.page("G", nil, 0, 1, "g")
+	l, h := w.page("l", &g, 0, 1, "l"), w.page("h", &g, 1, 1, "h")
+	f := w.page("F", nil, 1, 1, "f")
+	w.move(l, &f, 0)
+	w.move(h, nil, 2)
+	w.trash(g, time.Date(2026, 10, 14, 11, 0, 0, 0, time.UTC))
+	w.deleted(g)
+	newG := w.page("G", nil, 3, 1, "new g")
+	w.created(newG)
+	w.move(h, &newG, 0)
+	w.placed(l, domain.TreeState{ParentID: &g, Name: "l"})
+	w.placed(h, domain.TreeState{ParentID: &g, Name: "h", SortOrder: 1})
+	want := []string{"aside h moved and renamed", "delete G", "restore G", "place l moved", "place h moved and renamed"}
+	if got := w.ops(w.plan()); !slices.Equal(got, want) {
+		t.Errorf("steps = %q, want %q", got, want)
+	}
+}
+
 // The versions a revert writes back are every one of the changeset on a
 // base (M9/P3 design 3.18.1): a page it wrote, renamed or not, or wrote
 // then deleted; not a page it created.
