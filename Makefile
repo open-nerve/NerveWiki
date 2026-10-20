@@ -274,8 +274,10 @@ test-go-guards: ## 不带竞态检测的组合根的预算与界线的守卫（C
 	cd server && go test -count=1 -v -run '^TestARevertJobOfAnImportAtMaxJobItems$$' ./internal/bootstrap
 	@# batch 的推后的改写在 MaxBatchRewrites 的守卫单独一行、带 -v：界线上的单元与整个调用用的时间（M9/P3 设计 3.8.2）；
 	@# 同一行还有链接的界线 MaxBatchRewriteLinks：过一条被拒、在界线上做完，单元用的时间只打出、不判（M9/P3 审查 B1-M3）；
-	@# 与页的字节的界线 MaxBatchRewriteBytes：过一个字节被拒、在界线上做完，最后一页是一页最大的内容，同样只打出时间（M9/P3 修正的第 5 轮，B2-M1）
-	cd server && go test -count=1 -v -run '^(TestABatchAtItsRewriteBoundTakesItsTime|TestABatchPastItsLinksBoundIsRefused|TestABatchPastItsBytesBoundIsRefused)$$' ./internal/bootstrap
+	@# 与页的字节的界线 MaxBatchRewriteBytes：过一个字节被拒、在界线上做完，最后一页是一页最大的内容，同样只打出时间（M9/P3 修正的第 5 轮，B2-M1）；
+	@# 与改写的页留下的解析额度：三条界线之内、改写过的页留下的份额旁放不下下一次解析时立即被拒，别人的份额挡着时 server_busy，额度够大时做完
+	@# （修正的第 6 轮，B3-M1）
+	cd server && go test -count=1 -v -run '^(TestABatchAtItsRewriteBoundTakesItsTime|TestABatchPastItsLinksBoundIsRefused|TestABatchPastItsBytesBoundIsRefused|TestABatchWhosePagesOutgrowTheParseBudgetIsRefused)$$' ./internal/bootstrap
 
 .PHONY: test-go-short
 test-go-short: ## 只跑 server 的单元测试：go test -short，不带竞态检测，不起数据库（README 的写法；make check 与 CI 的一份跑它，不在 make test-go 里）

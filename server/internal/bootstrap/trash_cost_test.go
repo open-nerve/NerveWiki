@@ -48,11 +48,13 @@ import (
 // trashBench is a notebook of alice's on a database of its own whose
 // tables keep no statistics until analyzed, and the page module on it, its
 // writes of the background jobs among them; its configuration, its API and
-// its module, which a bench may mount more on (batch_cost_test.go).
+// its module, which a bench may mount more on (batch_cost_test.go); and the
+// parse budget its modules share.
 type trashBench struct {
 	pool   *pgxpool.Pool
 	router http.Handler
 	md     *markdown.Markdown
+	budget *markdown.Budget
 	jobs   page.TreeWrites
 	alice  uuid.UUID
 	nb     uuid.UUID
@@ -98,12 +100,21 @@ func newTrashBenchOfSteps(tb testing.TB, maxNodes, maxHistory, maxSteps int) tra
 // leaves those the composition root gives it.
 func newTrashBenchWith(tb testing.TB, set func(d *page.Deps)) trashBench {
 	tb.Helper()
+	return newTrashBenchOf(tb, func(*config.Config) {}, set)
+}
+
+// newTrashBenchOf is the bench, its configuration as configure leaves the
+// test's, the production's bounds of a request and its pool, and the page
+// module's dependencies as set leaves those the composition root gives it.
+func newTrashBenchOf(tb testing.TB, configure func(c *config.Config), set func(d *page.Deps)) trashBench {
+	tb.Helper()
 	ctx := context.Background()
 	url := pgtest.NewDatabase(tb)
 	cfg := testConfig(tb, url, false)
 	// The production's bounds of a request (server.*), and its pool.
 	cfg.Server.ReadTimeout, cfg.Server.WriteTimeout, cfg.Server.RequestTimeout = 30*time.Second, 60*time.Second, 15*time.Second
 	cfg.Database.MaxConns = 10
+	configure(&cfg)
 	pool, err := postgres.NewPool(ctx, cfg.Database)
 	if err != nil {
 		tb.Fatal(err)
@@ -153,7 +164,7 @@ func newTrashBenchWith(tb testing.TB, set func(d *page.Deps)) trashBench {
 		tb.Fatal(err)
 	}
 	pg.Register(router, api)
-	b.router, b.md, b.jobs = router, md, pg.TreeWrites()
+	b.router, b.md, b.budget, b.jobs = router, md, budget, pg.TreeWrites()
 	b.cfg, b.mux, b.api, b.pg = cfg, router, api, pg
 	return b
 }

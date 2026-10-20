@@ -18,6 +18,7 @@ import (
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
@@ -47,8 +48,15 @@ type batchBench struct {
 // composition root's.
 func newBatchBench(tb testing.TB, maxRewrites, maxLinks, maxBytes int) batchBench {
 	tb.Helper()
+	return newBatchBenchOf(tb, func(*config.Config) {}, maxRewrites, maxLinks, maxBytes)
+}
+
+// newBatchBenchOf is newBatchBench, its configuration as configure leaves
+// the trash bench's.
+func newBatchBenchOf(tb testing.TB, configure func(c *config.Config), maxRewrites, maxLinks, maxBytes int) batchBench {
+	tb.Helper()
 	logs := &syncBuffer{}
-	b := newTrashBenchWith(tb, func(d *page.Deps) {
+	b := newTrashBenchOf(tb, configure, func(d *page.Deps) {
 		d.Logger = slog.New(slog.NewJSONHandler(logs, nil))
 		d.MaxBatchRewrites, d.MaxBatchRewriteLinks, d.MaxBatchRewriteBytes = maxRewrites, maxLinks, maxBytes
 	})
@@ -279,6 +287,53 @@ func (b batchBench) heavy(tb testing.TB, sizes []int, folder int) []map[string]a
 		tb.Fatal(err)
 	}
 	return []map[string]any{opMove("Top/F.md", "G/F.md")}
+}
+
+// longPaths makes, through SQL, the long paths' shape (M9/P3 fix check 3,
+// B3-M1): the folder Top/F of X0 … X999, a chain of seven folders of
+// 250-byte names, and MaxBatchRewrites pages R0 … of links relative
+// Markdown links each, "[r](./Top/F/Xk.md)", into distinct Xs; then
+// rebuilds the notebook's index. Its op moves F to the chain's end, with
+// update_links: each link's writing grows by the chain's path, some 1,760
+// bytes, and a page's facts' share of the parse budget with it.
+func (b batchBench) longPaths(tb testing.TB, links int) []map[string]any {
+	tb.Helper()
+	nb := b.nb.String()
+	id := func(name string) string {
+		return queryStrings(tb, b.pool, "SELECT id::text FROM nodes WHERE notebook_id = $1 AND name = $2", nb, name)[0]
+	}
+	seedPagesSQL(tb, b.pool, nb, []sqlPage{{"", "Top", ""}})
+	seedPagesSQL(tb, b.pool, nb, []sqlPage{{id("Top"), "F", ""}})
+	var chain []string
+	parent := ""
+	for d := range 7 {
+		name := fmt.Sprint("D", d) + strings.Repeat("x", 248)
+		seedPagesSQL(tb, b.pool, nb, []sqlPage{{parent, name, ""}})
+		parent = id(name)
+		chain = append(chain, name)
+	}
+	f := id("F")
+	var xs, rs []sqlPage
+	for k := range 1000 {
+		xs = append(xs, sqlPage{f, fmt.Sprint("X", k), ""})
+	}
+	for p := range domain.MaxBatchRewrites {
+		var c strings.Builder
+		for k := range links {
+			fmt.Fprintf(&c, "[r](./Top/F/X%d.md)\n", (p*links+k)%1000)
+		}
+		rs = append(rs, sqlPage{"", fmt.Sprint("R", p), c.String()})
+	}
+	seedPagesSQL(tb, b.pool, nb, xs)
+	seedPagesSQL(tb, b.pool, nb, rs)
+	admin, err := reindexAdmin(b.pool, b.cfg, slog.New(slog.DiscardHandler))
+	if err != nil {
+		tb.Fatal(err)
+	}
+	if _, err := admin.Rebuild(context.Background(), b.nb); err != nil {
+		tb.Fatal(err)
+	}
+	return []map[string]any{opMove("Top/F.md", strings.Join(chain, "/")+"/F.md")}
 }
 
 // spread is n sizes of total bytes in all, as even as they go, the first
@@ -583,4 +638,64 @@ func TestABatchPastItsBytesBoundIsRefused(t *testing.T) {
 	t.Logf("a batch at its bytes' bound, %d bytes of %d pages rewritten: its unit took %v ms, the call %s",
 		domain.MaxBatchRewriteBytes, domain.MaxBatchRewrites, line["unit_ms"], took)
 	checkPages(t, bench.pool)
+}
+
+// A batch's rewrite whose pages keep more of the parse budget than it has,
+// within its three bounds, is refused at the parse that would not fit
+// beside their shares, at once (M9/P3 fix round 6, B3-M1): 400 pages of the
+// index of 150 relative links each, into a folder that the batch moves
+// under seven folders of 250-byte names, each link written longer by the
+// path, page.batch_too_large at the move saying so, the pages and the
+// changesets as they were. The budget's wait is a minute, past the
+// request's 15 s: a refusal that waited first would come at the request's
+// end. With half the budget held by another, the same batch is
+// server_busy at once: others' shares stand in its way, not its own. With
+// a budget of 16 MiB it rewrites the 400 pages. The bench keeps the
+// composition root's bounds, which the module hands the batch. Not a guard
+// of time: the unit's is logged (make test-go runs it with -v beside the
+// pages' guard).
+func TestABatchWhosePagesOutgrowTheParseBudgetIsRefused(t *testing.T) {
+	if testing.Short() {
+		t.Skip("a bound against a database")
+	}
+	bench := newBatchBenchOf(t, func(c *config.Config) { c.Page.ParseMaxWait = time.Minute }, 0, 0, 0)
+	ops := bench.longPaths(t, 150)
+	state := func() string {
+		return strings.Join(queryStrings(t, bench.pool, `SELECT n.name || ' ' || md5(c.content) FROM nodes n
+			JOIN page_contents c ON c.node_id = n.id AND c.deleted_at IS NULL WHERE n.deleted_at IS NULL ORDER BY n.name`), "\n") +
+			fmt.Sprint(count(t, bench.pool, "SELECT count(*) FROM changesets"))
+	}
+	was := state()
+	bench.vacuumed(t)
+	a, took := bench.batch(t, ops...)
+	past := fmt.Sprintf("bytes of the parse budget the pages the batch's renames and moves rewrite would hold, at most %d: "+
+		"move with update_links false, or in separate calls", bench.budget.Size())
+	if member := a.toolError(t); member["code"] != "page.batch_too_large" || member["op"] != 0.0 ||
+		!strings.Contains(fmt.Sprint(member["message"]), past) || state() != was || took >= bench.cfg.Server.RequestTimeout {
+		t.Errorf("the batch of long paths = %.400s in %s, want page.batch_too_large at ops[0] saying %q, at once, nothing written",
+			a.body, took, past)
+	}
+	t.Logf("a batch whose pages outgrow the parse budget: refused in %s", took)
+
+	held, err := bench.budget.TakeNow(context.Background(), bench.budget.Size()/2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, took = bench.batch(t, ops...)
+	held.Release()
+	if member := a.toolError(t); member["code"] != "server_busy" || member["op"] != 0.0 || state() != was ||
+		took >= bench.cfg.Server.RequestTimeout {
+		t.Errorf("the batch beside another's half of the budget = %.400s in %s, want server_busy at ops[0] at once, nothing written",
+			a.body, took)
+	}
+	t.Logf("the same batch beside another's half of the budget: server_busy in %s", took)
+
+	large := newBatchBenchOf(t, func(c *config.Config) { c.Page.ParseBudgetBytes = 16 << 20 }, 0, 0, 0)
+	ops = large.longPaths(t, 150)
+	large.vacuumed(t)
+	a, took = large.batch(t, ops...)
+	line := large.applied(t, a, domain.MaxBatchRewrites)
+	t.Logf("the same batch in a budget of 16 MiB, %d pages rewritten: its unit took %v ms, the call %s",
+		domain.MaxBatchRewrites, line["unit_ms"], took)
+	checkPages(t, large.pool)
 }
