@@ -269,7 +269,7 @@ func pageRegistrants(pool *pgxpool.Pool) pageExtensions {
 func pageParticipants(pool *pgxpool.Pool, md *markdown.Markdown, budget *markdown.Budget, logger *slog.Logger) []page.Participant {
 	targets := page.NewLinkTargets(pool)
 	locks := page.NewLockHolders(pool, displayNames{identity.NewDirectory(pool)})
-	rewrite := linking.NewRewrite(pool, linkTargets{targets}, targets, locks, page.MaxContentBytes, md, budget, logger)
+	rewrite := linking.NewRewrite(pool, linkTargets{targets}, targets, targets, locks, page.MaxContentBytes, md, budget, logger)
 	return []page.Participant{linkRewrite{rewrite}}
 }
 

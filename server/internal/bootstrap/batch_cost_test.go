@@ -43,12 +43,14 @@ type batchBench struct {
 }
 
 // newBatchBench is the bench, the batch's deferred rewrite bounded at
-// maxRewrites pages and maxLinks links, 0 the composition root's.
-func newBatchBench(tb testing.TB, maxRewrites, maxLinks int) batchBench {
+// maxRewrites pages, maxLinks links and maxBytes bytes of its pages, 0 the
+// composition root's.
+func newBatchBench(tb testing.TB, maxRewrites, maxLinks, maxBytes int) batchBench {
 	tb.Helper()
 	logs := &syncBuffer{}
 	b := newTrashBenchWith(tb, func(d *page.Deps) {
-		d.Logger, d.MaxBatchRewrites, d.MaxBatchRewriteLinks = slog.New(slog.NewJSONHandler(logs, nil)), maxRewrites, maxLinks
+		d.Logger = slog.New(slog.NewJSONHandler(logs, nil))
+		d.MaxBatchRewrites, d.MaxBatchRewriteLinks, d.MaxBatchRewriteBytes = maxRewrites, maxLinks, maxBytes
 	})
 	mountMCP(b.mux, b.api, mcpServer(b.cfg, slog.New(slog.DiscardHandler), b.api, b.pg, benchNames{},
 		b.pg.Tools(page.ToolDeps{Attachments: benchAttachments{}})))
@@ -240,6 +242,64 @@ func (b batchBench) dense(tb testing.TB, pages, links, folder, extra int) []map[
 	return []map[string]any{opMove("Top/F.md", "G/F.md")}
 }
 
+// heavy makes, through SQL, the heavy pages' shape (M9/P3 fix check 2,
+// B2-M1): the folder Top/F of X0 … X{folder-1}, G, and pages R0 … of
+// sizes, in their order, each a link into a distinct X by its full path,
+// then plain text; then rebuilds the notebook's index. Its op moves F
+// under G, with update_links: the rewrite writes every R, one link each,
+// in their order, and keeps the facts of each to the unit's end, some
+// tenth of its bytes.
+func (b batchBench) heavy(tb testing.TB, sizes []int, folder int) []map[string]any {
+	tb.Helper()
+	nb := b.nb.String()
+	seedPagesSQL(tb, b.pool, nb, []sqlPage{{"", "Top", ""}, {"", "G", ""}})
+	f := queryStrings(tb, b.pool, "SELECT id::text FROM nodes WHERE notebook_id = $1 AND name = 'Top'", nb)[0]
+	seedPagesSQL(tb, b.pool, nb, []sqlPage{{f, "F", ""}})
+	f = queryStrings(tb, b.pool, "SELECT id::text FROM nodes WHERE notebook_id = $1 AND name = 'F'", nb)[0]
+	var xs []sqlPage
+	for k := range folder {
+		xs = append(xs, sqlPage{f, fmt.Sprint("X", k), ""})
+	}
+	seedPagesSQL(tb, b.pool, nb, xs)
+	const line = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore.\n"
+	for from := 0; from < len(sizes); from += 50 {
+		var rs []sqlPage
+		for p := from; p < min(from+50, len(sizes)); p++ {
+			head := fmt.Sprintf("[[Top/F/X%d]]\n\n", p%folder)
+			text := head + strings.Repeat(line, (sizes[p]-len(head))/len(line))
+			rs = append(rs, sqlPage{"", fmt.Sprint("R", p), text + strings.Repeat("x", sizes[p]-len(text))})
+		}
+		seedPagesSQL(tb, b.pool, nb, rs)
+	}
+	admin, err := reindexAdmin(b.pool, b.cfg, slog.New(slog.DiscardHandler))
+	if err != nil {
+		tb.Fatal(err)
+	}
+	if _, err := admin.Rebuild(context.Background(), b.nb); err != nil {
+		tb.Fatal(err)
+	}
+	return []map[string]any{opMove("Top/F.md", "G/F.md")}
+}
+
+// spread is n sizes of total bytes in all, as even as they go, the first
+// the larger.
+func spread(total, n int) []int {
+	out := make([]int, n)
+	for i := range out {
+		out[i] = total / n
+		if i < total%n {
+			out[i]++
+		}
+	}
+	return out
+}
+
+// heaviestLast is 400 sizes of total bytes in all: a page's largest last,
+// the rest as even as they go.
+func heaviestLast(total int) []int {
+	return append(spread(total-domain.MaxContentBytes, domain.MaxBatchRewrites-1), domain.MaxContentBytes)
+}
+
 // BenchmarkBatchRewrites times a batch that rewrites n pages, for each tier
 // n (M9/P3 design 3.8.2): two edits and a rename of the page they link to,
 // between them, n-1 pages of the full load and P1 rewritten; each
@@ -253,15 +313,29 @@ func (b batchBench) dense(tb testing.TB, pages, links, folder, extra int) []map[
 // M9/P3 review B1-M3), 400 pages of the index of 100 to 2,500 bare links
 // each into a folder of 10,000 moved alone, the measurement
 // MaxBatchRewriteLinks is taken from, each iteration on a bench of its
-// own; a tier past the request's deadline is logged and skipped. It
-// reports the median of the unit and of the call, in milliseconds.
+// own; a tier past the request's deadline is logged and skipped. Then the
+// bytes' tiers (heavy; M9/P3 fix round 5, B2-M1), 400 pages of the index
+// of 76 KiB to 1 MiB each, one link each into a folder of 10,000 moved
+// alone, the measurement MaxBatchRewriteBytes is taken from, and two of
+// its pages' bytes with a page's largest rewritten last (heaviestLast),
+// the bound's, and that of the 96 KiB tier, past what the parse budget
+// keeps room for; each iteration on a bench of its own; a tier that
+// answers otherwise than done, server_busy past the parse budget, is
+// logged and skipped. It reports the median of the unit and of the call,
+// in milliseconds. A tier's bench is made in its run, so that -bench
+// names the tiers to run.
 func BenchmarkBatchRewrites(b *testing.B) {
 	for _, n := range []int{100, 200, 250, 300, 400, 500, 1000} {
-		bench := newBatchBench(b, 1<<20, 1<<30)
-		bench.item(b, benchLoads()[1], 0)
-		bench.rewritten(b, 0, n-1)
+		var bench batchBench
 		round := 0
 		b.Run(fmt.Sprint(n, " pages"), func(b *testing.B) {
+			if bench.logs == nil {
+				b.StopTimer()
+				bench = newBatchBench(b, 1<<20, 1<<30, 1<<40)
+				bench.item(b, benchLoads()[1], 0)
+				bench.rewritten(b, 0, n-1)
+				b.StartTimer()
+			}
 			var units, calls []float64
 			for range b.N {
 				b.StopTimer()
@@ -287,7 +361,7 @@ func BenchmarkBatchRewrites(b *testing.B) {
 			var units, calls []float64
 			for range b.N {
 				b.StopTimer()
-				bench := newBatchBench(b, 1<<20, 1<<30)
+				bench := newBatchBench(b, 1<<20, 1<<30, 1<<40)
 				ops := bench.mixed(b, m.written, m.indexed, 10000)
 				bench.vacuumed(b)
 				b.StartTimer()
@@ -307,7 +381,7 @@ func BenchmarkBatchRewrites(b *testing.B) {
 			var units, calls []float64
 			for range b.N {
 				b.StopTimer()
-				bench := newBatchBench(b, 1<<20, 1<<30)
+				bench := newBatchBench(b, 1<<20, 1<<30, 1<<40)
 				ops := bench.dense(b, domain.MaxBatchRewrites, links, 10000, 0)
 				bench.vacuumed(b)
 				b.StartTimer()
@@ -315,6 +389,42 @@ func BenchmarkBatchRewrites(b *testing.B) {
 				b.StopTimer()
 				if a.status != http.StatusOK || a.result(b)["isError"] == true {
 					b.Logf("%d links each: the batch answered %d in %s %.300s", links, a.status, took, a.body)
+					b.SkipNow()
+				}
+				units = append(units, bench.applied(b, a, domain.MaxBatchRewrites)["unit_ms"].(float64))
+				calls = append(calls, float64(took)/float64(time.Millisecond))
+				b.StartTimer()
+			}
+			b.ReportMetric(median(units), "unit-ms")
+			b.ReportMetric(median(calls), "call-ms")
+		})
+	}
+	type heavyTier struct {
+		name  string
+		sizes []int
+	}
+	var heavies []heavyTier
+	for _, kib := range []int{76, 84, 96, 112, 128, 160, 192, 256, 512, 1024} {
+		heavies = append(heavies, heavyTier{fmt.Sprintf("bytes: %d indexed of %d KiB, one link each, %d KiB, a folder of 10,000 moved",
+			domain.MaxBatchRewrites, kib, domain.MaxBatchRewrites*kib), spread(domain.MaxBatchRewrites*kib<<10, domain.MaxBatchRewrites)})
+	}
+	for _, total := range []int{domain.MaxBatchRewriteBytes, domain.MaxBatchRewrites * 96 << 10} {
+		heavies = append(heavies, heavyTier{fmt.Sprintf("bytes, a page's largest last: %d indexed of %d bytes in all, one link each, "+
+			"a folder of 10,000 moved", domain.MaxBatchRewrites, total), heaviestLast(total)})
+	}
+	for _, tier := range heavies {
+		b.Run(tier.name, func(b *testing.B) {
+			var units, calls []float64
+			for range b.N {
+				b.StopTimer()
+				bench := newBatchBench(b, 1<<20, 1<<30, 1<<40)
+				ops := bench.heavy(b, tier.sizes, 10000)
+				bench.vacuumed(b)
+				b.StartTimer()
+				a, took := bench.batch(b, ops...)
+				b.StopTimer()
+				if a.status != http.StatusOK || a.result(b)["isError"] == true {
+					b.Logf("%s: the batch answered %d in %s %.300s", tier.name, a.status, took, a.body)
 					b.SkipNow()
 				}
 				units = append(units, bench.applied(b, a, domain.MaxBatchRewrites)["unit_ms"].(float64))
@@ -352,7 +462,7 @@ func TestABatchAtItsRewriteBoundTakesItsTime(t *testing.T) {
 	}
 	// The R pages and P1, written, past the bound by one (M9/P3 review B-M3).
 	r := domain.MaxBatchRewrites - domain.WrittenRewriteWeight + 1
-	bench := newBatchBench(t, 0, 0)
+	bench := newBatchBench(t, 0, 0, 0)
 	bench.rewritten(t, 0, r)
 	state := func() string {
 		return strings.Join(queryStrings(t, bench.pool, `SELECT n.name || ' ' || md5(c.content) FROM nodes n
@@ -404,7 +514,7 @@ func TestABatchPastItsLinksBoundIsRefused(t *testing.T) {
 	if testing.Short() {
 		t.Skip("a bound against a database")
 	}
-	bench := newBatchBench(t, 0, 0)
+	bench := newBatchBench(t, 0, 0, 0)
 	per := domain.MaxBatchRewriteLinks / domain.MaxBatchRewrites
 	ops := bench.dense(t, domain.MaxBatchRewrites, per, 10000, 1)
 	state := func() string {
@@ -426,5 +536,51 @@ func TestABatchPastItsLinksBoundIsRefused(t *testing.T) {
 	line := bench.applied(t, a, domain.MaxBatchRewrites)
 	t.Logf("a batch at its links' bound, %d links of %d pages rewritten: its unit took %v ms, the call %s",
 		domain.MaxBatchRewriteLinks, domain.MaxBatchRewrites, line["unit_ms"], took)
+	checkPages(t, bench.pool)
+}
+
+// A batch's rewrite counts the bytes of the pages it would write against
+// MaxBatchRewriteBytes before any page is parsed (M9/P3 fix round 5,
+// B2-M1: the facts of each page it writes keep some tenth of its bytes of
+// the parse budget to the unit's end): 400 pages of the index of
+// MaxBatchRewriteBytes in all and a byte more, each of one link into a
+// folder of 10,000 that a batch moves, the last of a page's largest
+// content: page.batch_too_large at the move saying so, the pages and the
+// changesets as they were. Once a batch has edited R0 a byte shorter, the
+// batch at the bound rewrites the 400 pages, the last parsed beside the
+// shares the 399 before it keep, within the configuration's parse budget.
+// The bench keeps the composition root's bounds, which the module hands
+// the batch. Not a guard of time: the unit's is logged (make test-go runs
+// it with -v beside the pages' guard).
+func TestABatchPastItsBytesBoundIsRefused(t *testing.T) {
+	if testing.Short() {
+		t.Skip("a bound against a database")
+	}
+	bench := newBatchBench(t, 0, 0, 0)
+	ops := bench.heavy(t, heaviestLast(domain.MaxBatchRewriteBytes+1), 10000)
+	state := func() string {
+		return strings.Join(queryStrings(t, bench.pool, `SELECT n.name || ' ' || md5(c.content) FROM nodes n
+			JOIN page_contents c ON c.node_id = n.id AND c.deleted_at IS NULL WHERE n.deleted_at IS NULL ORDER BY n.name`), "\n") +
+			fmt.Sprint(count(t, bench.pool, "SELECT count(*) FROM changesets"))
+	}
+	was := state()
+	a, took := bench.batch(t, ops...)
+	past := fmt.Sprintf("%d bytes of pages the batch's renames and moves would rewrite, at most %d: move with update_links false, "+
+		"or in separate calls", domain.MaxBatchRewriteBytes+1, domain.MaxBatchRewriteBytes)
+	if member := a.toolError(t); member["code"] != "page.batch_too_large" || member["op"] != 0.0 ||
+		!strings.Contains(fmt.Sprint(member["message"]), past) || state() != was {
+		t.Errorf("the batch of %d bytes = %.400s, want page.batch_too_large at ops[0] saying %q, nothing written",
+			domain.MaxBatchRewriteBytes+1, a.body, past)
+	}
+	t.Logf("a batch past its bytes' bound by one: refused in %s", took)
+	bench.applied(t, func() mcpAnswer {
+		a, _ := bench.batch(t, opEdit("R0.md", "[[Top/F/X0]]\n\n", "[[Top/F/X0]]\n"))
+		return a
+	}(), 0)
+	bench.vacuumed(t)
+	a, took = bench.batch(t, ops...)
+	line := bench.applied(t, a, domain.MaxBatchRewrites)
+	t.Logf("a batch at its bytes' bound, %d bytes of %d pages rewritten: its unit took %v ms, the call %s",
+		domain.MaxBatchRewriteBytes, domain.MaxBatchRewrites, line["unit_ms"], took)
 	checkPages(t, bench.pool)
 }

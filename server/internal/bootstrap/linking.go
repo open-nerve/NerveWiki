@@ -73,6 +73,9 @@ func (l linkRewrite) Participate(ctx context.Context, s page.Step, u page.Append
 		if tooMany.Links > 0 {
 			return page.BatchTooLarge("links the batch's renames and moves would rewrite", tooMany.Links, tooMany.Max, hint)
 		}
+		if tooMany.Bytes > 0 {
+			return page.BatchTooLarge("bytes of pages the batch's renames and moves would rewrite", tooMany.Bytes, tooMany.Max, hint)
+		}
 		what := "pages whose links the batch's renames and moves would rewrite"
 		if tooMany.Weight > 0 {
 			what += fmt.Sprintf(", each page the batch wrote counting %d", tooMany.Weight)
@@ -87,11 +90,11 @@ func (l linkRewrite) Participate(ctx context.Context, s page.Step, u page.Append
 // its links before, its own changes, its final content's facts and the nodes
 // it leaves the links to; the former parents' paths, never nil, which the
 // rewrite reads them from alone; the nodes it deleted; its bounds, of pages,
-// and what a page it wrote counts in it (M9/P3 review B-M3), and of links
-// (review B1-M3); the nodes whose links it leaves (M9/P3 review B-M1), with
-// their moves, for the paths before alone (review B1-N1); and those it
-// created after each node's last rename or move, out of its subtree (M9/P3
-// review B1-M1).
+// and what a page it wrote counts in it (M9/P3 review B-M3), of links
+// (review B1-M3) and of their bytes (fix round 5, B2-M1); the nodes whose
+// links it leaves (M9/P3 review B-M1), with their moves, for the paths
+// before alone (review B1-N1); and those it created under each node after
+// its last rename or move, out of its subtree (M9/P3 review B1-M1).
 func batchMoved(m *linking.Moved, b page.BatchRewrite) error {
 	m.Written = make(map[uuid.UUID]linking.WrittenPage, len(b.Written))
 	for id, w := range b.Written {
@@ -103,7 +106,7 @@ func batchMoved(m *linking.Moved, b page.BatchRewrite) error {
 			Frozen: w.Frozen, CreatedAfter: w.CreatedAfter}
 	}
 	m.Parents = linkParents(b.Parents)
-	m.Gone, m.MaxPages, m.WrittenWeight, m.MaxLinks = b.Gone, b.MaxPages, b.WrittenWeight, b.MaxLinks
+	m.Gone, m.MaxPages, m.WrittenWeight, m.MaxLinks, m.MaxBytes = b.Gone, b.MaxPages, b.WrittenWeight, b.MaxLinks, b.MaxBytes
 	m.Frozen, m.FrozenMoves, m.CreatedAfter = b.Frozen, linkChanges(b.FrozenMoves), b.CreatedAfter
 	return nil
 }

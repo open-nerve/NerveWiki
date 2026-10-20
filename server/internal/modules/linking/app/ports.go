@@ -246,7 +246,9 @@ type Publisher interface {
 // with a link its own changes meet counting WrittenWeight, 1 for 0 (M9/P3
 // review B-M3: its rewrite costs more than an index page's; B1-M2: one with
 // none counts nothing); the most links it may write, none for 0 (M9/P3
-// review B1-M3); and the nodes an op of it renamed or moved with
+// review B1-M3); the most bytes of the pages it writes, none for 0 (M9/P3
+// fix round 5, B2-M1: the facts each keeps of the parse budget follow
+// them); and the nodes an op of it renamed or moved with
 // update_links false, the links that led to them left as they are, in every
 // page, whatever their ancestors' changes (M9 design 4.11; M9/P3 review
 // B-M1), and their renames and moves merged, not followed, but which the
@@ -266,6 +268,7 @@ type Moved struct {
 	MaxPages      int
 	WrittenWeight int
 	MaxLinks      int
+	MaxBytes      int
 	Frozen        []uuid.UUID
 	FrozenMoves   []domain.Change
 	CreatedAfter  map[uuid.UUID][]uuid.UUID
@@ -296,19 +299,22 @@ type LinksBefore struct {
 	Targets map[uuid.UUID][]domain.Step
 }
 
-// ErrTooManyRewrites is a batch's deferred rewrite past Moved.MaxPages or
-// Moved.MaxLinks (M9/P3 design 3.7.2; review B1-M3): counted before any
-// page is parsed or refused for its lock. TooManyRewrites carries the
-// count; bootstrap answers it as the page module's page.batch_too_large.
+// ErrTooManyRewrites is a batch's deferred rewrite past Moved.MaxPages,
+// Moved.MaxLinks or Moved.MaxBytes (M9/P3 design 3.7.2; review B1-M3; fix
+// round 5, B2-M1): counted before the tree is read, and any page parsed or
+// refused for its lock. TooManyRewrites carries the count; bootstrap
+// answers it as the page module's page.batch_too_large.
 var ErrTooManyRewrites = errors.New("linking: the batch's renames and moves would rewrite more links or pages than it may")
 
 // TooManyRewrites is ErrTooManyRewrites with the pages the rewrite would
 // write, at most, as the bound counts them, and the bound; Weight is what
 // a page the batch wrote counted, when one was and counted more than one.
 // Links, when set, is the links it would write, past Max, Moved.MaxLinks,
-// its pages within theirs.
+// its pages within theirs; Bytes, when set, the bytes of the pages it
+// would write, past Max, Moved.MaxBytes, its pages and links within
+// theirs.
 type TooManyRewrites struct {
-	Pages, Max, Weight, Links int
+	Pages, Max, Weight, Links, Bytes int
 }
 
 func (e *TooManyRewrites) Error() string { return ErrTooManyRewrites.Error() }
@@ -328,6 +334,18 @@ type Appender interface {
 // which bootstrap wires. False for a page deleted.
 type PageContents interface {
 	Content(ctx context.Context, id uuid.UUID) (string, int, bool, error)
+}
+
+// PageSizes reads the sizes of pages' contents, their heads, not the
+// contents, in the transaction ctx carries: the page module's, which
+// bootstrap wires. A batch's deferred rewrite counts the bytes of the
+// pages it would write by them before it reads any (M9/P3 fix round 5,
+// B2-M1).
+type PageSizes interface {
+	// ContentSizes is the bytes of the content of each page of ids, alive,
+	// by id, in one statement; a page without its content alive is not in
+	// it.
+	ContentSizes(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]int, error)
 }
 
 // Rewritten is a page's content a rewrite writes on its revision Base,

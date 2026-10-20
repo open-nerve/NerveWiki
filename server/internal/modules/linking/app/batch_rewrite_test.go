@@ -833,6 +833,57 @@ func TestABatchCountsTheLinksItWouldWrite(t *testing.T) {
 	w.written(u, map[string]string{"Q1": "[[B]] and [[B]]\n", "W": "w [[B]]\n"})
 }
 
+// A batch's rewrite counts the bytes of the pages it would write against
+// MaxBytes, after their links, before it reads the tree, a lock or a
+// content (M9/P3 fix round 5, B2-M1: each keeps some tenth of its bytes of
+// the parse budget to the unit's end): Q1 of the index at its content's
+// size, and W, written, its own change meeting its link, at its final
+// content's, once; not V, written, its own change meeting none of its
+// links. At a bound of their sum the two are written; past one less the
+// refusal says the sum, the paths of their target, A, not read; 0 bounds
+// nothing.
+func TestABatchCountsTheBytesItWouldWrite(t *testing.T) {
+	const q1, wc, vc = "[[A]] q1\n", "w [[A]]\n", "v [[Z]] and some more bytes than both\n"
+	batch := func(max int) (*rewriting, *parses, *askedPaths, *appender, error) {
+		w := newRewriting(t, "A", "Q1", "W", "V", "Z")
+		w.write("Q1", q1)
+		parser := &parses{RewriteParser: w.rewrite.Parser}
+		w.rewrite.Parser = parser
+		tree := &askedPaths{Pages: w.tree}
+		w.rewrite.Pages = tree
+		before, vBefore := w.before(wc, "A"), w.before(vc, "Z")
+		facts, vFacts := w.wrote("W", wc), w.wrote("V", vc)
+		merged := w.rename("A", "B")
+		own := []domain.Change{w.renamed("B", "A", "B")}
+		u, err := w.batch(app.Moved{Changes: []domain.Change{merged}, MaxBytes: max, MaxPages: 10, MaxLinks: 10, WrittenWeight: 2,
+			Written: map[uuid.UUID]app.WrittenPage{w.id("W"): {Before: before, Changes: own, Facts: facts},
+				w.id("V"): {Before: vBefore, Changes: own, Facts: vFacts}}})
+		return w, parser, tree, u, err
+	}
+	sum := len(q1) + len(wc)
+	w, parser, tree, _, err := batch(sum - 1)
+	var many *app.TooManyRewrites
+	if !errors.As(err, &many) || !errors.Is(err, app.ErrTooManyRewrites) || many.Bytes != sum || many.Max != sum-1 || many.Pages != 0 ||
+		many.Links != 0 {
+		t.Fatalf("past the bytes' bound: %v %+v, want TooManyRewrites of %d bytes at most %d", err, many, sum, sum-1)
+	}
+	if w.locks.reads != 0 || len(parser.contents) != 0 {
+		t.Errorf("the locks read %d times and %d contents parsed before the count", w.locks.reads, len(parser.contents))
+	}
+	for _, ids := range tree.asked {
+		if slices.Contains(ids, w.id("B")) {
+			t.Errorf("the paths of %v were read before the bytes' count", ids)
+		}
+	}
+	for _, max := range []int{sum, 0} {
+		w, _, _, u, err := batch(max)
+		if err != nil {
+			t.Fatalf("at most %d bytes: %v", max, err)
+		}
+		w.written(u, map[string]string{"Q1": "[[B]] q1\n", "W": "w [[B]]\n"})
+	}
+}
+
 // askedPaths is Pages that records the ids each read of paths asks for.
 type askedPaths struct {
 	app.Pages

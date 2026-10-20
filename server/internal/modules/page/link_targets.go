@@ -54,6 +54,11 @@ type LinkTargets interface {
 	// Content is the content of the page not deleted id and its revision;
 	// false for no such page.
 	Content(ctx context.Context, id uuid.UUID) (string, int, bool, error)
+	// ContentSizes is the bytes of the content not deleted of each page of
+	// ids, by id, in one statement, of at most some 1,000 ids (PageStates);
+	// a page without its content alive is not in it (M9/P3 fix round 5: a
+	// batch's rewrite counts the bytes of the pages it would write).
+	ContentSizes(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]int, error)
 	// Rekey takes the title keys of notebookID's nodes not deleted anew
 	// from their names by the current Unicode data. When siblings would
 	// share a key it changes none and returns them, a group a key, each by
@@ -230,6 +235,18 @@ func (l linkTargets) Content(ctx context.Context, id uuid.UUID) (string, int, bo
 		return "", 0, false, fmt.Errorf("page: the content of %s: %w", id, err)
 	}
 	return c.Content, c.Revision, true, nil
+}
+
+func (l linkTargets) ContentSizes(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]int, error) {
+	states, err := l.store.PageStates(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("page: the sizes of the contents: %w", err)
+	}
+	out := make(map[uuid.UUID]int, len(states))
+	for id, s := range states {
+		out[id] = s.Bytes
+	}
+	return out, nil
 }
 
 func (l linkTargets) Rekey(ctx context.Context, notebookID uuid.UUID) ([][]uuid.UUID, error) {

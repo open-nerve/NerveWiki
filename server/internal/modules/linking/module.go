@@ -145,6 +145,9 @@ type (
 	// PageContents reads a page's content: bootstrap hands
 	// page.NewLinkTargets to it.
 	PageContents = app.PageContents
+	// PageSizes reads the sizes of pages' contents: bootstrap hands
+	// page.NewLinkTargets to it.
+	PageSizes = app.PageSizes
 )
 
 // ErrGuardLocked is a write a rewrite adds that the page's edit lock
@@ -163,7 +166,7 @@ type (
 	// Resolution is where a link leads.
 	Resolution = domain.Resolution
 	// TooManyRewrites is a batch's deferred rewrite past its bound, with
-	// the pages counted.
+	// the pages, links or bytes counted.
 	TooManyRewrites = app.TooManyRewrites
 	// BatchLinks resolves and rewrites links for a batch's plan.
 	BatchLinks = app.BatchLinks
@@ -176,7 +179,8 @@ type (
 )
 
 // ErrTooManyRewrites is a batch's deferred rewrite past Moved.MaxPages,
-// which bootstrap answers as the page module's page.batch_too_large.
+// Moved.MaxLinks or Moved.MaxBytes, which bootstrap answers as the page
+// module's page.batch_too_large.
 var ErrTooManyRewrites = app.ErrTooManyRewrites
 
 // NewBatchLinks returns the plan's links over the pool alone (M9 design
@@ -191,14 +195,14 @@ func NewBatchLinks(pool *pgxpool.Pool, maxContent int, logger *slog.Logger) Batc
 type Rewrite = app.Rewrite
 
 // NewRewrite returns the participant over the pool, the page module's
-// reads of the pages, their contents and their edit locks, and its most
-// bytes of a page's content, parsing with the server's Markdown within its
-// budget.
-func NewRewrite(pool *pgxpool.Pool, pages Pages, contents PageContents, locks Locks, maxContent int,
+// reads of the pages, their contents, their contents' sizes and their edit
+// locks, and its most bytes of a page's content, parsing with the server's
+// Markdown within its budget.
+func NewRewrite(pool *pgxpool.Pool, pages Pages, contents PageContents, sizes PageSizes, locks Locks, maxContent int,
 	md *markdown.Markdown, budget *markdown.Budget, logger *slog.Logger,
 ) Rewrite {
 	return app.Rewrite{
-		Store: postgresadapter.New(pool), Pages: pages, Contents: contents, Locks: locks, MaxContent: maxContent,
+		Store: postgresadapter.New(pool), Pages: pages, Contents: contents, Sizes: sizes, Locks: locks, MaxContent: maxContent,
 		Parser: markdownadapter.NewParser(md, budget), Logger: logger,
 	}
 }

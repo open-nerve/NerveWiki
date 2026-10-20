@@ -71,6 +71,30 @@ const (
 	// request's 15 s (2026-10-20, Apple M5 Max). A page's bytes add their
 	// parse: 400 of 76 KB with 100 links each took 4.2 to 4.6 s.
 	MaxBatchRewriteLinks = 120_000
+	// MaxBatchRewriteBytes bounds the bytes of the pages a batch's deferred
+	// rewrite writes again (M9/P3 fix round 5, B2-M1): those
+	// MaxBatchRewrites counts, each by its content's size, a page the batch
+	// wrote by its final content's, once (its rewrite parses that once, its
+	// facts the batch's), counted after their links, before any is parsed;
+	// past it the batch is page.batch_too_large. A single move is not
+	// bounded, as REST's. Each page's rewrite keeps its facts' share of the
+	// parse budget, some tenth of its bytes, to the unit's end, and parses
+	// the next with the budget taken now, server_busy when it is not free,
+	// which no retry frees. So the bound leaves room for a page's largest,
+	// MaxContentBytes, parsed last beside the shares of the rest: of the
+	// bound's 32.8 MiB, the 399 pages before a page of 5 MiB keep some 2.8
+	// MiB, 7.8 MiB with its parse, below the configuration's budget, 8 MiB
+	// (a smaller budget narrows it, as every rewrite's). M8's rule alone
+	// sets more: the bytes' tiers of bootstrap's
+	// BenchmarkBatchRewrites, 400 pages of the index of one link each into
+	// a folder of 10,000 moved alone, the median of three, in two runs: 76
+	// KiB a page 3.50 and 3.54 s, 84 3.39 and 3.49, 96 3.42 and 3.50, 112
+	// 3.61 and 4.08, 128 3.98 and 4.29, 160 4.71 and 4.90, 192 5.24 and
+	// 5.75; 256 KiB and more answered server_busy, after 4.3 to 5.0 s. The
+	// bound is the largest tier within both, 84 KiB a page: its bytes with
+	// a page's largest last took 3.76 s; the 96 KiB tier's so answered
+	// server_busy (2026-10-20, Apple M5 Max).
+	MaxBatchRewriteBytes = MaxBatchRewrites * 84 << 10
 )
 
 // PathStep is a node on a path from the root: its id, title key and name.

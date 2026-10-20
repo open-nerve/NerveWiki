@@ -23,6 +23,7 @@ type Rewrite struct {
 	Store    Store
 	Pages    Pages
 	Contents PageContents
+	Sizes    PageSizes
 	Locks    Locks
 	Parser   RewriteParser
 	Logger   *slog.Logger
@@ -46,8 +47,10 @@ type rewritten struct {
 // before it reads the tree they are written on, refuses or parses any
 // (ErrTooManyRewrites; M9/P3 review B-I1), a page the batch wrote with such
 // a link as m.WrittenWeight (review B-M3), one with none not at all (review
-// B1-M2), and their links against m.MaxLinks (review B1-M3: the unit's time
-// follows the links); refuses with linking.pages_locked when one of these
+// B1-M2), their links against m.MaxLinks (review B1-M3: the unit's time
+// follows the links), and their bytes against m.MaxBytes (fix round 5,
+// B2-M1: the facts each keeps of the budget to the unit's end follow its
+// bytes); refuses with linking.pages_locked when one of these
 // pages is being edited, the caller's own too; then writes each again, one
 // page after another, the batch's first, its contents parsed with the budget
 // taken now (server_busy). A page whose content was written since its index,
@@ -68,7 +71,7 @@ func (r Rewrite) Participate(ctx context.Context, m Moved, u Appender) error {
 	}
 	written := met.counted(gone)
 	weight := max(m.WrittenWeight, 1)
-	if counted := index.counted(gone) + weight*len(written); m.MaxPages > 0 && counted > m.MaxPages {
+	if counted := len(index.counted(gone)) + weight*len(written); m.MaxPages > 0 && counted > m.MaxPages {
 		tooMany := &TooManyRewrites{Pages: counted, Max: m.MaxPages}
 		if len(written) > 0 && weight > 1 {
 			tooMany.Weight = weight
@@ -77,6 +80,15 @@ func (r Rewrite) Participate(ctx context.Context, m Moved, u Appender) error {
 	}
 	if linked := index.linked(gone) + met.linked(gone); m.MaxLinks > 0 && linked > m.MaxLinks {
 		return &TooManyRewrites{Links: linked, Max: m.MaxLinks}
+	}
+	if m.MaxBytes > 0 {
+		n, err := r.bytesOf(ctx, slices.Concat(index.counted(gone), written))
+		if err != nil {
+			return err
+		}
+		if n > m.MaxBytes {
+			return &TooManyRewrites{Bytes: n, Max: m.MaxBytes}
+		}
 	}
 	if err := r.readTree(ctx, m, &index, gone); err != nil {
 		return err
@@ -136,21 +148,42 @@ type followedPages struct {
 	tree    domain.Tree
 }
 
-// counted is how many of f's pages hold a link whose target a batch did
-// not delete (gone): the pages the rewrite writes, as the bound counts
-// them before the tree is read; one whose every link led to a page
-// another deleted since the plan is counted, and left by readTree.
-func (f followedPages) counted(gone map[uuid.UUID]bool) int {
-	n := 0
+// counted is f's pages that hold a link whose target a batch did not
+// delete (gone): the pages the rewrite writes, as the bounds count them
+// before the tree is read; one whose every link led to a page another
+// deleted since the plan is counted, and left by readTree.
+func (f followedPages) counted(gone map[uuid.UUID]bool) []uuid.UUID {
+	var out []uuid.UUID
 	for _, id := range f.pages {
 		for _, x := range f.reached[id] {
 			if !gone[x.before.ID] {
-				n++
+				out = append(out, id)
 				break
 			}
 		}
 	}
-	return n
+	return out
+}
+
+// bytesOf is the bytes of the contents of pages, the pages the rewrite
+// writes as the bounds count them, by their heads in the unit (Sizes), not
+// read (M9/P3 fix round 5, B2-M1): each one's rewrite parses it and keeps
+// its facts' share of the budget, some tenth of it, to the unit's end. A
+// page the batch wrote counts its final content, which its rewrite reads,
+// once: its facts are the batch's, its read back the one parse it takes.
+func (r Rewrite) bytesOf(ctx context.Context, pages []uuid.UUID) (int, error) {
+	if len(pages) == 0 {
+		return 0, nil
+	}
+	sizes, err := r.Sizes.ContentSizes(ctx, pages)
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, id := range pages {
+		n += sizes[id]
+	}
+	return n, nil
 }
 
 // linked is how many links of f's pages lead to a node a batch did not

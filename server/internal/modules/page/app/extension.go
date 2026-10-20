@@ -59,7 +59,8 @@ type Step struct {
 // alive after it; the paths the moved and renamed nodes' former parents
 // had as the unit began; the nodes the unit deleted; the most pages the
 // rewrite may write, a page of Written counting WrittenWeight (M9/P3
-// review B-M3), and the most links (review B1-M3); and the first op that
+// review B-M3), the most links (review B1-M3), and the most bytes of the
+// pages it writes (M9/P3 fix round 5, B2-M1); and the first op that
 // renames or moves with update_links, which a refusal names.
 type BatchRewrite struct {
 	Written       map[uuid.UUID]WrittenPage
@@ -68,6 +69,7 @@ type BatchRewrite struct {
 	MaxPages      int
 	WrittenWeight int
 	MaxLinks      int
+	MaxBytes      int
 	FirstMove     int
 	// Frozen is the nodes an op of the batch renamed or moved with
 	// update_links false, in id order, which Unit.Participate sets: the
