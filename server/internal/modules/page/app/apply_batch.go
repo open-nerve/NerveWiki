@@ -351,9 +351,13 @@ func (a *batchAttempt) read(ctx context.Context) (map[uuid.UUID]domain.PageText,
 }
 
 // locked is the edit locks' precheck (M9/P3 design 3.4.5): the pages
-// before the batch whose content it writes, an alive session of one
-// page.locked at the first content op that writes such a page, before the
-// parse takes its budget. The unit's guards refuse again.
+// before the batch whose content it writes, and those of each delete's
+// subtree, the deletions merged into it among them (M9/P3 review A-M1); an
+// alive session of one is page.locked at the first op, in their order,
+// that writes or deletes such a page, before the parse takes its budget:
+// a content op's naming its page, a delete's every page of its subtree
+// held (heldIn), as the delete alone answers. The unit's guards refuse
+// again.
 func (a *batchAttempt) locked(ctx context.Context) error {
 	var ids []uuid.UUID
 	for _, pg := range a.pages {
@@ -361,22 +365,59 @@ func (a *batchAttempt) locked(ctx context.Context) error {
 			ids = append(ids, pg.ID)
 		}
 	}
+	for i, s := range a.steps {
+		if ps := a.plan.Steps[i]; s.Kind == domain.OpKindDelete && ps.MergedInto < 0 {
+			ids = append(ids, ps.Subtree...)
+		}
+	}
 	if len(ids) == 0 {
 		return nil
 	}
 	slices.SortFunc(ids, uuid.UUID.Compare)
-	holders, err := a.b.locks.Of(ctx, ids, a.b.clock.Now())
+	holders, err := a.b.locks.Of(ctx, slices.Compact(ids), a.b.clock.Now())
 	if err != nil || len(holders) == 0 {
 		return err
 	}
-	first := -1
-	var held shared.LockHolder
+	held := make(map[uuid.UUID]shared.LockHolder, len(holders))
 	for _, h := range holders {
-		if pg := a.pages[h.PageID]; first < 0 || pg.First < first {
-			first, held = pg.First, h
+		if _, ok := held[h.PageID]; !ok {
+			held[h.PageID] = h
 		}
 	}
-	return &domain.OpFailed{Op: first, Tool: a.steps[first].Kind, Err: domain.Locked(held.PageID, held.UserID, held.DisplayName)}
+	for i, s := range a.steps {
+		ps := a.plan.Steps[i]
+		if s.Kind == domain.OpKindDelete && ps.MergedInto < 0 {
+			if in := a.heldIn(ps, held); len(in) > 0 {
+				return &domain.OpFailed{Op: i, Tool: s.Kind, Err: domain.LockedAll(in)}
+			}
+			continue
+		}
+		if pg, ok := a.pages[ps.Node]; ok && pg.First == i && !pg.Created {
+			if h, ok := held[pg.ID]; ok {
+				return &domain.OpFailed{Op: i, Tool: s.Kind, Err: domain.Locked(h.PageID, h.UserID, h.DisplayName)}
+			}
+		}
+	}
+	return nil
+}
+
+// heldIn is the holders, of held, of the pages of ps's group, a delete's:
+// in the order of its subtree before the batch, which none of its ops
+// changed (a batch deletes nothing it creates, renames or moves), the
+// deletions merged into it among them; as the unit's guard names them,
+// in the order of the subtree the unit reads.
+func (a *batchAttempt) heldIn(ps domain.PlannedStep, held map[uuid.UUID]shared.LockHolder) []shared.LockHolder {
+	group := make(map[uuid.UUID]bool, len(ps.Subtree))
+	for _, id := range ps.Subtree {
+		group[id] = true
+	}
+	var out []shared.LockHolder
+	for _, n := range a.plan.TreeAt(-1).Subtree(ps.Node) {
+		if h, ok := held[n.ID]; ok && group[n.ID] {
+			out = append(out, h)
+		}
+	}
+	return out
 }
 
 // linksBefore is, for each page whose content the batch writes and that a

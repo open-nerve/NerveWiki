@@ -252,8 +252,9 @@ func seedPagesSQL(tb testing.TB, pool *pgxpool.Pool, nb string, pages []sqlPage)
 // the notebook's nodes, contents, index and changesets are as they were,
 // the answer's code and op as 3.9.3 orders them: an op not found after a
 // creation and a move; an edit session's page.locked at the guard of the op
-// that writes the page; a move's linking.pages_locked; B1 and B3; a version
-// of a page the batch creates. And at the bounds (3.8): 101 ops; strings
+// that writes the page; at a delete over such a page, before a later op's,
+// in the delete's words (M9/P3 review A-M1); a move's
+// linking.pages_locked; B1 and B3; a version of a page the batch creates. And at the bounds (3.8): 101 ops; strings
 // past 6 MiB, each op valid; 10,001 nodes deleted; pages read for edits
 // past 14 MiB, where 14 MiB is done; the plan's parses past 10 MiB, which
 // stop it at once; past 100 pages; and moves carrying past 10,000 nodes.
@@ -308,6 +309,15 @@ func TestTheMCPBatchIsRefusedWhole(t *testing.T) {
 			t.Errorf("the refusal = %+v, want bob's lock at ops[2]", r)
 		}
 	})
+	each("a delete of a page being edited, then an edit of another", []restPage{{"F", ""}, {"F/Q", "q"}, {"L", "l"}},
+		func(t *testing.T, nb string, ids map[string]string, m *mcpApp) {
+			tm.openSession(t, "bob", ids["F/Q"])
+			tm.openSession(t, "bob", ids["L"])
+			r := refused(t, nb, m, "page.locked", 0, opWith(opDelete("F.md"), "recursive", true), opEdit("L.md", "l", "m"))
+			if len(r.Locks) != 1 || r.Locks[0].DisplayName != "bob" || !strings.Contains(r.Message, "deleting it would end their edits") {
+				t.Errorf("the refusal = %+v, want bob's lock of F/Q at ops[0], as the delete alone answers", r)
+			}
+		})
 	each("a move whose links are being edited", []restPage{{"A", ""}, {"Q", "[[A]]"}}, func(t *testing.T, nb string, ids map[string]string, m *mcpApp) {
 		tm.openSession(t, "bob", ids["Q"])
 		if r := refused(t, nb, m, "linking.pages_locked", 0, opMove("A.md", "B.md")); len(r.Locks) != 1 || r.Locks[0].DisplayName != "bob" {

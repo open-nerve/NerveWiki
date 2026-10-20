@@ -541,6 +541,56 @@ func (f *fixture) sized(id uuid.UUID, n int) {
 	f.store.contents[id] = c
 }
 
+// The edit locks' precheck answers at the first op, in their order, that
+// writes or deletes a page being edited (M9/P3 design 3.4.5; review
+// A-M1): a delete's subtree, the deletions merged into it among them, in
+// the delete's words, every page of it held named; a content op's, its
+// page. Before any parse, the unit not begun.
+func TestABatchsLockPrecheckIsInItsOpsOrder(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		ops   []domain.BatchArgs
+		want  string // the op and its code
+		locks []string
+	}{
+		{"a delete, then an edit", []domain.BatchArgs{deleteOp("F/Q.md", false), editOp("P.md", "p", "q")}, "0 page.locked",
+			[]string{"Q"}},
+		{"a delete of a folder with a page held", []domain.BatchArgs{deleteOp("F.md", true), editOp("P.md", "p", "q")},
+			"0 page.locked", []string{"Q", "R"}},
+		{"a deletion merged into a later delete", []domain.BatchArgs{deleteOp("F/Q.md", false), deleteOp("F.md", true),
+			editOp("P.md", "p", "q")}, "1 page.locked", []string{"Q", "R"}},
+		{"an edit, then a delete", []domain.BatchArgs{editOp("P.md", "p", "q"), deleteOp("F/Q.md", false)}, "0 page.locked",
+			[]string{"P"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newFixture()
+			folder := f.page("F", nil, 1)
+			q, r := f.page("Q", &folder.ID, 1), f.page("R", &folder.ID, 2)
+			p := f.page("P", nil, 2)
+			f.content(p.ID, "p", 1)
+			bob := uuid.NewV7()
+			f.names[f.alice], f.names[bob] = "Alice", "Bob"
+			f.session(q.ID, bob, now().Add(time.Minute))
+			f.session(r.ID, f.alice, now().Add(time.Minute))
+			f.session(p.ID, f.alice, now().Add(time.Minute))
+			_, err := f.applyBatch(&fakeLinks{recorder: f.rec}, tt.ops...)
+			byID := map[uuid.UUID]string{q.ID: "Q", r.ID: "R", p.ID: "P"}
+			var named []string
+			var e *shared.Error
+			if errors.As(err, &e) && e.Lock != nil {
+				for _, h := range append([]shared.LockHolder{*e.Lock}, e.Locks...) {
+					named = append(named, byID[h.PageID])
+				}
+				named = slices.Compact(named)
+			}
+			if opOf(err) != tt.want || !slices.Equal(named, tt.locks) || f.took() || f.called("LockNotebook in tx") {
+				t.Errorf("the batch = %s naming %v after %v; want %s naming %v, before any parse and the unit", opOf(err), named,
+					f.rec.calls, tt.want, tt.locks)
+			}
+		})
+	}
+}
+
 // A batch's bounds (M9/P3 design 3.8): its items in the tree's pass, past
 // them nothing read; the contents its edits read, by their sizes before
 // any is read; the heads alone of the pages its writes replace; the edit

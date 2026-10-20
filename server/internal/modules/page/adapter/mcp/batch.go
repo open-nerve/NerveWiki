@@ -23,8 +23,10 @@ const batchDescription = `Apply up to 100 writes as one change, all or none, wit
 	`links follow the batch's renames and moves, merged node by node, from where they led before the batch, or, in a ` +
 	`page the batch writes, at its latest write before them (on the tree then, with the aliases from before the batch): ` +
 	`what other ops did in between to where they lead (creating, renaming, moving or deleting a page) is not seen, nor ` +
-	`any alias the batch changed. A page the batch writes that is being edited in the web editor refuses at that write, ` +
-	`as page.locked. The answer has the changeset's id and time and each op's result, as many as fit, results_count ` +
+	`any alias the batch changed. A page the batch writes or deletes that is being edited in the web editor refuses at ` +
+	`the first op that writes or deletes it, as page.locked; one that only the links' rewrite of its renames and moves ` +
+	`reaches is checked after those, as linking.pages_locked at its first rename or move. The answer has the ` +
+	`changeset's id and time and each op's result, as many as fit, results_count ` +
 	`all of them: changeset reads the rest. Each op's changed is what its tool would answer at that step; the batch's ` +
 	`tells whether it left a change.`
 
