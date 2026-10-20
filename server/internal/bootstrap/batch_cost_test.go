@@ -202,12 +202,13 @@ func (b batchBench) mixed(tb testing.TB, written, indexed, folder int) []map[str
 // n (M9/P3 design 3.8.2): two edits and a rename of the page they link to,
 // between them, n-1 pages of the full load and P1 rewritten; each
 // iteration after a vacuum, untimed. Then the worst mix at the bound
-// (mixed): 99 pages written, the most a batch's 100 ops write with the
-// move, and 301 of the index, the move of a folder of 10,000 after the
-// edits; and its halves, the written pages alone and 400 of the index
-// alone, whose costs a page are the ratio a written page counts for; each
-// iteration on a bench of its own, made untimed. It reports the median of
-// the unit and of the call, in milliseconds.
+// (mixed; M9/P3 review B-M3): 99 pages written, the most a batch's 100 ops
+// write with the move, each counting WrittenRewriteWeight, and the 202 of
+// the index that fill the bound, the move of a folder of 10,000 after the
+// edits; and the written pages alone and 400 of the index alone, whose
+// costs a page are the ratio a written page counts for; each iteration on
+// a bench of its own, made untimed. It reports the median of the unit and
+// of the call, in milliseconds.
 func BenchmarkBatchRewrites(b *testing.B) {
 	for _, n := range []int{100, 200, 250, 300, 400, 500, 1000} {
 		bench := newBatchBench(b, 1<<20)
@@ -231,7 +232,11 @@ func BenchmarkBatchRewrites(b *testing.B) {
 			b.ReportMetric(median(calls), "call-ms")
 		})
 	}
-	for _, m := range []struct{ written, indexed int }{{99, 301}, {99, 0}, {0, 400}} {
+	const written = 99
+	mixes := []struct{ written, indexed int }{
+		{written, domain.MaxBatchRewrites - written*domain.WrittenRewriteWeight}, {written, 0}, {0, domain.MaxBatchRewrites},
+	}
+	for _, m := range mixes {
 		b.Run(fmt.Sprintf("mixed: %d written, %d indexed, a folder of 10,000 moved", m.written, m.indexed), func(b *testing.B) {
 			var units, calls []float64
 			for range b.N {
@@ -260,23 +265,25 @@ func median(xs []float64) float64 {
 }
 
 // A batch at the bound of its deferred rewrite takes its time (M9/P3 design
-// 3.8.2): MaxBatchRewrites pages of the full load, each with a link to T0,
-// which a batch renames between two edits, the first of P1, which links
-// to T0 too: the rename's rewrite counts P1 with them, one page past the
-// bound, page.batch_too_large at the rename, counted before any page is
-// parsed: T0, the pages and the changesets as they were. Once one of them
-// is deleted, the batch rewrites the bound's pages, P1 among them, its
-// unit in 11 s at most, three times the 3.56 s BenchmarkBatchRewrites
-// measured at 400 pages (MaxBatchRewrites' comment; the time logged for
-// CI's runs: make test-go runs it with -v). The bench keeps the
-// composition root's bound, which the module hands the batch: one far
-// from the domain's fails here.
+// 3.8.2): pages of the full load, each with a link to T0, which a batch
+// renames between two edits, the first of P1, which links to T0 too: the
+// rename's rewrite counts P1 with them as WrittenRewriteWeight pages, one
+// past the bound, page.batch_too_large at the rename saying so, counted
+// before any page is parsed: T0, the pages and the changesets as they
+// were. Once one of them is deleted, the batch rewrites the bound's pages,
+// P1 among them, its unit in 11 s at most, three times the 3.56 s
+// BenchmarkBatchRewrites measured at 400 pages (MaxBatchRewrites' comment;
+// the time logged for CI's runs: make test-go runs it with -v). The bench
+// keeps the composition root's bound, which the module hands the batch:
+// one far from the domain's fails here.
 func TestABatchAtItsRewriteBoundTakesItsTime(t *testing.T) {
 	if testing.Short() {
 		t.Skip("a bound of time against a database")
 	}
+	// The R pages and P1, written, past the bound by one (M9/P3 review B-M3).
+	r := domain.MaxBatchRewrites - domain.WrittenRewriteWeight + 1
 	bench := newBatchBench(t, 0)
-	bench.rewritten(t, 0, domain.MaxBatchRewrites)
+	bench.rewritten(t, 0, r)
 	state := func() string {
 		return strings.Join(queryStrings(t, bench.pool, `SELECT n.name || ' ' || md5(c.content) FROM nodes n
 			JOIN page_contents c ON c.node_id = n.id AND c.deleted_at IS NULL WHERE n.deleted_at IS NULL ORDER BY n.name`), "\n") +
@@ -284,25 +291,27 @@ func TestABatchAtItsRewriteBoundTakesItsTime(t *testing.T) {
 	}
 	was := state()
 	a, _ := bench.batch(t, renamed(0)...)
-	if member := a.toolError(t); member["code"] != "page.batch_too_large" || member["op"] != 1.0 || state() != was {
-		t.Errorf("the batch rewriting %d pages = %.300s, want page.batch_too_large at ops[1], nothing written",
-			domain.MaxBatchRewrites+1, a.body)
+	past := fmt.Sprintf("%d pages whose links the batch's renames and moves would rewrite, each page the batch wrote counting %d, "+
+		"at most %d", domain.MaxBatchRewrites+1, domain.WrittenRewriteWeight, domain.MaxBatchRewrites)
+	if member := a.toolError(t); member["code"] != "page.batch_too_large" || member["op"] != 1.0 ||
+		!strings.Contains(fmt.Sprint(member["message"]), past) || state() != was {
+		t.Errorf("the batch counting %d pages = %.400s, want page.batch_too_large at ops[1] saying %q, nothing written",
+			domain.MaxBatchRewrites+1, a.body, past)
 	}
 
-	extra := queryStrings(t, bench.pool, "SELECT id::text FROM nodes WHERE name = $1", fmt.Sprint("R", domain.MaxBatchRewrites-1))[0]
+	extra := queryStrings(t, bench.pool, "SELECT id::text FROM nodes WHERE name = $1", fmt.Sprint("R", r-1))[0]
 	bench.timed(t, http.MethodDelete, "/api/v0/nodes/"+extra, http.StatusNoContent)
 	bench.vacuumed(t)
 	a, took := bench.batch(t, renamed(0)...)
-	unit := time.Duration(bench.applied(t, a, domain.MaxBatchRewrites)["unit_ms"].(float64)) * time.Millisecond
-	t.Logf("a batch that rewrote %d pages: its unit took %s, the call %s", domain.MaxBatchRewrites, unit, took)
+	unit := time.Duration(bench.applied(t, a, r)["unit_ms"].(float64)) * time.Millisecond
+	t.Logf("a batch at its rewrites' bound, %d pages rewritten: its unit took %s, the call %s", r, unit, took)
 	if unit > 11*time.Second {
-		t.Errorf("a batch that rewrote %d pages took %s in its unit, want 11 s at most", domain.MaxBatchRewrites, unit)
+		t.Errorf("a batch at its rewrites' bound took %s in its unit, want 11 s at most", unit)
 	}
 	if got := queryStrings(t, bench.pool, `SELECT count(*) || ' ' || count(*) FILTER (WHERE c.revision = 2)
 		FROM nodes n JOIN page_contents c ON c.node_id = n.id AND c.deleted_at IS NULL
-		WHERE n.deleted_at IS NULL AND n.name LIKE 'R%' AND c.content LIKE '[[T1]]%'`); got[0] != fmt.Sprintf("%d %d",
-		domain.MaxBatchRewrites-1, domain.MaxBatchRewrites-1) {
-		t.Errorf("the R pages linking to T1 at their second revision: %s, want all %d", got[0], domain.MaxBatchRewrites-1)
+		WHERE n.deleted_at IS NULL AND n.name LIKE 'R%' AND c.content LIKE '[[T1]]%'`); got[0] != fmt.Sprintf("%d %d", r-1, r-1) {
+		t.Errorf("the R pages linking to T1 at their second revision: %s, want all %d", got[0], r-1)
 	}
 	if p1 := queryStrings(t, bench.pool, `SELECT c.content || ' ' || c.revision FROM nodes n JOIN page_contents c ON c.node_id = n.id
 		WHERE n.name = 'P1'`); p1[0] != "[[T1]] p1 1 3" {

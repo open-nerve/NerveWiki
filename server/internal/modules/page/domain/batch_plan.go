@@ -30,8 +30,9 @@ const (
 	// MaxBatchRewrites bounds the pages a batch's deferred rewrite writes
 	// again (M9/P3 design 3.8.2): the pages of the index whose links its
 	// renames and moves reach, and the pages it wrote whose own changes
-	// move anything. Counted before any is parsed; past it the batch is
-	// page.batch_too_large. A single move is not bounded, as REST's. M8's
+	// move anything, each of those counting WrittenRewriteWeight. Counted
+	// before any is parsed; past it the batch is page.batch_too_large. A
+	// single move is not bounded, as REST's. M8's
 	// rule sets it: the largest tier of bootstrap's BenchmarkBatchRewrites
 	// whose unit takes about 4 s at most here, pages of the full load (84
 	// KB, 200 links), the median of three: 100 pages 0.86 s, 200 1.90 s,
@@ -40,6 +41,19 @@ const (
 	// pages it wrote, until its end, past the budget (2026-10-20, Apple M5
 	// Max).
 	MaxBatchRewrites = 400
+	// WrittenRewriteWeight is what a page the batch wrote counts in
+	// MaxBatchRewrites, in pages of the index (M9/P3 review B-M3): its
+	// rewrite finds the links its own changes reach from its facts, on the
+	// tree its last content op left, and costs more than an index page's.
+	// BenchmarkBatchRewrites' mix, pages of some 76 KB with 100 links each
+	// into distinct nodes of a folder of 10,000 moved after the edits, the
+	// median of three, in two runs: 99 written pages and 301 of the index
+	// 5.59 s, past the 4 s the bound is set for; the 99 written alone 2.21
+	// and 2.12 s, 400 of the index alone 5.17 and 4.46 s; a written page
+	// 1.4 to 1.9 times an index page, rounded up. So counted, the bound's
+	// 99 written and 202 of the index take 4.36 s (2026-10-20, Apple M5
+	// Max).
+	WrittenRewriteWeight = 2
 )
 
 // PathStep is a node on a path from the root: its id, title key and name.

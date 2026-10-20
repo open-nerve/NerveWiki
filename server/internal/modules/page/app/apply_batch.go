@@ -738,7 +738,8 @@ func (a *batchAttempt) participate(ctx context.Context, u *Unit, parents map[uui
 		}
 	}
 	a.session.Release()
-	n, err := u.Participate(ctx, BatchRewrite{Written: written, Parents: parents, Gone: gone, MaxPages: a.b.maxRewrites, FirstMove: first})
+	n, err := u.Participate(ctx, BatchRewrite{Written: written, Parents: parents, Gone: gone, MaxPages: a.b.maxRewrites,
+		WrittenWeight: domain.WrittenRewriteWeight, FirstMove: first})
 	var problem *shared.Error
 	if errors.As(err, &problem) {
 		return &domain.OpFailed{Op: first, Tool: a.steps[first].Kind, Err: err}

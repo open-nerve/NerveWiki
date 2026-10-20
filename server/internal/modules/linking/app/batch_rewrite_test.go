@@ -449,10 +449,10 @@ func TestABatchCountsItsRewritesFirst(t *testing.T) {
 	w.rewrite.Pages = tree
 	w.locks.held[w.id("Q1")] = shared.LockHolder{PageID: w.id("Q1"), UserID: uuid.NewV7(), DisplayName: "Ada"}
 	a := w.id("A")
-	_, err := w.batch(app.Moved{Changes: []domain.Change{w.rename("A", "B")}, MaxPages: 1})
+	_, err := w.batch(app.Moved{Changes: []domain.Change{w.rename("A", "B")}, MaxPages: 1, WrittenWeight: 2})
 	var many *app.TooManyRewrites
-	if !errors.As(err, &many) || !errors.Is(err, app.ErrTooManyRewrites) || many.Pages != 2 || many.Max != 1 {
-		t.Fatalf("past the bound: %v, want TooManyRewrites of 2 at most 1", err)
+	if !errors.As(err, &many) || !errors.Is(err, app.ErrTooManyRewrites) || many.Pages != 2 || many.Max != 1 || many.Weight != 0 {
+		t.Fatalf("past the bound: %v, want TooManyRewrites of 2 at most 1, no page written to weigh", err)
 	}
 	if w.locks.reads != 0 || len(parser.contents) != 0 {
 		t.Errorf("the locks read %d times and %d contents parsed before the count", w.locks.reads, len(parser.contents))
@@ -471,6 +471,37 @@ func TestABatchCountsItsRewritesFirst(t *testing.T) {
 			t.Fatalf("MaxPages %d: %v", max, err)
 		}
 		w.written(u, map[string]string{"Q1": "[[B]]\n", "Q2": "[[B]]\n"})
+	}
+}
+
+// A page the batch wrote counts WrittenWeight against MaxPages (M9/P3
+// review B-M3: its rewrite costs more than an index page's): with Q1 and
+// Q2 of the index and W written, its own change reaching its link, a
+// weight of 2 counts 4, past a bound of 3, the refusal saying the weight;
+// a bound of 4 writes the three; a weight of 0 counts W once.
+func TestABatchCountsAPageItWroteAsItsWeight(t *testing.T) {
+	batch := func(max, weight int) (*rewriting, *appender, error) {
+		w := newRewriting(t, "A", "Q1", "Q2", "W")
+		w.write("Q1", "[[A]]\n")
+		w.write("Q2", "[[A]]\n")
+		before := w.before("w [[A]]\n", "A")
+		facts := w.wrote("W", "w [[A]]\n")
+		u, err := w.batch(app.Moved{Changes: []domain.Change{w.rename("A", "B")}, MaxPages: max, WrittenWeight: weight,
+			Written: map[uuid.UUID]app.WrittenPage{w.id("W"): {Before: before, Changes: []domain.Change{w.renamed("B", "A", "B")},
+				Facts: facts}}})
+		return w, u, err
+	}
+	_, _, err := batch(3, 2)
+	var many *app.TooManyRewrites
+	if !errors.As(err, &many) || many.Pages != 4 || many.Max != 3 || many.Weight != 2 {
+		t.Fatalf("a weight of 2, at most 3: %v %+v, want TooManyRewrites of 4 at most 3, weighing 2", err, many)
+	}
+	for _, c := range []struct{ max, weight int }{{4, 2}, {3, 0}} {
+		w, u, err := batch(c.max, c.weight)
+		if err != nil {
+			t.Fatalf("a weight of %d, at most %d: %v", c.weight, c.max, err)
+		}
+		w.written(u, map[string]string{"Q1": "[[B]]\n", "Q2": "[[B]]\n", "W": "w [[B]]\n"})
 	}
 }
 

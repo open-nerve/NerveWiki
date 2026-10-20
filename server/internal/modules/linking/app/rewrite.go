@@ -43,7 +43,8 @@ type rewritten struct {
 // pages it wrote whose own changes move something, which it follows from
 // their contents. It counts them against m.MaxPages before it reads the
 // tree they are written on, refuses or parses any (ErrTooManyRewrites;
-// M9/P3 review B-I1); refuses with linking.pages_locked when one of these
+// M9/P3 review B-I1), a page the batch wrote as m.WrittenWeight (review
+// B-M3); refuses with linking.pages_locked when one of these
 // pages is being edited, the caller's own too; then writes each again, one
 // page after another, the batch's first, its contents parsed with the
 // budget taken now (server_busy). A page whose content was written since
@@ -67,8 +68,13 @@ func (r Rewrite) Participate(ctx context.Context, m Moved, u Appender) error {
 	if err != nil {
 		return err
 	}
-	if counted := index.counted(gone) + len(written); m.MaxPages > 0 && counted > m.MaxPages {
-		return &TooManyRewrites{Pages: counted, Max: m.MaxPages}
+	weight := max(m.WrittenWeight, 1)
+	if counted := index.counted(gone) + weight*len(written); m.MaxPages > 0 && counted > m.MaxPages {
+		tooMany := &TooManyRewrites{Pages: counted, Max: m.MaxPages}
+		if len(written) > 0 && weight > 1 {
+			tooMany.Weight = weight
+		}
+		return tooMany
 	}
 	if err := r.readTree(ctx, m, &index, gone); err != nil {
 		return err

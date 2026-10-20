@@ -335,10 +335,11 @@ func TestABatchsParticipantsFollowItOnceItsOpsDone(t *testing.T) {
 		t.Errorf("N's change = %+v, want from where its creation put it", c)
 	}
 	b := s.Batch
-	if b.MaxPages != domain.MaxBatchRewrites || b.FirstMove != 1 || !slices.Equal(b.Gone, []uuid.UUID{d.ID}) ||
-		len(b.Parents) != 1 || len(b.Parents[e.ID]) != 1 || b.Parents[e.ID][0].Name != "E" || !slices.Equal(b.Frozen, []uuid.UUID{h.ID}) {
-		t.Errorf("the batch's rewrite = max %d, first %d, gone %v, parents %v, frozen %v", b.MaxPages, b.FirstMove, b.Gone, b.Parents,
-			b.Frozen)
+	if b.MaxPages != domain.MaxBatchRewrites || b.WrittenWeight != domain.WrittenRewriteWeight || b.FirstMove != 1 ||
+		!slices.Equal(b.Gone, []uuid.UUID{d.ID}) || len(b.Parents) != 1 || len(b.Parents[e.ID]) != 1 || b.Parents[e.ID][0].Name != "E" ||
+		!slices.Equal(b.Frozen, []uuid.UUID{h.ID}) {
+		t.Errorf("the batch's rewrite = max %d, weight %d, first %d, gone %v, parents %v, frozen %v", b.MaxPages, b.WrittenWeight,
+			b.FirstMove, b.Gone, b.Parents, b.Frozen)
 	}
 	if len(b.Written) != 2 {
 		t.Fatalf("the pages written = %v, want W and N", b.Written)

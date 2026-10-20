@@ -69,8 +69,11 @@ func (l linkRewrite) Participate(ctx context.Context, s page.Step, u page.Append
 	}
 	err := l.rewrite.Participate(ctx, m, linkAppender{u})
 	if tooMany := (*linking.TooManyRewrites)(nil); errors.As(err, &tooMany) {
-		return page.BatchTooLarge("pages whose links the batch's renames and moves would rewrite", tooMany.Pages, tooMany.Max,
-			"move with update_links false, or in separate calls")
+		what := "pages whose links the batch's renames and moves would rewrite"
+		if tooMany.Weight > 0 {
+			what += fmt.Sprintf(", each page the batch wrote counting %d", tooMany.Weight)
+		}
+		return page.BatchTooLarge(what, tooMany.Pages, tooMany.Max, "move with update_links false, or in separate calls")
 	}
 	return err
 }
@@ -80,7 +83,8 @@ func (l linkRewrite) Participate(ctx context.Context, s page.Step, u page.Append
 // its links before, its own changes, its final content's facts and the
 // nodes it leaves the links to; the former parents' paths, never nil,
 // which the rewrite reads them from alone; the nodes it deleted; its
-// bound; and the nodes whose links it leaves (M9/P3 review B-M1).
+// bound, and what a page it wrote counts in it (M9/P3 review B-M3); and
+// the nodes whose links it leaves (M9/P3 review B-M1).
 func batchMoved(m *linking.Moved, b page.BatchRewrite) error {
 	m.Written = make(map[uuid.UUID]linking.WrittenPage, len(b.Written))
 	for id, w := range b.Written {
@@ -92,7 +96,7 @@ func batchMoved(m *linking.Moved, b page.BatchRewrite) error {
 			Frozen: w.Frozen}
 	}
 	m.Parents = linkParents(b.Parents)
-	m.Gone, m.MaxPages, m.Frozen = b.Gone, b.MaxPages, b.Frozen
+	m.Gone, m.MaxPages, m.WrittenWeight, m.Frozen = b.Gone, b.MaxPages, b.WrittenWeight, b.Frozen
 	return nil
 }
 

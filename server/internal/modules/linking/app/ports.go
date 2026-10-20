@@ -242,20 +242,23 @@ type Publisher interface {
 // (M9/P3 design 3.7): each page the batch wrote, alive after it, which is
 // followed from its own content and changes; the paths the moved nodes'
 // former parents had as the unit began; the nodes it deleted; the most
-// pages the rewrite may write, none for 0 (a unit of one operation); and
-// the nodes an op of it renamed or moved with update_links false, the
-// links that led to them left as they are, in every page, whatever their
-// ancestors' changes (M9 design 4.11; M9/P3 review B-M1).
+// pages the rewrite may write, none for 0 (a unit of one operation), a
+// page of Written counting WrittenWeight, 1 for 0 (M9/P3 review B-M3: its
+// rewrite costs more than an index page's); and the nodes an op of it
+// renamed or moved with update_links false, the links that led to them
+// left as they are, in every page, whatever their ancestors' changes (M9
+// design 4.11; M9/P3 review B-M1).
 type Moved struct {
-	NotebookID  uuid.UUID
-	At          time.Time
-	UpdateLinks bool
-	Changes     []domain.Change
-	Written     map[uuid.UUID]WrittenPage
-	Parents     map[uuid.UUID][]domain.Step
-	Gone        []uuid.UUID
-	MaxPages    int
-	Frozen      []uuid.UUID
+	NotebookID    uuid.UUID
+	At            time.Time
+	UpdateLinks   bool
+	Changes       []domain.Change
+	Written       map[uuid.UUID]WrittenPage
+	Parents       map[uuid.UUID][]domain.Step
+	Gone          []uuid.UUID
+	MaxPages      int
+	WrittenWeight int
+	Frozen        []uuid.UUID
 }
 
 // WrittenPage is a page a batch wrote, as its deferred rewrite follows it
@@ -287,9 +290,10 @@ type LinksBefore struct {
 var ErrTooManyRewrites = errors.New("linking: the batch's renames and moves would rewrite the links of more pages than it may")
 
 // TooManyRewrites is ErrTooManyRewrites with the pages the rewrite would
-// write, at most, and the bound.
+// write, at most, as the bound counts them, and the bound; Weight is what
+// a page the batch wrote counted, when one was and counted more than one.
 type TooManyRewrites struct {
-	Pages, Max int
+	Pages, Max, Weight int
 }
 
 func (e *TooManyRewrites) Error() string { return ErrTooManyRewrites.Error() }
