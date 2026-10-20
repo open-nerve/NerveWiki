@@ -12,9 +12,10 @@ import (
 
 // RevertBounds bound a changeset one unit reverts beyond the pages, bytes
 // and links any unit parses, as RestoreBounds bound a restore: its items,
-// the rows of history of the trash items it restores, and its round's
-// places, deletions and restores. Zero is the domain's, MaxUnitNodes,
-// MaxUnitHistory and MaxRevertSteps; only a measurement changes them.
+// the rows of history of the trash items it restores, and its schedule's
+// places, steps aside, deletions and restores. Zero is the domain's,
+// MaxUnitNodes, MaxUnitHistory and MaxRevertSteps; only a measurement
+// changes them.
 type RevertBounds struct {
 	Nodes, History, Steps int
 }
@@ -64,7 +65,7 @@ func NewRevertChangeset(reads TrashReads, history History, writer *Writer, parse
 // page.revert_too_large past the pages and bytes it parses (a lone page
 // never is) or the rows of their history; then the state, planned once
 // before parsing: page.revert_conflict, then page.changeset_trimmed for a
-// version the purge took, then page.revert_too_large past the round's
+// version the purge took, then page.revert_too_large past the schedule's
 // steps; then page.changeset_trimmed for a content to write back or
 // restore the purge took; then the contents parsed, largest first,
 // server_busy when their waits run out, and page.revert_too_large past

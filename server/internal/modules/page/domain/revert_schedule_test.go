@@ -374,3 +374,34 @@ func TestRevertWritesAreEveryVersionOnABase(t *testing.T) {
 		t.Errorf("RevertWrites = %v, want the deleted, renamed and written pages' %v", got, want)
 	}
 }
+
+// MaxRevertSteps bounds a plan's places, steps aside of both kinds,
+// deletions and restores; a content's write is no step of it (M9/P3
+// design 3.19).
+func TestStepsCountTheStepsAside(t *testing.T) {
+	plan := domain.RevertPlan{Ops: []domain.RevertOp{{Kind: domain.RevertAside, Rename: true},
+		{Kind: domain.RevertAside, Move: true, Rename: true}, {Kind: domain.RevertDelete}, {Kind: domain.RevertRestore},
+		{Kind: domain.RevertPlace, Move: true}, {Kind: domain.RevertPlace, Rename: true}, {Kind: domain.RevertContent}}}
+	if n := plan.Steps(); n != 6 {
+		t.Errorf("Steps() = %d, want 6: both steps aside, a deletion, a restore and two places", n)
+	}
+
+	// The review's counterexample, planned: a step aside, a deletion, a
+	// restore and two places.
+	w := newWorld(t)
+	g := w.page("G", nil, 0, 1, "g")
+	x, y := w.page("x", &g, 0, 1, "x"), w.page("y", &g, 1, 1, "y")
+	w.move(x, nil, 1)
+	w.move(y, nil, 2)
+	w.trash(g, time.Date(2026, 10, 14, 11, 0, 0, 0, time.UTC))
+	w.deleted(g)
+	newG := w.page("G", nil, 3, 1, "new g")
+	w.created(newG)
+	w.move(y, &newG, 0)
+	w.placed(x, domain.TreeState{ParentID: &g, Name: "x"})
+	w.placed(y, domain.TreeState{ParentID: &g, Name: "y", SortOrder: 1})
+	w.wrote(w.page("P", nil, 4, 2, "two"), 1, "one")
+	if plan := w.plan(); plan.Steps() != 5 || len(plan.Ops) != 6 {
+		t.Errorf("the counterexample's steps = %q, Steps() %d; want 5 of 6, the write back not counted", w.ops(plan), plan.Steps())
+	}
+}
