@@ -38,20 +38,21 @@ type rewritten struct {
 
 // Participate follows m, an operation of a unit that rewrites links: a
 // rename or a move of nodes that relocates one, or a rename of a title's
-// case alone. It finds the links of the index the operation reaches that
-// it writes again (domain.Rewrites tells each), on the pages the index has
-// with the current extractor; and of a batch's (M9/P3 design 3.7.2), the
-// links of the pages it wrote that their own changes meet, which it
-// follows from their contents. It counts the pages it would write against
-// m.MaxPages before it reads the tree they are written on, refuses or
-// parses any (ErrTooManyRewrites; M9/P3 review B-I1), a page the batch
-// wrote with such a link as m.WrittenWeight (review B-M3), one with none
-// not at all (review B1-M2); refuses with linking.pages_locked when one of
-// these pages is being edited, the caller's own too; then writes each
-// again, one page after another, the batch's first, its contents parsed
-// with the budget taken now (server_busy). A page whose content was
-// written since its index, a link whose page led to is gone, and a link no
-// writing leads back, are logged and left.
+// case alone. It finds the links of the index the operation reaches that it
+// writes again (domain.Rewrites tells each), on the pages the index has with
+// the current extractor; and of a batch's (M9/P3 design 3.7.2), the links of
+// the pages it wrote that their own changes meet, which it follows from
+// their contents. It counts the pages it would write against m.MaxPages
+// before it reads the tree they are written on, refuses or parses any
+// (ErrTooManyRewrites; M9/P3 review B-I1), a page the batch wrote with such
+// a link as m.WrittenWeight (review B-M3), one with none not at all (review
+// B1-M2), and their links against m.MaxLinks (review B1-M3: the unit's time
+// follows the links); refuses with linking.pages_locked when one of these
+// pages is being edited, the caller's own too; then writes each again, one
+// page after another, the batch's first, its contents parsed with the budget
+// taken now (server_busy). A page whose content was written since its index,
+// a link whose page led to is gone, and a link no writing leads back, are
+// logged and left.
 func (r Rewrite) Participate(ctx context.Context, m Moved, u Appender) error {
 	if !m.UpdateLinks {
 		return nil
@@ -73,6 +74,9 @@ func (r Rewrite) Participate(ctx context.Context, m Moved, u Appender) error {
 			tooMany.Weight = weight
 		}
 		return tooMany
+	}
+	if linked := index.linked(gone) + met.linked(gone); m.MaxLinks > 0 && linked > m.MaxLinks {
+		return &TooManyRewrites{Links: linked, Max: m.MaxLinks}
 	}
 	if err := r.readTree(ctx, m, &index, gone); err != nil {
 		return err
@@ -143,6 +147,21 @@ func (f followedPages) counted(gone map[uuid.UUID]bool) int {
 			if !gone[x.before.ID] {
 				n++
 				break
+			}
+		}
+	}
+	return n
+}
+
+// linked is how many links of f's pages lead to a node a batch did not
+// delete (gone): the links the rewrite writes, as MaxLinks counts them
+// before the tree is read (M9/P3 review B1-M3).
+func (f followedPages) linked(gone map[uuid.UUID]bool) int {
+	n := 0
+	for _, id := range f.pages {
+		for _, x := range f.reached[id] {
+			if !gone[x.before.ID] {
+				n++
 			}
 		}
 	}
@@ -260,11 +279,11 @@ type ownReach struct {
 
 // writtenMet is, of the pages a batch wrote, alive after it, those with a
 // link their own changes meet, in id order, each with those links
-// (metLinks): what the bound counts of them before the tree is read
+// (metLinks): what the bounds count of them before the tree is read
 // (M9/P3 review B1-M2), and the rewrite resolves after it.
 type writtenMet struct {
 	pages []uuid.UUID
-	links map[uuid.UUID]metRows
+	met   map[uuid.UUID]metRows
 }
 
 // metRows is the links of a page that changes meet (metLinks), with where
@@ -282,18 +301,33 @@ type metRows struct {
 func (w writtenMet) counted(gone map[uuid.UUID]bool) []uuid.UUID {
 	var out []uuid.UUID
 	for _, id := range w.pages {
-		if slices.ContainsFunc(w.links[id].befores, func(b domain.Resolution) bool { return !gone[b.ID] }) {
+		if slices.ContainsFunc(w.met[id].befores, func(b domain.Resolution) bool { return !gone[b.ID] }) {
 			out = append(out, id)
 		}
 	}
 	return out
 }
 
+// linked is how many links of w's pages lead to a node a batch did not
+// delete (gone): the links the rewrite writes of them, as MaxLinks counts
+// them before they are resolved, more than domain.Rewrites may tell.
+func (w writtenMet) linked(gone map[uuid.UUID]bool) int {
+	n := 0
+	for _, id := range w.pages {
+		for _, b := range w.met[id].befores {
+			if !gone[b.ID] {
+				n++
+			}
+		}
+	}
+	return n
+}
+
 // ownMet is writtenMet of m's pages, the subtrees spread reads read once
 // for the batch, each reach made once for the same changes (subtrees).
 func (r Rewrite) ownMet(ctx context.Context, m Moved, gone map[uuid.UUID]bool) (writtenMet, error) {
 	sub := &subtrees{store: r.Store, pages: r.Pages, notebookID: m.NotebookID, read: map[uuid.UUID]subtree{}}
-	out := writtenMet{links: map[uuid.UUID]metRows{}}
+	out := writtenMet{met: map[uuid.UUID]metRows{}}
 	for _, id := range slices.SortedFunc(maps.Keys(m.Written), uuid.UUID.Compare) {
 		if gone[id] {
 			continue
@@ -305,7 +339,7 @@ func (r Rewrite) ownMet(ctx context.Context, m Moved, gone map[uuid.UUID]bool) (
 		}
 		if len(met.rows) > 0 {
 			out.pages = append(out.pages, id)
-			out.links[id] = met
+			out.met[id] = met
 		}
 	}
 	return out, nil
@@ -317,7 +351,7 @@ func (r Rewrite) ownMet(ctx context.Context, m Moved, gone map[uuid.UUID]bool) (
 func (r Rewrite) ownWritten(ctx context.Context, m Moved, met writtenMet, gone map[uuid.UUID]bool) (map[uuid.UUID]ownReach, error) {
 	out := make(map[uuid.UUID]ownReach, len(met.pages))
 	for _, id := range met.pages {
-		x := met.links[id]
+		x := met.met[id]
 		reached, err := rewrittenOf(ctx, r.Store, r.Pages, m.NotebookID, x, gone)
 		if err != nil {
 			return nil, err

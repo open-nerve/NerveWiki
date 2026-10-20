@@ -69,24 +69,28 @@ func (l linkRewrite) Participate(ctx context.Context, s page.Step, u page.Append
 	}
 	err := l.rewrite.Participate(ctx, m, linkAppender{u})
 	if tooMany := (*linking.TooManyRewrites)(nil); errors.As(err, &tooMany) {
+		const hint = "move with update_links false, or in separate calls"
+		if tooMany.Links > 0 {
+			return page.BatchTooLarge("links the batch's renames and moves would rewrite", tooMany.Links, tooMany.Max, hint)
+		}
 		what := "pages whose links the batch's renames and moves would rewrite"
 		if tooMany.Weight > 0 {
 			what += fmt.Sprintf(", each page the batch wrote counting %d", tooMany.Weight)
 		}
-		return page.BatchTooLarge(what, tooMany.Pages, tooMany.Max, "move with update_links false, or in separate calls")
+		return page.BatchTooLarge(what, tooMany.Pages, tooMany.Max, hint)
 	}
 	return err
 }
 
 // batchMoved has m, a batch's deferred step, follow what the batch tells
 // besides its changes (M9/P3 design 3.7.1): the pages it wrote, each with
-// its links before, its own changes, its final content's facts and the
-// nodes it leaves the links to; the former parents' paths, never nil,
-// which the rewrite reads them from alone; the nodes it deleted; its
-// bound, and what a page it wrote counts in it (M9/P3 review B-M3); the
-// nodes whose links it leaves (M9/P3 review B-M1); and those it created
-// after each node's last rename or move, out of its subtree (M9/P3 review
-// B1-M1).
+// its links before, its own changes, its final content's facts and the nodes
+// it leaves the links to; the former parents' paths, never nil, which the
+// rewrite reads them from alone; the nodes it deleted; its bounds, of pages,
+// and what a page it wrote counts in it (M9/P3 review B-M3), and of links
+// (review B1-M3); the nodes whose links it leaves (M9/P3 review B-M1); and
+// those it created after each node's last rename or move, out of its subtree
+// (M9/P3 review B1-M1).
 func batchMoved(m *linking.Moved, b page.BatchRewrite) error {
 	m.Written = make(map[uuid.UUID]linking.WrittenPage, len(b.Written))
 	for id, w := range b.Written {
@@ -98,7 +102,8 @@ func batchMoved(m *linking.Moved, b page.BatchRewrite) error {
 			Frozen: w.Frozen, CreatedAfter: w.CreatedAfter}
 	}
 	m.Parents = linkParents(b.Parents)
-	m.Gone, m.MaxPages, m.WrittenWeight, m.Frozen, m.CreatedAfter = b.Gone, b.MaxPages, b.WrittenWeight, b.Frozen, b.CreatedAfter
+	m.Gone, m.MaxPages, m.WrittenWeight, m.MaxLinks = b.Gone, b.MaxPages, b.WrittenWeight, b.MaxLinks
+	m.Frozen, m.CreatedAfter = b.Frozen, b.CreatedAfter
 	return nil
 }
 

@@ -55,6 +55,22 @@ const (
 	// 99 written and 202 of the index take 4.36 s (2026-10-20, Apple M5
 	// Max).
 	WrittenRewriteWeight = 2
+	// MaxBatchRewriteLinks bounds the links a batch's deferred rewrite
+	// writes again (M9/P3 review B1-M3: the unit's time follows them): those
+	// of the index's pages its renames and moves reach that domain.Rewrites
+	// writes, and those of the pages it wrote that their own changes meet,
+	// each whose target the batch did not delete, counted as
+	// MaxBatchRewrites' pages are, before any is parsed; past it the batch
+	// is page.batch_too_large. A single move is not bounded, as REST's.
+	// M8's rule sets it: the largest dense tier of BenchmarkBatchRewrites
+	// whose unit takes about 4 s at most here, 400 pages of the index of
+	// bare links, some 18 bytes each, into a folder of 10,000 moved alone,
+	// the median of three: 100 links a page 2.14 s, 250 3.06 and 3.09 s,
+	// 300 3.44 and 3.45 s, 375 4.28 and 4.25 s, 500 4.74 and 4.82 s, 750
+	// 6.75 s, 1,000 8.30 s, 1,500 11.47 s; 2,000 and 2,500 ran out of the
+	// request's 15 s (2026-10-20, Apple M5 Max). A page's bytes add their
+	// parse: 400 of 76 KB with 100 links each took 4.2 to 4.6 s.
+	MaxBatchRewriteLinks = 120_000
 )
 
 // PathStep is a node on a path from the root: its id, title key and name.

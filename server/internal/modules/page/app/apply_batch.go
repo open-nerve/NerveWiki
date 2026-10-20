@@ -63,22 +63,23 @@ type ApplyBatch struct {
 	locks     *LockHolders
 	notebooks Notebooks
 	auth      shared.Authorizer
-	// maxRewrites bounds the pages the deferred rewrite writes: 0 is the
-	// domain's, domain.MaxBatchRewrites, which only a measurement raises
-	// (M9/P3 design 3.8.2).
-	maxRewrites int
-	clock       Clock
-	logger      *slog.Logger
+	// maxRewrites bounds the pages the deferred rewrite writes, maxLinks
+	// their links: 0 is the domain's, domain.MaxBatchRewrites and
+	// domain.MaxBatchRewriteLinks, which only a measurement raises (M9/P3
+	// design 3.8.2; review B1-M3).
+	maxRewrites, maxLinks int
+	clock                 Clock
+	logger                *slog.Logger
 }
 
 // NewApplyBatch returns the use case, its deferred rewrite bounded at
-// maxRewrites pages, 0 for the domain's.
+// maxRewrites pages and maxLinks links, 0 for the domain's.
 func NewApplyBatch(writer *Writer, parser *ContentParser, paths PathStore, nodes Nodes, states PageStates, links BatchLinks,
-	locks *LockHolders, notebooks Notebooks, auth shared.Authorizer, maxRewrites int, clock Clock, logger *slog.Logger,
+	locks *LockHolders, notebooks Notebooks, auth shared.Authorizer, maxRewrites, maxLinks int, clock Clock, logger *slog.Logger,
 ) *ApplyBatch {
 	return &ApplyBatch{writer: writer, parser: parser, paths: NewNodePaths(paths), nodes: nodes, states: states, links: links,
-		locks: locks, notebooks: notebooks, auth: auth, maxRewrites: cmp.Or(maxRewrites, domain.MaxBatchRewrites), clock: clock,
-		logger: logger}
+		locks: locks, notebooks: notebooks, auth: auth, maxRewrites: cmp.Or(maxRewrites, domain.MaxBatchRewrites),
+		maxLinks: cmp.Or(maxLinks, domain.MaxBatchRewriteLinks), clock: clock, logger: logger}
 }
 
 // replanned is a batch's unit that found the notebook other than its plan
@@ -715,7 +716,7 @@ func (a *batchAttempt) delete(ctx context.Context, u *Unit, i int) error {
 // once (M9/P3 design 3.7.1): the pages the unit wrote, alive after it,
 // with their own changes and links before; the former parents' paths; the
 // nodes it deleted, and those it created after each rename or move (M9/P3
-// review B1-M1); its bound.
+// review B1-M1); its bounds, of pages and of links (review B1-M3).
 // None follows a batch without a rename or a
 // move with update_links. The facts' shares the batch holds are given back
 // first, the facts kept: the rewrite's read backs must find the budget. Its
@@ -742,7 +743,8 @@ func (a *batchAttempt) participate(ctx context.Context, u *Unit, parents map[uui
 	}
 	a.session.Release()
 	n, err := u.Participate(ctx, BatchRewrite{Written: written, Parents: parents, Gone: gone, MaxPages: a.b.maxRewrites,
-		WrittenWeight: domain.WrittenRewriteWeight, FirstMove: first, CreatedAfter: a.plan.CreatedAfterMoves(-1, len(a.steps)-1)})
+		WrittenWeight: domain.WrittenRewriteWeight, MaxLinks: a.b.maxLinks, FirstMove: first,
+		CreatedAfter: a.plan.CreatedAfterMoves(-1, len(a.steps)-1)})
 	var problem *shared.Error
 	if errors.As(err, &problem) {
 		return &domain.OpFailed{Op: first, Tool: a.steps[first].Kind, Err: err}

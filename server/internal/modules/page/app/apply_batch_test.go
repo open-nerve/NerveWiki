@@ -122,7 +122,7 @@ func leadsOn(tree domain.PlanTree, content string) domain.LinksBefore {
 // batcher is batch's use case over the fixture, with links.
 func (f *fixture) batcher(links app.BatchLinks) *app.ApplyBatch {
 	return app.NewApplyBatch(f.writer(), f.parser(), f.store, f.store, f.store, links, app.NewLockHolders(f.store, f.names),
-		f.notebooks, f.auth, 0, f.clock, f.logger())
+		f.notebooks, f.auth, 0, 0, f.clock, f.logger())
 }
 
 // applyBatch runs batch in eng as alice from an agent, page.batch
@@ -348,11 +348,12 @@ func TestABatchsParticipantsFollowItOnceItsOpsDone(t *testing.T) {
 		t.Errorf("N's change = %+v, want from where its creation put it", c)
 	}
 	b := s.Batch
-	if b.MaxPages != domain.MaxBatchRewrites || b.WrittenWeight != domain.WrittenRewriteWeight || b.FirstMove != 1 ||
+	if b.MaxPages != domain.MaxBatchRewrites || b.WrittenWeight != domain.WrittenRewriteWeight || b.MaxLinks != domain.MaxBatchRewriteLinks ||
+		b.FirstMove != 1 ||
 		!slices.Equal(b.Gone, []uuid.UUID{d.ID}) || len(b.Parents) != 1 || len(b.Parents[e.ID]) != 1 || b.Parents[e.ID][0].Name != "E" ||
 		!slices.Equal(b.Frozen, []uuid.UUID{h.ID}) {
-		t.Errorf("the batch's rewrite = max %d, weight %d, first %d, gone %v, parents %v, frozen %v", b.MaxPages, b.WrittenWeight,
-			b.FirstMove, b.Gone, b.Parents, b.Frozen)
+		t.Errorf("the batch's rewrite = max %d, weight %d, links %d, first %d, gone %v, parents %v, frozen %v", b.MaxPages,
+			b.WrittenWeight, b.MaxLinks, b.FirstMove, b.Gone, b.Parents, b.Frozen)
 	}
 	if len(b.Written) != 2 {
 		t.Fatalf("the pages written = %v, want W and N", b.Written)
@@ -995,7 +996,7 @@ func TestABatchsParsesFindTheBudget(t *testing.T) {
 	f.grant(domain.ActionBatch)
 	parser := app.NewContentParser(f.writer(), f.md, budget, 50*time.Millisecond)
 	batch := app.NewApplyBatch(f.writer(), parser, f.store, f.store, f.store, &fakeLinks{recorder: f.rec,
-		subs: map[string]string{"[[A]]": "[[B]]"}}, app.NewLockHolders(f.store, f.names), f.notebooks, f.auth, 0, f.clock, f.logger())
+		subs: map[string]string{"[[A]]": "[[B]]"}}, app.NewLockHolders(f.store, f.names), f.notebooks, f.auth, 0, 0, f.clock, f.logger())
 	ops := []domain.BatchArgs{moveOp("A.md", "B.md"), editOp("P.md", "xa", "xb")}
 	if _, err := batch.Execute(f.asAlice(), f.eng, app.PathBatch{Ops: ops, Message: "m"}, agent); err != nil || budget.held != 0 {
 		t.Errorf("a 5 MiB page rewritten and edited on a 5 MiB budget = %v, %d held after; want it done, nothing held", err,
@@ -1013,7 +1014,7 @@ func TestABatchsParsesFindTheBudget(t *testing.T) {
 	f.grant(domain.ActionBatch)
 	parser = app.NewContentParser(f.writer(), f.md, budget, 50*time.Millisecond)
 	batch = app.NewApplyBatch(f.writer(), parser, f.store, f.store, f.store, &fakeLinks{recorder: f.rec},
-		app.NewLockHolders(f.store, f.names), f.notebooks, f.auth, 0, f.clock, f.logger())
+		app.NewLockHolders(f.store, f.names), f.notebooks, f.auth, 0, 0, f.clock, f.logger())
 	ops = []domain.BatchArgs{writeOn("P.md", "see [[A]] "+strings.Repeat("p", 3<<20), tokenOf(p.ID, 1)),
 		writeOn("Q.md", strings.Repeat("q", 1<<20), tokenOf(q.ID, 1)), moveOp("A.md", "B.md")}
 	if _, err := batch.Execute(f.asAlice(), f.eng, app.PathBatch{Ops: ops, Message: "m"}, agent); err != nil || !r.took {
