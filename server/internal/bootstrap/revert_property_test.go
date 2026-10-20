@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"maps"
 	"math/rand/v2"
 	"net/http"
 	"slices"
@@ -36,9 +37,9 @@ type revertWorld struct {
 	made, skipped map[string]int
 	// batches has change make the agent's batches too, random ones and,
 	// in turn, the two shapes directed makes, whose changesets batched
-	// holds (M9/P3 design 3.14.6, 3.21.3).
+	// holds, each with its kind of change (M9/P3 design 3.14.6, 3.21.3).
 	batches  bool
-	batched  map[string]bool
+	batched  map[string]string
 	directed int
 }
 
@@ -48,7 +49,7 @@ func newRevertWorld(t *testing.T, tm acmeTeam, seed uint64) *revertWorld {
 	t.Helper()
 	nb := tm.openNotebook(t, "alice", "Eng")
 	return &revertWorld{tm: tm, nb: nb, agent: tm.agent(t, "alice", nb), rng: rand.New(rand.NewPCG(seed, 0)),
-		made: map[string]int{}, skipped: map[string]int{}, batched: map[string]bool{}}
+		made: map[string]int{}, skipped: map[string]int{}, batched: map[string]string{}}
 }
 
 // revertTitles are the pages' titles and the targets of their links: few,
@@ -325,7 +326,7 @@ func (w *revertWorld) directedBatch(t *testing.T, kind string, pages []liveNode,
 }
 
 // batch is the agent's batch of ops, a change of kind: refused as a
-// conflict is, skipped; done, its changeset batched.
+// conflict is, skipped; done, its changeset batched, with its kind.
 func (w *revertWorld) batch(t *testing.T, kind string, ops []map[string]any) bool {
 	t.Helper()
 	if len(ops) == 0 {
@@ -345,7 +346,7 @@ func (w *revertWorld) batch(t *testing.T, kind string, ops []map[string]any) boo
 	if done.ChangesetID == nil {
 		return false
 	}
-	w.batched[*done.ChangesetID] = true
+	w.batched[*done.ChangesetID] = kind
 	w.made[kind]++
 	return true
 }
@@ -367,15 +368,20 @@ func livePages(nodes []liveNode) []liveNode {
 }
 
 // Of a few seeds, 30 changes, then 12 changesets more, the first the two
-// directed batches' where they apply, the second's revert after it,
-// reverted newest first by bob. Among
-// them, of all the seeds, an agent's move at least, three batches, a
-// revert in rounds with a step aside, as its log line counts them, and a
-// batch's page written, then deleted (M9/P3 design 3.21.3).
+// directed batches' where they apply (forced), the second's revert after
+// it, reverted newest first by bob. Among them, of all the seeds, the
+// agent's own moves, its random batches and the directed ones change
+// makes, apart from the forced (fix round 1, C-M1), each as many as the
+// floors below, a revert in rounds with a step aside, as its log line
+// counts them, and a batch's page written, then deleted (M9/P3 design
+// 3.21.3).
 func TestRevertingTheNewestChangesetsPutsTheNotebookBack(t *testing.T) {
 	const before, k = 30, 12
 	seeds := []uint64{1, 2, 3, 4}
-	ran, agents, batches, aside, writtenThenDeleted := 0, 0, 0, 0, 0
+	ran, aside, writtenThenDeleted := 0, 0, 0
+	// reached counts the reverted changesets of the agent's own moves, by
+	// "agent's move", and of its batches, by their kind of change.
+	reached := map[string]int{}
 	for _, seed := range seeds {
 		t.Run(fmt.Sprint("seed ", seed), func(t *testing.T) {
 			logs := &syncBuffer{}
@@ -397,7 +403,7 @@ func TestRevertingTheNewestChangesetsPutsTheNotebookBack(t *testing.T) {
 			// first, that revert's revert writes the page back, then deletes it.
 			for _, moveOut := range []bool{true, false} {
 				for range 3 {
-					if w.directedBatch(t, "directed batch", livePages(w.alive(t)), moveOut) {
+					if w.directedBatch(t, "forced batch", livePages(w.alive(t)), moveOut) {
 						if !moveOut {
 							tm.reverted(t, "alice", tm.newest(t, w.nb).ID)
 						}
@@ -412,7 +418,8 @@ func TestRevertingTheNewestChangesetsPutsTheNotebookBack(t *testing.T) {
 				w.change(t)
 			}
 			kinds, reverted := map[string]int{}, w.changesets(t, newest)
-			agent := count(t, tm.pool, "SELECT count(*) FROM changesets WHERE id::text = ANY($1) AND client LIKE 'mcp:%'", reverted)
+			agent := count(t, tm.pool, "SELECT count(*) FROM changesets WHERE id::text = ANY($1) AND client LIKE 'mcp:%' AND NOT id::text = ANY($2)",
+				reverted, slices.Collect(maps.Keys(w.batched)))
 			logged := len((&mcpApp{logs: logs}).loggedAt(t, "INFO"))
 			for _, c := range reverted {
 				kinds[tm.changeset(t, "bob", c).Kind]++
@@ -424,14 +431,22 @@ func TestRevertingTheNewestChangesetsPutsTheNotebookBack(t *testing.T) {
 					steps += int(n)
 				}
 			}
-			batched := len(slices.DeleteFunc(slices.Clone(reverted), func(id string) bool { return !w.batched[id] }))
+			batched := map[string]int{"agent's move": agent}
+			for _, c := range reverted {
+				if kind, ok := w.batched[c]; ok {
+					batched[kind]++
+				}
+			}
 			written := count(t, tm.pool, `SELECT count(DISTINCT i.changeset_id) FROM changeset_items i
 				JOIN page_revisions r ON r.changeset_id = i.changeset_id AND r.node_id = i.node_id
 				WHERE i.changeset_id::text = ANY($1) AND i.before_name IS NOT NULL AND i.after_name IS NULL AND r.base_revision IS NOT NULL`,
 				reverted)
-			agents, batches, aside, writtenThenDeleted = agents+agent, batches+batched, aside+steps, writtenThenDeleted+written
-			t.Logf("changes made %v, skipped %v; the changesets reverted %v, the agent's %d, batches %d, of a page written then "+
-				"deleted %d; steps aside %d", w.made, w.skipped, kinds, agent, batched, written, steps)
+			aside, writtenThenDeleted = aside+steps, writtenThenDeleted+written
+			for kind, n := range batched {
+				reached[kind] += n
+			}
+			t.Logf("changes made %v, skipped %v; the changesets reverted %v, the agent's moves and batches %v, of a page written "+
+				"then deleted %d; steps aside %d", w.made, w.skipped, kinds, batched, written, steps)
 			if now := tm.notebookState(t, w.nb); now != was {
 				t.Errorf("the notebook after the reverts:\n%s\nwant as it was:\n%s", now, was)
 			}
@@ -457,8 +472,20 @@ func TestRevertingTheNewestChangesetsPutsTheNotebookBack(t *testing.T) {
 	// in one place (M9/P2 design 3.5.4); a batch's in rounds, with steps
 	// aside, restored and written back, written back and deleted (M9/P3
 	// design 3.21.3): the seeds revert each, when every seed ran to its end.
-	if ran == len(seeds) && (agents == 0 || batches < 3 || aside == 0 || writtenThenDeleted == 0) {
-		t.Errorf("the seeds reverted %d agent's moves, %d batches, %d steps aside, %d batches of a page written then deleted; "+
-			"want 1, 3, 1 and 1 at least: the property does not reach them", agents, batches, aside, writtenThenDeleted)
+	// The agent's own moves, its random batches and change's directed ones
+	// are floored apart from the forced (fix round 1, C-M1): the seeds
+	// revert 3, 2 and 2 of them, and 8 forced.
+	floors := map[string]int{"agent's move": 2, "agent's batch": 1, "directed batch": 1, "forced batch": 4}
+	if ran == len(seeds) {
+		for kind, least := range floors {
+			if reached[kind] < least {
+				t.Errorf("the seeds reverted %d changesets of the kind %q, want %d at least: the property does not reach them",
+					reached[kind], kind, least)
+			}
+		}
+		if aside == 0 || writtenThenDeleted == 0 {
+			t.Errorf("the seeds reverted %d steps aside, %d batches of a page written then deleted; want 1 and 1 at least: the "+
+				"property does not reach them", aside, writtenThenDeleted)
+		}
 	}
 }
