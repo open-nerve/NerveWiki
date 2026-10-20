@@ -66,23 +66,10 @@ func parentOf(parent *uuid.UUID) uuid.UUID {
 // alive at its base's content already. A changeset of no items has no
 // tree read: its pages are alive where they are.
 func (p *planner) newRevertSim() *revertSim {
-	s := &revertSim{nodes: make(map[uuid.UUID]simNode, len(p.s.Tree)), under: map[uuid.UUID]map[string]uuid.UUID{},
-		star: map[uuid.UUID]map[string]bool{}, places: map[uuid.UUID]bool{}, restores: map[uuid.UUID]bool{},
-		writes: map[uuid.UUID]RevertOp{}, renamed: map[uuid.UUID]bool{}, movedAside: map[uuid.UUID]bool{}}
-	alive := func(n Node) {
-		s.set(n.ID, simNode{parent: n.ParentID, name: n.Name, key: n.NameKey, order: n.SortOrder, kind: n.Kind, alive: true,
-			revision: p.s.Contents[n.ID].Revision})
-	}
-	for _, n := range p.s.Tree {
-		alive(n)
-	}
-	if len(p.s.Items) == 0 {
-		for _, id := range p.c.ids {
-			if n := p.s.Nodes[id]; n.DeletedAt == nil {
-				alive(n.Node)
-			}
-		}
-	}
+	s := p.treeSim()
+	s.star, s.places, s.restores, s.writes = map[uuid.UUID]map[string]bool{}, map[uuid.UUID]bool{}, map[uuid.UUID]bool{},
+		map[uuid.UUID]RevertOp{}
+	s.renamed, s.movedAside = map[uuid.UUID]bool{}, map[uuid.UUID]bool{}
 	for _, n := range p.star {
 		at := parentOf(n.parent)
 		if s.star[at] == nil {
@@ -104,6 +91,28 @@ func (p *planner) newRevertSim() *revertSim {
 			continue
 		}
 		s.writes[v.NodeID] = RevertOp{Kind: RevertContent, NodeID: v.NodeID, Base: *v.Base, Hash: hash}
+	}
+	return s
+}
+
+// treeSim is the notebook now, as the plan read it, nothing pending: its
+// tree, each page at its content's revision; a changeset of no items has
+// no tree read, its pages alive where they are.
+func (p *planner) treeSim() *revertSim {
+	s := &revertSim{nodes: make(map[uuid.UUID]simNode, len(p.s.Tree)), under: map[uuid.UUID]map[string]uuid.UUID{}}
+	alive := func(n Node) {
+		s.set(n.ID, simNode{parent: n.ParentID, name: n.Name, key: n.NameKey, order: n.SortOrder, kind: n.Kind, alive: true,
+			revision: p.s.Contents[n.ID].Revision})
+	}
+	for _, n := range p.s.Tree {
+		alive(n)
+	}
+	if len(p.s.Items) == 0 {
+		for _, id := range p.c.ids {
+			if n := p.s.Nodes[id]; n.DeletedAt == nil {
+				alive(n.Node)
+			}
+		}
 	}
 	return s
 }
