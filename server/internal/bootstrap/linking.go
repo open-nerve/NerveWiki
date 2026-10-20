@@ -77,9 +77,10 @@ func (l linkRewrite) Participate(ctx context.Context, s page.Step, u page.Append
 
 // batchMoved has m, a batch's deferred step, follow what the batch tells
 // besides its changes (M9/P3 design 3.7.1): the pages it wrote, each with
-// its links before, its own changes and its final content's facts; the
-// former parents' paths, never nil, which the rewrite reads them from
-// alone; the nodes it deleted; and its bound.
+// its links before, its own changes, its final content's facts and the
+// nodes it leaves the links to; the former parents' paths, never nil,
+// which the rewrite reads them from alone; the nodes it deleted; its
+// bound; and the nodes whose links it leaves (M9/P3 review B-M1).
 func batchMoved(m *linking.Moved, b page.BatchRewrite) error {
 	m.Written = make(map[uuid.UUID]linking.WrittenPage, len(b.Written))
 	for id, w := range b.Written {
@@ -87,10 +88,11 @@ func batchMoved(m *linking.Moved, b page.BatchRewrite) error {
 		if err != nil {
 			return fmt.Errorf("the facts of page %s: %w", id, err)
 		}
-		m.Written[id] = linking.WrittenPage{Before: linkLinksBefore(w.Before), Changes: linkChanges(w.Changes), Facts: facts}
+		m.Written[id] = linking.WrittenPage{Before: linkLinksBefore(w.Before), Changes: linkChanges(w.Changes), Facts: facts,
+			Frozen: w.Frozen}
 	}
 	m.Parents = linkParents(b.Parents)
-	m.Gone, m.MaxPages = b.Gone, b.MaxPages
+	m.Gone, m.MaxPages, m.Frozen = b.Gone, b.MaxPages, b.Frozen
 	return nil
 }
 
@@ -151,9 +153,9 @@ func (b batchLinks) Indexed(ctx context.Context, notebookID, id uuid.UUID, revis
 }
 
 func (b batchLinks) Reached(ctx context.Context, notebookID, id uuid.UUID, revision int, changes []page.Change,
-	tree page.PlanTree,
+	frozen []uuid.UUID, tree page.PlanTree,
 ) (bool, error) {
-	return b.links.Reached(ctx, notebookID, id, revision, linkChanges(changes), planPages{tree}, tree.Gone())
+	return b.links.Reached(ctx, notebookID, id, revision, linkChanges(changes), frozen, planPages{tree}, tree.Gone())
 }
 
 func (b batchLinks) Resolve(ctx context.Context, q page.LinksOn) (page.LinksBefore, error) {
@@ -163,7 +165,7 @@ func (b batchLinks) Resolve(ctx context.Context, q page.LinksOn) (page.LinksBefo
 
 func (b batchLinks) Rewrite(ctx context.Context, q page.LinksMoved) (string, error) {
 	return b.links.Rewrite(ctx, linking.LinksMoved{LinksOn: linksOn(q.LinksOn), Before: linkLinksBefore(q.Before),
-		Changes: linkChanges(q.Changes), Parents: linkParents(q.Parents)})
+		Changes: linkChanges(q.Changes), Parents: linkParents(q.Parents), Frozen: q.Frozen})
 }
 
 // linksOn is a content of a batch's plan as linking resolves it: on the

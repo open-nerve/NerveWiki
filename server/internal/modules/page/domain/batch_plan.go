@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"slices"
 	"uuid"
 )
 
@@ -561,6 +562,24 @@ func (p *BatchPlan) MovesBetween(k, j int) []Change {
 		out = append(out, Change{NodeID: id, Before: &before, After: &after})
 	}
 	return out
+}
+
+// FrozenBetween is the nodes an op after k up to j renames or moves with
+// update_links false, in id order: those MovesBetween leaves out for it.
+// The links that led to them are left as they are, whatever their
+// ancestors' changes (M9 design 4.11; M9/P3 review B-M1).
+func (p *BatchPlan) FrozenBetween(k, j int) []uuid.UUID {
+	var out []uuid.UUID
+	for _, e := range p.tree.edits {
+		if e.op > j {
+			break
+		}
+		if e.op > k && e.before != nil && e.after != nil && !e.updateLinks {
+			out = append(out, e.after.ID)
+		}
+	}
+	slices.SortFunc(out, uuid.UUID.Compare)
+	return slices.Compact(out)
 }
 
 // ParentsAt is the paths of the parents the nodes changes moved had

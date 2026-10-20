@@ -216,6 +216,76 @@ func TestABatchReachesTheNodesUnderThoseAPageItWroteMoves(t *testing.T) {
 	}
 }
 
+// The links that led to a node an op of the batch renamed or moved with
+// update_links false are left as they are, in every page, whatever its
+// ancestors' changes (M9 design 4.11; M9/P3 review B-M1): Q, a page the
+// batch did not write, P, one it wrote, and P's content in the plan,
+// whether F is renamed (d1) or moved (d3) with update_links, X under it
+// renamed without. Without the frozen nodes, F's change reaches X's links:
+// the plan's rule, ownLinks, spreads F's subtree in both; the index's,
+// reached, only a renamed F's.
+func TestABatchLeavesTheLinksToTheNodesItFroze(t *testing.T) {
+	for _, tt := range []struct {
+		name, path string
+		pages      []string
+		change     func(w *rewriting) []domain.Change
+		unfrozen   map[string]string
+	}{
+		{"d1 F renamed", "F/X", []string{"F", "F/X", "P", "Q"}, func(w *rewriting) []domain.Change {
+			changes := []domain.Change{w.rename("F", "G")}
+			w.rename("G/X", "Y")
+			return changes
+		}, map[string]string{"P": "[[Y]]\n", "Q": "[[Y|F/X]]\n"}},
+		{"d3 F moved", "Top/F/X", []string{"Top", "Top/F", "Top/F/X", "G", "P", "Q"}, func(w *rewriting) []domain.Change {
+			changes := w.move("Top/F", "G")[:1] // X's entry the unit drops: it froze X
+			w.rename("G/F/X", "Y")
+			return changes
+		}, map[string]string{"P": "[[Y]]\n"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			w := newRewriting(t, tt.pages...)
+			link := "[[" + tt.path + "]]\n"
+			w.write("Q", link)
+			before, x, q := w.before(link, tt.path), w.id(tt.path), w.id("Q")
+			revision := w.contents[q].revision
+			facts := w.wrote("P", link)
+			changes := tt.change(w)
+			links := app.BatchLinks{Store: w.store, Logger: w.rewrite.Logger, MaxContent: 1 << 10}
+			parse := func(_ context.Context, content string) (domain.Facts, error) { return w.facts(content), nil }
+			on := app.LinksOn{NotebookID: w.notebook, PageID: w.id("P"), Content: link, Tree: w.tree, Parse: parse}
+			for _, frozen := range [][]uuid.UUID{{x}, nil} {
+				u, err := w.batch(app.Moved{Changes: changes, Frozen: frozen, Written: map[uuid.UUID]app.WrittenPage{
+					w.id("P"): {Before: before, Changes: changes, Facts: facts, Frozen: frozen},
+				}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				planned, err := links.Rewrite(context.Background(), app.LinksMoved{LinksOn: on, Before: before, Changes: changes,
+					Frozen: frozen})
+				if err != nil {
+					t.Fatal(err)
+				}
+				reached, err := links.Reached(context.Background(), w.notebook, q, revision, changes, frozen, w.tree, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if frozen == nil {
+					w.written(u, tt.unfrozen)
+					if planned != tt.unfrozen["P"] || !reached {
+						t.Errorf("X not frozen: the plan wrote P %q, reached Q %t; want P %q, Q reached", planned, reached,
+							tt.unfrozen["P"])
+					}
+					continue
+				}
+				w.written(u, map[string]string{})
+				if planned != link || reached {
+					t.Errorf("X frozen: the plan wrote P %q, reached Q %t; want it as it was, Q not reached", planned, reached)
+				}
+			}
+		})
+	}
+}
+
 // The pages a batch deleted (M9/P3 review A-I2, A-M13): their rows are not
 // followed, their aliases are none; a page gone that the batch did not
 // delete is the defect it is; a link whose page it led to the batch

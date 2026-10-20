@@ -241,8 +241,11 @@ type Publisher interface {
 // module's step, field by field. A batch's deferred rewrite has the rest
 // (M9/P3 design 3.7): each page the batch wrote, alive after it, which is
 // followed from its own content and changes; the paths the moved nodes'
-// former parents had as the unit began; the nodes it deleted; and the
-// most pages the rewrite may write, none for 0 (a unit of one operation).
+// former parents had as the unit began; the nodes it deleted; the most
+// pages the rewrite may write, none for 0 (a unit of one operation); and
+// the nodes an op of it renamed or moved with update_links false, the
+// links that led to them left as they are, in every page, whatever their
+// ancestors' changes (M9 design 4.11; M9/P3 review B-M1).
 type Moved struct {
 	NotebookID  uuid.UUID
 	At          time.Time
@@ -252,17 +255,21 @@ type Moved struct {
 	Parents     map[uuid.UUID][]domain.Step
 	Gone        []uuid.UUID
 	MaxPages    int
+	Frozen      []uuid.UUID
 }
 
 // WrittenPage is a page a batch wrote, as its deferred rewrite follows it
 // (M9/P3 design 3.7.2): where its links led at its last content op, on the
 // plan's tree then; its own changes, the renames and moves after that op,
-// merged node by node, of the nodes those ops moved alone; and the facts
-// of its final content, which its links are taken from, unparsed.
+// merged node by node, of the nodes those ops moved alone; the facts of
+// its final content, which its links are taken from, unparsed; and the
+// nodes those ops rename or move with update_links false, whose links it
+// leaves (Moved.Frozen).
 type WrittenPage struct {
 	Before  LinksBefore
 	Changes []domain.Change
 	Facts   domain.Facts
+	Frozen  []uuid.UUID
 }
 
 // LinksBefore is where a page's links led at a moment of a batch's plan:

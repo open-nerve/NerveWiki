@@ -225,11 +225,12 @@ type BatchLinks interface {
 	// Reached reports whether changes, the renames and moves of a batch's
 	// ops before a page's first content op, a write, reach a link of the
 	// page id by the index at revision, on tree after them, as Rewrite
-	// would write it again (M9/P3 review A-I1): the plan then reads the
-	// page whole and compares the write with its content rewritten for
-	// them. False when the index is not of revision or not of the current
-	// extractor, as Indexed.
-	Reached(ctx context.Context, notebookID, id uuid.UUID, revision int, changes []domain.Change, tree domain.PlanTree) (bool, error)
+	// would write it again (M9/P3 review A-I1), those that led to the
+	// nodes of frozen left: the plan then reads the page whole and compares
+	// the write with its content rewritten for them. False when the index
+	// is not of revision or not of the current extractor, as Indexed.
+	Reached(ctx context.Context, notebookID, id uuid.UUID, revision int, changes []domain.Change, frozen []uuid.UUID,
+		tree domain.PlanTree) (bool, error)
 	// Resolve is where each link of q's content, the page's at its path on
 	// q's tree, leads there, by where its target starts, with the targets
 	// as they are there.
@@ -256,12 +257,15 @@ type LinksOn struct {
 // LinksMoved is a content of a page of a batch's plan to rewrite, on the
 // tree after the op it is rewritten for (LinksOn): where its links led
 // when its content was read (Before), the renames and moves since, merged
-// node by node, and the paths their former parents had then.
+// node by node, and the paths their former parents had then; Frozen the
+// nodes those ops rename or move with update_links false, the links that
+// led to them left as they are (M9 design 4.11; M9/P3 review B-M1).
 type LinksMoved struct {
 	LinksOn
 	Before  domain.LinksBefore
 	Changes []domain.Change
 	Parents map[uuid.UUID][]domain.PathStep
+	Frozen  []uuid.UUID
 }
 
 // PageStates reads the pages' contents as MCP's list tells them, and

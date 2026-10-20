@@ -26,6 +26,7 @@ type fakeLinks struct {
 	subs       map[string]string
 	notIndexed bool
 	reached    bool
+	frozen     map[string][]uuid.UUID // the frozen nodes Reached and Rewrite were last given
 }
 
 func (l *fakeLinks) Indexed(ctx context.Context, _, _ uuid.UUID, _ int, _ domain.PlanTree) (domain.LinksBefore, bool, error) {
@@ -33,8 +34,11 @@ func (l *fakeLinks) Indexed(ctx context.Context, _, _ uuid.UUID, _ int, _ domain
 	return domain.LinksBefore{Leads: map[int]domain.Lead{}, Targets: map[uuid.UUID][]domain.PathStep{}}, !l.notIndexed, nil
 }
 
-func (l *fakeLinks) Reached(ctx context.Context, _, _ uuid.UUID, _ int, _ []domain.Change, _ domain.PlanTree) (bool, error) {
+func (l *fakeLinks) Reached(ctx context.Context, _, _ uuid.UUID, _ int, _ []domain.Change, frozen []uuid.UUID, _ domain.PlanTree) (
+	bool, error,
+) {
 	l.record(ctx, "Reached")
+	l.saw("Reached", frozen)
 	return l.reached && !l.notIndexed, nil
 }
 
@@ -48,6 +52,7 @@ func (l *fakeLinks) Resolve(ctx context.Context, q app.LinksOn) (domain.LinksBef
 
 func (l *fakeLinks) Rewrite(ctx context.Context, q app.LinksMoved) (string, error) {
 	l.record(ctx, "Rewrite")
+	l.saw("Rewrite", q.Frozen)
 	if _, err := q.Parse(ctx, q.Content); err != nil {
 		return "", err
 	}
@@ -61,6 +66,14 @@ func (l *fakeLinks) Rewrite(ctx context.Context, q app.LinksMoved) (string, erro
 		}
 	}
 	return out, nil
+}
+
+// saw keeps the frozen nodes call was given.
+func (l *fakeLinks) saw(call string, frozen []uuid.UUID) {
+	if l.frozen == nil {
+		l.frozen = map[string][]uuid.UUID{}
+	}
+	l.frozen[call] = frozen
 }
 
 // leadsOn is where content's [[...]] lead on tree, by where each starts.
@@ -315,8 +328,9 @@ func TestABatchsParticipantsFollowItOnceItsOpsDone(t *testing.T) {
 	}
 	b := s.Batch
 	if b.MaxPages != domain.MaxBatchRewrites || b.FirstMove != 1 || !slices.Equal(b.Gone, []uuid.UUID{d.ID}) ||
-		len(b.Parents) != 1 || len(b.Parents[e.ID]) != 1 || b.Parents[e.ID][0].Name != "E" {
-		t.Errorf("the batch's rewrite = max %d, first %d, gone %v, parents %v", b.MaxPages, b.FirstMove, b.Gone, b.Parents)
+		len(b.Parents) != 1 || len(b.Parents[e.ID]) != 1 || b.Parents[e.ID][0].Name != "E" || !slices.Equal(b.Frozen, []uuid.UUID{h.ID}) {
+		t.Errorf("the batch's rewrite = max %d, first %d, gone %v, parents %v, frozen %v", b.MaxPages, b.FirstMove, b.Gone, b.Parents,
+			b.Frozen)
 	}
 	if len(b.Written) != 2 {
 		t.Fatalf("the pages written = %v, want W and N", b.Written)
@@ -327,12 +341,32 @@ func TestABatchsParticipantsFollowItOnceItsOpsDone(t *testing.T) {
 		own = append(own, c.NodeID)
 	}
 	if !slices.Equal(own, []uuid.UUID{a.ID, folder.ID, q.ID}) || written.Facts != "look [[A]] and [[Y]]" ||
-		len(written.Before.Leads) != 2 || written.Before.Targets[a.ID] == nil {
-		t.Errorf("W's rewrite = changes of %v, facts %v, before %+v; want A, F and Q, not X under F nor H", own, written.Facts,
-			written.Before)
+		len(written.Before.Leads) != 2 || written.Before.Targets[a.ID] == nil || !slices.Equal(written.Frozen, []uuid.UUID{h.ID}) {
+		t.Errorf("W's rewrite = changes of %v, facts %v, before %+v, frozen %v; want A, F and Q, not X under F nor H, H frozen", own,
+			written.Facts, written.Before, written.Frozen)
 	}
-	if created := b.Written[n]; len(created.Changes) != 4 || created.Facts != "n" {
-		t.Errorf("N's rewrite = %+v, want the moves after its creation, its facts", created)
+	if created := b.Written[n]; len(created.Changes) != 4 || created.Facts != "n" || !slices.Equal(created.Frozen, []uuid.UUID{h.ID}) {
+		t.Errorf("N's rewrite = %+v, want the moves after its creation, its facts, H frozen", created)
+	}
+}
+
+// The plan's links are given the nodes the ops before frozen, moved with
+// update_links false, whose links they leave (M9/P3 review B-M1): the
+// reach of a page written after the moves, and the rewrite of one edited
+// after them.
+func TestABatchsPlanLeavesTheLinksToTheNodesItFroze(t *testing.T) {
+	f := newFixture()
+	f.page("A", nil, 1)
+	x, p, q := f.page("X", nil, 2), f.page("P", nil, 3), f.page("Q", nil, 4)
+	f.content(p.ID, "[[A]] p", 3)
+	f.content(q.ID, "[[A]] q", 3)
+	links := &fakeLinks{recorder: f.rec, subs: map[string]string{"[[A]]": "[[B]]"}, reached: true}
+	if _, err := f.applyBatch(links, keepOp("X.md", "Y.md"), moveOp("A.md", "B.md"), writeOp("P.md", "[[B]] p"),
+		editOp("Q.md", "q", "r")); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(links.frozen["Reached"], []uuid.UUID{x.ID}) || !slices.Equal(links.frozen["Rewrite"], []uuid.UUID{x.ID}) {
+		t.Errorf("the plan's links were given frozen %v; want X for Reached and Rewrite", links.frozen)
 	}
 }
 

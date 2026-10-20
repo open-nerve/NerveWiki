@@ -191,8 +191,8 @@ func (r Rewrite) followed(ctx context.Context, m Moved, gone map[uuid.UUID]bool)
 // domain.Rewrites tells from the index's rows, by their page and where
 // their target starts; with the pages they resolved to. recased is the
 // pages whose titles' case alone m changed; the rows of the pages gone,
-// or written by a batch, are not among them, and the aliases of those gone
-// are none.
+// or written by a batch, are not among them, nor those that led to a node
+// a batch froze (Moved.Frozen), and the aliases of those gone are none.
 func (r Rewrite) reached(ctx context.Context, m Moved, relocates bool, recased domain.Recased, gone map[uuid.UUID]bool) (
 	map[uuid.UUID]map[int]rewritten, []uuid.UUID, error,
 ) {
@@ -209,9 +209,10 @@ func (r Rewrite) reached(ctx context.Context, m Moved, relocates bool, recased d
 	if err != nil {
 		return nil, nil, err
 	}
+	frozen := setOf(m.Frozen)
 	links = slices.DeleteFunc(links, func(l Link) bool {
 		_, written := m.Written[l.SourceID]
-		return written || gone[l.SourceID]
+		return written || gone[l.SourceID] || frozen[l.Resolution.ID]
 	})
 	after, missing, err := resolutions(ctx, r.Store, r.Pages, m.NotebookID, links, nil, gone)
 	if err != nil {
@@ -245,7 +246,8 @@ func (r Rewrite) reached(ctx context.Context, m Moved, relocates bool, recased d
 func (r Rewrite) followWritten(ctx context.Context, m Moved, id uuid.UUID, w WrittenPage, gone map[uuid.UUID]bool, sub *subtrees,
 	u Appender,
 ) error {
-	reached, recased, err := ownLinks(ctx, r.Store, r.Pages, sub, m.NotebookID, id, w.Facts.Links, w.Before, w.Changes, gone)
+	reached, recased, err := ownLinks(ctx, r.Store, r.Pages, sub, m.NotebookID, id, w.Facts.Links, w.Before, w.Changes,
+		setOf(w.Frozen), gone)
 	if err != nil || len(reached) == 0 {
 		return err
 	}
@@ -263,11 +265,12 @@ func (r Rewrite) followWritten(ctx context.Context, m Moved, id uuid.UUID, w Wri
 // batch wrote's own, reach and write again (M9/P3 design 3.7.2 (a), (e)):
 // matched by where their targets start to before's leads; reached as the
 // index's rows are, by Affected and spread, which reads the subtree of
-// each node changes rename or move, once for the batch (sub); resolved
+// each node changes rename or move, once for the batch (sub), but those
+// that led to a node of frozen, which are left (Moved.Frozen); resolved
 // after on pages, the aliases of gone none; those domain.Rewrites tells,
 // with the pages changes re-cased.
 func ownLinks(ctx context.Context, store Store, pages Pages, sub *subtrees, notebookID, id uuid.UUID, links []domain.Link,
-	before LinksBefore, changes []domain.Change, gone map[uuid.UUID]bool,
+	before LinksBefore, changes []domain.Change, frozen, gone map[uuid.UUID]bool,
 ) (map[int]rewritten, domain.Recased, error) {
 	relocates, recased := domain.Relocation(changes)
 	if !relocates && len(recased) == 0 {
@@ -285,7 +288,7 @@ func ownLinks(ctx context.Context, store Store, pages Pages, sub *subtrees, note
 	var rows []Link
 	var befores []domain.Resolution
 	for _, l := range links {
-		if lead, ok := before.Leads[l.Start]; ok && reachedBy(reach, id, l, lead) {
+		if lead, ok := before.Leads[l.Start]; ok && !frozen[lead.ID] && reachedBy(reach, id, l, lead) {
 			rows = append(rows, Link{SourceID: id, Start: l.Start, Target: l.Target, Aliases: l.Aliases})
 			befores = append(befores, lead)
 		}

@@ -66,6 +66,11 @@ type BatchRewrite struct {
 	Gone      []uuid.UUID
 	MaxPages  int
 	FirstMove int
+	// Frozen is the nodes an op of the batch renamed or moved with
+	// update_links false, in id order, which Unit.Participate sets: the
+	// links that led to them are left as they are, in every page, whatever
+	// their ancestors' changes (M9 design 4.11; M9/P3 review B-M1).
+	Frozen []uuid.UUID
 }
 
 // WrittenPage is a page a batch wrote, for its deferred rewrite: where its
@@ -77,11 +82,13 @@ type BatchRewrite struct {
 // moves once for the batch (M9/P3 design 3.7.2 (e)), so that a moved
 // folder's nodes are held once, not once a page; and the facts DecidedAll
 // kept for its final content, which the rewrite takes its links from
-// instead of parsing it again.
+// instead of parsing it again. Frozen is the nodes the ops after that op
+// rename or move with update_links false, whose links it leaves.
 type WrittenPage struct {
 	Before  domain.LinksBefore
 	Changes []domain.Change
 	Facts   Facts
+	Frozen  []uuid.UUID
 }
 
 // AssetMeta is what an attachment's file is: its type, as the server

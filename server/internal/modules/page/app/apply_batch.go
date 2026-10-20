@@ -323,7 +323,8 @@ func (a *batchAttempt) read(ctx context.Context) (map[uuid.UUID]domain.PageText,
 		if len(moves) == 0 {
 			continue
 		}
-		reached, err := a.b.links.Reached(ctx, a.notebookID, id, read[id].Revision, moves, a.plan.TreeAt(firsts[id]))
+		reached, err := a.b.links.Reached(ctx, a.notebookID, id, read[id].Revision, moves, a.plan.FrozenBetween(-1, firsts[id]),
+			a.plan.TreeAt(firsts[id]))
 		if err != nil {
 			return nil, nil, err
 		}
@@ -391,7 +392,7 @@ func (a *batchAttempt) linksBefore(ctx context.Context) error {
 		if slices.Contains(gone, id) {
 			continue // a page a later op deleted: no rewrite follows it
 		}
-		w := WrittenPage{Changes: a.plan.MovesBetween(pg.Last, last), Facts: a.facts[id]}
+		w := WrittenPage{Changes: a.plan.MovesBetween(pg.Last, last), Facts: a.facts[id], Frozen: a.plan.FrozenBetween(pg.Last, last)}
 		if len(w.Changes) > 0 {
 			facts := a.facts[id]
 			before, err := a.b.links.Resolve(ctx, LinksOn{NotebookID: a.notebookID, PageID: id, Content: pg.Content,
@@ -775,7 +776,7 @@ func (r *planLinks) Rewrite(id uuid.UUID, content string, before domain.LinksBef
 	changes := r.a.plan.MovesBetween(since, until)
 	return r.a.b.links.Rewrite(r.ctx, LinksMoved{
 		LinksOn: LinksOn{NotebookID: r.a.notebookID, PageID: id, Content: content, Tree: r.a.plan.TreeAt(until), Parse: r.parse(id)},
-		Before:  before, Changes: changes, Parents: r.a.plan.ParentsAt(since, changes),
+		Before:  before, Changes: changes, Parents: r.a.plan.ParentsAt(since, changes), Frozen: r.a.plan.FrozenBetween(since, until),
 	})
 }
 

@@ -401,8 +401,9 @@ func TestBatchPlanChecksTheUnit(t *testing.T) {
 // The renames and moves between two ops, merged node by node (M9/P3
 // design 3.7.1): the first before and the last after; a node moved
 // without update_links left out, one back where it was, one deleted; one
-// created among them before as created; and the paths of their former
-// parents then.
+// created among them before as created; the paths of their former parents
+// then; and the nodes moved without update_links, frozen (M9/P3 review
+// B-M1).
 func TestBatchPlanMovesBetween(t *testing.T) {
 	nb := newNotebook("A.md", "B.md", "F.md", "F/X.md", "W.md")
 	p, ids := planOf(t, nb,
@@ -457,6 +458,15 @@ func TestBatchPlanMovesBetween(t *testing.T) {
 	}
 	if path := p.ParentsAt(0, p.MovesBetween(0, 1))[f]; len(path) != 1 || path[0].Name != "G" {
 		t.Errorf("ParentsAt(0) = %+v, want F's path after its rename, G", path)
+	}
+	if got := p.FrozenBetween(-1, 8); !slices.Equal(got, []uuid.UUID{a2}) {
+		t.Errorf("FrozenBetween(-1, 8) = %v, want A, moved without update_links", got)
+	}
+	if got := p.FrozenBetween(2, 8); len(got) != 0 {
+		t.Errorf("FrozenBetween(2, 8) = %v, want none after A's move", got)
+	}
+	if got := p.FrozenBetween(-1, 1); len(got) != 0 {
+		t.Errorf("FrozenBetween(-1, 1) = %v, want none before A's move", got)
 	}
 }
 

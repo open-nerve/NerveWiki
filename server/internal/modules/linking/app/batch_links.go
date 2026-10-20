@@ -40,12 +40,15 @@ type LinksOn struct {
 // LinksMoved is a content of a page of a batch's plan to rewrite, on the
 // tree after the op it is rewritten for (LinksOn): where its links led at
 // the moment its content was read (Before), the renames and moves since,
-// merged node by node, and the paths their former parents had then.
+// merged node by node, the paths their former parents had then, and the
+// nodes those ops rename or move with update_links false, whose links it
+// leaves (Moved.Frozen).
 type LinksMoved struct {
 	LinksOn
 	Before  LinksBefore
 	Changes []domain.Change
 	Parents map[uuid.UUID][]domain.Step
+	Frozen  []uuid.UUID
 }
 
 // Indexed is where the links of the page id of notebookID led by the
@@ -63,14 +66,15 @@ func (b BatchLinks) Indexed(ctx context.Context, notebookID, id uuid.UUID, revis
 
 // Reached reports whether changes, the renames and moves of a batch's
 // ops before a page's first content op, reach a link of the page id by the
-// index at revision, on tree after them, the nodes gone by then none: by
-// the rule the plan's Rewrite and the deferred participant follow them
-// (ownLinks), on the index's rows of the page (M9/P3 review A-I1). The
-// plan then reads the page whole, to compare a write with its content
-// rewritten for them. False when the index is not of revision or of the
-// current extractor, whose links the plan does not rewrite, as Indexed.
-func (b BatchLinks) Reached(ctx context.Context, notebookID, id uuid.UUID, revision int, changes []domain.Change, tree Pages,
-	gone []uuid.UUID,
+// index at revision, on tree after them, the nodes gone by then none, the
+// links that led to the nodes of frozen left: by the rule the plan's
+// Rewrite and the deferred participant follow them (ownLinks), on the
+// index's rows of the page (M9/P3 review A-I1). The plan then reads the
+// page whole, to compare a write with its content rewritten for them.
+// False when the index is not of revision or of the current extractor,
+// whose links the plan does not rewrite, as Indexed.
+func (b BatchLinks) Reached(ctx context.Context, notebookID, id uuid.UUID, revision int, changes []domain.Change,
+	frozen []uuid.UUID, tree Pages, gone []uuid.UUID,
 ) (bool, error) {
 	if relocates, recased := domain.Relocation(changes); !relocates && len(recased) == 0 {
 		return false, nil
@@ -90,7 +94,8 @@ func (b BatchLinks) Reached(ctx context.Context, notebookID, id uuid.UUID, revis
 		}
 	}
 	sub := &subtrees{store: b.Store, pages: tree, notebookID: notebookID, read: map[uuid.UUID]subtree{}}
-	reached, _, err := ownLinks(ctx, b.Store, tree, sub, notebookID, id, links, LinksBefore{Leads: x.Resolutions}, changes, setOf(gone))
+	reached, _, err := ownLinks(ctx, b.Store, tree, sub, notebookID, id, links, LinksBefore{Leads: x.Resolutions}, changes,
+		setOf(frozen), setOf(gone))
 	return len(reached) > 0, err
 }
 
@@ -134,7 +139,8 @@ func (b BatchLinks) Rewrite(ctx context.Context, q LinksMoved) (string, error) {
 	}
 	gone := setOf(q.Gone)
 	sub := &subtrees{store: b.Store, pages: q.Tree, notebookID: q.NotebookID, read: map[uuid.UUID]subtree{}}
-	reached, recased, err := ownLinks(ctx, b.Store, q.Tree, sub, q.NotebookID, q.PageID, facts.Links, q.Before, q.Changes, gone)
+	reached, recased, err := ownLinks(ctx, b.Store, q.Tree, sub, q.NotebookID, q.PageID, facts.Links, q.Before, q.Changes,
+		setOf(q.Frozen), gone)
 	if err != nil || len(reached) == 0 {
 		return q.Content, err
 	}

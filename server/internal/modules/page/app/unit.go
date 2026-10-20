@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"time"
 	"uuid"
@@ -469,6 +470,7 @@ func (u *Unit) Participate(ctx context.Context, b BatchRewrite) (int, error) {
 		}
 		changes = append(changes, domain.Change{NodeID: c.NodeID, Before: c.Before, After: c.After})
 	}
+	b.Frozen = slices.SortedFunc(maps.Keys(u.frozen), uuid.UUID.Compare)
 	s := u.step(domain.OpMove, changes...)
 	s.Batch = &b
 	counted := &countedAppender{appender: appender{u}}

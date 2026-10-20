@@ -189,8 +189,13 @@ func TestTheLinksOfABatchAreThoseOfSeparateCalls(t *testing.T) {
 // before another rename, (1c) a link taken and freed again, (a) a deletion
 // that turns a link to another page, (b) an alias taken away. A written
 // page: (e1) a creation after its write, (e2) an alias the batch changed,
-// (e3) a name merged away. (c) A page written after the plan rewrote it.
-// (2) The lock's code.
+// (e3) a name merged away. (d) update_links false on a node, its ancestor
+// renamed or moved with update_links: the links that led to the node left
+// as they are, in every page, whatever its ancestors' changes (M9/P3
+// review B-M1), dangling where separate calls write them first, the same
+// where the node's op comes first (d1r, d3r); the node's own op with
+// update_links, its ancestor's without, followed (d2, d4). (c) A page
+// written after the plan rewrote it. (2) The lock's code.
 func TestTheWaysABatchDiffersFromSeparateCalls(t *testing.T) {
 	tm, logs := newAcmeTeamLogged(t)
 	agent := tm.agent(t, "alice", "")
@@ -222,6 +227,27 @@ func TestTheWaysABatchDiffersFromSeparateCalls(t *testing.T) {
 		{"e3 a name merged away", []restPage{{"A", ""}, {"P", "p"}},
 			[]map[string]any{opEdit("P.md", "p", "p [[B]]"), opMove("A.md", "B.md"), opMove("B.md", "C.md")}, "P.md",
 			pageState{"p [[B]]", "-"}, pageState{"p [[C]]", "C.md"}},
+		{"d1 a folder renamed, its page renamed without update_links", []restPage{{"F", ""}, {"F/X", ""}, {"Q", "[[F/X]]"}},
+			[]map[string]any{opMove("F.md", "G.md"), frozen(opMove("G/X.md", "G/Y.md"))}, "Q.md", pageState{"[[F/X]]", "-"},
+			pageState{"[[X]]", "-"}},
+		{"d1r its page renamed without update_links, then the folder", []restPage{{"F", ""}, {"F/X", ""}, {"Q", "[[F/X]]"}},
+			[]map[string]any{frozen(opMove("F/X.md", "F/Y.md")), opMove("F.md", "G.md")}, "Q.md", pageState{"[[F/X]]", "-"},
+			pageState{"[[F/X]]", "-"}},
+		{"d2 a folder renamed without update_links, its page renamed", []restPage{{"F", ""}, {"F/X", ""}, {"Q", "[[F/X]]"}},
+			[]map[string]any{frozen(opMove("F.md", "G.md")), opMove("G/X.md", "G/Y.md")}, "Q.md", pageState{"[[Y]]", "G/Y.md"},
+			pageState{"[[F/X]]", "-"}},
+		{"d3 a folder moved, its page renamed without update_links", []restPage{{"Top", ""}, {"Top/F", ""}, {"Top/F/X", ""}, {"G", ""},
+			{"Q", "[[Top/F/X]]"}}, []map[string]any{opMove("Top/F.md", "G/F.md"), frozen(opMove("G/F/X.md", "G/F/Y.md"))}, "Q.md",
+			pageState{"[[Top/F/X]]", "-"}, pageState{"[[X]]", "-"}},
+		{"d3w the same, of a page the batch wrote", []restPage{{"Top", ""}, {"Top/F", ""}, {"Top/F/X", ""}, {"G", ""}, {"P", "p"}},
+			[]map[string]any{opEdit("P.md", "p", "p [[Top/F/X]]"), opMove("Top/F.md", "G/F.md"), frozen(opMove("G/F/X.md", "G/F/Y.md"))},
+			"P.md", pageState{"p [[Top/F/X]]", "-"}, pageState{"p [[X]]", "-"}},
+		{"d3r its page renamed without update_links, then the folder moved", []restPage{{"Top", ""}, {"Top/F", ""}, {"Top/F/X", ""},
+			{"G", ""}, {"Q", "[[Top/F/X]]"}}, []map[string]any{frozen(opMove("Top/F/X.md", "Top/F/Y.md")), opMove("Top/F.md", "G/F.md")},
+			"Q.md", pageState{"[[Top/F/X]]", "-"}, pageState{"[[Top/F/X]]", "-"}},
+		{"d4 a folder moved without update_links, its page renamed", []restPage{{"Top", ""}, {"Top/F", ""}, {"Top/F/X", ""}, {"G", ""},
+			{"Q", "[[Top/F/X]]"}}, []map[string]any{frozen(opMove("Top/F.md", "G/F.md")), opMove("G/F/X.md", "G/F/Y.md")}, "Q.md",
+			pageState{"[[Y]]", "G/F/Y.md"}, pageState{"[[Top/F/X]]", "-"}},
 	}
 	for i, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
@@ -267,6 +293,9 @@ func TestTheWaysABatchDiffersFromSeparateCalls(t *testing.T) {
 		noErrorLogged(t, logs)
 	})
 }
+
+// frozen is op with update_links false.
+func frozen(op map[string]any) map[string]any { return opWith(op, "update_links", false) }
 
 // A write after a rename or a move that reaches its page is judged on the
 // page as they leave it, as separate calls judge it (M9/P3 review A-I1):
