@@ -112,8 +112,8 @@ func TestABackgroundJobWritesItsPlanInBatches(t *testing.T) {
 }
 
 // A batch the server is too busy for is tried again; one past a unit's
-// history or links is halved, at least a step, the next cut from where it
-// ends again; a step alone too large is the page module's defect.
+// bounds is halved, at least a step, the next cut from where it ends
+// again; a step alone too large is the page module's defect.
 func TestABackgroundJobsBatchIsTriedAgainOrHalved(t *testing.T) {
 	w := newBackgroundWorld()
 	w.batch, w.tree.steps, w.tree.busy = app.Batch{Nodes: 4}, steps(6, 0), 2
@@ -144,11 +144,11 @@ func TestABackgroundJobsBatchIsTriedAgainOrHalved(t *testing.T) {
 
 // A revert's batch grows a segment at a time, a run of steps each joined
 // to the next, the first always in it, a segment past Batch.Nodes whole;
-// one past a unit's history or links ends at the later of its first
-// segment's end and the last segment's end at most half way (M9/P3
-// design 3.23): a first segment longer than half the batch is kept whole
-// rather than stopped at the batch's start (review B-I3), and one node's
-// two steps the page module never answers past them.
+// one past a unit's bounds ends at the later of its first segment's end
+// and the last segment's end at most half way (M9/P3 design 3.23): a first
+// segment longer than half the batch is kept whole rather than stopped at
+// the batch's start (review B-I3), and one node's two steps the page
+// module never answers past them.
 func TestABackgroundRevertsBatchesKeepItsSegments(t *testing.T) {
 	joined, single := app.JobStep{Nodes: 1, Joined: true}, app.JobStep{Nodes: 1}
 	for _, tt := range []struct {
@@ -186,11 +186,11 @@ func TestABackgroundRevertsBatchesKeepItsSegments(t *testing.T) {
 }
 
 // A revert's batch that ends at its first segment's end and is still past
-// a unit's history or links, of more than one step, stops the job,
-// revert_too_large (M9/P3 design 3.23): what it wrote before kept and
-// counted, a warn line of the segment's steps, its nodes and the bound it
-// is past, ids and numbers alone. A lone step past them is the page
-// module's defect, internal, as before (TestABackgroundJobsBatchIsTriedAgainOrHalved).
+// a unit's bounds, of more than one step, stops the job, revert_too_large
+// (M9/P3 design 3.23): what it wrote before kept and counted, a warn line
+// of the segment's steps, its nodes and the bound it is past, ids and
+// numbers alone. A lone step past them is the page module's defect,
+// internal, as before (TestABackgroundJobsBatchIsTriedAgainOrHalved).
 func TestABackgroundRevertsSegmentPastABatchStops(t *testing.T) {
 	joined, single := app.JobStep{Nodes: 1, Joined: true}, app.JobStep{Nodes: 1}
 	w := newBackgroundWorld()

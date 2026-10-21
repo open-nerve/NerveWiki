@@ -702,13 +702,17 @@ func (f *fakeStore) group(notebookID, id uuid.UUID, at time.Time) ([]domain.Tras
 		c := f.trashed[n.ID]
 		return domain.TrashMember{Node: n.Node, Level: level, Revision: c.Revision, Bytes: c.ByteSize}
 	}
+	under := map[uuid.UUID][]app.AnyNode{}
+	for _, n := range f.trash {
+		if n.ParentID != nil && n.DeletedAt.Equal(at) {
+			under[*n.ParentID] = append(under[*n.ParentID], n)
+		}
+	}
 	out := []domain.TrashMember{member(root, 1)}
 	for i := 0; i < len(out); i++ {
 		var level []domain.TrashMember
-		for _, n := range f.trash {
-			if n.ParentID != nil && *n.ParentID == out[i].Node.ID && n.DeletedAt.Equal(at) {
-				level = append(level, member(n, out[i].Level+1))
-			}
+		for _, n := range under[out[i].Node.ID] {
+			level = append(level, member(n, out[i].Level+1))
 		}
 		slices.SortFunc(level, func(a, b domain.TrashMember) int {
 			return cmp.Or(cmp.Compare(a.Node.SortOrder, b.Node.SortOrder), a.Node.ID.Compare(b.Node.ID))

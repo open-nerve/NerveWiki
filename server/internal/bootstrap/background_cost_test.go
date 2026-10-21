@@ -285,7 +285,7 @@ func (r jobRun) maxBatch() time.Duration {
 
 // runJob plans a job with plan and writes its batches as the transfer
 // module's run cuts them with the import's bounds (cut): a batch past a
-// unit's history or links halved (halve); a busy server waited for; the
+// unit's bounds halved (halve); a busy server waited for; the
 // statistics refreshed every 10,000 nodes written.
 func (b trashBench) runJob(tb testing.TB, plan func(ctx context.Context, spec page.JobSpec) (page.JobPlan, error)) jobRun {
 	tb.Helper()
@@ -363,9 +363,9 @@ func weighed(steps []page.JobStep) (int, int64) {
 	return nodes, bytes
 }
 
-// halve is where a batch of the steps from to to past a unit's history or
-// links ends instead, as the transfer module's run halves it: the later of
-// its first segment's end and the last segment's end at most half way.
+// halve is where a batch of the steps from to to past a unit's bounds
+// ends instead, as the transfer module's run halves it: the later of its
+// first segment's end and the last segment's end at most half way.
 func halve(steps []page.JobStep, from, to int) int {
 	first := segment(steps, from)
 	half, end := from+(to-from)/2, first

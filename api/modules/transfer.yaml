@@ -867,9 +867,9 @@ components:
         changeset, a version it writes back or restores, or a trash item it
         restores); page_locked (an edit session holds a page it was about to
         delete or write back, the report's lock); revert_too_large (one of
-        its segments, steps that must be in one batch, holds more history
-        or links than one batch writes). What a job wrote before it failed
-        is kept.
+        its segments, steps that must be in one batch, holds more pages,
+        attachments, history or links than one batch writes). What a job
+        wrote before it failed is kept.
       type: string
       enum:
         [

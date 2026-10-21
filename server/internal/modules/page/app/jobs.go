@@ -539,11 +539,12 @@ func pageJoins(steps []revertStep) [][2]int {
 
 // RunBatch writes the plan's steps from to to (not included) in a unit
 // of spec, merged into the job's changeset (M8/P4 design 3.3): before it,
-// the rows of history they restore are counted, and past MaxUnitHistory
-// for steps of more than one node are ErrJobBatchTooLarge; the contents
-// they write read and parsed, largest first, server_busy when the waits
-// run out, ErrJobBatchTooLarge past the unit's links for more than one
-// page; then the unit, which checks each step again under the lock
+// a revert's nodes it restores are counted, past MaxUnitNodes for steps
+// of more than one node ErrJobBatchTooLarge, and the rows of history they
+// restore, past MaxUnitHistory; the contents they write read, past the
+// unit's pages, copies or bytes for more than one page, then parsed,
+// largest first, server_busy when the waits run out, past the unit's
+// links; then the unit, which checks each step again under the lock
 // (Unit.RestorePart, Unit.RevertBatch). A node's steps are never past the
 // bounds (M9/P3 design 3.23): its restore's history is its page's, its
 // write back's links its content's, as M8's lone step's were. It answers
@@ -601,10 +602,15 @@ func (w *JobWrites) restoreBatch(ctx context.Context, spec JobSpec, p *restorePl
 }
 
 // The bounds a background job's batch is past, ErrJobBatchTooLarge, each
-// saying which (M9/P3 design 3.23): the rows of history it restores, the
-// links of the contents it parses.
+// saying which (M9/P3 design 3.23): the nodes a revert's batch restores,
+// MaxUnitNodes (review B-S1, C-S2: a cut restore may bring back thousands
+// of attachments); the rows of history it restores; the pages of the
+// contents it reads, their copies or their bytes (UnitTooLarge; review
+// A-M2); the links of the contents it parses.
 var (
+	errPastNodes   = fmt.Errorf("%w: past the nodes a unit restores", domain.ErrJobBatchTooLarge)
 	errPastHistory = fmt.Errorf("%w: past a unit's rows of history", domain.ErrJobBatchTooLarge)
+	errPastPages   = fmt.Errorf("%w: past a unit's pages or their bytes", domain.ErrJobBatchTooLarge)
 	errPastLinks   = fmt.Errorf("%w: past a unit's links", domain.ErrJobBatchTooLarge)
 )
 
@@ -665,11 +671,21 @@ func (w *JobWrites) revertBatch(ctx context.Context, spec JobSpec, p *revertPlan
 			written = append(written, s.node)
 		}
 	}
+	restoring := 0
+	for _, ids := range deleted {
+		restoring += len(ids)
+	}
+	if len(nodes) > 1 && restoring > domain.MaxUnitNodes {
+		return BatchDone{}, errPastNodes
+	}
 	if err := w.withinHistory(ctx, len(nodes), deleted); err != nil {
 		return BatchDone{}, err
 	}
 	contents, err := w.revertContents(ctx, p.changeset, trashed, written)
 	if err != nil {
+		return BatchDone{}, err
+	}
+	if err := withinPages(contents); err != nil {
 		return BatchDone{}, err
 	}
 	facts, release, err := w.parser.DecidedContents(ctx, contents, errPastLinks)
@@ -722,6 +738,20 @@ func (w *JobWrites) begun(ctx context.Context, p *revertPlan, steps []revertStep
 		}
 	}
 	return out, nil
+}
+
+// withinPages checks the contents a revert's batch reads, by page and
+// hash, are of at most a unit's pages, copies and bytes, unless they are a
+// lone page's: else errPastPages, before they are parsed.
+func withinPages(contents map[domain.ContentRef]string) error {
+	pages, bytes := map[uuid.UUID]bool{}, 0
+	for ref, content := range contents {
+		pages[ref.NodeID], bytes = true, bytes+len(content)
+	}
+	if domain.UnitTooLarge(len(pages), len(contents), bytes, 0) {
+		return errPastPages
+	}
+	return nil
 }
 
 // revertContents are the contents a revert's batch restores or writes

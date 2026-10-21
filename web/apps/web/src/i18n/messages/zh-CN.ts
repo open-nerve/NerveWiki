@@ -672,7 +672,7 @@ export const zhCN: Messages = {
   "transfer.failure.changeset_trimmed": "这次改动的一部分已被清理，不能再撤销。",
   "transfer.failure.page_locked": "撤销要改的一页正在被人编辑。",
   "transfer.failure.revert_too_large":
-    "撤销中必须一次做完的一段太大，一批写不下（它带回的历史或链接）。在它之前撤销的部分留着。",
+    "撤销中必须一次做完的一段太大，一批写不下（它带回的页、附件、历史或链接）。在它之前撤销的部分留着。",
   "transfer.failure.unknown": "任务失败了。",
   "transfer.problemsTitle": "库里与笔记本不同的地方",
   "transfer.problem.renamed": "{path} 写成了 {to}：在 Obsidian 里，指向原名的链接到不了它。",

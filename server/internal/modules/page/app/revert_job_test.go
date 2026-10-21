@@ -316,6 +316,83 @@ func TestARevertJobsWriteBackJoinsItsDeletionAlone(t *testing.T) {
 	}
 }
 
+// A batch of more than one node restores at most the nodes a unit does
+// (M9/P3 design 3.23, review B-S1, C-S2): G holds attachments, then K, x
+// and y under K; a batch moves x and y out, deletes G, makes a new G and
+// moves y into it. The segment's restore of G goes as far as K, carrying
+// every attachment: G, them and K MaxUnitNodes nodes, the job ends at S*;
+// one more, its first segment is past the nodes a unit restores, and the
+// job stops there. No batch's changeset comes to it, a batch changing at
+// most MaxUnitNodes nodes in all: this one is the test's own.
+func TestARevertJobsBatchRestoresAtMostAUnitsNodes(t *testing.T) {
+	for _, past := range []bool{false, true} {
+		t.Run(fmt.Sprint("past ", past), func(t *testing.T) {
+			s := newJobScene()
+			g := s.node("G", nil, false)
+			for i := range domain.MaxUnitNodes - 2 + boolInt(past) {
+				s.p.create(s.m, &g, fmt.Sprintf("a%05d.bin", i), true)
+			}
+			k := s.node("K", &g, false)
+			x, y := s.node("x", &k, false), s.node("y", &k, false)
+			e := s.begin()
+			e.move(x, nil, "x")
+			e.move(y, nil, "y")
+			e.del(g)
+			g2 := s.node("G'", nil, false)
+			e.move(y, &g2, "y")
+			f, c := s.load()
+			w, spec, plan := f.revertJob(t, c.ID, nil, now())
+			_, err := transferJob(f, w, spec, plan, 100)
+			switch {
+			case past && (!errors.Is(err, domain.ErrJobBatchTooLarge) || !strings.Contains(err.Error(), "past the nodes a unit restores")):
+				t.Errorf("the job = %v; want its first segment past the nodes a unit restores", err)
+			case !past && err != nil:
+				t.Errorf("the job = %v; want it done", err)
+			case !past:
+				if bad := s.p.compare(s.t0, s.p.modelOf(f)); bad != "" {
+					t.Errorf("the store after the job: %s", bad)
+				}
+			}
+		})
+	}
+}
+
+// A batch says which of a unit's bounds it is past (M9/P3 design 3.23,
+// review A-M2): a segment that restores G, its pages and K, the counter-
+// example's shape of no links and no history, is within a unit's 100
+// pages at 98 pages, and past them at 99, before a parse.
+func TestARevertJobsSegmentPastAUnitsPagesSaysSo(t *testing.T) {
+	for _, n := range []int{98, 99} {
+		t.Run(fmt.Sprint(n, " pages"), func(t *testing.T) {
+			s := newJobScene()
+			g := s.node("G", nil, false)
+			for i := range n {
+				s.node(fmt.Sprintf("p%03d", i), &g, false)
+			}
+			k := s.node("K", &g, false)
+			x, y := s.node("x", &k, false), s.node("y", &k, false)
+			e := s.begin()
+			e.move(x, nil, "x")
+			e.move(y, nil, "y")
+			e.del(g)
+			g2 := s.node("G'", nil, false)
+			e.move(y, &g2, "y")
+			f, c := s.load()
+			w, spec, plan := f.revertJob(t, c.ID, nil, now())
+			to := 1
+			for to < len(plan.Steps()) && plan.Steps()[to-1].Joined {
+				to++
+			}
+			f.rec.calls = nil
+			_, err := w.RunBatch(f.asJob(), spec, plan, 0, to)
+			past := errors.Is(err, domain.ErrJobBatchTooLarge) && strings.Contains(err.Error(), "past a unit's pages or their bytes")
+			if want := n == 99; past != want || !want && err != nil || want && f.called("Facts") {
+				t.Errorf("RunBatch(the first segment, %d steps) = %v; want it past a unit's pages %v, before a parse", to, err, want)
+			}
+		})
+	}
+}
+
 // A batch restores its members of a group at once, at the group's first
 // step in it (M9/P3 design 3.24, step 6), whatever steps come between them
 // (review B-I2): a write back of the group's first member, or a segment of
@@ -420,8 +497,9 @@ func TestARevertJobsLoneNodeIsNeverPastTheBounds(t *testing.T) {
 		t.Fatalf("the steps %+v; want F's restore joined to its write back, then c's", steps)
 	}
 	fx.rec.calls = nil
-	if _, err := w.RunBatch(fx.asJob(), spec, plan, 0, 3); !errors.Is(err, domain.ErrJobBatchTooLarge) || fx.called("Facts") {
-		t.Errorf("RunBatch(F and c, past the history) = %v; want ErrJobBatchTooLarge before a parse", err)
+	if _, err := w.RunBatch(fx.asJob(), spec, plan, 0, 3); !errors.Is(err, domain.ErrJobBatchTooLarge) ||
+		!strings.Contains(err.Error(), "past a unit's rows of history") || fx.called("Facts") {
+		t.Errorf("RunBatch(F and c, past the history) = %v; want ErrJobBatchTooLarge past a unit's rows of history, before a parse", err)
 	}
 	if done, err := w.RunBatch(fx.asJob(), spec, plan, 0, 2); err != nil || done.Restored != 1 || done.Written != 1 {
 		t.Errorf("RunBatch(F restored and written back, its history past the bound) = %+v, %v; want both done", done, err)

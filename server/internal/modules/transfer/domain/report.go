@@ -76,8 +76,8 @@ const (
 	// holds: the report's lock.
 	FailurePageLocked Failure = "page_locked"
 	// FailureRevertTooLarge is a revert one of whose segments, steps no
-	// batch splits, holds more history or links than one batch writes
-	// (M9/P3 design 3.23): what it wrote before kept.
+	// batch splits, holds more pages, attachments, history or links than
+	// one batch writes (M9/P3 design 3.23): what it wrote before kept.
 	FailureRevertTooLarge Failure = "revert_too_large"
 )
 

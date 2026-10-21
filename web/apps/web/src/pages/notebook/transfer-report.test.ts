@@ -45,7 +45,7 @@ test.each([
   [
     "revert",
     "revert_too_large",
-    "Part of the undo had to be done at once and is more than one batch can write: the history or links it brings back. What was undone before it stays.",
+    "Part of the undo had to be done at once and is more than one batch can write: the pages, attachments, history or links it brings back. What was undone before it stays.",
   ],
   ["revert", "forbidden", "The person who started it could no longer edit the notebook."],
   ["revert", "tree_changed", "While the undo ran, the pages it was undoing changed."],
@@ -57,7 +57,7 @@ test.each([
 
 test("a revert one of whose parts done at once is past a batch says so in Chinese too", () => {
   expect(failureText("revert", "revert_too_large", translator("zh-CN"))).toBe(
-    "撤销中必须一次做完的一段太大，一批写不下（它带回的历史或链接）。在它之前撤销的部分留着。"
+    "撤销中必须一次做完的一段太大，一批写不下（它带回的页、附件、历史或链接）。在它之前撤销的部分留着。"
   );
 });
 

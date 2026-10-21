@@ -218,9 +218,15 @@ func (p *jobTrial) children(m jobModel, parent uuid.UUID) []uuid.UUID {
 }
 
 func (p *jobTrial) subtree(m jobModel, id uuid.UUID) []uuid.UUID {
+	under := map[uuid.UUID][]uuid.UUID{}
+	for _, c := range p.ids {
+		if n := m.nodes[c]; n.alive && n.parent != nil {
+			under[*n.parent] = append(under[*n.parent], c)
+		}
+	}
 	out := []uuid.UUID{id}
 	for at := 0; at < len(out); at++ {
-		out = append(out, p.children(m, out[at])...)
+		out = append(out, under[out[at]]...)
 	}
 	return out
 }

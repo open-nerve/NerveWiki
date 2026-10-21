@@ -129,12 +129,12 @@ func (r *backgroundRun) run(ctx, running context.Context) error {
 // steps each Joined to the next, up to the bounds' nodes and bytes, the
 // first always in it, as RunBatch writes them (M8/P4 design 3.3; M9/P3
 // design 3.23), with River's context ctx, which the heartbeat's stop does
-// not end. One the server is too busy for is tried again after a wait.
-// One past a unit's history or links ends at the later of the first
-// segment's end and the last segment's end at most half way; one that
-// ended at the first segment's end already, of more than one step, stops
-// the job, revert_too_large, logged; a lone step past them is the page
-// module's defect. It answers where the next starts.
+// not end. One the server is too busy for is tried again after a wait. One
+// past a unit's bounds ends at the later of the first segment's end and
+// the last segment's end at most half way; one that ended at the first
+// segment's end already, of more than one step, stops the job,
+// revert_too_large, logged; a lone step past them is the page module's
+// defect. It answers where the next starts.
 func (r *backgroundRun) batch(ctx, running context.Context, spec JobSpec, plan JobPlan, from int) (int, BatchDone, error) {
 	steps := plan.Steps()
 	first := segmentEnd(steps, from)
@@ -174,8 +174,9 @@ func (r *backgroundRun) batch(ctx, running context.Context, spec JobSpec, plan J
 }
 
 // errSegmentTooLarge is a revert's segment, steps no batch splits, past a
-// unit's history or links alone (M9/P3 design 3.23): the job stops.
-var errSegmentTooLarge = errors.New("transfer: a revert's segment is past a unit's history or links alone")
+// unit's nodes, history, pages or links alone (M9/P3 design 3.23): the job
+// stops.
+var errSegmentTooLarge = errors.New("transfer: a revert's segment is past what a unit writes alone")
 
 // segmentEnd is where the segment of steps from at ends: past the first
 // step not Joined to the next.

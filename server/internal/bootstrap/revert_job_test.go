@@ -354,47 +354,58 @@ func TestTheBackgroundRevertStopsAtAWriteBetweenItsBatches(t *testing.T) {
 }
 
 // A segment past what a batch writes stops the job, revert_too_large
-// (M9/P3 design 3.23, 3.26): G holds 101 pages of 210 links each, then K
-// with x and y; a batch renames another page O, moves x and y out, deletes
-// G, makes a new G and moves y into it. The revert's segment runs from y's
-// step aside to its place, and its restore of G goes as far as K, last in
-// G's pre-order: 103 members, 21,210 links, past a unit's 20,000. The job
-// stops there; O's rename, the batch before, is undone and stays (review
-// C-M8). The report's text is the web's, which vitest checks
-// (transfer-report.test.ts).
+// (M9/P3 design 3.23, 3.26): G holds pages, then K with x and y; a batch
+// renames another page O, moves x and y out, deletes G, makes a new G and
+// moves y into it. The revert's segment runs from y's step aside to its
+// place, and its restore of G goes as far as K, last in G's pre-order:
+// with 95 pages of 215 links each, 97 pages and 20,425 links, past a
+// unit's 20,000 links alone (review A-M2); with 101 pages, 103 pages, past
+// a unit's 100. The job stops there; O's rename, the batch before, is
+// undone and stays (review C-M8). The report's text is the web's, which
+// vitest checks (transfer-report.test.ts).
 func TestTheBackgroundRevertOfASegmentPastABatchStops(t *testing.T) {
-	tm := newAcmeTeam(t, "member", "")
-	nb := tm.openNotebook(t, "alice", "Eng")
-	o := tm.createPageWith(t, "alice", nb, "", "O", "o")
-	g := tm.createPageWith(t, "alice", nb, "", "G", "g")
-	var links strings.Builder
-	for i := range 210 {
-		fmt.Fprintf(&links, "[[T %d]] ", i)
+	for _, tt := range []struct {
+		name         string
+		pages, links int
+	}{
+		{"past a unit's links", 95, 215},
+		{"past a unit's pages", 101, 1},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			tm := newAcmeTeam(t, "member", "")
+			nb := tm.openNotebook(t, "alice", "Eng")
+			o := tm.createPageWith(t, "alice", nb, "", "O", "o")
+			g := tm.createPageWith(t, "alice", nb, "", "G", "g")
+			var links strings.Builder
+			for i := range tt.links {
+				fmt.Fprintf(&links, "[[T %d]] ", i)
+			}
+			for i := range tt.pages {
+				tm.createPageWith(t, "alice", nb, g, fmt.Sprintf("P %d", i), links.String())
+			}
+			k := tm.createPageWith(t, "alice", nb, g, "K", "k")
+			x := tm.createPageWith(t, "alice", nb, k, "x", "x")
+			y := tm.createPageWith(t, "alice", nb, k, "y", "y")
+			b := tm.agent(t, "alice", nb).batchDone(t, opMove("O.md", "O2.md"), opMove("G/K/x.md", "x.md"), opMove("G/K/y.md", "y.md"),
+				opDeleteAll("G.md"), opWrite("G.md", "new g"), opMove("y.md", "G/y.md"))
+			if b.ChangesetID == nil {
+				t.Fatalf("the batch = %+v, want a changeset", b)
+			}
+			got := tm.background(t, revertStart("alice", nb, *b.ChangesetID, ""))
+			if got.State != "failed" || got.failure() != "revert_too_large" || got.Progress.Done != 1 || got.counts()["put_back"] != 1 ||
+				got.counts()["restored"] != 0 {
+				t.Fatalf("the revert = %s, want it stopped at its second batch, revert_too_large, O put back", got)
+			}
+			if tm.placeOf(t, o) != "/O" || !tm.trashedNow(t, g, k) || tm.placeOf(t, x) != "/x" || !strings.HasSuffix(tm.placeOf(t, y), "/y") {
+				t.Errorf("O at %s, G in the trash %v, x at %s, y at %s; want O put back, the rest as the batch left it", tm.placeOf(t, o),
+					tm.trashedNow(t, g, k), tm.placeOf(t, x), tm.placeOf(t, y))
+			}
+			if aside := tm.asideNames(t, nb); len(aside) != 0 {
+				t.Errorf("nodes named aside after the job: %v", aside)
+			}
+			checkBackground(t, tm)
+		})
 	}
-	for i := range 101 {
-		tm.createPageWith(t, "alice", nb, g, fmt.Sprintf("P %d", i), links.String())
-	}
-	k := tm.createPageWith(t, "alice", nb, g, "K", "k")
-	x := tm.createPageWith(t, "alice", nb, k, "x", "x")
-	y := tm.createPageWith(t, "alice", nb, k, "y", "y")
-	b := tm.agent(t, "alice", nb).batchDone(t, opMove("O.md", "O2.md"), opMove("G/K/x.md", "x.md"), opMove("G/K/y.md", "y.md"),
-		opDeleteAll("G.md"), opWrite("G.md", "new g"), opMove("y.md", "G/y.md"))
-	if b.ChangesetID == nil {
-		t.Fatalf("the batch = %+v, want a changeset", b)
-	}
-	got := tm.background(t, revertStart("alice", nb, *b.ChangesetID, ""))
-	if got.State != "failed" || got.failure() != "revert_too_large" || got.Progress.Done != 1 || got.counts()["put_back"] != 1 ||
-		got.counts()["restored"] != 0 {
-		t.Fatalf("the revert = %s, want it stopped at its second batch, revert_too_large, O put back", got)
-	}
-	if tm.placeOf(t, o) != "/O" || !tm.trashedNow(t, g, k) || tm.placeOf(t, x) != "/x" || !strings.HasSuffix(tm.placeOf(t, y), "/y") {
-		t.Errorf("O at %s, G in the trash %v, x at %s, y at %s; want O put back, the rest as the batch left it", tm.placeOf(t, o),
-			tm.trashedNow(t, g, k), tm.placeOf(t, x), tm.placeOf(t, y))
-	}
-	if aside := tm.asideNames(t, nb); len(aside) != 0 {
-		t.Errorf("nodes named aside after the job: %v", aside)
-	}
-	checkBackground(t, tm)
 }
 
 // A group larger than a batch is restored whole by its batches (M9/P3
