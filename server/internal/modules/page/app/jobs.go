@@ -72,7 +72,7 @@ type JobWrites struct {
 	sessions AliveSessions
 	maxItems int
 	// maxHistory bounds the rows of history a batch of more than one
-	// step restores: MaxUnitHistory.
+	// node restores: MaxUnitHistory.
 	maxHistory int
 }
 
