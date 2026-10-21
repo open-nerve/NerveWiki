@@ -301,6 +301,9 @@ func TestThePageFactsKeepTheFirstMaxLinks(t *testing.T) {
 // up to fifteen while over it: a busy machine's pause may fall on the five,
 // a square on each (fix check B3-M5).
 func TestThePropertyLinksFindTheirStringsInTimeAsLongAsThey(t *testing.T) {
+	if testing.Short() {
+		t.Skip("judged by time, which ci.yml's short leg skips (its packages run at once); the race leg runs it")
+	}
 	md, err := markdown.New([]markdown.Extension{obsidian.Extension(obsidian.Options{})})
 	if err != nil {
 		t.Fatal(err)
