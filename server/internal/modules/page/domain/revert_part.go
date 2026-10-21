@@ -16,9 +16,10 @@ import (
 // CheckRevertPart is a background revert's check of a batch (M9/P3 design
 // 3.24): L as PlanRevert has it, of the batch's nodes alone, the
 // conflicts in their order and the versions the purge took. A page the
-// batch restores whose group it reads is checked as the trash holds it,
-// its version too; one a later member of a group an earlier batch began,
-// the batch's caller checks as it is in the trash (a continuation). No S*
+// batch restores whose group it reads is checked by its content in the
+// trash, against the changeset's at the deletion's revision; one a later
+// member of a group an earlier batch began, the batch's caller checks as
+// it is in the trash (a continuation). No S*
 // and no steps: the job's plan has the steps, and each step's premise,
 // checked in its order (CheckRevertSteps), stands for S* at its moment.
 func CheckRevertPart(s RevertState) RevertPlan {
