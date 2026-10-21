@@ -319,20 +319,22 @@ func MatchGrepLine(re *regexp.Regexp, text string, column, cut int) GrepMatch {
 
 // GrepNFC is a line as grep matches it (M9/P4 design 3.6.2, 3.7.4): Text,
 // its NFC, or of its start alone when that is longer than the cut (Cut),
-// up to the last NFC boundary within it; and where its NFC segments start
-// in Text and in the line, by which a match's offsets go back to the
-// line's bytes. A line in NFC already is Text itself, its offsets the
-// same.
+// up to the last NFC segment within it. A line in NFC already is Text
+// itself, its offsets the same; Span takes a match in another back to the
+// line's bytes.
 type GrepNFC struct {
 	Text string
 	Cut  bool
-	// nfc and line are the segments' starts, then Text's end and the
-	// line's byte it ends at; nil for a line in NFC.
-	nfc, line []int
+	// line is the line when it is not in NFC, which Span normalizes again
+	// up to a match's end; "" for a line in NFC.
+	line string
 }
 
-// NewGrepNFC is line as grep matches it within cut bytes: normalized a
-// segment at a time up to the cut, never the whole of a long line.
+// NewGrepNFC is line as grep matches it within cut bytes: normalized up to
+// the cut in one pass of norm.Iter, a segment at a time, never the whole
+// of a long line. It keeps nothing a segment: a call and two offsets a
+// segment cost a long line in ASCII 100 bytes of memory a byte and 600 of
+// allocation (review A-I1); Span finds a hit's offsets again.
 func NewGrepNFC(line string, cut int) GrepNFC {
 	if norm.NFC.IsNormalString(line) {
 		if len(line) <= cut {
@@ -348,44 +350,50 @@ func NewGrepNFC(line string, cut int) GrepNFC {
 		}
 		return GrepNFC{Text: line[:end], Cut: true}
 	}
-	var g GrepNFC
-	var out []byte
-	at := 0
-	for at < len(line) {
-		n := norm.NFC.NextBoundaryInString(line[at:], true)
-		before := len(out)
-		out = norm.NFC.AppendString(out, line[at:at+n])
-		if len(out) > cut {
-			out, g.Cut = out[:before], true
+	g := GrepNFC{line: line}
+	var b strings.Builder
+	b.Grow(max(0, min(len(line), cut)))
+	var it norm.Iter
+	it.InitString(norm.NFC, line)
+	for !it.Done() {
+		seg := it.Next()
+		if b.Len()+len(seg) > cut {
+			g.Cut = true
 			break
 		}
-		g.nfc, g.line = append(g.nfc, before), append(g.line, at)
-		at += n
+		b.Write(seg)
 	}
-	g.Text = string(out)
-	g.nfc, g.line = append(g.nfc, len(out)), append(g.line, at)
+	g.Text = b.String()
 	return g
 }
 
 // Span is the bytes of the line Text[start:end] comes from: start back to
-// its NFC segment's start, end on to its segment's end.
+// its NFC segment's start, end on to its segment's end; an empty span at a
+// segment's start. A line not in NFC is normalized again, in the same
+// segments, up to the segment holding end.
 func (g GrepNFC) Span(start, end int) (int, int) {
-	if g.nfc == nil {
+	if g.line == "" {
 		return start, end
 	}
-	// k: the segment holding start, or the end's entry at Text's end.
-	k := 0
-	for k+1 < len(g.nfc) && g.nfc[k+1] <= start {
-		k++
+	var it norm.Iter
+	it.InitString(norm.NFC, g.line)
+	// out and at are the segment's start in Text and in the line; lo, the
+	// line's byte start's segment starts at, once found.
+	out, at, lo := 0, 0, -1
+	for out < len(g.Text) && !it.Done() {
+		next := out + len(it.Next())
+		if lo < 0 && start < next {
+			if lo = at; end <= start {
+				return lo, lo
+			}
+		}
+		if lo >= 0 && end <= next {
+			return lo, it.Pos()
+		}
+		out, at = next, it.Pos()
 	}
-	if end <= start {
-		return g.line[k], g.line[k]
+	if lo < 0 {
+		lo = at
 	}
-	// j: the first entry at or past end, the end of the segment holding
-	// end - 1.
-	j := k + 1
-	for g.nfc[j] < end {
-		j++
-	}
-	return g.line[k], g.line[j]
+	return lo, at
 }

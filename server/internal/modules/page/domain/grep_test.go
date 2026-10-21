@@ -326,6 +326,49 @@ func TestGrepLineCut(t *testing.T) {
 	}
 }
 
+// TestGrepNFCOfALongLineIsBounded: a line of the most bytes a content
+// holds, not in NFC, normalized whole for a small pattern and matched at
+// its end, allocates a few times the line and keeps its NFC alone (M9/P4
+// review A-I1: a call and two offsets a segment allocated 3.5 GB and kept
+// 106 MB for one line of ASCII). TotalAlloc is the process's, so the test
+// does not run in parallel.
+func TestGrepNFCOfALongLineIsBounded(t *testing.T) {
+	p, err := domain.ParseGrepPattern("zzz", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cut := domain.GrepLineCut(p.Insts, domain.MaxGrepLineWork)
+	n := domain.MaxContentBytes - 1
+	for _, row := range []struct{ name, line string }{
+		{"ASCII and one e and U+0301 last", strings.Repeat("a", n-3) + "e\U00000301"},
+		{"e and U+0301 throughout", strings.Repeat("e\U00000301", n/3)},
+	} {
+		runtime.GC()
+		var before, made, after runtime.MemStats
+		runtime.ReadMemStats(&before)
+		g := domain.NewGrepNFC(row.line, cut)
+		runtime.ReadMemStats(&made)
+		runtime.GC()
+		runtime.ReadMemStats(&after)
+		allocated, live := made.TotalAlloc-before.TotalAlloc, int64(after.HeapAlloc)-int64(before.HeapAlloc)
+		if g.Text != norm.NFC.String(row.line) || allocated > uint64(3*len(row.line)) || live > int64(2*len(row.line)) {
+			t.Errorf("%s: %d bytes in NFC (cut %v), %d bytes allocated, %d live; want the NFC, at most %d and %d", row.name,
+				len(g.Text), g.Cut, allocated, live, 3*len(row.line), 2*len(row.line))
+		}
+		runtime.KeepAlive(g)
+		t.Logf("%s: NewGrepNFC allocated %d bytes, keeps %d, of a line of %d", row.name, allocated, live, len(row.line))
+		runtime.ReadMemStats(&before)
+		m := domain.MatchGrepLine(regexp.MustCompile("\U000000e9$"), row.line, 0, cut)
+		runtime.ReadMemStats(&after)
+		if allocated = after.TotalAlloc - before.TotalAlloc; m.Hit == nil || !strings.HasSuffix(m.Hit.Text, "e\U00000301") ||
+			m.Hit.Column+len(m.Hit.Text) != len(row.line) || allocated > uint64(4*len(row.line)) {
+			t.Errorf("%s: a match at the end %+v, %d bytes allocated; want the line's last bytes, at most %d", row.name, m.Hit,
+				allocated, 4*len(row.line))
+		}
+		t.Logf("%s: MatchGrepLine at its end allocated %d bytes", row.name, allocated)
+	}
+}
+
 // TestGrepCutLines checks a cut line's match (M9/P4 design 3.6.2): a match
 // ending at the cut is no hit and the line is partial (foo$ there: mutant
 // 158), one ending before it is a hit; and only the start the cut reaches
