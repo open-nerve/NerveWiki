@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"maps"
 	"net/http"
 	"slices"
@@ -361,18 +362,23 @@ func TestTheBackgroundRevertStopsAtAWriteBetweenItsBatches(t *testing.T) {
 // with 95 pages of 215 links each, 97 pages and 20,425 links, past a
 // unit's 20,000 links alone (review A-M2); with 101 pages, 103 pages, past
 // a unit's 100. The job stops there; O's rename, the batch before, is
-// undone and stays (review C-M8). The report's text is the web's, which
-// vitest checks (transfer-report.test.ts).
+// undone and stays (review C-M8). Its warn line, the subtest's app's own,
+// names the segment's steps and the bound in the page module's words
+// (review C-M2). The report's text is the web's, which vitest checks
+// (transfer-report.test.ts).
 func TestTheBackgroundRevertOfASegmentPastABatchStops(t *testing.T) {
 	for _, tt := range []struct {
 		name         string
 		pages, links int
+		to           float64 // the segment's end: y's step aside, the new G's deletion, the restore, x's and y's places
+		words        string
 	}{
-		{"past a unit's links", 95, 215},
-		{"past a unit's pages", 101, 1},
+		{"past a unit's links", 95, 215, 1 + 2 + 97 + 2, "past a unit's links"},
+		{"past a unit's pages", 101, 1, 1 + 2 + 103 + 2, "past a unit's pages or their bytes"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			tm := newAcmeTeam(t, "member", "")
+			logs := &syncBuffer{}
+			tm := newAcmeTeamLogging(t, "member", "", nil, transfer.Batch{}, slog.New(slog.NewJSONHandler(logs, nil)))
 			nb := tm.openNotebook(t, "alice", "Eng")
 			o := tm.createPageWith(t, "alice", nb, "", "O", "o")
 			g := tm.createPageWith(t, "alice", nb, "", "G", "g")
@@ -402,6 +408,11 @@ func TestTheBackgroundRevertOfASegmentPastABatchStops(t *testing.T) {
 			}
 			if aside := tm.asideNames(t, nb); len(aside) != 0 {
 				t.Errorf("nodes named aside after the job: %v", aside)
+			}
+			line := (&mcpApp{logs: logs}).logged(t, "revert segment past a batch")
+			if past, _ := line["past"].(string); line == nil || line["job_id"] != got.ID || line["from"] != 1.0 || line["to"] != tt.to ||
+				!strings.HasSuffix(past, ": "+tt.words) {
+				t.Errorf("the warn line %v; want the job's segment from 1 to %v, %s", line, tt.to, tt.words)
 			}
 			checkBackground(t, tm)
 		})

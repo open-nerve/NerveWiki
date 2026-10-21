@@ -136,7 +136,7 @@ func (t *jobTree) RunBatch(ctx context.Context, spec app.JobSpec, p app.JobPlan,
 	case t.halving > 0 && to-from > t.halving:
 		return app.BatchDone{}, app.ErrBatchTooLarge
 	case t.history.past(from, to):
-		return app.BatchDone{}, fmt.Errorf("%w: past a unit's rows of history", app.ErrBatchTooLarge)
+		return app.BatchDone{}, fmt.Errorf("%w: %s", app.ErrBatchTooLarge, t.history.pastWords())
 	case t.fail[from] != nil:
 		return app.BatchDone{}, t.fail[from]
 	}
@@ -153,11 +153,22 @@ func (t *jobTree) RunBatch(ctx context.Context, spec app.JobSpec, p app.JobPlan,
 }
 
 // jobHistory is the rows of history each step restores, by step, and the
-// node each writes, by step, its own when not set; bound is a unit's.
+// node each writes, by step, its own when not set; bound is a unit's, and
+// words what a batch past it says of it, as the page module's wrapped
+// error does, a unit's rows of history when not set.
 type jobHistory struct {
 	rows  map[int]int
 	node  map[int]int
 	bound int
+	words string
+}
+
+// pastWords are what a batch past h's bound says of it.
+func (h *jobHistory) pastWords() string {
+	if h.words == "" {
+		return "past a unit's rows of history"
+	}
+	return h.words
 }
 
 // past reports whether the steps from to to restore more rows than the

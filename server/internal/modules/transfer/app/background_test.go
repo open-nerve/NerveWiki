@@ -193,24 +193,31 @@ func TestABackgroundRevertsBatchesKeepItsSegments(t *testing.T) {
 // internal, as before (TestABackgroundJobsBatchIsTriedAgainOrHalved).
 func TestABackgroundRevertsSegmentPastABatchStops(t *testing.T) {
 	joined, single := app.JobStep{Nodes: 1, Joined: true}, app.JobStep{Nodes: 1}
-	w := newBackgroundWorld()
-	var l logs
-	w.logger = l.logger()
-	w.batch, w.tree.steps = app.Batch{Nodes: 1}, []app.JobStep{single, joined, joined, single, single}
-	w.tree.history = &jobHistory{rows: map[int]int{1: 5, 2: 5, 3: 5}, bound: 10}
-	j := w.queued(domain.KindRevert)
-	got := w.run(t, j)
-	if got.State != domain.StateFailed || got.Report.Failure != domain.FailureRevertTooLarge || got.Report.Counts.Pages != 1 ||
-		got.Progress != (domain.Progress{Done: 1, Total: 5}) {
-		t.Errorf("job %s, progress %+v, report %+v; want failed revert_too_large, the first step written", got.State, got.Progress, got.Report)
-	}
-	if want := [][2]int{{0, 1}, {1, 4}}; !slices.Equal(w.tree.written(), want) {
-		t.Errorf("batches %v, want %v", w.tree.written(), want)
-	}
-	text := l.String()
-	if !strings.Contains(text, `level=WARN msg="revert segment past a batch" job_id=`+j.ID.String()+" from=1 to=4 nodes=3") ||
-		!strings.Contains(text, "history") || strings.Contains(text, "Undo") {
-		t.Errorf("logs %q; want the segment's warn line", text)
+	// Each bound in the page module's own words (review C-M2).
+	for _, words := range []string{"past a unit's rows of history", "past a unit's pages or their bytes", "past a unit's links",
+		"past the nodes a unit restores"} {
+		t.Run(words, func(t *testing.T) {
+			w := newBackgroundWorld()
+			var l logs
+			w.logger = l.logger()
+			w.batch, w.tree.steps = app.Batch{Nodes: 1}, []app.JobStep{single, joined, joined, single, single}
+			w.tree.history = &jobHistory{rows: map[int]int{1: 5, 2: 5, 3: 5}, bound: 10, words: words}
+			j := w.queued(domain.KindRevert)
+			got := w.run(t, j)
+			if got.State != domain.StateFailed || got.Report.Failure != domain.FailureRevertTooLarge || got.Report.Counts.Pages != 1 ||
+				got.Progress != (domain.Progress{Done: 1, Total: 5}) {
+				t.Errorf("job %s, progress %+v, report %+v; want failed revert_too_large, the first step written", got.State, got.Progress,
+					got.Report)
+			}
+			if want := [][2]int{{0, 1}, {1, 4}}; !slices.Equal(w.tree.written(), want) {
+				t.Errorf("batches %v, want %v", w.tree.written(), want)
+			}
+			text := l.String()
+			if !strings.Contains(text, `level=WARN msg="revert segment past a batch" job_id=`+j.ID.String()+" from=1 to=4 nodes=3 past=\""+
+				app.ErrBatchTooLarge.Error()+": "+words+"\"") || strings.Contains(text, "Undo") {
+				t.Errorf("logs %q; want the segment's warn line, the bound it is past", text)
+			}
+		})
 	}
 }
 
