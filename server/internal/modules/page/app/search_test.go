@@ -164,6 +164,14 @@ func (s *searchFixture) search(r app.SearchRequest) (app.SearchPage, error) {
 		Reads: s.reads, Trash: s.store, Attachments: s.infos, Walk: s.walk, CountScan: s.countScan}).Execute(s.asAlice(), "acme", r)
 }
 
+// inNotebook is the search r of the notebook id alone, as MCP's search
+// asks for it.
+func (s *searchFixture) inNotebook(id uuid.UUID, r app.SearchRequest) (app.SearchPage, error) {
+	return app.NewSearch(app.SearchDeps{Snapshots: fakeSnapshots{s.rec}, Workspaces: s.workspaces, Notebooks: s.notebooks,
+		Visible: s.visible, Auth: s.auth, Reads: s.reads, Trash: s.store, Attachments: s.infos, Walk: s.walk,
+		CountScan: s.countScan}).InNotebook(s.asAlice(), id, r)
+}
+
 // row is a node of eng found, changed minutes ago.
 func (s *searchFixture) row(name string, minutes int, kind domain.Kind) app.SearchTitleRow {
 	return app.SearchTitleRow{Node: app.SearchNode{ID: uuid.NewV7(), NotebookID: s.eng, Kind: kind, Name: name},
@@ -538,6 +546,111 @@ func TestTheSearchReadsTheNFCOfATermGoWritesOtherwiseFirst(t *testing.T) {
 		if n := len(slices.DeleteFunc(slices.Clone(s.rec.calls), func(c string) bool { return !strings.HasPrefix(c, "SearchNFC") })); err != nil ||
 			n != want {
 			t.Errorf("%U: %v after %q, want %d SearchNFC", []rune(q), err, s.rec.calls, want)
+		}
+	}
+}
+
+// TestSearchInNotebook is the search of one notebook, MCP's (M9/P4 design
+// 3.8): the cursor, q, the limit, then the notebook; no such notebook, a
+// deleted one (WorkspaceOf, of the notebooks not deleted, finds none), one
+// of a workspace the caller is not a member of and one there it does not
+// see are each notebook.not_found, never workspace.not_found (mutant
+// 168), and nothing is read; the zero id is refused without a read. It
+// reads the notebook alone, decided on its workspace by page.search. Each
+// hit's Cursor, of its tier (mutant 169), is the next_cursor of the page
+// that ends with it, Execute's as well.
+func TestSearchInNotebook(t *testing.T) {
+	cursor := func(c domain.SearchCursor) *string {
+		s, err := shared.EncodeCursor(c)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return &s
+	}
+	elsewhere, other, hidden, gone := uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
+	for _, tt := range []struct {
+		name  string
+		setup func(s *searchFixture)
+		id    func(s *searchFixture) uuid.UUID
+		r     app.SearchRequest
+		want  string
+	}{
+		{"a cursor that does not decode, before q", nil, nil, app.SearchRequest{Cursor: ptr("x"), Q: ptr("")}, "bad_request"},
+		{"a cursor of no tier", nil, nil, app.SearchRequest{Cursor: cursor(domain.SearchCursor{Tier: 2, At: now().UTC()}),
+			Q: ptr("a")}, "bad_request"},
+		{"q, before the limit", nil, nil, app.SearchRequest{Q: ptr(" "), Limit: ptr(0)}, "validation_failed q"},
+		{"the limit, before the notebook", nil, func(*searchFixture) uuid.UUID { return uuid.NewV7() },
+			app.SearchRequest{Q: ptr("a"), Limit: ptr(domain.MaxSearchLimit + 1)}, "validation_failed limit"},
+		{"the zero id", nil, func(*searchFixture) uuid.UUID { return uuid.UUID{} }, app.SearchRequest{Q: ptr("a")},
+			"notebook.not_found"},
+		{"no such notebook", nil, func(*searchFixture) uuid.UUID { return uuid.NewV7() }, app.SearchRequest{Q: ptr("a")},
+			"notebook.not_found"},
+		{"a deleted one", func(s *searchFixture) { s.visible.ids = append(s.visible.ids, gone) },
+			func(*searchFixture) uuid.UUID { return gone }, app.SearchRequest{Q: ptr("a")}, "notebook.not_found"},
+		{"one of a workspace the caller is not a member of", func(s *searchFixture) {
+			s.notebooks.workspaces[other] = elsewhere
+			s.auth.grants = map[shared.Action]bool{}
+		}, func(*searchFixture) uuid.UUID { return other }, app.SearchRequest{Q: ptr("a")}, "notebook.not_found"},
+		{"one there the caller does not see", func(s *searchFixture) { s.notebooks.workspaces[hidden] = s.acme },
+			func(*searchFixture) uuid.UUID { return hidden }, app.SearchRequest{Q: ptr("a")}, "notebook.not_found"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			s := newSearchFixture()
+			if tt.setup != nil {
+				tt.setup(s)
+			}
+			id := s.eng
+			if tt.id != nil {
+				id = tt.id(s)
+			}
+			_, err := s.inNotebook(id, tt.r)
+			if got := codeOf(err); got != tt.want {
+				t.Errorf("InNotebook() = %v, want %s", err, tt.want)
+			}
+			if s.called("WithinSnapshot") {
+				t.Error("refused after it read the tiers")
+			}
+			if id == (uuid.UUID{}) && len(s.rec.calls) > 0 {
+				t.Errorf("the zero id read %v", s.rec.calls)
+			}
+		})
+	}
+
+	s := newSearchFixture()
+	s.notebooks.workspaces[s.ops] = s.acme
+	for i := range 3 {
+		s.reads.titles = append(s.reads.titles, s.row(fmt.Sprintf("a %d", i), i, domain.KindPage))
+	}
+	for i := range 4 {
+		s.reads.bodies = append(s.reads.bodies, fakeBody{s.row(fmt.Sprintf("b %d", i), 10+i, domain.KindPage), true})
+	}
+	page, err := s.inNotebook(s.ops, app.SearchRequest{Q: ptr("a")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(s.reads.scopes) == 0 || !slices.Equal(s.reads.scopes[0].Notebooks, []uuid.UUID{s.ops}) || !s.called("VisibleIn member") ||
+		len(s.auth.targets) != 1 || s.auth.targets[0] != (shared.Target{WorkspaceID: s.acme}) || len(page.Hits) != 7 {
+		t.Errorf("scopes %+v, decided on %+v, %d hits after %v: want ops alone, of the member's notebooks, decided on acme, 7 hits",
+			s.reads.scopes, s.auth.targets, len(page.Hits), s.rec.calls)
+	}
+	for limit := 1; limit < 7; limit++ {
+		page, err := s.inNotebook(s.eng, app.SearchRequest{Q: ptr("a"), Limit: &limit})
+		if err != nil {
+			t.Fatal(err)
+		}
+		whole, err := s.search(app.SearchRequest{Q: ptr("a"), NotebookID: &s.eng, Limit: &limit})
+		if err != nil {
+			t.Fatal(err)
+		}
+		last := page.Hits[len(page.Hits)-1]
+		want := domain.SearchTierTitle
+		if limit > 3 {
+			want = domain.SearchTierBody
+		}
+		got, err := last.Cursor()
+		if err != nil || len(page.Hits) != limit || last.Tier != want || got != page.NextCursor || got != whole.NextCursor {
+			t.Errorf("limit %d: %d hits, the last's tier %d (want %d), its cursor %q, %v; next_cursor %q, Execute's %q", limit,
+				len(page.Hits), last.Tier, want, got, err, page.NextCursor, whole.NextCursor)
 		}
 	}
 }

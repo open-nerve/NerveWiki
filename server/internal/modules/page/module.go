@@ -313,8 +313,8 @@ func New(d Deps) *Module {
 		ListChanges:     app.NewListChanges(history),
 		RevertChangeset: app.NewRevertChangeset(trash, store, writer, parser,
 			app.RevertBounds{Nodes: d.MaxUnitNodes, History: d.MaxUnitHistory, Steps: d.MaxRevertSteps}, d.Logger),
-		Search: app.NewSearch(app.SearchDeps{Snapshots: d.Snapshots, Workspaces: d.Workspaces, Visible: d.VisibleNotebooks,
-			Auth: d.Authorizer, Reads: store, Trash: store, Attachments: d.Attachments}),
+		Search: app.NewSearch(app.SearchDeps{Snapshots: d.Snapshots, Workspaces: d.Workspaces, Notebooks: d.Notebooks,
+			Visible: d.VisibleNotebooks, Auth: d.Authorizer, Reads: store, Trash: store, Attachments: d.Attachments}),
 	}, gate: app.NewNotebookGate(d.Notebooks, d.Authorizer), jobs: []jobs.Job{
 		riveradapter.CleanupJob(app.NewCleanupEditSessions(store, d.Clock, d.Logger), d.EditSessionCleanupInterval),
 	}, assets: app.NewAssetWrites(writer, store), imports: app.NewImportWrites(writer, parser, md),

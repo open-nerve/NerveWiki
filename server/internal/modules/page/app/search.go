@@ -23,8 +23,9 @@ type SearchRequest struct {
 
 // SearchHit is a node a search found: where it is, root first, its name's
 // hits, a page's content's excerpt around its first hit (nil when the
-// content holds none), when the node or its content last changed, and an
-// attachment's type and size.
+// content holds none), when the node or its content last changed, an
+// attachment's type and size, and the tier that found it, which a page of
+// hits cut short rebuilds its cursor from (M9 design 4.7).
 type SearchHit struct {
 	Node       SearchNode
 	Ancestors  []domain.Ancestor
@@ -32,6 +33,13 @@ type SearchHit struct {
 	Excerpt    *domain.SearchExcerpt
 	ChangedAt  time.Time
 	Attachment *AttachmentInfo
+	Tier       int
+}
+
+// Cursor is the cursor of the page after h: below its tier, time and id,
+// as Execute's next_cursor after the limit-th hit (M9/P4 design 3.8).
+func (h SearchHit) Cursor() (string, error) {
+	return shared.EncodeCursor(domain.SearchCursor{Tier: h.Tier, At: h.ChangedAt, ID: h.Node.ID})
 }
 
 // SearchPage is a page of a search's hits and the cursor of the next, ""
@@ -45,12 +53,13 @@ type SearchPage struct {
 	Building   bool
 }
 
-// SearchDeps are what a search reads with. Walk and CountScan are
-// domain.MaxSearchWalk and MaxSearchCountScan when 0, which production
-// leaves them.
+// SearchDeps are what a search reads with; Notebooks is InNotebook's way
+// to a notebook's workspace. Walk and CountScan are domain.MaxSearchWalk
+// and MaxSearchCountScan when 0, which production leaves them.
 type SearchDeps struct {
 	Snapshots   shared.Snapshots
 	Workspaces  Workspaces
+	Notebooks   Notebooks
 	Visible     VisibleNotebooks
 	Auth        shared.Authorizer
 	Reads       SearchReads
@@ -85,16 +94,7 @@ func NewSearch(d SearchDeps) *Search {
 // after the terms' texts in contents when some term's differ (inContents);
 // the hits' ranges and the attachments' infos after it.
 func (s *Search) Execute(ctx context.Context, slug string, r SearchRequest) (SearchPage, error) {
-	below, first := domain.SearchFrom(domain.SearchTierTitle), r.Cursor == nil
-	if !first {
-		if err := shared.DecodeCursor(*r.Cursor, &below); err != nil {
-			return SearchPage{}, err
-		}
-		if !below.Valid() {
-			return SearchPage{}, shared.InvalidCursor()
-		}
-	}
-	q, err := domain.ParseSearchQuery(r.Q)
+	a, err := parsed(r)
 	if err != nil {
 		return SearchPage{}, err
 	}
@@ -128,20 +128,103 @@ func (s *Search) Execute(ctx context.Context, slug string, r SearchRequest) (Sea
 	if err != nil {
 		return SearchPage{}, err
 	}
+	return s.run(ctx, notebooks, a, limit)
+}
+
+// InNotebook returns the page of the search r of the notebook notebookID
+// alone, as an MCP call asks for it (M9 design 4.13; M9/P4 design 3.8):
+// the cursor, 400; q, 422; the limit, 422; then the notebook's workspace
+// (Notebooks.WorkspaceOf), page.search there and the notebooks the caller
+// sees in it, which must hold notebookID: no such notebook, a deleted
+// one, one of a workspace the caller is not a member of and one there it
+// does not see are all notebook.not_found, never workspace.not_found, the
+// zero id without a read; then Execute's reads, in one read-only
+// snapshot, its scope notebookID. r.NotebookID is not read.
+func (s *Search) InNotebook(ctx context.Context, notebookID uuid.UUID, r SearchRequest) (SearchPage, error) {
+	a, err := parsed(r)
+	if err != nil {
+		return SearchPage{}, err
+	}
+	limit, err := domain.SearchLimit(r.Limit)
+	if err != nil {
+		return SearchPage{}, err
+	}
+	actor, err := shared.RequireActor(ctx)
+	if err != nil {
+		return SearchPage{}, err
+	}
+	if notebookID == (uuid.UUID{}) {
+		return SearchPage{}, domain.ErrNotebookNotFound
+	}
+	workspaceID, ok, err := s.d.Notebooks.WorkspaceOf(ctx, notebookID)
+	switch {
+	case err != nil:
+		return SearchPage{}, err
+	case !ok:
+		return SearchPage{}, domain.ErrNotebookNotFound
+	}
+	grant, err := authorize(ctx, s.d.Auth, actor, domain.ActionSearch, shared.Target{WorkspaceID: workspaceID},
+		domain.ErrNotebookNotFound)
+	if err != nil {
+		return SearchPage{}, err
+	}
+	notebooks, err := s.d.Visible.VisibleIn(ctx, workspaceID, actor.UserID, grant.WorkspaceRole)
+	if err != nil {
+		return SearchPage{}, err
+	}
+	if !slices.Contains(notebooks, notebookID) {
+		return SearchPage{}, domain.ErrNotebookNotFound
+	}
+	return s.run(ctx, []uuid.UUID{notebookID}, a, limit)
+}
+
+// searchAsked is a search's request read: the position its page goes on
+// below, whether it is the first page, and its query.
+type searchAsked struct {
+	below domain.SearchCursor
+	first bool
+	q     domain.SearchQuery
+}
+
+// parsed is r's cursor, 400 when it does not decode or names no tier, and
+// its q, 422 (domain.ParseSearchQuery).
+func parsed(r SearchRequest) (searchAsked, error) {
+	a := searchAsked{below: domain.SearchFrom(domain.SearchTierTitle), first: r.Cursor == nil}
+	if !a.first {
+		if err := shared.DecodeCursor(*r.Cursor, &a.below); err != nil {
+			return searchAsked{}, err
+		}
+		if !a.below.Valid() {
+			return searchAsked{}, shared.InvalidCursor()
+		}
+	}
+	var err error
+	if a.q, err = domain.ParseSearchQuery(r.Q); err != nil {
+		return searchAsked{}, err
+	}
+	return a, nil
+}
+
+// run reads the page of the search a in notebooks: with none, an empty
+// page, counted exact on the first; else the tiers, the count, building
+// and the hits' paths in one read-only snapshot, the terms' texts in
+// contents first, then the hits' ranges and the attachments' infos.
+func (s *Search) run(ctx context.Context, notebooks []uuid.UUID, a searchAsked, limit int) (SearchPage, error) {
 	if len(notebooks) == 0 {
 		page := SearchPage{Hits: []SearchHit{}}
-		if first {
+		if a.first {
 			page.Count = &domain.SearchCount{Kind: domain.CountExact}
 		}
 		return page, nil
 	}
+	q := a.q
 	var found searchFound
-	err = s.d.Snapshots.WithinSnapshot(ctx, func(ctx context.Context) error {
+	err := s.d.Snapshots.WithinSnapshot(ctx, func(ctx context.Context) error {
 		var err error
 		if q, err = s.inContents(ctx, q); err != nil {
 			return err
 		}
-		found, err = s.read(ctx, SearchScope{Notebooks: notebooks, Query: q, Below: below}, limit, first)
+		found, err = s.read(ctx, SearchScope{Notebooks: notebooks, Query: q, Below: a.below}, limit, a.first)
 		return err
 	})
 	if err != nil {
@@ -350,7 +433,7 @@ func (s *Search) page(ctx context.Context, q domain.SearchQuery, found searchFou
 	for i, r := range found.rows {
 		line := found.lines[r.Node.ID]
 		h := SearchHit{Node: r.Node, Ancestors: make([]domain.Ancestor, len(line)), TitleHits: q.TitleHits(r.Node.Name),
-			ChangedAt: r.SortAt}
+			ChangedAt: r.SortAt, Tier: r.tier}
 		for j, a := range line {
 			h.Ancestors[j] = domain.Ancestor{ID: a.ID, Name: a.Name}
 		}
