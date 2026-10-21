@@ -177,6 +177,25 @@ func (s *Store) LinePaths(ctx context.Context, notebookID uuid.UUID, ids []uuid.
 	return out, nil
 }
 
+// ChildPageIDs is the pages not deleted of notebookID whose parent is
+// parent, the root's for uuid.UUID{}, in no order (M9/P4 design 3.9.1):
+// RootPageIDs or ChildPageIDs, each by the notebook's and parents' index.
+func (s *Store) ChildPageIDs(ctx context.Context, notebookID, parent uuid.UUID) ([]uuid.UUID, error) {
+	var (
+		ids []uuid.UUID
+		err error
+	)
+	if parent == (uuid.UUID{}) {
+		ids, err = s.queries(ctx).RootPageIDs(ctx, notebookID)
+	} else {
+		ids, err = s.queries(ctx).ChildPageIDs(ctx, gen.ChildPageIDsParams{NotebookID: notebookID, ParentID: &parent})
+	}
+	if err != nil {
+		return nil, fmt.Errorf("list the child pages of %s: %w", parent, err)
+	}
+	return ids, nil
+}
+
 // AgentsPage implements app.AgentsStore: an attachment holding the key
 // has no revision.
 func (s *Store) AgentsPage(ctx context.Context, notebookID uuid.UUID, key string) (uuid.UUID, domain.Kind, string, int, bool, error) {

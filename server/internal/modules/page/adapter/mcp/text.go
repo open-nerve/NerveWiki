@@ -42,6 +42,25 @@ func toolErr(err error, c mcpserver.Call, path string) error {
 	return err
 }
 
+// PathErr is err of a page's path as another module's tool answers it, in
+// page's tools' words (M9/P4 design 3.9.1): a path that names nothing, with
+// its hint while the answer holds it; any other error is as it is.
+func PathErr(err error) error {
+	var missing *domain.PathNotFound
+	if errors.As(err, &missing) {
+		return notFound(err, missing)
+	}
+	return err
+}
+
+// NotAPage is page.not_found for path, an attachment's where a page's is
+// asked for, quoted as it was written (M9 design 4.9: only a page has
+// backlinks; M9/P4 design 3.9.1).
+func NotAPage(path string) error {
+	return &mcpserver.ToolError{Err: domain.ErrNotFound,
+		Text: "page.not_found: " + domain.Quoted(path) + " is an attachment; a page's path ends with .md."}
+}
+
 // notFound is page.not_found at missing's path, as it was written, or at
 // the parent of the field ParentOf names, and the hint while the answer
 // holds it (a fit of one): a hint quotes another path, and two of the

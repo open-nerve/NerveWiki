@@ -86,6 +86,28 @@ func TestAPathThatNamesNothingIsWorded(t *testing.T) {
 	}
 }
 
+// Another module's tool says a page's path that names nothing in page's
+// tools' words, and an attachment's path where a page's is asked for, each
+// quoted as it was written; page.not_found stays the code, any other error
+// is as it is (M9/P4 design 3.9.1).
+func TestAnotherModulesPathIsWordedAsPagesTools(t *testing.T) {
+	err := PathErr(&domain.PathNotFound{Path: "Guide", Hint: domain.PageHint("Guide.md")})
+	if text, _ := wordsOf(err); text != `page.not_found: Nothing is at "Guide". A page's path ends with .md: "Guide.md".` ||
+		!errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("PathErr = %q, %v", text, err)
+	}
+	boom := errors.New("boom")
+	var te *mcpserver.ToolError
+	if got := PathErr(boom); errors.As(got, &te) || !errors.Is(got, boom) {
+		t.Errorf("PathErr(%v) = %#v, want it as it is", boom, got)
+	}
+	err = NotAPage("A/x\u3000y.png")
+	if text, _ := wordsOf(err); text != "page.not_found: \"A/x\u3000y.png\" is an attachment; a page's path ends with .md." ||
+		!errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("NotAPage = %q, %v", text, err)
+	}
+}
+
 // The writes' errors in their words (M9/P2 design 3.11.5): the text quotes
 // the call's own path, or the path the error is at, as it is; the
 // structure adds what the module alone knows, the version there now and

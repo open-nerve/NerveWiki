@@ -68,6 +68,17 @@ WHERE notebook_id = sqlc.arg(notebook_id) AND parent_id = sqlc.arg(parent_id) AN
 -- The array is a page of list, at most 1,000: the store plans it with its argument.
 SELECT id FROM nodes WHERE id = ANY(sqlc.arg(ids)::uuid[]) AND deleted_at IS NULL;
 
+-- name: RootPageIDs :many
+-- The root's pages not deleted (M9/P4 design 3.9.1): index's parent "/", by the notebook's and parents' index
+-- (00012), parent_id IS NULL its condition; IS NOT DISTINCT FROM is not one.
+SELECT id FROM nodes
+WHERE notebook_id = sqlc.arg(notebook_id) AND parent_id IS NULL AND kind = 'page' AND deleted_at IS NULL;
+
+-- name: ChildPageIDs :many
+-- A page's child pages not deleted (M9/P4 design 3.9.1): index's parent, by the notebook's and parents' index (00012).
+SELECT id FROM nodes
+WHERE notebook_id = sqlc.arg(notebook_id) AND parent_id = sqlc.arg(parent_id) AND kind = 'page' AND deleted_at IS NULL;
+
 -- name: AgentsPage :one
 -- The notebook's root node whose title key is name_key, TitleKey("AGENTS"), with its title now and its content's
 -- revision when it is a page, 0 for none (M9 design 4.6; M9/P1 design 3.15.1): one point lookup by the roots' unique
