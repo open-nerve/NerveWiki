@@ -1291,13 +1291,14 @@ func (p *jobTrial) inPlace(start, star jobModel, f *fixture) string {
 	return ""
 }
 
-// movegone is review B's movegone on the job of the changeset of items
-// and versions on start: of two deletions of the changeset's own tops, A's
-// before B's, B not under A nor A under B, someone moves B under A between
-// the batches, before A's: the job stops at A's batch, B alone its
-// conflict, children_added when a later batch holds B's deletion, changed
-// in L when A's holds it too; B alive, nothing named A. None when no two
-// deletions are so.
+// movegone is review B's movegone on the job of the changeset of items and
+// versions on start: of two deletions of the changeset's own tops, A's
+// before B's, A a page, B not under A nor A under B, someone moves B under
+// A between the batches, before A's: the job stops at A's batch, B alone
+// its conflict, children_added when a later batch holds B's deletion,
+// changed in L when A's holds it too; B alive, nothing named A. None when
+// no two deletions are so, or when the move is not one a write between
+// batches makes, or would meet an earlier step of A's batch first.
 func (p *jobTrial) movegone(start jobModel, items []domain.ChangesetItem, versions []domain.ChangesetVersion, counts *jobCounts) string {
 	f, c := p.load(start, items, versions)
 	w, spec := f.jobs(now(), 0, 0), f.jobSpec()
@@ -1317,7 +1318,8 @@ func (p *jobTrial) movegone(start jobModel, items []domain.ChangesetItem, versio
 	for i, ia := range tops {
 		for _, ib := range tops[i+1:] {
 			a, b := steps[ia].Node, steps[ib].Node
-			if _, held := p.holder(m, &a, p.key(m.nodes[b].name)); !held && !p.within(m, a, b) && !p.within(m, b, a) {
+			if _, held := p.holder(m, &a, p.key(m.nodes[b].name)); !held && !m.nodes[a].asset && !p.within(m, a, b) &&
+				!p.within(m, b, a) {
 				pairs = append(pairs, [2]int{ia, ib})
 			}
 		}
@@ -1336,6 +1338,21 @@ func (p *jobTrial) movegone(start jobModel, items []domain.ChangesetItem, versio
 		if _, err := w.RunBatch(f.asJob(), spec, plan, cut[0], cut[1]); err != nil {
 			return fmt.Sprintf("batch %v before the move: %v", cut, err)
 		}
+	}
+	// B's move is one a write between batches makes, in the store now:
+	// A a page not under B, as earlier batches may have put it, B's name
+	// free under A, its pages within MaxDepth there. And no step of A's
+	// batch before A's deletion goes under B's subtree or moves a node of
+	// A's line, whose own conflict the move would make first: a cycle, say
+	// (review C2-M1).
+	before := map[uuid.UUID]*domain.TreeState{}
+	for _, it := range items {
+		before[it.NodeID] = it.Before
+	}
+	if sub := storeSubtree(f, b); slices.Contains(sub, a) || !storeRoom(f, &a, storeHeight(f, b)) ||
+		storeHolds(f, &a, f.store.nodes[b].Name) ||
+		!unmet(steps[cuts[at][0]:pair[0]], stepTarget(steps, before), cuts[at][0], sub, storeLine(f, a)) {
+		return ""
 	}
 	moved := f.store.nodes[b]
 	moved.ParentID = &a
@@ -1495,12 +1512,6 @@ func (p *jobTrial) inject(kind int, start jobModel, items []domain.ChangesetItem
 		return ""
 	}
 	stop := slices.IndexFunc(cuts, func(c [2]int) bool { return c[0] <= want.step && want.step < c[1] })
-	aside := map[string]bool{}
-	for _, s := range steps {
-		if s.Kind == domain.RevertAside {
-			aside[s.Name] = true
-		}
-	}
 	for b := at; b < len(cuts); b++ {
 		was := snapshotOf(f.store)
 		_, err := w.RunBatch(f.asJob(), spec, plan, cuts[b][0], cuts[b][1])
@@ -1519,9 +1530,12 @@ func (p *jobTrial) inject(kind int, start jobModel, items []domain.ChangesetItem
 		case !was.same(snapshotOf(f.store)):
 			return fmt.Sprintf("%s: batch %v stopped, but wrote", injectName(kind), cuts[b])
 		}
-		for id, n := range f.store.nodes {
-			if aside[n.Name] {
-				return fmt.Sprintf("%s: %s named aside, %q, after the stop", injectName(kind), id, n.Name)
+		// No step aside's node left at its aside name: each one's own,
+		// as a page the changeset left may be named like one (review
+		// C2-M1).
+		for _, s := range steps {
+			if n, alive := f.store.nodes[s.Node]; s.Kind == domain.RevertAside && alive && n.Name == s.Name {
+				return fmt.Sprintf("%s: %s named aside, %q, after the stop", injectName(kind), s.Node, s.Name)
 			}
 		}
 		counts.injected[kind]++
@@ -1562,20 +1576,7 @@ func (p *jobTrial) injection(kind int, rng *rand.Rand, f *fixture, items []domai
 			written[s.Node] = true
 		}
 	}
-	// target is a later step's S* place: its parent and name.
-	target := func(k int) (*uuid.UUID, string, bool) {
-		s := steps[k]
-		switch {
-		case s.Kind == domain.RevertPlace:
-			if s.Parent == (uuid.UUID{}) {
-				return nil, s.Name, true
-			}
-			return &s.Parent, s.Name, true
-		case s.Kind == domain.RevertRestore && s.Member == 0 && before[s.Node] != nil:
-			return before[s.Node].ParentID, before[s.Node].Name, true
-		}
-		return nil, "", false
-	}
+	target := stepTarget(steps, before)
 	var cands []injected
 	switch kind {
 	case injectRename:
@@ -1642,10 +1643,12 @@ func (p *jobTrial) injection(kind int, rng *rand.Rand, f *fixture, items []domai
 			n, alive := f.store.nodes[x]
 			p, there := f.store.nodes[parent]
 			// x grown to MaxDepth where it is goes a level past it under a
-			// parent no shallower than x is, not under x.
+			// parent no shallower than x is, not under x; no step before
+			// this one moves x, the parent or a node above either, so the
+			// depths hold at the place (review C2-M1).
 			if !alive || n.Kind != domain.KindPage || !there || p.Kind != domain.KindPage || storeDepth(f, x) >= domain.MaxDepth ||
 				storeDepth(f, parent) < storeDepth(f, x) || slices.Contains(storeLine(f, parent), x) ||
-				!unmet(steps[from:k], target, from, nil, storeLine(f, x)) {
+				!unmet(steps[from:k], target, from, nil, append(storeLine(f, x), storeLine(f, parent)...)) {
 				continue
 			}
 			cands = append(cands, injected{step: k, node: x, reason: domain.ConflictTooDeep, name: s.Name})
@@ -1720,6 +1723,24 @@ func (p *jobTrial) injection(kind int, rng *rand.Rand, f *fixture, items []domai
 		f.store.nodes[parent] = n
 	}
 	return want, true
+}
+
+// stepTarget is a step's S* place, of steps and the changeset's items'
+// Before by node: a place's parent and name, or a group's first's.
+func stepTarget(steps []app.RevertStep, before map[uuid.UUID]*domain.TreeState) func(int) (*uuid.UUID, string, bool) {
+	return func(k int) (*uuid.UUID, string, bool) {
+		s := steps[k]
+		switch {
+		case s.Kind == domain.RevertPlace:
+			if s.Parent == (uuid.UUID{}) {
+				return nil, s.Name, true
+			}
+			return &s.Parent, s.Name, true
+		case s.Kind == domain.RevertRestore && s.Member == 0 && before[s.Node] != nil:
+			return before[s.Node].ParentID, before[s.Node].Name, true
+		}
+		return nil, "", false
+	}
 }
 
 // deepChain makes n pages in f's store, each under the one before, the first
