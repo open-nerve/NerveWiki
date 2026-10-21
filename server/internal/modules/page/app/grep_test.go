@@ -471,7 +471,8 @@ func (c frozenClock) Now() time.Time { return c.at }
 // first line is never judged, so a call goes on a line at least (mutant
 // 156); a soft deadline past before the first read still reads and
 // matches the first line (mutant 157); a unit's time is GrepUnitTime at
-// least, however cheap the lines before.
+// least, however cheap the lines before; a line not in NFC is judged by
+// its NFC, by the work and by the soft deadline.
 func TestGrepStopsBeforeALineItsWorkWouldPass(t *testing.T) {
 	f := newFixture()
 	f.grant(domain.ActionRead)
@@ -540,6 +541,18 @@ func TestGrepStopsBeforeALineItsWorkWouldPass(t *testing.T) {
 	}
 	if found := grepFound(got); !slices.Equal(found, []string{"W.md:1"}) || got.Walk.Stop != "deadline" {
 		t.Errorf("a unit's time at least GrepUnitTime: %q, %+v", found, got)
+	}
+	// The soft deadline judges a line not in NFC by its NFC too (reviews
+	// A1-n1, C-f-n1): the Wide page's second line is 2,010 units as its own
+	// bytes, 50 µs of GrepUnitTime, and 6,010 as its NFC, 150 µs; 100 µs
+	// before the soft deadline, the clock still, the call stops before it.
+	got, err = f.grepper(wide, func(d *app.GrepDeps) { d.Clock = frozenClock{soft.Add(-100 * time.Microsecond)} }).Execute(ctx,
+		f.eng, app.GrepRequest{Pattern: "zzz", Glob: ptr("Wide.md")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Walk.Stop != "deadline" || got.Walk.Lines != 1 || cursorOf(t, got.Next) != (domain.GrepCursor{K: "wide.md", N: 2}) {
+		t.Errorf("a line not in NFC by the soft deadline: %+v, want a stop before line 2", got)
 	}
 }
 
