@@ -138,9 +138,9 @@ func quantileOf(x []float64, p float64) float64 {
 // MaxGrepWork's shapes, lines of 80 bytes and of 4 KiB, each a call of
 // 5 × 10⁷ units, ns a unit; MaxGrepLineWork's, a line of 5 MiB cut at
 // 1.5 and 0.75 × 10⁸, a call each; GrepLineOverhead's, the calibration's
-// cells (exp/lineoh's patterns and lines, as step 1's) through calls over
-// pages of their lines, L at the median and p90 against U, the long
-// line's ns a unit.
+// cells (22 of exp/lineoh's 24 line patterns and its lines, the hits
+// left out, calibrate says why) through calls over pages of their lines,
+// L at the median and p90 against U, the long line's ns a unit.
 func BenchmarkGrepAtFullLoad(b *testing.B) {
 	secs, rounds, calib := 3, 2, 45
 	if v, err := strconv.Atoi(os.Getenv("NERVE_GREP_LOAD_SECS")); err == nil {
@@ -305,10 +305,16 @@ func globRoots(nodes []domain.Node) []*domain.GlobNode {
 
 // calibrate is GrepLineOverhead at full load through the use case: U,
 // the long line's ns a unit for each of the costly patterns, a call over
-// a page of one line of 64 KiB each; and each cell of exp/lineoh's
-// patterns over lines of 0 to 200 bytes, prose and dense, its ns a line
-// a call over a page of 16 KiB of them; L is the largest over the cells
-// of (ns a line) / (insts × U) - bytes, at the median and at p90.
+// a page of one line of 64 KiB each; and each cell of 22 of exp/lineoh's
+// 24 line patterns over lines of 0 to 200 bytes, prose and dense, its ns a
+// line a call over a page of 16 KiB of them; L is the largest over the
+// cells of (ns a line) / (insts × U) - bytes, at the median and at p90.
+// The two left out (review C-n1), the six-branch alternation of
+// class{60}Q to class{55}QZZZZZ and class{999}class{990}Q, are programs
+// of hundreds of instructions and more, whose fixed cost a line is a
+// small part of a unit (L under 0.4 in exp/lineoh); the largest L is the
+// few-instruction patterns', and the 36-branch alternation stands for the
+// largest program; class{999}class{990}Q is one of U's cells.
 func calibrate(b *testing.B, f *fixture, grepOf func(loadPages, int64, int64) *app.Grep, atLoad func([]string, func(int)),
 	rng *rand.Rand, alt string,
 ) {
