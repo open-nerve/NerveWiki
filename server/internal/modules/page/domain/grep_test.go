@@ -29,6 +29,14 @@ func fieldCode(t *testing.T, err error, field string) (string, string) {
 	return se.Fields[0].Code, se.Fields[0].Message
 }
 
+// nestedGrepPattern is seed nested n times in open and close, after prefix.
+func nestedGrepPattern(prefix, seed, open, close string, n int) string {
+	for range n {
+		seed = open + seed + close
+	}
+	return prefix + seed
+}
+
 // TestParseGrepPattern checks ParseGrepPattern's refusals and estimates
 // (M9/P4 design 3.6.1), review A's worst parses among them, each of which
 // allocates 8 MB at most: TotalAlloc is the process's, so neither the test
@@ -62,6 +70,12 @@ func TestParseGrepPattern(t *testing.T) {
 		{`[\pL0] 170 times`, strings.Repeat(`[\pL0]`, 170), false, "", 172, nil},
 		{`(?i:[\x{100}-\x{10ffff}]) 40 times`, strings.Repeat(`(?i:[\x{100}-\x{10ffff}])`, 40), false, "", 42, nil},
 		{`\pL{999} 113 times`, strings.Repeat(`\pL{999}`, 113), false, shared.FieldTooLong, 0, nil},
+		// Review A-m1's: hundreds of segments of a thousand atoms for
+		// GrepKeys to read, which it bounds.
+		{`(…(a{1000})+b…)+b 249 deep`, nestedGrepPattern("", "a{1000}", "(", ")+b", 249), false, "", 1998,
+			[]string{"aaa", "aab", "abb", "bbb"}},
+		{`(?i)(…(k{1000})+k…)+k 249 deep`, nestedGrepPattern("(?i)", "k{1000}", "(", ")+k", 249), false, "", 1998,
+			[]string{"kkk"}},
 	} {
 		var before, after runtime.MemStats
 		runtime.ReadMemStats(&before)

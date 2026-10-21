@@ -1,6 +1,8 @@
 package domain
 
 import (
+	"encoding/binary"
+	"hash/maphash"
 	"regexp/syntax"
 	"slices"
 	"strings"
@@ -19,6 +21,10 @@ const MaxGrepKeys = 32
 // maxGrepExact bounds the atoms of the exact text x{n} makes of an exact
 // x: past it, x{n} tells x's facts alone.
 const maxGrepExact = 1024
+
+// maxGrepKeyAtoms bounds the atoms of a pattern's segments GrepKeys reads
+// (review A-m1): past it, it reads no more of them, which only drops keys.
+const maxGrepKeyAtoms = 8192
 
 // A segment's atoms (M9/P4 design 3.5.2): a code point; one with foldAtom
 // set, a literal under (?i), stands for each code point of its simple
@@ -53,7 +59,20 @@ func exactFacts(atoms []rune) grepFacts {
 // they come from, each once; none for a pattern no key reads, as TODO|FIXME
 // or \d{4}, whose grep walks every page of the notebook within its bounds.
 // re is the tree before Simplify, which only expands repeats.
+//
+// What it reads is bounded, not only what it keeps (review A-m1): a
+// pattern of nested repeats can tell hundreds of segments of a thousand
+// atoms each. It reads maxGrepKeyAtoms of their atoms at most, the last
+// segment it reads cut there (its keys then those of a start of it, which
+// a match holds too), skips a segment equal to one it has read, and folds
+// each code point once.
 func GrepKeys(re *syntax.Regexp) []string {
+	keys, _ := grepKeys(re)
+	return keys
+}
+
+// grepKeys is GrepKeys' keys of re and the atoms of its segments it read.
+func grepKeys(re *syntax.Regexp) ([]string, int) {
 	f := factsOf(re)
 	segments := f.must
 	if f.isExact {
@@ -61,19 +80,58 @@ func GrepKeys(re *syntax.Regexp) []string {
 	}
 	var out []string
 	seen := map[string]bool{}
+	k := newKeyReader()
+	read := map[uint64][][]rune{}
+	seed := maphash.MakeSeed()
+	budget := maxGrepKeyAtoms
 	for _, seg := range segments {
-		for _, k := range segmentKeys(seg) {
-			if seen[k] {
+		if budget == 0 {
+			break
+		}
+		h := hashAtoms(seed, seg)
+		if slices.ContainsFunc(read[h], func(r []rune) bool { return slices.Equal(r, seg) }) {
+			continue
+		}
+		read[h] = append(read[h], seg)
+		seg = seg[:min(len(seg), budget)]
+		budget -= len(seg)
+		for _, key := range k.segmentKeys(seg) {
+			if seen[key] {
 				continue
 			}
 			if len(out) == MaxGrepKeys {
-				return out
+				return out, maxGrepKeyAtoms - budget
 			}
-			seen[k] = true
-			out = append(out, k)
+			seen[key] = true
+			out = append(out, key)
 		}
 	}
-	return out
+	return out, maxGrepKeyAtoms - budget
+}
+
+// hashAtoms is a hash of a segment's atoms, by which GrepKeys finds one it
+// has read.
+func hashAtoms(seed maphash.Seed, atoms []rune) uint64 {
+	var h maphash.Hash
+	h.SetSeed(seed)
+	var b [4]byte
+	for _, a := range atoms {
+		binary.LittleEndian.PutUint32(b[:], uint32(a))
+		_, _ = h.Write(b[:])
+	}
+	return h.Sum64()
+}
+
+// keyReader reads a pattern's segments for GrepKeys, each code point's
+// fold, orbit and boundary taken once.
+type keyReader struct {
+	folds    map[rune]string
+	orbits   map[rune][]rune
+	boundary map[rune]bool
+}
+
+func newKeyReader() *keyReader {
+	return &keyReader{folds: map[rune]string{}, orbits: map[rune][]rune{}, boundary: map[rune]bool{}}
 }
 
 // factsOf is re's facts, by the kind of its node (M9/P4 design 3.5.2's
@@ -248,10 +306,10 @@ func overlaps(t *unicode.RangeTable, lo, hi rune) bool {
 }
 
 // segmentKeys are the keys of a segment, its pieces' (M9/P4 design 3.5.3).
-func segmentKeys(seg []rune) []string {
+func (k *keyReader) segmentKeys(seg []rune) []string {
 	var out []string
 	for _, p := range pieces(seg) {
-		out = append(out, pieceKeys(p)...)
+		out = append(out, k.pieceKeys(p)...)
 	}
 	return out
 }
@@ -282,21 +340,25 @@ func pieces(seg []rune) []piece {
 // pieceKeys are the keys of a piece (M9/P4 design 3.5.3): its atoms
 // trimmed, folded one by one and then in NFC, the text the piece is in the
 // tokenizer's, and that text's lexemes.
-func pieceKeys(p piece) []string {
-	t, ok := trimPiece(p)
+func (k *keyReader) pieceKeys(p piece) []string {
+	t, ok := k.trimPiece(p)
 	if !ok {
 		return nil
 	}
-	return foldedKeys(foldAtoms(t.atoms), t.left, t.right)
+	return foldedKeys(k.foldAtoms(t.atoms), t.left, t.right)
 }
 
 // trimPiece is p without what may join the unknown text around it (M9/P4
 // design 3.5.3, steps 1 and 2); false when nothing is left.
 func trimPiece(p piece) (piece, bool) {
+	return newKeyReader().trimPiece(p)
+}
+
+func (k *keyReader) trimPiece(p piece) (piece, bool) {
 	lo, hi := 0, len(p.atoms)
 	// 1. From the first atom each code point of which has an NFC boundary
 	// before it: one that has none joins the unknown text before it.
-	for lo < hi && !startsSequence(p.atoms[lo]) {
+	for lo < hi && !k.startsSequence(p.atoms[lo]) {
 		lo++
 	}
 	if lo > 0 {
@@ -305,15 +367,15 @@ func trimPiece(p piece) (piece, bool) {
 	// 2. Not the last combining sequence, unless an edge follows it, when
 	// it may join what follows it, folded.
 	if !p.right {
-		k := hi - 1
-		for k >= lo && !startsSequence(p.atoms[k]) {
-			k--
+		last := hi - 1
+		for last >= lo && !k.startsSequence(p.atoms[last]) {
+			last--
 		}
-		if k < lo {
+		if last < lo {
 			return piece{}, false
 		}
-		if riskyTailSequence(p.atoms[k:hi]) {
-			hi = k
+		if k.riskyTailSequence(p.atoms[last:hi]) {
+			hi = last
 		}
 	}
 	p.atoms = p.atoms[lo:hi]
@@ -323,11 +385,25 @@ func trimPiece(p piece) (piece, bool) {
 // foldAtoms is the atoms each folded alone, every code point of an orbit
 // folding alike, then in NFC (M9/P4 design 3.5.3, step 3).
 func foldAtoms(atoms []rune) string {
+	return newKeyReader().foldAtoms(atoms)
+}
+
+func (k *keyReader) foldAtoms(atoms []rune) string {
 	var folded strings.Builder
 	for _, a := range atoms {
-		folded.WriteString(searchFold(string(a &^ foldAtom)))
+		folded.WriteString(k.fold(a &^ foldAtom))
 	}
 	return norm.NFC.String(folded.String())
+}
+
+// fold is searchFold of the code point r, taken once.
+func (k *keyReader) fold(r rune) string {
+	f, ok := k.folds[r]
+	if !ok {
+		f = searchFold(string(r))
+		k.folds[r] = f
+	}
+	return f
 }
 
 // foldedKeys are the lexemes of f, a piece's text in the tokenizer's, by
@@ -373,6 +449,16 @@ func foldedKeys(f string, left, right bool) []string {
 	return keys.out
 }
 
+// orbit is the code points the atom a stands for, taken once.
+func (k *keyReader) orbit(a rune) []rune {
+	o, ok := k.orbits[a]
+	if !ok {
+		o = orbit(a)
+		k.orbits[a] = o
+	}
+	return o
+}
+
 // orbit is the code points the atom a stands for.
 func orbit(a rune) []rune {
 	r := a &^ foldAtom
@@ -391,11 +477,21 @@ func boundaryBefore(r rune) bool {
 	return norm.NFC.PropertiesString(string(r)).BoundaryBefore()
 }
 
+// boundaryBefore is boundaryBefore of r, taken once.
+func (k *keyReader) boundaryBefore(r rune) bool {
+	b, ok := k.boundary[r]
+	if !ok {
+		b = boundaryBefore(r)
+		k.boundary[r] = b
+	}
+	return b
+}
+
 // startsSequence reports whether each code point the atom a stands for
 // has an NFC boundary before it: a combining sequence starts there.
-func startsSequence(a rune) bool {
-	for _, r := range orbit(a) {
-		if !boundaryBefore(r) {
+func (k *keyReader) startsSequence(a rune) bool {
+	for _, r := range k.orbit(a) {
+		if !k.boundaryBefore(r) {
 			return false
 		}
 	}
@@ -409,20 +505,20 @@ func startsSequence(a rune) bool {
 // point without an NFC boundary before it; or a code point of the orbit
 // of an atom after it folds to another text (in NFC, U+0345 alone: it folds
 // to ι, a starter that the next mark may join).
-func riskyTailSequence(s []rune) bool {
-	for _, r := range orbit(s[0]) {
+func (k *keyReader) riskyTailSequence(s []rune) bool {
+	for _, r := range k.orbit(s[0]) {
 		if riskyTail(r) {
 			return true
 		}
-		for _, x := range searchFold(string(r)) {
-			if !boundaryBefore(x) {
+		for _, x := range k.fold(r) {
+			if !k.boundaryBefore(x) {
 				return true
 			}
 		}
 	}
 	for _, a := range s[1:] {
-		for _, r := range orbit(a) {
-			if searchFold(string(r)) != string(r) {
+		for _, r := range k.orbit(a) {
+			if f, size := utf8.DecodeRuneInString(k.fold(r)); f != r || size != len(k.fold(r)) {
 				return true
 			}
 		}
