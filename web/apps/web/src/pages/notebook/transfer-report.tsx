@@ -142,8 +142,10 @@ function numberText(count: number, locale: Locale): string {
  * the trash again; whose item changed (trash_changed), nothing to add. A
  * revert undoes its undo to go back to before, then the change whole, and
  * completes a group it stopped in the middle of item by item (review
- * A-M4); trimmed, the change can no longer be undone whole; undone itself
- * (changeset_reverted), nothing to add.
+ * A-M4); trimmed, the change can no longer be undone whole; past a batch
+ * (revert_too_large), its undo would stop at the same part again, so
+ * neither (M9/P3 S3 review C-M3), its group completed item by item still;
+ * undone itself (changeset_reverted), nothing to add.
  */
 function stoppedText(job: TransferJob, left: string, t: Translate): string[] {
   const failure = job.state === "failed" ? job.report?.failure : undefined;
@@ -165,6 +167,8 @@ function stoppedText(job: TransferJob, left: string, t: Translate): string[] {
       return [];
     case "changeset_trimmed":
       return [t("transfer.revertLeftTrimmed", { left })];
+    case "revert_too_large":
+      return [t("transfer.revertLeftTrimmed", { left }), t("transfer.revertLeftGroup")];
   }
   return [t("transfer.revertLeft", { left }), t("transfer.revertLeftGroup")];
 }
