@@ -1,6 +1,7 @@
 package app_test
 
 import (
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"slices"
@@ -406,6 +407,49 @@ func TestARevertJobsSegmentPastAUnitsPagesSaysSo(t *testing.T) {
 				t.Errorf("RunBatch(the first segment, %d steps) = %v; want it past a unit's pages %v, before a parse", to, err, want)
 			}
 		})
+	}
+}
+
+// A later member of a group an earlier batch began, which the batch
+// restores and writes back, is checked as the trash holds it (M9/P3 design
+// 3.24, step 2; review C-M4, B-N2): F holds c1, c2 and c3, and a batch
+// writes c3 and deletes F. The job's first batch restores F, c1 and c2;
+// before its second, c3's content in the trash is of another hash than the
+// changeset left it at, a state no one can make (a page in the trash is
+// never written), the test's own: the second batch stops, c3 changed, and
+// writes nothing.
+func TestARevertJobsContinuationWrittenBackIsCheckedAsTheTrashHoldsIt(t *testing.T) {
+	s := newJobScene()
+	fo := s.node("F", nil, false)
+	s.node("c1", &fo, false)
+	s.node("c2", &fo, false)
+	c3 := s.node("c3", &fo, false)
+	e := s.begin()
+	e.write(c3)
+	e.del(fo)
+	f, c := s.load()
+	w, spec, plan := f.revertJob(t, c.ID, nil, now())
+	steps, _ := plan.RevertSteps()
+	if got := s.describe(steps, plan.Steps()); !slices.Equal(got, []string{"restore F", "restore c1", "restore c2", "restore c3+", "content c3"}) {
+		t.Fatalf("the steps %v; want F's group, c3's write back right after its restore", got)
+	}
+	if _, err := w.RunBatch(f.asJob(), spec, plan, 0, 3); err != nil {
+		t.Fatalf("RunBatch(F, c1, c2) = %v", err)
+	}
+	trashed := f.store.trashed[c3]
+	trashed.Content = "another content"
+	sum := sha256.Sum256([]byte(trashed.Content))
+	trashed.Hash = sum[:]
+	f.store.trashed[c3] = trashed
+	f.log.versions[domain.VersionRef{NodeID: c3, Revision: trashed.Revision}] = trashed.Content
+	was := snapshotOf(f.store)
+	_, err := w.RunBatch(f.asJob(), spec, plan, 3, 5)
+	if got := conflictsOf(err); codeOf(err) != "page.revert_conflict" || len(got) != 1 || got[0].NodeID != c3 ||
+		got[0].Reason != string(domain.ConflictChanged) || got[0].Name != "c3" {
+		t.Errorf("RunBatch(c3 restored and written back) = %v %+v; want c3 changed", err, got)
+	}
+	if !was.same(snapshotOf(f.store)) {
+		t.Error("the stopped batch wrote")
 	}
 }
 

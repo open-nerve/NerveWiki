@@ -658,9 +658,12 @@ type restoring struct {
 // continuation checks the batch's members of the groups whose first steps
 // earlier batches took, conts, one by one, as RevertBatch has it, by the
 // changeset's items of them, befores, and its versions of those the batch
-// writes back after, versions, and answers what it restores; every
-// conflict it finds, in their order, but for the members under one that
-// conflicts, which are none of their own.
+// writes back after, versions, and answers what it restores. Its
+// conflicts, in their order: first every one it finds of the members, but
+// for those under one that conflicts, which are none of their own; when
+// there are none, each page it restores and writes back after whose
+// content in the trash is not the changeset's version, changed (M9/P3
+// design 3.24, step 2: L does not see it; review B-N2).
 func (u *Unit) continuation(ctx context.Context, r RevertPart, conts []revertStep, befores map[uuid.UUID]domain.ChangesetItem,
 	versions map[uuid.UUID]domain.ChangesetVersion,
 ) (restoring, error) {
