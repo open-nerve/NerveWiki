@@ -15,14 +15,15 @@ import (
 // folder, then them) that it deletes, an import, and a background revert
 // of a renaming batch, each changeset's renames and moves are the items'
 // own: one of them alive before and after it under another name, or under
-// another parent. Each is checked by what it does too. The background
-// revert of a shape with a step aside comes in S3: S2's job refuses it.
+// another parent. Each is checked by what it does too; and a batch that
+// swaps two pages' names through a third, and its background revert,
+// whose step aside its item merges away (M9/P3 design 3.26).
 func TestTheChangesetsRenamesCountEveryItem(t *testing.T) {
 	tm := newAcmeTeam(t, "member", "")
 	nb := tm.openNotebook(t, "alice", "Eng")
 	agent := tm.agent(t, "alice", nb)
 	ids := tm.seed(t, nb, restPage{"Renamed", "r"}, restPage{"Moved", "m"}, restPage{"Folder", ""}, restPage{"Agent", "a"},
-		restPage{"Thousand", ""}, restPage{"Batched", "b"})
+		restPage{"Thousand", ""}, restPage{"Batched", "b"}, restPage{"Swap A", "a"}, restPage{"Swap B", "b"})
 	want := map[string][2]bool{}
 	newest := func(renames, moves bool) {
 		t.Helper()
@@ -69,6 +70,13 @@ func TestTheChangesetsRenamesCountEveryItem(t *testing.T) {
 		t.Fatalf("the background revert = %s, want it succeeded", j)
 	}
 	newest(true, false)
+	swap := agent.batchDone(t, opMove("Swap A.md", "T.md"), opMove("Swap B.md", "Swap A.md"), opMove("T.md", "Swap B.md"))
+	newest(true, false)
+	if j := tm.background(t, revertStart("alice", nb, *swap.ChangesetID, "")); j.State != "succeeded" ||
+		tm.placeOf(t, ids["Swap A"]) != "/Swap A" || tm.placeOf(t, ids["Swap B"]) != "/Swap B" {
+		t.Fatalf("the background revert of the swap = %s, want it succeeded, the names back", j)
+	}
+	newest(true, false)
 
 	rows := queryStrings(t, tm.pool, `SELECT c.id || ' ' || c.renames || ' ' || c.moves || ' ' ||
 			coalesce(bool_or(i.before_name <> i.after_name), false) || ' ' ||
@@ -91,7 +99,7 @@ func TestTheChangesetsRenamesCountEveryItem(t *testing.T) {
 			}
 		}
 	}
-	if checked != len(want) || len(want) != 10 || !slices.Contains(rows, *b.ChangesetID+" true false true false") {
+	if checked != len(want) || len(want) != 12 || !slices.Contains(rows, *b.ChangesetID+" true false true false") {
 		t.Errorf("%d changesets checked by what each does, of %d; the batch's row missing from %d", checked, len(want), len(rows))
 	}
 }

@@ -3,6 +3,7 @@ package app_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -31,15 +32,21 @@ func (f *fixture) jobSpec() app.JobSpec {
 }
 
 // runJob runs the plan's steps a batch of size at a time, as the job's
-// worker cuts them, and answers each batch's, up to the first error.
+// worker cuts them, each grown to the end of its segment (M9/P3 design
+// 3.23), and answers each batch's, up to the first error.
 func (f *fixture) runJob(w *app.JobWrites, spec app.JobSpec, plan app.JobPlan, size int) ([]app.BatchDone, error) {
 	var out []app.BatchDone
-	for from := 0; from < len(plan.Steps()); from += size {
-		done, err := w.RunBatch(f.asJob(), spec, plan, from, min(from+size, len(plan.Steps())))
+	steps := plan.Steps()
+	for from := 0; from < len(steps); {
+		to := min(from+size, len(steps))
+		for to < len(steps) && steps[to-1].Joined {
+			to++
+		}
+		done, err := w.RunBatch(f.asJob(), spec, plan, from, to)
 		if err != nil {
 			return out, err
 		}
-		out = append(out, done)
+		out, from = append(out, done), to
 	}
 	return out, nil
 }
@@ -860,6 +867,126 @@ func TestARevertJobsBatchPlansItsOwnNodes(t *testing.T) {
 	}
 }
 
+// A batch names a node it finds changed by its name in S*, as the job's
+// start and the web's request do (RevertConflict; M9/P3 S3 review B-I1):
+// M8's rename of P to Q, renamed again to R before the job's batch, is
+// changed, named P by the batch and by a start planned again.
+func TestARevertJobsBatchNamesAChangeAsTheStartDoes(t *testing.T) {
+	f := newFixture()
+	f.grant(domain.ActionRevert)
+	p := f.page("P", nil, 0)
+	c := f.renaming(p.ID, "Q")
+	w, spec, plan := f.revertJob(t, c.ID, nil, now())
+	n := f.store.nodes[p.ID]
+	n.Name, n.NameKey = "R", "r"
+	f.store.nodes[p.ID] = n
+	var e *shared.Error
+	if _, err := w.RunBatch(f.asJob(), spec, plan, 0, 1); !errors.As(err, &e) || len(e.Conflicts) != 1 || e.Conflicts[0].NodeID != p.ID ||
+		e.Conflicts[0].Reason != string(domain.ConflictChanged) || e.Conflicts[0].Name != "P" {
+		t.Errorf("RunBatch(P renamed R since the plan) = %v %+v; want P changed, named P", err, conflictsOf(err))
+	}
+	if _, err := w.PlanRevert(f.asJob(), spec, c.ID); !errors.As(err, &e) || len(e.Conflicts) != 1 || e.Conflicts[0].Name != "P" {
+		t.Errorf("PlanRevert(P renamed R) = %v %+v; want P changed, named P", err, conflictsOf(err))
+	}
+}
+
+// A batch names a page it writes back by its name in S* too (review B's
+// M-1): the batch reads the page's version, not its item. A changeset
+// renames X to X2, writes it, and makes a new page X at the root, so X's
+// place waits for that page's deletion: [delete the new X], [write X
+// back], [put X back], a batch each. Someone writes X2 after the first:
+// the second batch finds it changed, named X, as a start planned again
+// names it (with the new X, which the first batch deleted), not X2.
+func TestARevertJobsBatchNamesAPageItWritesBackAsTheStartDoes(t *testing.T) {
+	f := newFixture()
+	f.grant(domain.ActionRevert)
+	x := f.page("X", nil, 0)
+	f.content(x.ID, "x before", 1)
+	was := x.State()
+	n := f.store.nodes[x.ID]
+	n.Name, n.NameKey = "X2", "x2"
+	f.store.nodes[x.ID] = n
+	f.log.versions[domain.VersionRef{NodeID: x.ID, Revision: 1}] = "x before"
+	f.content(x.ID, "x by C", 2)
+	made := f.page("X", nil, 1)
+	f.content(made.ID, "new", 1)
+	c := f.log.changeset(domain.ChangesetEdit, f.alice, now(), []domain.ChangesetItem{
+		{NodeID: x.ID, Before: &was, After: new(n.State())}, {NodeID: made.ID, After: new(made.State()), Revision: 1}},
+		f.log.version(x.ID, 1, 2, "x by C"), f.log.version(made.ID, 0, 1, "new"))
+	w, spec, plan := f.revertJob(t, c.ID, nil, now())
+	steps, _ := plan.RevertSteps()
+	if len(steps) != 3 || steps[0].Kind != domain.RevertDelete || steps[1].Kind != domain.RevertContent || steps[1].Node != x.ID ||
+		plan.Steps()[0].Joined || plan.Steps()[1].Joined {
+		t.Fatalf("the steps %v, want the new X's deletion, X's write back and its place, apart", steps)
+	}
+	if _, err := w.RunBatch(f.asJob(), spec, plan, 0, 1); err != nil {
+		t.Fatalf("RunBatch(the new X's deletion) = %v", err)
+	}
+	f.content(x.ID, "x by someone", 3)
+	var e *shared.Error
+	if _, err := w.RunBatch(f.asJob(), spec, plan, 1, 2); !errors.As(err, &e) || len(e.Conflicts) != 1 || e.Conflicts[0].NodeID != x.ID ||
+		e.Conflicts[0].Reason != string(domain.ConflictChanged) || e.Conflicts[0].Name != "X" {
+		t.Errorf("RunBatch(X's write back, X2 written since) = %v %+v; want X changed, named X", err, conflictsOf(err))
+	}
+	_, err := w.PlanRevert(f.asJob(), spec, c.ID)
+	if i := slices.IndexFunc(conflictsOf(err), func(c shared.Conflict) bool { return c.NodeID == x.ID }); i < 0 ||
+		conflictsOf(err)[i].Name != "X" {
+		t.Errorf("PlanRevert(X2 written since) = %v %+v; want X changed, named X", err, conflictsOf(err))
+	}
+}
+
+// A step aside whose name someone took is title_taken under that name,
+// its holder the taker (review B-N1), when the batch writes its page back
+// too (review B2-N-3): a changeset swaps the names of A and B, and writes
+// B or not, so B steps aside to free A's name. Someone takes the aside
+// name, and the job runs as one batch: it stops, B named by the aside
+// name its holder holds, not by B's.
+func TestARevertJobsAsideNameTakenIsNamedSoWrittenOrNot(t *testing.T) {
+	for _, written := range []bool{false, true} {
+		t.Run(fmt.Sprintf("written %v", written), func(t *testing.T) {
+			f := newFixture()
+			f.grant(domain.ActionRevert)
+			a, b := f.page("A", nil, 5), f.page("B", nil, 6)
+			f.content(a.ID, "a", 1)
+			f.content(b.ID, "b before", 1)
+			sa, sb := a.State(), b.State()
+			a.Name, a.NameKey, b.Name, b.NameKey = "B", "b", "A", "a"
+			f.store.nodes[a.ID], f.store.nodes[b.ID] = a, b
+			var versions []domain.ChangesetVersion
+			if written {
+				f.log.versions[domain.VersionRef{NodeID: b.ID, Revision: 1}] = "b before"
+				f.content(b.ID, "b by C", 2)
+				versions = append(versions, f.log.version(b.ID, 1, 2, "b by C"))
+			}
+			c := f.log.changeset(domain.ChangesetEdit, f.alice, now(), []domain.ChangesetItem{
+				{NodeID: a.ID, Before: &sa, After: new(a.State())}, {NodeID: b.ID, Before: &sb, After: new(b.State())}}, versions...)
+			w, spec, plan := f.revertJob(t, c.ID, nil, now())
+			steps, _ := plan.RevertSteps()
+			i := slices.IndexFunc(steps, func(s app.RevertStep) bool { return s.Kind == domain.RevertAside })
+			if i < 0 || steps[i].Node != b.ID || written != slices.ContainsFunc(steps, func(s app.RevertStep) bool {
+				return s.Kind == domain.RevertContent && s.Node == b.ID
+			}) {
+				t.Fatalf("the steps %v; want B aside, written back %v", steps, written)
+			}
+			taker := f.page(steps[i].Name, nil, 9)
+			_, err := w.RunBatch(f.asJob(), spec, plan, 0, len(plan.Steps()))
+			if got := conflictsOf(err); len(got) != 1 || got[0].NodeID != b.ID || got[0].Reason != string(domain.ConflictTitleTaken) ||
+				got[0].Name != steps[i].Name || got[0].HolderID == nil || *got[0].HolderID != taker.ID {
+				t.Errorf("RunBatch(the job, B's aside name %q taken) = %v %+v; want B title_taken under it, by the taker", steps[i].Name, err, got)
+			}
+		})
+	}
+}
+
+// conflictsOf are err's conflicts, none when it is no problem of the API.
+func conflictsOf(err error) []shared.Conflict {
+	var e *shared.Error
+	if !errors.As(err, &e) {
+		return nil
+	}
+	return e.Conflicts
+}
+
 // A batch's write refused by the edit lock stops it as it is, page.locked
 // naming the holder; a title taken in its place, which its plan found
 // free, is a defect, no problem of the API; the restore's rows the purge
@@ -923,18 +1050,21 @@ func TestARevertJobsBatchErrors(t *testing.T) {
 	}
 }
 
-// Until S3 cuts a background revert's batches only between segments, a
-// job refuses a schedule whose steps a batch must not split (M9/P3 design
-// section 0): a step aside, a page restored then written back, a page
-// written back then deleted. Its plan is ErrRevertUnordered, its text
-// S2's refusal until S3, the job's internal failure, and nothing is
-// written; a request reverts each, its log line counting its steps, those
-// aside too (M9/P3 design 3.21.3).
-func TestARevertJobRefusesTheStepsItsBatchesWouldSplit(t *testing.T) {
+// A background revert does what S2's job refused until its batches kept
+// segments whole (M9/P3 design section 0, 3.22.2): a step aside to its
+// node's place, a page restored then written back, a page written back
+// then deleted, each a segment, joined, its batches a step each grown to
+// keep it whole, the notebook as before the changeset. A request reverts
+// each too, its log line counting its steps, those aside too (M9/P3
+// design 3.21.3).
+func TestARevertJobKeepsItsSegmentsWhole(t *testing.T) {
+	var written, deleted uuid.UUID // the pages of rows 2 and 3, by id, as each build made them last
 	for _, tt := range []struct {
-		name  string
-		build func(f *fixture) uuid.UUID
-		steps string // the request's log line's counts
+		name   string
+		build  func(f *fixture) uuid.UUID
+		joined []bool
+		done   func(f *fixture) string // what is not as before the changeset
+		steps  string                  // the request's log line's counts
 	}{
 		{"a swap of names: a step aside", func(f *fixture) uuid.UUID {
 			a, b := f.page("A", nil, 5), f.page("B", nil, 6)
@@ -943,6 +1073,16 @@ func TestARevertJobRefusesTheStepsItsBatchesWouldSplit(t *testing.T) {
 			f.store.nodes[a.ID], f.store.nodes[b.ID] = a, b
 			return f.log.changeset(domain.ChangesetEdit, f.alice, now(), []domain.ChangesetItem{
 				{NodeID: a.ID, Before: &sa, After: new(a.State())}, {NodeID: b.ID, Before: &sb, After: new(b.State())}}).ID
+		}, []bool{true, true, false}, func(f *fixture) string {
+			var names []string
+			for _, n := range f.store.nodes {
+				names = append(names, fmt.Sprintf("%s@%v", n.Name, n.SortOrder))
+			}
+			slices.Sort(names)
+			if !slices.Equal(names, []string{"A@5", "B@6"}) {
+				return fmt.Sprintf("the pages %v", names)
+			}
+			return ""
 		}, "placed=2 deleted=0 restored=0 written=0 aside=1"},
 		{"a page written, then deleted: restored, then written back", func(f *fixture) uuid.UUID {
 			p := f.page("P", nil, 0)
@@ -950,33 +1090,54 @@ func TestARevertJobRefusesTheStepsItsBatchesWouldSplit(t *testing.T) {
 			f.content(p.ID, "written", 2)
 			at := now().Add(-time.Hour)
 			f.trashed(p.ID, at, f.alice)
+			written = p.ID
 			return f.log.changeset(domain.ChangesetEdit, f.alice, at, []domain.ChangesetItem{{NodeID: p.ID, Before: new(p.State()),
 				Revision: 2}}, f.log.version(p.ID, 1, 2, "written")).ID
+		}, []bool{true, false}, func(f *fixture) string {
+			_, alive := f.store.nodes[written]
+			if c, ok := f.store.contents[written]; !alive || !ok || c.Content != "before" || c.Revision != 3 || len(f.store.trash) != 0 {
+				return fmt.Sprintf("P alive %v, its content %q at %d, the trash %v", alive, c.Content, c.Revision, f.store.trash)
+			}
+			return ""
 		}, "placed=0 deleted=0 restored=1 written=1 aside=0"},
 		{"a page restored and written, a revert's: written back, then deleted", func(f *fixture) uuid.UUID {
 			p := f.page("P", nil, 0)
 			f.content(p.ID, "restored", 1)
 			f.content(p.ID, "written", 2)
+			deleted = p.ID
 			return f.log.changeset(domain.ChangesetRevert, f.alice, now(), []domain.ChangesetItem{{NodeID: p.ID, After: new(p.State()),
 				Restored: true, Revision: 2}}, f.log.version(p.ID, 1, 2, "written")).ID
+		}, []bool{true, false}, func(f *fixture) string {
+			if c, ok := f.store.trashed[deleted]; !ok || c.Content != "restored" || len(f.store.nodes) != 0 {
+				return fmt.Sprintf("P in the trash %v, its content there %q, alive %v", ok, c.Content, f.store.nodes)
+			}
+			return ""
 		}, "placed=0 deleted=1 restored=0 written=1 aside=0"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			f := newFixture()
 			f.grant(domain.ActionRevert)
 			id := tt.build(f)
-			calls := len(f.rec.calls)
-			if _, err := f.jobs(now(), 0, 0).PlanRevert(f.asJob(), f.jobSpec(), id); !errors.Is(err, domain.ErrRevertUnordered) ||
-				!strings.Contains(err.Error(), "steps its batches would split, refused until M9/P3 S3") {
-				t.Errorf("PlanRevert = %v, want ErrRevertUnordered, told as S2's refusal until S3", err)
+			w, spec, plan := f.revertJob(t, id, nil, now())
+			var joined []bool
+			for _, s := range plan.Steps() {
+				joined = append(joined, s.Joined)
 			}
-			if slices.ContainsFunc(f.rec.calls[calls:], func(c string) bool { return strings.HasSuffix(c, " in tx") }) {
-				t.Errorf("the refused plan wrote: %v", f.rec.calls[calls:])
+			if !slices.Equal(joined, tt.joined) {
+				t.Errorf("the steps joined %v, want %v", joined, tt.joined)
 			}
-			if _, err := f.revert(id, nil, 0); err != nil {
+			if done, err := f.runJob(w, spec, plan, 1); err != nil || len(done) != 1 {
+				t.Fatalf("runJob(a step a batch) = %+v, %v; want one batch, the segment whole", done, err)
+			}
+			if bad := tt.done(f); bad != "" {
+				t.Errorf("after the job: %s", bad)
+			}
+			g := newFixture()
+			g.grant(domain.ActionRevert)
+			if _, err := g.revert(tt.build(g), nil, 0); err != nil {
 				t.Errorf("the request's revert = %v, want it done", err)
 			}
-			if logs := f.logs.String(); !strings.Contains(logs, "changeset reverted") || !strings.Contains(logs, tt.steps) {
+			if logs := g.logs.String(); !strings.Contains(logs, "changeset reverted") || !strings.Contains(logs, tt.steps) {
 				t.Errorf("the request's log %q, want %s", logs, tt.steps)
 			}
 		})

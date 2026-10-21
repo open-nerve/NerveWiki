@@ -112,8 +112,8 @@ func TestABackgroundJobWritesItsPlanInBatches(t *testing.T) {
 }
 
 // A batch the server is too busy for is tried again; one past a unit's
-// history or links is halved, at least a step, the next cut from where it
-// ends again; a step alone too large is the page module's defect.
+// bounds is halved, at least a step, the next cut from where it ends
+// again; a step alone too large is the page module's defect.
 func TestABackgroundJobsBatchIsTriedAgainOrHalved(t *testing.T) {
 	w := newBackgroundWorld()
 	w.batch, w.tree.steps, w.tree.busy = app.Batch{Nodes: 4}, steps(6, 0), 2
@@ -139,6 +139,85 @@ func TestABackgroundJobsBatchIsTriedAgainOrHalved(t *testing.T) {
 	w.batch = app.Batch{Nodes: 1}
 	if got := w.run(t, w.queued(domain.KindRevert)); got.State != domain.StateFailed || got.Report.Failure != domain.FailureInternal {
 		t.Errorf("job %s, report %+v; want failed internal", got.State, got.Report)
+	}
+}
+
+// A revert's batch grows a segment at a time, a run of steps each joined
+// to the next, the first always in it, a segment past Batch.Nodes whole;
+// one past a unit's bounds ends at the later of its first segment's end
+// and the last segment's end at most half way (M9/P3 design 3.23): a first
+// segment longer than half the batch is kept whole rather than stopped at
+// the batch's start (review B-I3), and one node's two steps the page
+// module never answers past them.
+func TestABackgroundRevertsBatchesKeepItsSegments(t *testing.T) {
+	joined, single := app.JobStep{Nodes: 1, Joined: true}, app.JobStep{Nodes: 1}
+	for _, tt := range []struct {
+		name    string
+		batch   app.Batch
+		steps   []app.JobStep
+		history *jobHistory
+		want    [][2]int
+	}{
+		{"a segment past the batch's nodes, whole", app.Batch{Nodes: 2}, []app.JobStep{joined, joined, single, single, single}, nil,
+			[][2]int{{0, 3}, {3, 5}}},
+		{"halved to the last segment's end at most half way", app.Batch{Nodes: 8},
+			[]app.JobStep{joined, joined, single, single, single, single, single, single},
+			&jobHistory{rows: map[int]int{0: 1, 1: 1, 2: 1, 3: 1, 4: 1, 5: 1, 6: 1, 7: 1}, bound: 3},
+			[][2]int{{0, 8}, {0, 4}, {0, 3}, {3, 8}, {3, 5}, {5, 8}}},
+		{"[a segment of three steps, a heavy step]: halved to the segment's end", app.Batch{Nodes: 4},
+			[]app.JobStep{joined, joined, single, single}, &jobHistory{rows: map[int]int{0: 1, 1: 1, 2: 1, 3: 10}, bound: 10},
+			[][2]int{{0, 4}, {0, 3}, {3, 4}}},
+		{"[a node's restore and write back, another's restore]: the node's alone never past", app.Batch{Nodes: 3},
+			[]app.JobStep{joined, single, single}, &jobHistory{rows: map[int]int{0: 6, 1: 6, 2: 6}, node: map[int]int{1: 0}, bound: 10},
+			[][2]int{{0, 3}, {0, 2}, {2, 3}}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			w := newBackgroundWorld()
+			w.batch, w.tree.steps, w.tree.history = tt.batch, tt.steps, tt.history
+			total := int64(plan(tt.steps).Total())
+			if got := w.run(t, w.queued(domain.KindRevert)); got.State != domain.StateSucceeded || got.Progress.Done != total {
+				t.Errorf("job %s, progress %+v, report %+v; want succeeded", got.State, got.Progress, got.Report)
+			}
+			if !slices.Equal(w.tree.written(), tt.want) {
+				t.Errorf("batches %v, want %v", w.tree.written(), tt.want)
+			}
+		})
+	}
+}
+
+// A revert's batch that ends at its first segment's end and is still past
+// a unit's bounds, of more than one step, stops the job, revert_too_large
+// (M9/P3 design 3.23): what it wrote before kept and counted, a warn line
+// of the segment's steps, its nodes and the bound it is past, ids and
+// numbers alone. A lone step past them is the page module's defect,
+// internal, as before (TestABackgroundJobsBatchIsTriedAgainOrHalved).
+func TestABackgroundRevertsSegmentPastABatchStops(t *testing.T) {
+	joined, single := app.JobStep{Nodes: 1, Joined: true}, app.JobStep{Nodes: 1}
+	// Each bound in the page module's own words (review C-M2).
+	for _, words := range []string{"past a unit's rows of history", "past a unit's pages or their bytes", "past a unit's links",
+		"past the nodes a unit restores"} {
+		t.Run(words, func(t *testing.T) {
+			w := newBackgroundWorld()
+			var l logs
+			w.logger = l.logger()
+			w.batch, w.tree.steps = app.Batch{Nodes: 1}, []app.JobStep{single, joined, joined, single, single}
+			w.tree.history = &jobHistory{rows: map[int]int{1: 5, 2: 5, 3: 5}, bound: 10, words: words}
+			j := w.queued(domain.KindRevert)
+			got := w.run(t, j)
+			if got.State != domain.StateFailed || got.Report.Failure != domain.FailureRevertTooLarge || got.Report.Counts.Pages != 1 ||
+				got.Progress != (domain.Progress{Done: 1, Total: 5}) {
+				t.Errorf("job %s, progress %+v, report %+v; want failed revert_too_large, the first step written", got.State, got.Progress,
+					got.Report)
+			}
+			if want := [][2]int{{0, 1}, {1, 4}}; !slices.Equal(w.tree.written(), want) {
+				t.Errorf("batches %v, want %v", w.tree.written(), want)
+			}
+			text := l.String()
+			if !strings.Contains(text, `level=WARN msg="revert segment past a batch" job_id=`+j.ID.String()+" from=1 to=4 nodes=3 past=\""+
+				app.ErrBatchTooLarge.Error()+": "+words+"\"") || strings.Contains(text, "Undo") {
+				t.Errorf("logs %q; want the segment's warn line, the bound it is past", text)
+			}
+		})
 	}
 }
 

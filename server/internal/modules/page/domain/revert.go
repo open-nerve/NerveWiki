@@ -157,17 +157,19 @@ const (
 // puts the node NodeID back at To, a move when Move (its parent or order
 // differ), then a rename when Rename; a step aside puts it at To for a
 // while, under the root when Move, under its parent otherwise, renamed,
-// as a place does; a delete deletes the subtree of NodeID; a restore
-// brings Group back, the trash item of the root NodeID deleted at
-// DeletedAt, each member to its state in States, the root's To; a
-// content writes the version Base of the page NodeID back on its revision
-// Current, whose content hashes to Hash.
+// as a place does; a delete deletes the subtree of NodeID, Subtree as it
+// is at the step's moment in the schedule, NodeID first (M9/P3 design
+// 3.22.1); a restore brings Group back, the trash item of the root NodeID
+// deleted at DeletedAt, each member to its state in States, the root's
+// To; a content writes the version Base of the page NodeID back on its
+// revision Current, whose content hashes to Hash.
 type RevertOp struct {
 	Kind         RevertOpKind
 	Seq          int
 	NodeID       uuid.UUID
 	To           TreeState
 	Move, Rename bool
+	Subtree      []uuid.UUID
 	Group        []TrashMember
 	States       []TreeState
 	DeletedAt    time.Time
@@ -768,12 +770,14 @@ func (p *planner) plan() RevertPlan {
 }
 
 // nameOf is the node id's name in S*, else now, else as the changeset
-// left it or found it: a node the purge took.
+// left it or found it: a node the purge took. A node of an item that has
+// a Before is there in S*, as before() puts it: a background revert's
+// batch, whose L builds no S*, names it so too (M9/P3 S3 review B-I1).
 func (p *planner) nameOf(id uuid.UUID) string {
 	if n, ok := p.star[id]; ok {
 		return n.name
 	}
-	if it, ok := p.c.items[id]; ok && it.Before != nil && it.After == nil {
+	if it, ok := p.c.items[id]; ok && it.Before != nil {
 		return it.Before.Name
 	}
 	if n, ok := p.s.Nodes[id]; ok {

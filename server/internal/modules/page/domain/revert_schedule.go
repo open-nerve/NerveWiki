@@ -2,6 +2,7 @@ package domain
 
 import (
 	"bytes"
+	"cmp"
 	"slices"
 	"uuid"
 
@@ -66,23 +67,10 @@ func parentOf(parent *uuid.UUID) uuid.UUID {
 // alive at its base's content already. A changeset of no items has no
 // tree read: its pages are alive where they are.
 func (p *planner) newRevertSim() *revertSim {
-	s := &revertSim{nodes: make(map[uuid.UUID]simNode, len(p.s.Tree)), under: map[uuid.UUID]map[string]uuid.UUID{},
-		star: map[uuid.UUID]map[string]bool{}, places: map[uuid.UUID]bool{}, restores: map[uuid.UUID]bool{},
-		writes: map[uuid.UUID]RevertOp{}, renamed: map[uuid.UUID]bool{}, movedAside: map[uuid.UUID]bool{}}
-	alive := func(n Node) {
-		s.set(n.ID, simNode{parent: n.ParentID, name: n.Name, key: n.NameKey, order: n.SortOrder, kind: n.Kind, alive: true,
-			revision: p.s.Contents[n.ID].Revision})
-	}
-	for _, n := range p.s.Tree {
-		alive(n)
-	}
-	if len(p.s.Items) == 0 {
-		for _, id := range p.c.ids {
-			if n := p.s.Nodes[id]; n.DeletedAt == nil {
-				alive(n.Node)
-			}
-		}
-	}
+	s := p.treeSim()
+	s.star, s.places, s.restores, s.writes = map[uuid.UUID]map[string]bool{}, map[uuid.UUID]bool{}, map[uuid.UUID]bool{},
+		map[uuid.UUID]RevertOp{}
+	s.renamed, s.movedAside = map[uuid.UUID]bool{}, map[uuid.UUID]bool{}
 	for _, n := range p.star {
 		at := parentOf(n.parent)
 		if s.star[at] == nil {
@@ -104,6 +92,28 @@ func (p *planner) newRevertSim() *revertSim {
 			continue
 		}
 		s.writes[v.NodeID] = RevertOp{Kind: RevertContent, NodeID: v.NodeID, Base: *v.Base, Hash: hash}
+	}
+	return s
+}
+
+// treeSim is the notebook now, as the plan read it, nothing pending: its
+// tree, each page at its content's revision; a changeset of no items has
+// no tree read, its pages alive where they are.
+func (p *planner) treeSim() *revertSim {
+	s := &revertSim{nodes: make(map[uuid.UUID]simNode, len(p.s.Tree)), under: map[uuid.UUID]map[string]uuid.UUID{}}
+	alive := func(n Node) {
+		s.set(n.ID, simNode{parent: n.ParentID, name: n.Name, key: n.NameKey, order: n.SortOrder, kind: n.Kind, alive: true,
+			revision: p.s.Contents[n.ID].Revision})
+	}
+	for _, n := range p.s.Tree {
+		alive(n)
+	}
+	if len(p.s.Items) == 0 {
+		for _, id := range p.c.ids {
+			if n := p.s.Nodes[id]; n.DeletedAt == nil {
+				alive(n.Node)
+			}
+		}
 	}
 	return s
 }
@@ -382,14 +392,32 @@ func (s *revertSim) place(kind RevertOpKind, id uuid.UUID, to TreeState) RevertO
 	return op
 }
 
-// delete is the deletion of the subtree of top, done on s.
+// delete is the deletion of the subtree of top, done on s: the step keeps
+// the subtree as it is at its moment (M9/P3 design 3.22.1), the nodes a
+// background revert's step deletes, in the order a unit reads a subtree
+// (Store.Subtree): top first, then a level at a time, each level by order
+// and id, so that the job's start names the page an edit session holds
+// that a request's unit names (review C-M1).
 func (s *revertSim) delete(top uuid.UUID) RevertOp {
-	for _, id := range s.subtree(top) {
+	sub := []uuid.UUID{top}
+	for level := sub; len(level) > 0 && len(sub) <= len(s.nodes); {
+		var next []uuid.UUID
+		for _, id := range level {
+			for _, child := range s.under[id] {
+				next = append(next, child)
+			}
+		}
+		slices.SortFunc(next, func(a, b uuid.UUID) int {
+			return cmp.Or(cmp.Compare(s.nodes[a].order, s.nodes[b].order), a.Compare(b))
+		})
+		sub, level = append(sub, next...), next
+	}
+	for _, id := range sub {
 		n := s.nodes[id]
 		n.alive = false
 		s.set(id, n)
 	}
-	return RevertOp{Kind: RevertDelete, NodeID: top}
+	return RevertOp{Kind: RevertDelete, NodeID: top, Subtree: sub}
 }
 
 // restore is the restore of the trash item of top, done on s: each member

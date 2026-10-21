@@ -125,17 +125,28 @@ func (r *backgroundRun) run(ctx, running context.Context) error {
 	return nil
 }
 
-// batch writes the batch from the plan's step from: its steps up to the
-// bounds' nodes and bytes, the first always in it, as RunBatch writes
-// them, with River's context ctx, which the heartbeat's stop does not
-// end. One the server is too busy for is tried again after a wait; one
-// past a unit's history or links, halved, at least a step. It answers
-// where the next starts.
+// batch writes the batch from the plan's step from: its segments, a run of
+// steps each Joined to the next, up to the bounds' nodes and bytes, the
+// first always in it, as RunBatch writes them (M8/P4 design 3.3; M9/P3
+// design 3.23), with River's context ctx, which the heartbeat's stop does
+// not end. One the server is too busy for is tried again after a wait. One
+// past a unit's bounds ends at the later of the first segment's end and
+// the last segment's end at most half way; one that ended at the first
+// segment's end already, of more than one step, stops the job,
+// revert_too_large, logged; a lone step past them is the page module's
+// defect. It answers where the next starts.
 func (r *backgroundRun) batch(ctx, running context.Context, spec JobSpec, plan JobPlan, from int) (int, BatchDone, error) {
 	steps := plan.Steps()
-	to, nodes, bytes := from+1, steps[from].Nodes, steps[from].Bytes
-	for ; to < len(steps) && nodes+steps[to].Nodes <= r.bounds.Nodes && bytes+steps[to].Bytes <= r.bounds.Bytes; to++ {
-		nodes, bytes = nodes+steps[to].Nodes, bytes+steps[to].Bytes
+	first := segmentEnd(steps, from)
+	to := first
+	nodes, bytes := weigh(steps[from:first])
+	for to < len(steps) {
+		next := segmentEnd(steps, to)
+		n, b := weigh(steps[to:next])
+		if nodes+n > r.bounds.Nodes || bytes+b > r.bounds.Bytes {
+			break
+		}
+		to, nodes, bytes = next, nodes+n, bytes+b
 	}
 	for {
 		var done BatchDone
@@ -147,12 +158,57 @@ func (r *backgroundRun) batch(ctx, running context.Context, spec JobSpec, plan J
 			done, err = r.b.d.Tree.RunBatch(ctx, spec, plan, from, to)
 			return err
 		})
-		if errors.Is(err, ErrBatchTooLarge) && to-from > 1 {
-			to = from + (to-from)/2
+		switch {
+		case !errors.Is(err, ErrBatchTooLarge):
+		case to > first:
+			to = halved(steps, from, first, to)
 			continue
+		case to-from > 1:
+			// nodes are the steps' nodes as Batch.Nodes counts them: a node
+			// of two steps in the segment, a step aside and its place, a
+			// restore and its write back, counts twice (review A-N1).
+			n, _ := weigh(steps[from:to])
+			r.logger.WarnContext(ctx, "revert segment past a batch", slog.String("job_id", r.job.ID.String()), slog.Int("from", from),
+				slog.Int("to", to), slog.Int("nodes", n), slog.String("past", err.Error()))
+			return to, done, fmt.Errorf("%w: %w", errSegmentTooLarge, err)
 		}
 		return to, done, err
 	}
+}
+
+// errSegmentTooLarge is a revert's segment, steps no batch splits, past a
+// unit's nodes, history, pages or links alone (M9/P3 design 3.23): the job
+// stops.
+var errSegmentTooLarge = errors.New("transfer: a revert's segment is past what a unit writes alone")
+
+// segmentEnd is where the segment of steps from at ends: past the first
+// step not Joined to the next.
+func segmentEnd(steps []JobStep, at int) int {
+	for at < len(steps)-1 && steps[at].Joined {
+		at++
+	}
+	return at + 1
+}
+
+// weigh is the nodes and bytes of steps.
+func weigh(steps []JobStep) (int, int64) {
+	nodes, bytes := 0, int64(0)
+	for _, s := range steps {
+		nodes, bytes = nodes+s.Nodes, bytes+s.Bytes
+	}
+	return nodes, bytes
+}
+
+// halved is where a batch of the steps from to to past a unit's bounds
+// ends instead (M9/P3 design 3.23): the last segment's end at most half
+// way, or the first segment's, first, whichever is later; at to's first
+// segment's end already, there is none.
+func halved(steps []JobStep, from, first, to int) int {
+	half, end := from+(to-from)/2, first
+	for at := first; at <= half && at < to; at = segmentEnd(steps, at) {
+		end = at
+	}
+	return end
 }
 
 // count adds what a batch did to the report.
@@ -177,7 +233,8 @@ func (r *backgroundRun) counted() []any {
 
 // stopped is why the job stopped at err, as its report tells it (M8/P4
 // design 3.6): the page module's sentinels each their failure, a revert's
-// conflicts and the lock it met in the report; a unit refused as an
+// conflicts and the lock it met in the report; a segment too large for a
+// batch revert_too_large (M9/P3 design 3.23); a unit refused as an
 // import's are; any other internal.
 func (r *backgroundRun) stopped(err error) error {
 	var problem *shared.Error
@@ -207,6 +264,8 @@ func (r *backgroundRun) stopped(err error) error {
 			r.report.Lock = &domain.Lock{PageID: problem.Lock.PageID, UserID: problem.Lock.UserID}
 		}
 		return failed(domain.FailurePageLocked, err)
+	case errors.Is(err, errSegmentTooLarge):
+		return failed(domain.FailureRevertTooLarge, err)
 	}
 	return unitFailure(err)
 }

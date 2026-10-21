@@ -20,7 +20,7 @@ type Report = NonNullable<TransferJob["report"]>;
 /** A count a report shows, each with a text of its own. */
 type ShownCount = keyof Report["counts"];
 
-/** The text of each failure's code (M7/P5 design 4.4, P6 design 3.8; M8/P4 design 3.9). */
+/** The text of each failure's code (M7/P5 design 4.4, P6 design 3.8; M8/P4 design 3.9; M9/P3 design 3.25). */
 const failures: Record<TransferFailure, PlainKey> = {
   interrupted: "transfer.failure.interrupted",
   timeout: "transfer.failure.timeout",
@@ -40,6 +40,7 @@ const failures: Record<TransferFailure, PlainKey> = {
   revert_conflict: "transfer.failure.revert_conflict",
   changeset_trimmed: "transfer.failure.changeset_trimmed",
   page_locked: "transfer.failure.page_locked",
+  revert_too_large: "transfer.failure.revert_too_large",
 };
 
 /**
@@ -141,8 +142,10 @@ function numberText(count: number, locale: Locale): string {
  * the trash again; whose item changed (trash_changed), nothing to add. A
  * revert undoes its undo to go back to before, then the change whole, and
  * completes a group it stopped in the middle of item by item (review
- * A-M4); trimmed, the change can no longer be undone whole; undone itself
- * (changeset_reverted), nothing to add.
+ * A-M4); trimmed, the change can no longer be undone whole; past a batch
+ * (revert_too_large), its undo would stop at the same part again, so
+ * neither (M9/P3 S3 review C-M3), its group completed item by item still;
+ * undone itself (changeset_reverted), nothing to add.
  */
 function stoppedText(job: TransferJob, left: string, t: Translate): string[] {
   const failure = job.state === "failed" ? job.report?.failure : undefined;
@@ -164,6 +167,8 @@ function stoppedText(job: TransferJob, left: string, t: Translate): string[] {
       return [];
     case "changeset_trimmed":
       return [t("transfer.revertLeftTrimmed", { left })];
+    case "revert_too_large":
+      return [t("transfer.revertLeftTrimmed", { left }), t("transfer.revertLeftGroup")];
   }
   return [t("transfer.revertLeft", { left }), t("transfer.revertLeftGroup")];
 }

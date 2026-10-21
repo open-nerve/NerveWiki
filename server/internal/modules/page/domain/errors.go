@@ -150,12 +150,14 @@ func BatchChanged() error {
 	return &e
 }
 
-// ErrJobBatchTooLarge is a background job's batch of more than one step past
-// what a unit writes besides its nodes (M8/P4 design 3.3): the rows of
-// history it restores, counted before its contents are parsed, or the
-// links they hold, once they are. No problem of the API: the job halves
-// the batch and tries again; a lone step never is.
-var ErrJobBatchTooLarge = errors.New("page: a background job's batch is past the unit's history or links")
+// ErrJobBatchTooLarge is a background job's batch of more than one node
+// past what a unit writes (M8/P4 design 3.3, M9/P3 design 3.23): the nodes
+// a revert's batch restores, the rows of history, the pages of the
+// contents, their copies or their bytes, each counted before the contents
+// are parsed, or the links they hold, once they are; the wrap of each
+// says which. No problem of the API: the job halves the batch and tries
+// again; a lone node never is.
+var ErrJobBatchTooLarge = errors.New("page: a background job's batch is past what a unit writes")
 
 // RevertConflicts is ErrRevertConflict naming the conflicts, the first
 // MaxConflicts of count.

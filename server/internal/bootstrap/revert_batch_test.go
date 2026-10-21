@@ -68,21 +68,38 @@ func (tm acmeTeam) undoneBatch(t *testing.T, nb string, do func() string) (strin
 }
 
 // undoneFrom is alice's revert of the changeset c in the notebook nb,
-// whole: one changeset more, a revert of c, and the notebook as before
-// was, each page in the trash then too, of the same bytes, and what c
-// made in the trash. The index is its rebuild, and the pages', the
-// links', the search's and the trash's invariants hold. It answers the
-// revert's changeset.
+// whole (undoneAs). It answers the revert's changeset.
 func (tm acmeTeam) undoneFrom(t *testing.T, nb string, was shapeBefore, c string) string {
 	t.Helper()
 	sets := tm.changesetsIn(t, nb)
 	r := tm.reverted(t, "alice", c)
+	tm.undoneAs(t, nb, was, c, r, sets)
+	return r
+}
+
+// undoneAs checks r, a revert of the changeset c in the notebook nb of
+// sets changesets before it, whole: one changeset more, r, a revert of c,
+// and the notebook as before was, each page in the trash then too, of the
+// same bytes, and what c made in the trash. The index is its rebuild, and
+// the pages', the links', the search's and the trash's invariants hold.
+func (tm acmeTeam) undoneAs(t *testing.T, nb string, was shapeBefore, c, r string, sets int) {
+	t.Helper()
 	if got := tm.newest(t, nb); got.ID != r || got.Kind != "revert" || got.Reverts == nil || got.Reverts.ID != c ||
 		tm.changesetsIn(t, nb) != sets+1 {
 		t.Errorf("the log's newest = %+v of %d changesets; want one more, the revert of %s", got, tm.changesetsIn(t, nb), c)
 	}
-	// The pages in the trash before are as they were; those c made are in
-	// it too, left out.
+	tm.asItWas(t, nb, was)
+	tm.checkRebuilt(t, nb)
+	checkPages(t, tm.pool)
+	checkLinks(t, tm.pool)
+	checkSearch(t, tm.pool)
+}
+
+// asItWas checks the notebook nb is as was, each page in the trash then
+// too, of the same bytes: those in the trash now that were not, the
+// changeset's own, are left out, and no node it made is alive.
+func (tm acmeTeam) asItWas(t *testing.T, nb string, was shapeBefore) {
+	t.Helper()
 	lines := func(s string, keep func(string) bool) []string {
 		return slices.DeleteFunc(strings.Split(s, "\n"), func(l string) bool { return l == "" || !keep(l) })
 	}
@@ -94,11 +111,6 @@ func (tm acmeTeam) undoneFrom(t *testing.T, nb string, was shapeBefore, c string
 		nb, was.known); n != 0 {
 		t.Errorf("%d nodes the changeset made are alive, want each in the trash", n)
 	}
-	tm.checkRebuilt(t, nb)
-	checkPages(t, tm.pool)
-	checkLinks(t, tm.pool)
-	checkSearch(t, tm.pool)
-	return r
 }
 
 // seedAttachments makes an attachment named name under each of the

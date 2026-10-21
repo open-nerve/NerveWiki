@@ -68,11 +68,13 @@ type JobPlan interface {
 	Total() int
 }
 
-// JobStep is a step of a background job: the nodes it writes and the
-// content's bytes it parses.
+// JobStep is a step of a background job: the nodes it writes, the
+// content's bytes it parses, and whether the next step is in its batch
+// too (M9/P3 design 3.22): a revert's segment, steps no batch splits.
 type JobStep struct {
-	Nodes int
-	Bytes int64
+	Nodes  int
+	Bytes  int64
+	Joined bool
 }
 
 // BatchDone is what a background job's batch did: the nodes it wrote; a
@@ -160,14 +162,16 @@ var (
 var ErrChangesetReverted = errors.New("transfer: the changeset the job writes in was reverted")
 
 // The background jobs' sentinels (M8/P4 design 3.6), each a stop but the
-// first, which halves the batch: the rows of history or links of a batch
-// past a unit's; a restore's trash item changed since it started, or past
-// the time it can be restored in; a revert's conflicts, which the page
-// module's problem it wraps names (shared.Error's Conflicts and
-// ConflictCount); its changeset trimmed by the purge; a page of its batch
-// under an edit lock, which the problem names (Lock).
+// first, which halves the batch, down to a revert's segment of steps no
+// batch splits, which it stops (M9/P3 design 3.23): the nodes, history,
+// pages or links of a batch past a unit's, the wrapped error of the page
+// module saying which; a restore's trash item changed since it
+// started, or past the time it can be restored in; a revert's conflicts,
+// which the page module's problem it wraps names (shared.Error's
+// Conflicts and ConflictCount); its changeset trimmed by the purge; a page
+// of its batch under an edit lock, which the problem names (Lock).
 var (
-	ErrBatchTooLarge    = errors.New("transfer: the batch is past a unit's history or links")
+	ErrBatchTooLarge    = errors.New("transfer: the batch is past what a unit writes")
 	ErrTrashChanged     = errors.New("transfer: the trash item changed")
 	ErrRestoreExpired   = errors.New("transfer: the trash item can no longer be restored")
 	ErrRevertConflict   = errors.New("transfer: nodes the changeset changed changed since, or cannot go back")
