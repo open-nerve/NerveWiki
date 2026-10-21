@@ -23,7 +23,8 @@ const MaxGrepKeys = 32
 const maxGrepExact = 1024
 
 // maxGrepKeyAtoms bounds the atoms of a pattern's segments GrepKeys reads
-// (review A-m1): past it, it reads no more of them, which only drops keys.
+// (review A-m1): it reads whole segments within it and none after the
+// first that would pass it, which only drops keys.
 const maxGrepKeyAtoms = 8192
 
 // A segment's atoms (M9/P4 design 3.5.2): a code point; one with foldAtom
@@ -62,10 +63,11 @@ func exactFacts(atoms []rune) grepFacts {
 //
 // What it reads is bounded, not only what it keeps (review A-m1): a
 // pattern of nested repeats can tell hundreds of segments of a thousand
-// atoms each. It reads maxGrepKeyAtoms of their atoms at most, the last
-// segment it reads cut there (its keys then those of a start of it, which
-// a match holds too), skips a segment equal to one it has read, and folds
-// each code point once.
+// atoms each. It reads maxGrepKeyAtoms of their atoms at most, whole
+// segments, stopping before the first that would pass them (a segment
+// cut inside could split a combining sequence NFC would join or reorder,
+// review A1-n2), skips a segment equal to one it has read, and folds each
+// code point once.
 func GrepKeys(re *syntax.Regexp) []string {
 	keys, _ := grepKeys(re)
 	return keys
@@ -92,8 +94,10 @@ func grepKeys(re *syntax.Regexp) ([]string, int) {
 		if slices.ContainsFunc(read[h], func(r []rune) bool { return slices.Equal(r, seg) }) {
 			continue
 		}
+		if len(seg) > budget {
+			break
+		}
 		read[h] = append(read[h], seg)
-		seg = seg[:min(len(seg), budget)]
 		budget -= len(seg)
 		for _, key := range k.segmentKeys(seg) {
 			if seen[key] {

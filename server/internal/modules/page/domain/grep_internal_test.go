@@ -32,7 +32,8 @@ func TestPastGoBounds(t *testing.T) {
 
 // TestGrepKeysReadsABoundedPart: of review A-m1's patterns, whose facts
 // hold some 250,000 atoms in some 500 segments, GrepKeys reads 8,192 at
-// most (maxGrepKeyAtoms), its keys those of the whole.
+// most (maxGrepKeyAtoms), whole segments, each once, up to the first that
+// would pass them (review A1-n2), its keys those of the whole.
 func TestGrepKeysReadsABoundedPart(t *testing.T) {
 	t.Parallel()
 	nested := func(prefix, seed, open, close string, n int) string {
@@ -53,14 +54,24 @@ func TestGrepKeysReadsABoundedPart(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		atoms := 0
+		atoms, whole := 0, 0
+		var distinct [][]rune
 		for _, seg := range factsOf(re).must {
 			atoms += len(seg)
+			if !slices.ContainsFunc(distinct, func(d []rune) bool { return slices.Equal(d, seg) }) {
+				distinct = append(distinct, seg)
+			}
+		}
+		for _, seg := range distinct {
+			if whole+len(seg) > 8192 {
+				break
+			}
+			whole += len(seg)
 		}
 		keys, read := grepKeys(re)
-		if atoms < 100_000 || read > 8192 || !slices.Equal(keys, row.keys) {
-			t.Errorf("%s…: %d atoms in its segments, %d read, keys %q; want more than 100,000, at most 8,192, %q",
-				row.pattern[:12], atoms, read, keys, row.keys)
+		if atoms < 100_000 || read != whole || !slices.Equal(keys, row.keys) {
+			t.Errorf("%s…: %d atoms in its segments, %d read, keys %q; want more than 100,000, %d (whole segments within 8,192), %q",
+				row.pattern[:12], atoms, read, keys, whole, row.keys)
 		}
 	}
 }
