@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -113,6 +114,21 @@ func TestARevertJobsStepsAreItsSegments(t *testing.T) {
 			g2 := s.node("G'", nil, false)
 			e.move(y, &g2, "y")
 		}, []string{"aside y+", "delete G' [G']+", "restore G+", "restore K+", "place x+", "place y", "restore p1", "restore p2"}},
+		{"a step aside's segment, its restore cut short of a page written after K (review A-I1)", func(s *jobScene) {
+			g := s.node("G", nil, false)
+			k := s.node("K", &g, false)
+			s.node("p1", &g, false)
+			p2 := s.node("p2", &g, false)
+			x, y := s.node("x", &k, false), s.node("y", &k, false)
+			e := s.begin()
+			e.move(x, nil, "x")
+			e.move(y, nil, "y")
+			e.write(p2)
+			e.del(g)
+			g2 := s.node("G'", nil, false)
+			e.move(y, &g2, "y")
+		}, []string{"aside y+", "delete G' [G']+", "restore G+", "restore K+", "place x+", "place y", "restore p1", "restore p2+",
+			"content p2"}},
 		{"a deletion of a folder a place empties first: its subtree then", func(s *jobScene) {
 			m := s.node("m", nil, false)
 			e := s.begin()
@@ -148,6 +164,94 @@ func TestARevertJobsStepsAreItsSegments(t *testing.T) {
 				seqs[s.Seq] = group
 			}
 		})
+	}
+}
+
+// transferJob runs a job's plan in batches as transfer cuts them (M9/P3
+// design 3.23): each grown a segment at a time within nodes, the first
+// always in; past a unit's bounds, it ends at the last segment's end at
+// most half way, or the first segment's; a first segment past them stops
+// the job. It answers the batches written and what stopped the job.
+func transferJob(f *fixture, w *app.JobWrites, spec app.JobSpec, plan app.JobPlan, nodes int) (int, error) {
+	steps := plan.Steps()
+	end := func(at int) int {
+		for at < len(steps)-1 && steps[at].Joined {
+			at++
+		}
+		return at + 1
+	}
+	weigh := func(from, to int) int {
+		n := 0
+		for _, s := range steps[from:to] {
+			n += s.Nodes
+		}
+		return n
+	}
+	batches := 0
+	for from := 0; from < len(steps); batches++ {
+		first := end(from)
+		to, n := first, weigh(from, first)
+		for to < len(steps) && n+weigh(to, end(to)) <= nodes {
+			to, n = end(to), n+weigh(to, end(to))
+		}
+		for {
+			_, err := w.RunBatch(f.asJob(), spec, plan, from, to)
+			if errors.Is(err, domain.ErrJobBatchTooLarge) && to > first {
+				half, at := from+(to-from)/2, first
+				for k := first; k <= half && k < to; k = end(k) {
+					at = k
+				}
+				to = at
+				continue
+			}
+			if err != nil {
+				return batches, fmt.Errorf("batch [%d, %d): %w", from, to, err)
+			}
+			break
+		}
+		from = to
+	}
+	return batches, nil
+}
+
+// A page of a group written back leaves a restore within a segment of
+// steps aside cut short (M9/P3 design 3.22.2, review A-I1): G holds K,
+// first, then 101 pages, the last written; x and y under K. A batch moves
+// x and y out, writes the last page, deletes G, makes a new G and moves y
+// into it. The segment restores G and K alone, as a place under K needs
+// them, the rest after it, the last page's write back right after its
+// restore: transfer's batches of 100 nodes write it, and the job ends at
+// S*. Were the written page needed, the segment would restore all 103
+// pages, past a unit's, and stop the job.
+func TestARevertJobsWrittenPageLeavesTheCut(t *testing.T) {
+	s := newJobScene()
+	g := s.node("G", nil, false)
+	k := s.node("K", &g, false)
+	var last uuid.UUID
+	for i := range 101 {
+		last = s.node(fmt.Sprintf("p%03d", i), &g, false)
+	}
+	x, y := s.node("x", &k, false), s.node("y", &k, false)
+	e := s.begin()
+	e.move(x, nil, "x")
+	e.move(y, nil, "y")
+	e.write(last)
+	e.del(g)
+	g2 := s.node("G'", nil, false)
+	e.move(y, &g2, "y")
+	f, c := s.load()
+	w, spec, plan := f.revertJob(t, c.ID, nil, now())
+	steps, _ := plan.RevertSteps()
+	got := s.describe(steps, plan.Steps())
+	want := []string{"aside y+", "delete G' [G']+", "restore G+", "restore K+", "place x+", "place y"}
+	if !slices.Equal(got[:min(len(got), len(want))], want) || !slices.Equal(got[len(got)-2:], []string{"restore p100+", "content p100"}) {
+		t.Errorf("the steps %v; want the segment %v, G's other pages after it, p100's write back last", got, want)
+	}
+	if batches, err := transferJob(f, w, spec, plan, 100); err != nil {
+		t.Fatalf("the job, after %d batches: %v", batches, err)
+	}
+	if bad := s.p.compare(s.t0, s.p.modelOf(f)); bad != "" {
+		t.Errorf("the store after the job: %s", bad)
 	}
 }
 

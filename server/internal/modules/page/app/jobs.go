@@ -362,7 +362,7 @@ func revertSteps(reverted uuid.UUID, checked revertChecked) JobPlan {
 		}
 	}
 	// A restore within a segment of steps aside brings back the members
-	// later steps of the segment need; the rest come right after it.
+	// later places of the segment need; the rest come right after it.
 	type rest struct {
 		group, from int
 		seq         int32
@@ -471,26 +471,24 @@ func asideSpans(ops []domain.RevertOp) [][2]int {
 
 // needed is how many of a group's members, in its pre-order, its restore
 // within a segment of steps aside brings back there (M9/P3 design
-// 3.22.2): up to the last one a later step of the segment needs alive, a
-// place's or a step aside's parent, a restore's parent in S*, a page
-// written back; the group's root at least.
+// 3.22.2): up to the last one a later place of the segment puts a node
+// under; the group's root at least. No other step needs one there: a
+// member's write back follows its own restore, and only a deletion waits
+// for a write back (review A-I1); a step aside's parent is alive, and a
+// restore under a member of another group is a nested trash item, which
+// L refuses (review A-N5, C-N1).
 func needed(later []domain.RevertOp, nodes []domain.GroupNode) int {
 	at := make(map[uuid.UUID]int, len(nodes))
 	for i, n := range nodes {
 		at[n.ID] = i
 	}
 	n := 1
-	need := func(id *uuid.UUID) {
-		if i, ok := at[parentOf(id)]; id != nil && ok {
-			n = max(n, i+1)
-		}
-	}
 	for _, op := range later {
-		switch op.Kind {
-		case domain.RevertPlace, domain.RevertAside, domain.RevertRestore:
-			need(op.To.ParentID)
-		case domain.RevertContent:
-			need(&op.NodeID)
+		if op.Kind != domain.RevertPlace || op.To.ParentID == nil {
+			continue
+		}
+		if i, ok := at[*op.To.ParentID]; ok {
+			n = max(n, i+1)
 		}
 	}
 	return n
