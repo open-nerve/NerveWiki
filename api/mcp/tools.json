@@ -179,7 +179,7 @@
         "properties": {
           "pattern": {
             "type": "string",
-            "description": "The Go regular expression (RE2), at most 1024 bytes, matched against each line alone."
+            "description": "The Go regular expression (RE2), at most 1024 bytes, matched against each line alone. It is read in NFC, as the lines are: write a combining mark as an escape, such as \\x{301}, to keep it apart from the character before it."
           },
           "glob": {
             "type": ["null", "string"],
@@ -635,7 +635,7 @@
           },
           "pattern": {
             "type": "string",
-            "description": "The Go regular expression (RE2), at most 1024 bytes, matched against each line alone."
+            "description": "The Go regular expression (RE2), at most 1024 bytes, matched against each line alone. It is read in NFC, as the lines are: write a combining mark as an escape, such as \\x{301}, to keep it apart from the character before it."
           },
           "glob": {
             "type": ["null", "string"],

@@ -10,7 +10,7 @@ import (
 
 // grepIn is grep's arguments (M9 design 4.13; M9/P4 design 3.10.1).
 type grepIn struct {
-	Pattern    string  `json:"pattern" jsonschema:"The Go regular expression (RE2), at most 1024 bytes, matched against each line alone."`
+	Pattern    string  `json:"pattern" jsonschema:"The Go regular expression (RE2), at most 1024 bytes, matched against each line alone. It is read in NFC, as the lines are: write a combining mark as an escape, such as \\x{301}, to keep it apart from the character before it."`
 	Glob       *string `json:"glob,omitempty" jsonschema:"Only the pages whose paths match this glob, as list's: \"Projects/**\", \"**/*.md\". Default: every page."`
 	IgnoreCase *bool   `json:"ignore_case,omitempty" jsonschema:"Match without case, as (?i). Default false."`
 	Limit      *int    `json:"limit,omitempty" jsonschema:"At most this many lines with a hit, 1 to 500. Default 100."`
