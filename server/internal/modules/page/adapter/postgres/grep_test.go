@@ -47,8 +47,10 @@ func keysOf(t *testing.T, pattern string) []string {
 // GrepCandidates is, of the notebook alone, the pages whose row holds
 // every key, those queued exact, and those whose row is partial, each cut
 // (M9/P4 design 3.4.2): a page queued in bulk is none, nor another
-// notebook's, nor one whose lexemes lack a key (mutant 152). GrepContents
-// is export's batch.
+// notebook's, holding the keys, cut, queued exact or in bulk while it
+// reads (review B-1), nor one whose lexemes lack a key (mutant 152). A
+// notebook is building by its own pages in bulk alone. GrepContents is
+// export's batch.
 func TestGrepCandidates(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
@@ -80,8 +82,18 @@ func TestGrepCandidates(t *testing.T) {
 	f.write(t, exact.ID, "needle", 2, now())
 	bulk := f.page(t, f.eng, nil, "Bulk", 4)
 	f.write(t, bulk.ID, "needle", 2, now())
+	// Ops's pages queued again, one exact and one in bulk, while eng's are
+	// read; building is the notebook's own (review B-1).
+	f.queueSearch(t, f.ops, false, other.ID)
+	f.queueSearch(t, f.ops, true, otherCut.ID)
+	if building, err := f.s.SearchBuilding(ctx, []uuid.UUID{f.eng}); err != nil || building {
+		t.Errorf("SearchBuilding(eng) with ops's page alone in bulk = %v, %v; want false", building, err)
+	}
 	f.queueSearch(t, f.eng, false, exact.ID)
 	f.queueSearch(t, f.eng, true, bulk.ID)
+	if building, err := f.s.SearchBuilding(ctx, []uuid.UUID{f.eng}); err != nil || !building {
+		t.Errorf("SearchBuilding(eng) with its page in bulk = %v, %v; want true", building, err)
+	}
 	got, err := f.s.GrepCandidates(ctx, f.eng, keysOf(t, "needle"))
 	if err != nil {
 		t.Fatal(err)

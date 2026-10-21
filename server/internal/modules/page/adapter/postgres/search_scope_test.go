@@ -53,10 +53,17 @@ import (
 // (past the bound by different CJK bigrams, a long run, a long data:
 // string), so that a read of !cut beyond eng's prefix reads their bitmaps
 // (mutant 151); and its queue keeps nodes queued in bulk and exact while
-// the reads are counted, which the queue's branch walks past. The indexes
-// of nodes and of the queue, whose B-trees ops's writes may split beside
-// eng's keys, are allowed 2 blocks too; their sizes stay within one level
-// of their trees in each phase.
+// the reads are counted, which the queue's branch walks past: 1,000 of
+// each in the first and the third phase and 1,500 in the second, so that a
+// read of them, by a range of the queue's index or by its heap, fetches
+// other blocks in the second phase (review B-1 = C-I1). The queue is
+// vacuumed after each drain, so that the held rows fill its first pages
+// whatever an autovacuum did, and its heap is some 20-30 pages, where the
+// index wins: run 39638203738 failed on CI when an autovacuum between the
+// drain and 200 held rows left a heap of 2 pages, which a sequential scan
+// read whole. The indexes of nodes and of the queue, whose B-trees ops's
+// writes may split beside eng's keys, are allowed 2 blocks too; their
+// sizes stay within one level of their trees in each phase.
 func TestHiddenNotebooksLeaveTheSearchsReadsAlone(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
@@ -78,8 +85,9 @@ func TestHiddenNotebooksLeaveTheSearchsReadsAlone(t *testing.T) {
 	cutRand, rev := rand.New(rand.NewPCG(20261021, 1)), 1
 	// hold gives every page of ops the word, in its name and its content,
 	// and the word's character in its name, its rows built again; its
-	// three pages cut or not; then queues a hundred of its pages in bulk
-	// and a hundred exact, left there while the reads are counted.
+	// three pages cut or not; then queues 1,000 of its pages in bulk and
+	// 1,000 exact (1,500 and 1,500 with cuts, the second phase), left there
+	// while the reads are counted.
 	hold := func(word string, cuts bool) {
 		t.Helper()
 		for i, id := range cut {
@@ -100,11 +108,16 @@ func TestHiddenNotebooksLeaveTheSearchsReadsAlone(t *testing.T) {
 			WHERE id = ANY($1)`, ops, word, chars[word])
 		f.queueSearch(t, f.ops, false, ops...)
 		f.drain(t)
+		f.exec(t, "VACUUM page_search_queue")
 		if n := f.count(t, `SELECT count(*) FROM page_search WHERE node_id = ANY($1) AND partial`, cut); n != map[bool]int{true: 3}[cuts] {
 			t.Fatalf("%d of ops's cut pages partial", n)
 		}
-		f.queueSearch(t, f.ops, true, ops[:100]...)
-		f.queueSearch(t, f.ops, false, ops[100:200]...)
+		held := 1000
+		if cuts {
+			held = 1500
+		}
+		f.queueSearch(t, f.ops, true, ops[:held]...)
+		f.queueSearch(t, f.ops, false, ops[held:2*held]...)
 		f.exec(t, "VACUUM ANALYZE")
 	}
 	// blocks is the blocks read's transaction fetched of each of the
