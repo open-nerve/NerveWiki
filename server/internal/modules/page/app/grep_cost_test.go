@@ -66,6 +66,25 @@ func newGuardNodes(notebook uuid.UUID) guardNodes {
 	return guardNodes{nodes: nodes}
 }
 
+// guardGlob is one of P1's worst globs: its ligature-free walk over
+// pieces of 47 "a" and "?", which no title of the guard tree holds, cut
+// to MaxGlobBytes.
+func guardGlob() string {
+	var b strings.Builder
+	b.WriteString("**/*")
+	for i := range 21 {
+		b.WriteString(strings.Repeat("a", 47))
+		if i < 20 {
+			b.WriteString("?")
+		}
+	}
+	glob := b.String() + "b*/**"
+	for len(glob) > domain.MaxGlobBytes {
+		glob = glob[:len(glob)-1]
+	}
+	return strings.TrimSuffix(glob, "/")
+}
+
 // shortContents are every page's content one short line.
 type shortContents struct{}
 
@@ -108,19 +127,7 @@ func TestGrepOverTheGlobGuardTreeTakesItsTime(t *testing.T) {
 	f := newFixture()
 	f.grant(domain.ActionRead)
 	nodes := newGuardNodes(f.eng)
-	var b strings.Builder
-	b.WriteString("**/*")
-	for i := range 21 {
-		b.WriteString(strings.Repeat("a", 47))
-		if i < 20 {
-			b.WriteString("?")
-		}
-	}
-	glob := b.String() + "b*/**"
-	for len(glob) > domain.MaxGlobBytes {
-		glob = glob[:len(glob)-1]
-	}
-	glob = strings.TrimSuffix(glob, "/")
+	glob := guardGlob()
 	g := app.NewGrep(app.GrepDeps{Notebooks: f.notebooks, Nodes: nodes, States: shortContents{}, Reads: shortContents{},
 		Auth: f.auth, Parses: app.NewGrepParses(1), Slots: app.NewGrepSlots(1), Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Clock: f.clock})

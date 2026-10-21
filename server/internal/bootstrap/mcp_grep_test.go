@@ -87,18 +87,35 @@ func (m *mcpApp) mcpWrite(t *testing.T, path, content string) string {
 	return answerOf[mcpWritten](t, m.use(t, "write", map[string]any{"path": path, "content": content})).NodeID
 }
 
+// grepWalked is a "grep walked" line of the log, as these tests read it.
+type grepWalked struct {
+	Msg        string `json:"msg"`
+	Candidates int    `json:"candidates"`
+	Pages      int    `json:"pages"`
+	Work       int64  `json:"work"`
+	Lines      int    `json:"lines"`
+	Stop       string `json:"stop"`
+}
+
+// grepWalkLines are the log's "grep walked" lines, in turn.
+func grepWalkLines(t *testing.T, logs *syncBuffer) []grepWalked {
+	t.Helper()
+	var out []grepWalked
+	for line := range strings.SplitSeq(logs.String(), "\n") {
+		var l grepWalked
+		if json.Unmarshal([]byte(line), &l) == nil && l.Msg == "grep walked" {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
 // grepWalks are the stops of the log's "grep walked" lines, in turn.
 func grepWalks(t *testing.T, logs *syncBuffer) []string {
 	t.Helper()
 	var out []string
-	for line := range strings.SplitSeq(logs.String(), "\n") {
-		var l struct {
-			Msg  string `json:"msg"`
-			Stop string `json:"stop"`
-		}
-		if json.Unmarshal([]byte(line), &l) == nil && l.Msg == "grep walked" {
-			out = append(out, l.Stop)
-		}
+	for _, l := range grepWalkLines(t, logs) {
+		out = append(out, l.Stop)
 	}
 	return out
 }
