@@ -174,3 +174,13 @@ export function errorOf(answer: McpAnswer, what: string): McpError {
   expect(answer.text, `${what}: the text is the error's message`).toEqual([error.message]);
   return error;
 }
+
+/**
+ * The line of path at line as read gives it, its line end included (M9/P4 design 4): read's second block, at offset
+ * line, limit 1. The stories check grep's line numbers with it.
+ */
+export async function lineAt(agent: McpClient, path: string, line: number): Promise<string> {
+  const answer = await agent.call("read", { path, offset: line, limit: 1 });
+  expect(answer.isError, `read ${path} at ${line}: ${answer.text.join(" ")}`).toBe(false);
+  return answer.text[1] ?? "";
+}
