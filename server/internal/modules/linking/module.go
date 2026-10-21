@@ -41,6 +41,11 @@ type (
 	AttachmentAddresses = app.AttachmentAddresses
 	// AttachmentAddress is an attachment's content's address.
 	AttachmentAddress = app.AttachmentAddress
+	// NodePaths reads a notebook's paths for MCP's backlinks and index:
+	// bootstrap adapts page.NewNodePaths to it (M9/P4 design 3.9.1).
+	NodePaths = app.NodePaths
+	// PagePath is a page's path and its content's last change.
+	PagePath = app.PagePath
 )
 
 // Deps are what the HTTP side, the index's reads, needs.
@@ -54,6 +59,9 @@ type Deps struct {
 	MaxDepth int
 	// Assets gives a property link to an attachment its content's address.
 	Assets AttachmentAddresses
+	// NodePaths finds and writes the paths MCP's tools name (M9/P4 design
+	// 3.9.1).
+	NodePaths NodePaths
 }
 
 // Module is the wired linking module's HTTP side.
@@ -67,7 +75,7 @@ func New(d Deps) *Module {
 	store := postgresadapter.New(d.Pool)
 	access := app.Access{Notebooks: d.Notebooks, Pages: d.Pages, Auth: d.Authorizer}
 	return &Module{uc: httpadapter.UseCases{
-		ListBacklinks:     app.ListBacklinks{Access: access, Reads: store, Contents: d.Contents},
+		ListBacklinks:     app.ListBacklinks{Access: access, Reads: store, Contents: d.Contents, Paths: d.NodePaths},
 		GetPageProperties: app.GetPageProperties{Access: access, Reads: store, Assets: d.Assets},
 		ListTags:          app.ListTags{Access: access, Reads: store},
 		GetTag:            app.GetTag{Access: access, Reads: store, TagKey: markdownadapter.TagKey},
