@@ -397,6 +397,13 @@ func (l *lexemes) word(s string, start, end, n int) {
 		l.add(s[start:end])
 		return
 	}
+	l.trigrams(s, start, end)
+}
+
+// trigrams adds the trigrams of the word run s[start:end]: each three
+// characters in a row. grep's keys take a run's by it too, a long one's
+// among them (M9/P4 design 3.5.3).
+func (l *lexemes) trigrams(s string, start, end int) {
 	var at [3]int // the offsets of the last three characters
 	k := 0
 	for i, r := range s[start:end] {
