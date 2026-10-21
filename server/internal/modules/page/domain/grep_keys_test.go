@@ -74,6 +74,10 @@ func TestGrepKeys(t *testing.T) {
 		{"#140 folded atom by atom", "(?i)\u1fbc\u0342\u1e22\uff21\uac00\ufb06",
 			"\u1fbc\u0342\u1e22\uff21\uac00\ufb05\u030a", []string{"\u03b1\u1fd6\u1e23", "\u1fd6\u1e23\uff41"}},
 		{"#141 \\b is no edge", `文(e)\b`, "B文eς", nil},
+		// The key reader's orbit of an atom is its fold flag's too (review
+		// C-f-m1): a plain S stands for S alone, (?i)s, stored as S with
+		// the flag, for S, s and ſ, whose tail with U+0301 is risky.
+		{"a plain atom and a folded one of one code point", `S(?i:abs)`, "Sab\u017f\u0301", []string{"sab"}},
 		// MaxGrepKeys, in the order of the segments.
 		{"more than 32 keys", `abcdefghijklmnopqrstuvwxyz0123456789`, "", []string{"abc", "bcd", "cde", "def", "efg", "fgh", "ghi",
 			"hij", "ijk", "jkl", "klm", "lmn", "mno", "nop", "opq", "pqr", "qrs", "rst", "stu", "tuv", "uvw", "vwx", "wxy",
