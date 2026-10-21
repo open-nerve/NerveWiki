@@ -73,7 +73,7 @@ test("MC6 (MCP): an agent greps by a regular expression, the lines numbered as r
   );
   const beta = await createPage(api, pat, notebook.id, "Beta", notes.id, "todo: beta\n数据库设计说明\n");
   const other = await createPage(api, pat, notebook.id, "Other");
-  await createPage(api, pat, notebook.id, "Gamma", other.id, "TODO: gamma\n");
+  const gamma = await createPage(api, pat, notebook.id, "Gamma", other.id, "TODO: gamma\n");
   const stock = await createPage(api, pat, notebook.id, "库存", null, "warehouse counts\n");
   const dates = await createPage(api, pat, notebook.id, "Dates");
   await Promise.all(
@@ -122,14 +122,20 @@ test("MC6 (MCP): an agent greps by a regular expression, the lines numbered as r
   }
   expect(dated).toEqual(Array.from({ length: 12 }, (_, i) => `Dates/D${String(i + 1).padStart(2, "0")}.md:1`));
 
-  // 5. search is REST's search of the notebook: the same nodes in the same order, the same count; one Chinese
-  // character finds titles alone.
+  // 5. search is REST's search of the notebook: the same nodes in the same order (three pages hold "todo"), the
+  // same count; one Chinese character finds titles alone.
   const byPath = new Map([
     ["Notes.md", notes.id],
     ["Notes/Alpha.md", alpha.id],
     ["Notes/Beta.md", beta.id],
+    ["Other/Gamma.md", gamma.id],
     ["库存.md", stock.id],
   ]);
+  const todo = await searchOf(agent, { q: "todo" });
+  const { data: restTodo } = await search(api, pat, workspace.slug, "todo", { notebookId: notebook.id });
+  expect(todo.results.length).toBeGreaterThanOrEqual(2);
+  expect(todo.results.map((r) => byPath.get(r.path) ?? r.path)).toEqual(restTodo?.data.map((h) => h.node.id));
+  expect(todo.count).toEqual(restTodo?.count);
   const found = await searchOf(agent, { q: "alpha" });
   const { data: rest } = await search(api, pat, workspace.slug, "alpha", { notebookId: notebook.id });
   expect(found.results.map((r) => byPath.get(r.path) ?? r.path)).toEqual(rest?.data.map((h) => h.node.id));
