@@ -164,6 +164,9 @@ func (r *backgroundRun) batch(ctx, running context.Context, spec JobSpec, plan J
 			to = halved(steps, from, first, to)
 			continue
 		case to-from > 1:
+			// nodes are the steps' nodes as Batch.Nodes counts them: a node
+			// of two steps in the segment, a step aside and its place, a
+			// restore and its write back, counts twice (review A-N1).
 			n, _ := weigh(steps[from:to])
 			r.logger.WarnContext(ctx, "revert segment past a batch", slog.String("job_id", r.job.ID.String()), slog.Int("from", from),
 				slog.Int("to", to), slog.Int("nodes", n), slog.String("past", err.Error()))
