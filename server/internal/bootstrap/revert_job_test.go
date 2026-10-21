@@ -191,8 +191,9 @@ func TestTheBackgroundRevertStopsAtAWriteBetweenItsBatches(t *testing.T) {
 	// In batches of two, [put O back, delete the new Plan], [write E back,
 	// put Old back], then the cycle: the web writes E and renames Old as the
 	// first waits. The second's L finds both changed, each its own batch's
-	// node (review N-N1); E keeps the web's content, Old the web's name, the
-	// first batch's work stays, no node is aside (review B-M3, C-M8).
+	// node (review N-N1), named as in S* (review B-I1); E keeps the web's
+	// content, Old the web's name, the first batch's work stays, no node is
+	// aside (review B-M3, C-M8).
 	t.Run("changed between two batches", func(t *testing.T) {
 		tm := newAcmeTeamWired(t, "member", "", nil, transfer.Batch{Nodes: 2})
 		nb := tm.openNotebook(t, "alice", "Eng")
@@ -211,13 +212,18 @@ func TestTheBackgroundRevertStopsAtAWriteBetweenItsBatches(t *testing.T) {
 			t.Fatalf("the web's write = %d %s, its rename = %d %s; want both done", a.status, a.body, b.status, b.body)
 		}
 		got := tm.endedBackground(t, "alice", j.ID)
-		reasons := map[string]string{}
+		reasons, names := map[string]string{}, map[string]string{}
 		for _, x := range got.Conflicts {
-			reasons[x.NodeID] = x.Reason
+			reasons[x.NodeID], names[x.NodeID] = x.Reason, x.Name
 		}
 		if got.State != "failed" || got.failure() != "revert_conflict" || got.ConflictCount != 2 || reasons[ids["E"]] != "changed" ||
 			reasons[ids["Plan"]] != "changed" || got.counts()["put_back"] != 1 || got.counts()["deleted"] != 1 {
 			t.Fatalf("the revert = %s; want it stopped at its second batch, E and Old changed, its first batch's two writes kept", got)
+		}
+		// Each named as in S*, as the job's start would (review B-I1): Old,
+		// renamed Older by the web, is Plan.
+		if names[ids["E"]] != "E" || names[ids["Plan"]] != "Plan" {
+			t.Errorf("the conflicts named %q and %q, want E and Plan", names[ids["E"]], names[ids["Plan"]])
 		}
 		if content := tm.content(t, "alice", ids["E"]).Content; content != "e by the web" || tm.placeOf(t, ids["Plan"]) != "/Older" ||
 			tm.placeOf(t, ids["O"]) != "/O" || !tm.trashedNow(t, made) {

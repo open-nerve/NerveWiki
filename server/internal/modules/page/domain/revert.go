@@ -770,12 +770,14 @@ func (p *planner) plan() RevertPlan {
 }
 
 // nameOf is the node id's name in S*, else now, else as the changeset
-// left it or found it: a node the purge took.
+// left it or found it: a node the purge took. A node of an item that has
+// a Before is there in S*, as before() puts it: a background revert's
+// batch, whose L builds no S*, names it so too (M9/P3 S3 review B-I1).
 func (p *planner) nameOf(id uuid.UUID) string {
 	if n, ok := p.star[id]; ok {
 		return n.name
 	}
-	if it, ok := p.c.items[id]; ok && it.Before != nil && it.After == nil {
+	if it, ok := p.c.items[id]; ok && it.Before != nil {
 		return it.Before.Name
 	}
 	if n, ok := p.s.Nodes[id]; ok {

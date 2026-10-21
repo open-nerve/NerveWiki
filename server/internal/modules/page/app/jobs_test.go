@@ -867,6 +867,38 @@ func TestARevertJobsBatchPlansItsOwnNodes(t *testing.T) {
 	}
 }
 
+// A batch names a node it finds changed by its name in S*, as the job's
+// start and the web's request do (RevertConflict; M9/P3 S3 review B-I1):
+// M8's rename of P to Q, renamed again to R before the job's batch, is
+// changed, named P by the batch and by a start planned again.
+func TestARevertJobsBatchNamesAChangeAsTheStartDoes(t *testing.T) {
+	f := newFixture()
+	f.grant(domain.ActionRevert)
+	p := f.page("P", nil, 0)
+	c := f.renaming(p.ID, "Q")
+	w, spec, plan := f.revertJob(t, c.ID, nil, now())
+	n := f.store.nodes[p.ID]
+	n.Name, n.NameKey = "R", "r"
+	f.store.nodes[p.ID] = n
+	var e *shared.Error
+	if _, err := w.RunBatch(f.asJob(), spec, plan, 0, 1); !errors.As(err, &e) || len(e.Conflicts) != 1 || e.Conflicts[0].NodeID != p.ID ||
+		e.Conflicts[0].Reason != string(domain.ConflictChanged) || e.Conflicts[0].Name != "P" {
+		t.Errorf("RunBatch(P renamed R since the plan) = %v %+v; want P changed, named P", err, conflictsOf(err))
+	}
+	if _, err := w.PlanRevert(f.asJob(), spec, c.ID); !errors.As(err, &e) || len(e.Conflicts) != 1 || e.Conflicts[0].Name != "P" {
+		t.Errorf("PlanRevert(P renamed R) = %v %+v; want P changed, named P", err, conflictsOf(err))
+	}
+}
+
+// conflictsOf are err's conflicts, none when it is no problem of the API.
+func conflictsOf(err error) []shared.Conflict {
+	var e *shared.Error
+	if !errors.As(err, &e) {
+		return nil
+	}
+	return e.Conflicts
+}
+
 // A batch's write refused by the edit lock stops it as it is, page.locked
 // naming the holder; a title taken in its place, which its plan found
 // free, is a defect, no problem of the API; the restore's rows the purge
