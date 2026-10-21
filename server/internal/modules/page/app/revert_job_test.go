@@ -43,6 +43,13 @@ func (s *jobScene) node(label string, parent *uuid.UUID, asset bool) uuid.UUID {
 	return id
 }
 
+// order puts the node id at order among its siblings.
+func (s *jobScene) order(id uuid.UUID, order float64) {
+	n := s.m.nodes[id]
+	n.order = order
+	s.m.nodes[id] = n
+}
+
 // begin starts the batch: the notebook so far is T0.
 func (s *jobScene) begin() *jobEdit {
 	s.t0 = s.m.clone()
@@ -135,6 +142,15 @@ func TestARevertJobsStepsAreItsSegments(t *testing.T) {
 			n := s.node("N", nil, false)
 			e.move(m, &n, "m")
 		}, []string{"place m", "delete N [N]"}},
+		{"a deletion's subtree a level at a time, each level by order, then id (review C-M1)", func(s *jobScene) {
+			s.begin()
+			n := s.node("N", nil, false)
+			a := s.node("a", &n, false)
+			s.node("x", &a, false)
+			b := s.node("b", &n, false)
+			s.node("y", &b, false)
+			s.order(b, -1)
+		}, []string{"delete N [N b a x y]"}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			s := newJobScene()

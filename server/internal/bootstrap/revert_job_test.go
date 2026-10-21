@@ -496,3 +496,29 @@ func TestTheBackgroundRevertOfALargeFolderHoldsItsGroup(t *testing.T) {
 		return batch(t, m, opEdit("F.md", "f", "f by the batch"), opDeleteAll("F.md"))
 	})
 }
+
+// A revert's job, as it starts, names the page an edit session holds that
+// its request names (M9/P3 design 3.22.1, review C-M1): one changeset
+// makes F/a/x and F/b, and bob holds x and b. The revert deletes F's
+// subtree, read a level at a time, each level by order and id, as a unit
+// reads it: the web's request and the job's start both answer page.locked
+// naming b, the first held in that order, x a level below it though made
+// before it.
+func TestTheRevertsJobStartNamesTheHeldPageItsRequestDoes(t *testing.T) {
+	tm := newAcmeTeam(t, "member", "")
+	nb := tm.openNotebook(t, "alice", "Eng")
+	b := tm.agent(t, "alice", nb).batchDone(t, opWrite("F/a/x.md", "x"), opWrite("F/b.md", "b"))
+	x := queryStrings(t, tm.pool, "SELECT id::text FROM nodes WHERE notebook_id = $1 AND name = 'x'", nb)[0]
+	held := queryStrings(t, tm.pool, "SELECT id::text FROM nodes WHERE notebook_id = $1 AND name = 'b'", nb)[0]
+	if x > held {
+		t.Fatalf("x %s after b %s by id, want it before: the order by id would name b too", x, held)
+	}
+	tm.openSession(t, "bob", x)
+	tm.openSession(t, "bob", held)
+	for _, c := range []step{changesetRevert("alice", *b.ChangesetID), revertStart("alice", nb, *b.ChangesetID, "")} {
+		status, body := ask(t, tm.contract, c.method, tm.base+c.path, tm.tokens["alice"], c.body)
+		if status != http.StatusConflict || !strings.Contains(body, `"page.locked"`) || !strings.Contains(body, `"page_id":"`+held+`"`) {
+			t.Errorf("%s %s = %d %s; want page.locked naming b (%s), not x (%s)", c.method, c.path, status, body, held, x)
+		}
+	}
+}

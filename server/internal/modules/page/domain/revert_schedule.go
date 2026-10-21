@@ -2,6 +2,7 @@ package domain
 
 import (
 	"bytes"
+	"cmp"
 	"slices"
 	"uuid"
 
@@ -392,11 +393,25 @@ func (s *revertSim) place(kind RevertOpKind, id uuid.UUID, to TreeState) RevertO
 }
 
 // delete is the deletion of the subtree of top, done on s: the step keeps
-// the subtree as it is at its moment, top first, the rest by id (M9/P3
-// design 3.22.1), the nodes a background revert's step deletes.
+// the subtree as it is at its moment (M9/P3 design 3.22.1), the nodes a
+// background revert's step deletes, in the order a unit reads a subtree
+// (Store.Subtree): top first, then a level at a time, each level by order
+// and id, so that the job's start names the page an edit session holds
+// that a request's unit names (review C-M1).
 func (s *revertSim) delete(top uuid.UUID) RevertOp {
-	sub := s.subtree(top)
-	slices.SortFunc(sub[1:], uuid.UUID.Compare)
+	sub := []uuid.UUID{top}
+	for level := sub; len(level) > 0 && len(sub) <= len(s.nodes); {
+		var next []uuid.UUID
+		for _, id := range level {
+			for _, child := range s.under[id] {
+				next = append(next, child)
+			}
+		}
+		slices.SortFunc(next, func(a, b uuid.UUID) int {
+			return cmp.Or(cmp.Compare(s.nodes[a].order, s.nodes[b].order), a.Compare(b))
+		})
+		sub, level = append(sub, next...), next
+	}
 	for _, id := range sub {
 		n := s.nodes[id]
 		n.alive = false

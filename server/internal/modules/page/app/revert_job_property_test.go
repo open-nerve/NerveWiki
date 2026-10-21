@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -1185,14 +1186,15 @@ func (p *jobTrial) place(m jobModel, id uuid.UUID, to domain.TreeState) string {
 }
 
 // delete deletes the subtree of top on m, a trash item: top alive, the
-// subtree the step keeps.
+// subtree the step keeps, in the order a unit reads it, a level at a time,
+// each level by order and id (review C-M1).
 func (p *jobTrial) delete(m jobModel, top uuid.UUID, recorded []uuid.UUID) string {
 	if !m.nodes[top].alive {
 		return "a deletion of a node not alive"
 	}
 	sub := p.subtree(m, top)
-	if len(recorded) == 0 || recorded[0] != top || !sameNodes(recorded, sub) {
-		return fmt.Sprintf("a deletion keeping the subtree %v, its moment's %v", recorded, sub)
+	if want := p.levelOrder(m, sub); !slices.Equal(recorded, want) {
+		return fmt.Sprintf("a deletion keeping the subtree %v, its moment's %v", recorded, want)
 	}
 	members := map[uuid.UUID]domain.TreeState{}
 	for _, id := range sub {
@@ -1202,6 +1204,20 @@ func (p *jobTrial) delete(m jobModel, top uuid.UUID, recorded []uuid.UUID) strin
 	}
 	m.trash[top] = members
 	return ""
+}
+
+// levelOrder is sub, a subtree of m root first, as a unit reads it: the
+// root, then a level at a time, each level by order and id.
+func (p *jobTrial) levelOrder(m jobModel, sub []uuid.UUID) []uuid.UUID {
+	depth := map[uuid.UUID]int{sub[0]: 0}
+	for _, id := range sub[1:] {
+		depth[id] = depth[*m.nodes[id].parent] + 1
+	}
+	out := slices.Clone(sub)
+	slices.SortStableFunc(out, func(a, b uuid.UUID) int {
+		return cmp.Or(cmp.Compare(depth[a], depth[b]), cmp.Compare(m.nodes[a].order, m.nodes[b].order), a.Compare(b))
+	})
+	return out
 }
 
 // restore brings back the member of the group on m: in its trash item,
@@ -1335,14 +1351,6 @@ func (p *jobTrial) movegone(start jobModel, items []domain.ChangesetItem, versio
 		counts.goneSame++
 	}
 	return ""
-}
-
-// sameNodes reports whether a and b hold the same ids, in any order.
-func sameNodes(a, b []uuid.UUID) bool {
-	a, b = slices.Clone(a), slices.Clone(b)
-	slices.SortFunc(a, uuid.UUID.Compare)
-	slices.SortFunc(b, uuid.UUID.Compare)
-	return slices.Equal(a, b)
 }
 
 // parentOf is the id of parent, the zero id for the root.
