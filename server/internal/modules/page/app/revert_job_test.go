@@ -51,6 +51,14 @@ func (s *jobScene) order(id uuid.UUID, order float64) {
 	s.m.nodes[id] = n
 }
 
+// content gives the page id content, its revision's.
+func (s *jobScene) content(id uuid.UUID, content string) {
+	n := s.m.nodes[id]
+	n.content = content
+	s.m.nodes[id] = n
+	s.p.version(id, n.revision, content)
+}
+
 // begin starts the batch: the notebook so far is T0.
 func (s *jobScene) begin() *jobEdit {
 	s.t0 = s.m.clone()
@@ -375,22 +383,43 @@ func TestARevertJobsBatchRestoresAtMostAUnitsNodes(t *testing.T) {
 }
 
 // A batch says which of a unit's bounds it is past (M9/P3 design 3.23,
-// review A-M2): a segment that restores G, its pages and K, the counter-
-// example's shape of no links and no history, is within a unit's 100
-// pages at 98 pages, and past them at 99, before a parse.
+// review A-M2), by the sizes its plan measured, before it reads a content
+// (review A1-I1, B's I-1): a segment that restores G, its pages and K, the
+// counterexample's shape of no links and no history, is within a unit's
+// 100 pages at 98 pages, and past them at 99; at 3 pages of 3 MiB, the
+// first written by the batch, within them, and past a unit's 8 MiB by its
+// write back's base, 3 MiB more. A segment past them reads no content in
+// the trash and no version.
 func TestARevertJobsSegmentPastAUnitsPagesSaysSo(t *testing.T) {
-	for _, n := range []int{98, 99} {
-		t.Run(fmt.Sprint(n, " pages"), func(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		pages   int
+		size    int  // a page's bytes, 0 for the scene's own
+		written bool // the batch writes the first page before it deletes G
+		past    bool
+	}{
+		{"98 pages", 98, 0, false, false},
+		{"99 pages", 99, 0, false, true},
+		{"3 pages of 3 MiB, the first written back", 3, 3 << 20, true, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
 			s := newJobScene()
 			g := s.node("G", nil, false)
-			for i := range n {
-				s.node(fmt.Sprintf("p%03d", i), &g, false)
+			var ps []uuid.UUID
+			for i := range tt.pages {
+				ps = append(ps, s.node(fmt.Sprintf("p%03d", i), &g, false))
+				if tt.size > 0 {
+					s.content(ps[i], strings.Repeat("a", tt.size))
+				}
 			}
 			k := s.node("K", &g, false)
 			x, y := s.node("x", &k, false), s.node("y", &k, false)
 			e := s.begin()
 			e.move(x, nil, "x")
 			e.move(y, nil, "y")
+			if tt.written {
+				e.write(ps[0])
+			}
 			e.del(g)
 			g2 := s.node("G'", nil, false)
 			e.move(y, &g2, "y")
@@ -403,8 +432,12 @@ func TestARevertJobsSegmentPastAUnitsPagesSaysSo(t *testing.T) {
 			f.rec.calls = nil
 			_, err := w.RunBatch(f.asJob(), spec, plan, 0, to)
 			past := errors.Is(err, domain.ErrJobBatchTooLarge) && strings.Contains(err.Error(), "past a unit's pages or their bytes")
-			if want := n == 99; past != want || !want && err != nil || want && f.called("Facts") {
-				t.Errorf("RunBatch(the first segment, %d steps) = %v; want it past a unit's pages %v, before a parse", to, err, want)
+			read := slices.ContainsFunc(f.rec.calls, func(c string) bool {
+				return c == "TrashContents" || strings.HasPrefix(c, "VersionContents") || strings.HasPrefix(c, "ChangesetVersionsOf")
+			})
+			if past != tt.past || !tt.past && err != nil || tt.past && (read || f.called("Facts")) {
+				t.Errorf("RunBatch(the first segment, %d steps) = %v, after %v; want it past a unit's pages %v, before a content is read",
+					to, err, f.rec.calls, tt.past)
 			}
 		})
 	}

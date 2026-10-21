@@ -540,9 +540,11 @@ func pageJoins(steps []revertStep) [][2]int {
 // RunBatch writes the plan's steps from to to (not included) in a unit
 // of spec, merged into the job's changeset (M8/P4 design 3.3): before it,
 // a revert's nodes it restores are counted, past MaxUnitNodes for steps
-// of more than one node ErrJobBatchTooLarge, and the rows of history they
-// restore, past MaxUnitHistory; the contents they write read, past the
-// unit's pages, copies or bytes for more than one page, then parsed,
+// of more than one node ErrJobBatchTooLarge, and the pages it restores and
+// writes back by the plan's sizes, past the unit's pages, copies or bytes
+// for more than one page; the rows of history they restore, past
+// MaxUnitHistory; the contents they write read, past the unit's pages,
+// copies or bytes as they are, then parsed,
 // largest first, server_busy when the waits run out, past the unit's
 // links; then the unit, which checks each step again under the lock
 // (Unit.RestorePart, Unit.RevertBatch). A node's steps are never past the
@@ -558,7 +560,7 @@ func (w *JobWrites) RunBatch(ctx context.Context, spec JobSpec, plan JobPlan, fr
 	if plan.restore != nil {
 		return w.restoreBatch(ctx, spec, plan.restore, from, to)
 	}
-	done, err := w.revertBatch(ctx, spec, plan.revert, from, to)
+	done, err := w.revertBatch(ctx, spec, plan.revert, plan.steps[from:to], from, to)
 	if errors.Is(err, domain.ErrTrashChanged) {
 		return BatchDone{}, domain.ErrChangesetTrimmed
 	}
@@ -636,12 +638,12 @@ func (w *JobWrites) withinHistory(ctx context.Context, nodes int, deleted map[ti
 	return nil
 }
 
-// revertBatch writes the plan's steps from to to. A group the batch
-// begins is read at the time its root is deleted at now, which its unit
-// plans it at: deleted again since the plan, its pages' contents and
-// history are there (M8/P4A review A-M1); a group earlier batches began,
-// at the time they restored it at.
-func (w *JobWrites) revertBatch(ctx context.Context, spec JobSpec, p *revertPlan, from, to int) (BatchDone, error) {
+// revertBatch writes the plan's steps from to to, sizes their sizes. A
+// group the batch begins is read at the time its root is deleted at now,
+// which its unit plans it at: deleted again since the plan, its pages'
+// contents and history are there (M8/P4A review A-M1); a group earlier
+// batches began, at the time they restored it at.
+func (w *JobWrites) revertBatch(ctx context.Context, spec JobSpec, p *revertPlan, sizes []domain.JobStep, from, to int) (BatchDone, error) {
 	steps := p.steps[from:to]
 	begun, err := w.begun(ctx, p, steps)
 	if err != nil {
@@ -677,6 +679,9 @@ func (w *JobWrites) revertBatch(ctx context.Context, spec JobSpec, p *revertPlan
 	}
 	if len(nodes) > 1 && restoring > domain.MaxUnitNodes {
 		return BatchDone{}, errPastNodes
+	}
+	if err := withinSizes(p, steps, sizes); err != nil {
+		return BatchDone{}, err
 	}
 	if err := w.withinHistory(ctx, len(nodes), deleted); err != nil {
 		return BatchDone{}, err
@@ -738,6 +743,29 @@ func (w *JobWrites) begun(ctx context.Context, p *revertPlan, steps []revertStep
 		}
 	}
 	return out, nil
+}
+
+// withinSizes checks a revert's batch reads at most a unit's pages, copies
+// and bytes by the sizes its plan measured, before it reads a content
+// (review A1-I1, B's I-1), as a request's revert does (withinBounds): the
+// pages it restores and writes back, a content each, a page restored and
+// written back two, each of the size its step has (JobStep.Bytes: a
+// member's in the trash, a write back's base); a lone page's never past
+// them. Else errPastPages. A first segment is in its batch whole, past
+// Batch.Bytes, and a cut restore may hold thousands of pages: read, they
+// would all be in memory to be refused. withinPages checks the contents
+// once read, as they are then.
+func withinSizes(p *revertPlan, steps []revertStep, sizes []domain.JobStep) error {
+	pages, copies, bytes := map[uuid.UUID]bool{}, 0, int64(0)
+	for i, s := range steps {
+		if s.kind == domain.RevertContent || s.kind == domain.RevertRestore && !p.groups[s.group].nodes[s.member].Asset {
+			pages[s.node], copies, bytes = true, copies+1, bytes+sizes[i].Bytes
+		}
+	}
+	if domain.UnitTooLarge(len(pages), copies, int(bytes), 0) {
+		return errPastPages
+	}
+	return nil
 }
 
 // withinPages checks the contents a revert's batch reads, by page and
