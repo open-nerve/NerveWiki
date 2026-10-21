@@ -92,7 +92,9 @@ func randomCut(r *rand.Rand) string {
 // down to 00045, a notebook's pages are written as the program before
 // wrote them: 2,000 of random contents, 3,000 that no cut reaches, and,
 // built, a page each condition alone picks (240 KiB of random CJK, partial
-// by the bound alone; 65 ASCII letters; "data:" and 60 characters; 22 ﬃ),
+// by the bound alone; 65 ASCII letters; "data:" and 60 characters; 22 ﬃ;
+// condition 4's sub-cases, "data:" and 20 ﬃ and a run long by each of
+// the eleven alone),
 // the threshold's two (74,001 and 74,000 bytes of prose, the first queued,
 // the second not, which pins the SQL's number to BoundFreeContentBytes), a
 // page queued exact before, which stays exact, a cut page in the trash and
@@ -152,6 +154,17 @@ func TestTheMigrationQueuesEveryPartialPage(t *testing.T) {
 		"a long data: string": add("![](data:" + strings.Repeat("Q/", 30) + ")"),
 		"22 ﬃ":                add(strings.Repeat(string(rune(0xFB03)), 22)),
 		"74,001 bytes":        add(prose(domain.BoundFreeContentBytes + 1)),
+	}
+	// Condition 4's sub-cases, each the page's alone (review B-2): "data:"
+	// and 20 ﬃ, a URL of 65 bytes folded; and for each of the eleven, a
+	// run long only by it, three of 21 ASCII letters each followed by it,
+	// so that no run of 22 is without it.
+	fourths := map[string]uuid.UUID{"data: and 20 ﬃ": add("x data:" + strings.Repeat(string(rune(0xFB03)), 20) + ")")}
+	for _, c := range []rune{0xDF, 0x17F, 0x1E9E, 0x212A, 0xFB00, 0xFB01, 0xFB02, 0xFB03, 0xFB04, 0xFB05, 0xFB06} {
+		fourths[fmt.Sprintf("a run long by U+%04X", c)] = add(strings.Repeat(strings.Repeat("a", 21)+string(c), 3))
+	}
+	for what, id := range fourths {
+		built[what] = id
 	}
 	under := add(prose(domain.BoundFreeContentBytes))
 	exact := add(strings.Repeat("e", 70))
@@ -236,6 +249,15 @@ func TestTheMigrationQueuesEveryPartialPage(t *testing.T) {
 	}
 	if picked := filtered(contentOf[built["the bound alone"]]); picked != [4]bool{true, false, false, false} {
 		t.Errorf("the 240 KiB of CJK meet the conditions %v, want the bound's alone", picked)
+	}
+	for what, id := range fourths {
+		c := contentOf[id]
+		data := what == "data: and 20 ﬃ"
+		if picked := filtered(c); picked != [4]bool{false, false, false, true} || partialFold.MatchString(c) == data ||
+			partialData.MatchString(c) != data {
+			t.Errorf("the page of %s meets the conditions %v (a run of 22 %v, data: %v), want the fourth's %s alone", what, picked,
+				partialFold.MatchString(c), partialData.MatchString(c), map[bool]string{true: "data:", false: "run"}[data])
+		}
 	}
 	for what, id := range map[string]uuid.UUID{"74,000 bytes": under, "a cut page in the trash": gone, "an attachment": asset} {
 		if _, ok := queue[id]; ok {
