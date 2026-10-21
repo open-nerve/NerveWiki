@@ -152,6 +152,8 @@ func notCounted() map[string]string {
 		"TaskWouldGo":         "toggle_task's offset",
 		"ParseGlob":           "glob's pattern",
 		"CheckListLimit":      "list's limit",
+		"invalidPattern":      "grep's pattern (ParseGrepPattern)",
+		"CheckGrepLimit":      "grep's limit",
 		"CheckWindow":         "read's window",
 		"columnOutOfRange":    "read's column",
 		"ParseSearchQuery":    "search's query",
