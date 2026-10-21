@@ -498,11 +498,30 @@ func TestGrepStopsBeforeALineItsWorkWouldPass(t *testing.T) {
 			t.Errorf("%s: %q, %+v", row.name, found, got)
 		}
 	}
+	// A line not in NFC, judged by the bytes it is matched in (review
+	// C-I2): "x", then 100 U+1D160, 400 bytes and 1,200 in NFC; zzz, 5
+	// instructions; MaxWork the first line's work and the second's as its
+	// own bytes would judge it, (1 + 2) × 5 + (400 + 2) × 5 = 2,025. The
+	// second line's NFC, (1,200 + 2) × 5 = 6,010, does not fit: the call
+	// stops before it, its work within MaxWork. The page is queued exact,
+	// a candidate whatever its keys.
+	wide := newFakeGrep(f.store)
+	wideID := f.page("Wide", nil, 1).ID
+	f.content(wideID, "x\n"+strings.Repeat("\U0001D160", 100)+"\n", 1)
+	wide.exact[wideID] = true
+	got, err := f.grepper(wide, func(d *app.GrepDeps) { d.MaxWork = 2025 }).Execute(f.asAlice(), f.eng,
+		app.GrepRequest{Pattern: "zzz", Glob: ptr("Wide.md")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Walk.Work > 2025 || got.Walk.Stop != "work" || cursorOf(t, got.Next) != (domain.GrepCursor{K: "wide.md", N: 2}) {
+		t.Errorf("a line not in NFC: %+v, want a stop at line 2 within 2,025 units", got)
+	}
 	deadline := time.Now().Add(time.Hour)
 	ctx, cancel := context.WithDeadline(f.asAlice(), deadline)
 	defer cancel()
 	// Past the soft deadline before the first read: the first line still.
-	got, err := f.grepper(reads, func(d *app.GrepDeps) { d.Clock = frozenClock{deadline} }).Execute(ctx, f.eng,
+	got, err = f.grepper(reads, func(d *app.GrepDeps) { d.Clock = frozenClock{deadline} }).Execute(ctx, f.eng,
 		app.GrepRequest{Pattern: "needle"})
 	if err != nil {
 		t.Fatal(err)

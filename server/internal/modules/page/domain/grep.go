@@ -303,7 +303,12 @@ type GrepMatch struct {
 // within cut bytes of its NFC. A match ending at the cut is no hit: a $ or
 // \b there may not hold in the whole line.
 func MatchGrepLine(re *regexp.Regexp, text string, column, cut int) GrepMatch {
-	g := NewGrepNFC(text, cut)
+	return NewGrepNFC(text, cut).Match(re, text, column)
+}
+
+// Match is re's match of g, the NFC within its cut of the line text
+// (GrepLines'), at column, as MatchGrepLine's.
+func (g GrepNFC) Match(re *regexp.Regexp, text string, column int) GrepMatch {
 	m := GrepMatch{Bytes: len(g.Text)}
 	loc := re.FindStringIndex(g.Text)
 	switch {

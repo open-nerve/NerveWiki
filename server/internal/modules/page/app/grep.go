@@ -510,8 +510,15 @@ func (w *grepWalker) checkPage(t tree, p grepPage, content string) error {
 			w.matched += now.Sub(w.lineStart)
 		}
 		w.lineStart = now
+		// The line as it is matched: its NFC within the cut. The line is
+		// judged by those bytes, the ones its work then counts, so that
+		// the work counted is never more than the work judged: NFC can
+		// make a line three times longer (U+1D160), and judged by its own
+		// bytes a line could pass MaxWork by two thirds of a line's bound
+		// (review C-I2).
+		g := domain.NewGrepNFC(text, w.cut)
 		if w.lines > 0 {
-			cost := domain.GrepWork(min(len(text), w.cut), w.pattern.Insts)
+			cost := domain.GrepWork(len(g.Text), w.pattern.Insts)
 			unit := domain.GrepUnitTime
 			if w.work > 0 {
 				unit = max(unit, w.matched/time.Duration(w.work))
@@ -525,7 +532,7 @@ func (w *grepWalker) checkPage(t tree, p grepPage, content string) error {
 				return false
 			}
 		}
-		m := domain.MatchGrepLine(w.re, text, column, w.cut)
+		m := g.Match(w.re, text, column)
 		w.work += domain.GrepWork(m.Bytes, w.pattern.Insts)
 		w.lines++
 		if m.Hit == nil && !m.Partial {
