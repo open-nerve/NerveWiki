@@ -119,6 +119,41 @@ type Reads interface {
 	Aliases(ctx context.Context, notebookID uuid.UUID, keys []string) ([]Alias, error)
 }
 
+// IndexReads are what index reads of the link index (M9/P4 design 3.9.3),
+// on the pool, each in one statement.
+type IndexReads interface {
+	// IndexPages is the pages of notebookID the index holds, each with
+	// the start of its type (IndexTypeChars characters); with typeIs, only
+	// those whose type is that string.
+	IndexPages(ctx context.Context, notebookID uuid.UUID, typeIs *string) ([]IndexedPage, error)
+	// IndexItems is the types, summaries and first tags of the pages ids.
+	IndexItems(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]IndexFacts, error)
+	// InboundCounts is how many other pages link to each of ids, at most
+	// most; a page none links to is not among them.
+	InboundCounts(ctx context.Context, ids []uuid.UUID, most int) (map[uuid.UUID]int, error)
+	// TagPages is as GetTag reads it.
+	TagPages(ctx context.Context, notebookID uuid.UUID, key string) ([]uuid.UUID, error)
+}
+
+// IndexedPage is a page the index holds and the start of its type, the
+// first property whose key is "type" but for ASCII case when its value is
+// a string; Typed false for none.
+type IndexedPage struct {
+	ID        uuid.UUID
+	TypeStart string
+	Typed     bool
+}
+
+// IndexFacts is what index shows of a page's properties and tags: its type
+// and its summary, each the first of its key but for ASCII case when its
+// value is a string, nil for none, their first 512 characters; its first
+// tags by key, one more than domain.MaxIndexTags at most, each its first
+// 512 characters.
+type IndexFacts struct {
+	Type, Summary *string
+	Tags          []string
+}
+
 // NodePaths is what MCP's backlinks and index read of a notebook's paths,
 // on the pool: the page module's, which bootstrap wires (M9/P4 design
 // 3.9.1). It decides nothing: the use cases decided the notebook.

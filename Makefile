@@ -245,6 +245,9 @@ test-go-costs: ## 不带竞态检测的分配、耗时预算与界线的守卫�
 	cd server && go test -count=1 -run '^TestTheCostsAreAboutTheSize$$' ./internal/platform/markdown
 	cd server && go test -count=1 -run '^(TestALinkWrittenManyTimesResolvesOnce|TestDistinctPathsToPagesOfOneTitleResolveInTimeAsLongAsThey)$$' ./internal/modules/linking/app
 	cd server && go test -count=1 -run '^TestTheLinktextsOfManyPagesOfOneTitleAreCheap$$' ./internal/modules/linking/domain
+	@# index 的守卫单独一行、带 -v：10 万页（类型取键最贵的形状）与 2,000 页各 1,000 个属性时 IndexPages、一页 100 项的 InboundCounts
+	@# 在无统计、ANALYZE 之后与通用计划下的中位数，与 ListIndex 一次调用的用时，时限本机的三倍（M9/P4 设计 6.1，审查 C-I3）
+	cd server && go test -count=1 -v -run '^TestIndexOfAHundredThousandPagesTakesItsTime$$' ./internal/modules/linking/adapter/postgres
 	cd server && go test -count=1 -run '^(TestSubtreeReadsWithoutStatisticsInTimeAsLongAsIt|TestSubtreeOfAFolderOfMostNodesReadsInTimeAsLongAsIt|TestListTrashReadsInTimeAsLongAsAPage|TestTrashLinesReadInTimeAsLongAsAPage|TestRestoreNodesTakesItsTimeAtAnyStatistics|TestTrashHistoryCountsInTimeAtAnyStatistics|TestTheLogReadsInTimeAsLongAsAPage|TestTheRevertsArrayReadsInTimeAtTheUnitsBound)$$' ./internal/modules/page/adapter/postgres
 	@# 搜索的守卫单独一行、带 -v：通过时也打出各个读的中位数，CI 的日志里看得到，下次重新测量有数据（M8/P5A 审查 C 的 M-2）
 	cd server && go test -count=1 -v -run '^TestTheSearchReadsInTimeAtAnyStatistics$$' ./internal/modules/page/adapter/postgres

@@ -341,6 +341,8 @@ func TestConstraintAndIndexNames(t *testing.T) {
 		"page_properties_pkey iu",
 		"page_properties_pkey p",
 		"page_properties_position_check c",
+		"page_properties_summary_idx iw",
+		"page_properties_type_idx iw",
 		"page_revisions_byte_size_check c",
 		"page_revisions_changeset_id_fkey f c",
 		"page_revisions_changeset_id_node_id_key iu",

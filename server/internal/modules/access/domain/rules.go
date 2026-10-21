@@ -124,6 +124,9 @@ func rules() map[shared.Action]Rule {
 		// Where a page made for a link would go (M6/P6 design 2): the half
 		// of a write, its writers'.
 		"link_landing.read": {Level: LevelNotebook, Notebook: writers()},
+		// The index of a notebook's pages over MCP (M9 design 4.9; M9/P4
+		// design 3.9.3): whoever reads the notebook.
+		"index.list": {Level: LevelNotebook, Notebook: readers()},
 
 		// A notebook's attachments (M7/P2 design 3.5–3.7): its writers
 		// upload them, any role reads them; a rename, a move and a deletion

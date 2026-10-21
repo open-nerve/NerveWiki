@@ -126,6 +126,7 @@ sql:
       - migrations/sql/00025_linking_page_links_aliases.sql
       - migrations/sql/00026_linking_backlinks_index.sql
       - migrations/sql/00028_linking_page_links_resolved_asset.sql
+      - migrations/sql/00047_linking_page_properties_keys.sql
     queries: internal/modules/linking/adapter/postgres/queries
     gen:
       go:
