@@ -935,6 +935,49 @@ func TestARevertJobsBatchNamesAPageItWritesBackAsTheStartDoes(t *testing.T) {
 	}
 }
 
+// A step aside whose name someone took is title_taken under that name,
+// its holder the taker (review B-N1), when the batch writes its page back
+// too (review B2-N-3): a changeset swaps the names of A and B, and writes
+// B or not, so B steps aside to free A's name. Someone takes the aside
+// name, and the job runs as one batch: it stops, B named by the aside
+// name its holder holds, not by B's.
+func TestARevertJobsAsideNameTakenIsNamedSoWrittenOrNot(t *testing.T) {
+	for _, written := range []bool{false, true} {
+		t.Run(fmt.Sprintf("written %v", written), func(t *testing.T) {
+			f := newFixture()
+			f.grant(domain.ActionRevert)
+			a, b := f.page("A", nil, 5), f.page("B", nil, 6)
+			f.content(a.ID, "a", 1)
+			f.content(b.ID, "b before", 1)
+			sa, sb := a.State(), b.State()
+			a.Name, a.NameKey, b.Name, b.NameKey = "B", "b", "A", "a"
+			f.store.nodes[a.ID], f.store.nodes[b.ID] = a, b
+			var versions []domain.ChangesetVersion
+			if written {
+				f.log.versions[domain.VersionRef{NodeID: b.ID, Revision: 1}] = "b before"
+				f.content(b.ID, "b by C", 2)
+				versions = append(versions, f.log.version(b.ID, 1, 2, "b by C"))
+			}
+			c := f.log.changeset(domain.ChangesetEdit, f.alice, now(), []domain.ChangesetItem{
+				{NodeID: a.ID, Before: &sa, After: new(a.State())}, {NodeID: b.ID, Before: &sb, After: new(b.State())}}, versions...)
+			w, spec, plan := f.revertJob(t, c.ID, nil, now())
+			steps, _ := plan.RevertSteps()
+			i := slices.IndexFunc(steps, func(s app.RevertStep) bool { return s.Kind == domain.RevertAside })
+			if i < 0 || steps[i].Node != b.ID || written != slices.ContainsFunc(steps, func(s app.RevertStep) bool {
+				return s.Kind == domain.RevertContent && s.Node == b.ID
+			}) {
+				t.Fatalf("the steps %v; want B aside, written back %v", steps, written)
+			}
+			taker := f.page(steps[i].Name, nil, 9)
+			_, err := w.RunBatch(f.asJob(), spec, plan, 0, len(plan.Steps()))
+			if got := conflictsOf(err); len(got) != 1 || got[0].NodeID != b.ID || got[0].Reason != string(domain.ConflictTitleTaken) ||
+				got[0].Name != steps[i].Name || got[0].HolderID == nil || *got[0].HolderID != taker.ID {
+				t.Errorf("RunBatch(the job, B's aside name %q taken) = %v %+v; want B title_taken under it, by the taker", steps[i].Name, err, got)
+			}
+		})
+	}
+}
+
 // conflictsOf are err's conflicts, none when it is no problem of the API.
 func conflictsOf(err error) []shared.Conflict {
 	var e *shared.Error

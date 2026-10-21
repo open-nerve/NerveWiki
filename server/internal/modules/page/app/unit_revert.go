@@ -550,16 +550,22 @@ func (u *Unit) RevertBatch(ctx context.Context, r RevertPart) (BatchDone, error)
 // its step's name when the changeset's item of it has one: the batch
 // reads the page's version, not its item, so L names it as it is now,
 // where the job's start and a start planned again name it as in S*
-// (review B's M-1). Its order is by reason and node, so it holds.
+// (review B's M-1). Only a conflict that names the page by its own name:
+// a step aside's title_taken names the aside name its holder holds, and
+// keeps it (review B-N1, B2-N-3). Its order is by reason and node, so it
+// holds.
 func starNamed(conflicts []domain.RevertConflict, steps []revertStep) []domain.RevertConflict {
-	names := map[uuid.UUID]string{}
+	names, aside := map[uuid.UUID]string{}, map[uuid.UUID]string{}
 	for _, s := range steps {
-		if s.kind == domain.RevertContent && s.name != "" {
+		switch {
+		case s.kind == domain.RevertContent && s.name != "":
 			names[s.node] = s.name
+		case s.kind == domain.RevertAside:
+			aside[s.node] = s.name
 		}
 	}
 	for i, c := range conflicts {
-		if name, ok := names[c.NodeID]; ok {
+		if name, ok := names[c.NodeID]; ok && (c.Reason != domain.ConflictTitleTaken || aside[c.NodeID] != c.Name) {
 			conflicts[i].Name = name
 		}
 	}
