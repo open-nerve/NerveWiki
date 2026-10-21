@@ -90,6 +90,7 @@ func (m *mcpApp) mcpWrite(t *testing.T, path, content string) string {
 // grepWalked is a "grep walked" line of the log, as these tests read it.
 type grepWalked struct {
 	Msg        string `json:"msg"`
+	Keys       int    `json:"keys"`
 	Candidates int    `json:"candidates"`
 	Pages      int    `json:"pages"`
 	Work       int64  `json:"work"`
@@ -121,8 +122,11 @@ func grepWalks(t *testing.T, logs *syncBuffer) []string {
 }
 
 // TestTheMCPGrepFindsWhatItsKeysFind: grep of each kind of pattern, a
-// literal, (?i), CJK, a whole word and one of no keys, finds the pages MCP
-// wrote once the job has built their rows (M9/P4 design 6.1); a page
+// literal, (?i), CJK, a whole word (" go ", whose key is the word, review
+// C-m1) and one of no keys, finds the pages MCP wrote once the job has
+// built their rows (M9/P4 design 6.1), each call's "grep walked" line
+// telling keys for the keyed patterns and none, nor candidates read, for
+// the others, so that a pattern that loses its keys shows; a page
 // queued exact, the job not run, is a candidate and found; a page a batch
 // wrote, queued in bulk, is not found by a keyed grep, the answer building,
 // until the job has built it; a grep of no keys walks it at once, not
@@ -136,8 +140,9 @@ func TestTheMCPGrepFindsWhatItsKeysFind(t *testing.T) {
 		r.mcpWrite(t, path, content)
 	}
 	drainSearch(t, r.pool)
-	finds := func(pattern string, want ...string) {
+	finds := func(pattern string, keyed bool, want ...string) {
 		t.Helper()
+		before := len(grepWalkLines(t, r.logs))
 		pages := r.grepThrough(t, map[string]any{"pattern": pattern})
 		got := hitsOf(pages)
 		slices.Sort(got)
@@ -145,14 +150,18 @@ func TestTheMCPGrepFindsWhatItsKeysFind(t *testing.T) {
 		if !slices.Equal(got, want) || len(pages) != 1 || pages[0].Building || pages[0].Incomplete {
 			t.Errorf("grep %q = %+v, want %q, not building", pattern, pages, want)
 		}
+		walks := grepWalkLines(t, r.logs)[before:]
+		if len(walks) != 1 || (walks[0].Keys > 0) != keyed || (walks[0].Candidates >= 0) != keyed {
+			t.Errorf("grep %q walked %+v, want one walk, keyed %v", pattern, walks, keyed)
+		}
 	}
-	finds("needle", "Literal.md:1")
-	finds("(?i)needle", "Literal.md:1", "Folded.md:1")
-	finds("数据库", "数据.md:1")
-	finds(`\bgo\b`, "Word.md:1")
-	finds(`\d{4}-\d{2}-\d{2}`, "Dates.md:2")
+	finds("needle", true, "Literal.md:1")
+	finds("(?i)needle", true, "Literal.md:1", "Folded.md:1")
+	finds("数据库", true, "数据.md:1")
+	finds(" go ", true, "Word.md:1")
+	finds(`\d{4}-\d{2}-\d{2}`, false, "Dates.md:2")
 	r.mcpWrite(t, "Fresh.md", "a fresh needle\n")
-	finds("needle", "Literal.md:1", "Fresh.md:1")
+	finds("needle", true, "Literal.md:1", "Fresh.md:1")
 	answerOf[map[string]any](t, r.use(t, "batch", map[string]any{"message": "batched",
 		"ops": []any{map[string]any{"op": "write", "path": "Batched.md", "content": "a batched needle\n"}}}))
 	if a := r.grep(t, map[string]any{"pattern": "needle"}); !a.Building || slices.Contains(hitsOf([]mcpGrepAnswer{a}), "Batched.md:1") {
@@ -162,7 +171,7 @@ func TestTheMCPGrepFindsWhatItsKeysFind(t *testing.T) {
 		t.Errorf("a grep of no keys after the batch = %+v, want the batch's page, not building", a)
 	}
 	drainSearch(t, r.pool)
-	finds("needle", "Literal.md:1", "Fresh.md:1", "Batched.md:1")
+	finds("needle", true, "Literal.md:1", "Fresh.md:1", "Batched.md:1")
 }
 
 // grepCutContents are a content of each cut of the search's tokens (M9/P4
