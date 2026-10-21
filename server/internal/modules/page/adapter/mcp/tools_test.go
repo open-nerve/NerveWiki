@@ -75,9 +75,10 @@ func blockJSON(t *testing.T, b mcpserver.Block) map[string]any {
 // (M9/P1 design 3.10.5, 3.11.3, 3.17.3); write, edit, move and delete,
 // in both entries, destructive, all but edit idempotent (M9/P2 design
 // 3.11); batch, in both entries, destructive, not idempotent (M9/P3 design
-// 3.12); and versions, log and changeset, in both entries, read-only
-// (M9/P2 design 3.16). The composition root's TestTheToolListsAreTheContract holds
-// their schemas to the file.
+// 3.12); versions, log and changeset, in both entries, read-only (M9/P2
+// design 3.16); and grep and search, in both entries, read-only (M9/P4
+// design 3.10). The composition root's TestTheToolListsAreTheContract
+// holds their schemas to the file.
 func TestTheToolsAreTheReadsAndTheWrites(t *testing.T) {
 	tools := Tools(UseCases{}, nil)
 	write, read := mcpserver.Annotations{Destructive: true, Idempotent: true}, mcpserver.Annotations{ReadOnly: true}
@@ -103,6 +104,10 @@ func TestTheToolsAreTheReadsAndTheWrites(t *testing.T) {
 		{Name: "log", Title: "List the notebook's changes", Description: logDescription, Annotations: read,
 			Entry: mcpserver.BothEntries, Notebook: true},
 		{Name: "changeset", Title: "Read a changeset", Description: changesetDescription, Annotations: read,
+			Entry: mcpserver.BothEntries, Notebook: true},
+		{Name: "grep", Title: "Find lines by a regular expression", Description: grepDescription, Annotations: read,
+			Entry: mcpserver.BothEntries, Notebook: true},
+		{Name: "search", Title: "Search the notebook's words", Description: searchDescription, Annotations: read,
 			Entry: mcpserver.BothEntries, Notebook: true},
 	}
 	if len(tools) != len(want) {

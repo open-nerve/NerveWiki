@@ -21,6 +21,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 	"uuid"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -52,11 +53,17 @@ type readsApp struct {
 // alone.
 func startReadsApp(t *testing.T, publicURL string) readsApp {
 	t.Helper()
+	return startReadsAppWith(t, publicURL, wiring{})
+}
+
+// startReadsAppWith is startReadsApp of a test's wiring.
+func startReadsAppWith(t *testing.T, publicURL string, w wiring) readsApp {
+	t.Helper()
 	db := pgtest.NewDatabase(t)
 	logs := &syncBuffer{}
 	cfg := testConfig(t, db, false)
 	cfg.Server.PublicURL = publicURL
-	m := runMCPApp(t, wireMCPApp(t, cfg, logs, nil), db, logs)
+	m := runMCPApp(t, wireMCPAppWith(t, cfg, logs, w), db, logs)
 	return readsApp{mcpApp: m, storage: cfg.Storage.Dir, pool: connect(t, db)}
 }
 
@@ -400,8 +407,12 @@ func TestTheMCPReadsWithAPublicURLEndingInASlash(t *testing.T) {
 // (M9/P1 design 3.17). P2's writes answer each code of the REST writes
 // they are: the reads' app's calls, a reader's forbidden, and server_busy
 // with the parse budget held (writeCodeCalls, carolsWrites, busyWrites).
+// P4's grep and search answer their cursor's, their arguments' and their
+// notebook's, grep server_busy once the app's one slot, which the test
+// holds, was waited for a second (M9/P4 design 3.12; grepCodeCalls).
 func TestTheMCPToolsErrorsCarryTheirCodes(t *testing.T) {
-	r := startReadsApp(t, publicOrigin)
+	slots := page.NewGrepSlots(1)
+	r := startReadsAppWith(t, publicOrigin, wiring{page: func(d *page.Deps) { d.GrepSlots = slots }})
 	guide := r.createPage(t, "", "Guide", "a\n")
 	unseen := uuid.NewV7().String()
 	answered := answeredCodes{}
@@ -430,7 +441,7 @@ func TestTheMCPToolsErrorsCarryTheirCodes(t *testing.T) {
 		{mcpserver.Pattern, "open_notebook", map[string]any{"notebook": unseen}, "notebook.not_found"},
 		{mcpserver.Pattern, "open_notebook", map[string]any{"notebook": "nope"}, "notebook.not_found"},
 	}
-	for _, tt := range slices.Concat(calls, writeCodeCalls(t, r, guide), historyCodeCalls(t, r)) {
+	for _, tt := range slices.Concat(calls, writeCodeCalls(t, r, guide), historyCodeCalls(t, r), grepCodeCalls(r)) {
 		member := r.call(t, tt.path, tt.tool, tt.args).toolError(t)
 		if member["code"] != tt.want {
 			t.Errorf("%s %v at %s = %v, want %s", tt.tool, tt.args, tt.path, member, tt.want)
@@ -440,12 +451,57 @@ func TestTheMCPToolsErrorsCarryTheirCodes(t *testing.T) {
 	}
 	r.carolsWrites(t, answered)
 	busyWrites(t, answered)
+	r.busyGrep(t, slots, answered)
 	for tool, codes := range mcpToolCodes() {
 		for _, code := range codes {
 			if !answered[tool][code] {
 				t.Errorf("%s's row lists %s, which no call here answers", tool, code)
 			}
 		}
+	}
+}
+
+// grepCodeCalls are grep's and search's calls in alice's notebook of r
+// (M9/P4 design 3.12): a cursor that does not decode, bad_request; grep's
+// limit 0 and search's empty q, validation_failed; the account entry's
+// notebook that is no UUID, notebook.not_found, as bob's that alice does
+// not see.
+func grepCodeCalls(r readsApp) []codeCall {
+	nb := atNotebook(r.notebook)
+	return []codeCall{
+		{nb, "grep", map[string]any{"pattern": "x", "cursor": "nope"}, "bad_request"},
+		{nb, "grep", map[string]any{"pattern": "x", "limit": 0}, "validation_failed"},
+		{nb, "grep", map[string]any{"pattern": "("}, "validation_failed"},
+		{nb, "grep", map[string]any{"pattern": "x", "glob": "a//b"}, "validation_failed"},
+		{mcpserver.Pattern, "grep", map[string]any{"notebook": "nope", "pattern": "x"}, "notebook.not_found"},
+		{mcpserver.Pattern, "grep", map[string]any{"notebook": r.hidden, "pattern": "x"}, "notebook.not_found"},
+		{nb, "search", map[string]any{"q": "x", "cursor": "nope"}, "bad_request"},
+		{nb, "search", map[string]any{"q": ""}, "validation_failed"},
+		{nb, "search", map[string]any{"q": "x", "limit": 51}, "validation_failed"},
+		{mcpserver.Pattern, "search", map[string]any{"notebook": "nope", "q": "x"}, "notebook.not_found"},
+		{mcpserver.Pattern, "search", map[string]any{"notebook": r.deleted, "q": "x"}, "notebook.not_found"},
+	}
+}
+
+// busyGrep is grep with the app's one slot held (M9/P4 design 3.6.5,
+// 3.12): server_busy after the slot's second of waiting, retry after a
+// second; once the slot is back, the next call has it.
+func (r readsApp) busyGrep(t *testing.T, slots *page.GrepSlots, answered answeredCodes) {
+	t.Helper()
+	release, err := slots.Take(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := r.call(t, atNotebook(r.notebook), "grep", map[string]any{"pattern": "x"})
+	release()
+	member := a.toolError(t)
+	if member["code"] != "server_busy" || member["retry_after_seconds"] != float64(1) || a.took < time.Second {
+		t.Errorf("grep with its slot held = %v after %v, want server_busy, retry after 1, after a second's wait", member, a.took)
+	} else {
+		answered.add("grep", "server_busy")
+	}
+	if res := r.call(t, atNotebook(r.notebook), "grep", map[string]any{"pattern": "x"}).result(t); res["isError"] == true {
+		t.Errorf("grep with its slot back = %v", res)
 	}
 }
 
@@ -683,6 +739,8 @@ func validToolArguments(created string) map[string]map[string]any {
 		"versions":      {"path": "Strings.md"},
 		"log":           {},
 		"changeset":     {"id": created},
+		"grep":          {"pattern": "x"},
+		"search":        {"q": "x"},
 	}
 }
 

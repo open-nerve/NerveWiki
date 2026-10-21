@@ -75,7 +75,9 @@ func mcpRows() []mcpRow { return slices.Concat(pageMCPRows(), pageWriteMCPRows()
 // 3.17); P2's writes the codes of the REST writes they are (M9/P2 design
 // 3.13.1), its history's reads those of the REST reads they are
 // (3.17.1); P3's batch the union of the writes' and its own
-// page.batch_too_large (M9/P3 design 3.13.1).
+// page.batch_too_large (M9/P3 design 3.13.1); P4's grep and search those
+// of their arguments and notebook, grep's slot server_busy (M9/P4 design
+// 3.12).
 func mcpToolCodes() map[string][]string {
 	return map[string][]string{
 		"list":          {"bad_request", "validation_failed", "notebook.not_found", "page.not_found"},
@@ -95,6 +97,8 @@ func mcpToolCodes() map[string][]string {
 		"versions":  {"bad_request", "validation_failed", "notebook.not_found", "page.not_found", "page.version_not_found"},
 		"log":       {"bad_request", "validation_failed", "notebook.not_found", "page.not_found"},
 		"changeset": {"bad_request", "validation_failed", "notebook.not_found", "page.changeset_not_found"},
+		"grep":      {"bad_request", "validation_failed", "notebook.not_found", "server_busy"},
+		"search":    {"bad_request", "validation_failed", "notebook.not_found"},
 	}
 }
 
@@ -133,7 +137,10 @@ func TestEveryMCPToolHasItsCodes(t *testing.T) {
 // readers' too, in both entries (M9/P2 design 3.17.2): versions of the
 // column's page, its one version; log, the seeded rename first, as REST's
 // listChangesets; changeset of the seeded rename, its one change with its
-// node's path.
+// node's path; grep and search by the mark, as the readers' too, in both
+// entries (M9/P4 design 3.13), through the queue (queueSeeded): grep's
+// hits the notebook's seeded pages not deleted, each at the mark's line,
+// search's results its nodes markedNodes finds, counted exact.
 func pageMCPRows() []mcpRow {
 	readers := func(c caller) mcpCell {
 		if _, seen := roleIn(c); seen {
@@ -227,7 +234,92 @@ func pageMCPRows() []mcpRow {
 				}
 			},
 		},
+		{
+			tool: "grep", entries: mcpserver.BothEntries, want: readers,
+			args: func(caller, seeded) map[string]any { return map[string]any{"pattern": matrixMark} },
+			check: func(t *testing.T, c caller, _ seeded, a mcpAnswer) {
+				t.Helper()
+				var g struct {
+					Hits []struct {
+						Path string `json:"path"`
+						Line int    `json:"line"`
+						Text string `json:"text"`
+					} `json:"hits"`
+					PartialLines []any   `json:"partial_lines"`
+					NextCursor   *string `json:"next_cursor"`
+					Incomplete   bool    `json:"incomplete"`
+				}
+				structuredOf(t, a, &g)
+				var got, want []string
+				for _, h := range g.Hits {
+					got = append(got, fmt.Sprintf("%s:%d:%s", h.Path, h.Line, h.Text))
+				}
+				for _, p := range matrixPages() {
+					if p.notebook == notebookOf(c) {
+						line := 1
+						if p.name == tasksIn(p.notebook) {
+							line = 3
+						}
+						want = append(want, fmt.Sprintf("%s:%d:%s", matrixPathOf(p, ".md"), line, matrixMark))
+					}
+				}
+				slices.Sort(got)
+				slices.Sort(want)
+				if !slices.Equal(got, want) || len(g.PartialLines) != 0 || g.NextCursor != nil || g.Incomplete {
+					t.Errorf("grep answered %.800s, want the hits %q, nothing more", a.body, want)
+				}
+			},
+		},
+		{
+			tool: "search", entries: mcpserver.BothEntries, want: readers,
+			args: func(caller, seeded) map[string]any { return map[string]any{"q": matrixMark, "limit": 50} },
+			check: func(t *testing.T, c caller, _ seeded, a mcpAnswer) {
+				t.Helper()
+				var r struct {
+					Results []struct {
+						Path string `json:"path"`
+					} `json:"results"`
+					Count *struct {
+						Value int    `json:"value"`
+						Kind  string `json:"kind"`
+					} `json:"count"`
+					NextCursor *string `json:"next_cursor"`
+					Building   bool    `json:"building"`
+				}
+				structuredOf(t, a, &r)
+				var got, want []string
+				for _, res := range r.Results {
+					got = append(got, res.Path)
+				}
+				for _, p := range matrixPages() {
+					if p.notebook == notebookOf(c) {
+						want = append(want, matrixPathOf(p, ".md"))
+					}
+				}
+				for _, p := range matrixAssets() {
+					if p.notebook == notebookOf(c) && p.name == markedIn(p.notebook) {
+						want = append(want, matrixPathOf(p, ""))
+					}
+				}
+				slices.Sort(got)
+				slices.Sort(want)
+				if !slices.Equal(got, want) || r.Count == nil || r.Count.Value != len(want) || r.Count.Kind != "exact" ||
+					r.NextCursor != nil || r.Building {
+					t.Errorf("search answered %.800s, want the results %q, counted exact", a.body, want)
+				}
+			},
+		},
 	}
+}
+
+// matrixPathOf is a seeded node's path: its ancestors' titles and its own,
+// then suffix, ".md" for a page.
+func matrixPathOf(p matrixPage, suffix string) string {
+	names := []string{p.name}
+	if p.parent != "" {
+		names = append(append(ancestorsOf(p.parent), p.parent), p.name)
+	}
+	return strings.Join(names, "/") + suffix
 }
 
 // mcpChangesetPage is changeset's answer, as these tests read it: the

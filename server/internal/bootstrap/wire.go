@@ -68,6 +68,10 @@ type wiring struct {
 	// slot: the large bodies' whole-program tests wait less than
 	// largeBodyWait (M9/P2 design 3.2.5).
 	largeBodyWait time.Duration
+	// page, when set, changes the page module's dependencies as the
+	// composition root gives them: grep's whole-program tests bound its
+	// walk small and hold its slot (M9/P4 design 6.1, 3.12).
+	page func(*page.Deps)
 }
 
 // wireApp is newApp with a test's wiring.
@@ -152,7 +156,11 @@ func wireApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrat
 	if err != nil {
 		return nil, err
 	}
-	pg := page.New(pageDeps(cfg, pool, logger, authorizer, md, budget))
+	pd := pageDeps(cfg, pool, logger, authorizer, md, budget)
+	if w.page != nil {
+		w.page(&pd)
+	}
+	pg := page.New(pd)
 	as := asset.New(assetDeps(cfg, pool, logger, authorizer, store, pg, contentKey, limiter))
 	ln := linking.New(linkingDeps(pool, authorizer, embeds))
 	// A job is enqueued in the transaction that writes its row, by a

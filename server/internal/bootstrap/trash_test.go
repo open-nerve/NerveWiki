@@ -465,12 +465,17 @@ func TestThePurgeTheTrashAndTheInstanceTakeOneRetention(t *testing.T) {
 // The composition root leaves a restore's and a revert's bounds the
 // domain's (M8/P2A fix check 2, N-b): the page module takes 0 as the
 // domain's MaxUnitNodes, MaxUnitHistory, MaxRevertSteps and MaxJobItems
-// (M8/P4 design 3.11), which only a measurement raises. The tests at the
-// bounds tell a bound far off; this one, exactly.
+// (M8/P4 design 3.11), which only a measurement raises. So are grep's:
+// its slots nil, its work, line work, read and walk 0 (M9/P4 design
+// 3.16). The tests at the bounds tell a bound far off; this one, exactly.
 func TestPageDepsLeaveTheUnitsBoundsTheDomains(t *testing.T) {
 	d := pageDeps(testConfig(t, "", false), nil, slog.New(slog.DiscardHandler), nil, nil, nil)
 	if d.MaxUnitNodes != 0 || d.MaxUnitHistory != 0 || d.MaxRevertSteps != 0 || d.MaxJobItems != 0 {
 		t.Errorf("pageDeps' bounds: %d nodes, %d rows of history, %d steps, %d items of a job; want 0 each, the domain's", d.MaxUnitNodes,
 			d.MaxUnitHistory, d.MaxRevertSteps, d.MaxJobItems)
+	}
+	if d.GrepSlots != nil || d.MaxGrepWork != 0 || d.MaxGrepLineWork != 0 || d.MaxGrepRead != 0 || d.GrepWalk != 0 {
+		t.Errorf("pageDeps' grep: slots %v, work %d, line work %d, read %d, walk %d; want nil and 0, the domain's", d.GrepSlots,
+			d.MaxGrepWork, d.MaxGrepLineWork, d.MaxGrepRead, d.GrepWalk)
 	}
 }

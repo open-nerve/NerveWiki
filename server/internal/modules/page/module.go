@@ -243,6 +243,7 @@ type Module struct {
 	log          *app.ListChangesets // REST's and MCP's log (Tools)
 	changeset    *app.GetChangeset   // REST's and MCP's changeset (Tools)
 	grep         *app.Grep           // MCP's grep (Tools)
+	search       *app.Search         // REST's and MCP's search (Tools)
 	jobs         []jobs.Job
 	assets       *app.AssetWrites
 	imports      *app.ImportWrites
@@ -285,6 +286,10 @@ func New(d Deps) *Module {
 	// MCP's batch (M9/P3 design 3.6), its links' on the plan linking's.
 	batch := app.NewApplyBatch(writer, parser, store, store, store, d.BatchLinks, locks, d.Notebooks, d.Authorizer, d.MaxBatchRewrites,
 		d.MaxBatchRewriteLinks, d.MaxBatchRewriteBytes, d.Clock, d.Logger)
+	// The search, REST's and MCP's the same use case (M9/P4 design
+	// 3.10.5).
+	search := app.NewSearch(app.SearchDeps{Snapshots: d.Snapshots, Workspaces: d.Workspaces, Notebooks: d.Notebooks,
+		Visible: d.VisibleNotebooks, Auth: d.Authorizer, Reads: store, Trash: store, Attachments: d.Attachments})
 	m := &Module{uc: httpadapter.UseCases{
 		ListNodes:       app.NewListNodes(d.Notebooks, store, d.Authorizer),
 		CreatePage:      app.NewCreatePage(writer, store, parser, d.Logger),
@@ -313,8 +318,7 @@ func New(d Deps) *Module {
 		ListChanges:     app.NewListChanges(history),
 		RevertChangeset: app.NewRevertChangeset(trash, store, writer, parser,
 			app.RevertBounds{Nodes: d.MaxUnitNodes, History: d.MaxUnitHistory, Steps: d.MaxRevertSteps}, d.Logger),
-		Search: app.NewSearch(app.SearchDeps{Snapshots: d.Snapshots, Workspaces: d.Workspaces, Notebooks: d.Notebooks,
-			Visible: d.VisibleNotebooks, Auth: d.Authorizer, Reads: store, Trash: store, Attachments: d.Attachments}),
+		Search: search,
 	}, gate: app.NewNotebookGate(d.Notebooks, d.Authorizer), jobs: []jobs.Job{
 		riveradapter.CleanupJob(app.NewCleanupEditSessions(store, d.Clock, d.Logger), d.EditSessionCleanupInterval),
 	}, assets: app.NewAssetWrites(writer, store), imports: app.NewImportWrites(writer, parser, md),
@@ -330,6 +334,7 @@ func New(d Deps) *Module {
 		version:      getVersion,
 		log:          listChangesets,
 		changeset:    getChangeset,
+		search:       search,
 		instructions: app.NewInstructions(store, store, md, mcpserver.TextBytes)}
 	m.open = app.NewOpenNotebook(m.gate, store, m.instructions)
 	// grep's parses, one queue in the process, and its slots (M9/P4 design

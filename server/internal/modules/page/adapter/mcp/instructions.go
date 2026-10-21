@@ -45,6 +45,12 @@ Tools
 - read: a page's lines exactly as stored, from offset for limit lines, about 45 KiB at most per call. Go on with ` +
 	`next_offset, and with next_column within a line too long for one call. An attachment gives its metadata, and the ` +
 	`image or a link to download it.
+- grep: the lines matching a Go regular expression, with their paths and line numbers as read counts them; glob ` +
+	`narrows the pages.
+- search: words and Chinese text in titles and contents, best first, with excerpts. Use search for words, grep for ` +
+	`patterns and line numbers.
+- Pages queued in bulk (a batch, an import, a background restore or revert, an upgrade) reach search and a keyed ` +
+	`grep once indexed: building says so.
 - write: a page's whole content. Without base_version it creates the page and its missing parent pages; with the ` +
 	`version you read, it replaces the content.
 - edit: replaces old_string, which must occur exactly once unless replace_all is set, with new_string, byte for byte.
