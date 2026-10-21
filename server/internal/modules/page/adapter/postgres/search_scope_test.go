@@ -61,9 +61,12 @@ import (
 // whatever an autovacuum did, and its heap is some 20-30 pages, where the
 // index wins: run 39638203738 failed on CI when an autovacuum between the
 // drain and 200 held rows left a heap of 2 pages, which a sequential scan
-// read whole. The indexes of nodes and of the queue, whose B-trees ops's
-// writes may split beside eng's keys, are allowed 2 blocks too; their
-// sizes stay within one level of their trees in each phase.
+// read whole. The B-trees of nodes and of the queue are held exact, every
+// read's as main held M8's (review B-3 = C-m3): with the queue vacuumed and
+// its rows held, no read here fetched another block of them in any phase
+// (5 runs, 2 under race), and a step of a descent is a change of a
+// B-tree's height, which bt_metap reads (pageinspect, created in the
+// test's own database): each is the same in every phase.
 func TestHiddenNotebooksLeaveTheSearchsReadsAlone(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
@@ -182,21 +185,14 @@ func TestHiddenNotebooksLeaveTheSearchsReadsAlone(t *testing.T) {
 		}
 		return out
 	}
-	// tolerant are the indexes allowed a step or two: the GIN indexes'
-	// entry trees, and the B-trees of nodes and of the queue.
-	tolerant := func(name string) bool {
-		return name == "page_search_title_idx" || name == "page_search_body_idx" ||
-			(strings.HasPrefix(name, "nodes_") || strings.HasPrefix(name, "page_search_queue_")) &&
-				(strings.HasSuffix(name, "_idx") || strings.HasSuffix(name, "_key") || strings.HasSuffix(name, "_pkey"))
-	}
 	// same is whether two reads' blocks and rows are the same, but for a
-	// step or two of the tolerant indexes.
+	// step or two of the GIN indexes' entry trees.
 	same := func(a, b map[string]int64) bool {
 		names := maps.Clone(a)
 		maps.Copy(names, b)
 		for name := range names {
 			d := a[name] - b[name]
-			if tolerant(name) {
+			if name == "page_search_title_idx" || name == "page_search_body_idx" {
 				if d < -2 || d > 2 {
 					return false
 				}
@@ -266,27 +262,25 @@ func TestHiddenNotebooksLeaveTheSearchsReadsAlone(t *testing.T) {
 			return err
 		},
 	}
-	// levels is the level of each tolerant B-tree's size, in pages: its
-	// height, as a page of its keys holds some 300 of them.
+	// levels is the height of each B-tree of nodes and of the queue: its
+	// root's level, 0 for a root that is a leaf.
+	f.exec(t, "CREATE EXTENSION IF NOT EXISTS pageinspect")
 	levels := func() map[string]int {
 		t.Helper()
-		rows, err := f.pool.Query(ctx, `SELECT c.relname, pg_relation_size(c.oid) / 8192 FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid
-			WHERE i.indrelid IN ('nodes'::regclass, 'page_search_queue'::regclass)`)
+		rows, err := f.pool.Query(ctx, `SELECT c.relname, (bt_metap(c.oid::regclass::text)).level FROM pg_index i
+			JOIN pg_class c ON c.oid = i.indexrelid JOIN pg_am a ON a.oid = c.relam
+			WHERE i.indrelid IN ('nodes'::regclass, 'page_search_queue'::regclass) AND a.amname = 'btree'`)
 		if err != nil {
 			t.Fatal(err)
 		}
 		out := map[string]int{}
 		for rows.Next() {
 			var name string
-			var pages int64
-			if err := rows.Scan(&name, &pages); err != nil {
+			var level int64
+			if err := rows.Scan(&name, &level); err != nil {
 				t.Fatal(err)
 			}
-			level := 1
-			for n := int64(300); n < pages; n *= 300 {
-				level++
-			}
-			out[name] = level
+			out[name] = int(level)
 		}
 		if err := rows.Err(); err != nil {
 			t.Fatal(err)
@@ -318,8 +312,9 @@ func TestHiddenNotebooksLeaveTheSearchsReadsAlone(t *testing.T) {
 		}
 		got = append(got, phase)
 	}
+	t.Logf("the B-trees' heights in each phase: %v", sizes)
 	if !maps.Equal(sizes[0], sizes[1]) || !maps.Equal(sizes[0], sizes[2]) {
-		t.Errorf("the B-trees of nodes and the queue changed levels between the phases: %v", sizes)
+		t.Errorf("the B-trees of nodes and the queue changed heights between the phases: %v", sizes)
 	}
 	for _, k := range slices.Sorted(maps.Keys(got[0])) {
 		if !same(got[0][k], got[1][k]) || !same(got[0][k], got[2][k]) {
