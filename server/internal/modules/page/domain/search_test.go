@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -16,6 +17,7 @@ import (
 	"golang.org/x/text/unicode/norm"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
+	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
 func ptr[T any](v T) *T { return &v }
@@ -69,7 +71,7 @@ func TestSearchTokens(t *testing.T) {
 		{thaiClause, "", trigramsOf(thaiClause), trigramsOf(thaiClause)},
 		{"x", khmerClause, []string{"x"}, append([]string{"x"}, trigramsOf(khmerClause)...)},
 	} {
-		title, body := domain.SearchTokens(tt.name, &tt.content)
+		title, body, _ := domain.SearchTokens(tt.name, &tt.content)
 		if !slices.Equal(title, tt.title) || !slices.Equal(body, tt.body) {
 			t.Errorf("SearchTokens(%q, %q) = %q, %q; want %q, %q", tt.name, tt.content, title, body, tt.title, tt.body)
 		}
@@ -79,7 +81,7 @@ func TestSearchTokens(t *testing.T) {
 // Numbers are words: their runs of three key by trigrams, shorter ones
 // whole; a lone CJK character is no lexeme of the body.
 func TestSearchTokensOfNumbers(t *testing.T) {
-	_, body := domain.SearchTokens("x", ptr("2020年 v1.2 20"))
+	_, body, _ := domain.SearchTokens("x", ptr("2020年 v1.2 20"))
 	if want := []string{"x", "202", "020", "v1", "2", "20"}; !slices.Equal(body, want) {
 		t.Errorf("body = %q, want %q", body, want)
 	}
@@ -87,7 +89,7 @@ func TestSearchTokensOfNumbers(t *testing.T) {
 
 // An attachment has a title alone.
 func TestSearchTokensOfAnAttachment(t *testing.T) {
-	title, body := domain.SearchTokens("报告.pdf", nil)
+	title, body, _ := domain.SearchTokens("报告.pdf", nil)
 	if want := []string{"报", "告", "报告", "pdf"}; !slices.Equal(title, want) || body != nil {
 		t.Errorf("SearchTokens(attachment) = %q, %q; want %q, nil", title, body, want)
 	}
@@ -96,7 +98,7 @@ func TestSearchTokensOfAnAttachment(t *testing.T) {
 // A name and a page of no letter have no lexemes, which a row holds as
 // empty tsvectors: the title's and a page's body are empty, not nil.
 func TestSearchTokensOfNoLetter(t *testing.T) {
-	title, body := domain.SearchTokens("#", ptr(""))
+	title, body, _ := domain.SearchTokens("#", ptr(""))
 	if title == nil || len(title) != 0 || body == nil || len(body) != 0 {
 		t.Errorf("SearchTokens(\"#\", \"\") = %#v, %#v; want empty and not nil", title, body)
 	}
@@ -112,7 +114,7 @@ func TestSearchTokensLeaveOut(t *testing.T) {
 	image := "![x](data:image/png;base64," + strings.Repeat("QUJD", 20) + ")"
 	short := "data:abc"
 	edge, over := "data:"+strings.Repeat("k", 59), "data:"+strings.Repeat("m", 60) // 64 characters, 65
-	_, body := domain.SearchTokens("x", ptr(strings.Join([]string{"aa", at, past, folded, image, short, edge, over, "zz"}, " ")))
+	_, body, _ := domain.SearchTokens("x", ptr(strings.Join([]string{"aa", at, past, folded, image, short, edge, over, "zz"}, " ")))
 	has := func(x string) bool { return slices.Contains(body, x) }
 	switch {
 	case !has("aaa"):
@@ -149,7 +151,7 @@ func TestSearchTokensLeaveADataURLOutToItsEnd(t *testing.T) {
 		{payload + "数据库", []string{"数据", "据库"}},
 		{payload + "\nnext", []string{"nex", "ext"}},
 	} {
-		_, body := domain.SearchTokens("x", &tt.content)
+		_, body, _ := domain.SearchTokens("x", &tt.content)
 		for _, x := range tt.after {
 			if !slices.Contains(body, x) {
 				t.Errorf("SearchTokens(%q) = %q, want %q after the data: string", tt.content, body, x)
@@ -175,9 +177,9 @@ func TestEachOrbitKeysAlike(t *testing.T) {
 			continue
 		}
 		orbits++
-		key, _ := domain.SearchTokens(string(r), nil)
+		key, _, _ := domain.SearchTokens(string(r), nil)
 		for o := unicode.SimpleFold(r); o != r; o = unicode.SimpleFold(o) {
-			if other, _ := domain.SearchTokens(string(o), nil); !slices.Equal(other, key) {
+			if other, _, _ := domain.SearchTokens(string(o), nil); !slices.Equal(other, key) {
 				t.Errorf("%U %q keys %q, its orbit's %U %q keys %q", o, string(o), other, r, string(r), key)
 			}
 		}
@@ -187,7 +189,7 @@ func TestEachOrbitKeysAlike(t *testing.T) {
 	}
 	capitals := "ᏣᎳᎩ ᎦᏬᏂᎯᏍᏗ ᏰᏴ"
 	small := strings.Map(unicode.ToLower, capitals)
-	title, body := domain.SearchTokens(capitals, &small)
+	title, body, _ := domain.SearchTokens(capitals, &small)
 	if small == capitals || len(title) == 0 || !slices.Equal(body, title) {
 		t.Errorf("Cherokee %q, its content in small letters %q: title %q, body %q; want the body the title's lexemes alone", capitals,
 			small, title, body)
@@ -203,7 +205,11 @@ func TestSearchTokensStopAtTheBound(t *testing.T) {
 		b.WriteRune(rune(0x4E00 + r.Intn(0x5000)))
 	}
 	content := b.String()
-	_, body := domain.SearchTokens("x", &content)
+	_, body, partial := domain.SearchTokens("x", &content)
+	if !partial || body[len(body)-1] != domain.SearchCutKey {
+		t.Fatalf("the body past the bound is not partial, or does not end with %s", domain.SearchCutKey)
+	}
+	body = body[:len(body)-1]
 	sum := 0
 	for _, x := range body {
 		sum += len(x) + domain.SearchPrefixBytes
@@ -233,7 +239,11 @@ func TestSearchTokensStopAtTheFirstPastTheBound(t *testing.T) {
 	}
 	b.WriteString("q")
 	content := b.String()
-	_, body := domain.SearchTokens("x y", &content)
+	_, body, partial := domain.SearchTokens("x y", &content)
+	if !partial || body[len(body)-1] != domain.SearchCutKey {
+		t.Fatalf("the body past the bound is not partial, or does not end with %s", domain.SearchCutKey)
+	}
+	body = body[:len(body)-1]
 	if len(body) != 2+76_921 || slices.Contains(body, "q") {
 		t.Errorf("%d lexemes, the last %q; want the name's two and 76,921 bigrams, none after", len(body), body[len(body)-1])
 	}
@@ -242,11 +252,309 @@ func TestSearchTokensStopAtTheFirstPastTheBound(t *testing.T) {
 // SearchTokenizer names the rules' version, Go's Unicode version and
 // x/text's, whose fold and NFC are one Unicode version's.
 func TestSearchTokenizer(t *testing.T) {
-	if want := "4/" + unicode.Version + "/" + norm.Version; domain.SearchTokenizer != want {
+	if want := "5/" + unicode.Version + "/" + norm.Version; domain.SearchTokenizer != want {
 		t.Errorf("SearchTokenizer = %q, want %s", domain.SearchTokenizer, want)
 	}
 	if cases.UnicodeVersion != norm.Version {
 		t.Errorf("x/text's cases are of Unicode %s, its norm of %s: SearchTokenizer names one", cases.UnicodeVersion, norm.Version)
+	}
+}
+
+// foldsToASCII are the eleven code points whose fold is ASCII letters
+// alone (M9/P4 design 3.2.2): ß, ſ, ẞ, the Kelvin sign and the Latin
+// ligatures ﬀ to ﬆ.
+func foldsToASCII() []rune {
+	return []rune{0xDF, 0x17F, 0x1E9E, 0x212A, 0xFB00, 0xFB01, 0xFB02, 0xFB03, 0xFB04, 0xFB05, 0xFB06}
+}
+
+// The independent judge of what a body leaves out of a content below
+// MaxSearchLexemeBytes (M9/P4 design 6.1), on the content folded
+// (shared.TitleKey: searchFold's Cherokee case changes no ASCII): a whole
+// run of word characters, letters, digits and marks but CJK, of more than
+// 64, each an ASCII letter or digit; or "data:" where no word run goes on
+// (at the start, after a character of no run or a CJK one) and then 60
+// characters a data: URL holds at least: ASCII but white space and
+// )"'<>]`, as M8/P5A fix check N-7 wrote it.
+var (
+	judgedRuns  = regexp.MustCompile(`[\p{L}\p{N}\p{M}]+`)
+	judgedCJK   = regexp.MustCompile(`[\p{Han}\p{Hiragana}\p{Katakana}\p{Hangul}\p{Bopomofo}\x{3006}\x{30FC}\x{FF70}]`)
+	judgedASCII = regexp.MustCompile(`^[0-9a-z]{65,}$`)
+	judgedURL   = regexp.MustCompile(`^data:` + dataURLClass() + `{60}`)
+	// unfoldedRun is a long run as the content writes it, before its fold.
+	unfoldedRun = regexp.MustCompile(`[0-9A-Za-z]{65}`)
+)
+
+// dataURLClass is the class of a data: URL's characters, from the rule.
+func dataURLClass() string {
+	var b strings.Builder
+	b.WriteString("[")
+	for r := range rune(utf8.RuneSelf) {
+		if !strings.ContainsRune("\t\n\v\f\r )\"'<>]`", r) {
+			fmt.Fprintf(&b, `\x{%x}`, r)
+		}
+	}
+	return b.String() + "]"
+}
+
+// leftOutOf is the judge's: a long run, a long data: string.
+func leftOutOf(content string) (long, data bool) {
+	f := shared.TitleKey(content)
+	for _, run := range judgedRuns.FindAllString(f, -1) {
+		for _, piece := range judgedCJK.Split(run, -1) {
+			long = long || judgedASCII.MatchString(piece)
+		}
+	}
+	for i := 0; ; i++ {
+		j := strings.Index(f[i:], "data:")
+		if j < 0 {
+			break
+		}
+		i += j
+		prev, _ := utf8.DecodeLastRuneInString(f[:i])
+		runs := unicode.IsLetter(prev) || unicode.IsNumber(prev) || unicode.IsMark(prev)
+		if (i == 0 || !runs || judgedCJK.MatchString(string(prev))) && judgedURL.MatchString(f[i:]) {
+			data = true
+		}
+	}
+	return long, data
+}
+
+// partialContent is a random content of the pieces the cuts are made of:
+// words, runs of ASCII letters and digits of 60 to 70, runs of 32 to 48 of
+// the eleven that fold to ASCII and of ASCII, about 64 once folded, data:
+// strings in any case of 55 to 66 characters after "data:", a non-ASCII
+// letter that makes a run not ASCII, CJK; parted by white space,
+// punctuation, CJK or nothing.
+func partialContent(r *rand.Rand) string {
+	const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	const url = "abcXYZ019/+=;,.-_%:"
+	ascii := func(n int) string {
+		b := make([]byte, n)
+		for i := range b {
+			b[i] = letters[r.Intn(len(letters))]
+		}
+		return string(b)
+	}
+	var b strings.Builder
+	for range 1 + r.Intn(8) {
+		switch r.Intn(7) {
+		case 0:
+			b.WriteString(ascii(1 + r.Intn(12)))
+		case 1:
+			b.WriteString(ascii(60 + r.Intn(11)))
+		case 2:
+			for range 32 + r.Intn(17) {
+				if r.Intn(2) == 0 {
+					b.WriteRune(foldsToASCII()[r.Intn(len(foldsToASCII()))])
+				} else {
+					b.WriteByte(letters[r.Intn(len(letters))])
+				}
+			}
+		case 3:
+			prefix := []byte("data:")
+			for i := range 4 {
+				if r.Intn(2) == 0 {
+					prefix[i] -= 'a' - 'A'
+				}
+			}
+			b.Write(prefix)
+			for range 55 + r.Intn(12) {
+				b.WriteByte(url[r.Intn(len(url))])
+			}
+		case 4:
+			b.WriteString(ascii(30 + r.Intn(40)))
+			b.WriteString([]string{"é", "ж", "ǅ", string(rune(0x301))}[r.Intn(4)])
+			b.WriteString(ascii(30 + r.Intn(40)))
+		case 5:
+			b.WriteString(ascii(40 + r.Intn(40)))
+			b.WriteString("数据")
+			b.WriteString(ascii(40 + r.Intn(40)))
+		default:
+			b.WriteString("库存")
+		}
+		b.WriteString([]string{" ", "\n", ")", "(", "，", "-", "`", `"`, "中", ""}[r.Intn(10)])
+	}
+	return b.String()
+}
+
+// partialSeed is the seed of TestSearchTokensTellWhatTheyLeaveOut's random
+// contents: another one's run tells its expectations hold on any.
+const partialSeed = 1
+
+// The body tells what it leaves out of the content (M9/P4 design 3.3,
+// 6.1): partial exactly when the judge finds a long run or a long data:
+// string in random contents, the name's runs never counted; SearchCutKey
+// last when partial, nowhere otherwise, and counted toward no bound. Each
+// cut has its row besides, built, and the bound its two that straddle it.
+func TestSearchTokensTellWhatTheyLeaveOut(t *testing.T) {
+	t.Run("random contents", tellRandomContents)
+	t.Run("each cut", tellEachCut)
+	t.Run("the bound", tellTheBound)
+}
+
+func tellRandomContents(t *testing.T) {
+	trials := 20_000
+	if testing.Short() {
+		trials = 2_000
+	}
+	r := rand.New(rand.NewSource(partialSeed))
+	var long, data, folded, named, whole int
+	for range trials {
+		content := partialContent(r)
+		name := "x"
+		if r.Intn(4) == 0 {
+			name = strings.Repeat("n", 70)
+		}
+		wantLong, wantData := leftOutOf(content)
+		_, body, partial := domain.SearchTokens(name, &content)
+		if partial != (wantLong || wantData) {
+			t.Fatalf("SearchTokens(%q, %q) partial %v; the judge finds a long run %v, a long data: string %v", name, content, partial,
+				wantLong, wantData)
+		}
+		cut := slices.Index(body, domain.SearchCutKey)
+		if partial && cut != len(body)-1 || !partial && cut >= 0 {
+			t.Fatalf("SearchTokens(%q, %q) partial %v, %s at %d of %d lexemes; want it last exactly when partial", name, content, partial,
+				domain.SearchCutKey, cut, len(body))
+		}
+		// The floors count the contents of one cut alone, where a judgement
+		// missed shows.
+		switch {
+		case wantLong && wantData:
+		case wantLong && !unfoldedRun.MatchString(content):
+			folded++
+		case wantLong:
+			long++
+		case wantData:
+			data++
+		case name != "x":
+			named++
+		default:
+			whole++
+		}
+	}
+	for _, c := range []struct {
+		what string
+		n    int
+	}{{"long runs", long}, {"runs long once folded alone", folded}, {"long data: strings", data}, {"long runs in the name alone", named},
+		{"contents left whole", whole}} {
+		t.Logf("%d of %d contents of %s", c.n, trials, c.what)
+		if c.n < trials/100 {
+			t.Errorf("%d of %d contents of %s, want 1%% at least", c.n, trials, c.what)
+		}
+	}
+}
+
+// tellEachCut builds each cut: a run of 65 ASCII letters and digits and
+// not 64; 22 ﬃ, 66 letters folded; a data: string of 60 characters after
+// "data:" and not of 59; a name's run of 70, which leaves the body whole.
+func tellEachCut(t *testing.T) {
+	ffi := string(rune(0xFB03))
+	for _, tt := range []struct {
+		name, content string
+		partial       bool
+	}{
+		{"x", "a " + strings.Repeat("a", 64) + " b", false},
+		{"x", "a " + strings.Repeat("a", 65) + " b", true},
+		{"x", strings.Repeat(ffi, 21), false},
+		{"x", strings.Repeat(ffi, 22), true},
+		{"x", "![](data:" + strings.Repeat("Q", 59) + ")", false},
+		{"x", "![](DATA:" + strings.Repeat("Q", 60) + ")", true},
+		{strings.Repeat("n", 70), "plain words", false},
+	} {
+		_, body, partial := domain.SearchTokens(tt.name, &tt.content)
+		if partial != tt.partial || partial != (len(body) > 0 && body[len(body)-1] == domain.SearchCutKey) {
+			t.Errorf("SearchTokens(%q, %q) = %q, partial %v; want partial %v, with %s last", tt.name, tt.content, body, partial, tt.partial,
+				domain.SearchCutKey)
+		}
+	}
+}
+
+// deBruijnCJK is k + 1 CJK characters whose k adjacent pairs are distinct:
+// a de Bruijn sequence of order 2 over enough characters from U+4E00.
+func deBruijnCJK(k int) string {
+	m := 1
+	for m*m < k {
+		m++
+	}
+	a := make([]int, 2*m)
+	var seq []int
+	var db func(t, p int)
+	db = func(t, p int) {
+		if t > 2 {
+			if 2%p == 0 {
+				seq = append(seq, a[1:p+1]...)
+			}
+			return
+		}
+		a[t] = a[t-p]
+		db(t+1, p)
+		for j := a[t-p] + 1; j < m; j++ {
+			a[t] = j
+			db(t+1, t)
+		}
+	}
+	db(1, 1)
+	seq = append(seq, seq[0])
+	var b strings.Builder
+	for _, d := range seq[:k+1] {
+		b.WriteRune(rune(0x4E00 + d))
+	}
+	return b.String()
+}
+
+// lexemeBytes are the bytes body's lexemes take, each behind its prefix,
+// SearchCutKey left out.
+func lexemeBytes(body []string) int {
+	n := 0
+	for _, x := range body {
+		if x != domain.SearchCutKey {
+			n += len(x) + domain.SearchPrefixBytes
+		}
+	}
+	return n
+}
+
+// tellTheBound reaches the bound by distinct lexemes (M9/P4 review B-I1 =
+// C-I1): the name x (8 bytes with its prefix) and k distinct CJK bigrams
+// (13 each). 76,922 of them fill 999,994 bytes and leave the body whole;
+// 76,923 need 1,000,007, the last one left out, the body partial with
+// SearchCutKey last and its lexemes within the bound. 240 KiB of random
+// CJK reach it near 230 KB: what follows, a needle, is in no lexeme.
+func tellTheBound(t *testing.T) {
+	if domain.SearchPrefixBytes != 7 {
+		t.Fatalf("SearchPrefixBytes = %d: the counts below are of 7", domain.SearchPrefixBytes)
+	}
+	for _, tt := range []struct {
+		k       int
+		partial bool
+		lexemes int
+	}{{76_922, false, 1 + 76_922}, {76_923, true, 1 + 76_922}} {
+		content := deBruijnCJK(tt.k)
+		_, body, partial := domain.SearchTokens("x", &content)
+		kept := body
+		if partial {
+			kept = body[:len(body)-1]
+		}
+		switch {
+		case partial != tt.partial || partial != (body[len(body)-1] == domain.SearchCutKey):
+			t.Errorf("%d distinct bigrams: partial %v, the last lexeme %q; want partial %v, with %s last", tt.k, partial,
+				body[len(body)-1], tt.partial, domain.SearchCutKey)
+		case len(kept) != tt.lexemes || lexemeBytes(body) > domain.MaxSearchLexemeBytes:
+			t.Errorf("%d distinct bigrams: %d lexemes of %d bytes; want %d within %d", tt.k, len(kept), lexemeBytes(body), tt.lexemes,
+				domain.MaxSearchLexemeBytes)
+		}
+	}
+	r := rand.New(rand.NewSource(2))
+	var b strings.Builder
+	for b.Len() < 240<<10 {
+		b.WriteRune(rune(0x4E00 + r.Intn(20_000)))
+	}
+	b.WriteString(" needle")
+	content := b.String()
+	_, body, partial := domain.SearchTokens("x", &content)
+	if !partial || body[len(body)-1] != domain.SearchCutKey || slices.Contains(body, "nee") || lexemeBytes(body) > domain.MaxSearchLexemeBytes {
+		t.Errorf("240 KiB of random CJK and a needle: partial %v, %d lexeme bytes, the needle's nee in %v; want partial, %s last, "+
+			"no needle, within the bound", partial, lexemeBytes(body), slices.Contains(body, "nee"), domain.SearchCutKey)
 	}
 }
 
@@ -524,8 +832,8 @@ func TestTheRecheckImpliesTheKeys(t *testing.T) {
 		if err != nil {
 			continue
 		}
-		title, _ := domain.SearchTokens(s, nil)
-		_, body := domain.SearchTokens("-", &s)
+		title, _, _ := domain.SearchTokens(s, nil)
+		_, body, _ := domain.SearchTokens("-", &s)
 		for _, term := range parsed.Terms {
 			one, err := domain.ParseSearchQuery(&term.Text)
 			if err != nil || len(one.TitleHits(s)) == 0 {
@@ -558,7 +866,7 @@ func TestTheKeysOfALongRunOfAnotherScript(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ParseSearchQuery(%q) = %v", tt.q, err)
 		}
-		_, body := domain.SearchTokens("-", &tt.text)
+		_, body, _ := domain.SearchTokens("-", &tt.text)
 		if len(q.TitleHits(tt.text)) == 0 || q.BodyKeys() == nil {
 			t.Errorf("%q does not match %q, or has no keys", tt.q, tt.text)
 		} else if missing := missingKeys(q.BodyKeys(), body); missing != "" {
@@ -578,7 +886,7 @@ func TestTheRecheckImpliesTheKeysButWhereLeftOut(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, body := domain.SearchTokens("-", &tt.text)
+		_, body, _ := domain.SearchTokens("-", &tt.text)
 		if len(q.TitleHits(tt.text)) == 0 || missingKeys(q.BodyKeys(), body) == "" {
 			t.Errorf("%s: %q matches %v and its keys are there: no exception", tt.name, tt.q, len(q.TitleHits(tt.text)) > 0)
 		}

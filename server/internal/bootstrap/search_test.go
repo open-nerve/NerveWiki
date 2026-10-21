@@ -228,7 +228,7 @@ func checkSearchBuilt(t *testing.T, pool *pgxpool.Pool) {
 		if err := rows.Scan(&id, &name, &builtName, &tokenizer, &revision, &builtRevision, &content, &prefix, &title, &body); err != nil {
 			t.Fatal(err)
 		}
-		wantTitle, wantBody := domain.SearchTokens(name, content)
+		wantTitle, wantBody, _ := domain.SearchTokens(name, content)
 		for _, want := range [][]string{wantTitle, wantBody} {
 			for i := range want {
 				want[i] = prefix + want[i]

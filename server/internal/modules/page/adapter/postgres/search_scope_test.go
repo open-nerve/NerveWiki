@@ -245,7 +245,7 @@ func TestAnUpgradedInstanceBuildsItsSearchAgain(t *testing.T) {
 		if n.ID == b.ID {
 			content = "the kakapo sleeps"
 		}
-		title, body := domain.SearchTokens(n.Name, &content)
+		title, body, _ := domain.SearchTokens(n.Name, &content)
 		f.exec(t, `INSERT INTO page_search (node_id, revision, name, tokenizer, built_at, title, body)
 			VALUES ($1, 2, $2, '2/17.0.0/17.0.0', now(), array_to_tsvector($3::text[]), array_to_tsvector($4::text[]))`,
 			n.ID, n.Name, title, body)
@@ -307,7 +307,7 @@ func TestARowAtItsBoundFitsBehindTheLongestPrefix(t *testing.T) {
 		b.WriteRune(rune(0x4E00 + r.IntN(0x5000)))
 	}
 	content := b.String()
-	_, body := domain.SearchTokens("Big", &content)
+	_, body, _ := domain.SearchTokens("Big", &content)
 	sum := 0
 	for _, x := range body {
 		sum += len(x) + domain.SearchPrefixBytes

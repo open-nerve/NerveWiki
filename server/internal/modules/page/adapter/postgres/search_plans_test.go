@@ -156,7 +156,7 @@ func (c *searchCorpus) attachments(t *testing.T, f fixture, notebook uuid.UUID, 
 		if err := r.Scan(&row.NodeID, &row.Name); err != nil {
 			return row, err
 		}
-		row.Title, _ = domain.SearchTokens(row.Name, nil)
+		row.Title, _, _ = domain.SearchTokens(row.Name, nil)
 		return row, nil
 	})
 	if err != nil || len(built) != n {

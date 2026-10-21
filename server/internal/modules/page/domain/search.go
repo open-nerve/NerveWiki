@@ -84,8 +84,23 @@ const (
 // long runs to ASCII's, the end of a data: string, Cherokee's case (M8/P5A
 // review A-I1, A-M3, A-M1). 3: each lexeme stored behind its notebook's
 // prefix (M8 Codex review R1; migration 00041 rebuilds every row). 4: the
-// bound counts each lexeme's prefix (R1 fix round 2, A-1).
-const searchTokenizerVersion = "4"
+// bound counts each lexeme's prefix (R1 fix round 2, A-1). 5: the rows
+// whose body leaves out text of the content are marked, with SearchCutKey
+// (M9/P4 design 3.3; migration 00046 queues the pages it may be).
+const searchTokenizerVersion = "5"
+
+// SearchCutKey is the reserved key of the body of a page whose content's
+// text the lexemes leave out (partial): no lexeme holds a "!", which is of
+// the class other, so a query for it finds the partial rows of the
+// notebooks it reads alone, behind their prefixes (M9 design 4.2).
+const SearchCutKey = "!cut"
+
+// BoundFreeContentBytes is the most bytes of a content whose body never
+// reaches MaxSearchLexemeBytes, whatever its name: a byte of name, "\n"
+// and content gives at most 13 + 13/30 bytes of lexemes and prefixes, the
+// CGJs Go's NFC writes counted (M9/P4 design 3.2.2). Migration 00046
+// queues the pages past it; search_bound_test.go keeps it under the bound.
+const BoundFreeContentBytes = 74_000
 
 // SearchTokenizer names the lexemes a row holds: the rules' version, Go's
 // Unicode version, whose tables classify the characters, and x/text's,
@@ -248,25 +263,40 @@ func searchFold(s string) string {
 // image in the Markdown), up to the first character no data: URL holds,
 // and what follows MaxSearchLexemeBytes, each lexeme counted with
 // SearchPrefixBytes, are left out: a query finds them only while the node
-// waits in the queue.
-func SearchTokens(name string, content *string) (title, body []string) {
+// waits in the queue. partial tells whether the body leaves out text of
+// the content so, a name's run left out apart: grep searches contents
+// alone (M9/P4 design 3.3). A partial body ends with SearchCutKey, which
+// counts toward no bound: the tsvector's own, 1,048,575 bytes, holds it
+// above MaxSearchLexemeBytes.
+func SearchTokens(name string, content *string) (title, body []string, partial bool) {
+	foldedName := searchFold(name)
 	t := lexemes{out: []string{}}
-	t.scan(searchFold(name), true)
+	t.scan(foldedName, true)
 	if content == nil {
-		return t.out, nil
+		return t.out, nil, false
 	}
-	b := lexemes{out: []string{}}
+	// The body's text is searchFold(name) + "\n" + searchFold(content):
+	// "\n" is a boundary of NFC, which nothing composes across, and the
+	// fold keeps it. Its content starts at from.
+	b := lexemes{out: []string{}, from: len(foldedName) + 1}
 	b.scan(searchFold(name+"\n"+*content), false)
-	return t.out, b.out
+	if b.left {
+		b.out = append(b.out, SearchCutKey)
+	}
+	return t.out, b.out, b.left
 }
 
 // lexemes collects a row's lexemes, each once, up to MaxSearchLexemeBytes,
-// each counted with SearchPrefixBytes.
+// each counted with SearchPrefixBytes; left tells whether it left out text
+// at from or past it: a long run, a long data: string, or what follows the
+// bound, which only a content reaches.
 type lexemes struct {
 	seen  map[string]struct{}
 	out   []string
 	bytes int
 	full  bool
+	from  int
+	left  bool
 }
 
 func (l *lexemes) add(s string) {
@@ -277,7 +307,7 @@ func (l *lexemes) add(s string) {
 		return
 	}
 	if l.bytes+len(s)+SearchPrefixBytes > MaxSearchLexemeBytes {
-		l.full = true
+		l.full, l.left = true, true
 		return
 	}
 	if l.seen == nil {
@@ -306,6 +336,7 @@ func (l *lexemes) scan(s string, unigrams bool) {
 				end = len(s) - i
 			}
 			if end > 64 { // bytes: the URL's characters are ASCII
+				l.left = l.left || i >= l.from
 				prev = -1
 				i += end
 				continue
@@ -353,11 +384,14 @@ func longASCII(n, b int) bool {
 }
 
 // word adds the lexemes of the word run s[start:end] of n characters: none
-// for no run or one of ASCII past MaxSearchWordRunes; itself for one of one
-// or two; its trigrams otherwise.
+// for no run, or for one of ASCII past MaxSearchWordRunes, left out (at or
+// past from: l.left); itself for one of one or two; its trigrams otherwise.
 func (l *lexemes) word(s string, start, end, n int) {
 	switch {
-	case start < 0 || longASCII(n, end-start):
+	case start < 0:
+		return
+	case longASCII(n, end-start):
+		l.left = l.left || start >= l.from
 		return
 	case n <= 2:
 		l.add(s[start:end])

@@ -566,7 +566,7 @@ func TestTheSearchsRowsAndSources(t *testing.T) {
 	missing := uuid.NewV7()
 	built := now().Add(time.Minute)
 	row := func(n domain.Node, revision int, content *string) app.SearchRow {
-		title, body := domain.SearchTokens(n.Name, content)
+		title, body, _ := domain.SearchTokens(n.Name, content)
 		return app.SearchRow{NodeID: n.ID, Revision: revision, Name: n.Name, Tokenizer: domain.SearchTokenizer, BuiltAt: built, Title: title,
 			Body: body}
 	}
@@ -1656,7 +1656,7 @@ func TestSearchStatementErrorsCarryNoQuery(t *testing.T) {
 		return rollBack
 	})
 	n := f.page(t, f.eng, nil, secret, 0)
-	title, body := domain.SearchTokens(secret, new(secret+" 机密文件"))
+	title, body, _ := domain.SearchTokens(secret, new(secret+" 机密文件"))
 	err := tx.WithinTx(ctx, func(ctx context.Context) error {
 		return f.s.WriteSearchRows(ctx, []app.SearchRow{{NodeID: n.ID, Name: secret, Tokenizer: domain.SearchTokenizer, BuiltAt: now(),
 			Title: title, Body: body}}, nil)
