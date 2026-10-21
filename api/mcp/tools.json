@@ -1,6 +1,35 @@
 {
   "notebook": [
     {
+      "name": "backlinks",
+      "title": "List the pages linking to a page",
+      "description": "List the pages that link to a page: each with its path, how many of its links lead there (1000 means 1000 or more) and the lines around the first ten of them, each at most 240 bytes. Only a page has backlinks: an attachment's path is not found. A page's links to itself are left out; a page written since the link index read it has no lines yet. Go on with next_cursor while it is set.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "The page's path from the notebook's root, ending with .md."
+          },
+          "limit": {
+            "type": ["null", "integer"],
+            "description": "At most this many pages, 1 to 100. Default 50."
+          },
+          "cursor": {
+            "type": ["null", "string"],
+            "description": "next_cursor of the previous answer, to go on from there."
+          }
+        },
+        "required": ["path"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      }
+    },
+    {
       "name": "batch",
       "title": "Apply several writes as one change",
       "description": "Apply up to 100 writes as one change, all or none, with a message the history shows. Each op is a write, edit, move or delete: op names the tool and its other members are that tool's arguments; it acts on the notebook as the ops before it left it, their paths and contents. base_version is a page's version from before the batch; a page the batch creates takes none. A refused op writes nothing at all: the error has its op, from 0, and that tool's code. A delete of a page whose descendants an earlier op deleted takes them in one deletion, the earlier op answering merged_into; a batch may not delete what it creates, renames or moves. Unlike separate calls, links follow the batch's renames and moves, merged node by node, from where they led before the batch, or, in a page the batch writes, at its latest write before them (on the tree then, with the aliases from before the batch): what other ops did in between to where they lead (creating, renaming, moving or deleting a page) is not seen, nor any alias the batch changed. A page the batch writes or deletes that is being edited in the web editor refuses at the first op that writes or deletes it, as page.locked; one that only the links' rewrite of its renames and moves reaches is checked after those, as linking.pages_locked at its first rename or move. The answer has the changeset's id and time and each op's result, as many as fit, results_count all of them: changeset reads the rest. What the batch writes reaches the search some seconds after it: building says it is on its way. Each op's changed is what its tool would answer at that step; the batch's tells whether it left a change.",
@@ -199,6 +228,42 @@
           }
         },
         "required": ["pattern"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "index",
+      "title": "List the notebook's pages by type, tag or parent",
+      "description": "List the notebook's pages as its link index holds them: each with its path; its frontmatter's type and summary, the first key of that name whatever its case, when its value is text; its tags, 20 at most; when its content last changed; how many other pages link to it (1000 means 1000 or more); and its parent page's path. type, summary and each tag are cut to 256 bytes, cut naming what was cut. type keeps the pages of exactly that type; tag those with that tag or one under it (\"plan\" takes \"plan/q4\"; a leading # is dropped); parent the child pages of that page, \"/\" those at the root. Omit a filter rather than give it empty: \"\" is refused. The pages with a type come first, by type, then the others. A page the index has not read yet, as one written before nervewiki reindex after an upgrade, is not listed. Go on with next_cursor while it is set.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": ["null", "string"],
+            "description": "Only the pages whose frontmatter's type is exactly this."
+          },
+          "tag": {
+            "type": ["null", "string"],
+            "description": "Only the pages with this tag or one under it, with or without its leading #."
+          },
+          "parent": {
+            "type": ["null", "string"],
+            "description": "Only the child pages of this page, by its path ending with .md; \"/\" for the root's."
+          },
+          "limit": {
+            "type": ["null", "integer"],
+            "description": "At most this many pages, 1 to 100. Default 50."
+          },
+          "cursor": {
+            "type": ["null", "string"],
+            "description": "next_cursor of the previous answer, to go on from there."
+          }
+        },
         "additionalProperties": false
       },
       "annotations": {
@@ -437,6 +502,39 @@
   ],
   "account": [
     {
+      "name": "backlinks",
+      "title": "List the pages linking to a page",
+      "description": "List the pages that link to a page: each with its path, how many of its links lead there (1000 means 1000 or more) and the lines around the first ten of them, each at most 240 bytes. Only a page has backlinks: an attachment's path is not found. A page's links to itself are left out; a page written since the link index read it has no lines yet. Go on with next_cursor while it is set.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "notebook": {
+            "type": "string",
+            "description": "The notebook's id, from notebooks."
+          },
+          "path": {
+            "type": "string",
+            "description": "The page's path from the notebook's root, ending with .md."
+          },
+          "limit": {
+            "type": ["null", "integer"],
+            "description": "At most this many pages, 1 to 100. Default 50."
+          },
+          "cursor": {
+            "type": ["null", "string"],
+            "description": "next_cursor of the previous answer, to go on from there."
+          }
+        },
+        "required": ["notebook", "path"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      }
+    },
+    {
       "name": "batch",
       "title": "Apply several writes as one change",
       "description": "Apply up to 100 writes as one change, all or none, with a message the history shows. Each op is a write, edit, move or delete: op names the tool and its other members are that tool's arguments; it acts on the notebook as the ops before it left it, their paths and contents. base_version is a page's version from before the batch; a page the batch creates takes none. A refused op writes nothing at all: the error has its op, from 0, and that tool's code. A delete of a page whose descendants an earlier op deleted takes them in one deletion, the earlier op answering merged_into; a batch may not delete what it creates, renames or moves. Unlike separate calls, links follow the batch's renames and moves, merged node by node, from where they led before the batch, or, in a page the batch writes, at its latest write before them (on the tree then, with the aliases from before the batch): what other ops did in between to where they lead (creating, renaming, moving or deleting a page) is not seen, nor any alias the batch changed. A page the batch writes or deletes that is being edited in the web editor refuses at the first op that writes or deletes it, as page.locked; one that only the links' rewrite of its renames and moves reaches is checked after those, as linking.pages_locked at its first rename or move. The answer has the changeset's id and time and each op's result, as many as fit, results_count all of them: changeset reads the rest. What the batch writes reaches the search some seconds after it: building says it is on its way. Each op's changed is what its tool would answer at that step; the batch's tells whether it left a change.",
@@ -655,6 +753,47 @@
           }
         },
         "required": ["notebook", "pattern"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "index",
+      "title": "List the notebook's pages by type, tag or parent",
+      "description": "List the notebook's pages as its link index holds them: each with its path; its frontmatter's type and summary, the first key of that name whatever its case, when its value is text; its tags, 20 at most; when its content last changed; how many other pages link to it (1000 means 1000 or more); and its parent page's path. type, summary and each tag are cut to 256 bytes, cut naming what was cut. type keeps the pages of exactly that type; tag those with that tag or one under it (\"plan\" takes \"plan/q4\"; a leading # is dropped); parent the child pages of that page, \"/\" those at the root. Omit a filter rather than give it empty: \"\" is refused. The pages with a type come first, by type, then the others. A page the index has not read yet, as one written before nervewiki reindex after an upgrade, is not listed. Go on with next_cursor while it is set.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "notebook": {
+            "type": "string",
+            "description": "The notebook's id, from notebooks."
+          },
+          "type": {
+            "type": ["null", "string"],
+            "description": "Only the pages whose frontmatter's type is exactly this."
+          },
+          "tag": {
+            "type": ["null", "string"],
+            "description": "Only the pages with this tag or one under it, with or without its leading #."
+          },
+          "parent": {
+            "type": ["null", "string"],
+            "description": "Only the child pages of this page, by its path ending with .md; \"/\" for the root's."
+          },
+          "limit": {
+            "type": ["null", "integer"],
+            "description": "At most this many pages, 1 to 100. Default 50."
+          },
+          "cursor": {
+            "type": ["null", "string"],
+            "description": "next_cursor of the previous answer, to go on from there."
+          }
+        },
+        "required": ["notebook"],
         "additionalProperties": false
       },
       "annotations": {

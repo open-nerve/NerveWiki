@@ -409,7 +409,9 @@ func TestTheMCPReadsWithAPublicURLEndingInASlash(t *testing.T) {
 // with the parse budget held (writeCodeCalls, carolsWrites, busyWrites).
 // P4's grep and search answer their cursor's, their arguments' and their
 // notebook's, grep server_busy once the app's one slot, which the test
-// holds, was waited for a second (M9/P4 design 3.12; grepCodeCalls).
+// holds, was waited for a second (M9/P4 design 3.12; grepCodeCalls);
+// backlinks and index theirs, and their path's or parent's page.not_found
+// (linkCodeCalls).
 func TestTheMCPToolsErrorsCarryTheirCodes(t *testing.T) {
 	slots := page.NewGrepSlots(1)
 	r := startReadsAppWith(t, publicOrigin, wiring{page: func(d *page.Deps) { d.GrepSlots = slots }})
@@ -441,7 +443,7 @@ func TestTheMCPToolsErrorsCarryTheirCodes(t *testing.T) {
 		{mcpserver.Pattern, "open_notebook", map[string]any{"notebook": unseen}, "notebook.not_found"},
 		{mcpserver.Pattern, "open_notebook", map[string]any{"notebook": "nope"}, "notebook.not_found"},
 	}
-	for _, tt := range slices.Concat(calls, writeCodeCalls(t, r, guide), historyCodeCalls(t, r), grepCodeCalls(r)) {
+	for _, tt := range slices.Concat(calls, writeCodeCalls(t, r, guide), historyCodeCalls(t, r), grepCodeCalls(r), linkCodeCalls(r)) {
 		member := r.call(t, tt.path, tt.tool, tt.args).toolError(t)
 		if member["code"] != tt.want {
 			t.Errorf("%s %v at %s = %v, want %s", tt.tool, tt.args, tt.path, member, tt.want)
@@ -480,6 +482,30 @@ func grepCodeCalls(r readsApp) []codeCall {
 		{nb, "search", map[string]any{"q": "x", "limit": 51}, "validation_failed"},
 		{mcpserver.Pattern, "search", map[string]any{"notebook": "nope", "q": "x"}, "notebook.not_found"},
 		{mcpserver.Pattern, "search", map[string]any{"notebook": r.deleted, "q": "x"}, "notebook.not_found"},
+	}
+}
+
+// linkCodeCalls are backlinks' and index's calls of each code (M9/P4
+// design 3.12): a cursor that decodes into nothing; a path of an empty
+// segment, a parent "", a type "" and a limit past 100; a path and a
+// parent where nothing is; a notebook of no UUID, and one alice does not
+// see, before any path in it is looked up.
+func linkCodeCalls(r readsApp) []codeCall {
+	nb := atNotebook(r.notebook)
+	return []codeCall{
+		{nb, "backlinks", map[string]any{"path": "Guide.md", "cursor": "nope"}, "bad_request"},
+		{nb, "backlinks", map[string]any{"path": "a//b.md"}, "validation_failed"},
+		{nb, "backlinks", map[string]any{"path": "Guide.md", "limit": 0}, "validation_failed"},
+		{nb, "backlinks", map[string]any{"path": "Missing.md"}, "page.not_found"},
+		{mcpserver.Pattern, "backlinks", map[string]any{"notebook": "nope", "path": "Guide.md"}, "notebook.not_found"},
+		{mcpserver.Pattern, "backlinks", map[string]any{"notebook": r.hidden, "path": "Missing.md"}, "notebook.not_found"},
+		{nb, "index", map[string]any{"cursor": "nope"}, "bad_request"},
+		{nb, "index", map[string]any{"parent": ""}, "validation_failed"},
+		{nb, "index", map[string]any{"type": ""}, "validation_failed"},
+		{nb, "index", map[string]any{"limit": 101}, "validation_failed"},
+		{nb, "index", map[string]any{"parent": "Missing.md"}, "page.not_found"},
+		{mcpserver.Pattern, "index", map[string]any{"notebook": "nope"}, "notebook.not_found"},
+		{mcpserver.Pattern, "index", map[string]any{"notebook": r.hidden, "parent": "Missing.md"}, "notebook.not_found"},
 	}
 }
 
@@ -568,16 +594,23 @@ func TestPageAttachmentErrors(t *testing.T) {
 }
 
 // A NUL in read's path or list's pattern is 422 invalid_format on the
-// argument, which no title holds, not internal_error (M9/P1 design 3.13).
+// argument, which no title holds, not internal_error (M9/P1 design 3.13);
+// so is one in backlinks' path and in index's type and parent, and index's
+// tag of one is an empty page, a tag no page has (M9/P4 design 3.12).
 func TestTheMCPReadsRefuseANul(t *testing.T) {
 	r := startReadsApp(t, publicOrigin)
-	for _, c := range []struct{ tool, field string }{{"read", "path"}, {"list", "pattern"}} {
+	for _, c := range []struct{ tool, field string }{{"read", "path"}, {"list", "pattern"}, {"backlinks", "path"}, {"index", "type"},
+		{"index", "parent"}} {
 		member := r.call(t, atNotebook(r.notebook), c.tool, map[string]any{c.field: "a\x00b.md"}).toolError(t)
 		fields, _ := member["fields"].([]any)
 		if member["code"] != "validation_failed" || len(fields) != 1 ||
 			fields[0].(map[string]any)["field"] != c.field || fields[0].(map[string]any)["code"] != "invalid_format" {
 			t.Errorf("%s with a NUL = %v, want 422 invalid_format on %s", c.tool, member, c.field)
 		}
+	}
+	r.createPage(t, "", "Tagged", "#a\n")
+	if a := answerOf[mcpIndexAnswer](t, r.use(t, "index", map[string]any{"tag": "a\x00b"})); len(a.Pages) != 0 || a.NextCursor != nil {
+		t.Errorf("index of a tag with a NUL = %+v, want an empty page", a)
 	}
 }
 
@@ -741,6 +774,8 @@ func validToolArguments(created string) map[string]map[string]any {
 		"changeset":     {"id": created},
 		"grep":          {"pattern": "x"},
 		"search":        {"q": "x"},
+		"backlinks":     {"path": "Strings.md"},
+		"index":         {},
 	}
 }
 
