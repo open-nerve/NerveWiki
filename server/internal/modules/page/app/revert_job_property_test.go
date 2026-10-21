@@ -60,11 +60,11 @@ import (
 // stops, its conflict that step's alone, named as in S*, nothing written
 // in it, no node aside. Not idle: each kind of segment, a restore cut
 // short, a group across batches, each movegone and each injection come up
-// at least as often as the floors count them, each apart.
+// at least as often as its floor counts it, each apart.
 func TestTheJobsStepsReplayToStar(t *testing.T) {
-	trials, floor := 2_000, 50
-	if testing.Short() {
-		trials, floor = 200, 5
+	trials, short := 2_000, testing.Short()
+	if short {
+		trials = 400
 	}
 	var counts jobCounts
 	for seed := range trials {
@@ -80,19 +80,37 @@ func TestTheJobsStepsReplayToStar(t *testing.T) {
 		counts.goneLater, counts.goneSame, counts.injected[injectRename], counts.injected[injectKey], counts.injected[injectChild],
 		counts.injected[injectTrash], counts.injected[injectCycle], counts.injected[injectDeepPlace], counts.injected[injectDeepRestore],
 		counts.injected[injectTrashRestore])
+	// Each kind's floor, in full and under -short, is two thirds of its
+	// least count over seeds other than the test's: 20 bases of 2,000
+	// trials (from 0, 100,000, ..., 1,900,000) and 40 of 400 (from 0,
+	// 1,000, ..., 39,000), so a change that only reshuffles the trials
+	// keeps to them (review C2-N1). -short runs 400 trials, the fewest
+	// that keep each of its floors at 3 or more.
 	for _, c := range []struct {
-		what string
-		n    int
+		what        string
+		n           int
+		full, short int
 	}{
-		{"segments of steps aside", counts.aside}, {"segments of a restore and its write back", counts.restoreWrite},
-		{"segments of a write back and its deletion", counts.writeDelete}, {"restores cut short", counts.cut},
-		{"groups across batches", counts.across}, {"movegone in a later batch", counts.goneLater}, {"movegone in one", counts.goneSame},
-		{"renames injected", counts.injected[injectRename]}, {"names taken injected", counts.injected[injectKey]},
-		{"children injected", counts.injected[injectChild]}, {"places' parents deleted injected", counts.injected[injectTrash]},
-		{"cycles injected", counts.injected[injectCycle]}, {"places too deep injected", counts.injected[injectDeepPlace]},
-		{"restores too deep injected", counts.injected[injectDeepRestore]},
-		{"restores' parents deleted injected", counts.injected[injectTrashRestore]},
+		{"segments of steps aside", counts.aside, 741, 138},
+		{"segments of a restore and its write back", counts.restoreWrite, 836, 157},
+		{"segments of a write back and its deletion", counts.writeDelete, 512, 86},
+		{"restores cut short", counts.cut, 176, 26},
+		{"groups across batches", counts.across, 548, 100},
+		{"movegone in a later batch", counts.goneLater, 73, 11},
+		{"movegone in one", counts.goneSame, 126, 22},
+		{"renames injected", counts.injected[injectRename], 427, 78},
+		{"names taken injected", counts.injected[injectKey], 364, 66},
+		{"children injected", counts.injected[injectChild], 235, 40},
+		{"places' parents deleted injected", counts.injected[injectTrash], 58, 8},
+		{"cycles injected", counts.injected[injectCycle], 28, 3},
+		{"places too deep injected", counts.injected[injectDeepPlace], 78, 11},
+		{"restores too deep injected", counts.injected[injectDeepRestore], 41, 5},
+		{"restores' parents deleted injected", counts.injected[injectTrashRestore], 66, 9},
 	} {
+		floor := c.full
+		if short {
+			floor = c.short
+		}
 		if c.n < floor {
 			t.Errorf("idle: %s %d, want %d", c.what, c.n, floor)
 		}
