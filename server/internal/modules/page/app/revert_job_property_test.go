@@ -7,7 +7,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"maps"
 	"math/rand/v2"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -19,35 +21,42 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
-// A background revert's steps put the notebook back (M9/P3 design 3.26):
-// a changeset of a random batch, the domain's generator of 3.16.4, or of a
+// A background revert's steps put the notebook back (M9/P3 design 3.26): a
+// changeset of a random batch, the domain's generator of 3.16.4, or of a
 // folder larger than the job's batches (a group whose members span them, a
 // page of it written back, a restore cut short in a segment of steps aside
 // with members after it), held by the fake store; the job's plan at its
 // start (PlanRevert). Its steps joined are the segments, no more: from a
-// step aside to its node's last place, a page's restore and its write
-// back right after it, a write back and the deletion that takes its page.
-// Its steps, in their order, done on the test's own model, each checked
-// as a store checks it (a restore a member at a time, each where its
-// deletion left it, its parent back before it), end at S*: the tree, and
-// the contents of S*'s pages, alive and in the trash; each group's every
+// step aside to its node's last place, a page's restore and its write back
+// right after it, a write back and the deletion that takes its page. Its
+// steps, in their order, done on the test's own model, each checked as a
+// store checks it (a restore a member at a time, each where its deletion
+// left it, its parent back before it), end at S*: the tree, and the
+// contents of S*'s pages, alive and in the trash; each group's every
 // member restored once. Then the job runs on the fake store in batches of
 // random sizes, cut only between segments, each read and checked by
 // RevertBatch: no batch conflicts; every write the store gets is one a
 // store takes (its node alive, its parent alive, its name free there, a
 // write back on the revision it read, a restore of nodes in the trash at
 // its time); no node at a batch's end is anywhere but where the job found
-// it or where S* has it, so no name aside is left between two batches;
-// and the store ends at S*. The job's changeset is then reverted the same
-// way: a revert's revert, which writes pages back before the deletions
-// that take them. Between two batches, review B's movegone: someone moves
-// B, the top of a deletion of a later step, under A, the top of an earlier
+// it or where S* has it, so no name aside is left between two batches; and
+// the store ends at S*. The job's changeset is then reverted the same way:
+// a revert's revert, which writes pages back before the deletions that
+// take them. Between two batches, review B's movegone: someone moves B,
+// the top of a deletion of a later step, under A, the top of an earlier
 // one, both the changeset's: the job stops at A's batch, B alive, no
-// conflict named A; B alone children_added when its deletion is in a
-// later batch, as the deletion of A finds it, B changed by L when the
-// batch holds both. Not idle: each kind of segment, a restore cut short, a
-// group across batches, and each movegone come up at least as often as
-// the floors count them, each apart.
+// conflict named A; B alone children_added when its deletion is in a later
+// batch, as the deletion of A finds it, B changed by L when the batch
+// holds both. Between two batches too, the design model's injections
+// (review C-I1), each on a fixture of its own: a later place's or step
+// aside's node renamed, L's changed; a later place's or group's S* name
+// taken, title_taken with the taker; a child put under a later deletion's
+// top, children_added; a later place's S* parent deleted, parent_gone: the
+// batch of that step stops, its conflict that step's alone, named as in
+// S*, nothing written in it, no node aside. Not idle: each kind of
+// segment, a restore cut short, a group across batches, each movegone and
+// each injection come up at least as often as the floors count them, each
+// apart.
 func TestTheJobsStepsReplayToStar(t *testing.T) {
 	trials, floor := 2_000, 50
 	if testing.Short() {
@@ -60,9 +69,11 @@ func TestTheJobsStepsReplayToStar(t *testing.T) {
 		}
 	}
 	t.Logf("%d trials, %d jobs in %d batches: segments of steps aside %d, of a restore and its write back %d, of a write back "+
-		"and its deletion %d; restores cut short %d; groups across batches %d; movegone in a later batch %d, in one %d",
+		"and its deletion %d; restores cut short %d; groups across batches %d; movegone in a later batch %d, in one %d; injected "+
+		"renames %d, names taken %d, children %d, parents deleted %d",
 		trials, counts.jobs, counts.batches, counts.aside, counts.restoreWrite, counts.writeDelete, counts.cut, counts.across,
-		counts.goneLater, counts.goneSame)
+		counts.goneLater, counts.goneSame, counts.injected[injectRename], counts.injected[injectKey], counts.injected[injectChild],
+		counts.injected[injectTrash])
 	for _, c := range []struct {
 		what string
 		n    int
@@ -70,6 +81,8 @@ func TestTheJobsStepsReplayToStar(t *testing.T) {
 		{"segments of steps aside", counts.aside}, {"segments of a restore and its write back", counts.restoreWrite},
 		{"segments of a write back and its deletion", counts.writeDelete}, {"restores cut short", counts.cut},
 		{"groups across batches", counts.across}, {"movegone in a later batch", counts.goneLater}, {"movegone in one", counts.goneSame},
+		{"renames injected", counts.injected[injectRename]}, {"names taken injected", counts.injected[injectKey]},
+		{"children injected", counts.injected[injectChild]}, {"parents deleted injected", counts.injected[injectTrash]},
 	} {
 		if c.n < floor {
 			t.Errorf("idle: %s %d, want %d", c.what, c.n, floor)
@@ -84,6 +97,7 @@ func TestTheJobsStepsReplayToStar(t *testing.T) {
 // A's or in A's.
 type jobCounts struct {
 	jobs, batches, aside, restoreWrite, writeDelete, cut, across, goneLater, goneSame int
+	injected                                                                          [injects]int
 }
 
 // jobNode is a node of the model, a page or an attachment (asset): where
@@ -129,10 +143,11 @@ func (m jobModel) clone() jobModel {
 	return out
 }
 
-// jobTrial is a trial: its random source; every version a page wrote, its
+// jobTrial is a trial: its seed and random source; every version a page wrote, its
 // content and hash, by page and revision; the nodes it made, in id order;
 // the keys of the names it met; when its changeset was made.
 type jobTrial struct {
+	seed     uint64
 	rng      *rand.Rand
 	versions map[domain.VersionRef]string
 	hashes   map[domain.VersionRef][]byte
@@ -142,7 +157,7 @@ type jobTrial struct {
 }
 
 func newJobTrial(seed uint64) *jobTrial {
-	return &jobTrial{rng: rand.New(rand.NewPCG(seed, 0x5851f42d4c957f2d)), versions: map[domain.VersionRef]string{},
+	return &jobTrial{seed: seed, rng: rand.New(rand.NewPCG(seed, 0x5851f42d4c957f2d)), versions: map[domain.VersionRef]string{},
 		hashes: map[domain.VersionRef][]byte{}, keys: map[string]string{}, at: now().Add(-time.Hour)}
 }
 
@@ -886,6 +901,11 @@ func (p *jobTrial) run(counts *jobCounts) string {
 	if bad := p.movegone(post, items, versions, counts); bad != "" {
 		return "movegone: " + bad
 	}
+	for kind := range injects {
+		if bad := p.inject(kind, post, items, versions, counts); bad != "" {
+			return "inject " + bad
+		}
+	}
 	f, c := p.load(post, items, versions)
 	for level := 1; level <= 2; level++ {
 		start := p.modelOf(f)
@@ -968,12 +988,17 @@ func (p *jobTrial) job(f *fixture, id uuid.UUID, start, star jobModel, counts *j
 // cuts are a job's batches, from step 0, each of a random size, grown to
 // its segment's end as the job's worker grows it; one batch now and then.
 func (p *jobTrial) cuts(steps []domain.JobStep) [][2]int {
+	return cutsBy(p.rng, steps)
+}
+
+// cutsBy are cuts of rng.
+func cutsBy(rng *rand.Rand, steps []domain.JobStep) [][2]int {
 	var out [][2]int
-	whole := p.rng.IntN(8) == 0
+	whole := rng.IntN(8) == 0
 	for from := 0; from < len(steps); {
 		to := len(steps)
 		if !whole {
-			to = min(from+p.between(1, 4), len(steps))
+			to = min(from+1+rng.IntN(4), len(steps))
 		}
 		for to < len(steps) && steps[to-1].Joined {
 			to++
@@ -1337,4 +1362,301 @@ func describeSteps(steps []app.RevertStep) string {
 		out = append(out, d)
 	}
 	return "[" + strings.Join(out, ", ") + "]"
+}
+
+// The injections of the design's model (sim2/batches_rev.py), each
+// someone's write between two batches that a later batch's premise alone
+// sees (M9/P3 S3 review C-I1): a later place's or step aside's node
+// renamed, L's changed; a later place's or group's S* name taken, its
+// premise's title_taken with the taker; a child put under a later
+// deletion's top, children_added; a later place's S* parent deleted, its
+// premise's parent_gone.
+const (
+	injectRename = iota
+	injectKey
+	injectChild
+	injectTrash
+	injects
+)
+
+// injectName is the injection kind's name.
+func injectName(kind int) string {
+	return [injects]string{"rename", "key", "child", "trash"}[kind]
+}
+
+// injected is a later step's conflict an injection makes: the step's
+// index, its node, reason, name and holder.
+type injected struct {
+	step   int
+	node   uuid.UUID
+	reason domain.ConflictReason
+	name   string
+	holder *uuid.UUID
+}
+
+func (i injected) String() string {
+	holder := "none"
+	if i.holder != nil {
+		holder = i.holder.String()
+	}
+	return fmt.Sprintf("step %d: %s %s named %q, holder %s", i.step, i.node, i.reason, i.name, holder)
+}
+
+// inject is the injection kind on the job of the changeset of items and
+// versions on start, on a fixture of its own and a random source of its
+// own: before a batch other than the first, a write on a target a later
+// step meets, chosen at random. The batches before the one of that step
+// write, which stops, its conflict that step's alone; it writes nothing,
+// and no node is left aside. "" when all is well or there is no target.
+func (p *jobTrial) inject(kind int, start jobModel, items []domain.ChangesetItem, versions []domain.ChangesetVersion,
+	counts *jobCounts,
+) string {
+	rng := rand.New(rand.NewPCG(p.seed, uint64(kind)+1))
+	f, c := p.load(start, items, versions)
+	w, spec := f.jobs(now(), 0, 0), f.jobSpec()
+	plan, err := w.PlanRevert(f.asJob(), spec, c.ID)
+	if err != nil {
+		return fmt.Sprintf("PlanRevert = %v", err)
+	}
+	steps, groups := plan.RevertSteps()
+	cuts := cutsBy(rng, plan.Steps())
+	if len(cuts) < 2 {
+		return ""
+	}
+	at := 1 + rng.IntN(len(cuts)-1)
+	for _, cut := range cuts[:at] {
+		if _, err := w.RunBatch(f.asJob(), spec, plan, cut[0], cut[1]); err != nil {
+			return fmt.Sprintf("batch %v before the injection: %v", cut, err)
+		}
+	}
+	want, ok := p.injection(kind, rng, f, items, steps, groups, cuts[at][0])
+	if !ok {
+		return ""
+	}
+	stop := slices.IndexFunc(cuts, func(c [2]int) bool { return c[0] <= want.step && want.step < c[1] })
+	aside := map[string]bool{}
+	for _, s := range steps {
+		if s.Kind == domain.RevertAside {
+			aside[s.Name] = true
+		}
+	}
+	for b := at; b < len(cuts); b++ {
+		was := snapshotOf(f.store)
+		_, err := w.RunBatch(f.asJob(), spec, plan, cuts[b][0], cuts[b][1])
+		if err == nil && b < stop {
+			continue
+		}
+		var e *shared.Error
+		got := conflictsOf(err)
+		switch {
+		case b != stop || !errors.As(err, &e):
+			return fmt.Sprintf("%s before batch %v: batch %v = %v; want batch %v stopped, %s; steps %s", injectName(kind), cuts[at],
+				cuts[b], err, cuts[stop], want, describeSteps(steps))
+		case len(got) != 1 || got[0].NodeID != want.node || got[0].Reason != string(want.reason) || got[0].Name != want.name ||
+			!sameHolder(got[0].HolderID, want.holder):
+			return fmt.Sprintf("%s: batch %v's conflicts %+v; want %s; steps %s", injectName(kind), cuts[b], got, want, describeSteps(steps))
+		case !was.same(snapshotOf(f.store)):
+			return fmt.Sprintf("%s: batch %v stopped, but wrote", injectName(kind), cuts[b])
+		}
+		for id, n := range f.store.nodes {
+			if aside[n.Name] {
+				return fmt.Sprintf("%s: %s named aside, %q, after the stop", injectName(kind), id, n.Name)
+			}
+		}
+		counts.injected[kind]++
+		return ""
+	}
+	return fmt.Sprintf("%s before batch %v: the job wrote every batch; want batch %v stopped", injectName(kind), cuts[at], cuts[stop])
+}
+
+// injection makes the write of kind on f, the batches from step from on
+// to come, and answers the conflict it makes; none without a target.
+func (p *jobTrial) injection(kind int, rng *rand.Rand, f *fixture, items []domain.ChangesetItem, steps []app.RevertStep,
+	groups [][]domain.GroupNode, from int,
+) (injected, bool) {
+	before := map[uuid.UUID]*domain.TreeState{}
+	for _, it := range items {
+		before[it.NodeID] = it.Before
+	}
+	touched := map[uuid.UUID]bool{}
+	written := map[uuid.UUID]bool{}
+	first := map[uuid.UUID]int{}
+	for k, s := range steps {
+		if k < from {
+			continue
+		}
+		touched[s.Node] = true
+		for _, id := range s.Nodes {
+			touched[id] = true
+		}
+		if s.Kind == domain.RevertRestore {
+			for _, g := range groups[s.Group] {
+				touched[g.ID] = true
+			}
+		}
+		if _, seen := first[s.Node]; !seen {
+			first[s.Node] = k
+		}
+		if s.Kind == domain.RevertContent {
+			written[s.Node] = true
+		}
+	}
+	// target is a later step's S* place: its parent and name.
+	target := func(k int) (*uuid.UUID, string, bool) {
+		s := steps[k]
+		switch {
+		case s.Kind == domain.RevertPlace:
+			if s.Parent == (uuid.UUID{}) {
+				return nil, s.Name, true
+			}
+			return &s.Parent, s.Name, true
+		case s.Kind == domain.RevertRestore && s.Member == 0 && before[s.Node] != nil:
+			return before[s.Node].ParentID, before[s.Node].Name, true
+		}
+		return nil, "", false
+	}
+	var cands []injected
+	switch kind {
+	case injectRename:
+		for k := from; k < len(steps); k++ {
+			s := steps[k]
+			if _, alive := f.store.nodes[s.Node]; alive && (s.Kind == domain.RevertPlace || s.Kind == domain.RevertAside) &&
+				first[s.Node] == k && !written[s.Node] && before[s.Node] != nil {
+				cands = append(cands, injected{step: k, node: s.Node, reason: domain.ConflictChanged, name: before[s.Node].Name})
+			}
+		}
+	case injectKey:
+		for k := from; k < len(steps); k++ {
+			parent, name, ok := target(k)
+			if !ok || !storePage(f, steps[k].Node, groups, steps[k]) || !storeRoom(f, parent, 1) || storeHolds(f, parent, name) {
+				continue
+			}
+			cands = append(cands, injected{step: k, node: steps[k].Node, reason: domain.ConflictTitleTaken, name: name})
+		}
+	case injectChild:
+		for k := from; k < len(steps); k++ {
+			s := steps[k]
+			if n, alive := f.store.nodes[s.Node]; alive && s.Kind == domain.RevertDelete && n.Kind == domain.KindPage &&
+				storeRoom(f, &s.Node, 1) {
+				cands = append(cands, injected{step: k, node: s.Node, reason: domain.ConflictChildrenAdded})
+			}
+		}
+	case injectTrash:
+		for k := from; k < len(steps); k++ {
+			s := steps[k]
+			if s.Kind != domain.RevertPlace || s.Parent == (uuid.UUID{}) {
+				continue
+			}
+			if _, alive := f.store.nodes[s.Parent]; !alive || slices.ContainsFunc(storeSubtree(f, s.Parent), func(id uuid.UUID) bool {
+				return touched[id]
+			}) {
+				continue
+			}
+			cands = append(cands, injected{step: k, node: s.Parent})
+		}
+	}
+	if len(cands) == 0 {
+		return injected{}, false
+	}
+	want := cands[rng.IntN(len(cands))]
+	switch kind {
+	case injectRename:
+		n := f.store.nodes[want.node]
+		n.Name = fmt.Sprintf("zz %06d", rng.IntN(1_000_000))
+		n.NameKey = shared.TitleKey(n.Name)
+		f.store.nodes[want.node] = n
+	case injectKey:
+		parent, name, _ := target(want.step)
+		taker := f.page(name, parent, 1e6)
+		want.holder = &taker.ID
+	case injectChild:
+		top := want.node
+		child := f.page(fmt.Sprintf("zz %06d", rng.IntN(1_000_000)), &top, 1e6)
+		want.node, want.name = child.ID, child.Name
+	case injectTrash:
+		gone := storeSubtree(f, want.node)
+		f.trashed(want.node, now().Add(-30*time.Minute), f.alice)
+		// The first later step that meets it: a place under it, or a
+		// group's restore under it in S*.
+		for k := from; k < len(steps); k++ {
+			if parent, name, ok := target(k); ok && parent != nil && slices.Contains(gone, *parent) {
+				return injected{step: k, node: steps[k].Node, reason: domain.ConflictParentGone, name: name}, true
+			}
+		}
+		panic("a trash injection's parent no later step meets")
+	}
+	return want, true
+}
+
+// storePage reports whether the node of step s is a page: in the store,
+// or a group's member the step restores.
+func storePage(f *fixture, id uuid.UUID, groups [][]domain.GroupNode, s app.RevertStep) bool {
+	if n, ok := f.store.nodes[id]; ok {
+		return n.Kind == domain.KindPage
+	}
+	if s.Kind == domain.RevertRestore {
+		return !groups[s.Group][s.Member].Asset
+	}
+	return false
+}
+
+// storeRoom reports whether parent, alive in f's store or the root, holds
+// levels more pages below it within MaxDepth.
+func storeRoom(f *fixture, parent *uuid.UUID, levels int) bool {
+	depth := 0
+	for at := parent; at != nil; depth++ {
+		n, ok := f.store.nodes[*at]
+		if !ok || n.Kind != domain.KindPage {
+			return false
+		}
+		at = n.ParentID
+	}
+	return depth+levels <= domain.MaxDepth
+}
+
+// storeHolds reports whether a node alive in f's store under parent holds
+// name's key.
+func storeHolds(f *fixture, parent *uuid.UUID, name string) bool {
+	key := shared.TitleKey(name)
+	for _, n := range f.store.nodes {
+		if domain.SameParent(n.ParentID, parent) && n.NameKey == key {
+			return true
+		}
+	}
+	return false
+}
+
+// storeSubtree is id and the nodes alive under it in f's store.
+func storeSubtree(f *fixture, id uuid.UUID) []uuid.UUID {
+	sub := []uuid.UUID{id}
+	for at := 0; at < len(sub); at++ {
+		for _, n := range f.store.nodes {
+			if n.ParentID != nil && *n.ParentID == sub[at] {
+				sub = append(sub, n.ID)
+			}
+		}
+	}
+	return sub
+}
+
+func sameHolder(a, b *uuid.UUID) bool {
+	return a == nil && b == nil || a != nil && b != nil && *a == *b
+}
+
+// storeSnapshot is what a fake store holds: its nodes alive and in the
+// trash, their contents, the items and versions it recorded.
+type storeSnapshot struct {
+	nodes              map[uuid.UUID]domain.Node
+	contents, trashed  map[uuid.UUID]app.Content
+	trash              map[uuid.UUID]app.AnyNode
+	recorded, versions int
+}
+
+func snapshotOf(s *fakeStore) storeSnapshot {
+	return storeSnapshot{nodes: maps.Clone(s.nodes), contents: maps.Clone(s.contents), trashed: maps.Clone(s.trashed),
+		trash: maps.Clone(s.trash), recorded: len(s.recorded), versions: len(s.revisions)}
+}
+
+func (a storeSnapshot) same(b storeSnapshot) bool {
+	return reflect.DeepEqual(a, b)
 }

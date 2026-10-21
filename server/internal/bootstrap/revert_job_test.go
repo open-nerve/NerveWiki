@@ -180,7 +180,8 @@ func TestTheBackgroundRevertOfANameCycleKeepsItsSegments(t *testing.T) {
 }
 
 // A web's write between two batches of a background revert stops it at
-// the next batch that comes to its node (M9/P3 design 3.24, 3.26; 4.15's
+// the next batch that comes to its node, or to a step whose premise it
+// breaks (M9/P3 design 3.24, 3.26; 4.15's
 // interleaving of a batch's changeset with a name cycle and the writes
 // between its batches): the job holds O, its first batch's first write;
 // the web's writes wait for the notebook its batch holds, and land after
@@ -289,6 +290,67 @@ func TestTheBackgroundRevertStopsAtAWriteBetweenItsBatches(t *testing.T) {
 		checkLinks(t, tm.pool)
 		checkSearch(t, tm.pool)
 	})
+	// A step a batch, the first holding O: the web's write lands after it,
+	// before the batch it meets, whose premise alone sees it, L reading
+	// only the batch's own nodes (review C-I1). Each stops the job there,
+	// its one conflict the step's, named as in S*, the first batch's work
+	// kept, nothing aside.
+	for _, tt := range []struct {
+		name  string
+		seed  []restPage
+		ops   []map[string]any
+		write func(tm acmeTeam, nb string, ids map[string]string) step
+		node  string // the step's node, its S* name the conflict's
+		why   string
+		taker bool // the web's write makes the holder of a title_taken
+	}{
+		{"a place's parent deleted between batches", []restPage{{"O", "o"}, {"P", "p"}, {"P/x", "x"}},
+			[]map[string]any{opMove("O.md", "O2.md"), opMove("P/x.md", "x.md")},
+			func(tm acmeTeam, nb string, ids map[string]string) step { return nodeDeletion("alice", ids["P"]) }, "P/x", "parent_gone", false},
+		{"a place's name taken between batches", []restPage{{"O", "o"}, {"Plan", "p"}},
+			[]map[string]any{opMove("O.md", "O2.md"), opMove("Plan.md", "Old.md")},
+			func(tm acmeTeam, nb string, ids map[string]string) step {
+				return request("alice", http.MethodPost, "/api/v0/notebooks/"+nb+"/pages", `{"parent_id":null,"title":"Plan"}`)
+			}, "Plan", "title_taken", true},
+		{"a restore's parent deleted between batches", []restPage{{"O", "o"}, {"P", "p"}, {"P/z", "z"}},
+			[]map[string]any{opMove("O.md", "O2.md"), opDelete("P/z.md")},
+			func(tm acmeTeam, nb string, ids map[string]string) step { return nodeDeletion("alice", ids["P"]) }, "P/z", "parent_gone", false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			tm := newAcmeTeamWired(t, "member", "", nil, transfer.Batch{Nodes: 1})
+			nb := tm.openNotebook(t, "alice", "Eng")
+			ids := tm.seed(t, nb, tt.seed...)
+			b := tm.agent(t, "alice", nb).batchDone(t, tt.ops...)
+			h := tm.holdNodes(t, ids["O"])
+			j := tm.startedJob(t, revertStart("alice", nb, *b.ChangesetID, ""))
+			if at := h.waited(t); at != ids["O"] {
+				t.Fatalf("the first batch waits for %s, want O", at)
+			}
+			wrote := tm.inBackground(t, tt.write(tm, nb, ids))
+			pgtest.WaitForLockWaitsOn(t, tm.pool, "notebooks", 1, interleavingWait)
+			h.letGo(t, ids["O"])
+			a := wrote()
+			if a.status != http.StatusNoContent && a.status != http.StatusCreated {
+				t.Fatalf("the web's write = %d %s", a.status, a.body)
+			}
+			got := tm.endedBackground(t, "alice", j.ID)
+			name := tt.node[strings.LastIndex(tt.node, "/")+1:]
+			if got.State != "failed" || got.failure() != "revert_conflict" || len(got.Conflicts) != 1 || got.Conflicts[0].NodeID != ids[tt.node] ||
+				got.Conflicts[0].Reason != tt.why || got.Conflicts[0].Name != name || got.counts()["put_back"] != 1 {
+				t.Fatalf("the revert = %s; want it stopped at its second batch, %s %s, O put back", got, name, tt.why)
+			}
+			if holder := got.Conflicts[0].HolderID; tt.taker != (holder != nil) || tt.taker && *holder != idOf(t, a) {
+				t.Errorf("the conflict's holder %v, want the web's new page %v", holder, tt.taker)
+			}
+			if tm.placeOf(t, ids["O"]) != "/O" {
+				t.Errorf("O at %s, want it put back", tm.placeOf(t, ids["O"]))
+			}
+			if aside := tm.asideNames(t, nb); len(aside) != 0 {
+				t.Errorf("nodes named aside after the job: %v", aside)
+			}
+			checkPages(t, tm.pool)
+		})
+	}
 }
 
 // A segment past what a batch writes stops the job, revert_too_large
