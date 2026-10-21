@@ -970,6 +970,7 @@ func TestARevertJobsBatchErrors(t *testing.T) {
 // each too, its log line counting its steps, those aside too (M9/P3
 // design 3.21.3).
 func TestARevertJobKeepsItsSegmentsWhole(t *testing.T) {
+	var written, deleted uuid.UUID // the pages of rows 2 and 3, by id, as each build made them last
 	for _, tt := range []struct {
 		name   string
 		build  func(f *fixture) uuid.UUID
@@ -1001,13 +1002,13 @@ func TestARevertJobKeepsItsSegmentsWhole(t *testing.T) {
 			f.content(p.ID, "written", 2)
 			at := now().Add(-time.Hour)
 			f.trashed(p.ID, at, f.alice)
+			written = p.ID
 			return f.log.changeset(domain.ChangesetEdit, f.alice, at, []domain.ChangesetItem{{NodeID: p.ID, Before: new(p.State()),
 				Revision: 2}}, f.log.version(p.ID, 1, 2, "written")).ID
 		}, []bool{true, false}, func(f *fixture) string {
-			for _, c := range f.store.contents {
-				if c.Content != "before" || c.Revision != 3 || len(f.store.trash) != 0 {
-					return fmt.Sprintf("P's content %q at %d, the trash %v", c.Content, c.Revision, f.store.trash)
-				}
+			_, alive := f.store.nodes[written]
+			if c, ok := f.store.contents[written]; !alive || !ok || c.Content != "before" || c.Revision != 3 || len(f.store.trash) != 0 {
+				return fmt.Sprintf("P alive %v, its content %q at %d, the trash %v", alive, c.Content, c.Revision, f.store.trash)
 			}
 			return ""
 		}, "placed=0 deleted=0 restored=1 written=1 aside=0"},
@@ -1015,13 +1016,12 @@ func TestARevertJobKeepsItsSegmentsWhole(t *testing.T) {
 			p := f.page("P", nil, 0)
 			f.content(p.ID, "restored", 1)
 			f.content(p.ID, "written", 2)
+			deleted = p.ID
 			return f.log.changeset(domain.ChangesetRevert, f.alice, now(), []domain.ChangesetItem{{NodeID: p.ID, After: new(p.State()),
 				Restored: true, Revision: 2}}, f.log.version(p.ID, 1, 2, "written")).ID
 		}, []bool{true, false}, func(f *fixture) string {
-			for _, c := range f.store.trashed {
-				if c.Content != "restored" || len(f.store.nodes) != 0 {
-					return fmt.Sprintf("P's content in the trash %q, alive %v", c.Content, f.store.nodes)
-				}
+			if c, ok := f.store.trashed[deleted]; !ok || c.Content != "restored" || len(f.store.nodes) != 0 {
+				return fmt.Sprintf("P in the trash %v, its content there %q, alive %v", ok, c.Content, f.store.nodes)
 			}
 			return ""
 		}, "placed=0 deleted=1 restored=0 written=1 aside=0"},
