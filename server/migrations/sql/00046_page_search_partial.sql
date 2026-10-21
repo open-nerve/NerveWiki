@@ -34,4 +34,7 @@ ORDER BY n.id
 ON CONFLICT (node_id) DO UPDATE SET version = excluded.version, bulk = page_search_queue.bulk AND excluded.bulk;
 
 -- +goose Down
+-- The rows stay as they are. Up again adds the column false for every row, and queues the partial pages in bulk,
+-- but the job keeps a row of the same name, revision and tokenizer: a version-5 row that holds !cut then keeps
+-- partial = false until its page is written again (review B-4). Nothing in v0.1 reads the column; grep reads !cut.
 ALTER TABLE page_search DROP CONSTRAINT page_search_partial_check, DROP COLUMN partial;
