@@ -350,10 +350,6 @@ func (k *keyReader) pieceKeys(p piece) []string {
 
 // trimPiece is p without what may join the unknown text around it (M9/P4
 // design 3.5.3, steps 1 and 2); false when nothing is left.
-func trimPiece(p piece) (piece, bool) {
-	return newKeyReader().trimPiece(p)
-}
-
 func (k *keyReader) trimPiece(p piece) (piece, bool) {
 	lo, hi := 0, len(p.atoms)
 	// 1. From the first atom each code point of which has an NFC boundary
@@ -384,10 +380,6 @@ func (k *keyReader) trimPiece(p piece) (piece, bool) {
 
 // foldAtoms is the atoms each folded alone, every code point of an orbit
 // folding alike, then in NFC (M9/P4 design 3.5.3, step 3).
-func foldAtoms(atoms []rune) string {
-	return newKeyReader().foldAtoms(atoms)
-}
-
 func (k *keyReader) foldAtoms(atoms []rune) string {
 	var folded strings.Builder
 	for _, a := range atoms {

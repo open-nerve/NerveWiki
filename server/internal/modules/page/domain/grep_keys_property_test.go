@@ -330,25 +330,45 @@ func grepOrbitCase(re *syntax.Regexp, line string) bool {
 	return false
 }
 
-// grepFoldCase: a piece of re's segments has other keys folded whole than
-// atom by atom (mutant 140 shows on such a pattern).
+// grepFoldCase: a piece of re's segments folds to another text atom by
+// atom than whole, past the start of its first combining sequence and,
+// unless an edge follows it, before its last (mutant 140 shows on such a
+// pattern). Computed here, not by the code it judges (review C-m2):
+// factsOf and pieces only locate the pieces; the rest is 3.5.3's step 3 as
+// it reads, each literal atom's code point searchFold-ed alone, joined,
+// then NFC, against searchFold of the code points joined.
 func grepFoldCase(re *syntax.Regexp) bool {
 	f := factsOf(re)
 	segments := f.must
 	if f.isExact {
 		segments = [][]rune{f.exact}
 	}
+	starts := func(r rune) bool { return norm.NFC.PropertiesString(string(r)).BoundaryBefore() }
 	for _, seg := range segments {
 		for _, p := range pieces(seg) {
-			t, ok := trimPiece(p)
-			if !ok {
+			var cps []rune
+			for _, a := range p.atoms {
+				cps = append(cps, a&^foldAtom)
+			}
+			lo, hi := 0, len(cps)
+			for lo < hi && !starts(cps[lo]) {
+				lo++
+			}
+			if !p.right {
+				for hi > lo && !starts(cps[hi-1]) {
+					hi--
+				}
+				hi--
+			}
+			if hi <= lo {
 				continue
 			}
-			var raw strings.Builder
-			for _, a := range t.atoms {
-				raw.WriteRune(a &^ foldAtom)
+			var each, joined strings.Builder
+			for _, r := range cps[lo:hi] {
+				each.WriteString(searchFold(string(r)))
+				joined.WriteRune(r)
 			}
-			if !slices.Equal(foldedKeys(foldAtoms(t.atoms), t.left, t.right), foldedKeys(searchFold(raw.String()), t.left, t.right)) {
+			if norm.NFC.String(each.String()) != searchFold(joined.String()) {
 				return true
 			}
 		}
