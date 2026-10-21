@@ -416,7 +416,8 @@ type RevertPart struct {
 // write back's page, and a group's members, all of them, when the batch
 // holds its first; a group's later member whose group an earlier batch
 // began is read alone (its continuation). Then the state of those, at the
-// unit's time, and L (domain.CheckRevertPart): page.revert_conflict, then
+// unit's time, and L (domain.CheckRevertPart): page.revert_conflict, a
+// page it writes back named as in S* (starNamed), then
 // page.changeset_trimmed for a version the purge took. A continuation's
 // members are checked alone, as they are in the trash: one no longer
 // deleted at the group's time that is alive where the changeset deleted
@@ -476,7 +477,7 @@ func (u *Unit) RevertBatch(ctx context.Context, r RevertPart) (BatchDone, error)
 	})
 	switch plan := domain.CheckRevertPart(state); {
 	case plan.Count > 0:
-		return BatchDone{}, domain.RevertConflicts(plan.Conflicts, plan.Count)
+		return BatchDone{}, domain.RevertConflicts(starNamed(plan.Conflicts, steps), plan.Count)
 	case len(plan.Missing) > 0:
 		return BatchDone{}, domain.ErrChangesetTrimmed
 	}
@@ -486,7 +487,7 @@ func (u *Unit) RevertBatch(ctx context.Context, r RevertPart) (BatchDone, error)
 	}
 	ops, conflicts := domain.CheckRevertSteps(state, r.plan.ops(steps, restoring))
 	if len(conflicts) > 0 {
-		return BatchDone{}, domain.RevertConflicts(conflicts[:min(len(conflicts), domain.MaxConflicts)], len(conflicts))
+		return BatchDone{}, domain.RevertConflicts(starNamed(conflicts[:min(len(conflicts), domain.MaxConflicts)], steps), len(conflicts))
 	}
 	// Of a group the batch begins, its members in the batch alone.
 	restored := map[uuid.UUID]bool{}
@@ -543,6 +544,26 @@ func (u *Unit) RevertBatch(ctx context.Context, r RevertPart) (BatchDone, error)
 	}
 	done.Nodes = done.PutBack + aside + done.Deleted + done.Restored + done.Written
 	return done, nil
+}
+
+// starNamed are conflicts, a page the steps write back named as in S*,
+// its step's name when the changeset's item of it has one: the batch
+// reads the page's version, not its item, so L names it as it is now,
+// where the job's start and a start planned again name it as in S*
+// (review B's M-1). Its order is by reason and node, so it holds.
+func starNamed(conflicts []domain.RevertConflict, steps []revertStep) []domain.RevertConflict {
+	names := map[uuid.UUID]string{}
+	for _, s := range steps {
+		if s.kind == domain.RevertContent && s.name != "" {
+			names[s.node] = s.name
+		}
+	}
+	for i, c := range conflicts {
+		if name, ok := names[c.NodeID]; ok {
+			conflicts[i].Name = name
+		}
+	}
+	return conflicts
 }
 
 // groupSteps are the steps of the group g among steps, from its first:

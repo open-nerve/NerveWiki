@@ -890,6 +890,51 @@ func TestARevertJobsBatchNamesAChangeAsTheStartDoes(t *testing.T) {
 	}
 }
 
+// A batch names a page it writes back by its name in S* too (review B's
+// M-1): the batch reads the page's version, not its item. A changeset
+// renames X to X2, writes it, and makes a new page X at the root, so X's
+// place waits for that page's deletion: [delete the new X], [write X
+// back], [put X back], a batch each. Someone writes X2 after the first:
+// the second batch finds it changed, named X, as a start planned again
+// names it (with the new X, which the first batch deleted), not X2.
+func TestARevertJobsBatchNamesAPageItWritesBackAsTheStartDoes(t *testing.T) {
+	f := newFixture()
+	f.grant(domain.ActionRevert)
+	x := f.page("X", nil, 0)
+	f.content(x.ID, "x before", 1)
+	was := x.State()
+	n := f.store.nodes[x.ID]
+	n.Name, n.NameKey = "X2", "x2"
+	f.store.nodes[x.ID] = n
+	f.log.versions[domain.VersionRef{NodeID: x.ID, Revision: 1}] = "x before"
+	f.content(x.ID, "x by C", 2)
+	made := f.page("X", nil, 1)
+	f.content(made.ID, "new", 1)
+	c := f.log.changeset(domain.ChangesetEdit, f.alice, now(), []domain.ChangesetItem{
+		{NodeID: x.ID, Before: &was, After: new(n.State())}, {NodeID: made.ID, After: new(made.State()), Revision: 1}},
+		f.log.version(x.ID, 1, 2, "x by C"), f.log.version(made.ID, 0, 1, "new"))
+	w, spec, plan := f.revertJob(t, c.ID, nil, now())
+	steps, _ := plan.RevertSteps()
+	if len(steps) != 3 || steps[0].Kind != domain.RevertDelete || steps[1].Kind != domain.RevertContent || steps[1].Node != x.ID ||
+		plan.Steps()[0].Joined || plan.Steps()[1].Joined {
+		t.Fatalf("the steps %v, want the new X's deletion, X's write back and its place, apart", steps)
+	}
+	if _, err := w.RunBatch(f.asJob(), spec, plan, 0, 1); err != nil {
+		t.Fatalf("RunBatch(the new X's deletion) = %v", err)
+	}
+	f.content(x.ID, "x by someone", 3)
+	var e *shared.Error
+	if _, err := w.RunBatch(f.asJob(), spec, plan, 1, 2); !errors.As(err, &e) || len(e.Conflicts) != 1 || e.Conflicts[0].NodeID != x.ID ||
+		e.Conflicts[0].Reason != string(domain.ConflictChanged) || e.Conflicts[0].Name != "X" {
+		t.Errorf("RunBatch(X's write back, X2 written since) = %v %+v; want X changed, named X", err, conflictsOf(err))
+	}
+	_, err := w.PlanRevert(f.asJob(), spec, c.ID)
+	if i := slices.IndexFunc(conflictsOf(err), func(c shared.Conflict) bool { return c.NodeID == x.ID }); i < 0 ||
+		conflictsOf(err)[i].Name != "X" {
+		t.Errorf("PlanRevert(X2 written since) = %v %+v; want X changed, named X", err, conflictsOf(err))
+	}
+}
+
 // conflictsOf are err's conflicts, none when it is no problem of the API.
 func conflictsOf(err error) []shared.Conflict {
 	var e *shared.Error

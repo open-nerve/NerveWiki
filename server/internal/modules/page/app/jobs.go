@@ -250,7 +250,9 @@ type revertPlan struct {
 // the plan at its start (M9/P3 design 3.22.1): its kind and place in the
 // schedule (seq); a place's or a step aside's node, and its parent (the
 // zero id for the root), name and order there; a write back's page, base
-// and hash; a deletion's top and its subtree at the deletion's moment; a
+// and hash, and its name in S* when the changeset's item of it has one
+// (a batch reads its version, not its item: review B's M-1); a
+// deletion's top and its subtree at the deletion's moment; a
 // restore's member, its node, and its group, whose members
 // revertPlan.groups keeps (-1 for none). A group's members share their
 // restore's seq. A restore's time and states, and every item and version,
@@ -357,14 +359,20 @@ func revertSteps(reverted uuid.UUID, checked revertChecked) JobPlan {
 	for _, v := range checked.state.Versions {
 		bases[v.NodeID] = v.BaseBytes
 	}
+	names := map[uuid.UUID]string{} // a node's name in S*, its item's Before, as before() has it
+	for _, it := range checked.state.Items {
+		if it.Before != nil {
+			names[it.NodeID] = it.Before.Name
+		}
+	}
 	p := &revertPlan{changeset: reverted}
 	var steps []domain.JobStep
 	add := func(s revertStep, step domain.JobStep) {
 		p.steps, steps = append(p.steps, s), append(steps, step)
 	}
 	write := func(op domain.RevertOp) {
-		add(revertStep{kind: op.Kind, seq: int32(op.Seq), node: op.NodeID, base: int32(op.Base), hash: op.Hash, group: -1},
-			domain.JobStep{Nodes: 1, Bytes: int64(bases[op.NodeID])})
+		add(revertStep{kind: op.Kind, seq: int32(op.Seq), node: op.NodeID, name: names[op.NodeID], base: int32(op.Base), hash: op.Hash,
+			group: -1}, domain.JobStep{Nodes: 1, Bytes: int64(bases[op.NodeID])})
 	}
 	members := func(g, from, to int, seq int32) {
 		for i := from; i < to; i++ {
