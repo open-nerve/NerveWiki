@@ -201,7 +201,7 @@ func (s *Store) WriteSearchRows(ctx context.Context, rows []app.SearchRow, delet
 		params := make([]gen.WriteSearchRowParams, len(rows))
 		for i, r := range rows {
 			params[i] = gen.WriteSearchRowParams{NodeID: r.NodeID, Name: r.Name, Tokenizer: r.Tokenizer, BuiltAt: r.BuiltAt,
-				Title: r.Title, Body: r.Body}
+				Title: r.Title, Body: r.Body, Partial: r.Partial}
 			if r.Revision > 0 {
 				rev := int32(r.Revision)
 				params[i].Revision = &rev

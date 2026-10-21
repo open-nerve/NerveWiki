@@ -208,7 +208,7 @@ func (j *IndexSearch) batch(ctx context.Context, queued []QueuedNode, run *Searc
 			}
 			content, row.Revision = &c.Content, c.Revision
 		}
-		row.Title, row.Body, _ = domain.SearchTokens(s.Name, content)
+		row.Title, row.Body, row.Partial = domain.SearchTokens(s.Name, content)
 		rows = append(rows, row)
 	}
 	failed, err := j.write(ctx, rows, deleted)

@@ -87,16 +87,18 @@ ON CONFLICT (notebook_id) DO NOTHING;
 
 -- name: WriteSearchRow :batchexec
 -- A node's row as the job built it: its lexemes as tsvectors, without positions, each after its notebook's prefix
--- (M8 Codex review R1). A node purged since it was read has no notebook and gets no row.
-INSERT INTO page_search (node_id, revision, name, tokenizer, built_at, title, body)
+-- (M8 Codex review R1), and whether the body leaves out text of the content, its lexemes holding !cut then (M9/P4
+-- design 3.3.2). A node purged since it was read has no notebook and gets no row.
+INSERT INTO page_search (node_id, revision, name, tokenizer, built_at, title, body, partial)
 SELECT n.id, sqlc.narg(revision)::integer, sqlc.arg(name)::text, sqlc.arg(tokenizer)::text, sqlc.arg(built_at)::timestamptz,
     array_to_tsvector(ARRAY(SELECT t.prefix || l FROM unnest(sqlc.arg(title)::text[]) l)),
     CASE WHEN sqlc.narg(body)::text[] IS NOT NULL
-        THEN array_to_tsvector(ARRAY(SELECT t.prefix || l FROM unnest(sqlc.narg(body)::text[]) l)) END
+        THEN array_to_tsvector(ARRAY(SELECT t.prefix || l FROM unnest(sqlc.narg(body)::text[]) l)) END,
+    sqlc.arg(partial)::boolean
 FROM nodes n JOIN page_search_tags t ON t.notebook_id = n.notebook_id
 WHERE n.id = sqlc.arg(node_id)::uuid
 ON CONFLICT (node_id) DO UPDATE SET revision = excluded.revision, name = excluded.name, tokenizer = excluded.tokenizer,
-    built_at = excluded.built_at, title = excluded.title, body = excluded.body;
+    built_at = excluded.built_at, title = excluded.title, body = excluded.body, partial = excluded.partial;
 
 -- name: DeleteSearchRows :exec
 -- The rows of nodes deleted or gone.

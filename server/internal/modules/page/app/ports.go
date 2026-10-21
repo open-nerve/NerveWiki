@@ -803,7 +803,9 @@ type BuiltSearchRow struct {
 
 // SearchRow is a node's row of the search as the job writes it: its
 // lexemes, a page's body too (nil for an attachment's), of the content at
-// Revision (zero for an attachment).
+// Revision (zero for an attachment); and Partial, whether the body leaves
+// out text of the content, which then ends with domain.SearchCutKey (M9/P4
+// design 3.3.2).
 type SearchRow struct {
 	NodeID    uuid.UUID
 	Revision  int
@@ -812,6 +814,7 @@ type SearchRow struct {
 	BuiltAt   time.Time
 	Title     []string
 	Body      []string
+	Partial   bool
 }
 
 // SearchIndex is the search's rows and queue as its job keeps them (M8/P5

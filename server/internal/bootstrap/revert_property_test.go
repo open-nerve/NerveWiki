@@ -41,6 +41,10 @@ type revertWorld struct {
 	batches  bool
 	batched  map[string]string
 	directed int
+	// partials has content make a third of the contents partial, each of
+	// the three cuts in turn (cutContent; M9/P4 design 6.1).
+	partials bool
+	cuts     int
 }
 
 // newRevertWorld is the world of a notebook Eng of alice's in tm, its
@@ -72,7 +76,8 @@ func (w *revertWorld) alive(t *testing.T) []liveNode {
 	return out
 }
 
-// content is a page's content: links to a few of the titles, and a word.
+// content is a page's content: links to a few of the titles, and a word;
+// with partials, a third of them a cut too.
 func (w *revertWorld) content() string {
 	var s strings.Builder
 	titles := revertTitles()
@@ -80,7 +85,37 @@ func (w *revertWorld) content() string {
 		fmt.Fprintf(&s, "[[%s]] ", titles[w.rng.IntN(len(titles))])
 	}
 	fmt.Fprintf(&s, "word %d", w.rng.IntN(1000))
+	if w.partials && w.rng.IntN(3) == 0 {
+		s.WriteString(cutContent(w.cuts%3, w.rng))
+		w.cuts++
+	}
 	return s.String()
+}
+
+// The cuts a body leaves out of a content (M9/P4 design 3.3), each by a
+// mark the rows' check finds it by (partialRows): a run of 70 ASCII
+// letters, a data: image, and 240 KiB of random CJK, whose distinct
+// bigrams reach MaxSearchLexemeBytes.
+const (
+	cutLong   = "abababababababababababababababababababababababababababababababababababab"
+	cutData   = "data:image/png;base64,"
+	cutBounds = 240 << 10
+)
+
+// cutContent is the cut i of the three, after a space.
+func cutContent(i int, rng *rand.Rand) string {
+	switch i {
+	case 0:
+		return " " + cutLong
+	case 1:
+		return " ![](" + cutData + strings.Repeat("iVBO", 16) + ")"
+	}
+	var b strings.Builder
+	b.WriteByte(' ')
+	for b.Len() < cutBounds {
+		b.WriteRune(rune(0x4E00 + rng.IntN(20_000)))
+	}
+	return b.String()
 }
 
 // jsonBody is v as a request's JSON.
