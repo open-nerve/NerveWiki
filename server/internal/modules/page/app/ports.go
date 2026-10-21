@@ -922,3 +922,19 @@ type SearchReads interface {
 	// bulk, which no search finds yet.
 	SearchBuilding(ctx context.Context, notebooks []uuid.UUID) (bool, error)
 }
+
+// GrepReads are what grep reads of a notebook (M9/P4 design 3.4), each
+// statement on the pool, outside any transaction: grep wants no snapshot,
+// and holds no connection while it matches (M9 design 4.13).
+type GrepReads interface {
+	// GrepCandidates is the pages of notebookID whose body holds every one
+	// of keys, those queued exact, and those whose row is partial: ids, in
+	// no order, some maybe deleted, which the tree leaves out.
+	GrepCandidates(ctx context.Context, notebookID uuid.UUID, keys []string) ([]uuid.UUID, error)
+	// GrepContents is the contents not deleted of the pages ids, by id
+	// (export's Contents).
+	GrepContents(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error)
+	// SearchBuilding tells whether the notebooks hold nodes queued in bulk
+	// (SearchReads').
+	SearchBuilding(ctx context.Context, notebooks []uuid.UUID) (bool, error)
+}

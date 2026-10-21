@@ -267,3 +267,17 @@ FROM (SELECT 1
 -- name: SearchBuilding :one
 -- Whether the notebooks given hold nodes queued in bulk, which no search finds until the job builds their rows.
 SELECT EXISTS (SELECT 1 FROM page_search_queue WHERE bulk AND notebook_id = ANY(sqlc.arg(notebooks)::uuid[]))::boolean;
+
+-- name: GrepCandidates :many
+-- grep's candidates in a notebook (M9/P4 design 3.4.2): the pages whose body holds every key, those queued exact,
+-- and those whose row leaves text of the content out (!cut); ids alone, in no order. Each branch reads this
+-- notebook's alone: the keys' and !cut's bitmaps behind its prefix (page_search_hits, 00041), the queue by
+-- page_search_queue_notebook_id_bulk_idx. Nothing is joined to nodes or page_contents: the use case takes the live
+-- pages, and their order, from the tree it read (M8/P5's two traps of the join never arise). Bulk nodes are not
+-- candidates: building says so.
+SELECT h.id::uuid AS id
+FROM page_search_hits(ARRAY[sqlc.arg(notebook_id)::uuid], sqlc.arg(keys)::text[], NULL::text[]) h (id)
+UNION
+SELECT q.node_id FROM page_search_queue q WHERE q.notebook_id = sqlc.arg(notebook_id)::uuid AND NOT q.bulk
+UNION
+SELECT c.id::uuid FROM page_search_hits(ARRAY[sqlc.arg(notebook_id)::uuid], ARRAY['!cut']::text[], NULL::text[]) c (id);

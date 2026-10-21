@@ -80,7 +80,7 @@ type ContentsRow struct {
 	Content string
 }
 
-// The contents not deleted of the pages: an export's batch.
+// The contents not deleted of the pages: an export's batch, and grep's (M9/P4 design 3.4.3).
 func (q *Queries) Contents(ctx context.Context, nodeIds []uuid.UUID) ([]ContentsRow, error) {
 	rows, err := q.db.Query(ctx, contents, nodeIds)
 	if err != nil {

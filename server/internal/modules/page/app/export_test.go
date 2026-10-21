@@ -1,10 +1,27 @@
 package app
 
 import (
+	"time"
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
 )
+
+// NewGrepParsesWith is a queue of n turns whose parse is parse: a test's
+// fake, which counts the parses in flight.
+func NewGrepParsesWith(n int, parse func(pattern string, ignoreCase bool) (domain.GrepPattern, error)) *GrepParses {
+	q := NewGrepParses(n)
+	q.parse = parse
+	return q
+}
+
+// NewGrepSlotsWaiting is n slots, a call waiting wait for one: a test's
+// few milliseconds, not GrepSlotWait.
+func NewGrepSlotsWaiting(n int, wait time.Duration) *GrepSlots {
+	s := NewGrepSlots(n)
+	s.wait = wait
+	return s
+}
 
 // WithMaxWork is l with its globs' work a call at most maxWork: a test's
 // bound, less than domain.MaxGlobWork.

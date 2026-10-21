@@ -15,6 +15,7 @@ package page
 
 import (
 	"log/slog"
+	"runtime"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -141,6 +142,16 @@ const SearchQueue = riveradapter.SearchIndexQueue
 // longer be restored: bootstrap tells the instance's retention less it.
 const TrashMargin = domain.TrashMargin
 
+// GrepSlots are the greps that read and match at once in the process (M9/P4
+// design 3.6.5).
+type GrepSlots = app.GrepSlots
+
+// NewGrepSlots is n slots, one at least: a test of the codes holds the one
+// it hands Deps, so that a grep answers server_busy.
+func NewGrepSlots(n int) *GrepSlots {
+	return app.NewGrepSlots(n)
+}
+
 // Deps are what bootstrap gives the module.
 type Deps struct {
 	Pool       *pgxpool.Pool
@@ -204,6 +215,14 @@ type Deps struct {
 	// BatchLinks are linking's links of a batch's plan (M9/P3 design
 	// 3.7.4), which MCP's batch resolves and rewrites links with.
 	BatchLinks BatchLinks
+	// GrepSlots are grep's slots: nil is max(1, GOMAXPROCS/2) of them,
+	// production's. MaxGrepWork, MaxGrepLineWork and MaxGrepRead bound a
+	// grep's work, a line's and the contents' bytes it reads, GrepWalk
+	// its pages: 0 is the domain's, which production leaves; the whole
+	// program's tests set less (M9/P4 design 3.1, review C-N2).
+	GrepSlots                                 *GrepSlots
+	MaxGrepWork, MaxGrepLineWork, MaxGrepRead int64
+	GrepWalk                                  int
 }
 
 // Module is the wired page module.
@@ -223,6 +242,7 @@ type Module struct {
 	version      *app.GetVersion     // REST's and MCP's versions with a revision (Tools)
 	log          *app.ListChangesets // REST's and MCP's log (Tools)
 	changeset    *app.GetChangeset   // REST's and MCP's changeset (Tools)
+	grep         *app.Grep           // MCP's grep (Tools)
 	jobs         []jobs.Job
 	assets       *app.AssetWrites
 	imports      *app.ImportWrites
@@ -312,6 +332,15 @@ func New(d Deps) *Module {
 		changeset:    getChangeset,
 		instructions: app.NewInstructions(store, store, md, mcpserver.TextBytes)}
 	m.open = app.NewOpenNotebook(m.gate, store, m.instructions)
+	// grep's parses, one queue in the process, and its slots (M9/P4 design
+	// 3.6.1, 3.6.5).
+	slots := d.GrepSlots
+	if slots == nil {
+		slots = app.NewGrepSlots(max(1, runtime.GOMAXPROCS(0)/2))
+	}
+	m.grep = app.NewGrep(app.GrepDeps{Notebooks: d.Notebooks, Nodes: store, States: store, Reads: store, Auth: d.Authorizer,
+		Parses: app.NewGrepParses(runtime.GOMAXPROCS(0)), Slots: slots, Logger: d.Logger, Clock: d.Clock,
+		MaxWork: d.MaxGrepWork, MaxLineWork: d.MaxGrepLineWork, MaxRead: d.MaxGrepRead, Walk: d.GrepWalk})
 	if d.SearchInterval > 0 {
 		m.jobs = append(m.jobs, riveradapter.SearchIndexJob(
 			app.NewIndexSearch(d.Tx, store, d.Clock, d.Logger, domain.MinSearchRebuild), d.SearchInterval))

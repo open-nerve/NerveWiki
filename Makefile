@@ -251,6 +251,8 @@ test-go-costs: ## 不带竞态检测的分配、耗时预算与界线的守卫�
 	@# 概况的守卫同样带 -v：计数与最后的变更两条语句、读整棵树各自的中位数（M9/P1 设计 3.17.3）
 	cd server && go test -count=1 -v -run '^TestTheOverviewReadsInTimeAsLongAsTheTree$$' ./internal/modules/page/adapter/postgres
 	cd server && go test -count=1 -run '^TestAnImportsUnitNumbersNamesThatCutAlikeInTimeAsLongAsThey$$' ./internal/modules/page/app
+	@# grep 在 P1 的守卫树上的守卫同样带 -v：不取键的模式与最坏的 glob 之一走到 MaxGlobWork 的用时（M9/P4 设计 6.1，审查 C-I3）
+	cd server && go test -count=1 -v -run '^TestGrepOverTheGlobGuardTreeTakesItsTime$$' ./internal/modules/page/app
 	@# glob 的守卫同样带 -v：最坏的模式在守卫树上走到 MaxGlobWork 的用时（M9/P1 设计 3.10.1）；edit 的匹配的守卫也在这一行：每种形状的用时（M9/P2 设计 3.9）
 	cd server && go test -count=1 -v -run '^(TestReplaceStaysWithinItsTime|TestTheWorstGlobsStopWithinTheirWork)$$' ./internal/modules/page/domain
 	cd server && go test -count=1 -run '^TestPagesWhoseNamesCutAlikeAreRenamedInTimeAsLongAsThey$$' ./internal/modules/transfer/domain
