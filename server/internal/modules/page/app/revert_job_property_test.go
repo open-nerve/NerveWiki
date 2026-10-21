@@ -28,26 +28,26 @@ import (
 // with members after it), held by the fake store; the job's plan at its
 // start (PlanRevert). Its steps joined are the segments, no more: from a
 // step aside to its node's last place, a page's restore and its write back
-// right after it, a write back and the deletion that takes its page. Its
-// steps, in their order, done on the test's own model, each checked as a
-// store checks it (a restore a member at a time, each where its deletion
-// left it, its parent back before it), end at S*: the tree, and the
-// contents of S*'s pages, alive and in the trash; each group's every
-// member restored once. Then the job runs on the fake store in batches of
-// random sizes, cut only between segments, each read and checked by
-// RevertBatch: no batch conflicts; every write the store gets is one a
-// store takes (its node alive, its parent alive, its name free there, a
-// write back on the revision it read, a restore of nodes in the trash at
-// its time); no node at a batch's end is anywhere but where the job found
-// it or where S* has it, so no name aside is left between two batches; and
-// the store ends at S*. The job's changeset is then reverted the same way:
-// a revert's revert, which writes pages back before the deletions that
-// take them. Between two batches, review B's movegone: someone moves B,
-// the top of a deletion of a later step, under A, the top of an earlier
-// one, both the changeset's: the job stops at A's batch, B alive, no
-// conflict named A; B alone children_added when its deletion is in a later
-// batch, as the deletion of A finds it, B changed by L when the batch
-// holds both. Between two batches too, the design model's injections
+// right after it, a write back right before the deletion that takes its
+// page. Its steps, in their order, done on the test's own model, each
+// checked as a store checks it (a restore a member at a time, each where
+// its deletion left it, its parent back before it), end at S*: the tree,
+// and the contents of S*'s pages, alive and in the trash; each group's
+// every member restored once. Then the job runs on the fake store in
+// batches of random sizes, cut only between segments, each read and
+// checked by RevertBatch: no batch conflicts; every write the store gets
+// is one a store takes (its node alive, its parent alive, its name free
+// there, a write back on the revision it read, a restore of nodes in the
+// trash at its time); no node at a batch's end is anywhere but where the
+// job found it or where S* has it, so no name aside is left between two
+// batches; and the store ends at S*. The job's changeset is then reverted
+// the same way: a revert's revert, which writes pages back before the
+// deletions that take them. Between two batches, review B's movegone:
+// someone moves B, the top of a deletion of a later step, under A, the top
+// of an earlier one, both the changeset's: the job stops at A's batch, B
+// alive, no conflict named A; B alone children_added when its deletion is
+// in a later batch, as the deletion of A finds it, B changed by L when the
+// batch holds both. Between two batches too, the design model's injections
 // (review C-I1), each on a fixture of its own: a later place's or step
 // aside's node renamed, L's changed; a later place's or group's S* name
 // taken, title_taken with the taker; a child put under a later deletion's
@@ -1051,8 +1051,9 @@ func (p *jobTrial) segments(jobSteps []domain.JobStep, steps []app.RevertStep, c
 
 // joints is "" when the steps joined are the segments (M9/P3 design
 // 3.22.2), no more: from each step aside to its node's last place; a
-// page's restore and its write back, right after it; a write back and a
-// later deletion that takes its page.
+// page's restore and its write back, right after it; a write back and the
+// deletion that takes its page, right before it, with the other write
+// backs it takes between them (review A-M1).
 func joints(jobSteps []domain.JobStep, steps []app.RevertStep) string {
 	want := make([]bool, len(steps))
 	join := func(from, to int) {
@@ -1082,9 +1083,16 @@ func joints(jobSteps []domain.JobStep, steps []app.RevertStep) string {
 				join(r, k)
 			}
 			for j, d := range steps[k+1:] {
-				if d.Kind == domain.RevertDelete && slices.Contains(d.Nodes, s.Node) {
-					join(k, k+1+j)
+				if d.Kind != domain.RevertDelete || !slices.Contains(d.Nodes, s.Node) {
+					continue
 				}
+				for _, between := range steps[k+1 : k+1+j] {
+					if between.Kind != domain.RevertContent || !slices.Contains(d.Nodes, between.Node) {
+						return fmt.Sprintf("the write back of %s, step %d, not right before the deletion that takes it, step %d", s.Node, k,
+							k+1+j)
+					}
+				}
+				join(k, k+1+j)
 			}
 		}
 	}

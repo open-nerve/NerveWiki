@@ -255,6 +255,67 @@ func TestARevertJobsWrittenPageLeavesTheCut(t *testing.T) {
 	}
 }
 
+// A write back joins the deletion that takes its page alone, right before
+// it (M9/P3 design 3.22.2, review A-M1): F holds y and X; h named N, h2
+// named h1, h before h2 by id. A batch renames h2 h2x and h h1, makes a
+// folder named N of 22 pages of 1,000 links each, writes X, moves y into
+// the new N and deletes F. Its revert's revert puts h2 and h back, which
+// a round apart frees N for its restore, restores N, puts y back, then
+// writes X back and deletes F: X's write back right before the deletion,
+// [content X, delete F] the segment, N's 22,000 links outside it, so
+// transfer's batches cut its restore and the job ends at S*. Were the
+// steps between the write and the deletion joined, N's restore would be
+// held in one batch, past a unit's links, and stop the job.
+func TestARevertJobsWriteBackJoinsItsDeletionAlone(t *testing.T) {
+	s := newJobScene()
+	fo := s.node("F", nil, false)
+	y := s.node("y", &fo, false)
+	x := s.node("X", &fo, false)
+	h := s.node("N", nil, false)
+	h2 := s.node("h1", nil, false)
+	e := s.begin()
+	e.move(h2, nil, "h2x")
+	e.move(h, nil, "h1")
+	n := s.node("N'", nil, false)
+	heavy := strings.Repeat("[[a]] ", 1000)
+	for i := range 22 {
+		q := s.node(fmt.Sprintf("q%02d", i), &n, false)
+		nd := s.m.nodes[q]
+		nd.content = heavy + q.String()
+		s.m.nodes[q] = nd
+		s.p.version(q, nd.revision, nd.content)
+	}
+	e.write(x)
+	e.move(y, &n, "y")
+	if !e.del(fo) {
+		t.Fatal("the batch's deletion of F")
+	}
+	f, c := s.load()
+	star := s.p.modelOf(f) // the notebook as the batch left it, the revert's revert's S*
+	w, spec, plan := f.revertJob(t, c.ID, nil, now())
+	if batches, err := transferJob(f, w, spec, plan, 100); err != nil {
+		t.Fatalf("the revert, after %d batches: %v", batches, err)
+	}
+	w, spec, plan = f.revertJob(t, f.recorded(spec.Changeset, c.ID).ID, nil, now())
+	steps, _ := plan.RevertSteps()
+	got := s.describe(steps, plan.Steps())
+	joined := 0
+	for _, st := range plan.Steps() {
+		if st.Joined {
+			joined++
+		}
+	}
+	if !slices.Equal(got[len(got)-2:], []string{"content X+", "delete F [F X]"}) || joined != 1 {
+		t.Errorf("the revert's revert's steps %v; want X's write back joined to F's deletion alone, right before it", got)
+	}
+	if batches, err := transferJob(f, w, spec, plan, 100); err != nil {
+		t.Fatalf("the revert's revert, after %d batches: %v", batches, err)
+	}
+	if bad := s.p.compare(star, s.p.modelOf(f)); bad != "" {
+		t.Errorf("the store after the revert's revert: %s", bad)
+	}
+}
+
 // A batch restores its members of a group at once, at the group's first
 // step in it (M9/P3 design 3.24, step 6), whatever steps come between them
 // (review B-I2): a write back of the group's first member, or a segment of

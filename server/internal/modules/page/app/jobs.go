@@ -320,22 +320,37 @@ func (w *JobWrites) PlanRevert(ctx context.Context, spec JobSpec, changesetID uu
 // changeset reverted, in the schedule's order (M9/P3 design 3.22): a place
 // or a step aside a node each; a deletion its subtree at its moment; a
 // restore its group in pre-order, a member a step, each page's write back
-// right after its member's restore; a write back a page. The steps no
-// batch splits are joined (segments).
+// right after its member's restore; a write back a page, right before the
+// deletion that takes it if one does (review A-M1: a page a revert
+// deletes is alive from the start to its deletion, and only its deletion
+// waits for it). The steps no batch splits are joined (segments).
 func revertSteps(reverted uuid.UUID, checked revertChecked) JobPlan {
 	ops := checked.plan.Ops
 	restored := map[uuid.UUID]bool{}
-	for _, op := range ops {
-		if op.Kind == domain.RevertRestore {
+	taken := map[uuid.UUID]int{} // a page a deletion takes, by the deletion's place among the ops
+	for i, op := range ops {
+		switch op.Kind {
+		case domain.RevertRestore:
 			for _, m := range op.Group {
 				restored[m.Node.ID] = true
+			}
+		case domain.RevertDelete:
+			for _, id := range op.Subtree {
+				taken[id] = i
 			}
 		}
 	}
 	after := map[uuid.UUID]domain.RevertOp{}
-	for _, op := range ops {
-		if op.Kind == domain.RevertContent && restored[op.NodeID] {
+	before := map[int][]domain.RevertOp{} // the write backs right before a deletion, by its place
+	moved := map[uuid.UUID]bool{}
+	for i, op := range ops {
+		if op.Kind != domain.RevertContent {
+			continue
+		}
+		if restored[op.NodeID] {
 			after[op.NodeID] = op
+		} else if d, ok := taken[op.NodeID]; ok && d > i {
+			before[d], moved[op.NodeID] = append(before[d], op), true
 		}
 	}
 	bases := map[uuid.UUID]int{}
@@ -389,6 +404,9 @@ func revertSteps(reverted uuid.UUID, checked revertChecked) JobPlan {
 			add(revertStep{kind: op.Kind, seq: int32(op.Seq), node: op.NodeID, parent: parentOf(to.ParentID), name: to.Name,
 				order: to.SortOrder, group: -1}, domain.JobStep{Nodes: 1})
 		case domain.RevertDelete:
+			for _, w := range before[i] {
+				write(w)
+			}
 			add(revertStep{kind: op.Kind, seq: int32(op.Seq), node: op.NodeID, nodes: op.Subtree, group: -1},
 				domain.JobStep{Nodes: len(op.Subtree)})
 		case domain.RevertRestore:
@@ -402,7 +420,7 @@ func revertSteps(reverted uuid.UUID, checked revertChecked) JobPlan {
 			}
 			members(g, 0, n, int32(op.Seq))
 		case domain.RevertContent:
-			if _, ok := after[op.NodeID]; !ok {
+			if _, ok := after[op.NodeID]; !ok && !moved[op.NodeID] {
 				write(op)
 			}
 		}
@@ -496,8 +514,8 @@ func needed(later []domain.RevertOp, nodes []domain.GroupNode) int {
 
 // pageJoins are the segments of a page's steps (M9/P3 design 3.22.2), by
 // their places among the steps: its restore and its write back right
-// after; its write back and a later deletion that takes it, the steps
-// between included.
+// after; its write back and the deletion that takes it, the write backs
+// right before that deletion between them.
 func pageJoins(steps []revertStep) [][2]int {
 	var out [][2]int
 	written := map[uuid.UUID]int{}
