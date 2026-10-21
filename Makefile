@@ -251,6 +251,8 @@ test-go-costs: ## 不带竞态检测的分配、耗时预算与界线的守卫�
 	@# 概况的守卫同样带 -v：计数与最后的变更两条语句、读整棵树各自的中位数（M9/P1 设计 3.17.3）
 	cd server && go test -count=1 -v -run '^TestTheOverviewReadsInTimeAsLongAsTheTree$$' ./internal/modules/page/adapter/postgres
 	cd server && go test -count=1 -run '^TestAnImportsUnitNumbersNamesThatCutAlikeInTimeAsLongAsThey$$' ./internal/modules/page/app
+	@# grep 在 P1 的守卫树上的守卫同样带 -v：不取键的模式与最坏的 glob 之一走到 MaxGlobWork 的用时（M9/P4 设计 6.1，审查 C-I3）
+	cd server && go test -count=1 -v -run '^TestGrepOverTheGlobGuardTreeTakesItsTime$$' ./internal/modules/page/app
 	@# glob 的守卫同样带 -v：最坏的模式在守卫树上走到 MaxGlobWork 的用时（M9/P1 设计 3.10.1）；edit 的匹配的守卫也在这一行：每种形状的用时（M9/P2 设计 3.9）
 	cd server && go test -count=1 -v -run '^(TestReplaceStaysWithinItsTime|TestTheWorstGlobsStopWithinTheirWork)$$' ./internal/modules/page/domain
 	cd server && go test -count=1 -run '^TestPagesWhoseNamesCutAlikeAreRenamedInTimeAsLongAsThey$$' ./internal/modules/transfer/domain
@@ -278,6 +280,10 @@ test-go-guards: ## 不带竞态检测的组合根的预算与界线的守卫（C
 	@# batch 写过的页按它最后的内容的大小计（修正的第 6 轮，B3-N1）；与改写的页留下的解析额度：三条界线之内、改写过的页留下的份额旁放不下下一次解析时
 	@# 立即被拒，别人的份额挡着时 server_busy，额度够大时做完（修正的第 6 轮，B3-M1）
 	cd server && go test -count=1 -v -run '^(TestABatchAtItsRewriteBoundTakesItsTime|TestABatchPastItsLinksBoundIsRefused|TestABatchPastItsBytesBoundIsRefused|TestABatchCountsThePagesItWroteAtTheirFinalSize|TestABatchWhosePagesOutgrowTheParseBudgetIsRefused)$$' ./internal/bootstrap
+	@# grep 的三个守卫一行、带 -v：一行 5 MiB 的页（匹配到 MaxGrepLineWork）、500 页各 64 KiB 的页（停在 MaxGrepWork）、10 万个候选
+	@# （GrepCandidates 在无统计、ANALYZE 之后与通用计划下的中位数，与走到第 500 个候选的一次调用）的用时，时限本机的三倍（M9/P4 设计 6.1，3.6.4）；
+	@# 本机这一行约 10.5 秒，乘 2.4 约 25 秒，远在 Go 默认的每个测试二进制 10 分钟的一半之下
+	cd server && go test -count=1 -v -run '^(TestGrepOfTheWorstLineTakesItsTime|TestGrepAtItsWorkBoundTakesItsTime|TestGrepOfAHundredThousandCandidatesTakesItsTime)$$' ./internal/bootstrap
 
 .PHONY: test-go-short
 test-go-short: ## 只跑 server 的单元测试：go test -short，不带竞态检测，不起数据库（README 的写法；make check 与 CI 的一份跑它，不在 make test-go 里）

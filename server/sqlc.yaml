@@ -97,6 +97,7 @@ sql:
       - migrations/sql/00042_page_nodes_path_keys.sql
       - migrations/sql/00044_page_client_checks.sql
       - migrations/sql/00045_page_changesets_moves.sql
+      - migrations/sql/00046_page_search_partial.sql
     queries: internal/modules/page/adapter/postgres/queries
     gen:
       go:

@@ -110,6 +110,7 @@ type PageSearch struct {
 	BuiltAt   time.Time
 	Title     interface{}
 	Body      interface{}
+	Partial   bool
 }
 
 type PageSearchQueue struct {

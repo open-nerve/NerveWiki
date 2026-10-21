@@ -171,6 +171,43 @@
       }
     },
     {
+      "name": "grep",
+      "title": "Find lines by a regular expression",
+      "description": "Find the lines of the notebook's pages that a Go regular expression (RE2 syntax, as ripgrep's default) matches, page by page in path order. Each hit has the page's path, the line's number as read counts lines (read with that offset and limit 1 gives the line) and the line's text as stored, without its \\r and, on the first line, its byte order mark; a line over 1000 bytes is cut around its first match, cut true; column, when the text does not start at the line's first byte, is the byte it starts at, as read's column. Contents include their frontmatter; titles are not searched (list's glob finds them), nor attachments. glob keeps the pages whose paths it matches, as list's; ignore_case matches without case, as (?i). The pattern is at most 1024 bytes, without a newline, each line matched alone; one too complex, as large repeats, is refused. A call checks a bounded amount: go on with next_cursor while it is set. incomplete says the call stopped at its bounds before it checked every page it had to, so no hit is then no proof of none. partial_lines are lines too long to match whole within a call: read them. building says pages queued in bulk (by a batch, an import, a background restore or revert, an upgrade) are not searched until the index catches up. A page moved or written between calls, with its subpages, may be skipped or checked again. For words and Chinese text, search ranks pages and gives excerpts.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "pattern": {
+            "type": "string",
+            "description": "The Go regular expression (RE2), at most 1024 bytes, matched against each line alone. It is read in NFC, as the lines are: write a combining mark as an escape, such as \\x{301}, to keep it apart from the character before it."
+          },
+          "glob": {
+            "type": ["null", "string"],
+            "description": "Only the pages whose paths match this glob, as list's: \"Projects/**\", \"**/*.md\". Default: every page."
+          },
+          "ignore_case": {
+            "type": ["null", "boolean"],
+            "description": "Match without case, as (?i). Default false."
+          },
+          "limit": {
+            "type": ["null", "integer"],
+            "description": "At most this many lines with a hit, 1 to 500. Default 100."
+          },
+          "cursor": {
+            "type": ["null", "string"],
+            "description": "next_cursor of the previous answer, to go on from there."
+          }
+        },
+        "required": ["pattern"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      }
+    },
+    {
       "name": "list",
       "title": "List nodes",
       "description": "List the notebook's pages and attachments. With pattern empty or \"/\", the root's children; with \"A/B/\", the children of the page A/B.md; both in the tree's order. Any other pattern is a glob over the paths, in path order: * matches within a segment, ? one character, ** any number of segments as a segment of its own (\"**/*.md\" is every page, \"A/**\" everything under A). Matching ignores case. Each item has its path, its kind (page or attachment) and whether it has children; a page also its version, size and last change, an attachment its type and size. An answer holds at most limit items and about 48 KiB, and a costly glob over a large notebook stops after a bounded amount of matching, maybe with no items: whenever next_cursor is set, pass it back as cursor to go on. A path without wildcards that names nothing may come with a hint, as when it names a page without its .md.",
@@ -289,6 +326,35 @@
           }
         },
         "required": ["path"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "search",
+      "title": "Search the notebook's words",
+      "description": "Full-text search of the notebook for words: the pages and attachments whose titles hold every term come first, then the pages whose contents do, each newest first, a page with an excerpt around its first hit. Terms are parted by spaces and match without case; Chinese text matches by pairs of characters, so a term of one Chinese character finds titles only. q is at most 256 bytes and 8 terms. The first page has count: exact, about or at_least. A page may hold fewer results than limit, even none, and still a next_cursor: a call checks a bounded number of contents; go on while next_cursor is set. building says pages queued in bulk (by a batch, an import, a background restore or revert, an upgrade) are not searched until the index catches up. For patterns, exact text and line numbers, use grep.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "q": {
+            "type": "string",
+            "description": "The words to find, parted by spaces: at most 256 bytes and 8 words."
+          },
+          "limit": {
+            "type": ["null", "integer"],
+            "description": "At most this many results, 1 to 50. Default 20."
+          },
+          "cursor": {
+            "type": ["null", "string"],
+            "description": "next_cursor of the previous answer, to go on from there."
+          }
+        },
+        "required": ["q"],
         "additionalProperties": false
       },
       "annotations": {
@@ -557,6 +623,47 @@
       }
     },
     {
+      "name": "grep",
+      "title": "Find lines by a regular expression",
+      "description": "Find the lines of the notebook's pages that a Go regular expression (RE2 syntax, as ripgrep's default) matches, page by page in path order. Each hit has the page's path, the line's number as read counts lines (read with that offset and limit 1 gives the line) and the line's text as stored, without its \\r and, on the first line, its byte order mark; a line over 1000 bytes is cut around its first match, cut true; column, when the text does not start at the line's first byte, is the byte it starts at, as read's column. Contents include their frontmatter; titles are not searched (list's glob finds them), nor attachments. glob keeps the pages whose paths it matches, as list's; ignore_case matches without case, as (?i). The pattern is at most 1024 bytes, without a newline, each line matched alone; one too complex, as large repeats, is refused. A call checks a bounded amount: go on with next_cursor while it is set. incomplete says the call stopped at its bounds before it checked every page it had to, so no hit is then no proof of none. partial_lines are lines too long to match whole within a call: read them. building says pages queued in bulk (by a batch, an import, a background restore or revert, an upgrade) are not searched until the index catches up. A page moved or written between calls, with its subpages, may be skipped or checked again. For words and Chinese text, search ranks pages and gives excerpts.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "notebook": {
+            "type": "string",
+            "description": "The notebook's id, from notebooks."
+          },
+          "pattern": {
+            "type": "string",
+            "description": "The Go regular expression (RE2), at most 1024 bytes, matched against each line alone. It is read in NFC, as the lines are: write a combining mark as an escape, such as \\x{301}, to keep it apart from the character before it."
+          },
+          "glob": {
+            "type": ["null", "string"],
+            "description": "Only the pages whose paths match this glob, as list's: \"Projects/**\", \"**/*.md\". Default: every page."
+          },
+          "ignore_case": {
+            "type": ["null", "boolean"],
+            "description": "Match without case, as (?i). Default false."
+          },
+          "limit": {
+            "type": ["null", "integer"],
+            "description": "At most this many lines with a hit, 1 to 500. Default 100."
+          },
+          "cursor": {
+            "type": ["null", "string"],
+            "description": "next_cursor of the previous answer, to go on from there."
+          }
+        },
+        "required": ["notebook", "pattern"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      }
+    },
+    {
       "name": "list",
       "title": "List nodes",
       "description": "List the notebook's pages and attachments. With pattern empty or \"/\", the root's children; with \"A/B/\", the children of the page A/B.md; both in the tree's order. Any other pattern is a glob over the paths, in path order: * matches within a segment, ? one character, ** any number of segments as a segment of its own (\"**/*.md\" is every page, \"A/**\" everything under A). Matching ignores case. Each item has its path, its kind (page or attachment) and whether it has children; a page also its version, size and last change, an attachment its type and size. An answer holds at most limit items and about 48 KiB, and a costly glob over a large notebook stops after a bounded amount of matching, maybe with no items: whenever next_cursor is set, pass it back as cursor to go on. A path without wildcards that names nothing may come with a hint, as when it names a page without its .md.",
@@ -728,6 +835,39 @@
           }
         },
         "required": ["notebook", "path"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "search",
+      "title": "Search the notebook's words",
+      "description": "Full-text search of the notebook for words: the pages and attachments whose titles hold every term come first, then the pages whose contents do, each newest first, a page with an excerpt around its first hit. Terms are parted by spaces and match without case; Chinese text matches by pairs of characters, so a term of one Chinese character finds titles only. q is at most 256 bytes and 8 terms. The first page has count: exact, about or at_least. A page may hold fewer results than limit, even none, and still a next_cursor: a call checks a bounded number of contents; go on while next_cursor is set. building says pages queued in bulk (by a batch, an import, a background restore or revert, an upgrade) are not searched until the index catches up. For patterns, exact text and line numbers, use grep.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "notebook": {
+            "type": "string",
+            "description": "The notebook's id, from notebooks."
+          },
+          "q": {
+            "type": "string",
+            "description": "The words to find, parted by spaces: at most 256 bytes and 8 words."
+          },
+          "limit": {
+            "type": ["null", "integer"],
+            "description": "At most this many results, 1 to 50. Default 20."
+          },
+          "cursor": {
+            "type": ["null", "string"],
+            "description": "next_cursor of the previous answer, to go on from there."
+          }
+        },
+        "required": ["notebook", "q"],
         "additionalProperties": false
       },
       "annotations": {

@@ -258,7 +258,7 @@ func TestTheSearchJobDecidesEachNode(t *testing.T) {
 		t.Errorf("queued after the run: %v, want the page built 10 s ago alone (%s)", left, recent)
 	}
 	content := "数据库 go"
-	title, body := domain.SearchTokens("中国 Fresh", &content)
+	title, body, _ := domain.SearchTokens("中国 Fresh", &content)
 	if r := f.rows[fresh]; r.Revision != 2 || r.Tokenizer != domain.SearchTokenizer || !slices.Equal(r.Title, title) || !slices.Equal(r.Body, body) ||
 		!r.BuiltAt.Equal(f.clock.now) {
 		t.Errorf("the fresh page's row = %+v, want its lexemes of revision 2 built now", r)

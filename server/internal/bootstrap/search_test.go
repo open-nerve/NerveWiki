@@ -194,7 +194,8 @@ func checkSearch(t *testing.T, pool *pgxpool.Pool) {
 // live node and for no other, at its name and content's revision, by the
 // current tokenizer, its lexemes those SearchTokens makes of them now,
 // each behind the node's notebook's prefix, and no other (M8 Codex review
-// R1).
+// R1); partial as SearchTokens tells it, the body holding !cut exactly
+// then (M9/P4 design 3.3.2).
 func checkSearchBuilt(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
 	drainSearch(t, pool)
@@ -212,7 +213,7 @@ func checkSearchBuilt(t *testing.T, pool *pgxpool.Pool) {
 		}
 	}
 	rows, err := pool.Query(context.Background(), `SELECT s.node_id::text, n.name, s.name, s.tokenizer, c.revision, s.revision, c.content,
-			t.prefix, tsvector_to_array(s.title), tsvector_to_array(s.body)
+			t.prefix, tsvector_to_array(s.title), tsvector_to_array(s.body), s.partial
 		FROM page_search s JOIN nodes n ON n.id = s.node_id JOIN page_search_tags t ON t.notebook_id = n.notebook_id
 			LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at IS NULL
 		ORDER BY s.node_id`)
@@ -225,10 +226,12 @@ func checkSearchBuilt(t *testing.T, pool *pgxpool.Pool) {
 		var revision, builtRevision *int
 		var content *string
 		var title, body []string
-		if err := rows.Scan(&id, &name, &builtName, &tokenizer, &revision, &builtRevision, &content, &prefix, &title, &body); err != nil {
+		var partial bool
+		if err := rows.Scan(&id, &name, &builtName, &tokenizer, &revision, &builtRevision, &content, &prefix, &title, &body,
+			&partial); err != nil {
 			t.Fatal(err)
 		}
-		wantTitle, wantBody := domain.SearchTokens(name, content)
+		wantTitle, wantBody, wantPartial := domain.SearchTokens(name, content)
 		for _, want := range [][]string{wantTitle, wantBody} {
 			for i := range want {
 				want[i] = prefix + want[i]
@@ -240,6 +243,9 @@ func checkSearchBuilt(t *testing.T, pool *pgxpool.Pool) {
 				deref(itoa(revision)), domain.SearchTokenizer)
 		case !sameLexemes(title, wantTitle) || !sameLexemes(body, wantBody) || (body == nil) != (wantBody == nil):
 			t.Errorf("the row of %s holds the title %q and the body %q, want %q and %q", id, title, body, wantTitle, wantBody)
+		case partial != wantPartial || partial != slices.Contains(body, prefix+domain.SearchCutKey):
+			t.Errorf("the row of %s is partial %v, its body holding %s %v; want partial %v, with %s exactly then", id, partial,
+				domain.SearchCutKey, slices.Contains(body, prefix+domain.SearchCutKey), wantPartial, domain.SearchCutKey)
 		}
 	}
 	if err := rows.Err(); err != nil {

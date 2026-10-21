@@ -19,15 +19,16 @@ var (
 )
 
 const writeSearchRow = `-- name: WriteSearchRow :batchexec
-INSERT INTO page_search (node_id, revision, name, tokenizer, built_at, title, body)
+INSERT INTO page_search (node_id, revision, name, tokenizer, built_at, title, body, partial)
 SELECT n.id, $1::integer, $2::text, $3::text, $4::timestamptz,
     array_to_tsvector(ARRAY(SELECT t.prefix || l FROM unnest($5::text[]) l)),
     CASE WHEN $6::text[] IS NOT NULL
-        THEN array_to_tsvector(ARRAY(SELECT t.prefix || l FROM unnest($6::text[]) l)) END
+        THEN array_to_tsvector(ARRAY(SELECT t.prefix || l FROM unnest($6::text[]) l)) END,
+    $7::boolean
 FROM nodes n JOIN page_search_tags t ON t.notebook_id = n.notebook_id
-WHERE n.id = $7::uuid
+WHERE n.id = $8::uuid
 ON CONFLICT (node_id) DO UPDATE SET revision = excluded.revision, name = excluded.name, tokenizer = excluded.tokenizer,
-    built_at = excluded.built_at, title = excluded.title, body = excluded.body
+    built_at = excluded.built_at, title = excluded.title, body = excluded.body, partial = excluded.partial
 `
 
 type WriteSearchRowBatchResults struct {
@@ -43,11 +44,13 @@ type WriteSearchRowParams struct {
 	BuiltAt   time.Time
 	Title     []string
 	Body      []string
+	Partial   bool
 	NodeID    uuid.UUID
 }
 
 // A node's row as the job built it: its lexemes as tsvectors, without positions, each after its notebook's prefix
-// (M8 Codex review R1). A node purged since it was read has no notebook and gets no row.
+// (M8 Codex review R1), and whether the body leaves out text of the content, its lexemes holding !cut then (M9/P4
+// design 3.3.2). A node purged since it was read has no notebook and gets no row.
 func (q *Queries) WriteSearchRow(ctx context.Context, arg []WriteSearchRowParams) *WriteSearchRowBatchResults {
 	batch := &pgx.Batch{}
 	for _, a := range arg {
@@ -58,6 +61,7 @@ func (q *Queries) WriteSearchRow(ctx context.Context, arg []WriteSearchRowParams
 			a.BuiltAt,
 			a.Title,
 			a.Body,
+			a.Partial,
 			a.NodeID,
 		}
 		batch.Queue(writeSearchRow, vals...)

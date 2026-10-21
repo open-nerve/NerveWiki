@@ -54,6 +54,46 @@ func (q *Queries) DequeueSearch(ctx context.Context, arg DequeueSearchParams) er
 	return err
 }
 
+const grepCandidates = `-- name: GrepCandidates :many
+SELECT h.id::uuid AS id
+FROM page_search_hits(ARRAY[$1::uuid], $2::text[], NULL::text[]) h (id)
+UNION
+SELECT q.node_id FROM page_search_queue q WHERE q.notebook_id = $1::uuid AND NOT q.bulk
+UNION
+SELECT c.id::uuid FROM page_search_hits(ARRAY[$1::uuid], ARRAY['!cut']::text[], NULL::text[]) c (id)
+`
+
+type GrepCandidatesParams struct {
+	NotebookID uuid.UUID
+	Keys       []string
+}
+
+// grep's candidates in a notebook (M9/P4 design 3.4.2): the pages whose body holds every key, those queued exact,
+// and those whose row leaves text of the content out (!cut); ids alone, in no order. Each branch reads this
+// notebook's alone: the keys' and !cut's bitmaps behind its prefix (page_search_hits, 00041), the queue by
+// page_search_queue_notebook_id_bulk_idx. Nothing is joined to nodes or page_contents: the use case takes the live
+// pages, and their order, from the tree it read (M8/P5's two traps of the join never arise). Bulk nodes are not
+// candidates: building says so.
+func (q *Queries) GrepCandidates(ctx context.Context, arg GrepCandidatesParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, grepCandidates, arg.NotebookID, arg.Keys)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const queueSearch = `-- name: QueueSearch :exec
 
 INSERT INTO page_search_queue (node_id, notebook_id, bulk)

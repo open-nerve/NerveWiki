@@ -45,6 +45,6 @@ SELECT node_id, revision, byte_size, updated_at, content_hash FROM page_contents
 WHERE node_id = ANY(sqlc.arg(node_ids)::uuid[]) AND deleted_at IS NULL;
 
 -- name: Contents :many
--- The contents not deleted of the pages: an export's batch.
+-- The contents not deleted of the pages: an export's batch, and grep's (M9/P4 design 3.4.3).
 SELECT node_id, content FROM page_contents
 WHERE node_id = ANY(sqlc.arg(node_ids)::uuid[]) AND deleted_at IS NULL;

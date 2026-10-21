@@ -73,6 +73,16 @@ type ChangesetUseCase interface {
 	InNotebook(ctx context.Context, notebookID, id uuid.UUID, limit *int, cursor *string) (app.ChangesetPage, error)
 }
 
+// GrepUseCase finds the lines of a notebook's pages a pattern matches.
+type GrepUseCase interface {
+	Execute(ctx context.Context, notebookID uuid.UUID, r app.GrepRequest) (app.Grepped, error)
+}
+
+// SearchUseCase searches one notebook's words.
+type SearchUseCase interface {
+	InNotebook(ctx context.Context, notebookID uuid.UUID, r app.SearchRequest) (app.SearchPage, error)
+}
+
 // UseCases are the use cases the tools call.
 type UseCases struct {
 	List      ListByPatternUseCase
@@ -87,6 +97,8 @@ type UseCases struct {
 	Version   VersionUseCase
 	Log       LogUseCase
 	Changeset ChangesetUseCase
+	Grep      GrepUseCase
+	Search    SearchUseCase
 }
 
 // Tools are the module's MCP tools, each a notebook's: list and read, in
@@ -97,7 +109,8 @@ type UseCases struct {
 // nothing at their path (M9/P2 design 3.11); batch, in both entries,
 // destructive and, as edit, not idempotent (M9/P3 design 3.12); versions,
 // log and changeset, in both entries, read-only: the history is read
-// here, restored and reverted in the web (M9/P2 design 3.16).
+// here, restored and reverted in the web (M9/P2 design 3.16); grep and
+// search, in both entries, read-only (M9/P4 design 3.10).
 func Tools(uc UseCases, attachments app.AttachmentReader) []mcpserver.Tool {
 	t := tools{uc: uc, attachments: attachments}
 	return []mcpserver.Tool{
@@ -123,6 +136,10 @@ func Tools(uc UseCases, attachments app.AttachmentReader) []mcpserver.Tool {
 			Annotations: mcpserver.Annotations{ReadOnly: true}, Entry: mcpserver.BothEntries, Notebook: true}, t.log),
 		mcpserver.NewTool(mcpserver.Spec{Name: "changeset", Title: "Read a changeset", Description: changesetDescription,
 			Annotations: mcpserver.Annotations{ReadOnly: true}, Entry: mcpserver.BothEntries, Notebook: true}, t.changeset),
+		mcpserver.NewTool(mcpserver.Spec{Name: "grep", Title: "Find lines by a regular expression", Description: grepDescription,
+			Annotations: mcpserver.Annotations{ReadOnly: true}, Entry: mcpserver.BothEntries, Notebook: true}, t.grep),
+		mcpserver.NewTool(mcpserver.Spec{Name: "search", Title: "Search the notebook's words", Description: searchDescription,
+			Annotations: mcpserver.Annotations{ReadOnly: true}, Entry: mcpserver.BothEntries, Notebook: true}, t.search),
 	}
 }
 
@@ -142,7 +159,7 @@ type tools struct {
 }
 
 // The tools' descriptions, as api/mcp/tools.json has them (M9/P1 design
-// 3.18, M9/P2 design 3.18).
+// 3.18, M9/P2 design 3.18, M9/P4 design 3.11).
 const (
 	listDescription = `List the notebook's pages and attachments. With pattern empty or "/", the root's children; ` +
 		`with "A/B/", the children of the page A/B.md; both in the tree's order. Any other pattern is a glob over the paths, ` +
@@ -220,4 +237,26 @@ const (
 		`trash). The changeset itself comes on the first page, without cursor; go on with next_cursor while it is ` +
 		`set. A changeset of another notebook is not found here. History is read-only here: people revert ` +
 		`changesets in the web.`
+	grepDescription = `Find the lines of the notebook's pages that a Go regular expression (RE2 syntax, as ripgrep's default) ` +
+		`matches, page by page in path order. Each hit has the page's path, the line's number as read counts lines ` +
+		`(read with that offset and limit 1 gives the line) and the line's text as stored, without its \r and, on the ` +
+		`first line, its byte order mark; a line over 1000 bytes is cut around its first match, cut true; column, when ` +
+		`the text does not start at the line's first byte, is the byte it starts at, as read's column. Contents ` +
+		`include their frontmatter; titles are not searched (list's glob finds them), nor attachments. glob keeps the ` +
+		`pages whose paths it matches, as list's; ignore_case matches without case, as (?i). The pattern is at most ` +
+		`1024 bytes, without a newline, each line matched alone; one too complex, as large repeats, is refused. A call ` +
+		`checks a bounded amount: go on with next_cursor while it is set. incomplete says the call stopped at its ` +
+		`bounds before it checked every page it had to, so no hit is then no proof of none. partial_lines are lines ` +
+		`too long to match whole within a call: read them. building says pages queued in bulk (by a batch, an import, ` +
+		`a background restore or revert, an upgrade) are not searched until the index catches up. A page moved or ` +
+		`written between calls, with its subpages, may be skipped or checked again. For words and Chinese text, search ` +
+		`ranks pages and gives excerpts.`
+	searchDescription = `Full-text search of the notebook for words: the pages and attachments whose titles hold every term come ` +
+		`first, then the pages whose contents do, each newest first, a page with an excerpt around its first hit. ` +
+		`Terms are parted by spaces and match without case; Chinese text matches by pairs of characters, so a term of ` +
+		`one Chinese character finds titles only. q is at most 256 bytes and 8 terms. The first page has count: exact, ` +
+		`about or at_least. A page may hold fewer results than limit, even none, and still a next_cursor: a call ` +
+		`checks a bounded number of contents; go on while next_cursor is set. building says pages queued in bulk (by a ` +
+		`batch, an import, a background restore or revert, an upgrade) are not searched until the index catches up. ` +
+		`For patterns, exact text and line numbers, use grep.`
 )

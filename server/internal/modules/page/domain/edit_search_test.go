@@ -47,6 +47,8 @@ func allowedSearches() []allowedSearch {
 			"a search's term, of a query of at most MaxSearchQueryBytes"},
 		{search{"domain/search.go", "SearchQuery.InContents", "regexp.MustCompile(t.pattern(syntaxRE2, t.content))"},
 			"a search's term in NFC, of a query of at most MaxSearchQueryBytes"},
+		{search{"domain/grep.go", "GrepPattern.Compile", "regexp.Compile(p.expr)"},
+			"grep's pattern, of at most MaxGrepPatternBytes and MaxGrepInsts, its lines matched within MaxGrepWork (M9/P4 design 3.6)"},
 	}
 }
 

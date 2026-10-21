@@ -46,6 +46,27 @@ import (
 // fetched alike whether it holds 3,000 rows or none (fix round 3, C-1).
 // (The indexes' pending lists, off since 00041, the migrations' test
 // checks: one holds as many entries for either word.)
+//
+// Grep's reads too (M9/P4 design 6.1): the tree, the candidates by keys
+// and by !cut alone, building, the pages' states and contents. Ops writes
+// three pages alternately not cut and cut, each cut in the second phase
+// (past the bound by different CJK bigrams, a long run, a long data:
+// string), so that a read of !cut beyond eng's prefix reads their bitmaps
+// (mutant 151); and its queue keeps nodes queued in bulk and exact while
+// the reads are counted, which the queue's branch walks past: 1,000 of
+// each in the first and the third phase and 1,500 in the second, so that a
+// read of them, by a range of the queue's index or by its heap, fetches
+// other blocks in the second phase (review B-1 = C-I1). The queue is
+// vacuumed after each drain, so that the held rows fill its first pages
+// whatever an autovacuum did, and its heap is some 20-30 pages, where the
+// index wins: run 39638203738 failed on CI when an autovacuum between the
+// drain and 200 held rows left a heap of 2 pages, which a sequential scan
+// read whole. The B-trees of nodes and of the queue are held exact, every
+// read's as main held M8's (review B-3 = C-m3): with the queue vacuumed and
+// its rows held, no read here fetched another block of them in any phase
+// (5 runs, 2 under race), and a step of a descent is a change of a
+// B-tree's height, which bt_metap reads (pageinspect, created in the
+// test's own database): each is the same in every phase.
 func TestHiddenNotebooksLeaveTheSearchsReadsAlone(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
@@ -58,10 +79,30 @@ func TestHiddenNotebooksLeaveTheSearchsReadsAlone(t *testing.T) {
 	f.drain(t)
 	words := []string{"quartzalpha", "quartzborta"}
 	chars := map[string]string{words[0]: "锅", words[1]: "囧"}
+	// cut are ops's three pages written cut in the second phase alone.
+	var cut []uuid.UUID
+	for i := range 3 {
+		p := f.page(t, f.ops, nil, fmt.Sprintf("Cut %d", i), float64(10_000+i))
+		cut = append(cut, p.ID)
+	}
+	cutRand, rev := rand.New(rand.NewPCG(20261021, 1)), 1
 	// hold gives every page of ops the word, in its name and its content,
-	// and the word's character in its name, its rows built again.
-	hold := func(word string) {
+	// and the word's character in its name, its rows built again; its
+	// three pages cut or not; then queues 1,000 of its pages in bulk and
+	// 1,000 exact (1,500 and 1,500 with cuts, the second phase), left there
+	// while the reads are counted.
+	hold := func(word string, cuts bool) {
 		t.Helper()
+		for i, id := range cut {
+			content := strings.Repeat("plain words of a page ", 40)
+			if cuts {
+				content = []string{"x\n" + randomCJK(cutRand, 240<<10/3), "x" + strings.Repeat("ab", 40),
+					"![a](data:image/png;base64," + strings.Repeat("Qk", 50) + ")"}[i]
+			}
+			rev++
+			f.write(t, id, content, rev, now())
+		}
+		f.queueSearch(t, f.ops, false, cut...)
 		content := strings.Repeat("lorem ipsum "+word+" dolor ", 8)
 		sum := sha256.Sum256([]byte(content))
 		f.exec(t, `UPDATE page_contents SET content = $2, content_hash = $3, byte_size = octet_length($2), revision = revision + 1
@@ -70,6 +111,16 @@ func TestHiddenNotebooksLeaveTheSearchsReadsAlone(t *testing.T) {
 			WHERE id = ANY($1)`, ops, word, chars[word])
 		f.queueSearch(t, f.ops, false, ops...)
 		f.drain(t)
+		f.exec(t, "VACUUM page_search_queue")
+		if n := f.count(t, `SELECT count(*) FROM page_search WHERE node_id = ANY($1) AND partial`, cut); n != map[bool]int{true: 3}[cuts] {
+			t.Fatalf("%d of ops's cut pages partial", n)
+		}
+		held := 1000
+		if cuts {
+			held = 1500
+		}
+		f.queueSearch(t, f.ops, true, ops[:held]...)
+		f.queueSearch(t, f.ops, false, ops[held:2*held]...)
 		f.exec(t, "VACUUM ANALYZE")
 	}
 	// blocks is the blocks read's transaction fetched of each of the
@@ -106,6 +157,13 @@ func TestHiddenNotebooksLeaveTheSearchsReadsAlone(t *testing.T) {
 		t.Helper()
 		var before, after map[string]int64
 		err := postgres.NewTxManager(f.pool, 5*time.Second).WithinSnapshot(ctx, func(ctx context.Context) error {
+			// Once first on the transaction's connection, uncounted: a
+			// connection's first plan of a statement reads its indexes'
+			// metapages into its cache, one block each, which another
+			// connection of the pool has read before (M9/P4 S1).
+			if err := read(ctx); err != nil {
+				return err
+			}
 			var err error
 			if before, err = counts(ctx); err != nil {
 				return err
@@ -178,11 +236,63 @@ func TestHiddenNotebooksLeaveTheSearchsReadsAlone(t *testing.T) {
 			_, err = f.s.SearchBodyCount(ctx, sc, 20000)
 			return err
 		},
+		// grep's (M9/P4 design 3.4), keyed by the query's words.
+		"ListNodes": func(ctx context.Context, _ app.SearchScope) error {
+			_, err := f.s.ListNodes(ctx, f.eng)
+			return err
+		},
+		"GrepCandidates": func(ctx context.Context, sc app.SearchScope) error {
+			_, err := f.s.GrepCandidates(ctx, f.eng, sc.Query.BodyKeys())
+			return err
+		},
+		"GrepCandidates !cut": func(ctx context.Context, _ app.SearchScope) error {
+			_, err := f.s.GrepCandidates(ctx, f.eng, []string{domain.SearchCutKey})
+			return err
+		},
+		"SearchBuilding": func(ctx context.Context, _ app.SearchScope) error {
+			_, err := f.s.SearchBuilding(ctx, []uuid.UUID{f.eng})
+			return err
+		},
+		"PageStates": func(ctx context.Context, _ app.SearchScope) error {
+			_, err := f.s.PageStates(ctx, eng)
+			return err
+		},
+		"GrepContents": func(ctx context.Context, _ app.SearchScope) error {
+			_, err := f.s.GrepContents(ctx, eng)
+			return err
+		},
 	}
+	// levels is the height of each B-tree of nodes and of the queue: its
+	// root's level, 0 for a root that is a leaf.
+	f.exec(t, "CREATE EXTENSION IF NOT EXISTS pageinspect")
+	levels := func() map[string]int {
+		t.Helper()
+		rows, err := f.pool.Query(ctx, `SELECT c.relname, (bt_metap(c.oid::regclass::text)).level FROM pg_index i
+			JOIN pg_class c ON c.oid = i.indexrelid JOIN pg_am a ON a.oid = c.relam
+			WHERE i.indrelid IN ('nodes'::regclass, 'page_search_queue'::regclass) AND a.amname = 'btree'`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := map[string]int{}
+		for rows.Next() {
+			var name string
+			var level int64
+			if err := rows.Scan(&name, &level); err != nil {
+				t.Fatal(err)
+			}
+			out[name] = int(level)
+		}
+		if err := rows.Err(); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	var sizes []map[string]int
 	// got is the blocks of each read and word, a map a phase.
 	var got []map[string]map[string]int64
-	for _, held := range []string{words[0], words[1], words[0]} {
-		hold(held)
+	for phase, held := range []string{words[0], words[1], words[0]} {
+		hold(held, phase == 1)
+		sizes = append(sizes, levels())
 		phase := map[string]map[string]int64{}
 		// Every read once to warm the caches and settle the rows' hint
 		// bits, then every read counted.
@@ -201,6 +311,10 @@ func TestHiddenNotebooksLeaveTheSearchsReadsAlone(t *testing.T) {
 			t.Logf("ops holds %s: %s: %s", held, k, format(phase[k]))
 		}
 		got = append(got, phase)
+	}
+	t.Logf("the B-trees' heights in each phase: %v", sizes)
+	if !maps.Equal(sizes[0], sizes[1]) || !maps.Equal(sizes[0], sizes[2]) {
+		t.Errorf("the B-trees of nodes and the queue changed heights between the phases: %v", sizes)
 	}
 	for _, k := range slices.Sorted(maps.Keys(got[0])) {
 		if !same(got[0][k], got[1][k]) || !same(got[0][k], got[2][k]) {
@@ -245,7 +359,7 @@ func TestAnUpgradedInstanceBuildsItsSearchAgain(t *testing.T) {
 		if n.ID == b.ID {
 			content = "the kakapo sleeps"
 		}
-		title, body := domain.SearchTokens(n.Name, &content)
+		title, body, _ := domain.SearchTokens(n.Name, &content)
 		f.exec(t, `INSERT INTO page_search (node_id, revision, name, tokenizer, built_at, title, body)
 			VALUES ($1, 2, $2, '2/17.0.0/17.0.0', now(), array_to_tsvector($3::text[]), array_to_tsvector($4::text[]))`,
 			n.ID, n.Name, title, body)
@@ -307,7 +421,7 @@ func TestARowAtItsBoundFitsBehindTheLongestPrefix(t *testing.T) {
 		b.WriteRune(rune(0x4E00 + r.IntN(0x5000)))
 	}
 	content := b.String()
-	_, body := domain.SearchTokens("Big", &content)
+	_, body, _ := domain.SearchTokens("Big", &content)
 	sum := 0
 	for _, x := range body {
 		sum += len(x) + domain.SearchPrefixBytes
