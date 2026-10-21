@@ -55,7 +55,8 @@ import (
 // top, children_added; a later place's S* parent deleted, parent_gone; a
 // later place's S* parent moved under its node, cycle; a later place's
 // node grown to MaxDepth where it is, or a later group's S* parent moved
-// as deep as it goes, too_deep (review C1-M1): the batch of that step
+// as deep as it goes, too_deep (review C1-M1); a later group's S* parent
+// deleted, the restore's parent_gone (review C1-N1): the batch of that step
 // stops, its conflict that step's alone, named as in S*, nothing written
 // in it, no node aside. Not idle: each kind of segment, a restore cut
 // short, a group across batches, each movegone and each injection come up
@@ -73,10 +74,12 @@ func TestTheJobsStepsReplayToStar(t *testing.T) {
 	}
 	t.Logf("%d trials, %d jobs in %d batches: segments of steps aside %d, of a restore and its write back %d, of a write back "+
 		"and its deletion %d; restores cut short %d; groups across batches %d; movegone in a later batch %d, in one %d; injected "+
-		"renames %d, names taken %d, children %d, parents deleted %d, cycles %d, places too deep %d, restores too deep %d",
+		"renames %d, names taken %d, children %d, places' parents deleted %d, cycles %d, places too deep %d, restores too deep %d, "+
+		"restores' parents deleted %d",
 		trials, counts.jobs, counts.batches, counts.aside, counts.restoreWrite, counts.writeDelete, counts.cut, counts.across,
 		counts.goneLater, counts.goneSame, counts.injected[injectRename], counts.injected[injectKey], counts.injected[injectChild],
-		counts.injected[injectTrash], counts.injected[injectCycle], counts.injected[injectDeepPlace], counts.injected[injectDeepRestore])
+		counts.injected[injectTrash], counts.injected[injectCycle], counts.injected[injectDeepPlace], counts.injected[injectDeepRestore],
+		counts.injected[injectTrashRestore])
 	for _, c := range []struct {
 		what string
 		n    int
@@ -85,9 +88,10 @@ func TestTheJobsStepsReplayToStar(t *testing.T) {
 		{"segments of a write back and its deletion", counts.writeDelete}, {"restores cut short", counts.cut},
 		{"groups across batches", counts.across}, {"movegone in a later batch", counts.goneLater}, {"movegone in one", counts.goneSame},
 		{"renames injected", counts.injected[injectRename]}, {"names taken injected", counts.injected[injectKey]},
-		{"children injected", counts.injected[injectChild]}, {"parents deleted injected", counts.injected[injectTrash]},
+		{"children injected", counts.injected[injectChild]}, {"places' parents deleted injected", counts.injected[injectTrash]},
 		{"cycles injected", counts.injected[injectCycle]}, {"places too deep injected", counts.injected[injectDeepPlace]},
 		{"restores too deep injected", counts.injected[injectDeepRestore]},
+		{"restores' parents deleted injected", counts.injected[injectTrashRestore]},
 	} {
 		if c.n < floor {
 			t.Errorf("idle: %s %d, want %d", c.what, c.n, floor)
@@ -1400,7 +1404,9 @@ func describeSteps(steps []app.RevertStep) string {
 // a later place's S* parent moved under the place's node, cycle; a later
 // place's node grown by a chain of pages to MaxDepth where it is, its S*
 // parent no shallower, too_deep; a later group's S* parent moved to the
-// end of a chain of pages as deep as a move takes it, too_deep.
+// end of a chain of pages as deep as a move takes it, too_deep; a later
+// group's S* parent deleted, the restore's parent_gone (review C1-N1),
+// apart from a place's.
 const (
 	injectRename = iota
 	injectKey
@@ -1409,12 +1415,13 @@ const (
 	injectCycle
 	injectDeepPlace
 	injectDeepRestore
+	injectTrashRestore
 	injects
 )
 
 // injectName is the injection kind's name.
 func injectName(kind int) string {
-	return [injects]string{"rename", "key", "child", "trash", "cycle", "deep place", "deep restore"}[kind]
+	return [injects]string{"rename", "key", "child", "trash", "cycle", "deep place", "deep restore", "trash restore"}[kind]
 }
 
 // injected is a later step's conflict an injection makes: the step's
@@ -1643,6 +1650,17 @@ func (p *jobTrial) injection(kind int, rng *rand.Rand, f *fixture, items []domai
 			}
 			cands = append(cands, injected{step: k, node: x, reason: domain.ConflictTooDeep, name: s.Name})
 		}
+	case injectTrashRestore:
+		for k := from; k < len(steps); k++ {
+			s := steps[k]
+			parent, _, ok := target(k)
+			if !ok || s.Kind != domain.RevertRestore || parent == nil {
+				continue
+			}
+			if sub, ok := movable(f, *parent, touched); ok && unmet(steps[from:k], target, from, sub, nil) {
+				cands = append(cands, injected{step: k, node: *parent})
+			}
+		}
 	case injectDeepRestore:
 		for k := from; k < len(steps); k++ {
 			s := steps[k]
@@ -1676,7 +1694,7 @@ func (p *jobTrial) injection(kind int, rng *rand.Rand, f *fixture, items []domai
 		top := want.node
 		child := f.page(fmt.Sprintf("zz %06d", rng.IntN(1_000_000)), &top, 1e6)
 		want.node, want.name = child.ID, child.Name
-	case injectTrash:
+	case injectTrash, injectTrashRestore:
 		gone := storeSubtree(f, want.node)
 		f.trashed(want.node, now().Add(-30*time.Minute), f.alice)
 		// The first later step that meets it: a place under it, or a
