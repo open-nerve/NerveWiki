@@ -293,9 +293,17 @@ func TestTheBackgroundRevertStopsAtAWriteBetweenItsBatches(t *testing.T) {
 	})
 	// A step a batch, the first holding O: the web's write lands after it,
 	// before the batch it meets, whose premise alone sees it, L reading
-	// only the batch's own nodes (review C-I1). Each stops the job there,
-	// its one conflict the step's, named as in S*, the first batch's work
-	// kept, nothing aside.
+	// only the batch's own nodes (review C-I1; the cycle and the depths,
+	// review C1-M1: D9 is nine levels deep, MaxDepth ten). Each stops the
+	// job there, its one conflict the step's, named as in S*, the first
+	// batch's work kept, nothing aside.
+	deep := "D1/D2/D3/D4/D5/D6/D7/D8/D9"
+	under := func(pages ...restPage) []restPage {
+		for i := range strings.Split(deep, "/") {
+			pages = append(pages, restPage{strings.Join(strings.Split(deep, "/")[:i+1], "/"), "d"})
+		}
+		return pages
+	}
 	for _, tt := range []struct {
 		name  string
 		seed  []restPage
@@ -316,6 +324,21 @@ func TestTheBackgroundRevertStopsAtAWriteBetweenItsBatches(t *testing.T) {
 		{"a restore's parent deleted between batches", []restPage{{"O", "o"}, {"P", "p"}, {"P/z", "z"}},
 			[]map[string]any{opMove("O.md", "O2.md"), opDelete("P/z.md")},
 			func(tm acmeTeam, nb string, ids map[string]string) step { return nodeDeletion("alice", ids["P"]) }, "P/z", "parent_gone", false},
+		{"a place's parent moved under its node between batches", []restPage{{"O", "o"}, {"P", "p"}, {"P/x", "x"}},
+			[]map[string]any{opMove("O.md", "O2.md"), opMove("P/x.md", "x.md")},
+			func(tm acmeTeam, nb string, ids map[string]string) step {
+				return nodeMove("alice", ids["P"], ids["P/x"])
+			}, "P/x", "cycle", false},
+		{"a place's parent moved too deep between batches", under(restPage{"O", "o"}, restPage{"P", "p"}, restPage{"P/x", "x"}),
+			[]map[string]any{opMove("O.md", "O2.md"), opMove("P/x.md", "x.md")},
+			func(tm acmeTeam, nb string, ids map[string]string) step {
+				return nodeMove("alice", ids["P"], ids[deep])
+			}, "P/x", "too_deep", false},
+		{"a restore's parent moved too deep between batches", under(restPage{"O", "o"}, restPage{"P", "p"}, restPage{"P/z", "z"}),
+			[]map[string]any{opMove("O.md", "O2.md"), opDelete("P/z.md")},
+			func(tm acmeTeam, nb string, ids map[string]string) step {
+				return nodeMove("alice", ids["P"], ids[deep])
+			}, "P/z", "too_deep", false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			tm := newAcmeTeamWired(t, "member", "", nil, transfer.Batch{Nodes: 1})
@@ -331,7 +354,7 @@ func TestTheBackgroundRevertStopsAtAWriteBetweenItsBatches(t *testing.T) {
 			pgtest.WaitForLockWaitsOn(t, tm.pool, "notebooks", 1, interleavingWait)
 			h.letGo(t, ids["O"])
 			a := wrote()
-			if a.status != http.StatusNoContent && a.status != http.StatusCreated {
+			if a.status != http.StatusOK && a.status != http.StatusNoContent && a.status != http.StatusCreated {
 				t.Fatalf("the web's write = %d %s", a.status, a.body)
 			}
 			got := tm.endedBackground(t, "alice", j.ID)
