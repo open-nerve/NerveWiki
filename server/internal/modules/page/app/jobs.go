@@ -653,18 +653,32 @@ func (w *JobWrites) withinHistory(ctx context.Context, nodes int, deleted map[ti
 // batches began, at the time they restored it at.
 func (w *JobWrites) revertBatch(ctx context.Context, spec JobSpec, p *revertPlan, sizes []domain.JobStep, from, to int) (BatchDone, error) {
 	steps := p.steps[from:to]
+	// The bounds the plan's steps tell, before anything is read (review
+	// B's N-1, C1-N2): the nodes it restores, a restore step each, and its
+	// pages, copies and bytes.
+	nodes, restoring := map[uuid.UUID]bool{}, 0
+	for _, s := range steps {
+		nodes[s.node] = true
+		for _, id := range s.nodes {
+			nodes[id] = true
+		}
+		if s.kind == domain.RevertRestore {
+			restoring++
+		}
+	}
+	if len(nodes) > 1 && restoring > domain.MaxUnitNodes {
+		return BatchDone{}, errPastNodes
+	}
+	if err := withinSizes(p, steps, sizes); err != nil {
+		return BatchDone{}, err
+	}
 	begun, err := w.begun(ctx, p, steps)
 	if err != nil {
 		return BatchDone{}, err
 	}
 	deleted, trashed := map[time.Time][]uuid.UUID{}, map[time.Time][]uuid.UUID{}
 	var written []uuid.UUID
-	nodes := map[uuid.UUID]bool{}
 	for _, s := range steps {
-		nodes[s.node] = true
-		for _, id := range s.nodes {
-			nodes[id] = true
-		}
 		switch s.kind {
 		case domain.RevertRestore:
 			g := p.groups[s.group]
@@ -680,16 +694,6 @@ func (w *JobWrites) revertBatch(ctx context.Context, spec JobSpec, p *revertPlan
 		case domain.RevertContent:
 			written = append(written, s.node)
 		}
-	}
-	restoring := 0
-	for _, ids := range deleted {
-		restoring += len(ids)
-	}
-	if len(nodes) > 1 && restoring > domain.MaxUnitNodes {
-		return BatchDone{}, errPastNodes
-	}
-	if err := withinSizes(p, steps, sizes); err != nil {
-		return BatchDone{}, err
 	}
 	if err := w.withinHistory(ctx, len(nodes), deleted); err != nil {
 		return BatchDone{}, err

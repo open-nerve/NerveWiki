@@ -346,9 +346,10 @@ func TestARevertJobsWriteBackJoinsItsDeletionAlone(t *testing.T) {
 // and y under K; a batch moves x and y out, deletes G, makes a new G and
 // moves y into it. The segment's restore of G goes as far as K, carrying
 // every attachment: G, them and K MaxUnitNodes nodes, the job ends at S*;
-// one more, its first segment is past the nodes a unit restores, and the
-// job stops there. No batch's changeset comes to it, a batch changing at
-// most MaxUnitNodes nodes in all: this one is the test's own.
+// one more, its first segment is past the nodes a unit restores, before
+// anything is read (review B's N-1, C1-N2), and the job stops there. No
+// batch's changeset comes to it, a batch changing at most MaxUnitNodes
+// nodes in all: this one is the test's own.
 func TestARevertJobsBatchRestoresAtMostAUnitsNodes(t *testing.T) {
 	for _, past := range []bool{false, true} {
 		t.Run(fmt.Sprint("past ", past), func(t *testing.T) {
@@ -367,10 +368,12 @@ func TestARevertJobsBatchRestoresAtMostAUnitsNodes(t *testing.T) {
 			e.move(y, &g2, "y")
 			f, c := s.load()
 			w, spec, plan := f.revertJob(t, c.ID, nil, now())
+			f.rec.calls = nil
 			_, err := transferJob(f, w, spec, plan, 100)
 			switch {
-			case past && (!errors.Is(err, domain.ErrJobBatchTooLarge) || !strings.Contains(err.Error(), "past the nodes a unit restores")):
-				t.Errorf("the job = %v; want its first segment past the nodes a unit restores", err)
+			case past && (!errors.Is(err, domain.ErrJobBatchTooLarge) || !strings.Contains(err.Error(), "past the nodes a unit restores") ||
+				len(f.rec.calls) > 0):
+				t.Errorf("the job = %v, after %v; want its first segment past the nodes a unit restores, before a read", err, f.rec.calls)
 			case !past && err != nil:
 				t.Errorf("the job = %v; want it done", err)
 			case !past:
