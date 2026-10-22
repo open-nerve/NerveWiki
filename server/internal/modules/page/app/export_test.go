@@ -23,6 +23,15 @@ func NewGrepSlotsWaiting(n int, wait time.Duration) *GrepSlots {
 	return s
 }
 
+// WithLines is g splitting a content's lines by lines: a test's, which
+// wraps domain.GrepLines to advance its clock as it scans for each line's
+// end.
+func (g *Grep) WithLines(lines func(content string, from int, yield func(line int, text string, column int) bool)) *Grep {
+	c := *g
+	c.lines = lines
+	return &c
+}
+
 // WithMaxWork is l with its globs' work a call at most maxWork: a test's
 // bound, less than domain.MaxGlobWork.
 func (l *ListByPattern) WithMaxWork(maxWork int64) *ListByPattern {

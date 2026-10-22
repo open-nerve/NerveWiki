@@ -179,7 +179,12 @@ type GrepDeps struct {
 
 // Grep finds the lines of a notebook's pages' contents a pattern matches
 // (M9 design 4.13; M9/P4 design 3.7).
-type Grep struct{ d GrepDeps }
+type Grep struct {
+	d GrepDeps
+	// lines is domain.GrepLines; a test's advances its clock as it scans
+	// for each line's end, which no unit's time may count.
+	lines func(content string, from int, yield func(line int, text string, column int) bool)
+}
 
 // NewGrep is the use case, its bounds 0 the domain's.
 func NewGrep(d GrepDeps) *Grep {
@@ -198,7 +203,7 @@ func NewGrep(d GrepDeps) *Grep {
 	if d.GlobWork == 0 {
 		d.GlobWork = domain.MaxGlobWork
 	}
-	return &Grep{d: d}
+	return &Grep{d: d, lines: domain.GrepLines}
 }
 
 // allPages is the glob of a grep without one: every page.
@@ -268,7 +273,7 @@ func (g *Grep) Execute(ctx context.Context, notebookID uuid.UUID, r GrepRequest)
 
 // grepWalker is a call's walk (M9/P4 design 3.7.3): its pattern compiled
 // and its bounds, what it has read and done so far, and the time it has
-// spent matching, which tells a unit's time.
+// spent matching its lines, which tells a unit's time (3.6.3).
 type grepWalker struct {
 	g          *Grep
 	ctx        context.Context
@@ -282,9 +287,16 @@ type grepWalker struct {
 	soft        time.Time
 	read, work  int64
 	lines, hits int
-	matched     time.Duration
-	lineStart   time.Time // the clock at the line's start, zero between batches
-	candidates  map[uuid.UUID]bool
+	// matched is the time the call's lines took to match, as 3.6.3
+	// counts it: each line's from before its NFC within the cut to after
+	// its match, the time of the work counted of it. Nothing between two
+	// lines counts: not GrepLines' scan for the next line's end, nor a
+	// batch's read. Counted from one line to the next, a long line's scan
+	// fell to the short line before it, whose few units then told a
+	// unit's time that stopped the long line at the soft deadline (review
+	// C2-m3).
+	matched    time.Duration
+	candidates map[uuid.UUID]bool
 	// stopped is why the walk stopped within its pages, and its cursor;
 	// pending why its pages stopped, the 501st or the glob's work, which
 	// counts once every page was checked.
@@ -477,7 +489,6 @@ func (w *grepWalker) check(t tree, pages []grepPage) error {
 				return err
 			}
 		}
-		w.endBatch()
 		start = end
 	}
 	return nil
@@ -488,15 +499,6 @@ func (w *grepWalker) pastSoft(now time.Time) bool {
 	return !w.soft.IsZero() && now.After(w.soft)
 }
 
-// endBatch adds the last line's time to the time matched: the next batch's
-// read is no match's.
-func (w *grepWalker) endBatch() {
-	if !w.lineStart.IsZero() {
-		w.matched += w.g.d.Clock.Now().Sub(w.lineStart)
-		w.lineStart = time.Time{}
-	}
-}
-
 // checkPage matches the lines of the page p's content from its line on,
 // each judged before it starts (M9/P4 design 3.6.3), but the call's
 // first, until the walk stops.
@@ -504,12 +506,8 @@ func (w *grepWalker) checkPage(t tree, p grepPage, content string) error {
 	d := w.g.d
 	path := ""
 	var err error
-	domain.GrepLines(content, p.from, func(line int, text string, column int) bool {
+	w.g.lines(content, p.from, func(line int, text string, column int) bool {
 		now := d.Clock.Now()
-		if !w.lineStart.IsZero() {
-			w.matched += now.Sub(w.lineStart)
-		}
-		w.lineStart = now
 		// The line as it is matched: its NFC within the cut. The line is
 		// judged by those bytes, the ones its work then counts, so that
 		// the work counted is never more than the work judged: NFC can
@@ -533,6 +531,7 @@ func (w *grepWalker) checkPage(t tree, p grepPage, content string) error {
 			}
 		}
 		m := g.Match(w.re, text, column)
+		w.matched += d.Clock.Now().Sub(now)
 		w.work += domain.GrepWork(m.Bytes, w.pattern.Insts)
 		w.lines++
 		if m.Hit == nil && !m.Partial {

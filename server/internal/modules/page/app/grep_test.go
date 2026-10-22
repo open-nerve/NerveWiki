@@ -556,6 +556,54 @@ func TestGrepStopsBeforeALineItsWorkWouldPass(t *testing.T) {
 	}
 }
 
+// scanClock is a clock that moves only as its lines are scanned: a
+// nanosecond a byte of each line, before the line is yielded, as
+// GrepLines finds a line's end before it yields the line. A match, and a
+// read of the clock, take no time.
+type scanClock struct{ at time.Time }
+
+func (c *scanClock) Now() time.Time { return c.at }
+
+// lines is domain.GrepLines, the clock moved by each line's scan.
+func (c *scanClock) lines(content string, from int, yield func(line int, text string, column int) bool) {
+	domain.GrepLines(content, from, func(line int, text string, column int) bool {
+		c.at = c.at.Add(time.Duration(len(text)) * time.Nanosecond)
+		return yield(line, text, column)
+	})
+}
+
+// TestGrepTimesALinesMatchAlone checks a unit's time (M9/P4 design 3.6.3,
+// review C2-m3): it is the time the lines took to match, not the time of
+// the scans for their ends between them. A page of "x", then a line of a
+// million bytes and needle; the clock moves 1 ms as the long line is
+// scanned, and not as anything is matched. A unit timed from one line to
+// the next is that 1 ms over the first line's 24 units, about 42 µs, and
+// the long line's 8 million units about 330 s, past the soft deadline a
+// minute away: the call stops before the long line, no hit, incomplete.
+// Timed by the lines' matches, the unit is GrepUnitTime, the long line
+// 0.2 s: the first call answers its hit, the walk done.
+func TestGrepTimesALinesMatchAlone(t *testing.T) {
+	f := newFixture()
+	f.grant(domain.ActionRead)
+	reads := newFakeGrep(f.store)
+	id := f.page("Long", nil, 0).ID
+	f.content(id, "x\n"+strings.Repeat("a", 1_000_000)+" needle\n", 1)
+	reads.exact[id] = true
+	deadline := time.Now().Add(time.Hour)
+	ctx, cancel := context.WithDeadline(f.asAlice(), deadline)
+	defer cancel()
+	clock := &scanClock{at: deadline.Add(-domain.GrepSoftMargin - time.Minute)}
+	got, err := f.grepper(reads, func(d *app.GrepDeps) { d.Clock = clock }).WithLines(clock.lines).Execute(ctx, f.eng,
+		app.GrepRequest{Pattern: "needle"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found := grepFound(got); !slices.Equal(found, []string{"Long.md:2"}) || got.Incomplete || got.Walk.Stop != "done" ||
+		got.Walk.Lines != 2 || got.Next != "" {
+		t.Errorf("x, then a line of a million bytes: %q, %+v; want its hit in the first call, the walk done", found, got)
+	}
+}
+
 // TestGrepParseQueue checks the parses' queue (M9/P4 design 3.6.1,
 // review A2-m1 = C2-M1): 20 calls at once on 2 turns, the fake parse
 // counting the parses in flight, which wraps the parse itself: at most 2
