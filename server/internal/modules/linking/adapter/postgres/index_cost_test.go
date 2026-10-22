@@ -95,14 +95,17 @@ func (guardPaths) Pages(_ context.Context, _ uuid.UUID, ids []uuid.UUID) (map[uu
 // B-I1). IndexPages, without statistics, analyzed and planned for any
 // arguments, reads every page and the start of its type, one probe a page
 // by 00047's index: without it the pages without a type read every
-// property, some two seconds more; and value_start, never the value: read
-// whole, the 5 MB types are some two seconds more too. IndexItems of the
-// 100 reads their starts alone. InboundCounts of the first 100 stops at
-// 1,000 each. 200 of the pages whose type is 5 MB are in a notebook of
-// their own, with one whose type is a filter of 300 characters, the 5 MB
-// types' start: IndexPages by that filter reads the 200 types' lengths,
-// not their values (S2 fix check F-m1), the whole value only of the type
-// as long as the filter.
+// property, about 0.85-1.0 s more (mutant 184), only a little over
+// indexPagesBound; TestIndexPlans, by the index's name, and the filter's
+// read planned generic, about 650 ms against indexFilterBound, are its
+// sure catches (S2 fix checks F-n1, round 4). It reads value_start, never
+// the value: read whole, the 5 MB types are some two seconds more.
+// IndexItems of the 100 reads their starts alone. InboundCounts of the
+// first 100 stops at 1,000 each. 200 of the pages whose type is 5 MB are
+// in a notebook of their own, with one whose type is a filter of 300
+// characters, the 5 MB types' start: IndexPages by that filter reads the
+// 200 types' lengths, not their values (S2 fix check F-m1), the whole
+// value only of the type as long as the filter.
 // ListIndex's call, which orders them by their keys, takes its time too,
 // and allocates at most indexCallAllocBound. Each time is a median of
 // three, against three times its time here; the live memory of the pages
