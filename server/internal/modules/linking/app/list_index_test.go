@@ -24,6 +24,7 @@ type indexReads struct {
 	facts   map[uuid.UUID]app.IndexFacts
 	inbound map[uuid.UUID]int
 	tagged  map[string][]uuid.UUID
+	dropped map[uuid.UUID]bool // IndexPages lists them, their rows gone by IndexItems
 }
 
 func (r *indexReads) IndexPages(_ context.Context, _ uuid.UUID, typeIs *string) ([]app.IndexedPage, error) {
@@ -48,7 +49,7 @@ func (r *indexReads) IndexItems(_ context.Context, ids []uuid.UUID) (map[uuid.UU
 	r.call(fmt.Sprintf("IndexItems %d", len(ids)))
 	out := map[uuid.UUID]app.IndexFacts{}
 	for _, id := range ids {
-		if f, ok := r.facts[id]; ok && slices.Contains(r.held, id) {
+		if f, ok := r.facts[id]; ok && slices.Contains(r.held, id) && !r.dropped[id] {
 			out[id] = f
 		}
 	}
@@ -78,7 +79,8 @@ func (r *indexReads) TagPages(_ context.Context, _ uuid.UUID, key string) ([]uui
 // area), its child pages Roadmap (type Project, tags plan and plan/q4, a
 // summary of 300 bytes), Spec (type project, tag plan) and Notes (no type),
 // and Inbox at the root (no type); Gone, of type zeta, is held but put in
-// the trash, without a path; Old has a path but no index rows.
+// the trash, without a path; Old, of type aaa, has a path and is listed by
+// IndexPages, its rows gone when IndexItems reads (S2 review C-n1).
 type indexLib struct {
 	lib
 	paths                                            *paths
@@ -89,7 +91,7 @@ type indexLib struct {
 func newIndexLib() indexLib {
 	l := indexLib{lib: newLibrary()}
 	l.paths, l.reads = newPaths(l.library), &indexReads{library: l.library, facts: map[uuid.UUID]app.IndexFacts{},
-		inbound: map[uuid.UUID]int{}, tagged: map[string][]uuid.UUID{}}
+		inbound: map[uuid.UUID]int{}, tagged: map[string][]uuid.UUID{}, dropped: map[uuid.UUID]bool{}}
 	str := func(s string) *string { return &s }
 	page := func(path string, f app.IndexFacts) uuid.UUID {
 		id := l.paths.add(uuid.NewV7(), path)
@@ -104,7 +106,8 @@ func newIndexLib() indexLib {
 	l.inbox = page("Inbox.md", app.IndexFacts{})
 	l.gone = page("Gone.md", app.IndexFacts{Type: str("zeta")})
 	l.paths.gone(l.gone)
-	l.old = l.paths.add(uuid.NewV7(), "Old.md")
+	l.old = page("Old.md", app.IndexFacts{Type: str("aaa")})
+	l.reads.dropped[l.old] = true
 	l.reads.inbound[l.roadmap], l.reads.inbound[l.spec] = 2, 1
 	l.reads.tagged["plan"] = []uuid.UUID{l.roadmap, l.spec}
 	l.reads.tagged["plan/q4"] = []uuid.UUID{l.roadmap}
@@ -212,8 +215,9 @@ func TestListIndexJudgesInTurn(t *testing.T) {
 // key and id, then the others by id, a page at a time: each with its
 // path, type, summary and tags cut to 256 bytes and named in cut, its last
 // change, its inbound links and its parent page's path. A page deleted
-// since it was read is left out, and the next cursor goes past it; one
-// without index rows is never listed (M9/P4 design 3.9.3; review B-N3).
+// since it was read is left out, and the next cursor goes past it; so is
+// one whose index rows went between the reads, Old, first by its type
+// (M9/P4 design 3.9.3; review B-N3; S2 review C-n1).
 func TestListIndex(t *testing.T) {
 	l := newIndexLib()
 	got, err := l.listIndex().Execute(reader(), l.nb, app.IndexQuery{})
@@ -254,10 +258,17 @@ func TestListIndex(t *testing.T) {
 		}
 	}
 
+	// The first page of two reads Old and Projects: Old's rows are gone,
+	// so it holds Projects alone, the next cursor after it.
+	two := 2
+	first, err := l.listIndex().Execute(reader(), l.nb, app.IndexQuery{Limit: &two})
+	if want := cursor(domain.IndexCursor{K: "area", Typed: true, ID: l.projects}); err != nil ||
+		!slices.Equal(idsOf(first), []uuid.UUID{l.projects}) || first.Next != want {
+		t.Errorf("the first page of two: %v, next %q, %v; want Projects alone, next %q", idsOf(first), first.Next, err, want)
+	}
 	// A page at a time: the page Gone, of type zeta, is the last of the
 	// typed and deleted since: the next cursor goes past it.
 	var walked []uuid.UUID
-	two := 2
 	var after *string
 	for range 10 {
 		p, err := l.listIndex().Execute(reader(), l.nb, app.IndexQuery{Limit: &two, Cursor: after})
