@@ -69,13 +69,15 @@ WHERE notebook_id = sqlc.arg(notebook_id) AND parent_id = sqlc.arg(parent_id) AN
 SELECT id FROM nodes WHERE id = ANY(sqlc.arg(ids)::uuid[]) AND deleted_at IS NULL;
 
 -- name: RootPageIDs :many
--- The root's pages not deleted (M9/P4 design 3.9.1): index's parent "/", by the notebook's and parents' index
--- (00012), parent_id IS NULL its condition; IS NOT DISTINCT FROM is not one.
+-- The root's pages not deleted (M9/P4 design 3.9.1): index's parent "/", by an index of the root's nodes, the
+-- notebook's and parents' (00012) or the roots' (00042) as the planner takes it, parent_id IS NULL its condition or its
+-- predicate (TestTheChildPagesReadsUseTheirIndexes).
 SELECT id FROM nodes
 WHERE notebook_id = sqlc.arg(notebook_id) AND parent_id IS NULL AND kind = 'page' AND deleted_at IS NULL;
 
 -- name: ChildPageIDs :many
--- A page's child pages not deleted (M9/P4 design 3.9.1): index's parent, by the notebook's and parents' index (00012).
+-- A page's child pages not deleted (M9/P4 design 3.9.1): index's parent, by an index of a parent's children, the
+-- notebook's and parents' (00012) or the children's (00042) as the planner takes it, parent_id = its condition.
 SELECT id FROM nodes
 WHERE notebook_id = sqlc.arg(notebook_id) AND parent_id = sqlc.arg(parent_id) AND kind = 'page' AND deleted_at IS NULL;
 

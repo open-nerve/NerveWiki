@@ -258,7 +258,8 @@ type ChildPageIDsParams struct {
 	ParentID   *uuid.UUID
 }
 
-// A page's child pages not deleted (M9/P4 design 3.9.1): index's parent, by the notebook's and parents' index (00012).
+// A page's child pages not deleted (M9/P4 design 3.9.1): index's parent, by an index of a parent's children, the
+// notebook's and parents' (00012) or the children's (00042) as the planner takes it, parent_id = its condition.
 func (q *Queries) ChildPageIDs(ctx context.Context, arg ChildPageIDsParams) ([]uuid.UUID, error) {
 	rows, err := q.db.Query(ctx, childPageIDs, arg.NotebookID, arg.ParentID)
 	if err != nil {
@@ -1066,8 +1067,9 @@ SELECT id FROM nodes
 WHERE notebook_id = $1 AND parent_id IS NULL AND kind = 'page' AND deleted_at IS NULL
 `
 
-// The root's pages not deleted (M9/P4 design 3.9.1): index's parent "/", by the notebook's and parents' index
-// (00012), parent_id IS NULL its condition; IS NOT DISTINCT FROM is not one.
+// The root's pages not deleted (M9/P4 design 3.9.1): index's parent "/", by an index of the root's nodes, the
+// notebook's and parents' (00012) or the roots' (00042) as the planner takes it, parent_id IS NULL its condition or its
+// predicate (TestTheChildPagesReadsUseTheirIndexes).
 func (q *Queries) RootPageIDs(ctx context.Context, notebookID uuid.UUID) ([]uuid.UUID, error) {
 	rows, err := q.db.Query(ctx, rootPageIDs, notebookID)
 	if err != nil {
