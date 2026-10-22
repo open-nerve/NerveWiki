@@ -281,9 +281,11 @@ func TestListIndex(t *testing.T) {
 	if want := cursor(domain.IndexCursor{K: "zeta", Typed: true, ID: l.gone}); !slices.Equal(idsOf(p), all[2:3]) || p.Next != want {
 		t.Errorf("a page whose last read is gone: %v, next %q; want %v and the next after Gone, %q", idsOf(p), p.Next, all[2:3], want)
 	}
-	if p, err := l.listIndex().Execute(reader(), l.nb, app.IndexQuery{Cursor: &p.Next}); err != nil ||
-		!slices.Equal(idsOf(p), l.ordered(l.notes, l.inbox)) {
-		t.Errorf("after Gone: %v, %v", idsOf(p), err)
+	// After Gone, the last two exactly fill a page of two: no cursor
+	// follows them (S2 review C-m2).
+	if p, err := l.listIndex().Execute(reader(), l.nb, app.IndexQuery{Limit: &two, Cursor: &p.Next}); err != nil ||
+		!slices.Equal(idsOf(p), l.ordered(l.notes, l.inbox)) || p.Next != "" {
+		t.Errorf("after Gone: %v, next %q, %v; want the last two and no next", idsOf(p), p.Next, err)
 	}
 }
 
