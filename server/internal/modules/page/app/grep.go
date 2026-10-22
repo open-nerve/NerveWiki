@@ -517,8 +517,10 @@ func (w *grepWalker) checkPage(t tree, p grepPage, content string) error {
 		g := domain.NewGrepNFC(text, w.cut)
 		if w.lines > 0 {
 			cost := domain.GrepWork(len(g.Text), w.pattern.Insts)
+			// A unit's time: GrepUnitTime until the call's timing rests on
+			// GrepUnitWarmUp of work, then its own when slower (3.6.3).
 			unit := domain.GrepUnitTime
-			if w.work > 0 {
+			if w.work >= domain.GrepUnitWarmUp {
 				unit = max(unit, w.matched/time.Duration(w.work))
 			}
 			switch {

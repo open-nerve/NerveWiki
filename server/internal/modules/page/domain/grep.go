@@ -47,6 +47,17 @@ const (
 	// call has timed its own, and at least.
 	GrepSoftMargin = 3 * time.Second
 	GrepUnitTime   = 25 * time.Nanosecond
+	// GrepUnitWarmUp is the work a call's own timing must rest on before
+	// grep trusts it as a unit's time (S2 fix check C3-m1): 10^5 units,
+	// about 2.5 ms of matching at GrepUnitTime; below it a unit is
+	// GrepUnitTime. Timed on a first line of a few dozen units, one pause
+	// of tens of µs (a GC assist, the OS taking the CPU) told a unit that
+	// projected the MB-long line after it past the soft deadline. Past the
+	// warm-up a pause of 36 µs is under 1.5% of the time measured. It is
+	// small, as the two errors are not alike: a stop too early costs a
+	// call (the next starts at that line, its first, which is not judged),
+	// a slow machine not seen risks the call's deadline.
+	GrepUnitWarmUp int64 = 100_000
 	// GrepSlotWait is how long a call waits for its slot before 503.
 	GrepSlotWait = time.Second
 )
