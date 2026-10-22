@@ -161,10 +161,10 @@ func indexPagesTypes(t *testing.T, f fixture) {
 }
 
 // A page's item is its type and its summary, each the first of its key
-// but for ASCII case when its value is a string, their first
-// IndexStartChars characters, of 3 MiB too; its first 21 tags by key, not
-// by text, each's first 512 characters. A page the index does not hold
-// has none.
+// but for ASCII case when its value is a string, never a later one when
+// the first is not (S2 fix check C2-m1), their first IndexStartChars
+// characters, of 3 MiB too; its first 21 tags by key, not by text, each's
+// first 512 characters. A page the index does not hold has none.
 func indexItems(t *testing.T, f fixture) {
 	ctx := context.Background()
 	long := strings.Repeat("項", 600)
@@ -182,16 +182,17 @@ func indexItems(t *testing.T, f fixture) {
 	full := f.indexPage(t, f.ops, []property{{"SUMMARY", jsonText(long)}, {"Type", jsonText("Project")}, {"summary", jsonText("later")}},
 		tags...)
 	bare := f.indexPage(t, f.ops, []property{{"summary", `{"a": 1}`}, {"type", `null`}})
+	later := f.indexPage(t, f.ops, []property{{"Type", `["x"]`}, {"type", jsonText("y")}, {"summary", `5`}, {"summary", jsonText("s")}})
 	huge := strings.Repeat("项", 1<<20)
 	big := f.indexPage(t, f.ops, []property{{"type", jsonText(huge)}, {"summary", jsonText("x" + huge)}})
 	edge := f.indexPage(t, f.ops, []property{{"type", jsonText(strings.Repeat("a", domain.MaxIndexString))},
 		{"summary", jsonText(strings.Repeat("a", domain.MaxIndexString+1))}})
-	got, err := f.s.IndexItems(ctx, []uuid.UUID{full, bare, big, edge, uuid.NewV7()})
+	got, err := f.s.IndexItems(ctx, []uuid.UUID{full, bare, later, big, edge, uuid.NewV7()})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 4 {
-		t.Fatalf("items of %d pages, want 4: %v", len(got), slices.Collect(maps.Keys(got)))
+	if len(got) != 5 {
+		t.Fatalf("items of %d pages, want 5: %v", len(got), slices.Collect(maps.Keys(got)))
 	}
 	it := got[full]
 	var wantTags []string
@@ -208,6 +209,10 @@ func indexItems(t *testing.T, f fixture) {
 	}
 	if it := got[bare]; it.Type != nil || it.Summary != nil || len(it.Tags) != 0 {
 		t.Errorf("a page of values not strings: %+v", it)
+	}
+	if it := got[later]; it.Type != nil || it.Summary != nil {
+		t.Errorf("a page whose first type and summary are no strings, later ones strings: type %v, summary %v; want none", deref(it.Type),
+			deref(it.Summary))
 	}
 	// A type and a summary of 3 MiB: their starts, which an answer cuts to
 	// 256 bytes and marks; one of 256 bytes is whole, one of 257 cut.
