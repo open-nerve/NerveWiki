@@ -28,6 +28,7 @@ import (
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/asset"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/mcpserver"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres/pgtest"
 )
@@ -59,10 +60,20 @@ func startReadsApp(t *testing.T, publicURL string) readsApp {
 // startReadsAppWith is startReadsApp of a test's wiring.
 func startReadsAppWith(t *testing.T, publicURL string, w wiring) readsApp {
 	t.Helper()
+	return startReadsAppOf(t, publicURL, w, nil)
+}
+
+// startReadsAppOf is startReadsAppWith of a test's config too: change, when
+// not nil, changes testConfig's before the app is wired.
+func startReadsAppOf(t *testing.T, publicURL string, w wiring, change func(*config.Config)) readsApp {
+	t.Helper()
 	db := pgtest.NewDatabase(t)
 	logs := &syncBuffer{}
 	cfg := testConfig(t, db, false)
 	cfg.Server.PublicURL = publicURL
+	if change != nil {
+		change(&cfg)
+	}
 	m := runMCPApp(t, wireMCPAppWith(t, cfg, logs, w), db, logs)
 	return readsApp{mcpApp: m, storage: cfg.Storage.Dir, pool: connect(t, db)}
 }

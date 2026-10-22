@@ -557,7 +557,9 @@ func TestThePermissionMatrixOverMCP(t *testing.T) {
 		t.Fatal("the tokens were not created: a -run of some cells must select tokens too, e.g. -run 'TestThePermissionMatrixOverMCP/(prepare|tokens|list)'")
 	}
 	gate := gateCells(t)
-	reads := startApp(t, d.config(t, pgtest.NewDatabaseFrom(t, d.url), nil), migrations.FS())
+	// The reads' cells run in parallel on one app, at production's deadlines,
+	// so that grep's cells answer their whole walk (productionDeadlines).
+	reads := startApp(t, d.config(t, pgtest.NewDatabaseFrom(t, d.url), productionDeadlines), migrations.FS())
 	apps := make(chan struct{}, matrixApps)
 	var checked, toCheck, aftered, toAfter atomic.Int64
 	t.Cleanup(func() {
