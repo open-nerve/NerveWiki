@@ -4,42 +4,50 @@
 -- value is a string, its first 128 characters, which the order's key of 64 bytes needs. With type_is, only the pages
 -- whose type is that string; typed tells an empty type from none. Each page's properties are read by
 -- page_properties_type_idx (00047), one probe a page whatever properties it has: never the notebook's others, nor
--- another notebook's. The pages are read whole: the order is Go's title keys.
+-- another notebook's. A type is read by its value_start (00047), its first 257 characters, never by its value, which
+-- may be MiB long: the value only for type_is of 257 characters or more, where value_start is type_is's start. The
+-- pages are read whole: the order is Go's title keys.
 SELECT ip.node_id, (t.type_start IS NOT NULL)::boolean AS typed, coalesce(t.type_start, '')::text AS type_start
 FROM indexed_pages ip
 LEFT JOIN LATERAL (
-    SELECT (CASE WHEN jsonb_typeof(p.value) = 'string' THEN left(p.value #>> '{}', 128) END)::text AS type_start, p.value
+    SELECT left(p.value_start, 128) AS type_start,
+        CASE
+            WHEN sqlc.narg(type_is)::text IS NULL THEN true
+            WHEN p.value_start IS DISTINCT FROM left(sqlc.narg(type_is)::text, 257) THEN false
+            WHEN char_length(sqlc.narg(type_is)::text) < 257 THEN true
+            ELSE p.value = to_jsonb(sqlc.narg(type_is)::text)
+        END AS of_type
     FROM page_properties p
     WHERE p.source_id = ip.node_id AND translate(p.key, 'TYPE', 'type') = 'type'
     ORDER BY p.position
     LIMIT 1
 ) t ON true
-WHERE ip.notebook_id = sqlc.arg(notebook_id)
-    AND (sqlc.narg(type_is)::text IS NULL OR t.value = to_jsonb(sqlc.narg(type_is)::text));
+WHERE ip.notebook_id = sqlc.arg(notebook_id) AND (sqlc.narg(type_is)::text IS NULL OR t.of_type);
 
 -- name: IndexItems :many
 -- The types, summaries and tags of the index's pages ids (M9/P4 design 3.9.3): the first property whose key is "type",
--- and the first whose key is "summary", but for ASCII case, each's first 512 characters when its value is a string, by
--- their partial indexes (00047), typed and summarized telling an empty one from none; and the first 21 tags by key,
--- each as the page first writes it, its first 512 characters, the 21st telling that more follow, by the primary key.
+-- and the first whose key is "summary", but for ASCII case, each's value_start (00047), its first 257 characters when
+-- its value is a string, by their partial indexes, typed and summarized telling an empty one from none; and the first
+-- 21 tags by key, each as the page first writes it, its first 512 characters, the 21st telling that more follow, by
+-- the primary key.
 SELECT ip.node_id,
-    (ty.type_text IS NOT NULL)::boolean AS typed,
-    coalesce(ty.type_text, '')::text AS type_text,
-    (s.summary_start IS NOT NULL)::boolean AS summarized,
-    coalesce(s.summary_start, '')::text AS summary_start,
+    (ty.value_start IS NOT NULL)::boolean AS typed,
+    coalesce(ty.value_start, '')::text AS type_text,
+    (s.value_start IS NOT NULL)::boolean AS summarized,
+    coalesce(s.value_start, '')::text AS summary_start,
     ARRAY(
         SELECT left(t.tag, 512) FROM page_tags t WHERE t.source_id = ip.node_id ORDER BY t.tag_key LIMIT 21
     )::text[] AS tags
 FROM indexed_pages ip
 LEFT JOIN LATERAL (
-    SELECT (CASE WHEN jsonb_typeof(p.value) = 'string' THEN left(p.value #>> '{}', 512) END)::text AS type_text
+    SELECT p.value_start
     FROM page_properties p
     WHERE p.source_id = ip.node_id AND translate(p.key, 'TYPE', 'type') = 'type'
     ORDER BY p.position
     LIMIT 1
 ) ty ON true
 LEFT JOIN LATERAL (
-    SELECT (CASE WHEN jsonb_typeof(p.value) = 'string' THEN left(p.value #>> '{}', 512) END)::text AS summary_start
+    SELECT p.value_start
     FROM page_properties p
     WHERE p.source_id = ip.node_id AND translate(p.key, 'SUMARY', 'sumary') = 'summary'
     ORDER BY p.position

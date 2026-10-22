@@ -47,6 +47,7 @@ type PageProperty struct {
 	NotebookID uuid.UUID
 	Key        string
 	Value      []byte
+	ValueStart *string
 }
 
 type PageTag struct {

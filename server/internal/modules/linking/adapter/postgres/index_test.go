@@ -72,19 +72,33 @@ func TestIndexReads(t *testing.T) {
 // case, when that one's value is a string, never a later one; its start
 // is 128 characters (translate's six rows, and the first a list); with a
 // type to keep, the statement keeps only the pages of exactly it, by the
-// whole value; another notebook's pages are not the index's.
+// whole value; another notebook's pages are not the index's. A type is read
+// by its value_start, its first IndexStartChars characters (S2 review
+// B-I1): a type of 3 MiB has its start; a filter shorter than that is
+// decided by it, a longer one by the whole value where the starts are
+// equal (a type of the filter and one more character, and the 3 MiB type,
+// which starts as the filter does, are not of it).
 func indexPagesTypes(t *testing.T, f fixture) {
 	ctx := context.Background()
-	long := strings.Repeat("𝐱", 200)
-	want, whole := map[uuid.UUID]*string{}, map[uuid.UUID]string{}
+	start, whole := map[uuid.UUID]*string{}, map[uuid.UUID]string{}
 	page := func(typ *string, props ...property) {
 		id := f.indexPage(t, f.eng, props)
-		want[id] = typ
+		start[id] = nil
 		if typ != nil {
 			whole[id] = *typ
+			s := *typ
+			if r := []rune(s); len(r) > domain.IndexTypeChars {
+				s = string(r[:domain.IndexTypeChars])
+			}
+			start[id] = &s
 		}
 	}
 	s := func(v string) *string { return &v }
+	long := strings.Repeat("𝐱", 200)
+	wide := strings.Repeat("项", 300)
+	huge := strings.Repeat("项", 1<<20)
+	at := strings.Repeat("项", domain.IndexStartChars)
+	short := strings.Repeat("项", domain.IndexStartChars-1)
 	page(s("a"), property{"Type", jsonText("a")})
 	page(s("b"), property{"TYPE", jsonText("b")})
 	page(s("c"), property{"tYpE", jsonText("c")})
@@ -94,12 +108,12 @@ func indexPagesTypes(t *testing.T, f fixture) {
 	page(nil, property{"type", `5`})
 	page(s("f"), property{"title", jsonText("t")}, property{"summary", jsonText("s")}, property{"type", jsonText("f")})
 	page(s("g"), property{"type", jsonText("g")}, property{"Type", jsonText("h")})
-	page(s(string([]rune(long)[:domain.IndexTypeChars])), property{"type", jsonText(long)})
-	for id, w := range want {
-		if w != nil && len(*w) > 100 {
-			whole[id] = long
-		}
-	}
+	page(&long, property{"type", jsonText(long)})
+	page(&wide, property{"type", jsonText(wide)})
+	page(s(wide+"x"), property{"type", jsonText(wide + "x")})
+	page(&huge, property{"type", jsonText(huge)}, property{"summary", jsonText(huge)})
+	page(&at, property{"type", jsonText(at)})
+	page(&short, property{"type", jsonText(short)})
 	page(s(""), property{"type", jsonText("")})
 	page(nil)
 	f.indexPage(t, f.ops, []property{{"type", jsonText("a")}})
@@ -110,19 +124,20 @@ func indexPagesTypes(t *testing.T, f fixture) {
 	}
 	seen := map[uuid.UUID]bool{}
 	for _, p := range got {
-		w, ok := want[p.ID]
+		w, ok := start[p.ID]
 		switch {
 		case !ok || seen[p.ID]:
 			t.Errorf("the page %v is another notebook's, or twice", p.ID)
 		case (w != nil) != p.Typed || w != nil && *w != p.TypeStart:
-			t.Errorf("the page %v's type %q, %v; want %v", p.ID, p.TypeStart, p.Typed, w)
+			t.Errorf("the page %v's type %.20q, %v; want %.20q", p.ID, p.TypeStart, p.Typed, deref(w))
 		}
 		seen[p.ID] = true
 	}
-	if len(seen) != len(want) {
-		t.Errorf("%d pages, want %d", len(seen), len(want))
+	if len(seen) != len(start) {
+		t.Errorf("%d pages, want %d", len(seen), len(start))
 	}
-	for _, typ := range []string{"b", "", "y", "h", long, string([]rune(long)[:domain.IndexTypeChars])} {
+	for _, typ := range []string{"b", "", "y", "h", long, string([]rune(long)[:domain.IndexTypeChars]), wide, at, short,
+		string([]rune(wide)[:domain.IndexStartChars+10])} {
 		got, err := f.s.IndexPages(ctx, f.eng, &typ)
 		var ids, wants []uuid.UUID
 		for _, p := range got {
@@ -136,15 +151,15 @@ func indexPagesTypes(t *testing.T, f fixture) {
 		slices.SortFunc(ids, uuid.UUID.Compare)
 		slices.SortFunc(wants, uuid.UUID.Compare)
 		if err != nil || !slices.Equal(ids, wants) {
-			t.Errorf("the pages of type %.10q: %v, %v; want %v", typ, ids, err, wants)
+			t.Errorf("the pages of type %.10q (%d characters): %v, %v; want %v", typ, len([]rune(typ)), ids, err, wants)
 		}
 	}
 }
 
 // A page's item is its type and its summary, each the first of its key
-// but for ASCII case when its value is a string, their first 512
-// characters; its first 21 tags by key, each's first 512 characters. A
-// page the index does not hold has none.
+// but for ASCII case when its value is a string, their first
+// IndexStartChars characters, of 3 MiB too; its first 21 tags by key,
+// each's first 512 characters. A page the index does not hold has none.
 func indexItems(t *testing.T, f fixture) {
 	ctx := context.Background()
 	long := strings.Repeat("項", 600)
@@ -156,24 +171,51 @@ func indexItems(t *testing.T, f fixture) {
 	full := f.indexPage(t, f.ops, []property{{"SUMMARY", jsonText(long)}, {"Type", jsonText("Project")}, {"summary", jsonText("later")}},
 		tags...)
 	bare := f.indexPage(t, f.ops, []property{{"summary", `{"a": 1}`}, {"type", `null`}})
-	got, err := f.s.IndexItems(ctx, []uuid.UUID{full, bare, uuid.NewV7()})
+	huge := strings.Repeat("项", 1<<20)
+	big := f.indexPage(t, f.ops, []property{{"type", jsonText(huge)}, {"summary", jsonText("x" + huge)}})
+	edge := f.indexPage(t, f.ops, []property{{"type", jsonText(strings.Repeat("a", domain.MaxIndexString))},
+		{"summary", jsonText(strings.Repeat("a", domain.MaxIndexString+1))}})
+	got, err := f.s.IndexItems(ctx, []uuid.UUID{full, bare, big, edge, uuid.NewV7()})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 2 {
-		t.Fatalf("items of %d pages, want 2: %v", len(got), slices.Collect(maps.Keys(got)))
+	if len(got) != 4 {
+		t.Fatalf("items of %d pages, want 4: %v", len(got), slices.Collect(maps.Keys(got)))
 	}
 	it := got[full]
 	wantTags := []string{string([]rune("A" + long)[:512])}
 	for i := range 20 {
 		wantTags = append(wantTags, fmt.Sprintf("Tag%02d", i))
 	}
-	if it.Type == nil || *it.Type != "Project" || it.Summary == nil || *it.Summary != string([]rune(long)[:512]) ||
+	if it.Type == nil || *it.Type != "Project" || it.Summary == nil || *it.Summary != string([]rune(long)[:domain.IndexStartChars]) ||
 		!slices.Equal(it.Tags, wantTags) {
-		t.Errorf("the item: type %v, summary %.20q, tags %.40q; want Project, 512 characters, %.40q", it.Type, deref(it.Summary), it.Tags, wantTags)
+		t.Errorf("the item: type %v, summary %.20q, tags %.40q; want Project, %d characters, %.40q", it.Type, deref(it.Summary), it.Tags,
+			domain.IndexStartChars, wantTags)
 	}
 	if it := got[bare]; it.Type != nil || it.Summary != nil || len(it.Tags) != 0 {
 		t.Errorf("a page of values not strings: %+v", it)
+	}
+	// A type and a summary of 3 MiB: their starts, which an answer cuts to
+	// 256 bytes and marks; one of 256 bytes is whole, one of 257 cut.
+	for _, c := range []struct {
+		name  string
+		s     *string
+		whole string
+		cut   bool
+	}{
+		{"the type of 3 MiB", got[big].Type, huge, true},
+		{"the summary of 3 MiB", got[big].Summary, "x" + huge, true},
+		{"a type of 256 bytes", got[edge].Type, strings.Repeat("a", domain.MaxIndexString), false},
+		{"a summary of 257 bytes", got[edge].Summary, strings.Repeat("a", domain.MaxIndexString+1), true},
+	} {
+		want, _ := domain.CutIndexString(c.whole)
+		if c.s == nil {
+			t.Errorf("%s: none", c.name)
+			continue
+		}
+		if v, cut := domain.CutIndexString(*c.s); v != want || cut != c.cut || len([]rune(*c.s)) > domain.IndexStartChars {
+			t.Errorf("%s: read %d characters, cut to %d bytes, %v; want %d bytes, %v", c.name, len([]rune(*c.s)), len(v), cut, len(want), c.cut)
+		}
 	}
 }
 

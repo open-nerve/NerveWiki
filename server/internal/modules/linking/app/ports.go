@@ -124,7 +124,8 @@ type Reads interface {
 type IndexReads interface {
 	// IndexPages is the pages of notebookID the index holds, each with
 	// the start of its type (IndexTypeChars characters); with typeIs, only
-	// those whose type is that string.
+	// those whose type is that string. What it reads of a type is bounded
+	// as its answer is, whatever the type's length (S2 review B-I1).
 	IndexPages(ctx context.Context, notebookID uuid.UUID, typeIs *string) ([]IndexedPage, error)
 	// IndexItems is the types, summaries and first tags of the pages ids.
 	IndexItems(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]IndexFacts, error)
@@ -146,9 +147,10 @@ type IndexedPage struct {
 
 // IndexFacts is what index shows of a page's properties and tags: its type
 // and its summary, each the first of its key but for ASCII case when its
-// value is a string, nil for none, their first 512 characters; its first
-// tags by key, one more than domain.MaxIndexTags at most, each its first
-// 512 characters.
+// value is a string, nil for none, their first domain.IndexStartChars
+// characters, which tell a string MaxIndexString cuts from one whole; its
+// first tags by key, one more than domain.MaxIndexTags at most, each its
+// first 512 characters.
 type IndexFacts struct {
 	Type, Summary *string
 	Tags          []string

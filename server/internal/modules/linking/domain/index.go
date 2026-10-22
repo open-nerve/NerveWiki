@@ -30,6 +30,11 @@ const (
 	// U+01D6, two bytes), and Go's NFC looks 30 further.
 	MaxIndexKey    = 64
 	IndexTypeChars = 128
+	// IndexStartChars is the characters of a type's or a summary's string
+	// the index reads, page_properties.value_start (00047, S2 review B-I1):
+	// IndexTypeChars for the key, and MaxIndexString bytes and one more,
+	// which tell a string cut from one whole.
+	IndexStartChars = MaxIndexString + 1
 )
 
 // IndexCursor is the cursor after an index's item: its type's key and

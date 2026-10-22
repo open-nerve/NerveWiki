@@ -24,18 +24,26 @@ import (
 )
 
 // The bounds of index over 100,000 pages: three times the slowest of
-// their medians here, each test run alone three times (M9/P4 design 6.1,
-// S2's report).
+// their medians here, each test run alone (M9/P4 design 6.1; six runs on
+// S2's fix of review B-I1, load 2.5-5.6, S2's report).
 const (
-	// indexPagesBound is IndexPages' median at any statistics: 192–283 ms.
-	indexPagesBound = 850 * time.Millisecond
+	// indexPagesBound is IndexPages' median at any statistics: 199–338 ms.
+	indexPagesBound = 1025 * time.Millisecond
 	// inboundBound is InboundCounts' median of a page of 100 items, each
-	// linked from 1,001 pages: 120–132 ms.
-	inboundBound = 400 * time.Millisecond
+	// linked from 1,001 pages: 119–201 ms.
+	inboundBound = 625 * time.Millisecond
 	// indexCallBound is ListIndex's call: IndexPages, the order's keys of
-	// every type, IndexItems and InboundCounts of a page of 100: 1.06–1.21 s.
-	indexCallBound = 3650 * time.Millisecond
+	// every type, IndexItems and InboundCounts of a page of 100: 1.01–1.16 s.
+	indexCallBound = 3500 * time.Millisecond
+	// indexItemsBound is the median of IndexItems of 100 pages whose type
+	// and summary are 5 MB each, read 20 times (a read is under a
+	// millisecond): 7.9–9.0 ms (the three runs of 20).
+	indexItemsBound = 30 * time.Millisecond
 )
+
+// bigValue is the length of the 2,000 types and the 100 summaries of 5 MB
+// (S2 review B-I1): a page's content may be 5 MiB, one scalar all of it.
+const bigValue = 5_000_000
 
 // worstType is a type of the costliest shape for its key (M9/P4 design
 // 3.9.3, review B-M3): a letter and 127 marks of four bytes, of two
@@ -72,11 +80,15 @@ func (guardPaths) Pages(_ context.Context, _ uuid.UUID, ids []uuid.UUID) (map[uu
 // index over 100,000 pages takes its time at any statistics (M9/P4 design
 // 6.1; review B-M3, B-I2): each page of five properties, its type of the
 // costliest shape for its key, and 2,000 pages of 1,000 properties without
-// a type; the first 100 pages by id each linked from 1,001 pages.
-// IndexPages, without statistics, analyzed and planned for any arguments,
-// reads every page and the start of its type, one probe a page by 00047's
-// index: without it the pages without a type read every property, some
-// two seconds more. InboundCounts of the first 100 stops at 1,000 each.
+// a type; the first 100 pages by id each linked from 1,001 pages; and 2,000
+// pages whose type is 5 MB, 100 of them with a summary of 5 MB (S2 review
+// B-I1). IndexPages, without statistics, analyzed and planned for any
+// arguments, reads every page and the start of its type, one probe a page
+// by 00047's index: without it the pages without a type read every
+// property, some two seconds more; and value_start, never the value: read
+// whole, the 5 MB types are some two seconds more too. IndexItems of the
+// 100 reads their starts alone. InboundCounts of the first 100 stops at
+// 1,000 each.
 // ListIndex's call, which orders them by their keys, takes its time too.
 // Each is a median of three, against three times its time here; the live
 // memory of the pages read and their keys, and the keys' time, are logged.
@@ -114,6 +126,13 @@ func TestIndexOfAHundredThousandPagesTakesItsTime(t *testing.T) {
 			SELECT p.node_id, k, $1, 'property' || k, to_jsonb('a value of ' || k) FROM indexed_pages p
 				CROSS JOIN generate_series(0, 999) k
 			WHERE p.revision = 2`, []any{notebook}},
+		{`INSERT INTO indexed_pages (node_id, notebook_id, revision, extractor, frontmatter_valid)
+			SELECT uuidv7(), $1, 3, 1, true FROM generate_series(1, 2000)`, []any{notebook}},
+		{`INSERT INTO page_properties (source_id, position, notebook_id, key, value)
+			SELECT p.node_id, k, $1, CASE k WHEN 1 THEN 'type' WHEN 3 THEN 'summary' ELSE 'p' || k END,
+				CASE WHEN k = 1 OR k = 3 AND p.n <= 100 THEN to_jsonb($2::text) ELSE to_jsonb('v' || k) END
+			FROM (SELECT node_id, row_number() OVER (ORDER BY node_id) n FROM indexed_pages WHERE revision = 3) p
+				CROSS JOIN generate_series(0, 4) k`, []any{notebook, strings.Repeat("x", bigValue)}},
 		{`INSERT INTO page_links (source_id, range_start, range_end, notebook_id, kind, target, resolved_id, ambiguous)
 			SELECT uuidv7(), 0, 1, $1, 'wikilink', 'x', t.node_id, false
 			FROM (SELECT node_id FROM indexed_pages ORDER BY node_id LIMIT 100) t CROSS JOIN generate_series(1, 1001)`,
@@ -132,6 +151,15 @@ func TestIndexOfAHundredThousandPagesTakesItsTime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	rows, err = pool.Query(ctx, `SELECT node_id FROM indexed_pages WHERE revision = 3 ORDER BY node_id LIMIT 100`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	big, err := pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
+	if err != nil {
+		t.Fatal(err)
+	}
+	bigStart := strings.Repeat("x", domain.IndexStartChars)
 	generic := func() *pgxpool.Pool {
 		cfg, err := pgxpool.ParseConfig(url)
 		if err != nil {
@@ -175,16 +203,34 @@ func TestIndexOfAHundredThousandPagesTakesItsTime(t *testing.T) {
 		store := postgresadapter.New(p)
 		median("IndexPages, "+stage, indexPagesBound, func() error {
 			pages, err := store.IndexPages(ctx, notebook, nil)
-			typed := 0
+			worst, long := 0, 0
 			for _, p := range pages {
-				if p.Typed && p.TypeStart == worstType() {
-					typed++
+				switch {
+				case p.Typed && p.TypeStart == worstType():
+					worst++
+				case p.Typed && p.TypeStart == bigStart[:domain.IndexTypeChars]:
+					long++
 				}
 			}
-			if err == nil && (len(pages) != 102_000 || typed != 100_000) {
-				t.Fatalf("%d pages read, %d of the type", len(pages), typed)
+			if err == nil && (len(pages) != 104_000 || worst != 100_000 || long != 2_000) {
+				t.Fatalf("%d pages read, %d of the worst type, %d of 5 MB", len(pages), worst, long)
 			}
 			return err
+		})
+		median("IndexItems of 100 pages of 5 MB, 20 times, "+stage, indexItemsBound, func() error {
+			for range 20 {
+				items, err := store.IndexItems(ctx, big)
+				if err != nil {
+					return err
+				}
+				for _, id := range big {
+					if it := items[id]; it.Type == nil || !strings.HasPrefix(*it.Type, bigStart) || it.Summary == nil ||
+						!strings.HasPrefix(*it.Summary, bigStart) {
+						t.Fatalf("the item of %v: %d items", id, len(items))
+					}
+				}
+			}
+			return nil
 		})
 		median("InboundCounts of 100, "+stage, inboundBound, func() error {
 			counts, err := store.InboundCounts(ctx, first, domain.MaxInbound)
