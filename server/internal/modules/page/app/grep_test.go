@@ -632,6 +632,18 @@ func (c *pauseClock) lines(content string, from int, yield func(line int, text s
 	})
 }
 
+// stepClock is a slow machine's clock: each read moves it by step, so
+// that a line's match takes one step.
+type stepClock struct {
+	at   time.Time
+	step time.Duration
+}
+
+func (c *stepClock) Now() time.Time {
+	c.at = c.at.Add(c.step)
+	return c.at
+}
+
 // TestGrepTrustsItsUnitPastAWarmUp checks a unit's time (M9/P4 design
 // 3.6.3; S2 fix check C3-m1): a call's own timing tells it only once it
 // rests on GrepUnitWarmUp of work. A page of "x", then a line of 240 KiB to
@@ -641,6 +653,12 @@ func (c *pauseClock) lines(content string, from int, yield func(line int, text s
 // million units, at the soft deadline from 10 µs for 4 MB, 20 µs for 2 MB,
 // 100 µs for 1 MB, 1 ms for 240 KiB. Below the warm-up the unit is
 // GrepUnitTime: the first call answers the long line's hit.
+// Past it, a slow match raises the unit (fix check C3-m2): a machine on
+// which the first line, 20,000 bytes and 160,016 units, takes 160 ms, a
+// microsecond a unit, 40 times GrepUnitTime, projects the long line of a
+// million bytes, 8 million units, to 8 s, past the soft deadline 2 s away,
+// and stops before it, incomplete, its cursor that line: at GrepUnitTime
+// it would be judged to take 0.2 s, and run to the request's deadline.
 func TestGrepTrustsItsUnitPastAWarmUp(t *testing.T) {
 	for _, n := range []int{240 << 10, 1_000_000, 2_000_000, 4_000_000} {
 		for _, pause := range []time.Duration{10 * time.Microsecond, 20 * time.Microsecond, 100 * time.Microsecond, time.Millisecond} {
@@ -663,6 +681,24 @@ func TestGrepTrustsItsUnitPastAWarmUp(t *testing.T) {
 				t.Errorf("x, a pause of %v in it, then a line of %d bytes: %q, %+v; want its hit in the first call", pause, n, found, got)
 			}
 		}
+	}
+	f := newFixture()
+	f.grant(domain.ActionRead)
+	reads := newFakeGrep(f.store)
+	id := f.page("Slow", nil, 0).ID
+	f.content(id, strings.Repeat("a", 20_000)+"\n"+strings.Repeat("a", 1_000_000)+" needle\n", 1)
+	reads.exact[id] = true
+	deadline := time.Now().Add(time.Hour)
+	ctx, cancel := context.WithDeadline(f.asAlice(), deadline)
+	defer cancel()
+	clock := &stepClock{at: deadline.Add(-domain.GrepSoftMargin - 2*time.Second), step: 160 * time.Millisecond}
+	got, err := f.grepper(reads, func(d *app.GrepDeps) { d.Clock = clock }).Execute(ctx, f.eng, app.GrepRequest{Pattern: "needle"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found := grepFound(got); len(found) != 0 || !got.Incomplete || got.Walk.Stop != "deadline" || got.Walk.Lines != 1 ||
+		cursorOf(t, got.Next) != (domain.GrepCursor{K: "slow.md", N: 2}) {
+		t.Errorf("a slow machine, a microsecond a unit past the warm-up: %q, %+v; want a stop before the long line", found, got)
 	}
 }
 
