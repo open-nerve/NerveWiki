@@ -70,8 +70,8 @@ SELECT id FROM nodes WHERE id = ANY(sqlc.arg(ids)::uuid[]) AND deleted_at IS NUL
 
 -- name: RootPageIDs :many
 -- The root's pages not deleted (M9/P4 design 3.9.1): index's parent "/", by an index of the root's nodes, the
--- notebook's and parents' (00012) or the roots' (00042) as the planner takes it, parent_id IS NULL its condition or its
--- predicate (TestTheChildPagesReadsUseTheirIndexes).
+-- notebook's and parents' (00012) or the roots' (00042) as the planner takes it, notebook_id = its condition and
+-- parent_id IS NULL its condition or its predicate (TestTheChildPagesReadsUseTheirIndexes).
 SELECT id FROM nodes
 WHERE notebook_id = sqlc.arg(notebook_id) AND parent_id IS NULL AND kind = 'page' AND deleted_at IS NULL;
 

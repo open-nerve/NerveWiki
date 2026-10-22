@@ -1068,8 +1068,8 @@ WHERE notebook_id = $1 AND parent_id IS NULL AND kind = 'page' AND deleted_at IS
 `
 
 // The root's pages not deleted (M9/P4 design 3.9.1): index's parent "/", by an index of the root's nodes, the
-// notebook's and parents' (00012) or the roots' (00042) as the planner takes it, parent_id IS NULL its condition or its
-// predicate (TestTheChildPagesReadsUseTheirIndexes).
+// notebook's and parents' (00012) or the roots' (00042) as the planner takes it, notebook_id = its condition and
+// parent_id IS NULL its condition or its predicate (TestTheChildPagesReadsUseTheirIndexes).
 func (q *Queries) RootPageIDs(ctx context.Context, notebookID uuid.UUID) ([]uuid.UUID, error) {
 	rows, err := q.db.Query(ctx, rootPageIDs, notebookID)
 	if err != nil {

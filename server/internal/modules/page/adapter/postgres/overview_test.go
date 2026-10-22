@@ -155,9 +155,11 @@ func TestTheOverviewReadsUseTheirIndexes(t *testing.T) {
 
 // index's child pages are read by an index of a parent's children (M9/P4
 // design 3.9.1; S2 review A-N1), before the statistics and after, custom
-// plans and generic: RootPageIDs with parent_id IS NULL an index condition
-// or the predicate of the index it reads (00012's, or the roots' of
-// 00042), never a read of the notebook's nodes whole; ChildPageIDs with
+// plans and generic: RootPageIDs with notebook_id = an index condition,
+// the notebook's range, which both its indexes lead with, and parent_id IS
+// NULL an index condition or the predicate of the index it reads (00012's,
+// or the roots' of 00042), never a read of the notebook's nodes whole, nor
+// of every notebook's roots (S2 fix check C2-m2); ChildPageIDs with
 // parent_id an index condition, by 00012's (notebook_id, parent_id) or
 // 00042's children's (parent_id, name_key), which the planner takes as the
 // data go: a parent of 2,000 children and one of none. Scans of whole
@@ -205,13 +207,15 @@ func TestTheChildPagesReadsUseTheirIndexes(t *testing.T) {
 				for _, r := range reads {
 					switch {
 					case tt.root:
-						ok = ok && strings.Contains(r.IndexCond+" "+f.predicateOf(t, r.Index), "parent_id IS NULL")
+						ok = ok && strings.Contains(r.IndexCond, "notebook_id =") &&
+							strings.Contains(r.IndexCond+" "+f.predicateOf(t, r.Index), "parent_id IS NULL")
 					default:
 						ok = ok && strings.Contains(r.IndexCond, "parent_id =")
 					}
 				}
 				if !ok {
-					t.Errorf("%s, %s, generic %v: not read by an index of the parent's children:\n%s", stage, tt.name, generic, raw)
+					t.Errorf("%s, %s, generic %v: not read by an index of the notebook's root or the parent's children:\n%s", stage, tt.name,
+						generic, raw)
 				}
 			}
 		}
