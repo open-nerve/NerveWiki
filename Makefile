@@ -284,7 +284,7 @@ test-go-guards: ## 不带竞态检测的组合根的预算与界线的守卫（C
 	@# 立即被拒，别人的份额挡着时 server_busy，额度够大时做完（修正的第 6 轮，B3-M1）
 	cd server && go test -count=1 -v -run '^(TestABatchAtItsRewriteBoundTakesItsTime|TestABatchPastItsLinksBoundIsRefused|TestABatchPastItsBytesBoundIsRefused|TestABatchCountsThePagesItWroteAtTheirFinalSize|TestABatchWhosePagesOutgrowTheParseBudgetIsRefused)$$' ./internal/bootstrap
 	@# grep 的三个守卫一行、带 -v：一行 5 MiB 的页（匹配到 MaxGrepLineWork）、500 页各 64 KiB 的页（停在 MaxGrepWork）、10 万个候选
-	@# （GrepCandidates 在无统计、ANALYZE 之后与通用计划下的中位数，与走到第 500 个候选的一次调用）的用时，时限本机的三倍（M9/P4 设计 6.1，3.6.4）；
+	@# （GrepCandidates 在无统计、ANALYZE 之后与通用计划下的中位数，与走到第 500 个候选的三次调用的中位数）的用时，时限本机的三倍（M9/P4 设计 6.1，3.6.4）；
 	@# 本机这一行约 10.5 秒，乘 2.4 约 25 秒，远在 Go 默认的每个测试二进制 10 分钟的一半之下
 	cd server && go test -count=1 -v -run '^(TestGrepOfTheWorstLineTakesItsTime|TestGrepAtItsWorkBoundTakesItsTime|TestGrepOfAHundredThousandCandidatesTakesItsTime)$$' ./internal/bootstrap
 
