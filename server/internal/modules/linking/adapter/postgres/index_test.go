@@ -158,16 +158,23 @@ func indexPagesTypes(t *testing.T, f fixture) {
 
 // A page's item is its type and its summary, each the first of its key
 // but for ASCII case when its value is a string, their first
-// IndexStartChars characters, of 3 MiB too; its first 21 tags by key,
-// each's first 512 characters. A page the index does not hold has none.
+// IndexStartChars characters, of 3 MiB too; its first 21 tags by key, not
+// by text, each's first 512 characters. A page the index does not hold
+// has none.
 func indexItems(t *testing.T, f fixture) {
 	ctx := context.Background()
 	long := strings.Repeat("項", 600)
+	// Tags of both cases, more than 21: their first 21 by key are not
+	// their first 21 by text (S2 review C-m1).
 	var tags []string
-	for i := range 25 {
-		tags = append(tags, fmt.Sprintf("Tag%02d", 24-i))
+	for i := range 13 {
+		tags = append(tags, fmt.Sprintf("Z%02d", i), fmt.Sprintf("a%02d", i))
 	}
 	tags = append(tags, "A"+long)
+	byKey := slices.SortedFunc(slices.Values(tags), func(a, b string) int { return strings.Compare(strings.ToLower(a), strings.ToLower(b)) })
+	if slices.Equal(byKey[:21], slices.Sorted(slices.Values(tags))[:21]) {
+		t.Fatal("the tags' first 21 by key are their first 21 by text: the row tells nothing")
+	}
 	full := f.indexPage(t, f.ops, []property{{"SUMMARY", jsonText(long)}, {"Type", jsonText("Project")}, {"summary", jsonText("later")}},
 		tags...)
 	bare := f.indexPage(t, f.ops, []property{{"summary", `{"a": 1}`}, {"type", `null`}})
@@ -183,9 +190,12 @@ func indexItems(t *testing.T, f fixture) {
 		t.Fatalf("items of %d pages, want 4: %v", len(got), slices.Collect(maps.Keys(got)))
 	}
 	it := got[full]
-	wantTags := []string{string([]rune("A" + long)[:512])}
-	for i := range 20 {
-		wantTags = append(wantTags, fmt.Sprintf("Tag%02d", i))
+	var wantTags []string
+	for _, tag := range byKey[:21] {
+		if r := []rune(tag); len(r) > 512 {
+			tag = string(r[:512])
+		}
+		wantTags = append(wantTags, tag)
 	}
 	if it.Type == nil || *it.Type != "Project" || it.Summary == nil || *it.Summary != string([]rune(long)[:domain.IndexStartChars]) ||
 		!slices.Equal(it.Tags, wantTags) {

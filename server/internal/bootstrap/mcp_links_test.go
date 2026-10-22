@@ -262,23 +262,31 @@ func asciiLower(s string) string {
 // in the trash not among them; each page as REST and list read it one by
 // one. Its type and summary are the first property of that key but for
 // ASCII case, getPageProperties', when its value is text, cut to 256
-// bytes, cut naming it; its tags getTag's of each of listTags' that lists
-// it, by key, twenty at most, cut naming the rest; its inbound links the
-// pages of listBacklinks, a page that links twice once; its path and its
-// last change list's; its parent its path's parent page's.
+// bytes, cut naming it; its tags the page's own, by key, twenty at most,
+// cut naming the rest, each listed by getTag and each of listTags' whose
+// getTag lists the page its own or one under it (a page tagged plan/q4
+// alone has no tag plan, S2 review B-n2; Plan and apple are ordered by
+// key, C-m1); its inbound links the pages of listBacklinks, a page that
+// links twice once; its path and its last change list's; its parent its
+// path's parent page's.
 func TestTheIndexIsEachPagesReads(t *testing.T) {
 	r := startReadsApp(t, publicOrigin)
 	summary := "The roadmap of " + strings.Repeat("计划", 50)
+	// Tags of both cases, 25: their first 20 by key are not their first 20
+	// by text. The seed's tags are ASCII: a tag's key is its lower case.
 	var many []string
-	for i := range 25 {
-		many = append(many, fmt.Sprintf("t%02d", 25-i))
+	for i := 25; i > 0; i-- {
+		many = append(many, fmt.Sprintf([]string{"t%02d", "T%02d"}[i%2], i))
 	}
+	own := map[string][]string{"Projects/Roadmap.md": {"plan", "plan/q4"}, "Projects/Spec.md": {"plan"}, "Inbox.md": {"plan/q4"},
+		"Mixed.md": {"Plan", "apple"}, "Tagged.md": many}
+	key := strings.ToLower
 	projects := r.createPage(t, "", "Projects", "---\ntype: area\n---\n")
 	r.createPage(t, projects, "Roadmap", "---\ntype: project\ntags: [plan, plan/q4]\nsummary: "+summary+"\n---\n# Roadmap\n")
 	r.createPage(t, projects, "Spec", "---\ntype: project\ntags: [plan]\n---\n")
 	r.createPage(t, projects, "Notes", "[[Projects/Roadmap]] and [[Roadmap]]\n")
-	r.createPage(t, "", "Inbox", "see [[Projects/Roadmap]] and [[Projects/Spec]]\n")
-	r.createPage(t, "", "Mixed", "---\nTYPE: Mixed\ntype: later\nSummary: [a, b]\nsummary: text\n---\n")
+	r.createPage(t, "", "Inbox", "---\ntags: [plan/q4]\n---\nsee [[Projects/Roadmap]] and [[Projects/Spec]]\n")
+	r.createPage(t, "", "Mixed", "---\nTYPE: Mixed\ntype: later\nSummary: [a, b]\nsummary: text\ntags: [Plan, apple]\n---\n")
 	r.createPage(t, "", "Tagged", "---\ntags: ["+strings.Join(many, ", ")+"]\n---\n")
 	r.createPage(t, "", "Gone", "---\ntype: project\n---\n")
 	answerOf[map[string]any](t, r.use(t, "delete", map[string]any{"path": "Gone.md"}))
@@ -354,7 +362,17 @@ func TestTheIndexIsEachPagesReads(t *testing.T) {
 			return nil
 		}
 		typ, sum := first("type"), first("summary")
-		want := slices.Sorted(slices.Values(tagsOf[id]))
+		for _, x := range own[p.Path] {
+			if !slices.ContainsFunc(tagsOf[id], func(t string) bool { return key(t) == key(x) }) {
+				t.Errorf("getTag of %s does not list %s, which has it", x, p.Path)
+			}
+		}
+		for _, tag := range tagsOf[id] {
+			if !slices.ContainsFunc(own[p.Path], func(x string) bool { return key(x) == key(tag) || strings.HasPrefix(key(x), key(tag)+"/") }) {
+				t.Errorf("getTag of %s lists %s, which has neither it nor one under it", tag, p.Path)
+			}
+		}
+		want := slices.SortedFunc(slices.Values(own[p.Path]), func(a, b string) int { return strings.Compare(key(a), key(b)) })
 		if len(want) > domain.MaxIndexTags {
 			want, cut = want[:domain.MaxIndexTags], append(cut, "tags")
 		}
@@ -371,7 +389,8 @@ func TestTheIndexIsEachPagesReads(t *testing.T) {
 	}
 	// The rows above tell what they check: the seed has each case, a
 	// summary cut, a type of the first key, a summary of a list, more than
-	// twenty tags, a page that links twice.
+	// twenty tags, a page that links twice, a page getTag of plan lists that
+	// has plan/q4 alone, tags whose order by key is not their order by text.
 	at := map[string]mcpIndexPage{}
 	for _, p := range got {
 		at[p.Path] = p
@@ -379,7 +398,9 @@ func TestTheIndexIsEachPagesReads(t *testing.T) {
 	roadmap, mixed, tagged := at["Projects/Roadmap.md"], at["Mixed.md"], at["Tagged.md"]
 	if inbound["Projects/Roadmap.md"] != 2 || inbound["Projects/Spec.md"] != 1 || !slices.Equal(roadmap.Cut, []string{"summary"}) ||
 		mixed.Type == nil || *mixed.Type != "Mixed" || mixed.Summary != nil || len(tagged.Tags) != domain.MaxIndexTags ||
-		!slices.Equal(tagged.Cut, []string{"tags"}) {
+		!slices.Equal(tagged.Cut, []string{"tags"}) || !slices.Equal(at["Inbox.md"].Tags, []string{"plan/q4"}) ||
+		!slices.ContainsFunc(tagsOf[ids["Inbox.md"]], func(t string) bool { return key(t) == "plan" }) ||
+		!slices.Equal(mixed.Tags, []string{"apple", "Plan"}) || slices.Equal(tagged.Tags, slices.Sorted(slices.Values(many))[:domain.MaxIndexTags]) {
 		t.Errorf("the seed lacks its cases: inbound %v, the pages %+v", inbound, got)
 	}
 }
