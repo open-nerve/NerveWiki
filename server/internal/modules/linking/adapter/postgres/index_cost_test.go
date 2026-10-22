@@ -39,6 +39,10 @@ const (
 	// and summary are 5 MB each, read 20 times (a read is under a
 	// millisecond): 7.9–9.0 ms (the three runs of 20).
 	indexItemsBound = 30 * time.Millisecond
+	// indexCallAllocBound is what ListIndex's call allocates, rows and
+	// keys and all (S2 review C-n2): about 157 MB with one keyer for every
+	// type, 464 MB with a keyer a page.
+	indexCallAllocBound = 250e6
 )
 
 // bigValue is the length of the 2,000 types and the 100 summaries of 5 MB
@@ -89,9 +93,10 @@ func (guardPaths) Pages(_ context.Context, _ uuid.UUID, ids []uuid.UUID) (map[uu
 // whole, the 5 MB types are some two seconds more too. IndexItems of the
 // 100 reads their starts alone. InboundCounts of the first 100 stops at
 // 1,000 each.
-// ListIndex's call, which orders them by their keys, takes its time too.
-// Each is a median of three, against three times its time here; the live
-// memory of the pages read and their keys, and the keys' time, are logged.
+// ListIndex's call, which orders them by their keys, takes its time too,
+// and allocates at most indexCallAllocBound. Each time is a median of
+// three, against three times its time here; the live memory of the pages
+// read and their keys, and the keys' time, are logged.
 func TestIndexOfAHundredThousandPagesTakesItsTime(t *testing.T) {
 	if testing.Short() {
 		t.Skip("a bound in time, measured alone by make test-go-costs")
@@ -274,4 +279,15 @@ func TestIndexOfAHundredThousandPagesTakesItsTime(t *testing.T) {
 		}
 		return err
 	})
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+	if _, err := uc.Execute(caller, notebook, app.IndexQuery{Limit: &limit}); err != nil {
+		t.Fatal(err)
+	}
+	runtime.ReadMemStats(&after)
+	allocated, allocs := after.TotalAlloc-before.TotalAlloc, after.Mallocs-before.Mallocs
+	t.Logf("ListIndex of a page of 100 allocates %.1f MB in %d allocations", float64(allocated)/1e6, allocs)
+	if allocated > indexCallAllocBound {
+		t.Errorf("ListIndex of a page of 100 allocates %.1f MB, over %.0f MB", float64(allocated)/1e6, indexCallAllocBound/1e6)
+	}
 }
