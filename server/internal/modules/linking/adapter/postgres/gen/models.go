@@ -48,6 +48,7 @@ type PageProperty struct {
 	Key        string
 	Value      []byte
 	ValueStart *string
+	ValueChars *int32
 }
 
 type PageTag struct {

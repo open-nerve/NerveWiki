@@ -146,6 +146,7 @@ LEFT JOIN LATERAL (
             WHEN $1::text IS NULL THEN true
             WHEN p.value_start IS DISTINCT FROM left($1::text, 257) THEN false
             WHEN char_length($1::text) < 257 THEN true
+            WHEN p.value_chars <> char_length($1::text) THEN false
             ELSE p.value = to_jsonb($1::text)
         END AS of_type
     FROM page_properties p
@@ -173,8 +174,8 @@ type IndexPagesRow struct {
 // whose type is that string; typed tells an empty type from none. Each page's properties are read by
 // page_properties_type_idx (00047), one probe a page whatever properties it has: never the notebook's others, nor
 // another notebook's. A type is read by its value_start (00047), its first 257 characters, never by its value, which
-// may be MiB long: the value only for type_is of 257 characters or more, where value_start is type_is's start. The
-// pages are read whole: the order is Go's title keys.
+// may be MiB long: the value only for type_is of 257 characters or more, where value_start is type_is's start and
+// value_chars its length, a value of at most 1,024 characters. The pages are read whole: the order is Go's title keys.
 func (q *Queries) IndexPages(ctx context.Context, arg IndexPagesParams) ([]IndexPagesRow, error) {
 	rows, err := q.db.Query(ctx, indexPages, arg.TypeIs, arg.NotebookID)
 	if err != nil {

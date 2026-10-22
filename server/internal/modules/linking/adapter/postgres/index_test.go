@@ -75,9 +75,11 @@ func TestIndexReads(t *testing.T) {
 // whole value; another notebook's pages are not the index's. A type is read
 // by its value_start, its first IndexStartChars characters (S2 review
 // B-I1): a type of 3 MiB has its start; a filter shorter than that is
-// decided by it, a longer one by the whole value where the starts are
-// equal (a type of the filter and one more character, and the 3 MiB type,
-// which starts as the filter does, are not of it).
+// decided by it, a longer one by its length, value_chars, and then by the
+// whole value where the starts and the lengths are equal (fix check
+// F-m1): a type of the filter and one more character, the 3 MiB type,
+// which starts as the filter does, and a type as long as the filter that
+// differs from it at its end, are not of it.
 func indexPagesTypes(t *testing.T, f fixture) {
 	ctx := context.Background()
 	start, whole := map[uuid.UUID]*string{}, map[uuid.UUID]string{}
@@ -96,6 +98,7 @@ func indexPagesTypes(t *testing.T, f fixture) {
 	s := func(v string) *string { return &v }
 	long := strings.Repeat("𝐱", 200)
 	wide := strings.Repeat("项", 300)
+	wideEnd := strings.Repeat("项", 299) + "y"
 	huge := strings.Repeat("项", 1<<20)
 	at := strings.Repeat("项", domain.IndexStartChars)
 	short := strings.Repeat("项", domain.IndexStartChars-1)
@@ -111,6 +114,7 @@ func indexPagesTypes(t *testing.T, f fixture) {
 	page(&long, property{"type", jsonText(long)})
 	page(&wide, property{"type", jsonText(wide)})
 	page(s(wide+"x"), property{"type", jsonText(wide + "x")})
+	page(&wideEnd, property{"type", jsonText(wideEnd)})
 	page(&huge, property{"type", jsonText(huge)}, property{"summary", jsonText(huge)})
 	page(&at, property{"type", jsonText(at)})
 	page(&short, property{"type", jsonText(short)})
@@ -136,8 +140,8 @@ func indexPagesTypes(t *testing.T, f fixture) {
 	if len(seen) != len(start) {
 		t.Errorf("%d pages, want %d", len(seen), len(start))
 	}
-	for _, typ := range []string{"b", "", "y", "h", long, string([]rune(long)[:domain.IndexTypeChars]), wide, at, short,
-		string([]rune(wide)[:domain.IndexStartChars+10])} {
+	for _, typ := range []string{"b", "", "y", "h", long, string([]rune(long)[:domain.IndexTypeChars]), wide, wideEnd, at,
+		short, string([]rune(wide)[:domain.IndexStartChars+10])} {
 		got, err := f.s.IndexPages(ctx, f.eng, &typ)
 		var ids, wants []uuid.UUID
 		for _, p := range got {

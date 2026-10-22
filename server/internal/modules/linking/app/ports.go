@@ -124,8 +124,12 @@ type Reads interface {
 type IndexReads interface {
 	// IndexPages is the pages of notebookID the index holds, each with
 	// the start of its type (IndexTypeChars characters); with typeIs, only
-	// those whose type is that string. What it reads of a type is bounded
-	// as its answer is, whatever the type's length (S2 review B-I1).
+	// those whose type is that string. What it reads of a type is its
+	// first domain.IndexStartChars characters and its length, whatever
+	// the type's length (S2 review B-I1). It reads a type whole only for a
+	// typeIs of IndexStartChars characters or more, and only a type that
+	// starts as typeIs does and has as many characters: at most 1,024, as
+	// typeIs has at most domain.MaxIndexType bytes (fix check F-m1).
 	IndexPages(ctx context.Context, notebookID uuid.UUID, typeIs *string) ([]IndexedPage, error)
 	// IndexItems is the types, summaries and first tags of the pages ids.
 	IndexItems(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]IndexFacts, error)

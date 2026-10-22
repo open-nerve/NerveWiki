@@ -13,16 +13,25 @@
 --     least a byte. 256 characters would not tell a string of 256 ASCII characters from one of 257;
 --   - the type filter (at most 1,024 bytes, MaxIndexType) is equal to a type when it is shorter than 257 characters
 --     and value_start is it: value_start shorter than 257 characters is the whole string. A filter of 257 characters or
---     more is compared with value_start first, its own first 257 characters, and with the whole value only where they
---     are equal: only a page whose type starts as the filter does reads its value.
+--     more is compared with value_start first, its own first 257 characters, then with value_chars, and with the whole
+--     value only where both are equal.
+-- value_chars is such a value's length in characters, for the same rows (S2 fix check B, F-m1): without it a filter of
+-- 257 characters or more read whole every type that starts as it does, whatever its length (2,000 types of 5 MB
+-- that start as the filter does, 0.76 s a call). With it, the whole value is read only when it has as many characters
+-- as the filter, which has at most 1,024 bytes: a value of at most 1,024 characters, 4 KB at most.
 -- No index INCLUDEs value_start: with its rows all-visible an index-only probe took 9% less (the guard's 102,000
 -- pages, 167 against 185 ms), and none without; a heap fetch a page reads value_start alone, value's TOAST untouched.
--- Adding the column rewrites the table under its exclusive lock, each type's and summary's value read once.
+-- Adding the columns rewrites the table under its exclusive lock, reads of it waiting as writes do, each type's and
+-- summary's value read once; the rewrite needs disk for a second copy of the table while it runs.
 
 -- +goose Up
 ALTER TABLE page_properties ADD COLUMN value_start text GENERATED ALWAYS AS (
     CASE WHEN translate(key, 'TYPE', 'type') = 'type' OR translate(key, 'SUMARY', 'sumary') = 'summary' THEN
         CASE WHEN jsonb_typeof(value) = 'string' THEN left(value #>> '{}', 257) END
+    END
+) STORED, ADD COLUMN value_chars integer GENERATED ALWAYS AS (
+    CASE WHEN translate(key, 'TYPE', 'type') = 'type' OR translate(key, 'SUMARY', 'sumary') = 'summary' THEN
+        CASE WHEN jsonb_typeof(value) = 'string' THEN char_length(value #>> '{}') END
     END
 ) STORED;
 CREATE INDEX page_properties_type_idx ON page_properties (source_id, position)
@@ -33,4 +42,4 @@ CREATE INDEX page_properties_summary_idx ON page_properties (source_id, position
 -- +goose Down
 DROP INDEX page_properties_summary_idx;
 DROP INDEX page_properties_type_idx;
-ALTER TABLE page_properties DROP COLUMN value_start;
+ALTER TABLE page_properties DROP COLUMN value_chars, DROP COLUMN value_start;

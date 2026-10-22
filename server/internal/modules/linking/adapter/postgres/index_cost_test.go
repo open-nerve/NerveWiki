@@ -39,6 +39,12 @@ const (
 	// and summary are 5 MB each, read 20 times (a read is under a
 	// millisecond): 7.9–9.0 ms (the three runs of 20).
 	indexItemsBound = 30 * time.Millisecond
+	// indexFilterBound is the median of IndexPages of the filter's
+	// notebook, 200 types of 5 MB and the filter's, by a type of 300
+	// characters, the 5 MB types' start, read 20 times (fix check F-m1):
+	// 6.0–9.8 ms planned for its arguments, 47.5–49.0 ms generic (three
+	// runs, load 1.4–2.4).
+	indexFilterBound = 150 * time.Millisecond
 	// indexCallAllocBound is what ListIndex's call allocates, rows and
 	// keys and all (S2 review C-n2): about 157 MB with one keyer for every
 	// type, 464 MB with a keyer a page.
@@ -92,7 +98,11 @@ func (guardPaths) Pages(_ context.Context, _ uuid.UUID, ids []uuid.UUID) (map[uu
 // property, some two seconds more; and value_start, never the value: read
 // whole, the 5 MB types are some two seconds more too. IndexItems of the
 // 100 reads their starts alone. InboundCounts of the first 100 stops at
-// 1,000 each.
+// 1,000 each. 200 of the pages whose type is 5 MB are in a notebook of
+// their own, with one whose type is a filter of 300 characters, the 5 MB
+// types' start: IndexPages by that filter reads the 200 types' lengths,
+// not their values (S2 fix check F-m1), the whole value only of the type
+// as long as the filter.
 // ListIndex's call, which orders them by their keys, takes its time too,
 // and allocates at most indexCallAllocBound. Each time is a median of
 // three, against three times its time here; the live memory of the pages
@@ -113,7 +123,8 @@ func TestIndexOfAHundredThousandPagesTakesItsTime(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	notebook := uuid.NewV7()
+	notebook, filterNotebook := uuid.NewV7(), uuid.NewV7()
+	filter := strings.Repeat("x", 300)
 	start := time.Now()
 	for _, stmt := range []struct {
 		sql  string
@@ -142,6 +153,13 @@ func TestIndexOfAHundredThousandPagesTakesItsTime(t *testing.T) {
 			SELECT uuidv7(), 0, 1, $1, 'wikilink', 'x', t.node_id, false
 			FROM (SELECT node_id FROM indexed_pages ORDER BY node_id LIMIT 100) t CROSS JOIN generate_series(1, 1001)`,
 			[]any{notebook}},
+		{`UPDATE indexed_pages SET notebook_id = $1 WHERE node_id IN (
+			SELECT node_id FROM indexed_pages WHERE revision = 3 ORDER BY node_id DESC LIMIT 200)`, []any{filterNotebook}},
+		{`INSERT INTO indexed_pages (node_id, notebook_id, revision, extractor, frontmatter_valid)
+			VALUES (uuidv7(), $1, 4, 1, true)`, []any{filterNotebook}},
+		{`INSERT INTO page_properties (source_id, position, notebook_id, key, value)
+			SELECT node_id, 0, $1, 'type', to_jsonb($2::text) FROM indexed_pages WHERE revision = 4`,
+			[]any{filterNotebook, filter}},
 	} {
 		if _, err := pool.Exec(ctx, stmt.sql, stmt.args...); err != nil {
 			t.Fatalf("%s: %v", stmt.sql, err)
@@ -217,7 +235,7 @@ func TestIndexOfAHundredThousandPagesTakesItsTime(t *testing.T) {
 					long++
 				}
 			}
-			if err == nil && (len(pages) != 104_000 || worst != 100_000 || long != 2_000) {
+			if err == nil && (len(pages) != 103_800 || worst != 100_000 || long != 1_800) {
 				t.Fatalf("%d pages read, %d of the worst type, %d of 5 MB", len(pages), worst, long)
 			}
 			return err
@@ -233,6 +251,18 @@ func TestIndexOfAHundredThousandPagesTakesItsTime(t *testing.T) {
 						!strings.HasPrefix(*it.Summary, bigStart) {
 						t.Fatalf("the item of %v: %d items", id, len(items))
 					}
+				}
+			}
+			return nil
+		})
+		median("IndexPages by a type of 300 characters, 20 times, "+stage, indexFilterBound, func() error {
+			for range 20 {
+				pages, err := store.IndexPages(ctx, filterNotebook, &filter)
+				if err != nil {
+					return err
+				}
+				if len(pages) != 1 || pages[0].TypeStart != filter[:domain.IndexTypeChars] {
+					t.Fatalf("%d pages of the filter's type, want 1", len(pages))
 				}
 			}
 			return nil
