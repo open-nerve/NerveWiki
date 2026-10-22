@@ -119,7 +119,11 @@ func (f fixture) planTree(t *testing.T, s statement, generic bool) (planNode, st
 // without a type (mutant 184). Each read of page_properties is below its
 // lateral's Limit, the first row of a page alone: without LIMIT 1 the
 // planner keeps its probe a page, the plan otherwise the same, and reads
-// each of a page's rows of the key (mutant 173).
+// each of a page's rows of the key (mutant 173). So is each read of
+// page_tags below its subquery's LIMIT 21 (S2 review B-n1): without
+// statistics the plan reads a page's tags by a bitmap and sorts them, at
+// most MaxNames, before it keeps 21; analyzed it probes the primary key in
+// its order and stops at the 21st.
 func TestIndexPlans(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
@@ -228,7 +232,13 @@ func TestIndexPlans(t *testing.T) {
 			_, err := q.IndexItems(ctx, ids)
 			return err
 		}), both(only("indexed_pages", "node_id", "indexed_pages_pkey"),
-			properties("page_properties_type_idx", "page_properties_summary_idx"), only("page_tags", "source_id", "page_tags_pkey"))},
+			properties("page_properties_type_idx", "page_properties_summary_idx"), only("page_tags", "source_id", "page_tags_pkey"),
+			func(root *planNode) []string {
+				if n := len(root.unlimited("page_tags")); n > 0 {
+					return []string{fmt.Sprintf("reads page_tags %d times without a Limit above it", n)}
+				}
+				return nil
+			})},
 		{"InboundCounts", statementOf(t, func(q *gen.Queries) error {
 			_, err := q.InboundCounts(ctx, gen.InboundCountsParams{Ids: ids, MaxCount: domain.MaxInbound})
 			return err
