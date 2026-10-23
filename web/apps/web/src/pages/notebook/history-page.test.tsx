@@ -119,7 +119,7 @@ test("the history lists its changesets newer first, each by its kind and who mad
   expect(server.sent).toContain("GET changesets");
 });
 
-test("the history speaks Chinese too: its rows' texts and names", async () => {
+test("the history speaks Chinese too: its rows' texts and names, and its clients to choose", async () => {
   const { server } = logged();
   server.app.preferences.setLocale("zh-CN");
   renderApp(historyPath, server.app);
@@ -147,6 +147,10 @@ test("the history speaks Chinese too: its rows' texts and names", async () => {
     within(renaming as HTMLElement).getByRole("link", { name: "已撤销：编辑 · Bob · 2026年10月5日 08:02" }).textContent
   ).toBe("已撤销");
   expect(within(renaming as HTMLElement).getByRole("button", { name: "只看此人（Bob）" }).textContent).toBe("只看此人");
+  // M9 closeout B-N1.
+  expect(
+    [...screen.getByRole("combobox", { name: "客户端" }).querySelectorAll("option")].map((option) => option.textContent)
+  ).toEqual(["所有客户端", "网页", "接口", "命令行", "全部 MCP", "MCP（claude）"]);
 });
 
 // M8/P3 design review B-M4 (v0.1 design 13.2, item 17).
@@ -747,6 +751,17 @@ test("a client the address names that none read has is chosen all the same", asy
 
   await screen.findByText("No changes.", { selector: "p" });
   expect(clientField().querySelector("option:checked")?.textContent).toBe("MCP (zed)");
+});
+
+// M9 closeout B-N1: an MCP client's name is as the client reports it, and the server's filter is exact.
+test("an MCP client of capitals in the address is that client as it is: read, and chosen", async () => {
+  const { server } = logged();
+  server.log("zed", { client: "mcp:Zed", changes: [wrote(notes, 1, 2)] });
+  renderApp(`${historyPath}?client=mcp%3AZed`, server.app);
+
+  await waitFor(() => expect(rows()).toHaveLength(1));
+  expect(server.sent).toContain("GET changesets from mcp:Zed");
+  expect(clientField().querySelector("option:checked")?.textContent).toBe("MCP (Zed)");
 });
 
 test("a page's history whose tree is not read yet says its page by an ellipsis", async () => {

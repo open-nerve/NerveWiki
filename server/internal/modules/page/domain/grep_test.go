@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"unsafe"
 
 	"golang.org/x/text/unicode/norm"
 
@@ -260,8 +261,9 @@ func TestGrepLines(t *testing.T) {
 
 // TestGrepHitOf checks a hit's text and column: the line whole up to
 // MaxGrepLineText bytes, else that many about the match's middle, in at
-// characters' boundaries; and, through MatchGrepLine, a match in a line
-// not in NFC mapped back to the line's own bytes (mutant 162).
+// characters' boundaries, either a copy, in none of the line's memory (M9
+// closeout A-F2); and, through MatchGrepLine, a match in a line not in NFC
+// mapped back to the line's own bytes (mutant 162).
 func TestGrepHitOf(t *testing.T) {
 	t.Parallel()
 	long := strings.Repeat("x", 1500) + "MATCH" + strings.Repeat("y", 1500)
@@ -279,9 +281,13 @@ func TestGrepHitOf(t *testing.T) {
 		{"at the end", long, 0, 3004, 3005, domain.GrepHit{Text: long[2005:], Column: 2005, Cut: true}},
 		{"in at characters' boundaries", wide, 0, 1000, 1002, domain.GrepHit{Text: wide[502:1500], Column: 502, Cut: true}},
 	} {
-		if got := domain.GrepHitOf(row.text, row.column, row.start, row.end); got != row.want {
+		got := domain.GrepHitOf(row.text, row.column, row.start, row.end)
+		if got != row.want {
 			t.Errorf("%s: GrepHitOf = %q at %d (cut %v), want %q at %d", row.name, short(got.Text), got.Column, got.Cut,
 				short(row.want.Text), row.want.Column)
+		}
+		if sharesMemory(row.text, got.Text) {
+			t.Errorf("%s: the hit's text is in the line's memory, which it keeps whole", row.name)
 		}
 	}
 	// A line not in NFC: 600 e and U+0301 (3 bytes each, 2 in NFC), then
@@ -314,6 +320,12 @@ func short(s string) string {
 		return s[:10] + "…" + s[len(s)-10:]
 	}
 	return s
+}
+
+// sharesMemory tells whether s's bytes are in text's memory.
+func sharesMemory(text, s string) bool {
+	t, p := uintptr(unsafe.Pointer(unsafe.StringData(text))), uintptr(unsafe.Pointer(unsafe.StringData(s)))
+	return p >= t && p < t+uintptr(len(text))
 }
 
 // TestGrepLineCut checks the cut: the most bytes whose work is within the

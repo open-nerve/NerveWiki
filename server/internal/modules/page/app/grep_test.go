@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -23,12 +24,15 @@ import (
 // yet. between, when set, runs once after the first of SearchBuilding and
 // GrepCandidates: the job, building rows, between the call's two
 // statements. grown are contents read back other than the states said.
+// fresh reads each content as a string of its own, as PostgreSQL's driver
+// does, so that what a call keeps of it is its own.
 type fakeGrep struct {
 	*fakeStore
 	rows        map[uuid.UUID]grepRow
 	exact, bulk map[uuid.UUID]bool
 	between     func()
 	grown       map[uuid.UUID]string
+	fresh       bool
 }
 
 // grepRow is a page's row: its body's lexemes and whether it is partial.
@@ -109,6 +113,9 @@ func (f *fakeGrep) GrepContents(ctx context.Context, ids []uuid.UUID) (map[uuid.
 			out[id] = c
 		} else if c, ok := f.contents[id]; ok {
 			out[id] = c.Content
+		}
+		if c, ok := out[id]; ok && f.fresh {
+			out[id] = strings.Clone(c)
 		}
 	}
 	return out, nil
@@ -458,6 +465,53 @@ func TestGrepWalksEveryPartialPage(t *testing.T) {
 	if found := grepFound(got); !slices.Equal(found, []string{"Long.md:1"}) || got.Walk.Candidates != 1 {
 		t.Errorf("found %q, %+v", found, got)
 	}
+}
+
+// A call's hits hold their texts, not the contents they were found in
+// (M9 design 4.13: a call holds at most a batch of contents): eight pages
+// of about 4 MiB, each read as a string of its own, each with a hit on its
+// first line, whole in four and cut about the match in the other four,
+// leave a result that holds well under a batch; held as parts of their
+// lines, the hits held the eight contents, 32 MiB, until the answer was
+// written (M9 closeout A-F2).
+func TestGrepsHitsHoldTheirTextsAlone(t *testing.T) {
+	f := newFixture()
+	f.grant(domain.ActionRead)
+	reads := newFakeGrep(f.store)
+	reads.fresh = true
+	filler := strings.Repeat(strings.Repeat("word ", 819)+"\n", 1020)
+	for i := range 8 {
+		first := fmt.Sprintf("needle %d", i)
+		if i%2 == 1 {
+			first = strings.Repeat("a ", domain.MaxGrepLineText) + first
+		}
+		p := f.page(fmt.Sprintf("P%d", i), nil, float64(i))
+		f.content(p.ID, first+"\n"+filler, 1)
+		reads.exact[p.ID] = true // a candidate, no row of 4 MiB built
+	}
+	// The work of 32 MiB passes a call's; the read is within MaxGrepRead.
+	g := f.grepper(reads, func(d *app.GrepDeps) { d.MaxWork = 1 << 40 })
+	before := heapHeld()
+	got, err := g.Execute(f.asAlice(), f.eng, app.GrepRequest{Pattern: "needle"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	held := heapHeld() - before
+	cut := 0
+	for _, found := range got.Found {
+		if found.Hit != nil && found.Hit.Cut {
+			cut++
+		}
+	}
+	if len(got.Found) != 8 || cut != 4 || got.Walk.Pages != 8 || got.Next != "" {
+		t.Fatalf("found %q, %d cut, %+v", grepFound(got), cut, got.Walk)
+	}
+	if held > domain.GrepBatchBytes/4 {
+		t.Errorf("the result holds %.1f MiB, more than a quarter of a batch: its hits hold their contents", float64(held)/(1<<20))
+	}
+	// The store's contents are of the base, held through the measure.
+	runtime.KeepAlive(f)
+	runtime.KeepAlive(g)
 }
 
 // frozenClock reads one time.

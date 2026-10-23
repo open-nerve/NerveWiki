@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -878,6 +879,29 @@ func TestTheBodyLimitsAreTheModulesRoutes(t *testing.T) {
 	for route := range m.BodyLimits() {
 		if !slices.Contains(router.Patterns(), route) {
 			t.Errorf("the body limit of %q, which is no route of the module's %q", route, router.Patterns())
+		}
+	}
+}
+
+// A module given no slots bounds grep in the process by its cores (M9
+// design 4.13; M9/P4 design 3.6.1, 3.6.5): max(1, GOMAXPROCS/2) calls
+// read and match at once, as the parse budget's, and GOMAXPROCS patterns
+// parse at once. Nothing else tells them: a module of 65,536 of either
+// passed every grep test (M9 closeout A-F3).
+func TestTheModulesGrepTakesTurnsByItsCores(t *testing.T) {
+	md, err := markdown.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	procs := runtime.GOMAXPROCS(0)
+	t.Cleanup(func() { runtime.GOMAXPROCS(procs) })
+	for _, tt := range []struct{ procs, slots, parses int }{{1, 1, 1}, {7, 3, 7}, {18, 9, 18}} {
+		runtime.GOMAXPROCS(tt.procs)
+		m := page.New(page.Deps{Clock: fixedClock{}, Logger: slog.New(slog.DiscardHandler), Markdown: md, EditSessionCleanupInterval: time.Hour,
+			Budget: markdown.NewBudget(8<<20, time.Second, slog.New(slog.DiscardHandler)), Attachments: noAttachments{},
+			Snapshots: noSnapshots{}, VisibleNotebooks: noNotebooks{}})
+		if slots, parses := m.GrepTurns(); slots != tt.slots || parses != tt.parses {
+			t.Errorf("at GOMAXPROCS %d, %d slots and %d parse turns, want %d and %d", tt.procs, slots, parses, tt.slots, tt.parses)
 		}
 	}
 }

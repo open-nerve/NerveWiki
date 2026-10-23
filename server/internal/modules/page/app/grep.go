@@ -206,6 +206,12 @@ func NewGrep(d GrepDeps) *Grep {
 	return &Grep{d: d, lines: domain.GrepLines}
 }
 
+// Turns are how many calls g's slots let read and match at once, and how
+// many patterns its parses' queue lets parse at once.
+func (g *Grep) Turns() (slots, parses int) {
+	return cap(g.d.Slots.turns), cap(g.d.Parses.turns)
+}
+
 // allPages is the glob of a grep without one: every page.
 const allPages = "**/*.md"
 

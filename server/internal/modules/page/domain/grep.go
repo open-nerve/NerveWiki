@@ -283,10 +283,13 @@ type GrepHit struct {
 // GrepHitOf is the hit of the line text (GrepLines'), at column, whose
 // first match is text[start:end]: the line whole, or MaxGrepLineText
 // bytes of it about the match's middle, each end moved in to a
-// character's boundary.
+// character's boundary. It holds no bytes of text's memory: a call keeps
+// its hits to its answer, and a hit that was a part of its line kept the
+// page's whole content, up to MaxGrepRead of them a call (M9 design 4.13;
+// M9 closeout A-F2).
 func GrepHitOf(text string, column, start, end int) GrepHit {
 	if len(text) <= MaxGrepLineText {
-		return GrepHit{Text: text, Column: column}
+		return GrepHit{Text: strings.Clone(text), Column: column}
 	}
 	lo := min(max(0, (start+end)/2-MaxGrepLineText/2), len(text)-MaxGrepLineText)
 	hi := lo + MaxGrepLineText
@@ -296,7 +299,7 @@ func GrepHitOf(text string, column, start, end int) GrepHit {
 	for hi > lo && hi < len(text) && !utf8.RuneStart(text[hi]) {
 		hi--
 	}
-	return GrepHit{Text: text[lo:hi], Column: column + lo, Cut: true}
+	return GrepHit{Text: strings.Clone(text[lo:hi]), Column: column + lo, Cut: true}
 }
 
 // GrepMatch is a line's match within the cut bytes of its NFC (M9/P4
