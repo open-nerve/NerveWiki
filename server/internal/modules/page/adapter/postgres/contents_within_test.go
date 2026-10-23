@@ -318,3 +318,68 @@ func TestTheContentsWithinABoundAreReadByTheirKey(t *testing.T) {
 		}
 	}
 }
+
+// TrashContentsWithin reads a batch of a large group by its key, as
+// TrashContents does, not every row deleted at the group's time (M9 Codex
+// review fix round 2, B-N5): of 40,000 pages, 20,000 deleted at one time,
+// as a background revert finds a large group, a batch of MaxUnitPages of
+// them. Without statistics and analyzed, planned for the arguments, the
+// batch's rows by page_contents_pkey; planned for any, by it or by the
+// index on deleted_at, as TrashContents' plan for any arguments reads the
+// rows of the time: none scans a table whole.
+func TestTheTrashsContentsWithinABoundReadABatchOfALargeGroupByItsKey(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	for _, table := range []string{"nodes", "page_contents"} {
+		f.exec(t, "ALTER TABLE "+table+" SET (autovacuum_enabled = false)")
+	}
+	f.exec(t, `INSERT INTO nodes (id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id,
+			created_at, updated_at)
+		SELECT uuidv7(), $1, NULL, 'page', 'n' || k, 'n' || k, k, $2, $2, $3, $3 FROM generate_series(1, 40000) k`, f.ops, f.alice, now())
+	f.exec(t, `INSERT INTO page_contents (node_id, content, revision, content_hash, byte_size, updated_by_id, updated_at)
+		SELECT id, 'a line', 1, sha256('a line'), 6, $2, $3 FROM nodes WHERE notebook_id = $1`, f.ops, f.alice, now())
+	at := now().Add(time.Hour)
+	f.exec(t, `UPDATE page_contents SET deleted_at = $2 WHERE node_id IN (SELECT id FROM nodes WHERE notebook_id = $1 ORDER BY id
+		LIMIT 20000)`, f.ops, at)
+	rows, err := f.pool.Query(ctx, `SELECT node_id FROM page_contents WHERE deleted_at = $1 ORDER BY node_id DESC LIMIT $2`, at,
+		domain.MaxUnitPages)
+	if err != nil {
+		t.Fatal(err)
+	}
+	batch, err := pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := statementOf(t, func(g *gen.Queries) error {
+		_, err := g.TrashContentsWithin(ctx, gen.TrashContentsWithinParams{Ids: batch, DeletedAt: at, MaxBytes: domain.MaxUnitBytes})
+		return err
+	})
+	byKey := reads("page_contents", "page_contents_pkey", "")
+	for _, stage := range []string{"without statistics", "analyzed"} {
+		if stage == "analyzed" {
+			f.exec(t, "ANALYZE nodes, page_contents")
+		} else if n := f.count(t, `SELECT count(*) FROM pg_stats WHERE tablename IN ('nodes', 'page_contents')`); n != 0 {
+			t.Fatalf("the tables have statistics of %d columns", n)
+		}
+		for _, generic := range []bool{false, true} {
+			root, raw := f.planTreeWith(t, s)
+			read := byKey
+			if generic {
+				root, raw = f.genericPlanTree(t, s.sql)
+				read = func(n *planNode) bool {
+					return byKey(n) || reads("page_contents", "page_contents_deleted_at_idx", "")(n)
+				}
+			}
+			var problems []string
+			if len(root.all(read)) != 1 {
+				problems = append(problems, "does not read page_contents once, by its key (or, for any arguments, the time's index)")
+			}
+			if len(root.all(func(n *planNode) bool { return n.Type == "Seq Scan" })) > 0 {
+				problems = append(problems, "scans a table whole")
+			}
+			if len(problems) > 0 {
+				t.Errorf("TrashContentsWithin, %s, generic %v: %s:\n%s", stage, generic, strings.Join(problems, "; "), raw)
+			}
+		}
+	}
+}

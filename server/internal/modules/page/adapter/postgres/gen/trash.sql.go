@@ -329,12 +329,16 @@ func (q *Queries) TrashContents(ctx context.Context, arg TrashContentsParams) ([
 }
 
 const trashContentsWithin = `-- name: TrashContentsWithin :many
+WITH c AS MATERIALIZED (
+    SELECT node_id, byte_size, content FROM page_contents
+    WHERE node_id = ANY($2::uuid[]) AND deleted_at = $3::timestamptz
+)
 SELECT s.node_id, s.byte_size, (s.total <= $1::bigint)::boolean AS within,
     coalesce(CASE WHEN s.total <= $1::bigint THEN s.content END, '')::text AS content
 FROM (
     SELECT c.node_id, c.byte_size, c.content, sum(c.byte_size) OVER (ORDER BY a.ord) AS total
     FROM unnest($2::uuid[]) WITH ORDINALITY AS a(id, ord)
-    JOIN page_contents c ON c.node_id = a.id AND c.deleted_at = $3::timestamptz
+    JOIN c ON c.node_id = a.id
 ) s
 WHERE s.total - s.byte_size <= $1::bigint
 `
@@ -354,8 +358,10 @@ type TrashContentsWithinRow struct {
 
 // TrashContents' contents, in the order of ids, while their sizes sum to max_bytes at most; the first page past it with
 // its size alone, and no page after it (M9 Codex review D2): a background revert's batch reads a group its plan sized
-// at the time its root is deleted at now, which may hold larger contents. As GrepContents, the rows are read once and
-// only the contents within the bound are returned.
+// at the time its root is deleted at now, which may hold larger contents. As GrepContents, the rows are read once, by
+// TrashContents' own query, so by its plans, and only the contents within the bound are returned: a join of the order
+// asked to the table read, without statistics, every row deleted at the time, a large group's whole for a batch of it
+// (M9 Codex review fix round 2, B-N5).
 func (q *Queries) TrashContentsWithin(ctx context.Context, arg TrashContentsWithinParams) ([]TrashContentsWithinRow, error) {
 	rows, err := q.db.Query(ctx, trashContentsWithin, arg.MaxBytes, arg.Ids, arg.DeletedAt)
 	if err != nil {
