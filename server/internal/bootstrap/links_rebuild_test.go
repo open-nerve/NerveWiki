@@ -35,9 +35,13 @@ import (
 // leads to it still, in a page it wrote by where the link led when the
 // batch wrote it, unless the batch deleted the node, created the one the
 // link leads to or wrote its alias (M9 design 4.11; M9/P3 design 3.14.6).
-// Over the runs, 20 batches done at least, 5 whose deferred rewrite wrote
-// a page, and 10 links of written pages checked past a rename or a move
-// after their write.
+// About every 5 steps, a batch that puts a page back: the rename of a node
+// it links to by its title, then its bytes before the batch written again;
+// its links lead where those bytes do, not where the rename's rewrite led
+// them (M9 Codex review R1; fix round 1, A-N3). Over the runs, 20 batches
+// done at least, 5 whose deferred rewrite wrote a page, 10 links of
+// written pages checked past a rename or a move after their write, and 10
+// pages put back.
 func TestTheIndexIsItsRebuild(t *testing.T) {
 	if testing.Short() {
 		t.Skip("runs of writes through serve against a database")
@@ -58,11 +62,12 @@ func TestTheIndexIsItsRebuild(t *testing.T) {
 			t.Errorf("no link was a value of the aliases: the runs test little of the index's flag")
 		}
 		// The batches done, not those tried (M9/P3 design 3.14.6).
-		t.Logf("%d batches done, %d of them rewrote pages; %d links of pages they wrote checked, %d past a rename or a move", seen.done,
-			seen.rewrote, seen.checked, seen.followed)
-		if !t.Failed() && (seen.done < 20 || seen.rewrote < 5 || seen.followed < 10) {
-			t.Errorf("%d batches were done, %d of them rewrote pages, and %d links of pages they wrote were checked past a rename or a "+
-				"move after their write; want 20, 5 and 10 at least: the runs test little of the batches", seen.done, seen.rewrote, seen.followed)
+		t.Logf("%d batches done, %d of them rewrote pages; %d links of pages they wrote checked, %d past a rename or a move; %d pages "+
+			"put back", seen.done, seen.rewrote, seen.checked, seen.followed, seen.backs)
+		if !t.Failed() && (seen.done < 20 || seen.rewrote < 5 || seen.followed < 10 || seen.backs < 10) {
+			t.Errorf("%d batches were done, %d of them rewrote pages, %d links of pages they wrote were checked past a rename or a "+
+				"move after their write, and %d pages were put back; want 20, 5, 10 and 10 at least: the runs test little of the batches",
+				seen.done, seen.rewrote, seen.followed, seen.backs)
 		}
 	}()
 	for seed := range uint64(6) {
@@ -98,6 +103,8 @@ func TestTheIndexIsItsRebuild(t *testing.T) {
 					r = b.directed(t, step)
 				case step%13 == 12:
 					r = b.random(t)
+				case step%5 == 4:
+					r = b.backed(t, step)
 				}
 				if r != nil {
 					what := b.run(t, r, &seen)

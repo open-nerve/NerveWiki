@@ -663,3 +663,65 @@ func (m *mcpApp) apart(t *testing.T, ops ...map[string]any) (changed []bool, at 
 	}
 	return changed, -1, ""
 }
+
+// A batch that puts a page back, reverted, leaves the notebook as it was
+// before it, and its revert reverted as it was after it, each time with
+// both indexes their rebuilds (M9 Codex review fix round 1, A-N3): Codex's
+// shape, a move then an edit back, another page's link rewritten; the
+// same with a later move that rewrites the page put back; and a move of
+// the page's folder after the edit back, its relative link rewritten. The
+// batch's log counts no page written, one rewritten, and each op's
+// version is read's.
+func TestTheRevertOfABatchThatPutsAPageBackIsTheNotebookBefore(t *testing.T) {
+	tm, logs := newAcmeTeamLogged(t)
+	agent := tm.agent(t, "alice", "")
+	for i, tt := range []struct {
+		name  string
+		pages []restPage
+		ops   []map[string]any
+	}{
+		{"an edit back, another's link rewritten", []restPage{{"A", ""}, {"P", "[[A]] x"}, {"Q", "[[A]] q"}},
+			[]map[string]any{opMove("A.md", "B.md"), opEdit("P.md", "[[B]]", "[[A]]")}},
+		{"an edit back, then a move that rewrites it", []restPage{{"A", ""}, {"C", ""}, {"P", "[[A]] [[C]] x"}},
+			[]map[string]any{opMove("A.md", "B.md"), opEdit("P.md", "[[B]]", "[[A]]"), opMove("C.md", "D.md")}},
+		{"an edit back, then its folder moved", []restPage{{"A", ""}, {"C", ""}, {"F", ""}, {"F/P", "[[A]] [C](../C.md) x"}, {"G", ""}},
+			[]map[string]any{opMove("A.md", "B.md"), opEdit("F/P.md", "[[B]]", "[[A]]"), opMove("F.md", "G/F.md")}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			nb := tm.openNotebook(t, "alice", fmt.Sprint("Put back reverted ", i))
+			tm.seed(t, nb, tt.pages...)
+			before := tm.linkedState(t, nb)
+			m := agent.in(nb)
+			done := m.batchDone(t, tt.ops...)
+			after := tm.linkedState(t, nb)
+			tm.checkRebuilt(t, nb)
+			if line := (&mcpApp{logs: logs}).loggedLast(t, "batch applied"); line == nil || line["pages_written"] != 0.0 ||
+				line["rewritten"] != 1.0 {
+				t.Errorf("the batch's log = %v, want pages_written 0, rewritten 1", line)
+			}
+			for k, r := range done.Results {
+				if r.Version == nil {
+					continue
+				}
+				if meta, _, code := readBack(t, m.use(t, "read", map[string]any{"path": r.Path})); code != "" || meta.Version != *r.Version {
+					t.Errorf("ops[%d]'s version %s, read's %s (%s)", k, *r.Version, meta.Version, code)
+				}
+			}
+			if done.ChangesetID == nil {
+				t.Fatal("the batch answered no changeset")
+			}
+			revert := tm.reverted(t, "alice", *done.ChangesetID)
+			if now := tm.linkedState(t, nb); !maps.Equal(now, before) {
+				t.Errorf("reverted, the notebook is\n%sbefore the batch\n%s", shown(now), shown(before))
+			}
+			tm.checkRebuilt(t, nb)
+			tm.reverted(t, "alice", revert)
+			if now := tm.linkedState(t, nb); !maps.Equal(now, after) {
+				t.Errorf("the revert reverted, the notebook is\n%safter the batch\n%s", shown(now), shown(after))
+			}
+			tm.checkRebuilt(t, nb)
+			checkPages(t, tm.pool)
+			noErrorLogged(t, logs)
+		})
+	}
+}
