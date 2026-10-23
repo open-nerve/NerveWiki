@@ -248,6 +248,38 @@ func (q *Queries) ChildByKey(ctx context.Context, arg ChildByKeyParams) (ChildBy
 	return i, err
 }
 
+const childPageIDs = `-- name: ChildPageIDs :many
+SELECT id FROM nodes
+WHERE notebook_id = $1 AND parent_id = $2 AND kind = 'page' AND deleted_at IS NULL
+`
+
+type ChildPageIDsParams struct {
+	NotebookID uuid.UUID
+	ParentID   *uuid.UUID
+}
+
+// A page's child pages not deleted (M9/P4 design 3.9.1): index's parent, by an index of a parent's children, the
+// notebook's and parents' (00012) or the children's (00042) as the planner takes it, parent_id = its condition.
+func (q *Queries) ChildPageIDs(ctx context.Context, arg ChildPageIDsParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, childPageIDs, arg.NotebookID, arg.ParentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const children = `-- name: Children :many
 SELECT id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at,
     updated_at
@@ -1028,6 +1060,34 @@ func (q *Queries) RootByKey(ctx context.Context, arg RootByKeyParams) (RootByKey
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const rootPageIDs = `-- name: RootPageIDs :many
+SELECT id FROM nodes
+WHERE notebook_id = $1 AND parent_id IS NULL AND kind = 'page' AND deleted_at IS NULL
+`
+
+// The root's pages not deleted (M9/P4 design 3.9.1): index's parent "/", by an index of the root's nodes, the
+// notebook's and parents' (00012) or the roots' (00042) as the planner takes it, notebook_id = its condition and
+// parent_id IS NULL its condition or its predicate (TestTheChildPagesReadsUseTheirIndexes).
+func (q *Queries) RootPageIDs(ctx context.Context, notebookID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, rootPageIDs, notebookID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const setSortOrder = `-- name: SetSortOrder :exec

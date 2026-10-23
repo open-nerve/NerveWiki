@@ -36,7 +36,11 @@ const (
 	// median of three, in each state of the statistics: 74-89 ms here.
 	grepCandidatesBound = 270 * time.Millisecond
 	// grepCandidatesCallBound is a call over them, the tree's 100,000
-	// pages walked to the 500th candidate: 143-150 ms here.
+	// pages walked to the 500th candidate. It was set at three times the
+	// one call first timed, cold, 143-150 ms here. The median of three
+	// (S2 fix round 4) judges a warm call, about 130 ms, the first call
+	// the slowest at 140-145 ms; the bound is kept, about 3.4 times the
+	// median.
 	grepCandidatesCallBound = 450 * time.Millisecond
 )
 
@@ -167,7 +171,9 @@ func TestGrepAtItsWorkBoundTakesItsTime(t *testing.T) {
 // 32 keys of a literal after the notebook's prefix; GrepCandidates of them
 // without statistics, analyzed, and planned generic, each within its
 // bound, and a call of the literal, which walks the tree to its 500th
-// candidate, within its own.
+// candidate, within its own: the median of three calls, as GrepCandidates'
+// (one call took 608.6 ms against 450 ms on a slow CI runner: S2 fix round 4),
+// each call's walk checked.
 func TestGrepOfAHundredThousandCandidatesTakesItsTime(t *testing.T) {
 	if testing.Short() {
 		t.Skip("a bound in time, measured alone by make test-go-guards")
@@ -244,13 +250,19 @@ func TestGrepOfAHundredThousandCandidatesTakesItsTime(t *testing.T) {
 			t.Errorf("GrepCandidates of 100,000, %s: a median of %v, over %v", stage, times[1], grepCandidatesBound)
 		}
 	}
-	start := time.Now()
-	a := r.grep(t, map[string]any{"pattern": literal})
-	took := time.Since(start)
-	walk := grepWalkOf(t, r.logs)
-	t.Logf("a call over them: %v, %+v", took, walk)
-	if len(a.Hits) != 0 || !a.Incomplete || walk.Stop != "pages" || walk.Candidates != 100_000 || took > grepCandidatesCallBound {
-		t.Errorf("took %v of %v: %+v, the walk %+v; want no hit, the 500 pages' stop of 100,000 candidates", took,
-			grepCandidatesCallBound, a, walk)
+	var times []time.Duration
+	for range 3 {
+		start := time.Now()
+		a := r.grep(t, map[string]any{"pattern": literal})
+		times = append(times, time.Since(start))
+		walk := grepWalkOf(t, r.logs)
+		if len(a.Hits) != 0 || !a.Incomplete || walk.Stop != "pages" || walk.Candidates != 100_000 {
+			t.Errorf("a call over them: %+v, the walk %+v; want no hit, the 500 pages' stop of 100,000 candidates", a, walk)
+		}
+	}
+	slices.Sort(times)
+	t.Logf("a call over them: %v", times)
+	if times[1] > grepCandidatesCallBound {
+		t.Errorf("a call over them: a median of %v, over %v", times[1], grepCandidatesCallBound)
 	}
 }

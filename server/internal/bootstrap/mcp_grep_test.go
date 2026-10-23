@@ -11,11 +11,13 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"golang.org/x/text/unicode/norm"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 )
 
 // mcpGrepHit is a hit of grep's answer, as these tests read it.
@@ -44,6 +46,25 @@ type mcpGrepAnswer struct {
 
 // at is the hit as "path:line".
 func (h mcpGrepHit) at() string { return fmt.Sprintf("%s:%d", h.Path, h.Line) }
+
+// productionDeadlines gives an app production's deadlines
+// (configs/config.yaml: request_timeout 15s, write_timeout 60s) in place of
+// the tests' 4 s and 10 s. grep starts no more lines once its call is
+// within GrepSoftMargin (3 s) of its deadline: at the tests' 4 s that is a
+// second into the call, which a slow runner under -race can pass before
+// the call's first hit (bootstrap-3 of CI run 39709536904). Such a stop
+// answers incomplete with a cursor, rightly, but the exact answers of the
+// tests that count grep's pages and stops do not allow for it: at 15 s
+// they count the stops they inject, and those alone.
+func productionDeadlines(c *config.Config) {
+	c.Server.WriteTimeout, c.Server.RequestTimeout = 60*time.Second, 15*time.Second
+}
+
+// startGrepApp is startReadsAppWith of w at production's deadlines.
+func startGrepApp(t *testing.T, w wiring) readsApp {
+	t.Helper()
+	return startReadsAppOf(t, publicOrigin, w, productionDeadlines)
+}
 
 // grep is m's grep of args in its notebook, which must answer.
 func (m *mcpApp) grep(t *testing.T, args map[string]any) mcpGrepAnswer {
@@ -132,7 +153,7 @@ func grepWalks(t *testing.T, logs *syncBuffer) []string {
 // until the job has built it; a grep of no keys walks it at once, not
 // building.
 func TestTheMCPGrepFindsWhatItsKeysFind(t *testing.T) {
-	r := startReadsApp(t, publicOrigin)
+	r := startGrepApp(t, wiring{})
 	for path, content := range map[string]string{
 		"Literal.md": "a needle here\n", "Folded.md": "THE NEEDLE\n", "数据.md": "设计数据库的说明\n", "Word.md": "we go now\n",
 		"Dates.md": "x\n2026-10-21\n", "Plain.md": "nothing here\n",
@@ -196,7 +217,7 @@ func grepCutContents(rng *rand.Rand) map[string]string {
 // is partial and lacks needle's keys; the walk injected 5 pages, the six
 // answer incomplete and a cursor, then the rest, each found once.
 func TestTheMCPGrepWalksEveryPartialPage(t *testing.T) {
-	r := startReadsAppWith(t, publicOrigin, wiring{page: func(d *page.Deps) { d.GrepWalk = 5 }})
+	r := startGrepApp(t, wiring{page: func(d *page.Deps) { d.GrepWalk = 5 }})
 	rng := rand.New(rand.NewPCG(4, 6))
 	ids, want := map[string]string{}, []string{}
 	for i := range 2 {
@@ -266,7 +287,7 @@ func TestTheMCPGrepStopsAtItsBounds(t *testing.T) {
 		}
 	}
 	t.Run("the walk's pages, the limit and the answer's bound", func(t *testing.T) {
-		r := startReadsAppWith(t, publicOrigin, wiring{page: func(d *page.Deps) { d.GrepWalk = 5 }})
+		r := startGrepApp(t, wiring{page: func(d *page.Deps) { d.GrepWalk = 5 }})
 		var want []string
 		for i := range 12 {
 			var b strings.Builder
@@ -292,7 +313,7 @@ func TestTheMCPGrepStopsAtItsBounds(t *testing.T) {
 		}
 	})
 	t.Run("the read's bytes", func(t *testing.T) {
-		r := startReadsAppWith(t, publicOrigin, wiring{page: func(d *page.Deps) { d.MaxGrepRead = 1 << 20 }})
+		r := startGrepApp(t, wiring{page: func(d *page.Deps) { d.MaxGrepRead = 1 << 20 }})
 		var want []string
 		line := strings.Repeat("x", 1023) + "\n"
 		for i := range 5 {
@@ -306,7 +327,7 @@ func TestTheMCPGrepStopsAtItsBounds(t *testing.T) {
 		const line = "a line of the page\n"
 		content := strings.Repeat(line, 49) + "a hit\n" + strings.Repeat(line, 50)
 		work := 7 * domain.GrepWork(len(line)-1, insts("hit")) * 100 / 2 // three pages and a half
-		r := startReadsAppWith(t, publicOrigin, wiring{page: func(d *page.Deps) { d.MaxGrepWork = work }})
+		r := startGrepApp(t, wiring{page: func(d *page.Deps) { d.MaxGrepWork = work }})
 		var want []string
 		for i := range 10 {
 			path := fmt.Sprintf("W%d.md", i)
@@ -317,7 +338,7 @@ func TestTheMCPGrepStopsAtItsBounds(t *testing.T) {
 	})
 	t.Run("a line's work", func(t *testing.T) {
 		lineWork := 102 * insts("hit") // GrepLineCut 100
-		r := startReadsAppWith(t, publicOrigin, wiring{page: func(d *page.Deps) { d.MaxGrepLineWork = lineWork }})
+		r := startGrepApp(t, wiring{page: func(d *page.Deps) { d.MaxGrepLineWork = lineWork }})
 		r.mcpWrite(t, "Long.md", "hit "+strings.Repeat("y", 300)+"\n"+strings.Repeat("y", 300)+" hit\nplain\n")
 		a := r.grep(t, map[string]any{"pattern": "hit"})
 		if len(a.Hits) != 1 || a.Hits[0].at() != "Long.md:1" || len(a.PartialLines) != 1 || a.PartialLines[0] != (mcpGrepLine{"Long.md", 2}) ||

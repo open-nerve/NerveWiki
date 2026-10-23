@@ -4,7 +4,8 @@ import "github.com/open-nerve/NerveWiki/server/internal/shared"
 
 // The module's actions (M6/P5 design 7): each has a row in the access
 // module's rule table (bootstrap's actions test), all reads of a notebook,
-// the landing its writers' alone (M6/P6 design 2).
+// the landing its writers' alone (M6/P6 design 2), the index over MCP its
+// readers' (M9/P4 design 3.9.3).
 const (
 	// ActionListBacklinks lists the pages that link to a page.
 	ActionListBacklinks shared.Action = "backlink.list"
@@ -19,9 +20,13 @@ const (
 	ActionListLinkTargets shared.Action = "link_target.list"
 	// ActionReadLinkLanding reads where a page made for a link would go.
 	ActionReadLinkLanding shared.Action = "link_landing.read"
+	// ActionListIndex reads the pages of a notebook's index: their
+	// properties, tags and inbound links (MCP's index).
+	ActionListIndex shared.Action = "index.list"
 )
 
 // Actions lists the module's actions.
 func Actions() []shared.Action {
-	return []shared.Action{ActionListBacklinks, ActionReadProperties, ActionListTags, ActionReadTag, ActionListLinkTargets, ActionReadLinkLanding}
+	return []shared.Action{ActionListBacklinks, ActionReadProperties, ActionListTags, ActionReadTag, ActionListLinkTargets, ActionReadLinkLanding,
+		ActionListIndex}
 }

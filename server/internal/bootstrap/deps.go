@@ -198,9 +198,10 @@ func assetDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, autho
 
 // linkingDeps are the linking module's HTTP side's, the index's reads
 // (M6/P5) and a link's landing (M6/P6): the notebook module's notebooks
-// and the page module's tree, contents and depth; and the attachments'
+// and the page module's tree, contents and depth; the attachments'
 // addresses of the property links to them (M7/P3), whether the browser
-// shows each and when it expires (M7/P4).
+// shows each and when it expires (M7/P4); and the page module's paths,
+// which MCP's backlinks and index name (M9/P4 design 3.9.1).
 func linkingDeps(pool *pgxpool.Pool, authorizer shared.Authorizer, assets linking.AttachmentAddresses) linking.Deps {
 	targets := page.NewLinkTargets(pool)
 	return linking.Deps{
@@ -211,6 +212,7 @@ func linkingDeps(pool *pgxpool.Pool, authorizer shared.Authorizer, assets linkin
 		Contents:   targets,
 		MaxDepth:   page.MaxDepth,
 		Assets:     assets,
+		NodePaths:  linkingNodePaths{page.NewNodePaths(pool)},
 	}
 }
 

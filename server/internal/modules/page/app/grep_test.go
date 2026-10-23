@@ -556,6 +556,178 @@ func TestGrepStopsBeforeALineItsWorkWouldPass(t *testing.T) {
 	}
 }
 
+// scanClock is a clock that moves only as its lines are scanned: a
+// microsecond a byte of each line, before the line is yielded, as
+// GrepLines finds a line's end before it yields the line. A match, and a
+// read of the clock, take no time.
+type scanClock struct{ at time.Time }
+
+func (c *scanClock) Now() time.Time { return c.at }
+
+// lines is domain.GrepLines, the clock moved by each line's scan.
+func (c *scanClock) lines(content string, from int, yield func(line int, text string, column int) bool) {
+	domain.GrepLines(content, from, func(line int, text string, column int) bool {
+		c.at = c.at.Add(time.Duration(len(text)) * time.Microsecond)
+		return yield(line, text, column)
+	})
+}
+
+// TestGrepTimesALinesMatchAlone checks a unit's time (M9/P4 design 3.6.3,
+// review C2-m3): it is the time the lines took to match, not the time of
+// the scans for their ends between them. A page of a line of 20,000 bytes,
+// 160,016 units, past GrepUnitWarmUp, then a line of a million bytes and
+// needle; the clock moves a microsecond a byte as each line is scanned,
+// and not as anything is matched. A unit timed from one line to the next,
+// or across the scan between them, takes in the long line's scan, 1 s
+// over the first line's units, about 6.2 µs, and the long line's 8 million
+// units about 50 s, past the soft deadline half a minute away: the call
+// stops before the long line, no hit, incomplete. Timed by the lines'
+// matches, the unit is GrepUnitTime, the long line 0.2 s: the first call
+// answers its hit, the walk done.
+func TestGrepTimesALinesMatchAlone(t *testing.T) {
+	f := newFixture()
+	f.grant(domain.ActionRead)
+	reads := newFakeGrep(f.store)
+	id := f.page("Long", nil, 0).ID
+	f.content(id, strings.Repeat("a", 20_000)+"\n"+strings.Repeat("a", 1_000_000)+" needle\n", 1)
+	reads.exact[id] = true
+	deadline := time.Now().Add(time.Hour)
+	ctx, cancel := context.WithDeadline(f.asAlice(), deadline)
+	defer cancel()
+	clock := &scanClock{at: deadline.Add(-domain.GrepSoftMargin - 30*time.Second)}
+	got, err := f.grepper(reads, func(d *app.GrepDeps) { d.Clock = clock }).WithLines(clock.lines).Execute(ctx, f.eng,
+		app.GrepRequest{Pattern: "needle"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found := grepFound(got); !slices.Equal(found, []string{"Long.md:2"}) || got.Incomplete || got.Walk.Stop != "done" ||
+		got.Walk.Lines != 2 || got.Next != "" {
+		t.Errorf("20,000 bytes, then a line of a million bytes: %q, %+v; want its hit in the first call, the walk done", found, got)
+	}
+}
+
+// pauseClock is a clock that moves only while line 1 is matched: by
+// pause at each read, so that line 1's time is one pause, as a GC assist
+// or the OS taking the CPU would make it; its lines are domain.GrepLines,
+// line 1 told.
+type pauseClock struct {
+	at     time.Time
+	pause  time.Duration
+	inLine bool
+}
+
+func (c *pauseClock) Now() time.Time {
+	if c.inLine {
+		c.at = c.at.Add(c.pause)
+	}
+	return c.at
+}
+
+func (c *pauseClock) lines(content string, from int, yield func(line int, text string, column int) bool) {
+	domain.GrepLines(content, from, func(line int, text string, column int) bool {
+		c.inLine = line == 1
+		ok := yield(line, text, column)
+		c.inLine = false
+		return ok
+	})
+}
+
+// stepClock is a slow machine's clock: each read moves it by step, so
+// that a line's match takes one step.
+type stepClock struct {
+	at   time.Time
+	step time.Duration
+}
+
+func (c *stepClock) Now() time.Time {
+	c.at = c.at.Add(c.step)
+	return c.at
+}
+
+// TestGrepTrustsItsUnitPastAWarmUp checks a unit's time (M9/P4 design
+// 3.6.3; S2 fix check C3-m1): a call's own timing tells it only once it
+// rests on GrepUnitWarmUp of work. A page of "x", then a line of 240 KiB to
+// 4 MB and needle, at production's deadline, the soft one 12 s away, and a
+// pause of 10 µs to 1 ms in matching "x", its 24 units: timed on them, the
+// unit was 0.4 to 42 µs and stopped the long line, of 2 to 32
+// million units, at the soft deadline from 10 µs for 4 MB, 20 µs for 2 MB,
+// 100 µs for 1 MB, 1 ms for 240 KiB. Below the warm-up the unit is
+// GrepUnitTime: the first call answers the long line's hit. So it does
+// after a first line of 12,000 bytes, 96,016 units, just under the
+// warm-up, and a pause of 40 ms in it, which trusted would tell 417 ns a
+// unit and 13 s for the 4 MB line after it (fix check C4-n1): a warm-up of
+// 96,016 or less fails the row, and the slow machine's below holds it at
+// 160,016 at most.
+// Past it, a slow match raises the unit (fix check C3-m2): a machine on
+// which the first line, 20,000 bytes and 160,016 units, takes 160 ms, a
+// microsecond a unit, 40 times GrepUnitTime, projects the long line of a
+// million bytes, 8 million units, to 8 s, past the soft deadline 2 s away,
+// and stops before it, incomplete, its cursor that line: at GrepUnitTime
+// it would be judged to take 0.2 s, and run to the request's deadline.
+func TestGrepTrustsItsUnitPastAWarmUp(t *testing.T) {
+	for _, n := range []int{240 << 10, 1_000_000, 2_000_000, 4_000_000} {
+		for _, pause := range []time.Duration{10 * time.Microsecond, 20 * time.Microsecond, 100 * time.Microsecond, time.Millisecond} {
+			f := newFixture()
+			f.grant(domain.ActionRead)
+			reads := newFakeGrep(f.store)
+			id := f.page("Long", nil, 0).ID
+			f.content(id, "x\n"+strings.Repeat("a", n)+" needle\n", 1)
+			reads.exact[id] = true
+			deadline := time.Now().Add(time.Hour)
+			ctx, cancel := context.WithDeadline(f.asAlice(), deadline)
+			clock := &pauseClock{at: deadline.Add(-15 * time.Second), pause: pause}
+			got, err := f.grepper(reads, func(d *app.GrepDeps) { d.Clock = clock }).WithLines(clock.lines).Execute(ctx, f.eng,
+				app.GrepRequest{Pattern: "needle"})
+			cancel()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if found := grepFound(got); !slices.Equal(found, []string{"Long.md:2"}) || got.Incomplete || got.Walk.Stop != "done" {
+				t.Errorf("x, a pause of %v in it, then a line of %d bytes: %q, %+v; want its hit in the first call", pause, n, found, got)
+			}
+		}
+	}
+	{
+		f := newFixture()
+		f.grant(domain.ActionRead)
+		reads := newFakeGrep(f.store)
+		id := f.page("Warm", nil, 0).ID
+		f.content(id, strings.Repeat("a", 12_000)+"\n"+strings.Repeat("a", 4_000_000)+" needle\n", 1)
+		reads.exact[id] = true
+		deadline := time.Now().Add(time.Hour)
+		ctx, cancel := context.WithDeadline(f.asAlice(), deadline)
+		clock := &pauseClock{at: deadline.Add(-15 * time.Second), pause: 40 * time.Millisecond}
+		got, err := f.grepper(reads, func(d *app.GrepDeps) { d.Clock = clock }).WithLines(clock.lines).Execute(ctx, f.eng,
+			app.GrepRequest{Pattern: "needle"})
+		cancel()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if found := grepFound(got); !slices.Equal(found, []string{"Warm.md:2"}) || got.Incomplete || got.Walk.Stop != "done" {
+			t.Errorf("12,000 bytes, just under the warm-up, a pause of 40 ms in them, then 4 MB: %q, %+v; want its hit in the first call",
+				found, got)
+		}
+	}
+	f := newFixture()
+	f.grant(domain.ActionRead)
+	reads := newFakeGrep(f.store)
+	id := f.page("Slow", nil, 0).ID
+	f.content(id, strings.Repeat("a", 20_000)+"\n"+strings.Repeat("a", 1_000_000)+" needle\n", 1)
+	reads.exact[id] = true
+	deadline := time.Now().Add(time.Hour)
+	ctx, cancel := context.WithDeadline(f.asAlice(), deadline)
+	defer cancel()
+	clock := &stepClock{at: deadline.Add(-domain.GrepSoftMargin - 2*time.Second), step: 160 * time.Millisecond}
+	got, err := f.grepper(reads, func(d *app.GrepDeps) { d.Clock = clock }).Execute(ctx, f.eng, app.GrepRequest{Pattern: "needle"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found := grepFound(got); len(found) != 0 || !got.Incomplete || got.Walk.Stop != "deadline" || got.Walk.Lines != 1 ||
+		cursorOf(t, got.Next) != (domain.GrepCursor{K: "slow.md", N: 2}) {
+		t.Errorf("a slow machine, a microsecond a unit past the warm-up: %q, %+v; want a stop before the long line", found, got)
+	}
+}
+
 // TestGrepParseQueue checks the parses' queue (M9/P4 design 3.6.1,
 // review A2-m1 = C2-M1): 20 calls at once on 2 turns, the fake parse
 // counting the parses in flight, which wraps the parse itself: at most 2

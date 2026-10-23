@@ -119,6 +119,75 @@ type Reads interface {
 	Aliases(ctx context.Context, notebookID uuid.UUID, keys []string) ([]Alias, error)
 }
 
+// IndexReads are what index reads of the link index (M9/P4 design 3.9.3),
+// on the pool, each in one statement.
+type IndexReads interface {
+	// IndexPages is the pages of notebookID the index holds, each with
+	// the start of its type (IndexTypeChars characters); with typeIs, only
+	// those whose type is that string. What it reads of a type is its
+	// first domain.IndexStartChars characters and its length, whatever
+	// the type's length (S2 review B-I1). It reads a type whole only for a
+	// typeIs of IndexStartChars characters or more, and only a type that
+	// starts as typeIs does and has as many characters: at most 1,024, as
+	// typeIs has at most domain.MaxIndexType bytes (fix check F-m1).
+	IndexPages(ctx context.Context, notebookID uuid.UUID, typeIs *string) ([]IndexedPage, error)
+	// IndexItems is the types, summaries and first tags of the pages ids.
+	IndexItems(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]IndexFacts, error)
+	// InboundCounts is how many other pages link to each of ids, at most
+	// most; a page none links to is not among them.
+	InboundCounts(ctx context.Context, ids []uuid.UUID, most int) (map[uuid.UUID]int, error)
+	// TagPages is as GetTag reads it.
+	TagPages(ctx context.Context, notebookID uuid.UUID, key string) ([]uuid.UUID, error)
+}
+
+// IndexedPage is a page the index holds and the start of its type, the
+// first property whose key is "type" but for ASCII case when its value is
+// a string; Typed false for none.
+type IndexedPage struct {
+	ID        uuid.UUID
+	TypeStart string
+	Typed     bool
+}
+
+// IndexFacts is what index shows of a page's properties and tags: its type
+// and its summary, each the first of its key but for ASCII case when its
+// value is a string, nil for none, their first domain.IndexStartChars
+// characters, which tell a string MaxIndexString cuts from one whole; its
+// first tags by key, one more than domain.MaxIndexTags at most, each its
+// first 512 characters.
+type IndexFacts struct {
+	Type, Summary *string
+	Tags          []string
+}
+
+// NodePaths is what MCP's backlinks and index read of a notebook's paths,
+// on the pool: the page module's, which bootstrap wires (M9/P4 design
+// 3.9.1). It decides nothing: the use cases decided the notebook.
+type NodePaths interface {
+	// Check is the path's 422 at field, before any read, as page's tools
+	// check theirs: the segments' check (M9 design 4.8).
+	Check(field, path string) error
+	// FindPage is the id of the page at path in notebookID: page.not_found
+	// in page's tools' words for none, and for an attachment's path, which
+	// names no page; the use cases answer it as it is.
+	FindPage(ctx context.Context, notebookID uuid.UUID, field, path string) (uuid.UUID, error)
+	// Paths is the paths of ids' nodes alive in notebookID, by id, in one
+	// statement; a node deleted has none.
+	Paths(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]string, error)
+	// Pages is Paths of ids' pages, each with when its content last
+	// changed; an attachment and a page deleted have none.
+	Pages(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]PagePath, error)
+	// ChildPages is the pages alive of notebookID whose parent is parent,
+	// the root's for uuid.UUID{}, in no order.
+	ChildPages(ctx context.Context, notebookID, parent uuid.UUID) ([]uuid.UUID, error)
+}
+
+// PagePath is a page's path and its content's last change.
+type PagePath struct {
+	Path      string
+	ChangedAt time.Time
+}
+
 // Backlink is a page that links to another as the index has it: the
 // revision of the content its rows are of and the extractor they are by,
 // zero for no rows; how many of its links lead there, counted up to a

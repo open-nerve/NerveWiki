@@ -51,6 +51,8 @@ Tools
 	`patterns and line numbers.
 - Pages queued in bulk (a batch, an import, a background restore or revert, an upgrade) reach search and a keyed ` +
 	`grep once indexed: building says so.
+- backlinks: the pages linking to a page, with context.
+- index: pages by type, tag or parent page, with summary, tags and inbound link count.
 - write: a page's whole content. Without base_version it creates the page and its missing parent pages; with the ` +
 	`version you read, it replaces the content.
 - edit: replaces old_string, which must occur exactly once unless replace_all is set, with new_string, byte for byte.

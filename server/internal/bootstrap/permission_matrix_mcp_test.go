@@ -60,8 +60,11 @@ func (c mcpCell) String() string {
 
 // mcpRows are the rows, each module's: page's list, read (M9/P1 design
 // 3.13) and open_notebook (3.17.3), and its writes (M9/P2 design 3.13.2),
-// notebook's notebooks (3.17.2); S3's rows are 3.17.4's.
-func mcpRows() []mcpRow { return slices.Concat(pageMCPRows(), pageWriteMCPRows(), notebookMCPRows()) }
+// linking's backlinks and index (M9/P4 design 3.13), notebook's notebooks
+// (3.17.2); S3's rows are 3.17.4's.
+func mcpRows() []mcpRow {
+	return slices.Concat(pageMCPRows(), pageWriteMCPRows(), linkingMCPRows(), notebookMCPRows())
+}
 
 // mcpToolCodes are the codes each MCP tool's error may carry besides
 // internal_error (M9 design 4.7; M9/P1 S2 review C's table), beside the
@@ -76,8 +79,8 @@ func mcpRows() []mcpRow { return slices.Concat(pageMCPRows(), pageWriteMCPRows()
 // 3.13.1), its history's reads those of the REST reads they are
 // (3.17.1); P3's batch the union of the writes' and its own
 // page.batch_too_large (M9/P3 design 3.13.1); P4's grep and search those
-// of their arguments and notebook, grep's slot server_busy (M9/P4 design
-// 3.12).
+// of their arguments and notebook, grep's slot server_busy, backlinks'
+// and index's their path's page.not_found too (M9/P4 design 3.12).
 func mcpToolCodes() map[string][]string {
 	return map[string][]string{
 		"list":          {"bad_request", "validation_failed", "notebook.not_found", "page.not_found"},
@@ -99,6 +102,8 @@ func mcpToolCodes() map[string][]string {
 		"changeset": {"bad_request", "validation_failed", "notebook.not_found", "page.changeset_not_found"},
 		"grep":      {"bad_request", "validation_failed", "notebook.not_found", "server_busy"},
 		"search":    {"bad_request", "validation_failed", "notebook.not_found"},
+		"backlinks": {"bad_request", "validation_failed", "notebook.not_found", "page.not_found"},
+		"index":     {"bad_request", "validation_failed", "notebook.not_found", "page.not_found"},
 	}
 }
 
@@ -552,7 +557,9 @@ func TestThePermissionMatrixOverMCP(t *testing.T) {
 		t.Fatal("the tokens were not created: a -run of some cells must select tokens too, e.g. -run 'TestThePermissionMatrixOverMCP/(prepare|tokens|list)'")
 	}
 	gate := gateCells(t)
-	reads := startApp(t, d.config(t, pgtest.NewDatabaseFrom(t, d.url), nil), migrations.FS())
+	// The reads' cells run in parallel on one app, at production's deadlines,
+	// so that grep's cells answer their whole walk (productionDeadlines).
+	reads := startApp(t, d.config(t, pgtest.NewDatabaseFrom(t, d.url), productionDeadlines), migrations.FS())
 	apps := make(chan struct{}, matrixApps)
 	var checked, toCheck, aftered, toAfter atomic.Int64
 	t.Cleanup(func() {

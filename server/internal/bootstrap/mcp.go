@@ -41,10 +41,10 @@ const (
 )
 
 // mcpTools are the modules' MCP tools, each module's in turn (M9 design
-// 4.1): page's list, read, whose attachments asset reads, and
-// open_notebook; notebook's notebooks; linking's come with P4.
-func mcpTools(pg *page.Module, as *asset.Module, _ *linking.Module, nb *notebook.Module) []mcpserver.Tool {
-	return slices.Concat(pg.Tools(page.ToolDeps{Attachments: pageAttachments{as.AttachmentReads()}}), nb.Tools())
+// 4.1): page's, read's attachments asset's; linking's backlinks and index;
+// notebook's notebooks.
+func mcpTools(pg *page.Module, as *asset.Module, ln *linking.Module, nb *notebook.Module) []mcpserver.Tool {
+	return slices.Concat(pg.Tools(page.ToolDeps{Attachments: pageAttachments{as.AttachmentReads()}}), ln.Tools(), nb.Tools())
 }
 
 // pageAttachments is asset's AttachmentReads as page's read calls them

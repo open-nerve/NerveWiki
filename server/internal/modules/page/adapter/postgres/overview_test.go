@@ -152,3 +152,72 @@ func TestTheOverviewReadsUseTheirIndexes(t *testing.T) {
 		}
 	}
 }
+
+// index's child pages are read by an index of a parent's children (M9/P4
+// design 3.9.1; S2 review A-N1), before the statistics and after, custom
+// plans and generic: RootPageIDs with notebook_id = an index condition,
+// the notebook's range, which both its indexes lead with, and parent_id IS
+// NULL an index condition or the predicate of the index it reads (00012's,
+// or the roots' of 00042), never a read of the notebook's nodes whole, nor
+// of every notebook's roots (S2 fix check C2-m2); ChildPageIDs with
+// parent_id an index condition, by 00012's (notebook_id, parent_id) or
+// 00042's children's (parent_id, name_key), which the planner takes as the
+// data go: a parent of 2,000 children and one of none. Scans of whole
+// tables off, as the overview's.
+func TestTheChildPagesReadsUseTheirIndexes(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	f.exec(t, "ALTER TABLE nodes SET (autovacuum_enabled = false)")
+	ids := f.nodes(t, f.eng, "P", 2000)
+	f.exec(t, `INSERT INTO nodes (id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id,
+			created_at, updated_at)
+		SELECT uuidv7(), $1, $2, 'page', 'C' || i, 'c' || i, i, $3, $3, $4, $4 FROM generate_series(1, 2000) i`, f.eng, ids[0], f.alice, now())
+	for _, stage := range []string{"without statistics", "with statistics"} {
+		if stage == "with statistics" {
+			f.exec(t, "ANALYZE nodes")
+		}
+		for _, tt := range []struct {
+			name string
+			s    statement
+			root bool
+		}{
+			{"RootPageIDs", statementOf(t, func(q *gen.Queries) error {
+				_, err := q.RootPageIDs(ctx, f.eng)
+				return err
+			}), true},
+			{"ChildPageIDs of 2,000", statementOf(t, func(q *gen.Queries) error {
+				_, err := q.ChildPageIDs(ctx, gen.ChildPageIDsParams{NotebookID: f.eng, ParentID: &ids[0]})
+				return err
+			}), false},
+			{"ChildPageIDs of none", statementOf(t, func(q *gen.Queries) error {
+				_, err := q.ChildPageIDs(ctx, gen.ChildPageIDsParams{NotebookID: f.eng, ParentID: &ids[1]})
+				return err
+			}), false},
+		} {
+			for _, generic := range []bool{false, true} {
+				plan, raw := f.planTreeOf(t, tt.s)
+				if generic {
+					plan, raw = f.genericPlanTree(t, tt.s.sql, "enable_seqscan=off")
+				}
+				var reads []*planNode
+				for _, read := range plan.all(func(n *planNode) bool { return n.Relation == "nodes" }) {
+					reads = append(reads, read.all(func(n *planNode) bool { return n.Index != "" })...)
+				}
+				ok := len(reads) > 0 && len(plan.all(seqScan)) == 0
+				for _, r := range reads {
+					switch {
+					case tt.root:
+						ok = ok && strings.Contains(r.IndexCond, "notebook_id =") &&
+							strings.Contains(r.IndexCond+" "+f.predicateOf(t, r.Index), "parent_id IS NULL")
+					default:
+						ok = ok && strings.Contains(r.IndexCond, "parent_id =")
+					}
+				}
+				if !ok {
+					t.Errorf("%s, %s, generic %v: not read by an index of the notebook's root or the parent's children:\n%s", stage, tt.name,
+						generic, raw)
+				}
+			}
+		}
+	}
+}

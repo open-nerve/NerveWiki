@@ -346,6 +346,24 @@ func linkSteps(steps []page.LinkStep) []linking.Step {
 	return out
 }
 
+// linkingNodePaths is page's NodePaths as linking reads them (M9/P4
+// design 3.9.1): MCP's backlinks and index, page's words in its errors.
+type linkingNodePaths struct {
+	page.NodePaths
+}
+
+func (l linkingNodePaths) Pages(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]linking.PagePath, error) {
+	pages, err := l.NodePaths.Pages(ctx, notebookID, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[uuid.UUID]linking.PagePath, len(pages))
+	for id, p := range pages {
+		out[id] = linking.PagePath(p)
+	}
+	return out, nil
+}
+
 // linkEvents publishes linking's links events on the event stream (M6
 // design 4.8): of the notebook, its data the two sets of pages, each null
 // for too many, and whether the aliases changed (M8 Codex review R3).

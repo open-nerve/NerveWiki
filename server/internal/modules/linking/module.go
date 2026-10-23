@@ -8,7 +8,7 @@
 // where a reading view's links lead; NewLinkedPages, which pages an
 // export's links lead to; NewStatistics, the statistics an import updates;
 // NewAdmin, the rebuild of the indexes (nervewiki reindex); Actions for
-// the composition's checks.
+// the composition's checks; Tools, the module's MCP tools.
 package linking
 
 import (
@@ -18,10 +18,12 @@ import (
 
 	httpadapter "github.com/open-nerve/NerveWiki/server/internal/modules/linking/adapter/http"
 	markdownadapter "github.com/open-nerve/NerveWiki/server/internal/modules/linking/adapter/markdown"
+	mcpadapter "github.com/open-nerve/NerveWiki/server/internal/modules/linking/adapter/mcp"
 	postgresadapter "github.com/open-nerve/NerveWiki/server/internal/modules/linking/adapter/postgres"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/app"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/mcpserver"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown/obsidian"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
@@ -41,6 +43,11 @@ type (
 	AttachmentAddresses = app.AttachmentAddresses
 	// AttachmentAddress is an attachment's content's address.
 	AttachmentAddress = app.AttachmentAddress
+	// NodePaths reads a notebook's paths for MCP's backlinks and index:
+	// bootstrap adapts page.NewNodePaths to it (M9/P4 design 3.9.1).
+	NodePaths = app.NodePaths
+	// PagePath is a page's path and its content's last change.
+	PagePath = app.PagePath
 )
 
 // Deps are what the HTTP side, the index's reads, needs.
@@ -54,26 +61,46 @@ type Deps struct {
 	MaxDepth int
 	// Assets gives a property link to an attachment its content's address.
 	Assets AttachmentAddresses
+	// NodePaths finds and writes the paths MCP's tools name (M9/P4 design
+	// 3.9.1).
+	NodePaths NodePaths
 }
 
-// Module is the wired linking module's HTTP side.
+// Module is the wired linking module: its HTTP side and its MCP tools.
 type Module struct {
-	uc httpadapter.UseCases
+	uc    httpadapter.UseCases
+	tools mcpadapter.UseCases
+	paths bool // NodePaths wired: the tools need them
 }
 
-// New wires the index's reads (M6/P5) and a link's landing (M6/P6): they
-// read on the pool, each in its own statements, and parse nothing.
+// New wires the index's reads (M6/P5), a link's landing (M6/P6) and MCP's
+// backlinks and index (M9/P4): they read on the pool, each in its own
+// statements, and parse nothing. The HTTP side's ListBacklinks is
+// backlinks' too.
 func New(d Deps) *Module {
 	store := postgresadapter.New(d.Pool)
 	access := app.Access{Notebooks: d.Notebooks, Pages: d.Pages, Auth: d.Authorizer}
+	backlinks := app.ListBacklinks{Access: access, Reads: store, Contents: d.Contents, Paths: d.NodePaths}
 	return &Module{uc: httpadapter.UseCases{
-		ListBacklinks:     app.ListBacklinks{Access: access, Reads: store, Contents: d.Contents},
+		ListBacklinks:     backlinks,
 		GetPageProperties: app.GetPageProperties{Access: access, Reads: store, Assets: d.Assets},
 		ListTags:          app.ListTags{Access: access, Reads: store},
 		GetTag:            app.GetTag{Access: access, Reads: store, TagKey: markdownadapter.TagKey},
 		ListLinkTargets:   app.ListLinkTargets{Access: access, Reads: store},
 		GetLinkLanding:    app.GetLinkLanding{Access: access, Pages: d.Pages, Reads: store, MaxDepth: d.MaxDepth},
-	}}
+	}, tools: mcpadapter.UseCases{
+		Backlinks: backlinks,
+		Index:     app.ListIndex{Access: access, Reads: store, Paths: d.NodePaths, TagKey: markdownadapter.TagKey},
+	}, paths: d.NodePaths != nil}
+}
+
+// Tools are the module's MCP tools, backlinks and index (M9 design 4.9;
+// M9/P4 design 3.10.5); a module without Deps.NodePaths panics.
+func (m *Module) Tools() []mcpserver.Tool {
+	if !m.paths {
+		panic("linking: no node paths for the MCP tools")
+	}
+	return mcpadapter.Tools(m.tools)
 }
 
 // Register mounts the module's routes.
