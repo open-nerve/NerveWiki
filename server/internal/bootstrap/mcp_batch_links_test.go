@@ -7,6 +7,9 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
 )
 
 // The links of a batch through serve (M9/P3 design 3.14.3, 3.14.4): two
@@ -261,6 +264,148 @@ func TestTheLinksOfABatchAreThoseOfSeparateCalls(t *testing.T) {
 			noErrorLogged(t, logs)
 		})
 	}
+}
+
+// The links of a page whose content ops leave it the bytes it held before
+// the batch are those of separate calls (Codex review R1, D1): its last
+// content op decides them, whatever its bytes, as it decides a page's the
+// batch writes. Each case in two notebooks alike, the batch and the same
+// ops apart: each op's changed, the pages alive and where their links lead,
+// those in the trash, and both indexes their rebuilds. (1) A move, then an
+// edit back to the bytes before, of a wikilink and (2) of a Markdown link;
+// (3) a move, then a write of the bytes before on the token from before the
+// batch, which separate calls give the token the move left (a write of them
+// without one is page.title_taken in both:
+// TestTheWritesOfABatchAreJudgedAsSeparateCallsJudgeThem's 1b); (4) two
+// edits that cancel each other, after a creation that takes the page's
+// link and before a move of where it led, and (5) a write of the bytes the
+// page holds there, which changes nothing (M9/P3 review W3): the link
+// resolved anew by the creation, as separate calls' index has it, not the
+// index's from before the batch; (6) a move after the edit back that
+// reaches the page's other link, (7) the same with update_links false, and
+// (8) a move with update_links false before the move and the edit back;
+// (9) the page then deleted, another's link rewritten; (10) a link with
+// display text; (11) a link to an alias beside it.
+func TestTheLinksOfAPageABatchPutsBackAreThoseOfSeparateCalls(t *testing.T) {
+	tm, logs := newAcmeTeamLogged(t)
+	agent := tm.agent(t, "alice", "")
+	same := func(ops ...map[string]any) func(map[string]string, bool) []map[string]any {
+		return func(map[string]string, bool) []map[string]any { return ops }
+	}
+	const aliased = "---\naliases: [Roadmap]\n---\n"
+	created := []restPage{{"F", ""}, {"F/X", ""}, {"G", ""}, {"P", "[[X]] p"}}
+	for i, tt := range []struct {
+		name  string
+		pages []restPage
+		ops   func(ids map[string]string, apart bool) []map[string]any
+		want  map[string]string // the contents some pages hold after
+	}{
+		{"1 a move, then an edit back", []restPage{{"A", ""}, {"P", "[[A]] x"}},
+			same(opMove("A.md", "B.md"), opEdit("P.md", "[[B]]", "[[A]]")), map[string]string{"P.md": "[[A]] x"}},
+		{"2 of a Markdown link", []restPage{{"A", ""}, {"P", "[A](A.md) x"}},
+			same(opMove("A.md", "B.md"), opEdit("P.md", "[B](B.md)", "[A](A.md)")), map[string]string{"P.md": "[A](A.md) x"}},
+		{"3 a move, then a write back on the token from before", []restPage{{"A", ""}, {"P", "[[A]] x"}},
+			func(ids map[string]string, apart bool) []map[string]any {
+				read := 1 // the batch's base_version refers to the notebook before it
+				if apart {
+					read = 2 // the move's rewrite wrote P
+				}
+				return []map[string]any{opMove("A.md", "B.md"), opWriteOn("P.md", "[[A]] x", versionOf(ids["P"], read))}
+			}, map[string]string{"P.md": "[[A]] x"}},
+		{"4 two edits that cancel, between a creation and a move", created,
+			same(opWrite("X.md", "x"), opEdit("P.md", "p", "q"), opEdit("P.md", "q", "p"), opMove("F/X.md", "G/X.md")),
+			map[string]string{"P.md": "[[X]] p"}},
+		{"5 a write of the bytes there, between a creation and a move", created,
+			same(opWrite("X.md", "x"), opWrite("P.md", "[[X]] p"), opMove("F/X.md", "G/X.md")), map[string]string{"P.md": "[[X]] p"}},
+		{"6 a move after the edit back, of the page's other link", []restPage{{"A", ""}, {"C", ""}, {"P", "[[A]] [[C]] x"}},
+			same(opMove("A.md", "B.md"), opEdit("P.md", "[[B]]", "[[A]]"), opMove("C.md", "D.md")),
+			map[string]string{"P.md": "[[A]] [[D]] x"}},
+		{"7 that move with update_links false", []restPage{{"A", ""}, {"C", ""}, {"P", "[[A]] [[C]] x"}},
+			same(opMove("A.md", "B.md"), opEdit("P.md", "[[B]]", "[[A]]"), frozen(opMove("C.md", "D.md"))),
+			map[string]string{"P.md": "[[A]] [[C]] x"}},
+		{"8 a move with update_links false first", []restPage{{"A", ""}, {"C", ""}, {"P", "[[A]] [[C]] x"}},
+			same(frozen(opMove("C.md", "D.md")), opMove("A.md", "B.md"), opEdit("P.md", "[[B]]", "[[A]]")),
+			map[string]string{"P.md": "[[A]] [[C]] x"}},
+		{"9 the page edited back, then deleted", []restPage{{"A", ""}, {"P", "[[A]] x"}, {"Q", "[[A]] q"}},
+			same(opMove("A.md", "B.md"), opEdit("P.md", "[[B]]", "[[A]]"), opDelete("P.md")), map[string]string{"Q.md": "[[B]] q"}},
+		{"10 a link with display text", []restPage{{"A", ""}, {"P", "[[A|see]] x"}},
+			same(opMove("A.md", "B.md"), opEdit("P.md", "[[B|see]]", "[[A|see]]")), map[string]string{"P.md": "[[A|see]] x"}},
+		{"11 a link to an alias beside it", []restPage{{"A", ""}, {"R", aliased}, {"P", "[[A]] [[Roadmap]] x"}},
+			same(opMove("A.md", "B.md"), opMove("R.md", "S.md"), opEdit("P.md", "[[B]]", "[[A]]")),
+			map[string]string{"P.md": "[[A]] [[Roadmap]] x"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			batch, apart := tm.openNotebook(t, "alice", fmt.Sprint("Back ", i)), tm.openNotebook(t, "alice", fmt.Sprint("Back apart ", i))
+			got := agent.in(batch).batchDone(t, tt.ops(tm.seed(t, batch, tt.pages...), false)...)
+			ops := tt.ops(tm.seed(t, apart, tt.pages...), true)
+			changed, at, code := agent.in(apart).apart(t, ops...)
+			if code != "" {
+				t.Fatalf("apart, ops[%d] answered %s", at, code)
+			}
+			for k, r := range got.Results {
+				if ops[k]["op"] != "delete" && r.Changed != changed[k] { // delete alone answers no changed
+					t.Errorf("ops[%d] in the batch: changed %v, apart %v", k, r.Changed, changed[k])
+				}
+			}
+			b, a := tm.linkedState(t, batch), tm.linkedState(t, apart)
+			if !maps.Equal(b, a) {
+				t.Errorf("the batch left\n%sseparate calls\n%s", shown(b), shown(a))
+			}
+			for path, want := range tt.want {
+				if got := b[path].content; got != want {
+					t.Errorf("%s after the batch is %q, want %q", path, got, want)
+				}
+			}
+			if b, a := tm.trashed(t, batch), tm.trashed(t, apart); !slices.Equal(b, a) {
+				t.Errorf("the trash after the batch = %q, after separate calls = %q", b, a)
+			}
+			tm.checkRebuilt(t, batch)
+			tm.checkRebuilt(t, apart)
+			checkPages(t, tm.pool)
+			noErrorLogged(t, logs)
+		})
+	}
+}
+
+// The rewrite of a batch counts a page its content ops put back as one
+// page against its bound, as the page of the index it is in separate
+// calls, not as a page it wrote (Codex review R1): P, its link edited
+// back after A's rename and then reached by C's, with Q1 and Q2 of the
+// index, three pages within a bound of 3, rewritten; P edited once more,
+// written, counts WrittenRewriteWeight, page.batch_too_large at the first
+// rename saying so, nothing written. The app's bound is set as the
+// composition root gives it, which carries what the batch tells of P to
+// the rewrite.
+func TestTheRewriteOfABatchCountsAPagePutBackAsOne(t *testing.T) {
+	r := startReadsAppWith(t, publicOrigin, wiring{page: func(d *page.Deps) { d.MaxBatchRewrites = 3 }})
+	for _, p := range []restPage{{"A", ""}, {"C", ""}, {"P", "[[A]] [[C]] p"}, {"Q1", "[[C]] q1"}, {"Q2", "[[C]] q2"}} {
+		r.createPage(t, "", p.path, p.content)
+	}
+	state := func() []string {
+		return queryStrings(t, r.pool, `SELECT n.name || ': ' || c.content || ' ' || c.revision FROM nodes n
+			JOIN page_contents c ON c.node_id = n.id AND c.deleted_at IS NULL WHERE n.notebook_id = $1 AND n.deleted_at IS NULL
+			ORDER BY n.name`, r.notebook)
+	}
+	was := state()
+	past := fmt.Sprintf("4 pages whose links the batch's renames and moves would rewrite, each page the batch wrote counting %d, "+
+		"at most 3", domain.WrittenRewriteWeight)
+	a := r.batch(t, opMove("A.md", "B.md"), opEdit("P.md", "[[B]]", "[[A]]"), opEdit("P.md", "p", "p2"), opMove("C.md", "D.md"))
+	if refused := refusalOf(t, a); refused.Code != "page.batch_too_large" || refusedAt(refused) != 0 ||
+		!strings.Contains(refused.Message, past) || !slices.Equal(state(), was) {
+		t.Errorf("the batch writing P = %+v, want page.batch_too_large at ops[0] saying %q, nothing written", refused, past)
+	}
+	r.batchDone(t, opMove("A.md", "B.md"), opEdit("P.md", "[[B]]", "[[A]]"), opMove("C.md", "D.md"))
+	if got, want := state(), []string{"B:  1", "D:  1", "P: [[A]] [[D]] p 2", "Q1: [[D]] q1 2", "Q2: [[D]] q2 2"}; !slices.Equal(got, want) {
+		t.Errorf("after the batch putting P back: %q, want %q", got, want)
+	}
+	checkPages(t, r.pool)
+}
+
+// trashed is the notebook nb's pages in the trash, each "name: content".
+func (tm acmeTeam) trashed(t *testing.T, nb string) []string {
+	t.Helper()
+	return queryStrings(t, tm.pool, `SELECT n.name || ': ' || c.content FROM nodes n JOIN page_contents c ON c.node_id = n.id
+		WHERE n.notebook_id = $1 AND n.deleted_at IS NOT NULL ORDER BY 1`, nb)
 }
 
 // The ways a batch differs from separate calls, each as M9 design 4.11's

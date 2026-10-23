@@ -750,36 +750,46 @@ func TestABatchCountsItsRewritesFirst(t *testing.T) {
 // A page the batch wrote counts WrittenWeight against MaxPages (M9/P3
 // review B-M3: its rewrite costs more than an index page's), when its own
 // changes meet one of its links, and not at all when they meet none
-// (review B1-M2): with Q1 and Q2 of the index, W written, its own change
-// reaching its link, and V written, its own change reaching none of its,
-// a weight of 2 counts 4, past a bound of 3, the refusal saying the
-// weight; a bound of 4 writes the three, V left; a weight of 0 counts W
-// once.
+// (review B1-M2); one the batch's content ops left as it was, unwritten,
+// counts one, as the page of the index it is in separate calls (Codex
+// review R1): with Q1 and Q2 of the index, W written, its own change
+// reaching its link, V written, its own change reaching none of its, and
+// U unwritten, its own change reaching its link, a weight of 2 counts 5,
+// past a bound of 4, the refusal saying the weight; a bound of 5 writes
+// the four, V left; a weight of 0 counts W once. U alone with Q1 and Q2
+// counts 3, past a bound of 2, the refusal saying no weight.
 func TestABatchCountsAPageItWroteAsItsWeight(t *testing.T) {
-	batch := func(max, weight int) (*rewriting, *appender, error) {
-		w := newRewriting(t, "A", "Q1", "Q2", "W", "V", "Z")
+	batch := func(max, weight int, pages ...string) (*rewriting, *appender, error) {
+		w := newRewriting(t, "A", "Q1", "Q2", "W", "V", "U", "Z")
 		w.write("Q1", "[[A]]\n")
 		w.write("Q2", "[[A]]\n")
-		before, vBefore := w.before("w [[A]]\n", "A"), w.before("v [[Z]]\n", "Z")
-		facts, vFacts := w.wrote("W", "w [[A]]\n"), w.wrote("V", "v [[Z]]\n")
+		before, vBefore, uBefore := w.before("w [[A]]\n", "A"), w.before("v [[Z]]\n", "Z"), w.before("u [[A]]\n", "A")
+		facts, vFacts, uFacts := w.wrote("W", "w [[A]]\n"), w.wrote("V", "v [[Z]]\n"), w.wrote("U", "u [[A]]\n")
 		merged := w.rename("A", "B")
 		own := []domain.Change{w.renamed("B", "A", "B")}
-		u, err := w.batch(app.Moved{Changes: []domain.Change{merged}, MaxPages: max, WrittenWeight: weight,
-			Written: map[uuid.UUID]app.WrittenPage{w.id("W"): {Before: before, Changes: own, Facts: facts},
-				w.id("V"): {Before: vBefore, Changes: own, Facts: vFacts}}})
+		written := map[string]app.WrittenPage{"W": {Before: before, Changes: own, Facts: facts},
+			"V": {Before: vBefore, Changes: own, Facts: vFacts}, "U": {Before: uBefore, Changes: own, Facts: uFacts, Unwritten: true}}
+		m := app.Moved{Changes: []domain.Change{merged}, MaxPages: max, WrittenWeight: weight, Written: map[uuid.UUID]app.WrittenPage{}}
+		for _, page := range pages {
+			m.Written[w.id(page)] = written[page]
+		}
+		u, err := w.batch(m)
 		return w, u, err
 	}
-	_, _, err := batch(3, 2)
+	_, _, err := batch(4, 2, "W", "V", "U")
 	var many *app.TooManyRewrites
-	if !errors.As(err, &many) || many.Pages != 4 || many.Max != 3 || many.Weight != 2 {
-		t.Fatalf("a weight of 2, at most 3: %v %+v, want TooManyRewrites of 4 at most 3, weighing 2", err, many)
+	if !errors.As(err, &many) || many.Pages != 5 || many.Max != 4 || many.Weight != 2 {
+		t.Fatalf("a weight of 2, at most 4: %v %+v, want TooManyRewrites of 5 at most 4, weighing 2", err, many)
 	}
-	for _, c := range []struct{ max, weight int }{{4, 2}, {3, 0}} {
-		w, u, err := batch(c.max, c.weight)
+	for _, c := range []struct{ max, weight int }{{5, 2}, {4, 0}} {
+		w, u, err := batch(c.max, c.weight, "W", "V", "U")
 		if err != nil {
 			t.Fatalf("a weight of %d, at most %d: %v", c.weight, c.max, err)
 		}
-		w.written(u, map[string]string{"Q1": "[[B]]\n", "Q2": "[[B]]\n", "W": "w [[B]]\n"})
+		w.written(u, map[string]string{"Q1": "[[B]]\n", "Q2": "[[B]]\n", "W": "w [[B]]\n", "U": "u [[B]]\n"})
+	}
+	if _, _, err := batch(2, 2, "U"); !errors.As(err, &many) || many.Pages != 3 || many.Max != 2 || many.Weight != 0 {
+		t.Errorf("U alone unwritten, at most 2: %v %+v, want TooManyRewrites of 3 at most 2, weighing nothing", err, many)
 	}
 }
 

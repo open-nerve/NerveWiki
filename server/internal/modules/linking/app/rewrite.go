@@ -42,12 +42,13 @@ type rewritten struct {
 // case alone. It finds the links of the index the operation reaches that it
 // writes again (domain.Rewrites tells each), on the pages the index has with
 // the current extractor; and of a batch's (M9/P3 design 3.7.2), the links of
-// the pages it wrote that their own changes meet, which it follows from
-// their contents. It counts the pages it would write against m.MaxPages
-// before it reads the tree they are written on, refuses or parses any
-// (ErrTooManyRewrites; M9/P3 review B-I1), a page the batch wrote with such
-// a link as m.WrittenWeight (review B-M3), one with none not at all (review
-// B1-M2), their links against m.MaxLinks (review B1-M3: the unit's time
+// the pages its content ops decided that their own changes meet, which it
+// follows from their contents. It counts the pages it would write against
+// m.MaxPages before it reads the tree they are written on, refuses or
+// parses any (ErrTooManyRewrites; M9/P3 review B-I1), a page the batch
+// wrote with such a link as m.WrittenWeight (review B-M3), one it left as
+// it was as one (pagesCounted), one with none not at all (review B1-M2),
+// their links against m.MaxLinks (review B1-M3: the unit's time
 // follows the links), and their bytes against m.MaxBytes (fix round 5,
 // B2-M1: the facts each keeps of the budget to the unit's end follow its
 // bytes); refuses with linking.pages_locked when one of these
@@ -72,13 +73,8 @@ func (r Rewrite) Participate(ctx context.Context, m Moved, u Appender) error {
 		return err
 	}
 	written := met.counted(gone)
-	weight := max(m.WrittenWeight, 1)
-	if counted := len(index.counted(gone)) + weight*len(written); m.MaxPages > 0 && counted > m.MaxPages {
-		tooMany := &TooManyRewrites{Pages: counted, Max: m.MaxPages}
-		if len(written) > 0 && weight > 1 {
-			tooMany.Weight = weight
-		}
-		return tooMany
+	if counted, weight := pagesCounted(m, len(index.counted(gone)), written); m.MaxPages > 0 && counted > m.MaxPages {
+		return &TooManyRewrites{Pages: counted, Max: m.MaxPages, Weight: weight}
 	}
 	if linked := index.linked(gone) + met.linked(gone); m.MaxLinks > 0 && linked > m.MaxLinks {
 		return &TooManyRewrites{Links: linked, Max: m.MaxLinks}
@@ -137,6 +133,25 @@ func (r Rewrite) Participate(ctx context.Context, m Moved, u Appender) error {
 		}
 	}
 	return nil
+}
+
+// pagesCounted is the pages a rewrite writes, as m.MaxPages counts them:
+// indexed, those of the index, one each, and written, those of m.Written
+// it counts: a page the batch wrote m.WrittenWeight (M9/P3 review B-M3),
+// one it wrote no version of (WrittenPage.Unwritten) one, as the page of
+// the index it is in separate calls, its rewrite alone costing less than
+// that (Codex review R1). weight is m.WrittenWeight when a page counted it
+// and it is more than one, else 0.
+func pagesCounted(m Moved, indexed int, written []uuid.UUID) (counted, weight int) {
+	counted = indexed
+	for _, id := range written {
+		if m.Written[id].Unwritten || m.WrittenWeight <= 1 {
+			counted++
+			continue
+		}
+		counted, weight = counted+m.WrittenWeight, m.WrittenWeight
+	}
+	return counted, weight
 }
 
 // followedPages is what a rewrite follows of the index: the pages to

@@ -308,13 +308,15 @@ type Publisher interface {
 // it (M6/P4 design 4.1): its notebook, its unit's time, whether the unit
 // rewrites links, and what it changed. bootstrap converts the page module's
 // step, field by field. A batch's deferred rewrite has the rest (M9/P3
-// design 3.7): each page the batch wrote, alive after it, which is followed
-// from its own content and changes; the paths the moved nodes' former
-// parents had as the unit began; the nodes it deleted; the most pages the
-// rewrite may write, none for 0 (a unit of one operation), a page of Written
-// with a link its own changes meet counting WrittenWeight, 1 for 0 (M9/P3
-// review B-M3: its rewrite costs more than an index page's; B1-M2: one with
-// none counts nothing); the most links it may write, none for 0 (M9/P3
+// design 3.7): each page the batch's content ops decided, alive after it,
+// which is followed from its own content and changes, whether or not the
+// batch wrote a version of it (Codex review R1); the paths the moved nodes'
+// former parents had as the unit began; the nodes it deleted; the most
+// pages the rewrite may write, none for 0 (a unit of one operation), a page
+// of Written the batch wrote with a link its own changes meet counting
+// WrittenWeight, 1 for 0, one it did not write 1 (M9/P3 review B-M3: its
+// write and rewrite cost more than an index page's; B1-M2: one with none
+// counts nothing); the most links it may write, none for 0 (M9/P3
 // review B1-M3); the most bytes of the pages it writes, none for 0 (M9/P3
 // fix round 5, B2-M1: the facts each keeps of the parse budget follow
 // them); and the nodes an op of it renamed or moved with
@@ -343,21 +345,24 @@ type Moved struct {
 	CreatedAfter  map[uuid.UUID][]uuid.UUID
 }
 
-// WrittenPage is a page a batch wrote, as its deferred rewrite follows it
-// (M9/P3 design 3.7.2): where its links led at its last content op, on the
-// plan's tree then; its own changes, the renames and moves after that op,
-// merged node by node, of the nodes those ops moved alone; the facts of
-// its final content, which its links are taken from, unparsed; the nodes
-// those ops rename or move with update_links false, whose links it leaves
-// (Moved.Frozen); and, for each node they rename or move, the nodes they
-// create after the last that does, out of its subtree
-// (Moved.CreatedAfter).
+// WrittenPage is a page a batch's content ops decided, as its deferred
+// rewrite follows it (M9/P3 design 3.7.2): where its links led at its last
+// content op, on the plan's tree then; its own changes, the renames and
+// moves after that op, merged node by node, of the nodes those ops moved
+// alone; the facts of its final content, which its links are taken from,
+// unparsed; the nodes those ops rename or move with update_links false,
+// whose links it leaves (Moved.Frozen); for each node they rename or move,
+// the nodes they create after the last that does, out of its subtree
+// (Moved.CreatedAfter); and whether the batch wrote no version of it, its
+// final content the bytes it held before (Codex review R1), which weighs
+// as a page of the index's (Moved.WrittenWeight).
 type WrittenPage struct {
 	Before       LinksBefore
 	Changes      []domain.Change
 	Facts        domain.Facts
 	Frozen       []uuid.UUID
 	CreatedAfter map[uuid.UUID][]uuid.UUID
+	Unwritten    bool
 }
 
 // LinksBefore is where a page's links led at a moment of a batch's plan:

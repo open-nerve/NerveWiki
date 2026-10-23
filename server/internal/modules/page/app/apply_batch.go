@@ -207,11 +207,24 @@ type batchAttempt struct {
 	pages      map[uuid.UUID]domain.PlannedPage
 	facts      map[uuid.UUID]Facts
 	empty      Facts
-	befores    map[uuid.UUID]WrittenPage
-	reads      *TreeReads // the links' reads of the plan's tree made by the op readsMade, the last one asked for (readsAt)
-	readsMade  int
-	// The unit's: each op's node and path as it found them, the pages it
-	// wrote and their revisions then, and its counts and time.
+	// decided is the pages the batch's content ops decided: each page with
+	// a content op, alive after the batch, whatever bytes its last one left
+	// it, with where its links led at that op and its own changes since
+	// (linksBefore). The deferred rewrite follows these from their own
+	// contents, never from the index (M9 design 4.11), and the bytes alone
+	// do not tell them: an edit back to the bytes the page held before the
+	// batch is still the agent's last word on its links (Codex review R1,
+	// D1).
+	decided   map[uuid.UUID]WrittenPage
+	reads     *TreeReads // the links' reads of the plan's tree made by the op readsMade, the last one asked for (readsAt)
+	readsMade int
+	// The unit's: each op's node and path as it found them, and the
+	// revisions of the pages of the content ops then. wrote is the pages it
+	// wrote a version of, those it created and those whose final content
+	// differs from the bytes they held: a write that changes nothing is no
+	// write (M9/P3 review W3), so wrote, not decided, is what the log counts
+	// and what weighs as a page written in the rewrite's bound. Its counts
+	// and time.
 	done      []OpDone
 	revisions map[uuid.UUID]int
 	wrote     map[uuid.UUID]bool
@@ -432,15 +445,16 @@ func (a *batchAttempt) heldIn(ps domain.PlannedStep, held map[uuid.UUID]shared.L
 	return out
 }
 
-// linksBefore is, for each page whose content the batch writes and that a
-// later rename or move with update_links reaches, where its links lead at
-// its last content op, on the plan's tree after it, from its final
-// content's facts (M9/P3 design 3.4.5, 3.7.1): its deferred rewrite's
-// before; and its own changes, those renames and moves.
+// linksBefore is the pages the batch's content ops decided (decided): for
+// each page with a content op, alive after the batch, its own changes,
+// the renames and moves with update_links after its last content op, and,
+// when there are such, where its links lead at that op, on the plan's tree
+// after it, from its final content's facts (M9/P3 design 3.4.5, 3.7.1):
+// its deferred rewrite's before.
 func (a *batchAttempt) linksBefore(ctx context.Context) error {
 	last := len(a.steps) - 1
 	gone := a.plan.TreeAt(last).Gone()
-	a.befores = make(map[uuid.UUID]WrittenPage, len(a.pages))
+	a.decided = make(map[uuid.UUID]WrittenPage, len(a.pages))
 	for id, pg := range a.pages {
 		if slices.Contains(gone, id) {
 			continue // a page a later op deleted: no rewrite follows it
@@ -456,7 +470,7 @@ func (a *batchAttempt) linksBefore(ctx context.Context) error {
 			}
 			w.Before = before
 		}
-		a.befores[id] = w
+		a.decided[id] = w
 	}
 	return nil
 }
@@ -717,14 +731,14 @@ func (a *batchAttempt) delete(ctx context.Context, u *Unit, i int) error {
 }
 
 // participate has the unit's participants follow its renames and moves
-// once (M9/P3 design 3.7.1): the pages the unit wrote, alive after it,
-// with their own changes and links before; the former parents' paths; the
-// nodes it deleted, and those it created after each rename or move (M9/P3
-// review B1-M1); the renames and moves of the nodes it froze, for the paths
-// before alone (review B1-N1); its bounds, of pages, of links (review
-// B1-M3) and of their bytes (fix round 5, B2-M1).
-// None follows a batch without a rename or a
-// move with update_links. The facts' shares the batch holds are given back
+// once (M9/P3 design 3.7.1): the pages its content ops decided, with their
+// own changes and links before, those it wrote no version of told
+// (Unwritten); the former parents' paths; the nodes it deleted, and those
+// it created after each rename or move (M9/P3 review B1-M1); the renames
+// and moves of the nodes it froze, for the paths before alone (review
+// B1-N1); its bounds, of pages, of links (review B1-M3) and of their bytes
+// (fix round 5, B2-M1). None follows a batch without a rename or a move
+// with update_links. The facts' shares the batch holds are given back
 // first, the facts kept: the rewrite's read backs must find the budget. Its
 // errors are at the first such op.
 func (a *batchAttempt) participate(ctx context.Context, u *Unit, parents map[uuid.UUID][]domain.PathStep) error {
@@ -739,13 +753,11 @@ func (a *batchAttempt) participate(ctx context.Context, u *Unit, parents map[uui
 	if first < 0 {
 		return nil
 	}
-	final := a.plan.TreeAt(len(a.steps) - 1)
-	gone := final.Gone()
-	written := map[uuid.UUID]WrittenPage{}
-	for id := range a.wrote {
-		if !slices.Contains(gone, id) {
-			written[id] = a.befores[id]
-		}
+	gone := a.plan.TreeAt(len(a.steps) - 1).Gone()
+	written := make(map[uuid.UUID]WrittenPage, len(a.decided))
+	for id, w := range a.decided {
+		w.Unwritten = !a.wrote[id]
+		written[id] = w
 	}
 	a.session.Release()
 	n, err := u.Participate(ctx, BatchRewrite{Written: written, Parents: parents, Gone: gone, MaxPages: a.b.maxRewrites,

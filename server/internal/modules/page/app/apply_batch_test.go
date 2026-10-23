@@ -307,12 +307,14 @@ func TestABatchWritesAPageOnceAtItsFirstContentOp(t *testing.T) {
 // A batch's participants follow it once, after all its ops (M9/P3 design
 // 3.7.1): its renames and moves merged node by node, of no revision, the
 // nodes a move carried as they are, a node created and then moved from
-// where its creation put it, none a move kept the links of; each page it
-// wrote, alive after it, with its own changes, those after its last
-// content op of the nodes they rename or move alone, its links then and
-// its final content's facts; the former parents' paths, the nodes gone,
-// the nodes it froze with their moves merged (M9/P3 review B1-N1), the
-// bounds, of pages, links and bytes, and the first op that moves.
+// where its creation put it, none a move kept the links of; each page its
+// content ops decided, alive after it, with its own changes, those after
+// its last content op of the nodes they rename or move alone, its links
+// then and its final content's facts, one whose edits put back the bytes
+// it held among them, told unwritten (Codex review R1), one edited and
+// then deleted not; the former parents' paths, the nodes gone, the nodes
+// it froze with their moves merged (M9/P3 review B1-N1), the bounds, of
+// pages, links and bytes, and the first op that moves.
 func TestABatchsParticipantsFollowItOnceItsOpsDone(t *testing.T) {
 	f := newFixture()
 	a, folder, g, h := f.page("A", nil, 1), f.page("F", nil, 2), f.page("G", nil, 3), f.page("H", nil, 4)
@@ -322,11 +324,15 @@ func TestABatchsParticipantsFollowItOnceItsOpsDone(t *testing.T) {
 	d := f.page("D", nil, 6)
 	w := f.page("W", nil, 7)
 	f.content(w.ID, "see [[A]] and [[Y]]", 2)
+	back, edited := f.page("U", nil, 8), f.page("Z", nil, 9)
+	f.content(back.ID, "u [[A]]", 2)
+	f.content(edited.ID, "z", 2)
 	p := &participant{recorder: f.rec}
 	f.partakers = []app.Participant{p}
 	links := &fakeLinks{recorder: f.rec}
 	out, err := f.applyBatch(links, writeOp("N.md", "n"), moveOp("N.md", "G/N2.md"), editOp("W.md", "see", "look"),
-		moveOp("A.md", "B.md"), moveOp("F.md", "G/F.md"), moveOp("E/Q.md", "Q.md"), keepOp("H.md", "H2.md"), deleteOp("D.md", false))
+		editOp("U.md", "u", "v"), editOp("U.md", "v", "u"), editOp("Z.md", "z", "y"), moveOp("A.md", "B.md"), moveOp("F.md", "G/F.md"),
+		moveOp("E/Q.md", "Q.md"), keepOp("H.md", "H2.md"), deleteOp("D.md", false), deleteOp("Z.md", false))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -351,24 +357,29 @@ func TestABatchsParticipantsFollowItOnceItsOpsDone(t *testing.T) {
 	b := s.Batch
 	if b.MaxPages != domain.MaxBatchRewrites || b.WrittenWeight != domain.WrittenRewriteWeight || b.MaxLinks != domain.MaxBatchRewriteLinks ||
 		b.MaxBytes != domain.MaxBatchRewriteBytes || b.FirstMove != 1 ||
-		!slices.Equal(b.Gone, []uuid.UUID{d.ID}) || len(b.Parents) != 1 || len(b.Parents[e.ID]) != 1 || b.Parents[e.ID][0].Name != "E" ||
+		!slices.Equal(b.Gone, []uuid.UUID{d.ID, edited.ID}) || len(b.Parents) != 1 || len(b.Parents[e.ID]) != 1 ||
+		b.Parents[e.ID][0].Name != "E" ||
 		!slices.Equal(b.Frozen, []uuid.UUID{h.ID}) || len(b.FrozenMoves) != 1 || b.FrozenMoves[0].NodeID != h.ID ||
 		b.FrozenMoves[0].Before.Name != "H" || b.FrozenMoves[0].After.Name != "H2" {
 		t.Errorf("the batch's rewrite = max %d, weight %d, links %d, bytes %d, first %d, gone %v, parents %v, frozen %v, %+v",
 			b.MaxPages, b.WrittenWeight, b.MaxLinks, b.MaxBytes, b.FirstMove, b.Gone, b.Parents, b.Frozen, b.FrozenMoves)
 	}
-	if len(b.Written) != 2 {
-		t.Fatalf("the pages written = %v, want W and N", b.Written)
+	if len(b.Written) != 3 || b.Written[w.ID].Unwritten || b.Written[n].Unwritten || !b.Written[back.ID].Unwritten {
+		t.Fatalf("the pages decided = %v, want W and N written, U not; Z, deleted, not among them", b.Written)
 	}
-	written := b.Written[w.ID]
-	var own []uuid.UUID
-	for _, c := range written.Changes {
-		own = append(own, c.NodeID)
-	}
-	if !slices.Equal(own, []uuid.UUID{a.ID, folder.ID, q.ID}) || written.Facts != "look [[A]] and [[Y]]" ||
-		len(written.Before.Leads) != 2 || written.Before.Targets[a.ID] == nil || !slices.Equal(written.Frozen, []uuid.UUID{h.ID}) {
-		t.Errorf("W's rewrite = changes of %v, facts %v, before %+v, frozen %v; want A, F and Q, not X under F nor H, H frozen", own,
-			written.Facts, written.Before, written.Frozen)
+	for _, id := range []uuid.UUID{w.ID, back.ID} {
+		written := b.Written[id]
+		var own []uuid.UUID
+		for _, c := range written.Changes {
+			own = append(own, c.NodeID)
+		}
+		facts := map[uuid.UUID]app.Facts{w.ID: "look [[A]] and [[Y]]", back.ID: "u [[A]]"}[id]
+		leads := map[uuid.UUID]int{w.ID: 2, back.ID: 1}[id]
+		if !slices.Equal(own, []uuid.UUID{a.ID, folder.ID, q.ID}) || written.Facts != facts || len(written.Before.Leads) != leads ||
+			written.Before.Targets[a.ID] == nil || !slices.Equal(written.Frozen, []uuid.UUID{h.ID}) {
+			t.Errorf("the rewrite of %s = changes of %v, facts %v, before %+v, frozen %v; want A, F and Q, not X under F nor H, "+
+				"its last content, H frozen", f.store.nodes[id].Name, own, written.Facts, written.Before, written.Frozen)
+		}
 	}
 	if created := b.Written[n]; len(created.Changes) != 4 || created.Facts != "n" || !slices.Equal(created.Frozen, []uuid.UUID{h.ID}) {
 		t.Errorf("N's rewrite = %+v, want the moves after its creation, its facts, H frozen", created)
