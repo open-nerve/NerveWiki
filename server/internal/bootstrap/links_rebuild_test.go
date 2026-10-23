@@ -132,6 +132,53 @@ func TestTheIndexIsItsRebuild(t *testing.T) {
 	}
 }
 
+// The check of a page put back in TestTheIndexIsItsRebuild reads only the
+// links the rename leaves leading elsewhere (M9 Codex review fix round 2,
+// A2-M1; fix check A's shapes): of P's [[note]] [[nick]], note's alias
+// nick beside its title, note renamed dup, the first, which dangles,
+// rightly, not the second, which leads to note still; of P's [[Note.md]],
+// note renamed Note.md, none: the link leads to note by its other key, and
+// the write of P's bytes changes nothing. A link by the title alone, the
+// third, is checked. Each batch done, its index its rebuild.
+func TestThePutBackCheckOfTheIndexPropertyReadsTheLinksTheRenameLeaves(t *testing.T) {
+	tm, logs := newAcmeTeamLogged(t)
+	for i, tt := range []struct {
+		name    string
+		pages   []restPage
+		renamed string
+		at      []int // the links checked
+		backs   int   // the put-backs whose write changed the page
+	}{
+		{"an alias beside the title", []restPage{{"note", "---\naliases: [nick]\n---\n"}, {"P", "[[note]] [[nick]] x"}}, "dup", []int{0}, 1},
+		{"a .md link the rename keeps", []restPage{{"note", ""}, {"P", "[[Note.md]] x"}}, "Note.md", nil, 0},
+		{"the title alone", []restPage{{"note", ""}, {"P", "[[note]] x"}}, "dup", []int{0}, 1},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			nb := tm.openNotebook(t, "alice", fmt.Sprint("Put back ", i))
+			ids := tm.seed(t, nb, tt.pages...)
+			b := &batcher{w: writer{t: t, tm: tm, nb: nb, rnd: rand.New(rand.NewPCG(1, 13))}, m: tm.agent(t, "alice", nb), logs: logs}
+			r := b.load(t)
+			note := ids["note"]
+			if !b.putBack(t, r, ids["P"], note, func() {
+				from := r.path(note)
+				r.nodes[note].name = tt.renamed
+				r.relocated(note, from)
+			}) {
+				t.Fatal("no put-back made")
+			}
+			if !slices.Equal(r.backs[0].at, tt.at) {
+				t.Errorf("the links checked %v, want %v", r.backs[0].at, tt.at)
+			}
+			var seen batchSeen
+			what := b.run(t, r, &seen)
+			if seen.backs != tt.backs {
+				t.Errorf("after %s, %d pages put back, want %d", what, seen.backs, tt.backs)
+			}
+			tm.checkRebuilt(t, nb)
+		})
+	}
+}
+
 // checkRebuilt fails t unless the notebook nb's index is what a rebuild of
 // it makes (M6 design 9: an interleaving ends with the index its pages
 // make; M6 closeout A-M5).
