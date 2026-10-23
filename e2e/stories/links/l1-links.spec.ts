@@ -1,6 +1,8 @@
 import { expectIndexedLinks } from "../../fixtures/assert/links";
+import { expectChangesetOf } from "../../fixtures/assert/page";
 import { countAnswers, expectQuietPage, watchPage } from "../../fixtures/browser";
 import { holdStream } from "../../fixtures/events";
+import { mcpClient, readPage, resultOf } from "../../fixtures/mcp";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, getView, readContent, renameNode } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -12,7 +14,14 @@ import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 // and to its anchor's heading; one to a page not there shows so, with no
 // address, until the page is created elsewhere (the links event); a link
 // leads to its page still once the page is renamed elsewhere, written
-// again.
+// again. An agent writes such a page, and its move writes the links again
+// (M9/P5 design 3.4).
+
+/** A write's or a move's answer, as much as L1 reads of the tool's structuredContent. */
+interface Written {
+  node_id: string;
+  changeset_id: string | null;
+}
 
 test("L1 (API): a reading view's links to pages carry the page each leads to and its anchor's heading, or that it leads nowhere, and no address; one leads to its page once it is created, and once it is renamed, written again", async ({
   api,
@@ -71,6 +80,58 @@ test("L1 (API): a reading view's links to pages carry the page each leads to and
     { kind: "wikilink", property: null, target: "Missing", resolved: missing.id },
     { kind: "link", property: null, target: "Renamed.md", resolved: target.id },
   ]);
+});
+
+test("L1 (MCP): an agent writes a page whose wikilink, anchor link and Markdown link lead to pages, one to a page not there; the index has them, the missing one resolving once the agent writes it; a move renaming the page writes the links again, each still leading to it", async ({
+  api,
+  db,
+  nervewiki,
+}, testInfo) => {
+  const { adminId, pat, workspace } = await newTeam(api, testInfo);
+  const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
+  const agent = await mcpClient(nervewiki.baseURL, pat, { notebook: notebook.id });
+  const target = resultOf<Written>(
+    await agent.call("write", { path: "Target.md", content: "# Part Two\n" }),
+    "write Target"
+  );
+  const source = resultOf<Written>(
+    await agent.call("write", { path: "Source.md", content: "[[Target#Part Two|see]] [[Missing]] [md](Target.md)\n" }),
+    "write Source"
+  );
+  await expectIndexedLinks(db, source.node_id, [
+    { kind: "wikilink", property: null, target: "Target", resolved: target.node_id },
+    { kind: "wikilink", property: null, target: "Missing", resolved: null },
+    { kind: "link", property: null, target: "Target.md", resolved: target.node_id },
+  ]);
+
+  // The page written, the link leads to it.
+  const missing = resultOf<Written>(
+    await agent.call("write", { path: "Missing.md", content: "# Missing\n" }),
+    "write Missing"
+  );
+  await expectIndexedLinks(db, source.node_id, [
+    { kind: "wikilink", property: null, target: "Target", resolved: target.node_id },
+    { kind: "wikilink", property: null, target: "Missing", resolved: missing.node_id },
+    { kind: "link", property: null, target: "Target.md", resolved: target.node_id },
+  ]);
+
+  // The page renamed by a move, the links to it are written again, anchor and alias kept, in the move's changeset.
+  const moved = resultOf<Written>(await agent.call("move", { from: "Target.md", to: "Renamed.md" }), "rename Target");
+  expect(moved.node_id).toBe(target.node_id);
+  const rewritten = "[[Renamed#Part Two|see]] [[Missing]] [md](Renamed.md)\n";
+  expect((await readPage(agent, { path: "Source.md" })).text).toBe(rewritten);
+  expect((await readContent(api, pat, source.node_id)).content).toBe(rewritten);
+  await expectIndexedLinks(db, source.node_id, [
+    { kind: "wikilink", property: null, target: "Renamed", resolved: target.node_id },
+    { kind: "wikilink", property: null, target: "Missing", resolved: missing.node_id },
+    { kind: "link", property: null, target: "Renamed.md", resolved: target.node_id },
+  ]);
+  await expectChangesetOf(db, String(moved.changeset_id), {
+    client: "mcp:e2e-agent",
+    byId: adminId,
+    items: [target.node_id],
+    versions: [source.node_id],
+  });
 });
 
 test("L1 (page): a link to a page opens it in the app, or in a new tab with a modifier, and goes to its anchor's heading, a Markdown link and the page's full address too; one to a page not there is no link", async ({

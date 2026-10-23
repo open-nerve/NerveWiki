@@ -1,8 +1,11 @@
 import { accountIdOf } from "../../fixtures/assert/identity";
+import { expectAliveSessions } from "../../fixtures/assert/collab";
 import { expectIndexedLinks } from "../../fixtures/assert/links";
+import { expectChangesetOf } from "../../fixtures/assert/page";
 import { displayNameOf, emailFor } from "../../fixtures/auth";
 import { failedToLoad } from "../../fixtures/browser";
 import { joinAs } from "../../fixtures/invitations";
+import { errorOf, mcpClient, resultOf } from "../../fixtures/mcp";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, endSession, getPage, listNodes, openSession, readContent, renameNode } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -21,7 +24,17 @@ import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 // rename writes the links to the page on the other pages again, and each
 // leads to it still; one whose rewrite reaches a page someone edits is
 // refused whole, the dialog, or the tree for a drag, naming the page and
-// its editor, and nothing changes until the editor is done.
+// its editor, and nothing changes until the editor is done. An agent's
+// move is refused alike, its own editor's too; one that leaves the links
+// as they are passes a page being edited (M9/P5 design 3.4).
+
+/** A move's answer, as the tool's structuredContent has it. */
+interface Moved {
+  path: string;
+  node_id: string;
+  changed: boolean;
+  changeset_id: string | null;
+}
 
 /** What linking.pages_locked says above the list of the pages it names. */
 const writesAgain =
@@ -57,6 +70,78 @@ test("L3 (API): a rename writes the links to the page again, each as the renamer
     { kind: "wikilink", property: null, target: "Renamed", resolved: target.id },
     { kind: "link", property: null, target: "Renamed.md", resolved: target.id },
   ]);
+});
+
+test("L3 (MCP): an agent's move whose rewrite reaches a page another edits is linking.pages_locked naming the page and its editor, the editor's own agent's too, and moves nothing; once the editor is done, the editor's agent renames it and the links follow, as the mover; a move without its links passes a page being edited and leaves it as it is", async ({
+  api,
+  db,
+  nervewiki,
+}, testInfo) => {
+  const { adminId, pat: admin, workspace } = await newTeam(api, testInfo);
+  const aEmail = emailFor(testInfo, "a");
+  const a = await joinAs(api, admin, workspace.slug, aEmail, "member");
+  const aId = await accountIdOf(db, aEmail);
+  const notebook = await createNotebook(api, admin, workspace.slug, "Plans", "editor");
+  const target = await createPage(api, admin, notebook.id, "Target");
+  const source = await createPage(api, admin, notebook.id, "Source", null, "[[Target]] and [md](Target.md)\n");
+  const session = await openSession(api, a, source.id);
+  const adminAgent = await mcpClient(nervewiki.baseURL, admin, { notebook: notebook.id, client: "admin-agent" });
+  const aAgent = await mcpClient(nervewiki.baseURL, a, { notebook: notebook.id, client: "a-agent" });
+
+  // The lock names the page with its path and its editor; to the editor's own agent, as its caller's.
+  const lock = { page_id: source.id, path: "Source.md", user_id: aId, display_name: displayNameOf(aEmail), you: false };
+  const refused = errorOf(await adminAgent.call("move", { from: "Target.md", to: "Renamed.md" }), "the admin's move");
+  expect([refused.code, refused.locks, refused.locks_count]).toEqual(["linking.pages_locked", [lock], 1]);
+  expect(refused.message).toContain(`by ${displayNameOf(aEmail)}`);
+  expect(refused.message).toContain("update_links false");
+  const own = errorOf(await aAgent.call("move", { from: "Target.md", to: "Renamed.md" }), "A's agent's move");
+  expect([own.code, own.locks, own.locks_count]).toEqual(["linking.pages_locked", [{ ...lock, you: true }], 1]);
+  expect(own.message).toContain("by you, in a browser");
+  expect((await listNodes(api, admin, notebook.id)).map((node) => node.name).toSorted()).toEqual(["Source", "Target"]);
+  expect((await readContent(api, admin, source.id)).revision).toBe(1);
+  await expectAliveSessions(db, source.id, [session.id]);
+
+  // The editor done, its agent's move renames Target, and the links follow it, written as the mover.
+  expect((await endSession(api, a, session.id)).response.status).toBe(204);
+  const renamed = resultOf<Moved>(
+    await aAgent.call("move", { from: "Target.md", to: "Renamed.md" }),
+    "A's agent's move"
+  );
+  expect([renamed.path, renamed.node_id, renamed.changed]).toEqual(["Renamed.md", target.id, true]);
+  const written = await readContent(api, admin, source.id);
+  expect([written.content, written.revision]).toEqual(["[[Renamed]] and [md](Renamed.md)\n", 2]);
+  expect((await getPage(api, admin, source.id)).data?.content_updated_by).toBe(aId);
+  await expectIndexedLinks(db, source.id, [
+    { kind: "wikilink", property: null, target: "Renamed", resolved: target.id },
+    { kind: "link", property: null, target: "Renamed.md", resolved: target.id },
+  ]);
+  await expectChangesetOf(db, String(renamed.changeset_id), {
+    client: "mcp:a-agent",
+    byId: aId,
+    items: [target.id],
+    versions: [source.id],
+  });
+
+  // A move that leaves the links as they are reaches no lock: it passes Source being edited again, writing no
+  // version of it; renamed, its links lead nowhere.
+  const again = await openSession(api, a, source.id);
+  const kept = resultOf<Moved>(
+    await adminAgent.call("move", { from: "Renamed.md", to: "Renamed later.md", update_links: false }),
+    "the admin's move without the links"
+  );
+  expect([kept.path, kept.node_id, kept.changed]).toEqual(["Renamed later.md", target.id, true]);
+  await expectChangesetOf(db, String(kept.changeset_id), {
+    client: "mcp:admin-agent",
+    byId: adminId,
+    items: [target.id],
+    versions: [],
+  });
+  expect(await readContent(api, admin, source.id)).toEqual(written);
+  await expectIndexedLinks(db, source.id, [
+    { kind: "wikilink", property: null, target: "Renamed", resolved: null },
+    { kind: "link", property: null, target: "Renamed.md", resolved: null },
+  ]);
+  await expectAliveSessions(db, source.id, [again.id]);
 });
 
 test("L3 (page): a rename in the dialog, and a drag, whose links' page another edits say who edits which page and change nothing; once the editor is done, the rename goes through and the link leads to the page", async ({
