@@ -125,11 +125,16 @@ func titled(renamed bool, more ...restPage) []restPage {
 // a shorter path: the second's rewrite writes the link back where it led,
 // on a page the batch did not write (K4r: renames, the index's spread) and
 // on one it wrote before (K4tw) (M9/P3 fix check 2, B2-N2: the window of a
-// node is from its last rename or move, not its first).
+// node is from its last rename or move, not its first); (25) a link of a
+// page written, ambiguous before a rename of its folder or of the other
+// and ambiguous still after it, left as it is, and so when the page is
+// written again between two renames: the composition root carries the
+// lead's ambiguity both ways (M9/P3 design review A-M3; M9 closeout A-F1).
 func TestTheLinksOfABatchAreThoseOfSeparateCalls(t *testing.T) {
 	tm, logs := newAcmeTeamLogged(t)
 	agent := tm.agent(t, "alice", "")
 	const aliased = "---\naliases: [Roadmap]\n---\n"
+	notes := []restPage{{"A", ""}, {"A/Notes", ""}, {"B", ""}, {"B/Notes", ""}, {"P", "p"}, {"Q", "[[Notes]] q"}}
 	for i, tt := range []struct {
 		name  string
 		pages []restPage
@@ -224,6 +229,16 @@ func TestTheLinksOfABatchAreThoseOfSeparateCalls(t *testing.T) {
 			[]map[string]any{opEdit("P.md", "p", "p [[N]]"), opMove("Top/F.md", "Top/E.md"), opWrite("Top/E/N.md", "n"),
 				opMove("Top/E.md", "G/E.md")},
 			map[string]string{"P.md": "p [[A/B/C/N]]"}, true},
+		{"25 an ambiguous link written, then its folder renamed", notes,
+			[]map[string]any{opEdit("P.md", "p", "p [[Notes]]"), opMove("A.md", "C.md")},
+			map[string]string{"P.md": "p [[Notes]]", "Q.md": "[[Notes]] q"}, true},
+		{"25 written, then the other folder renamed", notes,
+			[]map[string]any{opEdit("P.md", "p", "p [[Notes]]"), opMove("B.md", "D.md")},
+			map[string]string{"P.md": "p [[Notes]]", "Q.md": "[[Notes]] q"}, true},
+		{"25 written, renamed, written again", notes,
+			[]map[string]any{opEdit("P.md", "p", "p [[Notes]]"), opMove("A.md", "C.md"), opEdit("P.md", "p [[Notes]]", "p [[Notes]] more"),
+				opMove("B.md", "D.md")},
+			map[string]string{"P.md": "p [[Notes]] more", "Q.md": "[[Notes]] q"}, true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			batch, apart := tm.twins(t, i, tt.pages)
