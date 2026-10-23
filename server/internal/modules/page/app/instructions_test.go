@@ -109,7 +109,10 @@ func TestTheInstructionsFollowTheAgentsPage(t *testing.T) {
 // written between the point lookup and its read is cached as the later
 // revision's, never under the lookup's, so that the next lookup, of the
 // later revision, finds it; a page deleted between them is none, cached
-// for nothing (M9/P1 design 3.17.4, M9 design 4.15).
+// for nothing (M9/P1 design 3.17.4, M9 design 4.15). Its store is a fake,
+// with no database for 4.15's end checks:
+// TestTheInstructionsFollowTheAGENTSPage, through serve, ends with them
+// (M9 closeout A-D6).
 func TestTheInstructionsCacheByTheRevisionRead(t *testing.T) {
 	f := newFixture()
 	ins := f.instructionsOf()

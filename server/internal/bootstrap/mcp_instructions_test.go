@@ -73,7 +73,10 @@ func cutNote(title string) string {
 // empty without it (the built-in ones), a cut at 32 KiB with its note. At
 // each, open_notebook gives the handshake's instructions, and where they
 // come from; of a page of quotes, which it cuts further, as many lines as
-// fit with the root's reserve.
+// fit with the root's reserve. The pages', the links' and the search's
+// invariants hold after (checkPages), as at the end of each of 4.15's
+// interleavings, this one's an AGENTS page replaced between two
+// handshakes (M9 closeout A-D6).
 func TestTheInstructionsFollowTheAGENTSPage(t *testing.T) {
 	r := startReadsApp(t, "")
 	builtIn := r.instructionsAt(t, atNotebook(r.notebook))
@@ -174,6 +177,7 @@ func TestTheInstructionsFollowTheAGENTSPage(t *testing.T) {
 		t.Errorf("a page of quotes: open_notebook's instructions are %d bytes as a member, a line more %d, their budget %d",
 			mcpserver.MemberBytes(got), mcpserver.MemberBytes(longer), budget)
 	}
+	checkPages(t, r.pool)
 }
 
 // skeletonOf is open_notebook's answer o without its instructions and its
