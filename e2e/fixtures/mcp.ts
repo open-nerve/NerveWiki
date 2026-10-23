@@ -1,3 +1,4 @@
+import type { Page } from "@nervewiki/api-client";
 import { expect } from "@playwright/test";
 
 import { bearer } from "./auth";
@@ -173,6 +174,25 @@ export function errorOf(answer: McpAnswer, what: string): McpError {
   const { error } = answer.structured as { error: McpError };
   expect(answer.text, `${what}: the text is the error's message`).toEqual([error.message]);
   return error;
+}
+
+/**
+ * The page a write or an edit wrote, as its answer tells it (M9/P5 design 3.1): its node, the revision its version
+ * names, and the changeset's time, which is the content's; what expectContentWritten reads of a page REST answers. A
+ * version not of the node, or no time (the call wrote nothing), fails rather than give NaN or "null"; what names the
+ * call.
+ */
+export function writtenOf(
+  answer: { node_id: string; version: string; at: string | null },
+  what: string
+): Pick<Page, "id" | "revision" | "content_updated_at"> {
+  const revision = answer.version.startsWith(`${answer.node_id}:`)
+    ? answer.version.slice(answer.node_id.length + 1)
+    : "";
+  if (!/^[1-9][0-9]*$/.test(revision) || answer.at === null) {
+    throw new Error(`${what} answered ${JSON.stringify(answer)}: want a version of its node and the time it wrote`);
+  }
+  return { id: answer.node_id, revision: Number(revision), content_updated_at: answer.at };
 }
 
 /** A page's read (M9/P1 design 3.11.1): its metadata, read's first block, and its slice, the second. */

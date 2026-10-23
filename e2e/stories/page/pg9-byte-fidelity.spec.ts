@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { expectContentWritten } from "../../fixtures/assert/page";
+import { mcpClient, readPage, resultOf, writtenOf } from "../../fixtures/mcp";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, readContent, writeContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -11,10 +12,28 @@ import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 // break, byte order mark, blank or composition is touched on the way
 // through the API, nor by the editor beyond what is typed (M4/P6 design
 // 3.3): a line's break stays as written, a new one is the content's main
-// one.
+// one. An agent's write and read keep them too (M9/P5 design 3.2).
 
 const bom = String.fromCodePoint(0xfeff);
 const acute = String.fromCodePoint(0x0301);
+
+/** The contents written: CRLF, CR alone, mixed line breaks, a byte order mark, trailing blanks, NFD. */
+const contents = [
+  "# Title\r\n\r\nLine one\r\nLine two\r\n",
+  "a\rb\r\rc\r",
+  "a\r\nb\nc\rd",
+  `${bom}# Title\n`,
+  "line   \nnext\t\t\n   \n",
+  `Cafe${acute} and more\n`,
+];
+
+/** A write's answer, as the tool's structuredContent has it. */
+interface Written {
+  node_id: string;
+  version: string;
+  changed: boolean;
+  at: string | null;
+}
 
 test("PG9 (API): CRLF, CR alone, mixed line breaks, a byte order mark, trailing blanks and NFD come back byte for byte, their hash the SHA-256 of those bytes", async ({
   api,
@@ -22,14 +41,6 @@ test("PG9 (API): CRLF, CR alone, mixed line breaks, a byte order mark, trailing 
 }, testInfo) => {
   const { adminId, pat, workspace } = await newTeam(api, testInfo);
   const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
-  const contents = [
-    "# Title\r\n\r\nLine one\r\nLine two\r\n",
-    "a\rb\r\rc\r",
-    "a\r\nb\nc\rd",
-    `${bom}# Title\n`,
-    "line   \nnext\t\t\n   \n",
-    `Cafe${acute} and more\n`,
-  ];
   await Promise.all(
     contents.map(async (content, i) => {
       const page = await createPage(api, pat, notebook.id, `Page ${i}`);
@@ -42,6 +53,38 @@ test("PG9 (API): CRLF, CR alone, mixed line breaks, a byte order mark, trailing 
       expect(read.content_hash).toBe(createHash("sha256").update(content, "utf8").digest("hex"));
     })
   );
+});
+
+test("PG9 (MCP): CRLF, CR alone, mixed line breaks, a byte order mark, trailing blanks and NFD written by an agent come back from read byte for byte, its lines ended by LF alone, stored with the SHA-256 of those bytes", async ({
+  api,
+  db,
+  nervewiki,
+}, testInfo) => {
+  const { adminId, pat, workspace } = await newTeam(api, testInfo);
+  const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
+  const agent = await mcpClient(nervewiki.baseURL, pat, { notebook: notebook.id });
+  const lines = await Promise.all(
+    contents.map(async (content, i) => {
+      const page = await createPage(api, pat, notebook.id, `Page ${i}`);
+      const path = `Page ${i}.md`;
+      const written = resultOf<Written>(
+        await agent.call("write", { path, content, base_version: `${page.id}:1` }),
+        `write ${path}`
+      );
+      expect([written.changed, written.version]).toEqual([true, `${page.id}:2`]);
+      await expectContentWritten(db, writtenOf(written, `write ${path}`), content, adminId);
+      const read = await readPage(agent, { path });
+      expect(Buffer.from(read.text, "utf8").equals(Buffer.from(content, "utf8")), JSON.stringify(read.text)).toBe(true);
+      expect([read.meta.byte_size, read.meta.version]).toEqual([Buffer.byteLength(content), written.version]);
+      // read gives no hash: REST's read of the same page does.
+      expect((await readContent(api, pat, page.id)).content_hash).toBe(
+        createHash("sha256").update(content, "utf8").digest("hex")
+      );
+      return read.meta.total_lines;
+    })
+  );
+  // A line ends with LF alone: a CR alone stays in its line.
+  expect(lines).toEqual([4, 1, 3, 1, 3, 1]);
 });
 
 /**

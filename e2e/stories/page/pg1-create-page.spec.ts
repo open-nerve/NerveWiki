@@ -4,6 +4,7 @@ import { accountIdOf } from "../../fixtures/assert/identity";
 import { expectNewPage } from "../../fixtures/assert/page";
 import { emailFor } from "../../fixtures/auth";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
+import { errorOf, mcpClient, resultOf } from "../../fixtures/mcp";
 import { addedNotebookMember, addNotebookMember } from "../../fixtures/notebook-members";
 import { notebookHeading, notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook } from "../../fixtures/notebooks";
@@ -20,7 +21,19 @@ import {
 } from "../../fixtures/wiki-pages";
 import { newTeam } from "../../fixtures/workspaces";
 
-// PG1, creating a page (M4 design 3; M4/P5 design 3.7 for the page).
+// PG1, creating a page (M4 design 3; M4/P5 design 3.7 for the page); an
+// agent's write of a new page (M9/P5 design 3.2).
+
+/** A write's answer, as the tool's structuredContent has it. */
+interface Written {
+  path: string;
+  node_id: string;
+  version: string;
+  changed: boolean;
+  created: { path: string; node_id: string }[];
+  created_count: number;
+  at: string | null;
+}
 
 test("PG1 (API): an editor creates pages at the root and under a page; a reader cannot; a title a file could not take and a parent of no page are refused", async ({
   api,
@@ -72,6 +85,76 @@ test("PG1 (API): an editor creates pages at the root and under a page; a reader 
     422,
     [["parent_id", "not_allowed"]],
   ]);
+  const [pages] = await db.query<{ n: number }>("SELECT count(*)::int AS n FROM nodes WHERE notebook_id = $1", [
+    notebook.id,
+  ]);
+  expect(pages?.n).toBe(2);
+});
+
+test("PG1 (MCP): an editor's agent writes a page at the root and one under it, each new in a changeset of its client; a reader's agent cannot; a path segment a file could not take, or with blanks at its ends, is refused on path", async ({
+  api,
+  db,
+  nervewiki,
+}, testInfo) => {
+  const { pat: adminPat, workspace } = await newTeam(api, testInfo);
+  const editorEmail = emailFor(testInfo, "editor");
+  const editorPat = await joinAs(api, adminPat, workspace.slug, editorEmail, "member");
+  const readerPat = await joinAs(api, adminPat, workspace.slug, emailFor(testInfo, "reader"), "member");
+  const editorId = await accountIdOf(db, editorEmail);
+  // Open to the workspace to read: the editor writes by an explicit membership.
+  const notebook = await createNotebook(api, adminPat, workspace.slug, "Plans", "viewer");
+  expect((await addNotebookMember(api, adminPat, notebook.id, editorId, "editor")).response.status).toBe(201);
+  const editor = await mcpClient(nervewiki.baseURL, editorPat, { notebook: notebook.id });
+  const reader = await mcpClient(nervewiki.baseURL, readerPat, { notebook: notebook.id });
+
+  // Each page as the answer tells it, its title the test's: an empty content has no lower bound.
+  const root = resultOf<Written>(await editor.call("write", { path: "Roadmap.md", content: "" }), "write Roadmap");
+  expect([root.path, root.created.map((c) => c.path), root.created_count, root.version, root.changed]).toEqual([
+    "Roadmap.md",
+    ["Roadmap.md"],
+    1,
+    `${root.node_id}:1`,
+    true,
+  ]);
+  await expectNewPage(
+    db,
+    { id: root.node_id, notebook_id: notebook.id, parent_id: null, name: "Roadmap", created_at: String(root.at) },
+    editorId,
+    "mcp:e2e-agent"
+  );
+  const child = resultOf<Written>(await editor.call("write", { path: "Roadmap/Q4.md", content: "" }), "write Q4");
+  expect(child.created.map((c) => c.path)).toEqual(["Roadmap/Q4.md"]);
+  await expectNewPage(
+    db,
+    { id: child.node_id, notebook_id: notebook.id, parent_id: root.node_id, name: "Q4", created_at: String(child.at) },
+    editorId,
+    "mcp:e2e-agent"
+  );
+
+  // The reader's agent cannot; segments a file could not take, or with
+  // blanks at their ends, which a path keeps as written, are refused;
+  // nothing is added.
+  expect(errorOf(await reader.call("write", { path: "Reader's.md", content: "" }), "the reader's write").code).toBe(
+    "forbidden"
+  );
+  const invalid = [
+    ["Roadmap/  .md", "required", "segment 2 is required"],
+    [
+      "Roadmap/a:b.md",
+      "invalid_format",
+      String.raw`segment 2 must not contain / \ : * ? " < > | # ^ [ ] or control characters`,
+    ],
+    ["Roadmap/con.txt.md", "not_allowed", "segment 2 is a name Windows reserves"],
+    ["  Roadmap  .md", "invalid_format", "segment 1 must not start or end with white space"],
+  ] as const;
+  const answers = await Promise.all(invalid.map(([path]) => editor.call("write", { path, content: "" })));
+  expect(
+    answers.map((answer, i) => {
+      const refused = errorOf(answer, `write ${invalid[i]?.[0]}`);
+      const fields = refused.fields as { field: string; code: string; message: string }[];
+      return [refused.code, fields.map((f) => [f.field, f.code, f.message])];
+    })
+  ).toEqual(invalid.map(([, code, message]) => ["validation_failed", [["path", code, message]]]));
   const [pages] = await db.query<{ n: number }>("SELECT count(*)::int AS n FROM nodes WHERE notebook_id = $1", [
     notebook.id,
   ]);

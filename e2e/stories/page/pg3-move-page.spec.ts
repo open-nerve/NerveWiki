@@ -1,10 +1,11 @@
 import type { ApiClient, Page } from "@nervewiki/api-client";
 
 import { accountIdOf } from "../../fixtures/assert/identity";
-import { expectMoved, placeOf } from "../../fixtures/assert/page";
+import { expectChangesetOf, expectMoved, placeOf } from "../../fixtures/assert/page";
 import { emailFor } from "../../fixtures/auth";
 import { answerTo, eventStreamPath, failedToLoad } from "../../fixtures/browser";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
+import { errorOf, mcpClient, resultOf } from "../../fixtures/mcp";
 import { notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, getPage, listNodes, moveNode, postMove } from "../../fixtures/pages";
@@ -12,7 +13,17 @@ import { expect, test } from "../../fixtures/test";
 import { choosePageAction, dragPage, moveDialog, movePageWith, optionsOf, treeTitles } from "../../fixtures/wiki-pages";
 import { newTeam } from "../../fixtures/workspaces";
 
-// PG3, moving and ordering (M4 design 3; M4/P5 design 3.7 for the page).
+// PG3, moving and ordering (M4 design 3; M4/P5 design 3.7 for the page);
+// an agent's move by its path, which takes no place among the siblings
+// (M9/P5 design 3.2).
+
+/** A move's answer, as the tool's structuredContent has it. */
+interface Moved {
+  path: string;
+  node_id: string;
+  changed: boolean;
+  changeset_id: string | null;
+}
 
 /** Creates count pages in the notebook with credential, each under the one before, under parentId, and returns them from the top. */
 async function chain(
@@ -82,6 +93,65 @@ test("PG3 (API): a member orders pages among their siblings and moves them under
   const deepest = await moveNode(api, editorPat, a.id, { parent_id: levels[6]?.id ?? null });
   expect((await getPage(api, pat, a2.id)).data?.ancestors.length).toBe(9);
   await expectMoved(db, deepest, aAtRoot, editorId);
+});
+
+test("PG3 (MCP): an editor's agent moves a page under another and back to the root, each time last among its new siblings; a move under itself is page.cycle, one past ten levels page.too_deep", async ({
+  api,
+  db,
+  nervewiki,
+}, testInfo) => {
+  const { pat, workspace } = await newTeam(api, testInfo);
+  const editorEmail = emailFor(testInfo, "editor");
+  const editorPat = await joinAs(api, pat, workspace.slug, editorEmail, "member");
+  const editorId = await accountIdOf(db, editorEmail);
+  // The admin creates the pages; a member edits by the workspace access.
+  const notebook = await createNotebook(api, pat, workspace.slug, "Plans", "editor");
+  const a = await createPage(api, pat, notebook.id, "A");
+  const a1 = await createPage(api, pat, notebook.id, "A1", a.id);
+  const a2 = await createPage(api, pat, notebook.id, "A2", a1.id);
+  const b = await createPage(api, pat, notebook.id, "B");
+  await createPage(api, pat, notebook.id, "C");
+  const childrenOf = async (parentId: string | null) =>
+    (await listNodes(api, pat, notebook.id)).filter((n) => n.parent_id === parentId).map((n) => n.name);
+  const agent = await mcpClient(nervewiki.baseURL, editorPat, { notebook: notebook.id });
+
+  // Under another parent, and back to the root: last among the new siblings each time, as move takes no place.
+  const bAtRoot = await placeOf(db, b.id);
+  const under = resultOf<Moved>(await agent.call("move", { from: "B.md", to: "A/B.md" }), "move B under A");
+  expect([under.path, under.node_id, under.changed]).toEqual(["A/B.md", b.id, true]);
+  await expectMoved(db, { id: under.node_id, parent_id: a.id }, bAtRoot, editorId);
+  // expectMoved reads no client: the changeset is the agent's.
+  await expectChangesetOf(db, String(under.changeset_id), {
+    client: "mcp:e2e-agent",
+    byId: editorId,
+    items: [b.id],
+    versions: [],
+  });
+  expect((await getPage(api, pat, b.id)).data?.ancestors).toEqual([{ id: a.id, name: "A" }]);
+  expect(await childrenOf(a.id)).toEqual(["A1", "B"]);
+  const bUnderA = await placeOf(db, b.id);
+  const back = resultOf<Moved>(await agent.call("move", { from: "A/B.md", to: "B.md" }), "move B to the root");
+  await expectMoved(db, { id: back.node_id, parent_id: null }, bUnderA, editorId);
+  expect(await childrenOf(null)).toEqual(["A", "C", "B"]);
+
+  // Under itself or its subtree; past ten levels with its subtree.
+  const cycles = ["A/A.md", "A/A1/A2/A.md"];
+  const refused = await Promise.all(cycles.map((to) => agent.call("move", { from: "A.md", to })));
+  expect(refused.map((answer, i) => [errorOf(answer, `move A to ${cycles[i]}`).code])).toEqual([
+    ["page.cycle"],
+    ["page.cycle"],
+  ]);
+  expect((await getPage(api, pat, a.id)).data?.parent_id).toBeNull();
+  const levels = await chain(api, pat, notebook.id, 8);
+  // A's path under the first count levels, from Level 8 down.
+  const aUnder = (count: number) => [...levels.slice(0, count).map((level) => level.name), "A.md"].join("/");
+  const tooDeep = errorOf(await agent.call("move", { from: "A.md", to: aUnder(8) }), "move A under Level 1");
+  expect(tooDeep.code).toBe("page.too_deep");
+  expect((await getPage(api, pat, a.id)).data?.parent_id).toBeNull();
+  const aAtRoot = await placeOf(db, a.id);
+  const deepest = resultOf<Moved>(await agent.call("move", { from: "A.md", to: aUnder(7) }), "move A under Level 2");
+  expect((await getPage(api, pat, a2.id)).data?.ancestors.length).toBe(9);
+  await expectMoved(db, { id: deepest.node_id, parent_id: levels[6]?.id ?? null }, aAtRoot, editorId);
 });
 
 test("PG3 (page): an editor drags a page before another and into another, after an open one going into it, and moves one with Move to; a drop into its own subtree sends nothing, the dialog offers no parent the tree forbids, and a move past ten levels that the tree did not foresee stays in the dialog", async ({
