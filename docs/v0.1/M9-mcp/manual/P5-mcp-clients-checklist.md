@@ -15,7 +15,7 @@
 
 整份清单不改 `~/.claude.json` 里的 MCP 服务、`~/.claude/settings.json`、`~/.codex/` 与任何项目里已有的 `.mcp.json`：
 
-- **Claude Code**：一律在 `$CC`（"准备"第 5 步的临时目录）里以 `claude --mcp-config "$CC/<文件>" --strict-mcp-config` 启动：只用这个文件里的服务（照文档；插件带来的服务与 claude.ai 的连接器是否也不起未核对，A1 看 `/mcp` 的列表）。不在别的目录里执行 `claude mcp add`（本地与用户的范围写 `~/.claude.json`）；第 A3 步只在 `$CC` 里以 `--scope project` 写那个目录自己的 `.mcp.json`，前后各数一次 `~/.claude.json` 里的 `"nervewiki"` 核对它。不执行 `claude mcp list`：它会连一遍你配置过的每个服务。Claude Code 照常在 `~/.claude.json` 里记下它进过的目录（信任与历史），在 `~/.claude/projects/` 下记每个会话（那些目录怎样起名未核对）：那是它自己的状态，不是 MCP 的配置，可以留着（"做完"的第 4 步）。审批的几步在只给它们的临时目录 `$CCD` 里做（第 D 部分的开头），用 `$CCD/.claude/settings.json`（项目的设置），不改你自己的设置。**开始之前记下**你自己的 `~/.claude/settings.json` 里的 `permissions.defaultMode` 与提到 `mcp__` 的放行或拒绝的规则：它们会改变第 D 部分的结果。
+- **Claude Code**：一律在 `$CC`（"准备"第 5 步的临时目录）里以 `claude --mcp-config "$CC/<文件>" --strict-mcp-config` 启动：只用这个文件里的服务（照文档；插件带来的服务与 claude.ai 的连接器是否也不起未核对，A1 看 `/mcp` 的列表）。不在别的目录里执行 `claude mcp add`（本地与用户的范围写 `~/.claude.json`）；第 A3 步只在 `$CC` 里以 `--scope project` 写那个目录自己的 `.mcp.json`，前后各数一次 `~/.claude.json` 里的 `"nervewiki"` 核对它。不执行 `claude mcp list`：它会连一遍你配置过的每个服务。Claude Code 照常在 `~/.claude.json` 里记下它进过的目录（信任与历史），在 `~/.claude/projects/` 下记每个会话（那些目录怎样起名未核对）：那是它自己的状态，不是 MCP 的配置，可以留着（"做完"的第 4 步）。审批的几步各在只给这一步的临时目录里做（第 D 部分的开头），D2 的放行写在它那个目录的 `.claude/settings.json`（项目的设置），不改你自己的设置。**开始之前记下**你自己的 `~/.claude/settings.json` 里的 `permissions.defaultMode` 与提到 `mcp__` 的放行或拒绝的规则：它们会改变第 D 部分的结果。
 - **Codex**：一律在一个临时的 `CODEX_HOME` 里、从一个空的临时目录 `$CX` 启动（"准备"第 6 步）：Codex 只读 `$CODEX_HOME/config.toml`，你的 `~/.codex/config.toml` 里的别的 MCP 服务不会起（照文档；`codex -c mcp_servers.x.url=…` 是叠在 `~/.codex/config.toml` 之上的，那样它们照样起）；从空的目录启动，它不会拿到某个项目自己的配置，也不会在你的代码里读写文件。登录，按这个次序选：
   1. **用 API 密钥**（推荐）：`printenv OPENAI_API_KEY | codex login --with-api-key`（照文档），凭证写在临时的 `CODEX_HOME` 里，与你自己的登录无关。
   2. **在临时的 `CODEX_HOME` 里另登录一次**：`codex login`（ChatGPT 的账户）。做完之后在一个没有设 `CODEX_HOME` 的终端里启动你自己的 Codex，记下它是否照常可用；不能用时在那个终端里（你自己的 `~/.codex`）`codex login` 再登录一次。第二次登录会不会让第一次的失效未核对。
@@ -147,28 +147,34 @@
 
 每一步记下：调用之前问没问、问的文字、选了"不再问"之后是否不再问。D1–D3 只对 Claude Code，D4–D8 只对 Codex，都在笔记本入口。
 
-Claude Code 的 D1–D3 在一个只给它们的新的临时目录 `$CCD` 里做，免得 A、C 里答过的"不再问"与 D2 的放行带进别的步：
+Claude Code 的 D1、D2、D3 各在一个只给这一步的新的临时目录里做，每个有它自己的一份 `mcp.json`：A、C 与前一步里答过的"不再问"和 D2 的放行都留在别的目录里，不论 Claude Code 把它们记在哪里（未核对）。D1 之前一次建好三个：
 
 ```sh
-export CCD=$(mktemp -d)
-cp "$CC/mcp.json" "$CCD/mcp.json"
-cd "$CCD"
+export CCD1=$(mktemp -d) CCD2=$(mktemp -d) CCD3=$(mktemp -d)
+for d in "$CCD1" "$CCD2" "$CCD3"; do cp "$CC/mcp.json" "$d/mcp.json"; done
 ```
 
-（A1 改用了 `mcp-literal.json` 的，复制它：`cp "$CC/mcp-literal.json" "$CCD/mcp.json" && chmod 600 "$CCD/mcp.json"`。）D1–D3 都在 `$CCD` 里以 `claude --mcp-config "$CCD/mcp.json" --strict-mcp-config` 启动（D3 加 `-p`）。Claude Code 把"不再问"记在哪里未核对：D2、D3 之前各执行一次 `rm -rf "${CCD:?}/.claude"`，清掉前一步在这个目录里留下的设置；每一步若有该问而没问的工具（像是从前面带过来的放行），记下它，并记下 `ls -a "$CCD/.claude"` 与其中各个文件的内容（没有这个目录时也记下）。
+（A1 改用了 `mcp-literal.json` 的，复制它：`for d in "$CCD1" "$CCD2" "$CCD3"; do cp "$CC/mcp-literal.json" "$d/mcp.json" && chmod 600 "$d/mcp.json"; done`。）每一步在它自己的目录里启动 Claude Code（下表写着命令）。每一步若有该问而没问的工具（像是从前面带过来的放行），记下它，并记下这一步的目录里 `ls -a .claude` 与其中各个文件的内容（没有这个目录时也记下）。
 
 每类注解只试一个或两个工具：读的工具的注解都一样（`readOnlyHint`，`api/mcp/tools.json`），所以 `read` 与 `grep`（P4 问的四个读的工具之一）；写的分两类，`write`、`move`、`delete` 是 `destructiveHint` 加 `idempotentHint`，`edit`、`batch` 只有 `destructiveHint`，所以 `write` 与 `batch`。Claude Code 只试默认的许可模式（"不碰你自己的客户端配置"记下的 `defaultMode` 不是 `default` 时，D1–D3 的结果照它读）。
 
 | # | 操作 | 预期 | 记下的 |
 |---|---|---|---|
-| D1 | Claude Code 在 `$CCD` 里启动，不放行任何工具，依次让它 `read`、`grep`、`write`、`batch` 一次：`read` 问时选"不再问"，别的问时只答这一次；之后再让它 `read` 一次 | 记下四个工具各问不问，与选了"不再问"之后的第二次 `read` 问不问 | |
-| D2 | `rm -rf "${CCD:?}/.claude"`；在 `$CCD/.claude/settings.json` 写 README 的 `permissions.allow` 样例，重启，同 D1（这一次每个问的都只答这一次） | 读的工具不问，`write`、`batch` 照常问（照文档） | |
-| D3 | `rm -rf "${CCD:?}/.claude"`（D2 的放行不带进来）；在 `$CCD` 里 `claude -p "读 Guide.md 的第 3 行" --mcp-config "$CCD/mcp.json" --strict-mcp-config`；再加 `--allowedTools mcp__nervewiki__read`；再以 `-p "在 Guide 下写一页 X"`（不放行 `write`） | 不放行时记下它怎样（拒绝、报错）；放行 `read` 时答出那一行；不放行的 `write` 不调用（照文档） | |
+| D1 | `cd "$CCD1"`，以 `claude --mcp-config "$CCD1/mcp.json" --strict-mcp-config` 启动，不放行任何工具，依次让它 `read`、`grep`、`write`、`batch` 一次：`read` 问时选"不再问"，别的问时只答这一次；之后再让它 `read` 一次 | 记下四个工具各问不问，与选了"不再问"之后的第二次 `read` 问不问 | |
+| D2 | `cd "$CCD2"`；`mkdir "$CCD2/.claude"`，在 `$CCD2/.claude/settings.json` 写 README 的 `permissions.allow` 样例；以 `claude --mcp-config "$CCD2/mcp.json" --strict-mcp-config` 启动，同 D1（这一次每个问的都只答这一次） | 读的工具不问，`write`、`batch` 照常问（照文档） | |
+| D3 | `cd "$CCD3"`（这里没有 D2 的放行）；`claude -p "读 Guide.md 的第 3 行" --mcp-config "$CCD3/mcp.json" --strict-mcp-config`；再加 `--allowedTools mcp__nervewiki__read`；再以 `-p "在 Guide 下写一页 X"`（不放行 `write`） | 不放行时记下它怎样（拒绝、报错）；放行 `read` 时答出那一行；不放行的 `write` 不调用（照文档） | |
 | D4 | Codex 的 `default_tools_approval_mode = "prompt"`（README 的样例），依次 `read`、`grep`、`write`、`batch` | 记下各问不问 | |
 | D5 | 退出 Codex，把 `$CODEX_HOME/config.toml` 的 `default_tools_approval_mode` 改成 `"writes"`，再启动，同 D4 | 记下 | |
 | D6 | 同样改成 `"auto"`，同 D4 | 记下 | |
 | D7 | 同样改成 `"approve"`，同 D4 | 都不问（M0/P1） | |
 | D8 | 改回 `"prompt"`，`codex exec "读 Guide.md 的第 3 行"`；再以 `"approve"` 执行一次 | `prompt` 时要审批的调用被拒（M0/P1），记下它的输出；`approve` 时答出那一行 | |
+
+D3 做完之后，在 Claude Code 的终端里回到 `$CC`（之后的 Claude Code 的步都在那里启动），删掉 D 的三个目录：
+
+```sh
+cd "$CC"
+rm -rf "${CCD1:?}" "${CCD2:?}" "${CCD3:?}"
+```
 
 ### E：HTTP 的答复与提示
 
@@ -285,7 +291,7 @@ done
 2. 在网页上撤销 `seed`、`claude-checklist`、`codex-checklist` 与 E3 新建的 PAT（服务还开着）。
 3. 停掉 `make run`、`throttle.mjs`（若还在）与代理的容器：`docker stop nw-nginx nw-caddy`。
 4. **Claude Code 的会话**：Claude Code 在 `~/.claude/projects/` 下为这份清单的临时目录（`$CC` 与 D 部分的几个）记了会话。它们可以留着，不碍事。这份清单不给删除它们的命令：想删掉的，先核对目录的名字确是这份清单的临时目录的，再自己手动删掉那一个目录。Claude Code 怎样给这些目录起名未核对。
-5. 删掉临时目录：`$CC`（含几份 `*-literal.json`，若有）、`$CCD`、`$CX`、`$CODEX_HOME`、`$KEYS` 与放 `seed.mjs`、`body.json`、`big.bin` 的那一个；关掉设过令牌的终端（或 `unset NERVEWIKI_CLAUDE_TOKEN NERVEWIKI_CODEX_TOKEN SEED_TOKEN TOKEN EMAIL PW`）。
+5. 删掉临时目录：`$CC`（含几份 `*-literal.json`，若有）、`$CX`、`$CODEX_HOME`、`$KEYS` 与放 `seed.mjs`、`body.json`、`big.bin` 的那一个；关掉设过令牌的终端（或 `unset NERVEWIKI_CLAUDE_TOKEN NERVEWIKI_CODEX_TOKEN SEED_TOKEN TOKEN EMAIL PW`）。
 
 ## 不在这份清单里的
 
