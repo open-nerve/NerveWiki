@@ -24,7 +24,7 @@
 
 ## 准备
 
-1. 起一个实例：`make dev-db`、`make build`。dev 不配置签名私钥时每次启动换一把，重启之后浏览器都要重新登录，所以在服务的终端里先生成一把、整份清单都用它（README"签名私钥"）：
+1. 起一个实例：`make dev-db`、`make build`。dev 不配置签名私钥时每次启动换一把，重启之后浏览器都要重新登录，所以在服务的终端里先生成一把、整份清单都用它（README"签名私钥"；要 OpenSSL 3，例如 Homebrew 的 `openssl@3`：macOS 自带的 `/usr/bin/openssl` 是 LibreSSL，没有 ed25519，先 `openssl version` 看它以 `OpenSSL 3` 起头）：
 
    ```sh
    export KEYS=$(mktemp -d)
@@ -33,8 +33,16 @@
    make run
    ```
 
-   （`make run` 提供上一次 `make build` 的前端；环境变量照常传下去。）之后的重启（E6、G1、G2）都在这个终端里 `make run`。下面 `$BASE` 是 `http://127.0.0.1:8080`。这个终端里看服务的日志：每个请求一行 `http request`（方法、路径、状态、用时 `duration`），每次 MCP 调用一行 `MCP tool call`，握手一行 `MCP initialize`（带客户端名称），大的请求体没有名额时一行 `large request bodies are saturated`。
-2. 两个账户：A（你，工作区的管理员）与 B（同一工作区的成员）。B 的加入：A 在工作区的成员页邀请 B 的邮箱（README"邀请"），B 在另一个浏览器或无痕窗口里注册（dev 开放注册）并接受邀请。A 建两本笔记本，**一个客户端一本**：`MCP 清单 CC`（Claude Code 用）与 `MCP 清单 Codex`（Codex 用），B 是两本的编辑者。第 C、H 部分改写种下的页：若两个客户端在同一本里做，后一个会看到前一个改过的页，所以一个客户端一本。笔记本的 id 是网页地址里 `/notebooks/` 之后的一段，下面写 `$NB_CC` 与 `$NB_CODEX`；只说 `$NB` 的步，用这个客户端自己的那本。
+   （`make run` 提供上一次 `make build` 的前端；环境变量照常传下去。）之后的重启（E6、G1、G2）都在这个终端里 `make run`。下面 `$BASE` 是 `http://127.0.0.1:8080`（第 2 步说怎样设它）。这个终端里看服务的日志：每个请求一行 `http request`（方法、路径、状态、用时 `duration`），每次 MCP 调用一行 `MCP tool call`，握手一行 `MCP initialize`（带客户端名称），大的请求体没有名额时一行 `large request bodies are saturated`。
+2. 两个账户：A（你，工作区的管理员）与 B（同一工作区的成员）。B 的加入：A 在工作区的成员页邀请 B 的邮箱（README"邀请"），B 在另一个浏览器或无痕窗口里注册（dev 开放注册）并接受邀请。A 建两本笔记本，**一个客户端一本**：`MCP 清单 CC`（Claude Code 用）与 `MCP 清单 Codex`（Codex 用），B 是两本的编辑者。第 C、H 部分改写种下的页：若两个客户端在同一本里做，后一个会看到前一个改过的页，所以一个客户端一本。笔记本的 id 是网页地址里 `/notebooks/` 之后的一段，下面写 `$NB_CC` 与 `$NB_CODEX`；只说 `$NB` 的步，用这个客户端自己的那本。这些是 shell 的变量：在用到它们的每个终端里（种下页的、`$CC` 的、E4 的、F1 的占位的与第 I 部分的）各设一次：
+
+   ```sh
+   export BASE=http://127.0.0.1:8080
+   read -r NB_CC && export NB_CC
+   read -r NB_CODEX && export NB_CODEX
+   ```
+
+   （两次 `read` 各粘贴一本笔记本的 id、回车。）第 I 部分的终端另设 `export CADDY=http://127.0.0.1:8091`（经 Caddy 的地址，I3 用）。
 3. A 在"设置"→"访问令牌"（`$BASE/settings/tokens`）建三个 PAT：`seed`（下一步用）、`claude-checklist`、`codex-checklist`。
 4. 种下页与附件，两本笔记本各一次：
    - 准备三个文件，每个的字节都要是它的名字说的类型：服务端按开头的字节判断，名字是 `.png` 而字节是 JPEG 的附件存成 `application/octet-stream`，不直接放进答复（`asset/domain/types.go` 的 `TypeOf`）。`small.png` 是 PNG、每边不过 1,000 像素、几十 KB（例如一张截图以 `sips -Z 800 -s format png 截图.png --out small.png` 缩小）；`wide.png` 是 PNG、宽 2,500–7,000 像素、2.0–2.8 MiB（JPEG 或别的格式先转成 PNG：`sips -s format png 照片.jpg --out wide.png`，太大时加 `-Z` 与一个像素数缩小再转；以 `sips -g pixelWidth -g pixelHeight wide.png` 与 `ls -l` 核对：3 MiB 以上的不直接放进答复）；`doc.pdf` 是一个小的 PDF。做好之后 `file small.png wide.png doc.pdf`：前两个是 "PNG image data"，第三个是 "PDF document"。
@@ -167,9 +175,9 @@ cd "$CCD"
 | # | 操作 | 预期 | Claude Code 记下的 | Codex 记下的 |
 |---|---|---|---|---|
 | E1 | 不带令牌：Claude Code 用 `$CC/notoken.json`；Codex 退出，去掉 `config.toml` 的 `bearer_token_env_var`，再启动。`/mcp` | 服务端答 401，说明是"This server has no OAuth: MCP takes a personal access token in the Authorization header."；记下客户端显示的原文 | | |
-| E2 | 接着 E1，看服务的日志 | 记下客户端在 401 之后请求了哪些路径：`/.well-known/` 之下（答 404）、`POST /register`（答 400 `invalid_client_metadata`），以及是否退到源站的 `/authorize`、`/token`（GET 是网页的 200 `index.html`，POST 是 405 `Allow: GET, HEAD`）。之后改回 E1 之前的配置 | | |
-| E3 | 会话进行中在网页上撤销这个客户端的 PAT，再让 agent 读一页 | 服务端答 401 `Bearer error="invalid_token"`、"The bearer token is invalid or has expired."；记下客户端显示什么、是否转去 OAuth。之后建一个新的 PAT，以 `read -rs` 设进这个客户端的变量，重启客户端 | | |
-| E4 | 取 A 的一个会话的访问令牌（表下的命令：密码不进 shell 的历史；没有 `jq` 时从浏览器的开发者工具里取）。把这个客户端的变量换成它，重启客户端，让 agent 读一页；之后换回 PAT、再重启 | 403，"MCP takes a personal access token, not a session's access token."；记下显示的原文 | | |
+| E2 | 接着 E1，看服务的日志 | 记下客户端在 401 之后请求了哪些路径：`/.well-known/` 之下（答 404；服务的日志把这里的每个请求都记作 `path=/.well-known/...`，分不出是哪一个：记下次数与状态）、`POST /register`（答 400 `invalid_client_metadata`），以及是否退到源站的 `/authorize`、`/token`（GET 是网页的 200 `index.html`，POST 是 405 `Allow: GET, HEAD`）。之后改回 E1 之前的配置 | | |
+| E3 | 会话进行中在网页上撤销这个客户端的 PAT，再让 agent 读一页 | 服务端答 401 `Bearer error="invalid_token"`、"The bearer token is invalid or has expired."；记下客户端显示什么、是否转去 OAuth。之后建一个新的 PAT，以 `read -rs` 设进这个客户端的变量，重启客户端；A1 改用了 `*-literal.json` 的，也把新的令牌写进那三份（`mcp-literal.json`、`account-literal.json`、`throttled-literal.json`） | | |
+| E4 | 取 A 的一个会话的访问令牌（表下的命令：密码不进 shell 的历史；没有 `jq` 时从浏览器的开发者工具里取）。把这个客户端的变量换成它，重启客户端，让 agent 读一页；之后换回 PAT、再重启。登录后 15 分钟之内做完：访问令牌过期之后答的是 401，不是 403 | 403，"MCP takes a personal access token, not a session's access token."；记下显示的原文 | | |
 | E5 | 地址里的笔记本 id 换成一个随机的 UUID（`uuidgen`），重启客户端；之后换回 | 404 `notebook.not_found`；记下显示的原文 | | |
 | E6 | （可选）在服务的终端里以小的桶重启：`NWIKI_RATELIMIT__AUTHENTICATED__PER_MINUTE=10 NWIKI_RATELIMIT__AUTHENTICATED__BURST=10 make run`，让 agent 连续读十几页；做完照常 `make run` | 429 `rate_limited` 带 `Retry-After`；记下显示的原文、客户端是否自己等着重试 | | |
 
@@ -184,15 +192,15 @@ jq -n --arg e "$EMAIL" --arg p "$PW" '{email:$e,password:$p}' |
 
 ### F：大的请求体（账户入口）
 
-F 部分在账户入口做：Claude Code 以 `$CC/account.json` 启动（F2 以 `$CC/throttled.json`），Codex 把 `config.toml` 的 `url` 换成 `http://127.0.0.1:8080/mcp`（F2 换成 `http://127.0.0.1:8081/mcp`），每次换了都重启客户端。每一步先让 agent 打开它的笔记本（`open_notebook`）。agent 有的说明：账户入口握手时的内置说明，其中有"超过 64 KiB 的调用每个令牌一次一个，大的写一个接一个地发"（`page/adapter/mcp/instructions.go:73-74`），与 `open_notebook` 给的 `AGENTS` 页的正文。下面 `$TOKEN` 是这个客户端的令牌（`$NERVEWIKI_CLAUDE_TOKEN` 或 `$NERVEWIKI_CODEX_TOKEN`），`$NB` 是它的笔记本。
+F 部分在账户入口做：Claude Code 以 `$CC/account.json` 启动（F2 以 `$CC/throttled.json`），Codex 把 `config.toml` 的 `url` 换成 `http://127.0.0.1:8080/mcp`（F2 换成 `http://127.0.0.1:8081/mcp`），每次换了都重启客户端。每一步先让 agent 打开它的笔记本（`open_notebook`）。agent 有的说明：账户入口握手时的内置说明，其中有"超过 64 KiB 的调用每个令牌一次一个，大的写一个接一个地发"（`page/adapter/mcp/instructions.go:73-74`），与 `open_notebook` 给的 `AGENTS` 页的正文。下面 `$TOKEN` 是这个客户端的令牌（`$NERVEWIKI_CLAUDE_TOKEN` 或 `$NERVEWIKI_CODEX_TOKEN` 的值），`$NB` 是它的笔记本：在 F1 的另一个终端里以 `read -rs TOKEN && export TOKEN` 设 `TOKEN`（粘贴这个客户端的令牌，E3 之后是新的那一个），以 `export NB="$NB_CC"`（Codex 的是 `"$NB_CODEX"`）设 `NB`。
 
 | # | 操作 | 预期 | Claude Code 记下的 | Codex 记下的 |
 |---|---|---|---|---|
-| F1 | 在另一个终端里（设好 `$TOKEN`、`$NB`）以这个客户端的令牌**一直**占住它的名额：照表下的"F1 的占位"，先写 `body.json`（1 MiB 的写），再起循环：每一轮约 26 秒（短于 `server.read_timeout` 的 30 秒），一轮接一轮；答了 HTTP 的错误（`--fail`）的一轮之后先停 2 秒，不空转。第二轮起 `占位.md` 已是同样的正文，`write` 答 `changed: false`（不带 `base_version` 写同样的正文不算冲突，`page/app/write_path.go:176-190`），不要紧：名额在读请求体时就占着。服务的日志里出现它的第一行 `http request`（`POST /mcp`，约 26 秒）之后，回到会话，让 agent 写一页 `大.md`，内容是"lorem ipsum dolor sit amet "重复 2,500 遍（67,500 字节）。这一步做完在那个终端里 `kill %1`（`jobs` 看它的号） | **先看日志**：若是一串很快的 401、404 或 429，而不是约 26 秒一行的 200，先 `kill %1`，改正 `$TOKEN` 或 `$NB` 再起：错的令牌每一轮都耗认证失败的闸门（按客户端 IP、在认证之前取，每分钟 60 个，`platform/httpserver/api.go:346-350`），耗完了这台机器上每个带令牌的请求（agent 的与浏览器的）都答 429。agent 的调用发出时占位的那一轮必须正在传：服务的日志里，agent 的那一行 `POST /mcp` 之前有一行 `large request bodies are saturated`，`own: true`、`holders` 里是这个令牌（`pat:<id>`）。然后它多半（约九成：占位的一轮在那 2 秒里答完时它拿得到名额）等 2 秒后答 HTTP 503 `server_busy`（`Retry-After: 1`）；记下客户端怎样（重试、把错误交给模型、断开）、agent 之后是否等一等再发。agent 的调用答 200 时记下它落在占位的两轮之间 | | |
+| F1 | 在另一个终端里（设好 `$TOKEN`、`$NB`）以这个客户端的令牌**一直**占住它的名额：照表下的"F1 的占位"，先写 `body.json`（1 MiB 的写），再起循环：每一轮约 26 秒（短于 `server.read_timeout` 的 30 秒），一轮接一轮；答了 HTTP 的错误（`--fail`）的一轮之后先停 2 秒，不空转。第二轮起 `占位.md` 已是同样的正文，`write` 答 `changed: false`（不带 `base_version` 写同样的正文不算冲突，`page/app/write_path.go:176-190`），不要紧：名额在读请求体时就占着。服务的日志里出现它的第一行 `http request`（`POST /mcp`，约 26 秒）之后，回到会话，让 agent 写一页 `大.md`，内容是"lorem ipsum dolor sit amet "重复 2,500 遍（67,500 字节）。这一步做完在那个终端里 `kill %1`（`jobs` 看它的号） | **先看日志**：应当是约 26 秒一行的 200。约 2 秒一行的 401 是错的令牌，约 26 秒一行的 404 是错的 `$NB`（它照样占着名额，却不写页）：先 `kill %1`，改正 `$TOKEN` 或 `$NB` 再起：错的令牌每一轮都耗认证失败的闸门（按客户端 IP、在认证之前取，每分钟 60 个，`platform/httpserver/api.go:346-350`），耗完了这台机器上每个带令牌的请求（agent 的与浏览器的）都答 429。agent 的调用发出时占位的那一轮必须正在传：服务的日志里，agent 的那一行 `POST /mcp` 之前有一行 `large request bodies are saturated`，`own=true`，`holders` 里是这个令牌（`Credential:pat:<id>`；dev 的日志是文字的格式）。然后它多半（约九成：占位的一轮在那 2 秒里答完时它拿得到名额）等 2 秒后答 HTTP 503 `server_busy`（`Retry-After: 1`）；记下客户端怎样（重试、把错误交给模型、断开）、agent 之后是否等一等再发。agent 的调用答 200 时记下它落在占位的两轮之间 | | |
 | F2 | 起一个限速的转发（下面的脚本，`node throttle.mjs 16384`：客户端到服务的方向每秒 16 KiB），客户端换到经它的账户入口（上面），让 agent **同时**写两页，各是 F1 那样的 67,500 字节 | 每个约 4 秒才传完。看服务的日志里这两个 `POST /mcp` 的时刻与 `duration`：重叠的（第二个在第一个答完之前开始），第二个等 2 秒后 503，记下 agent 看到什么、是否照说明一个接一个地重发；一个接一个的，记下这个客户端是一个接一个地发写的（那它碰不到每个令牌一个名额的代价）。两个参数合起来约 3 万个 token 的输出，客户端若写不出（输出的上限，未核对）也记下 | | |
 | F3 | F2 之后看历史；停掉转发（Ctrl-C），客户端换回笔记本入口 | 两页都写成了（重发的那一次成功），各一个变更集 | | |
 
-F1 的占位（另一个终端，在放 `seed.mjs` 的临时目录里，设好 `BASE`、`TOKEN`、`NB`；表格里不写命令，免得从原文复制时带上转义）：
+F1 的占位（另一个终端，在放 `seed.mjs` 的临时目录里，照上面设好 `BASE`、`TOKEN`、`NB`；表格里不写命令，免得从原文复制时带上转义）：
 
 ```sh
 node -e 'process.stdout.write(JSON.stringify({jsonrpc:"2.0",id:1,method:"tools/call",params:{name:"write",arguments:{path:"占位.md",content:"y".repeat(1<<20)}}}))' > body.json
@@ -248,7 +256,7 @@ net
 
 ### I：反向代理
 
-上游是本机的服务：容器里是 `host.docker.internal:8080`（Docker Desktop；连不上时服务以 `NWIKI_SERVER__ADDR=0.0.0.0:8080` 启动，只在这一节、只在可信的网络里）。
+上游是本机的服务：容器里是 `host.docker.internal:8080`（Docker Desktop 把它转到本机的回环地址，未核对）。连不上时跳过容器的路（I1、I2，与 I3 的容器）：P5 已在隔离的容器里核对过 README 的两份样例（P5 设计 5.2）。**不要**让服务听 `127.0.0.1` 之外的地址。
 
 - nginx：把 README"部署"一节的 nginx 样例原样存成 `nginx.conf`，只在 `server_name` 之后加一行 `listen 8090;`，四个 `location` 的 `proxy_pass` 都换成 `http://host.docker.internal:8080;`；然后 `docker run --rm -d --name nw-nginx -p 127.0.0.1:8090:8090 -v "$PWD/nginx.conf:/etc/nginx/conf.d/default.conf:ro" nginx:1.29-alpine`（样例是一个 `server`，放在 `conf.d` 里）。
 - I2、I3 的写：`node -e 'process.stdout.write(JSON.stringify({jsonrpc:"2.0",id:1,method:"tools/call",params:{name:"write",arguments:{path:"代理.md",content:"z".repeat(200000)}}}))' > body200k.json`（200 KB）与一个约 200 KB 的文件 `200k.bin`（`head -c 200000 /dev/urandom > 200k.bin`）。
