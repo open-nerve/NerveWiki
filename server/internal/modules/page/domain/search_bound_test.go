@@ -61,3 +61,15 @@ func TestTheThresholdIsUnderTheBound(t *testing.T) {
 	t.Logf("%.4f bytes of lexemes a byte at most (%.4f at %U, %.4f non-starters a byte at %U); %d bytes of text give %.0f",
 		perByte, worst, worstAt, nonStarters, nonStartersAt, text, float64(text)*perByte)
 }
+
+// The search job's batch holds a page's largest content (M9 Codex review
+// fix round 1, B-N3): the read of its contents within SearchBatchBytes
+// gives its first page whatever its size, so that each batch takes one
+// node at least. A content larger than the batch's bytes would be past
+// them at the batch's first page, read by no batch, and the page left
+// queued for ever.
+func TestTheSearchBatchHoldsAPagesLargestContent(t *testing.T) {
+	if MaxContentBytes > SearchBatchBytes {
+		t.Errorf("a page holds %d bytes at most, past the search job's batch of %d", MaxContentBytes, SearchBatchBytes)
+	}
+}

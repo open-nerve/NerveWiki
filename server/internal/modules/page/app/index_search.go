@@ -201,7 +201,8 @@ func (j *IndexSearch) batch(ctx context.Context, queued []QueuedNode, run *Searc
 		// which reads their sizes again, decides on them and counts them
 		// (fix round 1, B-N2): this one neither deletes their rows nor
 		// counts them. The first page is never past it: the batch's bytes
-		// hold a page's largest content.
+		// hold a page's largest content (TestTheSearchBatchHoldsAPagesLargestContent),
+		// else that page would be read by no batch.
 		at := make(map[uuid.UUID]int, len(queued))
 		for i, q := range queued {
 			at[q.ID] = i
