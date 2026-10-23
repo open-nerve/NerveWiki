@@ -391,7 +391,10 @@ func (t *treePass) create(i int, s BatchStep) error {
 
 // content is write with base_version or edit: the page its path names,
 // which a base_version refers to before the batch: one the batch created
-// is 422, another page's 409.
+// is 422, another page's 409, its current version of the page's node
+// alone: the tree holds no revision, which the use case reads once the
+// plan chose this error (Codex review R2), revision 0 until then, which no
+// token holds.
 func (t *treePass) content(i int, s BatchStep) error {
 	ps := &t.p.Steps[i]
 	n, ancestors, err := FindPath(s.Path, t.cur.lookup)

@@ -1020,6 +1020,38 @@ func TestABatchsErrorsAreAtTheirOps(t *testing.T) {
 	}
 }
 
+// A batch's base_version of another page than its path's answers the
+// version of the page there, read once the plan chose the error (Codex
+// review R2): the tree's pass holds no revision. A write's and an edit's
+// alike, A at its third revision; nothing written, no unit run. A page
+// deleted between the tree's read and that version's is a difference:
+// planned again, the path not found at ops[0].
+func TestABatchsMismatchOfAnotherPageTellsItsVersion(t *testing.T) {
+	edit := editOp("A.md", "a", "b")
+	for _, op := range []domain.BatchArgs{writeOn("A.md", "x", nil), edit} {
+		f := newFixture()
+		a, b := f.page("A", nil, 1), f.page("B", nil, 2)
+		f.content(a.ID, "a", 3)
+		op.Base = tokenOf(b.ID, 1)
+		_, err := f.applyBatch(&fakeLinks{recorder: f.rec}, op)
+		if got, want := mismatchOf(err), "A.md other node "+a.ID.String()+":3"; got != want || opOf(err) != "0 page.revision_mismatch" ||
+			f.store.contents[a.ID].Content != "a" || f.called("LockNotebook in tx") {
+			t.Errorf("a %s on B's token = %s, %s; want %s at ops[0], nothing written", op.Op, opOf(err), got, want)
+		}
+	}
+	f := newFixture()
+	a, b := f.page("A", nil, 1), f.page("B", nil, 2)
+	f.rec.before = map[string]func(){"PageStates 1": func() {
+		delete(f.store.contents, a.ID)
+		delete(f.store.nodes, a.ID)
+	}}
+	if _, err := f.applyBatch(&fakeLinks{recorder: f.rec}, writeOn("A.md", "x", tokenOf(b.ID, 1))); opOf(err) != "0 page.not_found" ||
+		f.count("ListNodes") != 2 {
+		t.Errorf("A deleted before its version's read = %s after %v; want ops[0]'s page.not_found, planned again", opOf(err),
+			f.rec.calls)
+	}
+}
+
 // tenthBudget is a parse budget of capacity bytes whose holds keep a tenth
 // of their bytes once they keep facts, as the server's does: a take past
 // what is left waits for its context's end.

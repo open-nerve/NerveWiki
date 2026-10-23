@@ -284,7 +284,7 @@ func (a *batchAttempt) planned(ctx context.Context) error {
 		return err
 	}
 	if a.plan.Failed != nil {
-		return a.plan.Failed
+		return a.withCurrent(ctx, a.plan.Failed)
 	}
 	a.pages = map[uuid.UUID]domain.PlannedPage{}
 	for _, pg := range a.plan.Pages() {
@@ -308,6 +308,29 @@ func (a *batchAttempt) planned(ctx context.Context) error {
 	}
 	a.empty = a.b.parser.markdown.Facts("") // an empty parent's: no budget taken
 	return a.linksBefore(ctx)
+}
+
+// withCurrent is f, the plan's failure, with the version of the page a
+// version mismatch of the tree's pass names: the tree holds no revision,
+// so the pass leaves its revision 0, which no token holds (Codex review
+// R2), and the version is read here, unlocked as the plan's heads are,
+// once the plan chose the error and its op. A page gone since the tree's
+// read is a difference as the heads' read finds one (replanned).
+func (a *batchAttempt) withCurrent(ctx context.Context, f *domain.OpFailed) error {
+	var mismatch *domain.VersionMismatch
+	if !errors.As(f.Err, &mismatch) || mismatch.Current.Revision != 0 {
+		return f
+	}
+	current, err := currentVersion(ctx, a.b.states, mismatch.Current.Node)
+	switch {
+	case errors.Is(err, domain.ErrNotFound):
+		return a.differs(f.Op, "page", nil, nil)
+	case err != nil:
+		return err
+	}
+	filled := *mismatch
+	filled.Current = current
+	return &domain.OpFailed{Op: f.Op, Tool: f.Tool, Err: &filled}
 }
 
 // read is what the contents' pass reads of the pages before the batch
