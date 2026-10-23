@@ -59,14 +59,25 @@ func (m *mcpApp) clientOfWrite(t *testing.T, pool *pgxpool.Pool, title, told str
 	return queryStrings(t, pool, "SELECT client FROM changesets WHERE id = $1", id)[0]
 }
 
+// clientOfBatch is the client of the changeset of a batch that writes the
+// new page title, its call telling told, as clientOfEcho's.
+func (m *mcpApp) clientOfBatch(t *testing.T, pool *pgxpool.Pool, title, told string) string {
+	t.Helper()
+	args := map[string]any{"message": "Write " + title, "ops": []map[string]any{opWrite(title+".md", "")}}
+	id, _ := m.callAs(t, "batch", args, told)["changeset_id"].(string)
+	return queryStrings(t, pool, "SELECT client FROM changesets WHERE id = $1", id)[0]
+}
+
 // A token's client is unknown until its client tells a name; the name
 // told, cleaned, is then on the token and each call's client, a call that
 // tells none included; an app started anew on the database reads it, and
 // keeps it when its client tells it again, a record that writes nothing
 // (M9/P1 S3 review C-M2); a call's _meta telling another changes it; a
 // name of a bidirectional override and 200 characters is recorded
-// cleaned, 128 of them. At each step a write's changeset is of mcp: and
-// the client then, as the page's adapter hands it to the use case.
+// cleaned, 128 of them. At each step a write's changeset and a batch's
+// are of mcp: and the client then, as the page's adapters hand it to their
+// use cases: each of the two sources, the handshake and a call's _meta,
+// reaches both (M9 design 4.5's last hop; M9 closeout A-D3).
 func TestTheClientNameIsTheTokens(t *testing.T) {
 	db := pgtest.NewDatabase(t)
 	logs := &syncBuffer{}
@@ -85,8 +96,12 @@ func TestTheClientNameIsTheTokens(t *testing.T) {
 	}
 	wrote := func(step int, m *mcpApp, told, want string) {
 		t.Helper()
-		if got := m.clientOfWrite(t, pool, "Step "+strconv.Itoa(step)+told, told); got != want {
+		title := "Step " + strconv.Itoa(step) + told
+		if got := m.clientOfWrite(t, pool, title, told); got != want {
 			t.Errorf("step %d: the write's changeset is of %q, want %q", step, got, want)
+		}
+		if got := m.clientOfBatch(t, pool, "Batch of "+title, told); got != want {
+			t.Errorf("step %d: the batch's changeset is of %q, want %q", step, got, want)
 		}
 	}
 	if got := m.clientOfEcho(t, ""); got != mcpserver.UnknownClient || recorded() != "" {
