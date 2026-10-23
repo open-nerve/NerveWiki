@@ -36,8 +36,11 @@ const (
 	// median of three, in each state of the statistics: 74-89 ms here.
 	grepCandidatesBound = 270 * time.Millisecond
 	// grepCandidatesCallBound is a call over them, the tree's 100,000
-	// pages walked to the 500th candidate, the median of three: 143-150 ms
-	// here.
+	// pages walked to the 500th candidate. It was set at three times the
+	// one call first timed, cold, 143-150 ms here. The median of three
+	// (S2 fix round 4) judges a warm call, about 130 ms, the first call
+	// the slowest at 140-145 ms; the bound is kept, about 3.4 times the
+	// median.
 	grepCandidatesCallBound = 450 * time.Millisecond
 )
 
