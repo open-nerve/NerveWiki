@@ -337,6 +337,26 @@ func TestTheMCPNegotiatesItsVersion(t *testing.T) {
 	}
 }
 
+// A handshake asking for a version later than the server's latest is
+// answered with 2025-11-25, the latest it serves, as the SDK negotiates
+// (M9 design 4.3): 2026-07-28, a version without initialize, which the
+// SDK's handshake never answers, and one no SDK knows yet; a call of the
+// version answered then works (M9 closeout C-M10).
+func TestTheMCPNegotiatesALaterVersionDown(t *testing.T) {
+	m := startMCPApp(t, mcpTestTools(newMCPSeen()))
+	for _, asked := range []string{"2026-07-28", "2099-01-01"} {
+		r := m.post(t, context.Background(), atNotebook(m.notebook), m.pat, initializeBody(asked), nil).result(t)
+		if r["protocolVersion"] != mcpVersion {
+			t.Errorf("a handshake of %s = %v, want %s", asked, r["protocolVersion"], mcpVersion)
+		}
+		res := m.post(t, context.Background(), atNotebook(m.notebook), m.pat,
+			`{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"echo","arguments":{}}}`, afterHandshake()).result(t)
+		if sc, _ := res["structuredContent"].(map[string]any); res["isError"] == true || sc["notebook"] != m.notebook {
+			t.Errorf("after a handshake of %s, a call of %s = %v, want echo's answer", asked, mcpVersion, res)
+		}
+	}
+}
+
 // The listen of the protocol before 2025-11-25, a real subscription to
 // the lists' changes, ends within its request: the lists never change
 // (ListChanged false), so nothing holds it to the call's deadline (M9/P1
