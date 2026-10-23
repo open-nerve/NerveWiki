@@ -207,18 +207,30 @@ paths:
         instance's bound of items, whatever its pages, bytes, history or
         steps: revertChangeset's checks are made first, in the request,
         but past its unit's bounds; a changeset of more items than the
-        bound is page.revert_too_large, which no job reverts. The job
-        reverts it in batches of the round's steps, puts, deletions, a
-        group's nodes restored, pages written back, each batch a unit of
-        one changeset, a revert of it with the message, which the job's
-        changeset_id names; each batch plans its own steps again, under the
-        lock: a node changed since stops the job (revert_conflict, the
-        report's conflicts), as does a page of the batch an edit session
-        holds (page_locked, the report's lock) and a changeset the purge
-        trimmed (changeset_trimmed); a top deleted goes to the trash whole;
-        a group restored past one batch is restored depth first, a member
-        someone restored where it goes skipped. What the job reverted is
-        kept as it stops; its changeset can be reverted. The notebook's
+        bound is page.revert_too_large, which no job reverts. The job plans
+        the revert once, as it starts, as revertChangeset plans one: nodes
+        put back, a node renamed aside, where it is or at the root, under a
+        temporary name until it is put back, subtrees deleted, trash items
+        restored, pages written back. It writes those steps in their order
+        in batches, each a unit of one changeset, a revert of it with the
+        message, which the job's changeset_id names. A batch ends only
+        between segments, the steps no batch splits: from a step aside to
+        its node's last put back, a page's restore and its write back, a
+        write back and the deletion that takes its page. Each batch, under
+        the lock, compares its own nodes as revertChangeset does, then
+        checks each of its steps in their order on the tree as it is then:
+        a node changed since, or a step that no longer holds, stops the job
+        (revert_conflict, the report's conflicts: as the job starts, all of
+        them; in a batch, its nodes', else the first step's that fails), as
+        does a page of the batch an edit session holds (page_locked, the
+        report's lock), a changeset the purge trimmed (changeset_trimmed),
+        and a segment past what one batch writes, of the nodes it restores,
+        its pages and bytes, history or links (revert_too_large). A top
+        deleted goes to the trash whole; a trash item's members a batch
+        restores come back at once, those a later batch restores trash
+        items of their own until then, a member someone restored where it
+        goes skipped. What the job reverted is kept as it stops; its
+        changeset can be reverted. The notebook's
         editors and admins can revert, a reader cannot (forbidden). In this
         order: a message that breaks its rules is validation_failed; a
         notebook that does not exist, is deleted, or that the caller has no
