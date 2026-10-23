@@ -35,6 +35,7 @@ type fakeGrep struct {
 	grown       map[uuid.UUID]string
 	fresh       bool
 	read        []grepRead
+	limit       int // the contents' reads past which a read fails, none when 0
 }
 
 // grepRead is a contents' read: its bytes and pages.
@@ -115,6 +116,9 @@ func (f *fakeGrep) GrepCandidates(ctx context.Context, notebookID uuid.UUID, key
 // alone.
 func (f *fakeGrep) GrepContents(ctx context.Context, ids []uuid.UUID, max int64) (app.ContentsWithin, error) {
 	f.record(ctx, fmt.Sprintf("GrepContents %d", len(ids)))
+	if f.limit > 0 && len(f.read) >= f.limit {
+		return app.ContentsWithin{}, fmt.Errorf("the contents read %d times", len(f.read))
+	}
 	out, total := app.ContentsWithin{Contents: map[uuid.UUID]string{}}, int64(0)
 	defer func() { f.read = append(f.read, grepRead{bytes: int(total) - out.PastBytes, pages: len(out.Contents)}) }()
 	for _, id := range ids {
@@ -185,6 +189,74 @@ func TestGrepReadsHoldTheirBoundsOnWhatTheyRead(t *testing.T) {
 	rest, _ := grepAll(t, f.asAlice(), g, f.eng, app.GrepRequest{Pattern: "needle", Cursor: &got.Next})
 	if !slices.Equal(rest, all[2:]) {
 		t.Errorf("on from P2: %q, want %q", rest, all[2:])
+	}
+}
+
+// The statement's bound holds what MaxRead leaves once a page was read,
+// not GrepBatchBytes alone (M9 Codex review fix round 1, B-M2): within a
+// MaxRead of 6 MiB, P0 … P4 of a few bytes by their states, grown to 3,
+// 0.5, 1 and 2 MiB since, P4 not. The first batch reads P0 and P1, 3.5
+// MiB, P2 past GrepBatchBytes; the second P2 within the 2.5 MiB MaxRead
+// leaves, P3 past it; the walk stops at P3 by the bytes, 4.5 MiB read, its
+// cursor there. Within GrepBatchBytes alone the second would read P2 and
+// P3, 6.5 MiB in all.
+func TestGrepsReadsHoldWhatMaxReadLeaves(t *testing.T) {
+	f := newFixture()
+	f.grant(domain.ActionRead)
+	reads := newFakeGrep(f.store)
+	var ids []uuid.UUID
+	for i := range 5 {
+		p := f.page(fmt.Sprintf("P%d", i), nil, float64(i))
+		f.content(p.ID, fmt.Sprintf("needle %d", i), 1)
+		ids = append(ids, p.ID)
+	}
+	reads.buildAll()
+	for i, size := range []int{3 << 20, 1 << 19, 1 << 20, 2 << 20} {
+		reads.grown[ids[i]] = "needle\n" + strings.Repeat("x", size-len("needle\n"))
+	}
+	const maxRead = 6 << 20
+	got, err := f.grepper(reads, func(d *app.GrepDeps) { d.MaxRead = maxRead }).Execute(f.asAlice(), f.eng, app.GrepRequest{Pattern: "needle"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := 0
+	for _, r := range reads.read {
+		read += r.bytes
+	}
+	if found := grepFound(got); !slices.Equal(found, []string{"P0.md:1", "P1.md:1", "P2.md:1"}) || got.Walk.Stop != "bytes" ||
+		cursorOf(t, got.Next) != (domain.GrepCursor{K: "p3.md", N: 1}) || read != 9<<19 || got.Walk.Bytes != int64(read) {
+		t.Errorf("within 6 MiB: %q, %+v, next %q, reads %+v; want P0 to P2, 4.5 MiB read, stopped at P3 by the bytes", found, got.Walk,
+			got.Next, reads.read)
+	}
+}
+
+// A batch of a page alone reads it whatever its size, which the batch's
+// bound lets be larger (M9 Codex review fix round 1, B-M2): P0, a few
+// bytes by its state, grown to 4.5 MiB since, past GrepBatchBytes with P1
+// in the first batch, is batched alone and read whole, then P1. A bound of
+// GrepBatchBytes on a page alone would find it past at every read, the
+// walk reading it again until its deadline: the fake fails a tenth read.
+func TestGrepReadsAPageAloneWhateverItsSize(t *testing.T) {
+	f := newFixture()
+	f.grant(domain.ActionRead)
+	reads := newFakeGrep(f.store)
+	var ids []uuid.UUID
+	for i := range 2 {
+		p := f.page(fmt.Sprintf("P%d", i), nil, float64(i))
+		f.content(p.ID, fmt.Sprintf("needle %d", i), 1)
+		ids = append(ids, p.ID)
+	}
+	reads.buildAll()
+	big := "needle\n" + strings.Repeat("x", 9<<19-len("needle\n"))
+	reads.grown[ids[0]], reads.limit = big, 10
+	got, err := f.grepper(reads, nil).Execute(f.asAlice(), f.eng, app.GrepRequest{Pattern: "needle"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []grepRead{{0, 0}, {len(big), 1}, {len("needle 1"), 1}}
+	if found := grepFound(got); !slices.Equal(found, []string{"P0.md:1", "P1.md:1"}) || got.Incomplete || !slices.Equal(reads.read, want) {
+		t.Errorf("P0 grown to 4.5 MiB: %q, %+v, reads %+v; want both found, P0 read whole alone, reads %+v", found, got.Walk, reads.read,
+			want)
 	}
 }
 
