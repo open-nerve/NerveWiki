@@ -82,9 +82,15 @@ test("C7 (API): B, who sees Eng, receives a pages frame of each of A's writes an
 
   expect((await deleteNode(api, a, parent.id)).response.status).toBe(204);
   expect(await bStream.expectNext("pages")).toEqual({ ...ofEng, tree: true, pages: [] });
-  // The deletion was one frame: the next is that of a write after it, Marker's, which settling wrote at 2.
-  await writeContent(api, a, marker.id, { content: "# Marker\n", base_revision: 2 });
-  expect(await bStream.expectNext("pages")).toEqual({ ...ofEng, tree: false, pages: [{ id: marker.id, revision: 3 }] });
+  // The deletion was one frame: the next is that of a write after it, Marker's, on the revision read (settling
+  // writes Marker again whenever its stream ends first, so not always at 2).
+  const { revision } = await readContent(api, a, marker.id);
+  await writeContent(api, a, marker.id, { content: "# Marker\n", base_revision: revision });
+  expect(await bStream.expectNext("pages")).toEqual({
+    ...ofEng,
+    tree: false,
+    pages: [{ id: marker.id, revision: revision + 1 }],
+  });
 
   // C's first frame since it opened is that of its own write, after all of A's.
   await writeContent(api, c, control.id, { content: "# Control\n", base_revision: 1 });
