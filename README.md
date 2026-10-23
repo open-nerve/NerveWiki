@@ -216,7 +216,158 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
 - **说明**：笔记本入口握手时给出这本笔记本根下标题为 `AGENTS` 的页（不分大小写）去掉 frontmatter 的正文，至多 32 KiB：截在最后一个换行，末尾一行说出怎样用 `read` 读全文。没有这一页时给内置的英文说明（路径的写法与工具）；改了、替换、改名或删掉这一页之后，下一次连接就是新的。团队要别的约定（例如中文）就写一个 `AGENTS` 页，它整个取代内置的说明。
 - **客户端的名称**：取客户端报的 `clientInfo.name`（清理之后至多 128 个字符），记在这个令牌上，日志的每次调用带它；重启之后、客户端没有再报时用记下的。一个 agent 用一个 PAT：两个客户端同时用一个时，记的是最后报的那个。
 - **`server.public_url`**：实例对外的地址（只到源，默认空）。`read` 给附件的下载地址时以它起头（签名同"附件"）；为空时图片照样直接放进答复，别的附件只给元数据。
-- Claude Code、Codex 的接入配置与反向代理的要求在 M9 的接入文档里写（M9/P5）。
+- 接上 Claude Code、Codex 见下一节"接入 agent（MCP）"；反向代理的要求见"部署"。
+
+## 接入 agent（MCP）
+
+Claude Code、Codex 一类的 agent 经 `/mcp` 读写笔记本。工具、路径与它们的规则见上文"MCP"一节；这一节讲怎样接上、审批怎样设、有哪些上限，以及出错时看到什么。下面的样例照两个客户端的文档与 M0/P1 的实验（Claude Code 2.1.285、Codex 0.157.1）写成，还没有在真实的客户端上照[人工清单](docs/v0.1/M9-mcp/manual/P5-mcp-clients-checklist.md)走过；清单在 v0.1 的最后走一遍，之后这里写明核对过的客户端的版本，并照它改正标出的几句：标着"照文档"的照客户端自己的文档写，标着"未核对"的是推断。
+
+### 先准备
+
+- **一个 agent 一个 PAT**：在"设置"→"访问令牌"（`/settings/tokens`）创建，名称写明给哪个 agent、在哪台机器上（如 `claude-code-laptop`），最好设一个期限；也可以 `POST /api/v0/me/api-tokens`（上文"账户与认证"）。令牌只显示这一次。PAT 能做这个账户能做的一切：笔记本的地址只是"进到这本笔记本"，不是权限的边界。一个 agent 一个令牌，撤销它只切断这一个 agent；agent 的变更集记为 `mcp:<客户端报的名称>`（网页的历史显示"MCP（名称）"），名称记在令牌上，两个客户端共用一个令牌时记的是最后报名称的那个。
+- **令牌放在环境变量里**，一个 agent 一个变量：下面的样例里 Claude Code 用 `NERVEWIKI_CLAUDE_TOKEN`、Codex 用 `NERVEWIKI_CODEX_TOKEN`。同一个变量就是同一个 PAT：两个 agent 的写在历史里分不清，撤销它两个一起断。在终端里设时用 `read -rs NERVEWIKI_CLAUDE_TOKEN && export NERVEWIKI_CLAUDE_TOKEN`（粘贴令牌、回车：不回显，也不进 shell 的历史）；长期用的写在只有自己读得到的 shell 配置里，或由密钥管理器给出。不要把令牌写进会提交的文件。
+- **只经 HTTPS 连 `/mcp`**（本机试用除外）：每个请求的头里都是 PAT。
+- **实例设好 `server.public_url`**（`NWIKI_SERVER__PUBLIC_URL`，只到源，如 `https://wiki.example.com`）：否则 `read` 读附件时只给图片，别的附件没有下载的地址。
+- **两种地址**（`wiki.example.com` 换成实例对外的地址）：
+  - 笔记本入口 `https://wiki.example.com/mcp?notebook=<笔记本 id>`：笔记本的 id 是网页地址里 `/notebooks/` 之后的那一段。握手时下发这本笔记本的 `AGENTS` 页（上文"MCP"的"说明"）。一个 agent 在一本笔记本里工作时用它。
+  - 账户入口 `https://wiki.example.com/mcp`：agent 先以 `notebooks` 看有哪些笔记本，再以 `open_notebook` 读一本的说明与概况，之后每个工具都带 `notebook`。
+  - 地址里有 `?`：写在 shell 里时加引号（zsh 把 `?` 当作通配）。
+
+### Claude Code
+
+- **只给自己**（默认的本地范围：服务与令牌存在 `~/.claude.json`，只在当前的目录里、只有自己用；照 Claude Code 的文档）：
+
+  ```sh
+  claude mcp add --transport http nervewiki "https://wiki.example.com/mcp?notebook=<笔记本 id>" \
+    --header "Authorization: Bearer $NERVEWIKI_CLAUDE_TOKEN"
+  ```
+
+  shell 先展开 `$NERVEWIKI_CLAUDE_TOKEN`，存下的是令牌本身；加 `--scope user` 则在每个目录里都有它（照 Claude Code 的文档）。
+
+- **随项目共享**（项目的范围：项目根目录的 `.mcp.json`，它通常会提交）：`.mcp.json` 里**绝不要写令牌**，写环境变量的展开（照 Claude Code 的文档），每个人在自己的环境里设 `NERVEWIKI_CLAUDE_TOKEN`：
+
+  ```json
+  {
+    "mcpServers": {
+      "nervewiki": {
+        "type": "http",
+        "url": "https://wiki.example.com/mcp?notebook=<笔记本 id>",
+        "headers": {
+          "Authorization": "Bearer ${NERVEWIKI_CLAUDE_TOKEN}"
+        }
+      }
+    }
+  }
+  ```
+
+  用命令写它时加 `--scope project`，令牌那一段用**单引号**，让 `${NERVEWIKI_CLAUDE_TOKEN}` 原样进文件：
+
+  ```sh
+  claude mcp add --scope project --transport http nervewiki "https://wiki.example.com/mcp?notebook=<笔记本 id>" \
+    --header 'Authorization: Bearer ${NERVEWIKI_CLAUDE_TOKEN}'
+  ```
+
+  写好之后 `grep nwk_pat_ .mcp.json` 应当什么也找不到。项目里的服务第一次用时，Claude Code 先问要不要启用它（照 Claude Code 的文档）。
+
+- **看连上没有**：`claude mcp list`，或在会话里输入 `/mcp`：`nervewiki` 已连上，笔记本入口有 14 个工具（账户入口 16 个）。工具在 Claude Code 里叫 `mcp__nervewiki__read` 一类（照 Claude Code 的文档）。
+- Claude Code 把一次 MCP 工具的结果限在约 25,000 个 token，环境变量 `MAX_MCP_OUTPUT_TOKENS` 可以调（照 Claude Code 的文档）；服务端的每个答复至多 48 KiB，`read` 一次至多约 45 KiB 的正文，中文约 1.5 万字。
+
+### Codex
+
+- 写进 `~/.codex/config.toml`（设了 `CODEX_HOME` 时是 `$CODEX_HOME/config.toml`；照 Codex 的文档）：
+
+  ```toml
+  [mcp_servers.nervewiki]
+  url = "https://wiki.example.com/mcp?notebook=<笔记本 id>"
+  bearer_token_env_var = "NERVEWIKI_CODEX_TOKEN"
+  default_tools_approval_mode = "prompt"
+  ```
+
+  文件里没有令牌：Codex 启动时从 `NERVEWIKI_CODEX_TOKEN` 读它，所以启动 Codex 的 shell 里要有这个变量。`default_tools_approval_mode` 见下面的"审批"。
+
+- **看连上没有**：在会话里输入 `/mcp`，列出 `nervewiki` 与它的工具（照 Codex 的文档）。
+
+### 审批
+
+工具带着 MCP 的注解：读的九个（`list`、`read`、`grep`、`search`、`index`、`backlinks`、`versions`、`log`、`changeset`；账户入口另有 `notebooks`、`open_notebook`）是 `readOnlyHint`；写的五个（`write`、`edit`、`move`、`delete`、`batch`）是 `destructiveHint`，其中 `write`、`move`、`delete` 另是 `idempotentHint`（同样的参数再调一次不再改变什么）。调用之前问不问人由客户端与它的设置定；两个客户端是否照注解区别对待未核对。
+
+- **不要一律放行**：放行了写的工具，agent 不经人确认就能以这个账户的权限改写、删除、移动它看得到的每一本笔记本里的页。读的工具可以免问；写的工具照常问，除非这个 agent 要无人值守地工作，而你接受事后在网页的历史里检查、撤销它做的（下面的"历史只读"）。审批只管 MCP 的工具：agent 能执行命令时，它启动的命令照常继承启动它的环境（这是 shell 的），里面就有令牌的变量，可以直接调 REST；客户端是否把自己的环境交给它执行的命令（或滤掉一些变量）未核对，当作交了。
+- **Claude Code**：一个工具在调用之前问；回答"不再问"之后这个工具不再问（照 Claude Code 的文档）。要事先放行读的工具，写进设置（项目的 `.claude/settings.json` 或自己的 `~/.claude/settings.json`）的 `permissions.allow`：
+
+  ```json
+  {
+    "permissions": {
+      "allow": [
+        "mcp__nervewiki__list",
+        "mcp__nervewiki__read",
+        "mcp__nervewiki__grep",
+        "mcp__nervewiki__search",
+        "mcp__nervewiki__index",
+        "mcp__nervewiki__backlinks",
+        "mcp__nervewiki__versions",
+        "mcp__nervewiki__log",
+        "mcp__nervewiki__changeset"
+      ]
+    }
+  }
+  ```
+
+  账户入口另加 `mcp__nervewiki__notebooks` 与 `mcp__nervewiki__open_notebook`。`claude -p`（不交互）问不了人，没有放行的工具不调用：以 `--allowedTools` 给它这次要的工具，写的工具只给确实要写的任务（照 Claude Code 的文档）。
+
+- **Codex**：一个服务的 `default_tools_approval_mode` 决定调用它的工具之前问不问人，取值是 `auto`、`prompt`、`writes` 与 `approve`；`approve` 是都不问。`codex exec`（不交互）问不了人，要审批的调用都被拒。交互的会话用 `prompt`；只读的无人值守的任务不必放行写的工具；`approve` 只给确实要无人值守地写的任务，并照上面的第一条接受它的代价。
+
+### 上限
+
+| 什么            | 上限                                                                                                                                                                                                   |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 一次调用        | 15 秒（`server.request_timeout`，从读完请求体算起）；请求体至多 37,814,272 字节（约 36 MiB），超过 64 KiB 的只能是这个入口的工具的调用；请求体里至多 10,000 个 JSON 值                                 |
+| 每个工具的答复  | 48 KiB：到了就停，给出 `next_cursor`（或 `next_offset`、`next_column`）接着调，没有游标的标出截断                                                                                                      |
+| `read`          | 一次至多约 45 KiB 的正文（中文约 1.5 万字）；长的一行经 `column` 分几次读完。图片（PNG、JPEG、GIF、WebP）至多 3 MiB、每边 8,000 像素时直接放进答复，别的附件给下载的地址（要配置 `server.public_url`） |
+| `write`、`edit` | 正文至多 5 MiB；`edit` 的 `old_string` 至多 1 MiB                                                                                                                                                      |
+| `batch`         | 至多 100 项，字符串合计至多 6 MiB、正文合计至多 5 MiB，别的界线见上文"MCP"的"batch"                                                                                                                    |
+| 说明            | 见上文"MCP"的"说明"                                                                                                                                                                                    |
+| 限流            | 一个 POST 算一次请求，与这个令牌的 REST 请求共用一个桶（`ratelimit.authenticated`）                                                                                                                    |
+
+### 大的请求体的名额
+
+超过 64 KiB 的调用（大的 `write`、`edit`、`batch`）在整个服务里同时至多两个、每个令牌至多一个；取不到名额的等 2 秒，然后答 503 `server_busy`（`Retry-After: 1`），稍后重发即可。所以一个 agent 的大的写一个接一个地发（内置的说明也这样告诉 agent）。名额从读请求体之前占到这次调用答完：慢的上行占得久（1 Mbit/s 上过约 250 KB 就过 2 秒），这时同一个令牌同时发出的两个大的写，第二个多半拿到 503。反向代理照"部署"一节为 `/mcp` 缓冲请求体时，请求在代理收完之后才到服务，名额只占服务端读请求体与做这次调用的时间，不再随上行的快慢。
+
+### HTTP 的答复
+
+这些是 HTTP 一层的答复，在任何工具运行之前：它们不是工具的结果，客户端把它们当作连接或传输的错误（官方 TypeScript SDK 的客户端是这样）；Claude Code、Codex 怎样显示、模型看不看得到未核对。工具自己的错误不在其中：它们是带 `isError` 的结果，模型读得到码与说明（`page.locked`、`page.revision_mismatch` 一类），照说明改了再调。
+
+| 答复                                                                                                                  | 什么时候                                                                                                                                                             | 怎么办                                                               |
+| --------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| 401 `unauthorized`，"This server has no OAuth: MCP takes a personal access token in the Authorization header."        | 没有带令牌                                                                                                                                                           | 在客户端的配置里加 `Authorization: Bearer <PAT>`（下一段）           |
+| 401 `unauthorized`，"The bearer token is invalid or has expired."（`WWW-Authenticate: Bearer error="invalid_token"`） | 令牌写错了、过期了或被撤销了                                                                                                                                         | 新建一个 PAT，换上                                                   |
+| 403 `forbidden`，"MCP takes a personal access token, not a session's access token."                                   | 带的是网页登录的访问令牌                                                                                                                                             | 换成 PAT                                                             |
+| 404 `notebook.not_found`                                                                                              | 地址里的笔记本 id 不对、为空、出现两次，或你看不到这本笔记本、它已被删除                                                                                             | 改正 id；或用账户入口的 `notebooks` 看有哪些                         |
+| 404 `not_found`                                                                                                       | 地址是 `/mcp/` 之下的路径                                                                                                                                            | 地址是 `/mcp` 本身                                                   |
+| 400 `bad_request`                                                                                                     | 一次发了 JSON-RPC 的批、请求体不是一个合法的 JSON 对象，或 JSON 值过了 10,000 个                                                                                     | 一条消息一个请求                                                     |
+| 400、415（纯文字，不是上面的 JSON）                                                                                   | 请求头不对：`Accept` 不含 `application/json` 与 `text/event-stream`、`Content-Type` 不是 `application/json`，或不认识的 `MCP-Protocol-Version`                       | 照下面的 `curl` 写这几个头                                           |
+| 413 `payload_too_large`                                                                                               | 请求体过了约 36 MiB，或超过 64 KiB 而不是工具的调用                                                                                                                  | 拆小：一页的正文至多 5 MiB                                           |
+| 429 `rate_limited`                                                                                                    | 这个令牌的请求过了限流；或同一个客户端 IP 上认证失败的令牌太多（失败闸门 `auth_failure`，按 IP：反向代理之后要设 `server.trusted_proxies`，否则所有人共用代理的 IP） | 等 `Retry-After` 的秒数；后一种先换掉失败的令牌（上面 401 的第二行） |
+| 503 `server_busy`（`Retry-After: 1`）                                                                                 | 大的请求体没有名额（上一段）                                                                                                                                         | 稍后重发，大的写一个接一个地发                                       |
+
+**没有配置令牌时**：客户端看到的都是同一句："This server has no OAuth: MCP takes a personal access token in the Authorization header."。不走 OAuth 的客户端从 401 的说明里读到它；会走 OAuth 的客户端（例如官方 TypeScript SDK 的 OAuth 客户端）先找 OAuth 的元数据（`/.well-known/` 之下都答 404）、再试注册（`POST /register` 答 OAuth 的错误 `invalid_client_metadata`），从注册的错误里读到它。Claude Code、Codex 各走哪一条未核对。照它在配置里加上 `Authorization: Bearer <PAT>` 即可。
+
+**自己试一下**（不握手，不改这个令牌记下的客户端名称）：
+
+```sh
+curl -sS "https://wiki.example.com/mcp?notebook=<笔记本 id>" \
+  -H "Authorization: Bearer $NERVEWIKI_CLAUDE_TOKEN" -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' -H 'MCP-Protocol-Version: 2025-11-25' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+```
+
+（只给 Codex 设了令牌的，换成 `$NERVEWIKI_CODEX_TOKEN`。）答 200 与工具的清单就是通的；别的答复照上表。
+
+### 写的规矩
+
+- **`base_version`**：`list`、`read`、`write`、`edit` 的答复里有页的 `version`（`"<节点 id>:<版本号>"`），它说出读到的是哪一版。覆盖一页用 `write` 带读到的 `version` 作 `base_version`；`edit` 不带它时在现在的正文上做（做的期间被写过就在新的正文上再做一次），带了的在那之后被写过就拒绝。拒绝是 409 `page.revision_mismatch`，`current_version` 是现在的版本：重读再写。同一个路径换成了另一页（原来的被改名、移走之后有人新建了同名的页）时同样拒绝，不会写到新的页上。
+- **锁**：正在网页上编辑的页（包括你自己在别的浏览器里编辑的）拒绝 agent 的写、编辑与删除，答 `page.locked`，说出谁在编辑；`move` 要改写链接的页正被编辑时答 `linking.pages_locked`。agent 不能接管锁：等编辑的人离开编辑（关掉浏览器之后锁至多约 2 分钟过期），或请笔记本的管理员强制解锁。agent 自己不开编辑会话，不挡网页上的人。
+- **历史只读**：agent 读得到历史（`log`、`changeset`、`versions`），改不了它：还原版本、从回收站恢复、撤销变更集是人在网页上做的。agent 的每次写是一个变更集，一次 `batch` 也是一个（带它的说明）；网页的历史可以按"MCP"筛选，一次移动加改名在网页上一步撤销，一个 `batch` 整组撤销。
+- `batch` 与分开调用只有一条规则不同、`grep` 与 `search` 怎样分工与怎样读 `incomplete`、`partial_lines`、`building`：见上文"MCP"的"batch"与"找"。
 
 ## 接口与代码生成
 
