@@ -66,7 +66,7 @@
    await page("AGENTS", "---\ntype: agents\n---\n这份清单的暗号是青石板。\n\n回答用中文。\n");
    const guide = await page("Guide", "# Guide\n\n他说“先读再写”，然后离开。\n重叠：aaa\n要删的一行\n- [ ] 一件事\n");
    await page("长文", Array.from({ length: 800 }, (_, i) => `第 ${i + 1} 行：${han}`).join("\n") + "\n");
-   await page("命中", Array.from({ length: 600 }, (_, i) => `TODO 第 ${i + 1} 项：${han}${han}`).join("\n") + "\n" + cut + "\n");
+   await page("命中", Array.from({ length: 600 }, (_, i) => `TODO 第 ${i + 1} 项：${han.repeat(7)}`).join("\n") + "\n" + cut + "\n");
    await page("长行", "x".repeat(4 << 20) + "完成\n");
    await page("锁", "被编辑的页。\n", guide);
    const pictures = await page("图库", "");
@@ -78,7 +78,7 @@
    ```
 
    - `长文.md` 约 69 KB（约 2.2 万个汉字与全角的标点）：一次 `read` 给不完。
-   - `命中.md` 前 600 行都有 `TODO`：`grep` 的命中过 48 KiB；第 601 行约 3,000 字节，`FIXME` 在它的中间，`grep` 只给 `FIXME` 前后共约 1,000 字节（`cut`），行尾的"行尾在此"不在其中。
+   - `命中.md` 前 600 行都有 `TODO`，每行约 520 字节：`grep` 的一次答复放 85 行就到 48 KiB，在 `limit` 的默认 100 之前；第 601 行约 3,000 字节，`FIXME` 在它的中间，`grep` 只给 `FIXME` 前后共约 1,000 字节（`cut`），行尾的"行尾在此"不在其中。
    - `长行.md` 是 4 MiB 的一行，`\pL{30}完成` 这样的模式只匹配得到它的开头（约 2.2 MB），这一行进 `partial_lines`。
 5. Claude Code 的配置，在一个新的临时目录 `$CC` 里（`export CC=$(mktemp -d); cd "$CC"`）。每一份都是 README"接入 agent（MCP）"的 `.mcp.json` 样例原样照抄，只把 `https://wiki.example.com` 换成 `http://127.0.0.1:8080`（或下面说的地址）、`<笔记本 id>` 换成 `$NB_CC` 的值（文件里写字面的 id）：
    - `$CC/mcp.json`：笔记本入口；
@@ -129,7 +129,7 @@
 | C8 | 让 agent 读 `Guide/图一.png`，说出图里有什么 | 答复带图片，它说得出图里的内容；读 `Guide/说明.pdf` 时答复带 `http://127.0.0.1:8080/` 起头的下载地址 | | |
 | C9 | 让 agent 读 `Guide/宽图.png`（2.0–2.8 MiB） | 图片直接在答复里（3 MiB、每边 8,000 像素之内）；记下客户端是否把它算进自己的输出上限、截断或拒绝 | | |
 | C10 | 让 agent 依次读完 `图库/` 下的 21 张图，再读 `Guide/宽图.png`，然后接着聊一句 | 记下读过 20 张以上、其中一张宽过 2,000 像素之后，之后的请求会不会被模型的接口拒绝（一个请求里 20 张以上的图片时每张至多 2,000 像素，未核对） | | |
-| C11 | 让 agent 用 `grep` 找 `TODO`，告诉你一共几处 | 第一次答复到 48 KiB 停下、带 `next_cursor`；它接着调用，答 600 处；记下第一次的答复是否整个交给了模型 | | |
+| C11 | 让 agent 用 `grep` 找 `TODO`，告诉你一共几处 | 第一次答复到 48 KiB 停下：85 处、带 `next_cursor`（不带 `limit`、或带的 `limit` 不小于 85 时都是这样；小于 85 时先到 `limit`，记下它带的 `limit`）；它接着调用（不带 `limit` 时共 8 次，最后一次 5 处），答 600 处；记下第一次的答复是否整个交给了模型 | | |
 | C12 | 让 agent 用 `grep` 找 `\pL{30}完成` | 答复没有命中、`partial_lines` 列出 `长行.md` 第 1 行；记下它是否照说明以 `read`（`offset`、`column`）去读那一行的后面 | | |
 | C13 | 让 agent 搜索"宇宙"，再搜索"宙" | 第一次以 `search` 找到 `长文.md`、`命中.md`；单个汉字只找标题，第二次什么也找不到或只有标题里有它的；记下它分不分得清 `search` 与 `grep` | | |
 | C14 | 让 agent 做一次"整理"：在 `收件箱` 下建两页、改 `Guide.md` 的一行、把 `Guide/锁.md` 改名为 `Guide/已锁.md`，作为一次带说明的 `batch` | 一个变更集，历史里显示它的说明；网页上整组撤销它之后树与正文回到之前（`Guide/锁.md` 又是这个名字） | | |
