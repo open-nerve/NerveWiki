@@ -12,10 +12,10 @@ import (
 
 // BatchLinks resolves and rewrites links for a batch's plan, on the tree
 // the plan simulates (M9 design 4.1, 4.11; M9/P3 design 3.7.4): by the
-// deferred participant's rules for a page the batch wrote (ownLinks,
-// writtenTree, dropDead, domain.Rewrite and Written), one rule written
-// once, over the index's rows and aliases as the batch began, read on the
-// pool, and the tree its caller gives. It writes nothing.
+// deferred participant's rules for a page the batch's content ops decided
+// (ownLinks, writtenTree, dropDead, domain.Rewrite and Written), one rule
+// written once, over the index's rows and aliases as the batch began, read
+// on the pool, and the tree its caller gives. It writes nothing.
 type BatchLinks struct {
 	Store  Store
 	Logger *slog.Logger
@@ -134,8 +134,8 @@ func (b BatchLinks) Resolve(ctx context.Context, q LinksOn) (LinksBefore, error)
 
 // Rewrite is q's content with the links q's changes reach written again
 // to lead where they led, q.Before, on q's tree: as the deferred
-// participant writes a page the batch wrote. The content as it is when
-// none is reached, or no writing reads back as its links.
+// participant writes a page the batch's content ops decided. The content as
+// it is when none is reached, or no writing reads back as its links.
 func (b BatchLinks) Rewrite(ctx context.Context, q LinksMoved) (string, error) {
 	if relocates, recased := domain.Relocation(q.Changes); !relocates && len(recased) == 0 {
 		return q.Content, nil

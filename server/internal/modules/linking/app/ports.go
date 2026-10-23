@@ -313,10 +313,10 @@ type Publisher interface {
 // batch wrote a version of it (Codex review R1); the paths the moved nodes'
 // former parents had as the unit began; the nodes it deleted; the most
 // pages the rewrite may write, none for 0 (a unit of one operation), a page
-// of Written the batch wrote with a link its own changes meet counting
-// WrittenWeight, 1 for 0, one it did not write 1 (M9/P3 review B-M3: its
-// write and rewrite cost more than an index page's; B1-M2: one with none
-// counts nothing); the most links it may write, none for 0 (M9/P3
+// of Written its content ops wrote with a link its own changes meet
+// counting WrittenWeight, 1 for 0, one they did not write 1 (M9/P3 review
+// B-M3: its write and rewrite cost more than an index page's; B1-M2: one
+// with none counts nothing); the most links it may write, none for 0 (M9/P3
 // review B1-M3); the most bytes of the pages it writes, none for 0 (M9/P3
 // fix round 5, B2-M1: the facts each keeps of the parse budget follow
 // them); and the nodes an op of it renamed or moved with
@@ -353,9 +353,9 @@ type Moved struct {
 // unparsed; the nodes those ops rename or move with update_links false,
 // whose links it leaves (Moved.Frozen); for each node they rename or move,
 // the nodes they create after the last that does, out of its subtree
-// (Moved.CreatedAfter); and whether the batch wrote no version of it, its
-// final content the bytes it held before (Codex review R1), which weighs
-// as a page of the index's (Moved.WrittenWeight).
+// (Moved.CreatedAfter); and whether its content ops wrote no version of it,
+// though its rewrite may, its final content the bytes it held before (Codex
+// review R1), which weighs as a page of the index's (Moved.WrittenWeight).
 type WrittenPage struct {
 	Before       LinksBefore
 	Changes      []domain.Change
@@ -389,9 +389,9 @@ var ErrTooManyRewrites = errors.New("linking: the batch's renames and moves woul
 // its pages within theirs; Bytes, when set, the bytes of the pages it
 // would write, past Max, Moved.MaxBytes, its pages and links within
 // theirs. Kept, when set, is the bytes of the parse budget the facts of
-// the pages it wrote keep with the take of the parse it needs next, past
-// Max, the budget's size: that parse can never be taken beside them,
-// whatever others give back (M9/P3 fix round 6, B3-M1).
+// the pages its content ops decided keep with the take of the parse it
+// needs next, past Max, the budget's size: that parse can never be taken
+// beside them, whatever others give back (M9/P3 fix round 6, B3-M1).
 type TooManyRewrites struct {
 	Pages, Max, Weight, Links, Bytes, Kept int
 }

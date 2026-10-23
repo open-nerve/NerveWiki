@@ -219,12 +219,13 @@ type batchAttempt struct {
 	reads     *TreeReads // the links' reads of the plan's tree made by the op readsMade, the last one asked for (readsAt)
 	readsMade int
 	// The unit's: each op's node and path as it found them, and the
-	// revisions of the pages of the content ops then. wrote is the pages it
-	// wrote a version of, those it created and those whose final content
-	// differs from the bytes they held: a write that changes nothing is no
-	// write (M9/P3 review W3), so wrote, not decided, is what the log counts
-	// and what weighs as a page written in the rewrite's bound. Its counts
-	// and time.
+	// revisions of the pages of the content ops then. wrote is the pages its
+	// content ops wrote a version of, those they created and those whose
+	// final content differs from the bytes they held, though the deferred
+	// rewrite after them may write a version of others: a write that changes
+	// nothing is no write (M9/P3 review W3), so wrote, not decided, is what
+	// the log counts and what weighs as a page written in the rewrite's
+	// bound. Its counts and time.
 	done      []OpDone
 	revisions map[uuid.UUID]int
 	wrote     map[uuid.UUID]bool

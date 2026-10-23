@@ -102,9 +102,9 @@ func (r Rewrite) Participate(ctx context.Context, m Moved, u Appender) error {
 	if m.MaxBytes > 0 {
 		shares = &keptShares{parser: r.Parser}
 	}
-	// The pages the batch wrote first: their read backs, of contents up to
-	// a page's largest, are taken while the budget holds none of the
-	// shares the facts of the writes before keep to the unit's end.
+	// The pages the batch's content ops decided first: their read backs, of
+	// contents up to a page's largest, are taken while the budget holds none
+	// of the shares the facts of the writes before keep to the unit's end.
 	own, err := r.ownWritten(ctx, m, met, gone)
 	if err != nil {
 		return err
@@ -137,11 +137,12 @@ func (r Rewrite) Participate(ctx context.Context, m Moved, u Appender) error {
 
 // pagesCounted is the pages a rewrite writes, as m.MaxPages counts them:
 // indexed, those of the index, one each, and written, those of m.Written
-// it counts: a page the batch wrote m.WrittenWeight (M9/P3 review B-M3),
-// one it wrote no version of (WrittenPage.Unwritten) one, as the page of
-// the index it is in separate calls, its rewrite alone costing less than
-// that (Codex review R1). weight is m.WrittenWeight when a page counted it
-// and it is more than one, else 0.
+// it counts: a page the batch's content ops wrote m.WrittenWeight (M9/P3
+// review B-M3), one they wrote no version of (WrittenPage.Unwritten) one,
+// though its rewrite may write one, as the page of the index it is in
+// separate calls, its rewrite alone costing less than that (Codex review
+// R1). weight is m.WrittenWeight when a page counted it and it is more than
+// one, else 0.
 func pagesCounted(m Moved, indexed int, written []uuid.UUID) (counted, weight int) {
 	counted = indexed
 	for _, id := range written {
@@ -191,8 +192,9 @@ func (f followedPages) counted(gone map[uuid.UUID]bool) []uuid.UUID {
 // writes as the bounds count them, by their heads in the unit (Sizes), not
 // read (M9/P3 fix round 5, B2-M1): each one's rewrite parses it and keeps
 // its facts' share of the budget, some tenth of it, to the unit's end. A
-// page the batch wrote counts its final content, which its rewrite reads,
-// once: its facts are the batch's, its read back the one parse it takes.
+// page the batch's content ops decided counts its final content, which its
+// rewrite reads, once: its facts are the batch's, its read back the one
+// parse it takes.
 func (r Rewrite) bytesOf(ctx context.Context, pages []uuid.UUID) (int, error) {
 	if len(pages) == 0 {
 		return 0, nil
@@ -242,8 +244,9 @@ func (r Rewrite) readTree(ctx context.Context, m Moved, f *followedPages, gone m
 // followed is the pages of the index m's changes reach whose links it
 // writes again, before the tree they are written on is read (readTree):
 // none when they relocate and re-case nothing. The rows of the pages a
-// batch deleted (gone) or wrote are not followed from the index: the first
-// are gone, the second followed from their contents.
+// batch deleted (gone), and of those its content ops decided (m.Written),
+// are not followed from the index: the first are gone, the second followed
+// from their last content ops, whatever their bytes then (Codex review R1).
 func (r Rewrite) followed(ctx context.Context, m Moved, gone map[uuid.UUID]bool) (followedPages, error) {
 	relocates, recased := domain.Relocation(m.Changes)
 	if !relocates && len(recased) == 0 {
@@ -276,11 +279,11 @@ func (r Rewrite) followed(ctx context.Context, m Moved, gone map[uuid.UUID]bool)
 // domain.Rewrites tells from the index's rows, by their page and where
 // their target starts; with the pages they resolved to. recased is the
 // pages whose titles' case alone m changed; the rows of the pages gone,
-// or written by a batch, are not among them, nor those that led to a node
-// a batch froze (Moved.Frozen), and the aliases of those gone are none.
-// The nodes a batch created after a node's rename are not spread under it
-// (Moved.CreatedAfter); those a move carried are among its changes as the
-// move left them.
+// or decided by a batch's content ops, are not among them, nor those that
+// led to a node a batch froze (Moved.Frozen), and the aliases of those gone
+// are none. The nodes a batch created after a node's rename are not spread
+// under it (Moved.CreatedAfter); those a move carried are among its changes
+// as the move left them.
 func (r Rewrite) reached(ctx context.Context, m Moved, relocates bool, recased domain.Recased, gone map[uuid.UUID]bool) (
 	map[uuid.UUID]map[int]rewritten, []uuid.UUID, error,
 ) {
@@ -325,17 +328,18 @@ func (r Rewrite) reached(ctx context.Context, m Moved, relocates bool, recased d
 	return out, targets, nil
 }
 
-// ownReach is the links of a page a batch wrote that its own changes
-// reach and write again (ownLinks), with the pages they re-cased.
+// ownReach is the links of a page a batch's content ops decided that its
+// own changes reach and write again (ownLinks), with the pages they
+// re-cased.
 type ownReach struct {
 	reached map[int]rewritten
 	recased domain.Recased
 }
 
-// writtenMet is, of the pages a batch wrote, alive after it, those with a
-// link their own changes meet, in id order, each with those links
-// (metLinks): what the bounds count of them before the tree is read
-// (M9/P3 review B1-M2), and the rewrite resolves after it.
+// writtenMet is, of the pages a batch's content ops decided, alive after
+// it, those with a link their own changes meet, in id order, each with
+// those links (metLinks): what the bounds count of them before the tree is
+// read (M9/P3 review B1-M2), and the rewrite resolves after it.
 type writtenMet struct {
 	pages []uuid.UUID
 	met   map[uuid.UUID]metRows
@@ -433,13 +437,14 @@ func (r Rewrite) ownWritten(ctx context.Context, m Moved, met writtenMet, gone m
 	return out, nil
 }
 
-// followWritten writes again the links of the page id, which a batch
-// wrote (M9/P3 design 3.7.2): those its own changes, w.Changes, reach and
-// move (own), from its final content, the unit's, its links taken from
-// w.Facts unparsed (a); whatever its index's revision (b), on its current
-// one (c); each matched by where its target starts to where it led at the
-// page's last content op, its target's path then its was (d), on the tree
-// read once for all the pages the batch wrote (trees).
+// followWritten writes again the links of the page id, which a batch's
+// content ops decided (M9/P3 design 3.7.2): those its own changes,
+// w.Changes, reach and move (own), from its final content, the unit's, its
+// links taken from w.Facts unparsed (a); whatever its index's revision (b),
+// on its current one (c); each matched by where its target starts to where
+// it led at the page's last content op, its target's path then its was (d),
+// on the tree read once for all the pages the batch's content ops decided
+// (trees).
 func (r Rewrite) followWritten(ctx context.Context, id uuid.UUID, w WrittenPage, own ownReach, trees writtenTrees,
 	gone map[uuid.UUID]bool, shares *keptShares, u Appender,
 ) error {
@@ -453,11 +458,11 @@ func (r Rewrite) followWritten(ctx context.Context, id uuid.UUID, w WrittenPage,
 	return r.rewrite(ctx, id, 0, &w.Facts, own.reached, from, tree, own.recased, shares, u)
 }
 
-// ownLinks is the links, of the page id's links, that changes, a page a
-// batch wrote's own, reach and write again (M9/P3 design 3.7.2 (a), (e)):
-// those they meet (metLinks), resolved after on pages, the aliases of gone
-// none, that domain.Rewrites tells (rewrittenOf); with the pages changes
-// re-cased.
+// ownLinks is the links, of the page id's links, that changes, the own of a
+// page a batch's content ops decided, reach and write again (M9/P3 design
+// 3.7.2 (a), (e)): those they meet (metLinks), resolved after on pages, the
+// aliases of gone none, that domain.Rewrites tells (rewrittenOf); with the
+// pages changes re-cased.
 func ownLinks(ctx context.Context, store Store, pages Pages, sub *subtrees, notebookID, id uuid.UUID, links []domain.Link,
 	before LinksBefore, changes []domain.Change, frozen, gone map[uuid.UUID]bool, unspread map[uuid.UUID]map[uuid.UUID]bool,
 ) (map[int]rewritten, domain.Recased, error) {
@@ -572,15 +577,16 @@ func sameParent(a, b *uuid.UUID) bool {
 	return a == nil && b == nil || a != nil && b != nil && *a == *b
 }
 
-// subtrees is the subtrees spread reads for the pages a batch wrote, each
-// node's once for the batch, with the keys of its nodes' aliases (M9/P3
-// design 3.7.2 (e)): a moved folder's nodes held once, not once a page;
-// and the last reach made of them, with the changes it was made of and the
-// nodes left out (M9/P3 review A's N1): the content ops after a rename of
-// a folder, on one tree, one after another, spread its subtree once, not
-// once each. One reach is held, not one for each changes: a reach is as
-// large as the subtrees it spreads (M9/P3 fix round 3: the pages a batch
-// wrote between 50 renames of a folder of 100,000 held one each).
+// subtrees is the subtrees spread reads for the pages a batch's content ops
+// decided, each node's once for the batch, with the keys of its nodes'
+// aliases (M9/P3 design 3.7.2 (e)): a moved folder's nodes held once, not
+// once a page; and the last reach made of them, with the changes it was
+// made of and the nodes left out (M9/P3 review A's N1): the content ops
+// after a rename of a folder, on one tree, one after another, spread its
+// subtree once, not once each. One reach is held, not one for each changes:
+// a reach is as large as the subtrees it spreads (M9/P3 fix round 3: the
+// pages a batch wrote between 50 renames of a folder of 100,000 held one
+// each).
 type subtrees struct {
 	store      Store
 	pages      Pages
@@ -645,10 +651,11 @@ func reachKey(changes []domain.Change, unspread map[uuid.UUID]map[uuid.UUID]bool
 	return b.String()
 }
 
-// spread is the package's spread for a page a batch wrote: reach with the
-// subtrees of nodes, each read once for the batch, as their last rename or
-// move left them (stepsNot), and the aliases' keys of reach's own targets
-// and of the subtrees' nodes, which a node the batch created has none of.
+// spread is the package's spread for a page a batch's content ops decided:
+// reach with the subtrees of nodes, each read once for the batch, as their
+// last rename or move left them (stepsNot), and the aliases' keys of
+// reach's own targets and of the subtrees' nodes, which a node the batch
+// created has none of.
 func (s *subtrees) spread(ctx context.Context, reach domain.Reach, nodes []uuid.UUID, after map[uuid.UUID]map[uuid.UUID]bool) (
 	domain.Reach, error,
 ) {
@@ -682,10 +689,10 @@ func (s *subtrees) spread(ctx context.Context, reach domain.Reach, nodes []uuid.
 	return reach, nil
 }
 
-// writtenTree is what the rewrite of a page a batch wrote reads of the
-// tree on pages (M9/P3 design 3.7.2 (d)): the targets reached led to,
-// after, and before, as its last content op left them, their paths then;
-// and its own path.
+// writtenTree is what the rewrite of a page a batch's content ops decided
+// reads of the tree on pages (M9/P3 design 3.7.2 (d)): the targets reached
+// led to, after, and before, as its last content op left them, their paths
+// then; and its own path.
 func writtenTree(ctx context.Context, pages Pages, notebookID, id uuid.UUID, reached map[int]rewritten, before LinksBefore) (
 	domain.Tree, []domain.Step, error,
 ) {
@@ -697,10 +704,10 @@ func writtenTree(ctx context.Context, pages Pages, notebookID, id uuid.UUID, rea
 	return tree, from, nil
 }
 
-// writtenTrees is what the rewrites of the pages a batch wrote read of the
-// tree, once for all of them (M9/P3 review B-M3): their reached links'
-// targets at their paths after, the pages with the keys a writing of them
-// reads, and the pages' own paths.
+// writtenTrees is what the rewrites of the pages a batch's content ops
+// decided read of the tree, once for all of them (M9/P3 review B-M3): their
+// reached links' targets at their paths after, the pages with the keys a
+// writing of them reads, and the pages' own paths.
 type writtenTrees struct {
 	tree domain.Tree
 	from map[uuid.UUID][]domain.Step
@@ -864,11 +871,11 @@ func treeOf(ctx context.Context, pages Pages, m Moved, targets, sources []uuid.U
 // share of the budget the unit's end gives back. A content written since,
 // which the unit's lock keeps out, is logged and left; so is a link no
 // writing leads back, a writing past MaxContent, and one whose links do
-// not read back as the content's. A page a batch wrote has its content's
-// facts given, which no parse takes again, and is written on its current
-// revision, newer than its index's (M9/P3 design 3.7.2 (a)-(c)). A batch's
-// rewrite has each parse fit beside the shares its pages keep (shares), and
-// adds the page's to them.
+// not read back as the content's. A page a batch's content ops decided has
+// its content's facts given, which no parse takes again, and is written on
+// its current revision, whatever its index's (M9/P3 design 3.7.2 (a)-(c)).
+// A batch's rewrite has each parse fit beside the shares its pages keep
+// (shares), and adds the page's to them.
 func (r Rewrite) rewrite(ctx context.Context, id uuid.UUID, revision int, given *domain.Facts, reached map[int]rewritten,
 	from []domain.Step, tree domain.Tree, recased domain.Recased, shares *keptShares, u Appender,
 ) error {

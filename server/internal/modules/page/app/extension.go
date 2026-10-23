@@ -59,11 +59,11 @@ type Step struct {
 // content ops decided, alive after it, whether or not the unit wrote a
 // version of it (Codex review R1); the paths the moved and renamed nodes'
 // former parents had as the unit began; the nodes the unit deleted; the
-// most pages the rewrite may write, a page of Written the unit wrote
-// counting WrittenWeight (M9/P3 review B-M3), the most links (review
-// B1-M3), and the most bytes of the pages it writes (M9/P3 fix round 5,
-// B2-M1); and the first op that renames or moves with update_links, which
-// a refusal names.
+// most pages the rewrite may write, a page of Written its content ops wrote
+// counting WrittenWeight (M9/P3 review B-M3), one they put back 1 (Codex
+// review R1), the most links (review B1-M3), and the most bytes of the
+// pages it writes (M9/P3 fix round 5, B2-M1); and the first op that renames
+// or moves with update_links, which a refusal names.
 type BatchRewrite struct {
 	Written       map[uuid.UUID]WrittenPage
 	Parents       map[uuid.UUID][]domain.PathStep
@@ -108,13 +108,14 @@ type BatchRewrite struct {
 // rename or move with update_links false, whose links it leaves;
 // CreatedAfter, for each node they rename or move, the nodes they create
 // after the last that does, out of its subtree (BatchRewrite.CreatedAfter).
-// Unwritten tells a page the unit wrote no version of: its content ops left
-// it the bytes it held before the batch, an edit back to them after a move
-// rewrote it too (Codex review R1). Its links are followed from its last
-// content op all the same, as separate calls' index has them then; its
-// rewrite weighs as a page of the index's, as it is in separate calls:
-// WrittenWeight is the cost of a page's write and rewrite in the unit
-// (M9/P3 review B-M3), and the unit did not write this one.
+// Unwritten tells a page its content ops wrote no version of, though its
+// rewrite may: they left it the bytes it held before the batch, an edit
+// back to them after a move rewrote it too (Codex review R1). Its links are
+// followed from its last content op all the same, as separate calls' index
+// has them then; its rewrite weighs as a page of the index's, as it is in
+// separate calls: WrittenWeight is the cost of a page's write and rewrite
+// in the unit (M9/P3 review B-M3), and its content ops did not write this
+// one.
 type WrittenPage struct {
 	Before       domain.LinksBefore
 	Changes      []domain.Change
