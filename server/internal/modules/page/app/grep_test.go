@@ -652,7 +652,12 @@ func (c *stepClock) Now() time.Time {
 // unit was 0.4 to 42 µs and stopped the long line, of 2 to 32
 // million units, at the soft deadline from 10 µs for 4 MB, 20 µs for 2 MB,
 // 100 µs for 1 MB, 1 ms for 240 KiB. Below the warm-up the unit is
-// GrepUnitTime: the first call answers the long line's hit.
+// GrepUnitTime: the first call answers the long line's hit. So it does
+// after a first line of 12,000 bytes, 96,016 units, just under the
+// warm-up, and a pause of 40 ms in it, which trusted would tell 417 ns a
+// unit and 13 s for the 4 MB line after it (fix check C4-n1): a warm-up of
+// 96,016 or less fails the row, and the slow machine's below holds it at
+// 160,016 at most.
 // Past it, a slow match raises the unit (fix check C3-m2): a machine on
 // which the first line, 20,000 bytes and 160,016 units, takes 160 ms, a
 // microsecond a unit, 40 times GrepUnitTime, projects the long line of a
@@ -680,6 +685,27 @@ func TestGrepTrustsItsUnitPastAWarmUp(t *testing.T) {
 			if found := grepFound(got); !slices.Equal(found, []string{"Long.md:2"}) || got.Incomplete || got.Walk.Stop != "done" {
 				t.Errorf("x, a pause of %v in it, then a line of %d bytes: %q, %+v; want its hit in the first call", pause, n, found, got)
 			}
+		}
+	}
+	{
+		f := newFixture()
+		f.grant(domain.ActionRead)
+		reads := newFakeGrep(f.store)
+		id := f.page("Warm", nil, 0).ID
+		f.content(id, strings.Repeat("a", 12_000)+"\n"+strings.Repeat("a", 4_000_000)+" needle\n", 1)
+		reads.exact[id] = true
+		deadline := time.Now().Add(time.Hour)
+		ctx, cancel := context.WithDeadline(f.asAlice(), deadline)
+		clock := &pauseClock{at: deadline.Add(-15 * time.Second), pause: 40 * time.Millisecond}
+		got, err := f.grepper(reads, func(d *app.GrepDeps) { d.Clock = clock }).WithLines(clock.lines).Execute(ctx, f.eng,
+			app.GrepRequest{Pattern: "needle"})
+		cancel()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if found := grepFound(got); !slices.Equal(found, []string{"Warm.md:2"}) || got.Incomplete || got.Walk.Stop != "done" {
+			t.Errorf("12,000 bytes, just under the warm-up, a pause of 40 ms in them, then 4 MB: %q, %+v; want its hit in the first call",
+				found, got)
 		}
 	}
 	f := newFixture()
