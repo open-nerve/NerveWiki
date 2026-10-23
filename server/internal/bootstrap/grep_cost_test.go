@@ -36,12 +36,21 @@ const (
 	// median of three, in each state of the statistics: 74-89 ms here.
 	grepCandidatesBound = 270 * time.Millisecond
 	// grepCandidatesCallBound is a call over them, the tree's 100,000
-	// pages walked to the 500th candidate. It was set at three times the
-	// one call first timed, cold, 143-150 ms here. The median of three
-	// (S2 fix round 4) judges a warm call, about 130 ms, the first call
-	// the slowest at 140-145 ms; the bound is kept, about 3.4 times the
-	// median.
-	grepCandidatesCallBound = 450 * time.Millisecond
+	// pages walked to the 500th candidate. It was first three times the
+	// one call first timed, cold, 143-150 ms here: 450 ms. The median of
+	// three (S2 fix round 4) judges a warm call, about 130 ms here: the
+	// tree's read about 52 ms, GrepCandidates about 68, the rest 10. On
+	// slow CI runners this call ran at 4.0-4.6 times here, 608.6 ms alone
+	// (run 39868181582) and a median of 585.7 ms (run 39900615286), while
+	// GrepCandidates in the same run stayed near 2.3 times. Past
+	// GrepCandidates' statement the call's work is mostly in Go: the
+	// tree's rows, 191 MB allocated a call, half the call's CPU here the
+	// collector's, which this host's spare cores hide, likely where a
+	// runner's few fell behind. 1 s is about
+	// 7.5 times the median here and 1.7 times the slowest CI median; it is
+	// to catch per-candidate work, which a query or an allocation per
+	// candidate turns into seconds.
+	grepCandidatesCallBound = time.Second
 )
 
 // grepAlternation is 3.6.4's pattern: 36 branches of the class
@@ -172,8 +181,9 @@ func TestGrepAtItsWorkBoundTakesItsTime(t *testing.T) {
 // without statistics, analyzed, and planned generic, each within its
 // bound, and a call of the literal, which walks the tree to its 500th
 // candidate, within its own: the median of three calls, as GrepCandidates'
-// (one call took 608.6 ms against 450 ms on a slow CI runner: S2 fix round 4),
-// each call's walk checked.
+// (one call took 608.6 ms against 450 ms on a slow CI runner: S2 fix round
+// 4; a median of 585.7 ms on another, CI run 39900615286, made the bound
+// 1 s), each call's walk checked.
 func TestGrepOfAHundredThousandCandidatesTakesItsTime(t *testing.T) {
 	if testing.Short() {
 		t.Skip("a bound in time, measured alone by make test-go-guards")
