@@ -289,8 +289,9 @@ func TestTheReadOfAnAttachment(t *testing.T) {
 }
 
 // An attachment's errors are its reader's: page.not_found when it or its
-// access went since the node was found, in the module's words for the path
-// as written; a content's failure as it is.
+// access went since the node was found, at its metadata's read, or its row
+// since, at its bytes', in the module's words for the path as written; a
+// content's failure as it is.
 func TestTheReadOfAnAttachmentFails(t *testing.T) {
 	a := app.Attachment{NodeID: uuid.NewV7(), Name: "x.png", MIME: "image/png", Bytes: 4, URL: "http://wiki.example/x"}
 	boom := errors.New("boom")
