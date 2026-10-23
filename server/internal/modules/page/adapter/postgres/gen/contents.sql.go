@@ -131,12 +131,16 @@ func (q *Queries) CreateContent(ctx context.Context, arg CreateContentParams) er
 }
 
 const grepContents = `-- name: GrepContents :many
+WITH c AS MATERIALIZED (
+    SELECT node_id, byte_size, content FROM page_contents
+    WHERE node_id = ANY($2::uuid[]) AND deleted_at IS NULL
+)
 SELECT s.node_id, s.byte_size, (s.total <= $1::bigint)::boolean AS within,
     coalesce(CASE WHEN s.total <= $1::bigint THEN s.content END, '')::text AS content
 FROM (
     SELECT c.node_id, c.byte_size, c.content, sum(c.byte_size) OVER (ORDER BY a.ord) AS total
     FROM unnest($2::uuid[]) WITH ORDINALITY AS a(id, ord)
-    JOIN page_contents c ON c.node_id = a.id AND c.deleted_at IS NULL
+    JOIN c ON c.node_id = a.id
 ) s
 WHERE s.total - s.byte_size <= $1::bigint
 `
@@ -157,7 +161,10 @@ type GrepContentsRow struct {
 // page past it with its size alone, and no page after it: grep's batch (M9/P4 design 3.4.3), its bound held on what
 // the statement reads, not on the sizes read before it (M9 Codex review D2). The rows are read once, by their key, and
 // only the contents within the bound are returned: the content of one past it, a TOAST pointer in its row while the
-// window and the CASE carry it, is never fetched, as TestTheContentsPastTheBoundAreNotFetched checks.
+// CTE, the window and the CASE carry it, is never fetched, as TestTheContentsPastTheBoundAreNotFetched checks. The
+// rows are read by the keys alone, as Contents reads them, then put in the order asked: a join of the order to the
+// table is a hash join over the table read whole at grep's batch of MaxSearchWalk pages, with statistics or without
+// (M9 Codex review fix round 1, B-M1; TestGrepPlans).
 func (q *Queries) GrepContents(ctx context.Context, arg GrepContentsParams) ([]GrepContentsRow, error) {
 	rows, err := q.db.Query(ctx, grepContents, arg.MaxBytes, arg.NodeIds)
 	if err != nil {

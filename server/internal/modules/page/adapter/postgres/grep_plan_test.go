@@ -20,10 +20,11 @@ import (
 // any arguments: GrepCandidates's two branches of page_search_hits are
 // the function's (whose own settings leave its statements bitmaps of the
 // GIN indexes, checkHits), its queue's branch reads
-// page_search_queue_notebook_id_bulk_idx by the notebook; GrepContents
-// reads page_contents once, by its key, for the sizes and the contents
-// within its bound; ListNodes reads nodes by an index that leads with the
-// notebook. None scans a table whole.
+// page_search_queue_notebook_id_bulk_idx by the notebook; GrepContents,
+// of a batch of MaxSearchWalk pages, grep's most (M9 Codex review fix
+// round 1, B-M1), reads page_contents once, by its key, for the sizes and
+// the contents within its bound; ListNodes reads nodes by an index that
+// leads with the notebook. None scans a table whole.
 func TestGrepPlans(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
@@ -47,7 +48,7 @@ func TestGrepPlans(t *testing.T) {
 	f.exec(t, `INSERT INTO page_search_queue (node_id, notebook_id, bulk) SELECT id, notebook_id, false FROM nodes
 		WHERE notebook_id = $1 ORDER BY id LIMIT 3`, f.eng)
 	var ids []uuid.UUID
-	rows, err := f.pool.Query(ctx, `SELECT id FROM nodes WHERE notebook_id = $1 ORDER BY id LIMIT 100`, f.eng)
+	rows, err := f.pool.Query(ctx, `SELECT id FROM nodes WHERE notebook_id = $1 ORDER BY id LIMIT $2`, f.eng, domain.MaxSearchWalk)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -13,7 +13,11 @@ import (
 	"time"
 	"uuid"
 
+	"github.com/jackc/pgx/v5"
+
+	"github.com/open-nerve/NerveWiki/server/internal/modules/page/adapter/postgres/gen"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/app"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
 )
 
@@ -216,6 +220,100 @@ func TestTheContentsPastTheBoundAreNotFetched(t *testing.T) {
 			if past := max < int64(len(big)); past && (read || n != 0) || !past && (!read || n < 100) {
 				t.Errorf("%s within %d: Big read %v, %d blocks of the TOAST fetched; want it read and its blocks fetched only "+
 					"within its size", tt.name, max, read, n)
+			}
+		}
+	}
+}
+
+// The other statements that read contents within a bound read
+// page_contents by its key at their batches' most pages, as GrepContents
+// does at grep's (TestGrepPlans; M9 Codex review fix round 1, B-M1), on
+// 10,000 pages, where a join of SearchBatchNodes keys in their order to
+// the table reads it whole: SearchContents of SearchBatchNodes,
+// TrashContentsWithin of MaxUnitPages deleted at one time among 5,000
+// deleted at others, PageContentWithin of one. Without statistics and
+// analyzed, planned for the arguments and for any: none scans a table
+// whole.
+func TestTheContentsWithinABoundAreReadByTheirKey(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	for _, table := range []string{"nodes", "page_contents"} {
+		f.exec(t, "ALTER TABLE "+table+" SET (autovacuum_enabled = false)")
+	}
+	seed := func(notebook uuid.UUID, nodes int) {
+		f.exec(t, `INSERT INTO nodes (id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id,
+				created_at, updated_at)
+			SELECT uuidv7(), $1, NULL, 'page', 'n' || k, 'n' || k, k, $2, $2, $3, $3 FROM generate_series(1, $4::integer) k`,
+			notebook, f.alice, now(), nodes)
+		f.exec(t, `INSERT INTO page_contents (node_id, content, revision, content_hash, byte_size, updated_by_id, updated_at)
+			SELECT id, 'a line', 1, sha256('a line'), 6, $2, $3 FROM nodes WHERE notebook_id = $1`, notebook, f.alice, now())
+	}
+	seed(f.ops, 9_000)
+	seed(f.eng, 1_000)
+	ids := func(query string, args ...any) []uuid.UUID {
+		rows, err := f.pool.Query(ctx, query, args...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, err := pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	// The trash: ops' first 5,000 pages, each hundred at its own time, and
+	// eng's last MaxUnitPages at the time read.
+	at := now().Add(time.Hour)
+	f.exec(t, `WITH d AS (SELECT id, row_number() OVER (ORDER BY id) AS k FROM nodes WHERE notebook_id = $1 ORDER BY id LIMIT 5000)
+		UPDATE page_contents c SET deleted_at = $2::timestamptz + (d.k / 100) * interval '1 second' FROM d WHERE c.node_id = d.id`,
+		f.ops, now())
+	trash := ids(`SELECT id FROM nodes WHERE notebook_id = $1 ORDER BY id DESC LIMIT $2`, f.eng, domain.MaxUnitPages)
+	f.exec(t, `UPDATE page_contents SET deleted_at = $2 WHERE node_id = ANY($1)`, trash, at)
+	live := ids(`SELECT id FROM nodes WHERE notebook_id = $1 ORDER BY id LIMIT $2`, f.eng, domain.SearchBatchNodes)
+	statements := []struct {
+		name  string
+		s     statement
+		scans []func(*planNode) bool
+	}{
+		{"SearchContents", statementOf(t, func(g *gen.Queries) error {
+			_, err := g.SearchContents(ctx, gen.SearchContentsParams{Ids: live, MaxBytes: domain.SearchBatchBytes})
+			return err
+		}), []func(*planNode) bool{reads("page_contents", "page_contents_pkey", "")}},
+		{"TrashContentsWithin", statementOf(t, func(g *gen.Queries) error {
+			_, err := g.TrashContentsWithin(ctx, gen.TrashContentsWithinParams{Ids: trash, DeletedAt: at, MaxBytes: domain.MaxUnitBytes})
+			return err
+		}), []func(*planNode) bool{func(n *planNode) bool {
+			return reads("page_contents", "page_contents_pkey", "")(n) || reads("page_contents", "page_contents_deleted_at_idx", "")(n)
+		}}},
+		{"PageContentWithin", statementOf(t, func(g *gen.Queries) error {
+			_, err := g.PageContentWithin(ctx, gen.PageContentWithinParams{NodeID: live[0], MaxBytes: domain.MaxContentBytes})
+			return err
+		}), []func(*planNode) bool{reads("page_contents", "page_contents_pkey", "")}},
+	}
+	for _, stage := range []string{"without statistics", "analyzed"} {
+		if stage == "analyzed" {
+			f.exec(t, "ANALYZE nodes, page_contents")
+		} else if n := f.count(t, `SELECT count(*) FROM pg_stats WHERE tablename IN ('nodes', 'page_contents')`); n != 0 {
+			t.Fatalf("the tables have statistics of %d columns", n)
+		}
+		for _, s := range statements {
+			for _, generic := range []bool{false, true} {
+				root, raw := f.planTreeWith(t, s.s)
+				if generic {
+					root, raw = f.genericPlanTree(t, s.s.sql)
+				}
+				var problems []string
+				for i, scan := range s.scans {
+					if len(root.all(scan)) != 1 {
+						problems = append(problems, fmt.Sprintf("does not read page_contents once, by scan %d", i+1))
+					}
+				}
+				if len(root.all(func(n *planNode) bool { return n.Type == "Seq Scan" })) > 0 {
+					problems = append(problems, "scans a table whole")
+				}
+				if len(problems) > 0 {
+					t.Errorf("%s, %s, generic %v: %s:\n%s", s.name, stage, generic, strings.Join(problems, "; "), raw)
+				}
 			}
 		}
 	}

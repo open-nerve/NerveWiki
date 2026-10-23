@@ -70,13 +70,19 @@ ORDER BY i.id;
 -- The contents of live pages by their keys, with their revisions: those the job builds rows of, in the order of ids,
 -- while their sizes sum to max_bytes at most; the first page past it with its size alone, and no page after it (M9
 -- Codex review D2): the job's batch, bounded on what it reads, not on the sizes its sources told. As GrepContents,
--- the rows are read once and only the contents within the bound are returned.
+-- the rows are read once, by the keys alone, and only the contents within the bound are returned: a join of the order
+-- to the table reads it whole at SearchBatchNodes on a table of some thousands of pages (M9 Codex review fix round 1,
+-- B-M1; TestTheContentsWithinABoundAreReadByTheirKey).
+WITH c AS MATERIALIZED (
+    SELECT node_id, byte_size, revision, content FROM page_contents
+    WHERE node_id = ANY(sqlc.arg(ids)::uuid[]) AND deleted_at IS NULL
+)
 SELECT s.node_id, s.revision, (s.total <= sqlc.arg(max_bytes)::bigint)::boolean AS within,
     coalesce(CASE WHEN s.total <= sqlc.arg(max_bytes)::bigint THEN s.content END, '')::text AS content
 FROM (
     SELECT c.node_id, c.byte_size, c.revision, c.content, sum(c.byte_size) OVER (ORDER BY a.ord) AS total
     FROM unnest(sqlc.arg(ids)::uuid[]) WITH ORDINALITY AS a(id, ord)
-    JOIN page_contents c ON c.node_id = a.id AND c.deleted_at IS NULL
+    JOIN c ON c.node_id = a.id
 ) s
 WHERE s.total - s.byte_size <= sqlc.arg(max_bytes)::bigint;
 
