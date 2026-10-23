@@ -18,3 +18,7 @@ M9/P1 建了 MCP 的平台与读的工具（[M9/P1 文档](../../M9-mcp/01-P1-pl
 5. **`prompts/get` 的上限与错误**：
    - 请求体同 `tools/call` 之外的每个方法至多 64 KiB（`mcpserver/edge.go` 的 `maxOtherBytes`，M9/P1 3.2.2）：prompt 的参数要放得下，或者另设例外（今天超过 64 KiB 的只能是这个入口登记的工具的 `tools/call`）。
    - `Get` 的错误还没有分类与上限：任何错误都记 error "MCP prompt failed"、答 JSON-RPC 的 -32603（`promptHandler` 的注释写明是 M10 的）；工具的错误经 `httpserver.ProblemOf` 分类、在 48 KiB 之内（M9/P1 3.3.6），prompt 的要照做。`prompts/get` 的答复也不经 `Fit`、没有 48 KiB 的上限（M9/P1 S1 审查 B 的细节 7，修复核对第一轮 A）。
+6. **之后的 Phase 留下的三条**（[M9/P3](../../M9-mcp/03-P3-batch-revert.md)、[M9/P4](../../M9-mcp/04-P4-grep-search.md) 第 8 节，[M9/P5](../../M9-mcp/05-P5-stories-docs.md) 第 11 节）：
+   - **内置的说明的余量**：账户入口 4,027 字节、笔记本入口 3,957 字节，离 4 KiB 只剩 69 字节。M10 往说明里加字（prompt、虚拟的两页、`llm_wiki` 的规则）的先缩短已有的行，`TestTheBuiltInInstructionsAreShort`（`page/adapter/mcp/instructions_test.go:15-27`）照旧守 4 KiB。
+   - **故事的 MCP 版本的约定**（[M9 总设计](../../M9-mcp/00-M9-design.md)第 9 节，M9/P5 3.1）：在故事自己的文件里、名为"`<故事> (MCP)`"，种下的数据照 API 版本经 REST，每个 agent 一个 PAT，值来自答复（`e2e/fixtures/mcp.ts` 的 `writtenOf`、`readPage`），收编辑会话的断言以 `expectVersions` 代之，不开浏览器。
+   - **prompt 的说法**：人工清单（`M9-mcp/manual/P5-mcp-clients-checklist.md`）记下 agent 不照说明做的地方（C3–C6 的 `edit` 与 `move`，C12、C15 的 `partial_lines`、`cut` 与 `read(offset, column)`）；M10 写 ingest、query、lint 的 prompt 时照它们改说法。清单在 v0.1 的最后才跑，M10 在那之前写的照工具的说明。

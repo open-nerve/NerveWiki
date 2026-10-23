@@ -4,7 +4,7 @@
 |---|---|
 | Phase | M9/P5 其余的故事的 MCP 版本与接入文档（一个 Step：前面 M 的 21 个故事的 MCP 版本与 fixture 的四处改动、README 的"接入 agent（MCP）"与部署一节的反向代理、人工清单 `manual/P5-mcp-clients-checklist.md`、总体设计与 00 号文档的修订） |
 | 日期 | 2026-10-23 |
-| 状态 | 设计已审查（三位审查者），照主持者的处置修订四次，复核三轮（前两轮由三位，第三轮由 C 与主持者）；审查记录 [P5-design-review.md](reviews/P5-design-review.md)；S1 未开始 |
+| 状态 | S1 已合并（`053d3ba1`），P5 完成；设计已审查（三位审查者），照主持者的处置修订四次，复核三轮（前两轮由三位，第三轮由 C 与主持者）；审查记录 [P5-design-review.md](reviews/P5-design-review.md)；S1 的审查记录 [P5-S1-stories-docs-review.md](reviews/P5-S1-stories-docs-review.md)，实施与审查之后与代码不同之处照实改在各节（3.9 列出），4.1 与 6.1 是 README 与清单建成的样子，结果在第 12 节 |
 | 上级文档 | [M9 总设计](00-M9-design.md) 4.4、4.5、4.6、4.10、4.14、4.16、第 7、9、10、11 节与"移交的落实""写给后面的 M""总体设计的修订"；[P1](01-P1-platform-reads.md)、[P2](02-P2-writes-history.md)、[P3](03-P3-batch-revert.md)、[P4](04-P4-grep-search.md) 各自的第 8 节；[v0.1 总体设计](../v0.1-design.md) 6.1–6.4、10.1、11、13.1、13.2、13.4；移交 [M0/P1 MCP 会话](handoffs/M0-P1-mcp-sessions.md)第 1、3 项；[M0/P1 的实验](../M0-foundation/01-P1-spikes.md)第 7 节；[M4/P6 的输入法清单](../M4-pages/manual/P6-ime-checklist.md)（清单的格式）；[M5/P2](../M5-collab-editing/02-P2-event-stream.md)第 7 节（反向代理的容器） |
 | 代码位置的写法 | 同 P1–P4：模块写作 `page/adapter/mcp/read.go:94`（`server/internal/modules/` 之下）；`platform/…`、`bootstrap/…`、`shared/…` 在 `server/internal/` 之下；e2e 写作 `e2e/fixtures/mcp.ts:114`、`e2e/stories/page/pg1-create-page.spec.ts:25`（一节里反复引同一个文件时只写 `pg1:25` 一类）；README 写作 `README.md:219`。代码与 README 的行号是 `7dc4a686` 的（P4 的文档提交），文档的行号同样 |
 | 研究与实验 | 全部离线，在 `scratchpad/m9/p5/` 之下：`research/` 是四份逐故事的核对（页面的写、读与推送与搜索、链接与附件、豁免；各自对着 `7dc4a686` 的代码，`file:line` 照它们在附录里重列）；`exp/insts/` 数清单的 C12 步的模式编译之后的指令（`\pL{30}完成` 34 条，4 MiB 的一行只匹配得到开头约 2.2 MB，进 `partial_lines`）；`exp/caddy/` 是 Caddy 的按路由缓冲的重跑（设计审查 B 的 `Caddyfile` 与 `run.sh`，经 `heavy.sh` 在本机已有的 `caddy:2.10-alpine` 里，`--rm --pull=never --network none`、没有映射端口）、缓冲在内存里还是磁盘上的一次量（`mem.sh`）与 README 的 Caddy 样例的 `caddy validate`（`readme/`）；审查 B 的第二轮的两次（代理与上游分开进程时的内存 `mem-separate/`，经 Caddy 时服务端早答的拒绝 `early/`）与第三轮的一次（nginx 每个大小三次、替身答 401 与 429 时的 Caddy，`early2/`）复制在同一处。没有运行任何 MCP 客户端，没有下载，没有改仓库 |
@@ -13,7 +13,7 @@
 
 ## 0. 一个 Step
 
-00 号文档第 7 节说 P5 轻。它没有服务端的代码（2.3：P1–P4 第 8 节给 P5 的没有一条要改服务端），只有三样东西：e2e 的改动、README 的两处文字、一份清单。e2e 的改动是：21 个新的测试；MC3 (activity) 挪走，成为 PG14 (MCP)（MC3 去掉它与只有它用的导入）；SE1 的 `expectFound` 加一个调用处的选项（MCP 的调用处不比命中的范围）；PG2、PG9、HI1 的几个常量提到文件的顶层，两个测试共用；fixture 的三处类型的放宽与两个帮助函数（新的 `writtenOf`，与从 MC2 挪来的 `readPage` 及其类型 `PageRead`）；L6 (API) 与 C7 (API) 的事件流的检查各补一两行（3.3、3.4）。三样互不依赖，却都要同一次审查读懂同一件事（MCP 的行为在故事里、在文档里怎样说），分成两个 Step 只多一次审查与一次合并、少不了什么风险：e2e 的改动每个故事在它自己的文件里，改已有的测试的只有上面列的几处；文档不碰代码。所以一个 Step **S1**（分支 `m9-p5-s1`，从 `main` 起），一次审查与修复核对，一次合并。
+00 号文档第 7 节说 P5 轻。它没有服务端的代码（2.3：P1–P4 第 8 节给 P5 的没有一条要改服务端），只有三样东西：e2e 的改动、README 的两处文字、一份清单。e2e 的改动是：21 个新的测试；MC3 (activity) 挪走，成为 PG14 (MCP)（MC3 去掉它与只有它用的导入）；SE1 的 `expectFound` 加一个调用处的选项（MCP 的调用处不比命中的范围）；PG2、PG9、HI1 的几个常量提到文件的顶层，两个测试共用（HI1 的四个；HI1 (page) 的三个同名的纯文本常量随之改名为 `plainCreated`、`plainSecond`、`plainThird`，3.9）；fixture 的三处类型的放宽与两个帮助函数（新的 `writtenOf`，与从 MC2 挪来的 `readPage` 及其类型 `PageRead`）；L6 (API) 与 C7 (API) 的事件流的检查各补一两行（3.3、3.4）。三样互不依赖，却都要同一次审查读懂同一件事（MCP 的行为在故事里、在文档里怎样说），分成两个 Step 只多一次审查与一次合并、少不了什么风险：e2e 的改动每个故事在它自己的文件里，改已有的测试的只有上面列的几处；文档不碰代码。所以一个 Step **S1**（分支 `m9-p5-s1`，从 `main` 起），一次审查与修复核对，一次合并。
 
 S1 的每个提交都是绿的（第 8 节）：先是 fixture 的一个提交（放宽的类型让今天的每个调用者照样编过，`writtenOf` 与 `readPage`、`PageRead` 在同一个提交里有调用者，过 knip；`make lint` 的 tsc 证明编得过），之后按故事的分组各一个提交（页面、协作与链接、附件、历史与搜索），每个提交的新测试都通过；README 的两处与清单各一个提交。e2e 的 CI 那一份只在合并时多跑一次（9.4）。
 
@@ -143,7 +143,7 @@ P5 照实改 00 号文档的这些处（行号是 `7dc4a686` 的 00 号文档的
   1. `expectContentWritten(db, written, content, writerId)`（`assert/page.ts:429-445`）的 `written` 由 `Page` 放宽到 `Pick<Page, "id" | "revision" | "content_updated_at">`：它只读这三个（`:440`、`:443`）；`Embedded.written`（`assert/asset.ts:162-166`）同样放宽，`expectEmbedded` 把它原样交给 `expectContentWritten`。P2 这样放宽过 `expectNewPage`（`page.ts:16-22`）。今天的调用者（PG5、PG7、PG8、PG9、PG10、C10、AS2）都传整个 `Page`，照样编过。
   2. `expectMoved(db, moved, from, moverId)`（`page.ts:135-149`）的 `moved` 由 `TreeNode` 放宽到 `Pick<TreeNode, "id" | "parent_id">`：它只读这两个（`:144`、`:147`）。
   3. `fixtures/mcp.ts` 加 `writtenOf(answer, what)`：由 `write` 或 `edit` 的答复（结构上的 `{node_id, version, at}`，不导出类型）造出上面的 `Pick`；`version` 不是 `` `${node_id}:` `` 加数字、或 `at` 为 null（没有写）时失败，不悄悄地给 `NaN` 或 `"null"`。四个故事导入它（PG7、PG8、PG9、AS2），过 knip。它自己的检查由一次伪造的答复证明会失败（第 8 节第 8 步，只记进审查记录）。
-  4. MC2 的本地 `readPage` 与 `PageRead`（`mc2-read-list.spec.ts:64-83`：`read` 两块文字、没有 `structuredContent`，答 `{meta, text}`）挪进 `fixtures/mcp.ts`，**两个都导出**：MC2 的 `readAll` 在自己的签名里写 `PageRead`（`mc2:86`），只挪函数而类型不导出时 MC2 编不过（`TS2304`）；MC2 导入两者，正是 `mcp.ts:12-14` 的规则许可导出的时候（故事导入了才导出）。PG7、PG8、PG9、PG11、PG12、HI1、L1、AS2、AS3 用 `readPage`。C4 (MCP) 手写的一处（`c4-guard.spec.ts:95-96`）不动。
+  4. MC2 的本地 `readPage` 与 `PageRead`（`mc2-read-list.spec.ts:64-83`：`read` 两块文字、没有 `structuredContent`，答 `{meta, text}`）挪进 `fixtures/mcp.ts`，**两个都导出**：MC2 的 `readAll` 在自己的签名里写 `PageRead`（`mc2:86`），只挪函数而类型不导出时 MC2 编不过（`TS2304`）；MC2 导入两者，正是 `mcp.ts:12-14` 的规则许可导出的时候（故事导入了才导出）。PG7、PG8、PG9、PG11、PG12、HI1、L1、AS2、AS3 用 `readPage`。C4 (MCP) 手写的一处（`c4-guard.spec.ts:95-96`）不动。建成的 `PageRead.meta` 写出 `read` 一页的第一块的十个成员（`path`、`kind`、`version`、`offset`、`column`、`lines`、`total_lines`、`byte_size`、`next_offset`、`next_column`，`page/adapter/mcp/read.go:28-37`），不再是 MC2 的四个加一个索引签名：新的故事读它的 `version` 与 `path`（3.9）。
 
   00 号文档第 9 节说的 `collab.ts:50` 的客户端类型放宽**不做**：那是 `expectToggleRevision` 的参数（`e2e/fixtures/assert/collab.ts:44-50`），只有 C10 调它，C10 豁免（2.1 第 4 条）。
 - **两个已有的测试的同一个洞一起补**：L6 (API) 与 C7 (API) 各自的事件流的检查有 3.3、3.4 说的洞（L6 (API) 开流之前不 settle，C7 (API) 删除之后不查流是否安静），各一两行的改法，与它们的 MCP 版本在同一个提交里补上。
@@ -274,10 +274,10 @@ P5 照实改 00 号文档的这些处（行号是 `7dc4a686` 的 00 号文档的
   2. `write {path: "Notes.md", content: "Draft\n"}` → `{tree: true, pages: [{id: node_id, revision: 1}]}`（新建的页不论有没有正文都在版本号 1 列出）；`write {path: "Parent.md", content: "# Parent\n"}` → 同样的形状；`move {from: "Notes.md", to: "Minutes.md"}` → `{tree: true, pages: []}`；`move {from: "Minutes.md", to: "Parent/Minutes.md"}` → 同；`edit {path: "Parent/Minutes.md", old_string: "Draft\n", new_string: "# Minutes\n", base_version: "<id>:1"}`（`edit` 要至少 1 字节的 `old_string`，`page/adapter/mcp/edit.go:15`，所以第一次的 `write` 写进 `Draft\n`；两次移动不改版本号，令牌仍是第一次 `write` 答的 `"<id>:1"`）→ `{tree: false, pages: [{id, revision: 2}]}`。每个帧带 `{workspace_id, notebook_id: eng.id}`，同 API 版本的 `ofEng`。
   3. **新的**：一个 `batch`（Minutes 的正文与新建 `Parent/Late.md` 两步）是**一个**帧 `{tree: true, pages: 两页}`：比较时 `pages` 按 id 排、长度是 2（一个单元一次 `tell`，按改动的次序列出）。
   4. `delete {path: "Parent.md", recursive: true}` → `{tree: true, pages: []}`（删除不列页：只列 `c.After != nil` 的，`events_registrants.go:23-32`）。
-  5. **安静**（Go 的 `tm.quiet` 的做法，`events_pages_test.go:67-77`）：A 经 REST 写一次 Eng 的 Marker（准备时建、`settleEvents` 用的那一页，`c7-push.spec.ts:41`；settle 写过它，版本号先以 `readContent` 读出），B 的下一帧恰是它 `{tree: false, pages: [{marker.id, revision}]}`：第 3 步的 batch 若发了第二个帧、第 4 步的删除若一页一帧，都在这里失败。
+  5. **安静**（Go 的 `tm.quiet` 的做法，`events_pages_test.go:67-77`）：A 经 REST 写一次 Eng 的 Marker（准备时建、`settleEvents` 用的那一页，`c7-push.spec.ts:41`；settle 写过它，版本号先以 `readContent` 读出），B 的下一帧恰是它 `{tree: false, pages: [{marker.id, revision}]}`：删除之后单元若另发一个不同的帧，在这里失败（对照 236q：删除的单元另发 `{tree: false, pages: []}`，C7 (MCP) 在这一步、C7 (API) 在它新加的检查失败，`171b739d` 的 C7 (API) 通过）。它抓不到别的两种：batch 的第二个帧在第 3 步（236 的形状）或第 4 步（它等的是删除的帧）就失败，只在与删除的帧一模一样时才到这里；删除的"一页一帧"在流上看不出来，删除的每个改动都是 `{workspace_id, notebook_id, tree: true, pages: []}`、彼此逐字节相同，由单元的事务里的 `pg_notify` 发出，同一个事务里同一个通道上相同的载荷 PostgreSQL 只送一次（M5 记下过，`docs/v0.1/M5-collab-editing/00-M5-design.md:241`），抓到它的是 Go 的 `TestAPagesEventSaysWhatTheUnitWrote`（`events/app/publisher_test.go:57`，假的通知者不合并）。（S1 的实施者的发现，审查 A 与 C-I1；原写"第 3 步的 batch 若发了第二个帧、第 4 步的删除若一页一帧，都在这里失败"，3.9。）
   6. C 的第一帧是它自己在 Mine 里的写（REST，照 API 版本），所以 Eng 的帧一个都没到 C。
 - 不同：会话的开与结束（锁的帧，API 版本的 `:57-60`）没有 MCP 的形式。
-- **C7 (API) 一起改**：它在删除之后只读一帧、之后再不读 B 的流（`c7:62-63`），一个删除发两帧它照样通过；在同一个提交里给它加同样的第 5 步：先把 Marker 提成一个变量（今天它在 `settleEvents` 的调用里就地建，`c7-push.spec.ts:41`），删除之后写它一次、`expectNext` 它的帧，两行。它的版本号不必读：建时 1，settle 写成 2，所以写的 `base_revision` 是 2，帧里是 3。
+- **C7 (API) 一起改**：它在删除之后只读一帧、之后再不读 B 的流（`c7:62-63`），一个删除发两帧它照样通过；在同一个提交里给它加同样的第 5 步：先把 Marker 提成一个变量（今天它在 `settleEvents` 的调用里就地建，`c7-push.spec.ts:41`），删除之后读出它的版本号、写它一次、`expectNext` 下一个版本号的帧，三行。版本号照 C7 (MCP) 先以 `readContent` 读：`settleEvents` 在它的流先结束时会再写 Marker（`e2e/fixtures/events.ts:95-113`），它不总是 2（S1 的审查 A-M1 = C-M1，修复一轮；原写"它的版本号不必读：建时 1，settle 写成 2"，3.9）。
 
 ### 3.4 链接的故事
 
@@ -340,7 +340,7 @@ P5 照实改 00 号文档的这些处（行号是 `7dc4a686` 的 00 号文档的
 - 步骤（`AS3 (MCP): an agent writes a page embedding attachments, in its properties too; the index has their ids; a move renaming an attachment writes its embeds and its property's link again, caption and width kept, each still leading to it`）：
   1. REST 上传五个文件到根下（`upload`）；`write {path: "Guide.md", content}`（`:26-28` 的 frontmatter 与嵌入）；REST 的 `getView` 与 `getPageProperties` 照 API 版本；`expectIndexedLinks`。
   2. `move {from: "cover.png", to: "front.png"}`（根下的改名，附件的扩展名留着）答 `node_id` 是 cover 的；`readPage {path: "Guide.md"}` 与 REST `readContent` 的文字都是原来的把每个 `[[cover.png` 换成 `[[front.png`（属性与嵌入，标题与宽度留着）；`getView` 的图片仍在 cover 的 id；`expectIndexedLinks`（八个，`data.zip` 的两个不动、`missing.png` 仍为 null）；`expectChangesetOf`。
-- 不同：页由 agent 写（AS3 的动作之一）；媒体的播放、PDF 的标签页、下载是浏览器的。MC4 改名过页下的一个附件（`mc4-move-delete.spec.ts:79-88`），属性里的链接、带标题与宽度的嵌入与改名之后整个的索引是新的。
+- 不同：页由 agent 写（AS3 的动作之一）；媒体的播放、PDF 的标签页、下载是浏览器的。上传的答复的类型（AS3 (API) 的 `[cover.mime, …]`，`as3-render.spec.ts:81-87`）不再查：两个测试是同一个本地的 `upload`，AS3 (API) 查过（S1 的审查 A-N1）。MC4 改名过页下的一个附件（`mc4-move-delete.spec.ts:79-88`），属性里的链接、带标题与宽度的嵌入与改名之后整个的索引是新的。
 
 **AS4 生命周期**（`as4-lifecycle.spec.ts`，API 版本 `:43-102`）
 
@@ -419,15 +419,46 @@ MCP 的工具面：`tools.json` 两个入口 14 与 16 个工具；`mcpTools` �
 
 ### 3.9 S1 的实施对设计的修正
 
-S1 合并之后照实写：实施与审查里与上面不同之处（某个答复的形状、一步的次序、某个故事的种下的数据），各写在它的故事里，这里列出。
+S1 的实施见第 12 节，审查与修复核对见 [S1 的审查记录](reviews/P5-S1-stories-docs-review.md)。与上文最初的设计不同之处都是最小的改动，不改服务端、不改答复与码；各处已照实改在上面的节里，这里列出。主持者的决定记在 00 号文档第 11 节第 96–104 条。
+
+- **实施时定下的**：
+  1. **第 236 条变异的两处说法不对**（3.3 第 5 步、9.2 的第 236 条；实施者的发现，审查 A 与 C-I1 复现并补全；00 号文档第 11 节第 103 条）：删除的"每个改动一帧"在事件流上看不出来。删除的帧都是 `{workspace_id, notebook_id, tree: true, pages: []}`，彼此相同；帧由单元的事务里的 `pg_notify` 发出，同一个事务里同一个通道上相同的载荷 PostgreSQL 只送一次（M5 记下过，`docs/v0.1/M5-collab-editing/00-M5-design.md:241`）。所以在 e2e 里 236 只由 C7 (MCP) 第 3 步抓到（batch 的两页成两帧，`c7-push.spec.ts:170`）；加了安静的检查的 C7 (API) 在 236 之下**通过**（9.2 原说它失败）；C7 (MCP) 第 5 步也抓不到删除的那一半（236-del：第 3 步只收下 batch 的帧的临时副本在 236 之下通过）。删除的那一半由 Go 的 `TestAPagesEventSaysWhatTheUnitWrote`（`events/app/publisher_test.go:57`，假的通知者不合并）抓到："sent 3 payloads, want one"（审查 C；实施者的草稿没说这一点）。安静的检查本身是对的：对照 **236q**（删除的单元另发一个不同的 `{tree: false, pages: []}` 帧，`bootstrap/events_registrants.go:31`）让 C7 (MCP) 第 5 步与 C7 (API) 新加的检查失败，`171b739d` 的 C7 (API) 通过，这正是新加的两行补上的洞。测试不改，改的是设计说它们为什么在。
+  2. 第 229 条变异写成 `AND $2::timestamptz IS NOT NULL`：直接去掉 `AND expires_at > $2` 时语句只剩一个参数，生成的 `AliveSessionsOf` 照旧传两个（`gen/sessions.sql.go:29`），pgx 每次调用都报"expected 1 arguments, got 2"，不是要的变异（审查 C-N2 改正了草稿里"`$2` 没有类型"的理由）；这样写同去掉这个条件（`Now` 从不为 null）。
+  3. 第 230 条分两半做：230w 在 `write_path.go:224` 的 `Changed` 的调用处（`:250` 是 `mismatch` 帮助函数，那里没有 `base`），230e 在 `edit_page.go:146`；各自让 PG8 (MCP) 第 3 步失败，哪一半都不靠另一半。
+  4. `PageRead.meta` 写出 `read` 一页的第一块的每个成员（`path`、`kind`、`version`、`offset`、`column`、`lines`、`total_lines`、`byte_size`、`next_offset`、`next_column`），不再是 MC2 的四个加一个索引签名：新的故事读它的 `version` 与 `path`（3.1 第 4 条）。
+  5. HI1 提到顶层的是四个正文常量（`created`、`first`、`second`、`third`），不是第 8 节第 7 步说的两个：MCP 版本的准备照 API 版本（3.6 第 1 步），四个都要。HI1 (page) 自己的三个同名的纯文本常量随之遮住它们（oxlint 的 `no-shadow`，`make lint` 要零警告），改名为 `plainCreated`、`plainSecond`、`plainThird`，行为不变（第 0 节、第 8 节第 7 步）。
+  6. README `:219` 的一行用 ASCII 的双引号：`接上 Claude Code、Codex 见下一节"接入 agent（MCP）"；反向代理的要求见"部署"。`。第 4 节原来的单引号是这一行嵌在设计自己的引号里的写法；README 的正文里指一节都用双引号。
+  7. README 的两处照 `oxfmt` 加了列表项之间的空行、对齐了两张表；去掉空白与表格的 `|`、`-` 之后与 4.1、5.1 的文字逐字相同（审查 B、C 比过；4.1 现在是建成的样子，5.1 与 README 逐字节相同）。清单在 `docs/**` 之下，`oxfmt` 不管，建成时与 6.1 逐字节相同。
+  8. Caddy 的重跑的脚本的副本只在末尾加了停掉它们在后台起的 Caddy（`kill` 与 `wait`），量的部分不变。
+  9. 提交的标题照实施的说明写作 `test(M9/P5 S1)`、`docs(M9/P5 S1)`（第 8 节写的是 `test(e2e)`、`docs(readme)`、`docs(M9)`）；第 8 步只做变异、不提交，所以是十个提交，另有合并 `main` 的一个。README 到清单的链接在第 9 步的提交里写下、第 11 步的提交之后解析得到（`make lint` 不查链接）。
+  10. 实施的写法，不是与设计的不同（审查 C-N5）：PG8 (MCP) 的过时的 `write` 与过时的 `edit` 依次调用，不用 `Promise.all`（3.2 的 PG8 没要它）：第 247 条之下并发时失败落在了 `write` 上，依次调用时每个失败指名它自己的调用；第 235b 条改两个文件（9.2 自己这样写）；AS4 (MCP) 放在 AS4 (API) 的第一个测试之后。
+- **审查与修复定下的**（S1 的审查记录；修复一轮十个提交、二轮三个）：
+  1. **C7 (API) 读出 Marker 的版本号再写**（审查 A-M1 = C-M1，`5cb7e824`；第 104 条）：`settleEvents` 在它的流先结束时会再写 Marker，版本号不总是 2；照 C7 (MCP) 先以 `readContent` 读，等下一个版本号的帧（3.3 的"C7 (API) 一起改"、9.1 表下的一句）。
+  2. **README 里 MCP 的拒绝写码，不写 HTTP 的状态**（审查 C-N7，`17f0292e`；第 101 条）：接入一节的"写的规矩"一处（4.1、4.3），与 P1–P4 写的"MCP"一节八处，这份设计里没有那一节的原文，记在这里：
+     - "写"：`write` 的路径已是一页而内容不同时"答 409 `page.title_taken`"成了"答 `page.title_taken`"；带 `base_version` 而那一页之后被写过时"答 409 `page.revision_mismatch`（带现在的版本）"成了"答 `page.revision_mismatch`（带现在的版本）"；带了 `base_version` 的 `edit`"在那之后被写过答 409"成了"答 `page.revision_mismatch`"。
+     - "batch"：别人占着解析的预算时"照旧答 503 `server_busy`"成了"照旧答 `server_busy`"；"过了这些答 422 `page.batch_too_large`"成了"答 `page.batch_too_large`"。
+     - "找"：太复杂的模式"答 422"成了"答 `validation_failed`"；等 1 秒取不到名额"答 503 `server_busy`"成了"答 `server_busy`"。
+     - "索引与反链"：传 `""`"答 422"成了"答 `validation_failed`"。
+
+     修复报告说八句、其中四句是 P1–P4 的；照审查 C 对着 diff 的核对，是九处，八处在"MCP"一节。HTTP 一层的状态（401、403、404、413、429、名额的 503、请求体的 400）照旧。
+  3. **`MCP-Protocol-Version` 按版本写**（审查 B-N4，`0f747e13`；第 101 条）："HTTP 的答复"的 400/415 一行的"什么时候"改写，后面加 JSON-RPC 的 400 一行（4.1、4.3）。
+  4. **清单**（6.1 是建成的文件，6.2 写理由；第 98–100 条）：
+     - D1、D2、D3 各在只给这一步的新的临时目录里做、各有自己的一份 `mcp.json`，D 做完以 `${VAR:?}` 守着删掉它们、回到 `$CC`（审查 B-M1，修复核对一轮 B2-N1、B2-N2；`6de4fb9c`、`f60c4c80`）；
+     - C11：种子的 TODO 行约 520 字节，第一次答复停在 48 KiB（85 个命中），不带 `limit` 时 8 次调用（B-M2，`dcefa8a8`）；
+     - 图片与 PDF 要是名称说的类型，`sips` 转、`file` 核对（B-M3，`00a11a88`）；
+     - I1 写它自己的 `经 nginx.md`，I3 以 `200k-caddy.bin` 上传，I 部分不靠前面的部分（B-M4、B-N9，`8b6267f6`）；I1 的浏览器经 `:8090` 是另一个源、在那里再登录（B2-N3，`380b253e`）；
+     - A3 在命令之前与会话之后各数一次 `~/.claude.json` 里的 `"nervewiki"`（B 的存疑 1，`5ce22531`）；
+     - 做完不给删除 Claude Code 的会话的命令（C 的存疑 1、B2-M1 = C2-M1；`bc009520`、`8067afd9`）；
+     - 准备第 2 步设 `BASE`、`NB_CC`、`NB_CODEX`，第 I 部分设 `CADDY`；F1 的 `TOKEN` 以 `read -rs` 设；E3 也改三份 `*-literal.json`；准备第 1 步要 OpenSSL 3；E2 的 `/.well-known/...`；F1 的日志写作 `own=true`；E4 在登录后 15 分钟之内；`host.docker.internal` 未核对、不通时跳过容器的路，服务从不绑到 127.0.0.1 之外（B-N1–N3、B-N5–N8、B 的存疑 2；`e519297c`）。
+  5. **设计的文字的更正**：第 8 节第 11 步不列"M5/P2"（C-N3）；9.1 的"不空过"里看流是安静的只有 C7（C-N4）；3.5 的 AS3 与 9.1 的 AS3 一行记下 AS3 (MCP) 不重查上传的类型（A-N1）；第 11 节给 M12 的 E2E 一步写量得的（审查 C），第 12 节的 Caddy 只有一次校验（C-N1）。
 
 ## 4. 接入文档：README 新的一节"接入 agent（MCP）"
 
-00 号文档 4.16 的"接入文档"一条与 P1–P4 第 8 节给接入文档的各点（2.3 的处置表）落在 README 的一个新的二级标题里，放在"运行后端"之后、"接口与代码生成"之前（今天"运行后端"的最后一个三级标题就是"MCP"，`README.md:205-219`）。它不重复"MCP"一节的规则（工具、路径、`batch`、历史、找、索引与反链都已在那里，P1–P4 写的），只讲怎样接上、审批、上限、HTTP 的答复与几条写的规矩，并指回那一节。"MCP"一节的最后一行（`README.md:219`："Claude Code、Codex 的接入配置与反向代理的要求在 M9 的接入文档里写（M9/P5）。"）改为："接上 Claude Code、Codex 见下一节'接入 agent（MCP）'；反向代理的要求见'部署'。"
+00 号文档 4.16 的"接入文档"一条与 P1–P4 第 8 节给接入文档的各点（2.3 的处置表）落在 README 的一个新的二级标题里，放在"运行后端"之后、"接口与代码生成"之前（今天"运行后端"的最后一个三级标题就是"MCP"，`README.md:205-219`）。它不重复"MCP"一节的规则（工具、路径、`batch`、历史、找、索引与反链都已在那里，P1–P4 写的），只讲怎样接上、审批、上限、HTTP 的答复与几条写的规矩，并指回那一节。"MCP"一节的最后一行（`README.md:219`："Claude Code、Codex 的接入配置与反向代理的要求在 M9 的接入文档里写（M9/P5）。"）改为：`接上 Claude Code、Codex 见下一节"接入 agent（MCP）"；反向代理的要求见"部署"。`（建成的：README 指一节都用 ASCII 的双引号，3.9）
 
-### 4.1 全文（照它进 README）
+### 4.1 全文（README 建成的样子）
 
-下面四个反引号之间的就是 README 里的文字；之后的 4.2 逐句列出客户端的行为：每一句在样例里、标着"照文档"或"未核对"，或由仓库里的记录核对过，以及人工清单的哪一步核对它、核对之后怎样改。
+下面四个反引号之间的是 README 里这一节建成的样子（`053d3ba1`）：S1 照这一节原来的文字提交，oxfmt 在带续行的列表项之间加了空行、对齐了两张表，修复一轮改了"写的规矩"的拒绝与"HTTP 的答复"的 `MCP-Protocol-Version` 的两行（3.9）；之后的 4.2 逐句列出客户端的行为：每一句在样例里、标着"照文档"或"未核对"，或由仓库里的记录核对过，以及人工清单的哪一步核对它、核对之后怎样改。
 
 ````markdown
 ## 接入 agent（MCP）
@@ -455,6 +486,7 @@ Claude Code、Codex 一类的 agent 经 `/mcp` 读写笔记本。工具、路径
   ```
 
   shell 先展开 `$NERVEWIKI_CLAUDE_TOKEN`，存下的是令牌本身；加 `--scope user` 则在每个目录里都有它（照 Claude Code 的文档）。
+
 - **随项目共享**（项目的范围：项目根目录的 `.mcp.json`，它通常会提交）：`.mcp.json` 里**绝不要写令牌**，写环境变量的展开（照 Claude Code 的文档），每个人在自己的环境里设 `NERVEWIKI_CLAUDE_TOKEN`：
 
   ```json
@@ -479,6 +511,7 @@ Claude Code、Codex 一类的 agent 经 `/mcp` 读写笔记本。工具、路径
   ```
 
   写好之后 `grep nwk_pat_ .mcp.json` 应当什么也找不到。项目里的服务第一次用时，Claude Code 先问要不要启用它（照 Claude Code 的文档）。
+
 - **看连上没有**：`claude mcp list`，或在会话里输入 `/mcp`：`nervewiki` 已连上，笔记本入口有 14 个工具（账户入口 16 个）。工具在 Claude Code 里叫 `mcp__nervewiki__read` 一类（照 Claude Code 的文档）。
 - Claude Code 把一次 MCP 工具的结果限在约 25,000 个 token，环境变量 `MAX_MCP_OUTPUT_TOKENS` 可以调（照 Claude Code 的文档）；服务端的每个答复至多 48 KiB，`read` 一次至多约 45 KiB 的正文，中文约 1.5 万字。
 
@@ -494,6 +527,7 @@ Claude Code、Codex 一类的 agent 经 `/mcp` 读写笔记本。工具、路径
   ```
 
   文件里没有令牌：Codex 启动时从 `NERVEWIKI_CODEX_TOKEN` 读它，所以启动 Codex 的 shell 里要有这个变量。`default_tools_approval_mode` 见下面的"审批"。
+
 - **看连上没有**：在会话里输入 `/mcp`，列出 `nervewiki` 与它的工具（照 Codex 的文档）。
 
 ### 审批
@@ -522,19 +556,20 @@ Claude Code、Codex 一类的 agent 经 `/mcp` 读写笔记本。工具、路径
   ```
 
   账户入口另加 `mcp__nervewiki__notebooks` 与 `mcp__nervewiki__open_notebook`。`claude -p`（不交互）问不了人，没有放行的工具不调用：以 `--allowedTools` 给它这次要的工具，写的工具只给确实要写的任务（照 Claude Code 的文档）。
+
 - **Codex**：一个服务的 `default_tools_approval_mode` 决定调用它的工具之前问不问人，取值是 `auto`、`prompt`、`writes` 与 `approve`；`approve` 是都不问。`codex exec`（不交互）问不了人，要审批的调用都被拒。交互的会话用 `prompt`；只读的无人值守的任务不必放行写的工具；`approve` 只给确实要无人值守地写的任务，并照上面的第一条接受它的代价。
 
 ### 上限
 
-| 什么 | 上限 |
-|---|---|
-| 一次调用 | 15 秒（`server.request_timeout`，从读完请求体算起）；请求体至多 37,814,272 字节（约 36 MiB），超过 64 KiB 的只能是这个入口的工具的调用；请求体里至多 10,000 个 JSON 值 |
-| 每个工具的答复 | 48 KiB：到了就停，给出 `next_cursor`（或 `next_offset`、`next_column`）接着调，没有游标的标出截断 |
-| `read` | 一次至多约 45 KiB 的正文（中文约 1.5 万字）；长的一行经 `column` 分几次读完。图片（PNG、JPEG、GIF、WebP）至多 3 MiB、每边 8,000 像素时直接放进答复，别的附件给下载的地址（要配置 `server.public_url`） |
-| `write`、`edit` | 正文至多 5 MiB；`edit` 的 `old_string` 至多 1 MiB |
-| `batch` | 至多 100 项，字符串合计至多 6 MiB、正文合计至多 5 MiB，别的界线见上文"MCP"的"batch" |
-| 说明 | 见上文"MCP"的"说明" |
-| 限流 | 一个 POST 算一次请求，与这个令牌的 REST 请求共用一个桶（`ratelimit.authenticated`） |
+| 什么            | 上限                                                                                                                                                                                                   |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 一次调用        | 15 秒（`server.request_timeout`，从读完请求体算起）；请求体至多 37,814,272 字节（约 36 MiB），超过 64 KiB 的只能是这个入口的工具的调用；请求体里至多 10,000 个 JSON 值                                 |
+| 每个工具的答复  | 48 KiB：到了就停，给出 `next_cursor`（或 `next_offset`、`next_column`）接着调，没有游标的标出截断                                                                                                      |
+| `read`          | 一次至多约 45 KiB 的正文（中文约 1.5 万字）；长的一行经 `column` 分几次读完。图片（PNG、JPEG、GIF、WebP）至多 3 MiB、每边 8,000 像素时直接放进答复，别的附件给下载的地址（要配置 `server.public_url`） |
+| `write`、`edit` | 正文至多 5 MiB；`edit` 的 `old_string` 至多 1 MiB                                                                                                                                                      |
+| `batch`         | 至多 100 项，字符串合计至多 6 MiB、正文合计至多 5 MiB，别的界线见上文"MCP"的"batch"                                                                                                                    |
+| 说明            | 见上文"MCP"的"说明"                                                                                                                                                                                    |
+| 限流            | 一个 POST 算一次请求，与这个令牌的 REST 请求共用一个桶（`ratelimit.authenticated`）                                                                                                                    |
 
 ### 大的请求体的名额
 
@@ -544,18 +579,19 @@ Claude Code、Codex 一类的 agent 经 `/mcp` 读写笔记本。工具、路径
 
 这些是 HTTP 一层的答复，在任何工具运行之前：它们不是工具的结果，客户端把它们当作连接或传输的错误（官方 TypeScript SDK 的客户端是这样）；Claude Code、Codex 怎样显示、模型看不看得到未核对。工具自己的错误不在其中：它们是带 `isError` 的结果，模型读得到码与说明（`page.locked`、`page.revision_mismatch` 一类），照说明改了再调。
 
-| 答复 | 什么时候 | 怎么办 |
-|---|---|---|
-| 401 `unauthorized`，"This server has no OAuth: MCP takes a personal access token in the Authorization header." | 没有带令牌 | 在客户端的配置里加 `Authorization: Bearer <PAT>`（下一段） |
-| 401 `unauthorized`，"The bearer token is invalid or has expired."（`WWW-Authenticate: Bearer error="invalid_token"`） | 令牌写错了、过期了或被撤销了 | 新建一个 PAT，换上 |
-| 403 `forbidden`，"MCP takes a personal access token, not a session's access token." | 带的是网页登录的访问令牌 | 换成 PAT |
-| 404 `notebook.not_found` | 地址里的笔记本 id 不对、为空、出现两次，或你看不到这本笔记本、它已被删除 | 改正 id；或用账户入口的 `notebooks` 看有哪些 |
-| 404 `not_found` | 地址是 `/mcp/` 之下的路径 | 地址是 `/mcp` 本身 |
-| 400 `bad_request` | 一次发了 JSON-RPC 的批、请求体不是一个合法的 JSON 对象，或 JSON 值过了 10,000 个 | 一条消息一个请求 |
-| 400、415（纯文字，不是上面的 JSON） | 请求头不对：`Accept` 不含 `application/json` 与 `text/event-stream`、`Content-Type` 不是 `application/json`，或不认识的 `MCP-Protocol-Version` | 照下面的 `curl` 写这几个头 |
-| 413 `payload_too_large` | 请求体过了约 36 MiB，或超过 64 KiB 而不是工具的调用 | 拆小：一页的正文至多 5 MiB |
-| 429 `rate_limited` | 这个令牌的请求过了限流；或同一个客户端 IP 上认证失败的令牌太多（失败闸门 `auth_failure`，按 IP：反向代理之后要设 `server.trusted_proxies`，否则所有人共用代理的 IP） | 等 `Retry-After` 的秒数；后一种先换掉失败的令牌（上面 401 的第二行） |
-| 503 `server_busy`（`Retry-After: 1`） | 大的请求体没有名额（上一段） | 稍后重发，大的写一个接一个地发 |
+| 答复                                                                                                                  | 什么时候                                                                                                                                                                                                                                                               | 怎么办                                                               |
+| --------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| 401 `unauthorized`，"This server has no OAuth: MCP takes a personal access token in the Authorization header."        | 没有带令牌                                                                                                                                                                                                                                                             | 在客户端的配置里加 `Authorization: Bearer <PAT>`（下一段）           |
+| 401 `unauthorized`，"The bearer token is invalid or has expired."（`WWW-Authenticate: Bearer error="invalid_token"`） | 令牌写错了、过期了或被撤销了                                                                                                                                                                                                                                           | 新建一个 PAT，换上                                                   |
+| 403 `forbidden`，"MCP takes a personal access token, not a session's access token."                                   | 带的是网页登录的访问令牌                                                                                                                                                                                                                                               | 换成 PAT                                                             |
+| 404 `notebook.not_found`                                                                                              | 地址里的笔记本 id 不对、为空、出现两次，或你看不到这本笔记本、它已被删除                                                                                                                                                                                               | 改正 id；或用账户入口的 `notebooks` 看有哪些                         |
+| 404 `not_found`                                                                                                       | 地址是 `/mcp/` 之下的路径                                                                                                                                                                                                                                              | 地址是 `/mcp` 本身                                                   |
+| 400 `bad_request`                                                                                                     | 一次发了 JSON-RPC 的批、请求体不是一个合法的 JSON 对象，或 JSON 值过了 10,000 个                                                                                                                                                                                       | 一条消息一个请求                                                     |
+| 400、415（纯文字，不是上面的 JSON）                                                                                   | 请求头不对：`Accept` 不含 `application/json` 与 `text/event-stream`、`Content-Type` 不是 `application/json`，或 `MCP-Protocol-Version` 是服务端不说的、排在 `2026-07-28` 之前的版本（服务端说 `2025-11-25`、`2025-06-18`、`2025-03-26`、`2024-11-05`；不带这个头也行） | 照下面的 `curl` 写这几个头                                           |
+| 400（JSON-RPC 的错误，`application/json`）                                                                            | `MCP-Protocol-Version` 是 `2026-07-28` 或更新的版本：它们过得了上一行的检查，SDK 再以 JSON-RPC 的错误拒绝（缺那个版本要的 `_meta` 时 `-32602`，带了时 `-32022` `unsupported protocol version`，列出服务端说的版本）                                                    | 用服务端说的版本，如下面的 `curl` 的 `2025-11-25`                    |
+| 413 `payload_too_large`                                                                                               | 请求体过了约 36 MiB，或超过 64 KiB 而不是工具的调用                                                                                                                                                                                                                    | 拆小：一页的正文至多 5 MiB                                           |
+| 429 `rate_limited`                                                                                                    | 这个令牌的请求过了限流；或同一个客户端 IP 上认证失败的令牌太多（失败闸门 `auth_failure`，按 IP：反向代理之后要设 `server.trusted_proxies`，否则所有人共用代理的 IP）                                                                                                   | 等 `Retry-After` 的秒数；后一种先换掉失败的令牌（上面 401 的第二行） |
+| 503 `server_busy`（`Retry-After: 1`）                                                                                 | 大的请求体没有名额（上一段）                                                                                                                                                                                                                                           | 稍后重发，大的写一个接一个地发                                       |
 
 **没有配置令牌时**：客户端看到的都是同一句："This server has no OAuth: MCP takes a personal access token in the Authorization header."。不走 OAuth 的客户端从 401 的说明里读到它；会走 OAuth 的客户端（例如官方 TypeScript SDK 的 OAuth 客户端）先找 OAuth 的元数据（`/.well-known/` 之下都答 404）、再试注册（`POST /register` 答 OAuth 的错误 `invalid_client_metadata`），从注册的错误里读到它。Claude Code、Codex 各走哪一条未核对。照它在配置里加上 `Authorization: Bearer <PAT>` 即可。
 
@@ -572,7 +608,7 @@ curl -sS "https://wiki.example.com/mcp?notebook=<笔记本 id>" \
 
 ### 写的规矩
 
-- **`base_version`**：`list`、`read`、`write`、`edit` 的答复里有页的 `version`（`"<节点 id>:<版本号>"`），它说出读到的是哪一版。覆盖一页用 `write` 带读到的 `version` 作 `base_version`；`edit` 不带它时在现在的正文上做（做的期间被写过就在新的正文上再做一次），带了的在那之后被写过就拒绝。拒绝是 409 `page.revision_mismatch`，`current_version` 是现在的版本：重读再写。同一个路径换成了另一页（原来的被改名、移走之后有人新建了同名的页）时同样拒绝，不会写到新的页上。
+- **`base_version`**：`list`、`read`、`write`、`edit` 的答复里有页的 `version`（`"<节点 id>:<版本号>"`），它说出读到的是哪一版。覆盖一页用 `write` 带读到的 `version` 作 `base_version`；`edit` 不带它时在现在的正文上做（做的期间被写过就在新的正文上再做一次），带了的在那之后被写过就拒绝。拒绝是工具的错误 `page.revision_mismatch`（带 `isError` 的结果，不是 HTTP 的答复），`current_version` 是现在的版本：重读再写。同一个路径换成了另一页（原来的被改名、移走之后有人新建了同名的页）时同样拒绝，不会写到新的页上。
 - **锁**：正在网页上编辑的页（包括你自己在别的浏览器里编辑的）拒绝 agent 的写、编辑与删除，答 `page.locked`，说出谁在编辑；`move` 要改写链接的页正被编辑时答 `linking.pages_locked`。agent 不能接管锁：等编辑的人离开编辑（关掉浏览器之后锁至多约 2 分钟过期），或请笔记本的管理员强制解锁。agent 自己不开编辑会话，不挡网页上的人。
 - **历史只读**：agent 读得到历史（`log`、`changeset`、`versions`），改不了它：还原版本、从回收站恢复、撤销变更集是人在网页上做的。agent 的每次写是一个变更集，一次 `batch` 也是一个（带它的说明）；网页的历史可以按"MCP"筛选，一次移动加改名在网页上一步撤销，一个 `batch` 整组撤销。
 - `batch` 与分开调用只有一条规则不同、`grep` 与 `search` 怎样分工与怎样读 `incomplete`、`partial_lines`、`building`：见上文"MCP"的"batch"与"找"。
@@ -612,7 +648,8 @@ curl -sS "https://wiki.example.com/mcp?notebook=<笔记本 id>" \
 - **不握手的 `curl`**：握手的 `initialize` 会把 `clientInfo.name` 记在令牌上（00 号文档 4.5），以 agent 的令牌试一次会把它的名称改成 `curl`，直到 agent 下一次握手。`tools/list` 不带 `clientInfo`，无状态的服务端不要先握手（P2 的 `handshake: false` 的客户端就是这样调用的，`e2e/fixtures/mcp.ts:110-137`），所以它只看令牌与地址。
 - **审批的推荐**：4.16 与总体设计 6.3 要"不一律推荐 `approve`"。这一节给出代价（写的工具以账户的权限）与缓解（每次写是一个变更集，人在网页上撤销），读的工具免问、写的工具照常问；无人值守的写是负责人自己的选择。审批只管 MCP 的工具一句：能执行命令的 agent 启动的命令继承它的环境（shell 的规则），客户端交不交给命令工具未核对，所以照最坏的写；它在 4.2 有一行。
 - **上限一表**只列 agent 会碰到的；`batch`、`grep` 与说明的细的界线已在"MCP"一节，这里指过去。数都出自代码：15 秒是 `server/configs/config.yaml:17`，37,814,272 是 `bootstrap/mcp.go:29` 的 `6*(page.MaxContentBytes+1<<20) + 64<<10`，10,000 是 `mcpserver.MaxBodyValues`，48 KiB 是 `MaxAnswerBytes`（00 号文档 4.14）。`read` 的"约 45 KiB"是内置的说明自己的数（`page/adapter/mcp/instructions.go:45`）；按代码，正文的地方是 48 KiB 减去最宽的第一块（`page/adapter/mcp/read.go:60-92`），约 48.7 KB，一个汉字 3 字节、一个换行在 JSON 里 2 字节（`mcpserver/answer.go:25-60`），所以中文的散文约 1.5 万字；清单的 C7 用同一个数。
-- **HTTP 的答复一表**的文字出自代码：没有令牌的 401 的说明是 `mcpserver.NoOAuth`（`platform/httpserver/mcpserver/edge.go:147`），坏的令牌的是平台的 `unauthorized`（`platform/httpserver/api.go:378-383`），403 的是 `forbidden`（`edge.go:193-195`），`/mcp/` 之下的 404 是 `Subtree`（`edge.go:132-140`），`/register` 的 400 是 `Register`（`edge.go:175-181`）；纯文字的 400、415 是 SDK 的（`modelcontextprotocol/go-sdk` v1.8.0 的 `mcp/streamable.go:347-398`，00 号文档 4.4）；429 的失败闸门在认证之前按 IP 取（`platform/httpserver/api.go:346-350`，`server/configs/config.yaml:74`，README 的"限流"）。405 不列：操作的人只在日志里见到它，也不必做什么。
+- **HTTP 的答复一表**的文字出自代码：没有令牌的 401 的说明是 `mcpserver.NoOAuth`（`platform/httpserver/mcpserver/edge.go:147`），坏的令牌的是平台的 `unauthorized`（`platform/httpserver/api.go:378-383`），403 的是 `forbidden`（`edge.go:193-195`），`/mcp/` 之下的 404 是 `Subtree`（`edge.go:132-140`），`/register` 的 400 是 `Register`（`edge.go:175-181`）；纯文字的 400、415 是 SDK 的（`modelcontextprotocol/go-sdk` v1.8.0 的 `mcp/streamable.go:347-398`，00 号文档 4.4）；`MCP-Protocol-Version` 按版本分两行（S1 的修复一轮，审查 B-N4）：不带这个头或服务端说的四个版本照常，别的、排在 `2026-07-28` 之前的由 `streamable.go:354` 答纯文字的 400，`2026-07-28` 起的过得了那一检查、再由 SDK 以 JSON-RPC 的错误答 400（缺那个版本的 `_meta` 时 `-32602`，`mcp/shared.go:577` 的检查；带了时服务端答 `-32022` `unsupported protocol version`），实施者以一次不提交的探针试过十一种版本；429 的失败闸门在认证之前按 IP 取（`platform/httpserver/api.go:346-350`，`server/configs/config.yaml:74`，README 的"限流"）。405 不列：操作的人只在日志里见到它，也不必做什么。
+- **工具的拒绝写码，不写 HTTP 的状态**（S1 的修复一轮，审查 C-N7）：工具的拒绝是 HTTP 的 200 与一个带 `isError` 的结果，文字是"<码>: <说明>"，`structuredContent.error` 带码（`page/adapter/mcp/text.go:22-43`、`mcpserver/errors.go:84-143`），没有状态；所以"写的规矩"写"工具的错误 `page.revision_mismatch`"，P1–P4 写的"MCP"一节的八处同样去掉了 409、422、503（3.9）。写状态的只有 HTTP 一层的答复（上一条的表）。
 
 ## 5. README 的部署一节：反向代理的改正
 
@@ -769,7 +806,9 @@ curl -sS "https://wiki.example.com/mcp?notebook=<笔记本 id>" \
 
 文件是 `docs/v0.1/M9-mcp/manual/P5-mcp-clients-checklist.md`（同输入法清单在 `docs/v0.1/M4-pages/manual/P6-ime-checklist.md`）。格式照输入法清单：开头一张表（来源、执行人、客户端、结果），然后"准备"、分部分的"步骤"（每步一行：操作、预期，另有记下实际的一栏），最后"不在这份清单里的"。与输入法清单不同的两处：每一步多一栏"记下的"（Claude Code 与 Codex 各一栏；只对一个客户端的部分一栏），因为这份清单的一半是"记下客户端显示的原文"，P5 的 4.2 照它改 README；步骤分 A–I 九部分、各自编号（`A3`、`D5`），4.2 与 README 的改法引它们。每一步出自哪里只在 2.3 的处置表里列（按来源、带步号），这里不再按步列一遍：两份同样的对照会各改各的。
 
-### 6.1 全文（照它进仓库）
+### 6.1 全文（仓库里建成的样子）
+
+下面是 `docs/v0.1/M9-mcp/manual/P5-mcp-clients-checklist.md` 建成的样子（`053d3ba1`）：S1 照这一节原来的文字逐字节提交，修复两轮照审查改了它（3.9 的"审查与修复定下的"第 4 条；为什么这样写见 6.2）。
 
 ````markdown
 # M9/P5 人工验收：真实的 MCP 客户端
@@ -789,7 +828,7 @@ curl -sS "https://wiki.example.com/mcp?notebook=<笔记本 id>" \
 
 整份清单不改 `~/.claude.json` 里的 MCP 服务、`~/.claude/settings.json`、`~/.codex/` 与任何项目里已有的 `.mcp.json`：
 
-- **Claude Code**：一律在 `$CC`（"准备"第 5 步的临时目录）里以 `claude --mcp-config "$CC/<文件>" --strict-mcp-config` 启动：只用这个文件里的服务（照文档；插件带来的服务与 claude.ai 的连接器是否也不起未核对，A1 看 `/mcp` 的列表）。不在别的目录里执行 `claude mcp add`（本地与用户的范围写 `~/.claude.json`）；第 A3 步只在 `$CC` 里以 `--scope project` 写那个目录自己的 `.mcp.json`。不执行 `claude mcp list`：它会连一遍你配置过的每个服务。Claude Code 照常在 `~/.claude.json` 里记下它进过的目录（信任与历史），在 `~/.claude/projects/` 下记每个会话（目录名由 `$CC` 的路径而来）：那是它自己的状态，不是 MCP 的配置，做完可以删掉那个目录。审批的几步用 `$CC/.claude/settings.json`（项目的设置），不改你自己的设置。**开始之前记下**你自己的 `~/.claude/settings.json` 里的 `permissions.defaultMode` 与提到 `mcp__` 的放行或拒绝的规则：它们会改变第 D 部分的结果。
+- **Claude Code**：一律在 `$CC`（"准备"第 5 步的临时目录）里以 `claude --mcp-config "$CC/<文件>" --strict-mcp-config` 启动：只用这个文件里的服务（照文档；插件带来的服务与 claude.ai 的连接器是否也不起未核对，A1 看 `/mcp` 的列表）。不在别的目录里执行 `claude mcp add`（本地与用户的范围写 `~/.claude.json`）；第 A3 步只在 `$CC` 里以 `--scope project` 写那个目录自己的 `.mcp.json`，前后各数一次 `~/.claude.json` 里的 `"nervewiki"` 核对它。不执行 `claude mcp list`：它会连一遍你配置过的每个服务。Claude Code 照常在 `~/.claude.json` 里记下它进过的目录（信任与历史），在 `~/.claude/projects/` 下记每个会话（那些目录怎样起名未核对）：那是它自己的状态，不是 MCP 的配置，可以留着（"做完"的第 4 步）。审批的几步各在只给这一步的临时目录里做（第 D 部分的开头），D2 的放行写在它那个目录的 `.claude/settings.json`（项目的设置），不改你自己的设置。**开始之前记下**你自己的 `~/.claude/settings.json` 里的 `permissions.defaultMode` 与提到 `mcp__` 的放行或拒绝的规则：它们会改变第 D 部分的结果。
 - **Codex**：一律在一个临时的 `CODEX_HOME` 里、从一个空的临时目录 `$CX` 启动（"准备"第 6 步）：Codex 只读 `$CODEX_HOME/config.toml`，你的 `~/.codex/config.toml` 里的别的 MCP 服务不会起（照文档；`codex -c mcp_servers.x.url=…` 是叠在 `~/.codex/config.toml` 之上的，那样它们照样起）；从空的目录启动，它不会拿到某个项目自己的配置，也不会在你的代码里读写文件。登录，按这个次序选：
   1. **用 API 密钥**（推荐）：`printenv OPENAI_API_KEY | codex login --with-api-key`（照文档），凭证写在临时的 `CODEX_HOME` 里，与你自己的登录无关。
   2. **在临时的 `CODEX_HOME` 里另登录一次**：`codex login`（ChatGPT 的账户）。做完之后在一个没有设 `CODEX_HOME` 的终端里启动你自己的 Codex，记下它是否照常可用；不能用时在那个终端里（你自己的 `~/.codex`）`codex login` 再登录一次。第二次登录会不会让第一次的失效未核对。
@@ -798,7 +837,7 @@ curl -sS "https://wiki.example.com/mcp?notebook=<笔记本 id>" \
 
 ## 准备
 
-1. 起一个实例：`make dev-db`、`make build`。dev 不配置签名私钥时每次启动换一把，重启之后浏览器都要重新登录，所以在服务的终端里先生成一把、整份清单都用它（README"签名私钥"）：
+1. 起一个实例：`make dev-db`、`make build`。dev 不配置签名私钥时每次启动换一把，重启之后浏览器都要重新登录，所以在服务的终端里先生成一把、整份清单都用它（README"签名私钥"；要 OpenSSL 3，例如 Homebrew 的 `openssl@3`：macOS 自带的 `/usr/bin/openssl` 是 LibreSSL，没有 ed25519，先 `openssl version` 看它以 `OpenSSL 3` 起头）：
 
    ```sh
    export KEYS=$(mktemp -d)
@@ -807,11 +846,19 @@ curl -sS "https://wiki.example.com/mcp?notebook=<笔记本 id>" \
    make run
    ```
 
-   （`make run` 提供上一次 `make build` 的前端；环境变量照常传下去。）之后的重启（E6、G1、G2）都在这个终端里 `make run`。下面 `$BASE` 是 `http://127.0.0.1:8080`。这个终端里看服务的日志：每个请求一行 `http request`（方法、路径、状态、用时 `duration`），每次 MCP 调用一行 `MCP tool call`，握手一行 `MCP initialize`（带客户端名称），大的请求体没有名额时一行 `large request bodies are saturated`。
-2. 两个账户：A（你，工作区的管理员）与 B（同一工作区的成员）。B 的加入：A 在工作区的成员页邀请 B 的邮箱（README"邀请"），B 在另一个浏览器或无痕窗口里注册（dev 开放注册）并接受邀请。A 建两本笔记本，**一个客户端一本**：`MCP 清单 CC`（Claude Code 用）与 `MCP 清单 Codex`（Codex 用），B 是两本的编辑者。第 C、H 部分改写种下的页：若两个客户端在同一本里做，后一个会看到前一个改过的页，所以一个客户端一本。笔记本的 id 是网页地址里 `/notebooks/` 之后的一段，下面写 `$NB_CC` 与 `$NB_CODEX`；只说 `$NB` 的步，用这个客户端自己的那本。
+   （`make run` 提供上一次 `make build` 的前端；环境变量照常传下去。）之后的重启（E6、G1、G2）都在这个终端里 `make run`。下面 `$BASE` 是 `http://127.0.0.1:8080`（第 2 步说怎样设它）。这个终端里看服务的日志：每个请求一行 `http request`（方法、路径、状态、用时 `duration`），每次 MCP 调用一行 `MCP tool call`，握手一行 `MCP initialize`（带客户端名称），大的请求体没有名额时一行 `large request bodies are saturated`。
+2. 两个账户：A（你，工作区的管理员）与 B（同一工作区的成员）。B 的加入：A 在工作区的成员页邀请 B 的邮箱（README"邀请"），B 在另一个浏览器或无痕窗口里注册（dev 开放注册）并接受邀请。A 建两本笔记本，**一个客户端一本**：`MCP 清单 CC`（Claude Code 用）与 `MCP 清单 Codex`（Codex 用），B 是两本的编辑者。第 C、H 部分改写种下的页：若两个客户端在同一本里做，后一个会看到前一个改过的页，所以一个客户端一本。笔记本的 id 是网页地址里 `/notebooks/` 之后的一段，下面写 `$NB_CC` 与 `$NB_CODEX`；只说 `$NB` 的步，用这个客户端自己的那本。这些是 shell 的变量：在用到它们的每个终端里（种下页的、`$CC` 的、E4 的、F1 的占位的与第 I 部分的）各设一次：
+
+   ```sh
+   export BASE=http://127.0.0.1:8080
+   read -r NB_CC && export NB_CC
+   read -r NB_CODEX && export NB_CODEX
+   ```
+
+   （两次 `read` 各粘贴一本笔记本的 id、回车。）第 I 部分的终端另设 `export CADDY=http://127.0.0.1:8091`（经 Caddy 的地址，I3 用）。
 3. A 在"设置"→"访问令牌"（`$BASE/settings/tokens`）建三个 PAT：`seed`（下一步用）、`claude-checklist`、`codex-checklist`。
 4. 种下页与附件，两本笔记本各一次：
-   - 准备三个文件：`small.png` 每边不过 1,000 像素、几十 KB（例如一张截图以 `sips -Z 800 截图.png --out small.png` 缩小）；`wide.png` 宽 2,500–7,000 像素、2.0–2.8 MiB 的 PNG 或 JPEG（以 `sips -g pixelWidth -g pixelHeight wide.png` 与 `ls -l` 核对：3 MiB 以上的不直接放进答复）；一个小的 `doc.pdf`。
+   - 准备三个文件，每个的字节都要是它的名字说的类型：服务端按开头的字节判断，名字是 `.png` 而字节是 JPEG 的附件存成 `application/octet-stream`，不直接放进答复（`asset/domain/types.go` 的 `TypeOf`）。`small.png` 是 PNG、每边不过 1,000 像素、几十 KB（例如一张截图以 `sips -Z 800 -s format png 截图.png --out small.png` 缩小）；`wide.png` 是 PNG、宽 2,500–7,000 像素、2.0–2.8 MiB（JPEG 或别的格式先转成 PNG：`sips -s format png 照片.jpg --out wide.png`，太大时加 `-Z` 与一个像素数缩小再转；以 `sips -g pixelWidth -g pixelHeight wide.png` 与 `ls -l` 核对：3 MiB 以上的不直接放进答复）；`doc.pdf` 是一个小的 PDF。做好之后 `file small.png wide.png doc.pdf`：前两个是 "PNG image data"，第三个是 "PDF document"。
    - 把下面的脚本存成临时目录里的 `seed.mjs`，`read -rs SEED_TOKEN && export SEED_TOKEN`（`seed` 的令牌），然后 `node seed.mjs "$BASE" "$NB_CC" small.png wide.png doc.pdf` 与 `node seed.mjs "$BASE" "$NB_CODEX" small.png wide.png doc.pdf`（Node 22 起；它只经 REST 建页、上传附件）：
 
    ```js
@@ -840,7 +887,7 @@ curl -sS "https://wiki.example.com/mcp?notebook=<笔记本 id>" \
    await page("AGENTS", "---\ntype: agents\n---\n这份清单的暗号是青石板。\n\n回答用中文。\n");
    const guide = await page("Guide", "# Guide\n\n他说“先读再写”，然后离开。\n重叠：aaa\n要删的一行\n- [ ] 一件事\n");
    await page("长文", Array.from({ length: 800 }, (_, i) => `第 ${i + 1} 行：${han}`).join("\n") + "\n");
-   await page("命中", Array.from({ length: 600 }, (_, i) => `TODO 第 ${i + 1} 项：${han}${han}`).join("\n") + "\n" + cut + "\n");
+   await page("命中", Array.from({ length: 600 }, (_, i) => `TODO 第 ${i + 1} 项：${han.repeat(7)}`).join("\n") + "\n" + cut + "\n");
    await page("长行", "x".repeat(4 << 20) + "完成\n");
    await page("锁", "被编辑的页。\n", guide);
    const pictures = await page("图库", "");
@@ -852,7 +899,7 @@ curl -sS "https://wiki.example.com/mcp?notebook=<笔记本 id>" \
    ```
 
    - `长文.md` 约 69 KB（约 2.2 万个汉字与全角的标点）：一次 `read` 给不完。
-   - `命中.md` 前 600 行都有 `TODO`：`grep` 的命中过 48 KiB；第 601 行约 3,000 字节，`FIXME` 在它的中间，`grep` 只给 `FIXME` 前后共约 1,000 字节（`cut`），行尾的"行尾在此"不在其中。
+   - `命中.md` 前 600 行都有 `TODO`，每行约 520 字节：`grep` 的一次答复放 85 行就到 48 KiB，在 `limit` 的默认 100 之前；第 601 行约 3,000 字节，`FIXME` 在它的中间，`grep` 只给 `FIXME` 前后共约 1,000 字节（`cut`），行尾的"行尾在此"不在其中。
    - `长行.md` 是 4 MiB 的一行，`\pL{30}完成` 这样的模式只匹配得到它的开头（约 2.2 MB），这一行进 `partial_lines`。
 5. Claude Code 的配置，在一个新的临时目录 `$CC` 里（`export CC=$(mktemp -d); cd "$CC"`）。每一份都是 README"接入 agent（MCP）"的 `.mcp.json` 样例原样照抄，只把 `https://wiki.example.com` 换成 `http://127.0.0.1:8080`（或下面说的地址）、`<笔记本 id>` 换成 `$NB_CC` 的值（文件里写字面的 id）：
    - `$CC/mcp.json`：笔记本入口；
@@ -875,7 +922,7 @@ curl -sS "https://wiki.example.com/mcp?notebook=<笔记本 id>" \
 |---|---|---|---|
 | A1 | 在 `$CC` 里 `claude --mcp-config "$CC/mcp.json" --strict-mcp-config`，输入 `/mcp` | `/mcp` 只列出 `nervewiki`、已连上、14 个工具（照文档；列出别的服务时记下：它来自插件或 claude.ai 的连接器）；服务的日志里一行 `MCP initialize`，记下它的客户端名称。日志里若是 401：这个文件里的 `${NERVEWIKI_CLAUDE_TOKEN}` 没有展开（照文档它展开）：记下，之后改用 `$CC/mcp-literal.json`（同一个文件，令牌照字面写进去），`account.json` 与 `throttled.json` 也同样写成字面的（`account-literal.json`、`throttled-literal.json`，A5 与 F 用它们），三份都 `chmod 600`，"做完"删掉 | |
 | A2 | 让 agent 说出"这本笔记本的说明里的暗号" | 它答"青石板"（握手时的说明是 `AGENTS` 页去掉 frontmatter 的正文；M0/P1 记下 Claude Code 收到了说明），不调用工具 | |
-| A3 | 在 `$CC` 里执行 README 的项目范围的命令，地址照第 5 步换：`claude mcp add --scope project --transport http nervewiki "http://127.0.0.1:8080/mcp?notebook=$NB_CC" --header 'Authorization: Bearer ${NERVEWIKI_CLAUDE_TOKEN}'`（双引号里的 `$NB_CC` 由 shell 展开，单引号里的令牌一段原样）；然后 `grep nwk_pat_ .mcp.json`，再 `claude --mcp-config "$CC/.mcp.json" --strict-mcp-config`，输入 `/mcp` | `$CC/.mcp.json` 里是 `${NERVEWIKI_CLAUDE_TOKEN}` 原样、`grep` 什么也找不到（照文档）；连上，14 个工具（`${…}` 由 Claude Code 展开，照文档）。记下 `ls -a "$CC"` 里这条命令另外写了什么 | |
+| A3 | 先数一次你的 `~/.claude.json` 里的 `"nervewiki"`：`grep -o '"nervewiki"' ~/.claude.json` 每处列一行，记下几行。在 `$CC` 里执行 README 的项目范围的命令，地址照第 5 步换：`claude mcp add --scope project --transport http nervewiki "http://127.0.0.1:8080/mcp?notebook=$NB_CC" --header 'Authorization: Bearer ${NERVEWIKI_CLAUDE_TOKEN}'`（双引号里的 `$NB_CC` 由 shell 展开，单引号里的令牌一段原样）；然后 `grep nwk_pat_ .mcp.json`，再 `claude --mcp-config "$CC/.mcp.json" --strict-mcp-config`，输入 `/mcp`；退出之后再数一次 `"nervewiki"` | `$CC/.mcp.json` 里是 `${NERVEWIKI_CLAUDE_TOKEN}` 原样、`grep` 什么也找不到（照文档）；连上，14 个工具（`${…}` 由 Claude Code 展开，照文档）。记下 `ls -a "$CC"` 里这条命令另外写了什么。两次数的相同：命令没有把服务写进你的 `~/.claude.json`（它的结构仓库里没有记录，数的只是出现的次数，未核对）。多了时记下，在 `$CC` 里执行 `claude mcp remove nervewiki --scope local`（未核对）去掉它，再数一次，仍然多时也记下；不要动你原有的 `nervewiki`（第一次数的不是 0 时） | |
 | A4 | 只把 `$CC/mcp.json` 里的 `${NERVEWIKI_CLAUDE_TOKEN}` 换成一个不存在的变量 `${NO_SUCH_TOKEN}`，启动，`/mcp`；之后改回 | 记下 Claude Code 怎样对待没有设的变量（报错、留空、照原样发出）与服务端的日志（401？） | |
 | A5 | `claude --mcp-config "$CC/account.json" --strict-mcp-config`，让 agent 列出它能用的笔记本，再打开 `MCP 清单 CC` 并说出暗号 | 16 个工具；它先调 `notebooks`、再调 `open_notebook`（说明在它的答复里），答"青石板"；之后的调用都带 `notebook` | |
 | A6 | 第 C 部分做过之后，网页上打开两本笔记本的历史，按"MCP"筛选 | `MCP 清单 CC` 里 agent 的变更集显示"MCP（<A1 记下的名称>）"，`MCP 清单 Codex` 里的显示"MCP（<B1 记下的名称>）" | |
@@ -903,7 +950,7 @@ curl -sS "https://wiki.example.com/mcp?notebook=<笔记本 id>" \
 | C8 | 让 agent 读 `Guide/图一.png`，说出图里有什么 | 答复带图片，它说得出图里的内容；读 `Guide/说明.pdf` 时答复带 `http://127.0.0.1:8080/` 起头的下载地址 | | |
 | C9 | 让 agent 读 `Guide/宽图.png`（2.0–2.8 MiB） | 图片直接在答复里（3 MiB、每边 8,000 像素之内）；记下客户端是否把它算进自己的输出上限、截断或拒绝 | | |
 | C10 | 让 agent 依次读完 `图库/` 下的 21 张图，再读 `Guide/宽图.png`，然后接着聊一句 | 记下读过 20 张以上、其中一张宽过 2,000 像素之后，之后的请求会不会被模型的接口拒绝（一个请求里 20 张以上的图片时每张至多 2,000 像素，未核对） | | |
-| C11 | 让 agent 用 `grep` 找 `TODO`，告诉你一共几处 | 第一次答复到 48 KiB 停下、带 `next_cursor`；它接着调用，答 600 处；记下第一次的答复是否整个交给了模型 | | |
+| C11 | 让 agent 用 `grep` 找 `TODO`，告诉你一共几处 | 第一次答复到 48 KiB 停下：85 处、带 `next_cursor`（不带 `limit`、或带的 `limit` 不小于 85 时都是这样；小于 85 时先到 `limit`，记下它带的 `limit`）；它接着调用（不带 `limit` 时共 8 次，最后一次 5 处），答 600 处；记下第一次的答复是否整个交给了模型 | | |
 | C12 | 让 agent 用 `grep` 找 `\pL{30}完成` | 答复没有命中、`partial_lines` 列出 `长行.md` 第 1 行；记下它是否照说明以 `read`（`offset`、`column`）去读那一行的后面 | | |
 | C13 | 让 agent 搜索"宇宙"，再搜索"宙" | 第一次以 `search` 找到 `长文.md`、`命中.md`；单个汉字只找标题，第二次什么也找不到或只有标题里有它的；记下它分不分得清 `search` 与 `grep` | | |
 | C14 | 让 agent 做一次"整理"：在 `收件箱` 下建两页、改 `Guide.md` 的一行、把 `Guide/锁.md` 改名为 `Guide/已锁.md`，作为一次带说明的 `batch` | 一个变更集，历史里显示它的说明；网页上整组撤销它之后树与正文回到之前（`Guide/锁.md` 又是这个名字） | | |
@@ -913,27 +960,43 @@ curl -sS "https://wiki.example.com/mcp?notebook=<笔记本 id>" \
 
 每一步记下：调用之前问没问、问的文字、选了"不再问"之后是否不再问。D1–D3 只对 Claude Code，D4–D8 只对 Codex，都在笔记本入口。
 
+Claude Code 的 D1、D2、D3 各在一个只给这一步的新的临时目录里做，每个有它自己的一份 `mcp.json`：A、C 与前一步里答过的"不再问"和 D2 的放行都留在别的目录里，不论 Claude Code 把它们记在哪里（未核对）。D1 之前一次建好三个：
+
+```sh
+export CCD1=$(mktemp -d) CCD2=$(mktemp -d) CCD3=$(mktemp -d)
+for d in "$CCD1" "$CCD2" "$CCD3"; do cp "$CC/mcp.json" "$d/mcp.json"; done
+```
+
+（A1 改用了 `mcp-literal.json` 的，复制它：`for d in "$CCD1" "$CCD2" "$CCD3"; do cp "$CC/mcp-literal.json" "$d/mcp.json" && chmod 600 "$d/mcp.json"; done`。）每一步在它自己的目录里启动 Claude Code（下表写着命令）。每一步若有该问而没问的工具（像是从前面带过来的放行），记下它，并记下这一步的目录里 `ls -a .claude` 与其中各个文件的内容（没有这个目录时也记下）。
+
 每类注解只试一个或两个工具：读的工具的注解都一样（`readOnlyHint`，`api/mcp/tools.json`），所以 `read` 与 `grep`（P4 问的四个读的工具之一）；写的分两类，`write`、`move`、`delete` 是 `destructiveHint` 加 `idempotentHint`，`edit`、`batch` 只有 `destructiveHint`，所以 `write` 与 `batch`。Claude Code 只试默认的许可模式（"不碰你自己的客户端配置"记下的 `defaultMode` 不是 `default` 时，D1–D3 的结果照它读）。
 
 | # | 操作 | 预期 | 记下的 |
 |---|---|---|---|
-| D1 | Claude Code 不放行任何工具（A1 的启动），依次让它 `read`、`grep`、`write`、`batch` 一次 | 记下四个工具各问不问 | |
-| D2 | 在 `$CC/.claude/settings.json` 写 README 的 `permissions.allow` 样例，重启，同 D1 | 读的工具不问，`write`、`batch` 照常问（照文档） | |
-| D3 | `claude -p "读 Guide.md 的第 3 行" --mcp-config "$CC/mcp.json" --strict-mcp-config`；再加 `--allowedTools mcp__nervewiki__read`；再以 `-p "在 Guide 下写一页 X"`（不放行 `write`） | 不放行时记下它怎样（拒绝、报错）；放行 `read` 时答出那一行；不放行的 `write` 不调用（照文档） | |
+| D1 | `cd "$CCD1"`，以 `claude --mcp-config "$CCD1/mcp.json" --strict-mcp-config` 启动，不放行任何工具，依次让它 `read`、`grep`、`write`、`batch` 一次：`read` 问时选"不再问"，别的问时只答这一次；之后再让它 `read` 一次 | 记下四个工具各问不问，与选了"不再问"之后的第二次 `read` 问不问 | |
+| D2 | `cd "$CCD2"`；`mkdir "$CCD2/.claude"`，在 `$CCD2/.claude/settings.json` 写 README 的 `permissions.allow` 样例；以 `claude --mcp-config "$CCD2/mcp.json" --strict-mcp-config` 启动，同 D1（这一次每个问的都只答这一次） | 读的工具不问，`write`、`batch` 照常问（照文档） | |
+| D3 | `cd "$CCD3"`（这里没有 D2 的放行）；`claude -p "读 Guide.md 的第 3 行" --mcp-config "$CCD3/mcp.json" --strict-mcp-config`；再加 `--allowedTools mcp__nervewiki__read`；再以 `-p "在 Guide 下写一页 X"`（不放行 `write`） | 不放行时记下它怎样（拒绝、报错）；放行 `read` 时答出那一行；不放行的 `write` 不调用（照文档） | |
 | D4 | Codex 的 `default_tools_approval_mode = "prompt"`（README 的样例），依次 `read`、`grep`、`write`、`batch` | 记下各问不问 | |
 | D5 | 退出 Codex，把 `$CODEX_HOME/config.toml` 的 `default_tools_approval_mode` 改成 `"writes"`，再启动，同 D4 | 记下 | |
 | D6 | 同样改成 `"auto"`，同 D4 | 记下 | |
 | D7 | 同样改成 `"approve"`，同 D4 | 都不问（M0/P1） | |
 | D8 | 改回 `"prompt"`，`codex exec "读 Guide.md 的第 3 行"`；再以 `"approve"` 执行一次 | `prompt` 时要审批的调用被拒（M0/P1），记下它的输出；`approve` 时答出那一行 | |
 
+D3 做完之后，在 Claude Code 的终端里回到 `$CC`（之后的 Claude Code 的步都在那里启动），删掉 D 的三个目录：
+
+```sh
+cd "$CC"
+rm -rf "${CCD1:?}" "${CCD2:?}" "${CCD3:?}"
+```
+
 ### E：HTTP 的答复与提示
 
 | # | 操作 | 预期 | Claude Code 记下的 | Codex 记下的 |
 |---|---|---|---|---|
 | E1 | 不带令牌：Claude Code 用 `$CC/notoken.json`；Codex 退出，去掉 `config.toml` 的 `bearer_token_env_var`，再启动。`/mcp` | 服务端答 401，说明是"This server has no OAuth: MCP takes a personal access token in the Authorization header."；记下客户端显示的原文 | | |
-| E2 | 接着 E1，看服务的日志 | 记下客户端在 401 之后请求了哪些路径：`/.well-known/` 之下（答 404）、`POST /register`（答 400 `invalid_client_metadata`），以及是否退到源站的 `/authorize`、`/token`（GET 是网页的 200 `index.html`，POST 是 405 `Allow: GET, HEAD`）。之后改回 E1 之前的配置 | | |
-| E3 | 会话进行中在网页上撤销这个客户端的 PAT，再让 agent 读一页 | 服务端答 401 `Bearer error="invalid_token"`、"The bearer token is invalid or has expired."；记下客户端显示什么、是否转去 OAuth。之后建一个新的 PAT，以 `read -rs` 设进这个客户端的变量，重启客户端 | | |
-| E4 | 取 A 的一个会话的访问令牌（表下的命令：密码不进 shell 的历史；没有 `jq` 时从浏览器的开发者工具里取）。把这个客户端的变量换成它，重启客户端，让 agent 读一页；之后换回 PAT、再重启 | 403，"MCP takes a personal access token, not a session's access token."；记下显示的原文 | | |
+| E2 | 接着 E1，看服务的日志 | 记下客户端在 401 之后请求了哪些路径：`/.well-known/` 之下（答 404；服务的日志把这里的每个请求都记作 `path=/.well-known/...`，分不出是哪一个：记下次数与状态）、`POST /register`（答 400 `invalid_client_metadata`），以及是否退到源站的 `/authorize`、`/token`（GET 是网页的 200 `index.html`，POST 是 405 `Allow: GET, HEAD`）。之后改回 E1 之前的配置 | | |
+| E3 | 会话进行中在网页上撤销这个客户端的 PAT，再让 agent 读一页 | 服务端答 401 `Bearer error="invalid_token"`、"The bearer token is invalid or has expired."；记下客户端显示什么、是否转去 OAuth。之后建一个新的 PAT，以 `read -rs` 设进这个客户端的变量，重启客户端；A1 改用了 `*-literal.json` 的，也把新的令牌写进那三份（`mcp-literal.json`、`account-literal.json`、`throttled-literal.json`） | | |
+| E4 | 取 A 的一个会话的访问令牌（表下的命令：密码不进 shell 的历史；没有 `jq` 时从浏览器的开发者工具里取）。把这个客户端的变量换成它，重启客户端，让 agent 读一页；之后换回 PAT、再重启。登录后 15 分钟之内做完：访问令牌过期之后答的是 401，不是 403 | 403，"MCP takes a personal access token, not a session's access token."；记下显示的原文 | | |
 | E5 | 地址里的笔记本 id 换成一个随机的 UUID（`uuidgen`），重启客户端；之后换回 | 404 `notebook.not_found`；记下显示的原文 | | |
 | E6 | （可选）在服务的终端里以小的桶重启：`NWIKI_RATELIMIT__AUTHENTICATED__PER_MINUTE=10 NWIKI_RATELIMIT__AUTHENTICATED__BURST=10 make run`，让 agent 连续读十几页；做完照常 `make run` | 429 `rate_limited` 带 `Retry-After`；记下显示的原文、客户端是否自己等着重试 | | |
 
@@ -948,15 +1011,15 @@ jq -n --arg e "$EMAIL" --arg p "$PW" '{email:$e,password:$p}' |
 
 ### F：大的请求体（账户入口）
 
-F 部分在账户入口做：Claude Code 以 `$CC/account.json` 启动（F2 以 `$CC/throttled.json`），Codex 把 `config.toml` 的 `url` 换成 `http://127.0.0.1:8080/mcp`（F2 换成 `http://127.0.0.1:8081/mcp`），每次换了都重启客户端。每一步先让 agent 打开它的笔记本（`open_notebook`）。agent 有的说明：账户入口握手时的内置说明，其中有"超过 64 KiB 的调用每个令牌一次一个，大的写一个接一个地发"（`page/adapter/mcp/instructions.go:73-74`），与 `open_notebook` 给的 `AGENTS` 页的正文。下面 `$TOKEN` 是这个客户端的令牌（`$NERVEWIKI_CLAUDE_TOKEN` 或 `$NERVEWIKI_CODEX_TOKEN`），`$NB` 是它的笔记本。
+F 部分在账户入口做：Claude Code 以 `$CC/account.json` 启动（F2 以 `$CC/throttled.json`），Codex 把 `config.toml` 的 `url` 换成 `http://127.0.0.1:8080/mcp`（F2 换成 `http://127.0.0.1:8081/mcp`），每次换了都重启客户端。每一步先让 agent 打开它的笔记本（`open_notebook`）。agent 有的说明：账户入口握手时的内置说明，其中有"超过 64 KiB 的调用每个令牌一次一个，大的写一个接一个地发"（`page/adapter/mcp/instructions.go:73-74`），与 `open_notebook` 给的 `AGENTS` 页的正文。下面 `$TOKEN` 是这个客户端的令牌（`$NERVEWIKI_CLAUDE_TOKEN` 或 `$NERVEWIKI_CODEX_TOKEN` 的值），`$NB` 是它的笔记本：在 F1 的另一个终端里以 `read -rs TOKEN && export TOKEN` 设 `TOKEN`（粘贴这个客户端的令牌，E3 之后是新的那一个），以 `export NB="$NB_CC"`（Codex 的是 `"$NB_CODEX"`）设 `NB`。
 
 | # | 操作 | 预期 | Claude Code 记下的 | Codex 记下的 |
 |---|---|---|---|---|
-| F1 | 在另一个终端里（设好 `$TOKEN`、`$NB`）以这个客户端的令牌**一直**占住它的名额：照表下的"F1 的占位"，先写 `body.json`（1 MiB 的写），再起循环：每一轮约 26 秒（短于 `server.read_timeout` 的 30 秒），一轮接一轮；答了 HTTP 的错误（`--fail`）的一轮之后先停 2 秒，不空转。第二轮起 `占位.md` 已是同样的正文，`write` 答 `changed: false`（不带 `base_version` 写同样的正文不算冲突，`page/app/write_path.go:176-190`），不要紧：名额在读请求体时就占着。服务的日志里出现它的第一行 `http request`（`POST /mcp`，约 26 秒）之后，回到会话，让 agent 写一页 `大.md`，内容是"lorem ipsum dolor sit amet "重复 2,500 遍（67,500 字节）。这一步做完在那个终端里 `kill %1`（`jobs` 看它的号） | **先看日志**：若是一串很快的 401、404 或 429，而不是约 26 秒一行的 200，先 `kill %1`，改正 `$TOKEN` 或 `$NB` 再起：错的令牌每一轮都耗认证失败的闸门（按客户端 IP、在认证之前取，每分钟 60 个，`platform/httpserver/api.go:346-350`），耗完了这台机器上每个带令牌的请求（agent 的与浏览器的）都答 429。agent 的调用发出时占位的那一轮必须正在传：服务的日志里，agent 的那一行 `POST /mcp` 之前有一行 `large request bodies are saturated`，`own: true`、`holders` 里是这个令牌（`pat:<id>`）。然后它多半（约九成：占位的一轮在那 2 秒里答完时它拿得到名额）等 2 秒后答 HTTP 503 `server_busy`（`Retry-After: 1`）；记下客户端怎样（重试、把错误交给模型、断开）、agent 之后是否等一等再发。agent 的调用答 200 时记下它落在占位的两轮之间 | | |
+| F1 | 在另一个终端里（设好 `$TOKEN`、`$NB`）以这个客户端的令牌**一直**占住它的名额：照表下的"F1 的占位"，先写 `body.json`（1 MiB 的写），再起循环：每一轮约 26 秒（短于 `server.read_timeout` 的 30 秒），一轮接一轮；答了 HTTP 的错误（`--fail`）的一轮之后先停 2 秒，不空转。第二轮起 `占位.md` 已是同样的正文，`write` 答 `changed: false`（不带 `base_version` 写同样的正文不算冲突，`page/app/write_path.go:176-190`），不要紧：名额在读请求体时就占着。服务的日志里出现它的第一行 `http request`（`POST /mcp`，约 26 秒）之后，回到会话，让 agent 写一页 `大.md`，内容是"lorem ipsum dolor sit amet "重复 2,500 遍（67,500 字节）。这一步做完在那个终端里 `kill %1`（`jobs` 看它的号） | **先看日志**：应当是约 26 秒一行的 200。约 2 秒一行的 401 是错的令牌，约 26 秒一行的 404 是错的 `$NB`（它照样占着名额，却不写页）：先 `kill %1`，改正 `$TOKEN` 或 `$NB` 再起：错的令牌每一轮都耗认证失败的闸门（按客户端 IP、在认证之前取，每分钟 60 个，`platform/httpserver/api.go:346-350`），耗完了这台机器上每个带令牌的请求（agent 的与浏览器的）都答 429。agent 的调用发出时占位的那一轮必须正在传：服务的日志里，agent 的那一行 `POST /mcp` 之前有一行 `large request bodies are saturated`，`own=true`，`holders` 里是这个令牌（`Credential:pat:<id>`；dev 的日志是文字的格式）。然后它多半（约九成：占位的一轮在那 2 秒里答完时它拿得到名额）等 2 秒后答 HTTP 503 `server_busy`（`Retry-After: 1`）；记下客户端怎样（重试、把错误交给模型、断开）、agent 之后是否等一等再发。agent 的调用答 200 时记下它落在占位的两轮之间 | | |
 | F2 | 起一个限速的转发（下面的脚本，`node throttle.mjs 16384`：客户端到服务的方向每秒 16 KiB），客户端换到经它的账户入口（上面），让 agent **同时**写两页，各是 F1 那样的 67,500 字节 | 每个约 4 秒才传完。看服务的日志里这两个 `POST /mcp` 的时刻与 `duration`：重叠的（第二个在第一个答完之前开始），第二个等 2 秒后 503，记下 agent 看到什么、是否照说明一个接一个地重发；一个接一个的，记下这个客户端是一个接一个地发写的（那它碰不到每个令牌一个名额的代价）。两个参数合起来约 3 万个 token 的输出，客户端若写不出（输出的上限，未核对）也记下 | | |
 | F3 | F2 之后看历史；停掉转发（Ctrl-C），客户端换回笔记本入口 | 两页都写成了（重发的那一次成功），各一个变更集 | | |
 
-F1 的占位（另一个终端，在放 `seed.mjs` 的临时目录里，设好 `BASE`、`TOKEN`、`NB`；表格里不写命令，免得从原文复制时带上转义）：
+F1 的占位（另一个终端，在放 `seed.mjs` 的临时目录里，照上面设好 `BASE`、`TOKEN`、`NB`；表格里不写命令，免得从原文复制时带上转义）：
 
 ```sh
 node -e 'process.stdout.write(JSON.stringify({jsonrpc:"2.0",id:1,method:"tools/call",params:{name:"write",arguments:{path:"占位.md",content:"y".repeat(1<<20)}}}))' > body.json
@@ -1012,16 +1075,16 @@ net
 
 ### I：反向代理
 
-上游是本机的服务：容器里是 `host.docker.internal:8080`（Docker Desktop；连不上时服务以 `NWIKI_SERVER__ADDR=0.0.0.0:8080` 启动，只在这一节、只在可信的网络里）。
+上游是本机的服务：容器里是 `host.docker.internal:8080`（Docker Desktop 把它转到本机的回环地址，未核对）。连不上时跳过容器的路（I1、I2，与 I3 的容器）：P5 已在隔离的容器里核对过 README 的两份样例（P5 设计 5.2）。**不要**让服务听 `127.0.0.1` 之外的地址。
 
 - nginx：把 README"部署"一节的 nginx 样例原样存成 `nginx.conf`，只在 `server_name` 之后加一行 `listen 8090;`，四个 `location` 的 `proxy_pass` 都换成 `http://host.docker.internal:8080;`；然后 `docker run --rm -d --name nw-nginx -p 127.0.0.1:8090:8090 -v "$PWD/nginx.conf:/etc/nginx/conf.d/default.conf:ro" nginx:1.29-alpine`（样例是一个 `server`，放在 `conf.d` 里）。
 - I2、I3 的写：`node -e 'process.stdout.write(JSON.stringify({jsonrpc:"2.0",id:1,method:"tools/call",params:{name:"write",arguments:{path:"代理.md",content:"z".repeat(200000)}}}))' > body200k.json`（200 KB）与一个约 200 KB 的文件 `200k.bin`（`head -c 200000 /dev/urandom > 200k.bin`）。
 
 | # | 操作 | 预期 | 记下的 |
 |---|---|---|---|
-| I1 | Claude Code 经 nginx 连（一份 `mcp.json` 的地址换成 `http://127.0.0.1:8090/mcp?notebook=…`），做 C1、C2；浏览器经 nginx（`http://127.0.0.1:8090/`）打开 C2 写的那一页的阅读视图，再让 agent 改它 | 都成；阅读视图不重新加载就显示 agent 的改动（事件流经 nginx 照常） | |
+| I1 | Claude Code 经 nginx 连（一份 `mcp.json` 的地址换成 `http://127.0.0.1:8090/mcp?notebook=…`），让 agent 读 `Guide.md` 的第 3 行（C3 改过它：答的是现在的那一行），再写一页 `经 nginx.md`（几行字；不靠 C 部分留下的页）；浏览器经 nginx（`http://127.0.0.1:8090/`）打开这一页的阅读视图（这是另一个源：网页的登录不带过来，在那里再登录一次），再让 agent 改它 | 都成；阅读视图不重新加载就显示 agent 的改动（事件流经 nginx 照常） | |
 | I2 | 缓冲：`curl -sS -o /dev/null --limit-rate 20k "http://127.0.0.1:8090/mcp?notebook=$NB_CC" -H "Authorization: Bearer $NERVEWIKI_CLAUDE_TOKEN" -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -H 'MCP-Protocol-Version: 2025-11-25' --data-binary @body200k.json`，再把地址换成 `$BASE` 直接发一次；经 nginx 以 `--limit-rate 20k` 上传 `200k.bin`（`curl -sS -o /dev/null --limit-rate 20k "http://127.0.0.1:8090/api/v0/notebooks/$NB_CC/assets" -H "Authorization: Bearer $NERVEWIKI_CLAUDE_TOKEN" -F file=@200k.bin`，传到笔记本的根下） | 服务的日志里：经 nginx 的 `/mcp` 那一行的 `duration` 很短（nginx 收完才转来），直接的约 10 秒；上传那一行的 `duration` 约 10 秒（不缓冲，服务端边收边写） | |
-| I3 | 你的部署前面是 Caddy 时，在那里确认：照 README 的 Caddy 样例配置，同 I2（经 Caddy 的地址），看服务的日志。没有 Caddy 的部署时可以以容器代替：README 的 Caddy 样例存成 `Caddyfile`，`wiki.example.com` 换成 `:8091`、两处上游换成 `host.docker.internal:8080`，`docker run --rm -d --name nw-caddy -p 127.0.0.1:8091:8091 -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.10-alpine`；都没有时跳过（P5 已在 Caddy 2.10.2 上核对过这个写法，P5 设计 5.2）。然后照表下的"I3 的被拒的写"，以一个错的令牌把一个 8 MiB 的写经 Caddy 发到 `/mcp`，再直接发一次 | `/mcp` 那一行的 `duration` 很短、上传的约 10 秒，同 I2 经 nginx 的。被拒的大的写：直接的答 401（服务端在读请求体之前就答）；经 Caddy 的记下状态码与头。替身量过（P5 设计 5.2）：在读请求体之前答的 503、401、429，8 MiB 时经 Caddy 多半成了 502；503 的那些没有 `Retry-After`，401 的头替身没有记。这一步是在你的部署上、以真的服务端核对 | |
+| I3 | 你的部署前面是 Caddy 时，在那里确认：照 README 的 Caddy 样例配置，同 I2（经 Caddy 的地址；上传另起一个名字：`-F 'file=@200k.bin;filename=200k-caddy.bin'`，免得撞上 I2 传到根下的 `200k.bin`，同名的上传在读文件之前就答 `page.title_taken`），看服务的日志。没有 Caddy 的部署时可以以容器代替：README 的 Caddy 样例存成 `Caddyfile`，`wiki.example.com` 换成 `:8091`、两处上游换成 `host.docker.internal:8080`，`docker run --rm -d --name nw-caddy -p 127.0.0.1:8091:8091 -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.10-alpine`；都没有时跳过（P5 已在 Caddy 2.10.2 上核对过这个写法，P5 设计 5.2）。然后照表下的"I3 的被拒的写"，以一个错的令牌把一个 8 MiB 的写经 Caddy 发到 `/mcp`，再直接发一次 | `/mcp` 那一行的 `duration` 很短、上传的约 10 秒，同 I2 经 nginx 的。被拒的大的写：直接的答 401（服务端在读请求体之前就答）；经 Caddy 的记下状态码与头。替身量过（P5 设计 5.2）：在读请求体之前答的 503、401、429，8 MiB 时经 Caddy 多半成了 502；503 的那些没有 `Retry-After`，401 的头替身没有记。这一步是在你的部署上、以真的服务端核对 | |
 
 I3 的被拒的写（`CADDY` 是经 Caddy 的地址，如 `http://127.0.0.1:8091`）：
 
@@ -1040,8 +1103,8 @@ done
 1. **Codex 的登录**：照"不碰你自己的客户端配置"登录的第 3 种复制过 `auth.json` 的，先照那里的规则决定复制不复制回去（看 `shasum` 的两个指纹），**再**删临时目录；用第 2 种的，在一个没有设 `CODEX_HOME` 的终端里启动你自己的 Codex，记下它是否照常可用，不能用时在那里 `codex login` 再登录一次。
 2. 在网页上撤销 `seed`、`claude-checklist`、`codex-checklist` 与 E3 新建的 PAT（服务还开着）。
 3. 停掉 `make run`、`throttle.mjs`（若还在）与代理的容器：`docker stop nw-nginx nw-caddy`。
-4. 删掉临时目录：`$CC`（含几份 `*-literal.json`，若有）、`$CX`、`$CODEX_HOME`、`$KEYS` 与放 `seed.mjs`、`body.json`、`big.bin` 的那一个；关掉设过令牌的终端（或 `unset NERVEWIKI_CLAUDE_TOKEN NERVEWIKI_CODEX_TOKEN SEED_TOKEN TOKEN EMAIL PW`）。
-5. 可以删掉 Claude Code 在 `~/.claude/projects/` 下为 `$CC` 记的会话（目录名由 `$CC` 的路径而来）。
+4. **Claude Code 的会话**：Claude Code 在 `~/.claude/projects/` 下为这份清单的临时目录（`$CC` 与 D 部分的几个）记了会话。它们可以留着，不碍事。这份清单不给删除它们的命令：想删掉的，先核对目录的名字确是这份清单的临时目录的，再自己手动删掉那一个目录。Claude Code 怎样给这些目录起名未核对。
+5. 删掉临时目录：`$CC`（含几份 `*-literal.json`，若有）、`$CX`、`$CODEX_HOME`、`$KEYS` 与放 `seed.mjs`、`body.json`、`big.bin` 的那一个；关掉设过令牌的终端（或 `unset NERVEWIKI_CLAUDE_TOKEN NERVEWIKI_CODEX_TOKEN SEED_TOKEN TOKEN EMAIL PW`）。
 
 ## 不在这份清单里的
 
@@ -1056,15 +1119,20 @@ done
 
 - **一个客户端一本笔记本**：第 C 部分改写种下的页（C3 改了"先读再写"、C4 删了一行、C2 与 C6 建了又移了 `计划/周一.md`），同一本里做第二遍时它的预期一条也对不上，记下的会被读成客户端的失败。两本各种一次，`seed.mjs` 不变；H 部分照样各在自己的那本里。
 - **F 在账户入口**：种下的 `AGENTS` 页在笔记本入口整个取代内置的说明，而"大的写一个接一个地发"只在内置的说明里（`page/adapter/mcp/instructions.go:73-74`；`api/mcp/tools.json` 的 14 个工具的说明里没有 64 KiB、503 或"一个接一个"）。账户入口的握手照常给内置的说明（`instructions.go:19-27` 的 `AccountInstructions` 含 `pathsAndTools`）。C 部分的"照说明"靠的是工具的说明（`edit` 的引号与唯一、`move` 的完整路径、`grep` 的 `partial_lines`、`cut` 与 `column`），在笔记本入口照样成立。
-- **F1 的占位是一个循环**：一次 1 MiB 的慢的写只占名额约 20 秒，而 agent 要先写出约 1.5 万个 token 的参数才发出调用，往往要几分钟，那时占位的早已答完、名额空着，F1 就什么也没测到。一轮接一轮、每轮约 26 秒（短于 30 秒的读期限，不会因超时被断开）的循环几乎一直占着；日志里的 `large request bodies are saturated`（`own: true`）证明 agent 的调用来时它正占着（`own` 由 `takeLarge` 定，`platform/httpserver/largebody.go:188-226`；满了时记 info 的是 `saturated`，`:243-252`）。循环里的 `--fail … || sleep 2` 是刹车：一个打错的 `$TOKEN` 或 `$NB` 让每一轮几毫秒就答完，没有它会空转、耗光认证失败的闸门或这个令牌的桶。也可以借客户端的审批（客户端问要不要调 `write` 时才起占位、15 秒内同意），但那要审批没有放行，与 D 部分的状态纠缠，所以用循环。
+- **F1 的占位是一个循环**：一次 1 MiB 的慢的写只占名额约 20 秒，而 agent 要先写出约 1.5 万个 token 的参数才发出调用，往往要几分钟，那时占位的早已答完、名额空着，F1 就什么也没测到。一轮接一轮、每轮约 26 秒（短于 30 秒的读期限，不会因超时被断开）的循环几乎一直占着；日志里的 `large request bodies are saturated`（dev 的文字格式写作 `own=true`，`holders` 里是 `Credential:pat:<id>`，S1 的审查 B-N7）证明 agent 的调用来时它正占着（`own` 由 `takeLarge` 定，`platform/httpserver/largebody.go:188-226`；满了时记 info 的是 `saturated`，`:243-252`）。循环里的 `--fail … || sleep 2` 是刹车：一个打错的 `$TOKEN` 或 `$NB` 让每一轮几毫秒就答完，没有它会空转、耗光认证失败的闸门或这个令牌的桶。也可以借客户端的审批（客户端问要不要调 `write` 时才起占位、15 秒内同意），但那要审批没有放行，与 D 部分的状态纠缠，所以用循环。
 - **F2 的大小与并行**：P2 第 8 节写"1 Mbit/s，两个各约 1 MiB 的并行的 `write`"。模型逐个 token 写出工具的参数，1 MiB 的正文约 25 万个 token，真实的 agent 写不出两个。要的是形状：两个并行的、超过 64 KiB 的写，上行慢到一个要传 2 秒以上。所以用 67,500 字节的正文（加上 JSON 的外壳仍过 65,536 字节，模型写得出：约 1.5 万个 token）与每秒 16 KiB 的转发（一个约 4 秒）。两个客户端会不会同时发两个写的调用没有记录（P2 的设计审查已把"Claude Code 并行地发大的写"划为未核对，`reviews/P2-design-review.md:274`），所以 F2 的预期按日志分两种，一个接一个也是一个结果。
 - **限速的做法**：清单不叫负责人改系统的网络（`pfctl`、`dnctl` 一类要 sudo、改的是整台机器）；一个 20 行的 Node 转发只限这一个端口，Ctrl-C 就没了。
 - **重启**：4.16 写"交互的会话，或让 agent 先执行 `sleep 30` 再调用工具"。清单用交互的会话（G1）：`sleep` 的写法要 agent 有执行命令的权限，Codex 的沙箱与 Claude Code 的审批都会挡，结果混进审批的变量。dev 不配置签名私钥时每次启动换一把（README"签名私钥"），所以第 1 步生成一把，重启（E6、G1、G2）之后两个浏览器不必重新登录；PAT 只存哈希，本来就跨过重启（`identity/domain/api_token.go:16-31`）。
 - **只试默认的许可模式**：4.16 写"Claude Code 的许可模式"。README 只推荐默认的（读的工具放行、写的工具照常问），别的模式（`acceptEdits`、`bypassPermissions`）是负责人自己的选择，README 不写它们对 MCP 工具的作用；所以 D 只试默认的模式、一份 `permissions.allow` 与 `-p`，并先记下负责人自己的 `defaultMode` 与 `mcp__` 的规则（它们会让 D1 的意思变了）。每类注解一两个工具的理由在 D 的开头。
-- **截取的行**：P4 第 8 节问 agent 是否以 `read(offset, column)` 读"截取的行与部分匹配的行"。部分匹配的行是 `长行.md`（C12）；截取的行要一行过 `MaxGrepLineText`（1,000 字节，`page/domain/grep.go:31`）的命中，原来种下的行都短（`命中.md` 的约 164 字节、`长文.md` 的约 87 字节），所以 `命中.md` 加第 601 行（约 3,000 字节、`FIXME` 在中间、行尾是别处没有的"行尾在此"）与 C15。
+- **截取的行**：P4 第 8 节问 agent 是否以 `read(offset, column)` 读"截取的行与部分匹配的行"。部分匹配的行是 `长行.md`（C12）；截取的行要一行过 `MaxGrepLineText`（1,000 字节，`page/domain/grep.go:31`）的命中，原来种下的行都短（`命中.md` 的 TODO 行约 523 字节（S1 的修复一轮为 C11 加长，下一条），`长文.md` 的约 87 字节），所以 `命中.md` 加第 601 行（约 3,000 字节、`FIXME` 在中间、行尾是别处没有的"行尾在此"）与 C15。
 - **I3 是确认**：Caddy 的写法 P5 已在 Caddy 2.10.2 上核对过（第 5 节、5.2），清单只在负责人的部署上确认它（或以本机的容器代替）。
 - **加的几步**：A4、B4（变量没设时）与 I1–I3（反向代理）是 P5 加的：README 的样例都靠环境变量，第 5 节的样例改了结构；它们的结果都直接改 README 的某一句（4.2、5.2）。
 - **E6 是可选的**：要以小的桶重启实例；429 的提示与 401、403 同是"HTTP 的答复"一类（4.4），E1–E5 已记下客户端怎样显示这一类。
+- **C11 的种子的行长**（S1 的修复一轮，审查 B-M2）：`grep` 的 `limit` 默认 100（`page/domain/grep.go:29`），一次调用到它就停；原来每行约 164 字节时第一次答复停在 100 个命中、约 21 KB，48 KiB 的那一半从没走到，只有 agent 带 230 以上的 `limit` 才走到。每行加长到约 520 字节（仍在 `MaxGrepLineText` 之下，不截）：不带 `limit` 时第一次答复停在 48 KiB、85 个命中，600 个 8 次调用（实施者以一次不提交的探针经真的服务端量）；C11 记下 agent 带的 `limit`。
+- **图片是名称说的类型**（审查 B-M3）：服务端按开头的字节判类型，`.png` 里是 JPEG 的字节时存作 `application/octet-stream`、不内联（`asset/domain/types.go` 的 `TypeOf`），C9、C10 就因服务端的原因失败；所以清单要 PNG 与 PDF，给 `sips` 的转法与 `file` 的核对。
+- **D 的每一步一个新的临时目录**（审查 B-M1，修复核对一轮 B2-N1、B2-N2）：C 与 D1 答的"不再问"、D2 写的放行，不论 Claude Code 记在项目的设置里还是 `~/.claude.json` 里（未核对），都会带进下一步，让"不放行"的一次与放行了的分不出，4.2 的 D3 一行就照一次从没不放行过的运行改 README。D1、D2、D3 各在一个新的目录里、各有自己的一份 `mcp.json`，就不靠它记在哪里；D 做完以 `${VAR:?}` 守着删掉三个目录、回到 `$CC`。
+- **不给删除会话的命令，A3 数一数**（审查 C 的存疑 1 与 B 的存疑 1，修复核对一轮 B2-M1 = C2-M1）：Claude Code 为临时目录在 `~/.claude/projects/` 下记的会话可以留着；一条在 `~/.claude/` 之下的 `rm -rf`，一次失手（多一个空格、一个没设的变量）就删掉负责人每个项目的会话与记忆，所以清单不带它，要删的人自己核对名字、手动删那一个目录。A3 的项目范围的命令照文档不写 `~/.claude.json`，没有一步看过：前后各数一次 `"nervewiki"`，多了时记下、照未核对的 `claude mcp remove` 去掉。
+- **I 部分不靠前面的部分**（审查 B-M4、B-N9，修复核对一轮 B2-N3，B 的存疑 2）：I1 写它自己的页，I3 以另一个文件名上传（同名在读文件之前就答 `page.title_taken`），I1 的浏览器在 `:8090` 上另登录一次（另一个源）；`host.docker.internal` 到不到只听 127.0.0.1 的服务未核对，不通时跳过容器的那几路（P5 已核对过样例），服务从不绑到 127.0.0.1 之外。
 
 ## 7. 总体设计与 00 号文档的修订
 
@@ -1112,14 +1180,14 @@ S1（分支 `m9-p5-s1`，从 `main` 起）。每个提交都是绿的：`make li
 4. `test(e2e)`：PG14 (MCP)：MC3 (activity) 挪进 `pg14-notebook-activity.spec.ts`、改名、第二次写改为 `edit`、本地的 `Edited` 带 `at`；MC3 去掉它、只有它用的导入与文件开头注释的末句（`mc3:18-19`，3.2 的 PG14）。
 5. `test(e2e)`：C7、L1、L3、L4、L6 (MCP)；同一个提交里 C7 (API) 加删除之后的安静的检查、L6 (API) 在开流之前 `settleEvents`（3.3、3.4：它们的洞与 MCP 版本的同一个，各一两行）。
 6. `test(e2e)`：AS2、AS3、AS4 (MCP)。
-7. `test(e2e)`：HI1、SE1、SE2 (MCP)；HI1 的两个正文常量提到顶层；SE1 的 `expectFound` 加一个重载 `expectFound(q, found: Omit<Found, "marked">, options: {marked: false})`，`Found.marked` 照旧是必须的，原来的签名不变；MCP 的调用处传 `mcpFoundOf` 造的 `Omit<Found, "marked">` 与 `{marked: false}`，不造假的 `marked: []`（3.7）。
+7. `test(e2e)`：HI1、SE1、SE2 (MCP)；HI1 的四个正文常量（`created`、`first`、`second`、`third`）提到顶层，HI1 (page) 的三个同名的纯文本常量改名为 `plainCreated`、`plainSecond`、`plainThird`（oxlint 的 `no-shadow`；建成的，原写"两个"，3.9）；SE1 的 `expectFound` 加一个重载 `expectFound(q, found: Omit<Found, "marked">, options: {marked: false})`，`Found.marked` 照旧是必须的，原来的签名不变；MCP 的调用处传 `mcpFoundOf` 造的 `Omit<Found, "marked">` 与 `{marked: false}`，不造假的 `marked: []`（3.7）。
 8. **反向对照**：照 9.2 逐个做变异（每个之后还原，不提交），确认右边的测试失败，结果写进审查记录的"反向对照"与第 12 节。
    - 服务端的变异：改了之后先 `make build`，再跑它的测试：故事跑的是 `bin/nervewiki`，`make e2e` 先构建（`Makefile:80-81`），直接的 `pnpm exec playwright test <文件>` 不构建，跑的是上一次的二进制，变异就读作"没抓到"。
    - 语句的变异改在 sqlc 生成的常量里（`gen/*.sql.go`，9.2 写明位置）：只改 `queries/*.sql` 不改二进制；也不在改着变异时执行 `make gen*`，那会把变异写进生成的文件、混进之后的提交。还原之后 `make gen-check` 是干净的。
    - `writtenOf` 自己的检查（令牌的节点与版本号、`at` 不为 null）以一次伪造的答复证明：临时在一个测试里交给它一个 `version` 以别的节点的 id 起头的答复与一个 `at: null` 的答复，看它各抛出一次（照 P3 对 `expectNoAsideNames` 的做法，`e2e/fixtures/assert/page.ts:261-270`）；只记进审查记录，不提交。
 9. `docs(readme)`：4.1 的"接入 agent（MCP）"一节与 `:219` 的一行。
 10. `docs(readme)`：5.1 的部署一节的反向代理与升级的一条。第 9、10 步的 README 要过 `pnpm run check:format`（`oxfmt --check .`；`.oxfmtrc.json` 只忽略 `docs/**`，根下的 README 照常检查）：格式化只动空白与表格的对齐时照它，动了文字的意思时报告主持者。
-11. `docs(M9)`：人工清单 `docs/v0.1/M9-mcp/manual/P5-mcp-clients-checklist.md`（6.1）。它的链接（00 号文档、各 Phase、M4 的清单、M5/P2、M0/P1 的移交）与 README 到它的链接都要解析得到（`make lint` 的 Markdown 检查若不查相对链接，实施者逐个打开核对，写进审查记录）。
+11. `docs(M9)`：人工清单 `docs/v0.1/M9-mcp/manual/P5-mcp-clients-checklist.md`（6.1）。它的链接（00 号文档、各 Phase、M4 的清单、M0/P1 的移交；清单不链到 M5/P2，S1 的审查 C-N3）与 README 到它的链接都要解析得到（`make lint` 的 Markdown 检查若不查相对链接，实施者逐个打开核对，写进审查记录）。
 12. 门禁（9.3），含合并之前的 Caddy 的重跑；推送分支，CI 的各份都是绿的；e2e 那一份的用时写进审查记录（9.4）。
 13. 审查（Opus：e2e 与文档各一位，第三位核对完成标准与 2.3 的处置表）、修复、核对、合并、推送 `main`（负责人的规则：完成并核对过的单元由主持者推送）；之后的文档提交：第 7 节的 S1 之后的各处、第 11 节的移交、这份设计的状态与 3.9、第 12 节、审查记录。设计的提交的 `apply-00m9.py` 只落 2.1 的 13 条与 00 号文档第 12、13 节的两行；第 7 节其余的各处（7.1 的 S1 合并之后的各处、7.2 的 `apply-v01.py`、7.3）与第 11 节的四份移交都在这个文档提交里，不在设计的提交里。
 
@@ -1149,21 +1217,21 @@ S1（分支 `m9-p5-s1`，从 `main` 起）。每个提交都是绿的：`make li
 | L4 (MCP) | `expectTagged`（`expectIndexedTags` ×3）；折叠等于 API 版本的字面的 `listTags` | 公式、图（渲染） | `index {tag}` 先比字面的路径（按 id）、再比 REST `getTag` ×3；`#proj` 对 `getTag("proj")` | 0.3–0.5 秒 |
 | L6 (MCP) | `expectLinked`（`expectIndexedLinks` ×2）、`links` 的帧 | 属性的读（没有工具）、大纲与右栏（浏览器） | 开流之前 settle；`backlinks` 先比字面的、再比 REST ×3（含游标与 `next_cursor`） | 0.3–0.6 秒 |
 | AS2 (MCP) | `expectEmbedded`（`expectContentWritten`、`expectUploaded` ×2、`expectIndexedLinks`）；`getView` 的 `<img>` | 粘贴与拖放（编辑器） | 别处的同名附件让 `link` 带路径；`read` 的 `link`、`url` 与图片；`expectChangesetOf` | 0.4–0.6 秒 |
-| AS3 (MCP) | `expectIndexedLinks` ×2；`getView`、`getPageProperties`、改名之后的 `readContent` 与 `getView` | 媒体、PDF、下载（浏览器） | `expectChangesetOf` | 0.4–0.7 秒 |
+| AS3 (MCP) | `expectIndexedLinks` ×2；`getView`、`getPageProperties`、改名之后的 `readContent` 与 `getView` | 媒体、PDF、下载（浏览器）；上传的答复的类型（同一个 `upload`，AS3 (API) 查过；S1 的审查 A-N1） | `expectChangesetOf` | 0.4–0.7 秒 |
 | AS4 (MCP) | `expectAssetsDeletedWithNodes` ×2；`getAsset` 与签名的地址 | `expectAssetsDeletedWithNotebook`（PG13 的豁免）、`expectAssetsPurged`（平台的定时任务）；第二个 API 测试（大小读没删的附件） | 没有 `recursive` 的数目；单独删一个附件；删掉的附件的文件仍在存储里 | 0.4–0.6 秒 |
 | HI1 (MCP) | `expectVersions`（再加 agent 的一行）；`readContent` | 会话本身（只有 REST）；`getVersion` 的 `id` 与 `base_revision`（由整行的比较看到） | `versions` 对 REST 整行与字面的投影；`editing` | 0.3–0.5 秒 |
 | SE1 (MCP) | `expectFound` 对同一张 `finds`（重载收 `Omit<Found, "marked">` 与 `{marked: false}`） | `marked`（MCP 不给范围） | 对 REST 的路径、种类与数，摘要照 `cut_start`、`cut_end`；删除的答复；MCP 的删除立即离开搜索 | 约 0.5 秒 |
 | SE2 (MCP) | （没有）缩小的查找与三个拒绝 | 工作区范围的三个（MCP 只搜一本） | 三个账户的 `notebooks` 与 `truncated: false`；在列出的每一本里各搜一次 | 约 0.5 秒 |
 
-两个已有的测试各补一两行（与它们的 MCP 版本在同一个提交里）：C7 (API) 把 Marker 提成变量，删除之后写它一次（`base_revision` 2）、`expectNext` 它的帧（版本号 3）；L6 (API) 先建 Marker，开流之前 `settleEvents`。
+两个已有的测试各补一两行（与它们的 MCP 版本在同一个提交里）：C7 (API) 把 Marker 提成变量，删除之后读出它的版本号、写它一次、`expectNext` 下一个版本号的帧（原写"`base_revision` 2、版本号 3"；settle 会再写 Marker，S1 的审查 A-M1 = C-M1，3.3）；L6 (API) 先建 Marker，开流之前 `settleEvents`。
 
-**不空过**：每个"恰是这些"的比较都 `toEqual` 整个列表，不 `toContain`；拒绝的列表都是字面写下的几项，映射之后与字面的码比（空的列表比不出东西）；"什么都没写"的检查都在全部的拒绝之后（PG1 的节点数、PG2 的 `expectRenamed` 再一次、PG8 的 `expectVersions`、PG12 的 `nodes`、L3 的 `listNodes` 与版本号）；与 REST 比的都先断言字面的值（L4 的路径与折叠、L6 的 `[path, links]`、HI1 的三行、SE1 的表、SE2 的每一本一页）：两边读同一条语句时（L4 的 `index {tag}` 与 `getTag`）只比两边证明不了选法；次序都写成字面的（PG4 的锁按子树、L4 与 L6 按 `write` 的 id），不靠 UUIDv7 的 id 随请求递增；`sessions: 0` 之前读过两页各有一个会话（PG4）；`expectAssetsDeletedWithNodes` 的 id 的列表都不空（AS4）；事件流的检查开流之前都 settle、最后都看流是安静的（C7、L6）。
+**不空过**：每个"恰是这些"的比较都 `toEqual` 整个列表，不 `toContain`；拒绝的列表都是字面写下的几项，映射之后与字面的码比（空的列表比不出东西）；"什么都没写"的检查都在全部的拒绝之后（PG1 的节点数、PG2 的 `expectRenamed` 再一次、PG8 的 `expectVersions`、PG12 的 `nodes`、L3 的 `listNodes` 与版本号）；与 REST 比的都先断言字面的值（L4 的路径与折叠、L6 的 `[path, links]`、HI1 的三行、SE1 的表、SE2 的每一本一页）：两边读同一条语句时（L4 的 `index {tag}` 与 `getTag`）只比两边证明不了选法；次序都写成字面的（PG4 的锁按子树、L4 与 L6 按 `write` 的 id），不靠 UUIDv7 的 id 随请求递增；`sessions: 0` 之前读过两页各有一个会话（PG4）；`expectAssetsDeletedWithNodes` 的 id 的列表都不空（AS4）；事件流的检查开流之前都 settle（C7、L6），C7 最后看流是安静的（L6 在 `links` 的帧之后不再读流，S1 的审查 C-N4）。
 
 **期限**：e2e 的服务端的请求期限是默认的 15 秒（第 1 节）；每次调用是一页、一次小的写或一个查找。最慢的准备是 PG3 的 `chain(8)`（8 次顺序的 REST 的建页）与 AS3 的五个上传（`Promise.all`），都是 API 版本已有的、通过的。4 秒的请求期限是 Go 的整个程序测试的（`docs/v0.1/M9-mcp/01-P1-platform-reads.md:861`），P5 不加 Go 的测试。等待只有 `expectNext` 的 10 秒（`e2e/fixtures/events.ts:29`，C7、L6）与 Playwright 的 `expect` 的 10 秒，都是失败的界线，不是等候。
 
 ### 9.2 变异与反向对照
 
-实施者逐个做下面的改动（每个之后还原），确认"应失败"的一栏失败，结果写进第 12 节与审查记录（照 P4 的 6.3；做法见第 8 节第 8 步：服务端的先 `make build`，语句的改在生成的常量里）。编号接着 [P4](04-P4-grep-search.md) 6.3 的 222。位置是 `7dc4a686` 的。服务端与 fixture 的变异只在本机的工作树里做，不提交。最后一栏是 API 版本是否也抓到它：抓到的是共用的覆盖，抓不到的是只有 MCP 版本守着的。
+实施者逐个做下面的改动（每个之后还原），确认"应失败"的一栏失败，结果写进第 12 节与审查记录（照 P4 的 6.3；做法见第 8 节第 8 步：服务端的先 `make build`，语句的改在生成的常量里）。编号接着 [P4](04-P4-grep-search.md) 6.3 的 222。位置是 `7dc4a686` 的（S1 施加时的位置与每条失败的行在 [S1 的审查记录](reviews/P5-S1-stories-docs-review.md)的"反向对照"里）。服务端与 fixture 的变异只在本机的工作树里做，不提交。最后一栏是 API 版本是否也抓到它：抓到的是共用的覆盖，抓不到的是只有 MCP 版本守着的。
 
 | # | 变异（位置） | 应失败（故事与步） | API 版本也抓到？ |
 |---|---|---|---|
@@ -1173,15 +1241,15 @@ S1（分支 `m9-p5-s1`，从 `main` 起）。每个提交都是绿的：`make li
 | 226 | 同一父页下的改名也排到兄弟的最后（`page/app/unit_relocate.go:48-49` 照换父页的一支） | PG2 (MCP) 第 2 步（`expectRenamed` 的次序不变） | 不（REST 的改名经 `unit_rename.go`，不经 `Relocate`） |
 | 227 | 去掉 `RelocationOf` 的成环的检查（`page/domain/steps.go:143-146`） | PG3 (MCP) 第 4 步 | 不（REST 的移动自己查环，`page/app/unit_move.go:49-51`；只有 MCP 的 `move` 与 `batch` 经 `RelocationOf`） |
 | 228 | agent 的删除只看别人的会话（`page/app/edit_lock.go:55-56` 的 `agent` 一支改成 `a.UserID != s.By`） | PG4 (MCP) 第 3 步（锁只剩 Child 一项）、C4 (MCP) | 不（REST 的删除走 `OpDelete` 的一支） |
-| 229 | 活着的会话不看 `expires_at`（`page/adapter/postgres/gen/sessions.sql.go:19` 的 `AliveSessionsOf` 去掉 `AND expires_at > $2`；来源 `queries/sessions.sql:29`） | PG4 (MCP) 第 4 步（过期的会话仍挡） | PG4 (API) 也失败（它的过期的会话同样挡住删除）；C6 (API) 不（开会话先删掉过期的行，`page/app/unit_session.go:32`） |
-| 230 | `page.revision_mismatch` 的当前的版本给成调用的 `base_version`（`page/app/write_path.go:250` 与 `edit_page.go:143-146` 造 `VersionMismatch` 处；适配器的 `text.go:32-34` 做不了：`VersionMismatch` 只有 `Path`、`Current`、`Why`，`page/domain/errors.go:222-226`） | PG8 (MCP) 第 3 步（两个 `current_version` 都成了 `"<id>:1"`）；MC3 的过时的 `write` 同样（`mc3:112`） | 不（REST 的 409 不带当前的版本） |
+| 229 | 活着的会话不看 `expires_at`（`page/adapter/postgres/gen/sessions.sql.go:19` 的 `AliveSessionsOf` 的 `AND expires_at > $2` 写成 `AND $2::timestamptz IS NOT NULL`，同去掉它：直接去掉时语句只剩一个参数、生成的调用照旧传两个，pgx 每次都报"expected 1 arguments, got 2"（S1 的审查 C-N2）；来源 `queries/sessions.sql:29`） | PG4 (MCP) 第 4 步（过期的会话仍挡） | PG4 (API) 也失败（它的过期的会话同样挡住删除）；C6 (API) 不（开会话先删掉过期的行，`page/app/unit_session.go:32`） |
+| 230 | `page.revision_mismatch` 的当前的版本给成调用的 `base_version`（分两半做，各自让 PG8 (MCP) 第 3 步失败：230w 在 `page/app/write_path.go:224`，`Changed` 的调用处（`:250` 是 `mismatch` 帮助函数，那里没有 `base`），230e 在 `edit_page.go:146`；适配器的 `text.go:32-34` 做不了：`VersionMismatch` 只有 `Path`、`Current`、`Why`，`page/domain/errors.go:222-226`） | PG8 (MCP) 第 3 步（两个 `current_version` 都成了 `"<id>:1"`）；MC3 的过时的 `write` 同样（`mc3:112`） | 不（REST 的 409 不带当前的版本） |
 | 231 | MCP 的 `write` 把正文的 CRLF 规整成 LF（`page/adapter/mcp/write.go:44` 交给用例之前） | PG9 (MCP) 第 2、3 步（CRLF、混合的两种的字节与哈希） | 不（REST 的写不经它） |
 | 232 | 文件夹的子节点按名称排而不是树的次序（`page/app/list_by_pattern.go:296-298` 的 `SortOrder`） | PG11 (MCP) 第 3 步（First、Between 的位置）；MC2 同样 | 不（REST 的 `listNodes` 不经它） |
 | 233 | 笔记本入口不判定可见性（`platform/httpserver/mcpserver/edge.go:232-250` 放行看不到的） | PG12 (MCP) 第 4 步、SE2 (MCP) 第 4 步；MC1 与矩阵同样 | 不 |
 | 234 | 笔记本的活动只算 `web`、`api` 的变更集（`page/adapter/postgres/gen/activity.sql.go:15-21` 的 `NotebookActivities` 的 `WHERE` 加 `AND cs.client NOT LIKE 'mcp:%'`；来源 `queries/activity.sql:1-10`。不是 `notebook/app/list_ownerless.go:76-80`：那里只合计各来源，`notebook/app/extension.go:128-154`） | PG14 (MCP)（这本笔记本只有 agent 的变更集：大小与活动都不在答复里） | 不（REST 的写的客户端是 `api`） |
 | 235a | 事件流对 MCP 的单元不发帧（`bootstrap/events_registrants.go:23-32` 的 `PagesChanged` 遇到 MCP 的客户端就返回 nil）。不放在 `page/app/unit.go:635-647` 的 `tell`：那会连链接的索引（`bootstrap/linking.go:25`）与附件（`bootstrap/assets.go:78`）一起关掉，MC4 的 `expectIndexedLinks` 今天就会失败 | C7 (MCP) 第 2 步；Go 的 `TestThePagesEventListsNoPageInTheTrash`（`bootstrap/events_pages_test.go:141-161`，一个 MCP 的 `batch`）同样 | 不 |
 | 235b | 链接的索引对 MCP 的单元不发 `links` 的帧，行照写。两处的改动：`linking.PagesChanged`（`linking/app/index.go:13-17`）加一个字段，`bootstrap/linking.go:37` 把 `e.Write.Client.IsMCP()` 填进去（页面的观察者转换事件时丢掉了客户端，`bootstrap/linking.go:24-37`），`linking/app/index.go:85` 在它为真时跳过 `x.publish`。只在 `index.go:85` 跳过、不分客户端，L6 (API) 也会失败，就不再是只有 MCP 版本守着的了。这是临时的、两个文件的改动，只为这一条反向对照，不提交 | L6 (MCP) 第 3 步（开流之前 settle 之后，Doc 自己的晚到的帧不再冒充 Other 的） | 不 |
-| 236 | `PagesWritten` 每个改动发一个帧（`events/app/publisher.go:52-63`） | C7 (MCP) 第 3 步（batch 的两页成两帧）与第 5 步（Parent、Minutes、Late 的删除成三帧，Marker 的帧不是下一帧） | C7 (API) 加了同样的安静的检查之后也失败（它删除 Parent 与 Minutes，两帧）；今天的 C7 (API) 删除之后只读一帧（`c7-push.spec.ts:62-63`），抓不到 |
+| 236 | `PagesWritten` 每个改动发一个帧（`events/app/publisher.go:52-63`） | C7 (MCP) 第 3 步（batch 的两页成两帧）；删除的一半（Parent、Minutes、Late 的删除成三帧）在流上看不出来：三帧彼此相同，PostgreSQL 在一个事务里只送一次（3.3 第 5 步），抓到它的是 Go 的 `TestAPagesEventSaysWhatTheUnitWrote`（`events/app/publisher_test.go:57`）。对照 236q（`bootstrap/events_registrants.go:31`：删除的单元另发一个不同的 `{tree: false, pages: []}` 帧）让 C7 (MCP) 第 5 步失败 | 不（C7 (API) 通过；它抓到 236q，`171b739d` 的 C7 (API) 抓不到）。原写"与第 5 步"与"C7 (API) 加了同样的安静的检查之后也失败"（S1 的实施者的发现，审查 C-I1） |
 | 237 | `move` 的 `update_links` 默认为假（`page/adapter/mcp/move.go:33-34`） | L1 (MCP) 第 3 步（Source 不改写）、L3 (MCP) 第 2 步（管理员的移动跳过改写，不被拒）；MC4 同样 | 不（REST 的移动没有这个参数） |
 | 238 | 锁的拒绝的项都不带路径（`page/app/path_writes.go:36-40` 总把 `read` 设为 nil，如同读路径失败） | L3 (MCP) 第 2 步；PG4 (MCP) 第 3 步（`page.locked` 也经它，`delete_path.go:89`） | 不 |
 | 239 | 锁的项的 `you` 总为假（`page/adapter/mcp/locks.go:60`、`:67`） | L3 (MCP) 第 2 步（A 自己的 agent）、PG4 (MCP) 第 3 步（Grandchild）；C4 (MCP) 同样 | 不 |
@@ -1195,7 +1263,7 @@ S1（分支 `m9-p5-s1`，从 `main` 起）。每个提交都是绿的：`make li
 | 247 | `edit` 不看 `base_version`（`page/app/edit_page.go:141-146` 去掉两个 `VersionMismatch` 的分支） | PG8 (MCP) 第 3 步（过时的 `edit` 写下了 "Mine"）：e2e 里只有它发过时的 `edit` | 不（REST 没有 `edit`） |
 | 248 | 换了父页的节点排在最前（`page/app/unit_relocate.go:70` 的 `placeAmong(siblings, len(siblings)-1)` 改成 `-1`） | PG3 (MCP) 第 2 步（A 的子页成了 `["B", "A1"]`）与第 3 步 | 不（REST 的移动经 `unit_move.go`，PG3 (API) 照样通过） |
 | 249 | 附件改名时属性里的链接不改写（`linking/domain/rewrite.go:76-78` 的 `Rewrite` 遇到 `r.Link.InFrontmatter()` 就 `continue`） | AS3 (MCP) 第 2 步（`readPage` 的文字里属性的 `[[cover.png` 没换；`expectIndexedLinks` 的那一个不再指向 cover） | AS3 (API) 也失败（同一个改写）：共用的覆盖 |
-| 250 | 按路径读一个版本时丢掉 BOM 与 `\r`（`page/app/get_version.go:86` 的 `GetVersion.AtPath` 给的正文；它只有 MCP 的 `versions {path, revision}` 调，`page/adapter/mcp/versions.go:101`） | HI1 (MCP) 第 4 步（`revision: 1` 的 `created` 逐字节） | 不（REST 的 `getVersion` 按 id，不经 `AtPath`） |
+| 250 | 按路径读一个版本时丢掉 BOM 与 `\r`（`page/app/get_version.go:86` 的 `GetVersion.AtPath` 给的正文，S1 改在 `:115`、`findVersion` 之后；它只有 MCP 的 `versions {path, revision}` 调，`page/adapter/mcp/versions.go:101`） | HI1 (MCP) 第 4 步（`revision: 1` 的 `created` 逐字节） | 不（REST 的 `getVersion` 按 id，不经 `AtPath`） |
 | 251 | SE1 (API) 的 `foundOf` 不再给 `marked`（fixture，`se1-search.spec.ts:90-104`；`marked` 照旧必须时它编不过，所以改成给 `[]`） | SE1 (API) 第 2 步（命中的范围不对）：`marked` 留作必须、MCP 在调用处不比，API 与页面版本照旧比它 | 本身就是 API 版本 |
 
 ### 9.3 门禁
@@ -1379,11 +1447,11 @@ done
    M9/P5 起反向代理按路由处理请求体：`/mcp` 与页面正文的两个写缓冲，上传与导入不缓冲、上限是导入包的上限加 64 KiB（它不小于附件的上限加 64 KiB；nginx 写 `513m`），README 的部署一节有 nginx 与 Caddy 的样例与升级的一条（[M9/P5](../../M9-mcp/05-P5-stories-docs.md) 第 5 节）；部署文档照它整理，缓冲的请求体在认证之前收在代理那里（nginx 的磁盘、Caddy 的内存），一并写明；经 Caddy 时服务端早答的拒绝成 502 的事见性能移交第 18 项。
    ```
 
-3. **M12 的性能移交**（`docs/v0.1/M12-release/handoffs/M4-performance.md` 第 18 项）："慢的发送者"一条（`:95`）的三处照 7.3 改；第 18 项的最后加两条。经 Caddy 的 502 放在这里而不放在转移移交的部署一条：它是名额与认证的早答在代理上的样子，改法（若改）在服务端，与这一项的名额、慢的发送者是同一件事：
+3. **M12 的性能移交**（`docs/v0.1/M12-release/handoffs/M4-performance.md` 第 18 项）："慢的发送者"一条（`:95`）的三处照 7.3 改；第 18 项的最后加两条；这一项说 10 万个候选的守卫的时限的两处照 00 号文档第 11 节第 102 条改为 1 s（S1 的文档的提交）。经 Caddy 的 502 放在这里而不放在转移移交的部署一条：它是名额与认证的早答在代理上的样子，改法（若改）在服务端，与这一项的名额、慢的发送者是同一件事：
 
    ```markdown
-      - **真实客户端与 e2e**（[M9/P5](../../M9-mcp/05-P5-stories-docs.md) 第 11 节）：48 KiB 的答复与 3 MiB 的内联图片两个上限，照人工清单的 C7、C9、C10 记下的再看（Claude Code 的约 25,000 个 token 的结果上限；一个请求里 20 张以上的图片时每张至多 2,000 像素）。压测时也量慢的发送者经 Caddy（缓冲在内存里）与直接暴露时占满名额的样子。e2e 的 E2E 一步在 M9/P5 之后约 3:45–4:15，作业的时限 20 分钟，之后的 M 继续往里加故事时看要不要把 e2e 分份。
-      - **经 Caddy 时早答的拒绝成了 502**（[M9/P5](../../M9-mcp/05-P5-stories-docs.md) 5.2，Caddy 2.10.2 上量过，上游是一个同样不读请求体就答的 Go `net/http` 的替身）：服务端在读请求体之前的拒绝，取不到名额的 503 `server_busy`、认证失败的 401、限流的 429，对几 MiB 以上的请求体经 Caddy 常常到客户端成了 502、没有 `Retry-After`；nginx 照原样转发（量的是 503）。网页的保存只在 503 带着 `Retry-After` 时等一等再发（`web/apps/web/src/stores/page-editing.ts:336`），在 401 时续期再发（`web/apps/web/src/session/auth-middleware.ts:45`），拿到 502 两样都不做：两个大的调用占着名额时的一次大的保存、访问令牌过期时的一次大的保存，都立刻失败；agent 也看不到"稍后重发"。服务端可以怎样改由 M12 定，例如早答之前把一个很快地到来的请求体短短地读掉，让代理写完再拿到答复；这只是一种可能，不是决定。部署文档至少写明用 Caddy 时的这个代价，或推荐 nginx。
+      - **真实客户端与 e2e**（[M9/P5](../../M9-mcp/05-P5-stories-docs.md) 第 11 节）：48 KiB 的答复与 3 MiB 的内联图片两个上限，照人工清单的 C7、C9、C10 记下的再看（Claude Code 的约 25,000 个 token 的结果上限；一个请求里 20 张以上的图片时每张至多 2,000 像素）。压测时也量慢的发送者经 Caddy（缓冲在内存里）与直接暴露时占满名额的样子。e2e 的 E2E 一步在 M9/P5 之后量得 3:37、3:40、3:35（分支的三次运行；P5 之前 3:41，P5 的设计估 3:45–4:15），合并之后 `main` 的一次 2:56，21 个新的测试本机合计约 3.8 秒；作业的时限 20 分钟，之后的 M 继续往里加故事时看要不要把 e2e 分份。
+      - **经 Caddy 时早答的拒绝成了 502**（[M9/P5](../../M9-mcp/05-P5-stories-docs.md) 5.2，Caddy 2.10.2 上量过，上游是一个同样不读请求体就答的 Go `net/http` 的替身）：服务端在读请求体之前的拒绝，取不到名额的 503 `server_busy`、认证失败的 401、限流的 429，对几 MiB 以上的请求体经 Caddy 常常到客户端成了 502、没有 `Retry-After`（M9/P5 的 S1 合并之前的重跑：缓冲的两个路由 2–30 MiB 的 24 次都是 502）；nginx 照原样转发（量的是 503）。网页的保存只在 503 带着 `Retry-After` 时等一等再发（`web/apps/web/src/stores/page-editing.ts:336`），在 401 时续期再发（`web/apps/web/src/session/auth-middleware.ts:45`），拿到 502 两样都不做：两个大的调用占着名额时的一次大的保存、访问令牌过期时的一次大的保存，都立刻失败；agent 也看不到"稍后重发"。服务端可以怎样改由 M12 定，例如早答之前把一个很快地到来的请求体短短地读掉，让代理写完再拿到答复；这只是一种可能，不是决定。部署文档至少写明用 Caddy 时的这个代价，或推荐 nginx。
    ```
 
 4. **M10 的 MCP 移交**（`docs/v0.1/M10-llm-wiki/handoffs/M9-P1-mcp-registry.md`，新的第 6 项，加在第 5 项之后）。选这一份而不另开 `M9-P5` 的一份：它就是 M9 给 M10 的 MCP 的那一份（状态 `open`），开头说 M9 总设计给 M10 的别的"由之后的 Phase 写进 M10 的移交，M9 收尾时核对"；下面三条都关于 M10 在 MCP 上加东西，说明的余量挨着它的第 4 条（说明的找法与缓存），另开一份会把 M9 给 M10 的 MCP 的事分在两处，M9 收尾时要核对两份。
@@ -1397,7 +1465,28 @@ done
 
 ## 12. 结果
 
-S1 合并之后写：每个 MCP 版本的用时与它在 CI 上的那一次、9.2 的每条变异由哪个测试的哪一步抓到、`make e2e` 的测试数与本机的用时、CI 的 E2E 一步与各份的用时、实施与设计的不同（3.9）、审查与修复的轮数。
+**S1：其余的故事的 MCP 版本、接入文档与人工清单**（2026-10-23，分支 `m9-p5-s1`，合并 `053d3ba1`；审查记录 [P5-S1-stories-docs-review.md](reviews/P5-S1-stories-docs-review.md)）
+
+- 提交（从 `main` 的 `171b739d` 开始，照第 8 节的次序，第 1–7、9–11 步各一个，共 10 个；第 8 步的变异不提交）：
+  - fixture 的放宽（`expectContentWritten`、`Embedded.written` 收 `Pick<Page, …>`，`expectMoved` 收 `Pick<TreeNode, …>`）与 MC2 的 `readPage`、`PageRead` 挪进 `fixtures/mcp.ts`（`14287a43`）。
+  - `writtenOf` 与 PG1、PG2、PG3、PG4、PG7、PG8、PG9 (MCP)；PG2 的 NFD 的标题、PG9 的六种正文提到顶层（`a3bc759c`）。
+  - PG11、PG12 (MCP)（`615e6434`）。
+  - PG14 (MCP)：MC3 (activity) 挪来、改名，第二次写改为 `edit`；MC3 去掉它、只有它用的六个导入与文件开头注释的末句（`4bce4e8f`）。
+  - C7、L1、L3、L4、L6 (MCP)；C7 (API) 删除之后的安静的检查、L6 (API) 开流之前 settle（`f2575d0b`）。
+  - AS2、AS3、AS4 (MCP)（`3ca6ee57`）。
+  - HI1、SE1、SE2 (MCP)；HI1 的四个正文常量提到顶层；`expectFound` 的重载（`d4a8adf8`）。
+  - README 的"接入 agent（MCP）"与 `:219` 的一行（`00c19120`）；部署一节的反向代理与升级的一条（`c63b4bb2`）；人工清单 `manual/P5-mcp-clients-checklist.md`（`f29b9853`）。
+  - 合并 `main` 的 `eb371c17`，带进 `9d991781`（10 万个候选的 grep 守卫的调用的时限 1 s，只改 `grep_cost_test.go`，00 号文档第 11 节第 102 条），使分支的 CI 带着它。
+  - 修复一轮十个（`5cb7e824`–`e519297c`：C7 (API) 一个，README 两个，清单七个），修复二轮三个（`8067afd9`、`f60c4c80`、`380b253e`，只改清单），各项见审查记录。
+  - 每个提交单独在一个工作树里 `make lint`、`make knip` 与它碰到的故事的文件（经 `heavy.sh`；第 1–7 个各 1、27、6、4、22、12、11 个通过）都通过；文档的提交只 lint 与 knip；修复两轮的每个提交 `make lint`、`make knip` 通过（修复一轮的十个由修复核对 C 各自重跑过）。
+- 与设计不同之处：见 3.9。
+- **e2e**：21 个新的测试，MC3 (activity) 成为 PG14 (MCP)，262 → 282。本机 `make e2e`（含 `make build`）282 个 37.4 秒（之前 262 个 36.5 秒；负载 5.6–6.3），修复一轮之后 37.2 秒（负载 10.3）。新的 21 个在整个套件里的用时（ms，本机）：PG1 107、PG2 111、PG3 266、PG4 174、PG7 116、PG8 94、PG9 134、PG11 105、PG12 191、PG14 87、C7 245、L1 82、L3 174、L4 90、L6 170、AS2 412、AS3 385、AS4 193、HI1 147、SE1 255、SE2 227，合计约 3.8 秒（单个 worker 算；9.4 估 9–14 秒）；修复一轮之后 C7 (API) 273 ms、C7 (MCP) 303 ms。每个测试在 CI 上的用时读不到（作业的日志要认证），只有 E2E 一步的（下面）。审查 A 把这 21 个与 C7 (API)、L6 (API) 跑了 276 次（三种 worker 数），没有失败。
+- **变异**（9.2 的第 223–251 条，各单独施加、之后还原；服务端的先 `make build`，语句的改在 `gen/*.sql.go`；在最终的测试上整个重跑一遍，两遍结果相同）：每一条都让点名的测试在点名的步失败：223 PG7 第 4 步、PG8 第 5 步、PG9 第 2 步、AS2 第 3 步（`expectContentWritten`）；224 PG7 第 3 步；225 PG1 第 5 步；226 PG2 第 2 步（`expectRenamed`）；227 PG3 第 4 步；228 PG4 第 3 步；229 PG4 第 4 步；230 的两半各在 PG8 第 3 步；231 PG9 第 2 步；232 PG11 第 3 步；233 PG12 第 4 步与 SE2 第 4 步；234 PG14；235a C7 第 2 步；235b L6 第 3 步；236 C7 第 3 步；237 L1 第 3 步与 L3 第 2 步；238、239 L3 第 2 步与 PG4 第 3 步；240 L3 第 6 步；241 L4 第 2 步；242 AS2 第 2 步；243 AS4 第 3 步；244 HI1 第 2 步；245 SE1 第 4 步（第一次就抓到：搜索任务还没删掉回收站里的行）；247 PG8 第 3 步；248 PG3 第 2 步；249 AS3 第 2 步；250 HI1 第 4 步。API 版本也抓到的是 229（PG4 (API)）、241（L4 (API)）、245（SE1 (API)）、249（AS3 (API)），同 9.2；只有 236 不同：C7 (API) 加了安静的检查之后照样通过，删除的一半由 Go 的发布者的测试抓到（3.9 第 1 条）。每条施加时的位置与失败的行在审查记录的"反向对照"。
+- **反向对照**：`writtenOf` 的两个伪造的答复（别的节点的 id 起头的 `version`、`at: null`）各在 `fixtures/mcp.ts:193` 抛出一次；SE1 (API) 在 251（`foundOf` 的 `marked` 给 `[]`）之下在第 2 步失败；246（`mcpFoundOf` 丢掉最后一个名称）让 SE1 (MCP) 第 2 步失败；236q 让 C7 (MCP) 第 5 步与 C7 (API) 新加的检查失败、`171b739d` 的 C7 (API) 通过；236-del（236 之下绕过 C7 (MCP) 第 3 步）通过。审查 A 以自己的改法重跑 12 个变异与两个伪造的答复，C 重跑 236、236q 与 Go 的测试，修复核对一轮 A、C 在 `e519297c` 上重跑 236 与 236q，结果都同。
+- **门禁**（本机，头 `eb371c17`，都经 `heavy.sh`）：`make lint`、`knip`、`gen-check`、`test-web`（166 个文件、3,342 个测试）、`build` 都通过；`make e2e` 282 个 37.4 秒；`make test-go` 810 秒（组合根三份 183.5、214.0、295.0 秒；10 万个候选的 grep 守卫的调用 134.6–149.2 ms，对 1 s）；`make test-go-short` 53 秒。服务端的代码没有改，内置的说明照旧 4,027 与 3,957 字节（审查 C 以副本重算）。清单的链接与 README 到它的链接逐个打开核对；清单的 `sh` 块与行内命令过 `sh -n`、`bash -n`、`zsh -n`（审查 B 与修复的两轮）。
+- **Caddy 的重跑**（合并之前，`caddy:2.10-alpine`，`--rm --pull=never --network none`，没有映射端口）：`Caddyfile` 是 `Valid configuration`（`run.sh` 里唯一的一次 `caddy validate`；早答的探测的脚本不校验，审查 C-N1）；200,000 字节以 `--limit-rate 50k` 发到五个路由，上游的 `duration`：`/mcp` 0.0010 秒、正文的 PUT 0.00069 秒、新建页的 POST 0.0022 秒（缓冲，毫秒级），上传 3.84 秒、导入 3.85 秒（不缓冲，约 4 秒），同 5.2；分块的请求到上游时仍是分块的。早答的探测（替身不读请求体就答 503 与 `Retry-After: 1`）经 Caddy、每格三次：缓冲的两个路由在 2、4、8、30 MiB 都是 502 502 502；附件 2 MiB 503 503 503、4 MiB 503 503 503、8 MiB 503 502 502、30 MiB 503 502 503，同 5.2 的表（几 MiB 以上经缓冲的路由多半 502、没有 `Retry-After`；这一次 24 次都是 502）。审查 B 以 README 自己的 Caddy 样例重跑，结果相同。之后 `heavy.sh docker ps -a` 里没有留下 Caddy 的容器。
+- **CI**：建成 run 39908901709（`eb371c17`）全绿，整个 17:21，E2E 一步 3:37（作业 4:26；9.4 估 3:45–4:15、P5 之前 3:41）；修复一轮 run 39916610094（`e519297c`）全绿，E2E 一步 3:40；修复二轮 run 39920143015（`380b253e`）全绿，E2E 一步 3:35；合并之后 `main` 在 `053d3ba1` 上的 run 39922678794 全绿，E2E 一步 2:56（作业 3:43）。组合根一的测试一步 7:13、5:53、4:37，合并之后 7:17，都在 7:30 之下；P5 没有加组合根的测试，各份的分界不动。各份的用时见审查记录的"门禁与 CI"。`main` 在 `171b739d`（这份设计的提交）上的运行红在守卫那一份（P4 的 S1 的 10 万个候选的那次调用，00 号文档第 11 节第 102 条），修复合并之后 `main` 的 run 39905348090 绿。
+- **审查与修复**：三位审查者（Opus：e2e；README 与清单；完成标准、2.3、偏离与提交），Important 1（文档，第 236 条的说法）、Minor 8、细节 20、存疑 5；修复两轮（一轮十个提交、二轮三个），修复核对一轮由 A、B、C，二轮由 B 与主持者；主持者的决定 9 条（00 号文档第 11 节第 96–104 条）。M9 不因 P5 合并而完成：之后是 M9 的收尾，人工清单在 v0.1 的最后由负责人跑（第 10、11 节）。
 
 ## 附录：在代码里核对过的（`7dc4a686`）
 
