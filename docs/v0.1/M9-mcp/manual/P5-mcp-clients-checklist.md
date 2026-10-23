@@ -15,7 +15,7 @@
 
 整份清单不改 `~/.claude.json` 里的 MCP 服务、`~/.claude/settings.json`、`~/.codex/` 与任何项目里已有的 `.mcp.json`：
 
-- **Claude Code**：一律在 `$CC`（"准备"第 5 步的临时目录）里以 `claude --mcp-config "$CC/<文件>" --strict-mcp-config` 启动：只用这个文件里的服务（照文档；插件带来的服务与 claude.ai 的连接器是否也不起未核对，A1 看 `/mcp` 的列表）。不在别的目录里执行 `claude mcp add`（本地与用户的范围写 `~/.claude.json`）；第 A3 步只在 `$CC` 里以 `--scope project` 写那个目录自己的 `.mcp.json`。不执行 `claude mcp list`：它会连一遍你配置过的每个服务。Claude Code 照常在 `~/.claude.json` 里记下它进过的目录（信任与历史），在 `~/.claude/projects/` 下记每个会话（目录名由 `$CC` 的路径而来）：那是它自己的状态，不是 MCP 的配置，做完可以删掉那个目录。审批的几步在只给它们的临时目录 `$CCD` 里做（第 D 部分的开头），用 `$CCD/.claude/settings.json`（项目的设置），不改你自己的设置。**开始之前记下**你自己的 `~/.claude/settings.json` 里的 `permissions.defaultMode` 与提到 `mcp__` 的放行或拒绝的规则：它们会改变第 D 部分的结果。
+- **Claude Code**：一律在 `$CC`（"准备"第 5 步的临时目录）里以 `claude --mcp-config "$CC/<文件>" --strict-mcp-config` 启动：只用这个文件里的服务（照文档；插件带来的服务与 claude.ai 的连接器是否也不起未核对，A1 看 `/mcp` 的列表）。不在别的目录里执行 `claude mcp add`（本地与用户的范围写 `~/.claude.json`）；第 A3 步只在 `$CC` 里以 `--scope project` 写那个目录自己的 `.mcp.json`。不执行 `claude mcp list`：它会连一遍你配置过的每个服务。Claude Code 照常在 `~/.claude.json` 里记下它进过的目录（信任与历史），在 `~/.claude/projects/` 下记每个会话（那些目录怎样起名未核对）：那是它自己的状态，不是 MCP 的配置，可以留着；要删时照"做完"的第 4 步，只删列出的那一个。审批的几步在只给它们的临时目录 `$CCD` 里做（第 D 部分的开头），用 `$CCD/.claude/settings.json`（项目的设置），不改你自己的设置。**开始之前记下**你自己的 `~/.claude/settings.json` 里的 `permissions.defaultMode` 与提到 `mcp__` 的放行或拒绝的规则：它们会改变第 D 部分的结果。
 - **Codex**：一律在一个临时的 `CODEX_HOME` 里、从一个空的临时目录 `$CX` 启动（"准备"第 6 步）：Codex 只读 `$CODEX_HOME/config.toml`，你的 `~/.codex/config.toml` 里的别的 MCP 服务不会起（照文档；`codex -c mcp_servers.x.url=…` 是叠在 `~/.codex/config.toml` 之上的，那样它们照样起）；从空的目录启动，它不会拿到某个项目自己的配置，也不会在你的代码里读写文件。登录，按这个次序选：
   1. **用 API 密钥**（推荐）：`printenv OPENAI_API_KEY | codex login --with-api-key`（照文档），凭证写在临时的 `CODEX_HOME` 里，与你自己的登录无关。
   2. **在临时的 `CODEX_HOME` 里另登录一次**：`codex login`（ChatGPT 的账户）。做完之后在一个没有设 `CODEX_HOME` 的终端里启动你自己的 Codex，记下它是否照常可用；不能用时在那个终端里（你自己的 `~/.codex`）`codex login` 再登录一次。第二次登录会不会让第一次的失效未核对。
@@ -276,8 +276,8 @@ done
 1. **Codex 的登录**：照"不碰你自己的客户端配置"登录的第 3 种复制过 `auth.json` 的，先照那里的规则决定复制不复制回去（看 `shasum` 的两个指纹），**再**删临时目录；用第 2 种的，在一个没有设 `CODEX_HOME` 的终端里启动你自己的 Codex，记下它是否照常可用，不能用时在那里 `codex login` 再登录一次。
 2. 在网页上撤销 `seed`、`claude-checklist`、`codex-checklist` 与 E3 新建的 PAT（服务还开着）。
 3. 停掉 `make run`、`throttle.mjs`（若还在）与代理的容器：`docker stop nw-nginx nw-caddy`。
-4. 删掉临时目录：`$CC`（含几份 `*-literal.json`，若有）、`$CCD`、`$CX`、`$CODEX_HOME`、`$KEYS` 与放 `seed.mjs`、`body.json`、`big.bin` 的那一个；关掉设过令牌的终端（或 `unset NERVEWIKI_CLAUDE_TOKEN NERVEWIKI_CODEX_TOKEN SEED_TOKEN TOKEN EMAIL PW`）。
-5. 可以删掉 Claude Code 在 `~/.claude/projects/` 下为 `$CC` 记的会话（目录名由 `$CC` 的路径而来）。
+4. **Claude Code 的会话**：它在 `~/.claude/projects/` 下为 `$CC`、`$CCD` 记的会话可以留着，不碍事。要删时，在还设着 `$CC`、`$CCD` 的终端里、下一步删掉这两个目录之前，先列出名字里带着 `$CC` 的目录名最后那段随机的字母（`mktemp -d` 给的是 `tmp.` 加十个随机的字母与数字）的：`ls ~/.claude/projects | grep -F -- "${CC##*.}"`（`$CCD` 换成 `"${CCD##*.}"` 再列一次）。只在恰好列出一个目录时删它：`rm -rf ~/.claude/projects/` 之后照抄列出的那个名字，不用通配符。Claude Code 怎样给这些目录起名未核对：列出的不是恰好一个时都不删。
+5. 删掉临时目录：`$CC`（含几份 `*-literal.json`，若有）、`$CCD`、`$CX`、`$CODEX_HOME`、`$KEYS` 与放 `seed.mjs`、`body.json`、`big.bin` 的那一个；关掉设过令牌的终端（或 `unset NERVEWIKI_CLAUDE_TOKEN NERVEWIKI_CODEX_TOKEN SEED_TOKEN TOKEN EMAIL PW`）。
 
 ## 不在这份清单里的
 
