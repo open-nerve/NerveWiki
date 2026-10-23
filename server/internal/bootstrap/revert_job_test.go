@@ -556,3 +556,34 @@ func TestTheRevertsJobStartNamesTheHeldPageItsRequestDoes(t *testing.T) {
 		}
 	}
 }
+
+// A background revert keeps the order in which a node waits for its
+// parent's line to move up (M9 design 4.12; M9/P3 design 3.26): the
+// revert of placeLine's batch and of restoreLine's, in batches of a node,
+// each batch checking its steps' premises as the tree is then. X put back
+// or restored first is too deep there, and the job would stop; a
+// request's revert, one unit, writes the steps without such a check, so
+// its end cannot tell the order. The job succeeds, the notebook as before
+// the batch (M9 closeout C-M9).
+func TestTheRevertsJobWaitsForAParentsLineToMoveUp(t *testing.T) {
+	tm := newAcmeTeamWired(t, "member", "", nil, transfer.Batch{Nodes: 1})
+	for i, tt := range []struct {
+		name  string
+		shape lineShape
+	}{{"a place", placeLine()}, {"a restore", restoreLine()}} {
+		t.Run(tt.name, func(t *testing.T) {
+			nb := tm.openNotebook(t, "alice", fmt.Sprint("Eng ", i))
+			ids := tm.seed(t, nb, tt.shape.pages...)
+			tt.shape.before(t, tm, ids)
+			before := tm.shapeBefore(t, nb)
+			b := tm.agent(t, "alice", nb).batchDone(t, tt.shape.ops...)
+			sets := tm.changesetsIn(t, nb)
+			j := tm.startedJob(t, revertStart("alice", nb, *b.ChangesetID, ""))
+			got := tm.endedBackground(t, "alice", j.ID)
+			if got.State != "succeeded" {
+				t.Fatalf("the revert = %s, want it succeeded", got)
+			}
+			tm.undoneAs(t, nb, before, *b.ChangesetID, *got.ChangesetID, sets)
+		})
+	}
+}

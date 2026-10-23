@@ -167,6 +167,52 @@ func (tm acmeTeam) seedAttachments(t *testing.T, nb, name string, parents ...str
 	return ids
 }
 
+// lineShape is a batch whose revert puts a node back, or restores it,
+// under a parent that is a level too deep for it until that parent's line
+// moves up, first (M9 design 3, criterion 8; M9/P3 design 3.21.2, the
+// domain's TestScheduleRevertsEachBatchShape): the pages it is made on,
+// in their order, a line of nine levels X among them; what before does to
+// them first; and its ops.
+type lineShape struct {
+	pages  []restPage
+	before func(t *testing.T, tm acmeTeam, ids map[string]string)
+	ops    []map[string]any
+}
+
+// pageLine is the pages of a line from top down, nine levels: the deepest
+// at MaxDepth with top a level below the root.
+func pageLine(top string) []restPage {
+	pages := []restPage{{top, "l"}}
+	for i := range domain.MaxDepth - 2 {
+		pages = append(pages, restPage{fmt.Sprint(pages[i].path, "/L", i+1), "l"})
+	}
+	return pages
+}
+
+// placeLine is X, moved under P, put back there, and P back to the root
+// from under Q: X, the older, is tried first, a level too deep under P
+// there, and waits a round.
+func placeLine() lineShape {
+	return lineShape{pages: append(pageLine("X"), restPage{"P", "p"}, restPage{"Q", "q"}),
+		before: func(t *testing.T, tm acmeTeam, ids map[string]string) {
+			t.Helper()
+			if ids["X"] >= ids["P"] {
+				t.Fatalf("X's id %s is not before P's %s: P would go back first", ids["X"], ids["P"])
+			}
+			tm.send(t, nodeMove("alice", ids["X"], ids["P"]), http.StatusOK)
+		},
+		ops: []map[string]any{opMove("P/X.md", "X.md"), opMove("P.md", "Q/P.md")}}
+}
+
+// restoreLine is X, deleted from under B, restored there once B, swapped
+// with A under Q through a third name, is back at the root, which a step
+// aside lets it: under Q, X is a level too deep.
+func restoreLine() lineShape {
+	return lineShape{pages: append([]restPage{{"Q", "q"}, {"Q/A", "a"}, {"B", "b"}}, pageLine("B/X")...),
+		before: func(*testing.T, acmeTeam, map[string]string) {},
+		ops:    []map[string]any{opDeleteAll("B/X.md"), opMove("Q/A.md", "T.md"), opMove("B.md", "Q/A.md"), opMove("T.md", "B.md")}}
+}
+
 // Each shape of 4.12 a batch's changeset takes is reverted whole through
 // the web's request, the notebook as before it: the tree, each node's
 // parent, name and order value, each page's bytes and those of each page
@@ -175,7 +221,9 @@ func (tm acmeTeam) seedAttachments(t *testing.T, nb, name string, parents ...str
 // through a third, put back with a step aside that no item of the revert
 // keeps; a rename, then a page of the old name; a deletion, then a page of
 // its name; a move into a folder made; a move and rename past a sibling
-// holding the name it has between; the review's counterexample; long
+// holding the name it has between; the review's counterexample; a place
+// and a restore each a level too deep until its parent's line moves up, a
+// round later (M9 design 3, criterion 8, and 4.12; M9 closeout C-M9); long
 // names swapped and two attachments of one name, of one millisecond, each
 // moved out of a folder deleted and made again, then back in, their names
 // aside within a title's bytes and apart; a page written, then deleted,
@@ -272,6 +320,19 @@ func TestTheRevertOfEachBatchShape(t *testing.T) {
 			at(t, ids["G/x"], ids["G"]+"/x")
 			at(t, ids["G/y"], ids["G"]+"/y")
 		})
+	placing, restoring := placeLine(), restoreLine()
+	each("a place that fits once its parent's line moves up", placing.pages, func(t *testing.T, nb string, ids map[string]string, m *mcpApp) {
+		placing.before(t, tm, ids)
+		tm.undoneBatch(t, nb, batch(t, m, placing.ops...))
+		at(t, ids["X"], ids["P"]+"/X")
+		at(t, ids["P"], "/P")
+	})
+	each("a restore that fits once its parent's line moves up", restoring.pages, func(t *testing.T, nb string, ids map[string]string, m *mcpApp) {
+		tm.undoneBatch(t, nb, batch(t, m, restoring.ops...))
+		at(t, ids["B/X"], ids["B"]+"/X")
+		at(t, ids["B"], "/B")
+		at(t, ids["Q/A"], ids["Q"]+"/A")
+	})
 	long, longer := strings.Repeat("名", 82), strings.Repeat("名", 85) // 246 and 255 bytes
 	each("long names swapped, two attachments of one name and one millisecond moved aside",
 		[]restPage{{long, "l"}, {longer, "m"}, {"F1", ""}, {"F2", ""}},
