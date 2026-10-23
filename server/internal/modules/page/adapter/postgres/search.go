@@ -165,19 +165,24 @@ func (s *Store) SearchSources(ctx context.Context, ids []uuid.UUID) ([]app.Searc
 }
 
 // SearchContents implements app.SearchIndex.
-func (s *Store) SearchContents(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]app.PageText, error) {
+func (s *Store) SearchContents(ctx context.Context, ids []uuid.UUID, max int64) (map[uuid.UUID]app.PageText, uuid.UUID, error) {
 	out := map[uuid.UUID]app.PageText{}
 	if len(ids) == 0 {
-		return out, nil
+		return out, uuid.UUID{}, nil
 	}
-	rows, err := s.queries(ctx).SearchContents(ctx, ids)
+	rows, err := s.queries(ctx).SearchContents(ctx, gen.SearchContentsParams{Ids: ids, MaxBytes: max})
 	if err != nil {
-		return nil, fmt.Errorf("read the contents the search builds: %w", err)
+		return nil, uuid.UUID{}, fmt.Errorf("read the contents the search builds: %w", err)
 	}
+	var past uuid.UUID
 	for _, r := range rows {
+		if !r.Within {
+			past = r.NodeID
+			continue
+		}
 		out[r.NodeID] = app.PageText{Content: r.Content, Revision: int(r.Revision)}
 	}
-	return out, nil
+	return out, past, nil
 }
 
 // WriteSearchRows implements app.SearchIndex: in ctx's transaction, the

@@ -42,6 +42,8 @@ type fakeIndex struct {
 	// clock moves on by step at each QueuedSearch: a batch's time.
 	clock *fakeClock
 	step  time.Duration
+	// read are the bytes of the contents each SearchContents read.
+	read []int
 }
 
 type fakeClock struct{ now time.Time }
@@ -123,15 +125,21 @@ func (f *fakeIndex) SearchSources(ctx context.Context, ids []uuid.UUID) ([]app.S
 	return out, nil
 }
 
-func (f *fakeIndex) SearchContents(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]app.PageText, error) {
+// SearchContents reads the texts of ids as the statement does: in their
+// order while their sizes sum to max at most, the first past it unread.
+func (f *fakeIndex) SearchContents(ctx context.Context, ids []uuid.UUID, max int64) (map[uuid.UUID]app.PageText, uuid.UUID, error) {
 	f.record(ctx, fmt.Sprintf("SearchContents %d", len(ids)))
-	out := map[uuid.UUID]app.PageText{}
+	out, total, read := map[uuid.UUID]app.PageText{}, int64(0), 0
+	defer func() { f.read = append(f.read, read) }()
 	for _, id := range ids {
 		if t, ok := f.texts[id]; ok {
-			out[id] = t
+			if total += int64(len(t.Content)); total > max {
+				return out, id, nil
+			}
+			out[id], read = t, read+len(t.Content)
 		}
 	}
-	return out, nil
+	return out, uuid.UUID{}, nil
 }
 
 func (f *fakeIndex) WriteSearchRows(ctx context.Context, rows []app.SearchRow, deleted []uuid.UUID) error {
@@ -309,10 +317,10 @@ type requeuing struct {
 	id uuid.UUID
 }
 
-func (r *requeuing) SearchContents(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]app.PageText, error) {
-	out, err := r.fakeIndex.SearchContents(ctx, ids)
+func (r *requeuing) SearchContents(ctx context.Context, ids []uuid.UUID, max int64) (map[uuid.UUID]app.PageText, uuid.UUID, error) {
+	out, past, err := r.fakeIndex.SearchContents(ctx, ids, max)
 	r.queue[r.id]++
-	return out, err
+	return out, past, err
 }
 
 // A pass reads the queue by node id, a batch of SearchBatchNodes at a time,
@@ -343,6 +351,69 @@ func TestTheSearchJobPassesOverTheQueueInBatches(t *testing.T) {
 		"DequeueSearch 2", "QueuedSearch exact " + short(ids[103]), "QueuedSearch bulk start/start", "Release"}
 	if !slices.Equal(f.calls, want) || run.Written != len(ids) || len(f.queue) != 0 {
 		t.Errorf("calls %v\nwant %v\nrun %+v, %d left queued", f.calls, want, run, len(f.queue))
+	}
+}
+
+// A batch's read of the contents holds SearchBatchBytes on the bytes it
+// reads, not on the sizes its sources told (M9 Codex review D2): ten pages
+// of a byte by their sources, the fourth to sixth grown to 3 MiB since.
+// The first batch reads the first five, within 8 MiB, the sixth past it
+// read none of: the batch ends before it, which the next batch reads with
+// the rest. Every page built, each read within the bound.
+func TestTheSearchJobsBatchReadsWithinItsBytes(t *testing.T) {
+	f := newFakeIndex()
+	var ids []uuid.UUID
+	for i := range 10 {
+		ids = append(ids, f.page(fmt.Sprintf("page %d", i), "y"))
+	}
+	for _, id := range ids[3:6] {
+		f.texts[id] = app.PageText{Content: strings.Repeat("x", 3<<20), Revision: 2}
+	}
+	job, _ := f.job(0)
+	run, err := job.Drain(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"LockSearch", "QueuedSearch exact start", "SearchSources 10", "SearchContents 10", "WriteSearchRows 5 0",
+		"DequeueSearch 5", "QueuedSearch exact " + short(ids[4]), "SearchSources 5", "SearchContents 5", "WriteSearchRows 5 0",
+		"DequeueSearch 5", "QueuedSearch exact " + short(ids[9]), "QueuedSearch bulk start/start", "Release"}
+	if !slices.Equal(f.calls, want) || run.Written != len(ids) || len(f.queue) != 0 ||
+		slices.ContainsFunc(f.read, func(n int) bool { return n > domain.SearchBatchBytes }) {
+		t.Errorf("calls %v\nwant %v\nrun %+v, %d left queued, reads %v", f.calls, want, run, len(f.queue), f.read)
+	}
+}
+
+// A batch cut before a page grown past its bytes counts and deletes only
+// the nodes before the cut (M9 Codex review fix round 1, B-N2): ten pages,
+// the fourth to sixth grown to 3 MiB since their sources, the eighth's row
+// current, the ninth's built within minRebuild, the tenth gone with a row.
+// The first batch builds five, cut at the sixth, and neither counts the
+// eighth and the ninth nor deletes the tenth's row; the second builds the
+// sixth and the seventh, keeps the eighth, skips the ninth, deletes the
+// tenth's row: each counted once.
+func TestTheSearchJobsCutBatchCountsItsOwnNodes(t *testing.T) {
+	f := newFakeIndex()
+	now := f.clock.now
+	var ids []uuid.UUID
+	for i := range 10 {
+		ids = append(ids, f.page(fmt.Sprintf("page %d", i), "y"))
+	}
+	for _, id := range ids[3:6] {
+		f.texts[id] = app.PageText{Content: strings.Repeat("x", 3<<20), Revision: 2}
+	}
+	f.built(ids[7], 2, "page 7", domain.SearchTokenizer, now.Add(-time.Hour))
+	f.built(ids[8], 1, "page 8", domain.SearchTokenizer, now.Add(-10*time.Second))
+	f.sources[ids[9]] = app.SearchSource{ID: ids[9], Gone: true, Built: &app.BuiltSearchRow{Name: "page 9", At: now.Add(-time.Hour)}}
+	f.rows[ids[9]] = app.SearchRow{NodeID: ids[9], Name: "page 9"}
+	job, _ := f.job(30 * time.Second)
+	run, err := job.Drain(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	writes := slices.DeleteFunc(slices.Clone(f.calls), func(c string) bool { return !strings.HasPrefix(c, "WriteSearchRows") })
+	if want := (app.SearchRun{Written: 7, Deleted: 1, Kept: 1, Skipped: 1}); run != want ||
+		!slices.Equal(writes, []string{"WriteSearchRows 5 0", "WriteSearchRows 2 1"}) {
+		t.Errorf("Drain() = %+v, writes %v; want %+v, the tenth's row deleted by the second batch", run, writes, want)
 	}
 }
 

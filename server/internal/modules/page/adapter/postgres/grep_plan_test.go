@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/adapter/postgres/gen"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
 )
 
 // grep's statements read through their indexes (M9/P4 design 6.1, review
@@ -19,9 +20,11 @@ import (
 // any arguments: GrepCandidates's two branches of page_search_hits are
 // the function's (whose own settings leave its statements bitmaps of the
 // GIN indexes, checkHits), its queue's branch reads
-// page_search_queue_notebook_id_bulk_idx by the notebook; Contents reads
-// page_contents by its key; ListNodes reads nodes by an index that leads
-// with the notebook. None scans a table whole.
+// page_search_queue_notebook_id_bulk_idx by the notebook; GrepContents,
+// of a batch of MaxSearchWalk pages, grep's most (M9 Codex review fix
+// round 1, B-M1), reads page_contents once, by its key, for the sizes and
+// the contents within its bound; ListNodes reads nodes by an index that
+// leads with the notebook. None scans a table whole.
 func TestGrepPlans(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
@@ -45,7 +48,7 @@ func TestGrepPlans(t *testing.T) {
 	f.exec(t, `INSERT INTO page_search_queue (node_id, notebook_id, bulk) SELECT id, notebook_id, false FROM nodes
 		WHERE notebook_id = $1 ORDER BY id LIMIT 3`, f.eng)
 	var ids []uuid.UUID
-	rows, err := f.pool.Query(ctx, `SELECT id FROM nodes WHERE notebook_id = $1 ORDER BY id LIMIT 100`, f.eng)
+	rows, err := f.pool.Query(ctx, `SELECT id FROM nodes WHERE notebook_id = $1 ORDER BY id LIMIT $2`, f.eng, domain.MaxSearchWalk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,12 +75,15 @@ func TestGrepPlans(t *testing.T) {
 			}
 			return out
 		}},
-		{"Contents", statementOf(t, func(g *gen.Queries) error {
-			_, err := g.Contents(ctx, ids)
+		{"GrepContents", statementOf(t, func(g *gen.Queries) error {
+			_, err := g.GrepContents(ctx, gen.GrepContentsParams{NodeIds: ids, MaxBytes: domain.GrepBatchBytes})
 			return err
 		}), func(root *planNode) []string {
-			if len(root.all(reads("page_contents", "page_contents_pkey", ""))) != 1 {
-				return []string{"does not read page_contents by its key"}
+			// Its sizes and the contents within the bound, in one read by
+			// the key (M9 Codex review D2).
+			all := root.all(func(n *planNode) bool { return n.Relation == "page_contents" })
+			if len(all) != 1 || len(root.all(reads("page_contents", "page_contents_pkey", ""))) != 1 {
+				return []string{"does not read page_contents once, by its key"}
 			}
 			return nil
 		}},

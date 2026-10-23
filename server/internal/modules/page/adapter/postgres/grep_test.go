@@ -50,7 +50,7 @@ func keysOf(t *testing.T, pattern string) []string {
 // notebook's, holding the keys, cut, queued exact or in bulk while it
 // reads (review B-1), nor one whose lexemes lack a key (mutant 152). A
 // notebook is building by its own pages in bulk alone. GrepContents is
-// export's batch.
+// the pages' contents, within its bound (TestTheContentsAreReadWithinTheirBound).
 func TestGrepCandidates(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
@@ -112,8 +112,8 @@ func TestGrepCandidates(t *testing.T) {
 	if want := 4; len(got) != want || slices.Contains(got, keyed.ID) {
 		t.Errorf("GrepCandidates(zzq) = %v, want the three cut and exact", got)
 	}
-	contents, err := f.s.GrepContents(ctx, []uuid.UUID{keyed.ID, plain.ID, uuid.NewV7()})
-	if err != nil || len(contents) != 2 || contents[keyed.ID] != "a needle in a haystack" {
-		t.Errorf("GrepContents = %q, %v", contents, err)
+	contents, err := f.s.GrepContents(ctx, []uuid.UUID{keyed.ID, plain.ID, uuid.NewV7()}, domain.GrepBatchBytes)
+	if err != nil || len(contents.Contents) != 2 || contents.Contents[keyed.ID] != "a needle in a haystack" || contents.Past != (uuid.UUID{}) {
+		t.Errorf("GrepContents = %+v, %v", contents, err)
 	}
 }

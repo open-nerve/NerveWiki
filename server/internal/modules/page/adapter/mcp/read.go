@@ -118,9 +118,11 @@ func (t tools) read(ctx context.Context, c mcpserver.Call, in readIn) (mcpserver
 // readAttachment is the attachment r found at path, as written: its
 // metadata, then the image itself or a link to download it (M9/P1 design
 // 3.11.2). An image needs no address: without server.public_url it is
-// given all the same, and what would be a link is a note. An attachment
-// gone since, or its access, before its metadata is read or its bytes, is
-// the path not found.
+// given all the same, and what would be a link is a note. The path not
+// found is an attachment gone since, or the caller's access to it, when
+// its metadata is read, which alone judges access; or its row gone or
+// holding another file when its bytes are read, which checks that alone
+// (Codex review R3).
 func (t tools) readAttachment(ctx context.Context, c mcpserver.Call, path string, r app.Read) (mcpserver.Result, error) {
 	a, err := t.attachments.Read(ctx, r.Node.ID)
 	switch {

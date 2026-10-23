@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 	"time"
 	"uuid"
@@ -339,6 +340,18 @@ func (s *Store) PageContent(ctx context.Context, id uuid.UUID) (app.PageContent,
 		return app.PageContent{}, notFound("page content", err)
 	}
 	return app.PageContent{Content: row.Content, Revision: int(row.Revision), Hash: row.ContentHash}, nil
+}
+
+// PageContentWithin implements app.Nodes.
+func (s *Store) PageContentWithin(ctx context.Context, id uuid.UUID, max int) (app.PageContent, bool, error) {
+	row, err := s.queries(ctx).PageContentWithin(ctx, gen.PageContentWithinParams{NodeID: id, MaxBytes: int32(min(max, math.MaxInt32))})
+	switch {
+	case err != nil:
+		return app.PageContent{}, false, notFound("page content within", err)
+	case !row.Within:
+		return app.PageContent{Revision: int(row.Revision), Hash: row.ContentHash}, false, nil
+	}
+	return app.PageContent{Content: row.Content, Revision: int(row.Revision), Hash: row.ContentHash}, true, nil
 }
 
 // LockContent implements app.Nodes.

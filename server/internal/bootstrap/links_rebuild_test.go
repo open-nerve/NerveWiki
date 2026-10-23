@@ -35,9 +35,13 @@ import (
 // leads to it still, in a page it wrote by where the link led when the
 // batch wrote it, unless the batch deleted the node, created the one the
 // link leads to or wrote its alias (M9 design 4.11; M9/P3 design 3.14.6).
-// Over the runs, 20 batches done at least, 5 whose deferred rewrite wrote
-// a page, and 10 links of written pages checked past a rename or a move
-// after their write.
+// About every 5 steps, a batch that puts a page back: the rename of a node
+// it links to by its title, then its bytes before the batch written again;
+// its links lead where those bytes do, not where the rename's rewrite led
+// them (M9 Codex review R1; fix round 1, A-N3). Over the runs, 20 batches
+// done at least, 5 whose deferred rewrite wrote a page, 10 links of
+// written pages checked past a rename or a move after their write, and 10
+// pages put back.
 func TestTheIndexIsItsRebuild(t *testing.T) {
 	if testing.Short() {
 		t.Skip("runs of writes through serve against a database")
@@ -58,11 +62,12 @@ func TestTheIndexIsItsRebuild(t *testing.T) {
 			t.Errorf("no link was a value of the aliases: the runs test little of the index's flag")
 		}
 		// The batches done, not those tried (M9/P3 design 3.14.6).
-		t.Logf("%d batches done, %d of them rewrote pages; %d links of pages they wrote checked, %d past a rename or a move", seen.done,
-			seen.rewrote, seen.checked, seen.followed)
-		if !t.Failed() && (seen.done < 20 || seen.rewrote < 5 || seen.followed < 10) {
-			t.Errorf("%d batches were done, %d of them rewrote pages, and %d links of pages they wrote were checked past a rename or a "+
-				"move after their write; want 20, 5 and 10 at least: the runs test little of the batches", seen.done, seen.rewrote, seen.followed)
+		t.Logf("%d batches done, %d of them rewrote pages; %d links of pages they wrote checked, %d past a rename or a move; %d pages "+
+			"put back", seen.done, seen.rewrote, seen.checked, seen.followed, seen.backs)
+		if !t.Failed() && (seen.done < 20 || seen.rewrote < 5 || seen.followed < 10 || seen.backs < 10) {
+			t.Errorf("%d batches were done, %d of them rewrote pages, %d links of pages they wrote were checked past a rename or a "+
+				"move after their write, and %d pages were put back; want 20, 5, 10 and 10 at least: the runs test little of the batches",
+				seen.done, seen.rewrote, seen.followed, seen.backs)
 		}
 	}()
 	for seed := range uint64(6) {
@@ -98,6 +103,8 @@ func TestTheIndexIsItsRebuild(t *testing.T) {
 					r = b.directed(t, step)
 				case step%13 == 12:
 					r = b.random(t)
+				case step%5 == 4:
+					r = b.backed(t, step)
 				}
 				if r != nil {
 					what := b.run(t, r, &seen)
@@ -121,6 +128,53 @@ func TestTheIndexIsItsRebuild(t *testing.T) {
 			}
 			checkPages(t, tm.pool)
 			checkAssets(t, tm.pool, tm.storage)
+		})
+	}
+}
+
+// The check of a page put back in TestTheIndexIsItsRebuild reads only the
+// links the rename leaves leading elsewhere (M9 Codex review fix round 2,
+// A2-M1; fix check A's shapes): of P's [[note]] [[nick]], note's alias
+// nick beside its title, note renamed dup, the first, which dangles,
+// rightly, not the second, which leads to note still; of P's [[Note.md]],
+// note renamed Note.md, none: the link leads to note by its other key, and
+// the write of P's bytes changes nothing. A link by the title alone, the
+// third, is checked. Each batch done, its index its rebuild.
+func TestThePutBackCheckOfTheIndexPropertyReadsTheLinksTheRenameLeaves(t *testing.T) {
+	tm, logs := newAcmeTeamLogged(t)
+	for i, tt := range []struct {
+		name    string
+		pages   []restPage
+		renamed string
+		at      []int // the links checked
+		backs   int   // the put-backs whose write changed the page
+	}{
+		{"an alias beside the title", []restPage{{"note", "---\naliases: [nick]\n---\n"}, {"P", "[[note]] [[nick]] x"}}, "dup", []int{0}, 1},
+		{"a .md link the rename keeps", []restPage{{"note", ""}, {"P", "[[Note.md]] x"}}, "Note.md", nil, 0},
+		{"the title alone", []restPage{{"note", ""}, {"P", "[[note]] x"}}, "dup", []int{0}, 1},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			nb := tm.openNotebook(t, "alice", fmt.Sprint("Put back ", i))
+			ids := tm.seed(t, nb, tt.pages...)
+			b := &batcher{w: writer{t: t, tm: tm, nb: nb, rnd: rand.New(rand.NewPCG(1, 13))}, m: tm.agent(t, "alice", nb), logs: logs}
+			r := b.load(t)
+			note := ids["note"]
+			if !b.putBack(t, r, ids["P"], note, func() {
+				from := r.path(note)
+				r.nodes[note].name = tt.renamed
+				r.relocated(note, from)
+			}) {
+				t.Fatal("no put-back made")
+			}
+			if !slices.Equal(r.backs[0].at, tt.at) {
+				t.Errorf("the links checked %v, want %v", r.backs[0].at, tt.at)
+			}
+			var seen batchSeen
+			what := b.run(t, r, &seen)
+			if seen.backs != tt.backs {
+				t.Errorf("after %s, %d pages put back, want %d", what, seen.backs, tt.backs)
+			}
+			tm.checkRebuilt(t, nb)
 		})
 	}
 }

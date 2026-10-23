@@ -104,12 +104,12 @@ func (shortContents) GrepCandidates(context.Context, uuid.UUID, []string) ([]uui
 	return nil, nil
 }
 
-func (shortContents) GrepContents(_ context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error) {
+func (shortContents) GrepContents(_ context.Context, ids []uuid.UUID, _ int64) (app.ContentsWithin, error) {
 	out := make(map[uuid.UUID]string, len(ids))
 	for _, id := range ids {
 		out[id] = "a short line"
 	}
-	return out, nil
+	return app.ContentsWithin{Contents: out}, nil
 }
 
 func (shortContents) SearchBuilding(context.Context, []uuid.UUID) (bool, error) { return false, nil }

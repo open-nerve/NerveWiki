@@ -478,6 +478,74 @@ func TestTheMCPBatchIsRefusedWhole(t *testing.T) {
 	})
 }
 
+// A batch's base_version of another page than its path's answers the
+// version of the page there now, as a write or an edit alone answers it
+// (Codex review R2: the tree's pass left the revision 0, a token that
+// ParseVersionToken refuses): a token ParseVersionToken takes, the one read
+// gives. A at its second revision, the token B's of the same notebook; A's
+// read before A and B swapped their paths, A.md now B; and A's of another
+// notebook's A.md. Each for a write and an edit of A.md, page.revision_mismatch
+// at ops[0], nothing written in either notebook.
+func TestTheVersionABatchsMismatchAnswersIsThePagesNow(t *testing.T) {
+	tm, logs := newAcmeTeamLogged(t)
+	agent := tm.agent(t, "alice", "")
+	cases := []struct {
+		name  string
+		token func(t *testing.T, i int, nb string, ids map[string]string) (token, other string)
+	}{
+		{"another page's", func(_ *testing.T, _ int, _ string, ids map[string]string) (string, string) {
+			return versionOf(ids["B"], 1), ""
+		}},
+		{"the page swapped away", func(t *testing.T, _ int, nb string, ids map[string]string) (string, string) {
+			meta, _, _ := readBack(t, agent.in(nb).use(t, "read", map[string]any{"path": "A.md"}))
+			for _, r := range []struct{ id, name string }{{ids["A"], "T"}, {ids["B"], "A"}, {ids["A"], "B"}} {
+				tm.send(t, nodeRename("alice", r.id, r.name), http.StatusOK)
+			}
+			return meta.Version, ""
+		}},
+		{"another notebook's", func(t *testing.T, i int, _ string, _ map[string]string) (string, string) {
+			other := tm.openNotebook(t, "alice", fmt.Sprint("Elsewhere ", i))
+			return versionOf(tm.seed(t, other, restPage{"A", "elsewhere"})["A"], 1), other
+		}},
+	}
+	for i, tt := range cases {
+		for k, op := range []map[string]any{opWrite("A.md", "replacement"), opEdit("A.md", "second", "replacement")} {
+			t.Run(tt.name+" "+op["op"].(string), func(t *testing.T) {
+				n := 2*i + k
+				nb := tm.openNotebook(t, "alice", fmt.Sprint("Versions ", n))
+				ids := tm.seed(t, nb, restPage{"A", "first"}, restPage{"B", "other"})
+				tm.send(t, contentWrite("alice", ids["A"], "second", 1, ""), http.StatusOK)
+				token, other := tt.token(t, n, nb, ids)
+				op = opWith(op, "base_version", token)
+				m := agent.in(nb)
+				before, elsewhere := tm.notebookState(t, nb), ""
+				if other != "" {
+					elsewhere = tm.notebookState(t, other)
+				}
+				batch := refusalOf(t, m.batch(t, op))
+				args := maps.Clone(op)
+				delete(args, "op")
+				alone := refusalOf(t, m.use(t, op["op"].(string), args))
+				meta, _, _ := readBack(t, m.use(t, "read", map[string]any{"path": "A.md"}))
+				current, err := domain.ParseVersionToken("current_version", batch.CurrentVersion)
+				if err != nil || batch.Code != "page.revision_mismatch" || refusedAt(batch) != 0 || batch.CurrentVersion != meta.Version ||
+					!strings.Contains(batch.Message, "is another page now") || !strings.Contains(batch.Message, meta.Version) {
+					t.Errorf("the batch = %+v (%v, %v); want page.revision_mismatch of another page at ops[0], at read's %s", batch, current,
+						err, meta.Version)
+				}
+				if alone.Code != batch.Code || alone.CurrentVersion != batch.CurrentVersion {
+					t.Errorf("the %s alone = %+v, the batch %+v; want the same version", op["op"], alone, batch)
+				}
+				if tm.notebookState(t, nb) != before || other != "" && tm.notebookState(t, other) != elsewhere {
+					t.Error("a refused call changed a notebook")
+				}
+				checkPages(t, tm.pool)
+				noErrorLogged(t, logs)
+			})
+		}
+	}
+}
+
 // The largest batch is far within the values' bound (M9/P3 design 3.8.1):
 // 100 edits, each with its five arguments, are done; 100 ops of all eleven
 // members, each one its tool does not take, are refused as not_allowed;

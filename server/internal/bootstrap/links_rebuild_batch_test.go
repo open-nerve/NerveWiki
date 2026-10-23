@@ -58,6 +58,20 @@ type batchRun struct {
 	written map[string]int // the pages of its content ops, their last op
 	checks  []linkCheck
 	moves   []int // the ops that rename or move a node
+	backs   []backCheck
+}
+
+// backCheck is a page a batch puts back (backed): the op that writes its
+// bytes from before the batch again, after the rename of a node its links
+// led to by its title; the places of those links among the wikilinks of
+// its body, and their number; and its content after the batch, "" when a
+// rename after the write may rewrite it.
+type backCheck struct {
+	page, to string
+	op       int
+	at       []int
+	of       int
+	content  string
 }
 
 // load is a batch's model, the notebook's nodes alive.
@@ -387,7 +401,7 @@ func (b *batcher) directed(t *testing.T, step int) *batchRun {
 // those whose deferred rewrite wrote a page, the links of pages they wrote
 // that 4.11's rule checked, and of them those with a rename or a move after
 // the write.
-type batchSeen struct{ done, rewrote, checked, followed int }
+type batchSeen struct{ done, rewrote, checked, followed, backs int }
 
 // run makes the batch r, and when it is done checks 4.11's rule on the
 // notebook before and after it, counting into seen. Any refusal fails t:
@@ -472,7 +486,125 @@ func (b *batcher) run(t *testing.T, r *batchRun, seen *batchSeen) string {
 			seen.followed++
 		}
 	}
+	// A page put back: its links follow from its last content op, the
+	// bytes it held before the batch, not the rename's rewrite before it
+	// (M9 Codex review R1): none of those that led to the renamed node by
+	// its title leads to it, and with no rename after, its content is the
+	// bytes it held.
+	for _, c := range r.backs {
+		body := queryStrings(t, tm.pool, `SELECT coalesce(resolved_id::text, '') FROM page_links WHERE source_id = $1 AND kind = 'wikilink'
+			AND property_key IS NULL AND NOT aliases ORDER BY range_start`, c.page)
+		if len(body) != c.of {
+			t.Fatalf("after %s, %s, put back, has %d wikilinks in its body, had %d", what, c.page, len(body), c.of)
+		}
+		for _, at := range c.at {
+			if body[at] == c.to {
+				t.Fatalf("after %s, the wikilink %d of %s, put back by ops[%d], leads to %s renamed before: the rename's rewrite, "+
+					"not its last content op", what, at, c.page, c.op, c.to)
+			}
+		}
+		if c.content != "" {
+			if now := queryStrings(t, tm.pool, `SELECT content FROM page_contents WHERE node_id = $1 AND deleted_at IS NULL`, c.page); len(now) != 1 ||
+				now[0] != c.content {
+				t.Fatalf("after %s, %s, put back by ops[%d], holds %q, want the bytes it held, %q", what, c.page, c.op, now, c.content)
+			}
+		}
+		if done.Results[c.op].Changed {
+			seen.backs++
+		}
+	}
 	return what
+}
+
+// backed is a batch that puts a page back (M9 Codex review fix round 1,
+// A-N3; fix check A's shape): the rename of a node one of the page's
+// wikilinks leads to by its title, which rewrites it, then the page's
+// bytes before the batch written on its version before it (putBack); at
+// times the rename of another node it links to after. The random batches
+// seldom make one. nil when no page links to another by its title.
+func (b *batcher) backed(t *testing.T, step int) *batchRun {
+	t.Helper()
+	r := b.load(t)
+	rows := queryStrings(t, b.w.tm.pool, `SELECT l.source_id::text || ' ' || l.resolved_id::text FROM page_links l
+			JOIN nodes n ON n.id = l.resolved_id AND n.kind = 'page' AND l.target_key = n.name_key
+		WHERE l.notebook_id = $1 AND l.kind = 'wikilink' AND NOT l.aliases AND l.property_key IS NULL AND l.resolved_id <> l.source_id
+		ORDER BY 1`, b.w.nb)
+	if len(rows) == 0 {
+		return nil
+	}
+	p, to, _ := strings.Cut(rows[r.intn(len(rows))], " ")
+	if r.nodes[p] == nil || r.nodes[to] == nil || r.nodes[p].revision == 0 {
+		return nil
+	}
+	rename := func(id string, k int) {
+		name := b.w.title()
+		if shared.TitleKey(name) == shared.TitleKey(r.nodes[id].name) || r.taken(r.nodes[id].parent, name, id) {
+			name = fmt.Sprint("Back ", step, " ", k)
+		}
+		from := r.path(id)
+		r.nodes[id].name = name
+		r.relocated(id, from)
+	}
+	if !b.putBack(t, r, p, to, func() { rename(to, 0) }) {
+		return nil
+	}
+	if r.intn(2) == 0 {
+		for _, row := range rows {
+			if s, other, _ := strings.Cut(row, " "); s == p && other != to && r.nodes[other] != nil {
+				rename(other, 1)
+				r.backs[len(r.backs)-1].content = ""
+				break
+			}
+		}
+	}
+	return r
+}
+
+// putBack adds to r the rename of to, which rename makes, then the page
+// p's bytes before the batch written on its version before it, with their
+// check (backCheck) of the wikilinks of p's body that the rename leaves
+// leading elsewhere: those that led to to whose target's key is its
+// title's, and whose other key, of a name written with .md, is not the new
+// name's (M9 Codex review fix round 2, A2-M1: a link by an alias or a
+// path, or by the new name's key, leads to to still, rightly). false, r
+// unchanged, when to has its title's key as an alias.
+func (b *batcher) putBack(t *testing.T, r *batchRun, p, to string, rename func()) bool {
+	t.Helper()
+	old := shared.TitleKey(r.nodes[to].name)
+	if slices.Contains(b.w.tm.aliasesOf(t, b.w.nb)[to], old) {
+		return false
+	}
+	rows, err := b.w.tm.pool.Query(context.Background(), `SELECT coalesce(resolved_id::text, ''), coalesce(target_key, ''),
+			coalesce(target_alt_key, '')
+		FROM page_links WHERE source_id = $1 AND kind = 'wikilink' AND property_key IS NULL AND NOT aliases ORDER BY range_start`, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type bodyLink struct{ to, key, alt string }
+	var body []bodyLink
+	for rows.Next() {
+		var l bodyLink
+		if err := rows.Scan(&l.to, &l.key, &l.alt); err != nil {
+			t.Fatal(err)
+		}
+		body = append(body, l)
+	}
+	if rows.Err() != nil {
+		t.Fatal(rows.Err())
+	}
+	back := backCheck{page: p, to: to, of: len(body), content: r.nodes[p].content}
+	rename()
+	renamed := shared.TitleKey(r.nodes[to].name)
+	for i, l := range body {
+		if l.to == to && l.key == old && (l.alt == "" || l.alt != renamed) {
+			back.at = append(back.at, i)
+		}
+	}
+	r.checks = slices.DeleteFunc(r.checks, func(c linkCheck) bool { return c.page == p })
+	r.written[p], back.op = len(r.ops), len(r.ops)
+	r.ops = append(r.ops, opWriteOn(r.path(p), back.content, versionOf(p, r.nodes[p].revision)))
+	r.backs = append(r.backs, back)
+	return true
 }
 
 // linkRow is a link of the index: where it resolves ("" for nowhere), its

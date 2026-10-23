@@ -258,7 +258,7 @@ func TestHiddenNotebooksLeaveTheSearchsReadsAlone(t *testing.T) {
 			return err
 		},
 		"GrepContents": func(ctx context.Context, _ app.SearchScope) error {
-			_, err := f.s.GrepContents(ctx, eng)
+			_, err := f.s.GrepContents(ctx, eng, domain.GrepBatchBytes)
 			return err
 		},
 	}

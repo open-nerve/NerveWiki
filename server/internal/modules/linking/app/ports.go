@@ -308,13 +308,15 @@ type Publisher interface {
 // it (M6/P4 design 4.1): its notebook, its unit's time, whether the unit
 // rewrites links, and what it changed. bootstrap converts the page module's
 // step, field by field. A batch's deferred rewrite has the rest (M9/P3
-// design 3.7): each page the batch wrote, alive after it, which is followed
-// from its own content and changes; the paths the moved nodes' former
-// parents had as the unit began; the nodes it deleted; the most pages the
-// rewrite may write, none for 0 (a unit of one operation), a page of Written
-// with a link its own changes meet counting WrittenWeight, 1 for 0 (M9/P3
-// review B-M3: its rewrite costs more than an index page's; B1-M2: one with
-// none counts nothing); the most links it may write, none for 0 (M9/P3
+// design 3.7): each page the batch's content ops decided, alive after it,
+// which is followed from its own content and changes, whether or not the
+// batch wrote a version of it (Codex review R1); the paths the moved nodes'
+// former parents had as the unit began; the nodes it deleted; the most
+// pages the rewrite may write, none for 0 (a unit of one operation), a page
+// of Written its content ops wrote with a link its own changes meet
+// counting WrittenWeight, 1 for 0, one they did not write 1 (M9/P3 review
+// B-M3: its write and rewrite cost more than an index page's; B1-M2: one
+// with none counts nothing); the most links it may write, none for 0 (M9/P3
 // review B1-M3); the most bytes of the pages it writes, none for 0 (M9/P3
 // fix round 5, B2-M1: the facts each keeps of the parse budget follow
 // them); and the nodes an op of it renamed or moved with
@@ -343,21 +345,24 @@ type Moved struct {
 	CreatedAfter  map[uuid.UUID][]uuid.UUID
 }
 
-// WrittenPage is a page a batch wrote, as its deferred rewrite follows it
-// (M9/P3 design 3.7.2): where its links led at its last content op, on the
-// plan's tree then; its own changes, the renames and moves after that op,
-// merged node by node, of the nodes those ops moved alone; the facts of
-// its final content, which its links are taken from, unparsed; the nodes
-// those ops rename or move with update_links false, whose links it leaves
-// (Moved.Frozen); and, for each node they rename or move, the nodes they
-// create after the last that does, out of its subtree
-// (Moved.CreatedAfter).
+// WrittenPage is a page a batch's content ops decided, as its deferred
+// rewrite follows it (M9/P3 design 3.7.2): where its links led at its last
+// content op, on the plan's tree then; its own changes, the renames and
+// moves after that op, merged node by node, of the nodes those ops moved
+// alone; the facts of its final content, which its links are taken from,
+// unparsed; the nodes those ops rename or move with update_links false,
+// whose links it leaves (Moved.Frozen); for each node they rename or move,
+// the nodes they create after the last that does, out of its subtree
+// (Moved.CreatedAfter); and whether its content ops wrote no version of it,
+// though its rewrite may, its final content the bytes it held before (Codex
+// review R1), which weighs as a page of the index's (Moved.WrittenWeight).
 type WrittenPage struct {
 	Before       LinksBefore
 	Changes      []domain.Change
 	Facts        domain.Facts
 	Frozen       []uuid.UUID
 	CreatedAfter map[uuid.UUID][]uuid.UUID
+	Unwritten    bool
 }
 
 // LinksBefore is where a page's links led at a moment of a batch's plan:
@@ -384,9 +389,9 @@ var ErrTooManyRewrites = errors.New("linking: the batch's renames and moves woul
 // its pages within theirs; Bytes, when set, the bytes of the pages it
 // would write, past Max, Moved.MaxBytes, its pages and links within
 // theirs. Kept, when set, is the bytes of the parse budget the facts of
-// the pages it wrote keep with the take of the parse it needs next, past
-// Max, the budget's size: that parse can never be taken beside them,
-// whatever others give back (M9/P3 fix round 6, B3-M1).
+// the pages its content ops decided keep with the take of the parse it
+// needs next, past Max, the budget's size: that parse can never be taken
+// beside them, whatever others give back (M9/P3 fix round 6, B3-M1).
 type TooManyRewrites struct {
 	Pages, Max, Weight, Links, Bytes, Kept int
 }

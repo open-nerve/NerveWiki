@@ -90,15 +90,17 @@ func (l linkRewrite) Participate(ctx context.Context, s page.Step, u page.Append
 }
 
 // batchMoved has m, a batch's deferred step, follow what the batch tells
-// besides its changes (M9/P3 design 3.7.1): the pages it wrote, each with
-// its links before, its own changes, its final content's facts and the nodes
-// it leaves the links to; the former parents' paths, never nil, which the
-// rewrite reads them from alone; the nodes it deleted; its bounds, of pages,
-// and what a page it wrote counts in it (M9/P3 review B-M3), of links
-// (review B1-M3) and of their bytes (fix round 5, B2-M1); the nodes whose
-// links it leaves (M9/P3 review B-M1), with their moves, for the paths
-// before alone (review B1-N1); and those it created under each node after
-// its last rename or move, out of its subtree (M9/P3 review B1-M1).
+// besides its changes (M9/P3 design 3.7.1): the pages its content ops
+// decided, each with its links before, its own changes, its final content's
+// facts, the nodes it leaves the links to and whether its content ops wrote
+// no version of it, though its rewrite may (Codex review R1); the former
+// parents' paths, never nil, which the rewrite reads them from alone; the
+// nodes it deleted; its bounds, of pages, and what a page it wrote counts
+// in it (M9/P3 review B-M3), of links (review B1-M3) and of their bytes
+// (fix round 5, B2-M1); the nodes whose links it leaves (M9/P3 review
+// B-M1), with their moves, for the paths before alone (review B1-N1); and
+// those it created under each node after its last rename or move, out of
+// its subtree (M9/P3 review B1-M1).
 func batchMoved(m *linking.Moved, b page.BatchRewrite) error {
 	m.Written = make(map[uuid.UUID]linking.WrittenPage, len(b.Written))
 	for id, w := range b.Written {
@@ -107,7 +109,7 @@ func batchMoved(m *linking.Moved, b page.BatchRewrite) error {
 			return fmt.Errorf("the facts of page %s: %w", id, err)
 		}
 		m.Written[id] = linking.WrittenPage{Before: linkLinksBefore(w.Before), Changes: linkChanges(w.Changes), Facts: facts,
-			Frozen: w.Frozen, CreatedAfter: w.CreatedAfter}
+			Frozen: w.Frozen, CreatedAfter: w.CreatedAfter, Unwritten: w.Unwritten}
 	}
 	m.Parents = linkParents(b.Parents)
 	m.Gone, m.MaxPages, m.WrittenWeight, m.MaxLinks, m.MaxBytes = b.Gone, b.MaxPages, b.WrittenWeight, b.MaxLinks, b.MaxBytes

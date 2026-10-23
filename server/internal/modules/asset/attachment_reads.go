@@ -74,9 +74,10 @@ func (a AttachmentReads) Read(ctx context.Context, nodeID uuid.UUID) (Attachment
 // Content reads the file of at, at most max bytes, a larger one an error:
 // ErrNoFile, logged at warn as a download logs it, when the store has none;
 // asset.not_found when its row went, or holds another file, since Read; an
-// error when its size is not its row's. The sides are the row's or, for an
-// image whose row has none (a WebP uploaded before M9/P1), read from data's
-// header, as an upload keeps them; 0 and 0 when neither knows them.
+// error when its size is not its row's. It judges no access: Read did. The
+// sides are the row's or, for an image whose row has none (a WebP uploaded
+// before M9/P1), read from data's header, as an upload keeps them; 0 and 0
+// when neither knows them.
 func (a AttachmentReads) Content(ctx context.Context, at Attachment, max int64) (data []byte, width, height int, err error) {
 	f, _, err := a.blobs.Open(ctx, at.NodeID, at.BlobID)
 	switch {

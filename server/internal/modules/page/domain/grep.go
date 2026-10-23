@@ -29,10 +29,12 @@ const (
 	DefaultGrepLimit, MaxGrepLimit = 100, 500
 	// MaxGrepLineText is the most bytes of a line an answer shows.
 	MaxGrepLineText = 1000
-	// MaxGrepRead is about the most bytes of contents a call reads, as
-	// backlinks' (linking/domain/context.go), which page cannot import.
-	MaxGrepRead = 32 << 20
-	// GrepBatchBytes is about the most bytes of contents a statement reads.
+	// MaxGrepRead is the most bytes of contents a call reads, its first
+	// batch aside, as backlinks' (linking/domain/context.go), which page
+	// cannot import. GrepBatchBytes is the most a statement reads, but a
+	// page larger alone. Both hold on the bytes the statements read, not on
+	// the sizes read before them (M9 Codex review D2).
+	MaxGrepRead    = 32 << 20
 	GrepBatchBytes = 4 << 20
 	// MaxGrepLineWork bounds a line's work, MaxGrepWork a call's: a unit
 	// is a byte of a line by an instruction of the program.

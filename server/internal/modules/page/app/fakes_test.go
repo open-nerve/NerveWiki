@@ -177,6 +177,10 @@ type fakeStore struct {
 	// it keeps (the table's created_at).
 	marks  []app.TrashMark
 	firsts map[[2]uuid.UUID]time.Time
+	// read are the bytes of the contents the reads within a bound read,
+	// a read's each (TrashContentsWithin, PageContentWithin), in their
+	// order: 0 for one that read none, past it.
+	read []int
 }
 
 func (f *fakeStore) FindNode(ctx context.Context, id uuid.UUID) (domain.Node, error) {
@@ -349,6 +353,22 @@ func (f *fakeStore) PageContent(ctx context.Context, id uuid.UUID) (app.PageCont
 		return app.PageContent{}, app.ErrNotFound
 	}
 	return app.PageContent{Content: c.Content, Revision: c.Revision, Hash: c.Hash}, nil
+}
+
+// PageContentWithin is PageContent while the content holds max bytes at
+// most, by its length: a content's size is its bytes'.
+func (f *fakeStore) PageContentWithin(ctx context.Context, id uuid.UUID, max int) (app.PageContent, bool, error) {
+	f.record(ctx, "PageContentWithin")
+	c, ok := f.contents[id]
+	switch {
+	case !ok:
+		return app.PageContent{}, false, app.ErrNotFound
+	case len(c.Content) > max:
+		f.read = append(f.read, 0)
+		return app.PageContent{Revision: c.Revision, Hash: c.Hash}, false, nil
+	}
+	f.read = append(f.read, len(c.Content))
+	return app.PageContent{Content: c.Content, Revision: c.Revision, Hash: c.Hash}, true, nil
 }
 
 func (f *fakeStore) LockContent(ctx context.Context, notebookID, id uuid.UUID) (app.ContentLock, error) {
@@ -799,6 +819,26 @@ func (f *fakeStore) TrashContents(ctx context.Context, ids []uuid.UUID, at time.
 		if c, ok := f.trashed[id]; ok && f.trash[id].DeletedAt.Equal(at) && !f.lost[id] {
 			out[id] = c.Content
 		}
+	}
+	return out, nil
+}
+
+// TrashContentsWithin are TrashContents in the order of ids while their
+// lengths sum to max at most, the first past it its size alone.
+func (f *fakeStore) TrashContentsWithin(ctx context.Context, ids []uuid.UUID, at time.Time, max int64) (app.ContentsWithin, error) {
+	f.record(ctx, "TrashContentsWithin")
+	out, total, read := app.ContentsWithin{Contents: map[uuid.UUID]string{}}, int64(0), 0
+	defer func() { f.read = append(f.read, read) }()
+	for _, id := range ids {
+		c, ok := f.trashed[id]
+		if !ok || !f.trash[id].DeletedAt.Equal(at) || f.lost[id] {
+			continue
+		}
+		if total += int64(len(c.Content)); total > max {
+			out.Past, out.PastBytes = id, len(c.Content)
+			return out, nil
+		}
+		out.Contents[id], read = c.Content, read+len(c.Content)
 	}
 	return out, nil
 }

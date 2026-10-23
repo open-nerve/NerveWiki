@@ -398,7 +398,12 @@ func TestARevertJobsBatchRestoresAtMostAUnitsNodes(t *testing.T) {
 // renames before it: 3 pages of 3 MiB, past by their bytes alone. A
 // segment past them makes no call at all (review B2-N-1). A content the
 // trash holds larger than the plan measured, its pages grown to 3 MiB
-// since, is past them as read, before a unit parses it.
+// since, is past them as read, before a unit parses it, and the bytes read
+// within a unit's: the content past them is not read (M9 Codex review D2).
+// The bytes read of the trash are a unit's less those of the bases the
+// batch writes back: the first page's base of 3 MiB, the three grown to 2
+// MiB, 6 MiB, past the 5 MiB the base leaves, not read past them (fix
+// round 1, B-M2).
 func TestARevertJobsSegmentPastAUnitsPagesSaysSo(t *testing.T) {
 	for _, tt := range []struct {
 		name    string
@@ -407,15 +412,17 @@ func TestARevertJobsSegmentPastAUnitsPagesSaysSo(t *testing.T) {
 		written int // the pages, from the first, the batch writes before it deletes G
 		renamed int // the pages O the batch renames, whose places a first batch reverts
 		grown   int // the bytes each page's content in the trash grows to after the plan
+		base    int // the bytes of the written pages' contents before the batch, the scene's own when 0
 		past    bool
 	}{
-		{"98 pages", 98, 0, 0, 0, 0, false},
-		{"99 pages", 99, 0, 0, 0, 0, true},
-		{"3 pages of 3 MiB, the first written back", 3, 3 << 20, 1, 0, 0, true},
-		{"49 pages restored and written back", 49, 0, 49, 0, 0, false},
-		{"50 pages restored and written back", 50, 0, 50, 0, 0, true},
-		{"3 pages of 3 MiB after a first batch", 3, 3 << 20, 0, 4, 0, true},
-		{"3 pages grown to 3 MiB in the trash", 3, 0, 0, 0, 3 << 20, true},
+		{"98 pages", 98, 0, 0, 0, 0, 0, false},
+		{"99 pages", 99, 0, 0, 0, 0, 0, true},
+		{"3 pages of 3 MiB, the first written back", 3, 3 << 20, 1, 0, 0, 0, true},
+		{"49 pages restored and written back", 49, 0, 49, 0, 0, 0, false},
+		{"50 pages restored and written back", 50, 0, 50, 0, 0, 0, true},
+		{"3 pages of 3 MiB after a first batch", 3, 3 << 20, 0, 4, 0, 0, true},
+		{"3 pages grown to 3 MiB in the trash", 3, 0, 0, 0, 3 << 20, 0, true},
+		{"3 pages grown to 2 MiB, the first's base 3 MiB", 3, 0, 1, 0, 2 << 20, 3 << 20, true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			s := newJobScene()
@@ -429,6 +436,9 @@ func TestARevertJobsSegmentPastAUnitsPagesSaysSo(t *testing.T) {
 				ps = append(ps, s.node(fmt.Sprintf("p%03d", i), &g, false))
 				if tt.size > 0 {
 					s.content(ps[i], strings.Repeat("a", tt.size))
+				}
+				if tt.base > 0 && i < tt.written {
+					s.content(ps[i], strings.Repeat("b", tt.base))
 				}
 			}
 			k := s.node("K", &g, false)
@@ -479,10 +489,44 @@ func TestARevertJobsSegmentPastAUnitsPagesSaysSo(t *testing.T) {
 				t.Errorf("RunBatch(the segment, steps %d to %d) = %v; want it past a unit's pages %v", from, to, err, tt.past)
 			case tt.past && tt.grown == 0 && len(f.rec.calls) > 0:
 				t.Errorf("RunBatch(the segment) past a unit's pages after %v; want it before any call", f.rec.calls)
-			case tt.grown > 0 && (!f.called("TrashContents") || f.called("Facts")):
+			case tt.grown > 0 && (!f.called("TrashContentsWithin") || f.called("Facts")):
 				t.Errorf("RunBatch(the segment) past a unit's pages after %v; want it after the trash's contents, before a unit", f.rec.calls)
+			case tt.grown > 0 && (len(f.store.read) == 0 || f.store.read[len(f.store.read)-1] > domain.MaxUnitBytes-tt.written*tt.base):
+				t.Errorf("RunBatch(the segment) read %v bytes of the trash; want a unit's at most, less the bases' %d", f.store.read,
+					tt.written*tt.base)
 			}
 		})
+	}
+}
+
+// A lone page's restore and its write back are read whatever their bytes
+// (M9 Codex review fix round 1, B-M2), as a unit's bounds let a lone page
+// be (design 3.18.4): F, of 5 MiB, written to another 5 MiB by the batch,
+// then deleted, its restore and its write back one segment, 10 MiB of
+// contents, past a unit's 8 MiB. The batch reads the trash's 5 MiB whole
+// and is done: a lone page never stops the job.
+func TestARevertJobsLonePageIsReadWhateverItsBytes(t *testing.T) {
+	s := newJobScene()
+	f := s.node("F", nil, false)
+	s.content(f, strings.Repeat("a", domain.MaxContentBytes))
+	e := s.begin()
+	e.write(f)
+	n := e.m.nodes[f]
+	n.content = strings.Repeat("b", domain.MaxContentBytes)
+	e.m.nodes[f] = n
+	e.p.version(f, n.revision, n.content)
+	e.del(f)
+	fx, c := s.load()
+	w, spec, plan := fx.revertJob(t, c.ID, nil, now())
+	to := 1
+	for to < len(plan.Steps()) && plan.Steps()[to-1].Joined {
+		to++
+	}
+	if steps, _ := plan.RevertSteps(); to != len(steps) || to != 2 {
+		t.Fatalf("the steps %v; want F's restore and its write back, one segment", s.describe(steps, plan.Steps()))
+	}
+	if _, err := w.RunBatch(fx.asJob(), spec, plan, 0, to); err != nil || !slices.Contains(fx.store.read, domain.MaxContentBytes) {
+		t.Errorf("RunBatch(F's restore and write back) = %v, the trash read %v; want done, its 5 MiB read", err, fx.store.read)
 	}
 }
 
