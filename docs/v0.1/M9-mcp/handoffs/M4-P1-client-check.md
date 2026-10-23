@@ -1,5 +1,5 @@
 ```yaml
-status: open
+status: done
 from: M4/P1, M4 收尾
 to: M9
 created: 2026-10-02
@@ -17,3 +17,8 @@ M9 加 `mcp:<名>` 时：
 2. 在部署的镜像所用的区域设置上，用上面六个字符再核对一次两边一致；不一致时改成不依赖区域设置的写法（例如在检查里列出控制字符的范围）。
 3. **最后一跳的测试**（总体设计 13.1 第 21 条）：客户端由适配器定（`page/adapter/http/handler.go` 的 `clientOf` 只产生 `web` 与 `api`）。MCP 的适配器经整个程序写一页，断言变更集记的是 `mcp:<名>`；适配器不交客户端时测试失败（[M4 收尾审查](../../M4-pages/reviews/M4-closeout-review.md) A-I1、C-I3）。
 4. **写入选项**：`Options{UpdateLinks: true}` 在六个用例里写死（`create_page.go`、`move_node.go`、`rename_node.go`、`delete_node.go`、`put_page_content.go`、`open_edit_session.go`）。MCP 的 `move` 带 `update_links=false`（总体设计 4.5 第 4 条）时，给 `MoveNode` 加一个参数，由适配器传进来。
+
+## 处理进展
+
+- M9/P2（2026-10-19，合并 `804c3561`）：第 1 项：`domain.MCPClient` 以 `shared.CleanClientName` 清理（去掉不是 UTF-8 的字节与 `shared.Unshowable` 的字符、NFC、去首尾的空白、截到 128 个字符），空时 `mcp:unknown`，不因名称拒绝；`TestEveryMCPClientIsValid`（[M9 总设计](../00-M9-design.md) 4.5）。第 2 项：迁移 00044 把 `changesets`、`edit_sessions` 的客户端检查改为不依赖区域设置的显式码位范围，与 `shared.Unshowable` 同一个集合，`migrations/schema_test.go` 的 `TestChecksRejectCounterexamples` 逐码位核对（4.2）。第 3 项：`TestTheClientNameIsTheTokens`（两种来源与重启之后记下的名称，各经 MCP 的 `write` 断言变更集是 `mcp:<名>`；M9 收尾另让每一步发一个写一页的 `batch`，`5c236ba6`）。第 4 项：MCP 的移动用新用例 `RelocatePath`，`update_links` 经 `Options.UpdateLinks` 交下去，不给 `MoveNode` 加参数（目的相同，不用另定）；REST 的十个用例照旧写死；`TestAMoveWithoutItsLinksLeavesThemAndTheIndex`（4.10）。
+- M9 收尾（2026-10-23）：核对过各项的落实（[M9 收尾审查](../reviews/M9-closeout-review.md)"handoff"，C 逐项对照代码），关闭。

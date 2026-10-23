@@ -1476,7 +1476,7 @@ M6/P4 的移交第 2 项（`bootstrap/mcp_writes_test.go` 的 `TestAMoveWithoutI
 
 入口是 M8 的用例的四个新方法：判定与资源的读照 MCP 的次序（00 号文档 4.15：参数的形状 400 → 与资源无关的 422 → 笔记本 → 资源；`versions` 用错了模式的 422 是例外，在游标的 400 之前，3.16.1），之后调与 REST 相同的读。REST 的 `Execute` 不改行为，只把后半抽成共用的函数（M8 的表格测试照旧通过）：`VersionReads.list`、`ListChangesets.page`、`HistoryReads.detail` 与 `changes`；审查 B 以只跑 M8 的表的 9 个变异核对过。
 
-**S2 不加 SQL**（设计审查 C-N10）：三个工具的读都是已有的语句，它们的计划都已有测试守着：P1 的 `RootByKey`、`ChildByKey` 与 `PageStates`，M8 的日志与版本的读，`LinkTargetsByIDs`（按参数做计划、没有统计时，`page/adapter/postgres/store_test.go:459-494`、`links_test.go:225-260`）。后者在 `changeset` 的一页里至多 100 个 id（`shared.PageSize` 的上限），在锁的拒绝里至多 20 个（`MaxNamedLocks`）。按页面的日志是例外：`log {path}` 的每一页都读这一页的全部历史（M8 的语句，M8 接受它时它是少用的路），S2 审查 B-M1 量过，v0.1 不改，交 M12（3.16.2、第 8 节）。
+**S2 不加 SQL**（设计审查 C-N10）：三个工具的读都是已有的语句，它们的计划都已有测试守着：P1 的 `RootByKey`、`ChildByKey` 与 `PageStates`，M8 的日志与版本的读，`LinkTargetsByIDs`（按参数做计划、没有统计时，`page/adapter/postgres/store_test.go:459-494`、`links_test.go:215-247`）。后者在 `changeset` 的一页里至多 100 个 id（`shared.PageSize` 的上限），在锁的拒绝里至多 20 个（`MaxNamedLocks`）。按页面的日志是例外：`log {path}` 的每一页都读这一页的全部历史（M8 的语句，M8 接受它时它是少用的路），S2 审查 B-M1 量过，v0.1 不改，交 M12（3.16.2、第 8 节）。
 
 #### 3.16.1 `versions`
 

@@ -1,5 +1,5 @@
 ```yaml
-status: open
+status: done
 from: M6/P4
 to: M9
 created: 2026-10-05
@@ -15,4 +15,9 @@ M6/P4 让改名、移动改写别的页里的链接（[P4 文档](../../M6-links
 4. **`backlinks` 与 `index` 工具**（总体设计 6.3 的工具表；M6 总设计第 7 节；[M6 收尾审查](../../M6-links/reviews/M6-closeout-review.md) C-I3 补记）：两个工具复用 linking 的查询，不另写 SQL。
    - `backlinks` 调反链的查询（`linking/app/backlinks.go`），分页、计数的上限（1000）、上下文的规则与没有上下文的情形同 `listBacklinks`（[P5 文档](../../M6-links/05-P5-api.md)第 3 节）。
    - `index` 按类型、标签筛选时读 `page_properties`、`page_tags`：标签照 `getTag` 含其下的标签，属性按值（jsonb），不在 linking 之外 JOIN 它的表；索引不是当前的页（升级之后、`nervewiki reindex` 之前）不在其中，写明。
+
+## 处理进展
+
+- M9/P2–P4（2026-10-19 至 10-23，合并 `804c3561`、`f19d0b6f`、`ed9e149f`）：第 1 项：单个 `move` 一步（`Unit.Relocate`、`RelocateNode`）；batch 照分开调用：计划经 `linking.NewBatchLinks` 改写 batch 写的页，推后的参与者在单元结束时以合并的改动调用一次，与分开调用的不同照 [M9 总设计](../00-M9-design.md) 4.11 的一条规则；`TestTheLinksOfABatchAreThoseOfSeparateCalls`（M9 收尾加了第 25 例，歧义的链接，`2017c402`）、`TestTheWaysABatchDiffersFromSeparateCalls`。第 2 项：`TestAMoveWithoutItsLinksLeavesThemAndTheIndex`。第 3 项：没有提速，这一项许可：batch 不放开规模，推后的改写在读树与任何解析之前数改写的页（`MaxBatchRewrites` 400，写了的页算 2）、链接（120,000）与字节（34,406,400），过界答 422；单个改名、移动照 M6 不受限，它的风险与一个共用的界线的建议在 [M12 的性能移交](../../M12-release/handoffs/M4-performance.md)第 18 项（4.11、4.14）。第 4 项：`ListBacklinks.AtPath`、`ListIndex` 与 `index.list`（迁移 00047）；`TestTheMCPBacklinksAreRESTs`、`TestTheIndexIsEachPagesReads`、MC7（4.9）。
+- M9 收尾（2026-10-23）：核对过各项的落实（[M9 收尾审查](../reviews/M9-closeout-review.md)"handoff"，C 逐项对照代码），关闭。
 

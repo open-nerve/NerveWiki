@@ -98,8 +98,8 @@
     - 修复二轮只改测试、注释与一处测试的帮助函数，由主持者核对；本机没有跑 `make test-go` 与 `make e2e`，CI 跑了。
 - **推后**：
   - S3：任务的临时的拒绝（`errUnsplit`）在 S3 的第 5 步删去；组合根第一份照 6.5 记两次，过线时 `TestEvery[M-R]` 挪到第三份（决定 9）；第二份 S3 之后的余地（约 6:12–6:17，审查 C 的存疑、修复核对 C 的 N3）；`TestTheChangesetsRenamesCountEveryItem` 带临时的步的后台撤销那一种（3.21.4）；成本那一份的时限由下一个往里加行的 Step 提高。
-  - M10：守卫只凭名称认得临时的步（决定 10，[03-P3](../03-P3-batch-revert.md) 第 8 节）。
-  - M11：回滚一组变更集时用 `schedule()`（[03-P3](../03-P3-batch-revert.md) 第 8 节）。
+  - M10：守卫只凭名称认得临时的步（决定 10，[03-P3](../03-P3-batch-revert.md) 第 8 节；M9 收尾写进 [M10 的移交](../../M10-llm-wiki/handoffs/M9-P1-mcp-registry.md)第 7 条）。
+  - M11：回滚一组变更集时用 `schedule()`（[03-P3](../03-P3-batch-revert.md) 第 8 节；M9 收尾写进 [M11 的移交](../../M11-upgrade/handoffs/M9-mcp-upgrade.md)第 3 条）。
   - M12（[M12 的性能移交](../../M12-release/handoffs/M4-performance.md)第 18 项）：00045 的补值的用时与锁（决定 11）。
   - v0.1 之后的打磨（[M12 的打磨移交](../../M12-release/handoffs/M5-polish.md)第 30 项）：S2 的审查与修复说明没有交给它的。
 

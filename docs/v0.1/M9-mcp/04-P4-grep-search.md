@@ -36,7 +36,7 @@
 
 ## 1. 基线
 
-`main` 在 `56ef34c8`（P3 的 S3 合并）。与 P4 有关的现状：
+`main` 在 `bbd18d82`（P3 的文档提交；P3 的 S3 合并是 `56ef34c8`，代码相同）。与 P4 有关的现状：
 
 **搜索的索引（M8/P5）**：
 
@@ -481,7 +481,7 @@ const maxGrepKeyAtoms = 8192
 要证明的（性质测试照它判定，6.1）：一页的正文里有一行 ℓ，`re` 匹配 `NFC(ℓ)`；页不是 `partial`；那么 `GrepKeys(re)` 的每个键都在 `SearchTokens(name, &content)` 的正文的词里。
 
 1. **事实成立**（对树做归纳）：对 `re` 的每个节点的每个匹配 m（`NFC(ℓ)` 的一段 `[s, e)`），`exact` 给出时 m 就是那串原子（每个字面原子由它的轨道里的一个码位匹配，边界由一个"别的"字符或一行的两端）；m 以 `pre` 起、以 `suf` 止，含有每个 `must`。表里每一行照 RE2 的语义直接成立：拼接的子匹配首尾相接；选择的匹配是某一支的；`+` 与下限至少 1 的重复至少有一次；零宽的 `\b`、`\B` 两边相邻；`^`、`$` 在一行的两端（逐行匹配，`(?m)` 与 `(?s)` 对没有 `\n` 的一行不改变什么）。
-2. **一片在正文的折叠里的样子**：分词的文字是 `searchFold(name + "\n" + content)`，它等于 `searchFold(name) + "\n" + …`，各行由 `\n` 隔开（`\n` 是 NFC 的边界，折叠也不碰它）。设一片的原子在 `NFC(ℓ)` 里匹配文字 t，t 的左邻是 a、右邻是 b（或行的两端）。`searchFold` 是 NFC ∘ 折叠 ∘ NFC 再换切罗基文的大小写；对 `a t b` 折叠再 NFC，t 的部分是不是 `f`（第 3 步）只取决于 t 两端的组合序列与 a、b 合不合成：第 1 步保证 t 的第一个原子前面有边界（它与 a 不合成，折叠之后的第一个码位前面也有边界：没有一个前面有边界的码位折叠成以组合记号开头的串，`exp/claims` 对全部码位核对）；第 2 步在 b 未知时去掉了会与 b 合成的结尾（`riskyTails` 按定义对每个码位与每个记号算出；结尾里是 U+0345 的轨道时，它折叠成 ι，ι 能与 b 合成，由那一步的最后一条去掉），右边是边界时 b 是"别的"（`classOther` 的字符前面都有 NFC 的边界，`exp/claims` 核对），也不合成。t 的中间：每个原子由它的轨道里的一个码位匹配，轨道上每个码位的 `searchFold` 相同，逐个原子折叠再 NFC 与这一段在正文里的折叠相同；U+0345 的轨道折叠成 ι，是起始字符，不与前面的字符合成（在 NFC 的行里 U+0345 与它能合成的字符已经合成，那时 `re` 不匹配它们分开的原子）。所以折叠之后的文字里有 `f` 这一段。
+2. **一片在正文的折叠里的样子**：分词的文字是 `searchFold(name + "\n" + content)`，它等于 `searchFold(name) + "\n" + …`，各行由 `\n` 隔开（`\n` 是 NFC 的边界，折叠也不碰它）。设一片的原子在 `NFC(ℓ)` 里匹配文字 t，t 的左邻是 a、右邻是 b（或行的两端）。`searchFold` 是 NFC ∘ 折叠 ∘ NFC 再换切罗基文的大小写；对 `a t b` 折叠再 NFC，t 的部分是不是 `f`（第 3 步）只取决于 t 两端的组合序列与 a、b 合不合成：第 1 步保证 t 的第一个原子前面有边界（它与 a 不合成，折叠之后的第一个码位前面也有边界：没有一个前面有边界的码位折叠成以组合记号开头的串，`exp/claims` 对全部码位核对）；第 2 步在 b 未知时去掉了会与 b 合成的结尾（危险的结尾的表，`page/domain/grep_tables.go:8` 的 `riskyTail`，按定义对每个码位与每个记号算出；结尾里是 U+0345 的轨道时，它折叠成 ι，ι 能与 b 合成，由那一步的最后一条去掉），右边是边界时 b 是"别的"（`classOther` 的字符前面都有 NFC 的边界，`exp/claims` 核对），也不合成。t 的中间：每个原子由它的轨道里的一个码位匹配，轨道上每个码位的 `searchFold` 相同，逐个原子折叠再 NFC 与这一段在正文里的折叠相同；U+0345 的轨道折叠成 ι，是起始字符，不与前面的字符合成（在 NFC 的行里 U+0345 与它能合成的字符已经合成，那时 `re` 不匹配它们分开的原子）。所以折叠之后的文字里有 `f` 这一段。
 3. **键在词里**：`f` 里两个相邻的 CJK 字在正文的文字里也相邻，分词给出这个二元组（`scan` 对每对相邻的 CJK 字都给，正文不收单字）；`f` 里一串 n ≥ 3 个的字母与数字在正文的文字里是一串更长或一样长的同类字符的一段，那串的三元组包含这一段的三元组（`word` 对每三个相邻的字符给一个），除非那串超过 64 个而全是 ASCII（那时页是 `partial`，不在这个比较里）；1–2 个的整词只在两边都是已知的边界时取，那时正文的串恰好就是它，分词给出整词。`data:` 的跳过与上限之后的词也只发生在 `partial` 的页上（3.3.1）。
 
 不进这个比较的：`partial` 的页（它们靠 `!cut` 总是候选，3.4.2，另有"被截掉的页总被走查"的测试）；名称（`grep` 不搜名称，正文的词含名称的只是多出的候选）。
@@ -2409,4 +2409,4 @@ MC7 不写库，没有库的断言（第 9 节的例外）。
 | 说明的字节（3.14） | `exp/instr`（今天的两个入口 3,386 与 3,456）、`exp/instr6`（P4 的五行之后 3,957 与 4,027）；`mcpserver.TextBytes` 的数法照 `platform/httpserver/mcpserver/answer.go:25` |
 | 工作的数法与守卫的模式（3.6.4） | go1.27.1 的 `regexp/exec.go:527`（输入短于模式的最短的匹配时立刻返回）；`exp/lineoh` |
 | CI 的份 | `Makefile:179`（`-timeout 15m`）、`:189`（竞态的几份 `-j4`）、`:217-219`（两个表达式）、`:259-288`（守卫与成本的行）；[P3](03-P3-batch-revert.md) 6.5 与 9.3 的运行 |
-| e2e | `e2e/fixtures/mcp.ts:12-14`、`:40-171`；`e2e/fixtures/links.ts:8-60`；`e2e/fixtures/search.ts:16`（`search(api, credential, slug, q, {notebookId})`）；`e2e/stories/mcp/mc3-write-edit.spec.ts:69-88`（`expectNewPage`、`expectChangesetOf`）；`e2e/stories/mcp/mc8-history.spec.ts`（比较 REST 的写法） |
+| e2e | `e2e/fixtures/mcp.ts:12-14`、`:40-171`；`e2e/fixtures/links.ts:8-58`；`e2e/fixtures/search.ts:16`（`search(api, credential, slug, q, {notebookId})`）；`e2e/stories/mcp/mc3-write-edit.spec.ts:69-88`（`expectNewPage`、`expectChangesetOf`）；`e2e/stories/mcp/mc8-history.spec.ts`（比较 REST 的写法） |

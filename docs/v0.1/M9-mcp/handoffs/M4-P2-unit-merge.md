@@ -1,5 +1,5 @@
 ```yaml
-status: open
+status: done
 from: M4/P2
 to: M9
 created: 2026-10-02
@@ -20,3 +20,5 @@ M9 引入多操作的单元时一并定下（[P2 审查](../../M4-pages/reviews/
 
 - M7 开工（2026-10-08）：M7 的导入只建不删，不会遇到；M7 的那份以"不适用"关闭，仍由 M9 定下（[M7 总设计](../../M7-assets-transfer/00-M7-design.md) 4.2）。
 - M8 收尾（2026-10-16）：不适用，仍由 M9 定下。M8 的单元不先建后删，也不在同一变更集里删除再恢复同一节点（恢复、撤销各自一个变更集）。M8/P3 起删除的条目带页的版本号，迁移 `00038` 加了 `changeset_items_revision_state_check`（`revision` 只在"前"或"后"为空时可以有值）；条目的合并（`page/adapter/postgres/queries/changesets.sql` 的 `RecordItems`，`ON CONFLICT`）留第一次的"前"，取最后的"后"与 `deleted_at`，`revision` 除合并成删除时取删除的、否则留第一次的，`restored` 不改。所以 `batch` 在一个变更集里删除再恢复同一页时，合并的条目前后都在、带着删除时的版本号，被这条检查拒绝，单元答 500；`Change.Then` 留第一项的 `Restored`（空）。恢复再删除同一节点时前后都空，同上面的建后删。上面"M8 的恢复要看这一点"转给 M9：引入 `batch` 时连同建后删一起定下这几种合并（删除再恢复：前后都在时不带 `revision`，`restored` 照合并之后是不是恢复；恢复再删除：同建后删），在真的数据库上加两个操作的单元的测试（[M8/P3 的移交](M8-P3-revert.md)；[M8 收尾审查](../../M8-history-search/reviews/M8-closeout-review.md) C-M11）。`RecordItem`、`recordItem` 现名 `RecordItems`、`recordItems`。
+- M9/P3 的 S1（2026-10-20，合并 `f19d0b6f`）：batch 的计划拒绝新建后删除（B1）与改名、移动后删除（B3），在删除那一项答 422（`deletesWhatItChanged`；`TestPlanBatchDeletesNothingItChanged`、`TestTheMCPBatchIsRefusedWhole` 的 B1、B3 两格），合并不出前后都空的条目（与这一份说的"删掉这一行条目"不同：从源头不让它出现，[M9 总设计](../00-M9-design.md)第 11 节设计的取舍第 5 条）；先删子孙再删祖先被规范化，前面的删除答 `merged_into`（`TestPlanBatchMergesDeletionsUnderLaterOnes`，主持者的决定第 5 条）；删除与恢复不在一个单元里相遇（batch 没有恢复的操作，撤销里一个节点至多删除或恢复一次）。合并的语义写进 M9 总设计 4.11，`recordItems` 的注释改写（`page/app/unit.go`）；改名、移动又回到原处的条目在单元结束时删去（`Unit.DropUnchanged`，`TestABatchDropsWhatItChangedBack`）；各种合并在真的库上测（`TestTheMergesOfABatchHoldOnTheDatabase`）。
+- M9 收尾（2026-10-23）：核对过各项的落实（[M9 收尾审查](../reviews/M9-closeout-review.md)"handoff"，C 逐项对照代码），关闭。

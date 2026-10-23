@@ -361,7 +361,7 @@ func CheckBatch(ops []BatchArgs, message string) ([]BatchStep, error)
 | 按键找子节点 | `PathStore.RootByKey`、`ChildByKey`（`NodePaths.Walk`） | `child(parent, key)` |
 | 子树 | `Nodes.Subtree`（逐层） | `subtree(id)`，同样逐层、每层按次序值与 id |
 | 父页的一线 | `lineOf`（`unit_place.go:40-63`） | `line(parent)` |
-| 兄弟里占着一个键的 | `holderOf(siblings, …)`（`unit_place.go:150-157`） | `holder(parent, key, self)` |
+| 兄弟里占着一个键的 | `holderOf(siblings, …)`（`unit_place.go:133-140`；S1 起是 `domain.HolderOf`，`page/domain/steps.go:128`，单元与计划共用） | `HolderOf(children(parent), …)`（设计写的 `holder(parent, key, self)` 没有写成，[收尾审查](reviews/M9-closeout-review.md) C-N12） |
 
 linking 的改写要的三种读（按键、按 id 给路径、子树）由 `(*BatchPlan).TreeAt(k)` 给出，是第 k 步之后的样子：原来的树加上第 k 步及以前的改动（3.7.4）。
 
@@ -729,7 +729,7 @@ func (b *ApplyBatch) Execute(ctx context.Context, notebookID uuid.UUID, p PathBa
 | `move` | `Find(from)`、`Walk(to 的父页链)` | 两者的 id | `Unit.Relocate(id, Placement{Parent, Name, Field: a.Field("to")})`（P2 的一步） |
 | `delete` | `Find(path)`、`Unit.Subtree` | 节点 id；子树的 id 的集合等于计划的（含并进来的组） | `Unit.DeleteSubtree` |
 
-任何一处不等，或单元的操作答出计划里的种类的错误（404、422 的规则、409 的名称、环、层级：锁下才看见的，例如计划之后别人在目标下建了同名的页），都是"计划之后别人改了树或正文"：单元回滚（`errReplan`），用例从头再来一次（读树、新的 id、计划、解析、单元，4.11 的"重新计划一次"；同一个解析的会话：一个合计的等待与按（页、哈希）留着的事实都跨过它，3.4.5）。`WriteContent` 的 `ErrRevisionMismatch` 不在其中：版本号已在锁下比过，它是缺陷（3.5.2）。第二次的计划照常答它的错误（那时别人建的同名的页就是第二次计划的 409）；第二次的单元还不同，答 409 `page.revision_mismatch`，`op` 是第一个不同的项：正文操作是 `VersionMismatch{Path, Current}`（带现在的版本令牌），`Why` 照这一项，同 `edit` 的 `mismatch`（`page/app/edit_page.go:197-214`）：不带 `base_version` 的是 `KeptChanging`（"changed twice while the edit was made"，`page/adapter/mcp/text.go:62-74`），带令牌的是 `Changed`，令牌的节点已不是路径上的这一页的是 `OtherNode`；路径上已没有页的正文操作与树的操作是 `domain.BatchChanged`（前者是实施的偏差 10）（文字 "ops[i] (move): the notebook changed while the batch was planned, twice: read it again and send the batch again"）。守卫的 `page.locked` 与推后的改写的错误不重做，照原样答（3.9）。计划读了树之后、读头或正文之前页被删除，也是"计划之后别人改了树或正文"（S1 审查 A-M2）：用例同样从头再来一次，不在那一页的第一个正文操作答通用的 `page.not_found`（实施的偏差 9 不再有）。
+任何一处不等，或单元的操作答出计划里的种类的错误（404、422 的规则、409 的名称、环、层级：锁下才看见的，例如计划之后别人在目标下建了同名的页），都是"计划之后别人改了树或正文"：单元回滚（错误是 `*replanned`，`page/app/apply_batch.go:94`），用例从头再来一次（读树、新的 id、计划、解析、单元，4.11 的"重新计划一次"；同一个解析的会话：一个合计的等待与按（页、哈希）留着的事实都跨过它，3.4.5）。`WriteContent` 的 `ErrRevisionMismatch` 不在其中：版本号已在锁下比过，它是缺陷（3.5.2）。第二次的计划照常答它的错误（那时别人建的同名的页就是第二次计划的 409）；第二次的单元还不同，答 409 `page.revision_mismatch`，`op` 是第一个不同的项：正文操作是 `VersionMismatch{Path, Current}`（带现在的版本令牌），`Why` 照这一项，同 `edit` 的 `mismatch`（`page/app/edit_page.go:197-214`）：不带 `base_version` 的是 `KeptChanging`（"changed twice while the edit was made"，`page/adapter/mcp/text.go:62-74`），带令牌的是 `Changed`，令牌的节点已不是路径上的这一页的是 `OtherNode`；路径上已没有页的正文操作与树的操作是 `domain.BatchChanged`（前者是实施的偏差 10）（文字 "ops[i] (move): the notebook changed while the batch was planned, twice: read it again and send the batch again"）。守卫的 `page.locked` 与推后的改写的错误不重做，照原样答（3.9）。计划读了树之后、读头或正文之前页被删除，也是"计划之后别人改了树或正文"（S1 审查 A-M2）：用例同样从头再来一次，不在那一页的第一个正文操作答通用的 `page.not_found`（实施的偏差 9 不再有）。
 
 重做不建路径的缓存：每一项在单元的事务里重新找（P2 的 `Walk` 与 `Find` 经单元的事务读，`page/adapter/postgres/store.go:42-44`），至多 100 项、每项至多 11 段；单元前面的项建的、改名的、移动的、删除的，后面的项在同一个事务里都看得见，不需要作废的规则（P2 2.1 第 1 条留给 P3 的，2 节的表）。
 
@@ -984,7 +984,7 @@ type BatchLinks interface {
 - **形状**：50 次改名一个 10 万个节点的文件夹，每次之后 `write` 一个带链接的页（它自己的字节）。
 - **用时与分配**：
   - S1 0.81–0.98 秒、分配 0.93 GB；
-  - 修正的第 2 轮之后 3.0–3.4 秒、15.2 GB；
+  - 修正的第 2 轮之后 3.1–3.4 秒、15.2 GB；
   - 第 3 轮之后 3.45–3.78 秒、15.2 GB：回收器更勤，堆的峰值从 +1.09–1.23 GB 回到 +0.27 GB。
 - **链接以路径通向那个文件夹时**：改名改写它，读的检查碰到这个 `write`、读整页，写的是改名留下的字节。计划一次只留一棵树的读（3.7.2），正文的一遍为它的改写把读的检查展开过的树再展开一次。
   - 第 3 轮之后：6.83、7.08 秒，分配 31.0 GB，堆的峰值 +0.27 GB。
@@ -2136,7 +2136,7 @@ func CheckRevertSteps(s RevertState, steps []RevertOp) ([]RevertOp, []RevertConf
 | 只读头的页（3.4.4） | 读 `write` 的页的正文；带过期的令牌、字节相同的 `write` 答 `page.revision_mismatch`；`PageStates` 不填哈希 | `apply_batch_test.go` 的 100 项 `write`（`PageContent` 被调了）与三页不带 `base_version` 的（答第三项的 422）；`TestBatchPlanContents` 的审查 A2-M4 的两行；`TestPageStates`；`TestTheMergesOfABatchHoldOnTheDatabase` 的"过期的令牌、相同的字节" |
 | 计划的会话与一个合计的等待（3.4.5） | 取预算之前不放还持着的事实的份额；推后的改写之前不放还；`DecidedAll` 另等一个 `parse_max_wait` | `content_test.go`；`apply_batch_test.go` 的 5 MiB 的预算的两行（503） |
 | 计划的解析的界线与重用（3.4.4） | 不限；不按（页、哈希）留事实 | `TestBatchPlanContents`；`TestTheMCPBatchIsRefusedWhole` 的 50 对 |
-| `Lead` 带 `Ambiguous`（3.4.4） | 只留 id | `TestBatchPlanContents` 的歧义的链接 |
+| `Lead` 带 `Ambiguous`（3.4.4） | 只留 id | `TestBatchPlanContents` 的歧义的链接；组合根抄它的两处由 `TestTheLinksOfABatchAreThoseOfSeparateCalls` 的第 25 例守（M9 收尾加的，6.3 第 51 行） |
 | 锁的预检（3.4.5） | 没有 | `apply_batch_test.go`（被编辑的页的正文照样被解析） |
 | 规范化（3.4.3） | 不并；并进不在子树里的 | `TestPlanBatch`；`TestTheMergesOfABatchHoldOnTheDatabase` 的"删子孙之后删祖先"（不并时 `DeleteNodes` 的 `stray` 答 500） |
 | B1、B3（3.4.3） | 去掉一个 | `TestPlanBatch`；`TestTheMCPBatchIsRefusedWhole` 的两种（不拒时条目的检查答 500，或撤销永远 `changed`） |
@@ -2409,7 +2409,7 @@ S3 建成照这个次序：第 1–7 步是 10 个提交（`9d908b7c`…`dd013cc
 | 48 | 写了的页照合并的改动（在 `rewrite.go:49` 返回） | `rewrite_test.go`；第 11–13 种 |
 | 49 | 写了的页的链接全都比，不看它自己的改动 | 第 14 种之后再改名的一行（新的 X 拿走的链接被写回；照设计的第 14 种写了的页不被跟随，看不出：实施的偏差 26） |
 | 50 | `Recased` 只留最后一个 | `TestRelocationRecasesEveryPage`；第 16 种 |
-| 51 | `Lead` 只留 id | `TestBatchPlanContents` 的歧义的链接 |
+| 51 | `Lead` 只留 id | `TestBatchPlanContents` 的歧义的链接（它在 page/domain、自己造它的 lead，走不到组合根在 `Resolution` 与 `Lead` 之间抄 `Ambiguous` 的两处：`bootstrap/linking.go` 的 `linkLinksBefore`、`pageLinksBefore`。[收尾审查](reviews/M9-closeout-review.md) A-F1：收尾时 `TestTheLinksOfABatchAreThoseOfSeparateCalls` 加第 25 例（`2017c402`：写了再改它的文件夹的名；写了再改另一个文件夹的名；写、改名、再写），组合根的两个变异 C31、C31b 都让它失败） |
 | 52 | 先读正文、再比大小 | `apply_batch_test.go`（`PageContent` 被调） |
 | 53 | 计划的解析不限 | `TestBatchPlanContents`；`TestTheMCPBatchIsRefusedWhole` 的 50 对（答 `ops[3]`） |
 | 54 | 计划的解析的事实不按（页、哈希）留 | `TestBatchPlanContents`（同一份正文解析两次） |

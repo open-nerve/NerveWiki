@@ -7,7 +7,7 @@ created: 2026-10-03
 
 # 推迟到 v0.1 收官之后统一打磨的体验事项
 
-负责人在 2026-10-03 决定：体验上的小问题不在各 M 里停下来，v0.1 全部收官之后统一打磨。M5 推迟的几项记在这里，免得关掉移交之后丢失（之后的 M 推迟的同样追加：第 7 条是 M4–M5 的 Codex 评审，第 8–14 条 M6，第 15–20 条 M7，第 21–29 条 M8，第 30、31 条 M9）：
+负责人在 2026-10-03 决定：体验上的小问题不在各 M 里停下来，v0.1 全部收官之后统一打磨。M5 推迟的几项记在这里，免得关掉移交之后丢失（之后的 M 推迟的同样追加：第 7 条是 M4–M5 的 Codex 评审，第 8–14 条 M6，第 15–20 条 M7，第 21–29 条 M8，第 30–32 条 M9）：
 
 1. **"某某正在编辑"的其余位置**：M5 只在页面本身显示；页面树、笔记本首页上的标记，在线状态（[M5 总设计](../../M5-collab-editing/00-M5-design.md)第 2 节）。
 2. **删除与新建之后的导航**：删除之后的去向由旧位置渲染的 `<Navigate>` 决定，可能覆盖用户刚发起的导航；新建的答复只看已提交的地址（[M4/P6 编辑器移交](../../M5-collab-editing/handoffs/M4-P6-editor.md)第 7 项，[P5 审查](../../M4-pages/reviews/P5-tree-reading-review.md) Q3）。
@@ -227,8 +227,10 @@ created: 2026-10-03
     - 只由看不见的字符组成的客户端名称照样记下：`CleanClientName` 留下 U+200B、U+2060、标签字符（U+E0041 U+E0042）、U+00AD、U+FEFF、U+180E、U+3164、U+115F、U+2800，日志里显示为空，P2 起是 `mcp:` 后面看不见的东西，标签字符还能把看不见的文字带进网页的变更集（S3 审查 B-N2）。`CheckName` 对显示名同样留下：shared 的 `unshowable` 是 Cc、Zl、Zp 与 Bidi_Control。两处一条规则：没有图形字符的名称算空，也许另去掉 U+E0000–U+E007F 的标签块。
     - 客户端在名称的语句（记下或读）运行时走了，记 warn（"MCP client name not recorded" 或 "not read"，带 `context canceled`），S1 对客户端走了记 debug；还不知道名称在行里时不报名称的调用也记下，所以比修复之前常见，一直失败的记下每次调用一行 warn（S3 审查 B 的存疑，修复核对第一轮 B）。只是日志的级别与数量。
     - `log` 的 `path` 是可选的，`log {path: ""}` 或 `{path: "/"}` 却答 422 "path is required"（`ParsePath` 的空路径）：说明教 agent 以 `""` 与 `"/"` 表示 `list` 的根，agent 可能以它们表示"整本笔记本"（M9/P2 的 S2 审查 A-N2 的后一半）。两种改法：当作没有筛选，或在说明与文字里说 `path` 指一页或一个附件。
+    - `index` 的三个筛选（`type`、`tag`、`parent`）都是可选的，给空的字符串却答 422 `too_short`（"must not be empty: omit it…"，`linking/app/list_index.go`；工具的说明写着 `"" is refused`）：与上一项同一类（[M9/P4](../../M9-mcp/04-P4-grep-search.md) 第 8 节，M9 总设计第 11 节第 41 条；[M9 收尾审查](../../M9-mcp/reviews/M9-closeout-review.md) C-M1 补进这里）。改法同上一项，三个筛选与 `log` 的 `path` 一起定一种。
 31. **MCP 的接入在网页上**（[M9 总设计](../../M9-mcp/00-M9-design.md)"写给后面的 M"的 M12 打磨一条；[M9/P5](../../M9-mcp/05-P5-stories-docs.md) 第 4 节）：
     - 网页上显示 MCP 的两个地址（笔记本入口与账户入口）与接入的帮助，以 README 的"接入 agent（MCP）"为底稿：一个 agent 一个 PAT、令牌放在环境变量里（每个客户端一个变量）、审批不一律放行。那一节里标着"照文档""未核对"的几句，等人工清单在 v0.1 的最后跑过、README 照它改过之后再照抄。
     - agent 的变更集在历史里只显示 `clientInfo.name`（"MCP（名称）"，M9 总设计 4.5）；客户端报了 `clientInfo.title` 时显示它。
+32. **长的 MCP 客户端名称在窄屏上**（[M9 收尾审查](../../M9-mcp/reviews/M9-closeout-review.md) B-M1，M9 总设计第 11 节主持者的决定第 105 条）：客户端名称是 agent 报的 `clientInfo.name`，清理之后至多 128 个字符、可以没有空格（`shared/client_name.go`）。一个 128 个字符的名称在 375 px 上把历史页撑到 1,027 px（"客户端"的下拉，`pages/notebook/history-filters.tsx` 的 `NativeSelect` 没有宽度的界线，1,003 px 宽），把它的变更集的页撑到 712 px（`changeset-page.tsx` 的"Client: MCP (…)"一行没有 `break-words`）；历史的列表的行本身会折行（`history-row.tsx` 有 `break-words`）。代码是 M8 的（P3B），名称从 M9 起由任何 agent 给出。审查 B 试过、让两页都放得下的改法（历史 375 px、下拉 327 px，变更集的页 375 px）：`HistoryFilters` 的两个 `NativeSelect` 加 `className="block max-w-full"`（同搜索页的笔记本的下拉，`pages/search/search-page.tsx`，SE1 在 375 px 上守着它），它们外面的两个 `div` 加 `min-w-0 max-w-full`（关着的下拉截掉文字，打开的列表仍显示全名），`changeset-page.tsx` 的那一行加 `break-words`；MC3 的页面部分加一个 128 个字符的客户端名称在 375 px 上的检查，同 SE1 对它的下拉。"谁"的下拉对长的显示名是同一件事（第 26 条的"历史页的筛选的选择"一项），一起改。另有 B 没有探的一处：客户端名称由从右到左的字母组成时，行里的"MCP（名）· 5 分钟前"可能重排（客户端不在 `<bdi>` 里，消息在；服务端去掉 bidi 的控制字符，不去强的从右到左的字母），显示名从 M8 起同样，是全应用的一处。
 
 之后的 M 推迟的体验事项照样追加到这份移交。

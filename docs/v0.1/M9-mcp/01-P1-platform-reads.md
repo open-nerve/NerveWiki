@@ -22,7 +22,7 @@ e2e 的客户端与 TypeScript SDK 的依赖不随 S1 进来：S1 没有一个�
 
 ## 1. 基线
 
-- 从 `main` 的 `e16a98f7` 开始：M9 的总设计已两次修订、总体设计已为 M9 改过（1.3–12.6），代码与 M8 收尾（`fff7c560`）相同。本文引用的行号都是这一版的。
+- 从 `main` 的 `e16a98f7` 开始：M9 的总设计已两次修订、总体设计已为 M9 改过（1.3–12.6），代码与 M8 的 Codex 审查的文档提交（`fff7c560`）相同。本文引用的行号都是这一版的。
 - **没有 MCP 的代码**：`server/go.mod` 没有 SDK（`go 1.27`，`toolchain go1.27.1`；`github.com/google/uuid` 只作为测试依赖的间接依赖在列，`archtest/binary_test.go` 禁止它进二进制）。标准库的 `uuid` 包是项目的 id 类型。
 - **平台的 HTTP**：
   - 根路由器 `httpserver.Router`（`platform/httpserver/routes.go:22-96`），平台链"请求号 → 恢复 → 访问日志 → 固定头"（`middleware.go:29-31`），固定头只给 `/api/` 设 `no-store`（`middleware.go:45-52`）。
@@ -54,7 +54,7 @@ e2e 的客户端与 TypeScript SDK 的依赖不随 S1 进来：S1 没有一个�
 - **S2**：page 的路径（段的检查、解析、给出、`NodePaths.Find`）、线性的 glob 与 `MaxGlobWork`、`PageStates`、版本令牌、新用例 `ListByPattern` 与 `ReadPath`、page 的 `adapter/mcp`（`list`、`read`）；asset 的 `AttachmentReads`、`Deps.PublicURL` 与 WebP 的宽高（`sniff` 读 RIFF 头、`HasSize`）；`server.public_url`；性质测试、上限处的测试、时间的守卫与计划测试；e2e 的 `mcp.ts` 与 MC2；矩阵的 `list`、`read` 两行；TypeScript 客户端在仓库之外试 `list` 与 `read`。
 - **S3**：`platform/markdown.FrontmatterEnd`；page 的 `Instructions`、说明的缓存、内置的说明、`MCPEntry()`、`OpenNotebook`（计数与最后的变更两条语句、只在根下的 `FirstChildren`）与按剩下的预算填的 `open_notebook`；`shared.CleanClientName`；迁移 `00043`（`api_tokens.client_name`；S2 的修复一轮占了 00042）与 `identity.NewClientNames(pool)`；mcpserver 的名称（来源、按 PAT 的缓存、记下）；workspace 的 `Membership` 带上 slug 与名称、notebook 的 `AccountWorkspaces` 与 `ListAccountNotebooks`、`notebooks`；G16 的五种换法、"列表等于逐项判定"；e2e 的 `@modelcontextprotocol/sdk` 1.32.1 与 MC1；矩阵的 `notebooks`、`open_notebook` 两行。
 
-不做（P2 及以后）：写的工具与版本令牌的解析（P2 写 `ParseVersion`，本文只定写法）；`domain.MCPClient` 与 `changesets.client` 的 `mcp:<名>`（P2，名称的来源与记下在 P1）；`Client.Valid` 与两张表的检查（P2）；`versions`、`log`、`changeset`（P2）；`batch`（P3）；`grep`、`search`、`backlinks`、`index`（P4；`NodePaths.Paths`、`page.NewNodePaths(pool)` 与 linking 经它的最后一跳也在 P4）；真的 prompt（M10；P1 S1 只有最小的 `mcpserver.Prompt` 与它的替身，第 8 节）；接入文档与人工清单（P5）。
+不做（P2 及以后）：写的工具与版本令牌的解析（P2 写 `ParseVersionToken`，本文只定写法）；`domain.MCPClient` 与 `changesets.client` 的 `mcp:<名>`（P2，名称的来源与记下在 P1）；`Client.Valid` 与两张表的检查（P2）；`versions`、`log`、`changeset`（P2）；`batch`（P3）；`grep`、`search`、`backlinks`、`index`（P4；`NodePaths.Paths`、`page.NewNodePaths(pool)` 与 linking 经它的最后一跳也在 P4）；真的 prompt（M10；P1 S1 只有最小的 `mcpserver.Prompt` 与它的替身，第 8 节）；接入文档与人工清单（P5）。
 
 ### 2.1 对 00 号文档的修订
 
@@ -970,7 +970,7 @@ type mcpCell struct {
 | `page/module.go`、`page/tools.go` | page | 改、新 | `Module` 留下 MCP 的用例；`MaxContentBytes` 的别名；`ToolDeps`、`Tools(d)`（`page.NewNodePaths(pool)` 随 P4） |
 | `asset/module.go`、`asset/attachment_reads.go` | asset | 改、新 | `Deps.PublicURL`；`Module` 留下 `reads`、`blobs`、`sniffer`；`AttachmentReads`、`Attachment`（3.11.2） |
 | `asset/adapter/sniff/sniff.go`、`webp.go`、`testdata/*.webp`、`asset/domain/types.go`、`asset/app/blobs.go`、`ports.go` | asset | 改、新 | `webpSize` 与 `Sniffer.Size` 的分支（`Size` 取 `io.ReadSeeker`，以 seek 读文件的长度）；`asset/app.ImageSize(sniffer, r)`：上传与 `Content` 对旧行同一条只留 1–65,535 的边的规则；`HasSize` 加 `image/webp`（3.11.2） |
-| `api/modules/asset.yaml`、生成的 `api.gen.go` 与前端的类型 | — | 改 | `width`、`height` 的说明"(PNG, JPEG, GIF)"加 WebP；`make gen`（3.11.2、第 7 节） |
+| `api/modules/asset.yaml`、生成的 `asset/adapter/http/gen/server.gen.go` 与前端的类型 | — | 改 | `width`、`height` 的说明"(PNG, JPEG, GIF)"加 WebP；`make gen`（3.11.2、第 7 节） |
 | `platform/config/config.go`、`validate.go`、`configs/config.yaml` | config | 改 | `server.public_url`（3.12） |
 | `bootstrap/mcp.go`、`deps.go`、`wire.go` | bootstrap | 改 | `mcpTools(pg, as, ln, nb)` 拼上 `pg.Tools(page.ToolDeps{Attachments: pageAttachments{as.AttachmentReads()}})`；`assetDeps` 交 `PublicURL`；`pageAttachments` 的适配与它的错误的换法 `pageAttachmentErr`（`asset.ErrNotFound` 到 `page.ErrNotFound`、`ErrNoFile` 到 `ErrNoAttachmentFile`） |
 | `api/mcp/tools.json` | — | 改 | 两个入口加 `list`、`read`（3.18） |
@@ -1447,7 +1447,7 @@ type Attachment struct {
 }
 ```
 
-`Read` 是 `Reads.Get`（`asset/app/reads.go:57-91`：找节点、判定、读行、读链接、签名）加上绝对的地址 `publicURL + httpadapter.ContentURL(n.ID, b.ID, s, true)`（`asset/adapter/http/upload.go:186-194`，模块根可以用自己的适配器）：下载的写法（`d=1`，`Content-Disposition: attachment` 带文件名）。地址是给 agent 取文件的（能看的图片已在第二块内联），存下来的文件因此带它的名称；签名只盖节点、blob、`e` 与 `d`（`asset/adapter/mac/sign.go:44-62`），换源照样成立（设计审查 B 的 Nit 7，两种都行，取下载的）。`Content` 经 `Blobs.Open`（`asset/blobs.go:124-134`）与 `io.LimitReader(f, max+1)`，读到的字节数与行的 `byte_size` 不同时是错误（内部的：文件与它的行不符）。`asset.ErrNotFound` 是 asset 的 `domain.ErrNotFound` 的别名，组合根的 `pageAttachmentErr` 把它（包着与否）换成 `page.ErrNotFound`、`ErrNoFile` 换成 `ErrNoAttachmentFile`，别的不变（`TestPageAttachmentErrors`，S2 审查 B-M3、C-M3）。`asset.Deps` 加 `PublicURL string`（组合根交去掉结尾的 `/` 的 `cfg.Server.PublicURL`；源带 `/` 的一例经整个程序核对，同上）；`asset.New` 把 `blobs` 与 `reads` 留在 `Module` 上。不经公开的下载路由：不走 `asset_content` 的桶，也不让 MCP 的调用依赖签名的地址。
+`Read` 是 `Reads.Get`（`asset/app/reads.go:57-91`：找节点、判定、读行、读链接、签名）加上绝对的地址 `publicURL + httpadapter.ContentURL(n.ID, b.ID, s, true)`（`asset/adapter/http/upload.go:186-194`，模块根可以用自己的适配器）：下载的写法（`d=1`，`Content-Disposition: attachment` 带文件名）。地址是给 agent 取文件的（能看的图片已在第二块内联），存下来的文件因此带它的名称；签名只盖节点、blob、`e` 与 `d`（`asset/adapter/mac/sign.go:45-60`），换源照样成立（设计审查 B 的 Nit 7，两种都行，取下载的）。`Content` 经 `Blobs.Open`（`asset/blobs.go:124-134`）与 `io.LimitReader(f, max+1)`，读到的字节数与行的 `byte_size` 不同时是错误（内部的：文件与它的行不符）。`asset.ErrNotFound` 是 asset 的 `domain.ErrNotFound` 的别名，组合根的 `pageAttachmentErr` 把它（包着与否）换成 `page.ErrNotFound`、`ErrNoFile` 换成 `ErrNoAttachmentFile`，别的不变（`TestPageAttachmentErrors`，S2 审查 B-M3、C-M3）。`asset.Deps` 加 `PublicURL string`（组合根交去掉结尾的 `/` 的 `cfg.Server.PublicURL`；源带 `/` 的一例经整个程序核对，同上）；`asset.New` 把 `blobs` 与 `reads` 留在 `Module` 上。不经公开的下载路由：不走 `asset_content` 的桶，也不让 MCP 的调用依赖签名的地址。
 
 page 一侧（页不导入 asset）：
 
