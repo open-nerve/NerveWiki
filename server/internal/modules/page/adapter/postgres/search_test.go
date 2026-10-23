@@ -631,9 +631,9 @@ func TestTheSearchsRowsAndSources(t *testing.T) {
 			t.Errorf("the source of %v = %+v (built %+v); want %+v (built %+v)", s.ID, s, s.Built, w, w.Built)
 		}
 	}
-	contents, err := f.s.SearchContents(ctx, []uuid.UUID{p.ID, x.ID, d.ID})
+	contents, past, err := f.s.SearchContents(ctx, []uuid.UUID{p.ID, x.ID, d.ID}, domain.SearchBatchBytes)
 	if want := map[uuid.UUID]app.PageText{p.ID: {Content: content, Revision: 3}}; err != nil || len(contents) != 1 ||
-		contents[p.ID] != want[p.ID] {
+		contents[p.ID] != want[p.ID] || past != (uuid.UUID{}) {
 		t.Errorf("SearchContents = %+v, %v; want the live page's alone, %+v", contents, err, want)
 	}
 	renamed := p

@@ -855,9 +855,9 @@ func TestTheSearchReadsUseTheirIndexes(t *testing.T) {
 		}), []func(*planNode) bool{reads("nodes", "nodes_pkey", "n"), reads("page_contents", "page_contents_pkey", "c"),
 			reads("page_search", "page_search_pkey", "s")}},
 		{"SearchContents", statementOf(t, func(g *gen.Queries) error {
-			_, err := g.SearchContents(ctx, sources)
+			_, err := g.SearchContents(ctx, gen.SearchContentsParams{Ids: sources, MaxBytes: domain.SearchBatchBytes})
 			return err
-		}), []func(*planNode) bool{reads("page_contents", "page_contents_pkey", "")}},
+		}), []func(*planNode) bool{reads("page_contents", "page_contents_pkey", "c")}},
 		{"DeleteSearchRows", statementOf(t, func(g *gen.Queries) error {
 			return g.DeleteSearchRows(ctx, sources)
 		}), []func(*planNode) bool{reads("page_search", "page_search_pkey", "")}},

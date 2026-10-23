@@ -25,7 +25,8 @@ import (
 // GrepCandidates: the job, building rows, between the call's two
 // statements. grown are contents read back other than the states said.
 // fresh reads each content as a string of its own, as PostgreSQL's driver
-// does, so that what a call keeps of it is its own.
+// does, so that what a call keeps of it is its own. read are the bytes
+// and pages of the contents' reads, a read's each, in their order.
 type fakeGrep struct {
 	*fakeStore
 	rows        map[uuid.UUID]grepRow
@@ -33,7 +34,11 @@ type fakeGrep struct {
 	between     func()
 	grown       map[uuid.UUID]string
 	fresh       bool
+	read        []grepRead
 }
+
+// grepRead is a contents' read: its bytes and pages.
+type grepRead struct{ bytes, pages int }
 
 // grepRow is a page's row: its body's lexemes and whether it is partial.
 type grepRow struct {
@@ -105,20 +110,82 @@ func (f *fakeGrep) GrepCandidates(ctx context.Context, notebookID uuid.UUID, key
 	return out, nil
 }
 
-func (f *fakeGrep) GrepContents(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error) {
+// GrepContents reads the contents of ids as the statement does: in their
+// order while their sizes sum to max at most, the first past it its size
+// alone.
+func (f *fakeGrep) GrepContents(ctx context.Context, ids []uuid.UUID, max int64) (app.ContentsWithin, error) {
 	f.record(ctx, fmt.Sprintf("GrepContents %d", len(ids)))
-	out := map[uuid.UUID]string{}
+	out, total := app.ContentsWithin{Contents: map[uuid.UUID]string{}}, int64(0)
+	defer func() { f.read = append(f.read, grepRead{bytes: int(total) - out.PastBytes, pages: len(out.Contents)}) }()
 	for _, id := range ids {
-		if c, ok := f.grown[id]; ok {
-			out[id] = c
-		} else if c, ok := f.contents[id]; ok {
-			out[id] = c.Content
+		c, ok := f.grown[id]
+		if !ok {
+			stored, alive := f.contents[id]
+			if !alive {
+				continue
+			}
+			c = stored.Content
 		}
-		if c, ok := out[id]; ok && f.fresh {
-			out[id] = strings.Clone(c)
+		if total += int64(len(c)); total > max {
+			out.Past, out.PastBytes = id, len(c)
+			return out, nil
 		}
+		if f.fresh {
+			c = strings.Clone(c)
+		}
+		out.Contents[id] = c
 	}
 	return out, nil
+}
+
+// A call's reads of the contents hold its bounds on the bytes they read,
+// not on the sizes the states said (M9 Codex review D2): P0 … P4 of a few
+// bytes each by their states, P1 and P2 grown to 3 MiB since. The first
+// batch, of the five by the states, reads P0 and P1 within GrepBatchBytes,
+// P2 past it read none of; P2, batched again by its size now, with P3 and
+// P4. Every read within GrepBatchBytes, every hit found. Within a MaxRead
+// of 4 MiB, the call stops at P2, its cursor there, the bytes read within
+// it; the next call goes on from P2 and finds the rest.
+func TestGrepReadsHoldTheirBoundsOnWhatTheyRead(t *testing.T) {
+	f := newFixture()
+	f.grant(domain.ActionRead)
+	reads := newFakeGrep(f.store)
+	var ids []uuid.UUID
+	for i := range 5 {
+		p := f.page(fmt.Sprintf("P%d", i), nil, float64(i))
+		f.content(p.ID, fmt.Sprintf("needle %d", i), 1)
+		ids = append(ids, p.ID)
+	}
+	reads.buildAll()
+	for _, id := range ids[1:3] {
+		reads.grown[id] = "needle\n" + strings.Repeat("x", 3<<20)
+	}
+	all := []string{"P0.md:1", "P1.md:1", "P2.md:1", "P3.md:1", "P4.md:1"}
+	got, err := f.grepper(reads, nil).Execute(f.asAlice(), f.eng, app.GrepRequest{Pattern: "needle"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	within := !slices.ContainsFunc(reads.read, func(r grepRead) bool { return r.bytes > domain.GrepBatchBytes })
+	if found := grepFound(got); !slices.Equal(found, all) || got.Incomplete || !within || len(reads.read) != 2 ||
+		reads.read[0].pages != 2 || got.Walk.Bytes != int64(reads.read[0].bytes+reads.read[1].bytes) {
+		t.Errorf("P1 and P2 grown: %q, %+v, reads %+v; want all five, each read within GrepBatchBytes, P2 batched again", found,
+			got.Walk, reads.read)
+	}
+	reads.read = nil
+	g := f.grepper(reads, func(d *app.GrepDeps) { d.MaxRead = 4 << 20 })
+	got, err = g.Execute(f.asAlice(), f.eng, app.GrepRequest{Pattern: "needle"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found := grepFound(got); !slices.Equal(found, all[:2]) || got.Walk.Stop != "bytes" || !got.Incomplete ||
+		cursorOf(t, got.Next) != (domain.GrepCursor{K: "p2.md", N: 1}) || got.Walk.Bytes > 4<<20 || len(reads.read) != 1 {
+		t.Errorf("within 4 MiB: %q, %+v, next %q, reads %+v; want P0 and P1, stopped at P2 by the bytes", found, got.Walk, got.Next,
+			reads.read)
+	}
+	rest, _ := grepAll(t, f.asAlice(), g, f.eng, app.GrepRequest{Pattern: "needle", Cursor: &got.Next})
+	if !slices.Equal(rest, all[2:]) {
+		t.Errorf("on from P2: %q, want %q", rest, all[2:])
+	}
 }
 
 // grepper is grep over the fixture and reads, its parses' queue and slots

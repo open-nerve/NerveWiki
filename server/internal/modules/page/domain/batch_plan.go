@@ -17,7 +17,8 @@ const (
 	// MaxBatchReadBytes bounds the contents a batch's plan reads whole,
 	// those of the pages whose first content op is an edit, or a write
 	// that the renames and moves before it reach (ReadWhole), counted by
-	// their sizes before any is read (M9/P3 design 3.4.4, 3.8): what a
+	// their sizes before any is read (M9/P3 design 3.4.4, 3.8), and none of
+	// a page grown past its size since read (M9 Codex review D2): what a
 	// unit writes and what a batch brings, MaxUnitBytes and
 	// MaxBatchStringBytes. A page read past them would have to lose more
 	// than its edits bring for the unit to be within its bounds.

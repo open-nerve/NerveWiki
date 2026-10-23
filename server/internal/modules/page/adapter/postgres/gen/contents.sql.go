@@ -80,7 +80,7 @@ type ContentsRow struct {
 	Content string
 }
 
-// The contents not deleted of the pages: an export's batch, and grep's (M9/P4 design 3.4.3).
+// The contents not deleted of the pages: an export's batch.
 func (q *Queries) Contents(ctx context.Context, nodeIds []uuid.UUID) ([]ContentsRow, error) {
 	rows, err := q.db.Query(ctx, contents, nodeIds)
 	if err != nil {
@@ -130,6 +130,59 @@ func (q *Queries) CreateContent(ctx context.Context, arg CreateContentParams) er
 	return err
 }
 
+const grepContents = `-- name: GrepContents :many
+SELECT s.node_id, s.byte_size, (s.total <= $1::bigint)::boolean AS within,
+    coalesce(CASE WHEN s.total <= $1::bigint THEN s.content END, '')::text AS content
+FROM (
+    SELECT c.node_id, c.byte_size, c.content, sum(c.byte_size) OVER (ORDER BY a.ord) AS total
+    FROM unnest($2::uuid[]) WITH ORDINALITY AS a(id, ord)
+    JOIN page_contents c ON c.node_id = a.id AND c.deleted_at IS NULL
+) s
+WHERE s.total - s.byte_size <= $1::bigint
+`
+
+type GrepContentsParams struct {
+	MaxBytes int64
+	NodeIds  []uuid.UUID
+}
+
+type GrepContentsRow struct {
+	NodeID   uuid.UUID
+	ByteSize int32
+	Within   bool
+	Content  string
+}
+
+// The contents not deleted of the pages, in the order of node_ids, while their sizes sum to max_bytes at most; the first
+// page past it with its size alone, and no page after it: grep's batch (M9/P4 design 3.4.3), its bound held on what
+// the statement reads, not on the sizes read before it (M9 Codex review D2). The rows are read once, by their key, and
+// only the contents within the bound are returned: the content of one past it, a TOAST pointer in its row while the
+// window and the CASE carry it, is never fetched, as TestTheContentsPastTheBoundAreNotFetched checks.
+func (q *Queries) GrepContents(ctx context.Context, arg GrepContentsParams) ([]GrepContentsRow, error) {
+	rows, err := q.db.Query(ctx, grepContents, arg.MaxBytes, arg.NodeIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GrepContentsRow
+	for rows.Next() {
+		var i GrepContentsRow
+		if err := rows.Scan(
+			&i.NodeID,
+			&i.ByteSize,
+			&i.Within,
+			&i.Content,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockContent = `-- name: LockContent :one
 SELECT c.revision, c.content_hash, c.byte_size FROM page_contents c
 JOIN nodes n ON n.id = c.node_id
@@ -176,6 +229,42 @@ func (q *Queries) PageContent(ctx context.Context, nodeID uuid.UUID) (PageConten
 	row := q.db.QueryRow(ctx, pageContent, nodeID)
 	var i PageContentRow
 	err := row.Scan(&i.Content, &i.Revision, &i.ContentHash)
+	return i, err
+}
+
+const pageContentWithin = `-- name: PageContentWithin :one
+SELECT c.byte_size, c.revision, c.content_hash, (c.byte_size <= $1::integer)::boolean AS within,
+    coalesce(CASE WHEN c.byte_size <= $1::integer THEN c.content END, '')::text AS content
+FROM page_contents c
+WHERE c.node_id = $2 AND c.deleted_at IS NULL
+`
+
+type PageContentWithinParams struct {
+	MaxBytes int32
+	NodeID   uuid.UUID
+}
+
+type PageContentWithinRow struct {
+	ByteSize    int32
+	Revision    int32
+	ContentHash []byte
+	Within      bool
+	Content     string
+}
+
+// A page's content, its version and its hash, as PageContent reads them, while its size is max_bytes at most; past it,
+// its size alone, the content never read (M9 Codex review D2): a batch's plan reads the contents whose sizes it bounded
+// first, which may have grown since. As GrepContents, the row is read once.
+func (q *Queries) PageContentWithin(ctx context.Context, arg PageContentWithinParams) (PageContentWithinRow, error) {
+	row := q.db.QueryRow(ctx, pageContentWithin, arg.MaxBytes, arg.NodeID)
+	var i PageContentWithinRow
+	err := row.Scan(
+		&i.ByteSize,
+		&i.Revision,
+		&i.ContentHash,
+		&i.Within,
+		&i.Content,
+	)
 	return i, err
 }
 

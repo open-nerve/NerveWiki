@@ -229,11 +229,11 @@ func TestABatchsWriteSeesItsPageAsTheMovesBeforeItLeaveIt(t *testing.T) {
 		out, err := f.applyBatch(links, moveOp("A.md", "B.md"), writeOp("P.md", "[[B]] p"))
 		switch {
 		case reached && (err != nil || out.Ops[1].Changed || f.store.contents[p.ID].Content != "[[B]] p" || f.count("Reached") != 1 ||
-			f.count("PageContent") != 1):
+			f.count("PageContentWithin") != 1):
 			t.Errorf("reached: %v, %+v, P %q, Reached asked %d times, %d contents read; want done, unchanged, P read whole", err,
-				out.Ops, f.store.contents[p.ID].Content, f.count("Reached"), f.count("PageContent"))
-		case !reached && (opOf(err) != "1 page.title_taken" || f.count("PageContent") != 0):
-			t.Errorf("not reached: %v, %d contents read; want ops[1]'s PathTaken on P's head", err, f.count("PageContent"))
+				out.Ops, f.store.contents[p.ID].Content, f.count("Reached"), f.count("PageContentWithin"))
+		case !reached && (opOf(err) != "1 page.title_taken" || f.count("PageContentWithin") != 0):
+			t.Errorf("not reached: %v, %d contents read; want ops[1]'s PathTaken on P's head", err, f.count("PageContentWithin"))
 		}
 	}
 }
@@ -731,7 +731,7 @@ func TestABatchIsPlannedAgainOnce(t *testing.T) {
 	// A page gone between the plan's reads of the tree and of its head or
 	// its content is such a difference (M9/P3 review A-M2): the second
 	// plan answers at the op its absence refuses, with its path.
-	for _, read := range []string{"PageStates 1", "PageContent"} {
+	for _, read := range []string{"PageStates 1", "PageContentWithin"} {
 		f = newFixture()
 		p = f.page("P", nil, 1)
 		f.content(p.ID, "p", 2)
@@ -763,6 +763,51 @@ func (f *fixture) sized(id uuid.UUID, n int) {
 	c := f.store.contents[id]
 	c.ByteSize = n
 	f.store.contents[id] = c
+}
+
+// A batch's plan reads the contents whose sizes it bounded, in their
+// statements, within their sizes then (M9 Codex review D2): a page grown
+// past its head since is read none of, a difference, planned again, as a
+// page gone is; the second plan reads it at its size now. P grown from 1
+// byte to 1,001 before its read: none read, then 1,001, the edit done on
+// it. P, Q and R grown to 5 MiB each, 15 MiB: none read, then the reads'
+// bound at the sizes now, page.batch_too_large at ops[2], no content read.
+func TestABatchsReadsHoldTheirBoundOnWhatTheyRead(t *testing.T) {
+	grow := func(f *fixture, to string, ids ...uuid.UUID) {
+		grown := false
+		f.rec.before = map[string]func(){"PageContentWithin": func() {
+			if !grown {
+				for _, id := range ids {
+					f.writeAs(id, to)
+				}
+				grown = true
+			}
+		}}
+	}
+	f := newFixture()
+	p := f.page("P", nil, 1)
+	f.content(p.ID, "a", 2)
+	grow(f, "a"+strings.Repeat("x", 1000), p.ID)
+	if _, err := f.applyBatch(&fakeLinks{recorder: f.rec}, editOp("P.md", "a", "b")); err != nil || f.count("ListNodes") != 2 ||
+		!slices.Equal(f.store.read, []int{0, 1001}) || f.store.contents[p.ID].Content != "b"+strings.Repeat("x", 1000) {
+		t.Errorf("P grown before its read = %v, planned %d times, read %v, P %.10q; want none read, then all, the edit on it", err,
+			f.count("ListNodes"), f.store.read, f.store.contents[p.ID].Content)
+	}
+
+	f = newFixture()
+	var ids []uuid.UUID
+	var ops []domain.BatchArgs
+	for i, name := range []string{"P", "Q", "R"} {
+		n := f.page(name, nil, float64(i))
+		f.content(n.ID, "a", 2)
+		ids, ops = append(ids, n.ID), append(ops, editOp(name+".md", "a", "b"))
+	}
+	grow(f, "a"+strings.Repeat("x", domain.MaxContentBytes-1), ids...)
+	if _, err := f.applyBatch(&fakeLinks{recorder: f.rec}, ops...); opOf(err) != "2 page.batch_too_large" || f.count("ListNodes") != 2 ||
+		!slices.Equal(f.store.read, []int{0}) {
+		t.Errorf("P, Q and R grown to 15 MiB = %s, planned %d times, read %v; want the reads' bound at ops[2], none read",
+			opOf(err), f.count("ListNodes"), f.store.read)
+	}
 }
 
 // The edit locks' precheck answers at the first op, in their order, that
@@ -829,7 +874,7 @@ func TestABatchsBounds(t *testing.T) {
 		f.page(fmt.Sprintf("C%d", i), &d.ID, float64(i))
 	}
 	if _, err := f.applyBatch(&fakeLinks{recorder: f.rec}, editOp("P.md", "missing", "x"), deleteOp("D.md", true)); opOf(err) !=
-		"1 page.batch_too_large" || f.called("PageStates 1") || f.called("PageContent") {
+		"1 page.batch_too_large" || f.called("PageStates 1") || f.called("PageContentWithin") {
 		t.Errorf("a batch past its items = %s after the reads %v; want ops[1]'s 422 in the tree's pass, nothing read", opOf(err),
 			f.called("PageStates 1"))
 	}
@@ -847,8 +892,8 @@ func TestABatchsBounds(t *testing.T) {
 		f.sized(p.ID, domain.MaxBatchReadBytes/2)
 		f.sized(q.ID, tt.bytes)
 		_, err := f.applyBatch(&fakeLinks{recorder: f.rec}, editOp("P.md", "a", "b"), editOp("Q.md", "a", "b"))
-		if opOf(err) != tt.want || f.called("PageContent") != (tt.want != "1 page.batch_too_large") {
-			t.Errorf("%s: %s, the contents read %v; want %s", tt.name, opOf(err), f.called("PageContent"), tt.want)
+		if opOf(err) != tt.want || f.called("PageContentWithin") != (tt.want != "1 page.batch_too_large") {
+			t.Errorf("%s: %s, the contents read %v; want %s", tt.name, opOf(err), f.called("PageContentWithin"), tt.want)
 		}
 	}
 
@@ -861,9 +906,9 @@ func TestABatchsBounds(t *testing.T) {
 		f.content(same.ID, small, 1)
 		ops = append(ops, writeOn(big.Name+".md", "small", tokenOf(big.ID, 1)), writeOp(same.Name+".md", small))
 	}
-	if out, err := f.applyBatch(&fakeLinks{recorder: f.rec}, ops...); err != nil || f.called("PageContent") || len(out.Ops) != 100 {
+	if out, err := f.applyBatch(&fakeLinks{recorder: f.rec}, ops...); err != nil || f.called("PageContentWithin") || len(out.Ops) != 100 {
 		t.Errorf("100 writes of 50 pages of 5 MiB and 50 of their bytes = %v, the contents read %v; want them done on their heads",
-			err, f.called("PageContent"))
+			err, f.called("PageContentWithin"))
 	}
 
 	f = newFixture()

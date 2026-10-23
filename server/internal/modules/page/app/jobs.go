@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 	"uuid"
 
@@ -698,7 +699,7 @@ func (w *JobWrites) revertBatch(ctx context.Context, spec JobSpec, p *revertPlan
 	if err := w.withinHistory(ctx, len(nodes), deleted); err != nil {
 		return BatchDone{}, err
 	}
-	contents, err := w.revertContents(ctx, p.changeset, trashed, written)
+	contents, err := w.revertContents(ctx, p.changeset, trashed, written, trashBound(p, steps, sizes))
 	if err != nil {
 		return BatchDone{}, err
 	}
@@ -780,6 +781,29 @@ func withinSizes(p *revertPlan, steps []revertStep, sizes []domain.JobStep) erro
 	return nil
 }
 
+// trashBound is the most bytes a revert's batch may read of the trash's
+// contents, in their statements (M9 Codex review D2): a unit's, less the
+// bytes of the bases it writes back, whose versions never change, for the
+// contents of more than one page; any for a lone page's. A group a batch
+// begins is read at the time its root is deleted at now: deleted again
+// since the plan, its contents may be larger than the plan sized them, and
+// the statement reads none past the bound.
+func trashBound(p *revertPlan, steps []revertStep, sizes []domain.JobStep) int64 {
+	pages, bases := map[uuid.UUID]bool{}, int64(0)
+	for i, s := range steps {
+		switch {
+		case s.kind == domain.RevertContent:
+			pages[s.node], bases = true, bases+sizes[i].Bytes
+		case s.kind == domain.RevertRestore && !p.groups[s.group].nodes[s.member].Asset:
+			pages[s.node] = true
+		}
+	}
+	if len(pages) <= 1 {
+		return math.MaxInt64
+	}
+	return domain.MaxUnitBytes - bases
+}
+
 // withinPages checks the contents a revert's batch reads, by page and
 // hash, are of at most a unit's pages, copies and bytes, unless they are a
 // lone page's: else errPastPages, before they are parsed.
@@ -797,20 +821,25 @@ func withinPages(contents map[domain.ContentRef]string) error {
 // revertContents are the contents a revert's batch restores or writes
 // back, by page and hash: those of the pages in the trash at each time
 // (one someone restored meanwhile is not among them, which the unit
-// tells), and the bases of the changeset's versions of the pages written,
-// read by their changeset's versions; one the purge took is
-// page.changeset_trimmed.
-func (w *JobWrites) revertContents(ctx context.Context, reverted uuid.UUID, trashed map[time.Time][]uuid.UUID, written []uuid.UUID) (
-	map[domain.ContentRef]string, error,
-) {
+// tells), bound bytes at most in all, else errPastPages, the content past
+// it not read (trashBound); and the bases of the changeset's versions of
+// the pages written, read by their changeset's versions; one the purge
+// took is page.changeset_trimmed.
+func (w *JobWrites) revertContents(ctx context.Context, reverted uuid.UUID, trashed map[time.Time][]uuid.UUID, written []uuid.UUID,
+	bound int64,
+) (map[domain.ContentRef]string, error) {
 	out := map[domain.ContentRef]string{}
 	for at, pages := range trashed {
-		contents, err := w.reads.Trash.TrashContents(ctx, pages, at)
-		if err != nil {
+		got, err := w.reads.Trash.TrashContentsWithin(ctx, pages, at, bound)
+		switch {
+		case err != nil:
 			return nil, err
+		case got.Past != uuid.UUID{}:
+			return nil, errPastPages
 		}
-		for page, content := range contents {
+		for page, content := range got.Contents {
 			out[contentOf(page, content)] = content
+			bound -= int64(len(content))
 		}
 	}
 	if len(written) == 0 {

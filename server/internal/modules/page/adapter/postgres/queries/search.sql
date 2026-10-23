@@ -67,10 +67,18 @@ LEFT JOIN page_search s ON s.node_id = i.id
 ORDER BY i.id;
 
 -- name: SearchContents :many
--- The contents of live pages by their keys, with their revisions: those the job builds rows of.
-SELECT node_id, content, revision FROM page_contents
-WHERE node_id = ANY(sqlc.arg(ids)::uuid[]) AND deleted_at IS NULL
-ORDER BY node_id;
+-- The contents of live pages by their keys, with their revisions: those the job builds rows of, in the order of ids,
+-- while their sizes sum to max_bytes at most; the first page past it with its size alone, and no page after it (M9
+-- Codex review D2): the job's batch, bounded on what it reads, not on the sizes its sources told. As GrepContents,
+-- the rows are read once and only the contents within the bound are returned.
+SELECT s.node_id, s.revision, (s.total <= sqlc.arg(max_bytes)::bigint)::boolean AS within,
+    coalesce(CASE WHEN s.total <= sqlc.arg(max_bytes)::bigint THEN s.content END, '')::text AS content
+FROM (
+    SELECT c.node_id, c.byte_size, c.revision, c.content, sum(c.byte_size) OVER (ORDER BY a.ord) AS total
+    FROM unnest(sqlc.arg(ids)::uuid[]) WITH ORDINALITY AS a(id, ord)
+    JOIN page_contents c ON c.node_id = a.id AND c.deleted_at IS NULL
+) s
+WHERE s.total - s.byte_size <= sqlc.arg(max_bytes)::bigint;
 
 -- name: TagSearchNotebooks :exec
 -- The notebooks of the nodes given that have no prefix yet get the next (M8 Codex review R1): the job's, before it

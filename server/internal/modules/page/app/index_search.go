@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
 	"sync/atomic"
 	"time"
 	"uuid"
@@ -189,9 +190,25 @@ func (j *IndexSearch) batch(ctx context.Context, queued []QueuedNode, run *Searc
 		}
 		done = append(done, q)
 	}
-	contents, err := j.index.SearchContents(ctx, pages)
+	contents, past, err := j.index.SearchContents(ctx, pages, domain.SearchBatchBytes)
 	if err != nil {
 		return QueuedNode{}, err
+	}
+	if past != (uuid.UUID{}) {
+		// Grown since its source told its size, past the batch's bytes with
+		// the pages before it (M9 Codex review D2): the batch ends before
+		// it, its node and those after it left queued for the next batch,
+		// which reads their sizes again. The first page is never past it:
+		// the batch's bytes hold a page's largest content.
+		at := make(map[uuid.UUID]int, len(queued))
+		for i, q := range queued {
+			at[q.ID] = i
+		}
+		if cut := at[past]; cut > 0 {
+			build = slices.DeleteFunc(build, func(s SearchSource) bool { return at[s.ID] >= cut })
+			done = slices.DeleteFunc(done, func(q QueuedNode) bool { return at[q.ID] >= cut })
+			last = queued[cut-1]
+		}
 	}
 	rows := make([]SearchRow, 0, len(build))
 	missing := map[uuid.UUID]bool{}

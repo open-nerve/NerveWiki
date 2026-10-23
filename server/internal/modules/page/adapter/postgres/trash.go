@@ -138,6 +138,23 @@ func (s *Store) TrashContents(ctx context.Context, ids []uuid.UUID, at time.Time
 	return out, nil
 }
 
+// TrashContentsWithin implements app.Trash, as TrashContents.
+func (s *Store) TrashContentsWithin(ctx context.Context, ids []uuid.UUID, at time.Time, max int64) (app.ContentsWithin, error) {
+	rows, err := s.queries(ctx).TrashContentsWithin(ctx, gen.TrashContentsWithinParams{Ids: ids, DeletedAt: at, MaxBytes: max})
+	if err != nil {
+		return app.ContentsWithin{}, fmt.Errorf("trash contents within: %w", err)
+	}
+	out := app.ContentsWithin{Contents: make(map[uuid.UUID]string, len(rows))}
+	for _, r := range rows {
+		if !r.Within {
+			out.Past, out.PastBytes = r.NodeID, int(r.ByteSize)
+			continue
+		}
+		out.Contents[r.NodeID] = r.Content
+	}
+	return out, nil
+}
+
 // TrashHistory implements app.Trash, planned with ids: from a cached
 // statement's sixth run, statistics taken while the rows were alive make
 // its plan for any arguments read the rows of the time and compare each

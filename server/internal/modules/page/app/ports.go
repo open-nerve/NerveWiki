@@ -73,6 +73,18 @@ type Content struct {
 	At       time.Time
 }
 
+// ContentsWithin is what one statement read of pages' contents within a
+// bound of bytes (M9 Codex review D2): the contents, by page, of the pages
+// in the order asked while their sizes, as the statement read them, sum
+// to the bound at most; and the first page past it, Past, with its size
+// then, PastBytes, its content not read, the zero id for none. A page in
+// neither is gone, or after Past.
+type ContentsWithin struct {
+	Contents  map[uuid.UUID]string
+	Past      uuid.UUID
+	PastBytes int
+}
+
 // PageContent is a page's content, its version and its SHA-256.
 type PageContent struct {
 	Content  string
@@ -166,6 +178,10 @@ type Nodes interface {
 	// statement; ErrNotFound when the content is deleted, as it is with its
 	// node.
 	PageContent(ctx context.Context, id uuid.UUID) (PageContent, error)
+	// PageContentWithin is PageContent while the page holds max bytes at
+	// most; false, its content not read, past them (M9 Codex review D2: a
+	// batch's plan reads the pages it bounded by their sizes before).
+	PageContentWithin(ctx context.Context, id uuid.UUID, max int) (PageContent, bool, error)
 	// LockContent locks the content row of the page id not deleted of the
 	// notebook FOR NO KEY UPDATE: the page's gate (M4 design 4). The node's
 	// row is not locked. ErrNotFound for no such page.
@@ -461,6 +477,9 @@ type Trash interface {
 	// TrashContents are the contents of the pages ids deleted at at, by
 	// page: one the purge took is not among them.
 	TrashContents(ctx context.Context, ids []uuid.UUID, at time.Time) (map[uuid.UUID]string, error)
+	// TrashContentsWithin are TrashContents, in the order of ids, within
+	// max bytes (ContentsWithin).
+	TrashContentsWithin(ctx context.Context, ids []uuid.UUID, at time.Time, max int64) (ContentsWithin, error)
 	// TrashHistory is how many versions and items, of every changeset, of
 	// the nodes ids were deleted at at, each of the two counted to limit
 	// at most: the rows a restore writes besides the nodes'.
@@ -833,8 +852,11 @@ type SearchIndex interface {
 	// SearchSources reads the nodes ids as SearchSource says, by id.
 	SearchSources(ctx context.Context, ids []uuid.UUID) ([]SearchSource, error)
 	// SearchContents reads the contents of the live pages ids, with their
-	// revisions: a page deleted since is not in the answer.
-	SearchContents(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]PageText, error)
+	// revisions: a page deleted since is not in the answer. They are those
+	// in the order of ids while their sizes sum to max at most; past is the
+	// first page past it, its content not read, none after it in the
+	// answer, the zero id for none (M9 Codex review D2).
+	SearchContents(ctx context.Context, ids []uuid.UUID, max int64) (texts map[uuid.UUID]PageText, past uuid.UUID, err error)
 	// WriteSearchRows writes rows and deletes the rows of the nodes
 	// deleted, in ctx's transaction.
 	WriteSearchRows(ctx context.Context, rows []SearchRow, deleted []uuid.UUID) error
@@ -931,9 +953,9 @@ type GrepReads interface {
 	// of keys, those queued exact, and those whose row is partial: ids, in
 	// no order, some maybe deleted, which the tree leaves out.
 	GrepCandidates(ctx context.Context, notebookID uuid.UUID, keys []string) ([]uuid.UUID, error)
-	// GrepContents is the contents not deleted of the pages ids, by id
-	// (export's Contents).
-	GrepContents(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error)
+	// GrepContents is the contents not deleted of the pages ids, by id, in
+	// one statement, within max bytes (ContentsWithin).
+	GrepContents(ctx context.Context, ids []uuid.UUID, max int64) (ContentsWithin, error)
 	// SearchBuilding tells whether the notebooks hold nodes queued in bulk
 	// (SearchReads').
 	SearchBuilding(ctx context.Context, notebooks []uuid.UUID) (bool, error)

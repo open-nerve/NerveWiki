@@ -338,10 +338,13 @@ func (a *batchAttempt) withCurrent(ctx context.Context, f *domain.OpFailed) erro
 // statement; the pages whose first content op is a write that the renames
 // and moves before it reach by the index, read whole (M9/P3 review A-I1);
 // the bound on the contents read whole checked on their sizes, then those
-// contents, each with its revision in one statement. A page gone since the
-// tree's read is a difference as the unit finds one (replanned): the batch
-// is planned once more, whose tree's pass answers at the op the page's
-// absence refuses (M9/P3 review A-M2).
+// contents, each with its revision in one statement, which reads none of a
+// page larger than its head said (M9 Codex review D2): the bound holds on
+// the bytes read. A page gone since the tree's read, or grown since its
+// head's, is a difference as the unit finds one (replanned): the batch is
+// planned once more, whose tree's pass answers at the op the page's
+// absence refuses (M9/P3 review A-M2), and whose bound on the reads at the
+// sizes then.
 func (a *batchAttempt) read(ctx context.Context) (map[uuid.UUID]domain.PageText, map[uuid.UUID]domain.PageHead, error) {
 	texts, heads := a.plan.Reads()
 	if len(texts)+len(heads) == 0 {
@@ -386,11 +389,11 @@ func (a *batchAttempt) read(ctx context.Context) (map[uuid.UUID]domain.PageText,
 	texts, _ = a.plan.Reads()
 	out := make(map[uuid.UUID]domain.PageText, len(texts))
 	for _, id := range texts {
-		c, err := a.b.nodes.PageContent(ctx, id)
-		if errors.Is(err, ErrNotFound) {
+		c, within, err := a.b.nodes.PageContentWithin(ctx, id, read[id].Bytes)
+		switch {
+		case errors.Is(err, ErrNotFound), err == nil && !within:
 			return nil, nil, gone(id)
-		}
-		if err != nil {
+		case err != nil:
 			return nil, nil, err
 		}
 		out[id] = domain.PageText{Content: c.Content, Revision: c.Revision}

@@ -398,7 +398,8 @@ func TestARevertJobsBatchRestoresAtMostAUnitsNodes(t *testing.T) {
 // renames before it: 3 pages of 3 MiB, past by their bytes alone. A
 // segment past them makes no call at all (review B2-N-1). A content the
 // trash holds larger than the plan measured, its pages grown to 3 MiB
-// since, is past them as read, before a unit parses it.
+// since, is past them as read, before a unit parses it, and the bytes read
+// within a unit's: the content past them is not read (M9 Codex review D2).
 func TestARevertJobsSegmentPastAUnitsPagesSaysSo(t *testing.T) {
 	for _, tt := range []struct {
 		name    string
@@ -479,8 +480,10 @@ func TestARevertJobsSegmentPastAUnitsPagesSaysSo(t *testing.T) {
 				t.Errorf("RunBatch(the segment, steps %d to %d) = %v; want it past a unit's pages %v", from, to, err, tt.past)
 			case tt.past && tt.grown == 0 && len(f.rec.calls) > 0:
 				t.Errorf("RunBatch(the segment) past a unit's pages after %v; want it before any call", f.rec.calls)
-			case tt.grown > 0 && (!f.called("TrashContents") || f.called("Facts")):
+			case tt.grown > 0 && (!f.called("TrashContentsWithin") || f.called("Facts")):
 				t.Errorf("RunBatch(the segment) past a unit's pages after %v; want it after the trash's contents, before a unit", f.rec.calls)
+			case tt.grown > 0 && (len(f.store.read) == 0 || f.store.read[len(f.store.read)-1] > domain.MaxUnitBytes):
+				t.Errorf("RunBatch(the segment) read %v bytes of the trash; want a unit's at most", f.store.read)
 			}
 		})
 	}

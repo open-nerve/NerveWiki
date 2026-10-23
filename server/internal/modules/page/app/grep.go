@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"math"
 	"regexp"
 	"strings"
 	"time"
@@ -454,17 +455,19 @@ func (w *grepWalker) check(t tree, pages []grepPage) error {
 		return err
 	}
 	var alive []grepPage
+	sizes := make(map[uuid.UUID]int64, len(states))
 	for _, p := range pages {
-		if _, ok := states[p.n.Node.ID]; ok {
+		if s, ok := states[p.n.Node.ID]; ok {
 			alive = append(alive, p)
+			sizes[p.n.Node.ID] = int64(s.Bytes)
 		}
 	}
 	for start := 0; start < len(alive); {
-		// A batch: GrepBatchBytes at most, by the states' sizes; a page
+		// A batch: GrepBatchBytes at most, by the sizes known; a page
 		// larger alone.
-		end, bytes := start+1, int64(states[alive[start].n.Node.ID].Bytes)
-		for end < len(alive) && bytes+int64(states[alive[end].n.Node.ID].Bytes) <= domain.GrepBatchBytes {
-			bytes += int64(states[alive[end].n.Node.ID].Bytes)
+		end, bytes := start+1, sizes[alive[start].n.Node.ID]
+		for end < len(alive) && bytes+sizes[alive[end].n.Node.ID] <= domain.GrepBatchBytes {
+			bytes += sizes[alive[end].n.Node.ID]
 			end++
 		}
 		// The bounds before the read, not after it: the bytes once a page
@@ -480,12 +483,20 @@ func (w *grepWalker) check(t tree, pages []grepPage) error {
 		for i, p := range alive[start:end] {
 			batch[i] = p.n.Node.ID
 		}
-		contents, err := d.Reads.GrepContents(w.ctx, batch)
+		got, err := d.Reads.GrepContents(w.ctx, batch, w.readBound(end-start))
 		if err != nil {
 			return err
 		}
-		for _, p := range alive[start:end] {
-			content, ok := contents[p.n.Node.ID]
+		next := end
+		for k, p := range alive[start:end] {
+			if p.n.Node.ID == got.Past {
+				// Grown past the bound since its state was read: batched
+				// again by its size now, where the bytes' bound may stop
+				// the walk at it (M9 Codex review D2).
+				sizes[p.n.Node.ID], next = int64(got.PastBytes), start+k
+				break
+			}
+			content, ok := got.Contents[p.n.Node.ID]
 			if !ok {
 				continue // deleted since the states were read
 			}
@@ -495,9 +506,27 @@ func (w *grepWalker) check(t tree, pages []grepPage) error {
 				return err
 			}
 		}
-		start = end
+		start = next
 	}
 	return nil
+}
+
+// readBound is the most bytes the read of a batch of n pages may read, in
+// its statement (M9 Codex review D2): GrepBatchBytes for more than one
+// page, any for a page alone, which the batch's bound lets be larger; and
+// what d.MaxRead leaves once a page was read. The statement reads none of
+// a page that grew past it since its state, which the walk batches again
+// by its size then: the bounds hold on the bytes read, not on the sizes
+// read before them, whatever the writes between.
+func (w *grepWalker) readBound(n int) int64 {
+	bound := int64(math.MaxInt64)
+	if n > 1 {
+		bound = domain.GrepBatchBytes
+	}
+	if w.read > 0 {
+		bound = min(bound, w.g.d.MaxRead-w.read)
+	}
+	return bound
 }
 
 // pastSoft reports whether now is past the soft deadline.

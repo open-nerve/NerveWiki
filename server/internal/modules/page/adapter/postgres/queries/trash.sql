@@ -79,6 +79,20 @@ ORDER BY n.sort_order, n.id;
 SELECT node_id, content FROM page_contents
 WHERE node_id = ANY(sqlc.arg(ids)::uuid[]) AND deleted_at = sqlc.arg(deleted_at)::timestamptz;
 
+-- name: TrashContentsWithin :many
+-- TrashContents' contents, in the order of ids, while their sizes sum to max_bytes at most; the first page past it with
+-- its size alone, and no page after it (M9 Codex review D2): a background revert's batch reads a group its plan sized
+-- at the time its root is deleted at now, which may hold larger contents. As GrepContents, the rows are read once and
+-- only the contents within the bound are returned.
+SELECT s.node_id, s.byte_size, (s.total <= sqlc.arg(max_bytes)::bigint)::boolean AS within,
+    coalesce(CASE WHEN s.total <= sqlc.arg(max_bytes)::bigint THEN s.content END, '')::text AS content
+FROM (
+    SELECT c.node_id, c.byte_size, c.content, sum(c.byte_size) OVER (ORDER BY a.ord) AS total
+    FROM unnest(sqlc.arg(ids)::uuid[]) WITH ORDINALITY AS a(id, ord)
+    JOIN page_contents c ON c.node_id = a.id AND c.deleted_at = sqlc.arg(deleted_at)::timestamptz
+) s
+WHERE s.total - s.byte_size <= sqlc.arg(max_bytes)::bigint;
+
 -- name: TrashHistory :one
 -- How many versions, and items of every changeset, of nodes deleted at deleted_at were deleted with them, each of the
 -- two counted to lim at most: a restore's rows besides the nodes', as many as the bound at most. Planned with ids, it

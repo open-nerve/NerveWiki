@@ -74,12 +74,12 @@ func (p loadPages) GrepCandidates(context.Context, uuid.UUID, []string) ([]uuid.
 	return out, nil
 }
 
-func (p loadPages) GrepContents(_ context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error) {
+func (p loadPages) GrepContents(_ context.Context, ids []uuid.UUID, _ int64) (app.ContentsWithin, error) {
 	out := make(map[uuid.UUID]string, len(ids))
 	for _, id := range ids {
 		out[id] = p.contents[id]
 	}
-	return out, nil
+	return app.ContentsWithin{Contents: out}, nil
 }
 
 func (loadPages) SearchBuilding(context.Context, []uuid.UUID) (bool, error) { return false, nil }
