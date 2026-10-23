@@ -128,11 +128,16 @@ export async function placeOf(db: Database, id: string): Promise<Place> {
 }
 
 /**
- * nodes, changesets and changeset_items: the node id is where moved puts it, moved there from the place from (see
- * placeOf) by moverId in its last changeset, whose time it holds and whose item has it from that place to its new
- * one, its name unchanged.
+ * nodes, changesets and changeset_items: the node moved, as the API answered its move, or as a story builds it from
+ * an MCP answer, is where moved puts it, moved there from the place from (see placeOf) by moverId in its last
+ * changeset, whose time it holds and whose item has it from that place to its new one, its name unchanged.
  */
-export async function expectMoved(db: Database, moved: TreeNode, from: Place, moverId: string): Promise<void> {
+export async function expectMoved(
+  db: Database,
+  moved: Pick<TreeNode, "id" | "parent_id">,
+  from: Place,
+  moverId: string
+): Promise<void> {
   const rows = await db.query(
     `SELECT n.parent_id, n.updated_by_id = $3 AS by_mover, s.created_by_id = $3 AND s.created_at = n.updated_at AS at_move,
             i.before_parent_id IS NOT DISTINCT FROM $2::uuid AND i.before_sort_order = $4::float8 AS from_place,
@@ -423,12 +428,12 @@ export async function expectSubtreeRestored(
 }
 
 /**
- * page_contents: the page written, as the API answered its write, holds content, its bytes' size and SHA-256 at the
- * answer's revision, written by writerId at the answer's time.
+ * page_contents: the page written, as the API answered its write, or as a story builds it from an MCP answer, holds
+ * content, its bytes' size and SHA-256 at the answer's revision, written by writerId at the answer's time.
  */
 export async function expectContentWritten(
   db: Database,
-  written: Page,
+  written: Pick<Page, "id" | "revision" | "content_updated_at">,
   content: string,
   writerId: string
 ): Promise<void> {

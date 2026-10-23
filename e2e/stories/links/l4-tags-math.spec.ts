@@ -3,6 +3,7 @@ import type { Page } from "@playwright/test";
 import { expectIndexedTags } from "../../fixtures/assert/links";
 import type { Database } from "../../fixtures/db";
 import { getTag, listTags } from "../../fixtures/links";
+import { mcpClient, resultOf, type McpClient } from "../../fixtures/mcp";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, getView } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -16,7 +17,8 @@ import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 // watch checks as the test ends: no violation, no console error. The
 // diagram follows the theme. Through the API, the view carries the tags,
 // formulas and diagrams for the page to make them (typeset and drawn in
-// the browser, page only), and a tag's pages are read.
+// the browser, page only), and a tag's pages are read. An agent writes the
+// tags and reads them by index, as REST reads them (M9/P5 design 3.4).
 
 /** The page's content: a tag, a formula inline and one in a block, a diagram. */
 const tagged = [
@@ -33,6 +35,24 @@ const tagged = [
   "```",
   "",
 ].join("\n");
+
+/** A write's answer, as much as L4 reads of the tool's structuredContent. */
+interface Written {
+  node_id: string;
+}
+
+/** index's answer, as much as L4 reads of it. */
+interface IndexAnswer {
+  pages: { path: string; tags: string[]; cut: string[] }[];
+  next_cursor: string | null;
+}
+
+/** index's answer of args through agent, all on one page. */
+async function indexOf(agent: McpClient, args: Record<string, unknown>): Promise<IndexAnswer> {
+  const answer = resultOf<IndexAnswer>(await agent.call("index", args), `index ${JSON.stringify(args)}`);
+  expect(answer.next_cursor, `index ${JSON.stringify(args)} on one page`).toBeNull();
+  return answer;
+}
 
 /** The tags of Source, Deeper and Other as the index has them. */
 async function expectTagged(db: Database, source: string, deeper: string, other: string): Promise<void> {
@@ -72,6 +92,61 @@ test("L4 (API): a reading view's tag carries its name, its formulas and diagram 
     { tag: "proj/alpha", count: 1 },
     { tag: "proj/alpha/beta", count: 1 },
   ]);
+});
+
+test("L4 (MCP): an agent writes pages with tags in their text, a tag under another's; the index has them; index by a tag gives its pages and those under it, and the pages' tags fold to the notebook's list of tags, as REST reads them", async ({
+  api,
+  db,
+  nervewiki,
+}, testInfo) => {
+  const { pat, workspace } = await newTeam(api, testInfo);
+  const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
+  const agent = await mcpClient(nervewiki.baseURL, pat, { notebook: notebook.id });
+  const written = new Map<string, string>();
+  for (const [path, content] of [
+    ["Source.md", tagged],
+    ["Deeper.md", "#proj/alpha/beta\n"],
+    ["Other.md", "#proj\n"],
+  ] as const) {
+    // oxlint-disable-next-line no-await-in-loop -- one write at a time
+    written.set(path, resultOf<Written>(await agent.call("write", { path, content }), `write ${path}`).node_id);
+  }
+  const idOf = (path: string) => written.get(path) ?? path;
+  await expectTagged(db, idOf("Source.md"), idOf("Deeper.md"), idOf("Other.md"));
+
+  // A tag's pages and those under it, of no type, so in the order of their ids; a leading # is dropped, which REST's
+  // tag keeps. index and getTag read one statement: each is first the literal pages, then REST's, ids as paths.
+  const byId = (...paths: string[]) => paths.toSorted((x, y) => (idOf(x) < idOf(y) ? -1 : idOf(x) > idOf(y) ? 1 : 0));
+  const paths = new Map([...written].map(([path, id]) => [id, path]));
+  for (const [tag, rest, want] of [
+    ["proj/alpha", "proj/alpha", byId("Source.md", "Deeper.md")],
+    ["#proj", "proj", byId("Source.md", "Deeper.md", "Other.md")],
+    ["proj/alpha/beta", "proj/alpha/beta", ["Deeper.md"]],
+  ] as const) {
+    // oxlint-disable-next-line no-await-in-loop -- a tag at a time
+    const found = (await indexOf(agent, { tag })).pages.map((page) => page.path);
+    expect(found, tag).toEqual(want);
+    // oxlint-disable-next-line no-await-in-loop -- REST's of the same tag
+    const { data } = await getTag(api, pat, notebook.id, rest);
+    expect(found, `${tag} as REST's ${rest}`).toEqual(data?.data.map((page) => paths.get(page.id) ?? page.id));
+  }
+
+  // The pages' tags, folded, are the notebook's tags, each with its count of pages: the API version's, REST's.
+  const all = await indexOf(agent, {});
+  expect(all.pages.map((page) => page.cut)).toEqual(all.pages.map(() => []));
+  const counts = new Map<string, number>();
+  for (const tag of all.pages.flatMap((page) => page.tags)) {
+    counts.set(tag, (counts.get(tag) ?? 0) + 1);
+  }
+  const folded = [...counts]
+    .map(([tag, count]) => ({ tag, count }))
+    .toSorted((x, y) => (x.tag < y.tag ? -1 : x.tag > y.tag ? 1 : 0));
+  expect(folded).toEqual([
+    { tag: "proj", count: 1 },
+    { tag: "proj/alpha", count: 1 },
+    { tag: "proj/alpha/beta", count: 1 },
+  ]);
+  expect(folded).toEqual((await listTags(api, pat, notebook.id)).data?.data);
 });
 
 test("L4 (page): a tag leads to the pages of the tag and those under it; formulas and a diagram are typeset and drawn under the CSP", async ({

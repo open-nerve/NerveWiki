@@ -208,15 +208,167 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
 - **只收个人访问令牌**：`Authorization: Bearer <PAT>`。会话的访问令牌答 403 `forbidden`（它 15 分钟就过期，MCP 客户端不会续期），没有、无效、已撤销的令牌答 401。服务端没有 OAuth：`/.well-known/` 之下都答 404，`POST /register` 答 OAuth 的错误 `invalid_client_metadata`。一个 POST 在限流里算一次请求，与 REST 共用这个令牌的桶。
 - **传输**：无状态的 Streamable HTTP，每个 POST 一个 JSON 答复，没有会话：服务重启之后客户端照常调用，不用重新连接。协议版本到 2025-11-25，更新的版本协商降到它；GET 答 405，JSON-RPC 的批答 400；每个答复带 `Cache-Control: no-store`。一个工具的答复至多 48 KiB，到了就停并给出继续的游标或标出截断；超过 64 KiB 的请求体只能是这个入口的工具的调用，否则答 413。这样大的请求体整个服务同时至多两个（超过 1 MiB 的正文写，网页的保存与 REST 的，也算在内）、每个凭证（令牌或登录会话）一个，取不到名额的等 2 秒后答 503 `server_busy`（`Retry-After: 1`）：这是 HTTP 的答复，客户端显示的是传输的错误，稍后重发即可；一个 agent 的大的写一个接一个地发。请求体至多 10,000 个 JSON 值（每个对象、数组、字符串、数字与字面量各算一个），过了答 400。
 - **工具**：笔记本入口有 `list`（根或一页的子节点，或按 glob 列路径）与 `read`（页的行；附件的元数据与图片或下载的地址）；账户入口另有 `notebooks`（看得到的笔记本，带工作区与角色）与 `open_notebook`（一本笔记本的说明与概况），这个入口里 `list`、`read` 与 `open_notebook` 要 `notebook`（笔记本的 id）。路径从笔记本的根写起，段之间是 `/`：页是它的标题加 `.md`（`Projects/Roadmap.md`），附件是它的名称，每段不分大小写。清单与输入的 schema 在 `api/mcp/tools.json`。写的四个工具、`batch` 与历史的读见下三条；读与找（`grep`、`search`、`index`、`backlinks`）见再下两条。
-- **写**：两个入口都有 `write`（整页的正文）、`edit`（替换正文里的一段）、`move`（移动、改名或两者）与 `delete`（进回收站），账户入口里同样要 `notebook`；路径照上一条写，页的版本是 `list`、`read`、`write` 的答复里不透明的 `version`。`write` 不带 `base_version` 是新建：缺的上级页一并建成空的页，在同一个变更集里；路径已是一页时，内容相同答未改动（`changed: false`），不同答 409 `page.title_taken`。带 `base_version` 是覆盖正文：这一页之后被写过、或这个路径现在是另一页时答 409 `page.revision_mismatch`（带现在的版本），重读再写；内容相同时什么也不写。正文至多 5 MiB、不含 NUL。`edit` 的 `old_string`（至多 1 MiB）要逐字节出现恰好一次（重叠的也算；`replace_all` 从左到右替换每一处），从 `read` 给的照抄，引号与空白照原样匹配；全是 CRLF 的页上，不带 `\r` 的 `old_string` 里的 `\n` 照 `\r\n` 找，`new_string` 里的照 `\r\n` 写。不带 `base_version` 的 `edit` 改现在的正文（做的期间被写过就在新的正文上再做一次），带了的在那之后被写过答 409。`move` 的 `to` 是节点完整的新路径（不是移进去的文件夹），上级页要已存在；附件改名要带一个扩展名，扩展名可以换；链接照"改名与移动改写链接"改写。有子页或附件的页，`delete` 要 `recursive: true`。正在网页上编辑的页（包括自己在别处编辑的）拒绝 MCP 的写、编辑与删除，答 `page.locked` 并说出持锁人（删除列出子树里每个被持着的页，至多 20 个，另给总数）；`move` 要改写的页正被编辑时答 `linking.pages_locked`。锁不能经 MCP 接管：结束编辑，或请笔记本的管理员强制解锁。
-- **batch**：两个入口都有，账户入口里同样要 `notebook`。至多 100 项写、编辑、移动与删除（`op` 是工具的名称，别的成员是那个工具的参数）与一句说明（`message`，1–4,096 字节，历史里随变更集显示），一个变更集，全成或全不成；每项看到前面各项留下的路径与正文，`base_version` 是 batch 之前的版本，batch 新建的页不带。字符串合计至多 6 MiB，其中正文与 `new_string` 合计至多 5 MiB；新建、删除、移动与改名的节点至多 10,000 个，不止一次移到别的父节点下时，这些移动带着走的节点合计也至多 10,000 个；要读正文的页（`edit` 的，与之前的改名、移动碰到它的链接的 `write` 的）合计至多 14 MiB，过了时提示说为什么、把改名或移动放进另一个 batch；跟着前面的改名、移动改写要写的页时，计划解析的正文至多 10 MiB，写的页与这些解析合计至多 100 页、8 MiB、20,000 条链接（只写一页时这一条不限，10 MiB 仍限）。改名与移动的链接改写在读树之前数三样：改写的页至多 400 个（batch 写了、它的改名或移动碰到其链接的页算 2）、链接至多 120,000 条、页合计至多 34,406,400 字节（400 × 84 KiB，写了的页按它最后的大小算一次）；三个之内，逐页改写时一次解析在已改写的页留着的解析预算的份额旁放不下，也拒绝（别人占着预算时照旧答 503 `server_busy`）。过了这些答 422 `page.batch_too_large`，说出过了什么、界线与怎样拆开。被拒时答出第几项（`op`，从 0 起）与那个工具的码，什么都不写。先删子孙、再删祖先合成一次删除（前面那一项答 `merged_into`）；不能删除这个 batch 新建、改名或移动的。与分开调用的不同只有一条规则：链接跟着 batch 按节点合并的改名与移动，从 batch 之前、或写了的页最后一次写时的去向跟起，其间别的项对去向做的（新建、改名、移动或删除一页）与 batch 改的别名都看不到，`update_links` 为假的节点的链接在每一页里都不改。batch 写或删除的页正被编辑时，在第一个写或删除它的项答 `page.locked`；只被链接的改写碰到的页在它的改名、移动之后才查，在第一个改名或移动的项答 `linking.pages_locked`。答复有变更集的 id 与时刻和各项的结果（放得下的那些，`results_count` 是全部的数，其余用 `changeset` 读）；每项的 `changed` 是它的工具在那一步会答的，batch 的 `changed` 说它留没留下改动；batch 写的要几秒之后才搜得到，其间答复的 `building` 为真。batch 的变更集在网页上可以整组撤销（上文"整组撤销"）。
+- **写**：两个入口都有 `write`（整页的正文）、`edit`（替换正文里的一段）、`move`（移动、改名或两者）与 `delete`（进回收站），账户入口里同样要 `notebook`；路径照上一条写，页的版本是 `list`、`read`、`write` 的答复里不透明的 `version`。`write` 不带 `base_version` 是新建：缺的上级页一并建成空的页，在同一个变更集里；路径已是一页时，内容相同答未改动（`changed: false`），不同答 `page.title_taken`。带 `base_version` 是覆盖正文：这一页之后被写过、或这个路径现在是另一页时答 `page.revision_mismatch`（带现在的版本），重读再写；内容相同时什么也不写。正文至多 5 MiB、不含 NUL。`edit` 的 `old_string`（至多 1 MiB）要逐字节出现恰好一次（重叠的也算；`replace_all` 从左到右替换每一处），从 `read` 给的照抄，引号与空白照原样匹配；全是 CRLF 的页上，不带 `\r` 的 `old_string` 里的 `\n` 照 `\r\n` 找，`new_string` 里的照 `\r\n` 写。不带 `base_version` 的 `edit` 改现在的正文（做的期间被写过就在新的正文上再做一次），带了的在那之后被写过答 `page.revision_mismatch`。`move` 的 `to` 是节点完整的新路径（不是移进去的文件夹），上级页要已存在；附件改名要带一个扩展名，扩展名可以换；链接照"改名与移动改写链接"改写。有子页或附件的页，`delete` 要 `recursive: true`。正在网页上编辑的页（包括自己在别处编辑的）拒绝 MCP 的写、编辑与删除，答 `page.locked` 并说出持锁人（删除列出子树里每个被持着的页，至多 20 个，另给总数）；`move` 要改写的页正被编辑时答 `linking.pages_locked`。锁不能经 MCP 接管：结束编辑，或请笔记本的管理员强制解锁。
+- **batch**：两个入口都有，账户入口里同样要 `notebook`。至多 100 项写、编辑、移动与删除（`op` 是工具的名称，别的成员是那个工具的参数）与一句说明（`message`，1–4,096 字节，历史里随变更集显示），一个变更集，全成或全不成；每项看到前面各项留下的路径与正文，`base_version` 是 batch 之前的版本，batch 新建的页不带。字符串合计至多 6 MiB，其中正文与 `new_string` 合计至多 5 MiB；新建、删除、移动与改名的节点至多 10,000 个，不止一次移到别的父节点下时，这些移动带着走的节点合计也至多 10,000 个；要读正文的页（`edit` 的，与之前的改名、移动碰到它的链接的 `write` 的）合计至多 14 MiB，过了时提示说为什么、把改名或移动放进另一个 batch；跟着前面的改名、移动改写要写的页时，计划解析的正文至多 10 MiB，写的页与这些解析合计至多 100 页、8 MiB、20,000 条链接（只写一页时这一条不限，10 MiB 仍限）。改名与移动的链接改写在读树之前数三样：改写的页至多 400 个（batch 写了、它的改名或移动碰到其链接的页算 2）、链接至多 120,000 条、页合计至多 34,406,400 字节（400 × 84 KiB，写了的页按它最后的大小算一次）；三个之内，逐页改写时一次解析在已改写的页留着的解析预算的份额旁放不下，也拒绝（别人占着预算时照旧答 `server_busy`）。过了这些答 `page.batch_too_large`，说出过了什么、界线与怎样拆开。被拒时答出第几项（`op`，从 0 起）与那个工具的码，什么都不写。先删子孙、再删祖先合成一次删除（前面那一项答 `merged_into`）；不能删除这个 batch 新建、改名或移动的。与分开调用的不同只有一条规则：链接跟着 batch 按节点合并的改名与移动，从 batch 之前、或写了的页最后一次写时的去向跟起，其间别的项对去向做的（新建、改名、移动或删除一页）与 batch 改的别名都看不到，`update_links` 为假的节点的链接在每一页里都不改。batch 写或删除的页正被编辑时，在第一个写或删除它的项答 `page.locked`；只被链接的改写碰到的页在它的改名、移动之后才查，在第一个改名或移动的项答 `linking.pages_locked`。答复有变更集的 id 与时刻和各项的结果（放得下的那些，`results_count` 是全部的数，其余用 `changeset` 读）；每项的 `changed` 是它的工具在那一步会答的，batch 的 `changed` 说它留没留下改动；batch 写的要几秒之后才搜得到，其间答复的 `building` 为真。batch 的变更集在网页上可以整组撤销（上文"整组撤销"）。
 - **历史**：两个入口都有 `versions`（一页的版本列表，带 `revision` 时读那个版本的行，`offset`、`column` 与 `limit` 同 `read`）、`log`（这本笔记本的变更集，新的在前，可按 `path`、`actor`（账户的 id，`"me"` 是自己）与 `client`（`mcp` 是全部的 agent）筛选）与 `changeset`（一个变更集与它对每个节点做了什么，节点带它现在的路径），账户入口里同样要 `notebook`。只读：还原版本、从回收站恢复与撤销变更集是人在网页上做的，经 MCP 的一次移动加改名在网页上一步撤销，一个 `batch` 在网页上整组撤销。`changeset` 只认这本笔记本的，别的笔记本的变更集答 `page.changeset_not_found`；回收站里的页与附件没有路径（`versions`、`log` 按路径找不到它，`changeset` 里它的路径为 null），它们的变更集在不筛选的 `log` 里；一个答复放不下的变更集在 `log` 里单独来、变化截短并带 `changes_cut: true`，用 `changeset` 读全。
-- **找**：两个入口都有 `grep` 与 `search`，账户入口里同样要 `notebook`。`grep` 以 Go 的正则（RE2，同 ripgrep 默认的语法）逐行找这本笔记本里页的正文（含 frontmatter；不找标题与附件，标题用 `list` 的 glob 找），按路径的次序一页接一页：每个命中带页的路径、行号（同 `read` 的数法：以它为 `offset`、`limit` 为 1 读到的就是这一行）与这一行存下的文字（去掉 `\r`，第一行去掉 BOM）；长于 1,000 字节的行截在第一个匹配的周围（`cut: true`），不从行首起时 `column` 是它起头的字节（同 `read` 的 `column`）。`glob` 只留路径匹配它的页（同 `list`），`ignore_case` 同 `(?i)`，每页至多 `limit` 个命中（1–500，默认 100）。模式至多 1,024 字节、不含换行，每行单独匹配；它同正文的行一样按 NFC 读：组合的记号要与前一个字符分开时写成转义（如 `\x{301}`）；太复杂的（如大的重复）答 422。一次调用查的有界（至多 500 页、32 MiB 的正文与有界的匹配的工作，在调用的期限之前 3 秒停下；同时匹配的调用有名额，等 1 秒取不到答 503 `server_busy`）：`next_cursor` 还在就接着调；`incomplete` 为真说这次调用在查完它该查的页之前停在界线上，这时没有命中不说明没有；`partial_lines` 是长得一次调用匹配不完的行，只匹配了开头，用 `read` 读它们。`grep` 以搜索的索引挑出要查的页，词可能被截掉的页总被查；批量入队的页（`batch`、导入、后台的恢复与撤销、升级写的）在索引建好之前不查，其间 `building` 为真。两次调用之间被移动或写过的页（连同子页）可能被跳过或再查一次。`search` 是这一本笔记本的全文搜索（同上文"搜索"：名称里有每个词的在前，其余的在后，各按最后改动从新到旧；摘要是纯文本，截处是 `…`；第一页带约数；每页 1–50 条，默认 20）：单个汉字只找标题；一页可能少于 `limit` 条、甚至一条也没有而带 `next_cursor`，接着调；`building` 同 `grep`。按词找、找中文用 `search`；按模式、原样的文字与行号用 `grep`。
-- **索引与反链**：两个入口都有 `index` 与 `backlinks`，账户入口里同样要 `notebook`；都只读，读的是链接索引（上文"链接索引"）。`index` 列出这本笔记本里索引有的页，每项：路径、frontmatter 的 `type` 与 `summary`（不分大小写的第一个这样的键，值是文字时）、标签（至多 20 个）、正文的最后改动、链到它的别的页数（1,000 是 1,000 或更多）与父页的路径；`type`、`summary` 与每个标签截到 256 字节，`cut` 说出截了哪些。`type` 只留这种类型的页（整个相等），`tag` 留有这个标签或它之下的标签的页（`plan` 含 `plan/q4`，开头的 `#` 去掉），`parent` 留这一页的子页（`/` 是根下的）；不筛就不传，传 `""` 答 422。有类型的页在前、按类型排，其余的在后；每页 1–100 项，默认 50，`next_cursor` 还在就接着调。索引还没读过的页不在其中（升级之后 `nervewiki reindex` 之前写的那种）。`backlinks` 列出链到一页的页：每项带它的路径、它链到那里的链接数（1,000 是 1,000 或更多）与前十个链接所在的行（各至多 240 字节）；一页链到自己的不算，索引读过它之后又写过的页还没有行；每页 1–100 项，默认 50。只有页有反链：附件的路径答 `page.not_found`。
+- **找**：两个入口都有 `grep` 与 `search`，账户入口里同样要 `notebook`。`grep` 以 Go 的正则（RE2，同 ripgrep 默认的语法）逐行找这本笔记本里页的正文（含 frontmatter；不找标题与附件，标题用 `list` 的 glob 找），按路径的次序一页接一页：每个命中带页的路径、行号（同 `read` 的数法：以它为 `offset`、`limit` 为 1 读到的就是这一行）与这一行存下的文字（去掉 `\r`，第一行去掉 BOM）；长于 1,000 字节的行截在第一个匹配的周围（`cut: true`），不从行首起时 `column` 是它起头的字节（同 `read` 的 `column`）。`glob` 只留路径匹配它的页（同 `list`），`ignore_case` 同 `(?i)`，每页至多 `limit` 个命中（1–500，默认 100）。模式至多 1,024 字节、不含换行，每行单独匹配；它同正文的行一样按 NFC 读：组合的记号要与前一个字符分开时写成转义（如 `\x{301}`）；太复杂的（如大的重复）答 `validation_failed`。一次调用查的有界（至多 500 页、32 MiB 的正文与有界的匹配的工作，在调用的期限之前 3 秒停下；同时匹配的调用有名额，等 1 秒取不到答 `server_busy`）：`next_cursor` 还在就接着调；`incomplete` 为真说这次调用在查完它该查的页之前停在界线上，这时没有命中不说明没有；`partial_lines` 是长得一次调用匹配不完的行，只匹配了开头，用 `read` 读它们。`grep` 以搜索的索引挑出要查的页，词可能被截掉的页总被查；批量入队的页（`batch`、导入、后台的恢复与撤销、升级写的）在索引建好之前不查，其间 `building` 为真。两次调用之间被移动或写过的页（连同子页）可能被跳过或再查一次。`search` 是这一本笔记本的全文搜索（同上文"搜索"：名称里有每个词的在前，其余的在后，各按最后改动从新到旧；摘要是纯文本，截处是 `…`；第一页带约数；每页 1–50 条，默认 20）：单个汉字只找标题；一页可能少于 `limit` 条、甚至一条也没有而带 `next_cursor`，接着调；`building` 同 `grep`。按词找、找中文用 `search`；按模式、原样的文字与行号用 `grep`。
+- **索引与反链**：两个入口都有 `index` 与 `backlinks`，账户入口里同样要 `notebook`；都只读，读的是链接索引（上文"链接索引"）。`index` 列出这本笔记本里索引有的页，每项：路径、frontmatter 的 `type` 与 `summary`（不分大小写的第一个这样的键，值是文字时）、标签（至多 20 个）、正文的最后改动、链到它的别的页数（1,000 是 1,000 或更多）与父页的路径；`type`、`summary` 与每个标签截到 256 字节，`cut` 说出截了哪些。`type` 只留这种类型的页（整个相等），`tag` 留有这个标签或它之下的标签的页（`plan` 含 `plan/q4`，开头的 `#` 去掉），`parent` 留这一页的子页（`/` 是根下的）；不筛就不传，传 `""` 答 `validation_failed`。有类型的页在前、按类型排，其余的在后；每页 1–100 项，默认 50，`next_cursor` 还在就接着调。索引还没读过的页不在其中（升级之后 `nervewiki reindex` 之前写的那种）。`backlinks` 列出链到一页的页：每项带它的路径、它链到那里的链接数（1,000 是 1,000 或更多）与前十个链接所在的行（各至多 240 字节）；一页链到自己的不算，索引读过它之后又写过的页还没有行；每页 1–100 项，默认 50。只有页有反链：附件的路径答 `page.not_found`。
 - **说明**：笔记本入口握手时给出这本笔记本根下标题为 `AGENTS` 的页（不分大小写）去掉 frontmatter 的正文，至多 32 KiB：截在最后一个换行，末尾一行说出怎样用 `read` 读全文。没有这一页时给内置的英文说明（路径的写法与工具）；改了、替换、改名或删掉这一页之后，下一次连接就是新的。团队要别的约定（例如中文）就写一个 `AGENTS` 页，它整个取代内置的说明。
 - **客户端的名称**：取客户端报的 `clientInfo.name`（清理之后至多 128 个字符），记在这个令牌上，日志的每次调用带它；重启之后、客户端没有再报时用记下的。一个 agent 用一个 PAT：两个客户端同时用一个时，记的是最后报的那个。
 - **`server.public_url`**：实例对外的地址（只到源，默认空）。`read` 给附件的下载地址时以它起头（签名同"附件"）；为空时图片照样直接放进答复，别的附件只给元数据。
-- Claude Code、Codex 的接入配置与反向代理的要求在 M9 的接入文档里写（M9/P5）。
+- 接上 Claude Code、Codex 见下一节"接入 agent（MCP）"；反向代理的要求见"部署"。
+
+## 接入 agent（MCP）
+
+Claude Code、Codex 一类的 agent 经 `/mcp` 读写笔记本。工具、路径与它们的规则见上文"MCP"一节；这一节讲怎样接上、审批怎样设、有哪些上限，以及出错时看到什么。下面的样例照两个客户端的文档与 M0/P1 的实验（Claude Code 2.1.285、Codex 0.157.1）写成，还没有在真实的客户端上照[人工清单](docs/v0.1/M9-mcp/manual/P5-mcp-clients-checklist.md)走过；清单在 v0.1 的最后走一遍，之后这里写明核对过的客户端的版本，并照它改正标出的几句：标着"照文档"的照客户端自己的文档写，标着"未核对"的是推断。
+
+### 先准备
+
+- **一个 agent 一个 PAT**：在"设置"→"访问令牌"（`/settings/tokens`）创建，名称写明给哪个 agent、在哪台机器上（如 `claude-code-laptop`），最好设一个期限；也可以 `POST /api/v0/me/api-tokens`（上文"账户与认证"）。令牌只显示这一次。PAT 能做这个账户能做的一切：笔记本的地址只是"进到这本笔记本"，不是权限的边界。一个 agent 一个令牌，撤销它只切断这一个 agent；agent 的变更集记为 `mcp:<客户端报的名称>`（网页的历史显示"MCP（名称）"），名称记在令牌上，两个客户端共用一个令牌时记的是最后报名称的那个。
+- **令牌放在环境变量里**，一个 agent 一个变量：下面的样例里 Claude Code 用 `NERVEWIKI_CLAUDE_TOKEN`、Codex 用 `NERVEWIKI_CODEX_TOKEN`。同一个变量就是同一个 PAT：两个 agent 的写在历史里分不清，撤销它两个一起断。在终端里设时用 `read -rs NERVEWIKI_CLAUDE_TOKEN && export NERVEWIKI_CLAUDE_TOKEN`（粘贴令牌、回车：不回显，也不进 shell 的历史）；长期用的写在只有自己读得到的 shell 配置里，或由密钥管理器给出。不要把令牌写进会提交的文件。
+- **只经 HTTPS 连 `/mcp`**（本机试用除外）：每个请求的头里都是 PAT。
+- **实例设好 `server.public_url`**（`NWIKI_SERVER__PUBLIC_URL`，只到源，如 `https://wiki.example.com`）：否则 `read` 读附件时只给图片，别的附件没有下载的地址。
+- **两种地址**（`wiki.example.com` 换成实例对外的地址）：
+  - 笔记本入口 `https://wiki.example.com/mcp?notebook=<笔记本 id>`：笔记本的 id 是网页地址里 `/notebooks/` 之后的那一段。握手时下发这本笔记本的 `AGENTS` 页（上文"MCP"的"说明"）。一个 agent 在一本笔记本里工作时用它。
+  - 账户入口 `https://wiki.example.com/mcp`：agent 先以 `notebooks` 看有哪些笔记本，再以 `open_notebook` 读一本的说明与概况，之后每个工具都带 `notebook`。
+  - 地址里有 `?`：写在 shell 里时加引号（zsh 把 `?` 当作通配）。
+
+### Claude Code
+
+- **只给自己**（默认的本地范围：服务与令牌存在 `~/.claude.json`，只在当前的目录里、只有自己用；照 Claude Code 的文档）：
+
+  ```sh
+  claude mcp add --transport http nervewiki "https://wiki.example.com/mcp?notebook=<笔记本 id>" \
+    --header "Authorization: Bearer $NERVEWIKI_CLAUDE_TOKEN"
+  ```
+
+  shell 先展开 `$NERVEWIKI_CLAUDE_TOKEN`，存下的是令牌本身；加 `--scope user` 则在每个目录里都有它（照 Claude Code 的文档）。
+
+- **随项目共享**（项目的范围：项目根目录的 `.mcp.json`，它通常会提交）：`.mcp.json` 里**绝不要写令牌**，写环境变量的展开（照 Claude Code 的文档），每个人在自己的环境里设 `NERVEWIKI_CLAUDE_TOKEN`：
+
+  ```json
+  {
+    "mcpServers": {
+      "nervewiki": {
+        "type": "http",
+        "url": "https://wiki.example.com/mcp?notebook=<笔记本 id>",
+        "headers": {
+          "Authorization": "Bearer ${NERVEWIKI_CLAUDE_TOKEN}"
+        }
+      }
+    }
+  }
+  ```
+
+  用命令写它时加 `--scope project`，令牌那一段用**单引号**，让 `${NERVEWIKI_CLAUDE_TOKEN}` 原样进文件：
+
+  ```sh
+  claude mcp add --scope project --transport http nervewiki "https://wiki.example.com/mcp?notebook=<笔记本 id>" \
+    --header 'Authorization: Bearer ${NERVEWIKI_CLAUDE_TOKEN}'
+  ```
+
+  写好之后 `grep nwk_pat_ .mcp.json` 应当什么也找不到。项目里的服务第一次用时，Claude Code 先问要不要启用它（照 Claude Code 的文档）。
+
+- **看连上没有**：`claude mcp list`，或在会话里输入 `/mcp`：`nervewiki` 已连上，笔记本入口有 14 个工具（账户入口 16 个）。工具在 Claude Code 里叫 `mcp__nervewiki__read` 一类（照 Claude Code 的文档）。
+- Claude Code 把一次 MCP 工具的结果限在约 25,000 个 token，环境变量 `MAX_MCP_OUTPUT_TOKENS` 可以调（照 Claude Code 的文档）；服务端的每个答复至多 48 KiB，`read` 一次至多约 45 KiB 的正文，中文约 1.5 万字。
+
+### Codex
+
+- 写进 `~/.codex/config.toml`（设了 `CODEX_HOME` 时是 `$CODEX_HOME/config.toml`；照 Codex 的文档）：
+
+  ```toml
+  [mcp_servers.nervewiki]
+  url = "https://wiki.example.com/mcp?notebook=<笔记本 id>"
+  bearer_token_env_var = "NERVEWIKI_CODEX_TOKEN"
+  default_tools_approval_mode = "prompt"
+  ```
+
+  文件里没有令牌：Codex 启动时从 `NERVEWIKI_CODEX_TOKEN` 读它，所以启动 Codex 的 shell 里要有这个变量。`default_tools_approval_mode` 见下面的"审批"。
+
+- **看连上没有**：在会话里输入 `/mcp`，列出 `nervewiki` 与它的工具（照 Codex 的文档）。
+
+### 审批
+
+工具带着 MCP 的注解：读的九个（`list`、`read`、`grep`、`search`、`index`、`backlinks`、`versions`、`log`、`changeset`；账户入口另有 `notebooks`、`open_notebook`）是 `readOnlyHint`；写的五个（`write`、`edit`、`move`、`delete`、`batch`）是 `destructiveHint`，其中 `write`、`move`、`delete` 另是 `idempotentHint`（同样的参数再调一次不再改变什么）。调用之前问不问人由客户端与它的设置定；两个客户端是否照注解区别对待未核对。
+
+- **不要一律放行**：放行了写的工具，agent 不经人确认就能以这个账户的权限改写、删除、移动它看得到的每一本笔记本里的页。读的工具可以免问；写的工具照常问，除非这个 agent 要无人值守地工作，而你接受事后在网页的历史里检查、撤销它做的（下面的"历史只读"）。审批只管 MCP 的工具：agent 能执行命令时，它启动的命令照常继承启动它的环境（这是 shell 的），里面就有令牌的变量，可以直接调 REST；客户端是否把自己的环境交给它执行的命令（或滤掉一些变量）未核对，当作交了。
+- **Claude Code**：一个工具在调用之前问；回答"不再问"之后这个工具不再问（照 Claude Code 的文档）。要事先放行读的工具，写进设置（项目的 `.claude/settings.json` 或自己的 `~/.claude/settings.json`）的 `permissions.allow`：
+
+  ```json
+  {
+    "permissions": {
+      "allow": [
+        "mcp__nervewiki__list",
+        "mcp__nervewiki__read",
+        "mcp__nervewiki__grep",
+        "mcp__nervewiki__search",
+        "mcp__nervewiki__index",
+        "mcp__nervewiki__backlinks",
+        "mcp__nervewiki__versions",
+        "mcp__nervewiki__log",
+        "mcp__nervewiki__changeset"
+      ]
+    }
+  }
+  ```
+
+  账户入口另加 `mcp__nervewiki__notebooks` 与 `mcp__nervewiki__open_notebook`。`claude -p`（不交互）问不了人，没有放行的工具不调用：以 `--allowedTools` 给它这次要的工具，写的工具只给确实要写的任务（照 Claude Code 的文档）。
+
+- **Codex**：一个服务的 `default_tools_approval_mode` 决定调用它的工具之前问不问人，取值是 `auto`、`prompt`、`writes` 与 `approve`；`approve` 是都不问。`codex exec`（不交互）问不了人，要审批的调用都被拒。交互的会话用 `prompt`；只读的无人值守的任务不必放行写的工具；`approve` 只给确实要无人值守地写的任务，并照上面的第一条接受它的代价。
+
+### 上限
+
+| 什么            | 上限                                                                                                                                                                                                   |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 一次调用        | 15 秒（`server.request_timeout`，从读完请求体算起）；请求体至多 37,814,272 字节（约 36 MiB），超过 64 KiB 的只能是这个入口的工具的调用；请求体里至多 10,000 个 JSON 值                                 |
+| 每个工具的答复  | 48 KiB：到了就停，给出 `next_cursor`（或 `next_offset`、`next_column`）接着调，没有游标的标出截断                                                                                                      |
+| `read`          | 一次至多约 45 KiB 的正文（中文约 1.5 万字）；长的一行经 `column` 分几次读完。图片（PNG、JPEG、GIF、WebP）至多 3 MiB、每边 8,000 像素时直接放进答复，别的附件给下载的地址（要配置 `server.public_url`） |
+| `write`、`edit` | 正文至多 5 MiB；`edit` 的 `old_string` 至多 1 MiB                                                                                                                                                      |
+| `batch`         | 至多 100 项，字符串合计至多 6 MiB、正文合计至多 5 MiB，别的界线见上文"MCP"的"batch"                                                                                                                    |
+| 说明            | 见上文"MCP"的"说明"                                                                                                                                                                                    |
+| 限流            | 一个 POST 算一次请求，与这个令牌的 REST 请求共用一个桶（`ratelimit.authenticated`）                                                                                                                    |
+
+### 大的请求体的名额
+
+超过 64 KiB 的调用（大的 `write`、`edit`、`batch`）在整个服务里同时至多两个、每个令牌至多一个；取不到名额的等 2 秒，然后答 503 `server_busy`（`Retry-After: 1`），稍后重发即可。所以一个 agent 的大的写一个接一个地发（内置的说明也这样告诉 agent）。名额从读请求体之前占到这次调用答完：慢的上行占得久（1 Mbit/s 上过约 250 KB 就过 2 秒），这时同一个令牌同时发出的两个大的写，第二个多半拿到 503。反向代理照"部署"一节为 `/mcp` 缓冲请求体时，请求在代理收完之后才到服务，名额只占服务端读请求体与做这次调用的时间，不再随上行的快慢。
+
+### HTTP 的答复
+
+这些是 HTTP 一层的答复，在任何工具运行之前：它们不是工具的结果，客户端把它们当作连接或传输的错误（官方 TypeScript SDK 的客户端是这样）；Claude Code、Codex 怎样显示、模型看不看得到未核对。工具自己的错误不在其中：它们是带 `isError` 的结果，模型读得到码与说明（`page.locked`、`page.revision_mismatch` 一类），照说明改了再调。
+
+| 答复                                                                                                                  | 什么时候                                                                                                                                                                                                                                                               | 怎么办                                                               |
+| --------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| 401 `unauthorized`，"This server has no OAuth: MCP takes a personal access token in the Authorization header."        | 没有带令牌                                                                                                                                                                                                                                                             | 在客户端的配置里加 `Authorization: Bearer <PAT>`（下一段）           |
+| 401 `unauthorized`，"The bearer token is invalid or has expired."（`WWW-Authenticate: Bearer error="invalid_token"`） | 令牌写错了、过期了或被撤销了                                                                                                                                                                                                                                           | 新建一个 PAT，换上                                                   |
+| 403 `forbidden`，"MCP takes a personal access token, not a session's access token."                                   | 带的是网页登录的访问令牌                                                                                                                                                                                                                                               | 换成 PAT                                                             |
+| 404 `notebook.not_found`                                                                                              | 地址里的笔记本 id 不对、为空、出现两次，或你看不到这本笔记本、它已被删除                                                                                                                                                                                               | 改正 id；或用账户入口的 `notebooks` 看有哪些                         |
+| 404 `not_found`                                                                                                       | 地址是 `/mcp/` 之下的路径                                                                                                                                                                                                                                              | 地址是 `/mcp` 本身                                                   |
+| 400 `bad_request`                                                                                                     | 一次发了 JSON-RPC 的批、请求体不是一个合法的 JSON 对象，或 JSON 值过了 10,000 个                                                                                                                                                                                       | 一条消息一个请求                                                     |
+| 400、415（纯文字，不是上面的 JSON）                                                                                   | 请求头不对：`Accept` 不含 `application/json` 与 `text/event-stream`、`Content-Type` 不是 `application/json`，或 `MCP-Protocol-Version` 是服务端不说的、排在 `2026-07-28` 之前的版本（服务端说 `2025-11-25`、`2025-06-18`、`2025-03-26`、`2024-11-05`；不带这个头也行） | 照下面的 `curl` 写这几个头                                           |
+| 400（JSON-RPC 的错误，`application/json`）                                                                            | `MCP-Protocol-Version` 是 `2026-07-28` 或更新的版本：它们过得了上一行的检查，SDK 再以 JSON-RPC 的错误拒绝（缺那个版本要的 `_meta` 时 `-32602`，带了时 `-32022` `unsupported protocol version`，列出服务端说的版本）                                                    | 用服务端说的版本，如下面的 `curl` 的 `2025-11-25`                    |
+| 413 `payload_too_large`                                                                                               | 请求体过了约 36 MiB，或超过 64 KiB 而不是工具的调用                                                                                                                                                                                                                    | 拆小：一页的正文至多 5 MiB                                           |
+| 429 `rate_limited`                                                                                                    | 这个令牌的请求过了限流；或同一个客户端 IP 上认证失败的令牌太多（失败闸门 `auth_failure`，按 IP：反向代理之后要设 `server.trusted_proxies`，否则所有人共用代理的 IP）                                                                                                   | 等 `Retry-After` 的秒数；后一种先换掉失败的令牌（上面 401 的第二行） |
+| 503 `server_busy`（`Retry-After: 1`）                                                                                 | 大的请求体没有名额（上一段）                                                                                                                                                                                                                                           | 稍后重发，大的写一个接一个地发                                       |
+
+**没有配置令牌时**：客户端看到的都是同一句："This server has no OAuth: MCP takes a personal access token in the Authorization header."。不走 OAuth 的客户端从 401 的说明里读到它；会走 OAuth 的客户端（例如官方 TypeScript SDK 的 OAuth 客户端）先找 OAuth 的元数据（`/.well-known/` 之下都答 404）、再试注册（`POST /register` 答 OAuth 的错误 `invalid_client_metadata`），从注册的错误里读到它。Claude Code、Codex 各走哪一条未核对。照它在配置里加上 `Authorization: Bearer <PAT>` 即可。
+
+**自己试一下**（不握手，不改这个令牌记下的客户端名称）：
+
+```sh
+curl -sS "https://wiki.example.com/mcp?notebook=<笔记本 id>" \
+  -H "Authorization: Bearer $NERVEWIKI_CLAUDE_TOKEN" -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' -H 'MCP-Protocol-Version: 2025-11-25' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+```
+
+（只给 Codex 设了令牌的，换成 `$NERVEWIKI_CODEX_TOKEN`。）答 200 与工具的清单就是通的；别的答复照上表。
+
+### 写的规矩
+
+- **`base_version`**：`list`、`read`、`write`、`edit` 的答复里有页的 `version`（`"<节点 id>:<版本号>"`），它说出读到的是哪一版。覆盖一页用 `write` 带读到的 `version` 作 `base_version`；`edit` 不带它时在现在的正文上做（做的期间被写过就在新的正文上再做一次），带了的在那之后被写过就拒绝。拒绝是工具的错误 `page.revision_mismatch`（带 `isError` 的结果，不是 HTTP 的答复），`current_version` 是现在的版本：重读再写。同一个路径换成了另一页（原来的被改名、移走之后有人新建了同名的页）时同样拒绝，不会写到新的页上。
+- **锁**：正在网页上编辑的页（包括你自己在别的浏览器里编辑的）拒绝 agent 的写、编辑与删除，答 `page.locked`，说出谁在编辑；`move` 要改写链接的页正被编辑时答 `linking.pages_locked`。agent 不能接管锁：等编辑的人离开编辑（关掉浏览器之后锁至多约 2 分钟过期），或请笔记本的管理员强制解锁。agent 自己不开编辑会话，不挡网页上的人。
+- **历史只读**：agent 读得到历史（`log`、`changeset`、`versions`），改不了它：还原版本、从回收站恢复、撤销变更集是人在网页上做的。agent 的每次写是一个变更集，一次 `batch` 也是一个（带它的说明）；网页的历史可以按"MCP"筛选，一次移动加改名在网页上一步撤销，一个 `batch` 整组撤销。
+- `batch` 与分开调用只有一条规则不同、`grep` 与 `search` 怎样分工与怎样读 `incomplete`、`partial_lines`、`building`：见上文"MCP"的"batch"与"找"。
 
 ## 接口与代码生成
 
@@ -333,6 +485,8 @@ make image-smoke VERSION=0.1.0   # 在镜像上跑 S1、S3：迁移、探针、�
 
 - 升级到带 `index` 的版本（M9/P4，迁移 00047）时，迁移给 `page_properties` 加两个存储的生成列（`type` 与 `summary` 的值的开头与长度，`index` 只读它们）与两个部分索引，**重写整张表**：其间这张表的读与写都等（ACCESS EXCLUSIVE 锁），要一份表的副本的磁盘，写约表那么大的 WAL。在我们的测试机上，600 万行（922 MB）约 9 秒、1.06 GB 的 WAL，2.6 GB 的表约 17 秒、2.87 GB；回退（Down）约 1 毫秒。所以**先停旧的服务再执行 `migrate up`**（同上文附件目录一条的"升级时先停旧的再起新的"）：旧的还在跑时，每次读属性、每次保存页都要等完重写，大的实例上会过请求的期限。
 
+- 升级到带 MCP 的版本（M9）时，照下面部署一节的"样例（整个站点）"改代理的配置：`/mcp` 与页面正文的两个写缓冲请求体，附件的上传与导入不缓冲。照之前的样例在 `location /`、`server` 或 `http` 里写的 `proxy_request_buffering off` 只留在上传与导入的 `location` 里，`client_max_body_size 512m` 换成按路由的几个（导入的是 `513m`）。照之前的 README 设了 `client_max_body_size 512m` 的，不改时 `/mcp` 照常能用，但它与正文的写一直不缓冲；留着 nginx 默认的 1m 的，过 1 MiB 的 MCP 调用由 nginx 答 413。
+
 - **迁移与服务分用两个数据库角色时**（表的所有者执行迁移，服务用另一个角色登录，`database.auto_migrate` 关闭），服务需要的权限全部写在 [`deploy/runtime-grants.sql`](deploy/runtime-grants.sql)，授予组角色 `nervewiki_runtime`：业务表逐表的读写（不给 `TRUNCATE`、`REFERENCES`、`TRIGGER` 与 DDL），搜索的两个序列 `page_search_queue_version_seq`（入队时从它取版本）与 `page_search_tags_seq`（建索引的任务第一次写一个笔记本的行时从它取这个笔记本的前缀）的 `USAGE`，River 的表与序列，`river_job` 的 `MAINTAIN`（River 每天用 `REINDEX INDEX CONCURRENTLY` 重建它的索引，需要 PostgreSQL 17 起），导入与后台的恢复、撤销写入的 11 张表的 `MAINTAIN`（这些任务每写 10,000 个节点与结束时对它们 `ANALYZE`；少了它 PostgreSQL 跳过这张表、只发一条 WARNING，任务照常完成，统计等 autovacuum 更新），`page_search` 的 `MAINTAIN`（搜索的建索引任务每写 10,000 行对它 `ANALYZE`），`goose_db_version` 的读（`/readyz` 靠它判断迁移是否执行完）。函数与类型不在文件里，靠 PostgreSQL 默认给 PUBLIC 的权限。
   - 组角色建一次，服务登录的角色加入它：`CREATE ROLE nervewiki_runtime NOLOGIN;`、`CREATE ROLE nervewiki_app LOGIN PASSWORD '…' IN ROLE nervewiki_runtime;`。
   - **每次 `migrate up` 之后、启动服务之前**，以表的所有者执行一次这个文件，例如 `psql -v ON_ERROR_STOP=1 -f deploy/runtime-grants.sql`：新的迁移可能加了表，文件逐个列出；重复执行没有影响。
@@ -341,30 +495,80 @@ make image-smoke VERSION=0.1.0   # 在镜像上跑 S1、S3：迁移、探针、�
 
 - 在反向代理之后运行时设置 `NWIKI_SERVER__TRUSTED_PROXIES`，否则每个客户端都被当成代理。
   - 搜索的词在请求行里（`GET /api/v0/workspaces/{slug}/search?q=…`），会进反向代理的访问日志（服务自己的访问日志只记路由）：同签名地址，访问日志要照敏感数据保管。
-- 反向代理不能缓冲事件流，读超时要长于心跳间隔（`events.heartbeat_interval`，默认 20 秒）。服务端在流的答复上设了 `X-Accel-Buffering: no`。下面两份配置都验证过：帧在写入答复的同一毫秒到达，心跳让连接一直活着（M5/P2）。
-  - Caddy 的默认配置即可；开了 `encode`（`zstd gzip`）也一样：Caddy 不压缩 `text/event-stream`，不必排除它：
-
-    ```caddyfile
-    wiki.example.com {
-        reverse_proxy 127.0.0.1:8080
-    }
-    ```
-
-  - nginx 用 HTTP/1.1 连上游；`proxy_read_timeout` 默认 60 秒，长于默认的心跳，调大心跳时一起调大：
+- 反向代理不能缓冲事件流，读超时要长于心跳间隔（`events.heartbeat_interval`，默认 20 秒）。服务端在事件流的答复上设了 `X-Accel-Buffering: no`；只有事件流要它，`/mcp` 是普通的 JSON 答复（下面"反向代理与 MCP"）。下一条的两份样例里，事件流经过的那一部分（nginx 的 `location /` 与 `server` 里共用的几行、Caddy 的最后一个 `handle`）与验证过的配置是同一组指令：帧在写入答复的同一毫秒到达，心跳让连接一直活着（M5/P2）。Caddy 开了 `encode`（`zstd gzip`）也一样：它不压缩 `text/event-stream`，不必排除。nginx 用 HTTP/1.1 连上游；`proxy_read_timeout` 默认 60 秒，长于默认的心跳，调大心跳时一起调大。
+- 样例（整个站点）：请求体按路由处理，`/mcp` 与页面正文的两个写缓冲，附件的上传与导入不缓冲（下面两条）。
+  - nginx：共用的几行写在 `server` 里，每个 `location` 都继承它们。在某个 `location` 里加 `proxy_set_header` 时，它不再继承 `server` 里的四行，要在那里一起写上（少了 `X-Forwarded-For`，每个客户端都成了代理的 IP）：
 
     ```nginx
-    location / {
-        proxy_pass http://127.0.0.1:8080;
+    server {
+        server_name wiki.example.com;
+        # listen 443 ssl; ssl_certificate …; ssl_certificate_key …; 照你的部署
+
         proxy_http_version 1.1;
         proxy_set_header Connection "";
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_read_timeout 60s;
+
+        # 页面、接口与事件流；1m 等于 server.max_body_bytes（默认 1 MiB），改了它时一起改
+        location / {
+            proxy_pass http://127.0.0.1:8080;
+            client_max_body_size 1m;
+        }
+
+        # MCP：缓冲请求体，上限是 /mcp 的 37,814,272 字节
+        location = /mcp {
+            proxy_pass http://127.0.0.1:8080;
+            proxy_request_buffering on;  # 显式写：server 或 http 一层的 off 会被继承
+            client_max_body_size 37m;
+        }
+
+        # 页面正文的两个写：缓冲请求体，上限是它们的 31,522,816 字节
+        location ~ ^/api/v0/(pages/[^/]+/content|notebooks/[^/]+/pages)$ {
+            proxy_pass http://127.0.0.1:8080;
+            proxy_request_buffering on;  # 同上
+            client_max_body_size 31m;
+        }
+
+        # 附件的上传与导入的 zip：不缓冲；上限是导入包的上限（默认 512 MiB）加 64 KiB 的表单
+        location ~ ^/api/v0/notebooks/[^/]+/(assets|imports)$ {
+            proxy_pass http://127.0.0.1:8080;
+            proxy_request_buffering off;
+            client_max_body_size 513m;
+        }
     }
     ```
-- 反向代理与上传（M7 起）：附件的上传与导入的 zip 走流式的路由，服务端按字节放宽它们的读写期限（不低于每秒 64 KiB）。
-  - 反向代理不要缓冲上传的请求体：nginx 的 `proxy_request_buffering off`，否则整个文件传到代理之后服务端才开始读，提前的拒绝（无权、重名、超过上限）也要等传完。
-  - `client_max_body_size`（nginx 默认只有 1 MB）不小于导入包的上限。nginx 的 `client_body_timeout`、`proxy_send_timeout`、`proxy_read_timeout` 是两次读写之间的间隔，不是整个传输的时长，默认的 60 秒就够；按整个请求计时的代理或负载均衡，要容得下最慢的传输（50 MiB 的附件在每秒 64 KiB 下约 13 分钟，512 MiB 的导入包约 2 小时 17 分钟；`transfer.import_max_bytes` 按 `asset.upload_min_rate` 传完不能超过 3 小时）。
+
+  - Caddy（默认不缓冲请求体，`request_buffers` 只给要缓冲的三个路由；自动的 HTTPS 照 Caddy 的默认）：
+
+    ```caddyfile
+    wiki.example.com {
+        # /mcp 与页面正文的两个写：缓冲请求体（37MiB 不小于 /mcp 的 37,814,272 字节）
+        @buffered path_regexp ^/(mcp|api/v0/pages/[^/]+/content|api/v0/notebooks/[^/]+/pages)$
+        handle @buffered {
+            reverse_proxy 127.0.0.1:8080 {
+                request_buffers 37MiB
+            }
+        }
+
+        # 别的路由（页面、接口、事件流、上传与导入）：不缓冲，Caddy 的默认
+        handle {
+            reverse_proxy 127.0.0.1:8080
+        }
+    }
+    ```
+
+    经 Caddy 时，服务端在读请求体之前就答的拒绝（503 `server_busy`、401、429）对几 MiB 以上的请求体常常到客户端成了 502、没有 `Retry-After`（我们在 Caddy 2.10.2 上量过这三种，用的是在读请求体之前就答它们的替身，不是 nervewiki 本身；nginx 照原样转发了替身的 503 与它的 `Retry-After`）：网页的大的保存看到的是一次失败、不会等一等再重发；agent 看不到 `Retry-After`（客户端怎样对待 502 未核对）。
+
+- 反向代理与上传（M7 起）：附件的上传（`POST /api/v0/notebooks/{notebook_id}/assets`）与导入的 zip（`POST /api/v0/notebooks/{notebook_id}/imports`）走流式的路由，服务端按字节放宽它们的读写期限（不低于每秒 64 KiB）。
+  - 反向代理不要缓冲这两个路由的请求体（nginx 的 `proxy_request_buffering off` 只写在它们的 `location` 里；Caddy 默认不缓冲），否则整个文件传到代理之后服务端才开始读，提前的拒绝（无权、重名、超过上限）也要等传完。别的路由不要关掉缓冲（下一条）。
+  - 它们的 `client_max_body_size`（nginx 默认只有 1 MB）不小于导入包的上限（`transfer.import_max_bytes`，默认 512 MiB）加 64 KiB：请求体是 zip 加表单的几个部分。附件的上限（`asset.max_bytes`，默认 50 MiB）加 64 KiB 在它之内（`import_max_bytes` 不小于 `asset.max_bytes`）。改了 `transfer.import_max_bytes` 的，这一行照它改。nginx 的 `client_body_timeout`、`proxy_send_timeout`、`proxy_read_timeout` 是两次读写之间的间隔，不是整个传输的时长，默认的 60 秒就够；按整个请求计时的代理或负载均衡，要容得下最慢的传输（50 MiB 的附件在每秒 64 KiB 下约 13 分钟，512 MiB 的导入包约 2 小时 17 分钟；`transfer.import_max_bytes` 按 `asset.upload_min_rate` 传完不能超过 3 小时）。
+- 反向代理与 MCP（M9 起）：`/mcp` 是普通的请求与答复，每个 POST 一个 JSON 答复，不是 SSE，也不持住连接。
+  - 请求体的上限不小于 `/mcp` 的 37,814,272 字节（约 36 MiB；nginx 写 `client_max_body_size 37m`，Caddy 的 `request_buffers 37MiB` 同样不小于它）：一次调用至多 5 MiB 的正文加 1 MiB 的别的参数，每个字节按 JSON 最长的转义算 6 个。
+  - 读超时不短于 45 秒：一次调用的工作至多 15 秒（`server.request_timeout`），之前读请求体至多 30 秒（`server.read_timeout`）；改了这两个的，不短于它们的和。nginx 默认的 `proxy_read_timeout 60s` 够；Caddy 默认不限（照 Caddy 的文档）。
+  - `Host` 照常转发（nginx 的 `proxy_set_header Host $host`；Caddy 默认就转发）：服务端关掉了 MCP SDK 对不是回环地址的 `Host` 的拒绝（同一台机器上的代理转来的 `Host` 是对外的名称），由 Bearer 令牌把关。
+  - **`/mcp` 与页面正文的两个写（`PUT /api/v0/pages/{page_id}/content`、`POST /api/v0/notebooks/{notebook_id}/pages`）要缓冲请求体**：大的请求体（MCP 超过 64 KiB 的调用、超过 `server.max_body_bytes` 的正文写）整个服务同时只有两个名额、每个凭证一个（上文"MCP"的"传输"与"接入 agent（MCP）"），名额从读请求体之前占到答完；代理收完请求体再一次转给服务，慢的发送者就占不住名额。上面的两份样例都这样做。缓冲的请求体在服务端认证之前就收下了，放在代理那里：nginx 把过了 `client_body_buffer_size` 的写到 `client_body_temp_path` 的磁盘上（照 nginx 的文档），Caddy 放在内存里（我们在 Caddy 2.10.2 上量过：收着一个 30 MiB 的请求体时代理的内存涨了约 66 MB，一个接近 `/mcp` 上限的约 116 MB，没有写临时文件），所以几个慢的发送者不必有有效的令牌，就能让代理各占至多约 37 MiB 的磁盘（nginx）或一百多 MB 的内存（Caddy）：给代理留出这些地方。
+  - 不缓冲时（代理关掉了缓冲，或直接暴露服务）：两个慢的发送者（两个令牌，或两个登录的会话）各占一个名额至多约 45 秒（请求体至多 `server.read_timeout` 30 秒，之后这次调用至多 `server.request_timeout` 15 秒），其间别人的大的写等 2 秒后答 503 `server_busy`。名额满了时服务端记一行 info 的日志 `large request bodies are saturated`，`holders` 是持着名额的凭证（`pat:<令牌 id>` 或 `session:<会话 id>`）与路由：由 `api_tokens`（PAT）或 `auth_sessions`（会话）那一行的 `user_id` 找到账户，请他在"访问令牌"里撤销那个令牌，或以 `nervewiki users reset-password` 撤销这个账户的全部会话与 PAT（上文"管理员命令"）。
 - 内存：页面正文的解析预算（`page.parse_budget_bytes`，默认 8 MiB）最坏时约占 2.4 GB，见上文"页面"的"解析预算"。大的请求体（MCP 超过 64 KiB 的调用、超过 1 MiB 的正文写）整个服务同时至多两个，各约 +0.5 GB，合起来约 1 GB（M9/P2 实测两个加一个等着的 +680 到 +961 MiB，见上文"MCP"的"传输"）；请求体的 JSON 值有上限（`/mcp` 10,000 个，REST 1,000 个），所以许多小值的请求体不比一个长字符串贵。内存小的机器调小预算（至少 5 MiB，最坏约 1.5 GB），并用 `GOMEMLIMIT` 给运行时一个略低于容器上限的目标。
 
 - 数据库必须以 builtin provider 的 `C.UTF-8` 初始化，否则服务拒绝启动，见[总体设计](docs/v0.1/v0.1-design.md) 7.1。

@@ -12,6 +12,7 @@ import { blobOf, download, getAsset, pngBytes, uploadAsset, utf8, type UploadFil
 import { emailFor } from "../../fixtures/auth";
 import { answerTo } from "../../fixtures/browser";
 import { joinAs } from "../../fixtures/invitations";
+import { errorOf, mcpClient, resultOf } from "../../fixtures/mcp";
 import { memberOf, removeMember } from "../../fixtures/members";
 import { deleteNotebookWith, notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook, deleteNotebook } from "../../fixtures/notebooks";
@@ -30,7 +31,16 @@ import { createWorkspace, deleteWorkspace, newOnboardedTeam, newTeam, slugFor } 
 // page version (M7/P4 design 3.5): a page's deletion counts the attachments
 // under it and takes them, a notebook's in its settings its own; the
 // ownerless list's size and last activity count them. The purge has no
-// page: a background job's.
+// page: a background job's. An agent's deletion takes the rows of the
+// attachments under the page, its files kept for a restore, and of one
+// deleted alone (M9/P5 design 3.5).
+
+/** A deletion's answer, as the tool's structuredContent has it. */
+interface Deleted {
+  node_id: string;
+  pages: number;
+  attachments: number;
+}
 
 /** A text file named name. */
 function text(name: string): UploadFile {
@@ -99,6 +109,49 @@ test("AS4 (API): deleting a subtree or a notebook deletes its attachments' rows 
     younger.filter((blob) => !existsSync(blobPath(nervewiki.storageDir, blob))),
     "files gone"
   ).toEqual([]);
+});
+
+test("AS4 (MCP): an agent's deletion of a page with attachments under it counts them when refused without recursive, and with recursive takes their rows at its time, their addresses no file, their files kept; its deletion of an attachment alone takes its row", async ({
+  api,
+  db,
+  nervewiki,
+}, testInfo) => {
+  const { pat, workspace } = await newTeam(api, testInfo);
+  const plans = await createNotebook(api, pat, workspace.slug, "Plans");
+  const root = await createPage(api, pat, plans.id, "Root");
+  const child = await createPage(api, pat, plans.id, "Child", root.id);
+  const deep = await uploadAsset(api, pat, plans.id, { name: "deep.png", bytes: pngBytes }, child.id);
+  const shallow = await uploadAsset(api, pat, plans.id, text("shallow.txt"), root.id);
+  const kept = await uploadAsset(api, pat, plans.id, text("kept.txt"));
+  const single = await uploadAsset(api, pat, plans.id, text("single.txt"));
+  const agent = await mcpClient(nervewiki.baseURL, pat, { notebook: plans.id });
+
+  const refused = errorOf(await agent.call("delete", { path: "Root.md" }), "delete Root");
+  expect(refused.code).toBe("validation_failed");
+  expect(refused.message).toContain("1 page and 2 attachments");
+  const deleted = resultOf<Deleted>(
+    await agent.call("delete", { path: "Root.md", recursive: true }),
+    "delete Root with recursive"
+  );
+  expect([deleted.node_id, deleted.pages, deleted.attachments]).toEqual([root.id, 2, 2]);
+  await expectAssetsDeletedWithNodes(db, [deep.id, shallow.id]);
+  // Their files stay for a restore: the purge alone deletes them.
+  expect(
+    [deep, shallow].filter((a) => !existsSync(blobPath(nervewiki.storageDir, blobOf(a)))).map((a) => a.name),
+    "the deleted attachments' files gone"
+  ).toEqual([]);
+  expect((await getAsset(api, pat, deep.id)).error?.code).toBe("asset.not_found");
+  expect((await download(nervewiki.baseURL, deep.content_url)).status).toBe(404);
+  expect((await download(nervewiki.baseURL, kept.content_url)).status).toBe(200);
+  expect(errorOf(await agent.call("read", { path: "Root/Child/deep.png" }), "read deep.png").code).toBe(
+    "page.not_found"
+  );
+
+  // An attachment deleted alone: its row goes with its node, and its address, signed before, is no file.
+  const alone = resultOf<Deleted>(await agent.call("delete", { path: "single.txt" }), "delete single.txt");
+  expect([alone.node_id, alone.pages, alone.attachments]).toEqual([single.id, 0, 1]);
+  await expectAssetsDeletedWithNodes(db, [single.id]);
+  expect((await download(nervewiki.baseURL, single.content_url)).status).toBe(404);
 });
 
 test("AS4 (API): an ownerless notebook's size counts its attachments' bytes beside its pages', and its last activity is its latest upload", async ({

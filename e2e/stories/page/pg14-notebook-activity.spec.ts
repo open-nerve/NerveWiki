@@ -1,5 +1,6 @@
 import { emailFor } from "../../fixtures/auth";
 import { joinAs } from "../../fixtures/invitations";
+import { mcpClient, resultOf } from "../../fixtures/mcp";
 import { memberOf, removeMember } from "../../fixtures/members";
 import { createNotebook } from "../../fixtures/notebooks";
 import { ownerlessNotebooks } from "../../fixtures/ownerless";
@@ -11,7 +12,20 @@ import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 // PG14, a notebook's activity (M3 design 4; M4/P4 design 3.10): an
 // ownerless notebook's size is its pages' bytes, and its last activity the
 // latest page write. The ownerless list (M3/P5) shows that size (M4/P5
-// design 3.13).
+// design 3.13). An agent's writes count alike, its edit the last (M9/P5
+// design 3.2, moved from MC3).
+
+/** A write's answer, as much as PG14 reads of the tool's structuredContent. */
+interface Written {
+  version: string;
+}
+
+/** An edit's answer, its time the changeset's. */
+interface Edited {
+  replacements: number;
+  changed: boolean;
+  at: string | null;
+}
 
 test("PG14 (API): an ownerless notebook's size is the bytes of its pages' contents, and its last activity the latest page write, a session's second save", async ({
   api,
@@ -39,6 +53,46 @@ test("PG14 (API): an ownerless notebook's size is the bytes of its pages' conten
   const [at] = await db.query<{ last: boolean }>("SELECT $1::timestamptz = $2::timestamptz AS last", [
     listed[0]?.last_activity_at,
     last.content_updated_at,
+  ]);
+  expect(at?.last).toBe(true);
+});
+
+test("PG14 (MCP): an ownerless notebook's size is the bytes of the pages an agent wrote, and its last activity the agent's last write, an edit", async ({
+  api,
+  db,
+  nervewiki,
+}, testInfo) => {
+  const { pat: adminPat, workspace } = await newTeam(api, testInfo);
+  const ownerEmail = emailFor(testInfo, "owner");
+  const ownerPat = await joinAs(api, adminPat, workspace.slug, ownerEmail, "member");
+  const notebook = await createNotebook(api, ownerPat, workspace.slug, "Plans");
+  const agent = await mcpClient(nervewiki.baseURL, ownerPat, { notebook: notebook.id });
+  const intro = "Written by the agent.\n";
+  const content = "# Notes\n\nWritten again.\n";
+  resultOf<Written>(await agent.call("write", { path: "Intro.md", content: intro }), "write Intro");
+  const notes = resultOf<Written>(await agent.call("write", { path: "Notes.md", content: "# Notes\n" }), "write Notes");
+  // An agent opens no session: its second save of Notes is an edit on the version its write gave.
+  const last = resultOf<Edited>(
+    await agent.call("edit", {
+      path: "Notes.md",
+      old_string: "# Notes\n",
+      new_string: content,
+      base_version: notes.version,
+    }),
+    "edit Notes"
+  );
+  expect([last.replacements, last.changed]).toEqual([1, true]);
+  expect(
+    (await removeMember(api, adminPat, (await memberOf(api, adminPat, workspace.slug, ownerEmail)).id)).response.status
+  ).toBe(204);
+
+  const listed = await ownerlessNotebooks(api, adminPat, workspace.slug);
+  expect(listed.map((l) => [l.id, l.size_bytes])).toEqual([
+    [notebook.id, Buffer.byteLength(intro) + Buffer.byteLength(content)],
+  ]);
+  const [at] = await db.query<{ last: boolean }>("SELECT $1::timestamptz = $2::timestamptz AS last", [
+    listed[0]?.last_activity_at,
+    last.at,
   ]);
   expect(at?.last).toBe(true);
 });

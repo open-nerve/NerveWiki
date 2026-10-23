@@ -1,8 +1,9 @@
 import { expectIndexedLinks } from "../../fixtures/assert/links";
 import { countAnswers } from "../../fixtures/browser";
 import type { Database } from "../../fixtures/db";
-import { holdStream } from "../../fixtures/events";
+import { holdStream, settleEvents } from "../../fixtures/events";
 import { getPageProperties, listBacklinks } from "../../fixtures/links";
+import { mcpClient, resultOf } from "../../fixtures/mcp";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, writeContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -15,10 +16,23 @@ import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 // that link here, with their lines, and one another writes shows as it is
 // written (the links event). Through the API, the backlinks and the
 // properties' links, and the event; the outline, the focus and the column
-// itself are the page's alone.
+// itself are the page's alone. Through MCP, the backlinks by a page's path,
+// and the event of an agent's write (M9/P5 design 3.4).
 
 /** Doc's frontmatter: a property link to Hub, one to a page not there. */
 const properties = ["---", 'up: "[[Hub]]"', 'see: "[[Nowhere]]"', "---"];
+
+/** A write's answer, as much as L6 reads of the tool's structuredContent. */
+interface Written {
+  node_id: string;
+  version: string;
+}
+
+/** backlinks' answer: each page's path, its links to the page and their lines. */
+interface BacklinksAnswer {
+  pages: { path: string; links: number; contexts: string[] }[];
+  next_cursor: string | null;
+}
 
 /** Doc's and Other's links as the index has them: to Hub, by Doc's property and Other's body, and to no page. */
 async function expectLinked(db: Database, docId: string, otherId: string, hubId: string): Promise<void> {
@@ -32,10 +46,13 @@ async function expectLinked(db: Database, docId: string, otherId: string, hubId:
 test("L6 (API): a page's properties carry where their links lead; its backlinks list the pages that link to it with their lines, a page of them at a time, one another writes once written, the links event naming it", async ({
   api,
   db,
+  nervewiki,
   openEvents,
 }, testInfo) => {
   const { pat, workspace } = await newTeam(api, testInfo);
   const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
+  // The page settling writes: Doc's own links event must not be taken for Other's.
+  const marker = await createPage(api, pat, notebook.id, "Marker");
   const hub = await createPage(api, pat, notebook.id, "Hub");
   const other = await createPage(api, pat, notebook.id, "Other");
   const doc = await createPage(api, pat, notebook.id, "Doc", null, [...properties, "# Intro", ""].join("\n"));
@@ -57,6 +74,7 @@ test("L6 (API): a page's properties carry where their links lead; its backlinks 
     next_cursor: null,
   });
 
+  await settleEvents(api, nervewiki.baseURL, pat, marker.id);
   const events = await openEvents(pat);
   await writeContent(api, pat, other.id, { content: "Meet at [[Hub]] today\n", base_revision: 1 });
   let frame = await events.next();
@@ -85,6 +103,78 @@ test("L6 (API): a page's properties carry where their links lead; its backlinks 
     )
   ).toEqual([doc.id]);
   await expectLinked(db, doc.id, other.id, hub.id);
+});
+
+test("L6 (MCP): an agent reads a page's backlinks by its path, a property's link with its line, as REST's; one it writes shows at once, the links event naming the page linked, a page of them at a time", async ({
+  api,
+  db,
+  nervewiki,
+  openEvents,
+}, testInfo) => {
+  const { pat, workspace } = await newTeam(api, testInfo);
+  const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
+  // The page settling writes, made first: Hub's version stays.
+  const marker = await createPage(api, pat, notebook.id, "Marker");
+  const agent = await mcpClient(nervewiki.baseURL, pat, { notebook: notebook.id });
+  const written = new Map<string, Written>();
+  for (const [path, content] of [
+    ["Hub.md", "# Hub\n"],
+    ["Other.md", "Notes of the day.\n"],
+    ["Doc.md", [...properties, "# Intro", ""].join("\n")],
+  ] as const) {
+    // oxlint-disable-next-line no-await-in-loop -- one write at a time
+    written.set(path, resultOf<Written>(await agent.call("write", { path, content }), `write ${path}`));
+  }
+  const idOf = (path: string) => written.get(path)?.node_id ?? path;
+  const hub = idOf("Hub.md");
+  const paths = new Map([...written].map(([path, w]) => [w.node_id, path]));
+  // REST's backlinks of Hub, ids as paths and counts as links, as backlinks answers them; and an agent's of Hub.md.
+  const rest = async (query: { limit?: number; cursor?: string } = {}) =>
+    ((await listBacklinks(api, pat, hub, query)).data?.data ?? []).map((b) => ({
+      path: paths.get(b.id) ?? b.id,
+      links: b.count,
+      contexts: b.contexts,
+    }));
+  const backlinks = async (args: Record<string, unknown> = {}) =>
+    resultOf<BacklinksAnswer>(
+      await agent.call("backlinks", { path: "Hub.md", ...args }),
+      `backlinks ${JSON.stringify(args)}`
+    );
+
+  const first = await backlinks();
+  expect(first).toEqual({ pages: [{ path: "Doc.md", links: 1, contexts: ['up: "[[Hub]]"'] }], next_cursor: null });
+  expect(first.pages).toEqual(await rest());
+
+  // Settled before the stream opens, Doc's own links event cannot pass for the one of the write it awaits.
+  await settleEvents(api, nervewiki.baseURL, pat, marker.id);
+  const events = await openEvents(pat);
+  const other = written.get("Other.md");
+  resultOf(
+    await agent.call("write", { path: "Other.md", content: "Meet at [[Hub]] today\n", base_version: other?.version }),
+    "write Other's link"
+  );
+  let frame = await events.next();
+  while (frame.event === "pages") {
+    // oxlint-disable-next-line no-await-in-loop -- one frame after another
+    frame = await events.next();
+  }
+  expect(frame).toEqual({
+    event: "links",
+    data: { workspace_id: workspace.id, notebook_id: notebook.id, pages: [], targets: [hub], aliases: false },
+  });
+
+  // Both now, in the order of their ids; a page of them at a time, each as REST's.
+  const both = await backlinks();
+  expect(both.pages.map((b) => [b.path, b.links])).toEqual(
+    ["Other.md", "Doc.md"].toSorted((x, y) => (idOf(x) < idOf(y) ? -1 : 1)).map((path) => [path, 1])
+  );
+  expect(both).toEqual({ pages: await rest(), next_cursor: null });
+  const one = await backlinks({ limit: 1 });
+  expect(one.pages).toEqual((await rest()).slice(0, 1));
+  expect(one.next_cursor).not.toBeNull();
+  const next = await backlinks({ limit: 1, cursor: one.next_cursor });
+  expect(next).toEqual({ pages: (await rest()).slice(1), next_cursor: null });
+  await expectLinked(db, idOf("Doc.md"), idOf("Other.md"), hub);
 });
 
 test("L6 (page): the right column's outline goes to a heading, one in a folded callout too, and is not shown while the page is edited; a property link goes to its page, whose backlinks show a link another writes as it is written", async ({

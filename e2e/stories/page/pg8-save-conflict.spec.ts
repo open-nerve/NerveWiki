@@ -1,10 +1,11 @@
 import { accountIdOf } from "../../fixtures/assert/identity";
-import { expectContentWritten, expectOneSessionRevision, sessionsOf } from "../../fixtures/assert/page";
+import { expectContentWritten, expectOneSessionRevision, expectVersions, sessionsOf } from "../../fixtures/assert/page";
 import { emailFor } from "../../fixtures/auth";
 import { countAnswers, failedToLoad } from "../../fixtures/browser";
 import type { Database } from "../../fixtures/db";
 import { holdStream } from "../../fixtures/events";
 import { joinAs } from "../../fixtures/invitations";
+import { errorOf, mcpClient, readPage, resultOf, writtenOf } from "../../fixtures/mcp";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, openSession, putContent, readContent, writeContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -25,7 +26,16 @@ import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 // no write comes first (M5/P1): it expires, through the database rather
 // than the wall clock, another credential writes, and the save in it is
 // 409 page.edit_session_ended; the editor opens another, and its save on
-// the version before is the conflict.
+// the version before is the conflict. An agent's write and edit on the
+// version it read are refused once another credential writes first, with
+// the version now (M9/P5 design 3.2).
+
+/** A write's answer, as the tool's structuredContent has it. */
+interface Written {
+  node_id: string;
+  version: string;
+  at: string | null;
+}
 
 /** Expires the page pageId's edit sessions, once one is open. */
 async function expireSessionsOf(db: Database, pageId: string): Promise<void> {
@@ -74,6 +84,55 @@ test("PG8 (API): the session expires and another credential writes first, so a s
   expect(kept.revision).toBe(3);
   await expectContentWritten(db, kept, "Mine\n", editorId);
   await expectOneSessionRevision(db, session.id, page.id, 2, 3);
+});
+
+test("PG8 (MCP): another credential writes first, so an agent's write and edit on the version it read are page.revision_mismatch, saying the version now; it reads the current content and writes its own on that version, in a changeset of its client", async ({
+  api,
+  db,
+  nervewiki,
+}, testInfo) => {
+  const { adminId, pat: adminPat, workspace } = await newTeam(api, testInfo);
+  const editorEmail = emailFor(testInfo, "editor");
+  const editorPat = await joinAs(api, adminPat, workspace.slug, editorEmail, "member");
+  const editorId = await accountIdOf(db, editorEmail);
+  const notebook = await createNotebook(api, adminPat, workspace.slug, "Plans", "editor");
+  const page = await createPage(api, adminPat, notebook.id, "Notes");
+  const agent = await mcpClient(nervewiki.baseURL, editorPat, { notebook: notebook.id });
+  const { version } = (await readPage(agent, { path: "Notes.md" })).meta;
+  expect(version).toBe(`${page.id}:1`);
+
+  expect((await writeContent(api, adminPat, page.id, { content: "Theirs\n", base_revision: 1 })).revision).toBe(2);
+  // One after the other, so that each refusal is of its own call; edit checks the version before it looks for
+  // old_string, which the content now holds.
+  const stale = [
+    await agent.call("write", { path: "Notes.md", content: "Mine\n", base_version: version }),
+    await agent.call("edit", { path: "Notes.md", old_string: "Theirs", new_string: "Mine", base_version: version }),
+  ];
+  expect(
+    stale.map((answer, i) => {
+      const refused = errorOf(answer, `the ${["write", "edit"][i]} on the version read`);
+      return [refused.code, refused.current_version];
+    })
+  ).toEqual([
+    ["page.revision_mismatch", `${page.id}:2`],
+    ["page.revision_mismatch", `${page.id}:2`],
+  ]);
+
+  // The version now carries no content: the agent reads it, and writes on it.
+  const current = await readPage(agent, { path: "Notes.md" });
+  expect([current.meta.version, current.text]).toEqual([`${page.id}:2`, "Theirs\n"]);
+  const kept = resultOf<Written>(
+    await agent.call("write", { path: "Notes.md", content: "Mine\n", base_version: current.meta.version }),
+    "write Notes on the version now"
+  );
+  expect(kept.version).toBe(`${page.id}:3`);
+  await expectContentWritten(db, writtenOf(kept, "write Notes"), "Mine\n", editorId);
+  // Every version: the two refused wrote none.
+  await expectVersions(db, page.id, [
+    { base: null, revision: 1, content: "", kind: "edit", byId: adminId, client: "api" },
+    { base: 1, revision: 2, content: "Theirs\n", kind: "edit", byId: adminId, client: "api" },
+    { base: 2, revision: 3, content: "Mine\n", kind: "edit", byId: editorId, client: "mcp:e2e-agent" },
+  ]);
 });
 
 test("PG8 (page): the edit's session expires and a token writes; the save opens another session and shows the differences, and Keep mine saves over them on their revision, in the edit's changeset; on another page Discard mine edits theirs, and the next save goes through", async ({

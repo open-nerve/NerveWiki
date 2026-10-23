@@ -1,5 +1,6 @@
 import { expectVersions } from "../../fixtures/assert/page";
 import { displayNameOf } from "../../fixtures/auth";
+import { errorOf, mcpClient, readPage, resultOf } from "../../fixtures/mcp";
 import { createNotebook } from "../../fixtures/notebooks";
 import {
   createPage,
@@ -17,7 +18,31 @@ import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 // HI1, a page's versions (M8 design 4.3; M8/P1 design 4.7): each edit
 // session is one version, its saves moving the version's revision on; the
 // right column lists them, and a version's page reads one, read only, and
-// compares it with the version before it and with the page now.
+// compares it with the version before it and with the page now. An agent
+// lists the versions as REST does, and reads one by any revision it held
+// (M9/P5 design 3.6).
+
+/** Tasks' contents: a byte order mark, CRLF and a decomposed é, kept byte for byte. */
+const created = "﻿# Café\r\n\r\n- [ ] open\r\n";
+const first = "﻿# Café\r\n\r\n- [x] open\r\n";
+const second = "﻿# Café\r\n\r\n- [x] open\r\nFirst\r\n";
+const third = "﻿# Café\r\n\r\n- [x] open\r\nFirst\r\nSecond \r\n";
+
+/** A version of the list, REST's row as the tool's structuredContent has it (MC8). */
+type VersionRow = {
+  revision: number;
+  base_revision: number | null;
+  editing: boolean;
+  byte_size: number;
+  changeset: { kind: string; client: string; created_by: unknown };
+} & Record<string, unknown>;
+
+/** versions' list. */
+interface Versions {
+  current_version: string;
+  versions: VersionRow[];
+  next_cursor: string | null;
+}
 
 test("HI1 (API): each edit session is one version, which any revision it held addresses, answered with its own; the list is newer first, without content, the newest marked while its session is alive; a version's content is what was written, byte for byte", async ({
   api,
@@ -25,11 +50,7 @@ test("HI1 (API): each edit session is one version, which any revision it held ad
 }, testInfo) => {
   const { adminEmail, adminId, pat, workspace } = await newTeam(api, testInfo);
   const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
-  const created = "﻿# Café\r\n\r\n- [ ] open\r\n";
   const page = await createPage(api, pat, notebook.id, "Tasks", null, created);
-  const first = "﻿# Café\r\n\r\n- [x] open\r\n";
-  const second = "﻿# Café\r\n\r\n- [x] open\r\nFirst\r\n";
-  const third = "﻿# Café\r\n\r\n- [x] open\r\nFirst\r\nSecond \r\n";
 
   const one = await openSession(api, pat, page.id);
   await writeContent(api, pat, page.id, { content: first, base_revision: 1, edit_session_id: one.id });
@@ -112,6 +133,96 @@ test("HI1 (API): each edit session is one version, which any revision it held ad
   ]);
 });
 
+test("HI1 (MCP): an agent lists a page's versions as REST does, each edit session one version, the newest marked while its session is alive; reads a version by any revision it held, answered with its own, byte for byte; its own write is a version of its own", async ({
+  api,
+  db,
+  nervewiki,
+}, testInfo) => {
+  const { adminEmail, adminId, pat, workspace } = await newTeam(api, testInfo);
+  const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
+  const page = await createPage(api, pat, notebook.id, "Tasks", null, created);
+  const one = await openSession(api, pat, page.id);
+  await writeContent(api, pat, page.id, { content: first, base_revision: 1, edit_session_id: one.id });
+  await writeContent(api, pat, page.id, { content: second, base_revision: 2, edit_session_id: one.id });
+  expect((await endSession(api, pat, one.id)).response.status).toBe(204);
+  const two = await openSession(api, pat, page.id);
+  await writeContent(api, pat, page.id, { content: third, base_revision: 3, edit_session_id: two.id });
+  const agent = await mcpClient(nervewiki.baseURL, pat, { notebook: notebook.id });
+  const versions = async () => resultOf<Versions>(await agent.call("versions", { path: "Tasks.md" }), "versions");
+
+  const editing = await versions();
+  expect(editing.versions.map((v) => [v.revision, v.base_revision, v.editing])).toEqual([
+    [4, 3, true],
+    [3, 1, false],
+    [1, null, false],
+  ]);
+
+  // Each row is REST's, which the API version's literal projection reads; the version now is read's.
+  expect((await endSession(api, pat, two.id)).response.status).toBe(204);
+  const listed = await versions();
+  expect(listed.versions).toEqual((await getVersions(api, pat, page.id)).data?.data);
+  const by = { user_id: adminId, display_name: displayNameOf(adminEmail) };
+  const row = (revision: number, base: number | null, content: string) => ({
+    revision,
+    base_revision: base,
+    editing: false,
+    byte_size: Buffer.byteLength(content),
+    kind: "edit",
+    client: "api",
+    by,
+  });
+  expect(
+    listed.versions.map(({ revision, base_revision, editing: marked, byte_size, changeset }) => ({
+      revision,
+      base_revision,
+      editing: marked,
+      byte_size,
+      kind: changeset.kind,
+      client: changeset.client,
+      by: changeset.created_by,
+    }))
+  ).toEqual([row(4, 3, third), row(3, 1, second), row(1, null, created)]);
+  expect([listed.next_cursor, listed.versions.some((version) => "content" in version)]).toEqual([null, false]);
+  const read = await readPage(agent, { path: "Tasks.md" });
+  expect([listed.current_version, read.meta.version]).toEqual([`${page.id}:4`, `${page.id}:4`]);
+  expect([read.text === third, (await readContent(api, pat, page.id)).content === third]).toEqual([true, true]);
+
+  // A version by any revision it held, answered with its own revision; none past the last.
+  for (const [asked, held, content] of [
+    [1, 1, created],
+    [2, 3, second],
+  ] as const) {
+    // oxlint-disable-next-line no-await-in-loop -- one version at a time
+    const answer = await agent.call("versions", { path: "Tasks.md", revision: asked });
+    expect(answer.isError, answer.text.join(" ")).toBe(false);
+    const meta = JSON.parse(answer.text[0] ?? "{}") as { revision: number };
+    expect([meta.revision, answer.text[1] === content], `revision ${asked}`).toEqual([held, true]);
+  }
+  const none = errorOf(await agent.call("versions", { path: "Tasks.md", revision: 5 }), "versions at 5");
+  expect(none.code).toBe("page.version_not_found");
+
+  // The agent's write is a version of its own, of its client, no session marking it.
+  const fourth = `${third}By the agent.\r\n`;
+  const written = resultOf<{ version: string }>(
+    await agent.call("write", { path: "Tasks.md", content: fourth, base_version: read.meta.version }),
+    "write Tasks"
+  );
+  expect(written.version).toBe(`${page.id}:5`);
+  const after = await versions();
+  expect(after.versions.map((v) => [v.revision, v.base_revision, v.editing, v.changeset.client])).toEqual([
+    [5, 4, false, "mcp:e2e-agent"],
+    [4, 3, false, "api"],
+    [3, 1, false, "api"],
+    [1, null, false, "api"],
+  ]);
+  await expectVersions(db, page.id, [
+    { base: null, revision: 1, content: created, kind: "edit", byId: adminId, client: "api" },
+    { base: 1, revision: 3, content: second, kind: "edit", byId: adminId, client: "api" },
+    { base: 3, revision: 4, content: third, kind: "edit", byId: adminId, client: "api" },
+    { base: 4, revision: 5, content: fourth, kind: "edit", byId: adminId, client: "mcp:e2e-agent" },
+  ]);
+});
+
 test("HI1 (page): two edits, the page left between them, are two more versions in the right column; the first, opened, reads its task items without ticking them, and the second compares with the first and with the page now", async ({
   api,
   db,
@@ -119,8 +230,8 @@ test("HI1 (page): two edits, the page left between them, are two more versions i
 }, testInfo) => {
   const { adminEmail, adminId, pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
   const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
-  const created = "- [ ] open\n- [x] done\n\nNotes\n";
-  const tasks = await createPage(api, pat, notebook.id, "Tasks", null, created);
+  const plainCreated = "- [ ] open\n- [x] done\n\nNotes\n";
+  const tasks = await createPage(api, pat, notebook.id, "Tasks", null, plainCreated);
   const page = await signedInPage(tokens);
   const main = page.getByRole("main");
   const admin = displayNameOf(adminEmail);
@@ -145,9 +256,9 @@ test("HI1 (page): two edits, the page left between them, are two more versions i
   await expect(listed.nth(0)).toContainText(`Current${admin} · Edit`);
   await expect(listed.nth(1)).toContainText(`${admin} · Edit`);
   await expect(listed.nth(2)).toContainText(`${admin} · Edit`);
-  const second = `${created}First`;
-  const third = `${created}First Second`;
-  expect(await readContent(api, pat, tasks.id)).toMatchObject({ content: third, revision: 3 });
+  const plainSecond = `${plainCreated}First`;
+  const plainThird = `${plainCreated}First Second`;
+  expect(await readContent(api, pat, tasks.id)).toMatchObject({ content: plainThird, revision: 3 });
 
   await listed.nth(2).getByRole("link").click();
   await expect(pageHeading(page, "Version 1")).toBeFocused();
@@ -176,9 +287,9 @@ test("HI1 (page): two edits, the page left between them, are two more versions i
   expect(new URL(page.url()).pathname).toBe(versionPath(workspace.slug, notebook.id, tasks.id, 2));
 
   await expectVersions(db, tasks.id, [
-    { base: null, revision: 1, content: created, kind: "edit", byId: adminId, client: "api" },
-    { base: 1, revision: 2, content: second, kind: "edit", byId: adminId, client: "web" },
-    { base: 2, revision: 3, content: third, kind: "edit", byId: adminId, client: "web" },
+    { base: null, revision: 1, content: plainCreated, kind: "edit", byId: adminId, client: "api" },
+    { base: 1, revision: 2, content: plainSecond, kind: "edit", byId: adminId, client: "web" },
+    { base: 2, revision: 3, content: plainThird, kind: "edit", byId: adminId, client: "web" },
   ]);
 });
 

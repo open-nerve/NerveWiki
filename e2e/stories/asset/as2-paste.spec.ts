@@ -1,9 +1,11 @@
 import type { Locator } from "@playwright/test";
 
 import { expectEmbedded } from "../../fixtures/assert/asset";
-import { listAssets, pngBytes, uploadAsset } from "../../fixtures/assets";
+import { expectChangesetOf } from "../../fixtures/assert/page";
+import { download, listAssets, pngBytes, uploadAsset } from "../../fixtures/assets";
 import { countAnswers } from "../../fixtures/browser";
 import { getPageProperties, listTags } from "../../fixtures/links";
+import { mcpClient, readPage, resultOf, writtenOf } from "../../fixtures/mcp";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, getView, readContent, writeContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -12,7 +14,20 @@ import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 
 // AS2, files pasted into the editor or dropped on it (M7 design 9; M7/P4 design 5): each uploads as the page's
 // attachment and its embed goes where it was pasted or dropped; the reading view shows them, the index leads to them.
-// The API version uploads them, then writes the page with their embeds: the same database's assertions.
+// The API version uploads them, then writes the page with their embeds: the same database's assertions. The MCP
+// version's agent reads the images uploaded, and writes the page with their embeds by the links read gives (M9/P5
+// design 3.5).
+
+/** The origin the server writes its addresses with (fixtures/server.ts). */
+const publicOrigin = "http://wiki.example";
+
+/** A write's answer, as much as AS2 reads of the tool's structuredContent. */
+interface Written {
+  node_id: string;
+  version: string;
+  changeset_id: string | null;
+  at: string | null;
+}
 
 /** The page's content before the files: its text, the cursor going after it. */
 const before = "Notes of the day.\n";
@@ -61,6 +76,83 @@ test("AS2 (API): images uploaded under a page, and the page written with their e
     adminId,
     "api"
   );
+  const html = (await getView(api, pat, guide.id)).data?.html ?? "";
+  expect([...html.matchAll(/<img class="nw-asset" src="([^"?]*)/g)].map(([, src]) => src)).toEqual([
+    `/api/v0/assets/${dropped.id}/content`,
+    `/api/v0/assets/${pasted.id}/content`,
+  ]);
+});
+
+test("AS2 (MCP): an agent reads the page's uploaded images, each as itself with how to link it and its address, and writes the page with their embeds; the index leads them to the attachments", async ({
+  api,
+  db,
+  nervewiki,
+}, testInfo) => {
+  const { pat, adminId, workspace } = await newTeam(api, testInfo);
+  const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
+  const guide = await createPage(api, pat, notebook.id, "Guide", null, before);
+  // Another chart.png, uploaded first elsewhere: Guide's, uploaded after it, is linked by its path, not its name.
+  const other = await createPage(api, pat, notebook.id, "Other");
+  await uploadAsset(api, pat, notebook.id, { name: "chart.png", bytes: pngBytes, type: "image/png" }, other.id);
+  const pasted = await uploadAsset(
+    api,
+    pat,
+    notebook.id,
+    { name: "Pasted image 20261009120000.png", bytes: pngBytes, type: "image/png" },
+    guide.id
+  );
+  const dropped = await uploadAsset(
+    api,
+    pat,
+    notebook.id,
+    { name: "chart.png", bytes: pngBytes, type: "image/png" },
+    guide.id
+  );
+  expect([dropped.link, pasted.link]).toEqual(["Guide/chart.png", "Pasted image 20261009120000.png"]);
+  const agent = await mcpClient(nervewiki.baseURL, pat, { notebook: notebook.id });
+  const { version } = (await readPage(agent, { path: "Guide.md" })).meta;
+
+  // Each image as itself, how to link it, and its signed address, which downloads its bytes.
+  const links: string[] = [];
+  for (const asset of [dropped, pasted]) {
+    // oxlint-disable-next-line no-await-in-loop -- one attachment at a time
+    const answer = await agent.call("read", { path: `Guide/${asset.name}` });
+    expect(answer.isError, answer.text.join(" ")).toBe(false);
+    const meta = JSON.parse(answer.text[0] ?? "{}") as { link: string | null; url: string | null };
+    expect(meta.link, asset.name).toBe(asset.link);
+    const address = new URL(meta.url ?? "");
+    expect([address.origin, address.pathname]).toEqual([publicOrigin, `/api/v0/assets/${asset.id}/content`]);
+    // oxlint-disable-next-line no-await-in-loop -- its download, at the server's own address
+    const got = await download(nervewiki.baseURL, address.pathname + address.search);
+    expect(got.status).toBe(200);
+    // oxlint-disable-next-line no-await-in-loop -- its body
+    expect(Buffer.compare(Buffer.from(await got.arrayBuffer()), Buffer.from(pngBytes))).toBe(0);
+    const image = answer.content[1];
+    expect(image?.type === "image" && Buffer.compare(Buffer.from(image.data, "base64"), Buffer.from(pngBytes))).toBe(0);
+    links.push(meta.link ?? "");
+  }
+
+  // The page written with the embeds by the links read gave; the upload's client is REST's, the write the agent's.
+  const content = `Notes of![[${links[0]}]] the day.\n![[${links[1]}]] and a chart:`;
+  const written = resultOf<Written>(
+    await agent.call("write", { path: "Guide.md", content, base_version: version }),
+    "write Guide"
+  );
+  await expectEmbedded(
+    db,
+    nervewiki.storageDir,
+    { written: writtenOf(written, "write Guide"), content, attachments: [dropped, pasted] },
+    pngBytes,
+    adminId,
+    "api"
+  );
+  // A write of content alone moves no node: no item.
+  await expectChangesetOf(db, String(written.changeset_id), {
+    client: "mcp:e2e-agent",
+    byId: adminId,
+    items: [],
+    versions: [guide.id],
+  });
   const html = (await getView(api, pat, guide.id)).data?.html ?? "";
   expect([...html.matchAll(/<img class="nw-asset" src="([^"?]*)/g)].map(([, src]) => src)).toEqual([
     `/api/v0/assets/${dropped.id}/content`,

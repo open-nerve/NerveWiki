@@ -3,6 +3,7 @@ import { displayNameOf, emailFor } from "../../fixtures/auth";
 import { countAnswers } from "../../fixtures/browser";
 import { holdStream, settleEvents } from "../../fixtures/events";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
+import { mcpClient, resultOf } from "../../fixtures/mcp";
 import { addedNotebookMember } from "../../fixtures/notebook-members";
 import { createNotebook } from "../../fixtures/notebooks";
 import {
@@ -11,6 +12,7 @@ import {
   endSession,
   moveNode,
   openSession,
+  readContent,
   renameNode,
   writeContent,
 } from "../../fixtures/pages";
@@ -23,6 +25,24 @@ import { newTeam } from "../../fixtures/workspaces";
 // each opening and end of an edit session as a lock frame; the others'
 // streams get nothing of it. In the browser (M5/P3 design 3.8, 3.10), what
 // a page shows follows them: the reading view, the tree, who is editing.
+// An agent's writes go through the same unit: a frame of each, a batch's
+// one (M9/P5 design 3.3).
+
+/** A write's or an edit's answer, as much as C7 reads of the tool's structuredContent. */
+interface Written {
+  node_id: string;
+  version: string;
+}
+
+/** A batch's answer: each op's result. */
+interface Batched {
+  results: Written[];
+}
+
+/** The order of a frame's pages by their ids, as a comparison takes them: a unit lists them in its changes' order. */
+function byId(x: { id: string }, y: { id: string }): number {
+  return x.id < y.id ? -1 : x.id > y.id ? 1 : 0;
+}
 
 test("C7 (API): B, who sees Eng, receives a pages frame of each of A's writes and a lock frame of each session change; C, who does not, receives nothing of them", async ({
   api,
@@ -38,7 +58,8 @@ test("C7 (API): B, who sees Eng, receives a pages frame of each of A's writes an
   await addedNotebookMember(api, a, eng.id, await accountIdOf(db, bEmail), "reader");
   const mine = await createNotebook(api, c, workspace.slug, "Mine");
   const control = await createPage(api, c, mine.id, "Control");
-  await settleEvents(api, nervewiki.baseURL, a, (await createPage(api, a, eng.id, "Marker")).id);
+  const marker = await createPage(api, a, eng.id, "Marker");
+  await settleEvents(api, nervewiki.baseURL, a, marker.id);
   const bStream = await openEvents(b);
   const cStream = await openEvents(c);
   const ofEng = { workspace_id: workspace.id, notebook_id: eng.id };
@@ -61,8 +82,119 @@ test("C7 (API): B, who sees Eng, receives a pages frame of each of A's writes an
 
   expect((await deleteNode(api, a, parent.id)).response.status).toBe(204);
   expect(await bStream.expectNext("pages")).toEqual({ ...ofEng, tree: true, pages: [] });
+  // The deletion was one frame: the next is that of a write after it, Marker's, on the revision read (settling
+  // writes Marker again whenever its stream ends first, so not always at 2).
+  const { revision } = await readContent(api, a, marker.id);
+  await writeContent(api, a, marker.id, { content: "# Marker\n", base_revision: revision });
+  expect(await bStream.expectNext("pages")).toEqual({
+    ...ofEng,
+    tree: false,
+    pages: [{ id: marker.id, revision: revision + 1 }],
+  });
 
   // C's first frame since it opened is that of its own write, after all of A's.
+  await writeContent(api, c, control.id, { content: "# Control\n", base_revision: 1 });
+  expect(await cStream.expectNext("pages")).toEqual({
+    workspace_id: workspace.id,
+    notebook_id: mine.id,
+    tree: false,
+    pages: [{ id: control.id, revision: 2 }],
+  });
+});
+
+test("C7 (MCP): B, who sees Eng, receives a pages frame of each of A's agent's writes, its creations, renames, moves, edits, a batch's one frame, and deletion, and nothing more; C, who does not, receives nothing of them", async ({
+  api,
+  db,
+  nervewiki,
+  openEvents,
+}, testInfo) => {
+  const { pat: a, workspace } = await newTeam(api, testInfo);
+  const bEmail = emailFor(testInfo, "b");
+  const b = await joinAs(api, a, workspace.slug, bEmail, "member");
+  const c = await joinAs(api, a, workspace.slug, emailFor(testInfo, "c"), "member");
+  const eng = await createNotebook(api, a, workspace.slug, "Eng");
+  await addedNotebookMember(api, a, eng.id, await accountIdOf(db, bEmail), "reader");
+  const mine = await createNotebook(api, c, workspace.slug, "Mine");
+  const control = await createPage(api, c, mine.id, "Control");
+  const marker = await createPage(api, a, eng.id, "Marker");
+  // The handshake writes the token's name alone, no page: all is set up before the streams open.
+  const agent = await mcpClient(nervewiki.baseURL, a, { notebook: eng.id });
+  await settleEvents(api, nervewiki.baseURL, a, marker.id);
+  const bStream = await openEvents(b);
+  const cStream = await openEvents(c);
+  const ofEng = { workspace_id: workspace.id, notebook_id: eng.id };
+
+  const notes = resultOf<Written>(await agent.call("write", { path: "Notes.md", content: "Draft\n" }), "write Notes");
+  expect(await bStream.expectNext("pages")).toEqual({
+    ...ofEng,
+    tree: true,
+    pages: [{ id: notes.node_id, revision: 1 }],
+  });
+  const parent = resultOf<Written>(
+    await agent.call("write", { path: "Parent.md", content: "# Parent\n" }),
+    "write Parent"
+  );
+  expect(await bStream.expectNext("pages")).toEqual({
+    ...ofEng,
+    tree: true,
+    pages: [{ id: parent.node_id, revision: 1 }],
+  });
+  resultOf(await agent.call("move", { from: "Notes.md", to: "Minutes.md" }), "rename Notes");
+  expect(await bStream.expectNext("pages")).toEqual({ ...ofEng, tree: true, pages: [] });
+  resultOf(await agent.call("move", { from: "Minutes.md", to: "Parent/Minutes.md" }), "move Minutes");
+  expect(await bStream.expectNext("pages")).toEqual({ ...ofEng, tree: true, pages: [] });
+  // The moves changed no revision: the version the write gave is still the page's.
+  const edited = resultOf<Written>(
+    await agent.call("edit", {
+      path: "Parent/Minutes.md",
+      old_string: "Draft\n",
+      new_string: "# Minutes\n",
+      base_version: notes.version,
+    }),
+    "edit Minutes"
+  );
+  expect(await bStream.expectNext("pages")).toEqual({
+    ...ofEng,
+    tree: false,
+    pages: [{ id: notes.node_id, revision: 2 }],
+  });
+
+  // A batch is one unit, so one frame: Minutes written and Late created, by id.
+  const batched = resultOf<Batched>(
+    await agent.call("batch", {
+      message: "Minutes and a late page",
+      ops: [
+        { op: "write", path: "Parent/Minutes.md", content: "# Minutes\n\nAgreed.\n", base_version: edited.version },
+        { op: "write", path: "Parent/Late.md", content: "Late.\n" },
+      ],
+    }),
+    "the batch"
+  );
+  const late = batched.results[1]?.node_id ?? "";
+  expect(batched.results.map((r) => r.version)).toEqual([`${notes.node_id}:3`, `${late}:1`]);
+  const frame = await bStream.expectNext("pages");
+  expect({ ...frame, pages: (frame.pages ?? []).toSorted(byId) }).toEqual({
+    ...ofEng,
+    tree: true,
+    pages: [
+      { id: notes.node_id, revision: 3 },
+      { id: late, revision: 1 },
+    ].toSorted(byId),
+  });
+
+  // A deletion lists no page.
+  resultOf(await agent.call("delete", { path: "Parent.md", recursive: true }), "delete Parent");
+  expect(await bStream.expectNext("pages")).toEqual({ ...ofEng, tree: true, pages: [] });
+  // And nothing more: the next frame is that of a write after them all, Marker's.
+  const { revision } = await readContent(api, a, marker.id);
+  await writeContent(api, a, marker.id, { content: "# Marker\n", base_revision: revision });
+  expect(await bStream.expectNext("pages")).toEqual({
+    ...ofEng,
+    tree: false,
+    pages: [{ id: marker.id, revision: revision + 1 }],
+  });
+
+  // C's first frame since it opened is that of its own write, after all of A's agent's.
   await writeContent(api, c, control.id, { content: "# Control\n", base_revision: 1 });
   expect(await cStream.expectNext("pages")).toEqual({
     workspace_id: workspace.id,

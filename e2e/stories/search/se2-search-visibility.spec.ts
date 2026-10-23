@@ -3,6 +3,7 @@ import type { ApiClient } from "@nervewiki/api-client";
 import { bearer, emailFor } from "../../fixtures/auth";
 import { failedToLoad } from "../../fixtures/browser";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
+import { errorOf, mcpClient, postMcp, resultOf, type McpClient } from "../../fixtures/mcp";
 import { addedNotebookMember } from "../../fixtures/notebook-members";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage } from "../../fixtures/pages";
@@ -18,7 +19,9 @@ import { newTeam } from "../../fixtures/workspaces";
 // of a private one; a guest those of the notebook it was added to alone.
 // notebook_id narrows a search to one notebook; one the account does not
 // see is 404, which the results page says, with Search the whole
-// workspace. No assertion of the database: a search writes nothing.
+// workspace. No assertion of the database: a search writes nothing. An
+// agent searches one notebook at a time: each it sees, and finds its page
+// there; one it does not see is not found (M9/P5 design 3.7).
 
 /** The word every notebook's page holds. */
 const word = "zephyr";
@@ -55,6 +58,23 @@ async function namesFound(api: ApiClient, credential: string, slug: string, note
   return data?.data.map((hit) => hit.node.name) ?? [];
 }
 
+/** search's answer, as much as SE2 reads of the tool's structuredContent. */
+interface Searched {
+  results: { path: string; kind: string }[];
+  count: { value: number; kind: string } | null;
+}
+
+/** The names of what agent's search of the word finds in the notebook notebookId, counted exactly: its paths' last segments, without .md. */
+async function mcpNamesFound(agent: McpClient, notebookId: string): Promise<string[]> {
+  const answer = resultOf<Searched>(
+    await agent.call("search", { notebook: notebookId, q: word }),
+    `search ${notebookId}`
+  );
+  const names = answer.results.map((result) => (result.path.split("/").at(-1) ?? "").replace(/\.md$/, ""));
+  expect(answer.count, `the count of ${names.join(", ")}`).toEqual({ value: names.length, kind: "exact" });
+  return names;
+}
+
 test("SE2 (API): a member finds the pages of the notebooks open to the workspace, not a private one's; a guest the one's it was added to alone; notebook_id narrows to one, and one not seen is 404", async ({
   api,
 }, testInfo) => {
@@ -84,6 +104,83 @@ test("SE2 (API): a member finds the pages of the notebooks open to the workspace
     const { error, response } = await search(api, credential, workspace.slug, word, { notebookId });
     expect(response.status).toBe(404);
     expect(error?.code).toBe("notebook.not_found");
+  }
+});
+
+test("SE2 (MCP): an agent searches each notebook it sees, and finds its page there; the notebooks it may search are those it sees; one it does not see is the notebook entry's 404 and the account entry's notebook.not_found", async ({
+  api,
+  nervewiki,
+}, testInfo) => {
+  const { pat, workspace } = await newTeam(api, testInfo);
+  const memberPat = await joinAs(api, pat, workspace.slug, emailFor(testInfo, "member"), "member");
+  const guestPat = await joinAs(api, pat, workspace.slug, emailFor(testInfo, "guest"), "guest");
+  const { open, shared, closed, guests } = await notebooksOf(api, pat, workspace.slug, await idOf(api, guestPat));
+  const planOf = new Map([
+    [open.id, "Open plan"],
+    [shared.id, "Shared plan"],
+    [closed.id, "Private plan"],
+    [guests.id, "Guest plan"],
+  ]);
+  const [admin, member, guest] = await Promise.all([
+    mcpClient(nervewiki.baseURL, pat),
+    mcpClient(nervewiki.baseURL, memberPat),
+    mcpClient(nervewiki.baseURL, guestPat),
+  ]);
+
+  // The notebooks each sees, by name, and its role; each searched, its page found there, and only it.
+  for (const [agent, want] of [
+    [
+      admin,
+      [
+        [guests.id, "admin"],
+        [open.id, "admin"],
+        [closed.id, "admin"],
+        [shared.id, "admin"],
+      ],
+    ],
+    [
+      member,
+      [
+        [open.id, "editor"],
+        [shared.id, "reader"],
+      ],
+    ],
+    [guest, [[guests.id, "reader"]]],
+  ] as const) {
+    // oxlint-disable-next-line no-await-in-loop -- an account at a time
+    const answer = await agent.call("notebooks");
+    const listed = resultOf<{ notebooks: { id: string; role: string }[]; truncated: boolean }>(answer, "notebooks");
+    expect([listed.notebooks.map((n) => [n.id, n.role]), listed.truncated]).toEqual([want, false]);
+    for (const [id] of want) {
+      // oxlint-disable-next-line no-await-in-loop -- a notebook at a time
+      expect(await mcpNamesFound(agent, id)).toEqual([planOf.get(id)]);
+    }
+  }
+
+  // One not seen: the notebook entry is not found, before the SDK; the account entry's search too.
+  const initialize = {
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "e2e-agent", version: "1" } },
+  };
+  for (const [credential, agent, notebookId] of [
+    [memberPat, member, closed.id],
+    [memberPat, member, guests.id],
+    [guestPat, guest, open.id],
+  ] as const) {
+    // oxlint-disable-next-line no-await-in-loop -- one refusal at a time
+    const entry = await postMcp(nervewiki.baseURL, credential, initialize, notebookId);
+    expect([entry.status, entry.headers.get("content-type"), entry.headers.get("cache-control")]).toEqual([
+      404,
+      "application/problem+json",
+      "no-store",
+    ]);
+    // oxlint-disable-next-line no-await-in-loop -- its body
+    expect(((await entry.json()) as { code: string }).code).toBe("notebook.not_found");
+    // oxlint-disable-next-line no-await-in-loop -- the account entry's search of it
+    const refused = errorOf(await agent.call("search", { notebook: notebookId, q: word }), `search ${notebookId}`);
+    expect(refused.code).toBe("notebook.not_found");
   }
 });
 

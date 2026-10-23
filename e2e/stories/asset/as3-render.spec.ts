@@ -4,8 +4,10 @@ import type { ApiClient } from "@nervewiki/api-client";
 import type { Locator, Page } from "@playwright/test";
 
 import { expectIndexedLinks } from "../../fixtures/assert/links";
+import { expectChangesetOf } from "../../fixtures/assert/page";
 import { download, oggOpus, pngBytes, uploadAsset, utf8, webmHead } from "../../fixtures/assets";
 import { getPageProperties } from "../../fixtures/links";
+import { mcpClient, readPage, resultOf } from "../../fixtures/mcp";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, getView, readContent, renameNode } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -20,7 +22,15 @@ import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 // embed of no attachment is unresolved. A renamed attachment's embeds are
 // written again, still leading to it; the index has the attachments' ids.
 // In the page, the media load from their addresses, and one playing goes on
-// as the view is read again.
+// as the view is read again. An agent writes the page, and its move renames
+// an attachment, its embeds and its property's link following (M9/P5
+// design 3.5).
+
+/** A write's or a move's answer, as much as AS3 reads of the tool's structuredContent. */
+interface Written {
+  node_id: string;
+  changeset_id: string | null;
+}
 
 /** The page that shows them: a caption and a width, an audio, a video, a PDF, a link, and an embed of none. */
 const content =
@@ -148,6 +158,95 @@ test("AS3 (API): the view has an attachment's image, audio and video at their si
     { kind: "wikilink", property: null, target: "data.zip", resolved: data.id },
     { kind: "embed", property: null, target: "missing.png", resolved: null },
   ]);
+});
+
+test("AS3 (MCP): an agent writes a page embedding attachments, in its properties too; the index has their ids; a move renaming an attachment writes its embeds and its property's link again, caption and width kept, each still leading to it", async ({
+  api,
+  db,
+  nervewiki,
+}, testInfo) => {
+  const { adminId, pat, workspace } = await newTeam(api, testInfo);
+  const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
+  const { cover, sound, clip, doc, data } = await upload(api, pat, notebook.id, webmHead);
+  const agent = await mcpClient(nervewiki.baseURL, pat, { notebook: notebook.id });
+  const guide = resultOf<Written>(await agent.call("write", { path: "Guide.md", content }), "write Guide").node_id;
+
+  // REST's view and properties of the page the agent wrote, as the API version reads them.
+  const view = (await getView(api, pat, guide)).data;
+  const html = view?.html ?? "";
+  const [img] = attrsOf(html, "img");
+  expect([img?.alt, img?.width, img?.src?.split("?")[0]]).toEqual(["封面", "300", path(cover.id)]);
+  expect(attrsOf(html, "audio").map((a) => a.src?.split("?")[0])).toEqual([path(sound.id)]);
+  expect(attrsOf(html, "video").map((v) => v.src?.split("?")[0])).toEqual([path(clip.id)]);
+  expect(attrsOf(html, "a").map((a) => [a.href?.split("?")[0], "download" in a])).toEqual([
+    [path(cover.id), false],
+    [path(data.id), true],
+    [path(doc.id), false],
+    [path(data.id), true],
+  ]);
+  expect(html).toContain('data-nw-target="missing.png"');
+  const ids = new Set([cover, sound, clip, doc, data].map((asset) => asset.id));
+  expect([...html.matchAll(/data-nw-node="([^"]*)"/g)].map(([, id]) => id).filter((id) => ids.has(id ?? ""))).toEqual(
+    []
+  );
+  const expiry = new URL(img?.src ?? "", nervewiki.baseURL).searchParams.get("e");
+  expect(view?.assets_expire_at && Date.parse(view.assets_expire_at) / 1000).toBe(Number(expiry));
+  const archive = attrsOf(html, "a").find((a) => "download" in a && a.href?.startsWith(path(data.id)));
+  for (const [address, bytes] of [
+    [img?.src, pngBytes],
+    [archive?.href, zipBytes],
+  ] as const) {
+    // oxlint-disable-next-line no-await-in-loop -- one download at a time, each checked
+    const answer = await download(nervewiki.baseURL, address ?? "");
+    // oxlint-disable-next-line no-await-in-loop -- its body
+    expect(Buffer.compare(Buffer.from(await answer.arrayBuffer()), Buffer.from(bytes))).toBe(0);
+  }
+  const properties = await getPageProperties(api, pat, guide);
+  expect(properties.response.status).toBe(200);
+  const links = properties.data?.links ?? [];
+  expect(links.map((l) => [l.key, l.node_id, l.inline, l.url?.split("?")[0]])).toEqual([
+    ["cover", cover.id, true, path(cover.id)],
+    ["file", data.id, false, path(data.id)],
+  ]);
+  const linkExpiry = new URL(links[0]?.url ?? "", nervewiki.baseURL).searchParams.get("e");
+  expect(properties.data?.assets_expire_at && Date.parse(properties.data.assets_expire_at) / 1000).toBe(
+    Number(linkExpiry)
+  );
+  await expectIndexedLinks(db, guide, [
+    { kind: "wikilink", property: "cover", target: "cover.png", resolved: cover.id },
+    { kind: "wikilink", property: "file", target: "data.zip", resolved: data.id },
+    { kind: "embed", property: null, target: "cover.png", resolved: cover.id },
+    { kind: "embed", property: null, target: "sound.ogg", resolved: sound.id },
+    { kind: "embed", property: null, target: "clip.webm", resolved: clip.id },
+    { kind: "embed", property: null, target: "doc.pdf", resolved: doc.id },
+    { kind: "wikilink", property: null, target: "data.zip", resolved: data.id },
+    { kind: "embed", property: null, target: "missing.png", resolved: null },
+  ]);
+
+  // Renamed by a move at the root, its embeds and its property's link are written again, caption and width kept.
+  const moved = resultOf<Written>(await agent.call("move", { from: "cover.png", to: "front.png" }), "rename cover");
+  expect(moved.node_id).toBe(cover.id);
+  const rewritten = content.replaceAll("[[cover.png", "[[front.png");
+  expect((await readPage(agent, { path: "Guide.md" })).text).toBe(rewritten);
+  expect((await readContent(api, pat, guide)).content).toBe(rewritten);
+  const again = (await getView(api, pat, guide)).data?.html ?? "";
+  expect(attrsOf(again, "img").map((i) => i.src?.split("?")[0])).toEqual([path(cover.id)]);
+  await expectIndexedLinks(db, guide, [
+    { kind: "wikilink", property: "cover", target: "front.png", resolved: cover.id },
+    { kind: "wikilink", property: "file", target: "data.zip", resolved: data.id },
+    { kind: "embed", property: null, target: "front.png", resolved: cover.id },
+    { kind: "embed", property: null, target: "sound.ogg", resolved: sound.id },
+    { kind: "embed", property: null, target: "clip.webm", resolved: clip.id },
+    { kind: "embed", property: null, target: "doc.pdf", resolved: doc.id },
+    { kind: "wikilink", property: null, target: "data.zip", resolved: data.id },
+    { kind: "embed", property: null, target: "missing.png", resolved: null },
+  ]);
+  await expectChangesetOf(db, String(moved.changeset_id), {
+    client: "mcp:e2e-agent",
+    byId: adminId,
+    items: [cover.id],
+    versions: [guide],
+  });
 });
 
 /** recordWebm records, in page, a short video of a canvas as WebM: Playwright's Chromium plays VP8, not H.264. */
