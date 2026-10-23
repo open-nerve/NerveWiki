@@ -383,6 +383,40 @@ func TestTheSearchJobsBatchReadsWithinItsBytes(t *testing.T) {
 	}
 }
 
+// A batch cut before a page grown past its bytes counts and deletes only
+// the nodes before the cut (M9 Codex review fix round 1, B-N2): ten pages,
+// the fourth to sixth grown to 3 MiB since their sources, the eighth's row
+// current, the ninth's built within minRebuild, the tenth gone with a row.
+// The first batch builds five, cut at the sixth, and neither counts the
+// eighth and the ninth nor deletes the tenth's row; the second builds the
+// sixth and the seventh, keeps the eighth, skips the ninth, deletes the
+// tenth's row: each counted once.
+func TestTheSearchJobsCutBatchCountsItsOwnNodes(t *testing.T) {
+	f := newFakeIndex()
+	now := f.clock.now
+	var ids []uuid.UUID
+	for i := range 10 {
+		ids = append(ids, f.page(fmt.Sprintf("page %d", i), "y"))
+	}
+	for _, id := range ids[3:6] {
+		f.texts[id] = app.PageText{Content: strings.Repeat("x", 3<<20), Revision: 2}
+	}
+	f.built(ids[7], 2, "page 7", domain.SearchTokenizer, now.Add(-time.Hour))
+	f.built(ids[8], 1, "page 8", domain.SearchTokenizer, now.Add(-10*time.Second))
+	f.sources[ids[9]] = app.SearchSource{ID: ids[9], Gone: true, Built: &app.BuiltSearchRow{Name: "page 9", At: now.Add(-time.Hour)}}
+	f.rows[ids[9]] = app.SearchRow{NodeID: ids[9], Name: "page 9"}
+	job, _ := f.job(30 * time.Second)
+	run, err := job.Drain(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	writes := slices.DeleteFunc(slices.Clone(f.calls), func(c string) bool { return !strings.HasPrefix(c, "WriteSearchRows") })
+	if want := (app.SearchRun{Written: 7, Deleted: 1, Kept: 1, Skipped: 1}); run != want ||
+		!slices.Equal(writes, []string{"WriteSearchRows 5 0", "WriteSearchRows 2 1"}) {
+		t.Errorf("Drain() = %+v, writes %v; want %+v, the tenth's row deleted by the second batch", run, writes, want)
+	}
+}
+
 // A run takes the nodes queued exact first, a user's writes, by id, then
 // those queued in bulk, an import's or a background job's, by id: however
 // many the bulk ones and however low their ids, a user's write never waits

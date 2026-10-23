@@ -157,7 +157,7 @@ func (j *IndexSearch) batch(ctx context.Context, queued []QueuedNode, run *Searc
 		sources[s.ID] = s
 	}
 	now := j.clock.Now()
-	var deleted, pages []uuid.UUID
+	var deleted, pages, kept, skipped []uuid.UUID
 	var build []SearchSource
 	var done []QueuedNode
 	bytes, last := 0, queued[len(queued)-1]
@@ -172,11 +172,11 @@ func (j *IndexSearch) batch(ctx context.Context, queued []QueuedNode, run *Searc
 			continue
 		case s.Built != nil && s.Built.Name == s.Name && s.Built.Revision == s.Revision &&
 			s.Built.Tokenizer == domain.SearchTokenizer:
-			run.Kept++
+			kept = append(kept, q.ID)
 			done = append(done, q)
 			continue
 		case s.Built != nil && now.Sub(s.Built.At) < j.minRebuild:
-			run.Skipped++
+			skipped = append(skipped, q.ID)
 			continue
 		}
 		if len(build) > 0 && bytes+s.Bytes > domain.SearchBatchBytes {
@@ -198,18 +198,23 @@ func (j *IndexSearch) batch(ctx context.Context, queued []QueuedNode, run *Searc
 		// Grown since its source told its size, past the batch's bytes with
 		// the pages before it (M9 Codex review D2): the batch ends before
 		// it, its node and those after it left queued for the next batch,
-		// which reads their sizes again. The first page is never past it:
-		// the batch's bytes hold a page's largest content.
+		// which reads their sizes again, decides on them and counts them
+		// (fix round 1, B-N2): this one neither deletes their rows nor
+		// counts them. The first page is never past it: the batch's bytes
+		// hold a page's largest content.
 		at := make(map[uuid.UUID]int, len(queued))
 		for i, q := range queued {
 			at[q.ID] = i
 		}
 		if cut := at[past]; cut > 0 {
-			build = slices.DeleteFunc(build, func(s SearchSource) bool { return at[s.ID] >= cut })
-			done = slices.DeleteFunc(done, func(q QueuedNode) bool { return at[q.ID] >= cut })
+			after := func(id uuid.UUID) bool { return at[id] >= cut }
+			build = slices.DeleteFunc(build, func(s SearchSource) bool { return after(s.ID) })
+			done = slices.DeleteFunc(done, func(q QueuedNode) bool { return after(q.ID) })
+			deleted, kept, skipped = slices.DeleteFunc(deleted, after), slices.DeleteFunc(kept, after), slices.DeleteFunc(skipped, after)
 			last = queued[cut-1]
 		}
 	}
+	run.Kept, run.Skipped = run.Kept+len(kept), run.Skipped+len(skipped)
 	rows := make([]SearchRow, 0, len(build))
 	missing := map[uuid.UUID]bool{}
 	for _, s := range build {
