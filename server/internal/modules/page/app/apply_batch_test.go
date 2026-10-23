@@ -808,6 +808,28 @@ func TestABatchsReadsHoldTheirBoundOnWhatTheyRead(t *testing.T) {
 		t.Errorf("P, Q and R grown to 15 MiB = %s, planned %d times, read %v; want the reads' bound at ops[2], none read",
 			opOf(err), f.count("ListNodes"), f.store.read)
 	}
+
+	// P grown before each read, a page there each time: the edit's
+	// mismatch with P's version then, why its page kept changing, as the
+	// unit's second difference answers a page there (fix round 1, B-N1);
+	// the log's difference its version, nothing read.
+	f = newFixture()
+	p = f.page("P", nil, 1)
+	f.content(p.ID, "a", 2)
+	var grown func() // once each read: the recorder's hook runs once
+	grown = func() {
+		f.writeAs(p.ID, f.store.contents[p.ID].Content+strings.Repeat("x", 1000))
+		f.rec.before["PageContentWithin"] = grown
+	}
+	f.rec.before = map[string]func(){"PageContentWithin": grown}
+	_, err := f.applyBatch(&fakeLinks{recorder: f.rec}, editOp("P.md", "a", "b"))
+	var mismatch *domain.VersionMismatch
+	if !errors.As(err, &mismatch) || opOf(err) != "0 page.revision_mismatch" || mismatch.Why != domain.KeptChanging ||
+		mismatch.Current != (domain.VersionToken{Node: p.ID, Revision: 4}) || f.count("ListNodes") != 2 || !slices.Equal(f.store.read, []int{0, 0}) ||
+		!strings.Contains(f.logs.String(), "differs=version") {
+		t.Errorf("P grown before each read = %v (%+v), planned %d times, read %v; want ops[0] page.revision_mismatch at P:4, kept "+
+			"changing, none read, logged as its version", err, mismatch, f.count("ListNodes"), f.store.read)
+	}
 }
 
 // The edit locks' precheck answers at the first op, in their order, that

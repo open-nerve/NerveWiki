@@ -344,7 +344,9 @@ func (a *batchAttempt) withCurrent(ctx context.Context, f *domain.OpFailed) erro
 // head's, is a difference as the unit finds one (replanned): the batch is
 // planned once more, whose tree's pass answers at the op the page's
 // absence refuses (M9/P3 review A-M2), and whose bound on the reads at the
-// sizes then.
+// sizes then. A page grown is a difference of its version, which it tells
+// (fix round 1, B-N1): grown again, its first content op answers it as
+// changedTwice answers a page there.
 func (a *batchAttempt) read(ctx context.Context) (map[uuid.UUID]domain.PageText, map[uuid.UUID]domain.PageHead, error) {
 	texts, heads := a.plan.Reads()
 	if len(texts)+len(heads) == 0 {
@@ -391,10 +393,12 @@ func (a *batchAttempt) read(ctx context.Context) (map[uuid.UUID]domain.PageText,
 	for _, id := range texts {
 		c, within, err := a.b.nodes.PageContentWithin(ctx, id, read[id].Bytes)
 		switch {
-		case errors.Is(err, ErrNotFound), err == nil && !within:
+		case errors.Is(err, ErrNotFound):
 			return nil, nil, gone(id)
 		case err != nil:
 			return nil, nil, err
+		case !within:
+			return nil, nil, a.differs(firsts[id], "version", nil, &domain.VersionToken{Node: id, Revision: c.Revision})
 		}
 		out[id] = domain.PageText{Content: c.Content, Revision: c.Revision}
 	}

@@ -125,14 +125,14 @@ func TestTheContentsAreReadWithinTheirBound(t *testing.T) {
 		}
 	}
 
-	// One page: A of 10 bytes within 10, not within 9; a deleted page's
-	// not found.
+	// One page: A of 10 bytes within 10, not within 9, its version told
+	// (fix round 1, B-N1); a deleted page's not found.
 	if got, ok, err := f.s.PageContentWithin(ctx, a, 10); err != nil || !ok || got.Content != strings.Repeat("x", 10) || got.Revision != 2 ||
 		len(got.Hash) != 32 {
 		t.Errorf("PageContentWithin(A, 10) = %+v, %v, %v; want its content at revision 2, with its hash", got, ok, err)
 	}
-	if got, ok, err := f.s.PageContentWithin(ctx, a, 9); err != nil || ok || got.Content != "" {
-		t.Errorf("PageContentWithin(A, 9) = %+v, %v, %v; want none read", got, ok, err)
+	if got, ok, err := f.s.PageContentWithin(ctx, a, 9); err != nil || ok || got.Content != "" || got.Revision != 2 || len(got.Hash) != 32 {
+		t.Errorf("PageContentWithin(A, 9) = %+v, %v, %v; want none read, its revision 2 and its hash", got, ok, err)
 	}
 	if _, _, err := f.s.PageContentWithin(ctx, gone, 100); !errors.Is(err, app.ErrNotFound) {
 		t.Errorf("PageContentWithin(deleted) = %v, want ErrNotFound", err)

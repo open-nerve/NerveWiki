@@ -349,7 +349,7 @@ func (s *Store) PageContentWithin(ctx context.Context, id uuid.UUID, max int) (a
 	case err != nil:
 		return app.PageContent{}, false, notFound("page content within", err)
 	case !row.Within:
-		return app.PageContent{}, false, nil
+		return app.PageContent{Revision: int(row.Revision), Hash: row.ContentHash}, false, nil
 	}
 	return app.PageContent{Content: row.Content, Revision: int(row.Revision), Hash: row.ContentHash}, true, nil
 }

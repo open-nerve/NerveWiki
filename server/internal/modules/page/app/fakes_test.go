@@ -365,7 +365,7 @@ func (f *fakeStore) PageContentWithin(ctx context.Context, id uuid.UUID, max int
 		return app.PageContent{}, false, app.ErrNotFound
 	case len(c.Content) > max:
 		f.read = append(f.read, 0)
-		return app.PageContent{}, false, nil
+		return app.PageContent{Revision: c.Revision, Hash: c.Hash}, false, nil
 	}
 	f.read = append(f.read, len(c.Content))
 	return app.PageContent{Content: c.Content, Revision: c.Revision, Hash: c.Hash}, true, nil

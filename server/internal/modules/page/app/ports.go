@@ -179,8 +179,10 @@ type Nodes interface {
 	// node.
 	PageContent(ctx context.Context, id uuid.UUID) (PageContent, error)
 	// PageContentWithin is PageContent while the page holds max bytes at
-	// most; false, its content not read, past them (M9 Codex review D2: a
-	// batch's plan reads the pages it bounded by their sizes before).
+	// most; false past them, its content not read, its version's revision
+	// and hash read (M9 Codex review D2, fix round 1 B-N1: a batch's plan
+	// reads the pages it bounded by their sizes before, and tells the
+	// version of one grown since).
 	PageContentWithin(ctx context.Context, id uuid.UUID, max int) (PageContent, bool, error)
 	// LockContent locks the content row of the page id not deleted of the
 	// notebook FOR NO KEY UPDATE: the page's gate (M4 design 4). The node's
