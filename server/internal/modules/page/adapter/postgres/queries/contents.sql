@@ -73,8 +73,9 @@ WHERE s.total - s.byte_size <= sqlc.arg(max_bytes)::bigint;
 
 -- name: PageContentWithin :one
 -- A page's content, its version and its hash, as PageContent reads them, while its size is max_bytes at most; past it,
--- its size alone, the content never read (M9 Codex review D2): a batch's plan reads the contents whose sizes it bounded
--- first, which may have grown since. As GrepContents, the row is read once.
+-- its size, revision and hash, the content never read (M9 Codex review D2, fix round 1 B-N1): a batch's plan reads the
+-- contents whose sizes it bounded first, which may have grown since, and tells the version of one grown. As
+-- GrepContents, the row is read once.
 SELECT c.byte_size, c.revision, c.content_hash, (c.byte_size <= sqlc.arg(max_bytes)::integer)::boolean AS within,
     coalesce(CASE WHEN c.byte_size <= sqlc.arg(max_bytes)::integer THEN c.content END, '')::text AS content
 FROM page_contents c
