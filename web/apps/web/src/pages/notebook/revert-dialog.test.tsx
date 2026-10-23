@@ -269,6 +269,26 @@ test("more conflicts than the hundred listed say how many, and that the first hu
   expect(within(dialog).queryByText(/rename it back/)).toBeNull();
 });
 
+// M9 closeout B-N1: a changeset's renames and moves are of all its items since M9 (00045), so they differ more often.
+test("a changeset that moved a node and renamed none has no rename back", async () => {
+  const user = userEvent.setup();
+  const server = pageServer();
+  const move = server.log("move", { changes: [moved(linux, notes.id)] });
+  move.conflicts = [conflict(linux.id, "Linux", "changed")];
+  renderApp(changesetPath(move.id), server.app);
+  const dialog = await opened(user);
+
+  await user.click(within(dialog).getByRole("button", { name: "Undo" }));
+
+  expect(
+    await within(dialog).findByRole("heading", {
+      level: 3,
+      name: "Not undone. Nodes changed since, or that cannot go back: 1",
+    })
+  ).toBeTruthy();
+  expect(within(dialog).queryByText(/rename it back/)).toBeNull();
+});
+
 // M8/P3B review A-M5 (v0.1 design 13.2, item 17).
 test("conflicting nodes of one name are told apart by the end of their ids, which their reasons show, and so are their links", async () => {
   const user = userEvent.setup();
