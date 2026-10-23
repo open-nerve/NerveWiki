@@ -2,6 +2,7 @@ import type { ApiClient, SearchHit, SearchPage } from "@nervewiki/api-client";
 import type { Page } from "@playwright/test";
 
 import { uploadAsset, utf8 } from "../../fixtures/assets";
+import { mcpClient, resultOf } from "../../fixtures/mcp";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, deleteNode } from "../../fixtures/pages";
 import { search } from "../../fixtures/search";
@@ -18,9 +19,11 @@ import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 // "rapid"), one or two letters as a whole word ("ai" is not in "said"), a
 // single CJK character in titles alone ("库" is not the content's "仓库").
 // A page deleted is found no more at once, and again once restored. The
-// API's version and the page's check the same finds. No assertion of the
-// database: a search writes nothing, and the job that builds the index
-// may or may not have run (a write a user makes is found either way).
+// API's version and the page's check the same finds, and so does the MCP
+// version's, its search giving no hit's ranges (M9/P5 design 3.7). No
+// assertion of the database: a search writes nothing, and the job that
+// builds the index may or may not have run (a write a user makes is found
+// either way).
 
 /** The bytes of a PDF, which the server takes for one. */
 const pdfBytes = utf8("%PDF-1.4\n% a quarterly report\n");
@@ -75,10 +78,16 @@ const finds: { q: string; names: string[]; marked: string[] }[] = [
   { q: "季度报告", names: ["季度报告.pdf"], marked: ["季度报告"] },
 ];
 
-/** expectFound checks what the search of q found against what SE1 expects of it. */
-function expectFound(q: string, found: Found): void {
+/**
+ * expectFound checks what the search of q found against what SE1 expects of it; with marked false, all of it but
+ * what the first hit marks, for a search that gives no ranges (MCP's).
+ */
+function expectFound(q: string, found: Found): void;
+function expectFound(q: string, found: Omit<Found, "marked">, options: { marked: false }): void;
+function expectFound(q: string, found: Found | Omit<Found, "marked">, options?: { marked: false }): void {
   const expected = finds.find((each) => each.q === q);
-  expect(found, q).toEqual({ names: expected?.names, marked: expected?.marked, count: expected?.names.length });
+  const names = { names: expected?.names, count: expected?.names.length };
+  expect(found, q).toEqual(options?.marked === false ? names : { ...names, marked: expected?.marked });
 }
 
 /** marks are the parts of text the ranges name. */
@@ -100,6 +109,33 @@ function foundOf(page: SearchPage | undefined): Found {
           ],
     count: page?.count?.kind === "exact" ? page.count.value : undefined,
   };
+}
+
+/** A search's answer, as the tool's structuredContent has it. */
+interface SearchAnswer {
+  results: { path: string; kind: string; excerpt: string | null }[];
+  count: { value: number; kind: string } | null;
+  next_cursor: string | null;
+  building: boolean;
+}
+
+/** mcpFoundOf is what an agent's search found, which marks nothing: each result's name, its path's last segment. */
+function mcpFoundOf(answer: SearchAnswer): Omit<Found, "marked"> {
+  return {
+    names: answer.results.map(({ path, kind }) => {
+      const name = path.split("/").at(-1) ?? "";
+      return kind === "page" ? name.replace(/\.md$/, "") : name;
+    }),
+    count: answer.count?.kind === "exact" ? answer.count.value : undefined,
+  };
+}
+
+/** The results of REST's page of a search as MCP's search gives them: each hit's path from the root and its kind. */
+function asResults(page: SearchPage | undefined): { path: string; kind: string }[] {
+  return (page?.data ?? []).map((hit) => ({
+    path: [...hit.ancestors.map((a) => a.name), hit.node.name].join("/") + (hit.node.kind === "page" ? ".md" : ""),
+    kind: hit.node.kind === "page" ? "page" : "attachment",
+  }));
 }
 
 /** shownOf is what the results page on page shows: the hits' names, the first's marks, and the count its line says. */
@@ -165,6 +201,49 @@ test("SE1 (API): pages are found by their titles and contents, an attachment by 
   expect(foundOf((await search(api, pat, workspace.slug, "检索")).data)).toEqual({ names: [], marked: [], count: 0 });
   expect((await restoreNode(api, pat, storage.id)).response.status).toBe(200);
   expectFound("检索", foundOf((await search(api, pat, workspace.slug, "检索")).data));
+});
+
+test("SE1 (MCP): an agent finds a notebook's pages by their titles and contents and an attachment by its name, as REST's search of the notebook, counted exactly; CJK from two characters and letters from three as substrings, two letters as a whole word, one CJK character in titles alone; a page deleted is found no more, and again once restored", async ({
+  api,
+  nervewiki,
+}, testInfo) => {
+  const { pat, workspace } = await newTeam(api, testInfo);
+  const { notebook, storage } = await written(api, pat, workspace.slug);
+  const agent = await mcpClient(nervewiki.baseURL, pat, { notebook: notebook.id });
+  const searchOf = async (q: string) => resultOf<SearchAnswer>(await agent.call("search", { q }), `search ${q}`);
+
+  // Each find, but what it marks; and REST's search of the notebook: the same paths, kinds and count.
+  for (const { q } of finds) {
+    // oxlint-disable-next-line no-await-in-loop -- a query at a time
+    const answer = await searchOf(q);
+    expectFound(q, mcpFoundOf(answer), { marked: false });
+    expect([answer.next_cursor, answer.building], q).toEqual([null, false]);
+    // oxlint-disable-next-line no-await-in-loop -- REST's of the same query
+    const { data } = await search(api, pat, workspace.slug, q, { notebookId: notebook.id });
+    expect(
+      answer.results.map(({ path, kind }) => ({ path, kind })),
+      q
+    ).toEqual(asResults(data));
+    expect(answer.count, q).toEqual(data?.count);
+  }
+
+  // A page's result: its path, and its excerpt, REST's text marked where it is cut. An attachment's: none.
+  const [stored] = (await searchOf("检索")).results;
+  const rest = (await search(api, pat, workspace.slug, "检索", { notebookId: notebook.id })).data?.data[0]?.excerpt;
+  const excerpt = `${rest?.cut_start ? "…" : ""}${rest?.text ?? ""}${rest?.cut_end ? "…" : ""}`;
+  expect([stored?.path, stored?.kind, stored?.excerpt]).toEqual(["Storage.md", "page", excerpt]);
+  const [filed] = (await searchOf("季度报告")).results;
+  expect([filed?.path, filed?.kind, filed?.excerpt]).toEqual(["Storage/Reports/季度报告.pdf", "attachment", null]);
+
+  // Deleted by the agent, found no more at once; restored (in the web or through REST), found again.
+  const deleted = resultOf<{ node_id: string; pages: number; attachments: number }>(
+    await agent.call("delete", { path: "Storage.md", recursive: true }),
+    "delete Storage"
+  );
+  expect([deleted.node_id, deleted.pages, deleted.attachments]).toEqual([storage.id, 2, 1]);
+  expect(mcpFoundOf(await searchOf("检索"))).toEqual({ names: [], count: 0 });
+  expect((await restoreNode(api, pat, storage.id)).response.status).toBe(200);
+  expectFound("检索", mcpFoundOf(await searchOf("检索")), { marked: false });
 });
 
 test("SE1 (page): searched from the left column's box, each find is listed, its terms marked and its count said, the title taking the focus; gone back to at once, the search before is shown; an attachment found opens on its page, its row taking the focus; a page deleted is listed no more as the same tab searches again, and again once restored; on a phone's width the page fits", async ({
