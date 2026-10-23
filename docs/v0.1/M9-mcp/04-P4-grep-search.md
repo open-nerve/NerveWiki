@@ -3,8 +3,8 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M9/P4 grep、search、index、backlinks（两个 Step：S1 page 的 `grep` 与 `search`，搜索的行的 `partial` 与迁移；S2 linking 的 `backlinks` 与 `index`） |
-| 日期 | 2026-10-21（修订 2026-10-22） |
-| 状态 | S1 已合并（`7e7e414d`），S2 未开始；设计已审查（三位审查者），照主持者的处置修订四次，复核四轮（前三轮由三位，第四轮由 B、C 与主持者）；审查记录 [P4-design-review.md](reviews/P4-design-review.md)，S1 的审查记录 [P4-S1-grep-search-review.md](reviews/P4-S1-grep-search-review.md) |
+| 日期 | 2026-10-21（修订 2026-10-22、2026-10-23） |
+| 状态 | S1 已合并（`7e7e414d`），S2 已合并（`ed9e149f`），P4 完成；设计已审查（三位审查者），照主持者的处置修订四次，复核四轮（前三轮由三位，第四轮由 B、C 与主持者）；审查记录 [P4-design-review.md](reviews/P4-design-review.md)；S1 的审查记录 [P4-S1-grep-search-review.md](reviews/P4-S1-grep-search-review.md)、S2 的 [P4-S2-index-backlinks-review.md](reviews/P4-S2-index-backlinks-review.md)，实施与审查之后与代码不同之处照实改在各节（3.18、3.19 列出），结果在第 9 节 |
 | 上级文档 | [M9 总设计](00-M9-design.md) 4.1、4.2、4.6、4.7、4.8、4.9、4.13、4.14、4.15、第 5、7、9、10、11 节与"移交的落实"；[P1](01-P1-platform-reads.md) 3.4.4、3.9、3.10、3.13、3.15 与第 8 节；[P2](02-P2-writes-history.md) 3.7、3.10、3.13、3.16 与第 8 节；[P3](03-P3-batch-revert.md) 3.10.1、3.12、3.13、6.5 与第 8 节；[v0.1 总体设计](../v0.1-design.md) 5.5、6.1–6.4、13.1、13.2、13.4；[M8/P5](../M8-history-search/05-P5-search.md) 3.2–3.9；移交 [M8/P5 grep 用搜索的索引](handoffs/M8-P5-search.md)第 1、3、4 条、[M6/P4 链接改写](handoffs/M6-P4-rewrite.md)第 4 条 |
 | 代码位置的写法 | 同 P1–P3：模块写作 `page/app/search.go:87`（`server/internal/modules/` 之下）；`platform/…`、`bootstrap/…`、`shared/…` 在 `server/internal/` 之下；迁移写作 `00041_page_search_scope.sql:90`（`server/migrations/sql/`）；e2e 写作 `e2e/fixtures/mcp.ts:114`；Go 的标准库写作 `regexp/syntax/parse.go:212`（go1.27.1 的工具链，`~/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.1.darwin-arm64/src/` 之下，与仓库 `server/go.mod` 的 `toolchain go1.27.1` 相同）。代码的行号是 `56ef34c8` 的（P3 的 S3 合并），文档的行号是 `HEAD` 的提交；S1 合并时照实改的各处是 `7e7e414d` 的 |
 | 实验 | 全部离线、不要数据库，在 `scratchpad/m9/p4/exp/` 之下（以模块缓存编译，`GOFLAGS=-mod=mod GOPROXY=off GOTOOLCHAIN=local`）：`tok/`（分词照抄 `page/domain/search.go:96-375`，被截掉的页的比例与迁移的筛法，3.3）、`keys/`（键的原型与超集的性质试验，3.5）、`claims/`（Unicode 的几条断言，3.5.3）、`cost/`（指令的估计、编译的大小、每单位的耗时与解析、编译的分配，3.6）、`instr/` 与 `instr4/`（说明的字节，3.14）、`bom/`（BOM、`\r` 的分词类别）；审查之后另有 `keys2/`（审查 C 的 `keysmut` 加可组合的变异、定向的字母表、每种情形的计数与每处修正的反例，3.5.4、6.1）、`bound2/`（每个码位的界加流安全的 CGJ、门槛、跨上限的两行与 240 KiB 的随机 CJK，3.2.2、6.1）、`tokb2/`（审查 B 的 `tokb`：门槛 74,000 时迁移选中的页、字节与词，被标出的页的工作，3.2.2、3.3.4）、`parseq/`（解析的队列下 200 个同时的最坏的解析，3.6.1）；核对之后另有 `lineoh/`（`GrepLineOverhead` 的离线校准：`grep` 每行的固定开销对最贵的指令的每单位的耗时，3.6.4）、`tokb3/`（`tokb2` 加每行的开销作参数，被标出的页的工作，3.3.4）、`instr6/`（说明的第三行改过之后的字节，3.14）；第二轮核对之后另有 `corpus/` 与 `freeze/`（冻结的语料：每个路径的 SHA-256、内容的快照与重算，3.3.4）、`lineoh2/`（类的短的拼法、各种形状的每单位与满负载的估计，3.6.4）、`bpat/`（开头相同的选择被合成一支，3.6.4）；第三轮核对之后另有 `importset/`（以 M7 的导入的规则的副本算第 3 步的预期的集合，3.3.4）与 `freeze` 的每字节的词随页的大小的曲线（`corpus/curve-out.txt`，3.2.2）。审查者的 `review-A/`、`review-B/`、`review-C/` 原样留着。语料只用仓库的 Markdown（`docs/`、README）、Go 模块缓存与 `node_modules` 里的 Markdown，合在一起冻结成一份（3.3.4；主副本在 scratchpad 之外）；M8 的语料已删掉，不下载 |
@@ -102,6 +102,8 @@ P4 照实改 00 号文档的这些处（行号是 `HEAD` 的 00 号文档的，`
 
 S1 的实施与审查里主持者定下的，同样负责人可以改判，写进 00 号文档第 11 节（主持者的决定第 77–88 条）与 [S1 的审查记录](reviews/P4-S1-grep-search-review.md)的"主持者的决定"："满负载"取短时的满负载，四个常量取第 1 步量的，持续的满负载的数交 M12（S1 在第 1 步照停下的点停下之后定的；被标出的比例照规则仍是三种截断）；`MaxGrepLineWork` 留 0.75 × 10⁸；`GrepLineOverhead` 留 2（命中的格不算）；解析的队列与名额是带缓冲的 channel；一行一次规整、按它被匹配的字节判断；`GrepKeys` 读的有界线；最坏的解析记下、不拒；块数的测试的队列的部分抓得到它说的读，B 树上照实相等（建成的 CI 的红）；00046 Down 再 Up 之后留着的被截过的行 `partial` 为假，只写注释；`GrepInsts` 的上界是生成器的；main 的链接的时间测试在 `-short` 下跳过（修复一轮的 CI 的红）；模式按 NFC 读。
 
+S2 的实施与审查里主持者定下的，同样负责人可以改判，写进 00 号文档第 11 节（主持者的决定第 89–95 条）与 [S2 的审查记录](reviews/P4-S2-index-backlinks-review.md)的"主持者的决定"：不加第四份、组合根一不挪；`index` 读一个值的多少在写下它的地方就有界（00047 的存储的生成列 `value_start` 与 `value_chars`，语句只读它们；00047 重写 `page_properties`，读写都等，升级时先停旧的服务）；两列是生成列、不在提取时另存，留着 `char_length`；S1 的 `grep` 的每单位的耗时只算一行自己的匹配、过了 `GrepUnitWarmUp` 才信，S1 的准确的 `grep` 测试以生产的期限跑（修复一轮的 CI 的红）；`index` 的守卫界住一次调用的分配，第 184 条确定的抓法是计划测试与过滤的读的通用计划，S1 的 10 万个候选的守卫按三次的中位数判（修复三轮的 CI 的红），余量靠没核实的 2.4；建成的偏离记下；`grep` 的接缝的四次分配与 `AtPath` 的次序记下、不改。
+
 ## 3. 服务端
 
 ### 3.1 文件
@@ -110,32 +112,32 @@ S1 的实施与审查里主持者定下的，同样负责人可以改判，写�
 |---|---|---|---|---|
 | `server/migrations/sql/00046_page_search_partial.sql` | — | S1 | 新 | `page_search.partial` 与检查；只把可能被截过的活着的页批量入队（3.2） |
 | `page/domain/search.go` | page/domain | S1 | 改 | `searchTokenizerVersion = "5"`；`SearchTokens` 多答 `partial`，有时正文的词末尾加 `SearchCutKey`；`BoundFreeContentBytes`（迁移的门槛，3.2.2、3.3） |
-| `page/domain/grep.go` | page/domain | S1 | 新 | `grep` 的常量；`ParseGrepPattern`（字节、换行、语法、指令数）、`GrepInsts`、`GrepLines`（同 `read` 的分行，去掉 `\r` 与 BOM）、`GrepCursor`、`CheckGrepLimit`、`GrepWork`、`GrepLineCut`、`GrepHitOf`（以命中为中心截到 1,000 字节；设计原写作 `GrepText`）、`NewGrepNFC` 与 `GrepNFC`（一行截断之内的 NFC、命中映回原样的字节）、`MatchGrepLine`（3.4、3.6、3.7） |
+| `page/domain/grep.go` | page/domain | S1、S2 | 新、改 | `grep` 的常量（S2 加 `GrepUnitWarmUp`，3.6.3）；`ParseGrepPattern`（字节、换行、语法、指令数）、`GrepInsts`、`GrepLines`（同 `read` 的分行，去掉 `\r` 与 BOM）、`GrepCursor`、`CheckGrepLimit`、`GrepWork`、`GrepLineCut`、`GrepHitOf`（以命中为中心截到 1,000 字节；设计原写作 `GrepText`）、`NewGrepNFC` 与 `GrepNFC`（一行截断之内的 NFC、命中映回原样的字节）、`MatchGrepLine`（3.4、3.6、3.7） |
 | `page/domain/grep_keys.go` | page/domain | S1 | 新 | `GrepKeys`：树上的事实、段、片、键（3.5）；挨着分词，用它未导出的 `classOf`、`searchFold`、`lexemes` |
 | `page/domain/grep_tables.go` | page/domain | S1 | 新 | 生成的表：96 个危险的结尾（3.5.3）；`grep_tables_test.go` 按定义重算、比较 |
 | `page/domain/grep_test.go`、`grep_keys_test.go`、`grep_keys_property_test.go`、`grep_keys_tails_test.go`、`grep_tables_test.go`、`grep_internal_test.go`、`grep_nfc_internal_test.go`、`search_test.go`、`search_bound_test.go` | page/domain | S1 | 新、改 | 6.1（键的表格、性质与穷举的测试；上限的两行与码位的界；内部的 `TestGrepKeysReadsABoundedPart` 与 `TestGrepNFCIsTheSegmentsMapping`） |
-| `page/app/grep.go` | page/app | S1 | 新 | 用例 `Grep`、`GrepDeps`、`GrepSlots`、解析的队列 `GrepParses`，两者的名额是带缓冲的 channel（`turns`）（3.6、3.7） |
-| `page/app/grep_test.go`、`grep_lines_test.go`、`grep_cost_test.go`、`grep_load_test.go` | page/app | S1 | 新 | 用例的表格测试（假的存储）、名额与队列、`TestGrepLinesAreReads`；`//go:build !race`：P1 的守卫树上的 `grep`（6.1），只在本机跑的 `BenchmarkGrepAtFullLoad` 与 `BenchmarkGrepParsesOfTheWorst`（3.6.4、6.2） |
+| `page/app/grep.go` | page/app | S1、S2 | 新、改 | 用例 `Grep`、`GrepDeps`、`GrepSlots`、解析的队列 `GrepParses`，两者的名额是带缓冲的 channel（`turns`）（3.6、3.7）；S2：每行的用时只算它自己的 NFC 与匹配，量的每单位过了 `GrepUnitWarmUp` 才用，不导出的 `lines`（生产里是 `domain.GrepLines`；`export_test.go` 的 `WithLines` 换掉它）（3.6.3） |
+| `page/app/grep_test.go`、`grep_lines_test.go`、`grep_cost_test.go`、`grep_load_test.go`、`export_test.go` | page/app | S1、S2 | 新、改 | 用例的表格测试（假的存储）、名额与队列、`TestGrepLinesAreReads`；S2 的 `TestGrepTimesALinesMatchAlone` 与 `TestGrepTrustsItsUnitPastAWarmUp`；`//go:build !race`：P1 的守卫树上的 `grep`（6.1），只在本机跑的 `BenchmarkGrepAtFullLoad` 与 `BenchmarkGrepParsesOfTheWorst`（3.6.4、6.2） |
 | `page/app/ports.go` | page/app | S1 | 改 | `GrepReads`（候选、正文、`SearchBuilding`）；`SearchRow.Partial`；`SearchDeps.Notebooks`（3.4.3、3.8） |
 | `page/app/search.go` | page/app | S1 | 改 | `Search.InNotebook`、`SearchHit.Tier` 与 `Cursor()`（3.8） |
 | `page/app/index_search.go` | page/app | S1 | 改 | 任务写 `row.Partial`（3.3.2） |
 | `page/adapter/postgres/queries/search.sql`、`search.go`、`grep.go` | page/adapter/postgres | S1 | 改、新 | `WriteSearchRow` 写 `partial`；`GrepCandidates`；存储的方法（3.4） |
 | `page/adapter/postgres/search_scope_test.go`、`grep_test.go`、`grep_plan_test.go` | page/adapter/postgres | S1 | 改、新 | 块数、`GrepCandidates`、计划（6.1） |
 | `server/migrations/search_partial_test.go` | migrations | S1 | 新 | 迁移的筛法（每个迁移的测试都在这里，它要 `downTo` 与 goose；S1 的偏离 10，6.1） |
-| `page/adapter/mcp/grep.go`、`search.go`、`tools.go`、`instructions.go` 与测试 | page/adapter/mcp | S1 | 新、改 | 两个工具、说明的三行（3.10、3.14） |
+| `page/adapter/mcp/grep.go`、`search.go`、`tools.go`、`instructions.go`、`text.go` 与测试 | page/adapter/mcp | S1、S2 | 新、改 | 两个工具、说明的三行（3.10、3.14）；S2：说明的 `backlinks` 与 `index` 两行，`text.go` 导出 `PathErr` 与 `NotAPage`（路径的错误是 page 的文字，3.9.1） |
 | `page/module.go` | page | S1 | 改 | `Deps` 加 `GrepSlots`（nil 是按 `GOMAXPROCS` 建的）、`MaxGrepWork`、`MaxGrepLineWork`、`MaxGrepRead`、`GrepWalk`（0 是 domain 的，生产留 0；整个程序的测试经它们注入）；解析的队列按 `GOMAXPROCS` 建一个，不经 `Deps`；`page.NewGrepSlots(n)`（`pageapp.NewGrepSlots` 的转交，码的测试用，3.12）；用例交给 `adapter/mcp` |
-| `page/node_paths.go` | page | S2 | 新 | 模块根的 `NodePaths` 与 `NewNodePaths(pool)`：`Check`、`FindPage`、`Paths`、`Pages`、`ChildPages`（3.9.1） |
-| `page/adapter/postgres/queries/nodes.sql` | page/adapter/postgres | S2 | 改 | `RootPageIDs`、`ChildPageIDs`（3.9.1） |
-| `linking/domain/actions.go`、`linking/domain/index.go` | linking/domain | S2 | 改、新 | `ActionListIndex = "index.list"`；`index` 的常量、`IndexCursor`、`IndexKey`、`CutIndexString`（3.9.3） |
-| `linking/app/ports.go`、`backlinks.go`、`index.go` | linking/app | S2 | 改、新 | `NodePaths` 端口、`IndexReads`；`ListBacklinks.AtPath`；`ListIndex`（3.9） |
-| `server/migrations/sql/00047_linking_page_properties_keys.sql` | — | S2 | 新 | `page_properties` 上 `type` 与 `summary` 的两个部分索引（3.9.3） |
-| `linking/adapter/postgres/queries/index.sql`、`index.go`、`index_plan_test.go`、`index_cost_test.go` | linking/adapter/postgres | S2 | 新 | `IndexPages`、`IndexItems`、`InboundCounts`、计划测试；`//go:build !race`：`TestIndexOfAHundredThousandPagesTakesItsTime`（3.9.3、6.1） |
-| `linking/adapter/mcp/`（`tools.go`、`backlinks.go`、`index.go`、`text.go` 与测试） | linking/adapter/mcp | S2 | 新 | 两个工具（3.10） |
-| `linking/module.go` | linking | S2 | 改 | `Deps.NodePaths`；`(*Module).Tools()` |
+| `page/node_paths.go`、`node_paths_test.go` | page | S2 | 新 | 模块根的 `NodePaths` 与 `NewNodePaths(pool)`：`Check`、`FindPage`、`Paths`、`Pages`、`ChildPages`，每个方法的测试（3.9.1） |
+| `page/adapter/postgres/queries/nodes.sql`、`store.go`、`overview_test.go` | page/adapter/postgres | S2 | 改 | `RootPageIDs`、`ChildPageIDs`；它们的计划测试 `TestTheChildPagesReadsUseTheirIndexes`（3.9.1） |
+| `linking/domain/actions.go`、`linking/domain/index.go`、`index_test.go` | linking/domain | S2 | 改、新 | `ActionListIndex = "index.list"`；`index` 的常量（`IndexStartChars` 是 257）、`IndexCursor`、`CompareIndex`、`IndexKey` 与复用缓冲的 `IndexKeyer`、`CutIndexString`（3.9.3） |
+| `linking/app/ports.go`、`backlinks.go`、`list_index.go` 与测试 | linking/app | S2 | 改、新 | `NodePaths` 端口、`IndexReads`；`ListBacklinks.AtPath`；`ListIndex`（`list_index.go`：`index.go` 是 M6 起的索引的观察者 `Index`，S2 的偏离 1）（3.9） |
+| `server/migrations/sql/00047_linking_page_properties_keys.sql`、`schema_test.go`、`server/sqlc.yaml` | — | S2 | 新、改 | `page_properties` 的两个存储的生成列 `value_start`（`type` 与 `summary` 的字符串的前 257 个字符）与 `value_chars`（它的 `char_length`），`type` 与 `summary` 的两个部分索引；Up 重写这张表；两个索引的名字；sqlc 读这个迁移（3.9.3） |
+| `linking/adapter/postgres/queries/index.sql`、`index.go`、`index_test.go`、`index_plan_test.go`、`index_cost_test.go` | linking/adapter/postgres | S2 | 新 | `IndexPages`、`IndexItems`、`InboundCounts`、存储的测试 `TestIndexReads`、计划测试；`//go:build !race`：`TestIndexOfAHundredThousandPagesTakesItsTime`（3.9.3、6.1） |
+| `linking/adapter/mcp/`（`tools.go`、`backlinks.go`、`index.go` 与 `tools_test.go`） | linking/adapter/mcp | S2 | 新 | 两个工具（3.10）；没有 `text.go`：两个工具没有自己的错误的文字（S2 的偏离 11） |
+| `linking/module.go` | linking | S2 | 改 | `Deps.NodePaths`；`(*Module).Tools()`（没有 `NodePaths` 时 panic） |
 | `access/domain/rules.go` | access/domain | S2 | 改 | `"index.list": {Level: LevelNotebook, Notebook: readers()}` |
-| `bootstrap/deps.go`、`bootstrap/mcp.go` | bootstrap | S2 | 改 | `linkingDeps` 接上 `NodePaths`；`mcpTools` 拼 linking 的工具 |
-| `bootstrap/permission_matrix_mcp_test.go`、`mcp_reads_test.go`、`mcp_grep_test.go`（新，S1）、`mcp_search_test.go`（新，S1）、`mcp_links_test.go`（新，S2）、`search_test.go`、`search_rebuild_test.go`、`trash_test.go`、`wire.go` | bootstrap | S1、S2 | 改、新 | 码的表、矩阵、合法参数、整个程序测试（6.1）；测试的 `wiring` 的 `page func(*page.Deps)` 钩子（3.16） |
-| `bootstrap/grep_cost_test.go` | bootstrap | S1 | 新 | `//go:build !race`：`grep` 的三个时间守卫（6.1） |
+| `bootstrap/deps.go`、`bootstrap/linking.go`、`bootstrap/mcp.go` | bootstrap | S2 | 改 | `linkingDeps` 接上 `NodePaths`（`linkingNodePaths`：page 的 `NodePaths`，`Pages` 换成 linking 的类型）；`mcpTools` 拼 linking 的工具 |
+| `bootstrap/permission_matrix_mcp_test.go`、`permission_matrix_mcp_linking_test.go`（新，S2）、`mcp_reads_test.go`、`mcp_grep_test.go`（新，S1）、`mcp_search_test.go`（新，S1）、`mcp_links_test.go`（新，S2）、`search_test.go`、`search_rebuild_test.go`、`trash_test.go`、`wire.go` | bootstrap | S1、S2 | 改、新 | 码的表、矩阵、合法参数、整个程序测试（6.1）；测试的 `wiring` 的 `page func(*page.Deps)` 钩子（3.16）；S2：S1 的准确的 `grep` 测试以生产的期限跑（`productionDeadlines`、`startGrepApp`、`startReadsAppOf`） |
+| `bootstrap/grep_cost_test.go` | bootstrap | S1、S2 | 新、改 | `//go:build !race`：`grep` 的三个时间守卫（6.1）；S2：10 万个候选的调用三次、按中位数判 |
 | `api/mcp/tools.json` | — | S1、S2 | 改 | 每个工具两个条目（3.11） |
 | `Makefile` | — | S1、S2 | 改 | S1：`test-go-guards` 加 `grep` 的一行、`test-go-costs` 加 `page/app` 的守卫一行；S2：`test-go-costs` 加 `index` 的守卫一行；都带 `-v`（6.5） |
 | `.github/workflows/ci.yml` | — | S1 | 改 | 成本那一份的时限由 20 分钟提到 25 分钟（第 11 节第 54 条，6.5） |
@@ -655,7 +657,7 @@ func (g GrepNFC) Match(re *regexp.Regexp, text string, column int) GrepMatch
 #### 3.6.3 一次调用的工作、软期限与预先判断
 
 - 一次调用的工作是它匹配过的各行的 `GrepWork` 之和（截断的行按截断的字节）。
-- **预先判断**：每一行开始之前估它的工作 w，按它截断之内的 NFC 的字节，即之后计的（3.6.2；审查 C-I2：按原样的字节判断时，NFC 长到 3 倍的一行让一次调用到约 2.5 × 10⁸、`MaxGrepWork` 的 125%）；本次调用已经查过至少一行时，`已做 + w > MaxGrepWork`，或 `现在 + w × 每单位的耗时 > 软期限` 就不开始这一行，停在这一行之前，答已找到的与游标，`incomplete: true`。软期限是调用的 ctx 的期限减 `GrepSoftMargin`（3 秒；15 秒的 `server.request_timeout` 时是开始之后约 12 秒）；ctx 没有期限时只有工作的界线（测试的直接调用）。每单位的耗时取 `max(这次调用自己量的, GrepUnitTime)`（量的是匹配的用时除以做过的工作；`GrepUnitTime` 是 25 ns，满负载下较慢的形状的 p99（22.93–24.78 ns）向上取，3.6.4）：负载重时它自己变慢、估计随之变大；`regexp` 以字面的前缀跳读时一段便宜的行量出的远低于 1 ns，取大的一个就不让下一行在软期限之前一刻开始而越过它（审查 A-n1；`MaxGrepWork` × 25 ns = 5 秒，在 12 秒之内）。
+- **预先判断**：每一行开始之前估它的工作 w，按它截断之内的 NFC 的字节，即之后计的（3.6.2；审查 C-I2：按原样的字节判断时，NFC 长到 3 倍的一行让一次调用到约 2.5 × 10⁸、`MaxGrepWork` 的 125%）；本次调用已经查过至少一行时，`已做 + w > MaxGrepWork`，或 `现在 + w × 每单位的耗时 > 软期限` 就不开始这一行，停在这一行之前，答已找到的与游标，`incomplete: true`。软期限是调用的 ctx 的期限减 `GrepSoftMargin`（3 秒；15 秒的 `server.request_timeout` 时是开始之后约 12 秒）；ctx 没有期限时只有工作的界线（测试的直接调用）。每单位的耗时取 `max(这次调用自己量的, GrepUnitTime)`（量的是匹配的用时除以做过的工作；`GrepUnitTime` 是 25 ns，满负载下较慢的形状的 p99（22.93–24.78 ns）向上取，3.6.4）：负载重时它自己变慢、估计随之变大。**匹配的用时是每行自己的**：从它截断之内的 NFC 之前量到它的匹配之后，两行之间的都不算（`GrepLines` 找下一行的结尾的扫描、一批的读；S2 的修复二轮，审查 C2-m3：原来从一次回调量到下一次，一字节的一行之后，长的一行按那次扫描的时间除以几十个单位估、停在软期限，没有命中而 `incomplete`）。**自己量的只在这次调用的工作到了 `GrepUnitWarmUp`（10⁵ 个单位，按 25 ns 约 2.5 ms 的匹配）之后才用**，之前取 `GrepUnitTime`（S2 的修复三轮，审查 C3-m1：一字节的第一行的 24–42 个单位约 1 µs 匹配完，落在其中的一次 9–36 µs 的停顿就把之后 1–4 MB 的一行估过软期限）：停早了只多一次调用（下一次从那一行开始，它是第一行、不判断），没看出机器慢则可能过请求的期限，所以预热小；过了预热，慢的匹配照旧抬高每单位、在长的一行之前停下（审查 C3-m2；00 号文档第 11 节第 92 条）。`regexp` 以字面的前缀跳读时一段便宜的行量出的远低于 1 ns，取大的一个就不让下一行在软期限之前一刻开始而越过它（审查 A-n1；`MaxGrepWork` × 25 ns = 5 秒，在 12 秒之内）。
 - **至少一行**：第一行不预先判断，所以每次调用至少前进一行；它的工作至多 `MaxGrepLineWork`（0.75 × 10⁸，满负载下 p99 约 1.6 秒；3.6.4 照满负载下一行不过约 2 秒定它），在软期限的 3 秒之内。
 - 一行一旦开始就做完（`regexp` 不看 ctx），所以是预先判断，不是开始之后再看时间（4.13）。读正文的语句之前同样看软期限：过了而这次调用**已经查过至少一行**时就不读（同 `MaxGrepRead` 的例外）；还没查过一行时照读，第一行照查（否则名额的等待与前面的几条语句用掉软期限时，调用什么也不查、以带来的游标答 `incomplete`，agent 拿同一个游标打转；审查 A-m3）。
 
@@ -816,7 +818,7 @@ func (g *Grep) Execute(ctx context.Context, notebookID uuid.UUID, r GrepRequest)
 - **glob 在走查之前取交**（4.13，设计审查 C-M5）：`Glob.Walk(ctx, t.roots, K, MaxGlobWork, each)`（`page/domain/glob.go:353-371`）按路径的键的次序访问节点，`each` 只收是页、而且在候选里（没有键时每页都是）的节点，收到 `MaxSearchWalk` + 1 个就停：第 501 个说"还有"。没有 `glob` 时用 `**/*.md`（每页；它的工作随节点数，远在 `MaxGlobWork` 之下）。glob 的工作与 `grep` 的工作分开计（P1 第 8 节）；glob 的工作用完时（`w.Stopped`）走查照常做完已收到的页，游标是 `(w.Last, 0)`。
 - **续走**：`N` ≥ 1 时先找树里键为 `K` 的节点（`tree` 加一个按键的查找，只在续走时建），它仍是页、仍在候选里、glob 仍匹配它时从第 `N` 行起查它，再从 `K` 之后走；它不在了（改名、移动、删除）就直接从 `K` 之后走。所以页在两次调用之间被挪动时，它与它的子页（路径的键随它变）可能被跳过或再查一遍，别的页不会（同 `list` 的游标，4.9；审查 A-n2）；它的正文变了时从现在的第 `N` 行起，可能漏掉或重复它的几行。工具的说明写这一句。
 - **读正文**：按次序取页，以 `PageStates` 的字节数合成一批（至多 `GrepBatchBytes`；一页大于它时一批只有它）；一批之前：这次调用读过的字节加这一批超过 `MaxGrepRead`、而已经读过至少一页时，停在这一批的第一页之前（游标 `(它的键, 1)`、`incomplete`）：界线在读这一批之前判，不在读了之后。读到的正文的字节照实计（`PageStates` 之后被写大的页），下一批之前照这个数判。
-- **一页的行**：`GrepLines`（3.7.4）从第 `N` 行（续走的第一页）或第 1 行起；每行先取截断之内的 NFC（`NewGrepNFC`），按它预先判断（3.6.3），再以它匹配（`GrepNFC.Match`）；命中给 `GrepFound{Hit}`，截断而没有在截断之前的命中给 `GrepFound{Hit: nil}`（`partial_lines`）；每项的游标是 `(这页的键, 行号 + 1)`。
+- **一页的行**：`GrepLines`（3.7.4）从第 `N` 行（续走的第一页）或第 1 行起；每行先取截断之内的 NFC（`NewGrepNFC`），按它预先判断（3.6.3），再以它匹配（`GrepNFC.Match`）；命中给 `GrepFound{Hit}`，截断而没有在截断之前的命中给 `GrepFound{Hit: nil}`（`partial_lines`）；每项的游标是 `(这页的键, 行号 + 1)`。一行的用时从它的 NFC 之前量到它的匹配之后，`GrepLines` 交出它之前找它的结尾的扫描与一批的读都不算（3.6.3；S2 的修复二轮）。
 - **停**：
   - 命中到了 `limit`：`Next` 是最后一个命中之后，不是 `incomplete`；
   - 一次的工作、软期限（预先判断）：`Next` 是 `(这页的键, 这一行)`，`incomplete`；
@@ -942,22 +944,25 @@ func NewNodePaths(pool *pgxpool.Pool) NodePaths
 ```
 
 - 在 `page/node_paths.go`，照 `NewLinkTargets(pool)` 的写法（`page/link_targets.go:97-100`）：`app.NewNodePaths(postgresadapter.New(pool))` 加 `PageStates`。给路径就是 P2 的 `NodePaths.Paths`（`node_paths.go:56-58`，`PathStore.PathsOf` 经 `LinkTargetsByIDs`，`queries/links.sql:25`），不另写给路径的语句（P2 第 8 节）；只为问到的 id 拼路径（P1 第 8 节，B-M2）。
-- `FindPage` 的错误：`app.NodePaths.Find` 的 `*domain.PathNotFound` 经 page 的 `adapter/mcp` 的 `notFound`（`text.go:49-63`）成为 `*mcpserver.ToolError`，文字与 page 的工具相同（"page.not_found: Nothing is at "A/B.md"." 与提示），`Err` 是 page 的 `page.not_found`（mcpserver 照它分类）。路径指着附件时也是 `page.not_found`，文字是 `page.not_found: "A/x.png" is an attachment; a page's path ends with .md.`（4.9 的"附件答 `page.not_found`"）。模块根可以导入自己的适配器；linking 的用例原样返回这个错误，linking 的 `adapter/mcp` 不改写它（3.10.4）。
-- 两条新语句，走 `nodes_notebook_id_parent_id_idx`（`parent_id IS NULL` 是索引的条件，`IS NOT DISTINCT FROM` 不是，`nodes.sql:93-95` 的注释）：
+- `FindPage` 的错误：`app.NodePaths.Find` 的 `*domain.PathNotFound` 经 page 的 `adapter/mcp` 的 `notFound`（`text.go:49-63`）成为 `*mcpserver.ToolError`，文字与 page 的工具相同（"page.not_found: Nothing is at "A/B.md"." 与提示），`Err` 是 page 的 `page.not_found`（mcpserver 照它分类）；page 的适配器为此导出 `PathErr`（`*domain.PathNotFound` 的文字与提示，别的错误原样）与 `NotAPage`（附件的那一句）。路径指着附件时也是 `page.not_found`，文字是 `page.not_found: "A/x.png" is an attachment; a page's path ends with .md.`（4.9 的"附件答 `page.not_found`"）。模块根可以导入自己的适配器；linking 的用例原样返回这个错误，linking 的 `adapter/mcp` 不改写它（3.10.4）。
+- 两条新语句，读 00012 的 `nodes_notebook_id_parent_id_idx` 或 00042 的根页与子页的索引，由规划器选（审查 A-n1 的探针：`RootPageIDs` 总是 00012 的，`ChildPageIDs` 随统计与计划在两者之间）。`TestTheChildPagesReadsUseTheirIndexes`（page 的适配器，在概况的计划测试旁）在无统计与分析之后、按参数与通用计划下、关掉整表扫描时，要 `RootPageIDs` 以条件含 `notebook_id =`、条件或谓词含 `parent_id IS NULL` 的索引读（两个可用的索引都以 `notebook_id` 打头；修复核对一轮 C2-m2：只看 `parent_id IS NULL` 时，读每本笔记本的根的写法也过），`ChildPageIDs` 以条件含 `parent_id =` 的索引读（2,000 个子页的父页与没有子页的父页），不许顺序扫描 `nodes`。`parent_id IS NOT DISTINCT FROM NULL` 被 PostgreSQL 折成 `IS NULL`；参数的 `IS NOT DISTINCT FROM $2` 不是索引的条件：
 
 ```sql
 -- name: RootPageIDs :many
--- The root's pages not deleted (M9/P4 design 3.9.1): index's parent "/".
+-- The root's pages not deleted (M9/P4 design 3.9.1): index's parent "/", by an index of the root's nodes, the
+-- notebook's and parents' (00012) or the roots' (00042) as the planner takes it, notebook_id = its condition and
+-- parent_id IS NULL its condition or its predicate (TestTheChildPagesReadsUseTheirIndexes).
 SELECT id FROM nodes
 WHERE notebook_id = sqlc.arg(notebook_id) AND parent_id IS NULL AND kind = 'page' AND deleted_at IS NULL;
 
 -- name: ChildPageIDs :many
--- A page's child pages not deleted (M9/P4 design 3.9.1): index's parent.
+-- A page's child pages not deleted (M9/P4 design 3.9.1): index's parent, by an index of a parent's children, the
+-- notebook's and parents' (00012) or the children's (00042) as the planner takes it, parent_id = its condition.
 SELECT id FROM nodes
 WHERE notebook_id = sqlc.arg(notebook_id) AND parent_id = sqlc.arg(parent_id) AND kind = 'page' AND deleted_at IS NULL;
 ```
 
-- linking 的 `app.NodePaths` 是同样的五个方法（类型是 linking 的：`PagePath` 抄一份；审查 B、C 都看过五个是否多了：`Paths` 可以由 `Pages` 代替、多读一条语句，两位都说不值得改，留着）；`linking.Deps.NodePaths` 由组合根接上：`bootstrap/deps.go:204-215` 的 `linkingDeps` 加 `NodePaths: linkingNodePaths{page.NewNodePaths(pool)}`（同 `linkTargets{targets}` 的适配）。整个程序的最后一跳（13.1 第 21 条）：`TestTheMCPLinksReachTheirUseCases`（6.1）对每个方法各有一个交空时失败的调用。
+- linking 的 `app.NodePaths` 是同样的五个方法（类型是 linking 的：`PagePath` 抄一份；审查 B、C 都看过五个是否多了：`Paths` 可以由 `Pages` 代替、多读一条语句，两位都说不值得改，留着）；`linking.Deps.NodePaths` 由组合根接上：`bootstrap/deps.go:204-215` 的 `linkingDeps` 加 `NodePaths: linkingNodePaths{page.NewNodePaths(pool)}`（同 `linkTargets{targets}` 的适配；`linkingNodePaths` 在 `bootstrap/linking.go`，嵌入 page 的 `NodePaths`，`Pages` 换成 linking 的 `PagePath`）。整个程序的最后一跳（13.1 第 21 条）：`TestTheMCPLinksReachTheirUseCases`（6.1）对每个方法各有一个交空时失败的调用（以反向对照核对：`linkingNodePaths` 的五个方法各答空，测试各自失败；S2 的偏离 13）。
 
 #### 3.9.2 `ListBacklinks.AtPath`
 
@@ -1022,7 +1027,11 @@ const (
 	// U+01D6, two bytes), and Go's NFC looks 30 further.
 	MaxIndexKey    = 64
 	IndexTypeChars = 128
-	DefaultIndexLimit, MaxIndexLimit = 50, 100
+	// IndexStartChars is the characters of a type's or a summary's string
+	// the index reads, page_properties.value_start (00047, S2 review B-I1):
+	// IndexTypeChars for the key, and MaxIndexString bytes and one more,
+	// which tell a string cut from one whole.
+	IndexStartChars = MaxIndexString + 1
 )
 
 // IndexCursor is the cursor after an index's item: its type's key and
@@ -1034,19 +1043,36 @@ type IndexCursor struct {
 	ID    uuid.UUID `json:"id"`
 }
 
-// IndexKey is a type's key: the title key (shared.TitleKey) of its first
-// IndexTypeChars characters, cut to MaxIndexKey bytes at a character's
-// boundary, so that a cursor is bounded (M9 design 4.9).
+// CompareIndex is the index's order of the items a and b are the cursors
+// of: negative when a comes first.
+func CompareIndex(a, b IndexCursor) int
+
+// IndexKey is a type's key, as an IndexKeyer takes it.
 func IndexKey(typ string) string
+
+// IndexKeyer takes types' keys one after another, its fold and its buffers
+// kept from one to the next: a key's allocations are then about its own
+// bytes, where TitleKey's three passes allocate anew each (a call of index
+// takes 100,000 keys, M9/P4 design 3.9.3). It is not for concurrent use.
+type IndexKeyer struct{ /* the fold and three buffers */ }
+
+// NewIndexKeyer returns a keyer.
+func NewIndexKeyer() *IndexKeyer
+
+// Key is typ's key: the title key (shared.TitleKey: NFC, the full case
+// fold, NFC again) of its first IndexTypeChars characters, cut to
+// MaxIndexKey bytes at a character's boundary, so that a cursor is bounded
+// (M9 design 4.9).
+func (k *IndexKeyer) Key(typ string) string
 
 // CutIndexString is s cut to MaxIndexString bytes at a character's
 // boundary, and whether it was cut.
 func CutIndexString(s string) (string, bool)
 ```
 
-`IndexKey` 由类型的前 128 个字符算：键的一个字节至多来自 1.5 个字符（合成把三个字符合成两个字节：`u` U+0308 U+0304 是 U+01D6；对全部码位的 NFD 算，最多的是 1.5，审查 B-N2 的 `tokb keychars`），所以 64 字节的键至多来自 96 个字符，Go 的 NFC 再往后看至多 30 个（流安全），128 个够。键截到 64 字节而不是 256（审查 B-M3）：4.9 的 256 是答复的截断，不是次序的需要；游标照样有界，一次调用读的 `type` 也少了四分之三。`TestIndexKey` 以长的类型（U+01D6 一类的三个字符的合成、组合记号、谚文的字母、`ß`）核对"128 个字符的键的前 64 字节等于整个的"。
+`IndexKey` 由类型的前 128 个字符算：键的一个字节至多来自 1.5 个字符（合成把三个字符合成两个字节：`u` U+0308 U+0304 是 U+01D6；对全部码位的 NFD 算，最多的是 1.5，审查 B-N2 的 `tokb keychars`），所以 64 字节的键至多来自 96 个字符，Go 的 NFC 再往后看至多 30 个（流安全），128 个够。键截到 64 字节而不是 256（审查 B-M3）：4.9 的 256 是答复的截断，不是次序的需要；游标照样有界，一次调用读的 `type` 也少了四分之三。`TestIndexKey` 以长的类型（U+01D6 一类的三个字符的合成、组合记号、谚文的字母、`ß`）核对"128 个字符的键的前 64 字节等于整个的"。`ListIndex` 以一个 `IndexKeyer` 取每个类型的键（S2 的偏离 4）：每页一次 `IndexKey` 在最坏的形状上 13 次分配、3,720 字节，键器 3 次、656 字节，一次一页 100 项的调用（10 万页最坏的形状）由约 464 MB 降到约 158 MB；`TestAnIndexKeyerTakesEachKeyWithItsBuffers` 以 2,000 个随机的类型核对一个键器连续取的键都是各自的、最坏的一个至多 4 次分配，守卫以 250 MB 界住调用的分配（6.1；审查 C-n2，00 号文档第 11 节第 93 条）。`limit` 用 `shared.PageSize`（1–100，默认 50；S2 的偏离 2），不另设常量。
 
-**用例**：
+**用例**（`linking/app/list_index.go`：`index.go` 是 M6 起的索引的观察者 `Index`，S2 的偏离 1）：
 
 ```go
 // IndexQuery is index's arguments (M9 design 4.9).
@@ -1091,7 +1117,7 @@ type ListIndex struct {
 // Execute is the page of q in notebookID: the cursor, 400; type (NUL,
 // longer than MaxIndexType) and parent (NodePaths.Check, "/" the root),
 // 422 at their fields; "" refused for type, tag and parent; the limit, 422, 1 to
-// MaxIndexLimit, DefaultIndexLimit; the notebook, index.list,
+// 100, 50 (shared.PageSize); the notebook, index.list,
 // notebook.not_found; parent's page, page.not_found; then the index's
 // pages read whole with the starts of their types (of type alone when it
 // is given), filtered, ordered, the page of them after the cursor, and the
@@ -1103,26 +1129,52 @@ func (l ListIndex) Execute(ctx context.Context, notebookID uuid.UUID, q IndexQue
 ```
 
 - 筛选：`type` 是 jsonb 的值相等，在语句里筛（`IndexPages` 的 `type_is`：只答这种类型的页，审查 B-M3）；`tag` 先去掉开头的一个 `#`（正文里的写法；frontmatter 里写成 `#plan` 的标签存作 `plan`，`linking/adapter/markdown/facts.go:61-63`；`getTag` 的路径段不带它），再经 `TagKey`（`linking/adapter/markdown/tag.go:19`），`false` 时（带 NUL 的也是）是空的一页、不查库（同 `GetTag`，`tags.go:51-54`），否则 `TagPages`（`reads.sql:96-105`，含其下的标签）；`parent` 经 `ChildPages`。三者取交，在 Go 里。三个都不收空的字符串：422，文字说"omit it"（`parent` 的另说"or use "/""）；模型常以 `""` 代替"没有"，照值筛会悄悄答空（审查 B-M7）。
-- 次序：有类型的在前，按（`IndexKey`、id），没有类型的在后、按 id；游标之后取 `limit` + 1 个；`limit` 个里最后读的那一页被留下（它在读了之后进了回收站、没有路径）时 `Next` 照样在它之后（同 3.9.2，审查 B-N3）。读全部的页是为了次序：键要 Go 的标题键，SQL 给不出；它与 `list` 读整棵树是同一类代价。最坏的一次调用：10 万页、每个 `type` 是 128 个 4 字节的字符，`IndexPages` 答约 51 MB 的 `type` 的开头，键约 6.4 MB，合计约 65 MB 活着的内存，`TitleKey` 由几百毫秒（ASCII）到约 0.7 秒（一个字母与一串记号；审查 B-M3 量 512 个字符的 2.65 秒，按字符数折算；审查 B 对修订的核对量 128 个字符的 10 万个约 0.24–0.71 秒）。第 10 节与 M12 的性能移交写这一行（第 7 节）；守卫取这个形状（6.1）。
+- 次序：有类型的在前，按（`IndexKey`、id），没有类型的在后、按 id；游标之后取 `limit` + 1 个；`limit` 个里最后读的那一页被留下（它在读了之后进了回收站、没有路径）时 `Next` 照样在它之后（同 3.9.2，审查 B-N3）。读全部的页是为了次序：键要 Go 的标题键，SQL 给不出；它与 `list` 读整棵树是同一类代价。最坏的一次调用：10 万页、每个 `type` 是 128 个 4 字节的字符，`IndexPages` 答约 51 MB 的 `type` 的开头，键约 6.4 MB，合计约 65 MB 活着的内存，`TitleKey` 由几百毫秒（ASCII）到约 0.7 秒（一个字母与一串记号；审查 B-M3 量 512 个字符的 2.65 秒，按字符数折算；审查 B 对修订的核对量 128 个字符的 10 万个约 0.24–0.71 秒）；S2 照建成的重量：10 万个最坏的形状的类型的键 0.66–0.80 秒，读到的页与键活着的 55.6 MB、分配的 155.2 MB（9.2）。一次调用读的类型的字节由 `value_start` 界住，不随类型的长短（00047，下面）。第 10 节与 M12 的性能移交写这一行（第 7 节）；守卫取这个形状（6.1）。
 - 每项：`Pages` 给路径与正文的最后改动（没有的页不列出）；父页的路径由路径去掉最后一段、加 `.md` 得到（根下的为 null）；`type` 与 `summary` 由 `CutIndexString` 截、标出（`cut` 里的 `type`、`summary`）；标签至多 20 个（按标签键），每个截到 256 字节（`cut` 里的 `tags[i]`），多于 20 个时 `cut` 里有 `tags`；入链数由 `InboundCounts`。
 - 索引里没有行的页（M6 之前写的、`nervewiki reindex` 之前的）不在其中；提取器旧了的照旧行在（`reads.sql:84-105` 的写法）：工具的说明写这一句。
 
 **端口与语句**（`linking/app/ports.go` 的 `IndexReads`，`linking/adapter/postgres/queries/index.sql`）：
 
 ```go
-// IndexReads are what index reads of the link index (M9/P4 design 3.9.3).
+// IndexReads are what index reads of the link index (M9/P4 design 3.9.3),
+// on the pool, each in one statement.
 type IndexReads interface {
 	// IndexPages is the pages of notebookID the index holds, each with
 	// the start of its type (IndexTypeChars characters); with typeIs, only
-	// those whose type is that string.
+	// those whose type is that string. What it reads of a type is its
+	// first domain.IndexStartChars characters and its length, whatever
+	// the type's length (S2 review B-I1). It reads a type whole only for a
+	// typeIs of IndexStartChars characters or more, and only a type that
+	// starts as typeIs does and has as many characters: at most 1,024, as
+	// typeIs has at most domain.MaxIndexType bytes (fix check F-m1).
 	IndexPages(ctx context.Context, notebookID uuid.UUID, typeIs *string) ([]IndexedPage, error)
 	// IndexItems is the types, summaries and first tags of the pages ids.
 	IndexItems(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]IndexFacts, error)
 	// InboundCounts is how many other pages link to each of ids, at most
-	// max; a page none links to is not among them.
-	InboundCounts(ctx context.Context, ids []uuid.UUID, max int) (map[uuid.UUID]int, error)
+	// most; a page none links to is not among them.
+	InboundCounts(ctx context.Context, ids []uuid.UUID, most int) (map[uuid.UUID]int, error)
 	// TagPages is as GetTag reads it.
 	TagPages(ctx context.Context, notebookID uuid.UUID, key string) ([]uuid.UUID, error)
+}
+
+// IndexedPage is a page the index holds and the start of its type, the
+// first property whose key is "type" but for ASCII case when its value is
+// a string; Typed false for none.
+type IndexedPage struct {
+	ID        uuid.UUID
+	TypeStart string
+	Typed     bool
+}
+
+// IndexFacts is what index shows of a page's properties and tags: its type
+// and its summary, each the first of its key but for ASCII case when its
+// value is a string, nil for none, their first domain.IndexStartChars
+// characters, which tell a string MaxIndexString cuts from one whole; its
+// first tags by key, one more than domain.MaxIndexTags at most, each its
+// first 512 characters.
+type IndexFacts struct {
+	Type, Summary *string
+	Tags          []string
 }
 ```
 
@@ -1131,42 +1183,53 @@ type IndexReads interface {
 -- The pages of a notebook the index holds (M9/P4 design 3.9.3), each with the start of its type: the first of its
 -- properties whose key is "type" but for ASCII case (translate leaves any other key unequal), when that property's
 -- value is a string, its first 128 characters, which the order's key of 64 bytes needs. With type_is, only the pages
--- whose type is that string. Each page's properties are read by page_properties_type_idx (00047), one probe a page
--- whatever properties it has: never the notebook's others, nor another notebook's. The pages are read whole: the order
--- is Go's title keys.
-SELECT ip.node_id, t.type_start
+-- whose type is that string; typed tells an empty type from none. Each page's properties are read by
+-- page_properties_type_idx (00047), one probe a page whatever properties it has: never the notebook's others, nor
+-- another notebook's. A type is read by its value_start (00047), its first 257 characters, never by its value, which
+-- may be MiB long: the value only for type_is of 257 characters or more, where value_start is type_is's start and
+-- value_chars its length, a value of at most 1,024 characters. The pages are read whole: the order is Go's title keys.
+SELECT ip.node_id, (t.type_start IS NOT NULL)::boolean AS typed, coalesce(t.type_start, '')::text AS type_start
 FROM indexed_pages ip
 LEFT JOIN LATERAL (
-    SELECT CASE WHEN jsonb_typeof(p.value) = 'string' THEN left(p.value #>> '{}', 128) END AS type_start, p.value
+    SELECT left(p.value_start, 128) AS type_start,
+        CASE
+            WHEN sqlc.narg(type_is)::text IS NULL THEN true
+            WHEN p.value_start IS DISTINCT FROM left(sqlc.narg(type_is)::text, 257) THEN false
+            WHEN char_length(sqlc.narg(type_is)::text) < 257 THEN true
+            WHEN p.value_chars <> char_length(sqlc.narg(type_is)::text) THEN false
+            ELSE p.value = to_jsonb(sqlc.narg(type_is)::text)
+        END AS of_type
     FROM page_properties p
     WHERE p.source_id = ip.node_id AND translate(p.key, 'TYPE', 'type') = 'type'
     ORDER BY p.position
     LIMIT 1
 ) t ON true
-WHERE ip.notebook_id = sqlc.arg(notebook_id)
-    AND (sqlc.narg(type_is)::text IS NULL OR t.value = to_jsonb(sqlc.narg(type_is)::text));
+WHERE ip.notebook_id = sqlc.arg(notebook_id) AND (sqlc.narg(type_is)::text IS NULL OR t.of_type);
 
 -- name: IndexItems :many
 -- The types, summaries and tags of the index's pages ids (M9/P4 design 3.9.3): the first property whose key is "type",
--- and the first whose key is "summary", but for ASCII case, each's first 512 characters when its value is a string, by
--- their partial indexes (00047); and the first 21 tags by key, as most written, each's first 512 characters, the 21st
--- telling that more follow, by the primary key.
+-- and the first whose key is "summary", but for ASCII case, each's value_start (00047), its first 257 characters when
+-- its value is a string, by their partial indexes, typed and summarized telling an empty one from none; and the first
+-- 21 tags by key, each as the page first writes it, its first 512 characters, the 21st telling that more follow, by
+-- the primary key.
 SELECT ip.node_id,
-    ty.type_text,
-    s.summary_start,
+    (ty.value_start IS NOT NULL)::boolean AS typed,
+    coalesce(ty.value_start, '')::text AS type_text,
+    (s.value_start IS NOT NULL)::boolean AS summarized,
+    coalesce(s.value_start, '')::text AS summary_start,
     ARRAY(
         SELECT left(t.tag, 512) FROM page_tags t WHERE t.source_id = ip.node_id ORDER BY t.tag_key LIMIT 21
     )::text[] AS tags
 FROM indexed_pages ip
 LEFT JOIN LATERAL (
-    SELECT CASE WHEN jsonb_typeof(p.value) = 'string' THEN left(p.value #>> '{}', 512) END AS type_text
+    SELECT p.value_start
     FROM page_properties p
     WHERE p.source_id = ip.node_id AND translate(p.key, 'TYPE', 'type') = 'type'
     ORDER BY p.position
     LIMIT 1
 ) ty ON true
 LEFT JOIN LATERAL (
-    SELECT CASE WHEN jsonb_typeof(p.value) = 'string' THEN left(p.value #>> '{}', 512) END AS summary_start
+    SELECT p.value_start
     FROM page_properties p
     WHERE p.source_id = ip.node_id AND translate(p.key, 'SUMARY', 'sumary') = 'summary'
     ORDER BY p.position
@@ -1177,7 +1240,8 @@ WHERE ip.node_id = ANY(sqlc.arg(ids)::uuid[]);
 -- name: InboundCounts :many
 -- How many pages but itself link to each of the pages ids, at most max_count (M9/P4 design 3.9.3): the sources found
 -- a step each, the next after the last on page_links_resolved_id_source_id_idx, as Backlinks finds them, never all of
--- a page's links: a page may write a million (M6/P5 review r1-1). A page no other links to has no row.
+-- a page's links: a page may write a million (M6/P5 review r1-1). A page no other links to has no row, or a row of 0
+-- when it links to itself alone.
 WITH RECURSIVE steps (target, source_id, n) AS (
     SELECT t.id, x.source_id, CASE WHEN x.source_id = t.id THEN 0 ELSE 1 END
     FROM unnest(sqlc.arg(ids)::uuid[]) t (id)
@@ -1201,15 +1265,46 @@ WITH RECURSIVE steps (target, source_id, n) AS (
 SELECT target::uuid AS page_id, max(n)::integer AS inbound FROM steps GROUP BY target;
 ```
 
-- **迁移 00047**（S2，无条件；审查 B-I2）：
+- sqlc 把 `LEFT JOIN LATERAL` 的列读作非空：两条语句答 `(x IS NOT NULL)::boolean`（`typed`、`summarized`）与 `coalesce(x, '')::text`，存储再换回指针；`IndexedPage` 是 `{ID, TypeStart string, Typed bool}`（S2 的偏离 3）。
+- **迁移 00047**（S2，无条件；审查 B-I2；两列是 S2 的修复一轮与二轮加的，审查 B-I1、修复核对一轮 F-m1）：
 
 ```sql
 -- page_properties' type and summary, read by index a probe a page (M9/P4 design 3.9.3): a page's first property whose
--- key is "type" (or "summary") but for ASCII case, whatever other properties it has. Without them index's lateral reads
--- every property of a page without a type, up to the frontmatter's 10,000 nodes. A key that matches but for ASCII case
--- has 16 (or 128) spellings, so each index holds a few rows a page at most.
+-- key is "type" (or "summary") but for ASCII case, whatever other properties it has. Without the partial indexes
+-- index's lateral reads every property of a page without a type, up to the frontmatter's 10,000 nodes. A key that
+-- matches but for ASCII case has 16 (or 128) spellings, so each index holds a few rows a page at most.
+--
+-- value_start is the start of such a property's value when it is a string, its first 257 characters, NULL for any
+-- other row (S2 review B-I1): index reads it and never value, whose whole a writer sets (a string of the content's
+-- 5 MiB) and which jsonb's operators detoast whole to take any part of it. 257 is the least that each use needs:
+--   - the order's key is a type's first 128 characters (IndexTypeChars);
+--   - an answer cuts a type or a summary to 256 bytes at a character's boundary, and says so when it is cut
+--     (MaxIndexString). The first 257 characters tell both: a string of at most 257 characters is whole in them; one of
+--     more has more than 257 bytes, so it is cut, and its first 256 bytes are among its first 257 characters, each at
+--     least a byte. 256 characters would not tell a string of 256 ASCII characters from one of 257;
+--   - the type filter (at most 1,024 bytes, MaxIndexType) is equal to a type when it is shorter than 257 characters
+--     and value_start is it: value_start shorter than 257 characters is the whole string. A filter of 257 characters or
+--     more is compared with value_start first, its own first 257 characters, then with value_chars, and with the whole
+--     value only where both are equal.
+-- value_chars is such a value's length in characters, for the same rows (S2 fix check B, F-m1): without it a filter of
+-- 257 characters or more read whole every type that starts as it does, whatever its length (2,000 types of 5 MB
+-- that start as the filter does, 0.76 s a call). With it, the whole value is read only when it has as many characters
+-- as the filter, which has at most 1,024 bytes: a value of at most 1,024 characters, 4 KB at most.
+-- No index INCLUDEs value_start: with its rows all-visible an index-only probe took 9% less (the guard's 102,000
+-- pages, 167 against 185 ms), and none without; a heap fetch a page reads value_start alone, value's TOAST untouched.
+-- Adding the columns rewrites the table under its exclusive lock, reads of it waiting as writes do, each type's and
+-- summary's value read once; the rewrite needs disk for a second copy of the table while it runs.
 
 -- +goose Up
+ALTER TABLE page_properties ADD COLUMN value_start text GENERATED ALWAYS AS (
+    CASE WHEN translate(key, 'TYPE', 'type') = 'type' OR translate(key, 'SUMARY', 'sumary') = 'summary' THEN
+        CASE WHEN jsonb_typeof(value) = 'string' THEN left(value #>> '{}', 257) END
+    END
+) STORED, ADD COLUMN value_chars integer GENERATED ALWAYS AS (
+    CASE WHEN translate(key, 'TYPE', 'type') = 'type' OR translate(key, 'SUMARY', 'sumary') = 'summary' THEN
+        CASE WHEN jsonb_typeof(value) = 'string' THEN char_length(value #>> '{}') END
+    END
+) STORED;
 CREATE INDEX page_properties_type_idx ON page_properties (source_id, position)
     WHERE translate(key, 'TYPE', 'type') = 'type';
 CREATE INDEX page_properties_summary_idx ON page_properties (source_id, position)
@@ -1218,12 +1313,15 @@ CREATE INDEX page_properties_summary_idx ON page_properties (source_id, position
 -- +goose Down
 DROP INDEX page_properties_summary_idx;
 DROP INDEX page_properties_type_idx;
+ALTER TABLE page_properties DROP COLUMN value_chars, DROP COLUMN value_start;
 ```
 
-  一页的属性不论多少都只探查一次：没有它时，一页没有 `type` 就读它的全部属性（frontmatter 至多约 5,000 个顶层的属性，`platform/markdown/yaml.go:17-20` 的 1 万个节点），一次 `index` 读整本笔记本的这些，不论 `limit`、`tag` 与 `parent`：审查 B 在 PG 18.6 上 2,000 页各 1,000 个属性、都没有 `type` 时 `IndexPages` 580 ms（每页 0.29 ms，10 万页这样的页约 29 秒，过了请求的 15 秒），加了它 0.9 ms，语句不用改（lateral 的条件蕴含索引的条件）、五个属性的笔记本上也用它（0.74 ms）。建它要扫一遍 `page_properties`，在 goose 的事务里、只在启动时；M8 的语料没有 frontmatter，几乎没有行。
-- "ASCII 不区分大小写的第一个"：`translate(key, 'TYPE', 'type') = 'type'` 当且仅当 `key` 只差 ASCII 的大小写（`translate` 逐字符换，与区域设置无关；`lower()` 随排序规则），同 linking 的提取的 `asciiFold`（`linking/adapter/markdown/facts.go`）；表格测试对 `Type`、`TYPE`、`tYpE`、`types`、`ｔｙｐｅ`、`Type` 两次（第一个是数组）各一行。值不是字符串时就没有，不再往后找（4.9 的"值是字符串时才有"）。
+  一页的属性不论多少都只探查一次：没有它时，一页没有 `type` 就读它的全部属性（frontmatter 至多约 5,000 个顶层的属性，`platform/markdown/yaml.go:17-20` 的 1 万个节点），一次 `index` 读整本笔记本的这些，不论 `limit`、`tag` 与 `parent`：审查 B 在 PG 18.6 上 2,000 页各 1,000 个属性、都没有 `type` 时 `IndexPages` 580 ms（每页 0.29 ms，10 万页这样的页约 29 秒，过了请求的 15 秒），加了它 0.9 ms，语句不用改（lateral 的条件蕴含索引的条件）、五个属性的笔记本上也用它（0.74 ms）。建它要扫一遍 `page_properties`，在 goose 的事务里、只在启动时（两列让 Up 成为重写，见下）；M8 的语料没有 frontmatter，几乎没有行。
+- **两个存储的生成列**（S2；审查 B-I1、修复核对一轮 F-m1 与 F-n2；00 号文档第 11 节第 90、91 条）：`type` 由写者定、整个存着（frontmatter 的上限管值的个数，不管大小，一个标量至多正文的 5 MiB），jsonb 的 `jsonb_typeof` 与 `#>>` 取它的任何一部分都先解压整个值：原来的两条语句为留 128（或 512）个字符读每页整个的类型与摘要，2,000 页 5 MB 的类型 `IndexPages` 1.86 秒，约 2 万页这样的页时这本笔记本的每次调用都过 15 秒。现在语句只读 `value_start`（前 257 个字符，迁移的注释证明它是各处用到的最少的：次序的键的 128 个字符、256 字节的截断与它的标记、筛选）与 `value_chars`（`char_length`）；类型的筛选短于 257 个字符时由 `value_start` 判定，更长时先比 `value_start` 与 `value_chars`，两者都相等才比整个值（至多 1,024 个字符、约 4 KB；没有 `value_chars` 时 2,000 个开头相同的 5 MB 的类型以长的筛选 0.76 秒）。B 的 2,000 页 5 MB 的类型 2.28 ms，长的筛选由 762–772 ms 到约 2 ms。两列不进部分索引的 `INCLUDE`：守卫的 10.2 万页只在全可见时少 9%（vacuum 之后 167 对 185 ms），之前没有差别。两列是生成列，不在提取时把截短的串另存到 `indexed_pages`：库在每次写时算它们，没有 Go 的代码写它们；取 `char_length` 而不取字节的长度（字节的长度把一样长时的读界在 1,024 字节，重写时在 MiB 长的值上少扫，普通的行上一样贵；修复核对二轮 B 倾向它），负责人可以改。
+- **Up 重写 `page_properties`**（修复核对一轮 F-n2）：持着 ACCESS EXCLUSIVE，读写都等，要一份表的副本的磁盘，写约表那么大的 WAL：600 万行（922 MB）8.8–9.1 秒、1.06 GB，同样的行、值更宽的 2.6 GB 的表 16.2–17.1 秒、2.87 GB，守卫的种子（251 万行、578 MB，含 2,100 个 5 MB 的值）15.3–21.0 秒；Down 约 1 ms（只建两个索引时守卫的种子上 0.6 秒，挡写不挡读）。升级时先停旧的服务再 `migrate up`（README 的升级一项）：旧的还在跑时每次读属性、每次存页（观察者在存页的事务里写 `page_properties`）都等完重写。
+- "ASCII 不区分大小写的第一个"：`translate(key, 'TYPE', 'type') = 'type'` 当且仅当 `key` 只差 ASCII 的大小写（`translate` 逐字符换，与区域设置无关；`lower()` 随排序规则），同 linking 的提取的 `asciiFold`（`linking/adapter/markdown/facts.go`）；表格测试对 `Type`、`TYPE`、`tYpE`、`types`、`ｔｙｐｅ`、`Type` 两次（第一个是数组）各一行。值不是字符串时就没有，不再往后找（4.9 的"值是字符串时才有"）：两条语句的每个 lateral 都先按 `position` 取第一个、再读它的 `value_start`，第一个不是字符串时 `value_start` 为 NULL（`TestIndexReads` 的条目有 `Type: ["x"]` 然后 `type: "y"`、`summary: 5` 然后 `summary: "s"` 的一页；修复核对一轮 C2-m1）。
 - 入链数：一个目标至多 1,001 次下降（含它自己），一页 100 项至多约 10 万次；数的是来源页（不是链接，4.9），与 `Backlinks` 一样不数自己。
-- **计划测试**（`index_plan_test.go`，13.4 第 9 条）：两本笔记本：`A` 1,000 页各 5 个属性（有 `type` 与 `summary`）、3 个标签、链接若干，另 200 页各 1,000 个属性而没有 `type` 与 `summary`；别的一本 50,000 页各 5 个属性。无统计、`ANALYZE` 之后与通用计划三种状态：`IndexPages` 对 `A` 的外层读 `indexed_pages_notebook_id_idx`（索引或位图的扫描都行；只断言小的 `A`：别的那本占了大半的行时顺序扫描是对的计划，13.1 第 4 条不管大小与统计，审查 B-M4）；lateral 用的索引是 `page_properties_type_idx`（按索引的名字断言，不按节点的种类：分析之后是 `Limit → Sort → Bitmap Heap Scan` 的形状，审查 B-M4）；`IndexItems` 的两个 lateral 是两个部分索引，标签是 `page_tags_pkey`，外层是 `indexed_pages_pkey`；`InboundCounts` 是 `page_links_resolved_id_source_id_idx` 的只读索引扫描。没有 00047 时 lateral 的索引是 `page_properties_pkey`，测试失败（第 184 条变异）。结果写进 9.2；时间在守卫里量（6.1）。
+- **计划测试**（`index_plan_test.go`，13.4 第 9 条）：两本笔记本：`A` 1,000 页各 5 个属性（有 `type` 与 `summary`）、3 个标签、链接若干，另 200 页各 1,000 个属性而没有 `type` 与 `summary`；别的一本 50,000 页各 5 个属性。无统计与 `ANALYZE` 之后，各按参数与通用计划，四种组合：`IndexPages` 对 `A` 的外层读 `indexed_pages_notebook_id_idx`（索引或位图的扫描都行；只断言小的 `A`：别的那本占了大半的行时顺序扫描是对的计划，13.1 第 4 条不管大小与统计，审查 B-M4）；lateral 用的索引是 `page_properties_type_idx`（按索引的名字断言，不按节点的种类：分析之后是 `Limit → Sort → Bitmap Heap Scan` 的形状，审查 B-M4）；`IndexItems` 的两个 lateral 是两个部分索引，标签是 `page_tags_pkey`，外层是 `indexed_pages_pkey`；`InboundCounts` 是 `page_links_resolved_id_source_id_idx` 的只读索引扫描；每次读 `page_properties` 都在 lateral 的一个 `Limit` 节点之下（S2 的偏离 7：去掉 `LIMIT 1` 时四种组合下规划器都保留一页一次探查 `page_properties_type_idx` 的嵌套循环，不成散列连接，按索引与条件的检查看不见第 173 条），`IndexItems` 每次读 `page_tags` 也在一个 `Limit` 之下（审查 B-n1：无统计时计划是 `Limit → Sort → Bitmap Heap Scan`，读一页的每个标签再排序，代价由 `MaxNames` 界住，所以只要 `Limit`）。没有 00047 时 lateral 的索引是 `page_properties_pkey`，测试失败（第 184 条变异）。结果写进 9.2；时间在守卫里量（6.1）。
 
 ### 3.10 四个工具的输入、答复与语义
 
@@ -1361,7 +1459,7 @@ type indexPage struct {
 #### 3.10.5 `tools.json` 的条目与 `Tools()`
 
 - page 的 `Tools`（`tools.go:101-129`）加两个 `mcpserver.NewTool`：`grep`、`search`，`Annotations{ReadOnly: true}`、`BothEntries`、`Notebook: true`；`UseCases` 加 `Grep`、`Search`（接口 `GrepUseCase`、`SearchUseCase`，`page.New` 把建一次的实例同时交给两个适配器）。
-- linking 的新包 `linking/adapter/mcp`（`mcpadapter`）：`Tools(uc UseCases) []mcpserver.Tool`，`backlinks`、`index`；模块根 `(*Module).Tools()`（同 page、notebook）；`bootstrap/mcp.go` 的 `mcpTools` 拼成 `slices.Concat(pg.Tools(…), ln.Tools(), nb.Tools())`，注释改掉"linking's come with P4"。
+- linking 的新包 `linking/adapter/mcp`（`mcpadapter`）：`Tools(uc UseCases) []mcpserver.Tool`，`backlinks`、`index`；模块根 `(*Module).Tools()`（同 page、notebook；`Deps.NodePaths` 为空时 panic，同 page 的 `Tools` 没有附件的读者时，S2 的偏离 12）；没有 `text.go`：两个工具没有自己的错误的文字，路径的错误是 page 的（3.9.1），其余是用例原样的（S2 的偏离 11）；`bootstrap/mcp.go` 的 `mcpTools` 拼成 `slices.Concat(pg.Tools(…), ln.Tools(), nb.Tools())`，注释改掉"linking's come with P4"。
 
 ### 3.11 `tools.json` 的增加
 
@@ -1826,7 +1924,12 @@ type indexPage struct {
 | 键的读者的缓存 | 只按码位缓存轨道时 `TestGrepKeys` 的 `S(?i:abs)` 一行失败（变异 197，修复核对一轮 C-f-m1） |
 | 整个程序的整词的键 | 一两个字符的整词的键被弄坏时 `TestTheMCPGrepFindsWhatItsKeysFind` 失败（变异 195，审查 C-m1） |
 | MC6 的次序 | MCP 的 `search` 的结果倒过来时 MC6 第 5 步失败（变异 196，审查 C-n4） |
-| 计划测试 | `IndexPages` 的 lateral 去掉 `LIMIT 1`（成为散列连接）时、没有 00047 时失败（变异 173、184） |
+| 计划测试 | `IndexPages` 的 lateral 去掉 `LIMIT 1` 时（规划器仍一页一次探查，由"每次读 `page_properties` 都在一个 `Limit` 之下"抓到，S2 的偏离 7）、没有 00047 时失败（变异 173、184）；`IndexItems` 的标签去掉 `LIMIT 21` 时失败（变异 205，审查 B-n1） |
+| 根与子页的计划测试 | 根以 `coalesce(parent_id, id) = id` 找、父页以文字比、根的读不限于这本笔记本时 `TestTheChildPagesReadsUseTheirIndexes` 失败（变异 206–208，审查 A-n1、修复核对一轮 C2-m2） |
+| `TestIndexReads` 的长串与标签 | 回退的 `ELSE` 答真、`char_length < 257` 改成 `<= 257`、列取 256 个字符、`value_chars` 取 `octet_length`、`IndexItems` 的 lateral 越过第一个不是字符串的时失败（变异 210–212、214–216）；标签按文字排时失败（变异 201，审查 C-m1） |
+| `index` 的守卫读的字节与分配 | 两条语句放回读整个的 `value` 时失败（变异 209），去掉筛选的长度的检查时过滤的读失败（变异 213，修复核对一轮 F-m1），每页一个键器时分配过 250 MB（变异 204，审查 C-n2） |
+| `NodePaths` 的接线 | 组合根的 `linkingNodePaths` 的五个方法各答空时 `TestTheMCPLinksReachTheirUseCases` 各自失败（S2 的偏离 13） |
+| `grep` 的每单位的耗时 | 放回回调到回调的计时或只计扫描时 `TestGrepTimesALinesMatchAlone` 失败（变异 217、218，修复核对一轮 C2-m3）；去掉预热、删掉 `w.matched += …`、过了预热不用量的、预热离开 96,017–160,016 时 `TestGrepTrustsItsUnitPastAWarmUp` 失败（变异 219–222，修复核对二轮 C3-m1、C3-m2，三轮 C4-n1） |
 | 码的表的 `server_busy` | 名额不等就答 503 或等到期限时失败（变异 154） |
 | 矩阵的四行 | `TestThePermissionMatrixCoversEveryTool` 少一行时失败（P1 的反向对照照旧） |
 | 说明的四行 | `TestUnnamedToolsCatchesEachGap` 照旧（P1） |
@@ -1838,6 +1941,13 @@ S1 的实施、审查与修复核对见 [S1 的审查记录](reviews/P4-S1-grep-
 
 - **实施时定下的**（9.1 的偏离，与第 1 步停下之后主持者的决定）："满负载"取短时的满负载，四个常量取第 1 步量的（`MaxGrepWork` 2 × 10⁸、`MaxGrepLineWork` 0.75 × 10⁸、`GrepLineOverhead` 2、`GrepUnitTime` 25 ns），持续的满负载的数交 M12（3.3.4、3.6.1、3.6.3、3.6.4；00 号文档第 11 节第 77 条）；`MaxGrepLineWork` 留 0.75 × 10⁸（偏离 1，第 78 条，3.6.4）；第 9 步的校准去掉每行都是命中的格（偏离 2，第 79 条，3.6.4）；`BenchmarkGrepAtFullLoad` 在 `page/app` 以假的存储跑用例（偏离 3，3.1、3.6.4）；整个程序的测试的"一行的工作"是被截的一行、不是停下（偏离 4，6.1）；组合根的 `wiring` 的 `page` 钩子（偏离 5，3.1、3.16）；守卫的应用的 `RequestTimeout` 15 秒、`WriteTimeout` 25 秒（偏离 6）；10 万个候选的守卫自己写它那本笔记本的 `page_search_tags` 的一行（偏离 7）；第一行或第一个结果放不进 48 KiB 时的 `errNoLineFits`、`errNoResultFits`（偏离 8，3.10.1）；`GrepInsts` 的上界是生成器的（偏离 9，第 86 条，3.6.1、6.1）；迁移的测试在 `server/migrations/search_partial_test.go`（偏离 10，3.1、6.1）；跨上限的几行是 `TestSearchTokensTellWhatTheyLeaveOut` 的子测试（偏离 11）；块数的测试计数之前在同一个事务里不计数地读一次（偏离 12，6.1）；解析的队列与名额是带缓冲的 channel，先到先得（偏离 13，第 80 条，3.6.1、3.6.5）；3.1 的 `GrepText` 建成时是 `GrepHitOf`，另有 `NewGrepNFC`、`GrepNFC` 与 `MatchGrepLine`（3.1、3.6.2）。
 - **审查与修复核对带来的**：一行一次规整、只为命中映回原样的字节（A-I1，第 81 条，3.6.2、3.6.5、3.7.4）；一行按它被匹配的字节判断，工作与软期限都是（C-I2、A1-n1 = C-f-n1，第 81 条，3.6.2、3.6.3、3.7.3、6.1）；`GrepKeys` 读整段、至多 8,192 个原子，跳过相同的段，每个码位折叠一次（A-m1、A1-n2，第 82 条，3.5.1、3.6.1）；最坏的解析与解析的队列量得的峰值记下（A-m2、C-n6、C-f-n2，第 83 条，3.6.1）；块数的测试里看不到的笔记本的入队的行按段不同、排空之后 vacuum，`TestGrepCandidates` 在别的笔记本的页入队时读，B 树的高度读 `bt_metap`、B 树上照实相等（B-1 = C-I1、B-3 = C-m3，第 84 条，6.1）；00046 Down 再 Up 之后的 `partial`（B-4，第 85 条，3.2.2）；条件 4 的每个子情形各一页（B-2，6.1）；整个程序的测试的整词的键与它读"grep walked"的一行（C-m1，6.1）；折叠的下限由测试自己算（C-m2，6.1）；模式按 NFC 读，写进 `pattern` 的说明（A-n1，第 88 条，3.6.1、3.10.1、3.11）；MC6 的 `search` 比三个结果的次序（C-n4，4.1）；键的读者的缓存的一行（C-f-m1，6.1）；main 的链接的时间测试在 `-short` 下跳过（修复一轮的 CI 的红，第 87 条，3.1）。6.3 加第 186–200 条。没有交给 v0.1 之后的打磨的。
+
+### 3.19 S2 的实施对设计的修正
+
+S2 的实施、审查与修复核对见 [S2 的审查记录](reviews/P4-S2-index-backlinks-review.md)，结果在 9.2。与上文最初的设计不同之处已改在各节里：
+
+- **实施时定下的**（9.2 的偏离；00 号文档第 11 节第 94 条）：`ListIndex` 在 `linking/app/list_index.go`（偏离 1，3.1、3.9.3）；`index` 的 `limit` 用 `shared.PageSize`、不另设常量（偏离 2，3.9.3）；两条语句答 `coalesce` 过的文字与布尔的标记，`IndexedPage` 是 `{ID, TypeStart, Typed}`（偏离 3，3.9.3）；一个 `IndexKeyer` 复用折叠器与缓冲取每个类型的键（偏离 4，第 93 条，3.1、3.9.3）；守卫计时整个 `ListIndex` 调用，键的耗时与内存记进日志（偏离 5，6.1）；守卫的 2,000 页的 1,000 个属性用像样的键与值（偏离 6，6.1）；第 173 条由"每次读 `page_properties` 都在 lateral 的 `Limit` 之下"抓到（偏离 7，3.9.3、3.17、6.3）；第 179 条由 page 的路径的测试、`TestTheMCPLinksReachTheirUseCases` 与 MC7 第 6 步抓到，不由用假的 `NodePaths` 的 `TestListBacklinksAtPath`（偏离 8，6.3）；第 174 条在 MC7 第 3 步失败（偏离 9，6.3）；`TestListIndex` 是四个测试（偏离 10，6.1、6.3）；linking 的 `adapter/mcp` 没有 `text.go`（偏离 11，3.1、3.10.5）；`(*linking.Module).Tools()` 在没有 `NodePaths` 时 panic（偏离 12，3.1、3.10.5）；`NodePaths` 的接线以反向对照核对（偏离 13，3.9.1、3.17）；NUL 的几行写进 `TestTheMCPReadsRefuseANul`（偏离 14，6.1）。
+- **审查与修复核对带来的**：00047 加存储的生成列 `value_start` 与 `value_chars`，两条语句只读它们，类型的筛选只在长度相等时比整个值，Up 重写 `page_properties`、升级时先停旧的服务（B-I1、F-m1、F-n2，第 90、91 条，3.1、3.9.3、6.1、6.2；README 的升级一项）；`TestIndexReads` 的长串、截断边上的串、第一个不是字符串的键与两种大小写的标签（B-I1、C-m1 = B-n2、F-m1、C2-m1，6.1）；`TestTheIndexIsEachPagesReads` 的判定持着各页自己的标签（C-m1 = B-n2，6.1）；恰好满的最后一页没有游标（C-m2，6.1）；假的 `IndexPages` 列出索引里没有行的页（C-n1，6.1）；`RootPageIDs` 与 `ChildPageIDs` 的计划测试，根的检查要这本笔记本的范围（A-n1、C2-m2，3.1、3.9.1、6.1）；计划测试要标签的读在 `Limit` 之下（B-n1，3.9.3、3.17）；守卫界住一次调用的分配、读 5 MB 的类型与摘要、计时过滤的读（C-n2、B-I1、F-m1，第 93 条，6.1）；第 184 条确定的抓法是计划测试与过滤的读的通用计划（F-n1，第 93 条，6.1、6.3）。S1 的 `grep`：每行的用时只算它自己的 NFC 与匹配（C2-m3，第 92 条，3.1、3.6.3、3.7.3），量的每单位过了 `GrepUnitWarmUp` 才用，测试把预热夹在 96,017 与 160,016 之间（C3-m1、C4-n1，第 92 条，3.1、3.6.3、6.1），慢的匹配抬高每单位的一行（C3-m2，6.1），S1 的准确的 `grep` 测试以生产的期限跑（修复一轮的 CI 的红，第 92 条，3.1、6.1），10 万个候选的守卫按三次的中位数判（修复三轮的 CI 的红，C4-n2，第 93 条，3.1、6.1、6.5）。`grep` 的接缝的四次分配与 `AtPath` 的次序记下、不改（C3-n1，第 95 条）。6.3 加第 201–222 条。没有交给 v0.1 之后的打磨的。
 
 ## 4. e2e
 
@@ -1909,7 +2019,7 @@ MC7 不写库，没有库的断言（第 9 节的例外）。
 | 键（3.5） | `TestGrepKeys`（表格：3.5.3 的例子与每种节点、每种修剪各一行；**每处修正一行**，取它的反例（3.5.4：`abſ́` 在 `abſ́̇` 上、`(?i)abſ` 在 `abſ́` 上、`(?i)abΉͅ` 在 `abΉΙ͂` 上、`(?i)ᾼ͂ḢＡ가ﬆ` 在 `ᾼ͂ḢＡ가ﬅ̊` 上、`文(e)\b` 在 `B文eς` 上与 `\bai\b`），断言键与"每个键都在这一行所在的页的词里"；`H` 加 U+0331 一行；`S(?i:abs)` 在 `Sabſ́` 上答 `["sab"]` 一行（键的读者按带折叠标记的原子缓存轨道，修复核对一轮 C-f-m1）；多于 32 个键的模式只留按段的次序的前 32 个（审查 C-N6））；`TestGrepKeysOverTheRiskyTails`（`grep_keys_tails_test.go`：审查 C 的穷举，约 31 万行、约 1 秒，`-short` 时跳过）；`TestGrepKeysAreASuperset`（性质，2 万次，`-short` 2,000 次；判定是 Go 的 `regexp` 与 `SearchTokens`，不是被测的代码：Go 匹配 `NFC(行)`、页不 `partial` 时键都在词里；`partial` 的页不进比较、其个数有上限 1%；一半的试验用一般的字母表，一半用定向的（`exp/keys2` 的 `-t`：折叠变长的码位、iota 的轨道、它们的折叠能合成的记号、危险的结尾与它们小写的同轨道的码位，四分之三带 `(?i)`）；行放在 `x\n` 与 `\ny` 之间，或第一行在 BOM 之后、在 CRLF 的行之间、最后一行没有换行，各四分之一（审查 A-n5）；**下限数的是变异会显出来的情形**（审查 C-I2），互不蕴含：结尾的情形（行里一个起始的字符的折叠与它后面的记号的折叠合成）至少 150 次、轨道的情形（`(?i)` 的原子在行里由轨道上另一个、危险或 NFC 的边界与存下的不同的码位匹配）至少 400 次、折叠的情形（逐个原子与整片的折叠给出不同的键；修复一轮起测试自己照 3.5.3 第 3 步算，不借被测的代码，审查 C-m2）至少 1 次，`-short` 下前两种各至少 10 与 40 次（`exp/keys2/floors.sh`，40 个种子的最少：完整的 301、879、3，`-short` 的 19、78）；另照旧数二元组、三元组与整词（两边是字面的边界）的键，各至少 1% 的有键的次数）；`TestGrepTablesAreTheirDefinition`（约 1 秒，`-short` 也跑，审查 C-N5） | `TestTheMCPGrepFindsWhatItsKeysFind`：经 MCP 写的页与任务建好的行，每种形状的模式（字面、`(?i)`、CJK、整词（` go `，键 `go`；审查 C-m1：`\bgo\b` 没有键）、没有键）各找到一次，每次读它自己的"grep walked"一行：有键的有键、读了候选，没有键的没有键、`candidates` 为 -1；队列里准确的页（任务未跑）是候选；`batch` 写的页答 `building`、不在命中里，任务之后在 | MC6 第 1–3 步 |
 | 被截掉的页总被走查 | `TestGrepWalksEveryPartialPage`（`page/app`，假的存储）：键不在 `partial` 的页里，它仍被查、命中 | `TestTheMCPGrepWalksEveryPartialPage`：上限之后的文字：一页 240 KiB 的随机 CJK，`needle` 写在 `full` 设上的那一处之后，测试在 `grep` 之前读库断言这一页的行 `partial`、`needle` 的三元组不在词里（审查 B-I1 = C-I1），有键的 `grep` 找到它；另有长串之中的与 `data:` 串之后的（每种截断各一页）；`Walk` 注入为 5 时 6 个 `partial` 的页答 `incomplete` 与游标，接着找完 | — |
 | 解析、指令数与模式（3.6.1） | `TestParseGrepPattern`（表格：1,024 与 1,025 字节、字面的换行、`\n` 的转义照收、NUL 照收、语法错误的消息不含模式、Go 的三种界线、2,000 与 2,001 条；审查 A 的最坏的解析各一行：`\pL`、`\PL` 各 341 个、`(?i)\pL` 340 个、`^\pL?` 255 个、`[\pL0]` 170 个照收（估计 343、343、342、513、172），40 个 `(?i:[\x{100}-\x{10ffff}])` 照收（42），113 个 `\pL{999}` 答 `too_long`；每一行的解析至多分配 8 MB，以 `runtime.MemStats` 的 `TotalAlloc` 前后之差判，不按耗时；`TotalAlloc` 是进程的，所以这个测试与它的行都不 `t.Parallel`，别的测试的分配不落进差里（审查 A2-n1）；审查 A-m1 的两个嵌套的模式（249 层的 `(…(a{1000})+b…)+b` 与 `(?i)` 带 `k{1000}`）各一行，各约 4 MB，在 8 MB 之下）；`TestGrepKeysReadsABoundedPart`（内部：三个事实多于 10 万个原子的嵌套的模式，读的恰是按次序的不同的整段、到第一个会过 8,192 个原子的为止；审查 A-m1、修复核对一轮 A1-n2）；`TestGrepInstsIsNoLessThanTheProgram`（2 万个随机的模式与 3.6.1 的边上的模式，`len(syntax.Compile(Simplify(re)).Inst) ≤ GrepInsts(re) ≤ 2 × 它 + 2`，审查 A-m6 = C-M1；上界只对 `exp/insts2` 的生成器的形状成立：`Simplify` 合并的嵌套的重复各层仍多算 2，`(?:(?:(?:(?:(?:a*)*)*)*)*){200}` 编译成 402 条、估计 2,202、被拒 `too_long`，是更早的拒绝、只对病态的嵌套；要紧的下界照构造成立，审查 C-n5）；`TestGrepParseQueue`（`page/app`：k = 2 个名额、20 个 goroutine 同时 `Parse`，`GrepParses.parse` 换成假的：数同时在做的解析、每次停几毫秒；断言同时的解析至多 2 个、而确有调用等过（钩子包着解析本身，解析挪到名额之外时数到 20，审查 A2-m1 = C2-M1）；等的时候 ctx 结束的答 ctx 的错误；从不答 503；第 144 条变异） | 码的调用照旧（解析的队列不答码） | — |
-| 一行、一次的工作与软期限（3.6.2、3.6.3） | `TestGrepLineCut`、`TestGrepStopsBeforeALineItsWorkWouldPass`（注入小的 `MaxWork`、`MaxLineWork` 与假的时钟：停在不开始的那一行，游标是它；一行按它截断之内的 NFC 判断：`x` 再 100 个 U+1D160 的页上停在第 2 行之前、工作在 `MaxWork` 之内，冻住的时钟在软期限之前 100 µs 时以 `deadline` 停在它之前（审查 C-I2、修复核对一轮 A1-n1 = C-f-n1）；第一行总做；假的时钟在第一次读正文之前就过了软期限时照读、照查第一行（审查 A-m3，第 157 条变异）；一段便宜的行之后每单位的耗时取 `GrepUnitTime`）、`TestGrepCutLines`（`foo$` 恰好在截断处的行进 `partial_lines`，截断之前的命中算命中；一行只规整截断能到的开头）、`TestGrepNFCOfALongLineIsBounded`（两种 5 MiB 的非 NFC 的行：分配至多行的 3 倍、留着的至多 2 倍，文字是 `norm.NFC.String`，末尾的命中映到行的最后几个字节）、`TestGrepNFCIsTheSegmentsMapping`（内部：2 万个随机的行，文字、截断与 `Span` 等于原来的逐段的做法；审查 A-I1） | `TestTheMCPGrepStopsAtItsBounds`：注入的 500 页→5 页、32 MiB→1 MiB、工作各停一次，`incomplete` 与游标、接着走完不重复不遗漏；注入的一行的工作让一行被截、进 `partial_lines`，截断之前的匹配是命中（它从不停下一次调用，3.6.2；S1 的偏离 4）；`limit` 处不 `incomplete`；48 KiB 处的 `Fit`（`limit: 500` 的长行）不 `incomplete`、游标接得上 | MC6 第 4 步 |
+| 一行、一次的工作与软期限（3.6.2、3.6.3） | `TestGrepLineCut`、`TestGrepStopsBeforeALineItsWorkWouldPass`（注入小的 `MaxWork`、`MaxLineWork` 与假的时钟：停在不开始的那一行，游标是它；一行按它截断之内的 NFC 判断：`x` 再 100 个 U+1D160 的页上停在第 2 行之前、工作在 `MaxWork` 之内，冻住的时钟在软期限之前 100 µs 时以 `deadline` 停在它之前（审查 C-I2、修复核对一轮 A1-n1 = C-f-n1）；第一行总做；假的时钟在第一次读正文之前就过了软期限时照读、照查第一行（审查 A-m3，第 157 条变异）；一段便宜的行之后每单位的耗时取 `GrepUnitTime`）、`TestGrepTimesALinesMatchAlone`（S2：时钟只在 `lines` 扫描一行时走，第一行 20,000 字节、过了预热，之后一百万字节加 needle：第一次调用就答出命中；回调到回调的计时或只计扫描时停下，审查 C2-m3）、`TestGrepTrustsItsUnitPastAWarmUp`（S2：`x` 的匹配里停 10 µs、20 µs、100 µs、1 ms，之后 240 KiB、1 MB、2 MB、4 MB 的一行，16 种都在第一次调用答出命中；12,000 字节（96,016 个单位，刚在预热之下）的第一行里停 40 ms、之后 4 MB 的一行，照样答出；慢的机器（每读一次钟走 160 ms，过了预热的第一行一单位 1 µs）在一百万字节的一行之前停下；审查 C3-m1、C3-m2、C4-n1）、`TestGrepCutLines`（`foo$` 恰好在截断处的行进 `partial_lines`，截断之前的命中算命中；一行只规整截断能到的开头）、`TestGrepNFCOfALongLineIsBounded`（两种 5 MiB 的非 NFC 的行：分配至多行的 3 倍、留着的至多 2 倍，文字是 `norm.NFC.String`，末尾的命中映到行的最后几个字节）、`TestGrepNFCIsTheSegmentsMapping`（内部：2 万个随机的行，文字、截断与 `Span` 等于原来的逐段的做法；审查 A-I1） | `TestTheMCPGrepStopsAtItsBounds`：注入的 500 页→5 页、32 MiB→1 MiB、工作各停一次，`incomplete` 与游标、接着走完不重复不遗漏；注入的一行的工作让一行被截、进 `partial_lines`，截断之前的匹配是命中（它从不停下一次调用，3.6.2；S1 的偏离 4）；`limit` 处不 `incomplete`；48 KiB 处的 `Fit`（`limit: 500` 的长行）不 `incomplete`、游标接得上；S1 的准确的 `grep` 测试（这一个、`TestTheMCPGrepWalksEveryPartialPage`、`TestTheMCPGrepFindsWhatItsKeysFind` 与矩阵的 `grep` 的格）S2 起以生产的期限跑（请求 15 秒、写 60 秒：测试的 4 秒时软期限在调用开始 1 秒之后；修复一轮的 CI 的红） | MC6 第 4 步 |
 | 名额（3.6.5） | `TestGrepSlots`（等的时长注入为几毫秒（审查 C-N10）：等过答 `server_busy`、ctx 先结束答它的错误、放还之后下一个拿到） | 码的调用的 `server_busy`（3.12，真的 1 秒） | — |
 | 走查、glob、游标（3.7.3） | `TestGrep`（表格：码的次序每一步（游标在最先）、候选的交、glob 在界线之前取交：`glob: "A/**"` 而 `A` 之前有 600 个候选时一次调用就找到 `A` 的命中、续走从第 `N` 行起、游标的页被改名或删除之后、`building` 只在有键时；假的存储在 `SearchBuilding` 与 `GrepCandidates` 之间清空队列时答复说 `building`（审查 A-m7，第 166 条变异）；假的 `PageStates` 的大小让走查跨两批以上：次序跨批不变、每批一次 `GrepContents`、读的界线在读一批之前判（第 167 条变异）；读回的正文比状态说的大的一页照实计、停在下一批之前（审查 C-M10）） | — | — |
 | 行号与 `read`（3.7.4） | `TestGrepLinesAreReads`（`page/app`，性质：随机的正文（CRLF、单独的 `\r`、BOM、空行、没有结尾的换行、空的正文、长行、非 NFC 的行），预言是独立地分行得到的（行号、文字）里 NFC 被模式匹配的那些，与 `grep` 的答复**比集合**（审查 C-M9：只核对每个命中漏不掉"该有而没有"的行）；模式含 `^$` 与 `^`；每个命中经 `ReadPath(offset=行号, limit=1)` 读到的一行去掉 `\r` 与 BOM 等于命中的文字（未截），截取的命中经 `ReadPath(offset, column)` 读到的以它开头；下限：长于 1,000 字节、命中在非 NFC 的部分之后而被截取的行至少 1%）；`TestGrepHitOf`；`TestGrepLines`（表格：`\r\n`、单独的 `\r`、`\r\r\n`、BOM 只在第 1 行、空的正文、最后的 `\n`；审查 C-M12） | `TestTheMCPGrepLinesAreReads`：同一性质的几十个正文经 MCP 的 `write` 与 `read` | MC6 第 1 步 |
@@ -1917,11 +2027,11 @@ MC7 不写库，没有库的断言（第 9 节的例外）。
 | 范围与块数（13.4 第 12 条） | `TestHiddenNotebooksLeaveTheSearchsReadsAlone`（`search_scope_test.go:81-146`）加 `grep` 的读：在测试自己的事务里调 `ListNodes`、`GrepCandidates`（有键、键是 `!cut` 的两种）、`SearchBuilding`、`PageStates`、`Contents`；看不到的笔记本在 A、B、A 三段里交替写不被截与被截的页（第二段写下每种截断各一页：以不同的 CJK 二元组过上限的、65 个字符的串的、长的 `data:` 串的；审查 C2-M2：第 151 条变异下 `!cut` 的读在第二段多读它们的位图）、批量与准确地入队，量块数时它的队列的项**留着**（审查 A-m5 的第一种：这样才量得到队列的一支在有看不到的项时的读）；看不到的笔记本的入队的行按段不同（第 1、3 段批量与准确各 1,000，第 2 段各 1,500），每次排空之后 `VACUUM page_search_queue`（审查 B-1 = C-I1：行每段相同时读遍它们的块数也相同，测试看不见它说的读；建成的 CI 运行红在这里，是计划在段之间翻了）；读的块数在三段里相等，B 树上照实相等，只有两个 GIN 的索引照 main 容许 ±2 块；每棵 B 树的高度以 `bt_metap` 读（pageinspect，测试在自己的库里建），三段要相同（审查 B-3 = C-m3）；计数之前在同一个事务里不计数地读一次（S1 的偏离 12） | — | — |
 | 计划（13.4 第 9 条） | `TestGrepPlans`（`page/adapter/postgres`）：以 SQL 种下两本笔记本：大的一本 5 万个节点与 10 万个批量的队列的项，读者的一本 1,000 个节点与 3 个准确的项（审查 C-M6：空表上的计划是任意的）；无统计、`ANALYZE` 之后、通用计划三种：`GrepCandidates` 的两个 `page_search_hits` 的支是位图（函数自己的 `SET`），队列的一支是 `page_search_queue_notebook_id_bulk_idx` 的索引条件；`Contents` 是主键、`ListNodes` 是笔记本的索引 | — | — |
 | `search`（3.8） | `TestSearchInNotebook`（四种看不到各一行都答 `notebook.not_found`；零值的 id 不查库；次序；`Tier` 与 `Cursor()` 等于 `Execute` 的 `next_cursor`） | `TestTheMCPSearchIsTheNotebooksSearch`：与 REST 的搜索（`searchWorkspace` 带 `notebook_id`）同样的节点与次序、同样的 `count`；`Fit` 在 48 KiB 处截在第二层（正文层）的项时游标接得上 | MC6 第 5、6 步 |
-| `NodePaths`（3.9.1） | `page/node_paths_test.go`：每个方法；`FindPage` 的文字与附件 | `TestTheMCPLinksReachTheirUseCases`（交空时失败） | — |
-| `backlinks`（3.9.2） | `TestListBacklinksAtPath`（次序、附件、进了回收站的来源不列、游标）；适配器的测试造最大的一项（约 33 KB）断言放得下 | `TestTheMCPBacklinksAreRESTs`（每页的来源、数与上下文等于 `listBacklinks`） | MC7 第 5、6 步 |
-| `index`（3.9.3） | `TestListIndex`（表格：每个 422，三个筛选各有 `""` 的一行；`tag` 的 `#plan` 与带 NUL 的（空的一页、不查库）；`parent` 为 `/`；筛选、次序、截断与 `cut`、游标；`limit` 个里最后读的一页没有路径时 `Next` 在它之后（审查 B-N3））、`TestIndexKey`（128 个字符的键的前 64 字节等于整个的：U+01D6 一类的三个字符的合成、组合记号、谚文的字母、`ß`）、`TestIndexReads`（真的库：`translate` 的六行、`type` 在语句里筛、入链数不数链接与自己、到 1,000）、`TestIndexPlans`（3.9.3 的种子与断言）、`linking/adapter/mcp` 的退回（一项 20 个 256 字节的 C0 的控制字符的标签，放不下 48 KiB，去掉标签之后放得下，`cut` 有 `tags`） | `TestTheIndexIsEachPagesReads`（"列表等于逐项读"：每项等于 `getPageProperties`、`listTags`/`getTag`、`listBacklinks` 的页数与 `list` 的路径；看不到的笔记本 404 由矩阵逐列核对） | MC7 第 1–4 步 |
+| `NodePaths`（3.9.1） | `page/node_paths_test.go`：每个方法（`TestNodePathsCheckAndFindAPageAsPagesToolsDo`、`TestNodePathsReadThePathsPagesAndChildPages`）；`FindPage` 的文字与附件；`TestTheChildPagesReadsUseTheirIndexes`（page 的适配器：3.9.1 的计划检查；审查 A-n1、修复核对一轮 C2-m2） | `TestTheMCPLinksReachTheirUseCases`（交空时失败：`linkingNodePaths` 的五个方法各答空，测试各自失败） | — |
+| `backlinks`（3.9.2） | `TestListBacklinksAtPathJudgesInTurn`（次序与做过的调用）、`TestListBacklinksAtPath`（附件的错误原样答出、进了回收站的来源不列（在一页中间与最后）、每项的游标）；适配器的测试造最大的一项（约 33 KB）断言放得下 | `TestTheMCPBacklinksAreRESTs`（每页的来源、数与上下文等于 `listBacklinks`） | MC7 第 5、6 步 |
+| `index`（3.9.3） | `TestListIndex` 的四个测试（S2 的偏离 10）：`TestListIndexJudgesInTurn`（每个 422 与判定的次序，三个筛选各有 `""` 的一行）、`TestListIndex`（次序、游标；`limit` 个里最后读的一页没有路径时 `Next` 在它之后（审查 B-N3）；恰好满的最后一页没有 `Next`（审查 C-m2）；假的 `IndexPages` 列出、`IndexItems` 不给行的一页不在答复里，游标越过它（审查 C-n1））、`TestListIndexFilters`（`tag` 的 `#plan` 与带 NUL 的（空的一页、不查库）；`parent` 为 `/`；筛选）、`TestListIndexCutsTheStrings`（截断与 `cut`）、`TestIndexKey`（128 个字符的键的前 64 字节等于整个的：U+01D6 一类的三个字符的合成、组合记号、谚文的字母、`ß`）、`TestCompareIndex`、`TestCutIndexString`、`TestAnIndexKeyerTakesEachKeyWithItsBuffers`（2,000 个随机的类型，一个键器连续取的键都是各自的，最坏的一个至多 4 次分配）、`TestIndexReads`（真的库：`translate` 的六行、`type` 在语句里筛、入链数不数链接与自己、到 1,000；S2 的修复各轮：3 MiB 的类型与摘要，256、257、267、300 个字符的筛选各对相等的、多一个字符的、开头相同的与一样长而结尾不同的类型，截断边上的串（256 字节完整、257 字节截断）以 `CutIndexString` 核对，第一个 `type` 或 `summary` 不是字符串时没有（不取后面的），一页 27 个两种大小写的标签按键取前 21 个、各截到 512 个字符；审查 B-I1、C-m1、修复核对一轮 F-m1、C2-m1）、`TestIndexPlans`（3.9.3 的种子与断言）、`linking/adapter/mcp` 的退回（一项 20 个 256 字节的 C0 的控制字符的标签，放不下 48 KiB，去掉标签之后放得下，`cut` 有 `tags`） | `TestTheIndexIsEachPagesReads`（"列表等于逐项读"：每项等于 `getPageProperties`、`listTags`/`getTag`、`listBacklinks` 的页数与 `list` 的路径；判定持着种子写下的各页自己的标签、按键排：Inbox 只有 `plan/q4`、Mixed 有 `Plan` 与 `apple`、Tagged 有 25 个两种大小写的，REST 两个方向都核对（审查 C-m1 = B-n2）；看不到的笔记本 404 由矩阵逐列核对） | MC7 第 1–4 步 |
 | 工具与契约 | 适配器的 `grep_test.go`（含 3.10.1 的最大的一项）、`search_test.go`、linking 的 `tools_test.go` | `TestTheToolListsAreTheContract`（`tools.json`）、`TestTheBuiltInInstructionsNameEveryTool`、码的调用、矩阵、工具的字符串（3.11–3.14） | MC1 的 `tools/list` 照文件 |
-| 时间的守卫（13.4 第 8 条） | `page/app` 的 `grep_cost_test.go`（S1，`test-go-costs` 的一行，审查 C-I3）：`TestGrepOverTheGlobGuardTreeTakesItsTime`：用例 `Grep` 在假的存储上，它的 `ListNodes` 答 P1 的守卫树的形状（10 万条 11 段、每段约 255 字节、互不共享的路径，110 万个节点；P1 的 `guardTree` 是 `page/domain` 的测试的帮助函数，`page/app` 的测试照它另写一份），正文都是一行短的；不取键的模式与 P1 的最坏的 glob 之一，走到 `MaxGlobWork` 停下、答游标，用时照 P1 的守卫的做法比三倍的时限。`linking/adapter/postgres` 的 `index_cost_test.go`（S2，`test-go-costs` 的一行，第 5.2 节第 3 步）：`TestIndexOfAHundredThousandPagesTakesItsTime`：以 SQL 种下 10 万页各 5 个属性，`type` 是 128 个字符的最坏的一种（一个字母与一串记号，审查 B-M3），另 2,000 页各 1,000 个属性而没有 `type`（审查 B-I2）；`IndexPages`、Go 里的次序与一页 100 项的 `InboundCounts` 各自计时、各自比三倍的时限；没有 00047 时 `IndexPages` 多约 2 秒（审查 B 对修订的核对在测试的库的设置下量：2.1–2.2 秒对 0.14–0.19 秒；种子约 6.1 秒），过了它的时限（第 184 条变异） | 组合根的 `grep_cost_test.go`（S1，`test-go-guards` 的一行）：`TestGrepOfTheWorstLineTakesItsTime`（5 MiB 一行的页、3.6.4 的 36 支的选择：一行截在 `GrepLineCut`，审查 A3-m1）、`TestGrepAtItsWorkBoundTakesItsTime`（3.6.4 的一次的界线的形状：500 页各 64 KiB、每行 4 KiB 的密的 ASCII，审查 A3-m1；模式是 36 支的选择，类写成 `[\pL\pN\pM\pS\pP]`，867 字节（审查 C3-M2）：停在 `MaxGrepWork`；测试断言模式不长于 `MaxGrepPatternBytes`、用例收它（不答 422），并断言它做了它界住的工作：编译的程序有 1,999 条指令（各支的开头没有被解析器提出来：开头相同的各支会被合成一支，审查 B2-M2 的例子的 28 支只编译出 155 条）、这个模式匹配 35 个字母加 `QZ` 的一行（最短的匹配放得进一行，`regexp` 不因输入短于它而立刻返回）、正文里没有一行匹配（每行都走完）、"grep walked" 的 `stop` 是 `work` 而 `work` 多于 `MaxGrepWork − GrepWork(4095, 1999)`（预先判断停在一行之内，审查 A3-n2））、`TestGrepOfAHundredThousandCandidatesTakesItsTime`（10 万页的搜索的行以 SQL 写下：照这本笔记本的前缀写的 32 个三元组，每页都有（审查 A-n4），`search_scope_test` 的造法，不跑任务（审查 C-M5：任务每秒 190–300 页要 5–9 分钟）；模式是这 32 个三元组拼成的字面串：候选的语句与取交，在无统计、`ANALYZE` 之后、通用计划三种状态下各计时） | — |
+| 时间的守卫（13.4 第 8 条） | `page/app` 的 `grep_cost_test.go`（S1，`test-go-costs` 的一行，审查 C-I3）：`TestGrepOverTheGlobGuardTreeTakesItsTime`：用例 `Grep` 在假的存储上，它的 `ListNodes` 答 P1 的守卫树的形状（10 万条 11 段、每段约 255 字节、互不共享的路径，110 万个节点；P1 的 `guardTree` 是 `page/domain` 的测试的帮助函数，`page/app` 的测试照它另写一份），正文都是一行短的；不取键的模式与 P1 的最坏的 glob 之一，走到 `MaxGlobWork` 停下、答游标，用时照 P1 的守卫的做法比三倍的时限。`linking/adapter/postgres` 的 `index_cost_test.go`（S2，`test-go-costs` 的一行，第 5.2 节第 3 步）：`TestIndexOfAHundredThousandPagesTakesItsTime`：以 SQL 种下 10 万页各 5 个属性，`type` 是 128 个字符的最坏的一种（一个字母与一串记号，审查 B-M3），另 2,000 页各 1,000 个像样的属性（`'property' \|\| k`、`'a value of ' \|\| k`；S2 的偏离 6）而没有 `type`（审查 B-I2），另 2,000 页的 `type` 是 5,000,000 字节、其中 100 页另有 5,000,000 字节的摘要，其中 200 页挪进自己的笔记本、加一页类型是 300 个 `x`（S2 的审查 B-I1、修复核对一轮 F-m1）；在三种统计的状态下各计时 `IndexPages`（主笔记本 103,800 页）、那 100 页的 `IndexItems`（每次取样读 20 次）、以 300 个 `x` 为筛选读那本笔记本（20 次，核对答的就是那一页）、一页 100 项的 `InboundCounts`，另计时一页 100 项的整个 `ListIndex` 调用（含 Go 里的键与次序，S2 的偏离 5），各比三倍的时限（1,025、30、150、625、3,500 ms），并读调用前后的 `TotalAlloc` 与 `Mallocs`，分配以 250 MB 为界（今天 158 MB；每页一个键器 465.5 MB，审查 C-n2）；键的耗时与内存记进日志。两条语句放回读整个的 `value` 时 `IndexPages` 2.0–5.7 秒、`IndexItems` 20 次 3.6–7.4 秒，去掉筛选的长度的检查时过滤的读 1.55–1.67 秒，都过时限。没有 00047 时 `IndexPages` 约多 0.85–1.0 秒，只过它的时限 4–20%：第 184 条确定的抓法是计划测试（索引的名字）与过滤的读的通用计划（约 650 ms 对 150 ms；修复核对一轮 F-n1，00 号文档第 11 节第 93 条）。种子约 37–43 秒、整个测试约 47–53 秒 | 组合根的 `grep_cost_test.go`（S1，`test-go-guards` 的一行）：`TestGrepOfTheWorstLineTakesItsTime`（5 MiB 一行的页、3.6.4 的 36 支的选择：一行截在 `GrepLineCut`，审查 A3-m1）、`TestGrepAtItsWorkBoundTakesItsTime`（3.6.4 的一次的界线的形状：500 页各 64 KiB、每行 4 KiB 的密的 ASCII，审查 A3-m1；模式是 36 支的选择，类写成 `[\pL\pN\pM\pS\pP]`，867 字节（审查 C3-M2）：停在 `MaxGrepWork`；测试断言模式不长于 `MaxGrepPatternBytes`、用例收它（不答 422），并断言它做了它界住的工作：编译的程序有 1,999 条指令（各支的开头没有被解析器提出来：开头相同的各支会被合成一支，审查 B2-M2 的例子的 28 支只编译出 155 条）、这个模式匹配 35 个字母加 `QZ` 的一行（最短的匹配放得进一行，`regexp` 不因输入短于它而立刻返回）、正文里没有一行匹配（每行都走完）、"grep walked" 的 `stop` 是 `work` 而 `work` 多于 `MaxGrepWork − GrepWork(4095, 1999)`（预先判断停在一行之内，审查 A3-n2））、`TestGrepOfAHundredThousandCandidatesTakesItsTime`（10 万页的搜索的行以 SQL 写下：照这本笔记本的前缀写的 32 个三元组，每页都有（审查 A-n4），`search_scope_test` 的造法，不跑任务（审查 C-M5：任务每秒 190–300 页要 5–9 分钟）；模式是这 32 个三元组拼成的字面串：候选的语句与取交，在无统计、`ANALYZE` 之后、通用计划三种状态下各计时；其上的一次调用 S2 起做三次、每次核对走查，按三次的中位数比 450 ms（修复三轮的 CI 的红：一次单独的调用 608.6 ms；第一次总是最慢，中位数判热的调用，约 130 ms，00 号文档第 11 节第 93 条）） | — |
 
 ### 6.2 P4 怎样量它的界线
 
@@ -1929,12 +2039,12 @@ MC7 不写库，没有库的断言（第 9 节的例外）。
 - **`MaxGrepWork`、`MaxGrepLineWork`、`GrepUnitTime`、`GrepLineOverhead`**：3.6.4，满负载、本机，两次：S1 的第 1 步以 `exp/lineoh2` 的每行的循环离线地量（审查 C3-M1），第 9 步以守卫的那几个测试加一个只在本机跑的基准（`BenchmarkGrepAtFullLoad`，不进 CI）重量；一次的界线照较慢的形状（每行 4 KiB，审查 A3-m1）。
 - **解析的队列**：S1 以 `exp/parseq` 的做法在本机重量 200 个同时的最坏的解析（峰值、分配、最长的等待），写进 9.1。
 - **迁移的代价**：S1 在 30 万页的合成的库上执行 00046（M8 的语料不在了，不下载；3.2.2、3.3.4），种子先报出它的份额（入队的页的字节与词，对准冻结的语料的，3.2.2），再分别记入队的页数、它们的字节、迁移的用时、任务重建它们的用时与 WAL（9.1），标明是合成的库上量的。
-- **`page_properties` 的索引**：00047 无条件加（3.9.3），计划测试与守卫核对它被用上。
+- **`page_properties` 的索引与生成列**：00047 无条件加（3.9.3），计划测试与守卫核对索引被用上（守卫只是勉强的第二道，6.1）；S2 在守卫的种子与 600 万行、2.6 GB 的表上量它的重写（9.2）。
 - **10 万个候选的取交、10 万页的 `index`、守卫树上的 `grep`**：守卫的本机用时写进 9.1、9.2，M12 的性能移交加这几行。
 
 ### 6.3 变异
 
-实施者逐个做下面的改动（每个之后还原），确认右边的测试失败，结果写进第 9 节（照 P3 的 6.3）。编号接着 [P3](03-P3-batch-revert.md) 6.3 的 136（S3 的文档把 P3 的变异排到了 136，审查 C-M11）。第 137–141 条另有 `TestGrepKeys` 的一行必定失败（3.5.4）。S1 的审查与修正各轮的变异接着 185 排成第 186–200 条（S2 留着 173–185），抓它们的测试见 9.1 与 [S1 的审查记录](reviews/P4-S1-grep-search-review.md)的"反向对照"。
+实施者逐个做下面的改动（每个之后还原），确认右边的测试失败，结果写进第 9 节（照 P3 的 6.3）。编号接着 [P3](03-P3-batch-revert.md) 6.3 的 136（S3 的文档把 P3 的变异排到了 136，审查 C-M11）。第 137–141 条另有 `TestGrepKeys` 的一行必定失败（3.5.4）。S1 的审查与修正各轮的变异接着 185 排成第 186–200 条（S2 留着 173–185），抓它们的测试见 9.1 与 [S1 的审查记录](reviews/P4-S1-grep-search-review.md)的"反向对照"；S2 的审查与修正各轮的变异接着排成第 201–222 条，抓它们的测试见 9.2 与 [S2 的审查记录](reviews/P4-S2-index-backlinks-review.md)的"反向对照"。
 
 | # | 变异 | 应失败的测试 |
 |---|---|---|
@@ -1974,19 +2084,19 @@ MC7 不写库，没有库的断言（第 9 节的例外）。
 | 170 | `grep` 的答复被 48 KiB 截短时照样 `incomplete` | 适配器的 `grep_test.go`；`TestTheMCPGrepStopsAtItsBounds` |
 | 171 | 正文里超过 64 个的 ASCII 串不设 `left` | `TestSearchTokensTellWhatTheyLeaveOut`（长串的一行）；`TestTheMCPGrepWalksEveryPartialPage`（长串之中的那一页） |
 | 172 | `!cut` 经 `add` 加（到上限时丢掉） | `TestSearchTokensTellWhatTheyLeaveOut`（过了上限的那一行：`partial` 而没有 `!cut`） |
-| 173 | `IndexPages` 的 lateral 去掉 `LIMIT 1`（取第一个之外的也连上） | `TestIndexPlans`；`TestIndexReads`（重复的页） |
-| 174 | 没有类型的页排在前面 | `TestListIndex`；MC7 第 4 步 |
+| 173 | `IndexPages` 的 lateral 去掉 `LIMIT 1`（取第一个之外的也连上） | `TestIndexPlans`（每次读 `page_properties` 都在一个 `Limit` 之下：规划器仍一页一次探查，S2 的偏离 7）；`TestIndexReads`（重复的页） |
+| 174 | 没有类型的页排在前面 | `TestListIndex`；MC7 第 3 步（父页的子页，在第 4 步之前；S2 的偏离 9） |
 | 175 | `IndexKey` 由前 64 个字符算 | `TestIndexKey`（U+01D6 一类的合成） |
-| 176 | 第一个 `type` 键不是字符串时往后找 | `TestIndexReads` |
+| 176 | 第一个 `type` 键不是字符串时往后找（S2 起是 `IndexPages` 的 lateral 加 `AND p.value_start IS NOT NULL`） | `TestIndexReads` |
 | 177 | 入链数数链接，不数来源页 | `TestIndexReads`；`TestTheIndexIsEachPagesReads` |
 | 178 | 入链数数自己 | `TestIndexReads` |
-| 179 | `backlinks` 对附件的路径答它的反链 | `TestListBacklinksAtPath`；MC7 第 6 步 |
+| 179 | `backlinks` 对附件的路径答它的反链（page 的 `NodePaths.FindPage` 不拒附件） | page 的 `TestNodePathsCheckAndFindAPageAsPagesToolsDo`；`TestTheMCPLinksReachTheirUseCases`；MC7 第 6 步（`TestListBacklinksAtPath` 用假的 `NodePaths`，照理看不见；S2 的偏离 8） |
 | 180 | 没有路径的来源页以空的路径列出 | `TestListBacklinksAtPath` |
-| 181 | `type` 为 `""` 当作没有 | `TestListIndex` |
-| 182 | `index` 的第一项放不下时不退回 | linking 的适配器的测试（`internal_error`） |
+| 181 | `type` 为 `""` 当作没有 | `TestListIndexJudgesInTurn` |
+| 182 | `index` 的第一项放不下时不退回 | linking 的适配器的 `TestTheIndexFitsItsAnswer`（`errNoIndexPageFits`，`internal_error`） |
 | 183 | 规则表少 `index.list` | `TestTheRuleTableIsTheModulesActions`；矩阵的 `index` 一行 |
-| 184 | 迁移 00047 不建 `type` 的部分索引 | `TestIndexPlans`（索引的名字）；`TestIndexOfAHundredThousandPagesTakesItsTime` |
-| 185 | `tag` 不去掉开头的 `#` | `TestListIndex`（`#plan` 一行）；MC7 第 2 步 |
+| 184 | 迁移 00047 不建 `type` 的部分索引 | `TestIndexPlans`（索引的名字）；`TestIndexOfAHundredThousandPagesTakesItsTime` 的过滤的读的通用计划（约 650 ms 对 150 ms），它的 `IndexPages` 只过时限 4–20%（S2 的修复核对一轮 F-n1） |
+| 185 | `tag` 不去掉开头的 `#` | `TestListIndexFilters`（`#plan` 一行）；MC7 第 2 步 |
 | 186 | `NewGrepNFC` 放回每段一次 `AppendString` 与两张每段一项的偏移表 | `TestGrepNFCOfALongLineIsBounded`（分配 3,554,763,648 字节、留着 106,202,400） |
 | 187 | 一行按原样的字节预先判断（`GrepWork(min(len(text), cut))`） | `TestGrepStopsBeforeALineItsWorkWouldPass`（`x` 再 100 个 U+1D160 的一页：工作 6,025） |
 | 188 | `GrepCandidates` 的队列的一支以范围读（`q.notebook_id >= $1`） | `TestGrepCandidates`；`TestHiddenNotebooksLeaveTheSearchsReadsAlone` |
@@ -2002,6 +2112,28 @@ MC7 不写库，没有库的断言（第 9 节的例外）。
 | 198 | 只有软期限按原样的字节判断 | `TestGrepStopsBeforeALineItsWorkWouldPass`（冻住的时钟在软期限之前 100 µs 的一行） |
 | 199 | `GrepKeys` 的上限在段里截 | `TestGrepKeysReadsABoundedPart` |
 | 200 | 去掉读过的段的去重 | `TestGrepKeysReadsABoundedPart`；`TestParseGrepPattern` |
+| 201 | 一页的标签按文字排（`ORDER BY t.tag`） | `TestIndexReads`（条目：27 个两种大小写的标签）；`TestTheIndexIsEachPagesReads`（Mixed、Tagged） |
+| 202 | 恰好满的最后一页也答 `Next`（`len(order) >= size`） | `TestListIndex`（Gone 之后的最后两页） |
+| 203 | 索引里没有行的页照样列出（去掉 `!indexed`） | `TestListIndex`（`Old`）；`TestListIndexFilters` |
+| 204 | 每页一个新的键器（`domain.IndexKey`） | `TestIndexOfAHundredThousandPagesTakesItsTime`（分配 465.5 MB 对 250 MB；时间照过） |
+| 205 | 标签的读去掉 `LIMIT 21` | `TestIndexPlans`（标签的读在 `Limit` 之下）；`TestIndexReads` |
+| 206 | 根以 `coalesce(parent_id, id) = id` 找 | `TestTheChildPagesReadsUseTheirIndexes` |
+| 207 | 子页的父页以文字比（`parent_id::text = $2::text`） | 同上 |
+| 208 | 根的读以 `(notebook_id = $1) IS TRUE`，或不带笔记本 | 同上（索引的条件里的 `notebook_id =`）；不带笔记本的另有 `TestNodePathsReadThePathsPagesAndChildPages` |
+| 209 | `IndexPages` 与 `IndexItems` 放回读整个的 `value` | `TestIndexOfAHundredThousandPagesTakesItsTime`（`IndexPages` 2.0–5.7 秒、`IndexItems` 20 次 3.6–7.4 秒；只放回 `IndexItems` 3.6–5.0 秒） |
+| 210 | 类型的筛选的 `ELSE` 答真 | `TestIndexReads`（类型） |
+| 211 | `char_length(type_is) < 257` 改成 `<= 257` | 同上 |
+| 212 | `value_start` 取 256 个字符 | `TestIndexReads`（类型与条目） |
+| 213 | 去掉筛选的长度的检查（`value_chars <> char_length(type_is)`） | `TestIndexOfAHundredThousandPagesTakesItsTime`（过滤的读 1.55–1.67 秒对 150 ms；答复相同，`TestIndexReads` 看不见） |
+| 214 | `value_chars` 取 `octet_length` | `TestIndexReads`（类型） |
+| 215 | `IndexItems` 的类型的 lateral 加 `AND p.value_start IS NOT NULL`（第一个不是字符串时往后找） | `TestIndexReads`（条目：`Type: ["x"]` 然后 `type: "y"` 的一页） |
+| 216 | 摘要的 lateral 同上 | `TestIndexReads`（条目：`summary: 5` 然后 `summary: "s"`）；`TestTheIndexIsEachPagesReads`（Mixed） |
+| 217 | `grep` 的一行的用时放回从一次回调量到下一次（`lineStart`、`endBatch`） | `TestGrepTimesALinesMatchAlone` |
+| 218 | 只计 `GrepLines` 的扫描（审查 C 的 G-scan） | 同上 |
+| 219 | 去掉预热（`w.work > 0`） | `TestGrepTrustsItsUnitPastAWarmUp`（停顿的表） |
+| 220 | 删掉 `w.matched += …`（每单位总是 `GrepUnitTime`，审查 C 的 G-none） | `TestGrepTrustsItsUnitPastAWarmUp`（慢的机器的一行） |
+| 221 | 过了预热不用量的每单位 | 同上 |
+| 222 | `GrepUnitWarmUp` 改成 96,016 或更少（96,016、10,000、1,000、25），或 160,017 以上（200,000） | `TestGrepTrustsItsUnitPastAWarmUp`（12,000 字节的第一行；更大时慢的机器的一行，它的第一行 160,016 个单位） |
 
 ### 6.4 门禁
 
@@ -2024,7 +2156,7 @@ MC7 不写库，没有库的断言（第 9 节的例外）。
 | `short` | 1:53–3:12 | 键的性质测试 2,000 次、表的重算、码位的界；穷举跳过 | — | 约 +5 秒 |
 | `e2e` | E2E 一步 3:28–3:37 | MC6 约 6–8 秒 | MC7 约 5–7 秒 | 约 3:40–3:55 |
 
-第三份在 P4 之后的估计的上沿（约 7:14）离线只约 16 秒：**S2 合并之前**以本机每份单独跑两次的平均乘这一份的比估计，合并之后以 CI 的两次运行核对（同 P3 的每个 Step）；估计过线时 S2 按测试名把第三份的一部分分到第四份（下一段），不提高 `-timeout`，写进 S2 的审查记录。下沿（S1 的测试本机多是一两秒的、矩阵的格各几十毫秒）更可能：P3 的 S3 的四个测试估计 18–20 秒、实测 7.4 秒。**S1 实测**（9.1）：竞态下 401 个测试，三份 168、111、122，五个新的测试都在第三份；第三份本机单独两次平均 171.8 秒（P3 之后 170.9，+0.9），审查 C 以 `main` 与分支先后量 +5 秒（五个新的测试 9.1 秒，并行、与这一份最长的重叠）；CI 上第三份的测试一步 5:38、3:53、5:44，在 7:30 之下，不挪、不加第四份，没有提高 `-timeout`。成本那一份新的一行本机 0.42 秒，守卫那一份新的一行本机 10.9 秒（乘 2.4 约 26 秒）。
+第三份在 P4 之后的估计的上沿（约 7:14）离线只约 16 秒：**S2 合并之前**以本机每份单独跑两次的平均乘这一份的比估计，合并之后以 CI 的两次运行核对（同 P3 的每个 Step）；估计过线时 S2 按测试名把第三份的一部分分到第四份（下一段），不提高 `-timeout`，写进 S2 的审查记录。下沿（S1 的测试本机多是一两秒的、矩阵的格各几十毫秒）更可能：P3 的 S3 的四个测试估计 18–20 秒、实测 7.4 秒。**S1 实测**（9.1）：竞态下 401 个测试，三份 168、111、122，五个新的测试都在第三份；第三份本机单独两次平均 171.8 秒（P3 之后 170.9，+0.9），审查 C 以 `main` 与分支先后量 +5 秒（五个新的测试 9.1 秒，并行、与这一份最长的重叠）；CI 上第三份的测试一步 5:38、3:53、5:44，在 7:30 之下，不挪、不加第四份，没有提高 `-timeout`。成本那一份新的一行本机 0.42 秒，守卫那一份新的一行本机 10.9 秒（乘 2.4 约 26 秒）。**S2 实测**（9.2；00 号文档第 11 节第 89 条）：竞态下 404 个测试，三份 168、111、125，三个新的测试都在第三份；第三份本机单独两次平均 172.4 秒（S1 之后 171.8，+0.6），审查 C 以 `main` 与分支先后量 +5.2 秒；估计 5:28–5:45（C 5:36–5:54），分支的七次运行的测试一步 4:50–5:53，在 7:30 之下，不加第四份、不挪界线，没有提高 `-timeout`。第一份 S2 不加测试，分支上 7:12、6:58、6:05、4:49、7:01、7:07、4:51，相邻两次的平均至多约 7:05，照规则不挪，合并之后的运行核对它。成本那一份的 `index` 的守卫本机约 50 秒（修正之后的种子 37–43 秒；原估计 10–15 秒），乘 2.4 约 2 分钟，CI 上成本那一步 4:55–9:04（一次一次差约两分钟，修复一轮 b 不改它跑的也由 5:58 到 8:19：2.4 的比核不了，仍是没核实的估计）；守卫那一份的 10 万个候选的调用做三次之后本机多约 0.3 秒。
 
 **第四份，现在就写下**（审查 C-M7）：第 11 节第 64 条说第一份过了线时 `TestEvery[M-R]`（本机竞态下约 28.4 秒，CI 约 +53 秒）挪到第三份；P4 之后第三份收不下它（约 7:14 加 0:53 约 8:07，过了线）。所以 P4 之后的规则是：第一份过线时它挪到第四份 `BOOTSTRAP_FOURTH = ^TestEvery[M-R]`（第一份的表达式去掉 `very[M-R]`，第三份不变，第二份照旧以三者的并 `-skip`），`ci.yml` 的矩阵加 `bootstrap-4`（时限 25 分钟）；第三份自己过线时 S2 把 `^TestThe(M|P)` 放进第四份：第一份已经挪过时 `BOOTSTRAP_FOURTH = ^Test(Every[M-R]|The(M|P))`，还没挪过时只是 `^TestThe(M|P)`（那时第一份的 `very[A-R]` 仍含 `TestEvery[M-R]`，写成两者的或会让那 9 个测试跑两次，审查 C3-N1）；并把第三份改成 `BOOTSTRAP_THIRD = ^Test(The[F-LNOQ-Z]|T[i-z]|[U-Z])`：RE2 没有向后看，第三份要自己去掉它们，否则它们跑两次、第三份也不变小（审查 C2-N2）。第四份在 `Makefile` 里是 `test-go-bootstrap-4`：竞态的几份并行的 `-j4` 改成 `-j5`（`Makefile:189`），`test-go-bootstrap` 的汇总加上它，第二份的 `-skip` 是另三份的并；在 `ci.yml` 的矩阵里是 `bootstrap-4`。第四份的用时是估计、要量：`TestEvery[M-R]` 本机竞态约 28.4 秒；`TestThe(M|P)` 是今天第三份 117 个测试里的 39 个（含三个权限矩阵的测试），挪之前在本机量它们。第 64 条的文字随设计的提交改成这样（2.1 第 25 条）。
 ## 7. 完成标准
@@ -2076,10 +2208,10 @@ MC7 不写库，没有库的断言（第 9 节的例外）。
   - 其余故事的 MCP 版本里：L4 的标签由 `index` 读、L6 的右栏由 `backlinks` 读、SE1 由 `search` 读（第 9 节的表），照 MC6、MC7 的比较 REST 的写法。
   - 说明在 P4 之后账户入口剩 69 字节：P5 若在说明里加字，先缩短已有的行（`TestTheBuiltInInstructionsAreShort` 照旧守 4 KiB）。
 - **M10**（[M9-P1 的移交](../M10-llm-wiki/handoffs/M9-P1-mcp-registry.md)）：
-  - 虚拟的 `index.md` 复用 `ListIndex`，承袭它的界线（每页 20 个标签、入链数到 1,000、一页 100 项、字符串 256 字节与 `cut`），一个文件要读全部，要有它自己的界线与截断的说法；`ListIndex` 每次读这本笔记本的全部索引的页与类型（3.9.3），虚拟的文件按页读时同样。
+  - 虚拟的 `index.md` 复用 `ListIndex`，承袭它的界线（每页 20 个标签、入链数到 1,000、一页 100 项、字符串 256 字节与 `cut`），一个文件要读全部，要有它自己的界线与截断的说法；`ListIndex` 每次读这本笔记本的全部索引的页与每页的类型的 `value_start`（3.9.3），虚拟的文件按页读时同样。
   - `grep` 只搜真的页的正文：虚拟的 `index.md`、`log.md` 不在树里，`grep` 的 glob `**/*.md` 不含它们；M10 定要不要让 `grep` 找到它们（`NodePaths.Find` 与 `ListByPattern` 在树之外认得它们时，`grep` 的走查同样要加）。
   - 说明剩 69 字节，同上。
-- **M12（发布）**：第 7 节的性能移交各项（解析的队列、`grep` 与 `index` 一次调用的内存）；`grep` 的界线与名额按真实的负载再量（00 号文档"写给后面的 M"已列；S1 的持续的满负载的数：每行 4 KiB 的 p99 34.13 ns、5 秒之内约 1.465 × 10⁸、规则的第 3 条 101.1% / 103.5%，在服务器的硬件上、持续的负载下重量，00 号文档第 11 节第 77 条）；`index` 对三个筛选的 `""` 的 422 与 `log {path: ""}` 一起进打磨的清单（第 11 节第 41 条的同一类）；被标出的比例的规则在真实的笔记库上的持平点（3.3.4：每 10,000 页约 25 页带 200 KB 的 base64 图片的页），有用户的库时再看。
+- **M12（发布）**：第 7 节的性能移交各项（解析的队列、`grep` 与 `index` 一次调用的内存）；`grep` 的界线与名额按真实的负载再量（00 号文档"写给后面的 M"已列；S1 的持续的满负载的数：每行 4 KiB 的 p99 34.13 ns、5 秒之内约 1.465 × 10⁸、规则的第 3 条 101.1% / 103.5%，在服务器的硬件上、持续的负载下重量，00 号文档第 11 节第 77 条）；S2 的：00047 的重写（ACCESS EXCLUSIVE 下读写都等，600 万行约 9 秒、2.6 GB 的表约 17 秒）在服务器的硬件上与大的实例上重量，`char_length` 与字节的长度（第 91 条），守卫在 CI 上的余量靠没核实的 2.4（第 93 条）；`index` 对三个筛选的 `""` 的 422 与 `log {path: ""}` 一起进打磨的清单（第 11 节第 41 条的同一类）；被标出的比例的规则在真实的笔记库上的持平点（3.3.4：每 10,000 页约 25 页带 200 KB 的 base64 图片的页），有用户的库时再看。
 
 ## 9. 结果
 
@@ -2160,7 +2292,92 @@ MC7 不写库，没有库的断言（第 9 节的例外）。
 - 交给后面的：M12 的[性能移交](../M12-release/handoffs/M4-performance.md)第 18 项：持续的满负载的数（上面）、解析的队列的实测（峰值约 125–150 MB，不是名额数乘 7.3 MB）、最慢的解析（224 ms 一次、编译同样长，200 个同时约 2.6 秒，持着名额约 0.2 秒）、一次调用的内存（一批正文、一行的 NFC 副本至多约 7.5 MB、树、候选与程序）、守卫的本机与 CI 的用时、迁移 00046 在合成的库上的用时与 WAL；`MaxGrepLineWork` 主持者留 0.75 × 10⁸（第 78 条），M12 重量时再看。main：链接的时间测试在竞态那一份失败时由 main 加固（第 87 条）。00046 Down 之后再 Up，一页的 `partial` 在它再写之前读作 false，v0.1 里没有读它的（审查 B-4），写在 3.2.2 与 README 的升级一条。没有交给 v0.1 之后的打磨的。CI 的作业日志要认证，每个测试在 CI 上的用时没有记下，只有每一步的时间。
 - 负责人可以改判的取舍（主持者的决定）：满负载取短时的，四个常量取短时的值，第 3 条在 74%、三种截断都标出，持续的数交 M12；`MaxGrepLineWork` 留 0.75 × 10⁸；`GrepLineOverhead` 留 2（命中的格不算）；解析的队列与名额是带缓冲的 channel；一行一次规整、按它被匹配的字节判断；`GrepKeys` 读整段、至多 8,192 个原子；最坏的解析记下、不拒；块数的测试的队列的行按段不同、B 树上照实相等；00046 Down 再 Up 之后的 `partial` 只写注释；`GrepInsts` 的上界是生成器的；main 的链接的时间测试在 `-short` 下跳过；模式按 NFC 读。逐条见审查记录的"主持者的决定"（00 号文档第 11 节第 77–88 条）。
 
-### 9.2 S2
+### 9.2 S2：`backlinks` 与 `index`（2026-10-23，合并 `ed9e149f`）
+
+- 提交（从 main 的 `b89fe15f` 开始，照 5.2 的次序，第 1–5 步，5 个；第 6 步的文档是主持者的）：
+  - 模块根的 `NodePaths` 与 `page.NewNodePaths(pool)`：`Check`、`FindPage`（找不到与附件的 `page.not_found` 是 page 的工具的文字：适配器导出 `PathErr` 与 `NotAPage`）、`Paths`（P2 的 `NodePaths.Paths`）、`Pages`（`Paths` 加 `PageStates`）、`ChildPages`（新的 `RootPageIDs`、`ChildPageIDs`，只有活着的页）；每个方法的测试（`79f4b4a6`）。
+  - linking 的 `Deps.NodePaths` 与端口、`ListBacklinks.AtPath`（`Execute` 的后半成为共用的 `read`，来源页一条语句取路径、没有路径的不列，每项带它之后的游标）；组合根的 `linkingNodePaths` 接线（`2a7cdc10`）。
+  - `index.list` 的动作与规则行（读者）、`linking/domain/index.go`（界线、`IndexCursor`、`CompareIndex`、`IndexKey` 与复用缓冲的 `IndexKeyer`、`CutIndexString`）、迁移 00047、`queries/index.sql` 的三条语句、`ListIndex`（`linking/app/list_index.go`）；表格测试、存储的测试、计划测试、`index` 的守卫与 `test-go-costs` 的一行（`6eaa7e9d`）。
+  - linking 的 `adapter/mcp`（`backlinks`、`index`，两个入口，只读）、`(*linking.Module).Tools()`（没有 `Deps.NodePaths` 时 panic）、`mcpTools` 拼成 page、linking、notebook 的；`tools.json` 四个条目；说明的两行（账户入口 4,027 字节、笔记本入口 3,957，同设计算的）；码的两行与它们的调用、矩阵的 `linkingMCPRows`（52 格，共 390 格）、合法参数、NUL 的几行；三个整个程序的测试（`db11c804`）。
+  - e2e 的 MC7（`4b6cdbb7`）。
+  - 第 3 步在推送之前改过三次，第 4、5 步每次原样摘到其上：`ListIndex` 的次序的键改由一个 `IndexKeyer` 取（原来每页调用一次 `IndexKey`，每页新建一个折叠器）；计划测试加"每次读 `page_properties` 都在 lateral 的 `Limit` 之下"（第 173 条变异原来抓不到，见偏离第 7 条）；守卫的三个时限照最后一次在最终的代码上单独跑的三次定（见下）。提交原是 `2360f7b3`、`f99616ef`、`9d9a3987`（第 3 步），`4840a3a4`、`90915919`（第 4 步），`2290d2a7`、`eb5946fe`（第 5 步）。
+  - 每个提交（含每次改写之后的）单独在一个工作树里 build、vet、碰到的包的静态检查、它们的 short 测试与 archtest 都通过。
+- 与设计不同之处（都是最小的改动，不改答复与码；已改在各节，3.19 列出）：
+  1. `ListIndex` 在 `linking/app/list_index.go`：`index.go` 是 M6 起的索引的观察者 `Index`。
+  2. `index` 的 `limit` 用 `shared.PageSize`（1–100，默认 50，同设计），没有另设常量。
+  3. sqlc 把 `LEFT JOIN LATERAL` 的列读作非空：两条语句答 `(x IS NOT NULL)::boolean`（`typed`、`summarized`）与 `coalesce(x, '')::text`，存储再换回；`IndexedPage` 是 `{ID, TypeStart string, Typed bool}`（每项不带指针）。
+  4. `IndexKeyer`：每页一次 `IndexKey` 在最坏的形状上 13 次分配、3,720 字节（10 万页约 372 MB；整个调用 463.7 MB 对一个键器的 157.3 MB，审查 C 量的）；复用折叠器与缓冲时 3 次（键自己的字节与两次）、656 字节。`TestAnIndexKeyerTakesEachKeyWithItsBuffers` 以 2,000 个随机的类型核对一个键器连续取的键都是各自的，最坏的一个至多 4 次分配。
+  5. 守卫在三种统计的状态下各计时 `IndexPages` 与 `InboundCounts`，另计时一页 100 项的整个 `ListIndex` 调用（含 Go 里的键与次序），不只计次序；键的耗时、读到的页与键的活着的与分配的内存记进日志（3.9.3 的数）。
+  6. 守卫的 2,000 页各 1,000 个属性用像样的键与值（`'property' || k`、`'a value of ' || k`）：用很短的行时第 184 条变异下 `IndexPages` 0.79–0.84 秒，离时限太近；这样 1.04–1.10 秒。
+  7. 第 173 条变异与计划测试：设计说去掉 `LIMIT 1` 时成为散列连接；四种组合（无统计与 `ANALYZE` 之后，各按参数与通用计划）下规划器都保留一页一次探查 `page_properties_type_idx` 的嵌套循环，计划别处相同，原来按索引与条件的检查看不见它（通过了）。改的是测试：每次读 `page_properties` 都要在一个 `Limit` 节点之下（lateral 的 `LIMIT 1`），变异下每种状态都答"reads page_properties 1 times without a Limit above it"；`TestIndexReads` 也抓到它（一页出现两次）。
+  8. 第 179 条变异与 `TestListBacklinksAtPath`：3.9.1 把附件的拒绝放在 page 的 `NodePaths.FindPage`，linking 的这个测试用假的 `NodePaths`，看不见 `page/node_paths.go` 里去掉拒绝（照理通过）；page 的 `TestNodePathsCheckAndFindAPageAsPagesToolsDo`、整个程序的 `TestTheMCPLinksReachTheirUseCases` 与 MC7 第 6 步都抓到它。`TestListBacklinksAtPath` 核对的是 `AtPath` 把 `FindPage` 的附件的错误原样答出。
+  9. 第 174 条变异在 MC7 里先在第 3 步（父页的子页，有类型的在前）失败，在第 4 步之前。
+  10. `TestListIndex` 分成 `TestListIndexJudgesInTurn`（每个 422 与判定的次序，第 181 条在这里失败）、`TestListIndex`、`TestListIndexFilters`（`#plan` 一行，第 185 条）与 `TestListIndexCutsTheStrings`。
+  11. 没有 `linking/adapter/mcp/text.go`：两个工具没有自己的错误的文字，路径的错误是 page 的（3.9.1），其余是用例原样的。
+  12. `(*linking.Module).Tools()` 在 `Deps.NodePaths` 为空时 panic，同 page 的 `Tools` 没有附件的读者时。
+  13. `TestTheMCPLinksReachTheirUseCases` 的"交空时失败"以反向对照核对：组合根的 `linkingNodePaths` 的每个方法各答空（`Check` 答 nil、`FindPage` 答零 id、`Paths` 与 `Pages` 答空的表、`ChildPages` 答没有），测试各自失败。
+  14. NUL 的几行（`backlinks` 的 `path`、`index` 的 `type` 与 `parent` 答 422 `invalid_format`，`tag` 答空的一页）另写进 `TestTheMCPReadsRefuseANul`；`TestToolStringsDoNotAnswerInternalErrors` 照旧也覆盖它们。
+- **迁移 00047**（最终的，`69b62ae4` 起：`value_start` 与 `value_chars` 两个存储的生成列和两个部分索引；`4b6cdbb7` 时只建两个索引，守卫的种子上 0.60 秒）：Up 重写 `page_properties`，持着 ACCESS EXCLUSIVE，**读写都被挡住**（B 的探查里另一个连接的 `SELECT` 每次都等过 200 ms 的 `lock_timeout`），重写时要一份表的副本的磁盘，写的 WAL 约有表那么大。在一个事务里、照 goose 执行：600 万行（922 MB）9.05–9.07 秒、WAL 1.06 GB（负载 3.7–3.9；修复核对二轮 B 量 8.80–8.87 秒；只加 `value_start` 时 6.7–6.9 秒、约 1.0 GB，B 量的）；同样的行、值更宽，2.6 GB 的表 16.5–17.1 秒（B 16.2–16.9 秒）、WAL 2.87 GB（只加 `value_start` 时 13.9–14.5 秒、约 2.8 GB）；守卫的种子（251 万行、578 MB，含 2,100 个 5 MB 的值）15.3–21.0 秒、WAL 652–780 MB；Down 约 1 ms。升级时先停旧的服务再 `migrate up`（同 README 的升级里存储目录的那条）：旧的还在跑时，每次读属性、每次存页（观察者在存页的事务里写 `page_properties`）都要等完重写。这些给 README 的升级一项。
+- **计划测试与守卫核对 00047 被用上**：`TestIndexPlans` 在四种组合下都要求 `IndexPages` 以 `page_properties_type_idx` 探查、`IndexItems` 以两个部分索引探查，没有 00047 时失败（第 184 条）；守卫在没有类型的索引时 `IndexPages` 的中位数只过时限一点：在头上 1.097–1.229 秒对 1,025 ms（负载 3.8–4.9；第 1 轮之后 1.066–1.081 秒，C 量的 1.074–1.098、B 的 1.063–1.124，过 4–10%；`4b6cdbb7` 时 1.046–1.088 秒对 850 ms），**确定的抓法是计划测试**（按索引的名字），守卫只是勉强的第二道；第 2 轮之后守卫另以过滤的读抓它（通用计划 654 ms 对 150 ms）。
+- **`index` 的守卫**（`TestIndexOfAHundredThousandPagesTakesItsTime`，头 `db5854bf` 上单独跑三次，负载 1.4–2.4，与 `make test-go` 里的一次）：种子 37.4–42.9 秒；`IndexPages`（主笔记本 103,800 页）的中位数 198–225 ms；`IndexItems` 100 页 5 MB 读 20 次 7.9–8.6 ms；过滤的笔记本（200 页 5 MB 的类型与一页过滤的类型）以 300 个字符的类型读 20 次 6.0–9.8 ms、通用计划 47.5–49.0 ms；`InboundCounts` 122–130 ms；一页 100 项的 `ListIndex` 调用 1.01–1.06 秒，分配 158.0 MB；整个测试 47–53 秒。时限照三倍的规则：`IndexPages` 1,025 ms、`IndexItems` 30 ms、过滤 150 ms、`InboundCounts` 625 ms、调用 3,500 ms、分配 250 MB（`4b6cdbb7` 时种子 4.6–4.8 秒、测试 13–14 秒、时限 850 / 400 / 3,650 ms）。**成本那一份的估计**：本机约 50 秒，乘 2.4 约 2 分钟，时限 25 分钟；CI 上成本那一份 `5c72c102` 8:13（测试一步 5:58）、`4d4927a1` 11:13（8:19）。
+- **最坏的 `index` 的内存与时间**（3.9.3 的数，照建成的重量，头上）：101,800 个类型的键（10 万个最坏的形状）0.66–0.72 秒；读到的页与它们的键活着的 55.6 MB、分配的 155.2 MB（`4b6cdbb7` 时 55.3 MB、154.6 MB；设计约 65 MB、约 0.7 秒）。
+- **组合根的分份**（`go test -race -list` 对两个表达式）：竞态下 404 个测试，三份 168、111、125；三个新的测试都在第三份，第一份里没有。各份单独跑两次（`heavy.sh make test-go-bootstrap-N`）：第一份 246.3、256.5 秒（平均 251.4），第二份 143.0、141.2（142.1），第三份 170.1、174.8（172.4；S1 之后 171.8，+0.6 秒）。第三份在 CI 上的估计：S1 的第三份本机 171.8 秒对 CI 的测试一步 5:38、3:53、5:44（分支）与 4:00（`main`），比 1.36–2.00；取 2.00，172.4 秒约 5:45（取设计的 1.9 约 5:28），在 7:30 的线之下约 1:45，不分第四份、不挪界线，没有提高 `-timeout`。
+- 变异（6.3 的第 173–185 条，各单独施加、之后还原）：每一条都让点名的测试中能看见它的那些失败：173 `TestIndexPlans`（修正之后）与 `TestIndexReads`；174 `TestListIndex` 与 MC7（第 3 步）；175 `TestIndexKey`；176、178 `TestIndexReads`；177 `TestIndexReads` 与 `TestTheIndexIsEachPagesReads`；179 page 的 `TestNodePathsCheckAndFindAPageAsPagesToolsDo`、`TestTheMCPLinksReachTheirUseCases` 与 MC7（第 6 步），`TestListBacklinksAtPath` 照理看不见（偏离第 8 条）；180 `TestListBacklinksAtPath`；181 `TestListIndexJudgesInTurn`；182 linking 的适配器的 `TestTheIndexFitsItsAnswer`（`errNoIndexPageFits`，内部错误）；183 `TestTheRuleTableIsTheModulesActions` 与矩阵的 `index` 一行；184 `TestIndexPlans` 与守卫；185 `TestListIndexFilters` 与 MC7（第 2 步）。
+- 反向对照（3.17 的 S2 各行与其余的新检查）：计划测试（第 173、184 条）；矩阵的 `index` 一行改成 `list` 的（少一行、多一行），`TestThePermissionMatrixCoversEveryTool` 失败；说明去掉 `backlinks` 一行、`index` 一行，`TestTheBuiltInInstructionsNameEveryTool` 各自失败；`index.list` 的规则行（第 183 条）；码的表去掉 `backlinks` 一行，`TestEveryMCPToolHasItsCodes` 失败；去掉 `index` 的 `page.not_found` 的调用，`TestTheMCPToolsErrorsCarryTheirCodes` 失败；合法参数去掉 `index`，`TestToolStringsDoNotAnswerInternalErrors` 失败；代码里 `backlinks` 的说明改一个词，`TestTheToolListsAreTheContract` 失败；`NodePaths` 的五个方法各答空，`TestTheMCPLinksReachTheirUseCases` 各自失败。
+- 门禁（本机，都经 `heavy.sh`、单独跑；另一个会话在跑，负载 2–16）：`make lint-go`、`gen-check`、`knip` 都通过（`2290d2a7`）；`make test-go` 768.8 秒（`2290d2a7`；竞态的一份与组合根的三份同时，三份 180.3、214.7、304.7 秒；成本那一份里 `index` 的守卫 13.94 秒）；之后只改了 `linking/adapter/postgres` 的两个测试文件：这个包竞态下通过、守卫与计划测试在最终的头上通过；`make test-go-short` 54.4 秒、`make e2e`（含 `make build`）262 个 35.6 秒（MC7 246 ms），都在 `eb5946fe`（与最终的头只差守卫的时限）。
+- CI（`4b6cdbb7`，run 39696046695）**绿**，每一份都通过：组合根一 7:30（测试一步 7:12）、组合根二 6:25（6:04）、组合根三 6:12（5:50，估计 5:28–5:45）、成本 7:02（4:55，估计作业约 9:45）、守卫 13:13（12:54，时限 30 分钟）、竞态 10:27（10:06）、short 3:36（3:14）、web 3:07（2:38）、e2e 3:31（E2E 一步 2:46）、镜像 1:18。组合根一离 7:30 的线只 18 秒：S2 不往第一份加测试（本机两次的平均 251.4 秒，同 P2 时的 250），这条界线上 CI 此前是 6:59、6:56、5:51、7:07 与 S1 之后 `main` 上的 5:03；一次不是两次的平均过线，不挪；合并之后的两次运行照 6.5 核对它。
+- **修正的第 1 轮**（`fix-brief-1.md`，三份审查之后，处置是主持者的；7 个提交在 `4b6cdbb7` 之上，一项一个，照它的次序；第 8、9 项只改报告）：
+  1. B-I1（`2e3d9f1c`）：`index` 读一个值的多少，在写下它的地方就有界。00047 给 `page_properties` 加存储的生成列 `value_start`：键是 `type` 或 `summary`（不分大小写）且值是字符串时，存它的前 257 个字符，别的行为 NULL。迁移的注释证明 257 是各处用到的最少的：次序的键要前 128 个字符；回答的 256 字节的截断要 257 个字符才能把截断的标记设对（至多 257 个字符的串在其中是完整的，更长的在其中已超过 256 字节；256 个字符分不出 256 个与 257 个 ASCII 字符）；类型的过滤（至多 1,024 字节）短于 257 个字符时由这一列判定，更长时先比这一列，相等才读整个 `value`。`IndexPages` 读 `left(value_start, 128)`，过滤是一个 `CASE`；`IndexItems` 只读 `value_start`；`domain.IndexStartChars`（= `MaxIndexString + 1`）给 257 起名；端口的说明改了。不加 INCLUDE，照测量：守卫的 10.2 万页，今天 184 ms、加列不加 INCLUDE 185 ms、加 INCLUDE 未 vacuum 191 ms、vacuum 之后 167 ms（只读索引、没有回表），至多少 9%，且只在全可见时（负载 0.8–1.8）。测试：`TestIndexReads` 的类型有 3 MiB 的，过滤有 256、257、300、267 个字符的，各对相等的、多一个字符的与开头相同的（那个 3 MiB 的）类型；条目有 3 MiB 的类型与摘要和截断边上的串（256 字节完整、257 字节截断），以 `CutIndexString` 核对；计划测试在四种组合下仍找到两个部分索引；守卫加 2,000 页 5,000,000 字节的类型、其中 100 页还有 5,000,000 字节的摘要，核对读到 104,000 页（10 万页最坏的类型、2,000 页 5 MB 的），另计时那 100 页的 `IndexItems`（每次取样读 20 次），种子 28–34 秒、整个测试 37–44 秒。时限照三倍的规则（这一轮的代码单独跑六次，负载 2.5–5.6）：`IndexPages` 1,025 ms（中位数 199–338 ms）、`IndexItems` 20 次 30 ms（7.9–9.0 ms）、`InboundCounts` 625 ms（119–201 ms）、调用 3,500 ms（1.01–1.16 秒）；键 0.65–0.80 秒，活着的 55.6 MB、分配的 155.3 MB。反向对照都失败：放回今天读 `value` 的两条语句，守卫的 `IndexPages` 2.04–5.67 秒、`IndexItems` 20 次 3.65–7.39 秒；只放回今天的 `IndexItems`，3.60–4.95 秒；第 173 条（`TestIndexReads` 与 `TestIndexPlans`）；第 176 条（现在是 `AND p.value_start IS NOT NULL`）；回退的 `ELSE` 答真、`char_length < 257` 改成 `<= 257`、列取 256 个字符，`TestIndexReads` 都失败。测量：B 的 2,000 页 5 MB 的类型经产品的 `IndexPages`（B 的测试，负载 2.7–3.9）2.28 ms、分析之后 2.43 ms（7 字节的类型 1.39 ms），之前 1.79–1.86 秒；00047 的 Up（加列，在一个事务里，持着它的锁）：守卫的种子（251 万行、578 MB，含 5 MB 的值；负载 1.4–1.9）5.11、5.15、5.34 秒，之后 581–600 MB，`value_start` 49 MB，Down 1.3–1.7 ms；B 的 600 万行（925 MB；负载 1.7–1.9）6.79、6.82、6.96 秒，之后 877–923 MB（重写压紧了表），`value_start` 7.6 MB；只建两个索引时是 0.60 秒（250 万行）与 1.39–1.42 秒（600 万行，B 量的）。加列重写整张表，读写都被挡住（修复核对一轮 F-n2；这里原来只写了写被挡住的约 5–7 秒），时间见上面的 00047 一条。
+  2. C-m1 与 B-n2（`05855cb2`）：一页的标签按键的次序。`TestIndexReads` 的一页有 27 个两种大小写的标签（Z00..Z12、a00..a12、"A" 加 600 个汉字），按键的前 21 个不同于按文字的，测试先断言这一点；期望的是按键（`lower`，同夹具写 `tag_key`）的前 21 个、各截到 512 个字符。`TestTheIndexIsEachPagesReads` 的判定持着种子写下的各页自己的标签、按键排：Inbox 只有 `plan/q4`（`getTag` 的 `plan` 也列出它，但 `plan` 不是它自己的），Mixed 有 `Plan` 与 `apple`，Tagged 有 25 个两种大小写的；REST 两个方向都核对；种子的检查另断言这三页的形状。C 的变异（按 `t.tag` 排）两个测试都失败。另：`TestIndexReads` 有一次 61.4 秒失败，输出被筛掉没看到，时间合于忙时等容器启动的 60 秒；之后四次都 1.4–1.5 秒通过。
+  3. C-m2（`2c852488`）：`TestListIndex` 在 Gone 之后以 `Limit` 2 读最后两页，要求 `Next` 为空；C 的变异 `len(order) >= size` 失败。
+  4. A 的 N1（`9eec0b4c`）：`TestTheChildPagesReadsUseTheirIndexes`（page 的适配器，在概览的计划测试旁、照它的样子）在无统计与 `ANALYZE` 之后、各按参数与通用计划下，要求 `RootPageIDs` 以条件或谓词含 `parent_id IS NULL` 的索引读、`ChildPageIDs` 以条件含 `parent_id =` 的索引读（2,000 个子页的父页与没有子页的父页），不许顺序扫描 `nodes`；笔记本有 2,000 个根页。`nodes.sql` 与 `store.go` 的注释改成两个索引任一（00012 的 `(notebook_id, parent_id)` 或 00042 的根页与子页的）。对照：`coalesce(parent_id, id) = id`、`parent_id::text = $2::text` 都失败；`parent_id IS NOT DISTINCT FROM NULL` 通过，因为 PostgreSQL 把它折成 `IS NULL`：第 1 步注释里说它不是的那句对 NULL 常量不对，删掉了。
+  5. B-n1（`caaf5413`）：计划测试要求 `IndexItems` 每次读 `page_tags` 都在一个 `Limit` 之下（同第 173 条的检查）；去掉 `LIMIT 21` 失败。也试过要求 `Limit` 与读之间没有排序：无统计时发布的代码就是 `Limit → Sort → Bitmap Heap Scan`（B 看到的），按参数与通用计划都会失败；分析之后是按主键有序的探查。这时的成本以 `MaxNames` 为界（B 量的最坏 215–240 ms），所以只要求 `Limit`，注释写明计划可能的样子。
+  6. C-n1（`08ecc39c`）：假的 `indexReads` 加 `dropped`，`IndexPages` 列出这些页、`IndexItems` 不给它们的行；Old 的类型改成 `aaa`、排在最前、它的行没了；两页一读的第一页只有 Projects，下一个游标在 Projects 之后；整个的与两页一读的走法都不含 Old，第 3 项的最后满的一页（Notes、Inbox）不变。C 的变异（去掉 `!indexed`）失败。
+  7. C-n2（`5c72c102`）：守卫在一次一页 100 项的 `ListIndex` 调用前后读 `TotalAlloc` 与 `Mallocs`，记在调用的时间旁边，分配以 250 MB 为界（`indexCallAllocBound`）；今天（10.2 万页有类型）158.1 MB、616,641 次分配（负载 4.1）；每页一个新的键器 465.5 MB、1,630,631 次，失败（它的时间 1.06–1.10 秒照样会过）。
+  8. C 的数（只改报告与这里）：矩阵共 390 格（52 格新的）；计划测试是四种组合（无统计与 `ANALYZE` 之后，各按参数与通用计划；守卫的三种统计的状态另是一回事）；每页一次 `IndexKey` 在最坏的形状上 13 次分配、3,720 字节，10 万页约 372 MB，键器 3 次、656 字节（本机以不提交的临时测试再量：13.00 次 3,721 字节、3.00 次 656 字节）；变异表第 184 行写 850 ms（`4b6cdbb7` 的时限；第 3 步时是 675 ms）。
+  9. 守卫在 CI 上的余地（只改报告与这里；C 的估计，没法核实：CI 的日志要登录）：时限是本机单独跑最慢的中位数的三倍，同 S1、P3；若成本那一份是本机的约 2.4 倍，同本机最慢一样慢的一次 CI 运行到时限的 2.4 / 3 = 80%。六次的中位数乘 2.4：`IndexPages` 478–811 ms 对 1,025 ms（47–79%）、`IndexItems` 20 次 19.0–21.6 对 30 ms（63–72%）、`InboundCounts` 286–482 对 625 ms（46–77%）、调用 2.42–2.78 对 3.5 秒（69–80%）；分配不依 CPU，158.1 对 250 MB（63%）。
+  - 第 173–185 条在 `5c72c102` 上重跑（语句与 00047 都改了），各自在点名的测试里失败，179 的 app 一行照理通过（偏离第 8 条）。第 184 条对守卫：`IndexPages` 的中位数 1.081、1.066、1.069 秒对 1,025 ms（负载 5.3），只过了 4–5%：计划测试按索引的名字抓它是确定的，守卫只是勉强；没有为了这条变异去调时限。
+  - 门禁（`5c72c102`，本机，都经 `heavy.sh`、单独跑）：`make lint-go`、`gen-check`、`knip` 都通过（负载 1.2–1.4）；七个新的提交各自单独构建、`vet`、lint 它碰到的包、`archtest` 与它们的 short 测试都通过（负载 1.4–7.7）；`make test-go` 782.4 秒（组合根的三份 175.3、204.6、289.2 秒，与竞态的一份同时；成本那一份里守卫 42.16 秒，种子 32.3 秒，`IndexPages` 的中位数 198.7、204.5、243.4 ms，`IndexItems` 20 次 7.87–8.75 ms，`InboundCounts` 121.9–123.2 ms，调用 1.059 秒，分配 158.1 MB；负载 5.6 → 3.2）；`make test-go-short` 56.9 秒；`make e2e`（含 `make build`）262 个 37.1 秒（MC7 208 ms；负载 3.1–4.3）。
+  - CI（`5c72c102`，run 39709536904）**红**，一份失败，照规定停下（不重跑、不再推）：组合根一 7:16（测试一步 6:58）、组合根二 6:32（6:14）、**组合根三失败** 5:12（4:52）、成本 8:13（5:58）、守卫 11:26（10:52）、竞态 10:32（10:13）、short 3:20（2:58）、web 4:06（3:34），e2e 与镜像因此跳过。失败的是 S1 的 `TestTheMCPGrepWalksEveryPartialPage`（`bootstrap/mcp_grep_test.go:235`），这一轮没碰它，也没碰 page 的 grep；它在 `4b6cdbb7` 的 CI 与本机的 `make test-go` 里都通过。公开的注解显示：要的是两次回答（五个命中、`incomplete`，然后一个），CI 答了三次，第一次没有命中、`incomplete`、带游标，之后 Bound 0、Bound 1、Data 0、Data 1、Long 0，再之后 Long 1，每个命中各一次。实施者的判读（CI 上没法核实，完整日志要登录，注解在"grep walked"的日志行之前截断）：这个测试的应用用 `testConfig` 的 `RequestTimeout` 4 秒，`GrepSoftMargin` 3 秒，软的期限在调用开始后 1 秒；慢的机器上加 `-race`，第一页 Bound 0 的第 2 行（240 KiB 的汉字加 " needle"）之前的时间加上这一行的预计，可以过 1 秒，于是在第一个命中之前以期限停下，测试不容许这种停法。要改的是 S1 的（给这个测试长一些的请求期限，同 `mcp_batch_test.go`、`trash_cost_test.go`，或容许第一个命中之前的期限停下），不是这一轮的。本机竞态下重复 10 次都通过（各 1.13–2.43 秒，负载 0.9–1.2）。
+- **修正的第 1 轮 b**（主持者的决定，组合根三的红；一个只改测试的提交 `4d4927a1`，在 `5c72c102` 之上，已推的不改）：`TestTheMCPGrepWalksEveryPartialPage` 的应用用测试的 4 秒请求期限，grep 在离期限 `GrepSoftMargin`（3 秒）时不再开始新的行，也就是调用开始 1 秒之后；慢的机器上加 `-race`，第一次调用可以在第一个命中之前以期限停下。当时说"产品是对的、错的是测试对回答数的精确要求"，第 2 轮更正：早停主要是 S1 的计时的毛病（C2-m3，第 2 轮第 1 项修了），4 秒的期限只是放大了它；测试的期限照旧留着，与修正并存。改法：`startReadsAppWith` 交给新的 `startReadsAppOf`（可改测试的配置）；`mcp_grep_test.go` 的 `productionDeadlines`（`configs/config.yaml` 的 `request_timeout` 15 秒、`write_timeout` 60 秒，同 `mcp_batch_test.go`）与 `startGrepApp`。改的：`TestTheMCPGrepWalksEveryPartialPage`、`TestTheMCPGrepFindsWhatItsKeysFind`（一次回答、`incomplete` 为假、一次走）、`TestTheMCPGrepStopsAtItsBounds` 的四个应用（各自注入的停法）、`TestThePermissionMatrixOverMCP` 的读的应用（grep 的 26 格并行，要没有游标、不是 `incomplete`）。判为安全的：`TestTheMCPGrepLinesAreReads`（经每个游标比命中的集合，不数回答）；`mcp_reads_test.go` 的码的调用、`busyGrep` 与合法参数（只看码）；page 的 app 的 grep 测试（上下文没有期限，期限的测试用冻住的钟）；page 的 MCP 适配器的测试（`context.Background`）；MC6（e2e 的服务用 `configs/config.yaml` 的 15 秒，软的期限 12 秒）；S2 的测试都不用 grep（只有 `page/app/grep.go` 读调用的期限）。诊断在本机核实：临时把请求期限设为 3 秒加 20 ms（软的期限在调用开始 20 ms 后），`TestTheMCPGrepWalksEveryPartialPage` 同 CI 一样失败（第一次回答没有命中、`incomplete`、带游标），`TestTheMCPGrepStopsAtItsBounds` 的读的字节一格以"deadline、deadline、done"失败、没有"bytes"；之后还原。改过的四个测试竞态下各 `-count=10` 都通过（负载 1.5–4.6；矩阵另以 `-v` 数到 392 个子测试通过，其中 grep 的 26 格）。门禁（`4d4927a1`，都经 `heavy.sh`）：`make lint-go`、`gen-check`、`knip` 通过；这个提交单独构建、`vet`、lint、`archtest` 与组合根的 short 测试通过；`make test-go` 792.9 秒（组合根三份 179.2、212.4、295.6 秒）；`make test-go-short` 53.2 秒；没改产品的代码，`make e2e` 没有重跑。
+  - CI（`4d4927a1`，run 39713612027）：组合根三**通过**（5:58，测试一步 5:41），组合根一 6:29、组合根二 5:47、成本 11:13、守卫 8:17、竞态 10:37、short 2:43 都通过；**web 在准备时失败**（0:41）："Locate the pnpm store"一步 31 秒、算成功但路径为空，"Cache the pnpm store"答"Input required and not supplied: path"，安装与之后各步都跳过，e2e 与镜像因此跳过。判读：机器上 corepack 取 pnpm 失败或超时，`$(...)` 吞掉了错误；这个分支从 `4b6cdbb7` 起没改 `web/`、`e2e/`、`.github/`、`package.json` 与 `pnpm-lock.yaml`，web 在前两次运行都通过。照规定停下，不重跑（要登录）、不再推；需要有权限的人重跑 web、e2e 与镜像。
+
+- **修正的第 2 轮**（`fix-brief-2.md`，第一轮修正核对之后，处置是主持者的；4 个提交在 `4d4927a1` 之上，一项一个，照它的次序；第 5–7 项只改报告与这里）：
+  1. C2-m3（`14eef4ee`，S1 的代码）：grep 每单位的耗时只算一行自己的匹配。原来一行的耗时从它的回调量到下一行的回调，`GrepLines` 在两行之间找下一行的结尾的扫描算进了前一行；一行短的之后接一行长的，长的那行就按扫描的时间除以几个单位来估、在软期限前停下，没有命中、答 `incomplete`（C 在生产的 15 秒下量到：`x` 之后 1–4 MB 的一行，每次都这样）。现在从一行的截断之内的 NFC 之前量到它的匹配之后，同 3.6.3 的数法（匹配的用时除以做过的工作），两行之间的都不算（扫描与一批的读；`endBatch`、`lineStart` 去掉）。测试的接缝照包里的样子（同 `GrepParses` 的 `parse`）：`Grep` 有个不导出的 `lines`，生产里是 `domain.GrepLines`，`export_test.go` 的 `WithLines` 换掉它。`TestGrepTimesALinesMatchAlone`（page/app、假的存储、确定的）：时钟只在扫描一行时走（一字节 1 ns），`x` 之后一行一百万字节加 needle，软期限在一分钟之后，第一次调用就答那个命中、走完。放回原来的计时它失败（单位约 42 µs，长的一行估约 330 秒）；第 155–157 条照旧失败；C 的探查（生产的 15 秒的期限）在这一修正上：实施者的一次（15 次调用）每次都一次调用答出命中，C 的 207 次里 205 次如此、2 次仍在第一行之后以期限停下（C3-m1，一行一字节的第一行上一次几十 µs 的停顿；第 3 轮第 1 项修了，之后 210 次都一次答出）。
+  2. F-m1（`69b62ae4`）：类型的过滤只读与它一样长的整个类型。00047 在 `value_start` 旁边加 `value_chars`（字符串的 `char_length`，同样的行）；过滤在长度不同时先答假，再比整个值，于是读的值至多 1,024 个字符（过滤至多 1,024 字节）；迁移、`index.sql` 与 `ports.go` 的注释照说（端口的注释原来说得比代码多）。`TestIndexReads` 的类型加一个与 300 个字符的过滤一样长、前 257 个相同、结尾不同的类型。守卫把 2,000 页 5 MB 的类型里的 200 页挪到自己的笔记本，加一页类型是 300 个 `x`（5 MB 的类型的开头），以它为过滤读 20 次：按参数 6.0–9.8 ms、通用 47.5–49.0 ms，时限 150 ms；没有长度的检查时 1.55–1.61 秒，失败；长度的检查答真、`value_chars` 改成 `octet_length`，`TestIndexReads` 都失败。B 的 2,000 页 5 MB 的类型以这样的过滤读：之前 762–763 ms（负载 1.0–1.5），之后 2.1–2.3 ms（负载 2.3–3.5）。00047 的重写变贵：600 万行 9.04–9.11 秒（只有 `value_start` 时 6.79–6.96），守卫的种子 15.3–21.0 秒（5.11–5.34）；以 `octet_length` 量过：600 万行一样（第二列在每一行的 `CASE` 的钱），MiB 长的串上 `char_length` 的扫描每个约 3 ms；照主持者的决定留着 `char_length`，字节的长度同样把读的值限在 1,024 字节，负责人可以改。
+  3. C2-m1（`dba809f3`）：`TestIndexReads` 的条目加 C 的一行：`Type: ["x"]` 然后 `type: "y"`、`summary: 5` 然后 `summary: "s"` 的页没有类型也没有摘要；C 的变异（两个 lateral 各加 `AND p.value_start IS NOT NULL`）都失败。
+  4. C2-m2（`db5854bf`）：根页的计划检查另要求索引的条件里有 `notebook_id =`（两个可用的索引都以它打头）；C 的 `(notebook_id = $1) IS TRUE` 与去掉笔记本的读都失败；`nodes.sql` 与测试的注释照说。
+  5. F-n1（不改代码）：守卫抓第 184 条只过 4–20%，确定的是计划测试，上面的那一条与变异表照说；守卫的注释里"多约 2 秒"已经不对（这个种子上约多 0.8–0.9 秒），照决定不改代码，留给文档的提交。
+  6. F-n2（不改代码）：00047 的重写持着 ACCESS EXCLUSIVE、读写都挡住、要一份表的副本的磁盘、WAL 约有表那么大，数在上面的 00047 一条；升级时先停旧的服务再 `migrate up`，给 README。
+  7. C2-n1（不改代码）：上面几条里 `4b6cdbb7` 的旧数换成头上的（第 184 条的时限、守卫的种子、测试的时间、时限与成本的估计、55.6 / 155.2 MB）。
+  - 变异（`db5854bf`，各单独施加、之后还原；负载 1.8–6.4）：第 2 轮的对照都失败；第 155–157 条照旧失败；第 1 轮放回原来的语句（三条，旧的文字照 `value_chars` 更新）、每页一个键器与第 184 条都让守卫失败；第 173–185 条与第 1 轮的对照（45 条）都在点名的测试里失败，179 的 app 一行照理通过。
+  - 门禁（`db5854bf`，都经 `heavy.sh`）：`make lint-go`、`gen-check`、`knip` 通过；4 个提交各自单独构建、`vet`、lint、`archtest` 与它们的 short 测试通过；`make test-go` 842.6 秒（组合根三份 190.3、217.8、333.7 秒；守卫 52.79 秒；grep 的守卫在新的单位下照旧通过：最坏的一行 2.21 秒、工作的界线 2.37 秒、10 万个候选 5.22 秒）；`make test-go-short` 58.5 秒；`make e2e`（含 `make build`）262 个 39.8 秒。
+  - CI（`db5854bf`，run 39860345855）**绿**，每一份都通过，web 也重跑通过了（`4d4927a1` 上它在准备时失败）：组合根一 5:08（测试一步 4:49）、组合根二 6:15（5:52）、组合根三 5:09（4:50）、成本 9:51（7:18）、守卫 9:57（9:38）、竞态 9:48（9:29）、short 3:21（3:01）、web 3:54（3:23）、e2e 3:40（E2E 一步 2:49）、镜像 1:27。
+
+- **修正的第 3 轮**（`fix-brief-3.md`，第二轮修正核对之后，处置是主持者的；B 没有新的发现；2 个提交在 `db5854bf` 之上，一项一个；第 3、4 项只改报告与这里）：
+  1. C3-m1（`bf1488ee`）：grep 只在一次调用自己量的耗时有了足够的工作之后才信它。page/domain 的 `GrepUnitWarmUp`（在 `GrepUnitTime` 旁边）是 10^5 个单位，按 25 ns 约 2.5 ms 的匹配；不到它时每单位取 `GrepUnitTime`，过了它照旧取 `max(GrepUnitTime, 匹配的用时 / 工作)`；注释说为什么要它、为什么小（停早了只多一次调用，下一次从那一行开始、第一行不判断；没看出机器慢则可能过请求的期限）。原来一字节的第一行（24–42 个单位）的匹配里一次 9–36 µs 的停顿（GC 的协助、系统占了 CPU）就把之后 1–4 MB 的一行估过软期限。`TestGrepTrustsItsUnitPastAWarmUp`（page/app，假的存储）把 C 的停顿的时钟做成一张表：`x` 的匹配里停 10 µs、20 µs、100 µs、1 ms，之后 240 KiB、1 MB、2 MB、4 MB 的一行加 needle，生产的期限（软期限 12 秒之后），16 种都在第一次调用答出命中；去掉预热它失败。`TestGrepTimesALinesMatchAlone` 的第一行改成 20,000 字节（160,016 个单位，过了预热），时钟按扫描的字节一字节 1 µs、软期限 30 秒之后，第 2 轮的旧计时与 C 的只计扫描都照旧让它失败；第 155–157 条与 S1 的软期限一行（第 198 条，按原样的字节）照旧失败。C 的探查（生产的 15 秒）在这一修正上 `-count=14`：210 次调用都一次答出命中（`x` 的页上 126 次；负载 1.8–2.3）。
+  2. C3-m2（`a1f2a207`）：慢的匹配让每单位的耗时变大。同一个测试加一行慢的机器：时钟每读一次走 160 ms，第一行 20,000 字节（160,016 个单位，过了预热）匹配一步，一单位 1 µs、`GrepUnitTime` 的 40 倍；之后一百万字节加 needle 的一行（800 万个单位）估到 8 秒，软期限 2 秒之后，调用在它之前停下，`incomplete`，游标是那一行；按 `GrepUnitTime` 会估成 0.2 秒、开始它、跑过请求的期限。去掉 `w.matched += …`（C 的 G-none）与过了预热不用量的每单位都让它失败。
+  3. 文字：上面第 2 轮第 1 项里 C 的探查一句照量的改写；C 更正它第一轮对第 9 项的核对：CI 上成本那一份的测试一步一次一次差约两分钟（`4d4927a1` 那里什么也没改，8:19 对 `5c72c102` 的 5:58），一步的差核不了 2.4 的比，它仍是没核实的估计，第 1 轮第 9 项的余地只靠它；守卫的注释里第 184 条的"多约 2 秒"（现在约多 0.85–1.0 秒）在 `index_cost_test.go`，这一轮没碰 linking 的文件，留给文档的提交。
+  4. C3-n1（不改）：`lines` 的接缝让走的回调进了堆（`go build -gcflags=-m`：回调与它捕获的 `d`、`path`、`err`），每查一页多四次小的分配，一次调用至多约 2,000 次、各几十字节，比起匹配可以不计；生产的行为不变，grep 的守卫照旧通过。
+  - 门禁（`a1f2a207`，都经 `heavy.sh`）：`make lint-go`、`gen-check`、`knip` 通过；2 个提交各自单独构建、`vet`、lint、`archtest` 与 page/app 的 short 测试通过；`make test-go` 807.2 秒（组合根三份 180.7、201.9、298.6 秒；grep 的守卫在预热之下照旧通过：最坏的一行 2.15 秒、工作的界线 2.37 秒、10 万个候选 5.05 秒；`index` 的守卫 52.69 秒）；`make test-go-short` 56.9 秒；`make e2e`（含 `make build`）262 个 36.1 秒。变异：预热去掉、G-none、过了预热不用量的、第 2 轮的旧计时、只计扫描、第 155–157 条与第 198 条都失败（page/app，单元测试，不用数据库）。
+  - CI（`a1f2a207`，run 39868181582）**红**，一份失败，照规定停下（不重跑、不再推）：守卫那一份 13:13（测试一步 12:55；`db5854bf` 上 9:57、9:38）失败在 S1 的 `TestGrepOfAHundredThousandCandidatesTakesItsTime`：10 万个候选上一次调用 608.6 ms，时限 450 ms（本机最慢的三倍）。这次调用在 500 页的界线停下、工作 54,000，软期限与预热都不起作用；这一轮只让每行多读一次时钟（500 次）。本机这次调用在 `a1f2a207` 上 150.7 ms，之前三个头上 150.6–167.5 ms，没有变慢；CI 上是本机的 4 倍，整份也比上一次慢约 3 分钟，看来是慢的机器上的一次波动，这个守卫在 CI 上的余地（本机的三倍对 CI 约 2.4 倍）本来就薄。其余都通过：组合根一 7:24（7:01）、组合根二 5:30（5:12）、组合根三 5:58（5:38）、成本 11:42（8:54）、竞态 10:17（9:59）、short 3:17（2:58）、web 3:54（3:22），e2e 与镜像因此跳过。需要有权限的人重跑守卫那一份。
+
+- **修正的第 4 轮**（主持者的决定，守卫那一份的红；2 个只改测试的提交在 `a1f2a207` 之上）：CI 的原因照实施者读的：S1 的 `TestGrepOfAHundredThousandCandidatesTakesItsTime` 对 10 万个候选的调用只计时一次，而它的 `GrepCandidates` 取三次的中位数；那一次 608.6 ms，时限 450 ms（本机的三倍），是本机约 150 ms 的 4 倍，那台机器上守卫那一份整份慢了约 3 分钟（13:13 对 9:57）、成本那一份也慢（11:42 对 9:51）；这次调用停在 500 页的界线、工作 54,000，第 3 轮的改动碰不到它（只多 500 次读时钟），本机的时间也没变。
+  1. `c7e28b95`：这次调用做三次，每次都核对走的（没有命中、`incomplete`、停在 500 页、10 万个候选），三次的时间记进日志，按中位数对同一个时限（450 ms）；常量、测试与 `Makefile` 里守卫那一行的注释照说。本机单独两次（负载 1.1–1.9）：每次 126.5–145.3 ms，中位数 129.1、131.9 ms；整个测试 6.30、6.38 秒（原来 5.05–5.22 秒），多约 0.3 秒，CI 上约 0.7 秒。
+  2. `5a64f386`：`index` 的守卫的注释里第 184 条的"多约 2 秒"改成今天的约 0.85–1.0 秒、只比 `indexPagesBound` 多一点，并点名确定的抓法：`TestIndexPlans`（按索引的名字）与过滤的读的通用计划（约 650 ms 对 `indexFilterBound`）；只改注释。
+  - 门禁（`5a64f386`，都经 `heavy.sh`；只改测试，跑的是放着改过的测试的两份，不跑整个 `make test-go`）：`make lint-go`、`gen-check`、`knip` 通过；两个提交各自单独构建、`vet`、lint、`archtest` 与组合根、linking 的适配器的 short 测试通过；`make test-go-guards` 4:47.5（10 万个候选的三次调用 132.7、137.6、149.1 ms，最坏的一行 0.70 秒、工作的界线 1.93 秒）；`make test-go-costs` 3:35.7（`index` 的守卫 53.12 秒）。
+  - CI（`5a64f386`，run 39871733147）**绿**，每一份都通过：组合根一 7:27（测试一步 7:07）、组合根二 4:29（4:10）、组合根三 5:19（4:54）、成本 7:58（5:56）、守卫 8:20（8:04）、竞态 10:24（10:06）、short 2:35（2:16）、web 2:59（2:32）、e2e 4:46（E2E 一步 3:37）、镜像 1:23。组合根一的测试一步 7:07，离 7:30 的线 23 秒（第 3 轮 7:01、第 2 轮 4:49、`4b6cdbb7` 7:12）：照 6.5 是一次不是两次的平均，不挪；它一次一次差约两分钟，合并之后的两次运行照 6.5 核对它。
+
+- **修正的第 5 轮**（最后一轮；C 第三次核对的两个 Nit，C4-n1 与 C4-n2，处置是主持者的；2 个只改测试的提交在 `5a64f386` 之上）：
+  1. C4-n1（`6308f5f2`）：预热钉在 10^5 附近。原来测试只把 `GrepUnitWarmUp` 夹在 24（停顿的表的 `x`）与 160,016（慢的机器的第一行）之间，预热改成 25、1,000、10,000 时 page/app 的 grep 测试都通过。`TestGrepTrustsItsUnitPastAWarmUp` 加 C 的一行：第一行 12,000 字节（96,016 个单位，刚在预热之下）、其中停 40 ms（信了它就是一单位 417 ns，之后 4 MB 的一行估成 13.3 秒），然后 4 MB 加 needle，第一次调用要答出命中。照 C 核对：预热 10^5 与 96,017 通过，96,016、10,000、1,000、25 都失败；于是这一行把预热夹在 96,016 之上，慢的机器那一行夹在 160,016 及以下。
+  2. C4-n2（`c2960a2a`）：10 万个候选的时限的注释照说：它定在最初计时的那一次冷的调用（143–150 ms）的三倍；三次的中位数（第 4 轮）判的是热的调用，约 130 ms，第一次最慢（140–145 ms）；时限 450 ms 留着，约是中位数的 3.4 倍。只改注释。
+  - 门禁（`c2960a2a`）：`make lint-go`、`gen-check`、`knip` 通过；两个提交各自单独构建、`vet`、lint、`archtest` 与 page/app（及组合根）的 short 测试通过；page/app 的 short 测试通过；`make test-go-guards`（`heavy.sh`）第一次在 P3 的 `TestARevertJobOfAnImportAtMaxJobItems` 起容器时失败（Docker 没答端口，"mapped port … invalid port"，Docker 与负责人的别的会话共用，负载 4.2），不是测试的失败；重跑 4:46.4 通过（候选的三次调用 134.2、137.9、146.9 ms）。
+  - CI（`c2960a2a`，run 39877011610）**绿**，每一份都通过：组合根一 5:08（测试一步 4:51）、组合根二 6:15（5:52）、组合根三 6:12（5:53）、成本 12:08（9:04）、守卫 8:48（8:26）、竞态 7:49（7:31）、short 3:20（2:57）、web 3:16（2:47）、e2e 4:19（E2E 一步 3:31）、镜像 1:24。
+- 设计的文字照建成的与修正的五轮改，已改在各节（3.1、3.6.3、3.7.3、3.9.1、3.9.3、3.10.5、3.17、6.1、6.2、6.5 与第 8 节，3.19 列出）；6.3 的第 173、174、176、179、181、182、184、185 条照实写抓它的测试，加第 201–222 条。
+- 合并之后：`m9-p4-s2` 合并为 `ed9e149f`（第二个父提交 `c2960a2a`，合并的树与它的相同）；`main` 在 `ed9e149f` 上的 CI（run 39878983820）服务端的八份都通过（组合根三份的测试一步 4:45、5:51、4:07，成本 6:20、守卫 12:47），web 在测试一步卡住、到 15 分钟的时限被取消，e2e 与镜像跳过；S2 不改网页，下一次 `main` 的运行重跑它。S1 的文档的提交 `b89fe15f` 的 `main` 的运行（run 39682926296）红在 `TestTheMCPGrepWalksEveryPartialPage`，原因由 S2 的修正的第 1 轮 b 与第 2 轮改了（S2 的审查记录的门禁）。P4 完成。
+- 审查：三位审查者（Opus）：A（路径、`backlinks` 与 linking 的适配器，另有 REST 的 `listBacklinks` 在 `main` 与分支上逐字节比（自己的 16 页的种子，两边各 10,694 字节、相同）、MCP 的 `backlinks` 对 REST 84 种情形、两个入口的可见性、`RootPageIDs` 与 `ChildPageIDs` 的计划的探针、自己的 13 个变异）、B（`index`、00047、语句与计划，另有照 3.9.3 自己写的判定（12 本随机的笔记本）、`IndexKey` 对 20 万个类型、五种种子上的计划、200 页 1 MiB 与 2,000 页 5 MB 的类型、00047 在 600 万行与 2.6 GB 的表上）、C（测试、变异、e2e、契约与 CI，另有每个提交单独的门禁、分份与守卫、自己的 16 个变异）。答错的结果没有：A 的 REST 逐字节相同、MCP 对 REST 84 种情形相同，B 的判定逐项相同。Important 一条：`IndexPages` 为留 128 个字符解压每页整个的 `type`，2,000 页 5 MB 的类型 1.86 秒（B-I1，高）。Minor 八条：审查的 C-m1、C-m2，修复核对的 F-m1、C2-m3（中低）与 C2-m1、C2-m2、C3-m1、C3-m2；细节 11 条与 C 的四处报告的数。修复五轮（另有一轮 b 与第 4 轮的 CI 的红），核对：一轮 B、C 与主持者，二轮 B、C，三轮与四轮 C，五轮主持者。CI 红了三次（修复一轮的组合根三、修复一轮 b 的 web 的准备、修复三轮的守卫），实施者每次停下、主持者回话之前没有再推。逐条见 [S2 的审查记录](reviews/P4-S2-index-backlinks-review.md)。
+- 交给后面的：M12 的[性能移交](../M12-release/handoffs/M4-performance.md)第 18 项：`index` 的守卫的本机与 CI 的用时与分配、00047 的重写（锁、副本的磁盘、WAL 与用时）与生成列的界线、S1 的 `grep` 的计时的修正与 10 万个候选的中位数，守卫在 CI 上的余量靠没核实的 2.4；M10：虚拟的 `index.md` 复用 `ListIndex`，承袭它的界线（第 8 节）；组合根一由合并之后的运行照 6.5 核对。
+- 负责人可以改判的取舍（主持者的决定）：不加第四份、组合根一不挪；`index` 读一个值的多少在写下它的地方就有界（00047 的 `value_start` 与 `value_chars`，重写 `page_properties`，升级时先停旧的服务）；两列是生成列、留着 `char_length`；S1 的 `grep` 的每单位只算一行自己的匹配、过了预热才信，准确的 `grep` 测试以生产的期限跑；`index` 的守卫界住分配、第 184 条的确定的抓法是计划测试与过滤的读、10 万个候选按三次的中位数判、余量靠没核实的 2.4；建成的偏离记下；`grep` 的接缝的分配与 `AtPath` 的次序记下、不改。逐条见审查记录的"主持者的决定"（00 号文档第 11 节第 89–95 条）。
 
 ## 附录：在代码里核对过的（`56ef34c8`）
 
