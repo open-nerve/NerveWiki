@@ -484,6 +484,8 @@ make image-smoke VERSION=0.1.0   # 在镜像上跑 S1、S3：迁移、探针、�
 
 - 升级到带 `index` 的版本（M9/P4，迁移 00047）时，迁移给 `page_properties` 加两个存储的生成列（`type` 与 `summary` 的值的开头与长度，`index` 只读它们）与两个部分索引，**重写整张表**：其间这张表的读与写都等（ACCESS EXCLUSIVE 锁），要一份表的副本的磁盘，写约表那么大的 WAL。在我们的测试机上，600 万行（922 MB）约 9 秒、1.06 GB 的 WAL，2.6 GB 的表约 17 秒、2.87 GB；回退（Down）约 1 毫秒。所以**先停旧的服务再执行 `migrate up`**（同上文附件目录一条的"升级时先停旧的再起新的"）：旧的还在跑时，每次读属性、每次保存页都要等完重写，大的实例上会过请求的期限。
 
+- 升级到带 MCP 的版本（M9）时，照下面部署一节的"样例（整个站点）"改代理的配置：`/mcp` 与页面正文的两个写缓冲请求体，附件的上传与导入不缓冲。照之前的样例在 `location /`、`server` 或 `http` 里写的 `proxy_request_buffering off` 只留在上传与导入的 `location` 里，`client_max_body_size 512m` 换成按路由的几个（导入的是 `513m`）。照之前的 README 设了 `client_max_body_size 512m` 的，不改时 `/mcp` 照常能用，但它与正文的写一直不缓冲；留着 nginx 默认的 1m 的，过 1 MiB 的 MCP 调用由 nginx 答 413。
+
 - **迁移与服务分用两个数据库角色时**（表的所有者执行迁移，服务用另一个角色登录，`database.auto_migrate` 关闭），服务需要的权限全部写在 [`deploy/runtime-grants.sql`](deploy/runtime-grants.sql)，授予组角色 `nervewiki_runtime`：业务表逐表的读写（不给 `TRUNCATE`、`REFERENCES`、`TRIGGER` 与 DDL），搜索的两个序列 `page_search_queue_version_seq`（入队时从它取版本）与 `page_search_tags_seq`（建索引的任务第一次写一个笔记本的行时从它取这个笔记本的前缀）的 `USAGE`，River 的表与序列，`river_job` 的 `MAINTAIN`（River 每天用 `REINDEX INDEX CONCURRENTLY` 重建它的索引，需要 PostgreSQL 17 起），导入与后台的恢复、撤销写入的 11 张表的 `MAINTAIN`（这些任务每写 10,000 个节点与结束时对它们 `ANALYZE`；少了它 PostgreSQL 跳过这张表、只发一条 WARNING，任务照常完成，统计等 autovacuum 更新），`page_search` 的 `MAINTAIN`（搜索的建索引任务每写 10,000 行对它 `ANALYZE`），`goose_db_version` 的读（`/readyz` 靠它判断迁移是否执行完）。函数与类型不在文件里，靠 PostgreSQL 默认给 PUBLIC 的权限。
   - 组角色建一次，服务登录的角色加入它：`CREATE ROLE nervewiki_runtime NOLOGIN;`、`CREATE ROLE nervewiki_app LOGIN PASSWORD '…' IN ROLE nervewiki_runtime;`。
   - **每次 `migrate up` 之后、启动服务之前**，以表的所有者执行一次这个文件，例如 `psql -v ON_ERROR_STOP=1 -f deploy/runtime-grants.sql`：新的迁移可能加了表，文件逐个列出；重复执行没有影响。
@@ -492,30 +494,80 @@ make image-smoke VERSION=0.1.0   # 在镜像上跑 S1、S3：迁移、探针、�
 
 - 在反向代理之后运行时设置 `NWIKI_SERVER__TRUSTED_PROXIES`，否则每个客户端都被当成代理。
   - 搜索的词在请求行里（`GET /api/v0/workspaces/{slug}/search?q=…`），会进反向代理的访问日志（服务自己的访问日志只记路由）：同签名地址，访问日志要照敏感数据保管。
-- 反向代理不能缓冲事件流，读超时要长于心跳间隔（`events.heartbeat_interval`，默认 20 秒）。服务端在流的答复上设了 `X-Accel-Buffering: no`。下面两份配置都验证过：帧在写入答复的同一毫秒到达，心跳让连接一直活着（M5/P2）。
-  - Caddy 的默认配置即可；开了 `encode`（`zstd gzip`）也一样：Caddy 不压缩 `text/event-stream`，不必排除它：
-
-    ```caddyfile
-    wiki.example.com {
-        reverse_proxy 127.0.0.1:8080
-    }
-    ```
-
-  - nginx 用 HTTP/1.1 连上游；`proxy_read_timeout` 默认 60 秒，长于默认的心跳，调大心跳时一起调大：
+- 反向代理不能缓冲事件流，读超时要长于心跳间隔（`events.heartbeat_interval`，默认 20 秒）。服务端在事件流的答复上设了 `X-Accel-Buffering: no`；只有事件流要它，`/mcp` 是普通的 JSON 答复（下面"反向代理与 MCP"）。下一条的两份样例里，事件流经过的那一部分（nginx 的 `location /` 与 `server` 里共用的几行、Caddy 的最后一个 `handle`）与验证过的配置是同一组指令：帧在写入答复的同一毫秒到达，心跳让连接一直活着（M5/P2）。Caddy 开了 `encode`（`zstd gzip`）也一样：它不压缩 `text/event-stream`，不必排除。nginx 用 HTTP/1.1 连上游；`proxy_read_timeout` 默认 60 秒，长于默认的心跳，调大心跳时一起调大。
+- 样例（整个站点）：请求体按路由处理，`/mcp` 与页面正文的两个写缓冲，附件的上传与导入不缓冲（下面两条）。
+  - nginx：共用的几行写在 `server` 里，每个 `location` 都继承它们。在某个 `location` 里加 `proxy_set_header` 时，它不再继承 `server` 里的四行，要在那里一起写上（少了 `X-Forwarded-For`，每个客户端都成了代理的 IP）：
 
     ```nginx
-    location / {
-        proxy_pass http://127.0.0.1:8080;
+    server {
+        server_name wiki.example.com;
+        # listen 443 ssl; ssl_certificate …; ssl_certificate_key …; 照你的部署
+
         proxy_http_version 1.1;
         proxy_set_header Connection "";
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_read_timeout 60s;
+
+        # 页面、接口与事件流；1m 等于 server.max_body_bytes（默认 1 MiB），改了它时一起改
+        location / {
+            proxy_pass http://127.0.0.1:8080;
+            client_max_body_size 1m;
+        }
+
+        # MCP：缓冲请求体，上限是 /mcp 的 37,814,272 字节
+        location = /mcp {
+            proxy_pass http://127.0.0.1:8080;
+            proxy_request_buffering on;  # 显式写：server 或 http 一层的 off 会被继承
+            client_max_body_size 37m;
+        }
+
+        # 页面正文的两个写：缓冲请求体，上限是它们的 31,522,816 字节
+        location ~ ^/api/v0/(pages/[^/]+/content|notebooks/[^/]+/pages)$ {
+            proxy_pass http://127.0.0.1:8080;
+            proxy_request_buffering on;  # 同上
+            client_max_body_size 31m;
+        }
+
+        # 附件的上传与导入的 zip：不缓冲；上限是导入包的上限（默认 512 MiB）加 64 KiB 的表单
+        location ~ ^/api/v0/notebooks/[^/]+/(assets|imports)$ {
+            proxy_pass http://127.0.0.1:8080;
+            proxy_request_buffering off;
+            client_max_body_size 513m;
+        }
     }
     ```
-- 反向代理与上传（M7 起）：附件的上传与导入的 zip 走流式的路由，服务端按字节放宽它们的读写期限（不低于每秒 64 KiB）。
-  - 反向代理不要缓冲上传的请求体：nginx 的 `proxy_request_buffering off`，否则整个文件传到代理之后服务端才开始读，提前的拒绝（无权、重名、超过上限）也要等传完。
-  - `client_max_body_size`（nginx 默认只有 1 MB）不小于导入包的上限。nginx 的 `client_body_timeout`、`proxy_send_timeout`、`proxy_read_timeout` 是两次读写之间的间隔，不是整个传输的时长，默认的 60 秒就够；按整个请求计时的代理或负载均衡，要容得下最慢的传输（50 MiB 的附件在每秒 64 KiB 下约 13 分钟，512 MiB 的导入包约 2 小时 17 分钟；`transfer.import_max_bytes` 按 `asset.upload_min_rate` 传完不能超过 3 小时）。
+
+  - Caddy（默认不缓冲请求体，`request_buffers` 只给要缓冲的三个路由；自动的 HTTPS 照 Caddy 的默认）：
+
+    ```caddyfile
+    wiki.example.com {
+        # /mcp 与页面正文的两个写：缓冲请求体（37MiB 不小于 /mcp 的 37,814,272 字节）
+        @buffered path_regexp ^/(mcp|api/v0/pages/[^/]+/content|api/v0/notebooks/[^/]+/pages)$
+        handle @buffered {
+            reverse_proxy 127.0.0.1:8080 {
+                request_buffers 37MiB
+            }
+        }
+
+        # 别的路由（页面、接口、事件流、上传与导入）：不缓冲，Caddy 的默认
+        handle {
+            reverse_proxy 127.0.0.1:8080
+        }
+    }
+    ```
+
+    经 Caddy 时，服务端在读请求体之前就答的拒绝（503 `server_busy`、401、429）对几 MiB 以上的请求体常常到客户端成了 502、没有 `Retry-After`（我们在 Caddy 2.10.2 上量过这三种，用的是在读请求体之前就答它们的替身，不是 nervewiki 本身；nginx 照原样转发了替身的 503 与它的 `Retry-After`）：网页的大的保存看到的是一次失败、不会等一等再重发；agent 看不到 `Retry-After`（客户端怎样对待 502 未核对）。
+
+- 反向代理与上传（M7 起）：附件的上传（`POST /api/v0/notebooks/{notebook_id}/assets`）与导入的 zip（`POST /api/v0/notebooks/{notebook_id}/imports`）走流式的路由，服务端按字节放宽它们的读写期限（不低于每秒 64 KiB）。
+  - 反向代理不要缓冲这两个路由的请求体（nginx 的 `proxy_request_buffering off` 只写在它们的 `location` 里；Caddy 默认不缓冲），否则整个文件传到代理之后服务端才开始读，提前的拒绝（无权、重名、超过上限）也要等传完。别的路由不要关掉缓冲（下一条）。
+  - 它们的 `client_max_body_size`（nginx 默认只有 1 MB）不小于导入包的上限（`transfer.import_max_bytes`，默认 512 MiB）加 64 KiB：请求体是 zip 加表单的几个部分。附件的上限（`asset.max_bytes`，默认 50 MiB）加 64 KiB 在它之内（`import_max_bytes` 不小于 `asset.max_bytes`）。改了 `transfer.import_max_bytes` 的，这一行照它改。nginx 的 `client_body_timeout`、`proxy_send_timeout`、`proxy_read_timeout` 是两次读写之间的间隔，不是整个传输的时长，默认的 60 秒就够；按整个请求计时的代理或负载均衡，要容得下最慢的传输（50 MiB 的附件在每秒 64 KiB 下约 13 分钟，512 MiB 的导入包约 2 小时 17 分钟；`transfer.import_max_bytes` 按 `asset.upload_min_rate` 传完不能超过 3 小时）。
+- 反向代理与 MCP（M9 起）：`/mcp` 是普通的请求与答复，每个 POST 一个 JSON 答复，不是 SSE，也不持住连接。
+  - 请求体的上限不小于 `/mcp` 的 37,814,272 字节（约 36 MiB；nginx 写 `client_max_body_size 37m`，Caddy 的 `request_buffers 37MiB` 同样不小于它）：一次调用至多 5 MiB 的正文加 1 MiB 的别的参数，每个字节按 JSON 最长的转义算 6 个。
+  - 读超时不短于 45 秒：一次调用的工作至多 15 秒（`server.request_timeout`），之前读请求体至多 30 秒（`server.read_timeout`）；改了这两个的，不短于它们的和。nginx 默认的 `proxy_read_timeout 60s` 够；Caddy 默认不限（照 Caddy 的文档）。
+  - `Host` 照常转发（nginx 的 `proxy_set_header Host $host`；Caddy 默认就转发）：服务端关掉了 MCP SDK 对不是回环地址的 `Host` 的拒绝（同一台机器上的代理转来的 `Host` 是对外的名称），由 Bearer 令牌把关。
+  - **`/mcp` 与页面正文的两个写（`PUT /api/v0/pages/{page_id}/content`、`POST /api/v0/notebooks/{notebook_id}/pages`）要缓冲请求体**：大的请求体（MCP 超过 64 KiB 的调用、超过 `server.max_body_bytes` 的正文写）整个服务同时只有两个名额、每个凭证一个（上文"MCP"的"传输"与"接入 agent（MCP）"），名额从读请求体之前占到答完；代理收完请求体再一次转给服务，慢的发送者就占不住名额。上面的两份样例都这样做。缓冲的请求体在服务端认证之前就收下了，放在代理那里：nginx 把过了 `client_body_buffer_size` 的写到 `client_body_temp_path` 的磁盘上（照 nginx 的文档），Caddy 放在内存里（我们在 Caddy 2.10.2 上量过：收着一个 30 MiB 的请求体时代理的内存涨了约 66 MB，一个接近 `/mcp` 上限的约 116 MB，没有写临时文件），所以几个慢的发送者不必有有效的令牌，就能让代理各占至多约 37 MiB 的磁盘（nginx）或一百多 MB 的内存（Caddy）：给代理留出这些地方。
+  - 不缓冲时（代理关掉了缓冲，或直接暴露服务）：两个慢的发送者（两个令牌，或两个登录的会话）各占一个名额至多约 45 秒（请求体至多 `server.read_timeout` 30 秒，之后这次调用至多 `server.request_timeout` 15 秒），其间别人的大的写等 2 秒后答 503 `server_busy`。名额满了时服务端记一行 info 的日志 `large request bodies are saturated`，`holders` 是持着名额的凭证（`pat:<令牌 id>` 或 `session:<会话 id>`）与路由：由 `api_tokens`（PAT）或 `auth_sessions`（会话）那一行的 `user_id` 找到账户，请他在"访问令牌"里撤销那个令牌，或以 `nervewiki users reset-password` 撤销这个账户的全部会话与 PAT（上文"管理员命令"）。
 - 内存：页面正文的解析预算（`page.parse_budget_bytes`，默认 8 MiB）最坏时约占 2.4 GB，见上文"页面"的"解析预算"。大的请求体（MCP 超过 64 KiB 的调用、超过 1 MiB 的正文写）整个服务同时至多两个，各约 +0.5 GB，合起来约 1 GB（M9/P2 实测两个加一个等着的 +680 到 +961 MiB，见上文"MCP"的"传输"）；请求体的 JSON 值有上限（`/mcp` 10,000 个，REST 1,000 个），所以许多小值的请求体不比一个长字符串贵。内存小的机器调小预算（至少 5 MiB，最坏约 1.5 GB），并用 `GOMEMLIMIT` 给运行时一个略低于容器上限的目标。
 
 - 数据库必须以 builtin provider 的 `C.UTF-8` 初始化，否则服务拒绝启动，见[总体设计](docs/v0.1/v0.1-design.md) 7.1。
