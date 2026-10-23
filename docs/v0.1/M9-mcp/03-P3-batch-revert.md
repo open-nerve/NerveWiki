@@ -477,7 +477,7 @@ func RelocationOf(sub Subtree, parent *uuid.UUID, line []Ancestor, holder *Node)
 
 **先以大小拒绝，再读**：用例以 `PageStates` 一条语句读前两种页的头（版本号、`byte_size` 与新加的 `content_hash`，`page/adapter/postgres/queries/contents.sql:40-44`，不读正文；一行之内是一致的），读正文的页的大小按项的次序累加（上面那种 `write` 的页也在其中，S1 审查 A-I1 的第 3 条疑点：之前的改名碰到的三页各 5 MiB、带令牌（`base_version`）的整页替换，以前只读头能过，现在过了 14 MiB，答读的界线的 422，提示说为什么："a write after a rename or move that reaches its page reads the page whole: send the renames or moves in another batch"（S1 审查 A 的 N3、N5）。带当前的令牌的整页替换也读整页：它的 `changed` 要比字节。把改名与之后的写分开发就不读它们），过了 `MaxBatchReadBytes` = `MaxUnitBytes` + `MaxBatchStringBytes`（8 + 6 = 14 MiB）的那一项答 422 `page.batch_too_large`（"N bytes in the pages its ops read, at most M: split the batch"，读整页的 `write` 在其中时是上面的提示；实施的偏差 15），什么正文都不读，也不跑第二遍。只读头的页（之前的改动碰不到的 `write`）不数：它们的正文不读，三页 5 MiB 的整页替换（15 MiB）不该被拒绝；三页 5 MiB 上不带 `base_version`、字节不同的 `write` 答第一项的 409 `PathTaken`，不是第三项的读的 422（审查 A3-N1）。只有一页时不限（一页至多 5 MiB）。为什么是这个数：多于一页时最后的正文合计至多 `MaxUnitBytes`，batch 自己的字符串至多 6 MiB；读的页大过两者之和，除非它的 `edit` 删去的比它带来的多，最后的正文就过了 `MaxUnitBytes`。这样的请求只有约 10 KB，不占 `/mcp` 的大请求体的位置（`bootstrap/mcp.go:31-41`），一个 PAT 又可以同时发 200 个：计划不为它读上百兆（读 14 MiB 时活着的堆约 27 MiB；100 页 5 MiB 的实测在审查记录）。
 
-**版本号与正文一起读**：读正文的页逐页以 `Nodes.PageContent` 读正文与它的版本号（一条语句答两者，同 `edit` 的读，`page/app/edit_page.go:138-142`），至多 100 页；它们的头只用来拒绝。分两条语句读（先读正文、后读版本号）会把正文 r 与版本号 r+1 配成一对：单元锁下看到 r+1、等于计划的，就把其间的那次写盖掉了。只读头的页的版本号、大小与哈希来自同一行，没有这个问题。
+**版本号与正文一起读**：读正文的页逐页以 `Nodes.PageContent` 读正文与它的版本号（一条语句答两者，同 `edit` 的读，`page/app/edit_page.go:138-142`），至多 100 页；它们的头只用来拒绝。分两条语句读（先读正文、后读版本号）会把正文 r 与版本号 r+1 配成一对：单元锁下看到 r+1、等于计划的，就把其间的那次写盖掉了。只读头的页的版本号、大小与哈希来自同一行，没有这个问题。[M9 的 Codex 评审](reviews/M9-codex-review.md)之后（D2，00 号文档第 11 节第 115 条）读它们的是 `Nodes.PageContentWithin(ctx, id, max)`，`max` 是 `CheckReads` 判过的这一页的头的大小：比它大的页一点也不读，同一条语句只读它的大小、版本号与哈希（`queries/contents.sql` 的 `PageContentWithin`），这是这一页版本的差别（`differs(…, "version", …)`），带着它此刻的版本，batch 重新计划一次，`CheckReads` 照新的大小答；再次长大时它的第一个正文操作照 `changedTwice` 答 `page.revision_mismatch` 与这一页现在的版本（不带 `base_version` 时 `KeptChanging`，修复核对 B-N1）。所以 14 MiB 是读到的字节的界（`TestABatchsReadsHoldTheirBoundOnWhatTheyRead`）。
 
 ```go
 // PageText is a page's content and its revision, read in one statement.
@@ -750,13 +750,15 @@ func (b *ApplyBatch) Execute(ctx context.Context, notebookID uuid.UUID, p PathBa
 
 ```go
 // BatchRewrite is what a batch's deferred participants follow besides its
-// changes (M9 design 4.11; M9/P3 design 3.7): each page the batch wrote,
-// alive after it; the paths the moved and renamed nodes' former parents
-// had as the unit began; the nodes the unit deleted; the most pages the
-// rewrite may write, a page of Written counting WrittenWeight (M9/P3
-// review B-M3), the most links (review B1-M3), and the most bytes of the
-// pages it writes (M9/P3 fix round 5, B2-M1); and the first op that
-// renames or moves with update_links, which a refusal names.
+// changes (M9 design 4.11; M9/P3 design 3.7): each page the batch's
+// content ops decided, alive after it, whether or not the unit wrote a
+// version of it (Codex review R1); the paths the moved and renamed nodes'
+// former parents had as the unit began; the nodes the unit deleted; the
+// most pages the rewrite may write, a page of Written its content ops wrote
+// counting WrittenWeight (M9/P3 review B-M3), one they put back 1 (Codex
+// review R1), the most links (review B1-M3), and the most bytes of the
+// pages it writes (M9/P3 fix round 5, B2-M1); and the first op that renames
+// or moves with update_links, which a refusal names.
 type BatchRewrite struct {
 	Written       map[uuid.UUID]WrittenPage
 	Parents       map[uuid.UUID][]domain.PathStep
@@ -787,8 +789,9 @@ type BatchRewrite struct {
 	FrozenMoves []domain.Change
 }
 
-// WrittenPage is a page a batch wrote, for its deferred rewrite: where its
-// links led at its last content op, on the plan's tree after that op; its
+// WrittenPage is a page a batch's content ops decided, for its deferred
+// rewrite: where its links led at its last content op, on the plan's tree
+// after that op; its
 // own changes, the renames and moves after that op, merged node by node
 // with no revision, of the nodes alive then, or created since, and alive
 // after the unit, that no op after it moves with update_links false: those
@@ -800,12 +803,21 @@ type BatchRewrite struct {
 // rename or move with update_links false, whose links it leaves;
 // CreatedAfter, for each node they rename or move, the nodes they create
 // after the last that does, out of its subtree (BatchRewrite.CreatedAfter).
+// Unwritten tells a page its content ops wrote no version of, though its
+// rewrite may: they left it the bytes it held before the batch, an edit
+// back to them after a move rewrote it too (Codex review R1). Its links are
+// followed from its last content op all the same, as separate calls' index
+// has them then; its rewrite weighs as a page of the index's, as it is in
+// separate calls: WrittenWeight is the cost of a page's write and rewrite
+// in the unit (M9/P3 review B-M3), and its content ops did not write this
+// one.
 type WrittenPage struct {
 	Before       domain.LinksBefore
 	Changes      []domain.Change
 	Facts        Facts
 	Frozen       []uuid.UUID
 	CreatedAfter map[uuid.UUID][]uuid.UUID
+	Unwritten    bool
 }
 
 // Participate has the participants follow the unit's changes once, as one
@@ -817,11 +829,11 @@ type WrittenPage struct {
 func (u *Unit) Participate(ctx context.Context, b BatchRewrite) (int, error)
 ```
 
-  `BatchRewrite` 另带 `WrittenWeight`（写了的页在 `MaxPages` 里算几页，`WrittenRewriteWeight` = 2，S1 审查 B-M3，3.8.2）、`MaxLinks`（改写的链接的界线，3.8）、`MaxBytes`（改写的页的字节的界线，3.8；修正的第 5 轮）、`Frozen`（`update_links` 为假的操作改名或移动的节点，`Unit.Participate` 设它：通向它们的链接在每一页里都不改，S1 审查 B-M1，3.7.2）、`CreatedAfter`（每个被 `update_links` 为真的操作改名或移动的节点，batch 在它最后一次这样的操作之后新建在它下面的节点，照那个窗口的最后一棵树，`BatchPlan.CreatedAfterMoves`；S1 审查 B1-M1，修正的第 5 轮，3.7.2）与 `FrozenMoves`（`update_links` 为假的操作改名或移动的节点在整个 batch 里合并的改名、移动，`BatchPlan.FrozenMovesBetween`：不跟随，只给"之前"的路径，S1 审查 B1-N1，3.7.3）；`WrittenPage` 另带它自己的 `Frozen` 与 `CreatedAfter`（这一页最后一个正文操作之后的，3.7.2）。
+  `BatchRewrite` 另带 `WrittenWeight`（写了的页在 `MaxPages` 里算几页，`WrittenRewriteWeight` = 2，S1 审查 B-M3，3.8.2；正文操作没写出版本的页带 `WrittenPage.Unwritten`，算 1 页，[M9 的 Codex 评审](reviews/M9-codex-review.md) R1）、`MaxLinks`（改写的链接的界线，3.8）、`MaxBytes`（改写的页的字节的界线，3.8；修正的第 5 轮）、`Frozen`（`update_links` 为假的操作改名或移动的节点，`Unit.Participate` 设它：通向它们的链接在每一页里都不改，S1 审查 B-M1，3.7.2）、`CreatedAfter`（每个被 `update_links` 为真的操作改名或移动的节点，batch 在它最后一次这样的操作之后新建在它下面的节点，照那个窗口的最后一棵树，`BatchPlan.CreatedAfterMoves`；S1 审查 B1-M1，修正的第 5 轮，3.7.2）与 `FrozenMoves`（`update_links` 为假的操作改名或移动的节点在整个 batch 里合并的改名、移动，`BatchPlan.FrozenMovesBetween`：不跟随，只给"之前"的路径，S1 审查 B1-N1，3.7.3）；`WrittenPage` 另带它自己的 `Frozen` 与 `CreatedAfter`（这一页最后一个正文操作之后的，3.7.2）。
 
   交给参与者的改动（4.11 的"交给它的改动"）：单元前后都活着、被 `update_links` 为真的操作改名或移动过的节点，以合并之后的"前""后"，`Revision` 为 0、不带 `Facts`（否则 `Relocation` 碰上带版本号的就答"不用改"，`linking/domain/change.go:69-71`）；被移动的节点的子孙的项（"前""后"相同）留着；只写了正文的节点不在其中；一个节点只要有一个操作的 `update_links` 为假就整个不在其中。**另加**这个 batch 新建、之后又被改名或移动的节点，"前"是它新建之后的样子：没写的页的链接从单元之前的索引跟起，新建的节点在它最后的位置抢走的，照 M6 写回原来的目标，同分开调用时那次移动的参与者（3.14.4 的 (1)）；只给前后都活着的节点，它们就悄悄被抢走。这一份合并的改动只管 batch 没写的页。
 
-  **batch 写了的页各有自己的改动**（`WrittenPage.Changes`，计划给出）：
+  **batch 写了的页各有自己的改动**（`WrittenPage.Changes`，计划给出；[M9 的 Codex 评审](reviews/M9-codex-review.md)起，这里的"写了的页"是正文操作决定的页 `decided`：有正文操作、单元之后还活着的每一页，最后的字节等于批前的也是，R1、D1，00 号文档第 11 节第 113 条）：
   - 它最后一个正文操作之后的改名与移动，按节点合并（第一个"前"、最后的"后"，同 `Change.Then`），只取那时与单元之后都活着的节点；
   - 在那之后才新建、又被改名或移动的节点也在，"前"是它新建之后的样子（同上，它抢走这一页的链接时照 M6 写回）；
   - 那之后有一个操作的 `update_links` 为假的节点整个不在其中（只看那之后的操作：之前的那些，这一页的正文写的时候已经看到了）；
@@ -870,7 +882,7 @@ func (u *Unit) Participate(ctx context.Context, b BatchRewrite) (int, error)
 - **删除了的页的别名**：`resolutions`（`linking/app/resolver.go:54-167`）多收一个 `gone` 的集合：别名行的页在其中的，当作没有这个别名（`AliasesByKeys` 不看页活不活着，`linking/adapter/postgres/queries/pages.sql:60-64`；观察者删了那一页就是这样）。参与者给它 `Gone`；计划里的 `BatchLinks` 给它这个 batch 在那一项及以前删除的页（3.7.4）。其余不在的页照今天答内部错误（"linking: the pages [...] of links or aliases are not pages of ..."，`rewrite.go:107-117`、`resolver.go:119-166`），一致性的检查不变。没有这两条时，"删除 P（别名 Roadmap）、把 Plan 改名为 Roadmap"与删除了的来源页都在 `reached` 里答 500（审查 A-I2）。
 - **"之前"的目标已不在的链接安静地跳过**：目标被这个 batch 删除了（`Gone`）的，记 info；计划之后被别人删除了的（`W.Before.Leads` 是不加锁时算的，重做只比 batch 自己的节点），记 warn（"a link is not rewritten: where it led is gone"）。今天两者都以 error 级记"没有写法通向它"（`rewrite.go:252-254`、`:315-318`）。删除只重新解析，不改写（4.5）。
 
-**数、锁与错误的次序**（审查 A-M5）：改写的页数在 `reached` 与索引的过滤之后、读改写要的树（`treeOf`：目标的路径与按键的页）、`refuseLocked` 与任何解析之前数（S1 审查 B-I1：过界的 batch 不为它读树，立即答），界线在它限的工作之前：没写的页里有碰到的链接的，加上写了的页里它自己的改动碰到它的链接的（`metLinks`：照 `ownLinks` 的触及与对上，在任何解析之前；链接通向一个节点、不经别名的值、不通向冻住的节点），后者每页算 `WrittenWeight`；都只数有一条通向 batch 没删除的页的链接的页（S1 审查 B1-M2：以前写了的页只要自己的改动搬了什么就数，碰不到它任何链接的也算 2 页，S1 审查 B 的 w1 被拒）；过了 `MaxPages` 答 linking 的 `ErrTooManyRewrites`（`TooManyRewrites.Pages`），组合根译成 page 的 422 "N pages whose links the batch's renames and moves would rewrite, each page the batch wrote counting 2, at most M: move with update_links false, or in separate calls"（`BatchTooLarge`，3.9.2；同 `ErrGuardLocked` 的译法，`linking/app/ports.go:271-274`）。然后数这些页里要改写的链接：没写的页里 `domain.Rewrites` 要写的，与写了的页里碰到的，都只数通向 batch 没删除的页的，过了 `MaxLinks` 答 `ErrTooManyRewrites`（`TooManyRewrites.Links`），组合根译成 422 "N links the batch's renames and moves would rewrite, at most M: move with update_links false, or in separate calls"（S1 审查 B1-M3）。然后数这些页的字节（S1 复核 B 的 B2-M1）：页的头里的大小（`PageSizes.ContentSizes`，页模块的 `PageStates` 那条语句，在单元里），写了的页按它最后的内容、算一次（它的改写读它最后的内容，事实是 batch 的，只解析写出的那一份）；过了 `MaxBytes` 答 `ErrTooManyRewrites`（`TooManyRewrites.Bytes`），组合根译成 422 "N bytes of pages the batch's renames and moves would rewrite, at most M: move with update_links false, or in separate calls"。每个改写的页留着它的事实的份额（约它写出的内容的字节的十分之一）到单元结束，改写的解析立即取预算（`TakeNow`），所以过重的页在两个界线之内也会答重试不了的 `server_busy`；数在读树之前，过界的 batch 立即答（3.8.2）。字节数的是页，写出的内容可以长得多（链接写出目标新位置的路径，3.8），所以 batch 的改写还记着它改写过的页留下的份额（`keptShares`，只在 `MaxBytes` 设了时）：每次解析之前（读索引里的页的那一次与每次写出的），这一次要取的（`RewriteParser.Takes`）加上这些份额过了预算，就在取之前答 `ErrTooManyRewrites`（`TooManyRewrites.Kept`，S1 复核 B 的 B3-M1），组合根译成 422 "N bytes of the parse budget the pages the batch's renames and moves rewrite would hold, at most M: move with update_links false, or in separate calls"（M 是配置的预算）：别人放手也腾不出来，等也没用。放得下、只是别人的份额（或在等的取）挡着的，照旧立即答 503。检查在参与者里：份额是它留到单元结束的（`Appender.Defer`），只有它知道预算里哪些是自己的；页模块的解析会话在它之前已经放掉了自己的份额，也看不到改写的解析。单个 `move` 不检查，同 M6/P4。`MaxBytes` 为 0 时不读大小（单个 `move`）。写了的页碰到的链接在三个数之后才解析（`rewrittenOf`），`refuseLocked` 读的是数过的页。然后 `refuseLocked`（`rewrite.go:136-145`）：要改写的页里有被编辑的，答 `linking.pages_locked`，由用例带上 `op = FirstMove`（4.11 的"界线与锁"），文字说"the batch's renames and moves"而不是 `FirstMove` 的 `from`（到了被锁的页的不一定是它，审查 A-N14）。然后逐页解析与追加：解析的 503、守卫的 `page.locked`（译成 `linking.pages_locked`，`guardLocked`）。所以单元里的次序是：改写的页数的 422、改写的链接数的 422、改写的页的字节的 422、`linking.pages_locked`，然后逐页改写时，改写过的页留下的份额旁放不下的 422 或 503。
+**数、锁与错误的次序**（审查 A-M5）：改写的页数在 `reached` 与索引的过滤之后、读改写要的树（`treeOf`：目标的路径与按键的页）、`refuseLocked` 与任何解析之前数（S1 审查 B-I1：过界的 batch 不为它读树，立即答），界线在它限的工作之前：没写的页里有碰到的链接的，加上写了的页里它自己的改动碰到它的链接的（`metLinks`：照 `ownLinks` 的触及与对上，在任何解析之前；链接通向一个节点、不经别名的值、不通向冻住的节点），后者每页算 `WrittenWeight`（带 `Unwritten` 的算 1，`pagesCounted`；M9 的 Codex 评审 R1）；都只数有一条通向 batch 没删除的页的链接的页（S1 审查 B1-M2：以前写了的页只要自己的改动搬了什么就数，碰不到它任何链接的也算 2 页，S1 审查 B 的 w1 被拒）；过了 `MaxPages` 答 linking 的 `ErrTooManyRewrites`（`TooManyRewrites.Pages`），组合根译成 page 的 422 "N pages whose links the batch's renames and moves would rewrite, each page the batch wrote counting 2, at most M: move with update_links false, or in separate calls"（`BatchTooLarge`，3.9.2；同 `ErrGuardLocked` 的译法，`linking/app/ports.go:271-274`）。然后数这些页里要改写的链接：没写的页里 `domain.Rewrites` 要写的，与写了的页里碰到的，都只数通向 batch 没删除的页的，过了 `MaxLinks` 答 `ErrTooManyRewrites`（`TooManyRewrites.Links`），组合根译成 422 "N links the batch's renames and moves would rewrite, at most M: move with update_links false, or in separate calls"（S1 审查 B1-M3）。然后数这些页的字节（S1 复核 B 的 B2-M1）：页的头里的大小（`PageSizes.ContentSizes`，页模块的 `PageStates` 那条语句，在单元里），写了的页按它最后的内容、算一次（它的改写读它最后的内容，事实是 batch 的，只解析写出的那一份）；过了 `MaxBytes` 答 `ErrTooManyRewrites`（`TooManyRewrites.Bytes`），组合根译成 422 "N bytes of pages the batch's renames and moves would rewrite, at most M: move with update_links false, or in separate calls"。每个改写的页留着它的事实的份额（约它写出的内容的字节的十分之一）到单元结束，改写的解析立即取预算（`TakeNow`），所以过重的页在两个界线之内也会答重试不了的 `server_busy`；数在读树之前，过界的 batch 立即答（3.8.2）。字节数的是页，写出的内容可以长得多（链接写出目标新位置的路径，3.8），所以 batch 的改写还记着它改写过的页留下的份额（`keptShares`，只在 `MaxBytes` 设了时）：每次解析之前（读索引里的页的那一次与每次写出的），这一次要取的（`RewriteParser.Takes`）加上这些份额过了预算，就在取之前答 `ErrTooManyRewrites`（`TooManyRewrites.Kept`，S1 复核 B 的 B3-M1），组合根译成 422 "N bytes of the parse budget the pages the batch's renames and moves rewrite would hold, at most M: move with update_links false, or in separate calls"（M 是配置的预算）：别人放手也腾不出来，等也没用。放得下、只是别人的份额（或在等的取）挡着的，照旧立即答 503。检查在参与者里：份额是它留到单元结束的（`Appender.Defer`），只有它知道预算里哪些是自己的；页模块的解析会话在它之前已经放掉了自己的份额，也看不到改写的解析。单个 `move` 不检查，同 M6/P4。`MaxBytes` 为 0 时不读大小（单个 `move`）。写了的页碰到的链接在三个数之后才解析（`rewrittenOf`），`refuseLocked` 读的是数过的页。然后 `refuseLocked`（`rewrite.go:136-145`）：要改写的页里有被编辑的，答 `linking.pages_locked`，由用例带上 `op = FirstMove`（4.11 的"界线与锁"），文字说"the batch's renames and moves"而不是 `FirstMove` 的 `from`（到了被锁的页的不一定是它，审查 A-N14）。然后逐页解析与追加：解析的 503、守卫的 `page.locked`（译成 `linking.pages_locked`，`guardLocked`）。所以单元里的次序是：改写的页数的 422、改写的链接数的 422、改写的页的字节的 422、`linking.pages_locked`，然后逐页改写时，改写过的页留下的份额旁放不下的 422 或 503。
 
 **锁下再核对**（4.11）：没写的页的链接由推后的调用在锁下、在真的树上从索引改写；写了的页里它最后一个正文操作之后的改名、移动碰到的链接，也在锁下从那一项时的去向改写（`W.Before` 是计划在不加锁的树上算的，重做核对过 batch 自己的节点）。计划在更早的项为一页选的链接的文字，锁下不再核对：计划之后、单元之前别人的写让它改了去向的，同 batch 前面的项让它改了去向的一样，之后的改名、移动看不见（4.11 的规则）。
 
@@ -951,7 +963,7 @@ type BatchLinks interface {
 | 计划的解析 | `MaxBatchParseBytes` = 2 × `MaxContentBytes` = 10 MiB：计划在最后的正文之前解析的（被改写的正文、读回的写法、"之前"），按不同的（页、哈希）；只有一页时也限。等待：与最后的正文的 `DecidedAll` 共用一个合计的 `parse_max_wait`（2 秒，一次请求一份，跨过重新计划；每次计划各数各的，3.4.5） | 计划里每次解析之前：会过界的解析不做 | 要它的那一项（3.4.4） |
 | 页数、字节 | `MaxUnitPages` = 100、`MaxUnitBytes` = 8 MiB（`page/domain/trash.go:46-73`）：计划的解析与最后的正文按（页、哈希）数一次；只有一页时不限：最后的正文至多 5 MiB，计划的解析受上一行限（`UnitTooLarge` 加不同的页数的参数，3.18.4） | 计划里每次解析之前与计划之后 | 计划里的那一项；计划之后 |
 | 链接 | `MaxUnitLinks` = 20,000：计划里与最后的正文的解析的链接之和 | 解析之后：会话的 `DecidedAll` 边解析边数，过界时答它的界线（`func(links int) error`，拒绝说出条数，实施的偏差 13） | 503 之后 |
-| 改写的页 | `MaxBatchRewrites` = 400（实测，3.8.2）：没写的页里有碰到的链接的，加上写了的页里它自己的改动碰到它的链接的（S1 审查 B1-M2），都只算有一条通向 batch 没删除的页的链接的；写了的页每页算 `WrittenRewriteWeight` = 2 页（S1 审查 B-M3，3.8.2）；`Moved.MaxPages` 为 0 是不限（REST 与单个 `move`） | 推后的参与者里：`reached` 与索引的过滤之后、在读改写要的树之前（S1 审查 B-I1）、`refuseLocked` 与任何解析之前 | 单元里，先于 `linking.pages_locked` 与 503（3.7.2） |
+| 改写的页 | `MaxBatchRewrites` = 400（实测，3.8.2）：没写的页里有碰到的链接的，加上写了的页里它自己的改动碰到它的链接的（S1 审查 B1-M2），都只算有一条通向 batch 没删除的页的链接的；写了的页每页算 `WrittenRewriteWeight` = 2 页（S1 审查 B-M3，3.8.2），正文操作让它回到批前的字节的页算 1 页（M9 的 Codex 评审 R1，00 号文档第 11 节第 113 条）；`Moved.MaxPages` 为 0 是不限（REST 与单个 `move`） | 推后的参与者里：`reached` 与索引的过滤之后、在读改写要的树之前（S1 审查 B-I1）、`refuseLocked` 与任何解析之前 | 单元里，先于 `linking.pages_locked` 与 503（3.7.2） |
 | 改写的链接 | `MaxBatchRewriteLinks` = 120,000（实测，3.8.2）：上一行那些页里要改写的链接，没写的页里 `domain.Rewrites` 要写的、写了的页里它自己的改动碰到的，都只算通向 batch 没删除的页的；`Moved.MaxLinks` 为 0 是不限（REST 与单个 `move`） | 推后的参与者里，数过页数之后、读改写要的树之前（S1 审查 B1-M3） | 单元里，改写的页数之后，先于 `linking.pages_locked` 与 503（3.7.2） |
 | 改写的页的字节 | `MaxBatchRewriteBytes` = 400 × 84 KiB = 34,406,400（实测与预算，3.8.2）："改写的页"一行数的那些页的内容的字节，按页的头里的大小，写了的页按它最后的内容、算一次；`Moved.MaxBytes` 为 0 是不限（REST 与单个 `move`） | 推后的参与者里，数过链接之后、读改写要的树之前（S1 复核 B 的 B2-M1） | 单元里，改写的链接数之后，先于 `linking.pages_locked` 与 503（3.7.2） |
 | 改写过的页留下的解析额度 | 配置的解析预算（`page.parse_budget_bytes`，默认 8 MiB）：batch 改写过的页的事实留到单元结束的份额，加上下一次解析要取的；单个 `move` 不查 | 推后的参与者里，逐页改写时、每次解析取预算之前（S1 复核 B 的 B3-M1） | 单元里，`linking.pages_locked` 之后，与 503 同处（3.7.2） |
@@ -2008,7 +2020,7 @@ func (r *backgroundRun) batch(ctx, running context.Context, spec JobSpec, plan J
 - **一个节点不受批的界线**（2.1 第 12 条）：`RunBatch`（`page/app/jobs.go:370-382`）今天"多于一步"才答 `ErrBatchTooLarge`（`withinHistory` 的 `steps == 1`，`:424-440`；链接的那一处是 `DecidedAll` 的"多于一页"，`:402`、`:478`）；改为"步碰的节点多于一个"（链接照 3.18.4 按不同的页）：同一页的恢复与写回是两步、一个节点，它就是 M8 的"单独的一步"，总要写得下（M8 的界线本来让单个节点总放得下：恢复一个节点的历史至多是它一页的，写回一页的链接是它一页的）。建成：`withinHistory` 在步碰的节点只有一个时不查，恢复的节点的界线只对多于一个节点的一批，页的界线是 `UnitTooLarge` 的一页的例外（`TestARevertJobsLoneNodeIsNeverPastTheBounds`）。
 - **界线与哨兵**（S3 审查 A-M2 = C-N2，与三位都提的一段很长的存疑；修复核对一轮 A1-I1 = B 的 I-1；S3 的主持者的决定 3、4）：page 模块的四条界线各一个哨兵，都包着 `ErrJobBatchTooLarge`，按这个次序核对：
   - 恢复的节点（`errPastNodes`，"past the nodes a unit restores"）：碰的节点多于一个的一批，恢复带回多于 `MaxUnitNodes`（10,000，M8 量的单元 5 秒之内恢复的节点）个节点，在任何读之前（修复二轮挪到 `begun()` 读一组的根之前，修复核对一轮 B 的 N-1 = C1-N2）。batch 至多改 `MaxUnitNodes` 个节点（删除的子树都算），经 batch 做不出过 1 万个的一段，它的停下由构造的变更集核对（`TestARevertJobsBatchRestoresAtMostAUnitsNodes`）；一段截过的恢复带 9,000 个附件，一个单元 494、614 毫秒。
-  - 页（`errPastPages`，"past a unit's pages or their bytes"：`UnitTooLarge` 的页、份数与字节）：先按任务开始时量的大小（`withinSizes`，各取那一步的 `JobStep.Bytes`：成员在回收站里的正文的、写回的基的），也在任何读之前；一个任务的段照请求的 `withinBounds` 的数法数（3.18.4：一页恢复又写回是两份，写回到同一个哈希也是；修复核对二轮 A2 的 N1，不改）。读到之后、解析之前再按读到的核对（`withinPages`：读到的可以是更少的页，别人这期间恢复了的不在；或是计划之后又被删除的一组的另一份正文，比计划量的大；修复核对二轮 B2 的 N-2）。第一段总是整个进一批、过了 `Batch.Bytes`，截过的恢复可以有几千页，读了才拒绝，它们就都在内存里：审查 B 的形状（G 下 120 页、各 2 MiB）修之前 328 毫秒、分配约 496 MiB，修之后 64 毫秒、3 MiB。
+  - 页（`errPastPages`，"past a unit's pages or their bytes"：`UnitTooLarge` 的页、份数与字节）：先按任务开始时量的大小（`withinSizes`，各取那一步的 `JobStep.Bytes`：成员在回收站里的正文的、写回的基的），也在任何读之前；一个任务的段照请求的 `withinBounds` 的数法数（3.18.4：一页恢复又写回是两份，写回到同一个哈希也是；修复核对二轮 A2 的 N1，不改）。[M9 的 Codex 评审](reviews/M9-codex-review.md)之后（D2，00 号文档第 11 节第 115 条），读回收站里的正文的 `TrashContentsWithin`（`queries/trash.sql`，内层是 `TrashContents` 的查询）自己守着 `trashBound`：单元的字节减去这一批写回的底本（底本的版本不会变），只有一页时不限；过界即 `errPastPages`，过界的那一页与其后的正文不读进内存（之前计划之后又被删除的一组可以读到 100 × 5 MiB 才拒）。读到之后、解析之前再按读到的核对（`withinPages`：读到的可以是更少的页，别人这期间恢复了的不在；或是计划之后又被删除的一组的另一份正文，比计划量的大；修复核对二轮 B2 的 N-2）。第一段总是整个进一批、过了 `Batch.Bytes`，截过的恢复可以有几千页，读了才拒绝，它们就都在内存里：审查 B 的形状（G 下 120 页、各 2 MiB）修之前 328 毫秒、分配约 496 MiB，修之后 64 毫秒、3 MiB。
   - 历史（`errPastHistory`，"past a unit's rows of history"），在解析之前。
   - 链接（`errPastLinks`，"past a unit's links"），解析之后。
 

@@ -575,7 +575,7 @@ ON CONFLICT (node_id) DO UPDATE SET version = excluded.version, bulk = page_sear
   - 连接池的规则算上它（`SearchJobConns` = 1，`validate.go`）：导出的 worker n 要 2·(n + 1) ≤ `max_conns`，导入的 E 与导出的 n 要 2·(E + n + 1) ≤ `max_conns`；默认（各一个）时 `max_conns` 至少 6（原来 4）。
 - **一次运行**先按 `node_id` 走一遍准确的队列、再按笔记本走一遍批量的（同一个 1 分钟的预算，P5A 审查 C-I1；批量的按笔记本由 M8 Codex 评审 R1 的修复二轮 B-3 改，下），每个节点至多读一次，做到队列的末尾或 1 分钟之后不再开始新的一批：
   1. `QueuedSearch`：`NOT bulk AND node_id > @after ORDER BY node_id LIMIT 100` 的 `(node_id, notebook_id, version)`；批量的一遍是 `QueuedSearchBulk`：`bulk AND (notebook_id, node_id) > (@after_notebook, @after) ORDER BY notebook_id, node_id LIMIT 100`，经 `page_search_queue_bulk_idx`。都不加锁。P5A 时两遍都按 `node_id`（`bulk = @bulk`）。
-  2. `SearchSources`：按键读这些节点的类型、名称、是否已删、正文的版本号与字节数，以及它们现在的行的 `revision`、`name`、`tokenizer`、`built_at`。要重建的页的正文另一条语句读，一批至多 8 MiB（同导入的批）；超出的留到下一批，`@after` 只前进到做完的最后一个。
+  2. `SearchSources`：按键读这些节点的类型、名称、是否已删、正文的版本号与字节数，以及它们现在的行的 `revision`、`name`、`tokenizer`、`built_at`。要重建的页的正文另一条语句读，一批至多 8 MiB（同导入的批）；超出的留到下一批，`@after` 只前进到做完的最后一个。[M9 的 Codex 评审](../M9-mcp/reviews/M9-codex-review.md)之后（D2，[M9 总设计](../M9-mcp/00-M9-design.md)第 11 节第 115 条），8 MiB（`SearchBatchBytes`）守在读正文的那条语句里：`SearchContents` 在一个 `MATERIALIZED` 的 CTE 里只按键读这些行，再按队列的次序累加此刻的大小，和不过界线时给正文，第一个过界线的只给它的 id、不读它的正文，其后都不给；`SearchSources` 之后长大的那一页与它之后的留在队列里给下一批（下一批重读它们的大小、照新的判、计它们），这一批既不删它们的行、也不计它们（M9 Codex 评审的修复核对 B-N2）。一批的第一页总读得到：`MaxContentBytes` ≤ `SearchBatchBytes` 由 `TestTheSearchBatchHoldsAPagesLargestContent` 钉住（B-N3），否则那一页没有哪一批读得到、一直留在队列里。`TestTheContentsWithinABoundAreReadByTheirKey` 以 `SearchBatchNodes` 个 id 核对它按键读（直接把次序连到表上的写法在几千页的表上整表扫描，B-M1）。
   3. 在 Go 里逐个判：
      - 节点不在或已删：删它的行。
      - 行的 `revision`、`name`、`tokenizer` 都是现在的：不动。
@@ -1121,7 +1121,7 @@ type SearchPage struct {
   - 入队：四种情形、移动不入、导入与后台的恢复、撤销以批量、id 已排序（`TestTheUnitQueuesWhatItChanges`）。
   - 任务（假的存储与时钟）：
     - 取不到锁时返回。
-    - 一遍按 `node_id`、每个节点至多读一次；一批 8 MiB 的界线与 `@after`。
+    - 一遍按 `node_id`、每个节点至多读一次；一批 8 MiB 的界线与 `@after`（M9 的 Codex 评审起界线在读正文的语句里：`TestTheSearchJobsBatchReadsWithinItsBytes`、`TestTheSearchJobsCutBatchCountsItsOwnNodes`）。
     - 删、不动、30 秒之内跳过、重建四种判断；分词的版本不同时重建。
     - 出队带着读到的版本号；第 4、5 步之间中断；写不进的节点逐个再试、记下、跳过，别的照常出队。
     - 每 10,000 行 `ANALYZE`、计数跨运行；1 分钟的预算。
