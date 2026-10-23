@@ -158,9 +158,12 @@ export async function expectAssetsPurged(db: Database, storageDir: string, as: r
   ).toEqual([]);
 }
 
-/** Embedded is a page's content written, as the API answered its write, and the attachments it embeds, in order. */
+/**
+ * Embedded is a page's content written, as the API answered its write, or as a story builds it from an MCP answer,
+ * and the attachments it embeds, in order.
+ */
 export interface Embedded {
-  written: Page;
+  written: Pick<Page, "id" | "revision" | "content_updated_at">;
   content: string;
   attachments: readonly Asset[];
 }

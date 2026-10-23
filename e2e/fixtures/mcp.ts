@@ -175,6 +175,32 @@ export function errorOf(answer: McpAnswer, what: string): McpError {
   return error;
 }
 
+/** A page's read (M9/P1 design 3.11.1): its metadata, read's first block, and its slice, the second. */
+export interface PageRead {
+  meta: {
+    path: string;
+    kind: string;
+    version: string;
+    offset: number;
+    column: number;
+    lines: number;
+    total_lines: number;
+    byte_size: number;
+    next_offset: number | null;
+    next_column: number | null;
+  };
+  text: string;
+}
+
+/** read's answer of a page's path through agent, from offset and column: two text blocks, no structuredContent. */
+export async function readPage(agent: McpClient, args: Record<string, unknown>): Promise<PageRead> {
+  const answer = await agent.call("read", args);
+  expect(answer.isError, `read ${JSON.stringify(args)}: ${answer.text.join(" ")}`).toBe(false);
+  expect(answer.structured, "a text tool's answer has no structuredContent").toBeUndefined();
+  expect(answer.content.map((c) => c.type)).toEqual(["text", "text"]);
+  return { meta: JSON.parse(answer.text[0] ?? "") as PageRead["meta"], text: answer.text[1] ?? "" };
+}
+
 /**
  * The line of path at line as read gives it, its line end included (M9/P4 design 4): read's second block, at offset
  * line, limit 1. The stories check grep's line numbers with it.

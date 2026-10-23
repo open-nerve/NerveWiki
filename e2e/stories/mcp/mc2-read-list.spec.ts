@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 import { download, pngBytes, uploadAsset, utf8, webpBytes, type UploadFile } from "../../fixtures/assets";
 import { expectUploaded } from "../../fixtures/assert/asset";
-import { mcpClient, postMcp, type McpClient } from "../../fixtures/mcp";
+import { mcpClient, postMcp, readPage, type McpClient, type PageRead } from "../../fixtures/mcp";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, listNodes, moveNode } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -59,27 +59,6 @@ async function list(agent: McpClient, args: Record<string, unknown> = {}): Promi
   const answer = await agent.call("list", args);
   expect(answer.isError, `list ${JSON.stringify(args)}: ${answer.text.join(" ")}`).toBe(false);
   return answer.structured as Listing;
-}
-
-/** A page's read: its metadata and its slice. */
-interface PageRead {
-  meta: {
-    lines: number;
-    total_lines: number;
-    next_offset: number | null;
-    next_column: number | null;
-    [k: string]: unknown;
-  };
-  text: string;
-}
-
-/** read's answer of a page's path through agent, from offset and column. */
-async function readPage(agent: McpClient, args: Record<string, unknown>): Promise<PageRead> {
-  const answer = await agent.call("read", args);
-  expect(answer.isError, `read ${JSON.stringify(args)}: ${answer.text.join(" ")}`).toBe(false);
-  expect(answer.structured, "a text tool's answer has no structuredContent").toBeUndefined();
-  expect(answer.content.map((c) => c.type)).toEqual(["text", "text"]);
-  return { meta: JSON.parse(answer.text[0] ?? "") as PageRead["meta"], text: answer.text[1] ?? "" };
 }
 
 /** The parts of path read in turn through agent, from next_offset and next_column, joined; and the first part. */
