@@ -16,6 +16,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/httpservertest"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
@@ -389,11 +390,17 @@ func TestASeedPassesTheFactsItIsGiven(t *testing.T) {
 
 // A template's page parsed once at start-up has the facts its content
 // would have had parsed by a write: the observers get the same of a Seed
-// and of createPage. The facts are read, never written: two Seeds of the
-// same facts, in two notebooks, pass the same. ParseTemplate refuses what
-// a write's content check does.
+// and of createPage, what the registered extension took from the content
+// (its size), as TestTheContentsWritesReachTheUnit has it. The facts are
+// read, never written: two Seeds of the same facts, in two notebooks,
+// pass the same. ParseTemplate refuses what a write's content check does.
 func TestATemplatesParseIsItsContents(t *testing.T) {
 	f := newFixture(t)
+	md, err := markdown.New([]markdown.Extension{pageMark()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.md = md
 	o := &observer{f: f}
 	m := f.module(nil, nil, []page.PageObserver{o})
 	writes := m.TreeWrites()
@@ -427,6 +434,9 @@ func TestATemplatesParseIsItsContents(t *testing.T) {
 	if !reflect.DeepEqual(seeds, written) || !reflect.DeepEqual(o.events[1].Changes[0].Facts, seeds) {
 		t.Errorf("the facts the observer got: Seed's %#v, the second Seed's %#v, createPage's %#v; want them alike", seeds,
 			o.events[1].Changes[0].Facts, written)
+	}
+	if facts, _ := seeds.(markdown.Facts); facts.Extracted("page-mark") != len(content) {
+		t.Errorf("the extension took %v of the template's page, want its content's size, %d", facts.Extracted("page-mark"), len(content))
 	}
 	for name, c := range map[string]string{"past 5 MiB": strings.Repeat("a", 5<<20+1), "NUL": "a\x00b"} {
 		var e *shared.Error
