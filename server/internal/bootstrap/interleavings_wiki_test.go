@@ -1,8 +1,11 @@
 package bootstrap
 
 import (
+	"context"
 	"net/http"
 	"testing"
+
+	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres/pgtest"
 )
 
 // The interleavings of an LLM Wiki's creation (M10/P1 design 3.15),
@@ -40,7 +43,10 @@ func (tm acmeTeam) checkTheLLMWikisRows(t *testing.T) {
 // of its role, each before and after an LLM Wiki's creation: the creation
 // first, the change takes the notebook with its template as any; the
 // change first, the creation is refused as a standard one would be, and
-// writes nothing.
+// writes nothing. Last, the template's unit re-takes acme's row FOR SHARE
+// with the deletion queued behind the creation's own share of it: the
+// lock the transaction holds is granted without waiting behind the
+// stronger waiter (M10/P1 design 3.15; review A-N4).
 func TestWorkspaceChangesAndCreatingAnLLMWiki(t *testing.T) {
 	t.Run("the workspace's deletion", func(t *testing.T) {
 		deletion := request("alice", http.MethodDelete, "/api/v0/workspaces/acme", "")
@@ -144,6 +150,45 @@ func TestWorkspaceChangesAndCreatingAnLLMWiki(t *testing.T) {
 			checkPages(t, tm.pool)
 			checkNotebooks(t, tm.pool)
 		})
+	})
+
+	// A trigger on notebook_members waits for an advisory lock the test
+	// holds: the creation stops after its admin's insert, acme's row held
+	// FOR SHARE, before its seeders; the deletion then queues for the row
+	// FOR NO KEY UPDATE; then the creation goes on, its template's unit
+	// taking the row FOR SHARE again with the deletion waiting. Were that
+	// share queued behind the deletion, the two would deadlock.
+	t.Run("the template's unit behind a queued deletion", func(t *testing.T) {
+		tm := newAcmeTeam(t, "member", "")
+		for _, stmt := range []string{
+			`CREATE FUNCTION hold_members() RETURNS trigger LANGUAGE plpgsql AS $$
+				BEGIN
+					PERFORM pg_advisory_xact_lock(4242, 1);
+					RETURN NEW;
+				END $$`,
+			"CREATE TRIGGER hold_members BEFORE INSERT ON notebook_members FOR EACH ROW EXECUTE FUNCTION hold_members()",
+		} {
+			if _, err := tm.pool.Exec(context.Background(), stmt); err != nil {
+				t.Fatalf("%s: %v", stmt, err)
+			}
+		}
+		created, deleted := tm.interleaveWith(t, "SELECT pg_advisory_xact_lock(4242, 1)", func(i int) {
+			if i == 0 {
+				pgtest.WaitForAdvisoryLockWaits(t, tm.pool, 4242, 1, 1, interleavingWait)
+				return
+			}
+			pgtest.WaitForLockWaitsOn(t, tm.pool, "workspaces", 1, interleavingWait)
+		}, creatingAnLLMWiki(), request("alice", http.MethodDelete, "/api/v0/workspaces/acme", ""))
+		if !created.is(http.StatusCreated, "") || !deleted.is(http.StatusNoContent, "") {
+			t.Fatalf("POST an LLM Wiki = %d %s, then DELETE acme = %d %s; want 201, then 204", created.status, created.code,
+				deleted.status, deleted.code)
+		}
+		tm.checkTheLLMWikisRows(t)
+		if notebooks, members, _ := tm.deletedWithAcme(t); notebooks != 1 || members != 1 {
+			t.Errorf("%d notebooks and %d members deleted with acme; want the LLM Wiki and its admin", notebooks, members)
+		}
+		checkPages(t, tm.pool)
+		checkNotebooks(t, tm.pool)
 	})
 }
 
