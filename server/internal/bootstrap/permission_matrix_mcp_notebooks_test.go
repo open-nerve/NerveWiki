@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"slices"
 	"testing"
+	"uuid"
 
 	pagemcp "github.com/open-nerve/NerveWiki/server/internal/modules/page/adapter/mcp"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/mcpserver"
@@ -34,21 +35,25 @@ type accountNotebook struct {
 
 // accountNotebooksOf are the notebooks a notebook column sees in every
 // workspace it is in, by workspace, then by name: lab's as REST's list of
-// lab answers them (listedNotebooks), and other-nb of other, whose admin
-// is the column outside lab (M9/P1 design 3.17.2). Each workspace's name
-// is its slug.
+// lab answers them (listedNotebooks), other-nb of other, whose admin is
+// the column outside lab (M9/P1 design 3.17.2), and wlab's, the LLM Wiki
+// variant's, lab's twin, as lab's (M10/P1 design 3.14). Each workspace's
+// name is its slug.
 func accountNotebooksOf(c caller, s seeded) []accountNotebook {
-	item := func(slug, name, role string) accountNotebook {
-		n := accountNotebook{ID: s.notebook(name).String(), Name: name, Role: role}
+	item := func(slug string, id uuid.UUID, name, role string) accountNotebook {
+		n := accountNotebook{ID: id.String(), Name: name, Role: role}
 		n.Workspace.Slug, n.Workspace.Name = slug, slug
 		return n
 	}
 	var out []accountNotebook
 	for _, n := range listedNotebooks(c) {
-		out = append(out, item("lab", n.Name, n.Role))
+		out = append(out, item("lab", s.notebook(n.Name), n.Name, n.Role))
 	}
 	if c == callerOutsideWorkspace {
-		out = append(out, item("other", "other-nb", "admin"))
+		out = append(out, item("other", s.notebook("other-nb"), "other-nb", "admin"))
+	}
+	for _, n := range listedNotebooks(c) {
+		out = append(out, item(variantWorkspace, s.wiki.notebook(n.Name), n.Name, n.Role))
 	}
 	return out
 }

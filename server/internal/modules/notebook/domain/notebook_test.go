@@ -4,6 +4,8 @@ import (
 	"errors"
 	"slices"
 	"testing"
+	"time"
+	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
@@ -104,5 +106,22 @@ func TestCheckChangeAndApply(t *testing.T) {
 	got := fields(t, func() error { _, err := CheckChange(ptr(" "), ptr("all")); return err }())
 	if want := []string{"name required", "workspace_access invalid_format"}; !slices.Equal(got, want) {
 		t.Errorf("both problems = %q, want %q", got, want)
+	}
+}
+
+// A downgrade makes an LLM Wiki standard at its time, without its source
+// root, the rest kept; a standard notebook is none to downgrade.
+func TestDowngradedIsStandard(t *testing.T) {
+	created, at := time.Date(2026, 10, 24, 9, 0, 0, 0, time.UTC), time.Date(2026, 10, 24, 10, 0, 0, 0, time.UTC)
+	wiki := Notebook{ID: uuid.NewV7(), WorkspaceID: uuid.NewV7(), Name: "Field notes", Access: shared.AccessViewer,
+		CreatedAt: created, UpdatedAt: created, Mode: ModeLLMWiki, SourceRootID: uuid.NewV7()}
+	got, err := wiki.Downgraded(at)
+	want := wiki
+	want.Mode, want.SourceRootID, want.UpdatedAt = ModeStandard, uuid.UUID{}, at
+	if err != nil || got != want {
+		t.Errorf("Downgraded() = %+v, %v; want %+v", got, err, want)
+	}
+	if got, err := want.Downgraded(at); !errors.Is(err, ErrNotLLMWiki) || got != (Notebook{}) {
+		t.Errorf("a standard notebook's Downgraded() = %+v, %v; want %v", got, err, ErrNotLLMWiki)
 	}
 }

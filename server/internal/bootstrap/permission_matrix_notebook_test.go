@@ -141,6 +141,18 @@ func notebookMatrixRows() []matrixRow {
 			},
 		},
 		{
+			// lab's notebooks are standard: their admins are refused the
+			// downgrade, the rest as for any admin's write (M10/P1 design
+			// 3.14); the LLM Wiki's row is the variant's.
+			op:      "downgradeNotebook",
+			columns: notebookColumns(),
+			write:   true,
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodPost, path(c, s) + "/downgrade", ""
+			},
+			cells: adminsOnly(cell{http.StatusConflict, "notebook.not_llm_wiki"}),
+		},
+		{
 			op:      "deleteNotebook",
 			columns: notebookColumns(),
 			write:   true,

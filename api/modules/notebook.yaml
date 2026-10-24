@@ -249,6 +249,34 @@ paths:
           description: The caller's membership has ended.
         default:
           $ref: "#/components/responses/Problem"
+  /api/v0/notebooks/{notebook_id}/downgrade:
+    parameters:
+      - $ref: "#/components/parameters/NotebookID"
+    post:
+      operationId: downgradeNotebook
+      tags: [notebook]
+      summary: Downgrade an LLM Wiki
+      description: >-
+        Makes the LLM Wiki a standard notebook. Its pages stay as they are,
+        raw and AGENTS among them, which anyone who can write may then
+        rename, move or delete; it has no source root, no generated pages
+        and no prompts after. No page is written. Its admins can (forbidden).
+        A notebook that does not exist, is deleted, or that the caller cannot
+        see is notebook.not_found; a standard one is notebook.not_llm_wiki;
+        one with an import, a restore or an undo queued or running is
+        transfer.busy, to downgrade once it has ended. An upgrade, the way
+        back, is another process.
+      security: [{ bearer: [] }]
+      x-problem-codes: [notebook.not_found, forbidden, notebook.not_llm_wiki, transfer.busy]
+      responses:
+        "200":
+          description: The notebook, now standard.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Notebook"
+        default:
+          $ref: "#/components/responses/Problem"
   /api/v0/workspaces/{slug}/ownerless-notebooks:
     parameters:
       - $ref: "#/components/parameters/Slug"

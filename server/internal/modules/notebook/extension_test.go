@@ -225,7 +225,7 @@ func TestANotebookDeletionPassesTheSubscriber(t *testing.T) {
 					Pool: f.pool, Tx: postgres.NewTxManager(f.pool, 5*time.Second), Clock: &tickingClock{},
 					Logger: slog.New(slog.DiscardHandler), Authorizer: adminsAuthorizer{facts: notebook.NewFacts(f.pool)},
 					Workspaces: sqlWorkspaces{f.pool}, DeletionSubscribers: []notebook.NotebookDeletionSubscriber{s},
-					AccountWorkspaces: noAccountWorkspaces{}, Seeders: []notebook.Seeder{noSeed{}},
+					AccountWorkspaces: noAccountWorkspaces{}, Seeders: []notebook.Seeder{noSeed{}}, WritingJobs: noJobs{},
 				}).Register(router, httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: tokenAuth{}}))
 
 				req := httptest.NewRequest(http.MethodDelete, d.path(f), nil)
@@ -345,6 +345,7 @@ func TestACreationPassesTheSeeders(t *testing.T) {
 				Pool: f.pool, Tx: postgres.NewTxManager(f.pool, 5*time.Second), Clock: &tickingClock{},
 				Logger: slog.New(slog.DiscardHandler), Authorizer: creatorsAuthorizer{adminsAuthorizer{facts: notebook.NewFacts(f.pool)}},
 				Workspaces: sqlWorkspaces{f.pool}, AccountWorkspaces: noAccountWorkspaces{}, Seeders: []notebook.Seeder{a, b},
+				WritingJobs: noJobs{},
 			}).Register(router, httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: tokenAuth{}}))
 
 			req := httptest.NewRequest(http.MethodPost, "/api/v0/workspaces/acme/notebooks", strings.NewReader(c.body))
@@ -388,6 +389,86 @@ func TestACreationPassesTheSeeders(t *testing.T) {
 					root, got.SourceRootID)
 			case c.code != http.StatusCreated && (notebooks != 0 || members != 0):
 				t.Errorf("a 500 left %d notebooks and %d members, want none", notebooks, members)
+			}
+		})
+	}
+}
+
+// modeSubscriber stands in for the event stream's: it records in order
+// what it got, in the downgrade's transaction, and the mode it read of the
+// notebook's row there, and answers err.
+type modeSubscriber struct {
+	f     fixture
+	name  string
+	order *[]string
+	err   error
+	got   []notebook.ModeChange
+	inTx  bool
+	saw   string
+}
+
+func (s *modeSubscriber) ModeChanged(ctx context.Context, m notebook.ModeChange) error {
+	*s.order = append(*s.order, s.name)
+	s.got = append(s.got, m)
+	s.inTx = postgres.InTx(ctx)
+	if err := postgres.DB(ctx, s.f.pool).QueryRow(ctx, "SELECT mode FROM notebooks WHERE id = $1", m.NotebookID).Scan(&s.saw); err != nil {
+		return err
+	}
+	return s.err
+}
+
+// The mode subscribers run in order in the downgrade's transaction, after
+// the row was written standard, which they read, with the change at the
+// row's time (M10/P1 design 3.5); the first's failure rolls everything
+// back, and the second is not called.
+func TestADowngradePassesTheModeSubscribers(t *testing.T) {
+	for _, fail := range []bool{false, true} {
+		t.Run(map[bool]string{false: "the subscribers follow", true: "the first fails"}[fail], func(t *testing.T) {
+			f := newFixture(t)
+			root := uuid.NewV7()
+			f.exec(t, "UPDATE notebooks SET mode = 'llm_wiki', source_root_id = $2 WHERE id = $1", f.eng, root)
+			var order []string
+			a := &modeSubscriber{f: f, name: "a", order: &order}
+			if fail {
+				a.err = errors.New("the subscriber failed")
+			}
+			b := &modeSubscriber{f: f, name: "b", order: &order}
+			router := httpserver.NewRouter(slog.New(slog.DiscardHandler))
+			notebook.New(notebook.Deps{
+				Pool: f.pool, Tx: postgres.NewTxManager(f.pool, 5*time.Second), Clock: &tickingClock{},
+				Logger: slog.New(slog.DiscardHandler), Authorizer: adminsAuthorizer{facts: notebook.NewFacts(f.pool)},
+				Workspaces: sqlWorkspaces{f.pool}, AccountWorkspaces: noAccountWorkspaces{}, Seeders: []notebook.Seeder{noSeed{}},
+				ModeSubscribers: []notebook.ModeSubscriber{a, b}, WritingJobs: noJobs{},
+			}).Register(router, httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: tokenAuth{}}))
+
+			req := httptest.NewRequest(http.MethodPost, "/api/v0/notebooks/"+f.eng.String()+"/downgrade", nil)
+			req.Header.Set("Authorization", "Bearer "+f.alice.String())
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+
+			var mode string
+			var sourceRoot *uuid.UUID
+			var updated time.Time
+			if err := f.pool.QueryRow(context.Background(), "SELECT mode, source_root_id, updated_at FROM notebooks WHERE id = $1", f.eng).
+				Scan(&mode, &sourceRoot, &updated); err != nil {
+				t.Fatal(err)
+			}
+			want := notebook.ModeChange{WorkspaceID: f.acme, NotebookID: f.eng, From: notebook.ModeLLMWiki, To: notebook.ModeStandard,
+				By: f.alice, At: testNow()}
+			if len(a.got) != 1 || a.got[0].WorkspaceID != want.WorkspaceID || a.got[0].NotebookID != want.NotebookID ||
+				a.got[0].From != want.From || a.got[0].To != want.To || a.got[0].By != want.By || !a.got[0].At.Equal(want.At) ||
+				!a.inTx || a.saw != "standard" {
+				t.Errorf("the first subscriber got %+v in a transaction %v, read %q; want %+v in it, the row standard", a.got, a.inTx, a.saw, want)
+			}
+			switch {
+			case !fail && (rec.Code != http.StatusOK || !slices.Equal(order, []string{"a", "b"}) || mode != "standard" || sourceRoot != nil ||
+				!updated.Equal(a.got[0].At) || !b.inTx || b.saw != "standard" || len(b.got) != 1 || b.got[0] != a.got[0]):
+				t.Errorf("POST = %d %s, called %q, the row %s with source root %v at %v, the second got %+v; want 200, a then b, "+
+					"standard without one at the change's time, the same change", rec.Code, rec.Body, order, mode, sourceRoot, updated, b.got)
+			case fail && (rec.Code != http.StatusInternalServerError || !slices.Equal(order, []string{"a"}) || mode != "llm_wiki" ||
+				sourceRoot == nil || *sourceRoot != root):
+				t.Errorf("POST with a failing subscriber = %d, called %q, the row %s with source root %v; want 500, a alone, "+
+					"llm_wiki with its own", rec.Code, order, mode, sourceRoot)
 			}
 		})
 	}

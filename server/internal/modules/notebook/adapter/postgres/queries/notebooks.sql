@@ -37,6 +37,13 @@ SET name = sqlc.arg(name), workspace_access = sqlc.arg(workspace_access), update
     updated_at = sqlc.arg(now)
 WHERE id = sqlc.arg(id);
 
+-- name: SetNotebookMode :exec
+-- A notebook's mode and source root, by by at now (M10 design 4.5): the downgrade's write, under the row's lock.
+UPDATE notebooks
+SET mode = sqlc.arg(mode), source_root_id = sqlc.narg(source_root_id), updated_by_id = sqlc.arg(by),
+    updated_at = sqlc.arg(now)
+WHERE id = sqlc.arg(id);
+
 -- name: DeleteNotebook :exec
 -- The deleter is recorded as the last to update the row.
 UPDATE notebooks

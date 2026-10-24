@@ -41,6 +41,11 @@ type DeleteNotebookUseCase interface {
 	Execute(ctx context.Context, id uuid.UUID) error
 }
 
+// DowngradeNotebookUseCase is app.DowngradeNotebook.
+type DowngradeNotebookUseCase interface {
+	Execute(ctx context.Context, id uuid.UUID) (app.View, error)
+}
+
 // UseCases are the use cases behind the module's operations.
 type UseCases struct {
 	ListNotebooks  ListNotebooksUseCase
@@ -58,6 +63,8 @@ type UseCases struct {
 	TakeOver        TakeOverUseCase
 	DeleteOwnerless DeleteOwnerlessUseCase
 	ListAuditEvents ListAuditEventsUseCase
+	// An LLM Wiki's downgrade (M10/P1).
+	DowngradeNotebook DowngradeNotebookUseCase
 }
 
 // Register mounts the module's routes on router, the root router from
@@ -139,6 +146,15 @@ func (h handler) DeleteNotebook(ctx context.Context, req gen.DeleteNotebookReque
 		return nil, err
 	}
 	return gen.DeleteNotebook204Response{}, nil
+}
+
+// DowngradeNotebook serves POST /api/v0/notebooks/{notebook_id}/downgrade.
+func (h handler) DowngradeNotebook(ctx context.Context, req gen.DowngradeNotebookRequestObject) (gen.DowngradeNotebookResponseObject, error) {
+	v, err := h.uc.DowngradeNotebook.Execute(ctx, req.NotebookID)
+	if err != nil {
+		return nil, err
+	}
+	return gen.DowngradeNotebook200JSONResponse(notebookOf(v)), nil
 }
 
 // notebookOf is a notebook and the caller's role as the API shows them.

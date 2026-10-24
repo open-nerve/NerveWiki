@@ -613,6 +613,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v0/notebooks/{notebook_id}/downgrade": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Downgrade an LLM Wiki
+         * @description Makes the LLM Wiki a standard notebook. Its pages stay as they are, raw and AGENTS among them, which anyone who can write may then rename, move or delete; it has no source root, no generated pages and no prompts after. No page is written. Its admins can (forbidden). A notebook that does not exist, is deleted, or that the caller cannot see is notebook.not_found; a standard one is notebook.not_llm_wiki; one with an import, a restore or an undo queued or running is transfer.busy, to downgrade once it has ended. An upgrade, the way back, is another process.
+         */
+        post: operations["downgradeNotebook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v0/workspaces/{slug}/ownerless-notebooks": {
         parameters: {
             query?: never;
@@ -4316,6 +4339,30 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    downgradeNotebook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The notebook, now standard. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Notebook"];
+                };
             };
             default: components["responses"]["Problem"];
         };

@@ -310,6 +310,33 @@ func (q *Queries) NotebookIDs(ctx context.Context) ([]uuid.UUID, error) {
 	return items, nil
 }
 
+const setNotebookMode = `-- name: SetNotebookMode :exec
+UPDATE notebooks
+SET mode = $1, source_root_id = $2, updated_by_id = $3,
+    updated_at = $4
+WHERE id = $5
+`
+
+type SetNotebookModeParams struct {
+	Mode         string
+	SourceRootID *uuid.UUID
+	By           uuid.UUID
+	Now          time.Time
+	ID           uuid.UUID
+}
+
+// A notebook's mode and source root, by by at now (M10 design 4.5): the downgrade's write, under the row's lock.
+func (q *Queries) SetNotebookMode(ctx context.Context, arg SetNotebookModeParams) error {
+	_, err := q.db.Exec(ctx, setNotebookMode,
+		arg.Mode,
+		arg.SourceRootID,
+		arg.By,
+		arg.Now,
+		arg.ID,
+	)
+	return err
+}
+
 const shareNotebook = `-- name: ShareNotebook :one
 SELECT id FROM notebooks
 WHERE id = $1 AND deleted_at IS NULL

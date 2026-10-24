@@ -113,6 +113,12 @@ func (f *fakeDelete) Execute(_ context.Context, id uuid.UUID) error {
 	return err
 }
 
+type fakeDowngrade struct{ fakeUseCase }
+
+func (f *fakeDowngrade) Execute(_ context.Context, id uuid.UUID) (app.View, error) {
+	return f.answer(shared.NotebookAdmin, id)
+}
+
 // fakes are one of each use case, every one answering err.
 type fakes struct {
 	list   *fakeList
@@ -120,13 +126,16 @@ type fakes struct {
 	get    *fakeGet
 	update *fakeUpdate
 	delete *fakeDelete
+	// downgrade is an LLM Wiki's downgrade, its answer standard.
+	downgrade *fakeDowngrade
 	memberFakes
 	ownerlessFakes
 }
 
 func newFakes(err error) fakes {
 	u := fakeUseCase{err: err}
-	return fakes{&fakeList{u}, &fakeCreate{u}, &fakeGet{u}, &fakeUpdate{u}, &fakeDelete{u}, newMemberFakes(err), newOwnerlessFakes(err)}
+	return fakes{&fakeList{u}, &fakeCreate{u}, &fakeGet{u}, &fakeUpdate{u}, &fakeDelete{u}, &fakeDowngrade{u}, newMemberFakes(err),
+		newOwnerlessFakes(err)}
 }
 
 // serve mounts the module on f behind the platform's middlewares.
@@ -137,7 +146,7 @@ func (f fakes) serve(t *testing.T) http.Handler {
 		ListNotebooks: f.list, CreateNotebook: f.create, GetNotebook: f.get, UpdateNotebook: f.update, DeleteNotebook: f.delete,
 		ListMembers: f.listMembers, AddMember: f.addMember, UpdateMember: f.updateMember, RemoveMember: f.removeMember,
 		LeaveNotebook: f.leave, ListOwnerless: f.listOwnerless, TakeOver: f.takeOver, DeleteOwnerless: f.deleteOwnerless,
-		ListAuditEvents: f.listAudit,
+		ListAuditEvents: f.listAudit, DowngradeNotebook: f.downgrade,
 	})
 	return router
 }
@@ -192,6 +201,8 @@ func TestTheOperationsAnswerTheUseCases(t *testing.T) {
 			func() []any { return f.update.got }, []any{notebookID(), (*string)(nil), (*string)(nil)}},
 		{http.MethodDelete, notebookPath, "", http.StatusNoContent, "",
 			func() []any { return f.delete.got }, []any{notebookID()}},
+		{http.MethodPost, notebookPath + "/downgrade", "", http.StatusOK, engineering("admin"),
+			func() []any { return f.downgrade.got }, []any{notebookID()}},
 	} {
 		status, body := call(t, h, tt.method, tt.path, tt.body)
 		want := tt.want
@@ -278,6 +289,10 @@ func TestTheOperationsAnswerEachProblem(t *testing.T) {
 		{http.MethodPatch, notebookPath, `{"name":"a/b"}`, invalid, http.StatusUnprocessableEntity, "validation_failed"},
 		{http.MethodDelete, notebookPath, "", domain.ErrNotFound, http.StatusNotFound, "notebook.not_found"},
 		{http.MethodDelete, notebookPath, "", shared.Forbidden(), http.StatusForbidden, "forbidden"},
+		{http.MethodPost, notebookPath + "/downgrade", "", domain.ErrNotFound, http.StatusNotFound, "notebook.not_found"},
+		{http.MethodPost, notebookPath + "/downgrade", "", shared.Forbidden(), http.StatusForbidden, "forbidden"},
+		{http.MethodPost, notebookPath + "/downgrade", "", domain.ErrNotLLMWiki, http.StatusConflict, "notebook.not_llm_wiki"},
+		{http.MethodPost, notebookPath + "/downgrade", "", domain.ErrJobsWriting, http.StatusConflict, "transfer.busy"},
 	} {
 		status, body := call(t, newFakes(tt.err).serve(t), tt.method, tt.path, tt.body)
 		if status != tt.status || !strings.Contains(body, `"code":"`+tt.code+`"`) {

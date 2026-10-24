@@ -134,6 +134,16 @@ func workspaceOf(c caller) string {
 	return "acme"
 }
 
+// workspaceOfIn is the slug of the workspace column c's cells of row r
+// target: workspaceOf's, but the LLM Wiki variant's, wlab, for a notebook
+// column of a row of the variant (M10/P1 design 3.14).
+func workspaceOfIn(c caller, r matrixRow) string {
+	if r.wiki && slices.Contains(notebookColumns(), c) {
+		return variantWorkspace
+	}
+	return workspaceOf(c)
+}
+
 // cell is an answer: the status and, for a problem, its code.
 type cell struct {
 	status int
@@ -158,6 +168,9 @@ func cellForbidden() cell { return cell{http.StatusForbidden, "forbidden"} }
 type matrixRow struct {
 	op      string // operationId
 	variant string // what sets the row apart from the operation's other rows
+	// wiki is set for a row whose targets are the LLM Wiki variant's seeds,
+	// in wlab (workspaceOfIn).
+	wiki bool
 	// columns are the row's columns: the workspace level's when nil.
 	columns []caller
 	write   bool // each cell on a copy of its own
@@ -216,7 +229,7 @@ func decodeAnswer(t testing.TB, answer string, v any) {
 func matrixRows() []matrixRow {
 	return slices.Concat(workspaceMatrixRows(), memberMatrixRows(), invitationMatrixRows(), notebookMatrixRows(),
 		notebookMemberMatrixRows(), ownerlessMatrixRows(), pageMatrixRows(), searchMatrixRows(), linkingMatrixRows(),
-		assetMatrixRows(), transferMatrixRows())
+		assetMatrixRows(), transferMatrixRows(), wikiMatrixRows())
 }
 
 // matrixApps is how many cells may run an app of their own at once: each

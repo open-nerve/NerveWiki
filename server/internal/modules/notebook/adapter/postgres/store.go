@@ -172,6 +172,18 @@ func (s *Store) UpdateNotebook(ctx context.Context, n domain.Notebook, by uuid.U
 	return nil
 }
 
+// SetMode implements app.NotebookWriter: n's mode and source root, NULL
+// for none, by by at n.UpdatedAt.
+func (s *Store) SetMode(ctx context.Context, n domain.Notebook, by uuid.UUID) error {
+	err := s.queries(ctx).SetNotebookMode(ctx, gen.SetNotebookModeParams{
+		ID: n.ID, Mode: string(n.Mode), SourceRootID: nullID(n.SourceRootID), By: by, Now: n.UpdatedAt,
+	})
+	if err != nil {
+		return fmt.Errorf("set notebook mode: %w", err)
+	}
+	return nil
+}
+
 // DeleteNotebook implements app.NotebookWriter: the notebook, then its
 // member rows, at one time. The caller's transaction makes the two one.
 func (s *Store) DeleteNotebook(ctx context.Context, id, by uuid.UUID, now time.Time) error {

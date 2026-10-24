@@ -133,6 +133,16 @@ func (n Notebook) Apply(c Change) (Notebook, bool) {
 	return changed, changed != n
 }
 
+// Downgraded is n a standard notebook at at (M10 design 4.5): no source
+// root; ErrNotLLMWiki for a notebook that is none.
+func (n Notebook) Downgraded(at time.Time) (Notebook, error) {
+	if n.Mode != ModeLLMWiki {
+		return Notebook{}, ErrNotLLMWiki
+	}
+	n.Mode, n.SourceRootID, n.UpdatedAt = ModeStandard, uuid.UUID{}, at
+	return n, nil
+}
+
 // checkAccess is an access's problem, or nil. The contract's enum is not
 // checked before: a body's structure check leaves values to the domain.
 func checkAccess(access string) *shared.FieldError {

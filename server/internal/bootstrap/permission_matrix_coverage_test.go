@@ -44,7 +44,7 @@ func matrixViolations(ops []apitest.Operation, exempt matrixExemptions, rows []m
 				if _, listed := exempt.notTargets[op.Path]; listed {
 					break
 				}
-				if v := targetViolation(op.Path, path, c, s); v != "" {
+				if v := targetViolation(op.Path, path, workspaceOfIn(c, r), s); v != "" {
 					found = append(found, fmt.Sprintf("row %s, %s: %s", r.name(), c, v))
 				}
 			}
@@ -119,18 +119,19 @@ func pathOf(pattern, path string) bool {
 }
 
 // targetViolation tells how path, an instance of pattern, aims elsewhere
-// than column c's workspace: a {slug} after workspaces must be its slug, an
-// {…_id} a row seeded under it. Any other parameter is unknown: its path is
-// listed as not a target, with its reason, or the matrix learns it.
-func targetViolation(pattern, path string, c caller, s seeded) string {
+// than slug, its column's workspace in its row (workspaceOfIn): a {slug}
+// after workspaces must be it, an {…_id} a row seeded under it. Any other
+// parameter is unknown: its path is listed as not a target, with its
+// reason, or the matrix learns it.
+func targetViolation(pattern, path, slug string, s seeded) string {
 	path, _, _ = strings.Cut(path, "?")
 	want, got := strings.Split(pattern, "/"), strings.Split(path, "/")
 	for i, segment := range want {
 		switch {
 		case !strings.HasPrefix(segment, "{") || !strings.HasSuffix(segment, "}"):
 		case segment == "{slug}" && i > 0 && want[i-1] == "workspaces":
-			if got[i] != workspaceOf(c) {
-				return fmt.Sprintf("targets the workspace %s, not its column's %s", got[i], workspaceOf(c))
+			if got[i] != slug {
+				return fmt.Sprintf("targets the workspace %s, not its column's %s", got[i], slug)
 			}
 		case segment == "{tag}" && i > 0 && want[i-1] == "tags":
 			// A tag is no target: the notebook before it is.
@@ -138,9 +139,9 @@ func targetViolation(pattern, path string, c caller, s seeded) string {
 			// A version's revision is no target: the page before it is.
 		case strings.HasSuffix(segment, "_id}"):
 			id, err := uuid.Parse(got[i])
-			slug, isRow := s.workspaceOfRow(id)
-			if err != nil || !isRow || slug != workspaceOf(c) {
-				return fmt.Sprintf("%s %s is no row seeded under its column's workspace %s", segment, got[i], workspaceOf(c))
+			of, isRow := s.workspaceOfRow(id)
+			if err != nil || !isRow || of != slug {
+				return fmt.Sprintf("%s %s is no row seeded under its column's workspace %s", segment, got[i], slug)
 			}
 		default:
 			return fmt.Sprintf("%s is no target the matrix knows: list %s as not a target, with its reason", segment, pattern)
@@ -182,6 +183,22 @@ func TestMatrixViolationsCatchesEachGap(t *testing.T) {
 	rows := []matrixRow{getRow, slugRow, removeRow}
 	if found := matrixViolations(ops, exempt, rows, s); len(found) != 0 {
 		t.Fatalf("a complete matrix: %q", found)
+	}
+	// A row of the LLM Wiki variant aims at wlab's notebooks (M10/P1 design
+	// 3.14): with them the matrix is complete, with lab's it is not.
+	getNotebook := apitest.Operation{ID: "getNotebook", Tags: []string{"notebook"}, Method: http.MethodGet,
+		Path: "/api/v0/notebooks/{notebook_id}"}
+	variantRow := func(of func(s seeded, name string) uuid.UUID) matrixRow {
+		return matrixRow{op: "getNotebook", wiki: true, columns: notebookColumns(), cells: everyNotebookColumn(cellOK(), nil),
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodGet, "/api/v0/notebooks/" + of(s, notebookOf(c)).String(), ""
+			}}
+	}
+	withNotebooks := append(slices.Clone(ops), getNotebook)
+	wlabs := func(s seeded, name string) uuid.UUID { return s.wiki.notebook(name) }
+	labs := func(s seeded, name string) uuid.UUID { return s.notebook(name) }
+	if found := matrixViolations(withNotebooks, exempt, append(slices.Clone(rows), variantRow(wlabs)), s); len(found) != 0 {
+		t.Fatalf("a complete matrix with a row of the variant: %q", found)
 	}
 	without := func(r matrixRow, change func(*matrixRow)) []matrixRow {
 		changed := r
@@ -227,6 +244,8 @@ func TestMatrixViolationsCatchesEachGap(t *testing.T) {
 			r.request = sameRequest(http.MethodDelete, "/api/v0/workspace-members/"+uuid.NewV7().String(), "")
 		}), "is no row seeded under its column's workspace"},
 		{"a write without write", ops, exempt, without(removeRow, func(r *matrixRow) { r.write = false }), "sends DELETE without write"},
+		{"a row of the variant aiming at lab", withNotebooks, exempt, append(slices.Clone(rows), variantRow(labs)),
+			"is no row seeded under its column's workspace wlab"},
 		{"an unknown parameter", ops, exemptWith(func(e *matrixExemptions) { delete(e.notTargets, slugs.Path) }), rows,
 			"{slug} is no target the matrix knows"},
 		{"a row of no operation", ops, exempt, append(slices.Clone(rows), matrixRow{op: "nothing", cells: every(cellOK()),

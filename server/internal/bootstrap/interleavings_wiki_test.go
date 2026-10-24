@@ -146,3 +146,54 @@ func TestWorkspaceChangesAndCreatingAnLLMWiki(t *testing.T) {
 		})
 	})
 }
+
+// An import's start and an LLM Wiki's downgrade (M10/P1 design 3.16): the
+// start shares the notebook's row, the downgrade locks it FOR NO KEY
+// UPDATE, so the test holds the row and they run in the order they came,
+// the imports' one worker held so the job stays queued. The start first:
+// the downgrade finds its job and waits for it (transfer.busy). The
+// downgrade first: the import starts in a standard notebook and runs to
+// its end as in any.
+func TestImportsAndDowngradingAnLLMWiki(t *testing.T) {
+	archive := func(t *testing.T) []byte { return vaultZip(t, vaultFile{"a.md", "a"}) }
+	downgrading := func(nb string) step {
+		return request("alice", http.MethodPost, "/api/v0/notebooks/"+nb+"/downgrade", "")
+	}
+	t.Run("the start first", func(t *testing.T) {
+		tm := newAcmeTeam(t, "", "")
+		nb := tm.createWith(t, tm.tokens["alice"], `{"name":"Field notes","mode":"llm_wiki"}`).ID
+		release := tm.holdImportWorker(t)
+		started, downgraded := tm.interleaveOn(t, notebookRow(nb), importStep(t, "alice", nb, "", archive(t)), downgrading(nb))
+		if !started.is(http.StatusAccepted, "") || !downgraded.is(http.StatusConflict, "transfer.busy") {
+			t.Fatalf("the import = %d, then the downgrade = %d %s; want 202, then 409 transfer.busy", started.status,
+				downgraded.status, downgraded.code)
+		}
+		release()
+		var j transferJob
+		decodeAnswer(t, started.body, &j)
+		if ended := tm.endedJob(t, "alice", j.ID); ended.State != "succeeded" ||
+			count(t, tm.pool, "SELECT count(*) FROM notebooks WHERE id = $1 AND mode = 'llm_wiki'", nb) != 1 {
+			t.Errorf("the import = %+v; want it succeeded, the notebook an LLM Wiki still", ended)
+		}
+		checkImports(t, tm)
+		checkNotebooks(t, tm.pool)
+	})
+	t.Run("the downgrade first", func(t *testing.T) {
+		tm := newAcmeTeam(t, "", "")
+		nb := tm.createWith(t, tm.tokens["alice"], `{"name":"Field notes","mode":"llm_wiki"}`).ID
+		release := tm.holdImportWorker(t)
+		downgraded, started := tm.interleaveOn(t, notebookRow(nb), downgrading(nb), importStep(t, "alice", nb, "", archive(t)))
+		if !downgraded.is(http.StatusOK, "") || !started.is(http.StatusAccepted, "") {
+			t.Fatalf("the downgrade = %d %s, then the import = %d; want 200, then 202", downgraded.status, downgraded.code, started.status)
+		}
+		release()
+		var j transferJob
+		decodeAnswer(t, started.body, &j)
+		if ended := tm.endedJob(t, "alice", j.ID); ended.State != "succeeded" ||
+			count(t, tm.pool, "SELECT count(*) FROM nodes WHERE notebook_id = $1 AND name = 'a' AND deleted_at IS NULL", nb) != 1 {
+			t.Errorf("the import = %+v; want it succeeded, its page a written", ended)
+		}
+		checkImports(t, tm)
+		checkNotebooks(t, tm.pool)
+	})
+}

@@ -70,6 +70,33 @@ func seed(ctx context.Context, seeders []Seeder, c NotebookCreation) ([]uuid.UUI
 	return roots, nil
 }
 
+// ModeChange is a notebook's mode changing (M10 design 8): from and to,
+// who changed it, at the change's one time.
+type ModeChange struct {
+	WorkspaceID uuid.UUID
+	NotebookID  uuid.UUID
+	From, To    domain.Mode
+	By          uuid.UUID
+	At          time.Time
+}
+
+// ModeSubscriber follows a mode change, after the notebook's row was
+// written and in its transaction: an error rolls everything back. M10's is
+// the event stream's mode; M11's upgrade changes the mode through it too.
+type ModeSubscriber interface {
+	ModeChanged(ctx context.Context, m ModeChange) error
+}
+
+// publishMode calls the subscribers in order; the first error stops it.
+func publishMode(ctx context.Context, subscribers []ModeSubscriber, m ModeChange) error {
+	for _, s := range subscribers {
+		if err := s.ModeChanged(ctx, m); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // NotebookDeletion is notebooks being deleted: one by deleteNotebook, every
 // one of a workspace by the workspace's deletion. A subscriber deletes its
 // own rows at At, so the cleanup removes them with the notebooks.

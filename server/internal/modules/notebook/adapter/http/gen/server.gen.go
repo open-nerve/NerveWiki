@@ -336,6 +336,9 @@ type ServerInterface interface {
 	// UpdateNotebook Change a notebook's name or workspace access
 	// (PATCH /api/v0/notebooks/{notebook_id})
 	UpdateNotebook(w http.ResponseWriter, r *http.Request, notebookID NotebookID)
+	// DowngradeNotebook Downgrade an LLM Wiki
+	// (POST /api/v0/notebooks/{notebook_id}/downgrade)
+	DowngradeNotebook(w http.ResponseWriter, r *http.Request, notebookID NotebookID)
 	// LeaveNotebook Leave a notebook
 	// (POST /api/v0/notebooks/{notebook_id}/leave)
 	LeaveNotebook(w http.ResponseWriter, r *http.Request, notebookID NotebookID)
@@ -495,6 +498,32 @@ func (siw *ServerInterfaceWrapper) UpdateNotebook(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateNotebook(w, r, notebookID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DowngradeNotebook operation middleware
+func (siw *ServerInterfaceWrapper) DowngradeNotebook(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "notebook_id" -------------
+	var notebookID NotebookID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "notebook_id", r.PathValue("notebook_id"), &notebookID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "notebook_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DowngradeNotebook(w, r, notebookID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -897,6 +926,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v0/notebook-members/{notebook_member_id}", wrapper.RemoveNotebookMember)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v0/notebook-members/{notebook_member_id}", wrapper.UpdateNotebookMember)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/notebooks/{notebook_id}/leave", wrapper.LeaveNotebook)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/notebooks/{notebook_id}/downgrade", wrapper.DowngradeNotebook)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/workspaces/{slug}/ownerless-notebooks", wrapper.ListOwnerlessNotebooks)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/ownerless-notebooks/{notebook_id}/take-over", wrapper.TakeOverNotebook)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v0/ownerless-notebooks/{notebook_id}", wrapper.DeleteOwnerlessNotebook)
@@ -1118,6 +1148,52 @@ type UpdateNotebookdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response UpdateNotebookdefaultApplicationProblemPlusJSONResponse) VisitUpdateNotebookResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DowngradeNotebookRequestObject struct {
+	NotebookID NotebookID `json:"notebook_id"`
+}
+
+type DowngradeNotebookResponseObject interface {
+	VisitDowngradeNotebookResponse(w http.ResponseWriter) error
+}
+
+type DowngradeNotebook200JSONResponse Notebook
+
+func (response DowngradeNotebook200JSONResponse) VisitDowngradeNotebookResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DowngradeNotebookdefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response DowngradeNotebookdefaultApplicationProblemPlusJSONResponse) VisitDowngradeNotebookResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -1557,6 +1633,9 @@ type StrictServerInterface interface {
 	// UpdateNotebook Change a notebook's name or workspace access
 	// (PATCH /api/v0/notebooks/{notebook_id})
 	UpdateNotebook(ctx context.Context, request UpdateNotebookRequestObject) (UpdateNotebookResponseObject, error)
+	// DowngradeNotebook Downgrade an LLM Wiki
+	// (POST /api/v0/notebooks/{notebook_id}/downgrade)
+	DowngradeNotebook(ctx context.Context, request DowngradeNotebookRequestObject) (DowngradeNotebookResponseObject, error)
 	// LeaveNotebook Leave a notebook
 	// (POST /api/v0/notebooks/{notebook_id}/leave)
 	LeaveNotebook(ctx context.Context, request LeaveNotebookRequestObject) (LeaveNotebookResponseObject, error)
@@ -1762,6 +1841,32 @@ func (sh *strictHandler) UpdateNotebook(w http.ResponseWriter, r *http.Request, 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateNotebookResponseObject); ok {
 		if err := validResponse.VisitUpdateNotebookResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DowngradeNotebook operation middleware
+func (sh *strictHandler) DowngradeNotebook(w http.ResponseWriter, r *http.Request, notebookID NotebookID) {
+	var request DowngradeNotebookRequestObject
+
+	request.NotebookID = notebookID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DowngradeNotebook(ctx, request.(DowngradeNotebookRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DowngradeNotebook")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DowngradeNotebookResponseObject); ok {
+		if err := validResponse.VisitDowngradeNotebookResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

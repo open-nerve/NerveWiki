@@ -117,6 +117,7 @@ func notebookDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, au
 		Profiles:              notebookProfiles{identity.NewDirectory(pool)},
 		AccountWorkspaces:     accountWorkspaces{workspace.NewMemberships(pool)},
 		Seeders:               seeders,
+		WritingJobs:           transfer.NewWritingJobs(pool),
 		DeletionSubscribers:   ext.deletionSubscribers,
 		VisibilitySubscribers: ext.visibilitySubscribers,
 		ActivitySources:       ext.activitySources,

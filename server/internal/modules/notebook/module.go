@@ -47,12 +47,18 @@ type Profile = app.Profile
 // identity's directory.
 type MemberProfiles = app.MemberProfiles
 
+// WritingJobs tells whether a notebook has a job that writes its tree
+// queued or running: bootstrap hands transfer.NewWritingJobs to it.
+type WritingJobs = app.WritingJobs
+
 // The module's extension points (M3 design 8; M10 design 8): bootstrap
 // composes their registrants in registrants.go, the creation's seeders in
 // wire.go.
 type (
 	NotebookCreation           = app.NotebookCreation
 	Seeder                     = app.Seeder
+	ModeChange                 = app.ModeChange
+	ModeSubscriber             = app.ModeSubscriber
 	NotebookDeletion           = app.NotebookDeletion
 	NotebookDeletionSubscriber = app.NotebookDeletionSubscriber
 	VisibilityChange           = app.VisibilityChange
@@ -75,8 +81,12 @@ type Deps struct {
 	// must be there.
 	AccountWorkspaces AccountWorkspaces
 	// Seeders are the creation's registrants (Seeder): New panics without
-	// one, a fault of its wiring, as without AccountWorkspaces.
-	Seeders []Seeder
+	// one, a fault of its wiring, as without AccountWorkspaces; ModeSubscribers
+	// follow a mode change; WritingJobs tell whether a notebook has a job
+	// that writes queued or running, which a downgrade waits for.
+	Seeders         []Seeder
+	ModeSubscribers []ModeSubscriber
+	WritingJobs     WritingJobs
 	// The registrants of the extension points.
 	DeletionSubscribers   []NotebookDeletionSubscriber
 	VisibilitySubscribers []VisibilitySubscriber
@@ -89,14 +99,16 @@ type Module struct {
 	notebooks *app.ListAccountNotebooks // MCP's notebooks (Tools)
 }
 
-// New wires the module. A module without the account's workspaces, or
-// without a seeder, is a fault of its wiring.
+// New wires the module. A module without the account's workspaces,
+// without a seeder or without the writing jobs is a fault of its wiring.
 func New(d Deps) *Module {
 	switch {
 	case d.AccountWorkspaces == nil:
 		panic("notebook: no account workspaces")
 	case len(d.Seeders) == 0:
 		panic("notebook: no seeders")
+	case d.WritingJobs == nil:
+		panic("notebook: no writing jobs")
 	}
 	store := postgresadapter.New(d.Pool)
 	auth := d.Authorizer
@@ -114,6 +126,10 @@ func New(d Deps) *Module {
 		}),
 		DeleteNotebook: app.NewDeleteNotebook(app.DeleteNotebookDeps{
 			Workspaces: d.Workspaces, Finder: store, Notebooks: store, Subscribers: d.DeletionSubscribers,
+			Auth: auth, Tx: d.Tx, Clock: d.Clock, Logger: d.Logger,
+		}),
+		DowngradeNotebook: app.NewDowngradeNotebook(app.DowngradeNotebookDeps{
+			Workspaces: d.Workspaces, Finder: store, Notebooks: store, Jobs: d.WritingJobs, Subscribers: d.ModeSubscribers,
 			Auth: auth, Tx: d.Tx, Clock: d.Clock, Logger: d.Logger,
 		}),
 		ListMembers: app.NewListMembers(app.ListMembersDeps{Notebooks: store, Members: store, Profiles: d.Profiles, Auth: auth}),

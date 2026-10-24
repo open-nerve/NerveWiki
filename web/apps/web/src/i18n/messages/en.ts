@@ -948,6 +948,7 @@ export const en = {
   "problem.notebook.own_membership": "You cannot change or remove your own membership.",
   "problem.notebook.sole_admin":
     "You are the only admin of one or more notebooks. In each one's settings, make another member an admin first, or delete it.",
+  "problem.notebook.not_llm_wiki": "This notebook is not an LLM Wiki.",
   "problem.page.not_found": "This page does not exist, or you have no access to it.",
   "problem.page.version_not_found": "This page has no such version.",
   "problem.asset.not_found": "This attachment does not exist, or you have no access to it.",

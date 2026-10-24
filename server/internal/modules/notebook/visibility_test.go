@@ -112,7 +112,7 @@ func (f fixture) serveWith(t *testing.T, w *watcher) http.Handler {
 		Authorizer: rolesAuthorizer{facts: notebook.NewFacts(f.pool)}, Workspaces: sqlWorkspaces{f.pool},
 		WorkspaceMembers: sqlWorkspaceMembers{f.pool}, Profiles: sqlProfiles{f.pool},
 		VisibilitySubscribers: []notebook.VisibilitySubscriber{w}, AccountWorkspaces: noAccountWorkspaces{},
-		Seeders: []notebook.Seeder{noSeed{}},
+		Seeders: []notebook.Seeder{noSeed{}}, WritingJobs: noJobs{},
 	}).Register(router, httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: tokenAuth{}}))
 	return router
 }
