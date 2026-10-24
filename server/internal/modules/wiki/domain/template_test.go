@@ -227,8 +227,9 @@ func checkPage(content string) error {
 }
 
 // Each page of the template is small, text, and starts with its heading,
-// never frontmatter; the check refuses a byte past the bound and a page
-// that starts with ---.
+// never frontmatter; the check takes a page of 8 KiB, 00-M10 4.18's bound
+// written out here, not read from MaxTemplateBytes, and refuses a byte
+// past it and a page that starts with ---.
 func TestTheTemplatesAreSmall(t *testing.T) {
 	c, _ := ContractOf(ModeLLMWiki)
 	for l, pages := range c.Templates {
@@ -238,12 +239,17 @@ func TestTheTemplatesAreSmall(t *testing.T) {
 			}
 		}
 	}
-	for name, content := range map[string]string{
-		"a byte past 8 KiB": "# A\n" + strings.Repeat("a", MaxTemplateBytes-4) + "\n",
-		"frontmatter":       "---\ntype: concept\n---\n# A\n",
+	const bound = 8 << 10
+	for _, tt := range []struct {
+		name, content string
+		ok            bool
+	}{
+		{"8 KiB", "# A\n" + strings.Repeat("a", bound-5) + "\n", true},
+		{"a byte past 8 KiB", "# A\n" + strings.Repeat("a", bound-4) + "\n", false},
+		{"frontmatter", "---\ntype: concept\n---\n# A\n", false},
 	} {
-		if checkPage(content) == nil {
-			t.Errorf("%s: checked as a template's page", name)
+		if err := checkPage(tt.content); (err == nil) != tt.ok {
+			t.Errorf("%s (%d bytes): checked as a template's page %t, want %t (%v)", tt.name, len(tt.content), err == nil, tt.ok, err)
 		}
 	}
 }
