@@ -4,11 +4,18 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"log/slog"
+	"net/http"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/httpservertest"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
@@ -160,4 +167,239 @@ type steppingClock struct {
 func (c *steppingClock) Now() time.Time {
 	c.at = c.at.Add(time.Second)
 	return c.at
+}
+
+// The template's unit (M10/P1 design 3.6): two pages written by alice in
+// the transaction a creation opened, in one changeset of its message.
+
+// seedCtx is alice's request ctx.
+func (f fixture) seedCtx() context.Context {
+	return shared.WithActor(context.Background(), shared.Actor{UserID: f.alice, SessionID: uuid.NewV7()})
+}
+
+// seedOf is a template's unit of eng at at: raw, then AGENTS, each with
+// its id, their facts parsed by writes.
+func (f fixture) seedOf(t *testing.T, writes page.TreeWrites, at time.Time, raw, agents uuid.UUID) page.SeedSpec {
+	t.Helper()
+	message := "LLM Wiki template"
+	spec := page.SeedSpec{NotebookID: f.eng, At: at, Client: page.Client("web"), Message: &message}
+	for _, p := range []page.PageDraft{{ID: raw, Title: "raw", Content: "# Sources\n"}, {ID: agents, Title: "AGENTS", Content: "# Agents\n"}} {
+		facts, err := writes.ParseTemplate(p.Content)
+		if err != nil {
+			t.Fatal(err)
+		}
+		p.Facts = facts
+		spec.Pages = append(spec.Pages, p)
+	}
+	return spec
+}
+
+// seeded counts what the unit wrote of the nodes ids: the nodes, their
+// contents and versions, the changesets' items, the changesets of eng and
+// the search's queue, its exact rows apart.
+func (f fixture) seeded(t *testing.T, ids ...uuid.UUID) (nodes, contents, versions, items, changesets, queued, exact int) {
+	t.Helper()
+	if err := f.pool.QueryRow(context.Background(), `SELECT
+		(SELECT count(*) FROM nodes WHERE id = ANY($1)),
+		(SELECT count(*) FROM page_contents WHERE node_id = ANY($1)),
+		(SELECT count(*) FROM page_revisions WHERE node_id = ANY($1)),
+		(SELECT count(*) FROM changeset_items WHERE node_id = ANY($1)),
+		(SELECT count(*) FROM changesets WHERE notebook_id = $2),
+		(SELECT count(*) FROM page_search_queue WHERE node_id = ANY($1)),
+		(SELECT count(*) FROM page_search_queue WHERE node_id = ANY($1) AND NOT bulk)`, ids, f.eng).
+		Scan(&nodes, &contents, &versions, &items, &changesets, &queued, &exact); err != nil {
+		t.Fatal(err)
+	}
+	return nodes, contents, versions, items, changesets, queued, exact
+}
+
+// Seed joins the transaction its caller opened: another connection sees
+// nothing of it before the commit; the caller's rollback takes it all back,
+// the search's queue too; the caller's commit keeps both pages in one
+// changeset of the message given, queued exact for the search.
+func TestASeedJoinsItsCallersTransaction(t *testing.T) {
+	f := newFixture(t)
+	writes := f.module(nil, nil, nil).TreeWrites()
+	tx := postgres.NewTxManager(f.pool, 5*time.Second)
+	rollback := errors.New("the caller rolls back")
+	for _, commit := range []bool{false, true} {
+		raw, agents := uuid.NewV7(), uuid.NewV7()
+		spec := f.seedOf(t, writes, testNow(), raw, agents)
+		var before int
+		err := tx.WithinTx(f.seedCtx(), func(ctx context.Context) error {
+			if err := writes.Seed(ctx, spec); err != nil {
+				return err
+			}
+			before, _, _, _, _, _, _ = f.seeded(t, raw, agents)
+			if !commit {
+				return rollback
+			}
+			return nil
+		})
+		nodes, contents, versions, items, changesets, queued, exact := f.seeded(t, raw, agents)
+		switch {
+		case before != 0:
+			t.Errorf("another connection saw %d of the nodes before the commit, want none", before)
+		case !commit && (!errors.Is(err, rollback) || nodes+contents+versions+items+changesets+queued != 0):
+			t.Errorf("rolled back: %v; %d nodes, %d contents, %d versions, %d items, %d changesets, %d queued; want none",
+				err, nodes, contents, versions, items, changesets, queued)
+		case commit && (err != nil || nodes != 2 || contents != 2 || versions != 2 || items != 2 || changesets != 1 || exact != 2):
+			t.Errorf("committed: %v; %d nodes, %d contents, %d versions, %d items, %d changesets, %d queued exact; want 2, 2, 2, 2, 1, 2",
+				err, nodes, contents, versions, items, changesets, exact)
+		}
+	}
+	if got := f.count(t, "SELECT count(*) FROM changesets WHERE notebook_id = $1 AND message = 'LLM Wiki template' AND kind = 'edit' "+
+		"AND client = 'web' AND created_by_id = $2", f.eng, f.alice); got != 1 {
+		t.Errorf("%d changesets of the template's message, an edit from the web by alice; want 1", got)
+	}
+}
+
+// Seed reads no clock: the changeset, the nodes, their contents, versions
+// and items are at the time given, a time the module's clock never says,
+// and the clock was not read.
+func TestASeedReadsNoClock(t *testing.T) {
+	f := newFixture(t)
+	clock := &steppingClock{at: testNow()}
+	f.clock = clock
+	writes := f.module(nil, nil, nil).TreeWrites()
+	at := testNow().Add(-time.Minute)
+	raw, agents := uuid.NewV7(), uuid.NewV7()
+	if err := postgres.NewTxManager(f.pool, 5*time.Second).WithinTx(f.seedCtx(), func(ctx context.Context) error {
+		return writes.Seed(ctx, f.seedOf(t, writes, at, raw, agents))
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.count(t, "SELECT count(*) FROM changesets WHERE notebook_id = $1 AND created_at = $2 AND updated_at = $2", f.eng, at); got != 1 {
+		t.Errorf("%d changesets of eng at %v, want 1", got, at)
+	}
+	for _, q := range []string{
+		"SELECT count(*) FROM nodes WHERE id = ANY($1) AND created_at = $2 AND updated_at = $2",
+		"SELECT count(*) FROM page_contents WHERE node_id = ANY($1) AND updated_at = $2",
+		"SELECT count(*) FROM page_revisions WHERE node_id = ANY($1) AND created_at = $2 AND updated_at = $2",
+		"SELECT count(*) FROM changeset_items WHERE node_id = ANY($1) AND created_at = $2 AND updated_at = $2",
+	} {
+		if got := f.count(t, q, []uuid.UUID{raw, agents}, at); got != 2 {
+			t.Errorf("%s: %d rows at %v, want 2", q, got, at)
+		}
+	}
+	if !clock.at.Equal(testNow()) {
+		t.Errorf("the clock moved on to %v: the unit read it", clock.at)
+	}
+}
+
+// Seed refuses a ctx without a transaction, and no time, writing nothing.
+func TestASeedRefusesNoTransactionAndNoTime(t *testing.T) {
+	f := newFixture(t)
+	writes := f.module(nil, nil, nil).TreeWrites()
+	raw, agents := uuid.NewV7(), uuid.NewV7()
+	if err := writes.Seed(f.seedCtx(), f.seedOf(t, writes, testNow(), raw, agents)); err == nil {
+		t.Error("Seed outside a transaction = nil, want an error")
+	}
+	if err := postgres.NewTxManager(f.pool, 5*time.Second).WithinTx(f.seedCtx(), func(ctx context.Context) error {
+		return writes.Seed(ctx, f.seedOf(t, writes, time.Time{}, raw, agents))
+	}); err == nil {
+		t.Error("Seed at no time = nil, want an error")
+	}
+	if nodes, contents, versions, items, changesets, queued, _ := f.seeded(t, raw, agents); nodes+contents+versions+items+changesets+queued != 0 {
+		t.Errorf("%d nodes, %d contents, %d versions, %d items, %d changesets, %d queued; want none", nodes, contents, versions, items,
+			changesets, queued)
+	}
+}
+
+// refuseSecond records the steps it sees, and refuses the second.
+type refuseSecond struct {
+	steps []page.Step
+	err   error
+}
+
+func (g *refuseSecond) GuardWrite(_ context.Context, s page.Step) error {
+	g.steps = append(g.steps, s)
+	if len(g.steps) == 2 {
+		return g.err
+	}
+	return nil
+}
+
+// Seed's unit runs the guards: both pages' creations reach them, of the
+// edit kind and the client given; a guard's refusal of the second rolls
+// the caller's transaction back, the first page with it.
+func TestASeedRunsTheGuards(t *testing.T) {
+	refusal := shared.NewError(shared.KindConflict, "page.refused", "The guard refused it.")
+	for _, refuse := range []bool{false, true} {
+		f := newFixture(t)
+		g := &refuseSecond{}
+		if refuse {
+			g.err = refusal
+		}
+		writes := f.module([]page.WriteGuard{g}, nil, nil).TreeWrites()
+		raw, agents := uuid.NewV7(), uuid.NewV7()
+		err := postgres.NewTxManager(f.pool, 5*time.Second).WithinTx(f.seedCtx(), func(ctx context.Context) error {
+			return writes.Seed(ctx, f.seedOf(t, writes, testNow(), raw, agents))
+		})
+		if len(g.steps) != 2 {
+			t.Fatalf("refused %v: the guard saw %d steps, want both creations", refuse, len(g.steps))
+		}
+		for i, s := range g.steps {
+			if s.Operation != domain.OpCreate || s.Kind != domain.ChangesetEdit || s.Client != "web" ||
+				s.Changes[0].NodeID != []uuid.UUID{raw, agents}[i] {
+				t.Errorf("refused %v: step %d = %+v, want the creation of the page, an edit from the web", refuse, i, s)
+			}
+		}
+		nodes, _, _, _, changesets, _, _ := f.seeded(t, raw, agents)
+		switch {
+		case !refuse && (err != nil || nodes != 2 || changesets != 1):
+			t.Errorf("Seed() = %v; %d nodes, %d changesets; want both pages in one", err, nodes, changesets)
+		case refuse && (!errors.Is(err, refusal) || nodes != 0 || changesets != 0):
+			t.Errorf("Seed() refused = %v; %d nodes, %d changesets; want the refusal, nothing", err, nodes, changesets)
+		}
+	}
+}
+
+// A template's page parsed once at start-up has the facts its content
+// would have had parsed by a write: the observers get the same of a Seed
+// and of createPage. The facts are read, never written: two Seeds of the
+// same facts, in two notebooks, pass the same. ParseTemplate refuses what
+// a write's content check does.
+func TestATemplatesParseIsItsContents(t *testing.T) {
+	f := newFixture(t)
+	o := &observer{f: f}
+	m := f.module(nil, nil, []page.PageObserver{o})
+	writes := m.TreeWrites()
+	const content = "# Sources\n\nSee [[Notes]], a #tag and [a link](https://example.com).\n\n- [ ] a task\n"
+	facts, err := writes.ParseTemplate(content)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := uuid.NewV7()
+	f.exec(t, "INSERT INTO notebooks (id, workspace_id, name, created_by_id, updated_by_id, created_at, updated_at) VALUES ($1, $2, 'Ops', $3, $3, $4, $4)",
+		other, f.acme, f.alice, testNow())
+	tx := postgres.NewTxManager(f.pool, 5*time.Second)
+	for _, nb := range []uuid.UUID{f.eng, other} {
+		if err := tx.WithinTx(f.seedCtx(), func(ctx context.Context) error {
+			return writes.Seed(ctx, page.SeedSpec{NotebookID: nb, At: testNow(), Client: page.Client("web"),
+				Pages: []page.PageDraft{{Title: "raw", Content: content, Facts: facts}}})
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	router := httpserver.NewRouter(slog.New(slog.DiscardHandler))
+	m.Register(router, httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: tokenAuth{}}))
+	if rec := f.request(router, "session", http.MethodPost, f.createPath(), `{"parent_id":null,"title":"Written","content":"`+
+		strings.ReplaceAll(content, "\n", `\n`)+`"}`); rec.Code != http.StatusCreated {
+		t.Fatalf("createPage = %d %s", rec.Code, rec.Body)
+	}
+	if len(o.events) != 3 {
+		t.Fatalf("the observer saw %d units, want 3", len(o.events))
+	}
+	seeds, written := o.events[0].Changes[0].Facts, o.events[2].Changes[0].Facts
+	if !reflect.DeepEqual(seeds, written) || !reflect.DeepEqual(o.events[1].Changes[0].Facts, seeds) {
+		t.Errorf("the facts the observer got: Seed's %#v, the second Seed's %#v, createPage's %#v; want them alike", seeds,
+			o.events[1].Changes[0].Facts, written)
+	}
+	for name, c := range map[string]string{"past 5 MiB": strings.Repeat("a", 5<<20+1), "NUL": "a\x00b"} {
+		var e *shared.Error
+		if _, err := writes.ParseTemplate(c); !errors.As(err, &e) || e.Code != shared.CodeValidationFailed {
+			t.Errorf("ParseTemplate(%s) = %v, want 422", name, err)
+		}
+	}
 }

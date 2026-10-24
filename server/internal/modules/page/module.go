@@ -248,6 +248,7 @@ type Module struct {
 	assets       *app.AssetWrites
 	imports      *app.ImportWrites
 	jobWrites    *app.JobWrites
+	seeds        *app.SeedWrites
 }
 
 // New wires the module: every write runs in the one writer's units. A
@@ -321,7 +322,7 @@ func New(d Deps) *Module {
 		Search: search,
 	}, gate: app.NewNotebookGate(d.Notebooks, d.Authorizer), jobs: []jobs.Job{
 		riveradapter.CleanupJob(app.NewCleanupEditSessions(store, d.Clock, d.Logger), d.EditSessionCleanupInterval),
-	}, assets: app.NewAssetWrites(writer, store), imports: app.NewImportWrites(writer, parser, md),
+	}, assets: app.NewAssetWrites(writer, store), imports: app.NewImportWrites(writer, parser, md), seeds: app.NewSeedWrites(writer, md),
 		jobWrites:    app.NewJobWrites(trash, store, writer, parser, store, d.MaxJobItems, d.MaxUnitHistory),
 		list:         app.NewListByPattern(d.Notebooks, store, store, d.Attachments, d.Authorizer),
 		read:         app.NewReadPath(d.Notebooks, store, store, d.Authorizer),
