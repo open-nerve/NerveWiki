@@ -88,8 +88,13 @@ type fakeStore struct {
 	ofWorkspace []uuid.UUID
 }
 
+// CreateNotebook keeps n, refusing what the table's checks refuse
+// (checked).
 func (f *fakeStore) CreateNotebook(ctx context.Context, n domain.Notebook, by uuid.UUID) error {
 	f.record(ctx, "CreateNotebook by "+by.String())
+	if err := checked(n); err != nil {
+		return err
+	}
 	f.created = append(f.created, n)
 	return nil
 }
@@ -141,17 +146,25 @@ func (f *fakeStore) UpdateNotebook(ctx context.Context, n domain.Notebook, by uu
 	return nil
 }
 
-// SetMode keeps n, refusing what the table's checks refuse: a mode of
-// neither, an LLM Wiki without its source root.
+// SetMode keeps n, refusing what the table's checks refuse (checked).
 func (f *fakeStore) SetMode(ctx context.Context, n domain.Notebook, by uuid.UUID) error {
 	f.record(ctx, "SetMode "+string(n.Mode)+" by "+by.String())
+	if err := checked(n); err != nil {
+		return err
+	}
+	f.moded = append(f.moded, n)
+	return nil
+}
+
+// checked is what the notebooks table's checks refuse of n: a mode of
+// neither, an LLM Wiki without its source root.
+func checked(n domain.Notebook) error {
 	switch {
 	case n.Mode != domain.ModeStandard && n.Mode != domain.ModeLLMWiki:
 		return errors.New("violates notebooks_mode_check")
 	case n.Mode == domain.ModeLLMWiki && n.SourceRootID == (uuid.UUID{}):
 		return errors.New("violates notebooks_source_root_check")
 	}
-	f.moded = append(f.moded, n)
 	return nil
 }
 
