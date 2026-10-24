@@ -2442,7 +2442,7 @@ P1 完成，当且仅当：
 
 留给实施之后：每个 Step 一节（合并的提交、审查与修复、照实与设计不同之处、7.3 的变异的结果、CI 的各份与 e2e 的时间、模板的四个字节数）。
 
-### 10.1 S1：模式与模板（服务端）（2026-10-25，合并见 00 号文档第 12 节）
+### 10.1 S1：模式与模板（服务端）（2026-10-25，合并 `45d086a1`）
 
 - 提交（从 main 的 `f92ecac7` 开始，照 6.1 的次序，第 1–7 步，7 个；第 8 步的文档是主持者的）：
   - `shared.ClientOf`（`TestClientOfIsTheCredential`），page、asset、transfer 的适配器用它，三份 `clientOf` 删去（`46e3d20c`）。
@@ -2453,7 +2453,7 @@ P1 完成，当且仅当：
   - `mode` 事件：`notebookEvents.ModeChanged`，事件流是唯一的模式订阅者，契约的 `EventMode`；`TestTheModeEventReachesTheStreams`（`e8962f7b`）。
   - MCP 答模式：page 的 `Mode`/`NotebookState` 与端口 `Notebooks.StateOf`，`OpenNotebook` 在门之后读状态（那时已删的答不存在）并答 `Mode`，组合根的 `pageNotebooks`；`openNotebook` 与 `notebooks` 答 `mode`，Go 里的描述与 `tools.json`；`TestNotebooksAnswerTheirModeOverMCP`；MC1 期望 `mode: "standard"`，LW1 (MCP)（`66602404`）。
   - 每个提交单独在一个工作树里 build、vet、碰到的包的静态检查（0 个问题）与 short 测试都通过；碰网页的提交另过 oxfmt、oxlint、tsc、knip 与 vitest（166 个文件、3,344–3,346 个测试）。第 4 步的修正（下面第 14 条）之后第 4–7 步重放、再核对一次。审查 C 另在每个提交上跑整个模块的静态检查、tidy 与整个 short 测试，那个提交加或改的库上的测试，第 2、4、6 步的整个 e2e，都通过。
-  - 修复一轮另有 13 个（下面），一共 20 个，合并见 00 号文档第 12 节。
+  - 修复一轮另有 13 个（下面），一共 20 个，合并 `45d086a1`。
 - 与设计不同之处（实施时定下的，都是最小的改动；已改在各节，3.30 列出）：
   1. 3.14 说的 `TestCreateNotebookLogs` 不在：建的那一行一直在 `TestCreateNotebookMakesTheCallerItsAdmin` 里核对。`mode` 在那里的两行（普通的、LLM Wiki）核对，同已有的"不带名称"；3.10 的"照 `TestCreateNotebookLogs` 的写法"随之改（审查 A）。
   2. 模板的变更集的说明在 `wiki/domain.TemplateMessage(locale)`，与模板放在一起（设计给了两句话，没说放在哪里）；`contract_test` 钉住每种语言的不为空、`fr` 的为空，整个程序按语言比较它（x5）。
