@@ -27,6 +27,7 @@ type accountNotebook struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
 	Role      string `json:"role"`
+	Mode      string `json:"mode"`
 	Workspace struct {
 		Slug string `json:"slug"`
 		Name string `json:"name"`
@@ -38,10 +39,14 @@ type accountNotebook struct {
 // lab answers them (listedNotebooks), other-nb of other, whose admin is
 // the column outside lab (M9/P1 design 3.17.2), and wlab's, the LLM Wiki
 // variant's, lab's twin, as lab's (M10/P1 design 3.14). Each workspace's
-// name is its slug.
+// name is its slug; each notebook's mode is standard, wlab's llm_wiki.
 func accountNotebooksOf(c caller, s seeded) []accountNotebook {
 	item := func(slug string, id uuid.UUID, name, role string) accountNotebook {
-		n := accountNotebook{ID: id.String(), Name: name, Role: role}
+		mode := "standard"
+		if slug == variantWorkspace {
+			mode = "llm_wiki"
+		}
+		n := accountNotebook{ID: id.String(), Name: name, Role: role, Mode: mode}
 		n.Workspace.Slug, n.Workspace.Name = slug, slug
 		return n
 	}

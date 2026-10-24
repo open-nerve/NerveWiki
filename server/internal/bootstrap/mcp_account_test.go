@@ -1,10 +1,14 @@
 package bootstrap
 
 import (
+	"fmt"
+	"maps"
 	"net/http"
 	"reflect"
+	"strings"
 	"testing"
 
+	"github.com/open-nerve/NerveWiki/server/internal/modules/wiki"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/mcpserver"
 )
 
@@ -21,7 +25,7 @@ func TestOpenNotebookOfAnEmptyNotebook(t *testing.T) {
 	empty := r.createNotebook(t, r.access, "acme", "Empty")
 	builtIn := r.instructionsAt(t, atNotebook(empty))
 	want := map[string]any{
-		"notebook": empty, "instructions": builtIn, "instructions_from": nil, "truncated": false,
+		"notebook": empty, "mode": "standard", "instructions": builtIn, "instructions_from": nil, "truncated": false,
 		"overview": map[string]any{"pages": 0.0, "attachments": 0.0, "last_changed_at": nil, "root": []any{}},
 	}
 	if got := r.opened(t, empty); !reflect.DeepEqual(got, want) {
@@ -42,7 +46,8 @@ func TestNotebooksListsTheAccountsWorkspaces(t *testing.T) {
 	alpha := r.createNotebook(t, r.access, "zeta", "Alpha")
 	bravo := r.createNotebook(t, r.access, "acme", "Bravo")
 	item := func(id, name, slug, workspace string) map[string]any {
-		return map[string]any{"id": id, "name": name, "role": "admin", "workspace": map[string]any{"slug": slug, "name": workspace}}
+		return map[string]any{"id": id, "name": name, "role": "admin", "mode": "standard",
+			"workspace": map[string]any{"slug": slug, "name": workspace}}
 	}
 	res := r.call(t, mcpserver.Pattern, "notebooks", map[string]any{}).result(t)
 	want := map[string]any{"truncated": false, "notebooks": []any{
@@ -51,4 +56,52 @@ func TestNotebooksListsTheAccountsWorkspaces(t *testing.T) {
 	if got := res["structuredContent"]; res["isError"] == true || !reflect.DeepEqual(got, want) {
 		t.Errorf("notebooks = %v, want %v", res, want)
 	}
+}
+
+// MCP answers each notebook's mode (M10/P1 design 3.12, 3.16): notebooks
+// lists it for each; open_notebook answers an LLM Wiki's, its
+// instructions its AGENTS page's text, and once the LLM Wiki is
+// downgraded, standard at the next call.
+func TestNotebooksAnswerTheirModeOverMCP(t *testing.T) {
+	r := startReadsApp(t, "")
+	status, created := ask(t, r.contract, http.MethodPost, r.base+"/api/v0/workspaces/acme/notebooks", r.access,
+		`{"name":"Field notes","mode":"llm_wiki"}`)
+	if status != http.StatusCreated {
+		t.Fatalf("create an LLM Wiki = %d %s", status, created)
+	}
+	wiki := idOf(t, answer{body: created})
+	listed := r.call(t, mcpserver.Pattern, "notebooks", map[string]any{})
+	var got struct {
+		Notebooks []struct{ ID, Mode string } `json:"notebooks"`
+	}
+	structuredOf(t, listed, &got)
+	modes := map[string]string{}
+	for _, n := range got.Notebooks {
+		modes[n.ID] = n.Mode
+	}
+	if want := map[string]string{wiki: "llm_wiki", r.notebook: "standard"}; !maps.Equal(modes, want) {
+		t.Errorf("notebooks = %s, want the modes %v", listed.body, want)
+	}
+	agents := wikiPages(t)[1].Content
+	if o := r.opened(t, wiki); o["mode"] != "llm_wiki" || o["instructions_from"] != "AGENTS.md" ||
+		o["instructions"] != strings.TrimSpace(agents) {
+		t.Errorf("open_notebook of the LLM Wiki = mode %v, instructions from %v, %d bytes of them; want llm_wiki, its AGENTS page's text",
+			o["mode"], o["instructions_from"], len(fmt.Sprint(o["instructions"])))
+	}
+	if status, answer := ask(t, r.contract, http.MethodPost, r.base+"/api/v0/notebooks/"+wiki+"/downgrade", r.access, ""); status != http.StatusOK {
+		t.Fatalf("downgrade = %d %s, want 200", status, answer)
+	}
+	if o := r.opened(t, wiki); o["mode"] != "standard" {
+		t.Errorf("open_notebook after the downgrade = mode %v, want standard", o["mode"])
+	}
+}
+
+// wikiPages are the English template's pages, raw then AGENTS.
+func wikiPages(t *testing.T) []wiki.TemplatePage {
+	t.Helper()
+	pages := wiki.TemplatePages(wiki.ModeLLMWiki, wiki.LocaleEn)
+	if len(pages) != 2 || pages[1].Title != "AGENTS" {
+		t.Fatalf("the English template = %+v, want raw then AGENTS", pages)
+	}
+	return pages
 }

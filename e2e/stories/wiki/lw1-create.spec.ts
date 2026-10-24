@@ -5,6 +5,7 @@ import { expectChangesetOf, expectNewPage } from "../../fixtures/assert/page";
 import { bearer } from "../../fixtures/auth";
 import type { Database } from "../../fixtures/db";
 import { listChangesets } from "../../fixtures/history";
+import { mcpClient } from "../../fixtures/mcp";
 import { createNotebook } from "../../fixtures/notebooks";
 import { listNodes, readContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -100,4 +101,34 @@ test("LW1 (API): an LLM Wiki is created with its template in the language asked,
   expect(refused.response.status).toBe(422);
   expect(refused.error?.errors?.map((e) => [e.field, e.code])).toEqual([["template_locale", "invalid_format"]]);
   expect(await countNotebooks(db)).toEqual(before);
+});
+
+test("LW1 (MCP): an agent of an LLM Wiki is given its AGENTS page as its instructions, and sees the notebook's mode", async ({
+  api,
+  nervewiki,
+}, testInfo) => {
+  const { pat, workspace } = await newTeam(api, testInfo);
+  const created = await createNotebook(api, pat, workspace.slug, "Field notes", undefined, {
+    mode: "llm_wiki",
+    templateLocale: "en",
+  });
+  const agents = (await listNodes(api, pat, created.id)).find((n) => n.name === "AGENTS");
+  if (!agents) {
+    throw new Error("the LLM Wiki has no AGENTS page at its root");
+  }
+  const { content } = await readContent(api, pat, agents.id);
+
+  // The notebook entry's handshake: the AGENTS page's text.
+  const agent = await mcpClient(nervewiki.baseURL, pat, { notebook: created.id });
+  expect(agent.instructions).toBe(content.trim());
+
+  // The account entry: the notebook's mode in the list and when opened.
+  const account = await mcpClient(nervewiki.baseURL, pat);
+  const listed = await account.call("notebooks");
+  expect(listed.isError, listed.text.join(" ")).toBe(false);
+  const notebooks = (listed.structured as { notebooks: { id: string; mode: string }[] }).notebooks;
+  expect(notebooks.find((n) => n.id === created.id)?.mode).toBe("llm_wiki");
+  const opened = await account.call("open_notebook", { notebook: created.id });
+  expect(opened.isError, opened.text.join(" ")).toBe(false);
+  expect(opened.structured).toMatchObject({ notebook: created.id, mode: "llm_wiki", instructions_from: "AGENTS.md" });
 });

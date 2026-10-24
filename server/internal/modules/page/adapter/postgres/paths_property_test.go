@@ -31,6 +31,9 @@ func (w inWorkspace) WorkspaceOf(context.Context, uuid.UUID) (uuid.UUID, bool, e
 }
 func (inWorkspace) ShareByID(context.Context, uuid.UUID) (bool, error) { return true, nil }
 func (inWorkspace) LockByID(context.Context, uuid.UUID) (bool, error)  { return true, nil }
+func (inWorkspace) StateOf(context.Context, uuid.UUID) (domain.NotebookState, bool, error) {
+	return domain.NotebookState{Mode: domain.ModeStandard}, true, nil
+}
 
 // anyInfo is an info for every attachment.
 type anyInfo struct{}

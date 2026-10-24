@@ -37,20 +37,25 @@ func call(t *testing.T, l listed) (notebooksAnswer, string, error) {
 	return a, string(raw), nil
 }
 
-// notebookOf is a notebook named name of the workspace acme, as role.
+// notebookOf is a standard notebook named name of the workspace acme, as
+// role.
 func notebookOf(id uuid.UUID, name string, role shared.NotebookRole) app.AccountNotebook {
-	return app.AccountNotebook{Notebook: domain.Notebook{ID: id, Name: name}, Role: role,
+	return app.AccountNotebook{Notebook: domain.Notebook{ID: id, Name: name, Mode: domain.ModeStandard}, Role: role,
 		Workspace: app.AccountWorkspace{Slug: "acme", Name: "Acme <&>"}}
 }
 
 // Each notebook comes with its id, its name, its workspace's slug and
-// name, and the caller's role there, as they are; truncated false when all
-// came (M9/P1 design 3.17.2).
+// name, the caller's role there and its mode, as they are; truncated false
+// when all came (M9/P1 design 3.17.2; M10/P1 design 3.12).
 func TestTheNotebooksAnswerTheirItems(t *testing.T) {
-	id := uuid.MustParse("01920000-0000-7000-8000-0000000000b0")
-	_, raw, err := call(t, listed{answer: app.AccountNotebooks{Notebooks: []app.AccountNotebook{notebookOf(id, "Handbook", shared.NotebookEditor)}}})
+	id, wiki := uuid.MustParse("01920000-0000-7000-8000-0000000000b0"), uuid.MustParse("01920000-0000-7000-8000-0000000000b1")
+	fieldNotes := notebookOf(wiki, "Field notes", shared.NotebookAdmin)
+	fieldNotes.Notebook.Mode, fieldNotes.Notebook.SourceRootID = domain.ModeLLMWiki, uuid.NewV7()
+	_, raw, err := call(t, listed{answer: app.AccountNotebooks{Notebooks: []app.AccountNotebook{notebookOf(id, "Handbook", shared.NotebookEditor),
+		fieldNotes}}})
 	want := `{"notebooks":[{"id":"01920000-0000-7000-8000-0000000000b0","name":"Handbook","workspace":{"slug":"acme","name":"Acme <&>"},` +
-		`"role":"editor"}],"truncated":false}`
+		`"role":"editor","mode":"standard"},{"id":"01920000-0000-7000-8000-0000000000b1","name":"Field notes",` +
+		`"workspace":{"slug":"acme","name":"Acme <&>"},"role":"admin","mode":"llm_wiki"}],"truncated":false}`
 	if err != nil || raw != want {
 		t.Errorf("answer = %s, %v; want %s", raw, err, want)
 	}

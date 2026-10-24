@@ -41,16 +41,16 @@ func openOf(t *testing.T, o opened) (openAnswer, string, error) {
 	return a, raw, nil
 }
 
-// The answer is the notebook, its instructions and where they come from,
-// null for the built-in ones, and its overview: the counts, the last
-// change in UTC, null when nothing was written, and the root's nodes by
-// their paths and kinds (M9/P1 design 3.17.3).
+// The answer is the notebook, its mode, its instructions and where they
+// come from, null for the built-in ones, and its overview: the counts, the
+// last change in UTC, null when nothing was written, and the root's nodes
+// by their paths and kinds (M9/P1 design 3.17.3; M10/P1 design 3.12).
 func TestTheOpenNotebookAnswer(t *testing.T) {
 	last := time.Date(2026, 10, 17, 16, 30, 0, 0, time.FixedZone("CST", 8*3600))
-	_, raw, err := openOf(t, opened{answer: app.Opened{Agents: domain.Agents{Body: "# Rules <&>", Title: "agents"}, HasAgents: true,
-		Pages: 120, Attachments: 8, LastChange: &last,
+	_, raw, err := openOf(t, opened{answer: app.Opened{Mode: domain.ModeLLMWiki, Agents: domain.Agents{Body: "# Rules <&>", Title: "agents"},
+		HasAgents: true, Pages: 120, Attachments: 8, LastChange: &last,
 		Root: []app.RootNode{{Path: "Inbox.md", Kind: domain.KindPage}, {Path: "logo.png", Kind: domain.KindAsset}}}})
-	want := `{"notebook":"01920000-0000-7000-8000-0000000000b0","instructions":"# Rules <&>","instructions_from":"agents.md",` +
+	want := `{"notebook":"01920000-0000-7000-8000-0000000000b0","mode":"llm_wiki","instructions":"# Rules <&>","instructions_from":"agents.md",` +
 		`"overview":{"pages":120,"attachments":8,"last_changed_at":"2026-10-17T08:30:00Z","root":[{"path":"Inbox.md","kind":"page"},` +
 		`{"path":"logo.png","kind":"attachment"}]},"truncated":false}`
 	if err != nil || raw != want {

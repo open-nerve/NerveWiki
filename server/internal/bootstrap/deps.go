@@ -156,7 +156,7 @@ func pageDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, author
 		Logger:       logger,
 		Authorizer:   authorizer,
 		Workspaces:   workspace.NewWorkspaces(pool),
-		Notebooks:    notebook.NewNotebooks(pool),
+		Notebooks:    pageNotebooks{notebook.NewNotebooks(pool)},
 		Names:        displayNames{identity.NewDirectory(pool)},
 		Markdown:     md,
 		Guards:       ext.guards,

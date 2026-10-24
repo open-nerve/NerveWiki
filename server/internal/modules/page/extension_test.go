@@ -80,6 +80,20 @@ func (n sqlNotebooks) LockByID(ctx context.Context, id uuid.UUID) (bool, error) 
 	return exists(ctx, n.pool, "SELECT 1 FROM notebooks WHERE id = $1 AND deleted_at IS NULL FOR NO KEY UPDATE", id)
 }
 
+func (n sqlNotebooks) StateOf(ctx context.Context, id uuid.UUID) (page.NotebookState, bool, error) {
+	var s page.NotebookState
+	var root *uuid.UUID
+	err := postgres.DB(ctx, n.pool).QueryRow(ctx, "SELECT mode, source_root_id FROM notebooks WHERE id = $1 AND deleted_at IS NULL", id).
+		Scan(&s.Mode, &root)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return page.NotebookState{}, false, nil
+	}
+	if root != nil {
+		s.SourceRootID = *root
+	}
+	return s, err == nil, err
+}
+
 // noAttachments knows no attachment's file.
 type noAttachments struct{}
 

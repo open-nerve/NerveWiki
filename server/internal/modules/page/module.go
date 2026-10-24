@@ -44,9 +44,22 @@ type Tx = app.Tx
 // workspace.NewWorkspaces to it.
 type Workspaces = app.Workspaces
 
-// Notebooks is what the module reads of notebooks: bootstrap hands
-// notebook.NewNotebooks to it.
+// Notebooks is what the module reads of notebooks: bootstrap converts
+// notebook.NewNotebooks for it, the state to the module's own.
 type Notebooks = app.Notebooks
+
+// NotebookState and Mode are a notebook's state as the module reads it
+// (M10 design 4.3): bootstrap converts the notebook module's.
+type (
+	NotebookState = domain.NotebookState
+	Mode          = domain.Mode
+)
+
+// The modes.
+const (
+	ModeStandard = domain.ModeStandard
+	ModeLLMWiki  = domain.ModeLLMWiki
+)
 
 // Names reads the accounts' display names: bootstrap hands identity's
 // directory to it.
@@ -337,7 +350,7 @@ func New(d Deps) *Module {
 		changeset:    getChangeset,
 		search:       search,
 		instructions: app.NewInstructions(store, store, md, mcpserver.TextBytes)}
-	m.open = app.NewOpenNotebook(m.gate, store, m.instructions)
+	m.open = app.NewOpenNotebook(m.gate, d.Notebooks, store, m.instructions)
 	// grep's parses, one queue in the process, and its slots (M9/P4 design
 	// 3.6.1, 3.6.5).
 	slots := d.GrepSlots

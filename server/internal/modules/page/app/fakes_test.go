@@ -88,13 +88,15 @@ func (f fakeWorkspaces) ShareByID(ctx context.Context, id uuid.UUID) (bool, erro
 	return !f.gone[id], nil
 }
 
-// fakeNotebooks knows each notebook's workspace; one in gone is deleted by
-// the time it is locked. waited, when set, runs while a write waits for the
-// notebook's lock: what another write commits meanwhile.
+// fakeNotebooks knows each notebook's workspace, and its state in states,
+// standard when it has none there; one in gone is deleted by the time it
+// is locked, or its state read. waited, when set, runs while a write waits
+// for the notebook's lock: what another write commits meanwhile.
 type fakeNotebooks struct {
 	*recorder
 	workspaces map[uuid.UUID]uuid.UUID
 	gone       map[uuid.UUID]bool
+	states     map[uuid.UUID]domain.NotebookState
 	waited     func()
 	// err fails WorkspaceOf.
 	err error
@@ -122,6 +124,17 @@ func (f fakeNotebooks) LockByID(ctx context.Context, id uuid.UUID) (bool, error)
 	}
 	_, ok := f.workspaces[id]
 	return ok && !f.gone[id], nil
+}
+
+func (f fakeNotebooks) StateOf(ctx context.Context, id uuid.UUID) (domain.NotebookState, bool, error) {
+	f.record(ctx, "StateOf")
+	if _, ok := f.workspaces[id]; !ok || f.gone[id] {
+		return domain.NotebookState{}, false, nil
+	}
+	if s, ok := f.states[id]; ok {
+		return s, true, nil
+	}
+	return domain.NotebookState{Mode: domain.ModeStandard}, true, nil
 }
 
 // fakeStore is the repository in memory: the nodes not deleted, their
