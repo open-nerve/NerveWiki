@@ -54,6 +54,40 @@ func TestTheModeGuardLetsAStandardNotebookBy(t *testing.T) {
 	}
 }
 
+// The mode guard marks its refusal with the node it is about, not the
+// step's first (M10/P1 design 3.20; review C-M1): Notes deleted with raw
+// under it is page.protected of raw, R2's; Notes moved under Other with
+// raw under it, page.manage_source denied, page.source_admin_only of raw,
+// R4's. Unmarked, the unit would mark them with Notes.
+func TestTheModeGuardMarksTheNodeItRefuses(t *testing.T) {
+	f := newFixture()
+	f.auth.forbidden[domain.ActionManageSource] = true
+	notes, other, raw := uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
+	guard := app.NewModeGuard(f.auth)
+	for _, s := range []struct {
+		name    string
+		op      domain.Operation
+		changes []domain.Change
+		code    string
+	}{
+		{"Notes deleted, raw under it", domain.OpDelete, []domain.Change{{NodeID: notes, Before: &domain.TreeState{Name: "Notes"}},
+			{NodeID: raw, Before: &domain.TreeState{ParentID: &notes, Name: "raw"}}}, "page.protected"},
+		{"Notes moved under Other, raw under it", domain.OpMove, []domain.Change{
+			{NodeID: notes, Before: &domain.TreeState{Name: "Notes"}, After: &domain.TreeState{ParentID: &other, Name: "Notes"}},
+			{NodeID: raw, Before: &domain.TreeState{ParentID: &notes, Name: "raw"}, After: &domain.TreeState{ParentID: &notes, Name: "raw"}}},
+			"page.source_admin_only"},
+	} {
+		step := app.Step{Write: app.Write{WorkspaceID: f.acme, NotebookID: f.eng, By: f.alice, Kind: domain.ChangesetEdit,
+			Notebook: domain.NotebookState{Mode: domain.ModeLLMWiki, SourceRootID: raw}, Grants: &app.Grants{}}, Operation: s.op,
+			Changes: s.changes}
+		err := guard.GuardWrite(f.asAlice(), step)
+		var r *domain.Refused
+		if codeOf(err) != s.code || !errors.As(err, &r) || r.NodeID != raw {
+			t.Errorf("%s = %v (%+v), want %s marked with raw", s.name, err, r, s.code)
+		}
+	}
+}
+
 // The mode guard asks page.manage_source once a unit (M10/P1 design 3.19):
 // a batch that moves the source root twice, the guard's need granted, asks
 // it once in its unit's transaction and writes both moves; two batches,
