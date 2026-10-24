@@ -12,7 +12,8 @@ import (
 // AGENTS.md are page.protected; a writer's move of raw.md is
 // page.source_admin_only; each answered as REST's, its text led by its
 // code, structuredContent.error's code the same, the rows as they were.
-// An edit of AGENTS.md is written as any page's, of the agent's client.
+// An edit of AGENTS.md is written as any page's, of the agent's client,
+// and so is a write over it on the version the edit answered (3.23).
 // A batch that edits Notes, then deletes AGENTS.md, is refused at its
 // second op as a whole: Notes as it was.
 func TestTheModeGuardReachesEveryMCPWrite(t *testing.T) {
@@ -43,17 +44,21 @@ func TestTheModeGuardReachesEveryMCPWrite(t *testing.T) {
 		}
 	}
 
-	edited := alice.use(t, "edit", map[string]any{"path": "AGENTS.md", "old_string": "# How this LLM Wiki is kept",
-		"new_string": "# How this wiki is kept"})
-	if r := edited.result(t); r["isError"] == true {
-		t.Fatalf("alice's edit of AGENTS.md = %v, want it written", r)
+	edited := answerOf[mcpEdited](t, alice.use(t, "edit", map[string]any{"path": "AGENTS.md",
+		"old_string": "# How this LLM Wiki is kept", "new_string": "# How this wiki is kept"}))
+	if content := tm.rootOf(t, wiki.id)[1].Content; !edited.Changed || !strings.HasPrefix(content, "# How this wiki is kept") {
+		t.Errorf("AGENTS after the edit = %.60q (%+v), want it edited", content, edited)
+	}
+	rules := "# How this wiki is kept\n\nKeep a glossary.\n"
+	written := answerOf[mcpWritten](t, alice.use(t, "write", map[string]any{"path": "AGENTS.md", "content": rules,
+		"base_version": edited.Version}))
+	if content := tm.rootOf(t, wiki.id)[1].Content; !written.Changed || len(written.Created) != 0 || content != rules {
+		t.Errorf("AGENTS after the write over it = %.60q (%+v), want the write's content, nothing created", content, written)
 	}
 	if got := queryStrings(t, tm.pool, `SELECT c.kind || ' ' || c.client FROM changesets c
-		WHERE c.notebook_id = $1 AND c.client LIKE 'mcp%' ORDER BY c.created_at`, wiki.id); !slices.Equal(got, []string{"edit mcp:whole-program"}) {
-		t.Errorf("the agent's changesets are %q, want its edit of AGENTS", got)
-	}
-	if content := tm.rootOf(t, wiki.id)[1].Content; !strings.HasPrefix(content, "# How this wiki is kept") {
-		t.Errorf("AGENTS after the edit = %.60q, want it edited", content)
+		WHERE c.notebook_id = $1 AND c.client LIKE 'mcp%' ORDER BY c.created_at`, wiki.id); !slices.Equal(got,
+		[]string{"edit mcp:whole-program", "edit mcp:whole-program"}) {
+		t.Errorf("the agent's changesets are %q, want its edit of AGENTS and its write over it", got)
 	}
 
 	before := tm.guardRows(t, wiki.id)
