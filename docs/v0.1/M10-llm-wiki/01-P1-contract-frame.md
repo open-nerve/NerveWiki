@@ -2527,7 +2527,7 @@ P1 完成，当且仅当：
 - **修复核对一轮**（2026-10-25，三位各在 `86e4c8da` 的新的工作树里）：三位都说自己的与自己范围里别人的每一条都改了，没有新的发现（Important 0、Minor 0、Nit 0）。A-N3 的生产的改动：建的 `seededItsRoot` 不改，一页以别的 id 写下时建答 500（A 的 h5、B 的 b8、C 的 F6；F6c 证明那就是这一处核对，F6b 显出 A-N3 之前只有整个程序的核对抓得到）。新的子测试是逼出来的（C 的 F7、F7c），但没有我们的代码的变异让它失败（A 的 h7），是 PostgreSQL 的回归测试（主持者的决定 24）。13 个提交各自绿（C）。
 - 实施者留给审查与主持者的一项（`TestLLMWikiCreationWritesItsTemplate` 把说明读进 `string`）由修复一轮的 `coalesce` 改正（主持者的决定 25）；文档照偏离改的各处，由这一节与 3.30 记下。
 
-### 10.2 S2：守卫的骨架（2026-10-25，合并见 00 号文档第 12 节）
+### 10.2 S2：守卫的骨架（2026-10-25，合并 `bad859c0`）
 
 - 提交（从 main 的 `45d086a1` 开始，照 6.2 的次序，第 1–4 步，4 个；第 5 步的文档是主持者的）：
   - 单元在锁下读笔记本的状态：`ShareNotebook` 选出 `mode`、`source_root_id`，notebook 的根的 `ShareState`、`LockState`（`notebooks_test.go` 的四行：LLM Wiki、普通、已删、没有）；page 的端口 `ShareByID`、`LockByID` 交回 `(NotebookState, bool, error)`，组合根的 `pageNotebooks` 经 `toPageState` 转换（`TestPageNotebooksConvertTheState` 读三种读法）；`Write.Notebook`、`Write.Grants` 与 `Grants`（`TestAGrantIsAskedOnceAUnit`）；page 的几个假的 `Notebooks` 交回状态；`TestTheGuardSeesTheCheckedChange` 以 `want.Grants = s.Grants` 比较（`70b0ccdd`）。
@@ -2535,7 +2535,7 @@ P1 完成，当且仅当：
   - 模式的守卫：`app.ModeGuard`、模块根的 `NewModeGuard` 与 `Refusal`；`Unit.apply` 以这一步的第一个节点标出守卫的问题；`batch` 的 `failed` 先认 `Refused`；`pageRegistrants(pool, authorizer)` 的 `[mode, lock]`、`pageSessionSubscribers()`；六个操作的 `x-problem-codes` 与说明，重新生成 bundle 与 TS；page 与 asset 的适配器的表的行；`mcpToolCodes()` 与 `wikiCodeCalls`；矩阵的变体的六行与 `adminsOnlyOr`；三个码的中英文字；`TestTheModeGuardLetsAStandardNotebookBy`、`TestTheModeGuardAsksOnceAUnit`、`TestAUnitMarksItsGuardsRefusals`、`TestABatchAnswersARefusalAtItsOperation`、`TestRefusalReadsTheMark`；3.24 的 `TestTheModeGuardReachesEveryPath`、`TestTheModeGuardReachesEveryMCPWrite`、`TestModeComesBeforeTheLock`、`TestTheDowngradeEndsTheContract` 与 3.23 的 `TestTheProtectionAndADowngrade`；e2e 的 LW2 (API)、LW2 (MCP)（`99ec6abe`）。
   - `batch` 的计划判契约：`PlanBatch` 收笔记本的状态，树的一遍在每一项自己的检查之后判它的步（`judge`），`BatchPlan.Needs`、`Need`、`BatchPlan.Refuse`；`planned` 在 `ListNodes` 之后不加锁读 `StateOf`、在 `a.read` 之前问 `page.manage_source`（`grant`、`decidedNotebook`）；`TestThePlanChecksTheContract`、`TestABatchsPlanRefusesBeforeItsLock`；`TestTheGuardRefusesWhatThePlanLetBy` 与收 `wiring` 的 `newAcmeTeamWiring`（`cfa1c608`）。这个提交在推送之前修订过一次，加了下面第 14 条的一行；修订之前的 sha 是 `7fa387da`，实施者的报告的提交列表起初写的是它（审查 C-N2）。
   - 每个提交单独在一个工作树里 build、vet、碰到的包的静态检查（0 个问题）与 short 测试都通过（要库的包的 `-short` 经 `heavy.sh`）；第 3 个提交另过网页的 tsc、oxlint、oxfmt 与 vitest（problem-messages 与 i18n 的 3 个文件、1,093 个测试）。审查 C 另在每个提交上跑整个模块的静态检查、tidy 与整个 short 测试，第 1、3 个提交上的生成物与 `make gen-go` 相同，第 3 个提交上网页的整个门禁（vitest 166 个文件、3,349 个测试），都通过。
-  - 修复一轮另有 4 个（下面），一共 8 个，合并见 00 号文档第 12 节。
+  - 修复一轮另有 4 个（下面），一共 8 个，合并 `bad859c0`。
 - 与设计不同之处（实施时定下的，都是最小的改动；已改在各节，3.31 列出）：
   1. notebook 的存储的 `ShareNotebook` 答 `(domain.Mode, uuid.UUID, error)`，不答 `State`：适配器不能导入模块根的 `State`，根由这两个值建它。
   2. 事实的位置叫 `NodePlace`，不叫 `Place`：`page/domain` 已有 `Place`（兄弟间的次序，`order.go:13`）。
