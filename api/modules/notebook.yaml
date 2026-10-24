@@ -41,8 +41,8 @@ paths:
         workspace that does not exist, is deleted, or that the caller is no
         active member of is workspace.not_found; the values are checked after
         both. An LLM Wiki is created with its template, the pages raw, its
-        source root, and AGENTS, in one change; the values are checked after
-        both, the mode and the template's language among them.
+        source root, and AGENTS, in one change; the mode and the template's
+        language are checked with the other values.
       security: [{ bearer: [] }]
       x-problem-codes: [workspace.not_found, forbidden, validation_failed]
       requestBody:

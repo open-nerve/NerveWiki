@@ -496,7 +496,7 @@ export interface paths {
         put?: never;
         /**
          * Create a notebook
-         * @description Creates a notebook in the workspace whose admin is the caller; the workspace's admins and members can, its guests cannot (forbidden). A workspace that does not exist, is deleted, or that the caller is no active member of is workspace.not_found; the values are checked after both. An LLM Wiki is created with its template, the pages raw, its source root, and AGENTS, in one change; the values are checked after both, the mode and the template's language among them.
+         * @description Creates a notebook in the workspace whose admin is the caller; the workspace's admins and members can, its guests cannot (forbidden). A workspace that does not exist, is deleted, or that the caller is no active member of is workspace.not_found; the values are checked after both. An LLM Wiki is created with its template, the pages raw, its source root, and AGENTS, in one change; the mode and the template's language are checked with the other values.
          */
         post: operations["createNotebook"];
         delete?: never;
