@@ -34,18 +34,28 @@ func isForbidden(err error) bool {
 func decideNotebook(ctx context.Context, notebooks Notebooks, auth shared.Authorizer, actor shared.Actor, action shared.Action,
 	id uuid.UUID,
 ) error {
+	_, err := decidedNotebook(ctx, notebooks, auth, actor, action, id)
+	return err
+}
+
+// decidedNotebook is decideNotebook's decision and the notebook's
+// workspace: for a use case that asks the authorizer again (the batch's
+// plan, M10/P1 design 3.22).
+func decidedNotebook(ctx context.Context, notebooks Notebooks, auth shared.Authorizer, actor shared.Actor, action shared.Action,
+	id uuid.UUID,
+) (uuid.UUID, error) {
 	if id == (uuid.UUID{}) {
-		return domain.ErrNotebookNotFound
+		return uuid.UUID{}, domain.ErrNotebookNotFound
 	}
 	workspaceID, ok, err := notebooks.WorkspaceOf(ctx, id)
 	switch {
 	case err != nil:
-		return err
+		return uuid.UUID{}, err
 	case !ok:
-		return domain.ErrNotebookNotFound
+		return uuid.UUID{}, domain.ErrNotebookNotFound
 	}
 	_, err = authorize(ctx, auth, actor, action, shared.Target{WorkspaceID: workspaceID, NotebookID: id}, domain.ErrNotebookNotFound)
-	return err
+	return workspaceID, err
 }
 
 // found is err, or notFound for a repository's ErrNotFound.

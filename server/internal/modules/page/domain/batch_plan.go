@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"slices"
 	"uuid"
+
+	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
 // A batch's plan (M9 design 4.11; M9/P3 design 3.4): its ops simulated in
@@ -178,8 +180,13 @@ type BatchPlan struct {
 	Steps  []PlannedStep
 	Failed *OpFailed // the first op that fails, of either pass; nil for none
 	Items  int       // the changeset's items: created, deleted (merged deletions' too), moved and renamed nodes
-	tree   *batchTree
-	steps  []BatchStep
+	// Needs is the first op whose step the notebook's contract lets by only
+	// with an action beyond the batch's own decision (M10/P1 design 3.22),
+	// for the use case to ask before it reads, and to Refuse at that op when
+	// denied; nil for none.
+	Needs *Need
+	tree  *batchTree
+	steps []BatchStep
 	// final is a failure that ends the plan where it is, its contents'
 	// pass not run: the items' bound, the reads'.
 	final     bool
@@ -222,6 +229,15 @@ type PlannedStep struct {
 	Moved         bool
 	Changed       bool
 	Replacements  int
+}
+
+// Need is an action an op's step needs beyond the batch's own decision,
+// as CheckContract's Verdict names it (M10/P1 design 3.22), and the node
+// the step is about.
+type Need struct {
+	Op     int
+	Action shared.Action
+	NodeID uuid.UUID
 }
 
 // CreatedPage is a page a batch's write creates: its id, given by the use
@@ -296,16 +312,20 @@ type deletion struct {
 // another parent carry, their subtrees, each move's again (M9/P3 review
 // A-I2: the plan and the unit read and change each move's subtree again):
 // past MaxUnitNodes either fails the op that passes it, the second for
-// more moves than one, a lone move as P2's move. The first op that fails
-// ends the pass, its error at its op in Failed.
-func PlanBatch(nodes []Node, steps []BatchStep, ids [][]uuid.UUID) *BatchPlan {
+// more moves than one, a lone move as P2's move. Each op's step, after its
+// own checks, is judged by the contract of the notebook n, as the mode
+// guard judges it in the unit (M10/P1 design 3.22): a refusal fails the op,
+// marked with its node; the first that needs an action beyond page.batch
+// is Needs. The first op that fails ends the pass, its error at its op in
+// Failed.
+func PlanBatch(nodes []Node, steps []BatchStep, ids [][]uuid.UUID, n NotebookState) *BatchPlan {
 	p := &BatchPlan{Steps: make([]PlannedStep, len(steps)), tree: newBatchTree(nodes), steps: steps,
 		pages: map[uuid.UUID]*plannedPage{}, createdBy: map[uuid.UUID]int{}, movedBy: map[uuid.UUID]int{},
 		parses: map[parseKey]int{}}
 	for i := range p.Steps {
 		p.Steps[i].MergedInto, p.Steps[i].Previous = -1, -1
 	}
-	pass := &treePass{p: p, cur: p.tree.view(-1), ids: ids, counted: map[uuid.UUID]bool{}}
+	pass := &treePass{p: p, cur: p.tree.view(-1), ids: ids, counted: map[uuid.UUID]bool{}, notebook: n}
 	for i, s := range steps {
 		err := pass.plan(i, s)
 		if err == nil && p.Items > MaxUnitNodes {
@@ -320,8 +340,9 @@ func PlanBatch(nodes []Node, steps []BatchStep, ids [][]uuid.UUID) *BatchPlan {
 }
 
 // treePass is the tree's pass as it goes: the view it walks, the ids
-// given, the nodes counted as items, the deletions so far, and the moves
-// to another parent and the nodes they carried.
+// given, the nodes counted as items, the deletions so far, the moves to
+// another parent and the nodes they carried, and the notebook's state its
+// contract is judged by.
 type treePass struct {
 	p         *BatchPlan
 	cur       *treeView
@@ -330,6 +351,34 @@ type treePass struct {
 	deletions []*deletion
 	moves     int
 	carried   int
+	notebook  NotebookState
+}
+
+// judge is the contract on the op i's step, op of nodes, after the op's own
+// checks and before the pass records it (M10/P1 design 3.22): the facts the
+// unit's step will have, judged as the mode guard judges them. A refusal
+// is the op's error, marked with its node; the first op that needs an
+// action is Needs, and the pass goes on.
+func (t *treePass) judge(i int, op Operation, nodes []NodeFacts) error {
+	v := CheckContract(t.notebook, StepFacts{Operation: op, Kind: ChangesetEdit, Nodes: nodes})
+	switch {
+	case v.Err != nil:
+		return Refuse(v.Err, v.NodeID)
+	case v.Needs != "" && t.p.Needs == nil:
+		t.p.Needs = &Need{Op: i, Action: v.Needs, NodeID: v.NodeID}
+	}
+	return nil
+}
+
+// nodePlace is where n is, as FactsOf places a node.
+func nodePlace(n Node) *NodePlace {
+	return &NodePlace{ParentID: n.ParentID, Key: shared.TitleKey(n.Name)}
+}
+
+// unmoved is the facts of n's content step, or of a node a step carries:
+// where it was, where it is.
+func unmoved(n Node) NodeFacts {
+	return NodeFacts{ID: n.ID, Before: nodePlace(n), After: nodePlace(n)}
 }
 
 // plan is the op i, s, on the tree: its error is the op's.
@@ -372,9 +421,20 @@ func (t *treePass) create(i int, s BatchStep) error {
 		names = append(names, n.Name)
 	}
 	if c.Leaf != nil {
+		if err := t.judge(i, OpContent, []NodeFacts{unmoved(*c.Leaf)}); err != nil {
+			return err
+		}
 		ps.Node, ps.Path = c.Leaf.ID, PathOfNames(names, KindPage)
 		t.p.contentOp(i, c.Leaf.ID)
 		return nil
+	}
+	facts, under := make([]NodeFacts, len(c.Titles)), c.Parent
+	for d, title := range c.Titles {
+		id := t.ids[i][len(found)+d]
+		facts[d], under = NodeFacts{ID: id, After: &NodePlace{ParentID: under, Key: shared.TitleKey(title)}}, &id
+	}
+	if err := t.judge(i, OpCreate, facts); err != nil {
+		return err
 	}
 	parent := c.Parent
 	for d, title := range c.Titles {
@@ -412,6 +472,9 @@ func (t *treePass) content(i int, s BatchStep) error {
 		if s.Base.Node != n.ID {
 			return &VersionMismatch{Path: s.Path.Written, Current: VersionToken{Node: n.ID}, Why: OtherNode}
 		}
+	}
+	if err := t.judge(i, OpContent, []NodeFacts{unmoved(n)}); err != nil {
+		return err
 	}
 	ps.Node, ps.Found, ps.Path = n.ID, append(idsOf(ancestors), n.ID), PathOf(ancestors, n)
 	t.p.contentOp(i, n.ID)
@@ -454,6 +517,11 @@ func (t *treePass) move(i int, s BatchStep) error {
 		if h, held := HolderOf(t.cur.children(parent), title, n.ID); held && title.Key != n.NameKey {
 			return &PathTaken{Path: s.To.Written, Asset: h.Kind == KindAsset}
 		}
+		// Under its parent, a rename: the unit's Relocate renames it.
+		renamed := NodeFacts{ID: n.ID, Before: nodePlace(n), After: &NodePlace{ParentID: parent, Key: shared.TitleKey(title.Name)}}
+		if err := t.judge(i, OpRename, []NodeFacts{renamed}); err != nil {
+			return err
+		}
 	default:
 		var holder *Node
 		if h, held := HolderOf(t.cur.children(parent), title, n.ID); held {
@@ -464,6 +532,15 @@ func (t *treePass) move(i int, s BatchStep) error {
 			if taken := (*PathTaken)(nil); errors.As(err, &taken) {
 				taken.Path = s.To.Written // to is the whole new path, which the answer says
 			}
+			return err
+		}
+		// The node moved, then each node it carries, as the unit's step lists
+		// them (its subtree, the node first).
+		facts := []NodeFacts{{ID: n.ID, Before: nodePlace(n), After: &NodePlace{ParentID: parent, Key: shared.TitleKey(title.Name)}}}
+		for _, m := range sub[1:] {
+			facts = append(facts, unmoved(m.Node))
+		}
+		if err := t.judge(i, OpMove, facts); err != nil {
 			return err
 		}
 		// After the move's own checks, as the items' bound waits for its op
@@ -514,6 +591,13 @@ func (t *treePass) delete(i int, s BatchStep) error {
 		}
 	}
 	if err := t.p.deletesWhatItChanged(s.Args, d.group); err != nil {
+		return err
+	}
+	facts := make([]NodeFacts, len(sub))
+	for k, m := range sub {
+		facts[k] = NodeFacts{ID: m.Node.ID, Before: nodePlace(m.Node)}
+	}
+	if err := t.judge(i, OpDelete, facts); err != nil {
 		return err
 	}
 	for _, e := range merged {
@@ -775,6 +859,21 @@ func (p *BatchPlan) CheckReads(heads map[uuid.UUID]PageHead) *OpFailed {
 		}
 	}
 	return nil
+}
+
+// Refuse records err, a refusal its caller decided of the op at, as the
+// plan's failure when it comes before the plan's own (M10/P1 design
+// 3.22): Reads, CheckReads and Contents then stop before at, as they do
+// at a failure of the tree's pass, so that a batch answers the op that
+// separate calls would be refused at first. A failure of the plan's at
+// the same op, a bound of the batch's, gives way to it: separate calls
+// have none.
+func (p *BatchPlan) Refuse(at int, err error) {
+	if p.Failed != nil && p.Failed.Op < at {
+		return
+	}
+	p.Failed, p.final = &OpFailed{Op: at, Tool: p.steps[at].Kind, Err: err}, false
+	p.order = slices.DeleteFunc(p.order, func(id uuid.UUID) bool { return p.pages[id].first >= at })
 }
 
 // Admit counts content, the page id's, as one the plan parses, before the

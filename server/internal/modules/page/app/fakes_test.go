@@ -1171,6 +1171,7 @@ type fakeAuthorizer struct {
 	*recorder
 	grants    map[shared.Action]bool
 	forbidden map[shared.Action]bool
+	failing   map[shared.Action]error // the database's errors, by action
 	targets   []shared.Target
 }
 
@@ -1178,6 +1179,8 @@ func (f *fakeAuthorizer) Authorize(ctx context.Context, _ shared.Actor, action s
 	f.record(ctx, "Authorize "+string(action))
 	f.targets = append(f.targets, t)
 	switch {
+	case f.failing[action] != nil:
+		return shared.Grant{}, f.failing[action]
 	case f.grants[action]:
 		return shared.Grant{WorkspaceRole: shared.WorkspaceMember, NotebookRole: shared.NotebookEditor}, nil
 	case f.forbidden[action]:

@@ -58,9 +58,15 @@ func (nb *notebook) id(t *testing.T, path string) uuid.UUID {
 	return id
 }
 
-// planOf is ops planned on nb's tree, each write's ids made, a UUIDv7 a
-// segment of its path.
+// planOf is ops planned on nb's tree, a standard notebook's, each write's
+// ids made, a UUIDv7 a segment of its path.
 func planOf(t *testing.T, nb *notebook, ops ...domain.BatchArgs) (*domain.BatchPlan, [][]uuid.UUID) {
+	t.Helper()
+	return planIn(t, nb, domain.NotebookState{Mode: domain.ModeStandard}, ops...)
+}
+
+// planIn is planOf's in a notebook of the state n.
+func planIn(t *testing.T, nb *notebook, n domain.NotebookState, ops ...domain.BatchArgs) (*domain.BatchPlan, [][]uuid.UUID) {
 	t.Helper()
 	steps, err := domain.CheckBatch(ops, "m")
 	if err != nil {
@@ -74,7 +80,7 @@ func planOf(t *testing.T, nb *notebook, ops ...domain.BatchArgs) (*domain.BatchP
 			}
 		}
 	}
-	return domain.PlanBatch(nb.nodes, steps, ids), ids
+	return domain.PlanBatch(nb.nodes, steps, ids, n), ids
 }
 
 // failed is the plan's failure as a refusal, its code "" for none.
@@ -482,3 +488,127 @@ func TestPlanBatchFirstFailureDecides(t *testing.T) {
 		t.Error("a write of the bytes there changed the page")
 	}
 }
+
+// The tree's pass judges each op's step by the notebook's contract, as the
+// mode guard judges it in the unit (M10/P1 design 3.22): a standard
+// notebook's steps all let by; an LLM Wiki's refusals failing their op,
+// marked with their node, after the op's own checks; the first op that
+// needs page.manage_source in Needs, a later failure recorded too. A
+// write's parent created at the root under index is refused, one under a
+// page is not. A batch's move has no place among siblings, so B-Q1's
+// reordering of an ancestor is its rename under its parent, and a move
+// to where it is, which is no step. Refuse takes the place of a later
+// failure, not of an earlier one, and Reads then lists the pages of the
+// ops before it alone.
+func TestThePlanChecksTheContract(t *testing.T) {
+	type want struct {
+		code string
+		at   int
+		node string // the node the refusal or the need is about, its path
+		need int    // the op of Needs, -1 for none
+	}
+	flat := newNotebook("raw.md", "AGENTS.md", "Notes.md", "Notes/Inner.md", "Other.md")
+	nested := newNotebook("Notes.md", "Notes/raw.md", "AGENTS.md", "Other.md")
+	for _, tt := range []struct {
+		name string
+		nb   *notebook
+		raw  string
+		ops  []domain.BatchArgs
+		want want
+	}{
+		{"AGENTS deleted (R1)", flat, "raw.md", []domain.BatchArgs{deleteOp("AGENTS.md")}, want{"page.protected", 0, "AGENTS.md", -1}},
+		{"AGENTS renamed (R1)", flat, "raw.md", []domain.BatchArgs{moveOp("AGENTS.md", "Rules.md")},
+			want{"page.protected", 0, "AGENTS.md", -1}},
+		{"AGENTS moved (R1)", flat, "raw.md", []domain.BatchArgs{moveOp("AGENTS.md", "Other/AGENTS.md")},
+			want{"page.protected", 0, "AGENTS.md", -1}},
+		{"AGENTS's case changed (R1)", flat, "raw.md", []domain.BatchArgs{moveOp("AGENTS.md", "Agents.md")},
+			want{"page.protected", 0, "AGENTS.md", -1}},
+		{"AGENTS's content edited", flat, "raw.md", []domain.BatchArgs{editOp("AGENTS.md", "a", "b")}, want{"", -1, "", -1}},
+		{"the source root deleted (R2)", flat, "raw.md", []domain.BatchArgs{deleteOp("raw.md")}, want{"page.protected", 0, "raw.md", -1}},
+		{"the source root's ancestor deleted (R2)", nested, "Notes/raw.md", []domain.BatchArgs{with(deleteOp("Notes.md"), recursive)},
+			want{"page.protected", 0, "Notes/raw.md", -1}},
+		{"index written at the root (R3)", flat, "raw.md", []domain.BatchArgs{writeOp("index.md", "i")},
+			want{"page.virtual_file", 0, "", -1}},
+		{"index created at the root as a parent (R3)", flat, "raw.md", []domain.BatchArgs{writeOp("Index/x.md", "x")},
+			want{"page.virtual_file", 0, "", -1}},
+		{"index written under a page", flat, "raw.md", []domain.BatchArgs{writeOp("Notes/index.md", "i")}, want{"", -1, "", -1}},
+		{"a page renamed log.md at the root (R3)", flat, "raw.md", []domain.BatchArgs{moveOp("Notes.md", "log.md.md")},
+			want{"page.virtual_file", 0, "Notes.md", -1}},
+		{"a page moved to the root as LOG (R3)", flat, "raw.md", []domain.BatchArgs{moveOp("Notes/Inner.md", "LOG.md")},
+			want{"page.virtual_file", 0, "Notes/Inner.md", -1}},
+		{"the source root renamed index (R3 before R4)", flat, "raw.md", []domain.BatchArgs{moveOp("raw.md", "index.md")},
+			want{"page.virtual_file", 0, "raw.md", -1}},
+		{"the source root renamed (R4)", flat, "raw.md", []domain.BatchArgs{moveOp("raw.md", "sources.md")}, want{"", -1, "raw.md", 0}},
+		{"the source root moved (R4)", flat, "raw.md", []domain.BatchArgs{moveOp("raw.md", "Notes/raw.md")}, want{"", -1, "raw.md", 0}},
+		{"the source root's ancestor moved to another parent (R4)", nested, "Notes/raw.md",
+			[]domain.BatchArgs{moveOp("Notes.md", "Other/Notes.md")}, want{"", -1, "Notes/raw.md", 0}},
+		{"the source root's ancestor renamed under its parent (B-Q1)", nested, "Notes/raw.md",
+			[]domain.BatchArgs{moveOp("Notes.md", "Journal.md")}, want{"", -1, "", -1}},
+		{"the source root's ancestor moved where it is", nested, "Notes/raw.md", []domain.BatchArgs{moveOp("Notes.md", "Notes.md")},
+			want{"", -1, "", -1}},
+		{"the source root's content edited", flat, "raw.md", []domain.BatchArgs{editOp("raw.md", "a", "b")}, want{"", -1, "", -1}},
+		{"a need, then a later refusal", flat, "raw.md", []domain.BatchArgs{moveOp("raw.md", "sources.md"), deleteOp("AGENTS.md")},
+			want{"page.protected", 1, "AGENTS.md", 0}},
+		{"two needs: the first", flat, "raw.md", []domain.BatchArgs{editOp("Notes.md", "a", "b"), moveOp("raw.md", "Notes/raw.md"),
+			moveOp("Notes/raw.md", "Other/raw.md")}, want{"", -1, "raw.md", 1}},
+		{"a refusal ends the pass before a need", flat, "raw.md", []domain.BatchArgs{deleteOp("AGENTS.md"), moveOp("raw.md", "sources.md")},
+			want{"page.protected", 0, "AGENTS.md", -1}},
+		{"the op's own check first", flat, "raw.md", []domain.BatchArgs{moveOp("AGENTS.md", "Notes.md")},
+			want{"page.title_taken", 0, "", -1}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			raw := tt.nb.id(t, tt.raw)
+			p, _ := planOf(t, tt.nb, tt.ops...)
+			if p.Failed != nil && tt.want.code != "page.title_taken" || p.Needs != nil {
+				t.Errorf("in a standard notebook: Failed %v, Needs %+v; want neither", p.Failed, p.Needs)
+			}
+			p, ids := planIn(t, tt.nb, domain.NotebookState{Mode: domain.ModeLLMWiki, SourceRootID: raw}, tt.ops...)
+			if got := failed(t, p); got.code != tt.want.code || got.at != tt.want.at {
+				t.Fatalf("Failed = %+v (%v), want %s at %d", got, p.Failed, tt.want.code, tt.want.at)
+			}
+			node := uuid.UUID{}
+			if tt.want.node != "" {
+				node = tt.nb.id(t, tt.want.node)
+			} else if strings.HasPrefix(tt.want.code, "page.virtual_file") {
+				node = ids[0][0] // the page created at the root, the first of its path
+			}
+			var r *domain.Refused
+			marked := p.Failed != nil && errors.As(p.Failed, &r)
+			switch {
+			case tt.want.code == "" || tt.want.code == "page.title_taken":
+				if marked {
+					t.Errorf("Failed %v is marked a refusal", p.Failed)
+				}
+			case !marked || r.NodeID != node || p.Failed.Tool != domain.OpKind(tt.ops[tt.want.at].Op):
+				t.Errorf("Failed = %#v, want a refusal of %s (%s) by its op's tool", p.Failed, node, tt.want.node)
+			}
+			switch {
+			case tt.want.need < 0 && p.Needs != nil:
+				t.Errorf("Needs = %+v, want none", p.Needs)
+			case tt.want.need >= 0 && (p.Needs == nil || *p.Needs != domain.Need{Op: tt.want.need, Action: domain.ActionManageSource, NodeID: raw}):
+				t.Errorf("Needs = %+v, want page.manage_source of the source root at %d", p.Needs, tt.want.need)
+			}
+		})
+	}
+
+	wiki := domain.NotebookState{Mode: domain.ModeLLMWiki, SourceRootID: flat.id(t, "raw.md")}
+	denied := domain.Refuse(domain.ErrSourceAdminOnly, flat.id(t, "raw.md"))
+	p, _ := planIn(t, flat, wiki, moveOp("raw.md", "Notes/raw.md"), deleteOp("AGENTS.md"))
+	if p.Refuse(0, denied); failed(t, p) != (refusal{"page.source_admin_only", "", "", 0}) || p.Failed.Tool != domain.OpKindMove {
+		t.Errorf("a refusal before the plan's failure = %+v, want it in its place", failed(t, p))
+	}
+	p, _ = planIn(t, flat, wiki, deleteOp("AGENTS.md"), moveOp("raw.md", "sources.md"))
+	if p.Refuse(1, denied); failed(t, p) != (refusal{"page.protected", "", "", 0}) {
+		t.Errorf("a refusal after the plan's failure = %+v, want the plan's", failed(t, p))
+	}
+	p, _ = planIn(t, flat, wiki, editOp("Notes.md", "a", "b"), moveOp("raw.md", "sources.md"), editOp("Other.md", "a", "b"))
+	if texts, _ := p.Reads(); !slices.Equal(texts, []uuid.UUID{flat.id(t, "Notes.md"), flat.id(t, "Other.md")}) {
+		t.Fatalf("the plan reads %v before a refusal, want Notes and Other", texts)
+	}
+	if p.Refuse(1, denied); !slices.Equal(first(p.Reads()), []uuid.UUID{flat.id(t, "Notes.md")}) || len(p.Pages()) != 1 {
+		t.Errorf("after a refusal at 1 the plan reads %v, its pages %d; want Notes alone", first(p.Reads()), len(p.Pages()))
+	}
+}
+
+// first is a pair's first.
+func first[T, U any](a T, _ U) T { return a }

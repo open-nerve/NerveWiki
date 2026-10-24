@@ -57,9 +57,10 @@ func TestTheModeGuardLetsAStandardNotebookBy(t *testing.T) {
 // The mode guard asks page.manage_source once a unit (M10/P1 design 3.19):
 // a batch that moves the source root twice, the guard's need granted, asks
 // it once in its unit's transaction and writes both moves; two batches,
-// two units, ask it twice. Denied, the first move is refused,
-// page.source_admin_only at ops[0], of the source root, and the unit rolls
-// back.
+// two units, ask it twice. Denied once the plan, which asks apart, let the
+// batch by (the role changed in between), the first move is refused in the
+// unit, page.source_admin_only at ops[0], of the source root, and the unit
+// rolls back.
 func TestTheModeGuardAsksOnceAUnit(t *testing.T) {
 	newWiki := func(grant bool) (*fixture, domain.Node) {
 		f := newFixture()
@@ -94,11 +95,15 @@ func TestTheModeGuardAsksOnceAUnit(t *testing.T) {
 		t.Errorf("two batches of a move of raw each asked page.manage_source %d times in their units, want twice", n)
 	}
 
-	f, raw = newWiki(false)
+	f, raw = newWiki(true)
+	f.rec.before = map[string]func(){"LockNotebook in tx": func() {
+		f.auth.grants[domain.ActionManageSource], f.auth.forbidden[domain.ActionManageSource] = false, true
+	}}
 	_, err := f.applyBatch(&fakeLinks{recorder: f.rec}, moveOp("raw.md", "Notes/raw.md"), moveOp("Notes/raw.md", "Other/raw.md"))
 	var r *domain.Refused
-	if opOf(err) != "0 page.source_admin_only" || !errors.As(err, &r) || r.NodeID != raw.ID || asked(f) != 1 || !f.tx.rolledBack {
-		t.Errorf("a batch of two moves of raw by a writer = %s (%v) asking %d times; want ops[0]'s page.source_admin_only of raw, "+
-			"asked once, rolled back", opOf(err), err, asked(f))
+	if opOf(err) != "0 page.source_admin_only" || !errors.As(err, &r) || r.NodeID != raw.ID || asked(f) != 1 || !f.tx.rolledBack ||
+		f.count("Authorize page.manage_source") != 1 {
+		t.Errorf("a batch of two moves of raw by an admin made a writer = %s (%v) asking %d times in the unit; want ops[0]'s "+
+			"page.source_admin_only of raw, asked once there and once by the plan, rolled back", opOf(err), err, asked(f))
 	}
 }
