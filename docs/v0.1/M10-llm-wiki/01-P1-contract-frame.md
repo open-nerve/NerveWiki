@@ -3,8 +3,8 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M10/P1 契约的框架（四个 Step：S1 模式与模板（服务端）；S2 守卫的骨架；S3 预检、加序号与后台的拒绝的去处；S4 网页（一）） |
-| 日期 | 2026-10-24（照 S1 修订 2026-10-25） |
-| 状态 | 进行中（S1 已合并，S2 开工）；设计已审查，[审查记录](reviews/P1-design-review.md)，两轮复核在它的末节；S1 的审查记录 [P1-S1-mode-template-review.md](reviews/P1-S1-mode-template-review.md)，实施与审查之后与代码不同之处照实改在各节（3.30 列出），结果在 10.1 |
+| 日期 | 2026-10-24（照 S1、S2 修订 2026-10-25） |
+| 状态 | 进行中（S2 已合并，S3 待开工）；设计已审查，[审查记录](reviews/P1-design-review.md)，两轮复核在它的末节；S1、S2 的审查记录 [P1-S1-mode-template-review.md](reviews/P1-S1-mode-template-review.md)、[P1-S2-guard-review.md](reviews/P1-S2-guard-review.md)，实施与审查之后与代码不同之处照实改在各节（3.30、3.31 列出），结果在 10.1、10.2 |
 | 上级文档 | [M10 总设计](00-M10-design.md) 4.1–4.9、4.15–4.18、第 5、7、8、9、10、11 节与"总体设计的修订"、"移交的落实"；[M10 设计审查](reviews/M10-design-review.md)；[移交](handoffs/)：M5-events、M8-history、M9-P1-mcp-registry；[v0.1 总体设计](../v0.1-design.md) 5.1–5.9、12.4、13.1–13.4；[M9/P3](../M9-mcp/03-P3-batch-revert.md)（写法） |
 | 代码位置的写法 | 同 00 号文档：模块写作 `page/app/unit.go:185`（`server/internal/modules/` 之下）；`platform/…`、`bootstrap/…`、`shared/…`、`archtest/…` 在 `server/internal/` 之下；迁移写作 `00009_notebook_notebooks.sql:12`（`server/migrations/sql/`），迁移的测试写作 `server/migrations/schema_test.go:163`；前端写作 `W/stores/notebook.store.ts:45` 或 `web/…/notebook.store.ts:45`（`W/` 是 `web/apps/web/src/`）；e2e 写作 `e2e/fixtures/notebooks.ts:9`；契约写作 `api/modules/notebook.yaml:421`。代码的行号是 `d7bb5e8d` 的（`main`，M10 总设计的文档提交；代码与 M9 的 Codex 评审之后的文档提交 `91ee78d8` 相同），00 号文档与 v0.1 总体设计的行号也是它的 |
 | 工作笔记 | `scratchpad/m10/p1/notes.md`；代码的核对分五份（网页、e2e、契约与 CI、守卫与矩阵、transfer 与后台）在 `scratchpad/m10/p1/h/`，本文引的每个行号都在其中或附录里核对过。P1 不量要数据库的东西（第 7.6 节写实施时怎样量） |
@@ -26,7 +26,7 @@
   - 网页：生成的类型、两处字面量、`notebook.not_llm_wiki` 的文字（4.1）；e2e：夹具、LW1 (API)、LW1 (MCP)、MC1 的期望（第 5 节）。
 - **S2 守卫的骨架**（分支 `m10-p1-s2`）：
   - `Write.Notebook`：page 的端口的 `ShareByID`、`LockByID` 交回状态（3.18）；`page.manage_source` 与单元的 `Write.Grants`（3.19）；
-  - `page.NewModeGuard(authorizer)` 登记在锁之前、`pageRegistrants(pool, authorizer)` 与 `pageSessionSubscribers(pool)`（3.20）；
+  - `page.NewModeGuard(authorizer)` 登记在锁之前、`pageRegistrants(pool, authorizer)` 与 `pageSessionSubscribers()`（3.20；不收连接池，S2 的偏离 5）；
   - `CheckContract` 与 P1 的四条规则（`AGENTS` 的保护、来源根的保护与它的管理员规则、根下的四个保留标题）、步 × 节点的表（3.21）；
   - 拒绝的标出（`Refused`、`page.Refusal`）与 `batch` 的 `failed`；`batch` 的计划的树的一遍调 `CheckContract`（本在 S3，主持者挪进 S2）；P1 的码进各操作的 `x-problem-codes` 与 `mcpToolCodes()`、它们的文字；矩阵的变体的行（3.22）；
   - P1 里没有可拒的路径；降级与 `AGENTS` 的删除的交错（3.23）；整个程序的测试，含 `batch` 的只有守卫拒绝的情形（3.24）；
@@ -44,7 +44,9 @@
 **Step 之间的窗口**（主持者对 B-Q2 = C-Q2 的决定）：四个 Step 一个接一个合并，中间不合并别的分支、不发布（6.5），所以下面的窗口只在两次合并之间的 `main` 上，各由下一个 Step 的合并关上：
 
 - **S1→S2**：建得出 LLM Wiki，还没有守卫：写者可以删除、改名、移动 `AGENTS`，删除 `raw`；这样的数据让 `checkPages` 的 3.14 的规则失败，S1 的测试不这样做（审查 A-N13）。
-- **S2→S3**：导入与恢复照今天把 `index` 放到根下（3.21，S3 加序号与 `checkPages` 的规则）；`startRevert` 开始一个会被拒的后台撤销，它以 `internal` 停下（3.23，S3 的去处）。
+- **S2→S3**：导入与恢复照今天把 `index` 放到根下（3.21，S3 加序号与 `checkPages` 的规则）；`startRevert` 开始一个会被拒的后台撤销，它以 `internal` 停下（3.23，S3 的去处）。S2 的审查另找到两个（审查 A-M2、A-M3，[S2 的审查记录](reviews/P1-S2-guard-review.md)的主持者的决定 29）：
+  - 恢复或导入放到根下的 `index` 改名之后，撤销这次改名在根下放回 `index`，答 `revertChangeset` 没有声明的 409 `page.virtual_file`（3.21 的表的"撤销的放回"的 R3 一格在这一段到得了）；S3 加序号之后根下没有保留的键，它又到不了，所以不为它声明这个码。
+  - 同步的撤销在 S2 没有契约的预检，守卫 `[mode, lock]` 逐步判：前一步碰到编辑锁时答 `page.locked`，不答后一步的 `page.source_admin_only`（`revertChangeset` 的说明与 13.1 第 4 条写的"模式在锁之前"对这个形状不成立）。S3 的撤销的两遍预检关上它，3.28 的 `TestPrechecksAnswerTheGuardsCodes` 钉住这个形状（第 9 节）。
 
 `batch` 的计划的预检在 S2（3.22），所以 S2 与 S3 之间 MCP 的 `batch` 不先答 `page.locked`、后答 `page.protected`：它的码的次序与 REST、MCP 的 `delete` 一样（审查 B-M8a，主持者为此把它挪进 S2）。
 
@@ -87,7 +89,7 @@
 3. **两个扩展点的值的名字**（第 8 节，`:622-649`）：值叫 `NotebookCreation`、`ModeChange`，方法叫 `NotebookCreated`、`ModeChanged`，照 notebook 已有的两对（`NotebookDeletion`/`NotebookDeleted`、`VisibilityChange`/`VisibilityChanged`，`notebook/app/extension.go:17-33`、`:80-97`）（3.5）。第 8 节的 notebook 一行（`:640`）的"`notebook.New` 的两个新的 `Deps`"改为"`notebook.New` 的三个新的 `Deps`（另有 `WritingJobs`：`transfer.NewWritingJobs`，没有它时 `New` panic）"（3.5 的 `TestTheModuleRefusesNoWritingJobs`，审查 AC2-N1）。
 4. **`Write.Notebook` 的来路**（4.6、第 7 节的 S2，`:531`）："`ShareByID`、`LockByID` 交回状态"指 page 的端口：方法名不变、交回 `domain.NotebookState`；notebook 的根另加 `StateOf`（S1）、`ShareState`、`LockState`（S2），它的 `ShareByID`、`LockByID` 不改，因为 transfer 与 linking 的端口用它们（`transfer/app/ports.go:30-40`、`linking/app/reindex.go:36-43`）；page 经组合根的 `pageNotebooks` 逐字段转换（3.3、3.12、3.18）。`StateOf` 在 S1 就要：`open_notebook` 答 `mode`，而它的用例与门今天都不读笔记本的行（`page/app/open_notebook.go:30-38`、`gate.go:17-36`）。4.6 的表的 `Write.Notebook` 一行（`:156`）照此写出两边；第 7 节 P1 的 S1 加"`open_notebook` 经 notebook 的根的 `StateOf` 读它"，S2 的"`ShareByID`、`LockByID` 交回状态"写明是 page 的端口、notebook 的根加 `ShareState`、`LockState`；第 8 节的 notebook 一行（`:640`）的"`notebook.NewNotebooks` 的 `ShareByID`、`LockByID` 交回状态"改为"加 `StateOf`、`ShareState`、`LockState`（`ShareByID`、`LockByID` 不改）"。
 5. **祖先的一线与会话的否决者在 P2/S1**（4.6"守卫要的祖先"，第 7 节的 S2"`page.NewModeGuard` 与它的否决者登记在锁之前"）：P1 的规则不读祖先（`AGENTS` 在根下；来源根按 id 认，删除与移动的一步本就列出整棵子树，`unit_delete.go:43-48`、`unit_move.go:73-88`；保留的标题只看根下），也没有会话的规则（只有来源上不开会话，4.7）；一个永远放行的否决者的次序没有测试看得出。所以两者随它们的第一条规则在 P2/S1（00 号文档的 P2/S1 一行本就写着"来源的会话否决者"）；P1/S2 一行改为"`page.NewModeGuard` 登记在锁之前"（3.20、3.21）；4.6 的"守卫要的祖先"（`:163`）与"位置与次序"的 `sessionVetoers`（`:165`）各写明是 P2/S1 的。
-6. **守卫的构造与登记**（4.1 的表 `:73`、`:84`，4.6 的"位置与次序" `:165`，第 7 节 P1 的 S2 `:531`，第 8 节 `:632`；13.1 第 21 条，12.4）：P1 的守卫是 `page.NewModeGuard(authorizer)`，P2/S1 读来源区时加连接池（`NewModeGuard(pool, authorizer)` 是那时的签名），P1 不收一个不用的参数。授权者只有 serve 有：`pageRegistrants(pool)` 改为 `pageRegistrants(pool, authorizer)`，命令行经 `notebookRegistrants` 要的会话的订阅者抽成 `pageSessionSubscribers(pool)`（命令行的路径上不许建 `access.New`，`archtest/composition_test.go:100-117`；`bootstrap/registrants.go:188`）（3.20）。
+6. **守卫的构造与登记**（4.1 的表 `:73`、`:84`，4.6 的"位置与次序" `:165`，第 7 节 P1 的 S2 `:531`，第 8 节 `:632`；13.1 第 21 条，12.4）：P1 的守卫是 `page.NewModeGuard(authorizer)`，P2/S1 读来源区时加连接池（`NewModeGuard(pool, authorizer)` 是那时的签名），P1 不收一个不用的参数。授权者只有 serve 有：`pageRegistrants(pool)` 改为 `pageRegistrants(pool, authorizer)`，命令行经 `notebookRegistrants` 要的会话的订阅者抽成 `pageSessionSubscribers(pool)`（命令行的路径上不许建 `access.New`，`archtest/composition_test.go:100-117`；`bootstrap/registrants.go:188`）（3.20）。S2 照实不收连接池：它唯一的订阅者是事件流的发布者，只要它的 `NOTIFY`（`events.NewPublisher()`），所以是 `pageSessionSubscribers()`（S2 的偏离 5，3.31）；00 号文档 4.1 与第 7 节的 P1 一行随之写作不带池。
 7. **两处预检的位置**（4.6 的预检的表；第 5 节的码的表）：上传的检查排在 `storage_full` **之前**，不是之后：`storage_full` 是 asset 模块在 page 的整个 `Check` 之后查的（`asset/app/upload.go:67-76`），两者都不写；撤销的检查在 `revertChecks.check` 里、`page.locked` 之前，所以也在 503 **之前**：同一个函数给同步的撤销、`startRevert` 的 `CheckRevert` 与任务的 `PlanRevert`（`revert_changeset.go:94`、`:104-108`，`jobs.go:169`、`:315`），被拒的撤销不占解析的预算（3.25）。`uploadAsset`、`revertChangeset`、`startRevert` 的码的次序照此写（3.22、3.25），第 5 节的表里这三行各加一句次序。撤销的次序由 3.28 的 `TestTheServersLimitsComeAfterThePrechecks` 在整个程序里核对：预算占着时被拒的撤销立刻答它自己的码、放过的答 503（审查 B-I3）；上传的次序是结构的（asset 在 page 的整个 `Check` 之后才查空间），由 `asset/app/upload_test.go` 的 `TestCheckDecidesTheNodeThenTheFreeSpace` 的一种核对（3.28，审查 B-M4、B3-N2；第一轮复核取 C 的建议，去掉了整个程序里的磁盘的一半）。
 8. **后台与预检的几处说法**（4.6、第 7 节的 S3）："`treeError` 先认它已有的哨兵（`ErrLocked` 在最前）"：`ErrLocked` 是已有的九个里的最后一个（`bootstrap/transfer.go:243-244`），意思是已有的哨兵都在认拒绝之前（3.26），第 7 节 S3 的"`treeError` 先认 `ErrLocked`、再认 `page.Refusal`"同样写明；"后台每批的 `CheckRevertPart`"去掉（第 19 条；草稿把这一批的检查接在 `CheckRevertSteps` 之后，因为 `CheckRevertPart` 没有操作与目标，`domain/revert_part.go:22-30`）；"报告 `renamed`"在后台的恢复里是 `counts.renamed`，没有 `renamed` 问题（`transfer/app/background.go:215-218`，3.27），第 3 节第 4 条（`:59`）的同一句同样写明；`:191` 的"换成 transfer 的 `ErrRefused{Code, NodeID}`"改为"换成 transfer 的 `Refused{Code, NodeID, Err}`（`Err` 是 page 的拒绝，`Unwrap` 到它）"（3.26 第 3 条：带字段的错误类型不叫 `Err…`；审查 C2-N3）；"有预检的路径要到 P2/S2 的重复才有只有守卫拒绝的情形"：P1 里已有两种，都是执行者被降为写者：`batch` 的，降级落在计划与单元之间（3.24 的 `TestTheGuardRefusesWhatThePlanLetBy`，经 MCP 的 `batch`，`guards: []` 时同样的交错让移动成功；草稿以 REST 的 `moveNode` 写它，那条路径没有预检，审查 B-I1 = C-I4）；后台撤销的，降级落在两批之间（第 19 条：每一批由它的守卫判）。上传、同步的撤销与 `startRevert` 在 P1 没有，到 P2/S2 的重复才有（3.25）。改为："有预检的路径上只有守卫拒绝的情形：P1 有 `batch` 的计划与单元之间、后台撤销的两批之间的降级；上传、同步的撤销与 `startRevert` 的到 P2/S2 的重复才有"。第 9 节的"有预检的路径"（`:654`）同样："P2/S2 补上"之后加"（P1 已有 `batch` 的计划与单元之间的降级，P1 设计 3.24）"（审查 C3-N3）。
 9. **降级的探查看不到的**（4.5）：加一句："任务的行之外，一次正在上传的导入与一次正在开始的任务只是进程里的占位（`transfer/app/start_import.go:82-86`、`start_background.go:125-136`），降级看不到它们、照样成功；它们写下任务的行时以 `FOR SHARE` 锁笔记本行，排在降级之后，按普通的契约走"（3.10）。
@@ -1316,27 +1318,27 @@ func (d *DowngradeNotebook) Execute(ctx context.Context, id uuid.UUID) (View, er
 | 包 | 文件 | 新或改 | 内容 |
 |---|---|---|---|
 | notebook | `adapter/postgres/queries/notebooks.sql`、`store.go`、`gen/`；`notebooks.go`、`notebooks_test.go` | 改 | `ShareNotebook` 选出两列；根的 `ShareState`、`LockState`（3.18） |
-| page | `domain/contract.go`、`domain/contract_test.go` | 新 | `StepFacts`、`NodeFacts`、`Place`、`FactsOf`、`Verdict`、`CheckContract`、`ReservedKeys`（3.21） |
+| page | `domain/contract.go`、`domain/contract_test.go` | 新 | `StepFacts`、`NodeFacts`、`NodePlace`、`FactsOf`、`Verdict`、`CheckContract`、`ReservedKeys()`、`Reserved`（3.21；`page/domain` 已有 `Place`，lint 不许包级的变量，S2 的偏离 2、3） |
 | page | `domain/batch_plan.go`、`domain/batch_plan_test.go` | 改 | `PlanBatch` 收笔记本的状态，树的一遍调 `CheckContract`，`Needs`、`Refuse`（3.22 的"`batch` 的计划"） |
-| page | `domain/errors.go`、`domain/refused.go`、`domain/actions.go` | 改、新 | `ErrProtected`、`ErrVirtualFile`、`ErrSourceAdminOnly`；`Refused`、`Refuse`；`ActionManageSource`（3.19、3.22） |
+| page | `domain/errors.go`、`domain/refused.go`、`domain/refused_test.go`、`domain/actions.go` | 改、新 | `ErrProtected`、`ErrVirtualFile`、`ErrSourceAdminOnly`；`Refused`、`Refuse` 与 `TestARefusalIsMarkedOnce`；`ActionManageSource`（3.19、3.22） |
 | page | `app/extension.go`、`app/grants.go`、`app/grants_test.go` | 改、新 | `Write.Notebook`、`Write.Grants`；`Grants` 与 `TestAGrantIsAskedOnceAUnit`（3.18、3.19） |
 | page | `app/ports.go`、`app/unit.go`、`app/unit_test.go` | 改 | `Notebooks.ShareByID`、`LockByID` 交回状态；`run` 把状态与备忘放进 `Write`；`apply` 标出守卫的拒绝与 `TestAUnitMarksItsGuardsRefusals`（3.18、3.22） |
-| page | `app/mode_guard.go`、`app/mode_guard_test.go`；`mode_guard.go`、`refusal.go`、`refusal_test.go` | 新 | 守卫 `ModeGuard` 与它的 `TestTheModeGuardLetsAStandardNotebookBy`、`TestTheModeGuardAsksOnceAUnit`（假的存储与授权者）；模块根的 `NewModeGuard`、`Refusal`（3.19、3.20、3.22） |
-| page | `app/apply_batch.go`、`app/apply_batch_test.go` | 改 | `failed` 先认 `Refused`；计划的预检：不加锁读 `StateOf`、问 `page.manage_source`（3.22）；钉住整个调用列表的 `batch` 测试加 `"StateOf nb"` |
+| page | `app/mode_guard.go`、`app/mode_guard_test.go`；`mode_guard.go`、`refusal.go`、`refusal_test.go` | 新 | 守卫 `ModeGuard` 与它的 `TestTheModeGuardLetsAStandardNotebookBy`、`TestTheModeGuardMarksTheNodeItRefuses`（S2 的修复一轮加，审查 C-M1）、`TestTheModeGuardAsksOnceAUnit`（假的存储与授权者）；模块根的 `NewModeGuard`、`Refusal` 与 `TestRefusalReadsTheMark`（3.19、3.20、3.22） |
+| page | `app/apply_batch.go`、`app/apply_batch_test.go`；`app/authorize.go` | 改 | `failed` 先认 `Refused`；计划的预检：不加锁读 `StateOf`、问 `page.manage_source`（3.22）；没有钉住整个调用列表的 `batch` 测试，`TestABatchsPlanRefusesBeforeItsLock` 的最后一行核对 `StateOf` 紧跟 `ListNodes`、不在事务里（S2 的偏离 11）；`decideNotebook` 包着新的 `decidedNotebook`，它另答笔记本的工作区，计划问 `page.manage_source` 用它（S2 的偏离 8） |
 | page | `app/write_test.go` | 改 | `TestTheGuardSeesTheCheckedChange`（`:309-311`）以 `s.Write != want` 比较整个 `Write`：每个单元一个新的 `Grants` 指针让它失败，改为 `want.Grants = s.Grants` 之后再比（3.18） |
 | page | `app/fakes_test.go`、`extension_test.go`、`adapter/postgres/paths_property_test.go` 等 | 改 | 假的 `Notebooks` 交回状态 |
 | page | `adapter/http/handler_test.go`、`history_test.go` | 改 | 新码的行（3.22） |
 | asset | `adapter/http/upload_test.go` | 改 | `page.virtual_file` 的行 |
 | access | `domain/rules.go` | 改 | `page.manage_source` 一行（3.19） |
-| bootstrap | `page_notebooks.go`、`registrants.go`、`deps.go` | 改 | `ShareByID`、`LockByID` 的转换；`pageRegistrants(pool, authorizer)`、`pageSessionSubscribers(pool)`（3.20） |
-| bootstrap | `wiki_guard_test.go`、`mcp_wiki_guard_test.go`、`interleavings_wiki_test.go`（含 `TestTheGuardRefusesWhatThePlanLetBy`）、`interleavings_workspace_test.go`（收 `wiring` 的 `acmeTeam`）、`permission_matrix_*`、`mcp_write_codes_test.go`、`mcp_reads_test.go` | 新、改 | 第 7 节 |
+| bootstrap | `page_notebooks.go`、`page_notebooks_test.go`、`registrants.go`、`deps.go` | 改 | `ShareByID`、`LockByID` 经 `toPageState` 的转换，`TestPageNotebooksConvertTheState` 读三种读法、各记下它调的读；`pageRegistrants(pool, authorizer)`、`pageSessionSubscribers()`（3.20；不收连接池，S2 的偏离 5） |
+| bootstrap | `wiki_guard_test.go`、`mcp_wiki_guard_test.go`、`wiki_downgrade_test.go`、`interleavings_wiki_test.go`（含 `TestTheGuardRefusesWhatThePlanLetBy`）、`interleavings_workspace_test.go`（收 `wiring` 的 `newAcmeTeamWiring`）、`permission_matrix_*`、`mcp_write_codes_test.go`、`mcp_reads_test.go`、`page_lock_test.go`（`pageRegistrants(pool, authorizer)`） | 新、改 | 第 7 节 |
 | 契约 | `api/modules/page.yaml`、`api/modules/asset.yaml` | 改 | `x-problem-codes`（3.22） |
 | 网页 | `app/problem-messages.ts`、`i18n/messages/{en,zh-CN}.ts` | 改 | 三个码的文字（4.2） |
 | e2e | `stories/wiki/lw2-protected.spec.ts` | 新 | LW2 的 API、MCP（第 5 节） |
 
 ### 3.18 S2：`Write.Notebook`
 
-- **notebook**：`ShareNotebook`（`notebooks.sql:22-28`）选出 `id, mode, source_root_id`（3.3 的写法；`store.go:81-86` 的 `ShareNotebook` 今天只答错误，改为答 `State`）。根的 `Notebooks` 加 `ShareState`、`LockState`（3.3 的签名），`ShareByID`、`LockByID` 改为调用它们、丢掉状态，所以 transfer 与 linking 的端口（`transfer/app/ports.go:30-40`、`linking/app/reindex.go:36-43`）不动。`notebook/notebooks_test.go:21`、`:122-131` 的表格加两个新方法（事务之外报错、读到两列）。
+- **notebook**：`ShareNotebook`（`notebooks.sql:22-28`）选出 `id, mode, source_root_id`（3.3 的写法；`store.go:81-86` 的 `ShareNotebook` 今天只答错误）。照实，存储的 `ShareNotebook` 答 `(domain.Mode, uuid.UUID, error)`，不答 `State`：适配器不能导入模块根的 `State`，根由这两个值建它；`LockState` 读 `LockNotebook` 已选的列（S2 的偏离 1）。根的 `Notebooks` 加 `ShareState`、`LockState`（3.3 的签名），`ShareByID`、`LockByID` 改为调用它们、丢掉状态，所以 transfer 与 linking 的端口（`transfer/app/ports.go:30-40`、`linking/app/reindex.go:36-43`）不动。`notebook/notebooks_test.go:21`、`:122-131` 的表格加两个新方法（事务之外报错、读到两列：一本 LLM Wiki、一本普通的、一本删掉的与没有的四行）。
 - **page 的端口**（`page/app/ports.go:54-63`）：
 
   ```go
@@ -1396,8 +1398,8 @@ func (d *DowngradeNotebook) Execute(ctx context.Context, id uuid.UUID) (View, er
   ```
 
   **为什么是指针**（审查 A2-N4、A3-N2）：`Step` 按值嵌着 `Write`（`page/app/extension.go:41-42`，`u.step` 照值复制 `u.write`，`unit.go:292-294`），守卫按值拿到 `Step`（`extension.go:142`、`unit.go:303-307`）；一个值的备忘在每一步的副本里填了又丢掉，守卫就每一步都问一次。指针让同一个单元的每一步看到同一份答案。`Grants{}` 的零值可用（`allowed` 在第一次 `Ask` 时建）。
-- **测试**（`page/app/grants_test.go`）：`TestAGrantIsAskedOnceAUnit`：同一个 `Grants` 问两次 `page.manage_source`、`ask` 只被调用一次、两次答同样的；问两个动作各调用一次；`ask` 答 `shared.Forbidden()` 或 `ErrNotVisible` 时两次都答 `shared.Forbidden()`、只问一次（拒绝记下）；答一个数据库的错误时原样答出、下一次再问（没有记下，主持者对 B-O3 的决定）。
-- **"一个单元问一次"数的是单元里的问**（主持者对 B-M2 的决定取第一种）：`batch` 的计划在单元之前、锁之外另问一次（3.22），它的答案不交给单元。交给单元就让一个在计划与单元之间被降为写者的执行者照计划时的权限写下去（`TestTheGuardRefusesWhatThePlanLetBy` 正是这个情形）；00-M10 4.6 要守卫的读"在单元的事务里"。所以 `page/app/mode_guard_test.go` 的 `TestTheModeGuardAsksOnceAUnit`（假的存储、事务与授权者，`fakes_test.go` 的 `recorder` 给事务里的调用记下 `" in tx"`，`:52-69`；守卫是真的 `ModeGuard`，交给 `fixture` 的 `guards`）：一个 `batch` 两次移动 `raw`（`apply_batch_test.go` 的写法；假的授权者放行 `batch` 自己的动作与 `page.manage_source`（`f.grant(domain.ActionBatch)` 之外再 `grant` 它），两次移动都写下。不放行时 `fakeAuthorizer` 答 `ErrNotVisible`、`Grants.Ask` 把它换成 `Forbidden()`，守卫在第一次移动就拒绝、单元停下，指针与值都只问一次，测试分不出它们，审查 B3-N1），记下的调用里 `"Authorize page.manage_source in tx"` 恰一次；分开的两次移动（两个单元）两次。`Write.Grants` 是值时（第 32 条变异）步按值带着 `Write`，每一步都问，记下两次，测试失败（审查 B 的第三条轻的意见：守卫在 `page/app`，不必真库）。事务外的问是计划的（S2 的第 4 个提交起恰一次），这个测试不数它们，`TestABatchsPlanRefusesBeforeItsLock` 数（3.22）。
+- **测试**（`page/app/grants_test.go`）：`TestAGrantIsAskedOnceAUnit`：同一个 `Grants` 问两次 `page.manage_source`、`ask` 只被调用一次、两次答同样的；问两个动作各调用一次；`ask` 答 `shared.Forbidden()` 或 `ErrNotVisible` 时两次都答 `shared.Forbidden()`、只问一次（拒绝记下）；答一个数据库的错误时原样答出、下一次再问（没有记下，主持者对 B-O3 的决定）。照实，第 1 个提交的这个测试以 `node.move`、`node.rename` 作问的动作：`Grants` 不看动作，`page.manage_source`（动作、`Actions()` 与规则的一行）落在第 2 个提交，因为 `CheckContract` 的 `Needs` 要它，`TestTheRuleTableIsTheModulesActions` 又要两边在同一个提交（S2 的偏离 4）。
+- **"一个单元问一次"数的是单元里的问**（主持者对 B-M2 的决定取第一种）：`batch` 的计划在单元之前、锁之外另问一次（3.22），它的答案不交给单元。交给单元就让一个在计划与单元之间被降为写者的执行者照计划时的权限写下去（`TestTheGuardRefusesWhatThePlanLetBy` 正是这个情形）；00-M10 4.6 要守卫的读"在单元的事务里"。所以 `page/app/mode_guard_test.go` 的 `TestTheModeGuardAsksOnceAUnit`（假的存储、事务与授权者，`fakes_test.go` 的 `recorder` 给事务里的调用记下 `" in tx"`，`:52-69`；守卫是真的 `ModeGuard`，交给 `fixture` 的 `guards`）：一个 `batch` 两次移动 `raw`（`apply_batch_test.go` 的写法；假的授权者放行 `batch` 自己的动作与 `page.manage_source`（`f.grant(domain.ActionBatch)` 之外再 `grant` 它），两次移动都写下。不放行时 `fakeAuthorizer` 答 `ErrNotVisible`、`Grants.Ask` 把它换成 `Forbidden()`，守卫在第一次移动就拒绝、单元停下，指针与值都只问一次，测试分不出它们，审查 B3-N1），记下的调用里 `"Authorize page.manage_source in tx"` 恰一次；分开的两次移动（两个单元）两次。`Write.Grants` 是值时（第 32 条变异）步按值带着 `Write`，每一步都问，记下两次，测试失败（审查 B 的第三条轻的意见：守卫在 `page/app`，不必真库）。事务外的问是计划的（S2 的第 4 个提交起恰一次），这个测试不数它们，`TestABatchsPlanRefusesBeforeItsLock` 数（3.22）。照实（S2 的偏离 12）：第 4 个提交起计划在任何单元之前拒绝被拒的 `batch`，所以拒绝的一行改为计划放行、锁下拒绝（记录器在 `"LockNotebook in tx"` 时把放行改成拒绝，等于其间角色变了），仍是守卫的拒绝，核对单元里问一次、计划问一次；替身授权者对没放行的动作默认答 `ErrNotVisible`（第 3 个提交里守卫的 `Grants` 把它当拒绝，第 4 个提交起计划把它答成笔记本的 404），另加 `failing`（数据库的错误的一行）。审查 C：这比设计的写法好，分得出单元的问与计划的问（抓到 c04 与第 40 条），第 32 条照旧由第一行抓到。
 
 ### 3.20 S2：模式的守卫与它的登记
 
@@ -1426,7 +1428,7 @@ func (g *ModeGuard) GuardWrite(ctx context.Context, s Step) error {
 	case v.Err != nil:
 		return domain.Refuse(v.Err, v.NodeID)
 	case v.Needs != "":
-		err := s.Grants.Ask(ctx, v.Needs, g.decide(s))
+		err := s.Grants.Ask(ctx, v.Needs, g.decide(s, v.Needs))
 		if isForbidden(err) {
 			return domain.Refuse(domain.ErrSourceAdminOnly, v.NodeID)
 		}
@@ -1436,8 +1438,9 @@ func (g *ModeGuard) GuardWrite(ctx context.Context, s Step) error {
 }
 ```
 
-- `decide(s)` 以 `shared.RequireActor(ctx)`（单元的执行者是 ctx 的，`unit.go:197`）与 `shared.Target{WorkspaceID: s.WorkspaceID, NotebookID: s.NotebookID}` 调 `g.auth.Authorize`；看不到（不会发生：单元刚在同一个事务里判定过它看得到）由 `Grants.Ask` 换成 `shared.Forbidden()`（3.19），所以与 403 一样答 `page.source_admin_only`，守卫不另认 `ErrNotVisible`（审查 B2-N5）。别的错误（数据库）原样答出，单元回滚。
+- `decide(s, action)` 以 `shared.RequireActor(ctx)`（单元的执行者是 ctx 的，`unit.go:197`）与 `shared.Target{WorkspaceID: s.WorkspaceID, NotebookID: s.NotebookID}` 调 `g.auth.Authorize`；看不到（不会发生：单元刚在同一个事务里判定过它看得到）由 `Grants.Ask` 换成 `shared.Forbidden()`（3.19），所以与 403 一样答 `page.source_admin_only`，守卫不另认 `ErrNotVisible`（审查 B2-N5）。别的错误（数据库）原样答出，单元回滚。
 - **"普通的立刻放行"**：`Mode` 不是 `llm_wiki` 时第一行返回，不建事实、不问授权者。单去掉这一行在 P1 看不出（审查 B-M6）：`CheckContract` 自己对普通的笔记本答零，普通的笔记本又没有来源根，什么也不会问；所以这一行是等价的变异，不列。P1 的 `TestTheModeGuardLetsAStandardNotebookBy`（`app/mode_guard_test.go`）照主持者对 B-O2 的决定改为能失败的：一本普通的笔记本里交给守卫的，是 LLM Wiki 会拒的步（手写的 `Step`：删除根下叫 `AGENTS` 的页、排序它、根下新建 `index`、把一页改名为根下的 `index.md`），每一步答 `nil`；守卫与 `CheckContract` 都不看模式（7.3 的变异）时这几步被拒、测试失败。不核对"授权者一次也没被问"：普通的笔记本没有来源根，R4 从不要问，这一句在 P1 与 P2 都失败不了（审查 B 的第一条轻的意见）。P2/S1 的守卫读连接池（祖先与哈希）之后，"普通的笔记本什么也不读"才看得出：那时这个测试加一个计数的存储（第 9 节）。
+- **标出的节点**（S2 的修复一轮加，审查 C-M1）：`TestTheModeGuardMarksTheNodeItRefuses`（在它旁边，假的授权者一律拒绝 `page.manage_source`）：删除 `Notes`（`raw` 在它之下）答以 `raw` 标出的 `page.protected`；把 `Notes` 移到 `Other` 之下（`raw` 在它之下）答以 `raw` 标出的 `page.source_admin_only`。这两种被拒的节点都不是步的第一个节点，守卫不标出时 `Unit.apply` 的后备以第一个节点 `Notes` 标出，也是错的（第 83、84 条变异）；S2 里生产的代码还不读这个节点（S3 的 `treeError` 与报告的 `refusal.node_id` 读），整个程序的测试看不出它。
 - **构造**：P1 的守卫只要授权者；P2/S1 的来源区的规则要读祖先与正文的哈希时加连接池（00-M10 4.1 写的 `page.NewModeGuard(pool, authorizer)` 是 P2 之后的签名，P1 不收一个不用的参数，2.1 第 6 条）。`NewModeGuard(nil)` 不 panic：`bootstrap/trash_test.go:453`、`:472` 以 nil 的连接池与授权者调 `pageDeps`，守卫只在一步要问时才用授权者。
 - **登记**（`bootstrap/registrants.go`）：
 
@@ -1454,17 +1457,18 @@ func (g *ModeGuard) GuardWrite(ctx context.Context, s Step) error {
   	return pageExtensions{
   		guards:             []page.WriteGuard{mode, lock},
   		…
-  		sessionSubscribers: pageSessionSubscribers(pool),
+  		sessionSubscribers: pageSessionSubscribers(),
   	}
   }
 
   // pageSessionSubscribers are the subscribers of the page module's edit
-  // sessions: M5's event stream. A notebook's deletion ends its sessions
-  // through them, the command line's among them.
-  func pageSessionSubscribers(pool *pgxpool.Pool) []page.EditSessionSubscriber
+  // sessions: M5's event stream, whose publisher holds nothing but its
+  // NOTIFY. A notebook's deletion ends its sessions through them, the
+  // command line's among them.
+  func pageSessionSubscribers() []page.EditSessionSubscriber
   ```
 
-  `notebookRegistrants` 的 `page.NewNotebookDeletion(pool, pageRegistrants(pool).sessionSubscribers)`（`:188`）改为 `pageSessionSubscribers(pool)`：命令行的 `Users`、`Workspaces` 经它走到这里（`archtest/composition_test.go:31-84`），而那里没有授权者，也不许建 `access.New`（模块根的 `New`，`:100-117`）。`pageDeps`（`bootstrap/deps.go:141-173`）本就收 `authorizer`，交给 `pageRegistrants(pool, authorizer)`。13.1 第 21 条的"两处都是 `pageRegistrants(pool).sessionSubscribers`"与 12.4 的 `pageRegistrants(pool)` 照此改（第 8 节）。
+  `notebookRegistrants` 的 `page.NewNotebookDeletion(pool, pageRegistrants(pool).sessionSubscribers)`（`:188`）改为 `pageSessionSubscribers()`（不收连接池：它唯一的订阅者是事件流的发布者，只要它的 `NOTIFY`，`events.NewPublisher()`，收池是一个没用的参数，S2 的偏离 5）：命令行的 `Users`、`Workspaces` 经它走到这里（`archtest/composition_test.go:31-84`），而那里没有授权者，也不许建 `access.New`（模块根的 `New`，`:100-117`）。`pageDeps`（`bootstrap/deps.go:141-173`）本就收 `authorizer`，交给 `pageRegistrants(pool, authorizer)`。13.1 第 21 条的"两处都是 `pageRegistrants(pool).sessionSubscribers`"与 12.4 的 `pageRegistrants(pool)` 照此改（第 8 节）。
 - **编辑会话的否决者**：P1 没有它的规则（00-M10 4.7：只有来源上不开会话，来源是 P2 的），一个永远放行的否决者的次序没有一个测试看得出，登记它只是未经测试的代码。所以否决者随它的第一条规则在 P2/S1 写、登记在锁的否决者之前、带它的次序测试（2.1 第 5 条）。
 - **次序的测试**：
   - 模块一级照旧：`TestTheRegistrantsRunInTheirOrder`（`page/app/unit_test.go:266-302`）是替身，不改。
@@ -1491,13 +1495,13 @@ type StepFacts struct {
 // size, the rewrite's mark and the edit session.
 type NodeFacts struct {
 	ID     uuid.UUID
-	Before *Place
-	After  *Place
+	Before *NodePlace
+	After  *NodePlace
 }
 
-// Place is where a node is: its parent, nil at the notebook's root, and
-// its name's title key.
-type Place struct {
+// NodePlace is where a node is: its parent, nil at the notebook's root,
+// and its name's title key. (Place is an order among siblings.)
+type NodePlace struct {
 	ParentID *uuid.UUID
 	Key      string
 }
@@ -1520,7 +1524,7 @@ type Verdict struct {
 
 // ReservedKeys are the title keys no node may take at an LLM Wiki's root
 // (M10 design 4.9): its generated index.md and log.md, by either name.
-var ReservedKeys = []string{"index", "log", "index.md", "log.md"}
+func ReservedKeys() []string { return []string{"index", "log", "index.md", "log.md"} }
 
 // Reserved reports whether key is one of ReservedKeys.
 func Reserved(key string) bool
@@ -1533,9 +1537,10 @@ func Reserved(key string) bool
 func CheckContract(n NotebookState, s StepFacts) Verdict
 ```
 
+- 照实（S2 的偏离 2、3）：事实的位置叫 `NodePlace`，不叫 `Place`：`page/domain` 已有 `Place`（兄弟间的次序，`order.go:13`）；`ReservedKeys()` 是函数，不是变量：lint 的 `gochecknoglobals`（同 `Actions()`）。守卫经 `FactsOf` 从步的 `Change` 建事实；`batch` 的计划没有 `Change`，在它的树的一遍里以 `nodePlace` 照 `FactsOf` 的写法（父节点与标题键）从模拟的树建同样的 `NodeFacts`（3.22），两者判的仍是同一份事实。
 - `ReservedKeys` 的四个值是 `shared.TitleKey` 的结果（折叠大小写、NFC：`NFC(cases.Fold(NFC(s)))`，`shared/title_key.go:15-17`），`contract_test.go` 的 `TestTheReservedKeysAreTitleKeys` 钉住 `shared.TitleKey(k) == k`；`Index`、`LOG`、`Log.MD` 都折到它们（`[[index.md.md]]` 那一页的名字是 `index.md`，00-M10 4.9）。四个键是 ASCII，没有别的字符折到它们的字母（U+0130 折成 `i` 加 U+0307）；折叠不映射兼容的形式，全角的 `ｉｎｄｅｘ` 不保留，它也不是虚拟的链接（4.9 用同一个键）。S3 的加序号用同一个表。
 - 步的第一个节点是它所关于的那个：移动的一步先列被移动的节点、再列它的每个后代（`unit_move.go:73-77`：后代的前后位置相同），删除的一步先列子树的根（`unit_delete.go:43-48`），改名的一步只有那个节点。R4 由此分得出"移动来源根自己"与"移动它的祖先"。
-- `Place` 没有种类：P1 的规则对页与附件一样（保留的标题对附件也保留，4.9），`AGENTS` 由"根下、键是 `agents`"认出：LLM Wiki 的根下的键唯一、跨页与附件（`nodes_notebook_id_name_key_root_key`，`page/adapter/postgres/store.go:27-28`），`checkPages` 守着活着的 LLM Wiki 有根下的 `AGENTS` 页（3.14），所以根下键是 `agents` 的节点就是它，不读 `AgentsPage`（`nodes.sql:84-95`）。也没有次序值：同一父节点下的排序是一步 `OpMove`（`unit_move.go:40-44`、`:76-82`），兄弟的重新编号不是步（`unit_place.go:132-153`："it moves no one"），所以"出现在一步 `OpMove` 里"就是移动或排序。
+- `NodePlace` 没有种类：P1 的规则对页与附件一样（保留的标题对附件也保留，4.9），`AGENTS` 由"根下、键是 `agents`"认出：LLM Wiki 的根下的键唯一、跨页与附件（`nodes_notebook_id_name_key_root_key`，`page/adapter/postgres/store.go:27-28`），`checkPages` 守着活着的 LLM Wiki 有根下的 `AGENTS` 页（3.14），所以根下键是 `agents` 的节点就是它，不读 `AgentsPage`（`nodes.sql:84-95`）。也没有次序值：同一父节点下的排序是一步 `OpMove`（`unit_move.go:40-44`、`:76-82`），兄弟的重新编号不是步（`unit_place.go:132-153`："it moves no one"），所以"出现在一步 `OpMove` 里"就是移动或排序。
 - **P1 不读祖先**：`AGENTS` 在根下（`Before.ParentID` 为空），来源根按 id 认（删除的一步列出整棵子树，`unit_delete.go:43-48`；移动的一步列出被移动的节点与它的每个后代，`unit_move.go:73-88`），保留的标题看 `After.ParentID` 为空。祖先的一线（`Ancestors`，`nodes.sql:129-141`）是 P2 的来源区的规则才要的：`NodeFacts` 的 `InArea` 与交出祖先的那几处读（`unit_create.go:36`、`unit_move.go:26`、`unit_relocate.go:51` 已读的一线，与改名、删除、上传、同父节点的 `Relocate`、撤销的放回补一次读）在 P2/S1 加（2.1 第 5 条）。
 
 **规则**（只在 `n.Mode == ModeLLMWiki`；"出现"指 `NodeFacts` 里有它）：
@@ -1565,11 +1570,11 @@ R3 的"单元不是导入"只在 S2 与 S3 之间用得上：S3 起导入在它�
 | 移动加改名（`Relocate`，换父节点；同一父节点的是改名，`unit_relocate.go:48-50`） | R1 | R4 | R4 | R3 | 同上 | 放行 |
 | 删除 | R1 | R2 | R2 | — | P2：子树里有来源要管理员 | 放行 |
 | 从回收站恢复（同步、后台） | —（活着的 LLM Wiki 里它从不在回收站） | — | — | 放行（S3 加序号） | P2：去重 | 放行 |
-| 撤销的放回（改名、移动、移动加改名、临时的改名） | R1（到不了：没有变更集碰过它的树） | R4 | 换父节点时 R4，同一父节点下的放回放行 | R3（到不了：根下从来没有保留的键，临时名称带 ` ~<hex>`，`page/domain/name.go:95-119`） | P2：照各操作 | 放行 |
+| 撤销的放回（改名、移动、移动加改名、临时的改名） | R1（到不了：没有变更集碰过它的树） | R4 | 换父节点时 R4，同一父节点下的放回放行 | R3（到不了：根下从来没有保留的键，临时名称带 ` ~<hex>`，`page/domain/name.go:95-119`；S2 与 S3 之间到得了：恢复或导入放到根下的 `index` 改名之后，撤销这次改名答没有声明的 `page.virtual_file`，第 0 节，S2 审查 A-M2） | P2：照各操作 | 放行 |
 | 撤销的删除与恢复 | R1 | R2 | R2 | 放行（恢复） | P2 | 放行 |
 
 - 导入与恢复不拒保留的标题，是因为它们加序号（4.9："恢复、导入（加序号）"）；S2 与 S3 之间这两条路径照今天把一个 `index` 放到根下（S3 合并时补上加序号与 `checkPages` 的"活着的 LLM Wiki 的根下没有保留的键"，3.27），这一段只在 Step 的分支与 `main` 的两次合并之间，没有发布。若在 S2 里也拒它们，导入会以 `internal` 失败、`restoreNode` 会答一个它不声明的码（`page.yaml:767`）。
-- `contract_test.go` 的 `TestCheckContract`：上表的每个非"—"的格子一行（`FactsOf` 从手写的 `Change` 建事实，次序照单元的），外加：普通的笔记本对每一行都答零；`AGENTS` 的键大小写（`Agents`）；保留的键的四种写法与大小写；子文件夹里的 `index` 放行；一步同时犯两条时答次序在前的码（把来源根改名为根下的 `index`：R3 与 R4 都犯，答 R3 的 `page.virtual_file`）；R4 的 `Verdict.NodeID` 是来源根。B-Q1 的几行：同一父节点下排序 `Notes`（`raw` 在它之下：第一个节点 `Notes` 的父节点不变，`raw` 的前后相同）→ 零；把 `Notes` 移到另一页之下 → `Needs` `page.manage_source`、节点是 `raw`；同一父节点下排序 `raw` 自己 → `Needs`；`Relocate` `Notes`（换父节点与名字）→ `Needs`；`raw` 的祖先改名 → 零。
+- `contract_test.go` 的 `TestCheckContract`：上表的每个非"—"的格子一行（`FactsOf` 从手写的 `Change` 建事实，次序照单元的），外加：普通的笔记本对每一行都答零；`AGENTS` 的键大小写（`Agents`）；保留的键的四种写法与大小写；子文件夹里的 `index` 放行；一步同时犯两条时答次序在前的码（把来源根改名为根下的 `index`：R3 与 R4 都犯，答 R3 的 `page.virtual_file`）；R4 的 `Verdict.NodeID` 是来源根。另有 `TestFactsOfAStep`：事实是改动的节点、照改动的次序，每个位置是父节点与名字的标题键，新建没有"前"、删除没有"后"。B-Q1 的几行：同一父节点下排序 `Notes`（`raw` 在它之下：第一个节点 `Notes` 的父节点不变，`raw` 的前后相同）→ 零；把 `Notes` 移到另一页之下 → `Needs` `page.manage_source`、节点是 `raw`；同一父节点下排序 `raw` 自己 → `Needs`；`Relocate` `Notes`（换父节点与名字）→ `Needs`；`raw` 的祖先改名 → 零。
 
 ### 3.22 S2：拒绝的标出、码与文字
 
@@ -1647,7 +1652,7 @@ func Refuse(err error, id uuid.UUID) error
 
 **`batch` 的计划的预检**（在 S2，不在 S3：主持者对 B-Q2 的决定。没有它，S2 与 S3 之间 MCP 的 `batch` 先由编辑锁的预检 `apply_batch.go:294` 答 `page.locked`、后由守卫答 `page.protected`，与 REST、MCP 的 `delete` 的次序不同，审查 B-M8a）：
 
-- `domain.PlanBatch(nodes, steps, ids)`（`page/domain/batch_plan.go:301-321`）是纯函数，加一个参数 `n NotebookState`。树的一遍（`treePass.plan`，`:336-346`）模拟每一项之后，以这一项改动的节点的前后位置建 `StepFacts`（新建：补建的每个父页与那一页各一个节点；改名：那个节点；移动：被移动的节点在先，再是模拟的树里它的每个后代；删除：子树的每个节点，根在先；正文：那一页），调 `CheckContract`：`Err` 记成这一项的失败 `p.Failed = &OpFailed{Op: i, Tool: s.Kind, Err: Refuse(err, node)}`（与今天的领域的失败同一个格子，这一遍到此为止）；`Needs` 记下第一个要它的项 `p.Needs = &Need{Op: i, Action, NodeID}`，这一遍照常往下走（计划还不知道答复）。
+- `domain.PlanBatch(nodes, steps, ids)`（`page/domain/batch_plan.go:301-321`）是纯函数，加一个参数 `n NotebookState`。树的一遍（`treePass.plan`，`:336-346`）模拟每一项之后，以这一项改动的节点的前后位置建 `StepFacts`（新建：补建的每个父页与那一页各一个节点；改名：那个节点；移动：被移动的节点在先，再是模拟的树里它的每个后代；删除：子树的每个节点，根在先；正文：那一页），调 `CheckContract`：`Err` 记成这一项的失败 `p.Failed = &OpFailed{Op: i, Tool: s.Kind, Err: Refuse(err, node)}`（与今天的领域的失败同一个格子，这一遍到此为止）；`Needs` 记下第一个要它的项 `p.Needs = &Need{Op: i, Action, NodeID}`，这一遍照常往下走（计划还不知道答复）。照实（S2 的偏离 9）：每一项在它自己的方法里、它自己的检查之后、它记下改动之前判它的步（`treePass.judge`，单元的种类当作 `edit`）：事实与模拟之后的相同，被拒的一项不在计划的树里留下改动；所以一项的拒绝在同一项上批量自己的界线（移动带着的节点、项数）之前，同分开的调用（它们没有这些界线）。
 - `BatchPlan` 加一个方法：
 
   ```go
@@ -1655,11 +1660,13 @@ func Refuse(err error, id uuid.UUID) error
   // plan's failure when it comes before the plan's own (M10/P1 design
   // 3.22): Reads, CheckReads and Contents then stop before at, as they do
   // at a failure of the tree's pass, so that a batch answers the op that
-  // separate calls would be refused at first.
+  // separate calls would be refused at first. A failure of the plan's at
+  // the same op, a bound of the batch's, gives way to it: separate calls
+  // have none.
   func (p *BatchPlan) Refuse(at int, err error)
   ```
 
-  它设 `Failed`，并把第一项在 `at` 或之后的页从 `Reads` 的次序（`p.order`）里去掉；`Contents` 本就只走到 `Failed.Op`（`batch_contents.go:40-44`）。
+  它设 `Failed`，并把第一项在 `at` 或之后的页从 `Reads` 的次序（`p.order`）里去掉；`Contents` 本就只走到 `Failed.Op`（`batch_contents.go:40-44`）。照实（S2 的偏离 10）：`Failed` 在 `at` 之前时不动；在 `at` 或之后时取代它，同一项上批量自己的界线（项数、移动带着的节点）也让给它，因为分开的调用没有这些界线；并清掉 `final`（项数与读的界线让正文的一遍不跑的那个标记），所以正文的一遍走到被拒的那一项之前，更早的一项的正文的失败照旧在先。两种行为由 `TestThePlanChecksTheContract` 的三行钉住（S2 的修复一轮加，审查 A-M1 = C-M2，第 81、82 条变异）。
 - 应用里（`apply_batch.go` 的 `planned`，`:261-312`）：`ListNodes` 之后不加锁读 `StateOf`（`ok` 为假答 `notebook.not_found`），`PlanBatch` 之后、`a.read` 之前问：
 
   ```go
@@ -1680,10 +1687,10 @@ func Refuse(err error, id uuid.UUID) error
   	texts, heads, err := a.read(ctx)
   ```
 
-  `a.grant` 以请求的执行者与这本笔记本问 `a.b.auth`（`Allowed` 判定 `page.batch` 用的同一个授权者）。
+  `a.grant` 以请求的执行者与这本笔记本问 `a.b.auth`（`Allowed` 判定 `page.batch` 用的同一个授权者）。目标的工作区是判定 `page.batch` 时读到的：`decideNotebook` 包着新的 `decidedNotebook`，它另答笔记本的工作区，`Execute` 把它留在这一次尝试里，不多读一次（`page/app/authorize.go`，S2 的偏离 8）。
 - **码按项的次序**（审查 B-M3）：拒绝在 `a.read` 之前记下，所以 `Reads`、`CheckReads` 与 `a.read` 的 `differs`（一页不见了）只看它之前的项：写者的 `[move raw.md → Notes/raw.md, edit Big.md …]` 在第 1 项读的页过了 `MaxBatchReadBytes` 时答第 0 项的 403，同分开调用时第一个被拒的一样。更早的一项的正文的失败照旧在先（`Contents` 走到第 0 项之前的每一项）；树的一遍的失败总在 `Needs` 之后（那一遍在失败处结束，`Needs` 只记它之前的）。
 - 所以一个 `batch` 答的是"按次序分开调用"时第一个会被拒的那一项：写者的 `[move raw, delete AGENTS]` 答第 0 项的 403，管理员的答第 1 项的 409。计划是权威（00-M10 4.6），守卫在单元里是后备；计划的问不进单元的 `Grants`（3.19）。
-- **测试**：`page/domain/batch_plan_test.go` 的 `TestThePlanChecksTheContract`：普通的笔记本什么也不记；LLM Wiki 里每种操作的一项（R1–R4 各一，含 B-Q1 的排序祖先放行）记在它的项上；`Needs` 与一个更晚的 `Failed` 都记下；补建的父页 `index` 在根下也拒；`Refuse` 在一个更晚的失败之前时取代它、之后时不取代；`Refuse` 之后 `Reads` 只列它之前的项的页。`page/app/apply_batch_test.go` 的 `TestABatchsPlanRefusesBeforeItsLock`：写者的 `[move raw, delete AGENTS]` 答第 0 项的 `page.source_admin_only`，管理员的答第 1 项的 `page.protected`；`AGENTS` 被别人的会话持着时仍答 `page.protected`（不是 `page.locked`：计划在编辑锁的预检之前）；记下的调用里没有 `"LockNotebook in tx"`（单元没有开始）；`page.manage_source` 只被问一次（`page.batch` 由 `Allowed` 另问，不算）；B-M3 的两行：写者的 `[move raw → Notes/raw, edit Big]` 而 `Big` 的头过了 `MaxBatchReadBytes` → 第 0 项的 403、没有读 `Big` 的正文（没有 `PageContentWithin`），`Big` 在计划之后不见了 → 仍是第 0 项的 403、没有第二次计划；授权者答 `ErrNotVisible` → 404 `notebook.not_found`；答一个数据库的错误 → 原样、不是 `OpFailed`。钉住整个调用列表的 `batch` 测试加 `"StateOf nb"`（`ListNodes` 之后），同一个提交。
+- **测试**：`page/domain/batch_plan_test.go` 的 `TestThePlanChecksTheContract`：普通的笔记本什么也不记；LLM Wiki 里每种操作的一项（R1–R4 各一，含 B-Q1 的排序祖先放行）记在它的项上；`Needs` 与一个更晚的 `Failed` 都记下；补建的父页 `index` 在根下也拒；`Refuse` 在一个更晚的失败之前时取代它、之后时不取代；`Refuse` 之后 `Reads` 只列它之前的项的页。`page/app/apply_batch_test.go` 的 `TestABatchsPlanRefusesBeforeItsLock`：写者的 `[move raw, delete AGENTS]` 答第 0 项的 `page.source_admin_only`，管理员的答第 1 项的 `page.protected`；`AGENTS` 被别人的会话持着时仍答 `page.protected`（不是 `page.locked`：计划在编辑锁的预检之前）；记下的调用里没有 `"LockNotebook in tx"`（单元没有开始）；`page.manage_source` 只被问一次（`page.batch` 由 `Allowed` 另问，不算）；B-M3 的两行：写者的 `[move raw → Notes/raw, edit Big]` 而 `Big` 的头过了 `MaxBatchReadBytes` → 第 0 项的 403、没有读 `Big` 的正文（没有 `PageContentWithin`），`Big` 在计划之后不见了 → 仍是第 0 项的 403、没有第二次计划；授权者答 `ErrNotVisible` → 404 `notebook.not_found`；答一个数据库的错误 → 原样、不是 `OpFailed`。照实：没有 `batch` 的测试钉住整个调用列表（计划开始读 `StateOf` 时一个也没有失败），设计的 `"StateOf nb"` 没有地方加；替身记 `"StateOf"`、不带 id（同 S1 的偏离 6），最后一行核对它紧跟 `ListNodes`、不在事务里（S2 的偏离 11）。照实另有：`TestThePlanChecksTheContract` 的 B-Q1 的排序祖先写成祖先在同一父节点下的改名与移到原处（`batch` 的移动没有兄弟间的位置，S2 的偏离 13）；它另有修复一轮的三行：`Refuse` 落在同一项上批量的界线（项数的、移动带着的节点的）之上时答那一项的 `page.source_admin_only`，`Refuse` 清掉 `final` 之后 `Reads` 列出更早的一项的页、`Contents` 答第 0 项的正文的失败（S2 审查 A-M1 = C-M2）。`TestABatchsPlanRefusesBeforeItsLock` 另有一行"写者的 `[move raw, edit AGENTS]`，`AGENTS` 被别人的会话持着"，答第 0 项的 403：上面被持着的 `AGENTS` 的删除在树的一遍就被拒（第 1 项的 409），到不了编辑锁的预检，这一行才钉住计划的问在编辑锁的预检之前（第 38 条变异，S2 的偏离 14）。
 
 **契约的码**（00-M10 第 5 节的 P1/S2 的格子；新码放在领域的码之后、编辑锁与链接的码之前）：
 
@@ -1696,11 +1703,11 @@ func Refuse(err error, id uuid.UUID) error
 | `revertChangeset`（`:957`） | `[validation_failed, page.changeset_not_found, forbidden, page.changeset_trimmed, page.revert_too_large, page.revert_conflict, page.protected, page.source_admin_only, server_busy, page.locked]` |
 | `uploadAsset`（`asset.yaml:45`） | `[notebook.not_found, forbidden, validation_failed, page.title_taken, page.virtual_file, storage_full]` |
 
-每个操作的 `description` 加一句它在 LLM Wiki 里拒绝什么，例如 `deleteNode`："In an LLM Wiki, its AGENTS page and its source root cannot be deleted, nor a page whose subtree holds the source root (page.protected)."；`renameNode`、`moveNode`："In an LLM Wiki, AGENTS cannot be renamed or moved (page.protected), no node at the root may take the name index or log, nor index.md or log.md (page.virtual_file), and only its admins can rename or move the source root, or move a page whose subtree holds it under another parent (page.source_admin_only)."；`createPage`、`uploadAsset`：保留的标题那一句；`revertChangeset`：前两句的"一次撤销的每一步照它的操作判"。
+每个操作的 `description` 加一句它在 LLM Wiki 里拒绝什么，例如 `deleteNode`："In an LLM Wiki, its AGENTS page and its source root cannot be deleted, nor a page whose subtree holds the source root (page.protected)."；`renameNode`、`moveNode`："In an LLM Wiki, AGENTS cannot be renamed or moved (page.protected), no node at the root may take the name index or log, nor index.md or log.md (page.virtual_file), and only its admins can rename or move the source root, or move a page whose subtree holds it under another parent (page.source_admin_only)."；`createPage`、`uploadAsset`：保留的标题那一句；`revertChangeset`：前两句的"一次撤销的每一步照它的操作判"。照实（S2 的偏离 7）：`uploadAsset` 的一句放在"The checks are made again as the attachment is created."之后：S2 里上传的预检不判契约（S3 的 `Check` 判，3.25），只有单元里的建拒绝它；`revertChangeset` 的一句只说每一步照它的操作判，不说与 S3 的预检的次序，它之后已有的"Then a page whose lock an edit session holds … is page.locked"要到 S3 的预检才对每个形状成立（第 0 节，S2 审查 A-M3）；`deleteNode` 的一句另说"before any lock is looked at"。
 
 `apitest.Main` 两个方向都核对（`apitest/problems.go:79-104`、`:171-228`）：`page/adapter/http/handler_test.go` 的 `TestTheOperationsAnswerEachProblem`（`:339-…`）加 createPage 的 `page.virtual_file`、renameNode 与 moveNode 的三个、deleteNode 的 `page.protected` 各一行（假的用例答 `domain.Refuse(domain.ErrProtected, id(12))` 一类，同时核对标出不改答复）；`history_test.go` 的 revertChangeset 两行；`asset/adapter/http/upload_test.go:344-352` 一行 `h.tree.createErr = shared.NewError(shared.KindConflict, "page.virtual_file", "…")`（asset 不导入 page，照 `:344-346` 的 `page.title_taken` 那一行自己造问题；S3 再加 `checkErr` 的一行：`Check` 答 `page.virtual_file` 时答 409、不调 `Store`（`stored`、`kept` 都是 `false`），同 `TestUploadAnswersEachFailure` 的 `checkErr` 的几行（`:337-346`），3.28）。
 
-**MCP 的码**（`bootstrap/permission_matrix_mcp_test.go:84-108` 的 `mcpToolCodes()`）：`write` 加 `page.virtual_file`；`move` 加 `page.protected`、`page.virtual_file`、`page.source_admin_only`；`delete` 加 `page.protected`；`batch` 加这三个；`edit` 不加（P1 里正文的写没有可拒的）。`TestTheMCPToolsErrorsCarryTheirCodes`（`bootstrap/mcp_reads_test.go:426-473`）的应用今天只有普通笔记本，加 `wikiCodeCalls`（`mcp_write_codes_test.go`，照 `writeCodeCalls`，`:45-112`）：在应用里经 REST 建一本 LLM Wiki（`workspace_access: editor`，所以工作区的成员是写者），然后 `write {"path":"index/x.md"}`（补建的父页 `index` 在根下）→ `page.virtual_file`；`move {"path":"AGENTS.md","to":"Notes/AGENTS.md"}` → `page.protected`；写者 `move {"path":"raw.md","to":"Notes/raw.md"}` → `page.source_admin_only`；`move {"path":"Notes.md","to":"log.md"}` → `page.virtual_file`；`delete {"path":"AGENTS.md"}` → `page.protected`；`batch` 的三项各一次。`mcpAnswer.toolError`（`mcp_client_test.go:304-313`）让任何看到一个不在它的工具的行里的码的测试失败，所以这些行要与守卫同一个提交。
+**MCP 的码**（`bootstrap/permission_matrix_mcp_test.go:84-108` 的 `mcpToolCodes()`）：`write` 加 `page.virtual_file`；`move` 加 `page.protected`、`page.virtual_file`、`page.source_admin_only`；`delete` 加 `page.protected`；`batch` 加这三个；`edit` 不加（P1 里正文的写没有可拒的）。`TestTheMCPToolsErrorsCarryTheirCodes`（`bootstrap/mcp_reads_test.go:426-473`）的应用今天只有普通笔记本，加 `wikiCodeCalls`（`mcp_write_codes_test.go`，照 `writeCodeCalls`，`:45-112`）：在应用里经 REST 建一本 LLM Wiki（`workspace_access: editor`，所以工作区的成员是写者；照实，写者是经 SQL 加进 acme 的新账户 erin，读的应用里的 carol 只能看，erin 的 PAT 发写者的那一次 `move`，S2 的偏离 6），然后 `write {"path":"index/x.md"}`（补建的父页 `index` 在根下）→ `page.virtual_file`；`move {"from":"AGENTS.md","to":"Notes/AGENTS.md"}` → `page.protected`；写者 `move {"from":"raw.md","to":"Notes/raw.md"}` → `page.source_admin_only`；`move {"from":"Notes.md","to":"log.md"}` → `page.virtual_file`（MCP 的 `move` 的参数是 `from`、`to`，`api/mcp/tools.json`；设计起初写的是 `path`）；`delete {"path":"AGENTS.md"}` → `page.protected`；`batch` 的三项各一次。`mcpAnswer.toolError`（`mcp_client_test.go:304-313`）让任何看到一个不在它的工具的行里的码的测试失败，所以这些行要与守卫同一个提交。
 
 **权限矩阵的变体的行**（3.14 的变体）：
 
@@ -1728,7 +1735,7 @@ func Refuse(err error, id uuid.UUID) error
 | `restoreNode`、后台的恢复 | `AGENTS` 与来源根在活着的 LLM Wiki 里从不进回收站；一页叫 `AGENTS` 的回到根下由 `restoredNames` 加序号（根下的兄弟持着这个键）；保留的标题 S3 加序号，不拒（3.21） |
 | 导入 | 只新建；`AGENTS.md`、`raw/` 因为名字已被占而加序号（`children.free`，`unit_import.go:172-194`）；保留的标题 S3 加序号 |
 
-其余的写在 P1 都可能被拒：`createPage`、MCP 的 `write`（新建）与 `batch` 的写（根下的保留的键，含补建的父页，`write_path.go:150`、`apply_batch.go:620`）；`uploadAsset`；`renameNode`、`moveNode`、MCP 的 `move`、`batch` 的 `move`；`deleteNode`、MCP 的 `delete`、`batch` 的 `delete`；`revertChangeset` 与 `startRevert`（撤销模板的变更集要删掉 `AGENTS` 与 `raw`；写者撤销管理员对 `raw` 的改名）。S2 与 S3 之间 `startRevert` 照样开始一个会被拒的后台撤销，它在第一批以 `internal` 停下（`revertDefect`，`unit_revert.go:913-919`），S3 补上开始时的预检与 `refused`（3.25、3.26）：这是第 0 节写明的 S2→S3 的窗口之一，由 S3 的合并关上。
+其余的写在 P1 都可能被拒：`createPage`、MCP 的 `write`（新建）与 `batch` 的写（根下的保留的键，含补建的父页，`write_path.go:150`、`apply_batch.go:620`）；`uploadAsset`；`renameNode`、`moveNode`、MCP 的 `move`、`batch` 的 `move`；`deleteNode`、MCP 的 `delete`、`batch` 的 `delete`；`revertChangeset` 与 `startRevert`（撤销模板的变更集要删掉 `AGENTS` 与 `raw`；写者撤销管理员对 `raw` 的改名）。S2 与 S3 之间 `startRevert` 照样开始一个会被拒的后台撤销，它在第一批以 `internal` 停下（`revertDefect`，`unit_revert.go:913-919`），S3 补上开始时的预检与 `refused`（3.25、3.26）：这是第 0 节写明的 S2→S3 的窗口之一，由 S3 的合并关上。S2 的审查另找到同步的撤销的一个（A-M3，第 0 节）：S2 里它没有契约的预检，守卫逐步判，前一步碰到编辑锁时答 `page.locked`、不答后一步的 `page.source_admin_only`；S3 的两遍预检关上它。
 
 **降级与 `AGENTS` 的删除的交错**（`bootstrap/interleavings_wiki_test.go` 的 `TestTheProtectionAndADowngrade`，第三份）：`tm.interleaveOn(t, notebookRow(nb), first, second)`：删除 `AGENTS` 的单元与降级都以 `FOR NO KEY UPDATE` 锁笔记本行（`unit.go:217-223`、`manage.go:26-41`），持着行的测试事务让它们按发出的次序排队。删除在先 → 409 `page.protected`（单元读到的是 `llm_wiki`），降级 200，`AGENTS` 还在；降级在先 → 降级 200，删除 204（单元读到的是 `standard`），`AGENTS` 进了回收站。两种都以 `checkPages` 结束（降级之后的笔记本不再受 3.14 的规则约束）。它证明模式在锁下读一次：单元读到的模式与它写的时候的一致。
 
@@ -1737,10 +1744,10 @@ func Refuse(err error, id uuid.UUID) error
 | 测试（文件） | 份 | 核对 |
 |---|---|---|
 | `TestTheModeGuardReachesEveryPath`（`bootstrap/wiki_guard_test.go`） | 三 | 一本 LLM Wiki（管理员 alice、写者 bob 经开放程度 `editor`）与一本内容相同的普通笔记本，同样的请求，依次：（1）撤销模板的变更集（409 `page.protected`），这时 `raw` 与 `AGENTS` 还是它留下的样子；（2）alice 把 `raw` 改名为 `sources`（200），bob 撤销这次改名（403 `page.source_admin_only`：放回是来源根的 `OpRename`），alice 撤销它（200，`raw` 回到原名：反向对照）；两次撤销都在 `raw` 还是那个变更集留下的样子时，之后的移动与 PUT 会让它们答 409 `page.revert_conflict`（撤销的计划先核对每个碰过的节点，`page/domain/revert.go:450-457`，审查 B-M1）；（3）根下建 `index`、`index.md`（409 `page.virtual_file`），子页下建 `index`（201）；（4）改名 `AGENTS`（409 `page.protected`），bob 改名 `raw`（403），一页改名为根下的 `log.md`（409 `page.virtual_file`）；（5）排序 `AGENTS`（`moveNode` 同一父节点、另一个位置，409 `page.protected`）、把 `AGENTS` 移到一页之下（409）；（6）bob 移动 `raw`（403），alice 把 `raw` 移到 `Notes` 之下（200），之后 bob 在同一父节点下排序 `Notes`（200：来源区没有换位置，主持者对 B-Q1 的决定），bob 把 `Notes` 移到另一页之下（403 `page.source_admin_only`），bob 改名 `Notes`（200，祖先的改名放行）；（7）根下传一个叫 `LOG` 的附件（409 `page.virtual_file`：键是 `log`，大小写折叠的一处核对）、叫 `log.png` 的（201）；四个保留的键各只用一次（`index`、`index.md` 在第 3 步，`log.md` 在第 4 步，`log` 在第 7 步），所以普通的那一本的根下不撞名（审查 B2-M2）；（8）`AGENTS` 与 `raw` 的 PUT 正文、勾选任务、还原版本、开启编辑会话都成功（3.23 的表）；（9）最后是删除，依次 `AGENTS`、`raw`、`Notes`（409 `page.protected`，alice 也是；`Notes` 的子树里有来源根）。每个拒绝之后节点、变更集、版本的数目不变。普通的笔记本里同样的请求全部成功（守卫立刻放行），只有两处不同：第 1 步没有对应（没有模板），第 2 步 alice 的撤销不做（bob 的撤销已成功）；删除放在最后、`raw` 在 `Notes` 之前，所以普通的那一本里每一个删除都还找得到它的页。组合根不登记守卫时失败（最后一跳）。S3 之后上传与撤销的那几行先由预检答出（3.25），这几条路径上守卫自己的最后一跳要等 P2/S2 的只有守卫拒绝的重复（审查 C-I4）；`batch` 的由下面的 `TestTheGuardRefusesWhatThePlanLetBy` 守着 |
-| `TestTheModeGuardReachesEveryMCPWrite`（`bootstrap/mcp_wiki_guard_test.go`） | 三 | 经笔记本入口：`write index/x.md`、`move AGENTS.md`、写者的 `move raw.md`、`delete AGENTS.md` 的码与 `structuredContent.error.code`；`edit AGENTS.md` 成功，变更集的客户端是 `mcp:<name>`；`batch [edit Notes, delete AGENTS.md]` 答第 1 项（`op: 1`、`At: "ops[1] (delete)"`），`Notes` 没有改（整个回滚） |
+| `TestTheModeGuardReachesEveryMCPWrite`（`bootstrap/mcp_wiki_guard_test.go`） | 三 | 经笔记本入口：`write index/x.md`、`move AGENTS.md`、写者的 `move raw.md`、`delete AGENTS.md` 的码与 `structuredContent.error.code`；`edit AGENTS.md` 成功，变更集的客户端是 `mcp:<name>`；之后以 `edit` 答的版本 `write` 覆盖 `AGENTS.md`：写下、什么也没建，agent 的变更集是 `["edit mcp:whole-program", "edit mcp:whole-program"]`（3.23 的"`write` 覆盖已有的页"，S2 的修复一轮加，审查 C-N1）；`batch [edit Notes, delete AGENTS.md]` 答第 1 项（`op: 1`、`At: "ops[1] (delete)"`），`Notes` 没有改（整个回滚）。照实，agent 的变更集按 `client LIKE 'mcp%'` 找：`acmeTeam` 的 REST 请求带登录会话，它们的变更集的客户端是 `web`，不是 `api`；之后要的恰是那几个，多一个被拒的变更集就失败（审查 C）；`move` 发 `from` |
 | `TestModeComesBeforeTheLock`（同上 `wiki_guard_test.go`） | 二 | 3.20 的次序：bob 的会话持着 `AGENTS`，alice 删除它答 `page.protected`；降级之后同样的删除答 `page.locked`、带 bob 的锁 |
 | `TestTheProtectionAndADowngrade`（`interleavings_wiki_test.go`） | 三 | 3.23 的交错 |
-| `TestTheGuardRefusesWhatThePlanLetBy`（`interleavings_wiki_test.go`） | 三 | 只有守卫拒绝的情形（主持者对 B-I1 = C-I4 的决定）。bob 是这本 LLM Wiki 的笔记本管理员。交错：`tm.interleaveOn(t, notebookRow(nb), first, second)`；first 是 alice 把 bob 降为写者（`PATCH /api/v0/notebook-members/{bob 的成员关系的 id}` `{"role":"editor"}`，`api/modules/notebook.yaml:182-186`；它以 `FOR NO KEY UPDATE` 锁笔记本行，等在测试持着的行上），second 是 bob 的 MCP 的 `batch [move raw.md → Notes/raw.md]`（`POST /mcp?notebook=<id>`，bob 的 PAT；交错的一步可以是任何 HTTP 请求，`interleavings_workspace_test.go:130-134`、`:258-288`）：它的计划在锁外读到 bob 还是管理员、`page.manage_source` 放过，单元等在笔记本行上。放开之后降级先提交；bob 的单元判定 `page.batch` 照过（写者能做），守卫在锁下问 `page.manage_source`，答 `op: 0` 的 `page.source_admin_only`，`raw` 没动。反向对照：同样的交错在 `wiring{page: func(d *page.Deps) { d.Guards = nil }}` 的程序里（收 `wiring` 的 `acmeTeam`，`interleavings_workspace_test.go:70-90` 加一个变体）答成功、`raw` 到了 `Notes` 之下：计划确实放过了它，拒绝是守卫的。反过来的次序（`batch` 在先）：成功，之后的降级照常。`batch` 的守卫的最后一跳由它补上 |
+| `TestTheGuardRefusesWhatThePlanLetBy`（`interleavings_wiki_test.go`） | 三 | 只有守卫拒绝的情形（主持者对 B-I1 = C-I4 的决定）。bob 是这本 LLM Wiki 的笔记本管理员。交错：`tm.interleaveOn(t, notebookRow(nb), first, second)`；first 是 alice 把 bob 降为写者（`PATCH /api/v0/notebook-members/{bob 的成员关系的 id}` `{"role":"editor"}`，`api/modules/notebook.yaml:182-186`；它以 `FOR NO KEY UPDATE` 锁笔记本行，等在测试持着的行上），second 是 bob 的 MCP 的 `batch [move raw.md → Notes/raw.md]`（`POST /mcp?notebook=<id>`，bob 的 PAT；交错的一步可以是任何 HTTP 请求，`interleavings_workspace_test.go:130-134`、`:258-288`）：它的计划在锁外读到 bob 还是管理员、`page.manage_source` 放过，单元等在笔记本行上。放开之后降级先提交；bob 的单元判定 `page.batch` 照过（写者能做），守卫在锁下问 `page.manage_source`，答 `op: 0` 的 `page.source_admin_only`，`raw` 没动。反向对照：同样的交错在 `wiring{page: func(d *page.Deps) { d.Guards = nil }}` 的程序里（收 `wiring` 的 `acmeTeam`，`interleavings_workspace_test.go:70-90` 加一个变体 `newAcmeTeamWiring`，它在 `wireApp` 里 `pageDeps` 之后施加）答成功、`raw` 到了 `Notes` 之下：计划确实放过了它，拒绝是守卫的。反过来的次序（`batch` 在先）：成功，之后的降级照常。`batch` 的守卫的最后一跳由它补上 |
 | `TestTheDowngradeEndsTheContract`（`bootstrap/wiki_downgrade_test.go`） | 二 | 降级之后同一本笔记本：写者改名、移动 `raw` 成功，`AGENTS` 的改名与删除成功，根下可以建 `index`；经 MCP 的 `delete AGENTS.md` 成功。它是 LW12 的 MCP 豁免所指的那条测试（00-M10 第 9 节）：P2 加来源成为可写、重复不再被拒，P4 加 `list` 没有虚拟的两项，P5 加握手没有系统的一段 |
 | `TestPermissionMatrix`（已有的，加行） | 二 | 3.22 的变体的行 |
 
@@ -1866,7 +1873,7 @@ revertDefect 原样交回                     在它们最后），再认 Refusa
 | 测试（文件） | 份 | 核对 |
 |---|---|---|
 | `TestTheSourceRootsPutBackIsRefusedInALaterBatch`（`bootstrap/wiki_background_test.go`） | 三 | `newAcmeTeamWired(t, …, transfer.Batch{Nodes: 1})`（`interleavings_workspace_test.go:65-86`，每批一步），照 `TestARevertJobAndAPageCreatedUnderATopItDeletes`（`interleavings_background_test.go:351-378`）的循环：`for try := range betweenUnits`，每一次一本新的 LLM Wiki（alice 建，bob 加为笔记本管理员；alice 再建根下的 `Notes`，id 比 `raw` 大），bob 经 MCP 的一个 `batch` 把 `raw` 改名为 `sources`、`Notes` 改名为 `raw`（一个变更集 C）。撤销的计划：第一轮先试 `raw`（id 最小，3.4 第 6 步定下的次序），名字 `raw` 被 `Notes` 持着，等；`Notes` 放回 `Notes`；第二轮 `raw` 放回 `raw`（`revert_schedule.go:290-292`、`:313-321`、`:232-234`），所以两步分在两批，`raw` 的在第二批。`tm.behindFirstBatch(t, nb, revertStart("bob", nb, C, ""), demotion)`（`bootstrap/background_test.go:196-210`）开始撤销（202：bob 是管理员，开始时的预检与任务的计划都放过），让 alice 的降级 `PATCH /api/v0/notebook-members/{bob 的成员关系的 id}` `{"role":"editor"}`（`api/modules/notebook.yaml:182-186`，以 `FOR NO KEY UPDATE` 锁笔记本行）排在第一批之后；它在第二批之前还是之后是竞争。**输的那一支**（任务 `succeeded`：降级在第二批之后）：`counts.put_back` 是 2、`raw` 叫 `raw`，`continue`。**赢的那一支**：任务 `failed`，`failure` 是 `refused`，`refusal` 是 `{code: page.source_admin_only, node_id: raw 的 id}`；`counts.put_back` 是 1（第一批留着：`Notes` 叫 `Notes`）；`raw` 仍叫 `sources`；第二批的单元对写者照常判定通过 `page.revert`，拒绝来自这一批的守卫（每批没有另外的预检，3.25）；`checkPages`；`return`。`betweenUnits` 次都输时 `t.Fatalf`。反向对照：去掉 `revertDefect` 认 `Refused` 的那一句，赢的那一支失败成 `internal` |
-| `TestPrechecksAnswerTheGuardsCodes`（`bootstrap/wiki_guard_test.go`） | 二 | 3.24 的每一条经预检的路径（`batch`、上传、同步撤销、`startRevert`）答与守卫相同的码与同样的项；`startRevert` 被拒时没有任务的行 |
+| `TestPrechecksAnswerTheGuardsCodes`（`bootstrap/wiki_guard_test.go`） | 二 | 3.24 的每一条经预检的路径（`batch`、上传、同步撤销、`startRevert`）答与守卫相同的码与同样的项；`startRevert` 被拒时没有任务的行。另钉住 S2 审查 A-M3 的形状（S2 的审查记录的主持者的决定 29）：alice 的一个 MCP 的 `batch` 把 `raw` 改名为 `sources`、在根下写一页新的 `raw`（变更集 C）；carol 在新的 `raw` 上开编辑会话；bob（写者）`revertChangeset C`：撤销的第一轮删除新的 `raw`（碰到 carol 的锁），第二轮把 `sources` 放回为 `raw`（要 `page.manage_source`）。答 403 `page.source_admin_only`，什么也没写；没有预检时守卫逐步判、答 409 `page.locked`（S2 的样子，第 0 节），所以这一行只有 S3 的预检过得了 |
 | `TestTheServersLimitsComeAfterThePrechecks`（同上） | 三 | 2.1 第 7 条的撤销的次序，在一个自己的程序里。**解析的预算**：`newAcmeTeamWith` 的 `c.Page.ParseBudgetBytes, c.Page.ParseMaxWait = 64<<10, 300*time.Millisecond`，预算由另一本普通笔记本里一个等着页锁的大写入占着（`whileAWriteWaitsForItsLock`，`bootstrap/page_content_test.go:363`；照 `busyWrites` 的写法，`mcp_write_codes_test.go:155-190`）。在这之前，LLM Wiki 里 `Notes` 有约 1 KiB 的正文，alice 经 MCP 的 `batch [edit Notes.md "x", move raw.md → sources.md]` 写下变更集 C（它的撤销写回 `Notes` 的正文，要解析）。预算占着时：bob（写者）`revertChangeset C` 立刻答 403 `page.source_admin_only`（检查在解析之前）；反向对照：alice 撤销 C 答 503 `server_busy`（解析会等满 300 ms）。上传的次序不在这里：它是结构的，由 `asset/app/upload_test.go` 的一行核对（3.25；第一轮复核去掉了磁盘的一半） |
 | `TestTheReservedTitlesAreNumberedAtAnLLMWikisRoot`（`bootstrap/wiki_numbering_test.go`） | 三 | 导入一个根下有 `index.md`、`Index/a.md`、`log/b.md` 的库：`index 2`（`a` 在它之下：文件夹并进同键的页）、`log 2`（`b` 在它之下），报告两个 `renamed` 问题；同一个库导进普通的笔记本不加序号；父节点在回收站里的 `log`，同步的恢复落到根下成为 `log 3`（`log` 是保留的，`log 2` 是导入的）、答 `renamed: true`；后台的恢复（`startTrashRestore`）一项，它的根落到根下而叫 `index`：`index 3`（同上），`counts.renamed` 是 1。都在同一本笔记本里：保留的键与兄弟的键一起被当作已被占（`restoredNames`，`unit_restore.go:177-185`；后台的 `under`，`:298-305`、`:386-395`），所以序号跳过两者（审查 B2-M1）；`checkPages`（3.27 的新规则） |
 
@@ -1907,14 +1914,16 @@ S3 的网页、e2e：4.3 与第 5 节（S3 没有新的故事；TR1、TR2、TR3�
 | `Grants` 一个单元问一次 | 一个单元里两步都要 `page.manage_source`（`batch` 两次移动 `raw`），在事务里只问一次（`TestTheModeGuardAsksOnceAUnit`，假的授权者的调用带 `" in tx"`）；两个单元问两次；数据库的错误不记下、下一次再问（`TestAGrantIsAskedOnceAUnit`） | S2 |
 | `[mode, lock]` 的次序 | `TestModeComesBeforeTheLock` 的两半：降级之前答 `page.protected`、之后答 `page.locked` | S2 |
 | `Refused` 不改答复 | handler 的表以标出的错误答出同样的码；`TestTheRegistrantsRunInTheirOrder` 的 `errors.Is` 照过 | S2 |
+| 守卫标出它拒绝的节点 | `TestTheModeGuardMarksTheNodeItRefuses`：被拒的节点（`raw`）不是步的第一个节点（`Notes`）的删除与移动，各以 `raw` 标出（S2 审查 C-M1，第 83、84 条变异） | S2 |
 | `batch` 的 `failed` 先认 `Refused` | 一个在 `replans` 里的码：标出的答在它的项上，没标出的照旧重新计划（3.22） | S2 |
-| `batch` 的计划的预检 | 写者的 `[move raw, delete AGENTS]` 答第 0 项；第 1 项读的页过了上限时仍答第 0 项；没有单元、没有锁（3.22） | S2 |
+| `batch` 的计划的预检 | 写者的 `[move raw, delete AGENTS]` 答第 0 项；第 1 项读的页过了上限时仍答第 0 项；没有单元、没有锁；`AGENTS` 被别人编辑而写者的第 0 项被拒时答第 0 项的 403、不答 `page.locked`（S2 的偏离 14）（3.22） | S2 |
+| `Refuse` 的两种行为 | 同一项上批量自己的界线（项数、移动带着的节点）让给拒绝：答那一项的 `page.source_admin_only`；清掉 `final`：更早的一项的正文的失败照旧在先（`TestThePlanChecksTheContract` 的三行，S2 审查 A-M1 = C-M2，第 81、82 条变异） | S2 |
 | 只有守卫拒绝的情形 | `TestTheGuardRefusesWhatThePlanLetBy`：计划放过、守卫在锁下拒绝；`guards: []` 的程序里同样的交错让移动成功（3.24） | S2 |
 | `mcpToolCodes()` 的新行 | `toolError` 遇到行里没有的码就失败；`TestTheMCPToolsErrorsCarryTheirCodes` 遇到行里有、没有一个调用答出的码就失败 | S2 |
 | `x-problem-codes` 的新码 | `apitest.Main`：模块的适配器测试没答出就失败，答出了没声明的也失败 | S2、S3 |
 | S3 的三处预检 | 3.28 的模块测试：不加锁的两处（上传的 `Check`、`revertChecks.check`）在没有单元、没有锁的情况下答码；锁下的一遍在第一步之前答码，什么也不拒的替身守卫一步也没看到（`TestARevertsChecksRefuseTheContract` 的锁下的一行，第 53 条变异） | S3 |
 | 预检在服务器的上限之前 | `TestTheServersLimitsComeAfterThePrechecks`：被拒的撤销在预算占着时立刻答 403，放过的同一个撤销答 503；`TestCheckDecidesTheNodeThenTheFreeSpace` 的一种：page 的 `Check` 答 `page.virtual_file` 而磁盘不够时答它；HTTP 适配器的 `checkErr` 一行：不调 `Store` | S3 |
-| 预检与守卫同码 | `TestPrechecksAnswerTheGuardsCodes` | S3 |
+| 预检与守卫同码 | `TestPrechecksAnswerTheGuardsCodes`；同步的撤销的前一步碰到锁、后一步被模式拒绝时答模式的码（S2 审查 A-M3，3.28） | S3 |
 | `treeError` 的次序与幂等 | `TestTreeErrorKeepsTheLockFirst` 的四行 | S3 |
 | `unitFailure` 的 `refused` 在 `forbidden` 之前 | 一个标出的 `page.source_admin_only`（`KindForbidden`）答 `refused`、不是 `forbidden` | S3 |
 | 报告的 `refusal` | 后台与导入各一行；别的失败的报告 `refusal` 为 `null`；存储与 HTTP 的往返收一个自由的码 | S3 |
@@ -1934,6 +1943,13 @@ S1 的审查与修复核对见 [S1 的审查记录](reviews/P1-S1-mode-template-
 
 - **S1，实施时定下的**（实施者的 15 条偏离，S1 审查 A、B、C 各在自己的范围里判过，A 判第 1–3、14 条，B 判第 5–13 条，C 判第 4、15 条，都对；第 3 条的理由照 A 改正）：没有 `TestCreateNotebookLogs`，建的一行在 `TestCreateNotebookMakesTheCallerItsAdmin` 里核对 `mode`（1，3.10、3.14）；变更集的说明是 `wiki/domain` 的 `TemplateMessage`（2，3.1、3.8）；`TestLLMWikiCreationWritesItsTemplate` 另数 `indexed_pages`，是链接索引的最后一跳（3，3.16）；`TestPageViolationsCatchEachLLMWikiGap` 在 `interleavings_page_test.go`，每一行改回之后再断言为空（4，3.14）；没有 `page/domain/mode_test.go`（5，3.1）；`mode_test.go` 的调用列表照已有的替身、不带 id（6，3.10）；矩阵的变体以它自己的表种进 `seeded` 的 `wiki`（7，3.14）；另两个读每个工作区的测试读 `wlab`（8，3.1、3.14）；`targetViolation` 取行的列所在的工作区的 slug，`workspaceOf(c)` 留给各行的请求（9，3.14）；变体的 `raw` 与 `AGENTS` 是英文的模板的两页（10，3.14）；`TestImportsAndDowngradingAnLLMWiki` 两种次序都持住导入的 worker（11，3.16）；`TestTheModeEventReachesTheStreams` 的私有的 LLM Wiki、读者与看不到它的成员（12，3.16）；假的 `SetMode` 拒绝表拒绝的，修复一轮另加 `CreateNotebook`（13，3.1）；`TestTheTemplatesCorrespond` 加"末尾多一段"，第 4 步改正、第 4–7 步重放（14，3.9、3.29）；LW1 (API) 以 `Promise.all` 建三本（15，第 5 节）。
 - **S1，审查与修复核对带来的**（编号是 S1 的审查记录的；主持者的决定见审查记录的第 23–26 条）：`checkPages` 的规则的"根下的 `AGENTS`"有反例（B-M1 = C-M1，3.14、3.29、7.3 第 65 条）；降级写下的执行者有测试（B-M2，3.5、3.29、7.1、7.3 第 66 条）；段落对应的每种块的形状各有反例（A-M1，3.9、3.29、7.3 第 67–70 条）；"在启动时解析一次"在 wiki 与 page 两处钉住（A-M2，3.6、3.8、3.29、7.1、7.3 第 71、72 条）；模板的事实是它的正文的（A-M3，3.6、3.29、7.3 第 73 条）；变更集经 `coalesce` 读（A-N1 = C-N2，3.16、7.3 第 12 条）；假的 `CreateNotebook` 照表拒绝（A-N2，3.1、3.29、7.1、7.3 第 74 条）；`Seed` 交回写下的页的 id，模板交回写下的来源根（A-N3，3.4、3.6、3.8、3.29、7.3 第 75–77 条）；模板的单元在排着的删除之后重入工作区行的子测试，钉住 PostgreSQL（A-N4，3.15、7.2 第 8 条）；降级之后再读 `notebooks`（B-N1，3.16、7.1）；`createNotebook` 的说明不重复（B-N2 = C-N6，3.13）；8 KiB 写在测试里（C-N3，3.9、3.29、7.3 第 78、79 条）；`pageNotebooks.StateOf` 的"找不到"与 `open_notebook` 在门之后被删的答复（C-N4，3.1、3.12、3.29、7.1、7.5、7.3 第 80 条）；第三份的估计算上 `wlab` 的种（C-N5，7.5）。没有交给 v0.1 之后的打磨的。
+
+### 3.31 S2 的实施对设计的修正
+
+S2 的审查与主持者的核对见 [S2 的审查记录](reviews/P1-S2-guard-review.md)，结果在 10.2。与上文最初的设计不同之处已改在各节里：
+
+- **S2，实施时定下的**（实施者的 15 条偏离，S2 审查 A、C 各在自己的范围里判过：A 判全部 15 条，C 判第 4、6、9–15 条，都对）：notebook 的存储的 `ShareNotebook` 答 `(domain.Mode, uuid.UUID, error)`，根由它建 `State`（1，3.18）；事实的位置叫 `NodePlace`（2，3.17、3.21）；`ReservedKeys()` 是函数（3，3.17、3.21）；`page.manage_source` 落在第 2 个提交，第 1 个提交的 `TestAGrantIsAskedOnceAUnit` 问 `node.move`、`node.rename`（4，3.19、6.2）；`pageSessionSubscribers()` 不收连接池（5，第 0 节、2.1 第 6 条、3.17、3.20、第 8 节）；MCP 的 `move` 发 `from`，`wikiCodeCalls` 的写者是经 SQL 加进 acme 的 erin（6，3.22）；`uploadAsset` 与 `revertChangeset` 的说明的新句（7，3.22）；`decidedNotebook`（8，3.17、3.22、6.2）；树的一遍在每一项自己的方法里判（`judge`），一项的拒绝在同一项上批量自己的界线之前（9，3.22）；`Refuse` 取代同一项上的失败、清掉 `final`（10，3.22）；没有钉住整个调用列表的 `batch` 测试，替身记 `"StateOf"`（11，3.17、3.22、6.2）；`TestTheModeGuardAsksOnceAUnit` 的拒绝的一行是计划放行、锁下拒绝，替身授权者默认答 `ErrNotVisible`、加 `failing`（12，3.19）；B-Q1 的一行是同一父节点下的改名与移到原处（13，3.22）；`TestABatchsPlanRefusesBeforeItsLock` 加"写者的 `[move raw, edit AGENTS]`，AGENTS 被持着"（14，3.22、3.29）；第 23、29、32、40 条变异的写法（15，7.3）。报告里写了、没进编号的一处：`TestTheModeGuardReachesEveryMCPWrite` 的 agent 的变更集按 `client LIKE 'mcp%'` 找（3.24）。照代码另写明的一处：`batch` 的计划没有 `Change`，以 `nodePlace` 照 `FactsOf` 的写法从模拟的树建 `NodeFacts`，不经 `FactsOf`（3.21）。
+- **S2，审查与主持者带来的**（编号是 S2 的审查记录的；主持者的决定见审查记录的第 27–31 条）：守卫标出的节点有测试（C-M1，3.17、3.20、3.29、7.1、7.3 第 83、84 条）；`Refuse` 的两种行为有测试（A-M1 = C-M2，3.22、3.29、7.1、7.3 第 81、82 条）；两个新的 S2→S3 的窗口（A-M2、A-M3，第 0 节、3.21 的表、3.22 的说明、3.23、3.28、3.29、第 9 节）；MCP 的 `write` 覆盖已有的页（C-N1，3.24）；`ApplyBatch.Execute` 的次序的注释（A-N1，只在代码的注释里，3.22 本就这样写）；第 4 个提交的 sha（C-N2，10.2）；建成的 CI 的红不是 S2 的，grep 的守卫再失败时的改法记作 M10 的收尾的一项（决定 30，10.2，00 号文档"写给后面的 M"）；`ErrSourceAdminOnly` 的文字留给 P2/S1（A 的存疑，第 9 节）；第 8 节另列总体设计 13.1 第 29 条的 `pageRegistrants(pool)`。没有交给 v0.1 之后的打磨的。
 
 ## 4. 网页
 
@@ -2155,10 +2171,10 @@ P1 的故事是 LW1、LW2 与 LW12 的 P1 的几步，在 `e2e/stories/wiki/`（
 
 ### 6.2 S2（`m10-p1-s2`）
 
-1. `server: a unit reads its notebook's state under its lock (M10/P1/S2)`：`ShareNotebook` 的两列、根的 `ShareState`、`LockState`；page 的端口的两个方法交回状态、`pageNotebooks` 转换；`Write.Notebook`、`Write.Grants` 与 `Grants`、`TestAGrantIsAskedOnceAUnit`；page 的假的 `Notebooks`；`TestTheGuardSeesTheCheckedChange` 的比较（`write_test.go:309-311`，不改就在这一步失败，审查 B-N7）（3.18、3.19）。
-2. `server: CheckContract (M10/P1/S2)`：`page/domain` 的事实、规则、`ReservedKeys`、三个错误、`Refused`；`TestCheckContract` 与 3.21 的表（纯函数，导出的，没有调用者也过 `unused`）。
-3. `server, api, web, e2e: the mode guard (M10/P1/S2)`：`page.manage_source` 与它的规则；`ModeGuard`、`NewModeGuard`、`page.Refusal`；`apply` 的标出与 `batch` 的 `failed`；`pageRegistrants(pool, authorizer)`、`pageSessionSubscribers`；六个操作的 `x-problem-codes` 与说明、page 与 asset 的适配器的测试的行；`mcpToolCodes()` 与 `wikiCodeCalls`；矩阵的变体的行；三个码的文字（4.2）；`TestTheModeGuardLetsAStandardNotebookBy`、`TestTheModeGuardAsksOnceAUnit`；3.24 的整个程序的测试（`TestTheGuardRefusesWhatThePlanLetBy` 除外）与 `TestTheProtectionAndADowngrade`；e2e 的 LW2 (API)、LW2 (MCP)。守卫、它的码与它的文字必须在同一个提交：`apitest` 两个方向都核对、`toolError` 遇到行里没有的码就失败、`problem-messages.test.ts` 要每个码有文字。
-4. `server: a batch's plan judges the contract (M10/P1/S2)`：`PlanBatch` 的状态的参数、`Needs`、`Refuse`，`planned` 的 `StateOf` 与问（3.22 的"`batch` 的计划"）；`TestThePlanChecksTheContract`、`TestABatchsPlanRefusesBeforeItsLock`、钉住调用列表的 `batch` 测试加 `"StateOf nb"`；`TestTheGuardRefusesWhatThePlanLetBy` 与收 `wiring` 的 `acmeTeam`。第 3、4 个提交之间 MCP 的 `batch` 先答 `page.locked`：只在分支上。
+1. `server: a unit reads its notebook's state under its lock (M10/P1/S2)`：`ShareNotebook` 的两列、根的 `ShareState`、`LockState`；page 的端口的两个方法交回状态、`pageNotebooks` 转换；`Write.Notebook`、`Write.Grants` 与 `Grants`、`TestAGrantIsAskedOnceAUnit`（照实以 `node.move`、`node.rename` 作问的动作，S2 的偏离 4）；page 的假的 `Notebooks`；`TestTheGuardSeesTheCheckedChange` 的比较（`write_test.go:309-311`，不改就在这一步失败，审查 B-N7）（3.18、3.19）。
+2. `server: CheckContract (M10/P1/S2)`：`page/domain` 的事实、规则、`ReservedKeys()`、三个错误、`Refused`；`TestCheckContract` 与 3.21 的表（纯函数，导出的，没有调用者也过 `unused`）。照实另有 `page.manage_source`（动作、`Actions()` 与规则的一行，从第 3 步挪来：`CheckContract` 的 `Needs` 要它，`TestTheRuleTableIsTheModulesActions` 要两边在同一个提交，S2 的偏离 4）。
+3. `server, api, web, e2e: the mode guard (M10/P1/S2)`：`ModeGuard`、`NewModeGuard`、`page.Refusal`（`page.manage_source` 与它的规则照实在第 2 步）；`apply` 的标出与 `batch` 的 `failed`；`pageRegistrants(pool, authorizer)`、`pageSessionSubscribers`；六个操作的 `x-problem-codes` 与说明、page 与 asset 的适配器的测试的行；`mcpToolCodes()` 与 `wikiCodeCalls`；矩阵的变体的行；三个码的文字（4.2）；`TestTheModeGuardLetsAStandardNotebookBy`、`TestTheModeGuardAsksOnceAUnit`；3.24 的整个程序的测试（`TestTheGuardRefusesWhatThePlanLetBy` 除外）与 `TestTheProtectionAndADowngrade`；e2e 的 LW2 (API)、LW2 (MCP)。守卫、它的码与它的文字必须在同一个提交：`apitest` 两个方向都核对、`toolError` 遇到行里没有的码就失败、`problem-messages.test.ts` 要每个码有文字。
+4. `server: a batch's plan judges the contract (M10/P1/S2)`：`PlanBatch` 的状态的参数、`Needs`、`Refuse`，`planned` 的 `StateOf` 与问（3.22 的"`batch` 的计划"）；`TestThePlanChecksTheContract`、`TestABatchsPlanRefusesBeforeItsLock`（没有钉住调用列表的 `batch` 测试，S2 的偏离 11）；`decidedNotebook`（S2 的偏离 8）；`TestTheGuardRefusesWhatThePlanLetBy` 与收 `wiring` 的 `acmeTeam`（`newAcmeTeamWiring`）。第 3、4 个提交之间 MCP 的 `batch` 先答 `page.locked`：只在分支上。
 5. `docs: … (M10/P1/S2)`。
 
 ### 6.3 S3（`m10-p1-s3`）
@@ -2208,10 +2224,10 @@ P1 的故事是 LW1、LW2 与 LW12 的 P1 的几步，在 `e2e/stories/wiki/`（
 | MCP 的 `mode` | `open_notebook` 的次序与答复、`notebooks_test.go`、`TestOpenNotebookOfAnEmptyNotebook`、`TestNotebooksListsTheAccountsWorkspaces`、`TestNotebooksAnswerTheirModeOverMCP`（降级之后再读 `notebooks`）、`TestPageNotebooksConvertTheState`、`TestTheToolListsAreTheContract` | S1 |
 | `checkPages`、矩阵的变体 | `TestPageViolationsCatchEachLLMWikiGap`、`TestMatrixViolationsCatchesEachGap` 的新行、`TestPermissionMatrix` 的变体的行 | S1、S2、S3 |
 | `Write.Notebook`、`Grants` | `notebook/notebooks_test.go` 的新方法；`TestAGrantIsAskedOnceAUnit`、`TestTheModeGuardAsksOnceAUnit` | S2 |
-| `CheckContract` | `TestCheckContract`（含 B-Q1 的几行）、`TestTheReservedKeysAreTitleKeys` | S2 |
-| 守卫与它的登记 | `TestTheModeGuardLetsAStandardNotebookBy`、`TestTheModeGuardReachesEveryPath`、`TestTheModeGuardReachesEveryMCPWrite`、`TestModeComesBeforeTheLock`、`TestTheDowngradeEndsTheContract` | S2 |
-| 标出 | `TestAUnitMarksItsGuardsRefusals`（`page/app/unit_test.go`：一个替身守卫的 `*shared.Error` 出来时是以这一步的第一个节点标出的、非问题的错误原样）、`page/refusal_test.go`、`TestABatchAnswersARefusalAtItsOperation`、适配器的表的标出的行 | S2 |
-| `batch` 的计划 | `TestThePlanChecksTheContract`、`TestABatchsPlanRefusesBeforeItsLock`；`TestTheGuardRefusesWhatThePlanLetBy`（只有守卫拒绝的情形与 `guards: []` 的反向对照） | S2 |
+| `CheckContract` | `TestCheckContract`（含 B-Q1 的几行）、`TestTheReservedKeysAreTitleKeys`、`TestFactsOfAStep` | S2 |
+| 守卫与它的登记 | `TestTheModeGuardLetsAStandardNotebookBy`、`TestTheModeGuardMarksTheNodeItRefuses`（S2 的修复一轮加）、`TestTheModeGuardReachesEveryPath`、`TestTheModeGuardReachesEveryMCPWrite`、`TestModeComesBeforeTheLock`、`TestTheDowngradeEndsTheContract` | S2 |
+| 标出 | `TestAUnitMarksItsGuardsRefusals`（`page/app/unit_test.go`：一个替身守卫的 `*shared.Error` 出来时是以这一步的第一个节点标出的、非问题的错误原样）、`page/refusal_test.go`、`domain/refused_test.go` 的 `TestARefusalIsMarkedOnce`、`TestABatchAnswersARefusalAtItsOperation`、适配器的表的标出的行 | S2 |
+| `batch` 的计划 | `TestThePlanChecksTheContract`（`Refuse` 的两种行为的三行是 S2 的修复一轮加的）、`TestABatchsPlanRefusesBeforeItsLock`；`TestTheGuardRefusesWhatThePlanLetBy`（只有守卫拒绝的情形与 `guards: []` 的反向对照） | S2 |
 | 码 | `apitest.Main`（page、asset、notebook、transfer 的适配器）、`TestTheMCPToolsErrorsCarryTheirCodes`、`TestEveryMCPToolHasItsCodes`、`problem-messages.test.ts` | S1–S3 |
 | 预检 | 3.28 的模块测试；`TestPrechecksAnswerTheGuardsCodes`、`TestTheServersLimitsComeAfterThePrechecks`（解析的预算）；`asset/app/upload_test.go` 的 `TestCheckDecidesTheNodeThenTheFreeSpace` 的一种（`storage_full` 的次序） | S3 |
 | 后台的去处 | `TestARevertJobsBatchPassesAGuardsRefusal`、`TestTreeErrorKeepsTheLockFirst`、transfer 的 `TestABackgroundJobStopsWithItsReason`、`TestAnImportsUnitFails`、存储与 HTTP 的往返（含一个自由的码）；`TestTheSourceRootsPutBackIsRefusedInALaterBatch`；`TestABackgroundRevertAndAnEditSession`（已有，钉住 `page_locked` 照旧） | S3 |
@@ -2238,7 +2254,7 @@ P1 的故事是 LW1、LW2 与 LW12 的 P1 的几步，在 `e2e/stories/wiki/`（
 
 ### 7.3 变异
 
-每个变异是实施时在本机对代码做的一处改动，跑它旁边写的测试，要它失败（不提交）；第 10 节记下每一个的结果。修订把草稿的 47 条重排为 61 条，第一轮复核之后是下面的 64 条：S1 第 1–22 条，S2 第 23–41 条，S3 第 42–53 条，S4 第 54–64 条（复核加了 S3 的第 53 条，S4 的旧的第 53–60 条成为第 54–61 条，旧的第 61 条换成第 62、63 条，另加第 64 条）。S1 的审查与修复核对的变异是第 65–80 条（S2–S4 照旧是第 23–64 条）；第 12 条照建成时分成 a、b 两种。
+每个变异是实施时在本机对代码做的一处改动，跑它旁边写的测试，要它失败（不提交）；第 10 节记下每一个的结果。修订把草稿的 47 条重排为 61 条，第一轮复核之后是下面的 64 条：S1 第 1–22 条，S2 第 23–41 条，S3 第 42–53 条，S4 第 54–64 条（复核加了 S3 的第 53 条，S4 的旧的第 53–60 条成为第 54–61 条，旧的第 61 条换成第 62、63 条，另加第 64 条）。S1 的审查与修复核对的变异是第 65–80 条（S2–S4 照旧是第 23–64 条）；第 12 条照建成时分成 a、b 两种。S2 的审查的变异是第 81–84 条；第 23、29、32、40 条写明照实的写法（S2 的偏离 15），第 41 条照建成时分成 a、b 跑。
 
 | # | 变异 | 让它失败的测试 |
 |---|---|---|
@@ -2264,16 +2280,16 @@ P1 的故事是 LW1、LW2 与 LW12 的 P1 的几步，在 `e2e/stories/wiki/`（
 | 20 | `checkPages` 的新规则不看 `r.deleted_at`（节点的） | `TestPageViolationsCatchEachLLMWikiGap`（`raw` 的 `deleted_at` 设上的一行） |
 | 21 | `checkPages` 的新规则不看 `n.deleted_at`（笔记本的） | `TestPageViolationsCatchEachLLMWikiGap` 的删掉的 LLM Wiki 的一行（审查 A-M2） |
 | 22 | `targetViolation` 照旧只认 `lab` | `TestThePermissionMatrixCoversEveryOperation`（变体的行被报出） |
-| 23 | `ShareNotebook` 不选两列（`ShareState` 总答 `standard`） | `notebook/notebooks_test.go` 的 `ShareState` 的一行 |
+| 23 | `ShareNotebook` 不选两列（`ShareState` 总答 `standard`；照实：查询照选两列、存储不读，答 `standard` 与零的来源根，变异之下不重新生成 sqlc） | `notebook/notebooks_test.go` 的 `ShareState` 的一行 |
 | 24 | 守卫登记在锁之后 | `TestModeComesBeforeTheLock` |
 | 25 | R1 漏了 `OpMove` | `TestCheckContract`；`TestTheModeGuardReachesEveryPath`（排序 `AGENTS`） |
 | 26 | R2 只看 `Nodes[0]` | `TestCheckContract`；`TestTheModeGuardReachesEveryPath`（删除 `Notes`） |
 | 27 | R3 不只看根下 | `TestCheckContract`；`TestTheModeGuardReachesEveryPath`（子页下的 `index` 201） |
 | 28 | R3 也拒导入的单元 | `TestCheckContract` 的导入的一行（S3 起导入在单元写之前就加序号，整个程序的测试抓不到它，3.21，审查 B2-N3） |
-| 29 | R4 把祖先的改名也算进来 | `TestTheModeGuardReachesEveryPath`（bob 改名 `Notes` 200） |
+| 29 | R4 把祖先的改名也算进来（照实写成"每个改名都要 `page.manage_source`"：改名的一步只有那个节点，P1 不读祖先，契约认不出祖先的改名） | `TestTheModeGuardReachesEveryPath`（bob 改名 `Notes` 200） |
 | 30 | R4 对 `OpMove` 只看第一个节点 | `TestCheckContract`；`TestTheModeGuardReachesEveryPath`（bob 把 `Notes` 移到另一页之下 403） |
 | 31 | R4 不看第一个节点换没换父节点（同一父节点下排序祖先也要它） | `TestCheckContract` 的排序 `Notes` 的一行；`TestTheModeGuardReachesEveryPath`（bob 排序 `Notes` 200）（主持者对 B-Q1 的决定） |
-| 32 | `Write.Grants` 是一个值 | `TestTheModeGuardAsksOnceAUnit`（`page/app`，假的授权者放行 `page.manage_source`、两次移动都写下时记下两次 `"Authorize page.manage_source in tx"`，审查 B3-N1） |
+| 32 | `Write.Grants` 是一个值（照实写它的效果：每一步一份单元的 `Grants` 的副本，不改类型：改类型要改几个测试文件，编译不过不算抓到） | `TestTheModeGuardAsksOnceAUnit`（`page/app`，假的授权者放行 `page.manage_source`、两次移动都写下时记下两次 `"Authorize page.manage_source in tx"`，审查 B3-N1） |
 | 33 | `Grants` 记下数据库的错误 | `TestAGrantIsAskedOnceAUnit` 的数据库的错误的一行（下一次再问） |
 | 34 | 守卫与 `CheckContract` 都不看模式（把普通的笔记本当 LLM Wiki 判） | `TestTheModeGuardLetsAStandardNotebookBy`；`TestCheckContract` 的普通的笔记本的几行；`TestTheModeGuardReachesEveryPath` 的普通的那一本（审查 B-M6；单去掉守卫的第一行是等价的，不列） |
 | 35 | `apply` 不标出别的守卫的错误 | `TestAUnitMarksItsGuardsRefusals` |
@@ -2281,7 +2297,7 @@ P1 的故事是 LW1、LW2 与 LW12 的 P1 的几步，在 `e2e/stories/wiki/`（
 | 37 | 计划不问 `Needs`（只靠守卫） | `TestABatchsPlanRefusesBeforeItsLock`（写者的 `[move raw, delete AGENTS]` 答成第 1 项的 409） |
 | 38 | 计划的预检排在编辑锁的预检之后 | 同上（`AGENTS` 被会话持着时） |
 | 39 | 计划的问在 `a.read` 之后（审查 B-M3） | `TestABatchsPlanRefusesBeforeItsLock` 的 `Big` 过了读的上限的一行 |
-| 40 | 计划把它的答案交给单元的 `Grants` | `TestTheGuardRefusesWhatThePlanLetBy`（bob 的移动成功） |
+| 40 | 计划把它的答案交给单元的 `Grants`（照实：经 ctx 的一个值，单元的 `Grants` 从它开始） | `TestTheGuardRefusesWhatThePlanLetBy`（bob 的移动成功） |
 | 41 | 计划把授权者的 `ErrNotVisible` 当拒绝、把数据库的错误标成拒绝 | `TestABatchsPlanRefusesBeforeItsLock` 的 404 与数据库的错误的两行（审查 B-N5）；两处各做一次 |
 | 42 | 上传的 `Check` 不判契约 | `TestAnUploadsCheckRefusesAReservedTitle`（整个程序里的磁盘的一半第一轮复核去掉了，3.25） |
 | 43 | 撤销的预检排在 `Locks` 之后 | `TestARevertsChecksRefuseTheContract` |
@@ -2322,6 +2338,10 @@ P1 的故事是 LW1、LW2 与 LW12 的 P1 的几步，在 `e2e/stories/wiki/`（
 | 78 | `MaxTemplateBytes` 提到 64 KiB | `TestTheTemplatesAreSmall`（写出的 8 KiB；S1 审查 C-N3：C35） |
 | 79 | `MaxTemplateBytes` 降到 4 KiB | 同上（恰 8 KiB 的一页照收；x10） |
 | 80 | `pageNotebooks.StateOf` 对找不到的笔记本答 `ok` | `TestPageNotebooksConvertTheState`（S1 审查 C-N4：C40） |
+| 81 | `Refuse` 保留同一项上的失败（`p.Failed.Op <= at`） | `TestThePlanChecksTheContract` 的"the items' bound"与"the moves' carry"（答成第 1 项的 `page.batch_too_large`；S2 审查 A-M1 = C-M2：RA1 = c06） |
+| 82 | `Refuse` 不清 `final` | `TestThePlanChecksTheContract` 的清掉 `final` 的一行（计划什么也不读，答第 2 项的 403、不答第 0 项的正文的失败；RA2 = c05） |
+| 83 | 守卫原样交回它的规则的拒绝（`return v.Err`，`Unit.apply` 于是以步的第一个节点标出） | `TestTheModeGuardMarksTheNodeItRefuses` 的删除 `Notes` 的一行（S2 审查 C-M1：c01） |
+| 84 | 守卫以步的第一个节点标出 `page.source_admin_only` | 同上，把 `Notes` 移到 `Other` 之下的一行（c02） |
 
 ### 7.4 门禁
 
@@ -2359,7 +2379,7 @@ P1 的故事是 LW1、LW2 与 LW12 的 P1 的几步，在 `e2e/stories/wiki/`（
 **量**（审查 C-M7：照 CI 的每个测试的平均与竞态检测估，不照本机不带竞态的时间）：组合根的三份在 CI 上跑 `go test -race -count=1 -timeout 15m`（`Makefile:179`、`:207-218`），CI 与本机之比约 1.73（`Makefile:207` 的记录）。M9 收尾的 run 的测试一步：第一份 7:07、第二份 6:12、第三份 5:25（1 节）。Codex 评审之后的 run（P1 开始时的代码）只有作业的时间 5:28、6:33、6:21，不与 7:30 的线比（审查 C-N6）；减去收尾的 run 里作业与测试一步之差（第二份 20 秒、第三份 24 秒），测试一步约是第二份 6:13、第三份 5:57。照 `Makefile:200-203` 的规则取两次的平均作底：第二份约 6:12，第三份约 5:41（审查 C2-N1）。第二份约一百个测试，每个约 3–3.5 秒。所以：
 
 - 第二份：八个新的约 25–30 秒，较重的（`TestImportsAndDowngradingAnLLMWiki` 的一次导入、`TestLLMWikiCreationWritesItsTemplate` 的四本）按 5 秒约多 5 秒，`TestPermissionMatrix` 的约 30 个变体的格子按矩阵今天的每格（一份库的副本）约 15–25 秒：共约 45–60 秒，6:12 之后约 7:00–7:15，较慢的一次可能到线上；
-- 第三份：十一个新的约 35–40 秒，后台的两批与三个交错较重，约 45–55 秒；`TestTheServersLimitsComeAfterThePrechecks` 只剩解析的预算的一个程序（磁盘的一半去掉了，少一个库与一个应用，约 3–5 秒），约 40–50 秒，5:41 之后约 6:20–6:30，离线约一分钟。S1 量过之后改正（审查 C-N5，主持者的决定 26）：这一估计没有算 `prepareMatrix` 给它的每个用者多种的 `wlab`（第三份五个用者、第二份三个，3.14），S1 带修复在第三份的 CI 上多约 15–25 秒，比它的三个新测试多；照 S1 的数，加上这里的 S2、S3 的，第三份到 P1 结束约 6:45–7:00，仍在 7:30 之下，离线约 30–45 秒；S2、S3 的估计算上 `wlab` 的种。第二份照这里的估计（S1 的五个新测试 CI 上约 9.4 秒，变体的格在 15–25 秒之内）。
+- 第三份：十一个新的约 35–40 秒，后台的两批与三个交错较重，约 45–55 秒；`TestTheServersLimitsComeAfterThePrechecks` 只剩解析的预算的一个程序（磁盘的一半去掉了，少一个库与一个应用，约 3–5 秒），约 40–50 秒，5:41 之后约 6:20–6:30，离线约一分钟。S1 量过之后改正（审查 C-N5，主持者的决定 26）：这一估计没有算 `prepareMatrix` 给它的每个用者多种的 `wlab`（第三份五个用者、第二份三个，3.14），S1 带修复在第三份的 CI 上多约 15–25 秒，比它的三个新测试多；照 S1 的数，加上这里的 S2、S3 的，第三份到 P1 结束约 6:45–7:00，仍在 7:30 之下，离线约 30–45 秒；S2、S3 的估计算上 `wlab` 的种。第二份照这里的估计（S1 的五个新测试 CI 上约 9.4 秒，变体的格在 15–25 秒之内）。S2 量过之后（10.2）：六个新的测试本机竞态下第三份的四个约 6.1 秒、第二份的两个约 1.1 秒（乘 1.73 约 10.6 与 1.9 秒），在这里的估计之内；`TestPermissionMatrix` 的变体的六行是 78 格（每行 13 格，不是约 30 格），并行跑；本机单独的第二份比起点多约 8.4 秒，第三份在波动之内；分支的两次 CI 的测试一步的平均是第一份 6:46.5、第二份 6:11.5、第三份 6:22，都在 7:30 之下，第二、三份在到 P1 结束的估计之下。
 
 第二份离线不远，所以每个 Step 合并之后照 M9/P2 6.5 的规则读两次 CI 的测试一步的平均（第 10 节记下）：一份过了线时只在邻居收下之后两份都在线之下时挪界线（第三份在这里有约一分钟的余量），否则按测试名再分一份，从不提高 `-timeout`。e2e 加 9 个测试，在一个不分份的任务里（第 5 节）。
 
@@ -2384,7 +2404,7 @@ P1 完成，当且仅当：
 
 - **12.4** 写入守卫一行（`:982`）：S2，"M10（模式不变量：注册者 `page.NewModeGuard` 在 page，排在锁之前）"之后加"；次序在 `pageRegistrants(pool, authorizer)` 里"，同一格末尾的"`pageRegistrants(pool)` 里的登记次序"改为"`pageRegistrants(pool, authorizer)` 里的登记次序"。编辑会话一行的模式的否决者是 P2/S1 的。笔记本的创建与模式的变化两行已在（00 号文档定稿时写下），S1 核对它们的文字与 3.5 的签名一致（`NotebookCreation`、`ModeChange`）。
 - **13.1 第 1 条**：
-  - "页面的写入单元"一段（`:1031`），S1，"单元拒绝已经在事务里的 ctx"改为"单元拒绝已经在事务里的 ctx（唯一的例外是 `TreeWrites().Seed`：笔记本的模板在建它的事务里写，单元加入调用方的事务、重入同样的锁、时刻取调用方的，M10/P1）"；S2 在同一段末尾加"M10 起单元在笔记本行的锁下读一次它的模式与来源根（`Write.Notebook`），并带着单元自己的授权的备忘（`Write.Grants`，指针：步按值带着 `Write`，答案不能在副本里丢掉）；守卫与预检的模式的拒绝以 `Refused` 标出它拒绝的节点，`batch` 答在它的项上、后台的任务以 `refused` 停下，`Refused` 解开到问题，今天认问题的每一处照旧"。
+  - "页面的写入单元"一段（`:1031`），S1，"单元拒绝已经在事务里的 ctx"改为"单元拒绝已经在事务里的 ctx（唯一的例外是 `TreeWrites().Seed`：笔记本的模板在建它的事务里写，单元加入调用方的事务、重入同样的锁、时刻取调用方的，M10/P1）"；S2 在同一段末尾加"M10 起单元在笔记本行的锁下读一次它的模式与来源根（`Write.Notebook`），并带着单元自己的授权的备忘（`Write.Grants`，指针：步按值带着 `Write`，答案不能在副本里丢掉）；守卫与预检的模式的拒绝以 `Refused` 标出它拒绝的节点（单元另以一步的第一个节点标出别的守卫的问题），`batch` 答在它的项上，`Refused` 解开到问题，今天认问题的每一处照旧"（后台的任务以 `refused` 停下随 S3 的"后台的恢复与撤销"一段写）。
   - "树写入端口"一段（`:1032`），S3，"上传先不加锁地预检（`Check`，与单元同一套判定、名称与父页的规则）"之后加"（M10 起也判模式的契约，排在 asset 的 `storage_full` 之前）"。
   - "导入的单元"一段（`:1033`），S3，"撞名不答 409，按锁下读到的兄弟加序号"之后加"（LLM Wiki 的根下，四个保留的标题键 `index`、`log`、`index.md`、`log.md` 也算被占的，加序号、报告 `renamed` 问题，M10/P1）"（审查 C-M8：导入的那一句进它自己的一段，不附在恢复的一段末尾）。
   - "从回收站恢复"的那一段（`:1034`），S3，加"LLM Wiki 的根下，恢复把四个保留的标题键也当作被占的，加序号（同步的答 `renamed`，后台的数 `counts.renamed`）"。
@@ -2399,9 +2419,10 @@ P1 完成，当且仅当：
 - **13.1 第 11 条**：S1 加 wiki 的模块根（P1 只有 `NewTemplate(seeds)`、`Actions()` 与给组合根的测试读的 `TemplatePages` 与三个常量，没有 `New`）与组合根的次序"page → asset → linking → wiki → transfer → notebook"、`transfer.NewWritingJobs(pool)`；S2 加 `page.NewModeGuard(authorizer)`（P2 加连接池）。
 - **13.1 第 19 条**，S1：加"例外：模板的正文在启动时解析一次（`TreeWrites().ParseTemplate`，不经预算），提取结果在几次创建之间只读地共用"。
 - **13.1 第 21 条**：
-  - "组合在一处"一段（`:1109`），S2：`pageRegistrants(pool)` 改为 `pageRegistrants(pool, authorizer)`；"两处都是 `pageRegistrants(pool).sessionSubscribers`"改为"两处都是 `pageSessionSubscribers(pool)`（命令行没有授权者，`pageRegistrants` 只在 serve）"。
+  - "组合在一处"一段（`:1109`），S2：`pageRegistrants(pool)` 改为 `pageRegistrants(pool, authorizer)`；"两处都是 `pageRegistrants(pool).sessionSubscribers`"改为"两处都是 `pageSessionSubscribers()`（命令行没有授权者，`pageRegistrants` 只在 serve；不收连接池，S2 的偏离 5）"。
   - S1 加两个新的扩展点与它们的最后一跳："笔记本的创建（`Seeder`，事务内，交回它写下的来源根；M10 的 wiki 的模板，最后一跳 `TestLLMWikiCreationWritesItsTemplate`、`TestTheTemplateRollsBackWithItsNotebook`）与模式的变化（`ModeSubscriber`；M10 的事件流，最后一跳 `TestTheModeEventReachesTheStreams`）；两个不只凭连接池构造的注册者：播种者要 `(*page.Module).TreeWrites()`（S1），模式的守卫要授权者（S2）"。
   - "行为测试"一段（`:1112`）：S1 加 M10 的两个扩展点的注册者与最后一跳（同上一条）；S2 加"M10 注册的模式的守卫排在锁之前，最后一跳在 `bootstrap/wiki_guard_test.go`（`TestTheModeGuardReachesEveryPath`、`TestModeComesBeforeTheLock`）与 `mcp_wiki_guard_test.go`（`TestTheModeGuardReachesEveryMCPWrite`），组合根交空时失败；有预检的 `batch` 的最后一跳是 `interleavings_wiki_test.go` 的 `TestTheGuardRefusesWhatThePlanLetBy`（`guards: []` 时同样的交错让写成功）"；S3 加"`treeError` 到 `refused` 的最后一跳 `TestTheSourceRootsPutBackIsRefusedInALaterBatch`"（审查 C-M8）；S4：前端"`app/event-stream.test.tsx` 用替身类型 `mode`"改为"用替身类型 `later`（M10 收尾时改名：`mode` 已是真的类型）"，M5 写给 M10 的最后一跳加"`bootstrap/wiki_downgrade_test.go` 的 `TestTheModeEventReachesTheStreams`（帧按契约的 `EventMode` 核对），前端经组合根的表的是 `app/event-stream.test.tsx`（`mode` 的处理）"。
+- **13.1 第 29 条**（"否决者与守卫"一段，`:1131`），S2：`pageRegistrants(pool)` 改为 `pageRegistrants(pool, authorizer)`（S2 的文档提交补上：这一节起初没有列它）。
 - **13.1 第 30 条**，S1：事件的类型加 `mode`（按笔记本过滤，帧是两个 id，发布的数据为空）。
 - **13.2 第 1 条**（`:1160`），S4：加"`NotebookStore.downgrade` 经这本笔记本的 `inTurn`；答 403、404 与 409 `notebook.not_llm_wiki` 时照离开的写法重读列表（不在列表里的拿掉而不记作删除），409 `notebook.not_llm_wiki` 当作完成"。
 - **13.2 第 17 条**，S4：加"持有的对话框（`HeldDialog`）由持有它的那一节移焦点：降级成功之后到"模式"一节的标题（`tabIndex={-1}`）；对话框在打开时不随触发按钮卸下，所以 403 之后重读的列表不会带走对话框里的拒绝"；树的行的种类的文字等价在可读的名字里、放在看得见的名字之后，照 `NewTab` 的写法：真的空格在 `sr-only` 之外、后缀以括号起头（`raw (source area)`），可读的名字在 Chromium 里的样子由 e2e 按确切的名字核对（jsdom 没有 Tailwind）。
@@ -2411,7 +2432,7 @@ P1 完成，当且仅当：
 - **13.4 第 3 条**：S1 加"`createNotebook` 的第六个参数是选项（`mode`、`templateLocale`）；模板的页以 `expectNewPage`、`expectChangesetOf` 核对，不另开 `assert/wiki.ts`"；S4 加"`test.use({ locale })` 只在 `test.describe` 里"（套件里第一处是 S4 的 LW1 (page)，审查 C-N5）。
 - **13.4 第 4 条**，S1–S3：加 7.2 的八条交错的名字与它们怎样逼出（第 8 条是 S1 的修复一轮加的）。
 - **13.4 第 6 条**，S1：加"矩阵的 LLM Wiki 的变体：同样的列在另一个工作区里有同样的角色，行带 `wiki`，`targetViolation` 按行的工作区核对"。
-- **13.4 第 13 条**，S2、S3：加"`CheckContract` 是守卫与四处预检（`batch` 的计划、上传的 `Check`、撤销的两遍）共用的一组规则，事实由同一个 `FactsOf` 建（M10/P1）"。
+- **13.4 第 13 条**，S2、S3：S2 加"`CheckContract` 是模式的守卫与 `batch` 的计划共用的一组规则，事实照同一种写法建（守卫经 `FactsOf` 从步的改动，计划从它模拟的树，位置都是父节点与名字的标题键），不另写一份（M10/P1 的 S2）"；S3 加上传的 `Check` 与撤销的两遍（以 `FactsOf` 从它们计划的步建事实）。
 
 **`docs/README.md`**：不改（`:103` 之后的 M10 的那一句已在）。README（仓库根的）的 LLM Wiki 一节是 P5 的。
 
@@ -2428,7 +2449,8 @@ P1 完成，当且仅当：
 
 ## 9. 交给后面的 Phase
 
-- **P2/S1**：`page.NewModeGuard(pool, authorizer)`（加连接池）；模式的会话否决者与它的次序测试（登记在锁的否决者之前，3.20）；`NodeFacts` 加 `InArea`，祖先的一线在已读的三处交出、在改名、删除、上传、同父节点的 `Relocate`、撤销的放回补一次读（3.21）；`CheckContract` 的 `page.source_immutable`、`page.source_duplicate` 在 R3 与 R4 之间（3.21 的码的次序）；`batch` 的计划的正文的一遍与它的 `Needs`（3.22 的 `PlanBatch(…, n)` 已收契约，`Refuse` 已让码按项的次序）；新的码不改 `TransferRefusal`（`code` 是自由的字符串，3.26），只加网页的文字；`Step.Content` 的类型另取名（2.1 第 17 条）；矩阵的变体加来源与它的删除的行（管理员成功）；`TestTheDowngradeEndsTheContract` 加"来源成为可写"；守卫读连接池之后 `TestTheModeGuardLetsAStandardNotebookBy` 加一个计数的存储（普通的笔记本什么也不读，3.20）；后台撤销的一批若要在读写之前的检查，由 P2 的设计加回（2.1 第 19 条）。
+- **S3**（同一个 Phase 的下一个 Step；S2 的审查留下的，S2 的审查记录的主持者的决定 29）：S2→S3 的四个窗口（第 0 节）由 S3 的合并关上：导入与恢复的加序号与 `checkPages` 的"根下没有保留的键"（3.27）也关上 A-M2（S3 之后撤销的放回再到不了 R3，不为 `revertChangeset` 声明 `page.virtual_file`）；撤销的两遍预检（3.25）关上 A-M3，3.28 的 `TestPrechecksAnswerTheGuardsCodes` 加钉住它的形状的一行（前一步碰到锁、后一步被模式拒绝：只有预检过得了）；后台撤销遇到同样的形状时由开始时的预检先拒绝整个任务（S2 审查 A 的存疑）。
+- **P2/S1**：`page.NewModeGuard(pool, authorizer)`（加连接池）；模式的会话否决者与它的次序测试（登记在锁的否决者之前，3.20）；`NodeFacts` 加 `InArea`，祖先的一线在已读的三处交出、在改名、删除、上传、同父节点的 `Relocate`、撤销的放回补一次读（3.21）；`CheckContract` 的 `page.source_immutable`、`page.source_duplicate` 在 R3 与 R4 之间（3.21 的码的次序）；`batch` 的计划的正文的一遍与它的 `Needs`（3.22 的 `PlanBatch(…, n)` 已收契约，`Refuse` 已让码按项的次序）；新的码不改 `TransferRefusal`（`code` 是自由的字符串，3.26），只加网页的文字；`Step.Content` 的类型另取名（2.1 第 17 条）；矩阵的变体加来源与它的删除的行（管理员成功）；`TestTheDowngradeEndsTheContract` 加"来源成为可写"；守卫读连接池之后 `TestTheModeGuardLetsAStandardNotebookBy` 加一个计数的存储（普通的笔记本什么也不读，3.20）；后台撤销的一批若要在读写之前的检查，由 P2 的设计加回（2.1 第 19 条）；`ErrSourceAdminOnly` 的文字（"…rename, move or delete in an LLM Wiki's source area, its source root included"）照字面像是管理员能删来源根，`page.protected` 不许，网页的文字（4.2）已为此改写、服务端给 MCP 的 agent 读的没有，随来源区的规则看一次（S2 审查 A 的存疑）。
 - **P2/S2**：降级的 `Forget` 插在 3.10 第 5 步之后；`ModeChange` 的订阅者不变；上传、同步的撤销与 `startRevert` 的只有守卫拒绝的情形（重复，3.25）；报告的拒绝可以指一个附件（重复的来源），`transfer.refusedSome` 说的"不再在树里的一页"与 `distinctName` 对附件不答（`W/pages/notebook/distinct-name.ts:11-22`）随之改，00-M10 的 `duplicateText` 已处理附件（审查 C-N9）。
 
 - **P2/S3**："粘贴或上传为来源"的对话框的名字与模板的 `raw` 的那一句一致（3.9），不同时改模板；来源区的树的菜单在 4.4 的行的种类上加"来源"。
@@ -2505,9 +2527,54 @@ P1 完成，当且仅当：
 - **修复核对一轮**（2026-10-25，三位各在 `86e4c8da` 的新的工作树里）：三位都说自己的与自己范围里别人的每一条都改了，没有新的发现（Important 0、Minor 0、Nit 0）。A-N3 的生产的改动：建的 `seededItsRoot` 不改，一页以别的 id 写下时建答 500（A 的 h5、B 的 b8、C 的 F6；F6c 证明那就是这一处核对，F6b 显出 A-N3 之前只有整个程序的核对抓得到）。新的子测试是逼出来的（C 的 F7、F7c），但没有我们的代码的变异让它失败（A 的 h7），是 PostgreSQL 的回归测试（主持者的决定 24）。13 个提交各自绿（C）。
 - 实施者留给审查与主持者的一项（`TestLLMWikiCreationWritesItsTemplate` 把说明读进 `string`）由修复一轮的 `coalesce` 改正（主持者的决定 25）；文档照偏离改的各处，由这一节与 3.30 记下。
 
-### 10.2 S2：守卫的骨架
+### 10.2 S2：守卫的骨架（2026-10-25，合并见 00 号文档第 12 节）
 
-（待填）
+- 提交（从 main 的 `45d086a1` 开始，照 6.2 的次序，第 1–4 步，4 个；第 5 步的文档是主持者的）：
+  - 单元在锁下读笔记本的状态：`ShareNotebook` 选出 `mode`、`source_root_id`，notebook 的根的 `ShareState`、`LockState`（`notebooks_test.go` 的四行：LLM Wiki、普通、已删、没有）；page 的端口 `ShareByID`、`LockByID` 交回 `(NotebookState, bool, error)`，组合根的 `pageNotebooks` 经 `toPageState` 转换（`TestPageNotebooksConvertTheState` 读三种读法）；`Write.Notebook`、`Write.Grants` 与 `Grants`（`TestAGrantIsAskedOnceAUnit`）；page 的几个假的 `Notebooks` 交回状态；`TestTheGuardSeesTheCheckedChange` 以 `want.Grants = s.Grants` 比较（`70b0ccdd`）。
+  - `CheckContract`：`StepFacts`、`NodeFacts`、`NodePlace`、`FactsOf`、`Verdict`、`ReservedKeys()`、`Reserved`，R1、R2 → R3 → R4；三个错误、`Refused`/`Refuse`；`ActionManageSource` 与它的规则（笔记本管理员）；`TestTheReservedKeysAreTitleKeys`、`TestCheckContract`（3.21 的表，每一行另对来源根的 id 相同的普通笔记本答零）、`TestFactsOfAStep`、`TestARefusalIsMarkedOnce`（`ee64833c`）。
+  - 模式的守卫：`app.ModeGuard`、模块根的 `NewModeGuard` 与 `Refusal`；`Unit.apply` 以这一步的第一个节点标出守卫的问题；`batch` 的 `failed` 先认 `Refused`；`pageRegistrants(pool, authorizer)` 的 `[mode, lock]`、`pageSessionSubscribers()`；六个操作的 `x-problem-codes` 与说明，重新生成 bundle 与 TS；page 与 asset 的适配器的表的行；`mcpToolCodes()` 与 `wikiCodeCalls`；矩阵的变体的六行与 `adminsOnlyOr`；三个码的中英文字；`TestTheModeGuardLetsAStandardNotebookBy`、`TestTheModeGuardAsksOnceAUnit`、`TestAUnitMarksItsGuardsRefusals`、`TestABatchAnswersARefusalAtItsOperation`、`TestRefusalReadsTheMark`；3.24 的 `TestTheModeGuardReachesEveryPath`、`TestTheModeGuardReachesEveryMCPWrite`、`TestModeComesBeforeTheLock`、`TestTheDowngradeEndsTheContract` 与 3.23 的 `TestTheProtectionAndADowngrade`；e2e 的 LW2 (API)、LW2 (MCP)（`99ec6abe`）。
+  - `batch` 的计划判契约：`PlanBatch` 收笔记本的状态，树的一遍在每一项自己的检查之后判它的步（`judge`），`BatchPlan.Needs`、`Need`、`BatchPlan.Refuse`；`planned` 在 `ListNodes` 之后不加锁读 `StateOf`、在 `a.read` 之前问 `page.manage_source`（`grant`、`decidedNotebook`）；`TestThePlanChecksTheContract`、`TestABatchsPlanRefusesBeforeItsLock`；`TestTheGuardRefusesWhatThePlanLetBy` 与收 `wiring` 的 `newAcmeTeamWiring`（`cfa1c608`）。这个提交在推送之前修订过一次，加了下面第 14 条的一行；修订之前的 sha 是 `7fa387da`，实施者的报告的提交列表起初写的是它（审查 C-N2）。
+  - 每个提交单独在一个工作树里 build、vet、碰到的包的静态检查（0 个问题）与 short 测试都通过（要库的包的 `-short` 经 `heavy.sh`）；第 3 个提交另过网页的 tsc、oxlint、oxfmt 与 vitest（problem-messages 与 i18n 的 3 个文件、1,093 个测试）。审查 C 另在每个提交上跑整个模块的静态检查、tidy 与整个 short 测试，第 1、3 个提交上的生成物与 `make gen-go` 相同，第 3 个提交上网页的整个门禁（vitest 166 个文件、3,349 个测试），都通过。
+  - 修复一轮另有 4 个（下面），一共 8 个，合并见 00 号文档第 12 节。
+- 与设计不同之处（实施时定下的，都是最小的改动；已改在各节，3.31 列出）：
+  1. notebook 的存储的 `ShareNotebook` 答 `(domain.Mode, uuid.UUID, error)`，不答 `State`：适配器不能导入模块根的 `State`，根由这两个值建它。
+  2. 事实的位置叫 `NodePlace`，不叫 `Place`：`page/domain` 已有 `Place`（兄弟间的次序，`order.go:13`）。
+  3. `ReservedKeys` 是函数 `ReservedKeys()`，不是变量：lint 的 `gochecknoglobals`（同 `Actions()`）。
+  4. `page.manage_source`（动作、`Actions()` 与规则的一行）在第 2 个提交，不在第 3 个：`CheckContract` 的 `Needs` 要它，`TestTheRuleTableIsTheModulesActions` 要两边在同一个提交。第 1 个提交的 `TestAGrantIsAskedOnceAUnit` 因此以 `node.move`、`node.rename` 作问的动作。
+  5. `pageSessionSubscribers()` 不收连接池：它唯一的订阅者是事件流的发布者，只要它的 NOTIFY（`events.NewPublisher()`），收池是一个没用的参数。第 0 节、2.1 第 6 条、3.17、3.20、第 8 节、00 号文档 4.1 与第 7 节的 P1 一行、总体设计 13.1 第 21 条随之写作不带池。
+  6. MCP 的 `move` 的参数是 `from`、`to`（`api/mcp/tools.json`），3.22 的行写的是 `path`；`wikiCodeCalls`、`TestTheModeGuardReachesEveryMCPWrite`、LW2 (MCP) 发 `from`。`wikiCodeCalls` 的写者是经 SQL 加进 acme 的新账户 erin（读的应用里的 carol 只能看），它的 PAT 发写者的 `move raw.md`。
+  7. `uploadAsset` 的说明的新句放在"The checks are made again as the attachment is created."之后：S2 里上传的预检不判契约（S3 的 `Check` 判，3.25），只有单元里的建拒绝它。`revertChangeset` 的一句只说每一步照它的操作判，不说与 S3 的预检的次序（它之后已有的"Then … page.locked"在 S2 对一个形状不成立，即审查 A-M3）。
+  8. 批量问 `page.manage_source` 要笔记本的工作区：`decideNotebook` 包着新的 `decidedNotebook`，它另答工作区，`Execute` 把它留在这一次尝试里（不多读一次）。
+  9. 树的一遍在每一项自己的方法里判（`judge`），在这一项自己的检查之后、它记下改动之前（3.22 写的是"模拟每一项之后"）：事实相同，被拒的一项不在计划的树里留下改动。一项的拒绝在同一项上批量自己的界线（移动带着的节点、项数）之前：分开的调用没有这些界线。
+  10. `Refuse` 也取代同一项上的失败（批量的界线，`final`），并清掉 `final`，让正文的一遍走到被拒的那一项之前（"更早的一项的正文的失败照旧在先"）。修复一轮为这两种行为加了测试（审查 A-M1 = C-M2）。
+  11. 没有 `batch` 的测试钉住整个调用列表（计划开始读 `StateOf` 时一个也没有失败），设计的 `"StateOf nb"` 没有地方加；替身记 `"StateOf"`、不记 id（同 S1 的第 6 条）。`TestABatchsPlanRefusesBeforeItsLock` 的最后一行核对 `StateOf` 紧跟 `ListNodes`、不在事务里。
+  12. `TestTheModeGuardAsksOnceAUnit` 的拒绝的一行：第 4 个提交起计划在任何单元之前拒绝被拒的 `batch`，这一行改为计划放行、锁下拒绝（记录器在 `"LockNotebook in tx"` 时把放行改成拒绝，等于其间角色变了），仍是守卫的拒绝；核对单元里问一次、计划问一次。替身授权者默认答 `ErrNotVisible`：第 3 个提交里守卫的 `Grants` 把它当拒绝，第 4 个提交起计划把它答成笔记本的 404。替身授权者加 `failing`（数据库的错误的一行）。
+  13. 批量的移动没有兄弟间的位置：`TestThePlanChecksTheContract` 的 B-Q1 一行（排序祖先）写成祖先在同一父节点下的改名，与移到原处（不是一步）。
+  14. `TestABatchsPlanRefusesBeforeItsLock` 另加一行"写者的 `[move raw, edit AGENTS]`，AGENTS 被别人的会话持着"答第 0 项的 403：设计的那几行里被持着的 AGENTS 的删除在树的一遍就被拒（第 1 项的 409），到不了编辑锁的预检，这一行才钉住计划的问在编辑锁的预检之前。
+  15. 第 23 条变异：存储答 `standard` 与零的来源根（查询的两列照选、不读：变异之下不重新生成 sqlc）。第 29 条照字面写不出：改名的一步只有那个节点，P1 不读祖先，契约认不出"祖先的改名"，变异写成"每个改名都要 `page.manage_source`"。第 32 条照它的效果写：步按值带着 `Write`，`Grants` 是值时每一步是单元的一份副本，变异给每一步一份 `Grants` 的副本，不改类型（改类型要改几个测试文件，编译不过不算抓到）。第 40 条：计划把它的放行经 ctx 的一个值交给单元，单元的 `Grants` 从它开始。第 34、38、39、40 条与最后一跳改两三个文件，`mut2.py` 是 `mut.py` 多文件的写法。
+
+  另：`TestTheModeGuardReachesEveryMCPWrite` 的 agent 的变更集按 `client LIKE 'mcp%'` 找：`acmeTeam` 的 REST 请求带登录会话，它们的变更集的客户端是 `web`，不是 `api`（审查 C：之后要的恰是 agent 的那几个，多一个被拒的变更集就失败）。
+- 实测（本机，竞态检测下，经 `heavy.sh`，除非注明；机器同时有别的会话，各次开始时负载 2.0–6.1）：
+  - 六个新的整个程序的测试（`go test -race -count=1 -run '^(…)$' ./internal/bootstrap`，开始时负载 4.6）：包 9.1 秒。第三份的四个共 6.1 秒（`TestTheProtectionAndADowngrade` 2.42（1.88 与 0.54）、`TestTheGuardRefusesWhatThePlanLetBy` 2.03（0.91、没有守卫的 0.55、0.57）、`TestTheModeGuardReachesEveryPath` 1.13（两本各 0.32、0.28）、`TestTheModeGuardReachesEveryMCPWrite` 0.56），乘 1.73 约 10.6 秒；第二份的两个共 1.1 秒（`TestTheDowngradeEndsTheContract` 0.58、`TestModeComesBeforeTheLock` 0.53），乘 1.73 约 1.9 秒。都在 7.5 的估计之内。审查 C 在负载 8–9 时量得包 9.4 秒，各测试在这些数的几个百分点之内。
+  - 改过的：`TestTheMCPToolsErrorsCarryTheirCodes`（第三份）5.59 秒；它与 `TestPermissionMatrix` 一起的包 30.3 秒（S1 记下矩阵单独 21.0 秒）。S2 的矩阵的六行各 13 格、共 78 格（7.5 估的是约 30 格），格的时间之和 43.5 秒，并行跑。修复一轮改的 `TestTheModeGuardReachesEveryMCPWrite` 单独 2.29 秒（包里的第一个测试，带着应用的启动），`TestThePlanChecksTheContract` 多 0.04 秒。
+  - e2e（不带竞态）：`make e2e` 286 个 37.0 秒（整个目标 39 秒）；LW2 (API) 80 毫秒、LW2 (MCP) 65 毫秒、LW1 (API) 58 毫秒、LW1 (MCP) 37 毫秒、MC1 205 毫秒。修复一轮 286 个 36.9 秒。
+- 反向对照（`mut2.py`：`mut.py` 的多文件的写法；每个文件改完即复原，`git status` 照旧干净；每一条的结果见 [S2 的审查记录](reviews/P1-S2-guard-review.md)"反向对照"）：
+  - 7.3 的第 23–41 条（建成时与修复一轮在 `7834bd70` 上各跑一次，各 27 次：25、26、27、30、31 各对 `TestCheckContract` 与 `TestTheModeGuardReachesEveryPath` 跑一次，34 对三个测试，41 分 a、b）都被它点名的测试抓到；没有编译不过、命令没跑或不点名的失败。第 29、32、23、40 条的写法见上面第 15 条。
+  - 3.29 的 S2 各行：要改代码才看得到的另跑 13 次，都被抓到：组合根不登记模式的守卫（`{lock}`）时 `TestTheModeGuardReachesEveryPath`（模板的撤销答 200）、`TestTheModeGuardReachesEveryMCPWrite`（`write index/x.md` 写下）与 `TestModeComesBeforeTheLock` 都失败（最后一跳）；计划不看笔记本的状态、移动不列后代、删除只判子树的根、写只判最后一页（不判补建的父页）、`Refuse` 不截 `Reads`、`Refuse` 取代更早的失败，都被 `TestThePlanChecksTheContract` 抓到；契约的 bundle 的 deleteNode 去掉 `page.protected`（答出了没声明）与 handler 的那一行去掉（声明了没答出，`apitest.Main`），都被 page 的 HTTP 适配器的测试抓到；`mcpToolCodes()` 的 write 一行去掉 `page.virtual_file`（`toolError`）与不调 `wikiCodeCalls`（行里的码没有调用答出），都被 `TestTheMCPToolsErrorsCarryTheirCodes` 抓到。其余几行是测试自己的行（普通的笔记本的几行、没标出的 `page.title_taken` 照旧重新计划、`guards: []` 的程序、`TestModeComesBeforeTheLock` 的两半、handler 的表以标出的错误答出同样的码）。修复一轮在 `7834bd70` 上重跑其中的九个（`spec-s2.json`，与第 23–41 条共 36 次），都被抓到。
+  - 审查的四个变异建成时都活下来（A 的 RA1、RA2 = C 的 c06、c05；C 的 c01、c02），修复一轮之后都被抓到，作 7.3 的第 81–84 条：`Refuse` 保留同一项上的失败（`Failed.Op <= at`）与不清 `final`，被 `TestThePlanChecksTheContract` 的批量的界线的三行抓到；守卫不标出它的规则的拒绝（`return v.Err`）与以这一步的第一个节点标出 `page.source_admin_only`，被 `TestTheModeGuardMarksTheNodeItRefuses` 抓到。审查者的别的变异（A 的 RA3–RA6，C 的 c03、c04、c07、c08、h1–h7）都被抓到：RA3、RA4（不带工作区问授权者）过模块的测试（替身授权者不看目标），被整个程序的测试抓到。
+  - 第 1 个提交改了 `TestPageNotebooksConvertTheState`（三种读法各记下它调的读）：S1 的第 80 条在它上面再跑一次照样抓到；去掉 `SourceRootID`、`LockByID` 读 `ShareState`、`ShareByID` 读不加锁的 `StateOf`，都被抓到。
+- 门禁（本机，`cfa1c608`）：`make lint gen-check knip build` 通过；经 `heavy.sh`：`make test` 900 秒（竞态与组合根三份同时跑，之后成本与守卫；`test-web` 166 个文件、3,349 个测试），`make test-go-short` 54 秒，`make e2e` 286 个 37.0 秒。修复一轮（`7834bd70`）：`make lint gen-check knip build` 通过；经 `heavy.sh`：`make test` 第一次 244 秒以 2 退出，不是我们的代码：组合根的一份起不来它的 PostgreSQL 容器（对 Docker 的套接字 `context deadline exceeded`，那时另一个会话的 `postgres:18.6` 容器正在共用的 Docker 上起，负载 8–10），那个二进制的每个测试都在准备时失败，另两份与其余的都过；再跑一次 890 秒通过；`make test-go-short` 53 秒，`make e2e` 286 个 36.9 秒。
+- 组合根的各份（6.5 的规则）：`go test -race -list` 核对，426 个测试、三份 168、119、139（S2 的组合根测试之前，`ee64833c`，420 个、168、117、135），第三份四个、第二份两个照 7.5 的表，第一份没有新的。本机单独两次：第一份 271.1、252.9，平均 262.0 秒；第二份 164.6、156.0，平均 160.3；第三份 192.3、191.5，平均 191.9。S2 的起点 `45d086a1` 同样两次：第二份 148.3、155.5，平均 151.9（+8.4）；第三份 189.2、195.8，平均 192.5（−0.6，在波动之内）。CI 与本机之比 1.67、2.48、2.03。
+- CI：分支的 run 40123373818（`cfa1c608`）共 12:31，**一个作业红**（作业，括号里是测试一步）：web 3:36（3:03）、short 2:32（2:13）、竞态 8:01（7:41）、组合根一 7:41（7:18）、二 6:56（6:37）、三 6:51（6:30）、守卫 12:28（12:10，失败）、成本 11:48（9:00），e2e 与镜像因此跳过。守卫的失败是 M9 的 grep 的成本守卫 `TestGrepOfAHundredThousandCandidatesTakesItsTime`："GrepCandidates of 100,000, without statistics: [195.8ms 388.3ms 393.1ms]"，中位数过了 270 毫秒；本机 `make test` 里同一守卫照过。S2 不碰 `GrepCandidates`，grep 的路径上只有 `decideNotebook` 改成包着 `decidedNotebook`（读的一样）；这个 run 整个慢：没有 S2 的测试的第一份从 S1 的合并的 run 40116706995（`45d086a1`）的 4:59 到 7:18，竞态 6:00 到 7:41，守卫 7:57 到 12:10。照说明停下，没有再推、也没有重跑；修复一轮的推送重跑了它。修复一轮的 run 40131529634（`7834bd70`）全绿，共 16:53：web 4:04（3:31）、short 3:18（2:56）、竞态 7:58（7:37）、组合根一 6:44（6:15）、二 6:04（5:46）、三 6:32（6:14）、守卫 8:03（7:45，grep 的守卫照过）、成本 12:20（9:20）、e2e 4:28（E2E 一步 3:36）、镜像 1:18。照 M9/P2 6.5 的规则的算法，两次的测试一步的平均是第一份 6:46.5、第二份 6:11.5、第三份 6:22，都在 7:30 之下（第二、三份在 7.5 到 P1 结束的估计 7:00–7:15、6:45–7:00 之下；第一份没有 S2 的测试，是离线最近的一份）；界线没有挪、没有分、没有提高 `-timeout`，CI 的文件与 `Makefile` 没改。
+- 建成的 CI 的红不是 S2 的（审查 C 的诊断，主持者的决定 30）：S2 不碰 grep 的守卫跑的任何东西；本机上它在 S2 与它的起点上交替各两次量得相同（三个 `GrepCandidates` 的阶段的中位数 75–87 毫秒）；main 的守卫一份在没改的代码上从 7:57 到 12:35；修复一轮的运行过了它。它再失败时，守卫照 M9 给它的兄弟的界的改法（以量过的 CI 的中位数定界，或计时五次取中位数），不在 M10 的哪个 Step 里改：记作 M10 的收尾的一项（00 号文档第 7 节"写给后面的 M"）。
+- 设计的文字照建成的与修复一轮改，已改在各节（第 0 节，2.1 第 6 条，3.17–3.24，3.28，3.29，6.2，7.1，7.3，7.5，第 8、9 节；3.31 列出）；7.3 加第 81–84 条，第 23、29、32、40 条写明照实的写法。
+- **修复一轮**（2026-10-25，分支 `m10-p1-s2` 的 `7834bd70`；两份审查（主持者的决定 27；A：守卫、规则、每条写的路径、码与 `batch` 的计划；C：测试、变异、e2e、提交与 CI 的失败），Important 0、Minor 五条（不同的四条，A-M1 = C-M2 同一条）、Nit 3，主持者的决定 `fix-brief-1.md`，决定 28）：从 `cfa1c608` 起 4 个提交，一条一个，每个提交单独 build、vet、碰到的包的静态检查与 short 测试都通过：
+  - A-M1 = C-M2 `a5ea0d68`：`TestThePlanChecksTheContract` 加 `Refuse` 在批量自己的界线上的三行（审查者的形状）：项数的界线（`Big` 下 `MaxUnitNodes - 1` 页，删 `Big` 再移 `raw`）与移动带着的节点（`Large` 与带着 `raw` 的 `Notes` 各 5,000 页，都移到别的父节点下）在需要 `page.manage_source` 的那一项上，`Refuse` 取代它们，答那一项的 `page.source_admin_only`；`[edit Notes（不匹配）, delete Big, move raw]` 在 `Refuse` 之后读 `Notes`、`Contents` 答第 0 项的 422（`final` 清掉了）。第 81、82 条变异。
+  - C-M1 `8b38a823`：`TestTheModeGuardMarksTheNodeItRefuses`（在 `TestTheModeGuardLetsAStandardNotebookBy` 旁边）：删 `Notes`（`raw` 在它下面）答标出 `raw` 的 `page.protected`，把 `Notes` 移到 `Other` 之下（`page.manage_source` 被拒）答标出 `raw` 的 `page.source_admin_only`。第 83、84 条变异。
+  - C-N1 `a5990de5`：`TestTheModeGuardReachesEveryMCPWrite` 在 `edit AGENTS.md` 之后以它答的版本 `write` 覆盖 `AGENTS.md`：写下、什么也没建，agent 的第二个变更集（3.23 的"`write` 覆盖已有的页"）。
+  - A-N1 `7834bd70`：`ApplyBatch.Execute` 的次序的注释写出树的一遍判契约（`page.protected`、`page.virtual_file` 在它们的项上）与 `page.manage_source` 在读与编辑锁的预检之前问、`page.source_admin_only` 答在那一项上。
+  - A-M2、A-M3（S2 与 S3 之间的另两个窗口：恢复或导入放到根下的 `index` 改名之后的撤销答没声明的 `page.virtual_file`；同步撤销的前一步碰到锁时答 `page.locked`、不答后一步的 `page.source_admin_only`，S3 的两遍预检关上，主持者的决定 29，第 0 节）与 C-N2（这一节里第 4 个提交的 sha 是修订后的 `cfa1c608`）是主持者的文档；代码不为它们改。
+- **主持者的核对**（2026-10-25，代替审查者的修复核对，为了额度，主持者的决定 31）：读过 `cfa1c608..7834bd70` 的差异：4 个文件，三个测试与 `apply_batch.go` 的一处注释，没有生产的代码的改动；实施者在修好的头上重跑 7.3 的第 23–41 条与九个要改代码的反向对照（36 次），都被抓到，审查者存活的四个变异各让它的测试失败（第 81–84 条）；CI 全绿。
 
 ### 10.3 S3：预检、加序号与后台的拒绝的去处
 
