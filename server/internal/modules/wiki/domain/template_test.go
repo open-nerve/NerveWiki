@@ -102,8 +102,12 @@ func correspond(a, b string) error {
 }
 
 // Every page of a mode's template corresponds in the two languages; the
-// comparison sees a paragraph gone, one more at the end, a list item gone
-// and one inline code changed (v0.1 design 13.4 item 1).
+// comparison sees a paragraph gone and one more at the end (the blocks'
+// count), a list item gone and one inline code changed (the code), and,
+// the code kept, each block's shape: two list items on one line (a list's
+// items), a heading a level down (its level), a fence a line short (a
+// fence's lines) and a paragraph in two lines (a paragraph's) (v0.1
+// design 13.4 item 1).
 func TestTheTemplatesCorrespond(t *testing.T) {
 	for _, mode := range []Mode{ModeStandard, ModeLLMWiki} {
 		c, _ := ContractOf(mode)
@@ -133,6 +137,11 @@ func TestTheTemplatesCorrespond(t *testing.T) {
 		"one more at the end":    zh + "\n多出的一段。\n",
 		"a list item gone":       strings.Replace(zh, item, "", 1),
 		"an inline code changed": strings.Replace(zh, "`log.md`", "`log`", 1),
+		"two items on one line":  strings.Replace(zh, "一次改完。\n- `query`", "一次改完；`query`", 1),
+		"a heading a level down": strings.Replace(zh, "## 生成的页\n", "### 生成的页\n", 1),
+		"a fence a line short":   strings.Replace(zh, "summary: 一句话说这一页讲什么。\n", "", 1),
+		"a paragraph in two lines": strings.Replace(zh, "这一页是双方都遵守的约定。",
+			"这一页是双方都遵守的约定。\n", 1),
 	} {
 		if changed == zh {
 			t.Fatalf("%s: the change changed nothing", name)
