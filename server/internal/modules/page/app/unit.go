@@ -177,9 +177,9 @@ func (w *Writer) workspaceOf(ctx context.Context, spec UnitSpec) (uuid.UUID, err
 
 // Run runs do in a unit of spec: outside a transaction, the notebook's
 // workspace, unlocked; then, in the unit's transaction, the workspace's row
-// FOR SHARE, the notebook's, the decision, the changeset it merges into,
-// do, the changeset's renames and moves, the search's queue, the
-// observers. The clock is read once: every row
+// FOR SHARE, the notebook's with its state (Write.Notebook), the decision,
+// the changeset it merges into, do, the changeset's renames and moves, the
+// search's queue, the observers. The clock is read once: every row
 // the unit writes has its time. Any error rolls the whole unit back and is
 // returned. It refuses a ctx that carries a transaction.
 func (w *Writer) Run(ctx context.Context, spec UnitSpec, do func(ctx context.Context, u *Unit) error) (Outcome, error) {
@@ -244,7 +244,8 @@ func (w *Writer) run(ctx context.Context, spec UnitSpec, at time.Time, do func(c
 		if spec.Tree {
 			lock = w.d.Notebooks.LockByID
 		}
-		if ok, err := lock(ctx, spec.NotebookID); err != nil || !ok {
+		state, ok, err := lock(ctx, spec.NotebookID)
+		if err != nil || !ok {
 			return orNotFound(err, spec.NotFound)
 		}
 		target := shared.Target{WorkspaceID: workspaceID, NotebookID: spec.NotebookID}
@@ -256,7 +257,7 @@ func (w *Writer) run(ctx context.Context, spec UnitSpec, at time.Time, do func(c
 		}
 		u = &Unit{w: w, write: Write{
 			WorkspaceID: workspaceID, NotebookID: spec.NotebookID, By: actor.UserID, Client: spec.Client,
-			Options: spec.Options, At: at, Kind: kind, RevertsID: spec.RevertsID,
+			Options: spec.Options, At: at, Kind: kind, RevertsID: spec.RevertsID, Notebook: state, Grants: &Grants{},
 		}, into: spec.Changeset, create: spec.Create, message: spec.Message, bulk: spec.Background || spec.BulkSearch,
 			merged: map[uuid.UUID]int{}, deferring: spec.DeferParticipants}
 		if err := u.lockInto(ctx); err != nil {

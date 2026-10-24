@@ -57,6 +57,11 @@ type Notebooks interface {
 	// one: the reads that hold no lock (MCP's open_notebook; M10's list,
 	// read, instructions, lint) see one side of a downgrade or the other.
 	StateOf(ctx context.Context, id uuid.UUID) (State, bool, error)
+	// ShareState is ShareByID with the state read under the lock, and
+	// LockState LockByID's: a unit's mode does not change while it runs
+	// (M10 design 4.6).
+	ShareState(ctx context.Context, id uuid.UUID) (State, bool, error)
+	LockState(ctx context.Context, id uuid.UUID) (State, bool, error)
 }
 
 // NewNotebooks returns Notebooks over pool alone: bootstrap builds it
@@ -94,26 +99,37 @@ func (n notebooks) StateOf(ctx context.Context, id uuid.UUID) (State, bool, erro
 }
 
 func (n notebooks) ShareByID(ctx context.Context, id uuid.UUID) (bool, error) {
-	if !postgres.InTx(ctx) {
-		return false, errors.New("share the notebook row: not in a transaction, the lock would end with the statement")
-	}
-	ok, err := found(n.store.ShareNotebook(ctx, id))
-	if err != nil {
-		return false, fmt.Errorf("share the notebook row: %w", err)
-	}
-	return ok, nil
+	_, ok, err := n.ShareState(ctx, id)
+	return ok, err
 }
 
 func (n notebooks) LockByID(ctx context.Context, id uuid.UUID) (bool, error) {
+	_, ok, err := n.LockState(ctx, id)
+	return ok, err
+}
+
+func (n notebooks) ShareState(ctx context.Context, id uuid.UUID) (State, bool, error) {
 	if !postgres.InTx(ctx) {
-		return false, errors.New("lock the notebook row: not in a transaction, the lock would end with the statement")
+		return State{}, false, errors.New("share the notebook row: not in a transaction, the lock would end with the statement")
 	}
-	_, err := n.store.LockNotebook(ctx, id)
+	mode, root, err := n.store.ShareNotebook(ctx, id)
 	ok, err := found(err)
 	if err != nil {
-		return false, fmt.Errorf("lock the notebook row: %w", err)
+		return State{}, false, fmt.Errorf("share the notebook row: %w", err)
 	}
-	return ok, nil
+	return State{Mode: mode, SourceRootID: root}, ok, nil
+}
+
+func (n notebooks) LockState(ctx context.Context, id uuid.UUID) (State, bool, error) {
+	if !postgres.InTx(ctx) {
+		return State{}, false, errors.New("lock the notebook row: not in a transaction, the lock would end with the statement")
+	}
+	nb, err := n.store.LockNotebook(ctx, id)
+	ok, err := found(err)
+	if err != nil {
+		return State{}, false, fmt.Errorf("lock the notebook row: %w", err)
+	}
+	return State{Mode: nb.Mode, SourceRootID: nb.SourceRootID}, ok, nil
 }
 
 // found is the store's answer as Notebooks gives it: app.ErrNotFound is no

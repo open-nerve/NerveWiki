@@ -29,8 +29,12 @@ type inWorkspace struct{ id uuid.UUID }
 func (w inWorkspace) WorkspaceOf(context.Context, uuid.UUID) (uuid.UUID, bool, error) {
 	return w.id, true, nil
 }
-func (inWorkspace) ShareByID(context.Context, uuid.UUID) (bool, error) { return true, nil }
-func (inWorkspace) LockByID(context.Context, uuid.UUID) (bool, error)  { return true, nil }
+func (inWorkspace) ShareByID(context.Context, uuid.UUID) (domain.NotebookState, bool, error) {
+	return domain.NotebookState{Mode: domain.ModeStandard}, true, nil
+}
+func (inWorkspace) LockByID(context.Context, uuid.UUID) (domain.NotebookState, bool, error) {
+	return domain.NotebookState{Mode: domain.ModeStandard}, true, nil
+}
 func (inWorkspace) StateOf(context.Context, uuid.UUID) (domain.NotebookState, bool, error) {
 	return domain.NotebookState{Mode: domain.ModeStandard}, true, nil
 }

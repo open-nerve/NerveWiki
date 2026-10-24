@@ -77,13 +77,16 @@ func (s *Store) LockNotebook(ctx context.Context, id uuid.UUID) (domain.Notebook
 	return notebookOf(gen.FindNotebookRow(row)), nil
 }
 
-// ShareNotebook locks the notebook not deleted with id FOR SHARE: a page
-// write's lock (notebook.NewNotebooks). No such notebook is app.ErrNotFound.
-func (s *Store) ShareNotebook(ctx context.Context, id uuid.UUID) error {
-	if _, err := s.queries(ctx).ShareNotebook(ctx, id); err != nil {
-		return notFound("share notebook", err)
+// ShareNotebook locks the notebook not deleted with id FOR SHARE, and
+// answers its mode and source root read under the lock, the zero id for
+// none: a page write's lock (notebook.NewNotebooks). No such notebook is
+// app.ErrNotFound.
+func (s *Store) ShareNotebook(ctx context.Context, id uuid.UUID) (domain.Mode, uuid.UUID, error) {
+	row, err := s.queries(ctx).ShareNotebook(ctx, id)
+	if err != nil {
+		return "", uuid.UUID{}, notFound("share notebook", err)
 	}
-	return nil
+	return domain.Mode(row.Mode), idOf(row.SourceRootID), nil
 }
 
 // notebookOf is a row of the queries that read a notebook's columns: they

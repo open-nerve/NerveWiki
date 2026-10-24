@@ -89,9 +89,10 @@ func (f fakeWorkspaces) ShareByID(ctx context.Context, id uuid.UUID) (bool, erro
 }
 
 // fakeNotebooks knows each notebook's workspace, and its state in states,
-// standard when it has none there; one in gone is deleted by the time it
-// is locked, or its state read. waited, when set, runs while a write waits
-// for the notebook's lock: what another write commits meanwhile.
+// standard when it has none there, which its locks answer too; one in gone
+// is deleted by the time it is locked, or its state read. waited, when
+// set, runs while a write waits for the notebook's lock: what another
+// write commits meanwhile.
 type fakeNotebooks struct {
 	*recorder
 	workspaces map[uuid.UUID]uuid.UUID
@@ -111,23 +112,26 @@ func (f fakeNotebooks) WorkspaceOf(ctx context.Context, id uuid.UUID) (uuid.UUID
 	return ws, ok, nil
 }
 
-func (f fakeNotebooks) ShareByID(ctx context.Context, id uuid.UUID) (bool, error) {
+func (f fakeNotebooks) ShareByID(ctx context.Context, id uuid.UUID) (domain.NotebookState, bool, error) {
 	f.record(ctx, "ShareNotebook")
-	_, ok := f.workspaces[id]
-	return ok && !f.gone[id], nil
+	return f.state(id)
 }
 
-func (f fakeNotebooks) LockByID(ctx context.Context, id uuid.UUID) (bool, error) {
+func (f fakeNotebooks) LockByID(ctx context.Context, id uuid.UUID) (domain.NotebookState, bool, error) {
 	f.record(ctx, "LockNotebook")
 	if f.waited != nil {
 		f.waited()
 	}
-	_, ok := f.workspaces[id]
-	return ok && !f.gone[id], nil
+	return f.state(id)
 }
 
 func (f fakeNotebooks) StateOf(ctx context.Context, id uuid.UUID) (domain.NotebookState, bool, error) {
 	f.record(ctx, "StateOf")
+	return f.state(id)
+}
+
+// state is the notebook id's state, none for one not there or gone.
+func (f fakeNotebooks) state(id uuid.UUID) (domain.NotebookState, bool, error) {
 	if _, ok := f.workspaces[id]; !ok || f.gone[id] {
 		return domain.NotebookState{}, false, nil
 	}

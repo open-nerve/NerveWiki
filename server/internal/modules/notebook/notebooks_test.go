@@ -18,7 +18,28 @@ func TestNotebooksFindAndLock(t *testing.T) {
 	f.exec(t, "UPDATE notebooks SET deleted_at = $2 WHERE id = $1", f.ops, testNow())
 	nbs := notebook.NewNotebooks(f.pool)
 	tx := postgres.NewTxManager(f.pool, 5*time.Second)
+	states := map[string]func(context.Context, uuid.UUID) (notebook.State, bool, error){
+		"ShareState": nbs.ShareState, "LockState": nbs.LockState,
+	}
 	locks := map[string]func(context.Context, uuid.UUID) (bool, error){"ShareByID": nbs.ShareByID, "LockByID": nbs.LockByID}
+	for name, state := range states {
+		locks[name] = func(ctx context.Context, id uuid.UUID) (bool, error) {
+			_, ok, err := state(ctx, id)
+			return ok, err
+		}
+	}
+	root := uuid.NewV7()
+	f.exec(t, "UPDATE notebooks SET mode = 'llm_wiki', source_root_id = $2 WHERE id = $1", f.outside, root)
+	wantStates := []struct {
+		id   uuid.UUID
+		want notebook.State
+		ok   bool
+	}{
+		{f.outside, notebook.State{Mode: notebook.ModeLLMWiki, SourceRootID: root}, true},
+		{f.eng, notebook.State{Mode: notebook.ModeStandard}, true},
+		{f.ops, notebook.State{}, false},
+		{uuid.NewV7(), notebook.State{}, false},
+	}
 
 	t.Run("WorkspaceOf", func(t *testing.T) {
 		for _, tt := range []struct {
@@ -49,23 +70,30 @@ func TestNotebooksFindAndLock(t *testing.T) {
 	// An LLM Wiki's state, a standard notebook's, and none of a deleted
 	// notebook, unlocked, outside a transaction too (M10/P1 design 3.3).
 	t.Run("StateOf", func(t *testing.T) {
-		root := uuid.NewV7()
-		f.exec(t, "UPDATE notebooks SET mode = 'llm_wiki', source_root_id = $2 WHERE id = $1", f.outside, root)
-		for _, tt := range []struct {
-			id   uuid.UUID
-			want notebook.State
-			ok   bool
-		}{
-			{f.outside, notebook.State{Mode: notebook.ModeLLMWiki, SourceRootID: root}, true},
-			{f.eng, notebook.State{Mode: notebook.ModeStandard}, true},
-			{f.ops, notebook.State{}, false},
-			{uuid.NewV7(), notebook.State{}, false},
-		} {
+		for _, tt := range wantStates {
 			if got, ok, err := nbs.StateOf(ctx, tt.id); err != nil || ok != tt.ok || got != tt.want {
 				t.Errorf("StateOf(%s) = %+v, %v, %v; want %+v, %v", tt.id, got, ok, err, tt.want, tt.ok)
 			}
 		}
 	})
+
+	// The same states read under each lock, in a transaction: a unit's
+	// (M10/P1 design 3.18).
+	for name, state := range states {
+		t.Run(name+" reads the state", func(t *testing.T) {
+			for _, tt := range wantStates {
+				if err := tx.WithinTx(ctx, func(ctx context.Context) error {
+					got, ok, err := state(ctx, tt.id)
+					if err != nil || ok != tt.ok || got != tt.want {
+						t.Errorf("%s(%s) = %+v, %v, %v; want %+v, %v", name, tt.id, got, ok, err, tt.want, tt.ok)
+					}
+					return err
+				}); err != nil {
+					t.Fatal(err)
+				}
+			}
+		})
+	}
 
 	for name, lock := range locks {
 		t.Run(name, func(t *testing.T) {

@@ -291,7 +291,8 @@ func TestCreatePageRefusesAnEleventhLevel(t *testing.T) {
 }
 
 // The guard sees the operation as the checks left it: the title checked,
-// the order placed, the node not yet written; the write an edit's.
+// the order placed, the node not yet written; the write an edit's, with
+// the notebook's state as its lock read it.
 func TestTheGuardSeesTheCheckedChange(t *testing.T) {
 	f := newFixture()
 	f.grant(domain.ActionCreate)
@@ -306,8 +307,12 @@ func TestTheGuardSeesTheCheckedChange(t *testing.T) {
 		t.Fatalf("the guard saw %d steps, want 1", len(g.steps))
 	}
 	s := g.steps[0]
+	// The unit's own memo, a new one each unit (M10/P1 design 3.18).
 	want := app.Write{WorkspaceID: f.acme, NotebookID: f.eng, By: f.alice, Client: domain.ClientWeb, Options: app.Options{UpdateLinks: true}, At: now(),
-		Kind: domain.ChangesetEdit}
+		Kind: domain.ChangesetEdit, Notebook: domain.NotebookState{Mode: domain.ModeStandard}, Grants: s.Grants}
+	if s.Grants == nil {
+		t.Error("the guard saw no Grants, want the unit's")
+	}
 	if s.Write != want || s.Operation != domain.OpCreate || len(s.Changes) != 1 || s.Changes[0].NodeID != v.Node.ID ||
 		s.Changes[0].Before != nil || s.Changes[0].After.Name != "Notes" || s.Changes[0].After.SortOrder != 4 {
 		t.Errorf("the guard saw %+v (after %+v), want the creation of Notes at order 4 by %+v", s, s.Changes[0].After, want)
