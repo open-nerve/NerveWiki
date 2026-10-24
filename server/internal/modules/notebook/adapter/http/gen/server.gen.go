@@ -41,6 +41,24 @@ func (e NotebookAuditAction) Valid() bool {
 	}
 }
 
+// Defines values for NotebookMode.
+const (
+	NotebookModeLlmWiki  NotebookMode = "llm_wiki"
+	NotebookModeStandard NotebookMode = "standard"
+)
+
+// Valid indicates whether the value is a known member of the NotebookMode enum.
+func (e NotebookMode) Valid() bool {
+	switch e {
+	case NotebookModeLlmWiki:
+		return true
+	case NotebookModeStandard:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for NotebookRole.
 const (
 	NotebookRoleAdmin  NotebookRole = "admin"
@@ -96,12 +114,18 @@ type Notebook struct {
 	ID        uuid.UUID `json:"id"`
 
 	// MemberCount How many active members the notebook has. A private notebook with one member is the caller's own ("My notebooks").
-	MemberCount int    `json:"member_count"`
-	Name        string `json:"name"`
+	MemberCount int `json:"member_count"`
+
+	// Mode A notebook's mode. standard is a notebook as it always was; llm_wiki is an LLM Wiki: its source area holds sources written once, its root page AGENTS and source root cannot be deleted, index and log at its root are generated, and its agents are served the prompts ingest, query and lint. A downgrade makes an LLM Wiki standard; an upgrade's states are no mode.
+	Mode NotebookMode `json:"mode"`
+	Name string       `json:"name"`
 
 	// Role A role in a notebook: admin manages the notebook and its members, editor writes, reader reads. Rules compare roles by set; which of two is higher only the order reader < editor < admin says.
-	Role      NotebookRole `json:"role"`
-	UpdatedAt time.Time    `json:"updated_at"`
+	Role NotebookRole `json:"role"`
+
+	// SourceRootID An LLM Wiki's source root: the page its template wrote, under which its sources are. Null for a standard notebook.
+	SourceRootID nullable.Nullable[uuid.UUID] `json:"source_root_id"`
+	UpdatedAt    time.Time                    `json:"updated_at"`
 
 	// WorkspaceAccess How open a notebook is to its workspace: the role it gives the workspace's admins and members who are not its members (viewer gives reader, editor gives editor; none gives nothing). Guests have their own membership's role alone.
 	WorkspaceAccess WorkspaceAccess `json:"workspace_access"`
@@ -185,6 +209,9 @@ type NotebookMemberUpdate struct {
 	// Role A role in a notebook: admin manages the notebook and its members, editor writes, reader reads. Rules compare roles by set; which of two is higher only the order reader < editor < admin says.
 	Role NotebookRole `json:"role"`
 }
+
+// NotebookMode A notebook's mode. standard is a notebook as it always was; llm_wiki is an LLM Wiki: its source area holds sources written once, its root page AGENTS and source root cannot be deleted, index and log at its root are generated, and its agents are served the prompts ingest, query and lint. A downgrade makes an LLM Wiki standard; an upgrade's states are no mode.
+type NotebookMode string
 
 // NotebookName 1–255 bytes after the surrounding blanks are trimmed and the text is in NFC; none of / \ : * ? " < > | # ^ [ ] nor control characters; not starting or ending with a dot; no name Windows reserves (CON, COM1, …). It is the folder's name when the notebook is exported.
 type NotebookName = string

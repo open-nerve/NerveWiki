@@ -1,5 +1,5 @@
-// Package domain holds the notebook module's rules: a notebook's name and
-// its workspace access, the module's actions and errors.
+// Package domain holds the notebook module's rules: a notebook's name, its
+// workspace access and its mode, the module's actions and errors.
 package domain
 
 import (
@@ -8,6 +8,24 @@ import (
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
+)
+
+// Mode is a notebook's mode (M10 design 4.3): standard, or llm_wiki. An
+// upgrade's states are M11's own, never a mode.
+type Mode string
+
+const (
+	ModeStandard Mode = "standard"
+	ModeLLMWiki  Mode = "llm_wiki"
+)
+
+// Locale is the language of an LLM Wiki's template (M10 design 4.4): the
+// web sends its own; en when a request gives none.
+type Locale string
+
+const (
+	LocaleEn   Locale = "en"
+	LocaleZhCN Locale = "zh-CN"
 )
 
 // Notebook is a notebook not deleted.
@@ -20,6 +38,10 @@ type Notebook struct {
 	UpdatedAt   time.Time
 	// Ownerless is set while the notebook has no active admin (M3 design 4).
 	Ownerless *Ownerless
+	// Mode is the notebook's mode; SourceRootID an LLM Wiki's source root,
+	// the zero id for a standard notebook (notebooks_source_root_check).
+	Mode         Mode
+	SourceRootID uuid.UUID
 }
 
 // Draft is a new notebook's checked values.

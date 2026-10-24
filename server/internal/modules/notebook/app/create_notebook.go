@@ -65,7 +65,8 @@ func (c *CreateNotebook) Execute(ctx context.Context, slug, name string, access 
 			return err
 		}
 		now := c.d.Clock.Now()
-		n := domain.Notebook{ID: uuid.NewV7(), WorkspaceID: workspaceID, Name: draft.Name, Access: draft.Access, CreatedAt: now, UpdatedAt: now}
+		n := domain.Notebook{ID: uuid.NewV7(), WorkspaceID: workspaceID, Name: draft.Name, Access: draft.Access, CreatedAt: now, UpdatedAt: now,
+			Mode: domain.ModeStandard}
 		admin := domain.Member{ID: uuid.NewV7(), NotebookID: n.ID, UserID: actor.UserID, Role: shared.NotebookAdmin, CreatedAt: now}
 		if err := c.d.Notebooks.CreateNotebook(ctx, n, actor.UserID); err != nil {
 			return err

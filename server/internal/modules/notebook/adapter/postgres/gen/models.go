@@ -22,6 +22,8 @@ type Notebook struct {
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 	DeletedAt       *time.Time
+	Mode            string
+	SourceRootID    *uuid.UUID
 }
 
 type NotebookAuditEvent struct {

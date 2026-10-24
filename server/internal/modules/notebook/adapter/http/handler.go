@@ -8,6 +8,8 @@ import (
 	"context"
 	"uuid"
 
+	"github.com/oapi-codegen/nullable"
+
 	"github.com/open-nerve/NerveWiki/server/internal/modules/notebook/adapter/http/gen"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/notebook/app"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
@@ -134,8 +136,13 @@ func (h handler) DeleteNotebook(ctx context.Context, req gen.DeleteNotebookReque
 // notebookOf is a notebook and the caller's role as the API shows them.
 func notebookOf(v app.View) gen.Notebook {
 	n := v.Notebook
+	sourceRoot := nullable.NewNullNullable[uuid.UUID]()
+	if n.SourceRootID != (uuid.UUID{}) {
+		sourceRoot = nullable.NewNullableWithValue(n.SourceRootID)
+	}
 	return gen.Notebook{
 		ID: n.ID, WorkspaceID: n.WorkspaceID, Name: n.Name, WorkspaceAccess: gen.WorkspaceAccess(n.Access),
-		Role: gen.NotebookRole(v.Role), MemberCount: v.MemberCount, CreatedAt: n.CreatedAt, UpdatedAt: n.UpdatedAt,
+		Mode: gen.NotebookMode(n.Mode), SourceRootID: sourceRoot, Role: gen.NotebookRole(v.Role), MemberCount: v.MemberCount,
+		CreatedAt: n.CreatedAt, UpdatedAt: n.UpdatedAt,
 	}
 }

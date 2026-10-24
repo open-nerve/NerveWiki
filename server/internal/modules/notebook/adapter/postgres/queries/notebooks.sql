@@ -1,12 +1,15 @@
 -- name: CreateNotebook :exec
--- The audit columns come from the use case's clock and caller.
-INSERT INTO notebooks (id, workspace_id, name, workspace_access, created_by_id, updated_by_id, created_at, updated_at)
-VALUES (sqlc.arg(id), sqlc.arg(workspace_id), sqlc.arg(name), sqlc.arg(workspace_access), sqlc.arg(by), sqlc.arg(by),
-    sqlc.arg(now), sqlc.arg(now));
+-- The audit columns come from the use case's clock and caller; an LLM Wiki is inserted with its mode and source
+-- root at once (M10 design 4.4), so that notebooks_source_root_check holds from its first row.
+INSERT INTO notebooks (id, workspace_id, name, workspace_access, mode, source_root_id, created_by_id, updated_by_id,
+    created_at, updated_at)
+VALUES (sqlc.arg(id), sqlc.arg(workspace_id), sqlc.arg(name), sqlc.arg(workspace_access), sqlc.arg(mode),
+    sqlc.narg(source_root_id), sqlc.arg(by), sqlc.arg(by), sqlc.arg(now), sqlc.arg(now));
 
 -- name: FindNotebook :one
 -- A notebook not deleted, unlocked: what a read authorizes against.
-SELECT id, workspace_id, name, workspace_access, created_at, updated_at, ownerless_since, former_owner_id
+SELECT id, workspace_id, name, workspace_access, created_at, updated_at, ownerless_since, former_owner_id, mode,
+    source_root_id
 FROM notebooks
 WHERE id = sqlc.arg(id) AND deleted_at IS NULL;
 
@@ -14,7 +17,8 @@ WHERE id = sqlc.arg(id) AND deleted_at IS NULL;
 -- FindNotebook locked FOR NO KEY UPDATE until the transaction ends: a notebook's management writes take it
 -- after the workspace row's FOR SHARE, then decide (M3/P1 design 3.10). A deletion committed while it waited
 -- leaves no row.
-SELECT id, workspace_id, name, workspace_access, created_at, updated_at, ownerless_since, former_owner_id
+SELECT id, workspace_id, name, workspace_access, created_at, updated_at, ownerless_since, former_owner_id, mode,
+    source_root_id
 FROM notebooks
 WHERE id = sqlc.arg(id) AND deleted_at IS NULL
 FOR NO KEY UPDATE;
@@ -44,7 +48,7 @@ WHERE id = sqlc.arg(id);
 -- access reaches it (an admin's or a member's), that are open to the workspace; with its explicit role and the
 -- count of active members. By name, case-insensitively, then by name and id. The same rule as the access
 -- module's decision, shared.EffectiveNotebookRole: bootstrap's visibility test holds the two together.
-SELECT n.id, n.workspace_id, n.name, n.workspace_access, n.created_at, n.updated_at, m.role,
+SELECT n.id, n.workspace_id, n.name, n.workspace_access, n.created_at, n.updated_at, n.mode, n.source_root_id, m.role,
     (SELECT count(*) FROM notebook_members c
      WHERE c.notebook_id = n.id AND c.ended_at IS NULL AND c.deleted_at IS NULL) AS member_count
 FROM notebooks n

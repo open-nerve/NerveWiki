@@ -9,6 +9,8 @@ const notebook = (id: string, name: string, overrides: Partial<Notebook> = {}): 
   workspace_id: "w1",
   name,
   workspace_access: "none",
+  mode: "standard",
+  source_root_id: null,
   role: "admin",
   member_count: 1,
   created_at: "2026-10-02T08:00:00Z",

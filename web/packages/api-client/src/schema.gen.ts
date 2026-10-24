@@ -2036,6 +2036,11 @@ export interface components {
          */
         WorkspaceAccess: "none" | "viewer" | "editor";
         /**
+         * @description A notebook's mode. standard is a notebook as it always was; llm_wiki is an LLM Wiki: its source area holds sources written once, its root page AGENTS and source root cannot be deleted, index and log at its root are generated, and its agents are served the prompts ingest, query and lint. A downgrade makes an LLM Wiki standard; an upgrade's states are no mode.
+         * @enum {string}
+         */
+        NotebookMode: "standard" | "llm_wiki";
+        /**
          * @description A role in a notebook: admin manages the notebook and its members, editor writes, reader reads. Rules compare roles by set; which of two is higher only the order reader < editor < admin says.
          * @enum {string}
          */
@@ -2048,6 +2053,12 @@ export interface components {
             workspace_id: string;
             name: string;
             workspace_access: components["schemas"]["WorkspaceAccess"];
+            mode: components["schemas"]["NotebookMode"];
+            /**
+             * Format: uuid
+             * @description An LLM Wiki's source root: the page its template wrote, under which its sources are. Null for a standard notebook.
+             */
+            source_root_id: string | null;
             role: components["schemas"]["NotebookRole"];
             /** @description How many active members the notebook has. A private notebook with one member is the caller's own ("My notebooks"). */
             member_count: number;
@@ -3255,6 +3266,7 @@ export type InvitedWorkspace = components['schemas']['InvitedWorkspace'];
 export type InvitationPreview = components['schemas']['InvitationPreview'];
 export type SlugAvailability = components['schemas']['SlugAvailability'];
 export type WorkspaceAccess = components['schemas']['WorkspaceAccess'];
+export type NotebookMode = components['schemas']['NotebookMode'];
 export type NotebookRole = components['schemas']['NotebookRole'];
 export type Notebook = components['schemas']['Notebook'];
 export type NotebookList = components['schemas']['NotebookList'];

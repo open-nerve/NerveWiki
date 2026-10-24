@@ -3073,6 +3073,12 @@ components:
         - none
         - viewer
         - editor
+    NotebookMode:
+      description: 'A notebook''s mode. standard is a notebook as it always was; llm_wiki is an LLM Wiki: its source area holds sources written once, its root page AGENTS and source root cannot be deleted, index and log at its root are generated, and its agents are served the prompts ingest, query and lint. A downgrade makes an LLM Wiki standard; an upgrade''s states are no mode.'
+      type: string
+      enum:
+        - standard
+        - llm_wiki
     NotebookRole:
       description: 'A role in a notebook: admin manages the notebook and its members, editor writes, reader reads. Rules compare roles by set; which of two is higher only the order reader < editor < admin says.'
       type: string
@@ -3089,6 +3095,8 @@ components:
         - workspace_id
         - name
         - workspace_access
+        - mode
+        - source_root_id
         - role
         - member_count
         - created_at
@@ -3104,6 +3112,14 @@ components:
           type: string
         workspace_access:
           $ref: '#/components/schemas/WorkspaceAccess'
+        mode:
+          $ref: '#/components/schemas/NotebookMode'
+        source_root_id:
+          description: 'An LLM Wiki''s source root: the page its template wrote, under which its sources are. Null for a standard notebook.'
+          type:
+            - string
+            - 'null'
+          format: uuid
         role:
           $ref: '#/components/schemas/NotebookRole'
         member_count:

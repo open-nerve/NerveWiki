@@ -14,7 +14,7 @@ import (
 
 const listOwnerless = `-- name: ListOwnerless :many
 SELECT n.id, n.workspace_id, n.name, n.workspace_access, n.created_at, n.updated_at, n.ownerless_since, n.former_owner_id,
-    (SELECT count(*) FROM notebook_members c
+    n.mode, n.source_root_id, (SELECT count(*) FROM notebook_members c
      WHERE c.notebook_id = n.id AND c.ended_at IS NULL AND c.deleted_at IS NULL) AS member_count
 FROM notebooks n
 WHERE n.workspace_id = $1 AND n.deleted_at IS NULL AND n.ownerless_since IS NOT NULL
@@ -30,6 +30,8 @@ type ListOwnerlessRow struct {
 	UpdatedAt       time.Time
 	OwnerlessSince  *time.Time
 	FormerOwnerID   *uuid.UUID
+	Mode            string
+	SourceRootID    *uuid.UUID
 	MemberCount     int64
 }
 
@@ -53,6 +55,8 @@ func (q *Queries) ListOwnerless(ctx context.Context, workspaceID uuid.UUID) ([]L
 			&i.UpdatedAt,
 			&i.OwnerlessSince,
 			&i.FormerOwnerID,
+			&i.Mode,
+			&i.SourceRootID,
 			&i.MemberCount,
 		); err != nil {
 			return nil, err

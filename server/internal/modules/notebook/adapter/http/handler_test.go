@@ -39,21 +39,27 @@ func view(role shared.NotebookRole) app.View {
 	at := time.Date(2026, 10, 2, 10, 0, 0, 0, time.UTC)
 	return app.View{
 		Notebook: domain.Notebook{ID: notebookID(), WorkspaceID: uuid.MustParse("0199a2b4-0000-7000-8000-00000000000a"),
-			Name: "Engineering", Access: shared.AccessViewer, CreatedAt: at, UpdatedAt: at},
+			Name: "Engineering", Access: shared.AccessViewer, CreatedAt: at, UpdatedAt: at, Mode: domain.ModeStandard},
 		Role: role, MemberCount: 2,
 	}
 }
 
 const engineeringJSON = `{"created_at":"2026-10-02T10:00:00Z","id":"0199a2b4-0000-7000-8000-00000000000b","member_count":2,` +
-	`"name":"Engineering","role":"%s","updated_at":"2026-10-02T10:00:00Z",` +
+	`"mode":"standard","name":"Engineering","role":"%s","source_root_id":null,"updated_at":"2026-10-02T10:00:00Z",` +
 	`"workspace_access":"viewer","workspace_id":"0199a2b4-0000-7000-8000-00000000000a"}`
 
 func engineering(role string) string { return strings.Replace(engineeringJSON, "%s", role, 1) }
 
-// The fake use cases record what they got and answer err, or a view.
+// sourceRootID is the source root of the LLM Wiki the fakes answer when
+// told to.
+func sourceRootID() uuid.UUID { return uuid.MustParse("0199a2b4-0000-7000-8000-00000000000c") }
+
+// The fake use cases record what they got and answer err, or a view: an
+// LLM Wiki's when wiki is set.
 type fakeUseCase struct {
-	got []any
-	err error
+	got  []any
+	err  error
+	wiki bool
 }
 
 func (f *fakeUseCase) answer(role shared.NotebookRole, got ...any) (app.View, error) {
@@ -61,7 +67,11 @@ func (f *fakeUseCase) answer(role shared.NotebookRole, got ...any) (app.View, er
 	if f.err != nil {
 		return app.View{}, f.err
 	}
-	return view(role), nil
+	v := view(role)
+	if f.wiki {
+		v.Notebook.Mode, v.Notebook.SourceRootID = domain.ModeLLMWiki, sourceRootID()
+	}
+	return v, nil
 }
 
 type fakeList struct{ fakeUseCase }
@@ -184,6 +194,17 @@ func TestTheOperationsAnswerTheUseCases(t *testing.T) {
 		if got := tt.got(); !sameArgs(got, tt.wantGot) {
 			t.Errorf("%s %s %s: the use case got %v, want %v", tt.method, tt.path, tt.body, got, tt.wantGot)
 		}
+	}
+}
+
+// An LLM Wiki is answered with its mode and its source root's id.
+func TestAnLLMWikiIsAnsweredWithItsSourceRoot(t *testing.T) {
+	f := newFakes(nil)
+	f.get.wiki = true
+	want := strings.NewReplacer(`"mode":"standard"`, `"mode":"llm_wiki"`,
+		`"source_root_id":null`, `"source_root_id":"`+sourceRootID().String()+`"`).Replace(engineering("editor")) + "\n"
+	if status, body := call(t, f.serve(t), http.MethodGet, notebookPath, ""); status != http.StatusOK || body != want {
+		t.Errorf("GET = %d %s, want 200 %s", status, body, want)
 	}
 }
 

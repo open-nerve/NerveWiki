@@ -44,7 +44,8 @@ func TestCreateNotebookMakesTheCallerItsAdmin(t *testing.T) {
 		t.Fatalf("Execute() = %+v, %v; created %+v, members %+v", got, err, f.store.created, f.store.members)
 	}
 	n, m := f.store.created[0], f.store.members[0]
-	if want := (domain.Notebook{ID: n.ID, WorkspaceID: f.acme, Name: "Notes", Access: shared.AccessViewer, CreatedAt: now(), UpdatedAt: now()}); n != want || n.ID == uuid.Nil() {
+	if want := (domain.Notebook{ID: n.ID, WorkspaceID: f.acme, Name: "Notes", Access: shared.AccessViewer, CreatedAt: now(), UpdatedAt: now(),
+		Mode: domain.ModeStandard}); n != want || n.ID == uuid.Nil() {
 		t.Errorf("created %+v, want %+v", n, want)
 	}
 	if want := (domain.Member{ID: m.ID, NotebookID: n.ID, UserID: alice, Role: shared.NotebookAdmin, CreatedAt: now()}); m != want || m.ID == uuid.Nil() {
