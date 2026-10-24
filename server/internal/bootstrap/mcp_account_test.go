@@ -61,7 +61,7 @@ func TestNotebooksListsTheAccountsWorkspaces(t *testing.T) {
 // MCP answers each notebook's mode (M10/P1 design 3.12, 3.16): notebooks
 // lists it for each; open_notebook answers an LLM Wiki's, its
 // instructions its AGENTS page's text, and once the LLM Wiki is
-// downgraded, standard at the next call.
+// downgraded, both answer standard at the next call.
 func TestNotebooksAnswerTheirModeOverMCP(t *testing.T) {
 	r := startReadsApp(t, "")
 	status, created := ask(t, r.contract, http.MethodPost, r.base+"/api/v0/workspaces/acme/notebooks", r.access,
@@ -70,18 +70,22 @@ func TestNotebooksAnswerTheirModeOverMCP(t *testing.T) {
 		t.Fatalf("create an LLM Wiki = %d %s", status, created)
 	}
 	wiki := idOf(t, answer{body: created})
-	listed := r.call(t, mcpserver.Pattern, "notebooks", map[string]any{})
-	var got struct {
-		Notebooks []struct{ ID, Mode string } `json:"notebooks"`
+	listedModes := func(when string, want map[string]string) {
+		t.Helper()
+		listed := r.call(t, mcpserver.Pattern, "notebooks", map[string]any{})
+		var got struct {
+			Notebooks []struct{ ID, Mode string } `json:"notebooks"`
+		}
+		structuredOf(t, listed, &got)
+		modes := map[string]string{}
+		for _, n := range got.Notebooks {
+			modes[n.ID] = n.Mode
+		}
+		if !maps.Equal(modes, want) {
+			t.Errorf("notebooks %s = %s, want the modes %v", when, listed.body, want)
+		}
 	}
-	structuredOf(t, listed, &got)
-	modes := map[string]string{}
-	for _, n := range got.Notebooks {
-		modes[n.ID] = n.Mode
-	}
-	if want := map[string]string{wiki: "llm_wiki", r.notebook: "standard"}; !maps.Equal(modes, want) {
-		t.Errorf("notebooks = %s, want the modes %v", listed.body, want)
-	}
+	listedModes("of the LLM Wiki", map[string]string{wiki: "llm_wiki", r.notebook: "standard"})
 	agents := wikiPages(t)[1].Content
 	if o := r.opened(t, wiki); o["mode"] != "llm_wiki" || o["instructions_from"] != "AGENTS.md" ||
 		o["instructions"] != strings.TrimSpace(agents) {
@@ -94,6 +98,7 @@ func TestNotebooksAnswerTheirModeOverMCP(t *testing.T) {
 	if o := r.opened(t, wiki); o["mode"] != "standard" {
 		t.Errorf("open_notebook after the downgrade = mode %v, want standard", o["mode"])
 	}
+	listedModes("after the downgrade", map[string]string{wiki: "standard", r.notebook: "standard"})
 }
 
 // wikiPages are the English template's pages, raw then AGENTS.
