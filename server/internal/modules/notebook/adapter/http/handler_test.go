@@ -20,16 +20,20 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
-// fakeAuth accepts the token "valid".
+// fakeAuth accepts the token "valid", a sign-in session's, and "pat", a
+// personal access token's.
 type fakeAuth struct{}
 
 func (fakeAuth) Authenticate(ctx context.Context, token string) (context.Context, string, error) {
-	if token != "valid" {
-		return nil, "", shared.Unauthenticated()
-	}
-	session := uuid.MustParse("0199a2b4-0000-7000-8000-000000000002")
+	credential := uuid.MustParse("0199a2b4-0000-7000-8000-000000000002")
 	user := uuid.MustParse("0199a2b4-0000-7000-8000-000000000001")
-	return shared.WithActor(ctx, shared.Actor{UserID: user, SessionID: session}), "session:" + session.String(), nil
+	switch token {
+	case "valid":
+		return shared.WithActor(ctx, shared.Actor{UserID: user, SessionID: credential}), "session:" + credential.String(), nil
+	case "pat":
+		return shared.WithActor(ctx, shared.Actor{UserID: user, APITokenID: credential}), "pat:" + credential.String(), nil
+	}
+	return nil, "", shared.Unauthenticated()
 }
 
 // notebookID is the id of every notebook the fakes answer.
@@ -86,8 +90,8 @@ func (f *fakeList) Execute(_ context.Context, slug string) ([]app.View, error) {
 
 type fakeCreate struct{ fakeUseCase }
 
-func (f *fakeCreate) Execute(_ context.Context, slug, name string, access *string) (app.View, error) {
-	return f.answer(shared.NotebookAdmin, slug, name, access)
+func (f *fakeCreate) Execute(_ context.Context, slug string, r app.NewNotebook) (app.View, error) {
+	return f.answer(shared.NotebookAdmin, slug, r.Name, r.Access, r.Mode, r.Locale, r.Client)
 }
 
 type fakeGet struct{ fakeUseCase }
@@ -142,8 +146,14 @@ func (f fakes) serve(t *testing.T) http.Handler {
 // contract.
 func call(t *testing.T, h http.Handler, method, path, body string) (int, string) {
 	t.Helper()
+	return callAs(t, h, "valid", method, path, body)
+}
+
+// callAs is call with the bearer token token.
+func callAs(t *testing.T, h http.Handler, token, method, path, body string) (int, string) {
+	t.Helper()
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
-	req.Header.Set("Authorization", "Bearer valid")
+	req.Header.Set("Authorization", "Bearer "+token)
 	if body != "" {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -171,9 +181,9 @@ func TestTheOperationsAnswerTheUseCases(t *testing.T) {
 		{http.MethodGet, "/api/v0/workspaces/acme/notebooks", "", http.StatusOK, `{"data":[` + engineering("reader") + "]}",
 			func() []any { return f.list.got }, []any{"acme"}},
 		{http.MethodPost, "/api/v0/workspaces/acme/notebooks", `{"name":" Notes ","workspace_access":"viewer"}`, http.StatusCreated,
-			engineering("admin"), func() []any { return f.create.got }, []any{"acme", " Notes ", &viewer}},
+			engineering("admin"), func() []any { return f.create.got }, []any{"acme", " Notes ", &viewer, (*string)(nil), (*string)(nil), "web"}},
 		{http.MethodPost, "/api/v0/workspaces/acme/notebooks", `{"name":"Notes"}`, http.StatusCreated,
-			engineering("admin"), func() []any { return f.create.got }, []any{"acme", "Notes", (*string)(nil)}},
+			engineering("admin"), func() []any { return f.create.got }, []any{"acme", "Notes", (*string)(nil), (*string)(nil), (*string)(nil), "web"}},
 		{http.MethodGet, notebookPath, "", http.StatusOK, engineering("editor"),
 			func() []any { return f.get.got }, []any{notebookID()}},
 		{http.MethodPatch, notebookPath, `{"workspace_access":"viewer"}`, http.StatusOK, engineering("admin"),
@@ -205,6 +215,27 @@ func TestAnLLMWikiIsAnsweredWithItsSourceRoot(t *testing.T) {
 		`"source_root_id":null`, `"source_root_id":"`+sourceRootID().String()+`"`).Replace(engineering("editor")) + "\n"
 	if status, body := call(t, f.serve(t), http.MethodGet, notebookPath, ""); status != http.StatusOK || body != want {
 		t.Errorf("GET = %d %s, want 200 %s", status, body, want)
+	}
+}
+
+// A creation's mode and template language reach the use case as sent,
+// with the client of the credential: a sign-in session's the web's, a
+// personal access token's the API's (M10/P1 design 3.7).
+func TestCreateNotebookTakesItsModeAndClient(t *testing.T) {
+	wiki, zh, en := "llm_wiki", "zh-CN", "en"
+	for _, tt := range []struct {
+		token, body string
+		want        []any
+	}{
+		{"valid", `{"name":"Notes","mode":"llm_wiki","template_locale":"zh-CN"}`, []any{"acme", "Notes", (*string)(nil), &wiki, &zh, "web"}},
+		{"pat", `{"name":"Notes","mode":"llm_wiki","template_locale":"en"}`, []any{"acme", "Notes", (*string)(nil), &wiki, &en, "api"}},
+		{"pat", `{"name":"Notes"}`, []any{"acme", "Notes", (*string)(nil), (*string)(nil), (*string)(nil), "api"}},
+	} {
+		f := newFakes(nil)
+		if status, body := callAs(t, f.serve(t), tt.token, http.MethodPost, "/api/v0/workspaces/acme/notebooks", tt.body); status != http.StatusCreated ||
+			!sameArgs(f.create.got, tt.want) {
+			t.Errorf("%s %s = %d %s, the use case got %v; want 201, %v", tt.token, tt.body, status, body, f.create.got, tt.want)
+		}
 	}
 }
 

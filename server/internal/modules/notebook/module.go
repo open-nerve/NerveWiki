@@ -47,9 +47,12 @@ type Profile = app.Profile
 // identity's directory.
 type MemberProfiles = app.MemberProfiles
 
-// The module's extension points (M3 design 8): bootstrap composes their
-// registrants in registrants.go.
+// The module's extension points (M3 design 8; M10 design 8): bootstrap
+// composes their registrants in registrants.go, the creation's seeders in
+// wire.go.
 type (
+	NotebookCreation           = app.NotebookCreation
+	Seeder                     = app.Seeder
 	NotebookDeletion           = app.NotebookDeletion
 	NotebookDeletionSubscriber = app.NotebookDeletionSubscriber
 	VisibilityChange           = app.VisibilityChange
@@ -71,6 +74,9 @@ type Deps struct {
 	// AccountWorkspaces are the caller's workspaces of MCP's notebooks: it
 	// must be there.
 	AccountWorkspaces AccountWorkspaces
+	// Seeders are the creation's registrants (Seeder): New panics without
+	// one, a fault of its wiring, as without AccountWorkspaces.
+	Seeders []Seeder
 	// The registrants of the extension points.
 	DeletionSubscribers   []NotebookDeletionSubscriber
 	VisibilitySubscribers []VisibilitySubscriber
@@ -83,11 +89,14 @@ type Module struct {
 	notebooks *app.ListAccountNotebooks // MCP's notebooks (Tools)
 }
 
-// New wires the module. A module without the account's workspaces is a
-// fault of its wiring.
+// New wires the module. A module without the account's workspaces, or
+// without a seeder, is a fault of its wiring.
 func New(d Deps) *Module {
-	if d.AccountWorkspaces == nil {
+	switch {
+	case d.AccountWorkspaces == nil:
 		panic("notebook: no account workspaces")
+	case len(d.Seeders) == 0:
+		panic("notebook: no seeders")
 	}
 	store := postgresadapter.New(d.Pool)
 	auth := d.Authorizer
@@ -95,7 +104,8 @@ func New(d Deps) *Module {
 	return &Module{uc: httpadapter.UseCases{
 		ListNotebooks: app.NewListNotebooks(d.Workspaces, store, auth),
 		CreateNotebook: app.NewCreateNotebook(app.CreateNotebookDeps{
-			Workspaces: d.Workspaces, Notebooks: store, Subscribers: visibility, Auth: auth, Tx: d.Tx, Clock: d.Clock, Logger: d.Logger,
+			Workspaces: d.Workspaces, Notebooks: store, Seeders: d.Seeders, Subscribers: visibility, Auth: auth, Tx: d.Tx, Clock: d.Clock,
+			Logger: d.Logger,
 		}),
 		GetNotebook: app.NewGetNotebook(store, auth),
 		UpdateNotebook: app.NewUpdateNotebook(app.UpdateNotebookDeps{

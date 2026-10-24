@@ -2,9 +2,12 @@ package app
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"time"
 	"uuid"
 
+	"github.com/open-nerve/NerveWiki/server/internal/modules/notebook/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
@@ -13,6 +16,59 @@ import (
 // are built from the pool alone and composed in bootstrap's
 // registrants.go; their statements reach the transaction through the
 // context.
+
+// NotebookCreation is a notebook being created (M10 design 8): its id and
+// workspace, its mode, its source root (the zero id for a standard one),
+// its template's language, who created it, from where, at the creation's
+// one time.
+type NotebookCreation struct {
+	NotebookID   uuid.UUID
+	WorkspaceID  uuid.UUID
+	Mode         domain.Mode
+	SourceRootID uuid.UUID
+	Locale       domain.Locale
+	By           uuid.UUID
+	Client       string
+	At           time.Time
+}
+
+// Seeder writes what a notebook is created with, after the notebook and its
+// admin were inserted and before the visibility's event, in the
+// creation's transaction: it answers the source root it wrote, the zero id
+// for none, and any error rolls the creation back. Exactly one seeder
+// answers an LLM Wiki's source root, the one the creation decided; none
+// answers one for a standard notebook. M10's is the wiki module's template.
+type Seeder interface {
+	NotebookCreated(ctx context.Context, c NotebookCreation) (uuid.UUID, error)
+}
+
+// seed calls the seeders in order, the first error stopping it, and
+// answers the source roots they wrote, the zero ids left out. A seeder's
+// problem (a *shared.Error, a guard's refusal among them) is a defect: the
+// template is the server's own, and createNotebook declares no code of
+// another module's (M10/P1 design 3.4). It is answered as an error
+// without a kind, the problem's code in its text, which the 500's log
+// carries; any other error passes as it is, ctx's cancellation and
+// deadline among them (no *shared.Error wraps one).
+func seed(ctx context.Context, seeders []Seeder, c NotebookCreation) ([]uuid.UUID, error) {
+	var roots []uuid.UUID
+	for i, s := range seeders {
+		root, err := s.NotebookCreated(ctx, c)
+		var problem *shared.Error
+		switch {
+		case err == nil:
+		case errors.As(err, &problem):
+			return nil, fmt.Errorf("notebook: seeder %d refused notebook %s with %s, a defect: the template is the server's own",
+				i, c.NotebookID, problem.Code)
+		default:
+			return nil, err
+		}
+		if root != (uuid.UUID{}) {
+			roots = append(roots, root)
+		}
+	}
+	return roots, nil
+}
 
 // NotebookDeletion is notebooks being deleted: one by deleteNotebook, every
 // one of a workspace by the workspace's deletion. A subscriber deletes its

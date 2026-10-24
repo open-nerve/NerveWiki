@@ -700,7 +700,7 @@ paths:
       tags:
         - notebook
       summary: Create a notebook
-      description: Creates a notebook in the workspace whose admin is the caller; the workspace's admins and members can, its guests cannot (forbidden). A workspace that does not exist, is deleted, or that the caller is no active member of is workspace.not_found; the values are checked after both.
+      description: Creates a notebook in the workspace whose admin is the caller; the workspace's admins and members can, its guests cannot (forbidden). A workspace that does not exist, is deleted, or that the caller is no active member of is workspace.not_found; the values are checked after both. An LLM Wiki is created with its template, the pages raw, its source root, and AGENTS, in one change; the values are checked after both, the mode and the template's language among them.
       security:
         - bearer: []
       x-problem-codes:
@@ -3145,7 +3145,7 @@ components:
       description: '1–255 bytes after the surrounding blanks are trimmed and the text is in NFC; none of / \ : * ? " < > | # ^ [ ] nor control characters; not starting or ending with a dot; no name Windows reserves (CON, COM1, …). It is the folder''s name when the notebook is exported.'
       type: string
     NotebookCreate:
-      description: A new notebook; its workspace access is none when absent.
+      description: A new notebook; its workspace access is none, its mode standard and its template's language en when absent.
       type: object
       additionalProperties: false
       required:
@@ -3155,6 +3155,14 @@ components:
           $ref: '#/components/schemas/NotebookName'
         workspace_access:
           $ref: '#/components/schemas/WorkspaceAccess'
+        mode:
+          $ref: '#/components/schemas/NotebookMode'
+        template_locale:
+          description: 'The language of an LLM Wiki''s template, the client''s: its two pages are written in it, to be rewritten by their users after. Checked whatever the mode; a standard notebook writes nothing.'
+          type: string
+          enum:
+            - zh-CN
+            - en
     NotebookUpdate:
       type: object
       additionalProperties: false

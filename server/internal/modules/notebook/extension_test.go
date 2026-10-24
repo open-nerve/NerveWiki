@@ -225,7 +225,7 @@ func TestANotebookDeletionPassesTheSubscriber(t *testing.T) {
 					Pool: f.pool, Tx: postgres.NewTxManager(f.pool, 5*time.Second), Clock: &tickingClock{},
 					Logger: slog.New(slog.DiscardHandler), Authorizer: adminsAuthorizer{facts: notebook.NewFacts(f.pool)},
 					Workspaces: sqlWorkspaces{f.pool}, DeletionSubscribers: []notebook.NotebookDeletionSubscriber{s},
-					AccountWorkspaces: noAccountWorkspaces{},
+					AccountWorkspaces: noAccountWorkspaces{}, Seeders: []notebook.Seeder{noSeed{}},
 				}).Register(router, httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: tokenAuth{}}))
 
 				req := httptest.NewRequest(http.MethodDelete, d.path(f), nil)
@@ -254,6 +254,142 @@ func TestANotebookDeletionPassesTheSubscriber(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// creatorsAuthorizer lets anyone create a notebook, as a workspace's
+// member, and decides the rest as adminsAuthorizer: the creator is the
+// notebook's admin only once it is written.
+type creatorsAuthorizer struct{ admins adminsAuthorizer }
+
+func (a creatorsAuthorizer) Authorize(ctx context.Context, actor shared.Actor, action shared.Action, t shared.Target) (shared.Grant, error) {
+	if action == "notebook.create" {
+		return shared.Grant{WorkspaceRole: shared.WorkspaceMember}, nil
+	}
+	return a.admins.Authorize(ctx, actor, action, t)
+}
+
+// seeder stands in for the wiki module's template: it records in order
+// what it got, in the creation's transaction, whether it saw the notebook
+// and its admin there, and answers what answer gives, or err.
+type seeder struct {
+	f      fixture
+	name   string
+	order  *[]string
+	answer func(c notebook.NotebookCreation) uuid.UUID
+	err    error
+	got    []notebook.NotebookCreation
+	inTx   bool
+	saw    int
+}
+
+func (s *seeder) NotebookCreated(ctx context.Context, c notebook.NotebookCreation) (uuid.UUID, error) {
+	*s.order = append(*s.order, s.name)
+	s.got = append(s.got, c)
+	s.inTx = postgres.InTx(ctx)
+	if err := postgres.DB(ctx, s.f.pool).QueryRow(ctx, "SELECT count(*) FROM notebooks n JOIN notebook_members m ON m.notebook_id = n.id "+
+		"WHERE n.id = $1 AND m.user_id = $2 AND m.role = 'admin'", c.NotebookID, c.By).Scan(&s.saw); err != nil {
+		return uuid.UUID{}, err
+	}
+	if s.err != nil {
+		return uuid.UUID{}, s.err
+	}
+	if s.answer == nil {
+		return uuid.UUID{}, nil
+	}
+	return s.answer(c), nil
+}
+
+// The creation's seeders run in order in its transaction, after the
+// notebook and its admin, which they see, with the creation as it was
+// asked, at the clock's first read (M10/P1 design 3.5). Exactly one answers
+// an LLM Wiki's source root, the one written in its row; none answers a
+// standard notebook's: else the creation is a 500 and writes nothing. A
+// seeder's failure stops the next one; its problem is a 500, never its
+// code.
+func TestACreationPassesTheSeeders(t *testing.T) {
+	its := func(c notebook.NotebookCreation) uuid.UUID { return c.SourceRootID }
+	another := func(notebook.NotebookCreation) uuid.UUID { return uuid.NewV7() }
+	failure := errors.New("the seeder failed")
+	protected := shared.NewError(shared.KindConflict, "page.protected", "An LLM Wiki keeps its AGENTS page.")
+	for _, c := range []struct {
+		name          string
+		body          string
+		first, second func(notebook.NotebookCreation) uuid.UUID
+		firstErr      error
+		code          int
+		called        []string
+	}{
+		{"standard, both answer none", `{"name":"Wiki"}`, nil, nil, nil, http.StatusCreated, []string{"a", "b"}},
+		{"an LLM Wiki, the first answers its root", `{"name":"Wiki","mode":"llm_wiki","template_locale":"zh-CN"}`, its, nil, nil,
+			http.StatusCreated, []string{"a", "b"}},
+		{"an LLM Wiki, both answer none", `{"name":"Wiki","mode":"llm_wiki","template_locale":"zh-CN"}`, nil, nil, nil,
+			http.StatusInternalServerError, []string{"a", "b"}},
+		{"an LLM Wiki, both answer its root", `{"name":"Wiki","mode":"llm_wiki","template_locale":"zh-CN"}`, its, its, nil,
+			http.StatusInternalServerError, []string{"a", "b"}},
+		{"an LLM Wiki, the first answers another id", `{"name":"Wiki","mode":"llm_wiki","template_locale":"zh-CN"}`, another, nil, nil,
+			http.StatusInternalServerError, []string{"a", "b"}},
+		{"standard, the first answers one", `{"name":"Wiki"}`, another, nil, nil, http.StatusInternalServerError, []string{"a", "b"}},
+		{"the first fails", `{"name":"Wiki","mode":"llm_wiki","template_locale":"zh-CN"}`, its, nil, failure,
+			http.StatusInternalServerError, []string{"a"}},
+		{"the first refuses", `{"name":"Wiki","mode":"llm_wiki","template_locale":"zh-CN"}`, its, nil, protected,
+			http.StatusInternalServerError, []string{"a"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newFixture(t)
+			var order []string
+			a := &seeder{f: f, name: "a", order: &order, answer: c.first, err: c.firstErr}
+			b := &seeder{f: f, name: "b", order: &order, answer: c.second}
+			router := httpserver.NewRouter(slog.New(slog.DiscardHandler))
+			notebook.New(notebook.Deps{
+				Pool: f.pool, Tx: postgres.NewTxManager(f.pool, 5*time.Second), Clock: &tickingClock{},
+				Logger: slog.New(slog.DiscardHandler), Authorizer: creatorsAuthorizer{adminsAuthorizer{facts: notebook.NewFacts(f.pool)}},
+				Workspaces: sqlWorkspaces{f.pool}, AccountWorkspaces: noAccountWorkspaces{}, Seeders: []notebook.Seeder{a, b},
+			}).Register(router, httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: tokenAuth{}}))
+
+			req := httptest.NewRequest(http.MethodPost, "/api/v0/workspaces/acme/notebooks", strings.NewReader(c.body))
+			req.Header.Set("Authorization", "Bearer "+f.alice.String())
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+
+			if rec.Code != c.code || !slices.Equal(order, c.called) {
+				t.Fatalf("POST = %d %s, the seeders called %q; want %d, %q", rec.Code, rec.Body, order, c.code, c.called)
+			}
+			if c.code == http.StatusInternalServerError && !strings.Contains(rec.Body.String(), `"code":"internal_error"`) {
+				t.Errorf("POST = %s, want internal_error", rec.Body)
+			}
+			got := a.got[0]
+			mode, locale := notebook.ModeStandard, "en"
+			if strings.Contains(c.body, "llm_wiki") {
+				mode, locale = notebook.ModeLLMWiki, "zh-CN"
+			}
+			if got.WorkspaceID != f.acme || got.Mode != mode || string(got.Locale) != locale || got.By != f.alice || got.Client != "web" ||
+				!got.At.Equal(testNow()) || (got.SourceRootID == uuid.UUID{}) != (mode == notebook.ModeStandard) {
+				t.Errorf("the first seeder got %+v; want acme's %s in %s by alice from the web at %v", got, mode, locale, testNow())
+			}
+			for _, s := range []*seeder{a, b}[:len(c.called)] {
+				if !s.inTx || s.saw != 1 || s.got[0] != got {
+					t.Errorf("seeder %s: in a transaction %v, saw the notebook's admin %d times, got %+v; want the same, once, in it",
+						s.name, s.inTx, s.saw, s.got)
+				}
+			}
+			var notebooks, members int
+			var root *uuid.UUID
+			if err := f.pool.QueryRow(context.Background(), `SELECT (SELECT count(*) FROM notebooks WHERE id = $1),
+				(SELECT count(*) FROM notebook_members WHERE notebook_id = $1), (SELECT source_root_id FROM notebooks WHERE id = $1)`,
+				got.NotebookID).Scan(&notebooks, &members, &root); err != nil {
+				t.Fatal(err)
+			}
+			switch {
+			case c.code == http.StatusCreated && (notebooks != 1 || members != 1 || (root != nil) != (mode == notebook.ModeLLMWiki) ||
+				root != nil && *root != got.SourceRootID):
+				t.Errorf("created %d notebooks with %d members, its source root %v; want it, its admin, the source root %s", notebooks, members,
+					root, got.SourceRootID)
+			case c.code != http.StatusCreated && (notebooks != 0 || members != 0):
+				t.Errorf("a 500 left %d notebooks and %d members, want none", notebooks, members)
+			}
+		})
 	}
 }
 

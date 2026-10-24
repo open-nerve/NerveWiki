@@ -19,6 +19,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/notebook"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/transfer"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/wiki"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/workspace"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/clock"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
@@ -146,7 +147,6 @@ func wireApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrat
 		Notebooks:   notebookFacts{notebook.NewFacts(pool)},
 	})
 	ws := workspace.New(workspaceDeps(cfg, pool, logger, authorizer, invitationKey))
-	nb := notebook.New(notebookDeps(cfg, pool, logger, authorizer))
 	// A reading view shows the attachments its links lead to, at their
 	// contents' addresses (M7/P3 design 5.10): the Markdown comes before
 	// the modules, so Embeds needs the pool and the content key alone.
@@ -163,6 +163,12 @@ func wireApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrat
 	pg := page.New(pd)
 	as := asset.New(assetDeps(cfg, pool, logger, authorizer, store, pg, contentKey, limiter))
 	ln := linking.New(linkingDeps(pool, authorizer, embeds))
+	// The LLM Wiki's template is parsed once, here: a template the page
+	// module refuses keeps serve from starting (M10/P1 design 3.8).
+	template, err := wiki.NewTemplate(wikiSeeds{pg.TreeWrites()})
+	if err != nil {
+		return nil, err
+	}
 	// A job is enqueued in the transaction that writes its row, by a
 	// client that only inserts: the runner's works the queues.
 	inserter, err := jobs.NewInserter(pool, logger)
@@ -172,6 +178,9 @@ func wireApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrat
 	trDeps := transferDeps(cfg, pool, logger, authorizer, store, inserter, pg.TreeWrites(), keys.Derive(transfer.DownloadKeyInfo))
 	trDeps.Batch = w.batch
 	tr := transfer.New(trDeps)
+	// The notebook module comes last: its creation's seeder writes the
+	// template through the page module's units (M10 design 4.1).
+	nb := notebook.New(notebookDeps(cfg, pool, logger, authorizer, []notebook.Seeder{wikiTemplate{template}}))
 	ev, listener := eventsModule(cfg, pool, logger)
 	runner, err := jobs.New(pool, jobsConfig(cfg, logger),
 		slices.Concat(ident.Jobs(), pg.Jobs(), as.Jobs(), tr.Jobs(), []jobs.Job{purgeJob(cfg, pool, store, logger)}))

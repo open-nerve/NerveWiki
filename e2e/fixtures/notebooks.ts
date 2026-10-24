@@ -1,21 +1,48 @@
-import type { ApiClient, Notebook, NotebookUpdate, WorkspaceAccess } from "@nervewiki/api-client";
+import type {
+  ApiClient,
+  Notebook,
+  NotebookCreate,
+  NotebookMode,
+  NotebookUpdate,
+  WorkspaceAccess,
+} from "@nervewiki/api-client";
 import { expect } from "@playwright/test";
 
 import { bearer } from "./auth";
 
 // The notebooks of the stories, through the API (M3 design 5).
 
-/** Creates the notebook name in the workspace of slug with credential, as its admin, and returns it. */
+/** What a notebook is created as besides its name and workspace access: its mode and its template's language. */
+interface NotebookOptions {
+  mode?: NotebookMode;
+  templateLocale?: "zh-CN" | "en";
+}
+
+/**
+ * Creates the notebook name in the workspace of slug with credential, as its admin, and returns it; the mode and the
+ * template's language are sent when options give them (M10/P1 design 5.1).
+ */
 export async function createNotebook(
   api: ApiClient,
   credential: string,
   slug: string,
   name: string,
-  workspaceAccess?: WorkspaceAccess
+  workspaceAccess?: WorkspaceAccess,
+  options: NotebookOptions = {}
 ): Promise<Notebook> {
+  const body: NotebookCreate = { name };
+  if (workspaceAccess !== undefined) {
+    body.workspace_access = workspaceAccess;
+  }
+  if (options.mode !== undefined) {
+    body.mode = options.mode;
+  }
+  if (options.templateLocale !== undefined) {
+    body.template_locale = options.templateLocale;
+  }
   const { data, error, response } = await api.POST("/api/v0/workspaces/{slug}/notebooks", {
     params: { path: { slug } },
-    body: workspaceAccess === undefined ? { name } : { name, workspace_access: workspaceAccess },
+    body,
     headers: bearer(credential),
   });
   expect(response.status, `create ${name} in ${slug}: ${JSON.stringify(error)}`).toBe(201);

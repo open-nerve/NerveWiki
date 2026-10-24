@@ -1,7 +1,9 @@
 package app_test
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -12,9 +14,10 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
-func (f fixture) create() *app.CreateNotebook {
+func (f fixture) create(seeders ...app.Seeder) *app.CreateNotebook {
 	return app.NewCreateNotebook(app.CreateNotebookDeps{
-		Workspaces: f.workspaces, Notebooks: f.store, Auth: f.auth, Tx: f.tx, Clock: &tickingClock{}, Logger: f.logger(),
+		Workspaces: f.workspaces, Notebooks: f.store, Seeders: seeders, Subscribers: []app.VisibilitySubscriber{f.visibility},
+		Auth: f.auth, Tx: f.tx, Clock: &tickingClock{}, Logger: f.logger(),
 	})
 }
 
@@ -34,50 +37,130 @@ func (f fixture) delete(subscribers ...app.NotebookDeletionSubscriber) *app.Dele
 func ptr(s string) *string { return &s }
 
 func TestCreateNotebookMakesTheCallerItsAdmin(t *testing.T) {
-	f := newFixture()
-	alice := uuid.NewV7()
-	f.grant(domain.ActionCreate, shared.WorkspaceMember, "")
+	for _, tt := range []struct {
+		mode   *string
+		locale *string
+		want   domain.Mode
+	}{{nil, nil, domain.ModeStandard}, {ptr("llm_wiki"), ptr("zh-CN"), domain.ModeLLMWiki}} {
+		f := newFixture()
+		alice := uuid.NewV7()
+		f.grant(domain.ActionCreate, shared.WorkspaceMember, "")
+		seeder := &fakeSeeder{recorder: f.rec, name: "template", root: itsRoot}
 
-	got, err := f.create().Execute(as(alice), "acme", "  Notes ", ptr("viewer"))
+		got, err := f.create(seeder).Execute(as(alice), "acme", app.NewNotebook{Name: "  Notes ", Access: ptr("viewer"), Mode: tt.mode,
+			Locale: tt.locale, Client: "api"})
 
-	if err != nil || len(f.store.created) != 1 || len(f.store.members) != 1 {
-		t.Fatalf("Execute() = %+v, %v; created %+v, members %+v", got, err, f.store.created, f.store.members)
+		if err != nil || len(f.store.created) != 1 || len(f.store.members) != 1 {
+			t.Fatalf("%s: Execute() = %+v, %v; created %+v, members %+v", tt.want, got, err, f.store.created, f.store.members)
+		}
+		n, m := f.store.created[0], f.store.members[0]
+		want := domain.Notebook{ID: n.ID, WorkspaceID: f.acme, Name: "Notes", Access: shared.AccessViewer, CreatedAt: now(), UpdatedAt: now(),
+			Mode: tt.want}
+		if tt.want == domain.ModeLLMWiki {
+			// The source root's id is decided after the notebook's.
+			want.SourceRootID = n.SourceRootID
+			if n.SourceRootID == (uuid.UUID{}) || n.SourceRootID.Compare(n.ID) <= 0 {
+				t.Errorf("%s: the source root %s, want an id after the notebook's %s", tt.want, n.SourceRootID, n.ID)
+			}
+		}
+		if n != want || n.ID == uuid.Nil() {
+			t.Errorf("%s: created %+v, want %+v", tt.want, n, want)
+		}
+		if want := (domain.Member{ID: m.ID, NotebookID: n.ID, UserID: alice, Role: shared.NotebookAdmin, CreatedAt: now()}); m != want || m.ID == uuid.Nil() {
+			t.Errorf("%s: member %+v, want %+v", tt.want, m, want)
+		}
+		if want := (app.View{Notebook: n, Role: shared.NotebookAdmin, MemberCount: 1}); got != want {
+			t.Errorf("%s: Execute() = %+v, want %+v", tt.want, got, want)
+		}
+		// The seeder gets the creation as it is, at the clock's one read.
+		locale := domain.LocaleEn
+		if tt.locale != nil {
+			locale = domain.Locale(*tt.locale)
+		}
+		creation := app.NotebookCreation{NotebookID: n.ID, WorkspaceID: f.acme, Mode: tt.want, SourceRootID: n.SourceRootID, Locale: locale,
+			By: alice, Client: "api", At: now()}
+		if len(seeder.got) != 1 || seeder.got[0] != creation {
+			t.Errorf("%s: the seeder got %+v, want %+v", tt.want, seeder.got, creation)
+		}
+		// The workspace's share, the decision, the writes, the seeders after
+		// the admin, then the visibility, all in the transaction.
+		calls := []string{"FindBySlug acme", "ShareByID in tx", "Authorize notebook.create in tx",
+			"CreateNotebook by " + alice.String() + " in tx", "AddMember admin by " + alice.String() + " in tx",
+			"Seed template " + string(tt.want) + " in tx", "VisibilityChanged visibility in tx"}
+		if !slices.Equal(f.rec.calls, calls) {
+			t.Errorf("%s: calls = %q, want %q", tt.want, f.rec.calls, calls)
+		}
+		logs := f.logs.String()
+		if !strings.Contains(logs, "notebook created") || !strings.Contains(logs, n.ID.String()) || !strings.Contains(logs, "mode="+string(tt.want)) ||
+			strings.Contains(logs, "Notes") {
+			t.Errorf("%s: logs = %q, want the creation by its ids and its mode, not its name", tt.want, logs)
+		}
 	}
-	n, m := f.store.created[0], f.store.members[0]
-	if want := (domain.Notebook{ID: n.ID, WorkspaceID: f.acme, Name: "Notes", Access: shared.AccessViewer, CreatedAt: now(), UpdatedAt: now(),
-		Mode: domain.ModeStandard}); n != want || n.ID == uuid.Nil() {
-		t.Errorf("created %+v, want %+v", n, want)
-	}
-	if want := (domain.Member{ID: m.ID, NotebookID: n.ID, UserID: alice, Role: shared.NotebookAdmin, CreatedAt: now()}); m != want || m.ID == uuid.Nil() {
-		t.Errorf("member %+v, want %+v", m, want)
-	}
-	if want := (app.View{Notebook: n, Role: shared.NotebookAdmin, MemberCount: 1}); got != want {
-		t.Errorf("Execute() = %+v, want %+v", got, want)
-	}
-	// The workspace's share, the decision, then the writes, all in the
-	// transaction.
-	calls := []string{"FindBySlug acme", "ShareByID in tx", "Authorize notebook.create in tx",
-		"CreateNotebook by " + alice.String() + " in tx", "AddMember admin by " + alice.String() + " in tx"}
-	if !slices.Equal(f.rec.calls, calls) {
-		t.Errorf("calls = %q, want %q", f.rec.calls, calls)
-	}
-	logs := f.logs.String()
-	if !strings.Contains(logs, "notebook created") || !strings.Contains(logs, n.ID.String()) || strings.Contains(logs, "Notes") {
-		t.Errorf("logs = %q, want the creation by its ids, not its name", logs)
+}
+
+// Two seeders (v0.1 design 13.1, item 21): both follow an LLM Wiki's
+// creation, in the order registered; the first error stops the dispatch
+// and is the use case's, whose transaction rolls back. A seeder's problem
+// is a defect, its code in the error's text and no problem left in it;
+// ctx's cancellation and deadline pass as they are.
+func TestTheSeedersRunInTheirOrder(t *testing.T) {
+	failure := errors.New("the seeder failed")
+	protected := shared.NewError(shared.KindConflict, "page.protected", "The guard refused it.")
+	deadline := fmt.Errorf("the unit: %w", context.DeadlineExceeded)
+	for _, tt := range []struct {
+		name    string
+		failing string
+		err     error
+		defect  bool
+		told    []string
+	}{
+		{"both follow", "", nil, false, []string{"Seed a llm_wiki in tx", "Seed b llm_wiki in tx"}},
+		{"the first fails", "a", failure, false, []string{"Seed a llm_wiki in tx"}},
+		{"the second fails", "b", failure, false, []string{"Seed a llm_wiki in tx", "Seed b llm_wiki in tx"}},
+		{"the first refuses", "a", protected, true, []string{"Seed a llm_wiki in tx"}},
+		{"the first is cancelled", "a", context.Canceled, false, []string{"Seed a llm_wiki in tx"}},
+		{"the first's deadline passes", "a", deadline, false, []string{"Seed a llm_wiki in tx"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newFixture()
+			f.grant(domain.ActionCreate, shared.WorkspaceMember, "")
+			a, b := &fakeSeeder{recorder: f.rec, name: "a", root: itsRoot}, &fakeSeeder{recorder: f.rec, name: "b"}
+			for _, s := range []*fakeSeeder{a, b} {
+				if s.name == tt.failing {
+					s.err = tt.err
+				}
+			}
+
+			_, err := f.create(a, b).Execute(as(f.alice), "acme", app.NewNotebook{Name: "Notes", Mode: ptr("llm_wiki")})
+
+			got := slices.DeleteFunc(slices.Clone(f.rec.calls), func(c string) bool { return !strings.HasPrefix(c, "Seed ") })
+			if !slices.Equal(got, tt.told) || f.tx.rolledBack != (tt.failing != "") {
+				t.Errorf("seeded %q, rolled back %v; want %q", got, f.tx.rolledBack, tt.told)
+			}
+			var problem *shared.Error
+			switch {
+			case tt.err == nil && err != nil:
+				t.Errorf("Execute() = %v, want nil", err)
+			case tt.defect && (errors.As(err, &problem) || err == nil || !strings.Contains(err.Error(), "page.protected")):
+				t.Errorf("Execute() = %v; want a defect naming page.protected, no problem in it", err)
+			case tt.err != nil && !tt.defect && (!errors.Is(err, tt.err) || strings.Contains(err.Error(), "defect")):
+				t.Errorf("Execute() = %v; want %v as it is", err, tt.err)
+			}
+		})
 	}
 }
 
 func TestCreateNotebookWithoutAnAccessIsPrivate(t *testing.T) {
 	f := newFixture()
 	f.grant(domain.ActionCreate, shared.WorkspaceAdmin, "")
-	if got, err := f.create().Execute(as(uuid.NewV7()), "acme", "Notes", nil); err != nil || got.Notebook.Access != shared.AccessNone {
+	if got, err := f.create().Execute(as(uuid.NewV7()), "acme", app.NewNotebook{Name: "Notes"}); err != nil || got.Notebook.Access != shared.AccessNone {
 		t.Errorf("Execute() = %+v, %v; want none", got, err)
 	}
 }
 
-// The codes come 404, 403, 422 (v0.1 design 13.1, item 4): the values are
-// checked under the lock and after the decision, and nothing is written
-// when any refuses.
+// The codes come 404, 403, 422 (v0.1 design 13.1, item 4): the values, the
+// mode and the template's language among them, are checked under the lock
+// and after the decision, and nothing is written when any refuses.
 func TestCreateNotebookRefuses(t *testing.T) {
 	forbidden := shared.Forbidden()
 	for _, tt := range []struct {
@@ -97,17 +180,17 @@ func TestCreateNotebookRefuses(t *testing.T) {
 		f := newFixture()
 		f.workspaces.gone[f.acme] = tt.gone
 		f.auth.err = tt.err
-		got, err := f.create().Execute(as(uuid.NewV7()), tt.slug, tt.value, nil)
+		got, err := f.create().Execute(as(uuid.NewV7()), tt.slug, app.NewNotebook{Name: tt.value, Mode: ptr("LLM_WIKI"), Locale: ptr("fr")})
 		if !errors.Is(err, tt.want) || got != (app.View{}) || !slices.Equal(f.rec.calls, tt.calls) {
 			t.Errorf("%s: Execute() = %+v, %v, calls %q; want %v after %q", tt.name, got, err, f.rec.calls, tt.want, tt.calls)
 		}
 	}
 	f := newFixture()
 	f.grant(domain.ActionCreate, shared.WorkspaceMember, "")
-	_, err := f.create().Execute(as(uuid.NewV7()), "acme", "CON", ptr("public"))
+	_, err := f.create().Execute(as(uuid.NewV7()), "acme", app.NewNotebook{Name: "CON", Access: ptr("public"), Mode: ptr("wiki"), Locale: ptr("fr")})
 	var se *shared.Error
-	if !errors.As(err, &se) || se.Code != shared.CodeValidationFailed || len(se.Fields) != 2 || len(f.store.created) != 0 || !f.tx.rolledBack {
-		t.Errorf("a member's bad values = %v; want both problems, nothing written", err)
+	if !errors.As(err, &se) || se.Code != shared.CodeValidationFailed || len(se.Fields) != 4 || len(f.store.created) != 0 || !f.tx.rolledBack {
+		t.Errorf("a member's bad values = %v; want the four problems, nothing written", err)
 	}
 }
 

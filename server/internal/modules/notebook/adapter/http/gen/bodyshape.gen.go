@@ -18,7 +18,9 @@ func BodyShapes() *bodyshape.Table {
 			/* 4 */ {Types: bodyshape.String, Extra: bodyshape.Open, Items: bodyshape.Open},
 			/* 5 */ {Types: bodyshape.Object, Extra: bodyshape.Closed, Items: bodyshape.Open, Props: map[string]int{"role": 1, "user_id": 6}, Required: []string{"role", "user_id"}},
 			/* 6 */ {Types: bodyshape.String, Format: bodyshape.FormatUUID, Extra: bodyshape.Open, Items: bodyshape.Open},
-			/* 7 */ {Types: bodyshape.Object, Extra: bodyshape.Closed, Items: bodyshape.Open, Props: map[string]int{"name": 3, "workspace_access": 4}, Required: []string{"name"}},
+			/* 7 */ {Types: bodyshape.Object, Extra: bodyshape.Closed, Items: bodyshape.Open, Props: map[string]int{"mode": 8, "name": 3, "template_locale": 9, "workspace_access": 4}, Required: []string{"name"}},
+			/* 8 */ {Types: bodyshape.String, Extra: bodyshape.Open, Items: bodyshape.Open},
+			/* 9 */ {Types: bodyshape.String, Extra: bodyshape.Open, Items: bodyshape.Open},
 		},
 		Roots: map[string]int{
 			"PATCH /api/v0/notebook-members/{notebook_member_id}": 0,

@@ -48,23 +48,39 @@ type Notebook struct {
 type Draft struct {
 	Name   string
 	Access shared.WorkspaceAccess
+	Mode   Mode
+	Locale Locale
 }
 
-// CheckDraft checks a new notebook's name and workspace access, every
-// problem at once (422): the name by shared.CheckTitle, the access one of
-// the three; none when access is nil.
-func CheckDraft(name string, access *string) (Draft, error) {
+// CheckDraft checks a new notebook's name, workspace access, mode and
+// template language, every problem at once (422): the name by
+// shared.CheckTitle, the access one of the three, the mode one of the two,
+// the language zh-CN or en, whatever the mode; none, standard and en when
+// they are nil.
+func CheckDraft(name string, access, mode, locale *string) (Draft, error) {
 	var problems []shared.FieldError
 	name, f := shared.CheckTitle("name", name)
 	if f != nil {
 		problems = append(problems, *f)
 	}
-	d := Draft{Name: name, Access: shared.AccessNone}
+	d := Draft{Name: name, Access: shared.AccessNone, Mode: ModeStandard, Locale: LocaleEn}
 	if access != nil {
 		if f := checkAccess(*access); f != nil {
 			problems = append(problems, *f)
 		}
 		d.Access = shared.WorkspaceAccess(*access)
+	}
+	if mode != nil {
+		if m := Mode(*mode); m != ModeStandard && m != ModeLLMWiki {
+			problems = append(problems, shared.FieldError{Field: "mode", Code: shared.FieldInvalidFormat, Message: "must be standard or llm_wiki"})
+		}
+		d.Mode = Mode(*mode)
+	}
+	if locale != nil {
+		if l := Locale(*locale); l != LocaleZhCN && l != LocaleEn {
+			problems = append(problems, shared.FieldError{Field: "template_locale", Code: shared.FieldInvalidFormat, Message: "must be zh-CN or en"})
+		}
+		d.Locale = Locale(*locale)
 	}
 	if problems != nil {
 		return Draft{}, shared.Invalid(problems...)

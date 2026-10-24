@@ -496,7 +496,7 @@ export interface paths {
         put?: never;
         /**
          * Create a notebook
-         * @description Creates a notebook in the workspace whose admin is the caller; the workspace's admins and members can, its guests cannot (forbidden). A workspace that does not exist, is deleted, or that the caller is no active member of is workspace.not_found; the values are checked after both.
+         * @description Creates a notebook in the workspace whose admin is the caller; the workspace's admins and members can, its guests cannot (forbidden). A workspace that does not exist, is deleted, or that the caller is no active member of is workspace.not_found; the values are checked after both. An LLM Wiki is created with its template, the pages raw, its source root, and AGENTS, in one change; the values are checked after both, the mode and the template's language among them.
          */
         post: operations["createNotebook"];
         delete?: never;
@@ -2072,10 +2072,16 @@ export interface components {
         };
         /** @description 1–255 bytes after the surrounding blanks are trimmed and the text is in NFC; none of / \ : * ? " < > | # ^ [ ] nor control characters; not starting or ending with a dot; no name Windows reserves (CON, COM1, …). It is the folder's name when the notebook is exported. */
         NotebookName: string;
-        /** @description A new notebook; its workspace access is none when absent. */
+        /** @description A new notebook; its workspace access is none, its mode standard and its template's language en when absent. */
         NotebookCreate: {
             name: components["schemas"]["NotebookName"];
             workspace_access?: components["schemas"]["WorkspaceAccess"];
+            mode?: components["schemas"]["NotebookMode"];
+            /**
+             * @description The language of an LLM Wiki's template, the client's: its two pages are written in it, to be rewritten by their users after. Checked whatever the mode; a standard notebook writes nothing.
+             * @enum {string}
+             */
+            template_locale?: "zh-CN" | "en";
         };
         NotebookUpdate: {
             name?: components["schemas"]["NotebookName"];

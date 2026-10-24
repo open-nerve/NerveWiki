@@ -13,6 +13,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/notebook/adapter/http/gen"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/notebook/app"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
+	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
 // ListNotebooksUseCase is app.ListNotebooks.
@@ -22,7 +23,7 @@ type ListNotebooksUseCase interface {
 
 // CreateNotebookUseCase is app.CreateNotebook.
 type CreateNotebookUseCase interface {
-	Execute(ctx context.Context, slug, name string, access *string) (app.View, error)
+	Execute(ctx context.Context, slug string, r app.NewNotebook) (app.View, error)
 }
 
 // GetNotebookUseCase is app.GetNotebook.
@@ -100,7 +101,14 @@ func (h handler) ListNotebooks(ctx context.Context, req gen.ListNotebooksRequest
 
 // CreateNotebook serves POST /api/v0/workspaces/{slug}/notebooks.
 func (h handler) CreateNotebook(ctx context.Context, req gen.CreateNotebookRequestObject) (gen.CreateNotebookResponseObject, error) {
-	v, err := h.uc.CreateNotebook.Execute(ctx, req.Slug, req.Body.Name, (*string)(req.Body.WorkspaceAccess))
+	client, err := shared.ClientOf(ctx)
+	if err != nil {
+		return nil, err
+	}
+	v, err := h.uc.CreateNotebook.Execute(ctx, req.Slug, app.NewNotebook{
+		Name: req.Body.Name, Access: (*string)(req.Body.WorkspaceAccess), Mode: (*string)(req.Body.Mode),
+		Locale: (*string)(req.Body.TemplateLocale), Client: client,
+	})
 	if err != nil {
 		return nil, err
 	}

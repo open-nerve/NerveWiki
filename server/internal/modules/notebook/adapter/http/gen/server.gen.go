@@ -41,6 +41,24 @@ func (e NotebookAuditAction) Valid() bool {
 	}
 }
 
+// Defines values for NotebookCreateTemplateLocale.
+const (
+	NotebookCreateTemplateLocaleEn   NotebookCreateTemplateLocale = "en"
+	NotebookCreateTemplateLocaleZhCN NotebookCreateTemplateLocale = "zh-CN"
+)
+
+// Valid indicates whether the value is a known member of the NotebookCreateTemplateLocale enum.
+func (e NotebookCreateTemplateLocale) Valid() bool {
+	switch e {
+	case NotebookCreateTemplateLocaleEn:
+		return true
+	case NotebookCreateTemplateLocaleZhCN:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for NotebookMode.
 const (
 	NotebookModeLlmWiki  NotebookMode = "llm_wiki"
@@ -159,14 +177,23 @@ type NotebookAuditEventPage struct {
 	NextCursor nullable.Nullable[externalRef0.NextCursor] `json:"next_cursor"`
 }
 
-// NotebookCreate A new notebook; its workspace access is none when absent.
+// NotebookCreate A new notebook; its workspace access is none, its mode standard and its template's language en when absent.
 type NotebookCreate struct {
+	// Mode A notebook's mode. standard is a notebook as it always was; llm_wiki is an LLM Wiki: its source area holds sources written once, its root page AGENTS and source root cannot be deleted, index and log at its root are generated, and its agents are served the prompts ingest, query and lint. A downgrade makes an LLM Wiki standard; an upgrade's states are no mode.
+	Mode *NotebookMode `json:"mode,omitempty"`
+
 	// Name 1–255 bytes after the surrounding blanks are trimmed and the text is in NFC; none of / \ : * ? " < > | # ^ [ ] nor control characters; not starting or ending with a dot; no name Windows reserves (CON, COM1, …). It is the folder's name when the notebook is exported.
 	Name NotebookName `json:"name"`
+
+	// TemplateLocale The language of an LLM Wiki's template, the client's: its two pages are written in it, to be rewritten by their users after. Checked whatever the mode; a standard notebook writes nothing.
+	TemplateLocale *NotebookCreateTemplateLocale `json:"template_locale,omitempty"`
 
 	// WorkspaceAccess How open a notebook is to its workspace: the role it gives the workspace's admins and members who are not its members (viewer gives reader, editor gives editor; none gives nothing). Guests have their own membership's role alone.
 	WorkspaceAccess *WorkspaceAccess `json:"workspace_access,omitempty"`
 }
+
+// NotebookCreateTemplateLocale The language of an LLM Wiki's template, the client's: its two pages are written in it, to be rewritten by their users after. Checked whatever the mode; a standard notebook writes nothing.
+type NotebookCreateTemplateLocale string
 
 // NotebookList defines model for NotebookList.
 type NotebookList struct {

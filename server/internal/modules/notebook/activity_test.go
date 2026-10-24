@@ -85,6 +85,7 @@ func TestTheActivitySourcesReachTheOwnerlessList(t *testing.T) {
 				Pool: f.pool, Tx: postgres.NewTxManager(f.pool, 5*time.Second), Clock: &tickingClock{},
 				Logger: slog.New(slog.DiscardHandler), Authorizer: adminsAuthorizer{facts: notebook.NewFacts(f.pool)},
 				Workspaces: sqlWorkspaces{f.pool}, Profiles: anyProfiles{}, ActivitySources: c.sources(f), AccountWorkspaces: noAccountWorkspaces{},
+				Seeders: []notebook.Seeder{noSeed{}},
 			}).Register(router, httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: tokenAuth{}}))
 
 			req := httptest.NewRequest(http.MethodGet, "/api/v0/workspaces/acme/ownerless-notebooks", nil)

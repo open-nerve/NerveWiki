@@ -170,6 +170,31 @@ func (f *fakeAuthorizer) Authorize(ctx context.Context, _ shared.Actor, action s
 	return g, nil
 }
 
+// fakeSeeder records the creations it follows, and answers the source root
+// root gives the creation, none when root is nil, or err.
+type fakeSeeder struct {
+	*recorder
+	name string
+	root func(c app.NotebookCreation) uuid.UUID
+	err  error
+	got  []app.NotebookCreation
+}
+
+func (f *fakeSeeder) NotebookCreated(ctx context.Context, c app.NotebookCreation) (uuid.UUID, error) {
+	f.record(ctx, "Seed "+f.name+" "+string(c.Mode))
+	f.got = append(f.got, c)
+	if f.err != nil {
+		return uuid.UUID{}, f.err
+	}
+	if f.root == nil {
+		return uuid.UUID{}, nil
+	}
+	return f.root(c), nil
+}
+
+// itsRoot answers a creation's own source root: the seeder of an LLM Wiki.
+func itsRoot(c app.NotebookCreation) uuid.UUID { return c.SourceRootID }
+
 // fakeSubscriber records the deletions it follows, and answers err.
 type fakeSubscriber struct {
 	*recorder
