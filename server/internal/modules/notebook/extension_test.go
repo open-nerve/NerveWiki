@@ -418,15 +418,16 @@ func (s *modeSubscriber) ModeChanged(ctx context.Context, m notebook.ModeChange)
 }
 
 // The mode subscribers run in order in the downgrade's transaction, after
-// the row was written standard, which they read, with the change at the
-// row's time (M10/P1 design 3.5); the first's failure rolls everything
-// back, and the second is not called.
+// the row was written standard by its caller, which they read, with the
+// change at the row's time (M10/P1 design 3.5); the first's failure rolls
+// everything back, and the second is not called. The row was last
+// updated by bob, so alice's downgrade shows on it.
 func TestADowngradePassesTheModeSubscribers(t *testing.T) {
 	for _, fail := range []bool{false, true} {
 		t.Run(map[bool]string{false: "the subscribers follow", true: "the first fails"}[fail], func(t *testing.T) {
 			f := newFixture(t)
 			root := uuid.NewV7()
-			f.exec(t, "UPDATE notebooks SET mode = 'llm_wiki', source_root_id = $2 WHERE id = $1", f.eng, root)
+			f.exec(t, "UPDATE notebooks SET mode = 'llm_wiki', source_root_id = $2, updated_by_id = $3 WHERE id = $1", f.eng, root, f.bob)
 			var order []string
 			a := &modeSubscriber{f: f, name: "a", order: &order}
 			if fail {
@@ -449,8 +450,9 @@ func TestADowngradePassesTheModeSubscribers(t *testing.T) {
 			var mode string
 			var sourceRoot *uuid.UUID
 			var updated time.Time
-			if err := f.pool.QueryRow(context.Background(), "SELECT mode, source_root_id, updated_at FROM notebooks WHERE id = $1", f.eng).
-				Scan(&mode, &sourceRoot, &updated); err != nil {
+			var updatedBy uuid.UUID
+			if err := f.pool.QueryRow(context.Background(), "SELECT mode, source_root_id, updated_at, updated_by_id FROM notebooks WHERE id = $1",
+				f.eng).Scan(&mode, &sourceRoot, &updated, &updatedBy); err != nil {
 				t.Fatal(err)
 			}
 			want := notebook.ModeChange{WorkspaceID: f.acme, NotebookID: f.eng, From: notebook.ModeLLMWiki, To: notebook.ModeStandard,
@@ -462,13 +464,14 @@ func TestADowngradePassesTheModeSubscribers(t *testing.T) {
 			}
 			switch {
 			case !fail && (rec.Code != http.StatusOK || !slices.Equal(order, []string{"a", "b"}) || mode != "standard" || sourceRoot != nil ||
-				!updated.Equal(a.got[0].At) || !b.inTx || b.saw != "standard" || len(b.got) != 1 || b.got[0] != a.got[0]):
-				t.Errorf("POST = %d %s, called %q, the row %s with source root %v at %v, the second got %+v; want 200, a then b, "+
-					"standard without one at the change's time, the same change", rec.Code, rec.Body, order, mode, sourceRoot, updated, b.got)
+				!updated.Equal(a.got[0].At) || updatedBy != f.alice || !b.inTx || b.saw != "standard" || len(b.got) != 1 || b.got[0] != a.got[0]):
+				t.Errorf("POST = %d %s, called %q, the row %s with source root %v at %v by %s, the second got %+v; want 200, a then b, "+
+					"standard without one at the change's time by alice, the same change", rec.Code, rec.Body, order, mode, sourceRoot, updated,
+					updatedBy, b.got)
 			case fail && (rec.Code != http.StatusInternalServerError || !slices.Equal(order, []string{"a"}) || mode != "llm_wiki" ||
-				sourceRoot == nil || *sourceRoot != root):
-				t.Errorf("POST with a failing subscriber = %d, called %q, the row %s with source root %v; want 500, a alone, "+
-					"llm_wiki with its own", rec.Code, order, mode, sourceRoot)
+				sourceRoot == nil || *sourceRoot != root || updatedBy != f.bob):
+				t.Errorf("POST with a failing subscriber = %d, called %q, the row %s with source root %v by %s; want 500, a alone, "+
+					"llm_wiki with its own by bob", rec.Code, order, mode, sourceRoot, updatedBy)
 			}
 		})
 	}
