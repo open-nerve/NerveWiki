@@ -30,3 +30,7 @@ M9/P1 建了 MCP 的平台与读的工具（[M9/P1 文档](../../M9-mcp/01-P1-pl
 
    后台撤销的每一批是普通的单元，各步照上面到达守卫。M10 定撤销里的这几种步写到来源页时算不算"修改来源"（同 M8 的那一份）。
 8. **`lint` 与 `pending_sources` 两个工具**（M9 收尾补上，[M9 收尾审查](../../M9-mcp/reviews/M9-closeout-review.md) C-I1；M9 总设计第 1 节第 8 条与"写给后面的 M"）：登记在 MCP 的注册表上（模块根的 `Tools()`、`mcpserver.Tool`，由组合根的 `mcpTools` 拼接），照 M9 的每个工具：先写进 `api/mcp/tools.json`（两个入口的 `tools/list` 各是一个数组，`TestTheToolListsAreTheContract` 比较整个工具对象，没有 `-update`），在权限矩阵里有行（`TestThePermissionMatrixCoversEveryTool`），声明的码进 `mcpToolCodes()` 的表、每个都要答出过，答复经 `Fit` 至多 48 KiB，内置的说明有它的一行（`TestTheBuiltInInstructionsNameEveryTool`；说明的余量见第 6 条）。
+
+## 处理进展
+
+- M10 开工（2026-10-24）：照[M10 总设计](../00-M10-design.md)第 7 节"移交的落实"的"M9/P1 MCP 的 prompt、虚拟文件与 `AGENTS`"各行做：第 4 项（`AGENTS` 的保护）在 P1 的 S2；第 7 项（守卫要认得的四种步）在 P1 的 S2 与 P2 的 S1；第 8 项（`lint` 与 `pending_sources`）与第 6 项的余量在 P3 的 S1；第 3 项（虚拟文件）在 P4 的 S1；第 1、2、5 项（注册表、最后一跳、`prompts/get`）与第 6 项的其余在 P5（4.15）。仍是 `open`，做完的 Phase 改为 `done`，收尾核对。

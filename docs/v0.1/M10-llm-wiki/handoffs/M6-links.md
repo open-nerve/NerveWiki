@@ -24,3 +24,7 @@ created: 2026-10-06
 2. **提取规则变了就提升 `domain.Extractor`**，并在发布说明里要求执行 `nervewiki reindex`。M10 若加提取的东西（例如 `type`、`summary` 单独成列），照此办。
 3. **索引表不带外键、没有 `deleted_at`**：被删页的行由删除路径删掉，`checkLinks`（`bootstrap/links_test.go`）守住不变式。linking 的 SQL 不 JOIN page 的表，要节点的状态经 page 的读端口（M6 总设计 4.3）。
 4. **来源区与模式**：哪些页在来源区，由 M10 的笔记本模式决定；索引只给出链接解析到哪一页。
+
+## 处理进展
+
+- M10 开工（2026-10-24）：照[M10 总设计](../00-M10-design.md)第 7 节"移交的落实"的"M6 lint 的数据在链接索引里"两行（表的六行、注意 1–4）做，在 P3 的 S1（4.11）。仍是 `open`，做完的 Phase 改为 `done`，收尾核对。
