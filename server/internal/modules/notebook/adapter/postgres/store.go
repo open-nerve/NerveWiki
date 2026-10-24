@@ -39,7 +39,8 @@ func (s *Store) queries(ctx context.Context) *gen.Queries {
 // CreateNotebook implements app.NotebookCreator.
 func (s *Store) CreateNotebook(ctx context.Context, n domain.Notebook, by uuid.UUID) error {
 	err := s.queries(ctx).CreateNotebook(ctx, gen.CreateNotebookParams{
-		ID: n.ID, WorkspaceID: n.WorkspaceID, Name: n.Name, WorkspaceAccess: string(n.Access), By: by, Now: n.CreatedAt,
+		ID: n.ID, WorkspaceID: n.WorkspaceID, Name: n.Name, WorkspaceAccess: string(n.Access), Mode: string(n.Mode),
+		SourceRootID: nullID(n.SourceRootID), By: by, Now: n.CreatedAt,
 	})
 	if err != nil {
 		return fmt.Errorf("create notebook: %w", err)
@@ -90,13 +91,29 @@ func (s *Store) ShareNotebook(ctx context.Context, id uuid.UUID) error {
 func notebookOf(r gen.FindNotebookRow) domain.Notebook {
 	n := domain.Notebook{
 		ID: r.ID, WorkspaceID: r.WorkspaceID, Name: r.Name, Access: shared.WorkspaceAccess(r.WorkspaceAccess),
-		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, Mode: domain.Mode(r.Mode), SourceRootID: idOf(r.SourceRootID),
 	}
 	// notebooks_ownerless_check sets both or neither.
 	if r.OwnerlessSince != nil {
 		n.Ownerless = &domain.Ownerless{Since: *r.OwnerlessSince, FormerOwner: *r.FormerOwnerID}
 	}
 	return n
+}
+
+// idOf is a nullable id column: the zero id for NULL.
+func idOf(id *uuid.UUID) uuid.UUID {
+	if id == nil {
+		return uuid.UUID{}
+	}
+	return *id
+}
+
+// nullID is id as a nullable column: NULL for the zero id.
+func nullID(id uuid.UUID) *uuid.UUID {
+	if id == (uuid.UUID{}) {
+		return nil
+	}
+	return &id
 }
 
 // notFound is err of what, app.ErrNotFound for no row.
@@ -127,7 +144,7 @@ func (s *Store) ListNotebooks(ctx context.Context, workspaceID, userID uuid.UUID
 		list[i] = app.Listed{
 			Notebook: domain.Notebook{
 				ID: r.ID, WorkspaceID: r.WorkspaceID, Name: r.Name, Access: shared.WorkspaceAccess(r.WorkspaceAccess),
-				CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+				CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, Mode: domain.Mode(r.Mode), SourceRootID: idOf(r.SourceRootID),
 			},
 			Explicit:    role(r.Role),
 			MemberCount: int(r.MemberCount),
@@ -151,6 +168,18 @@ func (s *Store) UpdateNotebook(ctx context.Context, n domain.Notebook, by uuid.U
 	})
 	if err != nil {
 		return fmt.Errorf("update notebook: %w", err)
+	}
+	return nil
+}
+
+// SetMode implements app.NotebookWriter: n's mode and source root, NULL
+// for none, by by at n.UpdatedAt.
+func (s *Store) SetMode(ctx context.Context, n domain.Notebook, by uuid.UUID) error {
+	err := s.queries(ctx).SetNotebookMode(ctx, gen.SetNotebookModeParams{
+		ID: n.ID, Mode: string(n.Mode), SourceRootID: nullID(n.SourceRootID), By: by, Now: n.UpdatedAt,
+	})
+	if err != nil {
+		return fmt.Errorf("set notebook mode: %w", err)
 	}
 	return nil
 }

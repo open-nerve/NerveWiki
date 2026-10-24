@@ -17,21 +17,23 @@ type OpenNotebookUseCase interface {
 
 // openNotebookDescription is the tool's description, as api/mcp/tools.json
 // has it (M9/P1 design 3.18).
-const openNotebookDescription = `Open a notebook: its instructions for agents (its root page AGENTS without its ` +
-	`frontmatter, or the server's built-in ones when it has none) and an overview: how many pages and attachments it ` +
-	`holds, when it last changed (null when nothing was ever written in it), and the nodes at its root. Follow its ` +
-	`instructions while you work in it, and pass its id as notebook to the other tools. truncated is true when the ` +
-	`root's nodes were cut short.`
+const openNotebookDescription = `Open a notebook: its mode (standard, or llm_wiki for an LLM Wiki), its instructions ` +
+	`for agents (its root page AGENTS without its frontmatter, or the server's built-in ones when it has none) and an ` +
+	`overview: how many pages and attachments it holds, when it last changed (null when nothing was ever written in ` +
+	`it), and the nodes at its root. Follow its instructions while you work in it, and pass its id as notebook to the ` +
+	`other tools. truncated is true when the root's nodes were cut short.`
 
 // openNotebookRootReserve is what of the answer the instructions leave the
 // root's nodes at least: 100 nodes of short names, 28 of 255 bytes.
 const openNotebookRootReserve = 8 << 10
 
-// openAnswer is open_notebook's answer (M9/P1 design 3.17.3):
-// instructions_from is the AGENTS page's path now, null for the built-in
-// instructions; truncated tells that the root's nodes were cut short.
+// openAnswer is open_notebook's answer (M9/P1 design 3.17.3; M10/P1
+// design 3.12): mode is the notebook's; instructions_from is the AGENTS
+// page's path now, null for the built-in instructions; truncated tells
+// that the root's nodes were cut short.
 type openAnswer struct {
 	Notebook         string   `json:"notebook"`
+	Mode             string   `json:"mode"`
 	Instructions     string   `json:"instructions"`
 	InstructionsFrom *string  `json:"instructions_from"`
 	Overview         overview `json:"overview"`
@@ -63,7 +65,7 @@ func (t tools) openNotebook(ctx context.Context, c mcpserver.Call, _ struct{}) (
 	if err != nil {
 		return mcpserver.Result{}, err
 	}
-	answer := openAnswer{Notebook: c.Notebook.String(), Instructions: NotebookInstructions,
+	answer := openAnswer{Notebook: c.Notebook.String(), Mode: string(o.Mode), Instructions: NotebookInstructions,
 		Overview: overview{Pages: o.Pages, Attachments: o.Attachments, Root: []rootItem{}}}
 	if o.LastChange != nil {
 		at := o.LastChange.UTC()

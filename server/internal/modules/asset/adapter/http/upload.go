@@ -45,7 +45,7 @@ type upload struct {
 }
 
 func (h upload) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	client, err := clientOf(r)
+	client, err := shared.ClientOf(r.Context())
 	if err != nil {
 		h.early(w, r, err)
 		return
@@ -156,19 +156,6 @@ func fields(form *httpserver.Form, notebookID uuid.UUID, client string) (app.Req
 // badRequest is 400 bad_request with detail, and the fields when any.
 func badRequest(detail string, fields ...shared.FieldError) error {
 	return &shared.Error{Kind: shared.KindBadRequest, Code: shared.CodeBadRequest, Detail: detail, Fields: fields}
-}
-
-// clientOf is where the request came from: a personal access token's is
-// the API's, a sign-in session's access token the web's.
-func clientOf(r *http.Request) (string, error) {
-	actor, err := shared.RequireActor(r.Context())
-	switch {
-	case err != nil:
-		return "", err
-	case actor.APITokenID != uuid.UUID{}:
-		return "api", nil
-	}
-	return "web", nil
 }
 
 // assetOf is the attachment as the API answers it, its addresses signed.

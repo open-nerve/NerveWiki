@@ -160,9 +160,9 @@ type Appender interface {
 	// transaction, and took the new content's facts.
 	WriteContent(ctx context.Context, w ContentWrite) (int, error)
 	// Defer has f called once the unit is over, its observers done and its
-	// transaction committed or rolled back: M6 gives back then the parse
-	// budget the facts of the contents it wrote hold, which the observers
-	// read (M6/P4 design 4.1).
+	// transaction committed or rolled back, in a seed's unit when Seed
+	// returns: M6 gives back then the parse budget the facts of the
+	// contents it wrote hold, which the observers read (M6/P4 design 4.1).
 	Defer(f func())
 }
 

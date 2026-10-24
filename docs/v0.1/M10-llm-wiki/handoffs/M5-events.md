@@ -12,3 +12,4 @@ created: 2026-10-04
 ## 处理进展
 
 - M10 开工（2026-10-24）：照[M10 总设计](../00-M10-design.md)第 7 节"移交的落实"的第一行做：类型 `mode`、它的发布者与契约的 `EventMode` 在 P1 的 S1，前端的处理表在 P1 的 S4（4.5）。仍是 `open`，做完的 Phase 改为 `done`，收尾核对。
+- P1/S1（2026-10-25，合并见 [00 号文档](../00-M10-design.md)第 12 节）：类型 `mode`、发布者 `notebookEvents.ModeChanged` 与契约的 `EventMode`（最后一跳 `TestTheModeEventReachesTheStreams`，帧按契约的 `EventMode` 核对）。前端的处理表在 P1 的 S4；仍是 `open`。

@@ -14,7 +14,7 @@ import type { Database } from "../db";
  */
 export async function expectNewNotebook(db: Database, created: Notebook, adminId: string): Promise<void> {
   const rows = await db.query(
-    `SELECT workspace_id, name, workspace_access, created_by_id = $2 AND updated_by_id = $2 AS by_admin,
+    `SELECT workspace_id, name, workspace_access, mode, source_root_id, created_by_id = $2 AND updated_by_id = $2 AS by_admin,
             created_at = $3::timestamptz AND updated_at = created_at AS at_answer,
             deleted_at IS NULL AND ownerless_since IS NULL AND former_owner_id IS NULL AS live
        FROM notebooks WHERE id = $1`,
@@ -25,6 +25,8 @@ export async function expectNewNotebook(db: Database, created: Notebook, adminId
       workspace_id: created.workspace_id,
       name: created.name,
       workspace_access: created.workspace_access,
+      mode: created.mode,
+      source_root_id: created.source_root_id,
       by_admin: true,
       at_answer: true,
       live: true,
@@ -43,8 +45,8 @@ export async function expectNewNotebook(db: Database, created: Notebook, adminId
 /** notebooks: notebook is the row as the API answered a change, last updated by updaterId. */
 export async function expectNotebook(db: Database, notebook: Notebook, updaterId: string): Promise<void> {
   const rows = await db.query(
-    `SELECT name, workspace_access, updated_by_id = $2 AS by_updater, updated_at = $3::timestamptz AS at_answer,
-            deleted_at IS NOT NULL AS deleted
+    `SELECT name, workspace_access, mode, source_root_id, updated_by_id = $2 AS by_updater,
+            updated_at = $3::timestamptz AS at_answer, deleted_at IS NOT NULL AS deleted
        FROM notebooks WHERE id = $1`,
     [notebook.id, updaterId, notebook.updated_at]
   );
@@ -52,6 +54,8 @@ export async function expectNotebook(db: Database, notebook: Notebook, updaterId
     {
       name: notebook.name,
       workspace_access: notebook.workspace_access,
+      mode: notebook.mode,
+      source_root_id: notebook.source_root_id,
       by_updater: true,
       at_answer: true,
       deleted: false,

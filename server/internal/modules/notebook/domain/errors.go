@@ -23,4 +23,11 @@ var (
 	// one).
 	ErrSoleAdmin = shared.NewError(shared.KindConflict, "notebook.sole_admin",
 		"The notebook's only admin cannot leave it: make another member an admin, or delete the notebook.")
+	// ErrNotLLMWiki: a downgrade of a standard notebook, another admin's
+	// downgrade first among them (M10 design 4.5).
+	ErrNotLLMWiki = shared.NewError(shared.KindConflict, "notebook.not_llm_wiki", "The notebook is not an LLM Wiki.")
+	// ErrJobsWriting: the transfer module's transfer.busy, for a downgrade
+	// while a job that writes the notebook's tree is queued or running.
+	ErrJobsWriting = shared.NewError(shared.KindConflict, "transfer.busy",
+		"An import, a restore or a revert of the notebook is queued or running: downgrade it once it is done.")
 )

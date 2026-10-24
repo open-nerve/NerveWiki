@@ -39,7 +39,7 @@ func TestCreateNotebookTellsTheVisibility(t *testing.T) {
 		f := newFixture()
 		f.grant(domain.ActionCreate, shared.WorkspaceMember, "")
 
-		if _, err := f.createWith(f.visibility).Execute(as(f.alice), "acme", "Notes", tt.access); err != nil {
+		if _, err := f.createWith(f.visibility).Execute(as(f.alice), "acme", app.NewNotebook{Name: "Notes", Access: tt.access}); err != nil {
 			t.Fatal(err)
 		}
 

@@ -11,9 +11,10 @@ import (
 
 // The tree's writes the other modules make, in units of the wired module:
 // the asset module's attachments, whose files' rows join their units (M7/P2
-// design 3.3), and the transfer module's imports (M7/P6 design 3.3). Only
-// the wired module gives them: the command line's composition, which
-// builds no module, cannot reach them.
+// design 3.3), the transfer module's imports (M7/P6 design 3.3), and the
+// template's pages, in a notebook's creation (M10 design 4.4). Only the
+// wired module gives them: the command line's composition, which builds
+// no module, cannot reach them.
 type (
 	// NewAsset is an attachment to create.
 	NewAsset = app.NewAsset
@@ -34,6 +35,12 @@ type (
 	BatchDone = app.BatchDone
 	// Placement is where a restore put a trash item's root.
 	Placement = domain.Placement
+	// SeedSpec is a template's unit, of PageDrafts, each with its content's
+	// Facts, which ParseTemplate answered (M10 design 4.4). A draft's
+	// Position is left zero: last among its siblings.
+	SeedSpec  = app.SeedSpec
+	PageDraft = app.PageDraft
+	Facts     = app.Facts
 )
 
 // MaxJobItems is the most items of a changeset a background revert
@@ -67,8 +74,9 @@ var ErrTooDeep = domain.ErrTooDeep
 // ErrNoParent is an import's parent that is no page of the notebook.
 var ErrNoParent = app.ErrNoParent
 
-// TreeWrites creates the attachments' nodes, and an import's; and writes
-// the background restores and reverts (M8/P4 design 3.3).
+// TreeWrites creates the attachments' nodes, and an import's; writes the
+// background restores and reverts (M8/P4 design 3.3); and the template's
+// pages, in a notebook's creation (M10 design 4.4).
 type TreeWrites interface {
 	// Check decides as CreateAsset would, unlocked: notebook.not_found,
 	// forbidden, then the name's rules and a parent that is no page of
@@ -118,6 +126,15 @@ type TreeWrites interface {
 	// ErrChangesetReverted; notebook.not_found or forbidden from the
 	// unit's decision.
 	RunBatch(ctx context.Context, spec JobSpec, plan JobPlan, from, to int) (BatchDone, error)
+	// Seed writes a notebook's template, spec's pages in one unit of the
+	// edit kind, within the transaction of the notebook's creation, which
+	// ctx carries (M10 design 4.4): the one exception of v0.1 design 13.1
+	// item 1. The unit is at spec.At, from spec.Client, by ctx's actor.
+	// It answers the ids of the pages it wrote, in spec's order.
+	Seed(ctx context.Context, spec SeedSpec) ([]uuid.UUID, error)
+	// ParseTemplate parses a template's page once, at start-up, outside
+	// the parse budget: its facts are passed in each Seed's pages.
+	ParseTemplate(content string) (Facts, error)
 }
 
 // ImportUnit is an import's unit (M7/P6 design 3.3): each node created
@@ -178,15 +195,25 @@ func nodeInfo(n domain.Node) NodeInfo {
 }
 
 // TreeWrites are the wired module's writes of attachments' nodes, of
-// imports and of the background jobs.
+// imports, of the background jobs, and of the template's pages, in a
+// notebook's creation.
 func (m *Module) TreeWrites() TreeWrites {
-	return treeWrites{assets: m.assets, imports: m.imports, jobs: m.jobWrites}
+	return treeWrites{assets: m.assets, imports: m.imports, jobs: m.jobWrites, seeds: m.seeds}
 }
 
 type treeWrites struct {
 	assets  *app.AssetWrites
 	imports *app.ImportWrites
 	jobs    *app.JobWrites
+	seeds   *app.SeedWrites
+}
+
+func (t treeWrites) Seed(ctx context.Context, spec SeedSpec) ([]uuid.UUID, error) {
+	return t.seeds.Seed(ctx, spec)
+}
+
+func (t treeWrites) ParseTemplate(content string) (Facts, error) {
+	return t.seeds.ParseTemplate(content)
 }
 
 func (t treeWrites) CheckRestore(ctx context.Context, notebookID, nodeID uuid.UUID) (string, error) {

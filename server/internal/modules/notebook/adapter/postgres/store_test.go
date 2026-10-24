@@ -71,7 +71,8 @@ func newWorkspace(t *testing.T, pool *pgxpool.Pool, slug string, by uuid.UUID) u
 // newNotebook creates a notebook of workspaceID with by as its admin.
 func newNotebook(t *testing.T, s *postgresadapter.Store, workspaceID uuid.UUID, name string, access shared.WorkspaceAccess, by uuid.UUID) domain.Notebook {
 	t.Helper()
-	n := domain.Notebook{ID: uuid.NewV7(), WorkspaceID: workspaceID, Name: name, Access: access, CreatedAt: now(), UpdatedAt: now()}
+	n := domain.Notebook{ID: uuid.NewV7(), WorkspaceID: workspaceID, Name: name, Access: access, CreatedAt: now(), UpdatedAt: now(),
+		Mode: domain.ModeStandard}
 	if err := s.CreateNotebook(context.Background(), n, by); err != nil {
 		t.Fatal(err)
 	}
@@ -140,6 +141,73 @@ func sameRow(a, b row) bool {
 		a.UpdatedAt.Equal(b.UpdatedAt) && deletedAlike
 }
 
+// Each of the five reads of a notebook's columns answers an LLM Wiki's
+// mode and source root (M10/P1 design 3.3): FindNotebook, whose row
+// notebookOf takes; LockNotebook and LockOwnerlessOf, whose rows convert
+// to it by their type; and ListNotebooks and ListOwnerless, which build
+// the notebook by hand, the ownerless ones after its admin left it.
+func TestTheNotebooksAnswerTheirMode(t *testing.T) {
+	ctx := context.Background()
+	s, pool := newStore(t)
+	alice := newAccount(t, pool, "alice@corp.com")
+	acme := newWorkspace(t, pool, "acme", alice)
+	wiki := domain.Notebook{ID: uuid.NewV7(), WorkspaceID: acme, Name: "Field notes", Access: shared.AccessViewer,
+		CreatedAt: now(), UpdatedAt: now(), Mode: domain.ModeLLMWiki, SourceRootID: uuid.NewV7()}
+	if err := s.CreateNotebook(ctx, wiki, alice); err != nil {
+		t.Fatal(err)
+	}
+	addMember(t, s, wiki.ID, alice, shared.NotebookAdmin, alice)
+	isWiki := func(read string, n domain.Notebook) {
+		t.Helper()
+		if n.ID != wiki.ID || n.Mode != domain.ModeLLMWiki || n.SourceRootID != wiki.SourceRootID {
+			t.Errorf("%s: %+v; want %s, llm_wiki, its source root %s", read, n, wiki.ID, wiki.SourceRootID)
+		}
+	}
+
+	found, err := s.FindNotebook(ctx, wiki.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	isWiki("FindNotebook", found)
+	listed, err := s.ListNotebooks(ctx, acme, alice, true)
+	if err != nil || len(listed) != 1 {
+		t.Fatalf("ListNotebooks() = %+v, %v; want the LLM Wiki", listed, err)
+	}
+	isWiki("ListNotebooks", listed[0].Notebook)
+	if err := inTx(t, pool, func(ctx context.Context) error {
+		n, err := s.LockNotebook(ctx, wiki.ID)
+		isWiki("LockNotebook", n)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := inTx(t, pool, func(ctx context.Context) error {
+		if err := s.EndMembershipsOf(ctx, alice, []uuid.UUID{wiki.ID}, alice, later()); err != nil {
+			return err
+		}
+		return s.SetOwnerless(ctx, []uuid.UUID{wiki.ID}, alice, later())
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ownerless, err := s.ListOwnerless(ctx, acme)
+	if err != nil || len(ownerless) != 1 {
+		t.Fatalf("ListOwnerless() = %+v, %v; want the LLM Wiki", ownerless, err)
+	}
+	isWiki("ListOwnerless", ownerless[0].Notebook)
+	if err := inTx(t, pool, func(ctx context.Context) error {
+		locked, err := s.LockOwnerlessOf(ctx, acme, alice)
+		if len(locked) != 1 {
+			t.Errorf("LockOwnerlessOf() = %+v, want the LLM Wiki", locked)
+			return err
+		}
+		isWiki("LockOwnerlessOf", locked[0])
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestFindNotebookOfNoNotebook(t *testing.T) {
 	s, pool := newStore(t)
 	alice := newAccount(t, pool, "alice@corp.com")
@@ -179,7 +247,8 @@ func TestListNotebooks(t *testing.T) {
 	upperNotes := newNotebook(t, s, acme, "Notes", shared.AccessViewer, bob)
 	first, second := uuid.NewV7(), uuid.NewV7()
 	same := func(id uuid.UUID) domain.Notebook {
-		n := domain.Notebook{ID: id, WorkspaceID: acme, Name: "same", Access: shared.AccessViewer, CreatedAt: now(), UpdatedAt: now()}
+		n := domain.Notebook{ID: id, WorkspaceID: acme, Name: "same", Access: shared.AccessViewer, CreatedAt: now(), UpdatedAt: now(),
+			Mode: domain.ModeStandard}
 		if err := s.CreateNotebook(ctx, n, bob); err != nil {
 			t.Fatal(err)
 		}
@@ -335,7 +404,8 @@ func TestDeleteNotebooksOfLocksThemByID(t *testing.T) {
 	acme := newWorkspace(t, pool, "acme", alice)
 	low, high := uuid.NewV7(), uuid.NewV7()
 	for _, id := range []uuid.UUID{high, low} {
-		n := domain.Notebook{ID: id, WorkspaceID: acme, Name: "Engineering", Access: shared.AccessNone, CreatedAt: now(), UpdatedAt: now()}
+		n := domain.Notebook{ID: id, WorkspaceID: acme, Name: "Engineering", Access: shared.AccessNone, CreatedAt: now(), UpdatedAt: now(),
+			Mode: domain.ModeStandard}
 		if err := s.CreateNotebook(ctx, n, alice); err != nil {
 			t.Fatal(err)
 		}

@@ -3,6 +3,7 @@ package app_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 	"uuid"
@@ -67,24 +68,33 @@ func (f fakeWorkspaces) ShareByID(ctx context.Context, id uuid.UUID) (bool, erro
 }
 
 // fakeStore answers from notebooks, by id; one in deleted is gone by the
-// time it is locked. It keeps what was written.
+// time it is locked, and one in locked is that under its lock: another
+// write committed between the read and the lock. It keeps what was
+// written.
 type fakeStore struct {
 	*recorder
 	notebooks map[uuid.UUID]domain.Notebook
 	deleted   map[uuid.UUID]bool
+	locked    map[uuid.UUID]domain.Notebook
 	listed    []app.Listed
 	counts    map[uuid.UUID]int
 	created   []domain.Notebook
 	members   []domain.Member
 	updated   []domain.Notebook
+	moded     []domain.Notebook
 	// ownerless is what ListOwnerless lists.
 	ownerless []app.OwnerlessListed
 	// ofWorkspace are the ids DeleteNotebooksOf deletes.
 	ofWorkspace []uuid.UUID
 }
 
+// CreateNotebook keeps n, refusing what the table's checks refuse
+// (checked).
 func (f *fakeStore) CreateNotebook(ctx context.Context, n domain.Notebook, by uuid.UUID) error {
 	f.record(ctx, "CreateNotebook by "+by.String())
+	if err := checked(n); err != nil {
+		return err
+	}
 	f.created = append(f.created, n)
 	return nil
 }
@@ -106,6 +116,9 @@ func (f *fakeStore) FindNotebook(ctx context.Context, id uuid.UUID) (domain.Note
 
 func (f *fakeStore) LockNotebook(ctx context.Context, id uuid.UUID) (domain.Notebook, error) {
 	f.record(ctx, "LockNotebook")
+	if n, ok := f.locked[id]; ok && !f.deleted[id] {
+		return n, nil
+	}
 	n, ok := f.notebooks[id]
 	if !ok || f.deleted[id] {
 		return domain.Notebook{}, app.ErrNotFound
@@ -130,6 +143,28 @@ func (f *fakeStore) ListNotebooks(ctx context.Context, workspaceID, userID uuid.
 func (f *fakeStore) UpdateNotebook(ctx context.Context, n domain.Notebook, by uuid.UUID) error {
 	f.record(ctx, "UpdateNotebook by "+by.String())
 	f.updated = append(f.updated, n)
+	return nil
+}
+
+// SetMode keeps n, refusing what the table's checks refuse (checked).
+func (f *fakeStore) SetMode(ctx context.Context, n domain.Notebook, by uuid.UUID) error {
+	f.record(ctx, "SetMode "+string(n.Mode)+" by "+by.String())
+	if err := checked(n); err != nil {
+		return err
+	}
+	f.moded = append(f.moded, n)
+	return nil
+}
+
+// checked is what the notebooks table's checks refuse of n: a mode of
+// neither, an LLM Wiki without its source root.
+func checked(n domain.Notebook) error {
+	switch {
+	case n.Mode != domain.ModeStandard && n.Mode != domain.ModeLLMWiki:
+		return errors.New("violates notebooks_mode_check")
+	case n.Mode == domain.ModeLLMWiki && n.SourceRootID == (uuid.UUID{}):
+		return errors.New("violates notebooks_source_root_check")
+	}
 	return nil
 }
 
@@ -170,6 +205,64 @@ func (f *fakeAuthorizer) Authorize(ctx context.Context, _ shared.Actor, action s
 	return g, nil
 }
 
+// fakeSeeder records the creations it follows, and answers the source root
+// root gives the creation, none when root is nil, or err.
+type fakeSeeder struct {
+	*recorder
+	name string
+	root func(c app.NotebookCreation) uuid.UUID
+	err  error
+	got  []app.NotebookCreation
+}
+
+func (f *fakeSeeder) NotebookCreated(ctx context.Context, c app.NotebookCreation) (uuid.UUID, error) {
+	f.record(ctx, "Seed "+f.name+" "+string(c.Mode))
+	f.got = append(f.got, c)
+	if f.err != nil {
+		return uuid.UUID{}, f.err
+	}
+	if f.root == nil {
+		return uuid.UUID{}, nil
+	}
+	return f.root(c), nil
+}
+
+// itsRoot answers a creation's own source root: the seeder of an LLM Wiki.
+func itsRoot(c app.NotebookCreation) uuid.UUID { return c.SourceRootID }
+
+// fakeJobs answers whether a notebook of writing has a writing job, or
+// err.
+type fakeJobs struct {
+	*recorder
+	writing map[uuid.UUID]bool
+	err     error
+}
+
+func (f fakeJobs) Writing(ctx context.Context, notebookID uuid.UUID) (bool, error) {
+	f.record(ctx, "Writing")
+	return f.writing[notebookID], f.err
+}
+
+// fakeModeSubscriber records the mode changes it follows, with the mode
+// the store holds by then, and answers err.
+type fakeModeSubscriber struct {
+	*recorder
+	name  string
+	store *fakeStore
+	err   error
+	got   []app.ModeChange
+	saw   []domain.Mode
+}
+
+func (f *fakeModeSubscriber) ModeChanged(ctx context.Context, m app.ModeChange) error {
+	f.record(ctx, "ModeChanged "+f.name+" "+string(m.From)+" "+string(m.To))
+	f.got = append(f.got, m)
+	if n := len(f.store.moded); n > 0 {
+		f.saw = append(f.saw, f.store.moded[n-1].Mode)
+	}
+	return f.err
+}
+
 // fakeSubscriber records the deletions it follows, and answers err.
 type fakeSubscriber struct {
 	*recorder
@@ -193,8 +286,10 @@ type fixture struct {
 	auth       *fakeAuthorizer
 	tx         *fakeTx
 	logs       *bytes.Buffer
-	acme       uuid.UUID
-	notebook   domain.Notebook
+	// jobs are the notebooks with a writing job, of the downgrade's tests.
+	jobs     map[uuid.UUID]bool
+	acme     uuid.UUID
+	notebook domain.Notebook
 	team
 }
 
@@ -202,7 +297,7 @@ func newFixture() fixture {
 	rec := &recorder{}
 	acme := uuid.NewV7()
 	n := domain.Notebook{ID: uuid.NewV7(), WorkspaceID: acme, Name: "Engineering", Access: shared.AccessNone,
-		CreatedAt: now().Add(-time.Hour), UpdatedAt: now().Add(-time.Hour)}
+		CreatedAt: now().Add(-time.Hour), UpdatedAt: now().Add(-time.Hour), Mode: domain.ModeStandard}
 	return fixture{
 		rec:        rec,
 		workspaces: fakeWorkspaces{recorder: rec, ids: map[string]uuid.UUID{"acme": acme}, gone: map[uuid.UUID]bool{}},

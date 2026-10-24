@@ -4,6 +4,8 @@ import (
 	"errors"
 	"slices"
 	"testing"
+	"time"
+	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
@@ -25,22 +27,54 @@ func fields(t *testing.T, err error) []string {
 func ptr(s string) *string { return &s }
 
 func TestCheckDraft(t *testing.T) {
-	d, err := CheckDraft("  Engineering ", nil)
-	if err != nil || d != (Draft{Name: "Engineering", Access: shared.AccessNone}) {
-		t.Errorf("CheckDraft without an access = %+v, %v; want the name trimmed, none", d, err)
+	d, err := CheckDraft("  Engineering ", nil, nil, nil)
+	if err != nil || d != (Draft{Name: "Engineering", Access: shared.AccessNone, Mode: ModeStandard, Locale: LocaleEn}) {
+		t.Errorf("CheckDraft without an access, a mode or a language = %+v, %v; want the name trimmed, none, standard, en", d, err)
 	}
 	for _, a := range shared.WorkspaceAccesses() {
-		if d, err := CheckDraft("x", ptr(string(a))); err != nil || d.Access != a {
+		if d, err := CheckDraft("x", ptr(string(a)), nil, nil); err != nil || d.Access != a {
 			t.Errorf("CheckDraft(%s) = %+v, %v", a, d, err)
 		}
 	}
-	got := fields(t, func() error { _, err := CheckDraft("a/b", ptr("public")); return err }())
-	if want := []string{"name invalid_format", "workspace_access invalid_format"}; !slices.Equal(got, want) {
-		t.Errorf("both problems = %q, want %q", got, want)
+	got := fields(t, func() error { _, err := CheckDraft("a/b", ptr("public"), ptr("wiki"), ptr("fr")); return err }())
+	if want := []string{"name invalid_format", "workspace_access invalid_format", "mode invalid_format", "template_locale invalid_format"}; !slices.Equal(got, want) {
+		t.Errorf("every problem = %q, want %q", got, want)
 	}
 	for _, a := range []string{"", "Viewer", "owner"} {
-		if got := fields(t, func() error { _, err := CheckDraft("x", ptr(a)); return err }()); !slices.Equal(got, []string{"workspace_access invalid_format"}) {
+		if got := fields(t, func() error { _, err := CheckDraft("x", ptr(a), nil, nil); return err }()); !slices.Equal(got, []string{"workspace_access invalid_format"}) {
 			t.Errorf("CheckDraft(access %q) = %q", a, got)
+		}
+	}
+}
+
+// A new notebook's mode is one of the two, its template's language zh-CN
+// or en, checked whatever the mode (M10/P1 design 3.3): a standard
+// notebook writes no template, yet a language it cannot have is refused.
+func TestCheckDraftsModeAndLanguage(t *testing.T) {
+	for _, tt := range []struct {
+		mode, locale string
+		want         Draft
+	}{
+		{"standard", "en", Draft{Name: "x", Access: shared.AccessNone, Mode: ModeStandard, Locale: LocaleEn}},
+		{"llm_wiki", "zh-CN", Draft{Name: "x", Access: shared.AccessNone, Mode: ModeLLMWiki, Locale: LocaleZhCN}},
+	} {
+		if d, err := CheckDraft("x", nil, ptr(tt.mode), ptr(tt.locale)); err != nil || d != tt.want {
+			t.Errorf("CheckDraft(%s, %s) = %+v, %v; want %+v", tt.mode, tt.locale, d, err, tt.want)
+		}
+	}
+	if d, err := CheckDraft("x", nil, ptr("llm_wiki"), nil); err != nil || d.Mode != ModeLLMWiki || d.Locale != LocaleEn {
+		t.Errorf("an LLM Wiki without a language = %+v, %v; want en", d, err)
+	}
+	for _, m := range []string{"LLM_WIKI", "", "upgrading", "wiki"} {
+		if got := fields(t, func() error { _, err := CheckDraft("x", nil, ptr(m), nil); return err }()); !slices.Equal(got, []string{"mode invalid_format"}) {
+			t.Errorf("CheckDraft(mode %q) = %q", m, got)
+		}
+	}
+	for _, mode := range []string{"standard", "llm_wiki"} {
+		for _, l := range []string{"fr", "", "zh-cn", "EN", "zh"} {
+			if got := fields(t, func() error { _, err := CheckDraft("x", nil, ptr(mode), ptr(l)); return err }()); !slices.Equal(got, []string{"template_locale invalid_format"}) {
+				t.Errorf("CheckDraft(%s, language %q) = %q", mode, l, got)
+			}
 		}
 	}
 }
@@ -72,5 +106,22 @@ func TestCheckChangeAndApply(t *testing.T) {
 	got := fields(t, func() error { _, err := CheckChange(ptr(" "), ptr("all")); return err }())
 	if want := []string{"name required", "workspace_access invalid_format"}; !slices.Equal(got, want) {
 		t.Errorf("both problems = %q, want %q", got, want)
+	}
+}
+
+// A downgrade makes an LLM Wiki standard at its time, without its source
+// root, the rest kept; a standard notebook is none to downgrade.
+func TestDowngradedIsStandard(t *testing.T) {
+	created, at := time.Date(2026, 10, 24, 9, 0, 0, 0, time.UTC), time.Date(2026, 10, 24, 10, 0, 0, 0, time.UTC)
+	wiki := Notebook{ID: uuid.NewV7(), WorkspaceID: uuid.NewV7(), Name: "Field notes", Access: shared.AccessViewer,
+		CreatedAt: created, UpdatedAt: created, Mode: ModeLLMWiki, SourceRootID: uuid.NewV7()}
+	got, err := wiki.Downgraded(at)
+	want := wiki
+	want.Mode, want.SourceRootID, want.UpdatedAt = ModeStandard, uuid.UUID{}, at
+	if err != nil || got != want {
+		t.Errorf("Downgraded() = %+v, %v; want %+v", got, err, want)
+	}
+	if got, err := want.Downgraded(at); !errors.Is(err, ErrNotLLMWiki) || got != (Notebook{}) {
+		t.Errorf("a standard notebook's Downgraded() = %+v, %v; want %v", got, err, ErrNotLLMWiki)
 	}
 }

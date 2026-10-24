@@ -13,9 +13,10 @@ import (
 )
 
 const createNotebook = `-- name: CreateNotebook :exec
-INSERT INTO notebooks (id, workspace_id, name, workspace_access, created_by_id, updated_by_id, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $5,
-    $6, $6)
+INSERT INTO notebooks (id, workspace_id, name, workspace_access, mode, source_root_id, created_by_id, updated_by_id,
+    created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5,
+    $6, $7, $7, $8, $8)
 `
 
 type CreateNotebookParams struct {
@@ -23,17 +24,22 @@ type CreateNotebookParams struct {
 	WorkspaceID     uuid.UUID
 	Name            string
 	WorkspaceAccess string
+	Mode            string
+	SourceRootID    *uuid.UUID
 	By              uuid.UUID
 	Now             time.Time
 }
 
-// The audit columns come from the use case's clock and caller.
+// The audit columns come from the use case's clock and caller; an LLM Wiki is inserted with its mode and source
+// root at once (M10 design 4.4), so that notebooks_source_root_check holds from its first row.
 func (q *Queries) CreateNotebook(ctx context.Context, arg CreateNotebookParams) error {
 	_, err := q.db.Exec(ctx, createNotebook,
 		arg.ID,
 		arg.WorkspaceID,
 		arg.Name,
 		arg.WorkspaceAccess,
+		arg.Mode,
+		arg.SourceRootID,
 		arg.By,
 		arg.Now,
 	)
@@ -105,7 +111,8 @@ func (q *Queries) DeleteNotebooksOf(ctx context.Context, arg DeleteNotebooksOfPa
 }
 
 const findNotebook = `-- name: FindNotebook :one
-SELECT id, workspace_id, name, workspace_access, created_at, updated_at, ownerless_since, former_owner_id
+SELECT id, workspace_id, name, workspace_access, created_at, updated_at, ownerless_since, former_owner_id, mode,
+    source_root_id
 FROM notebooks
 WHERE id = $1 AND deleted_at IS NULL
 `
@@ -119,6 +126,8 @@ type FindNotebookRow struct {
 	UpdatedAt       time.Time
 	OwnerlessSince  *time.Time
 	FormerOwnerID   *uuid.UUID
+	Mode            string
+	SourceRootID    *uuid.UUID
 }
 
 // A notebook not deleted, unlocked: what a read authorizes against.
@@ -134,12 +143,14 @@ func (q *Queries) FindNotebook(ctx context.Context, id uuid.UUID) (FindNotebookR
 		&i.UpdatedAt,
 		&i.OwnerlessSince,
 		&i.FormerOwnerID,
+		&i.Mode,
+		&i.SourceRootID,
 	)
 	return i, err
 }
 
 const listNotebooks = `-- name: ListNotebooks :many
-SELECT n.id, n.workspace_id, n.name, n.workspace_access, n.created_at, n.updated_at, m.role,
+SELECT n.id, n.workspace_id, n.name, n.workspace_access, n.created_at, n.updated_at, n.mode, n.source_root_id, m.role,
     (SELECT count(*) FROM notebook_members c
      WHERE c.notebook_id = n.id AND c.ended_at IS NULL AND c.deleted_at IS NULL) AS member_count
 FROM notebooks n
@@ -163,6 +174,8 @@ type ListNotebooksRow struct {
 	WorkspaceAccess string
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
+	Mode            string
+	SourceRootID    *uuid.UUID
 	Role            *string
 	MemberCount     int64
 }
@@ -187,6 +200,8 @@ func (q *Queries) ListNotebooks(ctx context.Context, arg ListNotebooksParams) ([
 			&i.WorkspaceAccess,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Mode,
+			&i.SourceRootID,
 			&i.Role,
 			&i.MemberCount,
 		); err != nil {
@@ -201,7 +216,8 @@ func (q *Queries) ListNotebooks(ctx context.Context, arg ListNotebooksParams) ([
 }
 
 const lockNotebook = `-- name: LockNotebook :one
-SELECT id, workspace_id, name, workspace_access, created_at, updated_at, ownerless_since, former_owner_id
+SELECT id, workspace_id, name, workspace_access, created_at, updated_at, ownerless_since, former_owner_id, mode,
+    source_root_id
 FROM notebooks
 WHERE id = $1 AND deleted_at IS NULL
 FOR NO KEY UPDATE
@@ -216,6 +232,8 @@ type LockNotebookRow struct {
 	UpdatedAt       time.Time
 	OwnerlessSince  *time.Time
 	FormerOwnerID   *uuid.UUID
+	Mode            string
+	SourceRootID    *uuid.UUID
 }
 
 // FindNotebook locked FOR NO KEY UPDATE until the transaction ends: a notebook's management writes take it
@@ -233,6 +251,8 @@ func (q *Queries) LockNotebook(ctx context.Context, id uuid.UUID) (LockNotebookR
 		&i.UpdatedAt,
 		&i.OwnerlessSince,
 		&i.FormerOwnerID,
+		&i.Mode,
+		&i.SourceRootID,
 	)
 	return i, err
 }
@@ -288,6 +308,33 @@ func (q *Queries) NotebookIDs(ctx context.Context) ([]uuid.UUID, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const setNotebookMode = `-- name: SetNotebookMode :exec
+UPDATE notebooks
+SET mode = $1, source_root_id = $2, updated_by_id = $3,
+    updated_at = $4
+WHERE id = $5
+`
+
+type SetNotebookModeParams struct {
+	Mode         string
+	SourceRootID *uuid.UUID
+	By           uuid.UUID
+	Now          time.Time
+	ID           uuid.UUID
+}
+
+// A notebook's mode and source root, by by at now (M10 design 4.5): the downgrade's write, under the row's lock.
+func (q *Queries) SetNotebookMode(ctx context.Context, arg SetNotebookModeParams) error {
+	_, err := q.db.Exec(ctx, setNotebookMode,
+		arg.Mode,
+		arg.SourceRootID,
+		arg.By,
+		arg.Now,
+		arg.ID,
+	)
+	return err
 }
 
 const shareNotebook = `-- name: ShareNotebook :one

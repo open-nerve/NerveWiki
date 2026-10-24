@@ -304,10 +304,12 @@ func TestConstraintAndIndexNames(t *testing.T) {
 		"notebook_members_user_id_idx iw",
 		"notebooks_created_by_id_fkey f a",
 		"notebooks_former_owner_id_fkey f a",
+		"notebooks_mode_check c",
 		"notebooks_name_check c",
 		"notebooks_ownerless_check c",
 		"notebooks_pkey iu",
 		"notebooks_pkey p",
+		"notebooks_source_root_check c",
 		"notebooks_updated_by_id_fkey f a",
 		"notebooks_workspace_access_check c",
 		"notebooks_workspace_id_fkey f r",
@@ -462,9 +464,11 @@ func checkedRows(t *testing.T, pool *pgxpool.Pool) {
 			"('0199a2b4-0000-7000-8000-000000000007', '0199a2b4-0000-7000-8000-000000000005', 'élodie@exämple.com', 'member', " +
 			user + ", " + user + ", now(), now())",
 		"UPDATE workspace_invitations SET accepted_at = now(), deleted_at = now()",
-		"INSERT INTO notebooks (id, workspace_id, name, workspace_access, created_by_id, updated_by_id, created_at, updated_at) VALUES " +
-			"('0199a2b4-0000-7000-8000-000000000008', '0199a2b4-0000-7000-8000-000000000005', '" + strings.Repeat("名", 85) + "', 'editor', " +
-			user + ", " + user + ", now(), now())",
+		// An LLM Wiki, inserted with its mode and its source root at once, as its creation does (M10/P1 design 3.4):
+		// the root page below.
+		"INSERT INTO notebooks (id, workspace_id, name, workspace_access, mode, source_root_id, created_by_id, updated_by_id, " +
+			"created_at, updated_at) VALUES ('0199a2b4-0000-7000-8000-000000000008', '0199a2b4-0000-7000-8000-000000000005', '" +
+			strings.Repeat("名", 85) + "', 'editor', 'llm_wiki', '0199a2b4-0000-7000-8000-000000000010', " + user + ", " + user + ", now(), now())",
 		"UPDATE notebooks SET ownerless_since = now(), former_owner_id = " + user,
 		"INSERT INTO notebook_members (id, notebook_id, user_id, role, created_by_id, updated_by_id, created_at, updated_at) VALUES " +
 			"('0199a2b4-0000-7000-8000-000000000009', '0199a2b4-0000-7000-8000-000000000008', " + user + ", 'reader', " +
@@ -585,6 +589,9 @@ func TestChecksRejectCounterexamples(t *testing.T) {
 		{"an upper-case access", "UPDATE notebooks SET workspace_access = 'Viewer'", "notebooks_workspace_access_check"},
 		{"ownerless without its former owner", "UPDATE notebooks SET former_owner_id = NULL", "notebooks_ownerless_check"},
 		{"a former owner without ownerless", "UPDATE notebooks SET ownerless_since = NULL", "notebooks_ownerless_check"},
+		{"a third mode", "UPDATE notebooks SET mode = 'upgrading'", "notebooks_mode_check"},
+		{"an upper-case mode", "UPDATE notebooks SET mode = 'LLM_WIKI'", "notebooks_mode_check"},
+		{"an LLM Wiki without its source root", "UPDATE notebooks SET source_root_id = NULL", "notebooks_source_root_check"},
 		{"a notebook's fourth role", "UPDATE notebook_members SET role = 'owner'", "notebook_members_role_check"},
 		{"a notebook's upper-case role", "UPDATE notebook_members SET role = 'Reader'", "notebook_members_role_check"},
 		{"a third kind of node", "UPDATE nodes SET kind = 'folder'", "nodes_kind_check"},

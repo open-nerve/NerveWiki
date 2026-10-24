@@ -10,6 +10,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/app"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/apigen"
+	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
 // ListVersionsUseCase is app.ListVersions.
@@ -72,11 +73,11 @@ func (h handler) GetPageVersionView(ctx context.Context, req gen.GetPageVersionV
 
 // RestorePageVersion serves POST /api/v0/pages/{page_id}/versions/{revision}/restore.
 func (h handler) RestorePageVersion(ctx context.Context, req gen.RestorePageVersionRequestObject) (gen.RestorePageVersionResponseObject, error) {
-	client, err := clientOf(ctx)
+	client, err := shared.ClientOf(ctx)
 	if err != nil {
 		return nil, err
 	}
-	r, err := h.uc.RestoreVersion.Execute(ctx, req.PageID, req.Revision, req.Body.BaseRevision, client)
+	r, err := h.uc.RestoreVersion.Execute(ctx, req.PageID, req.Revision, req.Body.BaseRevision, domain.Client(client))
 	if err != nil {
 		return nil, err
 	}

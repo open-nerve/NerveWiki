@@ -112,11 +112,22 @@ type NotebookWriter interface {
 	LockNotebook(ctx context.Context, id uuid.UUID) (domain.Notebook, error)
 	// UpdateNotebook writes n's name and access, by by at n.UpdatedAt.
 	UpdateNotebook(ctx context.Context, n domain.Notebook, by uuid.UUID) error
+	// SetMode writes n's mode and source root, by by at n.UpdatedAt.
+	SetMode(ctx context.Context, n domain.Notebook, by uuid.UUID) error
 	// DeleteNotebook soft-deletes notebook id and every member row of it,
 	// by by at now.
 	DeleteNotebook(ctx context.Context, id, by uuid.UUID, now time.Time) error
 	// CountMembers is NotebookFinder's.
 	CountMembers(ctx context.Context, id uuid.UUID) (int, error)
+}
+
+// WritingJobs tells whether a notebook has a job that writes its tree,
+// an import, a trash restore or a revert, queued or running, as the
+// transfer module keeps them (M10 design 4.5): in the caller's
+// transaction. A downgrade between two of a job's batches would have the
+// job write half under one contract and half under the other.
+type WritingJobs interface {
+	Writing(ctx context.Context, notebookID uuid.UUID) (bool, error)
 }
 
 // MemberFinder reads memberships, unlocked or under the notebook's lock.

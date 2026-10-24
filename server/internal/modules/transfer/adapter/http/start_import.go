@@ -36,7 +36,7 @@ type startImport struct {
 }
 
 func (h startImport) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	client, err := clientOf(r.Context())
+	client, err := shared.ClientOf(r.Context())
 	if err != nil {
 		h.early(w, r, err)
 		return
@@ -51,7 +51,7 @@ func (h startImport) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.early(w, r, err)
 		return
 	}
-	req, file, err := fields(form, pathID(r, "notebook_id"), client)
+	req, file, err := fields(form, pathID(r, "notebook_id"), domain.Client(client))
 	if err != nil {
 		h.early(w, r, err)
 		return

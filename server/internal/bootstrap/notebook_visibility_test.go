@@ -84,8 +84,9 @@ func TestTheNotebookListIsWhatEachReadAllows(t *testing.T) {
 // The event stream sees what each read allows (M5/P2 design 3.7): on the
 // matrix's data, the workspaces of each column are those it has a role
 // in, each with that role, and the notebooks the stream sees in them are
-// exactly those the column reads one by one. A deleted notebook is in
-// neither, a workspace the column left or was removed from neither.
+// exactly those the column reads one by one, the LLM Wiki variant's among
+// them (M10/P1 design 3.14). A deleted notebook is in neither, a workspace
+// the column left or was removed from neither.
 func TestTheStreamSeesWhatEachReadAllows(t *testing.T) {
 	ctx := context.Background()
 	d := prepareMatrix(t)
@@ -99,14 +100,13 @@ func TestTheStreamSeesWhatEachReadAllows(t *testing.T) {
 	for _, c := range allColumns() {
 		user := s.accounts[c]
 		read := map[uuid.UUID]bool{}
-		for _, n := range matrixNotebooks() {
-			id := s.notebook(n.name)
+		for _, id := range seededNotebooks(s) {
 			switch status, answer := ask(t, contract, http.MethodGet, base+"/api/v0/notebooks/"+id.String(), d.tokens[c], ""); status {
 			case http.StatusOK:
 				read[id] = true
 			case http.StatusNotFound:
 			default:
-				t.Fatalf("%s: GET %s = %d %s", c, n.name, status, answer)
+				t.Fatalf("%s: GET %s = %d %s", c, id, status, answer)
 			}
 		}
 		memberships, err := visibility.WorkspacesOf(ctx, user)
@@ -125,7 +125,7 @@ func TestTheStreamSeesWhatEachReadAllows(t *testing.T) {
 				seen[id] = true
 			}
 		}
-		for slug, id := range s.workspaces {
+		for slug, id := range seededWorkspaces(s) {
 			role, ok, err := members.RoleOf(ctx, id, user)
 			if err != nil || ok != (listed[id] != "") || string(role) != listed[id] {
 				t.Errorf("%s: the stream lists %s as %q, RoleOf answers %q, %v, %v", c, slug, listed[id], role, ok, err)
@@ -167,8 +167,9 @@ func accountNotebooksDiff(listed, read map[string]string) []string {
 // The account's notebooks are what each read allows (M9/P1 design 3.17.4,
 // v0.1 design 13.1 item 3): on the matrix's data, each column's
 // notebooks, as MCP's notebooks lists them across its workspaces, are
-// exactly the notebooks it reads one by one through REST, each with the
-// role the read answers. On this copy alone, two columns are in two
+// exactly the notebooks it reads one by one through REST, the LLM Wiki
+// variant's among them (M10/P1 design 3.14), each with the role the read
+// answers. On this copy alone, two columns are in two
 // workspaces of notebooks: lab's notebook editor is also a member of
 // other and a reader of other-nb, and the column outside lab, other-nb's
 // admin, also a member of lab, where it sees what lab opens to its
@@ -198,8 +199,8 @@ func TestTheAccountsNotebooksAreWhatEachReadAllows(t *testing.T) {
 	base := startApp(t, d.config(t, url, nil), migrations.FS())
 	for _, c := range allColumns() {
 		read := map[string]string{} // id → role, of the notebooks c reads
-		for _, n := range matrixNotebooks() {
-			status, answer := ask(t, contract, http.MethodGet, base+"/api/v0/notebooks/"+s.notebook(n.name).String(), d.tokens[c], "")
+		for _, id := range seededNotebooks(s) {
+			status, answer := ask(t, contract, http.MethodGet, base+"/api/v0/notebooks/"+id.String(), d.tokens[c], "")
 			switch status {
 			case http.StatusOK:
 				var got listedAnswer
@@ -207,7 +208,7 @@ func TestTheAccountsNotebooksAreWhatEachReadAllows(t *testing.T) {
 				read[got.ID] = got.Role
 			case http.StatusNotFound:
 			default:
-				t.Fatalf("%s: GET %s = %d %s", c, n.name, status, answer)
+				t.Fatalf("%s: GET %s = %d %s", c, id, status, answer)
 			}
 		}
 		m := &mcpApp{base: base, pat: createToken(t, contract, base, d.tokens[c])}

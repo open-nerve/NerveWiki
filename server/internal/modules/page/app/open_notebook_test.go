@@ -38,17 +38,19 @@ func (f *fakeOverview) FirstChildren(ctx context.Context, _ uuid.UUID, n int) ([
 
 // opener is the use case on f's fakes and overview.
 func (f *fixture) opener(o *fakeOverview) *app.OpenNotebook {
-	return app.NewOpenNotebook(app.NewNotebookGate(f.notebooks, f.auth), o, f.instructionsOf())
+	return app.NewOpenNotebook(app.NewNotebookGate(f.notebooks, f.auth), f.notebooks, o, f.instructionsOf())
 }
 
 // open_notebook decides the notebook first, as the notebook entry's gate
-// does, then reads its counts, its last change, the root's first nodes
-// and its instructions, unlocked (M9/P1 design 3.17.3): a notebook the
-// caller does not see, or the zero id, is notebook.not_found before any
-// of them is read.
+// does, then reads its mode, its counts, its last change, the root's first
+// nodes and its instructions, unlocked (M9/P1 design 3.17.3; M10/P1 design
+// 3.12): a notebook the caller does not see, or the zero id, is
+// notebook.not_found before any of them is read; one deleted after the
+// decision is notebook.not_found at its mode.
 func TestOpenNotebookAnswersInOrder(t *testing.T) {
 	f := newFixture()
 	f.grant(domain.ActionList)
+	f.notebooks.states = map[uuid.UUID]domain.NotebookState{f.eng: {Mode: domain.ModeLLMWiki, SourceRootID: uuid.NewV7()}}
 	agents := f.page("AGENTS", nil, 0)
 	f.write(agents, "# Rules", 1)
 	logo := f.asset("logo.png", nil, 1)
@@ -56,13 +58,15 @@ func TestOpenNotebookAnswersInOrder(t *testing.T) {
 	o := &fakeOverview{recorder: f.rec, pages: 3, attachments: 1, last: &last, root: []domain.Node{agents, logo}}
 	f.rec.calls = nil
 	got, err := f.opener(o).Execute(f.asAlice(), f.eng)
-	want := app.Opened{Agents: domain.Agents{Body: "# Rules", Title: "AGENTS"}, HasAgents: true, Pages: 3, Attachments: 1,
-		LastChange: &last, Root: []app.RootNode{{Path: "AGENTS.md", Kind: domain.KindPage}, {Path: "logo.png", Kind: domain.KindAsset}}}
-	if err != nil || got.Agents != want.Agents || !got.HasAgents || got.Pages != 3 || got.Attachments != 1 || got.LastChange != &last ||
-		!slices.Equal(got.Root, want.Root) || got.MoreRoot {
+	want := app.Opened{Mode: domain.ModeLLMWiki, Agents: domain.Agents{Body: "# Rules", Title: "AGENTS"}, HasAgents: true, Pages: 3,
+		Attachments: 1, LastChange: &last,
+		Root: []app.RootNode{{Path: "AGENTS.md", Kind: domain.KindPage}, {Path: "logo.png", Kind: domain.KindAsset}}}
+	if err != nil || got.Mode != want.Mode || got.Agents != want.Agents || !got.HasAgents || got.Pages != 3 || got.Attachments != 1 ||
+		got.LastChange != &last || !slices.Equal(got.Root, want.Root) || got.MoreRoot {
 		t.Errorf("Execute() = %+v, %v; want %+v", got, err, want)
 	}
-	calls := []string{"WorkspaceOf", "Authorize node.list", "NotebookCounts", "NotebookLastChange", "FirstChildren 101", "AgentsPage", "PageContent", "FrontmatterEnd"}
+	calls := []string{"WorkspaceOf", "Authorize node.list", "StateOf", "NotebookCounts", "NotebookLastChange", "FirstChildren 101",
+		"AgentsPage", "PageContent", "FrontmatterEnd"}
 	if !slices.Equal(f.rec.calls, calls) {
 		t.Errorf("calls = %q, want %q", f.rec.calls, calls)
 	}
@@ -78,6 +82,13 @@ func TestOpenNotebookAnswersInOrder(t *testing.T) {
 	if _, err := f.opener(o).Execute(f.asAlice(), f.eng); codeOf(err) != "notebook.not_found" ||
 		!slices.Equal(f.rec.calls, []string{"WorkspaceOf", "Authorize node.list"}) {
 		t.Errorf("open a notebook not seen = %v after %q, want notebook.not_found after the decision alone", err, f.rec.calls)
+	}
+	f.auth.grants[domain.ActionList] = true
+	f.notebooks.gone[f.eng] = true
+	f.rec.calls = nil
+	if _, err := f.opener(o).Execute(f.asAlice(), f.eng); codeOf(err) != "notebook.not_found" ||
+		!slices.Equal(f.rec.calls, []string{"WorkspaceOf", "Authorize node.list", "StateOf"}) {
+		t.Errorf("open a notebook deleted after the decision = %v after %q, want notebook.not_found at its mode", err, f.rec.calls)
 	}
 }
 

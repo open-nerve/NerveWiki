@@ -317,6 +317,8 @@ type seeded struct {
 	sessions        map[string]uuid.UUID // by page/owner
 	jobs            map[string]uuid.UUID // by notebook/owner
 	changesets      map[string]uuid.UUID // by notebook
+	// wiki is the LLM Wiki variant's (permission_matrix_wiki_test.go).
+	wiki wikiSeeded
 	// accounts are the columns' account ids, which registering them through
 	// the API gives: prepareMatrix fills the map, so they are known to the
 	// rows' requests, not to the coverage test, which reads the paths alone.
@@ -327,7 +329,7 @@ func newSeeded() seeded {
 	s := seeded{workspaces: map[string]uuid.UUID{}, memberships: map[string]uuid.UUID{}, invitations: map[string]uuid.UUID{},
 		notebooks: map[string]uuid.UUID{}, notebookMembers: map[string]uuid.UUID{}, pages: map[string]uuid.UUID{},
 		assets: map[string]uuid.UUID{}, sessions: map[string]uuid.UUID{}, jobs: map[string]uuid.UUID{}, changesets: map[string]uuid.UUID{},
-		accounts: map[caller]uuid.UUID{}}
+		accounts: map[caller]uuid.UUID{}, wiki: newWikiSeeded()}
 	for _, nb := range matrixRevert() {
 		s.changesets[nb] = uuid.NewV7()
 	}
@@ -363,7 +365,7 @@ func newSeeded() seeded {
 
 // in is s failing t when a row asks for what is not seeded.
 func (s seeded) in(t testing.TB) seeded {
-	s.t = t
+	s.t, s.wiki.t = t, t
 	return s
 }
 
@@ -472,6 +474,9 @@ func (s seeded) changeset(name string) uuid.UUID {
 
 // workspaceOfRow is the slug of the workspace a seeded row's id is in.
 func (s seeded) workspaceOfRow(id uuid.UUID) (string, bool) {
+	if s.wiki.has(id) {
+		return variantWorkspace, true
+	}
 	for _, n := range matrixNotebooks() {
 		if s.notebooks[n.name] == id {
 			return n.slug, true
@@ -699,25 +704,28 @@ func prepareMatrix(t *testing.T) matrixData {
 				"SELECT $1, n.id, n.notebook_id, "+account+", 'web', $4, $5 FROM nodes n WHERE n.id = $3",
 				d.seeded.sessions[e.page+"/"+string(e.owner)], emailOf(e.owner), d.seeded.pages[e.page], now, now.Add(time.Hour))
 		}
+		deleteNotebook := func(id uuid.UUID) {
+			exec("UPDATE notebooks SET deleted_at = $2 WHERE id = $1", id, now)
+			exec("UPDATE notebook_members SET deleted_at = $2 WHERE notebook_id = $1", id, now)
+			// As DeleteNotebooksPages does: what the trash holds keeps its
+			// own time.
+			exec("UPDATE nodes SET deleted_at = $2 WHERE notebook_id = $1 AND deleted_at IS NULL", id, now)
+			for _, table := range []string{"page_contents", "page_revisions", "changeset_items"} {
+				exec("UPDATE "+table+" SET deleted_at = $2 WHERE node_id IN (SELECT id FROM nodes WHERE notebook_id = $1) "+
+					"AND deleted_at IS NULL", id, now)
+			}
+			exec("UPDATE changesets SET deleted_at = $2 WHERE notebook_id = $1 AND deleted_at IS NULL", id, now)
+			exec("UPDATE asset_blobs SET deleted_at = $2 WHERE notebook_id = $1 AND deleted_at IS NULL", id, now)
+			exec("UPDATE transfer_jobs SET deleted_at = $2 WHERE notebook_id = $1 AND deleted_at IS NULL", id, now)
+			exec("DELETE FROM edit_sessions WHERE notebook_id = $1", id)
+			exec("DELETE FROM indexed_pages WHERE notebook_id = $1", id)
+		}
 		for _, n := range matrixNotebooks() {
 			if n.deleted {
-				exec("UPDATE notebooks SET deleted_at = $2 WHERE id = $1", d.seeded.notebooks[n.name], now)
-				exec("UPDATE notebook_members SET deleted_at = $2 WHERE notebook_id = $1", d.seeded.notebooks[n.name], now)
-				// As DeleteNotebooksPages does: what the trash holds keeps its
-				// own time.
-				exec("UPDATE nodes SET deleted_at = $2 WHERE notebook_id = $1 AND deleted_at IS NULL", d.seeded.notebooks[n.name], now)
-				for _, table := range []string{"page_contents", "page_revisions", "changeset_items"} {
-					exec("UPDATE "+table+" SET deleted_at = $2 WHERE node_id IN (SELECT id FROM nodes WHERE notebook_id = $1) "+
-						"AND deleted_at IS NULL", d.seeded.notebooks[n.name], now)
-				}
-				exec("UPDATE changesets SET deleted_at = $2 WHERE notebook_id = $1 AND deleted_at IS NULL", d.seeded.notebooks[n.name], now)
-				exec("UPDATE asset_blobs SET deleted_at = $2 WHERE notebook_id = $1 AND deleted_at IS NULL", d.seeded.notebooks[n.name], now)
-				exec("UPDATE transfer_jobs SET deleted_at = $2 WHERE notebook_id = $1 AND deleted_at IS NULL", d.seeded.notebooks[n.name],
-					now)
-				exec("DELETE FROM edit_sessions WHERE notebook_id = $1", d.seeded.notebooks[n.name])
-				exec("DELETE FROM indexed_pages WHERE notebook_id = $1", d.seeded.notebooks[n.name])
+				deleteNotebook(d.seeded.notebooks[n.name])
 			}
 		}
+		seedWikiVariant(t, exec, d.seeded.wiki, now, deleteNotebook)
 		queueSeeded(t, pool)
 		// orphan is ownerless of an account still active in lab, a state no
 		// end makes (its end would have ended its membership of lab): the

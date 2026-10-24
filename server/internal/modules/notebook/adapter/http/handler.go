@@ -8,9 +8,12 @@ import (
 	"context"
 	"uuid"
 
+	"github.com/oapi-codegen/nullable"
+
 	"github.com/open-nerve/NerveWiki/server/internal/modules/notebook/adapter/http/gen"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/notebook/app"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
+	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
 // ListNotebooksUseCase is app.ListNotebooks.
@@ -20,7 +23,7 @@ type ListNotebooksUseCase interface {
 
 // CreateNotebookUseCase is app.CreateNotebook.
 type CreateNotebookUseCase interface {
-	Execute(ctx context.Context, slug, name string, access *string) (app.View, error)
+	Execute(ctx context.Context, slug string, r app.NewNotebook) (app.View, error)
 }
 
 // GetNotebookUseCase is app.GetNotebook.
@@ -36,6 +39,11 @@ type UpdateNotebookUseCase interface {
 // DeleteNotebookUseCase is app.DeleteNotebook.
 type DeleteNotebookUseCase interface {
 	Execute(ctx context.Context, id uuid.UUID) error
+}
+
+// DowngradeNotebookUseCase is app.DowngradeNotebook.
+type DowngradeNotebookUseCase interface {
+	Execute(ctx context.Context, id uuid.UUID) (app.View, error)
 }
 
 // UseCases are the use cases behind the module's operations.
@@ -55,6 +63,8 @@ type UseCases struct {
 	TakeOver        TakeOverUseCase
 	DeleteOwnerless DeleteOwnerlessUseCase
 	ListAuditEvents ListAuditEventsUseCase
+	// An LLM Wiki's downgrade (M10/P1).
+	DowngradeNotebook DowngradeNotebookUseCase
 }
 
 // Register mounts the module's routes on router, the root router from
@@ -98,7 +108,14 @@ func (h handler) ListNotebooks(ctx context.Context, req gen.ListNotebooksRequest
 
 // CreateNotebook serves POST /api/v0/workspaces/{slug}/notebooks.
 func (h handler) CreateNotebook(ctx context.Context, req gen.CreateNotebookRequestObject) (gen.CreateNotebookResponseObject, error) {
-	v, err := h.uc.CreateNotebook.Execute(ctx, req.Slug, req.Body.Name, (*string)(req.Body.WorkspaceAccess))
+	client, err := shared.ClientOf(ctx)
+	if err != nil {
+		return nil, err
+	}
+	v, err := h.uc.CreateNotebook.Execute(ctx, req.Slug, app.NewNotebook{
+		Name: req.Body.Name, Access: (*string)(req.Body.WorkspaceAccess), Mode: (*string)(req.Body.Mode),
+		Locale: (*string)(req.Body.TemplateLocale), Client: client,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -131,11 +148,25 @@ func (h handler) DeleteNotebook(ctx context.Context, req gen.DeleteNotebookReque
 	return gen.DeleteNotebook204Response{}, nil
 }
 
+// DowngradeNotebook serves POST /api/v0/notebooks/{notebook_id}/downgrade.
+func (h handler) DowngradeNotebook(ctx context.Context, req gen.DowngradeNotebookRequestObject) (gen.DowngradeNotebookResponseObject, error) {
+	v, err := h.uc.DowngradeNotebook.Execute(ctx, req.NotebookID)
+	if err != nil {
+		return nil, err
+	}
+	return gen.DowngradeNotebook200JSONResponse(notebookOf(v)), nil
+}
+
 // notebookOf is a notebook and the caller's role as the API shows them.
 func notebookOf(v app.View) gen.Notebook {
 	n := v.Notebook
+	sourceRoot := nullable.NewNullNullable[uuid.UUID]()
+	if n.SourceRootID != (uuid.UUID{}) {
+		sourceRoot = nullable.NewNullableWithValue(n.SourceRootID)
+	}
 	return gen.Notebook{
 		ID: n.ID, WorkspaceID: n.WorkspaceID, Name: n.Name, WorkspaceAccess: gen.WorkspaceAccess(n.Access),
-		Role: gen.NotebookRole(v.Role), MemberCount: v.MemberCount, CreatedAt: n.CreatedAt, UpdatedAt: n.UpdatedAt,
+		Mode: gen.NotebookMode(n.Mode), SourceRootID: sourceRoot, Role: gen.NotebookRole(v.Role), MemberCount: v.MemberCount,
+		CreatedAt: n.CreatedAt, UpdatedAt: n.UpdatedAt,
 	}
 }

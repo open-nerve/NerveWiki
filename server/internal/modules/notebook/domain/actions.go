@@ -15,6 +15,9 @@ const (
 	ActionUpdateMember shared.Action = "notebook_member.update"
 	ActionRemoveMember shared.Action = "notebook_member.remove"
 	ActionLeave        shared.Action = "notebook.leave"
+	// A notebook's mode changes by its admins (M10 design 4.5): P1's
+	// downgrade; M11's upgrade may take it too.
+	ActionChangeMode shared.Action = "notebook.change_mode"
 	// The ownerless notebooks and their audit events: the workspace's
 	// admins', at the workspace level (M3 design 4).
 	ActionListOwnerless   shared.Action = "notebook_ownerless.list"
@@ -27,7 +30,7 @@ const (
 func Actions() []shared.Action {
 	return []shared.Action{
 		ActionList, ActionCreate, ActionRead, ActionUpdate, ActionDelete,
-		ActionListMembers, ActionAddMember, ActionUpdateMember, ActionRemoveMember, ActionLeave,
+		ActionListMembers, ActionAddMember, ActionUpdateMember, ActionRemoveMember, ActionLeave, ActionChangeMode,
 		ActionListOwnerless, ActionTakeOver, ActionDeleteOwnerless, ActionListAudit,
 	}
 }

@@ -60,6 +60,10 @@ type Notebooks interface {
 	ShareByID(ctx context.Context, id uuid.UUID) (bool, error)
 	// LockByID is ShareByID FOR NO KEY UPDATE: a write of the tree.
 	LockByID(ctx context.Context, id uuid.UUID) (bool, error)
+	// StateOf is the state of the notebook not deleted with id, unlocked,
+	// and whether there is one: a read that holds no lock sees one side of
+	// a downgrade or the other (M10 design 4.3).
+	StateOf(ctx context.Context, id uuid.UUID) (domain.NotebookState, bool, error)
 }
 
 // Content is a page's content as a write leaves it.

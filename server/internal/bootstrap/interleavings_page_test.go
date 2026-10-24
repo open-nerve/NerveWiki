@@ -1,8 +1,13 @@
 package bootstrap
 
 import (
+	"context"
+	"fmt"
+	"maps"
 	"net/http"
+	"slices"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -39,40 +44,59 @@ import (
 // fix check 2, N-c); an
 // edit session of a page that is not one not deleted of its notebook
 // (M4/P4 design 3.2); two sessions of a page alive at the database's time,
-// which the edit lock refuses (M5/P1 design 3.8). The links' invariant and
-// the search's (checkSearch, M8/P5 design 3.10) are checked with it.
+// which the edit lock refuses (M5/P1 design 3.8); a live LLM Wiki without
+// its source root, a live page of its own, or its root's AGENTS page (M10
+// design 4.4, 4.9: the template is written with the notebook, and neither
+// page goes while it is one). The links' invariant and the search's
+// (checkSearch, M8/P5 design 3.10) are checked with it.
 func checkPages(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
-	for what, query := range map[string]string{
-		"under a deleted parent": `SELECT count(*) FROM nodes c JOIN nodes p ON p.id = c.parent_id
+	for _, v := range pageViolations(t, pool) {
+		t.Error(v)
+	}
+	checkLinks(t, pool)
+	checkSearch(t, pool)
+}
+
+// llmWikiGap is the rule of pageViolations that a live LLM Wiki has its
+// source root and its root's AGENTS page.
+const llmWikiGap = "live LLM Wikis without their source root or root AGENTS page"
+
+// pageViolations are checkPages' rules that pool breaks, each a sentence
+// with its count, by the rule (M10/P1 design 3.14): a test seeds a rule's
+// counterexample and finds its sentence.
+func pageViolations(t testing.TB, pool *pgxpool.Pool) []string {
+	t.Helper()
+	rules := map[string]string{
+		"pages under a deleted parent": `SELECT count(*) FROM nodes c JOIN nodes p ON p.id = c.parent_id
 			WHERE c.deleted_at IS NULL AND p.deleted_at IS NOT NULL`,
-		"under an attachment": `SELECT count(*) FROM nodes c JOIN nodes p ON p.id = c.parent_id
+		"pages under an attachment": `SELECT count(*) FROM nodes c JOIN nodes p ON p.id = c.parent_id
 			WHERE c.deleted_at IS NULL AND p.kind = 'asset'`,
-		"with a sibling's title key": `SELECT count(*) FROM (SELECT 1 FROM nodes WHERE deleted_at IS NULL
+		"pages with a sibling's title key": `SELECT count(*) FROM (SELECT 1 FROM nodes WHERE deleted_at IS NULL
 			GROUP BY notebook_id, parent_id, name_key HAVING count(*) > 1) twins`,
-		"without exactly one content": `SELECT count(*) FROM nodes n WHERE n.deleted_at IS NULL AND n.kind = 'page'
+		"pages without exactly one content": `SELECT count(*) FROM nodes n WHERE n.deleted_at IS NULL AND n.kind = 'page'
 			AND (SELECT count(*) FROM page_contents c WHERE c.node_id = n.id AND c.deleted_at IS NULL) <> 1`,
-		"whose content is not its latest version": `SELECT count(*) FROM page_contents c WHERE c.deleted_at IS NULL
+		"pages whose content is not its latest version": `SELECT count(*) FROM page_contents c WHERE c.deleted_at IS NULL
 			AND c.revision IS DISTINCT FROM (SELECT max(r.revision) FROM page_revisions r WHERE r.node_id = c.node_id)`,
 		// A version goes on from the one before it: FindVersion reads N in the
 		// first at or above it (M8/P1 review A).
-		"whose versions do not chain": `SELECT count(DISTINCT node_id) FROM (SELECT r.node_id, r.base_revision,
+		"pages whose versions do not chain": `SELECT count(DISTINCT node_id) FROM (SELECT r.node_id, r.base_revision,
 				lag(r.revision) OVER (PARTITION BY r.node_id ORDER BY r.revision) AS prior
 			FROM page_revisions r JOIN nodes n ON n.id = r.node_id WHERE n.deleted_at IS NULL) v
 			WHERE base_revision IS DISTINCT FROM prior`,
-		"deleted, with what follows it not deleted": `SELECT count(*) FROM nodes n WHERE n.deleted_at IS NOT NULL AND (
+		"pages deleted, with what follows it not deleted": `SELECT count(*) FROM nodes n WHERE n.deleted_at IS NOT NULL AND (
 			EXISTS (SELECT 1 FROM page_contents c WHERE c.node_id = n.id AND c.deleted_at IS NULL)
 			OR EXISTS (SELECT 1 FROM page_revisions r WHERE r.node_id = n.id AND r.deleted_at IS NULL)
 			OR EXISTS (SELECT 1 FROM changeset_items i WHERE i.node_id = n.id AND i.deleted_at IS NULL))`,
-		"not deleted, with what follows it deleted": `SELECT count(*) FROM nodes n WHERE n.deleted_at IS NULL AND (
+		"pages not deleted, with what follows it deleted": `SELECT count(*) FROM nodes n WHERE n.deleted_at IS NULL AND (
 			EXISTS (SELECT 1 FROM page_contents c WHERE c.node_id = n.id AND c.deleted_at IS NOT NULL)
 			OR EXISTS (SELECT 1 FROM page_revisions r WHERE r.node_id = n.id AND r.deleted_at IS NOT NULL)
 			OR EXISTS (SELECT 1 FROM changeset_items i WHERE i.node_id = n.id AND i.deleted_at IS NOT NULL))`,
-		"deleted, a trash item's root or not as its parent and notebook make it": `SELECT count(*) FROM nodes n
+		"pages deleted, a trash item's root or not as its parent and notebook make it": `SELECT count(*) FROM nodes n
 			JOIN notebooks b ON b.id = n.notebook_id LEFT JOIN nodes p ON p.id = n.parent_id
 			WHERE n.deleted_at IS NOT NULL AND n.trash_root <> ((p.id IS NULL OR p.deleted_at IS DISTINCT FROM n.deleted_at)
 				AND b.deleted_at IS DISTINCT FROM n.deleted_at)`,
-		"a trash item's root, its pages, attachments or height not its group's, or less than what the purge left": `WITH RECURSIVE g AS (
+		"pages a trash item's root, its pages, attachments or height not its group's, or less than what the purge left": `WITH RECURSIVE g AS (
 				SELECT r.id AS root, r.id, r.kind, 1 AS level, r.deleted_at FROM nodes r WHERE r.trash_root
 				UNION ALL
 				SELECT g.root, n.id, n.kind, g.level + 1, g.deleted_at FROM g JOIN nodes n ON n.parent_id = g.id
@@ -84,30 +108,120 @@ func checkPages(t *testing.T, pool *pgxpool.Pool) {
 			WHERE CASE WHEN r.kind = 'page' AND NOT EXISTS (SELECT 1 FROM page_contents x WHERE x.node_id = r.id AND x.deleted_at = r.deleted_at)
 				THEN NOT coalesce(r.trash_pages >= c.pages AND r.trash_assets >= c.assets AND r.trash_height >= c.height, false)
 				ELSE (r.trash_pages, r.trash_assets, r.trash_height) IS DISTINCT FROM (c.pages::integer, c.assets::integer, c.height) END`,
-		"deeper than ten levels of pages, or in a loop": `WITH RECURSIVE up AS (
+		"pages deeper than ten levels of pages, or in a loop": `WITH RECURSIVE up AS (
 				SELECT id AS start, parent_id, 1 AS depth FROM nodes WHERE deleted_at IS NULL AND kind = 'page'
 				UNION ALL
 				SELECT u.start, p.parent_id, u.depth + 1 FROM up u JOIN nodes p ON p.id = u.parent_id WHERE u.depth < 11
 			) SELECT count(DISTINCT start) FROM up WHERE parent_id IS NOT NULL AND depth >= 10`,
-		"with an edit session, deleted or in another notebook": `SELECT count(*) FROM edit_sessions s
+		"pages with an edit session, deleted or in another notebook": `SELECT count(*) FROM edit_sessions s
 			WHERE NOT EXISTS (SELECT 1 FROM nodes n WHERE n.id = s.node_id AND n.notebook_id = s.notebook_id
 				AND n.kind = 'page' AND n.deleted_at IS NULL)`,
-		"with two alive edit sessions": `SELECT count(*) FROM (SELECT 1 FROM edit_sessions
+		"pages with two alive edit sessions": `SELECT count(*) FROM (SELECT 1 FROM edit_sessions
 			WHERE ended_reason IS NULL AND expires_at > now() GROUP BY node_id HAVING count(*) > 1) locked`,
 		// A revert's changeset reverts one of its notebook, or one the purge
 		// took; a page's deletion holds the revision it deleted, which the
 		// revert of it compares (M8/P3 design 3.12).
-		"reverted by a changeset of another notebook": `SELECT count(*) FROM changesets r
+		"pages reverted by a changeset of another notebook": `SELECT count(*) FROM changesets r
 			JOIN changesets c ON c.id = r.reverts_id WHERE r.notebook_id <> c.notebook_id`,
-		"deleted by an item without its revision": `SELECT count(*) FROM changeset_items i JOIN nodes n ON n.id = i.node_id
+		"pages deleted by an item without its revision": `SELECT count(*) FROM changeset_items i JOIN nodes n ON n.id = i.node_id
 			WHERE i.after_name IS NULL AND n.kind = 'page' AND i.revision IS NULL`,
-	} {
-		if n := count(t, pool, query); n != 0 {
-			t.Errorf("%d pages %s, want none", n, what)
+		// name_key is shared.TitleKey's: AGENTS's is agents.
+		llmWikiGap: `SELECT count(*) FROM notebooks n
+			WHERE n.mode = 'llm_wiki' AND n.deleted_at IS NULL AND (
+				NOT EXISTS (SELECT 1 FROM nodes r WHERE r.id = n.source_root_id AND r.notebook_id = n.id
+					AND r.kind = 'page' AND r.deleted_at IS NULL)
+				OR NOT EXISTS (SELECT 1 FROM nodes a WHERE a.notebook_id = n.id AND a.parent_id IS NULL
+					AND a.name_key = 'agents' AND a.kind = 'page' AND a.deleted_at IS NULL))`,
+	}
+	var found []string
+	for _, what := range slices.Sorted(maps.Keys(rules)) {
+		if n := count(t, pool, rules[what]); n != 0 {
+			found = append(found, fmt.Sprintf("%d %s, want none", n, what))
 		}
 	}
-	checkLinks(t, pool)
-	checkSearch(t, pool)
+	return found
+}
+
+// hasLLMWikiGap reports whether violations hold llmWikiGap's sentence.
+func hasLLMWikiGap(violations []string) bool {
+	return slices.ContainsFunc(violations, func(v string) bool { return strings.HasSuffix(v, " "+llmWikiGap+", want none") })
+}
+
+// pageViolations finds each gap of a live LLM Wiki's template and no
+// other (M10/P1 design 3.14): an LLM Wiki created through the API breaks
+// no rule; each row changes it through SQL, looks for the rule's sentence
+// and puts it back; a soft deletion breaks other rules too, so a row asks
+// only whether the sentence is among them. Last, the LLM Wiki's deletion,
+// pages and all, breaks none: the rule reads live notebooks.
+func TestPageViolationsCatchEachLLMWikiGap(t *testing.T) {
+	tm := newAcmeTeam(t, "", "")
+	wiki := tm.createWith(t, tm.tokens["alice"], `{"name":"Field notes","mode":"llm_wiki"}`)
+	other := tm.createWith(t, tm.tokens["alice"], `{"name":"Other notes","mode":"llm_wiki"}`)
+	root := tm.rootOf(t, wiki.ID)
+	if len(root) != 2 || root[0].ID != *wiki.SourceRootID || root[1].Name != "AGENTS" {
+		t.Fatalf("the LLM Wiki's root = %+v, want raw, its source root, then AGENTS", root)
+	}
+	raw, agents := root[0].ID, root[1].ID
+	if v := pageViolations(t, tm.pool); len(v) != 0 {
+		t.Fatalf("an LLM Wiki as created breaks %q, want nothing", v)
+	}
+	exec := func(query string, args ...any) {
+		t.Helper()
+		if _, err := tm.pool.Exec(context.Background(), query, args...); err != nil {
+			t.Fatalf("%s: %v", query, err)
+		}
+	}
+	for _, tt := range []struct {
+		name         string
+		change, undo func()
+		want         bool
+	}{
+		{"raw deleted",
+			func() { exec("UPDATE nodes SET deleted_at = now() WHERE id = $1", raw) },
+			func() { exec("UPDATE nodes SET deleted_at = NULL WHERE id = $1", raw) }, true},
+		{"AGENTS deleted",
+			func() { exec("UPDATE nodes SET deleted_at = now() WHERE id = $1", agents) },
+			func() { exec("UPDATE nodes SET deleted_at = NULL WHERE id = $1", agents) }, true},
+		{"raw an attachment",
+			func() { exec("UPDATE nodes SET kind = 'asset' WHERE id = $1", raw) },
+			func() { exec("UPDATE nodes SET kind = 'page' WHERE id = $1", raw) }, true},
+		{"AGENTS an attachment",
+			func() { exec("UPDATE nodes SET kind = 'asset' WHERE id = $1", agents) },
+			func() { exec("UPDATE nodes SET kind = 'page' WHERE id = $1", agents) }, true},
+		{"AGENTS under raw",
+			func() { exec("UPDATE nodes SET parent_id = $2 WHERE id = $1", agents, raw) },
+			func() { exec("UPDATE nodes SET parent_id = NULL WHERE id = $1", agents) }, true},
+		{"the source root another notebook's page",
+			func() { exec("UPDATE notebooks SET source_root_id = $2 WHERE id = $1", wiki.ID, *other.SourceRootID) },
+			func() { exec("UPDATE notebooks SET source_root_id = $2 WHERE id = $1", wiki.ID, raw) }, true},
+		{"raw deleted in a standard notebook",
+			func() {
+				exec("UPDATE nodes SET deleted_at = now() WHERE id = $1", raw)
+				exec("UPDATE notebooks SET mode = 'standard', source_root_id = NULL WHERE id = $1", wiki.ID)
+			},
+			func() {
+				exec("UPDATE notebooks SET mode = 'llm_wiki', source_root_id = $2 WHERE id = $1", wiki.ID, raw)
+				exec("UPDATE nodes SET deleted_at = NULL WHERE id = $1", raw)
+			}, false},
+	} {
+		tt.change()
+		if got := pageViolations(t, tm.pool); hasLLMWikiGap(got) != tt.want {
+			t.Errorf("%s: the violations %q hold %q = %t, want %t", tt.name, got, llmWikiGap, !tt.want, tt.want)
+		}
+		tt.undo()
+		if v := pageViolations(t, tm.pool); len(v) != 0 {
+			t.Fatalf("%s put back breaks %q, want nothing", tt.name, v)
+		}
+	}
+	if status, answer := ask(t, tm.contract, http.MethodDelete, tm.base+"/api/v0/notebooks/"+wiki.ID, tm.tokens["alice"], ""); status != http.StatusNoContent {
+		t.Fatalf("DELETE the LLM Wiki = %d %s, want 204", status, answer)
+	}
+	if count(t, tm.pool, "SELECT count(*) FROM nodes WHERE notebook_id = $1 AND deleted_at IS NULL", wiki.ID) != 0 {
+		t.Fatal("the deleted LLM Wiki keeps live pages, want none")
+	}
+	if v := pageViolations(t, tm.pool); len(v) != 0 {
+		t.Errorf("a deleted LLM Wiki breaks %q, want nothing", v)
+	}
 }
 
 // openNotebook creates a notebook named name in acme as by, open to acme's

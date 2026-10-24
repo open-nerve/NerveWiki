@@ -10,8 +10,27 @@ import (
 
 	postgresadapter "github.com/open-nerve/NerveWiki/server/internal/modules/notebook/adapter/postgres"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/notebook/app"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/notebook/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
 )
+
+// Mode is a notebook's mode (M10 design 4.3), which bootstrap converts to
+// the modules' own, field by field.
+type Mode = domain.Mode
+
+// The two modes, for bootstrap's conversions: an alias carries no
+// constants.
+const (
+	ModeStandard = domain.ModeStandard
+	ModeLLMWiki  = domain.ModeLLMWiki
+)
+
+// State is a notebook's mode and source root, as the modules inside it
+// read them (M10 design 4.3, 4.6): the zero id for none.
+type State struct {
+	Mode         Mode
+	SourceRootID uuid.UUID
+}
 
 // Notebooks is what the modules inside a notebook read of it (M4/P1 design
 // 3.3): the page module's port, which bootstrap wires to it. A page write
@@ -33,6 +52,11 @@ type Notebooks interface {
 	// the caller's transaction when it has one, and whether there is one:
 	// an export names its archive after it (M7/P5 design 3.9).
 	NameOf(ctx context.Context, id uuid.UUID) (string, bool, error)
+	// StateOf is the state of the notebook not deleted with id, unlocked,
+	// in the caller's transaction when it has one, and whether there is
+	// one: the reads that hold no lock (MCP's open_notebook; M10's list,
+	// read, instructions, lint) see one side of a downgrade or the other.
+	StateOf(ctx context.Context, id uuid.UUID) (State, bool, error)
 }
 
 // NewNotebooks returns Notebooks over pool alone: bootstrap builds it
@@ -59,6 +83,14 @@ func (n notebooks) NameOf(ctx context.Context, id uuid.UUID) (string, bool, erro
 		return "", false, err
 	}
 	return nb.Name, true, nil
+}
+
+func (n notebooks) StateOf(ctx context.Context, id uuid.UUID) (State, bool, error) {
+	nb, err := n.store.FindNotebook(ctx, id)
+	if ok, err := found(err); !ok || err != nil {
+		return State{}, false, err
+	}
+	return State{Mode: nb.Mode, SourceRootID: nb.SourceRootID}, true, nil
 }
 
 func (n notebooks) ShareByID(ctx context.Context, id uuid.UUID) (bool, error) {

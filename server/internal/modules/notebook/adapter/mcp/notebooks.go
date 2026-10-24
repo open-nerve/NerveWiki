@@ -28,9 +28,9 @@ func Tools(notebooks ListAccountNotebooksUseCase) []mcpserver.Tool {
 // notebooksDescription is the tool's description, as api/mcp/tools.json
 // has it (M9/P1 design 3.18).
 const notebooksDescription = `List the notebooks you can see in every workspace you belong to, each with its id, its ` +
-	`name, its workspace's slug and name, and your role (admin, editor or reader), by workspace, then by name. Open one ` +
-	`with open_notebook, then pass its id as notebook to the other tools. truncated is true when there were more than ` +
-	`one answer holds.`
+	`name, its workspace's slug and name, your role (admin, editor or reader) and its mode (standard, or llm_wiki for an ` +
+	`LLM Wiki), by workspace, then by name. Open one with open_notebook, then pass its id as notebook to the other ` +
+	`tools. truncated is true when there were more than one answer holds.`
 
 // tools are the handlers of the module's tools.
 type tools struct {
@@ -48,6 +48,7 @@ type notebookItem struct {
 	Name      string        `json:"name"`
 	Workspace workspaceItem `json:"workspace"`
 	Role      string        `json:"role"`
+	Mode      string        `json:"mode"`
 }
 
 type workspaceItem struct {
@@ -68,7 +69,7 @@ func (t tools) list(ctx context.Context, _ mcpserver.Call, _ struct{}) (mcpserve
 	}
 	items := make([]notebookItem, len(listed.Notebooks))
 	for i, n := range listed.Notebooks {
-		items[i] = notebookItem{ID: n.Notebook.ID.String(), Name: n.Notebook.Name, Role: string(n.Role),
+		items[i] = notebookItem{ID: n.Notebook.ID.String(), Name: n.Notebook.Name, Role: string(n.Role), Mode: string(n.Notebook.Mode),
 			Workspace: workspaceItem{Slug: n.Workspace.Slug, Name: n.Workspace.Name}}
 	}
 	n := len(items)

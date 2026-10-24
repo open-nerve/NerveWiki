@@ -181,11 +181,37 @@ func (w *Writer) workspaceOf(ctx context.Context, spec UnitSpec) (uuid.UUID, err
 // do, the changeset's renames and moves, the search's queue, the
 // observers. The clock is read once: every row
 // the unit writes has its time. Any error rolls the whole unit back and is
-// returned.
+// returned. It refuses a ctx that carries a transaction.
 func (w *Writer) Run(ctx context.Context, spec UnitSpec, do func(ctx context.Context, u *Unit) error) (Outcome, error) {
 	if w.d.Tx.InTx(ctx) {
 		return Outcome{}, errors.New("a page write unit opens its own transaction: ctx carries one already")
 	}
+	return w.run(ctx, spec, time.Time{}, do)
+}
+
+// Seed runs do in a unit of spec within the transaction ctx carries, its
+// caller's, at at: the one exception of v0.1 design 13.1 item 1, a
+// notebook's template, written in its creation's transaction (M10 design
+// 4.4). It refuses a ctx that carries none, and a zero at; the unit reads
+// no clock, so that the notebook, its changeset and its pages have one
+// time. The rest is Run's: the workspace's row FOR SHARE and the
+// notebook's, both re-taken in the caller's transaction, the decision, the
+// unit, the search's queue, the observers. Its caller's transaction
+// commits or rolls back the unit; the functions its participants deferred
+// run when Seed returns, its observers done.
+func (w *Writer) Seed(ctx context.Context, spec UnitSpec, at time.Time, do func(ctx context.Context, u *Unit) error) (Outcome, error) {
+	switch {
+	case !w.d.Tx.InTx(ctx):
+		return Outcome{}, errors.New("a seed's unit joins its caller's transaction: ctx carries none")
+	case at.IsZero():
+		return Outcome{}, errors.New("a seed's unit is at its caller's time: none given")
+	}
+	return w.run(ctx, spec, at, do)
+}
+
+// run is Run's body, the unit's time at, or the clock's one read when at
+// is zero.
+func (w *Writer) run(ctx context.Context, spec UnitSpec, at time.Time, do func(ctx context.Context, u *Unit) error) (Outcome, error) {
 	if !spec.Client.Valid() {
 		return Outcome{}, fmt.Errorf("a page write unit of client %q: no such client", spec.Client)
 	}
@@ -225,9 +251,12 @@ func (w *Writer) Run(ctx context.Context, spec UnitSpec, do func(ctx context.Con
 		if _, err := authorize(ctx, w.d.Auth, actor, spec.Action, target, spec.NotFound); err != nil {
 			return err
 		}
+		if at.IsZero() {
+			at = w.d.Clock.Now()
+		}
 		u = &Unit{w: w, write: Write{
 			WorkspaceID: workspaceID, NotebookID: spec.NotebookID, By: actor.UserID, Client: spec.Client,
-			Options: spec.Options, At: w.d.Clock.Now(), Kind: kind, RevertsID: spec.RevertsID,
+			Options: spec.Options, At: at, Kind: kind, RevertsID: spec.RevertsID,
 		}, into: spec.Changeset, create: spec.Create, message: spec.Message, bulk: spec.Background || spec.BulkSearch,
 			merged: map[uuid.UUID]int{}, deferring: spec.DeferParticipants}
 		if err := u.lockInto(ctx); err != nil {

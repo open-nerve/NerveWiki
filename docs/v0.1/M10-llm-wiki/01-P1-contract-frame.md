@@ -3,8 +3,8 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M10/P1 契约的框架（四个 Step：S1 模式与模板（服务端）；S2 守卫的骨架；S3 预检、加序号与后台的拒绝的去处；S4 网页（一）） |
-| 日期 | 2026-10-24 |
-| 状态 | 进行中（设计已审查，S1 开工；[审查记录](reviews/P1-design-review.md)，两轮复核在它的末节） |
+| 日期 | 2026-10-24（照 S1 修订 2026-10-25） |
+| 状态 | 进行中（S1 已合并，S2 开工）；设计已审查，[审查记录](reviews/P1-design-review.md)，两轮复核在它的末节；S1 的审查记录 [P1-S1-mode-template-review.md](reviews/P1-S1-mode-template-review.md)，实施与审查之后与代码不同之处照实改在各节（3.30 列出），结果在 10.1 |
 | 上级文档 | [M10 总设计](00-M10-design.md) 4.1–4.9、4.15–4.18、第 5、7、8、9、10、11 节与"总体设计的修订"、"移交的落实"；[M10 设计审查](reviews/M10-design-review.md)；[移交](handoffs/)：M5-events、M8-history、M9-P1-mcp-registry；[v0.1 总体设计](../v0.1-design.md) 5.1–5.9、12.4、13.1–13.4；[M9/P3](../M9-mcp/03-P3-batch-revert.md)（写法） |
 | 代码位置的写法 | 同 00 号文档：模块写作 `page/app/unit.go:185`（`server/internal/modules/` 之下）；`platform/…`、`bootstrap/…`、`shared/…`、`archtest/…` 在 `server/internal/` 之下；迁移写作 `00009_notebook_notebooks.sql:12`（`server/migrations/sql/`），迁移的测试写作 `server/migrations/schema_test.go:163`；前端写作 `W/stores/notebook.store.ts:45` 或 `web/…/notebook.store.ts:45`（`W/` 是 `web/apps/web/src/`）；e2e 写作 `e2e/fixtures/notebooks.ts:9`；契约写作 `api/modules/notebook.yaml:421`。代码的行号是 `d7bb5e8d` 的（`main`，M10 总设计的文档提交；代码与 M9 的 Codex 评审之后的文档提交 `91ee78d8` 相同），00 号文档与 v0.1 总体设计的行号也是它的 |
 | 工作笔记 | `scratchpad/m10/p1/notes.md`；代码的核对分五份（网页、e2e、契约与 CI、守卫与矩阵、transfer 与后台）在 `scratchpad/m10/p1/h/`，本文引的每个行号都在其中或附录里核对过。P1 不量要数据库的东西（第 7.6 节写实施时怎样量） |
@@ -127,12 +127,12 @@
 | notebook | `app/create_notebook.go`、`app/write_test.go` | 改 | `NewNotebook`、事务的次序（3.4）；`TestTheSeedersRunInTheirOrder`（3.5） |
 | notebook | `app/downgrade_notebook.go`、`app/mode_test.go` | 新 | `DowngradeNotebook`（3.10）；`TestTheModeSubscribersRunInTheirOrder`（3.5） |
 | notebook | `app/ports.go` | 改 | `NotebookWriter.SetMode`、新端口 `WritingJobs`（3.10） |
-| notebook | `app/fakes_test.go` | 改 | 假的仓库记下 `SetMode`，另有一张 `locked`（`LockNotebook` 先读它，再读 `notebooks`：找到与锁下可以答不同的模式，3.10；今天两者读同一张表，`fakes_test.go:98-114`），假的 `WritingJobs`、播种者与订阅者 |
+| notebook | `app/fakes_test.go` | 改 | 假的仓库记下 `SetMode`，另有一张 `locked`（`LockNotebook` 先读它，再读 `notebooks`：找到与锁下可以答不同的模式，3.10；今天两者读同一张表，`fakes_test.go:98-114`），假的 `WritingJobs`、播种者与订阅者；假的 `CreateNotebook` 与 `SetMode` 经同一个 `checked(n)` 拒绝表的两个检查拒绝的（两种之外的模式、没有来源根的 LLM Wiki），替身在真的失败处失败（S1 的偏离 13，审查 A-N2） |
 | notebook | `adapter/postgres/queries/notebooks.sql`、`cascade.sql`、`ownerless.sql`、`store.go`、`ownerless.go`、`store_test.go`、`gen/` | 改 | 读笔记本的五条查询选出两列，两处手写的转换，`CreateNotebook` 写入，新的 `SetNotebookMode`，`TestTheNotebooksAnswerTheirMode`（3.3；`ShareNotebook` 的两列在 S2） |
 | notebook | `adapter/http/handler.go`、`handler_test.go` | 改 | `shared.ClientOf`、`NotebookCreate` 的两个新值、`downgradeNotebook`、`notebookOf` 带两列（3.13） |
 | notebook | `adapter/mcp/notebooks.go`、`notebooks_test.go` | 改 | 每项带 `mode`，描述照 `tools.json`（3.12） |
 | notebook | `module.go`、`notebooks.go`、`extension_test.go`、`tools_test.go`、`activity_test.go`、`visibility_test.go` | 改 | `Deps.Seeders`（为空时 panic）、`Deps.ModeSubscribers`、`Deps.WritingJobs`；根的 `State`、`StateOf`（`ShareState`、`LockState` 在 S2）；模块根的替身测试（3.5）；建模块的四个测试交一个什么也不写的播种者 |
-| page | `domain/mode.go`、`domain/mode_test.go` | 新 | `Mode`、`NotebookState`（3.12） |
+| page | `domain/mode.go` | 新 | `Mode`、`NotebookState`（3.12）；没有 `mode_test.go`：两个常量与一个结构，没有行为，notebook 的模式到 page 的转换由 `TestPageNotebooksConvertTheState` 与 `TestNotebooksAnswerTheirModeOverMCP` 钉住（S1 的偏离 5） |
 | page | `app/ports.go` | 改 | `Notebooks.StateOf`（3.12） |
 | page | `app/unit.go`、`app/seed_writes.go` | 改、新 | `Writer.Seed` 与 `run`；`SeedWrites` 的 `Seed`、`ParseTemplate`（3.6） |
 | page | `tree_writes.go`、`tree_writes_test.go`、`module.go` | 改 | `TreeWrites` 加 `Seed`、`ParseTemplate`，`SeedSpec`、`PageDraft` 的别名（3.6） |
@@ -145,14 +145,14 @@
 | access | `domain/rules.go` | 改 | `notebook.change_mode` 一行（3.10） |
 | wiki（新模块） | `module.go` | 新 | 模块根：`NewTemplate`、`Actions()`、`TemplatePages`、类型别名、常量 `ModeLLMWiki`、`LocaleEn`、`LocaleZhCN`（3.8） |
 | wiki | `domain/contract.go`、`domain/contract_test.go` | 新 | 模式的契约表（3.8） |
-| wiki | `domain/template.go`、`domain/template_test.go`、`domain/template-en-raw.md`、`domain/template-en-agents.md`、`domain/template-zh-CN-raw.md`、`domain/template-zh-CN-agents.md` | 新 | 模板的四页与它们的测试（3.9；平铺在 `domain` 里，同 3.8 的树） |
+| wiki | `domain/template.go`、`domain/template_test.go`、`domain/template-en-raw.md`、`domain/template-en-agents.md`、`domain/template-zh-CN-raw.md`、`domain/template-zh-CN-agents.md` | 新 | 模板的四页、变更集的说明 `TemplateMessage` 与它们的测试（3.9；平铺在 `domain` 里，同 3.8 的树） |
 | wiki | `app/ports.go`、`app/template.go`、`app/template_test.go` | 新 | 端口 `Seeds`；播种者 `Template`（3.8） |
 | wiki | `template_test.go` | 新 | 模块根上以假的 `Seeds` 证明播种者到达、只在 `llm_wiki` 写、交回来源根（3.8） |
 | bootstrap | `wire.go`、`deps.go` | 改 | 组合根的次序（3.8）、`notebookDeps` 交播种者与写入任务的端口、`pageDeps` 交 `pageNotebooks` |
-| bootstrap | `wiki.go`、`page_notebooks.go` | 新 | `wikiSeeds`、`wikiTemplate`；`pageNotebooks`（3.8、3.12） |
+| bootstrap | `wiki.go`、`page_notebooks.go`、`page_notebooks_test.go` | 新 | `wikiSeeds`、`wikiTemplate`；`pageNotebooks` 与 `TestPageNotebooksConvertTheState`（3.8、3.12） |
 | bootstrap | `registrants.go`、`events_registrants.go` | 改 | `notebookExtensions.modeSubscribers`；`notebookEvents.ModeChanged`（3.11） |
 | bootstrap | `actions_test.go` | 改 | 并集加 `wiki.Actions()`（3.8） |
-| bootstrap | `wiki_template_test.go`、`wiki_downgrade_test.go`、`interleavings_wiki_test.go` 与已有的 `interleavings_page_test.go` 的 `checkPages`、`events_stream_test.go`、`mcp_account_test.go`、`permission_matrix_notebook_test.go`、`permission_matrix_wiki_test.go` | 新、改 | 第 7 节；取名照 7.5 |
+| bootstrap | `wiki_template_test.go`、`wiki_downgrade_test.go`、`interleavings_wiki_test.go` 与已有的 `interleavings_page_test.go` 的 `checkPages`、`events_stream_test.go`、`mcp_account_test.go`、`permission_matrix_notebook_test.go`、`permission_matrix_wiki_test.go`、`notebook_visibility_test.go`（读 `wlab` 的两个测试，3.14） | 新、改 | 第 7 节；取名照 7.5 |
 | 契约 | `api/modules/notebook.yaml`、`api/modules/events.yaml`、`api/mcp/tools.json` | 改 | 3.13 |
 | 网页 | 生成的类型、`test/fakes.ts`、`stores/notebook.store.test.ts`、`app/problem-messages.ts`、`i18n/messages/{en,zh-CN}.ts`、`services/event.service.ts` | 改 | 第 4.1 节 |
 | e2e | `fixtures/notebooks.ts`、`fixtures/assert/notebook.ts`、`stories/wiki/lw1-create.spec.ts` | 改、新 | 第 5 节 |
@@ -333,7 +333,7 @@ func (c *CreateNotebook) Execute(ctx context.Context, slug string, r NewNotebook
    - 笔记本行 `FOR NO KEY UPDATE`（`LockByID`，`:217-223`）：这一行是这个事务插入的，提交之前别的事务看不到它、锁不到它，同一个事务锁自己插入的行不等。13.1 第 5 条的"建笔记本只锁工作区行"由此改写（第 8 节）。
    - 判定 `page.create`（`:224-227`）：access 的 `Authorizer` 经 `notebook.NewFacts(pool)` 读笔记本的事实（`notebook/facts.go:29-31` → `store.go:173-182`，同样经 `postgres.DB`）与 `workspace.NewMemberships(pool)` 的工作区角色，都在这个事务里：第 8 步的管理员行在，判定得到 `admin`。
    - 单元的时刻是交来的 `now`，不读 page 的时钟（3.6）。
-10. 核对来源根（`seed` 的返回）：`llm_wiki` 时恰有一个播种者交回非零的 id，且等于第 6 步的；`standard` 时没有一个交回非零的 id。否则是缺陷：`fmt.Errorf("notebook: the seeders answered source roots %v for notebook %s of mode %s; want exactly its own", …)`，不带名称，500，整个回滚（00-M10 4.4、A-M7）。
+10. 核对来源根（`seed` 的返回）：`llm_wiki` 时恰有一个播种者交回非零的 id，且等于第 6 步的；`standard` 时没有一个交回非零的 id。播种者交回的是它写下的：wiki 的模板交回 `Seed` 写下 `raw` 的那个 id（3.8），所以这一条核对的是写下的来源根（S1 审查 A-N3）。否则是缺陷：`fmt.Errorf("notebook: the seeders answered source roots %v for notebook %s of mode %s; want exactly its own", …)`，不带名称，500，整个回滚（00-M10 4.4、A-M7）。
 11. 可见性的事件（`publishVisibility`，`:76-79`）：在播种者之后，同 00-M10 4.4。它的注册者（事件流）只 `NOTIFY`。
 12. 答复的 `View`（`:80`），带 `Mode`、`SourceRootID`。
 13. 提交（`WithinTx` 返回）；日志一行 info "notebook created"，照旧只带 `workspace_id`、`notebook_id`、`user_id`（`:86-87`），另加 `mode`（不含个人信息的取值，13.1 第 10 条）。
@@ -442,7 +442,7 @@ func publishMode(ctx context.Context, subscribers []ModeSubscriber, m ModeChange
   `New` 的检查（`module.go:88-91`）改为一个 `switch`，`AccountWorkspaces` 在先（`TestTheModuleRefusesNoAccountWorkspaces`，`tools_test.go:21-28`，以 `Deps{}` 期待那一句，不改），再 `len(d.Seeders) == 0`（"notebook: no seeders"）、`d.WritingJobs == nil`（"notebook: no writing jobs"）。模块根新测试 `TestTheModuleRefusesNoSeeders`、`TestTheModuleRefusesNoWritingJobs`（照 `tools_test.go:21-28`）；建模块的四处（`tools_test.go:33`、`activity_test.go:84`、`visibility_test.go:110`、`extension_test.go:224`）交 `Seeders: []notebook.Seeder{noSeed{}}`（什么也不写、交回零）与 `WritingJobs: noJobs{}`。模式变化的订阅者可以为空（降级不需要它就成立）；组合根交空时由 3.11 的最后一跳抓到。
 - **替身与次序的测试**（13.1 第 21 条，照 `TestANotebookDeletionPassesTheSubscriber`，`notebook/extension_test.go:200-246`，真库、照组合根接的模块）：
   - `TestACreationPassesTheSeeders`：两个播种者的替身在建的事务里依次调用（记下次序与 `postgres.InTx`），各读一次笔记本行与管理员行（读得到）；值等于请求的（`Mode`、`Locale`、`By`、`Client` 是 `web`、`At` 是 `tickingClock` 的第一次读，`extension_test.go:36-44`）。表格：standard 两个都交回零 → 201；llm_wiki 第一个交回值里的 id → 201、行的 `source_root_id` 是它；llm_wiki 两个都交回零、两个都交回、交回一个别的 id、standard 而交回一个 → 500，之后没有笔记本、成员；第一个失败 → 500、第二个没被调用、什么也没写；第一个交回 `shared.NewError(shared.KindConflict, "page.protected", "…")` → 500 `internal_error`（不是 409），什么也没写。这里不核对日志：500 的 error 一行由 API 的 `APIErrors` 以 `httpservertest.APIOptions.Logger` 写（`httpservertest/api.go:25`、`:44-53`，`apierrors.go:222-223`），不经模块的 `Deps.Logger`；码在错误的文字里由 `TestTheSeedersRunInTheirOrder` 核对，记下那一行是平台自己的、测过的事，整个程序的 `TestTheTemplateRollsBackWithItsNotebook` 读它（审查 AC-N3）。授权者：`adminsAuthorizer`（`extension_test.go:48-62`）对 `notebook.create` 答 `ErrNotVisible`（建的人还不是那一本的管理员），所以这个测试另交 `creatorsAuthorizer`：`notebook.create` 一律答 `WorkspaceMember`（判定不是这个测试要看的；`newFixture` 不写 `workspace_members` 的行，`extension_test.go:113-127`，读成员关系就会拒绝 alice），别的交给 `adminsAuthorizer`。
-  - `TestADowngradePassesTheModeSubscribers`：两个订阅者的替身依次调用，在降级的事务里，读到 `mode` 已是 `standard`；值 `{From: llm_wiki, To: standard, By, At}` 的 `At` 等于行的 `updated_at`；第一个失败 → 500、行仍是 `llm_wiki`、第二个没被调用。
+  - `TestADowngradePassesTheModeSubscribers`：两个订阅者的替身依次调用，在降级的事务里，读到 `mode` 已是 `standard`；值 `{From: llm_wiki, To: standard, By, At}` 的 `At` 等于行的 `updated_at`；第一个失败 → 500、行仍是 `llm_wiki`、第二个没被调用。行在降级之前由 bob 改过（`updated_by_id`）：alice 降级之后是 alice，失败的一行回滚之后仍是 bob（S1 审查 B-M2：夹具的笔记本都是 alice 的，不先这样设，SQL 不写 `updated_by_id` 也看不出）。
   - `notebook/app/write_test.go` 的 `TestCreateNotebookMakesTheCallerItsAdmin`（`:36`）的调用次序：假的播种者与假的可见性的订阅者记进同一个列表，`"Seed … in tx"` 在 `"AddMember …"` 之后、`"VisibilityChanged … in tx"` 之前（第 1 条变异）。
   - `notebook/app` 的分发循环：`TestTheSeedersRunInTheirOrder`（`write_test.go`，经 `CreateNotebook`）、`TestTheModeSubscribersRunInTheirOrder`（`mode_test.go`，经 `DowngradeNotebook`）：两个替身、第一个错误即停、事务回滚，照 `app/visibility_test.go:146` 的 `TestTwoVisibilitySubscribers`。`TestTheSeedersRunInTheirOrder` 另有三行：第一个交回一个 `*shared.Error` → 错误里找不到 `*shared.Error`（`errors.As` 答假）、文字里有它的码；交回 `context.Canceled`、包着 `context.DeadlineExceeded` 的 → `errors.Is` 认得出它们、文字里没有 "defect"（7.3 的变异"播种者的问题照原样交回"）。
 
@@ -512,22 +512,30 @@ type SeedSpec struct {
 
 // Seed writes spec's pages in one unit that changes the tree, of the edit
 // kind, deciding page.create, within the transaction ctx carries: one
-// changeset, one time. A notebook the caller cannot see is
-// notebook.not_found; any refusal of the unit, a guard's too, is answered
-// as it is, its caller's transaction then to roll back.
-func (s *SeedWrites) Seed(ctx context.Context, spec SeedSpec) error {
+// changeset, one time. It answers the ids of the pages it wrote, in
+// spec's order. A notebook the caller cannot see is notebook.not_found;
+// any refusal of the unit, a guard's too, is answered as it is, its
+// caller's transaction then to roll back.
+func (s *SeedWrites) Seed(ctx context.Context, spec SeedSpec) ([]uuid.UUID, error) {
+	var ids []uuid.UUID
 	_, err := s.writer.Seed(ctx, UnitSpec{
 		NotebookID: spec.NotebookID, Action: domain.ActionCreate, Tree: true, Client: spec.Client,
 		NotFound: domain.ErrNotebookNotFound, Message: spec.Message,
 	}, spec.At, func(ctx context.Context, u *Unit) error {
+		ids = ids[:0]
 		for _, p := range spec.Pages {
-			if _, err := u.CreatePage(ctx, p); err != nil {
+			n, err := u.CreatePage(ctx, p)
+			if err != nil {
 				return err
 			}
+			ids = append(ids, n.ID)
 		}
 		return nil
 	})
-	return err
+	if err != nil {
+		return nil, err
+	}
+	return ids, nil
 }
 
 // ParseTemplate checks and parses content, a template's page that the
@@ -548,7 +556,7 @@ func (s *SeedWrites) ParseTemplate(content string) (Facts, error) {
 （交回 `Facts`，不是导入的 `Parsed`：`Parsed` 带着预算的放还（`page/app/import_writes.go:40-44`），模板的解析不取预算，`PageDraft.Facts` 要的就是 `Facts`，`page/app/unit_create.go:16-25`。）
 
 - 同 `Run` 共用的：锁、判定 `page.create`（`domain.ActionCreate`）、单元、观察者、搜索的准确入队（`Background`、`BulkSearch` 都不设：两页，建好之后马上搜得到）；`CreatePage`（`page/app/unit_create.go:31-56`）照常做名称、父页、兄弟的标题与层级的检查，`PageDraft.ID` 本就收调用方的 id（`:17-19`、`:65-68`）：来源根以第 6 步定下的 id 写下。与 `Run` 不同的只有两样：要求在事务里（相反），时刻取交来的。
-- `Seed` 交回 `error`：模板只要知道写成了没有，来源根的 id 是它自己交给 `Seed` 的。
+- `Seed` 交回它写下的页的 id（照 `spec.Pages` 的次序；出错时为 `nil`）：模板交回它写下 `raw` 的那一个，建的"恰有一个、等于先定下的"（3.4 第 10 步）因此核对的是写下的来源根，不是交给 `Seed` 的（S1 审查 A-N3，主持者的决定 23）。
 - `ParseTemplate` 不经预算、不判定：它在启动时、任何请求之前调用，对象是服务端自己的文字（四页共约 5.4 KiB：英文的 `AGENTS` 2,209 字节、中文的 2,107，英文的 `raw` 648、中文的 593，3.9）。13.3 第 3 条照第 8 节写明这一处例外。`Markdown.Facts` 是不取预算的解析（`page/app/ports.go:737-740`，空正文的 `Decided` 就用它，`page/app/content.go:56-59`）。提取结果在几次创建之间共用：`app.Facts` 是不透明的（`ports.go:763-766`），守卫、参与者与观察者只读（下面的 `TestATemplatesParseIsItsContents` 核对两次创建收到的相同）。
 - **根**（`page/tree_writes.go`）：`TreeWrites`（`:72-121`）加两个方法：
 
@@ -557,7 +565,8 @@ func (s *SeedWrites) ParseTemplate(content string) (Facts, error) {
   	// edit kind, within the transaction of the notebook's creation, which
   	// ctx carries (M10 design 4.4): the one exception of v0.1 design 13.1
   	// item 1. The unit is at spec.At, from spec.Client, by ctx's actor.
-  	Seed(ctx context.Context, spec SeedSpec) error
+  	// It answers the ids of the pages it wrote, in spec's order.
+  	Seed(ctx context.Context, spec SeedSpec) ([]uuid.UUID, error)
   	// ParseTemplate parses a template's page once, at start-up, outside
   	// the parse budget: its facts are passed in each Seed's pages.
   	ParseTemplate(content string) (Facts, error)
@@ -565,11 +574,12 @@ func (s *SeedWrites) ParseTemplate(content string) (Facts, error) {
 
   它们之外，别名 `SeedSpec = app.SeedSpec`、`PageDraft = app.PageDraft`（`Position` 的零值是"在最后"，模板不设它）；`treeWrites` 加 `seeds *app.SeedWrites`，`Module` 加 `seeds` 一格，`New` 里 `app.NewSeedWrites(writer, md)`（`module.go:324` 那一行旁边）。`TreeWrites` 的注释（`:12-16`、`:70-71`）加"the template's pages, in a notebook's creation"。13.1 第 1 条的"单元拒绝已在事务里的 ctx"由此有唯一的例外（第 8 节的文字）；它不是给别的 M 的扩展点，12.4 不列。
 - **测试**（`page/tree_writes_test.go`，真库，照 `TestTheImportsWritesReachTheUnit`，`:74`）：
-  - `TestASeedJoinsItsCallersTransaction`：测试以 `TxManager.WithinTx` 开一个事务，在里面 `Seed` 两页；提交之前另一个连接看不到它们；外层回滚之后什么也没有（节点、正文、版本、条目、变更集、搜索的队列）；外层提交之后两页都在、一个变更集、说明是交来的。
+  - `TestASeedJoinsItsCallersTransaction`：测试以 `TxManager.WithinTx` 开一个事务，在里面 `Seed` 两页；提交之前另一个连接看不到它们；外层回滚之后什么也没有（节点、正文、版本、条目、变更集、搜索的队列）；外层提交之后两页都在、一个变更集、说明是交来的；`Seed` 交回的 id 是两页写下的（S1 审查 A-N3）。
   - `TestASeedReadsNoClock`：模块的时钟是 `steppingClock`（`tree_writes_test.go:155-163`，每读一次走一秒），`At` 是另一个时刻；变更集、节点、正文、版本、条目的时刻都等于 `At`（搜索的队列没有时刻的列，`00040_page_search.sql:58-64`），时钟一次也没被读（`steppingClock` 的 `at` 不变）。反向对照：`run` 照旧读时钟时这一条失败（7.3 的变异）。
   - `TestASeedRefusesNoTransactionAndNoTime`：事务之外的 ctx、零的 `At` 各答错误，什么也没写。
   - `TestASeedRunsTheGuards`：模块交一个记录的守卫（`extension_test.go:261-273` 的 `guard`），两步 `OpCreate` 都到达它，`Kind` 是 `edit`、`Client` 是交来的；守卫拒绝第二页时外层回滚、两页都没有。
-  - `TestATemplatesParseIsItsContents`：模块交一个记录的观察者；以 `ParseTemplate` 的事实 `Seed` 一页，与以同一份正文经 REST 的 `createPage` 建一页，观察者收到的 `Change.Facts` 相同（`reflect.DeepEqual`）；同一份事实 `Seed` 两次（两本笔记本），两次收到的相同（事实没有被谁改写）；5 MiB 之上与带 NUL 的正文答 422。
+  - `TestATemplatesParseIsItsContents`：模块交一个记录的观察者，Markdown 带随正文变的测试扩展 `pageMark()`（同 `TestTheContentsWritesReachTheUnit`；不带扩展时每份没有 frontmatter 的正文都解析成同样的事实，比较什么也不核对，S1 审查 A-M3）；以 `ParseTemplate` 的事实 `Seed` 一页，与以同一份正文经 REST 的 `createPage` 建一页，观察者收到的 `Change.Facts` 相同（`reflect.DeepEqual`），其中的 `page-mark` 是正文的字节数；同一份事实 `Seed` 两次（两本笔记本），两次收到的相同（事实没有被谁改写）；没有 id 的一页，`Seed` 答它写下的新 id（审查 A-N3）；5 MiB 之上与带 NUL 的正文答 422。
+  - `TestASeedPassesTheFactsItIsGiven`：以另一份带 frontmatter 的正文的事实 `Seed` `raw`（先核对两份正文的事实不同），观察者收到的是交来的事实，不是 `raw` 自己的正文的：`Seed` 不再解析（"在启动时解析一次"的 page 的一半；wiki 的一半是 `TestTheTemplateSeedsAnLLMWiki` 在创建之后数解析，3.8；S1 审查 A-M2）。
 
 ### 3.7 S1：定客户端的函数挪到 `shared`
 
@@ -610,7 +620,7 @@ server/internal/modules/wiki/
   template_test.go                  模块根的替身测试
   domain/contract.go                模式的契约表
   domain/contract_test.go
-  domain/template.go                模板：嵌入的四页、Template(locale)
+  domain/template.go                模板：嵌入的四页、Template(locale)、TemplateMessage(locale)
   domain/template-en-raw.md         英文的 raw
   domain/template-en-agents.md      英文的 AGENTS
   domain/template-zh-CN-raw.md      中文的 raw
@@ -672,9 +682,10 @@ func ContractOf(mode Mode) (Contract, bool)
 ```go
 // Seeds are the page module's template writes, as the composition root
 // passes them (M10 design 4.4): a notebook's pages in its creation's
-// transaction, one unit; and a template's contents parsed once.
+// transaction, one unit, answering the ids of the pages written in s's
+// order; and a template's contents parsed once.
 type Seeds interface {
-	Seed(ctx context.Context, s Seed) error
+	Seed(ctx context.Context, s Seed) ([]uuid.UUID, error)
 	Parse(content string) (Parsed, error)
 }
 
@@ -716,8 +727,8 @@ type Creation struct {
 
 // Template is the creation's seeder (M10 design 4.4): for an LLM Wiki it
 // writes its mode's template in its language, the source root with the
-// creation's id, and answers that id; for a standard notebook it writes
-// nothing and answers the zero id.
+// creation's id, and answers the id of the source root it wrote; for a
+// standard notebook it writes nothing and answers the zero id.
 type Template struct {
 	seeds  Seeds
 	parsed map[domain.Locale][]SeedPage
@@ -731,14 +742,22 @@ func NewTemplate(seeds Seeds) (*Template, error)
 // NotebookCreated writes c's template: the zero id and nothing for a
 // standard notebook; for an LLM Wiki its pages in one unit, the source
 // root's id the one c decided, the changeset's message the template's in
-// its language, "LLM Wiki template" or "LLM Wiki 模板".
+// its language, "LLM Wiki template" or "LLM Wiki 模板", and answers the id
+// the seed wrote the source root with, the zero id when it wrote none:
+// the notebook module's check that it is the notebook's own then means
+// written. A mode or a language there is no contract of, or a seed that
+// answers another count of pages, is a defect: the notebook module
+// checked both, and only a conversion of the composition root's would
+// answer one.
 func (t *Template) NotebookCreated(ctx context.Context, c Creation) (uuid.UUID, error)
 ```
 
 - 一个 `Seed` 是一个单元（00-M10 4.4"一次调用一个单元、一个变更集"）；`raw` 的 `ID` 是 `c.SourceRootID`，`AGENTS` 的是零（单元给它一个 V7，在 `raw` 之后）。两页都在根下（`ParentID` 为空），各在兄弟的最后（`Position` 的零值），所以根下是 `raw`、`AGENTS`。
 - 不认识的模式（`ContractOf` 答 `false`）或语言（`Templates[l]` 没有）是缺陷：`fmt.Errorf`，500，整个回滚。notebook 的 `CheckDraft` 已核对过两者，这一条只防组合根转换写错。
+- `NotebookCreated` 交回 `Seed` 写下标着 `SourceRoot` 的那一页的 id，没有写下时是零，不是交来的 `c.SourceRootID`；`Seed` 交回的 id 的个数不等于页数是缺陷（`fmt.Errorf`，500）。建的事务（3.4 第 10 步）由此核对写下的来源根：组合根若把 `raw` 以别的 id 写下，建答 500、整个回滚（S1 审查 A-N3，主持者的决定 23）。
+- 变更集的说明是 `wiki/domain` 的 `TemplateMessage(locale)`（"LLM Wiki template"、"LLM Wiki 模板"），与模板放在一起；`contract_test` 钉住每种语言的不为空、不认识的语言的为空（S1 的偏离 2）。
 - `Parsed` 是不透明的：wiki 不读 page 的提取结果，只把它交回（同 `page.ImportedPage` 带着 `Parsed` 走，`page/tree_writes.go:143-146`）。
-- `app/template_test.go`：假的 `Seeds` 记下调用。`standard` 不调用 `Seed`、答零；`llm_wiki` 调用一次、带两页、`raw` 的 id 是值里的、说明随语言、`At`、`Client` 是值里的，答来源根的 id；`Seed` 的错误原样答出；`NewTemplate` 在 `Parse` 拒绝一页时答错误。
+- `app/template_test.go`：假的 `Seeds` 记下调用，照 page 模块交回页的 id（零 id 的给一个新的）。`TestTheTemplateSeedsAnLLMWiki`：`standard` 不调用 `Seed`、答零；`llm_wiki` 调用一次、带两页、`raw` 的 id 是值里的、说明随语言、`At`、`Client` 是值里的，答来源根的 id；`NewTemplate` 解析四页，三次创建之后仍是四次（"在启动时解析一次"的 wiki 的一半，S1 审查 A-M2）。`TestTheTemplateAnswersTheSourceRootWritten`：答 `Seed` 写下的 id，不是交来的；两页只交回一个 id 是缺陷（审查 A-N3）。`TestTheTemplateFails`：`Seed` 的错误原样答出；`NewTemplate` 在 `Parse` 拒绝一页时、不认识的模式或语言答错误。
 
 **模块根**（`wiki/module.go`）：
 
@@ -800,7 +819,7 @@ type wikiSeeds struct {
 	tree page.TreeWrites
 }
 
-func (s wikiSeeds) Seed(ctx context.Context, x wiki.Seed) error {
+func (s wikiSeeds) Seed(ctx context.Context, x wiki.Seed) ([]uuid.UUID, error) {
 	pages := make([]page.PageDraft, len(x.Pages))
 	for i, p := range x.Pages {
 		pages[i] = page.PageDraft{ID: p.ID, Title: p.Title, Content: p.Content, Facts: p.Parsed.Facts}
@@ -978,16 +997,16 @@ sources: ["[[raw/Some article]]"]
 这本笔记本是 LLM Wiki 时，这一页不能删除、改名或移动。它的正文归你：按你的领域、你的类型与你的工作方式改写它。
 ````
 
-- 大小（上面的全文，以一个换行结尾，UTF-8）：英文的 `AGENTS` 2,209 字节，中文的 2,107，英文的 `raw` 648，中文的 593，四页共约 5.4 KiB，远在 8 KiB 之下；测试钉住 8 KiB（`MaxTemplateBytes`，00-M10 4.18 的 `AGENTS` 至多 8 KiB），实现时 `wc -c` 记下实际的四个数写进第 10 节。
+- 大小（上面的全文，以一个换行结尾，UTF-8）：英文的 `AGENTS` 2,209 字节，中文的 2,107，英文的 `raw` 648，中文的 593，四页共约 5.4 KiB，远在 8 KiB 之下；测试钉住 8 KiB（`MaxTemplateBytes`，00-M10 4.18 的 `AGENTS` 至多 8 KiB；测试写出 `8 << 10`，不取这个常量），实现时 `wc -c` 量得的正是这四个数（共 5,557 字节，10.1）。
 - 两页都不带 frontmatter（第一行是标题）：说明的找法去掉 frontmatter（`page/domain/instructions.go:35-36`），lint 对两页豁免类型与摘要（4.10），带了反而让人以为要写。`yaml` 围栏里的 `---` 不在正文的开头，不是 frontmatter（`tools/md-fixtures/cases/019-frontmatter-not-at-start.md`）。
 - "粘贴或上传为来源"/“Paste or upload as source” 是 P3 之后网页的那个对话框的名字（00-M10 4.16）；文字由网页那一步定，定下的不同时改这里的一句（第 9 节写给 P3–P4 的）。
 - 代码里的链接不算：行内代码与围栏里的 `[[…]]` 与 `#…` 不产生链接与标签（`tools/md-fixtures/cases/003-code-excluded.md`），所以新建的 LLM Wiki 的 `page_links`、`page_tags` 里两页一行也没有，lint 干净（4.11）。
 
 **`wiki/domain/template_test.go`**（纯函数，没有库）：
 
-- `TestTheTemplatesCorrespond`：每种模式、两种语言的每一页，按"围栏之外的空行"切成块；每块的种类（标题与它的级、围栏与它的信息串与行数、列表与它的项数、段落）两种语言逐块相同，块数相同；每块的行内代码（反引号之间的文字）作为多重集合相同。反向对照（13.4 第 1 条）：中文的 `AGENTS` 去掉"## 生成的页"之后的那一段（块数少一）、把列表的一项删掉（项数不同）、把一处 `` `log.md` `` 改成 `` `log` ``（行内代码不同），各让它失败；三种以测试里改过的字符串跑同一个比较函数，不改文件。
+- `TestTheTemplatesCorrespond`：每种模式、两种语言的每一页，按"围栏之外的空行"切成块；每块的种类（标题与它的级、围栏与它的信息串与行数、列表与它的项数、段落）两种语言逐块相同，块数相同；每块的行内代码（反引号之间的文字）作为多重集合相同。反向对照（13.4 第 1 条），每一种以测试里改过的中文的 `AGENTS` 跑同一个比较函数，不改文件：块数由"a paragraph gone"（去掉"## 生成的页"之后的那一段）与"one more at the end"（末尾多一段）钉住，只有后一种离了块数的比较就过不了：去掉它时循环照英文的块走，中文多出的一块看不见，少一块则在第一处错开的块失败（S1 的偏离 14）；行内代码由"a list item gone"（删掉的一项带着 `` `lint` ``，所以它不钉住项数）与"an inline code changed"（一处 `` `log.md` `` 改成 `` `log` ``）钉住；每种形状各一行、都保留行内代码：列表的项数"two items on one line"、标题的级"a heading a level down"、围栏的行数"a fence a line short"、段落的行数"a paragraph in two lines"（S1 审查 A-M1）。
 - `TestTheTemplatesLinkNothingOutsideCode`：去掉围栏与行内代码之后，没有 `[[`、`![`、`](` 与 `#` 后接字母或数字（标签的起头，`tools/md-fixtures/cases/014-tags-basic.md` 的规则）；反向对照：在正文里加一句 `see [[raw/x]]`、一个 `#ingest` 各让它失败。
-- `TestTheTemplatesAreSmall`：每页至多 `MaxTemplateBytes` = 8 KiB，且是合法的 UTF-8、没有 NUL、以换行结尾、第一行以 `# ` 开头（不是 frontmatter）。
+- `TestTheTemplatesAreSmall`：每页至多 `MaxTemplateBytes` = 8 KiB，且是合法的 UTF-8、没有 NUL、以换行结尾、第一行以 `# ` 开头（不是 frontmatter）。反向对照以写出的界线（`const bound = 8 << 10`，不取 `MaxTemplateBytes`：取它时把常量提高测试照绿，S1 审查 C-N3）：恰 8 KiB 的一页照收，8,193 字节的与以 `---` 起头的各被拒。
 - 整个程序里另有一道核对（3.16）：建好的两页的 `page_links`、`page_tags` 是零行，`open_notebook` 的 `instructions` 等于 `AGENTS` 的正文去掉首尾空白（`instructions.go:35-36`）。
 
 ### 3.10 S1：降级
@@ -1038,11 +1057,11 @@ func (d *DowngradeNotebook) Execute(ctx context.Context, id uuid.UUID) (View, er
 - 第 5 步：`domain.Notebook.Downgraded(now)` 给出新的值（`Mode: standard`、`SourceRootID` 为零、`UpdatedAt: now`），`NotebookWriter.SetMode(ctx, n, by)` 经 `SetNotebookMode` 写（`source_root_id` 写 `NULL`）。P2/S2 的 `Forget` 插在这一步与第 6 步之间（00-M10 4.5），P1 的用例在那里留一句注释，不留空的端口。
 - 第 6 步：`publishMode(ctx, d.subscribers, ModeChange{WorkspaceID, NotebookID, From: llm_wiki, To: standard, By, At: now})`，第一个错误回滚。
 - 不写变更集（没有页面的写），没有审计行（`notebook_audit_events` 只记归属的事，`00011_notebook_notebook_audit_events.sql:15-16`）。
-- **日志**：info 一行 "notebook downgraded"，`workspace_id`、`notebook_id`、`user_id`，不带名称（13.1 第 10 条；`update_notebook.go` 的 "notebook updated" 同样带这三个）。`notebook/app/mode_test.go` 的 `TestDowngradeNotebookLogs` 照 `TestCreateNotebookLogs` 的写法核对这一行与它的三个值，并核对没有名称。
+- **日志**：info 一行 "notebook downgraded"，`workspace_id`、`notebook_id`、`user_id`，不带名称（13.1 第 10 条；`update_notebook.go` 的 "notebook updated" 同样带这三个）。`notebook/app/mode_test.go` 的 `TestDowngradeNotebookLogs` 核对这一行与它的三个值，并核对没有名称（照建的那一行的核对，它在 `TestCreateNotebookMakesTheCallerItsAdmin` 里：没有 `TestCreateNotebookLogs`，S1 的偏离 1、审查 A）。
 
 **`notebook/app/mode_test.go`**（假的仓库，照 `write_test.go`）：
 
-- `TestDowngradeNotebookMakesItStandard`：调用的次序 `["FindNotebook nb", "ShareByID ws in tx", "LockNotebook nb in tx", "Authorize notebook.change_mode in tx", "Writing nb in tx", "SetMode standard nb by alice in tx", "ModeChanged llm_wiki standard in tx", "CountMembers nb in tx"]`；答复的 `Mode` 是 `standard`、`SourceRootID` 为零、`UpdatedAt` 是时钟的唯一一次读、等于 `ModeChange.At`。
+- `TestDowngradeNotebookMakesItStandard`：调用的次序 `["FindNotebook", "ShareByID in tx", "LockNotebook in tx", "Authorize notebook.change_mode in tx", "Writing in tx", "SetMode standard by <alice> in tx", "ModeChanged a llm_wiki standard in tx", "CountMembers in tx"]`（照已有的替身的写法：notebook 的替身不记 id；要紧的 id 在别处钉住：授权者的目标、写下的 `moded`、假的任务按 id 答，S1 的偏离 6）；答复的 `Mode` 是 `standard`、`SourceRootID` 为零、`UpdatedAt` 是时钟的唯一一次读、等于 `ModeChange.At`。
 - `TestDowngradeNotebookRefuses`（表格，照 `TestCreateNotebookRefuses`）：零 id、没有、删了的 → 404；看不到的 → 404；写者 → 403；管理员而普通的 → 409 `notebook.not_llm_wiki`；管理员而有写入的任务 → 409 `transfer.busy`；次序：写者在普通的笔记本上答 403（不是 409）、管理员在有任务的普通笔记本上答 409 `notebook.not_llm_wiki`（不是 `transfer.busy`）；找到时是 `llm_wiki`、锁下读到 `standard` → 409 `notebook.not_llm_wiki`（两个管理员同时降级的后一个，在模块一级；7.3 的变异"降级看锁之前读的模式"）；每一种都没有 `SetMode`、没有订阅者的调用。
 - `TestADowngradesSubscriberFailureRollsItBack`：订阅者的错误原样答出，`SetMode` 在事务里（回滚由真库的模块根测试核对，3.5）。
 
@@ -1103,10 +1122,10 @@ func (d *DowngradeNotebook) Execute(ctx context.Context, id uuid.UUID) (View, er
   	StateOf(ctx context.Context, id uuid.UUID) (domain.NotebookState, bool, error)
   ```
 
-  组合根今天把 `notebook.NewNotebooks(pool)` 直接交给 page（`bootstrap/deps.go:153`）；`StateOf` 交回的类型不同（notebook 的 `State`、page 的 `NotebookState`），所以加一个适配 `bootstrap/page_notebooks.go` 的 `pageNotebooks{notebook.NewNotebooks(pool)}`：`WorkspaceOf`、`ShareByID`、`LockByID` 照转，`StateOf` 逐字段转换（`domain.Mode(s.Mode)`）。S2 把 `ShareByID`、`LockByID` 也换成交回状态的（3.17）。page 的三个假的 `Notebooks`（`page/app/fakes_test.go:103-124`、`page/extension_test.go:67-82` 的 `sqlNotebooks`、`page/adapter/postgres/paths_property_test.go:28-33`；`git grep "LockByID("` 恰找到这三个，最后一个的方法参数没有名字，带 `ctx context.Context` 的写法找不到它；`search_test.go:194` 的 `searchWorkspace` 是工作区的端口的假的，不是这一个，审查 AC-N6）加 `StateOf`；`sqlNotebooks` 以 SQL 读两列。
-- **用例**：`OpenNotebook` 在门之后读 `StateOf`（门已答过 404；门与这一读之间删了的，`ok` 为假，答 `notebook.not_found`），`Opened` 加 `Mode domain.Mode`。次序（M9/P1 3.17.3）因此是：执行者与笔记本、模式、计数、最后的改动、根下的节点、说明。`NewOpenNotebook` 收 `d.Notebooks`（`page/module.go` 里 `m.open` 那一行）。
+  组合根今天把 `notebook.NewNotebooks(pool)` 直接交给 page（`bootstrap/deps.go:153`）；`StateOf` 交回的类型不同（notebook 的 `State`、page 的 `NotebookState`），所以加一个适配 `bootstrap/page_notebooks.go` 的 `pageNotebooks{notebook.NewNotebooks(pool)}`：`WorkspaceOf`、`ShareByID`、`LockByID` 照转，`StateOf` 逐字段转换（`domain.Mode(s.Mode)`）；`TestPageNotebooksConvertTheState`（`bootstrap/page_notebooks_test.go`，不要库：替身嵌着 `notebook.Notebooks`，只答 `StateOf`）钉住它：LLM Wiki 与普通的逐字段转换，找不到答 `ok` 为假与零值，错误原样（S1 审查 C-N4：去掉找不到的一支时 `open_notebook` 会答 `"mode": ""`）。S2 把 `ShareByID`、`LockByID` 也换成交回状态的（3.17）。page 的三个假的 `Notebooks`（`page/app/fakes_test.go:103-124`、`page/extension_test.go:67-82` 的 `sqlNotebooks`、`page/adapter/postgres/paths_property_test.go:28-33`；`git grep "LockByID("` 恰找到这三个，最后一个的方法参数没有名字，带 `ctx context.Context` 的写法找不到它；`search_test.go:194` 的 `searchWorkspace` 是工作区的端口的假的，不是这一个，审查 AC-N6）加 `StateOf`；`sqlNotebooks` 以 SQL 读两列。
+- **用例**：`OpenNotebook` 在门之后读 `StateOf`（门已答过 404；门与这一读之间删了的，`ok` 为假，答门答的同一个 `domain.ErrNotebookNotFound`：MCP 的 `toolError` 认作 `notebook.not_found`，即 REST 的 404），`Opened` 加 `Mode domain.Mode`。次序（M9/P1 3.17.3）因此是：执行者与笔记本、模式、计数、最后的改动、根下的节点、说明。`NewOpenNotebook` 收 `d.Notebooks`（`page/module.go` 里 `m.open` 那一行）。
 - **MCP 的答复**（`page/adapter/mcp/open_notebook.go:33-39`）：`openAnswer` 在 `notebook` 之后加 `Mode string \`json:"mode"\``；骨架的量法（`:66-80`）照旧先量不带说明与节点的答复，多出的十几个字节随之计入。`openNotebookDescription`（`:18-24`）与 `tools.json` 照 3.13 改。
-- **测试**：`page/app/open_notebook_test.go` 的次序测试加 `"StateOf nb"` 一项（门之后、计数之前），`ok` 为假时答 `notebook.not_found`；`page/adapter/mcp/open_notebook_test.go` 的答复带 `mode`；整个程序的 `TestOpenNotebookOfAnEmptyNotebook`（`bootstrap/mcp_account_test.go:19-30`，整个答复的 `DeepEqual`）加 `"mode": "standard"`，`mcp_instructions_test.go:188` 的骨架加 `mode`。
+- **测试**：`page/app/open_notebook_test.go` 的次序测试加 `"StateOf nb"` 一项（门之后、计数之前），`ok` 为假时答 `notebook.not_found`；`page/adapter/mcp/open_notebook_test.go` 的答复带 `mode`，`TestTheOpenNotebookAnswer` 另核对适配器原样交回 `ErrNotebookNotFound`（S1 审查 C-N4）；整个程序的 `TestOpenNotebookOfAnEmptyNotebook`（`bootstrap/mcp_account_test.go:19-30`，整个答复的 `DeepEqual`）加 `"mode": "standard"`，`mcp_instructions_test.go:188` 的骨架加 `mode`。
 
 **MCP 的 `notebooks`**（notebook 的工具）：`notebookItem` 在 `role` 之后加 `Mode string \`json:"mode"\``，取 `n.Notebook.Mode`（`ListNotebooks` 已选出它，3.3）。`notebook/adapter/mcp/notebooks_test.go:47-53` 的字面 JSON 加 `"mode":"standard"`；`TestNotebooksListsTheAccountsWorkspaces`（`bootstrap/mcp_account_test.go:36-54`）的项加 `Mode`；矩阵的 `accountNotebooksOf`（`permission_matrix_mcp_notebooks_test.go:35-53`）的 `accountNotebook` 加 `mode`：它是手写的（`listedNotebooks(c)` 给出 `lab` 的，`callerOutsideWorkspace` 另加 `other-nb`），`wlab` 的笔记本由变体落下的那个提交手写加进去（3.14、6.1），这个提交只加 `mode`，所以这一行也钉住 `llm_wiki`。e2e 的 MC1 以 `toEqual` 比较整个列表（`e2e/stories/mcp/mc1-connect.spec.ts:89-99`），加 `mode: "standard"`（第 5 节）。
 
@@ -1156,7 +1175,7 @@ func (d *DowngradeNotebook) Execute(ctx context.Context, id uuid.UUID) (View, er
       enum: [standard, llm_wiki]
 ```
 
-`createNotebook` 的 `description`（`:38-42`）末尾加一句："An LLM Wiki is created with its template, the pages raw, its source root, and AGENTS, in one change; the values are checked after both, the mode and the template's language among them."；`x-problem-codes` 不变（422 已在其中）。`NotebookUpdate` 不变：它是关着的，`PATCH {"mode": …}` 由结构检查答 400 `bad_request`、字段码 `not_allowed`（`bodyshape.go:65`、`:146-157`），改模式只经降级（3.16 的一个核对）。
+`createNotebook` 的 `description`（`:38-42`）末尾加一句："An LLM Wiki is created with its template, the pages raw, its source root, and AGENTS, in one change; the mode and the template's language are checked with the other values."（原来的最后一句"the values are checked after both"已说在 404 与 403 之后；S1 审查 B-N2 = C-N6 去掉了草稿这一句里的重复）；`x-problem-codes` 不变（422 已在其中）。`NotebookUpdate` 不变：它是关着的，`PATCH {"mode": …}` 由结构检查答 400 `bad_request`、字段码 `not_allowed`（`bodyshape.go:65`、`:146-157`），改模式只经降级（3.16 的一个核对）。
 
 新的路径（放在 `/api/v0/notebooks/{notebook_id}/leave` 之后）：
 
@@ -1230,7 +1249,7 @@ func (d *DowngradeNotebook) Execute(ctx context.Context, id uuid.UUID) (View, er
 
 ### 3.14 S1：日志、配置、`checkPages`、权限矩阵
 
-- **日志**：建的 "notebook created" 加 `mode`（取值，不含个人信息，13.1 第 10 条；`TestCreateNotebookLogs` 跟着核对）；降级的 "notebook downgraded"（3.10）。模板的单元不另记（单元今天不记日志）。
+- **日志**：建的 "notebook created" 加 `mode`（取值，不含个人信息，13.1 第 10 条；`TestCreateNotebookMakesTheCallerItsAdmin` 的两行（普通的、LLM Wiki）跟着核对，同已有的"不带名称"：建的那一行一直在这个测试里核对，没有 `TestCreateNotebookLogs`，S1 的偏离 1）；降级的 "notebook downgraded"（3.10）。模板的单元不另记（单元今天不记日志）。
 - **配置**：P1 不加配置。
 - **`checkPages`**（`bootstrap/interleavings_page_test.go:44-111`）加一条规则：
 
@@ -1244,12 +1263,13 @@ func (d *DowngradeNotebook) Execute(ctx context.Context, id uuid.UUID) (View, er
           AND a.name_key = 'agents' AND a.kind = 'page' AND a.deleted_at IS NULL))
   ```
 
-  （`name_key` 是 `shared.TitleKey`，`AGENTS` 的是 `agents`。）今天的 `checkPages` 没有反例的办法：它收 `*testing.T`、每条规则一个 `t.Errorf`（`:105-109`），没有一处测试拿一个违反的种子核对它报出来。所以 S1 先把它拆成 `pageViolations(t testing.TB, pool) []string`（照 `matrixViolations`，`bootstrap/permission_matrix_coverage_test.go:21-100`：交回每条非零的规则的一句）与 `checkPages`（对它 `t.Errorf`），再加 `TestPageViolationsCatchEachLLMWikiGap`：一个新的程序经一次 `POST` 建一本 LLM Wiki（种子由应用写，别的规则要的正文、版本、条目、变更集都齐），再以 SQL 改它，每一行之前改回：
+  （`name_key` 是 `shared.TitleKey`，`AGENTS` 的是 `agents`。）今天的 `checkPages` 没有反例的办法：它收 `*testing.T`、每条规则一个 `t.Errorf`（`:105-109`），没有一处测试拿一个违反的种子核对它报出来。所以 S1 先把它拆成 `pageViolations(t testing.TB, pool) []string`（照 `matrixViolations`，`bootstrap/permission_matrix_coverage_test.go:21-100`：交回每条非零的规则的一句）与 `checkPages`（对它 `t.Errorf`），再加 `TestPageViolationsCatchEachLLMWikiGap`（在 `interleavings_page_test.go`，`pageViolations` 旁边）：一个新的程序经一次 `POST` 建一本 LLM Wiki（种子由应用写，别的规则要的正文、版本、条目、变更集都齐），再以 SQL 改它，每一行之后改回，再断言违反为空（一行的改回漏不到下一行，S1 的偏离 4）：
 
   - 没改 → 违反为空（13.4 第 1 条的反向对照）；
   - 只把 `raw` 的 `nodes.deleted_at` 设上 → 新规则的一句在违反里（这样的软删除同时违反"deleted, with what follows it not deleted"与回收站的根的一条，`interleavings_page_test.go:63-66`、`:71-74`，所以测试只要求新的一句**在其中**，不要求只有它）；
   - 只把 `AGENTS` 的 `deleted_at` 设上 → 在其中；
   - 把 `raw` 改成附件、把 `AGENTS` 改成附件（`UPDATE nodes SET kind = 'asset'`，`nodes_kind_check` 收它，`00012_page_nodes.sql:12`），各一行 → 在其中（规则的两处 `kind = 'page'`，审查 AC-N5）；
+  - 把 `AGENTS` 移到 `raw` 之下（`parent_id = raw`，以 `parent_id = NULL` 改回）→ 在其中（规则的 `a.parent_id IS NULL`：S2 的守卫不许 `AGENTS` 离开根下，`checkPages` 是它后面的网，S1 审查 B-M1 = C-M1）；
   - `source_root_id` 指别的笔记本的一页 → 在其中；
   - 同一本 `raw` 删着而改成 `standard`（`mode`、`source_root_id` 一起改）→ 新规则的一句**不在**违反里；
   - 最后一行（之后不再改回）：经 `DELETE /api/v0/notebooks/{id}` 把这本 LLM Wiki 连同它的页删掉 → 违反为空（`n.deleted_at IS NULL` 那一半；删除由应用做）。
@@ -1257,13 +1277,13 @@ func (d *DowngradeNotebook) Execute(ctx context.Context, id uuid.UUID) (View, er
   这条测试在第二份（`TestPage…`；7.5 的表）。
 - **权限矩阵**（`bootstrap/permission_matrix_*`）：
   - `downgradeNotebook` 的普通的一行（`permission_matrix_notebook_test.go`，照 `updateNotebook`，`:126-142`）：`write: true`，`POST /api/v0/notebooks/{id}/downgrade`，`cells: adminsOnly(cell{409, "notebook.not_llm_wiki"})`：普通的目标上管理员答 409，其余照 `adminsOnly` 答 403 或 404。
-  - **LLM Wiki 的变体**（00-M10 4.17）：今天每一行的目标都在 `lab` 里，`targetViolation`（`permission_matrix_coverage_test.go:125-150`）要求每个 `{…_id}` 的种子在 `workspaceOf(c)` 里，而它对每个笔记本的列都答 `lab`（`permission_matrix_test.go:127-136`）。所以 S1 改三处：`matrixRow` 加 `wiki bool`（"它的目标是变体的种子"）；`workspaceOf(c)` 变成 `workspaceOfIn(c, r)`，`r.wiki` 时答变体的工作区 `wlab`；`prepareMatrix`（`permission_matrix_seeded_test.go:576-750`）在 `wlab` 里播下同样的成员（每个在 `lab` 里的列在 `wlab` 里有同样的工作区角色与同样的结束状态）、同样名字与开放程度的几本笔记本与同样的笔记本成员，每本 `mode = 'llm_wiki'`、`source_root_id` 是它的 `raw`，根下有 `raw`、`AGENTS`（带正文、版本与变更集，照种子的页的写法 `:636`）；`seeded` 加 `wiki`，`s.wiki.notebook(name)`、`s.wiki.raw(name)`、`s.wiki.agents(name)` 给出 id，`workspaceOfRow` 认得它们。`checkPages` 在种子上跑（含 3.14 的新规则）。`TestMatrixViolationsCatchesEachGap`（`:160-…`）加一个反例：一行 `wiki: true` 而目标是 `lab` 的笔记本，报出来；`TestThePermissionMatrixCoversEveryOperation` 在每一行上跑同一个核对，`workspaceOfIn` 照旧只认 `lab` 时它把变体的行报出（第 22 条变异）。
+  - **LLM Wiki 的变体**（00-M10 4.17）：今天每一行的目标都在 `lab` 里，`targetViolation`（`permission_matrix_coverage_test.go:125-150`）要求每个 `{…_id}` 的种子在 `workspaceOf(c)` 里，而它对每个笔记本的列都答 `lab`（`permission_matrix_test.go:127-136`）。所以 S1 改三处：`matrixRow` 加 `wiki bool`（"它的目标是变体的种子"）；`targetViolation` 取这一行的列所在的工作区的 slug（`workspaceOfIn(c, r)`，`r.wiki` 时答变体的工作区 `wlab`），`workspaceOf(c)` 留给各行自己的请求（变体的行从 `s.wiki` 建路径；S1 的偏离 9）；`prepareMatrix`（`permission_matrix_seeded_test.go:576-750`）以 `seedWikiVariant`（`permission_matrix_wiki_test.go`）在 `wlab` 里播下同样的成员（每个在 `lab` 里的列在 `wlab` 里有同样的工作区角色与同样的结束状态）、同样名字与开放程度的几本笔记本（删掉的那一本同样删掉：删一本种下的笔记本分成 `deleteNotebook`，`lab` 与 `wlab` 共用）与同样的笔记本成员，每本 `mode = 'llm_wiki'`、`source_root_id` 是它的 `raw`，根下有 `raw`、`AGENTS`（带正文、版本与变更集，照种子的页的写法 `:636`；正文是英文的模板的两页 `wiki.TemplatePages`，不是矩阵的标记：`lab` 的搜索的行找不到它们，页也正是一本 LLM Wiki 里有的，偏离 10）。变体由它自己的表种下（`wikiMemberships`、`wikiNotebooks`、`wikiNotebookMembers`，都由 `lab` 的派生，两边不会走样），种进它自己的 id（`seeded` 的 `wiki`），不加进 `matrixWorkspaces()`、`matrixMemberships()`、`matrixNotebooks()`：`prepareMatrix` 的别的用者遍历它们（`TestTheSearchIsWhatEachReadAllows` 搜每个 `matrixWorkspaces()`，`events_lab_test` 给每个 `matrixNotebooks()` 发布），`lab` 与 `wlab` 的笔记本又同名、`seeded.notebooks` 按名称取（偏离 7）；`s.wiki.notebook(name)`、`s.wiki.raw(name)`、`s.wiki.agents(name)` 给出 id，`workspaceOfRow` 先认它们。另两个读一列的每个工作区的测试也读 `wlab`，否则在第 5 步失败：`TestTheStreamSeesWhatEachReadAllows` 与 `TestTheAccountsNotebooksAreWhatEachReadAllows`（`notebook_visibility_test.go`）读 `seededNotebooks(s)`（`lab`、`other` 与 `wlab` 的），事件流的那一个的工作区的循环读 `seededWorkspaces(s)`（偏离 8）。`checkPages` 在种子上跑（含 3.14 的新规则）。`TestMatrixViolationsCatchesEachGap`（`:160-…`）加一个反例：一行 `wiki: true` 而目标是 `lab` 的笔记本，报出来；`TestThePermissionMatrixCoversEveryOperation` 在每一行上跑同一个核对，`workspaceOfIn` 照旧只认 `lab` 时它把变体的行报出（第 22 条变异）。
   - 变体上的行：S1 一行 `downgradeNotebook, LLM Wiki`（`wiki: true`、`variant: "LLM Wiki"`、`cells: adminsOnly(cellOK())`，`check` 核对答复的 `mode` 是 `standard`、`source_root_id` 为 `null`，`after` 再 `GET` 这本笔记本、核对同样的两列：答复之外也看行）；S2 的几行见 3.22。`listNotebooks` 的期望不变（它按工作区列，变体在 `wlab`）。MCP 的 `notebooks` 的期望是手写的 `accountNotebooksOf`（`permission_matrix_mcp_notebooks_test.go:35-53`：`lab` 的取 `listedNotebooks(c)`，`callerOutsideWorkspace` 另加 `other-nb`），而 MCP 的矩阵用同一个 `prepareMatrix`（`permission_matrix_mcp_test.go:544-600`）：播下 `wlab` 的那个提交就给它手写加上每一列在 `wlab` 里看得到的笔记本（slug `wlab`），不然每个笔记本的列的 `slices.Equal` 在那个提交就失败；MCP 的 `mode` 落下的提交再给每项加 `mode`（3.12、6.1）。00-M10 4.17 说两者的期望都不变，后一句不成立，2.1 第 11 条写明。
   - MCP 的矩阵每个工具恰一行（`mcpMatrixViolations`，`permission_matrix_mcp_test.go:382-427`），P1 不给 MCP 的矩阵加变体的行：P1 的码在 MCP 上经 `TestTheMCPToolsErrorsCarryTheirCodes` 的调用答出（3.22）；变体的 MCP 的行随 P3 的 `lint`、`pending_sources`（它们的那一行本就在变体上）一起加，P3 设计那时定写法（第 9 节）。
 
 ### 3.15 S1：建的交错
 
-三条，都在 `bootstrap/interleavings_wiki_test.go`（新），照 Interleaving 15（`interleavings_notebook_test.go:57-90`）：`tm.interleave(t, first, second)` 以测试自己的事务持着 acme 的工作区行 `FOR NO KEY UPDATE`，依次发出两步、每步等到它在行锁上等着再发下一步（`interleavings_workspace_test.go:150-200`），然后放开，两步按到达的次序拿到锁。建的一步是 `POST /api/v0/workspaces/acme/notebooks` `{"name":"Field notes","mode":"llm_wiki","template_locale":"en"}`，它的事务先取工作区行 `FOR SHARE`（3.4 第 2 步），所以排在持锁的事务之后。每条以 `checkPages`、`checkNotebooks` 结束。测试名 `TestWorkspaceChangesAndCreatingAnLLMWiki`（第三份），三条是它的子测试：
+三条，都在 `bootstrap/interleavings_wiki_test.go`（新），照 Interleaving 15（`interleavings_notebook_test.go:57-90`）：`tm.interleave(t, first, second)` 以测试自己的事务持着 acme 的工作区行 `FOR NO KEY UPDATE`，依次发出两步、每步等到它在行锁上等着再发下一步（`interleavings_workspace_test.go:150-200`），然后放开，两步按到达的次序拿到锁。建的一步是 `POST /api/v0/workspaces/acme/notebooks` `{"name":"Field notes","mode":"llm_wiki","template_locale":"en"}`，它的事务先取工作区行 `FOR SHARE`（3.4 第 2 步），所以排在持锁的事务之后。每条以 `checkPages`、`checkNotebooks` 结束。测试名 `TestWorkspaceChangesAndCreatingAnLLMWiki`（第三份），三条是它的子测试（S1 的修复一轮另加第四个，下面）：
 
 1. **工作区的删除**：删除在先 → 建答 404 `workspace.not_found`，没有笔记本、节点、变更集；建在先 → 201，删除随后成功，笔记本与它的两页一起删除（`page.NewNotebookDeletion` 的 `DeleteNotebooksPages`，不经单元），`checkPages` 的新规则只看活着的笔记本，照过。
 2. **建的人的成员身份结束**（管理员移出 bob，bob 建）：移出在先 → 建答 404；建在先 → 201，移出随后成功，bob 的笔记本成员身份随之结束，这本 LLM Wiki 成为无主的（M3/P3 的规则照旧），两页还在、`checkPages` 照过。
@@ -1271,19 +1291,21 @@ func (d *DowngradeNotebook) Execute(ctx context.Context, id uuid.UUID) (View, er
 
 每个子测试核对答复的码与之后的行（笔记本、成员、节点、变更集的数目）。为什么是工作区行：建的事务里能与成员身份冲突的只有它（建的人的判定在它的 `FOR SHARE` 之下读成员关系，成员关系的每一种变化持它的 `FOR NO KEY UPDATE`，13.1 第 5 条）；模板的单元重入同一把锁（3.4 第 9 步），不多出一个可以交错的点。
 
+第四个子测试"the template's unit behind a queued deletion"钉住这一句（S1 审查 A-N4，主持者的决定 24）：测试库里 `notebook_members` 上的触发器等测试持着的 advisory lock，建停在管理员的插入之后、持着 acme 的行 `FOR SHARE`（`pgtest.WaitForAdvisoryLockWaits`）；工作区的删除发出、在 `workspaces` 上等（`WaitForLockWaitsOn`），然后放开：模板的单元在排着的、更强的等待者之后重入 acme 的行，建 201，删除随后 204，这本 LLM Wiki 的行随 acme 删掉，`checkPages`、`checkNotebooks`。它钉住的是 PostgreSQL：已持的锁交给唯一的持有者，不让它等在等待者之后；我们的代码没有一处改动让它失败（修复核对 A 的 h7：page 的单元在删除排着时以 `FOR NO KEY UPDATE` 升级 acme 的行，照样通过），所以它是平台的回归测试，不是我们的锁序的检查。移出与降级在 acme 的行上排的是同一个 `FOR NO KEY UPDATE`，不另写。竞态下约 0.5 秒。
+
 降级的两条交错（与开始导入、与 `AGENTS` 的删除）分别在 3.16 与 3.23。
 
 ### 3.16 S1：整个程序的测试
 
 | 测试（文件） | 份 | 核对 |
 |---|---|---|
-| `TestLLMWikiCreationWritesItsTemplate`（`bootstrap/wiki_template_test.go`） | 二 | 一个 PAT 建 `template_locale: zh-CN` 的、一个会话建 `en` 的、一个会话建不带 `template_locale` 的（得 `en`）三本 LLM Wiki，与一本普通的：答复的 `mode`、`source_root_id`；根下恰是 `raw`、`AGENTS`，`raw` 的 id 是 `source_root_id`；两页的标题与正文逐字节是那种语言的模板（测试经 `wiki.TemplatePages(wiki.ModeLLMWiki, l)` 读，3.8：bootstrap 只导入模块根）；一个变更集，种类 `edit`、客户端是 `api`/`web`、执行者是建的人、说明是那种语言的、时刻等于笔记本的 `created_at`，两项、两个版本；`page_links`、`page_tags` 里两页零行；搜索的队列里有两页（准确的入队）；普通的那本没有节点、没有变更集、`source_root_id` 为 `null`；`checkPages` |
+| `TestLLMWikiCreationWritesItsTemplate`（`bootstrap/wiki_template_test.go`） | 二 | 一个 PAT 建 `template_locale: zh-CN` 的、一个会话建 `en` 的、一个会话建不带 `template_locale` 的（得 `en`）三本 LLM Wiki，与一本普通的：答复的 `mode`、`source_root_id`；根下恰是 `raw`、`AGENTS`，`raw` 的 id 是 `source_root_id`；两页的标题与正文逐字节是那种语言的模板（测试经 `wiki.TemplatePages(wiki.ModeLLMWiki, l)` 读，3.8：bootstrap 只导入模块根）；一个变更集（经 `coalesce` 读：没有变更集或没有说明时在比较处失败、说出是什么，S1 审查 A-N1 = C-N2），种类 `edit`、客户端是 `api`/`web`、执行者是建的人、说明是那种语言的、时刻等于笔记本的 `created_at`，两项、两个版本；`page_links`、`page_tags` 里两页零行，`indexed_pages` 里两行（链接索引对模板的两页的最后一跳；它不钉住事实是正文的，那是 3.6 的 `TestATemplatesParseIsItsContents`：S1 的偏离 3，理由照审查 A 改正）；搜索的队列里有两页（准确的入队）；普通的那本没有节点、没有变更集、`source_root_id` 为 `null`；`checkPages` |
 | 同上 | 二 | `template_locale: "fr"`、`mode: "LLM_WIKI"` 各答 422，字段码 `invalid_format`，字段 `template_locale`、`mode`；一个访客带坏的 `mode` 答 403（次序：值的核对在 403 之后，13.1 第 4 条）；`PATCH {"mode":"llm_wiki"}` 答 400 `not_allowed`；都没有写下笔记本 |
 | `TestTheTemplateRollsBackWithItsNotebook`（同上） | 三 | 测试库里建一个序列 `seen_nodes` 与一个 `BEFORE INSERT ON nodes` 的触发器：每次插入先 `nextval('seen_nodes')`，`NEW.name = 'AGENTS'` 时 `RAISE EXCEPTION 'the test refused AGENTS'`（照 `cmd/nervewiki/reindex_test.go:132-139` 的 `refuse_queue`，经 `tm.pool.Exec`，库随测试删掉）。建 LLM Wiki 答 500 `internal_error`；记下的 error 一行（`newAcmeTeamLogging`，`interleavings_workspace_test.go:70-112`）带 `the test refused AGENTS`（照 `reindex_test.go:144` 核对触发器自己的话：拦下的是 `AGENTS`，不是别的失败）；`SELECT last_value, is_called FROM seen_nodes` 是 `(2, true)`（序列不随回滚退回：`raw` 写过、`AGENTS` 被拦，回滚收回的是单元已写下的一行。不读 `currval`：它只认本会话调过的 `nextval`，触发器在应用的连接上调、测试读在 `tm.pool` 上，读就报 55000；默认的 `CACHE 1` 下每个会话读到的 `last_value` 相同，审查 AC-M1）；之后没有笔记本、笔记本成员、节点、正文、版本、变更集、搜索的队列的行；同一个库里建普通的笔记本照常 201 |
-| `TestTheModeEventReachesTheStreams`（`bootstrap/wiki_downgrade_test.go`） | 三 | 先 `settle`（`events_stream_test.go:112-132`：之前的通知都到了 hub，之后开的流收不到它们），再由管理员、一个读者与一个看不到这本笔记本的成员各开一条流（`openStream`，`events_stream_test.go:17-173`），降级，再在三人都看得到的另一本笔记本里写一页作标记（`quiet` 的办法，`events_pages_test.go:67-76`）：前两条恰收到一个 `mode`，帧经 `apitest.Load(t).CheckSchema(t, "EventMode", …)`（照 `links_test.go:113-131`），是这本笔记本的两个 id，下一帧是标记；第三条的下一帧就是标记。组合根不登记 `streams` 为模式的订阅者时失败（最后一跳） |
+| `TestTheModeEventReachesTheStreams`（`bootstrap/wiki_downgrade_test.go`） | 三 | 先 `settle`（`events_stream_test.go:112-132`：之前的通知都到了 hub，之后开的流收不到它们），这本 LLM Wiki 是私有的，再由它的管理员 alice、加作它的读者的 bob 与看不到它的 acme 的成员 carol 各开一条流（`openStream`，`events_stream_test.go:17-173`；这个形状分得出按笔记本的过滤与按工作区的，S1 的偏离 12），降级，再在三人都看得到的另一本笔记本（`Eng`，对 acme 的成员开放）里写一页作标记（`quiet` 的办法，`events_pages_test.go:67-76`）：前两条恰收到一个 `mode`，帧经 `apitest.Load(t).CheckSchema(t, "EventMode", …)`（照 `links_test.go:113-131`），是这本笔记本的两个 id，下一帧是标记；第三条的下一帧就是标记。组合根不登记 `streams` 为模式的订阅者时失败（最后一跳） |
 | `TestTheDowngradeAnswersInItsOrder`（同上） | 二 | 整个程序里降级的码：普通的笔记本 409 `notebook.not_llm_wiki`；有排着队的导入（`tm.holdImportWorker`，`interleavings_import_test.go:174`，让导入停在 `queued`）的 LLM Wiki 409 `transfer.busy`，放开、导入结束之后 200；200 的答复与 `getNotebook` 相同；日志的一行 "notebook downgraded"（`newAcmeTeamLogging`，`interleavings_workspace_test.go:70-112`） |
-| `TestImportsAndDowngradingAnLLMWiki`（`bootstrap/interleavings_wiki_test.go`） | 二 | 交错：`tm.interleaveOn(t, notebookRow(nb), …)` 持着这本笔记本的行（`interleavings_trash_test.go:28`）。开始导入在先 → 导入 202、降级 409 `transfer.busy`；降级在先 → 降级 200、导入 202，任务按普通的契约跑完（`succeeded`）。开始导入的事务以 `FOR SHARE` 锁笔记本行（`transfer/app/start.go:103-113`），降级以 `FOR NO KEY UPDATE`，所以两者按到达的次序串行 |
-| `TestNotebooksAnswerTheirModeOverMCP`（`bootstrap/mcp_account_test.go`） | 二 | MCP 的 `notebooks` 每项带 `mode`；`open_notebook` 对 LLM Wiki 答 `llm_wiki`、`instructions` 是 `AGENTS` 的正文（`instructions_from` 是 `AGENTS.md`）；降级之后的下一次 `open_notebook` 答 `standard` |
+| `TestImportsAndDowngradingAnLLMWiki`（`bootstrap/interleavings_wiki_test.go`） | 二 | 交错：`tm.interleaveOn(t, notebookRow(nb), …)` 持着这本笔记本的行（`interleavings_trash_test.go:28`）。开始导入在先 → 导入 202、降级 409 `transfer.busy`；降级在先 → 降级 200、导入 202，任务按普通的契约跑完（`succeeded`）。开始导入的事务以 `FOR SHARE` 锁笔记本行（`transfer/app/start.go:103-113`），降级以 `FOR NO KEY UPDATE`，所以两者按到达的次序串行。两种次序都持住导入的唯一的 worker（`holdImportWorker`）：否则"开始在先"里 worker 可能在开始的提交与降级的读之间把任务做完，那是测试没有逼出的次序；之后放开 worker，等导入以 `succeeded` 结束（S1 的偏离 11） |
+| `TestNotebooksAnswerTheirModeOverMCP`（`bootstrap/mcp_account_test.go`） | 二 | MCP 的 `notebooks` 每项带 `mode`；`open_notebook` 对 LLM Wiki 答 `llm_wiki`、`instructions` 是 `AGENTS` 的正文（`instructions_from` 是 `AGENTS.md`）；降级之后的下一次 `open_notebook` 与 `notebooks` 都答 `standard`（`notebooks` 在降级之前与之后经同一个帮手读，S1 审查 B-N1） |
 
 两个管理员同时降级不另写整个程序的交错（C 的过度设计，主持者照收）：后一个在锁下读到 `standard` 而答 409 由 `TestDowngradeNotebookRefuses` 的一行核对（找到时 `llm_wiki`、锁下 `standard`，3.10），降级只发一个 `mode` 由 `TestTheModeEventReachesTheStreams`（`mode` 之后下一帧是标记）核对；00-M10 4.17 与第 9 节都没有要它。
 
@@ -1861,20 +1883,25 @@ S3 的网页、e2e：4.3 与第 5 节（S3 没有新的故事；TR1、TR2、TR3�
 | 读笔记本的五条查询都带两列 | `TestTheNotebooksAnswerTheirMode`：手写的转换漏了 `Mode` 时那一条读到空的模式（3.3） | S1 |
 | `CheckDraft` 的两个新值 | `"fr"`、`"LLM_WIKI"`、`""` 各答 `invalid_format`；`mode: "standard"` 带 `"fr"` 照样答 422（两种模式都核对，00-M10 4.4） | S1 |
 | `notebook.New` 没有播种者、写入任务时 panic | `TestTheModuleRefusesNoSeeders`、`TestTheModuleRefusesNoWritingJobs` | S1 |
-| 恰有一个播种者交回那个来源根 | 3.5 的表的五种错的交回各答 500、什么也没写 | S1 |
+| 恰有一个播种者交回那个来源根 | 3.5 的表的五种错的交回各答 500、什么也没写；假的 `CreateNotebook` 照表的检查拒绝，建 LLM Wiki 不取来源根时 `TestCreateNotebookMakesTheCallerItsAdmin` 失败（S1 审查 A-N2） | S1 |
 | 播种者的问题是缺陷 | 替身播种者交回 `page.protected`：答 500、不是 409，错误的文字带这个码（`TestTheSeedersRunInTheirOrder`）；交回 `context.Canceled` 时照原样（3.5） | S1 |
 | `Writer.Seed` 要求在事务里、给了时刻 | `TestASeedRefusesNoTransactionAndNoTime` | S1 |
 | `Writer.Seed` 不读时钟 | `steppingClock` 被读一次就让 `TestASeedReadsNoClock` 失败 | S1 |
+| 模板在启动时解析一次 | `TestTheTemplateSeedsAnLLMWiki` 在三次创建之后仍数到四次解析；`TestASeedPassesTheFactsItIsGiven` 以另一份正文的事实 `Seed`，观察者收到交来的（先核对两份事实不同）（3.6、3.8；S1 审查 A-M2） | S1 |
+| 模板的事实是它的正文的 | `TestATemplatesParseIsItsContents` 以随正文变的扩展 `pageMark()` 解析，`page-mark` 是正文的字节数；不看正文的 `ParseTemplate` 让它失败（3.6；S1 审查 A-M3） | S1 |
+| 模板交回写下的来源根 | `TestTheTemplateAnswersTheSourceRootWritten`：`Seed` 以别的 id 写下 `raw` 时答那个 id，两页只交回一个 id 是缺陷；`TestATemplatesParseIsItsContents`：没有 id 的一页答它写下的新 id（3.6、3.8；S1 审查 A-N3） | S1 |
 | 模板的回滚是单元写到一半的回滚 | 触发器只拦 `AGENTS`、记下见过的插入：日志带触发器自己的话、序列的 `last_value` 是 2（`raw` 写过）；普通的笔记本照常 201（3.16） | S1 |
 | `shared.ClientOf` | 没有 `Actor` 的 ctx 答 401；会话与 PAT 的 `Actor` 两种各对 | S1 |
-| 模板的段落对应 | 少一段、少一项、一处行内代码不同（3.9） | S1 |
+| 模板的段落对应 | 块数：少一段、末尾多一段；行内代码：少一项、一处行内代码不同；每种块的形状：两项写在一行、标题降一级、围栏少一行、段落拆成两行（3.9；S1 的偏离 14、审查 A-M1） | S1 |
 | 模板里代码之外没有链接与标签 | 正文里的 `[[raw/x]]`、`#ingest`（3.9） | S1 |
-| 模板至多 8 KiB、不是 frontmatter | 一个 8 KiB 加一字节的字符串、一个以 `---` 起头的字符串经同一个函数各答错误 | S1 |
+| 模板至多 8 KiB、不是 frontmatter | 以写出的 `8 << 10`（不取 `MaxTemplateBytes`）：恰 8 KiB 的照收，8,193 字节的、以 `---` 起头的经同一个函数各答错误（S1 审查 C-N3） | S1 |
 | 降级的码的次序 | 写者在普通的笔记本上答 403 不是 409；管理员在有任务的普通笔记本上答 `notebook.not_llm_wiki` 不是 `transfer.busy`（3.10） | S1 |
 | 降级在锁下读模式 | 找到时 `llm_wiki`、锁下 `standard`：答 409、没有写（3.10） | S1 |
-| `checkPages` 的两条新规则 | `TestPageViolationsCatchEachLLMWikiGap` 的各个 SQL 的改动（含 `raw`、`AGENTS` 改成附件），与照收的三行（没改的、普通的、最后删掉的 LLM Wiki）（3.14、3.27） | S1、S3 |
+| 降级写下执行者 | 行先由 bob 改过：alice 降级之后 `updated_by_id` 是 alice，回滚的仍是 bob（`TestADowngradePassesTheModeSubscribers`，3.5；S1 审查 B-M2） | S1 |
+| `checkPages` 的两条新规则 | `TestPageViolationsCatchEachLLMWikiGap` 的各个 SQL 的改动（含 `raw`、`AGENTS` 改成附件，`AGENTS` 移到 `raw` 之下：S1 审查 B-M1 = C-M1），与照收的三行（没改的、普通的、最后删掉的 LLM Wiki）（3.14、3.27） | S1、S3 |
 | 矩阵的按行的工作区 | 一行 `wiki: true` 而目标在 `lab`，`TestMatrixViolationsCatchesEachGap` 报出（3.14） | S1 |
 | 模式的事件的最后一跳 | 组合根不登记它时 `TestTheModeEventReachesTheStreams` 失败；看不到这本笔记本的流的下一帧是标记（`quiet`） | S1 |
+| page 的模式的转换 | `TestPageNotebooksConvertTheState`：找不到的答 `ok` 为假与零值；丢掉 `SourceRootID` 时 LLM Wiki 的一行失败（3.12；S1 审查 C-N4） | S1 |
 | 守卫放过普通的笔记本 | `TestTheModeGuardLetsAStandardNotebookBy` 交给守卫的是 LLM Wiki 会拒的步，守卫与 `CheckContract` 都不看模式时被拒（3.20） | S2 |
 | `CheckContract` 的每一格 | 3.21 的表，普通的笔记本对每一行答零；子页下的 `index`、祖先的改名、同一父节点下排序祖先放行，把祖先移到别的父节点下要管理员 | S2 |
 | `Grants` 一个单元问一次 | 一个单元里两步都要 `page.manage_source`（`batch` 两次移动 `raw`），在事务里只问一次（`TestTheModeGuardAsksOnceAUnit`，假的授权者的调用带 `" in tx"`）；两个单元问两次；数据库的错误不记下、下一次再问（`TestAGrantIsAskedOnceAUnit`） | S2 |
@@ -1900,6 +1927,13 @@ S3 的网页、e2e：4.3 与第 5 节（S3 没有新的故事；TR1、TR2、TR3�
 | 降级的焦点与持有的对话框 | 403 之前 Ada 已改成编辑者：重读之后按钮没了，对话框仍写着拒绝；成功之后焦点在"Mode"标题上（`general-page.test.tsx`） | S4 |
 | 树的菜单与拖放 | 普通的笔记本里叫 `AGENTS`、`raw` 的页照旧全有、照旧可拖；不能拖的行没有 `draggable` 属性；同一棵树的笔记本换成普通的之后 `AGENTS` 的行有了 `draggable`（第 64 条变异） | S4 |
 | 树的两行的可读的名字 | jsdom 的 `textContent` 看得到后缀前的空格（第 62 条变异）；LW1 (page)、LW2 (page) 按 Chromium 里算的确切的名字找，后缀被藏出可访问性的树时等不到（第 63 条变异；4.4） | S4 |
+
+### 3.30 S1 的实施对设计的修正
+
+S1 的审查与修复核对见 [S1 的审查记录](reviews/P1-S1-mode-template-review.md)，结果在 10.1。与上文最初的设计不同之处已改在各节里：
+
+- **S1，实施时定下的**（实施者的 15 条偏离，S1 审查 A、B、C 各在自己的范围里判过，A 判第 1–3、14 条，B 判第 5–13 条，C 判第 4、15 条，都对；第 3 条的理由照 A 改正）：没有 `TestCreateNotebookLogs`，建的一行在 `TestCreateNotebookMakesTheCallerItsAdmin` 里核对 `mode`（1，3.10、3.14）；变更集的说明是 `wiki/domain` 的 `TemplateMessage`（2，3.1、3.8）；`TestLLMWikiCreationWritesItsTemplate` 另数 `indexed_pages`，是链接索引的最后一跳（3，3.16）；`TestPageViolationsCatchEachLLMWikiGap` 在 `interleavings_page_test.go`，每一行改回之后再断言为空（4，3.14）；没有 `page/domain/mode_test.go`（5，3.1）；`mode_test.go` 的调用列表照已有的替身、不带 id（6，3.10）；矩阵的变体以它自己的表种进 `seeded` 的 `wiki`（7，3.14）；另两个读每个工作区的测试读 `wlab`（8，3.1、3.14）；`targetViolation` 取行的列所在的工作区的 slug，`workspaceOf(c)` 留给各行的请求（9，3.14）；变体的 `raw` 与 `AGENTS` 是英文的模板的两页（10，3.14）；`TestImportsAndDowngradingAnLLMWiki` 两种次序都持住导入的 worker（11，3.16）；`TestTheModeEventReachesTheStreams` 的私有的 LLM Wiki、读者与看不到它的成员（12，3.16）；假的 `SetMode` 拒绝表拒绝的，修复一轮另加 `CreateNotebook`（13，3.1）；`TestTheTemplatesCorrespond` 加"末尾多一段"，第 4 步改正、第 4–7 步重放（14，3.9、3.29）；LW1 (API) 以 `Promise.all` 建三本（15，第 5 节）。
+- **S1，审查与修复核对带来的**（编号是 S1 的审查记录的；主持者的决定见审查记录的第 23–26 条）：`checkPages` 的规则的"根下的 `AGENTS`"有反例（B-M1 = C-M1，3.14、3.29、7.3 第 65 条）；降级写下的执行者有测试（B-M2，3.5、3.29、7.1、7.3 第 66 条）；段落对应的每种块的形状各有反例（A-M1，3.9、3.29、7.3 第 67–70 条）；"在启动时解析一次"在 wiki 与 page 两处钉住（A-M2，3.6、3.8、3.29、7.1、7.3 第 71、72 条）；模板的事实是它的正文的（A-M3，3.6、3.29、7.3 第 73 条）；变更集经 `coalesce` 读（A-N1 = C-N2，3.16、7.3 第 12 条）；假的 `CreateNotebook` 照表拒绝（A-N2，3.1、3.29、7.1、7.3 第 74 条）；`Seed` 交回写下的页的 id，模板交回写下的来源根（A-N3，3.4、3.6、3.8、3.29、7.3 第 75–77 条）；模板的单元在排着的删除之后重入工作区行的子测试，钉住 PostgreSQL（A-N4，3.15、7.2 第 8 条）；降级之后再读 `notebooks`（B-N1，3.16、7.1）；`createNotebook` 的说明不重复（B-N2 = C-N6，3.13）；8 KiB 写在测试里（C-N3，3.9、3.29、7.3 第 78、79 条）；`pageNotebooks.StateOf` 的"找不到"与 `open_notebook` 在门之后被删的答复（C-N4，3.1、3.12、3.29、7.1、7.5、7.3 第 80 条）；第三份的估计算上 `wlab` 的种（C-N5，7.5）。没有交给 v0.1 之后的打磨的。
 
 ## 4. 网页
 
@@ -2081,7 +2115,7 @@ P1 的故事是 LW1、LW2 与 LW12 的 P1 的几步，在 `e2e/stories/wiki/`（
 
 | 版本 | Step | 文件 | 步骤与断言 |
 |---|---|---|---|
-| LW1 (API) | S1 | `lw1-create.spec.ts` | `newTeam`；建三本：`{mode: "llm_wiki", templateLocale: "zh-CN"}`、`{mode: "llm_wiki", templateLocale: "en"}`、`{mode: "llm_wiki"}`（得英文），与一本普通的。每本 LLM Wiki：`expectNewNotebook` 读到 `mode = llm_wiki`、`source_root_id` 是答复的；`listNodes` 的根下恰是 `raw`、`AGENTS`，`raw.id === source_root_id`；两页各 `expectNewPage`（笔记本的时刻、客户端 `api`）；一个变更集 `expectChangesetOf`（说明 "LLM Wiki 模板" 或 "LLM Wiki template"）；`AGENTS` 的标志是那种语言的。普通的那本：没有节点、`source_root_id` 为 `null`。`template_locale: "fr"` 答 422、字段 `template_locale` 码 `invalid_format`，`countNotebooks` 不变（`n1:43-68` 的写法） |
+| LW1 (API) | S1 | `lw1-create.spec.ts` | `newTeam`；建三本：`{mode: "llm_wiki", templateLocale: "zh-CN"}`、`{mode: "llm_wiki", templateLocale: "en"}`、`{mode: "llm_wiki"}`（得英文），与一本普通的；三本 LLM Wiki 以 `Promise.all` 一起建（oxlint 的 `no-await-in-loop` 不许循环里等；它们只共用 acme 的行的 `FOR SHARE`），422 与 `countNotebooks` 在三本都结束之后（S1 的偏离 15）。每本 LLM Wiki：`expectNewNotebook` 读到 `mode = llm_wiki`、`source_root_id` 是答复的；`listNodes` 的根下恰是 `raw`、`AGENTS`，`raw.id === source_root_id`；两页各 `expectNewPage`（笔记本的时刻、客户端 `api`）；一个变更集 `expectChangesetOf`（说明 "LLM Wiki 模板" 或 "LLM Wiki template"）；`AGENTS` 的标志是那种语言的。普通的那本：没有节点、`source_root_id` 为 `null`。`template_locale: "fr"` 答 422、字段 `template_locale` 码 `invalid_format`，`countNotebooks` 不变（`n1:43-68` 的写法） |
 | LW1 (MCP) | S1 | 同上 | 经 REST 建一本英文的 LLM Wiki；`mcpClient(baseURL, pat, {notebook})` 的握手的 `instructions` 等于 `readContent(AGENTS).content.trim()`（`page/domain/instructions.go:35-36`）；账户入口的 `notebooks` 里它的 `mode` 是 `llm_wiki`；`open_notebook` 的 `instructions_from` 是 `AGENTS.md`、`mode` 是 `llm_wiki`。P5 给握手加系统的一段时这一版加一步 |
 | LW2 (API) | S2 | `lw2-protected.spec.ts` | 管理员建 LLM Wiki（开放程度 `editor`），`joinAs(..., "member")` 的成员是写者。`AGENTS`：`deleteNode`、`renameNode`、`postMove` 各答 409 `page.protected`，`writeContent` 成功（`expectContentWritten`）。`raw`：`deleteNode` 409 `page.protected`；写者的 `renameNode` 403 `page.source_admin_only`；管理员的 `renameNode` 成功（`expectRenamed`）。`postPage({parent_id: null, title: "index"})` 409 `page.virtual_file`。每个拒绝之后以 `getPage`、`listNodes` 核对什么也没变（`pg2:72-73` 的写法） |
 | LW2 (MCP) | S2 | 同上 | 写者的 agent：`delete AGENTS.md`、`move AGENTS.md` 的 `errorOf(...).code` 是 `page.protected`，`write index/x.md` 是 `page.virtual_file`（三个以 `Promise.all` 一起发）；`edit AGENTS.md` 成功，`expectContentWritten(db, writtenOf(...))` 与 `expectChangesetOf` 的客户端 `mcp:e2e-agent` |
@@ -2165,13 +2199,13 @@ P1 的故事是 LW1、LW2 与 LW12 的 P1 的几步，在 `e2e/stories/wiki/`（
 | 迁移 00048 | `TestConstraintAndIndexNames`、`TestChecksRejectCounterexamples` 的新行，`TestTheNotebooksModeGoesDown` | S1 |
 | 读笔记本的查询与转换 | `TestTheNotebooksAnswerTheirMode`（五条查询，含两处手写的转换） | S1 |
 | `CheckDraft`、码的次序 | `notebook/domain` 的表格；`TestCreateNotebookRefuses` 加 `mode`、`template_locale` 的 422 在 404、403 之后 | S1 |
-| 建的事务、播种者、一个时刻 | `notebook/app/write_test.go` 的调用次序（假的播种者与假的可见性的订阅者记进同一个列表：`"Seed … in tx"` 在 `"AddMember …"` 之后、`"VisibilityChanged … in tx"` 之前）、`TestACreationPassesTheSeeders`（含播种者的 `page.*` 错误答 500）、`TestTheSeedersRunInTheirOrder`、`TestTheModuleRefusesNoSeeders`；`TestLLMWikiCreationWritesItsTemplate`、`TestTheTemplateRollsBackWithItsNotebook` | S1 |
-| `Seed` | 3.6 的五个 | S1 |
+| 建的事务、播种者、一个时刻 | `notebook/app/write_test.go` 的调用次序（假的播种者与假的可见性的订阅者记进同一个列表：`"Seed … in tx"` 在 `"AddMember …"` 之后、`"VisibilityChanged … in tx"` 之前）、`TestACreationPassesTheSeeders`（含播种者的 `page.*` 错误答 500）、`TestTheSeedersRunInTheirOrder`、`TestTheModuleRefusesNoSeeders`；`TestLLMWikiCreationWritesItsTemplate`、`TestTheTemplateRollsBackWithItsNotebook`；假的 `CreateNotebook` 照表的两个检查拒绝（第 74 条变异） | S1 |
+| `Seed` | 3.6 的六个（`TestASeedPassesTheFactsItIsGiven` 是 S1 的修复一轮加的；`TestATemplatesParseIsItsContents` 带 `pageMark()`） | S1 |
 | `ClientOf` | `TestClientOfIsTheCredential`；三个适配器的客户端的行；notebook 的 `createNotebook` 交 `Client` | S1 |
-| 模板 | 3.9 的三个；`wiki/app`、模块根的替身；`contract_test` | S1 |
+| 模板 | 3.9 的三个；`wiki/app` 的 `TestTheTemplateSeedsAnLLMWiki`（创建之后仍是四次解析）、`TestTheTemplateAnswersTheSourceRootWritten`、`TestTheTemplateFails`，模块根的替身；`contract_test` | S1 |
 | 降级 | `mode_test.go` 的三个（含"找到时 `llm_wiki`、锁下 `standard`"的一行）、日志的测试、适配器的四行；`TestTheDowngradeAnswersInItsOrder`；矩阵的两行（变体的一行带 `after` 的 `GET`） | S1 |
-| 模式的事件 | `TestADowngradePassesTheModeSubscribers`、`TestTheModeSubscribersRunInTheirOrder`；`TestTheModeEventReachesTheStreams` | S1 |
-| MCP 的 `mode` | `open_notebook` 的次序与答复、`notebooks_test.go`、`TestOpenNotebookOfAnEmptyNotebook`、`TestNotebooksListsTheAccountsWorkspaces`、`TestNotebooksAnswerTheirModeOverMCP`、`TestTheToolListsAreTheContract` | S1 |
+| 模式的事件 | `TestADowngradePassesTheModeSubscribers`（另读 `updated_by_id`）、`TestTheModeSubscribersRunInTheirOrder`；`TestTheModeEventReachesTheStreams` | S1 |
+| MCP 的 `mode` | `open_notebook` 的次序与答复、`notebooks_test.go`、`TestOpenNotebookOfAnEmptyNotebook`、`TestNotebooksListsTheAccountsWorkspaces`、`TestNotebooksAnswerTheirModeOverMCP`（降级之后再读 `notebooks`）、`TestPageNotebooksConvertTheState`、`TestTheToolListsAreTheContract` | S1 |
 | `checkPages`、矩阵的变体 | `TestPageViolationsCatchEachLLMWikiGap`、`TestMatrixViolationsCatchesEachGap` 的新行、`TestPermissionMatrix` 的变体的行 | S1、S2、S3 |
 | `Write.Notebook`、`Grants` | `notebook/notebooks_test.go` 的新方法；`TestAGrantIsAskedOnceAUnit`、`TestTheModeGuardAsksOnceAUnit` | S2 |
 | `CheckContract` | `TestCheckContract`（含 B-Q1 的几行）、`TestTheReservedKeysAreTitleKeys` | S2 |
@@ -2198,12 +2232,13 @@ P1 的故事是 LW1、LW2 与 LW12 的 P1 的几步，在 `e2e/stories/wiki/`（
 | 5 | 降级与删除 `AGENTS` | `TestTheProtectionAndADowngrade` | 同 4：删除的单元以 `FOR NO KEY UPDATE` 锁笔记本行（`unit.go:217-223`） |
 | 6 | `batch` 的计划之后、单元之前执行者被降为写者 | `TestTheGuardRefusesWhatThePlanLetBy`（S2） | 同 4：降为写者的请求先到、在行上等；bob 的 MCP 的 `batch [move raw.md → Notes/raw.md]` 的计划在锁外读到管理员、放过，然后单元在行上等；放开之后降级先提交，单元在锁下再问；`guards: []` 的程序里同样的次序让移动成功（反向对照） |
 | 7 | 后台撤销的两批之间执行者被降为写者 | `TestTheSourceRootsPutBackIsRefusedInALaterBatch` | `tm.behindFirstBatch`（`background_test.go:196-210`）：测试以 `FOR SHARE` 持着笔记本行，任务的第一批等它；改角色的请求在它之后排队；放开之后第一批先、改角色后；改角色在第二批之前还是之后是竞争，照 `TestARevertJobAndAPageCreatedUnderATopItDeletes`（`interleavings_background_test.go:351-378`）的循环重试 `betweenUnits` 次，每次一本新的笔记本、新的 C 与任务，输的一支核对任务整个成功（3.28）；`transfer.Batch{Nodes: 1}` 让两步分在两批 |
+| 8 | 模板的单元在排着的工作区删除之后重入工作区行 | `TestWorkspaceChangesAndCreatingAnLLMWiki` 的第 4 个子测试（S1 的修复一轮加） | 测试库里 `notebook_members` 上的触发器等测试持着的 advisory lock（`pgtest.WaitForAdvisoryLockWaits`）：建停在管理员的插入之后、持着 acme 的行 `FOR SHARE`；删除发出、在 `workspaces` 上等（`WaitForLockWaitsOn`），然后放开。钉住 PostgreSQL 把已持的锁交给唯一的持有者（3.15；主持者的决定 24：我们的代码没有一处改动让它失败） |
 
 两个管理员同时降级不另写交错（3.16：锁下读模式由模块一级的一行核对，一个 `mode` 由 `TestTheModeEventReachesTheStreams` 核对）。00-M10 4.17 列的别的交错（去重、lint 的快照、虚拟文件）是 P2–P4 的。
 
 ### 7.3 变异
 
-每个变异是实施时在本机对代码做的一处改动，跑它旁边写的测试，要它失败（不提交）；第 10 节记下每一个的结果。修订把草稿的 47 条重排为 61 条，第一轮复核之后是下面的 64 条：S1 第 1–22 条，S2 第 23–41 条，S3 第 42–53 条，S4 第 54–64 条（复核加了 S3 的第 53 条，S4 的旧的第 53–60 条成为第 54–61 条，旧的第 61 条换成第 62、63 条，另加第 64 条）。
+每个变异是实施时在本机对代码做的一处改动，跑它旁边写的测试，要它失败（不提交）；第 10 节记下每一个的结果。修订把草稿的 47 条重排为 61 条，第一轮复核之后是下面的 64 条：S1 第 1–22 条，S2 第 23–41 条，S3 第 42–53 条，S4 第 54–64 条（复核加了 S3 的第 53 条，S4 的旧的第 53–60 条成为第 54–61 条，旧的第 61 条换成第 62、63 条，另加第 64 条）。S1 的审查与修复核对的变异是第 65–80 条（S2–S4 照旧是第 23–64 条）；第 12 条照建成时分成 a、b 两种。
 
 | # | 变异 | 让它失败的测试 |
 |---|---|---|
@@ -2218,7 +2253,7 @@ P1 的故事是 LW1、LW2 与 LW12 的 P1 的几步，在 `e2e/stories/wiki/`（
 | 9 | `run` 照旧读时钟 | `TestASeedReadsNoClock` |
 | 10 | `ClientOf` 对没有 `Actor` 的 ctx 答 `web` | `TestClientOfIsTheCredential` |
 | 11 | 模板先写 `AGENTS`、后写 `raw` | `wiki/app/template_test.go`（页的次序）；`TestLLMWikiCreationWritesItsTemplate`（根下的次序） |
-| 12 | 模板的变更集不带说明 | `TestLLMWikiCreationWritesItsTemplate`；e2e 的 LW1 (API) |
+| 12 | 模板的变更集不带说明：a，去掉 `Template.NotebookCreated` 的 `Message:`（组合根于是交 `&""`）；b，`wikiSeeds.Seed` 交 `Message: nil`（库照收的一行） | a：`TestLLMWikiCreationWritesItsTemplate`、e2e 的 LW1 (API)，都因建的 500（`changesets_message_check` 拒绝空的说明），所以 a 单独看不出说明被核对；b：两者都在比较说明时失败（Go 的测试经 `coalesce` 读到 `message ""`，主持者的决定 25；LW1 (API) 读到 `"message": null`） |
 | 13 | 段落对应的比较只比块数 | `TestTheTemplatesCorrespond` 的"一处行内代码不同"的反例 |
 | 14 | `ListOwnerless` 的手写的转换漏了 `Mode` | `TestTheNotebooksAnswerTheirMode` |
 | 15 | 降级先看任务、后看模式 | `TestDowngradeNotebookRefuses` 的次序的行 |
@@ -2271,6 +2306,22 @@ P1 的故事是 LW1、LW2 与 LW12 的 P1 的几步，在 `e2e/stories/wiki/`（
 | 62 | 去掉后缀前的 `{" "}` | `page-tree.test.tsx` 的 `textContent` 的两行（`raw(source area)`；Chromium 的名字照样有空格，e2e 抓不到，4.4，审查 C2-M1） |
 | 63 | 后缀的 `span` 带 `aria-hidden`（或以 `hidden` 代 `sr-only`） | e2e 的 LW1 (page)、LW2 (page)（按确切的名字等不到；jsdom 的 `textContent` 照旧，4.4，审查 C2-M1） |
 | 64 | `useDrag` 的依赖不含算出的能不能拖 | `page-tree.test.tsx` 的换成普通的笔记本之后的一条（同一个行元素没有 `draggable`，4.4，审查 C2-N4、C3-N1） |
+| 65 | `checkPages` 的新规则不看 `a.parent_id`（`AGENTS` 在哪里都算） | `TestPageViolationsCatchEachLLMWikiGap` 的"AGENTS under raw"一行（S1 审查 B-M1 = C-M1：b1、C1） |
+| 66 | `SetNotebookMode` 不写执行者（生成的 SQL 写 `updated_by_id = coalesce(updated_by_id, $3)`） | `TestADowngradePassesTheModeSubscribers` 的成功的一行（行先由 bob 改过；S1 审查 B-M2：b2） |
+| 67 | 段落对应不比列表的项数 | `TestTheTemplatesCorrespond` 的"two items on one line"（S1 审查 A-M1：a3） |
+| 68 | 段落对应不比标题的级 | 同上的"a heading a level down"（a10） |
+| 69 | 段落对应不比围栏的信息串与行数 | 同上的"a fence a line short"（a11） |
+| 70 | 段落对应不比段落的行数 | 同上的"a paragraph in two lines"（a12） |
+| 71 | `Template.NotebookCreated` 每次创建再解析模板 | `TestTheTemplateSeedsAnLLMWiki`（创建之后仍是四次解析；S1 审查 A-M2：a1） |
+| 72 | `SeedWrites.Seed` 在 `CreatePage` 之前再解析正文 | `TestASeedPassesTheFactsItIsGiven`（a13） |
+| 73 | `ParseTemplate` 不看正文（答 `Facts("")`） | `TestATemplatesParseIsItsContents`（`pageMark()`；S1 审查 A-M3：a19） |
+| 74 | 建 LLM Wiki 不取来源根的 id | `TestCreateNotebookMakesTheCallerItsAdmin`（假的仓库照表的检查答 `notebooks_source_root_check`；S1 审查 A-N2：x7） |
+| 75 | 模板答创建的 id，不答写下的 | `TestTheTemplateAnswersTheSourceRootWritten`（S1 审查 A-N3：x8） |
+| 76 | `SeedWrites.Seed` 答草稿的 id，不答写下的 | `TestATemplatesParseIsItsContents` 的没有 id 的一页（x9） |
+| 77 | 模板不核对 `Seed` 交回的 id 的个数 | `TestTheTemplateAnswersTheSourceRootWritten` 的"one id for two pages"（修复核对 A 的 f2） |
+| 78 | `MaxTemplateBytes` 提到 64 KiB | `TestTheTemplatesAreSmall`（写出的 8 KiB；S1 审查 C-N3：C35） |
+| 79 | `MaxTemplateBytes` 降到 4 KiB | 同上（恰 8 KiB 的一页照收；x10） |
+| 80 | `pageNotebooks.StateOf` 对找不到的笔记本答 `ok` | `TestPageNotebooksConvertTheState`（S1 审查 C-N4：C40） |
 
 ### 7.4 门禁
 
@@ -2290,6 +2341,7 @@ P1 的故事是 LW1、LW2 与 LW12 的 P1 的几步，在 `e2e/stories/wiki/`（
 | `TestTheModeEventReachesTheStreams` | 三 | S1 |
 | `TestNotebooksAnswerTheirModeOverMCP` | 二 | S1 |
 | `TestPageViolationsCatchEachLLMWikiGap` | 二 | S1 |
+| `TestPageNotebooksConvertTheState`（不要库，S1 的修复一轮加） | 二 | S1 |
 | `TestTheModeGuardReachesEveryPath` | 三 | S2 |
 | `TestTheModeGuardReachesEveryMCPWrite` | 三 | S2 |
 | `TestModeComesBeforeTheLock` | 二 | S2 |
@@ -2302,12 +2354,12 @@ P1 的故事是 LW1、LW2 与 LW12 的 P1 的几步，在 `e2e/stories/wiki/`（
 | `TestTheReservedTitlesAreNumberedAtAnLLMWikisRoot` | 三 | S3 |
 | `TestTreeErrorKeepsTheLockFirst`（纯函数） | 三（`Tr` 配 `T[i-z]`） | S3 |
 
-八个在第二份、十一个在第三份。已有的测试加的行：`TestPermissionMatrix`（第二份）的变体的几行（每个写的格子一份库的副本，约 30 格），`TestTheMCPToolsErrorsCarryTheirCodes`（第三份）多建一本 LLM Wiki 与约十次调用，`TestEveryMCPToolHasItsCodes`（第一份）只多几个码、不多请求。
+九个在第二份（一个不要库，S1 的修复一轮加）、十一个在第三份。已有的测试加的行：`TestPermissionMatrix`（第二份）的变体的几行（每个写的格子一份库的副本，约 30 格），`TestTheMCPToolsErrorsCarryTheirCodes`（第三份）多建一本 LLM Wiki 与约十次调用，`TestEveryMCPToolHasItsCodes`（第一份）只多几个码、不多请求。
 
 **量**（审查 C-M7：照 CI 的每个测试的平均与竞态检测估，不照本机不带竞态的时间）：组合根的三份在 CI 上跑 `go test -race -count=1 -timeout 15m`（`Makefile:179`、`:207-218`），CI 与本机之比约 1.73（`Makefile:207` 的记录）。M9 收尾的 run 的测试一步：第一份 7:07、第二份 6:12、第三份 5:25（1 节）。Codex 评审之后的 run（P1 开始时的代码）只有作业的时间 5:28、6:33、6:21，不与 7:30 的线比（审查 C-N6）；减去收尾的 run 里作业与测试一步之差（第二份 20 秒、第三份 24 秒），测试一步约是第二份 6:13、第三份 5:57。照 `Makefile:200-203` 的规则取两次的平均作底：第二份约 6:12，第三份约 5:41（审查 C2-N1）。第二份约一百个测试，每个约 3–3.5 秒。所以：
 
 - 第二份：八个新的约 25–30 秒，较重的（`TestImportsAndDowngradingAnLLMWiki` 的一次导入、`TestLLMWikiCreationWritesItsTemplate` 的四本）按 5 秒约多 5 秒，`TestPermissionMatrix` 的约 30 个变体的格子按矩阵今天的每格（一份库的副本）约 15–25 秒：共约 45–60 秒，6:12 之后约 7:00–7:15，较慢的一次可能到线上；
-- 第三份：十一个新的约 35–40 秒，后台的两批与三个交错较重，约 45–55 秒；`TestTheServersLimitsComeAfterThePrechecks` 只剩解析的预算的一个程序（磁盘的一半去掉了，少一个库与一个应用，约 3–5 秒），约 40–50 秒，5:41 之后约 6:20–6:30，离线约一分钟。
+- 第三份：十一个新的约 35–40 秒，后台的两批与三个交错较重，约 45–55 秒；`TestTheServersLimitsComeAfterThePrechecks` 只剩解析的预算的一个程序（磁盘的一半去掉了，少一个库与一个应用，约 3–5 秒），约 40–50 秒，5:41 之后约 6:20–6:30，离线约一分钟。S1 量过之后改正（审查 C-N5，主持者的决定 26）：这一估计没有算 `prepareMatrix` 给它的每个用者多种的 `wlab`（第三份五个用者、第二份三个，3.14），S1 带修复在第三份的 CI 上多约 15–25 秒，比它的三个新测试多；照 S1 的数，加上这里的 S2、S3 的，第三份到 P1 结束约 6:45–7:00，仍在 7:30 之下，离线约 30–45 秒；S2、S3 的估计算上 `wlab` 的种。第二份照这里的估计（S1 的五个新测试 CI 上约 9.4 秒，变体的格在 15–25 秒之内）。
 
 第二份离线不远，所以每个 Step 合并之后照 M9/P2 6.5 的规则读两次 CI 的测试一步的平均（第 10 节记下）：一份过了线时只在邻居收下之后两份都在线之下时挪界线（第三份在这里有约一分钟的余量），否则按测试名再分一份，从不提高 `-timeout`。e2e 加 9 个测试，在一个不分份的任务里（第 5 节）。
 
@@ -2355,9 +2407,9 @@ P1 完成，当且仅当：
 - **13.2 第 17 条**，S4：加"持有的对话框（`HeldDialog`）由持有它的那一节移焦点：降级成功之后到"模式"一节的标题（`tabIndex={-1}`）；对话框在打开时不随触发按钮卸下，所以 403 之后重读的列表不会带走对话框里的拒绝"；树的行的种类的文字等价在可读的名字里、放在看得见的名字之后，照 `NewTab` 的写法：真的空格在 `sr-only` 之外、后缀以括号起头（`raw (source area)`），可读的名字在 Chromium 里的样子由 e2e 按确切的名字核对（jsdom 没有 Tailwind）。
 - **13.2 第 23 条**（`:1192`），S4："M5 的 `pages`、`lock`，M6 的 `links`"改为"M5 的 `pages`、`lock`，M6 的 `links`，M10 的 `mode`（重读笔记本的列表）"。
 - **13.3 第 3 条**（`:1216`），S1："写入在事务之前、判定之后、解析预算之内"之后加"（例外：模板的正文在启动时解析一次，13.1 第 19 条）"。
-- **13.4 第 1 条**，S1、S3：反例加"模板的两种语言的段落对应（少一段、少一项、一处行内代码不同）与代码之外没有链接；`checkPages` 的规则改为 `pageViolations` 交回违反的规则，每条新规则有一个 SQL 的种子作反例（M10/P1 起）；`schema_test` 的新名称与反例"。
+- **13.4 第 1 条**，S1、S3：反例加"模板的两种语言的段落对应（少一段、末尾多一段、少一项、一处行内代码不同与每种块的形状各一个，S1 的偏离 14 与审查 A-M1）与代码之外没有链接与标签；`checkPages` 的规则改为 `pageViolations` 交回违反的规则，每条新规则有一个 SQL 的种子作反例（M10/P1 起）；`schema_test` 的新名称与反例"。
 - **13.4 第 3 条**：S1 加"`createNotebook` 的第六个参数是选项（`mode`、`templateLocale`）；模板的页以 `expectNewPage`、`expectChangesetOf` 核对，不另开 `assert/wiki.ts`"；S4 加"`test.use({ locale })` 只在 `test.describe` 里"（套件里第一处是 S4 的 LW1 (page)，审查 C-N5）。
-- **13.4 第 4 条**，S1–S3：加 7.2 的七条交错的名字与它们怎样逼出。
+- **13.4 第 4 条**，S1–S3：加 7.2 的八条交错的名字与它们怎样逼出（第 8 条是 S1 的修复一轮加的）。
 - **13.4 第 6 条**，S1：加"矩阵的 LLM Wiki 的变体：同样的列在另一个工作区里有同样的角色，行带 `wiki`，`targetViolation` 按行的工作区核对"。
 - **13.4 第 13 条**，S2、S3：加"`CheckContract` 是守卫与四处预检（`batch` 的计划、上传的 `Check`、撤销的两遍）共用的一组规则，事实由同一个 `FactsOf` 建（M10/P1）"。
 
@@ -2390,9 +2442,68 @@ P1 完成，当且仅当：
 
 留给实施之后：每个 Step 一节（合并的提交、审查与修复、照实与设计不同之处、7.3 的变异的结果、CI 的各份与 e2e 的时间、模板的四个字节数）。
 
-### 10.1 S1：模式与模板（服务端）
+### 10.1 S1：模式与模板（服务端）（2026-10-25，合并见 00 号文档第 12 节）
 
-（待填）
+- 提交（从 main 的 `f92ecac7` 开始，照 6.1 的次序，第 1–7 步，7 个；第 8 步的文档是主持者的）：
+  - `shared.ClientOf`（`TestClientOfIsTheCredential`），page、asset、transfer 的适配器用它，三份 `clientOf` 删去（`46e3d20c`）。
+  - 迁移 00048（`mode` 与 `notebooks_mode_check`、`source_root_id` 与 `notebooks_source_root_check`；`schema_test` 的两个名称、三个反例与照收的一行；`TestTheNotebooksModeGoesDown`）；五个读的查询与两处手写的转换带两列（`TestTheNotebooksAnswerTheirMode` 读五个），`CreateNotebook` 写它们；领域的 `Mode`、`Locale`、`CheckDraft`；模块根的 `State`、`StateOf`；契约的 `NotebookMode`、`Notebook.mode`/`source_root_id`，重新生成 Go 与 TS，网页的两个字面量（`d0ce2cf8`）。
+  - page 的 `Writer.Seed` 与 `Run` 共用一个 `run`（`Seed` 加入调用方的事务，拒绝没有事务与零时刻，不读时钟），`SeedWrites`、`TreeWrites().Seed`、`ParseTemplate`，在真的库上测（`456fe026`）。
+  - 建 LLM Wiki 带它的模板：`NotebookCreation`/`Seeder`/`seed`；建的事务照 3.4 的次序（读一次时钟，来源根的 id 在笔记本的之后取，播种者交回的根必须恰好是这本 LLM Wiki 自己的），`notebook: no seeders`；wiki 模块（`domain` 的契约表与四页模板、`app.Template`、模块根）；组合根的 `wikiSeeds`/`wikiTemplate` 与次序 page → asset → linking → wiki → transfer → notebook；契约的 `NotebookCreate.mode`/`template_locale`；建的一行日志带 `mode`；`checkPages` 分出 `pageViolations` 与 LLM Wiki 的规则（`TestPageViolationsCatchEachLLMWikiGap`）；`TestWorkspaceChangesAndCreatingAnLLMWiki`、`TestLLMWikiCreationWritesItsTemplate`、`TestTheTemplateRollsBackWithItsNotebook`；e2e 的 `createNotebook` 的第六个参数、`expectNewNotebook`/`expectNotebook` 读两个字段、LW1 (API)（`33edc078`）。
+  - `downgradeNotebook`：`ActionChangeMode` 与规则 `notebook.change_mode`（笔记本管理员），`ErrNotLLMWiki`、`ErrJobsWriting`（`transfer.busy`），`SetNotebookMode`，`ModeChange`/`ModeSubscriber`/`publishMode`，`Deps.WritingJobs`（`notebook: no writing jobs`）与 `transfer.NewWritingJobs(pool)`（`TestTheWritingJobsAreTheTreesWriters`）；用例在锁下读模式、问一次任务、读一次时钟，记一行 "notebook downgraded"；HTTP 适配器、契约的路径、网页的 `notebook.not_llm_wiki` 的中英两条文字；权限矩阵的变体 `wlab` 与降级的两行；`TestTheDowngradeAnswersInItsOrder`、`TestImportsAndDowngradingAnLLMWiki`（`32bba1f8`）。
+  - `mode` 事件：`notebookEvents.ModeChanged`，事件流是唯一的模式订阅者，契约的 `EventMode`；`TestTheModeEventReachesTheStreams`（`e8962f7b`）。
+  - MCP 答模式：page 的 `Mode`/`NotebookState` 与端口 `Notebooks.StateOf`，`OpenNotebook` 在门之后读状态（那时已删的答不存在）并答 `Mode`，组合根的 `pageNotebooks`；`openNotebook` 与 `notebooks` 答 `mode`，Go 里的描述与 `tools.json`；`TestNotebooksAnswerTheirModeOverMCP`；MC1 期望 `mode: "standard"`，LW1 (MCP)（`66602404`）。
+  - 每个提交单独在一个工作树里 build、vet、碰到的包的静态检查（0 个问题）与 short 测试都通过；碰网页的提交另过 oxfmt、oxlint、tsc、knip 与 vitest（166 个文件、3,344–3,346 个测试）。第 4 步的修正（下面第 14 条）之后第 4–7 步重放、再核对一次。审查 C 另在每个提交上跑整个模块的静态检查、tidy 与整个 short 测试，那个提交加或改的库上的测试，第 2、4、6 步的整个 e2e，都通过。
+  - 修复一轮另有 13 个（下面），一共 20 个，合并见 00 号文档第 12 节。
+- 与设计不同之处（实施时定下的，都是最小的改动；已改在各节，3.30 列出）：
+  1. 3.14 说的 `TestCreateNotebookLogs` 不在：建的那一行一直在 `TestCreateNotebookMakesTheCallerItsAdmin` 里核对。`mode` 在那里的两行（普通的、LLM Wiki）核对，同已有的"不带名称"；3.10 的"照 `TestCreateNotebookLogs` 的写法"随之改（审查 A）。
+  2. 模板的变更集的说明在 `wiki/domain.TemplateMessage(locale)`，与模板放在一起（设计给了两句话，没说放在哪里）；`contract_test` 钉住每种语言的不为空、`fr` 的为空，整个程序按语言比较它（x5）。
+  3. `TestLLMWikiCreationWritesItsTemplate` 另数两页的 `indexed_pages`（2）。实施者的理由（`page_links`/`page_tags` 的零行对一份没被解析过的模板也成立）不对：链接索引的观察者拒绝不是 Markdown 的事实，没解析过的模板让建答 500（审查 A）；这一数加的是链接索引对模板的两页的最后一跳，事实是不是正文的由 `TestATemplatesParseIsItsContents` 核对（审查 A-M3）。
+  4. `TestPageViolationsCatchEachLLMWikiGap` 在 `interleavings_page_test.go`，在 `pageViolations` 旁边；每一行撤回之后再断言违反是空的，一行的撤回漏不到下一行。
+  5. 没有 `page/domain/mode_test.go`：3.1 列了这个文件、没有说测什么；它只有两个常量与一个结构。notebook 的模式到 page 的转换由 `TestNotebooksAnswerTheirModeOverMCP` 从头到尾钉住（另加的变异 x1 被它抓到），修复一轮另有 `TestPageNotebooksConvertTheState`（审查 C-N4）。
+  6. `mode_test.go` 的调用列表照已有的替身的写法（`"LockNotebook in tx"`、`"Authorize notebook.change_mode in tx"`、`"Writing in tx"`、`"SetMode standard by <alice> in tx"`、`"ModeChanged a llm_wiki standard in tx"`）：notebook 的替身不记 id，设计的 `"… nb"` 写作不带 id；次序照设计。要紧的 id 在别处钉住：授权者的目标、`moded` 对 `standard` 的核对、按 id 答的假的任务（审查 B、C）。
+  7. 矩阵的变体用它自己的表（`wikiMemberships`、`wikiNotebooks`、`wikiNotebookMembers`，都照 lab 的）种进它自己的 id（`seeded.wiki`），不加进 `matrixWorkspaces()`、`matrixMemberships()`、`matrixNotebooks()`：`prepareMatrix` 的别的用者遍历它们（`TestTheSearchIsWhatEachReadAllows` 搜每个 `matrixWorkspaces()`，`events_lab_test` 给每个 `matrixNotebooks()` 发布），且 lab 与 wlab 的笔记本同名、`seeded.notebooks` 按名称取。`workspaceOfRow` 先认变体的 id。删一本种下的笔记本分成 `prepareMatrix` 里的 `deleteNotebook`，lab 的 gone-nb 与 wlab 的共用。审查 B：比设计的写法好。
+  8. 除了 3.14 说的 `accountNotebooksOf`，另两个测试读一列的每个工作区，也要读 wlab，否则在第 5 步失败：`TestTheStreamSeesWhatEachReadAllows` 与 `TestTheAccountsNotebooksAreWhatEachReadAllows`（`notebook_visibility_test.go`）改读 `seededNotebooks(s)`（lab、other 与 wlab 的），事件流那个测试的工作区的循环读 `seededWorkspaces(s)`。
+  9. `targetViolation` 取这一行的列所在的工作区的 slug（`workspaceOfIn(c, r)`），不取列；`workspaceOf(c)` 留给各行自己的请求（变体的行从 `s.wiki` 建路径）。第 22 条变异把它换回去。
+  10. 变体的 `raw` 与 `AGENTS` 的正文是英文模板的两页（`wiki.TemplatePages`），不是矩阵的标记：lab 的搜索的行找不到它们，页也正是一本 LLM Wiki 里有的。`wikiSeeded.raw`/`agents`（3.14 的 `s.wiki.raw(name)`、`s.wiki.agents(name)`）由种的那一步用：S2 的行用它们之前，lint 的 `unused` 不许它们空着。
+  11. `TestImportsAndDowngradingAnLLMWiki` 两种次序都持住导入的唯一的 worker（`holdImportWorker`）：否则"开始在先"里 worker 可能在开始的提交与降级的读之间把任务做完，那是测试没有逼出的次序。两种次序随后放开 worker，等导入以 `succeeded` 结束。审查 B：持住是要的；它的 b7（在锁外读 `Writing`）让"开始在先"答 200，次序是逼出来的。
+  12. `TestTheModeEventReachesTheStreams`：LLM Wiki 是私有的，alice 是它的管理员，bob 加作读者，carol 是 acme 的成员、看不到它；标记是 `Eng` 的一页（acme 的成员都看得到），三人都收到（`quiet`）。
+  13. 替身的 `SetMode` 拒绝表的检查拒绝的（两种之外的模式、没有来源根的 LLM Wiki）：替身在真的失败处失败。修复一轮让替身的 `CreateNotebook` 经同一个 `checked(n)` 同样拒绝（审查 A-N2）。
+  14. 3.29 的"少一段"的反向对照起初不承重：去掉块数的比较，三个反例照样被逐块的比较抓到。`TestTheTemplatesCorrespond` 加第四个反例"末尾多一段"（中文多一段），修正并入第 4 个提交（第 4–7 个提交重放，sha 变了）。修复一轮另加每种块的形状各一个反例（审查 A-M1）。
+  15. LW1 (API) 并行建三本 LLM Wiki（`Promise.all`）：oxlint 的 `no-await-in-loop` 不许循环里等；每一本照设计核对，422 与 `countNotebooks` 在三本都结束之后（审查 C：三次建只共用 acme 的行的 `FOR SHARE`）。
+- 实测（本机，竞态检测下，经 `heavy.sh`，除非注明）：
+  - 模板的字节（`wc -c wiki/domain/template-*.md`，不经 heavy.sh）：英文的 `raw` 648、`AGENTS` 2,209，中文的 `raw` 593、`AGENTS` 2,107，共 5,557；测试钉住的是每页 8 KiB（修复一轮起写出 `8 << 10`）。
+  - 八个新的整个程序的测试（`go test -race -count=1 -run '^(…)$' ./internal/bootstrap`，开始时负载 1.8）：包 11.9 秒，测试本身 10.3 秒。第二份的五个共 5.4 秒（`TestPageViolationsCatchEachLLMWikiGap` 1.95、`TestImportsAndDowngradingAnLLMWiki` 1.66（0.93 与 0.73）、`TestTheDowngradeAnswersInItsOrder` 0.69、`TestLLMWikiCreationWritesItsTemplate` 0.59、`TestNotebooksAnswerTheirModeOverMCP` 0.52），乘 1.73 约 9.4 秒；第三份的三个共 4.9 秒（`TestWorkspaceChangesAndCreatingAnLLMWiki` 3.06，三个子测试各 1.02；`TestTheModeEventReachesTheStreams` 1.31；`TestTheTemplateRollsBackWithItsNotebook` 0.49），乘 1.73 约 8.4 秒。都在 7.5 的估计之内（P1 第二份的八个约 25–30 秒）。`TestPermissionMatrix` 带变体的行单独跑，包 21.0 秒。
+  - 修复一轮改了的测试：`TestPageViolationsCatchEachLLMWikiGap` 2.09 秒、`TestWorkspaceChangesAndCreatingAnLLMWiki` 3.70 秒（新的子测试 0.53）、`TestNotebooksAnswerTheirModeOverMCP` 0.52、`TestLLMWikiCreationWritesItsTemplate` 0.56、`TestPageNotebooksConvertTheState` 0.00 秒。
+  - e2e（不带竞态）：建成时 `make e2e` 284 个 55.4 秒；LW1 (API) 50 毫秒、LW1 (MCP) 29 毫秒、MC1 989 毫秒。修复一轮 284 个 36.0 秒；审查 C 与修复核对 C 284 个 36.4、36.9 秒。
+- 反向对照（每一条的结果见 [S1 的审查记录](reviews/P1-S1-mode-template-review.md)"反向对照"）：
+  - 7.3 的第 1–22 条都被它点名的测试抓到。第 7 条的第一种写法留下没用的 import、编译不过，改成以 `%w` 包着问题之后两个测试都抓到（原始记录是编译不过的那一次，审查 C-N1 重跑）。第 12 条照字面写（去掉 `Message:`）时组合根交的是空字符串，`changesets_message_check` 拒绝、建答 500，两个测试因此失败，不是因为比较了说明；另写 12b（`wikiSeeds.Seed` 交 `nil`，库照收的一行）：e2e 的 LW1 (API) 比较说明抓到（`"message": null`），`TestLLMWikiCreationWritesItsTemplate` 建成时在读说明时失败，修复一轮之后在比较处（`coalesce`，主持者的决定 25）。7.3 的第 12 条照此分成 a、b。
+  - 3.29 的 S1 各行：去掉它所测的检查，都被抓到（rc01–rc21；与 7.3 同一处改动的记在那里：`ClientOf` 第 10 条，播种者的交回第 3、4 条，播种者的问题第 7 条，`Seed` 的时钟第 9 条，降级的次序第 15 条，锁下的模式第 18 条，`checkPages` 的 `deleted_at` 第 20、21 条，五条查询第 14 条）。"少一段"起初不承重（上面第 14 条），加第四个反例之后抓到，在 `66602404` 上再跑一次也抓到。降级的"写者在普通的笔记本上答 403"先对 `TestTheDowngradeAnswersInItsOrder` 跑、照过（那个测试没有写者的一行，本就该照过），对 3.29 点名的 `TestDowngradeNotebookRefuses` 的"an editor, a standard notebook"一行抓到。模板的回滚：创建不管播种者的错误时日志里没有触发器的话，触发器改拦 `raw` 时序列数到 1，都被 `TestTheTemplateRollsBackWithItsNotebook` 抓到。
+  - 另加五个变异（x1–x5），都被抓到：`pageNotebooks.StateOf` 总答普通（`TestNotebooksAnswerTheirModeOverMCP`）；MCP 的 `notebooks` 与 `openNotebook` 总答 `standard`（各自的适配器测试）；`OpenNotebook` 不管门之后已删的笔记本（`TestOpenNotebookAnswersInOrder`）；模板的说明总是英文的（`TestLLMWikiCreationWritesItsTemplate` 的中文一行）。
+  - 审查者的变异里存活的（A 的 a1、a3、a10–a13、a19，B 的 b1、b2，C 的 C1、C35、C40）各成了一条发现，修复一轮之后都被抓到，连同修复一轮自己的（x7–x10）与修复核对 A 的 f2 写成 7.3 的第 65–80 条。修复一轮在 `86e4c8da` 上重跑 7.3 的第 1–22 条（26 次，含 a/b）、x1–x5、12b 与 rc01–rc20、rc21b（rc11 另照它原来的写法再跑一次），54 行都被抓到（`fix1/rerun.out`）。
+- 门禁（本机）：建成时（`66602404`）`make lint gen-check knip build` 通过（约 32 秒）；经 `heavy.sh`：`make test` 928 秒（竞态与组合根三份同时跑，之后成本与守卫，`test-web` 166 个文件、3,346 个测试），`make test-go-short` 62 秒，`make e2e` 284 个 55.4 秒。修复一轮（`86e4c8da`）`make lint gen-check knip build` 通过；经 `heavy.sh`：`make test` 838 秒，`make test-go-short` 54 秒，`make e2e` 284 个 36.0 秒；13 个提交各自 build、vet、碰到的包的静态检查与 short 测试，网页的一个另过网页的门禁与 `make gen-check`。
+- 组合根的各份（6.5 的规则）：`go test -race -list` 核对，建成时 419 个测试、三份 168、116、135，第二份的五个、第三份的三个照 7.5 的表，第一份没有新的；修复一轮之后 420 个、168、117、135（`TestPageNotebooksConvertTheState` 在第二份，新的子测试在第三份的测试里）。本机单独两次：建成时第一份 257.5、266.2，平均 261.8 秒；第二份 150.6、159.9，平均 155.2；第三份 198.2、192.1，平均 195.1。S1 的起点 `f92ecac7` 同样两次：第二份 148.3、143.4，平均 145.8（+9.4）；第三份 184.1、179.9，平均 182.0（+13.1）。修复一轮：第二份 155.2、149.8，平均 152.5；第三份 186.6、193.7，平均 190.1。第三份多出的比它的三个新测试多：`prepareMatrix` 给它的每个用者多种一个 wlab，`TestTheStreamSeesWhatEachReadAllows`（第三份）也读 wlab 的笔记本（上面第 8 条）。CI 与本机之比：1.19、2.44、1.91；S1 带修复在 CI 上第二份约多 17–23 秒、第三份约多 15–25 秒，第三份到 P1 结束约 6:45–7:00，7.5 照此改正（审查 C-N5，主持者的决定 26）。
+- CI：分支的 run 40098894279（`66602404`）全绿，共 14:24（作业，括号里是测试一步）：竞态 9:51（9:30）、组合根一 5:28（5:11）、二 6:42（6:19）、三 6:36（6:13）、守卫 8:45（8:22）、成本 8:15（6:05）、short 3:20（3:01）、web 4:07（3:36）、e2e 4:29（E2E 一步 3:40）、镜像 1:28。修复一轮的 run 40107114331（`86e4c8da`）全绿，共 16:51：竞态 8:13（7:55）、组合根一 7:33（7:12）、二 5:33（5:12）、三 5:28（5:07）、守卫 12:46（12:27）、成本 8:10（6:03）、short 3:23（3:03）、web 4:08（3:34）、e2e 4:01（E2E 一步 3:09）、镜像 1:14。三份的测试一步都在 7:30 之下；第一份没有 S1 的测试，5:11 → 7:12 是 CI 的波动（第二、三份反过来快了）。照 M9/P2 6.5 的规则的算法，两次的平均是 6:11.5、5:45.5、5:40，都在 7:30 之下；界线没有挪、没有分、没有提高 `-timeout`，CI 的文件与 `Makefile` 没改。
+- 设计的文字照建成的与修复一轮改，已改在各节（3.1、3.4、3.5、3.6、3.8、3.9、3.10、3.12、3.13、3.14、3.15、3.16，第 5 节，3.29，7.1、7.2、7.3、7.5，第 8 节的两处；3.30 列出）；7.3 的第 12 条分成 a、b，加第 65–80 条。
+- **修复一轮**（2026-10-24，分支 `m10-p1-s1` 的 `86e4c8da`；三份审查与主持者的决定，`fix-brief-1.md`）：从 `66602404` 起 13 个提交，一组一个，每个提交单独 build、vet、碰到的包的静态检查与 short 测试都通过：
+  - 次要的：
+    - B-M1 = C-M1 `cb9de147`：`TestPageViolationsCatchEachLLMWikiGap` 加"AGENTS under raw"（规则的 `a.parent_id IS NULL`）。
+    - B-M2 `9daac068`：`TestADowngradePassesTheModeSubscribers` 读 `updated_by_id`（行先由 bob 改过）。
+    - A-M1 `d37f57aa`：`TestTheTemplatesCorrespond` 加每种块的形状各一个反例。
+    - A-M2 `ec5e67b4`：`TestTheTemplateSeedsAnLLMWiki` 在创建之后再数解析，page 的新的 `TestASeedPassesTheFactsItIsGiven`。
+    - A-M3 `e21332db`：`TestATemplatesParseIsItsContents` 以 `pageMark()` 解析、核对 `page-mark`。
+  - 小问题：
+    - A-N1 = C-N2 `5008ee7d`：变更集经 `coalesce` 读（主持者的决定 25）。
+    - A-N2 `3884692a`：假的 `CreateNotebook` 照表的检查拒绝。
+    - A-N3 `75e34bb8`，这一轮唯一的生产的改动：`TreeWrites().Seed` 与 wiki 的 `Seeds` 端口交回写下的页的 id，模板交回写下的来源根（主持者的决定 23）；新的 `TestTheTemplateAnswersTheSourceRootWritten`。
+    - A-N4 `ee464e7d`：`TestWorkspaceChangesAndCreatingAnLLMWiki` 的第四个子测试，钉住 PostgreSQL（主持者的决定 24）。
+    - B-N1 `670765c6`：`TestNotebooksAnswerTheirModeOverMCP` 降级之后再读 `notebooks`。
+    - B-N2 = C-N6 `2e954be5`：`createNotebook` 的说明不重复，重新生成。
+    - C-N3 `9c2da5c7`：`TestTheTemplatesAreSmall` 写出 8 KiB。
+    - C-N4 `86e4c8da`：`TestPageNotebooksConvertTheState`；`open_notebook` 对门之后被删的笔记本答现有的 `notebook.not_found`（404），`TestTheOpenNotebookAnswer` 核对适配器原样交回它。
+    - C-N1：7.3 的变异、另加的与反向对照在修好的头上重跑，记录留在 `fix1/rerun.out`。C-N5：两份重量（上面），7.5 改正（主持者的决定 26）。
+  - 实施者在这一轮一次在 `heavy.sh` 之外跑了 `TestPageNotebooksConvertTheState`（不要库，没有起容器）；之后每次都经 `heavy.sh`。
+- **修复核对一轮**（2026-10-25，三位各在 `86e4c8da` 的新的工作树里）：三位都说自己的与自己范围里别人的每一条都改了，没有新的发现（Important 0、Minor 0、Nit 0）。A-N3 的生产的改动：建的 `seededItsRoot` 不改，一页以别的 id 写下时建答 500（A 的 h5、B 的 b8、C 的 F6；F6c 证明那就是这一处核对，F6b 显出 A-N3 之前只有整个程序的核对抓得到）。新的子测试是逼出来的（C 的 F7、F7c），但没有我们的代码的变异让它失败（A 的 h7），是 PostgreSQL 的回归测试（主持者的决定 24）。13 个提交各自绿（C）。
+- 实施者留给审查与主持者的一项（`TestLLMWikiCreationWritesItsTemplate` 把说明读进 `string`）由修复一轮的 `coalesce` 改正（主持者的决定 25）；文档照偏离改的各处，由这一节与 3.30 记下。
 
 ### 10.2 S2：守卫的骨架
 

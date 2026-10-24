@@ -496,7 +496,7 @@ export interface paths {
         put?: never;
         /**
          * Create a notebook
-         * @description Creates a notebook in the workspace whose admin is the caller; the workspace's admins and members can, its guests cannot (forbidden). A workspace that does not exist, is deleted, or that the caller is no active member of is workspace.not_found; the values are checked after both.
+         * @description Creates a notebook in the workspace whose admin is the caller; the workspace's admins and members can, its guests cannot (forbidden). A workspace that does not exist, is deleted, or that the caller is no active member of is workspace.not_found; the values are checked after both. An LLM Wiki is created with its template, the pages raw, its source root, and AGENTS, in one change; the mode and the template's language are checked with the other values.
          */
         post: operations["createNotebook"];
         delete?: never;
@@ -607,6 +607,29 @@ export interface paths {
          * @description Ends the caller's membership of the notebook. Its only admin cannot, even alone in it (notebook.sole_admin): another member becomes an admin first, or the admin deletes the notebook. A notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found; a caller who uses it by its workspace access alone, no member of it, is notebook.member_not_found.
          */
         post: operations["leaveNotebook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/notebooks/{notebook_id}/downgrade": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Downgrade an LLM Wiki
+         * @description Makes the LLM Wiki a standard notebook. Its pages stay as they are, raw and AGENTS among them, which anyone who can write may then rename, move or delete; it has no source root, no generated pages and no prompts after. No page is written. Its admins can (forbidden). A notebook that does not exist, is deleted, or that the caller cannot see is notebook.not_found; a standard one is notebook.not_llm_wiki; one with an import, a restore or an undo queued or running is transfer.busy, to downgrade once it has ended. An upgrade, the way back, is another process.
+         */
+        post: operations["downgradeNotebook"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1430,6 +1453,7 @@ export interface paths {
          *     - pages: a write of a notebook's pages; tree tells whether the tree changed (a page created, renamed, moved or deleted), pages lists the pages whose content was written with their new revisions, empty for none, null for more than 20, when the client takes every page as written.
          *     - lock: an edit session of a page opened or ended; the client reads the page's lock again.
          *     - links: a write of a notebook's pages changed its link index; pages lists the pages of the index (so after an upgrade once nervewiki reindex has run) whose links resolve to other pages now, but for those whose content the write wrote, which a pages event lists; targets lists the pages whose backlinks changed. Each is empty for none, and null for more than 20 or for all of them, as after nervewiki reindex rebuilt the index, when the client takes every page of the notebook as changed. aliases tells whether the write changed the aliases of the notebook's pages, which links resolve by: a version's links, which the index does not hold, may resolve otherwise, so the client reads the views of the notebook's versions again. A write that changed the aliases alone sends one with both lists empty.
+         *     - mode: a notebook's mode changed, an LLM Wiki downgraded to a standard notebook (and, later, a notebook upgraded): its data is the notebook's ids. Read the notebook again, its mode and the caller's role in it with it.
          *     - reset: the last frame; the client reconnects at once and refreshes all it shows. reason is access (the caller may see other notebooks now), notebooks_deleted, expired (the credential, at its expiry), unauthenticated (it failed at a heartbeat: revoked, signed out, the account deactivated), reconnected (the server missed events), or overflow (the client fell behind). A reset for access, notebooks_deleted, reconnected or overflow comes after the events the stream held.
          *
          *     The stream may also end without a reset: when the server stops, when the credential cannot be checked at a heartbeat, or when the client does not take a frame within a heartbeat. The client reconnects then too, and refreshes.
@@ -2036,6 +2060,11 @@ export interface components {
          */
         WorkspaceAccess: "none" | "viewer" | "editor";
         /**
+         * @description A notebook's mode. standard is a notebook as it always was; llm_wiki is an LLM Wiki: its source area holds sources written once, its root page AGENTS and source root cannot be deleted, index and log at its root are generated, and its agents are served the prompts ingest, query and lint. A downgrade makes an LLM Wiki standard; an upgrade's states are no mode.
+         * @enum {string}
+         */
+        NotebookMode: "standard" | "llm_wiki";
+        /**
          * @description A role in a notebook: admin manages the notebook and its members, editor writes, reader reads. Rules compare roles by set; which of two is higher only the order reader < editor < admin says.
          * @enum {string}
          */
@@ -2048,6 +2077,12 @@ export interface components {
             workspace_id: string;
             name: string;
             workspace_access: components["schemas"]["WorkspaceAccess"];
+            mode: components["schemas"]["NotebookMode"];
+            /**
+             * Format: uuid
+             * @description An LLM Wiki's source root: the page its template wrote, under which its sources are. Null for a standard notebook.
+             */
+            source_root_id: string | null;
             role: components["schemas"]["NotebookRole"];
             /** @description How many active members the notebook has. A private notebook with one member is the caller's own ("My notebooks"). */
             member_count: number;
@@ -2061,10 +2096,16 @@ export interface components {
         };
         /** @description 1–255 bytes after the surrounding blanks are trimmed and the text is in NFC; none of / \ : * ? " < > | # ^ [ ] nor control characters; not starting or ending with a dot; no name Windows reserves (CON, COM1, …). It is the folder's name when the notebook is exported. */
         NotebookName: string;
-        /** @description A new notebook; its workspace access is none when absent. */
+        /** @description A new notebook; its workspace access is none, its mode standard and its template's language en when absent. */
         NotebookCreate: {
             name: components["schemas"]["NotebookName"];
             workspace_access?: components["schemas"]["WorkspaceAccess"];
+            mode?: components["schemas"]["NotebookMode"];
+            /**
+             * @description The language of an LLM Wiki's template, the client's: its two pages are written in it, to be rewritten by their users after. Checked whatever the mode; a standard notebook writes nothing.
+             * @enum {string}
+             */
+            template_locale?: "zh-CN" | "en";
         };
         NotebookUpdate: {
             name?: components["schemas"]["NotebookName"];
@@ -2865,6 +2906,13 @@ export interface components {
             /** @description Whether the write changed the aliases of the notebook's pages, a page's added or dropped by its content, or with the page itself: the links of the pages' versions, which the index does not hold, may resolve otherwise. False for a rebuilt index, whose null lists take every page as changed. */
             aliases: boolean;
         };
+        /** @description The data of mode, a change of a notebook's mode. */
+        EventMode: {
+            /** Format: uuid */
+            workspace_id: string;
+            /** Format: uuid */
+            notebook_id: string;
+        };
         /** @description The data of reset, the last frame. */
         EventReset: {
             /** @enum {string} */
@@ -3255,6 +3303,7 @@ export type InvitedWorkspace = components['schemas']['InvitedWorkspace'];
 export type InvitationPreview = components['schemas']['InvitationPreview'];
 export type SlugAvailability = components['schemas']['SlugAvailability'];
 export type WorkspaceAccess = components['schemas']['WorkspaceAccess'];
+export type NotebookMode = components['schemas']['NotebookMode'];
 export type NotebookRole = components['schemas']['NotebookRole'];
 export type Notebook = components['schemas']['Notebook'];
 export type NotebookList = components['schemas']['NotebookList'];
@@ -3339,6 +3388,7 @@ export type EventPageRevision = components['schemas']['EventPageRevision'];
 export type EventPages = components['schemas']['EventPages'];
 export type EventLock = components['schemas']['EventLock'];
 export type EventLinks = components['schemas']['EventLinks'];
+export type EventMode = components['schemas']['EventMode'];
 export type EventReset = components['schemas']['EventReset'];
 export type Asset = components['schemas']['Asset'];
 export type AssetPage = components['schemas']['AssetPage'];
@@ -4298,6 +4348,30 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    downgradeNotebook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The notebook, now standard. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Notebook"];
+                };
             };
             default: components["responses"]["Problem"];
         };
@@ -5285,7 +5359,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "text/event-stream": components["schemas"]["EventHello"] | components["schemas"]["EventPages"] | components["schemas"]["EventLock"] | components["schemas"]["EventLinks"] | components["schemas"]["EventReset"];
+                    "text/event-stream": components["schemas"]["EventHello"] | components["schemas"]["EventPages"] | components["schemas"]["EventLock"] | components["schemas"]["EventLinks"] | components["schemas"]["EventMode"] | components["schemas"]["EventReset"];
                 };
             };
             default: components["responses"]["Problem"];

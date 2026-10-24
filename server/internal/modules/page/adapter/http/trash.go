@@ -10,6 +10,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/app"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/apigen"
+	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
 // ListTrashUseCase is app.ListTrash.
@@ -54,11 +55,11 @@ func (h handler) GetTrashItem(ctx context.Context, req gen.GetTrashItemRequestOb
 
 // RestoreNode serves POST /api/v0/nodes/{node_id}/restore.
 func (h handler) RestoreNode(ctx context.Context, req gen.RestoreNodeRequestObject) (gen.RestoreNodeResponseObject, error) {
-	client, err := clientOf(ctx)
+	client, err := shared.ClientOf(ctx)
 	if err != nil {
 		return nil, err
 	}
-	r, err := h.uc.RestoreNode.Execute(ctx, req.NodeID, client)
+	r, err := h.uc.RestoreNode.Execute(ctx, req.NodeID, domain.Client(client))
 	if err != nil {
 		return nil, err
 	}

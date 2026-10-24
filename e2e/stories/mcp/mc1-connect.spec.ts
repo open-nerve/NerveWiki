@@ -94,8 +94,9 @@ test("MC1: an agent connects with a personal access token, gets its notebook's A
       name: "Handbook",
       workspace: { slug: team.workspace.slug, name: team.workspace.name },
       role: "admin",
+      mode: "standard",
     },
-    { id: research.id, name: "Research", workspace: { slug: lab.slug, name: "Lab" }, role: "admin" },
+    { id: research.id, name: "Research", workspace: { slug: lab.slug, name: "Lab" }, role: "admin", mode: "standard" },
   ].toSorted((a, b) => (a.workspace.slug < b.workspace.slug ? -1 : 1));
   expect(listed.structured).toEqual({ notebooks: mine, truncated: false });
   const opened = await account.call("open_notebook", { notebook: handbook.id });

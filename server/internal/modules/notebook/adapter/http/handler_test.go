@@ -20,16 +20,20 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
-// fakeAuth accepts the token "valid".
+// fakeAuth accepts the token "valid", a sign-in session's, and "pat", a
+// personal access token's.
 type fakeAuth struct{}
 
 func (fakeAuth) Authenticate(ctx context.Context, token string) (context.Context, string, error) {
-	if token != "valid" {
-		return nil, "", shared.Unauthenticated()
-	}
-	session := uuid.MustParse("0199a2b4-0000-7000-8000-000000000002")
+	credential := uuid.MustParse("0199a2b4-0000-7000-8000-000000000002")
 	user := uuid.MustParse("0199a2b4-0000-7000-8000-000000000001")
-	return shared.WithActor(ctx, shared.Actor{UserID: user, SessionID: session}), "session:" + session.String(), nil
+	switch token {
+	case "valid":
+		return shared.WithActor(ctx, shared.Actor{UserID: user, SessionID: credential}), "session:" + credential.String(), nil
+	case "pat":
+		return shared.WithActor(ctx, shared.Actor{UserID: user, APITokenID: credential}), "pat:" + credential.String(), nil
+	}
+	return nil, "", shared.Unauthenticated()
 }
 
 // notebookID is the id of every notebook the fakes answer.
@@ -39,21 +43,27 @@ func view(role shared.NotebookRole) app.View {
 	at := time.Date(2026, 10, 2, 10, 0, 0, 0, time.UTC)
 	return app.View{
 		Notebook: domain.Notebook{ID: notebookID(), WorkspaceID: uuid.MustParse("0199a2b4-0000-7000-8000-00000000000a"),
-			Name: "Engineering", Access: shared.AccessViewer, CreatedAt: at, UpdatedAt: at},
+			Name: "Engineering", Access: shared.AccessViewer, CreatedAt: at, UpdatedAt: at, Mode: domain.ModeStandard},
 		Role: role, MemberCount: 2,
 	}
 }
 
 const engineeringJSON = `{"created_at":"2026-10-02T10:00:00Z","id":"0199a2b4-0000-7000-8000-00000000000b","member_count":2,` +
-	`"name":"Engineering","role":"%s","updated_at":"2026-10-02T10:00:00Z",` +
+	`"mode":"standard","name":"Engineering","role":"%s","source_root_id":null,"updated_at":"2026-10-02T10:00:00Z",` +
 	`"workspace_access":"viewer","workspace_id":"0199a2b4-0000-7000-8000-00000000000a"}`
 
 func engineering(role string) string { return strings.Replace(engineeringJSON, "%s", role, 1) }
 
-// The fake use cases record what they got and answer err, or a view.
+// sourceRootID is the source root of the LLM Wiki the fakes answer when
+// told to.
+func sourceRootID() uuid.UUID { return uuid.MustParse("0199a2b4-0000-7000-8000-00000000000c") }
+
+// The fake use cases record what they got and answer err, or a view: an
+// LLM Wiki's when wiki is set.
 type fakeUseCase struct {
-	got []any
-	err error
+	got  []any
+	err  error
+	wiki bool
 }
 
 func (f *fakeUseCase) answer(role shared.NotebookRole, got ...any) (app.View, error) {
@@ -61,7 +71,11 @@ func (f *fakeUseCase) answer(role shared.NotebookRole, got ...any) (app.View, er
 	if f.err != nil {
 		return app.View{}, f.err
 	}
-	return view(role), nil
+	v := view(role)
+	if f.wiki {
+		v.Notebook.Mode, v.Notebook.SourceRootID = domain.ModeLLMWiki, sourceRootID()
+	}
+	return v, nil
 }
 
 type fakeList struct{ fakeUseCase }
@@ -76,8 +90,8 @@ func (f *fakeList) Execute(_ context.Context, slug string) ([]app.View, error) {
 
 type fakeCreate struct{ fakeUseCase }
 
-func (f *fakeCreate) Execute(_ context.Context, slug, name string, access *string) (app.View, error) {
-	return f.answer(shared.NotebookAdmin, slug, name, access)
+func (f *fakeCreate) Execute(_ context.Context, slug string, r app.NewNotebook) (app.View, error) {
+	return f.answer(shared.NotebookAdmin, slug, r.Name, r.Access, r.Mode, r.Locale, r.Client)
 }
 
 type fakeGet struct{ fakeUseCase }
@@ -99,6 +113,12 @@ func (f *fakeDelete) Execute(_ context.Context, id uuid.UUID) error {
 	return err
 }
 
+type fakeDowngrade struct{ fakeUseCase }
+
+func (f *fakeDowngrade) Execute(_ context.Context, id uuid.UUID) (app.View, error) {
+	return f.answer(shared.NotebookAdmin, id)
+}
+
 // fakes are one of each use case, every one answering err.
 type fakes struct {
 	list   *fakeList
@@ -106,13 +126,16 @@ type fakes struct {
 	get    *fakeGet
 	update *fakeUpdate
 	delete *fakeDelete
+	// downgrade is an LLM Wiki's downgrade, its answer standard.
+	downgrade *fakeDowngrade
 	memberFakes
 	ownerlessFakes
 }
 
 func newFakes(err error) fakes {
 	u := fakeUseCase{err: err}
-	return fakes{&fakeList{u}, &fakeCreate{u}, &fakeGet{u}, &fakeUpdate{u}, &fakeDelete{u}, newMemberFakes(err), newOwnerlessFakes(err)}
+	return fakes{&fakeList{u}, &fakeCreate{u}, &fakeGet{u}, &fakeUpdate{u}, &fakeDelete{u}, &fakeDowngrade{u}, newMemberFakes(err),
+		newOwnerlessFakes(err)}
 }
 
 // serve mounts the module on f behind the platform's middlewares.
@@ -123,7 +146,7 @@ func (f fakes) serve(t *testing.T) http.Handler {
 		ListNotebooks: f.list, CreateNotebook: f.create, GetNotebook: f.get, UpdateNotebook: f.update, DeleteNotebook: f.delete,
 		ListMembers: f.listMembers, AddMember: f.addMember, UpdateMember: f.updateMember, RemoveMember: f.removeMember,
 		LeaveNotebook: f.leave, ListOwnerless: f.listOwnerless, TakeOver: f.takeOver, DeleteOwnerless: f.deleteOwnerless,
-		ListAuditEvents: f.listAudit,
+		ListAuditEvents: f.listAudit, DowngradeNotebook: f.downgrade,
 	})
 	return router
 }
@@ -132,8 +155,14 @@ func (f fakes) serve(t *testing.T) http.Handler {
 // contract.
 func call(t *testing.T, h http.Handler, method, path, body string) (int, string) {
 	t.Helper()
+	return callAs(t, h, "valid", method, path, body)
+}
+
+// callAs is call with the bearer token token.
+func callAs(t *testing.T, h http.Handler, token, method, path, body string) (int, string) {
+	t.Helper()
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
-	req.Header.Set("Authorization", "Bearer valid")
+	req.Header.Set("Authorization", "Bearer "+token)
 	if body != "" {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -161,9 +190,9 @@ func TestTheOperationsAnswerTheUseCases(t *testing.T) {
 		{http.MethodGet, "/api/v0/workspaces/acme/notebooks", "", http.StatusOK, `{"data":[` + engineering("reader") + "]}",
 			func() []any { return f.list.got }, []any{"acme"}},
 		{http.MethodPost, "/api/v0/workspaces/acme/notebooks", `{"name":" Notes ","workspace_access":"viewer"}`, http.StatusCreated,
-			engineering("admin"), func() []any { return f.create.got }, []any{"acme", " Notes ", &viewer}},
+			engineering("admin"), func() []any { return f.create.got }, []any{"acme", " Notes ", &viewer, (*string)(nil), (*string)(nil), "web"}},
 		{http.MethodPost, "/api/v0/workspaces/acme/notebooks", `{"name":"Notes"}`, http.StatusCreated,
-			engineering("admin"), func() []any { return f.create.got }, []any{"acme", "Notes", (*string)(nil)}},
+			engineering("admin"), func() []any { return f.create.got }, []any{"acme", "Notes", (*string)(nil), (*string)(nil), (*string)(nil), "web"}},
 		{http.MethodGet, notebookPath, "", http.StatusOK, engineering("editor"),
 			func() []any { return f.get.got }, []any{notebookID()}},
 		{http.MethodPatch, notebookPath, `{"workspace_access":"viewer"}`, http.StatusOK, engineering("admin"),
@@ -172,6 +201,8 @@ func TestTheOperationsAnswerTheUseCases(t *testing.T) {
 			func() []any { return f.update.got }, []any{notebookID(), (*string)(nil), (*string)(nil)}},
 		{http.MethodDelete, notebookPath, "", http.StatusNoContent, "",
 			func() []any { return f.delete.got }, []any{notebookID()}},
+		{http.MethodPost, notebookPath + "/downgrade", "", http.StatusOK, engineering("admin"),
+			func() []any { return f.downgrade.got }, []any{notebookID()}},
 	} {
 		status, body := call(t, h, tt.method, tt.path, tt.body)
 		want := tt.want
@@ -183,6 +214,38 @@ func TestTheOperationsAnswerTheUseCases(t *testing.T) {
 		}
 		if got := tt.got(); !sameArgs(got, tt.wantGot) {
 			t.Errorf("%s %s %s: the use case got %v, want %v", tt.method, tt.path, tt.body, got, tt.wantGot)
+		}
+	}
+}
+
+// An LLM Wiki is answered with its mode and its source root's id.
+func TestAnLLMWikiIsAnsweredWithItsSourceRoot(t *testing.T) {
+	f := newFakes(nil)
+	f.get.wiki = true
+	want := strings.NewReplacer(`"mode":"standard"`, `"mode":"llm_wiki"`,
+		`"source_root_id":null`, `"source_root_id":"`+sourceRootID().String()+`"`).Replace(engineering("editor")) + "\n"
+	if status, body := call(t, f.serve(t), http.MethodGet, notebookPath, ""); status != http.StatusOK || body != want {
+		t.Errorf("GET = %d %s, want 200 %s", status, body, want)
+	}
+}
+
+// A creation's mode and template language reach the use case as sent,
+// with the client of the credential: a sign-in session's the web's, a
+// personal access token's the API's (M10/P1 design 3.7).
+func TestCreateNotebookTakesItsModeAndClient(t *testing.T) {
+	wiki, zh, en := "llm_wiki", "zh-CN", "en"
+	for _, tt := range []struct {
+		token, body string
+		want        []any
+	}{
+		{"valid", `{"name":"Notes","mode":"llm_wiki","template_locale":"zh-CN"}`, []any{"acme", "Notes", (*string)(nil), &wiki, &zh, "web"}},
+		{"pat", `{"name":"Notes","mode":"llm_wiki","template_locale":"en"}`, []any{"acme", "Notes", (*string)(nil), &wiki, &en, "api"}},
+		{"pat", `{"name":"Notes"}`, []any{"acme", "Notes", (*string)(nil), (*string)(nil), (*string)(nil), "api"}},
+	} {
+		f := newFakes(nil)
+		if status, body := callAs(t, f.serve(t), tt.token, http.MethodPost, "/api/v0/workspaces/acme/notebooks", tt.body); status != http.StatusCreated ||
+			!sameArgs(f.create.got, tt.want) {
+			t.Errorf("%s %s = %d %s, the use case got %v; want 201, %v", tt.token, tt.body, status, body, f.create.got, tt.want)
 		}
 	}
 }
@@ -226,6 +289,10 @@ func TestTheOperationsAnswerEachProblem(t *testing.T) {
 		{http.MethodPatch, notebookPath, `{"name":"a/b"}`, invalid, http.StatusUnprocessableEntity, "validation_failed"},
 		{http.MethodDelete, notebookPath, "", domain.ErrNotFound, http.StatusNotFound, "notebook.not_found"},
 		{http.MethodDelete, notebookPath, "", shared.Forbidden(), http.StatusForbidden, "forbidden"},
+		{http.MethodPost, notebookPath + "/downgrade", "", domain.ErrNotFound, http.StatusNotFound, "notebook.not_found"},
+		{http.MethodPost, notebookPath + "/downgrade", "", shared.Forbidden(), http.StatusForbidden, "forbidden"},
+		{http.MethodPost, notebookPath + "/downgrade", "", domain.ErrNotLLMWiki, http.StatusConflict, "notebook.not_llm_wiki"},
+		{http.MethodPost, notebookPath + "/downgrade", "", domain.ErrJobsWriting, http.StatusConflict, "transfer.busy"},
 	} {
 		status, body := call(t, newFakes(tt.err).serve(t), tt.method, tt.path, tt.body)
 		if status != tt.status || !strings.Contains(body, `"code":"`+tt.code+`"`) {

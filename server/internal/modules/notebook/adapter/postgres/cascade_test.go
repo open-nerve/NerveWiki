@@ -39,7 +39,8 @@ func newHoldingsFixture(t *testing.T) holdingsFixture {
 	ids := []uuid.UUID{uuid.NewV7(), uuid.NewV7(), uuid.NewV7()}
 	f.solo, f.team, f.shared = ids[0], ids[1], ids[2]
 	create := func(id, workspaceID, admin uuid.UUID) uuid.UUID {
-		n := domain.Notebook{ID: id, WorkspaceID: workspaceID, Name: "Notes", Access: shared.AccessNone, CreatedAt: now(), UpdatedAt: now()}
+		n := domain.Notebook{ID: id, WorkspaceID: workspaceID, Name: "Notes", Access: shared.AccessNone, CreatedAt: now(), UpdatedAt: now(),
+			Mode: domain.ModeStandard}
 		if err := s.CreateNotebook(context.Background(), n, admin); err != nil {
 			t.Fatal(err)
 		}

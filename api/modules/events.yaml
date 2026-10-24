@@ -45,6 +45,11 @@ paths:
         again. A write that changed the aliases alone sends one with both
         lists empty.
 
+        - mode: a notebook's mode changed, an LLM Wiki downgraded to a
+        standard notebook (and, later, a notebook upgraded): its data is
+        the notebook's ids. Read the notebook again, its mode and the
+        caller's role in it with it.
+
         - reset: the last frame; the client reconnects at once and refreshes
         all it shows. reason is access (the caller may see other notebooks
         now), notebooks_deleted, expired (the credential, at its expiry),
@@ -79,6 +84,7 @@ paths:
                   - $ref: "#/components/schemas/EventPages"
                   - $ref: "#/components/schemas/EventLock"
                   - $ref: "#/components/schemas/EventLinks"
+                  - $ref: "#/components/schemas/EventMode"
                   - $ref: "#/components/schemas/EventReset"
         default:
           $ref: "#/components/responses/Problem"
@@ -213,6 +219,18 @@ components:
             not hold, may resolve otherwise. False for a rebuilt index,
             whose null lists take every page as changed.
           type: boolean
+    EventMode:
+      description: The data of mode, a change of a notebook's mode.
+      type: object
+      additionalProperties: false
+      required: [workspace_id, notebook_id]
+      properties:
+        workspace_id:
+          type: string
+          format: uuid
+        notebook_id:
+          type: string
+          format: uuid
     EventReset:
       description: The data of reset, the last frame.
       type: object

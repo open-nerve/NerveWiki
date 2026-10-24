@@ -46,6 +46,27 @@ func TestNotebooksFindAndLock(t *testing.T) {
 		}
 	})
 
+	// An LLM Wiki's state, a standard notebook's, and none of a deleted
+	// notebook, unlocked, outside a transaction too (M10/P1 design 3.3).
+	t.Run("StateOf", func(t *testing.T) {
+		root := uuid.NewV7()
+		f.exec(t, "UPDATE notebooks SET mode = 'llm_wiki', source_root_id = $2 WHERE id = $1", f.outside, root)
+		for _, tt := range []struct {
+			id   uuid.UUID
+			want notebook.State
+			ok   bool
+		}{
+			{f.outside, notebook.State{Mode: notebook.ModeLLMWiki, SourceRootID: root}, true},
+			{f.eng, notebook.State{Mode: notebook.ModeStandard}, true},
+			{f.ops, notebook.State{}, false},
+			{uuid.NewV7(), notebook.State{}, false},
+		} {
+			if got, ok, err := nbs.StateOf(ctx, tt.id); err != nil || ok != tt.ok || got != tt.want {
+				t.Errorf("StateOf(%s) = %+v, %v, %v; want %+v, %v", tt.id, got, ok, err, tt.want, tt.ok)
+			}
+		}
+	})
+
 	for name, lock := range locks {
 		t.Run(name, func(t *testing.T) {
 			if _, err := lock(ctx, f.eng); err == nil {

@@ -12,22 +12,25 @@ import (
 // node.list, then its instructions and an overview, unlocked.
 type OpenNotebook struct {
 	gate         *NotebookGate
+	notebooks    Notebooks
 	overview     OverviewStore
 	instructions *Instructions
 }
 
 // NewOpenNotebook returns the use case: its decision is the notebook
-// entry's gate, its instructions the entry's, with their one cache.
-func NewOpenNotebook(gate *NotebookGate, overview OverviewStore, instructions *Instructions) *OpenNotebook {
-	return &OpenNotebook{gate: gate, overview: overview, instructions: instructions}
+// entry's gate, its instructions the entry's, with their one cache; its
+// mode the notebooks' (M10/P1 design 3.12).
+func NewOpenNotebook(gate *NotebookGate, notebooks Notebooks, overview OverviewStore, instructions *Instructions) *OpenNotebook {
+	return &OpenNotebook{gate: gate, notebooks: notebooks, overview: overview, instructions: instructions}
 }
 
-// Opened is an open notebook: its AGENTS page's text when HasAgents (else
-// the built-in instructions, which the adapter writes), its pages and
-// attachments, its last change, nil when nothing was ever written in it,
-// and the root's first nodes, at most MaxOverviewRoot in the tree's
-// order, MoreRoot when others follow.
+// Opened is an open notebook: its mode, its AGENTS page's text when
+// HasAgents (else the built-in instructions, which the adapter writes),
+// its pages and attachments, its last change, nil when nothing was ever
+// written in it, and the root's first nodes, at most MaxOverviewRoot in
+// the tree's order, MoreRoot when others follow.
 type Opened struct {
+	Mode        domain.Mode
 	Agents      domain.Agents
 	HasAgents   bool
 	Pages       int64
@@ -44,16 +47,23 @@ type RootNode struct {
 }
 
 // Execute opens the notebook notebookID, in its order (M9/P1 design
-// 3.17.3): the actor and the notebook, notebook.not_found for none, a
-// deleted one, one the caller cannot see and the zero id, before anything
-// of its content is read; its counts; its last change; the root's first
-// nodes; its instructions.
+// 3.17.3; M10/P1 design 3.12): the actor and the notebook,
+// notebook.not_found for none, a deleted one, one the caller cannot see
+// and the zero id, before anything of its content is read; its mode, read
+// unlocked, notebook.not_found for one deleted since; its counts; its last
+// change; the root's first nodes; its instructions.
 func (o *OpenNotebook) Execute(ctx context.Context, notebookID uuid.UUID) (Opened, error) {
 	if err := o.gate.Execute(ctx, notebookID); err != nil {
 		return Opened{}, err
 	}
-	var out Opened
-	var err error
+	state, ok, err := o.notebooks.StateOf(ctx, notebookID)
+	switch {
+	case err != nil:
+		return Opened{}, err
+	case !ok:
+		return Opened{}, domain.ErrNotebookNotFound
+	}
+	out := Opened{Mode: state.Mode}
 	if out.Pages, out.Attachments, err = o.overview.NotebookCounts(ctx, notebookID); err != nil {
 		return Opened{}, err
 	}

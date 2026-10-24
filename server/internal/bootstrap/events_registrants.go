@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/events"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/notebook"
@@ -41,7 +42,8 @@ func (p pageEvents) EditSessionEnded(ctx context.Context, e page.SessionEnded) e
 
 // notebookEvents publishes the notebook module's visibility changes and
 // deletions on the event stream: each resets the streams it concerns,
-// which reconnect and read what they see again (M5 design 4.10).
+// which reconnect and read what they see again (M5 design 4.10); and its
+// mode changes, an event of their own (M10 design 4.5).
 type notebookEvents struct {
 	publisher *events.Publisher
 }
@@ -52,4 +54,13 @@ func (n notebookEvents) VisibilityChanged(ctx context.Context, v notebook.Visibi
 
 func (n notebookEvents) NotebookDeleted(ctx context.Context, d notebook.NotebookDeletion) error {
 	return n.publisher.NotebooksDeleted(ctx, events.NotebooksDeleted{WorkspaceID: d.WorkspaceID, NotebookIDs: d.NotebookIDs})
+}
+
+// ModeChanged publishes a notebook's mode change, the type mode (M10
+// design 4.5): its frame is the notebook's ids, which the stream puts in
+// the data itself (events/domain/frame.go:38-57), so its own data is
+// empty. Every stream that sees the notebook gets it.
+func (n notebookEvents) ModeChanged(ctx context.Context, m notebook.ModeChange) error {
+	return n.publisher.Publish(ctx, events.Event{Type: "mode", WorkspaceID: m.WorkspaceID, NotebookID: m.NotebookID,
+		Data: json.RawMessage(`{}`)})
 }

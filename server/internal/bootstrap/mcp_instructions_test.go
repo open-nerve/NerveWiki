@@ -185,7 +185,7 @@ func TestTheInstructionsFollowTheAGENTSPage(t *testing.T) {
 func skeletonOf(t *testing.T, o map[string]any) string {
 	t.Helper()
 	overview, _ := o["overview"].(map[string]any)
-	skeleton := map[string]any{"notebook": o["notebook"], "instructions": "", "instructions_from": o["instructions_from"],
+	skeleton := map[string]any{"notebook": o["notebook"], "mode": o["mode"], "instructions": "", "instructions_from": o["instructions_from"],
 		"overview": map[string]any{"pages": overview["pages"], "attachments": overview["attachments"],
 			"last_changed_at": overview["last_changed_at"], "root": []any{}}, "truncated": false}
 	var b strings.Builder

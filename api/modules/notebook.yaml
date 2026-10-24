@@ -40,7 +40,9 @@ paths:
         workspace's admins and members can, its guests cannot (forbidden). A
         workspace that does not exist, is deleted, or that the caller is no
         active member of is workspace.not_found; the values are checked after
-        both.
+        both. An LLM Wiki is created with its template, the pages raw, its
+        source root, and AGENTS, in one change; the mode and the template's
+        language are checked with the other values.
       security: [{ bearer: [] }]
       x-problem-codes: [workspace.not_found, forbidden, validation_failed]
       requestBody:
@@ -247,6 +249,34 @@ paths:
           description: The caller's membership has ended.
         default:
           $ref: "#/components/responses/Problem"
+  /api/v0/notebooks/{notebook_id}/downgrade:
+    parameters:
+      - $ref: "#/components/parameters/NotebookID"
+    post:
+      operationId: downgradeNotebook
+      tags: [notebook]
+      summary: Downgrade an LLM Wiki
+      description: >-
+        Makes the LLM Wiki a standard notebook. Its pages stay as they are,
+        raw and AGENTS among them, which anyone who can write may then
+        rename, move or delete; it has no source root, no generated pages
+        and no prompts after. No page is written. Its admins can (forbidden).
+        A notebook that does not exist, is deleted, or that the caller cannot
+        see is notebook.not_found; a standard one is notebook.not_llm_wiki;
+        one with an import, a restore or an undo queued or running is
+        transfer.busy, to downgrade once it has ended. An upgrade, the way
+        back, is another process.
+      security: [{ bearer: [] }]
+      x-problem-codes: [notebook.not_found, forbidden, notebook.not_llm_wiki, transfer.busy]
+      responses:
+        "200":
+          description: The notebook, now standard.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Notebook"
+        default:
+          $ref: "#/components/responses/Problem"
   /api/v0/workspaces/{slug}/ownerless-notebooks:
     parameters:
       - $ref: "#/components/parameters/Slug"
@@ -418,13 +448,24 @@ components:
         own membership's role alone.
       type: string
       enum: [none, viewer, editor]
+    NotebookMode:
+      description: >-
+        A notebook's mode. standard is a notebook as it always was; llm_wiki
+        is an LLM Wiki: its source area holds sources written once, its root
+        page AGENTS and source root cannot be deleted, index and log at its
+        root are generated, and its agents are served the prompts ingest,
+        query and lint. A downgrade makes an LLM Wiki standard; an upgrade's
+        states are no mode.
+      type: string
+      enum: [standard, llm_wiki]
     Notebook:
       description: >-
         A notebook, with the caller's effective role in it: the higher of its
         membership's role and the one the workspace access gives it.
       type: object
       additionalProperties: false
-      required: [id, workspace_id, name, workspace_access, role, member_count, created_at, updated_at]
+      required:
+        [id, workspace_id, name, workspace_access, mode, source_root_id, role, member_count, created_at, updated_at]
       properties:
         id:
           type: string
@@ -436,6 +477,14 @@ components:
           type: string
         workspace_access:
           $ref: "#/components/schemas/WorkspaceAccess"
+        mode:
+          $ref: "#/components/schemas/NotebookMode"
+        source_root_id:
+          description: >-
+            An LLM Wiki's source root: the page its template wrote, under
+            which its sources are. Null for a standard notebook.
+          type: [string, "null"]
+          format: uuid
         role:
           $ref: "#/components/schemas/NotebookRole"
         member_count:
@@ -459,7 +508,7 @@ components:
           items:
             $ref: "#/components/schemas/Notebook"
     NotebookCreate:
-      description: A new notebook; its workspace access is none when absent.
+      description: A new notebook; its workspace access is none, its mode standard and its template's language en when absent.
       type: object
       additionalProperties: false
       required: [name]
@@ -468,6 +517,15 @@ components:
           $ref: "#/components/schemas/NotebookName"
         workspace_access:
           $ref: "#/components/schemas/WorkspaceAccess"
+        mode:
+          $ref: "#/components/schemas/NotebookMode"
+        template_locale:
+          description: >-
+            The language of an LLM Wiki's template, the client's: its two
+            pages are written in it, to be rewritten by their users after.
+            Checked whatever the mode; a standard notebook writes nothing.
+          type: string
+          enum: [zh-CN, en]
     NotebookUpdate:
       type: object
       additionalProperties: false
