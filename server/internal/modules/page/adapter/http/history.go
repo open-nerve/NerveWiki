@@ -10,6 +10,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/app"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/apigen"
+	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
 // ListChangesetsUseCase is app.ListChangesets.
@@ -86,7 +87,7 @@ func (h handler) ListChangesetChanges(ctx context.Context, req gen.ListChangeset
 // RevertChangeset serves POST /api/v0/changesets/{changeset_id}/revert. An
 // empty request has no message.
 func (h handler) RevertChangeset(ctx context.Context, req gen.RevertChangesetRequestObject) (gen.RevertChangesetResponseObject, error) {
-	client, err := clientOf(ctx)
+	client, err := shared.ClientOf(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +95,7 @@ func (h handler) RevertChangeset(ctx context.Context, req gen.RevertChangesetReq
 	if req.Body != nil {
 		message = req.Body.Message
 	}
-	r, err := h.uc.RevertChangeset.Execute(ctx, req.ChangesetID, message, client)
+	r, err := h.uc.RevertChangeset.Execute(ctx, req.ChangesetID, message, domain.Client(client))
 	if err != nil {
 		return nil, err
 	}

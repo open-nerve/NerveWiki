@@ -167,7 +167,7 @@ func (h handler) ListNodes(ctx context.Context, req gen.ListNodesRequestObject) 
 
 // CreatePage serves POST /api/v0/notebooks/{notebook_id}/pages.
 func (h handler) CreatePage(ctx context.Context, req gen.CreatePageRequestObject) (gen.CreatePageResponseObject, error) {
-	client, err := clientOf(ctx)
+	client, err := shared.ClientOf(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -175,7 +175,7 @@ func (h handler) CreatePage(ctx context.Context, req gen.CreatePageRequestObject
 	if req.Body.Content != nil {
 		d.Content = *req.Body.Content
 	}
-	v, err := h.uc.CreatePage.Execute(ctx, req.NotebookID, d, client)
+	v, err := h.uc.CreatePage.Execute(ctx, req.NotebookID, d, domain.Client(client))
 	if err != nil {
 		return nil, err
 	}
@@ -202,7 +202,7 @@ func (h handler) GetPageContent(ctx context.Context, req gen.GetPageContentReque
 
 // PutPageContent serves PUT /api/v0/pages/{page_id}/content.
 func (h handler) PutPageContent(ctx context.Context, req gen.PutPageContentRequestObject) (gen.PutPageContentResponseObject, error) {
-	client, err := clientOf(ctx)
+	client, err := shared.ClientOf(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -210,7 +210,7 @@ func (h handler) PutPageContent(ctx context.Context, req gen.PutPageContentReque
 	if req.Body.EditSessionID != nil {
 		p.EditSession = *req.Body.EditSessionID
 	}
-	v, err := h.uc.PutPageContent.Execute(ctx, req.PageID, p, client)
+	v, err := h.uc.PutPageContent.Execute(ctx, req.PageID, p, domain.Client(client))
 	if err != nil {
 		return nil, err
 	}
@@ -228,11 +228,11 @@ func (h handler) GetPageView(ctx context.Context, req gen.GetPageViewRequestObje
 
 // RenameNode serves PATCH /api/v0/nodes/{node_id}.
 func (h handler) RenameNode(ctx context.Context, req gen.RenameNodeRequestObject) (gen.RenameNodeResponseObject, error) {
-	client, err := clientOf(ctx)
+	client, err := shared.ClientOf(ctx)
 	if err != nil {
 		return nil, err
 	}
-	n, err := h.uc.RenameNode.Execute(ctx, req.NodeID, req.Body.Name, client)
+	n, err := h.uc.RenameNode.Execute(ctx, req.NodeID, req.Body.Name, domain.Client(client))
 	if err != nil {
 		return nil, err
 	}
@@ -241,12 +241,12 @@ func (h handler) RenameNode(ctx context.Context, req gen.RenameNodeRequestObject
 
 // MoveNode serves POST /api/v0/nodes/{node_id}/move.
 func (h handler) MoveNode(ctx context.Context, req gen.MoveNodeRequestObject) (gen.MoveNodeResponseObject, error) {
-	client, err := clientOf(ctx)
+	client, err := shared.ClientOf(ctx)
 	if err != nil {
 		return nil, err
 	}
 	to := app.Destination{ParentID: idOf(req.Body.ParentID), Position: positionOf(req.Body.AfterID)}
-	n, err := h.uc.MoveNode.Execute(ctx, req.NodeID, to, client)
+	n, err := h.uc.MoveNode.Execute(ctx, req.NodeID, to, domain.Client(client))
 	if err != nil {
 		return nil, err
 	}
@@ -255,11 +255,11 @@ func (h handler) MoveNode(ctx context.Context, req gen.MoveNodeRequestObject) (g
 
 // DeleteNode serves DELETE /api/v0/nodes/{node_id}.
 func (h handler) DeleteNode(ctx context.Context, req gen.DeleteNodeRequestObject) (gen.DeleteNodeResponseObject, error) {
-	client, err := clientOf(ctx)
+	client, err := shared.ClientOf(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if err := h.uc.DeleteNode.Execute(ctx, req.NodeID, client); err != nil {
+	if err := h.uc.DeleteNode.Execute(ctx, req.NodeID, domain.Client(client)); err != nil {
 		return nil, err
 	}
 	return gen.DeleteNode204Response{}, nil
@@ -268,12 +268,12 @@ func (h handler) DeleteNode(ctx context.Context, req gen.DeleteNodeRequestObject
 // OpenEditSession serves POST /api/v0/pages/{page_id}/edit-sessions. Its
 // body is optional: none takes nothing over.
 func (h handler) OpenEditSession(ctx context.Context, req gen.OpenEditSessionRequestObject) (gen.OpenEditSessionResponseObject, error) {
-	client, err := clientOf(ctx)
+	client, err := shared.ClientOf(ctx)
 	if err != nil {
 		return nil, err
 	}
 	takeOver := req.Body != nil && req.Body.TakeOver != nil && *req.Body.TakeOver
-	s, err := h.uc.OpenSession.Execute(ctx, req.PageID, client, takeOver)
+	s, err := h.uc.OpenSession.Execute(ctx, req.PageID, domain.Client(client), takeOver)
 	if err != nil {
 		return nil, err
 	}
@@ -308,11 +308,11 @@ func (h handler) GetEditLock(ctx context.Context, req gen.GetEditLockRequestObje
 
 // ReleaseEditLock serves DELETE /api/v0/pages/{page_id}/edit-lock.
 func (h handler) ReleaseEditLock(ctx context.Context, req gen.ReleaseEditLockRequestObject) (gen.ReleaseEditLockResponseObject, error) {
-	client, err := clientOf(ctx)
+	client, err := shared.ClientOf(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if err := h.uc.ReleaseEditLock.Execute(ctx, req.PageID, client); err != nil {
+	if err := h.uc.ReleaseEditLock.Execute(ctx, req.PageID, domain.Client(client)); err != nil {
 		return nil, err
 	}
 	return gen.ReleaseEditLock204Response{}, nil
@@ -320,12 +320,12 @@ func (h handler) ReleaseEditLock(ctx context.Context, req gen.ReleaseEditLockReq
 
 // ToggleTask serves POST /api/v0/pages/{page_id}/toggle-task.
 func (h handler) ToggleTask(ctx context.Context, req gen.ToggleTaskRequestObject) (gen.ToggleTaskResponseObject, error) {
-	client, err := clientOf(ctx)
+	client, err := shared.ClientOf(ctx)
 	if err != nil {
 		return nil, err
 	}
 	p := app.TaskToggle{Base: req.Body.BaseRevision, Offset: req.Body.Offset, Checked: req.Body.Checked}
-	v, err := h.uc.ToggleTask.Execute(ctx, req.PageID, p, client)
+	v, err := h.uc.ToggleTask.Execute(ctx, req.PageID, p, domain.Client(client))
 	if err != nil {
 		return nil, err
 	}
@@ -346,19 +346,6 @@ func editLockOf(l app.LockView) gen.EditLock {
 
 func editSessionOf(s app.EditSession) gen.EditSession {
 	return gen.EditSession{ID: s.ID, PageID: s.NodeID, ExpiresAt: s.ExpiresAt}
-}
-
-// clientOf is where the request came from: a personal access token's is
-// the API's, a sign-in session's access token the web's.
-func clientOf(ctx context.Context) (domain.Client, error) {
-	actor, err := shared.RequireActor(ctx)
-	switch {
-	case err != nil:
-		return "", err
-	case actor.APITokenID != uuid.UUID{}:
-		return domain.ClientAPI, nil
-	}
-	return domain.ClientWeb, nil
 }
 
 // idOf is a required id that may be null; the body's check made sure it

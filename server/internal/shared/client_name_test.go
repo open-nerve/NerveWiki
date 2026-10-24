@@ -1,10 +1,13 @@
 package shared_test
 
 import (
+	"context"
+	"errors"
 	"math/rand/v2"
 	"strings"
 	"testing"
 	"unicode/utf8"
+	"uuid"
 
 	"golang.org/x/text/unicode/norm"
 
@@ -98,5 +101,27 @@ func TestCleanClientNameKeepsAllItCan(t *testing.T) {
 		if got := utf8.RuneCountInString(shared.CleanClientName(name)); got != shared.MaxClientNameChars {
 			t.Fatalf("#%d: %q keeps %d characters, want 128", i, name, got)
 		}
+	}
+}
+
+// The client is the credential's (M10/P1 design 3.7): a sign-in session's
+// request is the web's, a personal access token's the API's; a request
+// without an actor is 401, as RequireActor answers.
+func TestClientOfIsTheCredential(t *testing.T) {
+	user := uuid.NewV7()
+	for _, tt := range []struct {
+		name  string
+		actor shared.Actor
+		want  string
+	}{
+		{"a sign-in session", shared.Actor{UserID: user, SessionID: uuid.NewV7()}, "web"},
+		{"a personal access token", shared.Actor{UserID: user, APITokenID: uuid.NewV7()}, "api"},
+	} {
+		if got, err := shared.ClientOf(shared.WithActor(context.Background(), tt.actor)); err != nil || got != tt.want {
+			t.Errorf("%s: ClientOf() = %q, %v; want %q", tt.name, got, err, tt.want)
+		}
+	}
+	if got, err := shared.ClientOf(context.Background()); !errors.Is(err, shared.Unauthenticated()) || got != "" {
+		t.Errorf("ClientOf() without an actor = %q, %v; want 401", got, err)
 	}
 }

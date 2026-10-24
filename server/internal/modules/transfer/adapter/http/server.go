@@ -28,11 +28,11 @@ func (s server) StartExport(ctx context.Context, req gen.StartExportRequestObjec
 		id := req.Body.RootID.MustGet()
 		root = &id
 	}
-	client, err := clientOf(ctx)
+	client, err := shared.ClientOf(ctx)
 	if err != nil {
 		return nil, err
 	}
-	j, err := s.uc.Start.Run(ctx, req.NotebookID, root, client)
+	j, err := s.uc.Start.Run(ctx, req.NotebookID, root, domain.Client(client))
 	if err != nil {
 		return nil, err
 	}
@@ -41,11 +41,11 @@ func (s server) StartExport(ctx context.Context, req gen.StartExportRequestObjec
 
 // StartTrashRestore serves POST /api/v0/notebooks/{notebook_id}/trash-restores.
 func (s server) StartTrashRestore(ctx context.Context, req gen.StartTrashRestoreRequestObject) (gen.StartTrashRestoreResponseObject, error) {
-	client, err := clientOf(ctx)
+	client, err := shared.ClientOf(ctx)
 	if err != nil {
 		return nil, err
 	}
-	j, err := s.uc.Restore.Execute(ctx, app.RestoreRequest{NotebookID: req.NotebookID, NodeID: req.Body.NodeID, Client: client})
+	j, err := s.uc.Restore.Execute(ctx, app.RestoreRequest{NotebookID: req.NotebookID, NodeID: req.Body.NodeID, Client: domain.Client(client)})
 	if err != nil {
 		return nil, err
 	}
@@ -54,12 +54,12 @@ func (s server) StartTrashRestore(ctx context.Context, req gen.StartTrashRestore
 
 // StartRevert serves POST /api/v0/notebooks/{notebook_id}/reverts.
 func (s server) StartRevert(ctx context.Context, req gen.StartRevertRequestObject) (gen.StartRevertResponseObject, error) {
-	client, err := clientOf(ctx)
+	client, err := shared.ClientOf(ctx)
 	if err != nil {
 		return nil, err
 	}
 	j, err := s.uc.Revert.Execute(ctx, app.RevertRequest{NotebookID: req.NotebookID, ChangesetID: req.Body.ChangesetID,
-		Message: req.Body.Message, Client: client})
+		Message: req.Body.Message, Client: domain.Client(client)})
 	if err != nil {
 		return nil, err
 	}
@@ -98,19 +98,6 @@ func (s server) CancelTransferJob(ctx context.Context, req gen.CancelTransferJob
 		return nil, err
 	}
 	return gen.CancelTransferJob200JSONResponse(jobOf(j)), nil
-}
-
-// clientOf is where the request came from: a personal access token's is
-// the API's, a sign-in session's access token the web's.
-func clientOf(ctx context.Context) (domain.Client, error) {
-	actor, err := shared.RequireActor(ctx)
-	switch {
-	case err != nil:
-		return "", err
-	case actor.APITokenID != uuid.UUID{}:
-		return domain.ClientAPI, nil
-	}
-	return domain.ClientWeb, nil
 }
 
 // DownloadURL is the address of the job id's archive signed as s, which

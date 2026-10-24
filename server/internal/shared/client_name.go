@@ -1,8 +1,10 @@
 package shared
 
 import (
+	"context"
 	"strings"
 	"unicode/utf8"
+	"uuid"
 
 	"golang.org/x/text/unicode/norm"
 )
@@ -42,4 +44,22 @@ func CleanClientName(name string) string {
 		}
 	}
 	return strings.TrimSpace(cut)
+}
+
+// ClientOf is where the request ctx carries came from, as a write's
+// changeset records it (v0.1 design 13.1 item 2): a personal access
+// token's request is the API's, "api"; a sign-in session's access token's
+// the web's, "web". It reads the request's Actor: 401 unauthorized when
+// there is none, as RequireActor, which with the deny-by-default
+// authentication only happens on a route wired wrongly. Each module's
+// adapter converts the answer to its own type where it has one.
+func ClientOf(ctx context.Context) (string, error) {
+	actor, err := RequireActor(ctx)
+	switch {
+	case err != nil:
+		return "", err
+	case actor.APITokenID != uuid.UUID{}:
+		return "api", nil
+	}
+	return "web", nil
 }
