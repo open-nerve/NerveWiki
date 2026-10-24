@@ -338,19 +338,27 @@ func (q *Queries) SetNotebookMode(ctx context.Context, arg SetNotebookModeParams
 }
 
 const shareNotebook = `-- name: ShareNotebook :one
-SELECT id FROM notebooks
+SELECT id, mode, source_root_id FROM notebooks
 WHERE id = $1 AND deleted_at IS NULL
 FOR SHARE
 `
 
+type ShareNotebookRow struct {
+	ID           uuid.UUID
+	Mode         string
+	SourceRootID *uuid.UUID
+}
+
 // The notebook not deleted locked FOR SHARE until the transaction ends: a page write that changes no tree takes
 // it after the workspace row's FOR SHARE (M4/P1 design 3.3), and so runs beside the others but not beside a
-// management write, a tree write or a deletion. A deletion committed while it waited leaves no row.
-func (q *Queries) ShareNotebook(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+// management write, a tree write or a deletion. A deletion committed while it waited leaves no row. With its mode
+// and source root, which the page write reads under this lock (M10 design 4.6): a downgrade takes the row FOR NO
+// KEY UPDATE, so a unit's mode does not change while it runs.
+func (q *Queries) ShareNotebook(ctx context.Context, id uuid.UUID) (ShareNotebookRow, error) {
 	row := q.db.QueryRow(ctx, shareNotebook, id)
-	var id_2 uuid.UUID
-	err := row.Scan(&id_2)
-	return id_2, err
+	var i ShareNotebookRow
+	err := row.Scan(&i.ID, &i.Mode, &i.SourceRootID)
+	return i, err
 }
 
 const updateNotebook = `-- name: UpdateNotebook :exec

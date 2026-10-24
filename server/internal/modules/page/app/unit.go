@@ -177,9 +177,9 @@ func (w *Writer) workspaceOf(ctx context.Context, spec UnitSpec) (uuid.UUID, err
 
 // Run runs do in a unit of spec: outside a transaction, the notebook's
 // workspace, unlocked; then, in the unit's transaction, the workspace's row
-// FOR SHARE, the notebook's, the decision, the changeset it merges into,
-// do, the changeset's renames and moves, the search's queue, the
-// observers. The clock is read once: every row
+// FOR SHARE, the notebook's with its state (Write.Notebook), the decision,
+// the changeset it merges into, do, the changeset's renames and moves, the
+// search's queue, the observers. The clock is read once: every row
 // the unit writes has its time. Any error rolls the whole unit back and is
 // returned. It refuses a ctx that carries a transaction.
 func (w *Writer) Run(ctx context.Context, spec UnitSpec, do func(ctx context.Context, u *Unit) error) (Outcome, error) {
@@ -244,7 +244,8 @@ func (w *Writer) run(ctx context.Context, spec UnitSpec, at time.Time, do func(c
 		if spec.Tree {
 			lock = w.d.Notebooks.LockByID
 		}
-		if ok, err := lock(ctx, spec.NotebookID); err != nil || !ok {
+		state, ok, err := lock(ctx, spec.NotebookID)
+		if err != nil || !ok {
 			return orNotFound(err, spec.NotFound)
 		}
 		target := shared.Target{WorkspaceID: workspaceID, NotebookID: spec.NotebookID}
@@ -256,7 +257,7 @@ func (w *Writer) run(ctx context.Context, spec UnitSpec, at time.Time, do func(c
 		}
 		u = &Unit{w: w, write: Write{
 			WorkspaceID: workspaceID, NotebookID: spec.NotebookID, By: actor.UserID, Client: spec.Client,
-			Options: spec.Options, At: at, Kind: kind, RevertsID: spec.RevertsID,
+			Options: spec.Options, At: at, Kind: kind, RevertsID: spec.RevertsID, Notebook: state, Grants: &Grants{},
 		}, into: spec.Changeset, create: spec.Create, message: spec.Message, bulk: spec.Background || spec.BulkSearch,
 			merged: map[uuid.UUID]int{}, deferring: spec.DeferParticipants}
 		if err := u.lockInto(ctx); err != nil {
@@ -317,6 +318,18 @@ type Unit struct {
 	keepLinks  bool
 }
 
+// refusalOf is a guard's error err of the step s (M10 design 4.6): a
+// problem marked with the node it is about, the step's first unless the
+// guard marked it already, as the mode guard does; any other error, the
+// database's, as it is.
+func refusalOf(err error, s Step) error {
+	var problem *shared.Error
+	if !errors.As(err, &problem) || len(s.Changes) == 0 {
+		return err
+	}
+	return domain.Refuse(err, s.Changes[0].NodeID)
+}
+
 // step is an operation of the unit.
 func (u *Unit) step(op domain.Operation, changes ...domain.Change) Step {
 	return Step{Write: u.write, Operation: op, Changes: changes}
@@ -324,14 +337,15 @@ func (u *Unit) step(op domain.Operation, changes ...domain.Change) Step {
 
 // apply runs an operation whose checks passed: the guards, its write, its
 // items in the changeset, and, unless a participant added it, the
-// participants.
+// participants. A guard's refusal, a problem, is marked with the node it
+// is about (refusalOf).
 func (u *Unit) apply(ctx context.Context, s Step, participate bool, write func(ctx context.Context) error) error {
 	if err := u.inUnit(ctx); err != nil {
 		return err
 	}
 	for _, g := range u.w.d.Guards {
 		if err := g.GuardWrite(ctx, s); err != nil {
-			return err
+			return refusalOf(err, s)
 		}
 	}
 	if err := u.ensureChangeset(ctx); err != nil {

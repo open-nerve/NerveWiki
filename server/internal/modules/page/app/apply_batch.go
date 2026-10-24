@@ -104,10 +104,15 @@ func (r *replanned) Error() string {
 
 // Execute applies p in the notebook notebookID from client. Its order: the
 // actor; CheckBatch's 422s; the notebook, notebook.not_found; page.batch's
-// 403, unlocked; the tree's pass (PlanBatch): the first op that fails, the
-// items past MaxUnitNodes at the op that passes them; the sizes of the
-// pages its edits read, past MaxBatchReadBytes at the op that passes them,
-// before any content is read; the contents' pass (Contents): the first op
+// 403, unlocked; the tree's pass (PlanBatch): the first op that fails, its
+// own checks first, then the notebook's contract on the state read
+// unlocked, page.protected and page.virtual_file at their op (M10/P1
+// design 3.22); the items past MaxUnitNodes at the op that passes them;
+// page.manage_source asked of the first op that needs it, denied
+// page.source_admin_only at that op, in place of a later failure, before
+// the reads and the edit locks' precheck; the sizes of the pages its
+// edits read, past MaxBatchReadBytes at the op that passes them, before
+// any content is read; the contents' pass (Contents): the first op
 // that fails, its parses' bounds (422) and budget (503) at it; the edit
 // locks of the pages it writes or deletes, page.locked at the first op that
 // meets one; the unit's bounds on what it parses, page.batch_too_large; the
@@ -127,19 +132,22 @@ func (b *ApplyBatch) Execute(ctx context.Context, notebookID uuid.UUID, p PathBa
 	if err != nil {
 		return Batched{}, err
 	}
-	if err := decideNotebook(ctx, b.notebooks, b.auth, actor, domain.ActionBatch, notebookID); err != nil {
+	workspaceID, err := decidedNotebook(ctx, b.notebooks, b.auth, actor, domain.ActionBatch, notebookID)
+	if err != nil {
 		return Batched{}, err
 	}
 	session := b.parser.Planned()
 	defer session.Release()
-	a := &batchAttempt{b: b, notebookID: notebookID, steps: steps, message: p.Message, client: client, session: session}
+	a := &batchAttempt{b: b, workspaceID: workspaceID, notebookID: notebookID, steps: steps, message: p.Message, client: client,
+		session: session}
 	out, err := a.run(ctx)
 	var again *replanned
 	if errors.As(err, &again) {
 		b.logger.InfoContext(ctx, "batch planned again", slog.String("notebook_id", notebookID.String()), slog.Int("op", again.op),
 			slog.String("differs", again.what))
 		session.NewPlan()
-		a = &batchAttempt{b: b, notebookID: notebookID, steps: steps, message: p.Message, client: client, session: session}
+		a = &batchAttempt{b: b, workspaceID: workspaceID, notebookID: notebookID, steps: steps, message: p.Message, client: client,
+			session: session}
 		if out, err = a.run(ctx); errors.As(err, &again) {
 			err = changedTwice(steps, again)
 		}
@@ -196,17 +204,18 @@ func (b *ApplyBatch) lockPaths(ctx context.Context, notebookID uuid.UUID, err er
 // unit: its plan, the facts of its final contents and the links they had,
 // and, once its unit ran, what the unit did and its time.
 type batchAttempt struct {
-	b          *ApplyBatch
-	notebookID uuid.UUID
-	steps      []domain.BatchStep
-	message    string
-	client     domain.Client
-	session    *ParseSession
-	plan       *domain.BatchPlan
-	base       map[uuid.UUID]domain.Node
-	pages      map[uuid.UUID]domain.PlannedPage
-	facts      map[uuid.UUID]Facts
-	empty      Facts
+	b           *ApplyBatch
+	workspaceID uuid.UUID
+	notebookID  uuid.UUID
+	steps       []domain.BatchStep
+	message     string
+	client      domain.Client
+	session     *ParseSession
+	plan        *domain.BatchPlan
+	base        map[uuid.UUID]domain.Node
+	pages       map[uuid.UUID]domain.PlannedPage
+	facts       map[uuid.UUID]Facts
+	empty       Facts
 	// decided is the pages the batch's content ops decided: each page with
 	// a content op, alive after the batch, whatever bytes its last one left
 	// it, with where its links led at that op and its own changes since
@@ -255,13 +264,22 @@ func (a *batchAttempt) run(ctx context.Context) (Batched, error) {
 }
 
 // planned plans the batch on the tree read unlocked (M9/P3 design 3.4):
-// the tree's pass, the reads' bound, the contents' pass, the edit locks'
-// precheck, the unit's bounds, the final contents parsed and the links of
-// each at its last content op.
+// the tree's pass, with the notebook's contract judged on the state read
+// unlocked too and the action it needs asked (M10/P1 design 3.22), the
+// reads' bound, the contents' pass, the edit locks' precheck, the unit's
+// bounds, the final contents parsed and the links of each at its last
+// content op.
 func (a *batchAttempt) planned(ctx context.Context) error {
 	nodes, err := a.b.nodes.ListNodes(ctx, a.notebookID)
 	if err != nil {
 		return err
+	}
+	state, ok, err := a.b.notebooks.StateOf(ctx, a.notebookID)
+	switch {
+	case err != nil:
+		return err
+	case !ok:
+		return domain.ErrNotebookNotFound
 	}
 	a.base = make(map[uuid.UUID]domain.Node, len(nodes))
 	for _, n := range nodes {
@@ -276,7 +294,24 @@ func (a *batchAttempt) planned(ctx context.Context) error {
 			}
 		}
 	}
-	a.plan = domain.PlanBatch(nodes, a.steps, ids)
+	a.plan = domain.PlanBatch(nodes, a.steps, ids, state)
+	// The plan's refusal comes before its reads, so that a batch answers the
+	// first op that separate calls would refuse (M10/P1 review B-M3); the
+	// plan is the authority, the guard in the unit asks again under the lock
+	// (3.19): the plan's answer is not the unit's Grants.
+	if need := a.plan.Needs; need != nil {
+		err := a.grant(ctx, need.Action)
+		switch {
+		case errors.Is(err, shared.ErrNotVisible):
+			// The caller lost the notebook since its decision: the
+			// operation's 404, as authorize answers it.
+			return domain.ErrNotebookNotFound
+		case isForbidden(err):
+			a.plan.Refuse(need.Op, domain.Refuse(domain.ErrSourceAdminOnly, need.NodeID))
+		case err != nil:
+			return err // the database's, as it is: no refusal
+		}
+	}
 	texts, heads, err := a.read(ctx)
 	if err != nil {
 		return err
@@ -309,6 +344,18 @@ func (a *batchAttempt) planned(ctx context.Context) error {
 	}
 	a.empty = a.b.parser.markdown.Facts("") // an empty parent's: no budget taken
 	return a.linksBefore(ctx)
+}
+
+// grant asks whether the batch's actor may do action in its notebook, as
+// the plan's Needs names it: the authorizer that decided page.batch,
+// unlocked as that decision was.
+func (a *batchAttempt) grant(ctx context.Context, action shared.Action) error {
+	actor, err := shared.RequireActor(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = a.b.auth.Authorize(ctx, actor, action, shared.Target{WorkspaceID: a.workspaceID, NotebookID: a.notebookID})
+	return err
 }
 
 // withCurrent is f, the plan's failure, with the version of the page a
@@ -570,12 +617,16 @@ func (a *batchAttempt) differs(i int, what string, err error, current *domain.Ve
 	return &replanned{op: i, what: what, err: err, current: current}
 }
 
-// failed is err of the op i: a problem at the op, the batch's change of
-// the notebook since its plan for one of a kind the plan checks; any other
-// error as it is.
+// failed is err of the op i: a refusal, a guard's or a precheck's, at the
+// op, whatever its code (M10 design 4.6); a problem at the op, the batch's
+// change of the notebook since its plan for one of a kind the plan checks;
+// any other error as it is.
 func (a *batchAttempt) failed(i int, err error) error {
+	var refused *domain.Refused
 	var problem *shared.Error
 	switch {
+	case errors.As(err, &refused):
+		return &domain.OpFailed{Op: i, Tool: a.steps[i].Kind, Err: err}
 	case !errors.As(err, &problem):
 		return err
 	case replans(problem):
@@ -587,7 +638,7 @@ func (a *batchAttempt) failed(i int, err error) error {
 // replans reports whether e is of a kind the plan checks, which the unit
 // answering means the tree changed since the plan read it (M9/P3 design
 // 3.6.2): a node not found, a rule's 422, a name taken, a cycle, a depth.
-// A guard's refusal is none: it is answered as it is.
+// A guard's refusal is marked Refused and answered at its operation.
 func replans(e *shared.Error) bool {
 	switch e.Code {
 	case domain.ErrNotFound.Code, shared.CodeValidationFailed, domain.ErrTitleTaken.Code, domain.ErrCycle.Code, domain.ErrTooDeep.Code:

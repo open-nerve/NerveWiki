@@ -26,8 +26,10 @@ FOR NO KEY UPDATE;
 -- name: ShareNotebook :one
 -- The notebook not deleted locked FOR SHARE until the transaction ends: a page write that changes no tree takes
 -- it after the workspace row's FOR SHARE (M4/P1 design 3.3), and so runs beside the others but not beside a
--- management write, a tree write or a deletion. A deletion committed while it waited leaves no row.
-SELECT id FROM notebooks
+-- management write, a tree write or a deletion. A deletion committed while it waited leaves no row. With its mode
+-- and source root, which the page write reads under this lock (M10 design 4.6): a downgrade takes the row FOR NO
+-- KEY UPDATE, so a unit's mode does not change while it runs.
+SELECT id, mode, source_root_id FROM notebooks
 WHERE id = sqlc.arg(id) AND deleted_at IS NULL
 FOR SHARE;
 

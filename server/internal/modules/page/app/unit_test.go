@@ -301,6 +301,54 @@ func TestTheRegistrantsRunInTheirOrder(t *testing.T) {
 	}
 }
 
+// A guard's refusal comes out of the unit marked with the node it is about
+// (M10/P1 design 3.22): a problem with the step's first node, the node
+// moved before the nodes it carries; one the guard marked already keeps
+// its node; any other error, the database's, is as it is. Through the
+// mark, errors.Is sees the problem and the unit rolls back.
+func TestAUnitMarksItsGuardsRefusals(t *testing.T) {
+	refusal := shared.NewError(shared.KindConflict, "page.locked", "Locked.")
+	elsewhere := uuid.NewV7()
+	failure := errors.New("the database is gone")
+	for _, tt := range []struct {
+		name   string
+		err    error
+		marked bool
+		node   bool // the moved node's; else elsewhere
+	}{
+		{"a problem", refusal, true, true},
+		{"a problem marked", domain.Refuse(refusal, elsewhere), true, false},
+		{"another error", failure, false, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newFixture()
+			f.grant(domain.ActionRename)
+			notes := f.page("Notes", nil, 1)
+			f.page("Inner", &notes.ID, 1)
+			other := f.page("Other", nil, 2)
+			g := &guard{recorder: f.rec, err: tt.err}
+			f.guards = []app.WriteGuard{g}
+			_, err := f.run(f.asAlice(), domain.ClientWeb, func(ctx context.Context, u *app.Unit) error {
+				_, err := u.Move(ctx, notes.ID, &other.ID, app.First())
+				return err
+			})
+			var r *domain.Refused
+			switch {
+			case len(g.steps) != 1 || len(g.steps[0].Changes) != 2 || g.steps[0].Changes[0].NodeID != notes.ID:
+				t.Fatalf("the guard saw %+v, want the move of Notes and Inner under it", g.steps)
+			case !errors.Is(err, tt.err) || !f.tx.rolledBack:
+				t.Errorf("the unit = %v, rolled back %v; want %v, rolled back", err, f.tx.rolledBack, tt.err)
+			case errors.As(err, &r) != tt.marked:
+				t.Errorf("the unit = %v, marked %v; want marked %v", err, r != nil, tt.marked)
+			case tt.marked && tt.node && r.NodeID != notes.ID:
+				t.Errorf("the refusal is of %s, want the moved node's, %s", r.NodeID, notes.ID)
+			case tt.marked && !tt.node && r.NodeID != elsewhere:
+				t.Errorf("the refusal is of %s, want the guard's own, %s", r.NodeID, elsewhere)
+			}
+		})
+	}
+}
+
 // An operation given a context without the unit's transaction refuses:
 // it would write on the pool, outside the unit and its locks.
 func TestAnOperationRefusesAContextOutsideTheUnit(t *testing.T) {

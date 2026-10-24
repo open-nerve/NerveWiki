@@ -349,6 +349,11 @@ func TestTheOperationsAnswerEachProblem(t *testing.T) {
 	pagesLocked := shared.NewError(shared.KindConflict, "linking.pages_locked", "Pages are being edited.")
 	pagesLocked.Locks = []shared.LockHolder{{PageID: id(12), UserID: id(2), DisplayName: "Bob"}, {PageID: id(13), UserID: id(1), DisplayName: "Ann"}}
 	toggle := `{"base_revision":1,"offset":3,"checked":true}`
+	// The mode guard's refusals, marked with their node (M10/P1 design
+	// 3.22): the mark changes no answer.
+	protected := domain.Refuse(domain.ErrProtected, id(12))
+	virtual := domain.Refuse(domain.ErrVirtualFile, id(12))
+	adminOnly := domain.Refuse(domain.ErrSourceAdminOnly, id(12))
 	for _, tt := range []struct {
 		method, path, body string
 		err                error
@@ -361,6 +366,7 @@ func TestTheOperationsAnswerEachProblem(t *testing.T) {
 		{http.MethodPost, pagesPath, create, invalid, http.StatusUnprocessableEntity, "validation_failed"},
 		{http.MethodPost, pagesPath, create, domain.ErrTitleTaken, http.StatusConflict, "page.title_taken"},
 		{http.MethodPost, pagesPath, create, domain.ErrTooDeep, http.StatusConflict, "page.too_deep"},
+		{http.MethodPost, pagesPath, create, virtual, http.StatusConflict, "page.virtual_file"},
 		{http.MethodPost, pagesPath, create, busy, http.StatusServiceUnavailable, "server_busy"},
 		{http.MethodGet, pagePath, "", domain.ErrNotFound, http.StatusNotFound, "page.not_found"},
 		{http.MethodGet, viewPath, "", domain.ErrNotFound, http.StatusNotFound, "page.not_found"},
@@ -376,6 +382,9 @@ func TestTheOperationsAnswerEachProblem(t *testing.T) {
 		{http.MethodPatch, nodePath, `{"name":"a/b"}`, shared.Forbidden(), http.StatusForbidden, "forbidden"},
 		{http.MethodPatch, nodePath, `{"name":"a/b"}`, invalid, http.StatusUnprocessableEntity, "validation_failed"},
 		{http.MethodPatch, nodePath, `{"name":"a/b"}`, domain.ErrTitleTaken, http.StatusConflict, "page.title_taken"},
+		{http.MethodPatch, nodePath, `{"name":"a/b"}`, protected, http.StatusConflict, "page.protected"},
+		{http.MethodPatch, nodePath, `{"name":"a/b"}`, virtual, http.StatusConflict, "page.virtual_file"},
+		{http.MethodPatch, nodePath, `{"name":"a/b"}`, adminOnly, http.StatusForbidden, "page.source_admin_only"},
 		{http.MethodPatch, nodePath, `{"name":"a/b"}`, pagesLocked, http.StatusConflict, "linking.pages_locked"},
 		{http.MethodPatch, nodePath, `{"name":"a/b"}`, busy, http.StatusServiceUnavailable, "server_busy"},
 		{http.MethodPost, movePath, move, domain.ErrNotFound, http.StatusNotFound, "page.not_found"},
@@ -384,10 +393,14 @@ func TestTheOperationsAnswerEachProblem(t *testing.T) {
 		{http.MethodPost, movePath, move, domain.ErrCycle, http.StatusConflict, "page.cycle"},
 		{http.MethodPost, movePath, move, domain.ErrTitleTaken, http.StatusConflict, "page.title_taken"},
 		{http.MethodPost, movePath, move, domain.ErrTooDeep, http.StatusConflict, "page.too_deep"},
+		{http.MethodPost, movePath, move, protected, http.StatusConflict, "page.protected"},
+		{http.MethodPost, movePath, move, virtual, http.StatusConflict, "page.virtual_file"},
+		{http.MethodPost, movePath, move, adminOnly, http.StatusForbidden, "page.source_admin_only"},
 		{http.MethodPost, movePath, move, pagesLocked, http.StatusConflict, "linking.pages_locked"},
 		{http.MethodPost, movePath, move, busy, http.StatusServiceUnavailable, "server_busy"},
 		{http.MethodDelete, nodePath, "", domain.ErrNotFound, http.StatusNotFound, "page.not_found"},
 		{http.MethodDelete, nodePath, "", shared.Forbidden(), http.StatusForbidden, "forbidden"},
+		{http.MethodDelete, nodePath, "", protected, http.StatusConflict, "page.protected"},
 		{http.MethodPost, openPath, "", domain.ErrNotFound, http.StatusNotFound, "page.not_found"},
 		{http.MethodPost, openPath, "", shared.Forbidden(), http.StatusForbidden, "forbidden"},
 		{http.MethodPost, openPath, "", locked, http.StatusConflict, "page.locked"},

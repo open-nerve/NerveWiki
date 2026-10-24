@@ -179,8 +179,15 @@ func seedWikiVariant(t testing.TB, exec func(sql string, args ...any), w wikiSee
 
 // wikiMatrixRows are the rows of the variant: the downgrade of an LLM
 // Wiki, by its admins, the answer and the row standard without a source
-// root.
+// root; and its contract, which the mode guard keeps (M10/P1 design 3.22):
+// the source root's rename and move to another page, its admins' alone;
+// AGENTS's and the source root's deletion, which no one may make; a page
+// and an attachment at the root under a generated page's name.
 func wikiMatrixRows() []matrixRow {
+	pageNotFound := cell{http.StatusNotFound, "page.not_found"}
+	notebookNotFound := cell{http.StatusNotFound, "notebook.not_found"}
+	node := func(id uuid.UUID) string { return "/api/v0/nodes/" + id.String() }
+	notebook := func(c caller, s seeded) string { return "/api/v0/notebooks/" + s.wiki.notebook(notebookOf(c)).String() }
 	standard := func(t *testing.T, answer string) {
 		t.Helper()
 		var n struct {
@@ -216,5 +223,104 @@ func wikiMatrixRows() []matrixRow {
 				standard(t, answer)
 			},
 		},
+		{
+			op:      "renameNode",
+			variant: "LLM Wiki source root",
+			wiki:    true,
+			columns: notebookColumns(),
+			write:   true,
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodPatch, node(s.wiki.raw(notebookOf(c))), `{"name":"sources"}`
+			},
+			cells: adminsOnlyOr(cellOK(), cell{http.StatusForbidden, "page.source_admin_only"}, pageNotFound),
+			check: func(t *testing.T, _ caller, _ seeded, answer string) {
+				t.Helper()
+				var n treeNodeAnswer
+				decodeAnswer(t, answer, &n)
+				if n.Name != "sources" || n.ParentID != nil {
+					t.Errorf("renamed %+v, want sources at the root", n)
+				}
+			},
+		},
+		{
+			op:      "moveNode",
+			variant: "LLM Wiki source root",
+			wiki:    true,
+			columns: notebookColumns(),
+			write:   true,
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodPost, node(s.wiki.raw(notebookOf(c))) + "/move",
+					`{"parent_id":"` + s.wiki.agents(notebookOf(c)).String() + `"}`
+			},
+			cells: adminsOnlyOr(cellOK(), cell{http.StatusForbidden, "page.source_admin_only"}, pageNotFound),
+			check: func(t *testing.T, c caller, s seeded, answer string) {
+				t.Helper()
+				var n treeNodeAnswer
+				decodeAnswer(t, answer, &n)
+				if want := s.wiki.agents(notebookOf(c)).String(); n.Name != "raw" || n.ParentID == nil || *n.ParentID != want {
+					t.Errorf("moved %+v, want raw under AGENTS, %s", n, want)
+				}
+			},
+		},
+		{
+			op:      "deleteNode",
+			variant: "LLM Wiki AGENTS",
+			wiki:    true,
+			columns: notebookColumns(),
+			write:   true,
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodDelete, node(s.wiki.agents(notebookOf(c))), ""
+			},
+			cells: editorsOnly(cell{http.StatusConflict, "page.protected"}, pageNotFound),
+		},
+		{
+			op:      "deleteNode",
+			variant: "LLM Wiki source root",
+			wiki:    true,
+			columns: notebookColumns(),
+			write:   true,
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodDelete, node(s.wiki.raw(notebookOf(c))), ""
+			},
+			cells: editorsOnly(cell{http.StatusConflict, "page.protected"}, pageNotFound),
+		},
+		{
+			op:      "createPage",
+			variant: "LLM Wiki reserved title",
+			wiki:    true,
+			columns: notebookColumns(),
+			write:   true,
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodPost, notebook(c, s) + "/pages", `{"parent_id":null,"title":"index"}`
+			},
+			cells: editorsOnly(cell{http.StatusConflict, "page.virtual_file"}, notebookNotFound),
+		},
+		{
+			op:          "uploadAsset",
+			variant:     "LLM Wiki reserved title",
+			wiki:        true,
+			columns:     notebookColumns(),
+			write:       true,
+			contentType: "multipart/form-data; boundary=matrix",
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodPost, notebook(c, s) + "/assets", "--matrix\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\nlog" +
+					"\r\n--matrix\r\nContent-Disposition: form-data; name=\"file\"; filename=\"pic.png\"\r\n" +
+					"Content-Type: application/octet-stream\r\n\r\n" + pngHead + "\r\n--matrix--\r\n"
+			},
+			cells: editorsOnly(cell{http.StatusConflict, "page.virtual_file"}, notebookNotFound),
+		},
 	}
+}
+
+// adminsOnlyOr answers a notebook's admins answer, its other writers
+// writer, refuses its readers, and does not show it to the rest: a write
+// an LLM Wiki keeps to its admins (M10/P1 design 3.22).
+func adminsOnlyOr(answer, writer, notFound cell) map[caller]cell {
+	cells := adminsOnly(answer, notFound)
+	for _, c := range notebookColumns() {
+		if role, _ := roleIn(c); role == "editor" {
+			cells[c] = writer
+		}
+	}
+	return cells
 }

@@ -44,10 +44,16 @@ const (
 	// rule than a writer's, the batch decides each op's (M9/P3 design
 	// 3.13.4).
 	ActionBatch shared.Action = "page.batch"
+	// ActionManageSource is an LLM Wiki's source area's tree operations,
+	// its source root's own rename and move among them (M10 design 4.7):
+	// the mode guard asks it beyond the operation's own action, once a
+	// unit, of a step that needs it (CheckContract). No operation is it.
+	ActionManageSource shared.Action = "page.manage_source"
 )
 
 // Actions lists the module's actions.
 func Actions() []shared.Action {
 	return []shared.Action{ActionList, ActionRead, ActionCreate, ActionRename, ActionMove, ActionDelete, ActionWrite, ActionEdit,
-		ActionReleaseEditLock, ActionToggleTask, ActionHistory, ActionRestoreVersion, ActionRestore, ActionRevert, ActionSearch, ActionBatch}
+		ActionReleaseEditLock, ActionToggleTask, ActionHistory, ActionRestoreVersion, ActionRestore, ActionRevert, ActionSearch, ActionBatch,
+		ActionManageSource}
 }

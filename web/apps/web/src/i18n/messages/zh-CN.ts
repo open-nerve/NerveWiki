@@ -933,6 +933,10 @@ export const zhCN: Messages = {
   "problem.page.changeset_trimmed": "这次改动的一部分已从回收站清理，无法再撤销。",
   "problem.page.revert_too_large": "这次改动太大，无法一次撤销。",
   "problem.page.revert_conflict": "这次改动涉及的内容之后又有变化，无法直接撤销。",
+  "problem.page.protected": "LLM Wiki 保留它的 AGENTS 页与来源根：两者都不能删除，AGENTS 也不能改名或移动。",
+  "problem.page.virtual_file":
+    "这个文件由系统生成，修改页面后目录会自动更新；日志就是变更集，也会自动更新。根下的页与附件不能叫 index 或 log。",
+  "problem.page.source_admin_only": "来源根的改名、移动，与来源区里的改名、移动、删除，只有笔记本的管理员能做。",
   "problem.linking.pages_locked": "需要改写其中链接的页面正在被编辑，等编辑结束后再试。",
   "problem.network": "连不上服务器，请检查网络后重试。",
   "problem.unavailable": "暂时连不上服务器。你仍在登录状态，请稍后重试。",

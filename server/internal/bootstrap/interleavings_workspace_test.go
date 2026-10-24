@@ -72,6 +72,25 @@ func newAcmeTeamLogging(t *testing.T, bobRole, carolRole string, change func(*co
 	logger *slog.Logger,
 ) acmeTeam {
 	t.Helper()
+	var w *wiring
+	if batch != (transfer.Batch{}) {
+		w = &wiring{batch: batch}
+	}
+	return newAcmeTeamOn(t, bobRole, carolRole, change, w, logger)
+}
+
+// newAcmeTeamWiring is newAcmeTeam on an app wired with w: a reverse
+// control's program, its page module's dependencies changed (M10/P1
+// design 3.24).
+func newAcmeTeamWiring(t *testing.T, bobRole, carolRole string, w wiring) acmeTeam {
+	t.Helper()
+	return newAcmeTeamOn(t, bobRole, carolRole, nil, &w, slog.New(slog.DiscardHandler))
+}
+
+// newAcmeTeamOn is acme on an app of the configuration change alters,
+// wired with w, the app newApp wires for none, that logs to logger.
+func newAcmeTeamOn(t *testing.T, bobRole, carolRole string, change func(*config.Config), w *wiring, logger *slog.Logger) acmeTeam {
+	t.Helper()
 	url := pgtest.NewDatabase(t)
 	cfg := testConfig(t, url, false)
 	if change != nil {
@@ -79,10 +98,10 @@ func newAcmeTeamLogging(t *testing.T, bobRole, carolRole string, change func(*co
 	}
 	var a *app
 	var err error
-	if batch == (transfer.Batch{}) {
+	if w == nil {
 		a, err = newApp(context.Background(), cfg, logger, migrations.FS(), testWebUI())
 	} else {
-		a, err = wireApp(context.Background(), cfg, logger, migrations.FS(), testWebUI(), wiring{batch: batch})
+		a, err = wireApp(context.Background(), cfg, logger, migrations.FS(), testWebUI(), *w)
 	}
 	if err != nil {
 		t.Fatalf("wiring the app: %v", err)

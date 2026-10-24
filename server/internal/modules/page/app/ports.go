@@ -55,11 +55,14 @@ type Notebooks interface {
 	// WorkspaceOf returns the workspace of the notebook not deleted with
 	// id, unlocked, and whether there is one.
 	WorkspaceOf(ctx context.Context, id uuid.UUID) (uuid.UUID, bool, error)
-	// ShareByID locks the notebook not deleted with id FOR SHARE until the
-	// transaction ends, and reports whether there is one.
-	ShareByID(ctx context.Context, id uuid.UUID) (bool, error)
-	// LockByID is ShareByID FOR NO KEY UPDATE: a write of the tree.
-	LockByID(ctx context.Context, id uuid.UUID) (bool, error)
+	// ShareByID locks the notebook not deleted with id FOR SHARE until
+	// the transaction ends, and answers its state read under the lock, and
+	// whether there is one; LockByID FOR NO KEY UPDATE, for a write of the
+	// tree (v0.1 design 13.1 item 5). A unit reads its notebook's mode and
+	// source root here once (M10 design 4.6): a downgrade, which takes the
+	// row FOR NO KEY UPDATE, never lands inside a unit.
+	ShareByID(ctx context.Context, id uuid.UUID) (domain.NotebookState, bool, error)
+	LockByID(ctx context.Context, id uuid.UUID) (domain.NotebookState, bool, error)
 	// StateOf is the state of the notebook not deleted with id, unlocked,
 	// and whether there is one: a read that holds no lock sees one side of
 	// a downgrade or the other (M10 design 4.3).

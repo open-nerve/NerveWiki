@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres/pgtest"
 )
 
@@ -240,5 +241,124 @@ func TestImportsAndDowngradingAnLLMWiki(t *testing.T) {
 		}
 		checkImports(t, tm)
 		checkNotebooks(t, tm.pool)
+	})
+}
+
+// The deletion of an LLM Wiki's AGENTS and its downgrade (M10/P1 design
+// 3.23): the deletion's unit and the downgrade both lock the notebook's
+// row FOR NO KEY UPDATE, so the test holds the row and they run in the
+// order they came. The deletion first: its unit read the notebook an LLM
+// Wiki under the lock, page.protected, and the downgrade goes on; AGENTS
+// stays. The downgrade first: the unit reads it standard, and AGENTS goes
+// to the trash. A unit's mode is the one it writes under.
+func TestTheProtectionAndADowngrade(t *testing.T) {
+	downgrading := func(nb string) step {
+		return request("alice", http.MethodPost, "/api/v0/notebooks/"+nb+"/downgrade", "")
+	}
+	agents := func(tm acmeTeam, wiki guardedNotebook) (alive, trashed int) {
+		return count(t, tm.pool, "SELECT count(*) FROM nodes WHERE id = $1 AND deleted_at IS NULL", wiki.agents),
+			count(t, tm.pool, "SELECT count(*) FROM nodes WHERE id = $1 AND deleted_at IS NOT NULL AND trash_root", wiki.agents)
+	}
+	t.Run("the deletion first", func(t *testing.T) {
+		tm := newAcmeTeam(t, "", "")
+		wiki := tm.llmWiki(t, "Wiki")
+		deleted, downgraded := tm.interleaveOn(t, notebookRow(wiki.id), nodeDeletion("alice", wiki.agents), downgrading(wiki.id))
+		if !deleted.is(http.StatusConflict, "page.protected") || !downgraded.is(http.StatusOK, "") {
+			t.Errorf("DELETE AGENTS = %d %s, then the downgrade = %d %s; want 409 page.protected, then 200", deleted.status,
+				deleted.code, downgraded.status, downgraded.code)
+		}
+		if alive, trashed := agents(tm, wiki); alive != 1 || trashed != 0 {
+			t.Errorf("AGENTS: %d alive, %d in the trash; want it alive", alive, trashed)
+		}
+		checkPages(t, tm.pool)
+		checkNotebooks(t, tm.pool)
+	})
+	t.Run("the downgrade first", func(t *testing.T) {
+		tm := newAcmeTeam(t, "", "")
+		wiki := tm.llmWiki(t, "Wiki")
+		downgraded, deleted := tm.interleaveOn(t, notebookRow(wiki.id), downgrading(wiki.id), nodeDeletion("alice", wiki.agents))
+		if !downgraded.is(http.StatusOK, "") || !deleted.is(http.StatusNoContent, "") {
+			t.Errorf("the downgrade = %d %s, then DELETE AGENTS = %d %s; want 200, then 204", downgraded.status, downgraded.code,
+				deleted.status, deleted.code)
+		}
+		if alive, trashed := agents(tm, wiki); alive != 0 || trashed != 1 {
+			t.Errorf("AGENTS: %d alive, %d in the trash; want it in the trash", alive, trashed)
+		}
+		checkPages(t, tm.pool)
+		checkNotebooks(t, tm.pool)
+	})
+}
+
+// A batch its plan lets by and the mode guard refuses (M10/P1 design 3.24;
+// 7.2's interleaving 6): bob, an admin of the LLM Wiki, moves raw.md under
+// Notes over MCP as alice makes him an editor of it. The test holds the
+// notebook's row: alice's change waits for it first, then bob's batch,
+// whose plan, unlocked, finds him an admin and page.manage_source granted,
+// its unit waiting behind the change. Let go, the change commits first;
+// the unit decides page.batch, which an editor may, and the guard, asking
+// page.manage_source again under the lock, refuses ops[0],
+// page.source_admin_only, raw where it was. The same order in a program
+// with no guards moves raw: the plan let it by, the refusal is the
+// guard's (the reverse control). The batch first, raw moves, and the
+// change follows.
+func TestTheGuardRefusesWhatThePlanLetBy(t *testing.T) {
+	type wiki struct {
+		tm     acmeTeam
+		nb     guardedNotebook
+		notes  string
+		demote step
+		batch  step
+	}
+	var got mcpAnswer
+	setUp := func(t *testing.T, tm acmeTeam) wiki {
+		t.Helper()
+		nb := tm.llmWiki(t, "Wiki")
+		notes := tm.createPageWith(t, "alice", nb.id, "", "Notes", "")
+		bobs := tm.addNotebookMember(t, "alice", nb.id, "bob", "admin")
+		got = mcpAnswer{}
+		return wiki{tm: tm, nb: nb, notes: notes,
+			demote: request("alice", http.MethodPatch, "/api/v0/notebook-members/"+bobs, `{"role":"editor"}`),
+			batch: tm.agent(t, "bob", nb.id).mcpStep(t, "bob", "batch",
+				batched(map[string]any{"op": "move", "from": "raw.md", "to": "Notes/raw.md"}), &got)}
+	}
+	parentOfRaw := func(t *testing.T, w wiki) string {
+		t.Helper()
+		return selectText(t, w.tm, "SELECT coalesce(parent_id::text, 'the root') FROM nodes WHERE id = $1", w.nb.raw)
+	}
+	t.Run("the change first", func(t *testing.T) {
+		w := setUp(t, newAcmeTeam(t, "member", ""))
+		before := w.tm.guardRows(t, w.nb.id)
+		demoted, moved := w.tm.interleaveOn(t, notebookRow(w.nb.id), w.demote, w.batch)
+		ran(t, moved)
+		member := got.toolError(t)
+		if !demoted.is(http.StatusOK, "") || member["code"] != "page.source_admin_only" || member["op"] != 0.0 {
+			t.Errorf("bob made an editor = %d %s, then his batch = %.300s; want 200, then page.source_admin_only at ops[0]",
+				demoted.status, demoted.code, got.body)
+		}
+		if parent, after := parentOfRaw(t, w), w.tm.guardRows(t, w.nb.id); parent != "the root" || after != before {
+			t.Errorf("after the refused batch raw is under %s, the rows %s; want it at the root, the rows %s", parent, after, before)
+		}
+		checkPages(t, w.tm.pool)
+		checkNotebooks(t, w.tm.pool)
+	})
+	t.Run("the change first, no guards", func(t *testing.T) {
+		w := setUp(t, newAcmeTeamWiring(t, "member", "", wiring{page: func(d *page.Deps) { d.Guards = nil }}))
+		demoted, moved := w.tm.interleaveOn(t, notebookRow(w.nb.id), w.demote, w.batch)
+		ran(t, moved)
+		if r := got.result(t); !demoted.is(http.StatusOK, "") || r["isError"] == true || parentOfRaw(t, w) != w.notes {
+			t.Errorf("without guards, bob made an editor = %d, then his batch = %.300s, raw under %s; want 200, then raw "+
+				"moved under Notes", demoted.status, got.body, parentOfRaw(t, w))
+		}
+	})
+	t.Run("the batch first", func(t *testing.T) {
+		w := setUp(t, newAcmeTeam(t, "member", ""))
+		moved, demoted := w.tm.interleaveOn(t, notebookRow(w.nb.id), w.batch, w.demote)
+		ran(t, moved)
+		if r := got.result(t); r["isError"] == true || !demoted.is(http.StatusOK, "") || parentOfRaw(t, w) != w.notes {
+			t.Errorf("bob's batch = %.300s, then bob made an editor = %d, raw under %s; want raw moved under Notes, then 200",
+				got.body, demoted.status, parentOfRaw(t, w))
+		}
+		checkPages(t, w.tm.pool)
+		checkNotebooks(t, w.tm.pool)
 	})
 }

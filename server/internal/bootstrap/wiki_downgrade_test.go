@@ -109,3 +109,32 @@ func TestTheModeEventReachesTheStreams(t *testing.T) {
 	}
 	tm.quiet(t, eng, marker, alice, bob, carol)
 }
+
+// A downgrade ends the contract (M10/P1 design 3.24): the notebook,
+// standard, has a writer rename raw and move it under Notes, alice rename
+// AGENTS and a writer create a page at its root named index, and an agent
+// delete AGENTS.md. It is the test LW12's MCP exemption names (M10 design
+// 9): P2 adds its sources writable and its duplicates let by, P4 list
+// without the two generated pages, P5 the handshake without the system's
+// part.
+func TestTheDowngradeEndsTheContract(t *testing.T) {
+	tm := newAcmeTeam(t, "member", "")
+	wiki := tm.llmWiki(t, "Wiki")
+	notes := tm.createPage(t, "alice", wiki.id, "", "Notes")
+	if status, answer := tm.downgrade(t, "alice", wiki.id); status != http.StatusOK {
+		t.Fatalf("downgrade = %d %s, want 200", status, answer)
+	}
+	wiki.name = "the notebook downgraded"
+	tm.guarded(t, wiki, "bob renames raw", nodeRename("bob", wiki.raw, "sources"), cellOK())
+	tm.guarded(t, wiki, "bob moves it under Notes", nodeMove("bob", wiki.raw, notes), cellOK())
+	tm.guarded(t, wiki, "alice renames AGENTS", nodeRename("alice", wiki.agents, "Agents"), cellOK())
+	tm.guarded(t, wiki, "bob creates index at the root", pageCreation("bob", wiki.id, "index"), cellCreated())
+	if r := tm.agent(t, "alice", wiki.id).use(t, "delete", map[string]any{"path": "AGENTS.md"}).result(t); r["isError"] == true {
+		t.Errorf("an agent's delete of AGENTS.md once downgraded = %v, want it deleted", r)
+	}
+	if n := count(t, tm.pool, "SELECT count(*) FROM nodes WHERE id = $1 AND deleted_at IS NOT NULL", wiki.agents); n != 1 {
+		t.Errorf("AGENTS after the agent's delete: %d of it deleted, want it", n)
+	}
+	checkPages(t, tm.pool)
+	checkNotebooks(t, tm.pool)
+}

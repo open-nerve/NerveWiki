@@ -38,11 +38,14 @@ paths:
         the instance's lowest rate is cut off, as is one still arriving when
         the server shuts down. A file the storage runs out of room for is
         storage_full. The checks are made again as the attachment is
-        created. The server tells the file's type from its name's
+        created. In an LLM Wiki, no attachment at its root may be named index
+        or log, in any case (page.virtual_file): those are its generated
+        pages. The server tells the file's type from its name's
         extension and its first bytes, and reads an image's size.
       security: [{ bearer: [] }]
       x-raw: true
-      x-problem-codes: [notebook.not_found, forbidden, validation_failed, page.title_taken, storage_full]
+      x-problem-codes:
+        [notebook.not_found, forbidden, validation_failed, page.title_taken, page.virtual_file, storage_full]
       requestBody:
         required: true
         content:

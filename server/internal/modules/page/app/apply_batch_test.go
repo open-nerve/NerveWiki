@@ -757,6 +757,48 @@ func TestABatchIsPlannedAgainOnce(t *testing.T) {
 	}
 }
 
+// refuseOn refuses the steps of op with err, and lets the others by.
+type refuseOn struct {
+	op  domain.Operation
+	err error
+}
+
+func (g refuseOn) GuardWrite(_ context.Context, s app.Step) error {
+	if s.Operation == g.op {
+		return g.err
+	}
+	return nil
+}
+
+// A refusal is answered at its op, whatever its code (M10/P1 design
+// 3.22): a guard's page.title_taken, a code the plan checks, marked with
+// its node, is ops[1]'s, the batch planned once and rolled back. The
+// reverse: the unit's own page.title_taken, unmarked, a name taken since
+// the plan, has the batch planned again, whose tree's pass answers it (a
+// lone move: the fakes keep a rolled back unit's writes).
+func TestABatchAnswersARefusalAtItsOperation(t *testing.T) {
+	f := newFixture()
+	p, q := f.page("P", nil, 1), f.page("Q", nil, 2)
+	f.content(p.ID, "a", 2)
+	f.guards = []app.WriteGuard{refuseOn{op: domain.OpRename, err: domain.Refuse(domain.ErrTitleTaken, q.ID)}}
+	_, err := f.applyBatch(&fakeLinks{recorder: f.rec}, editOp("P.md", "a", "b"), moveOp("Q.md", "R.md"))
+	var r *domain.Refused
+	if opOf(err) != "1 page.title_taken" || !errors.As(err, &r) || r.NodeID != q.ID || f.count("ListNodes") != 1 || !f.tx.rolledBack {
+		t.Errorf("a batch a guard refuses at ops[1] = %s (%v) after %v; want ops[1]'s refusal of Q, planned once, rolled back",
+			opOf(err), err, f.rec.calls)
+	}
+
+	f = newFixture()
+	f.page("Q", nil, 2)
+	f.rec.before = map[string]func(){"LockNotebook in tx": func() { f.page("R", nil, 3) }}
+	_, err = f.applyBatch(&fakeLinks{recorder: f.rec}, moveOp("Q.md", "R.md"))
+	var taken *domain.PathTaken
+	if opOf(err) != "0 page.title_taken" || errors.As(err, &r) || !errors.As(err, &taken) || f.count("ListNodes") != 2 {
+		t.Errorf("a batch whose move's name another took since its plan = %s (%v) after %v; want it planned again, ops[0]'s "+
+			"PathTaken", opOf(err), err, f.rec.calls)
+	}
+}
+
 // sized gives the page id a content of n bytes by its row alone, as its
 // head tells it: none of its bytes is read here.
 func (f *fixture) sized(id uuid.UUID, n int) {
@@ -1221,5 +1263,107 @@ func TestABatchsParsesFindTheBudget(t *testing.T) {
 		writeOn("Q.md", strings.Repeat("q", 1<<20), tokenOf(q.ID, 1)), moveOp("A.md", "B.md")}
 	if _, err := batch.Execute(f.asAlice(), f.eng, app.PathBatch{Ops: ops, Message: "m"}, agent); err != nil || !r.took {
 		t.Errorf("a rewrite's read back of 5 MiB after a batch wrote 3 and 1 MiB = %v; want the budget whole for it", err)
+	}
+}
+
+// A batch's plan judges the contract before its reads and its lock (M10/P1
+// design 3.22): a writer's [move raw, delete AGENTS] is refused at ops[0],
+// page.source_admin_only of raw, as separate calls would be first; an
+// admin's at ops[1], page.protected of AGENTS; AGENTS held by Bob's
+// session changes neither, the plan before the edit locks' precheck, which
+// a writer's [move raw, edit AGENTS] would meet at ops[1]; the
+// unit not begun, page.manage_source asked once by the plan. A writer's
+// [move raw, edit Big], Big past MaxBatchReadBytes, is ops[0]'s 403 with
+// no content read; Big gone after the plan, ops[0]'s still, not planned
+// again. The authorizer's ErrNotVisible is the notebook's 404; its
+// database error is as it is, at no op. An admin's lone move asks the plan
+// and the guard in the unit, once each.
+func TestABatchsPlanRefusesBeforeItsLock(t *testing.T) {
+	type wiki struct {
+		f                *fixture
+		raw, agents, big domain.Node
+	}
+	newWiki := func(held bool) wiki {
+		f := newFixture()
+		w := wiki{f: f, raw: f.page("raw", nil, 1), agents: f.page("AGENTS", nil, 2), big: f.page("Big", nil, 4)}
+		f.page("Notes", nil, 3)
+		f.content(w.agents.ID, "# AGENTS\n", 1)
+		f.sized(w.big.ID, domain.MaxBatchReadBytes+1)
+		f.notebooks.states = map[uuid.UUID]domain.NotebookState{f.eng: {Mode: domain.ModeLLMWiki, SourceRootID: w.raw.ID}}
+		f.guards = []app.WriteGuard{app.NewModeGuard(f.auth)}
+		if held {
+			f.session(w.agents.ID, uuid.NewV7(), now().Add(time.Minute))
+		}
+		return w
+	}
+	writer := func(f *fixture) { f.auth.forbidden[domain.ActionManageSource] = true }
+	admin := func(f *fixture) { f.grant(domain.ActionManageSource) }
+	refused := func(f *fixture) []domain.BatchArgs {
+		return []domain.BatchArgs{moveOp("raw.md", "Notes/raw.md"), deleteOp("AGENTS.md", false)}
+	}
+	reading := func(f *fixture) []domain.BatchArgs {
+		return []domain.BatchArgs{moveOp("raw.md", "Notes/raw.md"), editOp("Big.md", "a", "b")}
+	}
+	editing := func(f *fixture) []domain.BatchArgs {
+		return []domain.BatchArgs{moveOp("raw.md", "Notes/raw.md"), editOp("AGENTS.md", "AGENTS", "Agents")}
+	}
+	dbErr := errors.New("db down")
+	failing := func(f *fixture) { f.auth.failing = map[shared.Action]error{domain.ActionManageSource: dbErr} }
+	for _, tt := range []struct {
+		name  string
+		held  bool
+		role  func(*fixture)
+		ops   func(*fixture) []domain.BatchArgs
+		after func(wiki) // after the plan, before its reads
+		want  string
+		of    func(wiki) uuid.UUID // the node the refusal is about, nil for no refusal
+	}{
+		{"a writer's", false, writer, refused, nil, "0 page.source_admin_only", func(w wiki) uuid.UUID { return w.raw.ID }},
+		{"an admin's", false, admin, refused, nil, "1 page.protected", func(w wiki) uuid.UUID { return w.agents.ID }},
+		{"a writer's, AGENTS held", true, writer, refused, nil, "0 page.source_admin_only", func(w wiki) uuid.UUID { return w.raw.ID }},
+		{"an admin's, AGENTS held", true, admin, refused, nil, "1 page.protected", func(w wiki) uuid.UUID { return w.agents.ID }},
+		{"a writer's, AGENTS edited and held", true, writer, editing, nil, "0 page.source_admin_only",
+			func(w wiki) uuid.UUID { return w.raw.ID }},
+		{"a writer's, Big past the reads' bound", false, writer, reading, nil, "0 page.source_admin_only",
+			func(w wiki) uuid.UUID { return w.raw.ID }},
+		{"a writer's, Big gone after the plan", false, writer, reading, func(w wiki) {
+			delete(w.f.store.nodes, w.big.ID)
+			delete(w.f.store.contents, w.big.ID)
+		}, "0 page.source_admin_only", func(w wiki) uuid.UUID { return w.raw.ID }},
+		{"one who lost the notebook", false, func(*fixture) {}, refused, nil, "-1 notebook.not_found", nil},
+		{"the authorizer's database error", false, failing, refused, nil, "-1 db down", nil},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			w := newWiki(tt.held)
+			tt.role(w.f)
+			if tt.after != nil {
+				w.f.rec.before = map[string]func(){"Authorize page.manage_source": func() { tt.after(w) }}
+			}
+			_, err := w.f.applyBatch(&fakeLinks{recorder: w.f.rec}, tt.ops(w.f)...)
+			var r *domain.Refused
+			var op *domain.OpFailed
+			switch {
+			case opOf(err) != tt.want:
+				t.Errorf("the batch = %s (%v), want %s", opOf(err), err, tt.want)
+			case tt.of != nil && (!errors.As(err, &r) || r.NodeID != tt.of(w)):
+				t.Errorf("the batch's refusal = %#v, want one of %s", err, tt.of(w))
+			case tt.want == "-1 db down" && (!errors.Is(err, dbErr) || errors.As(err, &op)):
+				t.Errorf("the batch = %v, want the database's error at no op", err)
+			}
+			if w.f.called("LockNotebook in tx") || w.f.called("PageContentWithin") || w.f.count("Authorize page.manage_source") != 1 ||
+				w.f.count("ListNodes") != 1 {
+				t.Errorf("the batch called %v; want page.manage_source asked once, planned once, no content read, no unit", w.f.rec.calls)
+			}
+		})
+	}
+
+	w := newWiki(false)
+	admin(w.f)
+	_, err := w.f.applyBatch(&fakeLinks{recorder: w.f.rec}, moveOp("raw.md", "Notes/raw.md"))
+	calls := w.f.rec.calls
+	if at := slices.Index(calls, "ListNodes"); err != nil || at < 0 || at+1 >= len(calls) || calls[at+1] != "StateOf" ||
+		w.f.count("Authorize page.manage_source") != 1 || w.f.count("Authorize page.manage_source in tx") != 1 {
+		t.Errorf("an admin's move of raw = %v after %v; want it written, the state read unlocked after the tree, asked by the "+
+			"plan and by the guard in the unit", err, calls)
 	}
 }

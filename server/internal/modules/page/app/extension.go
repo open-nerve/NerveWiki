@@ -33,6 +33,14 @@ type Write struct {
 	At          time.Time
 	Kind        domain.ChangesetKind
 	RevertsID   uuid.UUID
+	// Notebook is the notebook's mode and source root, read once under
+	// the notebook's row lock as the unit began (M10 design 4.6): the
+	// mode guard's contract and its prechecks'.
+	Notebook domain.NotebookState
+	// Grants is the unit's memo of the actions it asked beyond its own
+	// decision (Grants): the unit's own, a pointer, since each step and
+	// each guard has the Write by value.
+	Grants *Grants
 }
 
 // Step is one operation of a unit: its kind, and each node it changes,

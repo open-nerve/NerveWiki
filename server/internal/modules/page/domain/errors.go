@@ -96,6 +96,20 @@ var (
 	// it with the conflicts members.
 	ErrRevertConflict = shared.NewError(shared.KindConflict, "page.revert_conflict",
 		"Nodes the changeset changed changed since, or cannot go back as they were.")
+	// ErrProtected is an LLM Wiki's AGENTS page or source root that a step
+	// would delete, or AGENTS one it would rename or move (M10 design 4.9).
+	ErrProtected = shared.NewError(shared.KindConflict, "page.protected",
+		"An LLM Wiki keeps its AGENTS page and its source root: neither can be deleted, and AGENTS cannot be renamed or moved.")
+	// ErrVirtualFile is a node a step would put at an LLM Wiki's root under
+	// the name of a generated page (M10 design 4.9, 4.13).
+	ErrVirtualFile = shared.NewError(shared.KindConflict, "page.virtual_file",
+		"index.md and log.md at an LLM Wiki's root are generated: the index follows the pages, the log is the changesets. "+
+			"No page or attachment at its root may be named index or log.")
+	// ErrSourceAdminOnly is a step in an LLM Wiki's source area, its source
+	// root's own included, that only the notebook's admins may make (M10
+	// design 4.7).
+	ErrSourceAdminOnly = shared.NewError(shared.KindForbidden, "page.source_admin_only",
+		"Only the notebook's admins can rename, move or delete in an LLM Wiki's source area, its source root included.")
 )
 
 // ErrBatchTooLarge: a batch is past one of its bounds (M9 design 4.11,

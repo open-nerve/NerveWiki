@@ -187,7 +187,7 @@ type notebookExtensions struct {
 // (M10/P1). The module's use cases and its parts in the workspace module's
 // events all take them from here.
 func notebookRegistrants(pool *pgxpool.Pool) notebookExtensions {
-	pages := page.NewNotebookDeletion(pool, pageRegistrants(pool).sessionSubscribers)
+	pages := page.NewNotebookDeletion(pool, pageSessionSubscribers())
 	links := linkNotebookDeletion{linking.NewNotebookDeletion(pool)}
 	streams := notebookEvents{events.NewPublisher()}
 	return notebookExtensions{
@@ -250,19 +250,31 @@ type pageExtensions struct {
 // the sessions' openings and ends (M5/P2); M6's link index observes the
 // writes after the stream, so that a unit's pages event comes before its
 // links event (M6/P3); M7's attachments observe them last, their rows
-// deleted with their nodes (M7/P2); M11's freeze vetoes an opening.
-// serve, the notebook module's deletion and this package's tests take them
-// from here; the page module's own tests build the lock themselves.
-func pageRegistrants(pool *pgxpool.Pool) pageExtensions {
+// deleted with their nodes (M7/P2); M10's mode guard comes first, before
+// the lock, so that a write both refuse answers the mode's code (v0.1
+// design 12.4, M10 design 4.6); M11's freeze vetoes an opening. Its
+// authorizer is the composition root's, which only serve has: the command
+// line takes the edit sessions' subscribers alone (pageSessionSubscribers).
+// serve and this package's tests take them from here; the page module's
+// own tests build the lock themselves.
+func pageRegistrants(pool *pgxpool.Pool, authorizer shared.Authorizer) pageExtensions {
 	lock := page.NewEditLock(pool, displayNames{identity.NewDirectory(pool)})
-	streams := pageEvents{events.NewPublisher()}
+	mode := page.NewModeGuard(authorizer)
 	links := linkIndex{linking.NewIndex(pool, linkTargets{page.NewLinkTargets(pool)}, linkEvents{events.NewPublisher()})}
 	return pageExtensions{
-		guards:             []page.WriteGuard{lock},
-		observers:          []page.PageObserver{streams, links, assetObserver{asset.NewPageObserver(pool)}},
+		guards:             []page.WriteGuard{mode, lock},
+		observers:          []page.PageObserver{pageEvents{events.NewPublisher()}, links, assetObserver{asset.NewPageObserver(pool)}},
 		sessionVetoers:     []page.EditSessionVetoer{lock},
-		sessionSubscribers: []page.EditSessionSubscriber{streams},
+		sessionSubscribers: pageSessionSubscribers(),
 	}
+}
+
+// pageSessionSubscribers are the subscribers of the page module's edit
+// sessions: M5's event stream, whose publisher holds nothing but its
+// NOTIFY. A notebook's deletion ends its sessions through them, the
+// command line's among them.
+func pageSessionSubscribers() []page.EditSessionSubscriber {
+	return []page.EditSessionSubscriber{pageEvents{events.NewPublisher()}}
 }
 
 // pageParticipants are the modules that take part in the page module's
