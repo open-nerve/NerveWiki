@@ -499,7 +499,11 @@ func TestPlanBatchFirstFailureDecides(t *testing.T) {
 // reordering of an ancestor is its rename under its parent, and a move
 // to where it is, which is no step. Refuse takes the place of a later
 // failure, not of an earlier one, and Reads then lists the pages of the
-// ops before it alone.
+// ops before it alone. It takes the place of a batch's own bound at its
+// op too, the items' or the moves' carry, which separate calls have
+// none of; and a bound that ended the plan for good no longer does, so
+// that an earlier op's content failure still comes first (M10/P1/S2
+// review A-M1 = C-M2).
 func TestThePlanChecksTheContract(t *testing.T) {
 	type want struct {
 		code string
@@ -607,6 +611,60 @@ func TestThePlanChecksTheContract(t *testing.T) {
 	}
 	if p.Refuse(1, denied); !slices.Equal(first(p.Reads()), []uuid.UUID{flat.id(t, "Notes.md")}) || len(p.Pages()) != 1 {
 		t.Errorf("after a refusal at 1 the plan reads %v, its pages %d; want Notes alone", first(p.Reads()), len(p.Pages()))
+	}
+
+	// A batch's bounds at the op that needs page.manage_source: Big's
+	// subtree fills the items to MaxUnitNodes, the move of raw passes it;
+	// Large and Notes, raw under it, carry more than MaxUnitNodes when both
+	// move to another parent.
+	paths := []string{"raw.md", "Notes.md", "Big.md"}
+	for i := range domain.MaxUnitNodes - 1 {
+		paths = append(paths, "Big/c"+itoa(i)+".md")
+	}
+	big := newNotebook(paths...)
+	bigRaw := big.id(t, "raw.md")
+	bigWiki, bigDenied := domain.NotebookState{Mode: domain.ModeLLMWiki, SourceRootID: bigRaw}, domain.Refuse(domain.ErrSourceAdminOnly, bigRaw)
+	paths = []string{"Notes.md", "Notes/raw.md", "Other.md", "X.md"}
+	for i := range domain.MaxUnitNodes / 2 {
+		paths = append(paths, "Large/c"+itoa(i)+".md", "Notes/c"+itoa(i)+".md")
+	}
+	carry := newNotebook(paths...)
+	carryRaw := carry.id(t, "Notes/raw.md")
+	for _, tt := range []struct {
+		name   string
+		nb     *notebook
+		n      domain.NotebookState
+		denied error
+		ops    []domain.BatchArgs
+		bound  int // the op the bound fails
+	}{
+		{"the items' bound", big, bigWiki, bigDenied, []domain.BatchArgs{with(deleteOp("Big.md"), recursive), moveOp("raw.md", "Notes/raw.md")}, 1},
+		{"the moves' carry", carry, domain.NotebookState{Mode: domain.ModeLLMWiki, SourceRootID: carryRaw},
+			domain.Refuse(domain.ErrSourceAdminOnly, carryRaw), []domain.BatchArgs{moveOp("Large.md", "X/Large.md"),
+				moveOp("Notes.md", "Other/Notes.md")}, 1},
+	} {
+		p, _ := planIn(t, tt.nb, tt.n, tt.ops...)
+		if got := failed(t, p); got != (refusal{"page.batch_too_large", "", "", tt.bound}) || p.Needs == nil || p.Needs.Op != tt.bound {
+			t.Fatalf("%s: Failed %+v, Needs %+v; want the bound and the need at ops[%d]", tt.name, got, p.Needs, tt.bound)
+		}
+		if p.Refuse(p.Needs.Op, tt.denied); failed(t, p) != (refusal{"page.source_admin_only", "", "", tt.bound}) {
+			t.Errorf("%s: a refusal at the bound's op = %+v, want ops[%d]'s page.source_admin_only", tt.name, failed(t, p), tt.bound)
+		}
+	}
+	notes := big.id(t, "Notes.md")
+	p, _ = planIn(t, big, bigWiki, editOp("Notes.md", "zzz", "y"), with(deleteOp("Big.md"), recursive), moveOp("raw.md", "Notes/raw.md"))
+	if got := failed(t, p); got != (refusal{"page.batch_too_large", "", "", 2}) || len(first(p.Reads())) != 0 {
+		t.Fatalf("an edit, then the items' bound: Failed %+v, the reads %v; want ops[2]'s bound, nothing read", got, first(p.Reads()))
+	}
+	p.Refuse(p.Needs.Op, bigDenied)
+	if texts := first(p.Reads()); !slices.Equal(texts, []uuid.UUID{notes}) {
+		t.Errorf("after a refusal at the bound's op the plan reads %v, want Notes, ops[0]'s page", texts)
+	}
+	if err := p.Contents(map[uuid.UUID]domain.PageText{notes: {Content: "notes", Revision: 1}}, nil, &fakeRewriter{}); err != nil {
+		t.Fatal(err)
+	}
+	if got := failed(t, p); got != (refusal{"validation_failed", "ops[0].old_string", "not_allowed", 0}) {
+		t.Errorf("an earlier op's content failure after a refusal at the bound's op = %+v, want ops[0]'s", got)
 	}
 }
 
