@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/transfer"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/apitest"
 )
 
 // The downgrade through the whole program (M10/P1 design 3.16).
@@ -75,4 +76,36 @@ func TestTheDowngradeAnswersInItsOrder(t *testing.T) {
 	}
 	checkPages(t, tm.pool)
 	checkNotebooks(t, tm.pool)
+}
+
+// The mode event's last hop (M10/P1 design 3.11): a downgrade reaches, as
+// one mode frame of the notebook's ids, each stream that sees the
+// notebook, its admin's and a reader's, and no other, a member's who does
+// not see it; a write of a marker page every stream sees comes next in
+// each. The composition root registers the streams as a mode subscriber:
+// without it, no mode frame comes.
+func TestTheModeEventReachesTheStreams(t *testing.T) {
+	tm := newAcmeTeam(t, "member", "member")
+	wiki := tm.createWith(t, tm.tokens["alice"], `{"name":"Field notes","mode":"llm_wiki"}`)
+	tm.addNotebookMember(t, "alice", wiki.ID, "bob", "reader")
+	eng := tm.openNotebook(t, "alice", "Eng")
+	marker := tm.createPage(t, "alice", eng, "", "Marker")
+	tm.settle(t, eng, marker)
+	alice := openStream(t, tm.base, "alice", tm.tokens["alice"])
+	bob := openStream(t, tm.base, "bob", tm.tokens["bob"])
+	carol := openStream(t, tm.base, "carol", tm.tokens["carol"])
+
+	if status, answer := tm.downgrade(t, "alice", wiki.ID); status != http.StatusOK {
+		t.Fatalf("downgrade = %d %s, want 200", status, answer)
+	}
+
+	acme := queryStrings(t, tm.pool, "SELECT id::text FROM workspaces WHERE slug = 'acme'")
+	for _, s := range []*eventStream{alice, bob} {
+		f := s.expect(t, "mode")
+		apitest.Load(t).CheckSchema(t, "EventMode", []byte(f.data))
+		if len(acme) != 1 || f.field(t, "workspace_id") != acme[0] || f.field(t, "notebook_id") != wiki.ID {
+			t.Errorf("%s's stream: mode %s, want acme's %s", s.name, f.data, wiki.ID)
+		}
+	}
+	tm.quiet(t, eng, marker, alice, bob, carol)
 }

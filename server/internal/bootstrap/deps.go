@@ -120,6 +120,7 @@ func notebookDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, au
 		WritingJobs:           transfer.NewWritingJobs(pool),
 		DeletionSubscribers:   ext.deletionSubscribers,
 		VisibilitySubscribers: ext.visibilitySubscribers,
+		ModeSubscribers:       ext.modeSubscribers,
 		ActivitySources:       ext.activitySources,
 	}
 }

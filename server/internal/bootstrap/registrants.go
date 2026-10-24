@@ -172,6 +172,7 @@ func (e workspaceMemberEvents) MemberRoleChanged(ctx context.Context, c workspac
 type notebookExtensions struct {
 	deletionSubscribers   []notebook.NotebookDeletionSubscriber
 	visibilitySubscribers []notebook.VisibilitySubscriber
+	modeSubscribers       []notebook.ModeSubscriber
 	activitySources       []notebook.NotebookActivitySource
 }
 
@@ -182,8 +183,9 @@ type notebookExtensions struct {
 // pages (M7/P2); M6's link index drops the notebooks' rows after them
 // (M6/P3); M7's imports and exports delete the notebooks' jobs after
 // those (M7/P5); M5's event streams follow a deletion, last, and a
-// visibility change (M5/P2). The module's use cases and its parts in the
-// workspace module's events all take them from here.
+// visibility change (M5/P2); M10's event stream follows a mode change
+// (M10/P1). The module's use cases and its parts in the workspace module's
+// events all take them from here.
 func notebookRegistrants(pool *pgxpool.Pool) notebookExtensions {
 	pages := page.NewNotebookDeletion(pool, pageRegistrants(pool).sessionSubscribers)
 	links := linkNotebookDeletion{linking.NewNotebookDeletion(pool)}
@@ -194,6 +196,7 @@ func notebookRegistrants(pool *pgxpool.Pool) notebookExtensions {
 			transferNotebookDeletion{transfer.NewNotebookDeletion(pool)}, streams,
 		},
 		visibilitySubscribers: []notebook.VisibilitySubscriber{streams},
+		modeSubscribers:       []notebook.ModeSubscriber{streams},
 		activitySources: []notebook.NotebookActivitySource{
 			pageActivity{page.NewNotebookActivity(pool)}, assetActivity{asset.NewNotebookActivity(pool)},
 		},
