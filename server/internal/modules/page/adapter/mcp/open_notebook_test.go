@@ -44,7 +44,9 @@ func openOf(t *testing.T, o opened) (openAnswer, string, error) {
 // The answer is the notebook, its mode, its instructions and where they
 // come from, null for the built-in ones, and its overview: the counts, the
 // last change in UTC, null when nothing was written, and the root's nodes
-// by their paths and kinds (M9/P1 design 3.17.3; M10/P1 design 3.12).
+// by their paths and kinds (M9/P1 design 3.17.3; M10/P1 design 3.12). The
+// use case's errors are answered as they are: a notebook gone after the
+// gate is notebook.not_found, as one the gate did not find.
 func TestTheOpenNotebookAnswer(t *testing.T) {
 	last := time.Date(2026, 10, 17, 16, 30, 0, 0, time.FixedZone("CST", 8*3600))
 	_, raw, err := openOf(t, opened{answer: app.Opened{Mode: domain.ModeLLMWiki, Agents: domain.Agents{Body: "# Rules <&>", Title: "agents"},
@@ -63,6 +65,9 @@ func TestTheOpenNotebookAnswer(t *testing.T) {
 	}
 	if _, _, err := openOf(t, opened{err: errors.New("the database is gone")}); err == nil {
 		t.Error("the use case's error was lost")
+	}
+	if _, _, err := openOf(t, opened{err: domain.ErrNotebookNotFound}); !errors.Is(err, domain.ErrNotebookNotFound) {
+		t.Errorf("a notebook gone = %v, want notebook.not_found", err)
 	}
 }
 
