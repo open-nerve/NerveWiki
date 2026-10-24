@@ -44,11 +44,12 @@ func newTemplate(t *testing.T, seeds *fakeSeeds) *app.Template {
 	return template
 }
 
-// The template parses each page once, at its making; a standard notebook's
-// creation seeds nothing; an LLM Wiki's seeds its language's two pages in
-// one unit, raw with the creation's source root, raw first, at the
-// creation's time and client, the changeset's message in its language,
-// and answers the source root.
+// The template parses each page once, at its making, and never again at a
+// creation; a standard notebook's creation seeds nothing; an LLM Wiki's
+// seeds its language's two pages in one unit, raw with the creation's
+// source root, raw first, at the creation's time and client, the
+// changeset's message in its language, each page with the facts parsed at
+// the making, and answers the source root.
 func TestTheTemplateSeedsAnLLMWiki(t *testing.T) {
 	seeds := &fakeSeeds{}
 	template := newTemplate(t, seeds)
@@ -88,6 +89,9 @@ func TestTheTemplateSeedsAnLLMWiki(t *testing.T) {
 			agents.Parsed.Facts != "facts of "+agents.Content {
 			t.Errorf("%s: the second page %+v, want AGENTS of a new id, in its language, its facts", tt.locale, agents)
 		}
+	}
+	if len(seeds.parsed) != 4 {
+		t.Errorf("after three creations the pages were parsed %d times, want the 4 of the making alone", len(seeds.parsed))
 	}
 }
 

@@ -355,6 +355,38 @@ func TestASeedRunsTheGuards(t *testing.T) {
 	}
 }
 
+// Seed passes on the facts it is given, parsed once at start-up, and parses
+// nothing itself: a page whose facts are another content's reaches the
+// observers with those facts, not its own content's.
+func TestASeedPassesTheFactsItIsGiven(t *testing.T) {
+	f := newFixture(t)
+	o := &observer{f: f}
+	writes := f.module(nil, nil, []page.PageObserver{o}).TreeWrites()
+	given, err := writes.ParseTemplate("---\nkind: other\n---\n# Other\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	own, err := writes.ParseTemplate("# Sources\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reflect.DeepEqual(given, own) {
+		t.Fatalf("the two contents' facts are alike, %#v: the test would tell nothing", own)
+	}
+	if err := postgres.NewTxManager(f.pool, 5*time.Second).WithinTx(f.seedCtx(), func(ctx context.Context) error {
+		return writes.Seed(ctx, page.SeedSpec{NotebookID: f.eng, At: testNow(), Client: page.Client("web"),
+			Pages: []page.PageDraft{{Title: "raw", Content: "# Sources\n", Facts: given}}})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(o.events) != 1 || len(o.events[0].Changes) != 1 {
+		t.Fatalf("the observer saw %+v, want one unit of one change", o.events)
+	}
+	if got := o.events[0].Changes[0].Facts; !reflect.DeepEqual(got, given) {
+		t.Errorf("the observer got the facts %#v, want those given, %#v", got, given)
+	}
+}
+
 // A template's page parsed once at start-up has the facts its content
 // would have had parsed by a write: the observers get the same of a Seed
 // and of createPage. The facts are read, never written: two Seeds of the
