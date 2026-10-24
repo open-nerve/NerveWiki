@@ -111,8 +111,11 @@ func TestLLMWikiCreationWritesItsTemplate(t *testing.T) {
 			var changesets, items, versions, atItsTime, links, tags, indexed, exact int
 			var kind, client, message string
 			var byAlice bool
-			if err := tm.pool.QueryRow(context.Background(), `SELECT count(*), min(c.kind), min(c.client), min(c.message),
-					bool_and(c.created_by_id = $2), count(*) FILTER (WHERE c.created_at = b.created_at)
+			// No changeset, or one without a message, reads as "" (and
+			// false), so that the comparison below tells what is missing.
+			if err := tm.pool.QueryRow(context.Background(), `SELECT count(*), coalesce(min(c.kind), ''), coalesce(min(c.client), ''),
+					coalesce(min(c.message), ''), coalesce(bool_and(c.created_by_id = $2), false),
+					count(*) FILTER (WHERE c.created_at = b.created_at)
 				FROM changesets c JOIN notebooks b ON b.id = c.notebook_id WHERE c.notebook_id = $1`, n.ID, alice).
 				Scan(&changesets, &kind, &client, &message, &byAlice, &atItsTime); err != nil {
 				t.Fatal(err)
