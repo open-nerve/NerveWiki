@@ -417,7 +417,8 @@ func TestTheMCPReadsWithAPublicURLEndingInASlash(t *testing.T) {
 // does not take, and a notebook not seen, deleted, of none or no UUID
 // (M9/P1 design 3.17). P2's writes answer each code of the REST writes
 // they are: the reads' app's calls, a reader's forbidden, and server_busy
-// with the parse budget held (writeCodeCalls, carolsWrites, busyWrites).
+// with the parse budget held (writeCodeCalls, carolsWrites, busyWrites);
+// M10's mode guard's in an LLM Wiki (wikiCodeCalls).
 // P4's grep and search answer their cursor's, their arguments' and their
 // notebook's, grep server_busy once the app's one slot, which the test
 // holds, was waited for a second (M9/P4 design 3.12; grepCodeCalls);
@@ -463,6 +464,7 @@ func TestTheMCPToolsErrorsCarryTheirCodes(t *testing.T) {
 		answered.add(tt.tool, tt.want)
 	}
 	r.carolsWrites(t, answered)
+	r.wikiCodeCalls(t, answered)
 	busyWrites(t, answered)
 	r.busyGrep(t, slots, answered)
 	for tool, codes := range mcpToolCodes() {

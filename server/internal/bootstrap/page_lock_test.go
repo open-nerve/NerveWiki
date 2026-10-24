@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// The edit lock's last hop (M5/P1 design 5): pageRegistrants(pool) hands
+// The edit lock's last hop (M5/P1 design 5): pageRegistrants hands
 // the lock to serve as the openings' vetoer and the writes' guard, and
 // each path reaches it through the whole program. With bob's session
 // holding Notes: another opening, alice's or his own, is page.locked by

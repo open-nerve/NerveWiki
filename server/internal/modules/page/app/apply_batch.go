@@ -570,12 +570,16 @@ func (a *batchAttempt) differs(i int, what string, err error, current *domain.Ve
 	return &replanned{op: i, what: what, err: err, current: current}
 }
 
-// failed is err of the op i: a problem at the op, the batch's change of
-// the notebook since its plan for one of a kind the plan checks; any other
-// error as it is.
+// failed is err of the op i: a refusal, a guard's or a precheck's, at the
+// op, whatever its code (M10 design 4.6); a problem at the op, the batch's
+// change of the notebook since its plan for one of a kind the plan checks;
+// any other error as it is.
 func (a *batchAttempt) failed(i int, err error) error {
+	var refused *domain.Refused
 	var problem *shared.Error
 	switch {
+	case errors.As(err, &refused):
+		return &domain.OpFailed{Op: i, Tool: a.steps[i].Kind, Err: err}
 	case !errors.As(err, &problem):
 		return err
 	case replans(problem):
@@ -587,7 +591,7 @@ func (a *batchAttempt) failed(i int, err error) error {
 // replans reports whether e is of a kind the plan checks, which the unit
 // answering means the tree changed since the plan read it (M9/P3 design
 // 3.6.2): a node not found, a rule's 422, a name taken, a cycle, a depth.
-// A guard's refusal is none: it is answered as it is.
+// A guard's refusal is marked Refused and answered at its operation.
 func replans(e *shared.Error) bool {
 	switch e.Code {
 	case domain.ErrNotFound.Code, shared.CodeValidationFailed, domain.ErrTitleTaken.Code, domain.ErrCycle.Code, domain.ErrTooDeep.Code:

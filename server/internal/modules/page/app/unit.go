@@ -318,6 +318,18 @@ type Unit struct {
 	keepLinks  bool
 }
 
+// refusalOf is a guard's error err of the step s (M10 design 4.6): a
+// problem marked with the node it is about, the step's first unless the
+// guard marked it already, as the mode guard does; any other error, the
+// database's, as it is.
+func refusalOf(err error, s Step) error {
+	var problem *shared.Error
+	if !errors.As(err, &problem) || len(s.Changes) == 0 {
+		return err
+	}
+	return domain.Refuse(err, s.Changes[0].NodeID)
+}
+
 // step is an operation of the unit.
 func (u *Unit) step(op domain.Operation, changes ...domain.Change) Step {
 	return Step{Write: u.write, Operation: op, Changes: changes}
@@ -325,14 +337,15 @@ func (u *Unit) step(op domain.Operation, changes ...domain.Change) Step {
 
 // apply runs an operation whose checks passed: the guards, its write, its
 // items in the changeset, and, unless a participant added it, the
-// participants.
+// participants. A guard's refusal, a problem, is marked with the node it
+// is about (refusalOf).
 func (u *Unit) apply(ctx context.Context, s Step, participate bool, write func(ctx context.Context) error) error {
 	if err := u.inUnit(ctx); err != nil {
 		return err
 	}
 	for _, g := range u.w.d.Guards {
 		if err := g.GuardWrite(ctx, s); err != nil {
-			return err
+			return refusalOf(err, s)
 		}
 	}
 	if err := u.ensureChangeset(ctx); err != nil {

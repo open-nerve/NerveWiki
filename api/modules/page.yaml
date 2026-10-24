@@ -50,13 +50,24 @@ paths:
         that is no page of the notebook and a page to follow that is no
         child of the parent are validation_failed; then a title a sibling
         has, compared by its key, is page.title_taken, and a page deeper
-        than ten levels page.too_deep. When the server parses as much
-        content as it can at once, a content waits a moment, then is
-        server_busy. A body that has not all arrived within the server's
+        than ten levels page.too_deep. In an LLM Wiki, no page at its root
+        may be named index or log, nor index.md or log.md, in any case
+        (page.virtual_file): those are its generated pages. When the server
+        parses as much content as it can at once, a content waits a moment,
+        then is server_busy. A body that has not all arrived within the server's
         read timeout (server.read_timeout, 30 seconds by default, in which
         5 MiB needs about 1.4 Mbit/s) is bad_request.
       security: [{ bearer: [] }]
-      x-problem-codes: [notebook.not_found, forbidden, validation_failed, page.title_taken, page.too_deep, server_busy]
+      x-problem-codes:
+        [
+          notebook.not_found,
+          forbidden,
+          validation_failed,
+          page.title_taken,
+          page.too_deep,
+          page.virtual_file,
+          server_busy,
+        ]
       requestBody:
         required: true
         content:
@@ -565,8 +576,12 @@ paths:
         validation_failed, a name a sibling has, compared by its key, is
         page.title_taken. An attachment's name does not end with ".md", in
         any case, and keeps an extension when it had one (the extension may
-        change): either is not_allowed on name. The node's own name writes
-        nothing; one that differs from it in case alone is written. The
+        change): either is not_allowed on name. In an LLM Wiki, AGENTS
+        cannot be renamed (page.protected), no node at the root may take the
+        name index or log, nor index.md or log.md (page.virtual_file), and
+        only its admins can rename the source root (page.source_admin_only).
+        The node's own name writes nothing; one that differs from it in case
+        alone is written. The
         links that led to the node, the attachment or the page and those
         under it, by a path that changes, and those the new name would lead
         elsewhere, are written again in the pages they are in, so that each
@@ -576,7 +591,17 @@ paths:
         server busy it is server_busy.
       security: [{ bearer: [] }]
       x-problem-codes:
-        [page.not_found, forbidden, validation_failed, page.title_taken, linking.pages_locked, server_busy]
+        [
+          page.not_found,
+          forbidden,
+          validation_failed,
+          page.title_taken,
+          page.protected,
+          page.virtual_file,
+          page.source_admin_only,
+          linking.pages_locked,
+          server_busy,
+        ]
       requestBody:
         required: true
         content:
@@ -606,9 +631,11 @@ paths:
         account's edit session holds the lock of the page or of one under
         it, the deletion is page.locked, naming the first such page, level
         by level, and its holder in lock; the caller's own sessions end with
-        their pages.
+        their pages. In an LLM Wiki, its AGENTS page and its source root
+        cannot be deleted, nor a page whose subtree holds the source root
+        (page.protected), before any lock is looked at.
       security: [{ bearer: [] }]
-      x-problem-codes: [page.not_found, forbidden, page.locked]
+      x-problem-codes: [page.not_found, forbidden, page.protected, page.locked]
       responses:
         "204":
           description: The node and the nodes under it are deleted.
@@ -633,8 +660,13 @@ paths:
         under it is page.cycle, a title a new sibling
         has, compared by its key, page.title_taken, and a page under it
         that would be deeper than ten levels page.too_deep: an attachment
-        is no level, and a page of the tenth holds them. A move to where
-        the node is writes nothing. The links that led to the node, the
+        is no level, and a page of the tenth holds them. In an LLM Wiki,
+        AGENTS cannot be moved, among its siblings either (page.protected),
+        no node at the root may take the name index or log, nor index.md or
+        log.md (page.virtual_file), and only its admins can move the source
+        root, among its siblings too, or move a page whose subtree holds it
+        under another parent (page.source_admin_only). A move to where the
+        node is writes nothing. The links that led to the node, the
         attachment or the page and those under it, by a path that changes,
         the links in the moved pages that the move would lead elsewhere, and
         the links the moved nodes would take from other nodes, are written
@@ -652,6 +684,9 @@ paths:
           page.cycle,
           page.title_taken,
           page.too_deep,
+          page.protected,
+          page.virtual_file,
+          page.source_admin_only,
           linking.pages_locked,
           server_busy,
         ]
@@ -948,9 +983,14 @@ paths:
         contents are parsed, so that their page.revert_too_large may come
         after it. The revert reads and checks it all again as it writes:
         page.changeset_trimmed, page.revert_too_large and
-        page.revert_conflict for what changed meanwhile; then a page whose
-        lock an edit session holds, the caller's elsewhere among them, is
-        page.locked, naming the holder in lock. A changeset that, as it
+        page.revert_conflict for what changed meanwhile. In an LLM Wiki,
+        each step of a revert is judged as its operation is: one that would
+        delete its AGENTS page or its source root, a page whose subtree holds
+        it, or rename or move AGENTS is page.protected; one of a writer that
+        would rename or move the source root, or move a page whose subtree
+        holds it under another parent, is page.source_admin_only. Then a page
+        whose lock an edit session holds, the caller's elsewhere among them,
+        is page.locked, naming the holder in lock. A changeset that, as it
         left its nodes, changed nothing, as an edit session that wrote its
         bytes back, writes nothing: changed is false.
       security: [{ bearer: [] }]
@@ -962,6 +1002,8 @@ paths:
           page.changeset_trimmed,
           page.revert_too_large,
           page.revert_conflict,
+          page.protected,
+          page.source_admin_only,
           server_busy,
           page.locked,
         ]

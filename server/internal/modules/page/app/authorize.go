@@ -21,6 +21,12 @@ func authorize(ctx context.Context, auth shared.Authorizer, actor shared.Actor, 
 	return grant, err
 }
 
+// isForbidden reports whether err is the authorizer's denial, 403
+// forbidden.
+func isForbidden(err error) bool {
+	return errors.Is(err, shared.Forbidden())
+}
+
 // decideNotebook decides action on the notebook id for actor, as MCP's
 // entries and tools decide a notebook (M9 design 4.6): notebook.not_found
 // for the zero id, an account entry's notebook that is no UUID, without a

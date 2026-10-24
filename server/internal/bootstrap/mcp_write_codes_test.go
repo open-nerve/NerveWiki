@@ -153,6 +153,66 @@ func (r readsApp) carolsWrites(t *testing.T, answered answeredCodes) {
 	}
 }
 
+// wikiCodeCalls are the calls that answer the mode guard's codes (M10/P1
+// design 3.22), in an LLM Wiki of alice's that acme's members edit, beside
+// its page Notes: alice's, its admin's, write of index/x.md, whose parent
+// index comes at the root; her move of AGENTS.md, of Notes.md to log.md,
+// and her deletion of AGENTS.md; and erin's, a member of acme, move of
+// raw.md, the source root; each alone and in a batch.
+func (r readsApp) wikiCodeCalls(t *testing.T, answered answeredCodes) {
+	t.Helper()
+	status, got := ask(t, r.contract, http.MethodPost, r.base+"/api/v0/workspaces/acme/notebooks", r.access,
+		`{"name":"Wiki","workspace_access":"editor","mode":"llm_wiki"}`)
+	if status != http.StatusCreated {
+		t.Fatalf("create Wiki = %d %s", status, got)
+	}
+	wiki := idOf(t, answer{body: got})
+	if status, got := ask(t, r.contract, http.MethodPost, r.base+"/api/v0/notebooks/"+wiki+"/pages", r.access,
+		`{"parent_id":null,"title":"Notes"}`); status != http.StatusCreated {
+		t.Fatalf("create Notes = %d %s", status, got)
+	}
+	erin := registerAccount(t, r.contract, r.base, "erin@example.com").AccessToken
+	if _, err := r.pool.Exec(context.Background(), `INSERT INTO workspace_members (id, workspace_id, user_id, role, created_by_id, updated_by_id, created_at, updated_at)
+		SELECT $1, w.id, u.id, 'member', w.created_by_id, w.created_by_id, now(), now()
+		FROM workspaces w, users u WHERE w.slug = 'acme' AND u.email = 'erin@example.com'`, uuid.NewV7()); err != nil {
+		t.Fatal(err)
+	}
+	writer := &mcpApp{base: r.base, pat: createToken(t, r.contract, r.base, erin)}
+	alone := func(op map[string]any) (string, map[string]any) {
+		tool, _ := op["op"].(string)
+		args := map[string]any{}
+		for k, v := range op {
+			if k != "op" {
+				args[k] = v
+			}
+		}
+		return tool, args
+	}
+	for _, c := range []struct {
+		m    *mcpApp
+		op   map[string]any
+		code string
+	}{
+		{r.mcpApp, map[string]any{"op": "write", "path": "index/x.md", "content": "x"}, "page.virtual_file"},
+		{r.mcpApp, map[string]any{"op": "move", "from": "AGENTS.md", "to": "Notes/AGENTS.md"}, "page.protected"},
+		{r.mcpApp, map[string]any{"op": "move", "from": "Notes.md", "to": "log.md"}, "page.virtual_file"},
+		{r.mcpApp, map[string]any{"op": "delete", "path": "AGENTS.md"}, "page.protected"},
+		{writer, map[string]any{"op": "move", "from": "raw.md", "to": "Notes/raw.md"}, "page.source_admin_only"},
+	} {
+		tool, args := alone(c.op)
+		for _, call := range []struct {
+			tool string
+			args map[string]any
+		}{{tool, args}, {"batch", batched(c.op)}} {
+			if member := c.m.call(t, atNotebook(wiki), call.tool, call.args).toolError(t); member["code"] != c.code {
+				t.Errorf("%s %v in an LLM Wiki = %v, want %s", call.tool, call.args, member, c.code)
+				continue
+			}
+			answered.add(call.tool, c.code)
+		}
+	}
+}
+
 // busyWrites calls write, edit, move and batch while the server's parse
 // budget is held, in an app of its own whose budget is 64 KiB, waited for
 // 300 ms: a REST write of ten times the budget keeps all of it while it

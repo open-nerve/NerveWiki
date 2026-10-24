@@ -242,3 +242,48 @@ func TestImportsAndDowngradingAnLLMWiki(t *testing.T) {
 		checkNotebooks(t, tm.pool)
 	})
 }
+
+// The deletion of an LLM Wiki's AGENTS and its downgrade (M10/P1 design
+// 3.23): the deletion's unit and the downgrade both lock the notebook's
+// row FOR NO KEY UPDATE, so the test holds the row and they run in the
+// order they came. The deletion first: its unit read the notebook an LLM
+// Wiki under the lock, page.protected, and the downgrade goes on; AGENTS
+// stays. The downgrade first: the unit reads it standard, and AGENTS goes
+// to the trash. A unit's mode is the one it writes under.
+func TestTheProtectionAndADowngrade(t *testing.T) {
+	downgrading := func(nb string) step {
+		return request("alice", http.MethodPost, "/api/v0/notebooks/"+nb+"/downgrade", "")
+	}
+	agents := func(tm acmeTeam, wiki guardedNotebook) (alive, trashed int) {
+		return count(t, tm.pool, "SELECT count(*) FROM nodes WHERE id = $1 AND deleted_at IS NULL", wiki.agents),
+			count(t, tm.pool, "SELECT count(*) FROM nodes WHERE id = $1 AND deleted_at IS NOT NULL AND trash_root", wiki.agents)
+	}
+	t.Run("the deletion first", func(t *testing.T) {
+		tm := newAcmeTeam(t, "", "")
+		wiki := tm.llmWiki(t, "Wiki")
+		deleted, downgraded := tm.interleaveOn(t, notebookRow(wiki.id), nodeDeletion("alice", wiki.agents), downgrading(wiki.id))
+		if !deleted.is(http.StatusConflict, "page.protected") || !downgraded.is(http.StatusOK, "") {
+			t.Errorf("DELETE AGENTS = %d %s, then the downgrade = %d %s; want 409 page.protected, then 200", deleted.status,
+				deleted.code, downgraded.status, downgraded.code)
+		}
+		if alive, trashed := agents(tm, wiki); alive != 1 || trashed != 0 {
+			t.Errorf("AGENTS: %d alive, %d in the trash; want it alive", alive, trashed)
+		}
+		checkPages(t, tm.pool)
+		checkNotebooks(t, tm.pool)
+	})
+	t.Run("the downgrade first", func(t *testing.T) {
+		tm := newAcmeTeam(t, "", "")
+		wiki := tm.llmWiki(t, "Wiki")
+		downgraded, deleted := tm.interleaveOn(t, notebookRow(wiki.id), downgrading(wiki.id), nodeDeletion("alice", wiki.agents))
+		if !downgraded.is(http.StatusOK, "") || !deleted.is(http.StatusNoContent, "") {
+			t.Errorf("the downgrade = %d %s, then DELETE AGENTS = %d %s; want 200, then 204", downgraded.status, downgraded.code,
+				deleted.status, deleted.code)
+		}
+		if alive, trashed := agents(tm, wiki); alive != 0 || trashed != 1 {
+			t.Errorf("AGENTS: %d alive, %d in the trash; want it in the trash", alive, trashed)
+		}
+		checkPages(t, tm.pool)
+		checkNotebooks(t, tm.pool)
+	})
+}

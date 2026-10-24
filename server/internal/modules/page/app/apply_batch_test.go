@@ -757,6 +757,48 @@ func TestABatchIsPlannedAgainOnce(t *testing.T) {
 	}
 }
 
+// refuseOn refuses the steps of op with err, and lets the others by.
+type refuseOn struct {
+	op  domain.Operation
+	err error
+}
+
+func (g refuseOn) GuardWrite(_ context.Context, s app.Step) error {
+	if s.Operation == g.op {
+		return g.err
+	}
+	return nil
+}
+
+// A refusal is answered at its op, whatever its code (M10/P1 design
+// 3.22): a guard's page.title_taken, a code the plan checks, marked with
+// its node, is ops[1]'s, the batch planned once and rolled back. The
+// reverse: the unit's own page.title_taken, unmarked, a name taken since
+// the plan, has the batch planned again, whose tree's pass answers it (a
+// lone move: the fakes keep a rolled back unit's writes).
+func TestABatchAnswersARefusalAtItsOperation(t *testing.T) {
+	f := newFixture()
+	p, q := f.page("P", nil, 1), f.page("Q", nil, 2)
+	f.content(p.ID, "a", 2)
+	f.guards = []app.WriteGuard{refuseOn{op: domain.OpRename, err: domain.Refuse(domain.ErrTitleTaken, q.ID)}}
+	_, err := f.applyBatch(&fakeLinks{recorder: f.rec}, editOp("P.md", "a", "b"), moveOp("Q.md", "R.md"))
+	var r *domain.Refused
+	if opOf(err) != "1 page.title_taken" || !errors.As(err, &r) || r.NodeID != q.ID || f.count("ListNodes") != 1 || !f.tx.rolledBack {
+		t.Errorf("a batch a guard refuses at ops[1] = %s (%v) after %v; want ops[1]'s refusal of Q, planned once, rolled back",
+			opOf(err), err, f.rec.calls)
+	}
+
+	f = newFixture()
+	f.page("Q", nil, 2)
+	f.rec.before = map[string]func(){"LockNotebook in tx": func() { f.page("R", nil, 3) }}
+	_, err = f.applyBatch(&fakeLinks{recorder: f.rec}, moveOp("Q.md", "R.md"))
+	var taken *domain.PathTaken
+	if opOf(err) != "0 page.title_taken" || errors.As(err, &r) || !errors.As(err, &taken) || f.count("ListNodes") != 2 {
+		t.Errorf("a batch whose move's name another took since its plan = %s (%v) after %v; want it planned again, ops[0]'s "+
+			"PathTaken", opOf(err), err, f.rec.calls)
+	}
+}
+
 // sized gives the page id a content of n bytes by its row alone, as its
 // head tells it: none of its bytes is read here.
 func (f *fixture) sized(id uuid.UUID, n int) {

@@ -350,6 +350,11 @@ func TestUploadAnswersEachFailure(t *testing.T) {
 		{"a name taken since the check", "", "", []part{file("a.png", "x")}, func(h *harness) {
 			h.tree.createErr = shared.NewError(shared.KindConflict, "page.title_taken", "Taken.")
 		}, 409, "page.title_taken", "", true, false},
+		// The mode guard's refusal of the creation (M10/P1 design 3.22): the
+		// file stored is deleted.
+		{"a name an LLM Wiki's root keeps", "", "", []part{file("log", "x")}, func(h *harness) {
+			h.tree.createErr = shared.NewError(shared.KindConflict, "page.virtual_file", "Generated.")
+		}, 409, "page.virtual_file", "", true, false},
 		{"a unit that failed", "", "", []part{file("a.png", "x")}, func(h *harness) { h.tree.createErr = errors.New("commit: connection reset") },
 			500, "internal_error", "", false, true},
 	} {
