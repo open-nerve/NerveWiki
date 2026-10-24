@@ -35,22 +35,30 @@ type SeedSpec struct {
 
 // Seed writes spec's pages in one unit that changes the tree, of the edit
 // kind, deciding page.create, within the transaction ctx carries: one
-// changeset, one time. A notebook the caller cannot see is
-// notebook.not_found; any refusal of the unit, a guard's too, is answered
-// as it is, its caller's transaction then to roll back.
-func (s *SeedWrites) Seed(ctx context.Context, spec SeedSpec) error {
+// changeset, one time. It answers the ids of the pages it wrote, in
+// spec's order. A notebook the caller cannot see is notebook.not_found;
+// any refusal of the unit, a guard's too, is answered as it is, its
+// caller's transaction then to roll back.
+func (s *SeedWrites) Seed(ctx context.Context, spec SeedSpec) ([]uuid.UUID, error) {
+	var ids []uuid.UUID
 	_, err := s.writer.Seed(ctx, UnitSpec{
 		NotebookID: spec.NotebookID, Action: domain.ActionCreate, Tree: true, Client: spec.Client,
 		NotFound: domain.ErrNotebookNotFound, Message: spec.Message,
 	}, spec.At, func(ctx context.Context, u *Unit) error {
+		ids = ids[:0]
 		for _, p := range spec.Pages {
-			if _, err := u.CreatePage(ctx, p); err != nil {
+			n, err := u.CreatePage(ctx, p)
+			if err != nil {
 				return err
 			}
+			ids = append(ids, n.ID)
 		}
 		return nil
 	})
-	return err
+	if err != nil {
+		return nil, err
+	}
+	return ids, nil
 }
 
 // ParseTemplate checks and parses content, a template's page that the

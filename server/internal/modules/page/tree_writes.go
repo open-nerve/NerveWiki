@@ -130,7 +130,8 @@ type TreeWrites interface {
 	// edit kind, within the transaction of the notebook's creation, which
 	// ctx carries (M10 design 4.4): the one exception of v0.1 design 13.1
 	// item 1. The unit is at spec.At, from spec.Client, by ctx's actor.
-	Seed(ctx context.Context, spec SeedSpec) error
+	// It answers the ids of the pages it wrote, in spec's order.
+	Seed(ctx context.Context, spec SeedSpec) ([]uuid.UUID, error)
 	// ParseTemplate parses a template's page once, at start-up, outside
 	// the parse budget: its facts are passed in each Seed's pages.
 	ParseTemplate(content string) (Facts, error)
@@ -207,7 +208,7 @@ type treeWrites struct {
 	seeds   *app.SeedWrites
 }
 
-func (t treeWrites) Seed(ctx context.Context, spec SeedSpec) error {
+func (t treeWrites) Seed(ctx context.Context, spec SeedSpec) ([]uuid.UUID, error) {
 	return t.seeds.Seed(ctx, spec)
 }
 

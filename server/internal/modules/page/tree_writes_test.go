@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -217,7 +218,8 @@ func (f fixture) seeded(t *testing.T, ids ...uuid.UUID) (nodes, contents, versio
 // Seed joins the transaction its caller opened: another connection sees
 // nothing of it before the commit; the caller's rollback takes it all back,
 // the search's queue too; the caller's commit keeps both pages in one
-// changeset of the message given, queued exact for the search.
+// changeset of the message given, queued exact for the search, and Seed
+// answered their ids in order.
 func TestASeedJoinsItsCallersTransaction(t *testing.T) {
 	f := newFixture(t)
 	writes := f.module(nil, nil, nil).TreeWrites()
@@ -227,8 +229,10 @@ func TestASeedJoinsItsCallersTransaction(t *testing.T) {
 		raw, agents := uuid.NewV7(), uuid.NewV7()
 		spec := f.seedOf(t, writes, testNow(), raw, agents)
 		var before int
+		var ids []uuid.UUID
 		err := tx.WithinTx(f.seedCtx(), func(ctx context.Context) error {
-			if err := writes.Seed(ctx, spec); err != nil {
+			var err error
+			if ids, err = writes.Seed(ctx, spec); err != nil {
 				return err
 			}
 			before, _, _, _, _, _, _ = f.seeded(t, raw, agents)
@@ -244,9 +248,10 @@ func TestASeedJoinsItsCallersTransaction(t *testing.T) {
 		case !commit && (!errors.Is(err, rollback) || nodes+contents+versions+items+changesets+queued != 0):
 			t.Errorf("rolled back: %v; %d nodes, %d contents, %d versions, %d items, %d changesets, %d queued; want none",
 				err, nodes, contents, versions, items, changesets, queued)
-		case commit && (err != nil || nodes != 2 || contents != 2 || versions != 2 || items != 2 || changesets != 1 || exact != 2):
-			t.Errorf("committed: %v; %d nodes, %d contents, %d versions, %d items, %d changesets, %d queued exact; want 2, 2, 2, 2, 1, 2",
-				err, nodes, contents, versions, items, changesets, exact)
+		case commit && (err != nil || nodes != 2 || contents != 2 || versions != 2 || items != 2 || changesets != 1 || exact != 2 ||
+			!slices.Equal(ids, []uuid.UUID{raw, agents})):
+			t.Errorf("committed: %v; %d nodes, %d contents, %d versions, %d items, %d changesets, %d queued exact, ids %v; "+
+				"want 2, 2, 2, 2, 1, 2, raw's and AGENTS's", err, nodes, contents, versions, items, changesets, exact, ids)
 		}
 	}
 	if got := f.count(t, "SELECT count(*) FROM changesets WHERE notebook_id = $1 AND message = 'LLM Wiki template' AND kind = 'edit' "+
@@ -266,7 +271,8 @@ func TestASeedReadsNoClock(t *testing.T) {
 	at := testNow().Add(-time.Minute)
 	raw, agents := uuid.NewV7(), uuid.NewV7()
 	if err := postgres.NewTxManager(f.pool, 5*time.Second).WithinTx(f.seedCtx(), func(ctx context.Context) error {
-		return writes.Seed(ctx, f.seedOf(t, writes, at, raw, agents))
+		_, err := writes.Seed(ctx, f.seedOf(t, writes, at, raw, agents))
+		return err
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -293,11 +299,12 @@ func TestASeedRefusesNoTransactionAndNoTime(t *testing.T) {
 	f := newFixture(t)
 	writes := f.module(nil, nil, nil).TreeWrites()
 	raw, agents := uuid.NewV7(), uuid.NewV7()
-	if err := writes.Seed(f.seedCtx(), f.seedOf(t, writes, testNow(), raw, agents)); err == nil {
+	if _, err := writes.Seed(f.seedCtx(), f.seedOf(t, writes, testNow(), raw, agents)); err == nil {
 		t.Error("Seed outside a transaction = nil, want an error")
 	}
 	if err := postgres.NewTxManager(f.pool, 5*time.Second).WithinTx(f.seedCtx(), func(ctx context.Context) error {
-		return writes.Seed(ctx, f.seedOf(t, writes, time.Time{}, raw, agents))
+		_, err := writes.Seed(ctx, f.seedOf(t, writes, time.Time{}, raw, agents))
+		return err
 	}); err == nil {
 		t.Error("Seed at no time = nil, want an error")
 	}
@@ -335,7 +342,8 @@ func TestASeedRunsTheGuards(t *testing.T) {
 		writes := f.module([]page.WriteGuard{g}, nil, nil).TreeWrites()
 		raw, agents := uuid.NewV7(), uuid.NewV7()
 		err := postgres.NewTxManager(f.pool, 5*time.Second).WithinTx(f.seedCtx(), func(ctx context.Context) error {
-			return writes.Seed(ctx, f.seedOf(t, writes, testNow(), raw, agents))
+			_, err := writes.Seed(ctx, f.seedOf(t, writes, testNow(), raw, agents))
+			return err
 		})
 		if len(g.steps) != 2 {
 			t.Fatalf("refused %v: the guard saw %d steps, want both creations", refuse, len(g.steps))
@@ -375,8 +383,9 @@ func TestASeedPassesTheFactsItIsGiven(t *testing.T) {
 		t.Fatalf("the two contents' facts are alike, %#v: the test would tell nothing", own)
 	}
 	if err := postgres.NewTxManager(f.pool, 5*time.Second).WithinTx(f.seedCtx(), func(ctx context.Context) error {
-		return writes.Seed(ctx, page.SeedSpec{NotebookID: f.eng, At: testNow(), Client: page.Client("web"),
+		_, err := writes.Seed(ctx, page.SeedSpec{NotebookID: f.eng, At: testNow(), Client: page.Client("web"),
 			Pages: []page.PageDraft{{Title: "raw", Content: "# Sources\n", Facts: given}}})
+		return err
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -414,11 +423,18 @@ func TestATemplatesParseIsItsContents(t *testing.T) {
 		other, f.acme, f.alice, testNow())
 	tx := postgres.NewTxManager(f.pool, 5*time.Second)
 	for _, nb := range []uuid.UUID{f.eng, other} {
+		var ids []uuid.UUID
 		if err := tx.WithinTx(f.seedCtx(), func(ctx context.Context) error {
-			return writes.Seed(ctx, page.SeedSpec{NotebookID: nb, At: testNow(), Client: page.Client("web"),
+			var err error
+			ids, err = writes.Seed(ctx, page.SeedSpec{NotebookID: nb, At: testNow(), Client: page.Client("web"),
 				Pages: []page.PageDraft{{Title: "raw", Content: content, Facts: facts}}})
+			return err
 		}); err != nil {
 			t.Fatal(err)
+		}
+		// A page of no id given is written with a new one, which Seed answers.
+		if len(ids) != 1 || f.count(t, "SELECT count(*) FROM nodes WHERE id = $1 AND notebook_id = $2 AND name = 'raw'", ids[0], nb) != 1 {
+			t.Errorf("Seed in %s answered %v, want the id of the raw it wrote", nb, ids)
 		}
 	}
 	router := httpserver.NewRouter(slog.New(slog.DiscardHandler))

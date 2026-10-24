@@ -21,7 +21,7 @@ type wikiSeeds struct {
 	tree page.TreeWrites
 }
 
-func (s wikiSeeds) Seed(ctx context.Context, x wiki.Seed) error {
+func (s wikiSeeds) Seed(ctx context.Context, x wiki.Seed) ([]uuid.UUID, error) {
 	pages := make([]page.PageDraft, len(x.Pages))
 	for i, p := range x.Pages {
 		pages[i] = page.PageDraft{ID: p.ID, Title: p.Title, Content: p.Content, Facts: p.Parsed.Facts}

@@ -9,12 +9,20 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/wiki"
 )
 
-// recordedSeeds records the seeds it gets.
+// recordedSeeds records the seeds it gets, and answers their pages' ids,
+// a new one for the zero id.
 type recordedSeeds struct{ seeds []wiki.Seed }
 
-func (r *recordedSeeds) Seed(_ context.Context, s wiki.Seed) error {
+func (r *recordedSeeds) Seed(_ context.Context, s wiki.Seed) ([]uuid.UUID, error) {
 	r.seeds = append(r.seeds, s)
-	return nil
+	ids := make([]uuid.UUID, len(s.Pages))
+	for i, p := range s.Pages {
+		ids[i] = p.ID
+		if p.ID == (uuid.UUID{}) {
+			ids[i] = uuid.NewV7()
+		}
+	}
+	return ids, nil
 }
 
 func (r *recordedSeeds) Parse(content string) (wiki.Parsed, error) {

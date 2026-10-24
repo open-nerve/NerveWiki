@@ -9,9 +9,10 @@ import (
 
 // Seeds are the page module's template writes, as the composition root
 // passes them (M10 design 4.4): a notebook's pages in its creation's
-// transaction, one unit; and a template's contents parsed once.
+// transaction, one unit, answering the ids of the pages written in s's
+// order; and a template's contents parsed once.
 type Seeds interface {
-	Seed(ctx context.Context, s Seed) error
+	Seed(ctx context.Context, s Seed) ([]uuid.UUID, error)
 	Parse(content string) (Parsed, error)
 }
 

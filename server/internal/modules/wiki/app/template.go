@@ -22,8 +22,8 @@ type Creation struct {
 
 // Template is the creation's seeder (M10 design 4.4): for an LLM Wiki it
 // writes its mode's template in its language, the source root with the
-// creation's id, and answers that id; for a standard notebook it writes
-// nothing and answers the zero id.
+// creation's id, and answers the id of the source root it wrote; for a
+// standard notebook it writes nothing and answers the zero id.
 type Template struct {
 	seeds  Seeds
 	parsed map[domain.Locale][]templatePage
@@ -56,8 +56,11 @@ func NewTemplate(seeds Seeds) (*Template, error) {
 // NotebookCreated writes c's template: the zero id and nothing for a
 // standard notebook; for an LLM Wiki its pages in one unit, the source
 // root's id the one c decided, the changeset's message the template's in
-// its language, "LLM Wiki template" or "LLM Wiki 模板". A mode or a
-// language there is no contract of is a defect: the notebook module
+// its language, "LLM Wiki template" or "LLM Wiki 模板", and answers the id
+// the seed wrote the source root with, the zero id when it wrote none:
+// the notebook module's check that it is the notebook's own then means
+// written. A mode or a language there is no contract of, or a seed that
+// answers another count of pages, is a defect: the notebook module
 // checked both, and only a conversion of the composition root's would
 // answer one.
 func (t *Template) NotebookCreated(ctx context.Context, c Creation) (uuid.UUID, error) {
@@ -80,8 +83,18 @@ func (t *Template) NotebookCreated(ctx context.Context, c Creation) (uuid.UUID, 
 			seed.Pages[i].ID = c.SourceRootID
 		}
 	}
-	if err := t.seeds.Seed(ctx, seed); err != nil {
+	ids, err := t.seeds.Seed(ctx, seed)
+	switch {
+	case err != nil:
 		return uuid.UUID{}, err
+	case len(ids) != len(pages):
+		return uuid.UUID{}, fmt.Errorf("wiki: the seed of notebook %s answered %d ids for %d pages", c.NotebookID, len(ids), len(pages))
 	}
-	return c.SourceRootID, nil
+	var root uuid.UUID
+	for i, p := range pages {
+		if p.SourceRoot {
+			root = ids[i]
+		}
+	}
+	return root, nil
 }

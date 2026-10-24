@@ -14,17 +14,32 @@ import (
 
 // fakeSeeds records the seeds it gets and the contents it parses, the
 // facts of each its content; it refuses to parse refuse, and answers err
-// to a seed.
+// to a seed. A seed answers its pages' ids, a new one for the zero id, as
+// the page module writes them; ids, when set, instead.
 type fakeSeeds struct {
 	seeds  []app.Seed
 	parsed []string
 	refuse string
 	err    error
+	ids    []uuid.UUID
 }
 
-func (f *fakeSeeds) Seed(_ context.Context, s app.Seed) error {
+func (f *fakeSeeds) Seed(_ context.Context, s app.Seed) ([]uuid.UUID, error) {
 	f.seeds = append(f.seeds, s)
-	return f.err
+	if f.err != nil {
+		return nil, f.err
+	}
+	if f.ids != nil {
+		return f.ids, nil
+	}
+	ids := make([]uuid.UUID, len(s.Pages))
+	for i, p := range s.Pages {
+		ids[i] = p.ID
+		if p.ID == (uuid.UUID{}) {
+			ids[i] = uuid.NewV7()
+		}
+	}
+	return ids, nil
 }
 
 func (f *fakeSeeds) Parse(content string) (app.Parsed, error) {
@@ -92,6 +107,26 @@ func TestTheTemplateSeedsAnLLMWiki(t *testing.T) {
 	}
 	if len(seeds.parsed) != 4 {
 		t.Errorf("after three creations the pages were parsed %d times, want the 4 of the making alone", len(seeds.parsed))
+	}
+}
+
+// The template answers the id the seed wrote the source root with, not
+// the one it asked for: a seed that wrote raw with another id answers it,
+// which the notebook module then refuses as not its own; a seed that
+// answers another count of ids than its pages is the server's fault.
+func TestTheTemplateAnswersTheSourceRootWritten(t *testing.T) {
+	seeds := &fakeSeeds{}
+	template := newTemplate(t, seeds)
+	c := app.Creation{NotebookID: uuid.NewV7(), Mode: domain.ModeLLMWiki, SourceRootID: uuid.NewV7(), Locale: domain.LocaleEn,
+		Client: "web", At: time.Now()}
+	written := uuid.NewV7()
+	seeds.ids = []uuid.UUID{written, uuid.NewV7()}
+	if root, err := template.NotebookCreated(context.Background(), c); err != nil || root != written {
+		t.Errorf("raw written as %s: NotebookCreated() = %s, %v; want %s", written, root, err, written)
+	}
+	seeds.ids = []uuid.UUID{c.SourceRootID}
+	if root, err := template.NotebookCreated(context.Background(), c); err == nil || root != (uuid.UUID{}) {
+		t.Errorf("one id for two pages: NotebookCreated() = %s, %v; want the zero id and an error", root, err)
 	}
 }
 
