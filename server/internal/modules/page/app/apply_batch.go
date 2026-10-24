@@ -104,10 +104,15 @@ func (r *replanned) Error() string {
 
 // Execute applies p in the notebook notebookID from client. Its order: the
 // actor; CheckBatch's 422s; the notebook, notebook.not_found; page.batch's
-// 403, unlocked; the tree's pass (PlanBatch): the first op that fails, the
-// items past MaxUnitNodes at the op that passes them; the sizes of the
-// pages its edits read, past MaxBatchReadBytes at the op that passes them,
-// before any content is read; the contents' pass (Contents): the first op
+// 403, unlocked; the tree's pass (PlanBatch): the first op that fails, its
+// own checks first, then the notebook's contract on the state read
+// unlocked, page.protected and page.virtual_file at their op (M10/P1
+// design 3.22); the items past MaxUnitNodes at the op that passes them;
+// page.manage_source asked of the first op that needs it, denied
+// page.source_admin_only at that op, in place of a later failure, before
+// the reads and the edit locks' precheck; the sizes of the pages its
+// edits read, past MaxBatchReadBytes at the op that passes them, before
+// any content is read; the contents' pass (Contents): the first op
 // that fails, its parses' bounds (422) and budget (503) at it; the edit
 // locks of the pages it writes or deletes, page.locked at the first op that
 // meets one; the unit's bounds on what it parses, page.batch_too_large; the
