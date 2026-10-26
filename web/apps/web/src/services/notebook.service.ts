@@ -36,6 +36,13 @@ export class NotebookService {
     );
   }
 
+  /** downgrade makes an LLM Wiki a standard notebook, keeping all its pages. */
+  async downgrade(id: string): Promise<Notebook> {
+    return unwrap(
+      await this.api.POST("/api/v0/notebooks/{notebook_id}/downgrade", { params: { path: { notebook_id: id } } })
+    );
+  }
+
   async remove(id: string): Promise<void> {
     await unwrap(await this.api.DELETE("/api/v0/notebooks/{notebook_id}", { params: { path: { notebook_id: id } } }));
   }

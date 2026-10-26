@@ -27,6 +27,7 @@ function storeOf(list: Notebook[], overrides: Partial<Service> = {}) {
       list: async () => list,
       create: async (_slug, body) => notebook(body.name.toLowerCase(), body.name),
       update: async (id, body) => notebook(id, body.name ?? id, { workspace_access: body.workspace_access ?? "none" }),
+      downgrade: async (id) => notebook(id, id),
       remove: async () => {},
       leave: async () => {},
       ...overrides,
@@ -241,3 +242,163 @@ test("a leaving answered, whose read again fails, is done: the notebook stays un
 
   expect([names(store), store.wasRemoved("a")]).toEqual([["A"], true]);
 });
+
+const wiki = notebook("beta", "Beta", { mode: "llm_wiki", source_root_id: "raw" });
+const notWiki = new ApiError(409, { status: 409, code: "notebook.not_llm_wiki", title: "" });
+const writingBusy = new ApiError(409, { status: 409, code: "transfer.busy", title: "" });
+
+test("a downgrade puts the server's standard notebook in the list", async () => {
+  const answered = notebook("beta", "Beta", { updated_at: "2026-10-03T08:00:00Z" });
+  const store = storeOf([wiki], {
+    downgrade: async (id) => {
+      expect(id).toBe("beta");
+      return answered;
+    },
+  });
+  await store.load();
+
+  await expect(store.downgrade("beta")).resolves.toBeUndefined();
+
+  expect(store.byId("beta")).toEqual(answered);
+  expect(store.wasRemoved("beta")).toBe(false);
+});
+
+test("a downgrade waits for the same notebook's renaming", async () => {
+  let answerRename: ((value: Notebook) => void) | undefined;
+  const sent: string[] = [];
+  const store = storeOf([wiki], {
+    update: () => {
+      sent.push("rename");
+      return new Promise<Notebook>((resolve) => (answerRename = resolve));
+    },
+    downgrade: async () => {
+      sent.push("downgrade");
+      return notebook("beta", "Renamed");
+    },
+  });
+  await store.load();
+
+  const renaming = store.update("beta", { name: "Renamed" });
+  const downgrading = store.downgrade("beta");
+  await Promise.resolve();
+  expect(sent).toEqual(["rename"]);
+  expect(answerRename).toBeTypeOf("function");
+  answerRename?.({ ...wiki, name: "Renamed" });
+  await renaming;
+  await downgrading;
+
+  expect(sent).toEqual(["rename", "downgrade"]);
+  expect(store.list?.map((n) => [n.name, n.mode])).toEqual([["Renamed", "standard"]]);
+});
+
+test("a read answered after a downgrade keeps it", async () => {
+  let answerRead: ((value: Notebook[]) => void) | undefined;
+  let reads = 0;
+  const store = storeOf([], {
+    list: () =>
+      ++reads === 1 ? Promise.resolve([wiki]) : new Promise<Notebook[]>((resolve) => (answerRead = resolve)),
+    downgrade: async () => notebook("beta", "Beta"),
+  });
+  await store.load();
+
+  const read = store.load();
+  await store.downgrade("beta");
+  expect(answerRead).toBeTypeOf("function");
+  answerRead?.([wiki]);
+
+  expect((await read).map((n) => [n.name, n.mode])).toEqual([["Beta", "standard"]]);
+  expect(store.list?.map((n) => [n.name, n.mode])).toEqual([["Beta", "standard"]]);
+});
+
+test("a downgrade already done reads the notebook again and resolves", async () => {
+  let reads = 0;
+  const seen = notebook("beta", "Renamed elsewhere", { role: "editor" });
+  const store = storeOf([], {
+    list: async (slug) => {
+      expect(slug).toBe("lab");
+      return ++reads === 1 ? [wiki] : [seen];
+    },
+    downgrade: () => Promise.reject(notWiki),
+  });
+  await store.load();
+
+  await expect(store.downgrade("beta")).resolves.toBeUndefined();
+
+  expect(reads).toBe(2);
+  expect(store.byId("beta")).toEqual(seen);
+  expect(store.wasRemoved("beta")).toBe(false);
+});
+
+test("a downgrade forbidden reads the changed role and preserves its refusal", async () => {
+  let reads = 0;
+  const seen = { ...wiki, role: "editor" as const };
+  const store = storeOf([], {
+    list: async () => (++reads === 1 ? [wiki] : [seen]),
+    downgrade: () => Promise.reject(forbidden),
+  });
+  await store.load();
+
+  await expect(store.downgrade("beta")).rejects.toBe(forbidden);
+
+  expect(reads).toBe(2);
+  expect(store.byId("beta")).toEqual(seen);
+  expect(store.wasRemoved("beta")).toBe(false);
+});
+
+test.each([notFound, forbidden, notWiki])(
+  "a downgrade refused as $code drops an unseen notebook without marking it removed",
+  async (refusal) => {
+    let reads = 0;
+    const store = storeOf([], {
+      list: async () => (++reads === 1 ? [wiki] : []),
+      downgrade: () => Promise.reject(refusal),
+    });
+    await store.load();
+
+    if (refusal === notWiki) {
+      await expect(store.downgrade("beta")).resolves.toBeUndefined();
+    } else {
+      await expect(store.downgrade("beta")).rejects.toBe(refusal);
+    }
+
+    expect([reads, store.list, store.wasRemoved("beta")]).toEqual([2, [], false]);
+  }
+);
+
+test.each([notWiki, forbidden, notFound])(
+  "a downgrade refused as $code keeps that refusal if its reread fails",
+  async (refusal) => {
+    let reads = 0;
+    const store = storeOf([], {
+      list: () => (++reads === 1 ? Promise.resolve([wiki]) : Promise.reject(new TypeError("offline"))),
+      downgrade: () => Promise.reject(refusal),
+    });
+    await store.load();
+
+    await expect(store.downgrade("beta")).rejects.toBe(refusal);
+
+    expect(reads).toBe(2);
+    expect(store.byId("beta")).toEqual(wiki);
+    expect(store.wasRemoved("beta")).toBe(false);
+  }
+);
+
+test.each([writingBusy, new TypeError("offline"), new ApiError(502, undefined)])(
+  "a downgrade refused as %s does not reread",
+  async (refusal) => {
+    let reads = 0;
+    const store = storeOf([], {
+      list: async () => {
+        reads++;
+        return [wiki];
+      },
+      downgrade: () => Promise.reject(refusal),
+    });
+    await store.load();
+
+    await expect(store.downgrade("beta")).rejects.toBe(refusal);
+
+    expect(reads).toBe(1);
+    expect(store.byId("beta")).toEqual(wiki);
+  }
+);

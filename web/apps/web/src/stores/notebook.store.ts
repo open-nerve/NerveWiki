@@ -45,7 +45,7 @@ export class NotebookStore {
   private readonly inTurn = oneAtATimeById();
 
   constructor(
-    private readonly service: Pick<NotebookService, "list" | "create" | "update" | "remove" | "leave">,
+    private readonly service: Pick<NotebookService, "list" | "create" | "update" | "downgrade" | "remove" | "leave">,
     /** The slug of the workspace whose notebooks these are. */
     private readonly slug: string
   ) {
@@ -102,6 +102,43 @@ export class NotebookStore {
       const updated = await this.service.update(id, body);
       this.put(updated);
       return updated;
+    });
+  }
+
+  /**
+   * downgrade makes the LLM Wiki id a standard notebook, in its turn
+   * (M10/P1 design 4.4). A refusal that says the list is behind reads it
+   * again: an unseen notebook is dropped, not marked as removed. Only an
+   * already completed downgrade, successfully reconciled, is done.
+   */
+  async downgrade(id: string): Promise<void> {
+    await this.inTurn(id, async () => {
+      try {
+        const answered = await this.service.downgrade(id);
+        this.put(answered);
+      } catch (error) {
+        if (
+          !(error instanceof ApiError) ||
+          (error.code !== "notebook.not_llm_wiki" && error.code !== "forbidden" && error.code !== "notebook.not_found")
+        ) {
+          throw error;
+        }
+        let list: Notebook[];
+        try {
+          list = await this.service.list(this.slug);
+        } catch {
+          throw error;
+        }
+        const seen = list.find((notebook) => notebook.id === id);
+        if (seen === undefined) {
+          this.changed((current) => current.filter((notebook) => notebook.id !== id));
+        } else {
+          this.put(seen);
+        }
+        if (error.code !== "notebook.not_llm_wiki") {
+          throw error;
+        }
+      }
     });
   }
 

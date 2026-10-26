@@ -211,3 +211,141 @@ test("untouched forms follow another admin's changes; Save sends nothing back ov
   expect(await screen.findAllByText("Saved.")).toHaveLength(2);
   expect(server.sent).toEqual([]);
 });
+
+test("an admin downgrades a wiki once and focuses the Mode heading", async () => {
+  const user = userEvent.setup();
+  const server = notebookServer({ mode: "llm_wiki" });
+  renderApp(general, server.app);
+
+  const heading = await screen.findByRole("heading", { level: 2, name: "Mode" });
+  await user.click(screen.getByRole("button", { name: "Downgrade to a standard notebook…" }));
+  const dialog = await screen.findByRole("alertdialog", { name: "Downgrade “Plans” to a standard notebook?" });
+  expect(within(dialog).queryByRole("textbox")).toBeNull();
+  await user.dblClick(within(dialog).getByRole("button", { name: "Downgrade" }));
+
+  expect(await screen.findByText("Standard notebook")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Downgrade to a standard notebook…" })).toBeNull();
+  expect(screen.queryByRole("alertdialog")).toBeNull();
+  expect(server.sent).toEqual(["downgrade"]);
+  expect([server.plans.mode, server.plans.source_root_id]).toEqual(["standard", null]);
+  await waitFor(() => expect(document.activeElement).toBe(heading));
+});
+
+test.each([
+  ["llm_wiki", "admin", true],
+  ["llm_wiki", "editor", false],
+  ["llm_wiki", "reader", false],
+  ["standard", "admin", false],
+] as const)("a %s notebook's %s sees its mode, with downgrade available: %s", async (mode, role, downgrades) => {
+  const server = notebookServer({ mode, members: [notebookMember(ada, role), notebookMember(bob, "admin")] });
+  renderApp(general, server.app);
+
+  const heading = await screen.findByRole("heading", { level: 2, name: "Mode" });
+  const section = within(heading.parentElement as HTMLElement);
+  expect(section.getByText(mode === "llm_wiki" ? "LLM Wiki" : "Standard notebook")).toBeTruthy();
+  expect(
+    section.getByText(
+      mode === "llm_wiki"
+        ? "Agents keep its pages from the sources in its source area, by the rules on its page AGENTS."
+        : "Its members write and organize its pages themselves."
+    )
+  ).toBeTruthy();
+  expect(section.queryByRole("button", { name: "Downgrade to a standard notebook…" }) !== null).toBe(downgrades);
+  expect(server.sent).toEqual([]);
+});
+
+test("a downgrade forbidden after losing admin keeps its dialog, then focuses Mode when cancelled", async () => {
+  const user = userEvent.setup();
+  const server = notebookServer({
+    mode: "llm_wiki",
+    answers: {
+      [`POST ${plans}/downgrade`]: () => {
+        server.members = [notebookMember(ada, "editor"), notebookMember(bob, "admin")];
+        return problem(403, "forbidden");
+      },
+    },
+  });
+  renderApp(general, server.app);
+  const trigger = await screen.findByRole("button", { name: "Downgrade to a standard notebook…" });
+  const heading = screen.getByRole("heading", { level: 2, name: "Mode" });
+  const reads = server.notebookReads;
+
+  await user.click(trigger);
+  const dialog = await screen.findByRole("alertdialog");
+  await user.click(within(dialog).getByRole("button", { name: "Downgrade" }));
+
+  expect((await within(dialog).findByRole("alert")).textContent).toBe("Only the notebook's admins can downgrade it.");
+  expect(trigger.isConnected).toBe(false);
+  expect(dialog.isConnected).toBe(true);
+  expect(screen.getByRole("alertdialog")).toBe(dialog);
+  expect(server.notebookReads).toBe(reads + 1);
+  expect(server.plans.mode).toBe("llm_wiki");
+  expect(server.sent).toEqual(["downgrade"]);
+  await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+  await waitFor(() => expect(document.activeElement).toBe(heading));
+  expect(screen.queryByRole("alertdialog")).toBeNull();
+});
+
+test("a downgrade busy with writing keeps its dialog and does not reread the notebooks", async () => {
+  const user = userEvent.setup();
+  const server = notebookServer({
+    mode: "llm_wiki",
+    answers: { [`POST ${plans}/downgrade`]: () => problem(409, "transfer.busy") },
+  });
+  renderApp(general, server.app);
+  const trigger = await screen.findByRole("button", { name: "Downgrade to a standard notebook…" });
+  const reads = server.notebookReads;
+
+  await user.click(trigger);
+  const dialog = await screen.findByRole("alertdialog");
+  await user.click(within(dialog).getByRole("button", { name: "Downgrade" }));
+
+  expect((await within(dialog).findByRole("alert")).textContent).toBe(
+    "An import, a restore or an undo is under way in this notebook: wait for it to end, then try again."
+  );
+  expect(server.notebookReads).toBe(reads);
+  expect(server.plans.mode).toBe("llm_wiki");
+  expect(server.sent).toEqual(["downgrade"]);
+  await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+  await waitFor(() => expect(document.activeElement).toBe(trigger));
+});
+
+test("a downgrade already done elsewhere closes its dialog and focuses Mode", async () => {
+  const user = userEvent.setup();
+  const server = notebookServer({
+    mode: "llm_wiki",
+    answers: {
+      [`POST ${plans}/downgrade`]: () => {
+        server.plans = { ...server.plans, mode: "standard", source_root_id: null };
+        return problem(409, "notebook.not_llm_wiki");
+      },
+    },
+  });
+  renderApp(general, server.app);
+  await user.click(await screen.findByRole("button", { name: "Downgrade to a standard notebook…" }));
+  const dialog = await screen.findByRole("alertdialog");
+  await user.click(within(dialog).getByRole("button", { name: "Downgrade" }));
+
+  expect(await screen.findByText("Standard notebook")).toBeTruthy();
+  expect(screen.queryByRole("alertdialog")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Downgrade to a standard notebook…" })).toBeNull();
+  expect(server.sent).toEqual(["downgrade"]);
+  const heading = screen.getByRole("heading", { level: 2, name: "Mode" });
+  await waitFor(() => expect(document.activeElement).toBe(heading));
+});
+
+test("cancelling a downgrade returns to its trigger without sending it", async () => {
+  const user = userEvent.setup();
+  const server = notebookServer({ mode: "llm_wiki" });
+  renderApp(general, server.app);
+  const trigger = await screen.findByRole("button", { name: "Downgrade to a standard notebook…" });
+
+  await user.click(trigger);
+  const dialog = await screen.findByRole("alertdialog");
+  await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+  await waitFor(() => expect(document.activeElement).toBe(trigger));
+  expect(server.sent).toEqual([]);
+  expect(server.plans.mode).toBe("llm_wiki");
+});
