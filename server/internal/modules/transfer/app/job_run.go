@@ -204,6 +204,9 @@ func (r *jobRun) finish(ctx, running context.Context, err error, attrs []any, su
 	}
 	report := r.report
 	report.Failure = e.Report.Failure
+	if report.Failure != domain.FailureRefused {
+		report.Refusal = nil
+	}
 	e.Report = report
 	ok, writeErr := r.rows.FinishJob(end, r.job.ID, e)
 	if writeErr != nil {
