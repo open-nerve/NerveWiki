@@ -365,6 +365,57 @@ test.each([notFound, forbidden, notWiki])(
   }
 );
 
+test.each(
+  [notWiki, forbidden, notFound].flatMap((refusal) =>
+    [false, true].map((present) => ({ refusal, code: refusal.code, present }))
+  )
+)(
+  "a read answered after downgrade reconciliation for $code, present=$present keeps it",
+  async ({ refusal, present }) => {
+    const other = notebook("other", "Other");
+    const before = [wiki, other];
+    const seen = notebook("beta", "Changed elsewhere", {
+      mode: refusal === notWiki ? "standard" : "llm_wiki",
+      source_root_id: refusal === notWiki ? null : "raw",
+      role: "editor",
+    });
+    const after = present ? [seen, other] : [other];
+    let answerRead: ((value: Notebook[]) => void) | undefined;
+    let reads = 0;
+    const store = storeOf([], {
+      list: () =>
+        ++reads === 1
+          ? Promise.resolve(before)
+          : reads === 2
+            ? new Promise<Notebook[]>((resolve) => (answerRead = resolve))
+            : Promise.resolve(after),
+      downgrade: () => Promise.reject(refusal),
+    });
+    await store.load();
+
+    // Keep the old read out until the refusal's own reread has reconciled.
+    const read = store.load();
+    try {
+      expect(answerRead).toBeTypeOf("function");
+      if (refusal === notWiki) {
+        await expect(store.downgrade("beta")).resolves.toBeUndefined();
+      } else {
+        await expect(store.downgrade("beta")).rejects.toBe(refusal);
+      }
+      answerRead?.(before);
+
+      expect(await read).toEqual(after);
+      expect(store.list).toEqual(after);
+      expect(store.byId("other")).toEqual(other);
+      expect(store.wasRemoved("beta")).toBe(false);
+      expect(reads).toBe(3);
+    } finally {
+      answerRead?.(before);
+      await read;
+    }
+  }
+);
+
 test.each([notWiki, forbidden, notFound])(
   "a downgrade refused as $code keeps that refusal if its reread fails",
   async (refusal) => {
