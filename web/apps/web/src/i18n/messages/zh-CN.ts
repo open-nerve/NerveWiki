@@ -109,6 +109,8 @@ export const zhCN: Messages = {
   "tag.empty": "没有页面带有这个标签。",
   "page.tree": "{notebook}的页面",
   "page.subpagesOf": "{name}的子页面",
+  "page.agentsKind": "（给 agent 的约定）",
+  "page.sourceRootKind": "（来源区）",
   "page.breadcrumb": "页面路径",
   "page.subpages": "子页面",
   "page.new": "新建页面",

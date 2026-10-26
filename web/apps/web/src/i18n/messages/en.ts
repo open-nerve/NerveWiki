@@ -111,6 +111,8 @@ export const en = {
   "tag.empty": "No page has this tag.",
   "page.tree": "Pages of {notebook}",
   "page.subpagesOf": "Subpages of {name}",
+  "page.agentsKind": "(instructions for agents)",
+  "page.sourceRootKind": "(source area)",
   "page.breadcrumb": "Breadcrumb",
   "page.subpages": "Subpages",
   "page.new": "New page",

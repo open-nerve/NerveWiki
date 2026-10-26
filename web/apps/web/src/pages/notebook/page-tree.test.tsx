@@ -20,6 +20,124 @@ const titles = (nav: HTMLElement) =>
     .getAllByRole("link")
     .map((link) => link.textContent);
 
+const raw = pageNode(5, "raw");
+const agents = pageNode(6, "AGENTS");
+
+/** The mode and role that the notebook list answers, with its seeded tree. */
+function wikiServer(role: Notebook["role"] = "editor", nodes = [raw, agents]) {
+  const state: { notebook: Notebook } = {
+    notebook: { ...notebookJSON, role, mode: "llm_wiki", source_root_id: raw.id },
+  };
+  const server = pageServer({
+    role,
+    nodes,
+    answers: { "GET /api/v0/workspaces/lab/notebooks": () => json({ data: [state.notebook] }) },
+  });
+  return { ...server, state };
+}
+
+/** Opens a page's menu and returns all its action names, in order. */
+async function actionsFor(user: ReturnType<typeof userEvent.setup>, nav: HTMLElement, name: string) {
+  await user.click(within(nav).getByRole("button", { name: `Actions for ${name}` }));
+  const menu = await screen.findByRole("menu");
+  return within(menu)
+    .getAllByRole("menuitem")
+    .map((item) => item.textContent);
+}
+
+test.each([
+  ["editor", "AGENTS", "AGENTS (instructions for agents)"],
+  ["admin", "AGENTS", "AGENTS (instructions for agents)"],
+  ["editor", "raw", "raw (source area)"],
+] as const)("an LLM Wiki's %s has only New subpage on %s, whose row does not drag", async (role, name, linkName) => {
+  const user = userEvent.setup();
+  renderApp(home, wikiServer(role).app);
+  const nav = await tree();
+  const link = await within(nav).findByRole("link", { name: linkName });
+
+  expect(link.parentElement?.hasAttribute("draggable")).toBe(false);
+  expect(await actionsFor(user, nav, name)).toEqual(["New subpage"]);
+});
+
+test("an LLM Wiki's admin can rename, move and drag its source root, but cannot delete it", async () => {
+  const user = userEvent.setup();
+  renderApp(home, wikiServer("admin").app);
+  const nav = await tree();
+  const link = await within(nav).findByRole("link", { name: "raw (source area)" });
+
+  expect(link.parentElement?.getAttribute("draggable")).toBe("true");
+  expect(await actionsFor(user, nav, "raw")).toEqual(["New subpage", "Rename", "Move to…"]);
+});
+
+test("an LLM Wiki's tree gives its two kinds a text equivalent after a space", async () => {
+  renderApp(home, wikiServer().app);
+  const nav = await tree();
+  await within(nav).findByRole("button", { name: "Actions for AGENTS" });
+
+  expect(titles(nav)).toEqual(["raw (source area)", "AGENTS (instructions for agents)"]);
+});
+
+test.each(["raw", "AGENTS"])("a standard notebook's %s has every action and remains draggable", async (name) => {
+  const user = userEvent.setup();
+  renderApp(home, pageServer({ role: "editor", nodes: [raw, agents] }).app);
+  const nav = await tree();
+  const link = await within(nav).findByRole("link", { name });
+
+  expect(link.textContent).toBe(name);
+  expect(link.parentElement?.getAttribute("draggable")).toBe("true");
+  expect(await actionsFor(user, nav, name)).toEqual(["New subpage", "Rename", "Move to…", "Delete"]);
+});
+
+test("only the root AGENTS is protected, by its normalized title", async () => {
+  const user = userEvent.setup();
+  const root = { ...agents, name: "aGeNtS" };
+  const child = pageNode(7, "AGENTS", raw);
+  renderApp(pagePath(child.id), wikiServer("editor", [raw, root, child]).app);
+  const nav = await tree();
+  const top = await within(nav).findByRole("link", { name: "aGeNtS (instructions for agents)" });
+  const nested = await within(nav).findByRole("link", { name: "AGENTS" });
+
+  expect(top.parentElement?.hasAttribute("draggable")).toBe(false);
+  expect(await actionsFor(user, nav, "aGeNtS (in Plans)")).toEqual(["New subpage"]);
+  await user.keyboard("{Escape}");
+  expect(nested.parentElement?.getAttribute("draggable")).toBe("true");
+  expect(await actionsFor(user, nav, "AGENTS (in raw)")).toEqual(["New subpage", "Rename", "Move to…", "Delete"]);
+});
+
+test("the source root keeps its kind and protection when renamed and moved", async () => {
+  const user = userEvent.setup();
+  const source = { ...raw, name: "Sources", parent_id: notes.id };
+  renderApp(pagePath(source.id), wikiServer("editor", [notes, source, agents]).app);
+  const nav = await tree();
+  const link = await within(nav).findByRole("link", { name: "Sources (source area)" });
+
+  expect(link.parentElement?.hasAttribute("draggable")).toBe(false);
+  expect(await actionsFor(user, nav, "Sources")).toEqual(["New subpage"]);
+});
+
+test("a downgrade makes the same mounted AGENTS and source rows draggable", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const server = wikiServer();
+  renderApp(home, server.app);
+  const nav = await tree();
+  const beforeAgents = (await within(nav).findByRole("link", { name: "AGENTS (instructions for agents)" }))
+    .parentElement;
+  const beforeRaw = within(nav).getByRole("link", { name: "raw (source area)" }).parentElement;
+  expect(beforeAgents?.hasAttribute("draggable")).toBe(false);
+  expect(beforeRaw?.hasAttribute("draggable")).toBe(false);
+
+  server.state.notebook = { ...server.state.notebook, mode: "standard", source_root_id: null };
+  await act(() => vi.advanceTimersByTimeAsync(6_000));
+  act(() => void window.dispatchEvent(new Event("focus")));
+
+  const afterAgents = (await within(nav).findByRole("link", { name: "AGENTS" })).parentElement;
+  const afterRaw = within(nav).getByRole("link", { name: "raw" }).parentElement;
+  expect(afterAgents).toBe(beforeAgents);
+  expect(afterRaw).toBe(beforeRaw);
+  expect(afterAgents?.getAttribute("draggable")).toBe("true");
+  expect(afterRaw?.getAttribute("draggable")).toBe("true");
+});
+
 test("the notebook's pages are in the left column, beside the main, their roots shown", async () => {
   renderApp(home, pageServer().app);
 
