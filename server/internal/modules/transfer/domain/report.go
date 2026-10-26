@@ -79,6 +79,8 @@ const (
 	// batch splits, holds more pages, attachments, history or links than
 	// one batch writes (M9/P3 design 3.23): what it wrote before kept.
 	FailureRevertTooLarge Failure = "revert_too_large"
+	// FailureRefused is a write the notebook contract refused: the report names its code and node.
+	FailureRefused Failure = "refused"
 )
 
 // ProblemCode is what befell a node, a code the web words.
@@ -171,10 +173,19 @@ type Lock struct {
 	PageID, UserID uuid.UUID
 }
 
+// Refusal is the notebook contract's reason for refusing a job's write,
+// and the page or attachment it refused. Codes from later milestones
+// remain readable in reports written by another server version.
+type Refusal struct {
+	Code   string
+	NodeID uuid.UUID
+}
+
 // Report is what a job tells as it ends (M7 design 4.11): its failure, its
 // counts and its first MaxProblems problems; a restore's placement, a
 // revert's conflicts, the first MaxConflicts of ConflictCount, and the
-// lock it met (M8/P4 design 3.6).
+// lock it met (M8/P4 design 3.6); a contract refusal's code and node
+// (M10/P1 design 3.26).
 type Report struct {
 	Failure  Failure
 	Counts   Counts
@@ -185,6 +196,7 @@ type Report struct {
 	Conflicts     []Conflict
 	ConflictCount int
 	Lock          *Lock
+	Refusal       *Refusal
 }
 
 // MaxConflicts is how many of a revert's conflicts its report keeps, as

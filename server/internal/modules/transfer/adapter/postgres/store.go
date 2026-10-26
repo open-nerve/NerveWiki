@@ -346,8 +346,9 @@ func jobOf(r gen.FindJobRow) (domain.Job, error) {
 
 // reportJSON is a report as transfer_jobs.report keeps it. A background
 // restore's placement, a revert's conflicts and the lock it met are kept
-// only when there are (M8/P4 design 3.6): the list reads a report without
-// its problems and conflicts.
+// only when there are (M8/P4 design 3.6), as is a contract refusal's code
+// and node (M10/P1 design 3.26). The list omits problems and conflicts,
+// retaining refusal and lock.
 type reportJSON struct {
 	Failure       *string        `json:"failure"`
 	Counts        countsJSON     `json:"counts"`
@@ -357,6 +358,7 @@ type reportJSON struct {
 	Conflicts     []conflictJSON `json:"conflicts,omitempty"`
 	ConflictCount int            `json:"conflict_count,omitempty"`
 	Lock          *lockJSON      `json:"lock,omitempty"`
+	Refusal       *refusalJSON   `json:"refusal,omitempty"`
 }
 
 type countsJSON struct {
@@ -394,6 +396,11 @@ type lockJSON struct {
 	UserID uuid.UUID `json:"user_id"`
 }
 
+type refusalJSON struct {
+	Code   string    `json:"code"`
+	NodeID uuid.UUID `json:"node_id"`
+}
+
 func encodeReport(r domain.Report) ([]byte, error) {
 	out := reportJSON{Counts: countsJSON(r.Counts), Problems: make([]problemJSON, len(r.Problems)), Truncated: r.Truncated,
 		ConflictCount: r.ConflictCount}
@@ -412,6 +419,9 @@ func encodeReport(r domain.Report) ([]byte, error) {
 	}
 	if r.Lock != nil {
 		out.Lock = &lockJSON{PageID: r.Lock.PageID, UserID: r.Lock.UserID}
+	}
+	if r.Refusal != nil {
+		out.Refusal = &refusalJSON{Code: r.Refusal.Code, NodeID: r.Refusal.NodeID}
 	}
 	b, err := json.Marshal(out)
 	if err != nil {
@@ -440,6 +450,9 @@ func decodeReport(b []byte) (domain.Report, error) {
 	}
 	if in.Lock != nil {
 		r.Lock = &domain.Lock{PageID: in.Lock.PageID, UserID: in.Lock.UserID}
+	}
+	if in.Refusal != nil {
+		r.Refusal = &domain.Refusal{Code: in.Refusal.Code, NodeID: in.Refusal.NodeID}
 	}
 	return r, nil
 }

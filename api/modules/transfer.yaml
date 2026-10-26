@@ -829,7 +829,7 @@ components:
     TransferReport:
       type: object
       additionalProperties: false
-      required: [failure, counts, placed, lock]
+      required: [failure, counts, placed, lock, refusal]
       properties:
         failure:
           description: Why the job failed; null when it did not.
@@ -853,6 +853,28 @@ components:
           anyOf:
             - $ref: "../common.yaml#/components/schemas/PageLock"
             - type: "null"
+        refusal:
+          description: >-
+            When the failure is refused, the write of the job the notebook's
+            contract refused: the code, and the page or attachment it was
+            about. Null for every other job and failure.
+          anyOf:
+            - $ref: "#/components/schemas/TransferRefusal"
+            - type: "null"
+    TransferRefusal:
+      type: object
+      additionalProperties: false
+      required: [code, node_id]
+      properties:
+        code:
+          description: >-
+            The code of the refusal, as the write's own answer would carry it:
+            page.protected, page.virtual_file or page.source_admin_only today;
+            later milestones add others without a change to this contract.
+          type: string
+        node_id:
+          type: string
+          format: uuid
     TransferFailure:
       description: >-
         Why a job failed: interrupted (the server stopped or restarted, the
@@ -885,8 +907,10 @@ components:
         restores); page_locked (an edit session holds a page it was about to
         delete or write back, the report's lock); revert_too_large (one of
         its segments, steps that must be in one batch, holds more pages,
-        attachments, history or links than one batch writes). What a job
-        wrote before it failed is kept.
+        attachments, history or links than one batch writes). A writing job's
+        refused (a write of the job the notebook's contract as an LLM Wiki
+        refused: its refusal says which and where). What a job wrote before
+        it failed is kept.
       type: string
       enum:
         [
@@ -909,6 +933,7 @@ components:
           changeset_trimmed,
           page_locked,
           revert_too_large,
+          refused,
         ]
     TransferCounts:
       description: >-

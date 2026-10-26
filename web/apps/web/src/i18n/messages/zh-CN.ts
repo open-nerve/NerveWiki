@@ -670,6 +670,7 @@ export const zhCN: Messages = {
   "transfer.failure.restore_expired": "这一项已过了可以恢复的期限。",
   "transfer.failure.revert_conflict": "这次改动碰过的节点之后又变了，或回不到原处。",
   "transfer.failure.changeset_trimmed": "这次改动的一部分已被清理，不能再撤销。",
+  "transfer.failure.refused": "LLM Wiki 的规则拒绝了它的一步写入。",
   "transfer.failure.page_locked": "撤销要改的一页正在被人编辑。",
   "transfer.failure.revert_too_large":
     "撤销中必须一次做完的一段太大，一批写不下（它带回的页、附件、历史或链接）。在它之前撤销的部分留着。",
@@ -707,6 +708,8 @@ export const zhCN: Messages = {
   "transfer.conflictsTitle": "挡住撤销的节点：{count}",
   "transfer.conflictsAgain": "在「被撤销的改动」里重新撤销时，会列出它们的链接。",
   "transfer.openPage": "打开「{page}」",
+  "transfer.refusedTitled": "被拒的是“{name}”。",
+  "transfer.refusedSome": "被拒的那一页已不在树里。",
   "transfer.lockedSome": "{name} 正在编辑撤销要改的一页。",
   "transfer.lockedSomeSelf": "你正在别处编辑撤销要改的一页。",
   "transfer.problem.other": "{path} 在库里与笔记本不同。",

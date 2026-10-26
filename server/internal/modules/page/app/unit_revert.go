@@ -915,9 +915,13 @@ func (u *Unit) restoreGroup(ctx context.Context, r RevertPart, steps []revertSte
 }
 
 // revertDefect is err of a batch's step s: a classified error but the
-// guards' page.locked, the restore's page.trash_changed and the server's
-// 503 is a defect, as Revert has it: the plan checked the step.
+// guards' marked refusals or page.locked, the restore's page.trash_changed
+// and the server's 503 is a defect, as Revert has it: the plan checked the step.
 func revertDefect(s revertStep, err error) error {
+	var refused *domain.Refused
+	if errors.As(err, &refused) {
+		return err
+	}
 	var e *shared.Error
 	if !errors.As(err, &e) || e.Kind == shared.KindUnavailable || errors.Is(err, domain.ErrLocked) || errors.Is(err, domain.ErrTrashChanged) {
 		return err

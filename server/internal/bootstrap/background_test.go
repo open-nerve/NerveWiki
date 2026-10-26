@@ -63,6 +63,10 @@ type backgroundJob struct {
 			UserID      string `json:"user_id"`
 			DisplayName string `json:"display_name"`
 		} `json:"lock"`
+		Refusal *struct {
+			Code   string `json:"code"`
+			NodeID string `json:"node_id"`
+		} `json:"refusal"`
 	} `json:"report"`
 	Conflicts     []revertConflict `json:"conflicts"`
 	ConflictCount int              `json:"conflict_count"`

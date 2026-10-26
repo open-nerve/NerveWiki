@@ -543,3 +543,42 @@ test.each([
     expect(opening?.getAttribute("href") ?? null).toBe(open ? `${home}/pages/${guide.id}` : null);
   }
 );
+
+// A contract refusal keeps its code and node, including codes a newer
+// server knows before this client does (M10/P1 design 4.3).
+test.each([
+  { code: "page.source_admin_only", present: true },
+  { code: "page.source_admin_only", present: false },
+  { code: "page.some_later_code", present: true },
+])("a refused revert shows $code, its node present: $present", async ({ code, present }) => {
+  const user = userEvent.setup();
+  const raw = pageNode(8, "raw");
+  const job = revertOf(1, {
+    state: "failed",
+    report: { ...reportOf("refused"), refusal: { code, node_id: raw.id } },
+    progress: { done: 1, total: 2 },
+  });
+  const server = jobsServer({ jobs: [job], nodes: present ? [raw] : [] });
+  renderApp(transfer, server.app);
+  await screen.findByRole("navigation", { name: "Pages of Plans" });
+  expect(
+    within(await row("Undo: Import")).getByText(
+      "Failed · The notebook's rules as an LLM Wiki refused one of its writes."
+    )
+  ).toBeTruthy();
+  const shown = await reportOpened(user, "Undo: Import");
+  const reason =
+    code === "page.source_admin_only"
+      ? "Only the notebook's admins can rename or move its source root, or rename, move or delete in its source area."
+      : "Something went wrong (page.some_later_code).";
+  expect(within(shown).getByText(reason)).toBeTruthy();
+  if (present) {
+    expect(within(shown).getByText("It was refused at “raw”.")).toBeTruthy();
+    expect(within(shown).getByRole("link", { name: "Open “raw”" }).getAttribute("href")).toBe(
+      `${home}/pages/${raw.id}`
+    );
+  } else {
+    expect(within(shown).getByText("It was refused at a page no longer in the tree.")).toBeTruthy();
+    expect(within(shown).queryByRole("link", { name: /^Open / })).toBeNull();
+  }
+});

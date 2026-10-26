@@ -89,6 +89,7 @@ test("TR4 (API): the entries that cannot be imported safely are skipped and repo
       },
       placed: null,
       lock: null,
+      refusal: null,
     },
   ]);
   expect(job.problems.toSorted((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))).toEqual([

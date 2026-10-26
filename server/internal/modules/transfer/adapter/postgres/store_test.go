@@ -754,3 +754,55 @@ func TestTheQueueLockSerializesCreations(t *testing.T) {
 		t.Fatal("the second LockQueue() still waits after the first ended")
 	}
 }
+
+// Refusal codes survive detail and list reads, including a future code;
+// reports without a refusal keep the older, omitted JSON member readable.
+func TestARefusedJobsReportReadsBackAsWritten(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	node := uuid.NewV7()
+	for _, code := range []string{"", "page.source_admin_only", "page.some_later_code"} {
+		t.Run(code, func(t *testing.T) {
+			j, err := f.background(t, f.eng, f.alice, nil, uuid.NewV7())
+			if err != nil {
+				t.Fatal(err)
+			}
+			f.start(t, j.ID, at(0))
+			report := domain.Report{Failure: domain.FailureInternal, Counts: domain.Counts{PutBack: 1}}
+			if code != "" {
+				report.Failure, report.Refusal = domain.FailureRefused, &domain.Refusal{Code: code, NodeID: node}
+			}
+			if ok, err := f.store.FinishJob(ctx, j.ID, app.Ended{State: domain.StateFailed, At: at(time.Second), Name: j.Name, Report: report}); !ok || err != nil {
+				t.Fatalf("FinishJob() = %v, %v", ok, err)
+			}
+			got, err := f.store.FindJob(ctx, j.ID)
+			if err != nil || got.Report == nil || !reflect.DeepEqual(*got.Report, report) {
+				t.Errorf("FindJob report = %+v, %v; want %+v", got.Report, err, report)
+			}
+			listed, err := f.store.ListJobs(ctx, f.eng, nil, nil, 10)
+			if err != nil {
+				t.Fatal(err)
+			}
+			found := false
+			for _, got := range listed {
+				if got.ID != j.ID {
+					continue
+				}
+				found = true
+				if got.Report == nil || !reflect.DeepEqual(*got.Report, report) {
+					t.Errorf("ListJobs report = %+v, want %+v", got.Report, report)
+				}
+			}
+			if !found {
+				t.Fatalf("ListJobs did not contain %s", j.ID)
+			}
+			var has bool
+			if err := f.pool.QueryRow(ctx, "SELECT report ? 'refusal' FROM transfer_jobs WHERE id = $1", j.ID).Scan(&has); err != nil {
+				t.Fatal(err)
+			}
+			if has != (code != "") {
+				t.Errorf("stored refusal present %v, want %v", has, code != "")
+			}
+		})
+	}
+}

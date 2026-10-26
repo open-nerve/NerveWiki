@@ -713,6 +713,7 @@ func TestAnImportWaitsForABusyServer(t *testing.T) {
 // whose commit's answer was lost fails it internal, its files left to the
 // sweep.
 func TestAnImportsUnitFails(t *testing.T) {
+	node := uuid.NewV7()
 	for _, tt := range []struct {
 		name    string
 		setup   func(w *importWorld)
@@ -721,7 +722,11 @@ func TestAnImportsUnitFails(t *testing.T) {
 	}{
 		{"store full", func(w *importWorld) { w.files.full = true }, domain.FailureStorageFull, true},
 		{"store full after a file", func(w *importWorld) { w.files.full, w.files.room = true, 1 }, domain.FailureStorageFull, true},
-		{"refused", func(w *importWorld) { w.tree.refuse = shared.Forbidden() }, domain.FailureForbidden, true},
+		{"forbidden", func(w *importWorld) { w.tree.refuse = shared.Forbidden() }, domain.FailureForbidden, true},
+		{"refused", func(w *importWorld) {
+			w.tree.refuse = &app.Refused{Code: "page.source_admin_only", NodeID: node,
+				Err: &shared.Error{Kind: shared.KindForbidden, Code: "page.source_admin_only"}}
+		}, domain.FailureRefused, true},
 		{"notebook not visible", func(w *importWorld) { w.tree.refuse = domain.ErrNotebookNotFound }, domain.FailureForbidden, true},
 		{"invalid", func(w *importWorld) { w.tree.refuse = &shared.Error{Kind: shared.KindInvalid} }, domain.FailureInternal, true},
 		{"uncertain", func(w *importWorld) { w.tree.uncertain = errors.New("the commit's answer was lost") }, domain.FailureInternal, false},
@@ -734,6 +739,13 @@ func TestAnImportsUnitFails(t *testing.T) {
 			got := w.run(t, w.queuedImport(nil, archive))
 			if got.State != domain.StateFailed || got.Report.Failure != tt.want || len(w.tree.made) != 0 {
 				t.Errorf("job %s, report %+v; want failed %s", got.State, got.Report, tt.want)
+			}
+			if tt.want == domain.FailureRefused {
+				if got.Report.Refusal == nil || *got.Report.Refusal != (domain.Refusal{Code: "page.source_admin_only", NodeID: node}) || got.Report.Lock != nil {
+					t.Errorf("report %+v, want the marked refusal and no lock", got.Report)
+				}
+			} else if got.Report.Refusal != nil {
+				t.Errorf("report refusal %+v, want nil", got.Report.Refusal)
 			}
 			if kept := w.files.kept(); (kept == 0) != tt.dropped {
 				t.Errorf("%d files kept, dropped %v; want them dropped: %v", kept, w.files.dropped, tt.dropped)

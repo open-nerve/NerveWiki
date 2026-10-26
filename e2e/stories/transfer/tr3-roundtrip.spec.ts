@@ -66,6 +66,7 @@ test("TR3 (API): TR1's notebook exports and imports into another as it was: its 
       },
       placed: null,
       lock: null,
+      refusal: null,
     },
     [],
   ]);

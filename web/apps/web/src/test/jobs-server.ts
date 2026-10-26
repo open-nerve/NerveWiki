@@ -32,7 +32,7 @@ export function reportOf(
     put_back: 0,
     written: 0,
   };
-  return { failure, counts: { ...none, ...counts }, placed: null, lock: null };
+  return { failure, counts: { ...none, ...counts }, placed: null, lock: null, refusal: null };
 }
 
 /** addressOf is the address the server signed for job's archive, which expires at expires. */

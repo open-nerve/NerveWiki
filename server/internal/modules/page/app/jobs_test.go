@@ -10,6 +10,7 @@ import (
 	"time"
 	"uuid"
 
+	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/app"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
@@ -1276,5 +1277,48 @@ func TestCheckRevertRefusesTheLockedPages(t *testing.T) {
 	if _, err := f.jobs(now(), 0, 0).PlanRevert(f.asJob(), f.jobSpec(), created.ID); !errors.As(err, &e) || e.Code != "page.locked" ||
 		e.Lock.PageID != folder.ID {
 		t.Errorf("PlanRevert(a deletion Bob edits) = %v, want page.locked of Folder", err)
+	}
+}
+
+// A batch passes a guard's marked refusal through revertDefect, without
+// writing its step. Ordinary classified title conflicts remain defects.
+func TestARevertJobsBatchPassesAGuardsRefusal(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		problem error
+		marked  bool
+	}{
+		{"contract", domain.ErrSourceAdminOnly, true},
+		{"lock", domain.ErrLocked, true},
+		{"ordinary title taken", domain.ErrTitleTaken, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newFixture()
+			f.grant(domain.ActionRevert)
+			p := f.page("Before", nil, 0)
+			c := f.renaming(p.ID, "After")
+			_, spec, plan := f.revertJob(t, c.ID, nil, now())
+			refusal := tt.problem
+			if tt.marked {
+				refusal = domain.Refuse(refusal, p.ID)
+			}
+			g := &guard{recorder: f.rec, err: refusal}
+			f.guards = []app.WriteGuard{g}
+			_, err := f.jobs(now(), 0, 0).RunBatch(f.asJob(), spec, plan, 0, 1)
+			code, node, marked := page.Refusal(err)
+			if tt.marked {
+				if err != refusal || !marked || code != codeOf(tt.problem) || node != p.ID { //nolint:errorlint // a marked refusal is returned unchanged
+					t.Errorf("RunBatch = %v, refusal %q at %s (%v), want original marked %v at %s", err, code, node, marked, refusal, p.ID)
+				}
+			} else {
+				var problem *shared.Error
+				if err == nil || errors.As(err, &problem) || marked {
+					t.Errorf("RunBatch = %v, want an unclassified defect", err)
+				}
+			}
+			if len(g.steps) != 1 || !f.tx.rolledBack || f.store.nodes[p.ID].Name != "After" || f.count("RenameNode") != 0 || f.count("CreateChangeset") != 0 {
+				t.Errorf("refused batch: %d guard steps, rollback %v, node %+v, calls %v; want no write", len(g.steps), f.tx.rolledBack, f.store.nodes[p.ID], f.rec.calls)
+			}
+		})
 	}
 }

@@ -80,13 +80,17 @@ func uncertain(err error, rolledBack bool) bool {
 	return err != nil && !rolledBack && !errors.As(err, &refused) && !errors.Is(err, ErrChangesetReverted)
 }
 
-// unitFailure is why a unit failed: forbidden for a job whose account can
-// no longer write in the notebook, or see it; changeset_reverted for a
+// unitFailure is why a unit failed: refused for a marked contract refusal;
+// forbidden for a job whose account can no longer write in the notebook,
+// or see it; changeset_reverted for a
 // revert of the job's changeset; the failure it found; any other is
 // internal.
 func unitFailure(err error) error {
 	var e *shared.Error
+	var refused *Refused
 	switch {
+	case errors.As(err, &refused):
+		return failed(domain.FailureRefused, err)
 	case errors.As(err, &e) && (e.Kind == shared.KindForbidden || e.Kind == shared.KindNotFound || e.Kind == shared.KindUnauthenticated):
 		return failed(domain.FailureForbidden, err)
 	case errors.Is(err, ErrChangesetReverted):

@@ -249,6 +249,8 @@ func TestABackgroundJobStopsWithItsReason(t *testing.T) {
 		{"trimmed", app.ErrChangesetTrimmed, domain.FailureChangesetTrimmed},
 		{"locked", lock, domain.FailurePageLocked},
 		{"its changeset reverted", app.ErrChangesetReverted, domain.FailureChangesetReverted},
+		{"refused", &app.Refused{Code: "page.source_admin_only", NodeID: node,
+			Err: &shared.Error{Kind: shared.KindForbidden, Code: "page.source_admin_only"}}, domain.FailureRefused},
 		{"forbidden", shared.Forbidden(), domain.FailureForbidden},
 		{"the notebook gone", domain.ErrNotebookNotFound, domain.FailureForbidden},
 		{"a name taken", &shared.Error{Kind: shared.KindConflict, Code: "page.title_taken"}, domain.FailureInternal},
@@ -270,7 +272,14 @@ func TestABackgroundJobStopsWithItsReason(t *testing.T) {
 					t.Errorf("job %s, progress %+v, report %+v; want failed %s, %d written", got.State, got.Progress, got.Report, tt.want, written)
 				}
 				r := got.Report
+				if tt.want != domain.FailureRefused && r.Refusal != nil {
+					t.Errorf("report refusal %+v, want nil", r.Refusal)
+				}
 				switch tt.want {
+				case domain.FailureRefused:
+					if r.Refusal == nil || *r.Refusal != (domain.Refusal{Code: "page.source_admin_only", NodeID: node}) || r.Lock != nil || r.Conflicts != nil {
+						t.Errorf("report %+v, want the refusal and no lock or conflicts", r)
+					}
 				case domain.FailureRevertConflict:
 					if len(r.Conflicts) != domain.MaxConflicts || r.ConflictCount != count ||
 						r.Conflicts[0] != (domain.Conflict{NodeID: node, Name: "n000", Reason: "title_taken", HolderID: &holder}) {
