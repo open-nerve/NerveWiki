@@ -47,8 +47,9 @@ import (
 // which the edit lock refuses (M5/P1 design 3.8); a live LLM Wiki without
 // its source root, a live page of its own, or its root's AGENTS page (M10
 // design 4.4, 4.9: the template is written with the notebook, and neither
-// page goes while it is one). The links' invariant and the search's
-// (checkSearch, M8/P5 design 3.10) are checked with it.
+// page goes while it is one), or a live root node of an LLM Wiki whose
+// title key is reserved for its virtual files. The links' invariant and
+// the search's (checkSearch, M8/P5 design 3.10) are checked with it.
 func checkPages(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
 	for _, v := range pageViolations(t, pool) {
@@ -132,6 +133,9 @@ func pageViolations(t testing.TB, pool *pgxpool.Pool) []string {
 					AND r.kind = 'page' AND r.deleted_at IS NULL)
 				OR NOT EXISTS (SELECT 1 FROM nodes a WHERE a.notebook_id = n.id AND a.parent_id IS NULL
 					AND a.name_key = 'agents' AND a.kind = 'page' AND a.deleted_at IS NULL))`,
+		"live LLM Wikis' root nodes with a reserved title key": `SELECT count(*) FROM nodes x JOIN notebooks n ON n.id = x.notebook_id
+			WHERE n.mode = 'llm_wiki' AND n.deleted_at IS NULL AND x.deleted_at IS NULL AND x.parent_id IS NULL
+				AND x.name_key IN ('index', 'log', 'index.md', 'log.md')`,
 	}
 	var found []string
 	for _, what := range slices.Sorted(maps.Keys(rules)) {
@@ -211,6 +215,30 @@ func TestPageViolationsCatchEachLLMWikiGap(t *testing.T) {
 		tt.undo()
 		if v := pageViolations(t, tm.pool); len(v) != 0 {
 			t.Fatalf("%s put back breaks %q, want nothing", tt.name, v)
+		}
+	}
+	standard := tm.createWith(t, tm.tokens["alice"], `{"name":"Standard notes"}`)
+	rootPage := tm.createPage(t, "alice", wiki.ID, "", "Notes")
+	nestedPage := tm.createPage(t, "alice", wiki.ID, rootPage, "Nested")
+	standardPage := tm.createPage(t, "alice", standard.ID, "", "Notes")
+	const reserved = "live LLM Wikis' root nodes with a reserved title key"
+	for _, tt := range []struct {
+		label, id, name string
+		want            bool
+	}{
+		{"reserved at the LLM Wiki root", rootPage, "Notes", true},
+		{"reserved under a page", nestedPage, "Nested", false},
+		{"reserved at a standard root", standardPage, "Notes", false},
+	} {
+		exec("UPDATE nodes SET name = 'Index', name_key = 'index' WHERE id = $1", tt.id)
+		got := pageViolations(t, tm.pool)
+		found := slices.Contains(got, "1 "+reserved+", want none")
+		if found != tt.want {
+			t.Errorf("%s: violations %q hold %q = %t, want %t", tt.label, got, reserved, found, tt.want)
+		}
+		exec("UPDATE nodes SET name = $2, name_key = lower($2) WHERE id = $1", tt.id, tt.name)
+		if v := pageViolations(t, tm.pool); len(v) != 0 {
+			t.Fatalf("%s put back breaks %q, want nothing", tt.label, v)
 		}
 	}
 	if status, answer := ask(t, tm.contract, http.MethodDelete, tm.base+"/api/v0/notebooks/"+wiki.ID, tm.tokens["alice"], ""); status != http.StatusNoContent {

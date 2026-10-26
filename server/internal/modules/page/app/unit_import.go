@@ -161,6 +161,11 @@ func (iu *ImportUnit) children(ctx context.Context, parentID *uuid.UUID) (*child
 	for _, n := range nodes {
 		kids.keys[n.NameKey] = true
 	}
+	if parentID == nil && iu.u.write.Notebook.Mode == domain.ModeLLMWiki {
+		for _, key := range domain.ReservedKeys() {
+			kids.keys[key] = true
+		}
+	}
 	iu.under[key] = kids
 	return kids, nil
 }

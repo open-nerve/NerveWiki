@@ -32,6 +32,106 @@ func (f trashFixture) trashedContent(id uuid.UUID, text string) {
 	f.store.trashed[id] = c
 }
 
+// The destination, not the old parent, decides whether reserved keys
+// join live siblings. A restored group's descendants keep their names,
+// including members in the same batch and in a later one.
+func TestARestoreNumbersTheReservedTitlesAtAnLLMWikisRoot(t *testing.T) {
+	for _, mode := range []domain.Mode{domain.ModeLLMWiki, domain.ModeStandard} {
+		for _, background := range []bool{false, true} {
+			for _, tt := range []struct {
+				label, name, numbered    string
+				asset, parentGone, taken bool
+				member                   bool
+				batch                    int
+			}{
+				{"parent in trash", "index", "index 2", false, true, false, false, 10},
+				{"numbered sibling", "index", "index 3", false, true, true, false, 10},
+				{"LOG page", "LOG", "LOG 2", false, true, false, false, 10},
+				{"index.md page", "index.md", "index.md 2", false, true, false, false, 10},
+				{"log.md page", "log.md", "log.md 2", false, true, false, false, 10},
+				{"attachment", "index", "index 2", true, true, false, false, 10},
+				{"root under a live page", "index", "index", false, false, false, false, 10},
+				{"member with its parent", "Box", "Box", false, true, false, true, 10},
+				{"member after its parent", "Box", "Box", false, true, false, true, 1},
+			} {
+				t.Run(fmt.Sprintf("%s/background=%t/%s", mode, background, tt.label), func(t *testing.T) {
+					f := trashFixture{fixture: newFixture()}
+					f.grant(domain.ActionHistory, domain.ActionRestore)
+					raw := f.page("raw", nil, 0)
+					f.page("AGENTS", nil, 1)
+					f.notebooks.states = map[uuid.UUID]domain.NotebookState{f.eng: {Mode: mode, SourceRootID: raw.ID}}
+					parent := f.page("Parent", nil, 2)
+					var root domain.Node
+					if tt.asset {
+						root = f.asset(tt.name, &parent.ID, 0)
+					} else {
+						root = f.page(tt.name, &parent.ID, 0)
+					}
+					var member domain.Node
+					if tt.member {
+						member = f.page("index", &root.ID, 0)
+					}
+					f.trashed(root.ID, now().Add(-time.Hour), f.alice)
+					wantParent, reason := &parent.ID, domain.PlacedOriginal
+					if tt.parentGone {
+						f.trashed(parent.ID, now().Add(-time.Minute), f.alice)
+						wantParent, reason = nil, domain.PlacedParentInTrash
+					}
+					if tt.taken {
+						f.page("index 2", nil, 3)
+					}
+					want := tt.name
+					if mode == domain.ModeLLMWiki {
+						want = tt.numbered
+					}
+					renamed := want != tt.name
+					if background {
+						w, spec := f.jobs(now(), 0, 0), f.jobSpec()
+						plan, err := w.PlanRestore(f.asJob(), spec, root.ID)
+						if err != nil {
+							t.Fatal(err)
+						}
+						done, err := f.runJob(w, spec, plan, tt.batch)
+						if err != nil || len(done) == 0 {
+							t.Fatalf("restore batches = %+v, %v", done, err)
+						}
+						var total int
+						for _, batch := range done {
+							total += batch.Renamed
+						}
+						place := done[0].Placed
+						if total != boolInt(renamed) || done[0].Renamed != boolInt(renamed) || place == nil ||
+							place.Reason != reason || !domain.SameParent(place.ParentID, wantParent) {
+							t.Errorf("batches %+v, placement %+v; want %d renamed, %s under %v", done, place, boolInt(renamed), reason, wantParent)
+						}
+					} else {
+						got, err := f.restore(root.ID, 0)
+						if err != nil {
+							t.Fatal(err)
+						}
+						if got.Node.Name != want || got.Renamed != renamed || got.Placement.Reason != reason ||
+							!domain.SameParent(got.Placement.ParentID, wantParent) {
+							t.Errorf("restored %+v; want %q, renamed %t, %s under %v", got, want, renamed, reason, wantParent)
+						}
+					}
+					got, after := f.store.nodes[root.ID], f.store.items[root.ID].Change.After
+					if got.Name != want || got.NameKey != shared.TitleKey(want) || got.Kind != root.Kind ||
+						!domain.SameParent(got.ParentID, wantParent) || after == nil || after.Name != want ||
+						!domain.SameParent(after.ParentID, wantParent) {
+						t.Errorf("root %+v, after %+v; want %q under %v", got, after, want, wantParent)
+					}
+					if tt.member {
+						if got := f.store.nodes[member.ID]; got.Name != "index" || got.NameKey != "index" ||
+							!domain.SameParent(got.ParentID, &root.ID) {
+							t.Errorf("member %+v; want index under its restored parent %s", got, root.ID)
+						}
+					}
+				})
+			}
+		}
+	}
+}
+
 // A restore finds its item unlocked, decides, reads its group and parses
 // its pages; then in a unit of its notebook, a trash_restore, reads it
 // again under the lock and brings it back where it was, its pages with

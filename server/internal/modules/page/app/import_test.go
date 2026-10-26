@@ -11,11 +11,73 @@ import (
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/app"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
+	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
 // imports are the fixture's import writes, deciding on the create action.
 func (f *fixture) imports() *app.ImportWrites {
 	return app.NewImportWrites(f.writer(), f.parser(), f.md)
+}
+
+// Only an LLM Wiki's root holds the virtual files' keys, alongside its
+// live siblings. Pages and attachments use their existing numbering.
+func TestAnImportNumbersTheReservedTitlesAtAnLLMWikisRoot(t *testing.T) {
+	for _, mode := range []domain.Mode{domain.ModeLLMWiki, domain.ModeStandard} {
+		for _, tt := range []struct {
+			label, name, numbered string
+			asset, nested, taken  bool
+		}{
+			{"index page", "index", "index 2", false, false, false},
+			{"LOG page", "LOG", "LOG 2", false, false, false},
+			{"index.md page", "index.md", "index.md 2", false, false, false},
+			{"log.md page", "log.md", "log.md 2", false, false, false},
+			{"index attachment", "index", "index 2", true, false, false},
+			{"numbered sibling", "index", "index 3", false, false, true},
+			{"nested page", "index", "index", false, true, false},
+			{"nested attachment", "index", "index", true, true, false},
+		} {
+			t.Run(string(mode)+"/"+tt.label, func(t *testing.T) {
+				f := newFixture()
+				f.grant(domain.ActionCreate)
+				raw := f.page("raw", nil, 0)
+				f.page("AGENTS", nil, 1)
+				f.notebooks.states = map[uuid.UUID]domain.NotebookState{f.eng: {Mode: mode, SourceRootID: raw.ID}}
+				var parent *uuid.UUID
+				if tt.nested {
+					parent = &raw.ID
+				}
+				if tt.taken {
+					f.page("index 2", nil, 2)
+				}
+				var got domain.Node
+				_, err := f.importAs(uuid.UUID{}, func(ctx context.Context, u *app.ImportUnit) error {
+					var err error
+					if tt.asset {
+						got, err = u.CreateAsset(ctx, app.ImportedAsset{ParentID: parent, Name: tt.name},
+							func(context.Context, domain.Node) error { return nil })
+					} else {
+						got, err = u.CreatePage(ctx, app.ImportedPage{ParentID: parent, Name: tt.name})
+					}
+					return err
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				want, kind := tt.name, domain.KindPage
+				if mode == domain.ModeLLMWiki {
+					want = tt.numbered
+				}
+				if tt.asset {
+					kind = domain.KindAsset
+				}
+				stored := f.store.nodes[got.ID]
+				if got.Name != want || stored.Name != want || stored.NameKey != shared.TitleKey(want) ||
+					stored.Kind != kind || !domain.SameParent(stored.ParentID, parent) {
+					t.Errorf("imported %+v, stored %+v; want %s %q under %v", got, stored, kind, want, parent)
+				}
+			})
+		}
+	}
 }
 
 // importAs runs an import's unit of eng from the web, merged into into
