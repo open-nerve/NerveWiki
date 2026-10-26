@@ -4,10 +4,10 @@
 
 | 项 | 内容 |
 |---|---|
-| 对象 | 起点 `f2fe618040945923c5d32fb438d78632645210fd`，原始完整审查头 `a0aa88dd647e7579022b6c0e5b54ed22c8a0c8ff`，当前修复候选 `13ee0bc8ab4a302d654aa58ad994cbc8cedd6c24`；23个代码/测试文件。前六个提交依次 `ab3bd0eb`、`35804c04`、`d83cd89a`、`8e4c1899`、`fa662978`、`a0aa88dd`，第七个 `13ee0bc8` 只补B-I1六个参数化测试实例。尚未合并；合并见 [00-M10](../00-M10-design.md)第 12 节。 |
+| 对象 | 起点 `f2fe618040945923c5d32fb438d78632645210fd`，原始完整审查头 `a0aa88dd647e7579022b6c0e5b54ed22c8a0c8ff`，最终受测修复头 `13ee0bc8ab4a302d654aa58ad994cbc8cedd6c24`；23个代码/测试文件。前六个提交依次 `ab3bd0eb`、`35804c04`、`d83cd89a`、`8e4c1899`、`fa662978`、`a0aa88dd`，第七个 `13ee0bc8` 只补B-I1六个参数化测试实例。分支文档 `8556ad07`；2026-10-27 合并为 `f261952f757bb486908210955f3b679a407b71e7`，父提交 `f2fe6180`、`8556ad07`，合并树与分支相同；见 [00-M10](../00-M10-design.md)第 12 节。 |
 | 依据 | [01-P1](../01-P1-contract-frame.md) 3.29 的 S4 行、4.4、第 5 节、6.4/6.5、7.3 的 54–64、7.5–7.6、第 8 节；[工作流](../../claude_to_codex/02-workflow.md) 3.1–3.7；S3 的 [决定 33–34](P1-S3-prechecks-refusals-numbering-review.md)。 |
 | 日期 | 2026-10-27 |
-| 结论 | 三份原始完整 Step 独立审查及修复后的范围核对已由主持者接受；B-I1（Important，测试覆盖）已关闭，没有剩余核实的 Important、Minor、Nit 或 Q。原始审查头为a0，最终接受头为13ee；B由原审查者重放核对，A/C由主持者按工作流3.4的测试修复例外核对未变范围，记录分别保存。 修复候选 `13ee0bc8` 的13项门禁范围已覆盖：本头新跑 static-build、web、E2E 三项（合计246.659s），网页166文件/3,415测试、E2E291测试、22条已知TimeoutNaNWarning；十项Go命令保留实际受测头 `a0aa88dd` 的通过记录，以唯一改动为51行前端测试、增加六个参数化实例的完整输入等价证明复用，未声称重跑。 最终修复候选 `13ee0bc8ab4a302d654aa58ad994cbc8cedd6c24` 的 [分支 CI 40362256209](https://github.com/open-nerve/NerveWiki/actions/runs/40362256209) 十个作业全部成功；bootstrap 1/2/3 的Test步为370/391/360s（作业392/415/383s），E2E步190s（作业247s）。其他Test步/作业为web214/250s、short182/201s、race624/653s、costs532/714s、guards770/799s；Image smoke为73s（作业81s）。原始 `s4-evidence/branch-ci-13ee0bc8/{run,jobs,timings}.json` 的run、head、branch、push事件、workflow、十个job与计时逐项核对，B另独立核对同一CI。该分支运行不能代替未来合并后的两个main样本。 P1 尚未完成；合并及合并后的两个 main 样本另补。 |
+| 结论 | 三份原始完整 Step 独立审查及修复后的范围核对已由主持者接受；B-I1（Important，测试覆盖）已关闭，没有剩余核实的 Important、Minor、Nit 或 Q。原始审查头为a0，最终接受头为13ee；B由原审查者重放核对，A/C由主持者按工作流3.4的测试修复例外核对未变范围，记录分别保存。 修复候选 `13ee0bc8` 的13项门禁范围已覆盖：本头新跑 static-build、web、E2E 三项（合计246.659s），网页166文件/3,415测试、E2E291测试、22条已知TimeoutNaNWarning；十项Go命令保留实际受测头 `a0aa88dd` 的通过记录，以唯一改动为51行前端测试、增加六个参数化实例的完整输入等价证明复用，未声称重跑。 最终修复候选 `13ee0bc8ab4a302d654aa58ad994cbc8cedd6c24` 的 [分支 CI 40362256209](https://github.com/open-nerve/NerveWiki/actions/runs/40362256209) 十个作业全部成功；bootstrap 1/2/3 的Test步为370/391/360s（作业392/415/383s），E2E步190s（作业247s）。其他Test步/作业为web214/250s、short182/201s、race624/653s、costs532/714s、guards770/799s；Image smoke为73s（作业81s）。原始 `s4-evidence/branch-ci-13ee0bc8/{run,jobs,timings}.json` 的run、head、branch、push事件、workflow、十个job与计时逐项核对，B另独立核对同一CI。该分支运行不能代替未来合并后的两个main样本。 S4 已合并并通过首次 main CI；P1 尚未完成，第二个 main 样本及两次平均待本合并记录文档的 CI 后核对，在 P1 完成文档中转写。 |
 
 ## 建成的行为与任务核对
 
@@ -148,13 +148,23 @@ C-X2 保留原 LW12 的 try/catch/finally/allSettled 结构，在 verified busy 
 | test-go-bootstrap-2 | 274.975 / 273.525 | 274.25 | 275.769 / 274.306 | 275.0375 |
 | test-go-bootstrap-3 | 272.018 / 268.567 | 270.2925 | 272.838 / 269.363 | 271.1005 |
 
-S4 合并后的两次 main CI、各份 Test 步均值及 E2E 步尚未发生，按 7.5–7.6 和工作流在实际合并之后补记；本机绿色与分支 CI 都不能代替它们。
+S4 合并后的首次 main CI 已通过，实际 Test/E2E 与作业时间见下方。第二次由本合并记录文档提交触发，目前尚待运行，因而两次平均尚未形成；依7.5–7.6，在 P1 完成文档前测量、核对并转写，本机与分支读数不替代。
 
 最终修复候选 `13ee0bc8ab4a302d654aa58ad994cbc8cedd6c24` 的 [分支 CI 40362256209](https://github.com/open-nerve/NerveWiki/actions/runs/40362256209) 十个作业全部成功；bootstrap 1/2/3 的Test步为370/391/360s（作业392/415/383s），E2E步190s（作业247s）。其他Test步/作业为web214/250s、short182/201s、race624/653s、costs532/714s、guards770/799s；Image smoke为73s（作业81s）。原始 `s4-evidence/branch-ci-13ee0bc8/{run,jobs,timings}.json` 的run、head、branch、push事件、workflow、十个job与计时逐项核对，B另独立核对同一CI。该分支运行不能代替未来合并后的两个main样本。
 
 任务阶段的已知读数：Task1最终网页166文件/3368测试，Task2为3374，Task3为3408，Task4为3409；Task5 E2E的两条定向故事通过，复用输入相同的Task4网页证据；R-M1另核对20项。任务1–4完整网页日志各有已知22条TimeoutNaNWarning，构建有既有chunk提示；这不推断最终门禁的警告数量，最终数值以上方完整日志为准。Task5正常清理由通过的API故事覆盖；完整Step审查C-X2又实际注入主失败与清理失败，核对释放、drain和原错误保留。没有声称每位审查者或每个中间提交都重跑全 Step 门禁。
 
-S3的三次postmerge记录和所有两两平均已转写到[01-P1 10.3](../01-P1-contract-frame.md)和[S3审查](P1-S3-prechecks-refusals-numbering-review.md)，保留失败40325348498。S4尚未合并，实际merge SHA与postmerge两次main CI保持待补，不借用S3分片读数代替。
+S3的三次postmerge记录和所有两两平均已转写到[01-P1 10.3](../01-P1-contract-frame.md)和[S3审查](P1-S3-prechecks-refusals-numbering-review.md)，保留失败40325348498。S4的样本另记如下。
+
+## 合并与 main CI
+
+S4 于 2026-10-27 合并为 `f261952f757bb486908210955f3b679a407b71e7`，第一父提交 `f2fe618040945923c5d32fb438d78632645210fd`，第二父提交为分支文档 `8556ad07576485e5ed6f902eb6137067ac324a4c`；合并树与该分支头完全相同。分支文档的 [CI 40367549675](https://github.com/open-nerve/NerveWiki/actions/runs/40367549675) 在精确头 `8556ad07576485e5ed6f902eb6137067ac324a4c` 上十个作业全部成功；bootstrap 1/2/3 的 Test 步为 393/384/247s（作业 415/405/269s），E2E 步 223s（作业 281s）。合并后的首次main的 [CI 40370315130](https://github.com/open-nerve/NerveWiki/actions/runs/40370315130) 在精确头 `f261952f757bb486908210955f3b679a407b71e7` 上十个作业全部成功；bootstrap 1/2/3 的 Test 步为 291/393/397s（作业 309/413/416s），E2E 步 229s（作业 280s）。第二次 main CI 由本次合并记录文档提交触发，当前尚待运行，两次平均尚未形成。主持者须测量并核对7.5–7.6，保存两个run ID、精确HEAD、各job/Test/E2E时间及平均，在P1完成文档中转写后再标P1完成；S3的样本不充作S4样本。
+
+| main 样本 | run / 精确 HEAD | bootstrap-1 Test / job | bootstrap-2 Test / job | bootstrap-3 Test / job | E2E step / job |
+|---|---|---|---|---|---|
+| 第一次 | `40370315130` / `f261952f757bb486908210955f3b679a407b71e7` | 291s / 309s | 393s / 413s | 397s / 416s | 229s / 280s |
+| 第二次 | 本合并记录文档提交的CI，尚待运行 | 待测 | 待测 | 待测 | 待测 |
+| 两次平均 | P1完成前核对并转写 | 待第二个样本 | 待第二个样本 | 待第二个样本 | 待第二个样本 |
 
 ## 接受与推后
 

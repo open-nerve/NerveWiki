@@ -4,7 +4,7 @@
 |---|---|
 | 里程碑 | M10 模式契约与 LLM Wiki（`M10-llm-wiki`） |
 | 日期 | 2026-10-24 |
-| 状态 | 进行中（P1 进行中，S1、S2、S3 已合并；S4 在分支上建成，完整 Step 审查与测试修复核对已接受、门禁覆盖与精确分支 CI 通过，待合并；S3 的全部 main CI 样本已核对转写；合并记录见第 12 节；[审查记录](reviews/M10-design-review.md)；总体设计照第 7 节"总体设计的修订"改过） |
+| 状态 | 进行中（P1 的 S1–S4 已合并；S4 合并 `f261952f`，首次 main CI 通过，待第二个 main 样本与 P1 完成核对；S3 的全部 main CI 样本已核对转写；合并记录见第 12 节；[审查记录](reviews/M10-design-review.md)；总体设计照第 7 节"总体设计的修订"改过） |
 | 依赖 | M9（MCP 工具与 prompt 注册表）、M7（导出贡献者、附件进树与链接）、M6（链接索引）、M8（变更集的类型、撤销与后台任务）；总体设计 12.3 照此修订（第 7 节"总体设计的修订"） |
 | 上级文档 | [v0.1 总体设计](../v0.1-design.md) 第 3.3–3.10、4.2、4.4、4.5、5、6.1–6.3、7.1、7.2、8.2、8.3、8.5、9.2、10、10.1、12.1–12.6、13、14、15 节 |
 | 代码位置的写法 | 同 [M9 总设计](../M9-mcp/00-M9-design.md)：模块写作 `page/app/unit.go:187`（`server/internal/modules/` 之下）；`platform/…`、`bootstrap/…`、`shared/…`、`archtest/…` 在 `server/internal/` 之下；迁移写作 `00009_notebook_notebooks.sql:5`（`server/migrations/sql/`）；SDK 写作 `sdk/mcp/protocol.go:966`（`~/go/pkg/mod/github.com/modelcontextprotocol/go-sdk@v1.8.0/`）；前端写作 `web/…/pages/page/page-layout.tsx:153`（`web/apps/web/src/` 之下）；e2e 写作 `e2e/fixtures/mcp.ts:41`。行号都是 `91ee78d8` 的（`ebed0e07` 只加了这份文档） |
@@ -811,7 +811,7 @@ Nerve 没有 MCP、prompt、数据的 lint、模式的契约或只增不改的�
 
 | P | Phase 文档 | 状态 | 审查 | 合并 |
 |---|---|---|---|---|
-| P1 契约的框架（S1–S4） | [01-P1](01-P1-contract-frame.md) | 进行中（S1、S2、S3 已合并；S4 分支实现，完整 Step 审查与测试修复核对已接受、门禁覆盖与精确分支 CI 通过，待合并） | [设计](reviews/P1-design-review.md)、[S1](reviews/P1-S1-mode-template-review.md)、[S2](reviews/P1-S2-guard-review.md)、[S3](reviews/P1-S3-prechecks-refusals-numbering-review.md)、[S4](reviews/P1-S4-web-review.md) | S1 `45d086a1`、S2 `bad859c0`；S3 `a46c3d1d`；S4 待合并 |
+| P1 契约的框架（S1–S4） | [01-P1](01-P1-contract-frame.md) | 进行中（S1–S4 已合并；S4 首次 main CI 通过，第二个样本与 P1 完成核对待落实） | [设计](reviews/P1-design-review.md)、[S1](reviews/P1-S1-mode-template-review.md)、[S2](reviews/P1-S2-guard-review.md)、[S3](reviews/P1-S3-prechecks-refusals-numbering-review.md)、[S4](reviews/P1-S4-web-review.md) | S1 `45d086a1`、S2 `bad859c0`；S3 `a46c3d1d`；S4 `f261952f` |
 | P2 来源区（S1–S3） | — | 未开始 | — | — |
 | P3 lint 与健康度（S1、S2） | — | 未开始 | — | — |
 | P4 虚拟页面与 ingest（S1–S3） | — | 未开始 | — | — |
@@ -834,3 +834,4 @@ Nerve 没有 MCP、prompt、数据的 lint、模式的契约或只增不改的�
 | 2026-10-26 | P1 的 S3 合并（`a46c3d1d`）：预检、后台的拒绝与保留标题的加序号，实施结果见 01-P1 的 10.3；任务范围的 A/B/C 审查已核对，Q-A1 的条件工作区读取由主持者接受（S3 审查决定 32），B-M1 在 `ba5cded6` 修复并由原 B 复核；纯事实模拟及最终结果的 refusal 清理追加变异 85、86；完整 Step A/B/C 独立审查无经过核实的 Important、Minor、Nit、Q 或剩余修复；本机 13 项门禁、各份两次测量、分支 CI 十个作业和两处契约提交的追溯 `gen-check` 已通过；追加审查反向对照 87、88，首次 main CI 已通过；第二次由填合并 SHA 的文档提交触发，按决定 33 核对后才开 S4，数值见 01-P1 的 10.3。头的状态从滞后的“S1 开工”改为 P1 的实际进度。00 第 11 节的设计审查决定不改；本次实现差异与处置记在 S3 审查记录、01-P1 3.32 与 10.3。 | [P1 S3 审查](reviews/P1-S3-prechecks-refusals-numbering-review.md)、[01-P1](01-P1-contract-frame.md) 3.32 与 10.3 |
 | 2026-10-26 | S3 的合并记录文档 `ca831b58` 触发的第二次 main CI `40325348498` attempt 1 仅 costs 的既有 M9 IndexItems 守卫失败，七个作业通过，e2e/image 跳过；本机原样两次诊断通过。Actions 重跑被 token 权限拒绝，未产生 attempt 2。决定 34 允许一次实质诊断记录文档提交触发新的完整 push CI，当前待运行；保留失败样本，S4 等全绿及样本核对，M10 收尾追加该守卫的稳定性义务。 | [P1 S3 审查](reviews/P1-S3-prechecks-refusals-numbering-review.md)决定 34 与“第二次 main CI 的失败与诊断”、[01-P1](01-P1-contract-frame.md) 10.3 |
 | 2026-10-27 | P1/S4 在分支上建成：创建模式与模板语言、树的保护与可读名称、串行降级与持有的对话框、真实 `mode` 的网页最后一跳，以及 LW1/LW2/LW12 页面与 API 故事；主持者的 R-M1 夹具修复在 `a0aa88dd` 核对。三份原始完整 Step 独立审查及修复后的范围核对已由主持者接受；B-I1（Important，测试覆盖）已关闭，没有剩余核实的 Important、Minor、Nit 或 Q。原始审查头为a0，最终接受头为13ee；B由原审查者重放核对，A/C由主持者按工作流3.4的测试修复例外核对未变范围，记录分别保存。 修复候选 `13ee0bc8` 的13项门禁范围已覆盖：本头新跑 static-build、web、E2E 三项（合计246.659s），网页166文件/3,415测试、E2E291测试、22条已知TimeoutNaNWarning；十项Go命令保留实际受测头 `a0aa88dd` 的通过记录，以唯一改动为51行前端测试、增加六个参数化实例的完整输入等价证明复用，未声称重跑。 合并见第 12 节；P1 仍进行中。按 S3 决定 33–34 转写三次 main CI（含失败 `40325348498` 和新全绿 `40328760108`）、全部分片与每对平均，保留 IndexItems 与 grep 的收尾义务。 | [P1 S4 审查](reviews/P1-S4-web-review.md)、[01-P1](01-P1-contract-frame.md) 3.33、10.3–10.4 |
+| 2026-10-27 | P1/S4 合并为 `f261952f`：分支文档 `8556ad07`（含总体设计历史表的触发栏补齐），两父提交为 `f2fe6180`、`8556ad07`，合并树与分支相同。分支文档及首次 main CI 十个作业全部通过；当前仅有一个合并后样本，第二次由本合并记录文档提交触发，实际数据及两次平均在 P1 完成文档前核对转写。P1 仍进行中，M5/M8/M9 仍开放，IndexItems 与 grep 收尾义务不变。 | [P1 S4 审查](reviews/P1-S4-web-review.md)“合并与 main CI”、[01-P1](01-P1-contract-frame.md) 10.4 |
