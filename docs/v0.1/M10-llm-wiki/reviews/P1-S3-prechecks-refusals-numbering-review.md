@@ -5,7 +5,7 @@
 | 审查对象 | 从 `8e62b191` 到 `607e761e2e3e20b59baa7e7bb4a54895a963728c`；四个实施与修复提交依次为 `22ca92af`、`c3ae49f9`、`ba5cded6`、`607e761e`。S3 于 2026-10-26 合并为 `a46c3d1d`（完整 SHA `a46c3d1d076a97e793fafaa6fb2984f02876b2b3`），分支文档 `47945074`；[00 号文档](../00-M10-design.md)第 12 节。依据 [01-P1](../01-P1-contract-frame.md) 第 0–2 节、3.25–3.29 的 S3 部分、4.3、第 5 节的四个报告字面量、6.3/6.5、第 7 节的 S3 测试与变异、第 8 节、10.2 与第 9 节的移交，[00-M10](../00-M10-design.md) 4.6–4.9 与第 7–10 节，[总体设计](../../v0.1-design.md) 13.1/13.4 及 [工作流](../../claude_to_codex/02-workflow.md) 3.3–3.6 |
 | 审查方式 | 任务范围的 A/B/C 各在独立工作树读代码、调用者和设计，先不读作者报告；完整 Step 的三方审查单列在下，不由任务范围的审查代替。任务 A：预检与事实；任务 B：后台拒绝、报告、网页及最后一跳；任务 C：三处加序号与 SQL 不变量。B 对发现另做外部 Go overlay 短测试，修复之后由原 B 用同一个 overlay 复核 |
 | 日期 | 2026-10-26 |
-| 当前结论 | 任务范围的审查与 B-M1 修复复核、独立的完整 Step A/B/C 审查均已核对。完整 Step 没有经过核实的 Important、Minor、Nit 或 Q，没有剩余产品修复；主持者接受结论。受测头 `607e761e` 的 13 项本机门禁、三份各两次本机测量和分支 CI 十个作业通过；两个契约提交的精确 HEAD 已追溯通过 `gen-check`。S3 已合并为 `a46c3d1d`，首次 main CI 已通过；第二次由本次合并记录文档触发，仍待运行，按决定 33 核对后开 S4。 |
+| 当前结论 | 任务范围的审查与 B-M1 修复复核、独立的完整 Step A/B/C 审查均已核对。完整 Step 没有经过核实的 Important、Minor、Nit 或 Q，没有剩余产品修复；主持者接受结论。受测头 `607e761e` 的 13 项本机门禁、三份各两次本机测量和分支 CI 十个作业通过；两个契约提交的精确 HEAD 已追溯通过 `gen-check`。S3 已合并为 `a46c3d1d`，首次 main CI 已通过；第二次 main CI 的 costs 失败，e2e/image 跳过；诊断与一次新完整 push CI 的决定见 34，当前待运行。先全绿并核对包含失败运行的全部 bootstrap 样本才开 S4。 |
 
 ## 任务范围的审查与处置
 
@@ -37,6 +37,8 @@ A、B、C 各在独立工作树审查 `8e62b191..607e761e` 的四个提交、全
 32. 接受 Q-A1 的条件读取：上传和撤销每遍各多一次不加锁的 `StateOf`；锁外撤销只有规则需要 `page.manage_source` 时才在这一遍自己的 `Grants` 回调里再读 `WorkspaceOf`，同一遍至多一次。理由是当前 `Allowed` 不保留工作区，额外判定仍须给真实授权者完整的目标。锁下用 `Write.Notebook` 与单元的 `Write.Grants`，不把锁外放行带进去。改正文而不把已采用的局部实现扩大成跨调用缓存。
 
 33. 合并之后的两次 main CI 必须在 S4 开始之前测完并核对：一次是 S3 合并触发的，一次是填合并 SHA 的小文档提交触发的。主持者在树外控制记录保存两次的 run ID、精确 HEAD、各作业和 Test/E2E 步时间、三份 Test 步平均，满足 7.5 与第 8 节后才开 S4。第二次运行的结果不能写进触发它自己的提交；在下一次原已安排的 S4 文档或 P1 完成文档提交里把完整的两次样本转写到 P1 的 10.3，必须在 P1 完成之前落实。这不豁免任何门禁，不拿分支样本充数，也不为转写制造额外 CI 轮次。C 复核现行文字没有另一个要求立即转录的期限，未列为 Q。
+
+34. 第二次 main CI `40325348498` attempt 1 在既有 M9 IndexItems 成本守卫失败；只改三份文档的 `ca831b58` 没有改变该读路径。原样本机两次诊断通过，具体的计划或运行环境原因仍未归因。主持者原拟一次失败作业重跑，但 `gh run rerun 40325348498 --failed` 被 `Resource not accessible by personal access token` 拒绝（token 缺少 Actions 写权限），没有产生 attempt 2。现授权一次实质诊断记录文档提交，正常推送并在新 SHA 上触发新的完整 CI；这是对实际失败与权限限制的有界处置，不是 attempt 2，也不修改代码、30 ms 阈值或门禁。保留失败运行中通过的 bootstrap 样本及后来全部样本，不挑选较快的一对；新运行全绿且样本分析满足 7.5/第 8 节之前不开 S4。若同一失败再现，不再推文档追绿，转入窄范围的 PostgreSQL 实际计划、服务端执行与客户端/运行环境耗时归因。即使新运行全绿，M10 收尾也须核对 IndexItems 守卫稳定性，与既有 grep 义务并列。决定 33 继续保留：树外记录全部 run ID、精确 HEAD、作业与 Test/E2E 时间和平均，下一次已安排的 S4/P1 完成文档转写，P1 完成前落实；此次一次性处置不形成循环。
 
 ## 接受与推后的
 
@@ -163,4 +165,20 @@ go -C server test -short -count=1 -v \
 
 三份 Test 步为 6:00、6:32、5:54，距 7:30 分别 90、58、96 秒；这是分支的一个样本，与合并后的两次 main CI 分开。等待脚本曾收到一次空响应，`wait.log` 留下一条 JSONDecodeError，随后恢复并记录 completed success；另存的 API 结果独立确认十个作业成功。这是观察脚本的瞬时问题，没有产品 CI 作业因此失败，也没有为此重跑 CI。
 
-S3 已于 2026-10-26 合并为 `a46c3d1d`（完整 SHA `a46c3d1d076a97e793fafaa6fb2984f02876b2b3`，父提交 `8e62b191`、`47945074`）。分支文档的 [CI 40318346909](https://github.com/open-nerve/NerveWiki/actions/runs/40318346909) 在精确头 `479450745b11ddabee8e2cc386482f9204d12556` 上十个作业全部 success；组合根第一、二、三份的 Test 步为 6:10、4:19、6:26（作业 6:37、4:36、6:48），E2E 步 3:13（作业 16:00）。合并后的首次 main的 [CI 40322279159](https://github.com/open-nerve/NerveWiki/actions/runs/40322279159) 在精确头 `a46c3d1d076a97e793fafaa6fb2984f02876b2b3` 上十个作业全部 success；组合根第一、二、三份的 Test 步为 7:14、6:33、4:08（作业 7:32、6:51、4:29），E2E 步 3:50（作业 4:39）。第二次 main CI 由本次填合并 SHA 的文档提交触发，当前仍待运行；两次平均尚未形成。按决定 33，主持者在 S4 开始前测完两次并核对 7.5/第 8 节，把 run ID、精确 HEAD、job 与 Test/E2E 时间及平均保存在树外控制记录，再在下一次已安排的 S4/P1 完成文档提交转写进 10.3，必须在 P1 完成之前落实。
+S3 已于 2026-10-26 合并为 `a46c3d1d`（完整 SHA `a46c3d1d076a97e793fafaa6fb2984f02876b2b3`，父提交 `8e62b191`、`47945074`）。分支文档的 [CI 40318346909](https://github.com/open-nerve/NerveWiki/actions/runs/40318346909) 在精确头 `479450745b11ddabee8e2cc386482f9204d12556` 上十个作业全部 success；组合根第一、二、三份的 Test 步为 6:10、4:19、6:26（作业 6:37、4:36、6:48），E2E 步 3:13（作业 16:00）。合并后的首次 main的 [CI 40322279159](https://github.com/open-nerve/NerveWiki/actions/runs/40322279159) 在精确头 `a46c3d1d076a97e793fafaa6fb2984f02876b2b3` 上十个作业全部 success；组合根第一、二、三份的 Test 步为 7:14、6:33、4:08（作业 7:32、6:51、4:29），E2E 步 3:50（作业 4:39）。第二次 main 的 [CI 40325348498](https://github.com/open-nerve/NerveWiki/actions/runs/40325348498) 在精确头 `ca831b58bdf5c396648daa592b64820d4d93ad0b` 的 attempt 1 失败：仅 costs 的既有 M9 IndexItems 成本守卫超过 30 ms，七个作业通过，e2e/image 跳过。组合根第一、二、三份 Test 步为 306s、393s、402s（作业 326s、412s、421s），与首次 main 的 434s、393s、248s 的平均为 370s、393s、325s；三份平均虽都低于 7:30，整套 CI 尚未全绿，不能开 S4。Actions 重跑因 token 缺少权限被拒绝，未产生 attempt 2。按决定 34，本次实质诊断记录文档提交将触发一个新 SHA 上的完整正常 push CI，当前待运行，不预填 SHA 或结果。失败与后续样本全部保留；主持者先核对新运行全绿及全部 bootstrap 样本，在树外控制记录保存所有 run ID、精确 HEAD、job 与 Test/E2E 时间及平均，下一次已安排的 S4/P1 完成文档提交转写到 10.3，必须在 P1 完成之前落实。诊断、重跑权限限制及再次失败的处理见 S3 审查决定 34；决定 33 的门禁与转写义务继续有效。
+
+### 第二次 main CI 的失败与诊断
+
+[CI 40325348498](https://github.com/open-nerve/NerveWiki/actions/runs/40325348498) 的 attempt 1（`ca831b58bdf5c396648daa592b64820d4d93ad0b`）仅 [costs 作业 121580501180](https://github.com/open-nerve/NerveWiki/actions/runs/40325348498/job/121580501180) 失败，七个其他作业 success，e2e/image skipped。`TestIndexOfAHundredThousandPagesTakesItsTime` 的 analyzed 阶段三个 IndexItems 批次为 32.443486、34.342778、35.733972 ms，中位数 34.342778 ms 超过 30 ms；每个批次是读取 100 页的 20 次调用，三个批次都超线，不把它说成单个异常读数。这是 `test-go-costs` 的既有 M9 守卫，与先前 `test-go-guards` 的 grep 失败分别记录。
+
+从首次全绿 main `a46c3d1d` 到 `ca831b58` 只有三份 Markdown 文档改变；从 S3 起点 `8e62b191` 到当前，相关 linking 读路径、SQL、迁移、依赖、Makefile 与 CI 工作流均未改变。已有三次全绿 CI 的 analyzed 中位数依次为 25.812651、11.902565、25.824862 ms。主持者原样运行同一测试 `-count=2`，两次通过，analyzed 中位数 9.546083、9.826583 ms（测试 65.55s、63.85s，包 129.424s）。这些证据没有定位 S3 回归；对 runner 波动的余量不足是当前解释，但失败时的计划、CPU 调度、I/O 或 Go GC 尚未量出，不能据此宣称原因已解决或守卫已稳定。本次不改阈值和代码。
+
+| 合并后的样本 | 精确 HEAD / run / attempt | bootstrap-1 Test / job | bootstrap-2 Test / job | bootstrap-3 Test / job | E2E 步 / job | 整体 |
+|---|---|---:|---:|---:|---:|---|
+| 首次 main | `a46c3d1d076a97e793fafaa6fb2984f02876b2b3` / `40322279159` / 1 | 434s / 452s | 393s / 411s | 248s / 269s | 230s / 279s | 十个作业 success |
+| 第二次 main | `ca831b58bdf5c396648daa592b64820d4d93ad0b` / `40325348498` / 1 | 306s / 326s | 393s / 412s | 402s / 421s | skipped / 无有效时长 | costs failure；七个 success；e2e/image skipped |
+| 上述两次 Test 平均 | 保留失败运行的成功分片 | 370s（6:10） | 393s（6:33） | 325s（5:25） | 不以 skipped 充作样本 | 分片均值过线检查通过，整套 CI 未全绿 |
+
+决定 34 的新完整 push CI 仍待运行，不能把它称作 attempt 2 或预填新的 SHA、run ID、绿色结果。新样本与上表一起分析，不丢弃失败运行或挑选较快的一对；之后的完整记录按决定 33–34 在下一次原已安排的 P1 文档提交转写。
+
+原始证据保存在树外 `s3-evidence/main-ci-ca831b58/attempt-1/{run,jobs,timings,costs-annotations}.json`、`costs-failed.log`，两次本机诊断为该运行目录的 `index-cost-local-diagnostic.log`；首次 main 原始文件在 `s3-evidence/main-ci-a46c3d1d/`。独立只读诊断为 `ci-index-cost-recon.md`，主持者的有界处置及 Actions 权限拒绝记录为 `s3-evidence/main-ci-ca831b58/diagnosed-retry-decision.json`（均相对 `/home/parallels/.local/state/nervewiki/m10/`）。保留这些失败证据；下一次全绿不会自动取消 M10 收尾的稳定性义务。
