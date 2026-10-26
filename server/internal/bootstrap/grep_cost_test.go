@@ -21,10 +21,12 @@ import (
 )
 
 // grep's guards in the composition root (M9/P4 design 6.1, 3.6.4; 13.4
-// item 8): MCP's grep at its bounds, over pages seeded by SQL, each within
-// three times its time here (S1's report), run alone by make
-// test-go-guards with -v; -short skips them. Their app's request timeout
-// is production's, 15 s, so that the soft deadline, 12 s in, is no stop.
+// item 8): MCP's grep at its bounds, over pages seeded by SQL. The line
+// and work bounds are three times S1's local measurements; the candidate
+// and full-call bounds also allow for observed CI times, as below. Run
+// alone by make test-go-guards with -v; -short skips them. Their app's
+// request timeout is production's, 15 s, so the soft deadline, 12 s in,
+// is no stop.
 const (
 	// grepWorstLineBound is a call over a line of 5 MiB: 0.72-0.77 s here
 	// in three runs.
@@ -33,8 +35,17 @@ const (
 	// 4 KiB: 1.89-1.96 s here.
 	grepWorkBound = 5900 * time.Millisecond
 	// grepCandidatesBound is GrepCandidates of 100,000 candidates, the
-	// median of three, in each state of the statistics: 74-89 ms here.
-	grepCandidatesBound = 270 * time.Millisecond
+	// median of three in each state of the statistics. It includes the
+	// database round trip and decoding all UUIDs, not just SQL execution.
+	// The original 270 ms was three times S1's local 74-89 ms. During M10,
+	// CI medians reached 388.272425 ms without statistics (40123373818)
+	// and 389.483274 ms with a generic plan (40378004872). Across 17 runs
+	// with this guard, these were the only two of 51 medians over 270 ms.
+	// Local diagnosis did not reproduce them or establish a CI cause.
+	// 600 ms leaves 54% above the slowest observed CI median. Keep three
+	// samples and all candidate-count, query-plan and scope checks; a
+	// node lookup per candidate must still exceed this time budget.
+	grepCandidatesBound = 600 * time.Millisecond
 	// grepCandidatesCallBound is a call over them, the tree's 100,000
 	// pages walked to the 500th candidate. It was first three times the
 	// one call first timed, cold, 143-150 ms here: 450 ms. The median of

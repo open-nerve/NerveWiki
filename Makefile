@@ -284,8 +284,9 @@ test-go-guards: ## 不带竞态检测的组合根的预算与界线的守卫（C
 	@# 立即被拒，别人的份额挡着时 server_busy，额度够大时做完（修正的第 6 轮，B3-M1）
 	cd server && go test -count=1 -v -run '^(TestABatchAtItsRewriteBoundTakesItsTime|TestABatchPastItsLinksBoundIsRefused|TestABatchPastItsBytesBoundIsRefused|TestABatchCountsThePagesItWroteAtTheirFinalSize|TestABatchWhosePagesOutgrowTheParseBudgetIsRefused)$$' ./internal/bootstrap
 	@# grep 的三个守卫一行、带 -v：一行 5 MiB 的页（匹配到 MaxGrepLineWork）、500 页各 64 KiB 的页（停在 MaxGrepWork）、10 万个候选
-	@# （GrepCandidates 在无统计、ANALYZE 之后与通用计划下的中位数，与走到第 500 个候选的三次调用的中位数）的用时，时限本机的三倍（M9/P4 设计 6.1，3.6.4）；
-	@# 本机这一行约 10.5 秒，乘 2.4 约 25 秒，远在 Go 默认的每个测试二进制 10 分钟的一半之下
+	@# 前两个工作界为 S1 本机测量的三倍；GrepCandidates 三种统计下各三次中位数的界为 600 ms（M10 期间 CI 最慢中位数 389.483274 ms，留约 54% 余量），
+	@# 走到第 500 个候选的三次完整调用中位数的界仍为 1 s（M9/P4 设计 6.1，3.6.4）；两种预算独立，不改变候选数、计划与范围的检查。
+	@# S1 当时本机这一行约 10.5 秒，乘 2.4 约 25 秒；这是历史估计，后续 CI 用时见维护审查记录
 	cd server && go test -count=1 -v -run '^(TestGrepOfTheWorstLineTakesItsTime|TestGrepAtItsWorkBoundTakesItsTime|TestGrepOfAHundredThousandCandidatesTakesItsTime)$$' ./internal/bootstrap
 
 .PHONY: test-go-short
