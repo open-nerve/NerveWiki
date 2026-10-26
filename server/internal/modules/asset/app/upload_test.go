@@ -98,6 +98,10 @@ func TestCheckDecidesTheNodeThenTheFreeSpace(t *testing.T) {
 	if err := u.uc.Check(context.Background(), req); !errors.Is(err, shared.Forbidden()) {
 		t.Errorf("Check() = %v, want the page module's forbidden before the space", err)
 	}
+	u.tree.checkErr = shared.NewError(shared.KindConflict, "page.virtual_file", "Reserved.")
+	if err := u.uc.Check(context.Background(), req); !errors.Is(err, u.tree.checkErr) {
+		t.Errorf("Check() = %v, want page.virtual_file before the full store", err)
+	}
 }
 
 // Store keeps the file up to asset.max_bytes; past it, payload too large.

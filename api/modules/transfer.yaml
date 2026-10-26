@@ -251,6 +251,9 @@ paths:
         are made again as the job is created. The job is named after the
         changeset's kind, its target_changeset_id is the changeset; it runs
         in the background: read it with getTransferJob until it ends.
+        In an LLM Wiki, an undo whose steps the notebook's contract refuses
+        is refused at its start, with the code its first refused step would
+        get (page.protected, page.source_admin_only).
       security: [{ bearer: [] }]
       x-problem-codes:
         [
@@ -262,6 +265,8 @@ paths:
           page.revert_too_large,
           transfer.busy,
           page.revert_conflict,
+          page.protected,
+          page.source_admin_only,
           page.locked,
           server_busy,
         ]

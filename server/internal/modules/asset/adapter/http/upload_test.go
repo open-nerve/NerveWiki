@@ -344,6 +344,10 @@ func TestUploadAnswersEachFailure(t *testing.T) {
 		{"a name taken", "", "", []part{file("a.png", "x")}, func(h *harness) {
 			h.tree.checkErr = shared.NewError(shared.KindConflict, "page.title_taken", "Taken.")
 		}, 409, "page.title_taken", "", false, false},
+		{"a reserved title before storage", "", "", []part{file("index", "x")}, func(h *harness) {
+			h.tree.checkErr = shared.NewError(shared.KindConflict, "page.virtual_file", "Reserved.")
+			h.files.free = 0
+		}, 409, "page.virtual_file", "", false, false},
 		{"a store keeping no room", "", "", []part{file("a.png", "x")}, func(h *harness) { h.files.free = 99 }, 507, "storage_full", "", false, false},
 		{"a store running out of room", "", "", []part{file("a.png", strings.Repeat("x", 100))}, func(h *harness) { h.files.fullAfter = 50 },
 			507, "storage_full", "", false, false},

@@ -323,3 +323,54 @@ func TestMoveNodeCountsPagesOnly(t *testing.T) {
 		t.Errorf("a page two levels high to the tenth = %v, want page.too_deep", err)
 	}
 }
+
+// A rejected root title must be decided before upload bytes or a unit.
+func TestAnUploadsCheckRefusesAReservedTitle(t *testing.T) {
+	for _, tt := range []struct {
+		name, title, want             string
+		nested, taken, gone, standard bool
+	}{
+		{name: "reserved at root", title: "index", want: "page.virtual_file"},
+		{name: "invalid before contract", title: "index.md", want: "validation_failed name"},
+		{name: "taken before contract", title: "index", taken: true, want: "page.title_taken"},
+		{name: "nested", title: "index", nested: true},
+		{name: "standard root", title: "index", standard: true},
+		{name: "gone after placement", title: "a.png", gone: true, want: "notebook.not_found"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newFixture()
+			f.grant(upload)
+			raw := f.page("raw", nil, 0)
+			if !tt.standard {
+				f.notebooks.states = map[uuid.UUID]domain.NotebookState{f.eng: {Mode: domain.ModeLLMWiki, SourceRootID: raw.ID}}
+			}
+			var parent *uuid.UUID
+			if tt.nested {
+				parent = &raw.ID
+			}
+			if tt.taken {
+				f.asset(tt.title, parent, 1)
+			}
+			if tt.gone {
+				f.notebooks.gone[f.eng] = true
+			}
+			err := f.checkAsset(f.newAsset(tt.title, parent))
+			if codeOf(err) != tt.want {
+				t.Errorf("Check = %v, want %s", err, tt.want)
+			}
+			if tt.want == "page.virtual_file" {
+				var refusal *domain.Refused
+				if !errors.As(err, &refusal) || refusal.NodeID != (uuid.UUID{}) {
+					t.Errorf("refusal = %#v, want zero node", err)
+				}
+			}
+			reads := 1
+			if tt.taken || tt.title == "index.md" {
+				reads = 0
+			}
+			if f.count("StateOf") != reads || f.called("LockNotebook in tx") {
+				t.Errorf("calls = %v, want %d state reads and no unit", f.rec.calls, reads)
+			}
+		})
+	}
+}

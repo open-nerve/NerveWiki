@@ -8,6 +8,7 @@ import (
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
+	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
 // RevertBounds bound a changeset one unit reverts beyond the pages, bytes
@@ -66,8 +67,8 @@ func NewRevertChangeset(reads TrashReads, history History, writer *Writer, parse
 // never is) or the rows of their history; then the state, planned once
 // before parsing: page.revert_conflict, then page.changeset_trimmed for a
 // version the purge took, then page.revert_too_large past the schedule's
-// steps; then page.changeset_trimmed for a content to write back or
-// restore the purge took; then the contents parsed, largest first,
+// steps; then its notebook contract; then page.changeset_trimmed for a
+// content to write back or restore the purge took; then the contents parsed, largest first,
 // server_busy when their waits run out, and page.revert_too_large past
 // the unit's links, known only once they are; then the unit, which reads
 // and plans again under the lock (Unit.Revert): page.changeset_trimmed,
@@ -184,7 +185,8 @@ type revertChecked struct {
 // (a lone page never is) or b's rows of their history; then the state,
 // planned: page.revert_conflict, then page.changeset_trimmed for a version
 // the purge took, then page.revert_too_large past b's steps, then with b's
-// Locks page.locked.
+// Locks page.locked. The notebook contract is judged on every scheduled
+// step after the plan and its step bound, before Locks or parsing.
 func (r revertChecks) check(ctx context.Context, c domain.Changeset, spec UnitSpec, b revertBounds) (revertChecked, error) {
 	if c.Trimmed {
 		return revertChecked{}, domain.ErrChangesetTrimmed
@@ -239,6 +241,34 @@ func (r revertChecks) check(ctx context.Context, c domain.Changeset, spec UnitSp
 		return revertChecked{}, err
 	case b.Steps > 0 && plan.Steps() > b.Steps:
 		return revertChecked{}, domain.ErrRevertTooLarge
+	}
+	notebook, ok, err := r.writer.d.Notebooks.StateOf(ctx, c.NotebookID)
+	switch {
+	case err != nil:
+		return revertChecked{}, err
+	case !ok:
+		return revertChecked{}, spec.NotFound
+	}
+	// The unlocked answer belongs to this check alone. The unit asks again
+	// in its transaction, through its own Grants.
+	var grants Grants
+	ask := func(action shared.Action) error {
+		return grants.Ask(ctx, action, func(ctx context.Context) error {
+			workspace, err := r.writer.workspaceOf(ctx, spec)
+			if err != nil {
+				return err
+			}
+			actor, err := shared.RequireActor(ctx)
+			if err != nil {
+				return err
+			}
+			_, err = authorize(ctx, r.writer.d.Auth, actor, action,
+				shared.Target{WorkspaceID: workspace, NotebookID: spec.NotebookID}, spec.NotFound)
+			return err
+		})
+	}
+	if err := checkRevertContract(state, plan, notebook, ask); err != nil {
+		return revertChecked{}, err
 	}
 	if b.Locks {
 		if err := r.locked(ctx, plan, state); err != nil {

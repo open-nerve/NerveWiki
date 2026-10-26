@@ -102,6 +102,8 @@ func TestTheBackgroundStartsRefusals(t *testing.T) {
 			"page.revert_too_large"},
 		{"a revert beside a write", writing, revertsPath(), "bob", revert(free), http.StatusConflict, "transfer.busy"},
 		{"conflicts", nil, revertsPath(), "bob", revert(conflicting().String()), http.StatusConflict, "page.revert_conflict"},
+		{"a protected page", nil, revertsPath(), "bob", revert(refusing("page.protected")), http.StatusConflict, "page.protected"},
+		{"a source root", nil, revertsPath(), "bob", revert(refusing("page.source_admin_only")), http.StatusForbidden, "page.source_admin_only"},
 		{"a page locked", nil, revertsPath(), "bob", revert(locking().String()), http.StatusConflict, "page.locked"},
 		{"a revert with the queue full", full, revertsPath(), "bob", revert(free), http.StatusServiceUnavailable, "server_busy"},
 	} {

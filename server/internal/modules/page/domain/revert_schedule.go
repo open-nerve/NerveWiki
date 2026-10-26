@@ -392,13 +392,11 @@ func (s *revertSim) place(kind RevertOpKind, id uuid.UUID, to TreeState) RevertO
 	return op
 }
 
-// delete is the deletion of the subtree of top, done on s: the step keeps
-// the subtree as it is at its moment (M9/P3 design 3.22.1), the nodes a
-// background revert's step deletes, in the order a unit reads a subtree
-// (Store.Subtree): top first, then a level at a time, each level by order
-// and id, so that the job's start names the page an edit session holds
-// that a request's unit names (review C-M1).
-func (s *revertSim) delete(top uuid.UUID) RevertOp {
+// orderedSubtree is the subtree at this moment, in the order a unit reads
+// it (Store.Subtree): top first, then a level at a time, each level by
+// order and id. A job's start names the page an edit session holds that
+// a request's unit names (M9/P3 design 3.22.1, review C-M1).
+func (s *revertSim) orderedSubtree(top uuid.UUID) []uuid.UUID {
 	sub := []uuid.UUID{top}
 	for level := sub; len(level) > 0 && len(sub) <= len(s.nodes); {
 		var next []uuid.UUID
@@ -412,6 +410,12 @@ func (s *revertSim) delete(top uuid.UUID) RevertOp {
 		})
 		sub, level = append(sub, next...), next
 	}
+	return sub
+}
+
+// delete is the deletion of top, keeping its subtree as it is now.
+func (s *revertSim) delete(top uuid.UUID) RevertOp {
+	sub := s.orderedSubtree(top)
 	for _, id := range sub {
 		n := s.nodes[id]
 		n.alive = false

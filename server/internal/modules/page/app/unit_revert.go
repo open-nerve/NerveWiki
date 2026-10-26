@@ -52,7 +52,8 @@ type RevertDone struct {
 // the bound of its items, merged into meanwhile; then the state, planned
 // at the unit's time, the plan this one, which is authoritative:
 // page.revert_conflict, page.changeset_trimmed for a version the purge
-// took, page.revert_too_large past the bound of its schedule's steps.
+// took, page.revert_too_large past the bound of its schedule's steps;
+// then the notebook contract on every scheduled step, using its Grants.
 // Each content it writes back or restores must have been parsed at the
 // hash it writes now, else its page is changed. Then its schedule's
 // steps, each a unit's operation through the guards (page.locked for a
@@ -89,6 +90,12 @@ func (u *Unit) Revert(ctx context.Context, r RevertRead) (RevertDone, error) {
 		return RevertDone{}, err
 	case plan.Steps() > r.MaxSteps:
 		return RevertDone{}, domain.ErrRevertTooLarge
+	}
+	guard := NewModeGuard(u.w.d.Auth)
+	step := Step{Write: u.write}
+	ask := func(action shared.Action) error { return u.write.Grants.Ask(ctx, action, guard.decide(step, action)) }
+	if err := checkRevertContract(state, plan, u.write.Notebook, ask); err != nil {
+		return RevertDone{}, err
 	}
 	if err := parsedAsPlanned(plan, state, r.Parsed); err != nil {
 		return RevertDone{}, err
