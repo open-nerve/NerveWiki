@@ -102,6 +102,8 @@ func TestTheBackgroundStartsRefusals(t *testing.T) {
 			"page.revert_too_large"},
 		{"a revert beside a write", writing, revertsPath(), "bob", revert(free), http.StatusConflict, "transfer.busy"},
 		{"conflicts", nil, revertsPath(), "bob", revert(conflicting().String()), http.StatusConflict, "page.revert_conflict"},
+		{"a protected page", nil, revertsPath(), "bob", revert(refusing("page.protected")), http.StatusConflict, "page.protected"},
+		{"a source root", nil, revertsPath(), "bob", revert(refusing("page.source_admin_only")), http.StatusForbidden, "page.source_admin_only"},
 		{"a page locked", nil, revertsPath(), "bob", revert(locking().String()), http.StatusConflict, "page.locked"},
 		{"a revert with the queue full", full, revertsPath(), "bob", revert(free), http.StatusServiceUnavailable, "server_busy"},
 	} {
@@ -197,5 +199,69 @@ func TestABackgroundJobReadsWithItsReport(t *testing.T) {
 		!strings.Contains(string(listed["report"]), `"put_back":2`) || strings.Contains(string(listed["report"]), `"conflicts"`) ||
 		strings.Contains(string(listed["report"]), `"conflict_count"`) {
 		t.Errorf("listTransferJobs = %d %s; want the revert with its report, without its conflicts", res.StatusCode, body)
+	}
+}
+
+// Both HTTP reads carry a refusal, including codes of a later milestone;
+// every other report has the required member explicitly null.
+func TestARefusedJobReadsWithItsReport(t *testing.T) {
+	for _, code := range []string{"", "page.source_admin_only", "page.some_later_code"} {
+		t.Run(code, func(t *testing.T) {
+			h := newHarness(t)
+			changeset, target := uuid.NewV7(), uuid.NewV7()
+			finished := now()
+			report := &domain.Report{Failure: domain.FailureInternal, Counts: domain.Counts{PutBack: 1}}
+			if code != "" {
+				report.Failure, report.Refusal = domain.FailureRefused, &domain.Refusal{Code: code, NodeID: pageID()}
+			}
+			j := domain.Job{ID: uuid.NewV7(), NotebookID: notebookID(), Kind: domain.KindRevert, State: domain.StateFailed, Name: "edit",
+				CreatedBy: bob(), Client: domain.ClientWeb, CreatedAt: now().Add(-time.Hour), Finished: &finished,
+				ChangesetID: &changeset, TargetChangesetID: &target, Report: report}
+			h.rows.add(j)
+			for _, path := range []string{"/api/v0/transfer-jobs/" + j.ID.String(), jobsPath()} {
+				res, body := h.send(t, http.MethodGet, path, "bob", "")
+				if res.StatusCode != http.StatusOK {
+					t.Fatalf("GET %s = %d %s", path, res.StatusCode, body)
+				}
+				var got struct {
+					Report map[string]json.RawMessage `json:"report"`
+				}
+				if path == jobsPath() {
+					var list struct {
+						Data []struct {
+							Report map[string]json.RawMessage `json:"report"`
+						} `json:"data"`
+					}
+					decode(t, body, &list)
+					if len(list.Data) != 1 {
+						t.Fatalf("list = %s, want one job", body)
+					}
+					got.Report = list.Data[0].Report
+				} else {
+					decode(t, body, &got)
+				}
+				raw, exists := got.Report["refusal"]
+				if !exists {
+					t.Errorf("GET %s lacks required refusal: %s", path, body)
+					continue
+				}
+				if code == "" {
+					if string(raw) != "null" {
+						t.Errorf("refusal = %s, want null", raw)
+					}
+					continue
+				}
+				var refusal struct {
+					Code   string `json:"code"`
+					NodeID string `json:"node_id"`
+				}
+				if err := json.Unmarshal(raw, &refusal); err != nil {
+					t.Fatal(err)
+				}
+				if refusal.Code != code || refusal.NodeID != pageID().String() || string(got.Report["failure"]) != `"refused"` {
+					t.Errorf("report = %s, want refused with %s at %s", body, code, pageID())
+				}
+			}
+		})
 	}
 }

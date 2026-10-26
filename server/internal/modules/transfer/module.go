@@ -86,6 +86,8 @@ type (
 	BatchDone     = app.BatchDone
 	// Placement is where a restore put its trash item's root.
 	Placement = domain.Placement
+	// Refused is a job write the notebook contract refused, with its code and node.
+	Refused = app.Refused
 	// Attachments writes an import's attachments' files: bootstrap adapts
 	// the asset module's Blobs to it, and File and Owner to its.
 	Attachments = app.Attachments

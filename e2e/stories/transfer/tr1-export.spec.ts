@@ -78,6 +78,7 @@ test("TR1 (API): a notebook and a subtree export as vaults, their pages, folders
     },
     placed: null,
     lock: null,
+    refusal: null,
   });
   expect(whole.problems).toEqual([{ path: "Plan.md/", code: "renamed", to: "Plan.md 2/" }]);
   if (!whole.download || whole.result_bytes === null) {

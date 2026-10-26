@@ -148,6 +148,8 @@ func refusals() []*shared.Error {
 		{Kind: shared.KindNotFound, Code: "page.changeset_not_found"},
 		{Kind: shared.KindConflict, Code: "page.changeset_trimmed"},
 		{Kind: shared.KindInvalid, Code: "page.revert_too_large"},
+		shared.NewError(shared.KindConflict, "page.protected", "Protected."),
+		shared.NewError(shared.KindForbidden, "page.source_admin_only", "Only an admin may move the source root."),
 	}
 }
 

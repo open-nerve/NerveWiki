@@ -249,6 +249,8 @@ func TestABackgroundJobStopsWithItsReason(t *testing.T) {
 		{"trimmed", app.ErrChangesetTrimmed, domain.FailureChangesetTrimmed},
 		{"locked", lock, domain.FailurePageLocked},
 		{"its changeset reverted", app.ErrChangesetReverted, domain.FailureChangesetReverted},
+		{"refused", &app.Refused{Code: "page.source_admin_only", NodeID: node,
+			Err: &shared.Error{Kind: shared.KindForbidden, Code: "page.source_admin_only"}}, domain.FailureRefused},
 		{"forbidden", shared.Forbidden(), domain.FailureForbidden},
 		{"the notebook gone", domain.ErrNotebookNotFound, domain.FailureForbidden},
 		{"a name taken", &shared.Error{Kind: shared.KindConflict, Code: "page.title_taken"}, domain.FailureInternal},
@@ -270,7 +272,14 @@ func TestABackgroundJobStopsWithItsReason(t *testing.T) {
 					t.Errorf("job %s, progress %+v, report %+v; want failed %s, %d written", got.State, got.Progress, got.Report, tt.want, written)
 				}
 				r := got.Report
+				if tt.want != domain.FailureRefused && r.Refusal != nil {
+					t.Errorf("report refusal %+v, want nil", r.Refusal)
+				}
 				switch tt.want {
+				case domain.FailureRefused:
+					if r.Refusal == nil || *r.Refusal != (domain.Refusal{Code: "page.source_admin_only", NodeID: node}) || r.Lock != nil || r.Conflicts != nil {
+						t.Errorf("report %+v, want the refusal and no lock or conflicts", r)
+					}
 				case domain.FailureRevertConflict:
 					if len(r.Conflicts) != domain.MaxConflicts || r.ConflictCount != count ||
 						r.Conflicts[0] != (domain.Conflict{NodeID: node, Name: "n000", Reason: "title_taken", HolderID: &holder}) {
@@ -424,4 +433,88 @@ func TestABackgroundJobsLockIsNamed(t *testing.T) {
 	if err != nil || got.CreatedByName != "Bob" || got.LockedByName != "Ada" {
 		t.Errorf("Get() = %+v, %v; want Bob's job locked by Ada", got, err)
 	}
+}
+
+// A batch's refusal reaches finalization after a timeout, shutdown or
+// cancellation has won: only a final refused failure keeps its refusal.
+// Every outcome retains the first committed batch's counts and progress.
+func TestAJobsRefusalBelongsToItsFinalFailure(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		state   domain.State
+		failure domain.Failure
+	}{
+		{"refused", domain.StateFailed, domain.FailureRefused},
+		{"timeout", domain.StateFailed, domain.FailureTimeout},
+		{"shutdown", domain.StateFailed, domain.FailureInterrupted},
+		{"cancelled", domain.StateCancelled, ""},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			w := newBackgroundWorld()
+			w.tree.steps = steps(3, 0)
+			node := uuid.NewV7()
+			w.tree.fail[1] = &app.Refused{Code: "page.source_admin_only", NodeID: node,
+				Err: &shared.Error{Kind: shared.KindForbidden, Code: "page.source_admin_only"}}
+			deadline := newExpiring()
+			ctx, cancel := context.WithCancel(deadline)
+			defer cancel()
+			tree := &runningPlanTree{Tree: w.tree}
+			j := w.queued(domain.KindRevert)
+			w.tree.onBatch = func(n int) {
+				if n != 2 || tt.name == "refused" {
+					return
+				}
+				switch tt.name {
+				case "timeout":
+					deadline.expire()
+				case "shutdown":
+					cancel()
+				case "cancelled":
+					if _, err := w.rows.RequestCancel(context.Background(), j.ID, now()); err != nil {
+						t.Fatal(err)
+					}
+				}
+				// For cancellation, wait for the real heartbeat to stop
+				// the run, not merely for its row to record the request.
+				select {
+				case <-tree.running.Done():
+				case <-time.After(3 * time.Second):
+					t.Fatal("the running context did not end before the batch's refusal")
+				}
+			}
+			runner := app.NewBackground(app.BackgroundRunDeps{Tree: tree, Statistics: []app.Analyzer{w.stats},
+				Rows: w.rows, Clock: fixedClock{now()}, Logger: w.logger, Beat: 5 * time.Millisecond,
+				Backoff: time.Millisecond, Batch: app.Batch{Nodes: 1}})
+			if err := runner.Run(ctx, j.ID); err != nil {
+				t.Fatal(err)
+			}
+			got := w.rows.get(j.ID)
+			if got.State != tt.state || got.Report == nil || got.Report.Failure != tt.failure ||
+				got.Report.Counts.Pages != 1 || got.Progress != (domain.Progress{Done: 1, Total: 3}) ||
+				!slices.Equal(w.tree.succeeded(), [][2]int{{0, 1}}) || !slices.Equal(w.tree.written(), [][2]int{{0, 1}, {1, 2}}) {
+				t.Fatalf("job %s, progress %+v, report %+v, batches %v (committed %v); want %s/%s after one committed batch",
+					got.State, got.Progress, got.Report, w.tree.written(), w.tree.succeeded(), tt.state, tt.failure)
+			}
+			if tt.failure == domain.FailureRefused {
+				if got.Report.Refusal == nil || *got.Report.Refusal != (domain.Refusal{Code: "page.source_admin_only", NodeID: node}) {
+					t.Errorf("ordinary refusal = %+v, want its code and node", got.Report.Refusal)
+				}
+			} else if got.Report.Refusal != nil {
+				t.Errorf("final %s/%s retains refusal %+v, want nil", got.State, got.Report.Failure, got.Report.Refusal)
+			}
+		})
+	}
+}
+
+// runningPlanTree observes the real run's context when it plans, so a
+// test can wait for the heartbeat's cancellation before returning a
+// refused batch. It leaves both planning and writing with the same tree.
+type runningPlanTree struct {
+	app.Tree
+	running context.Context
+}
+
+func (t *runningPlanTree) PlanRevert(ctx context.Context, spec app.JobSpec, id uuid.UUID) (app.JobPlan, error) {
+	t.running = ctx
+	return t.Tree.PlanRevert(ctx, spec, id)
 }

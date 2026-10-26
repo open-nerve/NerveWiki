@@ -80,7 +80,11 @@ func (u *Unit) Restore(ctx context.Context, r TrashRestore) (RestoredItem, error
 	if place.ParentID == nil && root.ParentID != nil {
 		order, _, renumber = u.placeAmong(siblings, len(siblings)-1)
 	}
-	names, renamed, err := restoredNames(group, siblings)
+	var held []string
+	if place.ParentID == nil && u.write.Notebook.Mode == domain.ModeLLMWiki {
+		held = domain.ReservedKeys()
+	}
+	names, renamed, err := restoredNames(group, siblings, held)
 	if err != nil {
 		return RestoredItem{}, err
 	}
@@ -170,17 +174,21 @@ func groupHeight(group []domain.TrashMember) int {
 
 // restoredNames are the names a trash item's group goes back with, its
 // root's first, and how many differ from the names they had: each checked
-// and keyed by today's rules; the root's numbered when one of siblings,
-// alive where it goes, holds its key; another's when a node of the group
-// before it under its parent, by order and id, does: a Unicode update's
+// and keyed by today's rules; the root's numbered when a live sibling
+// where it goes holds its key, or the key is among held; another's when
+// a node of the group before it under its parent, by order and id, does:
+// a Unicode update's
 // reindex may have keyed two names alike (M8/P2 design 3.5).
-func restoredNames(group []domain.TrashMember, siblings []domain.Node) ([]domain.Title, int, error) {
+func restoredNames(group []domain.TrashMember, siblings []domain.Node, held []string) ([]domain.Title, int, error) {
 	under := map[uuid.UUID]*children{}
 	kidsOf := func(i int) *children {
 		if i == 0 {
 			kids := &children{keys: make(map[string]bool, len(siblings)), next: map[string]int{}}
 			for _, s := range siblings {
 				kids.keys[s.NameKey] = true
+			}
+			for _, key := range held {
+				kids.keys[key] = true
 			}
 			return kids
 		}
@@ -303,6 +311,11 @@ func (u *Unit) RestorePart(ctx context.Context, p TrashPart) (PartRestored, erro
 			out.Placement, renumber = &place, before
 			state.ParentID, state.SortOrder = place.ParentID, order
 			kids = places.under(-1, siblings)
+			if place.ParentID == nil && u.write.Notebook.Mode == domain.ModeLLMWiki {
+				for _, key := range domain.ReservedKeys() {
+					kids.keys[key] = true
+				}
+			}
 		} else {
 			if kids, err = places.of(ctx, int(p.Nodes[i].Parent), inBatch); err != nil {
 				return PartRestored{}, err

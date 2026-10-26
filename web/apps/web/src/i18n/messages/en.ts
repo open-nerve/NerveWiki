@@ -692,6 +692,7 @@ export const en = {
   "transfer.failure.restore_expired": "The item went past the time it could be restored in.",
   "transfer.failure.revert_conflict": "What the change touched changed since, or could not go back.",
   "transfer.failure.changeset_trimmed": "The purge took part of the change: it can no longer be undone.",
+  "transfer.failure.refused": "The notebook's rules as an LLM Wiki refused one of its writes.",
   "transfer.failure.page_locked": "Someone is editing a page the undo was about to change.",
   "transfer.failure.revert_too_large":
     "Part of the undo had to be done at once and is more than one batch can write: the pages, attachments, history or links it brings back. What was undone before it stays.",
@@ -733,6 +734,8 @@ export const en = {
   "transfer.conflictsTitle": "Nodes that stopped the undo: {count}",
   "transfer.conflictsAgain": "Undoing the change again from “The change undone” lists them with their links.",
   "transfer.openPage": "Open “{page}”",
+  "transfer.refusedTitled": "It was refused at “{name}”.",
+  "transfer.refusedSome": "It was refused at a page no longer in the tree.",
   "transfer.lockedSome": "{name} is editing a page the undo was about to change.",
   "transfer.lockedSomeSelf": "You are editing, elsewhere, a page the undo was about to change.",
   "transfer.problem.other": "{path} differs in the vault.",

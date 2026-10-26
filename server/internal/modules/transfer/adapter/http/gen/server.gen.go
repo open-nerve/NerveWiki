@@ -48,6 +48,7 @@ const (
 	TransferFailureInterrupted         TransferFailure = "interrupted"
 	TransferFailureNotZip              TransferFailure = "not_zip"
 	TransferFailurePageLocked          TransferFailure = "page_locked"
+	TransferFailureRefused             TransferFailure = "refused"
 	TransferFailureRestoreExpired      TransferFailure = "restore_expired"
 	TransferFailureRevertConflict      TransferFailure = "revert_conflict"
 	TransferFailureRevertTooLarge      TransferFailure = "revert_too_large"
@@ -79,6 +80,8 @@ func (e TransferFailure) Valid() bool {
 	case TransferFailureNotZip:
 		return true
 	case TransferFailurePageLocked:
+		return true
+	case TransferFailureRefused:
 		return true
 	case TransferFailureRestoreExpired:
 		return true
@@ -269,7 +272,7 @@ type TransferDownload struct {
 	URL string `json:"url"`
 }
 
-// TransferFailure Why a job failed: interrupted (the server stopped or restarted, the job stopped beating, or the job queue dropped it before it began), timeout (it ran past the instance's limit), forbidden (its starter could no longer read the notebook as it ran, or write in it as an import, a restore or a revert ran), root_not_found (the page exported, or imported under, was gone as it ran), storage_full, contributor_conflict (a file the server adds was where a node is), internal; for an import's archive as a whole, nothing written: not_zip (no zip, or its directory is broken), too_many_entries (more entries than the instance takes, or a directory larger than 64 MiB), unpacked_too_large (its entries unpack to more than the instance takes), too_many_nodes (its pages, attachments and the folders their paths imply are more nodes than one undo can revert, 60,000); tree_changed (a page an import created was deleted as it ran; a parent a restore restored was deleted, or moved so that its pages would nest deeper than 10 levels, as it ran), its later nodes not written; changeset_reverted (the changeset an import, a restore or a revert writes in was reverted as it ran, its later nodes not written). A restore's alone: trash_changed (the trash item is no longer as it was planned: restored, purged or deleted again as another, before its first batch, or a node left in the trash below what it restored no longer the root of its own item it made it); restore_expired (the item went past the time it can be restored in as it ran). A revert's alone: revert_conflict (a node it was about to change changed since, or would conflict, the report's conflicts listing them); changeset_trimmed (the purge took part of the changeset, a version it writes back or restores, or a trash item it restores); page_locked (an edit session holds a page it was about to delete or write back, the report's lock); revert_too_large (one of its segments, steps that must be in one batch, holds more pages, attachments, history or links than one batch writes). What a job wrote before it failed is kept.
+// TransferFailure Why a job failed: interrupted (the server stopped or restarted, the job stopped beating, or the job queue dropped it before it began), timeout (it ran past the instance's limit), forbidden (its starter could no longer read the notebook as it ran, or write in it as an import, a restore or a revert ran), root_not_found (the page exported, or imported under, was gone as it ran), storage_full, contributor_conflict (a file the server adds was where a node is), internal; for an import's archive as a whole, nothing written: not_zip (no zip, or its directory is broken), too_many_entries (more entries than the instance takes, or a directory larger than 64 MiB), unpacked_too_large (its entries unpack to more than the instance takes), too_many_nodes (its pages, attachments and the folders their paths imply are more nodes than one undo can revert, 60,000); tree_changed (a page an import created was deleted as it ran; a parent a restore restored was deleted, or moved so that its pages would nest deeper than 10 levels, as it ran), its later nodes not written; changeset_reverted (the changeset an import, a restore or a revert writes in was reverted as it ran, its later nodes not written). A restore's alone: trash_changed (the trash item is no longer as it was planned: restored, purged or deleted again as another, before its first batch, or a node left in the trash below what it restored no longer the root of its own item it made it); restore_expired (the item went past the time it can be restored in as it ran). A revert's alone: revert_conflict (a node it was about to change changed since, or would conflict, the report's conflicts listing them); changeset_trimmed (the purge took part of the changeset, a version it writes back or restores, or a trash item it restores); page_locked (an edit session holds a page it was about to delete or write back, the report's lock); revert_too_large (one of its segments, steps that must be in one batch, holds more pages, attachments, history or links than one batch writes). A writing job's refused (a write of the job the notebook's contract as an LLM Wiki refused: its refusal says which and where). What a job wrote before it failed is kept.
 type TransferFailure string
 
 // TransferJob An import or an export of a notebook, a restore of a trash item or a revert of a changeset, a job that runs in the background: queued, then running, then succeeded, failed or cancelled. An export's archive expires a while after it succeeded, the instance's export TTL, or at once when its starter's next export of the notebook succeeds: a starter keeps only their latest export of a notebook. created_by is its starter.
@@ -399,6 +402,13 @@ type TransferProgress struct {
 	Total int64 `json:"total"`
 }
 
+// TransferRefusal defines model for TransferRefusal.
+type TransferRefusal struct {
+	// Code The code of the refusal, as the write's own answer would carry it: page.protected, page.virtual_file or page.source_admin_only today; later milestones add others without a change to this contract.
+	Code   string    `json:"code"`
+	NodeID uuid.UUID `json:"node_id"`
+}
+
 // TransferReport defines model for TransferReport.
 type TransferReport struct {
 	// Counts What the job did before it ended, as it wrote its end. An export that could not write its end, which the server fails later as interrupted (it restarted, the job stopped beating, the job queue dropped it), counts nothing: its progress tells how far it went. An import, a restore and a revert write their counts and problems as they go, every ten seconds at most: one interrupted keeps those it last wrote, of the batches written by then. A restore counts pages, attachments, renamed and skipped; a revert restored, deleted, put_back, written and skipped.
@@ -412,6 +422,9 @@ type TransferReport struct {
 
 	// Placed Where a restore put the trash item's root, once its first batch was written; null before, and for every other job.
 	Placed nullable.Nullable[externalRef0.TrashPlacement] `json:"placed"`
+
+	// Refusal When the failure is refused, the write of the job the notebook's contract refused: the code, and the page or attachment it was about. Null for every other job and failure.
+	Refusal nullable.Nullable[TransferRefusal] `json:"refusal"`
 }
 
 // TransferState defines model for TransferState.

@@ -42,6 +42,7 @@ test.each([
   ["revert", "revert_conflict", "What the change touched changed since, or could not go back."],
   ["revert", "changeset_trimmed", "The purge took part of the change: it can no longer be undone."],
   ["revert", "page_locked", "Someone is editing a page the undo was about to change."],
+  ["revert", "refused", "The notebook's rules as an LLM Wiki refused one of its writes."],
   [
     "revert",
     "revert_too_large",

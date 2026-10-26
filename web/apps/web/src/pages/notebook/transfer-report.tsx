@@ -4,6 +4,7 @@ import { Link } from "react-router";
 import useSWR from "swr";
 
 import { NotLoaded } from "../../app/not-loaded";
+import { problemMessages } from "../../app/problem-messages";
 import { useT, type PlainKey, type Translate } from "../../i18n/i18n";
 import { shortId, twinsOf } from "../../lib/twins";
 import type { Locale } from "../../i18n/locale";
@@ -40,6 +41,7 @@ const failures: Record<TransferFailure, PlainKey> = {
   revert_conflict: "transfer.failure.revert_conflict",
   changeset_trimmed: "transfer.failure.changeset_trimmed",
   page_locked: "transfer.failure.page_locked",
+  refused: "transfer.failure.refused",
   revert_too_large: "transfer.failure.revert_too_large",
 };
 
@@ -222,6 +224,7 @@ export function TransferReport({ notebook, job, id }: { notebook: Notebook; job:
         <p key={line}>{line}</p>
       ))}
       {job.kind === "revert" && report?.lock != null && <Locked notebook={notebook} lock={report.lock} />}
+      {report?.refusal != null && <Refused notebook={notebook} refusal={report.refusal} />}
       {data !== undefined && data.conflicts.length > 0 && (
         <Conflicts conflicts={data.conflicts} count={data.conflict_count} />
       )}
@@ -306,6 +309,39 @@ const Locked = observer(function Locked({ notebook, lock }: { notebook: Notebook
         {t("transfer.openPage", { page })}
       </Link>
     </p>
+  );
+});
+
+/** A contract refusal's reason and node, including codes a newer server adds. */
+const Refused = observer(function Refused({
+  notebook,
+  refusal,
+}: {
+  notebook: Notebook;
+  refusal: NonNullable<Report["refusal"]>;
+}) {
+  const t = useT();
+  const pages = usePageTree(notebook);
+  const { slug } = useWorkspace();
+  const { code, node_id: node } = refusal;
+  const page = distinctName(pages.tree, notebook, node, t);
+  const reason = Object.hasOwn(problemMessages, code)
+    ? t(problemMessages[code as keyof typeof problemMessages])
+    : t("problem.other", { code });
+  return (
+    <>
+      <p>{reason}</p>
+      {page === undefined ? (
+        <p>{t("transfer.refusedSome")}</p>
+      ) : (
+        <p className="flex flex-wrap gap-x-3">
+          <span>{t("transfer.refusedTitled", { name: page })}</span>
+          <Link to={`/${slug}/notebooks/${notebook.id}/pages/${node}`} className="underline underline-offset-4">
+            {t("transfer.openPage", { page })}
+          </Link>
+        </p>
+      )}
+    </>
   );
 });
 

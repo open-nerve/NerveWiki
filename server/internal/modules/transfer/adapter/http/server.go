@@ -158,6 +158,7 @@ func reportOf(r *domain.Report, lockedBy string) nullable.Nullable[gen.TransferR
 		Failure: nullable.NewNullNullable[gen.TransferFailure](),
 		Placed:  nullable.NewNullNullable[apigen.TrashPlacement](),
 		Lock:    nullable.NewNullNullable[apigen.PageLock](),
+		Refusal: nullable.NewNullNullable[gen.TransferRefusal](),
 	}
 	if r.Failure != "" {
 		out.Failure = nullable.NewNullableWithValue(gen.TransferFailure(r.Failure))
@@ -167,6 +168,9 @@ func reportOf(r *domain.Report, lockedBy string) nullable.Nullable[gen.TransferR
 	}
 	if l := r.Lock; l != nil {
 		out.Lock = nullable.NewNullableWithValue(apigen.PageLock{PageID: l.PageID, UserID: l.UserID, DisplayName: lockedBy})
+	}
+	if f := r.Refusal; f != nil {
+		out.Refusal = nullable.NewNullableWithValue(gen.TransferRefusal{Code: f.Code, NodeID: f.NodeID})
 	}
 	return nullable.NewNullableWithValue(out)
 }

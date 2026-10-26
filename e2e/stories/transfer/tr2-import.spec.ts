@@ -126,6 +126,7 @@ test("TR2 (API): a vault imports at a notebook's root after its pages and under 
     },
     placed: null,
     lock: null,
+    refusal: null,
   });
   expect(job.problems).toEqual([{ path: "What? Why.md", code: "renamed", to: "What_ Why 2" }]);
   expect(await treeOf(db, nervewiki.storageDir, notebook.id)).toEqual([

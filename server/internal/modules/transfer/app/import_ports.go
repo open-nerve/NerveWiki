@@ -179,6 +179,19 @@ var (
 	ErrLocked           = errors.New("transfer: an edit session holds a page of the batch")
 )
 
+// Refused is a write of a job that the notebook's contract refused (M10
+// design 4.6): the page module's code, and the node it was about. The
+// job stops with it as refused, its report's refusal those two. It
+// unwraps to the page module's problem.
+type Refused struct {
+	Code   string
+	NodeID uuid.UUID
+	Err    error
+}
+
+func (r *Refused) Error() string { return r.Code + ": " + r.Err.Error() }
+func (r *Refused) Unwrap() error { return r.Err }
+
 // Attachments writes an import's attachments' files: bootstrap adapts the
 // asset module's Blobs.
 type Attachments interface {

@@ -221,7 +221,8 @@ func createdNode(n page.NodeInfo) transfer.CreatedNode {
 // to say which bound (M9/P3 design 3.23); a trash item changed or expired,
 // a changeset trimmed; a revert's conflicts and the lock it met, which
 // keep the page module's problem, wrapped, for the report to read its
-// conflicts and lock from.
+// conflicts and lock from. Other marked contract refusals keep their code
+// and node, with an existing transfer refusal returned unchanged.
 func treeError(err error) error {
 	switch {
 	case errors.Is(err, page.ErrTooDeep):
@@ -242,6 +243,13 @@ func treeError(err error) error {
 		return fmt.Errorf("%w: %w", transfer.ErrRevertConflict, err)
 	case errors.Is(err, page.ErrLocked):
 		return fmt.Errorf("%w: %w", transfer.ErrLocked, err)
+	}
+	var refused *transfer.Refused
+	if errors.As(err, &refused) {
+		return err
+	}
+	if code, node, ok := page.Refusal(err); ok {
+		return &transfer.Refused{Code: code, NodeID: node, Err: err}
 	}
 	return err
 }

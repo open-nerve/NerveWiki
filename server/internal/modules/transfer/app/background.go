@@ -237,6 +237,7 @@ func (r *backgroundRun) counted() []any {
 // batch revert_too_large (M9/P3 design 3.23); a unit refused as an
 // import's are; any other internal.
 func (r *backgroundRun) stopped(err error) error {
+	var refused *Refused
 	var problem *shared.Error
 	errors.As(err, &problem)
 	switch {
@@ -264,6 +265,8 @@ func (r *backgroundRun) stopped(err error) error {
 			r.report.Lock = &domain.Lock{PageID: problem.Lock.PageID, UserID: problem.Lock.UserID}
 		}
 		return failed(domain.FailurePageLocked, err)
+	case errors.As(err, &refused):
+		r.report.Refusal = &domain.Refusal{Code: refused.Code, NodeID: refused.NodeID}
 	case errors.Is(err, errSegmentTooLarge):
 		return failed(domain.FailureRevertTooLarge, err)
 	}

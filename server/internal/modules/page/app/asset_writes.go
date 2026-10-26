@@ -43,14 +43,31 @@ func (w *AssetWrites) spec(a NewAsset) UnitSpec {
 // Check decides as CreateAsset would, unlocked, for an upload to answer
 // before it reads the file: notebook.not_found, forbidden, then the name's
 // rules and a parent that is no page of the notebook (validation_failed),
-// and page.title_taken for a name a sibling holds now. CreateAsset decides
-// again under its locks.
+// and page.title_taken for a name a sibling holds now; then the notebook
+// contract, page.virtual_file for a reserved title at an LLM Wiki root.
+// CreateAsset decides again under its locks.
 func (w *AssetWrites) Check(ctx context.Context, a NewAsset) error {
 	if err := w.writer.Allowed(ctx, w.spec(a)); err != nil {
 		return err
 	}
-	_, _, err := assetPlace(ctx, w.nodes, a.NotebookID, a.ParentID, a.Name)
-	return err
+	title, _, err := assetPlace(ctx, w.nodes, a.NotebookID, a.ParentID, a.Name)
+	if err != nil {
+		return err
+	}
+	notebook, ok, err := w.writer.d.Notebooks.StateOf(ctx, a.NotebookID)
+	switch {
+	case err != nil:
+		return err
+	case !ok:
+		return domain.ErrNotebookNotFound
+	}
+	state := domain.TreeState{ParentID: a.ParentID, Name: title.Name}
+	verdict := domain.CheckContract(notebook, domain.FactsOf(domain.OpCreate, domain.ChangesetEdit,
+		[]domain.Change{{NodeID: uuid.UUID{}, After: &state}}))
+	if verdict.Err != nil {
+		return domain.Refuse(verdict.Err, verdict.NodeID)
+	}
+	return nil
 }
 
 // CreateAsset creates a's node in a unit (Unit.CreateAsset); after runs

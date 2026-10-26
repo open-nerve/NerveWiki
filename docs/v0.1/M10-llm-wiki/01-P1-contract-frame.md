@@ -3,8 +3,8 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M10/P1 契约的框架（四个 Step：S1 模式与模板（服务端）；S2 守卫的骨架；S3 预检、加序号与后台的拒绝的去处；S4 网页（一）） |
-| 日期 | 2026-10-24（照 S1、S2 修订 2026-10-25） |
-| 状态 | 进行中（S2 已合并，S3 待开工）；设计已审查，[审查记录](reviews/P1-design-review.md)，两轮复核在它的末节；S1、S2 的审查记录 [P1-S1-mode-template-review.md](reviews/P1-S1-mode-template-review.md)、[P1-S2-guard-review.md](reviews/P1-S2-guard-review.md)，实施与审查之后与代码不同之处照实改在各节（3.30、3.31 列出），结果在 10.1、10.2 |
+| 日期 | 2026-10-24（照 S1、S2 修订 2026-10-25；S3 修订 2026-10-26） |
+| 状态 | 进行中（S1、S2 已合并；S3 的结果与审查见 10.3，合并见 00 号文档第 12 节）；设计已审查，[审查记录](reviews/P1-design-review.md)，两轮复核在它的末节；S1、S2、S3 的审查记录 [P1-S1-mode-template-review.md](reviews/P1-S1-mode-template-review.md)、[P1-S2-guard-review.md](reviews/P1-S2-guard-review.md)、[P1-S3-prechecks-refusals-numbering-review.md](reviews/P1-S3-prechecks-refusals-numbering-review.md)，实施与审查之后与代码不同之处照实改在各节（3.30、3.31、3.32 列出），结果在 10.1、10.2、10.3 |
 | 上级文档 | [M10 总设计](00-M10-design.md) 4.1–4.9、4.15–4.18、第 5、7、8、9、10、11 节与"总体设计的修订"、"移交的落实"；[M10 设计审查](reviews/M10-design-review.md)；[移交](handoffs/)：M5-events、M8-history、M9-P1-mcp-registry；[v0.1 总体设计](../v0.1-design.md) 5.1–5.9、12.4、13.1–13.4；[M9/P3](../M9-mcp/03-P3-batch-revert.md)（写法） |
 | 代码位置的写法 | 同 00 号文档：模块写作 `page/app/unit.go:185`（`server/internal/modules/` 之下）；`platform/…`、`bootstrap/…`、`shared/…`、`archtest/…` 在 `server/internal/` 之下；迁移写作 `00009_notebook_notebooks.sql:12`（`server/migrations/sql/`），迁移的测试写作 `server/migrations/schema_test.go:163`；前端写作 `W/stores/notebook.store.ts:45` 或 `web/…/notebook.store.ts:45`（`W/` 是 `web/apps/web/src/`）；e2e 写作 `e2e/fixtures/notebooks.ts:9`；契约写作 `api/modules/notebook.yaml:421`。代码的行号是 `d7bb5e8d` 的（`main`，M10 总设计的文档提交；代码与 M9 的 Codex 评审之后的文档提交 `91ee78d8` 相同），00 号文档与 v0.1 总体设计的行号也是它的 |
 | 工作笔记 | `scratchpad/m10/p1/notes.md`；代码的核对分五份（网页、e2e、契约与 CI、守卫与矩阵、transfer 与后台）在 `scratchpad/m10/p1/h/`，本文引的每个行号都在其中或附录里核对过。P1 不量要数据库的东西（第 7.6 节写实施时怎样量） |
@@ -1764,11 +1764,11 @@ S3 的三处预检（上传的 `Check`、撤销的不加锁的一遍、撤销的
 
 **后台撤销的每一批不另检查**（主持者对 B-O1 的决定，2.1 第 19 条）：一批是一个单元，守卫在它的步里以同样的码与节点拒绝，整个单元回滚，"这一批一步也没做"不靠一道预检；草稿自己的反向对照也是"去掉每批的预检，结果相同"。后台的路径要的是 `revertDefect` 认出标出的拒绝（3.26 第 1 条），所以两批之间的降级由那一批的守卫拒绝（3.28 的 `TestTheSourceRootsPutBackIsRefusedInALaterBatch`）。00-M10 里写着每批的检查的十一处随之改（2.1 第 19 条，含 4.6 的表的 `:181` 与"transfer 的任务"的括号里的 `CheckRevertPart`，审查 B2-N1 = C2-M2）。
 
-**上传的 `Check`**：`assetPlace` 之后读 `StateOf`（`ok` 为假答 404 `notebook.not_found`），以 `FactsOf(domain.OpCreate, domain.ChangesetEdit, []domain.Change{{NodeID: uuid.Nil(), After: &state}})` 判（附件的 id 在单元里才定，标出的节点是零 id；P1 的唯一可能的码是 `page.virtual_file`）。拒绝时文件还没传（asset 模块先 `Check`、再 `Store`，`upload.go:66-90`），所以根下传 `index` 不写一个字节就答 409。00-M10 4.6 说这一检查"排在 `storage_full` 之后"：`storage_full` 是 asset 模块在 page 的整个 `Check` 之后查的（`upload.go:70-76`），排在它之后就要 asset 再调一次 page；排在它之前只是让一个磁盘满的服务器对一个保留的标题答 409 而不是 507，两者都不写，2.1 第 7 条改为"之前"。这个次序是结构的（asset 调完 page 的整个 `Check` 才查空间），3.28 的 `asset/app/upload_test.go` 的 `TestCheckDecidesTheNodeThenTheFreeSpace` 的一种钉住它：整个程序里的磁盘的一半照 C 的建议去掉了（第一轮复核），它多一个程序，查的是同一件事。
+**上传的 `Check`**：`assetPlace` 之后读 `StateOf`（`ok` 为假答 404 `notebook.not_found`），以 `FactsOf(domain.OpCreate, domain.ChangesetEdit, []domain.Change{{NodeID: uuid.UUID{}, After: &state}})` 判（附件的 id 在单元里才定，标出的节点是零 id；P1 的唯一可能的码是 `page.virtual_file`）。拒绝时文件还没传（asset 模块先 `Check`、再 `Store`，`upload.go:66-90`），所以根下传 `index` 不写一个字节就答 409。00-M10 4.6 说这一检查"排在 `storage_full` 之后"：`storage_full` 是 asset 模块在 page 的整个 `Check` 之后查的（`upload.go:70-76`），排在它之后就要 asset 再调一次 page；排在它之前只是让一个磁盘满的服务器对一个保留的标题答 409 而不是 507，两者都不写，2.1 第 7 条改为"之前"。这个次序是结构的（asset 调完 page 的整个 `Check` 才查空间），3.28 的 `asset/app/upload_test.go` 的 `TestCheckDecidesTheNodeThenTheFreeSpace` 的一种钉住它：整个程序里的磁盘的一半照 C 的建议去掉了（第一轮复核），它多一个程序，查的是同一件事。
 
-**撤销的两遍**：`revertChecks.check` 在 `planned` 交回的计划上、步数的上限之后，对它的每一个操作（放回、临时的改名、删除、恢复、写回）建事实（放回：从此刻的位置到计划的位置，移动的连同子树、被移动的在先；删除：子树，根在先；恢复：`OpRestore`；写回：`OpContent`）判；要 `page.manage_source` 的经 `spec` 的执行者问一次。`check` 也是 `startRevert` 的 `CheckRevert`（`jobs.go:148-172`，`:169`）与任务开始时的 `PlanRevert`（`jobs.go:300-320`，`:315`）的那一遍，所以一处加上，三条路径都有：同步的撤销在请求里、开始后台撤销在 `startRevert` 的请求里（"开始时的预检"）、任务真开始跑时在它的计划里（错误经 `treeError`，`bootstrap/transfer.go:136`，以 `refused` 停下，3.26）。00-M10 4.6 说撤销的预检"在 503 之后"：503 是解析的预算（`revert_changeset.go:104-108`），在 `check` 之后；放进 `check` 让被拒的撤销不占预算，`startRevert` 的 503（`start_background.go:151`）本就在 `CheckRevert` 之后。2.1 第 7 条一并改；"被拒的撤销不占解析的预算"由 3.28 的 `TestTheServersLimitsComeAfterThePrechecks` 核对（主持者对 B-I3 的决定取能失败的测试：变更集也写回另一页的正文，预算被占着时被拒的撤销立刻答自己的码，放过的答 503）。加锁的一遍在 `Unit.Revert` 的计划之后照同样的事实判，问 `u.write.Grants`。
+**撤销的两遍**：`revertChecks.check` 在 `planned` 交回的计划上、步数的上限之后，对它的每一个操作（放回、临时的改名、删除、恢复、写回）建事实（放回：从此刻的位置到计划的位置，移动的连同子树、被移动的在先；删除：子树，根在先；恢复：`OpRestore`；写回：`OpContent`）判；要 `page.manage_source` 的经 `spec` 的执行者问一次。`check` 也是 `startRevert` 的 `CheckRevert`（`jobs.go:148-172`，`:169`）与任务开始时的 `PlanRevert`（`jobs.go:300-320`，`:315`）的那一遍，所以一处加上，三条路径都有：同步的撤销在请求里、开始后台撤销在 `startRevert` 的请求里（"开始时的预检"）、任务真开始跑时在它的计划里（错误经 `treeError`，`bootstrap/transfer.go:136`，以 `refused` 停下，3.26）。00-M10 4.6 说撤销的预检"在 503 之后"：503 是解析的预算（`revert_changeset.go:104-108`），在 `check` 之后；放进 `check` 让被拒的撤销不占预算，`startRevert` 的 503（`start_background.go:151`）本就在 `CheckRevert` 之后。2.1 第 7 条一并改；"被拒的撤销不占解析的预算"由 3.28 的 `TestTheServersLimitsComeAfterThePrechecks` 核对（主持者对 B-I3 的决定取能失败的测试：变更集也写回另一页的正文，预算被占着时被拒的撤销立刻答自己的码，放过的答 503）。加锁的一遍在 `Unit.Revert` 的计划之后照同样的事实判，问 `u.write.Grants`。照实（S3 的偏离 2）：两遍共用 `checkRevertContract`（`page/app/revert_contract.go`），它在普通模式先返回；LLM Wiki 的事实由纯领域的 `RevertFacts`（`page/domain/revert_facts.go`）交出，复用调度器的 `revertSim`、`place`、`delete` 与 `set`。每个操作用前面操作留下的树建 `Change`，再经 `FactsOf`；移动与删除用抽出的 `orderedSubtree` 保持根在先、层级/顺序/id 的次序，移动并改名仍是一项 `OpMove`。恢复、删除与临时改名都更新这份模拟，后面的事实不会看旧树；没有另一套调度或任何存储读取。`TestARevertsFactsFollowItsSteps` 与只写正文的对照核对它，第 85 条变异去掉 `sim.place` 后失败。
 
-**读的调用**（审查 B-N6）：上传与撤销的检查各多一次 `StateOf`，钉住整个调用列表的测试随之加 `"StateOf nb"`：`page/app/revert_test.go:144-155` 的 `TestRevertChangesetRestoresADeletion` 一类（`FindChangeset, WorkspaceOf, Authorize, CountItems, …`）与上传的 `asset_test.go` 的调用列表，实现时以 `git grep -n '"CountItems"\|"FindChangeset"' page/app/*_test.go` 与上传的 `"Children"` 列全，与这一处检查同一个提交（6.3 第 1 个提交）。
+**读的调用**（审查 B-N6；S3 审查 Q-A1，主持者的决定 32）：上传与撤销的检查各多一次不加锁的 `StateOf`，普通的笔记本也读；替身的调用名是 `"StateOf"`，不带 nb，钉住整个调用列表的测试已随之更新。锁外撤销只有规则需要 `page.manage_source` 时才在这一遍的局部 `Grants` 回调里再读 `WorkspaceOf`，同一遍至多一次：现有 `Allowed` 丢弃工作区，而额外的授权仍需工作区与笔记本两个目标。`revert_changeset.go` 用同一授权者和请求执行者；失去可见性经 `authorize` 答这一操作的 404，数据库错误原样交回。锁下读 `Write.Notebook`，问单元自己的 `Write.Grants`，不复用锁外的放行。`TestARevertsExtraDecisionKeepsItsErrors` 与 `TestARevertsSourceGrantIsAskedOnceEachPass` 核对额外判定和每遍的次数；这是条件读取，不把所有预检概括为只多一次点查。
 
 **`startRevert` 的契约**：`x-problem-codes`（`transfer.yaml:255-267`）在 `page.revert_conflict` 之后加 `page.protected`、`page.source_admin_only`；`description` 加一句 "In an LLM Wiki, an undo whose steps the notebook's contract refuses is refused at its start, with the code its first refused step would get (page.protected, page.source_admin_only)."。`transfer/adapter/http/start_background_test.go:105` 的表格加两行：`CheckRevert` 的假的答 `shared.NewError(shared.KindConflict, "page.protected", "…")` 与 `shared.NewError(shared.KindForbidden, "page.source_admin_only", "…")`（transfer 不导入 page，照这张表已有的行自己造问题），照原样答出：开始的预检的拒绝不经 `treeError`（`bootstrap/transfer.go:113-123`）。`startTrashRestore` 在 P1 没有可拒的（恢复加序号，3.27），不改。
 
@@ -1819,7 +1819,7 @@ revertDefect 原样交回                     在它们最后），再认 Refusa
    ```
 
 4. **`unitFailure`**（`transfer/app/batches.go:83-96`）：第一个分支是 `errors.As(err, &refused)` → `failed(domain.FailureRefused, err)`，在 `forbidden` 之前：`page.source_admin_only` 是 `KindForbidden`，排在后面就报成 `forbidden`（"发起人已不能编辑这本笔记本"，不对）。`uncertain`（`:74-81`）不改：`Refused` 解开到页的 `*shared.Error`，所以照旧算拒绝、不算不确定，导入的单元被拒时照旧删掉它传的文件（`import_write.go:190-196`）。
-5. **报告**：`unitFailure` 拿不到报告，`refusal` 在报告在手的两处写下（同 `Lock`）：`backgroundRun.stopped`（`transfer/app/background.go:239-271`）在 `ErrLocked` 的分支之后加 `case errors.As(err, &refused): r.report.Refusal = &domain.Refusal{Code: refused.Code, NodeID: refused.NodeID}`、再交给 `unitFailure`；`importRun.unit`（`import_write.go:193-198`）在 `return unitFailure(err)` 之前同样写。`transfer/domain/report.go`：`FailureRefused Failure = "refused"`（放在后台的那一组，`:58-82`）、`Report.Refusal *Refusal`（`:174-188`）、`Refusal{Code string; NodeID uuid.UUID}`；存储的 JSON（`adapter/postgres/store.go:351-445`）加 `refusal,omitempty`，`ListJobs` 照旧带它（只去掉 `problems`、`conflicts`，`jobs.sql:53-65`）；HTTP 的 `reportOf`（`adapter/http/server.go:163-185`）照 `lock` 写出（`null` 时 `null`）。
+5. **报告**：`unitFailure` 拿不到报告，`refusal` 在报告在手的两处写下（同 `Lock`）：`backgroundRun.stopped`（`transfer/app/background.go:239-271`）在 `ErrLocked` 的分支之后加 `case errors.As(err, &refused): r.report.Refusal = &domain.Refusal{Code: refused.Code, NodeID: refused.NodeID}`、再交给 `unitFailure`；`importRun.unit`（`import_write.go:193-198`）在 `return unitFailure(err)` 之前同样写。`transfer/domain/report.go`：`FailureRefused Failure = "refused"`（放在后台的那一组，`:58-82`）、`Report.Refusal *Refusal`（`:174-188`）、`Refusal{Code string; NodeID uuid.UUID}`；存储的 JSON（`adapter/postgres/store.go:351-445`）加 `refusal,omitempty`，`ListJobs` 照旧带它（只去掉 `problems`、`conflicts`，`jobs.sql:53-65`）；HTTP 的 `reportOf`（`adapter/http/server.go:163-185`）照 `lock` 写出（`null` 时 `null`）。照实（S3 审查 B-M1，修复 `ba5cded6`）：后台与导入共用的 `jobRun.finish`（`transfer/app/job_run.go:207`）先选定最终的 `report.Failure`，若它不是 `domain.FailureRefused` 就把 `report.Refusal` 清空，再交给 `FinishJob`。这样 timeout、interrupted 或 cancelled 覆盖原拒绝时遵守非 refused 为 null 的契约；普通拒绝仍保留码与节点，已提交批次的进度、计数及既有 Lock/Conflicts 行为不改。
 6. **契约**（`api/modules/transfer.yaml`）：`TransferReport`（`:824-850`）的 `required` 加 `refusal`，`properties` 加
 
    ```yaml
@@ -1841,10 +1841,10 @@ revertDefect 原样交回                     在它们最后），再认 Refusa
 
 ### 3.27 S3：保留的标题加序号
 
-三处都以单元的 `Write.Notebook`（S2）判模式，以 `domain.ReservedKeys`（3.21）为表；只在 `llm_wiki` 的根下（父节点为空）：
+三处都以单元的 `Write.Notebook`（S2）判模式，以 `domain.ReservedKeys()`（3.21）为表；只在 `llm_wiki` 的根下（父节点为空）：
 
 - **导入**：`ImportUnit.children(ctx, nil)`（`page/app/unit_import.go:150-166`）在 `llm_wiki` 时把四个键加进根的 `keys`，`free`（`:172-194`）照旧给"名字已被占"的加序号：库的根下的 `index.md`（导入成名叫 `index` 的页，`transfer/domain/import_plan.go:184`）成为 `index 2`，`log/` 文件夹成为 `log 2`，一个叫 `index` 的附件成为 `index 2`；报告的 `renamed` 问题照旧由 `tell` 写下（`transfer/app/import_write.go:332-335`）。库里的文件夹并进同键的页（`import_plan.go:191-197`：`Index/` 归 `index.md`，`TitleKey` 相同），所以一个 `index.md` 与一个 `Index/` 是一页 `index`、它的子页在它之下。`Reserved` 钩子（`import_ports.go:124-127`）不动：它只决定序号跳过哪些候选（`free` 的 `:189`），不让原来的名字加序号（00-M10 4.9）。
-- **同步的恢复**：`restoredNames(group, siblings)`（`unit_restore.go:177-210`，唯一的调用者 `:83`）加一个参数 `held []string`：根（第 0 个成员）的兄弟之外另算被占的键；`Restore` 在 `place.ParentID == nil` 且 `llm_wiki` 时交 `ReservedKeys`，否则 `nil`。答复的 `renamed: true`（`restore_node.go:128`）。
+- **同步的恢复**：`restoredNames(group, siblings)`（`unit_restore.go:177-210`，唯一的调用者 `:83`）加一个参数 `held []string`：根（第 0 个成员）的兄弟之外另算被占的键；`Restore` 在 `place.ParentID == nil` 且 `llm_wiki` 时交 `ReservedKeys()`，否则 `nil`。答复的 `renamed: true`（`restore_node.go:128`）。
 - **后台的恢复**：`RestorePart` 的根的分支（`:298-305`）在 `kids = places.under(-1, siblings)` 之后、`place.ParentID == nil` 且 `llm_wiki` 时把四个键加进 `kids.keys`（不在 `under` 里加：`under` 也给非根的父节点用，`:386-395`、`:406`、`:423`）。一个后台的恢复恢复回收站的一项，只有它的根（第 0 个成员）落到根下，别的成员回到它们的父节点之下（`partPlaces.of`，`:399-420`），所以一个任务至多数一个保留的改名。报告照今天的"兄弟持着它的名字"只数 `counts.renamed`（`background.go:215-218`），没有 `renamed` 问题：`TransferProblem.renamed` 是导入与导出的（`transfer.yaml:970-986`）。00-M10 第 7 节的"报告 `renamed`"在后台的恢复里是这个计数，2.1 第 8 条写明。
 - 撤销的放回不加序号：名字被占是冲突（`unit_revert.go:426-429`、`revert_schedule.go:261-279`），根下的保留的键又从来不会有人持着（3.21 的表）。
 - **`checkPages`** 加一条："live LLM Wikis' root nodes with a reserved title key"：
@@ -1866,7 +1866,7 @@ revertDefect 原样交回                     在它们最后），再认 Refusa
 - `page/app/revert_test.go` 的 `TestARevertsChecksRefuseTheContract`：撤销模板的变更集在不加锁的一遍答 `page.protected`（没有单元）；它的 `AGENTS` 被别人的会话持着时仍答 `page.protected`；写者撤销管理员对 `raw` 的改名答 `page.source_admin_only`，授权者被问一次；`CheckRevert`（开始）与 `PlanRevert`（任务的计划）答同样的码；过了计划的步数的仍先答 422 `page.revert_too_large`（审查 B-N2 的次序）；**锁下的一遍**（这一行的写者不登记会拒的守卫，交一个记下步、什么也不拒的替身：登记真的 `ModeGuard` 时它在第一步以同样的码拒绝，这一行就分不出是谁拒的，审查 B2-N4）：假的授权者第一次（不加锁的一遍）答管理员、之后答写者，写者撤销管理员对 `raw` 的改名时 `Unit.Revert` 的锁下的一遍答 `page.source_admin_only`、一步也没做，替身守卫一步也没看到，授权者在事务里被问一次（第 53 条变异）。
 - `page/app/jobs_test.go`（照 `TestARevertJobsBatchErrors`，`:990-1050`）的 `TestARevertJobsBatchPassesAGuardsRefusal`：一个替身守卫在一批的一步里的标出的拒绝经 `revertDefect` 原样交回（`page.Refusal` 认得出），这一批一步也没留下（单元回滚）；编辑锁的 `page.locked` 照旧原样交回；没标出的 `page.title_taken` 照旧成为缺陷（反向对照）。
 - `bootstrap/transfer_tree_test.go`（新，纯函数）的 `TestTreeErrorKeepsTheLockFirst`：标出的 `page.locked` → `transfer.ErrLocked`；标出的 `page.protected` → `*transfer.Refused` 带码与节点；再经一次 → 交回同一个 `*transfer.Refused`（`got == in`：再包一层的码与节点相同，只比字段看不出，审查 C2-N5）；没标出的 `page.protected` → 原样（不是拒绝）。
-- `transfer/app/background_test.go` 的 `TestABackgroundJobStopsWithItsReason`（`:224-290`）加两行（计划与一批各一）：`*Refused` → `refused`，报告的 `Refusal` 是它的码与节点，`Lock` 为 `nil`；默认分支的核对（`:283-286`）加 `Refusal == nil`。`import_test.go` 的 `TestAnImportsUnitFails`（`:715-742`）加 "refused"：`refused`、文件删掉、报告带拒绝。`adapter/postgres/store_test.go:344-382` 与 `adapter/http/start_background_test.go:131-215` 的往返加 `refusal`，其中一行的码是 `page.some_later_code`（自由的字符串照收）。
+- `transfer/app/background_test.go` 的 `TestABackgroundJobStopsWithItsReason`（`:224-290`）加两行（计划与一批各一）：`*Refused` → `refused`，报告的 `Refusal` 是它的码与节点，`Lock` 为 `nil`；默认分支的核对（`:283-286`）加 `Refusal == nil`。`import_test.go` 的 `TestAnImportsUnitFails`（`:715-742`）加 "refused"：`refused`、文件删掉、报告带拒绝。照实：在指定的 `adapter/postgres/store_test.go` 与 `adapter/http/start_background_test.go` 里另设相邻的 `TestARefusedJobsReportReadsBackAsWritten`、`TestARefusedJobReadsWithItsReport`，核对详情/列表的拒绝、旧报告、普通报告显式 null 与自由码 `page.some_later_code`；原冲突/锁的往返保留，不往非 refused 的夹具里塞拒绝元数据。另有 `TestAJobsRefusalBelongsToItsFinalFailure`（`transfer/app/background_test.go`）：第一批提交、第二批返回拒绝，普通拒绝保留码与节点；timeout、interrupted、cancelled 三种最终结果清掉 refusal，四行都核对 Done=1/Total=3、计数=1、只尝试两批，第 86 条变异抓到漏清理（B-M1）。
 
 **整个程序**：
 
@@ -1922,11 +1922,15 @@ S3 的网页、e2e：4.3 与第 5 节（S3 没有新的故事；TR1、TR2、TR3�
 | `mcpToolCodes()` 的新行 | `toolError` 遇到行里没有的码就失败；`TestTheMCPToolsErrorsCarryTheirCodes` 遇到行里有、没有一个调用答出的码就失败 | S2 |
 | `x-problem-codes` 的新码 | `apitest.Main`：模块的适配器测试没答出就失败，答出了没声明的也失败 | S2、S3 |
 | S3 的三处预检 | 3.28 的模块测试：不加锁的两处（上传的 `Check`、`revertChecks.check`）在没有单元、没有锁的情况下答码；锁下的一遍在第一步之前答码，什么也不拒的替身守卫一步也没看到（`TestARevertsChecksRefuseTheContract` 的锁下的一行，第 53 条变异） | S3 |
+| 撤销的事实跟着前面的操作 | `TestARevertsFactsFollowItsSteps`：移动后的删除不再带走已经移出的来源根，恢复的后代进入后面的移动与删除，临时改名后的名字供后步读取；去掉 `sim.place` 被抓到，纯正文的无树对照照过（第 85 条变异） | S3 |
 | 预检在服务器的上限之前 | `TestTheServersLimitsComeAfterThePrechecks`：被拒的撤销在预算占着时立刻答 403，放过的同一个撤销答 503；`TestCheckDecidesTheNodeThenTheFreeSpace` 的一种：page 的 `Check` 答 `page.virtual_file` 而磁盘不够时答它；HTTP 适配器的 `checkErr` 一行：不调 `Store` | S3 |
 | 预检与守卫同码 | `TestPrechecksAnswerTheGuardsCodes`；同步的撤销的前一步碰到锁、后一步被模式拒绝时答模式的码（S2 审查 A-M3，3.28） | S3 |
 | `treeError` 的次序与幂等 | `TestTreeErrorKeepsTheLockFirst` 的四行 | S3 |
+| 后台第二批拒绝的组合根最后一跳 | 真正的注册表不登记模式守卫时，`TestTheSourceRootsPutBackIsRefusedInALaterBatch` 用完所有重试仍得不到要求的 refused 而失败（第 88 条变异） | S3 |
 | `unitFailure` 的 `refused` 在 `forbidden` 之前 | 一个标出的 `page.source_admin_only`（`KindForbidden`）答 `refused`、不是 `forbidden` | S3 |
 | 报告的 `refusal` | 后台与导入各一行；别的失败的报告 `refusal` 为 `null`；存储与 HTTP 的往返收一个自由的码 | S3 |
+| 报告的拒绝只属于最终的 refused | `TestAJobsRefusalBelongsToItsFinalFailure` 的普通拒绝与 timeout/interrupted/cancelled 四行；只清掉后三种的 refusal，四行都保留第一批与进度，第 86 条变异抓到漏清理 | S3 |
+| ListJobs 保留拒绝的码与节点 | `TestARefusedJobsReportReadsBackAsWritten` 同时读详情与列表；列表投影去掉 refusal 时已知码/未来码的列表断言失败（第 87 条变异） | S3 |
 | 加序号只在 LLM Wiki 的根下 | 子页下与普通的笔记本里不加（3.27） | S3 |
 | 网页的码的文字 | `problem-messages.test.ts`：契约里多一个码就失败；`Messages` 的类型让少一种语言过不了 tsc | S1–S3 |
 | `failures` 的类型表 | 不加 `refused` 过不了 tsc | S3 |
@@ -1950,6 +1954,17 @@ S2 的审查与主持者的核对见 [S2 的审查记录](reviews/P1-S2-guard-re
 
 - **S2，实施时定下的**（实施者的 15 条偏离，S2 审查 A、C 各在自己的范围里判过：A 判全部 15 条，C 判第 4、6、9–15 条，都对）：notebook 的存储的 `ShareNotebook` 答 `(domain.Mode, uuid.UUID, error)`，根由它建 `State`（1，3.18）；事实的位置叫 `NodePlace`（2，3.17、3.21）；`ReservedKeys()` 是函数（3，3.17、3.21）；`page.manage_source` 落在第 2 个提交，第 1 个提交的 `TestAGrantIsAskedOnceAUnit` 问 `node.move`、`node.rename`（4，3.19、6.2）；`pageSessionSubscribers()` 不收连接池（5，第 0 节、2.1 第 6 条、3.17、3.20、第 8 节）；MCP 的 `move` 发 `from`，`wikiCodeCalls` 的写者是经 SQL 加进 acme 的 erin（6，3.22）；`uploadAsset` 与 `revertChangeset` 的说明的新句（7，3.22）；`decidedNotebook`（8，3.17、3.22、6.2）；树的一遍在每一项自己的方法里判（`judge`），一项的拒绝在同一项上批量自己的界线之前（9，3.22）；`Refuse` 取代同一项上的失败、清掉 `final`（10，3.22）；没有钉住整个调用列表的 `batch` 测试，替身记 `"StateOf"`（11，3.17、3.22、6.2）；`TestTheModeGuardAsksOnceAUnit` 的拒绝的一行是计划放行、锁下拒绝，替身授权者默认答 `ErrNotVisible`、加 `failing`（12，3.19）；B-Q1 的一行是同一父节点下的改名与移到原处（13，3.22）；`TestABatchsPlanRefusesBeforeItsLock` 加"写者的 `[move raw, edit AGENTS]`，AGENTS 被持着"（14，3.22、3.29）；第 23、29、32、40 条变异的写法（15，7.3）。报告里写了、没进编号的一处：`TestTheModeGuardReachesEveryMCPWrite` 的 agent 的变更集按 `client LIKE 'mcp%'` 找（3.24）。照代码另写明的一处：`batch` 的计划没有 `Change`，以 `nodePlace` 照 `FactsOf` 的写法从模拟的树建 `NodeFacts`，不经 `FactsOf`（3.21）。
 - **S2，审查与主持者带来的**（编号是 S2 的审查记录的；主持者的决定见审查记录的第 27–31 条）：守卫标出的节点有测试（C-M1，3.17、3.20、3.29、7.1、7.3 第 83、84 条）；`Refuse` 的两种行为有测试（A-M1 = C-M2，3.22、3.29、7.1、7.3 第 81、82 条）；两个新的 S2→S3 的窗口（A-M2、A-M3，第 0 节、3.21 的表、3.22 的说明、3.23、3.28、3.29、第 9 节）；MCP 的 `write` 覆盖已有的页（C-N1，3.24）；`ApplyBatch.Execute` 的次序的注释（A-N1，只在代码的注释里，3.22 本就这样写）；第 4 个提交的 sha（C-N2，10.2）；建成的 CI 的红不是 S2 的，grep 的守卫再失败时的改法记作 M10 的收尾的一项（决定 30，10.2，00 号文档"写给后面的 M"）；`ErrSourceAdminOnly` 的文字留给 P2/S1（A 的存疑，第 9 节）；第 8 节另列总体设计 13.1 第 29 条的 `pageRegistrants(pool)`。没有交给 v0.1 之后的打磨的。
+
+### 3.32 S3 的实施对设计的修正
+
+S3 的审查与修复核对见 [S3 的审查记录](reviews/P1-S3-prechecks-refusals-numbering-review.md)，结果在 10.3。与上文最初的设计不同之处照实改在各节，逐项与依据如下：
+
+1. **条件的工作区读取**（任务审查 Q-A1，主持者的决定 32）：每次上传、锁外撤销仍只新增一次 `StateOf`；锁外撤销需要 `page.manage_source` 时还在这一次的 `Grants` 回调里读 `WorkspaceOf`，同一遍至多一次。`Allowed` 不保留工作区，真实授权仍须完整目标；锁下用自己的 `Grants` 重问。3.25 与 7.6 不再把它概括为只有一次新增点查。
+2. **事实的共用位置**：纯领域的 `RevertFacts` 复用调度器的模拟，按计划逐步更新树并经 `FactsOf` 建事实；应用的 `checkRevertContract` 给两遍共用，普通模式在建事实前返回。抽出 `orderedSubtree` 保持原调度次序，没有复制调度器。3.25 写明；第 85 条变异去掉 `sim.place` 后，后续删除/移动读旧树的三处断言失败，纯正文对照通过。
+3. **仓库的写法**：替身实际记 `"StateOf"`、不带 nb（延续 S1/S2），Go 的零 UUID 是 `uuid.UUID{}`，保留键从 `ReservedKeys()` 取得。3.25、3.27 与 6.3 按实际签名和调用记录改，不改变契约。
+4. **持久化与 HTTP 测试的安排**：指定的两个文件里新增相邻的 `TestARefusedJobsReportReadsBackAsWritten`、`TestARefusedJobReadsWithItsReport`，让拒绝元数据与 report 的 failure 相符；原冲突/锁往返保留并重跑。详情、列表、旧报告、显式 null 与未来码分别核对。3.28 照实改写。
+5. **最终结果的 refusal 清理**（B-M1）：原实现记录拒绝之后，超时、服务停止或取消覆盖 failure 时漏清旧 refusal。`ba5cded6` 在共用的 `jobRun.finish` 最后选择 failure 之后、持久化之前清掉非 refused 的 refusal，四行回归保留第一批计数和进度，原 B 复核通过，第 86 条变异抓到漏清理。3.26、3.28、3.29 与 7.3 增补；这是兑现原来的 null 契约。
+6. **文档的时机与缺项**：第 8 节按现行工作流 3.5–3.6 改为 Step 分支先写、合并后填提交号；00 的头仍写“S1 开工”的滞后改正。总体设计 13.4 第 4 条补 S2 已实现而漏记的交错 5–6，并加 S3 第 7 条，分别写实际的检查，不把 S3 的 `checkPages` 说成还有 `checkNotebooks`。历史审查记录不改；00 第 11 节的独立设计审查编号不追加一个重复的 32。
 
 ## 4. 网页
 
@@ -2179,7 +2194,7 @@ P1 的故事是 LW1、LW2 与 LW12 的 P1 的几步，在 `e2e/stories/wiki/`（
 
 ### 6.3 S3（`m10-p1-s3`）
 
-1. `server, api, web: the prechecks judge the contract (M10/P1/S3)`：上传的 `Check`；`revertChecks.check` 与 `Unit.Revert` 的两遍；`startRevert` 的两个码与说明、它的适配器的测试（自己造的问题，审查 B-N4）；钉住调用列表的撤销与上传的测试加 `"StateOf nb"`（3.25，审查 B-N6）；3.28 的预检的模块测试；`TestPrechecksAnswerTheGuardsCodes`、`TestTheServersLimitsComeAfterThePrechecks`。
+1. `server, api, web: the prechecks judge the contract (M10/P1/S3)`：上传的 `Check`；`revertChecks.check` 与 `Unit.Revert` 的两遍；`startRevert` 的两个码与说明、它的适配器的测试（自己造的问题，审查 B-N4）；钉住调用列表的撤销与上传的测试加 `"StateOf"`（3.25，审查 B-N6）；3.28 的预检的模块测试；`TestPrechecksAnswerTheGuardsCodes`、`TestTheServersLimitsComeAfterThePrechecks`。
 2. `server, api, web, e2e: a background job stops as refused (M10/P1/S3)`：`revertDefect` 的那一句与 `TestARevertJobsBatchPassesAGuardsRefusal`；`treeError` 的最后一段与 `TestTreeErrorKeepsTheLockFirst`；transfer 的 `Refused`、`FailureRefused`、`Report.Refusal`、存储与 HTTP、契约（`code` 是自由的字符串）；网页的 `transfer-report.tsx` 与它的文字、`reportOf` 的 `refusal: null`（4.3）；e2e 的 TR1、TR2、TR3、TR4；transfer 的测试的新行；`TestTheSourceRootsPutBackIsRefusedInALaterBatch`。去处（`revertDefect`、`treeError`、`refused`）在一个提交里：分开时中间的提交把被拒的一批报成 `forbidden`（`unitFailure` 认 `KindForbidden`）或 `internal`。任务的计划的预检在第 1 个提交，所以第 1、2 个提交之间它拒绝的任务同样报成 `forbidden` 或 `internal`（审查 B-N10）：只在分支上，没有测试走到它（`startRevert` 的预检在请求里先拒）。
 3. `server: reserved titles are numbered at an LLM Wiki's root (M10/P1/S3)`：导入、同步与后台的恢复的加序号；`checkPages` 的"根下没有保留的键"与它的反例；3.27 的模块测试与 `TestTheReservedTitlesAreNumberedAtAnLLMWikisRoot`。
 4. `docs: … (M10/P1/S3)`。
@@ -2342,6 +2357,10 @@ P1 的故事是 LW1、LW2 与 LW12 的 P1 的几步，在 `e2e/stories/wiki/`（
 | 82 | `Refuse` 不清 `final` | `TestThePlanChecksTheContract` 的清掉 `final` 的一行（计划什么也不读，答第 2 项的 403、不答第 0 项的正文的失败；RA2 = c05） |
 | 83 | 守卫原样交回它的规则的拒绝（`return v.Err`，`Unit.apply` 于是以步的第一个节点标出） | `TestTheModeGuardMarksTheNodeItRefuses` 的删除 `Notes` 的一行（S2 审查 C-M1：c01） |
 | 84 | 守卫以步的第一个节点标出 `page.source_admin_only` | 同上，把 `Notes` 移到 `Other` 之下的一行（c02） |
+| 85 | `RevertFacts` 去掉 `sim.place(op.Kind, op.NodeID, op.To)`，后面的事实仍看移动/临时改名之前的树 | `TestARevertsFactsFollowItsSteps` 的删除、后续移动与后续删除三处；`TestAContentOnlyRevertsFactsNeedNoTree` 照过（S3 的偏离 2） |
+| 86 | `jobRun.finish` 不清掉最终 failure 不是 `FailureRefused` 的 `report.Refusal` | `TestAJobsRefusalBelongsToItsFinalFailure` 的 timeout、interrupted、cancelled 三行，普通拒绝照过、先前的进度仍保留（S3 审查 B-M1） |
+| 87 | ListJobs 的报告投影额外去掉 `refusal`（改生成的 `jobs.sql.go`，变异上不重新生成） | `TestARefusedJobsReportReadsBackAsWritten` 的已知码与未来码的 ListJobs 断言，详情仍正确（S3 完整 Step 审查 B） |
+| 88 | 组合根的 `pageRegistrants` 不登记模式的守卫，只留编辑锁的守卫 | `TestTheSourceRootsPutBackIsRefusedInALaterBatch`：没有真正的模式守卫时每次都完成第二批，碰不到要求的 refused 而失败（S3 完整 Step 审查 A/C，同一个逻辑变体；正式证明用 C 的实际文件备份与恢复） |
 
 ### 7.4 门禁
 
@@ -2385,7 +2404,7 @@ P1 的故事是 LW1、LW2 与 LW12 的 P1 的几步，在 `e2e/stories/wiki/`（
 
 ### 7.6 P1 怎样量
 
-P1 本身不量要数据库的东西（不加成本守卫：建是两页、降级是一条 `UPDATE` 与一次点查、守卫不读库；预检的规则本身不读库，每次上传、`batch`、撤销的检查只多一次 `StateOf` 的点查，普通的笔记本也是（3.25，审查 B-N6）；13.4 第 8、9 条的成本与计划测试从 P2 起）。实施时记下：四页模板的字节数（`wc -c wiki/domain/template-*.md`，写进第 10 节，测试钉住的是 8 KiB 的上限）；每个 Step 的分支与合并之后的 CI 的各份的时间（作业与测试一步分开写）；e2e 一步的时间；本机 `go test -race -count=1 -run '^(<新的测试名>)$' ./internal/bootstrap` 的时间（竞态检测下，同 CI），乘 1.73 作为 7.5 的估计的核对。
+P1 本身不量要数据库的东西（不加成本守卫：建是两页、降级是一条 `UPDATE` 与一次点查、守卫不读库；预检的规则本身不读库，上传、`batch`、锁外撤销各多一次 `StateOf` 的点查，普通的笔记本也是；锁外撤销仅当规则需要 `page.manage_source` 时在本次 `Grants` 的回调里另读一次 `WorkspaceOf`，同一遍至多一次，锁下用已有的 `Write.Notebook` 与单元的 `Grants`（3.25，S3 审查 Q-A1、主持者的决定 32）；13.4 第 8、9 条的成本与计划测试从 P2 起）。实施时记下：四页模板的字节数（`wc -c wiki/domain/template-*.md`，写进第 10 节，测试钉住的是 8 KiB 的上限）；每个 Step 的分支与合并之后的 CI 的各份的时间（作业与测试一步分开写）；e2e 一步的时间；本机 `go test -race -count=1 -run '^(<新的测试名>)$' ./internal/bootstrap` 的时间（竞态检测下，同 CI），乘 1.73 作为 7.5 的估计的核对。
 
 ## 8. 完成标准
 
@@ -2396,7 +2415,7 @@ P1 完成，当且仅当：
 3. 第 2 节的移交的落实做完；三份移交写下进度，`M5-events.md` 在 P1 完成时改为 `done`（下面）。
 4. 00 号文档（审查 C-M10，照 M9 的写法，`docs/v0.1/M9-mcp/00-M9-design.md:818-840`）：
    - **接受本文的文档提交**：2.1 的二十四处；头的"状态"（`:7`）改为"进行中（P1 设计已审查，S1 开工；[审查记录](reviews/M10-design-review.md)；…）"；第 12 节的 P1 一行（`:812`）写 `[01-P1](01-P1-contract-frame.md)`、"进行中（设计已审查）"、审查一格 `[设计](reviews/P1-design-review.md)`；第 13 节加"开工"一行（`:824` 写着"P1 开工时记"）与"P1 设计"一行（本文、2.1 的二十四处、[P1 设计审查](reviews/P1-design-review.md)）；本文与审查记录进 `docs/v0.1/M10-llm-wiki/` 与它的 `reviews/`。
-   - **每个 Step 合并之后的文档提交**：第 12 节的 P1 一行的合并一格加这个合并的提交，审查一格加这个 Step 的审查记录；第 13 节加一行（合并的提交、照实与设计不同之处、随之改的节）。
+   - **每个 Step 的文档提交（在 Step 的分支上、合并之前）**：第 12 节的 P1 一行加这个 Step 的审查记录与进度，合并的提交号待合并之后补；第 13 节加一行（实施结果、照实与设计不同之处、随之改的节）。合并之后在 main 的小文档提交里填入确切的合并提交号，Phase 的结果与审查记录同样更新。
    - **`docs: M10/P1 done`**：第 12 节的 P1 一行"完成"；头的"状态"改为下一个 Phase 的；第 13 节加"P1 完成"一行。
 5. 下面的 v0.1 总体设计的修订，各在实现它的 Step 的文档提交里改（00 号文档"总体设计的修订"的"随实现它们的 Phase 改"里属于 P1 的部分；P2–P5 的部分留给它们）。
 
@@ -2449,7 +2468,7 @@ P1 完成，当且仅当：
 
 ## 9. 交给后面的 Phase
 
-- **S3**（同一个 Phase 的下一个 Step；S2 的审查留下的，S2 的审查记录的主持者的决定 29）：S2→S3 的四个窗口（第 0 节）由 S3 的合并关上：导入与恢复的加序号与 `checkPages` 的"根下没有保留的键"（3.27）也关上 A-M2（S3 之后撤销的放回再到不了 R3，不为 `revertChangeset` 声明 `page.virtual_file`）；撤销的两遍预检（3.25）关上 A-M3，3.28 的 `TestPrechecksAnswerTheGuardsCodes` 加钉住它的形状的一行（前一步碰到锁、后一步被模式拒绝：只有预检过得了）；后台撤销遇到同样的形状时由开始时的预检先拒绝整个任务（S2 审查 A 的存疑）。
+- **S3**（S2 的审查留下的，主持者的决定 29）：四个 S2→S3 的窗口（第 0 节）的处理与核对见 10.3 和 [S3 的审查记录](reviews/P1-S3-prechecks-refusals-numbering-review.md)，合并见 00 号文档第 12 节。导入与恢复的加序号及 `checkPages` 的根下保留键规则对应 A-M2；撤销的两遍预检及 `TestPrechecksAnswerTheGuardsCodes` 的前一步碰到锁、后一步被模式拒绝的一行对应 A-M3；后台的开始时预检与 `refused` 的去处对应另两处窗口。这些窗口已由 S3 分支的实现和回归测试覆盖；完整 Step 三方审查、本机门禁及分支 CI 已核对，实际合并状态仍以 00 第 12 节为准。
 - **P2/S1**：`page.NewModeGuard(pool, authorizer)`（加连接池）；模式的会话否决者与它的次序测试（登记在锁的否决者之前，3.20）；`NodeFacts` 加 `InArea`，祖先的一线在已读的三处交出、在改名、删除、上传、同父节点的 `Relocate`、撤销的放回补一次读（3.21）；`CheckContract` 的 `page.source_immutable`、`page.source_duplicate` 在 R3 与 R4 之间（3.21 的码的次序）；`batch` 的计划的正文的一遍与它的 `Needs`（3.22 的 `PlanBatch(…, n)` 已收契约，`Refuse` 已让码按项的次序）；新的码不改 `TransferRefusal`（`code` 是自由的字符串，3.26），只加网页的文字；`Step.Content` 的类型另取名（2.1 第 17 条）；矩阵的变体加来源与它的删除的行（管理员成功）；`TestTheDowngradeEndsTheContract` 加"来源成为可写"；守卫读连接池之后 `TestTheModeGuardLetsAStandardNotebookBy` 加一个计数的存储（普通的笔记本什么也不读，3.20）；后台撤销的一批若要在读写之前的检查，由 P2 的设计加回（2.1 第 19 条）；`ErrSourceAdminOnly` 的文字（"…rename, move or delete in an LLM Wiki's source area, its source root included"）照字面像是管理员能删来源根，`page.protected` 不许，网页的文字（4.2）已为此改写、服务端给 MCP 的 agent 读的没有，随来源区的规则看一次（S2 审查 A 的存疑）。
 - **P2/S2**：降级的 `Forget` 插在 3.10 第 5 步之后；`ModeChange` 的订阅者不变；上传、同步的撤销与 `startRevert` 的只有守卫拒绝的情形（重复，3.25）；报告的拒绝可以指一个附件（重复的来源），`transfer.refusedSome` 说的"不再在树里的一页"与 `distinctName` 对附件不答（`W/pages/notebook/distinct-name.ts:11-22`）随之改，00-M10 的 `duplicateText` 已处理附件（审查 C-N9）。
 
@@ -2576,9 +2595,18 @@ P1 完成，当且仅当：
   - A-M2、A-M3（S2 与 S3 之间的另两个窗口：恢复或导入放到根下的 `index` 改名之后的撤销答没声明的 `page.virtual_file`；同步撤销的前一步碰到锁时答 `page.locked`、不答后一步的 `page.source_admin_only`，S3 的两遍预检关上，主持者的决定 29，第 0 节）与 C-N2（这一节里第 4 个提交的 sha 是修订后的 `cfa1c608`）是主持者的文档；代码不为它们改。
 - **主持者的核对**（2026-10-25，代替审查者的修复核对，为了额度，主持者的决定 31）：读过 `cfa1c608..7834bd70` 的差异：4 个文件，三个测试与 `apply_batch.go` 的一处注释，没有生产的代码的改动；实施者在修好的头上重跑 7.3 的第 23–41 条与九个要改代码的反向对照（36 次），都被抓到，审查者存活的四个变异各让它的测试失败（第 81–84 条）；CI 全绿。
 
-### 10.3 S3：预检、加序号与后台的拒绝的去处
+### 10.3 S3：预检、加序号与后台的拒绝的去处（2026-10-26，合并见 00 号文档第 12 节）
 
-（待填）
+- **提交**：起点 `8e62b191`，预检 `22ca92af`，后台拒绝 `c3ae49f9`，B-M1 的最终报告清理 `ba5cded6`，三处加序号 `607e761e`。四个提交按依赖顺序；文档在 Step 分支上准备，合并见 00 第 12 节。
+- **预检**：上传的 `Check` 在 `assetPlace` 后读状态、经 `FactsOf` 判契约，仍在传文件和查空间前；同步撤销、`CheckRevert` 与 `PlanRevert` 共用锁外的一遍，计划和步数界线在前、锁和解析预算在后。`Unit.Revert` 用锁下的 `Write.Notebook` 与 `Grants` 在第一步前再判。`RevertFacts` 复用调度器的模拟，后一步看前一步留下的树；额外授权只在需要时读取工作区，局部备忘与单元的备忘分开（3.32 第 1–2 项）。`startRevert` 的两个码和约定的完整说明已生成进契约。
+- **后台与报告**：标出的拒绝由 `revertDefect` 原样传出，经先认九个哨兵的 `treeError` 成为 transfer 的 `Refused`，先于普通 forbidden 判为 refused；导入仍清理失败批次的文件。报告的码是自由字符串，存储/详情/列表照读，普通报告的 refusal 是 null。共用 finalizer 在 timeout/interrupted/cancelled 覆盖时清掉旧 refusal，普通 refused 保留（B-M1）。网页写已知码、未知码的退路和有/无节点；TR1–TR4 四个完整报告期望增加 `refusal: null`。
+- **加序号与不变量**：导入、同步恢复、后台恢复只在 LLM Wiki 实际落到根下时把四个保留键并入已占的名字；子页与普通笔记本照旧。模块测试覆盖四键、大小写、附件、兄弟冲突及后台后续子成员。整个程序导入 `index.md`、`Index/a.md`、`log/b.md`，得到两个 renamed 问题、合并后的子页，恢复再跳过已占的序号。`pageViolations` 的根下保留键规则以根页/子页/普通笔记本三种 SQL 反例核对，在最后删除笔记本之前恢复测试种子。
+- **S2 的窗口**：A-M2 对应的根下非法名由加序号和 SQL 不变量覆盖；A-M3 的前一步编辑锁、后一步模式拒绝由 `TestPrechecksAnswerTheGuardsCodes` 明确核对，答 `page.source_admin_only`。开始后台任务的预检和任务计划同码，任务计划之后的权限变化由批内守卫判；`TestTheSourceRootsPutBackIsRefusedInALaterBatch` 保留第一批并报告第二批的原码与节点。这里只记代码与测试，合并状态见 00 第 12 节。
+- **照实的差异与审查**：3.32 记录六项。任务范围独立 A/B/C 的审查结束：A 的 Q-A1 已接受；B-M1 已在 `ba5cded6` 修复并由原 B 复核；C 无发现。任务范围的审查与 B-M1 修复复核、独立的完整 Step A/B/C 审查均已核对。完整 Step 没有经过核实的 Important、Minor、Nit 或 Q，没有剩余产品修复；主持者接受结论。受测头 `607e761e` 的 13 项本机门禁、三份各两次本机测量和分支 CI 十个作业通过；两个契约提交的精确 HEAD 已追溯通过 `gen-check`。合并与合并后的 CI 按决定 33 记录。 详细对象、命令、反例、决策在 [S3 审查记录](reviews/P1-S3-prechecks-refusals-numbering-review.md)，任务范围的审查不代替完整 Step 三方审查。
+- **变异**：最终代码头 `607e761e` 上，42–53（51 分 a/b/c）和新增 85、86 共 16 个变体、18 次 catcher 都在指定的运行时断言失败；每组原样通过、字节备份恢复、恢复后通过。45 同时跑模块和最后一跳，46 同时跑纯函数和真实编辑锁；52 跑网页，其余以竞态检测跑 Go。没有把编译、安装、超时或不点名的失败算作抓到。完整 Step 审查追加 ListJobs 丢 refusal 的 87、组合根漏登记模式守卫的 88，各由已有永久测试抓到，合计 18 个逻辑变体。A 的 85/88 overlay 是额外独立确认，不重复算成新变体。逐条表、计数口径与原始证据路径在审查记录。
+- **交错与实测**：新增五个 bootstrap 测试以 `-race -count=1` 一起实测，包 7.335s；后台第二批拒绝 2.22s、同码预检 1.44s、解析预算次序 1.28s、根下加序号 1.18s、纯函数 0.00s。第二份新增 1.44s，第三份 4.68s，乘 1.73 只作约 2.49s 与 8.10s 的估计核对；不代替 CI 的测试一步时间。三份各两次本机测量已通过：Go 包时间的平均分别为 304.811s、269.449s、272.732s，命令包装层的平均分别为 305.620s、270.262s、273.512s。这些是本机读数，不充作 CI 的 Test 步；合并后的两次 CI 由合并记录补记，满足 7.5 后开 S4。
+- **门禁与 CI**：各任务提交前与 B-M1 修复的常规门禁，以及两处契约提交精确 HEAD 的追溯 `gen-check` 记录见审查记录。受测头 `607e761e` 的本机全套门禁 13/13 通过，最后的状态输出为空；Vitest 166 文件/3,356 测试，e2e 286 通过。 分支 `origin/m10-p1-s3` 的 [CI 40311912868](https://github.com/open-nerve/NerveWiki/actions/runs/40311912868) 在精确头 `607e761e` 上十个作业全部 success；组合根三份 Test 步为 360s、392s、354s，e2e 步 190s。 尚未合并；合并见 00 号文档第 12 节。合并 SHA 由工作流规定的小文档提交补记。合并触发的 main CI 与该文档提交触发的第二次 CI 都结束后，主持者先在树外记录 run ID、精确 HEAD、各 job 和 Test/E2E 步时间，核对两次平均满足 7.5 与第 8 节，才开 S4（决定 33）。完成的两次样本在下一次已安排的 S4 文档/P1 完成文档提交转写进 10.3，必须在 P1 完成之前落实；不预写第二次 CI 的结果，不为转写制造额外 CI 轮次。
+- **后续**：S4 仍待实施，P1/M10 继续进行；M5、M8、M9 移交记本 Step 进展并保持 open，来源、去重、M11 与收尾不在这里提前完成。
 
 ### 10.4 S4：网页（一）
 

@@ -146,7 +146,7 @@ func TestRevertChangesetRestoresADeletion(t *testing.T) {
 	var want []string
 	want = append(want, "FindChangeset", "WorkspaceOf", "Authorize changeset.revert", "CountItems")
 	want = append(append(append(want, reads...), "TrashHistory"), state...)
-	want = append(want, "TrashContents", "Take 15", "Facts", "KeepFacts 15", "Links", "Facts",
+	want = append(want, "StateOf", "TrashContents", "Take 15", "Facts", "KeepFacts 15", "Links", "Facts",
 		"WorkspaceOf", "ShareWorkspace in tx", "LockNotebook in tx", "Authorize changeset.revert in tx")
 	for _, call := range append(reads, state...) {
 		want = append(want, call+" in tx")
@@ -832,6 +832,184 @@ func TestRevertChangesetComparesATopAnotherRevertDeleted(t *testing.T) {
 				t.Errorf("D's revert = %v, %+v, changesets %+v; want X changed, nothing written", err, e, f.store.changesets)
 			case !tt.changed && (err != nil || f.store.nodes[x.ID].Name != "B"):
 				t.Errorf("D's revert = %v, X %+v; want X back as B", err, f.store.nodes[x.ID])
+			}
+		})
+	}
+}
+
+// The full plan's contract is checked before locks or any unit's first
+// step, including when the actor loses the extra grant while it waits.
+func TestARevertsChecksRefuseTheContract(t *testing.T) {
+	for _, route := range []string{"sync", "start", "plan"} {
+		for _, tt := range []struct {
+			name                         string
+			seed, held, limited, demoted bool
+			want                         string
+		}{
+			{name: "template", seed: true, want: "page.protected"},
+			{name: "held template", seed: true, held: true, want: "page.protected"},
+			{name: "source rename", want: "page.source_admin_only"},
+			{name: "steps before contract", seed: true, limited: true, want: "page.revert_too_large"},
+			{name: "locked denial", demoted: true, want: "page.source_admin_only"},
+		} {
+			if route != "sync" && (tt.limited || tt.demoted) {
+				continue
+			}
+			t.Run(route+"/"+tt.name, func(t *testing.T) {
+				f := newFixture()
+				f.grant(domain.ActionRevert)
+				raw, agents := f.page("raw", nil, 0), f.page("AGENTS", nil, 1)
+				f.notebooks.states = map[uuid.UUID]domain.NotebookState{f.eng: {Mode: domain.ModeLLMWiki, SourceRootID: raw.ID}}
+				f.auth.forbidden[domain.ActionManageSource] = true
+				c := f.renaming(raw.ID, "sources")
+				if tt.seed {
+					// The seed has two creations, so its undo exceeds a one-step bound.
+					n := f.store.nodes[raw.ID]
+					n.Name, n.NameKey = "raw", "raw"
+					f.store.nodes[raw.ID] = n
+					c = f.log.changeset(domain.ChangesetEdit, f.alice, now(), []domain.ChangesetItem{
+						{NodeID: raw.ID, After: new(n.State()), Revision: 1},
+						{NodeID: agents.ID, After: new(agents.State()), Revision: 1},
+					}, f.log.version(raw.ID, 0, 1, ""), f.log.version(agents.ID, 0, 1, ""))
+				}
+				if tt.held {
+					f.session(agents.ID, uuid.NewV7(), now().Add(time.Minute))
+				}
+				// This guard records and permits everything: only Unit.Revert's
+				// precheck can refuse before a step is seen.
+				g := &guard{recorder: f.rec}
+				f.guards = []app.WriteGuard{g}
+				if tt.demoted {
+					f.grant(domain.ActionManageSource)
+					f.notebooks.waited = func() { delete(f.auth.grants, domain.ActionManageSource) }
+				}
+				var err error
+				switch route {
+				case "sync":
+					bounds := app.RevertBounds{}
+					if tt.limited {
+						bounds.Steps = 1
+					}
+					_, err = f.revertWithin(c.ID, nil, bounds)
+				case "start":
+					_, err = f.jobs(now(), 0, 0).CheckRevert(f.asAlice(), f.eng, c.ID, nil, nil)
+				case "plan":
+					_, err = f.jobs(now(), 0, 0).PlanRevert(f.asJob(), f.jobSpec(), c.ID)
+				}
+				if codeOf(err) != tt.want {
+					t.Errorf("revert = %v, want %s", err, tt.want)
+				}
+				if !tt.limited {
+					var refusal *domain.Refused
+					if !errors.As(err, &refusal) || refusal.NodeID != raw.ID {
+						t.Errorf("refusal = %#v, want raw %s", err, raw.ID)
+					}
+					if f.count("StateOf") != 1 {
+						t.Errorf("calls = %v, want one state read", f.rec.calls)
+					}
+				}
+				asked := 0
+				if !tt.seed {
+					asked = 1
+				}
+				locked := 0
+				if tt.demoted {
+					locked = 1
+				}
+				if f.count("Authorize page.manage_source") != asked || f.count("Authorize page.manage_source in tx") != locked ||
+					f.count("LockNotebook in tx") != locked || len(g.steps) != 0 || len(f.store.changesets) != 0 {
+					t.Errorf("calls = %v, steps = %+v, changesets = %+v; want %d unlocked grants, %d locked, no steps or writes", f.rec.calls, g.steps, f.store.changesets, asked, locked)
+				}
+			})
+		}
+	}
+}
+
+// Losing visibility during the unlocked source decision answers the
+// operation's 404; a database failure stays itself, with no refusal mark.
+func TestARevertsExtraDecisionKeepsItsErrors(t *testing.T) {
+	db := errors.New("source authorization database unavailable")
+	for _, route := range []string{"sync", "start", "plan"} {
+		for _, tt := range []struct {
+			name string
+			err  error
+		}{{"not visible", shared.ErrNotVisible}, {"database", db}} {
+			t.Run(route+"/"+tt.name, func(t *testing.T) {
+				f := newFixture()
+				f.grant(domain.ActionRevert)
+				raw := f.page("raw", nil, 0)
+				f.notebooks.states = map[uuid.UUID]domain.NotebookState{f.eng: {Mode: domain.ModeLLMWiki, SourceRootID: raw.ID}}
+				c := f.renaming(raw.ID, "sources")
+				f.auth.failing = map[shared.Action]error{domain.ActionManageSource: tt.err}
+				var err error
+				switch route {
+				case "sync":
+					_, err = f.revert(c.ID, nil, 0)
+				case "start":
+					_, err = f.jobs(now(), 0, 0).CheckRevert(f.asAlice(), f.eng, c.ID, nil, nil)
+				case "plan":
+					_, err = f.jobs(now(), 0, 0).PlanRevert(f.asJob(), f.jobSpec(), c.ID)
+				}
+				want := tt.err
+				if errors.Is(tt.err, shared.ErrNotVisible) {
+					want = domain.ErrNotebookNotFound
+					if route == "sync" {
+						want = domain.ErrChangesetNotFound
+					}
+				}
+				var refusal *domain.Refused
+				if !errors.Is(err, want) || errors.As(err, &refusal) {
+					t.Errorf("decision = %v, want unmarked %v", err, want)
+				}
+				if f.count("Authorize page.manage_source") != 1 || f.called("LockNotebook in tx") {
+					t.Errorf("calls = %v, want one extra decision, no unit", f.rec.calls)
+				}
+				for _, target := range f.auth.targets {
+					if target != (shared.Target{WorkspaceID: f.acme, NotebookID: f.eng}) {
+						t.Errorf("target = %+v", target)
+					}
+				}
+			})
+		}
+	}
+}
+
+// A swap makes the source root step aside and then return. Both steps
+// need the same grant, asked once by each precheck and shared with the
+// real mode guard only inside the unit.
+func TestARevertsSourceGrantIsAskedOnceEachPass(t *testing.T) {
+	for _, route := range []string{"sync", "start", "plan"} {
+		t.Run(route, func(t *testing.T) {
+			f := newFixture()
+			f.grant(domain.ActionRevert, domain.ActionManageSource)
+			other, raw := f.page("sources", nil, 0), f.page("raw", nil, 1)
+			f.notebooks.states = map[uuid.UUID]domain.NotebookState{f.eng: {Mode: domain.ModeLLMWiki, SourceRootID: raw.ID}}
+			c := f.renaming(raw.ID, "sources")
+			before := other.State()
+			other.Name, other.NameKey = "raw", "raw"
+			f.store.nodes[other.ID] = other
+			c.items = append(c.items, domain.ChangesetItem{NodeID: other.ID, Before: &before, After: new(other.State())})
+			g := &guard{recorder: f.rec}
+			f.guards = []app.WriteGuard{app.NewModeGuard(f.auth), g}
+			var err error
+			switch route {
+			case "sync":
+				_, err = f.revert(c.ID, nil, 0)
+			case "start":
+				_, err = f.jobs(now(), 0, 0).CheckRevert(f.asAlice(), f.eng, c.ID, nil, nil)
+			case "plan":
+				_, err = f.jobs(now(), 0, 0).PlanRevert(f.asJob(), f.jobSpec(), c.ID)
+			}
+			locked := 0
+			if route == "sync" {
+				locked = 1
+			}
+			if err != nil || f.count("Authorize page.manage_source") != 1 || f.count("Authorize page.manage_source in tx") != locked {
+				t.Errorf("%s = %v after %v; want one unlocked and %d locked source decisions", route, err, f.rec.calls, locked)
+			}
+			if route == "sync" && (len(g.steps) != 3 || g.steps[0].Changes[0].NodeID != raw.ID || g.steps[2].Changes[0].NodeID != raw.ID ||
+				f.store.nodes[raw.ID].Name != "raw" || f.store.nodes[other.ID].Name != "sources") {
+				t.Errorf("swap's undo saw steps %+v, nodes %+v; want source aside, other back, source back", g.steps, f.store.nodes)
 			}
 		})
 	}

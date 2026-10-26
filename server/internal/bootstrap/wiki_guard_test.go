@@ -4,7 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
+	"time"
+
+	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 )
 
 // The mode guard through the whole program (M10/P1 design 3.20, 3.24):
@@ -209,6 +213,97 @@ func TestModeComesBeforeTheLock(t *testing.T) {
 	body := tm.guarded(t, wiki, "alice deletes AGENTS that bob edits", deletion, cell{http.StatusConflict, "page.locked"})
 	if lockHolder(answer{body: body}) != "bob" {
 		t.Errorf("the deletion once downgraded = %s, want bob's lock", body)
+	}
+	checkPages(t, tm.pool)
+}
+
+// The paths with unlocked checks answer the same refusals as individual
+// guarded writes; a later refused undo step wins over an earlier edit
+// lock because the whole contract is checked before execution.
+func TestPrechecksAnswerTheGuardsCodes(t *testing.T) {
+	tm := newAcmeTeam(t, "member", "member")
+	wiki := tm.llmWiki(t, "Wiki")
+	alice, bob := tm.agent(t, "alice", wiki.id), tm.agent(t, "bob", wiki.id)
+	for _, row := range []struct {
+		op   map[string]any
+		code string
+	}{
+		{opMove("AGENTS.md", "Rules.md"), "page.protected"},
+		{opMove("raw.md", "sources.md"), "page.source_admin_only"},
+		{opWrite("index.md", "x"), "page.virtual_file"},
+	} {
+		before := tm.guardRows(t, wiki.id)
+		tool, _ := row.op["op"].(string)
+		args := map[string]any{}
+		for k, v := range row.op {
+			if k != "op" {
+				args[k] = v
+			}
+		}
+		direct := refusalOf(t, bob.use(t, tool, args))
+		batch := refusalOf(t, bob.batch(t, row.op))
+		if direct.Code != row.code || batch.Code != direct.Code || refusedAt(batch) != 0 {
+			t.Errorf("%s: guard = %+v, batch = %+v; want %s at op 0", tool, direct, batch, row.code)
+		}
+		if after := tm.guardRows(t, wiki.id); after != before {
+			t.Errorf("refused batch changed rows: %s -> %s", before, after)
+		}
+	}
+	tm.guarded(t, wiki, "reserved upload", assetUpload(t, "bob", wiki.id, "", "index", "x"), cell{http.StatusConflict, "page.virtual_file"})
+	tm.openSession(t, "carol", wiki.agents)
+	for _, call := range []step{changesetRevert("alice", wiki.template), revertStart("alice", wiki.id, wiki.template, "")} {
+		before := count(t, tm.pool, "SELECT count(*) FROM transfer_jobs WHERE notebook_id = $1", wiki.id)
+		tm.guarded(t, wiki, "template before its lock", call, cell{http.StatusConflict, "page.protected"})
+		if after := count(t, tm.pool, "SELECT count(*) FROM transfer_jobs WHERE notebook_id = $1", wiki.id); after != before {
+			t.Errorf("refused start created a job: %d -> %d", before, after)
+		}
+	}
+	renamed := alice.batchDone(t, opMove("raw.md", "sources.md"))
+	if renamed.ChangesetID == nil {
+		t.Fatal("batch made no changeset")
+	}
+	for _, call := range []step{changesetRevert("bob", *renamed.ChangesetID), revertStart("bob", wiki.id, *renamed.ChangesetID, "")} {
+		tm.guarded(t, wiki, "source put back", call, cell{http.StatusForbidden, "page.source_admin_only"})
+	}
+	if jobs := count(t, tm.pool, "SELECT count(*) FROM transfer_jobs WHERE notebook_id = $1", wiki.id); jobs != 0 {
+		t.Errorf("refused starts left %d jobs", jobs)
+	}
+	tm.guarded(t, wiki, "admin puts source back", changesetRevert("alice", *renamed.ChangesetID), cellOK())
+	mixed := alice.batchDone(t, opMove("raw.md", "sources.md"), opWrite("raw.md", "new raw"))
+	if mixed.ChangesetID == nil {
+		t.Fatal("batch made no changeset")
+	}
+	newRaw := queryStrings(t, tm.pool, "SELECT id::text FROM nodes WHERE notebook_id=$1 AND parent_id IS NULL AND name='raw' AND deleted_at IS NULL", wiki.id)[0]
+	tm.openSession(t, "carol", newRaw)
+	tm.guarded(t, wiki, "contract before an earlier deletion's lock", changesetRevert("bob", *mixed.ChangesetID), cell{http.StatusForbidden, "page.source_admin_only"})
+	if got := queryStrings(t, tm.pool, "SELECT name FROM nodes WHERE id=$1", wiki.raw)[0]; got != "sources" {
+		t.Errorf("source = %q, want sources", got)
+	}
+	checkPages(t, tm.pool)
+	checkAssets(t, tm.pool, tm.storage)
+}
+
+// An undo rejected by the contract never waits for parse capacity. The
+// same undo by an admin reaches that budget and answers server_busy.
+func TestTheServersLimitsComeAfterThePrechecks(t *testing.T) {
+	tm := newAcmeTeamWith(t, "member", "", func(c *config.Config) {
+		c.Page.ParseBudgetBytes, c.Page.ParseMaxWait = 64<<10, 300*time.Millisecond
+	})
+	wiki := tm.llmWiki(t, "Wiki")
+	notes := tm.createPageWith(t, "alice", wiki.id, "", "Notes", strings.Repeat("n", 1<<10))
+	alice := tm.agent(t, "alice", wiki.id)
+	changed := alice.batchDone(t, opEdit("Notes.md", strings.Repeat("n", 1<<10), "x"), opMove("raw.md", "sources.md"))
+	if changed.ChangesetID == nil {
+		t.Fatal("batch made no changeset")
+	}
+	plain := tm.openNotebook(t, "alice", "Plain")
+	held := tm.createPage(t, "alice", plain, "", "Held")
+	whileAWriteWaitsForItsLock(t, tm, held, strings.Repeat("a", 640<<10), 1, func() {
+		tm.guarded(t, wiki, "writer refused before parsing", changesetRevert("bob", *changed.ChangesetID), cell{http.StatusForbidden, "page.source_admin_only"})
+		tm.guarded(t, wiki, "admin reaches the occupied budget", changesetRevert("alice", *changed.ChangesetID), cell{http.StatusServiceUnavailable, "server_busy"})
+	})
+	if got := queryStrings(t, tm.pool, "SELECT content FROM page_contents WHERE node_id=$1", notes)[0]; got != "x" {
+		t.Errorf("Notes = %q, want x", got)
 	}
 	checkPages(t, tm.pool)
 }

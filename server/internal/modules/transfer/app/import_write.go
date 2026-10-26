@@ -194,6 +194,10 @@ func (r *importRun) unit(ctx, running context.Context, items []item) error {
 		if !unknown {
 			r.dropFiles(ctx, items)
 		}
+		var refused *Refused
+		if errors.As(err, &refused) {
+			r.report.Refusal = &domain.Refusal{Code: refused.Code, NodeID: refused.NodeID}
+		}
 		return unitFailure(err)
 	}
 	if r.changeset == (uuid.UUID{}) {
