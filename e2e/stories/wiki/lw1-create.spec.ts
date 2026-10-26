@@ -3,13 +3,16 @@ import type { ApiClient, Notebook } from "@nervewiki/api-client";
 import { countNotebooks, expectNewNotebook } from "../../fixtures/assert/notebook";
 import { expectChangesetOf, expectNewPage } from "../../fixtures/assert/page";
 import { bearer } from "../../fixtures/auth";
+import { answerTo } from "../../fixtures/browser";
 import type { Database } from "../../fixtures/db";
 import { listChangesets } from "../../fixtures/history";
 import { mcpClient } from "../../fixtures/mcp";
+import { createNotebookWith, notebookHeading, notebookPath, workspaceNav } from "../../fixtures/notebook-pages";
 import { createNotebook } from "../../fixtures/notebooks";
 import { listNodes, readContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
-import { newTeam } from "../../fixtures/workspaces";
+import { pageTree } from "../../fixtures/wiki-pages";
+import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 
 // LW1, creating an LLM Wiki (M10 design 4.1; M10/P1 design 5.2): the
 // notebook and its template, raw and AGENTS, in one change. The e2e cannot
@@ -131,4 +134,99 @@ test("LW1 (MCP): an agent of an LLM Wiki is given its AGENTS page as its instruc
   const opened = await account.call("open_notebook", { notebook: created.id });
   expect(opened.isError, opened.text.join(" ")).toBe(false);
   expect(opened.structured).toMatchObject({ notebook: created.id, mode: "llm_wiki", instructions_from: "AGENTS.md" });
+});
+
+test("LW1 (page): an English LLM Wiki starts with its source area and instructions, named in the tree", async ({
+  api,
+  db,
+  signedInPage,
+}, testInfo) => {
+  const { adminId, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const page = await signedInPage(tokens);
+  // Pass-through interception lets Chromium expose this POST's body to Playwright; install it before navigation.
+  await page.route(`**/api/v0/workspaces/${workspace.slug}/notebooks`, (route) => route.continue());
+  await page.goto(`/${workspace.slug}`);
+
+  const answer = answerTo(page, "POST", `/api/v0/workspaces/${workspace.slug}/notebooks`);
+  const { status, created } = await createNotebookWith(page, workspace, "Field notes", undefined, "llm_wiki");
+  expect(status).toBe(201);
+  expect((await answer).request().postDataJSON()).toEqual({
+    name: "Field notes",
+    workspace_access: "none",
+    mode: "llm_wiki",
+    template_locale: "en",
+  });
+  expect(created.mode).toBe("llm_wiki");
+  await expectNewNotebook(db, created, adminId);
+  await expect(page).toHaveURL(notebookPath(workspace.slug, created.id));
+  await expect(notebookHeading(page, created.name)).toBeFocused();
+
+  const tree = pageTree(page, created.name);
+  await expect(tree.getByRole("link", { name: "raw (source area)", exact: true })).toBeVisible();
+  const agents = tree.getByRole("link", { name: "AGENTS (instructions for agents)", exact: true });
+  await expect(agents).toBeVisible();
+  await agents.click();
+  await expect(
+    page.getByRole("article", { name: "AGENTS", exact: true }).getByRole("heading", {
+      name: "How this LLM Wiki is kept",
+      exact: true,
+    })
+  ).toBeVisible();
+});
+
+test.describe("the Chinese creation page", () => {
+  test.use({ locale: "zh-CN" });
+
+  test("LW1 (page): a Chinese LLM Wiki starts with Chinese instructions and its template's history", async ({
+    api,
+    db,
+    signedInPage,
+  }, testInfo) => {
+    const { adminId, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+    const page = await signedInPage(tokens);
+    // As in the English story, observe the request body without replacing the request or its answer.
+    await page.route(`**/api/v0/workspaces/${workspace.slug}/notebooks`, (route) => route.continue());
+    await page.goto(`/${workspace.slug}`);
+
+    await workspaceNav(page, workspace.name).getByRole("button", { name: "新建笔记本", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "新建笔记本", exact: true });
+    await dialog.getByLabel("名称", { exact: true }).fill("研究笔记");
+    await dialog.getByRole("radio", { name: "LLM Wiki", exact: true }).check();
+    const answer = answerTo(page, "POST", `/api/v0/workspaces/${workspace.slug}/notebooks`);
+    await dialog.getByRole("button", { name: "新建", exact: true }).click();
+    const response = await answer;
+    expect(response.status()).toBe(201);
+    expect(response.request().postDataJSON()).toEqual({
+      name: "研究笔记",
+      workspace_access: "none",
+      mode: "llm_wiki",
+      template_locale: "zh-CN",
+    });
+    const created = (await response.json()) as Notebook;
+    expect(created.mode).toBe("llm_wiki");
+    await expectNewNotebook(db, created, adminId);
+    await expect(page).toHaveURL(notebookPath(workspace.slug, created.id));
+    await expect(notebookHeading(page, created.name)).toBeFocused();
+
+    const tree = page.getByRole("navigation", { name: "研究笔记的页面", exact: true });
+    await expect(tree.getByRole("link", { name: "raw （来源区）", exact: true })).toBeVisible();
+    const agents = tree.getByRole("link", { name: "AGENTS （给 agent 的约定）", exact: true });
+    await expect(agents).toBeVisible();
+    await agents.click();
+    await expect(
+      page.getByRole("article", { name: "AGENTS", exact: true }).getByRole("heading", {
+        name: "这本 LLM Wiki 的约定",
+        exact: true,
+      })
+    ).toBeVisible();
+
+    await page
+      .getByRole("navigation", { name: "研究笔记的更多", exact: true })
+      .getByRole("link", { name: "历史", exact: true })
+      .click();
+    const changes = page.getByRole("main").getByRole("list", { name: "改动", exact: true }).getByRole("listitem");
+    await expect(changes).toHaveCount(1);
+    await expect(changes.getByText("LLM Wiki 模板", { exact: true })).toBeVisible();
+    await expect(changes).toContainText("网页 · ");
+  });
 });

@@ -1,4 +1,4 @@
-import type { Notebook, NotebookMember } from "@nervewiki/api-client";
+import type { Notebook, NotebookMember, NotebookMode } from "@nervewiki/api-client";
 import type { Locator, Page, Response } from "@playwright/test";
 
 import { answerTo } from "./browser";
@@ -32,19 +32,25 @@ export function notebookHeading(page: Page, name: string): Locator {
 
 /**
  * Creates a notebook named name from the left column of the workspace named workspace (slug), its access
- * as the dialog words it ("Workspace can read") or private; resolves the creation's answer.
+ * as the dialog words it ("Workspace can read") or private, in mode or the default standard; resolves the answer.
  */
 export async function createNotebookWith(
   page: Page,
   workspace: { name: string; slug: string },
   name: string,
-  access?: string
+  access?: string,
+  mode?: NotebookMode
 ): Promise<{ status: number; created: Notebook }> {
   await workspaceNav(page, workspace.name).getByRole("button", { name: "New notebook", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "New notebook", exact: true });
   await dialog.getByLabel("Name", { exact: true }).fill(name);
   if (access !== undefined) {
     await dialog.getByRole("radio", { name: access, exact: true }).check();
+  }
+  if (mode !== undefined) {
+    await dialog
+      .getByRole("radio", { name: mode === "llm_wiki" ? "LLM Wiki" : "Standard notebook", exact: true })
+      .check();
   }
   const answer = answerTo(page, "POST", `/api/v0/workspaces/${workspace.slug}/notebooks`);
   await dialog.getByRole("button", { name: "Create", exact: true }).click();
@@ -82,6 +88,15 @@ export async function changeAccessWith(page: Page, id: string, access: string): 
   const answer = answerTo(page, "PATCH", `/api/v0/notebooks/${id}`);
   await form.getByRole("button", { name: "Save", exact: true }).click();
   return answer;
+}
+
+/** Confirms a downgrade on the notebook's general page, opening its dialog if it is not already shown. */
+export async function downgradeWith(page: Page): Promise<void> {
+  const dialog = page.getByRole("alertdialog", { name: /^Downgrade “.+” to a standard notebook\?$/ });
+  if (!(await dialog.isVisible())) {
+    await page.getByRole("button", { name: "Downgrade to a standard notebook…", exact: true }).click();
+  }
+  await dialog.getByRole("button", { name: "Downgrade", exact: true }).click();
 }
 
 /** Deletes the notebook id named name on its general page once its name is typed; resolves the answer's status. */

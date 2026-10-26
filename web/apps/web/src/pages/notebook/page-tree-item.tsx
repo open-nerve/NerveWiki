@@ -5,7 +5,7 @@ import {
   extractInstruction,
   type Instruction,
 } from "@atlaskit/pragmatic-drag-and-drop-hitbox/list-item";
-import { ChevronRight, Ellipsis } from "lucide-react";
+import { Bot, ChevronRight, Ellipsis, Library } from "lucide-react";
 import { observer } from "mobx-react-lite";
 import { useEffect, useId, useRef, useState, type RefObject } from "react";
 import { NavLink, useParams } from "react-router";
@@ -21,6 +21,7 @@ import {
 } from "../../components/ui/dropdown-menu";
 import { useT } from "../../i18n/i18n";
 import { cn } from "../../lib/cn";
+import { titleKey } from "../../lib/title-key";
 import type { Notebook } from "../../services/notebook.service";
 import type { TreeNode } from "../../services/page.service";
 import { useStore } from "../../stores/context";
@@ -80,11 +81,14 @@ const PageItem = observer(function PageItem({ context, node, depth }: ItemProps)
   const t = useT();
   const name = useDistinctName(context, node);
   const writer = writesPages(notebook.role);
+  const agents = notebook.mode === "llm_wiki" && node.parent_id === null && titleKey(node.name) === titleKey("AGENTS");
+  const sourceRoot = notebook.mode === "llm_wiki" && node.id === notebook.source_root_id;
+  const canDragRow = writer && !agents && (!sourceRoot || notebook.role === "admin");
   const children = pages.childrenOf(node.id).length > 0;
   const open = children && pages.isOpen(node.id);
   const listId = useId();
   const row = useRef<HTMLDivElement>(null);
-  const instruction = useDrag(context, node, row, open);
+  const instruction = useDrag(context, node, row, open, canDragRow);
   return (
     <li>
       <div
@@ -121,9 +125,19 @@ const PageItem = observer(function PageItem({ context, node, depth }: ItemProps)
             )
           }
         >
+          {agents && <Bot aria-hidden className="mr-1 inline-block size-4 align-text-bottom" />}
+          {sourceRoot && <Library aria-hidden className="mr-1 inline-block size-4 align-text-bottom" />}
           {node.name}
+          {(agents || sourceRoot) && (
+            <>
+              {" "}
+              <span className="sr-only">{t(agents ? "page.agentsKind" : "page.sourceRootKind")}</span>
+            </>
+          )}
         </NavLink>
-        {writer && <PageMenu context={context} node={node} name={name} />}
+        {writer && (
+          <PageMenu context={context} node={node} name={name} canMove={canDragRow} canDelete={!agents && !sourceRoot} />
+        )}
         {instruction !== null && instruction.operation !== "combine" && (
           <span
             aria-hidden
@@ -154,8 +168,8 @@ function useDistinctName({ notebook, pages }: TreeContext, node: TreeNode): stri
 }
 
 /**
- * useDrag makes the row of node draggable and a drop target, for an editor
- * or admin: the hitbox offers before, after and into it, each blocked where
+ * useDrag makes the row of node a drop target for an editor or admin, and
+ * draggable when its mode permits moving it: the hitbox offers before, after and into it, each blocked where
  * the tree forbids it, and not after it while it shows its children
  * (page-drag.ts). It answers the drop shown over the row, if any; the
  * tree's monitor moves the page.
@@ -164,7 +178,8 @@ function useDrag(
   context: TreeContext,
   node: TreeNode,
   row: RefObject<HTMLDivElement | null>,
-  open: boolean
+  open: boolean,
+  canDragRow: boolean
 ): Instruction | null {
   const { notebook, pages } = context;
   const [instruction, setInstruction] = useState<Instruction | null>(null);
@@ -176,7 +191,7 @@ function useDrag(
     }
     const data: DragData = { page: node.id, notebook: notebook.id };
     return combine(
-      draggable({ element, getInitialData: () => data }),
+      ...(canDragRow ? [draggable({ element, getInitialData: () => data })] : []),
       dropTargetForElements({
         element,
         canDrop: ({ source }) => isDragData(source.data) && source.data.notebook === notebook.id,
@@ -193,7 +208,7 @@ function useDrag(
         onDrop: () => setInstruction(null),
       })
     );
-  }, [row, writer, node.id, notebook.id, pages, open]);
+  }, [row, writer, node.id, notebook.id, pages, open, canDragRow]);
   return instruction;
 }
 
@@ -216,10 +231,14 @@ const PageMenu = observer(function PageMenu({
   context,
   node,
   name,
+  canMove,
+  canDelete,
 }: {
   context: TreeContext;
   node: TreeNode;
   name: string;
+  canMove: boolean;
+  canDelete: boolean;
 }) {
   const { notebook, pages, heading, newPage, fail, focusActions, period } = context;
   const { pageId } = useParams();
@@ -256,9 +275,13 @@ const PageMenu = observer(function PageMenu({
           <DropdownMenuItem disabled={newPage.sending || deepest} onSelect={() => newPage.create(node.id)}>
             {t("page.newSubpage")}
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => setDialog("rename")}>{t("page.rename")}</DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => setDialog("move")}>{t("page.moveTo")}</DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => setDialog("delete")}>{t("page.delete")}</DropdownMenuItem>
+          {canMove && (
+            <>
+              <DropdownMenuItem onSelect={() => setDialog("rename")}>{t("page.rename")}</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setDialog("move")}>{t("page.moveTo")}</DropdownMenuItem>
+            </>
+          )}
+          {canDelete && <DropdownMenuItem onSelect={() => setDialog("delete")}>{t("page.delete")}</DropdownMenuItem>}
         </DropdownMenuContent>
       </DropdownMenu>
       {/* A rename or move sent: the tree's last refusal goes, as a deletion's has it. */}

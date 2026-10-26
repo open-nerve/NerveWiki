@@ -2,6 +2,7 @@ import type {
   ApiClient,
   Notebook,
   NotebookCreate,
+  NotebookMode,
   NotebookRole,
   NotebookUpdate,
   WorkspaceAccess,
@@ -9,7 +10,7 @@ import type {
 
 import { unwrap } from "./api";
 
-export type { Notebook, NotebookCreate, NotebookRole, NotebookUpdate, WorkspaceAccess };
+export type { Notebook, NotebookCreate, NotebookMode, NotebookRole, NotebookUpdate, WorkspaceAccess };
 
 /**
  * NotebookService lists a workspace's notebooks the account sees, creates,
@@ -32,6 +33,13 @@ export class NotebookService {
   async update(id: string, body: NotebookUpdate): Promise<Notebook> {
     return unwrap(
       await this.api.PATCH("/api/v0/notebooks/{notebook_id}", { params: { path: { notebook_id: id } }, body })
+    );
+  }
+
+  /** downgrade makes an LLM Wiki a standard notebook, keeping all its pages. */
+  async downgrade(id: string): Promise<Notebook> {
+    return unwrap(
+      await this.api.POST("/api/v0/notebooks/{notebook_id}/downgrade", { params: { path: { notebook_id: id } } })
     );
   }
 

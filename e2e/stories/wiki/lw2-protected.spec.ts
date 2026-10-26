@@ -3,10 +3,12 @@ import type { ApiClient, TreeNode } from "@nervewiki/api-client";
 import { accountIdOf } from "../../fixtures/assert/identity";
 import { expectChangesetOf, expectContentWritten, expectRenamed } from "../../fixtures/assert/page";
 import { emailFor } from "../../fixtures/auth";
-import { joinAs } from "../../fixtures/invitations";
+import { failedToLoad } from "../../fixtures/browser";
+import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { errorOf, mcpClient, resultOf, writtenOf } from "../../fixtures/mcp";
 import { createNotebook } from "../../fixtures/notebooks";
 import {
+  createPage,
   deleteNode,
   getPage,
   listNodes,
@@ -17,7 +19,8 @@ import {
   writeContent,
 } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
-import { newTeam } from "../../fixtures/workspaces";
+import { pageTree, renameDialog, renamePageWith, wikiPagePath } from "../../fixtures/wiki-pages";
+import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 
 // LW2, an LLM Wiki's protected pages (M10 design 4.9; M10/P1 design 5.2):
 // AGENTS is not deleted, renamed or moved, though its content is written;
@@ -139,4 +142,70 @@ test("LW2 (MCP): a writer's agent of an LLM Wiki cannot delete or move AGENTS.md
     items: [],
     versions: [agents.id],
   });
+});
+
+test("LW2 (page): an LLM Wiki's tree protects AGENTS and its source root; an admin renames the source root, while index stays reserved", async ({
+  api,
+  db,
+  signedInPage,
+  anotherPage,
+  pageWatch,
+}, testInfo) => {
+  const { adminId, pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const writer = await anotherPage(
+    await joinOnboarded(api, pat, workspace.slug, emailFor(testInfo, "writer"), "member")
+  );
+  const { notebook, raw, agents } = await protectedWiki(api, pat, workspace.slug);
+  const notes = await createPage(api, pat, notebook.id, "Notes");
+  await writer.goto(wikiPagePath(workspace.slug, notebook.id, agents.id));
+  const writersTree = pageTree(writer, notebook.name);
+  const writersAgents = writersTree.getByRole("link", { name: "AGENTS (instructions for agents)", exact: true });
+  const writersRaw = writersTree.getByRole("link", { name: "raw (source area)", exact: true });
+  await expect(writersAgents).toBeVisible();
+  await expect(writersRaw).toBeVisible();
+  await expect(writersAgents.locator("..")).not.toHaveAttribute("draggable");
+  await expect(writersRaw.locator("..")).not.toHaveAttribute("draggable");
+
+  await writersTree.getByRole("button", { name: "Actions for AGENTS", exact: true }).click();
+  const writersMenu = writer.getByRole("menu");
+  await expect(writersMenu.getByRole("menuitem")).toHaveText(["New subpage"]);
+  await expect(writersMenu.getByRole("menuitem", { name: "Rename", exact: true })).toHaveCount(0);
+  await expect(writersMenu.getByRole("menuitem", { name: "Move to…", exact: true })).toHaveCount(0);
+  await expect(writersMenu.getByRole("menuitem", { name: "Delete", exact: true })).toHaveCount(0);
+  await writer.keyboard.press("Escape");
+  await writersTree.getByRole("button", { name: "Actions for raw", exact: true }).click();
+  await expect(writersMenu.getByRole("menuitem")).toHaveText(["New subpage"]);
+  await expect(writersMenu.getByRole("menuitem", { name: "Rename", exact: true })).toHaveCount(0);
+  await expect(writersMenu.getByRole("menuitem", { name: "Move to…", exact: true })).toHaveCount(0);
+  await expect(writersMenu.getByRole("menuitem", { name: "Delete", exact: true })).toHaveCount(0);
+  await writer.keyboard.press("Escape");
+
+  const admin = await signedInPage(tokens);
+  await admin.goto(wikiPagePath(workspace.slug, notebook.id, raw.id));
+  const adminsTree = pageTree(admin, notebook.name);
+  const adminsRaw = adminsTree.getByRole("link", { name: "raw (source area)", exact: true });
+  await expect(adminsRaw).toBeVisible();
+  await expect(adminsRaw.locator("..")).toHaveAttribute("draggable", "true");
+  await adminsTree.getByRole("button", { name: "Actions for raw", exact: true }).click();
+  const adminsMenu = admin.getByRole("menu");
+  await expect(adminsMenu.getByRole("menuitem")).toHaveText(["New subpage", "Rename", "Move to…"]);
+  await expect(adminsMenu.getByRole("menuitem", { name: "Delete", exact: true })).toHaveCount(0);
+  await admin.keyboard.press("Escape");
+  expect((await renamePageWith(admin, notebook.name, raw.id, "raw", "sources")).status()).toBe(200);
+  await expect(renameDialog(admin, "raw")).toBeHidden();
+  await expect(adminsTree.getByRole("link", { name: "sources (source area)", exact: true })).toBeVisible();
+  await expectRenamed(db, raw.id, "raw", "sources", adminId);
+
+  const before = await stateOf(api, pat, notebook.id, notes);
+  const refused = await renamePageWith(admin, notebook.name, notes.id, "Notes", "index");
+  expect(refused.status()).toBe(409);
+  expect((await refused.json()) as { code: string }).toMatchObject({ code: "page.virtual_file" });
+  await expect(renameDialog(admin, "Notes").getByRole("alert")).toHaveText(
+    "This file is generated by the system: the index updates itself as pages change, and the log is the notebook's changes. No page or attachment at the root may be named index or log."
+  );
+  pageWatch.expectConsole({ errors: [failedToLoad(409)] });
+  expect(await stateOf(api, pat, notebook.id, notes)).toEqual(before);
+  await admin.keyboard.press("Escape");
+  await expect(renameDialog(admin, "Notes")).toBeHidden();
+  await expect(adminsTree.getByRole("link", { name: "Notes", exact: true })).toBeVisible();
 });

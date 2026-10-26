@@ -202,6 +202,31 @@ async function getJob(api: ApiClient, credential: string, id: string) {
   return api.GET("/api/v0/transfer-jobs/{job_id}", { params: { path: { job_id: id } }, headers: bearer(credential) });
 }
 
+/** The job id once it is running, as credential reads it, within timeout. */
+export async function runningJob(
+  api: ApiClient,
+  credential: string,
+  id: string,
+  timeout = 15_000
+): Promise<TransferJobDetail> {
+  let job: TransferJobDetail | undefined;
+  await expect
+    .poll(
+      async () => {
+        const { data, response } = await getJob(api, credential, id);
+        expect(response.status).toBe(200);
+        job = data;
+        return job?.state;
+      },
+      { message: `the job ${id} is running`, timeout }
+    )
+    .toBe("running");
+  if (!job) {
+    throw new Error(`no job ${id}`);
+  }
+  return job;
+}
+
 /** The job id once it has ended, as credential reads it, within timeout: a large job's batches take longer. */
 export async function endedJob(
   api: ApiClient,

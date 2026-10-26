@@ -5,7 +5,7 @@
 | 审查对象 | 从 `8e62b191` 到 `607e761e2e3e20b59baa7e7bb4a54895a963728c`；四个实施与修复提交依次为 `22ca92af`、`c3ae49f9`、`ba5cded6`、`607e761e`。S3 于 2026-10-26 合并为 `a46c3d1d`（完整 SHA `a46c3d1d076a97e793fafaa6fb2984f02876b2b3`），分支文档 `47945074`；[00 号文档](../00-M10-design.md)第 12 节。依据 [01-P1](../01-P1-contract-frame.md) 第 0–2 节、3.25–3.29 的 S3 部分、4.3、第 5 节的四个报告字面量、6.3/6.5、第 7 节的 S3 测试与变异、第 8 节、10.2 与第 9 节的移交，[00-M10](../00-M10-design.md) 4.6–4.9 与第 7–10 节，[总体设计](../../v0.1-design.md) 13.1/13.4 及 [工作流](../../claude_to_codex/02-workflow.md) 3.3–3.6 |
 | 审查方式 | 任务范围的 A/B/C 各在独立工作树读代码、调用者和设计，先不读作者报告；完整 Step 的三方审查单列在下，不由任务范围的审查代替。任务 A：预检与事实；任务 B：后台拒绝、报告、网页及最后一跳；任务 C：三处加序号与 SQL 不变量。B 对发现另做外部 Go overlay 短测试，修复之后由原 B 用同一个 overlay 复核 |
 | 日期 | 2026-10-26 |
-| 当前结论 | 任务范围的审查与 B-M1 修复复核、独立的完整 Step A/B/C 审查均已核对。完整 Step 没有经过核实的 Important、Minor、Nit 或 Q，没有剩余产品修复；主持者接受结论。受测头 `607e761e` 的 13 项本机门禁、三份各两次本机测量和分支 CI 十个作业通过；两个契约提交的精确 HEAD 已追溯通过 `gen-check`。S3 已合并为 `a46c3d1d`，首次 main CI 已通过；第二次 main CI 的 costs 失败，e2e/image 跳过；诊断与一次新完整 push CI 的决定见 34，当前待运行。先全绿并核对包含失败运行的全部 bootstrap 样本才开 S4。 |
+| 当前结论 | 任务范围的审查与 B-M1 修复复核、独立的完整 Step A/B/C 审查均已核对。完整 Step 没有经过核实的 Important、Minor、Nit 或 Q，没有剩余产品修复；主持者接受结论。受测头 `607e761e` 的 13 项本机门禁、三份各两次本机测量和分支 CI 十个作业通过；两个契约提交的精确 HEAD 已追溯通过 `gen-check`。S3 已合并为 `a46c3d1d`，首次 main CI 已通过；第二次 main CI 的 costs 失败、e2e/image 跳过的证据保留；决定 34 的新完整 push CI `40328760108` 全绿，三次全部样本及每对平均核对后接受 S4 入口，数值在末节。IndexItems 与 grep 的 M10 稳定性收尾义务仍在。 |
 
 ## 任务范围的审查与处置
 
@@ -165,7 +165,7 @@ go -C server test -short -count=1 -v \
 
 三份 Test 步为 6:00、6:32、5:54，距 7:30 分别 90、58、96 秒；这是分支的一个样本，与合并后的两次 main CI 分开。等待脚本曾收到一次空响应，`wait.log` 留下一条 JSONDecodeError，随后恢复并记录 completed success；另存的 API 结果独立确认十个作业成功。这是观察脚本的瞬时问题，没有产品 CI 作业因此失败，也没有为此重跑 CI。
 
-S3 已于 2026-10-26 合并为 `a46c3d1d`（完整 SHA `a46c3d1d076a97e793fafaa6fb2984f02876b2b3`，父提交 `8e62b191`、`47945074`）。分支文档的 [CI 40318346909](https://github.com/open-nerve/NerveWiki/actions/runs/40318346909) 在精确头 `479450745b11ddabee8e2cc386482f9204d12556` 上十个作业全部 success；组合根第一、二、三份的 Test 步为 6:10、4:19、6:26（作业 6:37、4:36、6:48），E2E 步 3:13（作业 16:00）。合并后的首次 main的 [CI 40322279159](https://github.com/open-nerve/NerveWiki/actions/runs/40322279159) 在精确头 `a46c3d1d076a97e793fafaa6fb2984f02876b2b3` 上十个作业全部 success；组合根第一、二、三份的 Test 步为 7:14、6:33、4:08（作业 7:32、6:51、4:29），E2E 步 3:50（作业 4:39）。第二次 main 的 [CI 40325348498](https://github.com/open-nerve/NerveWiki/actions/runs/40325348498) 在精确头 `ca831b58bdf5c396648daa592b64820d4d93ad0b` 的 attempt 1 失败：仅 costs 的既有 M9 IndexItems 成本守卫超过 30 ms，七个作业通过，e2e/image 跳过。组合根第一、二、三份 Test 步为 306s、393s、402s（作业 326s、412s、421s），与首次 main 的 434s、393s、248s 的平均为 370s、393s、325s；三份平均虽都低于 7:30，整套 CI 尚未全绿，不能开 S4。Actions 重跑因 token 缺少权限被拒绝，未产生 attempt 2。按决定 34，本次实质诊断记录文档提交将触发一个新 SHA 上的完整正常 push CI，当前待运行，不预填 SHA 或结果。失败与后续样本全部保留；主持者先核对新运行全绿及全部 bootstrap 样本，在树外控制记录保存所有 run ID、精确 HEAD、job 与 Test/E2E 时间及平均，下一次已安排的 S4/P1 完成文档提交转写到 10.3，必须在 P1 完成之前落实。诊断、重跑权限限制及再次失败的处理见 S3 审查决定 34；决定 33 的门禁与转写义务继续有效。
+S3 已于 2026-10-26 合并为 `a46c3d1d`（完整 SHA `a46c3d1d076a97e793fafaa6fb2984f02876b2b3`，父提交 `8e62b191`、`47945074`）。分支文档的 [CI 40318346909](https://github.com/open-nerve/NerveWiki/actions/runs/40318346909) 在精确头 `479450745b11ddabee8e2cc386482f9204d12556` 上十个作业全部 success；组合根第一、二、三份的 Test 步为 6:10、4:19、6:26（作业 6:37、4:36、6:48），E2E 步 3:13（作业 16:00）。合并后的首次 main的 [CI 40322279159](https://github.com/open-nerve/NerveWiki/actions/runs/40322279159) 在精确头 `a46c3d1d076a97e793fafaa6fb2984f02876b2b3` 上十个作业全部 success；组合根第一、二、三份的 Test 步为 7:14、6:33、4:08（作业 7:32、6:51、4:29），E2E 步 3:50（作业 4:39）。第二次 main 的 [CI 40325348498](https://github.com/open-nerve/NerveWiki/actions/runs/40325348498) 在精确头 `ca831b58bdf5c396648daa592b64820d4d93ad0b` 的 attempt 1 失败：仅 costs 的既有 M9 IndexItems 成本守卫超过 30 ms，七个作业通过，e2e/image 跳过。组合根第一、二、三份 Test 步为 306s、393s、402s（作业 326s、412s、421s），与首次 main 的 434s、393s、248s 的平均为 370s、393s、325s；这两次的分片均值低于 7:30，但当时整套 CI 尚未全绿，主持者未据此开 S4。Actions 重跑因 token 缺少权限被拒绝，未产生 attempt 2。决定 34 的新完整 push [CI 40328760108](https://github.com/open-nerve/NerveWiki/actions/runs/40328760108) 在精确头 `f2fe618040945923c5d32fb438d78632645210fd` 上十个作业全部 success（attempt 1；新运行，不是失败运行的 attempt 2）。组合根第一、二、三份 Test 为 300s、390s、396s，作业为 320s、415s、415s；E2E 步 223s、作业 757s。三次 main 的全部 Test 样本分别为第一份 434/306/300s、第二份 393/393/390s、第三份 248/402/396s；按运行 1+2、1+3、2+3 的每对平均依次为第一份 370/367/303s、第二份 393/391.5/391.5s、第三份 325/322/399s，全部低于 450s。三次平均为 346.667/392/348.667s，保留失败运行的成功分片，没有挑最快的一对。主持者在开 S4 前核对并在 `s3-evidence/postmerge-all-samples.json` 接受入口；本次按决定 33–34 转写全部已发生的记录。失败运行 `40325348498`、Actions 重跑的权限拒绝及原样本机诊断仍保留；M10 的 IndexItems 与 grep 稳定性收尾义务未关闭。这些是 S3 的样本，不代替 S4 合并之后的两次测量。
 
 ### 第二次 main CI 的失败与诊断
 
@@ -177,8 +177,12 @@ S3 已于 2026-10-26 合并为 `a46c3d1d`（完整 SHA `a46c3d1d076a97e793fafaa6
 |---|---|---:|---:|---:|---:|---|
 | 首次 main | `a46c3d1d076a97e793fafaa6fb2984f02876b2b3` / `40322279159` / 1 | 434s / 452s | 393s / 411s | 248s / 269s | 230s / 279s | 十个作业 success |
 | 第二次 main | `ca831b58bdf5c396648daa592b64820d4d93ad0b` / `40325348498` / 1 | 306s / 326s | 393s / 412s | 402s / 421s | skipped / 无有效时长 | costs failure；七个 success；e2e/image skipped |
-| 上述两次 Test 平均 | 保留失败运行的成功分片 | 370s（6:10） | 393s（6:33） | 325s（5:25） | 不以 skipped 充作样本 | 分片均值过线检查通过，整套 CI 未全绿 |
+| 第三次 main（决定 34 的新完整 push） | `f2fe618040945923c5d32fb438d78632645210fd` / `40328760108` / 1 | 300s / 320s | 390s / 415s | 396s / 415s | 223s / 757s | 十个作业 success |
+| Test 平均：1+2 | 保留失败运行的成功分片 | 370s | 393s | 325s | skipped 不充作样本 | 三份均低于 450s |
+| Test 平均：1+3 | 第一次与新完整运行 | 367s | 391.5s | 322s | — | 三份均低于 450s |
+| Test 平均：2+3 | 失败运行与新完整运行 | 303s | 391.5s | 399s | — | 三份均低于 450s |
+| 全部三次 Test 平均 | 不舍弃任何一个分片读数 | 346.667s | 392s | 348.667s | — | 全部每对平均核对后接受 S4 入口 |
 
-决定 34 的新完整 push CI 仍待运行，不能把它称作 attempt 2 或预填新的 SHA、run ID、绿色结果。新样本与上表一起分析，不丢弃失败运行或挑选较快的一对；之后的完整记录按决定 33–34 在下一次原已安排的 P1 文档提交转写。
+上述第三次运行是决定 34 允许的新完整 push CI，保存于 `s3-evidence/main-ci-f2fe6180/`；所有三次及每对平均在 `s3-evidence/postmerge-all-samples.json`，主持者在 S4 开始前已核对 latest main 全绿与所有每对平均低于 450s。本次是决定 33–34 要求的既定 S4 文档转写，保留原失败及权限拒绝，没有为转写制造额外运行；M10 的两项成本守卫稳定性义务仍未关闭。
 
 原始证据保存在树外 `s3-evidence/main-ci-ca831b58/attempt-1/{run,jobs,timings,costs-annotations}.json`、`costs-failed.log`，两次本机诊断为该运行目录的 `index-cost-local-diagnostic.log`；首次 main 原始文件在 `s3-evidence/main-ci-a46c3d1d/`。独立只读诊断为 `ci-index-cost-recon.md`，主持者的有界处置及 Actions 权限拒绝记录为 `s3-evidence/main-ci-ca831b58/diagnosed-retry-decision.json`（均相对 `/home/parallels/.local/state/nervewiki/m10/`）。保留这些失败证据；下一次全绿不会自动取消 M10 收尾的稳定性义务。

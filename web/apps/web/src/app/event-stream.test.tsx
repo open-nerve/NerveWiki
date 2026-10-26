@@ -202,19 +202,42 @@ test("a hidden tab reads the reading view once it is shown again", async () => {
 });
 
 test("an event of a type a later M adds goes to the app's handler of its type, with its data, which can read again what it changed; one of no handler is let be", async () => {
-  const modes: unknown[] = [];
+  const later: unknown[] = [];
   const handler: EventHandler = (data, { mutate }) => {
-    modes.push(data);
+    later.push(data);
     void mutate(["pages", notebookJSON.id]);
   };
-  const { server, events } = await open(new FakePage(), {}, new Map([...eventHandlers, ["mode", handler]]));
+  const { server, events } = await open(new FakePage(), {}, new Map([...eventHandlers, ["later", handler]]));
 
-  events.last().send("mode", { workspace_id: workspaceJSON.id, page_id: guide.id });
+  events.last().send("later", { workspace_id: workspaceJSON.id, page_id: guide.id });
   events.last().send("watch", { workspace_id: workspaceJSON.id });
   await settle();
 
-  expect(modes).toEqual([{ workspace_id: workspaceJSON.id, page_id: guide.id }]);
+  expect(later).toEqual([{ workspace_id: workspaceJSON.id, page_id: guide.id }]);
   expect(server.sent).toEqual(["GET nodes"]);
+});
+
+test("a mode event reads the workspace's notebooks again, through the app's handlers", async () => {
+  let sent: string[] = [];
+  const { server, events, workspaces, lockReads } = await open(new FakePage(), {
+    "GET /api/v0/workspaces/lab/notebooks": () => {
+      sent.push("GET notebooks");
+      return json({ data: [notebookJSON] });
+    },
+  });
+  await settle();
+  // The route is called during open too; record alongside page reads once the connection has settled.
+  sent = server.sent;
+  sent.length = 0;
+  const stream = events.last();
+
+  stream.send("mode", { workspace_id: workspaceJSON.id, notebook_id: notebookJSON.id });
+  await settle();
+
+  expect(server.sent).toEqual(["GET notebooks"]);
+  expect(workspaces).toEqual([]);
+  expect(lockReads).toEqual([]);
+  expect(events.streams).toEqual([stream]);
 });
 
 const linksEvent = (pages: string[] | null, notebook = notebookJSON.id) => ({

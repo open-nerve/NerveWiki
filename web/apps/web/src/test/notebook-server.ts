@@ -38,6 +38,8 @@ type NotebookServerOptions = {
   workspaceRole?: Workspace["role"];
   /** Plans' access. */
   access?: WorkspaceAccess;
+  /** Plans' mode; an LLM Wiki has a source root. */
+  mode?: Notebook["mode"];
   /** Plans' members; Ada's role in it is hers among them, else by its access. */
   members?: NotebookMember[];
   /** Answers instead of the server's, by "METHOD /path" as byRoute takes them; an answer not ok changes nothing. */
@@ -63,12 +65,19 @@ type NotebookServerOptions = {
 export function notebookServer({
   workspaceRole = "admin",
   access = "none",
+  mode = "standard",
   members = [notebookMember(ada, "admin"), notebookMember(bob, "editor")],
   answers = {},
 }: NotebookServerOptions = {}) {
   const server = {
     sent: [] as string[],
-    plans: { ...notebookJSON, workspace_access: access } as Notebook,
+    notebookReads: 0,
+    plans: {
+      ...notebookJSON,
+      workspace_access: access,
+      mode,
+      source_root_id: mode === "llm_wiki" ? "0199a2b4-0000-7000-8000-000000000101" : null,
+    } as Notebook,
     deleted: false,
     /** While set, Lab's members cannot be read. */
     workspaceMembersDown: false,
@@ -100,7 +109,10 @@ export function notebookServer({
   const plans = `/api/v0/notebooks/${notebookJSON.id}`;
   const app = signedInApp({
     "GET /api/v0/workspaces": () => json({ data: [{ ...workspaceJSON, role: workspaceRole }] }),
-    "GET /api/v0/workspaces/lab/notebooks": () => json({ data: seen() === undefined ? [] : [seen()] }),
+    "GET /api/v0/workspaces/lab/notebooks": () => {
+      server.notebookReads++;
+      return json({ data: seen() === undefined ? [] : [seen()] });
+    },
     "GET /api/v0/workspaces/lab/members": () => {
       server.sent.push("GET workspace members");
       return server.workspaceMembersDown
@@ -116,6 +128,16 @@ export function notebookServer({
         request,
         () => json({ ...seen(), ...changed }),
         () => (server.plans = changed)
+      );
+    },
+    [`POST ${plans}/downgrade`]: (request) => {
+      server.sent.push("downgrade");
+      const changed = { mode: "standard" as const, source_root_id: null, updated_at: "2026-10-03T08:00:00Z" };
+      return answer(
+        `POST ${plans}/downgrade`,
+        request,
+        () => json({ ...seen(), ...changed }),
+        () => (server.plans = { ...server.plans, ...changed })
       );
     },
     [`DELETE ${plans}`]: (request) => {

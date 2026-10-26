@@ -16,8 +16,9 @@ import { AccessOptions } from "./access-options";
 import { useNotebook } from "./notebook-layout";
 
 /**
- * NotebookGeneralPage is a notebook's name and workspace access (M3/P4
- * design 3.4): its admins change them and delete it; the others see them.
+ * NotebookGeneralPage is a notebook's name, workspace access and mode
+ * (M3/P4 design 3.4, M10/P1 design 4.4): its admins change them and delete
+ * it; the others see them.
  */
 export const NotebookGeneralPage = observer(function NotebookGeneralPage() {
   const workspace = useWorkspace();
@@ -60,6 +61,7 @@ export const NotebookGeneralPage = observer(function NotebookGeneralPage() {
           </>
         )}
       </section>
+      <ModeSection workspace={workspace} notebook={notebook} />
       {admin && <DeleteSection workspace={workspace} notebook={notebook} />}
     </div>
   );
@@ -122,6 +124,49 @@ const AccessForm = observer(function AccessForm({ workspace, notebook }: Noteboo
     </form>
   );
 });
+
+/** ModeSection keeps a refused downgrade's dialog even when a reread removes its trigger. */
+function ModeSection({ workspace, notebook }: NotebookProps) {
+  const notebooks = useNotebooks(workspace);
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const heading = useRef<HTMLHeadingElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  const wiki = notebook.mode === "llm_wiki";
+  const downgrades = wiki && notebook.role === "admin";
+
+  function onClosed(done: boolean) {
+    (done ? heading.current : (button.current ?? heading.current))?.focus();
+  }
+
+  return (
+    <section className="max-w-md space-y-3">
+      <h2 ref={heading} tabIndex={-1} className="text-lg font-semibold outline-none">
+        {t("notebookSettings.mode")}
+      </h2>
+      <p>{wiki ? t("notebookSettings.modeLLMWiki") : t("notebookSettings.modeStandard")}</p>
+      <p className="text-sm text-muted-foreground">
+        {wiki ? t("notebookSettings.modeLLMWikiHint") : t("notebookSettings.modeStandardHint")}
+      </p>
+      {downgrades && (
+        <Button ref={button} variant="outline" onClick={() => setOpen(true)}>
+          {t("notebookSettings.downgrade")}
+        </Button>
+      )}
+      <ConfirmDialog
+        held={{ open, onOpenChange: setOpen, onClosed }}
+        title={t("notebookSettings.downgradeTitle", { name: notebook.name })}
+        description={t("notebookSettings.downgradeBody")}
+        confirmLabel={t("notebookSettings.downgradeConfirm")}
+        sendingLabel={t("notebookSettings.downgrading")}
+        cancelLabel={t("notebookSettings.cancel")}
+        confirm={() => notebooks.downgrade(notebook.id)}
+        texts={{ "transfer.busy": "transfer.writingBusy", forbidden: "notebookSettings.downgradeAdminsOnly" }}
+        tone="default"
+      />
+    </section>
+  );
+}
 
 /**
  * DeleteSection deletes the notebook for every member, once its name is
