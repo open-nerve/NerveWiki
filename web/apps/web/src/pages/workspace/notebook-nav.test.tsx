@@ -158,6 +158,7 @@ function creationServer(answer?: Answer, list: Notebook[] = []) {
             name: body.name,
             workspace_access: body.workspace_access,
             mode: body.mode ?? "standard",
+            source_root_id: body.mode === "llm_wiki" ? "0199a2b4-0000-7000-8000-0000000000d1" : null,
           },
           201
         )
