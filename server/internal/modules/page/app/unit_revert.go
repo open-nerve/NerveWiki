@@ -122,7 +122,8 @@ func (u *Unit) Revert(ctx context.Context, r RevertRead) (RevertDone, error) {
 			done.Restored++
 		case domain.RevertContent:
 			parsed := r.Parsed[refOf(op.NodeID, op.Hash)]
-			_, err = u.WriteContent(ctx, ContentWrite{NodeID: op.NodeID, Content: parsed.Content, Facts: parsed.Facts, Base: op.Current})
+			_, err = u.WriteContent(ctx, ContentWrite{NodeID: op.NodeID, Content: parsed.Content, Facts: parsed.Facts, Base: op.Current,
+				Rewrite: op.Rewrite})
 			if errors.Is(err, domain.ErrRevisionMismatch) {
 				err = unclassified(fmt.Sprintf("a revert's write back of page %s", op.NodeID), err)
 			}
@@ -542,7 +543,8 @@ func (u *Unit) RevertBatch(ctx context.Context, r RevertPart) (BatchDone, error)
 			done.Restored, done.Skipped = done.Restored+n, done.Skipped+skipped
 		case domain.RevertContent:
 			parsed := r.parsed[refOf(s.node, op.Hash)]
-			_, err = u.WriteContent(ctx, ContentWrite{NodeID: s.node, Content: parsed.Content, Facts: parsed.Facts, Base: op.Current})
+			_, err = u.WriteContent(ctx, ContentWrite{NodeID: s.node, Content: parsed.Content, Facts: parsed.Facts, Base: op.Current,
+				Rewrite: op.Rewrite})
 			done.Written++
 		}
 		if err != nil {
@@ -611,6 +613,7 @@ func (p *revertPlan) ops(steps []revertStep, cont restoring) []domain.RevertOp {
 			op.Subtree = s.nodes
 		case domain.RevertContent:
 			op.Base, op.Hash = int(s.base), s.hash
+			op.Bytes, op.Rewrite = s.bytes, s.rewrite
 		case domain.RevertRestore:
 			if m, ok := cont.members[s.node]; ok {
 				op.Group, op.States = []domain.TrashMember{m}, []domain.TreeState{cont.states[s.node]}

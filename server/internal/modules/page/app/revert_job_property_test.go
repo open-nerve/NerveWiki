@@ -907,7 +907,8 @@ func (f *fixture) recorded(id, reverted uuid.UUID) *fakeChangeset {
 	for _, r := range f.store.revisions {
 		if r.ChangesetID == id {
 			f.log.versions[domain.VersionRef{NodeID: r.NodeID, Revision: r.Revision}] = r.Content
-			versions = append(versions, domain.ChangesetVersion{NodeID: r.NodeID, Base: r.Base, Revision: r.Revision, Hash: r.Hash})
+			versions = append(versions, domain.ChangesetVersion{NodeID: r.NodeID, Base: r.Base, Revision: r.Revision, Hash: r.Hash,
+				Rewrite: r.Rewrite})
 		}
 	}
 	c := f.log.changeset(domain.ChangesetRevert, f.alice, now(), items, versions...)

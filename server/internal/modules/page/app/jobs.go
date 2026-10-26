@@ -259,17 +259,19 @@ type revertPlan struct {
 // restore's seq. A restore's time and states, and every item and version,
 // are the batch's reads.
 type revertStep struct {
-	kind   domain.RevertOpKind
-	seq    int32
-	node   uuid.UUID
-	parent uuid.UUID
-	name   string
-	order  float64
-	base   int32
-	hash   []byte
-	nodes  []uuid.UUID
-	group  int32
-	member int32
+	kind    domain.RevertOpKind
+	seq     int32
+	node    uuid.UUID
+	parent  uuid.UUID
+	name    string
+	order   float64
+	base    int32
+	rewrite bool
+	hash    []byte
+	bytes   int
+	nodes   []uuid.UUID
+	group   int32
+	member  int32
 }
 
 // groupIDs are the ids of the members of the plan's group g, in its
@@ -356,10 +358,6 @@ func revertSteps(reverted uuid.UUID, checked revertChecked) JobPlan {
 			before[d], moved[op.NodeID] = append(before[d], op), true
 		}
 	}
-	bases := map[uuid.UUID]int{}
-	for _, v := range checked.state.Versions {
-		bases[v.NodeID] = v.BaseBytes
-	}
 	names := map[uuid.UUID]string{} // a node's name in S*, its item's Before, as before() has it
 	for _, it := range checked.state.Items {
 		if it.Before != nil {
@@ -373,7 +371,7 @@ func revertSteps(reverted uuid.UUID, checked revertChecked) JobPlan {
 	}
 	write := func(op domain.RevertOp) {
 		add(revertStep{kind: op.Kind, seq: int32(op.Seq), node: op.NodeID, name: names[op.NodeID], base: int32(op.Base), hash: op.Hash,
-			group: -1}, domain.JobStep{Nodes: 1, Bytes: int64(bases[op.NodeID])})
+			bytes: op.Bytes, rewrite: op.Rewrite, group: -1}, domain.JobStep{Nodes: 1, Bytes: int64(op.Bytes)})
 	}
 	members := func(g, from, to int, seq int32) {
 		for i := from; i < to; i++ {

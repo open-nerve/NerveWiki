@@ -83,10 +83,11 @@ type NodeNow struct {
 	DeletedByRevert         bool
 }
 
-// ContentNow is a page's content now: its revision and hash.
+// ContentNow is a page's content now: its revision, hash and byte size.
 type ContentNow struct {
 	Revision int
 	Hash     []byte
+	Bytes    int
 }
 
 // ErrRevertUnordered is a revert whose schedule finds no step to take,
@@ -162,13 +163,15 @@ const (
 // 3.22.1); a restore brings Group back, the trash item of the root NodeID
 // deleted at DeletedAt, each member to its state in States, the root's
 // To; a content writes the version Base of the page NodeID back on its
-// revision Current, whose content hashes to Hash.
+// revision Current, whose target content hashes to Hash and is Bytes long.
+// Rewrite is the marker of the version being undone, kept by the new version.
 type RevertOp struct {
 	Kind         RevertOpKind
 	Seq          int
 	NodeID       uuid.UUID
 	To           TreeState
 	Move, Rename bool
+	Rewrite      bool
 	Subtree      []uuid.UUID
 	Group        []TrashMember
 	States       []TreeState
@@ -176,6 +179,7 @@ type RevertOp struct {
 	Base         int
 	Current      int
 	Hash         []byte
+	Bytes        int
 }
 
 // RevertGroups are the trash items whose groups a revert reads, by root,

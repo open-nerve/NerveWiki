@@ -20,6 +20,7 @@ type ContentWrite struct {
 	Facts       Facts
 	Base        int
 	EditSession uuid.UUID
+	Rewrite     bool // internal system rewrite, or a revert of one; ordinary writes leave it false
 }
 
 // WriteContent writes w under the page's gate, its content row FOR NO KEY
@@ -86,7 +87,7 @@ func (u *Unit) writeContent(ctx context.Context, w ContentWrite, participate boo
 		if err := u.w.d.NodeWriter.WriteContent(ctx, c); err != nil {
 			return err
 		}
-		if err := u.recordRevision(ctx, c, &base); err != nil {
+		if err := u.recordRevision(ctx, c, &base, w.Rewrite); err != nil {
 			return err
 		}
 		if session.ID == (uuid.UUID{}) {

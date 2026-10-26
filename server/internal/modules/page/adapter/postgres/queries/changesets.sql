@@ -53,13 +53,15 @@ SET after_parent_id = excluded.after_parent_id, after_name = excluded.after_name
 -- A page's content as a changeset leaves it: a later write of the same changeset updates the row, keeping
 -- the base it started from, when it goes on from the row's revision. One on another's write would make the row
 -- hold that write's revisions too (M8/P1 review C4): it updates nothing, and the unit fails.
+-- It remains a system rewrite only if every write merged into the version was one (M10/P2 design 3.4).
 INSERT INTO page_revisions (id, changeset_id, node_id, base_revision, revision, content, content_hash, byte_size,
-    created_at, updated_at)
+    created_at, updated_at, rewrite)
 VALUES (sqlc.arg(id), sqlc.arg(changeset_id), sqlc.arg(node_id), sqlc.narg(base_revision), sqlc.arg(revision),
-    sqlc.arg(content), sqlc.arg(content_hash), sqlc.arg(byte_size), sqlc.arg(now), sqlc.arg(now))
+    sqlc.arg(content), sqlc.arg(content_hash), sqlc.arg(byte_size), sqlc.arg(now), sqlc.arg(now), sqlc.arg(rewrite))
 ON CONFLICT (changeset_id, node_id) DO UPDATE
 SET revision = excluded.revision, content = excluded.content, content_hash = excluded.content_hash,
-    byte_size = excluded.byte_size, updated_at = excluded.updated_at
+    byte_size = excluded.byte_size, updated_at = excluded.updated_at,
+    rewrite = page_revisions.rewrite AND excluded.rewrite
 WHERE page_revisions.revision = excluded.base_revision;
 
 -- name: DropUnchangedItems :exec

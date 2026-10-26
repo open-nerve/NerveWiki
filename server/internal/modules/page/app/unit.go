@@ -620,10 +620,10 @@ func (u *Unit) changesetOf(id uuid.UUID) error {
 
 // recordRevision records c, a content the unit wrote on base (nil: the
 // unit created the page), as its changeset's version of the page.
-func (u *Unit) recordRevision(ctx context.Context, c Content, base *int) error {
+func (u *Unit) recordRevision(ctx context.Context, c Content, base *int, rewrite bool) error {
 	return u.w.d.Changesets.RecordRevision(ctx, Revision{
 		ID: uuid.NewV7(), ChangesetID: u.changeset, NodeID: c.NodeID, Base: base, Revision: c.Revision, Content: c.Content,
-		Hash: c.Hash, ByteSize: c.ByteSize, At: u.write.At,
+		Hash: c.Hash, ByteSize: c.ByteSize, Rewrite: rewrite, At: u.write.At,
 	})
 }
 
@@ -700,6 +700,7 @@ func (a appender) Rename(ctx context.Context, nodeID uuid.UUID, name string) (do
 
 func (a appender) WriteContent(ctx context.Context, w ContentWrite) (int, error) {
 	w.EditSession = uuid.UUID{}
+	w.Rewrite = true
 	return a.u.writeContent(ctx, w, false)
 }
 

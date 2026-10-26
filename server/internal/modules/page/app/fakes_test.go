@@ -954,6 +954,7 @@ func (f *fakeStore) RecordRevision(ctx context.Context, r app.Revision) error {
 				return fmt.Errorf("fake: changeset %s's version of %s is at %d, not at the write's base", r.ChangesetID, r.NodeID, old.Revision)
 			}
 			r.ID, r.Base = old.ID, old.Base
+			r.Rewrite = old.Rewrite && r.Rewrite
 			f.revisions[i] = r
 			return nil
 		}

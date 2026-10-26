@@ -243,7 +243,8 @@ func (s *Store) ChangesetVersionsOf(ctx context.Context, id uuid.UUID, ids []uui
 
 // changedVersionOf is a row of the statements that read a changeset's versions.
 func changedVersionOf(r gen.ChangesetVersionsOfRow) domain.ChangesetVersion {
-	out := domain.ChangesetVersion{NodeID: r.NodeID, Base: intOf(r.BaseRevision), Revision: int(r.Revision), Hash: r.ContentHash}
+	out := domain.ChangesetVersion{NodeID: r.NodeID, Base: intOf(r.BaseRevision), Revision: int(r.Revision), Hash: r.ContentHash,
+		Rewrite: r.Rewrite}
 	if r.BaseBytes != nil {
 		out.BaseBytes = int(*r.BaseBytes)
 	}
@@ -282,7 +283,7 @@ func (s *Store) ContentsNow(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID
 	}
 	out := make(map[uuid.UUID]domain.ContentNow, len(rows))
 	for _, r := range rows {
-		out[r.NodeID] = domain.ContentNow{Revision: int(r.Revision), Hash: r.ContentHash}
+		out[r.NodeID] = domain.ContentNow{Revision: int(r.Revision), Hash: r.ContentHash, Bytes: int(r.ByteSize)}
 	}
 	return out, nil
 }

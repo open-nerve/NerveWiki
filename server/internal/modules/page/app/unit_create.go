@@ -83,7 +83,7 @@ func (u *Unit) insertPage(ctx context.Context, d PageDraft, title domain.Title, 
 		if err := u.w.d.NodeWriter.CreateContent(ctx, content); err != nil {
 			return err
 		}
-		return u.recordRevision(ctx, content, nil)
+		return u.recordRevision(ctx, content, nil, false)
 	})
 	return n, renumbered, err
 }
