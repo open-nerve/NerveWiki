@@ -7,7 +7,7 @@
 | 对象 | 起点 `f2fe618040945923c5d32fb438d78632645210fd`，原始完整审查头 `a0aa88dd647e7579022b6c0e5b54ed22c8a0c8ff`，最终受测修复头 `13ee0bc8ab4a302d654aa58ad994cbc8cedd6c24`；23个代码/测试文件。前六个提交依次 `ab3bd0eb`、`35804c04`、`d83cd89a`、`8e4c1899`、`fa662978`、`a0aa88dd`，第七个 `13ee0bc8` 只补B-I1六个参数化测试实例。分支文档 `8556ad07`；2026-10-27 合并为 `f261952f757bb486908210955f3b679a407b71e7`，父提交 `f2fe6180`、`8556ad07`，合并树与分支相同；见 [00-M10](../00-M10-design.md)第 12 节。 |
 | 依据 | [01-P1](../01-P1-contract-frame.md) 3.29 的 S4 行、4.4、第 5 节、6.4/6.5、7.3 的 54–64、7.5–7.6、第 8 节；[工作流](../../claude_to_codex/02-workflow.md) 3.1–3.7；S3 的 [决定 33–34](P1-S3-prechecks-refusals-numbering-review.md)。 |
 | 日期 | 2026-10-27 |
-| 结论 | 三份原始完整 Step 独立审查及修复后的范围核对已由主持者接受；B-I1（Important，测试覆盖）已关闭，没有剩余核实的 Important、Minor、Nit 或 Q。原始审查头为a0，最终接受头为13ee；B由原审查者重放核对，A/C由主持者按工作流3.4的测试修复例外核对未变范围，记录分别保存。 修复候选 `13ee0bc8` 的13项门禁范围已覆盖：本头新跑 static-build、web、E2E 三项（合计246.659s），网页166文件/3,415测试、E2E291测试、22条已知TimeoutNaNWarning；十项Go命令保留实际受测头 `a0aa88dd` 的通过记录，以唯一改动为51行前端测试、增加六个参数化实例的完整输入等价证明复用，未声称重跑。 最终修复候选 `13ee0bc8ab4a302d654aa58ad994cbc8cedd6c24` 的 [分支 CI 40362256209](https://github.com/open-nerve/NerveWiki/actions/runs/40362256209) 十个作业全部成功；bootstrap 1/2/3 的Test步为370/391/360s（作业392/415/383s），E2E步190s（作业247s）。其他Test步/作业为web214/250s、short182/201s、race624/653s、costs532/714s、guards770/799s；Image smoke为73s（作业81s）。原始 `s4-evidence/branch-ci-13ee0bc8/{run,jobs,timings}.json` 的run、head、branch、push事件、workflow、十个job与计时逐项核对，B另独立核对同一CI。该分支运行不能代替未来合并后的两个main样本。 S4 已合并并通过首次 main CI；P1 尚未完成，第二个 main 样本及两次平均待本合并记录文档的 CI 后核对，在 P1 完成文档中转写。 |
+| 结论 | 三份原始完整 Step 独立审查及修复后的范围核对已由主持者接受；B-I1（Important，测试覆盖）已关闭，没有剩余核实的 Important、Minor、Nit 或 Q。原始审查头为a0，最终接受头为13ee；B由原审查者重放核对，A/C由主持者按工作流3.4的测试修复例外核对未变范围，记录分别保存。 修复候选 `13ee0bc8` 的13项门禁范围已覆盖：本头新跑 static-build、web、E2E 三项（合计246.659s），网页166文件/3,415测试、E2E291测试、22条已知TimeoutNaNWarning；十项Go命令保留实际受测头 `a0aa88dd` 的通过记录，以唯一改动为51行前端测试、增加六个参数化实例的完整输入等价证明复用，未声称重跑。 最终修复候选 `13ee0bc8ab4a302d654aa58ad994cbc8cedd6c24` 的 [分支 CI 40362256209](https://github.com/open-nerve/NerveWiki/actions/runs/40362256209) 十个作业全部成功；bootstrap 1/2/3 的Test步为370/391/360s（作业392/415/383s），E2E步190s（作业247s）。其他Test步/作业为web214/250s、short182/201s、race624/653s、costs532/714s、guards770/799s；Image smoke为73s（作业81s）。原始 `s4-evidence/branch-ci-13ee0bc8/{run,jobs,timings}.json` 的run、head、branch、push事件、workflow、十个job与计时逐项核对，B另独立核对同一CI。该分支运行不能代替未来合并后的两个main样本。 S4 已合并，两次完整 main CI 及 Test 步平均已核对；P1 完成见 [P1 10.5](../01-P1-contract-frame.md)。 |
 
 ## 建成的行为与任务核对
 
@@ -148,7 +148,7 @@ C-X2 保留原 LW12 的 try/catch/finally/allSettled 结构，在 verified busy 
 | test-go-bootstrap-2 | 274.975 / 273.525 | 274.25 | 275.769 / 274.306 | 275.0375 |
 | test-go-bootstrap-3 | 272.018 / 268.567 | 270.2925 | 272.838 / 269.363 | 271.1005 |
 
-S4 合并后的首次 main CI 已通过，实际 Test/E2E 与作业时间见下方。第二次由本合并记录文档提交触发，目前尚待运行，因而两次平均尚未形成；依7.5–7.6，在 P1 完成文档前测量、核对并转写，本机与分支读数不替代。
+S4 合并后的两次完整 main CI 均已通过，实际 Test/E2E、作业时间与各份平均见下方；7.5–7.6 的核对与 P1 完成记录见 [P1 10.5](../01-P1-contract-frame.md)。本机与分支读数不替代这两个 main 样本。
 
 最终修复候选 `13ee0bc8ab4a302d654aa58ad994cbc8cedd6c24` 的 [分支 CI 40362256209](https://github.com/open-nerve/NerveWiki/actions/runs/40362256209) 十个作业全部成功；bootstrap 1/2/3 的Test步为370/391/360s（作业392/415/383s），E2E步190s（作业247s）。其他Test步/作业为web214/250s、short182/201s、race624/653s、costs532/714s、guards770/799s；Image smoke为73s（作业81s）。原始 `s4-evidence/branch-ci-13ee0bc8/{run,jobs,timings}.json` 的run、head、branch、push事件、workflow、十个job与计时逐项核对，B另独立核对同一CI。该分支运行不能代替未来合并后的两个main样本。
 
@@ -158,14 +158,14 @@ S3的三次postmerge记录和所有两两平均已转写到[01-P1 10.3](../01-P1
 
 ## 合并与 main CI
 
-S4 于 2026-10-27 合并为 `f261952f757bb486908210955f3b679a407b71e7`，第一父提交 `f2fe618040945923c5d32fb438d78632645210fd`，第二父提交为分支文档 `8556ad07576485e5ed6f902eb6137067ac324a4c`；合并树与该分支头完全相同。分支文档的 [CI 40367549675](https://github.com/open-nerve/NerveWiki/actions/runs/40367549675) 在精确头 `8556ad07576485e5ed6f902eb6137067ac324a4c` 上十个作业全部成功；bootstrap 1/2/3 的 Test 步为 393/384/247s（作业 415/405/269s），E2E 步 223s（作业 281s）。合并后的首次main的 [CI 40370315130](https://github.com/open-nerve/NerveWiki/actions/runs/40370315130) 在精确头 `f261952f757bb486908210955f3b679a407b71e7` 上十个作业全部成功；bootstrap 1/2/3 的 Test 步为 291/393/397s（作业 309/413/416s），E2E 步 229s（作业 280s）。第二次 main CI 由本次合并记录文档提交触发，当前尚待运行，两次平均尚未形成。主持者须测量并核对7.5–7.6，保存两个run ID、精确HEAD、各job/Test/E2E时间及平均，在P1完成文档中转写后再标P1完成；S3的样本不充作S4样本。
+S4 于 2026-10-27 合并为 `f261952f757bb486908210955f3b679a407b71e7`，第一父提交 `f2fe618040945923c5d32fb438d78632645210fd`，第二父提交为分支文档 `8556ad07576485e5ed6f902eb6137067ac324a4c`；合并树与该分支头完全相同。分支文档的 [CI 40367549675](https://github.com/open-nerve/NerveWiki/actions/runs/40367549675) 在精确头 `8556ad07576485e5ed6f902eb6137067ac324a4c` 上十个作业全部成功；bootstrap 1/2/3 的 Test 步为 393/384/247s（作业 415/405/269s），E2E 步 223s（作业 281s）。合并后的首次main的 [CI 40370315130](https://github.com/open-nerve/NerveWiki/actions/runs/40370315130) 在精确头 `f261952f757bb486908210955f3b679a407b71e7` 上十个作业全部成功；bootstrap 1/2/3 的 Test 步为 291/393/397s（作业 309/413/416s），E2E 步 229s（作业 280s）。合并记录文档 `767b69a6aeae4ada095de137bf0996083fae193e` 触发的第二次 main [CI 40374066614](https://github.com/open-nerve/NerveWiki/actions/runs/40374066614)（attempt 1）十个作业全部成功；bootstrap 1/2/3 的 Test 步为 420/387/334s（作业448/431/361s），E2E 步 192s（作业 738s）。 两次 bootstrap Test 步平均依次为 355.5/390/365.5s，三份均严格低于 450s（7:30）。 两次都是精确 main 头的正常 push CI（attempt 1/1），各十个作业全部成功；主持者核对原始 run/jobs/timings 与 postmerge-pair.json 后接受；完整作业时间及原始证据存于树外的 S4 postmerge 记录。 S3 的样本不充作 S4 样本。
 
 | main 样本 | run / 精确 HEAD | bootstrap-1 Test / job | bootstrap-2 Test / job | bootstrap-3 Test / job | E2E step / job |
 |---|---|---|---|---|---|
 | 第一次 | `40370315130` / `f261952f757bb486908210955f3b679a407b71e7` | 291s / 309s | 393s / 413s | 397s / 416s | 229s / 280s |
-| 第二次 | 本合并记录文档提交的CI，尚待运行 | 待测 | 待测 | 待测 | 待测 |
-| 两次平均 | P1完成前核对并转写 | 待第二个样本 | 待第二个样本 | 待第二个样本 | 待第二个样本 |
+| 第二次 | `40374066614` / `767b69a6aeae4ada095de137bf0996083fae193e` | 420s / 448s | 387s / 431s | 334s / 361s | 192s / 738s |
+| 两次平均 | 仅比较 bootstrap 的 Test 步 | 355.5s | 390s | 365.5s | E2E 不设此平均门槛 |
 
 ## 接受与推后
 
-P1仍进行中。M5事件移交记录前端实现，保持open，到P1 done再关闭；M8/M9的来源与系统说明事项保持open。P1 done时新建M11/M10-mode开放移交只记录扩展点与契约，不开始M11。M10收尾继续核对IndexItems与grep的稳定性；这轮没有改任何成本阈值。合并见00-M10第12节，P1完成另按工作流3.7提交。
+P1 已完成，核对见 [P1 10.5](../01-P1-contract-frame.md)。[M5 事件移交](../handoffs/M5-events.md)已改为 done；M8/M9 的后续来源与系统说明事项保持 open。新建的 [M11 模式契约移交](../../M11-upgrade/handoffs/M10-mode.md)保持 open，只记录扩展点与契约，不开始 M11。M10 收尾继续核对 IndexItems 与 grep 的稳定性；本次没有改变成本阈值。

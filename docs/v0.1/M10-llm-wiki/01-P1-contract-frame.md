@@ -4,7 +4,7 @@
 |---|---|
 | Phase | M10/P1 契约的框架（四个 Step：S1 模式与模板（服务端）；S2 守卫的骨架；S3 预检、加序号与后台的拒绝的去处；S4 网页（一）） |
 | 日期 | 2026-10-24（照 S1、S2 修订 2026-10-25；S3 修订 2026-10-26；S4 修订 2026-10-27） |
-| 状态 | 进行中（S1–S4 已合并；S4 合并 `f261952f`，首次 main CI 通过，待第二个 main 样本与 P1 完成核对，结果与审查见 10.4，合并见 00 号文档第 12 节）；设计已审查，[审查记录](reviews/P1-design-review.md)，两轮复核在它的末节；S1、S2、S3、S4 的审查记录 [P1-S1-mode-template-review.md](reviews/P1-S1-mode-template-review.md)、[P1-S2-guard-review.md](reviews/P1-S2-guard-review.md)、[P1-S3-prechecks-refusals-numbering-review.md](reviews/P1-S3-prechecks-refusals-numbering-review.md)、[P1-S4-web-review.md](reviews/P1-S4-web-review.md)，实施与审查之后与代码不同之处照实改在各节（3.30–3.33 列出），结果在 10.1–10.4 |
+| 状态 | 已完成（2026-10-27；S1–S4 均已合并，审查、修复、变异与门禁，以及合并后的 CI 样本已核对；合并见 00 号文档第 12 节，完成总结见 10.5）；设计已审查，[审查记录](reviews/P1-design-review.md)；Step 审查见 [S1](reviews/P1-S1-mode-template-review.md)、[S2](reviews/P1-S2-guard-review.md)、[S3](reviews/P1-S3-prechecks-refusals-numbering-review.md)、[S4](reviews/P1-S4-web-review.md)；实施对设计的修正见 3.30–3.33，结果见 10.1–10.5 |
 | 上级文档 | [M10 总设计](00-M10-design.md) 4.1–4.9、4.15–4.18、第 5、7、8、9、10、11 节与"总体设计的修订"、"移交的落实"；[M10 设计审查](reviews/M10-design-review.md)；[移交](handoffs/)：M5-events、M8-history、M9-P1-mcp-registry；[v0.1 总体设计](../v0.1-design.md) 5.1–5.9、12.4、13.1–13.4；[M9/P3](../M9-mcp/03-P3-batch-revert.md)（写法） |
 | 代码位置的写法 | 同 00 号文档：模块写作 `page/app/unit.go:185`（`server/internal/modules/` 之下）；`platform/…`、`bootstrap/…`、`shared/…`、`archtest/…` 在 `server/internal/` 之下；迁移写作 `00009_notebook_notebooks.sql:12`（`server/migrations/sql/`），迁移的测试写作 `server/migrations/schema_test.go:163`；前端写作 `W/stores/notebook.store.ts:45` 或 `web/…/notebook.store.ts:45`（`W/` 是 `web/apps/web/src/`）；e2e 写作 `e2e/fixtures/notebooks.ts:9`；契约写作 `api/modules/notebook.yaml:421`。代码的行号是 `d7bb5e8d` 的（`main`，M10 总设计的文档提交；代码与 M9 的 Codex 评审之后的文档提交 `91ee78d8` 相同），00 号文档与 v0.1 总体设计的行号也是它的 |
 | 工作笔记 | `scratchpad/m10/p1/notes.md`；代码的核对分五份（网页、e2e、契约与 CI、守卫与矩阵、transfer 与后台）在 `scratchpad/m10/p1/h/`，本文引的每个行号都在其中或附录里核对过。P1 不量要数据库的东西（第 7.6 节写实施时怎样量） |
@@ -2479,7 +2479,7 @@ P1 完成，当且仅当：
 
 **写给后面的 M 的项**（审查 C-M12；00-M10"写给后面的 M"：M11 的"发现它的 Phase 写进 `M11-upgrade/handoffs/`"，打磨的"追加到 `M12-release/handoffs/M5-polish.md`（第 33 条起）"）：
 
-- **M11**：`docs: M10/P1 done` 新写 `docs/v0.1/M11-upgrade/handoffs/M10-mode.md`（`status: open`，照已有的三份的写法），收第 9 节"M11"一条里 P1 才发现的几项：`wiki.TemplatePages`、`wiki/domain` 的 `ContractOf` 是升级读的契约表；升级经 `ModeSubscriber` 改模式，事件流照样发 `mode`；`SetNotebookMode` 一次写模式与来源根，`notebooks_source_root_check` 许普通的笔记本先有来源根（3.2）；`Grants` 与 `Refused` 是冻结的守卫加码的地方（`refusal.code` 是自由的字符串）。第 9 节"M11"一条里别的项（`notebook.change_mode` 给升级、根下的保留的标题与 `AGENTS`）00-M10 已写给 M11，这里只指向它。
+- **M11**：`docs: M10/P1 done` 新写 `docs/v0.1/M11-upgrade/handoffs/M10-mode.md`（`status: open`，照已有的三份的写法），收第 9 节"M11"一条里 P1 才发现的几项：`wiki.TemplatePages`、`wiki/domain` 的 `ContractOf` 是升级读的契约表；升级写成新模式后在同一个事务里调用 `ModeSubscriber`，事件流照样发 `mode`；`SetNotebookMode` 一次写模式与来源根，`notebooks_source_root_check` 许普通的笔记本先有来源根（3.2）；`Grants` 与 `Refused` 是冻结的守卫加码的地方（`refusal.code` 是自由的字符串）。第 9 节"M11"一条里别的项（`notebook.change_mode` 给升级、根下的保留的标题与 `AGENTS`）00-M10 已写给 M11，这里只指向它。
 - **M12（打磨）**：P1 没有新的项：树的种类的图标再多一组本就在 00-M10 的打磨的列表里（"页面树的图标再多一组"），由 M10 收尾时与 P2、P4 加的图标一起追加为 `M5-polish.md` 的第 33 条起；草稿的"`ModeOptions` 与 `AccessOptions` 合成一个组件"去掉（审查 C 的过度设计：两个约 50 行的单选，P2–P4 不加第三个就不必）。
 
 ## 9. 交给后面的 Phase
@@ -2497,7 +2497,7 @@ P1 完成，当且仅当：
 
 ## 10. 结果
 
-留给实施之后：每个 Step 一节（合并的提交、审查与修复、照实与设计不同之处、7.3 的变异的结果、CI 的各份与 e2e 的时间、模板的四个字节数）。
+四个 Step 的实施、审查与验证结果见 10.1–10.4；P1 完成的核对与后续移交见 10.5。
 
 ### 10.1 S1：模式与模板（服务端）（2026-10-25，合并 `45d086a1`）
 
@@ -2622,7 +2622,7 @@ P1 完成，当且仅当：
 - **变异**：最终代码头 `607e761e` 上，42–53（51 分 a/b/c）和新增 85、86 共 16 个变体、18 次 catcher 都在指定的运行时断言失败；每组原样通过、字节备份恢复、恢复后通过。45 同时跑模块和最后一跳，46 同时跑纯函数和真实编辑锁；52 跑网页，其余以竞态检测跑 Go。没有把编译、安装、超时或不点名的失败算作抓到。完整 Step 审查追加 ListJobs 丢 refusal 的 87、组合根漏登记模式守卫的 88，各由已有永久测试抓到，合计 18 个逻辑变体。A 的 85/88 overlay 是额外独立确认，不重复算成新变体。逐条表、计数口径与原始证据路径在审查记录。
 - **交错与实测**：新增五个 bootstrap 测试以 `-race -count=1` 一起实测，包 7.335s；后台第二批拒绝 2.22s、同码预检 1.44s、解析预算次序 1.28s、根下加序号 1.18s、纯函数 0.00s。第二份新增 1.44s，第三份 4.68s，乘 1.73 只作约 2.49s 与 8.10s 的估计核对；不代替 CI 的测试一步时间。三份各两次本机测量已通过：Go 包时间的平均分别为 304.811s、269.449s、272.732s，命令包装层的平均分别为 305.620s、270.262s、273.512s。这些是本机读数，不充作 CI 的 Test 步；三次 main CI（含失败的第二次）的 bootstrap 样本及所有两两平均已核对，按决定 33–34 转写在下一项及审查记录；最新完整运行全绿后才进入 S4。
 - **门禁与 CI**：各任务提交前与 B-M1 修复的常规门禁，以及两处契约提交精确 HEAD 的追溯 `gen-check` 记录见审查记录。受测头 `607e761e` 的本机全套门禁 13/13 通过，最后的状态输出为空；Vitest 166 文件/3,356 测试，e2e 286 通过。 分支 `origin/m10-p1-s3` 的 [CI 40311912868](https://github.com/open-nerve/NerveWiki/actions/runs/40311912868) 在精确头 `607e761e` 上十个作业全部 success；组合根三份 Test 步为 360s、392s、354s，e2e 步 190s。 S3 已于 2026-10-26 合并为 `a46c3d1d`（完整 SHA `a46c3d1d076a97e793fafaa6fb2984f02876b2b3`，父提交 `8e62b191`、`47945074`）。分支文档的 [CI 40318346909](https://github.com/open-nerve/NerveWiki/actions/runs/40318346909) 在精确头 `479450745b11ddabee8e2cc386482f9204d12556` 上十个作业全部 success；组合根第一、二、三份的 Test 步为 6:10、4:19、6:26（作业 6:37、4:36、6:48），E2E 步 3:13（作业 16:00）。合并后的首次 main的 [CI 40322279159](https://github.com/open-nerve/NerveWiki/actions/runs/40322279159) 在精确头 `a46c3d1d076a97e793fafaa6fb2984f02876b2b3` 上十个作业全部 success；组合根第一、二、三份的 Test 步为 7:14、6:33、4:08（作业 7:32、6:51、4:29），E2E 步 3:50（作业 4:39）。第二次 main 的 [CI 40325348498](https://github.com/open-nerve/NerveWiki/actions/runs/40325348498) 在精确头 `ca831b58bdf5c396648daa592b64820d4d93ad0b` 的 attempt 1 失败：仅 costs 的既有 M9 IndexItems 成本守卫超过 30 ms，七个作业通过，e2e/image 跳过。组合根第一、二、三份 Test 步为 306s、393s、402s（作业 326s、412s、421s），与首次 main 的 434s、393s、248s 的平均为 370s、393s、325s；这两次的分片均值低于 7:30，但当时整套 CI 尚未全绿，主持者未据此开 S4。Actions 重跑因 token 缺少权限被拒绝，未产生 attempt 2。决定 34 的新完整 push [CI 40328760108](https://github.com/open-nerve/NerveWiki/actions/runs/40328760108) 在精确头 `f2fe618040945923c5d32fb438d78632645210fd` 上十个作业全部 success（attempt 1；新运行，不是失败运行的 attempt 2）。组合根第一、二、三份 Test 为 300s、390s、396s，作业为 320s、415s、415s；E2E 步 223s、作业 757s。三次 main 的全部 Test 样本分别为第一份 434/306/300s、第二份 393/393/390s、第三份 248/402/396s；按运行 1+2、1+3、2+3 的每对平均依次为第一份 370/367/303s、第二份 393/391.5/391.5s、第三份 325/322/399s，全部低于 450s。三次平均为 346.667/392/348.667s，保留失败运行的成功分片，没有挑最快的一对。主持者在开 S4 前核对并在 `s3-evidence/postmerge-all-samples.json` 接受入口；本次按决定 33–34 转写全部已发生的记录。失败运行 `40325348498`、Actions 重跑的权限拒绝及原样本机诊断仍保留；M10 的 IndexItems 与 grep 稳定性收尾义务未关闭。这些是 S3 的样本，不代替 S4 合并之后的两次测量。
-- **后续**：S4 已从精确 main `f2fe6180` 开始，结果在 10.4；P1/M10 仍进行中。M5、M8、M9 移交的后续状态见各自处理进展；来源、去重、M11 与 M10 收尾没有在 S3 提前完成。
+- **后续**：S4 的结果见 10.4，P1 的完成核对见 10.5；M5、M8、M9 移交的状态见各自处理进展。来源、去重、M11 与 M10 收尾由后续阶段处理。
 
 ### 10.4 S4：网页（一）（2026-10-27，合并 `f261952f`，见 00 号文档第 12 节）
 
@@ -2641,15 +2641,33 @@ P1 完成，当且仅当：
 
 每提交检查、输入等价复用、警告与排除的开发过程失败见 [S4 审查记录](reviews/P1-S4-web-review.md)，不以任务门禁代替完整 Step 门禁。S3 的所有样本已在 10.3 转写。
 
-- **合并与 main CI**：S4 于 2026-10-27 合并为 `f261952f757bb486908210955f3b679a407b71e7`，第一父提交 `f2fe618040945923c5d32fb438d78632645210fd`，第二父提交为分支文档 `8556ad07576485e5ed6f902eb6137067ac324a4c`；合并树与该分支头完全相同。分支文档的 [CI 40367549675](https://github.com/open-nerve/NerveWiki/actions/runs/40367549675) 在精确头 `8556ad07576485e5ed6f902eb6137067ac324a4c` 上十个作业全部成功；bootstrap 1/2/3 的 Test 步为 393/384/247s（作业 415/405/269s），E2E 步 223s（作业 281s）。合并后的首次main的 [CI 40370315130](https://github.com/open-nerve/NerveWiki/actions/runs/40370315130) 在精确头 `f261952f757bb486908210955f3b679a407b71e7` 上十个作业全部成功；bootstrap 1/2/3 的 Test 步为 291/393/397s（作业 309/413/416s），E2E 步 229s（作业 280s）。第二次 main CI 由本次合并记录文档提交触发，当前尚待运行，两次平均尚未形成。主持者须测量并核对7.5–7.6，保存两个run ID、精确HEAD、各job/Test/E2E时间及平均，在P1完成文档中转写后再标P1完成；S3的样本不充作S4样本。
+- **合并与 main CI**：S4 于 2026-10-27 合并为 `f261952f757bb486908210955f3b679a407b71e7`，第一父提交 `f2fe618040945923c5d32fb438d78632645210fd`，第二父提交为分支文档 `8556ad07576485e5ed6f902eb6137067ac324a4c`；合并树与该分支头完全相同。分支文档的 [CI 40367549675](https://github.com/open-nerve/NerveWiki/actions/runs/40367549675) 在精确头 `8556ad07576485e5ed6f902eb6137067ac324a4c` 上十个作业全部成功；bootstrap 1/2/3 的 Test 步为 393/384/247s（作业 415/405/269s），E2E 步 223s（作业 281s）。合并后的首次main的 [CI 40370315130](https://github.com/open-nerve/NerveWiki/actions/runs/40370315130) 在精确头 `f261952f757bb486908210955f3b679a407b71e7` 上十个作业全部成功；bootstrap 1/2/3 的 Test 步为 291/393/397s（作业 309/413/416s），E2E 步 229s（作业 280s）。合并记录文档 `767b69a6aeae4ada095de137bf0996083fae193e` 触发的第二次 main [CI 40374066614](https://github.com/open-nerve/NerveWiki/actions/runs/40374066614)（attempt 1）十个作业全部成功；bootstrap 1/2/3 的 Test 步为 420/387/334s（作业448/431/361s），E2E 步 192s（作业 738s）。 两次 bootstrap Test 步平均依次为 355.5/390/365.5s，三份均严格低于 450s（7:30）。 两次都是精确 main 头的正常 push CI（attempt 1/1），各十个作业全部成功；主持者核对原始 run/jobs/timings 与 postmerge-pair.json 后接受；完整作业时间及原始证据存于树外的 S4 postmerge 记录。 S3 的样本不充作 S4 样本。
 
 | main 样本 | run / 精确 HEAD | bootstrap-1 Test / job | bootstrap-2 Test / job | bootstrap-3 Test / job | E2E step / job |
 |---|---|---|---|---|---|
 | 第一次 | `40370315130` / `f261952f757bb486908210955f3b679a407b71e7` | 291s / 309s | 393s / 413s | 397s / 416s | 229s / 280s |
-| 第二次 | 本合并记录文档提交的CI，尚待运行 | 待测 | 待测 | 待测 | 待测 |
-| 两次平均 | P1完成前核对并转写 | 待第二个样本 | 待第二个样本 | 待第二个样本 | 待第二个样本 |
+| 第二次 | `40374066614` / `767b69a6aeae4ada095de137bf0996083fae193e` | 420s / 448s | 387s / 431s | 334s / 361s | 192s / 738s |
+| 两次平均 | 仅比较 bootstrap 的 Test 步 | 355.5s | 390s | 365.5s | E2E 不设此平均门槛 |
 
-- **移交与状态**：P1/M10 仍进行中；M5 写入前端完成的进展但保持 open，到 P1 done 再关闭；M8/M9 保持 open。P1 done 再创建 M11 的 `M10-mode.md` 开放移交，不开展 M11。IndexItems 与 grep 的稳定性义务留给 M10 收尾。
+- **移交与状态**：P1 已完成，核对见 10.5；M10 继续进行。M5 模式事件移交已改为 done，M8/M9 保持 open；给 M11 的[模式契约移交](../M11-upgrade/handoffs/M10-mode.md)已创建并保持 open，不开展 M11。IndexItems 与 grep 的稳定性义务留给 M10 收尾。
+
+### 10.5 P1 完成（2026-10-27）
+
+P1 的四个 Step 已合并：S1 `45d086a1`、S2 `bad859c0`、S3 `a46c3d1d`、S4 `f261952f`。第 8 节的完成条件已核对；各 Step 的实施修正、审查与核对、门禁及变异证据在 10.1–10.4 和四份审查记录里。S4 最终代码为 `13ee0bc8`，B-I1 的六个永久测试补齐后三方审查的处置与核对见 [S4 审查](reviews/P1-S4-web-review.md)，没有未处理的 Important 或 Minor。
+
+S4 的实际合并为 `f261952f757bb486908210955f3b679a407b71e7`（2026-10-27；父提交 `f2fe618040945923c5d32fb438d78632645210fd`、`8556ad07576485e5ed6f902eb6137067ac324a4c`），合并记录文档为 `767b69a6aeae4ada095de137bf0996083fae193e`。合并后的完整 CI 样本如下；Test 步与作业时间分开：
+
+| main 样本 | run / 精确 HEAD | bootstrap-1 Test / job | bootstrap-2 Test / job | bootstrap-3 Test / job | E2E step / job |
+|---|---|---|---|---|---|
+| 第一次 | `40370315130` / `f261952f757bb486908210955f3b679a407b71e7` | 291s / 309s | 393s / 413s | 397s / 416s | 229s / 280s |
+| 第二次 | `40374066614` / `767b69a6aeae4ada095de137bf0996083fae193e` | 420s / 448s | 387s / 431s | 334s / 361s | 192s / 738s |
+| 两次平均 | 仅比较 bootstrap 的 Test 步 | 355.5s | 390s | 365.5s | E2E 不设此平均门槛 |
+
+两次 bootstrap Test 步平均依次为 355.5/390/365.5s，三份均严格低于 450s（7:30）。 两次都是精确 main 头的正常 push CI（attempt 1/1），各十个作业全部成功；主持者核对原始 run/jobs/timings 与 postmerge-pair.json 后接受；完整作业时间及原始证据存于树外的 S4 postmerge 记录。 S3 的三次 main 运行（含失败 `40325348498`）与所有样本的处置已在 10.3 和 S3 审查转写，没有用 S4 的分支运行代替合并后样本。
+
+- [M5 模式事件移交](handoffs/M5-events.md) 已关闭：服务端的 `mode`/`EventMode` 与网页实际处理表的最后一跳均完成。
+- 新建给 M11 的[模式契约移交](../M11-upgrade/handoffs/M10-mode.md)，状态为 open，记录模板契约、写行后同事务的订阅者、原子模式/来源根写入、普通模式可预先指定来源根，以及授权备忘与自由字符串拒绝码。这里只移交，不开始 M11。
+- M8/M9 移交保持 open，其余来源规则、去重、健康度、虚拟文件与 playbook 按第 9 节交给 P2–P5；P2 尚未开始。M10 仍进行中，IndexItems 与 grep 的稳定性核对留在 M10 收尾。
 
 ## 附录：核对过的代码
 
