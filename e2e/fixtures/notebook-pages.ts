@@ -90,6 +90,15 @@ export async function changeAccessWith(page: Page, id: string, access: string): 
   return answer;
 }
 
+/** Confirms a downgrade on the notebook's general page, opening its dialog if it is not already shown. */
+export async function downgradeWith(page: Page): Promise<void> {
+  const dialog = page.getByRole("alertdialog", { name: /^Downgrade “.+” to a standard notebook\?$/ });
+  if (!(await dialog.isVisible())) {
+    await page.getByRole("button", { name: "Downgrade to a standard notebook…", exact: true }).click();
+  }
+  await dialog.getByRole("button", { name: "Downgrade", exact: true }).click();
+}
+
 /** Deletes the notebook id named name on its general page once its name is typed; resolves the answer's status. */
 export async function deleteNotebookWith(page: Page, id: string, name: string): Promise<number> {
   await page.getByRole("button", { name: "Delete notebook", exact: true }).click();

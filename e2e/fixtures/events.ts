@@ -1,6 +1,14 @@
 import { setTimeout as sleep } from "node:timers/promises";
 
-import type { ApiClient, EventHello, EventLinks, EventLock, EventPages, EventReset } from "@nervewiki/api-client";
+import type {
+  ApiClient,
+  EventHello,
+  EventLinks,
+  EventLock,
+  EventMode,
+  EventPages,
+  EventReset,
+} from "@nervewiki/api-client";
 import { expect, type BrowserContext, type Page, type Request } from "@playwright/test";
 
 import { bearer } from "./auth";
@@ -17,6 +25,7 @@ interface FrameData {
   pages: EventPages;
   lock: EventLock;
   links: EventLinks;
+  mode: EventMode;
   reset: EventReset;
 }
 

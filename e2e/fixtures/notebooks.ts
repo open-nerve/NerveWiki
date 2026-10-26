@@ -79,6 +79,14 @@ export async function updateNotebook(api: ApiClient, credential: string, id: str
   });
 }
 
+/** credential's downgrade of the notebook id, as the API answers it, including a refusal. */
+export async function downgradeNotebook(api: ApiClient, credential: string, id: string) {
+  return api.POST("/api/v0/notebooks/{notebook_id}/downgrade", {
+    params: { path: { notebook_id: id } },
+    headers: bearer(credential),
+  });
+}
+
 /** credential's deletion of the notebook id, as the API answers it. */
 export async function deleteNotebook(api: ApiClient, credential: string, id: string) {
   return api.DELETE("/api/v0/notebooks/{notebook_id}", {
