@@ -70,6 +70,12 @@ export const zhCN: Messages = {
   "notebooks.nameHint": '导出时它是文件夹名：不能包含 / \\ : * ? " < > | # ^ [ ]，不能以点开头或结尾。',
   "notebooks.submit": "新建",
   "notebooks.cancel": "取消",
+  "notebooks.modeLegend": "模式",
+  "notebooks.modeStandard": "普通笔记本",
+  "notebooks.modeStandardHint": "你们自己写、自己整理的页。",
+  "notebooks.modeLLMWiki": "LLM Wiki",
+  "notebooks.modeLLMWikiHint":
+    "agent 依据你们添加的来源维护一本 wiki。它从两页开始，用这个页面的语言写成：放来源的 raw，写约定的 AGENTS。",
   "access.legend": "在工作区里的开放程度",
   "access.none": "私密",
   "access.noneHint": "只有它的成员看得到。",

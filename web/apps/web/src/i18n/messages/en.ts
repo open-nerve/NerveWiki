@@ -71,6 +71,12 @@ export const en = {
   "notebooks.nameHint": 'An export names a folder after it: no / \\ : * ? " < > | # ^ [ ], and no dot at either end.',
   "notebooks.submit": "Create",
   "notebooks.cancel": "Cancel",
+  "notebooks.modeLegend": "Mode",
+  "notebooks.modeStandard": "Standard notebook",
+  "notebooks.modeStandardHint": "Pages you write and organize yourselves.",
+  "notebooks.modeLLMWiki": "LLM Wiki",
+  "notebooks.modeLLMWikiHint":
+    "Agents keep a wiki from the sources you add. It starts with two pages in this page's language: raw for the sources, AGENTS for the rules.",
   "access.legend": "Workspace access",
   "access.none": "Private",
   "access.noneHint": "Only its members see it.",

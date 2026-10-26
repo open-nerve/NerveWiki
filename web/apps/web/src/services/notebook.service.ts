@@ -2,6 +2,7 @@ import type {
   ApiClient,
   Notebook,
   NotebookCreate,
+  NotebookMode,
   NotebookRole,
   NotebookUpdate,
   WorkspaceAccess,
@@ -9,7 +10,7 @@ import type {
 
 import { unwrap } from "./api";
 
-export type { Notebook, NotebookCreate, NotebookRole, NotebookUpdate, WorkspaceAccess };
+export type { Notebook, NotebookCreate, NotebookMode, NotebookRole, NotebookUpdate, WorkspaceAccess };
 
 /**
  * NotebookService lists a workspace's notebooks the account sees, creates,

@@ -143,11 +143,24 @@ function creationServer(answer?: Answer, list: Notebook[] = []) {
   const sent: unknown[] = [];
   const app = labApp(list, "admin", {
     "POST /api/v0/workspaces/lab/notebooks": async (request) => {
-      const body = (await request.json()) as { name: string; workspace_access: Notebook["workspace_access"] };
+      const body = (await request.json()) as {
+        name: string;
+        workspace_access: Notebook["workspace_access"];
+        mode?: Notebook["mode"];
+      };
       sent.push(body);
       return (
         answer?.(request) ??
-        json({ ...notebookJSON, id: zeta.id, name: body.name, workspace_access: body.workspace_access }, 201)
+        json(
+          {
+            ...notebookJSON,
+            id: zeta.id,
+            name: body.name,
+            workspace_access: body.workspace_access,
+            mode: body.mode ?? "standard",
+          },
+          201
+        )
       );
     },
   });
@@ -170,6 +183,9 @@ test("a notebook created opens on its home, arrived at, and the left column list
 
   const name = within(dialog).getByLabelText("Name");
   expect(within(dialog).getByRole("radio", { name: "Private" })).toHaveProperty("checked", true);
+  const modes = within(within(dialog).getByRole("group", { name: "Mode" }));
+  expect(modes.getByRole("radio", { name: "Standard notebook" })).toHaveProperty("checked", true);
+  expect(modes.getByRole("radio", { name: "LLM Wiki" })).toHaveProperty("checked", false);
   expect(name.getAttribute("aria-describedby")).not.toBeNull();
   await user.type(name, "  Field notes ");
   await user.click(within(dialog).getByRole("radio", { name: "Workspace can read" }));
@@ -179,7 +195,7 @@ test("a notebook created opens on its home, arrived at, and the left column list
   await user.click(within(dialog).getByRole("button", { name: "Create" }));
 
   const heading = await screen.findByRole("heading", { level: 1, name: "Field notes" });
-  expect(sent).toEqual([{ name: "Field notes", workspace_access: "viewer" }]);
+  expect(sent).toEqual([{ name: "Field notes", workspace_access: "viewer", mode: "standard", template_locale: "en" }]);
   expect(router.state.location.pathname).toBe(`/lab/notebooks/${zeta.id}`);
   expect(screen.queryByRole("dialog")).toBeNull();
   // The dialog gives the focus back on a timer: the heading keeps it.
@@ -189,6 +205,33 @@ test("a notebook created opens on its home, arrived at, and the left column list
   expect(focused.map((element) => element.textContent)).not.toContain("New notebook");
   const link = within(await within(await nav()).findByRole("list", { name: "Team notebooks" })).getByRole("link");
   expect([link.textContent, link.getAttribute("aria-current")]).toEqual(["Field notes", "page"]);
+});
+
+test("a Chinese preference creates an LLM Wiki with its Chinese template", async () => {
+  const user = userEvent.setup();
+  const { app, sent } = creationServer(undefined, [plans]);
+  expect(navigator.language).toBe("en-US");
+  expect(navigator.languages).toContain("en-US");
+  app.preferences.setLocale("zh-CN");
+  const { router } = renderApp(`/lab/notebooks/${plans.id}`, app);
+  await screen.findByRole("heading", { level: 1, name: "Plans" });
+  await user.click(within(await nav()).getByRole("button", { name: "新建笔记本" }));
+  const dialog = await screen.findByRole("dialog", { name: "新建笔记本" });
+
+  await user.type(within(dialog).getByLabelText("名称"), "研究笔记");
+  await user.click(within(dialog).getByRole("radio", { name: "LLM Wiki" }));
+  await user.click(within(dialog).getByRole("button", { name: "新建" }));
+
+  const heading = await screen.findByRole("heading", { level: 1, name: "研究笔记" });
+  expect(sent).toEqual([{ name: "研究笔记", workspace_access: "none", mode: "llm_wiki", template_locale: "zh-CN" }]);
+  expect(router.state.location.pathname).toBe(`/lab/notebooks/${zeta.id}`);
+  expect(screen.queryByRole("dialog")).toBeNull();
+  await waitFor(() => expect(document.activeElement).toBe(heading));
+  expect(
+    within(await nav())
+      .getByRole("link", { name: "研究笔记" })
+      .getAttribute("aria-current")
+  ).toBe("page");
 });
 
 test.each([

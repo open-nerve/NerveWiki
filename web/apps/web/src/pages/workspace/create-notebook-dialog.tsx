@@ -9,10 +9,11 @@ import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from "../../components/ui/dialog";
 import { useT } from "../../i18n/i18n";
-import type { Notebook, WorkspaceAccess } from "../../services/notebook.service";
+import type { Notebook, NotebookMode, WorkspaceAccess } from "../../services/notebook.service";
 import type { Workspace } from "../../services/workspace.service";
-import { useNotebooks } from "../../stores/context";
+import { useNotebooks, useStore } from "../../stores/context";
 import { AccessOptions } from "../notebook/access-options";
+import { ModeOptions } from "./mode-options";
 
 type CreateNotebookDialogProps = {
   workspace: Workspace;
@@ -77,7 +78,7 @@ export function CreateNotebookDialog({ workspace, trigger, here }: CreateNoteboo
   );
 }
 
-/** The fields shown: a problem with the access, which the radio buttons cannot make, goes above the form. */
+/** The fields shown: a problem with the access, mode or language, which the choices cannot make, goes above the form. */
 const fields = ["name"] as const;
 
 type CreateNotebookFormProps = {
@@ -89,8 +90,10 @@ type CreateNotebookFormProps = {
 
 function CreateNotebookForm({ workspace, creating, cancel }: CreateNotebookFormProps) {
   const notebooks = useNotebooks(workspace);
+  const { preferences } = useStore();
   const t = useT();
   const [name, setName] = useState("");
+  const [mode, setMode] = useState<NotebookMode>("standard");
   const [access, setAccess] = useState<WorkspaceAccess>("none");
   const { ref, sending, banner, problemOf, submit } = useForm(fields, { fieldTexts: notebookNameTexts });
 
@@ -99,7 +102,14 @@ function CreateNotebookForm({ workspace, creating, cancel }: CreateNotebookFormP
     const problem = notebookNameProblem(name);
     void submit(problem === undefined ? {} : { name: problem }, async () => {
       const arrive = creating();
-      arrive(await notebooks.create({ name: name.trim(), workspace_access: access }));
+      arrive(
+        await notebooks.create({
+          name: name.trim(),
+          workspace_access: access,
+          mode,
+          template_locale: preferences.locale,
+        })
+      );
     });
   }
 
@@ -117,6 +127,7 @@ function CreateNotebookForm({ workspace, creating, cancel }: CreateNotebookFormP
         hint={t("notebooks.nameHint")}
         onChange={(event) => setName(event.target.value)}
       />
+      <ModeOptions value={mode} onChange={setMode} />
       <AccessOptions value={access} onChange={setAccess} />
       <div className="flex justify-end gap-2">
         <Button variant="outline" onClick={cancel}>
