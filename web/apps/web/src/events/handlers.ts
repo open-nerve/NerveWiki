@@ -1,17 +1,17 @@
 import { createContext } from "react";
 import { unstable_serialize, type Cache, type ScopedMutator } from "swr";
 
-import type { EventLinks, EventLock, EventPages } from "../services/event.service";
+import type { EventLinks, EventLock, EventMode, EventPages } from "../services/event.service";
 import type { PageContent, PageVersionContent, PageView } from "../services/page.service";
 import type { StreamEvent } from "./channel";
 import type { Refresher } from "./refresher";
 
 // The app's handlers of the stream's events, by type (M5 design 8): each
 // has SWR read again what an event of its type changed, which only what
-// is mounted does. M5 has pages and lock, M6 links; a later M adds its
-// type here (M10 and M11 a notebook's mode), the stream and the tabs
-// passing on a type they do not know with its data. M8 reads a page's
-// versions again through the types there are.
+// is mounted does. M5 has pages and lock, M6 links, M10 mode (M11's
+// upgrade sends it too); a later M adds its type here, the stream and
+// the tabs passing on a type they do not know with its data. M8 reads
+// a page's versions again through the types there are.
 
 /**
  * EventContext is what a handler has besides the event: SWR's cache and
@@ -269,6 +269,16 @@ const lockChanged: EventHandler = (data, { cache, mutate, stopped }) => {
 };
 
 /**
+ * modeChanged reads the workspace's notebooks again (M10 design 4.5): a
+ * notebook's mode, and with it what its pages show, comes from the list,
+ * which is keyed by its workspace (v0.1 design 13.2, item 15). Only that:
+ * a downgrade writes no page.
+ */
+function modeChanged(data: unknown, { mutate }: EventContext): void {
+  void mutate(["notebooks", (data as EventMode).workspace_id]);
+}
+
+/**
  * eventHandlers are the app's handlers by event type. The app's
  * composition root (main.tsx) gives them to the event stream through
  * EventHandlers; without it an event is handled by none.
@@ -277,6 +287,7 @@ export const eventHandlers: ReadonlyMap<string, EventHandler> = new Map([
   ["pages", pagesChanged],
   ["lock", lockChanged],
   ["links", linksChanged],
+  ["mode", modeChanged],
 ]);
 
 export const EventHandlers = createContext<ReadonlyMap<string, EventHandler>>(new Map());
