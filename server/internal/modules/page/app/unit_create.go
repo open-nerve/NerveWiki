@@ -22,6 +22,8 @@ type PageDraft struct {
 	Position Position
 	Content  string
 	Facts    Facts
+	// Merged is supplied only by an internal batch; nil is a single creation.
+	Merged *int
 }
 
 // CreatePage creates the page d at revision 1 of its content. 422 for a title
@@ -51,14 +53,14 @@ func (u *Unit) CreatePage(ctx context.Context, d PageDraft) (domain.Node, error)
 	if domain.Depth(ancestors) > domain.MaxDepth {
 		return domain.Node{}, domain.ErrTooDeep
 	}
-	n, _, err := u.insertPage(ctx, d, title, siblings, after)
+	n, _, err := u.insertPage(ctx, d, title, siblings, after, ancestors)
 	return n, err
 }
 
 // insertPage writes the page d, titled title, among siblings, right after
 // the one at index after: its checks passed. It answers the page, and the
 // siblings' orders when it renumbered them (nil when it did not).
-func (u *Unit) insertPage(ctx context.Context, d PageDraft, title domain.Title, siblings []domain.Node, after int) (
+func (u *Unit) insertPage(ctx context.Context, d PageDraft, title domain.Title, siblings []domain.Node, after int, line []domain.Ancestor) (
 	domain.Node, []float64, error,
 ) {
 	order, renumbered, renumber := u.placeAmong(siblings, after)
@@ -73,6 +75,16 @@ func (u *Unit) insertPage(ctx context.Context, d PageDraft, title domain.Title, 
 	state := n.State()
 	content := u.content(n.ID, d.Content, 1)
 	step := u.step(domain.OpCreate, domain.Change{NodeID: n.ID, After: &state, Revision: content.Revision, Facts: d.Facts})
+	step.Kinds = map[uuid.UUID]domain.Kind{n.ID: n.Kind}
+	step.Lines = &StepLines{After: line}
+	merged := 0
+	if content.ByteSize > 0 {
+		merged = 1
+	}
+	if d.Merged != nil {
+		merged = *d.Merged
+	}
+	step.Content = &StepContent{Hash: content.Hash, Bytes: content.ByteSize, Merged: merged}
 	err := u.apply(ctx, step, true, func(ctx context.Context) error {
 		if err := renumber(ctx); err != nil {
 			return err

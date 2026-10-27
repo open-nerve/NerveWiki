@@ -91,6 +91,10 @@ func (u *Unit) Revert(ctx context.Context, r RevertRead) (RevertDone, error) {
 	case plan.Steps() > r.MaxSteps:
 		return RevertDone{}, domain.ErrRevertTooLarge
 	}
+	state, err = reads.sourceLines(ctx, state, u.write.Notebook)
+	if err != nil {
+		return RevertDone{}, err
+	}
 	guard := NewModeGuard(u.w.d.Auth)
 	step := Step{Write: u.write}
 	ask := func(action shared.Action) error { return u.write.Grants.Ask(ctx, action, guard.decide(step, action)) }
@@ -118,7 +122,7 @@ func (u *Unit) Revert(ctx context.Context, r RevertRead) (RevertDone, error) {
 				keys[i] = shared.TitleKey(op.States[i].Name)
 				facts[m.Node.ID] = r.Parsed[refOf(m.Node.ID, state.Hashes[domain.VersionRef{NodeID: m.Node.ID, Revision: m.Revision}])].Facts
 			}
-			err = u.bringBack(ctx, op.Group, op.DeletedAt, op.States, keys, facts, func(context.Context) error { return nil })
+			err = u.bringBack(ctx, op.Group, op.DeletedAt, op.States, keys, facts, func(context.Context) error { return nil }, nil)
 			done.Restored++
 		case domain.RevertContent:
 			parsed := r.Parsed[refOf(op.NodeID, op.Hash)]
@@ -159,7 +163,7 @@ func (u *Unit) place(ctx context.Context, op domain.RevertOp) error {
 			n.Name, n.NameKey, write = op.To.Name, shared.TitleKey(op.To.Name), u.w.d.NodeWriter.RelocateNode
 			op.Rename = false
 		}
-		if err := u.moveSubtree(ctx, sub, n, func(context.Context) error { return nil }, write); err != nil {
+		if err := u.moveSubtree(ctx, sub, n, func(context.Context) error { return nil }, write, nil); err != nil {
 			return taken(op.NodeID, err)
 		}
 	}
@@ -167,7 +171,9 @@ func (u *Unit) place(ctx context.Context, op domain.RevertOp) error {
 		renamed := n
 		renamed.Name, renamed.NameKey, renamed.UpdatedBy, renamed.UpdatedAt = op.To.Name, shared.TitleKey(op.To.Name), u.write.By, u.write.At
 		before, after := n.State(), renamed.State()
-		err := u.apply(ctx, u.step(domain.OpRename, domain.Change{NodeID: n.ID, Before: &before, After: &after}), true,
+		step := u.step(domain.OpRename, domain.Change{NodeID: n.ID, Before: &before, After: &after})
+		step.Kinds = map[uuid.UUID]domain.Kind{n.ID: n.Kind}
+		err := u.apply(ctx, step, true,
 			func(ctx context.Context) error { return u.w.d.NodeWriter.RenameNode(ctx, renamed) })
 		if err != nil {
 			return taken(op.NodeID, err)
@@ -518,9 +524,8 @@ func (u *Unit) RevertBatch(ctx context.Context, r RevertPart) (BatchDone, error)
 	}
 	var done BatchDone
 	aside := 0
-	begun := map[int32]bool{}
-	for i, s := range steps {
-		op := ops[i]
+	for _, action := range revertActions(steps) {
+		s, op := steps[action.index], ops[action.index]
 		var err error
 		switch s.kind {
 		case domain.RevertPlace:
@@ -534,12 +539,12 @@ func (u *Unit) RevertBatch(ctx context.Context, r RevertPart) (BatchDone, error)
 			sub, err = u.Delete(ctx, s.node)
 			done.Deleted += len(sub)
 		case domain.RevertRestore:
-			if begun[s.group] {
-				continue
+			members := make([]revertStep, len(action.members))
+			for i, index := range action.members {
+				members[i] = steps[index]
 			}
-			begun[s.group] = true
 			var n, skipped int
-			n, skipped, err = u.restoreGroup(ctx, r, groupSteps(steps[i:], s.group), op, restoring, trashed)
+			n, skipped, err = u.restoreGroup(ctx, r, members, op, restoring, trashed)
 			done.Restored, done.Skipped = done.Restored+n, done.Skipped+skipped
 		case domain.RevertContent:
 			parsed := r.parsed[refOf(s.node, op.Hash)]
@@ -550,6 +555,7 @@ func (u *Unit) RevertBatch(ctx context.Context, r RevertPart) (BatchDone, error)
 		if err != nil {
 			return BatchDone{}, revertDefect(s, err)
 		}
+
 	}
 	done.Nodes = done.PutBack + aside + done.Deleted + done.Restored + done.Written
 	return done, nil
@@ -579,18 +585,6 @@ func starNamed(conflicts []domain.RevertConflict, steps []revertStep) []domain.R
 		}
 	}
 	return conflicts
-}
-
-// groupSteps are the steps of the group g among steps, from its first:
-// its members in the batch, in its pre-order, whatever steps come between.
-func groupSteps(steps []revertStep, g int32) []revertStep {
-	var out []revertStep
-	for _, s := range steps {
-		if s.kind == domain.RevertRestore && s.group == g {
-			out = append(out, s)
-		}
-	}
-	return out
 }
 
 // ops are the plan's steps as the domain checks them in their order
@@ -690,6 +684,7 @@ type restoring struct {
 	states   map[uuid.UUID]domain.TreeState
 	skipped  map[uuid.UUID]bool
 	contents []writtenContent
+	lines    map[uuid.UUID][]domain.Ancestor
 }
 
 // continuation checks the batch's members of the groups whose first steps
@@ -705,6 +700,9 @@ func (u *Unit) continuation(ctx context.Context, r RevertPart, conts []revertSte
 	versions map[uuid.UUID]domain.ChangesetVersion,
 ) (restoring, error) {
 	out := restoring{members: map[uuid.UUID]domain.TrashMember{}, states: map[uuid.UUID]domain.TreeState{}, skipped: map[uuid.UUID]bool{}}
+	if u.write.Notebook.Mode == domain.ModeLLMWiki {
+		out.lines = map[uuid.UUID][]domain.Ancestor{}
+	}
 	if len(conts) == 0 {
 		return out, nil
 	}
@@ -721,7 +719,7 @@ func (u *Unit) continuation(ctx context.Context, r RevertPart, conts []revertSte
 	conflict := func(id uuid.UUID, name string, reason domain.ConflictReason, holder *uuid.UUID) {
 		conflicts, conflicted[id] = append(conflicts, domain.RevertConflict{NodeID: id, Name: name, Reason: reason, HolderID: holder}), true
 	}
-	places := contPlaces{u: u, kids: map[uuid.UUID]map[string]uuid.UUID{}, depths: map[uuid.UUID]int{}}
+	places := contPlaces{u: u, kids: map[uuid.UUID]map[string]uuid.UUID{}, depths: map[uuid.UUID]int{}, lines: out.lines}
 	var refs []domain.VersionRef
 	for _, s := range conts {
 		g := r.plan.groups[s.group]
@@ -809,6 +807,7 @@ type contPlaces struct {
 	u      *Unit
 	kids   map[uuid.UUID]map[string]uuid.UUID
 	depths map[uuid.UUID]int
+	lines  map[uuid.UUID][]domain.Ancestor
 }
 
 // check is why the node id, of kind, cannot go back to before: its parent
@@ -823,7 +822,8 @@ func (c contPlaces) check(ctx context.Context, id uuid.UUID, kind domain.Kind, b
 	if !ok {
 		kids = map[string]uuid.UUID{}
 		if !parentBack {
-			if _, err := c.u.w.d.Nodes.FindNodeIn(ctx, c.u.write.NotebookID, parent); errors.Is(err, ErrNotFound) {
+			n, err := c.u.w.d.Nodes.FindNodeIn(ctx, c.u.write.NotebookID, parent)
+			if errors.Is(err, ErrNotFound) {
 				return domain.ConflictParentGone, nil, nil
 			} else if err != nil {
 				return "", nil, err
@@ -840,6 +840,9 @@ func (c contPlaces) check(ctx context.Context, id uuid.UUID, kind domain.Kind, b
 				kids[s.NameKey] = s.ID
 			}
 			c.depths[parent] = domain.Depth(ancestors)
+			if c.lines != nil {
+				c.lines[parent] = append(ancestors, domain.Ancestor{ID: n.ID, Name: n.Name})
+			}
 		}
 		c.kids[parent] = kids
 	}
@@ -911,7 +914,11 @@ func (u *Unit) restoreGroup(ctx context.Context, r RevertPart, steps []revertSte
 	for i, m := range members {
 		keys[i], facts[m.Node.ID] = shared.TitleKey(states[i].Name), r.parsed[refOf(m.Node.ID, trashed[m.Node.ID])].Facts
 	}
-	if err := u.bringBack(ctx, members, deletedAt, states, keys, facts, func(context.Context) error { return nil }); err != nil {
+	var lines *StepLines
+	if from > 0 && cont.lines != nil {
+		lines = &StepLines{AfterParents: cont.lines}
+	}
+	if err := u.bringBack(ctx, members, deletedAt, states, keys, facts, func(context.Context) error { return nil }, lines); err != nil {
 		return 0, 0, err
 	}
 	return len(members), skipped, u.markFrontier(ctx, g.nodes, domain.Frontier(g.nodes, from, to, func(j int) bool { return back[j-from] }), deletedAt)

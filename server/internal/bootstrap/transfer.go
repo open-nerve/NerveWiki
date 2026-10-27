@@ -117,9 +117,9 @@ func (t transferTree) CheckRestore(ctx context.Context, notebookID, nodeID uuid.
 }
 
 func (t transferTree) CheckRevert(ctx context.Context, notebookID, changesetID uuid.UUID, message *string,
-	admit func(context.Context) error,
+	admit func(context.Context) error, batches transfer.JobBatches,
 ) (string, error) {
-	return t.tree.CheckRevert(ctx, notebookID, changesetID, message, admit)
+	return t.tree.CheckRevert(ctx, notebookID, changesetID, message, admit, pageJobBatches(batches))
 }
 
 func (t transferTree) PlanRestore(ctx context.Context, spec transfer.JobSpec, nodeID uuid.UUID) (transfer.JobPlan, error) {
@@ -130,8 +130,8 @@ func (t transferTree) PlanRestore(ctx context.Context, spec transfer.JobSpec, no
 	return planOf(p), nil
 }
 
-func (t transferTree) PlanRevert(ctx context.Context, spec transfer.JobSpec, changesetID uuid.UUID) (transfer.JobPlan, error) {
-	p, err := t.tree.PlanRevert(ctx, jobSpec(spec), changesetID)
+func (t transferTree) PlanRevert(ctx context.Context, spec transfer.JobSpec, changesetID uuid.UUID, batches transfer.JobBatches) (transfer.JobPlan, error) {
+	p, err := t.tree.PlanRevert(ctx, jobSpec(spec), changesetID, pageJobBatches(batches))
 	if err != nil {
 		return nil, treeError(err)
 	}
@@ -283,4 +283,18 @@ func (a transferAttachments) Attach(ctx context.Context, f transfer.File, o tran
 
 func (a transferAttachments) Drop(ctx context.Context, f transfer.File) error {
 	return a.blobs.Drop(ctx, asset.File(f))
+}
+
+// pageJobBatches preserves nil and converts only the public scheduling weights.
+func pageJobBatches(batches transfer.JobBatches) page.JobBatches {
+	if batches == nil {
+		return nil
+	}
+	return func(steps []page.JobStep) [][2]int {
+		out := make([]transfer.JobStep, len(steps))
+		for i, s := range steps {
+			out[i] = transfer.JobStep(s)
+		}
+		return batches(out)
+	}
 }

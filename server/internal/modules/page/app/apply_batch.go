@@ -666,7 +666,7 @@ func (a *batchAttempt) create(ctx context.Context, u *Unit, i int) error {
 	for d, c := range ps.Created {
 		draft := PageDraft{ID: c.ID, ParentID: c.ParentID, Title: c.Title, Facts: a.empty}
 		if d == len(ps.Created)-1 {
-			draft.Content, draft.Facts = pg.Content, a.facts[pg.ID]
+			draft.Content, draft.Facts, draft.Merged = pg.Content, a.facts[pg.ID], &pg.Merged
 		}
 		n, err := u.CreatePage(ctx, draft)
 		if err != nil {
@@ -724,7 +724,7 @@ func (a *batchAttempt) content(ctx context.Context, u *Unit, i int) error {
 	if lock.Revision != pg.Revision {
 		return a.differs(i, "version", nil, &domain.VersionToken{Node: at.Node.ID, Revision: lock.Revision})
 	}
-	revision, err := u.WriteContent(ctx, ContentWrite{NodeID: at.Node.ID, Content: pg.Content, Facts: a.facts[pg.ID], Base: lock.Revision})
+	revision, err := u.WriteContent(ctx, ContentWrite{NodeID: at.Node.ID, Content: pg.Content, Facts: a.facts[pg.ID], Base: lock.Revision, Merged: &pg.Merged})
 	switch {
 	case errors.Is(err, domain.ErrRevisionMismatch):
 		// The row is locked and its revision compared: a defect, no 409,

@@ -198,7 +198,7 @@ func (t tree) CheckRestore(ctx context.Context, notebook, id uuid.UUID) (string,
 	return "Box", t.refused(ctx, notebook, id)
 }
 
-func (t tree) CheckRevert(ctx context.Context, notebook, id uuid.UUID, message *string, admit func(context.Context) error) (string, error) {
+func (t tree) CheckRevert(ctx context.Context, notebook, id uuid.UUID, message *string, admit func(context.Context) error, _ app.JobBatches) (string, error) {
 	if message != nil && *message == "" {
 		return "", shared.Invalid(shared.FieldError{Field: "message", Code: shared.FieldTooShort, Message: "is empty"})
 	}
@@ -231,7 +231,7 @@ func (tree) Import(context.Context, app.ImportSpec, func(context.Context, app.Im
 func (tree) PlanRestore(context.Context, app.JobSpec, uuid.UUID) (app.JobPlan, error) {
 	panic("tree: no job runs here")
 }
-func (tree) PlanRevert(context.Context, app.JobSpec, uuid.UUID) (app.JobPlan, error) {
+func (tree) PlanRevert(context.Context, app.JobSpec, uuid.UUID, app.JobBatches) (app.JobPlan, error) {
 	panic("tree: no job runs here")
 }
 

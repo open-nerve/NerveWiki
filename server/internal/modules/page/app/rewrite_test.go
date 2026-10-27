@@ -133,7 +133,7 @@ func TestSourceRevertsCarryRewriteAcrossBatches(t *testing.T) {
 					undone = got.ChangesetID
 				} else {
 					w, spec := f.jobs(now(), 0, 0), f.jobSpec()
-					plan, err := w.PlanRevert(f.asJob(), spec, c.ID)
+					plan, err := w.PlanRevert(f.asJob(), spec, c.ID, allJobBatches)
 					if err != nil {
 						t.Fatal(err)
 					}

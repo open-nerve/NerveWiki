@@ -50,7 +50,7 @@ func (w *AssetWrites) Check(ctx context.Context, a NewAsset) error {
 	if err := w.writer.Allowed(ctx, w.spec(a)); err != nil {
 		return err
 	}
-	title, _, err := assetPlace(ctx, w.nodes, a.NotebookID, a.ParentID, a.Name)
+	title, _, parent, err := assetPlace(ctx, w.nodes, a.NotebookID, a.ParentID, a.Name)
 	if err != nil {
 		return err
 	}
@@ -62,8 +62,20 @@ func (w *AssetWrites) Check(ctx context.Context, a NewAsset) error {
 		return domain.ErrNotebookNotFound
 	}
 	state := domain.TreeState{ParentID: a.ParentID, Name: title.Name}
-	verdict := domain.CheckContract(notebook, domain.FactsOf(domain.OpCreate, domain.ChangesetEdit,
-		[]domain.Change{{NodeID: uuid.UUID{}, After: &state}}))
+	facts := domain.FactsOf(domain.OpCreate, domain.ChangesetEdit, []domain.Change{{NodeID: uuid.UUID{}, After: &state}})
+	facts.Nodes[0].Kind = domain.KindAsset
+	if notebook.Mode == domain.ModeLLMWiki {
+		var line []domain.Ancestor
+		if parent != nil {
+			line, err = w.nodes.Ancestors(ctx, parent.ID)
+			if err != nil {
+				return err
+			}
+			line = append(line, domain.Ancestor{ID: parent.ID, Name: parent.Name})
+		}
+		facts = domain.SourceFacts(facts, notebook.SourceRootID, nil, line, nil)
+	}
+	verdict := domain.CheckContract(notebook, facts)
 	if verdict.Err != nil {
 		return domain.Refuse(verdict.Err, verdict.NodeID)
 	}

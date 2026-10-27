@@ -76,3 +76,6 @@ func (p JobPlan) RevertSteps() ([]RevertStep, [][]domain.GroupNode) {
 	}
 	return steps, groups
 }
+
+// SourceStepFacts exposes the actual guard's pure fact conversion to its tests.
+func SourceStepFacts(s Step) domain.StepFacts { return s.contractFacts() }

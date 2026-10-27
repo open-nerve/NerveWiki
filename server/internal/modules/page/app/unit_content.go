@@ -20,6 +20,7 @@ type ContentWrite struct {
 	Facts       Facts
 	Base        int
 	EditSession uuid.UUID
+	Merged      *int // internal batch count; nil is an ordinary single write
 	Rewrite     bool // internal system rewrite, or a revert of one; ordinary writes leave it false
 }
 
@@ -77,6 +78,13 @@ func (u *Unit) writeContent(ctx context.Context, w ContentWrite, participate boo
 	state := n.State()
 	step := u.step(domain.OpContent, domain.Change{NodeID: n.ID, Before: &state, After: &state, Revision: c.Revision, Facts: w.Facts})
 	step.EditSessionID = session.ID
+	step.Kinds = map[uuid.UUID]domain.Kind{n.ID: n.Kind}
+	merged := 1
+	if w.Merged != nil {
+		merged = *w.Merged
+	}
+	step.Content = &StepContent{Hash: c.Hash, Bytes: c.ByteSize, BeforeBytes: current.ByteSize, Merged: merged}
+	step.Rewrite = w.Rewrite
 	base := current.Revision
 	err = u.apply(ctx, step, participate, func(ctx context.Context) error {
 		if resumed {

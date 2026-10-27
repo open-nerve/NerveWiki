@@ -31,7 +31,7 @@ func (g *ModeGuard) GuardWrite(ctx context.Context, s Step) error {
 	if s.Notebook.Mode != domain.ModeLLMWiki {
 		return nil
 	}
-	v := domain.CheckContract(s.Notebook, domain.FactsOf(s.Operation, s.Kind, s.Changes))
+	v := domain.CheckContract(s.Notebook, s.contractFacts())
 	switch {
 	case v.Err != nil:
 		return domain.Refuse(v.Err, v.NodeID)

@@ -90,7 +90,7 @@ func (iu *ImportUnit) CreatePage(ctx context.Context, p ImportedPage) (domain.No
 		return domain.Node{}, err
 	}
 	n, renumbered, err := iu.u.insertPage(ctx, PageDraft{ParentID: p.ParentID, Title: title.Name, Content: p.Content, Facts: p.Parsed.Facts},
-		title, kids.nodes, len(kids.nodes)-1)
+		title, kids.nodes, len(kids.nodes)-1, line)
 	if err != nil {
 		return domain.Node{}, err
 	}
@@ -106,7 +106,8 @@ func (iu *ImportUnit) CreatePage(ctx context.Context, p ImportedPage) (domain.No
 func (iu *ImportUnit) CreateAsset(ctx context.Context, a ImportedAsset, after func(ctx context.Context, n domain.Node) error) (
 	domain.Node, error,
 ) {
-	if _, err := iu.line(ctx, a.ParentID); err != nil {
+	line, err := iu.line(ctx, a.ParentID)
+	if err != nil {
 		return domain.Node{}, err
 	}
 	kids, err := iu.children(ctx, a.ParentID)
@@ -117,7 +118,7 @@ func (iu *ImportUnit) CreateAsset(ctx context.Context, a ImportedAsset, after fu
 	if err != nil {
 		return domain.Node{}, err
 	}
-	n, renumbered, err := iu.u.insertAsset(ctx, AssetDraft{ParentID: a.ParentID, Name: title.Name, Meta: a.Meta}, title, kids.nodes)
+	n, renumbered, err := iu.u.insertAsset(ctx, AssetDraft{ParentID: a.ParentID, Name: title.Name, Meta: a.Meta}, title, kids.nodes, &StepLines{After: line})
 	if err != nil {
 		return domain.Node{}, err
 	}

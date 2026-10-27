@@ -17,26 +17,39 @@ import (
 // and where it is after. FactsOf builds them for the guard from a Step,
 // and each precheck from the step it plans, so that both judge alike.
 type StepFacts struct {
-	Operation Operation
-	Kind      ChangesetKind
-	Nodes     []NodeFacts
+	Operation   Operation
+	Kind        ChangesetKind
+	Nodes       []NodeFacts
+	Content     *ContentFacts
+	Rewrite     bool
+	EditSession bool
 }
 
-// NodeFacts is a node of a step: Before nil for a creation, After nil for
-// a deletion. M10/P2/S1 adds whether each is in the source area, with
-// the line of ancestors it is read from; P2/S2 the content's hash and
-// size, the rewrite's mark and the edit session.
+// ContentFacts is the content a step writes, its hash and byte size,
+// the byte size immediately before it, and its merged user changes.
+// M10/P2/S1 carries these facts; S2 adds source-hash deduplication.
+type ContentFacts struct {
+	Hash                       []byte
+	Bytes, BeforeBytes, Merged int
+}
+
+// NodeFacts is a node of a step: its kind, Before nil for a creation,
+// After nil for a deletion. M10/P2/S1 carries each side's source-area
+// membership alongside content, rewrite and edit-session facts.
 type NodeFacts struct {
 	ID     uuid.UUID
+	Kind   Kind
 	Before *NodePlace
 	After  *NodePlace
 }
 
 // NodePlace is where a node is: its parent, nil at the notebook's root,
-// and its name's title key. (Place is an order among siblings.)
+// and its name's title key. InArea marks a strict source descendant.
+// (Place is an order among siblings.)
 type NodePlace struct {
 	ParentID *uuid.UUID
 	Key      string
+	InArea   bool
 }
 
 // atRoot reports whether p is a place at the notebook's root.

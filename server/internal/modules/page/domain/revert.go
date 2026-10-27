@@ -104,7 +104,9 @@ var ErrRevertUnordered = errors.New("page: a revert's schedule finds no step to 
 // them; the groups of the trash items RevertGroups names, by root, as
 // they are now, one gone since not among them; the notebook's nodes
 // alive, read when the changeset has items; and the time and the purge's
-// retention a restore is judged at.
+// retention a restore is judged at. Lines holds root-first ancestors
+// through each relevant parent, keyed by parent ID, uuid.Nil() at the
+// notebook root. Content-only LLM reverts supply these instead of a tree.
 type RevertState struct {
 	Items     []ChangesetItem
 	Versions  []ChangesetVersion
@@ -113,6 +115,7 @@ type RevertState struct {
 	Hashes    map[VersionRef][]byte
 	Groups    map[uuid.UUID][]TrashMember
 	Tree      []Node
+	Lines     map[uuid.UUID][]Ancestor
 	At        time.Time
 	Retention time.Duration
 }

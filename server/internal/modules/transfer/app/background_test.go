@@ -514,7 +514,7 @@ type runningPlanTree struct {
 	running context.Context
 }
 
-func (t *runningPlanTree) PlanRevert(ctx context.Context, spec app.JobSpec, id uuid.UUID) (app.JobPlan, error) {
+func (t *runningPlanTree) PlanRevert(ctx context.Context, spec app.JobSpec, id uuid.UUID, batches app.JobBatches) (app.JobPlan, error) {
 	t.running = ctx
-	return t.Tree.PlanRevert(ctx, spec, id)
+	return t.Tree.PlanRevert(ctx, spec, id, batches)
 }

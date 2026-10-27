@@ -961,7 +961,7 @@ func (p *jobTrial) run(counts *jobCounts) string {
 func (p *jobTrial) job(f *fixture, id uuid.UUID, start, star jobModel, counts *jobCounts) (uuid.UUID, string) {
 	store := &checkedStore{fakeStore: f.store}
 	w, spec := f.checkedJobs(store), f.jobSpec()
-	plan, err := w.PlanRevert(f.asJob(), spec, id)
+	plan, err := w.PlanRevert(f.asJob(), spec, id, allJobBatches)
 	if err != nil {
 		var e *shared.Error
 		if errors.As(err, &e) {
@@ -1321,7 +1321,7 @@ func (p *jobTrial) inPlace(start, star jobModel, f *fixture) string {
 func (p *jobTrial) movegone(start jobModel, items []domain.ChangesetItem, versions []domain.ChangesetVersion, counts *jobCounts) string {
 	f, c := p.load(start, items, versions)
 	w, spec := f.jobs(now(), 0, 0), f.jobSpec()
-	plan, err := w.PlanRevert(f.asJob(), spec, c.ID)
+	plan, err := w.PlanRevert(f.asJob(), spec, c.ID, allJobBatches)
 	if err != nil {
 		return fmt.Sprintf("PlanRevert = %v", err)
 	}
@@ -1491,7 +1491,7 @@ func (p *jobTrial) inject(kind int, start jobModel, items []domain.ChangesetItem
 	rng := rand.New(rand.NewPCG(p.seed, uint64(kind)+1))
 	f, c := p.load(start, items, versions)
 	w, spec := f.jobs(now(), 0, 0), f.jobSpec()
-	plan, err := w.PlanRevert(f.asJob(), spec, c.ID)
+	plan, err := w.PlanRevert(f.asJob(), spec, c.ID, allJobBatches)
 	if err != nil {
 		return fmt.Sprintf("PlanRevert = %v", err)
 	}
@@ -1512,7 +1512,7 @@ func (p *jobTrial) inject(kind int, start jobModel, items []domain.ChangesetItem
 		if i > 0 {
 			f, c = p.load(start, items, versions)
 			w, spec = f.jobs(now(), 0, 0), f.jobSpec()
-			if plan, err = w.PlanRevert(f.asJob(), spec, c.ID); err != nil {
+			if plan, err = w.PlanRevert(f.asJob(), spec, c.ID, allJobBatches); err != nil {
 				return fmt.Sprintf("PlanRevert again = %v", err)
 			}
 		}

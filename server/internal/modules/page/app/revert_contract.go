@@ -14,7 +14,7 @@ func checkRevertContract(state domain.RevertState, plan domain.RevertPlan, noteb
 	if notebook.Mode != domain.ModeLLMWiki {
 		return nil
 	}
-	for facts := range domain.RevertFacts(state, plan) {
+	for facts := range domain.RevertFacts(state, plan, notebook.SourceRootID) {
 		verdict := domain.CheckContract(notebook, facts)
 		if verdict.Err != nil {
 			return domain.Refuse(verdict.Err, verdict.NodeID)

@@ -310,12 +310,13 @@ type Unit struct {
 	// none of whose changes are followed; carried the nodes under each
 	// moved one, with the nodes that carried them, each once (M9/P3 review
 	// A-I2: a folder moved a hundred times is no hundred carriers).
-	deferring  bool
-	followed   []domain.Change
-	followedAt map[uuid.UUID]int
-	frozen     map[uuid.UUID]bool
-	carried    map[uuid.UUID]map[uuid.UUID]bool
-	keepLinks  bool
+	deferring     bool
+	followed      []domain.Change
+	followedAt    map[uuid.UUID]int
+	followedKinds map[uuid.UUID]domain.Kind
+	frozen        map[uuid.UUID]bool
+	carried       map[uuid.UUID]map[uuid.UUID]bool
+	keepLinks     bool
 }
 
 // refusalOf is a guard's error err of the step s (M10 design 4.6): a
@@ -341,6 +342,10 @@ func (u *Unit) step(op domain.Operation, changes ...domain.Change) Step {
 // is about (refusalOf).
 func (u *Unit) apply(ctx context.Context, s Step, participate bool, write func(ctx context.Context) error) error {
 	if err := u.inUnit(ctx); err != nil {
+		return err
+	}
+	var err error
+	if s, err = u.withSourceLines(ctx, s); err != nil {
 		return err
 	}
 	for _, g := range u.w.d.Guards {
@@ -491,6 +496,12 @@ func (u *Unit) follow(s Step) {
 	if u.followedAt == nil {
 		u.followedAt, u.frozen, u.carried = map[uuid.UUID]int{}, map[uuid.UUID]bool{}, map[uuid.UUID]map[uuid.UUID]bool{}
 	}
+	if u.followedKinds == nil {
+		u.followedKinds = map[uuid.UUID]domain.Kind{}
+	}
+	for id, kind := range s.Kinds {
+		u.followedKinds[id] = kind
+	}
 	for _, c := range s.Changes[1:] {
 		if u.carried[c.NodeID] == nil {
 			u.carried[c.NodeID] = map[uuid.UUID]bool{}
@@ -532,6 +543,7 @@ func (u *Unit) Participate(ctx context.Context, b BatchRewrite) (int, error) {
 	b.Frozen = slices.SortedFunc(maps.Keys(u.frozen), uuid.UUID.Compare)
 	s := u.step(domain.OpMove, changes...)
 	s.Batch = &b
+	s.Kinds = u.followedKinds
 	counted := &countedAppender{appender: appender{u}}
 	for _, p := range u.w.d.Participants {
 		if err := p.Participate(ctx, s, counted); err != nil {

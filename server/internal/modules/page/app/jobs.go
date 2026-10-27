@@ -135,6 +135,9 @@ func (w *JobWrites) CheckRestore(ctx context.Context, notebookID, nodeID uuid.UU
 	return root.Node.Name, nil
 }
 
+// JobBatches supplies the nominal cuts of a background plan without IO.
+type JobBatches func([]domain.JobStep) [][2]int
+
 // CheckRevert checks a background revert of the changeset changesetID in
 // the notebook with message (nil: none), unlocked, and answers the
 // changeset's kind (M8 design 4.14, startRevert's order): a message that
@@ -146,8 +149,11 @@ func (w *JobWrites) CheckRestore(ctx context.Context, notebookID, nodeID uuid.UU
 // after the plan's conflicts, for a page it deletes or writes back that
 // an edit session holds.
 func (w *JobWrites) CheckRevert(ctx context.Context, notebookID, changesetID uuid.UUID, message *string,
-	admit func(context.Context) error,
+	admit func(context.Context) error, batches JobBatches,
 ) (domain.ChangesetKind, error) {
+	if batches == nil {
+		return "", errors.New("page: missing background batch callback")
+	}
 	if message != nil {
 		if err := domain.CheckMessage(*message); err != nil {
 			return "", err
@@ -166,7 +172,7 @@ func (w *JobWrites) CheckRevert(ctx context.Context, notebookID, changesetID uui
 	case c.NotebookID != notebookID:
 		return "", domain.ErrChangesetNotFound
 	}
-	if _, err := w.checks().check(ctx, c, spec, revertBounds{Items: w.maxItems, Admit: admit, Locks: true}); err != nil {
+	if _, err := w.checks().check(ctx, c, spec, revertBounds{Items: w.maxItems, Admit: admit, Locks: true, BackgroundBatches: batches}); err != nil {
 		return "", err
 	}
 	return c.Kind, nil
@@ -299,7 +305,10 @@ type revertGroup struct {
 // revert's check as CheckRevert has it (page.revert_conflict,
 // page.changeset_trimmed, page.locked), its schedule's steps as the job
 // keeps them, in segments no batch splits (revertSteps).
-func (w *JobWrites) PlanRevert(ctx context.Context, spec JobSpec, changesetID uuid.UUID) (JobPlan, error) {
+func (w *JobWrites) PlanRevert(ctx context.Context, spec JobSpec, changesetID uuid.UUID, batches JobBatches) (JobPlan, error) {
+	if batches == nil {
+		return JobPlan{}, errors.New("page: missing background batch callback")
+	}
 	unit := revertUnit(spec, changesetID)
 	if err := w.writer.Allowed(ctx, unit); err != nil {
 		return JobPlan{}, err
@@ -314,9 +323,12 @@ func (w *JobWrites) PlanRevert(ctx context.Context, spec JobSpec, changesetID uu
 	if err != nil {
 		return JobPlan{}, err
 	}
-	checked, err := w.checks().check(ctx, c, unit, revertBounds{Items: w.maxItems, Locks: true})
+	checked, err := w.checks().check(ctx, c, unit, revertBounds{Items: w.maxItems, Locks: true, BackgroundBatches: batches})
 	if err != nil {
 		return JobPlan{}, err
+	}
+	if checked.job != nil {
+		return *checked.job, nil
 	}
 	return revertSteps(c.ID, checked), nil
 }

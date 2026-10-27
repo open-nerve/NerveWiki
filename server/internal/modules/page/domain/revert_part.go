@@ -33,7 +33,7 @@ func CheckRevertPart(s RevertState) RevertPlan {
 // order (M9/P3 design 3.24, step 4), on the state s the batch read, whose
 // L passed: each step's premise at its moment, as the schedule checked
 // it, the steps before it done on a simulation of s; it answers the steps
-// as the unit does them, or the conflicts of the first that fails, each
+// with their checked payloads, or the conflicts of the first that fails, each
 // its reason. A place and a step aside go to To, their moves and renames
 // from where their nodes are then, its name there a conflict's. A
 // deletion's top's subtree then holds no node but its Subtree, the one at
@@ -41,7 +41,8 @@ func CheckRevertPart(s RevertState) RevertPlan {
 // of a part someone added since, is children_added, by itself, as
 // PlanRevert's S* names one. A restore of a group's root s holds brings
 // back its group, at its states and time as s read them, the group's
-// later members with it; a continuation's, a member of a group an earlier
+// later members with it for prerequisite checks (the unit restores only
+// this batch's selected members); a continuation's, a member of a group an earlier
 // batch began, which the batch's caller checked as the trash holds it, is
 // Group[0] brought back to States[0], none for one someone restored where
 // it was. A write back's page is alive, else changed, and written on its

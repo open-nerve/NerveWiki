@@ -39,7 +39,7 @@ type Tree interface {
 	// is read, its error answered as it is, and answers the changeset's
 	// kind: each the page module's codes in its operation's order.
 	CheckRestore(ctx context.Context, notebookID, nodeID uuid.UUID) (string, error)
-	CheckRevert(ctx context.Context, notebookID, changesetID uuid.UUID, message *string, admit func(context.Context) error) (string, error)
+	CheckRevert(ctx context.Context, notebookID, changesetID uuid.UUID, message *string, admit func(context.Context) error, batches JobBatches) (string, error)
 	// PlanRestore and PlanRevert plan a job as it starts, unlocked: a
 	// notebook the job's account can no longer see or write in, and the
 	// sentinels below. RunBatch writes the plan's steps from to to (not
@@ -47,7 +47,7 @@ type Tree interface {
 	// again, ErrBatchTooLarge to halve, the sentinels below, and the unit's
 	// refusals.
 	PlanRestore(ctx context.Context, spec JobSpec, nodeID uuid.UUID) (JobPlan, error)
-	PlanRevert(ctx context.Context, spec JobSpec, changesetID uuid.UUID) (JobPlan, error)
+	PlanRevert(ctx context.Context, spec JobSpec, changesetID uuid.UUID, batches JobBatches) (JobPlan, error)
 	RunBatch(ctx context.Context, spec JobSpec, plan JobPlan, from, to int) (BatchDone, error)
 }
 
@@ -76,6 +76,11 @@ type JobStep struct {
 	Bytes  int64
 	Joined bool
 }
+
+// JobBatches returns the nominal half-open batches of a background
+// revert's steps, without IO or any runtime halving. Background checks
+// and plans require this callback; it is not client input.
+type JobBatches func([]JobStep) [][2]int
 
 // BatchDone is what a background job's batch did: the nodes it wrote; a
 // restore's pages and attachments it brought back, those it renamed,

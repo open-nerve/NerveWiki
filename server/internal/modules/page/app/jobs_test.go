@@ -550,7 +550,7 @@ func (f *fixture) revertJob(t *testing.T, id uuid.UUID, message *string, at time
 	t.Helper()
 	w, spec := f.jobs(at, 0, 0), f.jobSpec()
 	spec.Message = message
-	plan, err := w.PlanRevert(f.asJob(), spec, id)
+	plan, err := w.PlanRevert(f.asJob(), spec, id, allJobBatches)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -744,7 +744,7 @@ func TestARevertJobOfAGroupDeletedAgainSinceThePlan(t *testing.T) {
 	}
 	f := newRevertFixture()
 	w, spec := f.jobs(now(), 0, 10), f.jobSpec()
-	plan, err := w.PlanRevert(f.asJob(), spec, f.c.ID)
+	plan, err := w.PlanRevert(f.asJob(), spec, f.c.ID, allJobBatches)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -886,7 +886,7 @@ func TestARevertJobsBatchNamesAChangeAsTheStartDoes(t *testing.T) {
 		e.Conflicts[0].Reason != string(domain.ConflictChanged) || e.Conflicts[0].Name != "P" {
 		t.Errorf("RunBatch(P renamed R since the plan) = %v %+v; want P changed, named P", err, conflictsOf(err))
 	}
-	if _, err := w.PlanRevert(f.asJob(), spec, c.ID); !errors.As(err, &e) || len(e.Conflicts) != 1 || e.Conflicts[0].Name != "P" {
+	if _, err := w.PlanRevert(f.asJob(), spec, c.ID, allJobBatches); !errors.As(err, &e) || len(e.Conflicts) != 1 || e.Conflicts[0].Name != "P" {
 		t.Errorf("PlanRevert(P renamed R) = %v %+v; want P changed, named P", err, conflictsOf(err))
 	}
 }
@@ -929,7 +929,7 @@ func TestARevertJobsBatchNamesAPageItWritesBackAsTheStartDoes(t *testing.T) {
 		e.Conflicts[0].Reason != string(domain.ConflictChanged) || e.Conflicts[0].Name != "X" {
 		t.Errorf("RunBatch(X's write back, X2 written since) = %v %+v; want X changed, named X", err, conflictsOf(err))
 	}
-	_, err := w.PlanRevert(f.asJob(), spec, c.ID)
+	_, err := w.PlanRevert(f.asJob(), spec, c.ID, allJobBatches)
 	if i := slices.IndexFunc(conflictsOf(err), func(c shared.Conflict) bool { return c.NodeID == x.ID }); i < 0 ||
 		conflictsOf(err)[i].Name != "X" {
 		t.Errorf("PlanRevert(X2 written since) = %v %+v; want X changed, named X", err, conflictsOf(err))
@@ -1224,7 +1224,7 @@ func TestCheckRevertAnswersItsCodesInOrder(t *testing.T) {
 				admitted = true
 				f.rec.calls = append(f.rec.calls, "Admit")
 				return tt.admit
-			})
+			}, allJobBatches)
 			if codeOf(err) != tt.want {
 				t.Fatalf("CheckRevert() = %q, %v; want %s", kind, err, tt.want)
 			}
@@ -1254,7 +1254,7 @@ func TestCheckRevertRefusesTheLockedPages(t *testing.T) {
 	f.content(p.ID, "one", 1)
 	written := f.writing(p.ID, "two")
 	check := func(id uuid.UUID) error {
-		_, err := f.jobs(now(), 0, 0).CheckRevert(f.asAlice(), f.eng, id, nil, nil)
+		_, err := f.jobs(now(), 0, 0).CheckRevert(f.asAlice(), f.eng, id, nil, nil, allJobBatches)
 		return err
 	}
 	f.session(x.ID, f.alice, now().Add(time.Hour))
@@ -1274,7 +1274,7 @@ func TestCheckRevertRefusesTheLockedPages(t *testing.T) {
 	}
 	// The job's plan checks the locks again: one taken since the start
 	// stops it, nothing written.
-	if _, err := f.jobs(now(), 0, 0).PlanRevert(f.asJob(), f.jobSpec(), created.ID); !errors.As(err, &e) || e.Code != "page.locked" ||
+	if _, err := f.jobs(now(), 0, 0).PlanRevert(f.asJob(), f.jobSpec(), created.ID, allJobBatches); !errors.As(err, &e) || e.Code != "page.locked" ||
 		e.Lock.PageID != folder.ID {
 		t.Errorf("PlanRevert(a deletion Bob edits) = %v, want page.locked of Folder", err)
 	}
@@ -1321,4 +1321,12 @@ func TestARevertJobsBatchPassesAGuardsRefusal(t *testing.T) {
 			}
 		})
 	}
+}
+
+// allJobBatches is an explicit one-batch policy for tests unrelated to cuts.
+func allJobBatches(steps []domain.JobStep) [][2]int {
+	if len(steps) == 0 {
+		return nil
+	}
+	return [][2]int{{0, len(steps)}}
 }

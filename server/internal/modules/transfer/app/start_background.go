@@ -24,6 +24,9 @@ type BackgroundDeps struct {
 	Tree          Tree
 	RestoreAction shared.Action
 	RevertAction  shared.Action
+	// Batch is the worker's batch configuration, also used by the
+	// revert's nominal preflight. Zero takes the import's bounds.
+	Batch Batch
 }
 
 // RestoreRequest is a background restore's: the trash item's root, in the
@@ -101,6 +104,7 @@ func NewStartRevert(d StartDeps, b BackgroundDeps) *StartRevert {
 func (s *StartRevert) Execute(ctx context.Context, req RevertRequest) (JobView, error) {
 	release := func() {}
 	defer func() { release() }()
+	bounds := s.b.Batch.bounds()
 	kind, err := s.b.Tree.CheckRevert(ctx, req.NotebookID, req.ChangesetID, req.Message, func(ctx context.Context) error {
 		var err error
 		release, err = s.d.claim(ctx, req.NotebookID)
@@ -108,6 +112,8 @@ func (s *StartRevert) Execute(ctx context.Context, req RevertRequest) (JobView, 
 			release = func() {}
 		}
 		return err
+	}, func(steps []JobStep) [][2]int {
+		return nominalBatches(steps, bounds)
 	})
 	if err != nil {
 		return JobView{}, err

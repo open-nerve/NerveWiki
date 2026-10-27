@@ -28,13 +28,17 @@ type starts struct {
 }
 
 func (w *world) starts(q *queue, tree *jobTree, maxQueued int) starts {
+	return w.startsWithBatch(q, tree, maxQueued, app.Batch{})
+}
+
+func (w *world) startsWithBatch(q *queue, tree *jobTree, maxQueued int, batch app.Batch) starts {
 	q.rec = w.rec
 	w.auth.rules = map[shared.Action][]shared.NotebookRole{restoreAction: {shared.NotebookEditor, shared.NotebookAdmin},
 		revertAction: {shared.NotebookEditor, shared.NotebookAdmin}, domain.ActionImport: {shared.NotebookEditor, shared.NotebookAdmin}}
 	d := app.StartDeps{Tx: w.tx, Authorizer: w.auth, Workspaces: w.workspaces, Notebooks: w.notebooks, Nodes: w.nodes, Rows: w.rows,
 		Archives: w.archives, Queue: q, Names: names{w.bob: "Bob"}, Signer: signer{}, Clock: fixedClock{now()}, Logger: w.logger,
 		Uploads: w.uploads, MaxQueued: maxQueued, MinFree: 100, ImportMaxBytes: 1 << 10}
-	b := app.BackgroundDeps{Tree: tree, RestoreAction: restoreAction, RevertAction: revertAction}
+	b := app.BackgroundDeps{Tree: tree, RestoreAction: restoreAction, RevertAction: revertAction, Batch: batch}
 	return starts{restore: app.NewStartTrashRestore(d, b), revert: app.NewStartRevert(d, b), imports: app.NewStartImport(d)}
 }
 

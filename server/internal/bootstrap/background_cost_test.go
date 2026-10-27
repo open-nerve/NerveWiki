@@ -237,7 +237,7 @@ func (b trashBench) asJob() context.Context {
 func (b trashBench) startRevert(tb testing.TB, c uuid.UUID) time.Duration {
 	tb.Helper()
 	at := time.Now()
-	if _, err := b.jobs.CheckRevert(b.asAlice(), b.nb, c, nil, func(context.Context) error { return nil }); err != nil {
+	if _, err := b.jobs.CheckRevert(b.asAlice(), b.nb, c, nil, func(context.Context) error { return nil }, allJobBatches); err != nil {
 		tb.Fatalf("CheckRevert(%s): %v", c, err)
 	}
 	return time.Since(at)
@@ -379,7 +379,7 @@ func halve(steps []page.JobStep, from, to int) int {
 func (b trashBench) revertJob(tb testing.TB, c uuid.UUID) jobRun {
 	tb.Helper()
 	return b.runJob(tb, func(ctx context.Context, spec page.JobSpec) (page.JobPlan, error) {
-		return b.jobs.PlanRevert(ctx, spec, c)
+		return b.jobs.PlanRevert(ctx, spec, c, allJobBatches)
 	})
 }
 
@@ -591,7 +591,7 @@ func BenchmarkBackgroundSteps(b *testing.B) {
 			c := bench.importOf(b, shapeDeep, n)
 			bench.analyze(b)
 			revert := bench.planOnly(b, func(ctx context.Context, spec page.JobSpec) (page.JobPlan, error) {
-				return bench.jobs.PlanRevert(ctx, spec, c)
+				return bench.jobs.PlanRevert(ctx, spec, c, allJobBatches)
 			})
 			bench.firstBatch(b, c)
 			bench.analyze(b)
@@ -698,7 +698,7 @@ func (b trashBench) planOnly(tb testing.TB, plan func(ctx context.Context, spec 
 func (b trashBench) firstBatch(tb testing.TB, c uuid.UUID) (time.Duration, uuid.UUID) {
 	tb.Helper()
 	spec, ctx := page.JobSpec{NotebookID: b.nb, Client: domain.ClientWeb, Changeset: uuid.NewV7()}, b.asJob()
-	p, err := b.jobs.PlanRevert(ctx, spec, c)
+	p, err := b.jobs.PlanRevert(ctx, spec, c, allJobBatches)
 	if err != nil {
 		tb.Fatalf("PlanRevert(%s): %v", c, err)
 	}
@@ -834,7 +834,7 @@ func TestStartRevertAtMaxJobItems(t *testing.T) {
 		updated_at)
 		VALUES (gen_random_uuid(), $2, md5($1::uuid::text || ':extra')::uuid, NULL, 'extra.png', -1, now(), now())`, bench.nb, c)
 	admitted := false
-	_, err := bench.jobs.CheckRevert(bench.asAlice(), bench.nb, c, nil, func(context.Context) error { admitted = true; return nil })
+	_, err := bench.jobs.CheckRevert(bench.asAlice(), bench.nb, c, nil, func(context.Context) error { admitted = true; return nil }, allJobBatches)
 	var e *shared.Error
 	if !errors.As(err, &e) || e.Code != "page.revert_too_large" || admitted {
 		t.Errorf("the request of the revert of %d nodes = %v, admitted %v; want page.revert_too_large, not admitted", page.MaxJobItems+1,
@@ -930,3 +930,10 @@ const (
 	largestStepLimit = 14 * time.Second
 	groupBatchLimit  = 6600 * time.Millisecond
 )
+
+func allJobBatches(steps []page.JobStep) [][2]int {
+	if len(steps) == 0 {
+		return nil
+	}
+	return [][2]int{{0, len(steps)}}
+}
