@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
@@ -113,18 +114,52 @@ func TestTheModeEventReachesTheStreams(t *testing.T) {
 // A downgrade ends the contract (M10/P1 design 3.24): the notebook,
 // standard, has a writer rename raw and move it under Notes, alice rename
 // AGENTS and a writer create a page at its root named index, and an agent
-// delete AGENTS.md. It is the test LW12's MCP exemption names (M10 design
-// 9): P2 adds its sources writable and its duplicates let by, P4 list
-// without the two generated pages, P5 the handshake without the system's
-// part.
+// delete AGENTS.md. P2/S1 also checks that the same nonempty source, whose
+// body both writer and admin could not change, becomes writable through
+// REST and MCP. It is the test LW12's MCP exemption names (M10 design 9):
+// P2/S2 adds duplicates let by, P4 list without the two generated pages,
+// P5 the handshake without the system's part.
 func TestTheDowngradeEndsTheContract(t *testing.T) {
 	tm := newAcmeTeam(t, "member", "")
 	wiki := tm.llmWiki(t, "Wiki")
 	notes := tm.createPage(t, "alice", wiki.id, "", "Notes")
+	source := tm.createPageWith(t, "bob", wiki.id, wiki.raw, "Source", "source original")
+	for _, by := range []string{"bob", "alice"} {
+		tm.sourceUnchanged(t, wiki, source, contentWrite(by, source, "changed before downgrade", 1, ""),
+			cell{http.StatusConflict, "page.source_immutable"})
+	}
 	if status, answer := tm.downgrade(t, "alice", wiki.id); status != http.StatusOK {
 		t.Fatalf("downgrade = %d %s, want 200", status, answer)
 	}
 	wiki.name = "the notebook downgraded"
+	// Write before moving raw so both clients address the very same page
+	// under its unchanged source parent; only the notebook mode changed.
+	tm.send(t, contentWrite("bob", source, "REST after downgrade", 1, ""), http.StatusOK)
+	if got := tm.content(t, "bob", source); got.Content != "REST after downgrade" || got.Revision != 2 {
+		t.Fatalf("the former source after REST = %+v, want REST after downgrade at revision 2", got)
+	}
+	if n := count(t, tm.pool, `SELECT count(*) FROM page_contents c JOIN nodes n ON n.id = c.node_id
+		JOIN notebooks b ON b.id = n.notebook_id WHERE c.node_id = $1 AND n.parent_id = $2
+		AND c.content = 'REST after downgrade' AND c.revision = 2
+		AND b.mode = 'standard' AND b.source_root_id IS NULL`, source, wiki.raw); n != 1 {
+		t.Fatalf("the former source's stored REST write: %d rows, want its body at revision 2 under the same parent", n)
+	}
+	edited := answerOf[mcpEdited](t, tm.agent(t, "bob", wiki.id).use(t, "edit", map[string]any{
+		"path": "raw/Source.md", "old_string": "REST", "new_string": "MCP", "base_version": source + ":2",
+	}))
+	if !edited.Changed || edited.Version != source+":3" || edited.Replacements != 1 || edited.ChangesetID == nil {
+		t.Fatalf("the former source after MCP = %+v, want one actual edit of the same page at revision 3", edited)
+	}
+	if got := tm.content(t, "bob", source); got.Content != "MCP after downgrade" || got.Revision != 3 {
+		t.Errorf("the former source after MCP = %+v, want MCP after downgrade at revision 3", got)
+	}
+	if got := queryStrings(t, tm.pool, "SELECT content || ':' || revision::text FROM page_contents WHERE node_id = $1", source); !slices.Equal(got, []string{"MCP after downgrade:3"}) {
+		t.Errorf("stored current source = %q, want MCP after downgrade at revision 3", got)
+	}
+	if got := queryStrings(t, tm.pool, `SELECT revision::text || ':' || content || ':' || rewrite::text
+		FROM page_revisions WHERE node_id = $1 ORDER BY revision`, source); !slices.Equal(got, []string{"1:source original:false", "2:REST after downgrade:false", "3:MCP after downgrade:false"}) {
+		t.Errorf("stored source versions = %q, want the original and two ordinary writes", got)
+	}
 	tm.guarded(t, wiki, "bob renames raw", nodeRename("bob", wiki.raw, "sources"), cellOK())
 	tm.guarded(t, wiki, "bob moves it under Notes", nodeMove("bob", wiki.raw, notes), cellOK())
 	tm.guarded(t, wiki, "alice renames AGENTS", nodeRename("alice", wiki.agents, "Agents"), cellOK())
