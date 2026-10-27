@@ -107,8 +107,56 @@ func (u *Unit) writeSourceHashes(ctx context.Context, s Step) error {
 		}
 	}
 	for chunk := range slices.Chunk(values, domain.MaxUnitNodes) {
-		if err := u.w.d.Sources.SetSourceHashes(ctx, s.NotebookID, chunk); err != nil {
+		old, err := u.w.d.Sources.SetSourceHashes(ctx, s.NotebookID, chunk)
+		if err != nil {
 			return err
+		}
+		for id, v := range old {
+			u.rememberSource(id, v)
+		}
+	}
+	return nil
+}
+
+func (u *Unit) rememberSource(id uuid.UUID, v SourceValue) {
+	key, ok := sourceKey(v.Kind, v.BeforeSourceHash)
+	var before *SourceKey
+	if ok {
+		before = &key
+	}
+	u.write.sources.remember(id, before)
+}
+
+// Remember known ineligible arrivals before restoring/creating their rows.
+// Deletions capture the derived key before their existing SQL clears it.
+func (u *Unit) rememberSourceBefore(ctx context.Context, s Step) error {
+	if s.Notebook.Mode != domain.ModeLLMWiki {
+		return nil
+	}
+	var ids []uuid.UUID
+	for _, n := range s.contractFacts().Nodes {
+		if _, known := u.write.sources.before[n.ID]; known {
+			continue
+		}
+		if n.Before == nil || !n.Before.InArea {
+			u.write.sources.remember(n.ID, nil)
+			continue
+		}
+		if s.Operation == domain.OpDelete {
+			ids = append(ids, n.ID)
+		}
+	}
+	for chunk := range slices.Chunk(ids, domain.MaxUnitNodes) {
+		rows, err := u.w.d.Sources.SourceBaselines(ctx, s.NotebookID, chunk)
+		if err != nil {
+			return err
+		}
+		for _, id := range chunk {
+			v, ok := rows[id]
+			if !ok {
+				return fmt.Errorf("source baseline missing for %s", id)
+			}
+			u.rememberSource(id, v)
 		}
 	}
 	return nil

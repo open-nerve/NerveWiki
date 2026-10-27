@@ -34,7 +34,8 @@ const batchDescription = `Apply up to 100 writes as one change, all or none, wit
 	`10,000 nodes, including its root, empty pages and attachments; above that it is page.source_too_large. ` +
 	`Known invalid destination, cycle, title, protection and reserved-name errors come first; the bound precedes ` +
 	`depth errors in descendants not yet read. Ordinary moves, moves within or out of sources, and moves of ` +
-	`the source root or an ancestor that keep source membership are unchanged. Move smaller subtrees into sources separately.`
+	`the source root or an ancestor that keep source membership are unchanged. Move smaller subtrees into sources separately.` +
+	` Writes to each page are merged into its final body before the write unit runs. Source duplicate checks at creation and source entry use those merged bytes, so a batch can differ from the same tools called separately or from their apparent intermediate bodies. A refusal keeps the entire batch unchanged.`
 
 // batchIn is batch's arguments (M9 design 4.11; M9/P3 design 3.3): ops,
 // each one flat object, op naming the tool and its other members that
@@ -109,7 +110,7 @@ func (t tools) batch(ctx context.Context, c mcpserver.Call, in batchIn) (mcpserv
 	}
 	b, err := t.uc.Batch.Execute(ctx, c.Notebook, app.PathBatch{Ops: ops, Message: in.Message}, domain.MCPClient(c.Client))
 	if err != nil {
-		return mcpserver.Result{}, batchErr(err, c, in.Ops)
+		return mcpserver.Result{}, t.duplicateErr(ctx, c, batchErr(err, c, in.Ops))
 	}
 	results := make([]opResult, len(b.Ops))
 	// column is the answer's items in their order: each op, then the

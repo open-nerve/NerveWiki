@@ -268,7 +268,7 @@ func (r revertChecks) check(ctx context.Context, c domain.Changeset, spec UnitSp
 	// The unlocked answer belongs to this check alone. The unit asks again
 	// in its transaction, through its own Grants.
 	var grants Grants
-	ask := func(action shared.Action) error {
+	ask := func(ctx context.Context, action shared.Action) error {
 		return grants.Ask(ctx, action, func(ctx context.Context) error {
 			workspace, err := r.writer.workspaceOf(ctx, spec)
 			if err != nil {
@@ -283,10 +283,16 @@ func (r revertChecks) check(ctx context.Context, c domain.Changeset, spec UnitSp
 			return err
 		})
 	}
-	if checked.job != nil {
-		err = checkJobContract(checked, *checked.job, checked.cuts, notebook, ask)
+	if precheck := r.writer.d.SourcePrecheck; precheck != nil {
+		if checked.job != nil {
+			err = precheck.CheckJob(ctx, c.NotebookID, notebook, checked, *checked.job, checked.cuts, ask)
+		} else {
+			err = precheck.Check(ctx, c.NotebookID, notebook, domain.RevertFacts(state, plan, notebook.SourceRootID), ask)
+		}
+	} else if checked.job != nil {
+		err = checkJobContract(checked, *checked.job, checked.cuts, notebook, func(action shared.Action) error { return ask(ctx, action) })
 	} else {
-		err = checkRevertContract(state, plan, notebook, ask)
+		err = checkRevertContract(state, plan, notebook, func(action shared.Action) error { return ask(ctx, action) })
 	}
 	if err != nil {
 		return revertChecked{}, err

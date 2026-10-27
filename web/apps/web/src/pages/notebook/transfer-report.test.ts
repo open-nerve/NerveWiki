@@ -82,3 +82,11 @@ test.each([
   const problem = { path: "a:b.md", code: code as TransferProblem["code"], to: "a_b" };
   expect(problemText(kind, problem, t)).toBe(says);
 });
+
+test.each([
+  ["en", "incoming.md was skipped: identical source content already exists at raw/existing.md."],
+  ["zh-CN", "已跳过 incoming.md：raw/existing.md 已有字节相同的来源。"],
+] as const)("source duplicate import problem names its archive item and target in %s", (language, message) => {
+  const problem = { path: "incoming.md", code: "duplicate_source" as TransferProblem["code"], to: "raw/existing.md" };
+  expect(problemText("import", problem, translator(language))).toBe(message);
+});

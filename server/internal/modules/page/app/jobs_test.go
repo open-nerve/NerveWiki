@@ -506,7 +506,7 @@ func TestCheckRestore(t *testing.T) {
 	other := uuid.NewV7()
 	f.notebooks.workspaces[other] = f.acme
 	q := f.page("Q", nil, 4)
-	if name, err := f.jobs(now(), 0, 0).CheckRestore(f.asAlice(), f.eng, f.box.ID); err != nil || name != "Box" {
+	if name, err := f.jobs(now(), 0, 0).CheckRestore(f.asAlice(), f.eng, f.box.ID, nil); err != nil || name != "Box" {
 		t.Errorf("CheckRestore(Box) = %q, %v; want Box", name, err)
 	}
 	for _, tt := range []struct {
@@ -528,13 +528,13 @@ func TestCheckRestore(t *testing.T) {
 		if tt.setup != nil {
 			tt.setup()
 		}
-		if _, err := f.jobs(now(), 0, 0).CheckRestore(f.asAlice(), tt.notebook, tt.node); codeOf(err) != tt.code {
+		if _, err := f.jobs(now(), 0, 0).CheckRestore(f.asAlice(), tt.notebook, tt.node, nil); codeOf(err) != tt.code {
 			t.Errorf("%s: CheckRestore() = %v, want %s", tt.name, err, tt.code)
 		}
 		f.auth.forbidden = map[shared.Action]bool{}
 		f.grant(domain.ActionRestore)
 	}
-	if _, err := f.jobs(now().Add(retention), 0, 0).CheckRestore(f.asAlice(), f.eng, f.box.ID); codeOf(err) != "page.restore_expired" {
+	if _, err := f.jobs(now().Add(retention), 0, 0).CheckRestore(f.asAlice(), f.eng, f.box.ID, nil); codeOf(err) != "page.restore_expired" {
 		t.Errorf("CheckRestore(past its time) = %v, want page.restore_expired", err)
 	}
 	f.restoredMeanwhile(f.box.ID)
@@ -1305,7 +1305,8 @@ func TestARevertJobsBatchPassesAGuardsRefusal(t *testing.T) {
 			g := &guard{recorder: f.rec, err: refusal}
 			f.guards = []app.WriteGuard{g}
 			_, err := f.jobs(now(), 0, 0).RunBatch(f.asJob(), spec, plan, 0, 1)
-			code, node, marked := page.Refusal(err)
+			info, marked := page.Refusal(err)
+			code, node := info.Code, info.NodeID
 			if tt.marked {
 				if err != refusal || !marked || code != codeOf(tt.problem) || node != p.ID { //nolint:errorlint // a marked refusal is returned unchanged
 					t.Errorf("RunBatch = %v, refusal %q at %s (%v), want original marked %v at %s", err, code, node, marked, refusal, p.ID)

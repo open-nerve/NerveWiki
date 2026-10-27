@@ -30,13 +30,16 @@ type item struct {
 	file    *File
 }
 
-// created is what a unit did of an item: the node it created, or the page
-// too deep it skipped, and everything under it.
+// created is what a unit did of an item: a node created, a duplicate
+// skipped (possibly creating an empty parent), or a page too deep and
+// everything under it. None is published before the unit commits.
 type created struct {
-	index   int
-	id      uuid.UUID
-	name    string
-	dropped bool
+	index     int
+	id        uuid.UUID
+	name      string
+	dropped   bool
+	skipped   bool
+	duplicate *DuplicateSource
 }
 
 // write creates the plan's nodes a batch at a time: between two, the
@@ -196,7 +199,7 @@ func (r *importRun) unit(ctx, running context.Context, items []item) error {
 		}
 		var refused *Refused
 		if errors.As(err, &refused) {
-			r.report.Refusal = &domain.Refusal{Code: refused.Code, NodeID: refused.NodeID}
+			r.report.Refusal = &domain.Refusal{Code: refused.Code, NodeID: refused.NodeID, DuplicateOf: refused.DuplicateOf}
 		}
 		return unitFailure(err)
 	}
@@ -287,7 +290,8 @@ func (r *importRun) create(ctx context.Context, u ImportUnit, items []item, done
 						CreatedAt: n.CreatedAt})
 				})
 		} else {
-			c, err = u.CreatePage(ctx, ImportedPage{ParentID: parent, Name: node.Name, Content: it.content, Parsed: it.parsed, Reserved: reserved})
+			c, err = u.CreatePage(ctx, ImportedPage{ParentID: parent, Name: node.Name, Content: it.content, Parsed: it.parsed,
+				HasChildren: r.hasChildren[it.index], Reserved: reserved})
 		}
 		switch {
 		case errors.Is(err, ErrTooDeep):
@@ -301,8 +305,10 @@ func (r *importRun) create(ctx context.Context, u ImportUnit, items []item, done
 		case err != nil:
 			return err
 		}
-		ids[it.index] = c.ID
-		*done = append(*done, created{index: it.index, id: c.ID, name: c.Name})
+		if c.ID != (uuid.UUID{}) {
+			ids[it.index] = c.ID
+		}
+		*done = append(*done, created{index: it.index, id: c.ID, name: c.Name, skipped: c.Skipped, duplicate: c.Duplicate})
 	}
 	return nil
 }
@@ -328,17 +334,24 @@ func (r *importRun) tell(ctx context.Context, items []item, done []created) {
 			continue
 		}
 		r.ids[c.index], r.names[c.index] = c.id, c.name
-		if node.Asset {
+		if c.skipped {
+			r.skip(domain.Problem{Path: node.Path, Code: domain.ProblemDuplicateSource, To: c.duplicate.Path})
+			if files[c.index] != nil {
+				unattached = append(unattached, item{file: files[c.index]})
+			}
+		} else if node.Asset {
 			r.report.Counts.Attachments++
 		} else {
 			r.report.Counts.Pages++
 		}
-		if c.name != node.Original {
-			r.report.Counts.Renamed++
-			r.report.Add(domain.Problem{Path: node.Path, Code: domain.ProblemRenamed, To: r.pathOf(c.index)})
+		if c.id != (uuid.UUID{}) {
+			if c.name != node.Original {
+				r.report.Counts.Renamed++
+				r.report.Add(domain.Problem{Path: node.Path, Code: domain.ProblemRenamed, To: r.pathOf(c.index)})
+			}
+			written++
 		}
 		r.done.Add(1)
-		written++
 	}
 	r.publish()
 	r.dropFiles(ctx, unattached)

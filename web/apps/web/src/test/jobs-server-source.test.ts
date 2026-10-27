@@ -1,5 +1,7 @@
 import { expect, test } from "vitest";
 
+import { AssetService } from "../services/asset.service";
+import { PageService } from "../services/page.service";
 import { TransferService } from "../services/transfer.service";
 import { notebookJSON } from "./fakes";
 import { moved, wrote, renamed } from "./history-server";
@@ -93,3 +95,106 @@ test("background source entry rejects 10001 nodes before locks and queue-full wi
   expect(server.nodes).toEqual([raw, folder, ...children]);
   expect(writes).toBe(0);
 });
+
+for (const entry of ["sync", "background"] as const) {
+  test(`${entry} restore rejects source duplicates and retains trash, data and jobs`, async () => {
+    const returning = pageNode(831, "returning", root);
+    const server = jobsServer({
+      role: "admin",
+      mode: "llm_wiki",
+      sourceRootId: root.id,
+      nodes: [root, source, returning],
+    });
+    const page = new PageService(server.app.session.public);
+    server.contents.set(source.id, { content: "same", revision: 1 });
+    server.contents.set(returning.id, { content: "same", revision: 1 });
+    await page.deleteNode(returning.id);
+    const before = structuredClone({
+      nodes: server.nodes,
+      contents: [...server.contents],
+      trash: [...server.trash],
+      jobs: server.jobs,
+    });
+    const request =
+      entry === "sync"
+        ? page.restoreNode(returning.id)
+        : new TransferService(server.app.session.public).startTrashRestore(notebookJSON.id, returning.id);
+    await expect(request).rejects.toMatchObject({
+      code: "page.source_duplicate",
+      status: 409,
+      problem: { duplicate_of: source.id },
+    });
+    expect({
+      nodes: server.nodes,
+      contents: [...server.contents],
+      trash: [...server.trash],
+      jobs: server.jobs,
+    }).toEqual(before);
+  });
+
+  test(`${entry} restore with missing source parent falls back outside without duplicate refusal`, async () => {
+    const removedParent = pageNode(841, "removed", root),
+      returning = pageNode(842, "returning", removedParent);
+    const server = jobsServer({
+      role: "admin",
+      mode: "llm_wiki",
+      sourceRootId: root.id,
+      nodes: [root, source, removedParent, returning],
+    });
+    const page = new PageService(server.app.session.public);
+    server.contents.set(source.id, { content: "same", revision: 1 });
+    server.contents.set(returning.id, { content: "same", revision: 1 });
+    await page.deleteNode(returning.id);
+    await page.deleteNode(removedParent.id);
+    const request =
+      entry === "sync"
+        ? page.restoreNode(returning.id)
+        : new TransferService(server.app.session.public).startTrashRestore(notebookJSON.id, returning.id);
+    await expect(request).resolves.toBeDefined();
+  });
+}
+
+test.each(["sync", "background"] as const)(
+  "%s restore rejects a zero-byte source attachment and retains trash, data and jobs",
+  async (entry) => {
+    const { server, transfer } = fixture("admin");
+    const page = new PageService(server.app.session.public);
+    const uploads = new AssetService(server.app.session.public, server.app.transfer);
+    const returning = await uploads.upload(notebookJSON.id, {
+      name: "returning-empty.bin",
+      parent: root.id,
+      file: new Blob([]),
+    });
+    await page.deleteNode(returning.id);
+    const live = await uploads.upload(notebookJSON.id, {
+      name: "live-empty.bin",
+      parent: root.id,
+      file: new Blob([]),
+    });
+    const before = structuredClone({
+      nodes: server.nodes,
+      bytes: [...server.sourceAssetBytes],
+      contents: [...server.contents],
+      versions: [...server.versions],
+      trash: [...server.trash],
+      history: server.changesets,
+      jobs: server.jobs,
+    });
+    const request =
+      entry === "sync" ? page.restoreNode(returning.id) : transfer.startTrashRestore(notebookJSON.id, returning.id);
+    await expect(request).rejects.toMatchObject({
+      status: 409,
+      code: "page.source_duplicate",
+      problem: { duplicate_of: live.id },
+    });
+    expect({
+      nodes: server.nodes,
+      bytes: [...server.sourceAssetBytes],
+      contents: [...server.contents],
+      versions: [...server.versions],
+      trash: [...server.trash],
+      history: server.changesets,
+      jobs: server.jobs,
+    }).toEqual(before);
+  }
+);

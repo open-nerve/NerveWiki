@@ -105,7 +105,7 @@ func TestSourceStepMetadataAddsNoReadsInStandardMode(t *testing.T) {
 	p := f.page("P", &raw.ID, 0)
 	f.notebooks.states = map[uuid.UUID]domain.NotebookState{f.eng: {Mode: domain.ModeStandard, SourceRootID: raw.ID}}
 	g := &guard{recorder: f.rec}
-	f.guards = []app.WriteGuard{g, app.NewModeGuard(f.auth, f.store)}
+	f.guards = []app.WriteGuard{g, app.NewModeGuard(f.auth, f.store, f.store)}
 	if _, err := f.put(p.ID, app.ContentPut{Content: "ordinary", Base: 1}); err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestSourceBatchProducersCarryTheActualMergedCount(t *testing.T) {
 		raw := f.page("raw", nil, 0)
 		f.notebooks.states = map[uuid.UUID]domain.NotebookState{f.eng: {Mode: domain.ModeLLMWiki, SourceRootID: raw.ID}}
 		g := &guard{recorder: f.rec}
-		f.guards = []app.WriteGuard{g, app.NewModeGuard(f.auth, f.store)}
+		f.guards = []app.WriteGuard{g, app.NewModeGuard(f.auth, f.store, f.store)}
 		// The body is written outside sources; entry changes its placement,
 		// so the batch passes an explicit zero source-content write count.
 		if _, err := f.applyBatch(&fakeLinks{recorder: f.rec}, writeOp("P.md", "A"), moveOp("P.md", "raw/P.md")); err != nil {
@@ -196,11 +196,11 @@ func TestSourceStructuralProducersKeepAssetKindsAndPlannedLines(t *testing.T) {
 	g := &guard{recorder: f.rec}
 	f.guards = []app.WriteGuard{g}
 	_, err := f.run(f.asAlice(), domain.ClientWeb, func(ctx context.Context, u *app.Unit) error {
-		b, err := u.CreateAsset(ctx, app.AssetDraft{ParentID: &p.ID, Name: "b.txt", Meta: app.AssetMeta{SHA256: sourceHashOf("")}})
+		b, err := u.CreateAsset(ctx, app.AssetDraft{ParentID: &p.ID, Name: "b.txt", Meta: app.AssetMeta{SHA256: sourceHashOf("b"), Bytes: 1}})
 		if err != nil {
 			return err
 		}
-		f.infos[b.ID] = app.AttachmentInfo{SHA256: sourceHashOf("")}
+		f.infos[b.ID] = app.AttachmentInfo{SHA256: sourceHashOf("b"), Bytes: 1}
 		if _, err := u.Rename(ctx, a.ID, "renamed.txt"); err != nil {
 			return err
 		}

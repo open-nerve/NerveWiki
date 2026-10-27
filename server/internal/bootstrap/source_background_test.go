@@ -20,6 +20,26 @@ type sourceBoundaryTree struct {
 	plans, batches                    int
 }
 
+func (s *sourceBoundaryTree) PlanRestore(ctx context.Context, spec transfer.JobSpec, id uuid.UUID) (transfer.JobPlan, error) {
+	s.mu.Lock()
+	s.plans++
+	before, after := s.beforePlan, s.afterPlan
+	s.beforePlan, s.afterPlan = nil, nil
+	s.mu.Unlock()
+	if before != nil {
+		if err := before(); err != nil {
+			return nil, err
+		}
+	}
+	p, err := s.Tree.PlanRestore(ctx, spec, id)
+	if err == nil && after != nil {
+		if err = after(); err != nil {
+			return nil, err
+		}
+	}
+	return p, err
+}
+
 func (s *sourceBoundaryTree) PlanRevert(ctx context.Context, spec transfer.JobSpec, id uuid.UUID, cuts transfer.JobBatches) (transfer.JobPlan, error) {
 	s.mu.Lock()
 	s.plans++

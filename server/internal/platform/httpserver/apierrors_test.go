@@ -41,12 +41,13 @@ func (f fieldErr) ProblemCode() string  { return f.code }
 // none (ok false).
 type memberErr struct {
 	problemErr
-	lock      *ProblemLock
-	locks     []ProblemLock
-	endedBy   *ProblemPerson
-	rootID    *uuid.UUID
-	conflicts []ProblemConflict
-	count     *int
+	lock        *ProblemLock
+	locks       []ProblemLock
+	endedBy     *ProblemPerson
+	duplicateOf *uuid.UUID
+	rootID      *uuid.UUID
+	conflicts   []ProblemConflict
+	count       *int
 }
 
 func (e memberErr) ProblemConflicts(each func(nodeID uuid.UUID, name, reason string, holderID *uuid.UUID)) (int, bool) {
@@ -58,6 +59,8 @@ func (e memberErr) ProblemConflicts(each func(nodeID uuid.UUID, name, reason str
 	}
 	return *e.count, true
 }
+
+func (e memberErr) ProblemDuplicateOf() *uuid.UUID { return e.duplicateOf }
 
 func (e memberErr) ProblemRootID() (uuid.UUID, bool) {
 	if e.rootID == nil {
@@ -253,6 +256,10 @@ func TestWriteMapsProblemErrors(t *testing.T) {
 			endedBy: &ProblemPerson{UserID: uuid.MustParse(lockHolder), DisplayName: "Ada"}}, http.StatusConflict,
 			`{"status":409,"code":"page.edit_session_unlocked","title":"Conflict","detail":"Unlocked.",` +
 				`"ended_by":{"user_id":"` + lockHolder + `","display_name":"Ada"}}`, ""},
+		{"duplicate source", memberErr{problemErr: problemErr{status: http.StatusConflict, code: "page.source_duplicate", detail: "Source exists."}, duplicateOf: new(uuid.MustParse(lockedPage))}, http.StatusConflict,
+			`{"status":409,"code":"page.source_duplicate","title":"Conflict","detail":"Source exists.","duplicate_of":"` + lockedPage + `"}`, ""},
+		{"duplicate within operation", memberErr{problemErr: problemErr{status: http.StatusConflict, code: "page.source_duplicate", detail: "Source exists."}}, http.StatusConflict,
+			`{"status":409,"code":"page.source_duplicate","title":"Conflict","detail":"Source exists."}`, ""},
 		{"the root", memberErr{problemErr: problemErr{status: http.StatusConflict, code: "page.not_trash_root", detail: "Not a root."},
 			rootID: new(uuid.MustParse(lockedPage))}, http.StatusConflict,
 			`{"status":409,"code":"page.not_trash_root","title":"Conflict","detail":"Not a root.","root_id":"` + lockedPage + `"}`, ""},

@@ -39,20 +39,37 @@ func (f *fakeStore) SourceHeads(ctx context.Context, notebook uuid.UUID, ids []u
 	return out, nil
 }
 
-func (f *fakeStore) SetSourceHashes(ctx context.Context, notebook uuid.UUID, values []app.SourceValue) error {
+func (f *fakeStore) SetSourceHashes(ctx context.Context, notebook uuid.UUID, values []app.SourceValue) (map[uuid.UUID]app.SourceValue, error) {
 	f.record(ctx, "SetSourceHashes")
 	if len(values) > domain.MaxUnitNodes {
-		return fmt.Errorf("source writes exceeded bound: %d", len(values))
+		return nil, fmt.Errorf("source writes exceeded bound")
 	}
 	if err := f.errs["SetSourceHashes"]; err != nil {
-		return err
+		return nil, err
 	}
+	old := map[uuid.UUID]app.SourceValue{}
 	for _, v := range values {
 		if n, ok := f.nodes[v.ID]; ok && n.NotebookID == notebook {
+			if !bytes.Equal(f.sourceHashes[v.ID], v.Hash) {
+				old[v.ID] = app.SourceValue{ID: v.ID, Kind: n.Kind, BeforeSourceHash: slices.Clone(f.sourceHashes[v.ID])}
+			}
 			f.sourceHashes[v.ID] = slices.Clone(v.Hash)
 		}
 	}
-	return nil
+	return old, nil
+}
+func (f *fakeStore) SourceBaselines(ctx context.Context, notebook uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]app.SourceValue, error) {
+	f.record(ctx, "SourceBaselines")
+	if len(ids) > domain.MaxUnitNodes {
+		return nil, fmt.Errorf("unbounded baselines")
+	}
+	out := map[uuid.UUID]app.SourceValue{}
+	for _, id := range ids {
+		if n, ok := f.nodes[id]; ok && n.NotebookID == notebook {
+			out[id] = app.SourceValue{ID: id, Kind: n.Kind, BeforeSourceHash: slices.Clone(f.sourceHashes[id])}
+		}
+	}
+	return out, f.errs["SourceBaselines"]
 }
 
 // A missing maintenance call, running it only at unit end, or running it
@@ -339,4 +356,37 @@ func TestSourceHashMaintenanceChunksLargeTrees(t *testing.T) {
 		t.Errorf("source-out hash writes = %d, want two bounded chunks", writes)
 	}
 	checkFakeSourceRebuild(t, f, 0)
+}
+
+func (f *fakeStore) ProbeSources(ctx context.Context, notebook uuid.UUID, probes []app.SourceProbe) ([]app.SourceMatch, error) {
+	f.record(ctx, "ProbeSources")
+	if err := f.errs["ProbeSources"]; err != nil {
+		return nil, err
+	}
+	total := 0
+	var out []app.SourceMatch
+	for i, p := range probes {
+		total += p.Take
+		if p.Take <= 0 || total > domain.MaxUnitNodes {
+			return nil, fmt.Errorf("unbounded probe: %d", total)
+		}
+		var ids []uuid.UUID
+		for id, n := range f.nodes {
+			if n.NotebookID == notebook && n.Kind == p.Key.Kind && bytes.Equal(f.sourceHashes[id], p.Key.Hash[:]) && (p.After == nil || bytes.Compare(id[:], p.After[:]) > 0) {
+				ids = append(ids, id)
+			}
+		}
+		slices.SortFunc(ids, func(a, b uuid.UUID) int { return bytes.Compare(a[:], b[:]) })
+		for _, id := range ids[:min(len(ids), p.Take)] {
+			out = append(out, app.SourceMatch{Probe: i, ID: id})
+		}
+	}
+	return out, nil
+}
+func (f *fakeStore) LockSources(ctx context.Context, _ uuid.UUID) error {
+	f.record(ctx, "LockSources")
+	return f.errs["LockSources"]
+}
+func (f *fakeStore) ForgetSources(context.Context, uuid.UUID) error {
+	panic("not a page unit operation")
 }

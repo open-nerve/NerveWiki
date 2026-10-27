@@ -72,25 +72,49 @@ func (s *Store) ProbeSources(ctx context.Context, notebook uuid.UUID, probes []a
 }
 
 // SetSourceHashes writes changed live nodes in the selected notebook.
-func (s *Store) SetSourceHashes(ctx context.Context, notebook uuid.UUID, values []app.SourceValue) error {
+func (s *Store) SetSourceHashes(ctx context.Context, notebook uuid.UUID, values []app.SourceValue) (map[uuid.UUID]app.SourceValue, error) {
 	if len(values) > domain.MaxUnitNodes {
-		return errors.New("source hash writes exceed the node bound")
+		return nil, errors.New("source hash writes exceed the node bound")
 	}
+	out := map[uuid.UUID]app.SourceValue{}
 	if len(values) == 0 {
-		return nil
+		return out, nil
 	}
 	args := gen.SetSourceHashesParams{NotebookID: notebook}
 	for _, value := range values {
 		if value.Hash != nil && len(value.Hash) != 32 {
-			return errors.New("a source hash must be NULL or 32 bytes")
+			return nil, errors.New("a source hash must be NULL or 32 bytes")
 		}
 		args.NodeIds = append(args.NodeIds, value.ID)
 		args.Hashes = append(args.Hashes, value.Hash)
 	}
-	if err := s.planned(ctx).SetSourceHashes(ctx, args); err != nil {
-		return fmt.Errorf("set source hashes: %w", err)
+	rows, err := s.planned(ctx).SetSourceHashes(ctx, args)
+	if err != nil {
+		return nil, fmt.Errorf("set source hashes: %w", err)
 	}
-	return nil
+	for _, row := range rows {
+		out[row.ID] = app.SourceValue{ID: row.ID, Kind: domain.Kind(row.Kind), BeforeSourceHash: row.BeforeSourceHash}
+	}
+	return out, nil
+}
+
+// SourceBaselines reads only derived node keys, without page or asset metadata.
+func (s *Store) SourceBaselines(ctx context.Context, notebook uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]app.SourceValue, error) {
+	if len(ids) > domain.MaxUnitNodes {
+		return nil, errors.New("source baselines exceed the node bound")
+	}
+	out := map[uuid.UUID]app.SourceValue{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := s.planned(ctx).SourceBaselines(ctx, gen.SourceBaselinesParams{NotebookID: notebook, NodeIds: ids})
+	if err != nil {
+		return nil, fmt.Errorf("read source baselines: %w", err)
+	}
+	for _, row := range rows {
+		out[row.ID] = app.SourceValue{ID: row.ID, Kind: domain.Kind(row.Kind), BeforeSourceHash: row.BeforeSourceHash}
+	}
+	return out, nil
 }
 
 // LockSources serializes source first writes within a transaction.

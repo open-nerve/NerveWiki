@@ -106,7 +106,7 @@ type TreeWrites interface {
 	// root nodeID, unlocked, and answers its name: notebook.not_found,
 	// forbidden, page.not_found, then page.not_in_trash,
 	// page.not_trash_root and page.restore_expired.
-	CheckRestore(ctx context.Context, notebookID, nodeID uuid.UUID) (string, error)
+	CheckRestore(ctx context.Context, notebookID, nodeID uuid.UUID, admit func(context.Context) error) (string, error)
 	// CheckRevert checks a background revert of the changeset, unlocked,
 	// in the order of revertChangeset's check, admit called right after
 	// its items are counted, its error answered as it is, and page.locked
@@ -144,20 +144,30 @@ type ImportUnit interface {
 	// CreatePage creates a page at revision 1 of its content: ErrTooDeep,
 	// nothing written, for one deeper than pages go; ErrNoParent; 422 for
 	// a name that is no title.
-	CreatePage(ctx context.Context, p ImportedPage) (NodeInfo, error)
+	CreatePage(ctx context.Context, p ImportedPage) (CreatedNode, error)
 	// CreateAsset creates an attachment; after runs in the unit's
 	// transaction once the node is written. ErrNoParent; 422 for a name
 	// that is no attachment's.
-	CreateAsset(ctx context.Context, a ImportedAsset, after func(ctx context.Context, n NodeInfo) error) (NodeInfo, error)
+	CreateAsset(ctx context.Context, a ImportedAsset, after func(ctx context.Context, n NodeInfo) error) (CreatedNode, error)
 }
 
 // ImportedPage is an import's page: under ParentID (nil: the root), named
 // Name, holding Content, which Parsed parsed.
+type DuplicateSource = app.DuplicateSource
+
+// CreatedNode describes a created node or an import skip.
+type CreatedNode struct {
+	NodeInfo
+	Duplicate *DuplicateSource
+	Skipped   bool
+}
+
 type ImportedPage struct {
-	ParentID *uuid.UUID
-	Name     string
-	Content  string
-	Parsed   Parsed
+	HasChildren bool
+	ParentID    *uuid.UUID
+	Name        string
+	Content     string
+	Parsed      Parsed
 	// Reserved tells whether a later node of the import, a sibling, is
 	// named with the key: a name numbered because its own is held takes
 	// none of those, which keep theirs (nil: none).
@@ -217,8 +227,8 @@ func (t treeWrites) ParseTemplate(content string) (Facts, error) {
 	return t.seeds.ParseTemplate(content)
 }
 
-func (t treeWrites) CheckRestore(ctx context.Context, notebookID, nodeID uuid.UUID) (string, error) {
-	return t.jobs.CheckRestore(ctx, notebookID, nodeID)
+func (t treeWrites) CheckRestore(ctx context.Context, notebookID, nodeID uuid.UUID, admit func(context.Context) error) (string, error) {
+	return t.jobs.CheckRestore(ctx, notebookID, nodeID, admit)
 }
 
 func (t treeWrites) CheckRevert(ctx context.Context, notebookID, changesetID uuid.UUID, message *string,
@@ -259,16 +269,16 @@ type importUnit struct {
 	u *app.ImportUnit
 }
 
-func (i importUnit) CreatePage(ctx context.Context, p ImportedPage) (NodeInfo, error) {
+func (i importUnit) CreatePage(ctx context.Context, p ImportedPage) (CreatedNode, error) {
 	n, err := i.u.CreatePage(ctx, app.ImportedPage(p))
-	return nodeInfo(n), err
+	return CreatedNode{NodeInfo: nodeInfo(n.Node), Duplicate: n.Duplicate, Skipped: n.Skipped}, err
 }
 
-func (i importUnit) CreateAsset(ctx context.Context, a ImportedAsset, after func(ctx context.Context, n NodeInfo) error) (NodeInfo, error) {
+func (i importUnit) CreateAsset(ctx context.Context, a ImportedAsset, after func(ctx context.Context, n NodeInfo) error) (CreatedNode, error) {
 	n, err := i.u.CreateAsset(ctx, app.ImportedAsset(a), func(ctx context.Context, n domain.Node) error {
 		return after(ctx, nodeInfo(n))
 	})
-	return nodeInfo(n), err
+	return CreatedNode{NodeInfo: nodeInfo(n.Node), Duplicate: n.Duplicate, Skipped: n.Skipped}, err
 }
 
 func (t treeWrites) Check(ctx context.Context, a NewAsset) error {

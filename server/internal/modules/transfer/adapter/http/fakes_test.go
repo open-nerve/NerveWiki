@@ -152,6 +152,7 @@ func refusals() []*shared.Error {
 		shared.NewError(shared.KindConflict, "page.source_immutable", "Sources are immutable."),
 		shared.NewError(shared.KindForbidden, "page.source_admin_only", "Only an admin may move the source root."),
 		shared.NewError(shared.KindInvalid, "page.source_too_large", "Move smaller subtrees into the source area."),
+		{Kind: shared.KindConflict, Code: "page.source_duplicate", Detail: "Source exists.", DuplicateOf: new(pageID())},
 	}
 }
 
@@ -196,8 +197,14 @@ func (tree) refused(ctx context.Context, notebook, id uuid.UUID) error {
 	return nil
 }
 
-func (t tree) CheckRestore(ctx context.Context, notebook, id uuid.UUID) (string, error) {
-	return "Box", t.refused(ctx, notebook, id)
+func (t tree) CheckRestore(ctx context.Context, notebook, id uuid.UUID, admit func(context.Context) error) (string, error) {
+	if err := t.refused(ctx, notebook, id); err != nil {
+		return "", err
+	}
+	if err := admit(ctx); err != nil {
+		return "", err
+	}
+	return "Box", nil
 }
 
 func (t tree) CheckRevert(ctx context.Context, notebook, id uuid.UUID, message *string, admit func(context.Context) error, _ app.JobBatches) (string, error) {

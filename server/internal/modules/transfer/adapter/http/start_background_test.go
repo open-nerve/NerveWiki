@@ -88,6 +88,8 @@ func TestTheBackgroundStartsRefusals(t *testing.T) {
 		{"a node alive", nil, restoresPath(), "bob", restore(refusing("page.not_in_trash")), http.StatusConflict, "page.not_in_trash"},
 		{"no trash root", nil, restoresPath(), "bob", restore(refusing("page.not_trash_root")), http.StatusConflict, "page.not_trash_root"},
 		{"an item expired", nil, restoresPath(), "bob", restore(refusing("page.restore_expired")), http.StatusConflict, "page.restore_expired"},
+		{"duplicate restore", nil, restoresPath(), "bob", restore(refusing("page.source_duplicate")), http.StatusConflict, "page.source_duplicate"},
+		{"duplicate revert", nil, revertsPath(), "bob", revert(refusing("page.source_duplicate")), http.StatusConflict, "page.source_duplicate"},
 		{"a restore beside a write", writing, restoresPath(), "bob", restore(free), http.StatusConflict, "transfer.busy"},
 		{"a restore with the queue full", full, restoresPath(), "bob", restore(free), http.StatusServiceUnavailable, "server_busy"},
 		{"an empty message", nil, revertsPath(), "bob", `{"changeset_id": "` + free + `", "message": ""}`, http.StatusUnprocessableEntity,
@@ -117,6 +119,9 @@ func TestTheBackgroundStartsRefusals(t *testing.T) {
 			res, body := h.send(t, http.MethodPost, tt.path, tt.token, tt.body)
 			if res.StatusCode != tt.status || code(body) != tt.code {
 				t.Errorf("start = %d %s, want %d %s", res.StatusCode, body, tt.status, tt.code)
+			}
+			if tt.code == "page.source_duplicate" && !strings.Contains(string(body), `"duplicate_of":"`+pageID().String()+`"`) {
+				t.Errorf("duplicate target lost: %s", body)
 			}
 			if tt.code == "server_busy" && res.Header.Get("Retry-After") != strconv.Itoa(int(domain.QueueRetry/time.Second)) {
 				t.Errorf("Retry-After = %q, want %v", res.Header.Get("Retry-After"), domain.QueueRetry)
@@ -207,7 +212,7 @@ func TestABackgroundJobReadsWithItsReport(t *testing.T) {
 // Both HTTP reads carry a refusal, including codes of a later milestone;
 // every other report has the required member explicitly null.
 func TestARefusedJobReadsWithItsReport(t *testing.T) {
-	for _, code := range []string{"", "page.source_admin_only", "page.source_immutable", "page.source_too_large", "page.some_later_code"} {
+	for _, code := range []string{"", "page.source_admin_only", "page.source_immutable", "page.source_too_large", "page.source_duplicate", "page.some_later_code"} {
 		t.Run(code, func(t *testing.T) {
 			h := newHarness(t)
 			changeset, target := uuid.NewV7(), uuid.NewV7()
@@ -215,6 +220,9 @@ func TestARefusedJobReadsWithItsReport(t *testing.T) {
 			report := &domain.Report{Failure: domain.FailureInternal, Counts: domain.Counts{PutBack: 1}}
 			if code != "" {
 				report.Failure, report.Refusal = domain.FailureRefused, &domain.Refusal{Code: code, NodeID: pageID()}
+			}
+			if code == "page.source_duplicate" {
+				report.Refusal.DuplicateOf = &target
 			}
 			j := domain.Job{ID: uuid.NewV7(), NotebookID: notebookID(), Kind: domain.KindRevert, State: domain.StateFailed, Name: "edit",
 				CreatedBy: bob(), Client: domain.ClientWeb, CreatedAt: now().Add(-time.Hour), Finished: &finished,
@@ -252,6 +260,17 @@ func TestARefusedJobReadsWithItsReport(t *testing.T) {
 						t.Errorf("refusal = %s, want null", raw)
 					}
 					continue
+				}
+				var members map[string]json.RawMessage
+				if err := json.Unmarshal(raw, &members); err != nil {
+					t.Fatal(err)
+				}
+				wantTarget := "null"
+				if code == "page.source_duplicate" {
+					wantTarget = `"` + target.String() + `"`
+				}
+				if string(members["duplicate_of"]) != wantTarget {
+					t.Errorf("refusal target = %s, want %s", raw, wantTarget)
 				}
 				var refusal struct {
 					Code   string `json:"code"`

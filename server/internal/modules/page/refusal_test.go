@@ -29,7 +29,8 @@ func TestRefusalReadsTheMark(t *testing.T) {
 		{"another error", errors.New("the database is gone"), "", false},
 		{"none", nil, "", false},
 	} {
-		code, id, ok := page.Refusal(tt.err)
+		info, ok := page.Refusal(tt.err)
+		code, id := info.Code, info.NodeID
 		want := uuid.UUID{}
 		if tt.ok {
 			want = node
@@ -37,5 +38,23 @@ func TestRefusalReadsTheMark(t *testing.T) {
 		if code != tt.code || id != want || ok != tt.ok {
 			t.Errorf("%s: Refusal() = %q, %s, %v; want %q, %s, %v", tt.name, code, id, ok, tt.code, want, tt.ok)
 		}
+	}
+}
+
+func TestRefusalCopiesTheOptionalDuplicateTarget(t *testing.T) {
+	node, target := uuid.NewV7(), uuid.NewV7()
+	problem := domain.SourceDuplicate(&target)
+	info, ok := page.Refusal(fmt.Errorf("worker: %w", domain.Refuse(problem, node)))
+	if !ok || info.Code != "page.source_duplicate" || info.NodeID != node || info.DuplicateOf == nil || *info.DuplicateOf != target {
+		t.Fatalf("duplicate refusal=%+v/%v", info, ok)
+	}
+	original := target
+	target = uuid.NewV7()
+	if *problem.DuplicateOf != original {
+		t.Error("caller mutated fresh error target")
+	}
+	other := domain.SourceDuplicate(nil)
+	if other == problem || other.DuplicateOf != nil {
+		t.Error("source problems share mutable state")
 	}
 }

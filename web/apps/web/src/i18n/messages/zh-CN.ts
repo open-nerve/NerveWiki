@@ -707,6 +707,7 @@ export const zhCN: Messages = {
   "transfer.problem.invalid_content": "{path} 没有导入：它不是 UTF-8 文本，或含有 NUL 字符。",
   "transfer.problem.too_large": "{path} 没有导入：超过了服务器的上限。",
   "transfer.problem.too_deep": "{path} 没有导入：它在笔记本中会超过 10 层深。",
+  "transfer.problem.duplicate_source": "已跳过 {path}：{to} 已有字节相同的来源。",
   "transfer.problem.duplicate": "{path} 没有导入：zip 里前面已有同一路径的条目。",
   "transfer.problem.unreadable": "{path} 没有导入：它在 zip 里的数据坏了。",
   "transfer.problemsTruncated": "只列出前 1,000 条。",
@@ -959,6 +960,7 @@ export const zhCN: Messages = {
   "problem.page.protected": "LLM Wiki 保留它的 AGENTS 页与来源根：两者都不能删除，AGENTS 也不能改名或移动。",
   "problem.page.virtual_file":
     "这个文件由系统生成，修改页面后目录会自动更新；日志就是变更集，也会自动更新。根下的页与附件不能叫 index 或 log。",
+  "problem.page.source_duplicate": "笔记本中已存在字节相同的来源。",
   "problem.page.source_immutable": "来源正文不能修改。请添加新来源。",
   "problem.page.source_too_large":
     "移入 LLM Wiki 来源区的子树最多包含 10,000 个节点，包括空页面和附件。请分成较小的子树分别移入。",

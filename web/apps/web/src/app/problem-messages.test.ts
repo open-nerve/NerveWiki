@@ -235,3 +235,10 @@ test.each([
 ] as const)("source too large has an explanation in %s", (language, message) => {
   expect(errorText(new ApiError(422, problem(422, "page.source_too_large")), translator(language))).toBe(message);
 });
+
+test.each([
+  ["en", "This source already exists in the notebook."],
+  ["zh-CN", "笔记本中已存在字节相同的来源。"],
+] as const)("source duplicate has an explanation in %s", (language, message) => {
+  expect(errorText(new ApiError(409, problem(409, "page.source_duplicate")), translator(language))).toBe(message);
+});

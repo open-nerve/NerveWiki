@@ -41,6 +41,9 @@ type Write struct {
 	// decision (Grants): the unit's own, a pointer, since each step and
 	// each guard has the Write by value.
 	Grants *Grants
+	// Tree is the actual unit lock mode, not an operation-name guess.
+	Tree    bool
+	sources *sourceMemo
 }
 
 // Step is one operation of a unit: its kind, and each node it changes,

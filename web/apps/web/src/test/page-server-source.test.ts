@@ -1,5 +1,7 @@
 import { describe, expect, test } from "vitest";
 
+import { unwrap } from "../services/api";
+import { AssetService } from "../services/asset.service";
 import { PageService } from "../services/page.service";
 import { notebookJSON } from "./fakes";
 import { ada, assetNode, pageNode, pageServer, versionJSON } from "./page-server";
@@ -285,5 +287,187 @@ test.each(["title", "after another parent's child", "after itself"] as const)(
       trash: [...server.trash],
       history: server.changesets,
     }).toEqual(before);
+  }
+);
+
+describe("source duplicates in the page fake", () => {
+  test("create and empty first write refuse a baseline page and leave all data unchanged", async () => {
+    const { server, page } = fixture();
+    server.contents.set(source.id, { content: "same bytes\r\n", revision: 1 });
+    server.contents.set(folder.id, { content: "", revision: 1 });
+    const before = structuredClone({
+      nodes: server.nodes,
+      contents: [...server.contents],
+      versions: [...server.versions],
+    });
+    const duplicate = { status: 409, code: "page.source_duplicate", problem: { duplicate_of: source.id } };
+    await expect(
+      server.app.session.public
+        .POST("/api/v0/notebooks/{notebook_id}/pages", {
+          params: { path: { notebook_id: notebookJSON.id } },
+          body: { parent_id: root.id, title: "new source", content: "same bytes\r\n" },
+        })
+        .then(unwrap)
+    ).rejects.toMatchObject(duplicate);
+    await expect(page.putPageContent(folder.id, { content: "same bytes\r\n", base_revision: 1 })).rejects.toMatchObject(
+      duplicate
+    );
+    expect({ nodes: server.nodes, contents: [...server.contents], versions: [...server.versions] }).toEqual(before);
+    // Raw bytes, not normalized Markdown: a line-ending change is a distinct source.
+    await expect(page.putPageContent(folder.id, { content: "same bytes\n", base_revision: 1 })).resolves.toMatchObject({
+      revision: 2,
+    });
+  });
+
+  test("move compares carried pages with sources and with one another; ordinary moves stay legal", async () => {
+    const { server, page } = fixture();
+    server.contents.set(source.id, { content: "same", revision: 1 });
+    server.contents.set(outside.id, { content: "same", revision: 1 });
+    const before = [...server.nodes];
+    await expect(page.moveNode(outside.id, { parent_id: root.id })).rejects.toMatchObject({
+      status: 409,
+      code: "page.source_duplicate",
+      problem: { duplicate_of: source.id },
+    });
+    expect(server.nodes).toEqual(before);
+    const left = pageNode(801, "left", outside),
+      right = pageNode(802, "right", outside);
+    server.nodes = [...server.nodes, left, right];
+    server.contents.set(outside.id, { content: "", revision: 1 });
+    server.contents.set(left.id, { content: "internal", revision: 1 });
+    server.contents.set(right.id, { content: "internal", revision: 1 });
+    const internalBefore = [...server.nodes];
+    const error = await page.moveNode(outside.id, { parent_id: root.id }).catch((failure: unknown) => failure);
+    expect(error).toMatchObject({ status: 409, code: "page.source_duplicate" });
+    expect(error).toHaveProperty("problem");
+    expect((error as { problem: object }).problem).not.toHaveProperty("duplicate_of");
+    expect(server.nodes).toEqual(internalBefore);
+    await expect(page.moveNode(outside.id, { parent_id: agents.id })).resolves.toMatchObject({ parent_id: agents.id });
+  });
+
+  test("attachments compare bytes within their kind and persist identity across move and trash", async () => {
+    const { server, page } = fixture("admin");
+    const uploads = new AssetService(server.app.session.public, server.app.transfer);
+    const upload = (name: string, parent: string | null, bytes: string) =>
+      uploads.upload(notebookJSON.id, { name, parent, file: new Blob([bytes]) });
+    server.contents.set(source.id, { content: "same asset bytes", revision: 1 });
+    const first = await upload("first.bin", root.id, "same asset bytes");
+    const count = server.nodes.length;
+    await expect(upload("copy.bin", root.id, "same asset bytes")).rejects.toMatchObject({
+      status: 409,
+      code: "page.source_duplicate",
+      problem: { duplicate_of: first.id },
+    });
+    expect(server.nodes).toHaveLength(count);
+    const ordinary = await upload("outside.bin", null, "same asset bytes");
+    await expect(page.moveNode(ordinary.id, { parent_id: root.id })).rejects.toMatchObject({
+      code: "page.source_duplicate",
+      problem: { duplicate_of: first.id },
+    });
+    await page.deleteNode(first.id);
+    await expect(page.moveNode(ordinary.id, { parent_id: root.id })).resolves.toMatchObject({ parent_id: root.id });
+    await expect(page.restoreNode(first.id)).rejects.toMatchObject({
+      code: "page.source_duplicate",
+      problem: { duplicate_of: ordinary.id },
+    });
+  });
+
+  test.each(["upload", "move"] as const)(
+    "zero-byte %s rejects a live source attachment and retains all data",
+    async (entry) => {
+      const { server, page } = fixture("admin");
+      const uploads = new AssetService(server.app.session.public, server.app.transfer);
+      const first = await uploads.upload(notebookJSON.id, {
+        name: "first-empty.bin",
+        parent: root.id,
+        file: new Blob([]),
+      });
+      const incoming =
+        entry === "move"
+          ? await uploads.upload(notebookJSON.id, {
+              name: "outside-empty.bin",
+              parent: null,
+              file: new Blob([]),
+            })
+          : undefined;
+      const before = structuredClone({
+        nodes: server.nodes,
+        bytes: [...server.sourceAssetBytes],
+        contents: [...server.contents],
+        versions: [...server.versions],
+        trash: [...server.trash],
+        history: server.changesets,
+      });
+      const request =
+        incoming === undefined
+          ? uploads.upload(notebookJSON.id, {
+              name: "copy-empty.bin",
+              parent: root.id,
+              file: new Blob([]),
+            })
+          : page.moveNode(incoming.id, { parent_id: root.id });
+      await expect(request).rejects.toMatchObject({
+        status: 409,
+        code: "page.source_duplicate",
+        problem: { duplicate_of: first.id },
+      });
+      expect({
+        nodes: server.nodes,
+        bytes: [...server.sourceAssetBytes],
+        contents: [...server.contents],
+        versions: [...server.versions],
+        trash: [...server.trash],
+        history: server.changesets,
+      }).toEqual(before);
+    }
+  );
+
+  test("standard mode permits zero-byte attachment upload, move and restore", async () => {
+    const { server, page } = fixture("admin", "standard");
+    const uploads = new AssetService(server.app.session.public, server.app.transfer);
+    const first = await uploads.upload(notebookJSON.id, {
+      name: "first-empty.bin",
+      parent: root.id,
+      file: new Blob([]),
+    });
+    await expect(
+      uploads.upload(notebookJSON.id, { name: "copy-empty.bin", parent: root.id, file: new Blob([]) })
+    ).resolves.toMatchObject({ parent_id: root.id });
+    const incoming = await uploads.upload(notebookJSON.id, {
+      name: "outside-empty.bin",
+      parent: null,
+      file: new Blob([]),
+    });
+    await expect(page.moveNode(incoming.id, { parent_id: root.id })).resolves.toMatchObject({
+      id: incoming.id,
+      parent_id: root.id,
+    });
+    await page.deleteNode(first.id);
+    await expect(page.restoreNode(first.id)).resolves.toBeDefined();
+    expect(server.nodes.some((node) => node.id === first.id)).toBe(true);
+    expect(server.trash.size).toBe(0);
+  });
+});
+
+test.each(["llm_wiki", "standard"] as const)(
+  "fake %s duplicate checks exclude empty pages and the root",
+  async (mode) => {
+    const { server, page } = fixture("admin", mode);
+    server.contents.set(root.id, { content: "root-only", revision: 1 });
+    server.contents.set(source.id, { content: "same", revision: 1 });
+    server.contents.set(folder.id, { content: "", revision: 1 });
+    await expect(page.createPage(notebookJSON.id, root.id, "empty one")).resolves.toBeDefined();
+    await expect(page.createPage(notebookJSON.id, root.id, "empty two")).resolves.toBeDefined();
+    await expect(page.putPageContent(folder.id, { content: "root-only", base_revision: 1 })).resolves.toBeDefined();
+    if (mode === "standard") {
+      await expect(
+        server.app.session.public
+          .POST("/api/v0/notebooks/{notebook_id}/pages", {
+            params: { path: { notebook_id: notebookJSON.id } },
+            body: { parent_id: root.id, title: "ordinary copy", content: "same" },
+          })
+          .then(unwrap)
+      ).resolves.toBeDefined();
+    }
   }
 );

@@ -73,21 +73,23 @@ type (
 	// bootstrap adapts the page module's TreeWrites to it, and Parsed,
 	// ImportUnit and its operands, CreatedNode, and the jobs' JobSpec,
 	// JobPlan, JobStep, JobBatches and BatchDone to the page module's.
-	Tree          = app.Tree
-	Parsed        = app.Parsed
-	ImportSpec    = app.ImportSpec
-	ImportUnit    = app.ImportUnit
-	ImportedPage  = app.ImportedPage
-	ImportedAsset = app.ImportedAsset
-	CreatedNode   = app.CreatedNode
-	JobSpec       = app.JobSpec
-	JobPlan       = app.JobPlan
-	JobStep       = app.JobStep
-	JobBatches    = app.JobBatches
-	BatchDone     = app.BatchDone
+	Tree            = app.Tree
+	Parsed          = app.Parsed
+	ImportSpec      = app.ImportSpec
+	ImportUnit      = app.ImportUnit
+	ImportedPage    = app.ImportedPage
+	ImportedAsset   = app.ImportedAsset
+	CreatedNode     = app.CreatedNode
+	DuplicateSource = app.DuplicateSource
+	JobSpec         = app.JobSpec
+	JobPlan         = app.JobPlan
+	JobStep         = app.JobStep
+	JobBatches      = app.JobBatches
+	BatchDone       = app.BatchDone
 	// Placement is where a restore put its trash item's root.
 	Placement = domain.Placement
-	// Refused is a job write the notebook contract refused, with its code and node.
+	// Refused is a job write the notebook contract refused, with its code,
+	// node and optional stable duplicate target.
 	Refused = app.Refused
 	// Attachments writes an import's attachments' files: bootstrap adapts
 	// the asset module's Blobs to it, and File and Owner to its.

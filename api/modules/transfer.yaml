@@ -167,9 +167,14 @@ paths:
         item's are made again as the job is created. The job is named after
         the item, its root_id is the item's root; it runs in the background:
         read it with getTransferJob until it ends.
+        After admission, an LLM Wiki checks the nominal restoration for
+        duplicate sources (page.source_duplicate, 409) before queue capacity.
+        No job is created on refusal. Each actual batch checks again; a
+        later refusal rolls back that batch and retains earlier batches.
       security: [{ bearer: [] }]
       x-problem-codes:
         [
+          page.source_duplicate,
           notebook.not_found,
           forbidden,
           page.not_found,
@@ -268,9 +273,14 @@ paths:
         and the moved root in its report; earlier committed batches stay,
         and the refused batch writes nothing. Move smaller subtrees into
         sources separately.
+        The nominal batches of an LLM Wiki are checked for duplicate sources
+        (page.source_duplicate, 409) after admission, before locks and queue
+        capacity. Each actual batch checks again; a refusal rolls back that
+        batch, leaving earlier completed batches in place.
       security: [{ bearer: [] }]
       x-problem-codes:
         [
+          page.source_duplicate,
           page.source_immutable,
           validation_failed,
           notebook.not_found,
@@ -880,17 +890,24 @@ components:
     TransferRefusal:
       type: object
       additionalProperties: false
-      required: [code, node_id]
+      required: [code, node_id, duplicate_of]
       properties:
         code:
           description: >-
             The code of the refusal, as the write's own answer would carry it:
             page.protected, page.virtual_file, page.source_immutable,
-            page.source_admin_only or page.source_too_large today;
+            page.source_admin_only, page.source_too_large or page.source_duplicate today;
             later milestones add others without a change to this contract.
           type: string
         node_id:
           type: string
+          format: uuid
+        duplicate_of:
+          description: >-
+            The existing source's ID for page.source_duplicate, separate from
+            the refused node_id. Null for a duplicate existing only within the
+            refused unit, for other refusal codes, and for older saved reports.
+          type: [string, "null"]
           format: uuid
     TransferFailure:
       description: >-
@@ -1031,7 +1048,9 @@ components:
         header's); an import's node, at its path in the vault: too_deep
         (more than 10 levels deep in the notebook where the import goes,
         with everything under it), renamed (created under the name at the
-        end of to, its path from where the import goes).
+        end of to, its path from where the import goes), duplicate_source
+        (identical bytes already exist as a source of the same kind; path
+        is the archive item and to is the matching notebook path).
       type: object
       additionalProperties: false
       required: [path, code, to]
@@ -1054,10 +1073,14 @@ components:
               too_large,
               too_deep,
               duplicate,
+              duplicate_source,
               unreadable,
             ]
         to:
-          description: Where a renamed node is written, or created; null for any other problem.
+          description: >-
+            Where a renamed node is written or created; for duplicate_source,
+            the matching source's notebook path when the item was skipped.
+            Null for any other problem.
           type: [string, "null"]
     TransferDownload:
       type: object

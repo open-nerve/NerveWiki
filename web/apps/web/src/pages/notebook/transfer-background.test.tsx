@@ -557,7 +557,7 @@ test.each([
   const raw = pageNode(8, "raw");
   const job = revertOf(1, {
     state: "failed",
-    report: { ...reportOf("refused"), refusal: { code, node_id: raw.id } },
+    report: { ...reportOf("refused"), refusal: { code, node_id: raw.id, duplicate_of: null } },
     progress: { done: 1, total: 2 },
   });
   const server = jobsServer({ jobs: [job], nodes: present ? [raw] : [] });

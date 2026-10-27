@@ -169,6 +169,7 @@ export function pageServer({
     nodes,
     views: new Map<string, PageView>(),
     contents: new Map<string, { content: string; revision: number }>(),
+    sourceAssetBytes: new Map<string, string>(),
     sessions: new Map<string, FakeSession>(),
     nodesDown: false,
     viewsDown: false,
@@ -421,7 +422,7 @@ function endedAnswer(session: FakeSession): Response {
 
 /** The writes' answers of server, which change it. */
 function writeRoutes(
-  server: SourceState & {
+  server: SourceData & {
     sent: string[];
     sessions: Map<string, FakeSession>;
     trashNode: (id: string) => FakeTrashItem;
@@ -445,20 +446,29 @@ function writeRoutes(
   };
   return {
     [`POST /api/v0/notebooks/${notebookJSON.id}/pages`]: async (request) => {
-      const { parent_id, title } = (await request.clone().json()) as { parent_id: string | null; title: string };
+      const {
+        parent_id,
+        title,
+        content = "",
+      } = (await request.clone().json()) as { parent_id: string | null; title: string; content?: string };
       server.sent.push(`POST ${title} under ${server.nodes.find((n) => n.id === parent_id)?.name ?? "root"}`);
       if (taken(parent_id, title)) {
         return problem(409, "page.title_taken");
       }
-      const node: TreeNode = { ...pageNode(created++, title), parent_id };
+      const node: TreeNode = { ...pageNode(created, title), parent_id };
+      const contents = new Map(server.contents).set(node.id, { content, revision: 1 });
+      const duplicate = sourceDuplicate({ ...server, nodes: [...server.nodes, node], contents }, [node], server);
+      if (duplicate !== undefined) return problem(409, duplicate.code, duplicate);
+      created++;
       server.nodes = [...server.nodes, node];
+      server.contents.set(node.id, { content, revision: 1 });
       place(node, undefined);
       return json(
         {
           ...node,
           ancestors: [],
           revision: 1,
-          byte_size: 0,
+          byte_size: new TextEncoder().encode(content).length,
           content_updated_at: node.created_at,
           content_updated_by: "",
         },
@@ -527,7 +537,15 @@ function writeRoutes(
         return problem(sourceStatus(code), code);
       }
       const moved = { ...node, parent_id: move.parent_id };
-      server.nodes = server.nodes.map((each) => (each === node ? moved : each));
+      const projected = { ...server, nodes: server.nodes.map((each) => (each === node ? moved : each)) };
+      if (!sourceArea(server, node) && sourceArea(projected, moved)) {
+        const carried = projected.nodes.filter(
+          (each) => each.id === node.id || isUnder(projected.nodes, each, node.id)
+        );
+        const duplicate = sourceDuplicate(projected, carried, server);
+        if (duplicate !== undefined) return problem(409, duplicate.code, duplicate);
+      }
+      server.nodes = projected.nodes;
       place(moved, move.after_id);
       return json(moved);
     },
@@ -596,7 +614,7 @@ export function assetJSON(
   };
 }
 
-type AssetState = {
+type AssetState = SourceData & {
   sent: string[];
   nodes: TreeNode[];
   assetsExpireAt: string;
@@ -654,6 +672,7 @@ function assetRoutes(server: AssetState, role: NotebookRole): Record<string, Ans
       if (server.uploadsHeld) {
         await new Promise<void>((resolve) => server.held.push(resolve));
       }
+      const bytes = file instanceof Blob ? await blobBytes(file) : "";
       // One stopped before its body all went makes nothing; its answer is no one's.
       if (abortedFor(request)) {
         return problem(400, "aborted");
@@ -675,7 +694,16 @@ function assetRoutes(server: AssetState, role: NotebookRole): Record<string, Ans
       if (server.nodes.some((node) => node.parent_id === parent && titleKey(node.name) === titleKey(name))) {
         return problem(409, "page.title_taken");
       }
-      const node: TreeNode = { ...assetNode(created++, name), parent_id: parent };
+      const node: TreeNode = { ...assetNode(created, name), parent_id: parent };
+      const sourceAssetBytes = new Map(server.sourceAssetBytes).set(node.id, bytes);
+      const duplicate = sourceDuplicate(
+        { ...server, nodes: [...server.nodes, node], sourceAssetBytes },
+        [node],
+        server
+      );
+      if (duplicate !== undefined) return problem(409, duplicate.code, duplicate);
+      created++;
+      server.sourceAssetBytes?.set(node.id, bytes);
       server.nodes = [...server.nodes, node];
       sizes.set(node.id, file instanceof Blob ? file.size : 0);
       return json(answered(node), 201);
@@ -752,6 +780,14 @@ function contentRoutes(server: ContentState): Record<string, Answer> {
       }
       if (sourceArea(server, node) && (session !== undefined || (changed && current.content.length > 0))) {
         return problem(409, "page.source_immutable");
+      }
+      if (changed) {
+        const contents = new Map(server.contents).set(node.id, {
+          content: write.content,
+          revision: current.revision + 1,
+        });
+        const duplicate = sourceDuplicate({ ...server, contents }, [node], server);
+        if (duplicate !== undefined) return problem(409, duplicate.code, duplicate);
       }
       const revision = changed ? current.revision + 1 : current.revision;
       if (changed) {
@@ -1060,6 +1096,7 @@ function isUnder(nodes: readonly TreeNode[], node: TreeNode, id: string): boolea
 export type SourceState = {
   notebook: Pick<Notebook, "mode" | "source_root_id">;
   nodes: TreeNode[];
+  sourceAssetBytes?: Map<string, string>;
 };
 
 /** sourceArea follows current parents, including attachment parents, and excludes the source root itself. */
@@ -1138,4 +1175,57 @@ function sourceSubtreeTooLarge(nodes: TreeNode[], root: string): boolean {
 /** Source refusals keep their HTTP status at all fake write entries. */
 export function sourceStatus(code: string): number {
   return code === "page.source_admin_only" ? 403 : code === "page.source_too_large" ? 422 : 409;
+}
+
+/** The fake retains raw bytes, never a normalized body or an attachment name. */
+export type SourceData = SourceState & { contents: Map<string, { content: string; revision: number }> };
+export type SourceRefusal = { code: string; duplicate_of?: string };
+
+function sourceKey(server: SourceData, node: TreeNode): string | undefined {
+  const bytes =
+    node.kind === "page"
+      ? (server.contents.get(node.id)?.content ?? `${node.name}\n`)
+      : server.sourceAssetBytes?.get(node.id);
+  return bytes === undefined || (node.kind === "page" && bytes.length === 0) ? undefined : `${node.kind}\0${bytes}`;
+}
+
+/** Check just the nodes entering sources or taking their first body. Public targets
+ * come from the operation's original live source set with those exact bytes.
+ */
+export function sourceDuplicate(
+  server: SourceData,
+  candidates: readonly TreeNode[],
+  baseline: SourceData = server
+): SourceRefusal | undefined {
+  if (server.notebook.mode !== "llm_wiki") return undefined;
+  const incoming = new Set(candidates.map((node) => node.id));
+  const existing = new Map<string, TreeNode[]>();
+  for (const node of server.nodes) {
+    const key = sourceKey(server, node);
+    if (!incoming.has(node.id) && key !== undefined && sourceArea(server, node)) {
+      const matches = existing.get(key) ?? [];
+      matches.push(node);
+      existing.set(key, matches);
+    }
+  }
+  for (const node of candidates) {
+    const key = sourceKey(server, node);
+    if (key === undefined || !sourceArea(server, node)) continue;
+    const match = existing.get(key);
+    if (match !== undefined) {
+      const stable = [...match, node].find((candidate) => {
+        const before = baseline.nodes.find((each) => each.id === candidate.id);
+        return before !== undefined && sourceArea(baseline, before) && sourceKey(baseline, before) === key;
+      });
+      return { code: "page.source_duplicate", ...(stable === undefined ? {} : { duplicate_of: stable.id }) };
+    }
+    existing.set(key, [node]);
+  }
+  return undefined;
+}
+
+/** Read bytes without FileReader's extra tasks splitting a released upload's turn. */
+async function blobBytes(blob: Blob): Promise<string> {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }

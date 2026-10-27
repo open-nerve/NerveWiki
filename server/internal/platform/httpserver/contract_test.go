@@ -59,6 +59,8 @@ func TestPlatformProblemsMatchTheContract(t *testing.T) {
 			lock: &ProblemLock{PageID: uuid.MustParse(lockedPage), UserID: uuid.MustParse(lockHolder), DisplayName: "Ada"}}), http.MethodGet, "/api/v0/things", "", http.StatusConflict},
 		{"who ended", writing(memberErr{problemErr: problemErr{status: http.StatusConflict, code: "page.edit_session_unlocked", detail: "Unlocked."},
 			endedBy: &ProblemPerson{UserID: uuid.MustParse(lockHolder), DisplayName: "Ada"}}), http.MethodGet, "/api/v0/things", "", http.StatusConflict},
+		{"duplicate source", writing(memberErr{problemErr: problemErr{status: http.StatusConflict, code: "page.source_duplicate", detail: "Source exists."}, duplicateOf: new(uuid.MustParse(lockedPage))}), http.MethodGet, "/api/v0/things", "", http.StatusConflict},
+		{"duplicate within operation", writing(memberErr{problemErr: problemErr{status: http.StatusConflict, code: "page.source_duplicate", detail: "Source exists."}}), http.MethodGet, "/api/v0/things", "", http.StatusConflict},
 		{"the root", writing(memberErr{problemErr: problemErr{status: http.StatusConflict, code: "page.not_trash_root", detail: "Not a root."},
 			rootID: new(uuid.MustParse(lockedPage))}), http.MethodGet, "/api/v0/things", "", http.StatusConflict},
 		{"conflicts", writing(memberErr{problemErr: problemErr{status: http.StatusConflict, code: "page.revert_conflict", detail: "Changed since."},

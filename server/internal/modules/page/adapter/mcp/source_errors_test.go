@@ -123,3 +123,137 @@ func TestTheSourceRefusalsKeepTheirMCPStructure(t *testing.T) {
 		}
 	}
 }
+
+type sourcePathFunc func(context.Context, uuid.UUID, uuid.UUID) (string, error)
+
+func (f sourcePathFunc) Execute(ctx context.Context, notebook, node uuid.UUID) (string, error) {
+	return f(ctx, notebook, node)
+}
+
+// Path resolution is explanatory only: a failed read must not replace the refusal,
+// and a rolled-back internal duplicate has no public target to resolve.
+func TestDuplicateSourcesKeepTheirMCPCodeTargetAndPlace(t *testing.T) {
+	notebook, target := uuid.NewV7(), uuid.NewV7()
+	for _, scope := range []string{"notebook", "account"} {
+		for _, resolution := range []string{"visible", "missing", "read-error", "within-operation"} {
+			for _, op := range []string{"write", "move", "batch-write", "batch-move"} {
+				t.Run(scope+"/"+resolution+"/"+op, func(t *testing.T) {
+					id := &target
+					if resolution == "within-operation" {
+						id = nil
+					}
+					refusal := domain.Refuse(domain.SourceDuplicate(id), uuid.NewV7())
+					reads := 0
+					uc := UseCases{
+						Write: writeFunc(func(uuid.UUID, app.PathWrite, domain.Client) (app.Written, error) { return app.Written{}, refusal }),
+						Move:  moveFunc(func(uuid.UUID, app.PathMove, domain.Client) (app.Relocated, error) { return app.Relocated{}, refusal }),
+						Batch: batchFunc(func(_ uuid.UUID, p app.PathBatch, _ domain.Client) (app.Batched, error) {
+							kind := domain.OpKindWrite
+							if p.Ops[1].Op == "move" {
+								kind = domain.OpKindMove
+							}
+							return app.Batched{}, failedAt(1, kind, refusal)
+						}),
+						TargetPath: sourcePathFunc(func(_ context.Context, n, id uuid.UUID) (string, error) {
+							reads++
+							if n != notebook || id != target {
+								t.Errorf("resolved %s/%s, want %s/%s", n, id, notebook, target)
+							}
+							switch resolution {
+							case "visible":
+								return "raw/folder/existing.md", nil
+							case "missing":
+								return "", domain.ErrNotFound
+							default:
+								return "", io.ErrUnexpectedEOF
+							}
+						}),
+					}
+					logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+					srv := mcpserver.New(mcpserver.Options{Name: "duplicate-errors", Version: "test", Tools: Tools(uc, nil), Notebooks: sourceNotebooks{}, Credentials: func(context.Context) (mcpserver.Credential, bool) {
+						return mcpserver.Credential{UserID: uuid.NewV7(), TokenID: uuid.NewV7()}, true
+					}, Errors: httpserver.NewAPIErrors(logger), RequestTimeout: time.Second, MaxBodyBytes: 1 << 20, Logger: logger})
+					tool := op
+					args := map[string]any{"path": "raw/new.md", "content": "same"}
+					if op == "move" {
+						args = map[string]any{"from": "outside.md", "to": "raw/new.md"}
+					}
+					if strings.HasPrefix(op, "batch-") {
+						tool = "batch"
+						item := map[string]any{"op": "write", "path": "raw/new.md", "content": "same"}
+						if op == "batch-move" {
+							item = map[string]any{"op": "move", "from": "outside.md", "to": "raw/new.md"}
+						}
+						args = map[string]any{"ops": []any{map[string]any{"op": "write", "path": "ordinary.md", "content": "ok"}, item}, "message": "add source"}
+					}
+					url := "/mcp?notebook=" + notebook.String()
+					if scope == "account" {
+						url = "/mcp"
+						args["notebook"] = notebook.String()
+					}
+					body, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": map[string]any{"name": tool, "arguments": args}})
+					if err != nil {
+						t.Fatal(err)
+					}
+					req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+					req.Header.Set("Content-Type", "application/json")
+					req.Header.Set("Accept", "application/json, text/event-stream")
+					req.Header.Set("Mcp-Protocol-Version", "2025-11-25")
+					w := httptest.NewRecorder()
+					srv.ServeHTTP(w, req)
+					var answer struct {
+						Result struct {
+							IsError bool `json:"isError"`
+							Content []struct {
+								Text string `json:"text"`
+							} `json:"content"`
+							Structured struct {
+								Error map[string]json.RawMessage `json:"error"`
+							} `json:"structuredContent"`
+						} `json:"result"`
+					}
+					if err := json.Unmarshal(w.Body.Bytes(), &answer); err != nil {
+						t.Fatal(err)
+					}
+					got := answer.Result.Structured.Error
+					if w.Code != http.StatusOK || !answer.Result.IsError || string(got["code"]) != `"page.source_duplicate"` || len(answer.Result.Content) != 1 {
+						t.Fatalf("answer = %d %s", w.Code, w.Body)
+					}
+					duplicate, exists := got["duplicate_of"]
+					if id == nil && exists || id != nil && string(duplicate) != `"`+target.String()+`"` {
+						t.Errorf("target lost or invented: %s", w.Body)
+					}
+					wantReads := 1
+					if id == nil {
+						wantReads = 0
+					}
+					if reads != wantReads {
+						t.Errorf("path reads = %d, want %d", reads, wantReads)
+					}
+					message := answer.Result.Content[0].Text
+					var structuredMessage string
+					if err := json.Unmarshal(got["message"], &structuredMessage); err != nil {
+						t.Fatal(err)
+					}
+					if message != structuredMessage || !strings.HasPrefix(message, "page.source_duplicate: ") {
+						t.Errorf("inconsistent message: %s", w.Body)
+					}
+					if strings.Contains(message, "raw/folder/existing.md") != (resolution == "visible") {
+						t.Errorf("visible path mismatch: %q", message)
+					}
+					if tool == "batch" {
+						kind := "write"
+						if op == "batch-move" {
+							kind = "move"
+						}
+						if string(got["op"]) != "1" || !strings.Contains(message, "ops[1] ("+kind+")") {
+							t.Errorf("batch lost place: %s", w.Body)
+						}
+					} else if _, ok := got["op"]; ok {
+						t.Errorf("single tool acquired op: %s", w.Body)
+					}
+				})
+			}
+		}
+	}
+}

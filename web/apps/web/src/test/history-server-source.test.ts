@@ -614,3 +614,57 @@ for (const entry of ["sync", "background"] as const) {
     }
   });
 }
+
+for (const entry of ["sync", "background"] as const) {
+  test(`${entry} history refuses bringing a duplicate source back before undo or scheduling`, async () => {
+    const incoming = pageNode(811, "incoming");
+    const server = jobsServer({
+      role: "admin",
+      mode: "llm_wiki",
+      sourceRootId: root.id,
+      nodes: [root, source, incoming],
+    });
+    server.contents.set(source.id, { content: "identical", revision: 1 });
+    server.contents.set(incoming.id, { content: "identical", revision: 1 });
+    let undos = 0;
+    const change = server.log("moved source out", {
+      changes: [moved(incoming, root.id)],
+      undo: () => {
+        undos += 1;
+      },
+    });
+    const before = historyState(server);
+    const request =
+      entry === "sync"
+        ? new PageService(server.app.session.public).revertChangeset(change.id)
+        : new TransferService(server.app.session.public).startRevert(notebookJSON.id, change.id);
+    await expect(request).rejects.toMatchObject({
+      status: 409,
+      code: "page.source_duplicate",
+      problem: { duplicate_of: source.id },
+    });
+    expect(undos).toBe(0);
+    expect(historyState(server)).toEqual(before);
+  });
+
+  test(`${entry} history allows source replacement after the matching source moves out`, async () => {
+    const incoming = pageNode(821, "incoming");
+    const departing = pageNode(820, "departing", root);
+    const server = jobsServer({
+      role: "admin",
+      mode: "llm_wiki",
+      sourceRootId: root.id,
+      nodes: [root, departing, incoming],
+    });
+    server.contents.set(departing.id, { content: "identical", revision: 1 });
+    server.contents.set(incoming.id, { content: "identical", revision: 1 });
+    // Undo first moves the baseline source out, then brings the candidate in.
+    const change = server.log("exchanged places", { changes: [moved(departing, null), moved(incoming, root.id)] });
+    const request =
+      entry === "sync"
+        ? new PageService(server.app.session.public).revertChangeset(change.id)
+        : new TransferService(server.app.session.public).startRevert(notebookJSON.id, change.id);
+    // A source moved out is no longer a collision in the active set.
+    await expect(request).resolves.toBeDefined();
+  });
+}

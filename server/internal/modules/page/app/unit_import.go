@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"uuid"
 
@@ -23,7 +24,8 @@ var ErrNoParent = errors.New("page: the parent is no page of the notebook")
 
 // ImportUnit is an import's unit: Import's do calls its operations.
 type ImportUnit struct {
-	u *Unit
+	u     *Unit
+	empty Facts
 	// under are the children of each parent read in the unit, and lines
 	// the line of each, by parent: uuid.Nil() for the root.
 	under map[uuid.UUID]*children
@@ -45,11 +47,24 @@ type children struct {
 
 // ImportedPage is an import's page: under ParentID (nil: the notebook's
 // root), named Name, holding Content, which Parsed parsed.
+type DuplicateSource struct {
+	ID   uuid.UUID
+	Path string
+}
+
+// CreatedNode includes an import skip without pretending a missing leaf was created.
+type CreatedNode struct {
+	domain.Node
+	Duplicate *DuplicateSource
+	Skipped   bool
+}
+
 type ImportedPage struct {
-	ParentID *uuid.UUID
-	Name     string
-	Content  string
-	Parsed   Parsed
+	HasChildren bool
+	ParentID    *uuid.UUID
+	Name        string
+	Content     string
+	Parsed      Parsed
 	// Reserved tells whether a later node of the import, a sibling, is
 	// named with the key: a name numbered because its own is held takes
 	// none of those, which keep theirs (nil: none).
@@ -73,29 +88,44 @@ type ImportedAsset struct {
 // title (422 otherwise: the import mends it first); a parent that is no
 // page of the notebook is ErrNoParent; a page deeper than domain.MaxDepth
 // is domain.ErrTooDeep, nothing written.
-func (iu *ImportUnit) CreatePage(ctx context.Context, p ImportedPage) (domain.Node, error) {
+func (iu *ImportUnit) CreatePage(ctx context.Context, p ImportedPage) (CreatedNode, error) {
 	line, err := iu.line(ctx, p.ParentID)
 	if err != nil {
-		return domain.Node{}, err
+		return CreatedNode{}, err
 	}
 	if domain.Depth(line) > domain.MaxDepth {
-		return domain.Node{}, domain.ErrTooDeep
+		return CreatedNode{}, domain.ErrTooDeep
 	}
 	kids, err := iu.children(ctx, p.ParentID)
 	if err != nil {
-		return domain.Node{}, err
+		return CreatedNode{}, err
 	}
 	title, err := kids.free(p.Name, false, p.Reserved)
 	if err != nil {
-		return domain.Node{}, err
+		return CreatedNode{}, err
+	}
+	var duplicate *DuplicateSource
+	if len(p.Content) > 0 {
+		hash := sha256.Sum256([]byte(p.Content))
+		duplicate, err = iu.duplicate(ctx, line, domain.KindPage, hash[:])
+		if err != nil {
+			return CreatedNode{}, err
+		}
+	}
+	if duplicate != nil {
+		if !p.HasChildren {
+			return CreatedNode{Duplicate: duplicate, Skipped: true}, nil
+		}
+		p.Content = ""
+		p.Parsed = Parsed{Facts: iu.empty}
 	}
 	n, renumbered, err := iu.u.insertPage(ctx, PageDraft{ParentID: p.ParentID, Title: title.Name, Content: p.Content, Facts: p.Parsed.Facts},
 		title, kids.nodes, len(kids.nodes)-1, line)
 	if err != nil {
-		return domain.Node{}, err
+		return CreatedNode{}, err
 	}
 	kids.add(n, renumbered)
-	return n, nil
+	return CreatedNode{Node: n, Duplicate: duplicate, Skipped: duplicate != nil}, nil
 }
 
 // CreateAsset creates the attachment a, last among its siblings; after
@@ -104,29 +134,36 @@ func (iu *ImportUnit) CreatePage(ctx context.Context, p ImportedPage) (domain.No
 // must be an attachment's (422 otherwise); a parent that is no page of
 // the notebook is ErrNoParent. An attachment is no level of the tree.
 func (iu *ImportUnit) CreateAsset(ctx context.Context, a ImportedAsset, after func(ctx context.Context, n domain.Node) error) (
-	domain.Node, error,
+	CreatedNode, error,
 ) {
 	line, err := iu.line(ctx, a.ParentID)
 	if err != nil {
-		return domain.Node{}, err
+		return CreatedNode{}, err
 	}
 	kids, err := iu.children(ctx, a.ParentID)
 	if err != nil {
-		return domain.Node{}, err
+		return CreatedNode{}, err
 	}
 	title, err := kids.free(a.Name, true, a.Reserved)
 	if err != nil {
-		return domain.Node{}, err
+		return CreatedNode{}, err
+	}
+	duplicate, err := iu.duplicate(ctx, line, domain.KindAsset, a.Meta.SHA256)
+	if err != nil {
+		return CreatedNode{}, err
+	}
+	if duplicate != nil {
+		return CreatedNode{Duplicate: duplicate, Skipped: true}, nil
 	}
 	n, renumbered, err := iu.u.insertAsset(ctx, AssetDraft{ParentID: a.ParentID, Name: title.Name, Meta: a.Meta}, title, kids.nodes, &StepLines{After: line})
 	if err != nil {
-		return domain.Node{}, err
+		return CreatedNode{}, err
 	}
 	kids.add(n, renumbered)
 	if err := after(ctx, n); err != nil {
-		return domain.Node{}, err
+		return CreatedNode{}, err
 	}
-	return n, nil
+	return CreatedNode{Node: n}, nil
 }
 
 // line is the line of parentID, read once in the unit: the ancestors from
@@ -215,4 +252,41 @@ func keyOf(parentID *uuid.UUID) uuid.UUID {
 		return uuid.Nil()
 	}
 	return *parentID
+}
+
+// Import skips are successful report facts; their target can be another node
+// already created in this same transaction. No rollback problem ID escapes.
+func (iu *ImportUnit) duplicate(ctx context.Context, line []domain.Ancestor, kind domain.Kind, hash []byte) (*DuplicateSource, error) {
+	state := iu.u.write.Notebook
+	if state.Mode != domain.ModeLLMWiki {
+		return nil, nil
+	}
+	inside := false
+	for _, a := range line {
+		inside = inside || a.ID == state.SourceRootID
+	}
+	if !inside {
+		return nil, nil
+	}
+	key, ok := sourceKey(kind, hash)
+	if !ok {
+		return nil, errors.New("invalid imported source hash")
+	}
+	witnesses, err := probeSourceWitnesses(ctx, iu.u.w.d.Sources, iu.u.write.NotebookID, []SourceKey{key}, nil)
+	if err != nil {
+		return nil, err
+	}
+	id, ok := witnesses[key]
+	if !ok {
+		return nil, nil
+	}
+	paths, err := iu.u.w.d.Paths.PathsOf(ctx, iu.u.write.NotebookID, []uuid.UUID{id})
+	if err != nil {
+		return nil, err
+	}
+	path, ok := paths[id]
+	if !ok {
+		return nil, errors.New("import duplicate target has no current path")
+	}
+	return &DuplicateSource{ID: id, Path: path}, nil
 }

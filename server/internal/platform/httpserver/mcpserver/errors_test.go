@@ -296,3 +296,25 @@ func TestAnErrorsPlaceFollowsItsCode(t *testing.T) {
 			toolText(t, r), line)
 	}
 }
+
+// A module cannot inject or replace a duplicate target through ToolError.Extra.
+type duplicateProblem struct {
+	problem
+	target *uuid.UUID
+}
+
+func (e duplicateProblem) ProblemDuplicateOf() *uuid.UUID { return e.target }
+
+func TestDuplicateTargetIsAReservedProblemMember(t *testing.T) {
+	for _, target := range []*uuid.UUID{nil, &visible} {
+		e := duplicateProblem{problem: problem{status: http.StatusConflict, code: "page.source_duplicate", detail: "Source exists."}, target: target}
+		member := errorOf(t, decodedAnswer(t, New(bare(discard())), &ToolError{Err: fmt.Errorf("move: %w", e), Extra: map[string]any{"duplicate_of": alice.String(), "op": 2}}))
+		got, exists := member["duplicate_of"]
+		if target == nil && exists || target != nil && got != target.String() {
+			t.Errorf("duplicate_of = %v (present %v), want %v", got, exists, target)
+		}
+		if member["code"] != "page.source_duplicate" || member["op"] != float64(2) {
+			t.Errorf("lost structured members: %v", member)
+		}
+	}
+}

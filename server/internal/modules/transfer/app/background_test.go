@@ -452,9 +452,9 @@ func TestAJobsRefusalBelongsToItsFinalFailure(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			w := newBackgroundWorld()
 			w.tree.steps = steps(3, 0)
-			node := uuid.NewV7()
-			w.tree.fail[1] = &app.Refused{Code: "page.source_admin_only", NodeID: node,
-				Err: &shared.Error{Kind: shared.KindForbidden, Code: "page.source_admin_only"}}
+			node, duplicate := uuid.NewV7(), uuid.NewV7()
+			w.tree.fail[1] = &app.Refused{Code: "page.source_duplicate", NodeID: node, DuplicateOf: &duplicate,
+				Err: &shared.Error{Kind: shared.KindConflict, Code: "page.source_duplicate", DuplicateOf: &duplicate}}
 			deadline := newExpiring()
 			ctx, cancel := context.WithCancel(deadline)
 			defer cancel()
@@ -496,7 +496,7 @@ func TestAJobsRefusalBelongsToItsFinalFailure(t *testing.T) {
 					got.State, got.Progress, got.Report, w.tree.written(), w.tree.succeeded(), tt.state, tt.failure)
 			}
 			if tt.failure == domain.FailureRefused {
-				if got.Report.Refusal == nil || *got.Report.Refusal != (domain.Refusal{Code: "page.source_admin_only", NodeID: node}) {
+				if got.Report.Refusal == nil || *got.Report.Refusal != (domain.Refusal{Code: "page.source_duplicate", NodeID: node, DuplicateOf: &duplicate}) {
 					t.Errorf("ordinary refusal = %+v, want its code and node", got.Report.Refusal)
 				}
 			} else if got.Report.Refusal != nil {

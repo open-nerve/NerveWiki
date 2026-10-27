@@ -29,6 +29,7 @@ type WriterDeps struct {
 	Workspaces Workspaces
 	Notebooks  Notebooks
 	Nodes      Nodes
+	Paths      PathStore
 	NodeWriter NodeWriter
 	// Trash reads a trash item again under the notebook's lock: its
 	// restore's, and a revert's; History a changeset and its nodes: a
@@ -39,9 +40,10 @@ type WriterDeps struct {
 	SessionWriter SessionWriter
 	// Search queues the nodes a unit changed for the search's job (M8/P5
 	// design 3.4).
-	Search      SearchQueue
-	Sources     SourceWriter
-	Attachments AttachmentInfos
+	Search         SearchQueue
+	SourcePrecheck *SourcePrecheck
+	Sources        SourceStore
+	Attachments    AttachmentInfos
 	// Names gives the name of who released a session's lock (M5 design
 	// 4.3).
 	Names        Names
@@ -259,7 +261,7 @@ func (w *Writer) run(ctx context.Context, spec UnitSpec, at time.Time, do func(c
 		}
 		u = &Unit{w: w, write: Write{
 			WorkspaceID: workspaceID, NotebookID: spec.NotebookID, By: actor.UserID, Client: spec.Client,
-			Options: spec.Options, At: at, Kind: kind, RevertsID: spec.RevertsID, Notebook: state, Grants: &Grants{},
+			Options: spec.Options, At: at, Kind: kind, RevertsID: spec.RevertsID, Notebook: state, Grants: &Grants{}, Tree: spec.Tree, sources: &sourceMemo{},
 		}, into: spec.Changeset, create: spec.Create, message: spec.Message, bulk: spec.Background || spec.BulkSearch,
 			merged: map[uuid.UUID]int{}, deferring: spec.DeferParticipants}
 		if err := u.lockInto(ctx); err != nil {
@@ -357,6 +359,9 @@ func (u *Unit) apply(ctx context.Context, s Step, participate bool, write func(c
 		if err := g.GuardWrite(ctx, s); err != nil {
 			return refusalOf(err, s)
 		}
+	}
+	if err := u.rememberSourceBefore(ctx, s); err != nil {
+		return err
 	}
 	if err := u.ensureChangeset(ctx); err != nil {
 		return err

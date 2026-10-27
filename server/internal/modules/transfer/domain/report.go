@@ -125,6 +125,8 @@ const (
 	ProblemTooDeep ProblemCode = "too_deep"
 	// ProblemDuplicate is an entry of a path an earlier one has.
 	ProblemDuplicate ProblemCode = "duplicate"
+	// ProblemDuplicateSource is an import's source with bytes already present; To names that source.
+	ProblemDuplicateSource ProblemCode = "duplicate_source"
 	// ProblemUnreadable is an entry that does not unpack: its data broken,
 	// its checksum or its size not its header's.
 	ProblemUnreadable ProblemCode = "unreadable"
@@ -175,10 +177,13 @@ type Lock struct {
 
 // Refusal is the notebook contract's reason for refusing a job's write,
 // and the page or attachment it refused. Codes from later milestones
-// remain readable in reports written by another server version.
+// remain readable in reports written by another server version. DuplicateOf
+// is separate from the refused NodeID and is nil for an operation-local duplicate
+// or a report saved before that optional target existed.
 type Refusal struct {
-	Code   string
-	NodeID uuid.UUID
+	Code        string
+	NodeID      uuid.UUID
+	DuplicateOf *uuid.UUID
 }
 
 // Report is what a job tells as it ends (M7 design 4.11): its failure, its

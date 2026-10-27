@@ -1290,7 +1290,7 @@ func TestABatchsPlanRefusesBeforeItsLock(t *testing.T) {
 		f.content(w.agents.ID, "# AGENTS\n", 1)
 		f.sized(w.big.ID, domain.MaxBatchReadBytes+1)
 		f.notebooks.states = map[uuid.UUID]domain.NotebookState{f.eng: {Mode: domain.ModeLLMWiki, SourceRootID: w.raw.ID}}
-		f.guards = []app.WriteGuard{app.NewModeGuard(f.auth, f.store)}
+		f.guards = []app.WriteGuard{app.NewModeGuard(f.auth, f.store, f.store)}
 		if held {
 			f.session(w.agents.ID, uuid.NewV7(), now().Add(time.Minute))
 		}

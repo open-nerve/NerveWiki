@@ -64,8 +64,9 @@ type backgroundJob struct {
 			DisplayName string `json:"display_name"`
 		} `json:"lock"`
 		Refusal *struct {
-			Code   string `json:"code"`
-			NodeID string `json:"node_id"`
+			Code        string  `json:"code"`
+			NodeID      string  `json:"node_id"`
+			DuplicateOf *string `json:"duplicate_of"`
 		} `json:"refusal"`
 	} `json:"report"`
 	Conflicts     []revertConflict `json:"conflicts"`

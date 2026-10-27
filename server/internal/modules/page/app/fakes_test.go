@@ -1394,10 +1394,11 @@ func (f *fixture) logger() *slog.Logger { return slog.New(slog.NewTextHandler(f.
 
 func (f *fixture) writer() *app.Writer {
 	return app.NewWriter(app.WriterDeps{
-		Tx: f.tx, Clock: f.clock, Auth: f.auth, Workspaces: f.workspaces, Notebooks: f.notebooks, Nodes: f.store,
+		Tx: f.tx, Clock: f.clock, Auth: f.auth, Workspaces: f.workspaces, Notebooks: f.notebooks, Nodes: f.store, Paths: f.store,
 		NodeWriter: f.store, Trash: f.store, History: f.log, Changesets: f.store, SessionWriter: f.store, Search: f.store, Names: f.names,
 		Sources: f.store, Attachments: fakeAttachments{recorder: f.rec, infos: f.infos},
-		Guards: f.guards, Participants: f.partakers, Observers: f.observers, SessionVetoers: f.vetoers,
+		SourcePrecheck: app.NewSourcePrecheck(app.SourcePrecheckDeps{Snapshots: fakeSnapshots{f.rec}, Sources: f.store, Attachments: fakeAttachments{recorder: f.rec, infos: f.infos}}),
+		Guards:         f.guards, Participants: f.partakers, Observers: f.observers, SessionVetoers: f.vetoers,
 		SessionSubscribers: f.enders,
 	})
 }

@@ -42,10 +42,22 @@ paths:
         or log, in any case (page.virtual_file): those are its generated
         pages. The server tells the file's type from its name's
         extension and its first bytes, and reads an image's size.
+        An attachment uploaded under an LLM Wiki's source root is
+        page.source_duplicate (409) when a source attachment has identical
+        bytes, including when both attachments are empty. Pages are compared
+        separately. The refused upload's stored file is discarded.
       security: [{ bearer: [] }]
       x-raw: true
       x-problem-codes:
-        [notebook.not_found, forbidden, validation_failed, page.title_taken, page.virtual_file, storage_full]
+        [
+          page.source_duplicate,
+          notebook.not_found,
+          forbidden,
+          validation_failed,
+          page.title_taken,
+          page.virtual_file,
+          storage_full,
+        ]
       requestBody:
         required: true
         content:

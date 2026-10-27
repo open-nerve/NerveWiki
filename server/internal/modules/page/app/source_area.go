@@ -45,7 +45,8 @@ type SourceReads interface {
 // SourceWriter maintains the hashes of a unit's changed nodes in its transaction.
 type SourceWriter interface {
 	SourceHeads(context.Context, uuid.UUID, []uuid.UUID) (map[uuid.UUID]SourceValue, error)
-	SetSourceHashes(context.Context, uuid.UUID, []SourceValue) error
+	SetSourceHashes(context.Context, uuid.UUID, []SourceValue) (map[uuid.UUID]SourceValue, error)
+	SourceBaselines(context.Context, uuid.UUID, []uuid.UUID) (map[uuid.UUID]SourceValue, error)
 }
 
 // SourceStore is the source area's repository, including transaction-scoped

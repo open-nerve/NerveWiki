@@ -17,6 +17,7 @@ func TestSourceAssetHashesFollowUploadMoveAndRestore(t *testing.T) {
 	folder := tm.createPage(t, "alice", wiki.id, "", "Folder")
 	child := tm.createPage(t, "alice", wiki.id, folder, "Child")
 	var assets []struct{ id, body string }
+	freshEmptyInside := true
 	for _, row := range []struct{ parent, name, body string }{
 		{wiki.raw, "fresh.txt", "fresh source"}, {wiki.raw, "fresh-empty.bin", ""},
 		{child, "existing.txt", "existing source"}, {child, "existing-empty.bin", ""},
@@ -32,7 +33,7 @@ func TestSourceAssetHashesFollowUploadMoveAndRestore(t *testing.T) {
 				t.Fatal(err)
 			}
 			var want []byte
-			if i < 2 || existingInside {
+			if i == 0 || i == 1 && freshEmptyInside || i >= 2 && existingInside {
 				sum := sha256.Sum256([]byte(a.body))
 				want = sum[:]
 			}
@@ -44,6 +45,11 @@ func TestSourceAssetHashesFollowUploadMoveAndRestore(t *testing.T) {
 		checkPages(t, tm.pool)
 		checkAssets(t, tm.pool, tm.storage)
 	}
+	check(false)
+	// Both zero-byte uploads have had their own fresh/ordinary hashes checked.
+	// Move the fresh one out before admitting the existing zero-byte source.
+	tm.send(t, nodeMove("alice", assets[1].id, ""), http.StatusOK)
+	freshEmptyInside = false
 	check(false)
 	tm.send(t, nodeMove("alice", folder, wiki.raw), http.StatusOK)
 	check(true)

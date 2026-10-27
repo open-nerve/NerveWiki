@@ -169,9 +169,10 @@ func TestSourceHashesSetAndForgetInTransaction(t *testing.T) {
 				if operation == "forget" {
 					return f.s.ForgetSources(ctx, f.eng)
 				}
-				return f.s.SetSourceHashes(ctx, f.eng, []app.SourceValue{
+				_, err := f.s.SetSourceHashes(ctx, f.eng, []app.SourceValue{
 					{ID: one.ID, Hash: sourceSum("new")}, {ID: two.ID}, {ID: trash.ID}, {ID: foreign.ID},
 				})
+				return err
 			}
 			check := func(ctx context.Context, changed bool) {
 				t.Helper()
@@ -235,20 +236,26 @@ func TestSourcePortsKeepTheirBounds(t *testing.T) {
 	if got, err := s.SourceHeads(ctx, id, nil); err != nil || len(got) != 0 {
 		t.Errorf("empty heads = %v, %v", got, err)
 	}
+	if got, err := s.SourceBaselines(ctx, id, nil); err != nil || len(got) != 0 {
+		t.Errorf("empty baselines=%v/%v", got, err)
+	}
+	if _, err := s.SourceBaselines(ctx, id, make([]uuid.UUID, domain.MaxUnitNodes+1)); err == nil {
+		t.Error("unbounded baselines accepted")
+	}
 	if got, err := s.ProbeSources(ctx, id, nil); err != nil || len(got) != 0 {
 		t.Errorf("empty probes = %v, %v", got, err)
 	}
-	if err := s.SetSourceHashes(ctx, id, nil); err != nil {
+	if _, err := s.SetSourceHashes(ctx, id, nil); err != nil {
 		t.Errorf("empty set = %v", err)
 	}
 	if _, err := s.SourceHeads(ctx, id, make([]uuid.UUID, domain.MaxUnitNodes+1)); err == nil {
 		t.Error("10001 heads accepted, want a bounded request error")
 	}
-	if err := s.SetSourceHashes(ctx, id, make([]app.SourceValue, domain.MaxUnitNodes+1)); err == nil {
+	if _, err := s.SetSourceHashes(ctx, id, make([]app.SourceValue, domain.MaxUnitNodes+1)); err == nil {
 		t.Error("10001 hash writes accepted, want a bounded request error")
 	}
 	for _, length := range []int{0, 31, 33} {
-		if err := s.SetSourceHashes(ctx, id, []app.SourceValue{{ID: id, Hash: make([]byte, length)}}); err == nil {
+		if _, err := s.SetSourceHashes(ctx, id, []app.SourceValue{{ID: id, Hash: make([]byte, length)}}); err == nil {
 			t.Errorf("nonNULL hash of %d bytes accepted", length)
 		}
 	}
@@ -298,15 +305,18 @@ func TestSourceQueriesKeepTheirPlans(t *testing.T) {
 		if got, err := s.ProbeSources(ctx, f.eng, []app.SourceProbe{{Key: app.SourceKey{Kind: domain.KindPage, Hash: hash}, Take: 1}}); err != nil || len(got) != 1 {
 			t.Fatalf("probe = %v, %v, want source", got, err)
 		}
-		if err := s.SetSourceHashes(ctx, f.eng, []app.SourceValue{{ID: n.ID, Hash: hash[:]}}); err != nil {
+		if _, err := s.SetSourceHashes(ctx, f.eng, []app.SourceValue{{ID: n.ID, Hash: hash[:]}}); err != nil {
 			t.Fatal(err)
+		}
+		if got, err := s.SourceBaselines(ctx, f.eng, []uuid.UUID{n.ID}); err != nil || len(got) != 1 {
+			t.Fatalf("baseline=%v/%v", got, err)
 		}
 		if _, err := s.FindNodeIn(ctx, f.eng, n.ID); err != nil {
 			t.Fatal(err)
 		}
 	}
 	cached := pgtest.CachedStatements(t, pool)
-	for _, name := range []string{"SourceHeads", "ProbeSources", "SetSourceHashes"} {
+	for _, name := range []string{"SourceHeads", "ProbeSources", "SetSourceHashes", "SourceBaselines"} {
 		if slices.Contains(cached, name) {
 			t.Errorf("variable source query %s cached: %v", name, cached)
 		}
@@ -381,5 +391,53 @@ func TestSourceLockRequiresTransactionAndSerializes(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("source lock did not release at commit")
+	}
+}
+
+func TestSourceWritesReturnOnlyActualOldKeys(t *testing.T) {
+	f := newFixture(t)
+	ctx := t.Context()
+	page := f.page(t, f.eng, nil, "Page", 0)
+	empty := f.page(t, f.eng, nil, "Empty", 1)
+	asset := f.asset(t, f.eng, nil, "file.bin", 2)
+	foreign := f.page(t, f.ops, nil, "Foreign", 0)
+	trash := f.page(t, f.eng, nil, "Trash", 3)
+	old, newHash := sourceSum("old"), sourceSum("new")
+	for _, id := range []uuid.UUID{page.ID, asset.ID, foreign.ID, trash.ID} {
+		f.exec(t, "UPDATE nodes SET source_hash=$2 WHERE id=$1", id, old)
+	}
+	f.exec(t, "UPDATE nodes SET deleted_at=$2 WHERE id=$1", trash.ID, now())
+	ids := []uuid.UUID{page.ID, empty.ID, asset.ID, foreign.ID, trash.ID, uuid.NewV7()}
+	baselines, err := f.s.SourceBaselines(ctx, f.eng, ids)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(baselines) != 3 || baselines[empty.ID].BeforeSourceHash != nil || baselines[asset.ID].Kind != domain.KindAsset || !bytes.Equal(baselines[page.ID].BeforeSourceHash, old) {
+		t.Fatalf("derived-only baselines=%+v", baselines)
+	}
+	values := []app.SourceValue{{ID: page.ID, Hash: newHash}, {ID: asset.ID}, {ID: empty.ID, Hash: newHash}, {ID: foreign.ID}, {ID: trash.ID}}
+	marker := errors.New("rollback source preimages")
+	err = postgres.NewTxManager(f.pool, time.Second).WithinTx(ctx, func(ctx context.Context) error {
+		changed, err := f.s.SetSourceHashes(ctx, f.eng, values)
+		if err != nil {
+			return err
+		}
+		if len(changed) != 3 || !bytes.Equal(changed[page.ID].BeforeSourceHash, old) || !bytes.Equal(changed[asset.ID].BeforeSourceHash, old) || changed[empty.ID].BeforeSourceHash != nil || changed[asset.ID].Kind != domain.KindAsset {
+			t.Errorf("actual old keys=%+v", changed)
+		}
+		again, err := f.s.SetSourceHashes(ctx, f.eng, values)
+		if err != nil {
+			return err
+		}
+		if len(again) != 0 {
+			t.Errorf("no-op returned preimages=%+v", again)
+		}
+		return marker
+	})
+	if !errors.Is(err, marker) {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(f.sourceHash(t, page.ID), old) || f.sourceHash(t, empty.ID) != nil || !bytes.Equal(f.sourceHash(t, asset.ID), old) {
+		t.Error("rollback did not restore old keys")
 	}
 }

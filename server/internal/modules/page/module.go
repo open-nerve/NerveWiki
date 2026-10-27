@@ -260,6 +260,7 @@ type Module struct {
 	jobs         []jobs.Job
 	assets       *app.AssetWrites
 	imports      *app.ImportWrites
+	targetPath   *app.SourceTargetPath
 	jobWrites    *app.JobWrites
 	seeds        *app.SeedWrites
 }
@@ -281,10 +282,11 @@ func New(d Deps) *Module {
 	budget := markdownadapter.NewBudget(d.Budget)
 	writer := app.NewWriter(app.WriterDeps{
 		Tx: d.Tx, Clock: d.Clock, Auth: d.Authorizer, Workspaces: d.Workspaces, Notebooks: d.Notebooks,
-		Nodes: store, NodeWriter: store, Trash: store, History: store, Changesets: store, SessionWriter: store, Search: store,
+		Nodes: store, Paths: store, NodeWriter: store, Trash: store, History: store, Changesets: store, SessionWriter: store, Search: store,
 		Sources: store, Attachments: d.Attachments,
-		Names:  d.Names,
-		Guards: d.Guards, Participants: d.Participants, Observers: d.Observers,
+		SourcePrecheck: app.NewSourcePrecheck(app.SourcePrecheckDeps{Snapshots: d.Snapshots, Sources: store, Attachments: d.Attachments}),
+		Names:          d.Names,
+		Guards:         d.Guards, Participants: d.Participants, Observers: d.Observers,
 		SessionVetoers: d.EditSessionVetoers, SessionSubscribers: d.EditSessionSubscribers,
 	})
 	parser := app.NewContentParser(writer, md, budget, d.Budget.Wait())
@@ -337,6 +339,7 @@ func New(d Deps) *Module {
 	}, gate: app.NewNotebookGate(d.Notebooks, d.Authorizer), jobs: []jobs.Job{
 		riveradapter.CleanupJob(app.NewCleanupEditSessions(store, d.Clock, d.Logger), d.EditSessionCleanupInterval),
 	}, assets: app.NewAssetWrites(writer, store), imports: app.NewImportWrites(writer, parser, md), seeds: app.NewSeedWrites(writer, md),
+		targetPath:   app.NewSourceTargetPath(d.Notebooks, store, d.Authorizer),
 		jobWrites:    app.NewJobWrites(trash, store, writer, parser, store, d.MaxJobItems, d.MaxUnitHistory),
 		list:         app.NewListByPattern(d.Notebooks, store, store, d.Attachments, d.Authorizer),
 		read:         app.NewReadPath(d.Notebooks, store, store, d.Authorizer),

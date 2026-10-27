@@ -170,7 +170,7 @@ func reportOf(r *domain.Report, lockedBy string) nullable.Nullable[gen.TransferR
 		out.Lock = nullable.NewNullableWithValue(apigen.PageLock{PageID: l.PageID, UserID: l.UserID, DisplayName: lockedBy})
 	}
 	if f := r.Refusal; f != nil {
-		out.Refusal = nullable.NewNullableWithValue(gen.TransferRefusal{Code: f.Code, NodeID: f.NodeID})
+		out.Refusal = nullable.NewNullableWithValue(gen.TransferRefusal{Code: f.Code, NodeID: f.NodeID, DuplicateOf: maybe(f.DuplicateOf)})
 	}
 	return nullable.NewNullableWithValue(out)
 }

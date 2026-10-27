@@ -33,13 +33,27 @@ CROSS JOIN LATERAL (
 ) hit
 ORDER BY wanted.ord, hit.id;
 
--- name: SetSourceHashes :exec
--- Equal-length arrays are built together by the adapter. A NULL hash clears;
--- unchanged values do not update a tuple or its indexes.
-UPDATE nodes n SET source_hash = v.hash
-FROM (SELECT unnest(sqlc.arg(node_ids)::uuid[]) AS id, unnest(sqlc.arg(hashes)::bytea[]) AS hash) v
-WHERE n.id = v.id AND n.notebook_id = sqlc.arg(notebook_id)
-    AND n.deleted_at IS NULL AND n.source_hash IS DISTINCT FROM v.hash;
+-- name: SourceBaselines :many
+-- Derived columns only, before a Unit deletion clears them in its UPDATE.
+SELECT id, kind, source_hash AS before_source_hash FROM nodes
+WHERE notebook_id = sqlc.arg(notebook_id) AND id = ANY(sqlc.arg(node_ids)::uuid[])
+    AND deleted_at IS NULL;
+
+-- name: SetSourceHashes :many
+-- Sibling CTEs share a statement snapshot: previous sees the old column,
+-- while RETURNING identifies only rows actually changed by the write.
+WITH previous AS MATERIALIZED (
+    SELECT old.id, old.kind, old.source_hash AS before_source_hash FROM nodes old
+    WHERE old.notebook_id = sqlc.arg(notebook_id) AND old.id = ANY(sqlc.arg(node_ids)::uuid[])
+        AND old.deleted_at IS NULL
+), changed AS (
+    UPDATE nodes n SET source_hash = v.hash
+    FROM (SELECT unnest(sqlc.arg(node_ids)::uuid[]) AS id, unnest(sqlc.arg(hashes)::bytea[]) AS hash) v
+    WHERE n.id = v.id AND n.notebook_id = sqlc.arg(notebook_id)
+        AND n.deleted_at IS NULL AND n.source_hash IS DISTINCT FROM v.hash
+    RETURNING n.id
+)
+SELECT p.id, p.kind, p.before_source_hash FROM previous p JOIN changed c ON c.id = p.id;
 
 -- name: LockSources :exec
 SELECT pg_advisory_xact_lock(sqlc.arg(space)::int, sqlc.arg(key)::int);

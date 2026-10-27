@@ -309,11 +309,11 @@ func TestTheGuardSeesTheCheckedChange(t *testing.T) {
 	s := g.steps[0]
 	// The unit's own memo, a new one each unit (M10/P1 design 3.18).
 	want := app.Write{WorkspaceID: f.acme, NotebookID: f.eng, By: f.alice, Client: domain.ClientWeb, Options: app.Options{UpdateLinks: true}, At: now(),
-		Kind: domain.ChangesetEdit, Notebook: domain.NotebookState{Mode: domain.ModeStandard}, Grants: s.Grants}
+		Kind: domain.ChangesetEdit, Notebook: domain.NotebookState{Mode: domain.ModeStandard}, Grants: s.Grants, Tree: true}
 	if s.Grants == nil {
 		t.Error("the guard saw no Grants, want the unit's")
 	}
-	if s.Write != want || s.Operation != domain.OpCreate || len(s.Changes) != 1 || s.Changes[0].NodeID != v.Node.ID ||
+	if s.WorkspaceID != want.WorkspaceID || s.NotebookID != want.NotebookID || s.By != want.By || s.Client != want.Client || s.Options != want.Options || s.At != want.At || s.Kind != want.Kind || s.RevertsID != want.RevertsID || s.Notebook != want.Notebook || s.Tree != want.Tree || s.Grants != want.Grants || s.Operation != domain.OpCreate || len(s.Changes) != 1 || s.Changes[0].NodeID != v.Node.ID ||
 		s.Changes[0].Before != nil || s.Changes[0].After.Name != "Notes" || s.Changes[0].After.SortOrder != 4 {
 		t.Errorf("the guard saw %+v (after %+v), want the creation of Notes at order 4 by %+v", s, s.Changes[0].After, want)
 	}

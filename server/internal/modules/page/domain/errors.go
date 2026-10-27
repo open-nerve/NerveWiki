@@ -338,3 +338,13 @@ func TaskWouldGo() error {
 func NotAllowed(field, message string) error {
 	return shared.Invalid(shared.FieldError{Field: field, Code: shared.FieldNotAllowed, Message: message})
 }
+
+// SourceDuplicate returns a fresh problem; its optional target survives rollback.
+func SourceDuplicate(id *uuid.UUID) *shared.Error {
+	e := shared.NewError(shared.KindConflict, "page.source_duplicate", "This source already exists in the notebook.")
+	if id != nil {
+		target := *id
+		e.DuplicateOf = &target
+	}
+	return e
+}

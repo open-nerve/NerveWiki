@@ -18,7 +18,10 @@ func sourceCodeCalls(t *testing.T, answered answeredCodes) map[string]bool {
 	tm := newAcmeTeam(t, "member", "")
 	wiki := tm.llmWiki(t, "Source codes")
 	page := tm.createPageWith(t, "alice", wiki.id, wiki.raw, "Source", "source original\n")
-	tm.upload(t, "alice", wiki.id, wiki.raw, "source.txt", "source asset")
+	asset := tm.upload(t, "alice", wiki.id, wiki.raw, "source.txt", "source asset")
+	tm.createPageWith(t, "alice", wiki.id, "", "Outside", "source original\n")
+	empty := tm.createPage(t, "bob", wiki.id, wiki.raw, "Empty")
+	tm.upload(t, "alice", wiki.id, "", "outside.txt", "source asset")
 	large := tm.createPage(t, "alice", wiki.id, "", "Large")
 	tm.addSourceEntryPages(t, large, 10000)
 	checkPages(t, tm.pool)
@@ -30,14 +33,21 @@ func sourceCodeCalls(t *testing.T, answered answeredCodes) map[string]bool {
 			args             map[string]any
 			op               int
 			opTool           string
+			duplicate        string
 		}{
-			{"write existing", "write", "page.source_immutable", map[string]any{"path": "raw/Source.md", "content": "replacement", "base_version": page + ":1"}, -1, ""},
-			{"edit existing", "edit", "page.source_immutable", map[string]any{"path": "raw/Source.md", "old_string": "original", "new_string": "replacement", "base_version": page + ":1"}, -1, ""},
-			{"batch actual second item", "batch", "page.source_immutable", batched(opWrite("Unwritten.md", "unwritten"), opEdit("raw/Source.md", "original", "replacement")), 1, "edit"},
-			{"delete source page", "delete", "page.source_admin_only", map[string]any{"path": "raw/Source.md"}, -1, ""},
-			{"delete source asset", "delete", "page.source_admin_only", map[string]any{"path": "raw/source.txt"}, -1, ""},
-			{"move source entry too large", "move", "page.source_too_large", map[string]any{"from": "Large.md", "to": "raw/Large.md", "update_links": false}, -1, ""},
-			{"batch actual second move too large", "batch", "page.source_too_large", batched(opWrite("Unwritten.md", "unwritten"), opMove("Large.md", "raw/Large.md")), 1, "move"},
+			{"write existing", "write", "page.source_immutable", map[string]any{"path": "raw/Source.md", "content": "replacement", "base_version": page + ":1"}, -1, "", ""},
+			{"edit existing", "edit", "page.source_immutable", map[string]any{"path": "raw/Source.md", "old_string": "original", "new_string": "replacement", "base_version": page + ":1"}, -1, "", ""},
+			{"batch actual second item", "batch", "page.source_immutable", batched(opWrite("Unwritten.md", "unwritten"), opEdit("raw/Source.md", "original", "replacement")), 1, "edit", ""},
+			{"delete source page", "delete", "page.source_admin_only", map[string]any{"path": "raw/Source.md"}, -1, "", ""},
+			{"delete source asset", "delete", "page.source_admin_only", map[string]any{"path": "raw/source.txt"}, -1, "", ""},
+			{"move source entry too large", "move", "page.source_too_large", map[string]any{"from": "Large.md", "to": "raw/Large.md", "update_links": false}, -1, "", ""},
+			{"batch actual second move too large", "batch", "page.source_too_large", batched(opWrite("Unwritten.md", "unwritten"), opMove("Large.md", "raw/Large.md")), 1, "move", ""},
+			{"write new duplicate", "write", "page.source_duplicate", map[string]any{"path": "raw/Duplicate.md", "content": "source original\n"}, -1, "", page},
+			{"write first duplicate", "write", "page.source_duplicate", map[string]any{"path": "raw/Empty.md", "content": "source original\n", "base_version": empty + ":1"}, -1, "", page},
+			{"move duplicate page", "move", "page.source_duplicate", map[string]any{"from": "Outside.md", "to": "raw/Outside.md", "update_links": false}, -1, "", page},
+			{"move duplicate attachment", "move", "page.source_duplicate", map[string]any{"from": "outside.txt", "to": "raw/outside.txt", "update_links": false}, -1, "", asset.ID},
+			{"batch second duplicate write", "batch", "page.source_duplicate", batched(opWrite("Unwritten.md", "unwritten"), opWrite("raw/Duplicate.md", "source original\n")), 1, "write", page},
+			{"batch second duplicate move", "batch", "page.source_duplicate", batched(opWrite("Unwritten.md", "unwritten"), opMove("Outside.md", "raw/Outside.md")), 1, "move", page},
 		} {
 			t.Run(scope+"/"+tt.name, func(t *testing.T) {
 				before := sourcePersistentRows(t, tm, wiki.id)
@@ -52,6 +62,15 @@ func sourceCodeCalls(t *testing.T, answered answeredCodes) map[string]bool {
 				}
 				if tt.op >= 0 && (member["op"] != float64(tt.op) || !strings.Contains(message, fmt.Sprintf("ops[%d] (%s)", tt.op, tt.opTool))) {
 					t.Errorf("batch refusal = %v, want actual ops[%d] (%s)", member, tt.op, tt.opTool)
+				}
+				if tt.duplicate != "" {
+					path := "raw/Source.md"
+					if tt.duplicate == asset.ID {
+						path = "raw/source.txt"
+					}
+					if member["duplicate_of"] != tt.duplicate || !strings.Contains(message, path) {
+						t.Errorf("duplicate target = %v, want %s with visible path %q", member, tt.duplicate, path)
+					}
 				}
 				if after := sourcePersistentRows(t, tm, wiki.id); !slices.Equal(after, before) {
 					t.Errorf("refused %s %s changed persistent nodes, bodies, versions, history or blobs", scope, tt.tool)
@@ -101,6 +120,9 @@ func TestSourceMCPToolsAnswerEveryAddedCode(t *testing.T) {
 		"notebook/delete/page.source_admin_only", "account/delete/page.source_admin_only",
 		"notebook/move/page.source_too_large", "account/move/page.source_too_large",
 		"notebook/batch/page.source_too_large", "account/batch/page.source_too_large",
+		"notebook/write/page.source_duplicate", "account/write/page.source_duplicate",
+		"notebook/move/page.source_duplicate", "account/move/page.source_duplicate",
+		"notebook/batch/page.source_duplicate", "account/batch/page.source_duplicate",
 	} {
 		if !seen[tuple] {
 			t.Errorf("no actual source-policy answer for %s", tuple)
@@ -120,8 +142,8 @@ func TestSourceMCPBatchFirstBodyAndSameBytesWriteOnce(t *testing.T) {
 			name, first, second string
 			secondChanged       bool
 		}{
-			{"empty first body", "", "B", true},
-			{"same bytes", "A", "A", false},
+			{"empty first body", "", scope + " B", true},
+			{"same bytes", scope + " A", scope + " A", false},
 		} {
 			t.Run(scope+"/"+tt.name, func(t *testing.T) {
 				path := "raw/" + scope + " " + tt.name + ".md"

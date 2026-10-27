@@ -83,22 +83,28 @@ type SearchUseCase interface {
 	InNotebook(ctx context.Context, notebookID uuid.UUID, r app.SearchRequest) (app.SearchPage, error)
 }
 
+// NodePathUseCase reads a currently visible live node's path in this notebook.
+type NodePathUseCase interface {
+	Execute(ctx context.Context, notebookID, nodeID uuid.UUID) (string, error)
+}
+
 // UseCases are the use cases the tools call.
 type UseCases struct {
-	List      ListByPatternUseCase
-	Read      ReadPathUseCase
-	Open      OpenNotebookUseCase
-	Write     WritePathUseCase
-	Edit      EditPageUseCase
-	Move      RelocatePathUseCase
-	Delete    DeletePathUseCase
-	Batch     BatchUseCase
-	Versions  VersionsUseCase
-	Version   VersionUseCase
-	Log       LogUseCase
-	Changeset ChangesetUseCase
-	Grep      GrepUseCase
-	Search    SearchUseCase
+	List       ListByPatternUseCase
+	Read       ReadPathUseCase
+	Open       OpenNotebookUseCase
+	Write      WritePathUseCase
+	Edit       EditPageUseCase
+	Move       RelocatePathUseCase
+	Delete     DeletePathUseCase
+	Batch      BatchUseCase
+	Versions   VersionsUseCase
+	Version    VersionUseCase
+	Log        LogUseCase
+	Changeset  ChangesetUseCase
+	Grep       GrepUseCase
+	Search     SearchUseCase
+	TargetPath NodePathUseCase
 }
 
 // Tools are the module's MCP tools, each a notebook's: list and read, in

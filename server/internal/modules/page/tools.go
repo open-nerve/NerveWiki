@@ -32,7 +32,7 @@ func (m *Module) Tools(d ToolDeps) []mcpserver.Tool {
 	if d.Attachments == nil {
 		panic("page: no attachment reader for the MCP tools")
 	}
-	return mcpadapter.Tools(mcpadapter.UseCases{List: m.list, Read: m.read, Open: m.open, Write: m.write, Edit: m.edit,
+	return mcpadapter.Tools(mcpadapter.UseCases{TargetPath: m.targetPath, List: m.list, Read: m.read, Open: m.open, Write: m.write, Edit: m.edit,
 		Move: m.move, Delete: m.remove, Batch: m.batch, Versions: m.versions, Version: m.version, Log: m.log,
 		Changeset: m.changeset, Grep: m.grep, Search: m.search}, d.Attachments)
 }

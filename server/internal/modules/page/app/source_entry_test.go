@@ -26,7 +26,7 @@ func sourceEntryFixture(size int) (*fixture, domain.Node, domain.Node) {
 	hash := sha256.Sum256(nil)
 	f.infos = map[uuid.UUID]app.AttachmentInfo{asset.ID: {SHA256: hash[:]}}
 	f.notebooks.states = map[uuid.UUID]domain.NotebookState{f.eng: {Mode: domain.ModeLLMWiki, SourceRootID: raw.ID}}
-	f.guards = []app.WriteGuard{app.NewModeGuard(f.auth, f.store)}
+	f.guards = []app.WriteGuard{app.NewModeGuard(f.auth, f.store, f.store)}
 	f.rec.calls = nil
 	return f, raw, folder
 }

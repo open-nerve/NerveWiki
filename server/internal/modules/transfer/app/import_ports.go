@@ -33,12 +33,13 @@ type Tree interface {
 	// can no longer see, forbidden for a reader.
 	Import(ctx context.Context, spec ImportSpec, do func(ctx context.Context, u ImportUnit) error) (uuid.UUID, error)
 	// The background restores' and reverts' (M8/P4 design 3.3). CheckRestore
-	// checks a restore of the trash item of the root nodeID, unlocked, and
-	// answers its name; CheckRevert a revert of the changeset, unlocked,
+	// checks a restore of the trash item of the root nodeID, unlocked,
+	// calling admit after the root's basic checks and before source reads,
+	// and answers its name; CheckRevert a revert of the changeset, unlocked,
 	// calling admit right after its items are counted, before anything else
 	// is read, its error answered as it is, and answers the changeset's
 	// kind: each the page module's codes in its operation's order.
-	CheckRestore(ctx context.Context, notebookID, nodeID uuid.UUID) (string, error)
+	CheckRestore(ctx context.Context, notebookID, nodeID uuid.UUID, admit func(context.Context) error) (string, error)
 	CheckRevert(ctx context.Context, notebookID, changesetID uuid.UUID, message *string, admit func(context.Context) error, batches JobBatches) (string, error)
 	// PlanRestore and PlanRevert plan a job as it starts, unlocked: a
 	// notebook the job's account can no longer see or write in, and the
@@ -126,6 +127,8 @@ type ImportedPage struct {
 	Name     string
 	Content  string
 	Parsed   Parsed
+	// HasChildren includes children in later batches of the full plan.
+	HasChildren bool
 	// Reserved tells whether a later node of the import, a sibling, is
 	// named with the key: a name numbered because its own is held takes
 	// none of those, which keep theirs (nil: none).
@@ -144,12 +147,22 @@ type ImportedAsset struct {
 	Reserved func(key string) bool
 }
 
-// CreatedNode is a node a unit created: its id, its name as created, and
-// when.
+// CreatedNode is an import result. A source duplicate is Skipped with
+// Duplicate set; only a duplicate nonleaf creates a node, an empty page
+// whose ID still parents the later children. A duplicate asset never
+// runs CreateAsset's callback.
 type CreatedNode struct {
 	ID        uuid.UUID
 	Name      string
 	CreatedAt time.Time
+	Duplicate *DuplicateSource
+	Skipped   bool
+}
+
+// DuplicateSource is the source already holding the imported bytes.
+type DuplicateSource struct {
+	ID   uuid.UUID
+	Path string
 }
 
 // The refusals of a unit's node that leave the unit going.
@@ -185,13 +198,14 @@ var (
 )
 
 // Refused is a write of a job that the notebook's contract refused (M10
-// design 4.6): the page module's code, and the node it was about. The
-// job stops with it as refused, its report's refusal those two. It
-// unwraps to the page module's problem.
+// design 4.6): the page module's code, the node it was about, and an
+// optional stable duplicate target. The job stops refused, preserving
+// those fields in its report. It unwraps to the page module's problem.
 type Refused struct {
-	Code   string
-	NodeID uuid.UUID
-	Err    error
+	Code        string
+	NodeID      uuid.UUID
+	DuplicateOf *uuid.UUID
+	Err         error
 }
 
 func (r *Refused) Error() string { return r.Code + ": " + r.Err.Error() }

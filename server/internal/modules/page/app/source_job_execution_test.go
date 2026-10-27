@@ -260,7 +260,7 @@ func sourceJobFixture(f *fixture, raw uuid.UUID) *guard {
 	f.grant(domain.ActionManageSource)
 	f.notebooks.states = map[uuid.UUID]domain.NotebookState{f.eng: {Mode: domain.ModeLLMWiki, SourceRootID: raw}}
 	spy := &guard{recorder: f.rec}
-	f.guards = []app.WriteGuard{app.NewModeGuard(f.auth, f.store), spy}
+	f.guards = []app.WriteGuard{app.NewModeGuard(f.auth, f.store, f.store), spy}
 	return spy
 }
 

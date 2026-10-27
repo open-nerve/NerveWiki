@@ -44,7 +44,7 @@ func (t tools) write(ctx context.Context, c mcpserver.Call, in writeIn) (mcpserv
 	w, err := t.uc.Write.Execute(ctx, c.Notebook, app.PathWrite{Path: in.Path, Content: in.Content, Base: in.BaseVersion},
 		domain.MCPClient(c.Client))
 	if err != nil {
-		return mcpserver.Result{}, writeErr(err, c, in.Path)
+		return mcpserver.Result{}, t.duplicateErr(ctx, c, writeErr(err, c, in.Path))
 	}
 	created := make([]createdNode, len(w.Created))
 	for i, n := range w.Created {

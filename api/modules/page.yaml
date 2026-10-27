@@ -57,9 +57,13 @@ paths:
         then is server_busy. A body that has not all arrived within the server's
         read timeout (server.read_timeout, 30 seconds by default, in which
         5 MiB needs about 1.4 Mbit/s) is bad_request.
+        A nonempty page created under the source root of an LLM Wiki is
+        page.source_duplicate (409) when another source page has identical
+        bytes. Empty pages and the source root itself do not participate.
       security: [{ bearer: [] }]
       x-problem-codes:
         [
+          page.source_duplicate,
           notebook.not_found,
           forbidden,
           validation_failed,
@@ -164,9 +168,13 @@ paths:
         not all arrived within the server's read timeout
         (server.read_timeout, 30 seconds by default, in which 5 MiB needs
         about 1.4 Mbit/s) is bad_request.
+        An empty source page's first nonempty write is page.source_duplicate
+        (409) when another source page has identical bytes; unchanged writes
+        still do nothing, and protected content is checked first.
       security: [{ bearer: [] }]
       x-problem-codes:
         [
+          page.source_duplicate,
           page.source_immutable,
           validation_failed,
           page.not_found,
@@ -722,9 +730,14 @@ paths:
         the move is refused as a whole, linking.pages_locked naming each of
         them and its editor, and when their parse finds the server busy it
         is server_busy.
+        A subtree entering sources is page.source_duplicate (409) if its
+        nonempty pages or attachments duplicate an existing source of the
+        same kind, or one another. Comparison uses stored bytes before any
+        link rewriting; the whole move is refused.
       security: [{ bearer: [] }]
       x-problem-codes:
         [
+          page.source_duplicate,
           page.not_found,
           forbidden,
           validation_failed,
@@ -846,9 +859,14 @@ paths:
         again or purged in part since it was read is page.trash_changed, one
         past its restorable_until by the time it is restored
         page.restore_expired: read the trash again.
+        In an LLM Wiki, nodes restored into sources are checked for identical
+        bytes within their kind (page.source_duplicate, 409), against existing
+        sources and one another. A restore placed outside sources does not
+        participate; a refusal leaves the whole item in the trash.
       security: [{ bearer: [] }]
       x-problem-codes:
         [
+          page.source_duplicate,
           page.not_found,
           forbidden,
           page.not_in_trash,
@@ -1052,9 +1070,14 @@ paths:
         is page.locked, naming the holder in lock. A changeset that, as it
         left its nodes, changed nothing, as an edit session that wrote its
         bytes back, writes nothing: changed is false.
+        Source entries and first writes are checked for identical bytes within
+        their kind (page.source_duplicate, 409). The duplicate_of target,
+        when present, already had matching source bytes at this unit's start;
+        it never names a source that only this refused operation would create.
       security: [{ bearer: [] }]
       x-problem-codes:
         [
+          page.source_duplicate,
           page.source_immutable,
           validation_failed,
           page.changeset_not_found,

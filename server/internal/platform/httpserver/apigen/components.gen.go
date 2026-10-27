@@ -136,6 +136,9 @@ type Problem struct {
 	// Detail What went wrong in this occurrence.
 	Detail *string `json:"detail,omitempty"`
 
+	// DuplicateOf Only page.source_duplicate carries this optional source node ID. The target already had the same source kind and bytes at the refusing unit's start and survives its rollback. Omitted for duplicates created only within that operation. No path is exposed.
+	DuplicateOf *uuid.UUID `json:"duplicate_of,omitempty"`
+
 	// EndedBy Who ended the caller's edit session: page.edit_session_unlocked names the notebook's admin who unlocked it. No other code carries it.
 	EndedBy *struct {
 		DisplayName string    `json:"display_name"`
