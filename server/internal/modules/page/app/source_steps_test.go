@@ -127,6 +127,33 @@ func TestSourceStepMetadataAddsNoReadsInStandardMode(t *testing.T) {
 }
 
 func TestSourceBatchProducersCarryTheActualMergedCount(t *testing.T) {
+	t.Run("outside_creation_then_entry", func(t *testing.T) {
+		f := newFixture()
+		raw := f.page("raw", nil, 0)
+		f.notebooks.states = map[uuid.UUID]domain.NotebookState{f.eng: {Mode: domain.ModeLLMWiki, SourceRootID: raw.ID}}
+		g := &guard{recorder: f.rec}
+		f.guards = []app.WriteGuard{g, app.NewModeGuard(f.auth, f.store)}
+		// The body is written outside sources; entry changes its placement,
+		// so the batch passes an explicit zero source-content write count.
+		if _, err := f.applyBatch(&fakeLinks{recorder: f.rec}, writeOp("P.md", "A"), moveOp("P.md", "raw/P.md")); err != nil {
+			t.Fatal(err)
+		}
+		if len(g.steps) != 2 || g.steps[0].Content == nil {
+			t.Fatalf("batch steps = %+v", g.steps)
+		}
+		created, moved := g.steps[0], g.steps[1]
+		if created.Content.Merged != 0 || created.Content.Bytes != 1 {
+			t.Fatalf("outside creation content = %+v, want bytes 1 and merged 0", created.Content)
+		}
+		id := created.Changes[0].NodeID
+		if created.Changes[0].After.ParentID != nil || len(moved.Changes) != 1 || moved.Changes[0].NodeID != id ||
+			moved.Changes[0].Before.ParentID != nil || moved.Changes[0].After.ParentID == nil || *moved.Changes[0].After.ParentID != raw.ID {
+			t.Fatalf("outside creation then entry = %+v / %+v", created.Changes, moved.Changes)
+		}
+		if content := f.store.contents[id]; content.Content != "A" || content.Revision != 1 {
+			t.Fatalf("stored content = %+v", content)
+		}
+	})
 	for _, created := range []bool{false, true} {
 		t.Run(map[bool]string{false: "write", true: "create"}[created], func(t *testing.T) {
 			f := newFixture()
