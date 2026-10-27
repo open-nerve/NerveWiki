@@ -478,12 +478,13 @@ export function historyRoutes(server: HistoryState, role: NotebookRole): Record<
 }
 
 /** The existing history fixture's source refusal, shared by sync and background starts.
- * It projects simple placements of live nodes into live parents before writeback,
- * including ancestors recorded after their descendants. A deleted target parent
- * is restored after those placements: its waiting child writes where it is now.
- * A placement that would make the local tree cyclic also waits. This is not a
- * scheduler for resolving key conflicts, cycles or steps aside; conflicts and
- * undo remain fixture inputs, and worker execution has server-side test coverage.
+ * It checks and projects simple live placements in node-ID order, so each check
+ * sees the preceding placements, before deleting created/restored nodes and
+ * writing content. A deleted target parent is restored after those placements:
+ * its waiting child writes where it is now. A locally cyclic placement also
+ * waits. Blocked placements retain the original management check as a fallback;
+ * this does not model later scheduler rounds, key conflicts or steps aside.
+ * Conflicts and undo remain fixture inputs; real workers have server-side tests.
  */
 export function sourceRevertCode(
   server: SourceState & { contents: Map<string, { content: string; revision: number }> },
@@ -494,11 +495,13 @@ export function sourceRevertCode(
     return undefined;
   }
   const nodes = new Map(server.nodes.map((node) => [node.id, node]));
-  for (const change of changeset.changes) {
+  const deletedIDs = new Set<string>();
+  const placed = new Set<string>();
+  for (const change of changeset.changes.toSorted((a, b) => compare(a.node, b.node))) {
     switch (change.kind) {
       case "created":
       case "restored":
-        nodes.delete(change.node);
+        deletedIDs.add(change.node);
         break;
       case "moved":
       case "renamed":
@@ -516,6 +519,13 @@ export function sourceRevertCode(
           if (parent === node.id) {
             break;
           }
+          const current = { notebook: server.notebook, nodes: [...nodes.values()] };
+          const operation = change.kind === "renamed" ? "rename" : "move";
+          const code = sourceManagementCode(current, node, operation, role, change.before.parent);
+          if (code !== undefined) {
+            return code;
+          }
+          placed.add(change.node);
           nodes.set(change.node, { ...node, parent_id: change.before.parent, name: change.before.name });
         }
         break;
@@ -525,7 +535,10 @@ export function sourceRevertCode(
         break;
     }
   }
-  const writeback = { notebook: server.notebook, nodes: [...nodes.values()] };
+  const writeback = {
+    notebook: server.notebook,
+    nodes: [...nodes.values()].filter((node) => !deletedIDs.has(node.id)),
+  };
   for (const change of changeset.changes) {
     const node = server.nodes.find((each) => each.id === change.node);
     if (node === undefined) {
@@ -539,10 +552,10 @@ export function sourceRevertCode(
           : change.kind === "moved" || change.kind === "reordered"
             ? "move"
             : undefined;
-    if (operation !== undefined) {
+    if (operation !== undefined && !placed.has(change.node)) {
       // Deletion follows the simple placements above; a source root may already
-      // have left this ancestor. Moves and renames still require their original
-      // source management permission, before the placement changes membership.
+      // have left this ancestor. Unprojected moves keep the fixture's original
+      // management fallback, not a prediction of their later execution round.
       const management = operation === "delete" ? writeback : server;
       const code = sourceManagementCode(management, node, operation, role, change.before?.parent ?? null);
       if (code !== undefined) {

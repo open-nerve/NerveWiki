@@ -64,6 +64,100 @@ function historyState(server: ReturnType<typeof jobsServer>) {
   });
 }
 
+for (const entry of ["sync", "background"] as const) {
+  for (const first of ["folder", "child"] as const) {
+    for (const order of ["move-first", "rename-first"] as const) {
+      for (const role of ["editor", "admin"] as const) {
+        test(`${entry} history checks management at each placement (${first} UUID first, ${order}, ${role})`, async () => {
+          const raw = pageNode(120, "raw");
+          const folder = pageNode(first === "folder" ? 121 : 122, "Folder");
+          const page = pageNode(first === "child" ? 121 : 122, "New", folder);
+          const server = jobsServer({ role, mode: "llm_wiki", sourceRootId: raw.id, nodes: [raw, folder, page] });
+          server.contents.set(page.id, { content: "unchanged body", revision: 1 });
+          const changes = [moved(folder, raw.id), renamed(page, "Old")];
+          let writes = 0;
+          const change = server.log("moved ancestor out then renamed child", {
+            changes: order === "move-first" ? changes : changes.toReversed(),
+            undo: () => {
+              writes += 1;
+              server.nodes = [raw, { ...folder, parent_id: raw.id }, { ...page, name: "Old" }];
+            },
+          });
+          const before = historyState(server);
+          // Both ID orders end at raw/Folder/Old. Only the folder-first order
+          // renames inside source; the history array itself is not an action list.
+          if (first === "folder" && role === "editor") {
+            const request =
+              entry === "sync"
+                ? new PageService(server.app.session.public).revertChangeset(change.id)
+                : new TransferService(server.app.session.public).startRevert(notebookJSON.id, change.id);
+            await expect(request).rejects.toMatchObject({ code: "page.source_admin_only", status: 403 });
+            expect(writes).toBe(0);
+            expect(historyState(server)).toEqual(before);
+          } else if (entry === "sync") {
+            const result = await new PageService(server.app.session.public).revertChangeset(change.id);
+            expect(result).toMatchObject({ changed: true });
+            expect(writes).toBe(1);
+            expect(server.nodes).toEqual([raw, { ...folder, parent_id: raw.id }, { ...page, name: "Old" }]);
+            expect([...server.contents]).toEqual(before.contents);
+            expect(server.trash.size).toBe(0);
+            expect(server.changesets).toHaveLength(2);
+            expect(change.revertedBy).toEqual([result.changeset_id]);
+            expect(server.jobs).toEqual([]);
+          } else {
+            const job = await new TransferService(server.app.session.public).startRevert(notebookJSON.id, change.id);
+            expect(job).toMatchObject({ state: "queued", target_changeset_id: change.id });
+            expect(writes).toBe(0);
+            expect(historyState(server)).toEqual({ ...before, jobs: [job] });
+          }
+        });
+      }
+    }
+  }
+
+  for (const direction of ["out of source", "into source"] as const) {
+    test(`${entry} history checks a move's own Before permission (${direction})`, async () => {
+      const raw = pageNode(123, "raw");
+      const page = pageNode(124, "Evidence", direction === "out of source" ? raw : undefined);
+      const parent = direction === "out of source" ? null : raw.id;
+      const server = jobsServer({ role: "editor", mode: "llm_wiki", sourceRootId: raw.id, nodes: [raw, page] });
+      server.contents.set(page.id, { content: "unchanged body", revision: 1 });
+      let writes = 0;
+      const change = server.log("moved page", {
+        changes: [moved(page, parent)],
+        undo: () => {
+          writes += 1;
+          server.nodes = [raw, { ...page, parent_id: parent }];
+        },
+      });
+      const before = historyState(server);
+      if (direction === "out of source") {
+        const request =
+          entry === "sync"
+            ? new PageService(server.app.session.public).revertChangeset(change.id)
+            : new TransferService(server.app.session.public).startRevert(notebookJSON.id, change.id);
+        await expect(request).rejects.toMatchObject({ code: "page.source_admin_only", status: 403 });
+        expect(writes).toBe(0);
+        expect(historyState(server)).toEqual(before);
+      } else if (entry === "sync") {
+        const result = await new PageService(server.app.session.public).revertChangeset(change.id);
+        expect(result).toMatchObject({ changed: true });
+        expect(writes).toBe(1);
+        expect(server.nodes).toEqual([raw, { ...page, parent_id: raw.id }]);
+        expect([...server.contents]).toEqual(before.contents);
+        expect(server.changesets).toHaveLength(2);
+        expect(change.revertedBy).toEqual([result.changeset_id]);
+        expect(server.jobs).toEqual([]);
+      } else {
+        const job = await new TransferService(server.app.session.public).startRevert(notebookJSON.id, change.id);
+        expect(job).toMatchObject({ state: "queued", target_changeset_id: change.id });
+        expect(writes).toBe(0);
+        expect(historyState(server)).toEqual({ ...before, jobs: [job] });
+      }
+    });
+  }
+}
+
 // These are the simple reverse placements the fixture represents, before its
 // writeback. Background assertions cover admission only; the real worker's
 // ordering and durable writes are checked by the bootstrap tests.
