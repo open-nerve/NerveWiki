@@ -7,6 +7,9 @@ WHERE n.notebook_id = sqlc.arg(notebook_id)
     AND n.id = ANY(sqlc.arg(node_ids)::uuid[]);
 
 -- name: ProbeSources :many
+-- The two tuple bounds pin kind/hash exactly while retaining the composite
+-- order: direct equalities let ANALYZE/generic plans choose a primary-index
+-- scan that filters other notebooks only after reading their rows.
 -- Each key's cursor is independent. The adapter bounds both the arrays and
 -- sum(takes) to 10000; the inner index scan never sorts the whole hash group.
 -- As the existing array writes do, the SELECT's set-returning functions zip
@@ -24,11 +27,12 @@ FROM (
 CROSS JOIN LATERAL (
     SELECT n.id FROM nodes n
     WHERE n.notebook_id = sqlc.arg(notebook_id)
-        AND n.kind = wanted.kind AND n.source_hash = wanted.hash
         AND n.source_hash IS NOT NULL AND n.deleted_at IS NULL
+        AND (n.kind, n.source_hash, n.id) >= (wanted.kind, wanted.hash, wanted.after_id)
+        AND (n.kind, n.source_hash) <= (wanted.kind, wanted.hash)
         AND n.id >= wanted.after_id
         AND (NOT wanted.has_after OR n.id <> wanted.after_id)
-    ORDER BY n.id
+    ORDER BY n.kind, n.source_hash, n.id
     LIMIT wanted.take
 ) hit
 ORDER BY wanted.ord, hit.id;
@@ -40,20 +44,14 @@ WHERE notebook_id = sqlc.arg(notebook_id) AND id = ANY(sqlc.arg(node_ids)::uuid[
     AND deleted_at IS NULL;
 
 -- name: SetSourceHashes :many
--- Sibling CTEs share a statement snapshot: previous sees the old column,
--- while RETURNING identifies only rows actually changed by the write.
-WITH previous AS MATERIALIZED (
-    SELECT old.id, old.kind, old.source_hash AS before_source_hash FROM nodes old
-    WHERE old.notebook_id = sqlc.arg(notebook_id) AND old.id = ANY(sqlc.arg(node_ids)::uuid[])
-        AND old.deleted_at IS NULL
-), changed AS (
-    UPDATE nodes n SET source_hash = v.hash
-    FROM (SELECT unnest(sqlc.arg(node_ids)::uuid[]) AS id, unnest(sqlc.arg(hashes)::bytea[]) AS hash) v
-    WHERE n.id = v.id AND n.notebook_id = sqlc.arg(notebook_id)
-        AND n.deleted_at IS NULL AND n.source_hash IS DISTINCT FROM v.hash
-    RETURNING n.id
-)
-SELECT p.id, p.kind, p.before_source_hash FROM previous p JOIN changed c ON c.id = p.id;
+-- The self-join reads the statement's old row; RETURNING emits it only when
+-- the target changes. A final join between materialized old/changed CTEs
+-- becomes quadratic when fresh tables have no column statistics.
+UPDATE nodes n SET source_hash = v.hash
+FROM nodes old, (SELECT unnest(sqlc.arg(node_ids)::uuid[]) AS id, unnest(sqlc.arg(hashes)::bytea[]) AS hash) v
+WHERE n.id = v.id AND n.notebook_id = sqlc.arg(notebook_id) AND old.id = n.id
+    AND n.deleted_at IS NULL AND n.source_hash IS DISTINCT FROM v.hash
+RETURNING n.id, old.kind, old.source_hash AS before_source_hash;
 
 -- name: LockSources :exec
 SELECT pg_advisory_xact_lock(sqlc.arg(space)::int, sqlc.arg(key)::int);

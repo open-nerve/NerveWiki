@@ -117,6 +117,8 @@ export async function expectImported(
     failure: string | null;
     done: number;
     total: number;
+    /** Persisted nodes when skipped entries or retained empty folders make progress differ from writes. */
+    written?: number;
     counts: ImportCounts;
   }
 ): Promise<void> {
@@ -155,9 +157,8 @@ export async function expectImported(
       WHERE j.id = $1 GROUP BY s.id`,
     [id, expected.creatorId]
   );
-  expect(changesets).toEqual(
-    expected.done === 0 ? [] : [{ client: expected.client, by_creator: true, items: expected.done }]
-  );
+  const written = expected.written ?? expected.done;
+  expect(changesets).toEqual(written === 0 ? [] : [{ client: expected.client, by_creator: true, items: written }]);
   await expect
     .poll(() => existsSync(archivePath(storageDir, id, "import")), { message: `the archive of ${id} in the store` })
     .toBe(false);

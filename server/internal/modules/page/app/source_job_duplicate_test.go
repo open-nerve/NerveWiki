@@ -324,3 +324,179 @@ func TestSourceJobIndependentGroupsDoNotCoalesceForDuplicates(t *testing.T) {
 	}
 	assertSourceJobBodies(t, x, "J", "J")
 }
+
+// A deletion is the compact plan's only step whose Nodes can exceed one.
+// N and its eight children were really created by the reverted changeset;
+// no weight, compact step, or Joined flag is patched into the plan.
+func newWeightedSourceDuplicateJob(t *testing.T) (sourceDuplicateJob, []uuid.UUID, []uuid.UUID) {
+	t.Helper()
+	s := newJobScene()
+	raw := s.node("raw", nil, false)
+	s.content(raw, "")
+	root := s.node("F", &raw, false)
+	s.content(root, "")
+	a, b := s.node("A", &root, false), s.node("B", &root, false)
+	s.content(a, "J")
+	s.content(b, "J")
+	var tail []uuid.UUID
+	for _, label := range []string{"C", "D", "E", "G"} {
+		id := s.node(label, &root, false)
+		s.content(id, "")
+		tail = append(tail, id)
+	}
+	e := s.begin()
+	e.write(a)
+	s.content(a, "H")
+	if !e.del(root) {
+		t.Fatal("fixture must delete F as one connected group")
+	}
+	n := s.node("N", nil, false)
+	s.content(n, "")
+	created := []uuid.UUID{n}
+	for i := 1; i <= 8; i++ {
+		id := s.node(fmt.Sprintf("n%d", i), &n, false)
+		s.content(id, "")
+		created = append(created, id)
+	}
+	f, c := s.load()
+	rewrites := 0
+	for i := range c.versions {
+		v := &c.versions[i]
+		if v.NodeID == a {
+			if v.Base == nil || *v.Base != 1 || v.Revision != 2 {
+				t.Fatalf("fixture rewrite=%+v, want A revision 1->2", v)
+			}
+			v.Rewrite = true
+			rewrites++
+		}
+	}
+	if rewrites != 1 || len(c.versions) != 10 {
+		t.Fatalf("versions=%+v, want one rewrite and nine created pages", c.versions)
+	}
+	spy := sourceJobFixture(f, raw)
+	// A retains revisions 1/2 plus its deletion item; the other six
+	// members retain revision 1 plus their deletion item. No size error
+	// is injected: JobWrites sums these repository row counts itself.
+	f.store.history = map[uuid.UUID]int{root: 2, a: 3, b: 2}
+	for _, id := range tail {
+		f.store.history[id] = 2
+	}
+	checkFakeSourceRebuild(t, f, 0)
+	return sourceDuplicateJob{scene: s, f: f, changeset: c, spy: spy, raw: raw, root: root, a: a, b: b}, created, tail
+}
+
+// These literal paths distinguish index halving from halving by cumulative
+// node weights. The companion transfer test invokes the real worker halver;
+// this test invokes real page history bounds and duplicate guards, without
+// claiming that its handwritten cuts execute transfer's scheduler.
+func TestSourceJobWeightedHalvingChangesDuplicateOutcome(t *testing.T) {
+	for _, weighted := range []bool{false, true} {
+		t.Run(map[bool]string{false: "step_index", true: "node_weight"}[weighted], func(t *testing.T) {
+			x, created, tail := newWeightedSourceDuplicateJob(t)
+			w, spec := x.f.jobs(now(), 0, 7), x.f.jobSpec()
+			batches := func(steps []domain.JobStep) [][2]int {
+				want := []domain.JobStep{{Nodes: 9}, {Nodes: 1}, {Nodes: 1, Bytes: 1, Joined: true},
+					{Nodes: 1, Bytes: 1}, {Nodes: 1, Bytes: 1}, {Nodes: 1}, {Nodes: 1}, {Nodes: 1}, {Nodes: 1}}
+				if !slices.Equal(steps, want) {
+					t.Fatalf("weighted compact sizes=%+v, want %+v", steps, want)
+				}
+				return [][2]int{{0, 9}}
+			}
+			if _, err := w.CheckRevert(x.f.asAlice(), x.f.eng, x.changeset.ID, nil, nil, batches); err != nil {
+				t.Fatalf("nominal admission: %v", err)
+			}
+			plan, err := w.PlanRevert(x.f.asJob(), spec, x.changeset.ID, batches)
+			if err != nil {
+				t.Fatal(err)
+			}
+			steps, _ := plan.RevertSteps()
+			wantCompact := []string{"delete N [N n1 n2 n3 n4 n5 n6 n7 n8]", "restore F", "restore A+", "content A",
+				"restore B", "restore C", "restore D", "restore E", "restore G"}
+			if got := x.scene.describe(steps, plan.Steps()); !slices.Equal(got, wantCompact) {
+				t.Fatalf("weighted compact=%v, want %v", got, wantCompact)
+			}
+			if len(x.spy.steps) != 0 || len(x.f.store.changesets) != 0 || x.f.called("Facts") {
+				t.Fatal("nominal admission must not parse, guard or write")
+			}
+			type attempt struct {
+				from, to int
+				history  bool
+				refused  bool
+				deleted  int
+				restored int
+				written  int
+			}
+			attempts := []attempt{{from: 0, to: 9, history: true}, {from: 0, to: 4, deleted: 9, restored: 2, written: 1},
+				{from: 4, to: 9, history: true}, {from: 4, to: 6, refused: true}}
+			if weighted {
+				attempts = []attempt{{from: 0, to: 9, history: true}, {from: 0, to: 1, deleted: 9},
+					{from: 1, to: 9, history: true}, {from: 1, to: 5, restored: 3, written: 1},
+					{from: 5, to: 9, history: true}, {from: 5, to: 7, restored: 2}, {from: 7, to: 9, restored: 2}}
+			}
+			live, removed := map[uuid.UUID]bool{}, false
+			for _, cut := range attempts {
+				if cut.from > 0 && plan.Steps()[cut.from-1].Joined || cut.to < len(steps) && plan.Steps()[cut.to-1].Joined {
+					t.Fatalf("handwritten cut [%d,%d) splits Joined", cut.from, cut.to)
+				}
+				x.f.rec.calls = nil
+				guarded := len(x.spy.steps)
+				done, err := w.RunBatch(x.f.asJob(), spec, plan, cut.from, cut.to)
+				switch {
+				case cut.history:
+					if !errors.Is(err, domain.ErrJobBatchTooLarge) || !strings.Contains(err.Error(), "history") {
+						t.Fatalf("[%d,%d)=%+v, %v; want real history refusal", cut.from, cut.to, done, err)
+					}
+					if x.f.called("Facts") || len(x.spy.steps) != guarded {
+						t.Fatalf("history refusal parsed/guarded: %v", x.f.rec.calls)
+					}
+				case cut.refused:
+					assertSourceJobDuplicate(t, err, &x.a)
+					if len(x.spy.steps) != guarded {
+						t.Fatal("duplicate B/C restore passed the source guard")
+					}
+				default:
+					if err != nil || done.Deleted != cut.deleted || done.Restored != cut.restored || done.Written != cut.written ||
+						done.Nodes != cut.deleted+cut.restored+cut.written {
+						t.Fatalf("[%d,%d)=%+v, %v; want deleted/restored/written %d/%d/%d", cut.from, cut.to,
+							done, err, cut.deleted, cut.restored, cut.written)
+					}
+					removed = removed || cut.deleted > 0
+					for i, id := range []uuid.UUID{x.root, x.a, x.b, tail[0], tail[1], tail[2], tail[3]} {
+						at := []int{1, 2, 4, 5, 6, 7, 8}[i]
+						if cut.from <= at && at < cut.to {
+							live[id] = true
+						}
+					}
+				}
+				for _, id := range append([]uuid.UUID{x.root, x.a, x.b}, tail...) {
+					_, alive := x.f.store.nodes[id]
+					_, trash := x.f.store.trash[id]
+					if alive != live[id] || trash == live[id] {
+						t.Fatalf("after [%d,%d), %s alive/trash=%t/%t, want alive=%t", cut.from, cut.to,
+							x.scene.labels[id], alive, trash, live[id])
+					}
+				}
+				for _, id := range created {
+					_, alive := x.f.store.nodes[id]
+					_, trash := x.f.store.trash[id]
+					if alive == removed || trash != removed {
+						t.Fatalf("created %s alive/trash=%t/%t, want removed=%t", x.scene.labels[id], alive, trash, removed)
+					}
+				}
+				a, b := "", ""
+				if live[x.a] {
+					a = "J"
+				}
+				if live[x.b] {
+					b = "J"
+				}
+				assertSourceJobBodies(t, x, a, b)
+			}
+			if weighted {
+				if diff := x.scene.p.compare(x.scene.t0, x.scene.p.modelOf(x.f)); diff != "" {
+					t.Fatalf("weighted alternative did not finish the revert: %s", diff)
+				}
+			}
+		})
+	}
+}

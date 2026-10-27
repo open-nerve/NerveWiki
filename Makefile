@@ -259,6 +259,10 @@ test-go-costs: ## 不带竞态检测的分配、耗时预算与界线的守卫�
 	@# glob 的守卫同样带 -v：最坏的模式在守卫树上走到 MaxGlobWork 的用时（M9/P1 设计 3.10.1）；edit 的匹配的守卫也在这一行：每种形状的用时（M9/P2 设计 3.9）
 	cd server && go test -count=1 -v -run '^(TestReplaceStaysWithinItsTime|TestTheWorstGlobsStopWithinTheirWork)$$' ./internal/modules/page/domain
 	cd server && go test -count=1 -run '^TestPagesWhoseNamesCutAlikeAreRenamedInTimeAsLongAsThey$$' ./internal/modules/transfer/domain
+	@# 完整来源预检X=3/60000，实际metadata/probe、三种DB设置及独立PREPARE计划；三样本中位。
+	cd server && go test -p 1 -count=1 -timeout 10m -v -run '^TestSourcePrecheckConvergedPlansCostTheirActualExclusions$$' ./internal/modules/page/adapter/postgres
+	@# 相同10万来源语料的六个独立副本：三/四列索引的实际空间、温表构建和正常HTTP写入差异。
+	cd server && go test -p 1 -count=1 -timeout 10m -v -run '^TestSourceIndexFourthKeyCostsItsSpaceAndNormalWrites$$' ./internal/bootstrap
 	go -C server/tools test -race -count=1 ./...
 
 .PHONY: test-go-guards
@@ -288,6 +292,17 @@ test-go-guards: ## 不带竞态检测的组合根的预算与界线的守卫（C
 	@# 走到第 500 个候选的三次完整调用中位数的界仍为 1 s（M9/P4 设计 6.1，3.6.4）；两种预算独立，不改变候选数、计划与范围的检查。
 	@# S1 当时本机这一行约 10.5 秒，乘 2.4 约 25 秒；这是历史估计，后续 CI 用时见维护审查记录
 	cd server && go test -count=1 -v -run '^(TestGrepOfTheWorstLineTakesItsTime|TestGrepAtItsWorkBoundTakesItsTime|TestGrepOfAHundredThousandCandidatesTakesItsTime)$$' ./internal/bootstrap
+
+
+	@# M10/P2 来源的六项成功操作分别计时；五项HTTP与完整60k计划均三个DB设置各三次。
+	@# HTTP核实际应用池的auto/force_generic_plan设置；来源口仍Planned，不称为PREPARE通用计划。
+	@# 新预算来自本机原始样本的三倍；不修改原请求4s、提交2s或既有守卫。
+	cd server && go test -p 1 -count=1 -timeout 10m -v -run '^TestSourceCreateAmongHundredThousandTakesItsTime$$' ./internal/bootstrap
+	cd server && go test -p 1 -count=1 -timeout 10m -v -run '^TestSourceMoveAtTenThousandTakesItsTime$$' ./internal/bootstrap
+	cd server && go test -p 1 -count=1 -timeout 10m -v -run '^TestSourceRestoreAtTenThousandTakesItsTime$$' ./internal/bootstrap
+	cd server && go test -p 1 -count=1 -timeout 10m -v -run '^TestSourceRevertAtTenThousandTakesItsTime$$' ./internal/bootstrap
+	cd server && go test -p 1 -count=1 -timeout 10m -v -run '^TestSourceBackgroundPlanAtMaxJobItemsCostsItsWork$$' ./internal/bootstrap
+	cd server && go test -p 1 -count=1 -timeout 10m -v -run '^TestSourceForgetHundredThousandTakesItsTime$$' ./internal/bootstrap
 
 .PHONY: test-go-short
 test-go-short: ## 只跑 server 的单元测试：go test -short，不带竞态检测，不起数据库（README 的写法；make check 与 CI 的一份跑它，不在 make test-go 里）
