@@ -20,6 +20,8 @@ type ContentWrite struct {
 	Facts       Facts
 	Base        int
 	EditSession uuid.UUID
+	Merged      *int // internal batch count; nil is an ordinary single write
+	Rewrite     bool // internal system rewrite, or a revert of one; ordinary writes leave it false
 }
 
 // WriteContent writes w under the page's gate, its content row FOR NO KEY
@@ -63,6 +65,16 @@ func (u *Unit) writeContent(ctx context.Context, w ContentWrite, participate boo
 	c := u.content(n.ID, w.Content, current.Revision+1)
 	switch {
 	case c.ByteSize == current.ByteSize && bytes.Equal(c.Hash, current.Hash):
+		if u.write.Notebook.Mode == domain.ModeLLMWiki && (u.write.Kind == domain.ChangesetVersionRestore ||
+			session.ID != uuid.Nil() || w.Merged != nil && *w.Merged > 1) {
+			step, err := u.withSourceLines(ctx, u.contentStep(n, current.ByteSize, c, w, session))
+			if err != nil {
+				return 0, err
+			}
+			if v := domain.CheckContract(u.write.Notebook, step.contractFacts()); v.Err != nil {
+				return 0, domain.Refuse(v.Err, v.NodeID)
+			}
+		}
 		return current.Revision, nil
 	case w.Base != current.Revision:
 		return 0, domain.ErrRevisionMismatch
@@ -73,9 +85,7 @@ func (u *Unit) writeContent(ctx context.Context, w ContentWrite, participate boo
 			return 0, err
 		}
 	}
-	state := n.State()
-	step := u.step(domain.OpContent, domain.Change{NodeID: n.ID, Before: &state, After: &state, Revision: c.Revision, Facts: w.Facts})
-	step.EditSessionID = session.ID
+	step := u.contentStep(n, current.ByteSize, c, w, session)
 	base := current.Revision
 	err = u.apply(ctx, step, participate, func(ctx context.Context) error {
 		if resumed {
@@ -86,7 +96,7 @@ func (u *Unit) writeContent(ctx context.Context, w ContentWrite, participate boo
 		if err := u.w.d.NodeWriter.WriteContent(ctx, c); err != nil {
 			return err
 		}
-		if err := u.recordRevision(ctx, c, &base); err != nil {
+		if err := u.recordRevision(ctx, c, &base, w.Rewrite); err != nil {
 			return err
 		}
 		if session.ID == (uuid.UUID{}) {
@@ -95,6 +105,22 @@ func (u *Unit) writeContent(ctx context.Context, w ContentWrite, participate boo
 		return u.w.d.SessionWriter.SetSessionWrite(ctx, session.ID, u.changeset, c.Revision)
 	})
 	return c.Revision, err
+}
+
+// contentStep is shared by changed writes and the few no-ops whose
+// contract still applies. A no-op never enters apply or the edit lock.
+func (u *Unit) contentStep(n domain.Node, beforeBytes int, c Content, w ContentWrite, session EditSession) Step {
+	state := n.State()
+	step := u.step(domain.OpContent, domain.Change{NodeID: n.ID, Before: &state, After: &state, Revision: c.Revision, Facts: w.Facts})
+	step.EditSessionID = session.ID
+	step.Kinds = map[uuid.UUID]domain.Kind{n.ID: n.Kind}
+	merged := 1
+	if w.Merged != nil {
+		merged = *w.Merged
+	}
+	step.Content = &StepContent{Hash: c.Hash, Bytes: c.ByteSize, BeforeBytes: beforeBytes, Merged: merged}
+	step.Rewrite = w.Rewrite
+	return step
 }
 
 // writersSession is w's edit session, locked FOR UPDATE after the page's

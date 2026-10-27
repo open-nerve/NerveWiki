@@ -367,6 +367,7 @@ func TestRestoreVersionWritesTheVersionsContent(t *testing.T) {
 	f.guards = []app.WriteGuard{g}
 	n := f.page("Notes", nil, 0)
 	f.history(n.ID, 3)
+	f.store.revisions[0].Rewrite = true // selecting a system version is still an ordinary user write
 	f.rec.calls = nil
 	r, err := f.restore(n.ID, 1, 3)
 	if err != nil {
@@ -375,7 +376,7 @@ func TestRestoreVersionWritesTheVersionsContent(t *testing.T) {
 	c := f.store.contents[n.ID]
 	last := f.store.revisions[len(f.store.revisions)-1]
 	if r.Revision != 4 || c.Content != "v1" || c.Revision != 4 || last.Revision != 4 || *last.Base != 3 || last.Content != "v1" ||
-		last.ChangesetID != r.ChangesetID {
+		last.ChangesetID != r.ChangesetID || last.Rewrite {
 		t.Errorf("restored %+v; content %q at %d, last version %+v; want v1 at revision 4, a version on 3", r, c.Content, c.Revision, last)
 	}
 	cs := f.store.changesets[len(f.store.changesets)-1]

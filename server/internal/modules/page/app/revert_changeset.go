@@ -147,12 +147,13 @@ func (r *RevertChangeset) checks() revertChecks {
 // 3.11). The 404 of a changeset gone between its reads is spec.NotFound,
 // the one the caller's first read answers.
 type revertBounds struct {
-	Items   int
-	Admit   func(context.Context) error
-	Parse   bool
-	History int
-	Steps   int
-	Locks   bool
+	BackgroundBatches JobBatches
+	Items             int
+	Admit             func(context.Context) error
+	Parse             bool
+	History           int
+	Steps             int
+	Locks             bool
 }
 
 // revertChecks are what a revert's unlocked check reads, a request's and a
@@ -170,6 +171,8 @@ type revertChecks struct {
 type revertChecked struct {
 	state domain.RevertState
 	plan  domain.RevertPlan
+	job   *JobPlan
+	cuts  [][2]int
 }
 
 // check is a revert's check before its unit, unlocked, of the changeset c
@@ -249,6 +252,19 @@ func (r revertChecks) check(ctx context.Context, c domain.Changeset, spec UnitSp
 	case !ok:
 		return revertChecked{}, spec.NotFound
 	}
+	state, err = reads.sourceLines(ctx, state, notebook)
+	if err != nil {
+		return revertChecked{}, err
+	}
+	checked := revertChecked{state: state, plan: plan}
+	if notebook.Mode == domain.ModeLLMWiki && b.BackgroundBatches != nil {
+		job := revertSteps(c.ID, checked)
+		checked.cuts, err = checkedBatches(job.Steps(), b.BackgroundBatches)
+		if err != nil {
+			return revertChecked{}, err
+		}
+		checked.job = &job
+	}
 	// The unlocked answer belongs to this check alone. The unit asks again
 	// in its transaction, through its own Grants.
 	var grants Grants
@@ -267,7 +283,12 @@ func (r revertChecks) check(ctx context.Context, c domain.Changeset, spec UnitSp
 			return err
 		})
 	}
-	if err := checkRevertContract(state, plan, notebook, ask); err != nil {
+	if checked.job != nil {
+		err = checkJobContract(checked, *checked.job, checked.cuts, notebook, ask)
+	} else {
+		err = checkRevertContract(state, plan, notebook, ask)
+	}
+	if err != nil {
 		return revertChecked{}, err
 	}
 	if b.Locks {
@@ -275,7 +296,7 @@ func (r revertChecks) check(ctx context.Context, c domain.Changeset, spec UnitSp
 			return revertChecked{}, err
 		}
 	}
-	return revertChecked{state: state, plan: plan}, nil
+	return checked, nil
 }
 
 // withinBounds checks a revert parses at most the unit's pages and bytes,

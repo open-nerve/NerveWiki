@@ -93,7 +93,7 @@ func (u *Unit) Restore(ctx context.Context, r TrashRestore) (RestoredItem, error
 		states[i], keys[i] = domain.TreeState{ParentID: m.Node.ParentID, Name: names[i].Name, SortOrder: m.Node.SortOrder}, names[i].Key
 	}
 	states[0].ParentID, states[0].SortOrder = place.ParentID, order
-	if err := u.bringBack(ctx, group, at, states, keys, r.Facts, renumber); err != nil {
+	if err := u.bringBack(ctx, group, at, states, keys, r.Facts, renumber, restoredLines(place.ParentID, lines[id])); err != nil {
 		return RestoredItem{}, err
 	}
 	root.ParentID, root.SortOrder, root.Name, root.NameKey = place.ParentID, order, names[0].Name, names[0].Key
@@ -113,13 +113,15 @@ func (u *Unit) Restore(ctx context.Context, r TrashRestore) (RestoredItem, error
 // and its versions in one chain from its creation, else
 // page.trash_changed. A restore and a revert share it (M8/P3 design 3.6).
 func (u *Unit) bringBack(ctx context.Context, group []domain.TrashMember, at time.Time, states []domain.TreeState, keys []string,
-	facts map[uuid.UUID]Facts, before func(context.Context) error,
+	facts map[uuid.UUID]Facts, before func(context.Context) error, lines *StepLines,
 ) error {
 	back := Restoration{Root: group[0].Node.ID, ParentID: states[0].ParentID, SortOrder: states[0].SortOrder, DeletedAt: at,
 		By: u.write.By, At: u.write.At}
 	changes := make([]domain.Change, len(group))
+	kinds := make(map[uuid.UUID]domain.Kind, len(group))
 	pages := 0
 	for i, m := range group {
+		kinds[m.Node.ID] = m.Node.Kind
 		changes[i] = domain.Change{NodeID: m.Node.ID, After: &states[i],
 			Restored: &domain.Restored{DeletedAt: at, Asset: m.Node.Kind == domain.KindAsset}}
 		if m.Node.Kind == domain.KindPage {
@@ -128,7 +130,9 @@ func (u *Unit) bringBack(ctx context.Context, group []domain.TrashMember, at tim
 		}
 		back.IDs, back.Names, back.NameKeys = append(back.IDs, m.Node.ID), append(back.Names, states[i].Name), append(back.NameKeys, keys[i])
 	}
-	return u.apply(ctx, u.step(domain.OpRestore, changes...), true, func(ctx context.Context) error {
+	step := u.step(domain.OpRestore, changes...)
+	step.Kinds, step.Lines = kinds, lines
+	return u.apply(ctx, step, true, func(ctx context.Context) error {
 		if err := before(ctx); err != nil {
 			return err
 		}
@@ -296,7 +300,8 @@ func (u *Unit) RestorePart(ctx context.Context, p TrashPart) (PartRestored, erro
 	if len(members) == 0 {
 		return out, nil
 	}
-	places := partPlaces{u: u, p: p, kids: map[int]*children{}, depths: map[int]int{}}
+	places := partPlaces{u: u, p: p, kids: map[int]*children{}, depths: map[int]int{}, lines: map[int][]domain.Ancestor{}}
+	var sourceLines *StepLines
 	states, keys := make([]domain.TreeState, len(members)), make([]string, len(members))
 	renumber := func(context.Context) error { return nil }
 	for k, i := range positions {
@@ -304,11 +309,11 @@ func (u *Unit) RestorePart(ctx context.Context, p TrashPart) (PartRestored, erro
 		state := m.Node.State()
 		var kids *children
 		if i == 0 {
-			place, order, siblings, before, err := u.placeRoot(ctx, m.Node, p.Height)
+			place, order, siblings, before, line, err := u.placeRoot(ctx, m.Node, p.Height)
 			if err != nil {
 				return PartRestored{}, err
 			}
-			out.Placement, renumber = &place, before
+			out.Placement, renumber, sourceLines = &place, before, line
 			state.ParentID, state.SortOrder = place.ParentID, order
 			kids = places.under(-1, siblings)
 			if place.ParentID == nil && u.write.Notebook.Mode == domain.ModeLLMWiki {
@@ -319,6 +324,9 @@ func (u *Unit) RestorePart(ctx context.Context, p TrashPart) (PartRestored, erro
 		} else {
 			if kids, err = places.of(ctx, int(p.Nodes[i].Parent), inBatch); err != nil {
 				return PartRestored{}, err
+			}
+			if k == 0 {
+				sourceLines = &StepLines{After: places.lines[int(p.Nodes[i].Parent)]}
 			}
 			if err := places.deep(i, m.Node.Kind); err != nil {
 				return PartRestored{}, err
@@ -352,7 +360,16 @@ func (u *Unit) RestorePart(ctx context.Context, p TrashPart) (PartRestored, erro
 			facts[m.Node.ID] = f
 		}
 	}
-	if err := u.bringBack(ctx, members, p.At, states, keys, facts, renumber); err != nil {
+	if u.write.Notebook.Mode == domain.ModeLLMWiki {
+		if sourceLines == nil {
+			sourceLines = &StepLines{}
+		}
+		sourceLines.AfterParents = make(map[uuid.UUID][]domain.Ancestor, len(places.lines))
+		for at, line := range places.lines {
+			sourceLines.AfterParents[p.Nodes[at].ID] = line
+		}
+	}
+	if err := u.bringBack(ctx, members, p.At, states, keys, facts, renumber, sourceLines); err != nil {
 		return PartRestored{}, err
 	}
 	return out, u.markFrontier(ctx, p.Nodes, domain.Frontier(p.Nodes, p.From, p.To, func(i int) bool { return restored[i-p.From] }), p.At)
@@ -365,22 +382,22 @@ func (u *Unit) RestorePart(ctx context.Context, p TrashPart) (PartRestored, erro
 // the siblings alive where it goes. PlacementOf keeps its group within
 // domain.MaxDepth.
 func (u *Unit) placeRoot(ctx context.Context, n domain.Node, height int) (domain.Placement, float64, []domain.Node,
-	func(context.Context) error, error,
+	func(context.Context) error, *StepLines, error,
 ) {
 	lines, err := u.w.d.Trash.TrashLines(ctx, []uuid.UUID{n.ID})
 	if err != nil {
-		return domain.Placement{}, 0, nil, nil, err
+		return domain.Placement{}, 0, nil, nil, nil, err
 	}
 	place := domain.PlacementOf(lines[n.ID], height)
 	siblings, err := u.w.d.Nodes.Children(ctx, u.write.NotebookID, place.ParentID)
 	if err != nil {
-		return domain.Placement{}, 0, nil, nil, err
+		return domain.Placement{}, 0, nil, nil, nil, err
 	}
 	order, renumber := n.SortOrder, func(context.Context) error { return nil }
 	if place.ParentID == nil && n.ParentID != nil {
 		order, _, renumber = u.placeAmong(siblings, len(siblings)-1)
 	}
-	return place, order, siblings, renumber, nil
+	return place, order, siblings, renumber, restoredLines(place.ParentID, lines[n.ID]), nil
 }
 
 // partPlaces are where a batch of a background restore puts its members
@@ -394,6 +411,7 @@ type partPlaces struct {
 	p      TrashPart
 	kids   map[int]*children
 	depths map[int]int
+	lines  map[int][]domain.Ancestor
 }
 
 // under are the names taken where siblings are alive, under the parent at
@@ -419,7 +437,8 @@ func (s partPlaces) of(ctx context.Context, at int, inBatch func(int) bool) (*ch
 		return s.under(at, nil), nil
 	}
 	id := s.p.Nodes[at].ID
-	if _, err := s.u.w.d.Nodes.FindNodeIn(ctx, s.u.write.NotebookID, id); errors.Is(err, ErrNotFound) {
+	parent, err := s.u.w.d.Nodes.FindNodeIn(ctx, s.u.write.NotebookID, id)
+	if errors.Is(err, ErrNotFound) {
 		return nil, ErrNoParent
 	} else if err != nil {
 		return nil, err
@@ -433,6 +452,7 @@ func (s partPlaces) of(ctx context.Context, at int, inBatch func(int) bool) (*ch
 		return nil, err
 	}
 	s.depths[at] = domain.Depth(ancestors)
+	s.lines[at] = append(ancestors, domain.Ancestor{ID: parent.ID, Name: parent.Name})
 	return s.under(at, siblings), nil
 }
 
@@ -473,4 +493,16 @@ func (u *Unit) markFrontier(ctx context.Context, nodes []domain.GroupNode, front
 		return domain.ErrTrashChanged
 	}
 	return nil
+}
+
+// restoredLines uses the line already read to place a restore. Falling back
+// to the notebook root has a known empty After, regardless of its old line.
+func restoredLines(parent *uuid.UUID, line []domain.TrashAncestor) *StepLines {
+	out := &StepLines{}
+	if parent != nil {
+		for _, a := range line {
+			out.After = append(out.After, domain.Ancestor{ID: a.ID, Name: a.Name})
+		}
+	}
+	return out
 }

@@ -179,7 +179,7 @@ func (q *Queries) ChangesetMoves(ctx context.Context, id uuid.UUID) (ChangesetMo
 }
 
 const changesetVersions = `-- name: ChangesetVersions :many
-SELECT r.node_id, r.base_revision, r.revision, r.content_hash, b.byte_size AS base_bytes
+SELECT r.node_id, r.base_revision, r.revision, r.content_hash, b.byte_size AS base_bytes, r.rewrite
 FROM page_revisions r LEFT JOIN page_revisions b ON b.node_id = r.node_id AND b.revision = r.base_revision
 WHERE r.changeset_id = $1 ORDER BY r.node_id
 `
@@ -190,9 +190,11 @@ type ChangesetVersionsRow struct {
 	Revision     int32
 	ContentHash  []byte
 	BaseBytes    *int32
+	Rewrite      bool
 }
 
 // A changeset's versions by page, each with the size of the one it is based on: what a revert writes back.
+// The rewrite marker belongs to the reverted version, not its base (M10/P2 design 3.4).
 func (q *Queries) ChangesetVersions(ctx context.Context, id uuid.UUID) ([]ChangesetVersionsRow, error) {
 	rows, err := q.db.Query(ctx, changesetVersions, id)
 	if err != nil {
@@ -208,6 +210,7 @@ func (q *Queries) ChangesetVersions(ctx context.Context, id uuid.UUID) ([]Change
 			&i.Revision,
 			&i.ContentHash,
 			&i.BaseBytes,
+			&i.Rewrite,
 		); err != nil {
 			return nil, err
 		}
@@ -220,7 +223,7 @@ func (q *Queries) ChangesetVersions(ctx context.Context, id uuid.UUID) ([]Change
 }
 
 const changesetVersionsOf = `-- name: ChangesetVersionsOf :many
-SELECT r.node_id, r.base_revision, r.revision, r.content_hash, b.byte_size AS base_bytes
+SELECT r.node_id, r.base_revision, r.revision, r.content_hash, b.byte_size AS base_bytes, r.rewrite
 FROM page_revisions r LEFT JOIN page_revisions b ON b.node_id = r.node_id AND b.revision = r.base_revision
 WHERE r.changeset_id = $1 AND r.node_id = ANY($2::uuid[]) ORDER BY r.node_id
 `
@@ -236,6 +239,7 @@ type ChangesetVersionsOfRow struct {
 	Revision     int32
 	ContentHash  []byte
 	BaseBytes    *int32
+	Rewrite      bool
 }
 
 // A changeset's versions of some pages, as ChangesetVersions reads them all: a background revert's batch's.
@@ -254,6 +258,7 @@ func (q *Queries) ChangesetVersionsOf(ctx context.Context, arg ChangesetVersions
 			&i.Revision,
 			&i.ContentHash,
 			&i.BaseBytes,
+			&i.Rewrite,
 		); err != nil {
 			return nil, err
 		}
@@ -266,7 +271,7 @@ func (q *Queries) ChangesetVersionsOf(ctx context.Context, arg ChangesetVersions
 }
 
 const contentsNow = `-- name: ContentsNow :many
-SELECT node_id, revision, content_hash FROM page_contents
+SELECT node_id, revision, content_hash, byte_size FROM page_contents
 WHERE node_id = ANY($1::uuid[]) AND deleted_at IS NULL
 `
 
@@ -274,9 +279,10 @@ type ContentsNowRow struct {
 	NodeID      uuid.UUID
 	Revision    int32
 	ContentHash []byte
+	ByteSize    int32
 }
 
-// The contents of pages alive, their revisions and hashes, by their key.
+// The contents of pages alive, their revisions, hashes and byte sizes, by their key, without reading the bodies.
 func (q *Queries) ContentsNow(ctx context.Context, ids []uuid.UUID) ([]ContentsNowRow, error) {
 	rows, err := q.db.Query(ctx, contentsNow, ids)
 	if err != nil {
@@ -286,7 +292,12 @@ func (q *Queries) ContentsNow(ctx context.Context, ids []uuid.UUID) ([]ContentsN
 	var items []ContentsNowRow
 	for rows.Next() {
 		var i ContentsNowRow
-		if err := rows.Scan(&i.NodeID, &i.Revision, &i.ContentHash); err != nil {
+		if err := rows.Scan(
+			&i.NodeID,
+			&i.Revision,
+			&i.ContentHash,
+			&i.ByteSize,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

@@ -184,9 +184,10 @@ type BatchPlan struct {
 	// with an action beyond the batch's own decision (M10/P1 design 3.22),
 	// for the use case to ask before it reads, and to Refuse at that op when
 	// denied; nil for none.
-	Needs *Need
-	tree  *batchTree
-	steps []BatchStep
+	Needs    *Need
+	tree     *batchTree
+	steps    []BatchStep
+	notebook NotebookState
 	// final is a failure that ends the plan where it is, its contents'
 	// pass not run: the items' bound, the reads'.
 	final     bool
@@ -216,6 +217,9 @@ type BatchPlan struct {
 // (Contents rewrites them first); what the op's tool would answer as
 // changed at its step, and an edit's replacements.
 type PlannedStep struct {
+	// Facts keeps this item's operations at their own tree and content
+	// state; a creation has one step per new page, root first.
+	Facts         []StepFacts
 	Node          uuid.UUID
 	Path          string
 	Found         []uuid.UUID
@@ -265,6 +269,8 @@ type PlannedPage struct {
 	Created     bool
 	Revision    int
 	Content     string
+	// Merged counts user byte changes made while this page was a source.
+	Merged int
 }
 
 // plannedPage is a page's content as the contents' pass goes: its head
@@ -276,6 +282,7 @@ type plannedPage struct {
 	first, last int
 	revision    int
 	content     string
+	merged      int
 	known       bool
 	whole       bool
 	head        *PageHead
@@ -319,7 +326,7 @@ type deletion struct {
 // is Needs. The first op that fails ends the pass, its error at its op in
 // Failed.
 func PlanBatch(nodes []Node, steps []BatchStep, ids [][]uuid.UUID, n NotebookState) *BatchPlan {
-	p := &BatchPlan{Steps: make([]PlannedStep, len(steps)), tree: newBatchTree(nodes), steps: steps,
+	p := &BatchPlan{Steps: make([]PlannedStep, len(steps)), tree: newBatchTree(nodes), steps: steps, notebook: n,
 		pages: map[uuid.UUID]*plannedPage{}, createdBy: map[uuid.UUID]int{}, movedBy: map[uuid.UUID]int{},
 		parses: map[parseKey]int{}}
 	for i := range p.Steps {
@@ -360,7 +367,27 @@ type treePass struct {
 // is the op's error, marked with its node; the first op that needs an
 // action is Needs, and the pass goes on.
 func (t *treePass) judge(i int, op Operation, nodes []NodeFacts) error {
-	v := CheckContract(t.notebook, StepFacts{Operation: op, Kind: ChangesetEdit, Nodes: nodes})
+	facts := StepFacts{Operation: op, Kind: ChangesetEdit, Nodes: nodes}
+	if t.notebook.Mode == ModeLLMWiki && len(nodes) > 0 {
+		var before, after []Ancestor
+		if nodes[0].Before != nil {
+			before = t.cur.line(nodes[0].Before.ParentID)
+		}
+		if nodes[0].After != nil {
+			after = t.cur.line(nodes[0].After.ParentID)
+		}
+		// cur is the item-before tree. Its unchanged destination ancestors
+		// and SourceFacts' changed parent graph give the item-after side.
+		facts = SourceFacts(facts, t.notebook.SourceRootID, before, after, nil)
+	}
+	if op == OpCreate {
+		for _, node := range facts.Nodes {
+			t.p.Steps[i].Facts = append(t.p.Steps[i].Facts, StepFacts{Operation: op, Kind: ChangesetEdit, Nodes: []NodeFacts{node}})
+		}
+	} else {
+		t.p.Steps[i].Facts = append(t.p.Steps[i].Facts, facts)
+	}
+	v := CheckContract(t.notebook, facts)
 	switch {
 	case v.Err != nil:
 		return Refuse(v.Err, v.NodeID)
@@ -378,7 +405,7 @@ func nodePlace(n Node) *NodePlace {
 // unmoved is the facts of n's content step, or of a node a step carries:
 // where it was, where it is.
 func unmoved(n Node) NodeFacts {
-	return NodeFacts{ID: n.ID, Before: nodePlace(n), After: nodePlace(n)}
+	return NodeFacts{ID: n.ID, Kind: n.Kind, Before: nodePlace(n), After: nodePlace(n)}
 }
 
 // plan is the op i, s, on the tree: its error is the op's.
@@ -431,7 +458,7 @@ func (t *treePass) create(i int, s BatchStep) error {
 	facts, under := make([]NodeFacts, len(c.Titles)), c.Parent
 	for d, title := range c.Titles {
 		id := t.ids[i][len(found)+d]
-		facts[d], under = NodeFacts{ID: id, After: &NodePlace{ParentID: under, Key: shared.TitleKey(title)}}, &id
+		facts[d], under = NodeFacts{ID: id, Kind: KindPage, After: &NodePlace{ParentID: under, Key: shared.TitleKey(title)}}, &id
 	}
 	if err := t.judge(i, OpCreate, facts); err != nil {
 		return err
@@ -518,7 +545,7 @@ func (t *treePass) move(i int, s BatchStep) error {
 			return &PathTaken{Path: s.To.Written, Asset: h.Kind == KindAsset}
 		}
 		// Under its parent, a rename: the unit's Relocate renames it.
-		renamed := NodeFacts{ID: n.ID, Before: nodePlace(n), After: &NodePlace{ParentID: parent, Key: shared.TitleKey(title.Name)}}
+		renamed := NodeFacts{ID: n.ID, Kind: n.Kind, Before: nodePlace(n), After: &NodePlace{ParentID: parent, Key: shared.TitleKey(title.Name)}}
 		if err := t.judge(i, OpRename, []NodeFacts{renamed}); err != nil {
 			return err
 		}
@@ -536,7 +563,7 @@ func (t *treePass) move(i int, s BatchStep) error {
 		}
 		// The node moved, then each node it carries, as the unit's step lists
 		// them (its subtree, the node first).
-		facts := []NodeFacts{{ID: n.ID, Before: nodePlace(n), After: &NodePlace{ParentID: parent, Key: shared.TitleKey(title.Name)}}}
+		facts := []NodeFacts{{ID: n.ID, Kind: n.Kind, Before: nodePlace(n), After: &NodePlace{ParentID: parent, Key: shared.TitleKey(title.Name)}}}
 		for _, m := range sub[1:] {
 			facts = append(facts, unmoved(m.Node))
 		}
@@ -595,7 +622,7 @@ func (t *treePass) delete(i int, s BatchStep) error {
 	}
 	facts := make([]NodeFacts, len(sub))
 	for k, m := range sub {
-		facts[k] = NodeFacts{ID: m.Node.ID, Before: nodePlace(m.Node)}
+		facts[k] = NodeFacts{ID: m.Node.ID, Kind: m.Node.Kind, Before: nodePlace(m.Node)}
 	}
 	if err := t.judge(i, OpDelete, facts); err != nil {
 		return err
@@ -941,7 +968,7 @@ func (p *BatchPlan) Pages() []PlannedPage {
 	for _, id := range p.order {
 		pg := p.pages[id]
 		out = append(out, PlannedPage{ID: id, First: pg.first, Last: pg.last, Created: pg.created, Revision: pg.revision,
-			Content: pg.content})
+			Content: pg.content, Merged: pg.merged})
 	}
 	return out
 }

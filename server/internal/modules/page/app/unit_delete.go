@@ -42,11 +42,15 @@ func (u *Unit) Subtree(ctx context.Context, id uuid.UUID) (domain.Subtree, error
 func (u *Unit) DeleteSubtree(ctx context.Context, sub domain.Subtree) error {
 	ids := make([]uuid.UUID, len(sub))
 	changes := make([]domain.Change, len(sub))
+	kinds := make(map[uuid.UUID]domain.Kind, len(sub))
 	for i, s := range sub {
 		state := s.Node.State()
+		kinds[s.Node.ID] = s.Node.Kind
 		ids[i], changes[i] = s.Node.ID, domain.Change{NodeID: s.Node.ID, Before: &state}
 	}
-	return u.apply(ctx, u.step(domain.OpDelete, changes...), true, func(ctx context.Context) error {
+	step := u.step(domain.OpDelete, changes...)
+	step.Kinds = kinds
+	return u.apply(ctx, step, true, func(ctx context.Context) error {
 		pages, assets := sub.Counts()
 		if err := u.w.d.NodeWriter.DeleteNodes(ctx, Deletion{
 			Root: sub[0].Node.ID, IDs: ids, Pages: pages, Assets: assets, Height: sub.Height(), By: u.write.By, At: u.write.At,

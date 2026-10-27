@@ -52,6 +52,7 @@ func (u *Unit) renameTo(ctx context.Context, n domain.Node, title domain.Title, 
 	renamed.Name, renamed.NameKey, renamed.UpdatedBy, renamed.UpdatedAt = title.Name, title.Key, u.write.By, u.write.At
 	before, after := n.State(), renamed.State()
 	step := u.step(domain.OpRename, domain.Change{NodeID: n.ID, Before: &before, After: &after})
+	step.Kinds = map[uuid.UUID]domain.Kind{n.ID: n.Kind}
 	err := u.apply(ctx, step, participate, func(ctx context.Context) error { return write(ctx, renamed) })
 	return renamed, err
 }

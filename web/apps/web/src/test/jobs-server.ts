@@ -1,7 +1,7 @@
 import type { TransferJob, TransferJobDetail } from "../services/transfer.service";
 import { under as underWayNow } from "../stores/transfer.store";
 import { json, notebookJSON, problem, type Answer } from "./fakes";
-import { orderedConflicts } from "./history-server";
+import { orderedConflicts, sourceRevertCode } from "./history-server";
 import { ada, pageServer } from "./page-server";
 import { formOf } from "./transfer";
 
@@ -363,6 +363,10 @@ export function jobsServer({ jobs = [], pageSize = 50, answers = {}, ...options 
       }
       if (changeset.purged) {
         return problem(409, "page.changeset_trimmed");
+      }
+      const code = sourceRevertCode(server, changeset, role);
+      if (code !== undefined) {
+        return problem(code === "page.source_admin_only" ? 403 : 409, code);
       }
       if (changeset.lockedBy !== undefined) {
         const { page, holder } = changeset.lockedBy;

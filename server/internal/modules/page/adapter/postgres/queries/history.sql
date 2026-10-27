@@ -137,7 +137,8 @@ FROM changeset_items WHERE changeset_id = sqlc.arg(id) ORDER BY node_id;
 
 -- name: ChangesetVersions :many
 -- A changeset's versions by page, each with the size of the one it is based on: what a revert writes back.
-SELECT r.node_id, r.base_revision, r.revision, r.content_hash, b.byte_size AS base_bytes
+-- The rewrite marker belongs to the reverted version, not its base (M10/P2 design 3.4).
+SELECT r.node_id, r.base_revision, r.revision, r.content_hash, b.byte_size AS base_bytes, r.rewrite
 FROM page_revisions r LEFT JOIN page_revisions b ON b.node_id = r.node_id AND b.revision = r.base_revision
 WHERE r.changeset_id = sqlc.arg(id) ORDER BY r.node_id;
 
@@ -150,7 +151,7 @@ FROM changeset_items WHERE changeset_id = sqlc.arg(id) AND node_id = ANY(sqlc.ar
 
 -- name: ChangesetVersionsOf :many
 -- A changeset's versions of some pages, as ChangesetVersions reads them all: a background revert's batch's.
-SELECT r.node_id, r.base_revision, r.revision, r.content_hash, b.byte_size AS base_bytes
+SELECT r.node_id, r.base_revision, r.revision, r.content_hash, b.byte_size AS base_bytes, r.rewrite
 FROM page_revisions r LEFT JOIN page_revisions b ON b.node_id = r.node_id AND b.revision = r.base_revision
 WHERE r.changeset_id = sqlc.arg(id) AND r.node_id = ANY(sqlc.arg(node_ids)::uuid[]) ORDER BY r.node_id;
 
@@ -182,8 +183,8 @@ SELECT n.id, n.notebook_id, n.parent_id, n.kind, n.name, n.name_key, n.sort_orde
 FROM nodes n WHERE n.id = ANY(sqlc.arg(ids)::uuid[]);
 
 -- name: ContentsNow :many
--- The contents of pages alive, their revisions and hashes, by their key.
-SELECT node_id, revision, content_hash FROM page_contents
+-- The contents of pages alive, their revisions, hashes and byte sizes, by their key, without reading the bodies.
+SELECT node_id, revision, content_hash, byte_size FROM page_contents
 WHERE node_id = ANY(sqlc.arg(ids)::uuid[]) AND deleted_at IS NULL;
 
 -- name: VersionHashes :many

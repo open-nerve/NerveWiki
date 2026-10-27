@@ -53,6 +53,8 @@ type RevertStep struct {
 	Order         float64
 	Base          int
 	Hash          []byte
+	Bytes         int
+	Rewrite       bool
 	Nodes         []uuid.UUID
 	Group, Member int
 }
@@ -66,7 +68,7 @@ func (p JobPlan) RevertSteps() ([]RevertStep, [][]domain.GroupNode) {
 	steps := make([]RevertStep, len(p.revert.steps))
 	for i, s := range p.revert.steps {
 		steps[i] = RevertStep{Kind: s.kind, Seq: int(s.seq), Node: s.node, Parent: s.parent, Name: s.name, Order: s.order,
-			Base: int(s.base), Hash: s.hash, Nodes: s.nodes, Group: int(s.group), Member: int(s.member)}
+			Base: int(s.base), Hash: s.hash, Bytes: s.bytes, Rewrite: s.rewrite, Nodes: s.nodes, Group: int(s.group), Member: int(s.member)}
 	}
 	groups := make([][]domain.GroupNode, len(p.revert.groups))
 	for i, g := range p.revert.groups {
@@ -74,3 +76,6 @@ func (p JobPlan) RevertSteps() ([]RevertStep, [][]domain.GroupNode) {
 	}
 	return steps, groups
 }
+
+// SourceStepFacts exposes the actual guard's pure fact conversion to its tests.
+func SourceStepFacts(s Step) domain.StepFacts { return s.contractFacts() }

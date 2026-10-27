@@ -50,6 +50,10 @@ type Step struct {
 	Write
 	Operation domain.Operation
 	Changes   []domain.Change
+	Content   *StepContent
+	Rewrite   bool
+	Lines     *StepLines
+	Kinds     map[uuid.UUID]domain.Kind
 	// EditSessionID is the edit session a content write is made in (M5:
 	// the edit lock is the session's); zero for any other write.
 	EditSessionID uuid.UUID
@@ -60,6 +64,22 @@ type Step struct {
 	// Batch is what a batch's deferred step has its participants follow
 	// besides its changes (M9/P3 design 3.7.1); nil for any other step.
 	Batch *BatchRewrite
+}
+
+// StepContent is the content written and the bytes it replaces. Merged counts
+// the source writes a batch coalesced into this operation.
+type StepContent struct {
+	Hash                       []byte
+	Bytes, BeforeBytes, Merged int
+}
+
+// StepLines are the operation root's ancestors on each side. Nil Lines means
+// not supplied; an empty side is the known notebook root. Guards only read it.
+type StepLines struct {
+	Before, After []domain.Ancestor
+	// AfterParents supplies each external parent's line when skips leave
+	// multiple restore roots in one step. Changed parents use Changes instead.
+	AfterParents map[uuid.UUID][]domain.Ancestor
 }
 
 // BatchRewrite is what a batch's deferred participants follow besides its

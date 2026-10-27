@@ -124,7 +124,7 @@ async function expectRenameReverted(
   expect(await readContent(api, pat, of.alpha)).toMatchObject({ content: alphaContent, revision: 3 });
   await expectVersions(db, of.alpha, [
     { base: null, revision: 1, content: alphaContent, kind: "edit", byId: by.adminId, client: "api" },
-    { base: 1, revision: 2, content: rewritten, kind: "edit", byId: by.renamerId, client: "api" },
+    { base: 1, revision: 2, content: rewritten, kind: "edit", byId: by.renamerId, client: "api", rewrite: true },
     {
       base: 2,
       revision: 3,
@@ -133,6 +133,7 @@ async function expectRenameReverted(
       byId: by.reverterId,
       client: by.client,
       revertsId: of.rename,
+      rewrite: true,
     },
   ]);
   await expectIndexedLinks(db, of.alpha, [{ kind: "wikilink", property: null, target: "Beta", resolved: of.beta }]);

@@ -103,7 +103,7 @@ func (s *Store) RecordRevision(ctx context.Context, r app.Revision) error {
 	}
 	n, err := s.queries(ctx).RecordRevision(ctx, gen.RecordRevisionParams{
 		ID: r.ID, ChangesetID: r.ChangesetID, NodeID: r.NodeID, BaseRevision: base, Revision: int32(r.Revision),
-		Content: r.Content, ContentHash: r.Hash, ByteSize: int32(r.ByteSize), Now: r.At,
+		Content: r.Content, ContentHash: r.Hash, ByteSize: int32(r.ByteSize), Now: r.At, Rewrite: r.Rewrite,
 	})
 	switch {
 	case err != nil:

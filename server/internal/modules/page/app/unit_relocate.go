@@ -71,5 +71,5 @@ func (u *Unit) Relocate(ctx context.Context, id uuid.UUID, p Placement) (domain.
 	moved := n
 	moved.ParentID, moved.SortOrder, moved.Name, moved.NameKey = p.ParentID, order, title.Name, title.Key
 	moved.UpdatedBy, moved.UpdatedAt = u.write.By, u.write.At
-	return moved, u.moveSubtree(ctx, sub, moved, renumber, u.w.d.NodeWriter.RelocateNode)
+	return moved, u.moveSubtree(ctx, sub, moved, renumber, u.w.d.NodeWriter.RelocateNode, &StepLines{After: line})
 }

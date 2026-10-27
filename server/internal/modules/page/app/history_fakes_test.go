@@ -377,7 +377,7 @@ func (h *fakeHistory) ContentsNow(ctx context.Context, ids []uuid.UUID) (map[uui
 	out := map[uuid.UUID]domain.ContentNow{}
 	for _, id := range ids {
 		if c, ok := h.store.contents[id]; ok {
-			out[id] = domain.ContentNow{Revision: c.Revision, Hash: c.Hash}
+			out[id] = domain.ContentNow{Revision: c.Revision, Hash: c.Hash, Bytes: c.ByteSize}
 		}
 	}
 	return out, nil

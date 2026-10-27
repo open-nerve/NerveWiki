@@ -504,6 +504,8 @@ export interface StoredVersion {
   revertsId?: string | null;
   /** The versions its changeset holds: itself alone unless given, as an MCP write's parents created with it are more. */
   versions?: number;
+  /** Every write merged into this version was a system rewrite; ordinary versions default to false. */
+  rewrite?: boolean;
 }
 
 /**
@@ -513,7 +515,7 @@ export interface StoredVersion {
  */
 export async function expectVersions(db: Database, pageId: string, versions: StoredVersion[]): Promise<void> {
   const rows = await db.query(
-    `SELECT r.base_revision AS base, r.revision, r.content, x.kind, x.created_by_id AS "byId", x.client,
+    `SELECT r.base_revision AS base, r.revision, r.content, r.rewrite, x.kind, x.created_by_id AS "byId", x.client,
             x.reverts_id AS "revertsId",
             r.byte_size = octet_length(convert_to(r.content, 'UTF8'))
               AND r.content_hash = sha256(convert_to(r.content, 'UTF8')) AS hashed,
@@ -523,7 +525,56 @@ export async function expectVersions(db: Database, pageId: string, versions: Sto
       ORDER BY r.revision`,
     [pageId]
   );
-  expect(rows).toEqual(versions.map((version) => ({ revertsId: null, versions: 1, ...version, hashed: true })));
+  expect(rows).toEqual(
+    versions.map((version) => ({ revertsId: null, versions: 1, rewrite: false, ...version, hashed: true }))
+  );
+}
+
+/**
+ * The raw durable rows of one small story notebook, including deleted rows. A refusal must leave them byte for
+ * byte unchanged: tree, content, notebook activity, history, sessions and attachment metadata. Each table returns
+ * at most 65 rows and the fixture must contain at most 64; an overflowing snapshot fails instead of hiding writes
+ * beyond its bound. Search-index and event-queue work is asynchronous and outside this refusal snapshot.
+ */
+export async function pageStateOf(db: Database, notebookId: string): Promise<string[]> {
+  const rows = await db.query<{ kind: string; id: string; snapshot: string }>(
+    `WITH stored AS (
+       (SELECT 'notebook' AS kind, n.id::text AS id, to_jsonb(n) AS doc
+          FROM notebooks n WHERE n.id = $1 ORDER BY n.id LIMIT 65)
+       UNION ALL
+       (SELECT 'node', n.id::text, to_jsonb(n)
+          FROM nodes n WHERE n.notebook_id = $1 ORDER BY n.id LIMIT 65)
+       UNION ALL
+       (SELECT 'content', p.node_id::text, to_jsonb(p)
+          FROM page_contents p JOIN nodes n ON n.id = p.node_id
+         WHERE n.notebook_id = $1 ORDER BY p.node_id LIMIT 65)
+       UNION ALL
+       (SELECT 'changeset', c.id::text, to_jsonb(c)
+          FROM changesets c WHERE c.notebook_id = $1 ORDER BY c.id LIMIT 65)
+       UNION ALL
+       (SELECT 'item', i.id::text, to_jsonb(i)
+          FROM changeset_items i JOIN changesets c ON c.id = i.changeset_id
+         WHERE c.notebook_id = $1 ORDER BY i.id LIMIT 65)
+       UNION ALL
+       (SELECT 'revision', r.id::text, to_jsonb(r)
+          FROM page_revisions r JOIN nodes n ON n.id = r.node_id
+         WHERE n.notebook_id = $1 ORDER BY r.id LIMIT 65)
+       UNION ALL
+       (SELECT 'session', s.id::text, to_jsonb(s)
+          FROM edit_sessions s WHERE s.notebook_id = $1 ORDER BY s.id LIMIT 65)
+       UNION ALL
+       (SELECT 'blob', b.id::text, to_jsonb(b)
+          FROM asset_blobs b WHERE b.notebook_id = $1 ORDER BY b.id LIMIT 65)
+     ) SELECT kind, id, kind || ':' || doc::text AS snapshot FROM stored ORDER BY kind, id`,
+    [notebookId]
+  );
+  expect(rows.filter((row) => row.kind === "notebook")).toHaveLength(1);
+  const counts = new Map<string, number>();
+  for (const row of rows) counts.set(row.kind, (counts.get(row.kind) ?? 0) + 1);
+  for (const [kind, count] of counts) {
+    expect(count, `${kind}: refusal snapshots require a small story notebook`).toBeLessThanOrEqual(64);
+  }
+  return rows.map((row) => row.snapshot);
 }
 
 /** What a revert holds (M8/P3 design 4.8): the changeset it reverts, its items and its versions. */

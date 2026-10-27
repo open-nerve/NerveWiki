@@ -17,26 +17,39 @@ import (
 // and where it is after. FactsOf builds them for the guard from a Step,
 // and each precheck from the step it plans, so that both judge alike.
 type StepFacts struct {
-	Operation Operation
-	Kind      ChangesetKind
-	Nodes     []NodeFacts
+	Operation   Operation
+	Kind        ChangesetKind
+	Nodes       []NodeFacts
+	Content     *ContentFacts
+	Rewrite     bool
+	EditSession bool
 }
 
-// NodeFacts is a node of a step: Before nil for a creation, After nil for
-// a deletion. M10/P2/S1 adds whether each is in the source area, with
-// the line of ancestors it is read from; P2/S2 the content's hash and
-// size, the rewrite's mark and the edit session.
+// ContentFacts is the content a step writes, its hash and byte size,
+// the byte size immediately before it, and its merged user changes.
+// M10/P2/S1 carries these facts; S2 adds source-hash deduplication.
+type ContentFacts struct {
+	Hash                       []byte
+	Bytes, BeforeBytes, Merged int
+}
+
+// NodeFacts is a node of a step: its kind, Before nil for a creation,
+// After nil for a deletion. M10/P2/S1 carries each side's source-area
+// membership alongside content, rewrite and edit-session facts.
 type NodeFacts struct {
 	ID     uuid.UUID
+	Kind   Kind
 	Before *NodePlace
 	After  *NodePlace
 }
 
 // NodePlace is where a node is: its parent, nil at the notebook's root,
-// and its name's title key. (Place is an order among siblings.)
+// and its name's title key. InArea marks a strict source descendant.
+// (Place is an order among siblings.)
 type NodePlace struct {
 	ParentID *uuid.UUID
 	Key      string
+	InArea   bool
 }
 
 // atRoot reports whether p is a place at the notebook's root.
@@ -88,8 +101,8 @@ const agentsKey = "agents"
 // CheckContract judges a step of the notebook n by its facts (M10 design
 // 4.6, 4.9): a standard notebook's at once, reading nothing; an LLM
 // Wiki's by the rules below, the first one a node breaks answering, in
-// the order of their codes: page.protected, page.virtual_file, then the
-// need of page.manage_source.
+// the order of their codes: page.protected, page.virtual_file,
+// page.source_immutable, then the need of page.manage_source.
 //
 //   - Its AGENTS page, the node at its root keyed agents, is not renamed,
 //     moved (reordered, moved and renamed) or deleted; its source root is
@@ -97,6 +110,11 @@ const agentsKey = "agents"
 //   - No node comes to its root under a reserved key (ReservedKeys) by a
 //     creation, a rename or a move; an import's creations number theirs
 //     instead (M10/P1/S3): page.virtual_file.
+//   - A source page may receive its first body once. Existing content is
+//     immutable except for system rewrites; source edit sessions and version
+//     restores are always refused, including rewrites (M10/P2 3.3).
+//   - Existing sources' rename, move (including reorder) and delete need
+//     page.manage_source of the changed source node. New arrivals do not.
 //   - The source root's own rename and move (a reorder, a move and a
 //     rename), and the move of a page above it to another parent, which
 //     moves the source area, need page.manage_source of the source root,
@@ -122,27 +140,48 @@ func CheckContract(n NotebookState, s StepFacts) Verdict {
 			}
 		}
 	}
-	if needsManageSource(n, s) {
-		return Verdict{Needs: ActionManageSource, NodeID: n.SourceRootID}
+	if sourceImmutable(n, s) {
+		return Verdict{Err: ErrSourceImmutable, NodeID: s.Nodes[0].ID}
+	}
+	if id, needs := needsManageSource(n, s); needs {
+		return Verdict{Needs: ActionManageSource, NodeID: id}
 	}
 	return Verdict{}
 }
 
-// needsManageSource reports whether s moves n's source area: a rename or a
-// move whose first node, the one it is about, is the source root, or a move
-// that takes the source root, among the first node's descendants, to
-// another parent.
-func needsManageSource(n NotebookState, s StepFacts) bool {
+// sourceImmutable judges the page whose body the step writes. Content is
+// absent in the tree pass and when opening an edit session; the latter is
+// refused on membership alone. The source root's own body remains ordinary.
+func sourceImmutable(n NotebookState, s StepFacts) bool {
 	first := s.Nodes[0]
+	if first.ID == n.SourceRootID || first.Kind != KindPage || first.After == nil || !first.After.InArea {
+		return false
+	}
+	if s.EditSession || s.Kind == ChangesetVersionRestore {
+		return true
+	}
+	return s.Content != nil && !s.Rewrite && (s.Content.BeforeBytes > 0 || s.Content.Merged > 1)
+}
+
+// needsManageSource names the existing source being managed, or the source
+// root when its own place or an ancestor's parent changes. Looking only at
+// the first node's source membership preserves an outside ancestor's rename
+// and reorder exception, even when its subtree includes source descendants.
+func needsManageSource(n NotebookState, s StepFacts) (uuid.UUID, bool) {
+	first := s.Nodes[0]
+	if (s.Operation == OpRename || s.Operation == OpMove || s.Operation == OpDelete) &&
+		first.Before != nil && first.Before.InArea && first.ID != n.SourceRootID {
+		return first.ID, true
+	}
 	switch s.Operation {
 	case OpRename:
-		return first.ID == n.SourceRootID
+		return n.SourceRootID, first.ID == n.SourceRootID
 	case OpMove:
 		if first.ID == n.SourceRootID {
-			return true
+			return n.SourceRootID, true
 		}
 		moved := first.Before != nil && first.After != nil && !SameParent(first.Before.ParentID, first.After.ParentID)
-		return moved && slices.ContainsFunc(s.Nodes[1:], func(x NodeFacts) bool { return x.ID == n.SourceRootID })
+		return n.SourceRootID, moved && slices.ContainsFunc(s.Nodes[1:], func(x NodeFacts) bool { return x.ID == n.SourceRootID })
 	}
-	return false
+	return uuid.Nil(), false
 }

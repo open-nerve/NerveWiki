@@ -94,7 +94,9 @@ func (r *backgroundRun) run(ctx, running context.Context) error {
 	case r.job.Kind == domain.KindTrashRestore && r.job.RootID != nil:
 		plan, err = r.b.d.Tree.PlanRestore(running, spec, *r.job.RootID)
 	case r.job.Kind == domain.KindRevert && r.job.TargetChangesetID != nil:
-		plan, err = r.b.d.Tree.PlanRevert(running, spec, *r.job.TargetChangesetID)
+		plan, err = r.b.d.Tree.PlanRevert(running, spec, *r.job.TargetChangesetID, func(steps []JobStep) [][2]int {
+			return nominalBatches(steps, r.bounds)
+		})
 	default:
 		return fmt.Errorf("a background job %s of kind %q", r.job.ID, r.job.Kind)
 	}
@@ -138,16 +140,7 @@ func (r *backgroundRun) run(ctx, running context.Context) error {
 func (r *backgroundRun) batch(ctx, running context.Context, spec JobSpec, plan JobPlan, from int) (int, BatchDone, error) {
 	steps := plan.Steps()
 	first := segmentEnd(steps, from)
-	to := first
-	nodes, bytes := weigh(steps[from:first])
-	for to < len(steps) {
-		next := segmentEnd(steps, to)
-		n, b := weigh(steps[to:next])
-		if nodes+n > r.bounds.Nodes || bytes+b > r.bounds.Bytes {
-			break
-		}
-		to, nodes, bytes = next, nodes+n, bytes+b
-	}
+	to := batchEnd(steps, from, r.bounds)
 	for {
 		var done BatchDone
 		err := retry(running, r.b.d.Backoff, func() error {
@@ -180,6 +173,36 @@ func (r *backgroundRun) batch(ctx, running context.Context, spec JobSpec, plan J
 // unit's nodes, history, pages or links alone (M9/P3 design 3.23): the job
 // stops.
 var errSegmentTooLarge = errors.New("transfer: a revert's segment is past what a unit writes alone")
+
+// batchEnd greedily includes complete segments from from up to the
+// effective bounds' nodes and bytes. The first segment is always
+// included, even when overweight; RunBatch checks the unit's own bounds.
+func batchEnd(steps []JobStep, from int, bounds Batch) int {
+	to := segmentEnd(steps, from)
+	nodes, bytes := weigh(steps[from:to])
+	for to < len(steps) {
+		next := segmentEnd(steps, to)
+		n, b := weigh(steps[to:next])
+		if nodes+n > bounds.Nodes || bytes+b > bounds.Bytes {
+			break
+		}
+		to, nodes, bytes = next, nodes+n, bytes+b
+	}
+	return to
+}
+
+// nominalBatches uses the runtime's greedy cut before any unit refuses
+// a batch. The runtime still halves refused batches and cuts anew after
+// each successful prefix.
+func nominalBatches(steps []JobStep, bounds Batch) [][2]int {
+	var cuts [][2]int
+	for from := 0; from < len(steps); {
+		to := batchEnd(steps, from, bounds)
+		cuts = append(cuts, [2]int{from, to})
+		from = to
+	}
+	return cuts
+}
 
 // segmentEnd is where the segment of steps from at ends: past the first
 // step not Joined to the next.

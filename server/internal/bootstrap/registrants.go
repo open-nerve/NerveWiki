@@ -259,12 +259,12 @@ type pageExtensions struct {
 // own tests build the lock themselves.
 func pageRegistrants(pool *pgxpool.Pool, authorizer shared.Authorizer) pageExtensions {
 	lock := page.NewEditLock(pool, displayNames{identity.NewDirectory(pool)})
-	mode := page.NewModeGuard(authorizer)
+	mode := page.NewModeGuard(pool, authorizer)
 	links := linkIndex{linking.NewIndex(pool, linkTargets{page.NewLinkTargets(pool)}, linkEvents{events.NewPublisher()})}
 	return pageExtensions{
 		guards:             []page.WriteGuard{mode, lock},
 		observers:          []page.PageObserver{pageEvents{events.NewPublisher()}, links, assetObserver{asset.NewPageObserver(pool)}},
-		sessionVetoers:     []page.EditSessionVetoer{lock},
+		sessionVetoers:     []page.EditSessionVetoer{mode, lock},
 		sessionSubscribers: pageSessionSubscribers(),
 	}
 }

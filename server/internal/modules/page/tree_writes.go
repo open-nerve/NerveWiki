@@ -29,10 +29,11 @@ type (
 	// JobSpec is a background restore's or revert's unit; JobPlan its
 	// plan, of JobSteps; BatchDone what a batch of it did (M8/P4 design
 	// 3.3).
-	JobSpec   = app.JobSpec
-	JobPlan   = app.JobPlan
-	JobStep   = domain.JobStep
-	BatchDone = app.BatchDone
+	JobSpec    = app.JobSpec
+	JobPlan    = app.JobPlan
+	JobStep    = domain.JobStep
+	JobBatches = app.JobBatches
+	BatchDone  = app.BatchDone
 	// Placement is where a restore put a trash item's root.
 	Placement = domain.Placement
 	// SeedSpec is a template's unit, of PageDrafts, each with its content's
@@ -110,14 +111,14 @@ type TreeWrites interface {
 	// in the order of revertChangeset's check, admit called right after
 	// its items are counted, its error answered as it is, and page.locked
 	// after the conflicts; it answers the changeset's kind.
-	CheckRevert(ctx context.Context, notebookID, changesetID uuid.UUID, message *string, admit func(context.Context) error) (string, error)
+	CheckRevert(ctx context.Context, notebookID, changesetID uuid.UUID, message *string, admit func(context.Context) error, batches JobBatches) (string, error)
 	// PlanRestore and PlanRevert plan a background job as it starts,
 	// unlocked: notebook.not_found or forbidden for a job whose account
 	// can no longer write in the notebook; ErrTrashChanged,
 	// ErrRestoreExpired; ErrRevertConflict, ErrChangesetTrimmed,
 	// ErrLocked.
 	PlanRestore(ctx context.Context, spec JobSpec, nodeID uuid.UUID) (JobPlan, error)
-	PlanRevert(ctx context.Context, spec JobSpec, changesetID uuid.UUID) (JobPlan, error)
+	PlanRevert(ctx context.Context, spec JobSpec, changesetID uuid.UUID, batches JobBatches) (JobPlan, error)
 	// RunBatch writes the plan's steps from to to (not included) in a
 	// unit of spec merged into the job's changeset: ErrJobBatchTooLarge to
 	// halve, server_busy to try again; the restores' ErrTrashChanged,
@@ -221,9 +222,9 @@ func (t treeWrites) CheckRestore(ctx context.Context, notebookID, nodeID uuid.UU
 }
 
 func (t treeWrites) CheckRevert(ctx context.Context, notebookID, changesetID uuid.UUID, message *string,
-	admit func(context.Context) error,
+	admit func(context.Context) error, batches JobBatches,
 ) (string, error) {
-	kind, err := t.jobs.CheckRevert(ctx, notebookID, changesetID, message, admit)
+	kind, err := t.jobs.CheckRevert(ctx, notebookID, changesetID, message, admit, batches)
 	return string(kind), err
 }
 
@@ -231,8 +232,8 @@ func (t treeWrites) PlanRestore(ctx context.Context, spec JobSpec, nodeID uuid.U
 	return t.jobs.PlanRestore(ctx, spec, nodeID)
 }
 
-func (t treeWrites) PlanRevert(ctx context.Context, spec JobSpec, changesetID uuid.UUID) (JobPlan, error) {
-	return t.jobs.PlanRevert(ctx, spec, changesetID)
+func (t treeWrites) PlanRevert(ctx context.Context, spec JobSpec, changesetID uuid.UUID, batches JobBatches) (JobPlan, error) {
+	return t.jobs.PlanRevert(ctx, spec, changesetID, batches)
 }
 
 func (t treeWrites) RunBatch(ctx context.Context, spec JobSpec, plan JobPlan, from, to int) (BatchDone, error) {

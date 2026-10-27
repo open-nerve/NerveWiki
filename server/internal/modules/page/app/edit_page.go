@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"log/slog"
 	"uuid"
@@ -148,6 +149,30 @@ func (e *EditPage) attempt(ctx context.Context, actor shared.Actor, notebookID u
 	r, err := domain.Replace(domain.Args{}, read.Content, p.Old, p.New, p.All)
 	if err != nil {
 		return Edited{}, err
+	}
+	if r.Content != read.Content {
+		notebook, ok, err := e.notebooks.StateOf(ctx, notebookID)
+		switch {
+		case err != nil:
+			return Edited{}, err
+		case !ok:
+			return Edited{}, domain.ErrNotebookNotFound
+		}
+		if notebook.Mode == domain.ModeLLMWiki {
+			state := at.Node.State()
+			facts := domain.FactsOf(domain.OpContent, domain.ChangesetEdit, []domain.Change{{NodeID: at.Node.ID, Before: &state, After: &state}})
+			facts.Nodes[0].Kind = domain.KindPage
+			hash := sha256.Sum256([]byte(r.Content))
+			facts.Content = &domain.ContentFacts{Hash: hash[:], Bytes: len(r.Content), BeforeBytes: len(read.Content), Merged: 1}
+			line := make([]domain.Ancestor, len(at.Ancestors))
+			for i, n := range at.Ancestors {
+				line[i] = domain.Ancestor{ID: n.ID, Name: n.Name}
+			}
+			facts = domain.SourceFacts(facts, notebook.SourceRootID, line, line, nil)
+			if v := domain.CheckContract(notebook, facts); v.Err != nil {
+				return Edited{}, domain.Refuse(v.Err, v.NodeID)
+			}
+		}
 	}
 	// An editor open before the call is the likeliest refusal: answered
 	// before the parse takes its budget (M9/P2 design review A-M4).

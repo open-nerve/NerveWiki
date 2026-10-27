@@ -91,7 +91,8 @@ func (p *planner) newRevertSim() *revertSim {
 		if c, ok := p.s.Contents[v.NodeID]; ok && s.nodes[v.NodeID].alive && bytes.Equal(c.Hash, hash) {
 			continue
 		}
-		s.writes[v.NodeID] = RevertOp{Kind: RevertContent, NodeID: v.NodeID, Base: *v.Base, Hash: hash}
+		s.writes[v.NodeID] = RevertOp{Kind: RevertContent, NodeID: v.NodeID, Base: *v.Base, Hash: hash,
+			Bytes: v.BaseBytes, Rewrite: v.Rewrite}
 	}
 	return s
 }

@@ -669,7 +669,7 @@ func TestARevertJobsLoneNodeIsNeverPastTheBounds(t *testing.T) {
 	fx, cs := s.load()
 	fx.store.history = map[uuid.UUID]int{f: 11, c: 1}
 	w, spec := fx.jobs(now(), 0, 10), fx.jobSpec()
-	plan, err := w.PlanRevert(fx.asJob(), spec, cs.ID)
+	plan, err := w.PlanRevert(fx.asJob(), spec, cs.ID, allJobBatches)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -105,11 +105,14 @@ var (
 	ErrVirtualFile = shared.NewError(shared.KindConflict, "page.virtual_file",
 		"index.md and log.md at an LLM Wiki's root are generated: the index follows the pages, the log is the changesets. "+
 			"No page or attachment at its root may be named index or log.")
-	// ErrSourceAdminOnly is a step in an LLM Wiki's source area, its source
-	// root's own included, that only the notebook's admins may make (M10
-	// design 4.7).
+	// ErrSourceImmutable is a user's change to an existing source body,
+	// a source edit session or a source version restoration (M10/P2 3.3).
+	ErrSourceImmutable = shared.NewError(shared.KindConflict, "page.source_immutable",
+		"Sources in an LLM Wiki cannot be edited after their first content is written. Add a new source instead.")
+	// ErrSourceAdminOnly is a step managing an LLM Wiki's existing sources
+	// or renaming or moving its source root (M10 design 4.7).
 	ErrSourceAdminOnly = shared.NewError(shared.KindForbidden, "page.source_admin_only",
-		"Only the notebook's admins can rename, move or delete in an LLM Wiki's source area, its source root included.")
+		"Only the notebook's admins can rename, move or delete sources in an LLM Wiki, or rename or move its source root.")
 )
 
 // ErrBatchTooLarge: a batch is past one of its bounds (M9 design 4.11,

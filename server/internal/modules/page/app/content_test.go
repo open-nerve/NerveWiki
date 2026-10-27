@@ -166,7 +166,8 @@ func TestPutPageContentWritesAVersion(t *testing.T) {
 			f.store.items, f.rec.calls)
 	}
 	r := f.store.revisions
-	if len(r) != 1 || r[0].Base == nil || *r[0].Base != 1 || r[0].Revision != 2 || r[0].Content != text || r[0].ChangesetID != f.store.changesets[0].ID {
+	if len(r) != 1 || r[0].Base == nil || *r[0].Base != 1 || r[0].Revision != 2 || r[0].Content != text ||
+		r[0].ChangesetID != f.store.changesets[0].ID || r[0].Rewrite {
 		t.Errorf("versions = %+v, want revision 2 on 1 in the changeset", r)
 	}
 	state := n.State()
@@ -435,7 +436,8 @@ func TestAParticipantWritesAContent(t *testing.T) {
 	if len(g.steps) != 2 || g.steps[1].Operation != domain.OpContent || g.steps[1].EditSessionID != (uuid.UUID{}) {
 		t.Errorf("the guard saw %+v, want the rename, then the content's write in no session", g.steps)
 	}
-	if len(f.store.changesets) != 1 || len(f.store.revisions) != 1 || f.store.revisions[0].ChangesetID != f.store.changesets[0].ID {
+	if len(f.store.changesets) != 1 || len(f.store.revisions) != 1 || f.store.revisions[0].ChangesetID != f.store.changesets[0].ID ||
+		!f.store.revisions[0].Rewrite {
 		t.Errorf("changesets %+v, versions %+v; want the content's version in the one changeset", f.store.changesets, f.store.revisions)
 	}
 	if len(o.events) != 1 || len(o.events[0].Changes) != 2 || o.events[0].Changes[1].Facts != "links" {
@@ -498,7 +500,7 @@ func TestCreatePageWithAContent(t *testing.T) {
 	if c := f.store.contents[v.Node.ID]; c.Content != "# Notes\n" || c.Revision != 1 || !bytes.Equal(c.Hash, sum[:]) || v.Content.ByteSize != 8 {
 		t.Errorf("content = %+v, answer %+v; want it at revision 1, 8 bytes", c, v.Content)
 	}
-	if r := f.store.revisions[0]; r.Content != "# Notes\n" || r.Base != nil {
+	if r := f.store.revisions[0]; r.Content != "# Notes\n" || r.Base != nil || r.Rewrite {
 		t.Errorf("version = %+v, want the content without a base", r)
 	}
 	if len(o.events) != 1 || o.events[0].Changes[0].Facts != "# Notes\n" {

@@ -2,7 +2,7 @@ import type { NotebookRole } from "../services/notebook.service";
 import type { Changeset, ChangesetChange, RevertConflict, TreeNode } from "../services/page.service";
 import { json, notebookJSON, problem, userJSON, type Answer } from "./fakes";
 import type { FakeTrashItem } from "./trash-server";
-import type { Person } from "./page-server";
+import { sourceArea, sourceManagementCode, type Person, type SourceState } from "./page-server";
 
 // The history of the page server (page-server.ts; M8/P3), as the server
 // keeps it: the changesets a test logs, each with what it changed by node.
@@ -53,7 +53,7 @@ export type FakeChange = {
   kind: ChangesetChange["kind"];
   before: FakePlace | null;
   after: FakePlace | null;
-  content: { base: number | null; revision: number } | null;
+  content: { base: number | null; revision: number; rewrite?: boolean } | null;
 };
 
 /**
@@ -214,9 +214,9 @@ function sameId(a: string, b: string): boolean {
 }
 
 /** What of the page server the history reads and changes. */
-type HistoryState = {
+type HistoryState = SourceState & {
   sent: string[];
-  nodes: TreeNode[];
+  contents: Map<string, { content: string; revision: number }>;
   trash: Map<string, FakeTrashItem>;
   notebookGone: boolean;
   changesets: FakeChangeset[];
@@ -438,6 +438,10 @@ export function historyRoutes(server: HistoryState, role: NotebookRole): Record<
       if (changeset.unchanged) {
         return json({ changeset_id: null, changed: false });
       }
+      const code = sourceRevertCode(server, changeset, role);
+      if (code !== undefined) {
+        return problem(code === "page.source_admin_only" ? 403 : 409, code);
+      }
       if (server.revertsBusy) {
         return problem(503, "server_busy", {}, { "Retry-After": "2" });
       }
@@ -458,7 +462,11 @@ export function historyRoutes(server: HistoryState, role: NotebookRole): Record<
           content:
             change.content === null || reverse[change.kind] === "deleted" || reverse[change.kind] === "restored"
               ? null
-              : { base: change.content.revision, revision: change.content.revision + 1 },
+              : {
+                  base: change.content.revision,
+                  revision: change.content.revision + 1,
+                  rewrite: change.content.rewrite,
+                },
         })),
       });
       revert.label = `revert of ${changeset.label}`;
@@ -467,4 +475,103 @@ export function historyRoutes(server: HistoryState, role: NotebookRole): Record<
       return json({ changeset_id: revert.id, changed: true });
     },
   };
+}
+
+/** The existing history fixture's source refusal, shared by sync and background starts.
+ * It checks and projects simple live placements in node-ID order, so each check
+ * sees the preceding placements, before deleting created/restored nodes and
+ * writing content. A deleted target parent is restored after those placements:
+ * its waiting child writes where it is now. A locally cyclic placement also
+ * waits. Blocked placements retain the original management check as a fallback;
+ * this does not model later scheduler rounds, key conflicts or steps aside.
+ * Conflicts and undo remain fixture inputs; real workers have server-side tests.
+ */
+export function sourceRevertCode(
+  server: SourceState & { contents: Map<string, { content: string; revision: number }> },
+  changeset: FakeChangeset,
+  role: NotebookRole
+): string | undefined {
+  if (changeset.unchanged || server.notebook.mode !== "llm_wiki") {
+    return undefined;
+  }
+  const nodes = new Map(server.nodes.map((node) => [node.id, node]));
+  const deletedIDs = new Set<string>();
+  const placed = new Set<string>();
+  for (const change of changeset.changes.toSorted((a, b) => compare(a.node, b.node))) {
+    switch (change.kind) {
+      case "created":
+      case "restored":
+        deletedIDs.add(change.node);
+        break;
+      case "moved":
+      case "renamed":
+      case "reordered": {
+        const node = nodes.get(change.node);
+        if (
+          node !== undefined &&
+          change.before !== null &&
+          (change.before.parent === null || server.nodes.some((each) => each.id === change.before?.parent))
+        ) {
+          let parent = change.before.parent;
+          while (parent !== null && parent !== node.id) {
+            parent = nodes.get(parent)?.parent_id ?? null;
+          }
+          if (parent === node.id) {
+            break;
+          }
+          const current = { notebook: server.notebook, nodes: [...nodes.values()] };
+          const operation = change.kind === "renamed" ? "rename" : "move";
+          const code = sourceManagementCode(current, node, operation, role, change.before.parent);
+          if (code !== undefined) {
+            return code;
+          }
+          placed.add(change.node);
+          nodes.set(change.node, { ...node, parent_id: change.before.parent, name: change.before.name });
+        }
+        break;
+      }
+      case "deleted":
+      case "content":
+        break;
+    }
+  }
+  const writeback = {
+    notebook: server.notebook,
+    nodes: [...nodes.values()].filter((node) => !deletedIDs.has(node.id)),
+  };
+  for (const change of changeset.changes) {
+    const node = server.nodes.find((each) => each.id === change.node);
+    if (node === undefined) {
+      continue;
+    }
+    const operation =
+      change.kind === "created" || change.kind === "restored"
+        ? "delete"
+        : change.kind === "renamed"
+          ? "rename"
+          : change.kind === "moved" || change.kind === "reordered"
+            ? "move"
+            : undefined;
+    if (operation !== undefined && !placed.has(change.node)) {
+      // Deletion follows the simple placements above; a source root may already
+      // have left this ancestor. Unprojected moves keep the fixture's original
+      // management fallback, not a prediction of their later execution round.
+      const management = operation === "delete" ? writeback : server;
+      const code = sourceManagementCode(management, node, operation, role, change.before?.parent ?? null);
+      if (code !== undefined) {
+        return code;
+      }
+    }
+    if (
+      operation !== "delete" &&
+      change.content !== null &&
+      change.content.base !== null &&
+      !change.content.rewrite &&
+      sourceArea(writeback, nodes.get(node.id) ?? node) &&
+      (server.contents.get(node.id)?.content ?? `${node.name}\n`).length > 0
+    ) {
+      return "page.source_immutable";
+    }
+  }
+  return undefined;
 }

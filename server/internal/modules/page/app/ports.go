@@ -149,6 +149,7 @@ type Revision struct {
 	Content     string
 	Hash        []byte
 	ByteSize    int
+	Rewrite     bool // ANDed with earlier writes of this changeset and page
 	At          time.Time
 }
 

@@ -72,7 +72,7 @@ type (
 	// Tree writes an import's nodes, a restore's and a revert's batches:
 	// bootstrap adapts the page module's TreeWrites to it, and Parsed,
 	// ImportUnit and its operands, CreatedNode, and the jobs' JobSpec,
-	// JobPlan, JobStep and BatchDone to the page module's.
+	// JobPlan, JobStep, JobBatches and BatchDone to the page module's.
 	Tree          = app.Tree
 	Parsed        = app.Parsed
 	ImportSpec    = app.ImportSpec
@@ -83,6 +83,7 @@ type (
 	JobSpec       = app.JobSpec
 	JobPlan       = app.JobPlan
 	JobStep       = app.JobStep
+	JobBatches    = app.JobBatches
 	BatchDone     = app.BatchDone
 	// Placement is where a restore put its trash item's root.
 	Placement = domain.Placement
@@ -206,7 +207,7 @@ func New(d Deps) *Module {
 	start := app.StartDeps{Tx: d.Tx, Authorizer: d.Authorizer, Workspaces: d.Workspaces, Notebooks: d.Notebooks, Nodes: d.Nodes,
 		Rows: rows, Archives: archives, Queue: queue, Names: d.Names, Signer: signer, Clock: d.Clock, Logger: d.Logger, Uploads: app.NewUploads(),
 		MaxQueued: d.MaxQueued, MinFree: d.MinFreeBytes, ImportMaxBytes: d.ImportMaxBytes}
-	background := app.BackgroundDeps{Tree: d.Tree, RestoreAction: d.RestoreAction, RevertAction: d.RevertAction}
+	background := app.BackgroundDeps{Tree: d.Tree, RestoreAction: d.RestoreAction, RevertAction: d.RevertAction, Batch: d.Batch}
 	run := app.NewBackground(app.BackgroundRunDeps{Tree: d.Tree, Statistics: d.Statistics, Rows: rows, Clock: d.Clock, Logger: d.Logger,
 		Beat: beat, Backoff: backoff, Batch: d.Batch})
 	return &Module{

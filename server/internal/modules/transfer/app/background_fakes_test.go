@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"time"
 	"uuid"
@@ -23,14 +24,14 @@ func (t *tree) CheckRestore(context.Context, uuid.UUID, uuid.UUID) (string, erro
 	return "", errImportsTree
 }
 
-func (t *tree) CheckRevert(context.Context, uuid.UUID, uuid.UUID, *string, func(context.Context) error) (string, error) {
+func (t *tree) CheckRevert(context.Context, uuid.UUID, uuid.UUID, *string, func(context.Context) error, app.JobBatches) (string, error) {
 	return "", errImportsTree
 }
 
 func (t *tree) PlanRestore(context.Context, app.JobSpec, uuid.UUID) (app.JobPlan, error) {
 	return nil, errImportsTree
 }
-func (t *tree) PlanRevert(context.Context, app.JobSpec, uuid.UUID) (app.JobPlan, error) {
+func (t *tree) PlanRevert(context.Context, app.JobSpec, uuid.UUID, app.JobBatches) (app.JobPlan, error) {
 	return nil, errImportsTree
 }
 
@@ -56,6 +57,8 @@ type jobTree struct {
 	name, kind   string
 	refuse, late error
 	onAdmit      func()
+	checkBatches *jobBatchProbe
+	planBatches  *jobBatchProbe
 
 	mu      sync.Mutex
 	steps   []app.JobStep
@@ -81,8 +84,9 @@ func (t *jobTree) CheckRestore(context.Context, uuid.UUID, uuid.UUID) (string, e
 	return t.name, t.refuse
 }
 
-func (t *jobTree) CheckRevert(ctx context.Context, _, _ uuid.UUID, _ *string, admit func(context.Context) error) (string, error) {
+func (t *jobTree) CheckRevert(ctx context.Context, _, _ uuid.UUID, _ *string, admit func(context.Context) error, batches app.JobBatches) (string, error) {
 	t.rec.add("Tree.CheckRevert")
+	t.checkBatches.observe(batches)
 	if t.refuse != nil {
 		return "", t.refuse
 	}
@@ -99,8 +103,29 @@ func (t *jobTree) PlanRestore(_ context.Context, _ app.JobSpec, id uuid.UUID) (a
 	return t.plan(id)
 }
 
-func (t *jobTree) PlanRevert(_ context.Context, _ app.JobSpec, id uuid.UUID) (app.JobPlan, error) {
+func (t *jobTree) PlanRevert(_ context.Context, _ app.JobSpec, id uuid.UUID, batches app.JobBatches) (app.JobPlan, error) {
+	t.planBatches.observe(batches)
 	return t.plan(id)
+}
+
+// jobBatchProbe records the callback delivered to the page module, then
+// asks it for cuts with all three public step fields supplied by the fake.
+type jobBatchProbe struct {
+	steps   []app.JobStep
+	present bool
+	calls   int
+	cuts    [][2]int
+}
+
+func (p *jobBatchProbe) observe(batches app.JobBatches) {
+	if p == nil {
+		return
+	}
+	p.present = batches != nil
+	if batches != nil {
+		p.calls++
+		p.cuts = batches(slices.Clone(p.steps))
+	}
 }
 
 func (t *jobTree) plan(id uuid.UUID) (app.JobPlan, error) {

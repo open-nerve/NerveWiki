@@ -197,11 +197,13 @@ type ChangesetItem struct {
 
 // ChangesetVersion is a page's version a changeset wrote: on Base (nil:
 // the changeset created the page), whose content is BaseBytes long, to
-// Revision, of content of hash Hash.
+// Revision, of content of hash Hash. Rewrite says every write of this
+// changeset's version was a system rewrite, not whether its base was one.
 type ChangesetVersion struct {
 	NodeID    uuid.UUID
 	Base      *int
 	BaseBytes int
+	Rewrite   bool
 	Revision  int
 	Hash      []byte
 }

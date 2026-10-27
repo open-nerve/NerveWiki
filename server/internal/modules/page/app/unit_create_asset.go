@@ -24,18 +24,29 @@ type AssetDraft struct {
 // no content: its change has no revision, and the guards see its file in
 // the step.
 func (u *Unit) CreateAsset(ctx context.Context, d AssetDraft) (domain.Node, error) {
-	title, siblings, err := assetPlace(ctx, u.w.d.Nodes, u.write.NotebookID, d.ParentID, d.Name)
+	title, siblings, parent, err := assetPlace(ctx, u.w.d.Nodes, u.write.NotebookID, d.ParentID, d.Name)
 	if err != nil {
 		return domain.Node{}, err
 	}
-	n, _, err := u.insertAsset(ctx, d, title, siblings)
+	var lines *StepLines
+	if u.write.Notebook.Mode == domain.ModeLLMWiki {
+		lines = &StepLines{}
+		if parent != nil {
+			line, err := u.w.d.Nodes.Ancestors(ctx, parent.ID)
+			if err != nil {
+				return domain.Node{}, err
+			}
+			lines.After = append(line, domain.Ancestor{ID: parent.ID, Name: parent.Name})
+		}
+	}
+	n, _, err := u.insertAsset(ctx, d, title, siblings, lines)
 	return n, err
 }
 
 // insertAsset writes the attachment d, named title, last among siblings:
 // its checks passed. It answers the attachment, and the siblings' orders
 // when it renumbered them (nil when it did not).
-func (u *Unit) insertAsset(ctx context.Context, d AssetDraft, title domain.Title, siblings []domain.Node) (domain.Node, []float64, error) {
+func (u *Unit) insertAsset(ctx context.Context, d AssetDraft, title domain.Title, siblings []domain.Node, lines *StepLines) (domain.Node, []float64, error) {
 	order, renumbered, renumber := u.placeAmong(siblings, len(siblings)-1)
 	n := domain.Node{
 		ID: uuid.NewV7(), NotebookID: u.write.NotebookID, ParentID: d.ParentID, Kind: domain.KindAsset, Name: title.Name,
@@ -45,6 +56,8 @@ func (u *Unit) insertAsset(ctx context.Context, d AssetDraft, title domain.Title
 	step := u.step(domain.OpCreate, domain.Change{NodeID: n.ID, After: &state})
 	meta := d.Meta
 	step.Asset = &meta
+	step.Kinds = map[uuid.UUID]domain.Kind{n.ID: n.Kind}
+	step.Lines = lines
 	err := u.apply(ctx, step, true, func(ctx context.Context) error {
 		if err := renumber(ctx); err != nil {
 			return err
@@ -59,23 +72,26 @@ func (u *Unit) insertAsset(ctx context.Context, d AssetDraft, title domain.Title
 // parent, a sibling holding the name. It answers the name checked and the
 // siblings, in order.
 func assetPlace(ctx context.Context, nodes Nodes, notebookID uuid.UUID, parentID *uuid.UUID, name string) (
-	domain.Title, []domain.Node, error,
+	domain.Title, []domain.Node, *domain.Node, error,
 ) {
 	title, err := domain.CheckAssetName("name", name)
 	if err != nil {
-		return domain.Title{}, nil, err
+		return domain.Title{}, nil, nil, err
 	}
+	var parent *domain.Node
 	if parentID != nil {
-		if _, err := parentPage(ctx, nodes, notebookID, *parentID); err != nil {
-			return domain.Title{}, nil, err
+		n, err := parentPage(ctx, nodes, notebookID, *parentID)
+		if err != nil {
+			return domain.Title{}, nil, nil, err
 		}
+		parent = &n
 	}
 	siblings, err := nodes.Children(ctx, notebookID, parentID)
 	if err != nil {
-		return domain.Title{}, nil, err
+		return domain.Title{}, nil, nil, err
 	}
 	if err := titleFree(siblings, title, uuid.UUID{}); err != nil {
-		return domain.Title{}, nil, err
+		return domain.Title{}, nil, nil, err
 	}
-	return title, siblings, nil
+	return title, siblings, parent, nil
 }

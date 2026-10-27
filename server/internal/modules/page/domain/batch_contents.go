@@ -70,20 +70,23 @@ func (p *BatchPlan) content(j int, texts map[uuid.UUID]PageText, heads map[uuid.
 			return err
 		}
 	}
+	var beforeBytes int
+	var changed bool
 	switch {
 	case s.Kind == OpKindWrite && len(ps.Created) > 0:
-		pg.content, pg.known = s.Content, true
+		pg.content, pg.known, changed = s.Content, true, s.Content != ""
 	case s.Kind == OpKindWrite:
-		same, err := p.holdsAt(pg, j, rw, s.Content)
+		same, size, err := p.holdsAt(pg, j, rw, s.Content)
 		switch {
 		case err != nil:
 			return err
-		case s.Base == nil && !same:
+		case s.Base == nil && !same && !p.firstSourceBody(j, pg, size):
 			return &PathTaken{Path: s.Path.Written}
 		case s.Base != nil && s.Base.Revision != pg.revision && !same:
 			return &VersionMismatch{Path: s.Path.Written, Current: VersionToken{Node: pg.id, Revision: pg.revision}, Why: Changed}
 		}
 		pg.content, pg.known, ps.Changed = s.Content, true, !same
+		beforeBytes, changed = size, !same
 	default:
 		if s.Base != nil && s.Base.Revision != pg.revision {
 			return &VersionMismatch{Path: s.Path.Written, Current: VersionToken{Node: pg.id, Revision: pg.revision}, Why: Changed}
@@ -102,8 +105,50 @@ func (p *BatchPlan) content(j int, texts map[uuid.UUID]PageText, heads map[uuid.
 			return err
 		}
 		pg.content, ps.Replacements, ps.Changed = r.Content, r.Count, r.Content != content
+		beforeBytes, changed = len(content), ps.Changed
+	}
+	p.contentFacts(j, pg, beforeBytes, changed)
+	if changed {
+		// The item is a single actual change. Keep the accumulated Merged
+		// in the stored facts and final body for the unit guard's fallback;
+		// it must not turn this item's empty first write into a second write.
+		fact := ps.Facts[len(ps.Facts)-1]
+		content := *fact.Content
+		content.Merged, fact.Content = 1, &content
+		if v := CheckContract(p.notebook, fact); v.Err != nil {
+			return Refuse(v.Err, v.NodeID)
+		}
 	}
 	return nil
+}
+
+// firstSourceBody permits a legal no-base first body for a source page this
+// batch created empty. Existing pages and ordinary no-base writes retain
+// their path-taken result; no client can supply a token for a new batch page.
+func (p *BatchPlan) firstSourceBody(j int, pg *plannedPage, beforeBytes int) bool {
+	if p.notebook.Mode != ModeLLMWiki || !pg.created || !pg.known || beforeBytes != 0 || pg.merged != 0 {
+		return false
+	}
+	facts := p.Steps[j].Facts
+	node := facts[len(facts)-1].Nodes[0]
+	return node.ID != p.notebook.SourceRootID && node.After != nil && node.After.InArea
+}
+
+// contentFacts fills each creation's body and this item's own target body.
+// Only actual user changes while inside the source area count as Merged;
+// rewrites before the user's operation supply its before state instead.
+func (p *BatchPlan) contentFacts(j int, pg *plannedPage, beforeBytes int, changed bool) {
+	facts := p.Steps[j].Facts
+	last := &facts[len(facts)-1]
+	if node := last.Nodes[0]; changed && p.notebook.Mode == ModeLLMWiki && node.After != nil && node.After.InArea {
+		pg.merged++
+	}
+	for i := range facts[:len(facts)-1] {
+		empty := sha256.Sum256(nil)
+		facts[i].Content = &ContentFacts{Hash: empty[:]}
+	}
+	hash := sha256.Sum256([]byte(pg.content))
+	last.Content = &ContentFacts{Hash: hash[:], Bytes: len(pg.content), BeforeBytes: beforeBytes, Merged: pg.merged}
 }
 
 // load is the page's content as the plan read it, at its first content op
@@ -135,17 +180,20 @@ func (pg *plannedPage) load(kind OpKind, texts map[uuid.UUID]PageText, heads map
 // since its previous content op where they reach its links, as an edit's
 // is (M9/P3 review A-I1); its head's size and hash for a page the plan read
 // no text of, which none of them reaches.
-func (p *BatchPlan) holdsAt(pg *plannedPage, j int, rw LinkRewriter, content string) (bool, error) {
+func (p *BatchPlan) holdsAt(pg *plannedPage, j int, rw LinkRewriter, content string) (bool, int, error) {
 	ps := &p.Steps[j]
-	if !pg.known || len(p.MovesBetween(ps.Previous, j)) == 0 {
-		return pg.holds(content), nil
+	if !pg.known {
+		return pg.holds(content), pg.head.Bytes, nil
+	}
+	if len(p.MovesBetween(ps.Previous, j)) == 0 {
+		return pg.holds(content), len(pg.content), nil
 	}
 	ps.Moved = true
 	rewritten, err := p.rewrite(pg, ps.Previous, j, rw)
 	if err != nil {
-		return false, err
+		return false, 0, err
 	}
-	return rewritten == content, nil
+	return rewritten == content, len(rewritten), nil
 }
 
 // holds reports whether the page holds content's bytes as the batch has it

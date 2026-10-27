@@ -404,7 +404,7 @@ type TransferProgress struct {
 
 // TransferRefusal defines model for TransferRefusal.
 type TransferRefusal struct {
-	// Code The code of the refusal, as the write's own answer would carry it: page.protected, page.virtual_file or page.source_admin_only today; later milestones add others without a change to this contract.
+	// Code The code of the refusal, as the write's own answer would carry it: page.protected, page.virtual_file, page.source_immutable or page.source_admin_only today; later milestones add others without a change to this contract.
 	Code   string    `json:"code"`
 	NodeID uuid.UUID `json:"node_id"`
 }

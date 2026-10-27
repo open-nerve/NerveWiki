@@ -892,9 +892,9 @@ func TestARevertsChecksRefuseTheContract(t *testing.T) {
 					}
 					_, err = f.revertWithin(c.ID, nil, bounds)
 				case "start":
-					_, err = f.jobs(now(), 0, 0).CheckRevert(f.asAlice(), f.eng, c.ID, nil, nil)
+					_, err = f.jobs(now(), 0, 0).CheckRevert(f.asAlice(), f.eng, c.ID, nil, nil, allJobBatches)
 				case "plan":
-					_, err = f.jobs(now(), 0, 0).PlanRevert(f.asJob(), f.jobSpec(), c.ID)
+					_, err = f.jobs(now(), 0, 0).PlanRevert(f.asJob(), f.jobSpec(), c.ID, allJobBatches)
 				}
 				if codeOf(err) != tt.want {
 					t.Errorf("revert = %v, want %s", err, tt.want)
@@ -946,9 +946,9 @@ func TestARevertsExtraDecisionKeepsItsErrors(t *testing.T) {
 				case "sync":
 					_, err = f.revert(c.ID, nil, 0)
 				case "start":
-					_, err = f.jobs(now(), 0, 0).CheckRevert(f.asAlice(), f.eng, c.ID, nil, nil)
+					_, err = f.jobs(now(), 0, 0).CheckRevert(f.asAlice(), f.eng, c.ID, nil, nil, allJobBatches)
 				case "plan":
-					_, err = f.jobs(now(), 0, 0).PlanRevert(f.asJob(), f.jobSpec(), c.ID)
+					_, err = f.jobs(now(), 0, 0).PlanRevert(f.asJob(), f.jobSpec(), c.ID, allJobBatches)
 				}
 				want := tt.err
 				if errors.Is(tt.err, shared.ErrNotVisible) {
@@ -990,15 +990,15 @@ func TestARevertsSourceGrantIsAskedOnceEachPass(t *testing.T) {
 			f.store.nodes[other.ID] = other
 			c.items = append(c.items, domain.ChangesetItem{NodeID: other.ID, Before: &before, After: new(other.State())})
 			g := &guard{recorder: f.rec}
-			f.guards = []app.WriteGuard{app.NewModeGuard(f.auth), g}
+			f.guards = []app.WriteGuard{app.NewModeGuard(f.auth, f.store), g}
 			var err error
 			switch route {
 			case "sync":
 				_, err = f.revert(c.ID, nil, 0)
 			case "start":
-				_, err = f.jobs(now(), 0, 0).CheckRevert(f.asAlice(), f.eng, c.ID, nil, nil)
+				_, err = f.jobs(now(), 0, 0).CheckRevert(f.asAlice(), f.eng, c.ID, nil, nil, allJobBatches)
 			case "plan":
-				_, err = f.jobs(now(), 0, 0).PlanRevert(f.asJob(), f.jobSpec(), c.ID)
+				_, err = f.jobs(now(), 0, 0).PlanRevert(f.asJob(), f.jobSpec(), c.ID, allJobBatches)
 			}
 			locked := 0
 			if route == "sync" {

@@ -73,6 +73,8 @@ type wiring struct {
 	// composition root gives them: grep's whole-program tests bound its
 	// walk small and hold its slot (M9/P4 design 6.1, 3.12).
 	page func(*page.Deps)
+	// transfer wraps real ports for whole-program boundary interleavings.
+	transfer func(*transfer.Deps)
 }
 
 // wireApp is newApp with a test's wiring.
@@ -177,6 +179,9 @@ func wireApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrat
 	}
 	trDeps := transferDeps(cfg, pool, logger, authorizer, store, inserter, pg.TreeWrites(), keys.Derive(transfer.DownloadKeyInfo))
 	trDeps.Batch = w.batch
+	if w.transfer != nil {
+		w.transfer(&trDeps)
+	}
 	tr := transfer.New(trDeps)
 	// The notebook module comes last: its creation's seeder writes the
 	// template through the page module's units (M10 design 4.1).
