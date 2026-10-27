@@ -150,7 +150,12 @@ paths:
         longer alive is page.edit_session_ended; a base_revision that is not
         the page's revision is page.revision_mismatch: the page was written
         since, and the writer reads it again. A content the page holds
-        already writes nothing, whatever the base. Then a page whose lock
+        already writes nothing, whatever the base. In an LLM Wiki, a strict
+        descendant of the source root is page.source_immutable when an edit
+        session is supplied, even for unchanged or empty content; otherwise
+        only an empty source's first changed content is allowed. A one-shot
+        write of the same bytes stays unchanged. The source root's own
+        content and AGENTS remain editable. Then a page whose lock
         another edit session holds, the caller's elsewhere among them, is
         page.locked, naming the holder in lock: a write in no session too.
         The writes of one edit session are one changeset, with one version
@@ -162,6 +167,7 @@ paths:
       security: [{ bearer: [] }]
       x-problem-codes:
         [
+          page.source_immutable,
           validation_failed,
           page.not_found,
           forbidden,
@@ -205,9 +211,13 @@ paths:
         page.edit_session_taken_over); someone else's lock it does not
         pass. Its notebook's editors and admins can, a reader cannot
         (forbidden). A page that does not exist, is deleted, or whose
-        notebook the caller has no role in is page.not_found alike.
+        notebook the caller has no role in is page.not_found alike. In an
+        LLM Wiki, a strict descendant of its source root, an empty page too,
+        is page.source_immutable before the edit lock is checked; a refused
+        takeover leaves existing sessions unchanged. The source root and
+        AGENTS can have edit sessions.
       security: [{ bearer: [] }]
-      x-problem-codes: [page.not_found, forbidden, page.locked]
+      x-problem-codes: [page.source_immutable, page.not_found, forbidden, page.locked]
       requestBody:
         required: false
         content:
@@ -444,14 +454,26 @@ paths:
         page.version_not_found; then a reader is forbidden; when the
         server parses as much content as it can at once, the content waits a
         moment, then is server_busy. A content the page holds already writes
-        nothing, whatever the base: changed is false. Then a base_revision
+        nothing, whatever the base: changed is false, except that a source
+        page in an LLM Wiki is always page.source_immutable even for the
+        same bytes. For changed bytes, a base_revision
         that is not the page's revision is page.revision_mismatch: the page
-        was written since; then a page whose lock an edit session holds, the
+        was written since; then a strict source descendant is
+        page.source_immutable, including for admins, before a page whose
+        lock an edit session holds, the
         caller's elsewhere among them, is page.locked, naming the holder in
         lock.
       security: [{ bearer: [] }]
       x-problem-codes:
-        [page.not_found, page.version_not_found, forbidden, server_busy, page.revision_mismatch, page.locked]
+        [
+          page.source_immutable,
+          page.not_found,
+          page.version_not_found,
+          forbidden,
+          server_busy,
+          page.revision_mismatch,
+          page.locked,
+        ]
       requestBody:
         required: true
         content:
@@ -489,12 +511,23 @@ paths:
         "- [ ]: /u" makes a link reference definition). A task item in that
         state already writes nothing: the page is answered as it is, or
         page.revision_mismatch if a write came since.
-        Then a page whose lock an edit session holds, the caller's
+        In an LLM Wiki, changing a task in a strict source descendant is
+        page.source_immutable, including for admins. Then a page whose lock
+        an edit session holds, the caller's
         elsewhere among them, is page.locked, naming the holder in lock.
         When the server parses as much content as it can at once, a toggle
         waits a moment, then is server_busy.
       security: [{ bearer: [] }]
-      x-problem-codes: [page.not_found, forbidden, page.revision_mismatch, validation_failed, page.locked, server_busy]
+      x-problem-codes:
+        [
+          page.source_immutable,
+          page.not_found,
+          forbidden,
+          page.revision_mismatch,
+          validation_failed,
+          page.locked,
+          server_busy,
+        ]
       requestBody:
         required: true
         content:
@@ -579,7 +612,8 @@ paths:
         change): either is not_allowed on name. In an LLM Wiki, AGENTS
         cannot be renamed (page.protected), no node at the root may take the
         name index or log, nor index.md or log.md (page.virtual_file), and
-        only its admins can rename the source root (page.source_admin_only).
+        only its admins can rename the source root or a page or attachment
+        in its source area (page.source_admin_only).
         The node's own name writes nothing; one that differs from it in case
         alone is written. The
         links that led to the node, the attachment or the page and those
@@ -633,9 +667,11 @@ paths:
         by level, and its holder in lock; the caller's own sessions end with
         their pages. In an LLM Wiki, its AGENTS page and its source root
         cannot be deleted, nor a page whose subtree holds the source root
-        (page.protected), before any lock is looked at.
+        (page.protected). Deleting a page or attachment in its source area
+        requires a notebook admin (page.source_admin_only), before any lock
+        is looked at; an admin still cannot delete the source root.
       security: [{ bearer: [] }]
-      x-problem-codes: [page.not_found, forbidden, page.protected, page.locked]
+      x-problem-codes: [page.source_admin_only, page.not_found, forbidden, page.protected, page.locked]
       responses:
         "204":
           description: The node and the nodes under it are deleted.
@@ -664,8 +700,10 @@ paths:
         AGENTS cannot be moved, among its siblings either (page.protected),
         no node at the root may take the name index or log, nor index.md or
         log.md (page.virtual_file), and only its admins can move the source
-        root, among its siblings too, or move a page whose subtree holds it
-        under another parent (page.source_admin_only). A move to where the
+        root or an existing source page or attachment, among their siblings
+        too, or move a page whose subtree holds the root under another parent
+        (page.source_admin_only). An editor may move an ordinary node into
+        the source area. A move to where the
         node is writes nothing. The links that led to the node, the
         attachment or the page and those under it, by a path that changes,
         the links in the moved pages that the move would lead elsewhere, and
@@ -987,8 +1025,12 @@ paths:
         each step of a revert is judged as its operation is: one that would
         delete its AGENTS page or its source root, a page whose subtree holds
         it, or rename or move AGENTS is page.protected; one of a writer that
-        would rename or move the source root, or move a page whose subtree
-        holds it under another parent, is page.source_admin_only. Then a page
+        would rename or move the source root, rename, move or delete an
+        existing source, or move a page whose subtree holds the root under
+        another parent, is page.source_admin_only. Writing back changed
+        content to a nonempty source is page.source_immutable, including
+        for admins, unless the reverted version records a system rewrite.
+        The contract is checked before edit locks. Then a page
         whose lock an edit session holds, the caller's elsewhere among them,
         is page.locked, naming the holder in lock. A changeset that, as it
         left its nodes, changed nothing, as an edit session that wrote its
@@ -996,6 +1038,7 @@ paths:
       security: [{ bearer: [] }]
       x-problem-codes:
         [
+          page.source_immutable,
           validation_failed,
           page.changeset_not_found,
           forbidden,

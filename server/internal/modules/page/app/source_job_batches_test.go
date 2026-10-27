@@ -65,7 +65,10 @@ func TestSourceContentOnlyRevertReadsOnlyRelevantLines(t *testing.T) {
 				f.grant(domain.ActionRevert)
 				raw := f.page("raw", nil, 0)
 				p := f.page("P", &raw.ID, 0)
+				// A persisted system rewrite is allowed back through the now
+				// active source contract; a legacy user write is intentionally not.
 				c := f.writing(p.ID, "updated")
+				c.versions[0].Rewrite = true
 				f.notebooks.states = map[uuid.UUID]domain.NotebookState{f.eng: {Mode: mode, SourceRootID: raw.ID}}
 				f.rec.calls = nil
 				var err error

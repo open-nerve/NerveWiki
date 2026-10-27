@@ -62,6 +62,7 @@ export const problemMessages = {
   "page.revert_conflict": "problem.page.revert_conflict",
   "page.protected": "problem.page.protected",
   "page.virtual_file": "problem.page.virtual_file",
+  "page.source_immutable": "problem.page.source_immutable",
   "page.source_admin_only": "problem.page.source_admin_only",
   "linking.pages_locked": "problem.linking.pages_locked",
   "transfer.not_found": "problem.transfer.not_found",

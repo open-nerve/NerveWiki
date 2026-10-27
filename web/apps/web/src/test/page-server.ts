@@ -68,6 +68,9 @@ export const pagePath = (id: string) => `/lab/notebooks/${notebookJSON.id}/pages
 type PageServerOptions = {
   /** Ada's role in Plans. */
   role?: NotebookRole;
+  /** The notebook's current mode and nominated source root, independent of its name. */
+  mode?: Notebook["mode"];
+  sourceRootId?: string | null;
   /** Plans' tree, parents before their children. */
   nodes?: TreeNode[];
   /** Answers instead of the server's, by "METHOD /path" as byRoute takes them. */
@@ -86,8 +89,9 @@ type PageServerOptions = {
  * It writes the tree as the server does where the pages look: a new page
  * goes last under its parent, a title a sibling has (by lower case) is 409
  * page.title_taken, a move takes the page to its place, a deletion takes
- * the page's subtree; it checks no permission, which a test answers
- * through answers. The test changes the state as another tab would; what
+ * the page's subtree. Its notebook mode and source_root_id are configurable:
+ * source content is immutable and managing existing sources needs an admin.
+ * Other permission failures can be supplied through answers. The test changes the state as another tab would; what
  * went out is in sent.
  *
  * Each page's content is its title on a line at revision 1 unless
@@ -154,10 +158,13 @@ type PageServerOptions = {
  */
 export function pageServer({
   role = "admin",
+  mode = "standard",
+  sourceRootId = null,
   nodes = [guide, install, linux, notes],
   answers = {},
 }: PageServerOptions = {}) {
   const server = {
+    notebook: { ...notebookJSON, role, mode, source_root_id: sourceRootId },
     sent: [] as string[],
     nodes,
     views: new Map<string, PageView>(),
@@ -296,7 +303,7 @@ export function pageServer({
     },
   };
   const app = signedInApp({
-    "GET /api/v0/workspaces/lab/notebooks": () => json({ data: [{ ...notebookJSON, role }, ...server.others] }),
+    "GET /api/v0/workspaces/lab/notebooks": () => json({ data: [server.notebook, ...server.others] }),
     [`GET /api/v0/notebooks/${notebookJSON.id}/nodes`]: () => {
       server.sent.push("GET nodes");
       if (server.notebookGone) {
@@ -369,7 +376,7 @@ export function pageServer({
       server.unlock(idOf(request), ada);
       return new Response(null, { status: 204 });
     },
-    ...writeRoutes(server),
+    ...writeRoutes(server, role),
     ...trashRoutes(server, role, (node) => assetJSON(node)),
     ...historyRoutes(server, role),
     ...searchRoutes(server, (node) => assetJSON(node)),
@@ -413,12 +420,14 @@ function endedAnswer(session: FakeSession): Response {
 }
 
 /** The writes' answers of server, which change it. */
-function writeRoutes(server: {
-  sent: string[];
-  nodes: TreeNode[];
-  sessions: Map<string, FakeSession>;
-  trashNode: (id: string) => FakeTrashItem;
-}): Record<string, Answer> {
+function writeRoutes(
+  server: SourceState & {
+    sent: string[];
+    sessions: Map<string, FakeSession>;
+    trashNode: (id: string) => FakeTrashItem;
+  },
+  role: NotebookRole
+): Record<string, Answer> {
   const taken = (parent: string | null, title: string, except?: string) =>
     server.nodes.some(
       (node) => node.parent_id === parent && node.id !== except && titleKey(node.name) === titleKey(title)
@@ -469,6 +478,12 @@ function writeRoutes(server: {
       if (taken(node.parent_id, name, node.id)) {
         return problem(409, "page.title_taken");
       }
+      if (name !== node.name) {
+        const code = sourceManagementCode(server, node, "rename", role);
+        if (code !== undefined) {
+          return problem(code === "page.source_admin_only" ? 403 : 409, code);
+        }
+      }
       server.nodes = server.nodes.map((each) => (each === node ? { ...node, name } : each));
       return json({ ...node, name });
     },
@@ -488,6 +503,21 @@ function writeRoutes(server: {
           errors: [{ field: "parent_id", code: "not_allowed", message: "The parent is no page of this notebook." }],
         });
       }
+      const siblings = server.nodes.filter((each) => each.parent_id === move.parent_id);
+      const others = siblings.filter((each) => each.id !== node.id);
+      const after =
+        move.after_id === undefined
+          ? others.length - 1
+          : move.after_id === null
+            ? -1
+            : others.findIndex((each) => each.id === move.after_id);
+      if (node.parent_id === move.parent_id && after === siblings.findIndex((each) => each.id === node.id) - 1) {
+        return json(node);
+      }
+      const code = sourceManagementCode(server, node, "move", role, move.parent_id);
+      if (code !== undefined) {
+        return problem(code === "page.source_admin_only" ? 403 : 409, code);
+      }
       const moved = { ...node, parent_id: move.parent_id };
       server.nodes = server.nodes.map((each) => (each === node ? moved : each));
       place(moved, move.after_id);
@@ -498,6 +528,10 @@ function writeRoutes(server: {
       server.sent.push(`DELETE ${node?.name}`);
       if (node === undefined) {
         return problem(404, "page.not_found");
+      }
+      const code = sourceManagementCode(server, node, "delete", role);
+      if (code !== undefined) {
+        return problem(code === "page.source_admin_only" ? 403 : 409, code);
       }
       const gone = server.nodes.filter((each) => each === node || isUnder(server.nodes, each, node.id));
       // Someone else's edit of a page that would go refuses it; Ada's own do not (M5 design 4.4).
@@ -651,9 +685,8 @@ function compare(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
-type ContentState = {
+type ContentState = SourceState & {
   sent: string[];
-  nodes: TreeNode[];
   contents: Map<string, { content: string; revision: number }>;
   sessions: Map<string, FakeSession>;
   writesDown: boolean;
@@ -692,18 +725,34 @@ function contentRoutes(server: ContentState): Record<string, Answer> {
         return problem(404, "page.not_found");
       }
       const session = write.edit_session_id === undefined ? undefined : server.sessions.get(write.edit_session_id);
-      if (write.edit_session_id !== undefined && session === undefined) {
+      if (
+        write.edit_session_id !== undefined &&
+        (session === undefined || session.page !== node.id || session.holder.user_id !== ada.user_id)
+      ) {
         return problem(409, "page.edit_session_ended");
       }
       if (session?.ended !== undefined) {
         return endedAnswer(session);
       }
+      if (session !== undefined && session.expiresIn <= 0) {
+        return problem(409, "page.edit_session_ended");
+      }
       const current = contentOf(node.id, node.name);
-      if (write.base_revision !== current.revision) {
+      const changed = current.content !== write.content;
+      if (changed && write.base_revision !== current.revision) {
         return problem(409, "page.revision_mismatch");
       }
-      const revision = current.content === write.content ? current.revision : current.revision + 1;
-      server.contents.set(node.id, { content: write.content, revision });
+      if (sourceArea(server, node) && (session !== undefined || (changed && current.content.length > 0))) {
+        return problem(409, "page.source_immutable");
+      }
+      const revision = changed ? current.revision + 1 : current.revision;
+      if (changed) {
+        const alive = aliveOf(server.sessions, node.id);
+        if (alive !== undefined && alive !== session) {
+          return problem(409, "page.locked", { lock: { page_id: node.id, ...alive.holder } });
+        }
+        server.contents.set(node.id, { content: write.content, revision });
+      }
       return json({
         ...node,
         ancestors: [],
@@ -723,6 +772,10 @@ function contentRoutes(server: ContentState): Record<string, Answer> {
       const page = idOf(request);
       if (name === undefined) {
         return problem(404, "page.not_found");
+      }
+      const node = server.nodes.find((each) => each.id === page);
+      if (node !== undefined && sourceArea(server, node)) {
+        return problem(409, "page.source_immutable");
       }
       const alive = aliveOf(server.sessions, page);
       if (alive !== undefined && takeOver && alive.holder.user_id === ada.user_id) {
@@ -867,10 +920,16 @@ function versionRoutes(server: VersionState): Record<string, Answer> {
       }
       const current = currentOf(node);
       if (current.content === version.content) {
+        if (sourceArea(server, node)) {
+          return problem(409, "page.source_immutable");
+        }
         return json({ revision: current.revision, changeset_id: null, changed: false });
       }
       if (base !== current.revision) {
         return problem(409, "page.revision_mismatch");
+      }
+      if (sourceArea(server, node)) {
+        return problem(409, "page.source_immutable");
       }
       const alive = aliveOf(server.sessions, node.id);
       if (alive !== undefined) {
@@ -947,6 +1006,9 @@ function taskRoutes(server: ContentState & { views: Map<string, PageView> }): Re
       }
       let revision = current.revision;
       if (task.checked !== toggle.checked) {
+        if (sourceArea(server, node)) {
+          return problem(409, "page.source_immutable");
+        }
         const alive = aliveOf(server.sessions, node.id);
         if (alive !== undefined) {
           return problem(409, "page.locked", { lock: { page_id: node.id, ...alive.holder } });
@@ -984,4 +1046,49 @@ function isUnder(nodes: readonly TreeNode[], node: TreeNode, id: string): boolea
     parent = nodes.find((each) => each.id === parent)?.parent_id ?? null;
   }
   return false;
+}
+
+/** The current notebook and tree used by the existing fake write routes. */
+export type SourceState = {
+  notebook: Pick<Notebook, "mode" | "source_root_id">;
+  nodes: TreeNode[];
+};
+
+/** sourceArea follows current parents, including attachment parents, and excludes the source root itself. */
+export function sourceArea(server: SourceState, node: TreeNode): boolean {
+  return (
+    server.notebook.mode === "llm_wiki" &&
+    server.notebook.source_root_id !== null &&
+    node.id !== server.notebook.source_root_id &&
+    isUnder(server.nodes, node, server.notebook.source_root_id)
+  );
+}
+
+/** The source contract of a fake tree operation, before it changes the tree or its sessions. */
+export function sourceManagementCode(
+  server: SourceState,
+  node: TreeNode,
+  operation: "rename" | "move" | "delete",
+  role: NotebookRole,
+  parent: string | null = node.parent_id
+): string | undefined {
+  if (server.notebook.mode !== "llm_wiki") {
+    return undefined;
+  }
+  const sourceRoot = server.nodes.find((each) => each.id === server.notebook.source_root_id);
+  const root = node.id === server.notebook.source_root_id;
+  const carriesRoot = sourceRoot !== undefined && isUnder(server.nodes, sourceRoot, node.id);
+  if (
+    (node.parent_id === null && titleKey(node.name) === "agents") ||
+    (operation === "delete" && (root || carriesRoot))
+  ) {
+    return "page.protected";
+  }
+  if (
+    role !== "admin" &&
+    (root || sourceArea(server, node) || (operation === "move" && carriesRoot && parent !== node.parent_id))
+  ) {
+    return "page.source_admin_only";
+  }
+  return undefined;
 }

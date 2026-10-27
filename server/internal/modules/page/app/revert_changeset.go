@@ -283,7 +283,12 @@ func (r revertChecks) check(ctx context.Context, c domain.Changeset, spec UnitSp
 			return err
 		})
 	}
-	if err := checkRevertContract(state, plan, notebook, ask); err != nil {
+	if checked.job != nil {
+		err = checkJobContract(checked, *checked.job, checked.cuts, notebook, ask)
+	} else {
+		err = checkRevertContract(state, plan, notebook, ask)
+	}
+	if err != nil {
 		return revertChecked{}, err
 	}
 	if b.Locks {

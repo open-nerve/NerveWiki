@@ -13,12 +13,20 @@ import (
 // state left by the steps before it. Its simulation is the scheduler's;
 // moves and deletions include the subtree at that moment, root first.
 func RevertFacts(state RevertState, plan RevertPlan, sourceRootID uuid.UUID) iter.Seq[StepFacts] {
+	return RevertActionFacts(state, slices.Values(plan.Ops), sourceRootID)
+}
+
+// RevertActionFacts simulates the supplied actions in order. Synchronous
+// callers supply whole-group schedule operations; jobs supply only the
+// members selected by each actual batch action. The simulation persists
+// across the iterator's batch boundaries and reads no database state.
+func RevertActionFacts(state RevertState, actions iter.Seq[RevertOp], sourceRootID uuid.UUID) iter.Seq[StepFacts] {
 	return func(yield func(StepFacts) bool) {
 		p := planner{s: state, c: readReverted(state.Items, state.Versions)}
 		sim := p.treeSim()
 		contents := make(map[uuid.UUID]ContentNow, len(state.Contents))
 		maps.Copy(contents, state.Contents)
-		for _, op := range plan.Ops {
+		for op := range actions {
 			beforeLine := revertSourceLine(sim, state.Lines, sim.nodes[op.NodeID].parent)
 			var operation Operation
 			var changes []Change
@@ -26,7 +34,8 @@ func RevertFacts(state RevertState, plan RevertPlan, sourceRootID uuid.UUID) ite
 			case RevertPlace, RevertAside:
 				operation = OpRename
 				ids := []uuid.UUID{op.NodeID}
-				if op.Move {
+				now := sim.nodes[op.NodeID]
+				if !SameParent(now.parent, op.To.ParentID) || now.order != op.To.SortOrder {
 					operation, ids = OpMove, sim.orderedSubtree(op.NodeID)
 				}
 				for _, id := range ids {
@@ -69,10 +78,25 @@ func RevertFacts(state RevertState, plan RevertPlan, sourceRootID uuid.UUID) ite
 			if op.Kind == RevertContent {
 				facts.Content = &ContentFacts{Hash: op.Hash, Bytes: op.Bytes, BeforeBytes: contents[op.NodeID].Bytes, Merged: 1}
 				facts.Rewrite = op.Rewrite
-				contents[op.NodeID] = ContentNow{Revision: op.Current + 1, Hash: op.Hash, Bytes: op.Bytes}
+				contents[op.NodeID] = ContentNow{Revision: contents[op.NodeID].Revision + 1, Hash: op.Hash, Bytes: op.Bytes}
 			}
 			afterLine := revertSourceLine(sim, state.Lines, sim.nodes[op.NodeID].parent)
-			if !yield(SourceFacts(facts, sourceRootID, beforeLine, afterLine, nil)) {
+			var afterParents map[uuid.UUID][]Ancestor
+			if op.Kind == RevertRestore {
+				afterParents = make(map[uuid.UUID][]Ancestor)
+				changed := make(map[uuid.UUID]bool, len(changes))
+				for _, c := range changes {
+					changed[c.NodeID] = true
+				}
+				for _, c := range changes {
+					if parent := c.After.ParentID; parent != nil && !changed[*parent] {
+						if _, ok := afterParents[*parent]; !ok {
+							afterParents[*parent] = revertSourceLine(sim, state.Lines, parent)
+						}
+					}
+				}
+			}
+			if !yield(SourceFacts(facts, sourceRootID, beforeLine, afterLine, afterParents)) {
 				return
 			}
 		}

@@ -354,6 +354,7 @@ func TestTheOperationsAnswerEachProblem(t *testing.T) {
 	protected := domain.Refuse(domain.ErrProtected, id(12))
 	virtual := domain.Refuse(domain.ErrVirtualFile, id(12))
 	adminOnly := domain.Refuse(domain.ErrSourceAdminOnly, id(12))
+	immutable := domain.Refuse(shared.NewError(shared.KindConflict, "page.source_immutable", "Sources are immutable."), id(12))
 	for _, tt := range []struct {
 		method, path, body string
 		err                error
@@ -377,6 +378,7 @@ func TestTheOperationsAnswerEachProblem(t *testing.T) {
 		{http.MethodPut, contentPath, write, shared.Forbidden(), http.StatusForbidden, "forbidden"},
 		{http.MethodPut, contentPath, write, domain.ErrEditSessionEnded, http.StatusConflict, "page.edit_session_ended"},
 		{http.MethodPut, contentPath, write, domain.ErrRevisionMismatch, http.StatusConflict, "page.revision_mismatch"},
+		{http.MethodPut, contentPath, write, immutable, http.StatusConflict, "page.source_immutable"},
 		{http.MethodPut, contentPath, write, busy, http.StatusServiceUnavailable, "server_busy"},
 		{http.MethodPatch, nodePath, `{"name":"a/b"}`, domain.ErrNotFound, http.StatusNotFound, "page.not_found"},
 		{http.MethodPatch, nodePath, `{"name":"a/b"}`, shared.Forbidden(), http.StatusForbidden, "forbidden"},
@@ -400,9 +402,11 @@ func TestTheOperationsAnswerEachProblem(t *testing.T) {
 		{http.MethodPost, movePath, move, busy, http.StatusServiceUnavailable, "server_busy"},
 		{http.MethodDelete, nodePath, "", domain.ErrNotFound, http.StatusNotFound, "page.not_found"},
 		{http.MethodDelete, nodePath, "", shared.Forbidden(), http.StatusForbidden, "forbidden"},
+		{http.MethodDelete, nodePath, "", adminOnly, http.StatusForbidden, "page.source_admin_only"},
 		{http.MethodDelete, nodePath, "", protected, http.StatusConflict, "page.protected"},
 		{http.MethodPost, openPath, "", domain.ErrNotFound, http.StatusNotFound, "page.not_found"},
 		{http.MethodPost, openPath, "", shared.Forbidden(), http.StatusForbidden, "forbidden"},
+		{http.MethodPost, openPath, "", immutable, http.StatusConflict, "page.source_immutable"},
 		{http.MethodPost, openPath, "", locked, http.StatusConflict, "page.locked"},
 		{http.MethodPut, contentPath, write, locked, http.StatusConflict, "page.locked"},
 		{http.MethodPut, contentPath, write, domain.ErrEditSessionTakenOver, http.StatusConflict, "page.edit_session_taken_over"},
@@ -421,6 +425,7 @@ func TestTheOperationsAnswerEachProblem(t *testing.T) {
 		{http.MethodPost, togglePath, toggle, domain.ErrRevisionMismatch, http.StatusConflict, "page.revision_mismatch"},
 		{http.MethodPost, togglePath, toggle, domain.NotATask(), http.StatusUnprocessableEntity, "validation_failed"},
 		{http.MethodPost, togglePath, toggle, locked, http.StatusConflict, "page.locked"},
+		{http.MethodPost, togglePath, toggle, immutable, http.StatusConflict, "page.source_immutable"},
 		{http.MethodPost, togglePath, toggle, busy, http.StatusServiceUnavailable, "server_busy"},
 	} {
 		status, body := call(t, (&fakes{err: tt.err}).serve(t), "session", tt.method, tt.path, tt.body)

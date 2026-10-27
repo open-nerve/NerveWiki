@@ -95,7 +95,7 @@ func (u *Unit) Revert(ctx context.Context, r RevertRead) (RevertDone, error) {
 	if err != nil {
 		return RevertDone{}, err
 	}
-	guard := NewModeGuard(u.w.d.Auth)
+	guard := NewModeGuard(u.w.d.Auth, u.w.d.Nodes)
 	step := Step{Write: u.write}
 	ask := func(action shared.Action) error { return u.write.Grants.Ask(ctx, action, guard.decide(step, action)) }
 	if err := checkRevertContract(state, plan, u.write.Notebook, ask); err != nil {

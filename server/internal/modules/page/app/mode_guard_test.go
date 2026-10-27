@@ -38,7 +38,7 @@ func TestTheModeGuardLetsAStandardNotebookBy(t *testing.T) {
 		{"the source root renamed", domain.OpRename, domain.Change{NodeID: raw, Before: at("raw", 2), After: at("sources", 2)},
 			"page.source_admin_only"},
 	}
-	guard := app.NewModeGuard(f.auth)
+	guard := app.NewModeGuard(f.auth, f.store)
 	ctx := f.asAlice()
 	for _, mode := range []domain.Mode{domain.ModeStandard, domain.ModeLLMWiki} {
 		for _, s := range steps {
@@ -63,7 +63,7 @@ func TestTheModeGuardMarksTheNodeItRefuses(t *testing.T) {
 	f := newFixture()
 	f.auth.forbidden[domain.ActionManageSource] = true
 	notes, other, raw := uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
-	guard := app.NewModeGuard(f.auth)
+	guard := app.NewModeGuard(f.auth, f.store)
 	for _, s := range []struct {
 		name    string
 		op      domain.Operation
@@ -102,7 +102,7 @@ func TestTheModeGuardAsksOnceAUnit(t *testing.T) {
 		f.page("Notes", nil, 2)
 		f.page("Other", nil, 3)
 		f.notebooks.states = map[uuid.UUID]domain.NotebookState{f.eng: {Mode: domain.ModeLLMWiki, SourceRootID: raw.ID}}
-		f.guards = []app.WriteGuard{app.NewModeGuard(f.auth)}
+		f.guards = []app.WriteGuard{app.NewModeGuard(f.auth, f.store)}
 		if grant {
 			f.grant(domain.ActionManageSource)
 		}

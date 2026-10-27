@@ -253,10 +253,15 @@ paths:
         in the background: read it with getTransferJob until it ends.
         In an LLM Wiki, an undo whose steps the notebook's contract refuses
         is refused at its start, with the code its first refused step would
-        get (page.protected, page.source_admin_only).
+        get (page.protected, page.source_immutable, page.source_admin_only),
+        before edit locks. A source's content remains
+        immutable for admins too; managing existing source pages or
+        attachments requires an admin. Each worker batch checks the current
+        mode and permissions again.
       security: [{ bearer: [] }]
       x-problem-codes:
         [
+          page.source_immutable,
           validation_failed,
           notebook.not_found,
           forbidden,
@@ -869,7 +874,7 @@ components:
         code:
           description: >-
             The code of the refusal, as the write's own answer would carry it:
-            page.protected, page.virtual_file or page.source_admin_only today;
+            page.protected, page.virtual_file, page.source_immutable or page.source_admin_only today;
             later milestones add others without a change to this contract.
           type: string
         node_id:

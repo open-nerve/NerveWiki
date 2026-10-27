@@ -105,7 +105,7 @@ func TestSourceStepMetadataAddsNoReadsInStandardMode(t *testing.T) {
 	p := f.page("P", &raw.ID, 0)
 	f.notebooks.states = map[uuid.UUID]domain.NotebookState{f.eng: {Mode: domain.ModeStandard, SourceRootID: raw.ID}}
 	g := &guard{recorder: f.rec}
-	f.guards = []app.WriteGuard{g, app.NewModeGuard(f.auth)}
+	f.guards = []app.WriteGuard{g, app.NewModeGuard(f.auth, f.store)}
 	if _, err := f.put(p.ID, app.ContentPut{Content: "ordinary", Base: 1}); err != nil {
 		t.Fatal(err)
 	}
@@ -130,6 +130,7 @@ func TestSourceBatchProducersCarryTheActualMergedCount(t *testing.T) {
 	for _, created := range []bool{false, true} {
 		t.Run(map[bool]string{false: "write", true: "create"}[created], func(t *testing.T) {
 			f := newFixture()
+			f.grant(domain.ActionManageSource)
 			raw := f.page("raw", nil, 0)
 			f.notebooks.states = map[uuid.UUID]domain.NotebookState{f.eng: {Mode: domain.ModeLLMWiki, SourceRootID: raw.ID}}
 			var page domain.Node
@@ -142,11 +143,11 @@ func TestSourceBatchProducersCarryTheActualMergedCount(t *testing.T) {
 			if !created {
 				first.Base = new((domain.VersionToken{Node: page.ID, Revision: 1}).String())
 			}
-			_, err := f.applyBatch(&fakeLinks{recorder: f.rec}, first, editOp("raw/P.md", "A", "BB"))
+			_, err := f.applyBatch(&fakeLinks{recorder: f.rec}, first, moveOp("raw/P.md", "P.md"), editOp("P.md", "A", "BB"))
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(g.steps) != 1 || g.steps[0].Content == nil || g.steps[0].Content.Merged != 2 || g.steps[0].Content.Bytes != 2 {
+			if len(g.steps) != 2 || g.steps[0].Content == nil || g.steps[0].Content.Merged != 1 || g.steps[0].Content.Bytes != 2 {
 				t.Fatalf("batch step facts=%+v", g.steps)
 			}
 		})

@@ -102,6 +102,7 @@ func TestTheBackgroundStartsRefusals(t *testing.T) {
 			"page.revert_too_large"},
 		{"a revert beside a write", writing, revertsPath(), "bob", revert(free), http.StatusConflict, "transfer.busy"},
 		{"conflicts", nil, revertsPath(), "bob", revert(conflicting().String()), http.StatusConflict, "page.revert_conflict"},
+		{"an immutable source", nil, revertsPath(), "bob", revert(refusing("page.source_immutable")), http.StatusConflict, "page.source_immutable"},
 		{"a protected page", nil, revertsPath(), "bob", revert(refusing("page.protected")), http.StatusConflict, "page.protected"},
 		{"a source root", nil, revertsPath(), "bob", revert(refusing("page.source_admin_only")), http.StatusForbidden, "page.source_admin_only"},
 		{"a page locked", nil, revertsPath(), "bob", revert(locking().String()), http.StatusConflict, "page.locked"},
@@ -205,7 +206,7 @@ func TestABackgroundJobReadsWithItsReport(t *testing.T) {
 // Both HTTP reads carry a refusal, including codes of a later milestone;
 // every other report has the required member explicitly null.
 func TestARefusedJobReadsWithItsReport(t *testing.T) {
-	for _, code := range []string{"", "page.source_admin_only", "page.some_later_code"} {
+	for _, code := range []string{"", "page.source_admin_only", "page.source_immutable", "page.some_later_code"} {
 		t.Run(code, func(t *testing.T) {
 			h := newHarness(t)
 			changeset, target := uuid.NewV7(), uuid.NewV7()

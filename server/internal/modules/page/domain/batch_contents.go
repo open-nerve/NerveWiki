@@ -80,7 +80,7 @@ func (p *BatchPlan) content(j int, texts map[uuid.UUID]PageText, heads map[uuid.
 		switch {
 		case err != nil:
 			return err
-		case s.Base == nil && !same:
+		case s.Base == nil && !same && !p.firstSourceBody(j, pg, size):
 			return &PathTaken{Path: s.Path.Written}
 		case s.Base != nil && s.Base.Revision != pg.revision && !same:
 			return &VersionMismatch{Path: s.Path.Written, Current: VersionToken{Node: pg.id, Revision: pg.revision}, Why: Changed}
@@ -108,7 +108,30 @@ func (p *BatchPlan) content(j int, texts map[uuid.UUID]PageText, heads map[uuid.
 		beforeBytes, changed = len(content), ps.Changed
 	}
 	p.contentFacts(j, pg, beforeBytes, changed)
+	if changed {
+		// The item is a single actual change. Keep the accumulated Merged
+		// in the stored facts and final body for the unit guard's fallback;
+		// it must not turn this item's empty first write into a second write.
+		fact := ps.Facts[len(ps.Facts)-1]
+		content := *fact.Content
+		content.Merged, fact.Content = 1, &content
+		if v := CheckContract(p.notebook, fact); v.Err != nil {
+			return Refuse(v.Err, v.NodeID)
+		}
+	}
 	return nil
+}
+
+// firstSourceBody permits a legal no-base first body for a source page this
+// batch created empty. Existing pages and ordinary no-base writes retain
+// their path-taken result; no client can supply a token for a new batch page.
+func (p *BatchPlan) firstSourceBody(j int, pg *plannedPage, beforeBytes int) bool {
+	if p.notebook.Mode != ModeLLMWiki || !pg.created || !pg.known || beforeBytes != 0 || pg.merged != 0 {
+		return false
+	}
+	facts := p.Steps[j].Facts
+	node := facts[len(facts)-1].Nodes[0]
+	return node.ID != p.notebook.SourceRootID && node.After != nil && node.After.InArea
 }
 
 // contentFacts fills each creation's body and this item's own target body.

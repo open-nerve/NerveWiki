@@ -990,7 +990,7 @@ func TestARevertsSourceGrantIsAskedOnceEachPass(t *testing.T) {
 			f.store.nodes[other.ID] = other
 			c.items = append(c.items, domain.ChangesetItem{NodeID: other.ID, Before: &before, After: new(other.State())})
 			g := &guard{recorder: f.rec}
-			f.guards = []app.WriteGuard{app.NewModeGuard(f.auth), g}
+			f.guards = []app.WriteGuard{app.NewModeGuard(f.auth, f.store), g}
 			var err error
 			switch route {
 			case "sync":

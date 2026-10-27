@@ -465,6 +465,7 @@ func TestTheMCPToolsErrorsCarryTheirCodes(t *testing.T) {
 	}
 	r.carolsWrites(t, answered)
 	r.wikiCodeCalls(t, answered)
+	sourceCodeCalls(t, answered)
 	busyWrites(t, answered)
 	r.busyGrep(t, slots, answered)
 	for tool, codes := range mcpToolCodes() {

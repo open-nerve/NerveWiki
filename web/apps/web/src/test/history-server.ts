@@ -2,7 +2,7 @@ import type { NotebookRole } from "../services/notebook.service";
 import type { Changeset, ChangesetChange, RevertConflict, TreeNode } from "../services/page.service";
 import { json, notebookJSON, problem, userJSON, type Answer } from "./fakes";
 import type { FakeTrashItem } from "./trash-server";
-import type { Person } from "./page-server";
+import { sourceArea, sourceManagementCode, type Person, type SourceState } from "./page-server";
 
 // The history of the page server (page-server.ts; M8/P3), as the server
 // keeps it: the changesets a test logs, each with what it changed by node.
@@ -53,7 +53,7 @@ export type FakeChange = {
   kind: ChangesetChange["kind"];
   before: FakePlace | null;
   after: FakePlace | null;
-  content: { base: number | null; revision: number } | null;
+  content: { base: number | null; revision: number; rewrite?: boolean } | null;
 };
 
 /**
@@ -214,9 +214,9 @@ function sameId(a: string, b: string): boolean {
 }
 
 /** What of the page server the history reads and changes. */
-type HistoryState = {
+type HistoryState = SourceState & {
   sent: string[];
-  nodes: TreeNode[];
+  contents: Map<string, { content: string; revision: number }>;
   trash: Map<string, FakeTrashItem>;
   notebookGone: boolean;
   changesets: FakeChangeset[];
@@ -438,6 +438,10 @@ export function historyRoutes(server: HistoryState, role: NotebookRole): Record<
       if (changeset.unchanged) {
         return json({ changeset_id: null, changed: false });
       }
+      const code = sourceRevertCode(server, changeset, role);
+      if (code !== undefined) {
+        return problem(code === "page.source_admin_only" ? 403 : 409, code);
+      }
       if (server.revertsBusy) {
         return problem(503, "server_busy", {}, { "Retry-After": "2" });
       }
@@ -458,7 +462,11 @@ export function historyRoutes(server: HistoryState, role: NotebookRole): Record<
           content:
             change.content === null || reverse[change.kind] === "deleted" || reverse[change.kind] === "restored"
               ? null
-              : { base: change.content.revision, revision: change.content.revision + 1 },
+              : {
+                  base: change.content.revision,
+                  revision: change.content.revision + 1,
+                  rewrite: change.content.rewrite,
+                },
         })),
       });
       revert.label = `revert of ${changeset.label}`;
@@ -467,4 +475,48 @@ export function historyRoutes(server: HistoryState, role: NotebookRole): Record<
       return json({ changeset_id: revert.id, changed: true });
     },
   };
+}
+
+/** The existing history fixture's source refusal, shared by sync and background starts.
+ * It checks the fixture's current tree and version metadata; worker execution is server-side test coverage.
+ */
+export function sourceRevertCode(
+  server: SourceState & { contents: Map<string, { content: string; revision: number }> },
+  changeset: FakeChangeset,
+  role: NotebookRole
+): string | undefined {
+  if (changeset.unchanged || server.notebook.mode !== "llm_wiki") {
+    return undefined;
+  }
+  for (const change of changeset.changes) {
+    const node = server.nodes.find((each) => each.id === change.node);
+    if (node === undefined) {
+      continue;
+    }
+    const operation =
+      change.kind === "created" || change.kind === "restored"
+        ? "delete"
+        : change.kind === "renamed"
+          ? "rename"
+          : change.kind === "moved" || change.kind === "reordered"
+            ? "move"
+            : undefined;
+    if (operation !== undefined) {
+      const code = sourceManagementCode(server, node, operation, role, change.before?.parent ?? null);
+      if (code !== undefined) {
+        return code;
+      }
+    }
+    if (
+      operation !== "delete" &&
+      change.content !== null &&
+      change.content.base !== null &&
+      !change.content.rewrite &&
+      sourceArea(server, node) &&
+      (server.contents.get(node.id)?.content ?? `${node.name}\n`).length > 0
+    ) {
+      return "page.source_immutable";
+    }
+  }
+  return undefined;
 }

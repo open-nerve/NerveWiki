@@ -216,3 +216,11 @@ test("a page's own text of a code takes the place of the usual one, under a fiel
     fields: { email: own },
   });
 });
+
+// Removing either language's mapping must expose the code instead of this actionable explanation.
+test.each([
+  ["en", "Source content cannot be edited. Add a new source instead."],
+  ["zh-CN", "来源正文不能修改。请添加新来源。"],
+] as const)("source immutable has an explanation in %s", (language, message) => {
+  expect(errorText(new ApiError(409, problem(409, "page.source_immutable")), translator(language))).toBe(message);
+});

@@ -27,23 +27,29 @@ const variantWorkspace = "wlab"
 
 // wikiSeeded are the variant's ids, fixed before prepareMatrix runs.
 type wikiSeeded struct {
-	t           testing.TB
-	workspace   uuid.UUID
-	memberships map[caller]uuid.UUID
-	notebooks   map[string]uuid.UUID // by name
-	raws        map[string]uuid.UUID // by notebook
-	agentsPages map[string]uuid.UUID // by notebook
-	members     map[string]uuid.UUID // by notebook/caller
+	t            testing.TB
+	workspace    uuid.UUID
+	memberships  map[caller]uuid.UUID
+	notebooks    map[string]uuid.UUID // by name
+	raws         map[string]uuid.UUID // by notebook
+	agentsPages  map[string]uuid.UUID // by notebook
+	sourcePages  map[string]uuid.UUID
+	sourceAssets map[string]uuid.UUID
+	sourceTrash  map[string]uuid.UUID
+	outsidePages map[string]uuid.UUID
+	members      map[string]uuid.UUID // by notebook/caller
 }
 
 func newWikiSeeded() wikiSeeded {
 	w := wikiSeeded{workspace: uuid.NewV7(), memberships: map[caller]uuid.UUID{}, notebooks: map[string]uuid.UUID{},
-		raws: map[string]uuid.UUID{}, agentsPages: map[string]uuid.UUID{}, members: map[string]uuid.UUID{}}
+		raws: map[string]uuid.UUID{}, agentsPages: map[string]uuid.UUID{}, members: map[string]uuid.UUID{},
+		sourcePages: map[string]uuid.UUID{}, sourceAssets: map[string]uuid.UUID{}, sourceTrash: map[string]uuid.UUID{}, outsidePages: map[string]uuid.UUID{}}
 	for _, m := range wikiMemberships() {
 		w.memberships[m.c] = uuid.NewV7()
 	}
 	for _, n := range wikiNotebooks() {
 		w.notebooks[n.name], w.raws[n.name], w.agentsPages[n.name] = uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
+		w.sourcePages[n.name], w.sourceAssets[n.name], w.sourceTrash[n.name], w.outsidePages[n.name] = uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
 	}
 	for _, m := range wikiNotebookMembers() {
 		w.members[m.notebook+"/"+string(m.c)] = uuid.NewV7()
@@ -110,7 +116,7 @@ func seededWorkspaces(s seeded) map[string]uuid.UUID {
 
 // has reports whether id is one of the variant's rows.
 func (w wikiSeeded) has(id uuid.UUID) bool {
-	for _, ids := range []map[string]uuid.UUID{w.notebooks, w.raws, w.agentsPages, w.members} {
+	for _, ids := range []map[string]uuid.UUID{w.notebooks, w.raws, w.agentsPages, w.members, w.sourcePages, w.sourceAssets, w.sourceTrash, w.outsidePages} {
 		for _, seededID := range ids {
 			if seededID == id {
 				return true
@@ -157,6 +163,7 @@ func seedWikiVariant(t testing.TB, exec func(sql string, args ...any), w wikiSee
 				node, now, p.Content)
 			exec(seededPageHistory, node)
 		}
+		seedWikiSources(exec, w, n.name, now)
 	}
 	for _, m := range wikiNotebookMembers() {
 		var ended *time.Time
@@ -199,7 +206,7 @@ func wikiMatrixRows() []matrixRow {
 			t.Errorf("the notebook %s, want it standard without a source root", answer)
 		}
 	}
-	return []matrixRow{
+	rows := []matrixRow{
 		{
 			op:      "downgradeNotebook",
 			variant: "LLM Wiki",
@@ -310,6 +317,7 @@ func wikiMatrixRows() []matrixRow {
 			cells: editorsOnly(cell{http.StatusConflict, "page.virtual_file"}, notebookNotFound),
 		},
 	}
+	return append(rows, sourceMatrixRows()...)
 }
 
 // adminsOnlyOr answers a notebook's admins answer, its other writers
@@ -323,4 +331,234 @@ func adminsOnlyOr(answer, writer, notFound cell) map[caller]cell {
 		}
 	}
 	return cells
+}
+
+// source is the variant's existing nonempty source page or attachment.
+func (w wikiSeeded) source(notebook, kind string) uuid.UUID {
+	if kind == "asset" {
+		return w.of(w.sourceAssets, notebook, "source asset")
+	}
+	return w.of(w.sourcePages, notebook, "source page")
+}
+
+// seedWikiSources supplies real descendants for the permission rows, with
+// page history and an asset blob just like the ordinary matrix seeds. A
+// deleted source retains its original live parent for restore-in.
+func seedWikiSources(exec func(string, ...any), w wikiSeeded, notebook string, now time.Time) {
+	for i, p := range []struct {
+		id            uuid.UUID
+		parent        *uuid.UUID
+		name, content string
+		deleted       bool
+	}{
+		{w.sourcePages[notebook], new(w.raw(notebook)), "Source", "source original\n", false},
+		{w.outsidePages[notebook], nil, "Outside", "outside original\n", false},
+		{w.sourceTrash[notebook], new(w.raw(notebook)), "Trashed source", "trashed original\n", true},
+	} {
+		exec("INSERT INTO nodes (id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at, updated_at) "+
+			"SELECT $1, n.id, $3, 'page', $4, $5, $6, n.created_by_id, n.created_by_id, $7, $7 FROM notebooks n WHERE n.id = $2",
+			p.id, w.notebook(notebook), p.parent, p.name, shared.TitleKey(p.name), i+2, now)
+		exec("INSERT INTO page_contents (node_id, content, revision, content_hash, byte_size, updated_by_id, updated_at) "+
+			"SELECT id, $2, 1, sha256(convert_to($2, 'UTF8')), octet_length($2), created_by_id, created_at FROM nodes WHERE id = $1", p.id, p.content)
+		exec(seededPageHistory, p.id)
+		if p.deleted {
+			exec("UPDATE nodes SET deleted_at = $2, updated_at = $2, trash_root = true, trash_pages = 1, trash_assets = 0, trash_height = 1 WHERE id = $1", p.id, now)
+			for _, table := range []string{"page_contents", "page_revisions", "changeset_items"} {
+				exec("UPDATE "+table+" SET deleted_at = $2 WHERE node_id = $1", p.id, now)
+			}
+			exec("DELETE FROM indexed_pages WHERE node_id = $1", p.id)
+		}
+	}
+	asset := w.sourceAssets[notebook]
+	exec("INSERT INTO nodes (id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at, updated_at) "+
+		"SELECT $1, n.id, $3, 'asset', 'source.txt', 'source.txt', 5, n.created_by_id, n.created_by_id, $4, $4 FROM notebooks n WHERE n.id = $2",
+		asset, w.notebook(notebook), w.raw(notebook), now)
+	exec("INSERT INTO asset_blobs (id, node_id, notebook_id, mime, byte_size, sha256, created_by_id, created_at) "+
+		"SELECT gen_random_uuid(), id, notebook_id, 'text/plain', 3, sha256('abc'), created_by_id, $2 FROM nodes WHERE id = $1", asset, now)
+}
+
+// sourceMatrixRows extend the actual API operations. Each cell still runs
+// on the matrix's independent database copy, with all notebook roles.
+func sourceMatrixRows() []matrixRow {
+	pageNotFound := cell{http.StatusNotFound, "page.not_found"}
+	notebookNotFound := cell{http.StatusNotFound, "notebook.not_found"}
+	manage := cell{http.StatusForbidden, "page.source_admin_only"}
+	var rows []matrixRow
+	for _, kind := range []string{"page", "asset"} {
+		renamed := "Renamed source"
+		if kind == "asset" {
+			renamed += ".txt"
+		}
+		for _, action := range []string{"rename", "move", "reorder", "delete"} {
+			op := map[string]string{"rename": "renameNode", "move": "moveNode", "reorder": "moveNode", "delete": "deleteNode"}[action]
+			variant := "LLM Wiki source " + kind
+			if action == "reorder" {
+				variant += " reorder"
+			}
+			ok := cellOK()
+			if action == "delete" {
+				ok = cell{http.StatusNoContent, ""}
+			}
+			rows = append(rows, matrixRow{op: op, variant: variant, wiki: true, columns: notebookColumns(), write: true,
+				cells: adminsOnlyOr(ok, manage, pageNotFound),
+				request: func(c caller, s seeded) (string, string, string) {
+					n := notebookOf(c)
+					path := "/api/v0/nodes/" + s.wiki.source(n, kind).String()
+					switch action {
+					case "rename":
+						return http.MethodPatch, path, `{"name":"` + renamed + `"}`
+					case "move":
+						return http.MethodPost, path + "/move", `{"parent_id":null}`
+					case "reorder":
+						after := "null"
+						if kind == "page" {
+							after = `"` + s.wiki.source(n, "asset").String() + `"`
+						}
+						return http.MethodPost, path + "/move", `{"parent_id":"` + s.wiki.raw(n).String() + `","after_id":` + after + `}`
+					default:
+						return http.MethodDelete, path, ""
+					}
+				},
+				after: func(t *testing.T, c caller, s seeded, get func(string) (int, string)) {
+					t.Helper()
+					n := notebookOf(c)
+					if action == "delete" {
+						status, body := get("/api/v0/nodes/" + s.wiki.source(n, kind).String() + "/trash-item")
+						if status != http.StatusOK {
+							t.Fatalf("deleted source not in trash: %d %s", status, body)
+						}
+						return
+					}
+					status, body := get("/api/v0/notebooks/" + s.wiki.notebook(n).String() + "/nodes")
+					if status != http.StatusOK {
+						t.Fatalf("read source placement: %d %s", status, body)
+					}
+					type listedNode struct {
+						ID, Name string
+						ParentID *string `json:"parent_id"`
+					}
+					var out struct{ Data []listedNode }
+					decodeAnswer(t, body, &out)
+					children := slices.DeleteFunc(out.Data, func(x listedNode) bool {
+						if action == "move" {
+							return x.ParentID != nil
+						}
+						return x.ParentID == nil || *x.ParentID != s.wiki.raw(n).String()
+					})
+					index := slices.IndexFunc(children, func(x listedNode) bool { return x.ID == s.wiki.source(n, kind).String() })
+					if index < 0 {
+						t.Fatalf("source missing from requested parent: %s", body)
+					}
+					if action == "rename" && children[index].Name != renamed {
+						t.Errorf("source name = %s", children[index].Name)
+					}
+					if action == "reorder" && (kind == "page" && index != len(children)-1 || kind == "asset" && index != 0) {
+						t.Errorf("source reorder at %d of %d", index, len(children))
+					}
+				},
+			})
+		}
+	}
+	rows = append(rows,
+		matrixRow{op: "moveNode", variant: "LLM Wiki source entry", wiki: true, columns: notebookColumns(), write: true,
+			cells: editorsOnly(cellOK(), pageNotFound), request: func(c caller, s seeded) (string, string, string) {
+				n := notebookOf(c)
+				return http.MethodPost, "/api/v0/nodes/" + s.wiki.outsidePages[n].String() + "/move", `{"parent_id":"` + s.wiki.raw(n).String() + `"}`
+			}, check: func(t *testing.T, c caller, s seeded, body string) {
+				t.Helper()
+				var node treeNodeAnswer
+				decodeAnswer(t, body, &node)
+				if node.Name != "Outside" || node.ParentID == nil || *node.ParentID != s.wiki.raw(notebookOf(c)).String() {
+					t.Errorf("source entry = %s", body)
+				}
+			}},
+		matrixRow{op: "createPage", variant: "LLM Wiki source creation", wiki: true, columns: notebookColumns(), write: true,
+			cells: editorsOnly(cellCreated(), notebookNotFound), request: func(c caller, s seeded) (string, string, string) {
+				n := notebookOf(c)
+				return http.MethodPost, "/api/v0/notebooks/" + s.wiki.notebook(n).String() + "/pages", `{"parent_id":"` + s.wiki.raw(n).String() + `","title":"New source","content":"first"}`
+			}, check: func(t *testing.T, _ caller, _ seeded, body string) {
+				t.Helper()
+				var page pageAnswer
+				decodeAnswer(t, body, &page)
+				if page.Name != "New source" || page.Revision != 1 || len(page.Ancestors) != 1 || page.Ancestors[0].Name != "raw" {
+					t.Errorf("source creation = %s", body)
+				}
+			}},
+		matrixRow{op: "uploadAsset", variant: "LLM Wiki source creation", wiki: true, columns: notebookColumns(), write: true, contentType: "multipart/form-data; boundary=matrix",
+			cells: editorsOnly(cellCreated(), notebookNotFound), request: func(c caller, s seeded) (string, string, string) {
+				n := notebookOf(c)
+				return http.MethodPost, "/api/v0/notebooks/" + s.wiki.notebook(n).String() + "/assets", uploadForm(s.wiki.raw(n).String())
+			}, check: func(t *testing.T, c caller, s seeded, body string) {
+				t.Helper()
+				var asset assetAnswer
+				decodeAnswer(t, body, &asset)
+				if asset.Name != "pic.png" || asset.ParentID != s.wiki.raw(notebookOf(c)).String() {
+					t.Errorf("source upload = %s", body)
+				}
+			}},
+		matrixRow{op: "restoreNode", variant: "LLM Wiki source return", wiki: true, columns: notebookColumns(), write: true,
+			cells: editorsOnly(cellOK(), pageNotFound), request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodPost, "/api/v0/nodes/" + s.wiki.sourceTrash[notebookOf(c)].String() + "/restore", ""
+			}, after: func(t *testing.T, c caller, s seeded, get func(string) (int, string)) {
+				t.Helper()
+				status, body := get("/api/v0/pages/" + s.wiki.sourceTrash[notebookOf(c)].String())
+				var page pageAnswer
+				decodeAnswer(t, body, &page)
+				if status != http.StatusOK || page.Name != "Trashed source" || len(page.Ancestors) != 1 || page.Ancestors[0].Name != "raw" {
+					t.Errorf("restored source = %d %s", status, body)
+				}
+			}},
+	)
+	for _, target := range []string{"source page", "source root", "AGENTS"} {
+		cells := editorsOnly(cellOK(), pageNotFound)
+		if target == "source page" {
+			cells = editorsOnly(cell{http.StatusConflict, "page.source_immutable"}, pageNotFound)
+		}
+		rows = append(rows, matrixRow{op: "putPageContent", variant: "LLM Wiki " + target, wiki: true, columns: notebookColumns(), write: true, cells: cells,
+			request: func(c caller, s seeded) (string, string, string) {
+				n := notebookOf(c)
+				id := s.wiki.source(n, "page")
+				switch target {
+				case "source root":
+					id = s.wiki.raw(n)
+				case "AGENTS":
+					id = s.wiki.agents(n)
+				}
+				return http.MethodPut, "/api/v0/pages/" + id.String() + "/content", `{"content":"updated","base_revision":1}`
+			}, check: func(t *testing.T, _ caller, _ seeded, body string) {
+				t.Helper()
+				var page pageAnswer
+				decodeAnswer(t, body, &page)
+				if page.Revision != 2 {
+					t.Errorf("ordinary body write revision = %d, want 2", page.Revision)
+				}
+			}})
+	}
+	return rows
+}
+
+// Operation coverage alone cannot notice removal of one source variant when
+// the operation's ordinary row remains. This independent list keeps each real
+// source-policy row in the permission runner, including the standard control.
+func TestSourcePermissionMatrixKeepsEveryRequiredRow(t *testing.T) {
+	want := map[string]bool{
+		"renameNode, LLM Wiki source page": false, "moveNode, LLM Wiki source page": false,
+		"moveNode, LLM Wiki source page reorder": false, "deleteNode, LLM Wiki source page": false,
+		"renameNode, LLM Wiki source asset": false, "moveNode, LLM Wiki source asset": false,
+		"moveNode, LLM Wiki source asset reorder": false, "deleteNode, LLM Wiki source asset": false,
+		"moveNode, LLM Wiki source entry": false, "createPage, LLM Wiki source creation": false,
+		"uploadAsset, LLM Wiki source creation": false, "restoreNode, LLM Wiki source return": false,
+		"putPageContent, LLM Wiki source page": false, "putPageContent, LLM Wiki source root": false,
+		"putPageContent, LLM Wiki AGENTS": false, "putPageContent": false,
+	}
+	for _, row := range matrixRows() {
+		if _, required := want[row.name()]; required {
+			want[row.name()] = true
+		}
+	}
+	for name, found := range want {
+		if !found {
+			t.Errorf("source permission coverage lost actual operation row %s", name)
+		}
+	}
 }
