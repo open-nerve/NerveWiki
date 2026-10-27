@@ -32,11 +32,16 @@ func TestTheSourceRefusalsKeepTheirMCPStructure(t *testing.T) {
 	notebook, node := uuid.NewV7(), uuid.NewV7()
 	immutable := domain.Refuse(shared.NewError(shared.KindConflict, "page.source_immutable", "Sources are immutable."), node)
 	adminOnly := domain.Refuse(domain.ErrSourceAdminOnly, node)
+	tooLarge := domain.Refuse(domain.ErrSourceTooLarge, node)
 	uc := UseCases{
 		Write:  writeFunc(func(uuid.UUID, app.PathWrite, domain.Client) (app.Written, error) { return app.Written{}, immutable }),
 		Edit:   editFunc(func(uuid.UUID, app.PageEdit, domain.Client) (app.Edited, error) { return app.Edited{}, immutable }),
+		Move:   moveFunc(func(uuid.UUID, app.PathMove, domain.Client) (app.Relocated, error) { return app.Relocated{}, tooLarge }),
 		Delete: deleteFunc(func(uuid.UUID, app.PathDelete, domain.Client) (app.Deleted, error) { return app.Deleted{}, adminOnly }),
-		Batch: batchFunc(func(uuid.UUID, app.PathBatch, domain.Client) (app.Batched, error) {
+		Batch: batchFunc(func(_ uuid.UUID, p app.PathBatch, _ domain.Client) (app.Batched, error) {
+			if len(p.Ops) > 1 && p.Ops[1].Op == "move" {
+				return app.Batched{}, failedAt(1, domain.OpKindMove, tooLarge)
+			}
 			return app.Batched{}, failedAt(1, domain.OpKindWrite, immutable)
 		}),
 	}
@@ -55,9 +60,11 @@ func TestTheSourceRefusalsKeepTheirMCPStructure(t *testing.T) {
 			{"write", `{"path":"raw/source.md","content":"changed","base_version":"x:1"}`, "page.source_immutable"},
 			{"edit", `{"path":"raw/source.md","old_string":"old","new_string":"new"}`, "page.source_immutable"},
 			{"delete", `{"path":"raw/evidence.pdf"}`, "page.source_admin_only"},
+			{"move", `{"from":"Large.md","to":"raw/Large.md"}`, "page.source_too_large"},
+			{"batch", `{"ops":[{"op":"write","path":"ordinary.md","content":"ok"},{"op":"move","from":"Large.md","to":"raw/Large.md"}],"message":"move source"}`, "page.source_too_large"},
 			{"batch", `{"ops":[{"op":"write","path":"ordinary.md","content":"ok"},{"op":"write","path":"raw/source.md","content":"new"}],"message":"change"}`, "page.source_immutable"},
 		} {
-			t.Run(scope+"/"+tt.tool, func(t *testing.T) {
+			t.Run(scope+"/"+tt.tool+"/"+tt.code, func(t *testing.T) {
 				var args map[string]any
 				if err := json.Unmarshal([]byte(tt.args), &args); err != nil {
 					t.Fatal(err)
@@ -102,7 +109,11 @@ func TestTheSourceRefusalsKeepTheirMCPStructure(t *testing.T) {
 					t.Fatalf("text and structured error disagree: %s", w.Body)
 				}
 				if tt.tool == "batch" {
-					if got.Op == nil || *got.Op != 1 || !strings.Contains(got.Message, "ops[1] (write)") {
+					wantOp := "ops[1] (write)"
+					if tt.code == "page.source_too_large" {
+						wantOp = "ops[1] (move)"
+					}
+					if got.Op == nil || *got.Op != 1 || !strings.Contains(got.Message, wantOp) {
 						t.Fatalf("batch lost its op: %s", w.Body)
 					}
 				} else if got.Op != nil {

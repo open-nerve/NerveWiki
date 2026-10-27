@@ -29,7 +29,12 @@ const batchDescription = `Apply up to 100 writes as one change, all or none, wit
 	`changeset's id and time and each op's result, as many as fit, results_count ` +
 	`all of them: changeset reads the rest. What the batch writes reaches the search some seconds after it: building ` +
 	`says it is on its way. Each op's changed is what its tool would answer at that step; the batch's tells whether it ` +
-	`left a change.`
+	`left a change. ` +
+	`In an LLM Wiki, one move of an existing subtree from outside into the source area may carry at most ` +
+	`10,000 nodes, including its root, empty pages and attachments; above that it is page.source_too_large. ` +
+	`Known invalid destination, cycle, title, protection and reserved-name errors come first; the bound precedes ` +
+	`depth errors in descendants not yet read. Ordinary moves, moves within or out of sources, and moves of ` +
+	`the source root or an ancestor that keep source membership are unchanged. Move smaller subtrees into sources separately.`
 
 // batchIn is batch's arguments (M9 design 4.11; M9/P3 design 3.3): ops,
 // each one flat object, op naming the tool and its other members that

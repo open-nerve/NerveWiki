@@ -173,3 +173,117 @@ describe("source content in the page fake", () => {
     expect(server.contents.get(source.id)).toEqual(before);
   });
 });
+
+// The whole notebook is not the move's size: count the carried root and every
+// descendant kind, including empty pages. Removing the source-entry-only
+// condition, counting pages alone, or using >= instead of > breaks these calls.
+test.each([
+  { shape: "entry at the bound", size: 10000, mode: "llm_wiki", from: "outside", to: "inside", refused: false },
+  { shape: "entry past the bound", size: 10001, mode: "llm_wiki", from: "outside", to: "inside", refused: true },
+  { shape: "standard large move", size: 10001, mode: "standard", from: "outside", to: "inside", refused: false },
+  { shape: "large move outside", size: 10001, mode: "llm_wiki", from: "outside", to: "outside", refused: false },
+  { shape: "large move out", size: 10001, mode: "llm_wiki", from: "inside", to: "outside", refused: false },
+  { shape: "large move within", size: 10001, mode: "llm_wiki", from: "inside", to: "inside", refused: false },
+] as const)("source entry limit: $shape", async ({ size, mode, from, to, refused: expectRefusal }) => {
+  const raw = pageNode(60, "raw");
+  const inside = pageNode(61, "Inside", raw);
+  const outsideParent = pageNode(62, "Outside");
+  const carriedFolder = pageNode(63, "Folder", from === "inside" ? raw : undefined);
+  const children = Array.from({ length: size - 1 }, (_, i) => ({
+    ...(i % 2 === 0 ? pageNode(64, `Empty ${i}`, carriedFolder) : assetNode(64, `File ${i}.txt`, carriedFolder)),
+    id: `0199a2b4-0000-7000-8000-${(1000 + i).toString(16).padStart(12, "0")}`,
+  }));
+  const server = pageServer({
+    role: "admin",
+    mode,
+    sourceRootId: raw.id,
+    nodes: [raw, inside, outsideParent, carriedFolder, ...children],
+  });
+  for (const node of children) {
+    if (node.kind === "page") server.contents.set(node.id, { content: "", revision: 1 });
+  }
+  const before = structuredClone({ nodes: server.nodes, contents: [...server.contents] });
+  const destination = to === "inside" ? inside.id : outsideParent.id;
+  const request = new PageService(server.app.session.public).moveNode(carriedFolder.id, { parent_id: destination });
+  if (expectRefusal) {
+    await expect(request).rejects.toMatchObject({ code: "page.source_too_large", status: 422 });
+    expect({ nodes: server.nodes, contents: [...server.contents] }).toEqual(before);
+  } else {
+    await expect(request).resolves.toMatchObject({ id: carriedFolder.id, parent_id: destination });
+    expect(server.nodes.filter((node) => node.parent_id === carriedFolder.id)).toHaveLength(size - 1);
+    expect([...server.contents]).toEqual(before.contents);
+  }
+  expect(server.changesets).toEqual([]);
+  expect(server.trash.size).toBe(0);
+});
+
+test.each(["root", "ancestor"] as const)("moving the source $shape keeps a large area's members", async (shape) => {
+  const outer = pageNode(70, "Outer");
+  const raw = pageNode(71, "raw", shape === "ancestor" ? outer : undefined);
+  const destination = pageNode(72, "Destination");
+  const children = Array.from({ length: 10001 }, (_, i) => ({
+    ...assetNode(73, `File ${i}.txt`, raw),
+    id: `0199a2b4-0000-7000-8000-${(20000 + i).toString(16).padStart(12, "0")}`,
+  }));
+  const server = pageServer({
+    role: "admin",
+    mode: "llm_wiki",
+    sourceRootId: raw.id,
+    nodes: [outer, raw, destination, ...children],
+  });
+  const moved = shape === "root" ? raw : outer;
+  await expect(
+    new PageService(server.app.session.public).moveNode(moved.id, { parent_id: destination.id })
+  ).resolves.toMatchObject({
+    id: moved.id,
+    parent_id: destination.id,
+  });
+  expect(server.nodes.filter((node) => node.parent_id === raw.id)).toHaveLength(10001);
+});
+
+// C1: known position/title errors precede source-entry size. Each invalid
+// position also has a title collision, so it must not fall through to that 409.
+test.each(["title", "after another parent's child", "after itself"] as const)(
+  "oversized source entry checks %s before size",
+  async (invalid) => {
+    const raw = pageNode(100, "raw");
+    const carriedFolder = pageNode(101, "Folder");
+    const holder = pageNode(102, "fOlDeR", raw);
+    const children = Array.from({ length: 10000 }, (_, i) => ({
+      ...assetNode(103, `File ${i}.txt`, carriedFolder),
+      id: `0199a2b4-0000-7000-8000-${(80000 + i).toString(16).padStart(12, "0")}`,
+    }));
+    const server = pageServer({
+      role: "admin",
+      mode: "llm_wiki",
+      sourceRootId: raw.id,
+      nodes: [raw, carriedFolder, holder, ...children],
+    });
+    const before = structuredClone({
+      nodes: server.nodes,
+      contents: [...server.contents],
+      trash: [...server.trash],
+      history: server.changesets,
+    });
+    const after = invalid === "title" ? undefined : invalid === "after itself" ? carriedFolder.id : children[0]?.id;
+    const request = new PageService(server.app.session.public).moveNode(carriedFolder.id, {
+      parent_id: raw.id,
+      after_id: after,
+    });
+    if (invalid === "title") {
+      await expect(request).rejects.toMatchObject({ status: 409, code: "page.title_taken" });
+    } else {
+      await expect(request).rejects.toMatchObject({
+        status: 422,
+        code: "validation_failed",
+        problem: { errors: [{ field: "after_id", code: "not_allowed" }] },
+      });
+    }
+    expect({
+      nodes: server.nodes,
+      contents: [...server.contents],
+      trash: [...server.trash],
+      history: server.changesets,
+    }).toEqual(before);
+  }
+);

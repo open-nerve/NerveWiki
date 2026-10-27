@@ -481,7 +481,7 @@ function writeRoutes(
       if (name !== node.name) {
         const code = sourceManagementCode(server, node, "rename", role);
         if (code !== undefined) {
-          return problem(code === "page.source_admin_only" ? 403 : 409, code);
+          return problem(sourceStatus(code), code);
         }
       }
       server.nodes = server.nodes.map((each) => (each === node ? { ...node, name } : each));
@@ -511,12 +511,20 @@ function writeRoutes(
           : move.after_id === null
             ? -1
             : others.findIndex((each) => each.id === move.after_id);
+      if (move.after_id !== undefined && move.after_id !== null && after < 0) {
+        return problem(422, "validation_failed", {
+          errors: [{ field: "after_id", code: "not_allowed", message: "Must be another child of the parent." }],
+        });
+      }
+      if (taken(move.parent_id, node.name, node.id)) {
+        return problem(409, "page.title_taken");
+      }
       if (node.parent_id === move.parent_id && after === siblings.findIndex((each) => each.id === node.id) - 1) {
         return json(node);
       }
       const code = sourceManagementCode(server, node, "move", role, move.parent_id);
       if (code !== undefined) {
-        return problem(code === "page.source_admin_only" ? 403 : 409, code);
+        return problem(sourceStatus(code), code);
       }
       const moved = { ...node, parent_id: move.parent_id };
       server.nodes = server.nodes.map((each) => (each === node ? moved : each));
@@ -531,7 +539,7 @@ function writeRoutes(
       }
       const code = sourceManagementCode(server, node, "delete", role);
       if (code !== undefined) {
-        return problem(code === "page.source_admin_only" ? 403 : 409, code);
+        return problem(sourceStatus(code), code);
       }
       const gone = server.nodes.filter((each) => each === node || isUnder(server.nodes, each, node.id));
       // Someone else's edit of a page that would go refuses it; Ada's own do not (M5 design 4.4).
@@ -1085,10 +1093,49 @@ export function sourceManagementCode(
     return "page.protected";
   }
   if (
+    operation === "move" &&
+    !root &&
+    !carriesRoot &&
+    !sourceArea(server, node) &&
+    sourceArea(server, { ...node, parent_id: parent }) &&
+    sourceSubtreeTooLarge(server.nodes, node.id)
+  ) {
+    return "page.source_too_large";
+  }
+  if (
     role !== "admin" &&
     (root || sourceArea(server, node) || (operation === "move" && carriesRoot && parent !== node.parent_id))
   ) {
     return "page.source_admin_only";
   }
   return undefined;
+}
+
+/** The fake counts current carried nodes, not a whole notebook or a projected final tree.
+ * This is an in-memory fixture bound, not the production SQL reader's work proof.
+ */
+function sourceSubtreeTooLarge(nodes: TreeNode[], root: string): boolean {
+  const children = new Map<string, string[]>();
+  for (const node of nodes) {
+    if (node.parent_id !== null) {
+      const siblings = children.get(node.parent_id) ?? [];
+      siblings.push(node.id);
+      children.set(node.parent_id, siblings);
+    }
+  }
+  const waiting = [root];
+  const seen = new Set<string>();
+  while (waiting.length > 0) {
+    const id = waiting.pop();
+    if (id === undefined || seen.has(id)) continue;
+    seen.add(id);
+    if (seen.size > 10000) return true;
+    for (const child of children.get(id) ?? []) waiting.push(child);
+  }
+  return false;
+}
+
+/** Source refusals keep their HTTP status at all fake write entries. */
+export function sourceStatus(code: string): number {
+  return code === "page.source_admin_only" ? 403 : code === "page.source_too_large" ? 422 : 409;
 }

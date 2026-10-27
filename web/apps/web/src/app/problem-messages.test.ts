@@ -224,3 +224,14 @@ test.each([
 ] as const)("source immutable has an explanation in %s", (language, message) => {
   expect(errorText(new ApiError(409, problem(409, "page.source_immutable")), translator(language))).toBe(message);
 });
+
+// Both languages must explain the source-only bound instead of displaying an unknown code.
+test.each([
+  [
+    "en",
+    "A subtree entering an LLM Wiki's sources may contain at most 10,000 nodes, including empty pages and attachments. Move it in as smaller subtrees.",
+  ],
+  ["zh-CN", "移入 LLM Wiki 来源区的子树最多包含 10,000 个节点，包括空页面和附件。请分成较小的子树分别移入。"],
+] as const)("source too large has an explanation in %s", (language, message) => {
+  expect(errorText(new ApiError(422, problem(422, "page.source_too_large")), translator(language))).toBe(message);
+});

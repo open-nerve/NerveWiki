@@ -207,7 +207,12 @@ const (
 		`rewritten to follow it, unless update_links is false, which leaves every page linking to it as it is: ` +
 		`those links may then lead elsewhere, or nowhere. Rewriting the links of a page being edited in the web ` +
 		`editor, by you too, is refused, saying by whom; the lock cannot be taken over. The answer has the new ` +
-		`path, node_id, changed, and the changeset's id and time (null when nothing moved).`
+		`path, node_id, changed, and the changeset's id and time (null when nothing moved). ` +
+		`In an LLM Wiki, one move of an existing subtree from outside into the source area may carry at most ` +
+		`10,000 nodes, including its root, empty pages and attachments; above that it is page.source_too_large. ` +
+		`Known invalid destination, cycle, title, protection and reserved-name errors come first; the bound precedes ` +
+		`depth errors in descendants not yet read. Ordinary moves, moves within or out of sources, and moves of ` +
+		`the source root or an ancestor that keep source membership are unchanged. Move smaller subtrees into sources separately.`
 	deleteDescription = `Put a page or an attachment in the notebook's trash, by its path from the notebook's root: people ` +
 		`restore it from the trash in the web. A page with pages or attachments under it needs recursive set to ` +
 		`true, which puts them in the trash with it. Any of its pages being edited in the web editor, by you too, ` +

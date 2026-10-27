@@ -2,7 +2,7 @@ import type { TransferJob, TransferJobDetail } from "../services/transfer.servic
 import { under as underWayNow } from "../stores/transfer.store";
 import { json, notebookJSON, problem, type Answer } from "./fakes";
 import { orderedConflicts, sourceRevertCode } from "./history-server";
-import { ada, pageServer } from "./page-server";
+import { ada, pageServer, sourceStatus } from "./page-server";
 import { formOf } from "./transfer";
 
 /** The kinds of the jobs that write a notebook's tree, one under way at once (M8/P4 design 3.2). */
@@ -366,7 +366,7 @@ export function jobsServer({ jobs = [], pageSize = 50, answers = {}, ...options 
       }
       const code = sourceRevertCode(server, changeset, role);
       if (code !== undefined) {
-        return problem(code === "page.source_admin_only" ? 403 : 409, code);
+        return problem(sourceStatus(code), code);
       }
       if (changeset.lockedBy !== undefined) {
         const { page, holder } = changeset.lockedBy;

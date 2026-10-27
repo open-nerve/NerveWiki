@@ -181,6 +181,10 @@ type Nodes interface {
 	// by level; ErrNotFound when the node is missing, deleted or in
 	// another notebook.
 	Subtree(ctx context.Context, notebookID, id uuid.UUID) (domain.Subtree, error)
+	// SubtreeWithin is the source-entry reader. max is in 1..MaxUnitNodes,
+	// counting the root. It returns the same complete order as Subtree, or
+	// nil, false once max+1 nodes prove overflow, without reading content.
+	SubtreeWithin(ctx context.Context, notebookID, id uuid.UUID, max int) (domain.Subtree, bool, error)
 	ContentMeta(ctx context.Context, id uuid.UUID) (ContentMeta, error)
 	// PageContent is a page's content and its version, read in one
 	// statement; ErrNotFound when the content is deleted, as it is with its

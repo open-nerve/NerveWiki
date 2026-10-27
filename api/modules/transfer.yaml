@@ -253,11 +253,21 @@ paths:
         in the background: read it with getTransferJob until it ends.
         In an LLM Wiki, an undo whose steps the notebook's contract refuses
         is refused at its start, with the code its first refused step would
-        get (page.protected, page.source_immutable, page.source_admin_only),
+        get (page.protected, page.source_immutable, page.source_admin_only,
+        or page.source_too_large),
         before edit locks. A source's content remains
         immutable for admins too; managing existing source pages or
-        attachments requires an admin. Each worker batch checks the current
-        mode and permissions again.
+        attachments requires an admin. Each placement or temporary move
+        from outside into sources may carry at most 10,000 nodes at that
+        step, including its root, empty pages and attachments; above that
+        it is 422 page.source_too_large, with no job queued. This does not
+        cap the whole restore plan or ordinary, within-source or source-out
+        moves. Each worker batch checks the current mode, permissions and
+        source-entry size again. If a later batch finds a subtree that grew
+        past the bound, the job fails as refused with page.source_too_large
+        and the moved root in its report; earlier committed batches stay,
+        and the refused batch writes nothing. Move smaller subtrees into
+        sources separately.
       security: [{ bearer: [] }]
       x-problem-codes:
         [
@@ -272,6 +282,7 @@ paths:
           page.revert_conflict,
           page.protected,
           page.source_admin_only,
+          page.source_too_large,
           page.locked,
           server_busy,
         ]
@@ -874,7 +885,8 @@ components:
         code:
           description: >-
             The code of the refusal, as the write's own answer would carry it:
-            page.protected, page.virtual_file, page.source_immutable or page.source_admin_only today;
+            page.protected, page.virtual_file, page.source_immutable,
+            page.source_admin_only or page.source_too_large today;
             later milestones add others without a change to this contract.
           type: string
         node_id:

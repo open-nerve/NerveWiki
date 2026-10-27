@@ -2,7 +2,7 @@ import type { NotebookRole } from "../services/notebook.service";
 import type { Changeset, ChangesetChange, RevertConflict, TreeNode } from "../services/page.service";
 import { json, notebookJSON, problem, userJSON, type Answer } from "./fakes";
 import type { FakeTrashItem } from "./trash-server";
-import { sourceArea, sourceManagementCode, type Person, type SourceState } from "./page-server";
+import { sourceArea, sourceManagementCode, sourceStatus, type Person, type SourceState } from "./page-server";
 
 // The history of the page server (page-server.ts; M8/P3), as the server
 // keeps it: the changesets a test logs, each with what it changed by node.
@@ -440,7 +440,7 @@ export function historyRoutes(server: HistoryState, role: NotebookRole): Record<
       }
       const code = sourceRevertCode(server, changeset, role);
       if (code !== undefined) {
-        return problem(code === "page.source_admin_only" ? 403 : 409, code);
+        return problem(sourceStatus(code), code);
       }
       if (server.revertsBusy) {
         return problem(503, "server_busy", {}, { "Retry-After": "2" });
@@ -482,12 +482,18 @@ export function historyRoutes(server: HistoryState, role: NotebookRole): Record<
  * sees the preceding placements, before deleting created/restored nodes and
  * writing content. A deleted target parent is restored after those placements:
  * its waiting child writes where it is now. A locally cyclic placement also
- * waits. Blocked placements retain the original management check as a fallback;
- * this does not model later scheduler rounds, key conflicts or steps aside.
- * Conflicts and undo remain fixture inputs; real workers have server-side tests.
+ * waits. Blocked placements retain the original management check as a fallback.
+ * After that content check, the source-entry cap also sees waiting placements
+ * after parent-ready trash groups return, including any restored carried members.
+ * This limited second phase does not reinterpret content/management timing or
+ * model key conflicts and steps aside. Conflicts and undo remain fixture inputs;
+ * real workers have server-side tests.
  */
 export function sourceRevertCode(
-  server: SourceState & { contents: Map<string, { content: string; revision: number }> },
+  server: SourceState & {
+    contents: Map<string, { content: string; revision: number }>;
+    trash: Map<string, FakeTrashItem>;
+  },
   changeset: FakeChangeset,
   role: NotebookRole
 ): string | undefined {
@@ -572,6 +578,62 @@ export function sourceRevertCode(
     ) {
       return "page.source_immutable";
     }
+  }
+
+  // Preserve the first phase above: a live page waiting for a deleted parent
+  // writes at its current position. Only the new size rule observes the later
+  // placement, after ready trash groups restore parents and carried members.
+  const waiting = changeset.changes
+    .filter((change) => !placed.has(change.node) && ["moved", "renamed", "reordered"].includes(change.kind))
+    .toSorted((a, b) => compare(a.node, b.node));
+  if (waiting.length === 0) return undefined;
+  const later = new Map(writeback.nodes.map((node) => [node.id, node]));
+  const restores = new Map(
+    changeset.changes.filter((change) => change.kind === "deleted").map((change) => [change.node, change])
+  );
+  const pendingRestores = new Map(
+    [...server.trash].filter(([top]) => restores.has(top)).toSorted(([a], [b]) => compare(a, b))
+  );
+  const restoreReadyGroups = () => {
+    // A round restores every parent-ready group, in root-ID order, before the
+    // next round of placements. Restoring just destination ancestors undercounts
+    // children restored under the subtree about to enter sources.
+    for (const [top, item] of pendingRestores) {
+      const before = restores.get(top)?.before;
+      if (before === undefined || before === null || (before.parent !== null && !later.has(before.parent))) continue;
+      for (const node of item.members) {
+        const to = restores.get(node.id)?.before;
+        later.set(node.id, to === undefined || to === null ? node : { ...node, parent_id: to.parent, name: to.name });
+      }
+      pendingRestores.delete(top);
+    }
+  };
+  restoreReadyGroups();
+  // Each successful pass consumes a waiting placement or a restore group. A
+  // missing parent or cycle stays unresolved; this does not add steps aside.
+  const pending = new Set(waiting.map((change) => change.node));
+  while (pending.size > 0) {
+    const before = pending.size + pendingRestores.size;
+    for (const change of waiting) {
+      if (!pending.has(change.node) || change.before === null) continue;
+      const node = later.get(change.node);
+      if (node === undefined || (change.before.parent !== null && !later.has(change.before.parent))) continue;
+      let parent = change.before.parent;
+      const seen = new Set<string>();
+      while (parent !== null && parent !== node.id && !seen.has(parent)) {
+        seen.add(parent);
+        parent = later.get(parent)?.parent_id ?? null;
+      }
+      if (parent !== null) continue;
+      const current = { notebook: server.notebook, nodes: [...later.values()] };
+      const operation = change.kind === "renamed" ? "rename" : "move";
+      const code = sourceManagementCode(current, node, operation, role, change.before.parent);
+      if (code === "page.source_too_large") return code;
+      later.set(node.id, { ...node, parent_id: change.before.parent, name: change.before.name });
+      pending.delete(node.id);
+    }
+    restoreReadyGroups();
+    if (pending.size + pendingRestores.size === before) break;
   }
   return undefined;
 }

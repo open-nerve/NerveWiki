@@ -357,6 +357,41 @@ func (f *fakeStore) Subtree(ctx context.Context, notebookID, id uuid.UUID) (doma
 	return out, nil
 }
 
+// SubtreeWithin models the port's bound independently of the production
+// reader. Its adjacency map avoids repeatedly scanning the fake's full tree.
+func (f *fakeStore) SubtreeWithin(ctx context.Context, notebookID, id uuid.UUID, max int) (domain.Subtree, bool, error) {
+	f.record(ctx, "SubtreeWithin")
+	if err := f.errs["SubtreeWithin"]; err != nil {
+		return nil, false, err
+	}
+	if max < 1 || max > domain.MaxUnitNodes {
+		return nil, false, fmt.Errorf("invalid subtree bound %d", max)
+	}
+	root, ok := f.nodes[id]
+	if !ok || root.NotebookID != notebookID {
+		return nil, false, app.ErrNotFound
+	}
+	children := map[uuid.UUID][]domain.Node{}
+	for _, n := range f.nodes {
+		if n.ParentID != nil && n.NotebookID == notebookID {
+			children[*n.ParentID] = append(children[*n.ParentID], n)
+		}
+	}
+	out := domain.Subtree{{Node: root, Level: 1}}
+	for i := 0; i < len(out); i++ {
+		for _, n := range children[out[i].Node.ID] {
+			if len(out) == max {
+				return nil, false, nil
+			}
+			out = append(out, domain.SubtreeNode{Node: n, Level: out[i].Level + 1})
+		}
+	}
+	slices.SortFunc(out, func(a, b domain.SubtreeNode) int {
+		return cmp.Or(cmp.Compare(a.Level, b.Level), cmp.Compare(a.Node.SortOrder, b.Node.SortOrder), a.Node.ID.Compare(b.Node.ID))
+	})
+	return out, true, nil
+}
+
 func (f *fakeStore) ContentMeta(ctx context.Context, id uuid.UUID) (app.ContentMeta, error) {
 	f.record(ctx, "ContentMeta")
 	c, ok := f.contents[id]

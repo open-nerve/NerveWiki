@@ -5,7 +5,7 @@ import { TransferService } from "../services/transfer.service";
 import { notebookJSON } from "./fakes";
 import { created, deleted, moved, wrote, renamed, restored } from "./history-server";
 import { jobsServer } from "./jobs-server";
-import { ada, pageNode, pageServer } from "./page-server";
+import { ada, assetNode, pageNode, pageServer } from "./page-server";
 import { trashed } from "./trash-server";
 
 const root = pageNode(40, "raw");
@@ -427,4 +427,190 @@ for (const entry of ["sync", "background"] as const) {
       expect(historyState(server)).toEqual(before);
     });
   }
+}
+
+// A preceding placement can remove one carried member before the large folder
+// re-enters sources. The history array is intentionally the opposite order:
+// checking only the initial or final tree loses one of these paired outcomes.
+for (const entry of ["sync", "background"] as const) {
+  for (const first of ["folder", "child"] as const) {
+    test(`${entry} source entry counts the current subtree (${first} UUID first)`, async () => {
+      const raw = pageNode(80, "raw");
+      const outside = pageNode(81, "Outside");
+      const folder = pageNode(first === "folder" ? 82 : 83, "Large");
+      const child = assetNode(first === "child" ? 82 : 83, "Leaves.txt", folder);
+      const rest = Array.from({ length: 9999 }, (_, i) => ({
+        ...(i % 2 === 0 ? pageNode(84, `Empty ${i}`, folder) : assetNode(84, `File ${i}.txt`, folder)),
+        id: `0199a2b4-0000-7000-8000-${(40000 + i).toString(16).padStart(12, "0")}`,
+      }));
+      const server = jobsServer({
+        role: "admin",
+        mode: "llm_wiki",
+        sourceRootId: raw.id,
+        nodes: [raw, outside, folder, child, ...rest],
+      });
+      for (const node of rest) {
+        if (node.kind === "page") server.contents.set(node.id, { content: "", revision: 1 });
+      }
+      let writes = 0;
+      const changes = [moved(folder, raw.id), moved(child, outside.id)];
+      const change = server.log("large folder out, child in", {
+        changes: first === "folder" ? changes.toReversed() : changes,
+        undo: () => {
+          writes += 1;
+          server.nodes = server.nodes.map((node) =>
+            node.id === folder.id
+              ? { ...node, parent_id: raw.id }
+              : node.id === child.id
+                ? { ...node, parent_id: outside.id }
+                : node
+          );
+        },
+      });
+      const before = historyState(server);
+      const request =
+        entry === "sync"
+          ? new PageService(server.app.session.public).revertChangeset(change.id)
+          : new TransferService(server.app.session.public).startRevert(notebookJSON.id, change.id);
+      if (first === "folder") {
+        await expect(request).rejects.toMatchObject({ code: "page.source_too_large", status: 422 });
+        expect(writes).toBe(0);
+        expect(historyState(server)).toEqual(before);
+      } else if (entry === "sync") {
+        await expect(request).resolves.toMatchObject({ changed: true });
+        expect(writes).toBe(1);
+        expect(server.nodes.find((node) => node.id === folder.id)?.parent_id).toBe(raw.id);
+        expect(server.nodes.find((node) => node.id === child.id)?.parent_id).toBe(outside.id);
+        expect(server.nodes.filter((node) => node.parent_id === folder.id)).toHaveLength(9999);
+      } else {
+        await expect(request).resolves.toMatchObject({ state: "queued", target_changeset_id: change.id });
+        expect(writes).toBe(0);
+        expect(server.nodes).toEqual(before.nodes);
+        expect(server.jobs).toHaveLength(1);
+      }
+    });
+  }
+}
+
+// C2: restoring a deleted target parent is not a source-entry itself, but the
+// waiting placement of an existing Large subtree afterwards is. The size is
+// Large's current members, not the restore plan's count or a body-write phase.
+for (const entry of ["sync", "background"] as const) {
+  test.each([10000, 10001])(`${entry} source entry waits for its deleted target parent (%i nodes)`, async (size) => {
+    const raw = pageNode(104, "raw");
+    const parent = pageNode(105, "P", raw);
+    const large = pageNode(106, "Large");
+    const children = Array.from({ length: size - 1 }, (_, i) => ({
+      ...(i % 2 === 0 ? pageNode(107, `Empty ${i}`, large) : assetNode(107, `File ${i}.txt`, large)),
+      id: `0199a2b4-0000-7000-8000-${(100000 + i).toString(16).padStart(12, "0")}`,
+    }));
+    const server = jobsServer({
+      role: "admin",
+      mode: "llm_wiki",
+      sourceRootId: raw.id,
+      nodes: [raw, large, ...children],
+    });
+    for (const node of children) {
+      if (node.kind === "page") server.contents.set(node.id, { content: "", revision: 1 });
+    }
+    server.contents.set(parent.id, { content: "", revision: 1 });
+    server.trash.set(parent.id, trashed([raw, parent, large, ...children], [parent], 1, ada));
+    let writes = 0;
+    const change = server.log("moved Large out then deleted empty P", {
+      changes: [moved(large, parent.id), deleted(parent)],
+      undo: () => {
+        writes += 1;
+        server.nodes = [raw, parent, { ...large, parent_id: parent.id }, ...children];
+        server.trash.delete(parent.id);
+      },
+    });
+    const before = historyState(server);
+    const request =
+      entry === "sync"
+        ? new PageService(server.app.session.public).revertChangeset(change.id)
+        : new TransferService(server.app.session.public).startRevert(notebookJSON.id, change.id);
+    if (size === 10001) {
+      await expect(request).rejects.toMatchObject({ status: 422, code: "page.source_too_large" });
+      expect(writes).toBe(0);
+      expect(historyState(server)).toEqual(before);
+    } else if (entry === "sync") {
+      const result = await request;
+      expect(result).toMatchObject({ changed: true });
+      expect(writes).toBe(1);
+      expect(server.nodes).toEqual([raw, parent, { ...large, parent_id: parent.id }, ...children]);
+      expect(server.trash.size).toBe(0);
+      expect([...server.contents]).toEqual(before.contents);
+      expect(server.changesets).toHaveLength(2);
+      expect(server.jobs).toEqual([]);
+    } else {
+      const result = await request;
+      expect(result).toMatchObject({ state: "queued", target_changeset_id: change.id });
+      expect(writes).toBe(0);
+      expect(historyState(server)).toEqual({ ...before, jobs: [result] });
+    }
+  });
+}
+
+// The restore phase returns every ready trash group before another placement
+// round. A restored child of Large is carried too, even though it is not on the
+// missing destination's ancestor chain.
+for (const entry of ["sync", "background"] as const) {
+  test.each([9999, 10000])(`${entry} source entry counts its restored child (%i live nodes)`, async (liveSize) => {
+    const raw = pageNode(110, "raw");
+    const parent = pageNode(111, "P", raw);
+    const large = pageNode(112, "Large");
+    const restoredChild = assetNode(113, "Restored.txt", large);
+    const children = Array.from({ length: liveSize - 1 }, (_, i) => ({
+      ...(i % 2 === 0 ? pageNode(114, `Empty ${i}`, large) : assetNode(114, `File ${i}.txt`, large)),
+      id: `0199a2b4-0000-7000-8000-${(120000 + i).toString(16).padStart(12, "0")}`,
+    }));
+    const server = jobsServer({
+      role: "admin",
+      mode: "llm_wiki",
+      sourceRootId: raw.id,
+      nodes: [raw, large, ...children],
+    });
+    for (const node of children) {
+      if (node.kind === "page") server.contents.set(node.id, { content: "", revision: 1 });
+    }
+    server.contents.set(parent.id, { content: "", revision: 1 });
+    const all = [raw, parent, large, restoredChild, ...children];
+    server.trash.set(parent.id, trashed(all, [parent], 1, ada));
+    server.trash.set(restoredChild.id, trashed(all, [restoredChild], 2, ada));
+    let writes = 0;
+    const change = server.log("moved Large out then deleted P and a carried child", {
+      changes: [moved(large, parent.id), deleted(parent), deleted(restoredChild)],
+      undo: () => {
+        writes += 1;
+        server.nodes = [raw, parent, { ...large, parent_id: parent.id }, restoredChild, ...children];
+        server.trash.delete(parent.id);
+        server.trash.delete(restoredChild.id);
+      },
+    });
+    const before = historyState(server);
+    const request =
+      entry === "sync"
+        ? new PageService(server.app.session.public).revertChangeset(change.id)
+        : new TransferService(server.app.session.public).startRevert(notebookJSON.id, change.id);
+    if (liveSize === 10000) {
+      await expect(request).rejects.toMatchObject({ status: 422, code: "page.source_too_large" });
+      expect(writes).toBe(0);
+      expect(historyState(server)).toEqual(before);
+    } else if (entry === "sync") {
+      const result = await request;
+      expect(result).toMatchObject({ changed: true });
+      expect(writes).toBe(1);
+      expect(server.nodes).toEqual([raw, parent, { ...large, parent_id: parent.id }, restoredChild, ...children]);
+      expect(server.nodes.filter((node) => node.parent_id === large.id)).toHaveLength(9999);
+      expect(server.trash.size).toBe(0);
+      expect([...server.contents]).toEqual(before.contents);
+      expect(server.changesets).toHaveLength(2);
+      expect(server.jobs).toEqual([]);
+    } else {
+      const result = await request;
+      expect(result).toMatchObject({ state: "queued", target_changeset_id: change.id });
+      expect(writes).toBe(0);
+      expect(historyState(server)).toEqual({ ...before, jobs: [result] });
+    }
+  });
 }

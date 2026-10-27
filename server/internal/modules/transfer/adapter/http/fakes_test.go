@@ -151,6 +151,7 @@ func refusals() []*shared.Error {
 		shared.NewError(shared.KindConflict, "page.protected", "Protected."),
 		shared.NewError(shared.KindConflict, "page.source_immutable", "Sources are immutable."),
 		shared.NewError(shared.KindForbidden, "page.source_admin_only", "Only an admin may move the source root."),
+		shared.NewError(shared.KindInvalid, "page.source_too_large", "Move smaller subtrees into the source area."),
 	}
 }
 

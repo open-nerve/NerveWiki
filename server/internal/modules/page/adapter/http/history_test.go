@@ -180,6 +180,7 @@ func TestTheHistoryOperationsAnswerEachProblem(t *testing.T) {
 		{http.MethodPost, revertPath, conflict, http.StatusConflict, "page.revert_conflict"},
 		{http.MethodPost, revertPath, domain.Refuse(domain.ErrProtected, id(12)), http.StatusConflict, "page.protected"},
 		{http.MethodPost, revertPath, domain.Refuse(domain.ErrSourceAdminOnly, id(12)), http.StatusForbidden, "page.source_admin_only"},
+		{http.MethodPost, revertPath, domain.Refuse(domain.ErrSourceTooLarge, id(12)), http.StatusUnprocessableEntity, "page.source_too_large"},
 		{http.MethodPost, revertPath, domain.Refuse(shared.NewError(shared.KindConflict, "page.source_immutable", "Sources are immutable."), id(12)), http.StatusConflict, "page.source_immutable"},
 		{http.MethodPost, revertPath, busy, http.StatusServiceUnavailable, "server_busy"},
 		{http.MethodPost, revertPath, domain.Locked(id(12), id(2), "Bob"), http.StatusConflict, "page.locked"},

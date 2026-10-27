@@ -308,7 +308,10 @@ func TestSourceRootAndAncestorMovesKeepHashesWithoutMetadataReads(t *testing.T) 
 func TestSourceHashMaintenanceChunksLargeTrees(t *testing.T) {
 	f := newFixture()
 	f.grant(domain.ActionMove)
-	raw, folder := f.page("raw", nil, 0), f.page("Folder", nil, 1)
+	raw := f.page("raw", nil, 0)
+	// This tree was already a valid source area before this unit. Source-entry
+	// now refuses this size, but moving it out must still clear in chunks.
+	folder := f.page("Folder", &raw.ID, 1)
 	for i := range domain.MaxUnitNodes {
 		f.page(fmt.Sprintf("Empty %d", i), &folder.ID, float64(i))
 	}
@@ -316,32 +319,24 @@ func TestSourceHashMaintenanceChunksLargeTrees(t *testing.T) {
 	f.writeAs(page.ID, "body")
 	asset := f.asset("empty.bin", &folder.ID, domain.MaxUnitNodes+1)
 	f.infos = map[uuid.UUID]app.AttachmentInfo{asset.ID: {SHA256: sourceHashOf("")}}
+	f.store.sourceHashes[page.ID], f.store.sourceHashes[asset.ID] = sourceHashOf("body"), sourceHashOf("")
 	f.notebooks.states = map[uuid.UUID]domain.NotebookState{f.eng: {Mode: domain.ModeLLMWiki, SourceRootID: raw.ID}}
-	for _, inside := range []bool{true, false} {
-		f.rec.calls = nil
-		var parent *uuid.UUID
-		if inside {
-			parent = &raw.ID
-		}
-		if _, err := f.move(folder.ID, app.Destination{ParentID: parent}); err != nil {
-			t.Fatal(err)
-		}
-		reads, writes := 0, 0
-		for _, call := range f.rec.calls {
-			if call == "SourceHeads in tx" {
-				reads++
-			}
-			if call == "SetSourceHashes in tx" {
-				writes++
-			}
-		}
-		wantReads, wantSources := 0, 0
-		if inside {
-			wantReads, wantSources = 2, 2
-		}
-		if reads != wantReads || writes != 2 {
-			t.Errorf("inside=%t: metadata reads/writes %d/%d, want %d/2", inside, reads, writes, wantReads)
-		}
-		checkFakeSourceRebuild(t, f, wantSources)
+	checkFakeSourceRebuild(t, f, 2)
+	f.rec.calls = nil
+	if _, err := f.move(folder.ID, app.Destination{}); err != nil {
+		t.Fatal(err)
 	}
+	writes := 0
+	for _, call := range f.rec.calls {
+		if call == "SetSourceHashes in tx" {
+			writes++
+		}
+		if strings.HasPrefix(call, "SourceHeads") || strings.HasPrefix(call, "AttachmentInfos") || strings.HasPrefix(call, "SubtreeWithin") {
+			t.Errorf("large source-out read source-entry metadata: %s", call)
+		}
+	}
+	if writes != 2 {
+		t.Errorf("source-out hash writes = %d, want two bounded chunks", writes)
+	}
+	checkFakeSourceRebuild(t, f, 0)
 }
