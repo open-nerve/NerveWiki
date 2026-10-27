@@ -53,7 +53,7 @@ func TestAnImportNumbersTheReservedTitlesAtAnLLMWikisRoot(t *testing.T) {
 				_, err := f.importAs(uuid.UUID{}, func(ctx context.Context, u *app.ImportUnit) error {
 					var err error
 					if tt.asset {
-						got, err = u.CreateAsset(ctx, app.ImportedAsset{ParentID: parent, Name: tt.name},
+						got, err = u.CreateAsset(ctx, app.ImportedAsset{ParentID: parent, Name: tt.name, Meta: app.AssetMeta{SHA256: sourceHashOf("")}},
 							func(context.Context, domain.Node) error { return nil })
 					} else {
 						got, err = u.CreatePage(ctx, app.ImportedPage{ParentID: parent, Name: tt.name})

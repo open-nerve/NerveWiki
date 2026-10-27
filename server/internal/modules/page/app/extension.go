@@ -54,6 +54,8 @@ type Step struct {
 	Rewrite   bool
 	Lines     *StepLines
 	Kinds     map[uuid.UUID]domain.Kind
+	// AreaHashes is prepared once before guards and maintained after the write.
+	AreaHashes map[uuid.UUID]SourceValue
 	// EditSessionID is the edit session a content write is made in (M5:
 	// the edit lock is the session's); zero for any other write.
 	EditSessionID uuid.UUID

@@ -84,7 +84,7 @@ func TestListByPatternAnswersInOrder(t *testing.T) {
 	switch s, p := byPath["Guide/Setup.md"], byPath["Guide/diagram.png"]; {
 	case !s.HasChildren || s.Page == nil || s.Page.Revision != 3 || s.Page.Bytes != 12 || s.Attachment != nil:
 		t.Errorf("Setup is %+v", s)
-	case p.HasChildren || p.Page != nil || p.Attachment == nil || *p.Attachment != (app.AttachmentInfo{MIME: "image/png", Bytes: 345}) ||
+	case p.HasChildren || p.Page != nil || p.Attachment == nil || (p.Attachment.MIME != "image/png" || p.Attachment.Bytes != 345 || len(p.Attachment.SHA256) != 0) ||
 		p.Node.ID != png.ID:
 		t.Errorf("the attachment is %+v", p)
 	case byPath["Guide/Alpha.md"].HasChildren:

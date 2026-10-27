@@ -166,7 +166,7 @@ func TestListTrashListsTheItems(t *testing.T) {
 		q.DeletedByName != f.names[f.alice] || q.Asset != nil {
 		t.Errorf("Q's item = %+v; want back under P", q)
 	}
-	if photo.Asset == nil || *photo.Asset != (app.AttachmentInfo{MIME: "image/png", Bytes: 70}) || photo.Placement.Reason != domain.PlacedOriginal ||
+	if photo.Asset == nil || (photo.Asset.MIME != "image/png" || photo.Asset.Bytes != 70 || len(photo.Asset.SHA256) != 0) || photo.Placement.Reason != domain.PlacedOriginal ||
 		photo.Placement.ParentID != nil || len(photo.Ancestors) != 0 || photo.Root.Revision != 0 {
 		t.Errorf("the photo's item = %+v; want its type and size, back at the root", photo)
 	}

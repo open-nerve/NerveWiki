@@ -282,6 +282,7 @@ func New(d Deps) *Module {
 	writer := app.NewWriter(app.WriterDeps{
 		Tx: d.Tx, Clock: d.Clock, Auth: d.Authorizer, Workspaces: d.Workspaces, Notebooks: d.Notebooks,
 		Nodes: store, NodeWriter: store, Trash: store, History: store, Changesets: store, SessionWriter: store, Search: store,
+		Sources: store, Attachments: d.Attachments,
 		Names:  d.Names,
 		Guards: d.Guards, Participants: d.Participants, Observers: d.Observers,
 		SessionVetoers: d.EditSessionVetoers, SessionSubscribers: d.EditSessionSubscribers,

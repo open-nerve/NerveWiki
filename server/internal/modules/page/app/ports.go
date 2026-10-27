@@ -563,13 +563,14 @@ type History interface {
 	VersionContents(ctx context.Context, refs []domain.VersionRef) (map[domain.VersionRef]PageContent, error)
 }
 
-// AttachmentInfo is an attachment's type and size.
+// AttachmentInfo is an attachment's type, size and stored SHA-256.
 type AttachmentInfo struct {
-	MIME  string
-	Bytes int64
+	MIME   string
+	Bytes  int64
+	SHA256 []byte
 }
 
-// AttachmentInfos reads the attachments' type and size, deleted or not, in
+// AttachmentInfos reads the attachments' metadata, deleted or not, in
 // the caller's read (M8 design 4.1): bootstrap hands the asset module's to
 // it. A node without a row of its file is not in the answer.
 type AttachmentInfos interface {

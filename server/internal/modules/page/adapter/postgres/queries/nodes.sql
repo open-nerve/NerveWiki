@@ -190,6 +190,7 @@ WITH stray AS (
 ), gone AS (
     UPDATE nodes n
     SET deleted_at = sqlc.arg(now)::timestamptz, updated_by_id = sqlc.arg(by), updated_at = sqlc.arg(now),
+        source_hash = NULL,
         trash_root = (n.id = sqlc.arg(root)),
         trash_pages = CASE WHEN n.id = sqlc.arg(root) THEN sqlc.arg(pages)::integer END,
         trash_assets = CASE WHEN n.id = sqlc.arg(root) THEN sqlc.arg(assets)::integer END,
@@ -274,7 +275,7 @@ WHERE n.id = u.id AND n.deleted_at = sqlc.arg(deleted_at)::timestamptz AND NOT n
 -- UPDATE: no page write of these notebooks runs beside it.
 WITH gone AS (
     UPDATE nodes n
-    SET deleted_at = sqlc.arg(now)::timestamptz, updated_by_id = sqlc.arg(by), updated_at = sqlc.arg(now)
+    SET deleted_at = sqlc.arg(now)::timestamptz, updated_by_id = sqlc.arg(by), updated_at = sqlc.arg(now), source_hash = NULL
     WHERE n.notebook_id = ANY(sqlc.arg(notebook_ids)::uuid[]) AND n.deleted_at IS NULL
     RETURNING n.id
 ), contents AS (

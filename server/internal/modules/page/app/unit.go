@@ -39,7 +39,9 @@ type WriterDeps struct {
 	SessionWriter SessionWriter
 	// Search queues the nodes a unit changed for the search's job (M8/P5
 	// design 3.4).
-	Search SearchQueue
+	Search      SearchQueue
+	Sources     SourceWriter
+	Attachments AttachmentInfos
 	// Names gives the name of who released a session's lock (M5 design
 	// 4.3).
 	Names        Names
@@ -348,6 +350,9 @@ func (u *Unit) apply(ctx context.Context, s Step, participate bool, write func(c
 	if s, err = u.withSourceLines(ctx, s); err != nil {
 		return err
 	}
+	if s, err = u.withSourceHashes(ctx, s); err != nil {
+		return err
+	}
 	for _, g := range u.w.d.Guards {
 		if err := g.GuardWrite(ctx, s); err != nil {
 			return refusalOf(err, s)
@@ -357,6 +362,9 @@ func (u *Unit) apply(ctx context.Context, s Step, participate bool, write func(c
 		return err
 	}
 	if err := write(ctx); err != nil {
+		return err
+	}
+	if err := u.writeSourceHashes(ctx, s); err != nil {
 		return err
 	}
 	if err := u.recordItems(ctx, s.Changes); err != nil {

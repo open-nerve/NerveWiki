@@ -448,6 +448,7 @@ WITH stray AS (
 ), gone AS (
     UPDATE nodes n
     SET deleted_at = $1::timestamptz, updated_by_id = $3, updated_at = $1,
+        source_hash = NULL,
         trash_root = (n.id = $4),
         trash_pages = CASE WHEN n.id = $4 THEN $5::integer END,
         trash_assets = CASE WHEN n.id = $4 THEN $6::integer END,
@@ -502,7 +503,7 @@ func (q *Queries) DeleteNodes(ctx context.Context, arg DeleteNodesParams) (int32
 const deleteNotebooksPages = `-- name: DeleteNotebooksPages :exec
 WITH gone AS (
     UPDATE nodes n
-    SET deleted_at = $1::timestamptz, updated_by_id = $3, updated_at = $1
+    SET deleted_at = $1::timestamptz, updated_by_id = $3, updated_at = $1, source_hash = NULL
     WHERE n.notebook_id = ANY($2::uuid[]) AND n.deleted_at IS NULL
     RETURNING n.id
 ), contents AS (

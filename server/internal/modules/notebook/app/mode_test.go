@@ -1,6 +1,7 @@
 package app_test
 
 import (
+	"context"
 	"errors"
 	"slices"
 	"strings"
@@ -25,10 +26,40 @@ func newWikiFixture() fixture {
 // downgrade is the use case over f's fakes, jobs writing in the notebooks
 // writing names, and clock its clock.
 func (f fixture) downgrade(clock app.Clock, writing map[uuid.UUID]bool, subscribers ...app.ModeSubscriber) *app.DowngradeNotebook {
+	return f.downgradeWithSourceHashes(clock, writing, &fakeSourceHashes{recorder: f.rec, store: f.store}, subscribers...)
+}
+
+func (f fixture) downgradeWithSourceHashes(clock app.Clock, writing map[uuid.UUID]bool, hashes app.SourceHashes,
+	subscribers ...app.ModeSubscriber,
+) *app.DowngradeNotebook {
 	return app.NewDowngradeNotebook(app.DowngradeNotebookDeps{
 		Workspaces: f.workspaces, Finder: f.store, Notebooks: f.store, Jobs: fakeJobs{recorder: f.rec, writing: writing},
-		Subscribers: subscribers, Auth: f.auth, Tx: f.tx, Clock: clock, Logger: f.logger(),
+		SourceHashes: hashes, Subscribers: subscribers, Auth: f.auth, Tx: f.tx, Clock: clock, Logger: f.logger(),
 	})
+}
+
+// fakeSourceHashes observes the use case's ordering and context only;
+// persistent mode/hash rollback belongs to the real database tests.
+type fakeSourceHashes struct {
+	*recorder
+	store *fakeStore
+	err   error
+	ids   []uuid.UUID
+	saw   []domain.Mode
+}
+
+func (f *fakeSourceHashes) Forget(ctx context.Context, notebookID uuid.UUID) error {
+	f.record(ctx, "Forget "+notebookID.String())
+	f.ids = append(f.ids, notebookID)
+	mode := f.store.notebooks[notebookID].Mode
+	// SetMode records writes in moded; notebooks is the original read fixture.
+	for _, written := range f.store.moded {
+		if written.ID == notebookID {
+			mode = written.Mode
+		}
+	}
+	f.saw = append(f.saw, mode)
+	return f.err
 }
 
 // The downgrade locks, decides, reads the mode under the lock, asks for
@@ -53,7 +84,8 @@ func TestDowngradeNotebookMakesItStandard(t *testing.T) {
 		t.Errorf("set %+v, want %+v", f.store.moded, standard)
 	}
 	calls := []string{"FindNotebook", "ShareByID in tx", "LockNotebook in tx", "Authorize notebook.change_mode in tx", "Writing in tx",
-		"SetMode standard by " + alice.String() + " in tx", "ModeChanged a llm_wiki standard in tx", "CountMembers in tx"}
+		"SetMode standard by " + alice.String() + " in tx", "Forget " + f.notebook.ID.String() + " in tx",
+		"ModeChanged a llm_wiki standard in tx", "CountMembers in tx"}
 	if !slices.Equal(f.rec.calls, calls) {
 		t.Errorf("calls = %q, want %q", f.rec.calls, calls)
 	}
@@ -64,6 +96,29 @@ func TestDowngradeNotebookMakesItStandard(t *testing.T) {
 	}
 	if want := (shared.Target{WorkspaceID: f.acme, NotebookID: f.notebook.ID}); f.auth.targets[0] != want {
 		t.Errorf("target = %+v, want %+v", f.auth.targets[0], want)
+	}
+}
+
+// Forget must run after SetMode in the same transaction, before any mode
+// subscriber or success log; its error is the downgrade's error.
+func TestDowngradeStopsWhenForgettingHashesFails(t *testing.T) {
+	f := newWikiFixture()
+	f.admin()
+	alice := uuid.NewV7()
+	failure := errors.New("source hash storage failed")
+	hashes := &fakeSourceHashes{recorder: f.rec, store: f.store, err: failure}
+	sub := &fakeModeSubscriber{recorder: f.rec, name: "a", store: f.store}
+
+	got, err := f.downgradeWithSourceHashes(&tickingClock{}, nil, hashes, sub).Execute(as(alice), f.notebook.ID)
+
+	wantCalls := []string{"FindNotebook", "ShareByID in tx", "LockNotebook in tx", "Authorize notebook.change_mode in tx",
+		"Writing in tx", "SetMode standard by " + alice.String() + " in tx", "Forget " + f.notebook.ID.String() + " in tx"}
+	if !errors.Is(err, failure) || got != (app.View{}) || !f.tx.rolledBack || !slices.Equal(f.rec.calls, wantCalls) ||
+		!slices.Equal(hashes.ids, []uuid.UUID{f.notebook.ID}) || !slices.Equal(hashes.saw, []domain.Mode{domain.ModeStandard}) ||
+		len(sub.got) != 0 || f.logs.Len() != 0 {
+		t.Errorf("Execute() = %+v, %v, rollback requested %v, calls %q, forgot %v seeing %q, told %+v, logs %q; "+
+			"want the Forget error in tx after SetMode, no subscriber/count/log", got, err, f.tx.rolledBack,
+			f.rec.calls, hashes.ids, hashes.saw, sub.got, f.logs)
 	}
 }
 

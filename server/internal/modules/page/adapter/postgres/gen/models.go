@@ -75,6 +75,7 @@ type Node struct {
 	TrashPages  *int32
 	TrashAssets *int32
 	TrashHeight *int32
+	SourceHash  []byte
 }
 
 type PageContent struct {

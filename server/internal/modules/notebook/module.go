@@ -51,6 +51,10 @@ type MemberProfiles = app.MemberProfiles
 // queued or running: bootstrap hands transfer.NewWritingJobs to it.
 type WritingJobs = app.WritingJobs
 
+// SourceHashes is the page module's transactional source-hash cleanup,
+// supplied by bootstrap without constructing the page HTTP module.
+type SourceHashes = app.SourceHashes
+
 // The module's extension points (M3 design 8; M10 design 8): bootstrap
 // composes their registrants in registrants.go, the creation's seeders in
 // wire.go.
@@ -84,9 +88,11 @@ type Deps struct {
 	// one, a fault of its wiring, as without AccountWorkspaces; ModeSubscribers
 	// follow a mode change; WritingJobs tell whether a notebook has a job
 	// that writes queued or running, which a downgrade waits for.
+	// SourceHashes must be present to clear the source hashes before subscribers.
 	Seeders         []Seeder
 	ModeSubscribers []ModeSubscriber
 	WritingJobs     WritingJobs
+	SourceHashes    SourceHashes
 	// The registrants of the extension points.
 	DeletionSubscribers   []NotebookDeletionSubscriber
 	VisibilitySubscribers []VisibilitySubscriber
@@ -100,7 +106,7 @@ type Module struct {
 }
 
 // New wires the module. A module without the account's workspaces,
-// without a seeder or without the writing jobs is a fault of its wiring.
+// without a seeder, writing jobs or source hashes is a fault of its wiring.
 func New(d Deps) *Module {
 	switch {
 	case d.AccountWorkspaces == nil:
@@ -109,6 +115,8 @@ func New(d Deps) *Module {
 		panic("notebook: no seeders")
 	case d.WritingJobs == nil:
 		panic("notebook: no writing jobs")
+	case d.SourceHashes == nil:
+		panic("notebook: no source hashes")
 	}
 	store := postgresadapter.New(d.Pool)
 	auth := d.Authorizer
@@ -129,8 +137,9 @@ func New(d Deps) *Module {
 			Auth: auth, Tx: d.Tx, Clock: d.Clock, Logger: d.Logger,
 		}),
 		DowngradeNotebook: app.NewDowngradeNotebook(app.DowngradeNotebookDeps{
-			Workspaces: d.Workspaces, Finder: store, Notebooks: store, Jobs: d.WritingJobs, Subscribers: d.ModeSubscribers,
-			Auth: auth, Tx: d.Tx, Clock: d.Clock, Logger: d.Logger,
+			Workspaces: d.Workspaces, Finder: store, Notebooks: store, Jobs: d.WritingJobs, SourceHashes: d.SourceHashes,
+			Subscribers: d.ModeSubscribers,
+			Auth:        auth, Tx: d.Tx, Clock: d.Clock, Logger: d.Logger,
 		}),
 		ListMembers: app.NewListMembers(app.ListMembersDeps{Notebooks: store, Members: store, Profiles: d.Profiles, Auth: auth}),
 		AddMember: app.NewAddMember(app.AddMemberDeps{

@@ -118,6 +118,7 @@ func notebookDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, au
 		AccountWorkspaces:     accountWorkspaces{workspace.NewMemberships(pool)},
 		Seeders:               seeders,
 		WritingJobs:           transfer.NewWritingJobs(pool),
+		SourceHashes:          notebookSourceHashes{page.NewSourceArea(pool)},
 		DeletionSubscribers:   ext.deletionSubscribers,
 		VisibilitySubscribers: ext.visibilitySubscribers,
 		ModeSubscribers:       ext.modeSubscribers,

@@ -498,7 +498,7 @@ func TestTheSearchAssemblesItsHits(t *testing.T) {
 	}
 	a, p := got.Hits[0], got.Hits[1]
 	if len(a.Ancestors) != 2 || a.Ancestors[0].ID != root.ID || a.Ancestors[1].ID != parent.ID || a.Attachment == nil ||
-		*a.Attachment != (app.AttachmentInfo{MIME: "application/pdf", Bytes: 42}) || a.Excerpt != nil ||
+		(a.Attachment.MIME != "application/pdf" || a.Attachment.Bytes != 42 || len(a.Attachment.SHA256) != 0) || a.Excerpt != nil ||
 		!slices.Equal(a.TitleHits, []domain.TextRange{{Start: 0, End: 2}}) || !a.ChangedAt.Equal(asset.SortAt) {
 		t.Errorf("the attachment's hit = %+v", a)
 	}

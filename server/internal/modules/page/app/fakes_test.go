@@ -198,6 +198,9 @@ type fakeStore struct {
 	// a read's each (TrashContentsWithin, PageContentWithin), in their
 	// order: 0 for one that read none, past it.
 	read []int
+	// sourceHashes changes only through the source writer or deletion, never
+	// by recomputing membership from the fake's tree.
+	sourceHashes map[uuid.UUID][]byte
 }
 
 func (f *fakeStore) FindNode(ctx context.Context, id uuid.UUID) (domain.Node, error) {
@@ -608,6 +611,7 @@ func (f *fakeStore) DeleteNodes(ctx context.Context, d app.Deletion) error {
 		}
 		delete(f.nodes, id)
 		delete(f.contents, id)
+		delete(f.sourceHashes, id)
 	}
 	f.counts[d.Root] = [3]int{d.Pages, d.Assets, d.Height}
 	return nil
@@ -1103,6 +1107,7 @@ func (f *fakeStore) DeleteNotebooksPages(ctx context.Context, ids []uuid.UUID, _
 		if slices.Contains(ids, n.NotebookID) {
 			delete(f.nodes, id)
 			delete(f.contents, id)
+			delete(f.sourceHashes, id)
 		}
 	}
 	return nil
@@ -1337,7 +1342,8 @@ func newFixture() *fixture {
 		store: &fakeStore{recorder: rec, nodes: map[uuid.UUID]domain.Node{}, contents: map[uuid.UUID]app.Content{},
 			items: map[uuid.UUID]app.Item{}, touched: map[uuid.UUID]time.Time{}, marked: map[uuid.UUID]domain.ChangesetMoves{},
 			sessions: map[uuid.UUID]app.EditSession{}, held: map[uuid.UUID]bool{}, trash: map[uuid.UUID]app.AnyNode{},
-			counts: map[uuid.UUID][3]int{}, trashed: map[uuid.UUID]app.Content{}, firsts: map[[2]uuid.UUID]time.Time{}},
+			counts: map[uuid.UUID][3]int{}, trashed: map[uuid.UUID]app.Content{}, firsts: map[[2]uuid.UUID]time.Time{},
+			sourceHashes: map[uuid.UUID][]byte{}},
 		auth: &fakeAuthorizer{recorder: rec, grants: map[shared.Action]bool{}, forbidden: map[shared.Action]bool{}},
 		logs: &bytes.Buffer{}, names: fakeNames{}, alice: uuid.NewV7(), acme: uuid.NewV7(), eng: uuid.NewV7(),
 	}
@@ -1355,6 +1361,7 @@ func (f *fixture) writer() *app.Writer {
 	return app.NewWriter(app.WriterDeps{
 		Tx: f.tx, Clock: f.clock, Auth: f.auth, Workspaces: f.workspaces, Notebooks: f.notebooks, Nodes: f.store,
 		NodeWriter: f.store, Trash: f.store, History: f.log, Changesets: f.store, SessionWriter: f.store, Search: f.store, Names: f.names,
+		Sources: f.store, Attachments: fakeAttachments{recorder: f.rec, infos: f.infos},
 		Guards: f.guards, Participants: f.partakers, Observers: f.observers, SessionVetoers: f.vetoers,
 		SessionSubscribers: f.enders,
 	})
