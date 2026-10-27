@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"context"
 	"maps"
 	"net/http"
 	"slices"
@@ -131,10 +132,12 @@ func (w wikiSeeded) has(id uuid.UUID) bool {
 	return id == w.workspace
 }
 
-// seedWikiVariant writes the variant through exec at now, before the
-// search's queue is filled; deleteNotebook deletes a notebook with what it
-// holds, as the matrix deletes gone-nb.
+// seedWikiVariant creates the variant two hours before the caller's now.
+// Its independent source trash is deleted an hour later; deleteNotebook
+// still uses the caller's now, so gone-nb keeps that earlier trash group.
+// All of this precedes filling the search's queue.
 func seedWikiVariant(t testing.TB, exec func(sql string, args ...any), w wikiSeeded, now time.Time, deleteNotebook func(id uuid.UUID)) {
+	now = now.Add(-2 * time.Hour)
 	w.t = t
 	account := "(SELECT id FROM users WHERE email = $2)"
 	exec("INSERT INTO workspaces (id, slug, name, created_by_id, updated_by_id, created_at, updated_at) "+
@@ -343,7 +346,8 @@ func (w wikiSeeded) source(notebook, kind string) uuid.UUID {
 
 // seedWikiSources supplies real descendants for the permission rows, with
 // page history and an asset blob just like the ordinary matrix seeds. A
-// deleted source retains its original live parent for restore-in.
+// deleted source retains its original live parent for restore-in. Its
+// deletion is after creation and before the caller deletes the notebook.
 func seedWikiSources(exec func(string, ...any), w wikiSeeded, notebook string, now time.Time) {
 	for i, p := range []struct {
 		id            uuid.UUID
@@ -362,9 +366,10 @@ func seedWikiSources(exec func(string, ...any), w wikiSeeded, notebook string, n
 			"SELECT id, $2, 1, sha256(convert_to($2, 'UTF8')), octet_length($2), created_by_id, created_at FROM nodes WHERE id = $1", p.id, p.content)
 		exec(seededPageHistory, p.id)
 		if p.deleted {
-			exec("UPDATE nodes SET deleted_at = $2, updated_at = $2, trash_root = true, trash_pages = 1, trash_assets = 0, trash_height = 1 WHERE id = $1", p.id, now)
+			trashedAt := now.Add(time.Hour)
+			exec("UPDATE nodes SET deleted_at = $2, updated_at = $2, trash_root = true, trash_pages = 1, trash_assets = 0, trash_height = 1 WHERE id = $1", p.id, trashedAt)
 			for _, table := range []string{"page_contents", "page_revisions", "changeset_items"} {
-				exec("UPDATE "+table+" SET deleted_at = $2 WHERE node_id = $1", p.id, now)
+				exec("UPDATE "+table+" SET deleted_at = $2 WHERE node_id = $1", p.id, trashedAt)
 			}
 			exec("DELETE FROM indexed_pages WHERE node_id = $1", p.id)
 		}
@@ -561,4 +566,42 @@ func TestSourcePermissionMatrixKeepsEveryRequiredRow(t *testing.T) {
 			t.Errorf("source permission coverage lost actual operation row %s", name)
 		}
 	}
+}
+
+// The variant's independent trash survives a later notebook deletion with
+// its own time and group metadata, as the ordinary matrix's trash does.
+func TestSourceMatrixSeedKeepsItsTrashGroups(t *testing.T) {
+	d := prepareMatrix(t)
+	w := d.seeded.in(t).wiki
+	pool := connect(t, d.url)
+	gone := 0
+	for _, notebook := range wikiNotebooks() {
+		if !notebook.deleted {
+			continue
+		}
+		gone++
+		var created, trashed, deleted time.Time
+		var root bool
+		var pages, assets, height int
+		if err := pool.QueryRow(context.Background(), `SELECT n.created_at, n.deleted_at, b.deleted_at,
+			n.trash_root, n.trash_pages, n.trash_assets, n.trash_height
+			FROM nodes n JOIN notebooks b ON b.id = n.notebook_id
+			WHERE n.id = $1 AND n.notebook_id = $2 AND n.parent_id = $3`,
+			w.sourceTrash[notebook.name], w.notebook(notebook.name), w.raw(notebook.name)).Scan(
+			&created, &trashed, &deleted, &root, &pages, &assets, &height); err != nil {
+			t.Fatal(err)
+		}
+		if !created.Before(trashed) || !trashed.Before(deleted) {
+			t.Errorf("%s source times: created=%s trash=%s notebook deletion=%s, want created < trash < notebook deletion",
+				notebook.name, created, trashed, deleted)
+		}
+		if !root || pages != 1 || assets != 0 || height != 1 {
+			t.Errorf("%s old source trash: root=%t pages=%d assets=%d height=%d, want true/1/0/1",
+				notebook.name, root, pages, assets, height)
+		}
+	}
+	if gone == 0 {
+		t.Fatal("the matrix has no deleted LLM Wiki to check")
+	}
+	checkPages(t, pool)
 }
