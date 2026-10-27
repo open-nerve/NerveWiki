@@ -478,7 +478,12 @@ export function historyRoutes(server: HistoryState, role: NotebookRole): Record<
 }
 
 /** The existing history fixture's source refusal, shared by sync and background starts.
- * It checks the fixture's current tree and version metadata; worker execution is server-side test coverage.
+ * It projects simple placements of live nodes into live parents before writeback,
+ * including ancestors recorded after their descendants. A deleted target parent
+ * is restored after those placements: its waiting child writes where it is now.
+ * A placement that would make the local tree cyclic also waits. This is not a
+ * scheduler for resolving key conflicts, cycles or steps aside; conflicts and
+ * undo remain fixture inputs, and worker execution has server-side test coverage.
  */
 export function sourceRevertCode(
   server: SourceState & { contents: Map<string, { content: string; revision: number }> },
@@ -488,6 +493,39 @@ export function sourceRevertCode(
   if (changeset.unchanged || server.notebook.mode !== "llm_wiki") {
     return undefined;
   }
+  const nodes = new Map(server.nodes.map((node) => [node.id, node]));
+  for (const change of changeset.changes) {
+    switch (change.kind) {
+      case "created":
+      case "restored":
+        nodes.delete(change.node);
+        break;
+      case "moved":
+      case "renamed":
+      case "reordered": {
+        const node = nodes.get(change.node);
+        if (
+          node !== undefined &&
+          change.before !== null &&
+          (change.before.parent === null || server.nodes.some((each) => each.id === change.before?.parent))
+        ) {
+          let parent = change.before.parent;
+          while (parent !== null && parent !== node.id) {
+            parent = nodes.get(parent)?.parent_id ?? null;
+          }
+          if (parent === node.id) {
+            break;
+          }
+          nodes.set(change.node, { ...node, parent_id: change.before.parent, name: change.before.name });
+        }
+        break;
+      }
+      case "deleted":
+      case "content":
+        break;
+    }
+  }
+  const writeback = { notebook: server.notebook, nodes: [...nodes.values()] };
   for (const change of changeset.changes) {
     const node = server.nodes.find((each) => each.id === change.node);
     if (node === undefined) {
@@ -502,7 +540,11 @@ export function sourceRevertCode(
             ? "move"
             : undefined;
     if (operation !== undefined) {
-      const code = sourceManagementCode(server, node, operation, role, change.before?.parent ?? null);
+      // Deletion follows the simple placements above; a source root may already
+      // have left this ancestor. Moves and renames still require their original
+      // source management permission, before the placement changes membership.
+      const management = operation === "delete" ? writeback : server;
+      const code = sourceManagementCode(management, node, operation, role, change.before?.parent ?? null);
       if (code !== undefined) {
         return code;
       }
@@ -512,7 +554,7 @@ export function sourceRevertCode(
       change.content !== null &&
       change.content.base !== null &&
       !change.content.rewrite &&
-      sourceArea(server, node) &&
+      sourceArea(writeback, nodes.get(node.id) ?? node) &&
       (server.contents.get(node.id)?.content ?? `${node.name}\n`).length > 0
     ) {
       return "page.source_immutable";
