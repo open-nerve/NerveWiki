@@ -3,12 +3,12 @@
 | 项 | 内容 |
 |---|---|
 | 里程碑 / Phase | M10 模式契约与 LLM Wiki / P2 来源区 |
-| 日期、状态 | 2026-10-27；设计已审查并由主持者接受，待 S1 实施；没有 P2 实现或运行验证结果 |
+| 日期、状态 | 2026-10-27；P2 进行中；S1代码、完整本机验证、精确代码CI与原C三项正式复核已接受；文档分支CI、no-ff合并及两个main CI/Test均值pending，S1尚未合并，S2未释放；S2/S3 pending |
 | 基线 | `main` = `origin/main` = `403841fc75d0e5ac6b5f39447158213c0e07b2fe`，树 `b3665215f745d4dcfe7e8d339d4882e6d95b4a63` |
 | 入口 | P1 已完成；其后 grep 成本维护也已合并并核对，两份 main CI 全 10 项成功；第 1 节 |
 | 权威 | [文档约定](../../README.md)、[总体设计](../v0.1-design.md)、[M10 总设计](00-M10-design.md) §4.6–4.8、§4.16–4.18、§7、§9；[P1](01-P1-contract-frame.md) §8–10；[M8 历史移交](handoffs/M8-history.md)、[M9 MCP 移交](handoffs/M9-P1-mcp-registry.md) |
 | 代码位置 | `page/`、`asset/`、`notebook/`、`transfer/` 相对 `server/internal/modules/`；`bootstrap/`、`shared/`、`platform/` 相对 `server/internal/`；迁移相对 `server/migrations/sql/`；`W/` 相对 `web/apps/web/src/`；行号均按上述基线 |
-| 审查 | [P2 设计审查](reviews/P2-design-review.md)：三位独立初审、首轮修订、原 A/B/C 复核均完成；2 Important / 2 Minor 与 B-Q1 在设计层 resolved，无新增核实 I/M/N/Q；实施仍待本设计文档的精确 main CI 绿 |
+| 审查 | [P2 设计审查](reviews/P2-design-review.md)：三位独立初审、首轮修订、原 A/B/C 复核均完成；2 Important / 2 Minor 与 B-Q1 在设计层 resolved，无新增核实 I/M/N/Q；设计提交 `4755b4c9` 的精确 main [CI 40413727596](https://github.com/open-nerve/NerveWiki/actions/runs/40413727596) 已十项成功；[S1 实施审查](reviews/P2-S1-source-rules-review.md)与结果见10.1 |
 
 ## 0. 三个独立为绿的 Step
 
@@ -34,7 +34,7 @@ P1 的最终文档为 `b112450f`。其第一次精确 CI 的既有 grep 成本�
 
 记录 CI 其余实际 step 秒：race 573、costs 546、guards 751、short 187、web Test 208、E2E 211、Image smoke 78。它们不是 bootstrap 的预算，也不把 job 总时长混进 Test 平均。入口回执是主持者持有的 `p2-entry.json`，原始 run/jobs/timings 与 SHA256、postmerge-pair 均归树外证据，不把本机路径写成仓库长期依赖。
 
-现有 gap 是 P2 尚未做的范围：ModeGuard 只有 P1 三类规则；Step 无正文/来源事实；版本无 rewrite；无 source_hash/duplicate；网页树只认 AGENTS/来源根。已有 P1 的 `Grants`、`Refused`、batch OpFailed、开始撤销预检、后台 refused/finalizer、保留名编号、mode 事件与降级保持。IndexItems 的 30 ms 观察及 grep 的 600 ms 新预算的后续稳定性仍归 M10 收尾，本文不宣称已稳定，不在 Step 中暗改其线。
+设计基线时的 gap：ModeGuard 只有 P1 三类规则；Step 无正文/来源事实；版本无 rewrite；无 source_hash/duplicate；网页树只认 AGENTS/来源根。已有 P1 的 `Grants`、`Refused`、batch OpFailed、开始撤销预检、后台 refused/finalizer、保留名编号、mode 事件与降级保持。IndexItems 的 30 ms 观察及 grep 的 600 ms 新预算的后续稳定性仍归 M10 收尾，本文不宣称已稳定，不在 Step 中暗改其线。 S1 的当前实现与初审/修复进展见3.14、10.1；S2 hash/duplicate 和 S3 完整 UI 仍待完成。
 
 ## 2. 目标、范围和明确修订
 
@@ -53,7 +53,7 @@ P1 的最终文档为 `b112450f`。其第一次精确 CI 的既有 grep 成本�
 | 40 | 00 §4.6撤销事实与§4.8开始预检明确：content-only无整树时只补相关祖先线；大计划按块读hash/外部匹配，模拟完整顺序；外部候选排除本计划会改变的节点，后者在模拟集合中维护；不取全文。 | 保留现有content-only快路，避免静态初始候选误拒“先删再恢复”或漏判同计划新增。 |
 | 41 | 00 §4.2/风险的冷缓存测量明确：实际 goose Up 事务只在开始前冷却一次，全事务时间是停机证据；分别冷却的CHECK/index诊断另列，不相加冒充同一实际事务；现有LLM回填与空首发分别测。 | 冷启动后的CHECK会自然预热后面的index；600万义务本Phase完成，M12另在真实服务器重量。 |
 
-决定 **42**：00 §4.2/4.8 的 source_hash 非唯一部分索引在原三个键后追加 `id`。外部匹配按 key+id 游标分块读取，完整计划的排除集合只在 Go 内保存；每次 SQL 数组与总返回行均≤10k，不发送全计划 excluded_ids，更不把它分块做 NOT IN。该扩展增加索引空间、建索引/回填写入成本，600万迁移和10万来源成本样本同时记录四列与原三列的差异；不是把它称为免费的覆盖索引。准确协议见3.7/3.11；三方设计审查及原审查者复核已完成，实施仍待本设计文档的精确 main CI 绿。
+决定 **42**：00 §4.2/4.8 的 source_hash 非唯一部分索引在原三个键后追加 `id`。外部匹配按 key+id 游标分块读取，完整计划的排除集合只在 Go 内保存；每次 SQL 数组与总返回行均≤10k，不发送全计划 excluded_ids，更不把它分块做 NOT IN。该扩展增加索引空间、建索引/回填写入成本，600万迁移和10万来源成本样本同时记录四列与原三列的差异；不是把它称为免费的覆盖索引。准确协议见3.7/3.11；三方设计审查及原审查者复核已完成，设计提交4755的精确main CI40413727596已十项成功；S1结果见10.1，索引/hash/成本仍待S2。
 
 决定43的具体范围：保留M9 compact/Joined/同组批内合并/合法缩批；开始与worker按生产批界算未缩减名义计划，按真实批内动作预检。没有并发时，实际缩批也可能使已通过预检的任务在后批遇来源拒绝；反方向名义拒但更细分法可行也仍拒，不搜索分批。此前提交保留、失败批回滚，同步/后台结果可不同。详细协议与独立证据见3.13，产品说明不暴露内部类型名。
 
@@ -61,7 +61,7 @@ P1 的最终文档为 `b112450f`。其第一次精确 CI 的既有 grep 成本�
 
 ### 2.2 需要负责人确认
 
-无常规确认项。主持者在原 A/B/C 复核之后接受本设计及决定36–43（负责人可以改判）；这只是设计接受，所有实施、变异、成本与 CI 证据仍待完成。若实施证据表明获准方案不能满足现有架构、权限或历史语义，主持者按工作流重新定处置；只有真正重大架构冲突才按用户约定升级。
+无常规确认项。主持者在原 A/B/C 复核之后接受本设计及决定36–43（负责人可以改判）；当时只是设计接受；S1实施/验证与后续修复进度见10.1，S2/S3及其成本、迁移证据仍待完成。若实施证据表明获准方案不能满足现有架构、权限或历史语义，主持者按工作流重新定处置；只有真正重大架构冲突才按用户约定升级。
 
 不做：P3的SourceArea整区lint读、索引规则、P4虚拟文件/ingest、P5prompt、M11升级状态或保全；不接触真实客户端配置。
 
@@ -74,7 +74,7 @@ P1 的最终文档为 `b112450f`。其第一次精确 CI 的既有 grep 成本�
 | S1 | `00049_page_page_revisions_rewrite.sql`（新）、`server/sqlc.yaml` page项、`page/adapter/postgres/queries/changesets.sql`、`history.sql`、`history.go`、`changesets.go`、生成目录 | rewrite持久化/读取；只列page自己的迁移 |
 | S1 | `page/domain/contract.go`、`contract_test.go`、`changeset.go`、`revert.go`、`revert_schedule.go`、`revert_facts.go`、`batch_plan.go`、`batch_contents.go` | 同一纯契约、瞬时来源事实、正文判定和历史标记 |
 | S1 | `page/app/extension.go`、`unit*.go`、`ports.go`、`mode_guard.go`、`revert_contract.go`、`revert_changeset.go`、`jobs.go`、`edit_page.go`、`apply_batch.go`、`fakes_test.go` | 元数据/祖先线所有生产者、特殊no-op、锁前MCP预检、单元/后台链 |
-| S1 | `page/app/revert_job_actions.go`（新）、`page/tree_writes.go`、transfer `app/background.go`/`start_background.go`/`import_ports.go`、`module.go`、`bootstrap/transfer.go`及各fake | 共用实际动作遍历、原批界算法和JobBatches闭包；CheckRevert/PlanRevert在S1使用后台事实，不等S2 |
+| S1 | `page/app/revert_actions.go`、`revert_job_contract.go`、`job_batches.go`、`revert_source_lines.go`（新）、`page/tree_writes.go`、transfer `app/background.go`/`start_background.go`/`import_ports.go`、`module.go`、`bootstrap/transfer.go`及各fake | 共用实际动作遍历、原批界算法和JobBatches闭包；CheckRevert/PlanRevert在S1使用后台事实，不等S2 |
 | S1 | `page/mode_guard.go`、`bootstrap/registrants.go`；各模块HTTP测试/API契约、MCP码表、web文字；e2e wiki LW4/LW5 | mode注册为guard与sessionVetoer，均在lock前 |
 | S2 | `00050_page_nodes_source_hash.sql`（新）、`page/adapter/postgres/queries/sources.sql`（新）、`source_area.go`（app/adapter/root新）、`nodes.sql`、`migrations/*source_hash*_test.go` | 哈希元数据、探查、批更新、锁、迁移、Forget |
 | S2 | `page/app/unit_sources.go`（新）、`source_precheck.go`（新）、`unit_move.go`、`unit_relocate.go`、`unit_revert.go`、`unit_restore.go`、`jobs.go`、`unit_import.go`、`ports.go`、`module.go` | 单元级来源追踪、有限来源移入、开始/历史模拟、import正常重复结果 |
@@ -94,7 +94,10 @@ type StepContent struct {
     Hash []byte
     Bytes, BeforeBytes, Merged int
 }
-type StepLines struct { Before, After []domain.Ancestor }
+type StepLines struct {
+    Before, After []domain.Ancestor
+    AfterParents map[uuid.UUID][]domain.Ancestor
+}
 // Step gains Content *StepContent, Rewrite bool, Lines *StepLines,
 // and Kinds map[uuid.UUID]domain.Kind for every changed node.
 // Lines nil = not supplied; non-nil empty line = known notebook root.
@@ -110,13 +113,13 @@ func (g *ModeGuard) GuardWrite(context.Context, Step) error
 func (g *ModeGuard) VetoEditSession(context.Context, SessionOpening) error
 ```
 
-域内增加“给root-first变化列表补Before/After来源事实”的函数；只走 `ParentID` 图与已给的根祖先，不读数据库。严格祖先含source root时才InArea，ID等于source root自己始终false。一个source root被移动/改名、它的祖先被移动时，其后代仍识别为来源；不能将全Changes一律赋成移动根的membership。附件也有Kind与父链。Before/After分别计算，恢复使用计划After，不查询“仍已删除的节点目前是否live”。
+域内增加“给root-first变化列表补Before/After来源事实”的函数；只走 `ParentID` 图与已给的根祖先，不读数据库。严格祖先含source root时才InArea，ID等于source root自己始终false。一个source root被移动/改名、它的祖先被移动时，其后代仍识别为来源；不能将全Changes一律赋成移动根的membership。附件也有Kind与父链。Before/After分别计算，恢复使用计划After，不查询“仍已删除的节点目前是否live”。 恢复跳过已活成员后可能形成多根森林，AfterParents分别提供每个外部父节点的祖先线，不拼成一条；步内Changes的当前父关系优先于外部快照。
 
 Kinds由已读的domain.Node/subtree/group产出；create明确page/asset，delete/move/restore按每个Changes对应节点填，正文单页填page，undo的state/plan也带每节点Kind。不能从有无Content猜附件，更不在守卫按节点补N次FindNode。
 
-已读祖先不重读：CreatePage的`lineOf`、Move目的line、Relocate换父line一直传到insert/move helper；ImportUnit缓存line也传到`insertPage/insertAsset`，因为它没有经过公开CreatePage/CreateAsset。改名、删除、正文、附件创建、同父Relocate、undo place没有line时，LLM模式按需读一次操作根的祖先；同父Before/After共用。改变父节点时Before单独读，After用已读目的line。children内部父关系从Changes/原Node取，无每后代一次递归查询。普通模式在最外层返回，不读祖先、不问manage_source。
+已读祖先不重读：CreatePage的`lineOf`、Move目的line、Relocate换父line一直传到insert/move helper；ImportUnit缓存line也传到`insertPage/insertAsset`，因为它没有经过公开CreatePage/CreateAsset。改名、删除、正文、附件创建、同父Relocate、undo place没有line时，LLM模式按需读一次操作根的祖先；同父Before/After共用。改变父节点时Before单独读，After用已读目的line。children内部父关系从Changes/原Node取，无每后代一次递归查询。普通模式在最外层返回，零额外来源祖先读取/管理授权；请求原有响应祖先读取不在这个零额外承诺内。
 
-`ModeGuard`的并发共享实例不缓存单元事实/授权。`Write.Grants`仍是单元指针；第一次需要manage_source才问，后台每批新的memo。source facts可由单元准备并复用给guard和后续S2维护；公开Step副本的Lines仅只读。会话否决者用已锁笔记本状态和页面祖先判严格后代，登记 `[mode, lock]`，根说明/AGENTS可开；会话开启前的过期/接管写都在事务，拒绝后回滚。
+`ModeGuard`的并发共享实例不缓存单元事实/授权。`Write.Grants`仍是单元指针；第一次需要manage_source才问，后台每批新的memo。S1的Unit.withSourceLines在guards之前准备并复用source facts，GuardWrite消费它；后续S2维护再复用；公开Step副本的Lines仅只读。会话否决者用已锁笔记本状态和页面祖先判严格后代，登记 `[mode, lock]`，根说明/AGENTS可开；会话开启前的过期/接管写都在事务，拒绝后回滚。
 
 ### 3.3 内容、no-op、码次序（S1）
 
@@ -151,7 +154,7 @@ WHERE page_revisions.revision = excluded.base_revision;
 
 两个`ChangesetVersions/ChangesetVersionsOf` SELECT加 **r.rewrite**，不是base的b.rewrite；`ChangesetVersion.Rewrite`经`changedVersionOf`映射。RevertOp加Rewrite与`Bytes`（目标base的BaseBytes），ContentNow加Bytes（ContentsNow读byte_size）。scheduler的Hash仍是目标base hash，而Rewrite取被撤销C的version。`RevertFacts`按op目标hash/Bytes及瞬时before Bytes生成事实。同步`Unit.Revert`与后台`revertStep`压缩、`revertPlan.ops`重建、`RevertBatch`写回都携带Rewrite/Bytes，新的undo版本也记录true，使undo-of-undo同样允许。它们是内存job计划，不新增持久job格式。
 
-content-only undo没有Tree：state读取相关节点已有父id，再在LLM时批量补这些节点的祖先线（有限层，按所需id，标准模式零额外读），供RevertFacts；不为这个检查读整本树。带树计划则复用treeSim，在每一步前后补事实，临时名称/临时移到根仍是普通树操作。模拟的content state按每次write-back/restore更新Bytes/hash；不能永远拿初始ContentsNow。
+content-only undo没有Tree：state读取相关节点已有父id，再在LLM时批量补这些节点的祖先线（有限层，按所需id，标准模式零额外读），供RevertFacts；不为这个检查读整本树。带树计划则复用treeSim，在每一步前后补事实，临时名称/临时移到根仍是普通树操作。模拟的content state按每次write-back/restore更新Bytes/hash；不能永远拿初始ContentsNow。 S1具体由revert_source_lines.go批量补相关父线到RevertState.Lines（字段不是ParentLines）；标准模式和已有Tree的路径不补读。
 
 保持三种已接受偏严shape：祖先先移入、后临时改名后代需要admin；移入后普通写回immutable；先放回S1再删同hash S2 duplicate（S2）。restore后write-back两步分别判。没有净效果豁免、没有按` ~hex`名称放行。来源root/AGENTS的既有历史保护不变。
 
@@ -161,7 +164,7 @@ PlanBatch保存NotebookState供Contents使用。树一遍按**item当时**Before
 
 `plannedPage`和导出的`PlannedPage`加Merged；只在这项的页面是严格来源且字节实际改变时++，新建从0字节比较。`apply_batch.create`只给叶的PageDraft交最终正文及Merged，补父页0；`apply_batch.content`在已有页第一个正文项交最终正文及Merged，后项不再写。普通调用不接受客户端指定Merged。guard中的>1只是后备，不能替代按项的权威检查；对“先改外部P、移入、再改P”的非法第三项，guard可能只看到外部第一次合成，必须由plan抓住。
 
-必须通过四个正例：admin `[create raw/x=A, move out, edit=B]`、`[empty S first=A, move out, edit=B]`；writer `[create raw/x=A, write same A]`、`[create raw/x="", first=B]`。必须拒三例：createA后editB在后项；empty firstA后再次改变在后项；外部editP、move入raw、再次editP在第三项。MCP的old_string不得空，空页首次正文用合法write，不能造不可达edit测试。
+必须通过四个正例：admin `[create raw/x=A, move out, edit=B]`、`[empty S first=A, move out, edit=B]`；writer `[create raw/x=A, write same A]`、`[create raw/x="", first=B]`。必须拒三例：createA后editB在后项；empty firstA后再次改变在后项；外部editP、move入raw、再次editP在第三项。MCP的old_string不得空，空页首次正文用合法write，不能造不可达edit测试。 S1落地的无base首正文仅限本batch新建的空来源；既存空页、标准模式与区外页保留原PathTaken，不能扩写为所有空页无base可写。
 
 保留已接受后备偏严例：admin移出、清空、移回、再次写；Merged可能>1。合成body导致move-in查重比最后正文与逐项调用两种不同方向属于S2工具说明和测试。拒绝归属：plan是实际违规项；guard新页归创建项、已有页归首次正文项，move归该move项；Refused先于replans。
 
@@ -433,7 +436,7 @@ transfer StartRevert用BackgroundDeps.Batch.bounds()生成闭包，worker用r.bo
 
 `checkJobContract(checked, jobPlan, cuts, notebook, ask)`（S1）与`SourcePrecheck.CheckJob`（S2）都按cuts逐片运行同一结构顺序，事实从当前**模拟**state按选中members与当前操作生成：restore用trash hash/bytes/当前模拟位置，content用目标base hash/bytes与被撤销r.Rewrite，place/aside/delete依实际步。每片开始重置group-begun，跨片保留sim树/hash，不把group未选中的未来成员提前恢复。S2整个metadata/E/外部探查及模拟处于同一readonly RR；X含完整计划会影响的节点。开始/worker拒绝的duplicate_of只指出本次snapshot中已存在且匹配的来源，不把模拟前批当已提交；实际RunBatch每单元重新捕获真实baseline，后批可指先前已commit的来源。
 
-**承诺范围与取舍**：名义预检只验证当前未缩减批计划，不证明所有合法cuts。一旦真实RunBatch因历史/页/链接等既有上限返回ErrBatchTooLarge，保持原halving；随后实际guard仍可能拒绝来源，哪怕没有别人修改。前批保留、本批回滚；反方向名义计划拒但更细可行也仍拒，不搜索分法。同步可能成功而后台被拒。保持已验证M9原子segments/资源界比枚举所有不可预知分批更可控；主持者已接受该取舍43，负责人可改判；原三位设计复核已完成，实施验证仍 pending。
+**承诺范围与取舍**：名义预检只验证当前未缩减批计划，不证明所有合法cuts。一旦真实RunBatch因历史/页/链接等既有上限返回ErrBatchTooLarge，保持原halving；随后实际guard仍可能拒绝来源，哪怕没有别人修改。前批保留、本批回滚；反方向名义计划拒但更细可行也仍拒，不搜索分法。同步可能成功而后台被拒。保持已验证M9原子segments/资源界比枚举所有不可预知分批更可控；主持者已接受该取舍43，负责人可改判；原三位设计复核已完成，S1结构/契约与trace已落地，实际记录见3.14/10.1；S2真实duplicate与缩批结果验证仍pending。
 
 **必要例和证据层次**：
 
@@ -441,6 +444,16 @@ transfer StartRevert用BackgroundDeps.Batch.bounds()生成闭包，worker用r.bo
 2. 合法模块历史fixture同group `[restore F, restore A(A), content A→B, restore B(B)]`，A恢复/content Joined：大批[0,4)先恢复F/A/B再rewrite可过；配置Nodes=3的合法cuts[0,3),[3,4)则后批duplicate。真实halving**另按源码**：[0,4)失败先缩[0,1)提交F；余下[1,4)失败缩[1,3)提交A+rewrite；[3,4)的B拒。把已有history上限设为使相应prefix可过而大批超限的合法fixture，验证实际ErrBatchTooLarge/halved输出，不能只stub错误然后宣称真实历史界已触发。
 3. 同group反方向fixtureA(H)写回J，B(H)：大批先恢复A/B重复所以开始拒；细分先A→J再B可过。它证明“最细segment最严”为假，不作为绕过开始拒绝的API。模块fixture的groups/revisions/rewrite/bytes必须合法；未用公开入口构造的形状标模块证据，不称真实API已复现。
 4. 两独立group同/跨批、同group同批/合法cuts、首segment超配置仍纳入、连续halving/新from再贪心、content-delete/aside joined不可拆、continuation skips/retimed/frontier继续核对。独立oracle手写动作/拒绝层/计数/持久状态，不以revertActions或sim输出验证其自身。
+
+### 3.14 S1 实际落地、差异与初审修复
+
+S1的实现头与最终验收状态见10.1；以下是已提交事实及其边界，不把S2/S3计划提前写成完成。
+
+1. 后台私有helper实际分为`revert_actions.go`、`revert_job_contract.go`、`job_batches.go`与`revert_source_lines.go`；事实在app/domain各自的`source_facts.go`。类型为`StepContent`、`Step.Kinds`、`NodePlace.InArea`、`NodeFacts.Kind`。附件保持`Step.Asset{MIME, Bytes, SHA256}`，其Step.Content为nil。
+2. `StepLines.AfterParents`补恢复跳过活父节点后的森林；每个外父独立，Changes中的当前父图优先。`TestSourceRestorePartKeepsEachRootLineAfterASkippedParent`与`TestSourceRevertContinuationKeepsEachRootLineAfterASkippedParent`是合法模块执行见证；`TestSourceJobSimulatorUsesCurrentLinesForEachRestoredParent`只是纯动作模拟，不冒称其任意交错来自名义cuts。没有据未获实证的缓存疑点增加失效逻辑。
+3. 写单元先补/复用来源事实再进guard；会话否决者在锁下经SourceAncestors读当前祖先。普通模式零额外来源读/管理授权，保留原响应读。content-only历史只批读相关线到RevertState.Lines，不读整树。后台实际动作与同步Ops分开；active-background→sync在真实S1场景存活，事实trace能区分结构，S2duplicate结果差异仍待完成。
+4. P1§9的真实降级覆盖由08fa补充：同一非空来源先由writer/admin changed写拒绝，真实降级后原父位置writer REST与notebook MCP各实际写一次并核SQL版本。首次补测即绿；no-op请求负控单列test-input，不虚构生产功能红→绿。6fac修复矩阵独立trash与整本删除共时的test-fixture缺陷，增加严格时间序/垃圾组/非空集与checkPages catcher，保留08fa门禁失败。
+5. API/MCP与双语/fake随S1交付，完整来源UI仍S3。LW4/LW5分别6与5项API/MCP；没有对应MCP工具的task/session/version/undo/reorder使用API+Go，rewrite的undo明确API bridge。C初审发现历史fake写回使用请求前位置（C-M1，Minor），另补充确认删除新建祖先前未反映root已移出的管理位置（C-M2，Minor）；真实服务对应对照通过，fake业务断言失败。第一组C-M1/M2已在b750同组提交并增量核验，该增量阶段未作整步接受。原C随后在b750诊断确认C-M3 Minor：简单现活祖先先逆移入来源后，fake仍按原树放行后代逆改名；真实editor拒绝。child UUID先时，真实editor同步/worker先区外逆改名再移入且成功，是必须保留的正对照。第二组C-M3修复须反映每个管理动作之前的位置，不能按全局最终树或current/final OR判断；不改后端产品规则。各ID分别验收，不把方向/数组顺序拆新发现；修复及原C复核见[实施审查](reviews/P2-S1-source-rules-review.md)。第二组C-M3仅修改Web历史测试设施：现活简单placement按node UUID排序，每步在当时node/树上先管理检查后移动，保留本动作Before权限；不按历史数组、不用原树OR最终树。第一遍不提前移除created/restored，placed避免第二遍重做原树检查；删除/正文保留第一组已证阶段位置，blocked残余保留原管理后备，不模拟完整key/depth/aside/conflict scheduler。第一组C-M1/M2提交b750保持历史，三个ID已由原C正式复核分别关闭
 
 ## 4. 网页（S1/S2 跟随契约，S3 完整界面）
 
@@ -536,16 +549,16 @@ Source-page行通过PageTreeStore排队创建，队列任务发送前再检查ab
 
 ## 7. 测试、变异、测量与门禁
 
-以下测试名是**将新增的验收契约**，不是基线已有或已执行的声明。实施若改名，必须在结果与变异表同步成真实名。模块app/domain完成组合矩阵，bootstrap证明接线、跨模块持久行为与真交错，避免把每个纯规则重复起完整程序。
+S1以下列真实测试名为准，已核的6fac执行与修复后最终执行分别记在10.1及[审查记录](reviews/P2-S1-source-rules-review.md)；S2/S3仍为将新增的验收契约。模块app/domain完成组合矩阵，bootstrap证明接线、跨模块持久行为与真交错，不以源码中存在名字代替实际选择数。
 
 ### 7.1 功能证据与反例
 
 | 层 | 主要测试/观察 | 必须覆盖的正负对照 |
 |---|---|---|
-| domain/app S1 | `TestSourceContractUsesEachFact`、`TestSourceFactsFollowBothTrees`、`TestSourceBatchCountsChangedItemsInTheirArea` | strict root、深度/附件、普通预指定root零读零auth；三拒四准batch；bytes/session/version、undo、Kind、Import direct helper |
-| postgres/app history S1 | `TestRevisionsKeepOnlyAllRewriteWrites`、`TestSourceRevertsCarryRewriteAcrossBatches`、`TestSourceRevertFactsWithoutATree` | SQL/fake AND四格、compact后台、undo-of-undo、旧false、无Tree仅相关祖先、瞬时content；取被撤销r的rewrite |
-| bootstrap S1第二份 | `TestSourceWritesReachTheRegisteredGuard`、`TestSourceSessionsAreVetoedBeforeLocks`、`TestSourceNoOpsKeepTheirDifferentContracts`、`TestSourceMCPChecksBeforeLocksAndBudgets` | REST/MCP全写表、旧session、no-op预检与changed last-hop分开、锁优先序、普通no-op旧行为、真Authorizer错误 |
-| bootstrap S1第三份 | `TestTheSourceBackgroundRefusalKeepsEarlierBatches`、`TestTheSourceRewriteSurvivesUndoAndUndoAgain` | descendant改名中降权、真实版本链/Report/日志；root/AGENTS对照 |
+| domain/app S1 | `domain.TestSourceContractUsesEachFact`、`TestSourceFactsKeepsMoveSidesSeparate`、`TestSourceFactsRootAndAncestorMovesKeepStrictDescendants`、`TestSourceFactsRestoredForestUsesEachExternalParent`；batch的`TestBatchSourceContractJudgesEachActualChange`/`TestBatchSourceContractKeepsMergedGuardFallback`；app的`TestSourceStepMetadataAddsNoReadsInStandardMode` | strict root/深度/附件、三拒四准与Merged后备、零额外读/授权；全部producer含direct import；两条真实模块forest/continuation另列3.14 |
+| postgres/app history S1 | 两包`TestRevisionsKeepOnlyAllRewriteWrites`；postgres的`TestSourceHistoryReadersKeepTheRevertedVersionsRewrite`；app的`TestSourceRevertsCarryRewriteAcrossBatches`、`TestSourceContentOnlyRevertReadsOnlyRelevantLines` | SQL/fake AND四格、full/Of分别读被撤销r、compact/写回/undo-of-undo、无Tree相关祖先与瞬时content |
+| bootstrap S1第二份与app预检 | bootstrap的`TestSourceRESTWritesReachTheRegisteredGuard`、`TestSourceSessionsAreVetoedBeforeLocks`、`TestSourceMCPPrecheckBeforeEditLocks`、`TestSourceMCPPrecheckBeforeParseBudget`、`TestSourceMCPBatchPlanBeforeEarlierEditLock`、`TestSourceDescendantRefusalKeepsAnEarlierCommittedBatch`、`TestSourceMatrixSeedKeepsItsTrashGroups`；app的`TestSourceNoOpsKeepTheirDifferentContracts`、`TestSourceMCPChecksBeforeLocksAndBudgets` | REST/MCP答码、旧session、no-op与changed末跳分开、锁优先序、真实后台层次/前批保留、矩阵fixture时间/垃圾组 |
+| bootstrap S1第三份/既有降级测试 | `TestTheSourceRewriteSurvivesUndoAndUndoAgain`、扩展既有`TestTheDowngradeEndsTheContract` | 真实版本链/两次undo与根说明/AGENTS对照；真实降级后同一来源REST/MCP写与SQL历史，S2重复释放/S3页面仍待 |
 | postgres/migrations S2 | `TestSourceHashSchemaAndBackfill`、`TestSourceProbesFollowBoundedCursors`、`TestSourcePrecheckKeepsOneSnapshot` | 31/33 CHECK拒、nil/32允许、索引非唯一/谓词、existing LLM页+asset/空/trash/普通预根；跨10k X/E=0/满页/全X/后外部/取消/只读 |
 | app/domain S2 | `TestSourceHashTransitionsMatchRebuild`、`TestSourceDuplicateProvenanceUsesTheUnitStart`、`TestSourcePlansSimulateEveryHashChange` | 所有hash变化、两delete/Forget、四类非新UUID回滚provenance、完整顺序、source_too_large与普通10001 |
 | bootstrap S2第二份 | `TestSourceDuplicatesReachEveryLastHop`、`TestSourceDuplicatesCarryTheirTargetEverywhere`、`TestSourceEntryStopsBeforeReadingTheWholeSubtree`、`TestSourceDowngradeClearsHashesAtomically` | 真交错与HTTP/MCP/report全链、附件、overflow真实LIMIT、Forget失败回滚与事件 |
@@ -587,19 +600,21 @@ barrier优先既有可注入端口，只用于测试装配，不在生产暴露�
 
 | #/Step | 改坏一处 | catcher/命令 |
 |---|---|---|
-| 1/S1 | 去mode guard注册（changed写） | G(internal/bootstrap,TestSourceWritesReachTheRegisteredGuard) |
+| 1/S1 | 去mode guard注册（changed写） | G(internal/bootstrap,TestSourceRESTWritesReachTheRegisteredGuard) |
 | 2/S1 | 去mode session veto；另轮交换mode/lock | G(internal/bootstrap,TestSourceSessionsAreVetoedBeforeLocks) |
-| 3/S1 | 去same-byte窄检查；另轮所有no-op过EditLock | G(internal/bootstrap,TestSourceNoOpsKeepTheirDifferentContracts) |
-| 4/S1 | MCP edit锁/预算先于contract | G(internal/bootstrap,TestSourceMCPChecksBeforeLocksAndBudgets) |
-| 5/S1 | root算source/只看直接parent/漏asset（分别） | G(internal/modules/page/domain,TestSourceFactsFollowBothTrees) |
-| 6/S1 | standard补祖先或问manage_source | G(internal/modules/page/app,TestSourceContractUsesEachFact) |
+| 3/S1 | 去same-byte窄检查；另轮所有no-op过EditLock | G(internal/modules/page/app,TestSourceNoOpsKeepTheirDifferentContracts) |
+| 4/S1 | MCP edit锁/预算先于contract | G(internal/modules/page/app,TestSourceMCPChecksBeforeLocksAndBudgets)；真实入口G(internal/bootstrap,TestSourceMCPPrecheckBeforeEditLocks)、G(internal/bootstrap,TestSourceMCPPrecheckBeforeParseBudget) |
+| 5/S1 | root算source/只看直接parent/漏asset（分别） | G(internal/modules/page/domain,TestSourceFactsRootAndAncestorMovesKeepStrictDescendants)；G(internal/modules/page/domain,TestSourceContractUsesEachFact) |
+| 6/S1 | standard补祖先或问manage_source | G(internal/modules/page/app,TestSourceStepMetadataAddsNoReadsInStandardMode) |
 | 7/S1 | SQL AND改OR/覆盖；fake同样独立轮 | G(internal/modules/page/adapter/postgres,TestRevisionsKeepOnlyAllRewriteWrites)；fake轮G(internal/modules/page/app,TestRevisionsKeepOnlyAllRewriteWrites) |
-| 8/S1 | 读base.rewrite/compact去Rewrite/undo不存true（分别） | G(internal/bootstrap,TestTheSourceRewriteSurvivesUndoAndUndoAgain) |
-| 9/S1 | content-only缺线当区外/改读全Tree（分别） | G(internal/modules/page/app,TestSourceRevertFactsWithoutATree) |
-| 10/S1 | Merged数全部项/区外项；另轮去逐项检查 | G(internal/modules/page/domain,TestSourceBatchCountsChangedItemsInTheirArea) |
-| 11/S1 | 仅去guard的Merged后备（保留plan） | G(internal/modules/page/app,TestSourceGuardRejectsAMergedBodyWithoutThePlanner) |
-| 12/S1 | direct import缺line/kind | G(internal/modules/page/app,TestSourceImportFactsReachTheGuard) |
-| 13/S1 | 后台复用旧授权或吞Refused | G(internal/bootstrap,TestTheSourceBackgroundRefusalKeepsEarlierBatches) |
+| 8-full/S1 | full reader误读base.rewrite | `docs/v0.1/claude_to_codex/tools/heavy.sh bash -lc 'cd server && go test -count=1 -run "^TestSourceHistoryReadersKeepTheRevertedVersionsRewrite$/^full$" ./internal/modules/page/adapter/postgres'`；真实bootstrap链另有捕获 |
+| 8-Of/S1 | Of reader误读base.rewrite | `docs/v0.1/claude_to_codex/tools/heavy.sh bash -lc 'cd server && go test -count=1 -run "^TestSourceHistoryReadersKeepTheRevertedVersionsRewrite$/^(of\|of_subset)$" ./internal/modules/page/adapter/postgres'`；原bootstrap存活，不能记其捕获Of |
+| 8-chain/S1 | compact/ops去Rewrite、sync/bg写回不存true（各独立轮） | G(internal/modules/page/app,TestSourceRevertsCarryRewriteAcrossBatches)；G(internal/bootstrap,TestTheSourceRewriteSurvivesUndoAndUndoAgain)。bg marker的bootstrap仅barrier失败；直接app断实际Rewrite值才是该轮语义catcher |
+| 9/S1 | content-only缺线当区外/改读全Tree（分别） | G(internal/modules/page/app,TestSourceContentOnlyRevertReadsOnlyRelevantLines) |
+| 10/S1 | Merged数全部项/区外项；另轮去逐项检查 | G(internal/modules/page/domain,TestBatchSourceFactsKeepEachContentStep)；G(internal/modules/page/domain,TestBatchSourceMergedIgnoresStandardAndRootBodies)；G(internal/modules/page/domain,TestBatchSourceContractJudgesEachActualChange) |
+| 11/S1 | 仅去guard的Merged后备（保留plan） | G(internal/modules/page/app,TestSourceMergedBatchGuardKeepsItsActualOwner)；G(internal/modules/page/app,TestSourceMergedCreationIsCheckedWithoutAPlanner) |
+| 12/S1 | direct import缺line/kind | G(internal/modules/page/app,TestSourceStepProducersKeepContentKindsAndBothLines)的direct_import子例 |
+| 13/S1 | 后台复用旧授权或吞Refused | G(internal/bootstrap,TestSourceDescendantRefusalKeepsAnEarlierCommittedBatch)；请求/worker/实际unit层次另由TestSourceBackgroundRequestRefusesBeforeEnqueue、TestSourceBackgroundRechecksAtTheWorkerAndActualUnit区分 |
 | 14/S2 | 00050漏LLM/asset回填；另轮检查31byte | G(migrations,TestSourceHashSchemaAndBackfill) |
 | 15/S2 | 两条delete SQL分别不清hash | G(internal/bootstrap,TestSourceDeletesClearEveryHash) |
 | 16/S2 | Forget省/事务外/subscriber后（分别） | G(internal/bootstrap,TestSourceDowngradeClearsHashesAtomically) |
@@ -629,8 +644,8 @@ barrier优先既有可注入端口，只用于测试装配，不在生产暴露�
 
 | #/Step | 改坏一处 | catcher/命令 |
 |---|---|---|
-| 38/S1、S2 | 后台source facts退回同步RevertFacts；S1契约/Bytes与S2真实duplicate分别验证 | G(internal/modules/page/app,TestSourceJobsFollowTheirActualActions)；G(internal/bootstrap,TestTheSourceBackgroundUndoChecksItsCompactOrder) |
-| 39/S1、S2 | revertActions不合并同group或跨group误合并；只用最细cuts；忽略传入Batch配置（分别） | G(internal/modules/page/app,TestSourceJobCutsKeepTheirDifferentOutcomes)；G(internal/modules/transfer/app,TestSourceJobPreviewUsesTheWorkersBatchEnds) |
+| 38/S1、S2 | 后台source facts退回同步RevertFacts；S1结构与S2真实duplicate分开 | S1：G(internal/modules/page/app,TestSourceJobFactsUseNominalCutsAndActualActions)、G(internal/modules/page/app,TestSourceJobAsideFactsMatchActualBatches)；active-background→sync在三个真实S1场景存活，不记产品结果已区分。S2的TestTheSourceBackgroundUndoChecksItsCompactOrder仍pending |
+| 39/S1、S2 | revertActions不合并同group/跨group误合并、只用最细cuts、忽略Batch配置（分别） | S1：G(internal/modules/page/app,TestSourceRevertActionsFollowTheActualBatchGroups)、G(internal/modules/page/app,TestSourceJobFactsUseNominalCutsAndActualActions)；transfer/app的TestARevertStartReceivesNominalBatches、TestARevertWorkerReceivesNominalBatches、TestABackgroundBatchesMatchHandwrittenCuts、TestABackgroundRevertRegreediesAfterJoinedHalving，均按G展开；S2 duplicate结果仍pending |
 | 40/S2 | CheckRestore完整读在admit之前；去后续error release；重复仍enqueue（分别） | G(internal/modules/page/app,TestSourceRestoreAdmissionPrecedesFullReads)；G(internal/modules/transfer/app,TestSourceRestoreReleasesEveryClaim) |
 | 41/S2 | worker Plan预检移除（保留guard）；另轮只去guard | G(internal/bootstrap,TestSourceBackgroundRefusalsNameTheirActualLayer)（Plan前重复应0 RunBatch；Plan成功后首批和真实非零前批后的拒绝分别杀guard轮） |
 | 42/S1、S2 | MCP码表漏immutable的write/batch或duplicate的move；另轮漏另一scope | G(internal/bootstrap,TestSourceMCPToolsAnswerEveryAddedCode) |
@@ -639,6 +654,8 @@ barrier优先既有可注入端口，只用于测试装配，不在生产暴露�
 有限reader追加变异44/S2：inner ORDER改sort_order,id、去outer LIMIT、parent转text、完整前排序/错按父分组、恰好max不探下一层（分别）；命令G(internal/modules/page/adapter/postgres,TestSourceSubtreeReadsWithinItsWorkAndOrder)。采用真实SQL的宽层/多父/范围与完整顺序子例，不只检查LIMIT文本；overflow后hash/asset仍由G(internal/bootstrap,TestSourceEntryStopsBeforeReadingTheWholeSubtree)核对。
 
 另有契约/矩阵/双语/SQL不变量每项反例，跟随已有对应测试记录，不以这些变异替代§3.12逐操作答码检查。Stage最终修复按workflow重跑该Step全表与审查者追加变异；恢复后门禁针对最终树，不沿用改坏前的结果。
+
+S1补充反例单列类别：`TestTheDowngradeEndsTheContract`的合法no-op请求是test-input（200仍成功、readback正文/revision失败），`TestSourceMatrixSeedKeepsItsTrashGroups`的同刻删除是test-fixture；均不混入生产语义变异killed数。AfterParents用`TestSourceFactsRestoredForestUsesEachExternalParent`与两条RestorePart/continuation测试；cross-group全成员literal oracle替代旧首成员弱观察，旧存活不删。审查者A的旧有效session changed末跳、B的SQL/fake/双reader/compact/forest六轮、C的严格v2公开入口guard轮及C-M1正文双向、C-M2删除管理位置、C-M3祖先/child两种实际管理次序真实/fake对照，分别记录在[S1审查](reviews/P2-S1-source-rules-review.md)。最终修复头全部重放：fd00新目录whole-step-final-v4：109 variants /112 checks /336同argv执行，112 baseline与112 restore均0，mutant110次exit1、2次已知exit0。108项至少有一个预期catcher；test-input、test-fixture及cycle结构观察单列，不全部称产品语义kill。Of/bootstrap存活而direct of/of_subset捕获；active-background→sync继续存活；marker barrier、trace与用户结果边界保持。原93控制288份失败测试名集合与6fac轮一致；A/B/C八控制、fix1五控制、fix2三控制均重放。另11真实/fake对照exit0，原C-M3 Folder先拒绝与child先允许由真实HTTP/worker/SQL次序验证，主持者root-replay-integrity及root-counterexample-integrity均接受
 
 ### 7.4 计划、性能与600万迁移
 
@@ -670,9 +687,9 @@ docs/v0.1/claude_to_codex/tools/heavy.sh make -j1 test-go-short test-web
 docs/v0.1/claude_to_codex/tools/heavy.sh make -j1 e2e
 ```
 
-本机不跑plain make test/test-go（内部-j4），以上显式成分构成等价门禁；分支CI十项含image/smoke全成功。设计合并前文档链接/guarded替换与其CI；本次作者未跑产品门禁。
+本机不跑plain make test/test-go（内部-j4），以上显式成分构成等价门禁；分支CI十项含image/smoke全成功。设计合并前文档链接/guarded替换与其CI；设计作者当时未跑产品门禁；S1的6fac历史执行与修复后最终记录分别见10.1。
 
-新增`TestSource...`在第二份、`TestTheSource...`第三份，按7.1分散。每Step新增测试race两次、三份完整race各两次，门禁样本可复用但确有两次；记真实Test秒与440.5/317.5/260.5基线增量。第一份既有矩阵/不变量变重也量，不能只看新名；它只有9.5秒余量。需要迁移既有测试分份须独立记录重算，不凭偶然快样本。每Step合并与记录提交的精确CI都绿之后，用这两个main Test样本算均值，各份<450秒。成本行按既有本机两次平均×2.4及M9/P2§6.5半个进程超时线分行，现有timeout不提高。
+新增`TestSource...`在第二份、`TestTheSource...`第三份，按7.1分散。每Step新增测试race两次、三份完整race各两次，门禁样本可复用但确有两次；记真实Test秒与440.5/317.5/260.5基线增量。第一份既有矩阵/不变量变重也量，不能只看新名；它只有9.5秒余量。需要迁移既有测试分份须独立记录重算，不凭偶然快样本。每Step合并与记录提交的精确CI都绿之后，用这两个main Test样本算均值，各份<450秒。成本行按既有本机两次平均×2.4及M9/P2§6.5半个进程超时线分行，现有timeout不提高。 实际descendant后台测试名为TestSourceDescendantRefusalKeepsAnEarlierCommittedBatch，在第二份；既有TestTheDowngradeEndsTheContract也扩展了真实来源写。6fac本机两轮与branch Test样本见实施审查，最终两main样本仍须单独取得，不能从设计测试名推分片或沿用旧头。
 
 IndexItems 30ms与grep600ms现有义务不改，后续接近/超线查根因/样本，M10收尾核稳定性。仅认P2入口已有的两个样本，不承诺新增工作必然装得下。
 
@@ -749,17 +766,27 @@ P3：在已实现page.SourceArea基础上增加整区lint/pending来源读取，
 
 `M12-release/handoffs/M4-performance.md`追加真实600万A/B、三/四列空间差/回填/锁等待、10万Forget挡写、source advisory等待与失败率的本机证据，并列“真实服务器/真实数据重测、升级停机窗口、并发来源首写负载”未验事项。`M5-polish.md`仅记实际新增图标/可读名需收尾汇总之处，不造未发现问题。IndexItems30ms及grep600ms持续CI稳定性与M10收尾复发审查保留，不能以P2新cost通过抵消。用户明确不开始M11；本Phase最终交给M10/P3继续，M10收尾才中文汇报与停下。
 
-## 10. 结果（尚未实施）
+## 10. 结果
 
-| 项目 | 当前状态 | 实施后须填 |
+| 项目 | 当前状态 | 证据与剩余 |
 |---|---|---|
-| P2设计 | 已审查并接受；原四项发现及B-Q1在设计层resolved；[审查记录](reviews/P2-design-review.md) | 设计文档提交的精确main CI仍待核对，绿后才开S1 |
-| 10.1 S1 | pending | rewrite/来源规则结果、偏离、代码/文档提交、三审与变异、门禁、分支/merge/record exact CI、两main Test均值 |
+| P2设计 | 已审查并接受 | 原四项发现及B-Q1在设计层resolved；4755精确main CI40413727596十项成功；[设计审查](reviews/P2-design-review.md) |
+| 10.1 S1 | S1代码、完整本机验证、精确代码CI与原C三项正式复核已接受；文档分支CI、no-ff合并及两个main CI/Test均值pending，S1尚未合并，S2未释放 | [实施审查](reviews/P2-S1-source-rules-review.md)；合并见 00 号文档第 12 节 |
 | 10.2 S2 | pending | hash/去重/provenance/索引游标/工作界、并发与last-hop、迁移A/B及独立扫描/三四列差、全部实际cost数、上述审查/CI |
 | 10.3 S3 | pending | UI/文件bytes/会话释放/重复链接/E2E与跨标签、审查/CI、M8done与M7/M9open核对 |
 | 10.4 P2done | pending | 三Step均验收、最终文档链接/handoff核对、P2done准确SHA与十项main CI；P3下一步 |
 
-本轮只完成静态设计审查、修订与原审查者复核，主持者已接受设计；没有运行 P2 产品测试/变异/迁移/600万测量，没有生产实现。§1 仅转录已接受的真实入口维护样本；各 Step 的实现审查与运行证据、P2 完成文档及精确 CI 仍待完成。
+### 10.1 S1 来源规则
+
+六个初审提交依次为08dfaf5f、a0dfe443、93395bd5、3be31d58、08fa1d16、6facccde；第一组C-M1/M2修复提交`b750631362a468a01a18dfc4faa065b7d88af4db`并增量核验，第二组C-M3提交`fd00ee670c24db3ad4d9478419acd8340f1e6d91`，最终代码头`fd00ee670c24db3ad4d9478419acd8340f1e6d91`。00049/rewrite全链、全部producer事实、严格来源正文与管理/session规则、按项Merged与后备、实际后台动作/名义批界、REST/两scope MCP、双语与fake、LW4/LW5 API/MCP已落地；具体差异见3.14。A/B初审0 I/M/N/Q，C初审1 Minor C-M1、补充1 Minor C-M2，b750准备诊断另1 Minor C-M3；主持者分别接受，共三个ID、两组修复，第一组增量通过不代表最终验收；第二组C-M3仅修改Web历史测试设施：现活简单placement按node UUID排序，每步在当时node/树上先管理检查后移动，保留本动作Before权限；不按历史数组、不用原树OR最终树。第一遍不提前移除created/restored，placed避免第二遍重做原树检查；删除/正文保留第一组已证阶段位置，blocked残余保留原管理后备，不模拟完整key/depth/aside/conflict scheduler。第一组C-M1/M2提交b750保持历史，三个ID已由原C正式复核分别关闭；原C复核：原C在fd00正式复核分别关闭C-M1/C-M2/C-M3，未关闭Important=0、Minor=0，无新增已核实I/M/N/Q；主持者核96件/740,998字节、17独立执行及五个0→1→0。报告review-c/final-fix-recheck/C-final-fix-recheck.md，SHA256 82f06e259ce3da1e3a370cc8385d9f74e7c4a402fd861d28d34097334b167aab；完整证据索引见下文。root-I1降级覆盖补充与root-I2矩阵fixture修复属于实施核对，未冒称三审或生产规则缺陷。
+
+6fac的历史证据：93variants/96checks/288commands；91生产/观察变体中90有语义catcher、1active-sync存活，另test-input/test-fixture各1。Of/bootstrap存活、direct reader捕获；background marker的bootstrap只见barrier失败，direct app断真实marker值；旧cross-group/Merged弱oracle存活保留。08fa门禁第五项bootstrap-3因fixture不变量失败、后八项未执行，修为6fac后全新目录重跑。三轮各自绑定真实头，不覆盖或合计成最终头的一轮。
+
+6fac两次focused race每次74顶层/286含子测试、8实际包，wall37.803/37.871s；完整13门禁全0、3146.177s，Web169文件/3436测试、E2E302。三片本机Go包均值299.336/307.5335/267.733s。exact branch [CI40468800650](https://github.com/open-nerve/NerveWiki/actions/runs/40468800650)十项成功，bootstrap Test441/309/371s，仅分支单样本。20项成本均在原界，保留IndexItems/grep旧失败与M10收尾义务，不推断长期稳定。原始证据身份/报告哈希与详细命令、各轮秒数见[S1审查](reviews/P2-S1-source-rules-review.md)。
+
+最终修复头replay：fd00新目录whole-step-final-v4：109 variants /112 checks /336同argv执行，112 baseline与112 restore均0，mutant110次exit1、2次已知exit0。108项至少有一个预期catcher；test-input、test-fixture及cycle结构观察单列，不全部称产品语义kill。Of/bootstrap存活而direct of/of_subset捕获；active-background→sync继续存活；marker barrier、trace与用户结果边界保持。原93控制288份失败测试名集合与6fac轮一致；A/B/C八控制、fix1五控制、fix2三控制均重放。另11真实/fake对照exit0，原C-M3 Folder先拒绝与child先允许由真实HTTP/worker/SQL次序验证，主持者root-replay-integrity及root-counterexample-integrity均接受。focused race：fd00两轮同argv -race -count=1 -json -timeout 15m -p 1，均exit0、输入稳定、无fail/skip；wall36.692/37.655s，各74顶层/286含子测试，8实际包/9请求包，page/adapter/http无匹配且不计focused覆盖。rewrite1.40/1.53s、downgrade0.86/0.86s、seed0.79/1.87s；主持者root-focused-races已核。完整门禁：fd00完整13阶段串行、全exit0，总wall3155.474s；static-build7.951、race300.399、bootstrap1/2/3为288.549/308.360/262.781、costs331.525、guards469.401、web103.541、short54.698、e2e139.401，三片第二次308.944/312.807/267.028s。完整Web169文件/3492测试通过，完整E2E302测试通过；root-gate-acceptance核13条命令/日志与121份提交文件未变，未提高阈值。本机分片：fd00本机三片各两轮：make wall 1=288.549/308.944（均298.7465）、2=308.360/312.807（均310.5835）、3=262.781/267.028（均264.9045）秒；Go包1=287.873/308.122（均297.9975）、2=307.708/311.993（均309.8505）、3=261.978/266.243（均264.1105）秒。两种计时分开；两个main CI Test样本及均值仍pending，不能用本机值替代。代码exact CI：[CI40492563209](https://github.com/open-nerve/NerveWiki/actions/runs/40492563209)，exact fd00ee670c24db3ad4d9478419acd8340f1e6d91、attempt1，十作业completed/success，主持者与原C各核实时API原件。Test步骤：web219、race625、bootstrap1/2/3为365/441/396、costs379、guards745、short180秒；E2E182、image smoke66秒。仅一个代码分支样本，不能替代两次main Test均值；成本：本次fd00代码CI20项均在原界内：IndexItems每样本为20读总量，三阶段中位12.092768/12.053564/13.592351ms，对30ms；GrepCandidates三中位197.394567/184.531791/196.978013ms，对600ms；完整grep调用中位402.851941ms，对1000ms。新累计25个observed workflows/24个modern，IndexItems与Candidates各自72组/216原始样本，app call24组/72样本；三项历史失败保留，不用新界追改旧分类。6fac各自69/207继续作为旧历史，文档/main后续增加按届时实际回执更新；不从单轮绿色推稳定性。fd00本机21原始样本另列：IndexItems三中位10.201291/9.178542/10.357667ms、Candidates99.131791/93.979667/105.028250ms、call214.983917ms，均在原界；不混作CI样本。最终代码成本补充SHA256 abc63563b93aa5410aead1e037d479e28286a207e275b146c3ee9f3301970241。文档exact CI：pending：正式文档尚未写回或提交，文档精确分支CI及其成本回执待产生。主持者验收：主持者已接受fd00代码、完整本机验证、精确分支CI/成本及原C正式复核，三个Minor分别关闭。A/B初审无发现；6fac后仅两TS测试设施变化，server、Makefile与CI workflow对象未变，原范围结论保持；C独立执行三项修复与相邻回归并审计v4/CI。v4交付1594件/8,132,996字节、350外层执行与24份冻结程序/fixture已核。当前待正式文档分支CI、no-ff合并、main合并/记录CI及两main Test样本均值；未宣称S1已合并或放行S2，P2/M10继续进行中。
+
+合并见 00 号文档第 12 节。main merge CI：pending：尚未no-ff合并；精确main合并SHA、十作业CI及成本回执待产生；main记录CI：pending：尚未产生合并记录提交；该精确main CI及成本回执待产生；两main Test样本/均值：pending：合并与记录两个main CI的三片Test步骤样本尚未产生，取得后分别算均值并核各份<450秒；不使用本机/代码分支样本替代。各份<450秒后才释放S2，不能替用本机/分支样本。S1不去重且来源UI仍待S3；M8仍open、P2/S3完成才done，M9/M7/M6open，M5done。P2/M10仍进行中。
 
 ## 附录：核对过的代码与证据
 
