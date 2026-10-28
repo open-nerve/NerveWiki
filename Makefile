@@ -218,7 +218,9 @@ test-go: ## 运行 Go 测试，含集成测试与 server/tools（开启竞态检
 # 这两个工作流均在 guards 失败、e2e/image 跳过；bootstrap 的成功样本用于分份决定，不是新四份实测或最终两次 main 验收。
 # 保留 FIRST；第二份 -run SECOND，第三份 -run THIRD 且 -skip SECOND，第四份 -skip 三个表达式的并。
 # FIRST 与另两个前缀不交；SECOND 与 THIRD 重合的 TheMCP 只在第二份运行；第四份补齐余下名字，新测试自动归入一份。
-# c7 的 468 个顶层按此规则静态归入 168/71/114/115；新四份各两轮和最终 CI 时长仍须在最终输入上实际取得。
+# c7 的 468 个顶层按此规则静态归入 168/71/114/115；ca8 最终两轮实跑均完整覆盖（两个顶层按设计跳过）。
+# 本机四份包耗时两次均值 319.5785/284.784/240.4775/262.5225 秒；代码分支 33b4da5a 的 CI 40718770843
+# 四份 Test 为 444/419/302/271 秒。这是一次分支样本，最终两次 main 的各份均值另验（须 <450 秒）。
 BOOTSTRAP_FIRST = ^Test([A-D]|E([a-u]|very[A-R]))
 BOOTSTRAP_SECOND = ^Test(Every[S-Z]|Source|The(MCP|Contents))
 # M9/P2 S1：第二份的测试一步过了 go test 的 15 分钟的一半（CI 的两次运行 7:15 与 8:33），照规则按测试名再分一份，不提高 -timeout（M9/P2 设计 6.5）

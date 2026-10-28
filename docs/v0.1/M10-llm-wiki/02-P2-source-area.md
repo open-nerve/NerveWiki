@@ -3,7 +3,7 @@
 | 项 | 内容 |
 |---|---|
 | 里程碑 / Phase | M10 模式契约与 LLM Wiki / P2 来源区 |
-| 日期、状态 | 2026-10-27；P2 进行中；S1已合并；记录CI与两main Test均值待root验收，S2未释放；S2/S3 pending |
+| 日期、状态 | 2026-10-29；P2进行中，S1已验；S2实现/159义务/本机门禁及精确33b4代码CI已接受，文档B-N1原审已关闭，main集成待闭环；S3待做 |
 | 基线 | `main` = `origin/main` = `403841fc75d0e5ac6b5f39447158213c0e07b2fe`，树 `b3665215f745d4dcfe7e8d339d4882e6d95b4a63` |
 | 入口 | P1 已完成；其后 grep 成本维护也已合并并核对，两份 main CI 全 10 项成功；第 1 节 |
 | 权威 | [文档约定](../../README.md)、[总体设计](../v0.1-design.md)、[M10 总设计](00-M10-design.md) §4.6–4.8、§4.16–4.18、§7、§9；[P1](01-P1-contract-frame.md) §8–10；[M8 历史移交](handoffs/M8-history.md)、[M9 MCP 移交](handoffs/M9-P1-mcp-registry.md) |
@@ -244,7 +244,8 @@ type SourceMatch struct { Probe int; ID uuid.UUID }
 SourceHeads(ctx context.Context, notebook uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]SourceValue, error)
 ProbeSources(ctx context.Context, notebook uuid.UUID, probes []SourceProbe) ([]SourceMatch, error)
 // BeforeSourceHash is nullable nodes.source_hash, for pages AND assets.
-SetSourceHashes(ctx context.Context, notebook uuid.UUID, values []SourceValue) error // nil Hash clears
+SetSourceHashes(ctx context.Context, notebook uuid.UUID, values []SourceValue) (map[uuid.UUID]SourceValue, error) // changed rows with old BeforeSourceHash; nil Hash clears
+SourceBaselines(ctx context.Context, notebook uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]SourceValue, error) // live derived keys before deletion
 LockSources(ctx context.Context, notebook uuid.UUID) error // transaction required
 ForgetSources(ctx context.Context, notebook uuid.UUID) error
 // Existing asset/page AttachmentInfo gains SHA256 []byte.
@@ -258,30 +259,49 @@ ForgetSources(ctx context.Context, notebook uuid.UUID) error
 实际探查SQL形状（请求最多10k probes，所有Take之和≤10k；一次新增通常一项、Take=1；实际类型以sqlc生成的既有kind类型为准）：
 
 ```sql
-SELECT wanted.ord, hit.id
-FROM unnest(sqlc.arg(kinds)::text[], sqlc.arg(hashes)::bytea[],
-            sqlc.arg(after_ids)::uuid[], sqlc.arg(takes)::int[])
-     WITH ORDINALITY AS wanted(kind, hash, after_id, take, ord)
+SELECT wanted.ord::bigint AS probe, hit.id
+FROM (
+    SELECT unnest(sqlc.arg(kinds)::text[]) AS kind, unnest(sqlc.arg(hashes)::bytea[]) AS hash,
+        unnest(sqlc.arg(after_ids)::uuid[]) AS after_id, unnest(sqlc.arg(takes)::int[]) AS take,
+        unnest(sqlc.arg(has_afters)::boolean[]) AS has_after,
+        generate_subscripts(sqlc.arg(kinds)::text[], 1) AS ord
+) wanted
 CROSS JOIN LATERAL (
-  SELECT n.id FROM nodes n
-  WHERE n.notebook_id = sqlc.arg(notebook_id)
-    AND n.kind = wanted.kind AND n.source_hash = wanted.hash
-    AND n.source_hash IS NOT NULL AND n.deleted_at IS NULL
-    AND n.id >= COALESCE(wanted.after_id, '00000000-0000-0000-0000-000000000000'::uuid)
-    AND (wanted.after_id IS NULL OR n.id <> wanted.after_id)
-  ORDER BY n.id
-  LIMIT wanted.take
+    SELECT n.id FROM nodes n
+    WHERE n.notebook_id = sqlc.arg(notebook_id)
+        AND n.source_hash IS NOT NULL AND n.deleted_at IS NULL
+        AND (n.kind, n.source_hash, n.id) >= (wanted.kind, wanted.hash, wanted.after_id)
+        AND (n.kind, n.source_hash) <= (wanted.kind, wanted.hash)
+        AND n.id >= wanted.after_id
+        AND (NOT wanted.has_after OR n.id <> wanted.after_id)
+    ORDER BY n.kind, n.source_hash, n.id
+    LIMIT wanted.take
 ) hit
 ORDER BY wanted.ord, hit.id;
 ```
 
-三/四数组同长、Take>0、sum(Take)≤10k在app调用边界核对，postgres端口以Planned执行；空输入不查。初始after为NULL，包含最小uuid；续页用上一页末ID，包含式索引下界加排除相等恰好前进，不漏最小/最大ID。页顺序由四列索引给出；外层至多10k结果的小排序不等于对整个hash组排序。禁止OFFSET。计划断言必须检查内部index条件含nb/kind/hash/id下界，无全组Sort/SeqScan，不能只看用了某个index名字。
+`kinds`、`hashes`、`after_ids`、`takes`、`has_afters`五组有类型数组由adapter同一轮构造，长度相等；Take>0、sum(Take)≤10k，空输入不发SQL，变长数组以Planned执行。sqlc不能解析这里的多数组FROM-unnest重载，实际用SELECT-list并列SRF按位置配对，以`generate_subscripts(kinds,1)`给一基序号，adapter转为零基Probe。当前adapter使用的`[]uuid.UUID`参数不表达NULL元素，缺游标用zero UUID加`has_after=false`，续页用末ID加`has_after=true`；两者区分后不漏合法zero UUID，亦不漏最大ID。对非NULL的kind/hash/id，两个tuple上下界固定同一kind/hash前缀并给id下界，`has_after`只排除续页边界。页顺序由四列索引给出；外层至多10k结果的小排序不等于对整个hash组排序。禁止OFFSET。计划断言检查内部Index Cond的notebook及kind/hash/id范围、无全组Sort/SeqScan，不能只看索引名字。
+
+S2-4的首次物理核对发现：原固定kind/hash等式加ORDER BY id在ANALYZE/custom及真实generic PREPARE的exhausted游标上选择主键，检查200,001条索引项，其中另一本200,000条；返回正确不等于工作有界。MATERIALIZED wanted与仅扩展ORDER BY的两个候选仍未修复。当前tuple上下界版本通过无统计、ANALYZE、force_generic_plan三阶段的15个实际计划（定向Go测试39/39）；exhausted末样本只检查来源索引1项，返回10,000的续页末样本检查10,001项。未新增索引、hint或关闭planner选项；每例三次时间均留存，物理计数原件是末样本及另一次EXPLAIN，三次执行中均有断言。阶段回执`p2-s2-4-root-probe-first-green.json` SHA256 `2999d7c6ab336d2a542d0ba069f2903faf2fe05159505ec13443d0c876a43043`只接受首次修复，原SQL回退控制、最终成本与整Step门禁/三审仍按后续实际回执验收。
 
 每个key的完整计划排除集X留在Go map，见3.11。第一次每key只取1个，按10k keys一组；命中不在X立即保存外部见证。若在X，按实际初始source_hash统计该key在X中的个数E，从E减去已经扫到的X候选，下一Take为min(剩余E+1,10k)。贪心装包时再用本包剩余额度截断，所有keys分包总Take≤10k，cursor分别保存，遍历不会从头重查。拿到外部ID停止该key并忽略本页后续行；全是X且返回不足Take则结束为不存在，否则按末ID续页（最后E=0时至多取1个确认）。每key读取至多E+1行，只有全为X的组需要读完E；不会读同hash组的其余无关来源。E可为0，此时一条命中必是外部。未命中/全排除/混合kind、同hash被rewrite大量收敛、恰好在第10,001项出现外部均有测试。不存在按每个被排除节点一轮SQL的N+1：首次批量探1后，余量按上述大页装包。
 
 索引id末键是本协议的必要修订：不靠对三列索引查出整组再排序来模拟游标。单元查重也复用探查端口，X是当前步将加入/更新且需要排除自身的节点；初始E用已读heads，外部ID的duplicate_of仍由单元baseline判。候选中的0字节页不产生key；相同hash的page与asset独立。
 
-更新SQL用两列等长数组unnest：`UPDATE nodes n SET source_hash=v.hash FROM unnest(ids,hashes) v(id,hash) WHERE n.id=v.id AND n.notebook_id=$nb AND n.deleted_at IS NULL AND n.source_hash IS DISTINCT FROM v.hash`。nil bytea代表NULL。每块≤10k，空块不发SQL；没有源区membership变化的rename/reorder不更新。Forget精确为`UPDATE nodes SET source_hash=NULL WHERE notebook_id=$1 AND source_hash IS NOT NULL AND deleted_at IS NULL`，走同一部分索引。
+更新的两个等长数组同样用SELECT-list并列SRF，不用多数组FROM-unnest；nil bytea表示NULL。当前 `SetSourceHashes` 用单条 UPDATE：`nodes old` 与目标 `n` 按主键连接，在同一语句快照取得旧 kind/hash；保留 n 的 notebook/live/distinct 条件，RETURNING 只交回实际改变的目标，供单元 provenance 合并。S2-1 当时的 MATERIALIZED previous/changed 方案保留历史；S2-4 无统计 HTTP 暴露末尾 CTE join 的二次方比较后改为以下 self-join，物理反例与真实请求见 §10.2。删除前另用 `SourceBaselines` 只读 live 节点派生 key，不取正文/asset 元数据。当前 SQL：
+
+```sql
+UPDATE nodes n SET source_hash = v.hash
+FROM nodes old,
+     (SELECT unnest(sqlc.arg(node_ids)::uuid[]) AS id,
+             unnest(sqlc.arg(hashes)::bytea[]) AS hash) v
+WHERE n.id = v.id AND n.notebook_id = sqlc.arg(notebook_id)
+    AND old.id = n.id
+    AND n.deleted_at IS NULL AND n.source_hash IS DISTINCT FROM v.hash
+RETURNING n.id, old.kind, old.source_hash AS before_source_hash;
+```
+
+每块≤10k，空块不发SQL；没有源区membership变化的rename/reorder不更新。Forget精确为`UPDATE nodes SET source_hash=NULL WHERE notebook_id=$1 AND source_hash IS NOT NULL AND deleted_at IS NULL`，在同一事务内走同一部分索引。
 
 ### 3.8 来源移入的工作界与已有大移动（S2，决定36）
 
@@ -298,14 +318,15 @@ CROSS JOIN LATERAL (
          n.sort_order, n.created_by_id, n.updated_by_id, n.created_at, n.updated_at
   FROM nodes n
   WHERE n.parent_id = p.id AND n.parent_id IS NOT NULL
-    AND n.deleted_at IS NULL AND n.notebook_id = sqlc.arg(notebook_id)
+    AND n.deleted_at IS NULL
   ORDER BY n.name_key
-  LIMIT sqlc.arg(max_rows)::integer
+  LIMIT (SELECT sqlc.arg(max_rows)::integer)
 ) child
-LIMIT sqlc.arg(max_rows)::integer;
+WHERE notebook_id = sqlc.arg(notebook_id)
+LIMIT (SELECT sqlc.arg(max_rows)::integer);
 ```
 
-parents只来自本reader已验证本笔记本的根/上一层，不重复，≤max；内外相同take=`max-len(out)+1`，根计数。父数组有限的Function Scan与读取整个孩子层不是一回事。查询经Planned/现有ctx事务，不开snapshot、不关seqscan/bitmapscan。name_key为C collation，同父live唯一，不需id次序；保留显式notebook过滤，即使父FK也约束同本。只选Node元数据，不取source_hash/正文或资产端口；堆页可能同时含相邻hash字段，不能说物理页绝无hash。
+parents只来自本reader已验证本笔记本的根/上一层，不重复，≤max；内外相同take=`max-len(out)+1`，根计数；两处都用`LIMIT (SELECT sqlc.arg(max_rows)::integer)`，使custom plan以运行时值估价，避免低估行数时按整层取数选计划。父数组有限的Function Scan与读取整个孩子层不是一回事。查询经Planned/现有ctx事务，不开snapshot、不关seqscan/bitmapscan。name_key为C collation，同父live唯一，不需id次序；notebook过滤明确放在每父内层LIMIT之后；复合父FK保证正常同父孩子同本，但显式过滤仍拒绝外本输入，不得删除或移回内层改变实际计划。只选Node元数据，不取source_hash/正文或资产端口；堆页可能同时含相邻hash字段，不能说物理页绝无hash。
 
 adapter先FindNodeIn放root，逐层读：返回len(rows)==take时已证明总数>max，立即`return nil,false,nil`，不转换/排序当前超额层、不再读下一层/正文hash/asset。返回不足take说明本层全部父的孩子已穷尽（任何父若被内层截断到take，总输出必到take）；追加这层并继续。恰好max仍以take=1探下一层，空才完整。64层缺陷防护若未穷尽返回内部错误，不标complete；合法最大深度+附件层行为不变。完整后才对≤10k节点按`(Level, SortOrder, UUID字节序)`整层全局排序，逐字段/Level等于同一视图下旧Subtree的结果；不能按父分组、不能改DFS。root层只有root，Height沿原page-only规则。
 
@@ -347,7 +368,9 @@ source-out/区内及source root/ancestor移动沿用原Subtree；membership不�
 
 ### 3.11 历史开始预检与导入（S2）
 
-实际接线复用已有`shared.Snapshots`，不新造事务平台：`page.Deps.Snapshots`目前供Search，仍由`bootstrap/deps.go`的同一个`postgres.TxManager`提供。`app/source_precheck.go`增加`SourcePrecheckDeps{Snapshots shared.Snapshots, Sources SourceReads, Attachments AttachmentInfos}`与`NewSourcePrecheck(deps)`；同步的`Check(ctx, state, planFacts)`与后台的`CheckJob(ctx, checked, jobPlan, cuts, ask)`专供**锁外**调用，normal直接返回，否则`Snapshots.WithinSnapshot(ctx, func(sctx){...})`把metadata/E/所有游标读用同一个sctx完成。page.module构造一次并注入同步restore/revert及Jobs的CheckRestore/CheckRevert/PlanRestore/PlanRevert，不让transfer模块直接连page表。纯模拟函数独立于事务壳，锁内guard只用现有`postgres.DB(ctx,pool)`和同一模拟/探查helper，不调用Check，不嵌套开snapshot。误在已有事务调用Check由既有ErrNestedSnapshot立即报基础设施错误，测试守调用边界。
+实际接线复用已有`shared.Snapshots`，不新造事务平台：`page.Deps.Snapshots`目前供Search，仍由`bootstrap/deps.go`的同一个`postgres.TxManager`提供。`app/source_precheck.go`增加`SourcePrecheckDeps{Snapshots shared.Snapshots, Sources SourceReads, Attachments AttachmentInfos}`与`NewSourcePrecheck(deps)`；同步的`Check(ctx, notebookID, notebook, facts, ask)`与后台的`CheckJob(ctx, notebookID, notebook, checked, jobPlan, cuts, ask)`专供**锁外**调用，normal直接返回，否则`Snapshots.WithinSnapshot(ctx, func(sctx){...})`把metadata/E/所有游标读用同一个sctx完成。公开`ask`的类型是`func(context.Context, shared.Action) error`；snapshot内传给它实际sctx，同步、开始与worker调用者必须使用回调收到的ctx，不得捕获外层ctx。page.module构造一次并注入同步restore/revert及Jobs的CheckRestore/CheckRevert/PlanRestore/PlanRevert，不让transfer模块直接连page表。纯模拟函数独立于事务壳，锁内guard只用现有`postgres.DB(ctx,pool)`和同一模拟/探查helper，不调用Check，不嵌套开snapshot。误在已有事务调用Check由既有ErrNestedSnapshot立即报基础设施错误，测试守调用边界。
+
+S2-3的D-I1修复守住这个上下文约束：真实PostgreSQL、MaxConns=1与真实权限SQL证明work/no-work两条路径复用snapshot连接，避免自己占满连接再等自己；实际revertChecks同步/开始/worker三入口另用marker/fake调用记录核对传递。已有OnConn case的权限回调是noop，这两层证据不能合称“OnConn加真实授权加整个server”的一个组合见证。D-I1已在S2-3增量复核关闭（`9bafdaa6`），整S2三审仍待后续。
 
 WithinSnapshot已有REPEATABLE READ READ ONLY、ctx取消、panic/error rollback、WithoutCancel限时结束及连接归还机制，复用而不私写BeginTx。锁外正常请求从pool独立取得一条连接；后台若已有OnConn且无事务，按平台既有规则在该专用连接串行读，不额外占第二条连接。snapshot只覆盖这次来源事实/候选读取和纯模拟，不能包parser、等待notebook锁、enqueue或写单元。测试同时记录source所有查询的backend/transaction snapshot一致、并发rewrite后仍按原snapshot分页、取消后连接可复用、错误会rollback、不发写SQL、guard路径不开第二事务。锁内E稳定性分开证明：Tree单元的notebook NO KEY UPDATE排除别的内容/树写；生产SHARE新增只有本页且已锁content row并已取得source advisory，X的初始key不变。未来多页SHARE必须重审，不能外推此证明。
 
@@ -355,7 +378,7 @@ WithinSnapshot已有REPEATABLE READ READ ONLY、ctx取消、panic/error rollback
 
 `StartTrashRestore.Execute`改成现有StartRevert同一release变量/defer模式：admit闭包调用s.d.claim，失败把release复位no-op；去掉CheckRestore后第二次claim。之后startBackground的CountActive/queue room/事务内动作复判、writing/queue/enqueue次序保留；任何后续来源拒绝、读取/取消/排队失败都执行release，成功提交后也释放进程内claim。PlanRestore是worker独立入口，无admit，照当前模式重新做source预检。module/root/wrappers/fakes、start_background与jobs测试同提交更新，不让普通模式busy发生完整来源读。`TestSourceRestoreAdmissionPrecedesFullReads`断基本错误先于admit、busy→完整group/hash/snapshot读0次、duplicate→未enqueue且claim释放、普通→无完整group/祖先/hash/资产/source计划或snapshot读（模式点读单列）、成功claim只一次；真实HTTP/start流程与fake录调用序各自守一层。
 
-共用`sourcePrecheck`在恢复计划/同步RevertFacts或后台3.13的实际名义动作生成之后，开始入口在admit的busy检查之后，但在真正排队之前且在parser/锁预检之前运行（撤销原有trimmed/conflict/step bounds在前）。normal state立即返回。同步restore也做unlocked duplicate探查，锁下guard重判；startTrashRestore/PlanRestore、startRevert/PlanRevert都走同一元数据算法，不给worker遗漏。
+共用`sourcePrecheck`在恢复计划/同步RevertFacts或后台3.13的实际名义动作生成之后，开始入口在admit的busy检查之后，但在真正排队之前且在parser/锁预检之前运行（撤销原有trimmed/conflict/step bounds在前）。normal state立即返回。同步`SyncRestoreNode`也做unlocked duplicate探查：在原权限、root/group与历史上限检查之后、正文读取/解析之前新增一次`Notebooks.StateOf`点读，普通模式也会读这一次；仅LLM进入额外source snapshot/元数据检查，普通模式不增加group/祖先/hash/asset/source扫描。它与CheckRestore的admit后模式点读是两条独立入口，不应合称“普通模式零额外读”。锁下guard重判；startTrashRestore/PlanRestore、startRevert/PlanRevert都走同一元数据算法，不给worker遗漏。
 
 预检先得到整个计划可能改变source资格/hash的节点集合X（不仅显式item，也含place/delete携带的后代），保留原全树/group计划的规模：MaxJobItems=60k只限changeset items，不限制一个place的后代，后台trash group也可大于60k。每个source-entry place受3.8的10k界，移出/删除及已有全树读仍不受这一总量界；这是明确保留的旧行为，不引入隐藏的整任务新上限。X自身可大于10k，内存O(|X|)；不把全X发送为一个SQL数组。
 
@@ -440,7 +463,7 @@ transfer StartRevert用BackgroundDeps.Batch.bounds()生成闭包，worker用r.bo
 
 **必要例和证据层次**：
 
-1. 真实API历史链A-I1：D一次batch创建不同A/B来源并真实改目标名使S1被deferred rewrite成B；同步undo得到C，把S1改回A后删S1/S2（两个独立trash groups）；同步undo C按restore S1(A),restore S2(B),rewrite S1(B)可成功。后台startRevert(C)按compact实际group顺序restore S1(A),rewrite S1(B),restore S2(B)，名义预检必须duplicate/no enqueue；相邻副本保留同步成功对照。固定id/排序只是fixture控制，不伪造客户端rewrite标记。
+1. **A-I1原公开历史例的实施更正**：原“同批创建S1/S2再deferred rewrite，undo得到C且S1保留rewrite=true/base B”的具体链不成立；创建与rewrite合并后的base=nil、rewrite=false，同步undo也不启用link rewrite。S2-3没有改变生产撤销来凑该例。真实回归`TestTheSourceCreationRewriteUndoKeepsItsRecordedBase`核对实际版本链及duplicate、`duplicate_of=nil`、零入队；旧失败fixture保留在树外记录。下面合法模块历史fixture证明compact/cuts可得相反结果，是不同证据层，不称原公开链已复现，也不推出所有其他公开链都不可达。原设计审查当时的A-I1接受与设计层resolved记录保留，并追加[实施更正](reviews/P2-design-review.md)。
 2. 合法模块历史fixture同group `[restore F, restore A(A), content A→B, restore B(B)]`，A恢复/content Joined：大批[0,4)先恢复F/A/B再rewrite可过；配置Nodes=3的合法cuts[0,3),[3,4)则后批duplicate。真实halving**另按源码**：[0,4)失败先缩[0,1)提交F；余下[1,4)失败缩[1,3)提交A+rewrite；[3,4)的B拒。把已有history上限设为使相应prefix可过而大批超限的合法fixture，验证实际ErrBatchTooLarge/halved输出，不能只stub错误然后宣称真实历史界已触发。
 3. 同group反方向fixtureA(H)写回J，B(H)：大批先恢复A/B重复所以开始拒；细分先A→J再B可过。它证明“最细segment最严”为假，不作为绕过开始拒绝的API。模块fixture的groups/revisions/rewrite/bytes必须合法；未用公开入口构造的形状标模块证据，不称真实API已复现。
 4. 两独立group同/跨批、同group同批/合法cuts、首segment超配置仍纳入、连续halving/新from再贪心、content-delete/aside joined不可拆、continuation skips/retimed/frontier继续核对。独立oracle手写动作/拒绝层/计数/持久状态，不以revertActions或sim输出验证其自身。
@@ -545,7 +568,7 @@ Source-page行通过PageTreeStore排队创建，队列任务发送前再检查ab
 | S3-4 | duplicateText全表面、附件/stale-tree导航、历史提示、LW3–7/12 | report的两种node指向明确，page与asset都真实验证 |
 | S3-5 | 门禁、变异、独立审查/核对、Step和Phase最终文档 | P2done/main CI全绿，M10继续P3；不提前开始M11 |
 
-每Step在代码完成后执行§7全部门禁；三份独立代码审查覆盖接口/规则与历史、数据/并发/成本、Web/API/E2E，主持者逐条定处置、作者修复、审查者复核修复，不能用本设计审查代替代码审查。按workflow完成文档→`--no-ff`合并→精确merge SHA十项CI绿→合并记录提交及其精确CI绿→用这两个实际main Test样本核算bootstrap均值，才进入下一Step。main只推完成核对状态，从不强推；失败先修，不留下“CI以后再看”的进度。
+每Step在代码完成后执行§7全部门禁；三份独立代码审查覆盖接口/规则与历史、数据/并发/成本、Web/API/E2E，主持者逐条定处置、作者修复、审查者复核修复，不能用本设计审查代替代码审查。按workflow完成文档→`--no-ff`合并→精确merge SHA的实际workflow全部CI作业绿（四分片配置为11项）→合并记录提交及其精确CI绿→用这两个实际main Test样本核算bootstrap均值，才进入下一Step。main只推完成核对状态，从不强推；失败先修，不留下“CI以后再看”的进度。
 
 ## 7. 测试、变异、测量与门禁
 
@@ -644,7 +667,7 @@ barrier优先既有可注入端口，只用于测试装配，不在生产暴露�
 
 | #/Step | 改坏一处 | catcher/命令 |
 |---|---|---|
-| 38/S1、S2 | 后台source facts退回同步RevertFacts；S1结构与S2真实duplicate分开 | S1：G(internal/modules/page/app,TestSourceJobFactsUseNominalCutsAndActualActions)、G(internal/modules/page/app,TestSourceJobAsideFactsMatchActualBatches)；active-background→sync在三个真实S1场景存活，不记产品结果已区分。S2的TestTheSourceBackgroundUndoChecksItsCompactOrder仍pending |
+| 38/S1、S2 | 后台source facts退回同步RevertFacts；S1结构与S2真实duplicate分开 | S1：G(internal/modules/page/app,TestSourceJobFactsUseNominalCutsAndActualActions)、G(internal/modules/page/app,TestSourceJobAsideFactsMatchActualBatches)；active-background→sync在三个真实S1场景存活，不记产品结果已区分。S2-3实际catcher为G(internal/modules/page/app,TestSourceJobPrechecksKeepOppositeCutOutcomes)、G(internal/modules/page/app,TestSourceJobIndependentGroupsDoNotCoalesceForDuplicates)，来自合法模块历史fixture；实际控制`38-active-job-snapshot-uses-sync-facts`已按0→1→0核对。公开链改由TestTheSourceCreationRewriteUndoKeepsItsRecordedBase守真实记录语义，不再声称无效旧例已复现；整Step最终重放仍待 |
 | 39/S1、S2 | revertActions不合并同group/跨group误合并、只用最细cuts、忽略Batch配置（分别） | S1：G(internal/modules/page/app,TestSourceRevertActionsFollowTheActualBatchGroups)、G(internal/modules/page/app,TestSourceJobFactsUseNominalCutsAndActualActions)；transfer/app的TestARevertStartReceivesNominalBatches、TestARevertWorkerReceivesNominalBatches、TestABackgroundBatchesMatchHandwrittenCuts、TestABackgroundRevertRegreediesAfterJoinedHalving，均按G展开；S2 duplicate结果仍pending |
 | 40/S2 | CheckRestore完整读在admit之前；去后续error release；重复仍enqueue（分别） | G(internal/modules/page/app,TestSourceRestoreAdmissionPrecedesFullReads)；G(internal/modules/transfer/app,TestSourceRestoreReleasesEveryClaim) |
 | 41/S2 | worker Plan预检移除（保留guard）；另轮只去guard | G(internal/bootstrap,TestSourceBackgroundRefusalsNameTheirActualLayer)（Plan前重复应0 RunBatch；Plan成功后首批和真实非零前批后的拒绝分别杀guard轮） |
@@ -681,15 +704,16 @@ docs/v0.1/claude_to_codex/tools/heavy.sh make -j1 test-go-race
 docs/v0.1/claude_to_codex/tools/heavy.sh make -j1 test-go-bootstrap-1
 docs/v0.1/claude_to_codex/tools/heavy.sh make -j1 test-go-bootstrap-2
 docs/v0.1/claude_to_codex/tools/heavy.sh make -j1 test-go-bootstrap-3
+docs/v0.1/claude_to_codex/tools/heavy.sh make -j1 test-go-bootstrap-4
 docs/v0.1/claude_to_codex/tools/heavy.sh make -j1 test-go-costs
 docs/v0.1/claude_to_codex/tools/heavy.sh make -j1 test-go-guards
 docs/v0.1/claude_to_codex/tools/heavy.sh make -j1 test-go-short test-web
 docs/v0.1/claude_to_codex/tools/heavy.sh make -j1 e2e
 ```
 
-本机不跑plain make test/test-go（内部-j4），以上显式成分构成等价门禁；分支CI十项含image/smoke全成功。设计合并前文档链接/guarded替换与其CI；设计作者当时未跑产品门禁；S1的6fac历史执行与修复后最终记录分别见10.1。
+本机不跑plain make test/test-go（四分片配置的race段内部-j5），以上显式成分构成等价门禁；最终分支CI要求实际11项含image/smoke全成功。设计与S1当时为三片/十作业，它们的真实结果仍在原段保留，不追改为四片。设计合并前的文档链接/guarded替换与CI不代产品门禁；S1历史执行与最终记录见10.1。
 
-新增`TestSource...`在第二份、`TestTheSource...`第三份，按7.1分散。每Step新增测试race两次、三份完整race各两次，门禁样本可复用但确有两次；记真实Test秒与440.5/317.5/260.5基线增量。第一份既有矩阵/不变量变重也量，不能只看新名；它只有9.5秒余量。需要迁移既有测试分份须独立记录重算，不凭偶然快样本。每Step合并与记录提交的精确CI都绿之后，用这两个main Test样本算均值，各份<450秒。成本行按既有本机两次平均×2.4及M9/P2§6.5半个进程超时线分行，现有timeout不提高。 实际descendant后台测试名为TestSourceDescendantRefusalKeepsAnEarlierCommittedBatch，在第二份；既有TestTheDowngradeEndsTheContract也扩展了真实来源写。6fac本机两轮与branch Test样本见实施审查，最终两main样本仍须单独取得，不能从设计测试名推分片或沿用旧头。
+新增`TestSource...`在第二份、`TestTheSource...`第三份，其余名称按FIRST、SECOND、THIRD减SECOND及三者并的补集分到四份。每Step新增race测试各两次、四份完整bootstrap race各两次；门禁样本可复用但必须绑定相关最终输入且确有两次。c7旧两分支的三片Test均值398/555.5/446.5秒只用于触发拆分，不是四片实测或两个main验收；即使FIRST选择不变，SQL变更后它的旧时间也不能自动沿用。实际新清单须从最终源码重建，468顶层是c7历史数；本机四份各两次、package/wall与CI Test分别记录。每Step合并与记录提交的精确CI都绿后，用这两个main Test样本核各份均值<450秒。成本行按原本机两次均值×2.4及M9/P2§6.5半个进程超时线分行，现有timeout不提高。S1入口440.5/317.5/260.5及其后328/313.5/394均为各自历史，见10.1；最终S2新头的实际结果集中见10.2与审查表。
 
 IndexItems 30ms与grep600ms现有义务不改，后续接近/超线查根因/样本，M10收尾核稳定性。仅认P2入口已有的两个样本，不承诺新增工作必然装得下。
 
@@ -771,12 +795,14 @@ P3：在已实现page.SourceArea基础上增加整区lint/pending来源读取，
 | 项目 | 当前状态 | 证据与剩余 |
 |---|---|---|
 | P2设计 | 已审查并接受 | 原四项发现及B-Q1在设计层resolved；4755精确main CI40413727596十项成功；[设计审查](reviews/P2-design-review.md) |
-| 10.1 S1 | S1已合并；记录CI与两main Test均值待root验收，S2未释放 | [实施审查](reviews/P2-S1-source-rules-review.md)；合并见 00 号文档第 12 节 |
-| 10.2 S2 | pending | hash/去重/provenance/索引游标/工作界、并发与last-hop、迁移A/B及独立扫描/三四列差、全部实际cost数、上述审查/CI |
+| 10.1 S1 | S1已合并；记录CI与两main Test均值已核，S2继续实施 | [实施审查](reviews/P2-S1-source-rules-review.md)；合并见 00 号文档第 12 节 |
+| 10.2 S2 | 代码/本机/精确分支CI已接受，集成待闭环 | 159控制分层与依赖复用、6M迁移/成本和各次失败修复已记录；B-N1文档原审已关闭；doc/main/记录CI与双main四片样本尚待 |
 | 10.3 S3 | pending | UI/文件bytes/会话释放/重复链接/E2E与跨标签、审查/CI、M8done与M7/M9open核对 |
 | 10.4 P2done | pending | 三Step均验收、最终文档链接/handoff核对、P2done准确SHA与十项main CI；P3下一步 |
 
 ### 10.1 S1 来源规则
+
+S1后续核对已完成：合并`bf8d6625`的[CI40501936360](https://github.com/open-nerve/NerveWiki/actions/runs/40501936360)与记录`6a4f33b8`的[CI40506120884](https://github.com/open-nerve/NerveWiki/actions/runs/40506120884)均十作业成功。三份bootstrap Test为370/286、322/305、389/399秒，均值328/313.5/394秒，各<450秒，余122/136.5/56秒；root树外回执`p2-s1-main-test-pair.json`已接受并放行S2。以下S1旧轮次/本机与分支样本保留各自范围，不拿它们代替S2当前验收。
 
 六个初审提交依次为08dfaf5f、a0dfe443、93395bd5、3be31d58、08fa1d16、6facccde；第一组C-M1/M2修复提交`b750631362a468a01a18dfc4faa065b7d88af4db`并增量核验，第二组C-M3提交`fd00ee670c24db3ad4d9478419acd8340f1e6d91`，最终代码头`fd00ee670c24db3ad4d9478419acd8340f1e6d91`。00049/rewrite全链、全部producer事实、严格来源正文与管理/session规则、按项Merged与后备、实际后台动作/名义批界、REST/两scope MCP、双语与fake、LW4/LW5 API/MCP已落地；具体差异见3.14。A/B初审0 I/M/N/Q，C初审1 Minor C-M1、补充1 Minor C-M2，b750准备诊断另1 Minor C-M3；主持者分别接受，共三个ID、两组修复，第一组增量通过不代表最终验收；第二组C-M3仅修改Web历史测试设施：现活简单placement按node UUID排序，每步在当时node/树上先管理检查后移动，保留本动作Before权限；不按历史数组、不用原树OR最终树。第一遍不提前移除created/restored，placed避免第二遍重做原树检查；删除/正文保留第一组已证阶段位置，blocked残余保留原管理后备，不模拟完整key/depth/aside/conflict scheduler。第一组C-M1/M2提交b750保持历史，三个ID已由原C正式复核分别关闭；原C复核：原C在fd00正式复核分别关闭C-M1/C-M2/C-M3，未关闭Important=0、Minor=0，无新增已核实I/M/N/Q；主持者核96件/740,998字节、17独立执行及五个0→1→0。报告review-c/final-fix-recheck/C-final-fix-recheck.md，SHA256 82f06e259ce3da1e3a370cc8385d9f74e7c4a402fd861d28d34097334b167aab；完整证据索引见下文。root-I1降级覆盖补充与root-I2矩阵fixture修复属于实施核对，未冒称三审或生产规则缺陷。
 
@@ -784,9 +810,143 @@ P3：在已实现page.SourceArea基础上增加整区lint/pending来源读取，
 
 6fac两次focused race每次74顶层/286含子测试、8实际包，wall37.803/37.871s；完整13门禁全0、3146.177s，Web169文件/3436测试、E2E302。三片本机Go包均值299.336/307.5335/267.733s。exact branch [CI40468800650](https://github.com/open-nerve/NerveWiki/actions/runs/40468800650)十项成功，bootstrap Test441/309/371s，仅分支单样本。20项成本均在原界，保留IndexItems/grep旧失败与M10收尾义务，不推断长期稳定。原始证据身份/报告哈希与详细命令、各轮秒数见[S1审查](reviews/P2-S1-source-rules-review.md)。
 
-最终修复头replay：fd00新目录whole-step-final-v4：109 variants /112 checks /336同argv执行，112 baseline与112 restore均0，mutant110次exit1、2次已知exit0。108项至少有一个预期catcher；test-input、test-fixture及cycle结构观察单列，不全部称产品语义kill。Of/bootstrap存活而direct of/of_subset捕获；active-background→sync继续存活；marker barrier、trace与用户结果边界保持。原93控制288份失败测试名集合与6fac轮一致；A/B/C八控制、fix1五控制、fix2三控制均重放。另11真实/fake对照exit0，原C-M3 Folder先拒绝与child先允许由真实HTTP/worker/SQL次序验证，主持者root-replay-integrity及root-counterexample-integrity均接受。focused race：fd00两轮同argv -race -count=1 -json -timeout 15m -p 1，均exit0、输入稳定、无fail/skip；wall36.692/37.655s，各74顶层/286含子测试，8实际包/9请求包，page/adapter/http无匹配且不计focused覆盖。rewrite1.40/1.53s、downgrade0.86/0.86s、seed0.79/1.87s；主持者root-focused-races已核。完整门禁：fd00完整13阶段串行、全exit0，总wall3155.474s；static-build7.951、race300.399、bootstrap1/2/3为288.549/308.360/262.781、costs331.525、guards469.401、web103.541、short54.698、e2e139.401，三片第二次308.944/312.807/267.028s。完整Web169文件/3492测试通过，完整E2E302测试通过；root-gate-acceptance核13条命令/日志与121份提交文件未变，未提高阈值。本机分片：fd00本机三片各两轮：make wall 1=288.549/308.944（均298.7465）、2=308.360/312.807（均310.5835）、3=262.781/267.028（均264.9045）秒；Go包1=287.873/308.122（均297.9975）、2=307.708/311.993（均309.8505）、3=261.978/266.243（均264.1105）秒。两种计时分开；最终两main Test均值待记录CI后核验，不用本机值替代。代码exact CI：[CI40492563209](https://github.com/open-nerve/NerveWiki/actions/runs/40492563209)，exact fd00ee670c24db3ad4d9478419acd8340f1e6d91、attempt1，十作业completed/success，主持者与原C各核实时API原件。Test步骤：web219、race625、bootstrap1/2/3为365/441/396、costs379、guards745、short180秒；E2E182、image smoke66秒。仅一个代码分支样本，不能替代两次main Test均值；成本：本次fd00代码CI20项均在原界内：IndexItems每样本为20读总量，三阶段中位12.092768/12.053564/13.592351ms，对30ms；GrepCandidates三中位197.394567/184.531791/196.978013ms，对600ms；完整grep调用中位402.851941ms，对1000ms。新累计25个observed workflows/24个modern，IndexItems与Candidates各自72组/216原始样本，app call24组/72样本；三项历史失败保留，不用新界追改旧分类。6fac各自69/207继续作为旧历史，文档/main后续增加按届时实际回执更新；不从单轮绿色推稳定性。fd00本机21原始样本另列：IndexItems三中位10.201291/9.178542/10.357667ms、Candidates99.131791/93.979667/105.028250ms、call214.983917ms，均在原界；不混作CI样本。最终代码成本补充SHA256 abc63563b93aa5410aead1e037d479e28286a207e275b146c3ee9f3301970241。文档exact CI：已核通过，见[S1合并记录](reviews/P2-S1-source-rules-review.md#合并与后续验收)。主持者验收：主持者已接受fd00代码、完整本机验证、精确分支CI/成本及原C正式复核，三个Minor分别关闭。A/B初审无发现；6fac后仅两TS测试设施变化，server、Makefile与CI workflow对象未变，原范围结论保持；C独立执行三项修复与相邻回归并审计v4/CI。v4交付1594件/8,132,996字节、350外层执行与24份冻结程序/fixture已核。文档及合并main CI已核；本次记录CI与两main均值待root外部验收，S2未释放，P2/M10继续进行中。
+最终修复头replay：fd00新目录whole-step-final-v4：109 variants /112 checks /336同argv执行，112 baseline与112 restore均0，mutant110次exit1、2次已知exit0。108项至少有一个预期catcher；test-input、test-fixture及cycle结构观察单列，不全部称产品语义kill。Of/bootstrap存活而direct of/of_subset捕获；active-background→sync继续存活；marker barrier、trace与用户结果边界保持。原93控制288份失败测试名集合与6fac轮一致；A/B/C八控制、fix1五控制、fix2三控制均重放。另11真实/fake对照exit0，原C-M3 Folder先拒绝与child先允许由真实HTTP/worker/SQL次序验证，主持者root-replay-integrity及root-counterexample-integrity均接受。focused race：fd00两轮同argv -race -count=1 -json -timeout 15m -p 1，均exit0、输入稳定、无fail/skip；wall36.692/37.655s，各74顶层/286含子测试，8实际包/9请求包，page/adapter/http无匹配且不计focused覆盖。rewrite1.40/1.53s、downgrade0.86/0.86s、seed0.79/1.87s；主持者root-focused-races已核。完整门禁：fd00完整13阶段串行、全exit0，总wall3155.474s；static-build7.951、race300.399、bootstrap1/2/3为288.549/308.360/262.781、costs331.525、guards469.401、web103.541、short54.698、e2e139.401，三片第二次308.944/312.807/267.028s。完整Web169文件/3492测试通过，完整E2E302测试通过；root-gate-acceptance核13条命令/日志与121份提交文件未变，未提高阈值。本机分片：fd00本机三片各两轮：make wall 1=288.549/308.944（均298.7465）、2=308.360/312.807（均310.5835）、3=262.781/267.028（均264.9045）秒；Go包1=287.873/308.122（均297.9975）、2=307.708/311.993（均309.8505）、3=261.978/266.243（均264.1105）秒。两种计时分开；最终两main Test均值已另按真实CI核验：328/313.5/394秒，不用本机值替代。代码exact CI：[CI40492563209](https://github.com/open-nerve/NerveWiki/actions/runs/40492563209)，exact fd00ee670c24db3ad4d9478419acd8340f1e6d91、attempt1，十作业completed/success，主持者与原C各核实时API原件。Test步骤：web219、race625、bootstrap1/2/3为365/441/396、costs379、guards745、short180秒；E2E182、image smoke66秒。仅一个代码分支样本，不能替代两次main Test均值；成本：本次fd00代码CI20项均在原界内：IndexItems每样本为20读总量，三阶段中位12.092768/12.053564/13.592351ms，对30ms；GrepCandidates三中位197.394567/184.531791/196.978013ms，对600ms；完整grep调用中位402.851941ms，对1000ms。新累计25个observed workflows/24个modern，IndexItems与Candidates各自72组/216原始样本，app call24组/72样本；三项历史失败保留，不用新界追改旧分类。6fac各自69/207继续作为旧历史，文档/main后续增加按届时实际回执更新；不从单轮绿色推稳定性。fd00本机21原始样本另列：IndexItems三中位10.201291/9.178542/10.357667ms、Candidates99.131791/93.979667/105.028250ms、call214.983917ms，均在原界；不混作CI样本。最终代码成本补充SHA256 abc63563b93aa5410aead1e037d479e28286a207e275b146c3ee9f3301970241。文档exact CI：已核通过，见[S1合并记录](reviews/P2-S1-source-rules-review.md#合并与后续验收)。主持者验收：主持者已接受fd00代码、完整本机验证、精确分支CI/成本及原C正式复核，三个Minor分别关闭。A/B初审无发现；6fac后仅两TS测试设施变化，server、Makefile与CI workflow对象未变，原范围结论保持；C独立执行三项修复与相邻回归并审计v4/CI。v4交付1594件/8,132,996字节、350外层执行与24份冻结程序/fixture已核。文档及合并main CI已核；记录CI与两main均值已由root核对，S2继续实施，P2/M10继续进行中。
 
-合并见 00 号文档第 12 节。main merge CI：已核通过，见[S1合并记录](reviews/P2-S1-source-rules-review.md#合并与后续验收)；main记录CI：pending：本记录提交后由root树外核验，见[S1合并记录](reviews/P2-S1-source-rules-review.md#合并与后续验收)；两main Test样本/均值：pending：记录CI完成后核最终两main样本对，见[S1合并记录](reviews/P2-S1-source-rules-review.md#合并与后续验收)。各份<450秒后才释放S2，不能替用本机/分支样本。S1不去重且来源UI仍待S3；M8仍open、P2/S3完成才done，M9/M7/M6open，M5done。P2/M10仍进行中。
+合并见00号文档第12节与[S1合并记录](reviews/P2-S1-source-rules-review.md#合并与后续验收)。S1 main merge `bf8d6625daba554ee467aef2003346459657a060` 的CI `40501936360`、记录 `6a4f33b8fb621c66d97d38b3fea4fea0adbfc565` 的CI `40506120884` 均十项成功；三份Test两样本370/286、322/305、389/399 s，均值328/313.5/394 s，各<450 s，S2已释放。这是S1验收，不能替作S2 CI。S1不去重且来源UI仍待S3；M8仍open、S2/S3验收后才done，M9/M7/M6open，M5done。P2/M10仍进行中。
+
+### 10.2 S2 来源 hash、去重与验证
+
+**实现与本机验证已接受，精确33b4代码CI全部11作业成功；B-N1文档复核已关闭，main集成待闭环。** 当前代码`33b4da5a38bed24db05411e83209d30ef1e17db9`；159义务=旧129＋TrashChildren13＋History8＋Name9，按具体输入的fresh/reuse接受，不称159独特bug或全部提交后重跑。main新增107个Go声明=98race＋9!race，总2947；实际各轮race/nonrace、门禁与来源桥见[S2验证表](reviews/P2-S2-source-hash-review.md#33b4最终代码控制与本机验证)。后续各CI失败/候选拒绝/metadata survivor、测试观察器失败均保留；迁移6M仍按冻结原件及限制接受。S3、P3–P5及M10收尾尚待，不开始M11。
+
+| 已接受增量 | 提交 | 已验范围 |
+|---|---|---|
+| S2-1 | `443a8c8561cdc0fdb7f01c376bcf1136997a4ce3` | 00050、hash 维护/端口/两 delete/Forget；35项最终义务、42组历史triple；7组为替换旧单元轮的最终复演，旧7组保留历史，属于原子增量 [E02] |
+| S2-2 | `05ca33eabf13aa8109efc3f5be2a2fa636072e08` | 有限父读者、10k 界及相关接口；20 组常规控制与 1 组树外 runtime coverage，后者 Go 仍通过、外部检查失败 [E03] |
+| S2-3 | `9bafdaa67513de135c19f51b5ba9678cac59fe82` | 去重/provenance/snapshot/admit/import/字段全链；53 个最终语义变体、54 个历史 triple/162 次执行分别保留；D-I1、C-M1、C-N1 已复核关闭 [E04] |
+| S2-4代码增量 | `25f88a2730456940bd52efffd899e8ac827a9f27` | 22代码文件已提交；六成本行双轮/六增量门禁及提交头gen-check已获root接受 [E39–E44]；六份root文档待提交，不是整步S2验收 |
+| S2-5 | `c7cec1fa`→`ca8a27db`→`53488fee`→`056677a4`→`2536175e`→`33b4da5a` | 正式A/B/C与产品修复复核、159控制分层/依赖复用、实际本机门禁及CI40718770843已接受；B-N1实际文档复核已关闭，doc/main闭环待完成 |
+
+实现按实际 SQL 投影：probe/writeback 使用 SELECT-list SRF；当前 adapter 的 `[]uuid.UUID` 不表达 NULL 元素，缺游标用 zero UUID 加 `has_afters=false`，合法 zero UUID 不被排除。当前 writeback 改为单条 UPDATE self-join：`FROM nodes old` 与 zipped unnest 的 `v` 配合，以 `old.id=n.id` 取得旧值，保留 n 的 notebook/live/distinct 条件，`RETURNING n.id, old.kind, old.source_hash AS before_source_hash`。S2-1 当时的 MATERIALIZED previous/changed CTE 方案及旧值正确性验证保留为历史；本轮因无统计时的二次方末尾 join 修订，定向接受见 [E28–E31]。有限父读者内外均为 `LIMIT (SELECT sqlc.arg(max_rows)::integer)`，内层 parent/live 范围按已有 parent/name_key 索引顺序，notebook filter 在内层 LIMIT 之后，完整层读完再由 Go 排序；返回/物化界与真实物理访问分开验收。
+
+公开 `Check/CheckJob` 的授权回调接收 snapshot ctx，D-I1 的真实 PG MaxConns=1 权限 SQL 与实际调用者 trace 为两层证据；不合称一个完整 OnConn/auth/server 场景。普通 `SyncRestoreNode` 例外增加一次 `StateOf` 点读，仍无额外来源 snapshot/扫描。原 A-I1“创建与 deferred rewrite 后 undo 留有 rewrite=true/base B”的公开链不成立，实际记录为 base=nil/rewrite=false；保留原设计审查历史并追加实施更正，合法模块历史/cuts 与真实 worker 分层证据不冒充该公开链。决定43的名义预检不搜索其他 cuts、前批保留取舍继续适用。
+
+Probe 的最终双 tuple 上下界已获局部物理证据，失败候选历史保留。原 SQL 回退的 15 个叶子 IDs 仍正确：无统计 5 叶仅 tuple Index Cond 形状失败，ANALYZE 与 actual generic 各 5 叶另有真实 PK 访问；只有两种 exhausted 叶达到 200,001 次，修复版同例来源索引 1 条、PK 0。generic 查询确实 PREPARE/EXECUTE，计数 4 generic/0 custom；完整计划与 X 测量的 `force_generic_plan` 只是生产 Planned 路径设置，不称为同一实际 PREPARE 证据。[E05–E07、E11]
+
+**局部控制与故事。** 九组控制同 argv、退出码 0/1/0；root 接受独立核过的 230 原件/919 项。八组改产品目标，#29 仅归零 seed7 测试输入；包含父事件的 baseline/restored 各 52 pass、mutant 43 fail/9 pass 不当作独立语义变体数。#24 捕获 7 个 last-hop 叶和 4 个 worker 后置叶，2 个 before-plan 叶仍通过。advisory 缺失只捕获真实等待缺失，tree 额外 advisory 捕获 5 s HTTP 客户端进展超时；session 201 使断言短路，未据此查得错误 session 行数。#43 的真实 Background.Run + fake Tree/history 与真实 page JobWrites + fake store/手写切分分列，不合成 HTTP/DB/worker 全栈。[E05、E06]
+
+另有新增3组实际0/1/0控制，3171输入精确单处变更并恢复：两组是fixture/instrumentation（无统计状态被ANALYZE至nodes pg_stats=17；仅inspection设generic而实际四连接仍auto），其baseline/restored各3请求，mutant在计时前失败且0请求；一组是回退旧Set SQL的真实物理工作量控制，本次仅选1个physical测试。它们与原9组分列，不能称12个全产品语义kill；这次增量SQL控制只选1测试；最终124项控制中的SQL项已按old-key/set/planned等6个事件核验，详见E51/E55，不把两次范围混述。[E38]
+
+六 seed 各 79 成功/9 拒绝，共 474/54，17 类成功各至少 3 次，降级后普通写/恢复另验；成功计数位于实际请求和独立树/正文/资产不变量之后。15 个定向 E2E（新10+既有 LW5 5）通过，覆盖 LW3 API/两 scope MCP、LW5 重复、LW6 历史/后台、LW7 import；保留初轮两例 MCP 缺必填 message 的夹具失败。LW6 的首批 100/201 保留、后101拒绝与持久报告已验。无 MCP 历史/import 工具处由各自 Go/API 补足；不是完整 E2E，也不是 S3 网页验收。[E08、E09]
+
+**成本：c7以前已验样本与后续刷新边界。** 以下保留原输入上的测量/定界及当时接受状态；后续受影响行已按各修复重新实测与核对，当前pair见本文末表；本段数值仍只代表原输入。 环境 Go 1.27.1、Linux arm64、4 logical CPU、PG18.6；累计 TotalAlloc 不是 RSS。原请求4 s/提交2 s及既有成本界未提高。完整计划、X、暖索引和旧成本行的原始值在 E10–E13；本机容量估计不称真实 CI。
+
+| 已验部分 | 实数与口径 | 最终状态 |
+|---|---|---|
+| 60k CheckRevert/PlanRevert | 54k页/6k附件、2048-byte/20-link 页、600名义批；三状态各路径各三次共18样本，最慢1661.868 ms，新界5000 ms逐样本；TotalAlloc约1.57–1.58 GB | 原样本保留；c7的31条成本/guard覆盖已由E64接受 |
+| 完整 X 预检 | X=3/60k × 首部/末部/不存在 × 三设置 × 三次=54；最大中位2.906/327.599 ms，对界40/1000 ms；末部2/7 probe、4/60001返回，缺失2/7 probe、3/60000返回 | 已验本机增量；时间与实际索引范围分开 |
+| 暖100k索引 | 历史三/四列7,774,208/9,551,872 B，差1,777,664 B；三配对建索引及真实HTTP写入均保留原样本/有符号WAL差 | 原样本保留；self-join修复后的HTTP写入对照与成本双轮已验 [E39/E40]；暖100k不替代冷6M |
+| 五个 HTTP 形状 | 仅 ANALYZE 的15成功样本：新增154.862/127.791/134.229、移入429.596/417.878/427.675、恢复1134.623/1314.203/1545.791、撤销1661.835/1816.710/1988.313、Forget1070.729/1073.819/1039.994 ms | **历史首基线，不是最终三状态结果** |
+| 五 HTTP 三状态 | 无统计 / ANALYZE / generic设置，每形状每状态3次，共15组45成功样本；36+9两个实际Go命令、同3171源快照 | root已接受基线及五预算校准 [E34–E37]；新增3控制已验 [E38]；六成本行双轮已验 [E39/E40]；c7本机门禁由E66接受，随后两次CI失败及修复刷新范围见下文 |
+| 独立成本行 | 旧8行×2全新进程=16次通过；两轮均值×2.4估计31.813/48.811/57.324/60.969/123.075/97.954/121.566/68.909 s，均<300 s | 原HTTP5与索引写入对照保留历史；当前6行×2已验见下表；未受影响plan/precheck保留原范围 |
+
+受影响六行每行两个全新Go进程均通过，同3171冻结输入，72个Go pass事件且无skip/fail；五HTTP行贡献90成功请求。原10m单行timeout不变，容量估计仍用两轮进程wall均值×2.4，并要求低于300 s；这不是实际CI Test时长。[E39/E40]
+
+| 成本行 | 两轮进程wall s | 均值×2.4估计 s |
+|---|---|---|
+| create | 39.206 / 42.419 | 97.949 |
+| move | 55.488 / 59.918 | 138.487 |
+| restore | 72.544 / 79.195 | 182.086 |
+| revert | 78.459 / 81.669 | 192.154 |
+| forget | 73.068 / 74.505 | 177.087 |
+| index正常HTTP写入对照 | 29.660 / 29.596 | 71.107 |
+
+当前SQL的两轮暖100k索引对照仍各用相同语料配对，三/四列索引字节差均为1,777,664 B。四列减三列的正常HTTP写入时间差依次为−9.842250/+3.340875/+4.743083 ms与+0.926667/+3.824333/−7.362166 ms，写入WAL差也有正负，完整原样本见E39/E40；不删负值、不将噪声解读为纯id列因果开销。
+
+HTTP45逐状态原值由E34/E35保留：root独立核六表统计、四条实际应用池连接的设置、原请求4 s/提交2 s、初始行/文件指纹与成功响应。generic设置不冒称实际PREPARE；36+9为两命令，分别16/13个Go pass事件，不能写成一次选择五形状。每形状各状态从相同初始数据开始；同一状态的连续样本会积累历史，Forget另用新clone。
+
+| HTTP形状 | 接受的校准基线 ms | 新时间断言 ms | 取样口径 |
+|---|---|---|---|
+| create | 150.123667 | 500 | 每状态最快样本，再取最慢状态 |
+| move | 465.672375 | 1400 | 全部有效样本最大值 |
+| restore | 2531.533460 | 7600 | 全部有效样本最大值 |
+| revert | 2513.224876 | 7600 | 全部有效样本最大值 |
+| forget | 1013.237209 | 3100 | 全部有效样本最大值 |
+
+五界均为基线×3后向上取整到100 ms；这是成本测试余量，未提高4 s请求/2 s提交限制。45原样本使用校准前的新来源预算常量；新增3控制已另获E38接受；六成本行双轮已由E39接受，c7相关Go输入绑定与31条成本/guard覆盖已由E64/E68接受。[E34–E37]
+
+**三状态 HTTP 的实际失败与定向修复。** 首轮留下42个成功请求，以及revert/no_statistics首次请求500/internal_error（4.000720335 s，后两样本未执行）；move/no_statistics三次成功为2.831278001/2.857559001/2.861921752 s，超过历史ANALYZE-only的1.3 s界，不写成完整45样本通过 [E32]。同语料回滚诊断采用10k参数/9999变化，旧previous CTE×changed CTE末尾join拒绝99,980,001次比较；EXPLAIN 6.597701 s带仪表，不是HTTP请求计时，也不是捕获原请求字面参数 [E33]。
+
+永久回归另用100k语料/10k变化：旧SQL为99,990,000 joinRejected与100,010,000 CTE行，实际失败；新self-join为0/0，old别名PK点读10k次、各1行。新生成SQL及原有old-key/no-op/rollback相关6个选中事件均通过；定向撤销无统计请求三次200为1.710994501/1.835675543/2.029426501 s。原请求4 s/提交2 s未提高；该处只接受定向修复 [E28–E31]；其后的完整45基线及定界另由E34接受，当前6成本行双轮已由E39接受，c7本机门禁已由E66接受；后来CI的ChildrenOfAll/reset失败另列，后续修复头已按范围刷新验证，见S2审查当前表。已冻结00050迁移SQL/二进制不受此查询变更影响，已接受6M结果保留，不重跑。
+
+**迁移与运维。** 原49 CLI来自 `fd00ee67…`，50 CLI来自 `9bafdaa6…`，00050 SQL SHA `89a5cb6e57f3f9fd13032f3ed3a0b754fee58ccb1f4964fdd7371a5a580ce2e7`。正式 A/B 均为真实49起点、20本×300k=6M；A全普通/0 eligible，B前两本 LLM 来源100k/200k。两份数据构成相同，前两本 mode/source_root_id 不同。页5,040,980/附件959,020/垃圾100,000；页0/64/256/1024字节，附件元数据0/64/256字节；未物化资产文件。每轮 fsync 自有目录、逐文件 FADV_DONTNEED/fincore，驱逐后全部0页、启动后 nodes heap/index仍0页；只证明OS页缓存，不证明设备缓存。PG设置与分布细节承接已冻结迁移正文 [D02]。
+
+00050 的实际次序是 ADD source_hash（初始全 NULL）→ CREATE 部分索引 → DO 回填。因此 A、B、第三份在 CREATE INDEX 时都还没有非 NULL 来源键，该阶段主要是扫描，不能拿来代表 populated100k 暖态重建。B/third 的最终300k条目索引大小、DO/整事务差与暖100k构建差须分别记录；一次6M四/三列差不能归因成纯 id 列的因果开销。B 最终 `after50` collector 的 storage section、`nodes_notebook_id_kind_source_hash_idx` 行的 `main_bytes` / `total_including_indexes_toast_bytes` 均为 36,806,656 B；CREATE 时的 reltuples=0/relpages=1 是未刷新的估计，不能当作最终大小 [E21]。第三份三列的两值均为 27,312,128 B，本固定语料四列多 9,494,528 B [E26]。
+
+| 已验/待验运行 | PG事务 / 命令wall | server ALTER / index / DO | WAL/空间与边界 |
+|---|---|---|---|
+| 官方A，6M/0 | 1.678 / 1.711060 s | 493.706 / 1178.889 / 1.850 ms | CLI bracket1,053,648,248 B；PGDATA/WAL峰15,769,739,264/1,174,417,408 B；9286回执、28ledger/8048批、前后6M oracle/13表通过 [E14、E15] |
+| 独立A CHECK/三列/四列 | 命令0.479914 / 0.360773 / 0.372451 s | 464.186 / 345.773 / 357.044 ms | bracket55,984/60,264/62,920 B；三次各自cold、4096回执、oracle/13表/最终4-key与CHECK通过；A全NULL，两索引均8192 B，只是空索引扫描 [E16] |
+| 官方B，6M/300k | 21.580 / 21.610380 s | 405.030 / 1111.227 / 20061.088 ms | CLI bracket3,734,735,832 B；PGDATA/WAL峰16,078,131,200/1,375,744,000 B；9286回执、28ledger/8048批、前后6M oracle/13表通过 [E19、E20] |
+| 独立B原DO | 同事务18.236 / psql18.253609 s | DO18226.946 ms，实际更新300,000行 | DO前后cluster LSN bracket482,303,008 B；reset bracket405,899,704 B另计；前后6M oracle/13表通过 [E22] |
+| 第三份fresh49 B三列诊断 | 21.543 / driver21.558410 s | 463.042 / 1147.079 / 19930.782 ms | CLI bracket3,709,954,784 B；PGDATA/WAL峰16,085,606,400/1,996,500,992 B；9287回执、28ledger/8048批，前后6M oracle/13表与官方B初始数据一致；driver池4/官方CLI池10 [E25] |
+
+A完整建库/装载/前后验证2232.683 s不是迁移停机时间；2230资源样本最小Available15,384,055,808 B>reserve6,242,815,181 B，startup596热页但nodes0。独立A886样本最小Available14,819,930,112 B，三次startup nodes均0。统计wal_bytes与紧贴CLI的LSN bracket不相互替代，累计统计可能滞后。[E14–E16]
+
+B完整建库/装载/前后验证2227.942 s不是迁移停机时间；2225资源样本最小Available14,707,286,016 B>原reserve6,165,193,524 B，startup596热页但nodes0。nodes heap由1,054,203,904变为1,117,224,960 B，含索引/TOAST总大小由2,849,783,808变为2,951,602,176 B；累计wal_bytes差4,420,446,965 B与CLI bracket分别保留。[E19–E21]
+
+独立B只在已迁移的schema50中清空并恢复前两本100k/200k hash，四列索引和CHECK仍在；旧tuple/index entries使其不等于fresh49。原样DO的同连接marker核PID/session/xid与本事务300k更新，5条SQL日志绑定实际DO和时长；紧贴DO的cluster LSN排除reset和之后COMMIT，仍可能含后台/检查点WAL，不称隔离DO WAL。root已核8083命令回执、28ledger与16,355实际输入SHA；8048个oracle/row流式stdout按原设计未保留大原文，账本逐项绑定receipt的query/output SHA。1208严格资源边界（含两组各601个oracle点）与1749连续样本均未越原B reserve；最小Available14,564,749,312 B，PGDATA/WAL峰16,108,802,048/1,073,754,112 B。startup596热页但nodes0；1750.547 s完整流程不当作DO时间，官方B结果SHA保持不变。[E22]
+
+第三份三列完整流程2158.503 s含建库/全量验证，不是迁移停机时间；2155资源样本最小Available14,436,462,592 B>reserve6,123,985,306 B，startup596热页但nodes0。最终nodes heap同为1,117,224,960 B，含索引/TOAST总大小三列2,942,107,648 B、四列2,951,602,176 B。四列减三列的PG事务差0.037 s、DO差130.306 ms、命令wall差0.051970 s分列；单次运行、缓存/检查点及不同driver启动/连接池，不能推出纯id列的因果时间开销。三份6M与独立诊断的测量义务已获root接受，仍不等于S2验收。[E25、E26]
+
+本轮补入官方B、第三份三列及成功400 backfill smoke各自确切owned容器/PGDATA清理记录；root验收确认目录消失、各清理回执指定的已接受原件身份不变，其余小库/失败候选不由此宣称清理。证据保留，不将清理当新测量或额外验收层。[E23、E24、E27]
+
+两个400节点库分别验证 nodes强锁下reader/writer等待，以及取消原迁移、schema49/13表回滚后再Up成功；asset_blobs锁是人为屏障，不写成生产业务锁。另400库六次官方CLI roundtrip证明Down50保留rewrite、Down49丢标记，再Up49全false；排除nodes.source_hash/page_revisions.rewrite两列后13表摘要不变，186 hash重新构建。合成rewrite标记不是公开undo故事。升级先停旧实例、备份DB与附件、迁移并补运行角色权限后启动；00050持表强锁，Down/Up不代替备份恢复。本机数字不承诺生产窗口，M12须实机复测。[E17、E18]
+
+**已验增量门禁。** 六项命令在同3171输入上通过：lint/knip 15.429 s，build 14.116 s，server/tools vet 12.555 s；server short 151.269 s、8140 run=6875 pass+1265显式short skip；tools short 1.093 s、27/27；未过滤page PostgreSQL包215.108 s、256/256无skip。22个server零选中包为无测试/生成模块，skip原因原件保留；这六项不冒充S2-5完整串行门禁。[E41–E43]
+
+**正式审查与首轮 race。** A 在上述代码头无 Important/Minor/Nit；其独立控制为 baseline 78 pass、mutant 67 pass/11 fail、restored 78 pass。B 为 0 Important/0 Minor/1 Nit，独立控制为 27 pass → 26 pass/1 fail → 27 pass；B-N1 指本设计 §3.7、00及总体设计规范把当前 SQL 误写为 previous/changed CTE。本文已实际应用 self-join 更正，原 B 核三处规范及对应代码无新增发现，主持者核原件后接受 B-N1 **CLOSED**；原始发现与审查计数保留，闭环回执见[S2审查](reviews/P2-S2-source-hash-review.md) [F30–F32]。C 原件已核：真实 API/MCP/import 55 个 pass 事件、report 4 pass → 1 pass/3 fail → 4 pass、Web 268、E2E 15（每项一次、无 retry/skip/flaky）。C-M1 为 Web 历史 fake 将节点移到自身/后代时，先构造 projected 环再由 isUnder 遍历；真实服务端两种情况均 409 且状态不变，正常移动 200。有界观察器统计目标 projected 数组的所有 find 调用，旧/恢复 normal1、self51、child51，临时修复1/0/0；观察器异常不是产品响应或全局超时。正式修复已提交 `c7cec1fab9cc0586f4ba3754876aace2df79c570`，仅两Web文件变化，提交头gen及修复绑定已核；原C另核最终3171文件工作快照相对该提交有且仅六份文档差异，其余3165一致，不称3171全已提交；原C已在该提交上复核35项并由主持者核原件关闭，C-M1 **CLOSED** [E49、E50]。[E45–E47]
+
+**ca8普通子树修复与原审复核。** 当前RD只用于普通`ChildrenOfAll`：去重父UUID，notebook/parent闭区间LATERAL、OFFSET0及外层live过滤，原11列与全层sort_order/id排序不变，无LIMIT或新索引。生成$1=Parents、$2=NotebookID；实验相反顺序经类型保持映射核同。有限来源入口是另一reader，仍有内外scalar LIMIT与完成层后Go排序，不把10k界施加给普通完整Subtree。初轮adapter267pass/223.795s，真实三状态各3move+3reset、439.521–500.438ms/60.831s，不变1.4s/4s/2s；只是初轮，最终全门禁另验。普通读者仍保留50001/20001节点各8读、64层、全序/cache/删除语义；数组含NULL元素只在外部SQL实验覆盖，Go []uuid.UUID不表达该输入。[E88/E91/E93/E94/E96]
+
+作者四条old-ANY/global-order/skip-reset/inner-live-HTTP控制各0/1/0，另metadata inner-live实际0/0/0存活保留，不算kill。原B B2-N1要求backend track_counts=on及fresh fixture非空entries正证，sameargv7pass→7fail→7pass关闭；原C C2-M1在实际9move/9reset→3move/0reset→9move/9reset三阶段、root parent/hash准备断言精准失败后关闭。不同selector的旧B窗口与C首次分块parser STOP均保留原史。root已逐原件核两份修复复核，旧B-N1仍OPEN。[E87/E95–E99/E103–E105] 后续状态：以上OPEN为ca8修复复核时的原记录；本次实际文档投影后，原B已复核并由主持者接受关闭B-N1，见[S2审查](reviews/P2-S2-source-hash-review.md) [F30–F32]。
+
+六快门禁在3172固定输入通过（server short8142run=6875pass+1267skip，tools27pass），root在ca8另跑gen-check0/3.448s且输入无变化。Makefile/CI与已审四片after逐字一致，实际8server+3=11作业；ca8当时99新增Go、91race=71nonbootstrap+20bootstrap、8!race是当时清单。最终129账本为原124fresh+4作者post-fix reuse+1B sameargv reuse，124Go/1coverage/4Web；该账本/四片计时/门禁后来已接受，后续修复及最新33b4代码CI见当前表。旧c7的121fresh+3reuse只属下面历史表，不套用于ca8。[E88–E90/E100–E102]
+
+**c7控制与Go清单（已接受的修复前历史）。** 主持者已接受c7冻结输入上的124项义务：35/21/53/15四组，121项全新执行共363阶段，3项复用共9阶段绑定；119项Go、1项coverage、4项Web。coverage为Go 0/0/0而外部checker 0/1/0，其他123项0/1/0。catalog、观察器/计划策略、测试输入、仪器与AST/coverage控制单列，不称124个独特产品bug。5条原STOP来自动态地址/ISO时间/UUID的matcher差异，原状态保留，最终断言由完整error/error-continue重组和独立/root核对接受；不会把首片摘要改成完整断言。逐ID、分类、复用范围与全部receipt SHA见[S2最终控制表](reviews/P2-S2-source-hash-review.md#最终控制复演)。root另核执行后3171路径、mode、size和SHA全部恢复。[E51–E55]
+
+新增Go清单从immutable `6a4f33b8fb621c66d97d38b3fea4fea0adbfc565` 到 `c7cec1fab9cc0586f4ba3754876aace2df79c570` 逐函数重建，仍为97新增：89项race eligible=69非bootstrap+20bootstrap，8项!race。25f→c7仅两Web文件，全部Go输入不变；正式审查追加的是控制/HTTP catcher义务，未新增committed Go测试。未入仓的review临时测试与诊断不计入97。[E56]
+
+**c7全部本机门禁（已接受的修复前历史）。** 全非bootstrap首轮7470 pass+1固定Markdown成本skip；第二轮focused为13命令248 run/pass，69新增tops各两次的Elapsed已由双raw重算。bootstrap三片各两轮，每轮468 tops+3020纯descendant=3488 run/3484 pass/4固定Markdown race skip（含2top），20新增tops每轮各一次；仅3个源码固定UUID叶标题不同，原名/loop位置保留。25 fresh成本/guard命令105 run/pass、0skip/fail，另6条按相关Go输入一致复用双轮，共31成本/guard recipe无漏重（含tools，short另1条）。4个bootstrap race skip及首轮非bootstrap Markdown成本skip均已在无race下实际补齐。完整Web3548通过并仅延续已核标题改动；完整E2E108文件312测试/312次成功，无skip/retry/flaky，wall139.573777 s。静态/构建/生成/短测、完整命令原件与reuse范围见[S2验证表](reviews/P2-S2-source-hash-review.md#最终验证与集成)。[E63–E70]
+
+| bootstrap分片 | 两轮Go package Elapsed s → 均值 | 两轮命令wall s → 均值 |
+|---|---|---|
+| 1（168 tops） | 289.720 / 297.166 → 293.443 | 296.025730 / 297.981815 → 297.003772517 |
+| 2（151 tops） | 400.897 / 400.504 → 400.7005 | 401.670684 / 401.308331 → 401.489507546 |
+| 3（149 tops） | 327.654 / 327.567 → 327.6105 | 328.510077 / 328.360416 → 328.435246511 |
+
+每轮三片run为743/1883/862、pass为743/1879/862，4个固定skip均在第二片。上表是本机真实量，package与wall不混用，不是CI Test均值；SHA前后图不证明进程中的瞬时修改，结束后3171路径/mode/size/SHA全恢复已另核。[E63/E66/E71]
+
+本轮IndexItems30ms守卫三状态中位9.633750/12.240333/10.054916ms，GrepCandidates600ms为90.496750/89.577833/95.540458ms，均未复发；原阈值与请求/提交期限未调。长期CI稳定性仍归M10收尾，不由本轮绿关闭。[E64]
+
+**后续CI修复与当前结果。** c7两次reset失败后RD实际整合，5348及0566两次Restore/4s失败继而修TrashChildren和TrashHistory；2536在Restore九次200后Revert三状态sample2仍500，33b4只减少planner.before无关名字候选分配，保留完整冲突语义。该次精确CI40718770843全部11项成功。没有提高4s请求/2s提交、7.6s Restore/Revert成本界或既有1s History界；一个绿分支不证明统一根因或长期稳定。[F01–F16]
+
+当前32条成本/guard recipe（17costs/15guards，含tools；short另1）逐条有实际pass及依赖证明；新History400k每轮四次真实计数，core16最多20101的计划/语义结果与400k永久守卫分开。TrashChildren13与History8、Name9反向控制不揉进旧129全新执行；Name后旧129为14直接＋1保守fresh、114复用。各阶段声明数/原件、!race补测、159分类及当前门禁计数见[S2审查](reviews/P2-S2-source-hash-review.md#33b4最终代码控制与本机验证)。NAME-REV-01旧0/0/0覆盖缺口及后续精确HolderID失败修复保留，原review02已关闭。[F03–F13]
+
+| 当前正式成本行 | package两轮s | 均值×2.4 s | 复用边界 |
+|---|---|---:|---|
+| create | 44.754/41.323 | 103.2924 | 既有具体不变路径 |
+| move | 59.174/52.601 | 134.1300 | 既有具体不变路径 |
+| restore | 76.629/75.649 | 182.7336 | History后fresh |
+| revert | 92.676/92.311 | 221.9844 | Name后fresh |
+| Background check/plan | 68.300/69.535 | 165.4020 | Name后fresh，18check＋18plan |
+| forget | 66.868/66.867 | 160.4820 | helper后正式pair，旧fixture失败不入pair |
+| History400k | 9.911/9.977 | 23.8656 | 独立recipe，每轮4×Count400000 |
+
+当前pair以GoJSON package Elapsed计算，旧S2-4 wall估算保留原单位，不混为同一值；本机<300s不是CI保证。Revert18HTTP200最大3.063165043s，Background check/plan最大2.388390585/2.409432001s；!race helper只排除autovacuum worker，普通client仍拒绝，旧失败PID身份未知。原173份受保护的是外部CI/预算证据，源码另由固定Git/来源图证明。[F01/F11/F13]
+
+四片本机双轮package均值319.5785/284.784/240.4775/262.5225s（ca8受测来源，后续相关caller另fresh）；33b4单分支Test444/419/302/271s。当前CI Restore/Revert各9次200，最大2.467645682/3.130127760s，后续Background18及Forget9完整通过；History四个实际400k Count为171.483340/198.331556/191.590538/158.465408ms，named非执行EXPLAIN计划不当作Store实际执行计划。guards Test1127s/job1146s分开，11作业success已由原件接受；main双样本仍待。[F14–F16/F22]
+
+**剩余项统一入口。** 实现、159控制及来源/复用边界、本机门禁和精确33b4代码CI已接受。B-N1已在真实规范文档投影后由原B复核关闭并经主持者接受；剩余文档CI、no-ff main/记录的实际CI、两次main四片Test均值待闭环；未知号不填。记录自身CI可树外回执收口、下次既定S3/Phase自然转录，避免自引用提交。M7/M9/M8仍open（M8待S3），M6 lint留P3、M5done保持；继续P2/S3、P3–P5与M10收尾，不开始M11。
 
 ## 附录：核对过的代码与证据
 

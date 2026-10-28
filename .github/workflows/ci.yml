@@ -22,7 +22,8 @@ jobs:
     # 一个作业跑全部的 Go 测试在 M8/P3A 时超过了 25 分钟的时限：分成几份并行，各占一个 runner（Makefile 的
     # test-go-race、test-go-bootstrap-1、-2、-3 与 -4、test-go-costs、test-go-guards，几份之和是 make test-go；另有 test-go-short 一份，只跑单元测试，
     # 不在这个和里）。不带竞态检测的耗时守卫也因此不与竞态检测下的构建抢 CPU。
-    # server 共八份，连同 web、e2e 与 image 共十一项；四份组合根的新实测与最终两次 main 验收另记。
+    # server 共八份，连同 web、e2e 与 image 共十一项；四份组合根本机两轮的包耗时均值见 Makefile。
+    # 代码分支 33b4da5a 的 CI 40718770843 四份 Test 为 444/419/302/271 秒；最终两次 main 的各份均值另验。
     # 一份失败不取消别的：各自的失败都看得到。时限约为各份在 CI 上实测的两倍（M8/P3A，作业 6:20、10:58、9:26）：
     # 组合根那一份里 go test 的 -timeout 15m 先到，打出卡住的测试
     strategy:

@@ -45,7 +45,7 @@ Claude 在负责人的 macOS 笔记本上工作。它的临时目录、本机记
 ## 4. CI
 
 - 工作流是 `.github/workflows/ci.yml`。同一分支的新推送会取消正在跑的那次，等它跑完再推。
-- 读 CI 用 [tools/ci-wait.sh](tools/ci-wait.sh)：`tools/ci-wait.sh <完整的 sha>`。它找到这个提交的那次运行，等它完成，列出每个作业的结论与时间，以及 Test、E2E 两步的时间（组合根的三份看的就是 Test 一步）。装了 `gh` 并登录时用它；否则用公开的 REST API，每个 IP 每小时 60 次，所以它每 2 分钟才问一次。仓库默认 `open-nerve/NerveWiki`，可用 `NW_REPO` 改。
+- 读 CI 用 [tools/ci-wait.sh](tools/ci-wait.sh)：`tools/ci-wait.sh <完整的 sha>`。它找到这个提交的那次运行，等它完成，列出每个作业的结论与时间，以及 Test、E2E 两步的时间（组合根的四份看的就是各自 Test 一步，不是整个job时长）。装了 `gh` 并登录时用它；否则用公开的 REST API，每个 IP 每小时 60 次，所以它每 2 分钟才问一次。仓库默认 `open-nerve/NerveWiki`，可用 `NW_REPO` 改。 当前四分片配置为8个server leg加web/e2e/image共11项；本机测量在同一heavy锁下分别运行`make -j1 test-go-bootstrap-1`至`test-go-bootstrap-4`，每份两轮。不要用plain `make test-go`的内部`-j5`作为这些独立串行样本；旧三份/十项CI记录保留原口径。
 - 失败的原因：作业日志要认证（`gh run view <id> --log-failed`）。不认证时，失败的作业的 annotations（`/repos/<repo>/check-runs/<作业 id>/annotations`）是公开的，Go 的失败与 Playwright 的 `github` 报告器都写在那里。
 - 只在 Linux 上失败的，在 `golang:1.27.1-trixie` 容器里复现（`--cpus=2`、`-race`），见 [05](05-lessons.md) 第 7 节。
 
@@ -75,3 +75,5 @@ Claude 在负责人的 macOS 笔记本上工作。它的临时目录、本机记
 - **`main` 只推完成并核对过的状态**（合并加文档，CI 绿），从不强推，从不推做了一半的东西。分支随时可以推。
 - **不提交**本机的东西：agent 的设置与临时目录、量时间的输出、变异的备份（`*.mutbak`）。提交之前看一眼 `git status`。
 - **本目录是交接时的快照**，之后不必维护。进度写在仓库原本的地方：v0.1-design 12.6、各 00 号设计的第 12、13 节、各 Phase 设计的"结果"一节与审查记录。
+
+M10/P2/S2 当前精确代码33b4的CI40718770843全部11作业成功，四片Test444/419/302/271秒仅一个分支样本；两次main均值仍按上述规则另验。本机四份双轮及来源差异见[S2记录](../M10-llm-wiki/reviews/P2-S2-source-hash-review.md#33b4最终代码控制与本机验证)，不以本机量替代CI。

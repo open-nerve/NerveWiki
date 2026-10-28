@@ -58,6 +58,8 @@
 
 名义批不是执行调度；不搜索所有分割。没有并发时，真实资源界缩批仍可能使来源拒绝；前批提交保留，失败批回滚；名义拒而更细可行也仍拒。这一取舍和用户说明明记，不再声称最细分法总更严格。真实API两独立组、同组两方向合法模块fixture、真实halving与独立oracle分别验收，变异38/39/43覆盖退回同步facts、group/cuts和实际缩批错误。**原A复核：resolved（设计层）**，无运行结果。
 
+**S2-3实施更正（2026-10-28）**：上面的“可达历史链”保留为当时设计审查原文，不再视为已证的公开入口事实。真实执行显示同批创建与deferred rewrite合并后base=nil、rewrite=false，同步undo也不运行link rewrite，故原例所需的C版本不存在。主持者没有改生产历史语义迁就它；`TestTheSourceCreationRewriteUndoKeepsItsRecordedBase`改核真实记录链及duplicate/nil-target/no-enqueue。合法模块历史fixture另外核对同/跨组、compact与cuts的相反结果，实际`38-active-job-snapshot-uses-sync-facts`控制的catcher为`TestSourceJobPrechecksKeepOppositeCutOutcomes`、`TestSourceJobIndependentGroupsDoNotCoalesceForDuplicates`。详细更正见[P2 §3.13、§7.3](../02-P2-source-area.md)；`p2-s2-3-root-acceptance.json`接受提交`9bafdaa67513de135c19f51b5ba9678cac59fe82`的增量，不代替整S2三审。决定43的名义预检/原调度取舍保持；不声称不存在其他可达公开历史链。
+
 ### B-M1 Minor：同一步内部命中也要依起点key给 duplicate_of
 
 原 B 的核心：
@@ -136,3 +138,8 @@ A另给出真实资源界fixture的**静态可实施参考**：四compact步骤 
 本次仅新增正式Phase与本审查记录，并对00的迁移/事实/正文规则/后台预检/duplicate_of/工作界/并发证明/网页/API/MCP/Phase分工/测试/风险及状态作对应最小替换，保留原总设计决定和P1/维护历史。00不并存两套相反的后台保证或duplicate规则。头和§12只标“P2设计已审查、待S1”，§13记本次设计与真实维护入口；不提前写Step、P2或M8完成。
 
 设计文档在干净归档副本用唯一旧段/基线哈希/目标不存在检查演练，主持者审完整diff后才在main应用、提交；文档精确main CI绿后才能开 `m10-p2-s1` worktree。后续三个Step分别照Phase §6–8实现、门禁、变异、三审、修复/核对、文档、no-ff合并及两份精确main CI。M8只在整个P2验收后done，M7/M9仍open；P3–P5及M10收尾原分工保留，不开始M11。
+
+
+**2026-10-28实施记录（不改写原设计审查历史）**：S2-1–4增量与成本/迁移已核；当前SetSourceHashes为UPDATE self-join，保留当时CTE旧值证明及后来无统计二次方修复。A-I1实施更正仍按原附记分层。正式A/B/C、尚未关闭的B-N1及当前159项义务/本机验证/33b4代码CI已验、剩余文档复核/main集成见[S2审查](P2-S2-source-hash-review.md)，S2尚未验收。
+
+**2026-10-29 B-N1后续闭环**：保留以上实施记录及原发现；实际应用三处self-join规范后，原B复核无新增发现，主持者核原件接受关闭。回执及文档/main集成剩余项见[S2审查](P2-S2-source-hash-review.md) [F30–F32]。
