@@ -73,6 +73,7 @@ type sourceHTTPSeed struct {
 	member                         uuid.UUID
 	fingerprint                    sourceHTTPRows
 	files                          sourceHTTPFileSummary
+	moveBaseline                   sourceHTTPMoveState
 }
 
 type sourceHTTPApp struct {
@@ -216,6 +217,10 @@ func sourceHTTPPrepare(t *testing.T, shape string) sourceHTTPSeed {
 	finished := connect(t, seed.database)
 	sourceHTTPCatalog(t, finished, "no_statistics")
 	seed.fingerprint = sourceHTTPFingerprint(t, finished)
+	if shape == "move" {
+		seed.moveBaseline = sourceHTTPMoveStateOf(t, finished, seed)
+		sourceHTTPLog(t, "move-baseline", seed.moveBaseline)
+	}
 	seed.files = sourceHTTPFiles(t, seed.storage)
 	wantFiles := 0
 	if seed.root != "" {
@@ -609,8 +614,60 @@ func sourceHTTPSample(t *testing.T, a sourceHTTPApp, seed sourceHTTPSeed, stage 
 	}
 	if seed.shape == "move" {
 		tm.send(t, nodeMove("alice", seed.root, ""), http.StatusOK)
+		reset := sourceHTTPMoveStateOf(t, tm.pool, seed)
+		if reset != seed.moveBaseline {
+			t.Fatalf("source HTTP move reset changed original group/source identities or hashes: got %+v want %+v", reset, seed.moveBaseline)
+		}
+		sourceHTTPLog(t, "move-reset", struct {
+			Stage  string
+			Sample int
+			State  sourceHTTPMoveState
+		}{stage, sample, reset})
 	}
 	return took
+}
+
+// The move corpus is a fixed flat group: one root, 99 pages and 9900 assets.
+// Capture identities once from the stopped seed, then compare every reset to
+// that baseline. Aggregate SQL keeps evidence compact without treating a hash
+// count as proof that the same original sources survived.
+type sourceHTTPMoveState struct {
+	RootLiveOutside                        bool
+	GroupNodes, GroupLive, GroupNullHashes int
+	SourceNodes, SourceLive, SourceHashes  int
+	GroupIDsSHA256, SourceIDHashesSHA256   string
+}
+
+func sourceHTTPMoveStateOf(t *testing.T, pool *pgxpool.Pool, seed sourceHTTPSeed) sourceHTTPMoveState {
+	t.Helper()
+	var state sourceHTTPMoveState
+	err := pool.QueryRow(t.Context(), `SELECT
+	 COALESCE(bool_or(id=$2::uuid AND deleted_at IS NULL AND parent_id IS NULL),false),
+	 count(*),count(*) FILTER (WHERE deleted_at IS NULL),count(*) FILTER (WHERE source_hash IS NULL),
+	 encode(sha256(convert_to(COALESCE(string_agg(id::text,',' ORDER BY id),''),'UTF8')),'hex')
+	 FROM nodes WHERE notebook_id=$1 AND (id=$2::uuid OR parent_id=$2::uuid)`, seed.wiki.id, seed.root).
+		Scan(&state.RootLiveOutside, &state.GroupNodes, &state.GroupLive, &state.GroupNullHashes, &state.GroupIDsSHA256)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !state.RootLiveOutside {
+		t.Fatalf("source HTTP move reset root missing/deleted or parent is not NULL: %+v", state)
+	}
+	if state.GroupNodes != 10000 || state.GroupLive != 10000 || state.GroupNullHashes != 10000 {
+		t.Fatalf("source HTTP move reset group must retain 10000 live nodes with NULL hashes: %+v", state)
+	}
+	err = pool.QueryRow(t.Context(), `SELECT count(*),count(*) FILTER (WHERE deleted_at IS NULL),
+	 count(*) FILTER (WHERE source_hash IS NOT NULL),
+	 encode(sha256(convert_to(COALESCE(string_agg(id::text||':'||COALESCE(encode(source_hash,'hex'),'NULL'),',' ORDER BY id),''),'UTF8')),'hex')
+	 FROM nodes WHERE notebook_id=$1 AND parent_id=$2::uuid`, seed.wiki.id, seed.wiki.raw).
+		Scan(&state.SourceNodes, &state.SourceLive, &state.SourceHashes, &state.SourceIDHashesSHA256)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.SourceNodes != 100000 || state.SourceLive != 100000 || state.SourceHashes != 100000 {
+		t.Fatalf("source HTTP move reset must preserve 100000 original live sources: %+v", state)
+	}
+	return state
 }
 
 func sourceHTTPLog(t *testing.T, kind string, value any) {

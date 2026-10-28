@@ -141,17 +141,31 @@ WITH RECURSIVE chain AS (
 SELECT id, parent_id, name, hops::integer AS hops FROM chain ORDER BY hops;
 
 -- name: ChildrenOfAll :many
--- The children not deleted of parents, of the notebook, in order: a level of a subtree, read a level a statement and
--- planned with its parents each time (Store.Subtree, postgres.Planned). One recursive statement is planned whole, and
--- some of its plans read the whole table for each parent or each level: without statistics, the notebook by the titles'
--- partial index for each parent, 40 s for a folder of 10,000 (M6 closeout FA-M1); with them and one folder holding most
--- nodes, each level a scan of every notebook's nodes (FA2-I1, FA3-M1). A plan for any parents, without statistics,
--- reads the notebook by the titles' index for each level and compares each row with the parents one by one (FA4-M1).
-SELECT id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at,
-    updated_at
-FROM nodes
-WHERE notebook_id = sqlc.arg(notebook_id) AND parent_id = ANY(sqlc.arg(parents)::uuid[]) AND deleted_at IS NULL
-ORDER BY sort_order, id;
+-- One complete level of a subtree, in global level order, with no row limit. Deduplicate parents before visiting
+-- their notebook/parent ranges. OFFSET 0 keeps the per-parent range separate; the live filter stays outside so a
+-- live-only notebook/title index cannot replace that range when column statistics are absent (M10/P2 CI fix).
+-- Store.Subtree uses DescribeExec, but force_generic_plan still applies to its unnamed statement. The former ANY
+-- filter could compare every notebook row with every parent. Earlier recursive forms also scanned a table per
+-- parent or level: 40 s for 10,000 without statistics (M6 FA-M1), and majority-parent regressions (FA2-I1/FA3-M1).
+SELECT child.id, child.notebook_id, child.parent_id, child.kind, child.name, child.name_key,
+    child.sort_order, child.created_by_id, child.updated_by_id, child.created_at, child.updated_at
+FROM (
+    SELECT DISTINCT parent_id
+    FROM unnest(sqlc.arg(parents)::uuid[]) AS input(parent_id)
+    WHERE parent_id IS NOT NULL
+) AS p
+CROSS JOIN LATERAL (
+    SELECT n.id, n.notebook_id, n.parent_id, n.kind, n.name, n.name_key,
+        n.sort_order, n.created_by_id, n.updated_by_id, n.created_at, n.updated_at, n.deleted_at
+    FROM nodes n
+    WHERE n.notebook_id = sqlc.arg(notebook_id)::uuid
+      AND n.parent_id >= p.parent_id
+      AND n.parent_id <= p.parent_id
+      AND n.parent_id IS NOT NULL
+    OFFSET 0
+) AS child
+WHERE child.deleted_at IS NULL
+ORDER BY child.sort_order, child.id;
 
 -- name: RenameNode :exec
 UPDATE nodes

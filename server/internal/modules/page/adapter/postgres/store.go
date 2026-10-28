@@ -44,8 +44,8 @@ func (s *Store) queries(ctx context.Context) *gen.Queries {
 	return gen.New(postgres.DB(ctx, s.pool))
 }
 
-// planned is queries with each statement planned with its arguments
-// (postgres.Planned): for those a plan for any arguments makes much slower.
+// planned uses DescribeExec, avoiding pgx's named statement cache. The
+// server's plan_cache_mode still decides whether its plan is generic.
 func (s *Store) planned(ctx context.Context) *gen.Queries {
 	return gen.New(postgres.Planned(postgres.DB(ctx, s.pool)))
 }
@@ -299,8 +299,8 @@ func (s *Store) Ancestors(ctx context.Context, id uuid.UUID) ([]domain.Ancestor,
 const subtreeLevels = 64
 
 // Subtree implements app.Nodes: the node, then its descendants level by
-// level, each level in order and read in one statement by its parents,
-// planned with them.
+// level, each level in order and read in one statement by its parents.
+// DescribeExec is used; ChildrenOfAll also supports a forced generic plan.
 func (s *Store) Subtree(ctx context.Context, notebookID, id uuid.UUID) (domain.Subtree, error) {
 	q, levels := s.queries(ctx), s.planned(ctx)
 	root, err := q.FindNodeIn(ctx, gen.FindNodeInParams{ID: id, NotebookID: notebookID})

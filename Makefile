@@ -180,17 +180,18 @@ GO_TEST_RACE = go test -race -count=1 -timeout 15m
 
 .PHONY: test-go
 test-go: ## 运行 Go 测试，含集成测试与 server/tools（开启竞态检测，不用测试缓存；需要 Docker）
-	@# 本机与 CI 同样分份（M9/P2 设计 6.5）：组合根之外的包一个 go test，组合根按测试名三份、各一个 go test 二进制、各受 15 分钟，
-	@# 同一条规则管两处（之前组合根是一个二进制，本机 8 到 9.5 分钟，比 CI 的任何一份先到 15 分钟）。竞态检测的这四个同时跑
-	@# （-j4，随份数；macOS 的 make 3.81 也有 -j），之后不带竞态检测的两份依次跑，不与竞态检测下的构建抢 CPU；各份之和就是下面 CI 的六份
+	@# 本机与 CI 同样分份（M9/P2 设计 6.5）：组合根之外的包一个 go test，组合根按测试名四份、各一个 go test 二进制、各受 15 分钟，
+	@# 同一条规则管两处（之前组合根是一个二进制，本机 8 到 9.5 分钟，比 CI 的任何一份先到 15 分钟）。竞态检测的这五个同时跑
+	@# （-j5，随份数；macOS 的 make 3.81 也有 -j），之后不带竞态检测的两份依次跑，不与竞态检测下的构建抢 CPU；各份之和就是下面 CI 的七份
 	@# （M8/P3A 审查 C 的 I-1）。M9/P2 S1 各量两次：两份时竞态检测的三个同时跑（-j3）整个 759 与 754 秒、依次 1031 与 1061 秒，
 	@# 只快 4.8 分钟，不到设计定的 5 分钟，所以先是依次；分成三份之后（S1 修复第一轮）四个同时跑整个 698 与 730 秒、依次 1024 与 1058 秒，
 	@# 同时的平均快 5.45 分钟，过了 5 分钟，所以同时（四个里第一份最长，284 与 319 秒）。同时跑的输出交错：找 --- FAIL、FAIL 与 make 的 Error 三种行
-	@$(MAKE) --no-print-directory -j4 test-go-race test-go-bootstrap-1 test-go-bootstrap-2 test-go-bootstrap-3
+	@# M10/P2/S2 增为四份时沿用随份数的并发规则；上述加速幅度属于 M9/P2 三份时的历史测量。
+	@$(MAKE) --no-print-directory -j5 test-go-race test-go-bootstrap-1 test-go-bootstrap-2 test-go-bootstrap-3 test-go-bootstrap-4
 	@$(MAKE) --no-print-directory test-go-costs
 	@$(MAKE) --no-print-directory test-go-guards
 
-# CI 的六份（short 是第七份，只跑单元测试，不在 make test-go 里，见 test-go-short）：一个作业跑全部时超过了 25 分钟的时限（M8/P3A，竞态检测下的组合根占了一半）。
+# CI 的七份（short 是第八份，只跑单元测试，不在 make test-go 里，见 test-go-short）：一个作业跑全部时超过了 25 分钟的时限（M8/P3A，竞态检测下的组合根占了一半）。
 # 组合根之外的包由 go list 列出，以后新加的包自动归入第一份。不带竞态检测的那一份在 M8/P4A 之前作业已到 15 分钟
 # （测试一步 13:37），超过 15 分钟就分（M8/P4 设计 3.11）：组合根的预算与守卫各自编译、各起数据库，分作一份。
 # 竞态检测下的组合根在 M8/P4A 的 CI 上测试一步 12:00–12:05，离 go test 的 15 分钟只剩约两成，P5 还要加测试（M8/P4A 审查 C 的 M-6）：
@@ -212,9 +213,14 @@ test-go: ## 运行 Go 测试，含集成测试与 server/tools（开启竞态检
 # 分了之后各单独跑两次，第一份 254 与 246 秒、第二份 121 与 132 秒、第三份 121 与 131 秒（平均 250、126.5 与 126 秒，新的两份差 0.4%）；
 # CI 的两次运行里三份的测试一步 5:51 与 7:07（平均 6:29）、5:13 与 4:20（平均 4:46.5）、3:12 与 3:49（平均 3:30.5），都在线之下，
 # 这次分照规则成立。第一份离线最近（这个界线上 CI 的四次是 6:59、6:56、5:51、7:07），过了线时照规则先看第二份收不收得下它的一段
-# -run 与 -skip 用同一组表达式：第一、第三份 -run 各自的表达式，第二份 -skip 它们的并，三份之和总是整个包，新加的测试
-# 自动落在其中一份；一份过了线时照 M9/P2 设计 6.5 的规则改这些表达式
+# M10/P2/S2：同一 c7cec1fa 的分支 CI 40616009992、40619625333 中，三份 Test 分别为 367/429、513/598、476/417 秒，
+# 均值为 398、555.5、446.5 秒。第二份超出 450 秒线 105.5 秒，邻片余量仅 52 与 3.5 秒，照 M9/P2 6.5 加第四份。
+# 这两个工作流均在 guards 失败、e2e/image 跳过；bootstrap 的成功样本用于分份决定，不是新四份实测或最终两次 main 验收。
+# 保留 FIRST；第二份 -run SECOND，第三份 -run THIRD 且 -skip SECOND，第四份 -skip 三个表达式的并。
+# FIRST 与另两个前缀不交；SECOND 与 THIRD 重合的 TheMCP 只在第二份运行；第四份补齐余下名字，新测试自动归入一份。
+# c7 的 468 个顶层按此规则静态归入 168/71/114/115；新四份各两轮和最终 CI 时长仍须在最终输入上实际取得。
 BOOTSTRAP_FIRST = ^Test([A-D]|E([a-u]|very[A-R]))
+BOOTSTRAP_SECOND = ^Test(Every[S-Z]|Source|The(MCP|Contents))
 # M9/P2 S1：第二份的测试一步过了 go test 的 15 分钟的一半（CI 的两次运行 7:15 与 8:33），照规则按测试名再分一份，不提高 -timeout（M9/P2 设计 6.5）
 BOOTSTRAP_THIRD = ^Test(The[F-Z]|T[i-z]|[U-Z])
 .PHONY: test-go-race
@@ -222,19 +228,23 @@ test-go-race: ## 竞态检测下运行组合根（internal/bootstrap）之外的
 	cd server && $(GO_TEST_RACE) $$(go list ./... | grep -v '/internal/bootstrap$$')
 
 .PHONY: test-go-bootstrap
-test-go-bootstrap: test-go-bootstrap-1 test-go-bootstrap-2 test-go-bootstrap-3 ## 竞态检测下运行组合根的整个程序测试，三份依次（需要 Docker）
+test-go-bootstrap: test-go-bootstrap-1 test-go-bootstrap-2 test-go-bootstrap-3 test-go-bootstrap-4 ## 竞态检测下运行组合根的整个程序测试，四份依次（需要 Docker）
 
 .PHONY: test-go-bootstrap-1
 test-go-bootstrap-1: ## 竞态检测下运行组合根的整个程序测试中名字匹配 BOOTSTRAP_FIRST 的（CI 的一份；需要 Docker）
 	cd server && $(GO_TEST_RACE) -run '$(BOOTSTRAP_FIRST)' ./internal/bootstrap
 
 .PHONY: test-go-bootstrap-2
-test-go-bootstrap-2: ## 竞态检测下运行组合根的整个程序测试中名字既不匹配 BOOTSTRAP_FIRST 也不匹配 BOOTSTRAP_THIRD 的（CI 的一份；需要 Docker）
-	cd server && $(GO_TEST_RACE) -skip '$(BOOTSTRAP_FIRST)|$(BOOTSTRAP_THIRD)' ./internal/bootstrap
+test-go-bootstrap-2: ## 竞态检测下运行组合根的整个程序测试中名字匹配 BOOTSTRAP_SECOND 的（CI 的一份；需要 Docker）
+	cd server && $(GO_TEST_RACE) -run '$(BOOTSTRAP_SECOND)' ./internal/bootstrap
 
 .PHONY: test-go-bootstrap-3
-test-go-bootstrap-3: ## 竞态检测下运行组合根的整个程序测试中名字匹配 BOOTSTRAP_THIRD 的（CI 的一份；需要 Docker）
-	cd server && $(GO_TEST_RACE) -run '$(BOOTSTRAP_THIRD)' ./internal/bootstrap
+test-go-bootstrap-3: ## 竞态检测下运行组合根的整个程序测试中名字匹配 BOOTSTRAP_THIRD 且不匹配 BOOTSTRAP_SECOND 的（CI 的一份；需要 Docker）
+	cd server && $(GO_TEST_RACE) -run '$(BOOTSTRAP_THIRD)' -skip '$(BOOTSTRAP_SECOND)' ./internal/bootstrap
+
+.PHONY: test-go-bootstrap-4
+test-go-bootstrap-4: ## 竞态检测下运行组合根的整个程序测试中名字不匹配前三个表达式的（CI 的一份；需要 Docker）
+	cd server && $(GO_TEST_RACE) -skip '$(BOOTSTRAP_FIRST)|$(BOOTSTRAP_SECOND)|$(BOOTSTRAP_THIRD)' ./internal/bootstrap
 
 .PHONY: test-go-costs
 test-go-costs: ## 不带竞态检测的分配、耗时预算与界线的守卫，以及 server/tools（CI 的一份；需要 Docker）
