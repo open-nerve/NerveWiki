@@ -132,9 +132,15 @@ func (u *Unit) bringBack(ctx context.Context, group []domain.TrashMember, at tim
 	}
 	step := u.step(domain.OpRestore, changes...)
 	step.Kinds, step.Lines = kinds, lines
-	return u.apply(ctx, step, true, func(ctx context.Context) error {
+	return u.applyStep(ctx, step, true, func(ctx context.Context, prepared Step) error {
 		if err := before(ctx); err != nil {
 			return err
+		}
+		if len(prepared.AreaHashes) > 0 {
+			back.SourceHashes = make(map[uuid.UUID][]byte, len(prepared.AreaHashes))
+			for id, value := range prepared.AreaHashes {
+				back.SourceHashes[id] = value.Hash
+			}
 		}
 		rows, err := u.w.d.NodeWriter.RestoreNodes(ctx, back)
 		switch {

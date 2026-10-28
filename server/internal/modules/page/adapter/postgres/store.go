@@ -461,9 +461,19 @@ func (s *Store) DeleteNodes(ctx context.Context, d app.Deletion) error {
 // is an error of its own, no code of the restore's: the unit numbered
 // them under the notebook's lock, so only a defect makes one.
 func (s *Store) RestoreNodes(ctx context.Context, r app.Restoration) (app.RestoredRows, error) {
+	// Build both arrays in the same order as IDs. The explicit presence bit
+	// distinguishes an absent value from a requested NULL without changing
+	// ordinary restorations or the existing row/history checks.
+	hashes, hasHashes := make([][]byte, len(r.IDs)), make([]bool, len(r.IDs))
+	for i, id := range r.IDs {
+		hashes[i], hasHashes[i] = r.SourceHashes[id]
+		if hashes[i] != nil && len(hashes[i]) != 32 {
+			return app.RestoredRows{}, errors.New("a restored source hash must be NULL or 32 bytes")
+		}
+	}
 	row, err := s.queries(ctx).RestoreNodes(ctx, gen.RestoreNodesParams{
 		Ids: r.IDs, Names: r.Names, NameKeys: r.NameKeys, By: r.By, Now: r.At, Root: r.Root, ParentID: r.ParentID,
-		SortOrder: r.SortOrder, DeletedAt: r.DeletedAt,
+		SortOrder: r.SortOrder, DeletedAt: r.DeletedAt, SourceHashes: hashes, HasSourceHashes: hasHashes,
 	})
 	switch {
 	case nameTaken(err):

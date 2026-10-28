@@ -345,6 +345,13 @@ func (u *Unit) step(op domain.Operation, changes ...domain.Change) Step {
 // participants. A guard's refusal, a problem, is marked with the node it
 // is about (refusalOf).
 func (u *Unit) apply(ctx context.Context, s Step, participate bool, write func(ctx context.Context) error) error {
+	return u.applyStep(ctx, s, participate, func(ctx context.Context, _ Step) error { return write(ctx) })
+}
+
+// applyStep exposes the prepared, guarded facts to a write that can maintain
+// derived values in the same row update. The common maintenance afterward
+// remains in place, before recording items or notifying participants.
+func (u *Unit) applyStep(ctx context.Context, s Step, participate bool, write func(context.Context, Step) error) error {
 	if err := u.inUnit(ctx); err != nil {
 		return err
 	}
@@ -366,7 +373,7 @@ func (u *Unit) apply(ctx context.Context, s Step, participate bool, write func(c
 	if err := u.ensureChangeset(ctx); err != nil {
 		return err
 	}
-	if err := write(ctx); err != nil {
+	if err := write(ctx, s); err != nil {
 		return err
 	}
 	if err := u.writeSourceHashes(ctx, s); err != nil {

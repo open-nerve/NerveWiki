@@ -198,7 +198,7 @@ type fakeStore struct {
 	// a read's each (TrashContentsWithin, PageContentWithin), in their
 	// order: 0 for one that read none, past it.
 	read []int
-	// sourceHashes changes only through the source writer or deletion, never
+	// sourceHashes changes only through the source writer, restoration or deletion, never
 	// by recomputing membership from the fake's tree.
 	sourceHashes map[uuid.UUID][]byte
 }
@@ -671,6 +671,9 @@ func (f *fakeStore) RestoreNodes(ctx context.Context, r app.Restoration) (app.Re
 			node.ParentID, node.SortOrder = r.ParentID, r.SortOrder
 		}
 		f.nodes[id] = node
+		if hash, present := r.SourceHashes[id]; present {
+			f.sourceHashes[id] = slices.Clone(hash)
+		}
 		delete(f.trash, id)
 		rows.Nodes++
 		if c, ok := f.trashed[id]; ok {

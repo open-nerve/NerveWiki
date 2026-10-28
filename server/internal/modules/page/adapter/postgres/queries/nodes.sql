@@ -238,13 +238,17 @@ SELECT n::integer AS stray FROM stray;
 -- argument, whose rows the statistics estimate at one when they never knew the time (back then read whole for each
 -- row of the time), and by IS NOT DISTINCT FROM, which no index serves (the index on deleted_at read for each node).
 -- The counts join no CTE with another, whose rows the planner estimates at one: a set operation and a window.
+-- Prepared source hashes, already checked by the unit's guards, share this node UPDATE. An absent value leaves
+-- the column unchanged; an explicit NULL clears it. This avoids a second physical write of every restored source.
 WITH u AS (
     SELECT unnest(sqlc.arg(ids)::uuid[]) AS id, unnest(sqlc.arg(names)::text[]) AS name,
-        unnest(sqlc.arg(name_keys)::text[]) AS name_key
+        unnest(sqlc.arg(name_keys)::text[]) AS name_key,
+        unnest(sqlc.arg(source_hashes)::bytea[]) AS source_hash, unnest(sqlc.arg(has_source_hashes)::boolean[]) AS has_source_hash
 ), back AS (
     UPDATE nodes n
     SET deleted_at = NULL, trash_root = false, trash_pages = NULL, trash_assets = NULL, trash_height = NULL,
         name = u.name, name_key = u.name_key, updated_by_id = sqlc.arg(by), updated_at = sqlc.arg(now),
+        source_hash = CASE WHEN u.has_source_hash THEN u.source_hash ELSE n.source_hash END,
         parent_id = CASE WHEN n.id = sqlc.arg(root) THEN sqlc.narg(parent_id)::uuid ELSE n.parent_id END,
         sort_order = CASE WHEN n.id = sqlc.arg(root) THEN sqlc.arg(sort_order)::float8 ELSE n.sort_order END
     FROM u

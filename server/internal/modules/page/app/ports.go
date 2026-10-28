@@ -391,17 +391,20 @@ type Deletion struct {
 // Restoration is a trash item's restore (M8/P2 design 3.5): its nodes IDs,
 // still deleted at DeletedAt, each named Names, its key NameKeys, the Root
 // among them put under ParentID (nil: the notebook's root) at SortOrder;
-// by By at At.
+// by By at At. SourceHashes contains only the prepared, guarded derived
+// values to write with those nodes: a present nil clears the hash; an absent
+// ID leaves it unchanged. It is not a new source-membership decision.
 type Restoration struct {
-	Root      uuid.UUID
-	ParentID  *uuid.UUID
-	SortOrder float64
-	IDs       []uuid.UUID
-	Names     []string
-	NameKeys  []string
-	DeletedAt time.Time
-	By        uuid.UUID
-	At        time.Time
+	Root         uuid.UUID
+	ParentID     *uuid.UUID
+	SortOrder    float64
+	IDs          []uuid.UUID
+	Names        []string
+	NameKeys     []string
+	DeletedAt    time.Time
+	By           uuid.UUID
+	At           time.Time
+	SourceHashes map[uuid.UUID][]byte
 }
 
 // RestoredRows are what a restore brought back: its nodes; its pages'

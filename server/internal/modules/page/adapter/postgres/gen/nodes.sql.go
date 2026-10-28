@@ -938,16 +938,18 @@ func (q *Queries) RenameNode(ctx context.Context, arg RenameNodeParams) error {
 const restoreNodes = `-- name: RestoreNodes :one
 WITH u AS (
     SELECT unnest($1::uuid[]) AS id, unnest($2::text[]) AS name,
-        unnest($3::text[]) AS name_key
+        unnest($3::text[]) AS name_key,
+        unnest($4::bytea[]) AS source_hash, unnest($5::boolean[]) AS has_source_hash
 ), back AS (
     UPDATE nodes n
     SET deleted_at = NULL, trash_root = false, trash_pages = NULL, trash_assets = NULL, trash_height = NULL,
-        name = u.name, name_key = u.name_key, updated_by_id = $4, updated_at = $5,
-        parent_id = CASE WHEN n.id = $6 THEN $7::uuid ELSE n.parent_id END,
-        sort_order = CASE WHEN n.id = $6 THEN $8::float8 ELSE n.sort_order END
+        name = u.name, name_key = u.name_key, updated_by_id = $6, updated_at = $7,
+        source_hash = CASE WHEN u.has_source_hash THEN u.source_hash ELSE n.source_hash END,
+        parent_id = CASE WHEN n.id = $8 THEN $9::uuid ELSE n.parent_id END,
+        sort_order = CASE WHEN n.id = $8 THEN $10::float8 ELSE n.sort_order END
     FROM u
-    WHERE n.id = u.id AND n.deleted_at = $9::timestamptz
-    RETURNING n.id, $9::timestamptz AS deleted_at
+    WHERE n.id = u.id AND n.deleted_at = $11::timestamptz
+    RETURNING n.id, $11::timestamptz AS deleted_at
 ), contents AS (
     UPDATE page_contents c SET deleted_at = NULL
     FROM back b
@@ -973,15 +975,17 @@ SELECT (SELECT count(*) FROM back)::integer AS nodes,
 `
 
 type RestoreNodesParams struct {
-	Ids       []uuid.UUID
-	Names     []string
-	NameKeys  []string
-	By        uuid.UUID
-	Now       time.Time
-	Root      uuid.UUID
-	ParentID  *uuid.UUID
-	SortOrder float64
-	DeletedAt time.Time
+	Ids             []uuid.UUID
+	Names           []string
+	NameKeys        []string
+	SourceHashes    [][]byte
+	HasSourceHashes []bool
+	By              uuid.UUID
+	Now             time.Time
+	Root            uuid.UUID
+	ParentID        *uuid.UUID
+	SortOrder       float64
+	DeletedAt       time.Time
 }
 
 type RestoreNodesRow struct {
@@ -1006,11 +1010,15 @@ type RestoreNodesRow struct {
 // argument, whose rows the statistics estimate at one when they never knew the time (back then read whole for each
 // row of the time), and by IS NOT DISTINCT FROM, which no index serves (the index on deleted_at read for each node).
 // The counts join no CTE with another, whose rows the planner estimates at one: a set operation and a window.
+// Prepared source hashes, already checked by the unit's guards, share this node UPDATE. An absent value leaves
+// the column unchanged; an explicit NULL clears it. This avoids a second physical write of every restored source.
 func (q *Queries) RestoreNodes(ctx context.Context, arg RestoreNodesParams) (RestoreNodesRow, error) {
 	row := q.db.QueryRow(ctx, restoreNodes,
 		arg.Ids,
 		arg.Names,
 		arg.NameKeys,
+		arg.SourceHashes,
+		arg.HasSourceHashes,
 		arg.By,
 		arg.Now,
 		arg.Root,
