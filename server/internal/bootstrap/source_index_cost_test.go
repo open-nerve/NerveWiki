@@ -86,8 +86,12 @@ func sourceIndexDisconnected(t *testing.T, database string) {
 		t.Fatal(err)
 	}
 	defer func() { _ = conn.Close(context.Background()) }()
+	// CREATE DATABASE owns the database lock and stops autovacuum workers
+	// before copying. They can revisit a closed seed independently of our
+	// pools; every other backend must still be absent here.
 	var connected int
-	if err := conn.QueryRow(t.Context(), "SELECT count(*) FROM pg_stat_activity WHERE datname=$1", name).Scan(&connected); err != nil {
+	if err := conn.QueryRow(t.Context(), `SELECT count(*) FROM pg_stat_activity
+		WHERE datname=$1 AND backend_type IS DISTINCT FROM 'autovacuum worker'`, name).Scan(&connected); err != nil {
 		t.Fatal(err)
 	}
 	if connected != 0 {
