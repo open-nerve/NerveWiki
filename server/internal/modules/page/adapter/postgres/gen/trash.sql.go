@@ -223,17 +223,33 @@ func (q *Queries) TrashChildrenAt(ctx context.Context, arg TrashChildrenAtParams
 }
 
 const trashChildrenOfAll = `-- name: TrashChildrenOfAll :many
-SELECT n.id, n.notebook_id, n.parent_id, n.kind, n.name, n.name_key, n.sort_order, n.created_by_id, n.updated_by_id,
-    n.created_at, n.updated_at, c.revision, c.byte_size
-FROM nodes n LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at IS NOT DISTINCT FROM n.deleted_at
-WHERE n.notebook_id = $1 AND n.parent_id = ANY($2::uuid[])
-    AND n.deleted_at = $3::timestamptz
-ORDER BY n.sort_order, n.id
+SELECT child.id, child.notebook_id, child.parent_id, child.kind, child.name, child.name_key,
+    child.sort_order, child.created_by_id, child.updated_by_id, child.created_at, child.updated_at,
+    c.revision, c.byte_size
+FROM (
+    SELECT DISTINCT parent_id
+    FROM unnest($1::uuid[]) AS input(parent_id)
+    WHERE parent_id IS NOT NULL
+) AS p
+CROSS JOIN LATERAL (
+    SELECT n.id, n.notebook_id, n.parent_id, n.kind, n.name, n.name_key,
+        n.sort_order, n.created_by_id, n.updated_by_id, n.created_at, n.updated_at, n.deleted_at
+    FROM nodes n
+    WHERE n.notebook_id = $2
+      AND n.parent_id >= p.parent_id
+      AND n.parent_id <= p.parent_id
+      AND n.parent_id IS NOT NULL
+    OFFSET 0
+) AS child
+LEFT JOIN page_contents c ON c.node_id = child.id
+    AND c.deleted_at IS NOT DISTINCT FROM child.deleted_at
+WHERE child.deleted_at = $3::timestamptz
+ORDER BY child.sort_order, child.id
 `
 
 type TrashChildrenOfAllParams struct {
-	NotebookID uuid.UUID
 	Parents    []uuid.UUID
+	NotebookID uuid.UUID
 	DeletedAt  time.Time
 }
 
@@ -253,12 +269,12 @@ type TrashChildrenOfAllRow struct {
 	ByteSize    *int32
 }
 
-// The children of parents of the notebook deleted at deleted_at, in order, each page with its content's revision and
-// size, none when the purge took it: a level of a trash item's group, read a level a statement and planned with its
-// parents, as ChildrenOfAll reads a subtree's, through the parents' index (00012), which holds the deleted rows. A
-// descendant deleted earlier is not of the group: it is an item of its own.
+// A whole trash level, in global order, with contents at the same deletion time; an earlier deletion is its own item.
+// A generic ANY-array plan can scan all rows of the deletion time even for an empty level. Read each distinct parent
+// through the nonpartial notebook/parent index instead. The closed range and OFFSET 0 keep that access bounded;
+// compare deleted_at outside the fence so its partial index cannot replace each parent lookup. No unit LIMIT applies.
 func (q *Queries) TrashChildrenOfAll(ctx context.Context, arg TrashChildrenOfAllParams) ([]TrashChildrenOfAllRow, error) {
-	rows, err := q.db.Query(ctx, trashChildrenOfAll, arg.NotebookID, arg.Parents, arg.DeletedAt)
+	rows, err := q.db.Query(ctx, trashChildrenOfAll, arg.Parents, arg.NotebookID, arg.DeletedAt)
 	if err != nil {
 		return nil, err
 	}
