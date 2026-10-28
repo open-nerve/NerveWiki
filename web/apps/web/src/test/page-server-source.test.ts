@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 import { unwrap } from "../services/api";
 import { AssetService } from "../services/asset.service";
@@ -23,6 +23,60 @@ function fixture(role: "admin" | "editor" = "editor", mode: "llm_wiki" | "standa
 const refused = (code: string) => ({ code, status: code === "page.source_admin_only" ? 403 : 409 });
 
 describe("source management in the page fake", () => {
+  test.each(["source", "self", "descendant"] as const)(
+    "ordinary LLM move to %s preserves the tree contract",
+    async (destination) => {
+      const raw = pageNode(900, "raw");
+      const moving = pageNode(901, "ordinary");
+      const child = pageNode(902, "child", moving);
+      const server = pageServer({
+        role: "admin",
+        mode: "llm_wiki",
+        sourceRootId: raw.id,
+        nodes: [raw, moving, child],
+      });
+      const page = new PageService(server.app.session.public);
+      const state = () => ({
+        nodes: server.nodes,
+        contents: server.contents,
+        versions: server.versions,
+        changesets: server.changesets,
+        trash: server.trash,
+      });
+      const before = structuredClone(state());
+      const find = Array.prototype.find;
+      let projectedScans = 0;
+      // Bound the broken synchronous ancestry walk so this regression reports
+      // the wrong response instead of hanging the test worker indefinitely.
+      const bounded = vi.spyOn(Array.prototype, "find").mockImplementation(function (
+        this: typeof server.nodes,
+        predicate,
+        thisArg
+      ) {
+        if (this.length === 3 && this[1]?.id === moving.id && this[1]?.parent_id !== null && ++projectedScans > 50) {
+          throw new Error("projected source ancestry did not terminate within 50 scans of three nodes");
+        }
+        return find.call(this, predicate, thisArg);
+      });
+      try {
+        if (destination === "source") {
+          await expect(page.moveNode(moving.id, { parent_id: raw.id })).resolves.toMatchObject({
+            parent_id: raw.id,
+          });
+          expect(server.nodes.find((node) => node.id === moving.id)?.parent_id).toBe(raw.id);
+          expect(projectedScans).toBeLessThan(50);
+        } else {
+          await expect(
+            page.moveNode(moving.id, { parent_id: destination === "self" ? moving.id : child.id })
+          ).rejects.toMatchObject({ status: 409, code: "page.cycle" });
+          expect(state()).toEqual(before);
+        }
+      } finally {
+        bounded.mockRestore();
+      }
+    }
+  );
+
   test.each([source, asset])(
     "writer cannot rename, move, reorder or delete $name through its full parent chain",
     async (node) => {
@@ -219,7 +273,7 @@ test.each([
   expect(server.trash.size).toBe(0);
 });
 
-test.each(["root", "ancestor"] as const)("moving the source $shape keeps a large area's members", async (shape) => {
+test.each(["root", "ancestor"] as const)("moving the source %s keeps a large area's members", async (shape) => {
   const outer = pageNode(70, "Outer");
   const raw = pageNode(71, "raw", shape === "ancestor" ? outer : undefined);
   const destination = pageNode(72, "Destination");

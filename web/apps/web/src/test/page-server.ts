@@ -526,6 +526,10 @@ function writeRoutes(
           errors: [{ field: "after_id", code: "not_allowed", message: "Must be another child of the parent." }],
         });
       }
+      const parent = server.nodes.find((each) => each.id === move.parent_id);
+      if (parent !== undefined && (parent.id === node.id || isUnder(server.nodes, parent, node.id))) {
+        return problem(409, "page.cycle");
+      }
       if (taken(move.parent_id, node.name, node.id)) {
         return problem(409, "page.title_taken");
       }
