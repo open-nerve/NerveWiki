@@ -219,10 +219,17 @@ test-go: ## 运行 Go 测试，含集成测试与 server/tools（开启竞态检
 # 保留 FIRST；第二份 -run SECOND，第三份 -run THIRD 且 -skip SECOND，第四份 -skip 三个表达式的并。
 # FIRST 与另两个前缀不交；SECOND 与 THIRD 重合的 TheMCP 只在第二份运行；第四份补齐余下名字，新测试自动归入一份。
 # c7 的 468 个顶层按此规则静态归入 168/71/114/115；ca8 最终两轮实跑均完整覆盖（两个顶层按设计跳过）。
-# 本机四份包耗时两次均值 319.5785/284.784/240.4775/262.5225 秒；代码分支 33b4da5a 的 CI 40718770843
-# 四份 Test 为 444/419/302/271 秒。这是一次分支样本，最终两次 main 的各份均值另验（须 <450 秒）。
-BOOTSTRAP_FIRST = ^Test([A-D]|E([a-u]|very[A-R]))
-BOOTSTRAP_SECOND = ^Test(Every[S-Z]|Source|The(MCP|Contents))
+# ca8 本机四份包耗时两次均值 319.5785/284.784/240.4775/262.5225 秒；代码分支 33b4da5a 的 CI 40718770843
+# 四份 Test 为 444/419/302/271 秒；4550 文档分支 CI 40730123058 为 457/418/336/371 秒。
+# 第一份两次 Test 均值 450.5 秒过线、邻居第二份均值 418.5 秒，按 M9/P2 6.5 移两份之间的界线。
+# 只将 TestEveryResolutionCaseImportsFromAVault 移到第二份：当前源码定向两轮中该顶层 run→终止为 11.087505/10.921745 秒，
+# 均值乘 1.6 估计增加 17.6074 秒，两份预计为 432.8926/436.1074 秒；这是移界前的估计，实际两次 CI 仍须核验。
+# 新边界编译清单为 468 个顶层、167/72/114/115；四份各自单独实跑两次，两轮各 3488 run、3484 pass、4 个既有 Markdown skip。
+# 新边界本机两轮 Go 包耗时均值为 319.376/309.7455/261.4265/266.258 秒；不是 CI Test 步骤时长。
+# EveryResolutionCase 在 H/I 之间分配；其他未匹配的新名字由第四份补齐，仍无遗漏、重叠；原超时不变。
+# 以上分支样本不替代最终两次 main 的各份 Test 均值验收（须 <450 秒）。
+BOOTSTRAP_FIRST = ^Test([A-D]|E([a-u]|very([A-Q]|ResolutionCase[A-H])))
+BOOTSTRAP_SECOND = ^Test(Every(ResolutionCase[I-Z]|[S-Z])|Source|The(MCP|Contents))
 # M9/P2 S1：第二份的测试一步过了 go test 的 15 分钟的一半（CI 的两次运行 7:15 与 8:33），照规则按测试名再分一份，不提高 -timeout（M9/P2 设计 6.5）
 BOOTSTRAP_THIRD = ^Test(The[F-Z]|T[i-z]|[U-Z])
 .PHONY: test-go-race
