@@ -456,12 +456,40 @@ func (q *Queries) TrashGroupRoot(ctx context.Context, arg TrashGroupRootParams) 
 }
 
 const trashHistory = `-- name: TrashHistory :one
-SELECT ((SELECT count(*) FROM (SELECT 1 FROM page_revisions r
-            WHERE r.node_id = ANY($1::uuid[]) AND r.deleted_at = $2::timestamptz
-            LIMIT $3::integer) v)
-    + (SELECT count(*) FROM (SELECT 1 FROM changeset_items i
-            WHERE i.node_id = ANY($1::uuid[]) AND i.deleted_at = $2::timestamptz
-            LIMIT $3::integer) w))::integer AS rows
+SELECT ((SELECT count(*) FROM (
+    SELECT 1
+    FROM (
+        SELECT DISTINCT id
+        FROM unnest($1::uuid[]) AS input(id)
+        WHERE id IS NOT NULL
+    ) AS wanted
+    CROSS JOIN LATERAL (
+        SELECT r.deleted_at
+        FROM page_revisions r
+        WHERE r.node_id >= wanted.id
+          AND r.node_id <= wanted.id
+        OFFSET 0
+    ) AS history
+    WHERE history.deleted_at = $2::timestamptz
+    LIMIT $3::integer
+) v)
+    + (SELECT count(*) FROM (
+    SELECT 1
+    FROM (
+        SELECT DISTINCT id
+        FROM unnest($1::uuid[]) AS input(id)
+        WHERE id IS NOT NULL
+    ) AS wanted
+    CROSS JOIN LATERAL (
+        SELECT i.deleted_at
+        FROM changeset_items i
+        WHERE i.node_id >= wanted.id
+          AND i.node_id <= wanted.id
+        OFFSET 0
+    ) AS history
+    WHERE history.deleted_at = $2::timestamptz
+    LIMIT $3::integer
+) w))::integer AS rows
 `
 
 type TrashHistoryParams struct {
@@ -470,10 +498,12 @@ type TrashHistoryParams struct {
 	Lim       int32
 }
 
-// How many versions, and items of every changeset, of nodes deleted at deleted_at were deleted with them, each of the
-// two counted to lim at most: a restore's rows besides the nodes', as many as the bound at most. Planned with ids, it
-// reads the rows of the time through the index on deleted_at, or the nodes' through the one on node_id; its store
-// never runs it as a cached statement (M8/P2A fix check 1, I-1).
+// Count revisions and changeset items at the deletion time, each table independently capped by lim.
+// A generic array-membership filter can compare every time-matching row with every node ID. Deduplicate the IDs
+// and read each node's history range instead; keep the deletion time outside OFFSET 0 to prevent a repeated scan of
+// its partial index. Older/live/dead history within each selected node's range can still be visited. Small limits and
+// selective custom time-index plans may cost less with the former query; the forced-mode history guard covers the
+// complete count at the unit's history bound. Store still uses Planned without overriding the backend's plan mode.
 func (q *Queries) TrashHistory(ctx context.Context, arg TrashHistoryParams) (int32, error) {
 	row := q.db.QueryRow(ctx, trashHistory, arg.Ids, arg.DeletedAt, arg.Lim)
 	var rows int32

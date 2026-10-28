@@ -259,6 +259,8 @@ test-go-costs: ## 不带竞态检测的分配、耗时预算与界线的守卫�
 	@# 在无统计、ANALYZE 之后与通用计划下的中位数，与 ListIndex 一次调用的用时，时限本机的三倍（M9/P4 设计 6.1，审查 C-I3）
 	cd server && go test -count=1 -v -run '^TestIndexOfAHundredThousandPagesTakesItsTime$$' ./internal/modules/linking/adapter/postgres
 	cd server && go test -count=1 -run '^(TestSubtreeReadsWithoutStatisticsInTimeAsLongAsIt|TestSubtreeOfAFolderOfMostNodesReadsInTimeAsLongAsIt|TestListTrashReadsInTimeAsLongAsAPage|TestTrashLinesReadInTimeAsLongAsAPage|TestRestoreNodesTakesItsTimeAtAnyStatistics|TestTrashHistoryCountsInTimeAtAnyStatistics|TestTheLogReadsInTimeAsLongAsAPage|TestTheRevertsArrayReadsInTimeAtTheUnitsBound)$$' ./internal/modules/page/adapter/postgres
+	@# 完整40万历史的真实Store计数：无统计/ANALYZE及两种强制计划模式，沿用既有1秒预算。
+	cd server && go test -p 1 -count=1 -timeout 10m -v -run '^TestTrashHistoryAtItsBoundCountsInTimeWithForcedPlans$$' ./internal/modules/page/adapter/postgres
 	@# 搜索的守卫单独一行、带 -v：通过时也打出各个读的中位数，CI 的日志里看得到，下次重新测量有数据（M8/P5A 审查 C 的 M-2）
 	cd server && go test -count=1 -v -run '^TestTheSearchReadsInTimeAtAnyStatistics$$' ./internal/modules/page/adapter/postgres
 	@# 概况的守卫同样带 -v：计数与最后的变更两条语句、读整棵树各自的中位数（M9/P1 设计 3.17.3）
