@@ -95,7 +95,7 @@ func (u *Unit) Revert(ctx context.Context, r RevertRead) (RevertDone, error) {
 	if err != nil {
 		return RevertDone{}, err
 	}
-	guard := NewModeGuard(u.w.d.Auth, u.w.d.Nodes)
+	guard := NewModeGuard(u.w.d.Auth, u.w.d.Nodes, u.w.d.Sources)
 	step := Step{Write: u.write}
 	ask := func(action shared.Action) error { return u.write.Grants.Ask(ctx, action, guard.decide(step, action)) }
 	if err := checkRevertContract(state, plan, u.write.Notebook, ask); err != nil {
@@ -152,10 +152,7 @@ func (u *Unit) place(ctx context.Context, op domain.RevertOp) error {
 		return err
 	}
 	if op.Move {
-		sub, err := u.w.d.Nodes.Subtree(ctx, u.write.NotebookID, n.ID)
-		if err != nil {
-			return err
-		}
+		before := n
 		n.ParentID, n.SortOrder, n.UpdatedBy, n.UpdatedAt = op.To.ParentID, op.To.SortOrder, u.write.By, u.write.At
 		write := u.w.d.NodeWriter.MoveNode
 		if op.Rename {
@@ -163,7 +160,18 @@ func (u *Unit) place(ctx context.Context, op domain.RevertOp) error {
 			n.Name, n.NameKey, write = op.To.Name, shared.TitleKey(op.To.Name), u.w.d.NodeWriter.RelocateNode
 			op.Rename = false
 		}
-		if err := u.moveSubtree(ctx, sub, n, func(context.Context) error { return nil }, write, nil); err != nil {
+		var line []domain.Ancestor
+		if u.write.Notebook.Mode == domain.ModeLLMWiki {
+			line, err = u.lineUnder(ctx, n.ParentID)
+			if err != nil {
+				return err
+			}
+		}
+		sub, lines, err := u.subtreeForMove(ctx, before, n, line)
+		if err != nil {
+			return err
+		}
+		if err := u.moveSubtree(ctx, sub, n, func(context.Context) error { return nil }, write, lines); err != nil {
 			return taken(op.NodeID, err)
 		}
 	}

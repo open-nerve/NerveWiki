@@ -152,13 +152,18 @@ func TestRestoreNodeBringsAnItemBack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"FindAnyNode", "WorkspaceOf", "Authorize node.restore", "FindTrashRoot", "TrashGroup", "TrashHistory", "TrashContents",
+	want := []string{"FindAnyNode", "WorkspaceOf", "Authorize node.restore", "FindTrashRoot", "TrashGroup", "TrashHistory", "StateOf", "TrashContents",
 		"Take 15", "Facts", "KeepFacts 15", "Links", "Take 5", "Facts", "KeepFacts 5", "Links",
 		"WorkspaceOf", "ShareWorkspace in tx", "LockNotebook in tx", "Authorize node.restore in tx", "FindAnyNode in tx",
 		"TrashGroup in tx", "TrashLines 1 in tx", "Children in tx", "GuardWrite restore in tx", "CreateChangeset in tx",
 		"RestoreNodes in tx", "RecordItems 3 in tx", "Participate restore in tx", "QueueSearch in tx", "PagesChanged in tx", "Release 15", "Release 5"}
 	if !slices.Equal(f.rec.calls, want) {
 		t.Errorf("calls = %v\nwant %v", f.rec.calls, want)
+	}
+	for _, call := range f.rec.calls {
+		if strings.HasPrefix(call, "SourceHeads") || strings.HasPrefix(call, "ProbeSources") || strings.HasPrefix(call, "AttachmentInfos") || strings.HasPrefix(call, "WithinSnapshot") {
+			t.Errorf("standard restore added source work: %s", call)
+		}
 	}
 	if got.Node.ID != f.doc.ID || got.Node.ParentID == nil || *got.Node.ParentID != f.q.ID || got.Node.Name != "Doc" ||
 		got.Node.SortOrder != f.doc.SortOrder || got.Renamed || got.Placement.Reason != domain.PlacedOriginal || got.Node.UpdatedBy != f.alice ||

@@ -123,10 +123,12 @@ type ExpiredRows interface {
 	DeleteBlobs(ctx context.Context, ids []uuid.UUID) (int, error)
 }
 
-// AttachmentInfo is an attachment's type and size (M8/P2 design 3.4).
+// AttachmentInfo is an attachment's type, size and stored SHA256, including
+// deleted rows needed by restore (M8/P2 design 3.4; M10/P2 design 3.9).
 type AttachmentInfo struct {
-	MIME  string
-	Bytes int64
+	MIME   string
+	Bytes  int64
+	SHA256 []byte
 }
 
 // Deletions delete the attachments' rows with their nodes and notebooks,

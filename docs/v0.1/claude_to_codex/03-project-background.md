@@ -79,10 +79,10 @@ Nerve Wiki：面向团队的自部署在线 Markdown 笔记（单租户），工
   
   `make help` 列出全部。
 - **CI**（`.github/workflows/ci.yml`）：
-  - server 有七份：`race`、`bootstrap-1/2/3`、`costs`、`guards`、`short`；
-  - 另有 `web`、`e2e`、`image`。
+  - server 有八份：`race`、`bootstrap-1/2/3/4`、`costs`、`guards`、`short`；
+  - 另有 `web`、`e2e`、`image`，合计11项。
 
-  组合根按测试名分成三份（`Makefile` 的 `BOOTSTRAP_FIRST`、`BOOTSTRAP_THIRD`）。新的整个程序的测试照名字落进第二、三份，不落进第一份。每份测试一步的 CI 时间在 7:30（`-timeout 15m` 的一半）之下，规则见 `Makefile` 的注释。
+  组合根按顶层测试名分成四份：FIRST、SECOND、THIRD减SECOND、三者并的补集，表达式以 `Makefile` 为准；子测试跟随顶层。`TestSource…`在第二份、`TestTheSource…`在第三份，其余名称依实际规则分配，不默认第二份。`make test-go` 的race段以 `-j5` 同时跑 nonbootstrap及四份bootstrap，受控本机门禁按 [06](06-environment.md) 的heavy规则逐份串行。每份看CI Test一步，两次均值须低于7:30（`-timeout 15m`的一半）；过线仅在邻居接收后仍有余量时挪界，否则增加分片，不提高timeout。M10/P2/S2的触发、实测及未决项见 [S2审查](../M10-llm-wiki/reviews/P2-S2-source-hash-review.md#最终验证与集成)；旧三份/十项记录保持历史。
 - **变异**：每个 Phase 设计的变异表要实施时逐条证明会被测试抓到（[02-workflow.md](02-workflow.md) 3.1）。
 
 ## 5. 文档的地图
@@ -100,3 +100,5 @@ Nerve Wiki：面向团队的自部署在线 Markdown 笔记（单租户），工
 ## 6. 兄弟项目 Nerve
 
 本项目最初从兄弟项目 Nerve 一次性拷贝过平台层与认证的代码，之后完全独立，不同步、不耦合。远程开发机上没有它，也不需要它。
+
+M10/P2/S2 边界再平衡与恢复折叠之前的历史精确代码33b4，其CI40718770843全部11作业成功，四片Test444/419/302/271秒仅一个分支样本；两次main均值仍按上述规则另验。本机四份双轮及来源差异见[S2记录](../M10-llm-wiki/reviews/P2-S2-source-hash-review.md#33b4最终代码控制与本机验证)，不以本机量替代CI。 最新代码/门禁/CI及分支、main配对以[S2当前验证](../M10-llm-wiki/reviews/P2-S2-source-hash-review.md#最终验证与集成)为准，旧数不自动套用到后续修复头。

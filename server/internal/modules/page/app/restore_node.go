@@ -100,6 +100,23 @@ func (r *RestoreNode) Execute(ctx context.Context, id uuid.UUID, client domain.C
 	case history > r.bounds.History:
 		return NodeRestored{}, domain.ErrRestoreTooLarge
 	}
+	if precheck := r.writer.d.SourcePrecheck; precheck != nil {
+		notebook, ok, err := r.writer.d.Notebooks.StateOf(ctx, n.NotebookID)
+		if err != nil {
+			return NodeRestored{}, err
+		}
+		if !ok {
+			return NodeRestored{}, domain.ErrNotFound
+		}
+		if notebook.Mode == domain.ModeLLMWiki {
+			err := precheck.d.Snapshots.WithinSnapshot(ctx, func(ctx context.Context) error {
+				return checkRestoreSources(ctx, precheck, r.reads, n.NotebookID, notebook, root, group)
+			})
+			if err != nil {
+				return NodeRestored{}, err
+			}
+		}
+	}
 	// A page whose content the purge took has none at its time.
 	contents, err := r.reads.Trash.TrashContents(ctx, pages, root.DeletedAt)
 	switch {

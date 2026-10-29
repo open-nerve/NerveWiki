@@ -41,6 +41,9 @@ type Write struct {
 	// decision (Grants): the unit's own, a pointer, since each step and
 	// each guard has the Write by value.
 	Grants *Grants
+	// Tree is the actual unit lock mode, not an operation-name guess.
+	Tree    bool
+	sources *sourceMemo
 }
 
 // Step is one operation of a unit: its kind, and each node it changes,
@@ -54,6 +57,8 @@ type Step struct {
 	Rewrite   bool
 	Lines     *StepLines
 	Kinds     map[uuid.UUID]domain.Kind
+	// AreaHashes is prepared once before guards and maintained after the write.
+	AreaHashes map[uuid.UUID]SourceValue
 	// EditSessionID is the edit session a content write is made in (M5:
 	// the edit lock is the session's); zero for any other write.
 	EditSessionID uuid.UUID

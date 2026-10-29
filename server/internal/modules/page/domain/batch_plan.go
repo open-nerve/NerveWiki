@@ -367,19 +367,7 @@ type treePass struct {
 // is the op's error, marked with its node; the first op that needs an
 // action is Needs, and the pass goes on.
 func (t *treePass) judge(i int, op Operation, nodes []NodeFacts) error {
-	facts := StepFacts{Operation: op, Kind: ChangesetEdit, Nodes: nodes}
-	if t.notebook.Mode == ModeLLMWiki && len(nodes) > 0 {
-		var before, after []Ancestor
-		if nodes[0].Before != nil {
-			before = t.cur.line(nodes[0].Before.ParentID)
-		}
-		if nodes[0].After != nil {
-			after = t.cur.line(nodes[0].After.ParentID)
-		}
-		// cur is the item-before tree. Its unchanged destination ancestors
-		// and SourceFacts' changed parent graph give the item-after side.
-		facts = SourceFacts(facts, t.notebook.SourceRootID, before, after, nil)
-	}
+	facts := t.facts(op, nodes)
 	if op == OpCreate {
 		for _, node := range facts.Nodes {
 			t.p.Steps[i].Facts = append(t.p.Steps[i].Facts, StepFacts{Operation: op, Kind: ChangesetEdit, Nodes: []NodeFacts{node}})
@@ -395,6 +383,25 @@ func (t *treePass) judge(i int, op Operation, nodes []NodeFacts) error {
 		t.p.Needs = &Need{Op: i, Action: v.Needs, NodeID: v.NodeID}
 	}
 	return nil
+}
+
+// facts uses the instantaneous tree before the op and its changed parents.
+// The move's early source bound and its final judgment share these facts.
+func (t *treePass) facts(op Operation, nodes []NodeFacts) StepFacts {
+	facts := StepFacts{Operation: op, Kind: ChangesetEdit, Nodes: nodes}
+	if t.notebook.Mode == ModeLLMWiki && len(nodes) > 0 {
+		var before, after []Ancestor
+		if nodes[0].Before != nil {
+			before = t.cur.line(nodes[0].Before.ParentID)
+		}
+		if nodes[0].After != nil {
+			after = t.cur.line(nodes[0].After.ParentID)
+		}
+		// cur is the item-before tree. Its unchanged destination ancestors
+		// and SourceFacts' changed parent graph give the item-after side.
+		facts = SourceFacts(facts, t.notebook.SourceRootID, before, after, nil)
+	}
+	return facts
 }
 
 // nodePlace is where n is, as FactsOf places a node.
@@ -555,17 +562,26 @@ func (t *treePass) move(i int, s BatchStep) error {
 			holder = &h
 		}
 		sub := t.cur.subtree(n.ID)
-		if err := RelocationOf(sub, parent, t.cur.line(parent), holder); err != nil {
-			if taken := (*PathTaken)(nil); errors.As(err, &taken) {
-				taken.Path = s.To.Written // to is the whole new path, which the answer says
-			}
-			return err
+		if parent != nil && sub.Holds(*parent) {
+			return ErrCycle
+		}
+		if holder != nil {
+			return &PathTaken{Path: s.To.Written, Asset: holder.Kind == KindAsset}
 		}
 		// The node moved, then each node it carries, as the unit's step lists
 		// them (its subtree, the node first).
 		facts := []NodeFacts{{ID: n.ID, Kind: n.Kind, Before: nodePlace(n), After: &NodePlace{ParentID: parent, Key: shared.TitleKey(title.Name)}}}
 		for _, m := range sub[1:] {
 			facts = append(facts, unmoved(m.Node))
+		}
+		// Protection and source-entry overflow precede unread descendant
+		// depth, as the locked finite reader does. The existing full-tree
+		// simulation is retained; this is not a bound on its materialization.
+		if v := CheckContract(t.notebook, t.facts(OpMove, facts)); v.Err != nil {
+			return Refuse(v.Err, v.NodeID)
+		}
+		if err := RelocationOf(sub, parent, t.cur.line(parent), nil); err != nil {
+			return err
 		}
 		if err := t.judge(i, OpMove, facts); err != nil {
 			return err

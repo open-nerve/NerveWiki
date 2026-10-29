@@ -7,17 +7,17 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// Planned is q running each statement planned with its arguments: sent as
-// the unnamed statement and described each time, a round trip more, never
-// pgx's cached statement, and needing none of pgx's caches (a database.url
-// may turn them off: M6 closeout FA6-M1). From a cached statement's sixth
-// run the server may plan it once for any arguments, and such a plan
-// compares each row with an array argument's elements one by one where a
-// plan with the array hashes them: a subtree's level of 50,000 parents took
-// 3.5 s (FA4-M1). Planning costs each run a little, about a third of a
-// rename's or a move's statements had every statement been planned so
-// (FA5-Q1): it is for the statements a plan for any arguments makes much
-// slower. Most whose arrays grow with the data it does not (FA6-N2).
+// Planned sends and describes an unnamed statement on every call, a round
+// trip more than pgx's cached statement, requiring none of pgx's caches
+// (database.url may disable them: M6 FA6-M1). This avoids reusing a named
+// statement's generic plan under auto mode. It does not force custom plans:
+// PostgreSQL's plan_cache_mode=force_generic_plan also applies to unnamed
+// statements, so the queries must work with that mode (M10/P2 CI fix).
+// Historically a cached statement could switch to a generic plan after
+// five custom plans, comparing each row with every array element instead
+// of hashing a constant array: 50,000 subtree parents took 3.5 s (FA4-M1).
+// Describing every statement added about a third to rename/move costs
+// (FA5-Q1), so only selected queries use this mode (FA6-N2).
 func Planned(q Querier) Querier {
 	return planned{q}
 }

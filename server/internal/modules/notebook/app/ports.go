@@ -130,6 +130,12 @@ type WritingJobs interface {
 	Writing(ctx context.Context, notebookID uuid.UUID) (bool, error)
 }
 
+// SourceHashes clears the page module's source hashes when a notebook
+// becomes standard, in the caller's transaction and notebook lock.
+type SourceHashes interface {
+	Forget(ctx context.Context, notebookID uuid.UUID) error
+}
+
 // MemberFinder reads memberships, unlocked or under the notebook's lock.
 type MemberFinder interface {
 	// ListMembers returns the notebook's active members, by when they

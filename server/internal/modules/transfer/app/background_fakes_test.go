@@ -20,7 +20,7 @@ var errImportsTree = errors.New("an import's tree writes no background job")
 // An import's tree checks, plans and writes no background job: jobTree
 // does.
 
-func (t *tree) CheckRestore(context.Context, uuid.UUID, uuid.UUID) (string, error) {
+func (t *tree) CheckRestore(context.Context, uuid.UUID, uuid.UUID, func(context.Context) error) (string, error) {
 	return "", errImportsTree
 }
 
@@ -79,9 +79,18 @@ func newJobTree(rec *recorder) *jobTree {
 	return &jobTree{tree: newTree(), rec: rec, name: "Box", kind: "import", fail: map[int]error{}}
 }
 
-func (t *jobTree) CheckRestore(context.Context, uuid.UUID, uuid.UUID) (string, error) {
+func (t *jobTree) CheckRestore(ctx context.Context, _, _ uuid.UUID, admit func(context.Context) error) (string, error) {
 	t.rec.add("Tree.CheckRestore")
-	return t.name, t.refuse
+	if t.refuse != nil {
+		return "", t.refuse
+	}
+	if err := admit(ctx); err != nil {
+		return "", err
+	}
+	if t.onAdmit != nil {
+		t.onAdmit()
+	}
+	return t.name, t.late
 }
 
 func (t *jobTree) CheckRevert(ctx context.Context, _, _ uuid.UUID, _ *string, admit func(context.Context) error, batches app.JobBatches) (string, error) {

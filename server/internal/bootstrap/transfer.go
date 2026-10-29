@@ -112,8 +112,8 @@ func (t transferTree) Import(ctx context.Context, spec transfer.ImportSpec, do f
 
 // CheckRestore and CheckRevert are the starts' checks: their refusals are
 // the page module's problems, which the start answers as they are.
-func (t transferTree) CheckRestore(ctx context.Context, notebookID, nodeID uuid.UUID) (string, error) {
-	return t.tree.CheckRestore(ctx, notebookID, nodeID)
+func (t transferTree) CheckRestore(ctx context.Context, notebookID, nodeID uuid.UUID, admit func(context.Context) error) (string, error) {
+	return t.tree.CheckRestore(ctx, notebookID, nodeID, admit)
 }
 
 func (t transferTree) CheckRevert(ctx context.Context, notebookID, changesetID uuid.UUID, message *string,
@@ -198,7 +198,7 @@ func (i importUnit) CreatePage(ctx context.Context, p transfer.ImportedPage) (tr
 		return transfer.CreatedNode{}, errors.New("an import's page not parsed by the page module")
 	}
 	n, err := i.u.CreatePage(ctx, page.ImportedPage{ParentID: p.ParentID, Name: p.Name, Content: p.Content, Parsed: parsed.p,
-		Reserved: p.Reserved})
+		Reserved: p.Reserved, HasChildren: p.HasChildren})
 	return createdNode(n), treeError(err)
 }
 
@@ -207,12 +207,18 @@ func (i importUnit) CreateAsset(ctx context.Context, a transfer.ImportedAsset,
 ) (transfer.CreatedNode, error) {
 	n, err := i.u.CreateAsset(ctx, page.ImportedAsset{ParentID: a.ParentID, Name: a.Name,
 		Meta: page.AssetMeta{MIME: a.File.MIME, Bytes: a.File.Bytes, SHA256: a.File.SHA256}, Reserved: a.Reserved},
-		func(ctx context.Context, n page.NodeInfo) error { return after(ctx, createdNode(n)) })
+		func(ctx context.Context, n page.NodeInfo) error {
+			return after(ctx, createdNode(page.CreatedNode{NodeInfo: n}))
+		})
 	return createdNode(n), treeError(err)
 }
 
-func createdNode(n page.NodeInfo) transfer.CreatedNode {
-	return transfer.CreatedNode{ID: n.ID, Name: n.Name, CreatedAt: n.CreatedAt}
+func createdNode(n page.CreatedNode) transfer.CreatedNode {
+	out := transfer.CreatedNode{ID: n.ID, Name: n.Name, CreatedAt: n.CreatedAt, Skipped: n.Skipped}
+	if n.Duplicate != nil {
+		out.Duplicate = &transfer.DuplicateSource{ID: n.Duplicate.ID, Path: n.Duplicate.Path}
+	}
+	return out
 }
 
 // treeError is the page module's error as the jobs read it: a page too
@@ -248,8 +254,8 @@ func treeError(err error) error {
 	if errors.As(err, &refused) {
 		return err
 	}
-	if code, node, ok := page.Refusal(err); ok {
-		return &transfer.Refused{Code: code, NodeID: node, Err: err}
+	if info, ok := page.Refusal(err); ok {
+		return &transfer.Refused{Code: info.Code, NodeID: info.NodeID, DuplicateOf: info.DuplicateOf, Err: err}
 	}
 	return err
 }

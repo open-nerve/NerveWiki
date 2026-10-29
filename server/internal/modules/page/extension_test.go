@@ -544,7 +544,7 @@ func TestAUnitRefusesAnOuterTransaction(t *testing.T) {
 	store := postgresadapter.New(f.pool)
 	writer := app.NewWriter(app.WriterDeps{
 		Tx: tx, Clock: fixedClock{}, Auth: aliceWrites{f.alice}, Workspaces: sqlWorkspaces{f.pool}, Notebooks: sqlNotebooks{f.pool},
-		Nodes: store, NodeWriter: store, Changesets: store,
+		Nodes: store, NodeWriter: store, Changesets: store, Sources: store,
 	})
 	ctx := shared.WithActor(context.Background(), shared.Actor{UserID: f.alice, SessionID: uuid.NewV7()})
 	err := tx.WithinTx(ctx, func(ctx context.Context) error {

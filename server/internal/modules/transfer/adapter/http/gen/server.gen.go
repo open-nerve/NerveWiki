@@ -137,6 +137,7 @@ func (e TransferKind) Valid() bool {
 // Defines values for TransferProblemCode.
 const (
 	TransferProblemCodeDuplicate         TransferProblemCode = "duplicate"
+	TransferProblemCodeDuplicateSource   TransferProblemCode = "duplicate_source"
 	TransferProblemCodeEncrypted         TransferProblemCode = "encrypted"
 	TransferProblemCodeFileMissing       TransferProblemCode = "file_missing"
 	TransferProblemCodeInvalidContent    TransferProblemCode = "invalid_content"
@@ -155,6 +156,8 @@ const (
 func (e TransferProblemCode) Valid() bool {
 	switch e {
 	case TransferProblemCodeDuplicate:
+		return true
+	case TransferProblemCodeDuplicateSource:
 		return true
 	case TransferProblemCodeEncrypted:
 		return true
@@ -384,12 +387,12 @@ type TransferJobPage struct {
 // TransferKind defines model for TransferKind.
 type TransferKind string
 
-// TransferProblem What befell a node, at its path in the archive's vault (at most 1,024 bytes): renamed, written at to instead, so links to its old name do not reach it there; file_missing, an attachment whose file was not in the storage. An import's entry skipped, at its name in the archive: unsafe_path (it leaves the archive's root: "..", an absolute path, a drive), special_file (a symbolic link, or another file that is no regular one), encrypted, unsupported_method (compressed otherwise than stored or deflated), too_compressed (it unpacks to more than 200 times its packed size), name_not_utf8, invalid_content (a page's file not UTF-8, or holding NUL), too_large (a page's file past 5 MiB, an attachment past the instance's asset_max_bytes), duplicate (a path an earlier entry has), unreadable (its data broken, its checksum or size not its header's); an import's node, at its path in the vault: too_deep (more than 10 levels deep in the notebook where the import goes, with everything under it), renamed (created under the name at the end of to, its path from where the import goes).
+// TransferProblem What befell a node, at its path in the archive's vault (at most 1,024 bytes): renamed, written at to instead, so links to its old name do not reach it there; file_missing, an attachment whose file was not in the storage. An import's entry skipped, at its name in the archive: unsafe_path (it leaves the archive's root: "..", an absolute path, a drive), special_file (a symbolic link, or another file that is no regular one), encrypted, unsupported_method (compressed otherwise than stored or deflated), too_compressed (it unpacks to more than 200 times its packed size), name_not_utf8, invalid_content (a page's file not UTF-8, or holding NUL), too_large (a page's file past 5 MiB, an attachment past the instance's asset_max_bytes), duplicate (a path an earlier entry has), unreadable (its data broken, its checksum or size not its header's); an import's node, at its path in the vault: too_deep (more than 10 levels deep in the notebook where the import goes, with everything under it), renamed (created under the name at the end of to, its path from where the import goes), duplicate_source (identical bytes already exist as a source of the same kind; path is the archive item and to is the matching notebook path).
 type TransferProblem struct {
 	Code TransferProblemCode `json:"code"`
 	Path string              `json:"path"`
 
-	// To Where a renamed node is written, or created; null for any other problem.
+	// To Where a renamed node is written or created; for duplicate_source, the matching source's notebook path when the item was skipped. Null for any other problem.
 	To nullable.Nullable[string] `json:"to"`
 }
 
@@ -404,9 +407,12 @@ type TransferProgress struct {
 
 // TransferRefusal defines model for TransferRefusal.
 type TransferRefusal struct {
-	// Code The code of the refusal, as the write's own answer would carry it: page.protected, page.virtual_file, page.source_immutable or page.source_admin_only today; later milestones add others without a change to this contract.
-	Code   string    `json:"code"`
-	NodeID uuid.UUID `json:"node_id"`
+	// Code The code of the refusal, as the write's own answer would carry it: page.protected, page.virtual_file, page.source_immutable, page.source_admin_only, page.source_too_large or page.source_duplicate today; later milestones add others without a change to this contract.
+	Code string `json:"code"`
+
+	// DuplicateOf The existing source's ID for page.source_duplicate, separate from the refused node_id. Null for a duplicate existing only within the refused unit, for other refusal codes, and for older saved reports.
+	DuplicateOf nullable.Nullable[uuid.UUID] `json:"duplicate_of"`
+	NodeID      uuid.UUID                    `json:"node_id"`
 }
 
 // TransferReport defines model for TransferReport.

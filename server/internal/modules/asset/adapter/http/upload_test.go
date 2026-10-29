@@ -503,3 +503,31 @@ func waitFor(t *testing.T, cond func() bool) {
 		time.Sleep(10 * time.Millisecond)
 	}
 }
+
+func TestDuplicateUploadAnswersItsTargetAndDiscardsStoredBytes(t *testing.T) {
+	for _, present := range []bool{false, true} {
+		h := newHarness(t)
+		refusal := shared.NewError(shared.KindConflict, "page.source_duplicate", "Source exists.")
+		if present {
+			refusal.DuplicateOf = new(parentID())
+		}
+		h.tree.createErr = refusal
+		ct, body := form(t, file("duplicate.png", "identical bytes"))
+		res, answer := h.post(t, uploadPath(), "session", ct, bytes.NewReader(body))
+		var got map[string]json.RawMessage
+		if err := json.Unmarshal(answer, &got); err != nil {
+			t.Fatal(err)
+		}
+		if res.StatusCode != http.StatusConflict || string(got["code"]) != `"page.source_duplicate"` {
+			t.Fatalf("answer = %d %s", res.StatusCode, answer)
+		}
+		target, exists := got["duplicate_of"]
+		if exists != present || present && string(target) != `"`+parentID().String()+`"` {
+			t.Errorf("duplicate target = %s (present %v)", target, exists)
+		}
+		keys, deleted, open := h.files.state()
+		if len(keys) != 0 || len(deleted) != 1 || open != 0 {
+			t.Errorf("stored %v, deleted %v, open %d", keys, deleted, open)
+		}
+	}
+}

@@ -2,6 +2,7 @@ import { aliveSessionsOf, expectAliveSessions } from "../../fixtures/assert/coll
 import { expectSessionGone, sessionsOf } from "../../fixtures/assert/page";
 import { displayNameOf, emailFor } from "../../fixtures/auth";
 import { failedToLoad } from "../../fixtures/browser";
+import { holdStream } from "../../fixtures/events";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { errorOf, mcpClient, resultOf } from "../../fixtures/mcp";
 import { notebookHeading } from "../../fixtures/notebook-pages";
@@ -182,10 +183,40 @@ test("C4 (page): while A edits Linux, B's deletion of its parent is refused, the
 
   // A rename and a move of what A edits pass (M5 design 4.4; no link to it to write again, M6): A's editor stays,
   // its heading following.
+  const attachmentsRead = (readers = [page, b]) =>
+    Promise.all(
+      readers.map(async (each) => {
+        const request = await each.waitForRequest((sent) => {
+          const url = new URL(sent.url());
+          return (
+            sent.method() === "GET" &&
+            url.pathname === `/api/v0/notebooks/${notebook.id}/assets` &&
+            url.searchParams.get("parent_id") === linux.id
+          );
+        });
+        const answer = await request.response();
+        expect(answer?.status()).toBe(200);
+        expect(await answer?.finished()).toBeNull();
+      })
+    );
+  // Finish B's initial read and then the connection's refresh separately, so neither can stand in
+  // for the later rename or move event's attachment read.
+  const letStreamIn = await holdStream(b);
+  const initialAttachments = attachmentsRead([b]);
   await b.goto(linuxPath);
   await expect(pageHeading(b, "Linux")).toBeVisible();
+  await initialAttachments;
+  const connectedAttachments = attachmentsRead([b]);
+  letStreamIn();
+  await connectedAttachments;
+  // Finish each event's attachment refresh while the page exists. A move's tree refresh can wait for
+  // the 500 ms interval; deleting meanwhile would make its later attachment read legitimately return 404.
+  const afterRename = attachmentsRead();
   expect((await renamePageWith(b, "Plans", linux.id, "Linux", "Kernel")).status()).toBe(200);
+  await afterRename;
+  const afterMove = attachmentsRead();
   expect((await movePageWith(b, "Plans", linux.id, "Kernel", "The notebook's top level", "Last")).status()).toBe(200);
+  await afterMove;
   await expect(pageHeading(page, "Kernel")).toBeVisible();
   await expect(editorContent(page)).toContainText("Drafted.Unsaved");
   await expectAliveSessions(db, linux.id, [mine ?? ""]);

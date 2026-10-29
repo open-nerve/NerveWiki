@@ -37,6 +37,7 @@ func TestSourceJobAsideFactsMatchActualBatches(t *testing.T) {
 			}
 			f, c := s.load()
 			spy := sourceJobFixture(f, raw)
+			checkFakeSourceRebuild(t, f, 3)
 			w, spec := f.jobs(now(), 0, 0), f.jobSpec()
 			cuts := [][2]int{{0, 8}}
 			if split {
@@ -76,6 +77,11 @@ func TestSourceJobAsideFactsMatchActualBatches(t *testing.T) {
 				if _, err := w.RunBatch(f.asJob(), spec, plan, cut[0], cut[1]); err != nil {
 					t.Fatalf("batch %v: %v", cut, err)
 				}
+				wantSources := 7
+				if split && i == 0 {
+					wantSources = 5
+				}
+				checkFakeSourceRebuild(t, f, wantSources)
 				if split && i == 0 {
 					for _, id := range []uuid.UUID{p1, p2} {
 						if _, alive := f.store.nodes[id]; alive || !f.store.trash[id].TrashRoot {
@@ -146,6 +152,7 @@ func TestSourceJobPlaceThenDeleteFactsUseCurrentSubtrees(t *testing.T) {
 	}
 	f, c := s.load()
 	spy := sourceJobFixture(f, raw)
+	checkFakeSourceRebuild(t, f, 0)
 	w, spec := f.jobs(now(), 0, 0), f.jobSpec()
 	want := []string{
 		"move m/page N:false->raw:true asset/asset m:false->m:true",
@@ -168,6 +175,7 @@ func TestSourceJobPlaceThenDeleteFactsUseCurrentSubtrees(t *testing.T) {
 	if done, err := w.RunBatch(f.asJob(), spec, plan, 0, len(plan.Steps())); err != nil || done.PutBack != 1 || done.Deleted != 5 {
 		t.Fatalf("RunBatch=%+v, %v; want m placed and N's five current nodes deleted", done, err)
 	}
+	checkFakeSourceRebuild(t, f, 2)
 	assertSourceJobGuardTrace(t, s.labels, spy, want)
 	assertSourceJobPersistence(t, f, []string{"GuardWrite move in tx", "MoveNode in tx", "GuardWrite delete in tx", "DeleteNodes in tx"})
 	if len(f.store.trash) != 5 || !sameParent(f.store.nodes[m].ParentID, &raw) || !sameParent(f.store.nodes[asset].ParentID, &m) {
@@ -213,10 +221,46 @@ func TestSourceJobSimulatorUsesCurrentLinesForEachRestoredParent(t *testing.T) {
 }
 
 func sourceJobFixture(f *fixture, raw uuid.UUID) *guard {
+	// These model fixtures predate their first real Unit. Give their existing
+	// attachments explicit empty-file facts and seed the initial derived hashes
+	// from the raw parent/body snapshot once, never after a tested operation.
+	f.infos = map[uuid.UUID]app.AttachmentInfo{}
+	for id, n := range f.store.nodes {
+		if n.Kind == domain.KindAsset {
+			f.infos[id] = app.AttachmentInfo{SHA256: sourceHashOf("")}
+		}
+	}
+	for id, n := range f.store.trash {
+		if n.Kind == domain.KindAsset {
+			f.infos[id] = app.AttachmentInfo{SHA256: sourceHashOf("")}
+		}
+	}
+	for id, n := range f.store.nodes {
+		inside := false
+		for parent, steps := n.ParentID, 0; parent != nil && steps < len(f.store.nodes); steps++ {
+			if *parent == raw {
+				inside = true
+				break
+			}
+			p, ok := f.store.nodes[*parent]
+			if !ok {
+				break
+			}
+			parent = p.ParentID
+		}
+		if !inside || id == raw {
+			continue
+		}
+		if n.Kind == domain.KindAsset {
+			f.store.sourceHashes[id] = sourceHashOf("")
+		} else if body := f.store.contents[id].Content; body != "" {
+			f.store.sourceHashes[id] = sourceHashOf(body)
+		}
+	}
 	f.grant(domain.ActionManageSource)
 	f.notebooks.states = map[uuid.UUID]domain.NotebookState{f.eng: {Mode: domain.ModeLLMWiki, SourceRootID: raw}}
 	spy := &guard{recorder: f.rec}
-	f.guards = []app.WriteGuard{app.NewModeGuard(f.auth, f.store), spy}
+	f.guards = []app.WriteGuard{app.NewModeGuard(f.auth, f.store, f.store), spy}
 	return spy
 }
 

@@ -1,8 +1,9 @@
 import type { TransferJob, TransferJobDetail } from "../services/transfer.service";
 import { under as underWayNow } from "../stores/transfer.store";
 import { json, notebookJSON, problem, type Answer } from "./fakes";
-import { orderedConflicts, sourceRevertCode } from "./history-server";
-import { ada, pageServer } from "./page-server";
+import { orderedConflicts, sourceRevertRefusal } from "./history-server";
+import { sourceRestoreRefusal } from "./trash-server";
+import { ada, pageServer, sourceStatus } from "./page-server";
 import { formOf } from "./transfer";
 
 /** The kinds of the jobs that write a notebook's tree, one under way at once (M8/P4 design 3.2). */
@@ -317,7 +318,11 @@ export function jobsServer({ jobs = [], pageSize = 50, answers = {}, ...options 
       if (item.expired) {
         return problem(409, "page.restore_expired");
       }
-      return refused() ?? queued({ kind: "trash_restore", root_id: id, name: item.members[0]?.name ?? "" });
+      const admission = refused();
+      if (admission?.status === 409) return admission;
+      const duplicate = sourceRestoreRefusal(server, item);
+      if (duplicate !== undefined) return problem(409, duplicate.code, duplicate);
+      return admission ?? queued({ kind: "trash_restore", root_id: id, name: item.members[0]?.name ?? "" });
     },
     [`POST ${plans}/reverts`]: async (request) => {
       const { changeset_id: id, message } = (await request.clone().json()) as {
@@ -364,9 +369,9 @@ export function jobsServer({ jobs = [], pageSize = 50, answers = {}, ...options 
       if (changeset.purged) {
         return problem(409, "page.changeset_trimmed");
       }
-      const code = sourceRevertCode(server, changeset, role);
-      if (code !== undefined) {
-        return problem(code === "page.source_admin_only" ? 403 : 409, code);
+      const refusal = sourceRevertRefusal(server, changeset, role);
+      if (refusal !== undefined) {
+        return problem(sourceStatus(refusal.code), refusal.code, refusal);
       }
       if (changeset.lockedBy !== undefined) {
         const { page, holder } = changeset.lockedBy;

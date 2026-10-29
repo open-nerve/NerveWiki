@@ -761,7 +761,7 @@ func TestARefusedJobsReportReadsBackAsWritten(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
 	node := uuid.NewV7()
-	for _, code := range []string{"", "page.source_admin_only", "page.some_later_code"} {
+	for _, code := range []string{"", "page.source_admin_only", "page.source_duplicate", "page.some_later_code"} {
 		t.Run(code, func(t *testing.T) {
 			j, err := f.background(t, f.eng, f.alice, nil, uuid.NewV7())
 			if err != nil {
@@ -771,6 +771,9 @@ func TestARefusedJobsReportReadsBackAsWritten(t *testing.T) {
 			report := domain.Report{Failure: domain.FailureInternal, Counts: domain.Counts{PutBack: 1}}
 			if code != "" {
 				report.Failure, report.Refusal = domain.FailureRefused, &domain.Refusal{Code: code, NodeID: node}
+			}
+			if code == "page.source_duplicate" {
+				report.Refusal.DuplicateOf = new(uuid.NewV7())
 			}
 			if ok, err := f.store.FinishJob(ctx, j.ID, app.Ended{State: domain.StateFailed, At: at(time.Second), Name: j.Name, Report: report}); !ok || err != nil {
 				t.Fatalf("FinishJob() = %v, %v", ok, err)
@@ -802,6 +805,20 @@ func TestARefusedJobsReportReadsBackAsWritten(t *testing.T) {
 			}
 			if has != (code != "") {
 				t.Errorf("stored refusal present %v, want %v", has, code != "")
+			}
+
+			if code == "page.source_duplicate" {
+				// Reports stored before duplicate_of existed remain readable.
+				if _, err := f.pool.Exec(ctx, "UPDATE transfer_jobs SET report = report #- '{refusal,duplicate_of}' WHERE id = $1", j.ID); err != nil {
+					t.Fatal(err)
+				}
+				legacy, err := f.store.FindJob(ctx, j.ID)
+				if err != nil || legacy.Report == nil || legacy.Report.Refusal == nil {
+					t.Fatalf("legacy report = %+v, %v", legacy.Report, err)
+				}
+				if legacy.Report.Refusal.Code != code || legacy.Report.Refusal.NodeID != node || legacy.Report.Refusal.DuplicateOf != nil {
+					t.Errorf("legacy refusal = %+v, want original code/node and no target", legacy.Report.Refusal)
+				}
 			}
 		})
 	}

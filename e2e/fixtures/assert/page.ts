@@ -1,7 +1,11 @@
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+
 import type { Page, TreeNode } from "@nervewiki/api-client";
 import { expect } from "@playwright/test";
 
 import type { Database } from "../db";
+import { blobPath } from "./asset";
 
 // Database assertions of the page stories, by table. The page version and
 // the API version of a story call the same function (v0.1 design 10.1).
@@ -575,6 +579,63 @@ export async function pageStateOf(db: Database, notebookId: string): Promise<str
     expect(count, `${kind}: refusal snapshots require a small story notebook`).toBeLessThanOrEqual(64);
   }
   return rows.map((row) => row.snapshot);
+}
+
+/**
+ * Rebuilds source hashes from raw parents and actual bytes, including deleted and outside nodes. Membership walks
+ * upward independently of the server's source queries. Attachments use their stored files, not the persisted SHA
+ * as the oracle. The small story bound fails closed instead of silently omitting rows.
+ */
+export async function expectSourceHashes(db: Database, storageDir: string, notebookId: string): Promise<void> {
+  const [notebook] = await db.query<{ mode: string; source_root_id: string | null }>(
+    "SELECT mode, source_root_id FROM notebooks WHERE id = $1",
+    [notebookId]
+  );
+  if (!notebook) throw new Error(`no notebook ${notebookId}`);
+  const rows = await db.query<{
+    id: string;
+    parent_id: string | null;
+    kind: string;
+    live: boolean;
+    source_hash: string | null;
+    content: string | null;
+    blob_id: string | null;
+    blob_hash: string | null;
+  }>(
+    `SELECT n.id, n.parent_id, n.kind, n.deleted_at IS NULL AS live, encode(n.source_hash, 'hex') AS source_hash,
+            c.content, b.id AS blob_id, encode(b.sha256, 'hex') AS blob_hash
+       FROM nodes n LEFT JOIN page_contents c ON c.node_id = n.id LEFT JOIN asset_blobs b ON b.node_id = n.id
+      WHERE n.notebook_id = $1 ORDER BY n.id LIMIT 1001`,
+    [notebookId]
+  );
+  expect(rows.length).toBeGreaterThan(0);
+  expect(rows.length, "the source hash oracle's story bound").toBeLessThanOrEqual(1000);
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  for (const row of rows) {
+    let inSource = false;
+    const seen = new Set([row.id]);
+    for (let parent = row.parent_id; parent !== null;) {
+      expect(seen.has(parent), `acyclic parents of ${row.id}`).toBe(false);
+      seen.add(parent);
+      const ancestor = byId.get(parent);
+      if (!ancestor) throw new Error(`missing parent ${parent} of ${row.id}`);
+      if (parent === notebook.source_root_id) inSource = true;
+      parent = ancestor.parent_id;
+    }
+    let hash: string | null = null;
+    if (row.kind === "asset") {
+      if (row.blob_id === null) throw new Error(`no blob of ${row.id}`);
+      hash = createHash("sha256")
+        .update(readFileSync(blobPath(storageDir, row.blob_id)))
+        .digest("hex");
+      expect(row.blob_hash, `stored bytes of ${row.id}`).toBe(hash);
+    } else {
+      if (row.content === null) throw new Error(`no content of ${row.id}`);
+      if (row.content !== "") hash = createHash("sha256").update(row.content, "utf8").digest("hex");
+    }
+    const expected = notebook.mode === "llm_wiki" && row.live && inSource ? hash : null;
+    expect(row.source_hash, `source hash of ${row.id}`).toBe(expected);
+  }
 }
 
 /** What a revert holds (M8/P3 design 4.8): the changeset it reverts, its items and its versions. */

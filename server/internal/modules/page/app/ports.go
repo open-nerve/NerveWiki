@@ -181,6 +181,10 @@ type Nodes interface {
 	// by level; ErrNotFound when the node is missing, deleted or in
 	// another notebook.
 	Subtree(ctx context.Context, notebookID, id uuid.UUID) (domain.Subtree, error)
+	// SubtreeWithin is the source-entry reader. max is in 1..MaxUnitNodes,
+	// counting the root. It returns the same complete order as Subtree, or
+	// nil, false once max+1 nodes prove overflow, without reading content.
+	SubtreeWithin(ctx context.Context, notebookID, id uuid.UUID, max int) (domain.Subtree, bool, error)
 	ContentMeta(ctx context.Context, id uuid.UUID) (ContentMeta, error)
 	// PageContent is a page's content and its version, read in one
 	// statement; ErrNotFound when the content is deleted, as it is with its
@@ -387,17 +391,20 @@ type Deletion struct {
 // Restoration is a trash item's restore (M8/P2 design 3.5): its nodes IDs,
 // still deleted at DeletedAt, each named Names, its key NameKeys, the Root
 // among them put under ParentID (nil: the notebook's root) at SortOrder;
-// by By at At.
+// by By at At. SourceHashes contains only the prepared, guarded derived
+// values to write with those nodes: a present nil clears the hash; an absent
+// ID leaves it unchanged. It is not a new source-membership decision.
 type Restoration struct {
-	Root      uuid.UUID
-	ParentID  *uuid.UUID
-	SortOrder float64
-	IDs       []uuid.UUID
-	Names     []string
-	NameKeys  []string
-	DeletedAt time.Time
-	By        uuid.UUID
-	At        time.Time
+	Root         uuid.UUID
+	ParentID     *uuid.UUID
+	SortOrder    float64
+	IDs          []uuid.UUID
+	Names        []string
+	NameKeys     []string
+	DeletedAt    time.Time
+	By           uuid.UUID
+	At           time.Time
+	SourceHashes map[uuid.UUID][]byte
 }
 
 // RestoredRows are what a restore brought back: its nodes; its pages'
@@ -563,13 +570,14 @@ type History interface {
 	VersionContents(ctx context.Context, refs []domain.VersionRef) (map[domain.VersionRef]PageContent, error)
 }
 
-// AttachmentInfo is an attachment's type and size.
+// AttachmentInfo is an attachment's type, size and stored SHA-256.
 type AttachmentInfo struct {
-	MIME  string
-	Bytes int64
+	MIME   string
+	Bytes  int64
+	SHA256 []byte
 }
 
-// AttachmentInfos reads the attachments' type and size, deleted or not, in
+// AttachmentInfos reads the attachments' metadata, deleted or not, in
 // the caller's read (M8 design 4.1): bootstrap hands the asset module's to
 // it. A node without a row of its file is not in the answer.
 type AttachmentInfos interface {

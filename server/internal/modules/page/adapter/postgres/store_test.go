@@ -452,6 +452,9 @@ func TestDeleteNotebooksPages(t *testing.T) {
 	child := f.page(t, f.eng, &root.ID, "Child", 0)
 	trashed := f.page(t, f.eng, nil, "Trashed", 1)
 	kept := f.page(t, f.ops, nil, "Kept", 0)
+	for _, n := range []domain.Node{root, child, kept} {
+		f.exec(t, "UPDATE nodes SET source_hash = $2 WHERE id = $1", n.ID, sourceSum(n.Name))
+	}
 	cs := app.Changeset{ID: uuid.NewV7(), NotebookID: f.eng, Kind: "edit", Client: domain.ClientWeb, By: f.alice, At: now()}
 	if err := f.s.CreateChangeset(ctx, cs); err != nil {
 		t.Fatal(err)
@@ -496,6 +499,23 @@ func TestDeleteNotebooksPages(t *testing.T) {
 	if got := f.count(t, "SELECT count(*) FROM nodes WHERE id = $1 AND deleted_at IS NULL", kept.ID); got != 1 {
 		t.Error("ops' page is deleted with eng")
 	}
+	if got := f.count(t, "SELECT count(*) FROM nodes WHERE notebook_id = $1 AND source_hash IS NOT NULL", f.eng); got != 0 {
+		t.Errorf("notebook deletion kept %d source hashes, want all its pages NULL", got)
+	}
+	if got := f.count(t, "SELECT count(*) FROM nodes WHERE id = $1 AND source_hash = $2", kept.ID, sourceSum(kept.Name)); got != 1 {
+		t.Error("notebook deletion changed another notebook's source hash")
+	}
+	t.Run("attachments", func(t *testing.T) {
+		f := newFixture(t)
+		a := f.asset(t, f.eng, nil, "source.txt", 0)
+		f.exec(t, "UPDATE nodes SET source_hash = $2 WHERE id = $1", a.ID, sourceSum("asset"))
+		if err := f.s.DeleteNotebooksPages(ctx, []uuid.UUID{f.eng}, f.alice, at); err != nil {
+			t.Fatal(err)
+		}
+		if got := f.count(t, "SELECT count(*) FROM nodes WHERE id = $1 AND deleted_at = $2 AND source_hash IS NULL", a.ID, at); got != 1 {
+			t.Error("notebook deletion did not clear its attachment hash in the deletion")
+		}
+	})
 }
 
 // A subtree is the node and its descendants not deleted, level by level and
@@ -553,11 +573,10 @@ func TestSubtreeReachesTheDeepestLevel(t *testing.T) {
 	}
 }
 
-// The reads a plan for any arguments makes much slower, a subtree's levels
-// and link targets by id, are planned with theirs however many times a
-// connection runs them; the rest are pgx's cached statements, which the
-// server may plan once for any arguments from their sixth run, link targets
-// by key among them: theirs are as fast (M6 closeout FA4-M1, FA5-Q1, FA6-N2).
+// Subtree levels and link targets by id use unnamed DescribeExec regardless
+// of call count; other queries retain pgx's named statement cache (M6
+// FA4-M1, FA5-Q1, FA6-N2). This checks pgx caching, not PostgreSQL's choice
+// of custom versus generic plans, which still obeys plan_cache_mode.
 func TestTheReadsOfGrowingArraysArePlannedWithThem(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
@@ -631,6 +650,9 @@ func TestDeleteNodes(t *testing.T) {
 	child := f.page(t, f.eng, &root.ID, "Child", 0)
 	trashed := f.page(t, f.eng, &root.ID, "Trashed", 1)
 	sibling := f.page(t, f.eng, nil, "Sibling", 1)
+	for _, n := range []domain.Node{root, child, sibling} {
+		f.exec(t, "UPDATE nodes SET source_hash = $2 WHERE id = $1", n.ID, sourceSum(n.Name))
+	}
 	cs := app.Changeset{ID: uuid.NewV7(), NotebookID: f.eng, Kind: "edit", Client: domain.ClientWeb, By: f.alice, At: now()}
 	if err := f.s.CreateChangeset(ctx, cs); err != nil {
 		t.Fatal(err)
@@ -680,6 +702,25 @@ func TestDeleteNodes(t *testing.T) {
 			t.Errorf("the sibling's row of %s is deleted with the subtree", table)
 		}
 	}
+	if got := f.count(t, "SELECT count(*) FROM nodes WHERE id = ANY($1) AND source_hash IS NOT NULL", []uuid.UUID{root.ID, child.ID, trashed.ID}); got != 0 {
+		t.Errorf("subtree deletion kept %d source hashes, want all deleted pages NULL", got)
+	}
+	if got := f.count(t, "SELECT count(*) FROM nodes WHERE id = $1 AND source_hash = $2", sibling.ID, sourceSum(sibling.Name)); got != 1 {
+		t.Error("subtree deletion changed an untouched sibling's source hash")
+	}
+	t.Run("attachments", func(t *testing.T) {
+		f := newFixture(t)
+		root := f.page(t, f.eng, nil, "Root", 0)
+		a := f.asset(t, f.eng, &root.ID, "source.txt", 0)
+		f.exec(t, "UPDATE nodes SET source_hash = $2 WHERE id = $1", a.ID, sourceSum("asset"))
+		if err := f.s.DeleteNodes(ctx, app.Deletion{Root: root.ID, IDs: []uuid.UUID{root.ID, a.ID}, Pages: 1,
+			Assets: 1, Height: 1, By: f.alice, At: at}); err != nil {
+			t.Fatal(err)
+		}
+		if got := f.count(t, "SELECT count(*) FROM nodes WHERE id = $1 AND deleted_at = $2 AND source_hash IS NULL", a.ID, at); got != 1 {
+			t.Error("subtree deletion did not clear its attachment hash in the deletion")
+		}
+	})
 }
 
 // deletion is the deletion of ids, the first their root, by by at at, its

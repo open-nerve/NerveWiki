@@ -1,6 +1,6 @@
 import type { ApiClient, NodeMove } from "@nervewiki/api-client";
 
-import { expectAssetsDeletedWithNodes, expectUploaded } from "../../fixtures/assert/asset";
+import { expectAssetsDeletedWithNodes, expectUploaded, storedBlobs } from "../../fixtures/assert/asset";
 import { accountIdOf } from "../../fixtures/assert/identity";
 import {
   expectChangesetOf,
@@ -10,6 +10,7 @@ import {
   expectRelocated,
   expectRenamed,
   expectSubtreeDeleted,
+  expectSourceHashes,
   pageStateOf,
   placeOf,
 } from "../../fixtures/assert/page";
@@ -460,5 +461,38 @@ for (const scope of ["notebook", "account"] as const) {
       versions: [],
     });
     expect(await bodiesOf(db, notebook.id)).toEqual(bodies);
+  });
+}
+
+for (const role of ["writer", "admin"] as const) {
+  test(`LW5 (API): a ${role}'s ordinary subtree containing a duplicate attachment stays entirely outside the source area`, async ({
+    api,
+    db,
+    nervewiki,
+  }, testInfo) => {
+    const { pat, workspace } = await newTeam(api, testInfo);
+    const writerEmail = emailFor(testInfo, "writer");
+    const writer = await joinAs(api, pat, workspace.slug, writerEmail, "member");
+    const { notebook, raw } = await sourceWiki(api, pat, workspace.slug);
+    const known = await uploadAsset(api, writer, notebook.id, { name: "known.png", bytes: pngBytes }, raw.id);
+    const folder = await createPage(api, writer, notebook.id, "Incoming");
+    await createPage(api, writer, notebook.id, "Unique child", folder.id, "A unique source body\n");
+    const copy = await uploadAsset(api, writer, notebook.id, { name: "renamed.png", bytes: pngBytes }, folder.id);
+    const before = await pageStateOf(db, notebook.id);
+    const files = storedBlobs(nervewiki.storageDir);
+    const refused = await postMove(api, role === "writer" ? writer : pat, folder.id, { parent_id: raw.id });
+    expect([refused.response.status, refused.error?.code, refused.error?.duplicate_of]).toEqual([
+      409,
+      "page.source_duplicate",
+      known.id,
+    ]);
+    expect(await pageStateOf(db, notebook.id)).toEqual(before);
+    expect(storedBlobs(nervewiki.storageDir)).toEqual(files);
+    // Remove only the conflicting ordinary attachment. The same writer/admin entry now succeeds and hashes the
+    // unique page descendant; the previous refusal did not partially move it or consume a history revision.
+    expect((await deleteNode(api, writer, copy.id)).response.status).toBe(204);
+    await moveNode(api, role === "writer" ? writer : pat, folder.id, { parent_id: raw.id });
+    expect((await placeOf(db, folder.id)).parentId).toBe(raw.id);
+    await expectSourceHashes(db, nervewiki.storageDir, notebook.id);
   });
 }

@@ -289,7 +289,7 @@ func (r *backgroundRun) stopped(err error) error {
 		}
 		return failed(domain.FailurePageLocked, err)
 	case errors.As(err, &refused):
-		r.report.Refusal = &domain.Refusal{Code: refused.Code, NodeID: refused.NodeID}
+		r.report.Refusal = &domain.Refusal{Code: refused.Code, NodeID: refused.NodeID, DuplicateOf: refused.DuplicateOf}
 	case errors.Is(err, errSegmentTooLarge):
 		return failed(domain.FailureRevertTooLarge, err)
 	}

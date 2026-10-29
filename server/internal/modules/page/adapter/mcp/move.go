@@ -33,7 +33,7 @@ func (t tools) move(ctx context.Context, c mcpserver.Call, in moveIn) (mcpserver
 	m, err := t.uc.Move.Execute(ctx, c.Notebook, app.PathMove{From: in.From, To: in.To,
 		UpdateLinks: in.UpdateLinks == nil || *in.UpdateLinks}, domain.MCPClient(c.Client))
 	if err != nil {
-		return mcpserver.Result{}, moveErr(err, c, in.From)
+		return mcpserver.Result{}, t.duplicateErr(ctx, c, moveErr(err, c, in.From))
 	}
 	changeset, at := changesetOf(m.Outcome)
 	return mcpserver.Result{Structured: moveAnswer{Path: m.Path, NodeID: m.Node.ID.String(), Changed: changeset != nil,

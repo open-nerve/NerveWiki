@@ -397,8 +397,9 @@ type lockJSON struct {
 }
 
 type refusalJSON struct {
-	Code   string    `json:"code"`
-	NodeID uuid.UUID `json:"node_id"`
+	Code        string     `json:"code"`
+	NodeID      uuid.UUID  `json:"node_id"`
+	DuplicateOf *uuid.UUID `json:"duplicate_of"`
 }
 
 func encodeReport(r domain.Report) ([]byte, error) {
@@ -421,7 +422,7 @@ func encodeReport(r domain.Report) ([]byte, error) {
 		out.Lock = &lockJSON{PageID: r.Lock.PageID, UserID: r.Lock.UserID}
 	}
 	if r.Refusal != nil {
-		out.Refusal = &refusalJSON{Code: r.Refusal.Code, NodeID: r.Refusal.NodeID}
+		out.Refusal = &refusalJSON{Code: r.Refusal.Code, NodeID: r.Refusal.NodeID, DuplicateOf: r.Refusal.DuplicateOf}
 	}
 	b, err := json.Marshal(out)
 	if err != nil {
@@ -452,7 +453,7 @@ func decodeReport(b []byte) (domain.Report, error) {
 		r.Lock = &domain.Lock{PageID: in.Lock.PageID, UserID: in.Lock.UserID}
 	}
 	if in.Refusal != nil {
-		r.Refusal = &domain.Refusal{Code: in.Refusal.Code, NodeID: in.Refusal.NodeID}
+		r.Refusal = &domain.Refusal{Code: in.Refusal.Code, NodeID: in.Refusal.NodeID, DuplicateOf: in.Refusal.DuplicateOf}
 	}
 	return r, nil
 }

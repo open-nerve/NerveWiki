@@ -92,6 +92,14 @@ components:
               format: uuid
             display_name:
               type: string
+        duplicate_of:
+          description: >-
+            Only page.source_duplicate carries this optional source node ID.
+            The target already had the same source kind and bytes at the
+            refusing unit's start and survives its rollback. Omitted for
+            duplicates created only within that operation. No path is exposed.
+          type: string
+          format: uuid
         root_id:
           description: >-
             The root of the trash item a node was deleted with:

@@ -115,7 +115,7 @@ func (w *JobWrites) checks() revertChecks {
 // for a node not of the notebook, or purged; then page.not_in_trash,
 // page.not_trash_root and page.restore_expired. Its size is no bound: any
 // item restores in the background.
-func (w *JobWrites) CheckRestore(ctx context.Context, notebookID, nodeID uuid.UUID) (string, error) {
+func (w *JobWrites) CheckRestore(ctx context.Context, notebookID, nodeID uuid.UUID, admit func(context.Context) error) (string, error) {
 	if err := w.writer.Allowed(ctx, restoreUnit(JobSpec{NotebookID: notebookID})); err != nil {
 		return "", err
 	}
@@ -131,6 +131,23 @@ func (w *JobWrites) CheckRestore(ctx context.Context, notebookID, nodeID uuid.UU
 	root, err := w.reads.trashRoot(ctx, n, w.reads.Clock.Now())
 	if err != nil {
 		return "", err
+	}
+	if admit != nil {
+		if err := admit(ctx); err != nil {
+			return "", err
+		}
+	}
+	notebook, ok, err := w.writer.d.Notebooks.StateOf(ctx, notebookID)
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "", domain.ErrNotebookNotFound
+	}
+	if notebook.Mode == domain.ModeLLMWiki {
+		if _, err := w.planRestoreSource(ctx, JobSpec{NotebookID: notebookID}, root, notebook); err != nil {
+			return "", err
+		}
 	}
 	return root.Node.Name, nil
 }
@@ -219,6 +236,23 @@ func (w *JobWrites) PlanRestore(ctx context.Context, spec JobSpec, nodeID uuid.U
 	case err != nil:
 		return JobPlan{}, err
 	}
+	notebook, ok, err := w.writer.d.Notebooks.StateOf(ctx, spec.NotebookID)
+	if err != nil {
+		return JobPlan{}, err
+	}
+	if !ok {
+		return JobPlan{}, domain.ErrNotebookNotFound
+	}
+	if notebook.Mode == domain.ModeLLMWiki {
+		return w.planRestoreSource(ctx, spec, root, notebook)
+	}
+	return w.planRestoreRead(ctx, spec, root)
+}
+
+// planRestoreRead is shared by the unlocked admission and independent worker
+// plan. LLM callers keep this metadata and source simulation in one snapshot.
+func (w *JobWrites) planRestoreRead(ctx context.Context, spec JobSpec, root domain.TrashRoot) (JobPlan, error) {
+	nodeID := root.Node.ID
 	read, err := w.reads.Trash.TrashNodesAt(ctx, spec.NotebookID, map[uuid.UUID]time.Time{nodeID: root.DeletedAt})
 	if err != nil {
 		return JobPlan{}, err

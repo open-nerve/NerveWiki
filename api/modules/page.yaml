@@ -57,9 +57,13 @@ paths:
         then is server_busy. A body that has not all arrived within the server's
         read timeout (server.read_timeout, 30 seconds by default, in which
         5 MiB needs about 1.4 Mbit/s) is bad_request.
+        A nonempty page created under the source root of an LLM Wiki is
+        page.source_duplicate (409) when another source page has identical
+        bytes. Empty pages and the source root itself do not participate.
       security: [{ bearer: [] }]
       x-problem-codes:
         [
+          page.source_duplicate,
           notebook.not_found,
           forbidden,
           validation_failed,
@@ -164,9 +168,13 @@ paths:
         not all arrived within the server's read timeout
         (server.read_timeout, 30 seconds by default, in which 5 MiB needs
         about 1.4 Mbit/s) is bad_request.
+        An empty source page's first nonempty write is page.source_duplicate
+        (409) when another source page has identical bytes; unchanged writes
+        still do nothing, and protected content is checked first.
       security: [{ bearer: [] }]
       x-problem-codes:
         [
+          page.source_duplicate,
           page.source_immutable,
           validation_failed,
           page.not_found,
@@ -694,16 +702,25 @@ paths:
         notebook and a node to follow that is no other child of the parent
         are validation_failed; then a parent that is the node itself or
         under it is page.cycle, a title a new sibling
-        has, compared by its key, page.title_taken, and a page under it
-        that would be deeper than ten levels page.too_deep: an attachment
-        is no level, and a page of the tenth holds them. In an LLM Wiki,
+        has, compared by its key, page.title_taken. A page under it
+        that would be deeper than ten levels is page.too_deep, except for
+        the early source-entry bound below: an attachment is no level,
+        and a page of the tenth holds them. In an LLM Wiki,
         AGENTS cannot be moved, among its siblings either (page.protected),
         no node at the root may take the name index or log, nor index.md or
         log.md (page.virtual_file), and only its admins can move the source
         root or an existing source page or attachment, among their siblings
         too, or move a page whose subtree holds the root under another parent
         (page.source_admin_only). An editor may move an ordinary node into
-        the source area. A move to where the
+        the source area. An existing subtree moved from outside into the
+        source area may carry at most 10,000 nodes, counting its root, empty
+        pages and attachments; above that it is 422 page.source_too_large.
+        Known invalid destination, cycle, title, protection and reserved-name
+        errors precede this bound; it precedes a depth error in descendants
+        not yet read. Within the bound, the usual depth check still applies.
+        Ordinary moves, moves within or out of sources, and moves of the
+        source root or an ancestor that keep source membership are unchanged.
+        Move smaller subtrees into sources separately. A move to where the
         node is writes nothing. The links that led to the node, the
         attachment or the page and those under it, by a path that changes,
         the links in the moved pages that the move would lead elsewhere, and
@@ -713,9 +730,14 @@ paths:
         the move is refused as a whole, linking.pages_locked naming each of
         them and its editor, and when their parse finds the server busy it
         is server_busy.
+        A subtree entering sources is page.source_duplicate (409) if its
+        nonempty pages or attachments duplicate an existing source of the
+        same kind, or one another. Comparison uses stored bytes before any
+        link rewriting; the whole move is refused.
       security: [{ bearer: [] }]
       x-problem-codes:
         [
+          page.source_duplicate,
           page.not_found,
           forbidden,
           validation_failed,
@@ -725,6 +747,7 @@ paths:
           page.protected,
           page.virtual_file,
           page.source_admin_only,
+          page.source_too_large,
           linking.pages_locked,
           server_busy,
         ]
@@ -836,9 +859,14 @@ paths:
         again or purged in part since it was read is page.trash_changed, one
         past its restorable_until by the time it is restored
         page.restore_expired: read the trash again.
+        In an LLM Wiki, nodes restored into sources are checked for identical
+        bytes within their kind (page.source_duplicate, 409), against existing
+        sources and one another. A restore placed outside sources does not
+        participate; a refusal leaves the whole item in the trash.
       security: [{ bearer: [] }]
       x-problem-codes:
         [
+          page.source_duplicate,
           page.not_found,
           forbidden,
           page.not_in_trash,
@@ -1030,14 +1058,26 @@ paths:
         another parent, is page.source_admin_only. Writing back changed
         content to a nonempty source is page.source_immutable, including
         for admins, unless the reverted version records a system rewrite.
+        Each placement or temporary move of an existing subtree from outside
+        into sources may carry at most 10,000 nodes at that step, including
+        its root, empty pages and attachments; above that it is 422
+        page.source_too_large. This source-entry bound also applies when
+        the revert checks the current tree as it writes; it does not limit
+        an entire restore plan or change ordinary, within-source or
+        source-out moves. Move smaller subtrees into sources separately.
         The contract is checked before edit locks. Then a page
         whose lock an edit session holds, the caller's elsewhere among them,
         is page.locked, naming the holder in lock. A changeset that, as it
         left its nodes, changed nothing, as an edit session that wrote its
         bytes back, writes nothing: changed is false.
+        Source entries and first writes are checked for identical bytes within
+        their kind (page.source_duplicate, 409). The duplicate_of target,
+        when present, already had matching source bytes at this unit's start;
+        it never names a source that only this refused operation would create.
       security: [{ bearer: [] }]
       x-problem-codes:
         [
+          page.source_duplicate,
           page.source_immutable,
           validation_failed,
           page.changeset_not_found,
@@ -1047,6 +1087,7 @@ paths:
           page.revert_conflict,
           page.protected,
           page.source_admin_only,
+          page.source_too_large,
           server_busy,
           page.locked,
         ]

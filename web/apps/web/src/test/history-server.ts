@@ -2,7 +2,15 @@ import type { NotebookRole } from "../services/notebook.service";
 import type { Changeset, ChangesetChange, RevertConflict, TreeNode } from "../services/page.service";
 import { json, notebookJSON, problem, userJSON, type Answer } from "./fakes";
 import type { FakeTrashItem } from "./trash-server";
-import { sourceArea, sourceManagementCode, type Person, type SourceState } from "./page-server";
+import {
+  sourceArea,
+  sourceDuplicate,
+  sourceManagementCode,
+  sourceStatus,
+  type Person,
+  type SourceData,
+  type SourceRefusal,
+} from "./page-server";
 
 // The history of the page server (page-server.ts; M8/P3), as the server
 // keeps it: the changesets a test logs, each with what it changed by node.
@@ -214,7 +222,8 @@ function sameId(a: string, b: string): boolean {
 }
 
 /** What of the page server the history reads and changes. */
-type HistoryState = SourceState & {
+type HistoryState = SourceData & {
+  versions: Map<string, { revision: number; content: string }[]>;
   sent: string[];
   contents: Map<string, { content: string; revision: number }>;
   trash: Map<string, FakeTrashItem>;
@@ -438,9 +447,9 @@ export function historyRoutes(server: HistoryState, role: NotebookRole): Record<
       if (changeset.unchanged) {
         return json({ changeset_id: null, changed: false });
       }
-      const code = sourceRevertCode(server, changeset, role);
-      if (code !== undefined) {
-        return problem(code === "page.source_admin_only" ? 403 : 409, code);
+      const refusal = sourceRevertRefusal(server, changeset, role);
+      if (refusal !== undefined) {
+        return problem(sourceStatus(refusal.code), refusal.code, refusal);
       }
       if (server.revertsBusy) {
         return problem(503, "server_busy", {}, { "Retry-After": "2" });
@@ -482,19 +491,27 @@ export function historyRoutes(server: HistoryState, role: NotebookRole): Record<
  * sees the preceding placements, before deleting created/restored nodes and
  * writing content. A deleted target parent is restored after those placements:
  * its waiting child writes where it is now. A locally cyclic placement also
- * waits. Blocked placements retain the original management check as a fallback;
- * this does not model later scheduler rounds, key conflicts or steps aside.
- * Conflicts and undo remain fixture inputs; real workers have server-side tests.
+ * waits. Blocked placements retain the original management check as a fallback.
+ * After that content check, source checks also see waiting placements
+ * after parent-ready trash groups return, including any restored carried members.
+ * Duplicate checks use current simulated bytes and keep the original baseline
+ * for public target IDs. This second phase does not reinterpret management timing or
+ * model key conflicts and steps aside. Conflicts and undo remain fixture inputs;
+ * real workers have server-side tests.
  */
-export function sourceRevertCode(
-  server: SourceState & { contents: Map<string, { content: string; revision: number }> },
+export function sourceRevertRefusal(
+  server: SourceData & {
+    versions: Map<string, { revision: number; content: string }[]>;
+    trash: Map<string, FakeTrashItem>;
+  },
   changeset: FakeChangeset,
   role: NotebookRole
-): string | undefined {
+): SourceRefusal | undefined {
   if (changeset.unchanged || server.notebook.mode !== "llm_wiki") {
     return undefined;
   }
   const nodes = new Map(server.nodes.map((node) => [node.id, node]));
+  const contents = new Map(server.contents);
   const deletedIDs = new Set<string>();
   const placed = new Set<string>();
   for (const change of changeset.changes.toSorted((a, b) => compare(a.node, b.node))) {
@@ -523,10 +540,16 @@ export function sourceRevertCode(
           const operation = change.kind === "renamed" ? "rename" : "move";
           const code = sourceManagementCode(current, node, operation, role, change.before.parent);
           if (code !== undefined) {
-            return code;
+            return { code };
           }
           placed.add(change.node);
-          nodes.set(change.node, { ...node, parent_id: change.before.parent, name: change.before.name });
+          const placedNode = { ...node, parent_id: change.before.parent, name: change.before.name };
+          nodes.set(change.node, placedNode);
+          const after = { ...server, contents, nodes: [...nodes.values()] };
+          if (!sourceArea(current, node) && sourceArea(after, placedNode)) {
+            const duplicate = sourceDuplicate(after, carriedNodes(after.nodes, placedNode.id), server);
+            if (duplicate !== undefined) return duplicate;
+          }
         }
         break;
       }
@@ -559,7 +582,7 @@ export function sourceRevertCode(
       const management = operation === "delete" ? writeback : server;
       const code = sourceManagementCode(management, node, operation, role, change.before?.parent ?? null);
       if (code !== undefined) {
-        return code;
+        return { code };
       }
     }
     if (
@@ -570,8 +593,102 @@ export function sourceRevertCode(
       sourceArea(writeback, nodes.get(node.id) ?? node) &&
       (server.contents.get(node.id)?.content ?? `${node.name}\n`).length > 0
     ) {
-      return "page.source_immutable";
+      return { code: "page.source_immutable" };
+    }
+    // Fixture versions give the body this write-back actually restores. A
+    // missing version remains a fixture input, never guessed from the final tree.
+    if (operation !== "delete" && change.content?.base !== null && change.content?.base !== undefined) {
+      const target = server.versions.get(node.id)?.find((version) => version.revision === change.content?.base);
+      if (target !== undefined) {
+        contents.set(node.id, { content: target.content, revision: change.content.revision + 1 });
+        if (!change.content.rewrite) {
+          const current = { ...server, ...writeback, contents };
+          const duplicate = sourceDuplicate(current, [nodes.get(node.id) ?? node], server);
+          if (duplicate !== undefined) return duplicate;
+        }
+      }
     }
   }
+
+  // Preserve the first phase above: a live page waiting for a deleted parent
+  // writes at its current position. Source entry checks observe the later
+  // placement, after ready trash groups restore parents and carried members.
+  const waiting = changeset.changes
+    .filter((change) => !placed.has(change.node) && ["moved", "renamed", "reordered"].includes(change.kind))
+    .toSorted((a, b) => compare(a.node, b.node));
+  const later = new Map(writeback.nodes.map((node) => [node.id, node]));
+  const restores = new Map(
+    changeset.changes.filter((change) => change.kind === "deleted").map((change) => [change.node, change])
+  );
+  const pendingRestores = new Map(
+    [...server.trash].filter(([top]) => restores.has(top)).toSorted(([a], [b]) => compare(a, b))
+  );
+  const restoreReadyGroups = (): SourceRefusal | undefined => {
+    // A round restores every parent-ready group, in root-ID order, before the
+    // next round of placements. Restoring just destination ancestors undercounts
+    // children restored under the subtree about to enter sources.
+    for (const [top, item] of pendingRestores) {
+      const before = restores.get(top)?.before;
+      if (before === undefined || before === null || (before.parent !== null && !later.has(before.parent))) continue;
+      for (const node of item.members) {
+        const to = restores.get(node.id)?.before;
+        later.set(node.id, to === undefined || to === null ? node : { ...node, parent_id: to.parent, name: to.name });
+      }
+      const after = { ...server, contents, nodes: [...later.values()] };
+      const restoredMembers = item.members.map((node) => later.get(node.id) ?? node);
+      const duplicate = sourceDuplicate(after, restoredMembers, server);
+      if (duplicate !== undefined) return duplicate;
+      pendingRestores.delete(top);
+    }
+  };
+  const restoredRefusal = restoreReadyGroups();
+  if (restoredRefusal !== undefined) return restoredRefusal;
+  // Each successful pass consumes a waiting placement or a restore group. A
+  // missing parent or cycle stays unresolved; this does not add steps aside.
+  const pending = new Set(waiting.map((change) => change.node));
+  while (pending.size > 0 || pendingRestores.size > 0) {
+    const before = pending.size + pendingRestores.size;
+    for (const change of waiting) {
+      if (!pending.has(change.node) || change.before === null) continue;
+      const node = later.get(change.node);
+      if (node === undefined || (change.before.parent !== null && !later.has(change.before.parent))) continue;
+      let parent = change.before.parent;
+      const seen = new Set<string>();
+      while (parent !== null && parent !== node.id && !seen.has(parent)) {
+        seen.add(parent);
+        parent = later.get(parent)?.parent_id ?? null;
+      }
+      if (parent !== null) continue;
+      const current = { notebook: server.notebook, nodes: [...later.values()] };
+      const operation = change.kind === "renamed" ? "rename" : "move";
+      const code = sourceManagementCode(current, node, operation, role, change.before.parent);
+      if (code === "page.source_too_large") return { code };
+      const placedNode = { ...node, parent_id: change.before.parent, name: change.before.name };
+      later.set(node.id, placedNode);
+      const after = { ...server, contents, nodes: [...later.values()] };
+      if (!sourceArea(current, node) && sourceArea(after, placedNode)) {
+        const duplicate = sourceDuplicate(after, carriedNodes(after.nodes, node.id), server);
+        if (duplicate !== undefined) return duplicate;
+      }
+      pending.delete(node.id);
+    }
+    const refusal = restoreReadyGroups();
+    if (refusal !== undefined) return refusal;
+    if (pending.size + pendingRestores.size === before) break;
+  }
   return undefined;
+}
+
+/** Current carried members, with the same cycle stop as the placement projection. */
+function carriedNodes(nodes: TreeNode[], top: string): TreeNode[] {
+  const byID = new Map(nodes.map((node) => [node.id, node]));
+  return nodes.filter((node) => {
+    const seen = new Set<string>();
+    for (let id: string | null = node.id; id !== null && !seen.has(id);) {
+      if (id === top) return true;
+      seen.add(id);
+      id = byID.get(id)?.parent_id ?? null;
+    }
+    return false;
+  });
 }

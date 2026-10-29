@@ -99,7 +99,7 @@ func TestTheImportsWritesReachTheUnit(t *testing.T) {
 		t.Fatal(err)
 	}
 	spec := page.ImportSpec{NotebookID: f.eng, Action: "transfer.import", Client: page.Client("api")}
-	var top, photo page.NodeInfo
+	var top, photo page.CreatedNode
 	first, err := writes.Import(ctx, spec, func(ctx context.Context, u page.ImportUnit) error {
 		var err error
 		if top, err = u.CreatePage(ctx, page.ImportedPage{Name: "NOTES", Content: "# Hi", Parsed: parsed}); err != nil {

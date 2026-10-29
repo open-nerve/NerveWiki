@@ -62,16 +62,32 @@ FROM nodes n LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at IS N
 WHERE n.id = sqlc.arg(id) AND n.notebook_id = sqlc.arg(notebook_id) AND n.deleted_at = sqlc.arg(deleted_at)::timestamptz;
 
 -- name: TrashChildrenOfAll :many
--- The children of parents of the notebook deleted at deleted_at, in order, each page with its content's revision and
--- size, none when the purge took it: a level of a trash item's group, read a level a statement and planned with its
--- parents, as ChildrenOfAll reads a subtree's, through the parents' index (00012), which holds the deleted rows. A
--- descendant deleted earlier is not of the group: it is an item of its own.
-SELECT n.id, n.notebook_id, n.parent_id, n.kind, n.name, n.name_key, n.sort_order, n.created_by_id, n.updated_by_id,
-    n.created_at, n.updated_at, c.revision, c.byte_size
-FROM nodes n LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at IS NOT DISTINCT FROM n.deleted_at
-WHERE n.notebook_id = sqlc.arg(notebook_id) AND n.parent_id = ANY(sqlc.arg(parents)::uuid[])
-    AND n.deleted_at = sqlc.arg(deleted_at)::timestamptz
-ORDER BY n.sort_order, n.id;
+-- A whole trash level, in global order, with contents at the same deletion time; an earlier deletion is its own item.
+-- A generic ANY-array plan can scan all rows of the deletion time even for an empty level. Read each distinct parent
+-- through the nonpartial notebook/parent index instead. The closed range and OFFSET 0 keep that access bounded;
+-- compare deleted_at outside the fence so its partial index cannot replace each parent lookup. No unit LIMIT applies.
+SELECT child.id, child.notebook_id, child.parent_id, child.kind, child.name, child.name_key,
+    child.sort_order, child.created_by_id, child.updated_by_id, child.created_at, child.updated_at,
+    c.revision, c.byte_size
+FROM (
+    SELECT DISTINCT parent_id
+    FROM unnest(sqlc.arg(parents)::uuid[]) AS input(parent_id)
+    WHERE parent_id IS NOT NULL
+) AS p
+CROSS JOIN LATERAL (
+    SELECT n.id, n.notebook_id, n.parent_id, n.kind, n.name, n.name_key,
+        n.sort_order, n.created_by_id, n.updated_by_id, n.created_at, n.updated_at, n.deleted_at
+    FROM nodes n
+    WHERE n.notebook_id = sqlc.arg(notebook_id)
+      AND n.parent_id >= p.parent_id
+      AND n.parent_id <= p.parent_id
+      AND n.parent_id IS NOT NULL
+    OFFSET 0
+) AS child
+LEFT JOIN page_contents c ON c.node_id = child.id
+    AND c.deleted_at IS NOT DISTINCT FROM child.deleted_at
+WHERE child.deleted_at = sqlc.arg(deleted_at)::timestamptz
+ORDER BY child.sort_order, child.id;
 
 -- name: TrashContents :many
 -- The contents of pages deleted at deleted_at, read by their primary key or, by a plan for any arguments, the rows of
@@ -100,16 +116,46 @@ FROM (
 WHERE s.total - s.byte_size <= sqlc.arg(max_bytes)::bigint;
 
 -- name: TrashHistory :one
--- How many versions, and items of every changeset, of nodes deleted at deleted_at were deleted with them, each of the
--- two counted to lim at most: a restore's rows besides the nodes', as many as the bound at most. Planned with ids, it
--- reads the rows of the time through the index on deleted_at, or the nodes' through the one on node_id; its store
--- never runs it as a cached statement (M8/P2A fix check 1, I-1).
-SELECT ((SELECT count(*) FROM (SELECT 1 FROM page_revisions r
-            WHERE r.node_id = ANY(sqlc.arg(ids)::uuid[]) AND r.deleted_at = sqlc.arg(deleted_at)::timestamptz
-            LIMIT sqlc.arg(lim)::integer) v)
-    + (SELECT count(*) FROM (SELECT 1 FROM changeset_items i
-            WHERE i.node_id = ANY(sqlc.arg(ids)::uuid[]) AND i.deleted_at = sqlc.arg(deleted_at)::timestamptz
-            LIMIT sqlc.arg(lim)::integer) w))::integer AS rows;
+-- Count revisions and changeset items at the deletion time, each table independently capped by lim.
+-- A generic array-membership filter can compare every time-matching row with every node ID. Deduplicate the IDs
+-- and read each node's history range instead; keep the deletion time outside OFFSET 0 to prevent a repeated scan of
+-- its partial index. Older/live/dead history within each selected node's range can still be visited. Small limits and
+-- selective custom time-index plans may cost less with the former query; the forced-mode history guard covers the
+-- complete count at the unit's history bound. Store still uses Planned without overriding the backend's plan mode.
+SELECT ((SELECT count(*) FROM (
+    SELECT 1
+    FROM (
+        SELECT DISTINCT id
+        FROM unnest(sqlc.arg(ids)::uuid[]) AS input(id)
+        WHERE id IS NOT NULL
+    ) AS wanted
+    CROSS JOIN LATERAL (
+        SELECT r.deleted_at
+        FROM page_revisions r
+        WHERE r.node_id >= wanted.id
+          AND r.node_id <= wanted.id
+        OFFSET 0
+    ) AS history
+    WHERE history.deleted_at = sqlc.arg(deleted_at)::timestamptz
+    LIMIT sqlc.arg(lim)::integer
+) v)
+    + (SELECT count(*) FROM (
+    SELECT 1
+    FROM (
+        SELECT DISTINCT id
+        FROM unnest(sqlc.arg(ids)::uuid[]) AS input(id)
+        WHERE id IS NOT NULL
+    ) AS wanted
+    CROSS JOIN LATERAL (
+        SELECT i.deleted_at
+        FROM changeset_items i
+        WHERE i.node_id >= wanted.id
+          AND i.node_id <= wanted.id
+        OFFSET 0
+    ) AS history
+    WHERE history.deleted_at = sqlc.arg(deleted_at)::timestamptz
+    LIMIT sqlc.arg(lim)::integer
+) w))::integer AS rows;
 
 -- name: TrashNodesAt :many
 -- Nodes of the notebook, each deleted at its own time, by key (M8/P4 design 3.3): many trash items' roots at once, or

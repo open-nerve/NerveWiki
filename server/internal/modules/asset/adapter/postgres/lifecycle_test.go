@@ -1,7 +1,9 @@
 package postgresadapter_test
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"slices"
 	"testing"
 	"time"
@@ -12,6 +14,45 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
 )
+
+// Infos carry the stored SHA for both live and deleted blobs, including
+// an empty file. A missing node has no info, not a zero-value attachment.
+func TestAttachmentInfosKeepSHA256ForLiveAndDeletedRows(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	store := postgresadapter.New(f.pool)
+	photo, empty := f.blob(f.photo, f.eng, 0, 0), f.blob(f.report, f.ops, 0, 0)
+	photoHash, emptyHash := sha256.Sum256([]byte("photo")), sha256.Sum256(nil)
+	photo.Bytes, photo.SHA256 = 5, photoHash[:]
+	empty.Bytes, empty.SHA256 = 0, emptyHash[:]
+	for _, blob := range []domain.Blob{photo, empty} {
+		if err := store.CreateBlob(ctx, blob); err != nil {
+			t.Fatal(err)
+		}
+	}
+	missing := uuid.NewV7()
+	for _, deleted := range []bool{false, true} {
+		if deleted {
+			if err := store.DeleteBlobsOfNodes(ctx, []uuid.UUID{empty.NodeID}, time.Date(2026, 10, 8, 11, 0, 0, 0, time.UTC)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		infos, err := store.AttachmentInfos(ctx, []uuid.UUID{photo.NodeID, empty.NodeID, missing})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, found := infos[missing]; found || len(infos) != 2 {
+			t.Fatalf("AttachmentInfos(deleted=%v) = %+v; want exactly the two stored blobs", deleted, infos)
+		}
+		for _, want := range []domain.Blob{photo, empty} {
+			got, found := infos[want.NodeID]
+			if !found || got.MIME != want.MIME || got.Bytes != want.Bytes || !bytes.Equal(got.SHA256, want.SHA256) {
+				t.Errorf("AttachmentInfos(deleted=%v, node=%v) = %+v; want MIME %q, bytes %d, SHA256 %x",
+					deleted, want.NodeID, got, want.MIME, want.Bytes, want.SHA256)
+			}
+		}
+	}
+}
 
 // A deletion of nodes or notebooks deletes their rows not deleted, at its
 // time, and leaves a row deleted before as it was; the activity counts

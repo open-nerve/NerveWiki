@@ -118,6 +118,8 @@ type importRun struct {
 	ids     []uuid.UUID
 	names   []string
 	dropped []bool
+	// hasChildren comes from the complete plan, including later batches.
+	hasChildren []bool
 	// last is, by the plan's index of a parent (-1: the place imported
 	// into), the last of its children named with each key.
 	last map[int]map[string]int
@@ -167,7 +169,11 @@ func (r *importRun) run(ctx, running context.Context) error {
 		r.skip(p)
 	}
 	r.last = map[int]map[string]int{}
+	r.hasChildren = make([]bool, len(r.plan.Nodes))
 	for i, n := range r.plan.Nodes {
+		if n.Parent >= 0 {
+			r.hasChildren[n.Parent] = true
+		}
 		if r.last[n.Parent] == nil {
 			r.last[n.Parent] = map[string]int{}
 		}

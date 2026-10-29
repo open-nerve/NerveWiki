@@ -11,7 +11,7 @@ import (
 
 // The starts of the background restores and reverts (M8 design 4.10;
 // M8/P4 design 3.6): the page module checks what the job will do, as its
-// request would, unlocked; then the notebook is claimed in this process,
+// request would, unlocked, claiming the notebook before the full checks,
 // as an import's upload claims it, until the job's row is written or the
 // start fails, so that no import uploads its archive only to meet the
 // new job; then, the jobs' creations one at a time, the row is written,
@@ -61,20 +61,24 @@ func NewStartTrashRestore(d StartDeps, b BackgroundDeps) *StartTrashRestore {
 // Execute starts the restore req asks for, and answers its job, in M8
 // design 4.14's order: the page module's check (notebook.not_found,
 // forbidden, page.not_found, page.not_in_trash, page.not_trash_root,
-// page.restore_expired); then the notebook claimed, transfer.busy when an
-// import's upload or another start holds it, or a job that writes its
-// tree is queued or running; 503 server_busy when MaxQueued jobs wait or
+// page.restore_expired); then the notebook claimed before source checks,
+// transfer.busy when an import's upload or another start holds it, or a
+// job that writes its tree is queued or running; 503 server_busy when MaxQueued jobs wait or
 // run; then the row, decided again. The job is named as the item.
 func (s *StartTrashRestore) Execute(ctx context.Context, req RestoreRequest) (JobView, error) {
-	name, err := s.b.Tree.CheckRestore(ctx, req.NotebookID, req.NodeID)
+	release := func() {}
+	defer func() { release() }()
+	name, err := s.b.Tree.CheckRestore(ctx, req.NotebookID, req.NodeID, func(ctx context.Context) error {
+		var err error
+		release, err = s.d.claim(ctx, req.NotebookID)
+		if err != nil {
+			release = func() {}
+		}
+		return err
+	})
 	if err != nil {
 		return JobView{}, err
 	}
-	release, err := s.d.claim(ctx, req.NotebookID)
-	if err != nil {
-		return JobView{}, err
-	}
-	defer release()
 	root := req.NodeID
 	return s.d.startBackground(ctx, s.b.RestoreAction, domain.Job{NotebookID: req.NotebookID, RootID: &root, Kind: domain.KindTrashRestore,
 		Name: name, Client: req.Client}, s.d.Queue.TrashRestore)

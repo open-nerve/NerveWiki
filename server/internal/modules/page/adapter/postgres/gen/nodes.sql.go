@@ -342,16 +342,30 @@ func (q *Queries) Children(ctx context.Context, arg ChildrenParams) ([]ChildrenR
 }
 
 const childrenOfAll = `-- name: ChildrenOfAll :many
-SELECT id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at,
-    updated_at
-FROM nodes
-WHERE notebook_id = $1 AND parent_id = ANY($2::uuid[]) AND deleted_at IS NULL
-ORDER BY sort_order, id
+SELECT child.id, child.notebook_id, child.parent_id, child.kind, child.name, child.name_key,
+    child.sort_order, child.created_by_id, child.updated_by_id, child.created_at, child.updated_at
+FROM (
+    SELECT DISTINCT parent_id
+    FROM unnest($1::uuid[]) AS input(parent_id)
+    WHERE parent_id IS NOT NULL
+) AS p
+CROSS JOIN LATERAL (
+    SELECT n.id, n.notebook_id, n.parent_id, n.kind, n.name, n.name_key,
+        n.sort_order, n.created_by_id, n.updated_by_id, n.created_at, n.updated_at, n.deleted_at
+    FROM nodes n
+    WHERE n.notebook_id = $2::uuid
+      AND n.parent_id >= p.parent_id
+      AND n.parent_id <= p.parent_id
+      AND n.parent_id IS NOT NULL
+    OFFSET 0
+) AS child
+WHERE child.deleted_at IS NULL
+ORDER BY child.sort_order, child.id
 `
 
 type ChildrenOfAllParams struct {
-	NotebookID uuid.UUID
 	Parents    []uuid.UUID
+	NotebookID uuid.UUID
 }
 
 type ChildrenOfAllRow struct {
@@ -368,14 +382,14 @@ type ChildrenOfAllRow struct {
 	UpdatedAt   time.Time
 }
 
-// The children not deleted of parents, of the notebook, in order: a level of a subtree, read a level a statement and
-// planned with its parents each time (Store.Subtree, postgres.Planned). One recursive statement is planned whole, and
-// some of its plans read the whole table for each parent or each level: without statistics, the notebook by the titles'
-// partial index for each parent, 40 s for a folder of 10,000 (M6 closeout FA-M1); with them and one folder holding most
-// nodes, each level a scan of every notebook's nodes (FA2-I1, FA3-M1). A plan for any parents, without statistics,
-// reads the notebook by the titles' index for each level and compares each row with the parents one by one (FA4-M1).
+// One complete level of a subtree, in global level order, with no row limit. Deduplicate parents before visiting
+// their notebook/parent ranges. OFFSET 0 keeps the per-parent range separate; the live filter stays outside so a
+// live-only notebook/title index cannot replace that range when column statistics are absent (M10/P2 CI fix).
+// Store.Subtree uses DescribeExec, but force_generic_plan still applies to its unnamed statement. The former ANY
+// filter could compare every notebook row with every parent. Earlier recursive forms also scanned a table per
+// parent or level: 40 s for 10,000 without statistics (M6 FA-M1), and majority-parent regressions (FA2-I1/FA3-M1).
 func (q *Queries) ChildrenOfAll(ctx context.Context, arg ChildrenOfAllParams) ([]ChildrenOfAllRow, error) {
-	rows, err := q.db.Query(ctx, childrenOfAll, arg.NotebookID, arg.Parents)
+	rows, err := q.db.Query(ctx, childrenOfAll, arg.Parents, arg.NotebookID)
 	if err != nil {
 		return nil, err
 	}
@@ -448,6 +462,7 @@ WITH stray AS (
 ), gone AS (
     UPDATE nodes n
     SET deleted_at = $1::timestamptz, updated_by_id = $3, updated_at = $1,
+        source_hash = NULL,
         trash_root = (n.id = $4),
         trash_pages = CASE WHEN n.id = $4 THEN $5::integer END,
         trash_assets = CASE WHEN n.id = $4 THEN $6::integer END,
@@ -502,7 +517,7 @@ func (q *Queries) DeleteNodes(ctx context.Context, arg DeleteNodesParams) (int32
 const deleteNotebooksPages = `-- name: DeleteNotebooksPages :exec
 WITH gone AS (
     UPDATE nodes n
-    SET deleted_at = $1::timestamptz, updated_by_id = $3, updated_at = $1
+    SET deleted_at = $1::timestamptz, updated_by_id = $3, updated_at = $1, source_hash = NULL
     WHERE n.notebook_id = ANY($2::uuid[]) AND n.deleted_at IS NULL
     RETURNING n.id
 ), contents AS (
@@ -923,16 +938,18 @@ func (q *Queries) RenameNode(ctx context.Context, arg RenameNodeParams) error {
 const restoreNodes = `-- name: RestoreNodes :one
 WITH u AS (
     SELECT unnest($1::uuid[]) AS id, unnest($2::text[]) AS name,
-        unnest($3::text[]) AS name_key
+        unnest($3::text[]) AS name_key,
+        unnest($4::bytea[]) AS source_hash, unnest($5::boolean[]) AS has_source_hash
 ), back AS (
     UPDATE nodes n
     SET deleted_at = NULL, trash_root = false, trash_pages = NULL, trash_assets = NULL, trash_height = NULL,
-        name = u.name, name_key = u.name_key, updated_by_id = $4, updated_at = $5,
-        parent_id = CASE WHEN n.id = $6 THEN $7::uuid ELSE n.parent_id END,
-        sort_order = CASE WHEN n.id = $6 THEN $8::float8 ELSE n.sort_order END
+        name = u.name, name_key = u.name_key, updated_by_id = $6, updated_at = $7,
+        source_hash = CASE WHEN u.has_source_hash THEN u.source_hash ELSE n.source_hash END,
+        parent_id = CASE WHEN n.id = $8 THEN $9::uuid ELSE n.parent_id END,
+        sort_order = CASE WHEN n.id = $8 THEN $10::float8 ELSE n.sort_order END
     FROM u
-    WHERE n.id = u.id AND n.deleted_at = $9::timestamptz
-    RETURNING n.id, $9::timestamptz AS deleted_at
+    WHERE n.id = u.id AND n.deleted_at = $11::timestamptz
+    RETURNING n.id, $11::timestamptz AS deleted_at
 ), contents AS (
     UPDATE page_contents c SET deleted_at = NULL
     FROM back b
@@ -958,15 +975,17 @@ SELECT (SELECT count(*) FROM back)::integer AS nodes,
 `
 
 type RestoreNodesParams struct {
-	Ids       []uuid.UUID
-	Names     []string
-	NameKeys  []string
-	By        uuid.UUID
-	Now       time.Time
-	Root      uuid.UUID
-	ParentID  *uuid.UUID
-	SortOrder float64
-	DeletedAt time.Time
+	Ids             []uuid.UUID
+	Names           []string
+	NameKeys        []string
+	SourceHashes    [][]byte
+	HasSourceHashes []bool
+	By              uuid.UUID
+	Now             time.Time
+	Root            uuid.UUID
+	ParentID        *uuid.UUID
+	SortOrder       float64
+	DeletedAt       time.Time
 }
 
 type RestoreNodesRow struct {
@@ -991,11 +1010,15 @@ type RestoreNodesRow struct {
 // argument, whose rows the statistics estimate at one when they never knew the time (back then read whole for each
 // row of the time), and by IS NOT DISTINCT FROM, which no index serves (the index on deleted_at read for each node).
 // The counts join no CTE with another, whose rows the planner estimates at one: a set operation and a window.
+// Prepared source hashes, already checked by the unit's guards, share this node UPDATE. An absent value leaves
+// the column unchanged; an explicit NULL clears it. This avoids a second physical write of every restored source.
 func (q *Queries) RestoreNodes(ctx context.Context, arg RestoreNodesParams) (RestoreNodesRow, error) {
 	row := q.db.QueryRow(ctx, restoreNodes,
 		arg.Ids,
 		arg.Names,
 		arg.NameKeys,
+		arg.SourceHashes,
+		arg.HasSourceHashes,
 		arg.By,
 		arg.Now,
 		arg.Root,

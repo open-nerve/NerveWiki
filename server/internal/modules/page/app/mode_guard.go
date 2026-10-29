@@ -16,6 +16,7 @@ import (
 type ModeGuard struct {
 	auth    shared.Authorizer
 	sources SourceAncestors
+	hashes  SourceStore
 }
 
 // SourceAncestors reads a page's already-locked notebook ancestry.
@@ -25,8 +26,8 @@ type SourceAncestors interface {
 
 // NewModeGuard is the guard over auth, the authorizer the units decide
 // with. It uses auth only when a step needs an action asked.
-func NewModeGuard(auth shared.Authorizer, sources SourceAncestors) *ModeGuard {
-	return &ModeGuard{auth: auth, sources: sources}
+func NewModeGuard(auth shared.Authorizer, sources SourceAncestors, hashes SourceStore) *ModeGuard {
+	return &ModeGuard{auth: auth, sources: sources, hashes: hashes}
 }
 
 // VetoEditSession refuses a source page even when its body is empty. The
@@ -63,9 +64,13 @@ func (g *ModeGuard) GuardWrite(ctx context.Context, s Step) error {
 		return nil
 	}
 	v := domain.CheckContract(s.Notebook, s.contractFacts())
-	switch {
-	case v.Err != nil:
+	if v.Err != nil {
 		return domain.Refuse(v.Err, v.NodeID)
+	}
+	if err := g.checkSourceDuplicates(ctx, s); err != nil {
+		return err
+	}
+	switch {
 	case v.Needs != "":
 		err := s.Grants.Ask(ctx, v.Needs, g.decide(s, v.Needs))
 		if isForbidden(err) {

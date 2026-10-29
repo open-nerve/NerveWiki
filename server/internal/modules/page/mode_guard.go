@@ -18,5 +18,6 @@ type ModeGuard = app.ModeGuard
 // registrant not built from the pool alone). Its source reader uses the
 // opening's transaction, under the notebook and page locks.
 func NewModeGuard(pool *pgxpool.Pool, auth shared.Authorizer) *ModeGuard {
-	return app.NewModeGuard(auth, postgresadapter.New(pool))
+	store := postgresadapter.New(pool)
+	return app.NewModeGuard(auth, store, store)
 }

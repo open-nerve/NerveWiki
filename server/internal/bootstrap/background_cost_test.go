@@ -496,7 +496,7 @@ func BenchmarkBackgroundJobs(b *testing.B) {
 					}
 					b.Logf("%s, %d nodes, %s: the top's deletion %d ms", shape, n, stats, time.Since(at).Milliseconds())
 					at = time.Now()
-					if _, err := bench.jobs.CheckRestore(bench.asAlice(), bench.nb, top); err != nil {
+					if _, err := bench.jobs.CheckRestore(bench.asAlice(), bench.nb, top, func(context.Context) error { return nil }); err != nil {
 						b.Fatal(err)
 					}
 					b.Logf("%s, %d nodes, %s: the request of its restore %d ms", shape, n, stats, time.Since(at).Milliseconds())

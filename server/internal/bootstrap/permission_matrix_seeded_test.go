@@ -709,7 +709,7 @@ func prepareMatrix(t *testing.T) matrixData {
 			exec("UPDATE notebook_members SET deleted_at = $2 WHERE notebook_id = $1", id, now)
 			// As DeleteNotebooksPages does: what the trash holds keeps its
 			// own time.
-			exec("UPDATE nodes SET deleted_at = $2 WHERE notebook_id = $1 AND deleted_at IS NULL", id, now)
+			exec("UPDATE nodes SET deleted_at = $2, source_hash = NULL WHERE notebook_id = $1 AND deleted_at IS NULL", id, now)
 			for _, table := range []string{"page_contents", "page_revisions", "changeset_items"} {
 				exec("UPDATE "+table+" SET deleted_at = $2 WHERE node_id IN (SELECT id FROM nodes WHERE notebook_id = $1) "+
 					"AND deleted_at IS NULL", id, now)

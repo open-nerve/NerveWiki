@@ -12,17 +12,18 @@ import (
 )
 
 const attachmentInfos = `-- name: AttachmentInfos :many
-SELECT node_id, mime, byte_size FROM asset_blobs WHERE node_id = ANY($1::uuid[])
+SELECT node_id, mime, byte_size, sha256 FROM asset_blobs WHERE node_id = ANY($1::uuid[])
 `
 
 type AttachmentInfosRow struct {
 	NodeID   uuid.UUID
 	Mime     string
 	ByteSize int64
+	Sha256   []byte
 }
 
-// The type and size of the attachments of nodes, deleted or not (M8/P2 design 3.4): the page module's trash shows an
-// attachment's in the trash. One row a node, by its unique key.
+// The type, size and SHA256 of attachments, deleted or not: trash displays their metadata and source restore
+// needs their stored hash (M8/P2 design 3.4; M10/P2 design 3.9). One row a node, by its unique key.
 func (q *Queries) AttachmentInfos(ctx context.Context, nodeIds []uuid.UUID) ([]AttachmentInfosRow, error) {
 	rows, err := q.db.Query(ctx, attachmentInfos, nodeIds)
 	if err != nil {
@@ -32,7 +33,12 @@ func (q *Queries) AttachmentInfos(ctx context.Context, nodeIds []uuid.UUID) ([]A
 	var items []AttachmentInfosRow
 	for rows.Next() {
 		var i AttachmentInfosRow
-		if err := rows.Scan(&i.NodeID, &i.Mime, &i.ByteSize); err != nil {
+		if err := rows.Scan(
+			&i.NodeID,
+			&i.Mime,
+			&i.ByteSize,
+			&i.Sha256,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

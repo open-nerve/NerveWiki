@@ -916,7 +916,8 @@ func TestARevertsChecksRefuseTheContract(t *testing.T) {
 				if tt.demoted {
 					locked = 1
 				}
-				if f.count("Authorize page.manage_source") != asked || f.count("Authorize page.manage_source in tx") != locked ||
+				snapshotGrants, lockedGrants := sourceGrantPasses(f.rec.calls)
+				if f.count("Authorize page.manage_source") != 0 || snapshotGrants != asked || lockedGrants != locked ||
 					f.count("LockNotebook in tx") != locked || len(g.steps) != 0 || len(f.store.changesets) != 0 {
 					t.Errorf("calls = %v, steps = %+v, changesets = %+v; want %d unlocked grants, %d locked, no steps or writes", f.rec.calls, g.steps, f.store.changesets, asked, locked)
 				}
@@ -961,7 +962,8 @@ func TestARevertsExtraDecisionKeepsItsErrors(t *testing.T) {
 				if !errors.Is(err, want) || errors.As(err, &refusal) {
 					t.Errorf("decision = %v, want unmarked %v", err, want)
 				}
-				if f.count("Authorize page.manage_source") != 1 || f.called("LockNotebook in tx") {
+				snapshotGrants, lockedGrants := sourceGrantPasses(f.rec.calls)
+				if f.count("Authorize page.manage_source") != 0 || snapshotGrants != 1 || lockedGrants != 0 || f.called("LockNotebook in tx") {
 					t.Errorf("calls = %v, want one extra decision, no unit", f.rec.calls)
 				}
 				for _, target := range f.auth.targets {
@@ -990,7 +992,7 @@ func TestARevertsSourceGrantIsAskedOnceEachPass(t *testing.T) {
 			f.store.nodes[other.ID] = other
 			c.items = append(c.items, domain.ChangesetItem{NodeID: other.ID, Before: &before, After: new(other.State())})
 			g := &guard{recorder: f.rec}
-			f.guards = []app.WriteGuard{app.NewModeGuard(f.auth, f.store), g}
+			f.guards = []app.WriteGuard{app.NewModeGuard(f.auth, f.store, f.store), g}
 			var err error
 			switch route {
 			case "sync":
@@ -1004,7 +1006,8 @@ func TestARevertsSourceGrantIsAskedOnceEachPass(t *testing.T) {
 			if route == "sync" {
 				locked = 1
 			}
-			if err != nil || f.count("Authorize page.manage_source") != 1 || f.count("Authorize page.manage_source in tx") != locked {
+			snapshotGrants, lockedGrants := sourceGrantPasses(f.rec.calls)
+			if err != nil || f.count("Authorize page.manage_source") != 0 || snapshotGrants != 1 || lockedGrants != locked {
 				t.Errorf("%s = %v after %v; want one unlocked and %d locked source decisions", route, err, f.rec.calls, locked)
 			}
 			if route == "sync" && (len(g.steps) != 3 || g.steps[0].Changes[0].NodeID != raw.ID || g.steps[2].Changes[0].NodeID != raw.ID ||
@@ -1013,4 +1016,23 @@ func TestARevertsSourceGrantIsAskedOnceEachPass(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Both snapshots and write transactions carry txKey. The notebook lock marks
+// the actual write pass, so a snapshot permission cannot count as a locked one.
+func sourceGrantPasses(calls []string) (snapshot, locked int) {
+	writePass := false
+	for _, call := range calls {
+		if call == "LockNotebook in tx" {
+			writePass = true
+		}
+		if call == "Authorize page.manage_source in tx" {
+			if writePass {
+				locked++
+			} else {
+				snapshot++
+			}
+		}
+	}
+	return
 }

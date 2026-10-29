@@ -84,7 +84,8 @@ func mcpRows() []mcpRow {
 // mode guard adds an LLM Wiki's: write's page.virtual_file, move's and
 // batch's page.protected, page.virtual_file and page.source_admin_only,
 // delete's page.protected (M10/P1 design 3.22). P2 adds source_immutable
-// to write/edit/batch and source_admin_only to delete, in both entries.
+// to write/edit/batch, source_admin_only to delete, and source_too_large
+// to move/batch, and source_duplicate to write/move/batch, in both entries.
 func mcpToolCodes() map[string][]string {
 	return map[string][]string{
 		"list":          {"bad_request", "validation_failed", "notebook.not_found", "page.not_found"},
@@ -92,17 +93,17 @@ func mcpToolCodes() map[string][]string {
 		"notebooks":     {"bad_request"},
 		"open_notebook": {"bad_request", "notebook.not_found"},
 		"write": {"bad_request", "validation_failed", "notebook.not_found", "page.not_found", "forbidden", "server_busy",
-			"page.title_taken", "page.too_deep", "page.revision_mismatch", "page.locked", "page.virtual_file", "page.source_immutable"},
+			"page.title_taken", "page.too_deep", "page.revision_mismatch", "page.locked", "page.virtual_file", "page.source_immutable", "page.source_duplicate"},
 		"edit": {"bad_request", "validation_failed", "notebook.not_found", "page.not_found", "forbidden", "server_busy",
 			"page.revision_mismatch", "page.locked", "page.source_immutable"},
 		"move": {"bad_request", "validation_failed", "notebook.not_found", "page.not_found", "forbidden", "server_busy",
 			"page.title_taken", "page.cycle", "page.too_deep", "linking.pages_locked", "page.protected", "page.virtual_file",
-			"page.source_admin_only"},
+			"page.source_admin_only", "page.source_too_large", "page.source_duplicate"},
 		"delete": {"bad_request", "validation_failed", "notebook.not_found", "page.not_found", "forbidden", "page.locked",
 			"page.protected", "page.source_admin_only"},
 		"batch": {"bad_request", "validation_failed", "notebook.not_found", "page.not_found", "forbidden", "server_busy",
 			"page.title_taken", "page.cycle", "page.too_deep", "page.revision_mismatch", "page.locked", "linking.pages_locked",
-			"page.batch_too_large", "page.protected", "page.virtual_file", "page.source_admin_only", "page.source_immutable"},
+			"page.batch_too_large", "page.protected", "page.virtual_file", "page.source_admin_only", "page.source_immutable", "page.source_too_large", "page.source_duplicate"},
 		"versions":  {"bad_request", "validation_failed", "notebook.not_found", "page.not_found", "page.version_not_found"},
 		"log":       {"bad_request", "validation_failed", "notebook.not_found", "page.not_found"},
 		"changeset": {"bad_request", "validation_failed", "notebook.not_found", "page.changeset_not_found"},

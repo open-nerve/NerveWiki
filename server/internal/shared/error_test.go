@@ -118,6 +118,13 @@ func TestProblemMembers(t *testing.T) {
 	if _, ok := err.ProblemRootID(); ok {
 		t.Error("ProblemRootID() ok without root_id")
 	}
+	if err.ProblemDuplicateOf() != nil {
+		t.Error("duplicate target without one")
+	}
+	err.DuplicateOf = &page
+	if got := err.ProblemDuplicateOf(); got == nil || *got != page {
+		t.Errorf("duplicate target = %v, want %s", got, page)
+	}
 	var conflicts []string
 	gather := func(n uuid.UUID, name, reason string, holder *uuid.UUID) {
 		conflicts = append(conflicts, fmt.Sprint(n, " ", name, " ", reason, " ", holder != nil && *holder == user))

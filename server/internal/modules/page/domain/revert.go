@@ -596,26 +596,30 @@ func (p *planner) before() {
 			}
 		}
 	}
-	ids := make([]uuid.UUID, 0, len(p.star))
-	for id := range p.star {
-		ids = append(ids, id)
-	}
-	slices.SortFunc(ids, uuid.UUID.Compare)
 	type slot struct {
 		parent uuid.UUID
 		key    string
 	}
 	holders := map[slot][]uuid.UUID{}
-	for _, id := range ids {
-		n := p.star[id]
+	// Only moved or restored nodes ask who holds their target name. Keep
+	// every contender for those names, including untouched nodes, without
+	// allocating a list for each unrelated name in the notebook.
+	for _, id := range p.c.ids {
+		if n, ok := p.star[id]; ok && p.moves(id) {
+			holders[slot{parent: parentOf(n.parent), key: n.key}] = nil
+		}
+	}
+	for id, n := range p.star {
 		if _, touched := p.c.items[id]; !touched && n.parent != nil && p.c.gone(*n.parent) {
 			p.conflict(id, ConflictChildrenAdded, nil)
 		}
-		at := slot{key: n.key}
-		if n.parent != nil {
-			at.parent = *n.parent
+		at := slot{parent: parentOf(n.parent), key: n.key}
+		if _, wanted := holders[at]; wanted {
+			holders[at] = append(holders[at], id)
 		}
-		holders[at] = append(holders[at], id)
+	}
+	for _, ids := range holders {
+		slices.SortFunc(ids, uuid.UUID.Compare)
 	}
 	for _, id := range p.c.ids {
 		n, ok := p.star[id]

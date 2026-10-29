@@ -20,7 +20,7 @@ import (
 // not import internal/shared: shared.Error satisfies this by structure, and so
 // can any other error type, e.g. bodyshape's.
 //
-// Seven methods are optional:
+// Eight methods are optional:
 //
 //	ProblemFields() []error    each element has ProblemField() and
 //	                           ProblemCode() string, and Error() is the message
@@ -33,6 +33,8 @@ import (
 //	                           the ended_by member, when ok
 //	ProblemRootID() (rootID uuid.UUID, ok bool)
 //	                           the root_id member, when ok
+//	ProblemDuplicateOf() *uuid.UUID
+//	                           the stable duplicate_of target, when non-nil
 //	ProblemConflicts(each func(nodeID uuid.UUID, name, reason string, holderID *uuid.UUID)) (count int, ok bool)
 //	                           gives each conflict of the conflicts member, in
 //	                           order, and is the conflict_count member, when ok
@@ -70,6 +72,10 @@ type problemEndedBy interface {
 
 type problemRootID interface {
 	ProblemRootID() (rootID uuid.UUID, ok bool)
+}
+
+type problemDuplicateOf interface {
+	ProblemDuplicateOf() *uuid.UUID
 }
 
 type problemConflicts interface {
@@ -315,6 +321,9 @@ func problemOf(pe ProblemError) (Problem, time.Duration) {
 		if rootID, ok := r.ProblemRootID(); ok {
 			p.RootID = &rootID
 		}
+	}
+	if d, ok := pe.(problemDuplicateOf); ok && p.Code == "page.source_duplicate" {
+		p.DuplicateOf = d.ProblemDuplicateOf()
 	}
 	if c, ok := pe.(problemConflicts); ok {
 		var conflicts []ProblemConflict

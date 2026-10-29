@@ -16,12 +16,13 @@ type ImportWrites struct {
 	writer *Writer
 	parser *ContentParser
 	md     Markdown
+	empty  Facts
 }
 
 // NewImportWrites returns them, writing through writer, parsing with
 // parser, counting the links of md's facts.
 func NewImportWrites(writer *Writer, parser *ContentParser, md Markdown) *ImportWrites {
-	return &ImportWrites{writer: writer, parser: parser, md: md}
+	return &ImportWrites{writer: writer, parser: parser, md: md, empty: md.Facts("")}
 }
 
 // ImportSpec is an import's unit: in NotebookID, deciding on Action, from
@@ -80,7 +81,7 @@ func (w *ImportWrites) Import(ctx context.Context, spec ImportSpec, do func(ctx 
 		NotebookID: spec.NotebookID, Action: spec.Action, Tree: true, Client: spec.Client, NotFound: domain.ErrNotebookNotFound,
 		Kind: domain.ChangesetImport, Changeset: spec.Changeset, Create: true, Background: true,
 	}, func(ctx context.Context, u *Unit) error {
-		return do(ctx, &ImportUnit{u: u, under: map[uuid.UUID]*children{}, lines: map[uuid.UUID][]domain.Ancestor{}})
+		return do(ctx, &ImportUnit{u: u, empty: w.empty, under: map[uuid.UUID]*children{}, lines: map[uuid.UUID][]domain.Ancestor{}})
 	})
 	return outcome.ChangesetID, err
 }

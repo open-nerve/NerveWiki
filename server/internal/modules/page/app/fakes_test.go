@@ -198,6 +198,9 @@ type fakeStore struct {
 	// a read's each (TrashContentsWithin, PageContentWithin), in their
 	// order: 0 for one that read none, past it.
 	read []int
+	// sourceHashes changes only through the source writer, restoration or deletion, never
+	// by recomputing membership from the fake's tree.
+	sourceHashes map[uuid.UUID][]byte
 }
 
 func (f *fakeStore) FindNode(ctx context.Context, id uuid.UUID) (domain.Node, error) {
@@ -352,6 +355,41 @@ func (f *fakeStore) Subtree(ctx context.Context, notebookID, id uuid.UUID) (doma
 		return cmp.Or(cmp.Compare(a.Level, b.Level), cmp.Compare(a.Node.SortOrder, b.Node.SortOrder), a.Node.ID.Compare(b.Node.ID))
 	})
 	return out, nil
+}
+
+// SubtreeWithin models the port's bound independently of the production
+// reader. Its adjacency map avoids repeatedly scanning the fake's full tree.
+func (f *fakeStore) SubtreeWithin(ctx context.Context, notebookID, id uuid.UUID, max int) (domain.Subtree, bool, error) {
+	f.record(ctx, "SubtreeWithin")
+	if err := f.errs["SubtreeWithin"]; err != nil {
+		return nil, false, err
+	}
+	if max < 1 || max > domain.MaxUnitNodes {
+		return nil, false, fmt.Errorf("invalid subtree bound %d", max)
+	}
+	root, ok := f.nodes[id]
+	if !ok || root.NotebookID != notebookID {
+		return nil, false, app.ErrNotFound
+	}
+	children := map[uuid.UUID][]domain.Node{}
+	for _, n := range f.nodes {
+		if n.ParentID != nil && n.NotebookID == notebookID {
+			children[*n.ParentID] = append(children[*n.ParentID], n)
+		}
+	}
+	out := domain.Subtree{{Node: root, Level: 1}}
+	for i := 0; i < len(out); i++ {
+		for _, n := range children[out[i].Node.ID] {
+			if len(out) == max {
+				return nil, false, nil
+			}
+			out = append(out, domain.SubtreeNode{Node: n, Level: out[i].Level + 1})
+		}
+	}
+	slices.SortFunc(out, func(a, b domain.SubtreeNode) int {
+		return cmp.Or(cmp.Compare(a.Level, b.Level), cmp.Compare(a.Node.SortOrder, b.Node.SortOrder), a.Node.ID.Compare(b.Node.ID))
+	})
+	return out, true, nil
 }
 
 func (f *fakeStore) ContentMeta(ctx context.Context, id uuid.UUID) (app.ContentMeta, error) {
@@ -608,6 +646,7 @@ func (f *fakeStore) DeleteNodes(ctx context.Context, d app.Deletion) error {
 		}
 		delete(f.nodes, id)
 		delete(f.contents, id)
+		delete(f.sourceHashes, id)
 	}
 	f.counts[d.Root] = [3]int{d.Pages, d.Assets, d.Height}
 	return nil
@@ -632,6 +671,9 @@ func (f *fakeStore) RestoreNodes(ctx context.Context, r app.Restoration) (app.Re
 			node.ParentID, node.SortOrder = r.ParentID, r.SortOrder
 		}
 		f.nodes[id] = node
+		if hash, present := r.SourceHashes[id]; present {
+			f.sourceHashes[id] = slices.Clone(hash)
+		}
 		delete(f.trash, id)
 		rows.Nodes++
 		if c, ok := f.trashed[id]; ok {
@@ -1103,6 +1145,7 @@ func (f *fakeStore) DeleteNotebooksPages(ctx context.Context, ids []uuid.UUID, _
 		if slices.Contains(ids, n.NotebookID) {
 			delete(f.nodes, id)
 			delete(f.contents, id)
+			delete(f.sourceHashes, id)
 		}
 	}
 	return nil
@@ -1337,7 +1380,8 @@ func newFixture() *fixture {
 		store: &fakeStore{recorder: rec, nodes: map[uuid.UUID]domain.Node{}, contents: map[uuid.UUID]app.Content{},
 			items: map[uuid.UUID]app.Item{}, touched: map[uuid.UUID]time.Time{}, marked: map[uuid.UUID]domain.ChangesetMoves{},
 			sessions: map[uuid.UUID]app.EditSession{}, held: map[uuid.UUID]bool{}, trash: map[uuid.UUID]app.AnyNode{},
-			counts: map[uuid.UUID][3]int{}, trashed: map[uuid.UUID]app.Content{}, firsts: map[[2]uuid.UUID]time.Time{}},
+			counts: map[uuid.UUID][3]int{}, trashed: map[uuid.UUID]app.Content{}, firsts: map[[2]uuid.UUID]time.Time{},
+			sourceHashes: map[uuid.UUID][]byte{}},
 		auth: &fakeAuthorizer{recorder: rec, grants: map[shared.Action]bool{}, forbidden: map[shared.Action]bool{}},
 		logs: &bytes.Buffer{}, names: fakeNames{}, alice: uuid.NewV7(), acme: uuid.NewV7(), eng: uuid.NewV7(),
 	}
@@ -1353,9 +1397,11 @@ func (f *fixture) logger() *slog.Logger { return slog.New(slog.NewTextHandler(f.
 
 func (f *fixture) writer() *app.Writer {
 	return app.NewWriter(app.WriterDeps{
-		Tx: f.tx, Clock: f.clock, Auth: f.auth, Workspaces: f.workspaces, Notebooks: f.notebooks, Nodes: f.store,
+		Tx: f.tx, Clock: f.clock, Auth: f.auth, Workspaces: f.workspaces, Notebooks: f.notebooks, Nodes: f.store, Paths: f.store,
 		NodeWriter: f.store, Trash: f.store, History: f.log, Changesets: f.store, SessionWriter: f.store, Search: f.store, Names: f.names,
-		Guards: f.guards, Participants: f.partakers, Observers: f.observers, SessionVetoers: f.vetoers,
+		Sources: f.store, Attachments: fakeAttachments{recorder: f.rec, infos: f.infos},
+		SourcePrecheck: app.NewSourcePrecheck(app.SourcePrecheckDeps{Snapshots: fakeSnapshots{f.rec}, Sources: f.store, Attachments: fakeAttachments{recorder: f.rec, infos: f.infos}}),
+		Guards:         f.guards, Participants: f.partakers, Observers: f.observers, SessionVetoers: f.vetoers,
 		SessionSubscribers: f.enders,
 	})
 }

@@ -105,6 +105,10 @@ var (
 	ErrVirtualFile = shared.NewError(shared.KindConflict, "page.virtual_file",
 		"index.md and log.md at an LLM Wiki's root are generated: the index follows the pages, the log is the changesets. "+
 			"No page or attachment at its root may be named index or log.")
+	// ErrSourceTooLarge is one existing subtree entering the source area
+	// with more than MaxUnitNodes nodes, including empty pages and assets.
+	ErrSourceTooLarge = shared.NewError(shared.KindInvalid, "page.source_too_large",
+		"A subtree entering an LLM Wiki's sources may contain at most 10,000 nodes, including empty pages and attachments. Move it in as smaller subtrees.")
 	// ErrSourceImmutable is a user's change to an existing source body,
 	// a source edit session or a source version restoration (M10/P2 3.3).
 	ErrSourceImmutable = shared.NewError(shared.KindConflict, "page.source_immutable",
@@ -333,4 +337,14 @@ func TaskWouldGo() error {
 // node of the notebook, or not where the write says.
 func NotAllowed(field, message string) error {
 	return shared.Invalid(shared.FieldError{Field: field, Code: shared.FieldNotAllowed, Message: message})
+}
+
+// SourceDuplicate returns a fresh problem; its optional target survives rollback.
+func SourceDuplicate(id *uuid.UUID) *shared.Error {
+	e := shared.NewError(shared.KindConflict, "page.source_duplicate", "This source already exists in the notebook.")
+	if id != nil {
+		target := *id
+		e.DuplicateOf = &target
+	}
+	return e
 }

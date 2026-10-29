@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"slices"
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
@@ -30,8 +31,9 @@ type Placement struct {
 // for a name against its kind's rules (p.Field) or a parent that is no
 // page of the notebook (parent_id); then 409 for a parent in the node's
 // own subtree, a name a sibling holds there (*domain.PathTaken's holder
-// named from the siblings it read), or a subtree deeper than
-// domain.MaxDepth there. A node there and so named already writes
+// named from the siblings it read). Source entry past 10,000 nodes is 422
+// before unread descendants' depth; otherwise depth past domain.MaxDepth
+// is 409. A node there and so named already writes
 // nothing; a name that differs in case alone is written, as a rename's
 // is.
 func (u *Unit) Relocate(ctx context.Context, id uuid.UUID, p Placement) (domain.Node, error) {
@@ -56,20 +58,23 @@ func (u *Unit) Relocate(ctx context.Context, id uuid.UUID, p Placement) (domain.
 	if err != nil {
 		return domain.Node{}, err
 	}
-	sub, err := u.w.d.Nodes.Subtree(ctx, u.write.NotebookID, n.ID)
+	if slices.ContainsFunc(line, func(a domain.Ancestor) bool { return a.ID == n.ID }) {
+		return domain.Node{}, domain.ErrCycle
+	}
+	if h, held := domain.HolderOf(siblings, title, n.ID); held {
+		return domain.Node{}, &domain.PathTaken{Asset: h.Kind == domain.KindAsset}
+	}
+	moved := n
+	moved.ParentID, moved.Name, moved.NameKey = p.ParentID, title.Name, title.Key
+	sub, lines, err := u.subtreeForMove(ctx, n, moved, line)
 	if err != nil {
 		return domain.Node{}, err
 	}
-	var holder *domain.Node
-	if h, held := domain.HolderOf(siblings, title, n.ID); held {
-		holder = &h
-	}
-	if err := domain.RelocationOf(sub, p.ParentID, line, holder); err != nil {
+	if err := domain.RelocationOf(sub, p.ParentID, line, nil); err != nil {
 		return domain.Node{}, err
 	}
 	order, _, renumber := u.placeAmong(siblings, len(siblings)-1)
-	moved := n
 	moved.ParentID, moved.SortOrder, moved.Name, moved.NameKey = p.ParentID, order, title.Name, title.Key
 	moved.UpdatedBy, moved.UpdatedAt = u.write.By, u.write.At
-	return moved, u.moveSubtree(ctx, sub, moved, renumber, u.w.d.NodeWriter.RelocateNode, &StepLines{After: line})
+	return moved, u.moveSubtree(ctx, sub, moved, renumber, u.w.d.NodeWriter.RelocateNode, lines)
 }

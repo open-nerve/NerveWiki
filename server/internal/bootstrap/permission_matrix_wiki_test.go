@@ -365,6 +365,9 @@ func seedWikiSources(exec func(string, ...any), w wikiSeeded, notebook string, n
 		exec("INSERT INTO page_contents (node_id, content, revision, content_hash, byte_size, updated_by_id, updated_at) "+
 			"SELECT id, $2, 1, sha256(convert_to($2, 'UTF8')), octet_length($2), created_by_id, created_at FROM nodes WHERE id = $1", p.id, p.content)
 		exec(seededPageHistory, p.id)
+		if !p.deleted && p.parent != nil {
+			exec("UPDATE nodes SET source_hash = sha256(convert_to($2, 'UTF8')) WHERE id = $1", p.id, p.content)
+		}
 		if p.deleted {
 			trashedAt := now.Add(time.Hour)
 			exec("UPDATE nodes SET deleted_at = $2, updated_at = $2, trash_root = true, trash_pages = 1, trash_assets = 0, trash_height = 1 WHERE id = $1", p.id, trashedAt)
@@ -380,6 +383,7 @@ func seedWikiSources(exec func(string, ...any), w wikiSeeded, notebook string, n
 		asset, w.notebook(notebook), w.raw(notebook), now)
 	exec("INSERT INTO asset_blobs (id, node_id, notebook_id, mime, byte_size, sha256, created_by_id, created_at) "+
 		"SELECT gen_random_uuid(), id, notebook_id, 'text/plain', 3, sha256('abc'), created_by_id, $2 FROM nodes WHERE id = $1", asset, now)
+	exec("UPDATE nodes SET source_hash = sha256('abc') WHERE id = $1", asset)
 }
 
 // sourceMatrixRows extend the actual API operations. Each cell still runs

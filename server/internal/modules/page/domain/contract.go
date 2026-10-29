@@ -102,7 +102,7 @@ const agentsKey = "agents"
 // 4.6, 4.9): a standard notebook's at once, reading nothing; an LLM
 // Wiki's by the rules below, the first one a node breaks answering, in
 // the order of their codes: page.protected, page.virtual_file,
-// page.source_immutable, then the need of page.manage_source.
+// page.source_too_large, page.source_immutable, then page.manage_source.
 //
 //   - Its AGENTS page, the node at its root keyed agents, is not renamed,
 //     moved (reordered, moved and renamed) or deleted; its source root is
@@ -110,6 +110,9 @@ const agentsKey = "agents"
 //   - No node comes to its root under a reserved key (ReservedKeys) by a
 //     creation, a rename or a move; an import's creations number theirs
 //     instead (M10/P1/S3): page.virtual_file.
+//   - One existing subtree moved from outside into sources has at most
+//     MaxUnitNodes nodes, including empty pages and attachments. Restore,
+//     import, source-out and membership-preserving moves keep their bounds.
 //   - A source page may receive its first body once. Existing content is
 //     immutable except for system rewrites; source edit sessions and version
 //     restores are always refused, including rewrites (M10/P2 3.3).
@@ -139,6 +142,11 @@ func CheckContract(n NotebookState, s StepFacts) Verdict {
 				return Verdict{Err: ErrVirtualFile, NodeID: x.ID}
 			}
 		}
+	}
+	first := s.Nodes[0]
+	if s.Operation == OpMove && len(s.Nodes) > MaxUnitNodes && first.Before != nil && first.After != nil &&
+		!first.Before.InArea && first.After.InArea && first.ID != n.SourceRootID {
+		return Verdict{Err: ErrSourceTooLarge, NodeID: first.ID}
 	}
 	if sourceImmutable(n, s) {
 		return Verdict{Err: ErrSourceImmutable, NodeID: s.Nodes[0].ID}

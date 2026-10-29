@@ -549,13 +549,15 @@ test.each([
 test.each([
   { code: "page.source_admin_only", present: true },
   { code: "page.source_admin_only", present: false },
+  { code: "page.source_too_large", present: true },
+  { code: "page.source_too_large", present: false },
   { code: "page.some_later_code", present: true },
 ])("a refused revert shows $code, its node present: $present", async ({ code, present }) => {
   const user = userEvent.setup();
   const raw = pageNode(8, "raw");
   const job = revertOf(1, {
     state: "failed",
-    report: { ...reportOf("refused"), refusal: { code, node_id: raw.id } },
+    report: { ...reportOf("refused"), refusal: { code, node_id: raw.id, duplicate_of: null } },
     progress: { done: 1, total: 2 },
   });
   const server = jobsServer({ jobs: [job], nodes: present ? [raw] : [] });
@@ -570,7 +572,9 @@ test.each([
   const reason =
     code === "page.source_admin_only"
       ? "Only the notebook's admins can rename or move its source root, or rename, move or delete in its source area."
-      : "Something went wrong (page.some_later_code).";
+      : code === "page.source_too_large"
+        ? "A subtree entering an LLM Wiki's sources may contain at most 10,000 nodes, including empty pages and attachments. Move it in as smaller subtrees."
+        : "Something went wrong (page.some_later_code).";
   expect(within(shown).getByText(reason)).toBeTruthy();
   if (present) {
     expect(within(shown).getByText("It was refused at “raw”.")).toBeTruthy();
@@ -578,7 +582,7 @@ test.each([
       `${home}/pages/${raw.id}`
     );
   } else {
-    expect(within(shown).getByText("It was refused at a page no longer in the tree.")).toBeTruthy();
+    expect(within(shown).getByText("It was refused at a node no longer in the tree.")).toBeTruthy();
     expect(within(shown).queryByRole("link", { name: /^Open / })).toBeNull();
   }
 });

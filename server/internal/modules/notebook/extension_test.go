@@ -225,7 +225,7 @@ func TestANotebookDeletionPassesTheSubscriber(t *testing.T) {
 					Pool: f.pool, Tx: postgres.NewTxManager(f.pool, 5*time.Second), Clock: &tickingClock{},
 					Logger: slog.New(slog.DiscardHandler), Authorizer: adminsAuthorizer{facts: notebook.NewFacts(f.pool)},
 					Workspaces: sqlWorkspaces{f.pool}, DeletionSubscribers: []notebook.NotebookDeletionSubscriber{s},
-					AccountWorkspaces: noAccountWorkspaces{}, Seeders: []notebook.Seeder{noSeed{}}, WritingJobs: noJobs{},
+					AccountWorkspaces: noAccountWorkspaces{}, Seeders: []notebook.Seeder{noSeed{}}, WritingJobs: noJobs{}, SourceHashes: noSourceHashes{},
 				}).Register(router, httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: tokenAuth{}}))
 
 				req := httptest.NewRequest(http.MethodDelete, d.path(f), nil)
@@ -345,7 +345,7 @@ func TestACreationPassesTheSeeders(t *testing.T) {
 				Pool: f.pool, Tx: postgres.NewTxManager(f.pool, 5*time.Second), Clock: &tickingClock{},
 				Logger: slog.New(slog.DiscardHandler), Authorizer: creatorsAuthorizer{adminsAuthorizer{facts: notebook.NewFacts(f.pool)}},
 				Workspaces: sqlWorkspaces{f.pool}, AccountWorkspaces: noAccountWorkspaces{}, Seeders: []notebook.Seeder{a, b},
-				WritingJobs: noJobs{},
+				WritingJobs: noJobs{}, SourceHashes: noSourceHashes{},
 			}).Register(router, httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: tokenAuth{}}))
 
 			req := httptest.NewRequest(http.MethodPost, "/api/v0/workspaces/acme/notebooks", strings.NewReader(c.body))
@@ -439,7 +439,7 @@ func TestADowngradePassesTheModeSubscribers(t *testing.T) {
 				Pool: f.pool, Tx: postgres.NewTxManager(f.pool, 5*time.Second), Clock: &tickingClock{},
 				Logger: slog.New(slog.DiscardHandler), Authorizer: adminsAuthorizer{facts: notebook.NewFacts(f.pool)},
 				Workspaces: sqlWorkspaces{f.pool}, AccountWorkspaces: noAccountWorkspaces{}, Seeders: []notebook.Seeder{noSeed{}},
-				ModeSubscribers: []notebook.ModeSubscriber{a, b}, WritingJobs: noJobs{},
+				ModeSubscribers: []notebook.ModeSubscriber{a, b}, WritingJobs: noJobs{}, SourceHashes: noSourceHashes{},
 			}).Register(router, httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: tokenAuth{}}))
 
 			req := httptest.NewRequest(http.MethodPost, "/api/v0/notebooks/"+f.eng.String()+"/downgrade", nil)

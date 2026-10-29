@@ -55,7 +55,7 @@ const MaxErrorLocks = 20
 // reservedMembers are the members of structuredContent.error that Extra
 // never sets: what the text says, the answer's own.
 func reservedMembers() map[string]bool {
-	return map[string]bool{"code": true, "message": true, "fields": true, "retry_after_seconds": true}
+	return map[string]bool{"code": true, "message": true, "fields": true, "retry_after_seconds": true, "duplicate_of": true}
 }
 
 func (e *ToolError) Error() string {
@@ -190,6 +190,9 @@ func membersOf(a httpserver.Answer, text string, extra map[string]any) errorMemb
 	member := errorMember{"code": p.Code, "message": text}
 	if len(p.Errors) > 0 {
 		member["fields"] = p.Errors
+	}
+	if p.DuplicateOf != nil {
+		member["duplicate_of"] = p.DuplicateOf
 	}
 	if p.Lock != nil {
 		member["lock"] = p.Lock

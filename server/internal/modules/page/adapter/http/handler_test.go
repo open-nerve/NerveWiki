@@ -398,6 +398,7 @@ func TestTheOperationsAnswerEachProblem(t *testing.T) {
 		{http.MethodPost, movePath, move, protected, http.StatusConflict, "page.protected"},
 		{http.MethodPost, movePath, move, virtual, http.StatusConflict, "page.virtual_file"},
 		{http.MethodPost, movePath, move, adminOnly, http.StatusForbidden, "page.source_admin_only"},
+		{http.MethodPost, movePath, move, domain.Refuse(domain.ErrSourceTooLarge, id(12)), http.StatusUnprocessableEntity, "page.source_too_large"},
 		{http.MethodPost, movePath, move, pagesLocked, http.StatusConflict, "linking.pages_locked"},
 		{http.MethodPost, movePath, move, busy, http.StatusServiceUnavailable, "server_busy"},
 		{http.MethodDelete, nodePath, "", domain.ErrNotFound, http.StatusNotFound, "page.not_found"},

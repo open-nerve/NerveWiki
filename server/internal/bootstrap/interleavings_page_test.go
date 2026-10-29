@@ -48,7 +48,11 @@ import (
 // its source root, a live page of its own, or its root's AGENTS page (M10
 // design 4.4, 4.9: the template is written with the notebook, and neither
 // page goes while it is one), or a live root node of an LLM Wiki whose
-// title key is reserved for its virtual files. The links' invariant and
+// title key is reserved for its virtual files; a source hash missing or wrong
+// on a live eligible descendant, or left on a root, empty page, ordinary
+// notebook, deleted node or outside the source area (M10/P2 design 3.7).
+// Missing eligible page or attachment metadata is a violation too.
+// The links' invariant and
 // the search's (checkSearch, M8/P5 design 3.10) are checked with it.
 func checkPages(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
@@ -69,6 +73,7 @@ const llmWikiGap = "live LLM Wikis without their source root or root AGENTS page
 func pageViolations(t testing.TB, pool *pgxpool.Pool) []string {
 	t.Helper()
 	rules := map[string]string{
+		sourceHashGap: sourceHashViolationSQL,
 		"pages under a deleted parent": `SELECT count(*) FROM nodes c JOIN nodes p ON p.id = c.parent_id
 			WHERE c.deleted_at IS NULL AND p.deleted_at IS NOT NULL`,
 		"pages under an attachment": `SELECT count(*) FROM nodes c JOIN nodes p ON p.id = c.parent_id

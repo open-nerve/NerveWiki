@@ -122,7 +122,7 @@ func TestSourceMCPChecksBeforeLocksAndBudgets(t *testing.T) {
 
 func TestSourceModeGuardVetoesSessionsBeforeEditLocks(t *testing.T) {
 	f := newFixture()
-	g := app.NewModeGuard(f.auth, f.store)
+	g := app.NewModeGuard(f.auth, f.store, f.store)
 	v, ok := any(g).(app.EditSessionVetoer)
 	if !ok {
 		t.Fatal("mode guard does not veto source edit sessions")
@@ -163,7 +163,7 @@ func TestSourceChangedWritesReachTheGuard(t *testing.T) {
 			p := f.page("P", &raw.ID, 0)
 			f.content(p.ID, tt.before, 2)
 			f.notebooks.states = map[uuid.UUID]domain.NotebookState{f.eng: {Mode: domain.ModeLLMWiki, SourceRootID: raw.ID}}
-			f.guards = []app.WriteGuard{app.NewModeGuard(f.auth, f.store), app.NewEditLock(f.store, f.names)}
+			f.guards = []app.WriteGuard{app.NewModeGuard(f.auth, f.store, f.store), app.NewEditLock(f.store, f.names)}
 			w := app.ContentWrite{NodeID: p.ID, Content: "B", Base: 2, Rewrite: tt.rewrite}
 			if tt.session {
 				w.EditSession = f.session(p.ID, f.alice, now().Add(time.Hour)).ID
@@ -205,7 +205,7 @@ func TestSourceMergedBatchGuardKeepsItsActualOwner(t *testing.T) {
 	raw := f.page("raw", nil, 0)
 	p := f.page("P", &raw.ID, 0)
 	f.notebooks.states = map[uuid.UUID]domain.NotebookState{f.eng: {Mode: domain.ModeLLMWiki, SourceRootID: raw.ID}}
-	f.guards = []app.WriteGuard{app.NewModeGuard(f.auth, f.store)}
+	f.guards = []app.WriteGuard{app.NewModeGuard(f.auth, f.store, f.store)}
 	write := func(path, body string) domain.BatchArgs {
 		op := writeOp(path, body)
 		op.Base = tokenOf(p.ID, 1)
@@ -228,7 +228,7 @@ func TestSourceMergedCreationIsCheckedWithoutAPlanner(t *testing.T) {
 	f.grant(domain.ActionRename)
 	raw := f.page("raw", nil, 0)
 	f.notebooks.states = map[uuid.UUID]domain.NotebookState{f.eng: {Mode: domain.ModeLLMWiki, SourceRootID: raw.ID}}
-	f.guards = []app.WriteGuard{app.NewModeGuard(f.auth, f.store)}
+	f.guards = []app.WriteGuard{app.NewModeGuard(f.auth, f.store, f.store)}
 	_, err := f.run(f.asAlice(), domain.ClientWeb, func(ctx context.Context, u *app.Unit) error {
 		_, err := u.CreatePage(ctx, app.PageDraft{ParentID: &raw.ID, Title: "Merged", Content: "B", Merged: new(2)})
 		return err

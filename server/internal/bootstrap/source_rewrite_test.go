@@ -41,6 +41,7 @@ func TestTheSourceRewriteSurvivesUndoAndUndoAgain(t *testing.T) {
 			// rename and both reverts leave its first body version alone.
 			unchanged := func() {
 				t.Helper()
+				assertSourceHashesMatchRebuild(t, t.Context(), tm.pool)
 				for _, p := range []struct {
 					id, created, body string
 				}{

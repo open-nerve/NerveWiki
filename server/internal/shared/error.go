@@ -125,6 +125,9 @@ type Error struct {
 	// RootID is the trash item a node in the trash is of: the problem's
 	// root_id member of page.not_trash_root (M8/P2 design 3.9).
 	RootID *uuid.UUID
+	// DuplicateOf names a source whose matching bytes survive this operation's rollback.
+	// It is absent when the duplicate exists only within the refused operation.
+	DuplicateOf *uuid.UUID
 	// Conflicts are the first nodes that keep a revert from its changeset,
 	// and ConflictCount how many keep it: the problem's conflicts and
 	// conflict_count members of page.revert_conflict (M8/P3 design 3.9).
@@ -264,6 +267,9 @@ func (e *Error) ProblemRootID() (uuid.UUID, bool) {
 	}
 	return *e.RootID, true
 }
+
+// ProblemDuplicateOf is the optional source-duplicate target.
+func (e *Error) ProblemDuplicateOf() *uuid.UUID { return e.DuplicateOf }
 
 // ProblemConflicts gives each of the problem's conflicts members to each,
 // in order, and is its conflict_count member: ok false when it has none.

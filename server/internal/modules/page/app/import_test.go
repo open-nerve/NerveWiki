@@ -49,11 +49,11 @@ func TestAnImportNumbersTheReservedTitlesAtAnLLMWikisRoot(t *testing.T) {
 				if tt.taken {
 					f.page("index 2", nil, 2)
 				}
-				var got domain.Node
+				var got app.CreatedNode
 				_, err := f.importAs(uuid.UUID{}, func(ctx context.Context, u *app.ImportUnit) error {
 					var err error
 					if tt.asset {
-						got, err = u.CreateAsset(ctx, app.ImportedAsset{ParentID: parent, Name: tt.name},
+						got, err = u.CreateAsset(ctx, app.ImportedAsset{ParentID: parent, Name: tt.name, Meta: app.AssetMeta{SHA256: sourceHashOf("")}},
 							func(context.Context, domain.Node) error { return nil })
 					} else {
 						got, err = u.CreatePage(ctx, app.ImportedPage{ParentID: parent, Name: tt.name})
@@ -125,7 +125,7 @@ func TestAnImportsUnitsCreatePagesAndAttachments(t *testing.T) {
 	if err != nil || parsed.Links != 2 {
 		t.Fatalf("Parse = %+v, %v; want 2 links", parsed, err)
 	}
-	var page, asset domain.Node
+	var page, asset app.CreatedNode
 	var after int
 	first, err := f.importAs(uuid.UUID{}, func(ctx context.Context, u *app.ImportUnit) error {
 		var err error

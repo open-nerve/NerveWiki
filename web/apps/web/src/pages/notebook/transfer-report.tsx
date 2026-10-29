@@ -91,6 +91,8 @@ const problems: Record<TransferProblem["code"], (problem: TransferProblem, t: Tr
   too_large: (problem, t) => t("transfer.problem.too_large", { path: problem.path }),
   too_deep: (problem, t) => t("transfer.problem.too_deep", { path: problem.path }),
   duplicate: (problem, t) => t("transfer.problem.duplicate", { path: problem.path }),
+  duplicate_source: (problem, t) =>
+    t("transfer.problem.duplicate_source", { path: problem.path, to: problem.to ?? "" }),
   unreadable: (problem, t) => t("transfer.problem.unreadable", { path: problem.path }),
 };
 

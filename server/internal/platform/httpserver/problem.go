@@ -47,6 +47,7 @@ type Problem struct {
 	Locks         []ProblemLock     `json:"locks,omitempty"`
 	EndedBy       *ProblemPerson    `json:"ended_by,omitempty"`
 	RootID        *uuid.UUID        `json:"root_id,omitempty"`
+	DuplicateOf   *uuid.UUID        `json:"duplicate_of,omitempty"`
 	Conflicts     []ProblemConflict `json:"conflicts,omitempty"`
 	ConflictCount *int              `json:"conflict_count,omitempty"`
 }

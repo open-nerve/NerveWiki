@@ -3,7 +3,7 @@ import type { NodeRestored, TrashItem, TreeNode } from "../services/page.service
 import { titleKey } from "../lib/title-key";
 import { extensionOf } from "../lib/upload-name";
 import { json, notebookJSON, problem, type Answer } from "./fakes";
-import type { Person } from "./page-server";
+import { sourceDuplicate, type Person, type SourceData, type SourceRefusal } from "./page-server";
 
 // The trash of the page server (page-server.ts; M8/P2), as the server keeps
 // it: a deletion puts the node and the nodes under it in the trash, an item
@@ -87,7 +87,7 @@ function levelOf(item: FakeTrashItem, node: TreeNode): number {
 export type TrashWaits = { first?: Promise<void>; next?: Promise<void>; item?: Promise<void> };
 
 /** What of the page server the trash reads and changes. */
-type TrashState = {
+type TrashState = SourceData & {
   sent: string[];
   nodes: TreeNode[];
   contents: Map<string, { content: string; revision: number }>;
@@ -286,6 +286,8 @@ export function trashRoutes(server: TrashState, role: NotebookRole, assetOf: Ass
       if (item.purged) {
         return problem(409, "page.trash_changed");
       }
+      const duplicate = sourceRestoreRefusal(server, item);
+      if (duplicate !== undefined) return problem(409, duplicate.code, duplicate);
       if (server.restoresBusy) {
         return problem(503, "server_busy", {}, { "Retry-After": "2" });
       }
@@ -295,4 +297,11 @@ export function trashRoutes(server: TrashState, role: NotebookRole, assetOf: Ass
       return json(putBack(server, id, item));
     },
   };
+}
+
+/** The actual fallback placement decides source membership before either route writes. */
+export function sourceRestoreRefusal(server: TrashState, item: FakeTrashItem): SourceRefusal | undefined {
+  const placed = placementOf(server, item);
+  const members = item.members.map((node, index) => (index === 0 ? { ...node, parent_id: placed.parent_id } : node));
+  return sourceDuplicate({ ...server, nodes: [...server.nodes, ...members] }, members, server);
 }

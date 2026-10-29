@@ -16,13 +16,18 @@ import (
 // the forest A, B: each root needs its own current ancestor line.
 func TestSourceRestorePartKeepsEachRootLineAfterASkippedParent(t *testing.T) {
 	f := newFixture()
-	f.grant(domain.ActionDelete, domain.ActionRestore, domain.ActionMove)
+	f.grant(domain.ActionDelete, domain.ActionRestore, domain.ActionMove, domain.ActionWrite)
 	raw := f.page("raw", nil, 0)
 	root := f.page("F", nil, 1)
 	p := f.page("P", &root.ID, 0)
 	a := f.page("A", &p.ID, 0)
 	q := f.page("Q", &root.ID, 1)
 	b := f.page("B", &q.ID, 0)
+	for _, n := range []domain.Node{a, b} {
+		if _, err := f.put(n.ID, app.ContentPut{Content: "source " + n.Name, Base: 1}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	f.notebooks.states = map[uuid.UUID]domain.NotebookState{
 		f.eng: {Mode: domain.ModeLLMWiki, SourceRootID: raw.ID},
 	}
@@ -114,6 +119,7 @@ func TestSourceRestorePartKeepsEachRootLineAfterASkippedParent(t *testing.T) {
 	if len(f.store.trash) != 0 || !sameParent(f.store.nodes[q.ID].ParentID, &raw.ID) {
 		t.Errorf("remaining trash=%v, Q=%+v; want all restored and Q still under raw", f.store.trash, f.store.nodes[q.ID])
 	}
+	checkFakeSourceRebuild(t, f, 1)
 	facts := app.SourceStepFacts(s)
 	if len(facts.Nodes) != 2 {
 		t.Fatalf("restore facts = %+v; want exactly A and B", facts)
@@ -232,6 +238,7 @@ func TestSourceRevertContinuationKeepsEachRootLineAfterASkippedParent(t *testing
 		t.Errorf("remaining trash=%v, P=%+v, Q=%+v, F=%+v; want P outside raw and Q under F under raw",
 			f.store.trash, f.store.nodes[p], f.store.nodes[q], f.store.nodes[root])
 	}
+	checkFakeSourceRebuild(t, f, 3)
 	facts := app.SourceStepFacts(s)
 	if len(facts.Nodes) != 2 {
 		t.Fatalf("restore facts = %+v; want exactly A and B", facts)

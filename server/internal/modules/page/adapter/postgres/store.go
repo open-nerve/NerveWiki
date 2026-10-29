@@ -44,8 +44,8 @@ func (s *Store) queries(ctx context.Context) *gen.Queries {
 	return gen.New(postgres.DB(ctx, s.pool))
 }
 
-// planned is queries with each statement planned with its arguments
-// (postgres.Planned): for those a plan for any arguments makes much slower.
+// planned uses DescribeExec, avoiding pgx's named statement cache. The
+// server's plan_cache_mode still decides whether its plan is generic.
 func (s *Store) planned(ctx context.Context) *gen.Queries {
 	return gen.New(postgres.Planned(postgres.DB(ctx, s.pool)))
 }
@@ -299,8 +299,8 @@ func (s *Store) Ancestors(ctx context.Context, id uuid.UUID) ([]domain.Ancestor,
 const subtreeLevels = 64
 
 // Subtree implements app.Nodes: the node, then its descendants level by
-// level, each level in order and read in one statement by its parents,
-// planned with them.
+// level, each level in order and read in one statement by its parents.
+// DescribeExec is used; ChildrenOfAll also supports a forced generic plan.
 func (s *Store) Subtree(ctx context.Context, notebookID, id uuid.UUID) (domain.Subtree, error) {
 	q, levels := s.queries(ctx), s.planned(ctx)
 	root, err := q.FindNodeIn(ctx, gen.FindNodeInParams{ID: id, NotebookID: notebookID})
@@ -461,9 +461,19 @@ func (s *Store) DeleteNodes(ctx context.Context, d app.Deletion) error {
 // is an error of its own, no code of the restore's: the unit numbered
 // them under the notebook's lock, so only a defect makes one.
 func (s *Store) RestoreNodes(ctx context.Context, r app.Restoration) (app.RestoredRows, error) {
+	// Build both arrays in the same order as IDs. The explicit presence bit
+	// distinguishes an absent value from a requested NULL without changing
+	// ordinary restorations or the existing row/history checks.
+	hashes, hasHashes := make([][]byte, len(r.IDs)), make([]bool, len(r.IDs))
+	for i, id := range r.IDs {
+		hashes[i], hasHashes[i] = r.SourceHashes[id]
+		if hashes[i] != nil && len(hashes[i]) != 32 {
+			return app.RestoredRows{}, errors.New("a restored source hash must be NULL or 32 bytes")
+		}
+	}
 	row, err := s.queries(ctx).RestoreNodes(ctx, gen.RestoreNodesParams{
 		Ids: r.IDs, Names: r.Names, NameKeys: r.NameKeys, By: r.By, Now: r.At, Root: r.Root, ParentID: r.ParentID,
-		SortOrder: r.SortOrder, DeletedAt: r.DeletedAt,
+		SortOrder: r.SortOrder, DeletedAt: r.DeletedAt, SourceHashes: hashes, HasSourceHashes: hasHashes,
 	})
 	switch {
 	case nameTaken(err):

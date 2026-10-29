@@ -31,7 +31,7 @@ func TestSourceStepProducersKeepContentKindsAndBothLines(t *testing.T) {
 					if _, err := u.CreatePage(ctx, app.ImportedPage{ParentID: &raw.ID, Name: "Note", Content: "原文"}); err != nil {
 						return err
 					}
-					_, err := u.CreateAsset(ctx, app.ImportedAsset{ParentID: &raw.ID, Name: "file.txt"}, func(context.Context, domain.Node) error { return nil })
+					_, err := u.CreateAsset(ctx, app.ImportedAsset{ParentID: &raw.ID, Name: "file.txt", Meta: app.AssetMeta{SHA256: sourceHashOf("")}}, func(context.Context, domain.Node) error { return nil })
 					return err
 				})
 				if err != nil {
@@ -105,7 +105,7 @@ func TestSourceStepMetadataAddsNoReadsInStandardMode(t *testing.T) {
 	p := f.page("P", &raw.ID, 0)
 	f.notebooks.states = map[uuid.UUID]domain.NotebookState{f.eng: {Mode: domain.ModeStandard, SourceRootID: raw.ID}}
 	g := &guard{recorder: f.rec}
-	f.guards = []app.WriteGuard{g, app.NewModeGuard(f.auth, f.store)}
+	f.guards = []app.WriteGuard{g, app.NewModeGuard(f.auth, f.store, f.store)}
 	if _, err := f.put(p.ID, app.ContentPut{Content: "ordinary", Base: 1}); err != nil {
 		t.Fatal(err)
 	}
@@ -113,6 +113,9 @@ func TestSourceStepMetadataAddsNoReadsInStandardMode(t *testing.T) {
 	for _, call := range f.rec.calls {
 		if call == "Ancestors in tx" {
 			reads++
+		}
+		if strings.Contains(call, "SourceHeads") || strings.Contains(call, "SourceHashes") || strings.HasPrefix(call, "AttachmentInfos") {
+			t.Fatalf("standard added source work: %s", call)
 		}
 		if strings.Contains(call, "page.manage_source") {
 			t.Fatalf("standard added %s", call)
@@ -132,7 +135,7 @@ func TestSourceBatchProducersCarryTheActualMergedCount(t *testing.T) {
 		raw := f.page("raw", nil, 0)
 		f.notebooks.states = map[uuid.UUID]domain.NotebookState{f.eng: {Mode: domain.ModeLLMWiki, SourceRootID: raw.ID}}
 		g := &guard{recorder: f.rec}
-		f.guards = []app.WriteGuard{g, app.NewModeGuard(f.auth, f.store)}
+		f.guards = []app.WriteGuard{g, app.NewModeGuard(f.auth, f.store, f.store)}
 		// The body is written outside sources; entry changes its placement,
 		// so the batch passes an explicit zero source-content write count.
 		if _, err := f.applyBatch(&fakeLinks{recorder: f.rec}, writeOp("P.md", "A"), moveOp("P.md", "raw/P.md")); err != nil {
@@ -150,6 +153,7 @@ func TestSourceBatchProducersCarryTheActualMergedCount(t *testing.T) {
 			moved.Changes[0].Before.ParentID != nil || moved.Changes[0].After.ParentID == nil || *moved.Changes[0].After.ParentID != raw.ID {
 			t.Fatalf("outside creation then entry = %+v / %+v", created.Changes, moved.Changes)
 		}
+		checkFakeSourceRebuild(t, f, 1)
 		if content := f.store.contents[id]; content.Content != "A" || content.Revision != 1 {
 			t.Fatalf("stored content = %+v", content)
 		}
@@ -187,20 +191,23 @@ func TestSourceStructuralProducersKeepAssetKindsAndPlannedLines(t *testing.T) {
 	raw := f.page("raw", nil, 0)
 	p := f.page("P", &raw.ID, 0)
 	a := f.asset("a.txt", &p.ID, 0)
+	f.infos = map[uuid.UUID]app.AttachmentInfo{a.ID: {SHA256: sourceHashOf("")}}
 	f.notebooks.states = map[uuid.UUID]domain.NotebookState{f.eng: {Mode: domain.ModeLLMWiki, SourceRootID: raw.ID}}
 	g := &guard{recorder: f.rec}
 	f.guards = []app.WriteGuard{g}
 	_, err := f.run(f.asAlice(), domain.ClientWeb, func(ctx context.Context, u *app.Unit) error {
-		if _, err := u.CreateAsset(ctx, app.AssetDraft{ParentID: &p.ID, Name: "b.txt"}); err != nil {
+		b, err := u.CreateAsset(ctx, app.AssetDraft{ParentID: &p.ID, Name: "b.txt", Meta: app.AssetMeta{SHA256: sourceHashOf("b"), Bytes: 1}})
+		if err != nil {
 			return err
 		}
+		f.infos[b.ID] = app.AttachmentInfo{SHA256: sourceHashOf("b"), Bytes: 1}
 		if _, err := u.Rename(ctx, a.ID, "renamed.txt"); err != nil {
 			return err
 		}
 		if _, err := u.Relocate(ctx, a.ID, app.Placement{ParentID: &p.ID, Name: "relocated.txt", Field: "to"}); err != nil {
 			return err
 		}
-		_, err := u.Delete(ctx, p.ID)
+		_, err = u.Delete(ctx, p.ID)
 		return err
 	})
 	if err != nil {
@@ -259,6 +266,7 @@ func TestSourceAppenderStepCarriesRewriteAndNoSession(t *testing.T) {
 	if len(g.steps) != 2 {
 		t.Fatalf("steps=%d", len(g.steps))
 	}
+	checkFakeSourceRebuild(t, f, 1)
 	s := g.steps[1]
 	if !s.Rewrite || s.EditSessionID != uuid.Nil() || s.Content == nil || s.Content.Bytes != 9 || s.Content.BeforeBytes != 0 || s.Kinds[source.ID] != domain.KindPage || s.Lines == nil || len(s.Lines.Before) != 1 {
 		t.Fatalf("appender facts=%+v", s)

@@ -31,6 +31,12 @@ type noJobs struct{}
 
 func (noJobs) Writing(context.Context, uuid.UUID) (bool, error) { return false, nil }
 
+// noSourceHashes is for module fixtures with no stored source hashes.
+// Tests of persistent downgrade cleanup supply the real page bridge.
+type noSourceHashes struct{}
+
+func (noSourceHashes) Forget(context.Context, uuid.UUID) error { return nil }
+
 // A module without the account's workspaces is a fault of its wiring:
 // New panics, as page's New does without its ports (M9/P1 design 3.17.1).
 func TestTheModuleRefusesNoAccountWorkspaces(t *testing.T) {
@@ -39,7 +45,7 @@ func TestTheModuleRefusesNoAccountWorkspaces(t *testing.T) {
 			t.Errorf("New without AccountWorkspaces panicked with %q", r)
 		}
 	}()
-	notebook.New(notebook.Deps{})
+	notebook.New(notebook.Deps{Seeders: []notebook.Seeder{noSeed{}}, WritingJobs: noJobs{}, SourceHashes: noSourceHashes{}})
 }
 
 // A module without a seeder is a fault of its wiring: an LLM Wiki would be
@@ -50,7 +56,7 @@ func TestTheModuleRefusesNoSeeders(t *testing.T) {
 			t.Errorf("New without Seeders panicked with %q", r)
 		}
 	}()
-	notebook.New(notebook.Deps{AccountWorkspaces: noAccountWorkspaces{}})
+	notebook.New(notebook.Deps{AccountWorkspaces: noAccountWorkspaces{}, WritingJobs: noJobs{}, SourceHashes: noSourceHashes{}})
 }
 
 // A module without the writing jobs is a fault of its wiring: a downgrade
@@ -61,13 +67,28 @@ func TestTheModuleRefusesNoWritingJobs(t *testing.T) {
 			t.Errorf("New without WritingJobs panicked with %q", r)
 		}
 	}()
-	notebook.New(notebook.Deps{AccountWorkspaces: noAccountWorkspaces{}, Seeders: []notebook.Seeder{noSeed{}}})
+	notebook.New(notebook.Deps{
+		AccountWorkspaces: noAccountWorkspaces{}, Seeders: []notebook.Seeder{noSeed{}}, SourceHashes: noSourceHashes{},
+	})
+}
+
+// Forget is a required dependency: omitting it must be a wiring failure,
+// not a module that can downgrade while leaving its source hashes behind.
+func TestTheModuleRefusesNoSourceHashes(t *testing.T) {
+	defer func() {
+		if r, _ := recover().(string); !strings.Contains(r, "no source hashes") {
+			t.Errorf("New without SourceHashes panicked with %q; want no source hashes", r)
+		}
+	}()
+	notebook.New(notebook.Deps{
+		AccountWorkspaces: noAccountWorkspaces{}, Seeders: []notebook.Seeder{noSeed{}}, WritingJobs: noJobs{},
+	})
 }
 
 // The module's MCP tools are notebooks, of the account entry alone.
 func TestTheModulesToolIsNotebooks(t *testing.T) {
 	tools := notebook.New(notebook.Deps{
-		AccountWorkspaces: noAccountWorkspaces{}, Seeders: []notebook.Seeder{noSeed{}}, WritingJobs: noJobs{},
+		AccountWorkspaces: noAccountWorkspaces{}, Seeders: []notebook.Seeder{noSeed{}}, WritingJobs: noJobs{}, SourceHashes: noSourceHashes{},
 	}).Tools()
 	if len(tools) != 1 || tools[0].Spec().Name != "notebooks" || tools[0].Spec().Notebook {
 		t.Errorf("Tools() = %+v, want notebooks alone", tools)
