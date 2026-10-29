@@ -2,7 +2,7 @@
 
 日期：2026-10-30。起点是 P3 设计提交 `9e38a38f648ffa19130afb8a8b468b792dad1381`；维护分支 `m10-search-guard-calibration`，代码提交 `ccac8c5d9e741721965e07c2b053f04dbe446e61`，父提交即起点。属于 M8 story、在 M10 发现的测试与注释维护；P3 设计已经接受，S1/S2仍待实施。
 
-**当前结论：范围内实施、真实反向对照、七项本机 Go 门禁、独立代码审查及精确代码分支 CI 已由主持者接受。** A/B 在各自规范与质量范围 PASS；C 第1轮保留当时的 `PENDING_ACTUAL_CODE_CI`，第2轮对实际代码 CI 的有界复核以规范/质量均 PASS 关闭该项，四份报告均无核实的 Important/Minor/Nit/Q。代码 CI `40913568907` attempt 1 已按精确head、11个作业和全部必需步骤验收；后续文档分支/main CI、集成及P3放行仍待。合并见00号文档第12节（[进度表](../00-M10-design.md#12-phase-进度表)），维护单列，不占 P3/S1 的合并位置。
+**当前结论：范围内实施、真实反向对照、七项本机 Go 门禁、独立代码审查、精确代码分支CI、文档分支CI及维护合并后的首次main CI已由主持者接受。** A/B 在各自规范与质量范围 PASS；C 第1轮保留当时的 `PENDING_ACTUAL_CODE_CI`，第2轮对实际代码 CI 的有界复核以规范/质量均 PASS 关闭该项，四份代码报告均无核实的 Important/Minor/Nit/Q。代码 CI `40913568907` attempt 1 已按精确head、11个作业和全部必需步骤验收；文档aa860be1 / CI40921122246 attempt1，以及no-ff合并b957fdbe / 首次main CI40925905708 attempt1亦已分别验收，见第7节。本记录自身提交/CI仍待产生；新增空名称属性链接来源设计缺口仍开放，决定62的具体修订与三位独立审查待完成，P3尚未放行。合并见00号文档第12节（[进度表](../00-M10-design.md#12-phase-进度表)），维护单列，不占 P3/S1 的合并位置。
 
 ## 1. 对象、方法与证据边界
 
@@ -10,7 +10,7 @@
 
 唯一代码差异是 `server/internal/modules/page/adapter/postgres/search_guard_test.go` 的 60 个参考数和三块来源/历史注释，38 行增加、43 行删除；目标文件 SHA-256 为 `3b5a87a6420524adaea6959a86174aee1c637349959cb90bb8800ac6ef168668`。去掉整行注释、只将 `msOf` 数值参数替为占位后，base/code 字节相同。20 行身份和顺序，包括 `中国 eng / building=false` 与 `中国 nil / building=true`，均保持。
 
-未改 `msOf`、`searchLimit`、40 ms floor、97 ms trap、元测试断言、每格八次取中位数、fixture/阶段/游标/building、生产 SQL、build/QueueSearch 预算、超时或 CI 配方。没有 P3 产品实现。本轮未重跑无关的本机 Web/E2E 全套；过去 P2 的已验产品门禁保留其原受测对象。本代码分支完整 CI 已独立验收，后续文档分支与 main 自己的完整 CI 仍须分别验收。
+未改 `msOf`、`searchLimit`、40 ms floor、97 ms trap、元测试断言、每格八次取中位数、fixture/阶段/游标/building、生产 SQL、build/QueueSearch 预算、超时或 CI 配方。没有 P3 产品实现。本轮未重跑无关的本机 Web/E2E 全套；过去 P2 的已验产品门禁保留其原受测对象。本代码分支、文档分支与维护合并后的首次main完整CI已分别按精确对象验收（第6–7节）；本记录自身提交/CI仍待产生，P3入口另受第7节所述来源设计修订与放行条件约束。
 
 本文所称外部证据以 `search-cost-investigation/` 为根，以文件名和 SHA-256 标识；本次CI成本清单在上级M10证据根，另明确标出。它们不是仓库相对链接的依赖。实施原件 `calibration/implementation-report.md` SHA-256 `f5ad3bc1f1897c450954549715dba2a251c8db5758dab2aaac2e584e092a6d07`；初始文档提案 `calibration/documentation-note.md` SHA-256 `f2d5045b456db666b9fc3a2ff2148cf80eb7c863eac79f4a7298123c7f707fe9`。四次作者测试固定于提交前候选；其 3,202 项输入与稍后代码提交逐项相同，不把提交时间倒写成测试时 HEAD。
 
@@ -143,8 +143,40 @@ bootstrap四片Test的440/358/356/370 s只是这一次代码分支CI，**不是�
 | --- | --- | --- |
 | 原设计 main | `9e38a38f648ffa19130afb8a8b468b792dad1381`；[40897835721](https://github.com/open-nerve/NerveWiki/actions/runs/40897835721) attempt 1 | FAILED，8 success / costs failure / e2e+image skipped；后八条costs NOT_RUN，永久保留 |
 | 本维护代码分支 | `ccac8c5d9e741721965e07c2b053f04dbe446e61`；[40913568907](https://github.com/open-nerve/NerveWiki/actions/runs/40913568907) attempt 1 | completed/success；11个作业、32个必需步骤均成功，恰23个既定条件skip；实际collector/verifier与C2复核完成，主持者已接受 |
-| 本维护文档分支 | 提交与run待实际产生 | 文档应用/链接检查、完整CI和主持者接受待完成 |
-| no-ff 合并与main | 合并见00号文档第12节 | main自己的完整CI、后续记录提交及回执待实际产生；不以分支树相同替代 |
+| 本维护文档分支 | `aa860be1b32bb98410e6a6811d2d87569de78b25`；[40921122246](https://github.com/open-nerve/NerveWiki/actions/runs/40921122246) attempt 1 | 文档应用/链接检查及完整CI已由主持者接受；11个作业/32个必需步骤成功，恰23个既定条件skip，回执见第7节 |
+| no-ff 合并与main | `b957fdbe0367a9a6ff0f65d2afc303db49a755c2`；[40925905708](https://github.com/open-nerve/NerveWiki/actions/runs/40925905708) attempt 1；合并另列00号文档第12节 | 两父及树已核，main自己的完整CI已由主持者接受；11个作业/32个必需步骤成功，恰23个既定条件skip；本记录自身提交/CI仍待产生，回执见第7节 |
 | P3/S1入口 | 后续集成后的精确main与S1-0候选 | 主持者重新绑定放行回执前仍未释放；S1/S2结果与实测不得预填 |
 
-当前已接受的是决定61的处置、对应候选的局部验证、七项Go门禁、A/B/C各自审查与C2实际代码CI复核，以及精确代码分支CI；后续文档分支/main/记录CI、集成与P3重新绑定放行仍待实际完成。未来CI、审查复核或修复另按真实对象追加，不覆盖本记录保留的失败。M12开放义务见第3节；P3设计49–60及原容量准入仍由[P3设计](../03-P3-lint-health.md)和[设计审查](P3-design-review.md)约束。
+当前已接受的是决定61的处置、对应候选的局部验证、七项Go门禁、A/B/C各自审查与C2实际代码CI复核、精确代码分支CI，以及文档分支CI、实际no-ff合并与首次main自身CI。本记录自身提交/CI、新增来源设计修订及其独立审查/实际设计提交CI、P3重新绑定放行仍待完成。未来CI、审查复核或修复另按真实对象追加，不覆盖本记录保留的失败。M12开放义务见第3节；P3原设计49–60及原容量准入仍由[P3设计](../03-P3-lint-health.md)和[设计审查](P3-design-review.md)约束。
+
+## 7. 维护文档、合并与main CI
+
+2026-10-30（UTC+8），文档提交 `aa860be1b32bb98410e6a6811d2d87569de78b25`（父为代码 `ccac8c5d9e741721965e07c2b053f04dbe446e61`）的 [CI 40921122246](https://github.com/open-nerve/NerveWiki/actions/runs/40921122246) attempt 1，精确分支 `m10-search-guard-calibration`、push事件、`.github/workflows/ci.yml`，completed/success。文档投影、链接及空白检查的接受原件为 `calibration/doc-package/root-live-acceptance.json`，SHA-256 `9860b458442a46708ea9f11bc85a50f5ec979a3b99fada6e46b4a133c0352d19`。该文档CI全11个作业、32个必需步骤均成功，恰23个既定条件skip；主持者接受原件 `calibration/ci-docs-aa860be1/root-ci-acceptance.json`，SHA-256 `0ab6de2dca111e0f0854c9655de1bb582f4836173eddcfedcde1143fc0654ccd`。
+
+实际no-ff合并 `b957fdbe0367a9a6ff0f65d2afc303db49a755c2` 的第一父为 `9e38a38f648ffa19130afb8a8b468b792dad1381`，第二父为已接受文档头 `aa860be1b32bb98410e6a6811d2d87569de78b25`；树 `8ded1428ce9cfe42a24ab80dd374c32c10b4dfd3` 与文档分支树相同。合并对象核对原件 `calibration/root-merge-object.json`，SHA-256 `c50499adae7985fe782cd0fa05d54c677c3df40dbdb351059bcc4a2a27135425`，保留其中当时main CI尚待的历史字段；随后完成的main运行由下一段独立回执接受。该维护合并在[00号文档第12节](../00-M10-design.md#12-phase-进度表)单列，P3/S1合并格仍为“—”。
+
+首次main的 [CI 40925905708](https://github.com/open-nerve/NerveWiki/actions/runs/40925905708) attempt 1绑定上述完整合并SHA、`main`、push事件及同一workflow，completed/success；全11个作业、32个必需步骤均成功，恰23个既定条件skip。主持者接受原件 `calibration/ci-merge-b957fdbe/root-ci-acceptance.json`，SHA-256 `0010ddfa01a9ac82e19f5ef92c394036073f3f0bfc363c410c487e1b5870ecef`。这是该精确main运行的工具核验与主持者接受，不扩展第5节A/B/C原代码审查的受测对象。
+
+两份成本清单均在上级M10树外证据根：文档CI为 `search-calibration-docs-aa860be1-ci-cost-supplement.json`，SHA-256 `1297d77a46aefd959165e8c974114c0a64f7eea9672fde0494744ae25bff8ca0`；首次main为 `search-calibration-main-b957fdbe-ci-cost-supplement.json`，SHA-256 `ad8e07bf8f87cf47f2cb2b0bade6d90fdfd157b7bc015f9894405825c75475f4`。两次各取得完整20项成本指标（14 costs / 6 guards）、45个来源HTTP样本（9个201、36个200）、60个搜索读及真实PASS；两次收集各保全210个受保护旧文件。按各自有界all-branches push清单，无中间缺口，observed logical runs由代码CI时的48增至文档CI时49、首次main时50，包含原失败；原第2节47、第6节48及38+1搜索日志均保留各自历史口径，不将累计数写成成功数或稳定性统计。
+
+文档CI搜索测试PASS用时78.35 s，首次main为70.89 s。`go`首页无统计/ANALYZE/generic分别为文档CI **31.393 / 29.733 / 33.855 ms**、首次main **25.356 / 24.601 / 25.541 ms**；这些样本也都低于原40 ms界，仍不能证明校准修复了原失败成因或原失败只是噪声。原40897835721 attempt1的FAILED、后八条costs NOT_RUN、e2e/image skipped及缺失null不变；39/21检测取舍与M12真实语料/目标硬件等开放义务仍按第2–3节保留。
+
+以下均为各自一次运行的实际秒数；“步骤”指Test、E2E或Image smoke，与整个作业时长分列：
+
+| 作业 | 文档CI步骤秒 | 文档CI作业秒 | 首次main步骤秒 | 首次main作业秒 |
+| --- | ---: | ---: | ---: | ---: |
+| web | 252 | 288 | 253 | 289 |
+| server (short) | 192 | 211 | 138 | 157 |
+| server (race) | 682 | 701 | 441 | 460 |
+| server (bootstrap-1) | 432 | 456 | 282 | 301 |
+| server (bootstrap-2) | 316 | 334 | 447 | 471 |
+| server (bootstrap-3) | 298 | 322 | 244 | 263 |
+| server (bootstrap-4) | 358 | 378 | 368 | 389 |
+| server (costs) | 775 | 963 | 665 | 825 |
+| server (guards) | 1234 | 1258 | 1507 | 1529 |
+| e2e | 252 | 320 | 245 | 298 |
+| image | 79 | 85 | 86 | 93 |
+
+首次main第二片的Test为447 s、作业为471 s，二者口径分开。文档分支不计为main样本；本记录自身CI尚未发生，因此这里不计算或宣称指定两main均值，也不构成S1-0候选或P3容量验收。e2e仍仅按必需步骤成功验收，没有新增逐leaf报告；没有新本机产品运行、300 ms/30万页验收或失败成因证明。
+
+**P3入口仍未释放。** 本记录自己的提交号与CI待实际产生，后续另以精确对象补回执。新增合法空名称frontmatter链接来源丢失问题仍OPEN，影响拟定D/F/P4的正文边判定；决定62已核定处置方向，具体设计修订、三位独立审查及后续复核/实际设计提交CI尚待，维护CI成功不能解除该缺口。方向原件为上级M10树外证据根 `p3-preparation/origin-amendment/root-decision-62.md`，SHA-256 `245f24b9052d5f890b2bbcc326fd0e867c6dd5e8cb88424af16462618e172829`；此处仅记当前待办，不展开未审设计语义。主持者须在这些前置接受后重新绑定P3放行回执与S1-0候选；S1-0结果空缺，S1/S2未实施，M11未开始。

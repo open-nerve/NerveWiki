@@ -837,14 +837,16 @@ Nerve 没有 MCP、prompt、数据的 lint、模式的契约或只增不改的�
 |---|---|---|---|---|
 | P1 契约的框架（S1–S4） | [01-P1](01-P1-contract-frame.md) | 已完成 | [设计](reviews/P1-design-review.md)、[S1](reviews/P1-S1-mode-template-review.md)、[S2](reviews/P1-S2-guard-review.md)、[S3](reviews/P1-S3-prechecks-refusals-numbering-review.md)、[S4](reviews/P1-S4-web-review.md) | S1 `45d086a1`、S2 `bad859c0`；S3 `a46c3d1d`；S4 `f261952f` |
 | P2 来源区（S1–S3） | [02-P2](02-P2-source-area.md) | 已完成；实施、三审复核、三Step集成及两main均值已验，完成核对见§10.4；本次P2done精确main CI接受后放行P3 | [设计](reviews/P2-design-review.md)、[S1](reviews/P2-S1-source-rules-review.md)、[S2](reviews/P2-S2-source-hash-review.md)、[S3](reviews/P2-S3-source-web-review.md) | S1 `bf8d6625`；S2 `66d8236c12aaa8923616f6f42f2ee33b772884f9`，记录`8904a8769646c3b8919ff6a4c503eeae3ac70727`；S3 `ecd79c77d0cdb2259d50758b26514f61ebb329ca`，记录`ae1794a89c6d6d501e1cdd659fcc99104721fab7` |
-| P3 lint 与健康度（S1、S2） | [03-P3](03-P3-lint-health.md) | 设计审查已接受；S1/S2待实施；入口等待搜索守卫维护集成后精确main完整CI验收与放行回执重绑 | [设计](reviews/P3-design-review.md)、[入口维护](reviews/search-guard-calibration-review.md) | — |
+| P3 lint 与健康度（S1、S2） | [03-P3](03-P3-lint-health.md) | 原设计审查已接受；S1/S2待实施；搜索守卫维护已集成、首次main完整CI已验；维护记录自身CI、空名称属性链接来源设计修订与独立审查、P3放行重绑仍待 | [设计](reviews/P3-design-review.md)、[入口维护](reviews/search-guard-calibration-review.md) | — |
 | P4 虚拟页面与 ingest（S1–S3） | — | 未开始 | — | — |
 | P5 playbook、说明与收尾的故事（S1） | — | 未开始 | — | — |
 | 收尾 | — | 未开始 | — | — |
 
-**P3入口维护（不计作P3/S1）**：搜索守卫参考校准，代码 `ccac8c5d9e741721965e07c2b053f04dbe446e61`，分支 `m10-search-guard-calibration`；范围内实施、七项Go门禁、独立代码审查及精确代码CI40913568907 attempt1已由主持者接受；后续文档分支/main/记录CI及集成仍待，回执见[维护审查记录](reviews/search-guard-calibration-review.md)。维护的no-ff合并提交、main CI与记录提交待实际产生后在此单列；不填入上表P3/S1位置。
+**P3入口维护（不计作P3/S1）**：搜索守卫参考校准，代码 `ccac8c5d9e741721965e07c2b053f04dbe446e61`，分支 `m10-search-guard-calibration`；范围内实施、七项Go门禁、独立代码审查及精确代码CI40913568907 attempt1已由主持者接受。文档 `aa860be1b32bb98410e6a6811d2d87569de78b25` 的CI40921122246 attempt1亦已接受；实际no-ff合并为 `b957fdbe0367a9a6ff0f65d2afc303db49a755c2`，两父为 `9e38a38f648ffa19130afb8a8b468b792dad1381` / `aa860be1b32bb98410e6a6811d2d87569de78b25`，树 `8ded1428ce9cfe42a24ab80dd374c32c10b4dfd3` 与文档分支相同；该main自身CI40925905708 attempt1全11作业/32必需步骤成功并已接受，回执见[维护审查记录第7节](reviews/search-guard-calibration-review.md#7-维护文档合并与main-ci)。本记录自身提交/CI仍待产生；新增空名称属性链接来源设计缺口仍开放，决定62的具体修订与独立审查另行完成，P3放行尚待重绑。维护仅在此单列，不填入上表P3/S1合并位置。
 
 ## 13. 变更记录
+
+- 2026-10-30：搜索守卫维护文档 `aa860be1` 的CI40921122246 attempt1已接受；按no-ff合并 `b957fdbe0367a9a6ff0f65d2afc303db49a755c2`，树与文档分支相同，首次main CI40925905708 attempt1全11作业/32必需步骤成功并由主持者验收。本条只记录维护集成；本记录自身提交/CI待产生，新增空名称属性链接来源设计缺口仍开放，决定62的修订与独立审查、P3重新绑定放行未完成；S1/S2未实施，S1-0无结果。原9e38失败及既有历史保留，见[维护集成事实](reviews/search-guard-calibration-review.md#7-维护文档合并与main-ci)。
 
 - 2026-10-30：P3设计 `9e38a38f` 的 CI `40897835721` attempt1因既有M8搜索守卫generic `go`首页40.621258>40 ms失败；保留原失败、后八条costs NOT_RUN与e2e/image skipped。按实施决定61提交搜索守卫完整60格参考与注释校准（`ccac8c5d`），采用已有三轮Linux原日志，39个限值升高、21个不变，公开检测取舍。作者四次局部运行含真实负控/恢复、主持者七项Go门禁及独立代码审查已验，C2关闭C1实际CI待验项；精确代码CI40913568907 attempt1全11作业/32必需步骤成功已接受，后续文档分支/main/记录CI仍待。未证明hosted失败根因或验收300 ms/30万页目标；维护集成后main验收再重绑P3放行与S1-0候选，S1/S2仍待实施。见[搜索守卫校准记录](reviews/search-guard-calibration-review.md)。
 
