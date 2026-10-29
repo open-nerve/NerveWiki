@@ -55,6 +55,8 @@ function lostText(lost: EditLost, t: Translate, me: string | undefined): string 
         : t("editor.lostTaken", { name: lost.holder.display_name });
     case "gone":
       return t("editor.lostGone");
+    case "source":
+      return t("editor.lostSource");
     case "no_access":
       return t("editor.lostAccess");
   }

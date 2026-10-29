@@ -468,6 +468,7 @@ export const zhCN: Messages = {
   "editor.lostTakenOver": "你在另一处继续编辑了这一页：这里不再保存。",
   "editor.lostUnlocked": "{name} 解除了你对这一页的编辑：这里不再保存。",
   "editor.lostGone": "这一页已不在：这里不再保存。",
+  "editor.lostSource": "这个页面已成为来源，原始正文为只读。",
   "editor.lostTaken": "你的编辑已过期，{name} 正在编辑这一页：这里不再保存。",
   "editor.lostTakenSelf": "你的编辑已过期，你正在别处编辑这一页：这里不再保存。",
   "editor.lostUnsaved": "这里有没保存的修改：离开之前先复制出来。",

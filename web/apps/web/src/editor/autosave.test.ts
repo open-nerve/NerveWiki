@@ -22,10 +22,28 @@ const context: EditorContext = {
 };
 
 /** autosave built over fake controls. */
-function built() {
+function built(lost = false) {
   const fake = fakeControls();
-  autosave.extension(context, fake.controls);
-  return fake;
+  const listeners = new Set<() => void>();
+  const controls = {
+    ...fake.controls,
+    session: () => ({ lost }),
+    onSessionChange: (listener: () => void) => {
+      listeners.add(listener);
+      const off = () => void listeners.delete(listener);
+      fake.controls.onClose(off);
+      return off;
+    },
+  };
+  autosave.extension(context, controls);
+  return {
+    ...fake,
+    controls,
+    lose() {
+      lost = true;
+      for (const listener of listeners) listener();
+    },
+  };
 }
 
 test("the pause is 2 seconds (M5 design 4.8)", () => {
@@ -69,6 +87,32 @@ test("closed, a change resting is not saved", () => {
   change();
   close();
   vi.advanceTimersByTime(autosavePause);
+  expect(controls.save).not.toHaveBeenCalled();
+});
+
+test("a session lost cancels its pending autosave and does not schedule later changes", () => {
+  const { controls, change, lose } = built();
+
+  change();
+  expect(vi.getTimerCount()).toBe(1);
+  vi.advanceTimersByTime(autosavePause - 1);
+  lose();
+
+  expect(vi.getTimerCount()).toBe(0);
+  vi.advanceTimersByTime(autosavePause * 2);
+  change();
+  expect(vi.getTimerCount()).toBe(0);
+  vi.advanceTimersByTime(autosavePause * 2);
+  expect(controls.save).not.toHaveBeenCalled();
+});
+
+test("an editor mounted after its session was lost never schedules autosave", () => {
+  const { controls, change } = built(true);
+
+  change();
+
+  expect(vi.getTimerCount()).toBe(0);
+  vi.advanceTimersByTime(autosavePause * 2);
   expect(controls.save).not.toHaveBeenCalled();
 });
 
