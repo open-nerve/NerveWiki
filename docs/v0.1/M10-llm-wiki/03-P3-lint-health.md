@@ -4,17 +4,19 @@
 |---|---|
 | Phase | M10/P3；两个 Step：S1 服务端与协议；S2 健康度网页 |
 | 日期 | 2026-10-29 |
-| 状态 | 原设计经三位独立审查及原席两轮修订复核后由主持者接受；S1/S2待实施。设计提交9e38的原CI失败保留；决定61的搜索守卫维护已合并为b957fdbe，首次main CI40925905708 attempt1已接受；本维护记录自身CI、决定62空名称属性链接来源问题的具体设计修订与三位独立审查、主持者重新绑定P3放行回执仍待；未实施、未测量P3、未开始M11 |
-| 精确基线 | `main = origin/main = f6bd0cdee2b7570252a43581cf71cd1e71592f76`；P2 已完成 |
+| 状态 | 原决定49–60设计经三位独立审查及原席两轮修订复核后由主持者接受；决定62的第二稿经三位独立审查及原席复核后已由主持者接受设计语义；S1/S2待实施。设计提交9e38的原CI失败保留；决定61的搜索守卫维护已合并为b957fdbe，首次main CI40925905708 attempt1已接受；维护记录601c5832自身CI40932595248 attempt1亦已由主持者接受；决定62最终事实稿投影、实际设计提交自身CI、主持者重新绑定P3放行回执仍待；未实施、未测量P3、未开始M11 |
+| 原设计精确基线 | `main = origin/main = f6bd0cdee2b7570252a43581cf71cd1e71592f76`；P2 已完成 |
 | 上级 | [M10 总设计](00-M10-design.md) §4.10–4.12、§5、§7–9；[总体设计](../v0.1-design.md) §5.6、§13；[推进方式](../claude_to_codex/02-workflow.md)；[P2 移交](02-P2-source-area.md#9-给后面-phase-与-m-的移交) |
 | 记法 | `page/`、`linking/`、`wiki/` 在 `server/internal/modules/` 下；`bootstrap/`、`platform/`、`shared/` 在 `server/internal/` 下；`W/` 是 `web/apps/web/src/`。本文拟新增的文件、类型、测试名均是设计，不冒称已有实现 |
 | 决定 | 主持者接受连续实施决定49–60（负责人可以改判），见[设计审查记录](reviews/P3-design-review.md)；索引、容量及所有运行结果仍须完成本文实测准入。见§2.2 |
+
+**来源表示修订提案（2026-10-30）**：原49–60设计及决定61维护的历史不改。主持者的决定（负责人可以改判）62已核定空属性来源修正方向，以下新增合同的第二稿已完成三位独立审查及原席复核，主持者已接受其设计语义；Extractor 2、S1-0a、七条新变异均未实施/未执行。当前实现仍为Extractor 1。P3产品入口还须最终事实稿经root审读/冻结/投影、实际设计提交自身CI接受及root重新绑定放行；维护CI成功或旧maintenance-release wrapper均不能替代。审查状态见[来源表示修订记录](reviews/P3-origin-design-review.md)。本提案冻结源为已提交维护记录601c5832882d8df10486ea335e691b7f11efc259（父b957fdbe，产品源码未变）；该record自身CI40932595248 attempt1现已由主持者按真实回执接受；本来源修订原席复核已完成，最终事实稿投影与实际设计提交自身CI仍待。不覆盖原失败/校准，后续事实只按真实对象追加。
 
 ## 0. 两个可独立合并为绿的 Step
 
 | Step | 交付 | 单独为绿的边界 |
 |---|---|---|
-| S1，`m10-p3-s1` | 来源整区 metadata；linking 八条规则、sources 索引、流式分批读取；wiki 快照、名额、期限与 singleflight；两个 REST 操作；两入口的 lint/pending_sources；权限矩阵、说明余量、生成物、错误双语、真实契约 fake；LW8 API 与两个 MCP scope；计划/物理工作/成本及容量闭环 | 服务端新操作全部可达；S1 自带前端生成类型、错误字典、fake 与其测试，尚无健康入口，不引用 S2 才存在的导出 |
+| S1，`m10-p3-s1` | 来源表示/Extractor 2兼容前置；来源整区 metadata；linking 八条规则、sources 索引、流式分批读取；wiki 快照、名额、期限与 singleflight；两个 REST 操作；两入口的 lint/pending_sources；权限矩阵、说明余量、生成物、错误双语、真实契约 fake；LW8 API 与两个 MCP scope；计划/物理工作/成本及容量闭环 | 服务端新操作全部可达；S1 自带前端生成类型、错误字典、fake 与其测试，尚无健康入口，不引用 S2 才存在的导出 |
 | S2，`m10-p3-s2` | 健康路由、导航、摘要/每卡分页、刷新世代、模式提示、路径与附件落点、双语、LW8 page | 只消费已合并 S1 的契约；沿现有 UI 组件；搜索与全局分页默认行为不变 |
 
 每Step的每个提交都以单独build/vet/lint/short为交付要求；涉及 Web 时同时 tsc/knip/vitest。每 Step 经三审、修复复核、全部运行时变异、门禁、分支 CI、no-ff 合并 CI、record CI 后才释放后一步。只完成设计不是 S1 完成。
@@ -23,7 +25,7 @@
 
 P2完成提交`f6bd0cde…`的[push workflow 40861860430](https://github.com/open-nerve/NerveWiki/actions/runs/40861860430) attempt1，全11 jobs及必需步骤成功。强接受原件为`ci-p2done-f6bd0cde/root-ci-acceptance.json`；P3释放原件为`root-p2-completion-and-p3-release-f6bd.json`，SHA-256 `67fa89c356c85bcb4e08beb5789aecd2d43d6a724f672eb1e848a47a025500d8`。本文按 root 已核的精确 main 编写，不把 S3 分支树相同当 Phase 已完成。
 
-**设计后的入口维护**：本设计落库提交 `9e38a38f648ffa19130afb8a8b468b792dad1381` 的 [CI 40897835721](https://github.com/open-nerve/NerveWiki/actions/runs/40897835721) attempt1实际失败：既有M8搜索守卫generic `go`首页40.621258 ms超过原40 ms界，后八条costs命令NOT_RUN，e2e/image skipped。原设计审查接受的是冻结设计语义，并不构成这次运行通过。主持者实施决定61选择有明确来源与检测取舍的整表参考维护；文档 `aa860be1b32bb98410e6a6811d2d87569de78b25` / CI40921122246 attempt1，以及实际no-ff合并 `b957fdbe0367a9a6ff0f65d2afc303db49a755c2` / 首次main CI40925905708 attempt1，均已分别由主持者按精确对象接受，见[搜索守卫校准记录第7节](reviews/search-guard-calibration-review.md#7-维护文档合并与main-ci)。**本维护记录自身提交/CI仍待产生；新发现的合法空名称frontmatter链接来源丢失问题仍开放，决定62的具体设计修订与三位独立审查待完成。P3/S1仍未放行，后续须绑定该修订的实际设计提交/CI，并由主持者重新绑定P3放行回执与S1-0候选**；不把9e38的原失败attempt写成绿。本次记录不改本文设计决定49–60、SQL/契约/预算、容量阈值、变异与所有实施准入；新增来源修订尚未落入本文，S1/S2结果仍待实施。
+**设计后的入口维护（以下保留601c写入时的历史状态；该记录自身CI现已接受，见本文首段及来源修订记录）**：本设计落库提交 `9e38a38f648ffa19130afb8a8b468b792dad1381` 的 [CI 40897835721](https://github.com/open-nerve/NerveWiki/actions/runs/40897835721) attempt1实际失败：既有M8搜索守卫generic `go`首页40.621258 ms超过原40 ms界，后八条costs命令NOT_RUN，e2e/image skipped。原设计审查接受的是冻结设计语义，并不构成这次运行通过。主持者实施决定61选择有明确来源与检测取舍的整表参考维护；文档 `aa860be1b32bb98410e6a6811d2d87569de78b25` / CI40921122246 attempt1，以及实际no-ff合并 `b957fdbe0367a9a6ff0f65d2afc303db49a755c2` / 首次main CI40925905708 attempt1，均已分别由主持者按精确对象接受，见[搜索守卫校准记录第7节](reviews/search-guard-calibration-review.md#7-维护文档合并与main-ci)。**本维护记录自身提交/CI仍待产生；新发现的合法空名称frontmatter链接来源丢失问题仍开放，决定62的具体设计修订与三位独立审查待完成。P3/S1仍未放行，后续须绑定该修订的实际设计提交/CI，并由主持者重新绑定P3放行回执与S1-0候选**；不把9e38的原失败attempt写成绿。该维护记录当时不改本文设计决定49–60、SQL/契约/预算、容量阈值、变异与所有实施准入，新增来源修订当时尚未落入本文；本提案现仅按决定62明确列出的来源表示/兼容合同作修订，其余保持，具体第二稿现已完成三位独审及原席复核并由主持者接受设计语义；最终事实稿投影/实际设计提交自身CI/产品入口仍待，S1/S2结果仍待实施。
 
 已完整阅读三份只读调查及 authority/capacity 补充，核对关键实际源码；调查的旧头为 f6b397b7/ecd79c77，主持者已在 f6bd 验证相关代码未变。当前事实：
 
@@ -35,7 +37,7 @@ P2完成提交`f6bd0cde…`的[push workflow 40861860430](https://github.com/ope
 
 ## 2. 目标、范围与上级修订
 
-读者打开健康页或调用工具时，得到同一快照的提示；普通模式四条、LLM Wiki 八条。不拒绝任何正常写入，不维护写时计数。只读 page metadata、linking 已存索引及最终返回附件的 metadata；不读正文、不即时 Markdown parse、不 reindex、不修改 Extractor。
+读者打开健康页或调用工具时，得到同一快照的提示；普通模式四条、LLM Wiki 八条。不拒绝任何正常写入，不维护写时计数。只读 page metadata、linking 已存索引及最终返回附件的 metadata；lint请求不读正文、不即时Markdown parse、不reindex。决定62另设S1-0a来源表示前置：复用已有事实，把真实空属性路径保为非NULL空串，writer/generated与Extractor 1→2同一提交；存量由管理员用新版命令重建，不能把此离线操作放进lint请求。当前仍为v1，v2待实施；详见§3.0。
 
 不做 P4 的虚拟文件/目录/ingest，不做 P5 prompt/系统说明段，不改真实客户端配置，不做 M11 升级，不顺手改搜索或全局分页交互。
 
@@ -53,11 +55,15 @@ P2完成提交`f6bd0cde…`的[push workflow 40861860430](https://github.com/ope
 10. 00 §4.11/§4.18、API表、§7/8/9/12/13及头状态同步真正接口/运行owner/Stop；MCP notebook入口Gate的HTTP404在tool之前，account及gate后用例才按内部码次序。
 11. P1/P2 §9在实际P3/S1完成后追加承接证据；设计接受时仅补“合同已细化、实现待P3”，不提前写完成。全部语义替换与未来完成投影按§8分开。
 
+12. 主持者的决定（负责人可以改判）62：明确推翻整个P3“不升Extractor/不需reindex”的旧范围承诺，仅为保存已有的body/property区别。00§4.10/4.11、M6移交注意2与总体§13.3#6同步；原sources深度/位置丢失、MaxLinks、正文限制和parser保持。F明确wikilink/link/embed/image；PageProperties保留IS NOT NULL，v2新写/重建后key=""进入原API/面板。P4补旧事实Unknown与未改页coverage，不能以空union推新ingest。当前M6/README的v1说明不预改成已实现，实施时更新逐条列在§8。
+
 ### 2.2 需要负责人确认
 
 无。用户已授权M10内的小选择由主持者决定。SQL/算法、游标、容量候选与Web九项选择已按实施决定49–60完成原席设计复核，见[设计审查记录](reviews/P3-design-review.md)；真正无法满足本Phase范围的架构冲突再报告，不能擅自降级成“实施时再想”。
 
 主持者的决定（负责人可以改判，连续实施编号，不覆盖00总设计1–40系列）：49 wanted有界source union；50索引测量准入；51 item_key/有界游标/StartCursor/LJ身份；52附件跟随；53运行预算/flight/交付前再授权；54 MCP B/C容量候选；55 Web九项；56无rule却给limit/cursor的组合参数422；57各规则独立豁免、root/AGENTS真实坏sources仍查。58 wiki 唯一 Runs owner 的幂等 Stop/recover 与 bootstrap 全出口收尾；59 P4 在删旧索引前捕获旧合格引用、旧发出页资格来自 unit pre-change facts；60 从经 Planned 的 compactNodes 构建候选 kind 存在表，不调用 ByKeys。root于2026-10-29核定49–57进入三审、58–60用于第一轮修订；不能据此写成原席已关闭、产品、性能或CI已经验收。
+
+**主持者的决定（负责人可以改判）62**：采用现有nullable property_key的NULL/空串区分、同提交Extractor 2、明确管理员reindex和已有读者/API兼容；S1-0之后先S1-0a，新增S63–S69而不改原72行；P4无法证明旧事实/未改页覆盖时不新增无法证明的标记，正常编辑继续。方向由root核定，本次具体第二稿经三位独审及原席复核后已由主持者接受设计语义；最终事实稿投影/实际设计提交自身CI仍待，不是实现、成本或产品放行。
 
 ### 2.3 方案比较
 
@@ -66,12 +72,49 @@ P2完成提交`f6bd0cde…`的[push workflow 40861860430](https://github.com/ope
 - **不选：raw 聚合加 source_ids 数组后 Go 合组。** 能修正 distinct，但全量来源关联集合随边数增长；不能满足内存承诺。
 - **退路只用于比较测量，不默认交付：本本 source ids 一次读完，逐页按 PK 读链接。** 能保证 notebook 隔离且无新索引，但 10 万页可能 10 万次往返；若候选 keyset 的物理范围/写入代价不接受，必须重新审查该取舍，不偷偷提高期限。
 
+来源表示另比较三种：推荐复用nullable字段，以等长bool参数保存Link.InFrontmatter的已有事实；新增origin列仍不能从旧NULL恢复来源，也需未知状态/版本及重建，增加DDL和重复不变量，无当前需求；保留NULL近似虽省重建，却会把空属性算正文，错误消化D/F并污染P4旧union，不采用。仅改writer而不升版本、把旧行UPDATE为2、设非法0都不正确。该修正有全量旧页stale和升级成本，但利用已有索引/版本/事务重建机制，属于局部索引表示修正；无重大未解架构冲突。
+
 ## 3. 服务端
+
+### 3.0 来源表示与版本兼容前置（S1-0a；决定62，待实施）
+
+当前链为PageFacts保留Property/Quote→Link.InFrontmatter识别合法空键属性→linksParams只传Property→InsertLinks的NULLIF把空属性与正文合并。M6/P3§3.2、P3A的L6、M6/P4§3.3和M6/P5§4记载这一v1限制；原审查不是本修订的接受证据。新合同不修改parser或拒绝合法空YAML键：
+
+| 输入已有事实 | 拟写property_key | origin读义 |
+|---|---|---|
+| Link.InFrontmatter()==false | SQL NULL | 真实正文 |
+| true且Property=="" | 非NULL空字符串 | 真实空路径属性，不能计body |
+| true且Property非空 | 原完整路径 | 属性；是否首sources slot仍按§3.8 |
+
+linksParams逐边追加InFrontmatter bool输入；它与ranges/kinds/property_keys/targets等所有数组等长、同序。InsertLinks仅把property_key的NULLIF改为CASE WHEN u.in_frontmatter THEN u.property_key ELSE NULL::text END；anchor/display/target-key的原NULLIF不改。sqlc输入及generated SQL与writer、domain.Extractor=2同一完整提交；版本描述包括“持久化事实的表示”，即使Extract产物没变也需这个边界。来源表示不加列/表/新授权/DDL；格式转换经管理员reindex。00026的property_key IS NOT NULL索引自动收空路径行，不重复造。SQL/Go的nullable值不能COALESCE或按空字符串判body。
+
+旧v1的NULL仍有歧义，不能UPDATE冒充v2或用extractor=0（00020要求>=1）。所有旧indexed页对版本敏感读者成为stale；lint按§3.4计数/跳过，绝不请求时补parse。真实内容写/恢复经ReplacePage/AddPage升为v2；纯改树/重新解析resolution/普通no-op不必替换事实，不能当修复路径；来源通常只读，所以仍需管理员reindex。
+
+| 现有消费者 | v2实施后的兼容边界；其余语义不改 |
+|---|---|
+| Views.Resolve | 版本或revision不匹配时用阅读已解析的链接重新resolve；不回写索引，不给lint开正文例外 |
+| Rewrite.followed、BatchLinks.Indexed/Reached | 旧extractor跳过索引链接改写；batch另核revision。真正改写仍用重新解析的InFrontmatter |
+| Backlinks | 保留旧索引的页/计数，不给非current行正文context |
+| PageProperties | 三组IS NOT NULL投影保持：v2的key=""可返回并签asset地址，body不返回；v1空键仍遗漏直至重建 |
+| IndexPages/IndexItems、inbound counts、tags/aliases、export LinkedPages、LinksReached/SetResolutions | 当前无统一Extractor过滤；本修订不扩大它们的过滤，resolution更新不使旧来源可信 |
+| module.Extractor、Store.View/IndexedOf/Backlinks版本输送、checkLinks及fixture | 常量由domain公开；更新“当前=1”的期望，保留literal 1作为合法旧格式/DDL下界；不能一概替换全部1 |
+
+PropertyLink.key已允许空字符串，Web的exact-path Map/queue也能用空键；这是明确的可见修正，不加字段、不改无关UI。S1-0a须真实REST与asset签名及Web正反证，不能以schema容许替代。sources key/path/depth/MaxLinks碰撞合同原样。
+
+管理员以新版nervewiki reindex在已有单实例升级顺序中于migrate up后、恢复serve前执行。启动/auto_migrate不会自动修复Extractor。每本的**linking/rekey重建阶段**由Rebuild.Notebook在一个事务中执行：notebook FOR NO KEY UPDATE→index锁→rekey→删linking派生事实→逐页parse/AddPage→resolve→links事件；该事务持锁并阻该本写，成功则提交，本阶段失败/撞键不留下本阶段的部分改动。它不包住后续search入队。
+
+bootstrap在Rebuild返回后另调SearchIndex.Requeue；除缺失本等既有提前返回路径外，ctx仍可用时，即便linking失败/撞键也尝试入队。Requeue按id找缺失/旧tokenizer搜索行，QueueSearch每批至多10000节点、各自事务提交；当前tokenizer不入队。后批失败不撤销前批，queue失败不回滚已提交的v2链接索引，linking的笔记本/index锁也不覆盖后续queue工作。命令在同一本内就可能部分成功，全实例亦非原子；不能从命令失败推断链接仍是v1或队列未变。普通失败下全本模式记录失败并继续其它本、最后返错；单本模式遇linking错误时，ctx可用仍先尝试queue，再连同queue错误返回；只queue失败或撞键最终也返错。缺失本、取消、输出错误等提前路径照bootstrap现实现，不改命令退出/继续行为。
+
+旧v4搜索行可能触发README已有的后续重建代价；入队与之后serve的搜索job构建另分阶段。回退旧binary会视v2非current，旧writer可再造v1，重回新版须再重建；不允许混跑writer。这里不授权操作真实用户库。
+
+必须实测测试自有库的v1→v2重建、写入代价及锁/失败/搜索队列边界，见§7.1/7.4。历史330秒只是旧估计，既有M6/M8数字不是本次测量；生产停机/WAL/磁盘与负载由M12真实环境复核。
 
 ### 3.1 文件与依赖方向
 
 | 文件（新增除标“改”） | 所有权与职责 |
 |---|---|
+| linking/domain/facts.go、adapter/postgres/store.go、queries/links.sql及gen（改） | S1-0a的bool输入/CASE、同提交Extractor 2及来源注释；真实parser/存储与旧格式测试 |
+| linking既有读取/API、bootstrap reindex/REST tests、W/pages/page/page-properties.test.tsx及必要schema说明（改） | v1兼容、v2空key API/asset/Web正反证；不加新公开字段 |
 | `page/source_area.go`（改）、`page/adapter/postgres/lint_metadata.go`、`queries/lint_metadata.sql`、相应 gen | `SourceArea.Nodes` 的严格整区 metadata；`NewLintNodes(pool)` 的紧凑节点事实；仍只读 page 表 |
 | `linking/domain/lint.go`、`lint_target.go`、`lint_sources.go` | 规则名、canonical、条目身份、sources JSON 判定；不依赖 wiki 或适配器 |
 | `linking/app/lint_reads.go`、`linking/adapter/postgres/lint.go`、`queries/lint.sql`、`linking/lint.go` | 已决定范围后的窄读取端口；全部 SQL 经 sqlc/Planned；分批读取与规则聚合 |
@@ -122,6 +165,8 @@ type IndexedHead struct { ID uuid.UUID; Extractor int; FrontmatterValid bool }
 type EdgePos struct { SourceID uuid.UUID; Start int32 }
 type EdgeHead struct { EdgePos; TargetBytes int64 }
 type LintEdge struct {
+
+    // PropertyKey nil为v2正文，指向空串仍是属性；旧版本先由current门排除。
     EdgePos; Kind string; PropertyKey *string; Target string
     TargetKey, AltKey *string; ResolvedID *uuid.UUID; ResolvedAsset, Ambiguous bool
 }
@@ -170,6 +215,8 @@ snapshot 内次序固定：**StateOf → SourceArea.Nodes（需要时）→紧�
 
 `current(P)` 为当前 extractor 的 indexed_pages 行；不读正文 revision 对照、不寻找没有索引行的页；不可信旧 extractor 计入一次 `stale_pages`。stale count 数本本索引旧行（含来源/AGENTS），各规则不能重复累计。候选 page 若 stale 不在 orphan/missing/frontmatter/pending 候选中；stale emitter 不为任何规则贡献边；asset 没有 extractor，本身不当 stale page。
 
+本次拟定current为Extractor 2；S1-0a未实施前实际常量仍为1。旧v1页不靠空值猜回：stale来源target仍可属area、故invalid_sources不因其stale报错，但不能给D/P提供消化证据；asset无extractor，旧来源父不在F时可独立pending。mixed版本结果带stale_pages，不宣称完整/干净。P4的Unknown不能直接沿用“跳过即为空”，见§3.8.2。
+
 | 规则 | 候选/发出者 | 特有排除与计数单位 |
 |---|---|---|
 | wanted | current 发出者；LLM 去掉来源页 | 根/AGENTS 仍可发出；完整规范化及附件/虚拟排除；一 canonical 组一项，pages 为不同 source 的 union |
@@ -194,7 +241,7 @@ WHERE translate(key, 'SOURCE', 'source') = 'sources';
 DROP INDEX page_properties_sources_idx;
 ```
 
-迁移只归 linking，进 sqlc schema 与索引名检查；不提升 Extractor，无新表授权。必须以保存 5000 条链接（含 sources 属性/非 sources 对照）测新增索引的写入代价，并实测迁移逐表扫描/构建时间、索引大小、SHARE 挡写不挡读的锁时间；写进升级说明/M12 handoff。不能只给查询成本而漏掉迁移代价。
+迁移只归 linking，进 sqlc schema 与索引名检查；sources索引迁移本身不另升Extractor；§3.0的来源表示以S1-0a单独升至2，无新表授权。必须以保存 5000 条链接（含 sources 属性/非 sources 对照）测新增索引的写入代价，并实测迁移逐表扫描/构建时间、索引大小、SHARE 挡写不挡读的锁时间；写进升级说明/M12 handoff。不能只给查询成本而漏掉迁移代价。
 
 keyset 读的测量候选为 **完整** `page_links_notebook_id_source_id_range_start_idx ON page_links(notebook_id,source_id,range_start)`，可 INCLUDE 仅短的固定 metadata，绝不 INCLUDE target/value。它不是 resolved_id IS NULL 索引。先跑现有索引的真实计划/工作量与前中尾批退化，再在测试自有库加候选比较；只有读范围或预算确实超界且该索引修正、5000-links 保存代价已量，主持者才批准迁移。摘要成本超线不能默认以索引数量解决；ambiguous/frontmatter 的可选部分索引也逐条相同准入。已有 property-links 索引不重复造。
 
@@ -382,7 +429,7 @@ WHERE ip.notebook_id=sqlc.arg(notebook_id) AND ip.extractor=sqlc.arg(extractor)
 ORDER BY r.id;
 ```
 
-头部的`value::text`为了知道序列化大小会detoast/序列化，随后exact values又读一次，这是**明确两次必要DB工作**，不是声称只读一次TOAST；每页first-key probe只在headers发生一次，values按PK直取，不再找首键。adapter按value_bytes+7选≤8MiB前缀后才调用`:many`，未消费heads只留短buffer。单项大JSON独占一批，不能死循环或截值。界来自现解析器而非假称JSON≤5MiB：令C为固定`page.MaxContentBytes=5MiB`（非配置项），yaml.go现有maxYAMLNodes=10000、maxYAMLDepth=64、别名重复字节≤max(C,100000)，取保守`MaxLintPayloadBytes=6*(C+max(C,100000))+512*10000`作为单JSON及单target的共同宽上界（字符串JSON转义、别名展开与每节点数值/结构余量；PG JSONB::text对float64最小指数的展开可达约324位，512覆盖其符号/小数点/结构）；以现parser→PageFacts→真JSONB::text的边界fixture证明此界（指数数字、字符串转义、别名展开分别覆盖），并由bootstrap将page模块根公开的固定MaxContentBytes传给linking读取预算。不新增用户内容限制、不提升Extractor；旧/非法SQL写入超过这个推导界是脱敏内部不变量失败，不能任意分配。正常批≤8MiB，峰值另含一个合法最大JSON及解码对象；成本须量最大形状。
+头部的`value::text`为了知道序列化大小会detoast/序列化，随后exact values又读一次，这是**明确两次必要DB工作**，不是声称只读一次TOAST；每页first-key probe只在headers发生一次，values按PK直取，不再找首键。adapter按value_bytes+7选≤8MiB前缀后才调用`:many`，未消费heads只留短buffer。单项大JSON独占一批，不能死循环或截值。界来自现解析器而非假称JSON≤5MiB：令C为固定`page.MaxContentBytes=5MiB`（非配置项），yaml.go现有maxYAMLNodes=10000、maxYAMLDepth=64、别名重复字节≤max(C,100000)，取保守`MaxLintPayloadBytes=6*(C+max(C,100000))+512*10000`作为单JSON及单target的共同宽上界（字符串JSON转义、别名展开与每节点数值/结构余量；PG JSONB::text对float64最小指数的展开可达约324位，512覆盖其符号/小数点/结构）；以现parser→PageFacts→真JSONB::text的边界fixture证明此界（指数数字、字符串转义、别名展开分别覆盖），并由bootstrap将page模块根公开的固定MaxContentBytes传给linking读取预算。不新增用户内容限制；这些payload界不另提升Extractor，§3.0的来源表示版本边界仍须执行；旧/非法SQL写入超过这个推导界是脱敏内部不变量失败，不能任意分配。正常批≤8MiB，峰值另含一个合法最大JSON及解码对象；成本须量最大形状。
 
 当前JSON批的SourceSpec只带实际7B首键、根是否array、直接项数（现parser≤10000）；根既非string也无直接string的array时直接产not_link，不读取slot边。合法slot路径最长12B（7+1+4，下标0–9999）；**在SQL里先限制到这个语法后才允许投影property_key**，因此不是先把512条任意长YAML path装进slice再挑字节。窄headers虽含最多12B键，完整target尚未读；预算仍加key实际字节。
 
@@ -455,6 +502,8 @@ spec批按source UUID全程向前，batch_first_source/min与batch_last_source/m
 
 D的正文部分另用短`LintBodyReferencesFirst/After`：与§3.6的本本tuple范围相同，JOIN current indexed_pages、完整wiki-emitter ids的MATERIALIZED关系，WHERE `property_key IS NULL AND resolved_id IS NOT NULL`，SELECT仅source_id/range_start/resolved_id/resolved_asset，ORDER tuple LIMIT512；无target/property JSON。每一短行通过完整area kind表，页候选需current非空，asset需kind一致，再向D的node-id集合记一次。sources部分等该页SourceSlots.Finish后，只把Qualified的resolved来源候选同样喂D；invalid_sources与D因此不能各自解释一套SQL。D是至多source节点数的集合，不是edge关联数组。
 
+上述IS NULL只有在§3.0的v2/current关系内才证明正文；真实空属性路径为非NULL空串，不能用COALESCE(property_key,'')=''或Go空串判断替代。First/After与F各自保此资格；正常named/empty属性仍独立适用通用规则，只有首sources唯一slot能另入D。
+
 正文短读的两个独立生成语句如下，不带has_after OR参数：
 
 ```sql
@@ -484,7 +533,9 @@ count/preview/items复用同次收集器；仅invalid_sources分页在处理完�
 
 **独立oracle与差分**：手写`Sources:["[[raw/a]]"]`加`Sources.0:"[[raw/b]]"`应为一个J坏项、a/b都不进入D；其中一条resolved到区外、为NULL或asset也不能先过滤后变成唯一。无冲突数组应为L合格、旧对象`{"0":"[[raw/s]]"}`应为J，根string/重复文字/MaxLinks截断/第二大小写键/长非slot key分别给独立预期。SQL返回关系→Go结果与手写期望比，不以两个共用错误matcher的产物互比；真实SQL边跨行/字节批、byte headers短投影、必要JSON只按每页读取均留负控。
 
-附件集合：P为current非0来源页，D为上述合格wiki直接引用；F(A)为P中通过**正文**link/image/embed、resolved_asset=true引用A的不同页。A∈D或任一F(A)∈D则已消化；否则F(A)非空由未消化来源页代表、不另列；F(A)空则A独立待消化。stale/0父不加入F；被wiki直接引用的附件不自动消化它的父来源页。F用resolved_id范围EXISTS，完整P ids关系，不array_agg父页。未消化page=P\D；按(created_at,id)排序，最终答出asset再取实际bytes。source边只为F读取，不贡献wanted/ambiguous/orphans。
+附件集合：P为current非0来源页，D为上述合格wiki直接引用；F(A)为P中通过**真实正文**（v2的property_key IS NULL）wikilink/link/embed/image、resolved_id=A且resolved_asset=true引用A的不同页。A∈D或任一F(A)∈D则已消化；否则F(A)非空由未消化来源页代表、不另列；F(A)空则A独立待消化。stale/0父不加入F；被wiki直接引用的附件不自动消化它的父来源页。F用resolved_id范围EXISTS，完整P ids关系，不array_agg父页。未消化page=P\D；按(created_at,id)排序，最终答出asset再取实际bytes。source边只为F读取，不贡献wanted/ambiguous/orphans。
+
+kind已由page_links约束为上述四值，F不需额外kind筛选；若显式筛选必须含全部四种。普通[[asset.pdf]]是wikilink，须非空正例。空路径或named来源属性不能形成F。pending资产输出只需A不在D且F(A)为空的判定；不为测试新造未消费的“已消化父”查询。F的实际EXISTS/父关系读单独控制，D的First/After不能代证。
 
 **R-I1/A2-I1合法增长见证**：真实Markdown parser→PageFacts→生产保存→读取 fixture使用带`---` frontmatter的`sources: "[[a`，加1,800,000个字面YAML双引号转义`\L`（另有`\P`小例），再`z/x]]"`。正文严格小于固定C=5MiB，手写完整expected target为`a`+同数量U+2028+`z/x`，persisted target大于C；不能用被测canonical/matcher生成期望。a/z保留前段两端，短末段`x`使真实保存后的`target_key='x'`非NULL，`resolved_id=NULL`；索引发出页须current、在来源区外，目标无source/virtual/asset排除，首sources只有这条合格slot边。先核真实保存的完整target、key及resolution，再分别沿生产wanted与source-slot读取：`LintWantedEdgeHeadsFirst`→`LintEdgesByPositions`和`LintSourceSlotHeadsFirst`→`LintSourceSlotEdges`均须有此(source_id,range_start)非空证据，完整target与手写值相等；实际wanted有该组且pages=1，invalid_sources有该未解析L项。记录实际源/target字节、两种heads长度、批次及前进，不能用wanted空集合代证。原不带`/x`的单长末段只可留作MaxKey使target_key=NULL的过滤对照，不能作wanted守卫见证。
 
@@ -506,12 +557,14 @@ type IngestBefore interface {
 }
 type QualifiedReference struct {
  TargetID uuid.UUID; TargetIsAsset bool
- Origin ReferenceOrigin // Body 或 FirstSourcesSlot
+ Origin ReferenceOrigin // Known且v2时的Body或FirstSourcesSlot；空属性不在其中
  Start int32            // 旧persisted range，不带raw target/JSON
 }
 type OldQualifiedFacts struct {
  PageID uuid.UUID; Indexed, Current, WikiEmitter bool
- References []QualifiedReference // 仅当前一页，≤MaxLinks；只含当时合格引用
+
+ State OldFactState // P4定义Unknown/KnownAbsent/KnownIneligible/Known；示意合同，非现有类型
+ References []QualifiedReference // 仅Known时可信；当前一页≤MaxLinks，不以空数组冒充Unknown的旧贡献
 }
 type QualifiedBeforeScope struct { NotebookID uuid.UUID; Before IngestBefore }
 // linking app拥有，组合Store的旧索引读与page的Before端口；每被改页一次。
@@ -519,13 +572,36 @@ func (q QualifiedBefore) Capture(ctx context.Context, scope QualifiedBeforeScope
  pageIDs []uuid.UUID, emit func(OldQualifiedFacts) error) error
 ```
 
-P4在Index的同一索引锁下、第一次ReplacePage/DeletePages删除任何旧属性/边前，对本unit写正文或删除的页调用Capture；Store仍只读linking表，以§3.8的短headers/512/8MiB/单合法JSON界抓旧首键和完整未过滤匹配边，旧indexed_pages判current，SourceSlots作唯一资格；Body/FirstSourcesSlot分别标Origin，resolved_id/asset取旧索引，不在最终树重新resolve。Before.NodesBefore给旧发出页和旧resolved目标的source/root/AGENTS/kind/bytes；合格wiki emitter与非空来源目标都用旧事实。只保当前页References，emit后释放；Index把它们并入**旧已消化来源ID union**，去重后至多完整来源数，不保存全unit页×target关联。新合格引用得到候选后，减旧union即可排除“本页已有”及“其他被写/删页原已消化”的两种情况；随后批量查未被写/删页，仍沿00的一条候选语句/索引合同。**这条批量SQL是P4必须另行设计并实测的合同，P3没有交付可直接复用的direct EXISTS**；P4也须首JSON每相关页一次、同source/path的全部匹配边先数唯一性，再按candidate target筛，与同一资格关系及手写oracle差分，不能带回按边重扫JSON或目标预筛。不是每来源目标重读旧JSON。
+P4在Index的同一索引锁下、第一次ReplacePage/DeletePages删除任何旧属性/边前，对本unit写正文或删除的页调用Capture；Store仍只读linking表，以§3.8的短headers/512/8MiB/单合法JSON界抓旧首键和完整未过滤匹配边，旧indexed_pages判current，SourceSlots作唯一资格；Body/FirstSourcesSlot分别标Origin，resolved_id/asset取旧索引，不在最终树重新resolve。Before.NodesBefore给旧发出页和旧resolved目标的source/root/AGENTS/kind/bytes；合格wiki emitter与非空来源目标都用旧事实。只保当前页References，emit后释放；Index只把Known的引用并入**旧已消化来源ID union**，另保留Unknown传播（§3.8.2）；KnownAbsent/Ineligible的空贡献须有各自证明，去重后至多完整来源数，不保存全unit页×target关联。新合格引用得到候选后，减旧union可以排除已知的“本页已有”及“其他被写/删页原已消化”的两种情况；仍不能仅凭剩下候选证明新颖性；须通过§3.8.2旧事实/未改页coverage闸门，并批量查未被写/删页，沿00的一条候选语句/索引合同。**这条批量SQL是P4必须另行设计并实测的合同，P3没有交付可直接复用的direct EXISTS**；P4也须首JSON每相关页一次、同source/path的全部匹配边先数唯一性，再按candidate target筛，与同一资格关系及手写oracle差分，不能带回按边重扫JSON或目标预筛。不是每来源目标重读旧JSON。
 
-page的Before端口在P4用unit起点的窄事实重建：在每个`applyStep`真实写之前，把首次变动节点的Before(parent/name/kind)记入unit memo（新建记起点不存在；删除子树逐节点记；只取第一次，不被后续临时名/move覆盖）；首次正文写另记旧PageBytes。最终observer请求某ID时，以当前page port节点事实叠加这些起点Before，沿父链递归重建初始祖先（父节点移动/删除也在memo；不变祖先走现page.Nodes/Ancestors），按Write.Notebook起点source_root_id和原name判source/root/根AGENTS。此前已变过祖先而后来才被写的子页，也从同一逆向memo重建，不能拿那一刻的Step.Lines直接当unit起点。当前树缺失节点从删除memo可读，起点不存在明确返回Exists=false；缺必要祖先是内部错误，禁止退回当前树。只缓存请求过的紧凑节点/路径事实，不读正文；tree锁和unit事务沿现Writer边界。Event新增unit拥有的BeforeIngest只读能力，bootstrap把Write.Kind/Notebook/ChangesetID与该能力一起交linking；P4阶段新增真实捕获与删除/改树测试，P3不提前改Event/Store写热路。
+page的Before端口在P4用unit起点的窄事实重建：在每个`applyStep`真实写之前，把首次变动节点的Before(parent/name/kind)记入unit memo（新建记起点不存在；删除子树逐节点记；只取第一次，不被后续临时名/move覆盖）；首次正文写另记旧PageBytes。最终observer请求某ID时，以当前page port节点事实叠加这些起点Before，沿父链递归重建初始祖先（父节点移动/删除也在memo；不变祖先走现page.Nodes/Ancestors），按Write.Notebook起点source_root_id和原name判source/root/根AGENTS。此前已变过祖先而后来才被写的子页，也从同一逆向memo重建，不能拿那一刻的Step.Lines直接当unit起点。当前树缺失节点从删除memo可读，起点不存在明确返回Exists=false；缺必要祖先是内部错误，禁止退回当前树。只缓存请求过的紧凑节点/路径事实，不读正文；tree锁和unit事务沿现Writer边界。Event新增unit拥有的BeforeIngest只读能力，bootstrap把Write.Kind/Notebook/ChangesetID与该能力一起交linking；P4阶段新增真实捕获与删除/改树测试，P3不提前为P4改Event/Store写热路；S1-0a的既有来源写入参数修正按§3.0单列，不实现Capture或ingest。
 
-**近似范围保留**：被写/删页的旧JSON/解析与发出页资格按上述起点事实；C没有写也没删的页仍按C之后树/解析判断。混合改树导致这些未改页改解析/跨source边界时历史标签可能多/少一次，仍是00§4.14明确近似，不把整个ingest称为旧快照精确。
+**近似范围保留**：在§3.8.2所需旧事实已知、未改页覆盖足够时，被写/删页的旧JSON/解析与发出页资格按上述起点事实；C没有写也没删的可信页仍按C之后树/解析判断。混合改树导致这些未改页改解析/跨source边界时历史标签可能多/少一次，仍是00§4.14明确近似，不把整个ingest称为旧快照精确。
+
+以下旧/新引用反例以Known旧事实及足够的未改页覆盖为前提；Unknown输入按下一节保守不加标记，不能用这些正例去豁免旧v1。
 
 交接反例：旧对象`sources:{"0":"[[raw/s]]"}`改为数组，应允许成为新ingest；旧数组改为同数组（伴随正文edit）不能重复标；旧dotted冲突改为唯一数组应允许新ingest；旧正常数组变冲突不能新消化。原来源页被移出再写、原wiki页移入再删、祖先改名使AGENTS身份变动、同batch临时名/先删父再处理子，都用unit起点资格。P3纯matcher用旧/新JSON成对的手写oracle先守JSON差别；OldQualifiedFacts实际类型/捕获由P4实现；P4 Capture/Before端口/真实ingest与成本是P4必须兑现的交接，不写本期已实施。
+
+### 3.8.2 P4旧事实未知与未改页覆盖（决定62；仅交接，待P4）
+
+OldQualifiedFacts的Indexed/Current与BeforeIngest.Exists必须合成明确状态，空References本身不是旧事实充分的证明：
+
+| 旧状态 | 允许的推论 |
+|---|---|
+| KnownAbsent | unit起点确实不存在的新页；旧引用已知为空 |
+| KnownIneligible | 可信unit起点事实证明不是合格wiki emitter；其旧贡献为空由资格证明，不由缺索引证明 |
+| Known | 已存在的合格页具有当前v2索引、旧JSON/旧resolution与起点资格，可按§3.8.1得到确切引用 |
+| Unknown | 已存在且可能合格页的索引缺失/非current，或判定所需旧事实不足；不可当空union |
+
+一个v1页原有真实body/sources指向S，普通edit保留该链接只改旁文时，跳过旧行再把新v2引用当新证据会错误标ingest。已有页缺索引与新页起点不存在必须分开。旧empty-property→新真实body/唯一sources在Known状态可新消化；旧真实body/sources→相同引用不能重复标。
+
+未改页一侧同样必须有足够coverage：新建P虽KnownAbsent，未改的旧Q也许早已引用S；过滤Q后NOT EXISTS不能证明S原未消化。新标记前，所有对该候选历史判定有影响的旧/未改事实须已知；完整相关live事实在unit边界current是一个充分条件，P4可设计更窄但同样充分的证明。不得只检查被改页Current，或只在最终树扫描stale而漏掉本unit已删/刚升级的旧页。
+
+未知时正常编辑和索引维护继续成功、既有标记保留，不新增无法证明的ingest。升级存量须先以新版reindex恢复可信事实，之后恢复可靠判定；不补造此前标签。这个保守缺标与§3.8.1既有“已知未改页按最终树”的混合改树近似分开记录。P4须具体设计高效coverage/Unknown传播、脱敏诊断和索引锁内成本，不因此许可无界每次全树扫描、新持久化ready字段、请求时正文修复或新公开错误。
+
+Unknown是旧索引/证据不足的显式状态，不吞掉数据库读取失败、取消或既有内部不变量错误；§3.8.1“缺必要祖先是内部错误、禁止退回当前树”保持。正常证据缺口的保守缺标与执行失败分别处理，不能为了继续编辑把真正错误伪装成KnownAbsent或Unknown。
+
+P4实施必须有真实普通edit、stale/missing旧Q被改/删、新P加未改stale Q、全部可信且真正新P、重建后不把保留旧链接标新等非空oracle；Unknown→KnownEmpty与丢未知未改页的NOT EXISTS分别做运行时变异。这些属于P4表/门禁，不计入P3已实施或已跑。
 
 ### 3.9 ambiguous、身份、排序与游标
 
@@ -757,6 +833,7 @@ busy、取消同游标、错误保留等精细交错主要在Vitest及S1 Go；�
 | 提交 | 完整内容及文件 | 本提交的最小证据 |
 |---|---|---|
 | S1-0 容量处置 | root按§7.6核定已触线后的窄移界；Makefile/ci注释当前布局、清单生成核对；不改超时 | 旧470清单按候选167/70/118/115；完整新布局本机双轮，先证明现有测试不丢不重；结果是本机，不代后续新代码/main CI |
+| S1-0a 来源表示/版本兼容 | §3.0的writer/等长bool/generated与Extractor 2同提交；API空key/asset/Web、literal v1/读者/真实重建/升级说明和必要生成物；不新增lint operation | OF/OS/OB/OW及每提交build/vet/模块lint/short，Web同时tsc/knip/vitest；当前v1说明按§8.1a同期修订。此时无D/F实现，不能宣称S66/67/69已跑 |
 | S1-1 数据读取 | sources迁移、page.SourceArea.Nodes/LintNodes、linking heads/短边头/精确边读、sqlc生成；对候选复合索引先量后定；索引名/计划/物理范围/metadata-only测试与独立Makefile行 | 真实>10k整区、root/空页/trash/asset/currentbytes/created_at、explicit standard root；source索引缺失与keyset退化反例；所有模块lint/build/short |
 | S1-2 规则内核 | domain canonical/sources/身份游标、linking规则读与聚合、真实SQL与各口fakes、sources旧对象/数组纯oracle；合法parser转义大target/JSON边界读与计数；完整count/preview/items一致；README迁移测量入口可以随本提交 | 表格、跨拼法union、8规则独立真库、上下界、Unicode/长JSON/TOAST；本提交不公布不存在的REST |
 | S1-3 运行编排与内部授权 | wiki app Execute/Runs/recover/Stop、模块根窄内部入口、bootstrap app.run/close全出口接线；同提交ActionLintRead、wiki.Actions与access规则/规则测试；真实snapshot/配额/leader和follower取消/撤权/生命周期 | 真Authorizer成功进入内部用例；actions全集测试绿；PG backend快照与清理占名额；panic/Stop/所有退出真实接线，尚无HTTP路径 |
@@ -766,6 +843,8 @@ busy、取消同游标、错误保留等精细交错主要在Vitest及S1 Go；�
 | S1-7 审查与文档 | 三审/逐组修复/原席复核；root受控脚本应用§8的S1文档与审查记录 | 全变异复跑、完整门禁、精确分支CI绿；merge/record两main样本后才能放行S2 |
 
 S1-1的可选索引若还没有证据，不可先提交“未来会测”的迁移；可以同一提交准备query/tests、在未提交工作树测清再决定包含哪个索引。S1-2/S1-3不提前增加未接线的公开HTTP/MCP operation。S1-3的lint.read内部action已有Execute使用者，必须同提交注册wiki.Actions与access rule；action并不要求先有公开operation，不能混为一类。新HTTP码/生成物/双语与真实handler必须同提交。
+
+S1-0→S1-0a→S1-1..S1-7顺序固定。S1-0a不是新Step或维护旁支；属于S1的一个独立绿提交，不把版本与writer拆成过渡提交。S63/S64/S65/S68在S1-0a已有catcher后执行，S66/S67/S69待S1-2真实规则/生成查询到位；S1最终复跑本Step原S01–S62及新增S63–S69共69行（含S68既有属性面板的Web控制），S2仍交W01–W10十行，Phase总79行不漏。重建成本原件可在S1-0a建立代表样本，§7.4/7.5完整成本与最终输入复核在S1收尾完成。
 
 ### 6.2 S2提交次序
 
@@ -799,6 +878,42 @@ S1-1的可选索引若还没有证据，不可先提交“未来会测”的迁�
 | MI | `go -C server test -p=1 -race -count=1 ./internal/modules/page/adapter/mcp -run '^TestTheBuiltInInstructionsAreShort$'` | 两入口真实SDK≤3796，独立于bootstrap工具名检查 |
 | WB | `pnpm --filter @nervewiki/web exec vitest run src/pages/notebook/health-page.test.tsx src/pages/notebook/health-rule.test.tsx src/test/lint-server.test.ts` | 健康/fake竞态 |
 | EW | 下方同一heavy锁中的“build当前源→指定Playwright”命令 | 每轮重建真实嵌入前端；正式门禁仍make e2e |
+
+**S1-0a的拟新增catcher与精确命令**（名称须实际创建；本提案没有执行）：
+
+~~~sh
+# OF：真实parser事实；quoted-empty/wiki、quoted-empty/markdown、single/double、same-page-body。
+docs/v0.1/claude_to_codex/tools/heavy.sh go -C server test -p=1 -race -count=1 ./internal/modules/linking/adapter/markdown -run '^TestLinkOriginFacts$'
+# OS：实际writer与PageProperties；NULL与空串必须分别断言。
+docs/v0.1/claude_to_codex/tools/heavy.sh go -C server test -p=1 -race -count=1 ./internal/modules/linking/adapter/postgres -run '^TestLintOrigin(Rows|Properties)$'
+# OB：真实组合根内容写/读取/管理员重建路径与REST；不拿手工Facts替代合法来源见证。
+docs/v0.1/claude_to_codex/tools/heavy.sh go -C server test -p=1 -race -count=1 -timeout 15m ./internal/bootstrap -run '^TestTheLintOrigin(Compatibility|Reindex|Properties)$'
+# OW：在既有文件内新增describe("empty property key")，三个真实渲染用例。
+docs/v0.1/claude_to_codex/tools/heavy.sh pnpm --filter @nervewiki/web exec vitest run src/pages/page/page-properties.test.tsx -t 'empty property key'
+~~~
+
+OF期望来自字面文档/位置，不调用被测InFrontmatter产生期望。OS的TestLintOriginRows/current-format断言literal 2、empty-path非NULL空串、相同页body为NULL、named路径不变，覆盖AddPage/ReplacePage；TestLintOriginProperties/empty-key包含page/unresolved/asset并排除body。OB的Compatibility/literal-v1先建真实旧格式fixture（明确literal extractor=1、empty-path已塌为NULL），证明新写=2、旧页不能靠tree-only/no-op升版、Views fallback/rename与batch skip/backlinks计数保留而无context；不能用Extractor-1构造“旧”以免变异变成非法0。Reindex各子测试经实际bootstrap.Reindex命令编排，按下表分别断linking与queue的最终状态、命令结果及全本继续；核内容/revision不改，不能把非nil命令错误等同于整本未变。它们仍在同一OB总选择器内，用index/现有读者断言，不依赖尚不存在的D/F。Properties/empty-key经真实REST及asset签名，OW分别核resolved page/unresolved link/attachment的exact-path消费。
+
+**OB重建子名与状态oracle（首轮A finding1/B-M1/C-I1修订；均待实施）**：下列为TestTheLintOriginReindex下必须创建的实际子名，已有OB的^TestTheLintOrigin(Compatibility|Reindex|Properties)$选择器全部涵盖。故障三组及clash-queues分别再有single/all子项：single调用指定notebook，all调用全本且放一个后续可成功的本作继续执行证人；断错误/输出和真实数据库状态，不只看退出状态。
+
+| 子名 | 真实输入/故障与独立期望 |
+|---|---|
+| literal-v1 | 合法literal 1旧链接行经真实parser/新writer重建为literal 2，正文与revision不改，合法空属性仍非NULL空串；linking成功不靠最终命令结果推断 |
+| linking-fails-queue-succeeds/single、all | 在测试自有库用触发器令linking事务已开始修改后的真实写失败；旧linking/rekey快照保留且无该阶段提交事件，ctx仍可用，缺失/旧tokenizer节点实际入队。命令返错；all仍处理后续本 |
+| clash-queues/single、all | 用既有同胞键冲突路径；linking事实/旧键不变，搜索queue可提交变化，命令返错；all继续其它本。保留现有CLI撞键仍入队的断言 |
+| linking-succeeds-queue-fails/single、all | 测试自有page_search_queue触发器使首批QueueSearch失败；linking已提交为literal 2及links事件，队列该批无部分写入。命令返错；all仍处理后续本；不把已提交v2回退为1 |
+| queue-partial-commit/single、all | 准备超过10000个合格live节点，按确定id让第一批10000成功、下一批在真实QueueSearch失败；从另一个连接确认已提交的第一批完整保留，失败批无部分写入，linking仍已v2；命令返错、all继续。不可缩小生产requeueBatch或把两批放进测试外层事务伪造原子性 |
+| tokenizer-eligibility | 同一真实命令下混合缺失、旧tokenizer、当前tokenizer；前两者入队，当前行及其原有queue状态不因本命令被改写。不得把入队成功当搜索job已构建；当前/旧版本事实用独立预期 |
+
+错误由实际命令的既有可控路径/测试自有触发器造成，不改生产编排或mock一个返回错；queue状态oracle在测试自有库不启动消费队列的search job，避免后台清队列干扰。queue阶段可用同一触发器屏障核linking已提交及其锁已释放，不声称linking锁持续覆盖queue。准备/执行代价仍须按§7.5重新量，不能因后批控制超过10000节点而增加原timeout或省略真实分批。
+
+保留cmd/nervewiki/reindex_test.go现有TestReindexTellsANotebookWhoseNodesAreNotQueued（成功重建后queue失败、全本继续及单本合并错误）和TestReindexReportsClashesAndFailuresAndRefusesNoNotebook（撞键仍入队、linking旧状态及缺失本）。它们不被新OB替代，S1-0a用以下现有CLI选择器复核；本提案未执行：
+
+~~~sh
+docs/v0.1/claude_to_codex/tools/heavy.sh go -C server test -p=1 -race -count=1 ./cmd/nervewiki -run '^TestReindex(TellsANotebookWhoseNodesAreNotQueued|ReportsClashesAndFailuresAndRefusesNoNotebook)$'
+~~~
+
+S1-2在LQ中新增TestLintSources/origin与TestLintSources/origin-stale。它们含D First与After各有首/后一批非空合格行，空属性负例不能只落在未读批；F通过真正被pending消费的EXISTS，分别有digested-parent、undigested-parent负例和四种body-kind正例。current/stale目标、named属性、仅空属性与同页真实body/sources对照共用既有count/preview/page判定，预期为手写确切IDs。全应用mixed-v1的stale_pages另在TestTheLintOriginCompatibility/rules-after-S1-2加入，S1-0a不得预建无人调用的规则骨架。
 
 EW不可再套表首的heavy前缀（避免嵌套mkdir锁）。基线、单项变异、恢复三轮各独立执行下列完整命令，不在变异中gen，不复用bin：
 
@@ -901,6 +1016,13 @@ barrier只观察/暂停并随后执行原操作，不替换生产检查或建立
 | S60 | key遗漏Contract或AreaRootID（各单改） | TestLintScopesNeverShare；BL+WA，implicit与两个不同proposedRoot的显式scope |
 | S61 | cleanup前release/过期flight仍可join/旧worker删新flight（各单改） | TestLintBusyReturnsBeforeCleanup；WA+BL，deadline→cleanup→新同key有序 |
 | S62 | 分别只将wanted或source-slot路径的target读取上界收紧为C=5MiB；JSON宽界不动 | TestLintJSONToast/legal-escaped-target/wanted与source-slot；LP各自基线/单改/恢复。真实parser→PageFacts→保存、手写a+U+2028重复+z/x、target_key=x；两生产heads/完整target均非空且规则确有项，非SQL伪种子或更早JSON失败 |
+| S63 | linksParams仅用Property非空判origin，丢掉Quote（只改writer，不改期待） | TestLintOriginRows/current-format；OS。OF补事实见证，实际写入断言须失败 |
+| S64 | 实际执行的generated InsertLinks只把property CASE改回NULLIF；bool参数保持可编译，不运行gen | TestLintOriginRows/current-format；OS，实际SQL的非NULL空串断言失败 |
+| S65 | domain.Extractor回退1、writer保持新表示 | TestLintOriginRows/current-format及TestTheLintOriginCompatibility/literal-v1；OS+OB。literal 2/current、literal 1/legacy独立，不用current-1 |
+| S66 | D First、D After、F的真正body谓词各自改为COALESCE(property_key,'')=''（三次独立单改） | TestLintSources/origin/d-first、d-after、f分别独立执行下方OQ命令；每次空属性目标会错入D或F，断言exact pending IDs |
+| S67 | F的kind条件排除wikilink；另将link/embed/image各单独排除，共四次；无原kind条件时添加此真实过滤 | TestLintSources/origin/f-kind/wikilink、link、embed、image；OQ-K分别执行。普通body [[asset.pdf]]必须改变非空pending结果 |
+| S68 | PageProperties三个平行SQL投影一致加property_key<>''（一次逻辑故障，数组仍等长）；另独立把Web taking的超长key排除改为同时排除key.length===0 | SQL故障：TestLintOriginProperties/empty-key与TestTheLintOriginProperties/empty-key，OS+OB；Web故障：OW的三个empty property key渲染用例。分别baseline/单改/断言失败/恢复，不用假服务端OW冒充SQL kill |
+| S69 | D First、D After的SQL extractor复核分别移除；F生成父资格关系的有效current门移除，三次单改 | TestLintSources/origin-stale/d-first、d-after、f；OQ-S分别执行。D语句边界负控显式给含literal-v1的候选id关系，固定extractor=2，真实生成SQL须拒旧行；另有真实scope端到端排除，不能把只删冗余门的等价变异伪称kill |
 | W01 | Back复用旧entry/inflight/dedupe；nonce单删若实际等价须记录等价理由，不强报kill | health-page“每次返回重新计算、在途离开再返回不Loading”；WB+EW每轮重build，选择实际会违约的重进场景 |
 | W02 | more只比较相同cursor、不比较generation | health-rule“旧more在新summary之后答且两轮同cursor”；WB |
 | W03 | busy沿全局自动retry/retained data不显示error | summary/card各“timer推进仅一次、手动再试”及“有旧data仍报错”；WB |
@@ -912,6 +1034,26 @@ barrier只观察/暂停并随后执行原操作，不替换生产检查或建立
 | W09 | 卡重试重跑summary/刷新成功保留旧展开页错误 | health-rule“局部retry/新summary原子reset”；WB |
 | W10 | output结果后才mount、0规则乱序、锚点不展开 | health-page“重复播报/固定序/零pending锚点”；WB |
 
+**S63–S69执行分解与证据**：原S01–S62/W01–W10的72行文字及历史保持，新增7行为79行；一行内的每次单改都需自己的baseline→断言失败→恢复。以下给每个reader/kind完整选择器，命令中的子名也是必须创建的实际子测试名。D First/After低层SQL复核用过宽候选关系作防御负例，明确这是adapter语句边界测试，不冒称合法ReadScope或端到端调用；完整scope的stale过滤另由真实组合根验证。F以P关系为current门时就改该生产关系，不只删除被P重复保证的SQL条件；若实施中出现冗余门，记录等价并选会破坏真实资格的同一逻辑故障，不能取消本行语义义务。
+
+~~~sh
+# OQ：分别在D First、D After、F三个body故障下独立运行对应一行。
+docs/v0.1/claude_to_codex/tools/heavy.sh go -C server test -p=1 -race -count=1 ./internal/modules/linking/adapter/postgres -run '^TestLintSources$/^origin$/^d-first$'
+docs/v0.1/claude_to_codex/tools/heavy.sh go -C server test -p=1 -race -count=1 ./internal/modules/linking/adapter/postgres -run '^TestLintSources$/^origin$/^d-after$'
+docs/v0.1/claude_to_codex/tools/heavy.sh go -C server test -p=1 -race -count=1 ./internal/modules/linking/adapter/postgres -run '^TestLintSources$/^origin$/^f$'
+# OQ-K：每次只删除本行所检验的一个kind，四行分别执行。
+docs/v0.1/claude_to_codex/tools/heavy.sh go -C server test -p=1 -race -count=1 ./internal/modules/linking/adapter/postgres -run '^TestLintSources$/^origin$/^f-kind$/^wikilink$'
+docs/v0.1/claude_to_codex/tools/heavy.sh go -C server test -p=1 -race -count=1 ./internal/modules/linking/adapter/postgres -run '^TestLintSources$/^origin$/^f-kind$/^link$'
+docs/v0.1/claude_to_codex/tools/heavy.sh go -C server test -p=1 -race -count=1 ./internal/modules/linking/adapter/postgres -run '^TestLintSources$/^origin$/^f-kind$/^embed$'
+docs/v0.1/claude_to_codex/tools/heavy.sh go -C server test -p=1 -race -count=1 ./internal/modules/linking/adapter/postgres -run '^TestLintSources$/^origin$/^f-kind$/^image$'
+# OQ-S：D两语句自身的current复核和F有效父资格分别破坏、分别执行。
+docs/v0.1/claude_to_codex/tools/heavy.sh go -C server test -p=1 -race -count=1 ./internal/modules/linking/adapter/postgres -run '^TestLintSources$/^origin-stale$/^d-first$'
+docs/v0.1/claude_to_codex/tools/heavy.sh go -C server test -p=1 -race -count=1 ./internal/modules/linking/adapter/postgres -run '^TestLintSources$/^origin-stale$/^d-after$'
+docs/v0.1/claude_to_codex/tools/heavy.sh go -C server test -p=1 -race -count=1 ./internal/modules/linking/adapter/postgres -run '^TestLintSources$/^origin-stale$/^f$'
+~~~
+
+所有catcher保存至少一个指定子测试run与真正断言fail/pass，0 tests、编译失败、其它测试先失败均不算kill。S65的literal-v1兼容在S1-0a可由现有读者观察，S1-2之后追加真实stale_pages/D/F证明；不把阶段不足包装成已覆盖。P4 Unknown变异只记§3.8.2的后续义务，不加入P3已跑计数。
+
 ### 7.4 计划、物理工作、TOAST与迁移
 
 **计划矩阵**在自己的库中跑，无统计/ANALYZE × force_custom/实际 PREPARE force_generic；另跑真实Store的DescribeExec多次，查pg_prepared_statements计数区分“无named cache”和“已实际generic”，不说Planned强制custom。种子：读者本1000–3000页，另一不可见本50000页以上；部分索引首键有一页1000无关属性、10000边及dotted冲突跨批、少/全source、空/10k/100k source参数；keyset分别第一/中/尾/空，合法最大内部batch512及8MiB、两相邻source跨批。所有planner开关正常，不以enable_seqscan=off伪造生产选择。
@@ -921,6 +1063,8 @@ Physical读要计backend-local rows/scans/index tuples/heap fetched/blocks（含
 正文TOAST放不可压缩大正文，lint不触page_contents TOAST；真的读正文为正控制，不能只grep SQL。属性TOAST分两类：正常prefix足够不读value；257全空白+后文必须读取的属性（缺/不缺都含）确实读且计时；sources JSON必要读单列，不误称所有TOAST为零。target TOAST也必要：短heads不读取完整target，所选positions读的字节和批上限有证人。把query text tracer当次序/投影证据，不能代替物理计数。
 
 sources迁移和每个获准额外索引分别测：自有库10万页、至少200万properties/含真实sources分布的代表种子；空sources与密集sources两形状，独立完整Up事务至少两轮、表扫描/索引build/占空间、持SHARE导致写等待但读通过；记录PG/CPU/cache状态，暖表诊断不冒冷启动停机承诺。每个索引在5000条链接的一次生产保存上分别开/关对照、三种统计状态；sources索引还测1000无关属性与首sources位置。没有P3实测前不填ms/MB阈值；结果据§13.4三倍规则与最慢CI校准，迁移时间写升级说明/M12实机再测边界。
+
+**来源表示成本与升级证据（决定62）**：bool输入增加一列有界参数，空路径新进入已有property部分索引，须在5000-links生产保存上与普通named/body对照计入，不能只量新增sources索引。另在测试自有库按代表notebook/page/link/正文形状实际执行新版reindex，分列每本linking事务的wall/CPU/峰值/锁等待、WAL/空间、成功提交或本阶段回滚，以及后续Requeue各批耗时/已提交批数/队列变化/失败位置；另记命令整体wall与结果，不能把全部queue工作计作linking持锁时间。当前tokenizer、缺失/旧tokenizer及之后搜索job构建分账；linking失败仍入队、linking成功但queue失败、queue后批失败保留前批都在失败/部分成功样本中核状态，不能按整个命令“回滚”记零或把search代价说成纯linking。代表样本接既有TestLintIndexesCostTheirScanAndWrites的独立!race recipe；若进程预算不足按§7.5实测拆分，不提高原timeout。本提案无新数值/阈值，历史330秒只为旧估计，M12仍须真实数据复测。
 
 ### 7.5 10万页成本与新行安排
 
@@ -943,6 +1087,8 @@ sources迁移和每个获准额外索引分别测：自有库10万页、至少20
 **推荐具体候选（主持者实施决定54，仍待实测验收）**：FIRST/THIRD不变；SECOND的`The(MCP|Contents)`改为`The(MCP[C-Z]|Contents)`，即MCP在B/C前缀移界。当前恰4个顶层从二到三：BacklinksAreRESTs、BatchIsRefusedWhole、BatchMeetsAWebRename、BatchReachesItsUseCase；run→terminal双轮合均值59.183336s，×1.6=94.693338s。按新入场配对预测二/三为355.306662/333.693338s；按更保守S3指定pair447/304算352.306662/398.693338s。以上全是**候选估计**，不是CI或已批准布局。静态旧470变167/70/118/115；正式生成的测试清单必须一致才接受。
 
 新增root顶层分布明确：`TestTheLint*`与`TestTheWikiTools*`在第三片；`TestLint*`在第四片；不再以`TestSource*`或`TestTheMCP*`新增重型P3套件挤第二片。八规则边界优先放domain/adapter/app合适层，root只留final-hop/快照/权限交错，不在每种协议重复一整套100k fixture。Round1新增panic、Stop全出口、follower主动取消、Gate与candidate/slot catcher后，原第三≤20s/第四≤35s预算不得原样称可达；暂把规划包络重估为第三≤25s（×1.6=40s，保守398.693+40=438.693）、第四≤45s（360+72=432），增加5s/10s只供排程，尚无新测量。这些是设计预算分配，实施必须实测，不以命名规避应有测试。超预算先减重复准备，不能删必要断言；按真实邻居剩余量再定窄移界或增份。
+
+S1-0a的TestTheLintOriginCompatibility/Reindex/Properties按TestTheLint前缀在第三片；adapter/markdown/SQL/Web证据留各层。加入这些内容后重新量完整当前输入，不能借旧第三片25s规划包络宣称容得下，更不以名字躲移界；S1-0的旧容量样本不代S1最终双轮与指定两main。
 
 S1-0先重建当前编译测试清单、验证四片互斥完备并完整两轮；S1最终新代码全部新增race测试各两轮、**完整新四片各两轮**，允许复用同精确输入的门禁样本，不用S1-0旧产品样本顶替。每轮保存raw GoJSON、run→terminal/package/wall，清单顶层非空与所有run终止、既有skip清单；每片无重复无遗漏。最终合并与record这**指定两main**的真实Test步骤各均值<450，逐job/run/attempt/head核对，所有实际作业必需步骤成功；若触线按邻居估计移界，否则新增份，原timeout不提高。S2同样复核真实入口及两main样本。
 
@@ -980,7 +1126,7 @@ docs/v0.1/claude_to_codex/tools/heavy.sh env GOFLAGS=-p=1 make -j1 e2e
 | 00§4.11 REST/MCP、§4.18、§5接口表 | item_key/每项cursor/list mode-time-stale/StartCursor；内层K规范；notebook入口Gate HTTP404与tool-app顺序分层；summary组合422；SDK真实48KiB、说明≤3796 |
 | 00§4.11运行、§4.18运行行、§8/wiki/bootstrap | 真实名额/期限；recover/Stop、active与slot清理、newApp上游alive仍全run出口Stop、close在pool前兜底；不把LintTimeout称cleanup保证 |
 | 00§4.14、§7 P4、§8 linking/page扩展 | OldQualifiedFacts与unit起点BeforeIngest窄事实；删旧索引前每被改页一次，Body/唯一sources slot区别、旧target union；P4另行兑现未改页一条候选SQL资格/成本；保留混合改树近似 |
-| 00§7 P3、§8 access/注册/组合根、§9测试 | S1-3内部action+rule+Actions同时绿，S1-4公开operation；两scope真实注册、Stop负控；72行变异与MI/MX/PP/AC/EW真正catcher，EW每轮build |
+| 00§7 P3、§8 access/注册/组合根、§9测试 | S1-3内部action+rule+Actions同时绿，S1-4公开operation；两scope真实注册、Stop负控；原72行加S63–S69共79行变异与MI/MX/PP/AC/EW真正catcher，EW每轮build |
 | 00头/§12/§13、P3头 | P2done精确CI已接受；P3设计审查状态按原席真实复核填写，S1/S2未实施，P4/P5/M11未开始；原历史记录不改 |
 | P1§9、P2§9 | 只补链接到P3的当前合同、承接待实现；完成后再追加8.1所列具体证据，不追改旧Phase事实 |
 | 总体§13.4#8 | 只转录目前P2决定44后的Makefile；候选MCP B/C在P3实施测量验收前不写作现行 |
@@ -1010,6 +1156,22 @@ docs/v0.1/claude_to_codex/tools/heavy.sh env GOFLAGS=-p=1 make -j1 e2e
 | M11/handoffs/M10-mode.md | “内部LintScope显式Contract+AreaRootID与implicit隔离，standard拟议root仍能读且不依赖hash；调用必须不在已有事务内，名额与期限仍适用；item_key/cursor/规则口径按P3。” 只移交，不开始M11；补真实说明余量 |
 | M12性能handoff | 新lint八规则/summary、长属性/目标/来源数组、singleflight并发/池与取消清理、索引迁移和5000links保存的本机真数；真实服务器负载/停机仍待M12 |
 
+### 8.1a 决定62的实施文档与兼容完成标准（均待S1）
+
+S1-0a同提交必须交付当前writer/版本/API事实对应的说明；S1收尾再追加真实reindex/成本/变异/审查及CI。当前文档未把下列完成句当事实：
+
+| 实施时必须更新的目标 | 必需新文字/证据 |
+|---|---|
+| M6/00§4.3、M6/P3§3.2、M6/P4§3.3、M6/P5§4 | 原v1空键限制标明历史适用版本，新增v2正文NULL/空路径空串；rewrite仍重parse的事实不改；PageProperties的空key可返回。P3A L6原处置/全部旧review保留并链接当前修订，不能抹掉原“不改”历史 |
+| README链接索引与部署升级段 | 新版writer/Extractor 2已落地后，明确stop旧单实例、原备份/迁移/权限流程、新binary reindex后再serve；启动不会自动重建；linking/rekey每本事务持锁阻写、本阶段失败/撞键不留部分改动；后续search入队独立分批提交，linking失败仍可入队、queue失败不回滚已提交v2/此前批次，锁不覆盖全部queue，整条命令在单本内亦可能部分成功、全实例非原子；旧视图/改写/backlinks行为、缺失/旧tokenizer队列及后续job副作用、回退后再重建；只写实测数字并说明M12待验 |
+| API linking.yaml与相应gen描述（如增说明），properties读者与Web测试 | key可以为空字符串；无新字段；真实REST page/unresolved/asset与Webexact-path证明，旧v1直至重建仍原行为 |
+| M6 handoff处理进展、00§4.11/§7/§8/§9/§10/§12/§13、总体§11/§13.3#6/§13.4/§15 | 按真实实现写v2与兼容证据，六行/注意项全完成后才done；全Phase79行各单改证据按Step交付，原72行和历史不删，S1-0a及后续D/F分别记账 |
+| M11模式handoff | literal-v1会令stale_pages>0，按已有M11闸门拒批准或先reindex；仅移交，不启动M11 |
+| M12性能handoff | 必需5000-links保存与v1→v2真实代表重建结果；linking事务和独立search批的锁/WAL/空间/提交及失败结果分账，含队列后批失败保留前批；真实服务器停机/负载仍open，不用历史330秒补缺数 |
+| P4交接 | KnownAbsent/Ineligible/Known/Unknown、旧/未改coverage与保守缺标、新增诊断/成本及负控归P4；真实来源与未知老事实不能退回“看空union”；不预写Capture已实现 |
+
+S1完整验收须兼容/存储/API与真实D/F一起成立；正文TOAST禁止仍用于lint请求，合法管理员reindex的正文读取单列，不拿一边的trace冒充另一边。
+
 ### 8.2 S2及P3完成投影
 
 | 目标 | 新文字 |
@@ -1027,6 +1189,8 @@ docs/v0.1/claude_to_codex/tools/heavy.sh env GOFLAGS=-p=1 make -j1 e2e
 ## 9. 交给后面的Phase
 
 P4只复用P3实际定下的SourceArea/metadata、SourceSlots纯资格、jsTrim缺定义、稳定identity；OldQualifiedFacts与unit起点BeforeIngest、删前Capture、未改页批量SQL按§3.8.1/00§4.14在P4实现并测量；P3没有替它实现ingest或可直接套用的direct SQL。按自己的index/log/export/ingest合同增加功能，来源数量不等同pending数量。P3只提供虚拟target只读谓词，P4仍负责路径lookup/render/web样例与virtual工具行为。health#undigested_sources锚点可直接用，P4目录仍自己的SWR数据，不暗调lint计数。
+
+决定62新增交接：P4只信实际落地的v2来源表示；已存在页的stale/missing旧索引和未改页coverage不足均为Unknown，不是KnownAbsent或空union，按§3.8.2保守不加无法证明的标记。管理员重建恢复可靠判断；P4高效判定/诊断/测试与成本仍未实施。
 
 P5仍负责prompt注册/分类/大小、系统说明段、人工清单和根README完整用法；S1缩短的是现有内置段，300字节是给M11预留而非P5随意占掉。M11显式scope已交接，用户未说开始M11。M12接真实测量与部署/负载复测；既有IndexItems/grep稳定性不因本Phase通过而关闭。
 

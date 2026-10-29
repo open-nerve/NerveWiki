@@ -7,6 +7,8 @@ created: 2026-10-27
 
 # 模式的契约表、模式变化的订阅者与冻结的拒绝
 
+**P3决定62的后续义务（2026-10-30，尚待P3实施）**：当前Extractor仍为1；拟议v2落地后literal-v1页会触发已有stale_pages闸门，按[M10总设计](../../M10-llm-wiki/00-M10-design.md)§7拒绝批准或先reindex，不能过滤旧页后声称规则全过。若后续使用ingest，还须遵守[P3](../../M10-llm-wiki/03-P3-lint-health.md)§3.8.2的KnownAbsent/Ineligible/Known/Unknown及未改页coverage；新页已知不存在不等于全本旧消化为空。这里只交计划边界，审查/实现/测试均未由本条完成，M11仍未开始，status仍open。
+
 M10/P1 建成了模式与模板、模式守卫的框架、预检与后台拒绝的去处，以及网页的模式变化处理（[P1 设计](../../M10-llm-wiki/01-P1-contract-frame.md)第 8–10 节；[S4 审查](../../M10-llm-wiki/reviews/P1-S4-web-review.md)）。这里移交 P1 实施后明确的契约与接入位置；M11 的升级流程尚未开始。原有的[事件移交](M5-events.md)、[回滚一次升级](M8-P4-background.md)与[MCP、冻结及回滚调度移交](M9-mcp-upgrade.md)继续适用。
 
 1. **模板与模式的契约表**：`wiki/domain.ContractOf` 是同一份契约表；普通模式没有模板，LLM Wiki 的两种语言模板依次写来源根 `raw` 与 `AGENTS`。模块根的 `wiki.TemplatePages(mode, locale)` 从它取模板，交回副本；组合根与跨模块接入经模块根，不直接导入别的模块的 domain。升级读取已有契约，不另存一套模板或从当前笔记本的正文推断契约（`wiki/domain/contract.go`、`wiki/module.go`；[P1](../../M10-llm-wiki/01-P1-contract-frame.md) 3.8–3.9）。

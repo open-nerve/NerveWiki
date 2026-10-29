@@ -27,6 +27,8 @@ created: 2026-10-06
 
 ## 处理进展
 
+- P3来源修订提案（2026-10-30；[新记录](../reviews/P3-origin-design-review.md)）：主持者的决定（负责人可以改判）62拟在S1-0a保留Link.InFrontmatter已有来源事实、writer/generated与Extractor 1→2同提交，管理员用新版reindex；当前实现仍是1，M6原空键限制仍为当前事实。注意1在P3选择跳过/计数并提示管理员，不在lint parse；注意2的版本边界含持久化表示。PageProperties保持IS NOT NULL，v2空key可见，View/rewrite/batch/backlink及搜索队列边界按P3§3.0；S1-2再交真实D/F四kind与原六行。原M6说明/README待实施时更新，不把计划当完成；六行及注意1–4全部验收前仍open。
+
 - M10 开工（2026-10-24）：照[M10 总设计](../00-M10-design.md)第 7 节"移交的落实"的"M6 lint 的数据在链接索引里"两行（表的六行、注意 1–4）做，在 P3 的 S1（4.11）。仍是 `open`，做完的 Phase 改为 `done`，收尾核对。
 - P2/S1（2026-10-27，合并见[00号文档](../00-M10-design.md)第12节）：S1仅提供写入契约的来源事实/rewrite，未实现本移交的整区lint读取/索引规则；六行及注意项仍归P3，状态open。S1范围见[P2结果](../02-P2-source-area.md)10.1。
 
