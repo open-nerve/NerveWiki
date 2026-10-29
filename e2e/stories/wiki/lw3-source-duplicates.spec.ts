@@ -1,14 +1,19 @@
+import type { Asset, Page as WikiPage } from "@nervewiki/api-client";
+
 import { expectUploaded, storedBlobs } from "../../fixtures/assert/asset";
 import { accountIdOf } from "../../fixtures/assert/identity";
 import { expectNewPage, expectSourceHashes, pageStateOf } from "../../fixtures/assert/page";
-import { postAsset, uploadAsset, utf8 } from "../../fixtures/assets";
+import { pngBytes, postAsset, uploadAsset, utf8 } from "../../fixtures/assets";
 import { createToken, emailFor } from "../../fixtures/auth";
-import { joinAs } from "../../fixtures/invitations";
+import { answerTo, countAnswers, failedToLoad } from "../../fixtures/browser";
+import { holdStream } from "../../fixtures/events";
+import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { errorOf, mcpClient, resultOf } from "../../fixtures/mcp";
 import { createNotebook } from "../../fixtures/notebooks";
-import { createPage, deleteNode, postPage } from "../../fixtures/pages";
-import { expect, test } from "../../fixtures/test";
-import { newTeam } from "../../fixtures/workspaces";
+import { createPage, deleteNode, postPage, readContent } from "../../fixtures/pages";
+import { expect, test, watchOf } from "../../fixtures/test";
+import { choosePageAction, pageHeading, pageTree, wikiPagePath } from "../../fixtures/wiki-pages";
+import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 
 // LW3's API and both MCP entries use real writers. UUID provenance for old nodes entering, restoring, receiving
 // their first content and being rewritten is additionally exercised by the Go full-chain tests (P2 section 5).
@@ -193,3 +198,251 @@ for (const scope of ["notebook", "account"] as const) {
     await expectSourceHashes(db, nervewiki.storageDir, notebook.id);
   });
 }
+
+test("LW3 (page): a duplicate source in a stale tree is read once and its complete path opens the real page", async ({
+  api,
+  db,
+  nervewiki,
+  signedInPage,
+}, testInfo) => {
+  const { pat, workspace } = await newOnboardedTeam(api, testInfo);
+  const tokens = await joinOnboarded(api, pat, workspace.slug, emailFor(testInfo, "writer"), "member");
+  const notebook = await createNotebook(api, pat, workspace.slug, "Sources", "editor", {
+    mode: "llm_wiki",
+    templateLocale: "en",
+  });
+  if (!notebook.source_root_id) throw new Error("no configured source root");
+  const archive = await createPage(api, pat, notebook.id, "Archive", notebook.source_root_id);
+  const inbox = await createPage(api, pat, notebook.id, "Inbox", notebook.source_root_id);
+  const page = await signedInPage(tokens);
+  const releaseEvents = await holdStream(page);
+  const nodesPath = `/api/v0/notebooks/${notebook.id}/nodes`;
+  const createsPath = `/api/v0/notebooks/${notebook.id}/pages`;
+  const nodeAnswers = countAnswers(page, "GET", nodesPath);
+  try {
+    await page.goto(wikiPagePath(workspace.slug, notebook.id, inbox.id));
+    await expect(pageHeading(page, "Inbox")).toBeVisible();
+    await choosePageAction(page, notebook.name, "Inbox", "Paste Markdown");
+    const dialog = page.getByRole("dialog", { name: "Paste Markdown under Inbox", exact: true });
+    await dialog.getByRole("textbox", { name: "Title", exact: true }).fill("A new title");
+    await dialog.getByRole("textbox", { name: "Markdown", exact: true }).fill("The committed source.\n");
+    const initialReads = nodeAnswers();
+    expect(initialReads).toBeGreaterThan(0);
+
+    // The browser has read its tree, but receives none of this real API creation's events yet.
+    const known = await createPage(api, pat, notebook.id, "Known", archive.id, "The committed source.\n");
+    const before = await pageStateOf(db, notebook.id);
+    let refused = false;
+    const reads: string[] = [];
+    page.on("response", (response) => {
+      if (response.request().method() === "POST" && new URL(response.url()).pathname === createsPath) {
+        refused = response.status() === 409;
+      }
+    });
+    await page.route(`**${nodesPath}`, async (route) => {
+      if (route.request().method() !== "GET" || !refused) {
+        await route.continue();
+        return;
+      }
+      // The create's ordinary re-read fails in transport, leaving the genuine old tree. The duplicate helper
+      // must make one further real request. No successful API response or node list is fabricated here.
+      reads.push(reads.length === 0 ? "failed ordinary refresh" : "real target refresh");
+      if (reads.length === 1) await route.abort("failed");
+      else await route.continue();
+    });
+    watchOf(page).expectConsole({ errors: [failedToLoad(409), "Failed to load resource: net::ERR_FAILED"] });
+    const rejected = answerTo(page, "POST", createsPath);
+    await dialog.getByRole("button", { name: "Add source", exact: true }).click();
+    const response = await rejected;
+    expect(response.status()).toBe(409);
+    expect(await response.json()).toMatchObject({ code: "page.source_duplicate", duplicate_of: known.id });
+    expect(await pageStateOf(db, notebook.id)).toEqual(before);
+
+    const target = dialog.getByRole("link", { name: "raw/Archive/Known.md", exact: true });
+    await expect(target).toBeVisible();
+    expect(reads).toEqual(["failed ordinary refresh", "real target refresh"]);
+    expect(nodeAnswers()).toBe(initialReads + 1);
+    await expect(dialog).not.toContainText(known.id);
+    await target.click();
+    await expect(page).toHaveURL(wikiPagePath(workspace.slug, notebook.id, known.id));
+    await expect(pageHeading(page, "Known")).toBeVisible();
+    await expect(page.getByRole("article", { name: "Known", exact: true })).toContainText("The committed source.");
+    expect(reads).toEqual(["failed ordinary refresh", "real target refresh"]);
+    await expectSourceHashes(db, nervewiki.storageDir, notebook.id);
+  } finally {
+    releaseEvents();
+  }
+});
+
+test("LW3 (page): paste creates the initial body once, and mixed uppercase Markdown preserves its bytes after closing the upload dialog and navigating away", async ({
+  api,
+  db,
+  nervewiki,
+  signedInPage,
+}, testInfo) => {
+  const { pat, workspace } = await newOnboardedTeam(api, testInfo);
+  const writerEmail = emailFor(testInfo, "writer");
+  const tokens = await joinOnboarded(api, pat, workspace.slug, writerEmail, "member");
+  const writerId = await accountIdOf(db, writerEmail);
+  const notebook = await createNotebook(api, pat, workspace.slug, "Sources", "editor", {
+    mode: "llm_wiki",
+    templateLocale: "en",
+  });
+  if (!notebook.source_root_id) throw new Error("no configured source root");
+  const inbox = await createPage(api, pat, notebook.id, "Inbox", notebook.source_root_id);
+  const later = await createPage(api, pat, notebook.id, "Later", null, "Keep reading here.\n");
+  const page = await signedInPage(tokens);
+  const createsPath = `/api/v0/notebooks/${notebook.id}/pages`;
+  const uploadsPath = `/api/v0/notebooks/${notebook.id}/assets`;
+  const creates = countAnswers(page, "POST", createsPath);
+  const uploads = countAnswers(page, "POST", uploadsPath);
+  await page.goto(wikiPagePath(workspace.slug, notebook.id, inbox.id));
+  await expect(pageHeading(page, "Inbox")).toBeVisible();
+  await choosePageAction(page, notebook.name, "Inbox", "Paste Markdown");
+  const paste = page.getByRole("dialog", { name: "Paste Markdown under Inbox", exact: true });
+  const pastedBody = "# Pasted source\n\nThe initial body, with a final newline.\n";
+  await paste.getByRole("textbox", { name: "Title", exact: true }).fill("Pasted");
+  await paste.getByRole("textbox", { name: "Markdown", exact: true }).fill(pastedBody);
+  const pasteAnswer = answerTo(page, "POST", createsPath);
+  await paste.getByRole("button", { name: "Add source", exact: true }).click();
+  const pastedResponse = await pasteAnswer;
+  expect(pastedResponse.status()).toBe(201);
+  const pasted = (await pastedResponse.json()) as WikiPage;
+  expect([pasted.name, pasted.parent_id]).toEqual(["Pasted", inbox.id]);
+  await expectNewPage(db, pasted, writerId, "web", pastedBody);
+  await expect(page).toHaveURL(wikiPagePath(workspace.slug, notebook.id, pasted.id));
+  await expect(pageHeading(page, "Pasted")).toBeVisible();
+  expect(creates()).toBe(1);
+  expect(watchOf(page).apiRequests.filter((line) => line.startsWith("PUT "))).toEqual([]);
+
+  // These bytes are hand-written, independently of the application's TextDecoder. They include a BOM,
+  // a multibyte character, CRLF, a standalone CR, LF and the last newline, all of which must reach storage.
+  const markdownBytes = Buffer.from([
+    0xef, 0xbb, 0xbf, 0x23, 0x20, 0xe4, 0xb8, 0xad, 0x0d, 0x0a, 0x41, 0x0d, 0x42, 0x0a, 0x43, 0x0a,
+  ]);
+  const markdownBody = "\uFEFF# 中\r\nA\rB\nC\n";
+  await pageTree(page, notebook.name).locator(`a[href$="/pages/${inbox.id}"]`).click();
+  await expect(pageHeading(page, "Inbox")).toBeVisible();
+  await choosePageAction(page, notebook.name, "Inbox", "Upload files");
+  const dialog = page.getByRole("dialog", { name: "Upload sources under Inbox", exact: true });
+  let releaseCreate!: () => void;
+  const heldCreate = new Promise<void>((resolve) => (releaseCreate = resolve));
+  let observedCreate!: () => void;
+  const createStarted = new Promise<void>((resolve) => (observedCreate = resolve));
+  await page.route(`**${createsPath}`, async (route) => {
+    if (route.request().method() === "POST") {
+      observedCreate();
+      await heldCreate;
+    }
+    await route.continue();
+  });
+  try {
+    const pageAnswer = answerTo(page, "POST", createsPath);
+    const assetAnswer = answerTo(page, "POST", uploadsPath);
+    const choosing = page.waitForEvent("filechooser");
+    await dialog.getByRole("button", { name: "Choose files", exact: true }).click();
+    const chooser = await choosing;
+    expect(chooser.isMultiple()).toBe(true);
+    await chooser.setFiles([
+      { name: "exact.MD", mimeType: "text/markdown", buffer: markdownBytes },
+      { name: "scan.png", mimeType: "image/png", buffer: Buffer.from(pngBytes) },
+    ]);
+    await createStarted;
+    await expect(dialog.getByRole("list", { name: "Uploads", exact: true })).toContainText("Creating…");
+    // The attachment completes through the real server while the Markdown request is held in transport.
+    const assetResponse = await assetAnswer;
+    expect(assetResponse.status()).toBe(201);
+    const asset = (await assetResponse.json()) as Asset;
+    expect([asset.name, asset.parent_id]).toEqual(["scan.png", inbox.id]);
+    await expectUploaded(db, nervewiki.storageDir, asset, pngBytes, writerId, "web");
+    expect(creates()).toBe(1);
+    await dialog.getByRole("button", { name: "Close", exact: true }).click();
+    await expect(dialog).toBeHidden();
+    await pageTree(page, notebook.name).locator(`a[href$="/pages/${later.id}"]`).click();
+    await expect(pageHeading(page, "Later")).toBeVisible();
+    releaseCreate();
+    const sourceResponse = await pageAnswer;
+    expect(sourceResponse.status()).toBe(201);
+    const source = (await sourceResponse.json()) as WikiPage;
+    expect([source.name, source.parent_id]).toEqual(["exact", inbox.id]);
+    await expectNewPage(db, source, writerId, "web", markdownBody);
+    const stored = await readContent(api, pat, source.id);
+    expect(stored.content).toBe(markdownBody);
+    expect(Buffer.from(stored.content, "utf8")).toEqual(markdownBytes);
+    await expect(
+      pageTree(page, notebook.name).getByRole("button", { name: "Actions for exact", exact: true })
+    ).toBeVisible();
+    await expect(page).toHaveURL(wikiPagePath(workspace.slug, notebook.id, later.id));
+    await expect(pageHeading(page, "Later")).toBeVisible();
+    expect([creates(), uploads()]).toEqual([2, 1]);
+    expect(watchOf(page).apiRequests.filter((line) => line.startsWith("PUT "))).toEqual([]);
+    await expectSourceHashes(db, nervewiki.storageDir, notebook.id);
+  } finally {
+    releaseCreate();
+  }
+});
+
+test("LW3 (page): a duplicate attachment dropped onto a source opens its complete path and focuses the real attachment", async ({
+  api,
+  db,
+  nervewiki,
+  signedInPage,
+}, testInfo) => {
+  const { pat, adminId, workspace } = await newOnboardedTeam(api, testInfo);
+  const tokens = await joinOnboarded(api, pat, workspace.slug, emailFor(testInfo, "writer"), "member");
+  const notebook = await createNotebook(api, pat, workspace.slug, "Sources", "editor", {
+    mode: "llm_wiki",
+    templateLocale: "en",
+  });
+  if (!notebook.source_root_id) throw new Error("no configured source root");
+  const archive = await createPage(api, pat, notebook.id, "Archive", notebook.source_root_id);
+  const inbox = await createPage(api, pat, notebook.id, "Inbox", notebook.source_root_id, "Drop new sources here.\n");
+  const known = await uploadAsset(api, pat, notebook.id, { name: "known.png", bytes: pngBytes }, archive.id);
+  await expectUploaded(db, nervewiki.storageDir, known, pngBytes, adminId, "api");
+  const before = await pageStateOf(db, notebook.id);
+  const files = storedBlobs(nervewiki.storageDir);
+  const page = await signedInPage(tokens);
+  await page.goto(wikiPagePath(workspace.slug, notebook.id, inbox.id));
+  await expect(pageHeading(page, "Inbox")).toBeVisible();
+  watchOf(page).expectConsole({ errors: [failedToLoad(409)] });
+  const uploadsPath = `/api/v0/notebooks/${notebook.id}/assets`;
+  const uploads = countAnswers(page, "POST", uploadsPath);
+  const rejected = answerTo(page, "POST", uploadsPath);
+  const dropped = await page.getByRole("article", { name: "Inbox", exact: true }).evaluate(
+    (article, bytes) => {
+      const data = new DataTransfer();
+      data.items.add(new File([new Uint8Array(bytes)], "different-name.png", { type: "image/png" }));
+      const over = new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer: data });
+      article.dispatchEvent(over);
+      const drop = new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: data });
+      article.dispatchEvent(drop);
+      return { over: over.defaultPrevented, drop: drop.defaultPrevented };
+    },
+    [...pngBytes]
+  );
+  expect(dropped).toEqual({ over: true, drop: true });
+  const response = await rejected;
+  expect(response.status()).toBe(409);
+  expect(await response.json()).toMatchObject({ code: "page.source_duplicate", duplicate_of: known.id });
+  expect(await pageStateOf(db, notebook.id)).toEqual(before);
+  expect(storedBlobs(nervewiki.storageDir)).toEqual(files);
+  const queue = page
+    .getByRole("region", { name: "Attachments", exact: true })
+    .getByRole("list", { name: "Uploads", exact: true });
+  const target = queue.getByRole("link", { name: "raw/Archive/known.png", exact: true });
+  await expect(target).toBeVisible();
+  await expect(queue).not.toContainText(known.id);
+  expect(uploads()).toBe(1);
+  await target.click();
+  await expect(page).toHaveURL(wikiPagePath(workspace.slug, notebook.id, archive.id));
+  await expect(pageHeading(page, "Archive")).toBeVisible();
+  const found = page
+    .getByRole("region", { name: "Attachments", exact: true })
+    .locator(`[data-attachment="${known.id}"]`);
+  await expect(found).toHaveAccessibleName("known.png (source) (opens in a new tab)");
+  await expect(found).toBeFocused();
+  expect(uploads()).toBe(1);
+  expect(await pageStateOf(db, notebook.id)).toEqual(before);
+  expect(storedBlobs(nervewiki.storageDir)).toEqual(files);
+  await expectSourceHashes(db, nervewiki.storageDir, notebook.id);
+});

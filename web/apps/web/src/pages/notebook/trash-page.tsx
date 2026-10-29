@@ -19,6 +19,7 @@ import { openOf } from "../open-node";
 import { watchReader } from "../page/readers-input";
 import { useWorkspace } from "../workspace/workspace-layout";
 import { useNotebook } from "./notebook-layout";
+import { sourceHistoryText, useNodeNavigate } from "./duplicate-text";
 import type { FocusJob } from "./transfer-page";
 import {
   namesOf,
@@ -72,6 +73,7 @@ export const TrashPage = observer(function TrashPage() {
   const workspace = useWorkspace();
   const notebook = useNotebook();
   const pages = usePageTree(notebook);
+  const navigateNode = useNodeNavigate(pages);
   const { locale } = useStore().preferences;
   const t = useT();
   const mounted = useMounted();
@@ -168,7 +170,10 @@ export const TrashPage = observer(function TrashPage() {
   const items = data?.flatMap((read) => read.data) ?? [];
   const twinOf = twinsIn(items, locale);
   const home = `/${workspace.slug}/notebooks/${notebook.id}`;
-  const failed = refused === undefined ? undefined : refusedText(refused, t);
+  const failed =
+    refused === undefined
+      ? undefined
+      : (sourceHistoryText(refused.error, pages, navigateNode) ?? refusedText(refused, t));
   const offered = writesPages(notebook.role) ? offeredOf(refused) : undefined;
   const now = Date.now();
   return (

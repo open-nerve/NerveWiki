@@ -150,6 +150,16 @@ export const en = {
   "source.uploadInvalidUtf8": "This Markdown file is not valid UTF-8.",
   "source.uploadTitleTaken": "Another page or attachment here has this title. Choose another title.",
   "source.uploadRetry": "Add source",
+  "source.duplicateWithin": "This operation contains sources with identical bytes.",
+  "source.duplicateAt": "Identical source content already exists:",
+  "source.duplicateUnavailable": "The duplicate source is currently unavailable.",
+  "source.duplicateNotWritten": "This operation was not written.",
+  "source.duplicateBatchNotWritten": "This batch was not written; earlier completed batches are kept.",
+  "source.duplicateImportSkipped": "{path} was skipped because identical source content already exists.",
+  "source.historyRestore":
+    "Temporary steps must also follow the source rules. To restore content, first move the page outside the source area, restore it, then move it back. Resolve any conflicting source before restoring or moving back; moving back checks for duplicates again. Administrators cannot edit source content either.",
+  "source.historyBackground":
+    "Background undo processes steps in an order that may differ from one undo. Resolve conflicts under the source rules before trying again.",
   "page.untitled": "Untitled",
   "page.untitledN": "Untitled {n}",
   "page.actions": "Actions for {name}",

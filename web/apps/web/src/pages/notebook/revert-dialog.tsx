@@ -4,6 +4,7 @@ import { Link } from "react-router";
 import { useSWRConfig } from "swr";
 
 import { useForm, type LocalProblems } from "../../app/form";
+import { sourceHistoryText, useNodeNavigate } from "./duplicate-text";
 import { lockedText } from "../../app/problem-messages";
 import { FormField } from "../../components/form-field";
 import { Alert } from "../../components/ui/alert";
@@ -84,6 +85,8 @@ export function RevertDialog({
   const t = useT();
   const [open, setOpen] = useState(false);
   const [sending, setSending] = useState(false);
+  const leaving = useRef(false);
+  const navigateNode = useNodeNavigate(usePageTree(notebook));
   const trigger = useRef<HTMLButtonElement>(null);
   useFocusLeaving(trigger, () => heading.current?.focus());
   // Whether the dialog closes for the title to take the focus.
@@ -105,11 +108,14 @@ export function RevertDialog({
       <AlertDialogContent
         className="max-h-[calc(100svh-2rem)] overflow-y-auto sm:max-w-xl"
         onCloseAutoFocus={(event) => {
-          if (toTitle.current) {
+          if (leaving.current) {
+            event.preventDefault();
+          } else if (toTitle.current) {
             event.preventDefault();
             heading.current?.focus();
           }
           toTitle.current = false;
+          leaving.current = false;
         }}
       >
         <AlertDialogTitle>{t("history.revertTitle")}</AlertDialogTitle>
@@ -119,6 +125,11 @@ export function RevertDialog({
           sending={sending}
           setSending={setSending}
           sent={sent}
+          openNode={(id) => {
+            leaving.current = true;
+            setOpen(false);
+            navigateNode(id);
+          }}
           close={(reverted, focus) => {
             toTitle.current = focus;
             setOpen(false);
@@ -144,6 +155,7 @@ function RevertForm({
   setSending,
   sent,
   close,
+  openNode,
 }: {
   notebook: Notebook;
   changeset: ChangesetDetail;
@@ -152,6 +164,7 @@ function RevertForm({
   sent: () => void;
   /** close closes the dialog for reverted, the title taking the focus when focus says so. */
   close: (reverted: Reverted, focus: boolean) => void;
+  openNode: (id: string) => void;
 }) {
   const t = useT();
   const pages = usePageTree(notebook);
@@ -170,6 +183,8 @@ function RevertForm({
   const confirm = useRef<HTMLButtonElement>(null);
   const { ref, banner, problemOf, submit } = useForm(["message"], {
     explain: (error) => {
+      const source = sourceHistoryText(error, pages, openNode);
+      if (source !== undefined) return source;
       if (error instanceof ApiError) {
         switch (error.code) {
           // Past the background's bound: an undo here too large asks to undo it in the background instead.

@@ -2,7 +2,7 @@
 
 This page is the root of the notebook's source area. Put the original material here: articles, papers, meeting notes, PDFs and images, one source to a page or an attachment. A source is written once and kept as it is, so that the wiki's pages can cite it.
 
-On the web, add one with “Paste or upload as source”. An agent adds one with a single `write` of `raw/<title>.md`.
+On the web, add one with “Paste Markdown” or “Upload files”. An agent adds one with a single `write` of `raw/<title>.md`.
 
 The pages and attachments under this page cannot be changed once written. Only the notebook's admins can rename, move or delete them; anyone who can write may add more.
 

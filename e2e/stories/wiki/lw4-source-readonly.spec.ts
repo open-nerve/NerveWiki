@@ -1,7 +1,7 @@
-import type { ApiClient } from "@nervewiki/api-client";
+import type { ApiClient, EditSession, Page as ApiPage } from "@nervewiki/api-client";
 import type { TestInfo } from "@playwright/test";
 
-import { expectAliveSessions } from "../../fixtures/assert/collab";
+import { expectAliveSessions, expectToggleRevision } from "../../fixtures/assert/collab";
 import { accountIdOf } from "../../fixtures/assert/identity";
 import { expectIndexedLinks } from "../../fixtures/assert/links";
 import {
@@ -14,9 +14,12 @@ import {
   type StoredVersion,
 } from "../../fixtures/assert/page";
 import { createToken, emailFor } from "../../fixtures/auth";
+import { answerTo, countAnswers, failedToLoad } from "../../fixtures/browser";
+import { readLock } from "../../fixtures/collab";
 import type { Database } from "../../fixtures/db";
+import { holdStream } from "../../fixtures/events";
 import { listChangesets, revertChangeset } from "../../fixtures/history";
-import { joinAs } from "../../fixtures/invitations";
+import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { errorOf, mcpClient, readPage, resultOf, writtenOf, type McpClient } from "../../fixtures/mcp";
 import { createNotebook } from "../../fixtures/notebooks";
 import {
@@ -36,7 +39,18 @@ import {
   writeContent,
 } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
-import { newTeam } from "../../fixtures/workspaces";
+import {
+  contentWrites,
+  editorContent,
+  holdContentWrites,
+  lostBanner,
+  pageHeading,
+  restoreWith,
+  startEditing,
+  versionPath,
+  wikiPagePath,
+} from "../../fixtures/wiki-pages";
+import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 
 // LW4 (M10/P2 section 5): sources are written once, even by an admin;
 // system link rewrites and their reverts remain possible. Every refused
@@ -254,6 +268,227 @@ test("LW4 (API): source-root instructions, root AGENTS, ordinary wiki pages and 
   await writable(agents.id);
   await writable(ordinary.id);
   await writable(sameShape.id);
+});
+
+for (const role of ["writer", "admin"] as const) {
+  test(`LW4 (page): a ${role} cannot edit a deep source by Edit, shortcut, task, version restore or Edit here`, async ({
+    api,
+    db,
+    pageWatch,
+    signedInPage,
+  }, testInfo) => {
+    const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+    const writer = await joinOnboarded(api, pat, workspace.slug, emailFor(testInfo, "writer"), "member");
+    const { notebook, raw } = await sourceWiki(api, pat, workspace.slug);
+    const deep = await deepFolder(api, pat, notebook.id, raw.id);
+    const source = await createPage(api, pat, notebook.id, "Source", null, "- [ ] Previous evidence\n");
+    await writeContent(api, pat, source.id, { content: evidence, base_revision: 1 });
+    const credential = role === "writer" ? writer.access_token : pat;
+    // An existing own session is reachable only by opening outside, then moving in. It makes Edit here an
+    // independent temptation: the UI must keep it hidden even though the lock reader says this account owns it.
+    const session = await openSession(api, credential, source.id);
+    await moveNode(api, pat, source.id, { parent_id: deep.id });
+    const before = await pageStateOf(db, notebook.id);
+    const page = await signedInPage(role === "writer" ? writer : tokens);
+    try {
+      await page.goto(wikiPagePath(workspace.slug, notebook.id, source.id));
+      const article = page.getByRole("article", { name: "Source", exact: true });
+      await expect(article).toContainText("evidence");
+      await expect(page.getByText("You are editing this page elsewhere.", { exact: true })).toBeVisible();
+      await expect(page.getByRole("main").getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("main").getByRole("button", { name: "Edit here", exact: true })).toHaveCount(0);
+      await expect(article.getByRole("checkbox")).toHaveCount(1);
+      await expect(article.getByRole("checkbox")).toBeDisabled();
+      await page.keyboard.press("ControlOrMeta+e");
+      await expect(editorContent(page)).toHaveCount(0);
+
+      await page.goto(versionPath(workspace.slug, notebook.id, source.id, 1));
+      await expect(page.getByRole("article", { name: "Version 1", exact: true })).toContainText("Previous evidence");
+      await expect(
+        page.getByRole("main").getByRole("button", { name: "Restore this version", exact: true })
+      ).toHaveCount(0);
+      expect(pageWatch.apiRequests.filter((sent) => /^(POST|PUT) \/api\/v0\/pages\//.test(sent))).toEqual([]);
+      expect(await pageStateOf(db, notebook.id)).toEqual(before);
+      await expectAliveSessions(db, source.id, [session.id]);
+    } finally {
+      // This session belongs to this test's API setup, not to a mounted editor. The separate source-loss story
+      // below observes the browser's automatic DELETE without ever calling endSession itself.
+      expect((await endSession(api, credential, session.id)).response.status).toBe(204);
+    }
+  });
+}
+
+test("LW4 (page): a writer can toggle, shortcut-edit and restore source-root instructions, root AGENTS and ordinary pages, and take over an ordinary edit", async ({
+  api,
+  db,
+  signedInPage,
+}, testInfo) => {
+  test.slow();
+  const { pat, workspace } = await newOnboardedTeam(api, testInfo);
+  const writerEmail = emailFor(testInfo, "writer");
+  const writer = await joinOnboarded(api, pat, workspace.slug, writerEmail, "member");
+  const writerId = await accountIdOf(db, writerEmail);
+  const { notebook, raw, agents } = await sourceWiki(api, pat, workspace.slug);
+  const ordinary = await createPage(api, pat, notebook.id, "Ordinary");
+  const page = await signedInPage(writer);
+  const writable = async (id: string, name: string) => {
+    const previous = await readContent(api, pat, id);
+    const base = await writeContent(api, pat, id, { content: evidence, base_revision: previous.revision });
+    await page.goto(wikiPagePath(workspace.slug, notebook.id, id));
+    const article = page.getByRole("article", { name, exact: true });
+    const checkbox = article.getByRole("checkbox", { name: "evidence", exact: true });
+    await expect(checkbox).toBeEnabled();
+    await expect(page.getByRole("main").getByRole("button", { name: "Edit", exact: true })).toBeVisible();
+    const toggled = answerTo(page, "POST", `/api/v0/pages/${id}/toggle-task`);
+    await checkbox.click();
+    const toggle = await toggled;
+    expect(toggle.status()).toBe(200);
+    await expectContentWritten(db, (await toggle.json()) as ApiPage, "- [x] evidence\n", writerId);
+    await expectToggleRevision(db, id, base.revision + 1, writerId, "web");
+
+    const opened = answerTo(page, "POST", `/api/v0/pages/${id}/edit-sessions`);
+    await page.keyboard.press("ControlOrMeta+e");
+    await expect(editorContent(page)).toBeFocused();
+    const opening = await opened;
+    expect(opening.status()).toBe(201);
+    const session = (await opening.json()) as EditSession;
+    const writes = contentWrites(page, id);
+    await page.keyboard.press("ControlOrMeta+End");
+    await page.keyboard.type("A saved explanation.\n");
+    const ended = answerTo(page, "DELETE", `/api/v0/edit-sessions/${session.id}`);
+    await page.getByRole("main").getByRole("button", { name: "Done", exact: true }).click();
+    await expect(article).toContainText("A saved explanation.");
+    expect((await ended).status()).toBe(204);
+    await expectContentWritten(db, await writes.saved(), "- [x] evidence\nA saved explanation.\n", writerId);
+    await expectSessionGone(db, session.id);
+
+    await page.goto(versionPath(workspace.slug, notebook.id, id, base.revision));
+    await expect(
+      page.getByRole("main").getByRole("button", { name: "Restore this version", exact: true })
+    ).toBeVisible();
+    expect((await restoreWith(page, id, base.revision)).status()).toBe(200);
+    await expect(page.getByRole("article", { name, exact: true })).toContainText("evidence");
+    expect(await readContent(api, pat, id)).toMatchObject({ content: evidence, revision: base.revision + 3 });
+  };
+  await writable(raw.id, raw.name);
+  await writable(agents.id, agents.name);
+  await writable(ordinary.id, ordinary.name);
+
+  // The source case above suppresses Edit here; the same own lock on an ordinary page offers and executes it.
+  const old = await openSession(api, writer.access_token, ordinary.id);
+  await page.goto(wikiPagePath(workspace.slug, notebook.id, ordinary.id));
+  await expect(page.getByText("You are editing this page elsewhere.", { exact: true })).toBeVisible();
+  const opened = answerTo(page, "POST", `/api/v0/pages/${ordinary.id}/edit-sessions`);
+  await page.getByRole("main").getByRole("button", { name: "Edit here", exact: true }).click();
+  const opening = await opened;
+  expect(opening.status()).toBe(201);
+  const current = (await opening.json()) as EditSession;
+  expect(current.id).not.toBe(old.id);
+  await expect(editorContent(page)).toBeFocused();
+  await expectAliveSessions(db, ordinary.id, [current.id]);
+  const ended = answerTo(page, "DELETE", `/api/v0/edit-sessions/${current.id}`);
+  await page.getByRole("main").getByRole("button", { name: "Done", exact: true }).click();
+  expect((await ended).status()).toBe(204);
+  await expect(page.getByRole("article", { name: "Ordinary", exact: true })).toBeVisible();
+  await expectSessionGone(db, current.id);
+});
+
+test("LW4 (page): source loss locks the mounted editor, automatically releases its real server session and preserves unsaved text for copying before leaving", async ({
+  api,
+  db,
+  pageWatch,
+  signedInPage,
+}, testInfo) => {
+  test.slow();
+  const { pat, workspace } = await newOnboardedTeam(api, testInfo);
+  const writerEmail = emailFor(testInfo, "writer");
+  const writer = await joinOnboarded(api, pat, workspace.slug, writerEmail, "member");
+  const writerPat = (await createToken(api, writer.access_token, { name: "Source-loss writer" })).token;
+  const writerId = await accountIdOf(db, writerEmail);
+  const { notebook, raw } = await sourceWiki(api, pat, workspace.slug);
+  const deep = await deepFolder(api, pat, notebook.id, raw.id);
+  const original = "Original evidence.\n";
+  const ordinary = await createPage(api, writerPat, notebook.id, "Open draft", null, original);
+  const page = await signedInPage(writer);
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.clock.install();
+  const letStreamIn = await holdStream(page);
+  const viewReads = countAnswers(page, "GET", `/api/v0/pages/${ordinary.id}/view`);
+  try {
+    await page.goto(wikiPagePath(workspace.slug, notebook.id, ordinary.id));
+    await expect.poll(viewReads).toBe(1);
+    letStreamIn();
+    await expect.poll(viewReads).toBeGreaterThanOrEqual(2);
+    const opened = answerTo(page, "POST", `/api/v0/pages/${ordinary.id}/edit-sessions`);
+    const editor = await startEditing(page);
+    const opening = await opened;
+    expect(opening.status()).toBe(201);
+    const session = (await opening.json()) as EditSession;
+    await expectAliveSessions(db, ordinary.id, [session.id]);
+    expect((await readLock(api, pat, ordinary.id)).holder?.user_id).toBe(writerId);
+    const mountedEditor = await editor.elementHandle();
+    if (mountedEditor === null) throw new Error("the real editor did not mount");
+    const held = await holdContentWrites(page, ordinary.id);
+    try {
+      await page.keyboard.press("ControlOrMeta+End");
+      await page.keyboard.type("Unsaved notes to copy.\n");
+      await page.keyboard.press("ControlOrMeta+s");
+      await held.sent();
+      const ended = answerTo(page, "DELETE", `/api/v0/edit-sessions/${session.id}`);
+      await moveNode(api, pat, ordinary.id, { parent_id: deep.id });
+      const [refused] = await held.release();
+      expect(refused?.status()).toBe(409);
+      expect(await refused?.json()).toMatchObject({ code: "page.source_immutable" });
+      pageWatch.expectConsole({ errors: [failedToLoad(409)] });
+
+      await expect(lostBanner(page)).toContainText("This page is now a source. Its original content is read-only.");
+      await expect(lostBanner(page)).toContainText("Your changes here are not saved: copy them before you leave.");
+      await expect(editor).toHaveAttribute("contenteditable", "false");
+      expect(await mountedEditor.evaluate((element) => element.isConnected)).toBe(true);
+      expect((await ended).status()).toBe(204);
+      await expectSessionGone(db, session.id);
+      await expectAliveSessions(db, ordinary.id, []);
+      expect(await readLock(api, pat, ordinary.id)).toEqual({ holder: null, expires_in: null });
+      expect(await readContent(api, pat, ordinary.id)).toMatchObject({ content: original, revision: 1 });
+      await expectVersions(db, ordinary.id, [
+        { base: null, revision: 1, content: original, kind: "edit", byId: writerId, client: "api" },
+      ]);
+
+      await editor.focus();
+      await page.keyboard.press("ControlOrMeta+a");
+      await page.keyboard.press("ControlOrMeta+c");
+      expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(`${original}Unsaved notes to copy.\n`);
+      const afterLoss = pageWatch.apiRequests.length;
+      await page.keyboard.press("ControlOrMeta+s");
+      await page.clock.fastForward(40_000);
+      expect(
+        pageWatch.apiRequests
+          .slice(afterLoss)
+          .filter((sent) => /^(POST|PUT) \/api\/v0\/(?:pages|edit-sessions)\//.test(sent))
+      ).toEqual([]);
+
+      await lostBanner(page).getByRole("button", { name: "Back to reading", exact: true }).click();
+      const leave = page.getByRole("alertdialog", { name: "Leave without saving?", exact: true });
+      await expect(leave).toBeVisible();
+      await leave.getByRole("button", { name: "Stay", exact: true }).click();
+      await expect(leave).toBeHidden();
+      await expect(editor).toContainText("Unsaved notes to copy.");
+      expect(await mountedEditor.evaluate((element) => element.isConnected)).toBe(true);
+      await lostBanner(page).getByRole("button", { name: "Back to reading", exact: true }).click();
+      await leave.getByRole("button", { name: "Leave", exact: true }).click();
+      await expect(pageHeading(page, "Open draft")).toBeVisible();
+      await expect(page.getByRole("article", { name: "Open draft", exact: true })).toHaveText("Original evidence.");
+      await expect(editor).toHaveCount(0);
+      expect(
+        pageWatch.apiRequests.filter((sent) => sent === `DELETE /api/v0/edit-sessions/${session.id}`)
+      ).toHaveLength(1);
+      await expectSessionGone(db, session.id);
+    } finally {
+      await held.release();
+    }
+  } finally {
+    letStreamIn();
+  }
 });
 
 /** A real rename and both real undos preserve bytes, the link index and the stored rewrite markers. */

@@ -249,7 +249,12 @@ export const AttachmentsSection = observer(function AttachmentsSection({
           <CopyField key={copied.embed} embed={copied.embed} name={copied.name} field={copyField} />
         ))}
       {uploads.length > 0 && (
-        <UploadRows assets={assets} uploads={uploads} left={() => (uploadButton.current ?? heading.current)?.focus()} />
+        <UploadRows
+          notebook={notebook}
+          assets={assets}
+          uploads={uploads}
+          left={() => (uploadButton.current ?? heading.current)?.focus()}
+        />
       )}
       {list === undefined ? (
         <NotLoaded error={error} retry={() => void mutate()} />

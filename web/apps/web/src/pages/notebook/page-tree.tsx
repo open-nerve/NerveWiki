@@ -10,6 +10,7 @@ import { writesPages } from "../../app/effective-role";
 import { NotLoaded } from "../../app/not-loaded";
 import { pagesLocked } from "../../app/pages-locked";
 import { errorText } from "../../app/problem-messages";
+import { duplicateText, useNodeNavigate } from "./duplicate-text";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { formatPeriod } from "../../i18n/format";
@@ -43,6 +44,7 @@ import { useSourceMove } from "./source-move-confirmation";
  */
 export const PageTree = observer(function PageTree({ notebook }: { notebook: Notebook }) {
   const pages = usePageTree(notebook);
+  const navigateNode = useNodeNavigate(pages);
   const { pageId } = useParams();
   const t = useT();
   const { account, instance, preferences } = useStore();
@@ -141,7 +143,12 @@ export const PageTree = observer(function PageTree({ notebook }: { notebook: Not
       </div>
       {failure !== undefined && (
         <Alert>
-          {pagesLocked(failure, t, me, (id) => distinctName(pages.tree, notebook, id, t)) ?? errorText(failure, t)}
+          {duplicateText(failure, pages, (id) => {
+            setFailure(undefined);
+            navigateNode(id);
+          }) ??
+            pagesLocked(failure, t, me, (id) => distinctName(pages.tree, notebook, id, t)) ??
+            errorText(failure, t)}
         </Alert>
       )}
       {read ? (

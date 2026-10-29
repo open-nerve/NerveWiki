@@ -225,6 +225,70 @@ test("source uploads keep their queue and explicit title after 409 while indepen
   expect(server.nodes.some((node) => node.name === "report 2")).toBe(false);
 });
 
+test.each(["initial failure", "explicit retry"] as const)(
+  "a Markdown source duplicate's %s links to its page without writing or returning focus to the upload dialog",
+  async (attempt) => {
+    const user = userEvent.setup();
+    const known = pageNode(28, "Known", install);
+    const body = "# Known source\r\n原始正文\n";
+    const server = pageServer({ mode: "llm_wiki", sourceRootId: guide.id, nodes: [...base, known] });
+    server.contents.set(known.id, { content: body, revision: 1 });
+    const beforeNodes = [...server.nodes];
+    const beforeContents = new Map(server.contents);
+    const view = renderSources(server);
+    const dialog = await openUpload(user);
+    const file = new File([body], "evidence.md");
+    choose(dialog, [file]);
+
+    await within(dialog).findByRole("link", { name: "Guide/Install/Known.md" });
+    const assets = view.store().assetsOf(server.notebook)!;
+    expect(assets.uploads).toHaveLength(1);
+    const upload = assets.uploads[0]!;
+    const firstFailure = upload.failure;
+    expect(firstFailure).toMatchObject({ code: "page.source_duplicate", problem: { duplicate_of: known.id } });
+    expect(upload.file).toBe(file);
+    expect(creates(server)).toEqual(["POST evidence under Guide"]);
+    expect(await server.createRequests[0]!.clone().json()).toEqual({
+      parent_id: guide.id,
+      title: "evidence",
+      content: body,
+    });
+
+    if (attempt === "explicit retry") {
+      const title = within(dialog).getByRole("textbox", { name: "Title for evidence.md" });
+      await user.clear(title);
+      await user.type(title, "Another chosen title");
+      await user.click(within(title.closest("li")!).getByRole("button", { name: "Add source" }));
+      await waitFor(() => {
+        expect(upload.failure).toMatchObject({ code: "page.source_duplicate", problem: { duplicate_of: known.id } });
+        expect(upload.failure).not.toBe(firstFailure);
+      });
+      expect(creates(server)).toEqual(["POST evidence under Guide", "POST Another chosen title under Guide"]);
+      expect(await server.createRequests[1]!.clone().json()).toEqual({
+        parent_id: guide.id,
+        title: "Another chosen title",
+        content: body,
+      });
+    }
+
+    expect(server.nodes).toEqual(beforeNodes);
+    expect(server.contents).toEqual(beforeContents);
+    expect(within(dialog).getByText("This operation was not written.")).toBeTruthy();
+    await user.click(within(dialog).getByRole("link", { name: "Guide/Install/Known.md" }));
+    await waitFor(() => expect(view.router.state.location.pathname).toBe(pagePath(known.id)));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    const heading = await screen.findByRole("heading", { level: 1, name: "Known" });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+    expect(view.router.state.location.state).toEqual({ arrived: true });
+    expect(assets.uploads).toEqual([upload]);
+    expect(upload.file).toBe(file);
+    expect(server.createRequests).toHaveLength(attempt === "initial failure" ? 1 : 2);
+    expect(uploads(server)).toEqual([]);
+    expect(server.nodes).toEqual(beforeNodes);
+    expect(server.contents).toEqual(beforeContents);
+  }
+);
+
 test("source uploads keep their queue and explicit title after the modal closes and do not take a later route", async () => {
   const user = userEvent.setup();
   const server = pageServer({ mode: "llm_wiki", sourceRootId: guide.id, nodes: base });
@@ -378,7 +442,8 @@ test("source uploads keep their queue and explicit title while page success and 
   // The next creation reaches the fake's source hash rule and is refused; it too must never enter asset paging.
   server.createsHeld = false;
   choose(section, [new File(["one source body"], "duplicate.md")]);
-  await within(section).findByText("This source already exists in the notebook.");
+  await within(section).findByRole("link", { name: "Guide/created.md" });
+  expect(within(section).getByText("This operation was not written.")).toBeTruthy();
   expect(assets.uploads).toHaveLength(1);
   expect(assets.uploads[0]!.failure).toMatchObject({ code: "page.source_duplicate" });
   expect(creates(server)).toEqual(["POST created under Guide", "POST duplicate under Guide"]);
@@ -423,7 +488,7 @@ test.each(["outside", "inside"] as const)(
       // Reading the moved tree unmounts the old tree row and its dialog; the page's lasting queue still shows it.
       await waitFor(() => expect(document.contains(dialog)).toBe(false));
       expect(screen.queryByRole("dialog")).toBeNull();
-      await within(await attachments()).findByText("This source already exists in the notebook.");
+      await within(await attachments()).findByRole("link", { name: "Guide/Original.md" });
       expect(assets.uploads).toEqual([upload]);
       expect(upload.failure).toMatchObject({ code: "page.source_duplicate" });
       expect(server.nodes.some((node) => node.name === "new source")).toBe(false);

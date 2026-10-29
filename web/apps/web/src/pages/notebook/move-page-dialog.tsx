@@ -2,6 +2,7 @@ import { observer } from "mobx-react-lite";
 import { useId, useRef, useState, type FormEvent } from "react";
 
 import { useForm } from "../../app/form";
+import { duplicateText, useNodeNavigate } from "./duplicate-text";
 import type { HeldDialog } from "../../app/held-dialog";
 import { pagesLocked } from "../../app/pages-locked";
 import { Alert } from "../../components/ui/alert";
@@ -49,13 +50,16 @@ export function MovePageDialog({
 }) {
   const t = useT();
   const done = useRef(false);
+  const leaving = useRef(false);
+  const navigateNode = useNodeNavigate(usePageTree(notebook));
   return (
     <Dialog open={held.open} onOpenChange={held.onOpenChange}>
       {held.open && (
         <DialogContent
           onCloseAutoFocus={(event) => {
             event.preventDefault();
-            held.onClosed(done.current);
+            if (!leaving.current) held.onClosed(done.current);
+            leaving.current = false;
             done.current = false;
           }}
         >
@@ -66,6 +70,11 @@ export function MovePageDialog({
             page={page}
             onSend={onSend}
             cancel={() => held.onOpenChange(false)}
+            openNode={(id) => {
+              leaving.current = true;
+              held.onOpenChange(false);
+              navigateNode(id);
+            }}
             moved={() => {
               done.current = true;
               held.onOpenChange(false);
@@ -77,9 +86,16 @@ export function MovePageDialog({
   );
 }
 
-type MoveFormProps = { notebook: Notebook; page: TreeNode; onSend: () => void; cancel: () => void; moved: () => void };
+type MoveFormProps = {
+  notebook: Notebook;
+  page: TreeNode;
+  onSend: () => void;
+  cancel: () => void;
+  moved: () => void;
+  openNode: (id: string) => void;
+};
 
-const MoveForm = observer(function MoveForm({ notebook, page, onSend, cancel, moved }: MoveFormProps) {
+const MoveForm = observer(function MoveForm({ notebook, page, onSend, cancel, moved, openNode }: MoveFormProps) {
   const pages = usePageTree(notebook);
   const t = useT();
   const ids = { parent: useId(), position: useId() };
@@ -88,7 +104,9 @@ const MoveForm = observer(function MoveForm({ notebook, page, onSend, cancel, mo
   const me = useStore().account?.me?.id;
   const sourceMove = useSourceMove(pages);
   const { ref, sending, banner, problemOf, submit } = useForm(["parent_id", "after_id"], {
-    explain: (error) => pagesLocked(error, t, me, (id) => distinctName(pages.tree, notebook, id, t)),
+    explain: (error) =>
+      duplicateText(error, pages, openNode) ??
+      pagesLocked(error, t, me, (id) => distinctName(pages.tree, notebook, id, t)),
   });
   const problems = { parent: problemOf("parent_id"), position: problemOf("after_id") };
   const tree = pages.tree;

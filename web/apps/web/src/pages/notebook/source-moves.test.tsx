@@ -9,7 +9,7 @@ import { routes } from "../../app/routes";
 import { useStore } from "../../stores/context";
 import type { RootStore } from "../../stores/root.store";
 import { notebookJSON, workspaceJSON, problem, json } from "../../test/fakes";
-import { guide, install, notes, pageNode, pagePath, pageServer } from "../../test/page-server";
+import { assetNode, guide, install, notes, pageNode, pagePath, pageServer } from "../../test/page-server";
 import { renderApp } from "../../test/render";
 
 type Monitor = Parameters<typeof monitorForElements>[0];
@@ -248,6 +248,39 @@ test("a source move refusal keeps the chosen parent and position in its form", a
   expect((within(dialog).getByLabelText("Position") as HTMLSelectElement).value).toBe("last");
   expect(moves(server)).toEqual(["MOVE refused"]);
   expect(server.nodes.find((node) => node.id === notes.id)?.parent_id).toBeNull();
+});
+
+test("a duplicate tree drop link releases the sidebar focus to the existing source attachment", async () => {
+  const user = userEvent.setup();
+  const known = assetNode(42, "known.png", install);
+  const copy = assetNode(43, "copy.png", notes);
+  const server = pageServer({
+    role: "editor",
+    mode: "llm_wiki",
+    sourceRootId: guide.id,
+    nodes: [guide, install, notes, known, copy],
+  });
+  server.sourceAssetBytes.set(known.id, "89504e4700");
+  server.sourceAssetBytes.set(copy.id, "89504e4700");
+  const before = [...server.nodes];
+  const view = renderSourceTree(server);
+  const nav = await tree();
+  await screen.findByRole("heading", { level: 1, name: "Notes" });
+  await drop(notes.id, guide.id);
+  const confirmation = await screen.findByRole("alertdialog", { name: "Move into sources?" });
+  await user.click(within(confirmation).getByRole("button", { name: "Move" }));
+  const alert = await within(nav).findByRole("alert");
+  const link = within(alert).getByRole("link", { name: "Guide/Install/known.png" });
+  expect(moves(server)).toEqual(["MOVE Notes under Guide, after last"]);
+  expect(server.nodes).toEqual(before);
+
+  await user.click(link);
+  await waitFor(() => expect(view.router.state.location.pathname).toBe(pagePath(install.id)));
+  expect(view.router.state.location.state).toEqual({ attachment: known.id });
+  await waitFor(() => expect(document.activeElement?.getAttribute("data-attachment")).toBe(known.id));
+  expect(within(nav).queryByRole("alert")).toBeNull();
+  expect(server.nodes).toEqual(before);
+  expect(moves(server)).toHaveLength(1);
 });
 
 test.each(["drag", "dialog"] as const)(

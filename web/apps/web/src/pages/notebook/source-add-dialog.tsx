@@ -19,6 +19,7 @@ import type { Notebook } from "../../services/notebook.service";
 import { useAssets, usePageTree, useStore } from "../../stores/context";
 import { UploadRows } from "../page/upload-rows";
 import { useWorkspace } from "../workspace/workspace-layout";
+import { duplicateText, useNodeNavigate } from "./duplicate-text";
 
 type PendingPaste = { controller: AbortController; sent: boolean };
 
@@ -44,6 +45,8 @@ export function SourceAddDialog({
   const t = useT();
   const { slug } = useWorkspace();
   const navigate = useNavigate();
+  const pages = usePageTree(notebook);
+  const navigateNode = useNodeNavigate(pages);
   const location = useLocation();
   const mounted = useMounted();
   const opening = useRef<string | undefined>(undefined);
@@ -55,6 +58,11 @@ export function SourceAddDialog({
   const changeOpen = (open: boolean) => {
     if (!open) cancelPending(pending);
     held.onOpenChange(open);
+  };
+  const openNode = (id: string) => {
+    done.current = true;
+    changeOpen(false);
+    navigateNode(id);
   };
   return (
     <Dialog open={held.open} onOpenChange={changeOpen}>
@@ -75,6 +83,7 @@ export function SourceAddDialog({
               notebook={notebook}
               parent={parent}
               pending={pending}
+              openNode={openNode}
               cancel={() => changeOpen(false)}
               created={(id) => {
                 done.current = true;
@@ -83,7 +92,7 @@ export function SourceAddDialog({
               }}
             />
           ) : (
-            <SourceFiles notebook={notebook} parent={parent} close={() => changeOpen(false)} />
+            <SourceFiles notebook={notebook} parent={parent} close={() => changeOpen(false)} openNode={openNode} />
           )}
         </DialogContent>
       )}
@@ -102,12 +111,14 @@ const PasteSource = observer(function PasteSource({
   notebook,
   parent,
   pending,
+  openNode,
   cancel,
   created,
 }: {
   notebook: Notebook;
   parent: string;
   pending: RefObject<PendingPaste | undefined>;
+  openNode: (id: string) => void;
   cancel: () => void;
   created: (id: string) => void;
 }) {
@@ -121,6 +132,7 @@ const PasteSource = observer(function PasteSource({
   const [content, setContent] = useState("");
   const bodyId = useId();
   const { ref, sending, banner, problemOf, submit } = useForm(["title", "content"], {
+    explain: (error) => duplicateText(error, pages, openNode),
     onField: { "page.title_taken": "title" },
     fieldTexts: {
       "title.too_long": titleMessages.too_long,
@@ -205,10 +217,12 @@ const SourceFiles = observer(function SourceFiles({
   notebook,
   parent,
   close,
+  openNode,
 }: {
   notebook: Notebook;
   parent: string;
   close: () => void;
+  openNode: (id: string) => void;
 }) {
   const t = useT();
   const assets = useAssets(notebook);
@@ -244,7 +258,15 @@ const SourceFiles = observer(function SourceFiles({
       >
         {t("source.chooseFiles")}
       </Button>
-      {uploads.length > 0 && <UploadRows assets={assets} uploads={uploads} left={() => choose.current?.focus()} />}
+      {uploads.length > 0 && (
+        <UploadRows
+          notebook={notebook}
+          assets={assets}
+          uploads={uploads}
+          left={() => choose.current?.focus()}
+          openNode={openNode}
+        />
+      )}
       <div className="flex justify-end">
         <Button type="button" variant="outline" onClick={close}>
           {t("source.close")}

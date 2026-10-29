@@ -2,18 +2,32 @@ import type { TransferJob, TransferJobDetail } from "@nervewiki/api-client";
 
 import { accountIdOf } from "../../fixtures/assert/identity";
 import { expectNotebook } from "../../fixtures/assert/notebook";
-import { expectSubtreeDeleted } from "../../fixtures/assert/page";
-import { emailFor } from "../../fixtures/auth";
+import {
+  expectContentWritten,
+  expectNewPage,
+  expectSourceHashes,
+  expectSubtreeDeleted,
+  expectVersions,
+} from "../../fixtures/assert/page";
+import { uploadAsset, utf8 } from "../../fixtures/assets";
+import { createToken, emailFor } from "../../fixtures/auth";
 import { answerTo, countAnswers } from "../../fixtures/browser";
 import { followStreams, holdStream, settleEvents } from "../../fixtures/events";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { addedNotebookMember } from "../../fixtures/notebook-members";
 import { downgradeWith, notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook, downgradeNotebook, getNotebook } from "../../fixtures/notebooks";
-import { deleteNode, listNodes } from "../../fixtures/pages";
+import { createPage, deleteNode, listNodes, postPage, readContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
 import { endedJob, holdNotebookRow, listJobs, runningJob, startImport } from "../../fixtures/transfer";
-import { pageTree } from "../../fixtures/wiki-pages";
+import {
+  contentWrites,
+  editorContent,
+  pageTree,
+  saveEdit,
+  startEditing,
+  wikiPagePath,
+} from "../../fixtures/wiki-pages";
 import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 import { zipOf } from "../../fixtures/zip-write";
 
@@ -107,20 +121,35 @@ test("LW12 (API): a queued import refuses a downgrade; afterward an admin makes 
   expect([forbidden.response.status, forbidden.error?.code]).toEqual([403, "forbidden"]);
 });
 
-test("LW12 (page): only an admin can downgrade without typing a name; the same settings page in another account changes through its established stream, and AGENTS can then be deleted", async ({
+test("LW12 (page): only an admin can downgrade without typing a name; the same settings page keeps its established stream, its writer's mounted source becomes editable, identical bytes can be created, every source hash is cleared, and AGENTS can then be deleted", async ({
   api,
   db,
   nervewiki,
   signedInPage,
   anotherPage,
+  anotherTab,
 }, testInfo) => {
+  test.slow();
   const { adminId, pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
   const notebook = await createNotebook(api, pat, workspace.slug, "Field notes", "editor", { mode: "llm_wiki" });
-  const writerTokens = await joinOnboarded(api, pat, workspace.slug, emailFor(testInfo, "writer"), "member");
+  const writerEmail = emailFor(testInfo, "writer");
+  const writerTokens = await joinOnboarded(api, pat, workspace.slug, writerEmail, "member");
+  const writerPat = (await createToken(api, writerTokens.access_token, { name: "Downgrade writer" })).token;
+  const writerId = await accountIdOf(db, writerEmail);
   const agents = (await listNodes(api, pat, notebook.id)).find((node) => node.name === "AGENTS");
-  if (!agents) {
-    throw new Error("the LLM Wiki must have AGENTS");
+  if (!agents || notebook.source_root_id === null) {
+    throw new Error("the LLM Wiki must have AGENTS and its configured source root");
   }
+  const raw = notebook.source_root_id;
+  const original = "- [ ] Original source.\n";
+  const source = await createPage(api, pat, notebook.id, "Evidence", raw, original);
+  await uploadAsset(api, pat, notebook.id, { name: "evidence.txt", bytes: utf8("Original attachment.\n") }, raw);
+  await expectSourceHashes(db, nervewiki.storageDir, notebook.id);
+  expect(
+    await db.query("SELECT count(*)::int AS hashed FROM nodes WHERE notebook_id = $1 AND source_hash IS NOT NULL", [
+      notebook.id,
+    ])
+  ).toEqual([{ hashed: 2 }]);
   await settleEvents(api, nervewiki.baseURL, pat, agents.id);
   const page = await signedInPage(tokens);
   const writer = await anotherPage(writerTokens);
@@ -143,9 +172,22 @@ test("LW12 (page): only an admin can downgrade without typing a name; the same s
     letStreamIn();
     await expect.poll(notebookReads).toBeGreaterThanOrEqual(2);
     await expect.poll(streams.count).toBe(1);
+
+    // Keep the original settings document and its stream holder. Another tab of this same login is already
+    // reading an actual source when the mode event arrives: a fresh navigation must not supply its capability.
+    const sourceTab = await anotherTab(writer);
+    await sourceTab.goto(wikiPagePath(workspace.slug, notebook.id, source.id));
+    const originalArticle = sourceTab.getByRole("article", { name: "Evidence", exact: true });
+    await expect(originalArticle).toContainText("Original source.");
+    await expect(originalArticle.getByRole("checkbox")).toBeDisabled();
+    await expect(sourceTab.getByRole("main").getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
+    await sourceTab.keyboard.press("ControlOrMeta+e");
+    await expect(editorContent(sourceTab)).toHaveCount(0);
+    expect(streams.holders()).toEqual([writer]);
     const readsBefore = notebookReads();
     const streamsBefore = streams.opened();
     await writer.evaluate(() => Object.assign(window, { lw12Document: true }));
+    await sourceTab.evaluate(() => Object.assign(window, { lw12SourceDocument: true }));
 
     await trigger.click();
     const dialog = page.getByRole("alertdialog", {
@@ -166,6 +208,47 @@ test("LW12 (page): only an admin can downgrade without typing a name; the same s
     expect(await writer.evaluate(() => "lw12Document" in window)).toBe(true);
     expect(streams.opened()).toBe(streamsBefore);
     expect(streams.count()).toBe(1);
+    expect(streams.holders()).toEqual([writer]);
+
+    await expect(sourceTab.getByRole("main").getByRole("button", { name: "Edit", exact: true })).toBeVisible();
+    await expect(originalArticle.getByRole("checkbox")).toBeEnabled();
+    expect(await sourceTab.evaluate(() => "lw12SourceDocument" in window)).toBe(true);
+    const writes = contentWrites(sourceTab, source.id);
+    await startEditing(sourceTab);
+    await sourceTab.keyboard.press("ControlOrMeta+End");
+    await sourceTab.keyboard.type("Editable after downgrade.\n");
+    await saveEdit(sourceTab);
+    const current = `${original}Editable after downgrade.\n`;
+    expect(await writes.all()).toEqual([{ status: 200 }]);
+    await expectContentWritten(db, await writes.saved(), current, writerId);
+    await expectVersions(db, source.id, [
+      { base: null, revision: 1, content: original, kind: "edit", byId: adminId, client: "api" },
+      { base: 1, revision: 2, content: current, kind: "edit", byId: writerId, client: "web" },
+    ]);
+    await sourceTab.getByRole("main").getByRole("button", { name: "Done", exact: true }).click();
+    await expect(originalArticle).toContainText("Editable after downgrade.");
+
+    // This is a real create with content, independently of the browser's successful body write above. The
+    // ordinary New subpage UI creates empty first, so it cannot prove that standard mode accepts this POST.
+    const duplicate = await postPage(api, writerPat, notebook.id, {
+      parent_id: raw,
+      title: "Same bytes after downgrade",
+      content: current,
+    });
+    expect(duplicate.response.status, JSON.stringify(duplicate.error)).toBe(201);
+    if (!duplicate.data) throw new Error("same-byte creation answered 201 without the page");
+    await expectNewPage(db, duplicate.data, writerId, "api", current);
+    expect(await readContent(api, pat, source.id)).toMatchObject({ content: current, revision: 2 });
+    await expectSourceHashes(db, nervewiki.storageDir, notebook.id);
+    expect(
+      await db.query("SELECT count(*)::int AS hashed FROM nodes WHERE notebook_id = $1 AND source_hash IS NOT NULL", [
+        notebook.id,
+      ])
+    ).toEqual([{ hashed: 0 }]);
+    expect(await writer.evaluate(() => "lw12Document" in window)).toBe(true);
+    expect(await sourceTab.evaluate(() => "lw12SourceDocument" in window)).toBe(true);
+    expect(streams.opened()).toBe(streamsBefore);
+    expect(streams.holders()).toEqual([writer]);
 
     const tree = pageTree(page, notebook.name);
     await expect(tree.getByRole("link", { name: "AGENTS", exact: true })).toBeVisible();

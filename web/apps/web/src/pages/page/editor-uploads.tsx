@@ -27,7 +27,7 @@ export const EditorUploads = observer(function EditorUploads({
   const uploads = assets.uploads.filter((upload) => upload.parent === page && upload.fromEditor);
   return (
     <div className="space-y-2 empty:hidden">
-      {uploads.length > 0 && <UploadRows assets={assets} uploads={uploads} left={left} />}
+      {uploads.length > 0 && <UploadRows notebook={notebook} assets={assets} uploads={uploads} left={left} />}
       {told !== "" && <p className="text-sm whitespace-pre-line text-muted-foreground">{told}</p>}
     </div>
   );

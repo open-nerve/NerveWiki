@@ -2,6 +2,7 @@ import { observer } from "mobx-react-lite";
 import { useId, useRef, useState, type FormEvent } from "react";
 
 import { useForm } from "../../app/form";
+import { duplicateText, useNodeNavigate } from "../notebook/duplicate-text";
 import type { HeldDialog } from "../../app/held-dialog";
 import { notebookNameProblem, notebookNameTexts } from "../../app/notebook-name";
 import type { FieldMessage } from "../../app/problem-messages";
@@ -108,6 +109,8 @@ function assetNameProblem(stem: string, extension: string): FieldMessage | undef
 export function MoveAssetDialog({ notebook, asset, held }: AssetDialogProps) {
   const t = useT();
   const done = useRef(false);
+  const leaving = useRef(false);
+  const navigateNode = useNodeNavigate(usePageTree(notebook));
   return (
     <Dialog open={held.open} onOpenChange={held.onOpenChange}>
       {held.open && (
@@ -115,7 +118,8 @@ export function MoveAssetDialog({ notebook, asset, held }: AssetDialogProps) {
           aria-describedby={undefined}
           onCloseAutoFocus={(event) => {
             event.preventDefault();
-            held.onClosed(done.current);
+            if (!leaving.current) held.onClosed(done.current);
+            leaving.current = false;
             done.current = false;
           }}
         >
@@ -124,6 +128,11 @@ export function MoveAssetDialog({ notebook, asset, held }: AssetDialogProps) {
             notebook={notebook}
             asset={asset}
             cancel={() => held.onOpenChange(false)}
+            openNode={(id) => {
+              leaving.current = true;
+              held.onOpenChange(false);
+              navigateNode(id);
+            }}
             moved={() => {
               done.current = true;
               held.onOpenChange(false);
@@ -135,9 +144,21 @@ export function MoveAssetDialog({ notebook, asset, held }: AssetDialogProps) {
   );
 }
 
-type MoveAssetFormProps = { notebook: Notebook; asset: Asset; cancel: () => void; moved: () => void };
+type MoveAssetFormProps = {
+  notebook: Notebook;
+  asset: Asset;
+  cancel: () => void;
+  moved: () => void;
+  openNode: (id: string) => void;
+};
 
-const MoveAssetForm = observer(function MoveAssetForm({ notebook, asset, cancel, moved }: MoveAssetFormProps) {
+const MoveAssetForm = observer(function MoveAssetForm({
+  notebook,
+  asset,
+  cancel,
+  moved,
+  openNode,
+}: MoveAssetFormProps) {
   const assets = useAssets(notebook);
   const pages = usePageTree(notebook);
   const { move, confirmation } = useSourceMove(pages);
@@ -146,7 +167,9 @@ const MoveAssetForm = observer(function MoveAssetForm({ notebook, asset, cancel,
   const [parent, setParent] = useState(asset.parent_id ?? root);
   const me = useStore().account?.me?.id;
   const { ref, sending, banner, problemOf, submit } = useForm(["parent_id"], {
-    explain: (error) => pagesLocked(error, t, me, (each) => distinctName(pages.tree, notebook, each, t)),
+    explain: (error) =>
+      duplicateText(error, pages, openNode) ??
+      pagesLocked(error, t, me, (each) => distinctName(pages.tree, notebook, each, t)),
   });
   const problem = problemOf("parent_id");
   const tree = pages.tree;

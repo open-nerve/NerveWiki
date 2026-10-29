@@ -174,7 +174,7 @@ test("LW2 (page): an LLM Wiki's tree protects AGENTS and its source root; an adm
   await expect(writersMenu.getByRole("menuitem", { name: "Delete", exact: true })).toHaveCount(0);
   await writer.keyboard.press("Escape");
   await writersTree.getByRole("button", { name: "Actions for raw", exact: true }).click();
-  await expect(writersMenu.getByRole("menuitem")).toHaveText(["New subpage"]);
+  await expect(writersMenu.getByRole("menuitem")).toHaveText(["Paste Markdown", "Upload files"]);
   await expect(writersMenu.getByRole("menuitem", { name: "Rename", exact: true })).toHaveCount(0);
   await expect(writersMenu.getByRole("menuitem", { name: "Move to…", exact: true })).toHaveCount(0);
   await expect(writersMenu.getByRole("menuitem", { name: "Delete", exact: true })).toHaveCount(0);
@@ -188,7 +188,7 @@ test("LW2 (page): an LLM Wiki's tree protects AGENTS and its source root; an adm
   await expect(adminsRaw.locator("..")).toHaveAttribute("draggable", "true");
   await adminsTree.getByRole("button", { name: "Actions for raw", exact: true }).click();
   const adminsMenu = admin.getByRole("menu");
-  await expect(adminsMenu.getByRole("menuitem")).toHaveText(["New subpage", "Rename", "Move to…"]);
+  await expect(adminsMenu.getByRole("menuitem")).toHaveText(["Paste Markdown", "Upload files", "Rename", "Move to…"]);
   await expect(adminsMenu.getByRole("menuitem", { name: "Delete", exact: true })).toHaveCount(0);
   await admin.keyboard.press("Escape");
   expect((await renamePageWith(admin, notebook.name, raw.id, "raw", "sources")).status()).toBe(200);

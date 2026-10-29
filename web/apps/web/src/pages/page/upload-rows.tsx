@@ -1,6 +1,6 @@
 import { runInAction } from "mobx";
 import { observer } from "mobx-react-lite";
-import { useRef, type FormEvent } from "react";
+import { useRef, type FormEvent, type ReactNode } from "react";
 
 import { useFocusLeaving } from "../../lib/focus-leaving";
 import { sourceTitleProblem, type SourceTitleProblem } from "../../lib/source-title";
@@ -13,8 +13,10 @@ import { formatBytes } from "../../i18n/format";
 import { useT, type Translate } from "../../i18n/i18n";
 import type { Locale } from "../../i18n/locale";
 import { ApiError } from "../../services/api";
+import type { Notebook } from "../../services/notebook.service";
 import { isRefusal, sourceMaxBytes, type AssetStore, type Upload } from "../../stores/asset.store";
-import { useStore } from "../../stores/context";
+import { usePageTree, useStore } from "../../stores/context";
+import { duplicateText, useNodeNavigate } from "../notebook/duplicate-text";
 
 /**
  * UploadRows are the uploads under a page or the root (M7/P4 design 3.5),
@@ -25,22 +27,29 @@ import { useStore } from "../../stores/context";
  * a row that leaves with the focus in it gives it to left.
  */
 export const UploadRows = observer(function UploadRows({
+  notebook,
   assets,
   uploads,
   left,
+  openNode,
 }: {
+  notebook: Notebook;
   assets: AssetStore;
   uploads: readonly Upload[];
   left: () => void;
+  openNode?: (id: string) => void;
 }) {
   const t = useT();
+  const pages = usePageTree(notebook);
+  const navigate = useNodeNavigate(pages);
+  const explain = (error: unknown) => duplicateText(error, pages, openNode ?? navigate);
   return (
     <ul aria-label={t("asset.uploads")} className="divide-y rounded-md border text-sm">
       {uploads.map((upload) =>
         upload.target === "source-page" ? (
-          <SourceUploadRow key={upload.key} assets={assets} upload={upload} left={left} />
+          <SourceUploadRow key={upload.key} assets={assets} upload={upload} left={left} explain={explain} />
         ) : (
-          <UploadRow key={upload.key} assets={assets} upload={upload} left={left} />
+          <UploadRow key={upload.key} assets={assets} upload={upload} left={left} explain={explain} />
         )
       )}
     </ul>
@@ -51,10 +60,12 @@ const UploadRow = observer(function UploadRow({
   assets,
   upload,
   left,
+  explain,
 }: {
   assets: AssetStore;
   upload: Upload;
   left: () => void;
+  explain: (error: unknown) => ReactNode | undefined;
 }) {
   const t = useT();
   const { instance, preferences } = useStore();
@@ -70,7 +81,8 @@ const UploadRow = observer(function UploadRow({
       <span className="flex items-center gap-3">
         {failed ? (
           <span role="alert" className="text-destructive">
-            {failureText(upload.failure, t, preferences.locale, instance.info?.asset_max_bytes)}
+            {explain(upload.failure) ??
+              failureText(upload.failure, t, preferences.locale, instance.info?.asset_max_bytes)}
           </span>
         ) : (
           <>
@@ -130,10 +142,12 @@ const SourceUploadRow = observer(function SourceUploadRow({
   assets,
   upload,
   left,
+  explain,
 }: {
   assets: AssetStore;
   upload: Upload;
   left: () => void;
+  explain: (error: unknown) => ReactNode | undefined;
 }) {
   const t = useT();
   const { preferences } = useStore();
@@ -145,7 +159,7 @@ const SourceUploadRow = observer(function SourceUploadRow({
   return (
     <li ref={row} className="space-y-3 px-3 py-3">
       {fixable ? (
-        <SourceTitleForm assets={assets} upload={upload} />
+        <SourceTitleForm assets={assets} upload={upload} explain={explain} />
       ) : (
         <>
           <span className="block truncate">{upload.file.name}</span>
@@ -172,16 +186,24 @@ const SourceUploadRow = observer(function SourceUploadRow({
   );
 });
 
-const SourceTitleForm = observer(function SourceTitleForm({ assets, upload }: { assets: AssetStore; upload: Upload }) {
+const SourceTitleForm = observer(function SourceTitleForm({
+  assets,
+  upload,
+  explain,
+}: {
+  assets: AssetStore;
+  upload: Upload;
+  explain: (error: unknown) => ReactNode | undefined;
+}) {
   const t = useT();
-  const { ref, sending, banner, problemOf, submit } = useForm(["title"], sourceFormTexts);
+  const { ref, sending, banner, problemOf, submit } = useForm(["title"], { ...sourceFormTexts, explain });
   const failed = upload.failure !== undefined;
   const titleRefusal =
     isRefusal(upload.failure) && upload.failure.refused === "source-title" ? upload.failure : undefined;
   const server = formErrors(titleRefusal === undefined ? upload.failure : undefined, t, ["title"], sourceFormTexts);
   const problem =
     problemOf("title") ?? (titleRefusal === undefined ? server.fields.title : t(titleMessages[titleRefusal.issue]));
-  const note = banner ?? server.banner;
+  const note = explain(upload.failure) ?? banner ?? server.banner;
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
