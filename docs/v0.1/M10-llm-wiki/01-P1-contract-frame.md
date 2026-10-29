@@ -559,7 +559,7 @@ func (s *SeedWrites) ParseTemplate(content string) (Facts, error) {
 
 - 同 `Run` 共用的：锁、判定 `page.create`（`domain.ActionCreate`）、单元、观察者、搜索的准确入队（`Background`、`BulkSearch` 都不设：两页，建好之后马上搜得到）；`CreatePage`（`page/app/unit_create.go:31-56`）照常做名称、父页、兄弟的标题与层级的检查，`PageDraft.ID` 本就收调用方的 id（`:17-19`、`:65-68`）：来源根以第 6 步定下的 id 写下。与 `Run` 不同的只有两样：要求在事务里（相反），时刻取交来的。
 - `Seed` 交回它写下的页的 id（照 `spec.Pages` 的次序；出错时为 `nil`）：模板交回它写下 `raw` 的那一个，建的"恰有一个、等于先定下的"（3.4 第 10 步）因此核对的是写下的来源根，不是交给 `Seed` 的（S1 审查 A-N3，主持者的决定 23）。
-- `ParseTemplate` 不经预算、不判定：它在启动时、任何请求之前调用，对象是服务端自己的文字（四页共约 5.4 KiB：英文的 `AGENTS` 2,209 字节、中文的 2,107，英文的 `raw` 648、中文的 593，3.9）。13.3 第 3 条照第 8 节写明这一处例外。`Markdown.Facts` 是不取预算的解析（`page/app/ports.go:737-740`，空正文的 `Decided` 就用它，`page/app/content.go:56-59`）。提取结果在几次创建之间共用：`app.Facts` 是不透明的（`ports.go:763-766`），守卫、参与者与观察者只读（下面的 `TestATemplatesParseIsItsContents` 核对两次创建收到的相同）。
+- `ParseTemplate` 不经预算、不判定：它在启动时、任何请求之前调用，对象是服务端自己的文字（四页共约 5.4 KiB：英文的 `AGENTS` 2,209 字节、中文的 2,107，英文的 `raw` 659、中文的 605（P2/S3决定48后现行数；S1原测量保留在10.1），3.9）。13.3 第 3 条照第 8 节写明这一处例外。`Markdown.Facts` 是不取预算的解析（`page/app/ports.go:737-740`，空正文的 `Decided` 就用它，`page/app/content.go:56-59`）。提取结果在几次创建之间共用：`app.Facts` 是不透明的（`ports.go:763-766`），守卫、参与者与观察者只读（下面的 `TestATemplatesParseIsItsContents` 核对两次创建收到的相同）。
 - **根**（`page/tree_writes.go`）：`TreeWrites`（`:72-121`）加两个方法：
 
   ```go
@@ -886,7 +886,7 @@ nb := notebook.New(notebookDeps(cfg, pool, logger, authorizer,
 
 This page is the root of the notebook's source area. Put the original material here: articles, papers, meeting notes, PDFs and images, one source to a page or an attachment. A source is written once and kept as it is, so that the wiki's pages can cite it.
 
-On the web, add one with “Paste or upload as source”. An agent adds one with a single `write` of `raw/<title>.md`.
+On the web, add one with “Paste Markdown” or “Upload files”. An agent adds one with a single `write` of `raw/<title>.md`.
 
 The pages and attachments under this page cannot be changed once written. Only the notebook's admins can rename, move or delete them; anyone who can write may add more.
 
@@ -900,7 +900,7 @@ This page's own text is yours to change: say what your sources are and how you n
 
 这一页是这本笔记本的来源区的根。原始资料放在这里：文章、论文、会议记录、PDF 与图片，一个来源一页或一个附件。来源写进来之后保持原样，wiki 的页才能引用它。
 
-在网页上用“粘贴或上传为来源”添加。agent 用一次 `write` 写 `raw/<title>.md` 添加。
+在网页上用“粘贴 Markdown”或“上传文件”添加。agent 用一次 `write` 写 `raw/<title>.md` 添加。
 
 这一页之下的页与附件写进来之后不能修改。改名、移动、删除只有这本笔记本的管理员能做；能写的人都可以继续添加。
 
@@ -999,9 +999,9 @@ sources: ["[[raw/Some article]]"]
 这本笔记本是 LLM Wiki 时，这一页不能删除、改名或移动。它的正文归你：按你的领域、你的类型与你的工作方式改写它。
 ````
 
-- 大小（上面的全文，以一个换行结尾，UTF-8）：英文的 `AGENTS` 2,209 字节，中文的 2,107，英文的 `raw` 648，中文的 593，四页共约 5.4 KiB，远在 8 KiB 之下；测试钉住 8 KiB（`MaxTemplateBytes`，00-M10 4.18 的 `AGENTS` 至多 8 KiB；测试写出 `8 << 10`，不取这个常量），实现时 `wc -c` 量得的正是这四个数（共 5,557 字节，10.1）。
+- 大小（上面的现行全文，以一个换行结尾，UTF-8；P2/S3决定48）：英文 `AGENTS` 2,209 B、中文2,107 B，英文 `raw`659 B、中文605 B，共5,580 B；各页都在既有8 KiB界内。测试仍独立写出`8 << 10`，不以实际模板大小代上限。S1实现时的648/593/5,557 B测量保留于10.1，不改写其受测输入；新模板只影响之后的新建。
 - 两页都不带 frontmatter（第一行是标题）：说明的找法去掉 frontmatter（`page/domain/instructions.go:35-36`），lint 对两页豁免类型与摘要（4.10），带了反而让人以为要写。`yaml` 围栏里的 `---` 不在正文的开头，不是 frontmatter（`tools/md-fixtures/cases/019-frontmatter-not-at-start.md`）。
-- "粘贴或上传为来源"/“Paste or upload as source” 是 P3 之后网页的那个对话框的名字（00-M10 4.16）；文字由网页那一步定，定下的不同时改这里的一句（第 9 节写给 P3–P4 的）。
+- P2/S3实际入口为“粘贴 Markdown”/“Paste Markdown”和“上传文件”/“Upload files”。主持者决定48对旧单入口名称及第9节旧模板约定作窄偏离，仅同步双语raw的一句，不改存量正文、规则或agent write路径；见[P2结果](02-P2-source-area.md#103-s3-完整来源网页)与[S3审查](reviews/P2-S3-source-web-review.md)。
 - 代码里的链接不算：行内代码与围栏里的 `[[…]]` 与 `#…` 不产生链接与标签（`tools/md-fixtures/cases/003-code-excluded.md`），所以新建的 LLM Wiki 的 `page_links`、`page_tags` 里两页一行也没有，lint 干净（4.11）。
 
 **`wiki/domain/template_test.go`**（纯函数，没有库）：
@@ -2140,6 +2140,8 @@ function modeChanged(data: unknown, { mutate }: EventContext): void {
 
 **S4 留给 P2–P4 的**（00-M10 第 7 节）：来源区的行与菜单、拖进来源区之前的确认、"粘贴或上传为来源"、来源页的只读视图与新的失去编辑的原因（P2/S3）；健康度面板（P3/S2）；虚拟的两行、目录视图、历史的 ingest、虚拟页的链接（P4/S3）。`downgradeBody` 与 `ModeOptions` 的说明已写下它们的后果。
 
+P2/S3后续落实注：来源相关控件、会话失去、两个添加入口、移入确认与重复解释已按[P2 §10.3](02-P2-source-area.md#103-s3-完整来源网页)实施并审查；上段保留S4时的交接范围与旧入口原名。健康度/虚拟/ingest仍各归P3/P4。
+
 ## 5. e2e
 
 P1 的故事是 LW1、LW2 与 LW12 的 P1 的几步，在 `e2e/stories/wiki/`（新的一组）。照 10.1 与 M9 的约定：一个文件里依次是 API、MCP、页面的版本，标题 `"LW<n> (<版本>): …"`；MCP 的种子经 REST，每个 agent 一个 PAT，值来自答复。
@@ -2486,9 +2488,13 @@ P1 完成，当且仅当：
 
 - **S3**（S2 的审查留下的，主持者的决定 29）：四个 S2→S3 的窗口（第 0 节）的处理与核对见 10.3 和 [S3 的审查记录](reviews/P1-S3-prechecks-refusals-numbering-review.md)，已合并为 `a46c3d1d`（00 号文档第 12 节）。导入与恢复的加序号及 `checkPages` 的根下保留键规则对应 A-M2；撤销的两遍预检及 `TestPrechecksAnswerTheGuardsCodes` 的前一步碰到锁、后一步被模式拒绝的一行对应 A-M3；后台的开始时预检与 `refused` 的去处对应另两处窗口。这些窗口随 `a46c3d1d` 进入 main 并通过首次 main CI；完整 Step 审查、本机门禁与分支 CI 的既有证据保持不变。
 - **P2/S1**：来源事实/rewrite/管理/session/Merged义务已落地，验收进度见[P2](02-P2-source-area.md)3.14/10.1与[S1审查](reviews/P2-S1-source-rules-review.md)。实际构造为`page.NewModeGuard(pool, authorizer)`，mode写guard与sessionVeto均在lock前；`NodePlace.InArea`、`NodeFacts.Kind`、`StepContent`/Kinds/两侧Lines与恢复森林AfterParents，Unit复用已读祖先，普通模式零额外来源读/授权（不含旧响应读）。来源immutable、管理矩阵、按项正文/Merged后备及实际后台动作均有相应观察；rewrite真实SQL/fake用AND、full/Of取被撤销r，content-only只补相关线。08fa扩展`TestTheDowngradeEndsTheContract`，同一非空页真实降级后REST/MCP改变正文并核SQL版本；`ErrSourceAdminOnly`文字已区分管理sources与rename/move来源根，不暗示可删除根。`page.source_duplicate`、Forget与最终合成正文去重差异仍P2/S2；完整网页仍P2/S3。S1已合并且记录CI/两main Test均值已核，S2继续实施；合并见00号文档第12节。 P2/S2的同步SyncRestoreNode另新增一次普通模式也需的StateOf点读，之后普通模式不进入来源snapshot/元数据扫描；不改写前述S1阶段的guard读数结论。
+
+P2后续核对：source_hash/duplicate及Forget在S2已验，完整网页和生命周期由[S3审查](reviews/P2-S3-source-web-review.md)接续；上条的S1当时范围及普通模式读数不追改。
 - **P2/S2**：降级的 `Forget` 插在 3.10 第 5 步之后；`ModeChange` 的订阅者不变；上传、同步的撤销与 `startRevert` 的只有守卫拒绝的情形（重复，3.25）；报告的拒绝可以指一个附件（重复的来源），`transfer.refusedSome` 说的"不再在树里的一页"与 `distinctName` 对附件不答（`W/pages/notebook/distinct-name.ts:11-22`）随之改，00-M10 的 `duplicateText` 已处理附件（审查 C-N9）。 S2-1–4增量已验hash维护、Forget顺序、last-hop拒绝及AttachmentInfos.SHA256/duplicate_of字段全链，具体证据与剩余文档/main集成见[P2 §10.2](02-P2-source-area.md#102-s2-来源-hash去重与验证)和[S2审查](reviews/P2-S2-source-hash-review.md)。以上transfer.refusedSome/distinctName的完整网页解释留S3；当前159控制义务按来源及局部重放接受、本机门禁与精确33b4分支CI11项已验；B-N1文档复核已关闭，main集成待闭环，统一见S2审查最终验证表。
 
-- **P2/S3**："粘贴或上传为来源"的对话框的名字与模板的 `raw` 的那一句一致（3.9），不同时改模板；来源区的树的菜单在 4.4 的行的种类上加"来源"。
+P2/S2最终入口补记：记录8904的精确CI40804121398与merge66d823的40800844731均11作业成功，两main四片Test均值433/403/299/319.5s；具体原件见[P2 §10.2](02-P2-source-area.md#102-s2-来源-hash去重与验证)。S3已补附件/全路径/历史解释，集成状态见10.3；上条旧阶段记录保留。
+
+- **P2/S3**：按P2两个实际入口“粘贴 Markdown/上传文件”实施，来源行有可读“来源”等价、全角色/只读与历史反馈。主持者决定48（负责人可以改判）对本条旧“不同时改模板”名称约定作窄偏离，只改两种raw模板的入口单句；现行全文/字节见3.9，存量正文不改，S1历史字节保留。三审修复、最终验证及待集成状态见[P2 §10.3](02-P2-source-area.md#103-s3-完整来源网页)与[S3审查](reviews/P2-S3-source-web-review.md)。
 - **P3**：`lint.read` 进 `wiki.Actions()`（`actions_test` 的并集已有它）；MCP 的矩阵的 LLM Wiki 的变体（按行的工作区照 3.14 的写法）；模板在两种语言里 lint 干净（3.9 的"代码之外没有链接"是它的前提）。
 - **P4**：`TestTheDowngradeEndsTheContract` 加"`list` 没有虚拟的两项"；LW12 加"虚拟的两行消失"。
 - **P5**：`open_notebook` 与握手的系统的一段（P1 的 `open_notebook` 已答 `mode`）；LW1 (MCP) 加系统的一段的一步；`TestTheDowngradeEndsTheContract` 加"握手没有系统的一段"；模板讲 prompt 的那一句与系统的那一段同样的意思（00-M10 4.15）。
@@ -2529,6 +2535,8 @@ P1 完成，当且仅当：
   15. LW1 (API) 并行建三本 LLM Wiki（`Promise.all`）：oxlint 的 `no-await-in-loop` 不许循环里等；每一本照设计核对，422 与 `countNotebooks` 在三本都结束之后（审查 C：三次建只共用 acme 的行的 `FOR SHARE`）。
 - 实测（本机，竞态检测下，经 `heavy.sh`，除非注明）：
   - 模板的字节（`wc -c wiki/domain/template-*.md`，不经 heavy.sh）：英文的 `raw` 648、`AGENTS` 2,209，中文的 `raw` 593、`AGENTS` 2,107，共 5,557；测试钉住的是每页 8 KiB（修复一轮起写出 `8 << 10`）。
+
+  P2/S3决定48后的现行raw为659/605 B，总5,580 B；此处上列仍是S1原受测字节，不据后续模板修改追改历史。
   - 八个新的整个程序的测试（`go test -race -count=1 -run '^(…)$' ./internal/bootstrap`，开始时负载 1.8）：包 11.9 秒，测试本身 10.3 秒。第二份的五个共 5.4 秒（`TestPageViolationsCatchEachLLMWikiGap` 1.95、`TestImportsAndDowngradingAnLLMWiki` 1.66（0.93 与 0.73）、`TestTheDowngradeAnswersInItsOrder` 0.69、`TestLLMWikiCreationWritesItsTemplate` 0.59、`TestNotebooksAnswerTheirModeOverMCP` 0.52），乘 1.73 约 9.4 秒；第三份的三个共 4.9 秒（`TestWorkspaceChangesAndCreatingAnLLMWiki` 3.06，三个子测试各 1.02；`TestTheModeEventReachesTheStreams` 1.31；`TestTheTemplateRollsBackWithItsNotebook` 0.49），乘 1.73 约 8.4 秒。都在 7.5 的估计之内（P1 第二份的八个约 25–30 秒）。`TestPermissionMatrix` 带变体的行单独跑，包 21.0 秒。
   - 修复一轮改了的测试：`TestPageViolationsCatchEachLLMWikiGap` 2.09 秒、`TestWorkspaceChangesAndCreatingAnLLMWiki` 3.70 秒（新的子测试 0.53）、`TestNotebooksAnswerTheirModeOverMCP` 0.52、`TestLLMWikiCreationWritesItsTemplate` 0.56、`TestPageNotebooksConvertTheState` 0.00 秒。
   - e2e（不带竞态）：建成时 `make e2e` 284 个 55.4 秒；LW1 (API) 50 毫秒、LW1 (MCP) 29 毫秒、MC1 989 毫秒。修复一轮 284 个 36.0 秒；审查 C 与修复核对 C 284 个 36.4、36.9 秒。

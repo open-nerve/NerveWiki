@@ -3,12 +3,12 @@
 | 项 | 内容 |
 |---|---|
 | 里程碑 / Phase | M10 模式契约与 LLM Wiki / P2 来源区 |
-| 日期、状态 | 2026-10-29；P2进行中，S1已验；S2旧33b4/4550已验、fb与288 CI失败、恢复折叠及有界facts保留分列，最终代码f1818066的本机门禁、独立审查与提交后gen-check均已核定，精确代码CI40793294472全11绿。文档002a5638的精确CI40797519100全部11作业及必需步骤、code/docs分支四片Test配对，以及main合并`66d8236c12aaa8923616f6f42f2ee33b772884f9`的精确CI40800844731全部11作业及必需步骤均获主持者接受；本记录提交自身CI与双main Test配对仍由后续真实运行收口，完成前不开始S3。前33b4/4550绿、fb/288失败和03不精确同步的历史均保留；B-N1原审已关闭，记录CI与双main配对待闭环；S3待做 |
+| 日期、状态 | 2026-10-29；S1、S2已验；S3最终代码`ae4501aa166771db153dae5dfa710ef16ee26ac4`的原审复核、本机门禁与精确代码CI已核，分支文档/合并/记录CI仍待；P2进行中。P3–P5与M10收尾未开始；实际集成见10.3及[S3审查](reviews/P2-S3-source-web-review.md) |
 | 基线 | `main` = `origin/main` = `403841fc75d0e5ac6b5f39447158213c0e07b2fe`，树 `b3665215f745d4dcfe7e8d339d4882e6d95b4a63` |
 | 入口 | P1 已完成；其后 grep 成本维护也已合并并核对，两份 main CI 全 10 项成功；第 1 节 |
 | 权威 | [文档约定](../../README.md)、[总体设计](../v0.1-design.md)、[M10 总设计](00-M10-design.md) §4.6–4.8、§4.16–4.18、§7、§9；[P1](01-P1-contract-frame.md) §8–10；[M8 历史移交](handoffs/M8-history.md)、[M9 MCP 移交](handoffs/M9-P1-mcp-registry.md) |
 | 代码位置 | `page/`、`asset/`、`notebook/`、`transfer/` 相对 `server/internal/modules/`；`bootstrap/`、`shared/`、`platform/` 相对 `server/internal/`；迁移相对 `server/migrations/sql/`；`W/` 相对 `web/apps/web/src/`；行号均按上述基线 |
-| 审查 | [P2 设计审查](reviews/P2-design-review.md)：三位独立初审、首轮修订、原 A/B/C 复核均完成；2 Important / 2 Minor 与 B-Q1 在设计层 resolved，无新增核实 I/M/N/Q；设计提交 `4755b4c9` 的精确 main [CI 40413727596](https://github.com/open-nerve/NerveWiki/actions/runs/40413727596) 已十项成功；[S1 实施审查](reviews/P2-S1-source-rules-review.md)与结果见10.1 |
+| 审查 | [P2 设计审查](reviews/P2-design-review.md)：三位独立初审、首轮修订、原 A/B/C 复核均完成；2 Important / 2 Minor 与 B-Q1 在设计层 resolved，无新增核实 I/M/N/Q；设计提交 `4755b4c9` 的精确 main [CI 40413727596](https://github.com/open-nerve/NerveWiki/actions/runs/40413727596) 已十项成功；[S1 实施审查](reviews/P2-S1-source-rules-review.md)与结果见10.1；[S2实施审查](reviews/P2-S2-source-hash-review.md)已闭环；[S3审查](reviews/P2-S3-source-web-review.md)记录三份独立初审、三个Minor修复与原席复核，结果见10.3 |
 
 ## 0. 三个独立为绿的 Step
 
@@ -34,7 +34,7 @@ P1 的最终文档为 `b112450f`。其第一次精确 CI 的既有 grep 成本�
 
 记录 CI 其余实际 step 秒：race 573、costs 546、guards 751、short 187、web Test 208、E2E 211、Image smoke 78。它们不是 bootstrap 的预算，也不把 job 总时长混进 Test 平均。入口回执是主持者持有的 `p2-entry.json`，原始 run/jobs/timings 与 SHA256、postmerge-pair 均归树外证据，不把本机路径写成仓库长期依赖。
 
-设计基线时的 gap：ModeGuard 只有 P1 三类规则；Step 无正文/来源事实；版本无 rewrite；无 source_hash/duplicate；网页树只认 AGENTS/来源根。已有 P1 的 `Grants`、`Refused`、batch OpFailed、开始撤销预检、后台 refused/finalizer、保留名编号、mode 事件与降级保持。IndexItems 的 30 ms 观察及 grep 的 600 ms 新预算的后续稳定性仍归 M10 收尾，本文不宣称已稳定，不在 Step 中暗改其线。 S1 的当前实现与初审/修复进展见3.14、10.1；S2 hash/duplicate 和 S3 完整 UI 仍待完成。
+设计基线时的 gap：ModeGuard 只有 P1 三类规则；Step 无正文/来源事实；版本无 rewrite；无 source_hash/duplicate；网页树只认 AGENTS/来源根。已有 P1 的 `Grants`、`Refused`、batch OpFailed、开始撤销预检、后台 refused/finalizer、保留名编号、mode 事件与降级保持。IndexItems 的 30 ms 观察及 grep 的 600 ms 新预算的后续稳定性仍归 M10 收尾，本文不宣称已稳定，不在 Step 中暗改其线。 上述为设计基线差距；S1/S2实际验收见10.1/10.2，S3网页与修复见4.6/10.3，合并/main闭环仍按当步真实回执。
 
 ## 2. 目标、范围和明确修订
 
@@ -45,6 +45,8 @@ P1 的最终文档为 `b112450f`。其第一次精确 CI 的既有 grep 成本�
 以下正文修订已经三方审查、原审查者复核并由主持者接受，同本设计一并落入 00。实施/Phase 设计决定序列从 **36** 接续（维护为35），与 00 总设计审查的1–40是两套序列；36–43 逐项记在 [P2 设计审查](reviews/P2-design-review.md)“主持者的决定（负责人可以改判）”。
 
 后续实施决定44（四片窄名称再平衡）、45（恢复行内来源hash折叠）、46（单次预检有界facts保留）与47（C4协作场景等待派生读取完成）记于[S2审查](reviews/P2-S2-source-hash-review.md#文档决定与后续)，接续43，不覆盖00总设计审查的1–40。
+
+实施决定48（来源模板改用两个实际入口名）见[S3审查](reviews/P2-S3-source-web-review.md)“主持者的决定（负责人可以改判）”。只修改双语raw模板的一句；新建模板使用现行名称，存量正文不改；P1规范全文/大小同步、S1历史字节保留。
 
 | 决定编号 | 修订位置与新文字要点 | 理由 |
 |---|---|---|
@@ -63,7 +65,7 @@ P1 的最终文档为 `b112450f`。其第一次精确 CI 的既有 grep 成本�
 
 ### 2.2 需要负责人确认
 
-无常规确认项。主持者在原 A/B/C 复核之后接受本设计及决定36–43（负责人可以改判）；当时只是设计接受；S1实施/验证与后续修复进度见10.1，S2/S3及其成本、迁移证据仍待完成。若实施证据表明获准方案不能满足现有架构、权限或历史语义，主持者按工作流重新定处置；只有真正重大架构冲突才按用户约定升级。
+无常规确认项。主持者在原 A/B/C 复核之后接受本设计及决定36–43（负责人可以改判）；当时只是设计接受；S1/S2实施与成本/迁移见10.1/10.2，S3最终实现、三审与修复见10.3；Step集成及Phase完成按实际CI后续收口。若实施证据表明获准方案不能满足现有架构、权限或历史语义，主持者按工作流重新定处置；只有真正重大架构冲突才按用户约定升级。
 
 不做：P3的SourceArea整区lint读、索引规则、P4虚拟文件/ingest、P5prompt、M11升级状态或保全；不接触真实客户端配置。
 
@@ -495,7 +497,7 @@ S3在`PageTreeStore`建立**全节点**索引（直接由既有nodes建，含附
 
 ### 4.2 管理、正文和入口
 
-沿现有角色能力判定，不增加客户端授权来源：writer可新建/上传/移入来源，但来源现有节点rename/move/reorder/delete菜单与拖放关闭；admin可管理，来源根删除与祖先删除仍protected，根改名/移动沿P1。来源root说明、AGENTS说明和普通页面继续编辑。页/附件的权限使用同一个isSource，附件区rename/move/delete不遗漏。
+沿现有角色能力判定，不增加客户端授权来源：writer可新建/上传/移入来源，但来源现有节点rename/move/reorder/delete菜单与拖放关闭；admin可管理，来源根删除与祖先删除仍protected，根改名/移动沿P1。来源root说明、AGENTS说明和普通页面继续编辑。页/附件的权限使用同一个isSource，附件区rename/move/delete不遗漏。 writer携带来源根的普通祖先仅限制换父，不封同父排序或改名；admin可换父。实际`canMoveNode(pages,id,parent)`供目的地选项、DnD命中与队列末跳共用（A-M1修复），后端仍最终裁决。
 
 正文来源页显示只读横幅“来源保留原文，可作为整理材料；需要修改时由管理员移出来源区后修改”。隐藏Edit和Mod+E、Markdown任务checkbox写操作、历史“还原此版本”、锁提示的“在这里编辑”。不仅隐藏按钮：快捷键和handler也检查同一条件；task渲染传入只读，不能靠点击后409当正常产品流程。历史仍可查看/比较/复制。来源页里的未解决链接点击若只是创建**别的页面**而不改当前正文，保留现有创建流程；落在来源父下的新页仍走标题/创建规则，不给此链接入口修改来源的例外。附件上传是新增，来源页下仍可添加。
 
@@ -527,15 +529,25 @@ type UploadResult = { kind: 'asset'; asset: Asset } | { kind: 'page'; page: Page
 // PageTreeStore.createWithContent(...) uses its existing queued write/re-read path.
 ```
 
-Source-page行通过PageTreeStore排队创建，队列任务发送前再检查abort（modal关闭不abort，generation变更会abort），signal透传PageService。成功page结果调用树已有重读并dismiss/导航条件，不送进asset列表分页“找uploaded asset”循环；附件仍用原read/refresh/paging。不能把Page塞到`Upload.uploaded: Asset`、让编辑器的`uploaded(upload)`返回联合类型再到处强转。上传行取消、重试、进度、失败与名称编辑按target分支，读取文件阶段可显示准备中，不伪造网络百分比。MD只在来源上传入口新增支持；编辑器附件拖放原来拒.md的行为保持。S3明确测试关闭对话框仍完成、两种generation取消、混选互不阻塞、409只改一行、来源移动后server最终裁决。
+Source-page行通过PageTreeStore排队创建，队列任务发送前再检查abort（modal关闭不abort，generation变更会abort），signal透传PageService。成功page结果调用树已有重读并dismiss/导航条件，不送进asset列表分页“找uploaded asset”循环；附件仍用原read/refresh/paging。不能把Page塞到`Upload.uploaded: Asset`、让编辑器的`uploaded(upload)`返回联合类型再到处强转。上传行取消、重试、进度、失败与名称编辑按target分支，读取文件阶段可显示准备中，不伪造网络百分比。MD只在来源上传入口新增支持；编辑器附件拖放原来拒.md的行为保持。S3明确测试关闭对话框仍完成、两种generation取消、混选互不阻塞、409只改一行、来源移动后server最终裁决。 失败Markdown行的新显式retry按当前notebook角色禁用/恢复控件，submit及caller-provided beforeSend在排队真正发出前再查当前角色；同一行/File/草稿保留。已发上传与父移动的服务端终裁不变（B-M1）。
 
 ### 4.5 重复说明、附件路径和历史提示
 
-新增统一`duplicateText(problem, pages, navigate)`（返回ReactNode或可供组件观察的模型）用于source_duplicate；读取optional duplicate_of，没有id用“本次操作包含字节相同的来源”的专门文案，按调用上下文另说同步“本次操作未写入”或后台“本批未写入，前面已完成的批保留”，不能展示回滚UUID。先从全节点索引生成**完整可读路径**；有id但当前树找不到时触发一次去重的pages.read，重读后仍无则显示“重复来源目前不可用”，不显示裸UUID、不无限重读。点击前复核当前mode/tree/目标；page用page route，asset用现有`openOf`的parent+attachment focus，不硬拼`/pages/<asset>`。各异步回调保留mounted/location约束。只读到目标的当前可见信息，不用Problem带路径跨越权限。
+新增统一`duplicateText(problem, pages, navigate)`（返回ReactNode或可供组件观察的模型）用于source_duplicate；读取optional duplicate_of，没有id用“本次操作包含字节相同的来源”的专门文案，按调用上下文另说同步“本次操作未写入”或后台“本批未写入，前面已完成的批保留”，不能展示回滚UUID。先从全节点索引生成**完整可读路径**；有id但当前树不能解析为有效来源目标时（不存在，或缓存中尚在区外）触发一次去重的pages.read，重读后仍无则显示“重复来源目前不可用”，不显示裸UUID、不无限重读。点击前复核当前mode/tree/目标；page用page route，asset用现有`openOf`的parent+attachment focus，不硬拼`/pages/<asset>`。各异步回调保留mounted/location约束。只读到目标的当前可见信息，不用Problem带路径跨越权限。 C-M1补旧树中已存在区外page/asset后来移入的真实场景；不通过取消来源复核把区外目标当可导航来源。
 
 接入位置逐个：添加粘贴表单；source upload rows（附件区与拖放）；树DnD Alert；MovePageDialog；Asset move；trash页与preview批恢复；RevertDialog；changeset-page的carried outcome；TransferReport.Refused及duplicate_source问题的to。`form.explain`、Alert已可收ReactNode；`upload-rows.failureText`、trash refusal helpers和report当前string返回要在调用处换成可渲染内容，普通errorText保留string给现有非UI用途，不能全局改签名造成无关连锁。被拒node_id与duplicate_of分开，前者可为子树内附件；两者都用全节点路径。
 
 同步撤销、后台报告保留偏严解释：临时步骤也守来源规则，管理员不例外修改已有正文。可执行提示是“需要还原正文时先移到来源区外还原，再移回；重复时先处理冲突来源后再恢复/移回”。重新移入仍校验重复，不能承诺必成功；也不把这些动作拼成仍会拒绝的一次batch。后台撤销另解释“后台撤销分步处理，处理顺序可能与一次撤销不同。本批操作未保存，已经完成的部分仍然保留；请按来源规则手动处理冲突后重试。” 不把nominalBatches/halved/Joined写进产品界面，也不声称只有并发变化才会拒绝。页面测试按真实操作顺序验证区外还原可行、移回被尚存重复拒绝，消除冲突后成功，且无管理员正文豁免。
+
+### 4.6 S3 实际落地与设计差异
+
+S3以`8904a8769646c3b8919ff6a4c503eeae3ac70727`为入口，四个增量c877/4246/98bc/1da和审查修复`8c17b5cceb65b2a0f70976bbe4752daeaabaee05`分别记于10.3及审查记录。全节点nodeById/nodeAncestors/isSource保留页面专用树；source身份是当前mode/root/祖先的派生值，不按标题raw。writer来源管理、根与根AGENTS正文例外、同父排序和携根祖先换父的区别由共享能力判定，最终服务端仍授权。
+
+PageService.createPage的content/signal、PageTreeStore.createWithContent的排队/重读、AssetStore.uploadSources/retrySource的持久行共用既有生命周期；页面/附件结果分型而编辑器仍只收Promise<Asset>。树队列前重验signal和调用方beforeSend，失败MD新retry另验当前role；普通Untitled排队后父变来源时取消该隐式创建。父移动后的已开始文件请求仍按服务端终裁，未增加客户端来源位置否决。
+
+duplicateText使用全节点完整路径、当前openOf与一次去重补读；source无效不仅是UUID不存在。树Alert在导航前消耗以完成焦点交接，保持共享读者动作保护。changeset carried renderer虽接线，自然source409仍留RevertDialog；不伪造route state作为consumer实测。
+
+决定48按P2两入口改双语raw模板一句，当前659/605 B，AGENTS2209/2107 B，总5580 B；存量正文不变，P1旧测量保留。A/B/C三Minor和C的预算/证据Q由原席核对；C-location单守卫0/0/0存活按防御冗余保留，不声称所有候选均被kill。完整证据与集成边界见[S3审查](reviews/P2-S3-source-web-review.md)。
 
 ## 5. 端到端故事与数据库断言
 
@@ -705,6 +717,64 @@ barrier优先既有可注入端口，只用于测试装配，不在生产暴露�
 
 S1补充反例单列类别：`TestTheDowngradeEndsTheContract`的合法no-op请求是test-input（200仍成功、readback正文/revision失败），`TestSourceMatrixSeedKeepsItsTrashGroups`的同刻删除是test-fixture；均不混入生产语义变异killed数。AfterParents用`TestSourceFactsRestoredForestUsesEachExternalParent`与两条RestorePart/continuation测试；cross-group全成员literal oracle替代旧首成员弱观察，旧存活不删。审查者A的旧有效session changed末跳、B的SQL/fake/双reader/compact/forest六轮、C的严格v2公开入口guard轮及C-M1正文双向、C-M2删除管理位置、C-M3祖先/child两种实际管理次序真实/fake对照，分别记录在[S1审查](reviews/P2-S1-source-rules-review.md)。最终修复头全部重放：fd00新目录whole-step-final-v4：109 variants /112 checks /336同argv执行，112 baseline与112 restore均0，mutant110次exit1、2次已知exit0。108项至少有一个预期catcher；test-input、test-fixture及cycle结构观察单列，不全部称产品语义kill。Of/bootstrap存活而direct of/of_subset捕获；active-background→sync继续存活；marker barrier、trace与用户结果边界保持。原93控制288份失败测试名集合与6fac轮一致；A/B/C八控制、fix1五控制、fix2三控制均重放。另11真实/fake对照exit0，原C-M3 Folder先拒绝与child先允许由真实HTTP/worker/SQL次序验证，主持者root-replay-integrity及root-counterexample-integrity均接受
 
+S3追加控制独立列名，不与实施决定48混号：
+
+| ID | 改坏一处/观察 | catcher与边界 |
+|---|---|---|
+| S33-queued-create-ignores-abort | 树队列轮到时不查signal | W(src/stores/page-tree.store.test.ts, source creation)；队列取消后未调用send observer/service |
+| S33-create-request-drops-signal | PageService不转signal | W(src/services/page.service.test.ts, PageService.createPage with source content)；真实Request对象在HTTP fake中的signal和AbortError，不宣称真服务或数据库回滚 |
+| S33-queued-ordinary-auto-names-source | 普通Untitled排队后父成为来源仍自动创建 | W(src/pages/notebook/source-add-dialog.test.tsx, queued ordinary creation)；真实组件/树队列的请求与no-navigation回归 |
+| S34-tree-alert-retains-focus | duplicate导航前不消耗持久树Alert | W(src/pages/notebook/source-moves.test.tsx, duplicate tree drop link)；真实组件附件定位/focus，不放宽共享读者活动保护 |
+
+审查修复追加控制及最终运行清单：
+
+W 的文件/选择器按 P2 §7.3 展开；本轮共同 heavy 编排下各 Vitest 命令另包 `timeout 10m`。PW 是 e2e 工作目录的 `timeout 15m pnpm exec playwright test FILE --workers=1`，每阶段先 `timeout 15m make -j1 build`。完整 argv（含固定输出路径）和实际失败断言在原始回执，不省略在证据中。
+
+| 控制组 | 实际 catcher | 原版→改坏→恢复 exit | 结果 |
+|---|---|---|---|
+| `30-root` | `W(src/stores/source-area.test.ts, strict source membership follows all nodes and mode)` | 0 → 1 → 0 | 语义断言失败；恢复绿 |
+| `30-page-only` | `W(src/stores/source-area.test.ts, strict source membership follows all nodes and mode)` | 0 → 1 → 0 | 语义断言失败；恢复绿 |
+| `30-unobserved-mode` | `W(src/stores/source-area.test.ts, strict source membership follows all nodes and mode)` | 0 → 1 → 0 | 语义断言失败；恢复绿 |
+| `31-mod-e` | `W(src/pages/page/source-actions.test.tsx, source controls stay read only at every entry)` | 0 → 1 → 0 | 语义断言失败；恢复绿 |
+| `31-task` | `W(src/pages/page/source-actions.test.tsx, source controls stay read only at every entry)` | 0 → 1 → 0 | 语义断言失败；恢复绿 |
+| `31-restore` | `W(src/pages/page/source-actions.test.tsx, source controls stay read only at every entry)` | 0 → 1 → 0 | 语义断言失败；恢复绿 |
+| `31-edit-here` | `W(src/pages/page/source-actions.test.tsx, source controls stay read only at every entry)` | 0 → 1 → 0 | 语义断言失败；恢复绿 |
+| `32-clear-id-before-end` | `W(src/stores/edit-session.test.ts, source loss ends the server session exactly once)` | 0 → 1 → 0 | 语义断言失败；恢复绿 |
+| `32-late-open-not-ended` | `W(src/stores/edit-session.test.ts, source loss ends the server session exactly once)` | 0 → 1 → 0 | 语义断言失败；恢复绿 |
+| `33-registry-without-readonly` | `W(src/stores/page-editing.test.ts, source loss locks the mounted editor and preserves unsaved text)` | 0 → 1 → 0 | 语义断言失败；恢复绿 |
+| `33-autosave-keeps-running` | `W(src/stores/page-editing.test.ts, source loss locks the mounted editor and preserves unsaved text)` | 0 → 1 → 0 | 语义断言失败；恢复绿 |
+| `34-bom-stripped` | `W(src/pages/notebook/source-uploads.test.tsx, Markdown uploads preserve the exact UTF-8 bytes)` | 0 → 1 → 0 | 语义断言失败；恢复绿 |
+| `34-newlines-normalized` | `W(src/pages/notebook/source-uploads.test.tsx, Markdown uploads preserve the exact UTF-8 bytes)` | 0 → 1 → 0 | 语义断言失败；恢复绿 |
+| `34-lenient-utf8` | `W(src/pages/notebook/source-uploads.test.tsx, Markdown uploads preserve the exact UTF-8 bytes)` | 0 → 1 → 0 | 语义断言失败；恢复绿 |
+| `34-characters-not-bytes` | `W(src/pages/notebook/source-uploads.test.tsx, Markdown uploads preserve the exact UTF-8 bytes)` | 0 → 1 → 0 | 语义断言失败；恢复绿 |
+| `35-md-title-numbered` | `W(src/pages/notebook/source-uploads.test.tsx, source uploads keep their queue and explicit title)` | 0 → 1 → 0 | 语义断言失败；恢复绿 |
+| `35-modal-cancels-files` | `W(src/pages/notebook/source-uploads.test.tsx, source uploads keep their queue and explicit title)` | 0 → 1 → 0 | 语义断言失败；恢复绿 |
+| `35-generation-keeps-uploads` | `W(src/pages/notebook/source-uploads.test.tsx, source uploads keep their queue and explicit title)` | 0 → 1 → 0 | 语义断言失败；恢复绿 |
+| `35-page-enters-asset-pagination` | `W(src/pages/notebook/source-uploads.test.tsx, source uploads keep their queue and explicit title)` | 0 → 1 → 0 | 语义断言失败；恢复绿 |
+| `S33-queued-create-ignores-abort` | `W(src/stores/page-tree.store.test.ts, source creation)` | 0 → 1 → 0 | 语义断言失败；恢复绿 |
+| `S33-create-request-drops-signal` | `W(src/services/page.service.test.ts, PageService.createPage with source content)` | 0 → 1 → 0 | 语义断言失败；恢复绿 |
+| `S33-queued-ordinary-auto-names-source` | `W(src/pages/notebook/source-add-dialog.test.tsx, queued ordinary creation)` | 0 → 1 → 0 | 语义断言失败；恢复绿 |
+| `36-attachment-as-page` | `W(src/pages/notebook/duplicate-text.test.tsx, duplicate targets include attachments and stale trees)` | 0 → 1 → 0 | 语义断言失败；恢复绿 |
+| `36-missing-target-leaks-refused-id` | `W(src/pages/notebook/duplicate-text.test.tsx, duplicate targets include attachments and stale trees)` | 0 → 1 → 0 | 语义断言失败；恢复绿 |
+| `36-stale-tree-never-refreshed` | `W(src/pages/notebook/duplicate-text.test.tsx, duplicate targets include attachments and stale trees)` | 0 → 1 → 0 | 语义断言失败；恢复绿 |
+| `S34-tree-alert-retains-focus` | `W(src/pages/notebook/source-moves.test.tsx, duplicate tree drop link)` | 0 → 1 → 0 | 语义断言失败；恢复绿 |
+| `37-stale-notebook-mode` | `PW(stories/wiki/lw12-downgrade.spec.ts)` | 0 → 1 → 0 | 语义断言失败；恢复绿 |
+| `37-standard-still-rejects-same-byte-page` | `PW(stories/wiki/lw12-downgrade.spec.ts)` | 0 → 1 → 0 | 语义断言失败；恢复绿 |
+| `A-move-before-send` | `W(src/pages/notebook/source-moves.test.tsx, a confirmed move still queued behind another write rechecks\|a queued ordinary move stops)` | 0 → 1 → 0 | 语义断言失败；恢复绿 |
+| `B-carriage-return-only` | `W(src/stores/asset.store.test.ts, Markdown keeps its UTF-8 bytes while only the suggested title is trimmed and composed)` | 0 → 1 → 0 | 语义断言失败；恢复绿 |
+| `B-queue-signal` | `W(src/stores/page-tree.store.test.ts, source creation cancelled in the tree queue never calls its send observer or service)` | 0 → 1 → 0 | 语义断言失败；恢复绿 |
+| `C-current-source` | `W(src/pages/notebook/duplicate-text.test.tsx, clicking a retained link after)` | 0 → 1 → 0 | 语义断言失败；恢复绿 |
+| `C-current-parent` | `W(src/pages/notebook/duplicate-text.test.tsx, a retained attachment link uses its new parent)` | 0 → 1 → 0 | 语义断言失败；恢复绿 |
+| `C-refused-target` | `W(src/pages/notebook/transfer-background.test.tsx, a duplicate report distinguishes its refused attachment)` | 0 → 1 → 0 | 语义断言失败；恢复绿 |
+| `C-location-survivor` | `W(src/pages/notebook/duplicate-text.test.tsx, "")` | 0 → 0 → 0 | 冗余位置守卫存活 |
+| `fix-A-ancestor-reparent` | `W(src/pages/notebook/source-moves.test.tsx, source-root ancestor\|subtree gains the source root)` | 0 → 1 → 0 | 语义断言失败；恢复绿 |
+| `fix-B-current-role` | `W(src/pages/notebook/source-uploads.test.tsx, a failed Markdown upload cannot be retried after becoming reader)` | 0 → 1 → 0 | 语义断言失败；恢复绿 |
+| `fix-B-retry-queued-role` | `W(src/pages/notebook/source-uploads.test.tsx, a Markdown retry queued before becoming reader)` | 0 → 1 → 0 | 语义断言失败；恢复绿 |
+| `fix-C-existing-outside-target` | `W(src/pages/notebook/duplicate-text.test.tsx, an existing outside)` | 0 → 1 → 0 | 语义断言失败；恢复绿 |
+| `A-drag-hint-binding` | `W(src/pages/notebook/source-drag-hints.test.tsx, source-root ancestor drag hints)` | 0 → 1 → 0 | 语义断言失败；恢复绿 |
+
+最终ae4501上共40控制组、120次测试和6次真实build，126份原日志；39组0→1→0，C-location为已核0→0→0，不算kill或独立产品bug。控制组不等于独特缺陷数；B队列取消与既有S33同语义但选择器来源分别保留。三阶段测试argv逐字一致；#37固定执行输出目录后逐阶段归档，不再沿用1da时输出目录各异的说法。所有source/input SHA与最终Git一致，恢复后工作树干净。125份producer日志校验值直接匹配raw；B-carriage-return-only的mutant断言输出含2个真实CR，producer read_text().encode()规范化换行后算hash，首轮raw核对因此拒绝。根保留原日志/原报告，另记录raw SHA与准确规范化SHA桥，不把它当成重新运行，也不改写历史。C原席在8c另作组件94→3红→94和实际每phase build的LW3三例3→2红→3；test-only桥核3198既有文件全不变，浏览器证据与根40组执行数分列。 原C席只读独立复算最终桥、40组、126日志及唯一规范化关系：final-evidence-audit.json SHA-256 461c10c32b0bd4a419c13ae7dcba084fe8ebea0cfebf8f90f1dec361e3f78139。该轮未重跑测试/build/container，不冒称新的产品验证。
+
 ### 7.4 计划、性能与600万迁移
 
 计划三阶段：无统计、ANALYZE后、force_generic_plan；每阶段结果/范围与EXPLAIN JSON形状都断言，真实应用仍Planned。一本10万活来源、另一本20万并含同key，混普通区/trash/空页；另一本不得匹配或影响范围。单页新增、10k来源移入（页/asset混合）、同步恢复100页+9900附件、上限撤销、后台60k计划、10万来源Forget各单独Makefile成本行（-v输出）。rewrite使100k同hash时量X=3与60k、外部在首/末/不存在；记录返回数/查询数/heap fetch/排序。四列索引与原三列用同数据记录relation/index bytes、建索引/回填、正常写维护差值。普通10001移动与原大Subtree守卫继续；不把早拒当成功操作很快。
@@ -823,9 +893,9 @@ P3：在已实现page.SourceArea基础上增加整区lint/pending来源读取，
 |---|---|---|
 | P2设计 | 已审查并接受 | 原四项发现及B-Q1在设计层resolved；4755精确main CI40413727596十项成功；[设计审查](reviews/P2-design-review.md) |
 | 10.1 S1 | S1已合并；记录CI与两main Test均值已核，S2继续实施 | [实施审查](reviews/P2-S1-source-rules-review.md)；合并见 00 号文档第 12 节 |
-| 10.2 S2 | 最终代码f1818066的本机门禁、独立审查与提交后gen-check均已核定，精确代码CI40793294472全11绿。文档002a5638的精确CI40797519100全部11作业及必需步骤、code/docs分支四片Test配对，以及main合并`66d8236c12aaa8923616f6f42f2ee33b772884f9`的精确CI40800844731全部11作业及必需步骤均获主持者接受；本记录提交自身CI与双main Test配对仍由后续真实运行收口，完成前不开始S3。前33b4/4550绿、fb/288失败和03不精确同步的历史均保留；记录CI与双main配对待闭环 | 旧33b4/4550接受、fb/288失败、恢复折叠与有界facts保留逐阶段保留；旧159 fresh/reuse、折叠7与缓存11控制分列；B-N1已关闭，文档/分支配对/main合并CI已验；记录CI及双main样本尚待 |
-| 10.3 S3 | pending | UI/文件bytes/会话释放/重复链接/E2E与跨标签、审查/CI、M8done与M7/M9open核对 |
-| 10.4 P2done | pending | 三Step均验收、最终文档链接/handoff核对、P2done准确SHA与实际workflow全部CI作业（当前四分片为11项）；P3下一步 |
+| 10.2 S2 | 已验；66d823合并与8904记录精确main CI均已接受、四片Test均值433/403/299/319.5s；旧失败和fresh/reuse历史保留 | [S2审查](reviews/P2-S2-source-hash-review.md#合并与后续验收)与本节入口补记 |
+| 10.3 S3 | 最终代码`ae4501aa166771db153dae5dfa710ef16ee26ac4`的原席复核、本机门禁、修后控制及精确代码CI已核；文档CI/合并/两main仍待 | [S3审查](reviews/P2-S3-source-web-review.md)；合并见00号文档第12节 |
+| 10.4 P2done | pending；S3精确文档CI、合并与记录两个main及均值闭环后独立完成 | 核§8.3与handoff，P2done自身精确main CI绿才结束Phase；P3仍未开始 |
 
 ### 10.1 S1 来源规则
 
@@ -843,7 +913,7 @@ S1后续核对已完成：合并`bf8d6625`的[CI40501936360](https://github.com/
 
 ### 10.2 S2 来源 hash、去重与验证
 
-**S2后续有界facts保留：最终代码f1818066的本机门禁、独立审查与提交后gen-check均已核定，精确代码CI40793294472全11绿。文档002a5638的精确CI40797519100全部11作业及必需步骤、code/docs分支四片Test配对，以及main合并`66d8236c12aaa8923616f6f42f2ee33b772884f9`的精确CI40800844731全部11作业及必需步骤均获主持者接受；本记录提交自身CI与双main Test配对仍由后续真实运行收口，完成前不开始S3。前33b4/4550绿、fb/288失败和03不精确同步的历史均保留；记录CI与双main配对待闭环。** 以下33b4实现/本机/CI及测试声明数为其历史接受范围：`33b4da5a38bed24db05411e83209d30ef1e17db9`，CI40718770843全部11作业成功；旧159义务=129＋TrashChildren13＋History8＋Name9，按具体输入fresh/reuse接受，不称159独特bug或全部提交后重跑；当时相对main新增107个Go声明=98race＋9!race，总2947。4550文档绿色、fb容量重排与失败、288恢复折叠及其失败CI40768488401、有界facts保留`f18180667a8fa47e44efd2b0d33e4623443eb389`的最新清单/门禁/CI集中在[S2验证表](reviews/P2-S2-source-hash-review.md#最终验证与集成)。旧失败、候选拒绝、metadata survivor、测试观察器失败及6M冻结证据限制均保留；B-N1在4550前规范文档投影后已关闭。S3、P3–P5及M10收尾尚待，不开始M11。
+**S2已经闭环，S3入口自然补记：精确 `66d8236c12aaa8923616f6f42f2ee33b772884f9` 的 [CI 40800844731](https://github.com/open-nerve/NerveWiki/actions/runs/40800844731)（main push，attempt 1）实际 11 个作业及列明必需步骤均成功；四片 Test 步为 431.0/358.0/308.0/322.0 s；精确 `8904a8769646c3b8919ff6a4c503eeae3ac70727` 的 [CI 40804121398](https://github.com/open-nerve/NerveWiki/actions/runs/40804121398)（main push，attempt 1）实际 11 个作业及列明必需步骤均成功；四片 Test 步为 435.0/448.0/290.0/317.0 s。两次 main 四片 Test 均值为 433/403/299/319.5 s，均<450 s；主持者已接受并放行 S3。旧失败与阶段原件保留。** 以下33b4实现/本机/CI及测试声明数为其历史接受范围：`33b4da5a38bed24db05411e83209d30ef1e17db9`，CI40718770843全部11作业成功；旧159义务=129＋TrashChildren13＋History8＋Name9，按具体输入fresh/reuse接受，不称159独特bug或全部提交后重跑；当时相对main新增107个Go声明=98race＋9!race，总2947。4550文档绿色、fb容量重排与失败、288恢复折叠及其失败CI40768488401、有界facts保留`f18180667a8fa47e44efd2b0d33e4623443eb389`的最新清单/门禁/CI集中在[S2验证表](reviews/P2-S2-source-hash-review.md#最终验证与集成)。旧失败、候选拒绝、metadata survivor、测试观察器失败及6M冻结证据限制均保留；B-N1在4550前规范文档投影后已关闭。S3实现与后续集成见10.3；P3–P5及M10收尾仍待，不开始M11。
 
 | 已接受增量 | 提交 | 已验范围 |
 |---|---|---|
@@ -980,7 +1050,72 @@ B完整建库/装载/前后验证2227.942 s不是迁移停机时间；2225资源
 
 恢复折叠代码288的精确CI40768488401仍因Revert三状态sample2请求4s失败；四片Test297/454/340/359s只是失败workflow的一份分支样本。随后有界facts保留的本机AB结果混合；组件内check、进程总分配、HTTP、package与wrapper是不同量纲，不能由组件改善推断CI根因或普遍端到端收益。正式Restore/Revert package两次均值×2.4、其余成本与当前32 recipes按最新原件另核，不能拿失败CI或旧fold AB补最终样本。
 
-**剩余项统一入口。** 最终代码f1818066的本机门禁、独立审查与提交后gen-check均已核定，精确代码CI40793294472全11绿。文档002a5638的精确CI40797519100全部11作业及必需步骤、code/docs分支四片Test配对，以及main合并`66d8236c12aaa8923616f6f42f2ee33b772884f9`的精确CI40800844731全部11作业及必需步骤均获主持者接受；本记录提交自身CI与双main Test配对仍由后续真实运行收口，完成前不开始S3。前33b4/4550绿、fb/288失败和03不精确同步的历史均保留。旧33b4/4550、159义务及B-N1关闭为已接受历史；有界facts保留旧159的fresh/reuse依赖表、折叠7及缓存11控制、最终门禁/双轮/精确代码CI按本次真实证据接受，旧数不自动套到新头。文档002a5638 CI与code/docs分支配对、no-ff main合并CI已验，实际父链与回执见[S2合并记录](reviews/P2-S2-source-hash-review.md#合并与后续验收)。剩余为本记录精确main CI及合并/记录两个main Test配对；未知号不填，记录自身CI不再追加自引用提交，后续既定S3/Phase自然转录。M7/M9/M8仍open（M8待S3）、M6 lint留P3、M5done保持；S2闭环前不开始S3，不开始M11。
+**S2入口闭环补记（S3既定文档自然转录）。** 精确 `66d8236c12aaa8923616f6f42f2ee33b772884f9` 的 [CI 40800844731](https://github.com/open-nerve/NerveWiki/actions/runs/40800844731)（main push，attempt 1）实际 11 个作业及列明必需步骤均成功；四片 Test 步为 431.0/358.0/308.0/322.0 s；精确 `8904a8769646c3b8919ff6a4c503eeae3ac70727` 的 [CI 40804121398](https://github.com/open-nerve/NerveWiki/actions/runs/40804121398)（main push，attempt 1）实际 11 个作业及列明必需步骤均成功；四片 Test 步为 435.0/448.0/290.0/317.0 s。两次 main 四片 Test 均值为 433/403/299/319.5 s，均<450 s；主持者已接受并放行 S3。旧失败与阶段原件保留。 本次依据树外`root-s2-completion-and-s3-release-8904.json`（SHA256 `795a5508863326df0f51ae8ccb40867642a16e60190149b26de2d188b53bb235`）；旧33b4/4550、fb/288失败、03屏障误匹配、折叠7/缓存11与旧159的各自范围完整保留，不全局改成成功。以上S2原段的pending均保留当时阶段语境，当前S2已闭环；S3见10.3，P2/M10仍进行中。
+
+### 10.3 S3 完整来源网页
+
+入口为S2记录`8904a8769646c3b8919ff6a4c503eeae3ac70727`，Phase原设计基线仍403841。实际提交c8772640（来源能力/移入确认）、424601ec（会话结束/真readonly）、98bc8f79（显式标题/原字节mixed队列）、1da53366（duplicate/真实故事/模板48），审查修复`8c17b5cceb65b2a0f70976bbe4752daeaabaee05`；最终受测代码`ae4501aa166771db153dae5dfa710ef16ee26ac4`，tree `8e31387857571a2db6baf48c092382b66adc77d4`。合并见00第12节。
+
+三份独立初审在1da核0Important/3Minor/0Nit，另C-Q1新增slow预算与C-Q2输出路径精度。A-M1携来源根祖先换父、B-M1失败MD新retry当前reader、C-M1旧缓存区外目标移入来源后不补读分别修复；原席复核见[S3审查](reviews/P2-S3-source-web-review.md#初审发现处置与原席复核)。C-location的0/0/0存活及卸载防御解释保留，不冒充kill。
+
+Web证据使用实际UI→stores→service/fakeHTTP、独立字节oracle、非空分页、队列与abort；LW3–7/LW12浏览器使用真实产物/HTTP/PG/文件，保留API/MCP和持久断言，含当前已存在区外目标的stale补读、source loss释放锁、mode事件同context恢复可写及普通同字节新增。后台前批保留/失败批回滚与同步整单元回滚分开，报告被拒node与duplicate target分开。
+
+决定48的现行双语raw入口和大小已同步P1规范；只影响今后新建模板。初轮42/46、类型/旧按钮/console期望和lazy-route夹具纠正保留；最终状态依据下列新输入，不套1da旧28控制。
+
+Web 178 文件/3812 通过；short 8208 run=6915 pass+1293 明确 skip；完整 E2E 108 文件/329 通过，0 skip、0 retry、0 flaky。
+
+| 门禁 | 本次范围 | wrapper 秒 | 结果 |
+|---|---|---:|---|
+| `race` | 最终代码输入新跑 | 1100.969 | pass |
+| `bootstrap-1-round1` | 最终代码输入新跑 | 314.974 | pass |
+| `bootstrap-2-round1` | 最终代码输入新跑 | 317.963 | pass |
+| `bootstrap-3-round1` | 最终代码输入新跑 | 255.320 | pass |
+| `bootstrap-4-round1` | 最终代码输入新跑 | 262.871 | pass |
+| `costs` | 最终代码输入新跑 | 444.634 | pass |
+| `guards` | 最终代码输入新跑 | 877.449 | pass |
+| `e2e-all` | 最终代码输入新跑 | 295.788 | pass |
+| `bootstrap-1-round2` | 最终代码输入新跑 | 309.390 | pass |
+| `bootstrap-2-round2` | 最终代码输入新跑 | 319.021 | pass |
+| `bootstrap-3-round2` | 最终代码输入新跑 | 265.440 | pass |
+| `bootstrap-4-round2` | 最终代码输入新跑 | 260.254 | pass |
+| `lint-gen-knip-build` | 已验原件按逐文件未变输入复用 | 9.044 | pass |
+| `web-all` | 已验原件按逐文件未变输入复用 | 113.498 | pass |
+| `vet-server` | 已验原件按逐文件未变输入复用 | 1.409 | pass |
+| `vet-tools` | 已验原件按逐文件未变输入复用 | 0.103 | pass |
+| `short-server` | 已验原件按逐文件未变输入复用 | 159.727 | pass |
+
+非组合根race实际7579 run = 7578 pass + 1 skip；package 90 pass/22 skip。既有成本测试的race skip由非race成本/guard原recipe补跑；不把skip当作pass。完整命令、每轮原始日志SHA及最终3199份输入恢复均在验收原件。
+
+明确复用五项：ae4501测试增量的static/gen/knip/build与全Web；8c17产品修复的server/tools vet与short，经3198个原Git条目/文件字节不变桥加新增测试绑定最终3199输入。Web178文件3812测试、short8208=6915pass+1293skip取各自实际原件。完整Go race、全部cost/guard、双轮bootstrap与完整E2E均新跑；旧47例Wiki子集没有冒充本次完整329例E2E。
+
+新增Go race测试情况：最终S3相对8904没有新增或修改Go测试/Go源码（实际差异为两份嵌入raw模板）；race编译清单实际470个组合根顶层，分片167/74/114/115，新增Go race测试为0。因此没有冒用S2旧新增测试清单；模板嵌入输入改变后的全Go门禁和四份双轮另按最终头执行。
+
+编译后的实际清单为470个顶层测试；四片167/74/114/115个，每轮并集完全相等、交集为空、每个顶层恰好执行一次。以下为Go package秒，另列进程wrapper秒，不能当CI的Test步骤秒。
+
+| 片 | 顶层数 | 第一轮package | 第二轮package | package均值 | 两轮wrapper |
+|---|---:|---:|---:|---:|---|
+| 1 | 167 | 314.009 | 308.527 | 311.268 | 314.974/309.390 |
+| 2 | 74 | 317.072 | 318.075 | 317.573 | 317.963/319.021 |
+| 3 | 114 | 254.386 | 264.488 | 259.437 | 255.320/265.440 |
+| 4 | 115 | 261.947 | 259.285 | 260.616 | 262.871/260.254 |
+
+既有race跳过项（按测试名去重）：`TestTheAppsLinksAreWithinTheirBound`, `TestTheAppsMarkdownCostsAboutItsSize/to_a_page`, `TestTheAppsMarkdownCostsAboutItsSize/to_an_image`, `TestTheAppsMarkdownRendersCheckedHTML`。这些非race专属测试在完整guards原recipe实际执行；未提高测试预算、未改变分片边界。两次main的Test均值留待合并及记录CI真实验证。
+
+最终输入完整执行Makefile原17个costs和15个guards recipe，命令清单逐行吻合且无空选择。包含IndexItems、grep、来源新增/移入/恢复/撤销/十万Forget和计划测试，所有原界通过；原始样本保存在costs.log/guards.log。这是最终输入的一轮完整门禁，不是重做600万迁移或新建重复成本基线。旧IndexItems30ms、grep600ms持续观察及M12真实服务器/数据/并发负载义务保持，代码CI样本已按下列原件独立核定。
+
+精确代码CI 40843325190的20项成本指标和45个真实HTTP样本（5种操作×3统计状态×3次）已核原始日志、预算与状态。各操作HTTP最大秒数：create 0.359200391，move 1.047166084，restore 3.228866466，revert 3.970788992，forget 2.227704099。revert离原4秒请求期限仅29.211ms；保留为后续CI/M10收尾的窄余量观察，不由单次通过宣称稳定。guards的Test 1553s，整个job 1571s（原job上限1800s）；Test与job分别记录。没有抬高任何预算，也不以较快的样本替换这次最慢请求。
+
+原席产品结论绑定 `8c17b5cceb65b2a0f70976bbe4752daeaabaee05`；最终 `ae4501aa166771db153dae5dfa710ef16ee26ac4` 只有测试差异 `web/apps/web/src/pages/notebook/source-drag-hints.test.tsx`。根核全部 3198 份既有Git entries/blob与文件字节未变；产品未改、测试增量另按根回执接受，原席未被记为重跑后续全Step。原件 `/home/parallels/.local/state/nervewiki/m10/p2-s3/s35-test-only-final-code-bridge.json`，SHA-256 `3c6d20185ec954adfb532ea6014f2f3eac16301710eff9090c3e1830ac797a03`。
+
+精确 `ae4501aa166771db153dae5dfa710ef16ee26ac4` 的 [CI 40843325190](https://github.com/open-nerve/NerveWiki/actions/runs/40843325190)（m10-p2-s3 push，attempt 1）实际 11 个作业及列明必需步骤均成功；四片 Test 步为 453.0/311.0/289.0/371.0 s。全部控制及每轮argv、失败断言、恢复/输入hash见S3审查与树外原件；S3新增/原审追加和旧S2库存分开。分支文档提交自身CI、no-ff合并与记录两个main、每片Test均值仍须后续真实核验；本段不预填未来结果。
+
+### 10.4 P2done 的待闭环事项
+
+S1/S2已验；S3分支当前最终实现、三审复核及本机/代码CI按10.3记录，后续精确文档CI、合并与记录两次main CI及四份Test均值<450s仍待。完成后再作`docs: M10/P2 done (M10/P2)`，更新00头/§12/§13与本节、核§8.3所有投影和handoff，并核P2done自身精确main CI。
+
+根逐项核P2 §8.3/P1 §9与移交：M8的S1/S2服务端和S3历史页面义务已有对应证据，分支阶段保持open，P2done最迟done；M7去重页面完成、lint/贡献者等P3/P4仍open；M9写契约与页面消费完成，工具/虚拟/prompt属P3–P5仍open；M5 mode消费已验且done保持；M6六行与注意项仍P3/open。M11只交接既有来源/hash/rewrite契约且升级未开始；M12保留既有6M与真实生产主机/负载/停机窗口的未验边界。无新打磨事项，因此M5-polish不改。最终门禁/CI与S3合并、记录、P2done是后续实际验收条件，不预填完成。
+
+M8的来源历史实施义务已逐项覆盖，当前在分支阶段保持open，P2done最迟改done；M7/M9整份仍open，M5done保持，M6lint仍open。M11只接既有契约，M12保留实机测量；P3是下一Phase但未开始，不在本次写P3设计，M10继续进行中。
 
 ## 附录：核对过的代码与证据
 

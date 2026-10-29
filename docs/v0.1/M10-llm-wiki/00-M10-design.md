@@ -4,7 +4,7 @@
 |---|---|
 | 里程碑 | M10 模式契约与 LLM Wiki（`M10-llm-wiki`） |
 | 日期 | 2026-10-24 |
-| 状态 | 进行中；P1与P2/S1已验。S2的33b4产品/159控制、本机门禁及精确11项CI为已接受历史，B-N1在4550前的规范文档投影后已关闭；4550绿色后第一片双分支均值450.5s触发再平衡，fb92974b的精确CI40740783718因Revert10k第三样本HTTP500失败。恢复折叠已提交288但CI40768488401仍因Revert10k第三样本失败；有界facts保留：最终代码f1818066的本机门禁、独立审查与提交后gen-check均已核定，精确代码CI40793294472全11绿。文档002a5638的精确CI40797519100全部11作业及必需步骤、code/docs分支四片Test配对，以及main合并`66d8236c12aaa8923616f6f42f2ee33b772884f9`的精确CI40800844731全部11作业及必需步骤均获主持者接受；本记录提交自身CI与双main Test配对仍由后续真实运行收口，完成前不开始S3。前33b4/4550绿、fb/288失败和03不精确同步的历史均保留。最新验证与剩余集成见[P2](02-P2-source-area.md)及[S2验证表](reviews/P2-S2-source-hash-review.md#最终验证与集成)。S3、P3–P5和M10收尾仍待，不开始M11。 |
+| 状态 | 进行中；P1、P2/S1、S2已验；S3最终代码`ae4501aa166771db153dae5dfa710ef16ee26ac4`的实现/三审复核/本机与代码CI已核，文档CI及合并/记录main仍待。P2/M10未完成；P3–P5与收尾未开始，不开始M11。当前证据见[P2 §10.3](02-P2-source-area.md#103-s3-完整来源网页)及[S3审查](reviews/P2-S3-source-web-review.md)，S2失败和阶段记录保留。 |
 | 依赖 | M9（MCP 工具与 prompt 注册表）、M7（导出贡献者、附件进树与链接）、M6（链接索引）、M8（变更集的类型、撤销与后台任务）；总体设计 12.3 照此修订（第 7 节"总体设计的修订"） |
 | 上级文档 | [v0.1 总体设计](../v0.1-design.md) 第 3.3–3.10、4.2、4.4、4.5、5、6.1–6.3、7.1、7.2、8.2、8.3、8.5、9.2、10、10.1、12.1–12.6、13、14、15 节 |
 | 代码位置的写法 | 同 [M9 总设计](../M9-mcp/00-M9-design.md)：模块写作 `page/app/unit.go:187`（`server/internal/modules/` 之下）；`platform/…`、`bootstrap/…`、`shared/…`、`archtest/…` 在 `server/internal/` 之下；迁移写作 `00009_notebook_notebooks.sql:5`（`server/migrations/sql/`）；SDK 写作 `sdk/mcp/protocol.go:966`（`~/go/pkg/mod/github.com/modelcontextprotocol/go-sdk@v1.8.0/`）；前端写作 `web/…/pages/page/page-layout.tsx:153`（`web/apps/web/src/` 之下）；e2e 写作 `e2e/fixtures/mcp.ts:41`。行号都是 `91ee78d8` 的（`ebed0e07` 只加了这份文档） |
@@ -35,7 +35,7 @@
 - wiki（新模块）：模式的契约表（每种模式有哪些 lint 规则、虚拟文件与 playbook）；模板的两种语言的正文；lint 的编排（一个快照里调 linking 与 page 的端口，进程内的名额与同一本笔记本的合并）与它的 REST、MCP 的 `lint`、`pending_sources`，另有给 M11 的显式范围的入口；虚拟文件的生成；导出贡献者；ingest、query、lint 三个 prompt。M10 里它没有自己的表（4.1）。
 - transfer：报告的失败加 `refused`（带拒绝的码与节点），导入的问题加 `duplicate_source`；`ExportContributor` 登记 wiki 的一个。
 - 平台：mcpserver 的 `Prompt` 加 `Entry`（同 `Tool` 的位掩码），`prompts` 的能力按每个入口的 prompt 声明；参数超过 4,096 字节在处理函数之前答 -32602；错误经 `ProblemOf` 分类、答复有界；prompt 的契约 `api/mcp/prompts.json`。
-- 网页：建笔记本的对话框选模式；设置里的模式与降级；`mode` 事件的处理；页面树的图标（来源、`AGENTS` 各一个，带文字的等价）、虚拟的两行、来源区与 `AGENTS` 的行按角色与行的种类给出菜单；来源区里的"新建页面"先问标题、拖进来源区之前确认；"粘贴或上传为来源"的对话框；来源页的只读视图（`isSource` 一处判定，收起编辑、勾选、还原版本、附件的改名与移动、"在这里编辑"）与编辑中的页被移进来源区时失去编辑；重复的来源的文字与链接（`duplicateText`）；健康度面板；目录视图；历史的 ingest 标记与筛选。
+- 网页：建笔记本的对话框选模式；设置里的模式与降级；`mode` 事件的处理；页面树的图标（来源、`AGENTS` 各一个，带文字的等价）、虚拟的两行、来源区与 `AGENTS` 的行按角色与行的种类给出菜单；来源区里的"新建页面"先问标题、拖进来源区之前确认；“粘贴 Markdown”和“上传文件”两个来源入口；来源页的只读视图（`isSource` 一处判定，收起编辑、勾选、还原版本、附件的改名与移动、"在这里编辑"）与编辑中的页被移进来源区时失去编辑；重复的来源的文字与链接（`duplicateText`）；健康度面板；目录视图；历史的 ingest 标记与筛选。
 - 测试与文档：守卫在每条触发路径上的最后一跳，prompt、贡献者、事件、两个订阅者的最后一跳；交错；lint、`index.md`、去重、ingest、恢复与撤销进来源区、降级的成本守卫与计划测试；本 M 的故事（第 9 节）；README 的 LLM Wiki 一节；M9 的人工清单加 prompt 的一节（4.19）；总体设计的修订。
 
 **不做**：
@@ -125,7 +125,7 @@
 
 **模板的内容**（wiki 的 `domain`，中文与英文各一份，入库、有测试）：
 
-- `raw`：来源根。正文是一段说明：这里放原始资料（文章、论文、记录、PDF 与图片），写进来之后不改；在网页上用"粘贴或上传为来源"，agent 用一次 `write`；来源区里的改名、移动、删除只有管理员能做。
+- `raw`：来源根。正文是一段说明：这里放原始资料（文章、论文、记录、PDF 与图片），写进来之后不改；在网页上用“粘贴 Markdown”或“上传文件”，agent 用一次 `write`；来源区里的改名、移动、删除只有管理员能做。
 - `AGENTS`：LLM Wiki 的约定模板：页面的类型与 frontmatter（`type`、`summary`、`sources` 的写法，`sources: ["[[raw/…]]"]`，并写明不加引号的 `sources: [[raw/…]]` 是嵌套的列表、不算引用）、来源区的规则、`index.md` 与 `log.md` 是生成的、ingest / query / lint 三个 prompt 在笔记本的入口 `/mcp?notebook=<id>` 上怎么用；结尾一段"按你的领域改写这一页"。至多 8 KiB。测试钉住两种语言的段落一一对应（反例：块数的少一段、末尾多一段，行内代码的少一项、一处不同，每种块的形状各一个：两项写在一行、标题降一级、围栏少一行、段落拆成两行；13.4 第 1 条），并钉住模板里没有代码之外的 `[[raw/…]]`：新建的 LLM Wiki 在两种语言里都 lint 干净（4.11）。
 - 两页不带 frontmatter（lint 对 `AGENTS` 与来源根豁免缺类型、缺摘要，4.11）。
 
@@ -394,7 +394,7 @@
 | 设置 | "常规"加"模式"一节：读者看到模式；管理员在 LLM Wiki 下有降级与普通的确认对话框（4.5：`NotebookStore.downgrade`、403、404 与 409 时重读列表、持有的对话框与焦点、`transfer.busy` 自己的文字） |
 | 来源的判断 | 一处：`isSource(node)` 由 `Notebook` 的模式与 `source_root_id`、已加载的整棵树（附件也在，不分页）算出；由全节点索引（含附件）的严格祖先关系计算，mode/root/tree 变化可观察；根自身不是来源，nested AGENTS 按真实区域权限，下面每一处都用它。页面树若以后改为分层加载（总体设计 14 的页面树一行"不达标时改为分层加载"），这个判断要改为问服务端（"总体设计的修订"写明） |
 | 页面树 | 图标的最小一组（lucide，`web/apps/web/package.json:31` 已有）：普通的页不加；来源根、来源、`AGENTS`、虚拟的 `index` 与 `log` 各一个（今天一个图标也没有，`web/…/pages/notebook/page-tree-item.tsx:8`），图标有文字的等价，进行的可读的名称（如 `raw (source area)`：后缀在名字之后、空格在 `sr-only` 之外），否则读屏的人得不到它唯一要说的事（13.2）；虚拟的两行（4.13）。菜单按角色与行的种类给：写者在来源根与来源上有"添加来源"与"新建页面"，没有改名、移动、删除与拖动；管理员在来源上全有，在来源根上有改名、移动，没有删除（来源根不能删除，4.9）；`AGENTS` 对谁都没有改名、移动、删除。**来源区里的"新建页面"先问标题**（同粘贴的对话框，一个标题的输入），再建页，不建 Untitled；对话框沿用 `useNewPage` 的两道防护（`useMounted` 与 `location.key` 的核对），409 `page.title_taken` 时在对话框里显示错误，不自动换下一个标题（13.2 第 7 条：表单从不自动重新提交）。理由：来源区里的树操作都要管理员，写者建出的"Untitled""Untitled 2"自己改不了名（`web/…/pages/notebook/new-page.ts:41-63`；第 11 节主持者的决定）。**写者拖进来源区之前确认**：拖放与"移动到…"的目的地在来源区里时（今天它们立刻移动，`page-tree.tsx:76-102`），先问一次，写明"移进来源区之后，只有管理员能移出或改名"；管理员不问 |
-| 添加来源 | "粘贴或上传为来源"的对话框，在来源根与来源区的页上打开（写者以上）：粘贴（标题与 Markdown）经 `createPage` 带 `content` 一次写成（`api/modules/page.yaml:1998-2017` 已收 `content`，留着 BOM，`:2110-2115`）；`<textarea>` 把 CRLF 与 CR 都换成 LF，所以粘贴从不与一个 CRLF 的原文逐字节相同，对话框写明"要逐字节的副本请上传文件"。上传照附件的上传（同一个父页），归 `AssetStore`，关掉对话框之后照样传完（13.2 第 12 条）。选了 `.md` 文件时（后缀不分大小写）在客户端以 `new TextDecoder("utf-8", { fatal: true, ignoreBOM: true })` 读出它（留着 BOM、非 UTF-8 拒绝），标题取文件名去掉 `.md`、照标题的规则，照粘贴写成页（`.md` 不能作附件，总体设计 3.7）；混着选时 `.md` 成页、别的成附件；5 MiB 的发前上限只用于 Markdown 正文文件，普通附件沿自身上限；保留 BOM/原换行。AssetStore 用页面/附件结果分型处理混选队列，保持编辑器附件 Promise<Asset> 不变，关闭对话框继续、代际取消；409 不改名重投。`page.source_duplicate` 显示已有那一个的路径与链接（下面的 `duplicateText`） |
+| 添加来源 | “粘贴 Markdown”和“上传文件”两个入口的对话框，在来源根与来源区的页上打开（写者以上）：粘贴（标题与 Markdown）经 `createPage` 带 `content` 一次写成（`api/modules/page.yaml:1998-2017` 已收 `content`，留着 BOM，`:2110-2115`）；`<textarea>` 把 CRLF 与 CR 都换成 LF，所以粘贴从不与一个 CRLF 的原文逐字节相同，对话框写明"要逐字节的副本请上传文件"。上传照附件的上传（同一个父页），归 `AssetStore`，关掉对话框之后照样传完（13.2 第 12 条）。选了 `.md` 文件时（后缀不分大小写）在客户端以 `new TextDecoder("utf-8", { fatal: true, ignoreBOM: true })` 读出它（留着 BOM、非 UTF-8 拒绝），标题取文件名去掉 `.md`、照标题的规则，照粘贴写成页（`.md` 不能作附件，总体设计 3.7）；混着选时 `.md` 成页、别的成附件；5 MiB 的发前上限只用于 Markdown 正文文件，普通附件沿自身上限；保留 BOM/原换行。AssetStore 用页面/附件结果分型处理混选队列，保持编辑器附件 Promise<Asset> 不变，关闭对话框继续、代际取消；409 不改名重投。`page.source_duplicate` 显示已有那一个的路径与链接（下面的 `duplicateText`） |
 | 来源页 | 阅读视图，顶上一行"来源只能新增，不能修改"。凡是会写它的控件都收起（`isSource` 一处判）：编辑与 `Mod+E`（`web/…/pages/page/page-layout.tsx:153`、`:218-235`、`:263-273`）、任务的勾选框（`pages/page/reading-view.tsx:151`）、"还原这个版本"（`pages/page/version-page.tsx:134`，来源上总被拒）、锁的提示里的"在这里编辑"（`page-layout.tsx:301-306`）；写者看不到附件的行的改名、移动、删除（`pages/page/attachments-section.tsx:80`，要管理员）。附件照今天在正文之下列出（100 个一页、"更多附件"），总体设计 3.7 的例外本就成立，不另做（第 11 节主持者的决定）。**编辑中的页被移进来源区**：保存答 `page.source_immutable` 时，编辑会话失去编辑，原因是新的 `source`（今天 `lostBy` 只认接管、解锁、带 `lock` 的 `page.locked`、404 与 403，`web/…/stores/edit-session.ts:62-79`，这个 409 只是一次普通的保存失败，`stores/page-editing.ts:332-349`，编辑器照样可编辑、每次停顿都再保存再被拒）：先捕获会话 id 再真实结束服务端会话，编辑器实际只读、停止自动保存/心跳、保留未存正文供复制，late open/卸载/重复 end 幂等；正常连接断言 server lock 已释放，网络失败沿原租约收尾（今天 `lose` 与失去之后的 `end()` 都不放开它，`edit-session.ts:179-186`、`:270-274`，新的来源会一直被锁到租约结束，其间管理员删除它答 `page.locked`、别的标签页还提议"在这里编辑"） |
 | 重复的来源 | `duplicateText` 与链接的辅助，挨着 `lockedText`，每一处收到 `page.source_duplicate` 的地方都用它：添加来源的对话框、上传的行（`web/…/stores/asset.store.ts:309-331`，含拖到页上与附件一节的）、树的拖放与"移动到…"的提示（`page-tree.tsx:140-144` 今天只显示 `errorText`）、回收站的恢复、撤销、任务的报告。已有的那一个可能是附件（树的 store 的 `byId`、`tree` 只有页，`stores/page-tree.store.ts:171-189`，`distinctName` 对附件什么也不答，`pages/notebook/distinct-name.ts:11-22`），所以按已加载的节点（附件在内）写路径；比这个标签页的树新时先重读，同 `pages/page/unresolved-link.tsx:96-103` 的 `go`；用 openOf 导航附件（父页/根页加 focus，不拼 page URL）；没有 `duplicate_of` 时照4.8区分同步未写与后台本批未写/前批保留 |
 | 健康度 | 4.12 |
@@ -735,6 +735,8 @@ Nerve 没有 MCP、prompt、数据的 lint、模式的契约或只增不改的�
 负责人 2026-10-24 定下四件事：
 
 1. **来源区：一个来源写一次，之后只读**。网页上新的来源来自"粘贴或上传为来源"的对话框，一次写成；打开已有的来源是只读的视图。agent 以一次 `write` 写一个来源。只有笔记本的管理员能改名、移动、删除来源。与来源区里已有的一个逐字节相同的新来源被拒绝，并指出已有的在哪里（4.7、4.8）。
+
+实施落名注（P2决定48）：上条负责人原话和一次写成/之后只读的含义保持；网页实际为“粘贴 Markdown”和“上传文件”两个入口，双语raw模板相应单句已同步，见[S3审查](reviews/P2-S3-source-web-review.md)。
 2. **必填属性：检查，从不强制**。缺 `type` 或 `summary` 的页在健康度面板里显示为需要注意，MCP 的 `lint` 报出来；没有写入因此被拒：网页新建的页、agent 自动补建的父页、导入与恢复都照今天。M11 的升级提交以它为闸，那是 M11 的事（4.10，"写给后面的 M"）。
 3. **语言**：模板（根下的 `AGENTS` 页与 `raw` 的说明）用建的人的界面语言（zh-CN 或 en）写，之后由用户改写；三份 playbook（MCP 的 prompt：ingest、query、lint）只有英文，同工具的说明（4.4、4.15）。
 4. **健康度面板**：能读这本笔记本的人都看得到；普通与 LLM Wiki 的笔记本都有：通用规则两种模式都有，LLM Wiki 加它自己的；打开时算，每条规则显示数目与前几项、可以翻页；写入时不维护计数（4.11、4.12）。
@@ -823,12 +825,14 @@ Nerve 没有 MCP、prompt、数据的 lint、模式的契约或只增不改的�
 
 后续实施决定44（四片窄名称再平衡）、45（恢复行内来源hash折叠）、46（单次预检有界facts保留）与47（C4协作场景等待派生读取完成）见[S2审查](reviews/P2-S2-source-hash-review.md#文档决定与后续)；仍沿实施序列接续，不覆盖总设计审查1–40。
 
+实施决定48：保留P2的两个来源入口，双语raw模板单句改为实际名称；不改存量正文，当前模板659/605/2209/2107 B、总5580 B，S1原测量保留。见[S3审查](reviews/P2-S3-source-web-review.md)“主持者的决定（负责人可以改判）”。
+
 ## 12. Phase 进度表
 
 | P | Phase 文档 | 状态 | 审查 | 合并 |
 |---|---|---|---|---|
 | P1 契约的框架（S1–S4） | [01-P1](01-P1-contract-frame.md) | 已完成 | [设计](reviews/P1-design-review.md)、[S1](reviews/P1-S1-mode-template-review.md)、[S2](reviews/P1-S2-guard-review.md)、[S3](reviews/P1-S3-prechecks-refusals-numbering-review.md)、[S4](reviews/P1-S4-web-review.md) | S1 `45d086a1`、S2 `bad859c0`；S3 `a46c3d1d`；S4 `f261952f` |
-| P2 来源区（S1–S3） | [02-P2](02-P2-source-area.md) | 进行中；S1已验；S2旧33b4/4550已验、fb与288 CI失败、恢复折叠及有界facts保留分列，最终代码f1818066的本机门禁、独立审查与提交后gen-check均已核定，精确代码CI40793294472全11绿。文档002a5638的精确CI40797519100全部11作业及必需步骤、code/docs分支四片Test配对，以及main合并`66d8236c12aaa8923616f6f42f2ee33b772884f9`的精确CI40800844731全部11作业及必需步骤均获主持者接受；本记录提交自身CI与双main Test配对仍由后续真实运行收口，完成前不开始S3。前33b4/4550绿、fb/288失败和03不精确同步的历史均保留；记录CI与双main配对待闭环，S3待做 | [设计](reviews/P2-design-review.md)、[S1](reviews/P2-S1-source-rules-review.md)、[S2](reviews/P2-S2-source-hash-review.md) | S1 `bf8d6625`；S2历史代码链 `25f88a27`→`c7cec1fa`→`ca8a27db`→`53488fee`→`056677a4`→`2536175e`→`33b4da5a`，文档`45509391`、重排`fb92974b`、恢复折叠`288ecb2b`，有界facts保留`f18180667a8fa47e44efd2b0d33e4623443eb389`；最终文档`002a5638`，main合并`66d8236c12aaa8923616f6f42f2ee33b772884f9`；记录号不写入自身 |
+| P2 来源区（S1–S3） | [02-P2](02-P2-source-area.md) | 进行中；S1/S2已验，S3最终实现/复核/本机及代码CI已核，文档/合并/记录CI仍待 | [设计](reviews/P2-design-review.md)、[S1](reviews/P2-S1-source-rules-review.md)、[S2](reviews/P2-S2-source-hash-review.md)、[S3](reviews/P2-S3-source-web-review.md) | S1 `bf8d6625`；S2 `66d8236c12aaa8923616f6f42f2ee33b772884f9`，记录`8904a8769646c3b8919ff6a4c503eeae3ac70727`；S3合并待后续真实记录 |
 | P3 lint 与健康度（S1、S2） | — | 未开始 | — | — |
 | P4 虚拟页面与 ingest（S1–S3） | — | 未开始 | — | — |
 | P5 playbook、说明与收尾的故事（S1） | — | 未开始 | — | — |
@@ -844,6 +848,7 @@ Nerve 没有 MCP、prompt、数据的 lint、模式的契约或只增不改的�
 
 | 日期 | 变更 | 依据 |
 |---|---|---|
+| 2026-10-29 | P2/S3最终来源网页、会话释放、显式标题/原字节持续队列、完整duplicate路径与历史scope、LW3–7/LW12；三Minor修复和原席复核，决定48模板单句；补S2记录CI40804121398及双main四片均值433/403/299/319.5s。S3文档/合并/记录CI仍待，P2/M10进行中 | [P2 §10.3](02-P2-source-area.md#103-s3-完整来源网页)、[S3审查](reviews/P2-S3-source-web-review.md) |
 | 2026-10-24 | 初稿（`ebed0e07`） | 移交 5 份、代码的调查（`91ee78d8`）、负责人 2026-10-24 的四个决定（第 11 节） |
 | 2026-10-24 | 设计审查之后的第一次修订（`9b22c8e5`）：五个 Important 照审查者的建议修（`batch` 的正文规则由计划判、`Merged` 是后备；待建页面照代码的读作附件；0 字节的来源不待消化；`changeset_sources` 没有外键、在清理变更集时删；预检的拒绝在后台也是 `refused`）；Minor 与 Nit 都处理（不取的两处写明理由）；主持者的 16 个决定与对作者的 7 个疑问的回答（第 11 节）；P1 分成四个 Step、后台的去处挪到 P2/S1，共 13 个 Step；每个故事与版本写明 Step；新加 4.19（真实客户端的核对与 M10 的状态）。还没有开工，没有记"开工"一条：负责人确认之后、P1 开工时记 | [审查记录](reviews/M10-design-review.md) |
 | 2026-10-24 | 修订核对第一轮之后的第二次修订：一个 Important（虚拟项的游标是它自己的成员 `V`，排序可以是负的）、11 个 Minor 与 23 个 Nit 都照审查者的建议或主持者的选择修（`Merged` 只数来源区里的项；笔记本删除也清掉 `source_hash`、`Forget` 走部分索引；lint 的交错照 `holdAssetBlobs`；`ListIndex` 去掉来源区的选项、来源区一行不写待消化的数目、贡献者不经 `Lint`；`sources` 的部分索引；lint 的名额至少 1、自己的期限、不随第一个请求取消的合并；`changeset_sources` 的叶子的清理；按答复的 `mode` 标出模式的改变；13.2 第 7、15、16 条写全；`listIndex` 照 `ListIndex` 的次序、声明例外；后台的去处在 P1/S3）；主持者的 11 个决定（第 11 节主持者的决定第 24–34 条）。没有不取的 | [审查记录](reviews/M10-design-review.md)"修订核对第一轮" |

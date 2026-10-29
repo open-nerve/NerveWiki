@@ -17,3 +17,5 @@ created: 2026-10-04
 - P1/S4（2026-10-27，合并见 [00 号文档](../00-M10-design.md)第 12 节）：前端的 `modeChanged` 已登记在实际事件处理表，`EventMode` 的导出有真实消费者；扩展替身类型换成 `later`。`app/event-stream.test.tsx` 的真实表最后一跳及第 54 条登记移除变异覆盖列表重读，LW12 页面覆盖独立流上的更新。给 M10 的服务端与前端两项都有实现；三份原始完整 Step 独立审查及修复后的范围核对已由主持者接受；B-I1（Important，测试覆盖）已关闭，没有剩余核实的 Important、Minor、Nit 或 Q。原始审查头为a0，最终接受头为13ee；B由原审查者重放核对，A/C由主持者按工作流3.4的测试修复例外核对未变范围，记录分别保存。 本分支文档仍是 `open`，在 `docs: M10/P1 done` 时改为 `done`。
 - P1 完成（2026-10-27）：S1 的 `mode`、`notebookEvents.ModeChanged`、`EventMode` 与 S4 的真实 `modeChanged` 处理表、编造的 `later` 扩展测试均已落地。服务端 `TestTheModeEventReachesTheStreams` 与前端 `app/event-stream.test.tsx` 的真实登记最后一跳、对应变异及 LW12 已核对，四个 Step 合并和合并后 CI 见 [P1](../01-P1-contract-frame.md) 10.5 与 [S4 审查](../reviews/P1-S4-web-review.md)。给 M10 的两项均完成，改为 `done`。
 - P2/S1（2026-10-27，合并见[00号文档](../00-M10-design.md)第12节）：S1来源规则未新增mode事件义务，P1已完成的服务端发布与网页处理保持，状态done；完整来源控件随P2/S3消费已有模式变化。S1范围见[P2结果](../02-P2-source-area.md)10.1。
+
+- P2/S3（2026-10-29）：LW12继续使用原mode接线、事件连接和排队任务证明；另一context管理员降级后，同一原context已挂载来源页实际可编辑保存，普通同字节创建成功且hash全NULL。两个#37反向对照和最终输入见[S3审查](../reviews/P2-S3-source-web-review.md)。状态done保持；不新增M11事件设计。
