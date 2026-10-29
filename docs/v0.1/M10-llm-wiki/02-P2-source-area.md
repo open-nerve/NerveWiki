@@ -3,7 +3,7 @@
 | 项 | 内容 |
 |---|---|
 | 里程碑 / Phase | M10 模式契约与 LLM Wiki / P2 来源区 |
-| 日期、状态 | 2026-10-29；P2进行中，S1已验；S2实现/159义务/本机门禁及精确33b4代码CI已接受，文档B-N1原审已关闭，main集成待闭环；S3待做 |
+| 日期、状态 | 2026-10-29；P2进行中，S1已验；S2旧33b4/4550已验、fb与288 CI失败、恢复折叠及有界facts保留分列，最终代码f1818066的本机门禁、独立审查与提交后gen-check均已核定，精确代码CI40793294472全11绿。本文档提交自身CI、code/docs分支四片Test配对、main合并CI及记录提交CI/双main配对由后续真实运行收口；完成前不开始S3。前33b4/4550绿、fb/288失败和03不精确同步的历史均保留；B-N1原审已关闭，main集成待闭环；S3待做 |
 | 基线 | `main` = `origin/main` = `403841fc75d0e5ac6b5f39447158213c0e07b2fe`，树 `b3665215f745d4dcfe7e8d339d4882e6d95b4a63` |
 | 入口 | P1 已完成；其后 grep 成本维护也已合并并核对，两份 main CI 全 10 项成功；第 1 节 |
 | 权威 | [文档约定](../../README.md)、[总体设计](../v0.1-design.md)、[M10 总设计](00-M10-design.md) §4.6–4.8、§4.16–4.18、§7、§9；[P1](01-P1-contract-frame.md) §8–10；[M8 历史移交](handoffs/M8-history.md)、[M9 MCP 移交](handoffs/M9-P1-mcp-registry.md) |
@@ -43,6 +43,8 @@ P1 的最终文档为 `b112450f`。其第一次精确 CI 的既有 grep 成本�
 ### 2.1 对 00 的精确修订意图
 
 以下正文修订已经三方审查、原审查者复核并由主持者接受，同本设计一并落入 00。实施/Phase 设计决定序列从 **36** 接续（维护为35），与 00 总设计审查的1–40是两套序列；36–43 逐项记在 [P2 设计审查](reviews/P2-design-review.md)“主持者的决定（负责人可以改判）”。
+
+后续实施决定44（四片窄名称再平衡）、45（恢复行内来源hash折叠）、46（单次预检有界facts保留）与47（C4协作场景等待派生读取完成）记于[S2审查](reviews/P2-S2-source-hash-review.md#文档决定与后续)，接续43，不覆盖00总设计审查的1–40。
 
 | 决定编号 | 修订位置与新文字要点 | 理由 |
 |---|---|---|
@@ -348,7 +350,10 @@ source-out/区内及source root/ancestor移动沿用原Subtree；membership不�
 
 ### 3.9 单元维护、删除、降级与 provenance（S2）
 
-`Unit.apply`的顺序为准备共享facts/hash → guards → ensureChangeset → write → **更新source_hash与unit provenance** → recordItems → participants；同单元后步能查到前步写下的hash。来源rewrite只更新hash，不查重；两个既有来源被改写为同字节合法，索引绝不能unique。
+`Unit.apply`经`applyStep`保留同一顺序：准备共享facts/hash → guards → **rememberSourceBefore记住首次改变前的来源key** → ensureChangeset → write → **通用source_hash维护与unit provenance合并** → recordItems → participants。恢复写接收已准备并经守卫检查的`Step.AreaHashes`，按本次恢复IDs把可选值交给`Restoration.SourceHashes`，在`RestoreNodes`恢复live的原UPDATE内同时写hash；缺项保持原列，present nil写NULL，现有ID与删除时刻条件不变。通用`writeSourceHashes`仍执行；恢复已写成相同值时，既有`SetSourceHashes`的distinct条件可以使它不产生物理更新/RETURNING行。provenance不能依赖这次RETURNING才记baseline：单元开始已在trash的恢复者记nil，单元内先删后恢复的原来源保留第一次改变前的key，不被覆盖。同单元后步仍能查到前步hash；来源rewrite只更新hash、不查重，两个既有来源改成同字节合法，索引绝不能unique。此为实施决定45的内部写入折叠；事务、守卫、历史及既有请求/提交/成本界保持。
+
+**预检的纯facts保留（实施决定46，与写入折叠分开）。** §3.11的RR快照、完整X与locked重新检查保持；SourcePrecheck单次check第一遍metadata收集中可私有保留最多10000个NodeFacts出现次数、1500个Step（空Step计数）及1MiB Key/Hash载荷。复制当前Step前判界，任一超限即丢弃已有副本，继续完整第一遍并由后续遍重放原seq；不限制大计划接受、不截断X。Nodes/Place/ParentID/Content/Hash/Key私有复制，不缓存DB读、权限或结论、不跨snapshot/锁；纯契约→duplicate→授权次序不变。1MiB是变量载荷界，结构/切片另受数量界约束，不是总heap/RSS上限。旧仅保留metadata的实现记录保留为历史，当前实现增加这个有界纯facts例外。
+
 
 完整不变式：node的source_hash非NULL当且仅当live、notebook为llm_wiki、strict source且非空page或asset；page等当前content_hash，asset等blob.sha256。root、空页、区外、trash、standard全NULL。`DeleteNodes`与`DeleteNotebooksPages`各在其现有UPDATE同句清NULL（后者覆盖notebook/workspace deletion）；不能只在Unit里维护。普通模式不重新设旧来源的值。降级`SetMode`后、ModeSubscribers前调用新增notebook端口`SourceHashes.Forget(ctx,id)`（只依pool构造page.NewSourceArea，由bootstrap适配），同事务/同notebook锁；缺接线模块New拒绝，失败回滚mode与hash，不发成功mode事件。
 
@@ -586,6 +591,9 @@ S1以下列真实测试名为准，已核的6fac执行与修复后最终执行�
 | app/domain S2 | `TestSourceHashTransitionsMatchRebuild`、`TestSourceDuplicateProvenanceUsesTheUnitStart`、`TestSourcePlansSimulateEveryHashChange` | 所有hash变化、两delete/Forget、四类非新UUID回滚provenance、完整顺序、source_too_large与普通10001 |
 | bootstrap S2第二份 | `TestSourceDuplicatesReachEveryLastHop`、`TestSourceDuplicatesCarryTheirTargetEverywhere`、`TestSourceEntryStopsBeforeReadingTheWholeSubtree`、`TestSourceDowngradeClearsHashesAtomically` | 真交错与HTTP/MCP/report全链、附件、overflow真实LIMIT、Forget失败回滚与事件 |
 | bootstrap S2第三份 | `TestTheSourceWritersSerializeInBothLockModes`、`TestTheSourceImportKeepsDuplicateParentsChildren`、`TestTheSourceRebuildMatchesSuccessfulRandomSteps` | 上传败者文件、两first/树写/降级次序、跨批import空folder、独立oracle与成功次数 |
+| S2恢复折叠追加 | bootstrap的`TestSourceRestoresWriteEachNodeOnce`、`TestSourceRestoresRollBackWhenTheBlobObserverFails`；postgres的`TestRestoreNodesMaintainsOptionalSourceHashes`、`TestRestoreNodesRejectsMalformedSourceHashesWithoutChangingRows`、`TestRestoreNodesRollsBackHashesWithTheGroupAndHistory`；app的`TestSourceRestorePreservesTheUnitsOriginalDuplicateTarget` | 真同步/后台restore/revert四入口×source/outside/standard的物理trigger；可选hash缺项/显式NULL/乱序/删除时刻范围；节点、正文、版本、items及末端asset observer失败的事务回滚；起点trash与单元内先删后恢复的provenance。最终hash正确与物理一次写分开证明，非法长度只声明拒绝且最终无行变化 |
+| S2有界facts保留追加 | app的`TestSourcePrecheckBoundsItsFactReplay`、`TestSourcePrecheckFreezesYieldedFacts`、`TestSourcePrecheckFreezesParentValues`、`TestSourcePrecheckDoesNotReuseFactsBetweenChecks`、`TestSourcePrecheckCountsKeysAndHashesAtTheReplayBoundary`、`TestSourcePrecheckReplaysTheDecisiveTailAfterOverflow` | 出现次数/空Step/payload精确边界、全部引用私有所有权、同实例新check不复用、1MiB/+1含合法32-byte Hash、超界尾部protected与duplicate仍拒绝；两次race与非race变异分别记账 |
+
 | Web S1/S2 | 既有problem-messages/messages、API生成与fakes测试 | 每码双语、占位符、report nullable字段、too_large文字，不延到S3 |
 | Web S3 | `source-area.test.ts`、`source-actions.test.tsx`、`edit-session.test.ts`、`page-editing.test.ts`、`source-uploads.test.tsx`、`duplicate-text.test.tsx` | 全节点动态来源、每control、真editor只读/end id、MD exact bytes/UTF8/BOM/size、409/导航/持续队列、所有rich surfaces与asset/stale id |
 
@@ -676,6 +684,23 @@ barrier优先既有可注入端口，只用于测试装配，不在生产暴露�
 
 有限reader追加变异44/S2：inner ORDER改sort_order,id、去outer LIMIT、parent转text、完整前排序/错按父分组、恰好max不探下一层（分别）；命令G(internal/modules/page/adapter/postgres,TestSourceSubtreeReadsWithinItsWorkAndOrder)。采用真实SQL的宽层/多父/范围与完整顺序子例，不只检查LIMIT文本；overflow后hash/asset仍由G(internal/bootstrap,TestSourceEntryStopsBeforeReadingTheWholeSubtree)核对。
 
+恢复折叠新增控制RF1–RF7（与实施决定44/45不同编号体系，旧159义务另列）：
+
+| ID | 改坏一处 | catcher/命令与证明边界 |
+|---|---|---|
+| RF1 | 不转交prepared AreaHashes | G(internal/bootstrap,TestSourceRestoresWriteEachNodeOnce)；物理写次数/恢复转live同时带hash，通用维护仍可能使最终hash正确 |
+| RF2 | 生成RestoreNodes SQL省略折叠 | 同RF1；物理工作控制，不冒称最终hash语义失败 |
+| RF3 | 缺项也覆盖旧hash | G(internal/modules/page/adapter/postgres,TestRestoreNodesMaintainsOptionalSourceHashes)；nil/empty/mixed map与显式NULL分开 |
+| RF4 | hash/presence错配到下一个ID | 同RF3；乱序且不同值的非空oracle |
+| RF5 | 省略恢复删除时刻条件 | 同RF3；wrong-time/already-live不应被改，节点数非空断言 |
+| RF6 | 忘记先前trash恢复者的nil baseline | G(internal/modules/page/app,TestSourceRestorePreservesTheUnitsOriginalDuplicateTarget)；后继duplicate_of错误给id |
+| RF7 | 覆盖同单元原来源的首次baseline | 同RF6；先删再恢复后错误省duplicate_of |
+
+本轮新控制的真实退出/失败断言/恢复及独审接受见[S2审查](reviews/P2-S2-source-hash-review.md#最终验证与集成)；原159依赖重放单独按fresh/reuse表核定，不将七项加入旧159后称作全部重新执行或独特产品bug。
+
+有界facts保留追加11项，独立于上述RF7和旧159：绕过缓存；分别不复制Nodes、Place、ParentID、Content、Hash；不累加NodeFacts出现次数；去Step界；扩大载荷界；超界错误返回截断副本；独立漏计Hash载荷。缓存命中catcher为`BoundsItsFactReplay`，引用catcher为`FreezesYieldedFacts/FreezesParentValues`，边界catcher为对应Bounds与`CountsKeysAndHashesAtTheReplayBoundary/extra_byte_1`；超界控制将原selector联合`ReplaysTheDecisiveTailAfterOverflow`及已有whole-X测试，三阶段argv保持完全一致。精确名称/命令、所有scalar断言及全源恢复见本轮11项封存原件，不将11个非race控制充作两次race或性能证据。精确1MiB+1的Hash独立控制应实际得到1048577、1遍而应3遍；尾部protected/duplicate两叶应拒绝，截断变异错误放行必须被捕获。
+
+
 另有契约/矩阵/双语/SQL不变量每项反例，跟随已有对应测试记录，不以这些变异替代§3.12逐操作答码检查。Stage最终修复按workflow重跑该Step全表与审查者追加变异；恢复后门禁针对最终树，不沿用改坏前的结果。
 
 S1补充反例单列类别：`TestTheDowngradeEndsTheContract`的合法no-op请求是test-input（200仍成功、readback正文/revision失败），`TestSourceMatrixSeedKeepsItsTrashGroups`的同刻删除是test-fixture；均不混入生产语义变异killed数。AfterParents用`TestSourceFactsRestoredForestUsesEachExternalParent`与两条RestorePart/continuation测试；cross-group全成员literal oracle替代旧首成员弱观察，旧存活不删。审查者A的旧有效session changed末跳、B的SQL/fake/双reader/compact/forest六轮、C的严格v2公开入口guard轮及C-M1正文双向、C-M2删除管理位置、C-M3祖先/child两种实际管理次序真实/fake对照，分别记录在[S1审查](reviews/P2-S1-source-rules-review.md)。最终修复头全部重放：fd00新目录whole-step-final-v4：109 variants /112 checks /336同argv执行，112 baseline与112 restore均0，mutant110次exit1、2次已知exit0。108项至少有一个预期catcher；test-input、test-fixture及cycle结构观察单列，不全部称产品语义kill。Of/bootstrap存活而direct of/of_subset捕获；active-background→sync继续存活；marker barrier、trace与用户结果边界保持。原93控制288份失败测试名集合与6fac轮一致；A/B/C八控制、fix1五控制、fix2三控制均重放。另11真实/fake对照exit0，原C-M3 Folder先拒绝与child先允许由真实HTTP/worker/SQL次序验证，主持者root-replay-integrity及root-counterexample-integrity均接受
@@ -714,6 +739,8 @@ docs/v0.1/claude_to_codex/tools/heavy.sh make -j1 e2e
 本机不跑plain make test/test-go（四分片配置的race段内部-j5），以上显式成分构成等价门禁；最终分支CI要求实际11项含image/smoke全成功。设计与S1当时为三片/十作业，它们的真实结果仍在原段保留，不追改为四片。设计合并前的文档链接/guarded替换与CI不代产品门禁；S1历史执行与最终记录见10.1。
 
 新增`TestSource...`在第二份、`TestTheSource...`第三份，其余名称按FIRST、SECOND、THIRD减SECOND及三者并的补集分到四份。每Step新增race测试各两次、四份完整bootstrap race各两次；门禁样本可复用但必须绑定相关最终输入且确有两次。c7旧两分支的三片Test均值398/555.5/446.5秒只用于触发拆分，不是四片实测或两个main验收；即使FIRST选择不变，SQL变更后它的旧时间也不能自动沿用。实际新清单须从最终源码重建，468顶层是c7历史数；本机四份各两次、package/wall与CI Test分别记录。每Step合并与记录提交的精确CI都绿后，用这两个main Test样本核各份均值<450秒。成本行按原本机两次均值×2.4及M9/P2§6.5半个进程超时线分行，现有timeout不提高。S1入口440.5/317.5/260.5及其后328/313.5/394均为各自历史，见10.1；最终S2新头的实际结果集中见10.2与审查表。
+
+**S2后续边界再平衡（实施决定44）。** 33b4/4550两分支第一片Test444/457s均值450.5s触发M9/P2§6.5；相邻第二片419/418s均值418.5s。重排时仅将当时清单的`TestEveryResolutionCaseImportsFromAVault`移到第二片：两次选中EveryR命令中该顶层run→终止跨度11.087505/10.921745s，均值乘1.6后迁移估计17.6074s，预测第一/第二432.8926/436.1074s；全R预测第二451.5228688s而被拒绝。这些是估计，非CI实测。重排的四片完整双轮、原件与独立核对已接受；fb精确CI随后因Revert10k失败，最新有界facts保留输入须重建清单并绑定完整双轮、新代码/文档两分支及两main样本。集中见[S2审查](reviews/P2-S2-source-hash-review.md#4550后的容量再平衡)，不以本机量或旧分片样本替代。
 
 IndexItems 30ms与grep600ms现有义务不改，后续接近/超线查根因/样本，M10收尾核稳定性。仅认P2入口已有的两个样本，不承诺新增工作必然装得下。
 
@@ -796,9 +823,9 @@ P3：在已实现page.SourceArea基础上增加整区lint/pending来源读取，
 |---|---|---|
 | P2设计 | 已审查并接受 | 原四项发现及B-Q1在设计层resolved；4755精确main CI40413727596十项成功；[设计审查](reviews/P2-design-review.md) |
 | 10.1 S1 | S1已合并；记录CI与两main Test均值已核，S2继续实施 | [实施审查](reviews/P2-S1-source-rules-review.md)；合并见 00 号文档第 12 节 |
-| 10.2 S2 | 代码/本机/精确分支CI已接受，集成待闭环 | 159控制分层与依赖复用、6M迁移/成本和各次失败修复已记录；B-N1文档原审已关闭；doc/main/记录CI与双main四片样本尚待 |
+| 10.2 S2 | 最终代码f1818066的本机门禁、独立审查与提交后gen-check均已核定，精确代码CI40793294472全11绿。本文档提交自身CI、code/docs分支四片Test配对、main合并CI及记录提交CI/双main配对由后续真实运行收口；完成前不开始S3。前33b4/4550绿、fb/288失败和03不精确同步的历史均保留；集成待闭环 | 旧33b4/4550接受、fb/288失败、恢复折叠与有界facts保留逐阶段保留；旧159 fresh/reuse、折叠7与缓存11控制分列；B-N1已关闭，文档/分支配对/main/记录及双main样本尚待 |
 | 10.3 S3 | pending | UI/文件bytes/会话释放/重复链接/E2E与跨标签、审查/CI、M8done与M7/M9open核对 |
-| 10.4 P2done | pending | 三Step均验收、最终文档链接/handoff核对、P2done准确SHA与十项main CI；P3下一步 |
+| 10.4 P2done | pending | 三Step均验收、最终文档链接/handoff核对、P2done准确SHA与实际workflow全部CI作业（当前四分片为11项）；P3下一步 |
 
 ### 10.1 S1 来源规则
 
@@ -816,7 +843,7 @@ S1后续核对已完成：合并`bf8d6625`的[CI40501936360](https://github.com/
 
 ### 10.2 S2 来源 hash、去重与验证
 
-**实现与本机验证已接受，精确33b4代码CI全部11作业成功；B-N1文档复核已关闭，main集成待闭环。** 当前代码`33b4da5a38bed24db05411e83209d30ef1e17db9`；159义务=旧129＋TrashChildren13＋History8＋Name9，按具体输入的fresh/reuse接受，不称159独特bug或全部提交后重跑。main新增107个Go声明=98race＋9!race，总2947；实际各轮race/nonrace、门禁与来源桥见[S2验证表](reviews/P2-S2-source-hash-review.md#33b4最终代码控制与本机验证)。后续各CI失败/候选拒绝/metadata survivor、测试观察器失败均保留；迁移6M仍按冻结原件及限制接受。S3、P3–P5及M10收尾尚待，不开始M11。
+**S2后续有界facts保留：最终代码f1818066的本机门禁、独立审查与提交后gen-check均已核定，精确代码CI40793294472全11绿。本文档提交自身CI、code/docs分支四片Test配对、main合并CI及记录提交CI/双main配对由后续真实运行收口；完成前不开始S3。前33b4/4550绿、fb/288失败和03不精确同步的历史均保留；main集成待闭环。** 以下33b4实现/本机/CI及测试声明数为其历史接受范围：`33b4da5a38bed24db05411e83209d30ef1e17db9`，CI40718770843全部11作业成功；旧159义务=129＋TrashChildren13＋History8＋Name9，按具体输入fresh/reuse接受，不称159独特bug或全部提交后重跑；当时相对main新增107个Go声明=98race＋9!race，总2947。4550文档绿色、fb容量重排与失败、288恢复折叠及其失败CI40768488401、有界facts保留`f18180667a8fa47e44efd2b0d33e4623443eb389`的最新清单/门禁/CI集中在[S2验证表](reviews/P2-S2-source-hash-review.md#最终验证与集成)。旧失败、候选拒绝、metadata survivor、测试观察器失败及6M冻结证据限制均保留；B-N1在4550前规范文档投影后已关闭。S3、P3–P5及M10收尾尚待，不开始M11。
 
 | 已接受增量 | 提交 | 已验范围 |
 |---|---|---|
@@ -825,6 +852,9 @@ S1后续核对已完成：合并`bf8d6625`的[CI40501936360](https://github.com/
 | S2-3 | `9bafdaa67513de135c19f51b5ba9678cac59fe82` | 去重/provenance/snapshot/admit/import/字段全链；53 个最终语义变体、54 个历史 triple/162 次执行分别保留；D-I1、C-M1、C-N1 已复核关闭 [E04] |
 | S2-4代码增量 | `25f88a2730456940bd52efffd899e8ac827a9f27` | 22代码文件已提交；六成本行双轮/六增量门禁及提交头gen-check已获root接受 [E39–E44]；六份root文档待提交，不是整步S2验收 |
 | S2-5 | `c7cec1fa`→`ca8a27db`→`53488fee`→`056677a4`→`2536175e`→`33b4da5a` | 正式A/B/C与产品修复复核、159控制分层/依赖复用、实际本机门禁及CI40718770843已接受；B-N1实际文档复核已关闭，doc/main闭环待完成 |
+| S2-5容量再平衡 | `fb92974b9928f334d2a1d6007fbd169cd6dfacf3`（parent45509391） | 两配置文件、窄名称边界及注释；完整本机双轮/独立核对已接受。CI40740783718 attempt1失败，三状态Revert sample2 HTTP500；保留失败成本报告，不能接受新双分支容量或main集成 |
+| S2-5恢复行内hash | `288ecb2b6ccb9a1209e674074d685329be38f37d` | guarded prepared值合入原RestoreNodes UPDATE，通用维护及起点provenance保留；原本机与有限控制接受不变。CI40768488401三状态Revert sample2仍HTTP500，不能称CI修复成功 |
+| S2-5有界facts保留 | `f18180667a8fa47e44efd2b0d33e4623443eb389` | 单次check只保留边界内纯facts，超界丢弃并重放原seq；最终代码f1818066的本机门禁、独立审查与提交后gen-check均已核定，精确代码CI40793294472全11绿。本文档提交自身CI、code/docs分支四片Test配对、main合并CI及记录提交CI/双main配对由后续真实运行收口；完成前不开始S3。前33b4/4550绿、fb/288失败和03不精确同步的历史均保留。旧159（16fresh/143scope）、折叠7、缓存11分别核验；本次文档自身CI由外部回执收口 |
 
 实现按实际 SQL 投影：probe/writeback 使用 SELECT-list SRF；当前 adapter 的 `[]uuid.UUID` 不表达 NULL 元素，缺游标用 zero UUID 加 `has_afters=false`，合法 zero UUID 不被排除。当前 writeback 改为单条 UPDATE self-join：`FROM nodes old` 与 zipped unnest 的 `v` 配合，以 `old.id=n.id` 取得旧值，保留 n 的 notebook/live/distinct 条件，`RETURNING n.id, old.kind, old.source_hash AS before_source_hash`。S2-1 当时的 MATERIALIZED previous/changed CTE 方案及旧值正确性验证保留为历史；本轮因无统计时的二次方末尾 join 修订，定向接受见 [E28–E31]。有限父读者内外均为 `LIMIT (SELECT sqlc.arg(max_rows)::integer)`，内层 parent/live 范围按已有 parent/name_key 索引顺序，notebook filter 在内层 LIMIT 之后，完整层读完再由 Go 排序；返回/物化界与真实物理访问分开验收。
 
@@ -944,9 +974,13 @@ B完整建库/装载/前后验证2227.942 s不是迁移停机时间；2225资源
 
 当前pair以GoJSON package Elapsed计算，旧S2-4 wall估算保留原单位，不混为同一值；本机<300s不是CI保证。Revert18HTTP200最大3.063165043s，Background check/plan最大2.388390585/2.409432001s；!race helper只排除autovacuum worker，普通client仍拒绝，旧失败PID身份未知。原173份受保护的是外部CI/预算证据，源码另由固定Git/来源图证明。[F01/F11/F13]
 
-四片本机双轮package均值319.5785/284.784/240.4775/262.5225s（ca8受测来源，后续相关caller另fresh）；33b4单分支Test444/419/302/271s。当前CI Restore/Revert各9次200，最大2.467645682/3.130127760s，后续Background18及Forget9完整通过；History四个实际400k Count为171.483340/198.331556/191.590538/158.465408ms，named非执行EXPLAIN计划不当作Store实际执行计划。guards Test1127s/job1146s分开，11作业success已由原件接受；main双样本仍待。[F14–F16/F22]
+四片本机双轮package均值319.5785/284.784/240.4775/262.5225s（ca8受测来源，后续相关caller另fresh）；33b4单分支Test444/419/302/271s。33b4 CI Restore/Revert各9次200，最大2.467645682/3.130127760s，后续Background18及Forget9完整通过；History四个实际400k Count为171.483340/198.331556/191.590538/158.465408ms，named非执行EXPLAIN计划不当作Store实际执行计划。guards Test1127s/job1146s分开，11作业success已由原件接受；main双样本仍待。[F14–F16/F22]
 
-**剩余项统一入口。** 实现、159控制及来源/复用边界、本机门禁和精确33b4代码CI已接受。B-N1已在真实规范文档投影后由原B复核关闭并经主持者接受；剩余文档CI、no-ff main/记录的实际CI、两次main四片Test均值待闭环；未知号不填。记录自身CI可树外回执收口、下次既定S3/Phase自然转录，避免自引用提交。M7/M9/M8仍open（M8待S3），M6 lint留P3、M5done保持；继续P2/S3、P3–P5与M10收尾，不开始M11。
+以上均为33b4阶段历史。4550文档CI40730123058全11项成功，旧第一片与33b4配对均值450.5s触发决定44；重排fb CI40740783718虽四片Test356/308/235/371s，整体因Revert三状态sample2 HTTP500失败。恢复折叠的已封存本机旧/候选交替观察为18/18请求均成功、均值2.283366749→1.983884524s（-13.1158%）；它不证明CI根因、物理写次数或新头CI成功。最终输入的完整门禁/两轮四片与精确新代码CI见[S2审查](reviews/P2-S2-source-hash-review.md#最终验证与集成)；失败历史、成本报告与旧容量预测保留。
+
+恢复折叠代码288的精确CI40768488401仍因Revert三状态sample2请求4s失败；四片Test297/454/340/359s只是失败workflow的一份分支样本。随后有界facts保留的本机AB结果混合；组件内check、进程总分配、HTTP、package与wrapper是不同量纲，不能由组件改善推断CI根因或普遍端到端收益。正式Restore/Revert package两次均值×2.4、其余成本与当前32 recipes按最新原件另核，不能拿失败CI或旧fold AB补最终样本。
+
+**剩余项统一入口。** 最终代码f1818066的本机门禁、独立审查与提交后gen-check均已核定，精确代码CI40793294472全11绿。本文档提交自身CI、code/docs分支四片Test配对、main合并CI及记录提交CI/双main配对由后续真实运行收口；完成前不开始S3。前33b4/4550绿、fb/288失败和03不精确同步的历史均保留。旧33b4/4550、159义务及B-N1关闭为已接受历史；有界facts保留旧159的fresh/reuse依赖表、折叠7及缓存11控制、最终门禁/双轮/精确代码CI按本次真实证据接受，旧数不自动套到新头。随后依次为本次文档提交CI→树外两分支Test配对→no-ff main合并CI→main合并记录文档CI→树外两个main Test配对；未知号不填，记录自身CI不再追加自引用提交，后续既定S3/Phase自然转录。旧4550绑定的main-record模板需随最终头重绑。M7/M9/M8仍open（M8待S3）、M6 lint留P3、M5done保持；S2闭环前不开始S3，不开始M11。
 
 ## 附录：核对过的代码与证据
 

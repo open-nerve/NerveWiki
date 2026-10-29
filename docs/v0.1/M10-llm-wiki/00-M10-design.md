@@ -4,7 +4,7 @@
 |---|---|
 | 里程碑 | M10 模式契约与 LLM Wiki（`M10-llm-wiki`） |
 | 日期 | 2026-10-24 |
-| 状态 | 进行中；P1与P2/S1已验。S2实现、159控制义务/来源复用、本机门禁及精确33b4代码CI全部11项已接受；B-N1已由原B实际文档复核并经主持者接受关闭，doc/main闭环待完成，见[P2](02-P2-source-area.md)与[S2验证表](reviews/P2-S2-source-hash-review.md#33b4最终代码控制与本机验证)。S3、P3–P5和M10收尾仍待，不开始M11。 |
+| 状态 | 进行中；P1与P2/S1已验。S2的33b4产品/159控制、本机门禁及精确11项CI为已接受历史，B-N1在4550前的规范文档投影后已关闭；4550绿色后第一片双分支均值450.5s触发再平衡，fb92974b的精确CI40740783718因Revert10k第三样本HTTP500失败。恢复折叠已提交288但CI40768488401仍因Revert10k第三样本失败；有界facts保留：最终代码f1818066的本机门禁、独立审查与提交后gen-check均已核定，精确代码CI40793294472全11绿。本文档提交自身CI、code/docs分支四片Test配对、main合并CI及记录提交CI/双main配对由后续真实运行收口；完成前不开始S3。前33b4/4550绿、fb/288失败和03不精确同步的历史均保留。最新验证与剩余集成见[P2](02-P2-source-area.md)及[S2验证表](reviews/P2-S2-source-hash-review.md#最终验证与集成)。S3、P3–P5和M10收尾仍待，不开始M11。 |
 | 依赖 | M9（MCP 工具与 prompt 注册表）、M7（导出贡献者、附件进树与链接）、M6（链接索引）、M8（变更集的类型、撤销与后台任务）；总体设计 12.3 照此修订（第 7 节"总体设计的修订"） |
 | 上级文档 | [v0.1 总体设计](../v0.1-design.md) 第 3.3–3.10、4.2、4.4、4.5、5、6.1–6.3、7.1、7.2、8.2、8.3、8.5、9.2、10、10.1、12.1–12.6、13、14、15 节 |
 | 代码位置的写法 | 同 [M9 总设计](../M9-mcp/00-M9-design.md)：模块写作 `page/app/unit.go:187`（`server/internal/modules/` 之下）；`platform/…`、`bootstrap/…`、`shared/…`、`archtest/…` 在 `server/internal/` 之下；迁移写作 `00009_notebook_notebooks.sql:5`（`server/migrations/sql/`）；SDK 写作 `sdk/mcp/protocol.go:966`（`~/go/pkg/mod/github.com/modelcontextprotocol/go-sdk@v1.8.0/`）；前端写作 `web/…/pages/page/page-layout.tsx:153`（`web/apps/web/src/` 之下）；e2e 写作 `e2e/fixtures/mcp.ts:41`。行号都是 `91ee78d8` 的（`ebed0e07` 只加了这份文档） |
@@ -685,7 +685,7 @@ Nerve 没有 MCP、prompt、数据的 lint、模式的契约或只增不改的�
 - **反向对照**（13.4 第 1 条）：`prompts.json` 的检查（少一个、多一个、说明不同）；`TestTheBuiltInInstructionsNameEveryTool` 对新的两个工具；`TestConstraintAndIndexNames`（`server/migrations/schema_test.go:163`）的表加 `notebooks_mode_check`、`notebooks_source_root_check`、`nodes_source_hash_check`、`changesets_ingest_count_check`、两个迁移的部分索引与 `changeset_sources_pkey`、`changeset_sources_changeset_id_node_id_key`；反例：模式 `'upgrading'` 与 `'LLM_WIKI'`、`llm_wiki` 而来源根为 `NULL`、31 与 33 字节的哈希、`ingest_count = -1`；模板的段落少一段、末尾多一段与每种块的形状；`checkPages` 的每条新规则。
 - **权限矩阵**：新操作的行；`{rule}` 的一段；LLM Wiki 的变体（4.17：它自己的工作区里的种子与跑在它上面的行）；MCP 的矩阵加两个工具与第 5 节的码的行。
 - **日志**：降级、lint、`prompts/get` 各有日志的测试（只有 id，不带名称、`source`、`question`）。
-- **测试的名字与分份**：M10/P2/S2按M9/P2§6.5两次CI与邻居容量规则，从三份增为四份；当前FIRST不变，SECOND取`Every[S-Z]`、`Source`、`TheMCP`、`TheContents`，第三份为旧THIRD减SECOND，第四份取其余。`TestSource…`在第二份，`TestTheSource…`在第三份，其余新名按Makefile实际表达式落位，不再把所有未匹配FIRST/THIRD的名称称第二份。每份独立两轮与两次main Test按实际新头核验，见[P2结果](02-P2-source-area.md#102-s2-来源-hash去重与验证)及[S2审查](reviews/P2-S2-source-hash-review.md#最终验证与集成)；历史M9名字建议和旧三片时间保留原阶段。e2e仍不分份，不以增加bootstrap份数替代产品失败修复。
+- **测试的名字与分份**：M10/P2/S2按M9/P2§6.5两次CI与邻居容量规则，从三份增为四份；首次四片保留FIRST、另取SECOND的历史结果不改；其后33b4/4550两分支第一片Test均值450.5s再次触发M9/P2§6.5，按实施决定44选择窄名称移界。当前FIRST为`^Test([A-D]|E([a-u]|very([A-Q]|ResolutionCase[A-H])))`，SECOND为`^Test(Every(ResolutionCase[I-Z]|[S-Z])|Source|The(MCP|Contents))`；第三份仍为THIRD减SECOND，第四份为三者并的补集。重排测量时的468顶层仅Imports由第一片移第二片，分配167/72/114/115；八次完整本机运行、candidate02仅注释桥接及独立复核已接受，提交`fb92974b`。其后fb精确CI因Revert10k失败；最新有界facts保留输入的清单、完整双轮及新代码/文档两分支CI与main双样本按S2审查实际回执核验，预测不当CI实测。`TestSource…`在第二份，`TestTheSource…`在第三份，其余新名按Makefile实际表达式落位，不再把所有未匹配FIRST/THIRD的名称称第二份。每份独立两轮与两次main Test按实际新头核验，见[P2结果](02-P2-source-area.md#102-s2-来源-hash去重与验证)及[S2审查](reviews/P2-S2-source-hash-review.md#最终验证与集成)；历史M9名字建议和旧三片时间保留原阶段。e2e仍不分份，不以增加bootstrap份数替代产品失败修复。
 - **e2e**（13.4 第 3 条）：`e2e/fixtures/notebooks.ts` 的 `createNotebook` 今天是按位置的参数（`:9-26`），加一个选项的对象（`mode`、`templateLocale`）；`fixtures/mcp.ts` 加 `listPrompts`、`getPrompt`（交回 `{result} | {error}`），`PageRead.meta` 的 `version` 可选；数据库的断言按表（13.4 第 3 条）：`assert/notebook.ts` 的 `expectNewNotebook`、`expectNotebook` 读 `mode` 与 `source_root_id`，`assert/page.ts` 加 `source_hash`、`changeset_sources`，`expectVersions` 加 `rewrite`，`assert/transfer.ts` 的 `expectBackgroundJob` 收停下的任务与 `refusal`；不另开 `assert/wiki.ts`（wiki 没有表）。`playwright.config.ts` 设 `locale: "en-US"`，所以 LW1 的中文界面用 `test.use({ locale: "zh-CN" })`。LW12 的"有导入在跑时被拒"不用 `holdNotebookRow`（`e2e/fixtures/transfer.ts:191-198` 以 `FOR SHARE` 持行，降级的 `FOR NO KEY UPDATE` 排在它后面，放开之后谁先都可能，13.4 第 4 条的"被放开的行不排队"，故事会时好时坏）：持另一本笔记本的行、在那里开始一次导入，`jobs.import_workers = 1` 时它占着唯一的工人，LLM Wiki 的导入停在 `queued`，降级立刻答 `transfer.busy`。
 
 **本 M 的故事**（`e2e/stories/wiki/lw<n>-<slug>.spec.ts`；"页面"有网页一侧的动作；MCP 版本照 M9 的约定在故事自己的文件里、名为"`<故事> (MCP)`"，种下的数据经 REST，每个 agent 一个 PAT，值来自答复。照 10.1 的规则逐个故事判：读或写页的故事有 MCP 版本，豁免的写出它的 Go 测试，同 M9；每个版本写明落在哪个 Step）：
@@ -821,12 +821,14 @@ Nerve 没有 MCP、prompt、数据的 lint、模式的契约或只增不改的�
 
 **P2 实施/Phase 设计决定（另一个编号系列）**：36–43 见 [P2 设计审查](reviews/P2-design-review.md)“主持者的决定（负责人可以改判）”，接 P1 与维护的实施序列35；不覆盖、重编号或替换上面的总设计审查决定1–40。本次只是设计接受，P2/M8 尚未完成。
 
+后续实施决定44（四片窄名称再平衡）、45（恢复行内来源hash折叠）、46（单次预检有界facts保留）与47（C4协作场景等待派生读取完成）见[S2审查](reviews/P2-S2-source-hash-review.md#文档决定与后续)；仍沿实施序列接续，不覆盖总设计审查1–40。
+
 ## 12. Phase 进度表
 
 | P | Phase 文档 | 状态 | 审查 | 合并 |
 |---|---|---|---|---|
 | P1 契约的框架（S1–S4） | [01-P1](01-P1-contract-frame.md) | 已完成 | [设计](reviews/P1-design-review.md)、[S1](reviews/P1-S1-mode-template-review.md)、[S2](reviews/P1-S2-guard-review.md)、[S3](reviews/P1-S3-prechecks-refusals-numbering-review.md)、[S4](reviews/P1-S4-web-review.md) | S1 `45d086a1`、S2 `bad859c0`；S3 `a46c3d1d`；S4 `f261952f` |
-| P2 来源区（S1–S3） | [02-P2](02-P2-source-area.md) | 进行中；S1已验；S2代码/本机/11项分支CI已验，B-N1原审已关闭，main集成待闭环，S3待做 | [设计](reviews/P2-design-review.md)、[S1](reviews/P2-S1-source-rules-review.md)、[S2](reviews/P2-S2-source-hash-review.md) | S1 `bf8d6625`；S2代码链 `25f88a27`→`c7cec1fa`→`ca8a27db`→`53488fee`→`056677a4`→`2536175e`→`33b4da5a`；合并/记录号待真实发生 |
+| P2 来源区（S1–S3） | [02-P2](02-P2-source-area.md) | 进行中；S1已验；S2旧33b4/4550已验、fb与288 CI失败、恢复折叠及有界facts保留分列，最终代码f1818066的本机门禁、独立审查与提交后gen-check均已核定，精确代码CI40793294472全11绿。本文档提交自身CI、code/docs分支四片Test配对、main合并CI及记录提交CI/双main配对由后续真实运行收口；完成前不开始S3。前33b4/4550绿、fb/288失败和03不精确同步的历史均保留；main集成待闭环，S3待做 | [设计](reviews/P2-design-review.md)、[S1](reviews/P2-S1-source-rules-review.md)、[S2](reviews/P2-S2-source-hash-review.md) | S1 `bf8d6625`；S2历史代码链 `25f88a27`→`c7cec1fa`→`ca8a27db`→`53488fee`→`056677a4`→`2536175e`→`33b4da5a`，文档`45509391`、重排`fb92974b`、恢复折叠`288ecb2b`，有界facts保留`f18180667a8fa47e44efd2b0d33e4623443eb389`；合并/记录号待真实发生 |
 | P3 lint 与健康度（S1、S2） | — | 未开始 | — | — |
 | P4 虚拟页面与 ingest（S1–S3） | — | 未开始 | — | — |
 | P5 playbook、说明与收尾的故事（S1） | — | 未开始 | — | — |
@@ -835,6 +837,8 @@ Nerve 没有 MCP、prompt、数据的 lint、模式的契约或只增不改的�
 ## 13. 变更记录
 
 - 2026-10-29：补S2实际实施、6M/成本、159控制分类与局部重放、正式审查/修复复核及精确33b4 CI11项成功；当前SetSourceHashes规范为UPDATE self-join，CTE保留历史。B-N1实际文档原审已关闭；doc/main集成与双main样本待闭环，详见[P2 §10.2](02-P2-source-area.md#102-s2-来源-hash去重与验证)。
+
+- 2026-10-29：S2按实施决定44将重排时清单的Imports一项移至邻接第二片；4550与fb的精确CI、容量触发、预测及失败均保留历史。按决定45把守卫已准备的来源hash合入RestoreNodes原UPDATE，保留通用维护与单元起点provenance；288的CI仍失败。决定46在同一次预检内有界保留纯facts，超界回原全量重放。决定47只同步C4 story的派生读取，原E2E 311通过/1失败保留，后端不变证据按scope复用；最终代码f1818066的本机门禁、独立审查与提交后gen-check均已核定，精确代码CI40793294472全11绿。本文档提交自身CI、code/docs分支四片Test配对、main合并CI及记录提交CI/双main配对由后续真实运行收口；完成前不开始S3。前33b4/4550绿、fb/288失败和03不精确同步的历史均保留。旧159、折叠7和缓存11项控制分别记账，文档自身CI、分支配对及main闭环不预填，详见[S2审查](reviews/P2-S2-source-hash-review.md#最终验证与集成)。
 
 | 日期 | 变更 | 依据 |
 |---|---|---|

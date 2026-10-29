@@ -1,6 +1,6 @@
 # P2/S2 来源 hash 与去重：实现、审查与集成记录
 
-> **代码33b4、本机验证及精确11作业CI已接受；文档与main集成待闭环。** 159项控制义务按各轮fresh/reuse范围分列，不称159独特产品bug。三份正式审查及后续产品修复复核已接受，C-M1、C2-M1、B2-N1、NAME-REV-01已关闭；B-N1已在本次真实文档投影后由原B复核并经主持者接受关闭 [F30–F32]。所有旧失败、诊断与来源差异保留。本文为主持者汇编，不是新增独立审查。
+> **33b4/4550的已接受历史、fb/288失败、恢复折叠与本次有界facts保留分列；最终代码f1818066的本机门禁、独立审查与提交后gen-check均已核定，精确代码CI40793294472全11绿。本文档提交自身CI、code/docs分支四片Test配对、main合并CI及记录提交CI/双main配对由后续真实运行收口；完成前不开始S3。前33b4/4550绿、fb/288失败和03不精确同步的历史均保留，main集成待闭环。** 旧159项控制义务按各轮fresh/reuse范围分列，折叠7与本轮缓存11项各自另列，不称独特产品bug或全部在新头重跑。三份正式审查及先前产品修复复核仍按原范围保留，C-M1、C2-M1、B2-N1、NAME-REV-01已关闭；B-N1在4550前的规范文档投影后由原B复核并经主持者接受关闭 [F30–F32]。所有旧失败、诊断与来源差异保留。本文为主持者汇编，不是新增独立审查。
 
 | 项目 | 当前状态 |
 |---|---|
@@ -10,7 +10,7 @@
 | S2-4代码/增量门禁 | 代码25f88a27已提交22文件；六增量门禁及提交头gen-check已获root接受 [E41–E44]，六份root文档未提交 |
 | S2-5 c7控制与本机验证历史 | c7的124控制、97/89清单、89 race各两轮、31成本/guard、完整Web/E2E和静态门禁已验 [E51–E71]；不是后续修复源码的最终绿 |
 | 三份正式审查与修复复核 | 原A/B/C已核；C-M1 CLOSED@c7，C2-M1 Important/B2-N1 Nit CLOSED@ca8；B-N1规范文档Nit经实际投影后的原B复核 **CLOSED** [E45–E50/E87/E96/E98；F30–F32] |
-| 当前代码与最终验证 | `33b4da5a`及CI40718770843全部11作业成功；旧129＋TrashChildren13＋History8＋Name9，共159义务已按各轮输入/局部重放接受；本机门禁、32成本/guard与当前成本pair见下文[F01–F29]。文档B-N1原审已关闭；doc/main闭环仍待 |
+| 当前代码与最终验证 | 旧`33b4da5a`/CI40718770843与4550文档CI40730123058已验；fb92974b/CI40740783718与288ecb2b/CI40768488401均失败。有界facts保留`f18180667a8fa47e44efd2b0d33e4623443eb389`：最终代码f1818066的本机门禁、独立审查与提交后gen-check均已核定，精确代码CI40793294472全11绿。本文档提交自身CI、code/docs分支四片Test配对、main合并CI及记录提交CI/双main配对由后续真实运行收口；完成前不开始S3。前33b4/4550绿、fb/288失败和03不精确同步的历史均保留；旧159依赖重放、折叠7与缓存11控制、最新清单/门禁/成本/精确CI见下文，doc/main闭环仍待 |
 
 ## 范围与实际差异
 
@@ -165,7 +165,7 @@ Tests-first旧ANY实跑red：3个物理工作leaf及父事件失败，无build/s
 
 ### 33b4最终代码、控制与本机验证
 
-当前代码为 `33b4da5a38bed24db05411e83209d30ef1e17db9`，精确 [CI40718770843](https://github.com/open-nerve/NerveWiki/actions/runs/40718770843) attempt1、push/m10-p2-s2，11作业和必需步骤均成功。正式审查及后续修复复核已完成其产品范围；文档B-N1已在本次实际投影后由原B复核并经主持者接受关闭 [F30–F32]，文档/合并/记录的CI及两个main样本尚待真实发生。以下汇编既有独立审计与主持者接受，不追加一层产品审查。
+以下保留`33b4da5a38bed24db05411e83209d30ef1e17db9`阶段的代码、控制、本机与成本历史：精确 [CI40718770843](https://github.com/open-nerve/NerveWiki/actions/runs/40718770843) attempt1、push/m10-p2-s2全部11项及必需步骤成功。此节的“当前/最新”均限当时输入，不自动沿用到后续修复。B-N1在4550前规范文档投影后已由原B复核并经主持者接受关闭 [F30–F32]。其后4550绿色、fb容量重排及真实失败、288恢复折叠失败及有界facts保留最新验证见后续小节；旧事实不改写为最终头重跑。
 
 **ca8→5348：最终本机验证与测试连接观察。** ca8原129义务已实际接受：原124 fresh共372阶段，另5条有身份绑定的reuse，不是129个不同产品缺陷。原九条STOP由完整error/error-continue重组和具体动态字段分类接受，旧记录/matcher保留，不以重跑删除失败。先前成本队列52成功/53尝试，唯一Forget fixture失败；其历史PID身份未知。诊断01未重现，02实见同seed autovacuum，03原guard真实RED、04只排除 `backend_type=autovacuum worker` 后GREEN、05普通client仍拒绝。03/04两容器PID均134不代表同一进程。最小!race helper不等待/kill，只尊重PG18.6 CREATE DATABASE原生锁等待及取消auto worker；无生产SQL/预算/fixture数据改动。[F01]
 
@@ -240,21 +240,96 @@ History专门CI成本四实际Count均400000、Limit400001：无统计generic/cu
 
 成本collector实际接续2536失败报告，20项旧指标全部在原界内、已查询清单0gap、173历史外部原件未改；新绿不追改旧失败分类。H1 IndexItems30ms/GrepCandidates600ms本轮未复发，长期稳定性仍M10收尾。[F15]
 
+### 4550后的容量再平衡
+
+旧分片文档提交45509391的CI40730123058 attempt1全部11作业及必需步骤成功；四片Test457/418/336/371s。20成本指标实际原行/中位已由root核对，旧失败不追改；fb92974b代码CI的成本collector以`p2-s2-4550-doc-ci-cost-supplement.json`为前像（SHA `38b4162a8b0d1993c34028298a7e53f56930b833879a6f4861f5a9044b531b58`）。这是旧边界的绿色，不关闭新边界容量义务。[F33–F34]
+
+第一片33b4/4550两次Test444/457s均值450.5s过450s；相邻第二片419/418s均值418.5s。两次选中EveryR命令中Imports顶层run→终止跨度11.087505/10.921745s，均值11.004625s；不是独立Imports进程时长，也不是Action.Elapsed。依M9/P2§6.5乘1.6估迁移17.6074s，预测第一/第二432.8926/436.1074s；全R两个测试方案预测第二451.5228688s过线而被拒绝。估计保留，不用后来实数倒改。
+
+窄边界FIRST=`^Test([A-D]|E([a-u]|very([A-Q]|ResolutionCase[A-H])))`、SECOND=`^Test(Every(ResolutionCase[I-Z]|[S-Z])|Source|The(MCP|Contents))`，第三仍THIRD减SECOND，第四为三者并的补集。实际468顶层分配167/72/114/115，只把`TestEveryResolutionCaseImportsFromAVault`由第一片移至第二片；此“只迁一项”限本次清单，不保证未来新名称的归属不变。每轮3488 run/3484 pass/4固定Markdown skip，468顶层各一次；其中466顶层pass、2顶层skip，另2叶skip，不能称468全部race通过。旧nonrace补偿按原不变recipes单列。两轮只有source_guard的wiki.raw/wiki.agents/ordinary三个固定顺序槽位的UUID叶名称变动，原名/行/时长保留，未扩大归一化。[F35–F37]
+
+| 片 | 完整本机package两轮秒 | package均值秒 | wrapper wall均值秒 |
+|---|---|---|---|
+| 1 | 313.574 / 325.178 | 319.376 | 320.240825 |
+| 2 | 301.512 / 317.979 | 309.7455 | 310.641762 |
+| 3 | 265.229 / 257.624 | 261.4265 | 262.300612 |
+| 4 | 267.772 / 264.744 | 266.258 | 267.175441 |
+
+wall均值按6位小数展示，完整值保留于F35。
+
+八次运行的16份3179路径content SHA map均为4550加candidate01两配置；这是内容相同，不冒称rich mode元数据证明。candidate02仅注释Nit修正/补实数，非注释字节、完整cost/guard区段、recipe/timeout/-j5/matrix不变；G完整独立复核无阻断且Nit关闭，root核12输出/49输入并接受。完整本机运行不是CI Test；candidate02经精确注释桥接受，不称重新跑了产品逻辑。[F35–F37]
+
+配置已提交`fb92974b9928f334d2a1d6007fbd169cd6dfacf3`，parent45509391，仅Makefile/ci两文件。精确[CI40740783718](https://github.com/open-nerve/NerveWiki/actions/runs/40740783718) attempt1为completed/failure：8个其他初始作业成功、guards失败、E2E/image skipped；bootstrap四片Test356/308/235/371s只是此失败workflow的一次分支样本。不能把四片完成当整CI绿色、最终产品验收或新双分支容量接受。[F38–F39]
+
+Revert三状态的sample0/1均200、sample2均HTTP500/internal_error；第三个客户端请求分别4.001518414/4.001477777/4.001930866s，应用计时另为4.000401903/4.000283040/4.000843918s。Revert package130.751s，父测试加三状态共4个Go fail；guards Test1267s、job1289s，未耗尽30分钟作业时限。只有前六份完整Revert sample JSON；失败请求在status Fatal处停止，后验hash/健康检查与7.6s成本断言未到。Create/Move/Restore各9次成功；第13条Revert recipe失败后Background/Forget未执行。最后index page/restore blobs错误标签不能定位整个4秒、独证根因或完整回滚结果。33b4→fb产品/依赖字节未变，不能由此声称是新产品回归或已证runner原因。[F38]
+
+fb失败成本报告以4550成本报告为前像；20项独立读成本仍在原界内、173份历史外部原件SHA保持、查询清单无缺口，不抵消真实请求失败。当时下一次collector须接`p2-s2-fb92974b-failed-ci-cost-supplement.json`（后续288已接续，当前前像见下文），不能回退到33b4或4550前像。既有失败与本次失败均保留，H1长期稳定性仍归M10收尾。[F39]
+
+### RestoreNodes恢复行内hash的288阶段历史
+
+恢复折叠candidate-03（manifest `ef6d3041460b1acd0da69e09f8723425e150c0b61e6b62266d3db0aaabf16748`）的7 tracked路径与4新测试文件已提交`288ecb2b6ccb9a1209e674074d685329be38f37d`；fake也在tracked集合内，不能把7全称生产文件。只将原准备并通过guard的AreaHashes交给原RestoreNodes UPDATE，恢复live同时写hash；通用writeSourceHashes仍在recordItems/participants前调用，恢复同行已写相同hash后不再因hash二次更新。rememberSourceBefore先记首次baseline，保持trash到来者nil与单元内先删再恢复原source的key；缺项/显式NULL、ID/删除时刻和历史计数不变。SetSourceHashes self-join与B-N1三规范锚点保留。[F42–F44]
+
+原A/B静态及新7有限控制接受仍限原范围，最终hash正确不能代真实trigger的每行一次更新/恢复时带hash。非法长度只证拒绝且最终无行变化，未声称零SQL尝试；末端asset observer回滚由非事务sequence证明已到达，任意早期500不能代它。fold的本机old→candidate→old→candidate共36次HTTP200（每版本18次），均值2.283366749→1.983884524s，减少13.1158%；绑定candidate01并通过产品字节桥接03，非相同UUID数据交叉重放或随机试验，无本轮SQL trace/CPU计划。它不是当前缓存AB，也未证明CI根因。[F40–F43]
+
+288的精确[CI40768488401](https://github.com/open-nerve/NerveWiki/actions/runs/40768488401) attempt1仍completed/failure：8作业success、guards failure、E2E/image skipped。Revert三统计状态sample2均HTTP500/request4s，三客户端计时4.002112780/4.002641556/4.001911110s；状态Fatal后未执行后验hash/健康检查与7.6s断言。前12条guard recipe成功，第13条Revert失败，Background/Forget未执行。错误标签停在restore blobs只给取消观察位置，不能独证asset SQL、索引、锁或CI CPU为根因。四片Test297/454/340/359s不等于新的代码/文档双样本。失败成本报告接fb报告，下一次collector必须接288失败报告，不能回退fb或旧绿色；当前独立读成本未越界也不能抵消真实HTTP失败。[F44–F45]
+
+### SourcePrecheck单次有界facts保留与最新验证
+
+缓存后端证据的候选02冻结manifest为`6dd1f8f465ff491815106f819f1809e73f3b53953df9337cd78b3b9d0314fdc1`，相对固定288为两个app产品文件与一个新增测试文件；不改SQL、索引、迁移、夹具、请求4s/提交2s或成本上限。最终候选04 manifest为`63e3dcda75f089347ee9d4c925f187963fc3dbc886f6b529058d10a15d411df6`，3185路径中相对02仍仅改`e2e/stories/collab/c4-guard.spec.ts`；三个Go文件字节不变。03与04的实际经过分列于下文。最终提交`f18180667a8fa47e44efd2b0d33e4623443eb389`与候选04冻结一致，提交桥为`p2-s2-revert-288ecb-diagnosis/integration/code-commit-candidate04-receipt.json，SHA256 fc653148cfe62fbd559c34092059e1a5b9a55afe18cf28b056fe1356c4e3d042`；已完成后端门禁按明确scope桥接，不冒称19个Go/Web门禁、race、成本或控制在04全部重跑。[F54–F55]SourcePrecheck.check第一遍已有metadata收集中另记私有纯StepFacts；后两遍能从同一次check的私有记录重放。原RR连接中的DB读取、权限重判、纯契约→duplicate→授权顺序、locked层重新检查不省略，不跨请求、snapshot或锁复用。[F46]
+
+保留边界同时为10000个NodeFacts出现次数（非distinct ID）、1500个Step（空Step也计）与1MiB的Key/Hash有效载荷。复制当前Step前检查，任何一项越界就清空已保留记录，继续完整第一遍，再由后续遍从原seq起点重放；whole-X和60k等大计划不截断、不因缓存界拒绝。Nodes、Before/After Place、ParentID、Content、Hash及Key取得私有所有权。1MiB只约束变量Key/Hash字节，不是全部heap/RSS；结构/切片额外开销另由node/step界限制。此为决定46对原仅保留metadata实现的窄修改，非接受计划上限变化。
+
+**测量分层。** 本机Revert交替AB第一候选轮略慢、第二轮变快，HTTP两轮均值降低约4.51%但wrapper均值略升，generic sample2平均也升；Restore HTTP两轮均值略升约0.273%，不能称稳定端到端收益。组件诊断另证明真实保留命中和原facts遍历3→1，check计时与进程总分配下降；进程TotalAlloc不是请求独占内存、峰值或RSS，诊断HTTP不可替代无插桩正式pair。精确测量及来源桥：同一原Revert路径、仅analyzed状态的组件诊断实际保留1步、10000个NodeFacts出现次数、118991字节Key/Hash，遍历3→1；三次顺序请求的预检150.544/155.624/170.536ms→99.436/97.487/95.916ms，进程TotalAlloc增量约179–182MB→97MB。每个版本仅一个进程，三个请求并非三次独立实验；不是请求独占分配、总heap/RSS或峰值。无插桩交替Revert AB两对一劣一优，Restore HTTP均值略增，不能宣称稳定端到端收益；保留候选基于实际机制与正式门禁，CI原因不据此推定。本机测量不证明CI失败根因；新代码CI结论以实际运行原件为准。[F50–F52]
+
+| 当前证据组 | 实际状态与证据边界 |
+|---|---|
+| 旧159义务（129＋13＋8＋9） | 旧159按依赖清单16 fresh+143 scope复用：16原selector/mutation/matcher/timeout仅重绑冻结源码，16组共48个进程；baseline、mutant、restored三类各合计95个测试run，共285 run；baseline/restored95pass，mutant29pass66fail、69条实际业务断言，208份3185 rich核定。143历史kill按明确未变因果链保留，不抹去原STOP/失败。当前7个组合caller每轮52pass，6个seed两轮共12个样本，每样本79成功/9拒绝；最终两Create no_statistics/force_generic_setting各3次HTTP201完成。原124闭环/115零循环等历史边界与当前正对照分列，不称159全部fresh或159独特bug；本轮16fresh、143按原oracle范围复用，正常caller桥另核。不是159 fresh kills |
+| 折叠RF1–RF7 | RF1–RF7保留原7组三阶段/21进程的历史kill证据，04只改C4、缓存两产品文件未触及相应物理写/可选值/范围/provenance因果链。RF1/2另以当前两轮RestoresWriteEachNodeOnce13项+RestoresRollBackWhenBlobObserverFails3项、合计32pass证明正常路径，PG/app直接调用正对照也完成；不称7组本轮fresh mutation。root最终旧159/fold7正路径回执关闭原第二轮条件；保留原21阶段/物理、可选值、范围与provenance分类，不改称本轮新kill |
+| 缓存11有限控制 | 本轮11组三阶段实际33个process，逐组baseline0/mutant1/restored0；111事件=78pass+33fail，mutant37=4pass+33fail、23条实际标量断言（含优化/重放契约与业务语义），143份3185 rich恢复图逐项核定。涵盖绕过优化、五类引用别名、出现次数/步骤/载荷界、超界未重放原seq/丢失完整计划和漏Hash计数；正常控制命令非race，不冒充双race或性能证据；优化命中/私有所有权/次数与payload边界/超界完整回退分别证明。旧159＋fold7＋cache11不称177个新发现或fresh kill |
+| 最新源码声明/race与nonrace | 实际声明2959 Test=server2951+tools8；相对main新增119=110 race+9!race。110双次义务按63 fresh+47限定历史pair接受：33个既有app、6个缓存app、2个PG snapshot、22个bootstrap本轮两次；47个直接SQL/Store/domain/transfer/module等未走SourcePrecheck的范围按固定源码历史两次并当前完整运行正对照。不是110项全在最终整树重跑；首次旧app race的after-map只有root记录、无另存独立map的限制保留。04仅改C4，相关Go依赖不变；9个!race由原32recipe真实执行，不以6M迁移代替；候选Test总2959=server2951+tools8，相对main新增119=110race+9!race；110按63fresh两次+47精确scope历史两次分列。short执行还含6Fuzz，不把执行数当Test声明 |
+| 32 recipes与完整门禁 | 本机22项选定成功process闭环：19项02已通过的lint/knip/build、两模块vet、short、完整nonbootstrap race、Web、八次bootstrap、32成本recipe/额外两包及PG第二race，按04唯一E2E文件变化的依赖桥接；另有04完整lint/knip、4次无retry目标与完整build/E2E。short8208事件=6915pass+1293明确skip；nonbootstrap7579=7578pass+1Markdown skip，已nonrace补偿；Web169文件3548测试全过。04 E2E108文件312叶全部单次通过、0retry/skip/flaky，wrapper139.310631s；目标4次26.056349s和24个请求屏障另经trace独审。44份内容map及最终3185项kind/mode/bytes/SHA核定，只有4个预定改动。代码提交后gen-check2.876698s通过，3185内容未变且工作树干净；原E2E311/1失败和03绿但误匹配的记录保留；逐项区分02实际执行及04相关输入不变scope复用。C4修正后的静态检查、无retry目标重复与完整E2E另列；局部定向绿不能代完整E2E，不把原311/1失败改写为通过 |
+| 最终四片完整双轮 | 候选02两轮各470顶层，四片167/74/114/115；每轮3504 run=3500 pass+4明确Markdown skip，已由nonrace guards补齐。四片package两样本秒分别303.378/290.117、298.114/301.656、238.188/234.539、244.660/251.537；均值296.7475/299.885/236.3635/248.0985。对应wrapper均值300.123880/300.629536/237.098145/248.845772s，不能作CI Test。仅三处固定REST UUID叶槽作有来源的对账，未泛化规范化名称；16份3185内容map精确匹配02，04只改E2E story按依赖桥接；编译470顶层、实际事件/固定skip、package/wrapper与内容桥按原件核；不是新的110声明库存或CI Test |
+| 正式成本/guard及HTTP | 32条原recipe=17 costs+15 guards，55唯一顶层、146 run/pass；额外Background第二包7项与Precheck第二包25项后178 run/pass，无skip/fail。45次完整HTTP=9次Create201+36次其他200，9次Move全状态reset；两指定Create caller及5个race skip补偿、9个!race义务均关闭。Background package55.163/54.783s，均值×2.4=131.9352s；Precheck51.557/51.480s，=123.6444s，均<300s。Restore固定AB72.832/69.521s→170.8236s，Revert74.795/71.261s→175.2672s，不用后续较快样本替换。Create/Move/Forget/History历史pair按未变调用范围保留；Markdown原单条15m规则下当前一次185.680s不虚报双样本。Precheck两轮各54 Check/18中位数组及60份单独完整probe证据，Background各18次60k/600cuts按原查询与5s界核定；生产generic setting不等于named prepared generic，compact省略完整数组不能独立复哈希。04不重跑这些未变依赖的成本门禁；Restore/Revert正式pair取无插桩原selector两次成功package Elapsed均值×2.4，10m recipes对照300s半超时线。Background/SourcePrecheck受影响pair及其他recipe按实际原件核定，HTTP/median与package/wall分列 |
+| 独审/最终提交与精确CI | A/B缓存静态审查无开放Important/Minor，测试补齐变更后由root核对；新11实际控制、旧159依赖与当前caller、fold7范围、110 race及门禁分别完成独审/root接受。C4原失败沿真实trace与固定源码定位合法删除竞态；03四次/全312通过仍被A发现repeat1初始化误匹配，04以既有holdStream分开B初始化/连接再等两页变更刷新。A核四trace24唯一精确GET、48个200/finished断言、所有变更读取晚于相应mutation200且完成早于DELETE；原三条404与业务断言保持。G另核04完整312单次结果及原timeout。root重哈希A52inputs/34outputs、G17inputs/7outputs并核最终Git全3185blob/执行位；无开放I/M，文档与main集成仍按后续真实CI收口；代码 f18180667a8fa47e44efd2b0d33e4623443eb389 的 push/m10-p2-s2 CI40793294472/attempt1 全11作业及必需step成功；四bootstrap Test为439/448/359/309s，job为461/472/381/325s。web Test206s、short126s、race688s、costs836s、guards1176s、E2E210s、Image smoke77s；只属本次实际样本，分支与main双样本仍需后续实际配对。新增20成本指标均未超各自原界，45HTTP=9Create201+36其他200；Restore最大2.217118950s、Revert最大2.767611909s，未提高4s请求/2s提交timeout。成本链紧接288失败报告，0 inventory gap，173历史保护文件逐字不变；原失败不追改，本次通过不证明稳定收益或旧CI根因；grep_glob本次1.242392826s距1.25s仅0.007607174s，余量留M10收尾继续观察。须实际SHA/run/attempt、11作业及必需steps、成本previous链；不由本机或旧288推定绿色 |
+
+### C4 E2E失败、屏障误匹配修复与04证据边界
+
+缓存候选02的完整E2E原运行保留为108文件/312叶、311通过/1失败，每叶一次attempt，0retry/skip/flaky；没有顶层工具错误。失败C4(page)在quiet-page检查多出一次未声明的GET notebook/assets 404，原三条预期404来自heartbeat、重开edit-session和保留写。该份早期独审仅定位额外响应，未证明产品原因；不能把单次失败本身直接当作已证“偶发”或候选无关。[F53]
+
+后续诊断记录的具体竞争为：移动事件的tree刷新可等待500ms定时器，派生assets读取仍以Linux作为parent，另一tab已进入DELETE，合法的page.not_found遂出现在派生读。决定47只调整既有`e2e/stories/collab/c4-guard.spec.ts`同步：每次rename/move动作前为A、B两页注册新发GET请求的等待，精确匹配notebook/assets路径与`parent_id=Linux ID`；动作后两页均取得200且response.finished完成，才进入后续步骤。04先用既有`holdStream(b)`在B goto前挂住新SSE连接：先等B初始assets读取200且finished，再注册连接刷新读取的等待、放行连接并等该读取200且finished，之后才注册rename/move双页屏障。初始化与连接刷新因此在本例中各自完成，不以它们冒充后续动作的派生读取。原三条404白名单、业务断言与timeout保持，不以新增404许可或固定sleep掩盖问题。诊断、独审及后续验证的原件和主持者核对见上表及末尾索引。[F54]
+
+03曾有目标四次无retry通过，且完整E2E实际108文件/312叶全部通过、0retry，wrapper 138.02077760733664s（Playwright duration 136671.131ms）；这些成功原件保留。但A随后逐trace发现零基repeat1的B rename等待命中了初始化assets：该GET在rename请求前已开始，不能据四次通过称16个屏障都等待了对应动作。03因此没有成为最终同步修复；04继续分离初始化/SSE连接刷新，仍归决定47，不另造决定48。[F54/F56–F57]
+
+04相对02仍只该E2E story改变。原311/1失败、03四次成功/全312成功及误匹配事实均保留；04目标四次无retry重复、trace核对与完整E2E按各自实际原件核，局部重复不能代替全套。三个Go文件不变，已核110 race（63fresh2+47精确scope历史pair）、控制及Go/Web/成本证据按相关依赖范围桥接04，不将冻结不同E2E字节说成整树相同，也不把这些门禁写作在04重跑。源码Test2959、相对main119=110race+9!race、short额外6Fuzz的口径不变。最终诊断/04字节桥、静态检查、无retry目标重复、完整E2E及主持者接受见上表独审/门禁结果与末尾原件索引；新代码CI结论以实际运行原件为准，定向绿或本机绿不能代替它。
+
+上表的代码CI是一份新代码分支样本；本次文档自身CI作为第二份，在树外核四片Test均值/余量。fb与288失败样本保留历史，不凑新代码/文档配对。随后才进入main合并/记录精确CI与双main配对；不预填文档自身CI，不为自写CI无限追补提交。
+
+
 | 尚待事项 | 当前真实状态 |
 |---|---|
 | B-N1规范文档 | **CLOSED**：root实际应用三处规范后，原B核文档及对应查询源/生成SQL/Store，无新增Important/Minor/Nit/Q；root核原件接受。绑定代码33b4及实际应用字节，未声称文档已提交或main集成完成 [F30–F32] |
-| 文档提交/精确CI | 提交号与CI尚未发生，不预填 |
+| 文档提交/精确CI | 旧45509391/CI40730123058全11项已验[F33]；本次有界facts保留文档提交/自身CI未知。须在新代码CI真实全绿后提交，并与之在树外配对Test样本；不把自身CI预填进自身 |
 | --no-ff main合并/记录 | merge、record号及各精确CI尚未发生；依workflow记录 |
 | 两次main四片Test | 待两份真实main样本逐片配对/均值与余量；不以本机、旧S1或分支样本代替 |
 | 后续产品范围 | P2/S3、P3–P5、M10收尾；M7/M9整份open、M8待S3、M6 lint留P3、M5done；不开始M11 |
 
-闭环顺序是实际文档应用→原B复核→文档提交/CI→no-ff main/记录的精确CI与双样本。记录提交自身CI及双main均值可由外部接受回执收口，下次既定S3/Phase文档自然转录，避免为了自写SHA/CI无限追补提交。当前实现/本机验证/代码CI已完成，不再写“124/129复演未做”；S2最终集成尚待上述事项。
+B-N1在4550前实际文档复核及4550精确文档CI已接受；fb失败保持历史，有界facts保留最新状态以本节真实证据为准。闭环顺序为新代码精确CI绿→本次文档提交CI绿→树外两个分支Test均值/余量→no-ff main合并CI→main合并记录文档CI→树外两个main Test配对。自身CI与配对由外部接受回执收口，后续既定S3/Phase自然转录，不为自写SHA/CI无限追补提交。旧main-record-preparation绑定4550，不得直接套在新的最终头；须重绑文档头、merge/record事实和输入守卫。S2闭环前不开始S3，不开始M11。
 
 ## 文档、决定与后续
 
 P2§8.2/§9对应总体12.4/13.1/13.4、00/P1/P2、README升级、M7/M8/M9/M12及本文。M11移交按§9留到P2整体验收；本轮不启动M11。S1旧pending按两真实main与328/313.5/394 s纠正，不作为S2样本。M8在S2/S3验收前open；M7/M9整份open，M6 lint后续，M5done保持，M10进行中。
 
 可以由负责人改判的决定保留“主持者的决定（负责人可以改判）”标签：决定43的名义批/cuts取舍；CPU/数据/统计口径受限的本机成本新界；新增普通SyncRestoreNode一点读的已记录差异。没有用设计豁免替代HTTP三状态义务，也没有把诊断driver池4与官方CLI池10差异隐藏。
+
+**主持者的决定（负责人可以改判）44——S2四片窄名称再平衡。** 接续P1/维护/P2实施序列43，不属于00总设计审查1–40。按已触发的M9/P2§6.5规则，将当时清单的Imports一项移至相邻第二片，拒绝接收片预测过450s的全R方案；四片/11作业/-j5/timeout保持。本机完整双轮及注释桥/独立核对已接受；fb精确CI失败如实保留，预测与单次分片完成不代最终新代码/文档双样本。若接收片实测两次均值仍过线，按原规则撤回移界并重新拆分。没有产品阈值豁免。
+
+**主持者的决定（负责人可以改判）45——恢复行内来源hash折叠。** 在原RestoreNodes UPDATE内带入prepared、guarded AreaHashes，保留通用派生维护与写前首次provenance记忆；不新增来源判定，不改变事务/guard/历史、保留历史增长、fixture、请求4s/提交2s及原7.6s成本界。物理trigger、回滚/范围/provenance、新7控制、旧159依赖刷新、本机完整门禁及精确新代码CI分别取证；本机AB改善只支持实际观察，不承诺每一条SQL的收益或CI根因。此次接受状态见最新验证表，不把旧绿CI转写为本轮修复成功。
+
+**主持者的决定（负责人可以改判）46——单次SourcePrecheck有界保留纯facts。** 在第一遍完整metadata收集时最多保留10000个NodeFacts出现次数、1500个Step（含空Step）和1MiB Key/Hash载荷，复制前判界；任一超界即丢弃缓存并从原seq完整重放后续遍，不改变计划接受界或whole-X。引用取得私有所有权；不缓存授权、DB读或判定，不跨check/snapshot/锁。原三阶段判定顺序、RR连接、写锁后的重判与背景大计划完整流式回退保留。1MiB不是总heap/RSS承诺。本机组件机制改善与端到端AB混合分列，正常Restore额外复制成本由实际pair核；不以决定豁免4s/2s/成本界，不据本机宣称288的CI失败根因已证或新CI已绿。最终接受状态按上表真实证据，而非该决定文字。
+
+
+**主持者的决定（负责人可以改判）47——C4协作测试等待本次派生读取完成。** C4(page)先以既有holdStream(b)在B goto前挂住新SSE，分别完成初始assets与放行连接后的refreshAll assets读取，再在rename/move前为A/B注册新发exact notebook/assets、parent_id为Linux的GET等待，动作后两页200且finished，再继续后续删除；这只改变测试动作间同步，不改变产品、原三条404白名单、业务断言、选择范围或timeout。原完整E2E 311通过/1失败永久保留；诊断/独审、目标无retry重复、完整E2E各自取证，局部绿不能替代完整门禁或CI。03四次/全312成功后A仍从trace发现repeat1初始化读取误匹配，故修至04；candidate04相对02仍仅该story改变，已有后端/Go/Web/race/成本/控制证据按具体输入依赖桥接，不称19门禁全量重跑；最终代码/CI接受按实际回执，不由本决定预填。
+
 
 ## 证据索引
 
@@ -411,3 +486,43 @@ P2§8.2/§9对应总体12.4/13.1/13.4、00/P1/P2、README升级、M7/M8/M9/M12�
 | F30 | `p2-s2-review-b/b-n1-final07-doc-review/final-review.txt`（原B实际文档复核，CLOSED，无新增发现） | `42f54464de9b02e03100012dd133039bbc8e76ce9486bcf5c96066abea0ff653` |
 | F31 | `p2-s2-review-b/b-n1-final07-doc-review/final-review.json`（实际三处文档/代码SHA与历史边界） | `6c5a5b94db25cecfb6b1ea7ae54b93de7737bce8b3b111a1092e897f058f25ba` |
 | F32 | `p2-s2-integration/root-B-N1-acceptance.json`（主持者全文核报告及实际3文档/3代码/4原件后接受关闭） | `1995bc47914c8c0c2957c81cb8b5a2acb0513dda9b51a8cfd011209b7ded34f5` |
+| F33 | `p2-s2-integration/documentation-ci-4550-acceptance.json` | `eba66f5449d2fb684216c7209a2c1d09a374421970f384b145bc4d1898aab46b` |
+| F34 | `p2-s2-integration/documentation-ci-4550-cost-acceptance.json` | `cfc1007d2abb988b7425d3c2296e817cd5fe203886ec21af9983f680e5e3d616` |
+| F35 | `p2-s2-bootstrap-rebalance/root-complete-pairs-acceptance.json` | `fed2c5450e483269197484b453eba10f87eb6ca49d1369736a3359a3bf0304d9` |
+| F36 | `p2-s2-final-ca8-gates-independent/ci4550-bootstrap-rebalance-runs-independent/final-eight/audit.json` | `e07d77f050d852f0796e7405fe99fc84be4b2c83e920d229f943b10c007e7683` |
+| F37 | `p2-s2-bootstrap-rebalance/root-independent-final-acceptance.json` | `24511f16993dd037ffb56db82fff9b1845cce39fd0c47e010feab3d973762f31` |
+| F38 | `p2-s2-fb-failure-independent/receipt.json` | `f183ce7ad741b8c519bc7c6ac83b40c693fc35a6cedcec3c2b6e2d8e26122704` |
+| F39 | `p2-s2-fb92974b-failed-ci-cost-supplement.json` | `e1c9f20aed1904f2e7d5d49f383a9f1ff53997b57f910f7b35a4a45bf5ae7045` |
+| F40 | `p2-s2-restore-fold/root-diagnostics-and-freeze-acceptance.json` | `8e3e4778471bd663bf32dfef688fa1da2e251d933ce075a4ee82f9a0341f180f` |
+| F41 | `p2-s2-restore-fold-ab-independent/report.md` | `193edcea737f87f4151af4c809429ab1202c556316874e9a66ce9fd86b4ce152` |
+| F42 | `p2-s2-restore-fold/candidate-03/manifest.json` | `ef6d3041460b1acd0da69e09f8723425e150c0b61e6b62266d3db0aaabf16748` |
+| F43 | `p2-s2-restore-fold-review-a/report.json` | `8f7f2507859295660b2d4e4f5a292c7716ba02347ac22ae314654a62849aa7e7` |
+| F44 | `p2-s2-288ecb2b-failure-independent/receipt.json` | `f74000d6721d7a623a78204ef8a0a9e46368fed4ecb8af1833f9ab8fbfa6117b` |
+| F45 | `p2-s2-288ecb2b-failed-ci-cost-supplement.json` | `c10017245241530b31fafbecc09c2ba7099120bb6a817c8a6b7e23ffefb03b14` |
+| F46 | `p2-s2-revert-288ecb-diagnosis/bounded-facts-candidate-02/manifest.json` | `6dd1f8f465ff491815106f819f1809e73f3b53953df9337cd78b3b9d0314fdc1` |
+| F47 | `p2-s2-revert-288ecb-diagnosis/static-review-b/bounded-facts-new11-independent-02/audit.json` | `3151f909e34ee62dadbccefa04b52ec466b4fff1f3955d160124d6241dfb1fec` |
+| F48 | `p2-s2-revert-288ecb-diagnosis/static-review-b/cache-race-impact-02/audit.json` | `7ba6348d6d13923fc416f16ff57811f6acf01c5173415b35e19f70847a28217b` |
+| F49 | `p2-s2-revert-288ecb-diagnosis/static-review-b/cache-pg-race-addendum-03/audit.json` | `b841fbc639b08b81ab591cade31e925ba93a266059c6a31950647b609a196653` |
+| F50 | `p2-s2-revert-288ecb-diagnosis/bounded-facts-ab-independent/receipt.json` | `72a0ba83074425ec80c1e6a1edc79c8a8640865c44a642e58d31a8b9b928042e` |
+| F51 | `p2-s2-revert-288ecb-diagnosis/bounded-facts-restore-ab-independent/receipt.json` | `2a19e5bbe7c671522852e3de787aa5f68fc075a5feea9072537abd1adc0e4e76` |
+| F52 | `p2-s2-revert-288ecb-diagnosis/root-bounded-facts-measurement-acceptance.json` | `b650ae59e3f619a277fbb00cc3649d5296e820ebe3ca308060dd213b59f8eea1` |
+| F53 | `p2-s2-revert-288ecb-diagnosis/bounded-facts-e2e-independent/failed-run-01-complete/receipt.json` | `2e34f32c7d4ffcfdc1e82d7ec2436dc0ef2305d9d9d8bc4c89e8a956be370797` |
+| F54 | `p2-s2-revert-288ecb-diagnosis/bounded-facts-candidate-03/manifest.json` | `1909dee893ef990408d5f6bd0c2ea7da648442878fdc138595b9e7787771bd77` |
+| F55 | `p2-s2-revert-288ecb-diagnosis/bounded-facts-candidate-04/manifest.json` | `63e3dcda75f089347ee9d4c925f187963fc3dbc886f6b529058d10a15d411df6` |
+| F56 | `p2-s2-revert-288ecb-diagnosis/bounded-facts-e2e-independent/c4-fixed-whole-e2e/receipt.json` | `bbf5d1f93a47329449be7694f30dca92cf3d497c3b3a08bec7a556f96b30e44d` |
+| F57 | `p2-s2-revert-288ecb-diagnosis/e2e-c4-diagnosis-a/candidate03-four-traces.json` | `135c1bd7482563715f81ff822c7a110ace5a0cb9aa65756aeafd087796fa4112` |
+| F58 | `p2-s2-revert-288ecb-diagnosis/root-candidate04-final-local-acceptance.json` | `478d968a8113c7ae080bd93b1606f26ed9eafeb7d9a0d27544c2a07a4d91b4aa` |
+| F59 | `p2-s2-revert-288ecb-diagnosis/root-final110-race-acceptance.json` | `8ec511bdeb1d65c9894d115c7557df30f9b66f29e4c7d74bac1b38908428e070` |
+| F60 | `p2-s2-revert-288ecb-diagnosis/e2e-c4-diagnosis-a/review.md` | `4d33048bac0aeb253688aad6a141fb369d60903f76b7e4ff3302beba70b138da` |
+| F61 | `p2-s2-revert-288ecb-diagnosis/bounded-facts-e2e-independent/c4-stream-separated-whole-e2e/receipt.json` | `3dd7761e9934861888dc11bdac4c126a0f48d6ad5cd976e4772d3d4eb898e65b` |
+| F62 | `p2-s2-revert-288ecb-diagnosis/integration/precommit-candidate04-source-and-process-receipt.json` | `034eb7a3a1a9eff219d381976d6f3d1b99d083d8ad1e8febbb8adfacc4a39b3e` |
+| F63 | `p2-s2-revert-288ecb-diagnosis/integration/code-commit-candidate04-receipt.json` | `fc653148cfe62fbd559c34092059e1a5b9a55afe18cf28b056fe1356c4e3d042` |
+| F64 | `p2-s2-revert-288ecb-diagnosis/bounded-facts-final-gates-preparation/gen-check/receipt.json` | `128a8548efa8c9bb461dbbe6fa43741b0988cabaac0f9f15e1e0613b07953b65` |
+| F65 | `p2-s2-revert-288ecb-diagnosis/root-final-costs-and-pairs-acceptance.json` | `b238be44a135df005be75b33300e52441a1dcfedd024c0b17751f73e784b8117` |
+| F66 | `p2-s2-revert-288ecb-diagnosis/root-old159-fold7-normal-final-acceptance.json` | `3c9cc5fb3e062530716c531d7e5672817e9bebb5b9feab55536dd69ad00cdad8` |
+| F67 | `p2-s2-revert-288ecb-diagnosis/root-bounded-facts-new11-acceptance.json` | `6ef10aebf8eb2d765653c7c86e77b681b97c7a046fe1b8124acae70a40cbd874` |
+| F68 | `p2-s2-revert-288ecb-diagnosis/root-final-bootstrap-pairs-acceptance.json` | `c454fb84332a1a9fe6279cbfbbc75418c29b3e1f8faa80da7c423e0e71f2a416` |
+| F69 | `p2-s2-revert-288ecb-diagnosis/integration/code-and-gen-readiness.json` | `3e01054d5f64e303e61ab9ccbfb9e1c136d3dee856693ddb6b071cecc25d3aef` |
+| F70 | `p2-s2-f181-code-ci-cost-supplement.json` | `e4d93abdf2a5466b152e6e9d4de7f599cb733ec65148cfc00caf92cc83db02df` |
+| F71 | `p2-s2-revert-288ecb-diagnosis/f181-ci-independent/receipt.json` | `823cd9a4fe20bb9f2c09168ea66a92de96c46f6d61f394c7fc15be09b6d63360` |
+| F72 | `p2-s2-revert-288ecb-diagnosis/root-f181-final-code-acceptance.json` | `b314ba883377c5c70f61b2524563458b06cbd742461dbed1622b156537a50b28` |
