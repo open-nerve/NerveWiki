@@ -4,10 +4,10 @@
 |---|---|
 | 对象 | 分支 `m10-p2-s3`；基线 `8904a8769646c3b8919ff6a4c503eeae3ac70727`；三份独立初审头 `1da533667955cb618a67dfe22991680f099bec19`；修复提交 `8c17b5cceb65b2a0f70976bbe4752daeaabaee05`；最终代码 `ae4501aa166771db153dae5dfa710ef16ee26ac4`，tree `8e31387857571a2db6baf48c092382b66adc77d4`。 |
 | 权威与范围 | [P2 设计](../02-P2-source-area.md) §4–§8.3、[M10 总设计](../00-M10-design.md) §4.7/4.16、[总体设计](../../v0.1-design.md)、[工作流](../../claude_to_codex/02-workflow.md) §3。只完成来源网页、真实编辑失去、来源添加与重复反馈；P3 lint、P4 虚拟文件/ingest、P5 prompt、M11 升级仍不在本 Step。 |
-| 日期、状态 | 2026-10-29；最终代码、原审复核、本机门禁与精确代码分支 CI 按下表验收。本记录是合并前的分支文档；自身文档 CI、合并及记录两个 main CI 尚待真实发生，P2/M10 仍进行中。 |
+| 日期、状态 | 2026-10-29；S3实现、原席复核、最终门禁及精确代码/文档/合并CI已验，no-ff合并`ecd79c77d0cdb2259d50758b26514f61ebb329ca`。本次合并记录自身CI与两main四片均值留待提交后；P2仍待独立完成，M10进行中。分支文档阶段的未决描述保留其当时语境。 |
 | 独立审查 | A/B/C 均从新上下文在各自 detached worktree 对 BASE→1da 读规范、diff、代码并自行复现；先固定独立初稿，后审计根提供的命令/日志。初审合计 0 Important / 3 Minor / 0 Nit；C 另有两个流程/证据 Q，见下文。 |
 | 修复复核 | A-M1、B-M1、C-M1 的修复、原席实际核对和边界分别列明；不是用作者自测代替原审。 |
-| 文档与合并 | 本记录与投影由带标签的 exact-old-once Python 脚本生成；提交前须在干净 archive 演练、由主持者核对并检查链接。文档提交及其 CI 后续核；合并见 [00 号文档第 12 节](../00-M10-design.md#12-phase-进度表)。 |
+| 文档与合并 | 分支文档`f6b397b7234f2495ac092be8214b8bf266a95c91`的精确CI与no-ff合并`ecd79c77d0cdb2259d50758b26514f61ebb329ca`的精确main CI已验；实际SHA、两父、tree及run/attempt见下文“合并、Phase边界与移交”。本次记录不写入自身SHA/CI；[00第12节](../00-M10-design.md#12-phase-进度表)同步当前状态。 |
 
 ## 实施提交与实际差异
 
@@ -172,11 +172,23 @@ W 的文件/选择器按 P2 §7.3 展开；本轮共同 heavy 编排下各 Vites
 
 S2入口在本次既定文档自然补记：精确 `66d8236c12aaa8923616f6f42f2ee33b772884f9` 的 [CI 40800844731](https://github.com/open-nerve/NerveWiki/actions/runs/40800844731)（main push，attempt 1）实际 11 个作业及列明必需步骤均成功；四片 Test 步为 431.0/358.0/308.0/322.0 s；精确 `8904a8769646c3b8919ff6a4c503eeae3ac70727` 的 [CI 40804121398](https://github.com/open-nerve/NerveWiki/actions/runs/40804121398)（main push，attempt 1）实际 11 个作业及列明必需步骤均成功；四片 Test 步为 435.0/448.0/290.0/317.0 s。两次 main 四片 Test 均值为 433/403/299/319.5 s，均<450 s；主持者已接受并放行 S3。旧失败与阶段原件保留。
 
-本分支文档的精确CI尚须在提交后核验。之后按workflow做no-ff合并、精确main CI、合并记录提交及其精确main CI；用两次main四片实际Test均值核<450s，再做P2done独立文档和精确CI。不预填上述未来SHA/run，不为自身SHA循环制造记录提交。合并见00第12节。
+合并记录（2026-10-29）：S3以`--no-ff`合并为`ecd79c77d0cdb2259d50758b26514f61ebb329ca`，两父依次为`8904a8769646c3b8919ff6a4c503eeae3ac70727`、`f6b397b7234f2495ac092be8214b8bf266a95c91`；合并tree `f63a51d781d3f5649f61897b5cfbe04c192c65e6`与接受的分支文档tree相同。以下均按精确head SHA/attempt核验，全部实际作业及必需步骤成功。
+
+| 阶段 | 精确 SHA | run / attempt | 实际成功作业 / 必需步骤 | 四片 Test 秒 |
+|---|---|---|---|---|
+| code | `ae4501aa166771db153dae5dfa710ef16ee26ac4` | [40843325190](https://github.com/open-nerve/NerveWiki/actions/runs/40843325190) / 1 | 11 / 全部已验 | 453/311/289/371 |
+| docs | `f6b397b7234f2495ac092be8214b8bf266a95c91` | [40848348596](https://github.com/open-nerve/NerveWiki/actions/runs/40848348596) / 1 | 11 / 全部已验 | 438/446/351/372 |
+| main | `ecd79c77d0cdb2259d50758b26514f61ebb329ca` | [40852524505](https://github.com/open-nerve/NerveWiki/actions/runs/40852524505) / 1 | 11 / 全部已验 | 452/447/359/366 |
+
+代码/文档两次分支四片 Test 均值为 445.5/378.5/320/371.5 s，均<450 s；第一片余量4.5 s，原453 s慢样本保留。这一对不是后续合并/记录两次main的配对。
+
+实际HTTP和成本样本保存在各精确CI接受原件；代码CI的revert 3.970788992 s窄余量仍保留观察。三次通过不作为持续稳定性或实机负载的证明。
+
+集成接受原件`/home/parallels/.local/state/nervewiki/m10/p2-s3/s35-main-integration-acceptance.json`，SHA-256 `ebfd5804de3a0d0bb95f57020c0357dde7ddfdc0df13a9b0d4abc131c0c43f3e`。本次合并记录写作时尚未产生自身提交号/CI；记录main与上表合并main的四片Test实际配对和均值由既定P2done自然补记。合并见00第12节，不为记录自身SHA循环追加文档。
 
 根逐项核P2 §8.3/P1 §9与移交：M8的S1/S2服务端和S3历史页面义务已有对应证据，分支阶段保持open，P2done最迟done；M7去重页面完成、lint/贡献者等P3/P4仍open；M9写契约与页面消费完成，工具/虚拟/prompt属P3–P5仍open；M5 mode消费已验且done保持；M6六行与注意项仍P3/open。M11只交接既有来源/hash/rewrite契约且升级未开始；M12保留既有6M与真实生产主机/负载/停机窗口的未验边界。无新打磨事项，因此M5-polish不改。最终门禁/CI与S3合并、记录、P2done是后续实际验收条件，不预填完成。
 
-M8来源历史的实现义务已由S1–S3证据逐项覆盖；本分支仍等待S3集成，P2done最迟将M8改done。M7§3与M9§7记录页面最终验收，整份仍open；M5done、M6lintopen保持。M11只接已实现的同事务hash重建/rewrite契约，M12保留生产实机/负载/停机窗口；不设计升级。P3只下一Phase，未开始；P4/P5及M10收尾继续待办。
+M8来源历史的实现义务已由S1–S3证据逐项覆盖；S3合并CI已验，P2done核对后将M8改done。M7§3与M9§7记录页面最终验收，整份仍open；M5done、M6lintopen保持。M11只接已实现的同事务hash重建/rewrite契约，M12保留生产实机/负载/停机窗口；不设计升级。P3只下一Phase，未开始；P4/P5及M10收尾继续待办。
 
 ## 证据索引
 

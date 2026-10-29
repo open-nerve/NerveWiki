@@ -4,7 +4,7 @@
 |---|---|
 | 里程碑 | M10 模式契约与 LLM Wiki（`M10-llm-wiki`） |
 | 日期 | 2026-10-24 |
-| 状态 | 进行中；P1、P2/S1、S2已验；S3最终代码`ae4501aa166771db153dae5dfa710ef16ee26ac4`的实现/三审复核/本机与代码CI已核，文档CI及合并/记录main仍待。P2/M10未完成；P3–P5与收尾未开始，不开始M11。当前证据见[P2 §10.3](02-P2-source-area.md#103-s3-完整来源网页)及[S3审查](reviews/P2-S3-source-web-review.md)，S2失败和阶段记录保留。 |
+| 状态 | 进行中；P1、P2/S1、S2已验；S3实现、原席复核、最终门禁及代码/文档/合并CI已验，no-ff合并为`ecd79c77d0cdb2259d50758b26514f61ebb329ca`。本次合并记录的精确main CI与两main分片均值仍须提交后核对；P2尚待独立完成文档。P3–P5与M10收尾未开始，不开始M11。当前证据见[P2 §10.3](02-P2-source-area.md#103-s3-完整来源网页)及[S3审查](reviews/P2-S3-source-web-review.md)；旧失败和各阶段待验文字保留其当时语境。 |
 | 依赖 | M9（MCP 工具与 prompt 注册表）、M7（导出贡献者、附件进树与链接）、M6（链接索引）、M8（变更集的类型、撤销与后台任务）；总体设计 12.3 照此修订（第 7 节"总体设计的修订"） |
 | 上级文档 | [v0.1 总体设计](../v0.1-design.md) 第 3.3–3.10、4.2、4.4、4.5、5、6.1–6.3、7.1、7.2、8.2、8.3、8.5、9.2、10、10.1、12.1–12.6、13、14、15 节 |
 | 代码位置的写法 | 同 [M9 总设计](../M9-mcp/00-M9-design.md)：模块写作 `page/app/unit.go:187`（`server/internal/modules/` 之下）；`platform/…`、`bootstrap/…`、`shared/…`、`archtest/…` 在 `server/internal/` 之下；迁移写作 `00009_notebook_notebooks.sql:5`（`server/migrations/sql/`）；SDK 写作 `sdk/mcp/protocol.go:966`（`~/go/pkg/mod/github.com/modelcontextprotocol/go-sdk@v1.8.0/`）；前端写作 `web/…/pages/page/page-layout.tsx:153`（`web/apps/web/src/` 之下）；e2e 写作 `e2e/fixtures/mcp.ts:41`。行号都是 `91ee78d8` 的（`ebed0e07` 只加了这份文档） |
@@ -832,7 +832,7 @@ Nerve 没有 MCP、prompt、数据的 lint、模式的契约或只增不改的�
 | P | Phase 文档 | 状态 | 审查 | 合并 |
 |---|---|---|---|---|
 | P1 契约的框架（S1–S4） | [01-P1](01-P1-contract-frame.md) | 已完成 | [设计](reviews/P1-design-review.md)、[S1](reviews/P1-S1-mode-template-review.md)、[S2](reviews/P1-S2-guard-review.md)、[S3](reviews/P1-S3-prechecks-refusals-numbering-review.md)、[S4](reviews/P1-S4-web-review.md) | S1 `45d086a1`、S2 `bad859c0`；S3 `a46c3d1d`；S4 `f261952f` |
-| P2 来源区（S1–S3） | [02-P2](02-P2-source-area.md) | 进行中；S1/S2已验，S3最终实现/复核/本机及代码CI已核，文档/合并/记录CI仍待 | [设计](reviews/P2-design-review.md)、[S1](reviews/P2-S1-source-rules-review.md)、[S2](reviews/P2-S2-source-hash-review.md)、[S3](reviews/P2-S3-source-web-review.md) | S1 `bf8d6625`；S2 `66d8236c12aaa8923616f6f42f2ee33b772884f9`，记录`8904a8769646c3b8919ff6a4c503eeae3ac70727`；S3合并待后续真实记录 |
+| P2 来源区（S1–S3） | [02-P2](02-P2-source-area.md) | 进行中；S1/S2已验，S3已合并且精确main CI已验；本次记录CI、两main均值及P2done待后续实际核验 | [设计](reviews/P2-design-review.md)、[S1](reviews/P2-S1-source-rules-review.md)、[S2](reviews/P2-S2-source-hash-review.md)、[S3](reviews/P2-S3-source-web-review.md) | S1 `bf8d6625`；S2 `66d8236c12aaa8923616f6f42f2ee33b772884f9`，记录`8904a8769646c3b8919ff6a4c503eeae3ac70727`；S3 `ecd79c77d0cdb2259d50758b26514f61ebb329ca`，本次记录号不写入自身 |
 | P3 lint 与健康度（S1、S2） | — | 未开始 | — | — |
 | P4 虚拟页面与 ingest（S1–S3） | — | 未开始 | — | — |
 | P5 playbook、说明与收尾的故事（S1） | — | 未开始 | — | — |
@@ -848,6 +848,7 @@ Nerve 没有 MCP、prompt、数据的 lint、模式的契约或只增不改的�
 
 | 日期 | 变更 | 依据 |
 |---|---|---|
+| 2026-10-29 | S3代码`ae4501aa166771db153dae5dfa710ef16ee26ac4`的[CI40843325190](https://github.com/open-nerve/NerveWiki/actions/runs/40843325190)、文档`f6b397b7234f2495ac092be8214b8bf266a95c91`的[CI40848348596](https://github.com/open-nerve/NerveWiki/actions/runs/40848348596)及no-ff合并`ecd79c77d0cdb2259d50758b26514f61ebb329ca`的[main CI40852524505](https://github.com/open-nerve/NerveWiki/actions/runs/40852524505)已按各精确SHA/attempt核验；本次合并记录自身CI与两main分片均值留待提交后，P2仍待独立完成。分支阶段文字保留为当时记录 | [P2 §10.3](02-P2-source-area.md#103-s3-完整来源网页)、[S3审查](reviews/P2-S3-source-web-review.md) |
 | 2026-10-29 | P2/S3最终来源网页、会话释放、显式标题/原字节持续队列、完整duplicate路径与历史scope、LW3–7/LW12；三Minor修复和原席复核，决定48模板单句；补S2记录CI40804121398及双main四片均值433/403/299/319.5s。S3文档/合并/记录CI仍待，P2/M10进行中 | [P2 §10.3](02-P2-source-area.md#103-s3-完整来源网页)、[S3审查](reviews/P2-S3-source-web-review.md) |
 | 2026-10-24 | 初稿（`ebed0e07`） | 移交 5 份、代码的调查（`91ee78d8`）、负责人 2026-10-24 的四个决定（第 11 节） |
 | 2026-10-24 | 设计审查之后的第一次修订（`9b22c8e5`）：五个 Important 照审查者的建议修（`batch` 的正文规则由计划判、`Merged` 是后备；待建页面照代码的读作附件；0 字节的来源不待消化；`changeset_sources` 没有外键、在清理变更集时删；预检的拒绝在后台也是 `refused`）；Minor 与 Nit 都处理（不取的两处写明理由）；主持者的 16 个决定与对作者的 7 个疑问的回答（第 11 节）；P1 分成四个 Step、后台的去处挪到 P2/S1，共 13 个 Step；每个故事与版本写明 Step；新加 4.19（真实客户端的核对与 M10 的状态）。还没有开工，没有记"开工"一条：负责人确认之后、P1 开工时记 | [审查记录](reviews/M10-design-review.md) |
