@@ -165,7 +165,7 @@ M6 结束时：
 
 | 表 | 列（要点） |
 |---|---|
-| `indexed_pages` | `node_id`（主键）、`notebook_id`、`revision`（索引所依据的正文版本）、`extractor`（提取规则的版本）、`frontmatter_valid` |
+| `indexed_pages` | `node_id`（主键）、`notebook_id`、`revision`（索引所依据的正文版本）、`extractor`（提取规则与持久化事实表示的版本，当前为 2）、`frontmatter_valid` |
 | `page_links` | 主键 `(source_id, range_start)`；`notebook_id`、`kind`、`property_key`、`target`、`anchor`、`display`、`range_end`、`target_key`、`target_alt_key`（目标最后一段的标题键，去掉 `.md` 与原样的两种，用来找候选；长于 1024 字节的不记）、`resolved_id`、`ambiguous`、`aliases`（属性链接写在 `aliases` 的值里，P4） |
 | `page_tags` | `source_id`、`notebook_id`、`tag`（第一次出现时的写法）、`tag_key`（标题键）、`count` |
 | `page_properties` | `source_id`、`notebook_id`、`position`、`key`、`value`（`jsonb`） |
@@ -185,9 +185,9 @@ M6 结束时：
 
 **索引的可用性**
 
-- 索引不是权威，可以随时重建（第 4.10 节）。
-- 读取时，以 `indexed_pages` 的 `revision` 与 `extractor` 判断它是否可用（第 4.7 节）。
-- 改了提取规则的发布要提升 `extractor`，并在说明里要求 reindex。
+- 索引不是权威，可以随时重建（第 4.10 节）。当前 `Extractor = 2`：`page_links.property_key IS NULL` 只表示正文链接，非 NULL 的空字符串表示合法的空属性路径，其余属性保留完整路径。writer 按 `Link.InFrontmatter()` 保留已有来源事实；不改 YAML 语法、链接上限或表结构。版本 1 曾把空属性路径与正文同存为 NULL，不能从旧行还原两者；[M10/P3 的来源修订](../M10-llm-wiki/03-P3-lint-health.md)说明兼容边界，原 [P3A 审查 L6](reviews/P3A-index-review.md)的“不改”是当时的处置。
+- 版本检查按读者分别进行（第 4.7 节）：阅读视图在正文 revision 或 extractor 不匹配时用已解析的正文重新解析链接，不回写索引；改名/移动与 batch 的索引改写跳过非当前 extractor，batch 还核 revision；反链保留页与计数，但不给旧版本行的正文上下文。属性接口仍按 `property_key IS NOT NULL` 读，版本 2 的空路径会返回，版本 1 的遗漏持续到重建。目录、入链数、标签/别名、导出等其他已有读者没有因此增加统一版本过滤；重新解析链接的落点也不升级来源格式。
+- 提取结果或其持久化表示改变、使旧行不能证明新语义时，提升 `extractor` 并在发布说明里要求管理员 reindex。本次 writer、生成的 SQL 与版本 2 同提交；不把旧行 UPDATE 成 2，也不在启动时自动修复。真实正文写入经索引观察者换成当前格式；纯改树、重新解析落点或同内容 no-op 不能代替全面重建。升级与命令的 linking/search 两阶段见根 [README](../../../README.md#链接索引)。
 
 **linking 读 page 的数据：端口**
 

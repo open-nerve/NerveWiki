@@ -6,10 +6,11 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
-// Extractor is the version of what a page's facts are, which the index
-// records of each page (indexed_pages.extractor): a release that changes it
-// asks for nervewiki reindex.
-const Extractor = 1
+// Extractor is the version of a page's facts and their persisted
+// representation (indexed_pages.extractor). A release that changes it
+// asks for nervewiki reindex. Version 2 distinguishes an empty property
+// path from body origin, which version 1 stored alike as SQL NULL.
+const Extractor = 2
 
 // Facts is what the index keeps of a page's content (M6/P3 design 3.2): its
 // links, tags, properties and aliases, and whether its frontmatter, if it
@@ -47,8 +48,8 @@ type Link struct {
 
 // InFrontmatter tells a property link: the value of a frontmatter's string
 // in quotes, as a plain one cannot start with '[', its path maybe empty, as
-// a key may be ("": '[[x]]'), which the index keeps as none (M6/P4 fix
-// check c6-1).
+// a key may be ("": '[[x]]'). Quote preserves that distinction even
+// when Property is empty (M6/P4 fix check c6-1).
 func (l Link) InFrontmatter() bool {
 	return l.Property != "" || l.Quote != 0
 }

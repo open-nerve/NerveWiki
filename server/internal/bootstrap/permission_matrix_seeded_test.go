@@ -14,6 +14,7 @@ import (
 	"time"
 	"uuid"
 
+	"github.com/open-nerve/NerveWiki/server/internal/modules/linking"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/apitest"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres/pgtest"
@@ -557,7 +558,7 @@ func (d matrixData) config(t *testing.T, url string, change func(*config.Config)
 // contents have no frontmatter and no link.
 const seededPageHistory = `WITH n AS (SELECT * FROM nodes WHERE id = $1), c AS (SELECT * FROM page_contents WHERE node_id = $1),
 	x AS (INSERT INTO indexed_pages (node_id, notebook_id, revision, extractor, frontmatter_valid)
-		SELECT id, notebook_id, 1, 1, true FROM n WHERE deleted_at IS NULL),
+		SELECT id, notebook_id, 1, $2, true FROM n WHERE deleted_at IS NULL),
 	s AS (INSERT INTO changesets (id, notebook_id, kind, client, created_by_id, created_at, updated_at, deleted_at)
 		SELECT gen_random_uuid(), notebook_id, 'edit', 'web', created_by_id, created_at, created_at, deleted_at FROM n RETURNING id),
 	i AS (INSERT INTO changeset_items (id, changeset_id, node_id, after_parent_id, after_name, after_sort_order,
@@ -645,7 +646,7 @@ func prepareMatrix(t *testing.T) matrixData {
 			exec("INSERT INTO page_contents (node_id, content, revision, content_hash, byte_size, updated_by_id, updated_at) "+
 				"SELECT id, $3, 1, sha256(convert_to($3, 'UTF8')), octet_length($3), created_by_id, $2 FROM nodes WHERE id = $1",
 				d.seeded.pages[p.name], now, content)
-			exec(seededPageHistory, d.seeded.pages[p.name])
+			exec(seededPageHistory, d.seeded.pages[p.name], linking.Extractor)
 		}
 		for _, nb := range matrixRevert() {
 			// A rename's changeset, marked so as its unit marks it (M9/P3 design 3.20.2).
@@ -666,7 +667,7 @@ func prepareMatrix(t *testing.T) matrixData {
 			exec("INSERT INTO page_contents (node_id, content, revision, content_hash, byte_size, updated_by_id, updated_at) "+
 				"SELECT id, $2, 1, sha256(convert_to($2, 'UTF8')), octet_length($2), created_by_id, created_at FROM nodes WHERE id = $1",
 				id, matrixContent(p))
-			exec(seededPageHistory, id)
+			exec(seededPageHistory, id, linking.Extractor)
 			exec("UPDATE nodes SET deleted_at = $2, updated_at = $2, trash_root = true, trash_pages = 1, trash_assets = 0, trash_height = 1 "+
 				"WHERE id = $1", id, trashedAt)
 			for _, table := range []string{"page_contents", "page_revisions", "changeset_items"} {

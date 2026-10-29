@@ -317,7 +317,7 @@ func TestABacklinksContextsAreOfTheExtractorAndWithinTheRead(t *testing.T) {
 	l.contents = map[uuid.UUID]revised{ids[0]: {"[[p]]", 1}, ids[1]: {half, 2}, ids[2]: {half, 1}, ids[3]: {"[[p]]", 1}}
 	e := domain.Extractor
 	l.backlinks = []app.Backlink{
-		{SourceID: ids[0], Revision: 1, Extractor: e - 1, Links: 1, Ranges: []domain.Range{{Start: 2, End: 3}}},
+		{SourceID: ids[0], Revision: 1, Extractor: 1, Links: 1, Ranges: []domain.Range{{Start: 2, End: 3}}},
 		{SourceID: ids[1], Revision: 1, Extractor: e, Links: 1, Ranges: link},
 		{SourceID: ids[2], Revision: 1, Extractor: e, Links: 1, Ranges: link},
 		{SourceID: ids[3], Revision: 1, Extractor: e, Links: 1, Ranges: []domain.Range{{Start: 2, End: 3}}},

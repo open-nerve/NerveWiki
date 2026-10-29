@@ -53,15 +53,16 @@ INSERT INTO page_links (
     source_id, range_start, range_end, notebook_id, kind, property_key, target, anchor, display, target_key,
     target_alt_key, resolved_id, ambiguous, aliases
 )
-SELECT $1, u.range_start, u.range_end, $2, u.kind, NULLIF(u.property_key, ''),
+SELECT $1, u.range_start, u.range_end, $2, u.kind, CASE WHEN u.in_frontmatter THEN u.property_key ELSE NULL::text END,
     u.target, NULLIF(u.anchor, ''), NULLIF(u.display, ''), NULLIF(u.target_key, ''), NULLIF(u.target_alt_key, ''),
     NULL, false, u.aliases
 FROM (
     SELECT unnest($3::integer[]) AS range_start, unnest($4::integer[]) AS range_end,
         unnest($5::text[]) AS kind, unnest($6::text[]) AS property_key,
-        unnest($7::text[]) AS target, unnest($8::text[]) AS anchor,
-        unnest($9::text[]) AS display, unnest($10::text[]) AS target_key,
-        unnest($11::text[]) AS target_alt_key, unnest($12::boolean[]) AS aliases
+        unnest($7::boolean[]) AS in_frontmatter,
+        unnest($8::text[]) AS target, unnest($9::text[]) AS anchor,
+        unnest($10::text[]) AS display, unnest($11::text[]) AS target_key,
+        unnest($12::text[]) AS target_alt_key, unnest($13::boolean[]) AS aliases
 ) AS u
 `
 
@@ -72,6 +73,7 @@ type InsertLinksParams struct {
 	RangeEnds     []int32
 	Kinds         []string
 	PropertyKeys  []string
+	InFrontmatter []bool
 	Targets       []string
 	Anchors       []string
 	Displays      []string
@@ -80,7 +82,8 @@ type InsertLinksParams struct {
 	Aliases       []bool
 }
 
-// A page's links, resolved to none. An empty property path, anchor, display text or key is none.
+// A page's links, resolved to none. Only body links have a NULL property path; an empty property path is a property.
+// An empty anchor, display text or target key is none.
 func (q *Queries) InsertLinks(ctx context.Context, arg InsertLinksParams) error {
 	_, err := q.db.Exec(ctx, insertLinks,
 		arg.SourceID,
@@ -89,6 +92,7 @@ func (q *Queries) InsertLinks(ctx context.Context, arg InsertLinksParams) error 
 		arg.RangeEnds,
 		arg.Kinds,
 		arg.PropertyKeys,
+		arg.InFrontmatter,
 		arg.Targets,
 		arg.Anchors,
 		arg.Displays,

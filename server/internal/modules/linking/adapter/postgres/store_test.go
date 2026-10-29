@@ -124,7 +124,7 @@ func TestAPagesRowsHoldItsFacts(t *testing.T) {
 
 	id, nb := p.ID.String(), f.eng.String()
 	if got, want := f.rows(t, `SELECT node_id::text, notebook_id::text, revision::text, extractor::text, frontmatter_valid::text
-		FROM indexed_pages ORDER BY node_id`), [][]string{{id, nb, "3", "1", "true"}, {other.ID.String(), nb, "1", "1", "false"}}; !reflect.DeepEqual(got, want) {
+		FROM indexed_pages ORDER BY node_id`), [][]string{{id, nb, "3", strconv.Itoa(domain.Extractor), "true"}, {other.ID.String(), nb, "1", strconv.Itoa(domain.Extractor), "false"}}; !reflect.DeepEqual(got, want) {
 		t.Errorf("indexed pages = %v\nwant %v", got, want)
 	}
 	if got, want := f.rows(t, `SELECT range_start::text, range_end::text, notebook_id::text, kind, property_key, target, anchor,

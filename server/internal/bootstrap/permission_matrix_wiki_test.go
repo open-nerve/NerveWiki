@@ -9,6 +9,7 @@ import (
 	"time"
 	"uuid"
 
+	"github.com/open-nerve/NerveWiki/server/internal/modules/linking"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/wiki"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
@@ -164,7 +165,7 @@ func seedWikiVariant(t testing.TB, exec func(sql string, args ...any), w wikiSee
 			exec("INSERT INTO page_contents (node_id, content, revision, content_hash, byte_size, updated_by_id, updated_at) "+
 				"SELECT id, $3, 1, sha256(convert_to($3, 'UTF8')), octet_length($3), created_by_id, $2 FROM nodes WHERE id = $1",
 				node, now, p.Content)
-			exec(seededPageHistory, node)
+			exec(seededPageHistory, node, linking.Extractor)
 		}
 		seedWikiSources(exec, w, n.name, now)
 	}
@@ -364,7 +365,7 @@ func seedWikiSources(exec func(string, ...any), w wikiSeeded, notebook string, n
 			p.id, w.notebook(notebook), p.parent, p.name, shared.TitleKey(p.name), i+2, now)
 		exec("INSERT INTO page_contents (node_id, content, revision, content_hash, byte_size, updated_by_id, updated_at) "+
 			"SELECT id, $2, 1, sha256(convert_to($2, 'UTF8')), octet_length($2), created_by_id, created_at FROM nodes WHERE id = $1", p.id, p.content)
-		exec(seededPageHistory, p.id)
+		exec(seededPageHistory, p.id, linking.Extractor)
 		if !p.deleted && p.parent != nil {
 			exec("UPDATE nodes SET source_hash = sha256(convert_to($2, 'UTF8')) WHERE id = $1", p.id, p.content)
 		}

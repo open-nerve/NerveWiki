@@ -111,10 +111,10 @@ P3 是 M6 最大的一个 Phase。为了让每次审查的范围可控，它分�
 - **键的上限**（P3A 审查 H2）：标题键长于 `domain.MaxKey`（1024 字节）的不记：这条链接的键为空（解析不到，任何标题的键都到不了这么长：255 字节的标题，键至多约 510 字节，`TestNoTitlesKeyComesNearMaxKey` 核对），这样的别名、标签不记。B-tree 的一项至多约 2.7 KB，超过的写入会失败。
 - **一页至多 1000 个标签与别名**（M6/P5 审查 r2-M2，`domain.MaxNames`）：之后的不记，那样的标签找不到，那样的别名不解析。一页 5 MiB 可以写约一百万个，每次读笔记本的标签都要带上。
 - **一页至多记前 10,000 条链接**（[M6 收尾审查](reviews/M6-closeout-review.md) A-I1，`domain.MaxLinks`）：之后的不进索引，不在反链与"指向这一页"里；阅读视图对索引里没有的范围即时解析，照样跳到它们的页（`TestAPagesLinksPastTheIndexsBoundLeadWhereTheyResolve`）。改写按索引找链接（P4），所以它们在改名、移动时也不改写，之后按新的树解析，可能解析不到或指向别处（负责人可以改判）。没有上限时一页 5 MiB 约 87 万条链接，一次保存 11–15 秒、堆 1–2 GiB，同一笔记本的保存都在索引锁上等。
-- `property_key` 为空是正文里的链接。YAML 键为空串的属性链接，它的属性路径也是空串，同样记为空：P4 的改写按链接的范围是否在 frontmatter 里区分两者（它本来就在单元里重新解析要改写的页），不靠这一列（P3A 审查）。
+- 当前 `Extractor = 2`：`property_key IS NULL` 是正文链接；合法空名称属性的完整路径保存为非 NULL 空字符串 `''`，不能按空字符串或 `COALESCE` 把它当作正文。writer 逐链接传入已有 `Link.InFrontmatter()` 的布尔值，SQL 按它保存 NULL 或原路径，数组同序、等长；表结构不变。版本 1 曾把空路径也存成 NULL，这是 [P3A 审查 L6](reviews/P3A-index-review.md)当时“不改”的历史范围，旧行不猜测来源、不改写版本号，须由新版管理员 reindex。P4 的实际改写仍重新解析正文，按 `InFrontmatter()` 与引号事实处理属性链接，不依赖旧行这一列；当前兼容合同见 [M10/P3](../M10-llm-wiki/03-P3-lint-health.md) §3.0。
 - **U+0000**：Markdown 链接的 `%00` 与 YAML 字符串的转义会写出 U+0000，PostgreSQL 的 `text` 与 `jsonb` 都不收；`PageFacts` 把每个事实里的它记作 U+FFFD（P3A 审查 H1：否则这样的正文保存答 500，reindex 也停在这一页）。
 - **不带外键**（与 M6 总设计 4.3 的出入）：指向 `nodes`、`notebooks` 的外键与 `purge_test` 的两条规则冲突（见第 1 节）。照 `edit_sessions` 的先例，索引行由观察者与笔记本删除的注册者在同一个事务里删掉，"只指向活着的节点"由测试的不变式 `checkLinks` 核对。
-- `extractor` 是提取规则的版本（`linking/domain` 的常量，从 1 起）；改了提取规则的发布提升它，要求 reindex。
+- `extractor` 是提取规则与持久化事实表示的版本（`linking/domain` 的常量，从 1 起，当前为 2）；任一改变使旧行不再证明当前语义时随 writer/生成 SQL 同提交提升，并要求管理员 reindex。合法旧版本 1 保留到真实重建或正文写入，不能写 0 或直接把旧行标为 2。
 
 ### 3.3 page 的读端口
 

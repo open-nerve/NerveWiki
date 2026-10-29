@@ -2781,7 +2781,7 @@ export interface components {
         LinkTargetKind: "page" | "asset";
         /** @description A property whose value, or an item of whose list, is a link. */
         PropertyLink: {
-            /** @description The property's path, a list's item after a dot (sources.0). */
+            /** @description The property's path, a list's item after a dot (sources.0); the empty string is a legal empty property path, not a body link. */
             key: string;
             /**
              * Format: uuid

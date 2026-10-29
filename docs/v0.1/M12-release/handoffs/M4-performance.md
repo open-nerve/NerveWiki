@@ -7,9 +7,9 @@ created: 2026-10-03
 
 # 页面的性能与部署：压测要看的几处
 
-### M10/P3决定62来源表示修订的待测项（2026-10-30提案）
+### M10/P3决定62来源表示修订的代表实测与后续（2026-10-30）
 
-当前Extractor为1，v2尚未实现，使用新版binary把v1重建为v2的验证/测量尚未执行。拟议S1-0a的额外bool输入、空路径进入既有property部分索引须计入5000-links生产保存成本；测试自有代表库分别量literal-v1→v2的linking/rekey每本事务wall/CPU/内存、锁等待、成功提交或本阶段回滚、WAL/空间，以及随后Requeue各独立批的耗时/已提交批数/队列变化/失败位置；再记命令整体wall/结果及后续搜索job成本，当前tokenizer和缺失/旧tokenizer分列。linking事务持锁阻写只覆盖本阶段；ctx可用时linking失败/撞键仍可入队，queue失败不回滚已提交v2，后批失败保留前批。不能把队列各批归进linking的锁/回滚范围，单本命令可部分成功，全实例亦非原子；source通常只读，不能靠日常保存代替全面重建。历史330秒只是旧估计，下文M6/M8搜索数字与61守卫校准各保留原范围，不充本轮数字。
+当前Extractor为2；S1-0a的5000-links保存与literal-v1→v2代表样本、原始证据及未测项集中见[P3 §10.1](../../M10-llm-wiki/03-P3-lint-health.md#101-s1)。S1-0a的额外bool输入、空路径进入既有property部分索引须计入5000-links生产保存成本；测试自有代表库分别量literal-v1→v2的linking/rekey每本事务wall/CPU/内存、锁等待、成功提交或本阶段回滚、WAL/空间，以及随后Requeue各独立批的耗时/已提交批数/队列变化/失败位置；再记命令整体wall/结果及后续搜索job成本，当前tokenizer和缺失/旧tokenizer分列。linking事务持锁阻写只覆盖本阶段；ctx可用时linking失败/撞键仍可入队，queue失败不回滚已提交v2，后批失败保留前批。不能把队列各批归进linking的锁/回滚范围，单本命令可部分成功，全实例亦非原子；source通常只读，不能靠日常保存代替全面重建。历史330秒只是旧估计，下文M6/M8搜索数字与61守卫校准各保留原范围，不充本轮数字。
 
 P3须先交自身真实测试/测量与升级说明；真实服务器数据分布、停机、负载与磁盘/WAL仍由M12复核。P4 Unknown/untouched coverage的高效检测与逐保存成本另在P4设计/测量，不借本条授权全树扫描。见[P3](../../M10-llm-wiki/03-P3-lint-health.md)§3.0/§3.8.2/§7.4/§8.1a及[来源修订记录](../../M10-llm-wiki/reviews/P3-origin-design-review.md)。status保持open，既有数据及剩余性能义务不变。
 

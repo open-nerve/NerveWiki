@@ -18,6 +18,7 @@ import (
 	"time"
 	"uuid"
 
+	"github.com/open-nerve/NerveWiki/server/internal/modules/linking"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
 	pagepostgres "github.com/open-nerve/NerveWiki/server/internal/modules/page/adapter/postgres"
 	pageapp "github.com/open-nerve/NerveWiki/server/internal/modules/page/app"
@@ -161,7 +162,7 @@ func (b trashBench) importOf(tb testing.TB, shape string, n int) uuid.UUID {
 	SELECT gen_random_uuid(), md5($1::uuid::text || ':a' || g)::uuid, $1, 'image/png', 3, sha256('abc'), $2, now()
 	FROM generate_series(0, $3::integer - 1) g`, b.nb, b.alice, n/10)
 	b.exec(tb, `INSERT INTO indexed_pages (node_id, notebook_id, revision, extractor, frontmatter_valid)
-	SELECT md5($1::uuid::text || ':' || g)::uuid, $1, 1, 1, true FROM generate_series(0, $2::integer - 1) g`, b.nb, pages)
+	SELECT md5($1::uuid::text || ':' || g)::uuid, $1, 1, $3, true FROM generate_series(0, $2::integer - 1) g`, b.nb, pages, linking.Extractor)
 	b.exec(tb, `INSERT INTO page_links (source_id, range_start, range_end, notebook_id, kind, target, target_key, resolved_id, ambiguous)
 	SELECT md5($1::uuid::text || ':' || g)::uuid, k, k + 1, $1, 'wikilink', 'p' || t, 'p' || t, md5($1::uuid::text || ':' || t)::uuid, false
 	FROM generate_series(0, $2::integer - 1) g, generate_series(1, $3::integer) k, LATERAL (SELECT (g + k) % $2::integer AS t) x`,

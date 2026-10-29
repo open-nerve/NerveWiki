@@ -243,7 +243,7 @@ func NewNotebookDeletion(pool *pgxpool.Pool) NotebookDeletion {
 	return app.NotebookDeletion{Store: postgresadapter.New(pool)}
 }
 
-// Extractor is the version of what the index keeps of a page
+// Extractor is the version of a page's facts and their persisted representation
 // (indexed_pages.extractor): a release that changes it asks for nervewiki
 // reindex.
 const Extractor = domain.Extractor

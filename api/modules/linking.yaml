@@ -336,7 +336,7 @@ components:
       required: [key, node_id, kind, url, inline]
       properties:
         key:
-          description: The property's path, a list's item after a dot (sources.0).
+          description: The property's path, a list's item after a dot (sources.0); the empty string is a legal empty property path, not a body link.
           type: string
         node_id:
           description: The page or the attachment the link resolves to; null for none.

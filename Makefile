@@ -290,6 +290,8 @@ test-go-costs: ## 不带竞态检测的分配、耗时预算与界线的守卫�
 	cd server && go test -p 1 -count=1 -timeout 10m -v -run '^TestSourcePrecheckConvergedPlansCostTheirActualExclusions$$' ./internal/modules/page/adapter/postgres
 	@# 相同10万来源语料的六个独立副本：三/四列索引的实际空间、温表构建和正常HTTP写入差异。
 	cd server && go test -p 1 -count=1 -timeout 10m -v -run '^TestSourceIndexFourthKeyCostsItsSpaceAndNormalWrites$$' ./internal/bootstrap
+	@# 来源表示的5000链接真实保存及分阶段重建/搜索入队代表样本；完整lint迁移与10万页成本随S1收尾。
+	cd server && go test -p 1 -count=1 -v -run '^TestLintIndexesCostTheirScanAndWrites$$' ./internal/bootstrap
 	go -C server/tools test -race -count=1 ./...
 
 .PHONY: test-go-guards

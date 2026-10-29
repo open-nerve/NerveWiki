@@ -4,13 +4,13 @@
 |---|---|
 | Phase | M10/P3；两个 Step：S1 服务端与协议；S2 健康度网页 |
 | 日期 | 2026-10-29 |
-| 状态 | 原决定49–60设计经三位独立审查及原席两轮修订复核后由主持者接受；决定62的第二稿经三位独立审查及原席复核后已由主持者接受设计语义；S1/S2待实施。设计提交9e38的原CI失败保留；决定61的搜索守卫维护已合并为b957fdbe，首次main CI40925905708 attempt1已接受；维护记录601c5832自身CI40932595248 attempt1亦已由主持者接受；决定62最终事实稿投影、实际设计提交自身CI、主持者重新绑定P3放行回执仍待；未实施、未测量P3、未开始M11 |
+| 状态 | 原49–60及决定62设计已接受，设计自身CI与S1入口已核；S1实施中。S1-0容量调整已提交89d36454；S1-0a已实现来源表示与Extractor 2，结果和余项见§10.1。S1/S2未完成，三审、完整成本、最终门禁与merge/record两main仍待；P4/P5/M11未开始 |
 | 原设计精确基线 | `main = origin/main = f6bd0cdee2b7570252a43581cf71cd1e71592f76`；P2 已完成 |
 | 上级 | [M10 总设计](00-M10-design.md) §4.10–4.12、§5、§7–9；[总体设计](../v0.1-design.md) §5.6、§13；[推进方式](../claude_to_codex/02-workflow.md)；[P2 移交](02-P2-source-area.md#9-给后面-phase-与-m-的移交) |
 | 记法 | `page/`、`linking/`、`wiki/` 在 `server/internal/modules/` 下；`bootstrap/`、`platform/`、`shared/` 在 `server/internal/` 下；`W/` 是 `web/apps/web/src/`。本文拟新增的文件、类型、测试名均是设计，不冒称已有实现 |
 | 决定 | 主持者接受连续实施决定49–60（负责人可以改判），见[设计审查记录](reviews/P3-design-review.md)；索引、容量及所有运行结果仍须完成本文实测准入。见§2.2 |
 
-**来源表示修订提案（2026-10-30）**：原49–60设计及决定61维护的历史不改。主持者的决定（负责人可以改判）62已核定空属性来源修正方向，以下新增合同的第二稿已完成三位独立审查及原席复核，主持者已接受其设计语义；Extractor 2、S1-0a、七条新变异均未实施/未执行。当前实现仍为Extractor 1。P3产品入口还须最终事实稿经root审读/冻结/投影、实际设计提交自身CI接受及root重新绑定放行；维护CI成功或旧maintenance-release wrapper均不能替代。审查状态见[来源表示修订记录](reviews/P3-origin-design-review.md)。本提案冻结源为已提交维护记录601c5832882d8df10486ea335e691b7f11efc259（父b957fdbe，产品源码未变）；该record自身CI40932595248 attempt1现已由主持者按真实回执接受；本来源修订原席复核已完成，最终事实稿投影与实际设计提交自身CI仍待。不覆盖原失败/校准，后续事实只按真实对象追加。
+**来源表示前置（S1-0a）**：writer沿已有 `Link.InFrontmatter()` 传等长bool，实际生成SQL用CASE保留正文NULL与空属性非NULL空串，当前Extractor为2；M6/README/API说明同步。S63/S64/S65/S68的验证与代表成本集中记在§10.1，S66/S67/S69仍归S1-2；原79行总账及S1最终复跑不改。[来源修订记录](reviews/P3-origin-design-review.md)保留决定62、三审、搜索校准与原失败历史。
 
 ## 0. 两个可独立合并为绿的 Step
 
@@ -37,7 +37,7 @@ P2完成提交`f6bd0cde…`的[push workflow 40861860430](https://github.com/ope
 
 ## 2. 目标、范围与上级修订
 
-读者打开健康页或调用工具时，得到同一快照的提示；普通模式四条、LLM Wiki 八条。不拒绝任何正常写入，不维护写时计数。只读 page metadata、linking 已存索引及最终返回附件的 metadata；lint请求不读正文、不即时Markdown parse、不reindex。决定62另设S1-0a来源表示前置：复用已有事实，把真实空属性路径保为非NULL空串，writer/generated与Extractor 1→2同一提交；存量由管理员用新版命令重建，不能把此离线操作放进lint请求。当前仍为v1，v2待实施；详见§3.0。
+读者打开健康页或调用工具时，得到同一快照的提示；普通模式四条、LLM Wiki 八条。不拒绝任何正常写入，不维护写时计数。只读 page metadata、linking 已存索引及最终返回附件的 metadata；lint请求不读正文、不即时Markdown parse、不reindex。决定62另设S1-0a来源表示前置：复用已有事实，把真实空属性路径保为非NULL空串，writer/generated与Extractor 1→2同一提交；存量由管理员用新版命令重建，不能把此离线操作放进lint请求。来源表示前置已实现，当前为v2，见§3.0/§10.1；本段其余lint行为仍待后续S1。
 
 不做 P4 的虚拟文件/目录/ingest，不做 P5 prompt/系统说明段，不改真实客户端配置，不做 M11 升级，不顺手改搜索或全局分页交互。
 
@@ -55,7 +55,7 @@ P2完成提交`f6bd0cde…`的[push workflow 40861860430](https://github.com/ope
 10. 00 §4.11/§4.18、API表、§7/8/9/12/13及头状态同步真正接口/运行owner/Stop；MCP notebook入口Gate的HTTP404在tool之前，account及gate后用例才按内部码次序。
 11. P1/P2 §9在实际P3/S1完成后追加承接证据；设计接受时仅补“合同已细化、实现待P3”，不提前写完成。全部语义替换与未来完成投影按§8分开。
 
-12. 主持者的决定（负责人可以改判）62：明确推翻整个P3“不升Extractor/不需reindex”的旧范围承诺，仅为保存已有的body/property区别。00§4.10/4.11、M6移交注意2与总体§13.3#6同步；原sources深度/位置丢失、MaxLinks、正文限制和parser保持。F明确wikilink/link/embed/image；PageProperties保留IS NOT NULL，v2新写/重建后key=""进入原API/面板。P4补旧事实Unknown与未改页coverage，不能以空union推新ingest。当前M6/README的v1说明不预改成已实现，实施时更新逐条列在§8。
+12. 主持者的决定（负责人可以改判）62：明确推翻整个P3“不升Extractor/不需reindex”的旧范围承诺，仅为保存已有的body/property区别。00§4.10/4.11、M6移交注意2与总体§13.3#6同步；原sources深度/位置丢失、MaxLinks、正文限制和parser保持。F明确wikilink/link/embed/image；PageProperties保留IS NOT NULL，v2新写/重建后key=""进入原API/面板。P4补旧事实Unknown与未改页coverage，不能以空union推新ingest。S1-0a已同步M6/README/API的当前格式说明；原审查历史保留，实测与剩余完成义务分别见§10.1/§8.1a。
 
 ### 2.2 需要负责人确认
 
@@ -63,7 +63,7 @@ P2完成提交`f6bd0cde…`的[push workflow 40861860430](https://github.com/ope
 
 主持者的决定（负责人可以改判，连续实施编号，不覆盖00总设计1–40系列）：49 wanted有界source union；50索引测量准入；51 item_key/有界游标/StartCursor/LJ身份；52附件跟随；53运行预算/flight/交付前再授权；54 MCP B/C容量候选；55 Web九项；56无rule却给limit/cursor的组合参数422；57各规则独立豁免、root/AGENTS真实坏sources仍查。58 wiki 唯一 Runs owner 的幂等 Stop/recover 与 bootstrap 全出口收尾；59 P4 在删旧索引前捕获旧合格引用、旧发出页资格来自 unit pre-change facts；60 从经 Planned 的 compactNodes 构建候选 kind 存在表，不调用 ByKeys。root于2026-10-29核定49–57进入三审、58–60用于第一轮修订；不能据此写成原席已关闭、产品、性能或CI已经验收。
 
-**主持者的决定（负责人可以改判）62**：采用现有nullable property_key的NULL/空串区分、同提交Extractor 2、明确管理员reindex和已有读者/API兼容；S1-0之后先S1-0a，新增S63–S69而不改原72行；P4无法证明旧事实/未改页覆盖时不新增无法证明的标记，正常编辑继续。方向由root核定，本次具体第二稿经三位独审及原席复核后已由主持者接受设计语义；最终事实稿投影/实际设计提交自身CI仍待，不是实现、成本或产品放行。
+**主持者的决定（负责人可以改判）62**：采用现有nullable property_key的NULL/空串区分、同提交Extractor 2、明确管理员reindex和已有读者/API兼容；S1-0之后先S1-0a，新增S63–S69而不改原72行；P4无法证明旧事实/未改页覆盖时不新增无法证明的标记，正常编辑继续。方向由root核定，本次具体第二稿经三位独审及原席复核后已由主持者接受设计语义；b02设计自身CI与S1入口已接受；S1-0a来源表示前置结果见§10.1，S1/S2、完整成本与P3收尾仍待。
 
 ### 2.3 方案比较
 
@@ -76,11 +76,11 @@ P2完成提交`f6bd0cde…`的[push workflow 40861860430](https://github.com/ope
 
 ## 3. 服务端
 
-### 3.0 来源表示与版本兼容前置（S1-0a；决定62，待实施）
+### 3.0 来源表示与版本兼容前置（S1-0a；决定62）
 
-当前链为PageFacts保留Property/Quote→Link.InFrontmatter识别合法空键属性→linksParams只传Property→InsertLinks的NULLIF把空属性与正文合并。M6/P3§3.2、P3A的L6、M6/P4§3.3和M6/P5§4记载这一v1限制；原审查不是本修订的接受证据。新合同不修改parser或拒绝合法空YAML键：
+当前链为PageFacts保留Property/Quote→Link.InFrontmatter识别合法空键属性→linksParams逐边传等长InFrontmatter bool→实际InsertLinks用CASE保存属性原路径或正文NULL；Extractor为2，parser及合法空YAML键不变。M6/P3A的L6保留版本1当时的处置，M6当前格式说明已同步；现有读者/重建验证见§10.1，D/F规则与P4仍待各自实施。
 
-| 输入已有事实 | 拟写property_key | origin读义 |
+| 输入已有事实 | 当前v2的property_key | origin读义 |
 |---|---|---|
 | Link.InFrontmatter()==false | SQL NULL | 真实正文 |
 | true且Property=="" | 非NULL空字符串 | 真实空路径属性，不能计body |
@@ -1156,9 +1156,9 @@ docs/v0.1/claude_to_codex/tools/heavy.sh env GOFLAGS=-p=1 make -j1 e2e
 | M11/handoffs/M10-mode.md | “内部LintScope显式Contract+AreaRootID与implicit隔离，standard拟议root仍能读且不依赖hash；调用必须不在已有事务内，名额与期限仍适用；item_key/cursor/规则口径按P3。” 只移交，不开始M11；补真实说明余量 |
 | M12性能handoff | 新lint八规则/summary、长属性/目标/来源数组、singleflight并发/池与取消清理、索引迁移和5000links保存的本机真数；真实服务器负载/停机仍待M12 |
 
-### 8.1a 决定62的实施文档与兼容完成标准（均待S1）
+### 8.1a 决定62的实施文档与兼容完成标准（S1-0a与S1收尾）
 
-S1-0a同提交必须交付当前writer/版本/API事实对应的说明；S1收尾再追加真实reindex/成本/变异/审查及CI。当前文档未把下列完成句当事实：
+S1-0a已同步当前writer/版本/API的说明，前置实测与未测项见§10.1；S1收尾仍须完成全部reindex/成本/变异/审查及CI。下表保留逐项交付要求，不以本前置替代完整S1验收：
 
 | 实施时必须更新的目标 | 必需新文字/证据 |
 |---|---|
@@ -1198,7 +1198,57 @@ P5仍负责prompt注册/分类/大小、系统说明段、人工清单和根READ
 
 ### 10.1 S1
 
-待实施、三审、变异、实测、最终门禁与merge/record两main接受；本文不填“已通过”。记录实际与设计差异（含索引是否获准、SQL形状、成本门槛、说明字节、top清单/容量），实际新决定接主持者连续实施编号60之后；本文既定49–60不与00总设计1–40编号混同。
+S1整体尚未完成：后续规则/运行时/接口、三审、完整变异与成本、最终门禁和merge/record两main仍待。本节按前置分别记录，不以局部验证代替Step完成。
+
+#### S1-0a 来源表示前置（2026-10-30）
+
+入口是已接受的S1-0容量提交 `89d3645420c7b2399e06765bd410132c6958047a`。此前设计提交b02的CI40942551297 attempt1及S1入口已接受；9e38的原CI40897835721失败、搜索校准和维护CI各保留原历史。当前实现把已有 `InFrontmatter()` 逐链接传成等长bool，生成的InsertLinks用CASE保留正文NULL与合法空属性非NULL空串，并同时提升Extractor到2。无DDL、启动修复或旧行版本UPDATE；PageProperties三组IS NOT NULL投影和API字段不变，空key沿现有page/unresolved/asset与Web完整路径消费。M6/README及API描述随本前置同步，原M6/P3A L6不改。
+
+**定向验证。** 统一输入清单SHA256为 `dd6e065f549262435befcbf85808de2a6b42a40dafe8f60dbd2bb1d34acd4bea`，3,210个跟踪及新文件与当时源码逐字节一致。下列每项两轮共12次，命令均沿§7.1的selector、heavy锁与原timeout，exit0且选中终态非空，每次输入前后相同；时间为整个命令进程wall，不是单个测试时间。Go定向含race，代表成本不含race，OW为Vitest。
+
+| 项 | 实际覆盖 | 第一轮 / 第二轮进程秒 |
+|---|---|---|
+| OF | TestLinkOriginFacts：真实parser的空/命名属性与正文事实 | 1.501 / 1.376 |
+| OS | TestLintOriginRows、TestLintOriginProperties：AddPage/ReplacePage、literal2、NULL/空串和三个属性分支 | 2.977 / 2.977 |
+| OB | TestTheLintOriginProperties/Reindex/Compatibility：实际REST与附件签名、literal-v1读者及真实重建 | 37.342 / 37.278 |
+| OW | empty property key的page/unresolved/asset三个选中用例及命名/缺路径对照 | 1.794 / 1.736 |
+| CLI | 两个既有Reindex错误/撞键/缺笔记本及搜索未入队控制 | 5.324 / 4.006 |
+| 成本 | TestLintIndexesCostTheirScanAndWrites的四种保存与分阶段重建代表样本 | 27.919 / 24.992 |
+
+OB逐项验证View fallback不修索引、rewrite及batch的Indexed/Reached跳过旧格式（含revision不匹配和current对照）、反链保留页/计数但无旧上下文、真实正文写入才升级触及页，tree/no-op不升级。真实 `bootstrap.Reindex` 的single/all阶段失败、撞键、linking成功而queue失败、后批失败保留前批、后续笔记本继续、tokenizer资格与linking锁在queue前结束均有独立状态断言；两个后批故障样本保留第一批10,000项，失败批不提交，已提交v2与事件不回滚。REST三分支核空key/命名对照、正文不返回及签名附件可取；Web证据只证明消费，不代SQL/HTTP。
+
+**失败和反向对照。** OF与OW在旧实现基线本已通过，如实保留；04 REST和修正fixture后的05 OS因真实空key遗漏/旧版本断言失败。03的fixture修正、12锁例中writer自身等queue行的失败及14换独立current-tokenizer writer后的恢复均保留，未提高timeout。16首轮成本的whole-command-current-tokenizer实际是v2→v2，不计作升级实测；改成每次全命令前恢复并独立核literal1/collapsed origin后，以20及第二轮重新测量。
+
+S63/S64/S65/S68四行分成五种独立单改、七组目标命令，共21次baseline→真实断言失败→字节恢复后的成功，已由主持者独立核对接受：
+
+| 单改 | 实际catcher与失败 | 恢复 |
+|---|---|---|
+| S63 writer只认Property非空 | OS current-format的AddPage/ReplacePage丢空属性来源 | 原字节恢复，原命令成功 |
+| S64执行的generated CASE改回NULLIF | OS同一真实SQL的非NULL空串断言失败；bool绑定仍在 | 原字节恢复，原命令成功；变异时不gen |
+| S65 Extractor回退1 | OS literal2及OB literal-v1读者两组命令分别失败 | 两组各自baseline/失败/恢复成功 |
+| S68 SQL三数组一致排空串 | OS属性及OB REST两个独立catcher均漏空key，数组仍等长 | 两组各自baseline/失败/恢复成功 |
+| S68 Web taking排空key | 三个选中用例各有真实AssertionError | 原字节恢复，三例成功 |
+
+这些变异的统一baseline输入与最终双轮输入只差成本测试的全命令旧格式准备修正；产品、catcher与期望未改。不是79行全部完成：S66/S67/S69仍待S1-2，S1收尾69行服务端复跑及后续S2十行仍待。
+
+**代表成本。** Linux/arm64、Go1.27.1、4 CPU，request 4s/commit 2s。每次保存真实5,000条链接；body、named、mixed-named、mixed-empty的wall分别为58.323/59.786、78.957/83.606、68.690/68.278、68.348/68.112 ms。mixed-empty确有一条非NULL空路径，混合两例各有2,500条正文；写后核总数、literal2和NULL/空串，不能把它们当成v1/v2保存差额测量。
+
+重建样本仅一本10,004页：一个56字节正文含3条链接，其余10,003页正文为空，不代表真实万页内容。诊断阶段先独立量linking提交、queue故障/恢复和后续job；两次整命令另各从literal1及塌缩的空属性来源开始，结束核全部10,004页为2、正文/版本历史不变和确切queue IDs，不能以诊断阶段相加冒充整命令。
+
+| 阶段 | 两轮wall（秒） | 两轮WAL（字节）/结果 |
+|---|---|---|
+| 诊断linking提交 | 6.713 / 6.773 | 各3,158,640；仅linking事务 |
+| 诊断queue第二批失败 | 0.041933 / 0.042875 | 各3,998,808；批次提交10,000/0 |
+| 诊断queue恢复 | 0.049560 / 0.054916 | 各5,205,192；批次10,000/3 |
+| 后续search job | 0.562857 / 0.573838 | 各29,275,568；队列清空、全部搜索行当前 |
+| 整命令v1→v2，current tokenizer | 6.726 / 6.703 | 各3,010,376；不新增queue |
+| 整命令v1→v2，missing/old tokenizer | 6.735 / 6.771 | 各7,007,368；确切10,003项入队 |
+
+原始20条阶段JSON还记录Go进程CPU、分配量、采样heap峰值与前后linking/queue/property-index空间；CPU/内存包含测试server但不含PostgreSQL，WAL是集群级读数。queue独立批次的SQLwall另有4组原件；linking取锁查询0.658/0.640 ms含SQL往返，不是纯争用等待。上述数据不覆盖linking rollback的CPU/WAL、纯锁等待、完整sources索引迁移/100k lint成本或生产停机。OB/成本两轮进程均值×2.4为89.544/63.494秒，分别低于局部450/300秒排程界；这不是完整新分片双轮或CI容量验收。S1-0旧产品样本不能代替最终新输入，M12仍须真实环境复核。
+
+**原件与余项。** 树外证据位于 `p3-s1/s1-0a/author/`：`targeted-and-mutation-summary.json`（SHA256 `23509f2658f1893fcf3ff184c83254fac7b51ac8c7dbc4767ec6b1001d351793`）逐项列input/result/output哈希；`targeted-{OF,OS,OB,OW,CLI}-round{1,2}`、`20-cost-corrected-first`及`targeted-cost-round2`保存原始命令/日志/源码，`mutation-*`保留全部单改及恢复，早期03/04/05/12/16不删除。主持者接受回执为同目录上级的 `root-targeted-acceptance.json`（SHA256 `14b2733a205c2f92baf7ec3c6693a725dbf5d663728623b9c4c76531d4488e2c`）及 `root-mutation-acceptance.json`（SHA256 `9e3d993bb2e0e205043584541b99623e2e55e2f3ee7de6296198cc8bbed52073`）。
+
+本段截至定向验收时点，只记来源表示前置；每提交七项及Web门禁随后在文档投影候选上执行，原生gen-check按仓库约定在提交后执行，实际结果由提交/外部验收记录承接，后续S1文档汇总，不在此预填成功或本提交自身SHA/CI。后续S1规则/运行时/REST-MCP、S66/67/69、全部成本/容量、三审与Step/合并/record CI，S2网页和P4 Unknown/未改页coverage仍待；M6/M11/M12移交保持open。
 
 ### 10.2 S2
 

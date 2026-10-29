@@ -27,6 +27,8 @@ created: 2026-10-06
 
 ## 处理进展
 
+- S1-0a（2026-10-30）：已实现writer/generated与Extractor 2，正文NULL、空属性非NULL空串，现有读者/API/asset/Web与管理员重建说明同步；前置测试、S63/S64/S65/S68及代表成本见[P3 §10.1](../03-P3-lint-health.md#101-s1)。注意2的版本边界已含持久化表示；注意1的lint跳过/计数、六行规则和S66/67/69仍待后续S1，注意1–4及表六行全部验收前保持open。M6/P3A的L6及以下各阶段原记录保留。
+
 - P3来源修订提案（2026-10-30；[新记录](../reviews/P3-origin-design-review.md)）：主持者的决定（负责人可以改判）62拟在S1-0a保留Link.InFrontmatter已有来源事实、writer/generated与Extractor 1→2同提交，管理员用新版reindex；当前实现仍是1，M6原空键限制仍为当前事实。注意1在P3选择跳过/计数并提示管理员，不在lint parse；注意2的版本边界含持久化表示。PageProperties保持IS NOT NULL，v2空key可见，View/rewrite/batch/backlink及搜索队列边界按P3§3.0；S1-2再交真实D/F四kind与原六行。原M6说明/README待实施时更新，不把计划当完成；六行及注意1–4全部验收前仍open。
 
 - M10 开工（2026-10-24）：照[M10 总设计](../00-M10-design.md)第 7 节"移交的落实"的"M6 lint 的数据在链接索引里"两行（表的六行、注意 1–4）做，在 P3 的 S1（4.11）。仍是 `open`，做完的 Phase 改为 `done`，收尾核对。
