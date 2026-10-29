@@ -4,7 +4,7 @@
 |---|---|
 | Phase | M10/P3；两个 Step：S1 服务端与协议；S2 健康度网页 |
 | 日期 | 2026-10-29 |
-| 状态 | 设计经三位独立审查及原席两轮修订复核后由主持者接受；S1/S2待实施。设计文档精确main CI全绿后开始S1；未实施、未测量P3、未开始M11 |
+| 状态 | 设计经三位独立审查及原席两轮修订复核后由主持者接受；S1/S2待实施。设计提交9e38的原CI失败保留；S1须等待决定61的搜索守卫维护集成后精确main完整CI验收及主持者重新绑定放行回执；未实施、未测量P3、未开始M11 |
 | 精确基线 | `main = origin/main = f6bd0cdee2b7570252a43581cf71cd1e71592f76`；P2 已完成 |
 | 上级 | [M10 总设计](00-M10-design.md) §4.10–4.12、§5、§7–9；[总体设计](../v0.1-design.md) §5.6、§13；[推进方式](../claude_to_codex/02-workflow.md)；[P2 移交](02-P2-source-area.md#9-给后面-phase-与-m-的移交) |
 | 记法 | `page/`、`linking/`、`wiki/` 在 `server/internal/modules/` 下；`bootstrap/`、`platform/`、`shared/` 在 `server/internal/` 下；`W/` 是 `web/apps/web/src/`。本文拟新增的文件、类型、测试名均是设计，不冒称已有实现 |
@@ -22,6 +22,8 @@
 ## 1. 基线与入口证据
 
 P2完成提交`f6bd0cde…`的[push workflow 40861860430](https://github.com/open-nerve/NerveWiki/actions/runs/40861860430) attempt1，全11 jobs及必需步骤成功。强接受原件为`ci-p2done-f6bd0cde/root-ci-acceptance.json`；P3释放原件为`root-p2-completion-and-p3-release-f6bd.json`，SHA-256 `67fa89c356c85bcb4e08beb5789aecd2d43d6a724f672eb1e848a47a025500d8`。本文按 root 已核的精确 main 编写，不把 S3 分支树相同当 Phase 已完成。
+
+**设计后的入口维护**：本设计落库提交 `9e38a38f648ffa19130afb8a8b468b792dad1381` 的 [CI 40897835721](https://github.com/open-nerve/NerveWiki/actions/runs/40897835721) attempt1实际失败：既有M8搜索守卫generic `go`首页40.621258 ms超过原40 ms界，后八条costs命令NOT_RUN，e2e/image skipped。原设计审查接受的是冻结设计语义，并不构成这次运行通过。主持者实施决定61选择有明确来源与检测取舍的整表参考维护，见[搜索守卫校准记录](reviews/search-guard-calibration-review.md)。S1的入口改由**后续集成该维护的精确main自身完整CI成功并被主持者接受，随后重新绑定P3放行回执与S1-0候选**满足；不把9e38的原失败attempt写成绿。本文设计决定49–60、SQL/契约/预算、容量阈值、变异与所有实施准入保持冻结语义，S1/S2结果仍待实施。
 
 已完整阅读三份只读调查及 authority/capacity 补充，核对关键实际源码；调查的旧头为 f6b397b7/ecd79c77，主持者已在 f6bd 验证相关代码未变。当前事实：
 

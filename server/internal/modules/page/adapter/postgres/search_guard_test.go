@@ -8,10 +8,12 @@ import (
 
 // searchRead is a page of a search: its query, the notebook it is limited
 // to, if any, the page (1 or 3), whether it answers building, and its
-// median of eight on an M-series Mac at each stage: without statistics,
-// analyzed, planned for any arguments (the median of three runs' medians,
-// at a load of 2 to 3, once the candidates were read by their notebooks'
-// keys alone: M8 Codex review R1; before, M8/P5A fix rounds 1 and 2).
+// median of eight at each stage: without statistics, analyzed, planned
+// for any arguments. The reference is the median of three runs on Linux
+// ARM64 (Go 1.27.1, Docker 29.9.2, source 9e38a38f; M10 calibration).
+// Each logged median was rounded to microseconds before the three-run
+// median was rounded to 0.1 ms. Instantaneous load was not recorded;
+// M8/P5 3.9 preserves the former M-series Mac reference.
 type searchRead struct {
 	q        string
 	notebook *uuid.UUID
@@ -26,13 +28,13 @@ func msOf(n ...float64) [3]time.Duration {
 		time.Duration(n[2] * float64(time.Millisecond))}
 }
 
-// searchFloor is the least limit of a read (M8/P5A review C-M2). Three
-// times this machine's median leaves no room for the reads of 2 to 20 ms:
-// their round trips' fixed costs swing them up to twice between runs
-// here, and CI's runners are about twice as slow. The trap the guard
-// exists for, the scoped join without statistics filtering the candidates
-// in a scan of nodes, took 97 to 143 ms at this size for "电 #", "the" and
-// "的", which take 4 to 7 ms: the floor stays well under it.
+// searchFloor is the least limit of a read (M8/P5A review C-M2). It dates
+// to the former Mac reference, whose 2 to 20 ms reads varied by up to
+// twice between runs. The trap the guard exists for, the scoped join
+// without statistics filtering the candidates in a scan of nodes, took
+// 97 to 143 ms at this size for "电 #", "the" and "的"; those reads then
+// took 4 to 7 ms normally. Their recalibrated limits without statistics
+// remain 40 ms, well under that historical trap.
 const searchFloor = 40 * time.Millisecond
 
 // searchTrap is the least time the trap took.
@@ -46,39 +48,32 @@ func searchLimit(median time.Duration) time.Duration {
 
 // searchReads are the guard's reads, eng the notebook of the most.
 func searchReads(eng *uuid.UUID) []searchRead {
-	// The slowest reads take 23 to 30 ms, most of it their body tier's: for
-	// eight common terms and "的是" nearly every page is a candidate, joined
-	// to the notebook's nodes and to its content, and sorted for the walk;
-	// "theirs" and "中国 database" walk their bound of 500 pages, reading and
-	// checking each content, read as its NFC (M8/P5A review A-M4). The rest
-	// take 3 to 18 ms. Without statistics the scoped join hashes the
-	// candidates with the notebook's nodes, about as fast as analyzed;
-	// planned for any arguments, its hits taken for 100,000, a read takes up
-	// to 1.25 times as long. With the candidates read by the notebooks' keys
-	// and the title tier's through page_search_titles (M8 Codex review R1),
-	// the reads take 0.6 to 1 times what 4db8503a's took here, its runs and
-	// these taken in turn.
+	// On this Linux ARM64 reference, "中国 database" and "theirs" have
+	// medians of 34.4 to 42.7 ms, and eight common terms 33.8 to 34.5 ms.
+	// The other reads range from 4.2 to 28.3 ms. These are the complete
+	// 60-cell remeasurement, without scaling the former Mac table by a
+	// common ratio; its historical measurements remain in M8/P5 3.9.
 	return []searchRead{
-		{q: "中国", notebook: eng, page: 1, medians: msOf(12.6, 12.6, 13.7)},
-		{q: "中国", notebook: eng, page: 3, medians: msOf(10, 10.3, 10.8)},
-		{q: "的是", notebook: eng, page: 1, medians: msOf(17.7, 16.8, 17.4)},
-		{q: "的是", notebook: eng, page: 3, medians: msOf(9.7, 8.5, 8.9)},
-		{q: "latency", notebook: eng, page: 1, medians: msOf(10.7, 10.5, 11.5)},
-		{q: "latency", notebook: eng, page: 3, medians: msOf(6.9, 6.9, 7.4)},
-		{q: "the", notebook: eng, page: 1, medians: msOf(6.3, 6, 6.1)},
-		{q: "the", notebook: eng, page: 3, medians: msOf(4.8, 4.9, 4.8)},
-		{q: "go", notebook: eng, page: 1, medians: msOf(12.4, 12.4, 13.2)},
-		{q: "go", notebook: eng, page: 3, medians: msOf(10, 10, 10.3)},
-		{q: "的", notebook: eng, page: 1, medians: msOf(5.9, 5.9, 5.9)},
-		{q: "的", notebook: eng, page: 3, medians: msOf(4.5, 4.6, 4.5)},
-		{q: "电", notebook: eng, page: 1, medians: msOf(2.7, 2.8, 2.8)},
-		{q: "电 #", notebook: eng, page: 1, medians: msOf(3.9, 4, 5)},
-		{q: "中国 database", notebook: eng, page: 1, medians: msOf(28, 28.1, 29.5)},
-		{q: "theirs", notebook: eng, page: 1, medians: msOf(28.1, 27.6, 28.7)},
-		{q: "theirs", notebook: eng, page: 3, medians: msOf(24.2, 24.1, 24.4)},
-		{q: "the of and to in is that for", notebook: eng, page: 1, medians: msOf(24, 22.9, 22.9)},
-		{q: "中国", page: 1, building: true, medians: msOf(14.3, 13.2, 14.5)},
-		{q: "中国", page: 3, building: true, medians: msOf(10.4, 10.3, 10.9)},
+		{q: "中国", notebook: eng, page: 1, medians: msOf(19.3, 19.4, 22.1)},
+		{q: "中国", notebook: eng, page: 3, medians: msOf(14.4, 14.8, 16.6)},
+		{q: "的是", notebook: eng, page: 1, medians: msOf(28.0, 25.8, 28.3)},
+		{q: "的是", notebook: eng, page: 3, medians: msOf(16.4, 14.1, 15.1)},
+		{q: "latency", notebook: eng, page: 1, medians: msOf(17.8, 16.9, 18.9)},
+		{q: "latency", notebook: eng, page: 3, medians: msOf(10.4, 10.2, 11.9)},
+		{q: "the", notebook: eng, page: 1, medians: msOf(10.5, 10.0, 9.8)},
+		{q: "the", notebook: eng, page: 3, medians: msOf(7.7, 7.7, 7.5)},
+		{q: "go", notebook: eng, page: 1, medians: msOf(20.1, 20.2, 20.9)},
+		{q: "go", notebook: eng, page: 3, medians: msOf(14.4, 14.7, 15.9)},
+		{q: "的", notebook: eng, page: 1, medians: msOf(10.0, 9.8, 9.4)},
+		{q: "的", notebook: eng, page: 3, medians: msOf(7.3, 7.5, 7.3)},
+		{q: "电", notebook: eng, page: 1, medians: msOf(4.2, 4.5, 4.5)},
+		{q: "电 #", notebook: eng, page: 1, medians: msOf(6.4, 6.9, 8.9)},
+		{q: "中国 database", notebook: eng, page: 1, medians: msOf(39.4, 40.4, 42.7)},
+		{q: "theirs", notebook: eng, page: 1, medians: msOf(40.9, 40.8, 42.2)},
+		{q: "theirs", notebook: eng, page: 3, medians: msOf(34.6, 34.4, 35.8)},
+		{q: "the of and to in is that for", notebook: eng, page: 1, medians: msOf(33.8, 33.8, 34.5)},
+		{q: "中国", page: 1, building: true, medians: msOf(22.1, 21.0, 23.3)},
+		{q: "中国", page: 3, building: true, medians: msOf(15.2, 15.2, 16.6)},
 	}
 }
 
