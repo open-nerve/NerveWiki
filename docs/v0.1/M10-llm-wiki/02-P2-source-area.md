@@ -3,7 +3,7 @@
 | 项 | 内容 |
 |---|---|
 | 里程碑 / Phase | M10 模式契约与 LLM Wiki / P2 来源区 |
-| 日期、状态 | 2026-10-29；P2进行中，S1已验；S2旧33b4/4550已验、fb与288 CI失败、恢复折叠及有界facts保留分列，最终代码f1818066的本机门禁、独立审查与提交后gen-check均已核定，精确代码CI40793294472全11绿。本文档提交自身CI、code/docs分支四片Test配对、main合并CI及记录提交CI/双main配对由后续真实运行收口；完成前不开始S3。前33b4/4550绿、fb/288失败和03不精确同步的历史均保留；B-N1原审已关闭，main集成待闭环；S3待做 |
+| 日期、状态 | 2026-10-29；P2进行中，S1已验；S2旧33b4/4550已验、fb与288 CI失败、恢复折叠及有界facts保留分列，最终代码f1818066的本机门禁、独立审查与提交后gen-check均已核定，精确代码CI40793294472全11绿。文档002a5638的精确CI40797519100全部11作业及必需步骤、code/docs分支四片Test配对，以及main合并`66d8236c12aaa8923616f6f42f2ee33b772884f9`的精确CI40800844731全部11作业及必需步骤均获主持者接受；本记录提交自身CI与双main Test配对仍由后续真实运行收口，完成前不开始S3。前33b4/4550绿、fb/288失败和03不精确同步的历史均保留；B-N1原审已关闭，记录CI与双main配对待闭环；S3待做 |
 | 基线 | `main` = `origin/main` = `403841fc75d0e5ac6b5f39447158213c0e07b2fe`，树 `b3665215f745d4dcfe7e8d339d4882e6d95b4a63` |
 | 入口 | P1 已完成；其后 grep 成本维护也已合并并核对，两份 main CI 全 10 项成功；第 1 节 |
 | 权威 | [文档约定](../../README.md)、[总体设计](../v0.1-design.md)、[M10 总设计](00-M10-design.md) §4.6–4.8、§4.16–4.18、§7、§9；[P1](01-P1-contract-frame.md) §8–10；[M8 历史移交](handoffs/M8-history.md)、[M9 MCP 移交](handoffs/M9-P1-mcp-registry.md) |
@@ -807,7 +807,7 @@ S1不把source_hash/duplicate UI/SourceArea lint读写成已实现；决定36–
 | M7/M9/M5/M6 | M7§3与M9§7记页面最终验收；两份整体仍open。M5done保持，M6lint仍open，不提前关闭后续工具/虚拟/prompt义务。 |
 | P1§9/00头与§12、§13/P2头与§10 | P1每条交P2项有实证去向；00头显示P2完成/P3下一Phase、M10进行中；P2行全完成并链接三Step审查与合并，§13真实记录。P2done独立文档提交及其精确main CI绿才算Phase结束。 |
 
-最终人工核对单：每Step所有新增码真实答出、每条guard/veto接线有杀死mutation、source_hash/rewrite真实SQL与fakes一致、每个声明API字段全链、全部原有、本轮追加与审查追加变异、600万A/B与成本真实数、每main确切十项绿/分份均值、所有handoff状态精确。未完成任一项不能用“实现已完成，后续补测试/文档”宣布P2done。
+最终人工核对单：每Step所有新增码真实答出、每条guard/veto接线有杀死mutation、source_hash/rewrite真实SQL与fakes一致、每个声明API字段全链、全部原有、本轮追加与审查追加变异、600万A/B与成本真实数、每main实际workflow全部CI作业绿（当前四分片为11项）及分份均值、所有handoff状态精确。未完成任一项不能用“实现已完成，后续补测试/文档”宣布P2done。
 
 ## 9. 给后面 Phase 与 M 的移交
 
@@ -823,7 +823,7 @@ P3：在已实现page.SourceArea基础上增加整区lint/pending来源读取，
 |---|---|---|
 | P2设计 | 已审查并接受 | 原四项发现及B-Q1在设计层resolved；4755精确main CI40413727596十项成功；[设计审查](reviews/P2-design-review.md) |
 | 10.1 S1 | S1已合并；记录CI与两main Test均值已核，S2继续实施 | [实施审查](reviews/P2-S1-source-rules-review.md)；合并见 00 号文档第 12 节 |
-| 10.2 S2 | 最终代码f1818066的本机门禁、独立审查与提交后gen-check均已核定，精确代码CI40793294472全11绿。本文档提交自身CI、code/docs分支四片Test配对、main合并CI及记录提交CI/双main配对由后续真实运行收口；完成前不开始S3。前33b4/4550绿、fb/288失败和03不精确同步的历史均保留；集成待闭环 | 旧33b4/4550接受、fb/288失败、恢复折叠与有界facts保留逐阶段保留；旧159 fresh/reuse、折叠7与缓存11控制分列；B-N1已关闭，文档/分支配对/main/记录及双main样本尚待 |
+| 10.2 S2 | 最终代码f1818066的本机门禁、独立审查与提交后gen-check均已核定，精确代码CI40793294472全11绿。文档002a5638的精确CI40797519100全部11作业及必需步骤、code/docs分支四片Test配对，以及main合并`66d8236c12aaa8923616f6f42f2ee33b772884f9`的精确CI40800844731全部11作业及必需步骤均获主持者接受；本记录提交自身CI与双main Test配对仍由后续真实运行收口，完成前不开始S3。前33b4/4550绿、fb/288失败和03不精确同步的历史均保留；记录CI与双main配对待闭环 | 旧33b4/4550接受、fb/288失败、恢复折叠与有界facts保留逐阶段保留；旧159 fresh/reuse、折叠7与缓存11控制分列；B-N1已关闭，文档/分支配对/main合并CI已验；记录CI及双main样本尚待 |
 | 10.3 S3 | pending | UI/文件bytes/会话释放/重复链接/E2E与跨标签、审查/CI、M8done与M7/M9open核对 |
 | 10.4 P2done | pending | 三Step均验收、最终文档链接/handoff核对、P2done准确SHA与实际workflow全部CI作业（当前四分片为11项）；P3下一步 |
 
@@ -843,7 +843,7 @@ S1后续核对已完成：合并`bf8d6625`的[CI40501936360](https://github.com/
 
 ### 10.2 S2 来源 hash、去重与验证
 
-**S2后续有界facts保留：最终代码f1818066的本机门禁、独立审查与提交后gen-check均已核定，精确代码CI40793294472全11绿。本文档提交自身CI、code/docs分支四片Test配对、main合并CI及记录提交CI/双main配对由后续真实运行收口；完成前不开始S3。前33b4/4550绿、fb/288失败和03不精确同步的历史均保留；main集成待闭环。** 以下33b4实现/本机/CI及测试声明数为其历史接受范围：`33b4da5a38bed24db05411e83209d30ef1e17db9`，CI40718770843全部11作业成功；旧159义务=129＋TrashChildren13＋History8＋Name9，按具体输入fresh/reuse接受，不称159独特bug或全部提交后重跑；当时相对main新增107个Go声明=98race＋9!race，总2947。4550文档绿色、fb容量重排与失败、288恢复折叠及其失败CI40768488401、有界facts保留`f18180667a8fa47e44efd2b0d33e4623443eb389`的最新清单/门禁/CI集中在[S2验证表](reviews/P2-S2-source-hash-review.md#最终验证与集成)。旧失败、候选拒绝、metadata survivor、测试观察器失败及6M冻结证据限制均保留；B-N1在4550前规范文档投影后已关闭。S3、P3–P5及M10收尾尚待，不开始M11。
+**S2后续有界facts保留：最终代码f1818066的本机门禁、独立审查与提交后gen-check均已核定，精确代码CI40793294472全11绿。文档002a5638的精确CI40797519100全部11作业及必需步骤、code/docs分支四片Test配对，以及main合并`66d8236c12aaa8923616f6f42f2ee33b772884f9`的精确CI40800844731全部11作业及必需步骤均获主持者接受；本记录提交自身CI与双main Test配对仍由后续真实运行收口，完成前不开始S3。前33b4/4550绿、fb/288失败和03不精确同步的历史均保留；记录CI与双main配对待闭环。** 以下33b4实现/本机/CI及测试声明数为其历史接受范围：`33b4da5a38bed24db05411e83209d30ef1e17db9`，CI40718770843全部11作业成功；旧159义务=129＋TrashChildren13＋History8＋Name9，按具体输入fresh/reuse接受，不称159独特bug或全部提交后重跑；当时相对main新增107个Go声明=98race＋9!race，总2947。4550文档绿色、fb容量重排与失败、288恢复折叠及其失败CI40768488401、有界facts保留`f18180667a8fa47e44efd2b0d33e4623443eb389`的最新清单/门禁/CI集中在[S2验证表](reviews/P2-S2-source-hash-review.md#最终验证与集成)。旧失败、候选拒绝、metadata survivor、测试观察器失败及6M冻结证据限制均保留；B-N1在4550前规范文档投影后已关闭。S3、P3–P5及M10收尾尚待，不开始M11。
 
 | 已接受增量 | 提交 | 已验范围 |
 |---|---|---|
@@ -854,7 +854,7 @@ S1后续核对已完成：合并`bf8d6625`的[CI40501936360](https://github.com/
 | S2-5 | `c7cec1fa`→`ca8a27db`→`53488fee`→`056677a4`→`2536175e`→`33b4da5a` | 正式A/B/C与产品修复复核、159控制分层/依赖复用、实际本机门禁及CI40718770843已接受；B-N1实际文档复核已关闭，doc/main闭环待完成 |
 | S2-5容量再平衡 | `fb92974b9928f334d2a1d6007fbd169cd6dfacf3`（parent45509391） | 两配置文件、窄名称边界及注释；完整本机双轮/独立核对已接受。CI40740783718 attempt1失败，三状态Revert sample2 HTTP500；保留失败成本报告，不能接受新双分支容量或main集成 |
 | S2-5恢复行内hash | `288ecb2b6ccb9a1209e674074d685329be38f37d` | guarded prepared值合入原RestoreNodes UPDATE，通用维护及起点provenance保留；原本机与有限控制接受不变。CI40768488401三状态Revert sample2仍HTTP500，不能称CI修复成功 |
-| S2-5有界facts保留 | `f18180667a8fa47e44efd2b0d33e4623443eb389` | 单次check只保留边界内纯facts，超界丢弃并重放原seq；最终代码f1818066的本机门禁、独立审查与提交后gen-check均已核定，精确代码CI40793294472全11绿。本文档提交自身CI、code/docs分支四片Test配对、main合并CI及记录提交CI/双main配对由后续真实运行收口；完成前不开始S3。前33b4/4550绿、fb/288失败和03不精确同步的历史均保留。旧159（16fresh/143scope）、折叠7、缓存11分别核验；本次文档自身CI由外部回执收口 |
+| S2-5有界facts保留 | `f18180667a8fa47e44efd2b0d33e4623443eb389` | 单次check只保留边界内纯facts，超界丢弃并重放原seq；最终代码f1818066的本机门禁、独立审查与提交后gen-check均已核定，精确代码CI40793294472全11绿。文档002a5638的精确CI40797519100全部11作业及必需步骤、code/docs分支四片Test配对，以及main合并`66d8236c12aaa8923616f6f42f2ee33b772884f9`的精确CI40800844731全部11作业及必需步骤均获主持者接受；本记录提交自身CI与双main Test配对仍由后续真实运行收口，完成前不开始S3。前33b4/4550绿、fb/288失败和03不精确同步的历史均保留。旧159（16fresh/143scope）、折叠7、缓存11分别核验；文档002a5638与main合并CI已验，记录自身CI及双main配对由外部回执收口 |
 
 实现按实际 SQL 投影：probe/writeback 使用 SELECT-list SRF；当前 adapter 的 `[]uuid.UUID` 不表达 NULL 元素，缺游标用 zero UUID 加 `has_afters=false`，合法 zero UUID 不被排除。当前 writeback 改为单条 UPDATE self-join：`FROM nodes old` 与 zipped unnest 的 `v` 配合，以 `old.id=n.id` 取得旧值，保留 n 的 notebook/live/distinct 条件，`RETURNING n.id, old.kind, old.source_hash AS before_source_hash`。S2-1 当时的 MATERIALIZED previous/changed CTE 方案及旧值正确性验证保留为历史；本轮因无统计时的二次方末尾 join 修订，定向接受见 [E28–E31]。有限父读者内外均为 `LIMIT (SELECT sqlc.arg(max_rows)::integer)`，内层 parent/live 范围按已有 parent/name_key 索引顺序，notebook filter 在内层 LIMIT 之后，完整层读完再由 Go 排序；返回/物化界与真实物理访问分开验收。
 
@@ -980,7 +980,7 @@ B完整建库/装载/前后验证2227.942 s不是迁移停机时间；2225资源
 
 恢复折叠代码288的精确CI40768488401仍因Revert三状态sample2请求4s失败；四片Test297/454/340/359s只是失败workflow的一份分支样本。随后有界facts保留的本机AB结果混合；组件内check、进程总分配、HTTP、package与wrapper是不同量纲，不能由组件改善推断CI根因或普遍端到端收益。正式Restore/Revert package两次均值×2.4、其余成本与当前32 recipes按最新原件另核，不能拿失败CI或旧fold AB补最终样本。
 
-**剩余项统一入口。** 最终代码f1818066的本机门禁、独立审查与提交后gen-check均已核定，精确代码CI40793294472全11绿。本文档提交自身CI、code/docs分支四片Test配对、main合并CI及记录提交CI/双main配对由后续真实运行收口；完成前不开始S3。前33b4/4550绿、fb/288失败和03不精确同步的历史均保留。旧33b4/4550、159义务及B-N1关闭为已接受历史；有界facts保留旧159的fresh/reuse依赖表、折叠7及缓存11控制、最终门禁/双轮/精确代码CI按本次真实证据接受，旧数不自动套到新头。随后依次为本次文档提交CI→树外两分支Test配对→no-ff main合并CI→main合并记录文档CI→树外两个main Test配对；未知号不填，记录自身CI不再追加自引用提交，后续既定S3/Phase自然转录。旧4550绑定的main-record模板需随最终头重绑。M7/M9/M8仍open（M8待S3）、M6 lint留P3、M5done保持；S2闭环前不开始S3，不开始M11。
+**剩余项统一入口。** 最终代码f1818066的本机门禁、独立审查与提交后gen-check均已核定，精确代码CI40793294472全11绿。文档002a5638的精确CI40797519100全部11作业及必需步骤、code/docs分支四片Test配对，以及main合并`66d8236c12aaa8923616f6f42f2ee33b772884f9`的精确CI40800844731全部11作业及必需步骤均获主持者接受；本记录提交自身CI与双main Test配对仍由后续真实运行收口，完成前不开始S3。前33b4/4550绿、fb/288失败和03不精确同步的历史均保留。旧33b4/4550、159义务及B-N1关闭为已接受历史；有界facts保留旧159的fresh/reuse依赖表、折叠7及缓存11控制、最终门禁/双轮/精确代码CI按本次真实证据接受，旧数不自动套到新头。文档002a5638 CI与code/docs分支配对、no-ff main合并CI已验，实际父链与回执见[S2合并记录](reviews/P2-S2-source-hash-review.md#合并与后续验收)。剩余为本记录精确main CI及合并/记录两个main Test配对；未知号不填，记录自身CI不再追加自引用提交，后续既定S3/Phase自然转录。M7/M9/M8仍open（M8待S3）、M6 lint留P3、M5done保持；S2闭环前不开始S3，不开始M11。
 
 ## 附录：核对过的代码与证据
 
