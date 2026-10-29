@@ -213,23 +213,29 @@ test-go: ## 运行 Go 测试，含集成测试与 server/tools（开启竞态检
 # 分了之后各单独跑两次，第一份 254 与 246 秒、第二份 121 与 132 秒、第三份 121 与 131 秒（平均 250、126.5 与 126 秒，新的两份差 0.4%）；
 # CI 的两次运行里三份的测试一步 5:51 与 7:07（平均 6:29）、5:13 与 4:20（平均 4:46.5）、3:12 与 3:49（平均 3:30.5），都在线之下，
 # 这次分照规则成立。第一份离线最近（这个界线上 CI 的四次是 6:59、6:56、5:51、7:07），过了线时照规则先看第二份收不收得下它的一段
+# 以下为 M10/P2/S2 的历史分份与移界样本，不是当前 M10/P3/S1-0 候选的测量。
 # M10/P2/S2：同一 c7cec1fa 的分支 CI 40616009992、40619625333 中，三份 Test 分别为 367/429、513/598、476/417 秒，
 # 均值为 398、555.5、446.5 秒。第二份超出 450 秒线 105.5 秒，邻片余量仅 52 与 3.5 秒，照 M9/P2 6.5 加第四份。
 # 这两个工作流均在 guards 失败、e2e/image 跳过；bootstrap 的成功样本用于分份决定，不是新四份实测或最终两次 main 验收。
 # 保留 FIRST；第二份 -run SECOND，第三份 -run THIRD 且 -skip SECOND，第四份 -skip 三个表达式的并。
-# FIRST 与另两个前缀不交；SECOND 与 THIRD 重合的 TheMCP 只在第二份运行；第四份补齐余下名字，新测试自动归入一份。
+# 当时 FIRST 与另两个前缀不交；SECOND 与 THIRD 重合的 TheMCP 只在第二份运行；第四份补齐余下名字，新测试自动归入一份。
 # c7 的 468 个顶层按此规则静态归入 168/71/114/115；ca8 最终两轮实跑均完整覆盖（两个顶层按设计跳过）。
 # ca8 本机四份包耗时两次均值 319.5785/284.784/240.4775/262.5225 秒；代码分支 33b4da5a 的 CI 40718770843
 # 四份 Test 为 444/419/302/271 秒；4550 文档分支 CI 40730123058 为 457/418/336/371 秒。
 # 第一份两次 Test 均值 450.5 秒过线、邻居第二份均值 418.5 秒，按 M9/P2 6.5 移两份之间的界线。
-# 只将 TestEveryResolutionCaseImportsFromAVault 移到第二份：当前源码定向两轮中该顶层 run→终止为 11.087505/10.921745 秒，
+# 只将 TestEveryResolutionCaseImportsFromAVault 移到第二份：当时源码定向两轮中该顶层 run→终止为 11.087505/10.921745 秒，
 # 均值乘 1.6 估计增加 17.6074 秒，两份预计为 432.8926/436.1074 秒；这是移界前的估计，实际两次 CI 仍须核验。
 # 新边界编译清单为 468 个顶层、167/72/114/115；四份各自单独实跑两次，两轮各 3488 run、3484 pass、4 个既有 Markdown skip。
 # 新边界本机两轮 Go 包耗时均值为 319.376/309.7455/261.4265/266.258 秒；不是 CI Test 步骤时长。
 # EveryResolutionCase 在 H/I 之间分配；其他未匹配的新名字由第四份补齐，仍无遗漏、重叠；原超时不变。
 # 以上分支样本不替代最终两次 main 的各份 Test 均值验收（须 <450 秒）。
+# M10/P3/S1-0 当前候选：SECOND 的 MCP 在 B/C 前缀移界，FIRST/THIRD 与所有执行参数不变。
+# TestTheMCPBacklinksAreRESTs、TestTheMCPBatchIsRefusedWhole、
+# TestTheMCPBatchMeetsAWebRename、TestTheMCPBatchReachesItsUseCase 从第二份移到第三份；
+# SECOND 与 THIRD 当前仅在 TheMCP[C-Z] 重合，这些名字只在第二份运行。
+# 既有 470 名称的候选静态分配为 167/70/118/115；当前编译清单、完整四份双轮与 CI 验收待实测。
 BOOTSTRAP_FIRST = ^Test([A-D]|E([a-u]|very([A-Q]|ResolutionCase[A-H])))
-BOOTSTRAP_SECOND = ^Test(Every(ResolutionCase[I-Z]|[S-Z])|Source|The(MCP|Contents))
+BOOTSTRAP_SECOND = ^Test(Every(ResolutionCase[I-Z]|[S-Z])|Source|The(MCP[C-Z]|Contents))
 # M9/P2 S1：第二份的测试一步过了 go test 的 15 分钟的一半（CI 的两次运行 7:15 与 8:33），照规则按测试名再分一份，不提高 -timeout（M9/P2 设计 6.5）
 BOOTSTRAP_THIRD = ^Test(The[F-Z]|T[i-z]|[U-Z])
 .PHONY: test-go-race

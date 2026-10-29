@@ -22,11 +22,14 @@ jobs:
     # 一个作业跑全部的 Go 测试在 M8/P3A 时超过了 25 分钟的时限：分成几份并行，各占一个 runner（Makefile 的
     # test-go-race、test-go-bootstrap-1、-2、-3 与 -4、test-go-costs、test-go-guards，几份之和是 make test-go；另有 test-go-short 一份，只跑单元测试，
     # 不在这个和里）。不带竞态检测的耗时守卫也因此不与竞态检测下的构建抢 CPU。
-    # server 共八份，连同 web、e2e 与 image 共十一项；四份组合根本机两轮的包耗时均值见 Makefile。
+    # server 共八份，连同 web、e2e 与 image 共十一项；M10/P2/S2 历史四份本机两轮的包耗时均值见 Makefile。
     # 33b4/4550 两分支 CI 40718770843/40730123058 的第一份 Test 均值 450.5 秒过线；第二份 418.5 秒。
     # 按 Makefile 的窄名称边界将 EveryResolutionCaseImports 移给第二份，预计为 432.8926/436.1074 秒。
-    # 新配置本机四份各两轮包耗时均值 319.376/309.7455/261.4265/266.258 秒，完整覆盖已核；不提高超时。
-    # 两次分支 CI 与最终两次 main Test 均值另验；不把本机包耗时当作 CI Test 步骤。
+    # 当时新配置本机四份各两轮包耗时均值 319.376/309.7455/261.4265/266.258 秒，完整覆盖已核；不提高超时。
+    # 当时两次分支 CI 与最终两次 main Test 均值另验；不把本机包耗时当作 CI Test 步骤。
+    # M10/P3/S1-0 当前候选只将 SECOND 的 The(MCP|Contents) 改为 The(MCP[C-Z]|Contents)。
+    # 四个 MCP B 前缀顶层从第二份移到第三份，详见 Makefile；FIRST/THIRD、工作流执行内容及超时不变。
+    # 既有 470 名称的候选静态分配为 167/70/118/115；当前编译清单、完整四份双轮与 CI 验收待实测。
     # 一份失败不取消别的：各自的失败都看得到。时限约为各份在 CI 上实测的两倍（M8/P3A，作业 6:20、10:58、9:26）：
     # 组合根那一份里 go test 的 -timeout 15m 先到，打出卡住的测试
     strategy:
