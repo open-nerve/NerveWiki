@@ -2,6 +2,7 @@ import { computed, makeAutoObservable, observableRef, runInAction } from "mobx";
 
 import { oneAtATime, oneAtATimeById } from "../lib/one-at-a-time";
 import { ApiError } from "../services/api";
+import type { Notebook } from "../services/notebook.service";
 import type {
   BacklinkPage,
   LinkingService,
@@ -131,11 +132,14 @@ export class PageTreeStore {
     private readonly linking: Pick<
       LinkingService,
       "tagPages" | "linkLanding" | "linkTargets" | "tags" | "backlinks" | "properties"
-    >
+    >,
+    /** The current list entry, including changes of mode, root and role. */
+    private readonly currentNotebook: () => Notebook | undefined
   ) {
     makeAutoObservable<
       this,
       | "service"
+      | "currentNotebook"
       | "linking"
       | "changesAnswered"
       | "readsStarted"
@@ -147,6 +151,7 @@ export class PageTreeStore {
       | "restores"
     >(this, {
       service: false,
+      currentNotebook: false,
       linking: false,
       notebookId: false,
       nodes: observableRef,
@@ -171,6 +176,51 @@ export class PageTreeStore {
   get tree(): TreeIndex | undefined {
     const nodes = this.pageNodes;
     return nodes && indexTree(this.removed.size === 0 ? nodes : nodes.filter((node) => !this.removed.has(node.id)));
+  }
+
+  /** The notebook as currently read, never the snapshot used to create this store. */
+  get notebook(): Notebook | undefined {
+    return this.currentNotebook();
+  }
+
+  /** All live nodes, including attachments, independently of the page-only rendering tree. */
+  private get nodeIndex(): ReadonlyMap<string, TreeNode> {
+    return new Map(this.nodes?.filter((node) => !this.removed.has(node.id)).map((node) => [node.id, node]));
+  }
+
+  nodeById(id: string): TreeNode | undefined {
+    return this.nodeIndex.get(id);
+  }
+
+  /** Complete ancestry from the root down; an unknown, broken or cyclic chain has none. */
+  nodeAncestors(id: string): TreeNode[] | undefined {
+    const index = this.nodeIndex;
+    const node = index.get(id);
+    if (node === undefined) return undefined;
+    const seen = new Set([id]);
+    const ancestors: TreeNode[] = [];
+    let parent = node.parent_id;
+    while (parent !== null) {
+      const ancestor = index.get(parent);
+      if (ancestor === undefined || seen.has(parent)) return undefined;
+      seen.add(parent);
+      ancestors.push(ancestor);
+      parent = ancestor.parent_id;
+    }
+    return ancestors.toReversed();
+  }
+
+  /** Sources are strict descendants of the current LLM Wiki source root, not the root's own explanation. */
+  isSource(id: string): boolean {
+    const notebook = this.notebook;
+    const root = notebook?.source_root_id;
+    return (
+      notebook?.mode === "llm_wiki" &&
+      root != null &&
+      id !== root &&
+      this.nodeById(root) !== undefined &&
+      (this.nodeAncestors(id)?.some((node) => node.id === root) ?? false)
+    );
   }
 
   /**
@@ -259,12 +309,18 @@ export class PageTreeStore {
     return (await this.write(() => this.service.createPage(this.notebookId, parent, title))).id;
   }
 
-  async rename(id: string, name: string): Promise<void> {
-    await this.write(() => this.service.renameNode(id, name));
+  async rename(id: string, name: string, beforeSend?: () => void): Promise<void> {
+    await this.write(() => {
+      beforeSend?.();
+      return this.service.renameNode(id, name);
+    });
   }
 
-  async move(id: string, move: NodeMove): Promise<void> {
-    await this.write(() => this.service.moveNode(id, move));
+  async move(id: string, move: NodeMove, beforeSend?: () => void): Promise<void> {
+    await this.write(() => {
+      beforeSend?.();
+      return this.service.moveNode(id, move);
+    });
   }
 
   /**
@@ -274,8 +330,9 @@ export class PageTreeStore {
    * the deletion's turn comes: a page that a write before it created is in
    * it.
    */
-  async remove(id: string): Promise<void> {
+  async remove(id: string, beforeSend?: () => void): Promise<void> {
     await this.write(async () => {
+      beforeSend?.();
       const tree = this.tree;
       const parent = this.byId(id)?.parent_id ?? null;
       try {

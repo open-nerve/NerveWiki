@@ -5,7 +5,7 @@ import {
   extractInstruction,
   type Instruction,
 } from "@atlaskit/pragmatic-drag-and-drop-hitbox/list-item";
-import { Bot, ChevronRight, Ellipsis, Library } from "lucide-react";
+import { Bot, ChevronRight, Ellipsis, FileText, Library } from "lucide-react";
 import { observer } from "mobx-react-lite";
 import { useEffect, useId, useRef, useState, type RefObject } from "react";
 import { NavLink, useParams } from "react-router";
@@ -13,6 +13,7 @@ import { NavLink, useParams } from "react-router";
 import { ConfirmDialog } from "../../app/confirm-dialog";
 import { writesPages } from "../../app/effective-role";
 import { lockedText } from "../../app/problem-messages";
+import { canDeleteNode, canManageNode, isAgentsPage } from "../../app/source-permissions";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,7 +22,7 @@ import {
 } from "../../components/ui/dropdown-menu";
 import { useT } from "../../i18n/i18n";
 import { cn } from "../../lib/cn";
-import { titleKey } from "../../lib/title-key";
+import { ApiError } from "../../services/api";
 import type { Notebook } from "../../services/notebook.service";
 import type { TreeNode } from "../../services/page.service";
 import { useStore } from "../../stores/context";
@@ -81,9 +82,10 @@ const PageItem = observer(function PageItem({ context, node, depth }: ItemProps)
   const t = useT();
   const name = useDistinctName(context, node);
   const writer = writesPages(notebook.role);
-  const agents = notebook.mode === "llm_wiki" && node.parent_id === null && titleKey(node.name) === titleKey("AGENTS");
+  const agents = isAgentsPage(pages, node.id);
   const sourceRoot = notebook.mode === "llm_wiki" && node.id === notebook.source_root_id;
-  const canDragRow = writer && !agents && (!sourceRoot || notebook.role === "admin");
+  const source = pages.isSource(node.id);
+  const canDragRow = canManageNode(pages, node.id);
   const children = pages.childrenOf(node.id).length > 0;
   const open = children && pages.isOpen(node.id);
   const listId = useId();
@@ -127,16 +129,25 @@ const PageItem = observer(function PageItem({ context, node, depth }: ItemProps)
         >
           {agents && <Bot aria-hidden className="mr-1 inline-block size-4 align-text-bottom" />}
           {sourceRoot && <Library aria-hidden className="mr-1 inline-block size-4 align-text-bottom" />}
+          {source && <FileText aria-hidden className="mr-1 inline-block size-4 align-text-bottom" />}
           {node.name}
-          {(agents || sourceRoot) && (
+          {(agents || sourceRoot || source) && (
             <>
               {" "}
-              <span className="sr-only">{t(agents ? "page.agentsKind" : "page.sourceRootKind")}</span>
+              <span className="sr-only">
+                {t(agents ? "page.agentsKind" : sourceRoot ? "page.sourceRootKind" : "page.sourceKind")}
+              </span>
             </>
           )}
         </NavLink>
         {writer && (
-          <PageMenu context={context} node={node} name={name} canMove={canDragRow} canDelete={!agents && !sourceRoot} />
+          <PageMenu
+            context={context}
+            node={node}
+            name={name}
+            canMove={canDragRow}
+            canDelete={canDeleteNode(pages, node.id)}
+          />
         )}
         {instruction !== null && instruction.operation !== "combine" && (
           <span
@@ -257,6 +268,9 @@ const PageMenu = observer(function PageMenu({
   const count = subtree.length - 1;
   // Counted as the deletion is asked: the rows do not watch the attachments, which a read may change alone.
   const attachments = dialog === "delete" ? attachmentsUnder(pages, subtree) : 0;
+  const beforeDelete = () => {
+    if (!canDeleteNode(pages, node.id)) throw new ApiError(403, { code: "forbidden" });
+  };
   return (
     <>
       <DropdownMenu>
@@ -318,8 +332,9 @@ const PageMenu = observer(function PageMenu({
         sendingLabel={t("page.deleting")}
         cancelLabel={t("page.cancel")}
         confirm={async () => {
+          beforeDelete();
           fail(undefined);
-          await pages.remove(node.id);
+          await pages.remove(node.id, beforeDelete);
         }}
         // Someone editing the page or one under it refuses the deletion: the dialog names them, and the page.
         explain={(error) => lockedText(error, t, me, (id) => distinctName(pages.tree, notebook, id, t))}

@@ -4,7 +4,7 @@ import { useContext, useEffect, useLayoutEffect, useRef, type RefObject } from "
 import { useLocation, useNavigate } from "react-router";
 
 import { arrived } from "../../app/arrival";
-import { writesPages } from "../../app/effective-role";
+import { canEditPageBody } from "../../app/source-permissions";
 import { NotLoaded } from "../../app/not-loaded";
 import { enhance, Enhancements } from "../../reading/enhancement";
 import { taskText } from "../../reading/task-toggle";
@@ -129,6 +129,7 @@ export const ReadingView = observer(function ReadingView({
   const revision = data?.revision;
   const assetsExpire = data?.assets_expire_at ?? null;
   const { id: notebookId, role } = notebook;
+  const editable = canEditPageBody(pages, page.id);
   useLayoutEffect(() => {
     const container = article.current;
     if (container === null || html === undefined || revision === undefined) {
@@ -148,9 +149,11 @@ export const ReadingView = observer(function ReadingView({
       reload: () => void mutate(),
       // An address without an anchor arrives at the page, whose heading takes the focus: the link had it.
       navigate: (to) => void navigate(to, to.includes("#") ? undefined : { state: arrived }),
-      toggleTask: writesPages(role)
+      toggleTask: editable
         ? async (offset, checked) => {
+            if (!canEditPageBody(pages, page.id)) return;
             await pages.oneToggle(page.id, async () => {
+              if (!canEditPageBody(pages, page.id)) return;
               latestRefused.current(undefined);
               toggled.current = { task: offset.toString(), checked };
               try {
@@ -218,6 +221,7 @@ export const ReadingView = observer(function ReadingView({
     slug,
     notebookId,
     role,
+    editable,
     t,
     preferences,
     page.id,

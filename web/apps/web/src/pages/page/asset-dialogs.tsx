@@ -7,6 +7,7 @@ import { notebookNameProblem, notebookNameTexts } from "../../app/notebook-name"
 import type { FieldMessage } from "../../app/problem-messages";
 import { pagesLocked } from "../../app/pages-locked";
 import { RenameForm } from "../../app/rename-form";
+import { canManageNode } from "../../app/source-permissions";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "../../components/ui/dialog";
@@ -14,11 +15,13 @@ import { Label } from "../../components/ui/label";
 import { NativeSelect } from "../../components/ui/native-select";
 import { useT } from "../../i18n/i18n";
 import { extensionOf, isPageName } from "../../lib/upload-name";
+import { ApiError } from "../../services/api";
 import type { Asset } from "../../services/asset.service";
 import type { Notebook } from "../../services/notebook.service";
 import { useAssets, usePageTree, useStore } from "../../stores/context";
 import { distinctName } from "../notebook/distinct-name";
 import { ParentOptions, Problem, rootOption as root } from "../notebook/parent-options";
+import { useSourceMove } from "../notebook/source-move-confirmation";
 
 type AssetDialogProps = { notebook: Notebook; asset: Asset; held: HeldDialog };
 
@@ -39,6 +42,11 @@ export function RenameAssetDialog({ notebook, asset, held }: AssetDialogProps) {
   const done = useRef(false);
   const extension = extensionOf(asset.name);
   const stem = asset.name.slice(0, asset.name.length - extension.length);
+  function requireManage() {
+    if (!canManageNode(pages, asset.id)) {
+      throw new ApiError(403, { code: "forbidden" });
+    }
+  }
   return (
     <Dialog open={held.open} onOpenChange={held.onOpenChange}>
       {held.open && (
@@ -59,7 +67,8 @@ export function RenameAssetDialog({ notebook, asset, held }: AssetDialogProps) {
             autoComplete="off"
             check={(name) => assetNameProblem(name, extension)}
             fieldTexts={notebookNameTexts}
-            rename={(name) => assets.rename(asset.id, asset.parent_id, name + extension)}
+            beforeSave={requireManage}
+            rename={(name) => assets.rename(asset.id, asset.parent_id, name + extension, requireManage)}
             explain={(error) => pagesLocked(error, t, me, (id) => distinctName(pages.tree, notebook, id, t))}
             saveLabel={t("page.save")}
             savedLabel={t("page.saved")}
@@ -131,6 +140,7 @@ type MoveAssetFormProps = { notebook: Notebook; asset: Asset; cancel: () => void
 const MoveAssetForm = observer(function MoveAssetForm({ notebook, asset, cancel, moved }: MoveAssetFormProps) {
   const assets = useAssets(notebook);
   const pages = usePageTree(notebook);
+  const { move, confirmation } = useSourceMove(pages);
   const t = useT();
   const id = useId();
   const [parent, setParent] = useState(asset.parent_id ?? root);
@@ -150,39 +160,49 @@ const MoveAssetForm = observer(function MoveAssetForm({ notebook, asset, cancel,
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (sending) return;
     const to = chosen === root ? null : chosen;
     void submit({}, async () => {
-      if (to !== asset.parent_id) {
-        await assets.move(asset.id, asset.parent_id, to);
+      if (!canManageNode(pages, asset.id)) {
+        throw new ApiError(403, { code: "forbidden" });
       }
-      moved();
+      if (to === asset.parent_id) {
+        moved();
+        return;
+      }
+      if (await move(asset.id, to, (beforeSend) => assets.move(asset.id, asset.parent_id, to, beforeSend))) {
+        moved();
+      }
     });
   }
 
   return (
-    <form ref={ref} noValidate onSubmit={onSubmit} className="space-y-4">
-      {banner !== undefined && <Alert>{banner}</Alert>}
-      <div className="space-y-2">
-        <Label htmlFor={id}>{t("page.moveParent")}</Label>
-        <NativeSelect
-          id={id}
-          value={chosen}
-          aria-invalid={problem !== undefined || undefined}
-          aria-describedby={problem === undefined ? undefined : `${id}-note`}
-          onChange={(event) => setParent(event.target.value)}
-        >
-          <ParentOptions pages={pages} parents={parents} />
-        </NativeSelect>
-        <Problem id={`${id}-note`} text={problem} />
-      </div>
-      <div className="flex justify-end gap-2">
-        <Button type="button" variant="outline" onClick={cancel} disabled={sending}>
-          {t("page.cancel")}
-        </Button>
-        <Button type="submit" disabled={sending}>
-          {sending ? t("page.moving") : t("page.move")}
-        </Button>
-      </div>
-    </form>
+    <>
+      <form ref={ref} noValidate onSubmit={onSubmit} className="space-y-4">
+        {banner !== undefined && <Alert>{banner}</Alert>}
+        <div className="space-y-2">
+          <Label htmlFor={id}>{t("page.moveParent")}</Label>
+          <NativeSelect
+            id={id}
+            value={chosen}
+            aria-invalid={problem !== undefined || undefined}
+            aria-describedby={problem === undefined ? undefined : `${id}-note`}
+            onChange={(event) => setParent(event.target.value)}
+          >
+            <ParentOptions pages={pages} parents={parents} />
+          </NativeSelect>
+          <Problem id={`${id}-note`} text={problem} />
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={cancel} disabled={sending}>
+            {t("page.cancel")}
+          </Button>
+          <Button type="submit" disabled={sending}>
+            {sending ? t("page.moving") : t("page.move")}
+          </Button>
+        </div>
+      </form>
+      {confirmation}
+    </>
   );
 });

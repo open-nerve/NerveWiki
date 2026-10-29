@@ -21,6 +21,8 @@ type RenameFormProps = {
   fieldTexts?: Readonly<Partial<Record<`name.${FieldError["code"]}`, FieldMessage>>>;
   /** Sends name, trimmed and other than current; a refusal shows in the form. */
   rename: (name: string) => Promise<unknown>;
+  /** Recheck an open dialog's capability, including an unchanged name's no-op. */
+  beforeSave?: () => void;
   /** What a refusal says above the form, or undefined for its text (useForm). */
   explain?: (error: unknown) => ReactNode;
   saveLabel: string;
@@ -48,6 +50,7 @@ export function RenameForm({
   check,
   fieldTexts,
   rename,
+  beforeSave,
   explain,
   saveLabel,
   savedLabel,
@@ -68,6 +71,7 @@ export function RenameForm({
     const edit = edits.current;
     setSaved(false);
     void submit(problem === undefined ? {} : { name: problem }, async () => {
+      beforeSave?.();
       if (trimmed !== current) {
         await rename(trimmed);
       }

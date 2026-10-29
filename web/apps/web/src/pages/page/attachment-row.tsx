@@ -51,19 +51,23 @@ export type AssetAction = "rename" | "move" | "delete" | "copy";
  * kind's icon, its name, which opens it (in a tab of its own, said
  * unseen, for what the browser shows; downloaded otherwise), its size, and
  * its menu: Open, Download, Copy embed (for one a link leads to), and for
- * a writer Rename, Move to… and Delete, which the section holds, as it
- * does where the focus goes as the menu closes (menuClosed). The row drags
- * as its embed, into the editor.
+ * whoever can manage it Rename, Move to… and Delete, which the section
+ * holds, as it does where the focus goes as the menu closes (menuClosed).
+ * The row drags as its embed, into the editor.
  */
 export function AttachmentRow({
   asset,
-  writer,
+  manage,
+  deletable,
+  source,
   act,
   menuClosed,
   linkRef,
 }: {
   asset: Asset;
-  writer: boolean;
+  manage: boolean;
+  deletable: boolean;
+  source: boolean;
   act: (action: AssetAction, asset: Asset) => void;
   menuClosed: (event: Event) => void;
   linkRef?: Ref<HTMLAnchorElement>;
@@ -88,6 +92,7 @@ export function AttachmentRow({
       }}
     >
       <AssetIcon mime={asset.mime} />
+      {source && <FileText aria-hidden className="size-4 shrink-0 text-muted-foreground" />}
       {/* A link drags itself: a drag from the name is the row's. */}
       <a
         ref={linkRef}
@@ -97,6 +102,12 @@ export function AttachmentRow({
         className="min-w-0 flex-1 truncate hover:underline"
       >
         {asset.name}
+        {source && (
+          <>
+            {" "}
+            <span className="sr-only">{t("page.sourceKind")}</span>
+          </>
+        )}
         {inline && <NewTab />}
       </a>
       <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
@@ -128,13 +139,13 @@ export function AttachmentRow({
           {link !== null && (
             <DropdownMenuItem onSelect={() => act("copy", asset)}>{t("asset.copyEmbed")}</DropdownMenuItem>
           )}
-          {writer && (
+          {manage && (
             <>
               <DropdownMenuItem onSelect={() => act("rename", asset)}>{t("page.rename")}</DropdownMenuItem>
               <DropdownMenuItem onSelect={() => act("move", asset)}>{t("page.moveTo")}</DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => act("delete", asset)}>{t("page.delete")}</DropdownMenuItem>
             </>
           )}
+          {deletable && <DropdownMenuItem onSelect={() => act("delete", asset)}>{t("page.delete")}</DropdownMenuItem>}
         </DropdownMenuContent>
       </DropdownMenu>
     </li>

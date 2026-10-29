@@ -259,18 +259,18 @@ export class AssetStore {
   }
 
   /** rename renames the attachment id under parent, one of the tree's writes, and reads its list again. */
-  async rename(id: string, parent: string | null, name: string): Promise<void> {
-    await this.changing([parent], () => this.pages.rename(id, name));
+  async rename(id: string, parent: string | null, name: string, beforeSend?: () => void): Promise<void> {
+    await this.changing([parent], () => this.pages.rename(id, name, beforeSend));
   }
 
   /** move moves the attachment id from parent to the page to (null: the root), last, and reads both lists again. */
-  async move(id: string, parent: string | null, to: string | null): Promise<void> {
-    await this.changing([parent, to], () => this.pages.move(id, { parent_id: to }));
+  async move(id: string, parent: string | null, to: string | null, beforeSend?: () => void): Promise<void> {
+    await this.changing([parent, to], () => this.pages.move(id, { parent_id: to }, beforeSend));
   }
 
   /** remove deletes the attachment id under parent, and reads its list again; one gone already is gone as well. */
-  async remove(id: string, parent: string | null): Promise<void> {
-    await this.changing([parent], () => this.pages.remove(id));
+  async remove(id: string, parent: string | null, beforeSend?: () => void): Promise<void> {
+    await this.changing([parent], () => this.pages.remove(id, beforeSend));
   }
 
   /** usedUnder are the title keys of the names under parent: the siblings', and the uploads' going there but upload's. */

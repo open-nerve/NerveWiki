@@ -20,6 +20,7 @@ import { useNewPage } from "./new-page";
 import { distinctName } from "./distinct-name";
 import { dropMove } from "./page-drag";
 import { isDragData, PageList, type TreeContext } from "./page-tree-item";
+import { useSourceMove } from "./source-move-confirmation";
 
 /**
  * PageTree is the notebook's pages in the left column (M4/P5 design 3.6,
@@ -56,6 +57,7 @@ export const PageTree = observer(function PageTree({ notebook }: { notebook: Not
   const { error, mutate } = useSWR(["pages", notebook.id], () => pages.load());
   const read = pages.tree !== undefined;
   const writer = writesPages(notebook.role);
+  const { move: sourceMove, confirmation } = useSourceMove(pages);
   useEffect(() => {
     if (pageId !== undefined && read) {
       pages.openTo(pageId);
@@ -94,13 +96,13 @@ export const PageTree = observer(function PageTree({ notebook }: { notebook: Not
           return;
         }
         setFailure(undefined);
-        pages.move(dragged, move).then(
-          () => pages.openTo(dragged),
+        sourceMove(dragged, move.parent_id, (beforeSend) => pages.move(dragged, move, beforeSend)).then(
+          (done) => (done ? pages.openTo(dragged) : undefined),
           (refusal: unknown) => setFailure(refusal)
         );
       },
     });
-  }, [writer, notebook.id, pages]);
+  }, [writer, notebook.id, pages, sourceMove]);
   const create = (parent: string | null) => {
     setFailure(undefined);
     void newPage.create(parent).then(setFailure);
@@ -149,6 +151,7 @@ export const PageTree = observer(function PageTree({ notebook }: { notebook: Not
           <NotLoaded error={error} retry={() => void mutate()} />
         </div>
       )}
+      {confirmation}
     </nav>
   );
 });

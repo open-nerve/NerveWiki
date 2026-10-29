@@ -14,6 +14,7 @@ import {
 } from "../../components/ui/alert-dialog";
 import { Button } from "../../components/ui/button";
 import { useT } from "../../i18n/i18n";
+import { canEditPageBody } from "../../app/source-permissions";
 import { ApiError } from "../../services/api";
 import type { Notebook } from "../../services/notebook.service";
 import type { PageVersionContent, TreeNode } from "../../services/page.service";
@@ -124,7 +125,7 @@ function RestoreForm({ notebook, page, version, sending, setSending, close, rest
 
   async function restore(): Promise<void> {
     const read = current.data;
-    if (read === undefined || !ready || busy.current) {
+    if (read === undefined || !ready || busy.current || !canEditPageBody(pages, page.id)) {
       return;
     }
     busy.current = true;

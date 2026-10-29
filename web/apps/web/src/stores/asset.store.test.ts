@@ -591,17 +591,17 @@ describe("AssetStore's changes", () => {
     asked.length = 0;
 
     await store.rename("a1", guide.id, "b.png");
-    expect(pages.rename).toHaveBeenCalledWith("a1", "b.png");
+    expect(pages.rename).toHaveBeenCalledWith("a1", "b.png", undefined);
     expect(asked).toEqual([guide.id]);
 
     asked.length = 0;
     await store.move("a1", guide.id, null);
-    expect(pages.move).toHaveBeenCalledWith("a1", { parent_id: null });
+    expect(pages.move).toHaveBeenCalledWith("a1", { parent_id: null }, undefined);
     expect(asked.toSorted()).toEqual([guide.id, "root"].toSorted());
 
     asked.length = 0;
     await store.remove("a1", null);
-    expect(pages.remove).toHaveBeenCalledWith("a1");
+    expect(pages.remove).toHaveBeenCalledWith("a1", undefined);
     expect(asked).toEqual(["root"]);
     expect(pages.wrote).not.toHaveBeenCalled();
   });

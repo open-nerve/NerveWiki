@@ -142,7 +142,7 @@ function store(nodes: TreeNode[] = [guide, install, linux, notes]) {
       return { valid: true, properties: [], links: [], assets_expire_at: null };
     },
   };
-  return { pages: new PageTreeStore(service, "plans", linking), sent, state };
+  return { pages: new PageTreeStore(service, "plans", linking, () => undefined), sent, state };
 }
 
 const titleTaken = new ApiError(409, { status: 409, code: "page.title_taken", title: "taken" });

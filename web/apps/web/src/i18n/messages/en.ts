@@ -119,6 +119,12 @@ export const en = {
   "page.subpagesOf": "Subpages of {name}",
   "page.agentsKind": "(instructions for agents)",
   "page.sourceRootKind": "(source area)",
+  "page.sourceKind": "(source)",
+  "page.sourceMoveTitle": "Move into sources?",
+  "page.sourceMoveBody":
+    "After moving, you cannot edit the content or manage these sources. An admin can move them out.",
+  "page.sourceReadonly":
+    "Sources keep their original content for the wiki to use. To change one, an admin can move it out of the source area first.",
   "page.breadcrumb": "Breadcrumb",
   "page.subpages": "Subpages",
   "page.new": "New page",

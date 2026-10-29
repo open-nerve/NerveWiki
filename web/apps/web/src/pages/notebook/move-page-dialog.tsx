@@ -16,6 +16,7 @@ import { usePageTree, useStore } from "../../stores/context";
 import { canHold, childrenOf } from "../../stores/page-tree";
 import { distinctName } from "./distinct-name";
 import { ParentOptions, Problem, rootOption as root } from "./parent-options";
+import { useSourceMove } from "./source-move-confirmation";
 
 /**
  * MovePageDialog moves page, with the pages under it, by two selects
@@ -85,6 +86,7 @@ const MoveForm = observer(function MoveForm({ notebook, page, onSend, cancel, mo
   const [parent, setParent] = useState(page.parent_id ?? root);
   const [position, setPosition] = useState(() => placeOf(pages.childrenOf(page.parent_id), page.id));
   const me = useStore().account?.me?.id;
+  const sourceMove = useSourceMove(pages);
   const { ref, sending, banner, problemOf, submit } = useForm(["parent_id", "after_id"], {
     explain: (error) => pagesLocked(error, t, me, (id) => distinctName(pages.tree, notebook, id, t)),
   });
@@ -116,57 +118,66 @@ const MoveForm = observer(function MoveForm({ notebook, page, onSend, cancel, mo
     const move: NodeMove =
       place === "last" ? { parent_id: parentId } : { parent_id: parentId, after_id: place === "first" ? null : place };
     void submit({}, async () => {
-      onSend();
-      await pages.move(page.id, move);
-      pages.openTo(page.id);
-      moved();
+      if (
+        await sourceMove.move(page.id, parentId, async (beforeSend) => {
+          onSend();
+          await pages.move(page.id, move, beforeSend);
+          // The move can remount this row under a closed parent before the promise settles.
+          pages.openTo(page.id);
+        })
+      ) {
+        moved();
+      }
     });
   }
 
   return (
-    <form ref={ref} noValidate onSubmit={onSubmit} className="space-y-4">
-      {banner !== undefined && <Alert>{banner}</Alert>}
-      <div className="space-y-2">
-        <Label htmlFor={ids.parent}>{t("page.moveParent")}</Label>
-        <NativeSelect
-          id={ids.parent}
-          value={chosen}
-          aria-invalid={problems.parent !== undefined || undefined}
-          aria-describedby={problems.parent === undefined ? undefined : `${ids.parent}-note`}
-          onChange={(event) => choose(event.target.value)}
-        >
-          <ParentOptions pages={pages} parents={parents} />
-        </NativeSelect>
-        <Problem id={`${ids.parent}-note`} text={problems.parent} />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor={ids.position}>{t("page.movePosition")}</Label>
-        <NativeSelect
-          id={ids.position}
-          value={place}
-          aria-invalid={problems.position !== undefined || undefined}
-          aria-describedby={problems.position === undefined ? undefined : `${ids.position}-note`}
-          onChange={(event) => setPosition(event.target.value)}
-        >
-          <option value="first">{t("page.moveFirst")}</option>
-          {siblings.map((sibling) => (
-            <option key={sibling.id} value={sibling.id}>
-              {t("page.moveAfter", { name: sibling.name })}
-            </option>
-          ))}
-          <option value="last">{t("page.moveLast")}</option>
-        </NativeSelect>
-        <Problem id={`${ids.position}-note`} text={problems.position} />
-      </div>
-      <div className="flex justify-end gap-2">
-        <Button type="button" variant="outline" onClick={cancel} disabled={sending}>
-          {t("page.cancel")}
-        </Button>
-        <Button type="submit" disabled={sending}>
-          {sending ? t("page.moving") : t("page.move")}
-        </Button>
-      </div>
-    </form>
+    <>
+      <form ref={ref} noValidate onSubmit={onSubmit} className="space-y-4">
+        {banner !== undefined && <Alert>{banner}</Alert>}
+        <div className="space-y-2">
+          <Label htmlFor={ids.parent}>{t("page.moveParent")}</Label>
+          <NativeSelect
+            id={ids.parent}
+            value={chosen}
+            aria-invalid={problems.parent !== undefined || undefined}
+            aria-describedby={problems.parent === undefined ? undefined : `${ids.parent}-note`}
+            onChange={(event) => choose(event.target.value)}
+          >
+            <ParentOptions pages={pages} parents={parents} />
+          </NativeSelect>
+          <Problem id={`${ids.parent}-note`} text={problems.parent} />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor={ids.position}>{t("page.movePosition")}</Label>
+          <NativeSelect
+            id={ids.position}
+            value={place}
+            aria-invalid={problems.position !== undefined || undefined}
+            aria-describedby={problems.position === undefined ? undefined : `${ids.position}-note`}
+            onChange={(event) => setPosition(event.target.value)}
+          >
+            <option value="first">{t("page.moveFirst")}</option>
+            {siblings.map((sibling) => (
+              <option key={sibling.id} value={sibling.id}>
+                {t("page.moveAfter", { name: sibling.name })}
+              </option>
+            ))}
+            <option value="last">{t("page.moveLast")}</option>
+          </NativeSelect>
+          <Problem id={`${ids.position}-note`} text={problems.position} />
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={cancel} disabled={sending}>
+            {t("page.cancel")}
+          </Button>
+          <Button type="submit" disabled={sending}>
+            {sending ? t("page.moving") : t("page.move")}
+          </Button>
+        </div>
+      </form>
+      {sourceMove.confirmation}
+    </>
   );
 });
 

@@ -25,15 +25,13 @@ const agents = pageNode(6, "AGENTS");
 
 /** The mode and role that the notebook list answers, with its seeded tree. */
 function wikiServer(role: Notebook["role"] = "editor", nodes = [raw, agents]) {
-  const state: { notebook: Notebook } = {
-    notebook: { ...notebookJSON, role, mode: "llm_wiki", source_root_id: raw.id },
-  };
   const server = pageServer({
     role,
     nodes,
-    answers: { "GET /api/v0/workspaces/lab/notebooks": () => json({ data: [state.notebook] }) },
+    mode: "llm_wiki",
+    sourceRootId: raw.id,
   });
-  return { ...server, state };
+  return { ...server, state: server };
 }
 
 /** Opens a page's menu and returns all its action names, in order. */
@@ -95,13 +93,31 @@ test("only the root AGENTS is protected, by its normalized title", async () => {
   renderApp(pagePath(child.id), wikiServer("editor", [raw, root, child]).app);
   const nav = await tree();
   const top = await within(nav).findByRole("link", { name: "aGeNtS (instructions for agents)" });
-  const nested = await within(nav).findByRole("link", { name: "AGENTS" });
+  const nested = await within(nav).findByRole("link", { name: "AGENTS (source)" });
 
   expect(top.parentElement?.hasAttribute("draggable")).toBe(false);
   expect(await actionsFor(user, nav, "aGeNtS (in Plans)")).toEqual(["New subpage"]);
   await user.keyboard("{Escape}");
+  expect(nested.parentElement?.hasAttribute("draggable")).toBe(false);
+  expect(await actionsFor(user, nav, "AGENTS (in raw)")).toEqual(["New subpage"]);
+});
+
+test("an ordinary nested AGENTS keeps its full menu and dragging", async () => {
+  const user = userEvent.setup();
+  const child = pageNode(7, "AGENTS", notes);
+  renderApp(pagePath(child.id), wikiServer("editor", [raw, agents, notes, child]).app);
+  const nav = await tree();
+  const nested = await within(nav).findByRole("link", { name: "AGENTS" });
   expect(nested.parentElement?.getAttribute("draggable")).toBe("true");
-  expect(await actionsFor(user, nav, "AGENTS (in raw)")).toEqual(["New subpage", "Rename", "Move to…", "Delete"]);
+  expect(await actionsFor(user, nav, "AGENTS (in Notes)")).toEqual(["New subpage", "Rename", "Move to…", "Delete"]);
+});
+
+test.each(["editor", "admin"] as const)("the source root's ancestor cannot be deleted by %s", async (role) => {
+  const user = userEvent.setup();
+  renderApp(pagePath(raw.id), wikiServer(role, [notes, { ...raw, parent_id: notes.id }, agents]).app);
+  const nav = await tree();
+  await within(nav).findByRole("button", { name: "Actions for Notes" });
+  expect(await actionsFor(user, nav, "Notes")).toEqual(["New subpage", "Rename", "Move to…"]);
 });
 
 test("the source root keeps its kind and protection when renamed and moved", async () => {
