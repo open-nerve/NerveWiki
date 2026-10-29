@@ -47,15 +47,20 @@ test.each([
   ["editor", "AGENTS", "AGENTS (instructions for agents)"],
   ["admin", "AGENTS", "AGENTS (instructions for agents)"],
   ["editor", "raw", "raw (source area)"],
-] as const)("an LLM Wiki's %s has only New subpage on %s, whose row does not drag", async (role, name, linkName) => {
-  const user = userEvent.setup();
-  renderApp(home, wikiServer(role).app);
-  const nav = await tree();
-  const link = await within(nav).findByRole("link", { name: linkName });
+] as const)(
+  "an LLM Wiki's %s has only creation actions on %s, whose row does not drag",
+  async (role, name, linkName) => {
+    const user = userEvent.setup();
+    renderApp(home, wikiServer(role).app);
+    const nav = await tree();
+    const link = await within(nav).findByRole("link", { name: linkName });
 
-  expect(link.parentElement?.hasAttribute("draggable")).toBe(false);
-  expect(await actionsFor(user, nav, name)).toEqual(["New subpage"]);
-});
+    expect(link.parentElement?.hasAttribute("draggable")).toBe(false);
+    expect(await actionsFor(user, nav, name)).toEqual(
+      name === "raw" ? ["Paste Markdown", "Upload files"] : ["New subpage"]
+    );
+  }
+);
 
 test("an LLM Wiki's admin can rename, move and drag its source root, but cannot delete it", async () => {
   const user = userEvent.setup();
@@ -64,7 +69,7 @@ test("an LLM Wiki's admin can rename, move and drag its source root, but cannot 
   const link = await within(nav).findByRole("link", { name: "raw (source area)" });
 
   expect(link.parentElement?.getAttribute("draggable")).toBe("true");
-  expect(await actionsFor(user, nav, "raw")).toEqual(["New subpage", "Rename", "Move to…"]);
+  expect(await actionsFor(user, nav, "raw")).toEqual(["Paste Markdown", "Upload files", "Rename", "Move to…"]);
 });
 
 test("an LLM Wiki's tree gives its two kinds a text equivalent after a space", async () => {
@@ -99,7 +104,7 @@ test("only the root AGENTS is protected, by its normalized title", async () => {
   expect(await actionsFor(user, nav, "aGeNtS (in Plans)")).toEqual(["New subpage"]);
   await user.keyboard("{Escape}");
   expect(nested.parentElement?.hasAttribute("draggable")).toBe(false);
-  expect(await actionsFor(user, nav, "AGENTS (in raw)")).toEqual(["New subpage"]);
+  expect(await actionsFor(user, nav, "AGENTS (in raw)")).toEqual(["Paste Markdown", "Upload files"]);
 });
 
 test("an ordinary nested AGENTS keeps its full menu and dragging", async () => {
@@ -128,7 +133,7 @@ test("the source root keeps its kind and protection when renamed and moved", asy
   const link = await within(nav).findByRole("link", { name: "Sources (source area)" });
 
   expect(link.parentElement?.hasAttribute("draggable")).toBe(false);
-  expect(await actionsFor(user, nav, "Sources")).toEqual(["New subpage"]);
+  expect(await actionsFor(user, nav, "Sources")).toEqual(["Paste Markdown", "Upload files"]);
 });
 
 test("a downgrade makes the same mounted AGENTS and source rows draggable", async () => {

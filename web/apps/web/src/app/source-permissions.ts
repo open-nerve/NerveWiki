@@ -2,6 +2,19 @@ import type { PageTreeStore } from "../stores/page-tree.store";
 import { titleKey } from "../lib/title-key";
 import { writesPages } from "./effective-role";
 
+/** A writer may add sources under the nominated root or a current source page. */
+export function canAddSource(pages: PageTreeStore, parent: string | null): boolean {
+  const notebook = pages.notebook;
+  return (
+    notebook !== undefined &&
+    writesPages(notebook.role) &&
+    notebook.mode === "llm_wiki" &&
+    parent !== null &&
+    pages.nodeById(parent)?.kind === "page" &&
+    (parent === notebook.source_root_id || pages.isSource(parent))
+  );
+}
+
 /** Current body capability, including callbacks kept across a tree or notebook refresh. */
 export function canEditPageBody(pages: PageTreeStore, id: string): boolean {
   const notebook = pages.notebook;

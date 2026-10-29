@@ -1,11 +1,13 @@
 import { useState, type ReactNode } from "react";
 
 import { useFileDrop } from "../../app/file-drop";
+import { writesPages } from "../../app/effective-role";
+import { canAddSource } from "../../app/source-permissions";
 import { Alert } from "../../components/ui/alert";
 import { useT } from "../../i18n/i18n";
 import { cn } from "../../lib/cn";
 import type { Notebook } from "../../services/notebook.service";
-import { useAssets, useStore } from "../../stores/context";
+import { useAssets, usePageTree, useStore } from "../../stores/context";
 
 /**
  * AttachmentDrop is where files dropped upload under parent, as on its
@@ -25,12 +27,21 @@ export function AttachmentDrop({
 }) {
   const t = useT();
   const assets = useAssets(notebook);
+  const pages = usePageTree(notebook);
   const { instance } = useStore();
   const [folders, setFolders] = useState(false);
   // The section of parent says what began.
   const drop = useFileDrop(enabled, (dropped) => {
     setFolders(dropped.folders);
-    assets.upload(parent, dropped.files, t("asset.untitled"), { maxBytes: instance.info?.asset_max_bytes });
+    if (!writesPages(pages.notebook?.role ?? "reader")) return;
+    if (parent !== null && canAddSource(pages, parent)) {
+      assets.uploadSources(parent, dropped.files, {
+        untitled: t("asset.untitled"),
+        maxBytes: instance.info?.asset_max_bytes,
+      });
+    } else {
+      assets.upload(parent, dropped.files, t("asset.untitled"), { maxBytes: instance.info?.asset_max_bytes });
+    }
   });
   return (
     <div className={cn("space-y-4 rounded-md", drop.over && "ring-2 ring-primary ring-offset-4")} {...drop.handlers}>

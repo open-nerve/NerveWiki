@@ -418,7 +418,7 @@ test("a source's read-only body still permits adding an attachment", async () =>
   const article = await screen.findByRole("article", { name: "Install" });
   expect(within(article).getByRole("checkbox").hasAttribute("disabled")).toBe(true);
   const section = await attachments();
-  expect(within(section).getByRole("button", { name: "Upload" })).toBeTruthy();
+  expect(within(section).getByRole("button", { name: "Upload files" })).toBeTruthy();
   fireEvent.change(picker(section), { target: { files: [new File(["original bytes"], "evidence.txt")] } });
 
   await within(section).findByRole("link", { name: "evidence.txt (source)" });

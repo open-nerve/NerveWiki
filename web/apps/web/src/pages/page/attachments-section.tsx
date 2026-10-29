@@ -10,7 +10,7 @@ import { writesPages } from "../../app/effective-role";
 import { useFileDrop } from "../../app/file-drop";
 import { NotLoaded } from "../../app/not-loaded";
 import { errorText } from "../../app/problem-messages";
-import { canDeleteNode, canManageNode } from "../../app/source-permissions";
+import { canAddSource, canDeleteNode, canManageNode } from "../../app/source-permissions";
 import { FormField } from "../../components/form-field";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
@@ -96,8 +96,15 @@ export const AttachmentsSection = observer(function AttachmentsSection({
   // The attachment of the dialog last opened, which stays as it closes, and which dialog is open.
   const [target, setTarget] = useState<Asset | undefined>(undefined);
   const [dialog, setDialog] = useState<Dialog | undefined>(undefined);
-  const upload = (files: readonly File[]) =>
-    assets.upload(parent, files, t("asset.untitled"), { maxBytes: instance.info?.asset_max_bytes });
+  const source = canAddSource(pages, parent);
+  const upload = (files: readonly File[]) => {
+    if (!writesPages(pages.notebook?.role ?? "reader")) return;
+    if (parent !== null && canAddSource(pages, parent)) {
+      assets.uploadSources(parent, files, { untitled: t("asset.untitled"), maxBytes: instance.info?.asset_max_bytes });
+    } else {
+      assets.upload(parent, files, t("asset.untitled"), { maxBytes: instance.info?.asset_max_bytes });
+    }
+  };
   const drop = useFileDrop(writer, (dropped) => {
     setFolders(dropped.folders);
     upload(dropped.files);
@@ -217,7 +224,7 @@ export const AttachmentsSection = observer(function AttachmentsSection({
             />
             <Button ref={uploadButton} variant="outline" onClick={() => picker.current?.click()}>
               <UploadIcon />
-              {t("asset.upload")}
+              {t(source ? "source.uploadFiles" : "asset.upload")}
             </Button>
           </>
         )}
@@ -345,7 +352,7 @@ function useNotice(assets: AssetStore, parent: string | null) {
       () => assets.uploads.filter((upload) => upload.parent === parent),
       (now, before) => {
         for (const upload of before) {
-          if (!now.includes(upload) && upload.uploaded !== undefined) {
+          if (!now.includes(upload) && upload.result !== undefined) {
             left.push(upload.name);
           }
         }

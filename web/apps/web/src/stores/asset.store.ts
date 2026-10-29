@@ -1,14 +1,19 @@
 import { makeAutoObservable, observable, observableRef, reaction, runInAction, when } from "mobx";
 
 import { oneAtATimeById } from "../lib/one-at-a-time";
+import { sourceTitleProblem, type SourceTitleProblem } from "../lib/source-title";
 import { titleKey } from "../lib/title-key";
 import { fixedName, freeName, isPageName } from "../lib/upload-name";
 import { ApiError } from "../services/api";
 import type { Asset, AssetPage, AssetService } from "../services/asset.service";
+import type { Page } from "../services/page.service";
 import type { PageTreeStore } from "./page-tree.store";
 
 /** How many names an upload tries before it gives up, as a page's creation does: the first free one and two more. */
 const attempts = 3;
+
+/** Markdown content has its own limit; ordinary attachments keep the instance's limit. */
+export const sourceMaxBytes = 5 * 1024 * 1024;
 
 /**
  * AssetList is the attachments read under a page or the root: as many
@@ -17,8 +22,14 @@ const attempts = 3;
  */
 export type AssetList = { assets: readonly Asset[]; next: string | null; pages: number };
 
-/** Why an upload was not sent: it is a page's file, or larger than the instance takes. */
-export type UploadRefusal = { refused: "page-file" } | { refused: "too-large"; max: number };
+/** Why a file could not be sent, including a source whose explicit title still needs fixing. */
+export type UploadRefusal =
+  | { refused: "page-file" }
+  | { refused: "too-large"; max: number }
+  | { refused: "invalid-utf8" }
+  | { refused: "source-title"; issue: SourceTitleProblem };
+
+export type UploadResult = { kind: "asset"; asset: Asset } | { kind: "page"; page: Page };
 
 /**
  * UploadTerms are what an upload begins under: what the page knows of what the server takes, the instance's largest
@@ -27,12 +38,13 @@ export type UploadRefusal = { refused: "page-file" } | { refused: "too-large"; m
 type UploadTerms = { maxBytes: number | undefined; fromEditor?: boolean };
 
 /**
- * Upload is a file going up as an attachment (M7/P4 design 3.3): under its
- * parent (null: the root), by the name it is sent with, free among its
- * siblings, of the file's name fixed; how much of it has gone, and whether
+ * Upload is a file going up as an attachment or a Markdown source: under its
+ * parent (null: the root), by the name it is sent with. An attachment's
+ * name is fixed and made free; a source's title is explicit. It tracks
+ * how much has gone and whether
  * the server has answered it (it is no longer to be cancelled then); why
  * it failed once it has, which shows until it is dismissed; and, once
- * answered, the attachment it made. One the editor began shows by it while
+ * answered, the attachment or page it made. One the editor began shows by it while
  * the page is edited.
  */
 export class Upload {
@@ -40,33 +52,38 @@ export class Upload {
   sent = 0;
   total: number;
   answered = false;
+  /** Preparing a Markdown file has no network progress percentage. */
+  preparing: boolean;
   /** failure is why the upload failed: an UploadRefusal, the server's refusal, or an error; undefined while it goes. */
   failure: unknown = undefined;
-  /** uploaded is the attachment it made, once answered. */
-  uploaded: Asset | undefined = undefined;
+  /** The server's result keeps pages separate from the editor's attachment contract. */
+  result: UploadResult | undefined = undefined;
   private readonly controller = new AbortController();
 
   constructor(
     readonly key: number,
     readonly parent: string | null,
-    /** The file's name fixed, which each name tried is free from. */
+    /** An attachment's fixed name, or a source file's proposed title. */
     readonly fixed: string,
-    readonly file: Blob,
+    readonly file: File,
     /** Whether the editor began it: a file pasted or dropped, its embed to be inserted. */
-    readonly fromEditor = false
+    readonly fromEditor = false,
+    readonly target: "asset" | "source-page" = "asset"
   ) {
     this.name = fixed;
     this.total = file.size;
+    this.preparing = target === "source-page";
     makeAutoObservable<this, "controller">(this, {
       key: false,
       parent: false,
       fixed: false,
       file: false,
       fromEditor: false,
+      target: false,
       controller: false,
       // As answered: the server's attachment, or why it failed, each whole.
       failure: observableRef,
-      uploaded: observableRef,
+      result: observableRef,
     });
   }
 
@@ -75,7 +92,7 @@ export class Upload {
     return this.controller.signal;
   }
 
-  /** cancel stops the upload: its request rejects, and it leaves the list. */
+  /** cancel stops the upload, including a source still reading or waiting for a title. */
   cancel(): void {
     this.controller.abort();
   }
@@ -85,7 +102,7 @@ export class Upload {
  * AssetStore is a notebook's attachments for one generation (M7/P4 design
  * 3.3): the lists of them read, under a page or the root, and the uploads.
  *
- * Uploads go side by side, not in the tree's queue of writes (v0.1 design
+ * Attachments go side by side, not in the tree's queue of writes (v0.1 design
  * 13.2, item 1): a large file would hold every write of the tree behind
  * it. Each sends a fixed name that no sibling and no other upload going
  * has; one taken meanwhile (409 page.title_taken: another tab's, or a name
@@ -95,6 +112,10 @@ export class Upload {
  * has its attachment, the pages after those read read as far as it is.
  * While any goes, the page warns before it is left (unload). The
  * generation's end cancels them.
+ *
+ * Markdown source files share the same persistent upload rows, but create
+ * pages through the tree's write queue. Their titles are explicit, never
+ * numbered after a conflict, and their results never enter attachment lists.
  *
  * A list's reads go one at a time, so that what each reads follows what
  * the one before it read: SWR's, those after a change, and More; a read
@@ -115,30 +136,45 @@ export class AssetStore {
   private readonly waiting = new Map<string, Promise<AssetList>>();
   private uploadsStarted = 0;
   private readonly reading = oneAtATimeById();
+  private readonly sourceSending = new Set<Upload>();
+  private readonly sourceContent = new WeakMap<Upload, string>();
 
   constructor(
     private readonly service: Pick<AssetService, "list" | "upload" | "get">,
     /** The notebook whose attachments these are. */
     readonly notebookId: string,
-    private readonly pages: Pick<PageTreeStore, "siblingsOf" | "wrote" | "rename" | "move" | "remove">,
+    private readonly pages: Pick<
+      PageTreeStore,
+      "siblingsOf" | "wrote" | "rename" | "move" | "remove" | "createWithContent"
+    >,
     /** Aborts as the generation ends: its uploads stop. */
     private readonly generation: AbortSignal,
     /** unload has the page warn before it is left, while on (v0.1 design 13.2, item 21). */
     unload: (on: boolean) => void
   ) {
-    makeAutoObservable<this, "service" | "pages" | "generation" | "asked" | "waiting" | "uploadsStarted" | "reading">(
+    makeAutoObservable<
       this,
-      {
-        service: false,
-        notebookId: false,
-        pages: false,
-        generation: false,
-        asked: false,
-        waiting: false,
-        uploadsStarted: false,
-        reading: false,
-      }
-    );
+      | "service"
+      | "pages"
+      | "generation"
+      | "asked"
+      | "waiting"
+      | "uploadsStarted"
+      | "reading"
+      | "sourceSending"
+      | "sourceContent"
+    >(this, {
+      service: false,
+      notebookId: false,
+      pages: false,
+      generation: false,
+      asked: false,
+      waiting: false,
+      uploadsStarted: false,
+      reading: false,
+      sourceSending: false,
+      sourceContent: false,
+    });
     reaction(() => this.going.length > 0, unload);
     generation.addEventListener("abort", () => {
       for (const upload of this.uploads) {
@@ -229,17 +265,64 @@ export class AssetStore {
   }
 
   /**
+   * Source files share this notebook's persistent queue. Markdown creates
+   * a page with its exact content; all other files keep attachment rules.
+   * Closing a dialog does not own or cancel any of these operations.
+   */
+  uploadSources(
+    parent: string,
+    files: readonly File[],
+    terms: { untitled: string; maxBytes: number | undefined }
+  ): Upload[] {
+    return files.flatMap((file) => {
+      if (!isPageName(file.name)) {
+        return this.upload(parent, [file], terms.untitled, terms);
+      }
+      const upload = new Upload(++this.uploadsStarted, parent, file.name.slice(0, -3), file, false, "source-page");
+      this.uploads.push(upload);
+      // A title-waiting or reading task has no HTTP request whose rejection could remove it.
+      upload.signal.addEventListener("abort", () => this.dismiss(upload), { once: true });
+      if (this.generation.aborted) {
+        upload.cancel();
+      } else {
+        void this.createSource(upload).catch(() => undefined);
+      }
+      return [upload];
+    });
+  }
+
+  /** Retry only an explicit source title, once, without attachment name repair or numbering. */
+  async retrySource(upload: Upload, title: string): Promise<void> {
+    if (upload.target !== "source-page") {
+      throw new TypeError("Only source pages have an explicit title retry");
+    }
+    if (
+      this.sourceSending.has(upload) ||
+      !this.uploads.includes(upload) ||
+      upload.signal.aborted ||
+      this.generation.aborted
+    ) {
+      return;
+    }
+    upload.name = title;
+    await this.createSource(upload);
+  }
+
+  /**
    * uploaded settles as upload does: with its attachment once the server
    * answers; rejecting with why it failed, or as it is cancelled (it
    * leaves the uploads then).
    */
   uploaded(upload: Upload): Promise<Asset> {
+    if (upload.target !== "asset") {
+      return Promise.reject(new TypeError("Source pages are not editor attachments"));
+    }
     return new Promise((resolve, reject) => {
       when(
-        () => upload.uploaded !== undefined || upload.failure !== undefined || !this.uploads.includes(upload),
+        () => upload.result !== undefined || upload.failure !== undefined || !this.uploads.includes(upload),
         () => {
-          if (upload.uploaded !== undefined) {
-            resolve(upload.uploaded);
+          if (upload.result?.kind === "asset") {
+            resolve(upload.result.asset);
           } else {
             reject(upload.failure ?? new DOMException("The upload was cancelled", "AbortError"));
           }
@@ -281,6 +364,63 @@ export class AssetStore {
         ...this.going.filter((other) => other !== upload && other.parent === parent).map((other) => other.name),
       ].map(titleKey)
     );
+  }
+
+  /** Read a source once, then create it through the tree's shared write/re-read queue. */
+  private async createSource(upload: Upload): Promise<void> {
+    this.sourceSending.add(upload);
+    try {
+      upload.signal.throwIfAborted();
+      if (upload.file.size > sourceMaxBytes) {
+        throw { refused: "too-large", max: sourceMaxBytes } satisfies UploadRefusal;
+      }
+      const issue = sourceTitleProblem(upload.name);
+      if (issue !== undefined) {
+        throw { refused: "source-title", issue } satisfies UploadRefusal;
+      }
+      runInAction(() => {
+        upload.name = upload.name.trim().normalize("NFC");
+        upload.failure = undefined;
+        upload.preparing = true;
+      });
+      let content = this.sourceContent.get(upload);
+      if (content === undefined) {
+        const bytes = await upload.file.arrayBuffer();
+        upload.signal.throwIfAborted();
+        try {
+          content = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+        } catch {
+          throw { refused: "invalid-utf8" } satisfies UploadRefusal;
+        }
+        if (new TextEncoder().encode(content).length !== bytes.byteLength) {
+          throw new Error("The Markdown UTF-8 round trip changed its byte length");
+        }
+        this.sourceContent.set(upload, content);
+      }
+      upload.signal.throwIfAborted();
+      runInAction(() => {
+        upload.preparing = false;
+      });
+      const page = await this.pages.createWithContent(upload.parent, upload.name, content, { signal: upload.signal });
+      upload.signal.throwIfAborted();
+      runInAction(() => {
+        upload.answered = true;
+        upload.result = { kind: "page", page };
+      });
+      // createWithContent has already re-read the tree. A Page has no place in attachment pagination.
+      this.dismiss(upload);
+    } catch (error) {
+      if (upload.signal.aborted || !this.uploads.includes(upload)) {
+        this.dismiss(upload);
+        return;
+      }
+      runInAction(() => {
+        upload.failure = error;
+      });
+      throw error;
+    } finally {
+      this.sourceSending.delete(upload);
+    }
   }
 
   /**
@@ -333,7 +473,7 @@ export class AssetStore {
     }
     runInAction(() => {
       upload.answered = true;
-      upload.uploaded = asset;
+      upload.result = { kind: "asset", asset };
     });
     await this.read([upload.parent]);
     await this.reach(asset);

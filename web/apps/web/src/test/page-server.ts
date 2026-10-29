@@ -193,6 +193,10 @@ export function pageServer({
     assetsExpireAt: "2100-01-01T00:00:00Z",
     /** Whether uploads wait to be released. */
     uploadsHeld: false,
+    /** Creation requests as received, including their actual AbortSignal and JSON body. */
+    createRequests: [] as Request[],
+    /** Whether creations wait before the default route checks current state and writes. */
+    createsHeld: false,
     /** Whether reading views wait to be released. */
     viewsHeld: false,
     /** The trash's items, by their root's id, and how many deletions made them. */
@@ -236,7 +240,7 @@ export function pageServer({
       server.changesets = [...server.changesets, changeset];
       return changeset;
     },
-    /** release answers the uploads, the views, the restores and the reverts held. */
+    /** release answers the uploads, creations, views, restores and reverts held. */
     release(): void {
       const held = server.held;
       server.held = [];
@@ -424,6 +428,9 @@ function endedAnswer(session: FakeSession): Response {
 function writeRoutes(
   server: SourceData & {
     sent: string[];
+    createRequests: Request[];
+    createsHeld: boolean;
+    held: (() => void)[];
     sessions: Map<string, FakeSession>;
     trashNode: (id: string) => FakeTrashItem;
   },
@@ -452,6 +459,25 @@ function writeRoutes(
         content = "",
       } = (await request.clone().json()) as { parent_id: string | null; title: string; content?: string };
       server.sent.push(`POST ${title} under ${server.nodes.find((n) => n.id === parent_id)?.name ?? "root"}`);
+      server.createRequests.push(request);
+      request.signal.throwIfAborted();
+      if (server.createsHeld) {
+        await new Promise<void>((resolve) => {
+          const finish = () => {
+            request.signal.removeEventListener("abort", finish);
+            resolve();
+          };
+          request.signal.addEventListener("abort", finish, { once: true });
+          server.held.push(finish);
+        });
+      }
+      request.signal.throwIfAborted();
+      if (role === "reader") return problem(403, "forbidden");
+      if (parent_id !== null && !server.nodes.some((node) => node.id === parent_id && node.kind === "page")) {
+        return problem(422, "validation_failed", {
+          errors: [{ field: "parent_id", code: "not_allowed", message: "no page" }],
+        });
+      }
       if (taken(parent_id, title)) {
         return problem(409, "page.title_taken");
       }

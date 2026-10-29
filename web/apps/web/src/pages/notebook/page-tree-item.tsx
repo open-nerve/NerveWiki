@@ -13,7 +13,7 @@ import { NavLink, useParams } from "react-router";
 import { ConfirmDialog } from "../../app/confirm-dialog";
 import { writesPages } from "../../app/effective-role";
 import { lockedText } from "../../app/problem-messages";
-import { canDeleteNode, canManageNode, isAgentsPage } from "../../app/source-permissions";
+import { canAddSource, canDeleteNode, canManageNode, isAgentsPage } from "../../app/source-permissions";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,6 +33,7 @@ import { distinctName } from "./distinct-name";
 import { MovePageDialog } from "./move-page-dialog";
 import { dropOperations } from "./page-drag";
 import { RenamePageDialog } from "./rename-page-dialog";
+import { SourceAddDialog } from "./source-add-dialog";
 
 // The items of a notebook's page tree (M4/P5 design 3.6, 3.7): each page's
 // row, with its link, its children's button, its menu and dialogs, and
@@ -223,7 +224,7 @@ function useDrag(
   return instruction;
 }
 
-type Dialogs = "rename" | "move" | "delete" | undefined;
+type Dialogs = "rename" | "move" | "delete" | "source-paste" | "source-files" | undefined;
 
 /**
  * PageMenu is the actions on a page of an editor's or admin's tree: New
@@ -264,6 +265,7 @@ const PageMenu = observer(function PageMenu({
   const tree = pages.tree;
   const subtree = tree === undefined ? [] : subtreeOf(tree, node.id);
   const deepest = tree !== undefined && depthOf(tree, node.id) >= maxDepth;
+  const source = canAddSource(pages, node.id);
   const shown = subtree.some((page) => page.id === pageId);
   const count = subtree.length - 1;
   // Counted as the deletion is asked: the rows do not watch the attachments, which a read may change alone.
@@ -286,9 +288,18 @@ const PageMenu = observer(function PageMenu({
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem disabled={newPage.sending || deepest} onSelect={() => newPage.create(node.id)}>
-            {t("page.newSubpage")}
-          </DropdownMenuItem>
+          {source ? (
+            <>
+              <DropdownMenuItem disabled={deepest} onSelect={() => setDialog("source-paste")}>
+                {t("source.pasteMarkdown")}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setDialog("source-files")}>{t("source.uploadFiles")}</DropdownMenuItem>
+            </>
+          ) : (
+            <DropdownMenuItem disabled={newPage.sending || deepest} onSelect={() => newPage.create(node.id)}>
+              {t("page.newSubpage")}
+            </DropdownMenuItem>
+          )}
           {canMove && (
             <>
               <DropdownMenuItem onSelect={() => setDialog("rename")}>{t("page.rename")}</DropdownMenuItem>
@@ -298,6 +309,18 @@ const PageMenu = observer(function PageMenu({
           {canDelete && <DropdownMenuItem onSelect={() => setDialog("delete")}>{t("page.delete")}</DropdownMenuItem>}
         </DropdownMenuContent>
       </DropdownMenu>
+      <SourceAddDialog
+        notebook={notebook}
+        parent={node.id}
+        name={name}
+        mode={dialog === "source-files" ? "files" : "paste"}
+        held={{
+          ...held(dialog === "source-files" ? "source-files" : "source-paste"),
+          onClosed: (done) => {
+            if (!done) focusActions(node.id);
+          },
+        }}
+      />
       {/* A rename or move sent: the tree's last refusal goes, as a deletion's has it. */}
       <RenamePageDialog
         notebook={notebook}

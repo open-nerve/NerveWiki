@@ -20,6 +20,7 @@ import type {
   LogFilter,
   NodeMove,
   NodeRestored,
+  Page,
   PageContent,
   PageService,
   PageVersionContent,
@@ -305,8 +306,27 @@ export class PageTreeStore {
   }
 
   /** create creates a page titled title under parent (null: the root), last among its siblings, and answers its id. */
-  async create(parent: string | null, title: string): Promise<string> {
-    return (await this.write(() => this.service.createPage(this.notebookId, parent, title))).id;
+  async create(parent: string | null, title: string, beforeSend?: () => void): Promise<string> {
+    return (
+      await this.write(() => {
+        beforeSend?.();
+        return this.service.createPage(this.notebookId, parent, title);
+      })
+    ).id;
+  }
+
+  /** Create a titled body in the tree's write queue; beforeSend observes the actual send, after waiting. */
+  createWithContent(
+    parent: string | null,
+    title: string,
+    content: string,
+    options?: { signal?: AbortSignal; beforeSend?: () => void }
+  ): Promise<Page> {
+    return this.write(() => {
+      options?.signal?.throwIfAborted();
+      options?.beforeSend?.();
+      return this.service.createPage(this.notebookId, parent, title, { content, signal: options?.signal });
+    });
   }
 
   async rename(id: string, name: string, beforeSend?: () => void): Promise<void> {

@@ -77,7 +77,11 @@ test.each(["editor", "admin"] as const)(
       within(await screen.findByRole("menu"))
         .getAllByRole("menuitem")
         .map((item) => item.textContent)
-    ).toEqual(role === "admin" ? ["New subpage", "Rename", "Move to…", "Delete"] : ["New subpage"]);
+    ).toEqual(
+      role === "admin"
+        ? ["Paste Markdown", "Upload files", "Rename", "Move to…", "Delete"]
+        : ["Paste Markdown", "Upload files"]
+    );
     await userEvent.setup().keyboard("{Escape}");
     const link = within(nav).getByRole("link", { name: "Install (source)" });
     expect(link.parentElement?.hasAttribute("draggable")).toBe(role === "admin");
