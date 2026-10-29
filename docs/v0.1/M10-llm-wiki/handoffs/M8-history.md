@@ -1,5 +1,5 @@
 ```yaml
-status: open
+status: done
 from: M8 收尾
 to: M10
 created: 2026-10-16
@@ -28,3 +28,5 @@ M8 让写入守卫看得到一个单元是不是撤销、还原或恢复（[M8 �
 - P2/S2：source duplicate、起始预检与后台refused/同步rollback增量已核；请求/worker预检、首批/非零前批后guard分层。决定43保留名义预检不搜索其他分法、缩批可无并发改变来源结果且先前提交保留。S2最终验收与S3网页解释未完成，本移交open。 代码已推进至 `33b4da5a`，本机与精确分支11项CI已验；B-N1原审已关闭，main集成未决状态见[P2 §10.2](../02-P2-source-area.md#102-s2-来源-hash去重与验证)与[S2审查](../reviews/P2-S2-source-hash-review.md)。
 
 - P2/S3（2026-10-29）：S1 rewrite全链/immutable/管理、S2 duplicate与同步原子/后台前批保留、S3历史页面与page/asset报告解释已有实际证据和原席复核，见[P2结果](../02-P2-source-area.md#103-s3-完整来源网页)与[S3审查](../reviews/P2-S3-source-web-review.md)。本分支尚待S3文档/合并/记录CI，保持open；P2done最迟改done，不因P1旧“P2–P5”笼统措辞延至P5。
+
+- P2完成（2026-10-29）：来源历史全部义务已核并将status改为done；rewrite全链、来源不可还原版本、管理与逐字节去重、同步整单元回滚/后台前批保留、全部错误/报告与网页解释分别见[P2 §10.4](../02-P2-source-area.md#104-p2完成核对)和[S1](../reviews/P2-S1-source-rules-review.md)、[S2](../reviews/P2-S2-source-hash-review.md)、[S3审查](../reviews/P2-S3-source-web-review.md)。S3合并`ecd79c77d0cdb2259d50758b26514f61ebb329ca`与记录`ae1794a89c6d6d501e1cdd659fcc99104721fab7`的精确main CI和四片Test均值已验。本次P2done精确main CI由主持者提交后核验、获接受后放行P3；前述各阶段open/待验均保留为当时记录，不沿P1旧“P2–P5”笼统文字推迟本移交。

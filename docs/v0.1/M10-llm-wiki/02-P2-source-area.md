@@ -3,7 +3,7 @@
 | 项 | 内容 |
 |---|---|
 | 里程碑 / Phase | M10 模式契约与 LLM Wiki / P2 来源区 |
-| 日期、状态 | 2026-10-29；S1、S2已验；S3最终代码`ae4501aa166771db153dae5dfa710ef16ee26ac4`的实现/原席复核/最终门禁及精确代码、文档、合并CI均已核，no-ff合并`ecd79c77d0cdb2259d50758b26514f61ebb329ca`。本次记录CI及两main分片均值须提交后核对，P2done另作；P2进行中，P3–P5与M10收尾未开始。当前集成见10.3及[S3审查](reviews/P2-S3-source-web-review.md) |
+| 日期、状态 | 2026-10-29；P2已完成：S1–S3实施、独立审查/原席复核、最终门禁、三Step集成和S3合并/记录两main四片均值已验，§8.3核对与移交见10.4。本次P2done精确main CI由主持者提交后核验，全绿后放行P3；当前P3–P5及M10收尾未开始，M10仍进行中 |
 | 基线 | `main` = `origin/main` = `403841fc75d0e5ac6b5f39447158213c0e07b2fe`，树 `b3665215f745d4dcfe7e8d339d4882e6d95b4a63` |
 | 入口 | P1 已完成；其后 grep 成本维护也已合并并核对，两份 main CI 全 10 项成功；第 1 节 |
 | 权威 | [文档约定](../../README.md)、[总体设计](../v0.1-design.md)、[M10 总设计](00-M10-design.md) §4.6–4.8、§4.16–4.18、§7、§9；[P1](01-P1-contract-frame.md) §8–10；[M8 历史移交](handoffs/M8-history.md)、[M9 MCP 移交](handoffs/M9-P1-mcp-registry.md) |
@@ -866,6 +866,8 @@ S1不把source_hash/duplicate UI/SourceArea lint读写成已实现；决定36–
 
 ### 8.3 S3 及 P2 完成投影
 
+完成核对（2026-10-29）：以下逐项结果与最终人工核对单的接受证据见[10.4](#104-p2完成核对)；本节的完成标准及后续Phase边界保持。
+
 | 目标 | 新文字/完成动作 |
 |---|---|
 | §13.2 第7项标题/异步 | “来源新建先问标题，粘贴正文一次create；409留表单不自动编号；成功导航遵守mounted/location。” |
@@ -894,8 +896,8 @@ P3：在已实现page.SourceArea基础上增加整区lint/pending来源读取，
 | P2设计 | 已审查并接受 | 原四项发现及B-Q1在设计层resolved；4755精确main CI40413727596十项成功；[设计审查](reviews/P2-design-review.md) |
 | 10.1 S1 | S1已合并；记录CI与两main Test均值已核，S2继续实施 | [实施审查](reviews/P2-S1-source-rules-review.md)；合并见 00 号文档第 12 节 |
 | 10.2 S2 | 已验；66d823合并与8904记录精确main CI均已接受、四片Test均值433/403/299/319.5s；旧失败和fresh/reuse历史保留 | [S2审查](reviews/P2-S2-source-hash-review.md#合并与后续验收)与本节入口补记 |
-| 10.3 S3 | 实现、原席复核、最终门禁与精确代码/文档/合并CI已验；本次记录CI及两main均值待核 | no-ff `ecd79c77d0cdb2259d50758b26514f61ebb329ca`；[S3审查](reviews/P2-S3-source-web-review.md)；00第12节 |
-| 10.4 P2done | pending；本次合并记录精确main CI与两main四片均值闭环后独立完成 | 核§8.3与handoff；P2done自身精确main CI获接受后放行P3，P3仍未开始 |
+| 10.3 S3 | 已完成；实现/原席复核/最终门禁与精确代码、文档、合并、记录CI已验；两main四片均值见10.4 | no-ff `ecd79c77d0cdb2259d50758b26514f61ebb329ca`，记录`ae1794a89c6d6d501e1cdd659fcc99104721fab7`；[S3审查](reviews/P2-S3-source-web-review.md)；00第12节 |
+| 10.4 P2done | 已完成实施、三审、集成及§8.3/移交核对 | 本次完成提交精确main CI全绿后由主持者放行P3；自身SHA/run在后续既定P3文档自然补录 |
 
 ### 10.1 S1 来源规则
 
@@ -1109,13 +1111,40 @@ Web 178 文件/3812 通过；short 8208 run=6915 pass+1293 明确 skip；完整 
 
 精确 `ae4501aa166771db153dae5dfa710ef16ee26ac4` 的 [CI 40843325190](https://github.com/open-nerve/NerveWiki/actions/runs/40843325190)（m10-p2-s3 push，attempt 1）实际 11 个作业及列明必需步骤均成功；四片 Test 步为 453.0/311.0/289.0/371.0 s。全部控制及每轮argv、失败断言、恢复/输入hash见S3审查与树外原件；S3新增/原审追加和旧S2库存分开。S3集成记录（2026-10-29）：代码`ae4501aa166771db153dae5dfa710ef16ee26ac4`/[CI40843325190](https://github.com/open-nerve/NerveWiki/actions/runs/40843325190)、文档`f6b397b7234f2495ac092be8214b8bf266a95c91`/[CI40848348596](https://github.com/open-nerve/NerveWiki/actions/runs/40848348596)和no-ff合并`ecd79c77d0cdb2259d50758b26514f61ebb329ca`/[main CI40852524505](https://github.com/open-nerve/NerveWiki/actions/runs/40852524505)均已按精确SHA/attempt接受；两父与同树证明见[S3审查](reviews/P2-S3-source-web-review.md#合并phase边界与移交)。本次合并记录写作时尚未产生自身提交号/CI；两main分片均值及P2完成另在10.4自然补记。
 
-### 10.4 P2done 的待闭环事项
+### 10.4 P2完成核对
 
-S1/S2已验；S3实现、三审复核、最终门禁和精确代码/文档/合并CI按10.3记录。本次合并记录的精确main CI和合并/记录两main四片Test均值<450s尚待提交后核对；接受后独立作`docs: M10/P2 done (M10/P2)`，核§8.3及handoff并更新00头/§12/§13和本节。取得P2done自身精确main CI全绿后，主持者才放行P3。
+P2/S1–S3实施、独立审查与原席复核、最终门禁和三Step集成已验；S1/S2的合并与记录闭环保留10.1/10.2的实际样本。S3合并`ecd79c77d0cdb2259d50758b26514f61ebb329ca`与记录`ae1794a89c6d6d501e1cdd659fcc99104721fab7`的精确main CI分别为[40852524505](https://github.com/open-nerve/NerveWiki/actions/runs/40852524505) attempt 1、[40857496453](https://github.com/open-nerve/NerveWiki/actions/runs/40857496453) attempt 1；两轮全部实际作业及必需步骤成功。四片只配对Test步骤实际时长，逐片均值<450s：
+
+| 样本（精确main） | run / attempt | bootstrap-1 Test s | bootstrap-2 Test s | bootstrap-3 Test s | bootstrap-4 Test s |
+|---|---|---|---|---|---|
+| `ecd79c77d0cdb2259d50758b26514f61ebb329ca` | [40852524505](https://github.com/open-nerve/NerveWiki/actions/runs/40852524505) / 1 | 452 | 447 | 359 | 366 |
+| `ae1794a89c6d6d501e1cdd659fcc99104721fab7` | [40857496453](https://github.com/open-nerve/NerveWiki/actions/runs/40857496453) / 1 | 425 | 447 | 249 | 363 |
+| 两次均值（须严格<450s） | — | 438.5 | 447 | 304 | 364.5 |
+| 450s余量 | — | 11.5 | 3 | 146 | 85.5 |
+
+两main配对接受原件`/home/parallels/.local/state/nervewiki/m10/p2-s3/s35-merge-record-main-ci-pair.json`，SHA-256 `4a4637db7a87f3edf359139cb6b69424930b44f1570f659e90562f9c8e91cded`；期间失败/重试记录：无（实际清单为`[]`；两样本均attempt 1，完整期间清单已核，没有择绿或重试）。§8.3及其最终人工核对单由主持者逐项接受，原件`/home/parallels/.local/state/nervewiki/m10/p2-s3/s35-p2-closeout-acceptance.json`，SHA-256 `b697704eaca5ad7c1b94f9ccf7c186ee154e93f2ca080d7888c18523013b5d9d`：
+
+| §8.3项目 | 已核范围 | 实际证据 |
+|---|---|---|
+| 13.2#7 | 标题及粘贴一次create、409留值、mounted/location | `source-add-dialog.test.tsx`、LW3及最终控制 |
+| 13.2#12 | 持久mixed队列、正文/附件结果分型、原字节校验、当前权限重试/队列末跳 | `source-uploads.test.tsx`、LW3、B-M1原席关闭及最终控制 |
+| 13.2#17 | 完整路径、当前父页asset focus、缺失/区外移入补读、refused与重复目标分离 | `duplicate-text.test.tsx`、LW3/5/6/7、C-M1原席关闭；location冗余存活仍保留 |
+| 13.2#23 | 来源编辑入口关闭、真editor/session释放、autosave/unsaved、同context降级恢复 | `source-actions`、`edit-session`、`page-editing`测试及LW4/LW12 |
+| 13.4#3 | LW3–7页面与原API/MCP共用断言、LW12原事件连接/繁忙导入证明 | 最终108文件329pass、0skip/retry/flaky；逐故事及fake范围见S3审查 |
+| M8 | P1及S1–S3来源历史义务逐项完成，状态done | M8移交与P2三Step审查；rewrite、immutable、管理/查重、原子/部分完成与页面报告 |
+| M7/M9/M5/M6 | M7§3/M9§7页面已验；整份M7/M9/M6仍open，M5done保持 | 四份当前handoff；M11既有契约、M12实机/负载/停机与成本稳定性仍待 |
+| P1§9/00/P2 | P1交P2项与三Step实际集成核对；决定48当前/历史模板字节分别保留 | P1§9、P2 10.1–10.4、00§12；当前raw659/605、总5580，历史648/593、总5557 |
+| 最终人工核对单 | 码、guard/veto、SQL/fakes/API全链、全部控制、600万A/B与main CI均有证据 | S2入口接受、S3最终门禁/控制/三审原件及本节两main精确CI；40组39kill+1存活，126日志含明确CR桥接 |
+
+上述产品核对原件`/home/parallels/.local/state/nervewiki/m10/p2-s3/s35-p2-product-closeout-audit.json`，SHA-256 `a00d5ca3e1bbee39f3d09e74373633f650025b6fa70eaf402ab0121e42a083ba`，逐项列实际文件及既有接受原件；这是主持者对不变产品与记录的核对，没有冒称新一轮独立审查或测试。600万冷启动的OS/设备缓存与WAL归因限制、实机负载未验、代码CI revert 3.970788992 s窄余量以及IndexItems30ms/grep600ms持续稳定性义务均保留。
+
+本次按workflow §3.7提交`docs: M10/P2 done (M10/P2)`，当前完成状态记录实施、审查、集成与收尾核对已验。主持者仍须在推送后取得此提交的精确main CI全绿，才放行P3；自己的SHA/run不写入自身，后续既定P3文档自然补录，不追加自引用记录提交。
+
+分支文档阶段的移交核对（2026-10-29；以下保留当时状态，当前完成状态见后段）：
 
 根逐项核P2 §8.3/P1 §9与移交：M8的S1/S2服务端和S3历史页面义务已有对应证据，分支阶段保持open，P2done最迟done；M7去重页面完成、lint/贡献者等P3/P4仍open；M9写契约与页面消费完成，工具/虚拟/prompt属P3–P5仍open；M5 mode消费已验且done保持；M6六行与注意项仍P3/open。M11只交接既有来源/hash/rewrite契约且升级未开始；M12保留既有6M与真实生产主机/负载/停机窗口的未验边界。无新打磨事项，因此M5-polish不改。最终门禁/CI与S3合并、记录、P2done是后续实际验收条件，不预填完成。
 
-M8来源历史实施义务已逐项覆盖，当前等待P2done核对后将状态改done；M7/M9整份仍open，M5done保持，M6lint仍open。M11只接既有契约，M12保留实机测量；P3是下一Phase但未开始，不在本次写P3设计，M10继续进行中。
+M8来源历史移交已核P1及P2/S1–S3的完整证据并改done：rewrite全链、来源不可改/不可还原版本、管理与去重、同步原子回滚、后台前批保留及页面报告均已落实。M7§3/M9§7页面最终验收已记，整份仍open；M5done保持，M6lint仍open。M11只接既有契约，M12保留实机/负载/停机窗口测量及既有成本稳定性义务。P3是下一Phase，当前未开始；P4/P5及M10收尾待办，M10继续进行中。
 
 ## 附录：核对过的代码与证据
 

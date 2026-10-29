@@ -4,10 +4,10 @@
 |---|---|
 | 对象 | 分支 `m10-p2-s3`；基线 `8904a8769646c3b8919ff6a4c503eeae3ac70727`；三份独立初审头 `1da533667955cb618a67dfe22991680f099bec19`；修复提交 `8c17b5cceb65b2a0f70976bbe4752daeaabaee05`；最终代码 `ae4501aa166771db153dae5dfa710ef16ee26ac4`，tree `8e31387857571a2db6baf48c092382b66adc77d4`。 |
 | 权威与范围 | [P2 设计](../02-P2-source-area.md) §4–§8.3、[M10 总设计](../00-M10-design.md) §4.7/4.16、[总体设计](../../v0.1-design.md)、[工作流](../../claude_to_codex/02-workflow.md) §3。只完成来源网页、真实编辑失去、来源添加与重复反馈；P3 lint、P4 虚拟文件/ingest、P5 prompt、M11 升级仍不在本 Step。 |
-| 日期、状态 | 2026-10-29；S3实现、原席复核、最终门禁及精确代码/文档/合并CI已验，no-ff合并`ecd79c77d0cdb2259d50758b26514f61ebb329ca`。本次合并记录自身CI与两main四片均值留待提交后；P2仍待独立完成，M10进行中。分支文档阶段的未决描述保留其当时语境。 |
+| 日期、状态 | 2026-10-29；S3实现、原席复核、最终门禁、精确代码/文档/合并/记录CI及两main四片均值已验；P2实施、审查、集成与§8.3完成核对已闭合，M10仍进行中。本次P2done精确main CI由主持者提交后核验，全绿后放行P3；不预填自身SHA/run。前期分支和合并记录的待验描述保留其历史时点。 |
 | 独立审查 | A/B/C 均从新上下文在各自 detached worktree 对 BASE→1da 读规范、diff、代码并自行复现；先固定独立初稿，后审计根提供的命令/日志。初审合计 0 Important / 3 Minor / 0 Nit；C 另有两个流程/证据 Q，见下文。 |
 | 修复复核 | A-M1、B-M1、C-M1 的修复、原席实际核对和边界分别列明；不是用作者自测代替原审。 |
-| 文档与合并 | 分支文档`f6b397b7234f2495ac092be8214b8bf266a95c91`的精确CI与no-ff合并`ecd79c77d0cdb2259d50758b26514f61ebb329ca`的精确main CI已验；实际SHA、两父、tree及run/attempt见下文“合并、Phase边界与移交”。本次记录不写入自身SHA/CI；[00第12节](../00-M10-design.md#12-phase-进度表)同步当前状态。 |
+| 文档与合并 | 文档`f6b397b7234f2495ac092be8214b8bf266a95c91`、no-ff合并`ecd79c77d0cdb2259d50758b26514f61ebb329ca`和记录`ae1794a89c6d6d501e1cdd659fcc99104721fab7`的各精确CI均已验；两main配对见下文。P2完成核对在[P2 §10.4](../02-P2-source-area.md#104-p2完成核对)，[00第12节](../00-M10-design.md#12-phase-进度表)同步当前状态；本次P2done自己的SHA/run留后续既定P3文档自然补录。 |
 
 ## 实施提交与实际差异
 
@@ -186,9 +186,22 @@ S2入口在本次既定文档自然补记：精确 `66d8236c12aaa8923616f6f42f2e
 
 集成接受原件`/home/parallels/.local/state/nervewiki/m10/p2-s3/s35-main-integration-acceptance.json`，SHA-256 `ebfd5804de3a0d0bb95f57020c0357dde7ddfdc0df13a9b0d4abc131c0c43f3e`。本次合并记录写作时尚未产生自身提交号/CI；记录main与上表合并main的四片Test实际配对和均值由既定P2done自然补记。合并见00第12节，不为记录自身SHA循环追加文档。
 
+P2完成时自然补录（2026-10-29）：上述合并记录提交为`ae1794a89c6d6d501e1cdd659fcc99104721fab7`，其精确main [CI40857496453](https://github.com/open-nerve/NerveWiki/actions/runs/40857496453) attempt 1全部11作业及必需步骤成功。与合并main逐片配对如下：
+
+| 样本（精确main） | run / attempt | bootstrap-1 Test s | bootstrap-2 Test s | bootstrap-3 Test s | bootstrap-4 Test s |
+|---|---|---|---|---|---|
+| `ecd79c77d0cdb2259d50758b26514f61ebb329ca` | [40852524505](https://github.com/open-nerve/NerveWiki/actions/runs/40852524505) / 1 | 452 | 447 | 359 | 366 |
+| `ae1794a89c6d6d501e1cdd659fcc99104721fab7` | [40857496453](https://github.com/open-nerve/NerveWiki/actions/runs/40857496453) / 1 | 425 | 447 | 249 | 363 |
+| 两次均值（须严格<450s） | — | 438.5 | 447 | 304 | 364.5 |
+| 450s余量 | — | 11.5 | 3 | 146 | 85.5 |
+
+四片均值均<450s；配对接受原件`/home/parallels/.local/state/nervewiki/m10/p2-s3/s35-merge-record-main-ci-pair.json`，SHA-256 `4a4637db7a87f3edf359139cb6b69424930b44f1570f659e90562f9c8e91cded`。期间失败/重试记录：无（实际清单为`[]`；两样本均attempt 1，完整期间清单已核，没有择绿或重试）。P2 §8.3及最终人工核对的闭环见[10.4](../02-P2-source-area.md#104-p2完成核对)，本次P2done提交的精确main CI由主持者提交后核验，获接受前不进入P3。
+
+分支文档阶段的移交核对（2026-10-29；以下保留当时状态，当前完成状态见后段）：
+
 根逐项核P2 §8.3/P1 §9与移交：M8的S1/S2服务端和S3历史页面义务已有对应证据，分支阶段保持open，P2done最迟done；M7去重页面完成、lint/贡献者等P3/P4仍open；M9写契约与页面消费完成，工具/虚拟/prompt属P3–P5仍open；M5 mode消费已验且done保持；M6六行与注意项仍P3/open。M11只交接既有来源/hash/rewrite契约且升级未开始；M12保留既有6M与真实生产主机/负载/停机窗口的未验边界。无新打磨事项，因此M5-polish不改。最终门禁/CI与S3合并、记录、P2done是后续实际验收条件，不预填完成。
 
-M8来源历史的实现义务已由S1–S3证据逐项覆盖；S3合并CI已验，P2done核对后将M8改done。M7§3与M9§7记录页面最终验收，整份仍open；M5done、M6lintopen保持。M11只接已实现的同事务hash重建/rewrite契约，M12保留生产实机/负载/停机窗口；不设计升级。P3只下一Phase，未开始；P4/P5及M10收尾继续待办。
+M8来源历史全部义务已由S1–S3证据核对，状态done；M7§3与M9§7页面最终验收已记，整份仍open；M5done、M6lintopen保持。M11只接已实现的同事务hash重建/rewrite契约，M12保留生产实机/负载/停机窗口与既有成本稳定性义务；不设计升级。P3是下一Phase，当前未开始；P4/P5及M10收尾继续待办。
 
 ## 证据索引
 

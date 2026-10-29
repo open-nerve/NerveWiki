@@ -4,7 +4,7 @@
 |---|---|
 | 里程碑 | M10 模式契约与 LLM Wiki（`M10-llm-wiki`） |
 | 日期 | 2026-10-24 |
-| 状态 | 进行中；P1、P2/S1、S2已验；S3实现、原席复核、最终门禁及代码/文档/合并CI已验，no-ff合并为`ecd79c77d0cdb2259d50758b26514f61ebb329ca`。本次合并记录的精确main CI与两main分片均值仍须提交后核对；P2尚待独立完成文档。P3–P5与M10收尾未开始，不开始M11。当前证据见[P2 §10.3](02-P2-source-area.md#103-s3-完整来源网页)及[S3审查](reviews/P2-S3-source-web-review.md)；旧失败和各阶段待验文字保留其当时语境。 |
+| 状态 | 进行中；P1、P2已完成。P2/S1–S3实施、独立审查/原席复核、最终门禁、三Step集成与S3合并/记录两main均值已验；[P2 §10.4](02-P2-source-area.md#104-p2完成核对)记录§8.3与移交闭环。本次P2done提交的精确main CI由主持者提交后核验，全绿后放行下一Phase P3；P3–P5与M10收尾当前未开始，不开始M11。旧失败及各阶段待验文字保留为当时记录。 |
 | 依赖 | M9（MCP 工具与 prompt 注册表）、M7（导出贡献者、附件进树与链接）、M6（链接索引）、M8（变更集的类型、撤销与后台任务）；总体设计 12.3 照此修订（第 7 节"总体设计的修订"） |
 | 上级文档 | [v0.1 总体设计](../v0.1-design.md) 第 3.3–3.10、4.2、4.4、4.5、5、6.1–6.3、7.1、7.2、8.2、8.3、8.5、9.2、10、10.1、12.1–12.6、13、14、15 节 |
 | 代码位置的写法 | 同 [M9 总设计](../M9-mcp/00-M9-design.md)：模块写作 `page/app/unit.go:187`（`server/internal/modules/` 之下）；`platform/…`、`bootstrap/…`、`shared/…`、`archtest/…` 在 `server/internal/` 之下；迁移写作 `00009_notebook_notebooks.sql:5`（`server/migrations/sql/`）；SDK 写作 `sdk/mcp/protocol.go:966`（`~/go/pkg/mod/github.com/modelcontextprotocol/go-sdk@v1.8.0/`）；前端写作 `web/…/pages/page/page-layout.tsx:153`（`web/apps/web/src/` 之下）；e2e 写作 `e2e/fixtures/mcp.ts:41`。行号都是 `91ee78d8` 的（`ebed0e07` 只加了这份文档） |
@@ -832,7 +832,7 @@ Nerve 没有 MCP、prompt、数据的 lint、模式的契约或只增不改的�
 | P | Phase 文档 | 状态 | 审查 | 合并 |
 |---|---|---|---|---|
 | P1 契约的框架（S1–S4） | [01-P1](01-P1-contract-frame.md) | 已完成 | [设计](reviews/P1-design-review.md)、[S1](reviews/P1-S1-mode-template-review.md)、[S2](reviews/P1-S2-guard-review.md)、[S3](reviews/P1-S3-prechecks-refusals-numbering-review.md)、[S4](reviews/P1-S4-web-review.md) | S1 `45d086a1`、S2 `bad859c0`；S3 `a46c3d1d`；S4 `f261952f` |
-| P2 来源区（S1–S3） | [02-P2](02-P2-source-area.md) | 进行中；S1/S2已验，S3已合并且精确main CI已验；本次记录CI、两main均值及P2done待后续实际核验 | [设计](reviews/P2-design-review.md)、[S1](reviews/P2-S1-source-rules-review.md)、[S2](reviews/P2-S2-source-hash-review.md)、[S3](reviews/P2-S3-source-web-review.md) | S1 `bf8d6625`；S2 `66d8236c12aaa8923616f6f42f2ee33b772884f9`，记录`8904a8769646c3b8919ff6a4c503eeae3ac70727`；S3 `ecd79c77d0cdb2259d50758b26514f61ebb329ca`，本次记录号不写入自身 |
+| P2 来源区（S1–S3） | [02-P2](02-P2-source-area.md) | 已完成；实施、三审复核、三Step集成及两main均值已验，完成核对见§10.4；本次P2done精确main CI接受后放行P3 | [设计](reviews/P2-design-review.md)、[S1](reviews/P2-S1-source-rules-review.md)、[S2](reviews/P2-S2-source-hash-review.md)、[S3](reviews/P2-S3-source-web-review.md) | S1 `bf8d6625`；S2 `66d8236c12aaa8923616f6f42f2ee33b772884f9`，记录`8904a8769646c3b8919ff6a4c503eeae3ac70727`；S3 `ecd79c77d0cdb2259d50758b26514f61ebb329ca`，记录`ae1794a89c6d6d501e1cdd659fcc99104721fab7` |
 | P3 lint 与健康度（S1、S2） | — | 未开始 | — | — |
 | P4 虚拟页面与 ingest（S1–S3） | — | 未开始 | — | — |
 | P5 playbook、说明与收尾的故事（S1） | — | 未开始 | — | — |
@@ -848,6 +848,7 @@ Nerve 没有 MCP、prompt、数据的 lint、模式的契约或只增不改的�
 
 | 日期 | 变更 | 依据 |
 |---|---|---|
+| 2026-10-29 | P2完成：S1–S3实施/原席复核与集成已验；S3合并`ecd79c77d0cdb2259d50758b26514f61ebb329ca`/[CI40852524505](https://github.com/open-nerve/NerveWiki/actions/runs/40852524505)和记录`ae1794a89c6d6d501e1cdd659fcc99104721fab7`/[CI40857496453](https://github.com/open-nerve/NerveWiki/actions/runs/40857496453)精确main配对已核，四片Test均值438.5/447/304/364.5 s，均<450s；§8.3及移交逐项闭合，M8改done。M10仍进行中，P3下一Phase但未开始；本次P2done精确CI取得全绿后由主持者放行，自己的SHA/run在后续既定P3文档自然补录 | [P2 §10.4](02-P2-source-area.md#104-p2完成核对)、[S3审查](reviews/P2-S3-source-web-review.md)、[M8移交](handoffs/M8-history.md) |
 | 2026-10-29 | S3代码`ae4501aa166771db153dae5dfa710ef16ee26ac4`的[CI40843325190](https://github.com/open-nerve/NerveWiki/actions/runs/40843325190)、文档`f6b397b7234f2495ac092be8214b8bf266a95c91`的[CI40848348596](https://github.com/open-nerve/NerveWiki/actions/runs/40848348596)及no-ff合并`ecd79c77d0cdb2259d50758b26514f61ebb329ca`的[main CI40852524505](https://github.com/open-nerve/NerveWiki/actions/runs/40852524505)已按各精确SHA/attempt核验；本次合并记录自身CI与两main分片均值留待提交后，P2仍待独立完成。分支阶段文字保留为当时记录 | [P2 §10.3](02-P2-source-area.md#103-s3-完整来源网页)、[S3审查](reviews/P2-S3-source-web-review.md) |
 | 2026-10-29 | P2/S3最终来源网页、会话释放、显式标题/原字节持续队列、完整duplicate路径与历史scope、LW3–7/LW12；三Minor修复和原席复核，决定48模板单句；补S2记录CI40804121398及双main四片均值433/403/299/319.5s。S3文档/合并/记录CI仍待，P2/M10进行中 | [P2 §10.3](02-P2-source-area.md#103-s3-完整来源网页)、[S3审查](reviews/P2-S3-source-web-review.md) |
 | 2026-10-24 | 初稿（`ebed0e07`） | 移交 5 份、代码的调查（`91ee78d8`）、负责人 2026-10-24 的四个决定（第 11 节） |
