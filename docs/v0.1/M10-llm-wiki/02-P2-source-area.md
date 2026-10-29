@@ -883,7 +883,7 @@ S1不把source_hash/duplicate UI/SourceArea lint读写成已实现；决定36–
 
 ## 9. 给后面 Phase 与 M 的移交
 
-P3：在已实现page.SourceArea基础上增加整区lint/pending来源读取，不复用匹配探查当整区枚举；继续root严格排除、asset SHA/当下字节、0字节page规则。P2未做lint、健康度、两工具或budget说明余量。P4：ingest/虚拟index/log/贡献者使用现有write guard与rewrite、derived hash规则；系统rewrite只维护当前hash不拒收敛，不能用新增普通输入伪造rewrite。P5：prompts与系统说明按最终源区规则（不许admin改正文、too_large、按事务provenance的duplicate文字）表述，仍自己完成prompt契约/人工清单/根README；P2不抢写prompt实现。
+P3：在已实现page.SourceArea基础上增加整区lint/pending来源读取，不复用匹配探查当整区枚举；继续root严格排除、asset SHA/当下字节、0字节page规则。P2未做lint、健康度、两工具或budget说明余量。P4：ingest/虚拟index/log/贡献者使用现有write guard与rewrite、derived hash规则；系统rewrite只维护当前hash不拒收敛，不能用新增普通输入伪造rewrite。P5：prompts与系统说明按最终源区规则（不许admin改正文、too_large、按事务provenance的duplicate文字）表述，仍自己完成prompt契约/人工清单/根README；P2不抢写prompt实现。 P3细化合同见[03-P3](03-P3-lint-health.md)：整区Nodes与Planned compactNodes是不同窄读，root严格排除、非hash枚举、>10k/显式standard拟议root、asset最终真实字节；SourceSlots/附件跟随与预算/Stop按该文。实现完成后再追加S1/S2审查、运行/CI证据，当前不写已承接完成。
 
 `M11-upgrade/handoffs/M10-mode.md`在P2验收后加入：“批准变为LLM时，在同事务重建指定根严格后代source_hash，清来源外；普通模式允许预指定SourceRootID但hash仍NULL。保全的revision.rewrite需保留，旧无标记/Down-Up偏严。SourceHashes/ModeSubscriber顺序及free refusal.code沿P1；实现与例见P2。” 状态open；不编写升级流程。SourceRootID旧注释过强的Nit仍在M10收尾，不在这里顺手改变SQL约束。
 

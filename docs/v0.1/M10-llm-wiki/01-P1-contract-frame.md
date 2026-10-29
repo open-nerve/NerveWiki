@@ -2495,7 +2495,7 @@ P2后续核对：source_hash/duplicate及Forget在S2已验，完整网页和生�
 P2/S2最终入口补记：记录8904的精确CI40804121398与merge66d823的40800844731均11作业成功，两main四片Test均值433/403/299/319.5s；具体原件见[P2 §10.2](02-P2-source-area.md#102-s2-来源-hash去重与验证)。S3已补附件/全路径/历史解释，集成状态见10.3；上条旧阶段记录保留。
 
 - **P2/S3**：按P2两个实际入口“粘贴 Markdown/上传文件”实施，来源行有可读“来源”等价、全角色/只读与历史反馈。主持者决定48（负责人可以改判）对本条旧“不同时改模板”名称约定作窄偏离，只改两种raw模板的入口单句；现行全文/字节见3.9，存量正文不改，S1历史字节保留。三审修复、最终验证及待集成状态见[P2 §10.3](02-P2-source-area.md#103-s3-完整来源网页)与[S3审查](reviews/P2-S3-source-web-review.md)。
-- **P3**：`lint.read` 进 `wiki.Actions()`（`actions_test` 的并集已有它）；MCP 的矩阵的 LLM Wiki 的变体（按行的工作区照 3.14 的写法）；模板在两种语言里 lint 干净（3.9 的"代码之外没有链接"是它的前提）。
+- **P3**：`lint.read` 进 `wiki.Actions()`（`actions_test` 的并集已有它）；MCP 的矩阵的 LLM Wiki 的变体（按行的工作区照 3.14 的写法）；模板在两种语言里 lint 干净（3.9 的"代码之外没有链接"是它的前提）。 P3设计已在[03-P3](03-P3-lint-health.md)细化：S1-3成对落内部action/规则/Actions，S1-4公开operation，两scope保留Gate差异；这些实现/两语言模板干净证据待P3/S1完成后追加，不改P1历史记录。
 - **P4**：`TestTheDowngradeEndsTheContract` 加"`list` 没有虚拟的两项"；LW12 加"虚拟的两行消失"。
 - **P5**：`open_notebook` 与握手的系统的一段（P1 的 `open_notebook` 已答 `mode`）；LW1 (MCP) 加系统的一段的一步；`TestTheDowngradeEndsTheContract` 加"握手没有系统的一段"；模板讲 prompt 的那一句与系统的那一段同样的意思（00-M10 4.15）。
 - **M11**（写进 `M11-upgrade/handoffs/M10-mode.md`，第 8 节）：`notebook.change_mode` 可以给发起与批准升级；升级经 `ModeSubscriber` 发同一个 `mode`；`notebooks_source_root_check` 许普通的笔记本先有来源根、`SetNotebookMode` 一次写模式与来源根（3.2、3.3）；`wiki/domain` 的 `ContractOf`（经 `wiki.TemplatePages`）是它读的契约表；`Grants` 与 `Refused` 是冻结的守卫加码的地方（`refusal.code` 是自由的字符串，3.19、3.22、3.26，审查 C2-N2）；升级要先处理根下的保留的标题与 `AGENTS`（4.9 的"写给后面的 M"）。
