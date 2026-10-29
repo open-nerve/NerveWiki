@@ -417,3 +417,115 @@ test("a late rejected drag does not show its refusal after leaving the initiatin
   expect(within(await tree()).queryByRole("alert")).toBeNull();
   expect(view.router.state.location.pathname).toBe(pagePath(guide.id));
 });
+
+test.each(["top level", "nested"] as const)(
+  "a writer keeps a source-root ancestor at its %s parent but can reorder and rename it",
+  async (placement) => {
+    const user = userEvent.setup();
+    const container = placement === "nested" ? pageNode(90, "Container") : undefined;
+    const ancestor = { ...notes, parent_id: container?.id ?? null };
+    const raw = { ...guide, parent_id: ancestor.id };
+    const outside = pageNode(91, "Outside");
+    const sibling = pageNode(92, "Sibling", container);
+    const server = pageServer({
+      role: "editor",
+      mode: "llm_wiki",
+      sourceRootId: raw.id,
+      nodes: [...(container === undefined ? [] : [container]), sibling, ancestor, raw, install, outside],
+    });
+    renderSourceTree(server);
+    const nav = await tree();
+    await within(nav).findByRole("button", { name: "Actions for Notes" });
+    const before = structuredClone(server.nodes);
+    // Even a stale drop callback, whose hitbox still says available, must not send the forbidden reparent.
+    await drop(ancestor.id, outside.id);
+    expect(moves(server)).toEqual([]);
+    expect(server.nodes).toEqual(before);
+    await user.click(within(nav).getByRole("button", { name: "Actions for Notes" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Move to…" }));
+    const dialog = await screen.findByRole("dialog", { name: "Move Notes" });
+    const parents = within(dialog).getByLabelText("Parent page");
+    expect(
+      within(parents)
+        .getAllByRole("option")
+        .map((option) => option.getAttribute("value"))
+    ).toEqual([container?.id ?? ""]);
+    expect((parents as HTMLSelectElement).value).toBe(container?.id ?? "");
+    await user.selectOptions(within(dialog).getByLabelText("Position"), "first");
+    await user.click(within(dialog).getByRole("button", { name: "Move" }));
+    await waitFor(() => expect(moves(server)).toEqual([`MOVE Notes under ${container?.name ?? "root"}, after first`]));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Move Notes" })).toBeNull());
+    const moved = server.nodes.find((node) => node.id === ancestor.id)!;
+    expect(moved.parent_id).toBe(container?.id ?? null);
+    expect(before.find((node) => node.parent_id === ancestor.parent_id)?.id).toBe(sibling.id);
+    expect(server.nodes.find((node) => node.parent_id === ancestor.parent_id)?.id).toBe(ancestor.id);
+    expect(server.nodes.find((node) => node.id === raw.id)).toEqual(raw);
+    await user.click(within(nav).getByRole("button", { name: "Actions for Notes" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Rename" }));
+    const rename = await screen.findByRole("dialog", { name: "Rename Notes" });
+    await user.clear(within(rename).getByRole("textbox"));
+    await user.type(within(rename).getByRole("textbox"), "Renamed ancestor");
+    await user.click(within(rename).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(server.nodes.find((node) => node.id === ancestor.id)?.name).toBe("Renamed ancestor"));
+    expect(server.nodes.find((node) => node.id === raw.id)).toEqual(raw);
+  }
+);
+
+test("an admin can change a source-root ancestor's parent", async () => {
+  const outside = pageNode(90, "Outside");
+  const raw = { ...guide, parent_id: notes.id };
+  const server = pageServer({
+    role: "admin",
+    mode: "llm_wiki",
+    sourceRootId: raw.id,
+    nodes: [notes, raw, install, outside],
+  });
+  renderSourceTree(server);
+  await within(await tree()).findByRole("button", { name: "Actions for Notes" });
+  await moveDialog(userEvent.setup(), outside.id);
+  await waitFor(() => expect(server.nodes.find((node) => node.id === notes.id)?.parent_id).toBe(outside.id));
+  expect(moves(server)).toEqual(["MOVE Notes under Outside, after last"]);
+  expect(server.nodes.find((node) => node.id === raw.id)).toEqual(raw);
+  expect(screen.queryByRole("alertdialog")).toBeNull();
+});
+
+test("a queued ordinary move stops if its subtree gains the source root before sending", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const outside = pageNode(90, "Outside");
+  const server = pageServer({
+    role: "editor",
+    mode: "llm_wiki",
+    sourceRootId: guide.id,
+    nodes: [notes, guide, install, outside],
+    answers: {
+      [`POST /api/v0/notebooks/${notebookJSON.id}/pages`]: async () => {
+        server.sent.push("POST held");
+        await gate;
+        return problem(409, "page.title_taken");
+      },
+    },
+  });
+  const view = renderSourceTree(server);
+  await within(await tree()).findByRole("button", { name: "Actions for Notes" });
+  const first = view.queueCreate().catch(() => undefined);
+  await waitFor(() => expect(server.sent).toContain("POST held"));
+  await drop(notes.id, outside.id);
+  expect(moves(server)).toEqual([]);
+  expect(screen.queryByRole("alertdialog")).toBeNull();
+  server.nodes = server.nodes.map((node) => (node.id === guide.id ? { ...node, parent_id: notes.id } : node));
+  await view.refresh();
+  const before = structuredClone(server.nodes);
+  const reads = server.sent.filter((line) => line === "GET nodes").length;
+  await act(async () => {
+    release();
+    await first;
+  });
+  await waitFor(() =>
+    expect(server.sent.filter((line) => line === "GET nodes").length).toBeGreaterThanOrEqual(reads + 2)
+  );
+  expect(moves(server)).toEqual([]);
+  expect(server.nodes).toEqual(before);
+});

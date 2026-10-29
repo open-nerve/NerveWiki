@@ -9,7 +9,7 @@ import { editorExtensions } from "../../editor/registry";
 import { useStore } from "../../stores/context";
 import { RootStore } from "../../stores/root.store";
 import { attachments, dropped, picker, rows, transfers } from "../../test/attachments";
-import { instanceJSON, json, notebookJSON, problem, tokensJSON } from "../../test/fakes";
+import { instanceJSON, json, notebookJSON, problem, tokensJSON, workspaceJSON } from "../../test/fakes";
 import { pageEditor } from "../../test/page-editor";
 import { assetNode, guide, install, notes, pageNode, pagePath, pageServer } from "../../test/page-server";
 import { renderApp } from "../../test/render";
@@ -223,6 +223,150 @@ test("source uploads keep their queue and explicit title after 409 while indepen
   expect(contentOf(server, "Ada's explicit title")).toBe("new report\r\n");
   expect(server.contents.get(existing.id)).toEqual({ content: "existing report", revision: 1 });
   expect(server.nodes.some((node) => node.name === "report 2")).toBe(false);
+});
+
+test("a failed Markdown upload cannot be retried after becoming reader and resumes when editing is restored", async () => {
+  const user = userEvent.setup();
+  const existing = pageNode(46, "taken", guide);
+  const body = "kept source draft\r\n原文\n";
+  const server = pageServer({ role: "editor", mode: "llm_wiki", sourceRootId: guide.id, nodes: [...base, existing] });
+  server.contents.set(existing.id, { content: "the existing page", revision: 1 });
+  const view = renderSources(server);
+  const section = await attachments();
+  const file = new File([body], "taken.md");
+  choose(section, [file]);
+  const field = await within(section).findByRole("textbox", { name: "Title for taken.md" });
+  const row = field.closest("li")!;
+  await within(row).findByText("Another page or attachment here has this title. Choose another title.");
+  const assets = view.store().assetsOf(server.notebook)!;
+  const upload = assets.uploads[0]!;
+  const pages = view.store().pagesOf(server.notebook)!;
+  const notebooks = view.store().notebooksOf(workspaceJSON)!;
+  expect(creates(server)).toEqual(["POST taken under Guide"]);
+  await user.clear(field);
+  await user.type(field, "Kept chosen title");
+
+  act(() => {
+    server.notebook = { ...server.notebook, role: "reader" };
+    notebooks.receive(server.notebook);
+  });
+  const retry = within(row).getByRole("button", { name: "Add source" });
+  await waitFor(() => expect(field).toHaveProperty("disabled", true));
+  expect(retry).toHaveProperty("disabled", true);
+  expect(pages.notebook?.role).toBe("reader");
+  const form = field.closest("form")!;
+  expect(form.isConnected).toBe(true);
+  await user.click(retry);
+  await act(async () => {
+    // A retained callback or scripted submission still reaches the form handler despite disabled controls.
+    fireEvent.submit(form);
+    await pages.load();
+  });
+  expect(creates(server)).toEqual(["POST taken under Guide"]);
+  expect(server.createRequests).toHaveLength(1);
+  expect(assets.uploads).toEqual([upload]);
+  expect(upload.file).toBe(file);
+  expect(upload.name).toBe("Kept chosen title");
+  expect(field).toHaveProperty("value", "Kept chosen title");
+  expect(upload.result).toBeUndefined();
+  expect(upload.signal.aborted).toBe(false);
+  expect(server.nodes.some((node) => node.name === "Kept chosen title")).toBe(false);
+
+  act(() => {
+    server.notebook = { ...server.notebook, role: "editor" };
+    notebooks.receive(server.notebook);
+  });
+  await waitFor(() => expect(field).toHaveProperty("disabled", false));
+  expect(retry).toHaveProperty("disabled", false);
+  await user.click(retry);
+  await waitFor(() => expect(assets.uploads).toHaveLength(0));
+  expect(creates(server)).toEqual(["POST taken under Guide", "POST Kept chosen title under Guide"]);
+  expect(server.createRequests).toHaveLength(2);
+  expect(await server.createRequests[1]!.clone().json()).toEqual({
+    parent_id: guide.id,
+    title: "Kept chosen title",
+    content: body,
+  });
+  expect(contentOf(server, "Kept chosen title")).toBe(body);
+  expect(server.contents.get(existing.id)).toEqual({ content: "the existing page", revision: 1 });
+  expect(upload.file).toBe(file);
+  expect(upload.result).toMatchObject({ kind: "page", page: { name: "Kept chosen title" } });
+});
+
+test("a Markdown retry queued before becoming reader is refused before its POST and can be retried after role recovery", async () => {
+  const user = userEvent.setup();
+  const existing = pageNode(47, "taken", guide);
+  const body = "queued source draft\r\n原文\n";
+  const server = pageServer({ role: "editor", mode: "llm_wiki", sourceRootId: guide.id, nodes: [...base, existing] });
+  server.contents.set(existing.id, { content: "the existing page", revision: 1 });
+  const view = renderSources(server);
+  const section = await attachments();
+  const file = new File([body], "taken.md");
+  choose(section, [file]);
+  const field = await within(section).findByRole("textbox", { name: "Title for taken.md" });
+  await within(field.closest("li")!).findByText(
+    "Another page or attachment here has this title. Choose another title."
+  );
+  const assets = view.store().assetsOf(server.notebook)!;
+  const upload = assets.uploads[0]!;
+  const notebooks = view.store().notebooksOf(workspaceJSON)!;
+  await user.clear(field);
+  await user.type(field, "Recovered source");
+
+  // This upload has reached the real create handler and holds the notebook's shared write queue.
+  server.createsHeld = true;
+  choose(section, [new File(["already sent blocker"], "blocker.md")]);
+  await waitFor(() => expect(creates(server)).toEqual(["POST taken under Guide", "POST blocker under Guide"]));
+  await user.click(within(field.closest("li")!).getByRole("button", { name: "Add source" }));
+  await waitFor(() => expect(within(section).getAllByText("Creating…")).toHaveLength(2));
+  expect(server.createRequests).toHaveLength(2);
+  expect(upload.failure).toBeUndefined();
+
+  act(() => {
+    server.notebook = { ...server.notebook, role: "reader" };
+    notebooks.receive(server.notebook);
+    server.createsHeld = false;
+    server.release();
+  });
+  await waitFor(() => expect(upload.failure).toMatchObject({ status: 403, code: "forbidden" }));
+  await waitFor(() => expect(assets.uploads).toEqual([upload]));
+  const retained = await within(section).findByRole("textbox", { name: "Title for taken.md" });
+  const retry = within(retained.closest("li")!).getByRole("button", { name: "Add source" });
+  expect(retained).toHaveProperty("disabled", true);
+  expect(retained).toHaveProperty("value", "Recovered source");
+  expect(retry).toHaveProperty("disabled", true);
+  expect(upload.file).toBe(file);
+  expect(upload.name).toBe("Recovered source");
+  expect(upload.result).toBeUndefined();
+  expect(upload.signal.aborted).toBe(false);
+  expect(creates(server)).toEqual(["POST taken under Guide", "POST blocker under Guide"]);
+  expect(server.createRequests).toHaveLength(2);
+  expect(contentOf(server, "blocker")).toBe("already sent blocker");
+  expect(server.nodes.some((node) => node.name === "Recovered source")).toBe(false);
+
+  act(() => {
+    server.notebook = { ...server.notebook, role: "editor" };
+    notebooks.receive(server.notebook);
+  });
+  await waitFor(() => expect(retained).toHaveProperty("disabled", false));
+  expect(retry).toHaveProperty("disabled", false);
+  await user.click(retry);
+  await waitFor(() => expect(assets.uploads).toHaveLength(0));
+  expect(creates(server)).toEqual([
+    "POST taken under Guide",
+    "POST blocker under Guide",
+    "POST Recovered source under Guide",
+  ]);
+  expect(server.createRequests).toHaveLength(3);
+  expect(await server.createRequests[2]!.clone().json()).toEqual({
+    parent_id: guide.id,
+    title: "Recovered source",
+    content: body,
+  });
+  expect(contentOf(server, "Recovered source")).toBe(body);
+  expect(server.contents.get(existing.id)).toEqual({ content: "the existing page", revision: 1 });
+  expect(upload.file).toBe(file);
+  expect(upload.result).toMatchObject({ kind: "page", page: { name: "Recovered source" } });
 });
 
 test.each(["initial failure", "explicit retry"] as const)(

@@ -129,7 +129,6 @@ test("LW12 (page): only an admin can downgrade without typing a name; the same s
   anotherPage,
   anotherTab,
 }, testInfo) => {
-  test.slow();
   const { adminId, pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
   const notebook = await createNotebook(api, pat, workspace.slug, "Field notes", "editor", { mode: "llm_wiki" });
   const writerEmail = emailFor(testInfo, "writer");

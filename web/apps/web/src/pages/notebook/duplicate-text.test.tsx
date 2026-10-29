@@ -339,3 +339,33 @@ test("duplicate targets include attachments and stale trees: report paths resolv
   expect(sourceAtPath(pages, "raw/Folder/Known")).toBeUndefined();
   expect(sourceAtPath(pages, "../../elsewhere.md")).toBeUndefined();
 });
+
+test.each([known, asset])(
+  "duplicate targets include attachments and stale trees: an existing outside $kind moved into sources is refreshed once",
+  async (target) => {
+    const server = sourceServer();
+    server.nodes = server.nodes.map((node) => (node.id === target.id ? { ...node, parent_id: null } : node));
+    const view = probe(server, duplicate(target.id));
+    await screen.findByRole("heading", { level: 1, name: "Notes" });
+    const before = server.sent.filter((line) => line === "GET nodes").length;
+    expect(before).toBeGreaterThan(0);
+    // The server has moved a known node since the browser's last tree read.
+    server.nodes = server.nodes.map((node) => (node.id === target.id ? target : node));
+    const section = await view.open();
+    await waitFor(() => expect(server.sent.filter((line) => line === "GET nodes")).toHaveLength(before + 1));
+    const name = target.kind === "page" ? "raw/Folder/Known.md" : "raw/Folder/known.png";
+    await userEvent.setup().click(await within(section).findByRole("link", { name }));
+    await waitFor(() =>
+      expect(view.router.state.location.pathname).toBe(pagePath(target.kind === "page" ? known.id : folder.id))
+    );
+    if (target.kind === "page") {
+      await waitFor(() =>
+        expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Known" }))
+      );
+    } else {
+      expect(view.router.state.location.state).toEqual({ attachment: asset.id });
+      await waitFor(() => expect(document.activeElement?.getAttribute("data-attachment")).toBe(asset.id));
+    }
+    expect(server.sent.filter((line) => line === "GET nodes")).toHaveLength(before + 1);
+  }
+);

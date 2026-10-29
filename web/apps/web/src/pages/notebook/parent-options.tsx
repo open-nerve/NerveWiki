@@ -10,11 +10,19 @@ export const rootOption = "";
  * attachment goes: the notebook's top level, then each of parents by its
  * path in the tree, its ancestors' titles and its own.
  */
-export function ParentOptions({ pages, parents }: { pages: PageTreeStore; parents: readonly TreeNode[] }) {
+export function ParentOptions({
+  pages,
+  parents,
+  includeRoot = true,
+}: {
+  pages: PageTreeStore;
+  parents: readonly TreeNode[];
+  includeRoot?: boolean;
+}) {
   const t = useT();
   return (
     <>
-      <option value={rootOption}>{t("page.moveRoot")}</option>
+      {includeRoot && <option value={rootOption}>{t("page.moveRoot")}</option>}
       {parents.map((each) => (
         <option key={each.id} value={each.id}>
           {[...pages.ancestorsOf(each.id), each].map((step) => step.name).join(" / ")}

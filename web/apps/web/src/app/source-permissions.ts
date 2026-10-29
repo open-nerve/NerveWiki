@@ -50,6 +50,19 @@ export function canManageNode(pages: PageTreeStore, id: string): boolean {
   );
 }
 
+/** Changing a source root ancestor's parent also manages the root; sorting it does not. */
+export function canMoveNode(pages: PageTreeStore, id: string, parent: string | null): boolean {
+  if (!canManageNode(pages, id)) return false;
+  const notebook = pages.notebook;
+  const root = notebook?.mode === "llm_wiki" ? notebook.source_root_id : null;
+  return (
+    notebook?.role === "admin" ||
+    root == null ||
+    pages.nodeById(id)?.parent_id === parent ||
+    !(pages.nodeAncestors(root)?.some((node) => node.id === id) ?? false)
+  );
+}
+
 /** The source root and its ancestors cannot be deleted, even by an admin. */
 export function canDeleteNode(pages: PageTreeStore, id: string): boolean {
   if (!canManageNode(pages, id)) return false;

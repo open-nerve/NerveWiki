@@ -13,7 +13,7 @@ import { NavLink, useParams } from "react-router";
 import { ConfirmDialog } from "../../app/confirm-dialog";
 import { writesPages } from "../../app/effective-role";
 import { lockedText } from "../../app/problem-messages";
-import { canAddSource, canDeleteNode, canManageNode, isAgentsPage } from "../../app/source-permissions";
+import { canAddSource, canDeleteNode, canManageNode, canMoveNode, isAgentsPage } from "../../app/source-permissions";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -212,7 +212,14 @@ function useDrag(
           const dragged = isDragData(source.data) ? source.data.page : "";
           return attachInstruction(
             { ...data },
-            { input, element, operations: tree === undefined ? {} : dropOperations(tree, dragged, node.id, open) }
+            {
+              input,
+              element,
+              operations:
+                tree === undefined
+                  ? {}
+                  : dropOperations(tree, dragged, node.id, open, (move) => canMoveNode(pages, dragged, move.parent_id)),
+            }
           );
         },
         onDrag: ({ self }) => setInstruction(extractInstruction(self.data)),

@@ -323,7 +323,6 @@ test("LW4 (page): a writer can toggle, shortcut-edit and restore source-root ins
   db,
   signedInPage,
 }, testInfo) => {
-  test.slow();
   const { pat, workspace } = await newOnboardedTeam(api, testInfo);
   const writerEmail = emailFor(testInfo, "writer");
   const writer = await joinOnboarded(api, pat, workspace.slug, writerEmail, "member");
@@ -399,7 +398,6 @@ test("LW4 (page): source loss locks the mounted editor, automatically releases i
   pageWatch,
   signedInPage,
 }, testInfo) => {
-  test.slow();
   const { pat, workspace } = await newOnboardedTeam(api, testInfo);
   const writerEmail = emailFor(testInfo, "writer");
   const writer = await joinOnboarded(api, pat, workspace.slug, writerEmail, "member");

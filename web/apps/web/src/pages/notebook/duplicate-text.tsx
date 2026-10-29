@@ -144,9 +144,7 @@ function currentTarget(pages: PageTreeStore, target: Target, source: boolean): N
 
 function needsRead(pages: PageTreeStore, target: Target): boolean {
   return (
-    pages.nodes !== undefined &&
-    pages.notebook?.mode === "llm_wiki" &&
-    currentTarget(pages, target, false) === undefined
+    pages.nodes !== undefined && pages.notebook?.mode === "llm_wiki" && currentTarget(pages, target, true) === undefined
   );
 }
 

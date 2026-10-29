@@ -2,6 +2,7 @@ import { observer } from "mobx-react-lite";
 import { useId, useRef, useState, type FormEvent } from "react";
 
 import { useForm } from "../../app/form";
+import { canMoveNode } from "../../app/source-permissions";
 import { duplicateText, useNodeNavigate } from "./duplicate-text";
 import type { HeldDialog } from "../../app/held-dialog";
 import { pagesLocked } from "../../app/pages-locked";
@@ -113,9 +114,12 @@ const MoveForm = observer(function MoveForm({ notebook, page, onSend, cancel, mo
   if (tree === undefined) {
     return null;
   }
-  const parents = [...tree.byId.values()].filter((each) => canHold(tree, each.id, page.id));
+  const includeRoot = canMoveNode(pages, page.id, null);
+  const parents = [...tree.byId.values()].filter(
+    (each) => canHold(tree, each.id, page.id) && canMoveNode(pages, page.id, each.id)
+  );
   // A choice that the tree, read again, no longer offers is the default again: what the selects show goes out.
-  const offered = (id: string) => id === root || parents.some((each) => each.id === id);
+  const offered = (id: string) => (id === root ? includeRoot : parents.some((each) => each.id === id));
   const chosen = offered(parent) ? parent : offered(page.parent_id ?? root) ? (page.parent_id ?? root) : root;
   const siblings = childrenOf(tree, chosen === root ? null : chosen).filter((each) => each.id !== page.id);
   const place =
@@ -162,7 +166,7 @@ const MoveForm = observer(function MoveForm({ notebook, page, onSend, cancel, mo
             aria-describedby={problems.parent === undefined ? undefined : `${ids.parent}-note`}
             onChange={(event) => choose(event.target.value)}
           >
-            <ParentOptions pages={pages} parents={parents} />
+            <ParentOptions pages={pages} parents={parents} includeRoot={includeRoot} />
           </NativeSelect>
           <Problem id={`${ids.parent}-note`} text={problems.parent} />
         </div>
@@ -189,7 +193,7 @@ const MoveForm = observer(function MoveForm({ notebook, page, onSend, cancel, mo
           <Button type="button" variant="outline" onClick={cancel} disabled={sending}>
             {t("page.cancel")}
           </Button>
-          <Button type="submit" disabled={sending}>
+          <Button type="submit" disabled={sending || !canMoveNode(pages, page.id, chosen === root ? null : chosen)}>
             {sending ? t("page.moving") : t("page.move")}
           </Button>
         </div>

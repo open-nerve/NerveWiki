@@ -4,7 +4,7 @@ import { useLocation } from "react-router";
 
 import { ConfirmDialog } from "../../app/confirm-dialog";
 import { useMounted } from "../../app/mounted";
-import { canManageNode } from "../../app/source-permissions";
+import { canMoveNode } from "../../app/source-permissions";
 import { useT } from "../../i18n/i18n";
 import type { PageTreeStore } from "../../stores/page-tree.store";
 
@@ -127,7 +127,7 @@ function notebookState(pages: PageTreeStore): string {
 
 /** Refreshing an unchanged tree keeps a choice; a changed node or ancestry cancels it. */
 function moveState(pages: PageTreeStore, id: string, parent: string | null): string | undefined {
-  if (!canManageNode(pages, id)) return undefined;
+  if (!canMoveNode(pages, id, parent)) return undefined;
   const node = pages.nodeById(id);
   const ancestors = pages.nodeAncestors(id);
   const destination = parent === null ? null : pages.nodeById(parent);

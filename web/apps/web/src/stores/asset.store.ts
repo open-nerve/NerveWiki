@@ -292,7 +292,7 @@ export class AssetStore {
   }
 
   /** Retry only an explicit source title, once, without attachment name repair or numbering. */
-  async retrySource(upload: Upload, title: string): Promise<void> {
+  async retrySource(upload: Upload, title: string, beforeSend?: () => void): Promise<void> {
     if (upload.target !== "source-page") {
       throw new TypeError("Only source pages have an explicit title retry");
     }
@@ -304,8 +304,9 @@ export class AssetStore {
     ) {
       return;
     }
+    beforeSend?.();
     upload.name = title;
-    await this.createSource(upload);
+    await this.createSource(upload, beforeSend);
   }
 
   /**
@@ -367,7 +368,7 @@ export class AssetStore {
   }
 
   /** Read a source once, then create it through the tree's shared write/re-read queue. */
-  private async createSource(upload: Upload): Promise<void> {
+  private async createSource(upload: Upload, beforeSend?: () => void): Promise<void> {
     this.sourceSending.add(upload);
     try {
       upload.signal.throwIfAborted();
@@ -401,7 +402,10 @@ export class AssetStore {
       runInAction(() => {
         upload.preparing = false;
       });
-      const page = await this.pages.createWithContent(upload.parent, upload.name, content, { signal: upload.signal });
+      const page = await this.pages.createWithContent(upload.parent, upload.name, content, {
+        signal: upload.signal,
+        beforeSend,
+      });
       upload.signal.throwIfAborted();
       runInAction(() => {
         upload.answered = true;

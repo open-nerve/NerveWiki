@@ -5,6 +5,7 @@ import { useRef, type FormEvent, type ReactNode } from "react";
 import { useFocusLeaving } from "../../lib/focus-leaving";
 import { sourceTitleProblem, type SourceTitleProblem } from "../../lib/source-title";
 import { useForm } from "../../app/form";
+import { writesPages } from "../../app/effective-role";
 import { errorText, formErrors, type FieldMessage } from "../../app/problem-messages";
 import { FormField } from "../../components/form-field";
 import { Alert } from "../../components/ui/alert";
@@ -43,11 +44,22 @@ export const UploadRows = observer(function UploadRows({
   const pages = usePageTree(notebook);
   const navigate = useNodeNavigate(pages);
   const explain = (error: unknown) => duplicateText(error, pages, openNode ?? navigate);
+  const canRetry = () => {
+    const role = pages.notebook?.role;
+    return role !== undefined && writesPages(role);
+  };
   return (
     <ul aria-label={t("asset.uploads")} className="divide-y rounded-md border text-sm">
       {uploads.map((upload) =>
         upload.target === "source-page" ? (
-          <SourceUploadRow key={upload.key} assets={assets} upload={upload} left={left} explain={explain} />
+          <SourceUploadRow
+            key={upload.key}
+            assets={assets}
+            upload={upload}
+            left={left}
+            explain={explain}
+            canRetry={canRetry}
+          />
         ) : (
           <UploadRow key={upload.key} assets={assets} upload={upload} left={left} explain={explain} />
         )
@@ -143,11 +155,13 @@ const SourceUploadRow = observer(function SourceUploadRow({
   upload,
   left,
   explain,
+  canRetry,
 }: {
   assets: AssetStore;
   upload: Upload;
   left: () => void;
   explain: (error: unknown) => ReactNode | undefined;
+  canRetry: () => boolean;
 }) {
   const t = useT();
   const { preferences } = useStore();
@@ -159,7 +173,7 @@ const SourceUploadRow = observer(function SourceUploadRow({
   return (
     <li ref={row} className="space-y-3 px-3 py-3">
       {fixable ? (
-        <SourceTitleForm assets={assets} upload={upload} explain={explain} />
+        <SourceTitleForm assets={assets} upload={upload} explain={explain} canRetry={canRetry} />
       ) : (
         <>
           <span className="block truncate">{upload.file.name}</span>
@@ -190,10 +204,12 @@ const SourceTitleForm = observer(function SourceTitleForm({
   assets,
   upload,
   explain,
+  canRetry,
 }: {
   assets: AssetStore;
   upload: Upload;
   explain: (error: unknown) => ReactNode | undefined;
+  canRetry: () => boolean;
 }) {
   const t = useT();
   const { ref, sending, banner, problemOf, submit } = useForm(["title"], { ...sourceFormTexts, explain });
@@ -207,12 +223,14 @@ const SourceTitleForm = observer(function SourceTitleForm({
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!failed || sending) {
+    if (!failed || sending || !canRetry()) {
       return;
     }
     const issue = sourceTitleProblem(upload.name);
     void submit(issue === undefined ? {} : { title: titleMessages[issue] }, () =>
-      assets.retrySource(upload, upload.name)
+      assets.retrySource(upload, upload.name, () => {
+        if (!canRetry()) throw new ApiError(403, { code: "forbidden" });
+      })
     );
   }
 
@@ -223,12 +241,12 @@ const SourceTitleForm = observer(function SourceTitleForm({
         label={t("source.uploadTitleFor", { name: upload.file.name })}
         name="title"
         value={upload.name}
-        disabled={!failed || sending}
+        disabled={!failed || sending || !canRetry()}
         error={problem}
         onChange={(event) => runInAction(() => (upload.name = event.target.value))}
       />
       {failed && (
-        <Button type="submit" disabled={sending}>
+        <Button type="submit" disabled={sending || !canRetry()}>
           {t("source.uploadRetry")}
         </Button>
       )}

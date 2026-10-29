@@ -10,7 +10,7 @@ import { holdStream } from "../../fixtures/events";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { errorOf, mcpClient, resultOf } from "../../fixtures/mcp";
 import { createNotebook } from "../../fixtures/notebooks";
-import { createPage, deleteNode, postPage, readContent } from "../../fixtures/pages";
+import { createPage, deleteNode, moveNode, postPage, readContent } from "../../fixtures/pages";
 import { expect, test, watchOf } from "../../fixtures/test";
 import { choosePageAction, pageHeading, pageTree, wikiPagePath } from "../../fixtures/wiki-pages";
 import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
@@ -199,80 +199,88 @@ for (const scope of ["notebook", "account"] as const) {
   });
 }
 
-test("LW3 (page): a duplicate source in a stale tree is read once and its complete path opens the real page", async ({
-  api,
-  db,
-  nervewiki,
-  signedInPage,
-}, testInfo) => {
-  const { pat, workspace } = await newOnboardedTeam(api, testInfo);
-  const tokens = await joinOnboarded(api, pat, workspace.slug, emailFor(testInfo, "writer"), "member");
-  const notebook = await createNotebook(api, pat, workspace.slug, "Sources", "editor", {
-    mode: "llm_wiki",
-    templateLocale: "en",
+for (const change of ["created", "moved in"] as const) {
+  test(`LW3 (page): a duplicate source ${change} after the tree was read is refreshed once and its complete path opens the real page`, async ({
+    api,
+    db,
+    nervewiki,
+    signedInPage,
+  }, testInfo) => {
+    const { pat, workspace } = await newOnboardedTeam(api, testInfo);
+    const tokens = await joinOnboarded(api, pat, workspace.slug, emailFor(testInfo, "writer"), "member");
+    const notebook = await createNotebook(api, pat, workspace.slug, "Sources", "editor", {
+      mode: "llm_wiki",
+      templateLocale: "en",
+    });
+    if (!notebook.source_root_id) throw new Error("no configured source root");
+    const archive = await createPage(api, pat, notebook.id, "Archive", notebook.source_root_id);
+    const inbox = await createPage(api, pat, notebook.id, "Inbox", notebook.source_root_id);
+    const outside =
+      change === "moved in"
+        ? await createPage(api, pat, notebook.id, "Known", null, "The committed source.\n")
+        : undefined;
+    const page = await signedInPage(tokens);
+    const releaseEvents = await holdStream(page);
+    const nodesPath = `/api/v0/notebooks/${notebook.id}/nodes`;
+    const createsPath = `/api/v0/notebooks/${notebook.id}/pages`;
+    const nodeAnswers = countAnswers(page, "GET", nodesPath);
+    try {
+      await page.goto(wikiPagePath(workspace.slug, notebook.id, inbox.id));
+      await expect(pageHeading(page, "Inbox")).toBeVisible();
+      await choosePageAction(page, notebook.name, "Inbox", "Paste Markdown");
+      const dialog = page.getByRole("dialog", { name: "Paste Markdown under Inbox", exact: true });
+      await dialog.getByRole("textbox", { name: "Title", exact: true }).fill("A new title");
+      await dialog.getByRole("textbox", { name: "Markdown", exact: true }).fill("The committed source.\n");
+      const initialReads = nodeAnswers();
+      expect(initialReads).toBeGreaterThan(0);
+
+      // The browser has read its tree, but receives none of this real API change's events yet.
+      const known =
+        outside ?? (await createPage(api, pat, notebook.id, "Known", archive.id, "The committed source.\n"));
+      if (outside !== undefined) await moveNode(api, pat, known.id, { parent_id: archive.id });
+      const before = await pageStateOf(db, notebook.id);
+      let refused = false;
+      const reads: string[] = [];
+      page.on("response", (response) => {
+        if (response.request().method() === "POST" && new URL(response.url()).pathname === createsPath) {
+          refused = response.status() === 409;
+        }
+      });
+      await page.route(`**${nodesPath}`, async (route) => {
+        if (route.request().method() !== "GET" || !refused) {
+          await route.continue();
+          return;
+        }
+        // The create's ordinary re-read fails in transport, leaving the genuine old tree. The duplicate helper
+        // must make one further real request. No successful API response or node list is fabricated here.
+        reads.push(reads.length === 0 ? "failed ordinary refresh" : "real target refresh");
+        if (reads.length === 1) await route.abort("failed");
+        else await route.continue();
+      });
+      watchOf(page).expectConsole({ errors: [failedToLoad(409), "Failed to load resource: net::ERR_FAILED"] });
+      const rejected = answerTo(page, "POST", createsPath);
+      await dialog.getByRole("button", { name: "Add source", exact: true }).click();
+      const response = await rejected;
+      expect(response.status()).toBe(409);
+      expect(await response.json()).toMatchObject({ code: "page.source_duplicate", duplicate_of: known.id });
+      expect(await pageStateOf(db, notebook.id)).toEqual(before);
+
+      const target = dialog.getByRole("link", { name: "raw/Archive/Known.md", exact: true });
+      await expect(target).toBeVisible();
+      expect(reads).toEqual(["failed ordinary refresh", "real target refresh"]);
+      expect(nodeAnswers()).toBe(initialReads + 1);
+      await expect(dialog).not.toContainText(known.id);
+      await target.click();
+      await expect(page).toHaveURL(wikiPagePath(workspace.slug, notebook.id, known.id));
+      await expect(pageHeading(page, "Known")).toBeVisible();
+      await expect(page.getByRole("article", { name: "Known", exact: true })).toContainText("The committed source.");
+      expect(reads).toEqual(["failed ordinary refresh", "real target refresh"]);
+      await expectSourceHashes(db, nervewiki.storageDir, notebook.id);
+    } finally {
+      releaseEvents();
+    }
   });
-  if (!notebook.source_root_id) throw new Error("no configured source root");
-  const archive = await createPage(api, pat, notebook.id, "Archive", notebook.source_root_id);
-  const inbox = await createPage(api, pat, notebook.id, "Inbox", notebook.source_root_id);
-  const page = await signedInPage(tokens);
-  const releaseEvents = await holdStream(page);
-  const nodesPath = `/api/v0/notebooks/${notebook.id}/nodes`;
-  const createsPath = `/api/v0/notebooks/${notebook.id}/pages`;
-  const nodeAnswers = countAnswers(page, "GET", nodesPath);
-  try {
-    await page.goto(wikiPagePath(workspace.slug, notebook.id, inbox.id));
-    await expect(pageHeading(page, "Inbox")).toBeVisible();
-    await choosePageAction(page, notebook.name, "Inbox", "Paste Markdown");
-    const dialog = page.getByRole("dialog", { name: "Paste Markdown under Inbox", exact: true });
-    await dialog.getByRole("textbox", { name: "Title", exact: true }).fill("A new title");
-    await dialog.getByRole("textbox", { name: "Markdown", exact: true }).fill("The committed source.\n");
-    const initialReads = nodeAnswers();
-    expect(initialReads).toBeGreaterThan(0);
-
-    // The browser has read its tree, but receives none of this real API creation's events yet.
-    const known = await createPage(api, pat, notebook.id, "Known", archive.id, "The committed source.\n");
-    const before = await pageStateOf(db, notebook.id);
-    let refused = false;
-    const reads: string[] = [];
-    page.on("response", (response) => {
-      if (response.request().method() === "POST" && new URL(response.url()).pathname === createsPath) {
-        refused = response.status() === 409;
-      }
-    });
-    await page.route(`**${nodesPath}`, async (route) => {
-      if (route.request().method() !== "GET" || !refused) {
-        await route.continue();
-        return;
-      }
-      // The create's ordinary re-read fails in transport, leaving the genuine old tree. The duplicate helper
-      // must make one further real request. No successful API response or node list is fabricated here.
-      reads.push(reads.length === 0 ? "failed ordinary refresh" : "real target refresh");
-      if (reads.length === 1) await route.abort("failed");
-      else await route.continue();
-    });
-    watchOf(page).expectConsole({ errors: [failedToLoad(409), "Failed to load resource: net::ERR_FAILED"] });
-    const rejected = answerTo(page, "POST", createsPath);
-    await dialog.getByRole("button", { name: "Add source", exact: true }).click();
-    const response = await rejected;
-    expect(response.status()).toBe(409);
-    expect(await response.json()).toMatchObject({ code: "page.source_duplicate", duplicate_of: known.id });
-    expect(await pageStateOf(db, notebook.id)).toEqual(before);
-
-    const target = dialog.getByRole("link", { name: "raw/Archive/Known.md", exact: true });
-    await expect(target).toBeVisible();
-    expect(reads).toEqual(["failed ordinary refresh", "real target refresh"]);
-    expect(nodeAnswers()).toBe(initialReads + 1);
-    await expect(dialog).not.toContainText(known.id);
-    await target.click();
-    await expect(page).toHaveURL(wikiPagePath(workspace.slug, notebook.id, known.id));
-    await expect(pageHeading(page, "Known")).toBeVisible();
-    await expect(page.getByRole("article", { name: "Known", exact: true })).toContainText("The committed source.");
-    expect(reads).toEqual(["failed ordinary refresh", "real target refresh"]);
-    await expectSourceHashes(db, nervewiki.storageDir, notebook.id);
-  } finally {
-    releaseEvents();
-  }
-});
+}
 
 test("LW3 (page): paste creates the initial body once, and mixed uppercase Markdown preserves its bytes after closing the upload dialog and navigating away", async ({
   api,
