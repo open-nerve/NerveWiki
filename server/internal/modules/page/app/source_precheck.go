@@ -23,7 +23,8 @@ func NewSourcePrecheck(d SourcePrecheckDeps) *SourcePrecheck { return &SourcePre
 
 // Check is exclusively a lock-free entry. The sequence is replayable: each
 // traversal starts from the same initial tree, never the prior traversal's
-// mutated simulation. Only per-ID metadata and per-key witnesses are retained.
+// mutated simulation. A bounded plan's facts are copied once; larger plans
+// retain only per-ID metadata and per-key witnesses between traversals.
 // Permission reads must use the context passed to ask, which owns the snapshot.
 func (p *SourcePrecheck) Check(ctx context.Context, notebookID uuid.UUID, notebook domain.NotebookState, facts iter.Seq[domain.StepFacts], ask func(context.Context, shared.Action) error) error {
 	if notebook.Mode != domain.ModeLLMWiki {
@@ -42,7 +43,9 @@ func (p *SourcePrecheck) check(ctx context.Context, notebookID uuid.UUID, notebo
 	initial := map[uuid.UUID]SourceValue{}
 	assets := map[uuid.UUID]bool{}
 	work := false
+	var replay sourceFactReplay
 	for step := range facts {
+		replay.remember(step)
 		for _, n := range step.Nodes {
 			initial[n.ID] = SourceValue{ID: n.ID, Kind: n.Kind}
 			if sourceAdmission(step, n) {
@@ -53,6 +56,7 @@ func (p *SourcePrecheck) check(ctx context.Context, notebookID uuid.UUID, notebo
 			}
 		}
 	}
+	facts = replay.sequence(facts)
 	if !work {
 		return checkRevertFacts(facts, notebook, ask)
 	}
