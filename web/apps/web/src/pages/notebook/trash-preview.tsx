@@ -24,6 +24,7 @@ import { BreadcrumbTrail } from "../page/breadcrumbs";
 import { useLeftBehind, VersionView } from "../page/version-view";
 import { useWorkspace } from "../workspace/workspace-layout";
 import { useNotebook } from "./notebook-layout";
+import { sourceHistoryText, useNodeNavigate } from "./duplicate-text";
 import {
   ItemIcon,
   namesOf,
@@ -109,6 +110,7 @@ function mergedOf(state: unknown): boolean {
  */
 const PreviewShell = observer(function PreviewShell({ notebook, id }: { notebook: Notebook; id: string }) {
   const pages = usePageTree(notebook);
+  const navigateNode = useNodeNavigate(pages);
   const t = useT();
   const { slug } = useWorkspace();
   const mounted = useMounted();
@@ -181,7 +183,7 @@ const PreviewShell = observer(function PreviewShell({ notebook, id }: { notebook
   const lostStart = restoring !== undefined && "lost" in restoring ? restoring : undefined;
   const said =
     refusal !== undefined ? (
-      refusedText(refusal, t)
+      (sourceHistoryText(refusal.error, pages, navigateNode) ?? refusedText(refusal, t))
     ) : lostStart === undefined ? undefined : (
       <LostStart {...lostStart} />
     );

@@ -9,7 +9,8 @@ export const autosavePause = 2_000;
  * waits for a composition to end: half a word is not saved, and the word
  * is saved once it is. Mod+S meanwhile leaves nothing to send. A failed
  * save says so on the edit's status: the next pause, Mod+S or leaving
- * tries again. It adds nothing to the editor's state.
+ * tries again. Losing the session cancels a pending save and stops new
+ * ones. It adds nothing to the editor's state.
  */
 export const autosave: ReadyExtension = {
   name: "autosave",
@@ -17,7 +18,12 @@ export const autosave: ReadyExtension = {
     let resting: ReturnType<typeof setTimeout> | undefined;
     controls.onChange(() => {
       clearTimeout(resting);
-      resting = setTimeout(() => void controls.save().catch(() => undefined), autosavePause);
+      if (!controls.session().lost) {
+        resting = setTimeout(() => void controls.save().catch(() => undefined), autosavePause);
+      }
+    });
+    controls.onSessionChange(() => {
+      if (controls.session().lost) clearTimeout(resting);
     });
     controls.onClose(() => clearTimeout(resting));
     return [];

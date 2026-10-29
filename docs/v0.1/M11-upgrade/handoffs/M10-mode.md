@@ -20,3 +20,7 @@ M10/P1 建成了模式与模板、模式守卫的框架、预检与后台拒绝�
 5. **冻结守卫的授权与拒绝沿用单元的边界**：`Write.Grants` 是单元自己的额外授权备忘，以指针随步骤传递，不能把答案留在共用的守卫上。当前由模式守卫与单元锁下的检查填写，其他扩展可读；锁外预检单独授权，不把答案带进单元。M11 的冻结扩展以这条边界为基础。拒绝经 `page/domain.Refused` 标出节点并 `Unwrap` 原问题；`batch` 的失败项、重新计划与后台任务都已有处理，模块根 `page.Refusal` 给组合根读码与节点，transfer 的 `Refused` 保留原问题。`TransferRefusal.code` 是自由字符串，新增冻结码不必扩这个字段的枚举；新操作的声明、错误文字与各入口的错误契约仍照通用约定落实（[P1](../../M10-llm-wiki/01-P1-contract-frame.md) 3.19、3.22、3.26；[M9 移交](M9-mcp-upgrade.md)第 2 条）。
 
 `notebook.change_mode` 给发起与批准升级、根下保留标题与 `AGENTS` 的处理，以及冻结的次序、lint 的显式契约与来源范围、批准时哈希的重建、内容保全、说明和降级的关系，已有[M10 总设计](../../M10-llm-wiki/00-M10-design.md)第 7 节“写给后面的 M”和 [P1 第 9 节](../../M10-llm-wiki/01-P1-contract-frame.md)的要求。本移交指向它们，不把 P2–P5 后续才提供的能力写成 P1 已经实现。
+
+### M10/P2补充（来源契约；升级仍未开始）
+
+P2/S1–S2已完成来源事实/rewrite/hash；S3网页与后续集成见[P2结果](../../M10-llm-wiki/02-P2-source-area.md#103-s3-完整来源网页)。批准变为LLM时须在同事务重建指定根严格后代source_hash并清区外；普通模式虽可预指定SourceRootID，hash仍NULL。保全revision.rewrite，旧无标记/Down-Up按保守规则；SourceHashes、ModeSubscriber顺序与free refusal.code沿既有接口。此为已实现契约的交接，不设计升级流程；status仍open。SourceRootID旧过强注释Nit继续M10收尾，不顺手加强SQL约束。

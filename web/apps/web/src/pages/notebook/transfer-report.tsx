@@ -15,6 +15,7 @@ import { useAccount, usePageTree, useStore, useTransfers } from "../../stores/co
 import { useWorkspace } from "../workspace/workspace-layout";
 import { reasonText } from "./changeset-text";
 import { distinctName } from "./distinct-name";
+import { duplicateText, nodeTarget, NodePathLink, sourceHistoryText, useNodeNavigate } from "./duplicate-text";
 
 type Report = NonNullable<TransferJob["report"]>;
 
@@ -226,7 +227,7 @@ export function TransferReport({ notebook, job, id }: { notebook: Notebook; job:
         <p key={line}>{line}</p>
       ))}
       {job.kind === "revert" && report?.lock != null && <Locked notebook={notebook} lock={report.lock} />}
-      {report?.refusal != null && <Refused notebook={notebook} refusal={report.refusal} />}
+      {report?.refusal != null && <Refused notebook={notebook} refusal={report.refusal} undo={job.kind === "revert"} />}
       {data !== undefined && data.conflicts.length > 0 && (
         <Conflicts conflicts={data.conflicts} count={data.conflict_count} />
       )}
@@ -240,7 +241,9 @@ export function TransferReport({ notebook, job, id }: { notebook: Notebook; job:
             </h3>
             <ul aria-labelledby={titleId} className="list-disc space-y-1 pl-5 break-words">
               {data.problems.map((problem, at) => (
-                <li key={`${problem.path} ${at.toString()}`}>{problemText(job.kind, problem, t)}</li>
+                <li key={`${problem.path} ${at.toString()}`}>
+                  <ReportProblem notebook={notebook} kind={job.kind} problem={problem} />
+                </li>
               ))}
             </ul>
             {data.problems_truncated && <p className="text-muted-foreground">{t("transfer.problemsTruncated")}</p>}
@@ -250,6 +253,23 @@ export function TransferReport({ notebook, job, id }: { notebook: Notebook; job:
     </div>
   );
 }
+
+const ReportProblem = observer(function ReportProblem({
+  notebook,
+  kind,
+  problem,
+}: {
+  notebook: Notebook;
+  kind: TransferJob["kind"];
+  problem: TransferProblem;
+}) {
+  const t = useT();
+  const pages = usePageTree(notebook);
+  const navigate = useNodeNavigate(pages);
+  return (
+    duplicateText(problem, pages, navigate, { kind: "import", path: problem.path }) ?? problemText(kind, problem, t)
+  );
+});
 
 /**
  * Placed says where a restore put its trash item's root (M8/P4 design
@@ -318,29 +338,29 @@ const Locked = observer(function Locked({ notebook, lock }: { notebook: Notebook
 const Refused = observer(function Refused({
   notebook,
   refusal,
+  undo,
 }: {
   notebook: Notebook;
   refusal: NonNullable<Report["refusal"]>;
+  undo: boolean;
 }) {
   const t = useT();
   const pages = usePageTree(notebook);
-  const { slug } = useWorkspace();
+  const navigate = useNodeNavigate(pages);
   const { code, node_id: node } = refusal;
-  const page = distinctName(pages.tree, notebook, node, t);
+  const target = nodeTarget(pages, node);
   const reason = Object.hasOwn(problemMessages, code)
     ? t(problemMessages[code as keyof typeof problemMessages])
     : t("problem.other", { code });
   return (
     <>
-      <p>{reason}</p>
-      {page === undefined ? (
+      <p>{sourceHistoryText(refusal, pages, navigate, { kind: "background", backgroundUndo: undo }) ?? reason}</p>
+      {target === undefined ? (
         <p>{t("transfer.refusedSome")}</p>
       ) : (
         <p className="flex flex-wrap gap-x-3">
-          <span>{t("transfer.refusedTitled", { name: page })}</span>
-          <Link to={`/${slug}/notebooks/${notebook.id}/pages/${node}`} className="underline underline-offset-4">
-            {t("transfer.openPage", { page })}
-          </Link>
+          <span>{t("transfer.refusedTitled", { name: target.path })}</span>
+          <NodePathLink pages={pages} id={node} navigate={navigate} />
         </p>
       )}
     </>

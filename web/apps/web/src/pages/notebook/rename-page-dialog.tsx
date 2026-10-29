@@ -4,8 +4,10 @@ import type { HeldDialog } from "../../app/held-dialog";
 import { notebookNameProblem, notebookNameTexts } from "../../app/notebook-name";
 import { pagesLocked } from "../../app/pages-locked";
 import { RenameForm } from "../../app/rename-form";
+import { canManageNode } from "../../app/source-permissions";
 import { Dialog, DialogContent, DialogTitle } from "../../components/ui/dialog";
 import { useT } from "../../i18n/i18n";
+import { ApiError } from "../../services/api";
 import type { Notebook } from "../../services/notebook.service";
 import type { TreeNode } from "../../services/page.service";
 import { usePageTree, useStore } from "../../stores/context";
@@ -37,6 +39,9 @@ export function RenamePageDialog({
   const t = useT();
   const me = useStore().account?.me?.id;
   const done = useRef(false);
+  const beforeSave = () => {
+    if (!canManageNode(pages, page.id)) throw new ApiError(403, { code: "forbidden" });
+  };
   return (
     <Dialog open={held.open} onOpenChange={held.onOpenChange}>
       {held.open && (
@@ -55,9 +60,10 @@ export function RenamePageDialog({
             autoComplete="off"
             check={notebookNameProblem}
             fieldTexts={notebookNameTexts}
+            beforeSave={beforeSave}
             rename={(title) => {
               onSend();
-              return pages.rename(page.id, title);
+              return pages.rename(page.id, title, beforeSave);
             }}
             explain={(error) => pagesLocked(error, t, me, (id) => distinctName(pages.tree, notebook, id, t))}
             saveLabel={t("page.save")}

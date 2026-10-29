@@ -1,4 +1,5 @@
 import type { ApiClient, NodeMove } from "@nervewiki/api-client";
+import type { Page as BrowserPage } from "@playwright/test";
 
 import { expectAssetsDeletedWithNodes, expectUploaded, storedBlobs } from "../../fixtures/assert/asset";
 import { accountIdOf } from "../../fixtures/assert/identity";
@@ -16,8 +17,9 @@ import {
 } from "../../fixtures/assert/page";
 import { pngBytes, uploadAsset } from "../../fixtures/assets";
 import { createToken, emailFor } from "../../fixtures/auth";
+import { answerTo, failedToLoad } from "../../fixtures/browser";
 import type { Database } from "../../fixtures/db";
-import { joinAs } from "../../fixtures/invitations";
+import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { errorOf, mcpClient, readPage, resultOf, writtenOf, type McpClient } from "../../fixtures/mcp";
 import { createNotebook } from "../../fixtures/notebooks";
 import {
@@ -31,8 +33,9 @@ import {
   renameNode,
   writeContent,
 } from "../../fixtures/pages";
-import { expect, test } from "../../fixtures/test";
-import { newTeam } from "../../fixtures/workspaces";
+import { expect, test, watchOf } from "../../fixtures/test";
+import { choosePageAction, dragPage, pageHeading, pageTree, wikiPagePath } from "../../fixtures/wiki-pages";
+import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 
 // LW5, source management (M10/P2 design 5): writers add sources, while
 // admins rename, move, reorder and delete existing sources. Identity is
@@ -496,3 +499,330 @@ for (const role of ["writer", "admin"] as const) {
     await expectSourceHashes(db, nervewiki.storageDir, notebook.id);
   });
 }
+
+/** Node ids disambiguate the real root AGENTS and the nested namesake without stripping their spoken badges. */
+function browserRow(page: BrowserPage, notebook: string, id: string) {
+  return pageTree(page, notebook).locator(`a[href$="/pages/${id}"]`).locator("..");
+}
+
+async function menuOf(page: BrowserPage, notebook: string, id: string): Promise<string[]> {
+  await browserRow(page, notebook, id)
+    .getByRole("button", { name: /^Actions for / })
+    .click();
+  const items = await page.getByRole("menuitem").allTextContents();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menuitem")).toHaveCount(0);
+  return items;
+}
+
+for (const role of ["writer", "admin"] as const) {
+  test(`LW5 (page): ${role} menus distinguish source pages and attachments, nested AGENTS, and the editable protected roots`, async ({
+    api,
+    db,
+    nervewiki,
+    signedInPage,
+  }, testInfo) => {
+    const { tokens: adminTokens, adminId, pat, workspace } = await newOnboardedTeam(api, testInfo);
+    const tokens =
+      role === "writer"
+        ? await joinOnboarded(api, pat, workspace.slug, emailFor(testInfo, "writer"), "member")
+        : adminTokens;
+    const { notebook, raw } = await sourceWiki(api, pat, workspace.slug);
+    const evidence = await createPage(api, pat, notebook.id, "Evidence", raw.id, "The original evidence.\n");
+    const nested = await createPage(api, pat, notebook.id, "AGENTS", evidence.id, "Nested source rules.\n");
+    const agents = (await listNodes(api, pat, notebook.id)).find(
+      (node) => node.parent_id === null && node.name === "AGENTS"
+    );
+    if (!agents) throw new Error("the real root instructions are absent");
+    const asset = await uploadAsset(api, pat, notebook.id, { name: "source.png", bytes: pngBytes }, evidence.id);
+    await expectUploaded(db, nervewiki.storageDir, asset, pngBytes, adminId, "api");
+    const before = await pageStateOf(db, notebook.id);
+    const bodies = await bodiesOf(db, notebook.id);
+    const page = await signedInPage(tokens);
+    await page.goto(wikiPagePath(workspace.slug, notebook.id, nested.id));
+    await expect(pageHeading(page, "AGENTS")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
+    await expect(browserRow(page, notebook.name, nested.id).getByRole("link")).toHaveAccessibleName("AGENTS (source)");
+    expect(await menuOf(page, notebook.name, nested.id)).toEqual([
+      "Paste Markdown",
+      "Upload files",
+      ...(role === "admin" ? ["Rename", "Move to…", "Delete"] : []),
+    ]);
+    expect(await menuOf(page, notebook.name, evidence.id)).toEqual([
+      "Paste Markdown",
+      "Upload files",
+      ...(role === "admin" ? ["Rename", "Move to…", "Delete"] : []),
+    ]);
+    expect(await browserRow(page, notebook.name, evidence.id).evaluate((row) => (row as HTMLElement).draggable)).toBe(
+      role === "admin"
+    );
+    expect(await menuOf(page, notebook.name, raw.id)).toEqual([
+      "Paste Markdown",
+      "Upload files",
+      ...(role === "admin" ? ["Rename", "Move to…"] : []),
+    ]);
+    expect(await menuOf(page, notebook.name, agents.id)).toEqual(["New subpage"]);
+
+    await browserRow(page, notebook.name, raw.id).getByRole("link").click();
+    await expect(pageHeading(page, "raw")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Edit", exact: true })).toBeVisible();
+    await browserRow(page, notebook.name, agents.id).getByRole("link").click();
+    await expect(pageHeading(page, "AGENTS")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Edit", exact: true })).toBeVisible();
+    await browserRow(page, notebook.name, evidence.id).getByRole("link").click();
+    await expect(pageHeading(page, "Evidence")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
+    const section = page.getByRole("region", { name: "Attachments", exact: true });
+    const assetRow = section.locator(`[data-attachment="${asset.id}"]`).locator("..");
+    await expect(assetRow.getByRole("link")).toHaveAccessibleName("source.png (source) (opens in a new tab)");
+    await expect(assetRow).toHaveAttribute("draggable", "true");
+    await assetRow.getByRole("button", { name: "Actions for source.png", exact: true }).click();
+    await expect(page.getByRole("menuitem")).toHaveText([
+      "Open (opens in a new tab)",
+      "Download",
+      "Copy embed",
+      ...(role === "admin" ? ["Rename", "Move to…", "Delete"] : []),
+    ]);
+    await page.keyboard.press("Escape");
+    expect(await pageStateOf(db, notebook.id)).toEqual(before);
+    expect(watchOf(page).apiRequests.filter((line) => /^(PATCH|DELETE) |^POST .*\/move$/.test(line))).toEqual([]);
+
+    if (role === "admin") {
+      await choosePageAction(page, notebook.name, "Evidence", "Rename");
+      const rename = page.getByRole("dialog", { name: "Rename Evidence", exact: true });
+      await rename.getByRole("textbox", { name: "Title", exact: true }).fill("Renamed evidence");
+      const renamed = answerTo(page, "PATCH", `/api/v0/nodes/${evidence.id}`);
+      await rename.getByRole("button", { name: "Save", exact: true }).click();
+      expect((await renamed).status()).toBe(200);
+      await expect(pageHeading(page, "Renamed evidence")).toBeVisible();
+      await expectRenamed(db, evidence.id, "Evidence", "Renamed evidence", adminId);
+      await expectChangesetOf(db, await latestManagement(db, evidence.id), {
+        client: "web",
+        byId: adminId,
+        items: [evidence.id],
+        versions: [],
+      });
+      const assetFrom = { ...(await placeOf(db, asset.id)), name: asset.name };
+      await assetRow.getByRole("button", { name: "Actions for source.png", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Rename", exact: true }).click();
+      const renameAsset = page.getByRole("dialog", { name: "Rename source.png", exact: true });
+      await renameAsset.getByRole("textbox", { name: "Name", exact: true }).fill("renamed");
+      const renamedAsset = answerTo(page, "PATCH", `/api/v0/nodes/${asset.id}`);
+      await renameAsset.getByRole("button", { name: "Save", exact: true }).click();
+      expect((await renamedAsset).status()).toBe(200);
+      await expect(section.locator(`[data-attachment="${asset.id}"]`)).toHaveAccessibleName(
+        "renamed.png (source) (opens in a new tab)"
+      );
+      await expectRelocated(db, asset.id, assetFrom, { parentId: evidence.id, name: "renamed.png" }, adminId);
+      await expectChangesetOf(db, await latestManagement(db, asset.id), {
+        client: "web",
+        byId: adminId,
+        items: [asset.id],
+        versions: [],
+      });
+      expect(await bodiesOf(db, notebook.id)).toEqual(bodies);
+    }
+    await expectSourceHashes(db, nervewiki.storageDir, notebook.id);
+  });
+}
+
+test("LW5 (page): a writer's Move and tree drag each wait for confirmation, cancel without a request, and enter sources only on acceptance", async ({
+  api,
+  db,
+  nervewiki,
+  signedInPage,
+}, testInfo) => {
+  const { pat, workspace } = await newOnboardedTeam(api, testInfo);
+  const writerEmail = emailFor(testInfo, "writer");
+  const tokens = await joinOnboarded(api, pat, workspace.slug, writerEmail, "member");
+  const writerId = await accountIdOf(db, writerEmail);
+  const { notebook, raw } = await sourceWiki(api, pat, workspace.slug);
+  const moved = await createPage(api, tokens.access_token, notebook.id, "Moved", null, "Move evidence.\n");
+  const dragged = await createPage(api, tokens.access_token, notebook.id, "Dragged", null, "Dragged evidence.\n");
+  const page = await signedInPage(tokens);
+  await page.goto(wikiPagePath(workspace.slug, notebook.id, moved.id));
+  await expect(pageHeading(page, "Moved")).toBeVisible();
+  const confirmation = page.getByRole("alertdialog", { name: "Move into sources?", exact: true });
+  const writes = (id: string) => watchOf(page).apiRequests.filter((line) => line === `POST /api/v0/nodes/${id}/move`);
+  const before = await pageStateOf(db, notebook.id);
+  const movedFrom = { ...(await placeOf(db, moved.id)), name: moved.name };
+  const bodies = await bodiesOf(db, notebook.id);
+  await choosePageAction(page, notebook.name, "Moved", "Move to…");
+  const move = page.getByRole("dialog", { name: "Move Moved", exact: true });
+  await move.getByLabel("Parent page", { exact: true }).selectOption(raw.id);
+  await move.getByRole("button", { name: "Move", exact: true }).click();
+  await expect(confirmation).toContainText("After moving, you cannot edit the content or manage these sources.");
+  expect(writes(moved.id)).toEqual([]);
+  expect(await pageStateOf(db, notebook.id)).toEqual(before);
+  await confirmation.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(confirmation).toBeHidden();
+  await expect(move).toBeVisible();
+  expect(writes(moved.id)).toEqual([]);
+  expect(await pageStateOf(db, notebook.id)).toEqual(before);
+  await move.getByRole("button", { name: "Move", exact: true }).click();
+  const moveAnswer = answerTo(page, "POST", `/api/v0/nodes/${moved.id}/move`);
+  await confirmation.getByRole("button", { name: "Move", exact: true }).click();
+  expect((await moveAnswer).status()).toBe(200);
+  await expect(move).toBeHidden();
+  expect(writes(moved.id)).toHaveLength(1);
+  await expectRelocated(db, moved.id, movedFrom, { parentId: raw.id, name: moved.name }, writerId);
+  await expectChangesetOf(db, await latestManagement(db, moved.id), {
+    client: "web",
+    byId: writerId,
+    items: [moved.id],
+    versions: [],
+  });
+  await expect(browserRow(page, notebook.name, moved.id).getByRole("link")).toHaveAccessibleName("Moved (source)");
+  expect(await menuOf(page, notebook.name, moved.id)).toEqual(["Paste Markdown", "Upload files"]);
+  await expect(page.getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
+
+  await browserRow(page, notebook.name, dragged.id).getByRole("link").click();
+  await expect(pageHeading(page, "Dragged")).toBeVisible();
+  const dragBefore = await pageStateOf(db, notebook.id);
+  const draggedFrom = { ...(await placeOf(db, dragged.id)), name: dragged.name };
+  await dragPage(page, notebook.name, "Dragged", "raw (source area)", "into");
+  await expect(confirmation).toBeVisible();
+  expect(writes(dragged.id)).toEqual([]);
+  await confirmation.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(confirmation).toBeHidden();
+  expect(writes(dragged.id)).toEqual([]);
+  expect(await pageStateOf(db, notebook.id)).toEqual(dragBefore);
+  await dragPage(page, notebook.name, "Dragged", "raw (source area)", "into");
+  const dragAnswer = answerTo(page, "POST", `/api/v0/nodes/${dragged.id}/move`);
+  await confirmation.getByRole("button", { name: "Move", exact: true }).click();
+  expect((await dragAnswer).status()).toBe(200);
+  await expect(confirmation).toBeHidden();
+  expect(writes(dragged.id)).toHaveLength(1);
+  await expectRelocated(db, dragged.id, draggedFrom, { parentId: raw.id, name: dragged.name }, writerId);
+  await expectChangesetOf(db, await latestManagement(db, dragged.id), {
+    client: "web",
+    byId: writerId,
+    items: [dragged.id],
+    versions: [],
+  });
+  await expect(browserRow(page, notebook.name, dragged.id).getByRole("link")).toHaveAccessibleName("Dragged (source)");
+  expect(await menuOf(page, notebook.name, dragged.id)).toEqual(["Paste Markdown", "Upload files"]);
+  await expect(page.getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
+  expect(await bodiesOf(db, notebook.id)).toEqual(bodies);
+  await expectSourceHashes(db, nervewiki.storageDir, notebook.id);
+});
+
+test("LW5 (page): page move, tree drag and attachment move reject a duplicate atomically and its path focuses the real source attachment", async ({
+  api,
+  db,
+  nervewiki,
+  signedInPage,
+}, testInfo) => {
+  const { pat, workspace } = await newOnboardedTeam(api, testInfo);
+  const tokens = await joinOnboarded(api, pat, workspace.slug, emailFor(testInfo, "writer"), "member");
+  const { notebook, raw } = await sourceWiki(api, pat, workspace.slug);
+  const archive = await createPage(api, pat, notebook.id, "Archive", raw.id);
+  const known = await uploadAsset(api, pat, notebook.id, { name: "known.png", bytes: pngBytes }, archive.id);
+  const incoming = await createPage(api, tokens.access_token, notebook.id, "Incoming");
+  await createPage(
+    api,
+    tokens.access_token,
+    notebook.id,
+    "Unique child",
+    incoming.id,
+    "The unique child remains outside.\n"
+  );
+  const incomingAsset = await uploadAsset(
+    api,
+    tokens.access_token,
+    notebook.id,
+    { name: "different-name.png", bytes: pngBytes },
+    incoming.id
+  );
+  const before = await pageStateOf(db, notebook.id);
+  const files = storedBlobs(nervewiki.storageDir);
+  const page = await signedInPage(tokens);
+  await page.goto(wikiPagePath(workspace.slug, notebook.id, incoming.id));
+  await expect(pageHeading(page, "Incoming")).toBeVisible();
+  await choosePageAction(page, notebook.name, "Incoming", "Move to…");
+  const dialog = page.getByRole("dialog", { name: "Move Incoming", exact: true });
+  await dialog.getByLabel("Parent page", { exact: true }).selectOption(raw.id);
+  await dialog.getByRole("button", { name: "Move", exact: true }).click();
+  const confirmation = page.getByRole("alertdialog", { name: "Move into sources?", exact: true });
+  watchOf(page).expectConsole({ errors: [failedToLoad(409)] });
+  const rejected = answerTo(page, "POST", `/api/v0/nodes/${incoming.id}/move`);
+  await confirmation.getByRole("button", { name: "Move", exact: true }).click();
+  const response = await rejected;
+  expect(response.status()).toBe(409);
+  expect(await response.json()).toMatchObject({ code: "page.source_duplicate", duplicate_of: known.id });
+  expect(await pageStateOf(db, notebook.id)).toEqual(before);
+  expect(storedBlobs(nervewiki.storageDir)).toEqual(files);
+  const target = dialog.getByRole("link", { name: "raw/Archive/known.png", exact: true });
+  await expect(target).toBeVisible();
+  await expect(dialog).not.toContainText(known.id);
+  await target.click();
+  await expect(page).toHaveURL(wikiPagePath(workspace.slug, notebook.id, archive.id));
+  await expect(pageHeading(page, "Archive")).toBeVisible();
+  const found = page
+    .getByRole("region", { name: "Attachments", exact: true })
+    .locator(`[data-attachment="${known.id}"]`);
+  await expect(found).toHaveAccessibleName("known.png (source) (opens in a new tab)");
+  await expect(found).toBeFocused();
+  expect(await pageStateOf(db, notebook.id)).toEqual(before);
+  expect(storedBlobs(nervewiki.storageDir)).toEqual(files);
+
+  // The same refused subtree also goes through the real tree monitor's Alert consumer.
+  await browserRow(page, notebook.name, incoming.id).getByRole("link").click();
+  await expect(pageHeading(page, "Incoming")).toBeVisible();
+  await dragPage(page, notebook.name, "Incoming", "raw (source area)", "into");
+  await expect(confirmation).toBeVisible();
+  watchOf(page).expectConsole({ errors: [failedToLoad(409)] });
+  const dragRejected = answerTo(page, "POST", `/api/v0/nodes/${incoming.id}/move`);
+  await confirmation.getByRole("button", { name: "Move", exact: true }).click();
+  const dragResponse = await dragRejected;
+  expect(dragResponse.status()).toBe(409);
+  expect(await dragResponse.json()).toMatchObject({ code: "page.source_duplicate", duplicate_of: known.id });
+  expect(await pageStateOf(db, notebook.id)).toEqual(before);
+  expect(storedBlobs(nervewiki.storageDir)).toEqual(files);
+  const treeAlert = pageTree(page, notebook.name).getByRole("alert");
+  const treeTarget = treeAlert.getByRole("link", { name: "raw/Archive/known.png", exact: true });
+  await expect(treeTarget).toBeVisible();
+  await expect(treeAlert).not.toContainText(known.id);
+  await treeTarget.click();
+  await expect(page).toHaveURL(wikiPagePath(workspace.slug, notebook.id, archive.id));
+  await expect(pageHeading(page, "Archive")).toBeVisible();
+  await expect(found).toHaveAccessibleName("known.png (source) (opens in a new tab)");
+  await expect(found).toBeFocused();
+  expect(await pageStateOf(db, notebook.id)).toEqual(before);
+  expect(storedBlobs(nervewiki.storageDir)).toEqual(files);
+
+  // Moving the attachment itself has its own form and close/focus lifecycle, with the same real refusal.
+  await browserRow(page, notebook.name, incoming.id).getByRole("link").click();
+  await expect(pageHeading(page, "Incoming")).toBeVisible();
+  const incomingSection = page.getByRole("region", { name: "Attachments", exact: true });
+  await incomingSection.getByRole("button", { name: "Actions for different-name.png", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Move to…", exact: true }).click();
+  const assetDialog = page.getByRole("dialog", { name: "Move different-name.png", exact: true });
+  await assetDialog.getByLabel("Parent page", { exact: true }).selectOption(raw.id);
+  await assetDialog.getByRole("button", { name: "Move", exact: true }).click();
+  await expect(confirmation).toBeVisible();
+  watchOf(page).expectConsole({ errors: [failedToLoad(409)] });
+  const assetRejected = answerTo(page, "POST", `/api/v0/nodes/${incomingAsset.id}/move`);
+  await confirmation.getByRole("button", { name: "Move", exact: true }).click();
+  const assetResponse = await assetRejected;
+  expect(assetResponse.status()).toBe(409);
+  expect(await assetResponse.json()).toMatchObject({ code: "page.source_duplicate", duplicate_of: known.id });
+  expect(await pageStateOf(db, notebook.id)).toEqual(before);
+  expect(storedBlobs(nervewiki.storageDir)).toEqual(files);
+  const assetTarget = assetDialog.getByRole("link", { name: "raw/Archive/known.png", exact: true });
+  await expect(assetTarget).toBeVisible();
+  await expect(assetDialog).not.toContainText(known.id);
+  await assetTarget.click();
+  await expect(assetDialog).toBeHidden();
+  await expect(page).toHaveURL(wikiPagePath(workspace.slug, notebook.id, archive.id));
+  await expect(pageHeading(page, "Archive")).toBeVisible();
+  await expect(found).toHaveAccessibleName("known.png (source) (opens in a new tab)");
+  await expect(found).toBeFocused();
+  expect(await pageStateOf(db, notebook.id)).toEqual(before);
+  expect(storedBlobs(nervewiki.storageDir)).toEqual(files);
+  expect(watchOf(page).apiRequests.filter((line) => line === `POST /api/v0/nodes/${incoming.id}/move`)).toHaveLength(2);
+  expect(
+    watchOf(page).apiRequests.filter((line) => line === `POST /api/v0/nodes/${incomingAsset.id}/move`)
+  ).toHaveLength(1);
+  await expectSourceHashes(db, nervewiki.storageDir, notebook.id);
+});

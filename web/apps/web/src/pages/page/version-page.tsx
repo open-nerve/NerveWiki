@@ -5,7 +5,7 @@ import useSWR, { useSWRConfig } from "swr";
 
 import { arrived, useArrivalFocus } from "../../app/arrival";
 import { useDocumentTitle } from "../../app/document-title";
-import { writesPages } from "../../app/effective-role";
+import { canEditPageBody } from "../../app/source-permissions";
 import { useMounted } from "../../app/mounted";
 import { NotLoaded } from "../../app/not-loaded";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
@@ -131,7 +131,7 @@ const VersionShell = observer(function VersionShell({
           <h1 ref={heading} tabIndex={-1} className="text-3xl font-semibold break-words outline-none">
             {title}
           </h1>
-          {writesPages(notebook.role) && data !== undefined && newest !== undefined && newest.id !== data.id && (
+          {canEditPageBody(pages, page.id) && data !== undefined && newest !== undefined && newest.id !== data.id && (
             <VersionRestore
               notebook={notebook}
               page={page}

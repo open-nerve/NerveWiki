@@ -53,16 +53,20 @@ export function dropOperations(
   tree: TreeIndex,
   dragged: string,
   target: string,
-  open: boolean
+  open: boolean,
+  permits: (move: NodeMove) => boolean = () => true
 ): Record<DropOperation, "available" | "blocked" | "not-available"> {
   return Object.fromEntries(
-    operations.map((operation) => [
-      operation,
-      target === dragged || (operation === "reorder-after" && open)
-        ? "not-available"
-        : dropMove(tree, dragged, target, operation) === undefined
-          ? "blocked"
-          : "available",
-    ])
+    operations.map((operation) => {
+      const move = dropMove(tree, dragged, target, operation);
+      return [
+        operation,
+        target === dragged || (operation === "reorder-after" && open)
+          ? "not-available"
+          : move === undefined || !permits(move)
+            ? "blocked"
+            : "available",
+      ];
+    })
   ) as Record<DropOperation, "available" | "blocked" | "not-available">;
 }

@@ -1,15 +1,27 @@
-import { afterEach, expect, test, vi } from "vitest";
+import { EditorView } from "@codemirror/view";
+import { act, configure, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterAll, afterEach, beforeAll, expect, test, vi } from "vitest";
 
+import { autosavePause } from "../editor/autosave";
+import { editorExtensions, type EditorControls, type EditorExtension } from "../editor/registry";
 import { ApiError } from "../services/api";
 import type { PageContent } from "../services/page.service";
+import { problem, type Answer as HttpAnswer } from "../test/fakes";
+import { pageEditor } from "../test/page-editor";
+import { ada, guide, notes, pagePath, pageServer } from "../test/page-server";
+import { renderApp } from "../test/render";
 import { editSessionHeartbeat } from "./edit-session";
 import { PageEditing, type EditingService } from "./page-editing";
+import { RootStore } from "./root.store";
 import { fakeSession, lockedBy, refusal } from "./testing/fake-edit-sessions";
 
 // One edit of a page (M4/P6 design 3.6; M5/P4 design 3.4): its session,
 // opened first; the content it begins on, read once the lock is the
 // edit's; its saves.
 
+beforeAll(() => configure({ reactStrictMode: true }));
+afterAll(() => configure({ reactStrictMode: false }));
 afterEach(() => vi.useRealTimers());
 
 type Answer<T> = () => T | Promise<T>;
@@ -367,6 +379,237 @@ test("a save whose session ended, opened again onto the lock someone took meanwh
   expect(editing.failure).toBeUndefined();
   expect(sent).toEqual(["OPEN", 'PUT "text" on 3 in s1', "OPEN"]);
 });
+
+/** A response held until the test reaches the other side of a save, end, or unmount. */
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((yes) => (resolve = yes));
+  return { promise, resolve };
+}
+
+/** Notes starts outside the actual nominated source root, Guide. */
+function sourceServer(answers: Record<string, HttpAnswer> = {}) {
+  return pageServer({ role: "editor", mode: "llm_wiki", sourceRootId: guide.id, nodes: [guide, notes], answers });
+}
+
+/** Observe the app's real root and controls; its complete registry supplies the behavior under test. */
+async function mountedSourceEdit(server = sourceServer()) {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+  const made = vi.spyOn(RootStore.prototype, "editPage");
+  let capturedControls: EditorControls | undefined;
+  const capture: EditorExtension = {
+    name: "observe-source-loss",
+    extension(_context, controls) {
+      capturedControls = controls;
+      return [];
+    },
+  };
+  const rendered = renderApp(pagePath(notes.id), server.app, {
+    editorExtensions: [capture, ...editorExtensions],
+  });
+  await user.click(await screen.findByRole("button", { name: "Edit" }));
+  const editor = await pageEditor();
+  const root = made.mock.contexts.at(-1);
+  if (!(root instanceof RootStore)) {
+    throw new Error("the editor did not open through its actual root store");
+  }
+  const controls = capturedControls;
+  const editing = [...root.edits][0];
+  const pages = root.pagesOf(server.notebook);
+  if (editing === undefined || controls === undefined || pages === undefined) {
+    throw new Error("the mounted editor did not expose its actual edit and controls");
+  }
+  expect(editor.view.state.readOnly).toBe(false);
+  expect(editor.content.getAttribute("contenteditable")).toBe("true");
+  return { ...rendered, ...editor, user, server, editing, controls, pages };
+}
+
+/** Another client moves Notes into source; the existing session's real fake-HTTP PUT now refuses it. */
+function enterSource(server: ReturnType<typeof pageServer>) {
+  server.nodes = server.nodes.map((node) =>
+    node.id === notes.id ? Object.assign({}, node, { parent_id: guide.id }) : node
+  );
+}
+
+const sourceWhy = "This page is now a source. Its original content is read-only.";
+const sourceDraft = "Notes\n my unsaved text";
+const sessionWrites = (sent: readonly string[]) => sent.filter((line) => /^(OPEN|PUT|BEAT|END) /.test(line));
+
+test("source loss locks the mounted editor and preserves unsaved text: real registry, copy and return", async () => {
+  const { user, server, view, content, type, controls, editing, pages } = await mountedSourceEdit();
+  const readonly = vi.spyOn(controls, "setReadOnly");
+  act(() => type(" my unsaved text"));
+  enterSource(server);
+
+  await act(() => controls.save());
+
+  const banner = await screen.findByRole("alert");
+  expect(banner.textContent).toContain(sourceWhy);
+  expect(banner.textContent).toContain("Your changes here are not saved: copy them before you leave.");
+  expect(readonly).toHaveBeenCalledWith(true);
+  expect(view.state.readOnly).toBe(true);
+  expect(view.state.facet(EditorView.editable)).toBe(false);
+  expect(content.getAttribute("contenteditable")).toBe("false");
+  expect((await pageEditor()).view).toBe(view);
+  expect(view.state.doc.toString()).toBe(sourceDraft);
+  expect(editing.unsaved).toBe(true);
+  expect(editing.failure).toBeUndefined();
+  expect(editing.saving).toBe(false);
+  await act(() => editing.session.end());
+  // PageService sends GET edit-lock over pageServer's fake HTTP transport; this is not backend E2E evidence.
+  expect(await pages.editLock(notes.id)).toEqual({ holder: null, expires_in: null });
+
+  act(() => {
+    view.focus();
+    view.dispatch({ selection: { anchor: 0, head: view.state.doc.length } });
+  });
+  const copied = new Map<string, string>();
+  fireEvent.copy(content, { clipboardData: { clearData: () => copied.clear(), setData: copied.set.bind(copied) } });
+  expect(copied.get("text/plain")).toBe(sourceDraft);
+
+  await user.click(screen.getByRole("button", { name: "Back to reading" }));
+  const first = await screen.findByRole("alertdialog", { name: "Leave without saving?" });
+  await user.click(within(first).getByRole("button", { name: "Stay" }));
+  await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+  expect((await pageEditor()).view).toBe(view);
+  expect(view.state.doc.toString()).toBe(sourceDraft);
+  await user.click(screen.getByRole("button", { name: "Back to reading" }));
+  const second = await screen.findByRole("alertdialog", { name: "Leave without saving?" });
+  await user.click(within(second).getByRole("button", { name: "Leave" }));
+  expect(await screen.findByRole("article", { name: "Notes" })).toBeTruthy();
+  expect(sessionWrites(server.sent)).toEqual([
+    "OPEN Notes",
+    'PUT Notes "Notes\\n my unsaved text" on 1 in session-1',
+    "END session-1",
+  ]);
+});
+
+test("source loss locks the mounted editor and preserves unsaved text: pending autosave stops before end answers", async () => {
+  const endAnswer = deferred<void>();
+  let server: ReturnType<typeof pageServer>;
+  server = sourceServer({
+    "DELETE /api/v0/edit-sessions/*": async (request) => {
+      const id = new URL(request.url).pathname.split("/").at(-1) ?? "";
+      server.sent.push(`END ${id}`);
+      await endAnswer.promise;
+      server.sessions.delete(id);
+      return new Response(null, { status: 204 });
+    },
+  });
+  const { view, type, controls, editing, pages, unmount } = await mountedSourceEdit(server);
+  const save = vi.spyOn(controls, "save");
+  act(() => type(" my unsaved text"));
+  enterSource(server);
+
+  await act(() => controls.save());
+
+  expect(save).toHaveBeenCalledOnce();
+  expect(view.state.readOnly).toBe(true);
+  expect(editing.session.lost).toEqual({ reason: "source" });
+  expect(editing.failure).toBeUndefined();
+  let ended = false;
+  const ending = editing.session.end().then(() => (ended = true));
+  expect(await pages.editLock(notes.id)).toMatchObject({ holder: ada });
+  expect(ended).toBe(false);
+  const before = sessionWrites(server.sent);
+  await act(() => vi.advanceTimersByTimeAsync(Math.max(autosavePause, editSessionHeartbeat) * 2));
+  // A downstream no-PUT guard cannot satisfy this: the original controls.save must not be called by the timer.
+  expect(save).toHaveBeenCalledOnce();
+  expect(sessionWrites(server.sent)).toEqual(before);
+  expect(view.state.doc.toString()).toBe(sourceDraft);
+  expect(editing.unsaved).toBe(true);
+
+  endAnswer.resolve();
+  await act(() => ending);
+  expect(ended).toBe(true);
+  expect(await pages.editLock(notes.id)).toEqual({ holder: null, expires_in: null });
+  act(() => unmount());
+  await act(() => vi.advanceTimersByTimeAsync(0));
+  await editing.end();
+  expect(server.sent.filter((line) => line.startsWith("END "))).toEqual(["END session-1"]);
+});
+
+test("source loss locks the mounted editor and preserves unsaved text: failed end still locks immediately", async () => {
+  let server: ReturnType<typeof pageServer>;
+  server = sourceServer({
+    "DELETE /api/v0/edit-sessions/*": (request) => {
+      server.sent.push(`END ${new URL(request.url).pathname.split("/").at(-1) ?? ""}`);
+      return problem(503, "server_busy");
+    },
+  });
+  const { view, type, controls, editing, pages } = await mountedSourceEdit(server);
+  const save = vi.spyOn(controls, "save");
+  act(() => type(" my unsaved text"));
+  enterSource(server);
+
+  await act(() => controls.save());
+  await act(() => editing.session.end());
+
+  expect((await screen.findByRole("alert")).textContent).toContain(sourceWhy);
+  expect(view.state.readOnly).toBe(true);
+  expect(view.state.facet(EditorView.editable)).toBe(false);
+  expect(view.state.doc.toString()).toBe(sourceDraft);
+  expect(editing.unsaved).toBe(true);
+  expect(editing.failure).toBeUndefined();
+  expect(await pages.editLock(notes.id)).toMatchObject({ holder: ada });
+  await act(() => vi.advanceTimersByTimeAsync(editSessionHeartbeat * 2));
+  expect(save).toHaveBeenCalledOnce();
+  await act(() => editing.end());
+  expect(sessionWrites(server.sent)).toEqual([
+    "OPEN Notes",
+    'PUT Notes "Notes\\n my unsaved text" on 1 in session-1',
+    "END session-1",
+  ]);
+});
+
+test.each(["response first", "unmount first"] as const)(
+  "source loss locks the mounted editor and preserves unsaved text: %s releases once",
+  async (order) => {
+    const requested = deferred<void>();
+    const response = deferred<Response>();
+    let server: ReturnType<typeof pageServer>;
+    server = sourceServer({
+      "PUT /api/v0/pages/*/content": async (request) => {
+        const write = (await request.json()) as { content: string; edit_session_id: string };
+        server.sent.push(`PUT Notes ${JSON.stringify(write.content)} in ${write.edit_session_id}`);
+        requested.resolve();
+        return response.promise;
+      },
+    });
+    const { type, controls, editing, pages, unmount } = await mountedSourceEdit(server);
+    act(() => type(" my unsaved text"));
+    let saving: Promise<void> | undefined;
+    await act(async () => {
+      saving = controls.save();
+      await requested.promise;
+    });
+    expect(await pages.editLock(notes.id)).toMatchObject({ holder: ada });
+    enterSource(server);
+
+    if (order === "response first") {
+      response.resolve(problem(409, "page.source_immutable"));
+      await act(async () => saving);
+      expect(editing.session.lost).toEqual({ reason: "source" });
+      expect(editing.unsaved).toBe(true);
+      act(() => unmount());
+      await act(() => vi.advanceTimersByTimeAsync(0));
+    } else {
+      act(() => unmount());
+      await act(() => vi.advanceTimersByTimeAsync(0));
+      response.resolve(problem(409, "page.source_immutable"));
+      await act(async () => saving);
+    }
+
+    await editing.end();
+    expect(await pages.editLock(notes.id)).toEqual({ holder: null, expires_in: null });
+    await act(() => vi.advanceTimersByTimeAsync(editSessionHeartbeat * 2));
+    expect(server.sent.filter((line) => line.startsWith("END "))).toEqual(["END session-1"]);
+    expect(server.sent.filter((line) => line.startsWith("PUT "))).toHaveLength(1);
+    expect(server.sent.filter((line) => line.startsWith("OPEN "))).toEqual(["OPEN Notes"]);
+    expect(server.sent.filter((line) => line.startsWith("BEAT "))).toEqual([]);
+  }
+);
 
 /** An edit begun on revision 3 whose next save is refused because the page changed to revision 5, "theirs". */
 async function inConflict() {

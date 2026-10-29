@@ -7,7 +7,7 @@ import type { TransferJob } from "../../services/transfer.service";
 import { notebookJSON } from "../../test/fakes";
 import { changesetId } from "../../test/history-server";
 import { jobChangesetId, jobJSON, jobsServer, reportOf, underWay } from "../../test/jobs-server";
-import { ada, bob, guide, install, linux, notes, pageNode } from "../../test/page-server";
+import { ada, assetNode, bob, guide, install, linux, notes, pageNode } from "../../test/page-server";
 import { renderApp } from "../../test/render";
 
 // A notebook's background restores and reverts among its jobs (M8/P4 design 4.3).
@@ -577,12 +577,65 @@ test.each([
         : "Something went wrong (page.some_later_code).";
   expect(within(shown).getByText(reason)).toBeTruthy();
   if (present) {
-    expect(within(shown).getByText("It was refused at “raw”.")).toBeTruthy();
-    expect(within(shown).getByRole("link", { name: "Open “raw”" }).getAttribute("href")).toBe(
-      `${home}/pages/${raw.id}`
-    );
+    expect(within(shown).getByText("It was refused at “raw.md”.")).toBeTruthy();
+    expect(within(shown).getByRole("link", { name: "raw.md" }).getAttribute("href")).toBe(`${home}/pages/${raw.id}`);
   } else {
     expect(within(shown).getByText("It was refused at a node no longer in the tree.")).toBeTruthy();
     expect(within(shown).queryByRole("link", { name: /^Open / })).toBeNull();
   }
 });
+
+test.each(["page", "asset"] as const)(
+  "a duplicate report distinguishes its refused attachment from the existing %s source",
+  async (kind) => {
+    const user = userEvent.setup();
+    const raw = pageNode(81, "raw");
+    const folder = pageNode(82, "Folder", raw);
+    const refused = assetNode(83, "refused.bin", notes);
+    const target = kind === "page" ? pageNode(84, "Known", folder) : assetNode(84, "known.bin", folder);
+    const path = kind === "page" ? "raw/Folder/Known.md" : "raw/Folder/known.bin";
+    const job = revertOf(1, {
+      state: "failed",
+      report: {
+        ...reportOf("refused"),
+        refusal: { code: "page.source_duplicate", node_id: refused.id, duplicate_of: target.id },
+      },
+      progress: { done: 1, total: 2 },
+    });
+    const server = jobsServer({
+      role: "reader",
+      mode: "llm_wiki",
+      sourceRootId: raw.id,
+      jobs: [job],
+      nodes: [raw, folder, target, notes, refused],
+    });
+    const { router } = renderApp(transfer, server.app);
+    await screen.findByRole("navigation", { name: "Pages of Plans" });
+    const shown = await reportOpened(user, "Undo: Import");
+    expect(within(shown).getByText("This batch was not written; earlier completed batches are kept.")).toBeTruthy();
+    expect(shown.textContent).not.toContain(refused.id);
+    expect(shown.textContent).not.toContain(target.id);
+    const refusedLink = within(shown).getByRole("link", { name: "Notes/refused.bin" });
+    expect(refusedLink.getAttribute("href")).toBe(`${home}/pages/${notes.id}`);
+    const targetLink = within(shown).getByRole("link", { name: path });
+    expect(targetLink.getAttribute("href")).toBe(`${home}/pages/${kind === "page" ? target.id : folder.id}`);
+    expect(refusedLink.isConnected).toBe(true);
+    await user.click(refusedLink);
+    await waitFor(() => expect(router.state.location.pathname).toBe(`${home}/pages/${notes.id}`));
+    expect(router.state.location.state).toEqual({ attachment: refused.id });
+    await waitFor(() => expect(document.activeElement?.getAttribute("data-attachment")).toBe(refused.id));
+    await act(() => router.navigate(-1));
+    const again = await reportOpened(user, "Undo: Import");
+    await user.click(within(again).getByRole("link", { name: path }));
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe(`${home}/pages/${kind === "page" ? target.id : folder.id}`)
+    );
+    if (kind === "asset") {
+      expect(router.state.location.state).toEqual({ attachment: target.id });
+      await waitFor(() => expect(document.activeElement?.getAttribute("data-attachment")).toBe(target.id));
+    } else {
+      expect(router.state.location.pathname).toBe(`${home}/pages/${target.id}`);
+      expect(router.state.location.state).toEqual({ arrived: true });
+    }
+  }
+);

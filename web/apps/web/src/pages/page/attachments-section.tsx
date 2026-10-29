@@ -10,6 +10,7 @@ import { writesPages } from "../../app/effective-role";
 import { useFileDrop } from "../../app/file-drop";
 import { NotLoaded } from "../../app/not-loaded";
 import { errorText } from "../../app/problem-messages";
+import { canAddSource, canDeleteNode, canManageNode } from "../../app/source-permissions";
 import { FormField } from "../../components/form-field";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
@@ -17,10 +18,11 @@ import { formatPeriod } from "../../i18n/format";
 import { useT } from "../../i18n/i18n";
 import { embedOf } from "../../lib/asset-kind";
 import { cn } from "../../lib/cn";
+import { ApiError } from "../../services/api";
 import type { Asset } from "../../services/asset.service";
 import type { Notebook } from "../../services/notebook.service";
 import type { AssetList, AssetStore } from "../../stores/asset.store";
-import { useAssets, useStore } from "../../stores/context";
+import { useAssets, usePageTree, useStore } from "../../stores/context";
 import { LoadMoreButton, useLoadMore } from "../load-more";
 import { MoveAssetDialog, RenameAssetDialog } from "./asset-dialogs";
 import { rereadIn } from "./assets-expiry";
@@ -67,6 +69,7 @@ export const AttachmentsSection = observer(function AttachmentsSection({
 }) {
   const t = useT();
   const assets = useAssets(notebook);
+  const pages = usePageTree(notebook);
   const { instance, preferences } = useStore();
   useSWR("instance", () => instance.load());
   const retention = instance.info?.trash_retention_seconds;
@@ -93,8 +96,15 @@ export const AttachmentsSection = observer(function AttachmentsSection({
   // The attachment of the dialog last opened, which stays as it closes, and which dialog is open.
   const [target, setTarget] = useState<Asset | undefined>(undefined);
   const [dialog, setDialog] = useState<Dialog | undefined>(undefined);
-  const upload = (files: readonly File[]) =>
-    assets.upload(parent, files, t("asset.untitled"), { maxBytes: instance.info?.asset_max_bytes });
+  const source = canAddSource(pages, parent);
+  const upload = (files: readonly File[]) => {
+    if (!writesPages(pages.notebook?.role ?? "reader")) return;
+    if (parent !== null && canAddSource(pages, parent)) {
+      assets.uploadSources(parent, files, { untitled: t("asset.untitled"), maxBytes: instance.info?.asset_max_bytes });
+    } else {
+      assets.upload(parent, files, t("asset.untitled"), { maxBytes: instance.info?.asset_max_bytes });
+    }
+  };
   const drop = useFileDrop(writer, (dropped) => {
     setFolders(dropped.folders);
     upload(dropped.files);
@@ -144,6 +154,9 @@ export const AttachmentsSection = observer(function AttachmentsSection({
         };
         void copy();
       }
+      return;
+    }
+    if (action === "delete" ? !canDeleteNode(pages, asset.id) : !canManageNode(pages, asset.id)) {
       return;
     }
     setTarget(asset);
@@ -211,7 +224,7 @@ export const AttachmentsSection = observer(function AttachmentsSection({
             />
             <Button ref={uploadButton} variant="outline" onClick={() => picker.current?.click()}>
               <UploadIcon />
-              {t("asset.upload")}
+              {t(source ? "source.uploadFiles" : "asset.upload")}
             </Button>
           </>
         )}
@@ -236,7 +249,12 @@ export const AttachmentsSection = observer(function AttachmentsSection({
           <CopyField key={copied.embed} embed={copied.embed} name={copied.name} field={copyField} />
         ))}
       {uploads.length > 0 && (
-        <UploadRows assets={assets} uploads={uploads} left={() => (uploadButton.current ?? heading.current)?.focus()} />
+        <UploadRows
+          notebook={notebook}
+          assets={assets}
+          uploads={uploads}
+          left={() => (uploadButton.current ?? heading.current)?.focus()}
+        />
       )}
       {list === undefined ? (
         <NotLoaded error={error} retry={() => void mutate()} />
@@ -247,7 +265,9 @@ export const AttachmentsSection = observer(function AttachmentsSection({
               <AttachmentRow
                 key={asset.id}
                 asset={asset}
-                writer={writer}
+                manage={canManageNode(pages, asset.id)}
+                deletable={canDeleteNode(pages, asset.id)}
+                source={pages.isSource(asset.id)}
                 act={act}
                 menuClosed={menuClosed}
                 linkRef={asset.id === more.focusing ? focused : undefined}
@@ -273,7 +293,16 @@ export const AttachmentsSection = observer(function AttachmentsSection({
             confirmLabel={t("page.delete")}
             sendingLabel={t("page.deleting")}
             cancelLabel={t("page.cancel")}
-            confirm={() => assets.remove(shown.id, shown.parent_id)}
+            confirm={async () => {
+              const id = shown.id;
+              function requireDelete() {
+                if (!canDeleteNode(pages, id)) {
+                  throw new ApiError(403, { code: "forbidden" });
+                }
+              }
+              requireDelete();
+              await assets.remove(id, shown.parent_id, requireDelete);
+            }}
           />
         </>
       )}
@@ -328,7 +357,7 @@ function useNotice(assets: AssetStore, parent: string | null) {
       () => assets.uploads.filter((upload) => upload.parent === parent),
       (now, before) => {
         for (const upload of before) {
-          if (!now.includes(upload) && upload.uploaded !== undefined) {
+          if (!now.includes(upload) && upload.result !== undefined) {
             left.push(upload.name);
           }
         }

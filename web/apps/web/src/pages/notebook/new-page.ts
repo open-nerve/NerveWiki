@@ -13,6 +13,9 @@ import { useWorkspace } from "../workspace/workspace-layout";
 /** How many titles a creation tries before it gives up (M4 design 4): the first free one and the next two. */
 const attempts = 3;
 
+/** An ordinary creation superseded by a source destination needs the explicit title form instead. */
+class SourceTitleNeeded extends Error {}
+
 /**
  * useNewPage creates pages in notebook (M4/P5 design 3.7): each is titled
  * its siblings' first free Untitled, Untitled 2, …, the attachments beside
@@ -22,7 +25,9 @@ const attempts = 3;
  * created, the tab goes to the page, arrived at, unless the user left the
  * place it was asked from: the component that asked is gone, or the
  * address changed (v0.1 design 13.2, item 16). create answers why it
- * failed, for the caller to show, or undefined.
+ * failed, for the caller to show, or undefined. A queued ordinary creation
+ * whose parent has become a source is cancelled: sources use the explicit
+ * title form and must not be automatically named Untitled.
  */
 export function useNewPage(notebook: Notebook) {
   const { slug } = useWorkspace();
@@ -44,7 +49,16 @@ export function useNewPage(notebook: Notebook) {
       n === 1 ? t("page.untitled") : t("page.untitledN", { n })
     );
     try {
-      return await pages.create(parent, title);
+      return await pages.create(parent, title, () => {
+        const current = pages.notebook;
+        if (
+          current?.mode === "llm_wiki" &&
+          parent !== null &&
+          (parent === current.source_root_id || pages.isSource(parent))
+        ) {
+          throw new SourceTitleNeeded();
+        }
+      });
     } catch (error) {
       if (taken.length + 1 >= attempts || !(error instanceof ApiError && error.code === "page.title_taken")) {
         throw error;
@@ -63,7 +77,7 @@ export function useNewPage(notebook: Notebook) {
       }
       return undefined;
     } catch (error) {
-      return error;
+      return error instanceof SourceTitleNeeded ? undefined : error;
     } finally {
       setSending(false);
     }

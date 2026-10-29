@@ -2,7 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 
 import type { Asset, AssetUpload, UploadOptions } from "../services/asset.service";
 import { ApiError } from "../services/api";
-import type { TreeNode } from "../services/page.service";
+import type { PageService, TreeNode } from "../services/page.service";
 import { assetJSON, assetNode, guide } from "../test/page-server";
 import { AssetStore, isRefusal } from "./asset.store";
 
@@ -10,6 +10,16 @@ import { AssetStore, isRefusal } from "./asset.store";
 type Sent = AssetUpload & {
   options: UploadOptions;
   resolve: (asset: Asset) => void;
+  reject: (error: unknown) => void;
+};
+
+type CreatedPage = Awaited<ReturnType<PageService["createPage"]>>;
+type Created = {
+  parent: string | null;
+  title: string;
+  content: string;
+  signal: AbortSignal | undefined;
+  resolve: (page: CreatedPage) => void;
   reject: (error: unknown) => void;
 };
 
@@ -22,6 +32,7 @@ type Sent = AssetUpload & {
 function setUp(siblings: TreeNode[] = []) {
   const lists = new Map<string, Asset[]>();
   const sent: Sent[] = [];
+  const created: Created[] = [];
   const asked: string[] = [];
   const service = {
     get: vi.fn(async (id: string) => {
@@ -49,6 +60,16 @@ function setUp(siblings: TreeNode[] = []) {
     ),
   };
   const pages = {
+    createWithContent: vi.fn(
+      (parent: string | null, title: string, content: string, options?: { signal?: AbortSignal }) =>
+        new Promise<CreatedPage>((resolve, reject) => {
+          created.push({ parent, title, content, signal: options?.signal, resolve, reject });
+          if (options?.signal?.aborted) {
+            reject(new DOMException("stopped", "AbortError"));
+          }
+          options?.signal?.addEventListener("abort", () => reject(new DOMException("stopped", "AbortError")));
+        })
+    ),
     siblingsOf: vi.fn((_parent: string | null) => siblings),
     wrote: vi.fn(async () => undefined),
     rename: vi.fn(async (_id: string, _name: string) => undefined),
@@ -65,12 +86,27 @@ function setUp(siblings: TreeNode[] = []) {
     lists.set(parent ?? "", list);
     return added;
   };
-  return { store, service, pages, sent, asked, generation, unload, add };
+  return { store, service, pages, sent, created, asked, generation, unload, add };
 }
 
 const file = (name: string, size = 3) => new File(["x".repeat(size)], name);
 const refusal = (status: number, code: string) => new ApiError(status, { status, code, title: code });
 const limits = { maxBytes: 100 };
+const sourceTerms = { untitled: "Untitled", ...limits };
+
+function createdPage(title: string, content: string): CreatedPage {
+  return {
+    ...guide,
+    id: "0199a2b4-0000-7000-8000-000000000999",
+    parent_id: guide.id,
+    name: title,
+    ancestors: [guide],
+    revision: 1,
+    byte_size: new TextEncoder().encode(content).length,
+    content_updated_at: guide.updated_at,
+    content_updated_by: "0199a2b4-0000-7000-8000-000000000001",
+  };
+}
 
 /** settle lets the promises out settle. */
 async function settle(): Promise<void> {
@@ -393,6 +429,213 @@ describe("AssetStore's uploads, as one waits for them", () => {
   });
 });
 
+describe("AssetStore's source uploads", () => {
+  test("Markdown keeps its UTF-8 bytes while only the suggested title is trimmed and composed", async () => {
+    const { store, created, sent } = setUp();
+    // BOM, #, space, 原, CRLF, x, CR, y, LF, LF. These bytes are independent of the decoder.
+    const bytes = new Uint8Array([239, 187, 191, 35, 32, 229, 142, 159, 13, 10, 120, 13, 121, 10, 10]);
+    const [upload] = store.uploadSources(guide.id, [new File([bytes], "  cafe\u0301.MD")], sourceTerms);
+    await settle();
+
+    expect(sent).toEqual([]);
+    expect(created).toHaveLength(1);
+    expect(created[0]).toMatchObject({ parent: guide.id, title: "café", content: "\uFEFF# 原\r\nx\ry\n\n" });
+    expect([...new TextEncoder().encode(created[0]?.content)]).toEqual([...bytes]);
+    expect(created[0]?.signal).toBe(upload?.signal);
+    const page = createdPage("café", "\uFEFF# 原\r\nx\ry\n\n");
+    created[0]?.resolve(page);
+    await settle();
+    expect(upload?.result).toEqual({ kind: "page", page });
+    expect(store.uploads).toEqual([]);
+  });
+
+  test.each([0, 5 * 1024 * 1024])(
+    "a %i-byte Markdown file is accepted, independently of the attachment limit",
+    async (size) => {
+      const { store, created } = setUp();
+      const [upload] = store.uploadSources(guide.id, [file("notes.md", size)], sourceTerms);
+      await settle();
+
+      expect(created).toHaveLength(1);
+      expect(created[0]?.content).toHaveLength(size);
+      expect(upload?.failure).toBeUndefined();
+      upload?.cancel();
+    }
+  );
+
+  test("the Markdown limit counts file bytes before reading, while binary files keep their own limit", async () => {
+    const { store, created, sent } = setUp();
+    const markdown = new File(["界".repeat(1_747_627)], "wide.md");
+    const read = vi.spyOn(markdown, "arrayBuffer");
+    const [tooLarge, binary] = store.uploadSources(guide.id, [markdown, file("large.pdf", 5_242_881)], {
+      untitled: "Untitled",
+      maxBytes: 6 * 1024 * 1024,
+    });
+    await settle();
+
+    expect(markdown.size).toBe(5_242_881);
+    expect(read).not.toHaveBeenCalled();
+    expect(created).toEqual([]);
+    expect(tooLarge?.failure).toEqual({ refused: "too-large", max: 5_242_880 });
+    expect(sent.map((entry) => entry.name)).toEqual(["large.pdf"]);
+    binary?.cancel();
+  });
+
+  test("invalid UTF-8 is rejected without blocking a binary sibling", async () => {
+    const { store, created, sent } = setUp();
+    const [invalid, binary] = store.uploadSources(
+      guide.id,
+      [new File([new Uint8Array([0xc3, 0x28])], "bad.md"), file("photo.png")],
+      sourceTerms
+    );
+    await settle();
+
+    expect(created).toEqual([]);
+    expect(invalid?.failure).toEqual({ refused: "invalid-utf8" });
+    expect(sent.map((entry) => entry.name)).toEqual(["photo.png"]);
+    const asset = assetJSON(assetNode(90, "photo.png", guide));
+    sent[0]?.resolve(asset);
+    await settle();
+    expect(binary?.result).toEqual({ kind: "asset", asset });
+    expect(store.uploads).toEqual([invalid]);
+  });
+
+  test.each([
+    [".md", "required"],
+    ["CON.md", "not_allowed"],
+    ["bad#.md", "invalid_format"],
+    [`${"a".repeat(256)}.md`, "too_long"],
+  ])("%s waits for an explicit valid title instead of repairing its name", async (name, issue) => {
+    const { store, created } = setUp();
+    const [upload] = store.uploadSources(guide.id, [new File([" keep\r\n"], name)], sourceTerms);
+    await settle();
+    expect(created).toEqual([]);
+    expect(upload?.failure).toEqual({ refused: "source-title", issue });
+    expect(upload?.name).toBe(name.slice(0, -3));
+
+    const retried = store.retrySource(upload!, "  Chosen title  ");
+    await settle();
+    expect(created).toHaveLength(1);
+    expect(created[0]).toMatchObject({ title: "Chosen title", content: " keep\r\n" });
+    created[0]?.resolve(createdPage("Chosen title", " keep\r\n"));
+    await retried;
+    expect(store.uploads).toEqual([]);
+  });
+
+  test("Markdown title conflicts keep one row and never number it, including a second click while retrying", async () => {
+    const { store, created } = setUp([{ ...guide, name: "taken" }]);
+    const [upload] = store.uploadSources(guide.id, [new File(["original\r\n"], "taken.md")], sourceTerms);
+    await settle();
+    created[0]?.reject(refusal(409, "page.title_taken"));
+    await settle();
+
+    expect(created.map((entry) => entry.title)).toEqual(["taken"]);
+    expect(upload?.name).toBe("taken");
+    expect(upload?.failure).toMatchObject({ code: "page.title_taken" });
+    expect(store.uploads).toEqual([upload]);
+    const retry = store.retrySource(upload!, "Chosen");
+    const duplicate = store.retrySource(upload!, "Chosen twice");
+    await settle();
+    expect(created.map((entry) => [entry.title, entry.content])).toEqual([
+      ["taken", "original\r\n"],
+      ["Chosen", "original\r\n"],
+    ]);
+    created[1]?.resolve(createdPage("Chosen", "original\r\n"));
+    await Promise.all([retry, duplicate]);
+    expect(store.uploads).toEqual([]);
+  });
+
+  test("a retry with an invalid title leaves the row without sending another request", async () => {
+    const { store, created } = setUp();
+    const [upload] = store.uploadSources(guide.id, [file(".md")], sourceTerms);
+    await expect(store.retrySource(upload!, "CON")).rejects.toEqual({ refused: "source-title", issue: "not_allowed" });
+    expect(created).toEqual([]);
+    expect(store.uploads).toEqual([upload]);
+    expect(upload?.name).toBe("CON");
+  });
+
+  test("a source result completes without reading or paging the attachment list", async () => {
+    const { store, created, asked, add, pages } = setUp();
+    add(guide.id, "a.png", "b.png", "c.png");
+    await store.load(guide.id);
+    expect(store.listOf(guide.id)?.next).toBe("2");
+    asked.length = 0;
+    const [upload] = store.uploadSources(guide.id, [file("notes.md")], sourceTerms);
+    await settle();
+    created[0]?.resolve(createdPage("notes", "xxx"));
+    await settle();
+
+    expect(upload?.result?.kind).toBe("page");
+    expect(store.uploads).toEqual([]);
+    expect(asked).toEqual([]);
+    expect(pages.wrote).not.toHaveBeenCalled();
+  });
+
+  test("the editor's attachment promise rejects a source-page row immediately", async () => {
+    const { store } = setUp();
+    const [upload] = store.uploadSources(guide.id, [file(".md")], sourceTerms);
+    await expect(store.uploaded(upload!)).rejects.toBeInstanceOf(TypeError);
+  });
+
+  test("generation cancellation removes a reading row immediately and ignores its eventual bytes", async () => {
+    const { store, created, generation, unload } = setUp();
+    const reading = file("notes.md");
+    let finishRead: ((bytes: ArrayBuffer) => void) | undefined;
+    vi.spyOn(reading, "arrayBuffer").mockImplementation(() => new Promise((resolve) => (finishRead = resolve)));
+    store.uploadSources(guide.id, [reading], sourceTerms);
+    await settle();
+    expect(unload).toEqual([true]);
+
+    generation.abort();
+    expect(store.uploads).toEqual([]);
+    expect(unload).toEqual([true, false]);
+    finishRead?.(new Uint8Array([120]).buffer);
+    await settle();
+    expect(created).toEqual([]);
+  });
+
+  test("generation cancellation aborts each submitted source request and clears the unload warning", async () => {
+    const { store, created, generation, unload } = setUp();
+    store.uploadSources(guide.id, [file("a.md"), file("b.md")], sourceTerms);
+    await settle();
+    expect(created).toHaveLength(2);
+    expect(unload).toEqual([true]);
+
+    generation.abort();
+    await settle();
+    expect(created.map((entry) => entry.signal?.aborted)).toEqual([true, true]);
+    expect(store.uploads).toEqual([]);
+    expect(unload).toEqual([true, false]);
+  });
+
+  test("an old generation starts no file read, and a waiting title can be cancelled without a request", async () => {
+    const { store, created, generation } = setUp();
+    const [waiting] = store.uploadSources(guide.id, [file(".md")], sourceTerms);
+    waiting?.cancel();
+    expect(store.uploads).toEqual([]);
+
+    generation.abort();
+    const late = file("late.md");
+    const read = vi.spyOn(late, "arrayBuffer");
+    store.uploadSources(guide.id, [late], sourceTerms);
+    await settle();
+    expect(read).not.toHaveBeenCalled();
+    expect(created).toEqual([]);
+    expect(store.uploads).toEqual([]);
+  });
+
+  test("cancelled or dismissed rows cannot be explicitly retried", async () => {
+    const { store, created } = setUp();
+    const [cancelled, dismissed] = store.uploadSources(guide.id, [file(".md"), file("CON.md")], sourceTerms);
+    cancelled?.cancel();
+    store.dismiss(dismissed!);
+    await Promise.all([store.retrySource(cancelled!, "one"), store.retrySource(dismissed!, "two")]);
+    await settle();
+    expect(created).toEqual([]);
+    expect(store.uploads).toEqual([]);
+  });
+});
+
 describe("AssetStore's uploads, as they fail and go on", () => {
   test("one failed, or refused, holds no name: the next sends it", async () => {
     const { store, sent } = setUp();
@@ -470,7 +713,7 @@ describe("AssetStore's uploads, as they fail and go on", () => {
 
     expect(names()).toEqual(["a.png", "b.png", "c.png", "d.png", "e.png", "z.png"]);
     expect(store.uploads).toEqual([]);
-    expect(upload?.uploaded).toEqual(made);
+    expect(upload?.result).toEqual({ kind: "asset", asset: made });
     // Read again, as many pages as it has read: it is there still.
     await store.load(guide.id);
     expect(names()).toEqual(["a.png", "b.png", "c.png", "d.png", "e.png", "z.png"]);
@@ -591,17 +834,17 @@ describe("AssetStore's changes", () => {
     asked.length = 0;
 
     await store.rename("a1", guide.id, "b.png");
-    expect(pages.rename).toHaveBeenCalledWith("a1", "b.png");
+    expect(pages.rename).toHaveBeenCalledWith("a1", "b.png", undefined);
     expect(asked).toEqual([guide.id]);
 
     asked.length = 0;
     await store.move("a1", guide.id, null);
-    expect(pages.move).toHaveBeenCalledWith("a1", { parent_id: null });
+    expect(pages.move).toHaveBeenCalledWith("a1", { parent_id: null }, undefined);
     expect(asked.toSorted()).toEqual([guide.id, "root"].toSorted());
 
     asked.length = 0;
     await store.remove("a1", null);
-    expect(pages.remove).toHaveBeenCalledWith("a1");
+    expect(pages.remove).toHaveBeenCalledWith("a1", undefined);
     expect(asked).toEqual(["root"]);
     expect(pages.wrote).not.toHaveBeenCalled();
   });

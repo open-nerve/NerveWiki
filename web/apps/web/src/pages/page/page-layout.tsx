@@ -6,6 +6,7 @@ import useSWR, { useSWRConfig } from "swr";
 import { arrived, useArrivalFocus } from "../../app/arrival";
 import { useDocumentTitle } from "../../app/document-title";
 import { writesPages } from "../../app/effective-role";
+import { canEditPageBody } from "../../app/source-permissions";
 import { useMounted } from "../../app/mounted";
 import { NotLoaded } from "../../app/not-loaded";
 import { errorText } from "../../app/problem-messages";
@@ -151,6 +152,8 @@ const PageShell = observer(function PageShell({
   const opening = useRef<PageEditing | undefined>(undefined);
   const mounted = useMounted();
   const writer = writesPages(notebook.role);
+  const editable = canEditPageBody(pages, page.id);
+  const source = pages.isSource(page.id);
   const home = `/${slug}/notebooks/${notebook.id}`;
   // One for the notebook: the backlinks (an observer, memoized) render again not as the shell's own state changes (the
   // edit entered or left); the notebook and its tree read again still render them.
@@ -158,7 +161,7 @@ const PageShell = observer(function PageShell({
   const children = pages.childrenOf(page.id);
 
   async function enter(takeOver: boolean): Promise<void> {
-    if (opening.current !== undefined) {
+    if (opening.current !== undefined || !mounted() || !canEditPageBody(pages, page.id)) {
       return;
     }
     const next = store.editPage(notebook, page.id);
@@ -172,7 +175,7 @@ const PageShell = observer(function PageShell({
     setToldLeft("");
     try {
       const opened = await next.begin(takeOver);
-      if (!mounted()) {
+      if (!mounted() || !canEditPageBody(pages, page.id)) {
         void next.end();
       } else if (opened.opened) {
         heading.current?.focus();
@@ -221,7 +224,7 @@ const PageShell = observer(function PageShell({
   });
   const reading = editing === undefined;
   useEffect(() => {
-    if (!writer || !reading) {
+    if (!editable || !reading) {
       return undefined;
     }
     if (back.current !== false) {
@@ -233,7 +236,7 @@ const PageShell = observer(function PageShell({
     }
     const mac = onMac();
     const onKeyDown = (event: KeyboardEvent) => {
-      if (isMod(event, "e", mac) && !dialogOpen()) {
+      if (isMod(event, "e", mac) && !dialogOpen() && canEditPageBody(pages, page.id)) {
         event.preventDefault();
         // A key held down acts once: the edit just left is not entered again.
         if (!event.repeat) {
@@ -243,7 +246,7 @@ const PageShell = observer(function PageShell({
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [writer, reading]);
+  }, [editable, reading, pages, page.id]);
   return (
     <div className="space-y-6">
       <div className="space-y-2">
@@ -267,7 +270,7 @@ const PageShell = observer(function PageShell({
                   history={`${home}/history?page=${page.id}`}
                 />
               )}
-              {writer && (
+              {editable && (
                 <Button
                   ref={edit}
                   variant="outline"
@@ -302,10 +305,11 @@ const PageShell = observer(function PageShell({
                 <EditLockNote
                   notebook={notebook}
                   page={page}
-                  editHere={writer ? () => void enter(true) : undefined}
+                  editHere={editable ? () => void enter(true) : undefined}
                   released={() => (edit.current ?? heading.current)?.focus()}
                 />
               </div>
+              {source && <Alert>{t("page.sourceReadonly")}</Alert>}
               <AttachmentDrop notebook={notebook} parent={page.id} enabled={writer && !gone}>
                 <ReadingView
                   notebook={notebook}

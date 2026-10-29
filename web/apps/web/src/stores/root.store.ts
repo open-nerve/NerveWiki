@@ -1,4 +1,4 @@
-import { observable } from "mobx";
+import { observable, runInAction } from "mobx";
 
 import { TabChannel, type Port } from "../events/channel";
 import { browserPageLifecycle, type EventDeps } from "../events/deps";
@@ -105,7 +105,7 @@ export class RootStore {
   /** The member, invitation and notebook lists this generation holds, by workspace id. */
   private readonly memberLists = new Map<string, MemberStore>();
   private readonly invitationLists = new Map<string, InvitationStore>();
-  private readonly notebookLists = new Map<string, NotebookStore>();
+  private readonly notebookLists = observable.map<string, NotebookStore>([], { deep: false });
   /** The ownerless notebooks and the audit events this generation holds, by workspace id. */
   private readonly ownerlessLists = new Map<string, OwnerlessStore>();
   private readonly auditLists = new Map<string, AuditStore>();
@@ -284,7 +284,10 @@ export class RootStore {
    */
   notebooksOf(workspace: Workspace): NotebookStore | undefined {
     const service = this.notebooks;
-    return service && once(this.notebookLists, workspace.id, () => new NotebookStore(service, workspace.slug));
+    return (
+      service &&
+      runInAction(() => once(this.notebookLists, workspace.id, () => new NotebookStore(service, workspace.slug)))
+    );
   }
 
   /** ownerlessOf is the ownerless notebooks of workspace, as its admins see them (M3/P5 design 3.2). */
@@ -319,7 +322,16 @@ export class RootStore {
   pagesOf(notebook: Notebook): PageTreeStore | undefined {
     const { pages: service, linking } = this;
     return (
-      service && linking && once(this.pageTrees, notebook.id, () => new PageTreeStore(service, notebook.id, linking))
+      service &&
+      linking &&
+      once(
+        this.pageTrees,
+        notebook.id,
+        () =>
+          new PageTreeStore(service, notebook.id, linking, () =>
+            this.notebookLists.get(notebook.workspace_id)?.byId(notebook.id)
+          )
+      )
     );
   }
 

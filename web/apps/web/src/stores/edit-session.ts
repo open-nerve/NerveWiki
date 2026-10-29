@@ -21,13 +21,14 @@ export const editSessionHeartbeat = 20_000;
  * Why an edit may no longer write (M5 design 4.3, 4.9): its session was
  * taken over by the account elsewhere; an admin unlocked it (by, their
  * name); it lapsed and holder took the lock meanwhile; the page is gone;
- * the account may no longer edit it.
+ * the account may no longer edit it; the page has become a source.
  */
 export type EditLost =
   | { reason: "taken_over" }
   | { reason: "unlocked"; by: string }
   | { reason: "taken"; holder: EditLockHolder }
   | { reason: "gone" }
+  | { reason: "source" }
   | { reason: "no_access" };
 
 /** What opening the session answered: the lock, or who holds it. */
@@ -60,6 +61,9 @@ function refused(error: unknown, status: number, code?: string): error is ApiErr
  * page gone, the account's access to it.
  */
 function lostBy(error: unknown): EditLost | undefined {
+  if (refused(error, 409, "page.source_immutable")) {
+    return { reason: "source" };
+  }
   if (refused(error, 409, "page.edit_session_taken_over")) {
     return { reason: "taken_over" };
   }
@@ -171,6 +175,14 @@ export class EditSession {
     }
     const lost = lostBy(error);
     if (lost !== undefined && !this.ended) {
+      // A source still holds our session. end captures its id and also marks
+      // an opening session for release when its answer arrives.
+      if (lost.reason === "source") {
+        void this.end();
+      } else {
+        // The other refusals say this session has ceased to be ours.
+        this.id = undefined;
+      }
       this.lose(lost);
     }
     return lost !== undefined;
@@ -181,7 +193,8 @@ export class EditSession {
    * once; it resolves once the end is answered. A session still opening
    * ends as it opens, and the end resolves once that end is answered too:
    * what comes next (the reading view's note, a sign-out) finds the lock
-   * free. A lost one has nothing to end.
+   * free. A source loss starts this end immediately; other lost sessions
+   * have already ceased to be this edit's.
    */
   end(): Promise<void> {
     if (this.ended) {
@@ -269,7 +282,6 @@ export class EditSession {
 
   private lose(lost: EditLost): void {
     this.lost = lost;
-    this.id = undefined;
     this.unfollow();
   }
 

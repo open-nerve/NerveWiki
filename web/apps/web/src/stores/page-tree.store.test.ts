@@ -2,7 +2,7 @@ import { reaction } from "mobx";
 import { expect, test, vi } from "vitest";
 
 import { ApiError } from "../services/api";
-import type { LogFilter, NodeMove, PageView, TreeNode } from "../services/page.service";
+import type { LogFilter, NodeMove, PageService, PageView, TreeNode } from "../services/page.service";
 import { assetNode, guide, install, linux, notes, pageNode } from "../test/page-server";
 import { PageTreeStore, toggleLimit } from "./page-tree.store";
 
@@ -25,7 +25,11 @@ function held<T>() {
  */
 function store(nodes: TreeNode[] = [guide, install, linux, notes]) {
   const sent: string[] = [];
-  const state = { nodes, writes: new Map<string, () => Promise<unknown>>() };
+  const state = {
+    nodes,
+    writes: new Map<string, () => Promise<unknown>>(),
+    creations: [] as { parent: string | null; title: string; options: Parameters<PageService["createPage"]>[3] }[],
+  };
   const answer = async <T>(key: string, ok: () => T): Promise<T> => {
     sent.push(key);
     const custom = state.writes.get(key);
@@ -42,17 +46,24 @@ function store(nodes: TreeNode[] = [guide, install, linux, notes]) {
       revision: 1,
       assets_expire_at: null,
     }),
-    createPage: (notebookId: string, parent: string | null, title: string) =>
-      answer(`create ${title}`, () => ({
+    createPage: (
+      notebookId: string,
+      parent: string | null,
+      title: string,
+      options?: Parameters<PageService["createPage"]>[3]
+    ) => {
+      state.creations.push({ parent, title, options });
+      return answer(`create ${title}`, () => ({
         ...pageNode(9, title),
         parent_id: parent,
         notebook_id: notebookId,
         ancestors: [],
         revision: 1,
-        byte_size: 0,
+        byte_size: new TextEncoder().encode(options?.content ?? "").length,
         content_updated_at: "",
         content_updated_by: "",
-      })),
+      }));
+    },
     renameNode: (id: string, name: string) =>
       answer(`rename ${name}`, () => ({ ...(state.nodes.find((n) => n.id === id) ?? guide), name })),
     moveNode: (id: string, move: NodeMove) => answer(`move ${id} ${String(move.parent_id)}`, () => guide),
@@ -142,10 +153,59 @@ function store(nodes: TreeNode[] = [guide, install, linux, notes]) {
       return { valid: true, properties: [], links: [], assets_expire_at: null };
     },
   };
-  return { pages: new PageTreeStore(service, "plans", linking), sent, state };
+  return { pages: new PageTreeStore(service, "plans", linking, () => undefined), sent, state };
 }
 
 const titleTaken = new ApiError(409, { status: 409, code: "page.title_taken", title: "taken" });
+
+test("source creation shares the tree queue and sends its body and signal before rereading", async () => {
+  const { pages, sent, state } = store();
+  const previous = held<unknown>();
+  state.writes.set("rename Handbook", () => previous.promise);
+  const rename = pages.rename(guide.id, "Handbook");
+  const controller = new AbortController();
+  const beforeSend = vi.fn(() => {
+    sent.push("source sending");
+  });
+  const content = "\uFEFFexact\r\nbytes\r\n";
+
+  const creation = pages.createWithContent(guide.id, "Evidence", content, { signal: controller.signal, beforeSend });
+  await vi.waitFor(() => expect(sent).toEqual(["rename Handbook"]));
+  expect(beforeSend).not.toHaveBeenCalled();
+  expect(state.creations).toEqual([]);
+  previous.resolve(guide);
+  await rename;
+  const page = await creation;
+
+  expect(sent).toEqual(["rename Handbook", "list plans", "source sending", "create Evidence", "list plans"]);
+  expect(beforeSend).toHaveBeenCalledOnce();
+  expect(state.creations).toEqual([
+    { parent: guide.id, title: "Evidence", options: { content, signal: controller.signal } },
+  ]);
+  expect(page).toMatchObject({ kind: "page", parent_id: guide.id, name: "Evidence", byte_size: 17 });
+});
+
+test("source creation cancelled in the tree queue never calls its send observer or service", async () => {
+  const { pages, sent, state } = store();
+  const previous = held<unknown>();
+  state.writes.set("rename Handbook", () => previous.promise);
+  const rename = pages.rename(guide.id, "Handbook");
+  const controller = new AbortController();
+  const beforeSend = vi.fn();
+  const creation = pages.createWithContent(guide.id, "Evidence", "raw", { signal: controller.signal, beforeSend }).then(
+    (page) => page,
+    (error: unknown) => error
+  );
+  await vi.waitFor(() => expect(sent).toEqual(["rename Handbook"]));
+  controller.abort();
+  previous.resolve(guide);
+  await rename;
+
+  expect(await creation).toMatchObject({ name: "AbortError" });
+  expect(beforeSend).not.toHaveBeenCalled();
+  expect(state.creations).toEqual([]);
+  expect(sent).toEqual(["rename Handbook", "list plans", "list plans"]);
+});
 
 test("the tree is read for its notebook; before, it has no page", async () => {
   const { pages, sent } = store();

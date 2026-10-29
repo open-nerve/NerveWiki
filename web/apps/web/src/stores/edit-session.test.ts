@@ -356,3 +356,105 @@ test("ended while it opens, the session is ended as it opens, the end resolving 
   expect(page.listening()).toBe(0);
   expect(vi.getTimerCount()).toBe(0);
 });
+
+test.each(["save", "heartbeat"] as const)(
+  "source loss ends the server session exactly once: %s rejection",
+  async (from) => {
+    const { session, sent, answers, page, events, left } = await opened();
+    const ended = deferred<void>();
+    answers.end = () => ended.promise;
+    const error = refusal(409, "page.source_immutable");
+    if (from === "save") expect(session.settle(error)).toBe(true);
+    else {
+      answers.beat = () => {
+        throw error;
+      };
+      await vi.advanceTimersByTimeAsync(editSessionHeartbeat);
+    }
+    expect(session.lost).toEqual({ reason: "source" });
+    expect(sent).toEqual(from === "save" ? ["OPEN", "END s1"] : ["OPEN", "BEAT s1", "END s1"]);
+    expect(page.listening()).toBe(0);
+    expect(events.count()).toBe(0);
+    const end = session.end();
+    expect(session.end()).toBe(end);
+    expect(session.settle(error)).toBe(true);
+    let complete = false;
+    void end.then(() => {
+      complete = true;
+      return undefined;
+    });
+    await vi.advanceTimersByTimeAsync(editSessionHeartbeat * 3);
+    page.fire("pagehide");
+    events.emit(lockEvent("p1"));
+    expect(complete).toBe(false);
+    expect(left).toEqual([]);
+    expect(sent.filter((line) => line.startsWith("END"))).toEqual(["END s1"]);
+    expect(sent.filter((line) => line.startsWith("BEAT"))).toHaveLength(from === "save" ? 0 : 1);
+    await expect(session.current()).rejects.toBeInstanceOf(EditEnded);
+    ended.resolve();
+    await end;
+    expect(complete).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  }
+);
+
+test("source loss ends the server session exactly once: reopening arrives after loss and unmount", async () => {
+  const { session, sent, answers, page, events } = await opened();
+  session.forget("s1");
+  const opening = deferred<{ id: string }>();
+  const ended = deferred<void>();
+  answers.open = () => opening.promise;
+  answers.end = () => ended.promise;
+  const current = session.current().then(
+    (id) => ({ id }),
+    (error: unknown) => ({ error })
+  );
+  expect(sent).toEqual(["OPEN", "OPEN"]);
+  expect(session.settle(refusal(409, "page.source_immutable"))).toBe(true);
+  const end = session.end();
+  expect(session.end()).toBe(end);
+  let complete = false;
+  void end.then(() => {
+    complete = true;
+    return undefined;
+  });
+  expect(sent.filter((line) => line.startsWith("END"))).toEqual([]);
+  opening.resolve({ id: "late-source-session" });
+  expect(await current).toEqual({ error: expect.any(EditEnded) });
+  expect(complete).toBe(false);
+  expect(sent).toEqual(["OPEN", "OPEN", "END late-source-session"]);
+  expect(page.listening()).toBe(0);
+  expect(events.count()).toBe(0);
+  expect(session.lost).toEqual({ reason: "source" });
+  ended.resolve();
+  await end;
+  await vi.advanceTimersByTimeAsync(editSessionHeartbeat * 2);
+  expect(complete).toBe(true);
+  expect(sent).toEqual(["OPEN", "OPEN", "END late-source-session"]);
+});
+
+test("source loss ends the server session exactly once: unmount ends first while its save response is late", async () => {
+  const { session, answers, sent } = await opened();
+  const ended = deferred<void>();
+  answers.end = () => ended.promise;
+  const ending = session.end();
+  expect(session.settle(refusal(409, "page.source_immutable"))).toBe(true);
+  expect(session.end()).toBe(ending);
+  ended.resolve();
+  await ending;
+  await vi.advanceTimersByTimeAsync(editSessionHeartbeat * 2);
+  expect(sent).toEqual(["OPEN", "END s1"]);
+  await expect(session.current()).rejects.toBeInstanceOf(EditEnded);
+});
+
+test("source loss ends the server session exactly once: a failed end stops local writes and does not retry", async () => {
+  const { session, answers, sent } = await opened();
+  answers.end = () => Promise.reject(new TypeError("offline"));
+  expect(session.settle(refusal(409, "page.source_immutable"))).toBe(true);
+  expect(session.lost).toEqual({ reason: "source" });
+  await expect(session.end()).resolves.toBeUndefined();
+  await session.end();
+  await expect(session.current()).rejects.toBeInstanceOf(EditEnded);
+  await vi.advanceTimersByTimeAsync(editSessionHeartbeat * 3);
+  expect(sent).toEqual(["OPEN", "END s1"]);
+});

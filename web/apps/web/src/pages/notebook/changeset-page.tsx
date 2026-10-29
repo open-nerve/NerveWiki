@@ -7,6 +7,7 @@ import { useDocumentTitle } from "../../app/document-title";
 import { writesPages } from "../../app/effective-role";
 import { NotLoaded } from "../../app/not-loaded";
 import { errorText } from "../../app/problem-messages";
+import { sourceHistoryText, useNodeNavigate } from "./duplicate-text";
 import { Alert } from "../../components/ui/alert";
 import { formatDateTime } from "../../i18n/format";
 import { useT } from "../../i18n/i18n";
@@ -84,6 +85,7 @@ export const ChangesetPage = observer(function ChangesetPage() {
 const ChangesetShell = observer(function ChangesetShell({ notebook, id }: { notebook: Notebook; id: string }) {
   const t = useT();
   const pages = usePageTree(notebook);
+  const navigateNode = useNodeNavigate(pages);
   const transfers = useTransfers(notebook);
   const { slug } = useWorkspace();
   const { locale } = useStore().preferences;
@@ -231,7 +233,9 @@ const ChangesetShell = observer(function ChangesetShell({ notebook, id }: { note
       <output id={status} className="block text-sm empty:sr-only">
         {said !== undefined && <SaidText said={said} href={href} jobs={`${home}/settings/transfer`} />}
       </output>
-      {refused !== undefined && <Alert id={note}>{errorText(refused, t)}</Alert>}
+      {refused !== undefined && (
+        <Alert id={note}>{sourceHistoryText(refused, pages, navigateNode) ?? errorText(refused, t)}</Alert>
+      )}
       <ChangesetChanges notebook={notebook} id={id} heading={heading} />
     </div>
   );

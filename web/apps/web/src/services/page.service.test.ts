@@ -3,6 +3,61 @@ import { describe, expect, test } from "vitest";
 import { fakeApi, json } from "../test/fakes";
 import { EditLeaveService, PageService } from "./page.service";
 
+describe("PageService.createPage with source content", () => {
+  test("creates the titled body in one POST, preserving its text while ordinary creation stays bodyless", async () => {
+    const sent: { method: string; path: string; body: unknown }[] = [];
+    const service = new PageService(
+      fakeApi(async (request) => {
+        sent.push({ method: request.method, path: new URL(request.url).pathname, body: await request.json() });
+        return json({ id: "p1" }, 201);
+      })
+    );
+    const content = "\uFEFF# source\r\nraw\rtext\n";
+
+    await service.createPage("nb1", "root1", "Evidence", { content });
+    await service.createPage("nb1", null, "Ordinary");
+
+    expect(sent).toEqual([
+      {
+        method: "POST",
+        path: "/api/v0/notebooks/nb1/pages",
+        body: { parent_id: "root1", title: "Evidence", content },
+      },
+      { method: "POST", path: "/api/v0/notebooks/nb1/pages", body: { parent_id: null, title: "Ordinary" } },
+    ]);
+  });
+
+  test("forwards cancellation to the actual create request", async () => {
+    let ready!: (request: Request) => void;
+    const requested = new Promise<Request>((resolve) => (ready = resolve));
+    let answer!: (response: Response) => void;
+    const service = new PageService(
+      fakeApi((request) => {
+        ready(request);
+        return new Promise<Response>((resolve, reject) => {
+          answer = resolve;
+          request.signal.addEventListener("abort", () => reject(request.signal.reason as Error), { once: true });
+        });
+      })
+    );
+    const stop = new AbortController();
+    const creation = service.createPage("nb1", "root1", "Evidence", { content: "raw", signal: stop.signal }).then(
+      () => "created",
+      (error: unknown) => error
+    );
+    const request = await requested;
+
+    stop.abort();
+    const aborted = request.signal.aborted;
+    // Let an implementation that drops the signal settle too, so failure is the assertion, not a timeout.
+    answer(json({ id: "p1" }, 201));
+    const outcome = await creation;
+
+    expect(aborted).toBe(true);
+    expect(outcome).toMatchObject({ name: "AbortError" });
+  });
+});
+
 describe("PageService.openEditSession", () => {
   test("asks for the lock, taking it over from the account's other sessions when asked to", async () => {
     const bodies: unknown[] = [];

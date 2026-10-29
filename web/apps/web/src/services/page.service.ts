@@ -44,6 +44,7 @@ export type {
   EditLock,
   NodeMove,
   NodeRestored,
+  Page,
   PageContent,
   PageVersion,
   PageVersionContent,
@@ -109,12 +110,18 @@ export class PageService {
     ).data;
   }
 
-  /** createPage creates a page titled title under parent (null: the root), last among its siblings. */
-  async createPage(notebookId: string, parent: string | null, title: string): Promise<Page> {
+  /** createPage creates a titled page and optional initial content in one request, last under parent. */
+  async createPage(
+    notebookId: string,
+    parent: string | null,
+    title: string,
+    options?: { content?: string; signal?: AbortSignal }
+  ): Promise<Page> {
     return unwrap(
       await this.api.POST("/api/v0/notebooks/{notebook_id}/pages", {
         params: { path: { notebook_id: notebookId } },
-        body: { parent_id: parent, title },
+        body: { parent_id: parent, title, content: options?.content },
+        signal: options?.signal,
       })
     );
   }

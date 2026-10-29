@@ -10,6 +10,7 @@ import { writesPages } from "../../app/effective-role";
 import { NotLoaded } from "../../app/not-loaded";
 import { pagesLocked } from "../../app/pages-locked";
 import { errorText } from "../../app/problem-messages";
+import { duplicateText, useNodeNavigate } from "./duplicate-text";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { formatPeriod } from "../../i18n/format";
@@ -20,6 +21,7 @@ import { useNewPage } from "./new-page";
 import { distinctName } from "./distinct-name";
 import { dropMove } from "./page-drag";
 import { isDragData, PageList, type TreeContext } from "./page-tree-item";
+import { useSourceMove } from "./source-move-confirmation";
 
 /**
  * PageTree is the notebook's pages in the left column (M4/P5 design 3.6,
@@ -42,6 +44,7 @@ import { isDragData, PageList, type TreeContext } from "./page-tree-item";
  */
 export const PageTree = observer(function PageTree({ notebook }: { notebook: Notebook }) {
   const pages = usePageTree(notebook);
+  const navigateNode = useNodeNavigate(pages);
   const { pageId } = useParams();
   const t = useT();
   const { account, instance, preferences } = useStore();
@@ -56,6 +59,7 @@ export const PageTree = observer(function PageTree({ notebook }: { notebook: Not
   const { error, mutate } = useSWR(["pages", notebook.id], () => pages.load());
   const read = pages.tree !== undefined;
   const writer = writesPages(notebook.role);
+  const { move: sourceMove, confirmation } = useSourceMove(pages);
   useEffect(() => {
     if (pageId !== undefined && read) {
       pages.openTo(pageId);
@@ -94,13 +98,13 @@ export const PageTree = observer(function PageTree({ notebook }: { notebook: Not
           return;
         }
         setFailure(undefined);
-        pages.move(dragged, move).then(
-          () => pages.openTo(dragged),
+        sourceMove(dragged, move.parent_id, (beforeSend) => pages.move(dragged, move, beforeSend)).then(
+          (done) => (done ? pages.openTo(dragged) : undefined),
           (refusal: unknown) => setFailure(refusal)
         );
       },
     });
-  }, [writer, notebook.id, pages]);
+  }, [writer, notebook.id, pages, sourceMove]);
   const create = (parent: string | null) => {
     setFailure(undefined);
     void newPage.create(parent).then(setFailure);
@@ -139,7 +143,12 @@ export const PageTree = observer(function PageTree({ notebook }: { notebook: Not
       </div>
       {failure !== undefined && (
         <Alert>
-          {pagesLocked(failure, t, me, (id) => distinctName(pages.tree, notebook, id, t)) ?? errorText(failure, t)}
+          {duplicateText(failure, pages, (id) => {
+            setFailure(undefined);
+            navigateNode(id);
+          }) ??
+            pagesLocked(failure, t, me, (id) => distinctName(pages.tree, notebook, id, t)) ??
+            errorText(failure, t)}
         </Alert>
       )}
       {read ? (
@@ -149,6 +158,7 @@ export const PageTree = observer(function PageTree({ notebook }: { notebook: Not
           <NotLoaded error={error} retry={() => void mutate()} />
         </div>
       )}
+      {confirmation}
     </nav>
   );
 });
