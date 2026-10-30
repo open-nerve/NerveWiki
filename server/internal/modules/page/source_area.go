@@ -9,8 +9,8 @@ import (
 	postgresadapter "github.com/open-nerve/NerveWiki/server/internal/modules/page/adapter/postgres"
 )
 
-// SourceArea is the source area's cleanup port. Bootstrap hands it to the
-// notebook downgrade without constructing the page module or its writer.
+// SourceArea reads complete strict live membership and clears source hashes.
+// Neither operation constructs the page module or its writer.
 type SourceArea struct {
 	store *postgresadapter.Store
 }
@@ -24,6 +24,12 @@ func NewSourceArea(pool *pgxpool.Pool) SourceArea {
 // Forget clears the live source hashes before the mode's subscribers run.
 func (s SourceArea) Forget(ctx context.Context, notebook uuid.UUID) error {
 	return s.store.ForgetSources(ctx, notebook)
+}
+
+// Nodes returns every strict live descendant of root, a live page in notebook.
+// The proposed root is valid in standard mode too; membership ignores hashes.
+func (s SourceArea) Nodes(ctx context.Context, notebook, root uuid.UUID) ([]SourceNode, error) {
+	return s.store.SourceNodes(ctx, notebook, root)
 }
 
 // SourceLockKey exposes the notebook key for observed lock interleavings.

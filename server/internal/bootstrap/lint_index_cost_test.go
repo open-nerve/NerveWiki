@@ -24,6 +24,7 @@ import (
 	"golang.org/x/text/unicode/norm"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres/pgtest"
 )
 
 // These are S1-0a origin samples, not the later sources migration or the
@@ -329,4 +330,144 @@ func (p *originCostTrace) check(t *testing.T, want []int64) {
 		t.Fatal(err)
 	}
 	t.Logf("origin queue statement batches %s; earlier linking lock acquisition query wall=%dns (SQL round trips included, not pure contention wait; no lock spans queue)", b, p.lockQueryNS)
+}
+
+// Each pair starts from independent copies of the same real 5000-link
+// save, including its content and history. Only the sources index differs.
+// The final state sets force_generic_plan on every application connection;
+// it does not claim that Planned statements become prepared generic plans.
+// These are warm application updates, not cold or production guarantees.
+func TestLintSourcesIndexCostsItsNormalWrites(t *testing.T) {
+	if testing.Short() {
+		t.Skip("sources index write comparisons run alone without race")
+	}
+	for _, shape := range []string{"sources", "nonsources", "mixed-empty"} {
+		t.Run(shape, func(t *testing.T) {
+			database, seed, notebook := lintCostSeedApp(t)
+			tm := seed.team
+			tm.createPage(t, "alice", notebook, "", "Target")
+			source := tm.createPage(t, "alice", notebook, "", "Source")
+			key := "sources"
+			if shape == "nonsources" {
+				key = "nonsources"
+			}
+			var leading, trailing strings.Builder
+			for i := range 1000 {
+				part := &leading
+				if i >= 500 {
+					part = &trailing
+				}
+				fmt.Fprintf(part, "unrelated%04d: x\n", i)
+			}
+			content := "---\n" + leading.String() + key + ":\n" + strings.Repeat("  - '[[Target]]'\n", 5000) + trailing.String() + "---\n"
+			bodyRows, emptyRows := 0, 0
+			if shape == "mixed-empty" {
+				content = "---\n\"\": '[[Target]]'\n" + leading.String() + "sources:\n" + strings.Repeat("  - '[[Target]]'\n", 2499) + trailing.String() + "---\n" + strings.Repeat("[[Target]]\n", 2500)
+				bodyRows, emptyRows = 2500, 1
+			}
+			if a := tm.sender(t, contentWrite("alice", source, content, 1, ""))(); a.err != nil || a.status != http.StatusOK {
+				t.Fatalf("seed save = %+v", a)
+			}
+			sourceIndexSettle(t, tm.pool)
+			fingerprint := lintSaveFingerprint(t, tm.pool, source)
+			seed.stop()
+			sourceIndexDisconnected(t, database)
+			for _, stage := range []string{"no_statistics", "analyzed", "force_generic_setting"} {
+				for _, enabled := range []bool{false, true} {
+					t.Run(fmt.Sprintf("%s/index-%t", stage, enabled), func(t *testing.T) {
+						clone := pgtest.NewDatabaseFrom(t, database)
+						setup := connect(t, clone)
+						if !enabled {
+							lintCostExec(t, setup, "DROP INDEX page_properties_sources_idx")
+						}
+						if got := lintSaveFingerprint(t, setup, source); got != fingerprint {
+							t.Fatal("index comparison changed initial content, history or linking rows")
+						}
+						mode := "auto"
+						if stage == "force_generic_setting" {
+							mode = "force_generic_plan"
+						}
+						a := sourceHTTPStartApp(t, clone, mode, "")
+						defer a.stop()
+						status, body := ask(t, a.team.contract, http.MethodPost, a.team.base+"/api/v0/auth/login", "", `{"email":"alice@example.com","password":"Tr0ub4dor&3"}`)
+						var tokens authTokens
+						if status != http.StatusOK || json.Unmarshal([]byte(body), &tokens) != nil || tokens.AccessToken == "" {
+							t.Fatalf("clone login = %d %s", status, body)
+						}
+						a.team.tokens["alice"] = tokens.AccessToken
+						sourceIndexSettle(t, a.team.pool)
+						if stage != "no_statistics" {
+							lintCostExec(t, setup, "ANALYZE")
+						}
+						boundary := sourceHTTPBoundary(t, a, stage)
+						statisticsBefore := lintCostStatistics(t, setup, stage)
+						if got := count(t, setup, "SELECT count(*) FROM pg_index WHERE indexrelid=to_regclass('page_properties_sources_idx')"); (got == 1) != enabled {
+							t.Fatal("wrong sources index toggle")
+						}
+						before := lintMigrationFootprintOf(t, setup)
+						originCost(t, a.team, fmt.Sprintf("sources-index-%s-%s-%t", shape, stage, enabled), func() error {
+							answer := a.team.sender(t, contentWrite("alice", source, content+"\nafter\n", 2, ""))()
+							if answer.err != nil {
+								return answer.err
+							}
+							if answer.status != http.StatusOK {
+								return fmt.Errorf("save = %d %s", answer.status, answer.body)
+							}
+							return nil
+						}, false)
+						after := lintMigrationFootprintOf(t, setup)
+						a.team.originVersion(t, source, 2)
+						if n := count(t, setup, "SELECT count(*) FROM page_properties WHERE source_id=$1 AND key LIKE 'unrelated%'", source); n != 1000 {
+							t.Fatalf("saved unrelated properties = %d want 1000", n)
+						}
+						wantSources := 1
+						if shape == "nonsources" {
+							wantSources = 0
+						}
+						if n := count(t, setup, "SELECT count(*) FROM page_properties WHERE source_id=$1 AND translate(key,'SOURCE','source')='sources'", source); n != wantSources {
+							t.Fatalf("saved sources properties = %d want %d", n, wantSources)
+						}
+						for _, check := range []struct {
+							where string
+							want  int
+						}{{"", 5000}, {" AND property_key IS NULL", bodyRows}, {" AND property_key=''", emptyRows}} {
+							if n := count(t, setup, "SELECT count(*) FROM page_links WHERE source_id=$1"+check.where, source); n != check.want {
+								t.Fatalf("saved links%s = %d want %d", check.where, n, check.want)
+							}
+						}
+						if n := count(t, setup, "SELECT count(*) FROM page_contents WHERE node_id=$1 AND revision=3 AND content=$2", source, content+"\nafter\n"); n != 1 {
+							t.Fatal("production update did not commit exact content and revision")
+						}
+						if n := count(t, setup, "SELECT count(*) FROM page_revisions WHERE node_id=$1", source); n != 3 {
+							t.Fatalf("save history = %d want 3", n)
+						}
+						statisticsAfter := lintCostStatistics(t, setup, stage)
+						lintCostLog(t, "write-index-boundary", struct {
+							Shape, State, Fingerprint         string
+							Enabled                           bool
+							Before, After                     lintMigrationFootprint
+							Boundary                          sourceHTTPState
+							StatisticsBefore, StatisticsAfter []sourceHTTPTableState
+						}{shape, stage, fingerprint, enabled, before, after, boundary, statisticsBefore, statisticsAfter})
+					})
+				}
+			}
+		})
+	}
+}
+
+func lintSaveFingerprint(t *testing.T, pool *pgxpool.Pool, source string) string {
+	// JSON of the actual source rows includes every field, ordered by its
+	// stable primary key; the index itself is deliberately not part of it.
+	t.Helper()
+	var fingerprint string
+	err := pool.QueryRow(t.Context(), `SELECT md5(concat(
+ (SELECT jsonb_agg(to_jsonb(p) ORDER BY position) FROM page_properties p WHERE source_id=$1),
+ (SELECT jsonb_agg(to_jsonb(l) ORDER BY range_start) FROM page_links l WHERE source_id=$1),
+ (SELECT to_jsonb(c) FROM page_contents c WHERE node_id=$1),
+ (SELECT jsonb_agg(to_jsonb(r) ORDER BY revision) FROM page_revisions r WHERE node_id=$1)))`, source).Scan(&fingerprint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return fingerprint
 }

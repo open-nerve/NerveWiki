@@ -292,6 +292,21 @@ test-go-costs: ## 不带竞态检测的分配、耗时预算与界线的守卫�
 	cd server && go test -p 1 -count=1 -timeout 10m -v -run '^TestSourceIndexFourthKeyCostsItsSpaceAndNormalWrites$$' ./internal/bootstrap
 	@# 来源表示的5000链接真实保存及分阶段重建/搜索入队代表样本；完整lint迁移与10万页成本随S1收尾。
 	cd server && go test -p 1 -count=1 -v -run '^TestLintIndexesCostTheirScanAndWrites$$' ./internal/bootstrap
+	@# sources索引的5000链接保存对照及完整迁移：empty/dense各10万页、200万属性；独立进程保持默认10m。
+	cd server && go test -p 1 -count=1 -v -run '^TestLintSourcesIndexCostsItsNormalWrites$$' ./internal/bootstrap
+	cd server && go test -p 1 -count=1 -v -run '^TestLintSourcesMigrationCostsEmptySources$$' ./internal/bootstrap
+	cd server && go test -p 1 -count=1 -v -run '^TestLintSourcesMigrationCostsDenseSources$$' ./internal/bootstrap
+	@# 原字节生产迁移的52/51独立状态及真实双笔记本链接夹具校验。
+	cd server && go test -p 1 -count=1 -v -run '^TestLintMigrationFixturesKeepVersionsAndLinkFacts$$' ./internal/bootstrap
+	@# 完整range Up52：10万页、200万属性及链接；empty/dense各自独立进程，含SHARE锁交错。
+	cd server && go test -p 1 -count=1 -v -run '^TestLintRangeMigrationCostsEmptySources$$' ./internal/bootstrap
+	cd server && go test -p 1 -count=1 -v -run '^TestLintRangeMigrationCostsDenseSources$$' ./internal/bootstrap
+	@# 生产range52的5000-link正常保存off/on对照；保留其他索引、数据与统计状态。
+	cd server && go test -p 1 -count=1 -v -run '^TestLintRangeIndexCostsItsNormalWrites$$' ./internal/bootstrap
+	@# lint分批读取的真实计划、物理范围与TOAST界线；包含生产批次和精确位置，保持独立进程。
+	cd server && go test -p 1 -count=1 -v -run '^TestLint(Plans|PhysicalRanges|JSONToast)' ./internal/modules/linking/adapter/postgres
+	@# lint紧凑metadata的真实计划、隐藏本物理范围和深树查询守卫；!race入口必须在非short行执行。
+	cd server && go test -p=1 -count=1 -v -run '^TestLintMetadata(Plans|PhysicalRanges|PresenceDoesNotReadAncestors)$$' ./internal/modules/page/adapter/postgres
 	go -C server/tools test -race -count=1 ./...
 
 .PHONY: test-go-guards
