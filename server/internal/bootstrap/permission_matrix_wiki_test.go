@@ -324,6 +324,52 @@ func wikiMatrixRows() []matrixRow {
 	return append(rows, sourceMatrixRows()...)
 }
 
+// lintMatrixRows are the two reads on the existing notebook columns. Their
+// ordinary notebooks have empty indexed contents; both modes' nonempty
+// answers and later snapshots are exercised through Serve separately.
+func lintMatrixRows() []matrixRow {
+	readers := map[caller]cell{}
+	for _, c := range notebookColumns() {
+		readers[c] = cell{http.StatusNotFound, "notebook.not_found"}
+		if _, visible := roleIn(c); visible {
+			readers[c] = cellOK()
+		}
+	}
+	path := func(c caller, s seeded) string {
+		return "/api/v0/notebooks/" + s.notebook(notebookOf(c)).String() + "/lint"
+	}
+	return []matrixRow{
+		{
+			op: "getLint", columns: notebookColumns(), cells: maps.Clone(readers),
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodGet, path(c, s), ""
+			},
+			check: func(t *testing.T, _ caller, _ seeded, answer string) {
+				t.Helper()
+				var summary map[string]any
+				decodeAnswer(t, answer, &summary)
+				lintServeEnvelope(t, summary, "standard")
+				lintServeWanted(t, lintServeSummary(t, summary, "standard"))
+			},
+		},
+		{
+			op: "listLintItems", columns: notebookColumns(), cells: maps.Clone(readers),
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodGet, path(c, s) + "/wanted", ""
+			},
+			check: func(t *testing.T, _ caller, _ seeded, answer string) {
+				t.Helper()
+				var page map[string]any
+				decodeAnswer(t, answer, &page)
+				lintServeEnvelope(t, page, "standard")
+				if len(lintServeObjects(t, page["data"])) != 0 || page["next_cursor"] != nil {
+					t.Fatalf("lint matrix list=%v, want an empty array and null continuation", page)
+				}
+			},
+		},
+	}
+}
+
 // adminsOnlyOr answers a notebook's admins answer, its other writers
 // writer, refuses its readers, and does not show it to the rest: a write
 // an LLM Wiki keeps to its admins (M10/P1 design 3.22).

@@ -229,7 +229,7 @@ func decodeAnswer(t testing.TB, answer string, v any) {
 func matrixRows() []matrixRow {
 	return slices.Concat(workspaceMatrixRows(), memberMatrixRows(), invitationMatrixRows(), notebookMatrixRows(),
 		notebookMemberMatrixRows(), ownerlessMatrixRows(), pageMatrixRows(), searchMatrixRows(), linkingMatrixRows(),
-		assetMatrixRows(), transferMatrixRows(), wikiMatrixRows())
+		assetMatrixRows(), transferMatrixRows(), wikiMatrixRows(), lintMatrixRows())
 }
 
 // matrixApps is how many cells may run an app of their own at once: each

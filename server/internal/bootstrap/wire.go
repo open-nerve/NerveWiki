@@ -242,6 +242,7 @@ func wireApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrat
 	nb.Register(router, api)
 	pg.Register(router, api)
 	ln.Register(router, api)
+	wk.Register(router, api)
 	as.Register(router, api)
 	tr.Register(router, api)
 	ev.Register(router, api)

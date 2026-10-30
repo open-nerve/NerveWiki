@@ -1,0 +1,583 @@
+# wiki 模块的健康检查；生成的 Go 代码在 server/internal/modules/wiki/adapter/http/gen。
+openapi: 3.1.0
+info:
+  title: Nerve Wiki health checks API
+  version: v0
+paths:
+  /api/v0/notebooks/{notebook_id}/lint:
+    parameters:
+      - $ref: "#/components/parameters/NotebookID"
+    get:
+      operationId: getLint
+      tags: [wiki]
+      summary: Read a notebook's health checks
+      description: >-
+        Counts and up to five items for each applicable rule, from one read
+        snapshot. A standard notebook has wanted, orphans, ambiguous and
+        invalid_frontmatter, in that order. An LLM Wiki additionally has
+        missing_type, missing_summary, undigested_sources and invalid_sources,
+        in that order. Any role in the notebook can read them. A notebook
+        that does not exist, is deleted, or is not visible to the caller is
+        notebook.not_found. After that check, an exhausted computation or
+        waiting budget is server_busy, with Retry-After: 1. Counts at the
+        cap are lower bounds. Later pages are computed from later snapshots;
+        items may move, disappear or repeat between calls.
+      security: [{ bearer: [] }]
+      x-problem-codes: [notebook.not_found, server_busy]
+      responses:
+        "200":
+          description: The applicable rules, with their counts and previews.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LintSummary"
+        "503":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v0/notebooks/{notebook_id}/lint/{rule}:
+    parameters:
+      - $ref: "#/components/parameters/NotebookID"
+      - $ref: "#/components/parameters/Rule"
+    get:
+      operationId: listLintItems
+      tags: [wiki]
+      summary: Read more items of a notebook's health check
+      description: >-
+        One page of a rule, from the current read snapshot. Any role in the
+        notebook can read it. After HTTP binding, a malformed cursor is
+        bad_request. When the requested rule is known, a cursor bound to
+        another rule, notebook or scope is also bad_request before notebook
+        authorization. A nonexistent, deleted or invisible notebook is then
+        notebook.not_found; an unknown requested rule is wiki.lint_rule_not_found,
+        without binding a shape-valid cursor. An LLM-only rule in a
+        standard notebook is notebook.not_llm_wiki; a limit outside 1-100
+        is validation_failed; an exhausted computation or waiting budget
+        is server_busy, with Retry-After: 1. These checks occur in that order.
+        The last four rules are LLM-only. The limit is 50 when absent.
+        Use next_cursor to continue, including a start cursor returned by
+        another client. Each item also carries its own continuation cursor.
+        A capped count does not truncate this list. Pages may move between
+        calls; use item_key to identify an item, not its displayed target.
+      security: [{ bearer: [] }]
+      x-problem-codes:
+        [
+          bad_request,
+          notebook.not_found,
+          wiki.lint_rule_not_found,
+          notebook.not_llm_wiki,
+          validation_failed,
+          server_busy,
+        ]
+      parameters:
+        - $ref: "../common.yaml#/components/parameters/Limit"
+        - $ref: "../common.yaml#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: A page of the requested rule, with null after its last item.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LintPage"
+        "503":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+  parameters:
+    NotebookID:
+      name: notebook_id
+      in: path
+      required: true
+      description: The notebook's id.
+      schema:
+        type: string
+        format: uuid
+    Rule:
+      name: rule
+      in: path
+      required: true
+      description: >-
+        wanted, orphans, ambiguous, invalid_frontmatter, missing_type,
+        missing_summary, undigested_sources or invalid_sources. An unknown
+        value is checked by the use case after the cursor and notebook,
+        not rejected while binding this path parameter.
+      schema:
+        type: string
+  responses:
+    Problem:
+      description: Error (RFC 9457 problem details).
+      headers:
+        Retry-After:
+          description: >-
+            Whole seconds to wait before trying again, rounded up; sent with
+            rate_limited, server_busy and not_ready.
+          schema:
+            type: integer
+            minimum: 1
+        WWW-Authenticate:
+          description: >-
+            Sent with every 401 (RFC 9110 15.5.2): Bearer error="invalid_token"
+            (RFC 6750 3) when the bearer token sent is refused before the
+            operation runs, being invalid or expired; plain Bearer for every
+            other 401, including a credential that the operation finds revoked
+            while it runs.
+          schema:
+            type: string
+      content:
+        application/problem+json:
+          schema:
+            $ref: "../common.yaml#/components/schemas/Problem"
+  schemas:
+    LintRule:
+      type: string
+      enum:
+        [
+          wanted,
+          orphans,
+          ambiguous,
+          invalid_frontmatter,
+          missing_type,
+          missing_summary,
+          undigested_sources,
+          invalid_sources,
+        ]
+    LintMode:
+      type: string
+      enum: [standard, llm_wiki]
+    LintNodeKind:
+      type: string
+      enum: [page, asset]
+    LintCount:
+      description: >-
+        The count capped at 10000. A count of 10000 always has count_capped
+        true and is a lower bound; pagination still includes later items.
+      type: integer
+      format: int64
+      minimum: 0
+      maximum: 10000
+    LintTarget:
+      description: >-
+        The displayed target, valid UTF-8 and at most 256 bytes, cut only
+        between characters. target_cut says whether it was shortened.
+        The character bound here does not replace the UTF-8 byte bound.
+      type: string
+      maxLength: 256
+    LintCursor:
+      description: An opaque canonical continuation after this exact item.
+      type: string
+      minLength: 1
+      maxLength: 2048
+    LintNextCursor:
+      description: >-
+        Continue after the last item actually returned; null when there
+        are no more. A start cursor from another client is also accepted
+        by listLintItems and begins before the true first item.
+      type: [string, "null"]
+      minLength: 1
+      maxLength: 2048
+    LintSummary:
+      type: object
+      additionalProperties: false
+      required: [mode, computed_at, stale_pages, rules]
+      properties:
+        mode:
+          $ref: "#/components/schemas/LintMode"
+        computed_at:
+          type: string
+          format: date-time
+        stale_pages:
+          description: Pages with an old index; an administrator can reindex them.
+          type: integer
+          format: int64
+          minimum: 0
+        rules:
+          description: The applicable rules in their fixed order, including zero counts.
+          type: array
+          minItems: 4
+          maxItems: 8
+          items:
+            $ref: "#/components/schemas/LintRuleSummary"
+    LintPage:
+      type: object
+      additionalProperties: false
+      required: [mode, computed_at, stale_pages, data, next_cursor]
+      properties:
+        mode:
+          $ref: "#/components/schemas/LintMode"
+        computed_at:
+          type: string
+          format: date-time
+        stale_pages:
+          type: integer
+          format: int64
+          minimum: 0
+        data:
+          description: Items of the requested rule; an empty list is [].
+          type: array
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/LintItem"
+        next_cursor:
+          $ref: "#/components/schemas/LintNextCursor"
+    LintItem:
+      oneOf:
+        - $ref: "#/components/schemas/LintWantedItem"
+        - $ref: "#/components/schemas/LintOrphansItem"
+        - $ref: "#/components/schemas/LintAmbiguousItem"
+        - $ref: "#/components/schemas/LintInvalidFrontmatterItem"
+        - $ref: "#/components/schemas/LintMissingTypeItem"
+        - $ref: "#/components/schemas/LintMissingSummaryItem"
+        - $ref: "#/components/schemas/LintUndigestedSourcesItem"
+        - $ref: "#/components/schemas/LintInvalidSourcesItem"
+      discriminator:
+        propertyName: rule
+        mapping:
+          wanted: "#/components/schemas/LintWantedItem"
+          orphans: "#/components/schemas/LintOrphansItem"
+          ambiguous: "#/components/schemas/LintAmbiguousItem"
+          invalid_frontmatter: "#/components/schemas/LintInvalidFrontmatterItem"
+          missing_type: "#/components/schemas/LintMissingTypeItem"
+          missing_summary: "#/components/schemas/LintMissingSummaryItem"
+          undigested_sources: "#/components/schemas/LintUndigestedSourcesItem"
+          invalid_sources: "#/components/schemas/LintInvalidSourcesItem"
+    LintWantedItem:
+      type: object
+      additionalProperties: false
+      required: [rule, item_key, cursor, target, target_cut, pages]
+      properties:
+        rule:
+          type: string
+          enum: [wanted]
+        item_key:
+          type: string
+          maxLength: 140
+          pattern: "^w:[0-9a-f]{64}$"
+        cursor:
+          $ref: "#/components/schemas/LintCursor"
+        target:
+          $ref: "#/components/schemas/LintTarget"
+        target_cut:
+          type: boolean
+        pages:
+          description: The number of distinct referring pages in this complete target group.
+          type: integer
+          format: int64
+          minimum: 1
+    LintOrphansItem:
+      type: object
+      additionalProperties: false
+      required: [rule, item_key, cursor, page_id]
+      properties:
+        rule:
+          type: string
+          enum: [orphans]
+        item_key:
+          type: string
+          maxLength: 140
+          pattern: "^p:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        cursor:
+          $ref: "#/components/schemas/LintCursor"
+        page_id:
+          type: string
+          format: uuid
+    LintAmbiguousItem:
+      type: object
+      additionalProperties: false
+      required: [rule, item_key, cursor, page_id, target, target_cut]
+      properties:
+        rule:
+          type: string
+          enum: [ambiguous]
+        item_key:
+          type: string
+          maxLength: 140
+          pattern: "^a:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:[0-9a-f]{64}$"
+        cursor:
+          $ref: "#/components/schemas/LintCursor"
+        page_id:
+          type: string
+          format: uuid
+        target:
+          $ref: "#/components/schemas/LintTarget"
+        target_cut:
+          type: boolean
+    LintInvalidFrontmatterItem:
+      type: object
+      additionalProperties: false
+      required: [rule, item_key, cursor, page_id]
+      properties:
+        rule:
+          type: string
+          enum: [invalid_frontmatter]
+        item_key:
+          type: string
+          maxLength: 140
+          pattern: "^p:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        cursor:
+          $ref: "#/components/schemas/LintCursor"
+        page_id:
+          type: string
+          format: uuid
+    LintMissingTypeItem:
+      type: object
+      additionalProperties: false
+      required: [rule, item_key, cursor, page_id]
+      properties:
+        rule:
+          type: string
+          enum: [missing_type]
+        item_key:
+          type: string
+          maxLength: 140
+          pattern: "^p:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        cursor:
+          $ref: "#/components/schemas/LintCursor"
+        page_id:
+          type: string
+          format: uuid
+    LintMissingSummaryItem:
+      type: object
+      additionalProperties: false
+      required: [rule, item_key, cursor, page_id]
+      properties:
+        rule:
+          type: string
+          enum: [missing_summary]
+        item_key:
+          type: string
+          maxLength: 140
+          pattern: "^p:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        cursor:
+          $ref: "#/components/schemas/LintCursor"
+        page_id:
+          type: string
+          format: uuid
+    LintUndigestedSourcesItem:
+      type: object
+      additionalProperties: false
+      required: [rule, item_key, cursor, node_id, kind, bytes, created_at]
+      properties:
+        rule:
+          type: string
+          enum: [undigested_sources]
+        item_key:
+          type: string
+          maxLength: 140
+          pattern: "^n:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        cursor:
+          $ref: "#/components/schemas/LintCursor"
+        node_id:
+          type: string
+          format: uuid
+        kind:
+          $ref: "#/components/schemas/LintNodeKind"
+        bytes:
+          type: integer
+          format: int64
+          minimum: 0
+        created_at:
+          description: The source node's original creation time.
+          type: string
+          format: date-time
+    LintInvalidSourcesItem:
+      type: object
+      additionalProperties: false
+      required: [rule, item_key, cursor, page_id, target, target_cut, not_link]
+      properties:
+        rule:
+          type: string
+          enum: [invalid_sources]
+        item_key:
+          type: string
+          maxLength: 140
+          pattern: "^s:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:[0-9a-f]{64}$"
+        cursor:
+          $ref: "#/components/schemas/LintCursor"
+        page_id:
+          type: string
+          format: uuid
+        target:
+          $ref: "#/components/schemas/LintTarget"
+        target_cut:
+          type: boolean
+        not_link:
+          description: True for a non-link JSON value; false for a link that fails qualification.
+          type: boolean
+    LintRuleSummary:
+      oneOf:
+        - $ref: "#/components/schemas/LintWantedSummary"
+        - $ref: "#/components/schemas/LintOrphansSummary"
+        - $ref: "#/components/schemas/LintAmbiguousSummary"
+        - $ref: "#/components/schemas/LintInvalidFrontmatterSummary"
+        - $ref: "#/components/schemas/LintMissingTypeSummary"
+        - $ref: "#/components/schemas/LintMissingSummarySummary"
+        - $ref: "#/components/schemas/LintUndigestedSourcesSummary"
+        - $ref: "#/components/schemas/LintInvalidSourcesSummary"
+      discriminator:
+        propertyName: rule
+        mapping:
+          wanted: "#/components/schemas/LintWantedSummary"
+          orphans: "#/components/schemas/LintOrphansSummary"
+          ambiguous: "#/components/schemas/LintAmbiguousSummary"
+          invalid_frontmatter: "#/components/schemas/LintInvalidFrontmatterSummary"
+          missing_type: "#/components/schemas/LintMissingTypeSummary"
+          missing_summary: "#/components/schemas/LintMissingSummarySummary"
+          undigested_sources: "#/components/schemas/LintUndigestedSourcesSummary"
+          invalid_sources: "#/components/schemas/LintInvalidSourcesSummary"
+    LintWantedSummary:
+      type: object
+      additionalProperties: false
+      required: [rule, count, count_capped, items, next_cursor]
+      properties:
+        rule:
+          type: string
+          enum: [wanted]
+        count:
+          $ref: "#/components/schemas/LintCount"
+        count_capped:
+          type: boolean
+        items:
+          type: array
+          maxItems: 5
+          items:
+            $ref: "#/components/schemas/LintWantedItem"
+        next_cursor:
+          $ref: "#/components/schemas/LintNextCursor"
+    LintOrphansSummary:
+      type: object
+      additionalProperties: false
+      required: [rule, count, count_capped, items, next_cursor]
+      properties:
+        rule:
+          type: string
+          enum: [orphans]
+        count:
+          $ref: "#/components/schemas/LintCount"
+        count_capped:
+          type: boolean
+        items:
+          type: array
+          maxItems: 5
+          items:
+            $ref: "#/components/schemas/LintOrphansItem"
+        next_cursor:
+          $ref: "#/components/schemas/LintNextCursor"
+    LintAmbiguousSummary:
+      type: object
+      additionalProperties: false
+      required: [rule, count, count_capped, items, next_cursor]
+      properties:
+        rule:
+          type: string
+          enum: [ambiguous]
+        count:
+          $ref: "#/components/schemas/LintCount"
+        count_capped:
+          type: boolean
+        items:
+          type: array
+          maxItems: 5
+          items:
+            $ref: "#/components/schemas/LintAmbiguousItem"
+        next_cursor:
+          $ref: "#/components/schemas/LintNextCursor"
+    LintInvalidFrontmatterSummary:
+      type: object
+      additionalProperties: false
+      required: [rule, count, count_capped, items, next_cursor]
+      properties:
+        rule:
+          type: string
+          enum: [invalid_frontmatter]
+        count:
+          $ref: "#/components/schemas/LintCount"
+        count_capped:
+          type: boolean
+        items:
+          type: array
+          maxItems: 5
+          items:
+            $ref: "#/components/schemas/LintInvalidFrontmatterItem"
+        next_cursor:
+          $ref: "#/components/schemas/LintNextCursor"
+    LintMissingTypeSummary:
+      type: object
+      additionalProperties: false
+      required: [rule, count, count_capped, items, next_cursor]
+      properties:
+        rule:
+          type: string
+          enum: [missing_type]
+        count:
+          $ref: "#/components/schemas/LintCount"
+        count_capped:
+          type: boolean
+        items:
+          type: array
+          maxItems: 5
+          items:
+            $ref: "#/components/schemas/LintMissingTypeItem"
+        next_cursor:
+          $ref: "#/components/schemas/LintNextCursor"
+    LintMissingSummarySummary:
+      type: object
+      additionalProperties: false
+      required: [rule, count, count_capped, items, next_cursor]
+      properties:
+        rule:
+          type: string
+          enum: [missing_summary]
+        count:
+          $ref: "#/components/schemas/LintCount"
+        count_capped:
+          type: boolean
+        items:
+          type: array
+          maxItems: 5
+          items:
+            $ref: "#/components/schemas/LintMissingSummaryItem"
+        next_cursor:
+          $ref: "#/components/schemas/LintNextCursor"
+    LintUndigestedSourcesSummary:
+      type: object
+      additionalProperties: false
+      required: [rule, count, count_capped, items, next_cursor]
+      properties:
+        rule:
+          type: string
+          enum: [undigested_sources]
+        count:
+          $ref: "#/components/schemas/LintCount"
+        count_capped:
+          type: boolean
+        items:
+          type: array
+          maxItems: 5
+          items:
+            $ref: "#/components/schemas/LintUndigestedSourcesItem"
+        next_cursor:
+          $ref: "#/components/schemas/LintNextCursor"
+    LintInvalidSourcesSummary:
+      type: object
+      additionalProperties: false
+      required: [rule, count, count_capped, items, next_cursor]
+      properties:
+        rule:
+          type: string
+          enum: [invalid_sources]
+        count:
+          $ref: "#/components/schemas/LintCount"
+        count_capped:
+          type: boolean
+        items:
+          type: array
+          maxItems: 5
+          items:
+            $ref: "#/components/schemas/LintInvalidSourcesItem"
+        next_cursor:
+          $ref: "#/components/schemas/LintNextCursor"

@@ -28,6 +28,8 @@ tags:
     description: The pages of a notebook's tree.
   - name: linking
     description: The link index's reads, backlinks, properties, tags and link targets.
+  - name: wiki
+    description: A notebook's health checks, counts and paged findings.
   - name: events
     description: The stream of the events of what the caller sees.
   - name: asset
@@ -157,6 +159,10 @@ paths:
     $ref: "modules/linking.yaml#/paths/~1api~1v0~1notebooks~1{notebook_id}~1tags~1{tag}"
   /api/v0/notebooks/{notebook_id}/link-targets:
     $ref: "modules/linking.yaml#/paths/~1api~1v0~1notebooks~1{notebook_id}~1link-targets"
+  /api/v0/notebooks/{notebook_id}/lint:
+    $ref: "modules/wiki.yaml#/paths/~1api~1v0~1notebooks~1{notebook_id}~1lint"
+  /api/v0/notebooks/{notebook_id}/lint/{rule}:
+    $ref: "modules/wiki.yaml#/paths/~1api~1v0~1notebooks~1{notebook_id}~1lint~1{rule}"
   /api/v0/events:
     $ref: "modules/events.yaml#/paths/~1api~1v0~1events"
   /api/v0/notebooks/{notebook_id}/assets:

@@ -1,14 +1,16 @@
 // Package wiki is the module of the LLM Wiki mode (M10 design 4.1): the
 // modes' contracts, the LLM Wiki's template and its internal lint runtime.
-// Bootstrap constructs the template seeder separately from the runtime;
-// neither entry registers a public route or tool.
+// Bootstrap constructs the template seeder separately from the runtime.
+// Register exposes the same runtime through the module's HTTP routes.
 package wiki
 
 import (
 	"slices"
 
+	httpadapter "github.com/open-nerve/NerveWiki/server/internal/modules/wiki/adapter/http"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/wiki/app"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/wiki/domain"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
@@ -53,3 +55,8 @@ func TemplatePages(mode Mode, l Locale) []TemplatePage {
 
 // Actions are the wiki module's actions in the rule table.
 func Actions() []shared.Action { return domain.Actions() }
+
+// Register mounts the HTTP routes using this module's shared lint runtime.
+func (m *Module) Register(router *httpserver.Router, api *httpserver.API) {
+	httpadapter.Register(router, api, m)
+}
