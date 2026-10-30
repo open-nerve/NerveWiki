@@ -338,3 +338,72 @@ func TestTheMCPToolsBuildBothServers(t *testing.T) {
 		}
 	}
 }
+
+// Independent shape expectations for the two new complete contract objects.
+// The existing toolListDiff also compares every member with real tools/list.
+func TestTheWikiToolsContract(t *testing.T) {
+	lists := readToolLists(t)
+	for _, entry := range []string{"notebook", "account"} {
+		wantCount := 16
+		if entry == "account" {
+			wantCount = 18
+		}
+		if len(lists[entry]) != wantCount {
+			t.Fatalf("%s contract has %d tools, want %d", entry, len(lists[entry]), wantCount)
+		}
+		objects, _ := toolsByName(lists[entry], entry)
+		for _, name := range []string{"lint", "pending_sources"} {
+			tool, ok := objects[name].(map[string]any)
+			if !ok {
+				t.Fatalf("%s missing complete tool %s", entry, name)
+			}
+			schema, ok := tool["inputSchema"].(map[string]any)
+			if !ok || schema["type"] != "object" || schema["additionalProperties"] != false {
+				t.Fatalf("%s/%s schema=%v", entry, name, schema)
+			}
+			props, _ := schema["properties"].(map[string]any)
+			expected := []string{"cursor", "limit"}
+			if name == "lint" {
+				expected = append(expected, "rule")
+			}
+			if entry == "account" {
+				expected = append(expected, "notebook")
+			}
+			slices.Sort(expected)
+			if !slices.Equal(slices.Sorted(maps.Keys(props)), expected) {
+				t.Fatalf("%s/%s properties=%v, want %v", entry, name, props, expected)
+			}
+			for _, field := range expected {
+				p, ok := props[field].(map[string]any)
+				if !ok {
+					t.Fatalf("%s/%s field %s is no object", entry, name, field)
+				}
+				typ := "string"
+				if field == "limit" {
+					typ = "integer"
+				}
+				var expectedType any = []any{"null", typ}
+				if field == "notebook" {
+					expectedType = "string"
+				}
+				if !reflect.DeepEqual(p["type"], expectedType) || len(p) != 2 || p["description"] == "" {
+					t.Fatalf("%s/%s %s=%v, want only nullable scalar/type and description", entry, name, field, p)
+				}
+			}
+			if entry == "account" {
+				if !reflect.DeepEqual(schema["required"], []any{"notebook"}) {
+					t.Fatalf("%s account required=%v, want notebook first and alone", name, schema["required"])
+				}
+			} else if _, present := schema["required"]; present {
+				t.Fatalf("%s notebook entry has required fields: %v", name, schema)
+			}
+			annotations := map[string]any{"idempotentHint": false, "openWorldHint": false, "readOnlyHint": true}
+			if !reflect.DeepEqual(tool["annotations"], annotations) {
+				t.Fatalf("%s/%s annotations=%v", entry, name, tool["annotations"])
+			}
+			if _, present := tool["outputSchema"]; present {
+				t.Fatalf("%s/%s added an output schema the platform does not emit", entry, name)
+			}
+		}
+	}
+}

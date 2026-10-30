@@ -1,0 +1,154 @@
+{
+  "notebook": [
+    {
+      "name": "lint",
+      "title": "Check the notebook's health",
+      "description": "Check this notebook's health from a snapshot for this call. Omit rule for counts and previews of the applicable rules; limit and cursor require rule. Set rule to read its items, then continue with next_cursor; pages may move between calls. count_capped marks a lower bound, not the end of pagination. target_cut marks a shortened display target, not its full identity; use item_key. Page and source items include their full paths.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "rule": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "An exact health check rule. Omit for counts and previews; limit and cursor require a rule."
+          },
+          "limit": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "description": "At most this many items, 1 to 100. Default 50."
+          },
+          "cursor": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "next_cursor of the previous answer, to continue after its last item."
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "pending_sources",
+      "title": "List undigested sources",
+      "description": "List an LLM Wiki's undigested sources from a snapshot for this call. LLM Wiki only: a standard notebook is refused. This is the undigested_sources health check, with each source's path, kind, bytes and original created_at; empty source pages are omitted. Continue with next_cursor; pages may move between calls. Each item keeps its complete item_key and cursor.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "description": "At most this many items, 1 to 100. Default 50."
+          },
+          "cursor": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "next_cursor of the previous answer, to continue after its last item."
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      }
+    }
+  ],
+  "account": [
+    {
+      "name": "lint",
+      "title": "Check the notebook's health",
+      "description": "Check this notebook's health from a snapshot for this call. Omit rule for counts and previews of the applicable rules; limit and cursor require rule. Set rule to read its items, then continue with next_cursor; pages may move between calls. count_capped marks a lower bound, not the end of pagination. target_cut marks a shortened display target, not its full identity; use item_key. Page and source items include their full paths.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "notebook": {
+            "type": "string",
+            "description": "The notebook's id, from notebooks."
+          },
+          "rule": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "An exact health check rule. Omit for counts and previews; limit and cursor require a rule."
+          },
+          "limit": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "description": "At most this many items, 1 to 100. Default 50."
+          },
+          "cursor": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "next_cursor of the previous answer, to continue after its last item."
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "notebook"
+        ]
+      },
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "pending_sources",
+      "title": "List undigested sources",
+      "description": "List an LLM Wiki's undigested sources from a snapshot for this call. LLM Wiki only: a standard notebook is refused. This is the undigested_sources health check, with each source's path, kind, bytes and original created_at; empty source pages are omitted. Continue with next_cursor; pages may move between calls. Each item keeps its complete item_key and cursor.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "notebook": {
+            "type": "string",
+            "description": "The notebook's id, from notebooks."
+          },
+          "limit": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "description": "At most this many items, 1 to 100. Default 50."
+          },
+          "cursor": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "next_cursor of the previous answer, to continue after its last item."
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "notebook"
+        ]
+      },
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      }
+    }
+  ]
+}

@@ -55,6 +55,9 @@ func TestTheLintQueuedModeIsReadAgain(t *testing.T) {
 }
 
 func TestTheLintFollowersSurviveTheirLeader(t *testing.T) {
+	t.Run("rest-and-mcp", lintRESTAndMCPFollowers)
+	t.Run("real-Fit-preserves-REST", lintActualFitKeepsREST)
+	t.Run("pending-same-flight", lintPendingSharesItsRuleFlight)
 	t.Run("internal", func(t *testing.T) {
 		f := newLintRuntime(t, nil)
 		nb, _, _ := f.seedPending(t)

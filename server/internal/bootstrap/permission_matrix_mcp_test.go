@@ -63,7 +63,7 @@ func (c mcpCell) String() string {
 // linking's backlinks and index (M9/P4 design 3.13), notebook's notebooks
 // (3.17.2); S3's rows are 3.17.4's.
 func mcpRows() []mcpRow {
-	return slices.Concat(pageMCPRows(), pageWriteMCPRows(), linkingMCPRows(), notebookMCPRows())
+	return slices.Concat(pageMCPRows(), pageWriteMCPRows(), linkingMCPRows(), notebookMCPRows(), wikiMCPRows())
 }
 
 // mcpToolCodes are the codes each MCP tool's error may carry besides
@@ -104,13 +104,15 @@ func mcpToolCodes() map[string][]string {
 		"batch": {"bad_request", "validation_failed", "notebook.not_found", "page.not_found", "forbidden", "server_busy",
 			"page.title_taken", "page.cycle", "page.too_deep", "page.revision_mismatch", "page.locked", "linking.pages_locked",
 			"page.batch_too_large", "page.protected", "page.virtual_file", "page.source_admin_only", "page.source_immutable", "page.source_too_large", "page.source_duplicate"},
-		"versions":  {"bad_request", "validation_failed", "notebook.not_found", "page.not_found", "page.version_not_found"},
-		"log":       {"bad_request", "validation_failed", "notebook.not_found", "page.not_found"},
-		"changeset": {"bad_request", "validation_failed", "notebook.not_found", "page.changeset_not_found"},
-		"grep":      {"bad_request", "validation_failed", "notebook.not_found", "server_busy"},
-		"search":    {"bad_request", "validation_failed", "notebook.not_found"},
-		"backlinks": {"bad_request", "validation_failed", "notebook.not_found", "page.not_found"},
-		"index":     {"bad_request", "validation_failed", "notebook.not_found", "page.not_found"},
+		"versions":        {"bad_request", "validation_failed", "notebook.not_found", "page.not_found", "page.version_not_found"},
+		"log":             {"bad_request", "validation_failed", "notebook.not_found", "page.not_found"},
+		"changeset":       {"bad_request", "validation_failed", "notebook.not_found", "page.changeset_not_found"},
+		"grep":            {"bad_request", "validation_failed", "notebook.not_found", "server_busy"},
+		"search":          {"bad_request", "validation_failed", "notebook.not_found"},
+		"backlinks":       {"bad_request", "validation_failed", "notebook.not_found", "page.not_found"},
+		"index":           {"bad_request", "validation_failed", "notebook.not_found", "page.not_found"},
+		"lint":            {"bad_request", "validation_failed", "notebook.not_found", "wiki.lint_rule_not_found", "notebook.not_llm_wiki", "server_busy"},
+		"pending_sources": {"bad_request", "validation_failed", "notebook.not_found", "notebook.not_llm_wiki", "server_busy"},
 	}
 }
 

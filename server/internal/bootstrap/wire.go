@@ -246,7 +246,7 @@ func wireApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrat
 	as.Register(router, api)
 	tr.Register(router, api)
 	ev.Register(router, api)
-	tools := mcpTools(pg, as, ln, nb)
+	tools := mcpTools(pg, as, ln, nb, wk)
 	mountMCP(router, api, mcpServer(cfg, logger, api, pg, mcpNames{identity.NewClientNames(pool)}, slices.Concat(tools, w.mcpTools)))
 	// "/" without a method is the least specific pattern: /api/ and the
 	// probes keep their routes, and a wrong method on a page path gets the
