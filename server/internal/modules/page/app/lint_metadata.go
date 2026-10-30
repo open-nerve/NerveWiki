@@ -27,3 +27,10 @@ type SourceNode struct {
 	CreatedAt time.Time
 	PageBytes int64
 }
+
+// SourceData contains one read's complete live metadata and strict source area.
+// It belongs to this call; it is never cached across snapshots or notebooks.
+type SourceData struct {
+	Sources []SourceNode
+	Nodes   []LintNode
+}

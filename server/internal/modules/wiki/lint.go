@@ -25,6 +25,7 @@ type (
 	NotebookState      = app.NotebookState
 	Notebooks          = app.Notebooks
 	SourceNode         = app.SourceNode
+	SourceData         = app.SourceData
 	Sources            = app.Sources
 	CompactNode        = app.CompactNode
 	Nodes              = app.Nodes

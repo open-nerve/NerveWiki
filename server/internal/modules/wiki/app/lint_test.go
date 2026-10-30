@@ -36,9 +36,9 @@ func (f lintExecAuth) Authorize(ctx context.Context, a shared.Actor, action shar
 	return f(ctx, a, action, target)
 }
 
-type lintExecSources func(context.Context, uuid.UUID, uuid.UUID) ([]SourceNode, error)
+type lintExecSources func(context.Context, uuid.UUID, uuid.UUID) (SourceData, error)
 
-func (f lintExecSources) Nodes(ctx context.Context, notebook, root uuid.UUID) ([]SourceNode, error) {
+func (f lintExecSources) LintData(ctx context.Context, notebook, root uuid.UUID) (SourceData, error) {
 	return f(ctx, notebook, root)
 }
 
@@ -151,9 +151,9 @@ func lintExecFixture(t *testing.T) (LintDeps, *lintExecTrace, *lintRunEvents, *l
 			}
 			return shared.Grant{}, ctx.Err()
 		}),
-		Sources: lintExecSources(func(context.Context, uuid.UUID, uuid.UUID) ([]SourceNode, error) {
+		Sources: lintExecSources(func(context.Context, uuid.UUID, uuid.UUID) (SourceData, error) {
 			trace.add("sources")
-			return nil, nil
+			return SourceData{}, nil
 		}),
 		Nodes: lintExecNodes(func(context.Context, uuid.UUID) ([]CompactNode, error) {
 			trace.add("nodes")

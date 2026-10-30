@@ -35,6 +35,27 @@ func (s *Store) SourceNodes(ctx context.Context, notebook, root uuid.UUID) ([]ap
 	if err != nil {
 		return nil, err
 	}
+	return lintSourceNodes(ctx, notebook, root, nodes)
+}
+
+// LintSourceData retains the same read for both strict membership and metadata.
+// No state survives this call or is shared by another transaction.
+func (s *Store) LintSourceData(ctx context.Context, notebook, root uuid.UUID) (app.SourceData, error) {
+	nodes, err := s.LintNodes(ctx, notebook)
+	if err != nil {
+		return app.SourceData{}, err
+	}
+	sources, err := lintSourceNodes(ctx, notebook, root, nodes)
+	if err != nil {
+		return app.SourceData{}, err
+	}
+	if err := ctx.Err(); err != nil {
+		return app.SourceData{}, err
+	}
+	return app.SourceData{Sources: sources, Nodes: nodes}, nil
+}
+
+func lintSourceNodes(ctx context.Context, notebook, root uuid.UUID, nodes []app.LintNode) ([]app.SourceNode, error) {
 	byID := make(map[uuid.UUID]int, len(nodes))
 	for i, node := range nodes {
 		byID[node.ID] = i

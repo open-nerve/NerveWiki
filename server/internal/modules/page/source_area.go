@@ -32,6 +32,11 @@ func (s SourceArea) Nodes(ctx context.Context, notebook, root uuid.UUID) ([]Sour
 	return s.store.SourceNodes(ctx, notebook, root)
 }
 
+// LintData reads strict source membership and all live metadata in one snapshot.
+func (s SourceArea) LintData(ctx context.Context, notebook, root uuid.UUID) (SourceData, error) {
+	return s.store.LintSourceData(ctx, notebook, root)
+}
+
 // SourceLockKey exposes the notebook key for observed lock interleavings.
 // The first advisory key is 0x73726365 ("srce").
 func SourceLockKey(notebook uuid.UUID) int32 {

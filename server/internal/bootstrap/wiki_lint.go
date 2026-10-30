@@ -42,18 +42,22 @@ func (n wikiLintNotebooks) StateOf(ctx context.Context, id uuid.UUID) (wiki.Note
 
 type wikiSources struct{ sources page.SourceArea }
 
-func (s wikiSources) Nodes(ctx context.Context, notebookID, root uuid.UUID) ([]wiki.SourceNode, error) {
-	nodes, err := s.sources.Nodes(ctx, notebookID, root)
+func (s wikiSources) LintData(ctx context.Context, notebookID, root uuid.UUID) (wiki.SourceData, error) {
+	data, err := s.sources.LintData(ctx, notebookID, root)
 	if err != nil {
-		return nil, err
+		return wiki.SourceData{}, err
 	}
-	out := make([]wiki.SourceNode, len(nodes))
-	for i, node := range nodes {
+	out := wiki.SourceData{Sources: make([]wiki.SourceNode, len(data.Sources))}
+	for i, node := range data.Sources {
 		kind, err := wikiPageKind(node.Kind)
 		if err != nil {
-			return nil, err
+			return wiki.SourceData{}, err
 		}
-		out[i] = wiki.SourceNode{ID: node.ID, Kind: kind, CreatedAt: node.CreatedAt, PageBytes: node.PageBytes}
+		out.Sources[i] = wiki.SourceNode{ID: node.ID, Kind: kind, CreatedAt: node.CreatedAt, PageBytes: node.PageBytes}
+	}
+	out.Nodes, err = wikiCompactNodes(data.Nodes)
+	if err != nil {
+		return wiki.SourceData{}, err
 	}
 	return out, nil
 }
@@ -65,6 +69,10 @@ func (n wikiNodes) Nodes(ctx context.Context, notebookID uuid.UUID) ([]wiki.Comp
 	if err != nil {
 		return nil, err
 	}
+	return wikiCompactNodes(nodes)
+}
+
+func wikiCompactNodes(nodes []page.LintNode) ([]wiki.CompactNode, error) {
 	out := make([]wiki.CompactNode, len(nodes))
 	for i, node := range nodes {
 		kind, err := wikiPageKind(node.Kind)

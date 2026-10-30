@@ -214,9 +214,9 @@ func (f *lintRuntime) WithinSnapshot(ctx context.Context, fn func(context.Contex
 
 type lintRuntimeSources struct{ f *lintRuntime }
 
-func (s lintRuntimeSources) Nodes(ctx context.Context, id, root uuid.UUID) ([]app.SourceNode, error) {
+func (s lintRuntimeSources) LintData(ctx context.Context, id, root uuid.UUID) (app.SourceData, error) {
 	if id != lintID(10) || root != lintID(20) || ctx.Value(lintSnapshotKey{}) != true {
-		return nil, errors.New("source scope escaped snapshot")
+		return app.SourceData{}, errors.New("source scope escaped snapshot")
 	}
 	var out []app.SourceNode
 	for _, row := range s.f.data.rows {
@@ -226,7 +226,11 @@ func (s lintRuntimeSources) Nodes(ctx context.Context, id, root uuid.UUID) ([]ap
 			}
 		}
 	}
-	return out, ctx.Err()
+	nodes, err := lintRuntimeNodes(s).Nodes(ctx, id)
+	if err != nil {
+		return app.SourceData{}, err
+	}
+	return app.SourceData{Sources: out, Nodes: nodes}, ctx.Err()
 }
 
 type lintRuntimeNodes struct{ f *lintRuntime }

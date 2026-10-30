@@ -51,8 +51,15 @@ type CompactNode struct {
 	PageBytes int64
 }
 
+// SourceData is private to one snapshot read. Nodes contains the whole live
+// notebook; Sources contains only the proposed root's strict descendants.
+type SourceData struct {
+	Sources []SourceNode
+	Nodes   []CompactNode
+}
+
 type Sources interface {
-	Nodes(context.Context, uuid.UUID, uuid.UUID) ([]SourceNode, error)
+	LintData(context.Context, uuid.UUID, uuid.UUID) (SourceData, error)
 }
 
 type Nodes interface {

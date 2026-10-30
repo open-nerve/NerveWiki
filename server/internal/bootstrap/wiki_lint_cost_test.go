@@ -266,7 +266,10 @@ func (f *wikiCostFixture) checkTrace(t *testing.T, queries []wikiCostSQL, timing
 			t.Errorf("positive orphan count lost its real Items query: calls=%v", calls)
 		}
 	}
-	if first != "FindNotebook" || counts["LintNodeMetadata"] != int64(2*(100000+f.bulkAssets+2)) || counts["LintHeads"] != 100000 || counts["LintWantedEdgeHeadsFirst"] != 3 || counts["LintEdgesByPositions"] != 3 {
+	if calls["LintNodeMetadata"] != 1 || counts["LintNodeMetadata"] != int64(100000+f.bulkAssets+2) {
+		t.Fatalf("metadata must be read once: calls=%d rows=%d; want 1/%d", calls["LintNodeMetadata"], counts["LintNodeMetadata"], 100000+f.bulkAssets+2)
+	}
+	if first != "FindNotebook" || counts["LintHeads"] != 100000 || counts["LintWantedEdgeHeadsFirst"] != 3 || counts["LintEdgesByPositions"] != 3 {
 		t.Fatalf("real nonempty compact/wanted trace=%v first=%s", counts, first)
 	}
 	var wantedIDs []uuid.UUID

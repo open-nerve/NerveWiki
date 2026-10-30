@@ -63,21 +63,17 @@ func TestLintSnapshotOrder(t *testing.T) {
 			sources[i] = SourceNode{ID: lintExecOrdinal(uint64(i + 100)), Kind: domain.NodePage, PageBytes: 1}
 		}
 		sources[0].PageBytes, sources[1].Kind = 0, domain.NodeAsset
-		deps.Sources = lintExecSources(func(ctx context.Context, id, root uuid.UUID) ([]SourceNode, error) {
-			trace.add("sources")
-			if ctx.Value(lintExecSnapshotKey{}) != true || id != lintExecID(1) || root != (uuid.UUID{}) {
-				return nil, errors.New("wrong source context or zero root")
-			}
-			return sources, nil
-		})
 		parent := lintExecID(17)
 		nodes := []CompactNode{{ID: lintExecID(3), ParentID: &parent, Kind: domain.NodeAsset, NameKey: "metadata", Linkable: true}}
-		deps.Nodes = lintExecNodes(func(ctx context.Context, id uuid.UUID) ([]CompactNode, error) {
-			trace.add("nodes")
-			if ctx.Value(lintExecSnapshotKey{}) != true || id != lintExecID(1) {
-				return nil, errors.New("nodes outside snapshot")
+		deps.Sources = lintExecSources(func(ctx context.Context, id, root uuid.UUID) (SourceData, error) {
+			trace.add("sources")
+			if ctx.Value(lintExecSnapshotKey{}) != true || id != lintExecID(1) || root != (uuid.UUID{}) {
+				return SourceData{}, errors.New("wrong source context or zero root")
 			}
-			return nodes, nil
+			return SourceData{Sources: sources, Nodes: nodes}, nil
+		})
+		deps.Nodes = lintExecNodes(func(context.Context, uuid.UUID) ([]CompactNode, error) {
+			return nil, errors.New("LLM reread metadata outside its source bundle")
 		})
 		prepared := lintExecNonempty()
 		deps.Rules = lintExecRules(func(ctx context.Context, in ReadInput, q RuleQuery) (PreparedRules, error) {
@@ -95,6 +91,11 @@ func TestLintSnapshotOrder(t *testing.T) {
 			*in.Nodes[0].ParentID = lintExecID(18)
 			if parent != lintExecID(17) {
 				return nil, errors.New("metadata pointer was borrowed")
+			}
+			in.Nodes[0].NameKey = "consumer changed"
+			in.SourceIDs[0] = lintExecID(19)
+			if nodes[0].NameKey != "metadata" || sources[0].ID != lintExecOrdinal(100) {
+				return nil, errors.New("metadata slice was borrowed")
 			}
 			return prepared, nil
 		})
@@ -133,7 +134,7 @@ func TestLintSnapshotOrder(t *testing.T) {
 				t.Fatalf("path projection=%+v", got)
 			}
 		}
-		wantCalls := []string{"workspace", "authorize", "begin", "state", "clock", "sources", "nodes", "prepare"}
+		wantCalls := []string{"workspace", "authorize", "begin", "state", "clock", "sources", "prepare"}
 		for range 8 {
 			wantCalls = append(wantCalls, "encode")
 		}

@@ -210,22 +210,25 @@ func (l *Lint) compute(ctx context.Context, scope LintScope, query RuleQuery, ki
 			return domain.ErrNotLLMWiki
 		}
 		input := ReadInput{NotebookID: scope.NotebookID, EffectiveMode: mode, Explicit: scope.Contract != nil, AreaRootID: root}
+		var nodes []CompactNode
 		if mode == domain.ModeLLMWiki {
-			sources, err := l.deps.Sources.Nodes(snapshot, scope.NotebookID, *root)
+			data, err := l.deps.Sources.LintData(snapshot, scope.NotebookID, *root)
 			if err != nil {
 				return err
 			}
-			input.SourceIDs = make([]uuid.UUID, len(sources))
-			for i, source := range sources {
+			input.SourceIDs = make([]uuid.UUID, len(data.Sources))
+			for i, source := range data.Sources {
 				if err := snapshot.Err(); err != nil {
 					return err
 				}
 				input.SourceIDs[i] = source.ID
 			}
-		}
-		nodes, err := l.deps.Nodes.Nodes(snapshot, scope.NotebookID)
-		if err != nil {
-			return err
+			nodes = data.Nodes
+		} else {
+			nodes, err = l.deps.Nodes.Nodes(snapshot, scope.NotebookID)
+			if err != nil {
+				return err
+			}
 		}
 		input.Nodes = slices.Clone(nodes)
 		for i := range input.Nodes {

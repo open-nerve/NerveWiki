@@ -104,12 +104,12 @@ func (n lintNodes) Nodes(ctx context.Context, id uuid.UUID) ([]app.CompactNode, 
 
 type lintSources struct{ f *lintFixture }
 
-func (s lintSources) Nodes(ctx context.Context, id, root uuid.UUID) ([]app.SourceNode, error) {
+func (s lintSources) LintData(ctx context.Context, id, root uuid.UUID) (app.SourceData, error) {
 	s.f.note("sources")
 	if id != lintID(10) || root != lintID(20) || ctx.Value(lintSnapshotKey{}) != true {
-		return nil, errors.New("sources outside the authorized snapshot")
+		return app.SourceData{}, errors.New("sources outside the authorized snapshot")
 	}
-	return nil, ctx.Err()
+	return app.SourceData{Nodes: []app.CompactNode{{ID: lintID(0), Kind: domain.NodePage}, {ID: lintID(21), Kind: domain.NodePage}}}, ctx.Err()
 }
 
 func (f *lintFixture) Paths(ctx context.Context, id uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]string, error) {

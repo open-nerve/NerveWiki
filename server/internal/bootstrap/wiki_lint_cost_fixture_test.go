@@ -330,11 +330,11 @@ type wikiCostSources struct {
 	trace *wikiCostTrace
 }
 
-func (p wikiCostSources) Nodes(ctx context.Context, notebook, root uuid.UUID) ([]wiki.SourceNode, error) {
+func (p wikiCostSources) LintData(ctx context.Context, notebook, root uuid.UUID) (wiki.SourceData, error) {
 	start := time.Now()
-	rows, err := p.Sources.Nodes(context.WithValue(ctx, wikiCostStageKey{}, "sources"), notebook, root)
-	p.trace.stage("sources", start, len(rows), err)
-	return rows, err
+	data, err := p.Sources.LintData(context.WithValue(ctx, wikiCostStageKey{}, "sources"), notebook, root)
+	p.trace.stage("sources", start, len(data.Sources), err)
+	return data, err
 }
 
 type wikiCostNodes struct {

@@ -24,6 +24,8 @@ type (
 	LintNode = app.LintNode
 	// SourceNode is a strict live source-area member, including empty pages.
 	SourceNode = app.SourceNode
+	// SourceData combines complete metadata with its strict source membership.
+	SourceData = app.SourceData
 )
 
 // LintNodes reads all live candidates, independent of source/index eligibility.
