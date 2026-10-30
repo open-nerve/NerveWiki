@@ -10,29 +10,31 @@ import (
 
 // Lint's read projections contain no page content or display paths.
 type (
-	LintReads         = app.LintReads
-	IndexedHead       = app.IndexedHead
-	EdgePos           = app.EdgePos
-	LintEdge          = app.LintEdge
-	SourcePropertyPos = app.SourcePropertyPos
-	SourceProperty    = app.SourceProperty
-	SourceSpec        = app.SourceSpec
-	SourceSlotEdge    = app.SourceSlotEdge
-	BodyReference     = app.BodyReference
-	LintRules         = app.Rules
-	PreparedRules     = app.Prepared
-	ReadInput         = app.ReadInput
-	CompactNode       = app.CompactNode
-	RuleQuery         = app.RuleQuery
-	AssetSizes        = app.AssetSizes
-	Rule              = domain.Rule
-	Count             = domain.Count
-	Item              = domain.Item
-	Position          = domain.Position
-	NodeKind          = domain.NodeKind
-	LintMode          = domain.LintMode
-	CursorBinding     = domain.CursorBinding
-	LintCursor        = domain.LintCursor
+	LintReads          = app.LintReads
+	IndexedHead        = app.IndexedHead
+	EdgePos            = app.EdgePos
+	LintEdge           = app.LintEdge
+	SourcePropertyPos  = app.SourcePropertyPos
+	SourceProperty     = app.SourceProperty
+	SourceSpec         = app.SourceSpec
+	SourceSlotEdge     = app.SourceSlotEdge
+	BodyReference      = app.BodyReference
+	LintRules          = app.Rules
+	PreparedRules      = app.Prepared
+	RuleTiming         = app.RuleTiming
+	PreparationTimings = app.PreparationTimings
+	ReadInput          = app.ReadInput
+	CompactNode        = app.CompactNode
+	RuleQuery          = app.RuleQuery
+	AssetSizes         = app.AssetSizes
+	Rule               = domain.Rule
+	Count              = domain.Count
+	Item               = domain.Item
+	Position           = domain.Position
+	NodeKind           = domain.NodeKind
+	LintMode           = domain.LintMode
+	CursorBinding      = domain.CursorBinding
+	LintCursor         = domain.LintCursor
 )
 
 const (

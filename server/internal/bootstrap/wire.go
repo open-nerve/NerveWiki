@@ -73,6 +73,10 @@ type wiring struct {
 	// composition root gives them: grep's whole-program tests bound its
 	// walk small and hold its slot (M9/P4 design 6.1, 3.12).
 	page func(*page.Deps)
+	// wiki wraps actual lint ports; wikiReady observes the same module whose
+	// runtime app.run and app.close stop. Neither hook registers an operation.
+	wiki      func(*wiki.Deps)
+	wikiReady func(*wiki.Module)
 	// transfer wraps real ports for whole-program boundary interleavings.
 	transfer func(*transfer.Deps)
 }
@@ -209,6 +213,25 @@ func wireApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrat
 	if err != nil {
 		return nil, err
 	}
+	wikiDeps := wiki.Deps{
+		Notebooks: wikiLintNotebooks{notebooks: notebook.NewNotebooks(pool)},
+		Sources:   wikiSources{sources: page.NewSourceArea(pool)},
+		Nodes:     wikiNodes{nodes: page.NewLintNodes(pool)},
+		Rules: wikiRules{rules: linking.NewLintRules(pool, page.MaxContentBytes,
+			wikiAssetSizes{infos: asset.NewAttachmentInfos(pool)})},
+		Cursors: wikiCursors{}, Paths: wikiPaths{paths: page.NewNodePaths(pool)},
+		Snapshots:  postgres.NewTxManager(pool, cfg.Database.CommitTimeout),
+		Authorizer: authorizer, Clock: clock.System{}, Logger: logger,
+		MaxLintRuns: max(1, int(cfg.Database.MaxConns/2)/2),
+		LintTimeout: min(10*time.Second, cfg.Server.RequestTimeout/2),
+	}
+	if w.wiki != nil {
+		w.wiki(&wikiDeps)
+	}
+	wk := wiki.New(wikiDeps)
+	if w.wikiReady != nil {
+		w.wikiReady(wk)
+	}
 	router := httpserver.NewRouter(logger,
 		httpserver.Check{Name: "database", Run: pool.Ping},
 		httpserver.Check{Name: "migrations", Run: migrator.CheckUpToDate},
@@ -235,6 +258,7 @@ func wireApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrat
 		migrator:         migrator,
 		router:           router,
 		jobs:             runner,
+		lintRuns:         wk,
 		listener:         listener,
 		poolCloseTimeout: poolCloseTimeout,
 		databaseWait:     databaseWait,

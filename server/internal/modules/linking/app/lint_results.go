@@ -110,6 +110,7 @@ func lintCopyItems(in []domain.Item) []domain.Item {
 type Prepared struct {
 	stale   int64
 	results map[domain.Rule]preparedRule
+	timings PreparationTimings
 }
 
 // StalePages counts each old indexed page once, across all selected rules.

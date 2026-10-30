@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"slices"
+	"time"
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/domain"
@@ -95,16 +96,20 @@ func (r *Rules) Prepare(ctx context.Context, input ReadInput, query RuleQuery) (
 	out := &Prepared{stale: scope.stale, results: make(map[domain.Rule]preparedRule, len(plan.rules))}
 	var sources *sourceResults
 	if slices.Contains(plan.rules, domain.InvalidSources) || slices.Contains(plan.rules, domain.UndigestedSources) {
+		started := time.Now()
 		sources, err = r.prepareSources(ctx, scope, plan)
 		if err != nil {
 			return nil, err
 		}
+		elapsed := time.Since(started)
+		out.timings.SharedSources = &elapsed
 	}
 	for _, rule := range plan.rules {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
 		var result preparedRule
+		started := time.Now()
 		switch rule {
 		case domain.Wanted:
 			result, err = r.prepareWanted(ctx, scope, plan)
@@ -121,6 +126,7 @@ func (r *Rules) Prepare(ctx context.Context, input ReadInput, query RuleQuery) (
 			return nil, err
 		}
 		out.results[rule] = result
+		out.timings.Rules = append(out.timings.Rules, RuleTiming{Rule: rule, Duration: time.Since(started)})
 	}
 	if err := r.projectAssets(ctx, scope, out); err != nil {
 		return nil, err

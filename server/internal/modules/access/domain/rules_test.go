@@ -50,3 +50,15 @@ func TestRuleForAnUnknownAction(t *testing.T) {
 		t.Errorf("RuleKeys() = %q, not sorted", RuleKeys())
 	}
 }
+
+// Lint is a notebook read. A workspace role cannot substitute for the
+// notebook's reader/editor/admin membership on a private notebook.
+func TestLintReadHasAReaderRule(t *testing.T) {
+	rule, ok := RuleFor("lint.read")
+	if !ok {
+		t.Fatal("lint.read has no access rule")
+	}
+	if rule.Level != LevelNotebook || len(rule.Workspace) != 0 || !slices.Equal(rule.Notebook, shared.NotebookRoles()) {
+		t.Fatalf("lint.read rule = %+v, want the notebook's three reader roles only", rule)
+	}
+}

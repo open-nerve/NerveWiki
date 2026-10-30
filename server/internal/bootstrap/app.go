@@ -33,6 +33,9 @@ const databaseWait = 10 * time.Second
 // whether they have been applied, to start the background jobs.
 const migrationPoll = 2 * time.Second
 
+// lintStopper is the same module owner used by the internal lint entry.
+type lintStopper interface{ Stop(context.Context) error }
+
 // app is a fully wired nervewiki server.
 type app struct {
 	cfg      config.Config
@@ -41,6 +44,7 @@ type app struct {
 	migrator *postgres.Migrator
 	router   *httpserver.Router
 	jobs     *jobs.Runner
+	lintRuns lintStopper
 	// listener feeds the event stream (M5 design 4.10): it runs while HTTP
 	// serves and stops after it.
 	listener *postgres.Listener
@@ -61,8 +65,11 @@ type app struct {
 // starts (M5 design 4.10): a stream opened before the listener listens is
 // 503 not_ready. HTTP stops first (see httpserver.Server.Serve), its
 // requests done and its streams ended, then the listener, then the jobs;
-// close then releases the migrator and the pool.
-func (a *app) run(ctx context.Context) error {
+// lint then drains before close releases the migrator and the pool.
+func (a *app) run(ctx context.Context) (runErr error) {
+	// Register before every startup step: even Ping, migration and database
+	// checks can return while an internal caller still owns a lint worker.
+	defer func() { runErr = errors.Join(runErr, a.stopLint(ctx)) }()
 	warnIfExposed(ctx, a.logger, a.cfg)
 	if err := awaitDatabase(ctx, a.pool, a.databaseWait); err != nil {
 		return err
@@ -172,10 +179,23 @@ func awaitDatabase(ctx context.Context, pool *pgxpool.Pool, wait time.Duration) 
 	return nil
 }
 
-// close releases the database resources: the migrator, then the pool, whose
-// wait for connections still in use is bounded. Call it after run has
-// returned.
+// stopLint has its own bounded cleanup context, independent of run's caller.
+// Stop is idempotent; close also uses it when construction was not followed by run.
+func (a *app) stopLint(ctx context.Context) error {
+	if a.lintRuns == nil {
+		return nil
+	}
+	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), a.cfg.Database.CommitTimeout+a.poolCloseTimeout)
+	defer cancel()
+	return a.lintRuns.Stop(cleanup)
+}
+
+// close drains lint before the database resources: the migrator, then the
+// pool, whose wait for connections still in use is bounded.
 func (a *app) close() {
+	if err := a.stopLint(context.Background()); err != nil {
+		a.logger.Warn("lint runtime did not stop before database cleanup")
+	}
 	if err := a.migrator.Close(); err != nil {
 		a.logger.Warn("close migrator", slog.Any("error", err))
 	}
