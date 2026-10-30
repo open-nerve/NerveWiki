@@ -6,13 +6,20 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
+	"os/exec"
 	"runtime"
 	"slices"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 	"uuid"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/wiki"
 )
@@ -27,19 +34,69 @@ func TestLintOfAHundredThousandPagesKeepsItsTimeAndMemory(t *testing.T) {
 	}
 	f := newWikiCostFixture(t)
 	actor := f.actor(t, "alice")
+	stopped := false
 	for _, operation := range []string{"summary", "wanted"} {
+		if stopped {
+			return
+		}
 		t.Run(operation, func(t *testing.T) {
 			var samples [3]wikiCostSample
 			for sample := 1; sample <= 3; sample++ {
+				finished := false
 				t.Run(fmt.Sprintf("sample-%d", sample), func(t *testing.T) {
+					f.sampleCleanup(t, operation, sample, &finished, f.event)
 					samples[sample-1] = f.measure(t, actor, operation, sample)
 				})
+				if !finished {
+					stopped = true
+					return
+				}
 			}
 			if !t.Failed() {
 				checkWikiCost(t, operation, samples)
 			}
 		})
 	}
+}
+
+// Cleanup runs after measure has logged its fixed Execute/CPU/heap sample,
+// including when measure uses Fatal. Created is synchronous before worker
+// launch, so a missing queued Created must stop sampling without a new wait.
+func (f *wikiCostFixture) sampleCleanup(t *testing.T, operation string, sample int, finished *bool,
+	wait func(*testing.T, wiki.RunEventKind, uint64) wiki.RunEvent,
+) {
+	t.Helper()
+	t.Cleanup(func() {
+		start := time.Now()
+		var created wiki.RunEvent
+		defer func() {
+			lintCostLog(t, "wiki-cleanup", struct {
+				Operation string
+				Sample    int
+				FlightID  uint64
+				Created   bool
+				Finished  bool
+				WaitNS    int64
+			}{operation, sample, created.FlightID, created.Kind == wiki.RunCreated, *finished, int64(time.Since(start))})
+		}()
+		for created.Kind != wiki.RunCreated {
+			select {
+			case event := <-f.events:
+				if event.Kind == wiki.RunCreated {
+					created = event
+				}
+			default:
+				t.Error("wiki cost sample has no queued RunCreated; refusing the next reset")
+				return
+			}
+		}
+		if created.NotebookID != uuid.MustParse(f.book.id) || created.FlightID == 0 {
+			t.Error("wiki cost sample received another notebook's or invalid flight; refusing the next reset")
+			return
+		}
+		wait(t, wiki.RunFinished, created.FlightID)
+		*finished = true
+	})
 }
 
 type wikiCostSample struct {
@@ -161,8 +218,6 @@ func (f *wikiCostFixture) measure(t *testing.T, actor context.Context, operation
 	}
 	f.checkResult(t, result, operation)
 	f.checkTrace(t, queries, timings, pathIDs, result, operation)
-	created := f.event(t, wiki.RunCreated, 0)
-	f.event(t, wiki.RunFinished, created.FlightID)
 	return wikiCostSample{uint64(elapsed), uint64(cpu), after.TotalAlloc - before.TotalAlloc, high - before.HeapAlloc}
 }
 
@@ -319,4 +374,185 @@ func (f *wikiCostFixture) checkTrace(t *testing.T, queries []wikiCostSQL, timing
 			t.Fatalf("actual snapshot changed: %+v", observations)
 		}
 	}
+}
+
+// The child deliberately calls the real measure Fatal path. Its overall exit
+// is always 1; only the two named child outcomes establish cleanup ordering.
+func TestWikiCostSamplesWaitForFinished(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test: needs Docker and an expected-failure child")
+	}
+	const name = "TestWikiCostSamplesWaitForFinished"
+	if os.Getenv("NERVEWIKI_WIKI_COST_CLEANUP_CHILD") != "1" {
+		cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^"+name+"$", "-test.v", "-test.count=1", "-test.timeout=10m")
+		cmd.Env = append(os.Environ(), "NERVEWIKI_WIKI_COST_CLEANUP_CHILD=1")
+		output, err := cmd.CombinedOutput()
+		exit := 0
+		var childError *exec.ExitError
+		if errors.As(err, &childError) {
+			exit = childError.ExitCode()
+		}
+		pid := 0
+		if cmd.Process != nil {
+			pid = cmd.Process.Pid
+		}
+		t.Logf("wiki-cleanup child test=%s pid=%d argv=%q exit=%d error=%v\n%s", name, pid, cmd.Args, exit, err, output)
+		text := string(output)
+		for _, forbidden := range []string{"panic:", "WARNING: DATA RACE", "test timed out", "fatal error:"} {
+			if strings.Contains(text, forbidden) {
+				t.Fatalf("unexpected child failure %q", forbidden)
+			}
+		}
+		if !errors.As(err, &childError) || exit != 1 || pid == 0 ||
+			strings.Count(text, "=== RUN   "+name+"/sample-failure\n") != 1 ||
+			strings.Count(text, "=== RUN   "+name+"/next-reset\n") != 1 ||
+			!strings.Contains(text, "--- FAIL: "+name+"/sample-failure ") ||
+			!strings.Contains(text, "actual summary Execute under unchanged 4s request/2s worker: context canceled") {
+			t.Fatalf("fresh cost child did not reach the designated real measure Fatal and two actual nodes: %v", err)
+		}
+		if !strings.Contains(text, "--- PASS: "+name+"/next-reset ") ||
+			strings.Contains(text, "--- FAIL: "+name+"/next-reset ") ||
+			!strings.Contains(text, "CLEANUP_BEFORE_RESET_OK") {
+			t.Fatal("fresh cost child reset before the previous real worker finished; expected next-reset PASS and CLEANUP_BEFORE_RESET_OK")
+		}
+		return
+	}
+
+	barrier := &wikiCostQueryBarrier{entered: make(chan struct{}), release: make(chan struct{})}
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(barrier.release) }) }
+	trace := &wikiCostTrace{previous: barrier}
+	var rulesDone atomic.Bool
+	var createdID, finishedID atomic.Uint64
+	finishedEvent := make(chan struct{})
+	r := newLintRuntime(t, func(d *wiki.Deps) {
+		d.Sources = wikiCostSources{d.Sources, trace}
+		d.Nodes = wikiCostNodes{d.Nodes, trace}
+		d.Rules = wikiCostCompletionRules{rules: wikiCostRules{d.Rules, trace}, done: &rulesDone}
+		d.Paths = wikiCostPaths{d.Paths, trace}
+		observe := d.RunObserver
+		d.RunObserver = func(event wiki.RunEvent) {
+			if event.Kind == wiki.RunCreated {
+				createdID.Store(event.FlightID)
+			}
+			if event.Kind == wiki.RunFinished {
+				finishedID.Store(event.FlightID)
+				close(finishedEvent)
+			}
+			observe(event)
+		}
+	})
+	barrier.previous = r.trace.previous
+	r.trace.previous = trace
+	book, _, _ := r.seedPending(t)
+	f := &wikiCostFixture{lintRuntimeFixture: r, book: book, trace: trace}
+	// This independent outer cleanup also releases the deliberately broken
+	// implementation, so its failure cannot strand the real pool or worker.
+	t.Cleanup(func() {
+		release()
+		if createdID.Load() == 0 {
+			return
+		}
+		select {
+		case <-finishedEvent:
+		case <-time.After(interleavingWait):
+			t.Error("instrumentation outer cleanup did not observe actual RunFinished")
+		}
+	})
+	actor, cancel := context.WithCancel(f.actor(t, "alice"))
+	defer cancel()
+	cancelDone := make(chan bool, 1)
+	go func() {
+		select {
+		case <-barrier.entered:
+			cancel()
+			cancelDone <- true
+		case <-time.After(interleavingWait):
+			cancel()
+			cancelDone <- false
+		}
+	}()
+	wait := func(t *testing.T, kind wiki.RunEventKind, flight uint64) wiki.RunEvent {
+		if kind == wiki.RunFinished {
+			release()
+		}
+		return f.event(t, kind, flight)
+	}
+	completed := false
+	t.Run("sample-failure", func(t *testing.T) {
+		f.sampleCleanup(t, "summary", 1, &completed, wait)
+		f.measure(t, actor, "summary", 1)
+		t.Fatal("the real canceled measure unexpectedly returned")
+	})
+	if !<-cancelDone {
+		t.Fatal("real LintHeads QueryEnd never reached the cancellation barrier")
+	}
+	t.Run("next-reset", func(t *testing.T) {
+		flight, snapshot := createdID.Load(), barrier.snapshot.Load()
+		if flight == 0 || snapshot == 0 {
+			t.Fatal("catcher did not observe an actual flight and SQL snapshot")
+		}
+		ready := completed && finishedID.Load() == flight && barrier.ended.Load() && rulesDone.Load()
+		f.trace.reset()
+		if !ready {
+			wait(t, wiki.RunFinished, flight)
+			queries, stages, _, _ := f.trace.stop()
+			lateQuery, lateStage := false, false
+			for _, query := range queries {
+				lateQuery = lateQuery || query.Name == "LintHeads" && query.Snapshot == snapshot
+			}
+			for _, stage := range stages {
+				lateStage = lateStage || stage.Name == "rules"
+			}
+			if !lateQuery || !lateStage || !barrier.ended.Load() || !rulesDone.Load() {
+				t.Fatalf("catcher failed to witness actual old SQL/stage after reset: query=%t stage=%t", lateQuery, lateStage)
+			}
+			t.Fatalf("sample reset preceded previous RunFinished/trace completion: flight=%d snapshot=%d late_query=%t late_stage=%t", flight, snapshot, lateQuery, lateStage)
+		}
+		queries, stages, _, _ := f.trace.stop()
+		if len(queries) != 0 || len(stages) != 0 {
+			t.Fatalf("completed worker contaminated the next sample: queries=%+v stages=%+v", queries, stages)
+		}
+		t.Logf("CLEANUP_BEFORE_RESET_OK flight=%d snapshot=%d", flight, snapshot)
+	})
+}
+
+type wikiCostQueryBarrier struct {
+	previous         pgx.QueryTracer
+	entered, release chan struct{}
+	once             sync.Once
+	ended            atomic.Bool
+	snapshot         atomic.Uint64
+}
+
+func (b *wikiCostQueryBarrier) TraceQueryStart(ctx context.Context, conn *pgx.Conn, data pgx.TraceQueryStartData) context.Context {
+	if b.previous != nil {
+		return b.previous.TraceQueryStart(ctx, conn, data)
+	}
+	return ctx
+}
+func (b *wikiCostQueryBarrier) TraceQueryEnd(ctx context.Context, conn *pgx.Conn, data pgx.TraceQueryEndData) {
+	if b.previous != nil {
+		b.previous.TraceQueryEnd(ctx, conn, data)
+	}
+	start, ok := ctx.Value(wikiCostSQLKey{}).(wikiCostSQLStart)
+	if ok && start.row.Name == "LintHeads" {
+		b.once.Do(func() {
+			b.snapshot.Store(start.row.Snapshot)
+			close(b.entered)
+			<-b.release
+			b.ended.Store(true)
+		})
+	}
+}
+
+type wikiCostCompletionRules struct {
+	rules wiki.Rules
+	done  *atomic.Bool
+}
+
+func (r wikiCostCompletionRules) PrepareRules(ctx context.Context, in wiki.ReadInput, query wiki.RuleQuery) (wiki.PreparedRules, error) {
+	prepared, err := r.rules.PrepareRules(ctx, in, query)
+	r.done.Store(true)
+	return prepared, err
 }

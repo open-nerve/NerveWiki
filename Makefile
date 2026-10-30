@@ -326,7 +326,7 @@ test-go-costs-lint: ## 不带竞态检测的 lint 迁移、计划、规则与十
 	@# 十万页规则与真实 Module 编排、必要属性取值成本；各独立进程，保留默认 Go 超时。
 	cd server && go test -p=1 -count=1 -v -run '^TestLintRulesOfAHundredThousandPagesTakeTheirTime$$/^eight-rules-and-100k-sources$$' ./internal/modules/linking/adapter/postgres
 	cd server && go test -p=1 -count=1 -v -run '^TestLintRulesOfAHundredThousandPagesTakeTheirTime$$/^(hot-many-spellings-kinds|unique-long-targets|relative-deep-folder|same-last-key-presence|one-page-10000-edges|100k-excluded-and-outside)$$' ./internal/modules/linking/adapter/postgres
-	cd server && go test -p=1 -count=1 -v -run '^TestLintOfAHundredThousandPagesKeepsItsTimeAndMemory$$' ./internal/bootstrap
+	cd server && go test -p=1 -count=1 -v -run '^(TestLintOfAHundredThousandPagesKeepsItsTimeAndMemory|TestWikiCostSamplesWaitForFinished)$$' ./internal/bootstrap
 	cd server && go test -p=1 -count=1 -v -run '^TestLintPropertiesReadOnlyNecessaryValues$$' ./internal/modules/linking/adapter/postgres
 
 .PHONY: test-go-guards
