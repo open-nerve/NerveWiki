@@ -182,16 +182,17 @@ GO_TEST_RACE = go test -race -count=1 -timeout 15m
 test-go: ## 运行 Go 测试，含集成测试与 server/tools（开启竞态检测，不用测试缓存；需要 Docker）
 	@# 本机与 CI 同样分份（M9/P2 设计 6.5）：组合根之外的包一个 go test，组合根按测试名四份、各一个 go test 二进制、各受 15 分钟，
 	@# 同一条规则管两处（之前组合根是一个二进制，本机 8 到 9.5 分钟，比 CI 的任何一份先到 15 分钟）。竞态检测的这五个同时跑
-	@# （-j5，随份数；macOS 的 make 3.81 也有 -j），之后不带竞态检测的两份依次跑，不与竞态检测下的构建抢 CPU；各份之和就是下面 CI 的七份
+	@# （-j5，随份数；macOS 的 make 3.81 也有 -j），之后不带竞态检测的三份依次跑，不与竞态检测下的构建抢 CPU；各份之和就是下面 CI 的八份
 	@# （M8/P3A 审查 C 的 I-1）。M9/P2 S1 各量两次：两份时竞态检测的三个同时跑（-j3）整个 759 与 754 秒、依次 1031 与 1061 秒，
 	@# 只快 4.8 分钟，不到设计定的 5 分钟，所以先是依次；分成三份之后（S1 修复第一轮）四个同时跑整个 698 与 730 秒、依次 1024 与 1058 秒，
 	@# 同时的平均快 5.45 分钟，过了 5 分钟，所以同时（四个里第一份最长，284 与 319 秒）。同时跑的输出交错：找 --- FAIL、FAIL 与 make 的 Error 三种行
 	@# M10/P2/S2 增为四份时沿用随份数的并发规则；上述加速幅度属于 M9/P2 三份时的历史测量。
 	@$(MAKE) --no-print-directory -j5 test-go-race test-go-bootstrap-1 test-go-bootstrap-2 test-go-bootstrap-3 test-go-bootstrap-4
 	@$(MAKE) --no-print-directory test-go-costs
+	@$(MAKE) --no-print-directory test-go-costs-lint
 	@$(MAKE) --no-print-directory test-go-guards
 
-# CI 的七份（short 是第八份，只跑单元测试，不在 make test-go 里，见 test-go-short）：一个作业跑全部时超过了 25 分钟的时限（M8/P3A，竞态检测下的组合根占了一半）。
+# CI 的八份（short 是第九份，只跑单元测试，不在 make test-go 里，见 test-go-short）：一个作业跑全部时超过了 25 分钟的时限（M8/P3A，竞态检测下的组合根占了一半）。
 # 组合根之外的包由 go list 列出，以后新加的包自动归入第一份。不带竞态检测的那一份在 M8/P4A 之前作业已到 15 分钟
 # （测试一步 13:37），超过 15 分钟就分（M8/P4 设计 3.11）：组合根的预算与守卫各自编译、各起数据库，分作一份。
 # 竞态检测下的组合根在 M8/P4A 的 CI 上测试一步 12:00–12:05，离 go test 的 15 分钟只剩约两成，P5 还要加测试（M8/P4A 审查 C 的 M-6）：
@@ -290,6 +291,10 @@ test-go-costs: ## 不带竞态检测的分配、耗时预算与界线的守卫�
 	cd server && go test -p 1 -count=1 -timeout 10m -v -run '^TestSourcePrecheckConvergedPlansCostTheirActualExclusions$$' ./internal/modules/page/adapter/postgres
 	@# 相同10万来源语料的六个独立副本：三/四列索引的实际空间、温表构建和正常HTTP写入差异。
 	cd server && go test -p 1 -count=1 -timeout 10m -v -run '^TestSourceIndexFourthKeyCostsItsSpaceAndNormalWrites$$' ./internal/bootstrap
+	go -C server/tools test -race -count=1 ./...
+
+.PHONY: test-go-costs-lint
+test-go-costs-lint: ## 不带竞态检测的 lint 迁移、计划、规则与十万页编排成本（CI 的一份；需要 Docker）
 	@# 来源表示的5000链接真实保存及分阶段重建/搜索入队代表样本；完整lint迁移与10万页成本随S1收尾。
 	cd server && go test -p 1 -count=1 -v -run '^TestLintIndexesCostTheirScanAndWrites$$' ./internal/bootstrap
 	@# sources索引的5000链接保存对照及完整迁移：empty/dense各10万页、200万属性；独立进程保持默认10m。
@@ -307,7 +312,11 @@ test-go-costs: ## 不带竞态检测的分配、耗时预算与界线的守卫�
 	cd server && go test -p 1 -count=1 -v -run '^TestLint(Plans|PhysicalRanges|JSONToast)' ./internal/modules/linking/adapter/postgres
 	@# lint紧凑metadata的真实计划、隐藏本物理范围和深树查询守卫；!race入口必须在非short行执行。
 	cd server && go test -p=1 -count=1 -v -run '^TestLintMetadata(Plans|PhysicalRanges|PresenceDoesNotReadAncestors)$$' ./internal/modules/page/adapter/postgres
-	go -C server/tools test -race -count=1 ./...
+	@# 十万页规则与真实 Module 编排、必要属性取值成本；各独立进程，保留默认 Go 超时。
+	cd server && go test -p=1 -count=1 -v -run '^TestLintRulesOfAHundredThousandPagesTakeTheirTime$$/^eight-rules-and-100k-sources$$' ./internal/modules/linking/adapter/postgres
+	cd server && go test -p=1 -count=1 -v -run '^TestLintRulesOfAHundredThousandPagesTakeTheirTime$$/^(hot-many-spellings-kinds|unique-long-targets|relative-deep-folder|same-last-key-presence|one-page-10000-edges|100k-excluded-and-outside)$$' ./internal/modules/linking/adapter/postgres
+	cd server && go test -p=1 -count=1 -v -run '^TestLintOfAHundredThousandPagesKeepsItsTimeAndMemory$$' ./internal/bootstrap
+	cd server && go test -p=1 -count=1 -v -run '^TestLintPropertiesReadOnlyNecessaryValues$$' ./internal/modules/linking/adapter/postgres
 
 .PHONY: test-go-guards
 test-go-guards: ## 不带竞态检测的组合根的预算与界线的守卫（CI 的一份；需要 Docker）
@@ -351,7 +360,7 @@ test-go-guards: ## 不带竞态检测的组合根的预算与界线的守卫（C
 .PHONY: test-go-short
 test-go-short: ## 只跑 server 的单元测试：go test -short，不带竞态检测，不起数据库（README 的写法；make check 与 CI 的一份跑它，不在 make test-go 里）
 	@# pgtest 在 -short 下跳过要数据库的测试；按耗时判定的守卫也跳过：-short 的各包同时跑、抢 CPU，CI 上一个 2 秒的界线到过 2.6 秒
-	@# （S1 修复第二轮），它们由 test-go-costs 与 test-go-guards 各自单独一行跑。别的照常跑。README 与上面的注释答应过贡献者这样跑得通，
+	@# （S1 修复第二轮），它们由 test-go-costs、test-go-costs-lint 与 test-go-guards 各自单独一行跑。别的照常跑。README 与上面的注释答应过贡献者这样跑得通，
 	@# 以前没有哪个门禁跑它：M9/P2 S1 的一个测试在 -short 下失败，到 S1 的修复第一轮才被看见（修复第二轮，审查 C 的 C2-M1），
 	@# 所以 CI 单独一份跑它。最慢的包本机约 28 秒（组合根与 httpserver），乘 2.4 约 70 秒，远在 Go 默认的每个测试二进制 10 分钟的一半之下，
 	@# 不加 -timeout（M9/P2 设计 6.5）。本机整个 53 与 38 秒。make check 也跑它：check 与 gen-check 合起来是 CI 的 server、web 任务的门禁

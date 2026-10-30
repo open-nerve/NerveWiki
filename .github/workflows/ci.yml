@@ -20,9 +20,9 @@ jobs:
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-24.04
     # 一个作业跑全部的 Go 测试在 M8/P3A 时超过了 25 分钟的时限：分成几份并行，各占一个 runner（Makefile 的
-    # test-go-race、test-go-bootstrap-1、-2、-3 与 -4、test-go-costs、test-go-guards，几份之和是 make test-go；另有 test-go-short 一份，只跑单元测试，
+    # test-go-race、test-go-bootstrap-1、-2、-3 与 -4、test-go-costs、test-go-costs-lint、test-go-guards，几份之和是 make test-go；另有 test-go-short 一份，只跑单元测试，
     # 不在这个和里）。不带竞态检测的耗时守卫也因此不与竞态检测下的构建抢 CPU。
-    # server 共八份，连同 web、e2e 与 image 共十一项；M10/P2/S2 历史四份本机两轮的包耗时均值见 Makefile。
+    # server 共九份，连同 web、e2e 与 image 共十二项；M10/P2/S2 历史四份本机两轮的包耗时均值见 Makefile。
     # 33b4/4550 两分支 CI 40718770843/40730123058 的第一份 Test 均值 450.5 秒过线；第二份 418.5 秒。
     # 按 Makefile 的窄名称边界将 EveryResolutionCaseImports 移给第二份，预计为 432.8926/436.1074 秒。
     # 当时新配置本机四份各两轮包耗时均值 319.376/309.7455/261.4265/266.258 秒，完整覆盖已核；不提高超时。
@@ -59,6 +59,9 @@ jobs:
           # 不带竞态检测的预算与界线的守卫、server/tools；静态检查与生成物的检查也只在这一份里跑一次。M9/P4 S1 加 grep 的守卫，
           # P4 之后作业估计 6.5–11 分钟，时限照约两倍的规则从 20 分钟提到 25 分钟（M9/P4 设计 6.5，第 11 节第 54 条）
           - leg: costs
+            timeout: 25
+          # lint 的迁移、计划与十万页规则/编排成本独立一份；原 costs 的静态检查和生成检查保持原位。
+          - leg: costs-lint
             timeout: 25
           # 不带竞态检测的组合根的预算与守卫：成本那一份在 M8/P4A 之前已到 15 分钟，加后台撤销的守卫时分出（M8/P4 设计 3.11）。
           # M9/P1 S2 时作业已到 11:05，时限照约两倍的规则从 20 分钟提到 25 分钟（S2 修正第二轮）；M9/P3 S1 修正第 6 轮时作业到 12:47，

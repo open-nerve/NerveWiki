@@ -9,6 +9,7 @@ import (
 	"testing"
 	"uuid"
 
+	"github.com/open-nerve/NerveWiki/server/internal/modules/linking"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/apitest"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres/pgtest"
 	"github.com/open-nerve/NerveWiki/server/migrations"
@@ -53,7 +54,7 @@ func TestTheTreeIsWhatEachReadAllows(t *testing.T) {
 			SELECT id, '', 1, sha256(''), 0, created_by_id, now(), deleted_at FROM nodes WHERE id = $1`, id); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := pool.Exec(context.Background(), seededPageHistory, id); err != nil {
+		if _, err := pool.Exec(context.Background(), seededPageHistory, id, linking.Extractor); err != nil {
 			t.Fatal(err)
 		}
 	}

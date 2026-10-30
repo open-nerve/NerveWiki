@@ -1068,15 +1068,15 @@ sources迁移和每个获准额外索引分别测：自有库10万页、至少20
 
 ### 7.5 10万页成本与新行安排
 
-成本测试!race、short跳过，每条在Makefile单独`-v -count=1`；新lint大成本优先进costs，当前guards已接近30min作业窗口，不把成本都塞进去。至少：
+成本测试!race、short跳过，每条在Makefile单独`-v -count=1`。原costs中10条lint迁移/保存/计划/物理范围/TOAST/page metadata命令及其注释按原顺序搬到`test-go-costs-lint`；其余costs命令（包括server/tools）与guards原命令/顺序保持。当前Makefile为17 costs＋14 costs-lint＋15 guards，共46条go-test recipes（含server/tools）。costs-lint的14条中，后三个新顶层占四条完整recipe：`^TestLintRulesOfAHundredThousandPagesTakeTheirTime$/^eight-rules-and-100k-sources$`单跑八规则与10万来源；同一顶层的`^(hot-many-spellings-kinds|unique-long-targets|relative-deep-folder|same-last-key-presence|one-page-10000-edges|100k-excluded-and-outside)$`完整跑其余六种wanted形状，两个子选择器互斥且合起来覆盖全部七形状；`^TestLintOfAHundredThousandPagesKeepsItsTimeAndMemory$`跑真实编排，`^TestLintPropertiesReadOnlyNecessaryValues$`跑必要属性值，各自一行。该主动拆分为CI留余量，不把单轮128s当成违反125s硬门禁；正式判断仍是后述两轮process均值规则。当前组成不表示最终完整recipe/Test/job容量、CI或Step已完成；需要再拆时保留完整最坏形状与正反证，再按实际Makefile更新计数，不删样本以守行数。至少：
 
 1. `TestLintRulesOfAHundredThousandPagesTakeTheirTime`（linking postgres）：八规则每一条分别计query/Go归组；summary实际组合以另条真编排测。wanted分别少数热目标×大量source、多raw拼法同页、全独特长目标、relative深folder、一末键×大量深路径同名page/asset（确认无候选祖先读）、多kind；一页10000重复目标跨批；来源10万集合与大量区外未解析边必须同场，记录excluded_ids每批序列化/分配与DB join/往返；另有大量0page/stale/root/AGENTS在cap前。
-2. `TestLintOfAHundredThousandPagesKeepsItsTimeAndMemory`（bootstrap，放costs一行）：真snapshot所有端口、十万页摘要与单wanted页，统计GoTotalAlloc/峰值、各阶段读取工作；初始2s/250MiB只作目标；最终断言据真实双轮至少三样本中位数按13.4校准，不提高请求或旧cost阈值。 S49 consumer负控复用这条BC成本：在一末键×大量深路径page/asset形状中，种子准备结束后才开始trace，经bootstrap真实wiki实例的Execute运行摘要与单wanted页，让生产compactNodes→presence→ReadsAsAssetWith链消费候选，断言wanted非空及手写page/asset预期。读取trace须出现LintNodeMetadata与非空wanted heads/精确target查询，不得出现LinkTargetsByKeys或其全候选祖先读取；最终NodePaths.Paths只查答出ids，独立记录，不把这次合法展示读误判成候选祖先读。仅把生产consumer改回ByKeys时由这条trace断言失败；PP只核page metadata自身，测试不得直调NewLintNodes后自建presence冒充consumer。基线/变异/恢复各跑同BC并留非空测试事件；这条成本仍待量，不另增独立100k suite。
-3. `TestLintPropertiesReadOnlyNecessaryValues`（linking postgres，costs独立行）：长type/summary前缀空白且最后有字/无字，完整sources值与非sources长值、JSON变换和分配；报告本本必要value总字节与最大一项。
-4. `TestLintIndexesCostTheirScanAndWrites`（bootstrap，costs独立行）：§7.4迁移与5000links保存；如果完整迁移测量较长从CI小代表中分出独立本机大样本，明确哪个守卫在CI，不能省掉义务。
-5. `TestLintPlans/PhysicalRanges/JSONToast`（linking postgres，costs各自或经实测可同一行）；page metadata实际范围/Planned为独立一行，一末键大量深路径的生产presence消费链复用第2行BC；不能混进race的窄时限测试。
+2. `TestLintOfAHundredThousandPagesKeepsItsTimeAndMemory`（bootstrap，放costs-lint一行）：真snapshot所有端口、十万页摘要与单wanted页，统计GoTotalAlloc/峰值、各阶段读取工作；初始2s/250MiB只作目标；最终断言据真实双轮至少三样本中位数按13.4校准，不提高请求或旧cost阈值。 S49 consumer负控复用这条BC成本：在一末键×大量深路径page/asset形状中，种子准备结束后才开始trace，经bootstrap真实wiki实例的Execute运行摘要与单wanted页，让生产compactNodes→presence→ReadsAsAssetWith链消费候选，断言wanted非空及手写page/asset预期。读取trace须出现LintNodeMetadata与非空wanted heads/精确target查询，不得出现LinkTargetsByKeys或其全候选祖先读取；最终NodePaths.Paths只查答出ids，独立记录，不把这次合法展示读误判成候选祖先读。仅把生产consumer改回ByKeys时由这条trace断言失败；PP只核page metadata自身，测试不得直调NewLintNodes后自建presence冒充consumer。基线/变异/恢复各跑同BC并留非空测试事件；这条成本仍待量，不另增独立100k suite。
+3. `TestLintPropertiesReadOnlyNecessaryValues`（linking postgres，costs-lint独立行）：长type/summary前缀空白且最后有字/无字，完整sources值与非sources长值、JSON变换和分配；报告本本必要value总字节与最大一项。
+4. `TestLintIndexesCostTheirScanAndWrites`（bootstrap，costs-lint独立行）：§7.4迁移与5000links保存；如果完整迁移测量较长从CI小代表中分出独立本机大样本，明确哪个守卫在CI，不能省掉义务。
+5. `TestLintPlans/PhysicalRanges/JSONToast`（linking postgres，costs-lint各自或经实测可同一行）；page metadata实际范围/Planned为独立一行，一末键大量深路径的生产presence消费链复用第2行BC；不能混进race的窄时限测试。
 
-每行本机两次的process均值×2.4，超过其既有Go进程期限一半（默认10m为300s）就拆成更细行；新行也不借本任务提高任何原-timeout。若单一新成本样本仍大，拆fixture/子形状为独立有完整正反证的顶层，而非删最坏形状。作业costs当前25m、guards30m，S1总recipe预估和实测均记录；若新增行让costs逼近其上限，按同一已测规则拆独立作业而非提高时限，需root具体处置及新全清单/CI。绝对算法门槛由真实快几次×3与CI余量定，进程容量倍数2.4不能误当算法门槛。
+每行本机两轮锁内process wall均值×2.4必须≤其既有Go进程timeout一半（默认10m为300s）；超出就拆更细行，也允许未超线时主动按完整形状拆分留余量，不能把300/2.4=125s误作每一轮的硬门禁。新行不借本任务提高任何原-timeout。若单一新成本样本仍大，拆fixture/子形状为独立有完整正反证的顶层，而非删最坏形状。作业costs25m、costs-lint25m、guards30m；S1总recipe预估与真实完整Test/job用时分别记录，costs/costs-lint的最终完整容量、最终两次main各分片Test容量及实际CI尚待验收。若任一份逼近上限，由root按实际形状进一步拆分并更新全清单/CI，不提高期限或把候选估计当成功。新增算法回退guard用真实两轮、每轮至少三样本的`max(round1 median, round2 median)×3`校准为固定阈值，再据实际慢CI核验；不能在每次运行用当轮耗时自抬阈值，也不能把进程容量倍数2.4当算法门槛。真实编排仍保持worker 2s/request 4s与原caller/slot期限，既有guards不因拆行而放宽。
 
 ### 7.6 bootstrap容量：入场已在线上，先处理再增加
 
@@ -1106,12 +1106,13 @@ docs/v0.1/claude_to_codex/tools/heavy.sh env GOFLAGS=-p=1 make -j1 test-go-boots
 docs/v0.1/claude_to_codex/tools/heavy.sh env GOFLAGS=-p=1 make -j1 test-go-bootstrap-3
 docs/v0.1/claude_to_codex/tools/heavy.sh env GOFLAGS=-p=1 make -j1 test-go-bootstrap-4
 docs/v0.1/claude_to_codex/tools/heavy.sh env GOFLAGS=-p=1 make -j1 test-go-costs
+docs/v0.1/claude_to_codex/tools/heavy.sh env GOFLAGS=-p=1 make -j1 test-go-costs-lint
 docs/v0.1/claude_to_codex/tools/heavy.sh env GOFLAGS=-p=1 make -j1 test-go-guards
 docs/v0.1/claude_to_codex/tools/heavy.sh env GOFLAGS=-p=1 make -j1 test-go-short test-web
 docs/v0.1/claude_to_codex/tools/heavy.sh env GOFLAGS=-p=1 make -j1 e2e
 ```
 
-不跑plain make test/test-go；显式所有组成覆盖等价完整门禁。成本/变异/新race双轮/三浏览器探查另列真实命令、最终输入SHA、退出码、原日志SHA、是否复用；不只写“all green”。工具结果/测试生成需要时单独记录真实gen命令与gen-check；失败和重试全保留。设计链接检查为root受控脚本和`python3 docs/v0.1/claude_to_codex/tools/check_links.py`，不是产品门禁。
+上述显式入口对应当前Makefile：server共9份（short独立）、连web/e2e/image共12作业；原静态及生成检查仍只在costs跑一次。最终必须按完整源码核实际非空组成与容量，不能只核命令存在，也不以这份清单宣称CI或Step完成。不跑plain make test/test-go；在单heavy锁下分次执行全部实际组成，覆盖等价完整门禁，不嵌套heavy。成本/变异/新race双轮/三浏览器探查另列真实命令、最终输入SHA、退出码、原日志SHA、是否复用；不只写“all green”。工具结果/测试生成需要时单独记录真实gen命令与gen-check；失败和重试全保留。设计链接检查为root受控脚本和`python3 docs/v0.1/claude_to_codex/tools/check_links.py`，不是产品门禁。
 
 ## 8. 完成标准与逐项文档新文字
 

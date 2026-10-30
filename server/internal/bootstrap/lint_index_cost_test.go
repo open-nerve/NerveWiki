@@ -104,13 +104,17 @@ func TestLintIndexesCostTheirScanAndWrites(t *testing.T) {
 		before := r.contents(t)
 		sourceIndexSettle(t, r.pool)
 		t.Logf("origin rebuild fixture: 1 notebook, 10004 live pages, 3 links in one %d-byte document and 10003 empty bodies; literal-v1 linking, 1 current/1 old/10002 missing search rows", len(originDocument))
-		originCost(t, r.acmeTeam, "diagnostic-linking-commit", func() error {
-			got, err := admin.Rebuild(t.Context(), uuid.MustParse(r.nb))
+		rebuild := func(ctx context.Context) error {
+			got, err := admin.Rebuild(ctx, uuid.MustParse(r.nb))
 			if err == nil && (got.Pages != 10004 || got.Links != 3 || got.Unresolved != 0) {
 				return fmt.Errorf("rebuild = %+v", got)
 			}
 			return err
-		}, false)
+		}
+		originRollbackCosts(t, r, trace, rebuild, ids)
+		trace.beginStage()
+		originCost(t, r.acmeTeam, "diagnostic-linking-commit", func() error { return rebuild(t.Context()) }, false)
+		trace.checkLocks(t, "diagnostic-linking-commit", "commit")
 		r.rebuilt(t)
 		if got := r.contents(t); !reflect.DeepEqual(got, before) {
 			t.Fatal("rebuild changed content/history")
@@ -199,7 +203,138 @@ func TestLintIndexesCostTheirScanAndWrites(t *testing.T) {
 				t.Fatalf("whole-command %s queue = %d IDs, want %d exact IDs", tokenizer, len(got), len(want))
 			}
 		}
+		legacy()
+		originWaitingCost(t, r, trace, rebuild)
+		r.rebuilt(t)
+		if got := r.contents(t); !reflect.DeepEqual(got, before) {
+			t.Fatal("rebuild after controlled wait changed content/history")
+		}
 	})
+}
+
+// The fault is after the last page's header and two links have been written.
+// Its own assertion proves partial writes happened before rollback; a second
+// actual Reindex measures the separate queue stage too, not a sum of timings.
+func originRollbackCosts(t *testing.T, r originReindexFixture, trace *originCostTrace, rebuild func(context.Context) error, ids []string) {
+	t.Helper()
+	beforeIndex, beforeKeys, beforeContents := r.originIndex(t, r.nb), r.keys(t), r.contents(t)
+	if n := count(t, r.pool, `SELECT count(*) FROM indexed_pages WHERE notebook_id=$1 AND extractor=1`, r.nb); n != 10004 {
+		t.Fatalf("rollback fixture literal-v1 pages = %d", n)
+	}
+	r.originExec(t, fmt.Sprintf(`CREATE FUNCTION origin_cost_linking_fault() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+ IF NEW.source_id='%s' AND NEW.range_start=%d THEN
+  IF NOT EXISTS (SELECT 1 FROM page_links WHERE source_id=NEW.source_id AND property_key='')
+   OR (SELECT count(*) FROM page_links WHERE source_id=NEW.source_id)<>2
+   OR (SELECT name_key FROM nodes WHERE id='%s')<>'target'
+   OR (SELECT count(*) FROM indexed_pages WHERE notebook_id=NEW.notebook_id AND extractor=2)<>10004
+  THEN RAISE EXCEPTION 'origin cost did not reach partial linking writes'; END IF;
+  RAISE EXCEPTION 'origin cost linking fault after writes';
+ END IF; RETURN NEW; END $$;
+ CREATE TRIGGER origin_cost_linking_fault BEFORE INSERT ON page_links FOR EACH ROW EXECUTE FUNCTION origin_cost_linking_fault()`,
+		r.source, strings.LastIndex(originDocument, "Target"), r.target))
+	for _, stage := range []string{"diagnostic-linking-rollback", "whole-command-linking-rollback-queue-success"} {
+		trace.beginStage()
+		originCost(t, r.acmeTeam, stage, func() error {
+			var err error
+			if stage == "diagnostic-linking-rollback" {
+				err = rebuild(t.Context())
+			} else {
+				var out, errout string
+				out, errout, err = r.command(t, false)
+				if out != "" || errout != "" {
+					t.Fatalf("failed single reindex output = %q, %q", out, errout)
+				}
+			}
+			if err == nil || !strings.Contains(err.Error(), "origin cost linking fault after writes") {
+				t.Fatalf("actual partial-write rollback = %v", err)
+			}
+			return err
+		}, true)
+		if stage == "diagnostic-linking-rollback" {
+			trace.checkLocks(t, stage, "rollback")
+		}
+		if !slices.Equal(r.originIndex(t, r.nb), beforeIndex) || !slices.Equal(r.keys(t), beforeKeys) || !slices.Equal(r.contents(t), beforeContents) {
+			t.Fatal("partial-write rollback changed committed linking/rekey/content/history")
+		}
+		var want []string
+		if stage == "whole-command-linking-rollback-queue-success" {
+			want = append(slices.Clone(ids[1:]), r.target, r.source)
+		}
+		if got := r.queued(t, r.nb); !slices.Equal(got, want) {
+			t.Fatalf("%s queue = %d IDs, want %d exact independent IDs", stage, len(got), len(want))
+		}
+	}
+	r.originExec(t, `DROP TRIGGER origin_cost_linking_fault ON page_links; DROP FUNCTION origin_cost_linking_fault(); DELETE FROM page_search_queue`)
+}
+
+// The known blocker is held outside the measured stage. Two actual catalog
+// observations delimit a lower bound on pure contention, not the entire
+// acquisition query or an inferred exact lifetime of the server-side lock.
+func originWaitingCost(t *testing.T, r originReindexFixture, trace *originCostTrace, rebuild func(context.Context) error) {
+	t.Helper()
+	queued := r.queued(t, r.nb)
+	hold, err := r.pool.Begin(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = hold.Rollback(context.Background()) }()
+	if _, err := hold.Exec(t.Context(), `SELECT 1 FROM notebooks WHERE id=$1 FOR NO KEY UPDATE`, r.nb); err != nil {
+		t.Fatal(err)
+	}
+	blocker := hold.Conn().PgConn().PID()
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	trace.beginStage()
+	originCost(t, r.acmeTeam, "diagnostic-linking-commit-controlled-wait", func() error {
+		done := make(chan error, 1)
+		go func() { done <- rebuild(ctx) }()
+		pgtest.WaitForLockWaitsOn(t, r.pool, "notebooks", 1, interleavingWait)
+		trace.mu.Lock()
+		waiter := trace.notebookPID
+		trace.mu.Unlock()
+		var relation uint32
+		probe := func() {
+			t.Helper()
+			var event string
+			var blockers []uint32
+			err := r.pool.QueryRow(t.Context(), `SELECT l.relation,a.wait_event,pg_blocking_pids(a.pid)
+ FROM pg_stat_activity a JOIN pg_locks l ON l.pid=a.pid
+ WHERE a.datname=current_database() AND a.pid=$1 AND a.wait_event_type='Lock'
+ AND l.locktype='tuple' AND l.relation='notebooks'::regclass`, waiter).Scan(&relation, &event, &blockers)
+			if err != nil || !slices.Contains(blockers, blocker) || event != "transactionid" {
+				t.Fatalf("actual linking waiter=%d blocker=%d relation=%d event=%q blockers=%v: %v", waiter, blocker, relation, event, blockers, err)
+			}
+		}
+		probe()
+		first := time.Now()
+		before := originFootprint(t, r.acmeTeam)
+		cpu := originCPU(t)
+		const controlled = 50 * time.Millisecond
+		select {
+		case <-time.After(controlled):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+		probe()
+		confirmed := time.Since(first)
+		cpu = originCPU(t) - cpu
+		after := originFootprint(t, r.acmeTeam)
+		if err := hold.Rollback(t.Context()); err != nil {
+			return err
+		}
+		lintCostLog(t, "origin-confirmed-contention", struct {
+			WaiterPID, BlockerPID, RelationOID         uint32
+			RequestedHoldNS, ConfirmedWaitLowerBoundNS int64
+			ObserverProcessCPUNS, ClusterWALBytes      int64
+			BeforeWAL, AfterWAL                        string
+		}{waiter, blocker, relation, int64(controlled), int64(confirmed), cpu,
+			sourceIndexWAL(t, r.pool, before.WAL, after.WAL), before.WAL, after.WAL})
+		return <-done
+	}, false)
+	trace.checkLocks(t, "diagnostic-linking-commit-controlled-wait", "commit")
+	if !slices.Equal(r.queued(t, r.nb), queued) {
+		t.Fatal("controlled linking stage changed the independent queue")
+	}
 }
 
 type originCostFootprint struct {
@@ -263,14 +398,16 @@ func originCost(t *testing.T, tm acmeTeam, stage string, run func() error, wantF
 	runtime.ReadMemStats(&m1)
 	after := originFootprint(t, tm)
 	row := struct {
-		Stage                                string
-		ElapsedNS, ProcessCPUNS              int64
-		AllocatedBytes, SampledPeakHeapBytes uint64
-		WALBytes                             int64
-		Before, After                        originCostFootprint
-		Failed                               bool
+		Stage                                 string
+		ElapsedNS, ProcessCPUNS               int64
+		AllocatedBytes, SampledPeakHeapBytes  uint64
+		BaselineHeapBytes, PeakIncrementBytes uint64
+		WALBytes                              int64
+		Before, After                         originCostFootprint
+		Failed                                bool
 	}{
-		stage, int64(elapsed), cpu, m1.TotalAlloc - m0.TotalAlloc, high, sourceIndexWAL(t, tm.pool, before.WAL, after.WAL), before, after, err != nil}
+		stage, int64(elapsed), cpu, m1.TotalAlloc - m0.TotalAlloc, high, m0.HeapAlloc, high - m0.HeapAlloc,
+		sourceIndexWAL(t, tm.pool, before.WAL, after.WAL), before, after, err != nil}
 	b, jsonErr := json.Marshal(row)
 	if jsonErr != nil {
 		t.Fatal(jsonErr)
@@ -284,6 +421,8 @@ func originCost(t *testing.T, tm acmeTeam, stage string, run func() error, wantF
 type originCostQuery struct {
 	start       time.Time
 	queue, lock bool
+	phase       string
+	pid         uint32
 }
 type originCostQueryKey struct{}
 type originCostBatch struct {
@@ -294,10 +433,32 @@ type originCostTrace struct {
 	mu          sync.Mutex
 	batches     []originCostBatch
 	lockQueryNS int64
+	stageStart  time.Time
+	locks       []originCostLock
+	notebookPID uint32
 }
 
-func (p *originCostTrace) TraceQueryStart(ctx context.Context, _ *pgx.Conn, q pgx.TraceQueryStartData) context.Context {
-	return context.WithValue(ctx, originCostQueryKey{}, originCostQuery{time.Now(), strings.HasPrefix(q.SQL, "-- name: QueueSearch :"), strings.Contains(q.SQL, "pg_advisory_xact_lock(") || strings.Contains(q.SQL, "FOR NO KEY UPDATE")})
+type originCostLock struct {
+	Phase          string
+	PID            uint32
+	StartNS, EndNS int64
+	Failed         bool
+}
+
+func (p *originCostTrace) TraceQueryStart(ctx context.Context, conn *pgx.Conn, q pgx.TraceQueryStartData) context.Context {
+	v := originCostQuery{start: time.Now(), queue: strings.HasPrefix(q.SQL, "-- name: QueueSearch :"), pid: conn.PgConn().PID()}
+	switch {
+	case strings.Contains(q.SQL, "FOR NO KEY UPDATE"):
+		v.phase, v.lock = "notebook-lock", true
+		p.mu.Lock()
+		p.notebookPID = v.pid
+		p.mu.Unlock()
+	case strings.Contains(q.SQL, "pg_advisory_xact_lock("):
+		v.phase, v.lock = "index-lock", true
+	case q.SQL == "commit", q.SQL == "rollback":
+		v.phase = q.SQL
+	}
+	return context.WithValue(ctx, originCostQueryKey{}, v)
 }
 func (p *originCostTrace) TraceQueryEnd(ctx context.Context, _ *pgx.Conn, q pgx.TraceQueryEndData) {
 	v, ok := ctx.Value(originCostQueryKey{}).(originCostQuery)
@@ -312,7 +473,38 @@ func (p *originCostTrace) TraceQueryEnd(ctx context.Context, _ *pgx.Conn, q pgx.
 	if v.lock {
 		p.lockQueryNS += int64(time.Since(v.start))
 	}
+	if v.phase != "" && !p.stageStart.IsZero() {
+		p.locks = append(p.locks, originCostLock{v.phase, v.pid, int64(v.start.Sub(p.stageStart)), int64(time.Since(p.stageStart)), q.Err != nil})
+	}
 }
+
+func (p *originCostTrace) beginStage() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.stageStart, p.locks, p.notebookPID = time.Now(), nil, 0
+}
+
+func (p *originCostTrace) checkLocks(t *testing.T, stage, terminal string) {
+	t.Helper()
+	p.mu.Lock()
+	locks := slices.Clone(p.locks)
+	p.mu.Unlock()
+	if len(locks) != 3 {
+		t.Fatalf("%s actual lock/transaction events = %+v", stage, locks)
+	}
+	for i, phase := range []string{"notebook-lock", "index-lock", terminal} {
+		if locks[i].Phase != phase || locks[i].PID != locks[0].PID || locks[i].Failed || locks[i].EndNS < locks[i].StartNS || i > 0 && locks[i].StartNS < locks[i-1].EndNS {
+			t.Fatalf("%s lock/cleanup sequence = %+v", stage, locks)
+		}
+	}
+	lintCostLog(t, "origin-stage-locks", struct {
+		Stage                                       string
+		Events                                      []originCostLock
+		NotebookObservedHeldNS, IndexObservedHeldNS int64
+	}{stage, locks, locks[2].EndNS - locks[0].EndNS, locks[2].EndNS - locks[1].EndNS})
+	t.Log("lock intervals run from acquisition query acknowledgement to transaction cleanup acknowledgement; SQL/scan/round trips included, not exact server lock lifetimes")
+}
+
 func (p *originCostTrace) reset() { p.mu.Lock(); defer p.mu.Unlock(); p.batches = nil }
 func (p *originCostTrace) check(t *testing.T, want []int64) {
 	t.Helper()

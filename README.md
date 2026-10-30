@@ -28,7 +28,7 @@ make          # 查看所有命令
 - 命令按工具链分区：`*-go` 只需要 Go，`*-web` 需要 Node。
   - `make lint` 依次执行 `make lint-go` 和 `make lint-web`。前者校验 golangci-lint 的配置并运行它（含格式检查），并检查 `server/` 与 `server/tools/` 的 `go.mod` 是否整洁；后者做 Markdown 样例集自检、`tools/`、`web/` 与 `e2e/` 的 oxlint（零警告）、格式检查和各 Node 包的类型检查。
   - `make knip` 检查未使用的文件、导出与依赖；配置里过时的条目也算失败。
-  - `make test` 依次执行 `make test-go` 和 `make test-web`。前者运行 Go 测试，开启竞态检测（需要 cgo：macOS 装有 Xcode 命令行工具即可）。集成测试用 testcontainers 启动与开发库相同的 PostgreSQL 镜像，需要 Docker；只跑单元测试用 `make test-go-short`（即 `cd server && go test -short ./...`，`make check` 与持续集成的 `short` 一份跑它）。后者运行前端各包的 vitest。
+  - `make test` 依次执行 `make test-go` 和 `make test-web`。前者运行 Go 测试：先以 `-j5` 同时跑 `test-go-race` 与四个 `test-go-bootstrap-*` 竞态入口（需要 cgo：macOS 装有 Xcode 命令行工具即可），再串行跑 `test-go-costs` → `test-go-costs-lint` → `test-go-guards`。lint 的迁移、计划、规则与编排成本在中间入口，`server/tools` 保留在 costs 并按原命令开启竞态；`test-go-short` 是另一个独立入口。集成测试用 testcontainers 启动与开发库相同的 PostgreSQL 镜像，需要 Docker；只跑单元测试用 `make test-go-short`（即 `cd server && go test -short ./...`，`make check` 与持续集成的 `short` 一份跑它）。后者运行前端各包的 vitest。
   - 端到端测试另跑 `make e2e`，见下文"端到端测试"。
 - 格式有问题时执行 `make fmt`，它修正 Go 与其余文件的格式。`docs/` 不参与格式化。
 - 开发数据库以 builtin provider 的 `C.UTF-8` 初始化（`LC_CTYPE` 同为 `C.UTF-8`），与生产环境的要求相同，见[总体设计](docs/v0.1/v0.1-design.md) 7.1。

@@ -8,24 +8,15 @@
         "type": "object",
         "properties": {
           "rule": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "An exact health check rule. Omit for counts and previews; limit and cursor require a rule."
           },
           "limit": {
-            "type": [
-              "null",
-              "integer"
-            ],
+            "type": ["null", "integer"],
             "description": "At most this many items, 1 to 100. Default 50."
           },
           "cursor": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "next_cursor of the previous answer, to continue after its last item."
           }
         },
@@ -45,17 +36,11 @@
         "type": "object",
         "properties": {
           "limit": {
-            "type": [
-              "null",
-              "integer"
-            ],
+            "type": ["null", "integer"],
             "description": "At most this many items, 1 to 100. Default 50."
           },
           "cursor": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "next_cursor of the previous answer, to continue after its last item."
           }
         },
@@ -81,31 +66,20 @@
             "description": "The notebook's id, from notebooks."
           },
           "rule": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "An exact health check rule. Omit for counts and previews; limit and cursor require a rule."
           },
           "limit": {
-            "type": [
-              "null",
-              "integer"
-            ],
+            "type": ["null", "integer"],
             "description": "At most this many items, 1 to 100. Default 50."
           },
           "cursor": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "next_cursor of the previous answer, to continue after its last item."
           }
         },
         "additionalProperties": false,
-        "required": [
-          "notebook"
-        ]
+        "required": ["notebook"]
       },
       "annotations": {
         "idempotentHint": false,
@@ -125,24 +99,16 @@
             "description": "The notebook's id, from notebooks."
           },
           "limit": {
-            "type": [
-              "null",
-              "integer"
-            ],
+            "type": ["null", "integer"],
             "description": "At most this many items, 1 to 100. Default 50."
           },
           "cursor": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "next_cursor of the previous answer, to continue after its last item."
           }
         },
         "additionalProperties": false,
-        "required": [
-          "notebook"
-        ]
+        "required": ["notebook"]
       },
       "annotations": {
         "idempotentHint": false,

@@ -12,23 +12,15 @@
             "description": "The page's path from the notebook's root, ending with .md."
           },
           "limit": {
-            "type": [
-              "null",
-              "integer"
-            ],
+            "type": ["null", "integer"],
             "description": "At most this many pages, 1 to 100. Default 50."
           },
           "cursor": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "next_cursor of the previous answer, to go on from there."
           }
         },
-        "required": [
-          "path"
-        ],
+        "required": ["path"],
         "additionalProperties": false
       },
       "annotations": {
@@ -55,79 +47,47 @@
                   "description": "The tool this op is: write, edit, move or delete. Its other members are that tool's arguments."
                 },
                 "path": {
-                  "type": [
-                    "null",
-                    "string"
-                  ],
+                  "type": ["null", "string"],
                   "description": "write, edit and delete: the path, from the notebook's root, as that tool takes it."
                 },
                 "content": {
-                  "type": [
-                    "null",
-                    "string"
-                  ],
+                  "type": ["null", "string"],
                   "description": "write: the page's whole content, as it will be stored."
                 },
                 "base_version": {
-                  "type": [
-                    "null",
-                    "string"
-                  ],
+                  "type": ["null", "string"],
                   "description": "write and edit: the page's version as read before the batch. None for a page the batch creates."
                 },
                 "old_string": {
-                  "type": [
-                    "null",
-                    "string"
-                  ],
+                  "type": ["null", "string"],
                   "description": "edit: the text to replace, byte for byte, which must occur exactly once unless replace_all is set."
                 },
                 "new_string": {
-                  "type": [
-                    "null",
-                    "string"
-                  ],
+                  "type": ["null", "string"],
                   "description": "edit: the text to put in its place."
                 },
                 "replace_all": {
-                  "type": [
-                    "null",
-                    "boolean"
-                  ],
+                  "type": ["null", "boolean"],
                   "description": "edit: replace every occurrence of old_string. Default false."
                 },
                 "from": {
-                  "type": [
-                    "null",
-                    "string"
-                  ],
+                  "type": ["null", "string"],
                   "description": "move: the path of the page or attachment that moves."
                 },
                 "to": {
-                  "type": [
-                    "null",
-                    "string"
-                  ],
+                  "type": ["null", "string"],
                   "description": "move: the full path it will have, never a page to move it into."
                 },
                 "update_links": {
-                  "type": [
-                    "null",
-                    "boolean"
-                  ],
+                  "type": ["null", "boolean"],
                   "description": "move: rewrite the links to what moves so that they follow it. Default true."
                 },
                 "recursive": {
-                  "type": [
-                    "null",
-                    "boolean"
-                  ],
+                  "type": ["null", "boolean"],
                   "description": "delete: delete a page with its children. Default false."
                 }
               },
-              "required": [
-                "op"
-              ],
+              "required": ["op"],
               "additionalProperties": false
             }
           },
@@ -136,10 +96,7 @@
             "description": "Why the batch is made, shown with its change in the history: 1 to 4,096 bytes."
           }
         },
-        "required": [
-          "ops",
-          "message"
-        ],
+        "required": ["ops", "message"],
         "additionalProperties": false
       },
       "annotations": {
@@ -161,23 +118,15 @@
             "description": "The changeset's id, as log gives it."
           },
           "limit": {
-            "type": [
-              "null",
-              "integer"
-            ],
+            "type": ["null", "integer"],
             "description": "At most this many changes, 1 to 100. Default 50."
           },
           "cursor": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "next_cursor of the previous answer, to go on from there."
           }
         },
-        "required": [
-          "id"
-        ],
+        "required": ["id"],
         "additionalProperties": false
       },
       "annotations": {
@@ -198,16 +147,11 @@
             "description": "The path of the page or attachment to delete, from the notebook's root."
           },
           "recursive": {
-            "type": [
-              "null",
-              "boolean"
-            ],
+            "type": ["null", "boolean"],
             "description": "Delete a page with its children, its pages and attachments. Default false: a page with children is refused."
           }
         },
-        "required": [
-          "path"
-        ],
+        "required": ["path"],
         "additionalProperties": false
       },
       "annotations": {
@@ -237,25 +181,15 @@
             "description": "The text to put in its place, which differs from old_string."
           },
           "replace_all": {
-            "type": [
-              "null",
-              "boolean"
-            ],
+            "type": ["null", "boolean"],
             "description": "Replace every occurrence of old_string, left to right. Default false: old_string must occur exactly once."
           },
           "base_version": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "The page's version, as read, list or write gave it: the edit is refused when the page changed since. Without it, the edit applies to the content as it is now."
           }
         },
-        "required": [
-          "path",
-          "old_string",
-          "new_string"
-        ],
+        "required": ["path", "old_string", "new_string"],
         "additionalProperties": false
       },
       "annotations": {
@@ -277,37 +211,23 @@
             "description": "The Go regular expression (RE2), at most 1024 bytes, matched against each line alone. It is read in NFC, as the lines are: write a combining mark as an escape, such as \\x{301}, to keep it apart from the character before it."
           },
           "glob": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "Only the pages whose paths match this glob, as list's: \"Projects/**\", \"**/*.md\". Default: every page."
           },
           "ignore_case": {
-            "type": [
-              "null",
-              "boolean"
-            ],
+            "type": ["null", "boolean"],
             "description": "Match without case, as (?i). Default false."
           },
           "limit": {
-            "type": [
-              "null",
-              "integer"
-            ],
+            "type": ["null", "integer"],
             "description": "At most this many lines with a hit, 1 to 500. Default 100."
           },
           "cursor": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "next_cursor of the previous answer, to go on from there."
           }
         },
-        "required": [
-          "pattern"
-        ],
+        "required": ["pattern"],
         "additionalProperties": false
       },
       "annotations": {
@@ -324,38 +244,23 @@
         "type": "object",
         "properties": {
           "type": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "Only the pages whose frontmatter's type is exactly this."
           },
           "tag": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "Only the pages with this tag or one under it, with or without its leading #."
           },
           "parent": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "Only the child pages of this page, by its path ending with .md; \"/\" for the root's."
           },
           "limit": {
-            "type": [
-              "null",
-              "integer"
-            ],
+            "type": ["null", "integer"],
             "description": "At most this many pages, 1 to 100. Default 50."
           },
           "cursor": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "next_cursor of the previous answer, to go on from there."
           }
         },
@@ -375,24 +280,15 @@
         "type": "object",
         "properties": {
           "pattern": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "\"\" or \"/\" for the root's children, \"A/B/\" for the children of A/B.md, or a glob. Default: the root's children."
           },
           "limit": {
-            "type": [
-              "null",
-              "integer"
-            ],
+            "type": ["null", "integer"],
             "description": "At most this many items, 1 to 1000. Default 200."
           },
           "cursor": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "next_cursor of the previous answer, to go on from there."
           }
         },
@@ -412,38 +308,23 @@
         "type": "object",
         "properties": {
           "path": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "Only the changesets that changed the page or attachment at this path, from the notebook's root."
           },
           "actor": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "Only the changesets by this account: its id, or \"me\" for yours."
           },
           "client": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "Only the changesets of this client: \"web\", \"api\", \"cli\", \"mcp:<name>\" for an agent, or \"mcp\" for every agent."
           },
           "limit": {
-            "type": [
-              "null",
-              "integer"
-            ],
+            "type": ["null", "integer"],
             "description": "At most this many changesets, 1 to 100. Default 50."
           },
           "cursor": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "next_cursor of the previous answer, to go on from there."
           }
         },
@@ -471,17 +352,11 @@
             "description": "The full path it will have, its new name last: never a page to move it into. The page above it must exist."
           },
           "update_links": {
-            "type": [
-              "null",
-              "boolean"
-            ],
+            "type": ["null", "boolean"],
             "description": "Rewrite the links to what moves, and to its pages, so that they follow it. Default true."
           }
         },
-        "required": [
-          "from",
-          "to"
-        ],
+        "required": ["from", "to"],
         "additionalProperties": false
       },
       "annotations": {
@@ -503,30 +378,19 @@
             "description": "The path from the notebook's root: \"A/B.md\" for a page, \"A/diagram.png\" for an attachment."
           },
           "offset": {
-            "type": [
-              "null",
-              "integer"
-            ],
+            "type": ["null", "integer"],
             "description": "The first line, from 1. Default 1."
           },
           "column": {
-            "type": [
-              "null",
-              "integer"
-            ],
+            "type": ["null", "integer"],
             "description": "The byte of the first line to start from, from 0: next_column of the previous answer. Default 0."
           },
           "limit": {
-            "type": [
-              "null",
-              "integer"
-            ],
+            "type": ["null", "integer"],
             "description": "At most this many lines, from 1. Default 2000."
           }
         },
-        "required": [
-          "path"
-        ],
+        "required": ["path"],
         "additionalProperties": false
       },
       "annotations": {
@@ -547,23 +411,15 @@
             "description": "The words to find, parted by spaces: at most 256 bytes and 8 words."
           },
           "limit": {
-            "type": [
-              "null",
-              "integer"
-            ],
+            "type": ["null", "integer"],
             "description": "At most this many results, 1 to 50. Default 20."
           },
           "cursor": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "next_cursor of the previous answer, to go on from there."
           }
         },
-        "required": [
-          "q"
-        ],
+        "required": ["q"],
         "additionalProperties": false
       },
       "annotations": {
@@ -584,44 +440,27 @@
             "description": "The page's path from the notebook's root, as \"A/B.md\"."
           },
           "revision": {
-            "type": [
-              "null",
-              "integer"
-            ],
+            "type": ["null", "integer"],
             "description": "The revision to read, from 1. Without it, the list of the page's versions."
           },
           "offset": {
-            "type": [
-              "null",
-              "integer"
-            ],
+            "type": ["null", "integer"],
             "description": "With revision: the first line, from 1. Default 1."
           },
           "column": {
-            "type": [
-              "null",
-              "integer"
-            ],
+            "type": ["null", "integer"],
             "description": "With revision: the byte of the first line to start from, from 0: next_column of the previous answer. Default 0."
           },
           "limit": {
-            "type": [
-              "null",
-              "integer"
-            ],
+            "type": ["null", "integer"],
             "description": "Without revision: at most this many versions, 1 to 100, default 50. With revision: at most this many lines, from 1, default 2000."
           },
           "cursor": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "Without revision: next_cursor of the previous answer, to go on from there."
           }
         },
-        "required": [
-          "path"
-        ],
+        "required": ["path"],
         "additionalProperties": false
       },
       "annotations": {
@@ -646,17 +485,11 @@
             "description": "The page's whole content, as it will be stored: frontmatter, byte order mark and line breaks included."
           },
           "base_version": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "The page's version, as read, list or write gave it, to replace its content. Without it, the page is created."
           }
         },
-        "required": [
-          "path",
-          "content"
-        ],
+        "required": ["path", "content"],
         "additionalProperties": false
       },
       "annotations": {
@@ -674,24 +507,15 @@
         "type": "object",
         "properties": {
           "rule": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "An exact health check rule. Omit for counts and previews; limit and cursor require a rule."
           },
           "limit": {
-            "type": [
-              "null",
-              "integer"
-            ],
+            "type": ["null", "integer"],
             "description": "At most this many items, 1 to 100. Default 50."
           },
           "cursor": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "next_cursor of the previous answer, to continue after its last item."
           }
         },
@@ -711,17 +535,11 @@
         "type": "object",
         "properties": {
           "limit": {
-            "type": [
-              "null",
-              "integer"
-            ],
+            "type": ["null", "integer"],
             "description": "At most this many items, 1 to 100. Default 50."
           },
           "cursor": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "next_cursor of the previous answer, to continue after its last item."
           }
         },
@@ -751,24 +569,15 @@
             "description": "The page's path from the notebook's root, ending with .md."
           },
           "limit": {
-            "type": [
-              "null",
-              "integer"
-            ],
+            "type": ["null", "integer"],
             "description": "At most this many pages, 1 to 100. Default 50."
           },
           "cursor": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "next_cursor of the previous answer, to go on from there."
           }
         },
-        "required": [
-          "notebook",
-          "path"
-        ],
+        "required": ["notebook", "path"],
         "additionalProperties": false
       },
       "annotations": {
@@ -799,79 +608,47 @@
                   "description": "The tool this op is: write, edit, move or delete. Its other members are that tool's arguments."
                 },
                 "path": {
-                  "type": [
-                    "null",
-                    "string"
-                  ],
+                  "type": ["null", "string"],
                   "description": "write, edit and delete: the path, from the notebook's root, as that tool takes it."
                 },
                 "content": {
-                  "type": [
-                    "null",
-                    "string"
-                  ],
+                  "type": ["null", "string"],
                   "description": "write: the page's whole content, as it will be stored."
                 },
                 "base_version": {
-                  "type": [
-                    "null",
-                    "string"
-                  ],
+                  "type": ["null", "string"],
                   "description": "write and edit: the page's version as read before the batch. None for a page the batch creates."
                 },
                 "old_string": {
-                  "type": [
-                    "null",
-                    "string"
-                  ],
+                  "type": ["null", "string"],
                   "description": "edit: the text to replace, byte for byte, which must occur exactly once unless replace_all is set."
                 },
                 "new_string": {
-                  "type": [
-                    "null",
-                    "string"
-                  ],
+                  "type": ["null", "string"],
                   "description": "edit: the text to put in its place."
                 },
                 "replace_all": {
-                  "type": [
-                    "null",
-                    "boolean"
-                  ],
+                  "type": ["null", "boolean"],
                   "description": "edit: replace every occurrence of old_string. Default false."
                 },
                 "from": {
-                  "type": [
-                    "null",
-                    "string"
-                  ],
+                  "type": ["null", "string"],
                   "description": "move: the path of the page or attachment that moves."
                 },
                 "to": {
-                  "type": [
-                    "null",
-                    "string"
-                  ],
+                  "type": ["null", "string"],
                   "description": "move: the full path it will have, never a page to move it into."
                 },
                 "update_links": {
-                  "type": [
-                    "null",
-                    "boolean"
-                  ],
+                  "type": ["null", "boolean"],
                   "description": "move: rewrite the links to what moves so that they follow it. Default true."
                 },
                 "recursive": {
-                  "type": [
-                    "null",
-                    "boolean"
-                  ],
+                  "type": ["null", "boolean"],
                   "description": "delete: delete a page with its children. Default false."
                 }
               },
-              "required": [
-                "op"
-              ],
+              "required": ["op"],
               "additionalProperties": false
             }
           },
@@ -880,11 +657,7 @@
             "description": "Why the batch is made, shown with its change in the history: 1 to 4,096 bytes."
           }
         },
-        "required": [
-          "notebook",
-          "ops",
-          "message"
-        ],
+        "required": ["notebook", "ops", "message"],
         "additionalProperties": false
       },
       "annotations": {
@@ -910,24 +683,15 @@
             "description": "The changeset's id, as log gives it."
           },
           "limit": {
-            "type": [
-              "null",
-              "integer"
-            ],
+            "type": ["null", "integer"],
             "description": "At most this many changes, 1 to 100. Default 50."
           },
           "cursor": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "next_cursor of the previous answer, to go on from there."
           }
         },
-        "required": [
-          "notebook",
-          "id"
-        ],
+        "required": ["notebook", "id"],
         "additionalProperties": false
       },
       "annotations": {
@@ -952,17 +716,11 @@
             "description": "The path of the page or attachment to delete, from the notebook's root."
           },
           "recursive": {
-            "type": [
-              "null",
-              "boolean"
-            ],
+            "type": ["null", "boolean"],
             "description": "Delete a page with its children, its pages and attachments. Default false: a page with children is refused."
           }
         },
-        "required": [
-          "notebook",
-          "path"
-        ],
+        "required": ["notebook", "path"],
         "additionalProperties": false
       },
       "annotations": {
@@ -996,26 +754,15 @@
             "description": "The text to put in its place, which differs from old_string."
           },
           "replace_all": {
-            "type": [
-              "null",
-              "boolean"
-            ],
+            "type": ["null", "boolean"],
             "description": "Replace every occurrence of old_string, left to right. Default false: old_string must occur exactly once."
           },
           "base_version": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "The page's version, as read, list or write gave it: the edit is refused when the page changed since. Without it, the edit applies to the content as it is now."
           }
         },
-        "required": [
-          "notebook",
-          "path",
-          "old_string",
-          "new_string"
-        ],
+        "required": ["notebook", "path", "old_string", "new_string"],
         "additionalProperties": false
       },
       "annotations": {
@@ -1041,38 +788,23 @@
             "description": "The Go regular expression (RE2), at most 1024 bytes, matched against each line alone. It is read in NFC, as the lines are: write a combining mark as an escape, such as \\x{301}, to keep it apart from the character before it."
           },
           "glob": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "Only the pages whose paths match this glob, as list's: \"Projects/**\", \"**/*.md\". Default: every page."
           },
           "ignore_case": {
-            "type": [
-              "null",
-              "boolean"
-            ],
+            "type": ["null", "boolean"],
             "description": "Match without case, as (?i). Default false."
           },
           "limit": {
-            "type": [
-              "null",
-              "integer"
-            ],
+            "type": ["null", "integer"],
             "description": "At most this many lines with a hit, 1 to 500. Default 100."
           },
           "cursor": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "next_cursor of the previous answer, to go on from there."
           }
         },
-        "required": [
-          "notebook",
-          "pattern"
-        ],
+        "required": ["notebook", "pattern"],
         "additionalProperties": false
       },
       "annotations": {
@@ -1093,44 +825,27 @@
             "description": "The notebook's id, from notebooks."
           },
           "type": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "Only the pages whose frontmatter's type is exactly this."
           },
           "tag": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "Only the pages with this tag or one under it, with or without its leading #."
           },
           "parent": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "Only the child pages of this page, by its path ending with .md; \"/\" for the root's."
           },
           "limit": {
-            "type": [
-              "null",
-              "integer"
-            ],
+            "type": ["null", "integer"],
             "description": "At most this many pages, 1 to 100. Default 50."
           },
           "cursor": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "next_cursor of the previous answer, to go on from there."
           }
         },
-        "required": [
-          "notebook"
-        ],
+        "required": ["notebook"],
         "additionalProperties": false
       },
       "annotations": {
@@ -1151,30 +866,19 @@
             "description": "The notebook's id, from notebooks."
           },
           "pattern": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "\"\" or \"/\" for the root's children, \"A/B/\" for the children of A/B.md, or a glob. Default: the root's children."
           },
           "limit": {
-            "type": [
-              "null",
-              "integer"
-            ],
+            "type": ["null", "integer"],
             "description": "At most this many items, 1 to 1000. Default 200."
           },
           "cursor": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "next_cursor of the previous answer, to go on from there."
           }
         },
-        "required": [
-          "notebook"
-        ],
+        "required": ["notebook"],
         "additionalProperties": false
       },
       "annotations": {
@@ -1195,44 +899,27 @@
             "description": "The notebook's id, from notebooks."
           },
           "path": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "Only the changesets that changed the page or attachment at this path, from the notebook's root."
           },
           "actor": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "Only the changesets by this account: its id, or \"me\" for yours."
           },
           "client": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "Only the changesets of this client: \"web\", \"api\", \"cli\", \"mcp:<name>\" for an agent, or \"mcp\" for every agent."
           },
           "limit": {
-            "type": [
-              "null",
-              "integer"
-            ],
+            "type": ["null", "integer"],
             "description": "At most this many changesets, 1 to 100. Default 50."
           },
           "cursor": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "next_cursor of the previous answer, to go on from there."
           }
         },
-        "required": [
-          "notebook"
-        ],
+        "required": ["notebook"],
         "additionalProperties": false
       },
       "annotations": {
@@ -1261,18 +948,11 @@
             "description": "The full path it will have, its new name last: never a page to move it into. The page above it must exist."
           },
           "update_links": {
-            "type": [
-              "null",
-              "boolean"
-            ],
+            "type": ["null", "boolean"],
             "description": "Rewrite the links to what moves, and to its pages, so that they follow it. Default true."
           }
         },
-        "required": [
-          "notebook",
-          "from",
-          "to"
-        ],
+        "required": ["notebook", "from", "to"],
         "additionalProperties": false
       },
       "annotations": {
@@ -1308,9 +988,7 @@
             "description": "The notebook's id, from notebooks."
           }
         },
-        "required": [
-          "notebook"
-        ],
+        "required": ["notebook"],
         "additionalProperties": false
       },
       "annotations": {
@@ -1335,31 +1013,19 @@
             "description": "The path from the notebook's root: \"A/B.md\" for a page, \"A/diagram.png\" for an attachment."
           },
           "offset": {
-            "type": [
-              "null",
-              "integer"
-            ],
+            "type": ["null", "integer"],
             "description": "The first line, from 1. Default 1."
           },
           "column": {
-            "type": [
-              "null",
-              "integer"
-            ],
+            "type": ["null", "integer"],
             "description": "The byte of the first line to start from, from 0: next_column of the previous answer. Default 0."
           },
           "limit": {
-            "type": [
-              "null",
-              "integer"
-            ],
+            "type": ["null", "integer"],
             "description": "At most this many lines, from 1. Default 2000."
           }
         },
-        "required": [
-          "notebook",
-          "path"
-        ],
+        "required": ["notebook", "path"],
         "additionalProperties": false
       },
       "annotations": {
@@ -1384,24 +1050,15 @@
             "description": "The words to find, parted by spaces: at most 256 bytes and 8 words."
           },
           "limit": {
-            "type": [
-              "null",
-              "integer"
-            ],
+            "type": ["null", "integer"],
             "description": "At most this many results, 1 to 50. Default 20."
           },
           "cursor": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "next_cursor of the previous answer, to go on from there."
           }
         },
-        "required": [
-          "notebook",
-          "q"
-        ],
+        "required": ["notebook", "q"],
         "additionalProperties": false
       },
       "annotations": {
@@ -1426,45 +1083,27 @@
             "description": "The page's path from the notebook's root, as \"A/B.md\"."
           },
           "revision": {
-            "type": [
-              "null",
-              "integer"
-            ],
+            "type": ["null", "integer"],
             "description": "The revision to read, from 1. Without it, the list of the page's versions."
           },
           "offset": {
-            "type": [
-              "null",
-              "integer"
-            ],
+            "type": ["null", "integer"],
             "description": "With revision: the first line, from 1. Default 1."
           },
           "column": {
-            "type": [
-              "null",
-              "integer"
-            ],
+            "type": ["null", "integer"],
             "description": "With revision: the byte of the first line to start from, from 0: next_column of the previous answer. Default 0."
           },
           "limit": {
-            "type": [
-              "null",
-              "integer"
-            ],
+            "type": ["null", "integer"],
             "description": "Without revision: at most this many versions, 1 to 100, default 50. With revision: at most this many lines, from 1, default 2000."
           },
           "cursor": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "Without revision: next_cursor of the previous answer, to go on from there."
           }
         },
-        "required": [
-          "notebook",
-          "path"
-        ],
+        "required": ["notebook", "path"],
         "additionalProperties": false
       },
       "annotations": {
@@ -1493,18 +1132,11 @@
             "description": "The page's whole content, as it will be stored: frontmatter, byte order mark and line breaks included."
           },
           "base_version": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "The page's version, as read, list or write gave it, to replace its content. Without it, the page is created."
           }
         },
-        "required": [
-          "notebook",
-          "path",
-          "content"
-        ],
+        "required": ["notebook", "path", "content"],
         "additionalProperties": false
       },
       "annotations": {
@@ -1526,31 +1158,20 @@
             "description": "The notebook's id, from notebooks."
           },
           "rule": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "An exact health check rule. Omit for counts and previews; limit and cursor require a rule."
           },
           "limit": {
-            "type": [
-              "null",
-              "integer"
-            ],
+            "type": ["null", "integer"],
             "description": "At most this many items, 1 to 100. Default 50."
           },
           "cursor": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "next_cursor of the previous answer, to continue after its last item."
           }
         },
         "additionalProperties": false,
-        "required": [
-          "notebook"
-        ]
+        "required": ["notebook"]
       },
       "annotations": {
         "idempotentHint": false,
@@ -1570,24 +1191,16 @@
             "description": "The notebook's id, from notebooks."
           },
           "limit": {
-            "type": [
-              "null",
-              "integer"
-            ],
+            "type": ["null", "integer"],
             "description": "At most this many items, 1 to 100. Default 50."
           },
           "cursor": {
-            "type": [
-              "null",
-              "string"
-            ],
+            "type": ["null", "string"],
             "description": "next_cursor of the previous answer, to continue after its last item."
           }
         },
         "additionalProperties": false,
-        "required": [
-          "notebook"
-        ]
+        "required": ["notebook"]
       },
       "annotations": {
         "idempotentHint": false,

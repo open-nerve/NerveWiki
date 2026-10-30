@@ -693,7 +693,7 @@ Nerve 没有 MCP、prompt、数据的 lint、模式的契约或只增不改的�
 - **派生数据**：`source_hash` 等于重建（4.8 的步的种类各有最少的次数；降级之后的写与恢复在内）；`checkPages` 加 `source_hash` 的不变式、"活着的 `llm_wiki` 有来源根与 `AGENTS`"、`changeset_sources` 的三条（4.14），每条一个 SQL 播下的反例（13.4 第 1 条）；`batch` 进这个测试。
 - **交错**：4.17 的各个，结束时核对不变式。
 - **清理**：一本删除了的 LLM Wiki 笔记本，它的变更集带着很多来源（一个变更集 2,500 个，与 500 个变更集各 3 个），在一次清理的运行里删完，同一次运行里 `PurgeNotebooks` 成功（4.2）。
-- **成本与计划**（13.4 第 8、9 条，`!race`，界线照 13.4：本机实测的最快的几次的三倍，与目标的数（如 4.11 的 2 秒）不同时以 13.4 的为准；各在 `test-go-costs` 或 `test-go-guards` 的一行，行照 M9/P2 6.5 的规则定。今天的计划测试不带标记、在竞态的一份里跑，这些行是新的写法）：
+- **成本与计划**（13.4第8、9条，`!race`，4.11的2秒是目标，不预填通过）：lint迁移/计划/规则/真实编排与必要属性成本归`test-go-costs-lint`，其余成本、既有组合根守卫分别在`test-go-costs`和`test-go-guards`。每条锁内process两轮均值×2.4须≤其旧Go timeout一半；新增算法回退guard按两轮各至少三样本中位数的较大值×3校准为固定值，再用实际慢CI核验，不能把容量倍率当算法阈值。worker 2s/request 4s与原有guards不变，不能靠short/race替代`!race`入口；当前Makefile为17 costs＋14 costs-lint＋15 guards，共46条go-test recipes（含server/tools）（costs-lint原10行加三新顶层的四条完整recipe）。这是当前入口组成，最终完整Test/job容量与CI尚待实测验收，不更改下列形状、原期限或历史证据：
   - lint 每条规则与摘要在 10 万页上（含内存的界，含 4.10 的长空白的行）； P3另含10万source与大量区外未解析边同场的参数/关系/往返工作、一末键大量深路径presence无祖先读（复用真实bootstrap摘要成本与生产wanted trace，page metadata测试不代消费链）、slot全部匹配边唯一性与不重叠源批范围、源JSON长度/值双读、合法YAML转义长前段加短/x使target超过固定5MiB且target_key=x的真实parser→PageFacts→保存/读取，wanted与source-slot各自非空并分别只收紧target检查、JSON宽界不动、JSONB指数/别名与单大项进度；未实测前目标不写通过。
   - `index.md` 的一次 `read` 在 10 万页（含入链数最坏的形状）；贡献者在 10 万页与 1,000 个变更集；
   - 去重：一次新增在 10 万个来源；一棵上限子树移进 `raw`（另有普通10001成功与超界有限物化、成功末层空父探查）；恢复与撤销在 `MaxUnitNodes`、`MaxUnitPages` 而每个节点都在来源区里；60k任务完整计划、X跨10k与大量同hash收敛、降级 Forget 在10万来源；按4.8独立成本行；600万空/已有LLM实际冷事务与三/四列成本差按4.2；
