@@ -16,6 +16,30 @@ import (
 func lintID(n uint64) uuid.UUID { var id uuid.UUID; binary.BigEndian.PutUint64(id[8:], n); return id }
 
 func TestLintSources(t *testing.T) {
+	t.Run("first-key-and-json-items", testLintFirstSourcesConsumer)
+	t.Run("real-link-and-not-link-boundary", testLintSourceLinkBoundary)
+	t.Run("identity-tags-and-long-values", testLintSourceIdentities)
+	t.Run("slot-collision-unfiltered-cardinality", testLintSourceCollisions)
+	t.Run("old-qualified-json-oracle", testLintSourceOldObject)
+	t.Run("cross-byte-row-batch", testLintSourceCrossBatches)
+	t.Run("attachment-follows-source", func(t *testing.T) { testLintOriginF(t, "wikilink") })
+	t.Run("multi-parent-direct-empty-stale", testLintSourceMultiParent)
+	t.Run("normal-mixed-version-scope", testLintNormalMixedVersionScope)
+	t.Run("origin", func(t *testing.T) {
+		t.Run("d-first", func(t *testing.T) { testLintOriginD(t, false) })
+		t.Run("d-after", func(t *testing.T) { testLintOriginD(t, true) })
+		t.Run("f", func(t *testing.T) { testLintOriginF(t, "wikilink") })
+		t.Run("f-kind", func(t *testing.T) {
+			for _, kind := range []string{"wikilink", "link", "embed", "image"} {
+				t.Run(kind, func(t *testing.T) { testLintOriginF(t, kind) })
+			}
+		})
+	})
+	t.Run("origin-stale", func(t *testing.T) {
+		t.Run("d-first", func(t *testing.T) { testLintOriginStaleD(t, false) })
+		t.Run("d-after", func(t *testing.T) { testLintOriginStaleD(t, true) })
+		t.Run("f", func(t *testing.T) { testLintOriginF(t, "wikilink") })
+	})
 	t.Run("first-key-and-json-items-data", func(t *testing.T) {
 		f := newFixture(t)
 		r := postgresadapter.NewLintReads(f.pool, 5*1024*1024)

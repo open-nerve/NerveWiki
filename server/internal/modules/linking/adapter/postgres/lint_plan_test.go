@@ -72,6 +72,8 @@ func lintExecute(t *testing.T, name string, args []any) string {
 		switch v := arg.(type) {
 		case uuid.UUID:
 			literals[i] = quote(v.String()) + "::uuid"
+		case string:
+			literals[i] = quote(v) + "::text"
 		case int32:
 			literals[i] = fmt.Sprintf("%d::integer", v)
 		case []uuid.UUID:

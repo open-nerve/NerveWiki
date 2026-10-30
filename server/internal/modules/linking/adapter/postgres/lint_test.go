@@ -49,6 +49,7 @@ func lintExec(t *testing.T, f fixture, sql string, args ...any) {
 }
 
 func TestLintEdgeBatches(t *testing.T) {
+	t.Run("same-page-across-byte-and-row-cuts", testLintWantedAcrossBatches)
 	t.Run("paired-positions", func(t *testing.T) {
 		f := newFixture(t)
 		r := postgresadapter.NewLintReads(f.pool, 5*1024*1024)

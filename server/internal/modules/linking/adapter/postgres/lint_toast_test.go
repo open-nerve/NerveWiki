@@ -41,8 +41,9 @@ func lintToast(t *testing.T, f fixture, table string, read func(context.Context)
 	return after - before
 }
 
-// The interval includes the real parser, writer and reader, but excludes
-// constructing the handwritten input/oracle. Heap peak is sampled every ms.
+// The interval includes the real parser, writer and selected read/consumer
+// subtests (including their independent assertions), but excludes constructing
+// the handwritten input/oracle. Heap peak is sampled every ms.
 // PG relation work is measured independently; these are Go process metrics.
 func lintMeasured(t *testing.T, name string, run func()) {
 	t.Helper()
@@ -71,7 +72,7 @@ func lintMeasured(t *testing.T, name string, run func()) {
 		runtime.ReadMemStats(&after)
 		close(stopped)
 		peak := max(<-finished, after.HeapAlloc)
-		lintEvidence(t, name, map[string]any{"wall_ns": elapsed.Nanoseconds(), "go_total_alloc": after.TotalAlloc - before.TotalAlloc, "sampled_heap_peak": peak, "heap_at_start": before.HeapAlloc, "scope": "parser + production index write + bounded reads; excludes fixture strings and PostgreSQL memory"})
+		lintEvidence(t, name, map[string]any{"wall_ns": elapsed.Nanoseconds(), "go_total_alloc": after.TotalAlloc - before.TotalAlloc, "sampled_heap_peak": peak, "heap_at_start": before.HeapAlloc, "scope": "parser + production index write + selected bounded-read/rule-consumer subtests and independent assertions; excludes fixture strings and PostgreSQL memory"})
 	}()
 	run()
 }
@@ -187,56 +188,70 @@ func TestLintJSONToast(t *testing.T) {
 				t.Fatalf("persisted witness: target bytes=%d key=%q resolved=%v", len(stored), key, resolved)
 			}
 			t.Run("wanted", func(t *testing.T) {
-				heads, err := r.WantedEdgeHeads(t.Context(), f.eng, nil, nil, 512)
-				if err != nil || len(heads) != 1 || heads[0].Start != start || heads[0].TargetBytes != int64(len(want)) {
-					t.Fatalf("nonempty real wanted heads: %+v %v", heads, err)
-				}
-				stream := reads.Wanted(f.eng, nil)
-				edges, err := stream.Next(t.Context())
-				if err != nil || len(edges) != 1 || edges[0].Target != want || edges[0].Start != start {
-					t.Fatalf("complete wanted growth target: rows=%d %v", len(edges), err)
-				}
-				end, err := stream.Next(t.Context())
-				if err != nil || len(end) != 0 {
-					t.Fatalf("wanted does not advance: %d %v", len(end), err)
-				}
+				t.Run("bounded-reads", func(t *testing.T) {
+					heads, err := r.WantedEdgeHeads(t.Context(), f.eng, nil, nil, 512)
+					if err != nil || len(heads) != 1 || heads[0].Start != start || heads[0].TargetBytes != int64(len(want)) {
+						t.Fatalf("nonempty real wanted heads: %+v %v", heads, err)
+					}
+					stream := reads.Wanted(f.eng, nil)
+					edges, err := stream.Next(t.Context())
+					if err != nil || len(edges) != 1 || edges[0].Target != want || edges[0].Start != start {
+						t.Fatalf("complete wanted growth target: rows=%d %v", len(edges), err)
+					}
+					end, err := stream.Next(t.Context())
+					if err != nil || len(end) != 0 {
+						t.Fatalf("wanted does not advance: %d %v", len(end), err)
+					}
+				})
+				t.Run("rule-consumer", func(t *testing.T) {
+					consumer := f
+					consumer.pool = pool
+					assertLintPayloadRules(t, consumer, p, len(content), &want, want, false)
+				})
 			})
 			t.Run("source-slot", func(t *testing.T) {
-				// JSON retains the shared wide bound independently of the target check.
-				values, err := reads.SourceValues(f.eng, []uuid.UUID{p}).Next(t.Context())
-				if err != nil || len(values) != 1 {
-					t.Fatalf("actual source JSON: %d %v", len(values), err)
-				}
-				specs := []app.SourceSpec{{PageID: p, Key: "sources"}}
-				heads, err := r.SourceSlotHeads(t.Context(), f.eng, specs, nil, 512)
-				if err != nil || len(heads) != 1 || heads[0].Start != start || heads[0].TargetBytes != int64(len(want)) {
-					t.Fatalf("nonempty real slot heads: %+v %v", heads, err)
-				}
-				stream := reads.SourceSlots(f.eng, specs)
-				edges, err := stream.Next(t.Context())
-				if err != nil || len(edges) != 1 || edges[0].Target != want || edges[0].Start != start {
-					t.Fatalf("complete source-slot growth target: rows=%d %v", len(edges), err)
-				}
-				end, err := stream.Next(t.Context())
-				if err != nil || len(end) != 0 {
-					t.Fatalf("slot does not advance: %d %v", len(end), err)
-				}
+				t.Run("bounded-reads", func(t *testing.T) {
+					// JSON retains the shared wide bound independently of the target check.
+					values, err := reads.SourceValues(f.eng, []uuid.UUID{p}).Next(t.Context())
+					if err != nil || len(values) != 1 {
+						t.Fatalf("actual source JSON: %d %v", len(values), err)
+					}
+					specs := []app.SourceSpec{{PageID: p, Key: "sources"}}
+					heads, err := r.SourceSlotHeads(t.Context(), f.eng, specs, nil, 512)
+					if err != nil || len(heads) != 1 || heads[0].Start != start || heads[0].TargetBytes != int64(len(want)) {
+						t.Fatalf("nonempty real slot heads: %+v %v", heads, err)
+					}
+					stream := reads.SourceSlots(f.eng, specs)
+					edges, err := stream.Next(t.Context())
+					if err != nil || len(edges) != 1 || edges[0].Target != want || edges[0].Start != start {
+						t.Fatalf("complete source-slot growth target: rows=%d %v", len(edges), err)
+					}
+					end, err := stream.Next(t.Context())
+					if err != nil || len(end) != 0 {
+						t.Fatalf("slot does not advance: %d %v", len(end), err)
+					}
+				})
+				t.Run("rule-consumer", func(t *testing.T) {
+					consumer := f
+					consumer.pool = pool
+					assertLintPayloadRules(t, consumer, p, len(content), &want, want, false)
+				})
 			})
 			lintEvidence(t, "legal-target-provenance", map[string]any{"source_bytes": len(content), "target_bytes": len(want), "target_key": key, "range_start": start, "trace": tr.names()})
 		})
 	})
 	t.Run("JSON-derived-bound-and-single-large-progress", func(t *testing.T) {
 		const c = 5 * 1024 * 1024
-		cases := []struct{ name, content, want string }{
-			{"numeric-exponent", "---\nsources: 5e-324\n---\n", "0." + strings.Repeat("0", 323) + "5"},
-			{"string-escapes", "---\nsources: \"\\L\\P\\0\\x01\"\n---\n", "\"\u2028\u2029\uFFFD\\u0001\""},
-			{"alias-expansion", "---\na: &a " + strings.Repeat("x", 50000) + "\nsources: [*a,*a]\n---\n", `["` + strings.Repeat("x", 50000) + `", "` + strings.Repeat("x", 50000) + `"]`},
+		cases := []struct{ name, content, want, invalid string }{
+			{"numeric-exponent", "---\nsources: 5e-324\n---\n", "0." + strings.Repeat("0", 323) + "5", "0." + strings.Repeat("0", 323) + "5"},
+			{"string-escapes", "---\nsources: \"\\L\\P\\0\\x01\"\n---\n", "\"\u2028\u2029\uFFFD\\u0001\"", `"\u2028\u2029` + "\uFFFD" + `\u0001"`},
+			{"alias-expansion", "---\na: &a " + strings.Repeat("x", 50000) + "\nsources: [*a,*a]\n---\n", `["` + strings.Repeat("x", 50000) + `", "` + strings.Repeat("x", 50000) + `"]`, `"` + strings.Repeat("x", 50000) + `"`},
 		}
 		// One legal JSON payload larger than an ordinary batch: two aliases of
 		// a YAML escaped scalar; repeated decoded bytes fit the parser's budget.
 		escaped := strings.Repeat(`\x01`, 1100000)
 		expanded := strings.Repeat(`\u0001`, 1100000)
-		cases = append(cases, struct{ name, content, want string }{"over-8MiB", "---\na: &a \"" + escaped + "\"\nsources: [*a,*a]\n---\n", `["` + expanded + `", "` + expanded + `"]`})
+		cases = append(cases, struct{ name, content, want, invalid string }{"over-8MiB", "---\na: &a \"" + escaped + "\"\nsources: [*a,*a]\n---\n", `["` + expanded + `", "` + expanded + `"]`, `"` + expanded + `"`})
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
 				if len(tc.content) >= c {
@@ -252,23 +267,28 @@ func TestLintJSONToast(t *testing.T) {
 						t.Fatal("not legal parser facts")
 					}
 					f.replace(t, app.Page{ID: p, NotebookID: f.eng, Revision: 1}, facts)
-					heads, err := r.SourcePropertyHeads(t.Context(), f.eng, []uuid.UUID{p})
-					if err != nil || len(heads) != 1 || heads[0].ValueBytes != int64(len(tc.want)) || heads[0].ValueBytes > app.MaxLintPayloadBytes(c) {
-						t.Fatalf("JSON derived bound: %+v %v, want %d bytes", heads, err, len(tc.want))
-					}
-					stream := reads.SourceValues(f.eng, []uuid.UUID{p})
-					values, err := stream.Next(t.Context())
-					if err != nil || len(values) != 1 || string(values[0].JSON) != tc.want {
-						t.Fatalf("exact handwritten JSON: %d rows %v, wanted bytes %d", len(values), err, len(tc.want))
-					}
-					end, err := stream.Next(t.Context())
-					if err != nil || len(end) != 0 {
-						t.Fatalf("large JSON does not advance: %d %v", len(end), err)
-					}
-					if tc.name == "over-8MiB" && len(values[0].JSON) <= 8*1024*1024 {
-						t.Fatal("large witness is not larger than ordinary batch")
-					}
-					lintEvidence(t, "JSON-provenance", map[string]any{"source_bytes": len(tc.content), "serialized_bytes": heads[0].ValueBytes, "bound": app.MaxLintPayloadBytes(c)})
+					t.Run("bounded-reads", func(t *testing.T) {
+						heads, err := r.SourcePropertyHeads(t.Context(), f.eng, []uuid.UUID{p})
+						if err != nil || len(heads) != 1 || heads[0].ValueBytes != int64(len(tc.want)) || heads[0].ValueBytes > app.MaxLintPayloadBytes(c) {
+							t.Fatalf("JSON derived bound: %+v %v, want %d bytes", heads, err, len(tc.want))
+						}
+						stream := reads.SourceValues(f.eng, []uuid.UUID{p})
+						values, err := stream.Next(t.Context())
+						if err != nil || len(values) != 1 || string(values[0].JSON) != tc.want {
+							t.Fatalf("exact handwritten JSON: %d rows %v, wanted bytes %d", len(values), err, len(tc.want))
+						}
+						end, err := stream.Next(t.Context())
+						if err != nil || len(end) != 0 {
+							t.Fatalf("large JSON does not advance: %d %v", len(end), err)
+						}
+						if tc.name == "over-8MiB" && len(values[0].JSON) <= 8*1024*1024 {
+							t.Fatal("large witness is not larger than ordinary batch")
+						}
+						lintEvidence(t, "JSON-provenance", map[string]any{"source_bytes": len(tc.content), "serialized_bytes": heads[0].ValueBytes, "bound": app.MaxLintPayloadBytes(c)})
+					})
+					t.Run("rule-consumer", func(t *testing.T) {
+						assertLintPayloadRules(t, f, p, len(tc.content), nil, tc.invalid, true)
+					})
 				})
 			})
 		}

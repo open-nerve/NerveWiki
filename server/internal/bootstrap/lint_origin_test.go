@@ -51,6 +51,7 @@ func (tm acmeTeam) originIndex(t *testing.T, nb string) []string {
 }
 
 func TestTheLintOriginCompatibility(t *testing.T) {
+	t.Run("rules-after-S1-2", testLintOriginRules)
 	t.Run("literal-v1", func(t *testing.T) {
 		t.Run("views-and-backlinks", func(t *testing.T) {
 			tm := newAcmeTeam(t, "member", "")
