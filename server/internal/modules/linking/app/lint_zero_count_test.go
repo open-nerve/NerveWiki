@@ -92,6 +92,11 @@ func lintPageCountFixture(rule domain.Rule, pages int) (*app.Rules, *lintPageCou
 		candidates = append(candidates, lintID(id))
 	}
 	f, in := lintFixture(nodes...)
+	if rule == domain.InvalidFrontmatter {
+		for i := range f.heads {
+			f.heads[i].FrontmatterValid = false
+		}
+	}
 	in.EffectiveMode, in.AreaRootID = domain.ModeLLM, &root
 	probe := &lintPageCountProbe{LintRuleStore: f, rule: rule, notebook: in.NotebookID, candidates: candidates}
 	return app.NewRules(app.NewLintReads(f, 5<<20), probe, f), probe, in

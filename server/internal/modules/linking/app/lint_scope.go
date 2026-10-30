@@ -220,9 +220,10 @@ func newReadScope(ctx context.Context, in ReadInput, heads []IndexedHead) (*Read
 		folder := n.PageBytes == 0 && len(children[id]) > 0
 		outside := !llm || !source
 		if outside {
-			s.frontmatter = append(s.frontmatter, id)
 			if h.FrontmatterValid {
 				s.properties = append(s.properties, id)
+			} else {
+				s.frontmatter = append(s.frontmatter, id)
 			}
 		}
 		if outside && !agents && (!llm || !root) && !folder {

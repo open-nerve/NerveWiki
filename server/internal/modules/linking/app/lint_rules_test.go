@@ -174,7 +174,7 @@ func lintSourceFixture() (*lintData, app.ReadInput) {
 	f.sqlIDs[domain.MissingType] = []uuid.UUID{lintID(20), lintID(21)}
 	f.sqlIDs[domain.MissingSummary] = []uuid.UUID{lintID(20), lintID(21)}
 	f.candidates[domain.Orphans] = []uuid.UUID{lintID(20), lintID(21)}
-	f.candidates[domain.InvalidFrontmatter] = []uuid.UUID{lintID(10), lintID(11), lintID(20), lintID(21)}
+	f.candidates[domain.InvalidFrontmatter] = []uuid.UUID{lintID(11)}
 	f.candidates[domain.MissingType] = []uuid.UUID{lintID(20), lintID(21)}
 	f.candidates[domain.MissingSummary] = []uuid.UUID{lintID(20), lintID(21)}
 	f.properties = []app.SourceProperty{

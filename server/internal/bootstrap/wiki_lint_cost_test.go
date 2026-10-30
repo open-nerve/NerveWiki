@@ -257,6 +257,9 @@ func (f *wikiCostFixture) checkTrace(t *testing.T, queries []wikiCostSQL, timing
 		}
 	}
 	if operation == "summary" {
+		if calls["LintFrontmatterCount"] != 0 {
+			t.Errorf("known-valid frontmatter queried Count: calls=%d, want none", calls["LintFrontmatterCount"])
+		}
 		for _, name := range []string{"LintFrontmatterItemsFirst", "LintMissingTypeItemsFirst", "LintMissingSummaryItemsFirst"} {
 			if calls[name] != 0 {
 				t.Errorf("zero-count rule queried Items: %s calls=%d, want none", name, calls[name])
