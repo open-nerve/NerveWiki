@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Start with real persisted facts, then move/rename their nodes through REST
@@ -79,6 +80,18 @@ func seedMCPLongHealth(t *testing.T, f *lintRuntimeFixture) mcpLintSeed {
 	f.tm.send(t, nodeMove("alice", id, parent), http.StatusOK)
 	f.tm.send(t, nodeRename("alice", id, name), http.StatusOK)
 	pending["path"] = prefix + name
+	// Keep the saved creation oracle and require a distinct real update time.
+	var created, updated time.Time
+	if err := f.tm.pool.QueryRow(t.Context(), "SELECT created_at, updated_at FROM nodes WHERE id=$1", id).Scan(&created, &updated); err != nil {
+		t.Fatal(err)
+	}
+	if got := created.UTC().Format(time.RFC3339Nano); got != pending["created_at"] {
+		t.Fatalf("moved asset created_at=%s, want original %v", got, pending["created_at"])
+	}
+	if updated.Equal(created) {
+		t.Fatalf("moved asset needs distinct timestamps: created_at=%s updated_at=%s", created.UTC().Format(time.RFC3339Nano), updated.UTC().Format(time.RFC3339Nano))
+	}
+	t.Logf("real moved asset timestamps: created_at=%s updated_at=%s", created.UTC().Format(time.RFC3339Nano), updated.UTC().Format(time.RFC3339Nano))
 	// Assert exact legal persisted path lengths, not an arbitrary giant string.
 	if len(s.expected["missing_type"][0]["path"].(string)) != 2562 || len(pending["path"].(string)) != 2563 {
 		t.Fatalf("long real paths have unexpected sizes: page=%d asset=%d", len(s.expected["missing_type"][0]["path"].(string)), len(pending["path"].(string)))

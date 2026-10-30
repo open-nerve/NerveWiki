@@ -7,9 +7,14 @@ import (
 	"math/rand/v2"
 	"reflect"
 	"slices"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 	"uuid"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	linkdomain "github.com/open-nerve/NerveWiki/server/internal/modules/linking/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
@@ -27,9 +32,47 @@ func lintIDs(nodes []page.SourceNode) []uuid.UUID {
 	return out
 }
 
+// lintSourceProbeTrace only records actual completed ProbeSources queries.
+// It does not replace SourceArea or derive its expected membership.
+type lintSourceProbeTrace struct {
+	completed atomic.Int64
+	rows      atomic.Int64
+	failed    atomic.Int64
+}
+
+type lintSourceProbeTraceKey struct{}
+
+func (*lintSourceProbeTrace) TraceQueryStart(ctx context.Context, _ *pgx.Conn, data pgx.TraceQueryStartData) context.Context {
+	if strings.HasPrefix(data.SQL, "-- name: ProbeSources ") {
+		return context.WithValue(ctx, lintSourceProbeTraceKey{}, true)
+	}
+	return ctx
+}
+
+func (trace *lintSourceProbeTrace) TraceQueryEnd(ctx context.Context, _ *pgx.Conn, data pgx.TraceQueryEndData) {
+	if probe, _ := ctx.Value(lintSourceProbeTraceKey{}).(bool); !probe {
+		return
+	}
+	if data.Err != nil {
+		trace.failed.Add(1)
+		return
+	}
+	trace.completed.Add(1)
+	trace.rows.Add(data.CommandTag.RowsAffected())
+}
+
 func lintExpectSources(t *testing.T, f fixture, root uuid.UUID, want ...uuid.UUID) []page.SourceNode {
 	t.Helper()
-	nodes, err := page.NewSourceArea(f.pool).Nodes(t.Context(), f.eng, root)
+	trace := &lintSourceProbeTrace{}
+	config := f.pool.Config()
+	config.MaxConns, config.ConnConfig.Tracer = 1, trace
+	pool, err := pgxpool.NewWithConfig(t.Context(), config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	nodes, err := page.NewSourceArea(pool).Nodes(t.Context(), f.eng, root)
+	t.Logf("source area ProbeSources witness: completed=%d rows=%d failed=%d", trace.completed.Load(), trace.rows.Load(), trace.failed.Load())
 	slices.SortFunc(want, uuid.UUID.Compare)
 	if err != nil || !slices.Equal(lintIDs(nodes), want) {
 		t.Fatalf("strict source IDs=%v error=%v; want exactly %v", lintIDs(nodes), err, want)

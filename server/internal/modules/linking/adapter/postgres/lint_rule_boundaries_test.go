@@ -73,6 +73,57 @@ func TestLintWantedUnion(t *testing.T) {
 			t.Fatalf("asset spelling changed page union/representative: %+v", r.items)
 		}
 	})
+	t.Run("representative-before-shorter-raw", func(t *testing.T) {
+		for _, layout := range []struct {
+			name    string
+			bodies  [2]string
+			targets [2][]string
+		}{
+			{"same-source", [2]string{"[[Note.md]] [[NOTE]]", "[[Note.md]]"}, [2][]string{{"Note.md", "NOTE"}, {"Note.md"}}},
+			{"later-source", [2]string{"[[Note.md]]", "[[note]]"}, [2][]string{{"Note.md"}, {"note"}}},
+		} {
+			t.Run(layout.name, func(t *testing.T) {
+				c := newLintConsumer(t)
+				for i, body := range layout.bodies {
+					facts := c.page(t, uint64(i), fmt.Sprintf("wiki-%d", i), body, false)
+					if len(facts.Links) != len(layout.targets[i]) {
+						t.Fatalf("parser fixture source %d: got %d links, want %d", i, len(facts.Links), len(layout.targets[i]))
+					}
+					for j, target := range layout.targets[i] {
+						if link := facts.Links[j]; link.Kind != "wikilink" || link.Target != target || link.Property != "" || link.Quote != 0 {
+							t.Fatalf("parser fixture source %d edge %d: got %+v, want body wikilink %q", i, j, link, target)
+						}
+					}
+				}
+				// The literal canonical identity and first raw are independent of
+				// the actual Prepare result. Neither preview nor list is an oracle
+				// for the other, and both sources are real parser/index writes.
+				want := linking.Item{Rule: linking.Wanted, ItemKey: "w:" + lintHashText("note"), Target: "Note.md", TargetCut: false, Pages: 2}
+				for _, stage := range []struct {
+					name  string
+					query linking.RuleQuery
+				}{
+					{"summary", linking.RuleQuery{}},
+					{"list", linking.RuleQuery{Rule: lintRulePointer(linking.Wanted), Limit: 1}},
+				} {
+					t.Run(stage.name, func(t *testing.T) {
+						got := c.answer(t, stage.query)[linking.Wanted]
+						if got.count != (linking.Count{Value: 1, Capped: false}) || got.more || got.stale != 0 || len(got.items) != 1 {
+							t.Fatalf("first-raw wanted count/page: got %+v, want one uncapped group and no more/stale", got)
+						}
+						item := got.items[0]
+						if item.Cursor == "" {
+							t.Fatal("first-raw wanted item has no cursor")
+						}
+						item.Cursor = ""
+						if item != want {
+							t.Errorf("first qualified raw changed: got %+v, want %+v", item, want)
+						}
+					})
+				}
+			})
+		}
+	})
 	t.Run("representative-after-kind-filter", func(t *testing.T) {
 		c := newLintConsumer(t)
 		c.page(t, 0, "wiki", "![picture](Note.js.md) [[NOTE.JS]]", false)
