@@ -195,7 +195,7 @@ func (f *wikiCostFixture) checkResult(t *testing.T, result wiki.LintResult, oper
 	}
 	for _, rule := range []wiki.LintRule{wiki.RuleAmbiguous, wiki.RuleInvalidFrontmatter, wiki.RuleMissingType, wiki.RuleMissingSummary, wiki.RuleInvalidSources} {
 		got := lintResultRule(t, result, rule)
-		if got.Count.Value != 0 || got.Count.Capped || len(got.Items) != 0 || got.NextCursor != nil || got.StartCursor != nil {
+		if got.Count.Value != 0 || got.Count.Capped || got.Items == nil || len(got.Items) != 0 || got.NextCursor != nil || got.StartCursor != nil {
 			t.Fatalf("independent empty %s=%+v", rule, got)
 		}
 	}
@@ -236,6 +236,7 @@ func (f *wikiCostFixture) checkResult(t *testing.T, result wiki.LintResult, oper
 func (f *wikiCostFixture) checkTrace(t *testing.T, queries []wikiCostSQL, timings *wiki.PreparationTimings, pathIDs []uuid.UUID, result wiki.LintResult, operation string) {
 	t.Helper()
 	counts := map[string]int64{}
+	calls := map[string]int{}
 	var first, last string
 	var pid uint32
 	var snapshot uint64
@@ -244,6 +245,7 @@ func (f *wikiCostFixture) checkTrace(t *testing.T, queries []wikiCostSQL, timing
 			continue
 		}
 		counts[q.Name] += q.Rows
+		calls[q.Name]++
 		if first == "" {
 			first = q.Name
 			pid = q.PID
@@ -252,6 +254,16 @@ func (f *wikiCostFixture) checkTrace(t *testing.T, queries []wikiCostSQL, timing
 		last = q.Name
 		if q.PID != pid || q.Snapshot != snapshot || snapshot == 0 || q.Failed {
 			t.Fatalf("real payload query escaped/failed snapshot: %+v", q)
+		}
+	}
+	if operation == "summary" {
+		for _, name := range []string{"LintFrontmatterItemsFirst", "LintMissingTypeItemsFirst", "LintMissingSummaryItemsFirst"} {
+			if calls[name] != 0 {
+				t.Errorf("zero-count rule queried Items: %s calls=%d, want none", name, calls[name])
+			}
+		}
+		if calls["LintOrphanCount"] != 1 || calls["LintOrphanItemsFirst"] != 1 {
+			t.Errorf("positive orphan count lost its real Items query: calls=%v", calls)
 		}
 	}
 	if first != "FindNotebook" || counts["LintNodeMetadata"] != int64(2*(100000+f.bulkAssets+2)) || counts["LintHeads"] != 100000 || counts["LintWantedEdgeHeadsFirst"] != 3 || counts["LintEdgesByPositions"] != 3 {

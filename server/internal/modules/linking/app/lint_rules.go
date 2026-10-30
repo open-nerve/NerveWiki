@@ -212,6 +212,9 @@ func (r *Rules) preparePages(ctx context.Context, s *ReadScope, plan lintPlan, r
 	if n.Value < 0 || n.Value > 10000 || n.Capped != (n.Value == 10000) {
 		return preparedRule{}, errLintRows
 	}
+	if n.Value == 0 {
+		return preparedRule{count: n}, ctx.Err()
+	}
 	var after *uuid.UUID
 	if plan.after != nil {
 		after = plan.after.ID
