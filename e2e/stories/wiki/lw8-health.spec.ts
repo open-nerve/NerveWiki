@@ -683,6 +683,90 @@ test.describe("LW8 (page)", () => {
     await expect(details).toHaveAttribute("open", "");
   });
 
+  for (const { count, acted, outcome } of [
+    { count: 0, acted: false, outcome: "opens its zero check and brings its heading into view" },
+    { count: 1, acted: false, outcome: "brings its nonzero heading into view" },
+    { count: 0, acted: true, outcome: "keeps the reader's focus and scroll after a real pointer action" },
+  ]) {
+    test(`anchor: a delayed summary ${outcome}`, async ({ api, signedInPage }, info) => {
+      const team = await newOnboardedTeam(api, info);
+      const { notebook } = await healthPagination(api, team.pat, team.workspace.slug);
+      if (count > 0) await createPage(api, team.pat, notebook.id, "Pending", notebook.source_root_id, "A source.\n");
+      const page = await signedInPage(team.tokens);
+      await page.setViewportSize({ width: 1280, height: 600 });
+      const reads = healthReads(page, notebook.id);
+      const pathname = `/api/v0/notebooks/${notebook.id}/lint`;
+      const held = await holdHealthGet(page, pathname);
+      try {
+        await page.goto(`${healthPath(team.workspace.slug, notebook.id)}#undigested_sources`, { waitUntil: "load" });
+        await held.entered;
+        await expect(
+          page.getByRole("main").getByRole("heading", { level: 1, name: "Health", exact: true })
+        ).toBeVisible();
+        const heading = page.locator("#undigested_sources-heading");
+        expect(await page.evaluate(() => document.readyState)).toBe("complete");
+        await expect(heading).toHaveCount(0);
+        const search = page.getByRole("searchbox", { name: "Search terms", exact: true });
+        if (acted) {
+          await expect(search).toBeInViewport();
+          await page.evaluate(() => {
+            window.addEventListener(
+              "pointerdown",
+              (event) => Object.assign(window, { lw8AnchorPointerTrusted: event.isTrusted }),
+              { once: true, capture: true }
+            );
+          });
+          const box = await search.boundingBox();
+          expect(box).not.toBeNull();
+          await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2);
+          await expect(search).toBeFocused();
+          expect(
+            await page.evaluate(
+              () => (window as unknown as { lw8AnchorPointerTrusted?: boolean }).lw8AnchorPointerTrusted
+            )
+          ).toBe(true);
+        }
+        const before = await page.evaluate(() => ({ top: window.scrollY, viewport: window.innerHeight }));
+        const answer = answerTo(page, "GET", pathname);
+        held.release();
+        const response = await answer;
+        expect(response.status()).toBe(200);
+        const summary = (await response.json()) as Summary;
+        expect(summary.rules.find((rule) => rule.rule === "undigested_sources")?.count).toBe(count);
+        await healthShown(page);
+        if (count === 0) await expect(page.getByRole("main").locator("details")).toHaveAttribute("open", "");
+        // Observe the rendered position without a locator action that could scroll the target into view.
+        await info.attach("resolved-anchor", {
+          body: JSON.stringify({
+            before,
+            after: await page.evaluate(() => ({
+              top: window.scrollY,
+              viewport: window.innerHeight,
+              heading: document.getElementById("undigested_sources-heading")?.getBoundingClientRect().toJSON(),
+              focused: document.activeElement?.id,
+              trustedPointer: (window as unknown as { lw8AnchorPointerTrusted?: boolean }).lw8AnchorPointerTrusted,
+            })),
+          }),
+          contentType: "application/json",
+        });
+        if (acted) {
+          await expect(search).toBeFocused();
+          expect(await page.evaluate(() => window.scrollY)).toBe(before.top);
+          await expect(heading).not.toBeInViewport();
+        } else {
+          await expect(heading).toBeFocused();
+          await expect(
+            heading,
+            "a resolved health anchor should enter the viewport without a manual scroll"
+          ).toBeInViewport();
+        }
+        expect(reads.summary()).toBe(1);
+      } finally {
+        await held.finish();
+      }
+    });
+  }
+
   test("focus: 61 wanted groups give five previews, fifty non-final additions, six final additions, and a fresh preview after recheck", async ({
     api,
     signedInPage,

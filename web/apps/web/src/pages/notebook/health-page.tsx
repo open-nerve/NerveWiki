@@ -222,7 +222,7 @@ const HealthResults = observer(function HealthResults({
     anchored.current = true;
     if (details.current !== null && details.current.querySelector("#undigested_sources-heading") !== null)
       details.current.open = true;
-    if (!reader.current?.acted()) document.getElementById("undigested_sources-heading")?.focus({ preventScroll: true });
+    if (!reader.current?.acted()) document.getElementById("undigested_sources-heading")?.focus();
   }, [view.summary, hash, scope]);
 
   const data = view.summary;
