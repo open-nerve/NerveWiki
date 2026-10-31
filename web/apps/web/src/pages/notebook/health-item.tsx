@@ -19,10 +19,12 @@ export const HealthItem = observer(function HealthItem({
   item,
   pages,
   readingTree,
+  itemRef,
 }: {
   item: LintItem;
   pages: PageTreeStore;
   readingTree: boolean;
+  itemRef?: (element: HTMLLIElement | null) => void;
 }) {
   const t = useT();
   const { locale } = useStore().preferences;
@@ -38,7 +40,7 @@ export const HealthItem = observer(function HealthItem({
           `/${slug}/notebooks/${pages.notebookId}`
         );
   return (
-    <li className="min-w-0 space-y-1 py-3 text-sm break-words">
+    <li ref={itemRef} tabIndex={-1} className="min-w-0 space-y-1 py-3 text-sm break-words outline-none">
       {id !== undefined && (
         <div>
           {target !== undefined && open !== undefined ? (
