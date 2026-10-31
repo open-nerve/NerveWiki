@@ -19,7 +19,8 @@ import type { Notebook } from "../../services/notebook.service";
 import { useAssets, usePageTree, useStore } from "../../stores/context";
 import { UploadRows } from "../page/upload-rows";
 import { useWorkspace } from "../workspace/workspace-layout";
-import { duplicateText, useNodeNavigate } from "./duplicate-text";
+import { duplicateText } from "./duplicate-text";
+import { useNodeNavigate } from "../node-target";
 
 type PendingPaste = { controller: AbortController; sent: boolean };
 

@@ -15,7 +15,8 @@ import { useAccount, usePageTree, useStore, useTransfers } from "../../stores/co
 import { useWorkspace } from "../workspace/workspace-layout";
 import { reasonText } from "./changeset-text";
 import { distinctName } from "./distinct-name";
-import { duplicateText, nodeTarget, NodePathLink, sourceHistoryText, useNodeNavigate } from "./duplicate-text";
+import { duplicateText, NodePathLink, sourceHistoryText } from "./duplicate-text";
+import { nodeTarget, useNodeNavigate } from "../node-target";
 
 type Report = NonNullable<TransferJob["report"]>;
 

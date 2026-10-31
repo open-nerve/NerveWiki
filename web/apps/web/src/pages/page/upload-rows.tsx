@@ -17,7 +17,8 @@ import { ApiError } from "../../services/api";
 import type { Notebook } from "../../services/notebook.service";
 import { isRefusal, sourceMaxBytes, type AssetStore, type Upload } from "../../stores/asset.store";
 import { usePageTree, useStore } from "../../stores/context";
-import { duplicateText, useNodeNavigate } from "../notebook/duplicate-text";
+import { duplicateText } from "../notebook/duplicate-text";
+import { useNodeNavigate } from "../node-target";
 
 /**
  * UploadRows are the uploads under a page or the root (M7/P4 design 3.5),

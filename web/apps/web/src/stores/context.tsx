@@ -3,6 +3,7 @@ import { createContext, use, type ReactNode } from "react";
 import type { User } from "../services/account.service";
 import type { Notebook } from "../services/notebook.service";
 import type { Workspace } from "../services/workspace.service";
+import type { WikiService } from "../services/wiki.service";
 import type { AccountStore } from "./account.store";
 import type { AuditStore } from "./audit.store";
 import type { ApiTokenStore } from "./api-token.store";
@@ -81,6 +82,15 @@ export function useNotebooks(workspace: Workspace): NotebookStore {
     throw new Error("useNotebooks is used outside SignedIn");
   }
   return notebooks;
+}
+
+/** Health reads use the signed-in generation's service, without a result store. */
+export function useWiki(): WikiService {
+  const wiki = useStore().wiki;
+  if (wiki === undefined) {
+    throw new Error("useWiki is used outside SignedIn");
+  }
+  return wiki;
 }
 
 /** useSearch is the searches of workspace: only for the pages the SignedIn guard shows. */

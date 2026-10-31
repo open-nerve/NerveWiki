@@ -4,13 +4,13 @@
 |---|---|
 | Phase | M10/P3；两个 Step：S1 服务端与协议；S2 健康度网页 |
 | 日期 | 2026-10-29 |
-| 状态 | S1服务端、来源整区、八规则、REST/MCP两scope及LW8 API/MCP已实施；18b完整本地门禁、248units/262legs/786阶段控制、五片各两轮与精确分支CI41171083998 attempt1的13jobs均已接受。独立审查A/B/C2的初稿与原件附记均已由主持者接受，无未关闭的已核实Important/Minor/Nit；Q-B1作为已知限制关闭审查疑问，性能边界仍留M12。Step文档 `6e2b8bbf9a71a0b11db29dea62e44910a76d7213` 的minimum、提交后gen与精确分支CI已分别接受；S1以 `689bf607bf05842e8d56389b1e5f282b252cd64e` no-ff合并，首次main CI已接受。本次record自身CI及指定两main五份Test配对尚待提交后验收，S2未释放；P3/M10继续进行中，P4/P5/M11未开始。详见§10.1和[S1审查](reviews/P3-S1-lint-protocol-review.md)；合并与record验收见00号文档第12节 |
+| 状态 | S1服务端、来源整区、八规则、REST/MCP两scope及LW8 API/MCP已实施；18b完整本地门禁、248units/262legs/786阶段控制、五片各两轮与精确分支CI41171083998 attempt1的13jobs均已接受。独立审查A/B/C2的初稿与原件附记均已由主持者接受，无未关闭的已核实Important/Minor/Nit；Q-B1作为已知限制关闭审查疑问，性能边界仍留M12。Step文档 `6e2b8bbf9a71a0b11db29dea62e44910a76d7213` 的minimum、提交后gen与精确分支CI已分别接受；S1以 `689bf607bf05842e8d56389b1e5f282b252cd64e` no-ff合并，首次main CI已接受。record `9d4ea2d13564c7234c7b80c8566c8e6b3a111145` 已正常提交并推送，提交前八项检查与提交后原生gen分别接受，原gen wrapper的权限位失败及恢复保留。record CI41188823890 attempt1的L1失败与一次完整同head重跑另列；attempt2最终结论：completed/success，主持者已按精确9d4接受；指定两main配对：主持者已接受；五份均值315.5/307/325/402.5/316秒全部严格<450秒，两次main各自全部13个必需作业/38个必需步骤成功；主持者已于2026-10-31 10:43 UTC接受S1集成并释放S2-1；该次放行范围为S2-1，当前S2进度另见P3§10.2；P3/M10继续进行中，P4/P5/M11未开始。 d061历史完整门禁、W38和CI41219802802 attempt1仍按其原输入保留。S2当前修复fa681已提交；d061三审的唯一Minor B-M1已改代码并补真实回归，minimum为9项root新执行＋2项作者同源复用，fa681 postcommit gen已接受。当前正式38＋额外3+1共42单元控制、native19、Cost05完整60recipes及实际EW353＋同build LW8第二轮24均已按各自范围接受，本地汇总f1c82e61…只释放代码分支推送；当前接受结论：fa681代码CI41240404612 attempt1及原A/B/C修复核对均已接受；root关闭B-M1，当前已核实Important/Minor/Nit/Q均0，准入Step文档（处置回执43a25df5…）；Step文档自身CI、merge/record指定两main及P3done仍PENDING。详见§10.1和[S1审查](reviews/P3-S1-lint-protocol-review.md)；合并与record验收见00号文档第12节 |
 | 原设计精确基线 | `main = origin/main = f6bd0cdee2b7570252a43581cf71cd1e71592f76`；P2 已完成 |
 | 上级 | [M10 总设计](00-M10-design.md) §4.10–4.12、§5、§7–9；[总体设计](../v0.1-design.md) §5.6、§13；[推进方式](../claude_to_codex/02-workflow.md)；[P2 移交](02-P2-source-area.md#9-给后面-phase-与-m-的移交) |
 | 记法 | `page/`、`linking/`、`wiki/` 在 `server/internal/modules/` 下；`bootstrap/`、`platform/`、`shared/` 在 `server/internal/` 下；`W/` 是 `web/apps/web/src/`。本文拟新增的文件、类型、测试名均是设计，不冒称已有实现 |
 | 决定 | 主持者接受连续实施决定49–60（负责人可以改判），见[设计审查记录](reviews/P3-design-review.md)；索引、容量及所有运行结果仍须完成本文实测准入。见§2.2 |
 
-**来源表示与S1当前结果**：writer沿已有 `Link.InFrontmatter()` 传等长bool，generated CASE保留正文NULL与合法空属性非NULL空串，Extractor为2。S63–S69及其跨OS/OB/Web、D/F真实消费者在18b完整控制中逐腿核验；S1-0a的原样本保留为历史，当前完整结果见§10.1和[S1审查](reviews/P3-S1-lint-protocol-review.md)。原S01–S69＋W01–W10共79行不改，W仍属未实施S2。[来源修订记录](reviews/P3-origin-design-review.md)的决定62、三审、搜索维护及原失败历史保留。
+**来源表示与S1当前结果**：writer沿已有 `Link.InFrontmatter()` 传等长bool，generated CASE保留正文NULL与合法空属性非NULL空串，Extractor为2。S63–S69及其跨OS/OB/Web、D/F真实消费者在18b完整控制中逐腿核验；S1-0a的原样本保留为历史，当前完整结果见§10.1和[S1审查](reviews/P3-S1-lint-protocol-review.md)。原S01–S69＋W01–W10共79行不改。S2实现已提交至d0618b1d；完整W选定38单元已由根按资格接受，150独立heavy阶段/225次case执行及限制见§10.2。d061历史完整本地门禁/原固定容量/完整EW与代码CI已接受，三审随后确认B-M1；fa681已完成最小修复、9+2 minimum及实际postgen，正式38＋额外3+1控制及完整本地native19/Cost05/EW已按各自范围接受；当前接受结论：fa681代码CI41240404612 attempt1及原A/B/C修复核对均已接受；root关闭B-M1，当前已核实Important/Minor/Nit/Q均0，准入Step文档（处置回执43a25df5…），Step文档CI与集成仍PENDING。[来源修订记录](reviews/P3-origin-design-review.md)的决定62、三审、搜索维护及原失败历史保留。
 
 ## 0. 两个可独立合并为绿的 Step
 
@@ -819,6 +819,10 @@ Tools
 
 卡state与summary都在SWR，不新增按本的结果store。完整item_key用于跨页去重；同目标的两种原始写法归同wanted组，但截断后同文的不同组仍显示两项；保留旧数据只属于正在显示的这次打开，不能跨login/notebook/entry共享。
 
+#### S2实际接线补记（完整Step待验收）
+
+实施提交bfd/ebdd及后续E2E df73/d061已落地，具体输入、定向证据和未完成条件见§10.2。实际新增的health-request.ts只管理请求归属；health-page-lifecycle.test.tsx与health-rule.test.tsx分开覆盖生命周期和卡行为。entry专属SWR provider用2.5.1公开unload在卸载前清缓存、inflight和dedupe；公共['pages', notebook.id]树hook置于其外，搜索provider不变。刷新失败仍让显示的旧卡沿新generation手动重试/More，但退役请求不能发布；其它有限自动retry还须属于原operation。健康页局部焦点wrapper对一次完成只处理一次，reader动作后树重读不能重复抢旧焦点；两项均有真实red和附加WB控制A01/A02。service只传现有GET、signal和opaque cursor，既有nodeTarget/useNodeNavigate只做窄提取。此补记不改§4.2九项或共享默认策略。
+
 ### 4.3 双语与可访问性
 
 补规则名/一句解释、健康入口、计算时刻、刷新/正在检查、分页不同快照说明、10,000+、截断、not_link、stale管理员动作、模式变化、节点不可用、零规则details、更多新增播报。locale键Record<LintRule,…>穷尽所有规则，Messages测试保双语同键/占位符；不要把实现术语flight/SWR/SQL放产品文字。沿现Panel/NotLoaded/LoadMoreButton/链接与排版，不做无关视觉打磨。
@@ -888,7 +892,7 @@ S1-0→S1-0a→S1-1..S1-7顺序固定。S1-0a不是新Step或维护旁支；属�
 | MX | `go -C server test -p=1 -race -count=1 -timeout 15m ./internal/bootstrap -run '^(TestThePermissionMatrixCoversEveryOperation\|TestThePermissionMatrixCoversEveryTool\|TestTheToolListsAreTheContract\|TestLintMatrixTargets\|TestTheWikiToolsAnswerEveryCode\|TestTheBuiltInInstructionsNameEveryTool)'` | 矩阵、工具表、码、内置说明 |
 | AC | `go -C server test -p=1 -race -count=1 ./internal/bootstrap -run '^TestTheRuleTableIsTheModulesActions$'` | S1-3 action全集与真内部授权；现有actions_test.go确切测试名 |
 | MI | `go -C server test -p=1 -race -count=1 ./internal/modules/page/adapter/mcp -run '^TestTheBuiltInInstructionsAreShort$'` | 两入口真实SDK≤3796，独立于bootstrap工具名检查 |
-| WB | `pnpm --filter @nervewiki/web exec vitest run src/pages/notebook/health-page.test.tsx src/pages/notebook/health-rule.test.tsx src/test/lint-server.test.ts` | 健康/fake竞态 |
+| WB | `pnpm --filter @nervewiki/web exec vitest run src/pages/notebook/health-page.test.tsx src/pages/notebook/health-page-lifecycle.test.tsx src/pages/notebook/health-rule.test.tsx src/test/lint-server.test.ts` | 健康/fake竞态 |
 | EW | 下方同一heavy锁中的“build当前源→指定Playwright”命令 | 每轮重建真实嵌入前端；正式门禁仍make e2e |
 
 **S1-0a的拟新增catcher与精确命令**（名称须实际创建；本提案没有执行）：
@@ -1086,7 +1090,7 @@ sources迁移和每个获准额外索引分别测：自有库10万页、至少20
 
 ### 7.5 10万页成本与新行安排
 
-**本轮完整结果**：18b本机costs17、costs-lint14×两轮、guards15均通过；100k summary wall中位895.245/873.887ms，TotalAlloc357.802/357.849MiB仍未达最初250MiB目标，固定guard与worker2s/request4s未提高。旧版本MVCC/generic物理范围仍留M12。costs-lint各14recipes/1047 PASS，整目标378.950/377.538s，每recipe process均值×2.4最大156.088s≤300s。新固定guard未按本轮耗时上调，测量全表在[M12性能移交](../M12-release/handoffs/M4-performance.md)。下列“尚待”等是实施前的安排；当前本机和分支CI见§10.1，指定merge/record两main仍未发生。
+**本轮完整结果**：18b本机costs17、costs-lint14×两轮、guards15均通过；100k summary wall中位895.245/873.887ms，TotalAlloc357.802/357.849MiB仍未达最初250MiB目标，固定guard与worker2s/request4s未提高。旧版本MVCC/generic物理范围仍留M12。costs-lint各14recipes/1047 PASS，整目标378.950/377.538s，每recipe process均值×2.4最大156.088s≤300s。新固定guard未按本轮耗时上调，测量全表在[M12性能移交](../M12-release/handoffs/M4-performance.md)。下列“尚待”等是实施前的安排；当前本机和分支CI见§10.1，指定merge/record两main已实际运行；record attempt1失败及一次完整重跑见§10.1，record attempt2最终结论：completed/success，主持者已按精确9d4接受；指定两main配对：主持者已接受；五份均值315.5/307/325/402.5/316秒全部严格<450秒，两次main各自全部13个必需作业/38个必需步骤成功；主持者已于2026-10-31 10:43 UTC接受S1集成并释放S2-1；该次放行范围为S2-1，当前S2进度另见P3§10.2。
 
 
 成本测试!race、short跳过，每条在Makefile单独`-v -count=1`。原costs中10条lint迁移/保存/计划/物理范围/TOAST/page metadata命令及其注释按原顺序搬到`test-go-costs-lint`；其余costs命令（包括server/tools）与guards原命令/顺序保持。当前Makefile为17 costs＋14 costs-lint＋15 guards，共46条go-test recipes（含server/tools）。costs-lint的14条中，后三个新顶层占四条完整recipe：`^TestLintRulesOfAHundredThousandPagesTakeTheirTime$/^eight-rules-and-100k-sources$`单跑八规则与10万来源；同一顶层的`^(hot-many-spellings-kinds|unique-long-targets|relative-deep-folder|same-last-key-presence|one-page-10000-edges|100k-excluded-and-outside)$`完整跑其余六种wanted形状，两个子选择器互斥且合起来覆盖全部七形状；`^TestLintOfAHundredThousandPagesKeepsItsTimeAndMemory$`跑真实编排，`^TestLintPropertiesReadOnlyNecessaryValues$`跑必要属性值，各自一行。该主动拆分为CI留余量，不把单轮128s当成违反125s硬门禁；正式判断仍是后述两轮process均值规则。当前组成不表示最终完整recipe/Test/job容量、CI或Step已完成；需要再拆时保留完整最坏形状与正反证，再按实际Makefile更新计数，不删样本以守行数。至少：
@@ -1101,7 +1105,7 @@ sources迁移和每个获准额外索引分别测：自有库10万页、至少20
 
 ### 7.6 bootstrap容量：入场已在线上，先处理再增加
 
-**当前接受布局（决定65）**：18b真实race清单495顶层，五份167/39/114/123/52，完整两轮各匹配，process均值310.418/191.582/245.091/278.787/227.605s。精确分支CI41171083998的五份Test为336/198/372/386/288s；分支一次样本不替指定merge/record两main各均值<450s。当前是五份，以下四份候选、470/494数量和预算预测属于保留的设计/实施历史，不是现行布局或最终样本；S2等待真实两main核验。
+**当前接受布局（决定65）**：18b真实race清单495顶层，五份167/39/114/123/52，完整两轮各匹配，process均值310.418/191.582/245.091/278.787/227.605s。精确分支CI41171083998的五份Test为336/198/372/386/288s；分支一次样本不替指定merge/record两main各均值<450s。当前是五份，以下四份候选、470/494数量和预算预测属于保留的设计/实施历史，不是现行布局或最终样本；record attempt2最终结论：completed/success，主持者已按精确9d4接受；指定两main配对：主持者已接受；五份均值315.5/307/325/402.5/316秒全部严格<450秒，两次main各自全部13个必需作业/38个必需步骤成功；主持者已于2026-10-31 10:43 UTC接受S1集成并释放S2-1；该次放行范围为S2-1，当前S2进度另见P3§10.2。
 
 
 历史仍保留：S3指定merge/record Test均值438.5/447/304/364.5s<450；最新record/P2done为425/447/249/363与379/453/229/357，入场均值**402/450/239/360**，第二片恰450，不满足严格<450；这触发容量处置，不推翻S3已接受的指定配对。
@@ -1161,7 +1165,7 @@ docs/v0.1/claude_to_codex/tools/heavy.sh env GOFLAGS=-p=1 make -j1 e2e
 
 ### 8.1 S1必须满足
 
-**S1当前履行情况**：实现、全部本地门禁/控制、成本、五片双轮和精确18b分支13jobs已接受；独立审查及文档/集成状态见§10.1与[S1审查](reviews/P3-S1-lint-protocol-review.md)。本次同步下表列出的当前合同、总体长期约定和移交：M6六行及注意1–4已随Step分支文档改done；M7/M9仍有P4/P5事项保持open，M11/M12保持open。Step文档自身minimum/提交后gen/精确分支CI与首次main CI均按下文实际身份接受；record自身CI和指定两main配对仍待，不据设计列表宣布S1集成或P3完成。
+**S1当前履行情况**：实现、全部本地门禁/控制、成本、五片双轮和精确18b分支13jobs已接受；独立审查及文档/集成状态见§10.1与[S1审查](reviews/P3-S1-lint-protocol-review.md)。本次同步下表列出的当前合同、总体长期约定和移交：M6六行及注意1–4已随Step分支文档改done；M7/M9仍有P4/P5事项保持open，M11/M12保持open。Step文档自身minimum/提交后gen/精确分支CI与首次main CI均按下文实际身份接受；record自身提交/推送、八项检查、原生gen及wrapper模式恢复已按§10.1补记；record attempt2最终结论：completed/success，主持者已按精确9d4接受；指定两main配对：主持者已接受；五份均值315.5/307/325/402.5/316秒全部严格<450秒，两次main各自全部13个必需作业/38个必需步骤成功；主持者已于2026-10-31 10:43 UTC接受S1集成并释放S2-1；该次放行范围为S2-1，当前S2进度另见P3§10.2，不据设计列表宣布P3完成。
 
 
 两个REST/两个工具两scope真实可达；八规则、metadata/数组/Unicode/JSON/identity一致；真实snapshot/名额/flight/授权交错；所有声明码真实答出；sources迁移、可能的新索引均有计划/实际工作/写成本与扫描义务；48KiB/说明余量/本机容量双轮及两main指定配对；LW8 API/MCP。全部原/审查追加变异都有干净基线、失败断言、恢复证据。S1三审无Important/Minor，审查记录写清接受/后续。
@@ -1189,7 +1193,7 @@ docs/v0.1/claude_to_codex/tools/heavy.sh env GOFLAGS=-p=1 make -j1 e2e
 
 ### 8.1a 决定62的实施文档与兼容完成标准（S1-0a与S1收尾）
 
-**当前收尾转录**：S1-0a与后续S1实现已完成来源v2、真实D/F、S63–S69及完整重建/成本/控制核验；现行结果在§10.1和[S1审查](reviews/P3-S1-lint-protocol-review.md)。M6既有四份来源格式说明只核不改，P3A L6原“不改”历史保留。以下“仍须完成/待”的措辞是前置交付时点的原要求；文档自身门禁与首次main CI已按实际身份接受，record自身CI及指定两main配对仍待，P4 Unknown/未改页coverage和M11不冒称完成。
+**当前收尾转录**：S1-0a与后续S1实现已完成来源v2、真实D/F、S63–S69及完整重建/成本/控制核验；现行结果在§10.1和[S1审查](reviews/P3-S1-lint-protocol-review.md)。M6既有四份来源格式说明只核不改，P3A L6原“不改”历史保留。以下“仍须完成/待”的措辞是前置交付时点的原要求；文档自身门禁与首次main CI已按实际身份接受，record自身后续见§10.1；record attempt2最终结论：completed/success，主持者已按精确9d4接受；指定两main配对：主持者已接受；五份均值315.5/307/325/402.5/316秒全部严格<450秒，两次main各自全部13个必需作业/38个必需步骤成功；主持者已于2026-10-31 10:43 UTC接受S1集成并释放S2-1；该次放行范围为S2-1，当前S2进度另见P3§10.2；P4 Unknown/未改页coverage和M11不冒称完成。
 
 
 S1-0a已同步当前writer/版本/API的说明，前置实测与未测项见§10.1；S1收尾仍须完成全部reindex/成本/变异/审查及CI。下表保留逐项交付要求，不以本前置替代完整S1验收：
@@ -1222,10 +1226,10 @@ S1完整验收须兼容/存储/API与真实D/F一起成立；正文TOAST禁止�
 
 ## 9. 交给后面的Phase
 
-**S1已交付的边界**：SourceArea严格整区和snapshot局部LintData、SourceSlots纯资格、JS trim、完整身份、内部explicit scope与public协议已实现。M6六行/注意项在本分支文档交付关闭；M7第5项与M9第8项及说明余量完成，整份仍open。M12实际314行成本表和旧MVCC失败、约358MiB TotalAlloc未达目标、生产负载/停机/CI余量接续开放。S2、P4、P5、M11尚未开始；下面的P4/P5交接继续是未来义务。
+**S1已交付的边界**：SourceArea严格整区和snapshot局部LintData、SourceSlots纯资格、JS trim、完整身份、内部explicit scope与public协议已实现。M6六行/注意项在本分支文档交付关闭；M7第5项与M9第8项及说明余量完成，整份仍open。M12实际314行成本表和旧MVCC失败、约358MiB TotalAlloc未达目标、生产负载/停机/CI余量接续开放。S2已实施并提交B-M1修复fa681；d061完整门禁/三审仅为历史，fa681控制及完整本地native19/Cost05/EW已按各自范围接受；精确CI、三席原复核及root对B-M1的关闭均已接受，见§10.2；文档与集成仍PENDING；P4、P5、M11尚未开始，下面的P4/P5交接继续是未来义务。
 
 
-P4只复用P3实际定下的SourceArea/metadata、SourceSlots纯资格、jsTrim缺定义、稳定identity；OldQualifiedFacts与unit起点BeforeIngest、删前Capture、未改页批量SQL按§3.8.1/00§4.14在P4实现并测量；P3没有替它实现ingest或可直接套用的direct SQL。按自己的index/log/export/ingest合同增加功能，来源数量不等同pending数量。P3只提供虚拟target只读谓词，P4仍负责路径lookup/render/web样例与virtual工具行为。health#undigested_sources锚点可直接用，P4目录仍自己的SWR数据，不暗调lint计数。
+P4只复用P3实际定下的SourceArea/metadata、SourceSlots纯资格、jsTrim缺定义、稳定identity；OldQualifiedFacts与unit起点BeforeIngest、删前Capture、未改页批量SQL按§3.8.1/00§4.14在P4实现并测量；P3没有替它实现ingest或可直接套用的direct SQL。按自己的index/log/export/ingest合同增加功能，来源数量不等同pending数量。P3只提供虚拟target只读谓词，P4仍负责路径lookup/render/web样例与virtual工具行为。health#undigested_sources锚点可直接用，P4目录仍自己的SWR数据，不暗调lint计数。 S2已在实际页面实现该锚点，undigested零结果也打开披露并在reader未动作时定位；这不是P4目录、ingest或其计数的实施。
 
 决定62新增交接：P4只信实际落地的v2来源表示；已存在页的stale/missing旧索引和未改页coverage不足均为Unknown，不是KnownAbsent或空union，按§3.8.2保守不加无法证明的标记。管理员重建恢复可靠判断；P4高效判定/诊断/测试与成本仍未实施。
 
@@ -1235,7 +1239,7 @@ P5仍负责prompt注册/分类/大小、系统说明段、人工清单和根READ
 
 ### 10.1 S1
 
-S1服务端、来源整区、八规则、REST/MCP两scope及LW8 API/MCP已实施；18b完整本地门禁、248units/262legs/786阶段控制、五片各两轮与精确分支CI41171083998 attempt1的13jobs均已接受。独立审查A/B/C2的初稿与原件附记均已由主持者接受，无未关闭的已核实Important/Minor/Nit；Q-B1作为已知限制关闭审查疑问，性能边界仍留M12。Step文档 `6e2b8bbf9a71a0b11db29dea62e44910a76d7213` 的minimum、提交后gen与精确分支CI已分别接受；S1以 `689bf607bf05842e8d56389b1e5f282b252cd64e` no-ff合并，首次main CI已接受。本次record自身CI及指定两main五份Test配对尚待提交后验收，S2未释放；P3/M10继续进行中，P4/P5/M11未开始。 本节先保留S1-0a在2026-10-30的历史记录，含当时pending；后接18b当前完整结果，历史样本不改标为18b。
+S1服务端、来源整区、八规则、REST/MCP两scope及LW8 API/MCP已实施；18b完整本地门禁、248units/262legs/786阶段控制、五片各两轮与精确分支CI41171083998 attempt1的13jobs均已接受。独立审查A/B/C2的初稿与原件附记均已由主持者接受，无未关闭的已核实Important/Minor/Nit；Q-B1作为已知限制关闭审查疑问，性能边界仍留M12。Step文档 `6e2b8bbf9a71a0b11db29dea62e44910a76d7213` 的minimum、提交后gen与精确分支CI已分别接受；S1以 `689bf607bf05842e8d56389b1e5f282b252cd64e` no-ff合并，首次main CI已接受。record `9d4ea2d13564c7234c7b80c8566c8e6b3a111145` 已正常提交并推送，提交前八项检查与提交后原生gen分别接受，原gen wrapper的权限位失败及恢复保留。record CI41188823890 attempt1的L1失败与一次完整同head重跑另列；attempt2最终结论：completed/success，主持者已按精确9d4接受；指定两main配对：主持者已接受；五份均值315.5/307/325/402.5/316秒全部严格<450秒，两次main各自全部13个必需作业/38个必需步骤成功；主持者已于2026-10-31 10:43 UTC接受S1集成并释放S2-1；该次放行范围为S2-1，当前S2进度另见P3§10.2；P3/M10继续进行中，P4/P5/M11未开始。 本节先保留S1-0a在2026-10-30的历史记录，含当时pending；后接18b当前完整结果，历史样本不改标为18b。
 
 #### S1-0a 来源表示前置（2026-10-30）
 
@@ -1289,7 +1293,7 @@ S63/S64/S65/S68四行分成五种独立单改、七组目标命令，共21次bas
 
 #### S1当前实现、完整本地验证与分支CI（2026-10-31）
 
-S1服务端、来源整区、八规则、REST/MCP两scope及LW8 API/MCP已实施；18b完整本地门禁、248units/262legs/786阶段控制、五片各两轮与精确分支CI41171083998 attempt1的13jobs均已接受。独立审查A/B/C2的初稿与原件附记均已由主持者接受，无未关闭的已核实Important/Minor/Nit；Q-B1作为已知限制关闭审查疑问，性能边界仍留M12。Step文档 `6e2b8bbf9a71a0b11db29dea62e44910a76d7213` 的minimum、提交后gen与精确分支CI已分别接受；S1以 `689bf607bf05842e8d56389b1e5f282b252cd64e` no-ff合并，首次main CI已接受。本次record自身CI及指定两main五份Test配对尚待提交后验收，S2未释放；P3/M10继续进行中，P4/P5/M11未开始。
+S1服务端、来源整区、八规则、REST/MCP两scope及LW8 API/MCP已实施；18b完整本地门禁、248units/262legs/786阶段控制、五片各两轮与精确分支CI41171083998 attempt1的13jobs均已接受。独立审查A/B/C2的初稿与原件附记均已由主持者接受，无未关闭的已核实Important/Minor/Nit；Q-B1作为已知限制关闭审查疑问，性能边界仍留M12。Step文档 `6e2b8bbf9a71a0b11db29dea62e44910a76d7213` 的minimum、提交后gen与精确分支CI已分别接受；S1以 `689bf607bf05842e8d56389b1e5f282b252cd64e` no-ff合并，首次main CI已接受。record `9d4ea2d13564c7234c7b80c8566c8e6b3a111145` 已正常提交并推送，提交前八项检查与提交后原生gen分别接受，原gen wrapper的权限位失败及恢复保留。record CI41188823890 attempt1的L1失败与一次完整同head重跑另列；attempt2最终结论：completed/success，主持者已按精确9d4接受；指定两main配对：主持者已接受；五份均值315.5/307/325/402.5/316秒全部严格<450秒，两次main各自全部13个必需作业/38个必需步骤成功；主持者已于2026-10-31 10:43 UTC接受S1集成并释放S2-1；该次放行范围为S2-1，当前S2进度另见P3§10.2；P3/M10继续进行中，P4/P5/M11未开始。
 
 产品门禁与控制实际输入：18b922cfdec5471de622f1bcce9366c497a519e6。
 
@@ -1297,7 +1301,7 @@ S1服务端、来源整区、八规则、REST/MCP两scope及LW8 API/MCP已实施
 
 Step文档 `6e2b8bbf9a71a0b11db29dea62e44910a76d7213` 的minimum、提交后gen及精确分支CI已分别接受；实际输入和原件见下段及[S1审查](reviews/P3-S1-lint-protocol-review.md#文档合并与record验收)，不替换上面的18b产品运行身份。
 
-S1实际no-ff合并为 `689bf607bf05842e8d56389b1e5f282b252cd64e`，首次main CI已接受；本次record自身SHA/CI在提交后树外绑定，指定两main配对尚待。
+S1实际no-ff合并为 `689bf607bf05842e8d56389b1e5f282b252cd64e`，首次main CI已接受；合并记录 `9d4ea2d13564c7234c7b80c8566c8e6b3a111145` 已正常提交并推送。record attempt1的L1失败及同head完整重跑、原生gen与wrapper模式恢复见审查记录的record后续节；record attempt2最终结论：completed/success，主持者已按精确9d4接受；指定两main配对：主持者已接受；五份均值315.5/307/325/402.5/316秒全部严格<450秒，两次main各自全部13个必需作业/38个必需步骤成功；主持者已于2026-10-31 10:43 UTC接受S1集成并释放S2-1；该次放行范围为S2-1，当前S2进度另见P3§10.2。
 
 八规则、完整来源区、唯一 sources slot、正文/空属性区分、完整身份及分页、同快照编排、名额/singleflight/取消清理、两REST和notebook/account两scope MCP均已实现。wiki持有自己的DTO，经bootstrap模块根逐字段转换；Rules.PrepareRules与旧guard的Prepare分开。长TitleKeyContext保持有状态NFC→Fold→NFC与分块取消，不改旧写入热路径。每规则只记专属阶段，共享sources另列，失败/expiry只记实际可观察统计。
 
@@ -1438,11 +1442,77 @@ Step文档 `6e2b8bbf9a71a0b11db29dea62e44910a76d7213`（tree `138df2292d681d60f3
 
 实际no-ff合并 `689bf607bf05842e8d56389b1e5f282b252cd64e`，两父为 `b02b4a01567945919fa6d0705f911ad22c2ae879` / `6e2b8bbf9a71a0b11db29dea62e44910a76d7213`，tree `138df2292d681d60f3fd8f59641e573d6279cec5`；与已接受文档分支的树关系为“与已接受文档分支完全同树”。首次main [CI41185522147](https://github.com/open-nerve/NerveWiki/actions/runs/41185522147) attempt1 全部13个必需作业、38个必需步骤成功并被接受；五份bootstrap Test秒数见审查记录。
 
-本次record只记录此前已发生的文档与merge事实；自身minimum、提交后gen、SHA/精确CI与配对验收均仍未知，后续按各自实际执行阶段由树外回执绑定。第二次main须是该record的精确CI，与上述merge配对后五份Test各自的两次均值均严格<450秒，且两次全部必需作业/步骤通过，才由主持者释放S2。当前不声明record CI或配对已通过；S2/P4/P5/M11未开始，P3/M10继续进行中，既有M12限制不变。record身份和验收结论在下一份既定S2文档自然转录，不为自填SHA反复新建记录提交。
+合并记录现已正常提交并推送为 `9d4ea2d13564c7234c7b80c8566c8e6b3a111145`，parent `689bf607bf05842e8d56389b1e5f282b252cd64e`，tree `8f8e9502623f2267ae6774dfe3d5aa69e94b42a1`。提交前原生Web lint加七项minimum实际运行于689bf607加三份dirty记录文档，共八项exit0；server short为8746 RUN、7282 PASS、1464既有SKIP、0 FAIL且skip集合不变，tools 27 PASS。提交后原生 `make -j1 gen-check` 实际在9d4上exit0；wrapper因15个生成文件native mode从0664变为0644而exit1，原文件字节与253项embed不变，原mode已恢复，失败wrapper及其原件保留，不改写为整次wrapper通过。
 
-### 10.2 S2
+record的[CI41188823890](https://github.com/open-nerve/NerveWiki/actions/runs/41188823890) attempt1实际失败：12个job成功，E2E 335通过/1失败；L1在第178行等待 `BrowserContext.waitForEvent('page')` 超过30000ms。原trace显示新页document与其40个资源/API请求全200、目标view已返回，但没有新页的page事件；Chromium/CDP初始化的底层原因尚未确定。实际9d4重新build后，同一原故事本机一次通过，仅是诊断，不替代原CI失败或完整E2E。主持者据限定处置于2026-10-31 10:11 UTC请求一次完整同head rerun，实际exit0；筹备本补记时attempt2仍在运行，配对尚未接受、S2未释放。这次L1失败单列在原三次产品成本失败、40aac格式失败、6e2 TLS失败之后，前五次及原始结果不删除。
 
-待S1正式释放后JIT核main；记录UI九项的真实行为、测试、焦点探查、三审与最终CI。
+后续精确attempt2结论为completed/success，主持者已按精确9d4接受，必需作业/步骤为13个必需作业及38个必需步骤全部success；接受回执为`main-record-ci-9d4ea2d1-attempt2-01/root-acceptance-01.json`（SHA256 `b0ff9269245adea51081b165759f7cf900a4472efe6b92c95c83c61041f79823`；精确HEAD `9d4ea2d13564c7234c7b80c8566c8e6b3a111145`、run41188823890、attempt2；原始run SHA256 `59ab040dd46104dfe3aa04b8c2ac42ea15f2431ff497fdcdea2d93858b6bd54f`，jobs SHA256 `9bbeecf90c6c7917c774a7d5cee064aa43451ed7486cd6f3cd658aa9b2d6371e`，路径见该接受回执）。与merge CI41185522147 attempt1的五份Test 303/308/291/405/318秒按同一完整record attempt配对，五份均值及失败attempt1的373/251/314/400/310秒全部保存在[S1审查](reviews/P3-S1-lint-protocol-review.md#record提交后自验收与l1失败重跑配对)；配对结论为主持者已接受；五份均值315.5/307/325/402.5/316秒全部严格<450秒，两次main各自全部13个必需作业/38个必需步骤成功，回执为`root-main-merge-record-pair-01.json`（SHA256 `fe235997953e23f16c1b3f63f7f71b54c376b61ea7a5e3976dbfe7f0370a1ebe`）绑定merge `689bf607bf05842e8d56389b1e5f282b252cd64e` / CI41185522147 attempt1与record `9d4ea2d13564c7234c7b80c8566c8e6b3a111145` / CI41188823890 attempt2；释放处置为 `root-s1-integration-s2-release-01.json`（SHA256 `fe21b491de2aac4b31658f0067c0f13b8f2336799d56aed935c859b7201d87ee`）。主持者已于2026-10-31 10:43 UTC接受S1集成并释放S2-1；该次放行范围为S2-1，当前S2进度另见P3§10.2；P3/M10仍进行中，P4/P5/M11未开始，既有M12限制不变。这是既定S2文档对S1 record树外验收的自然转录，不再为记录自己的SHA新增独立main文档提交。
+
+### 10.2 S2：健康网页
+
+S1以9d4ea2d1的record attempt2及指定两main配对接受后，S2从该精确main开出m10-p3-s2。修复提交现为`fa681cf697703bc951266aa85978b1f1d62bbffe` / tree `698537c0107b8c741a8575b367eb3975389bbf18`。d061完整本地门禁、W38、代码CI和三份独立审查均保留历史归属；三审共0 Important/1 Minor（B-M1）/0 Nit/0 Q。fa681最小修复与新增三场景的作者证明、9+2 minimum及postgen已有独立回执；正式38项、审查者3项和回退1项控制已按本轮实际首败/存活资格接受（73e22057…）；native19、Cost05完整60recipes及实际EW353＋同build LW8第二轮24另有独立接受，root完整本地汇总f1c82e61…已释放代码分支推送。当前接受结论：fa681代码CI41240404612 attempt1及原A/B/C修复核对均已接受；root关闭B-M1，当前已核实Important/Minor/Nit/Q均0，准入Step文档（处置回执43a25df5…），不把旧d061结果换标。Step文档CI、no-ff/record指定两main与P3done仍PENDING。真实输入与原失败见[实施与审查记录](reviews/P3-S2-health-web-review.md)。
+
+| 单元 | 实际提交 | 提交前最小检查的实际输入 | 提交后原生gen |
+|---|---|---|---|
+| S2-1首屏 | bfded8f5c354e7183c835e0e64e35c831aead1d7 | 9d4加对应dirty输入；3335源文件；11项接受，Web180文件/3878测试 | bfd实际提交已接受 |
+| S2-2生命周期与更多 | ebdd44d77661ece70310db5121733927e2214d39 | bfd加对应dirty输入；3340源文件；11项接受，Web182文件/3925测试 | ebdd实际提交已接受 |
+| S2-3真实浏览器 | df73f21ef329bb7bbcf39dc35c93ca280aa75e97 | ebdd加两个E2E文件；3341源文件；11项接受 | df73实际提交已接受 |
+| 浏览器覆盖补强 | d0618b1d36bc81f0072e5d3ad67315add6ae91a9 | df73加单个故事文件143行；3341源文件；11项接受 | d061实际提交已接受 |
+| B-M1锚点修复 | fa681cf697703bc951266aa85978b1f1d62bbffe | d061 parent加两文件dirty输入；3341源文件；9项root新执行＋作者knip/test-web同源两项复用 | fa681实际postgen已接受（775bf93f…） |
+
+上述每次server short均为8746 RUN、7282 PASS、1464原有SKIP；tools均27 PASS。11项含Web lint/types/format、server/tools build/vet、整模块Go lint、short/tools tests、knip、完整Vitest、Web build；它不是§7.7完整Step门禁。minimum受测的是提交前确切dirty输入，postcommit gen另绑实际新提交，不能重标为提交后重跑整套。原始argv、退出码、源清单、所有失败和接受回执保存在S2树外证据中。
+
+实现按§4.2九项收敛：
+
+1. Health路由在NotebookLayout内，reader左栏入口位于History前；RootStore每登录代只提供clientFor绑定的WikiService，结果留在SWR。既有nodeTarget/useNodeNavigate仅窄提取，原消费者换import，行为不扩展。
+2. summary与每卡请求使用包含login/workspace/notebook/location.key/entry nonce/generation的作用域。lint有本次entry自己的SWR provider，公开unload在其卸载前清除缓存及在途/dedupe；左栏树仍用公共provider，公共搜索和树不清。每次直接、同址、Back/Forward重进都新算。
+3. Recheck同步使旧代失效并abort summary/cards。成功以一次状态更新替换摘要、卡预览、错误和游标；失败保留旧computed_at与卡且显示错误，新代可沿显示的cursor手动More/Try again。旧同cursor成功或失败答复不能追加、播报或聚焦。
+4. summary/card的server_busy各自只手动重试；其它错误保留原有限策略。卡重试不重跑摘要；被手动操作替换的旧自动retry timer不得借新cursor发请求，而同次失败的有限重试仍有效。
+5. 真mode事件及漏mode后reconnect只重读NotebookStore，不自动lint。snapshot/page mode不符或专属规则409显示提示、禁More；已排队的retry和在途卡同样不能继续发布。手动重算才换规则。
+6. 完整item_key跨页去重，保留显示前缀相同的不同wanted组以及同页link/nonlink项；opaque StartCursor和next cursor原样续读。局部wrapper复用LoadMoreButton/watchReader：非末页也聚焦首个实际新增项，重复页无新增，空尾页保留可达落点，快速双击仅一请求；reader动作后不抢焦点，完成事件处理后真实树重读也不再次抢旧焦点。共享搜索默认策略未改。
+7. 当前PageTreeStore提供完整路径和附件当前父页；缺失节点每entry共用一次重读，失败/仍缺保留条目和计数，不显示裸UUID。树Try again只重读nodes。资产移动后先显示新路径，点击再用当前parent和attachment state定位。
+8. 两个服务GET都传AbortSignal；测试分开观察signal.aborted与忽略abort的晚答不污染。summary/card常驻output、同文再次播报、固定零规则顺序和双语沿既有组件；日期使用formatDateTime。
+9. health#undigested_sources已作为P4固定锚点保留，零规则也展开定位；reader已动作时不抢焦点。本Step没有目录入口、ingest或P4批量SQL实现。
+
+作者最后一轮定向Vitest为7文件/1191测试，其中健康行为56＝首屏14＋lifecycle22＋card20，其余是搜索28、duplicate导航19、messages1052、format/date36；不能写成1191个新增健康行为。S2-1真实red和S2-2六次具名red、原实现失败、lint失败及test-only纠正全部保留。两个附加回归为替代旧timer和完成后树更新重复抢焦点。
+
+S2-3最初在ebdd加E2E改动的dirty输入上跑LW8 19/19（原7 API/MCP＋12 page）、三引擎4场景12/12、完整既有SE1/LW3/LW12 13/13。后续df73加故事补强的dirty输入跑LW8 21/21（保留原7＋14 page）、三引擎5场景15/15；补了真正wheel且More仍focused的交错、移动附件独立href断言和真实nodes失败后的人工重试。实际引擎为Chromium153.0.8010.12、Firefox155.0、WebKit26.6；正式配置仍Chromium。每个EW子轮均fresh build当前Web/bin并核嵌入资源，不是复用旧bin；旧样本没有换标为d061 clean执行。
+
+W05-C2和W07-C9的作者补强诊断各自baseline→单改失败→恢复通过，原失败与前置到达事实保存；每组三轮共持一次原heavy锁，组内每轮仍各自fresh build。这是已授权的两个诊断，不能换称最终W执行器的每phase独立heavy方式，也不能抵作完整W。
+
+#### d061历史W结果（不计作fa681重跑）
+
+完整W选定38单元已由根按资格接受：150个独立heavy阶段、225次实际case执行，2069个唯一原件重hash且heavy区间无重叠；35个负控单元有64个目标失败（62个failed及2个必须限定说明的missing-request timedOut），3个存活探查单元共8腿，另3个正控PASS。全部所选baseline/restore均PASS。根接受时3341个源文件字节/mode已恢复且Git clean；这不代表全Step门禁、全EW、三审、CI或P3完成。
+
+W01-E1只删entry nonce的2WB＋2EW四腿存活，仍有私有provider、location/request归属等防线；W02-E2只删onSuccess末端检查的旧同cursor成功腿存活，旧error腿是正控；W08-E1只删await后active检查的generation/notebook/login三腿存活。以上均为实跑交错的限定存活，不报kill或所有transport普遍等价，不叠删独立防线强造失败。
+
+W01-P1P2是一种错误的notebook级Promise缓存寿命策略，完成缓存与在途复用分腿：WB分别停于重进只有1次请求而非2、重进没有新日期；EW两腿都已完成初始读取/持有请求及真实History返回，随后等待新的summary response超时。两个trace各只见1个原始GET（完成腿200，在途腿-1/net::ERR_ABORTED），所以根接受为目标新请求缺失的限定timedOut；不声称未执行的后续count/date或忽略abort后成功晚答断言命中。
+
+W04-C1在真实原SSE和漏mode重连两场景都多发summary；W04-C2的EW仅到达More仍enabled的断言，实际点击发送请求由WB另证明。W05-C1在5预览＋50新增、55行且More仍在的非末页焦点断言失败；W05-C2在真实trusted wheel、答复前More仍focused的场景于55行返回后错误抢焦点，旧Tab故事仍PASS为正控。reader空尾页的WB另属W05-C3。
+
+W07-C1先显示当前NewParent路径，却在href错误处失败，尚未点击；C2在当前路径/href前置通过并实际点击后URL变asset-as-page；N1在同样前置通过并点击后错误回Old，证明旧parent导航而非旧路径显示，后续标题/attachment focus断言未到达。C5在真实delete204后中性missing说明消失，后续count不计作已执行。C7在真实删除及missing说明前置后，nodes总数3未达4；trace记录3次成功浏览器nodes读取，单改移除共享retry支持缺少额外重读，但外部fixture DELETE不在browser network，不能冒称捕获。C9在真实nodes transport abort并手动Try again后，首个GET错误为lint，目标断言先于后续页面检查。
+
+原26个WB-only的首次失败与后段未到达限制保持，仓库内d061历史完整38行结果与各首先失败/未到达限制仍见[S2记录](reviews/P3-S2-health-web-review.md)§4，75腿细目及argv/raw保留原controls-38和semantic回执；fa681新正式38项与额外3+1项的结果另见同记录§5，不复用历史通过。A01旧timer替代后多发请求，原同次有限retry是正控；A02完成后reader移焦body再由真实tree更新抢旧焦点，只报WB。原W01–W10十行及语义不删，未选原规划候选不自动增为必跑。EW各正式phase按实际fresh build绑定Web/dist/embed/bin及前后hash；binary payload未逐phase归档。作者之前两个诊断仍按其当时的组三轮heavy方式记，不改标为正式W样本。
+
+d061历史完整native19已接受，五片双轮真实process均值为326.907472176943/199.4939254699275/258.5658714149613/287.74985859612934/237.46581617509946秒；非bootstrap8039节点＝8038PASS＋1原SKIP，92binary traces/21自身TC/42containers，原身份/采样/UTC见证限制保留。Cost03完整60recipe已接受，lint14×2每轮1047PASS、costs17/89PASS、guards15/57PASS；14项两轮均值×2.4最大165.2062128284946≤300。d061 clean新构建完整EW350项及同构建LW8第二轮21项全PASS，0skip/retry/flaky；原monotonic165.52876478806138/13.50872967299074秒，251Web资产/252embed及binary路径/hash见证不扩大为per-process exe观察。原250MiB allocation目标仍未满足，M12债务不关闭。
+
+根本地汇总接受SHA256 `a579b3d5919e5da1bca772bfbc00d253e436719ffbd5e9e9be3e92170eb372af`：最后minimum11实际为df73父HEAD+dirty，3341源字节/mode与当时d061一致；post-gen实际d061，native/costs/EW/W均绑d061。旧各提交minimum保留其自身输入；storage01和clock02原失败不因后续接受改写，原timer/预算/timeout未改。完整原件与M12/环境限制见[S2记录](reviews/P3-S2-health-web-review.md)§3–6。
+
+d061代码CI41219802802 attempt1及其13 jobs/38 steps已接受，随后原三席独立审查确认唯一Minor B-M1。fa681只移除锚点focus的preventScroll，并以延迟真实summary覆盖零目标、非零目标及可信pointer后不抢读者focus/scroll三个参数化场景。作者旧实现Chromium为2失败/1正控通过，修后Chromium/Firefox/WebKit共9通过；完整Web182文件/3925 PASS。这些是d061 parent加dirty输入的定向证明，不换标为fa681 clean全套执行。minimum覆盖11项，其中9项root新执行、knip/test-web两项按同一parent与逐字节/native mode相同的作者执行复用；fa681实际postgen另由775bf93f…回执接受。
+
+W05-C1首轮baseline-EW因ERR_NETWORK_CHANGED停在auth/动态JS初始化，业务断言未到、mutant未启动，session19959 exit1原件保留；不计kill或业务通过。一次原样完整W05-C1续跑已实际完成：03的WB/R01与EW/F均baseline/restore PASS、mutant在非末页新增焦点首败；19357已收exit0并完成剩余29正式＋3审查者＋1回退。02先前9个完整unit保留，19959 exit1与W05-C1两条失败尝试phase单列；它们不计kill或完整unit通过。最终有效矩阵162 phases/243次case执行，连原失败历史实际164 phases/245次case执行，已由root接受回执核对；原OS具体触发仍未证。
+
+| fa681最终事项 | 当前状态与应填实际事实 |
+|---|---|
+| 当前source及完整本地门禁汇总 | root已按fa681/698537接受完整本地门禁与W，用于代码分支推送：minimum11按9项root新执行＋2项作者同源复用如实记账，实际fa681 postgen另列；W42、native19、Cost05四原targets/60recipes、实际完整EW353＋同build LW8第二轮24均有各自接受。汇总回执 `root-s2-local-gates-and-push-release-02.json` SHA `f1c82e615684879bb5855d46669dac95b48c543a92a33b611479524a2e93f0bb`。精确代码CI、三席原fix-check及B-M1关闭已有独立接受，root允许进入Step文档；本地接受不扩为合并或独立复核接受；实际source manifest `root-native-release-02/source.json`（SHA `240651e84a855de6ec884f377e9e795462a7e689d2d0e1947763f3013eb6db4c`）绑定fa681/698537、m10-p3-s2、3341源成员和252 embed；root本地汇总已核当前源字节及native modes一致；source绑定和各运行接受分证，不能由输入绑定替代精确CI或原席复核 |
+| 正式W38＋审查者3＋B-M1回退1 | root已按实际首败和资格接受正式38＋审查者3＋B-M1回退1，共42 units/54 groups/81 legs/162有效heavy phases、243次case执行；baseline/restore各81 PASS，mutant为67 FAIL＋2限定timedOut＋8存活probe PASS＋4 positive PASS；39个负控unit仅在记录阶段捕获，另3个unit限定存活。接受回执`root-anchor-controls-acceptance-01.json` SHA `73e2205740653bd203d7a305934ebdf349ff2a3fdc2db2af2d1db150d3dfe0be`。旧W05-C1失败尝试另2 phases/2 cases，全部历史合计164 phases/245次case执行。 |
+| 全native19及原per-binary session | fa681原native19已接受：8个原生清单阶段、五份bootstrap各两轮及full nonbootstrap race均实际完成，controller73366退出0，两项独立raw/session审计也退出0。五片原monotonic进程双轮均值333.537426/207.201790/265.137688/294.882098/246.775116秒，均严格<450秒；每轮3912个测试节点，3908 PASS＋4个原有SKIP。nonbootstrap为8039节点、8038 PASS＋1个原有SKIP，115包，1230.443445秒。92个binary traces、21个TC sessions、42个自身容器已按原件关联；原60秒清理界内的最迟UTC终态见证为10.697946秒。保留PID/startticks、ephemeral binary、采样与UTC时间证据的原限制，不称全主机证明；本机均值不替代main CI Test-step配对。根回执 `root-full-native-acceptance-02.json` SHA `0556b0f1348fac4534fabd207f743bb1494895e60f93eaf051d66f91b7f8a87d`；source3341/252embed的字节及native modes一致。 |
+| 四成本targets/60 recipes及固定容量 | Cost05 session15457实际exit0并已收集，两项独立raw/capacity审计exit0；四原targets完整60recipes独立新跑：lint第一/第二轮各14recipes、1047 PASS，costs17recipes/89 PASS，guards15recipes/57 PASS。14项两轮实际process均值×2.4最大181.88499738648534≤原300秒；两轮各112 linking cases/21 groups、6个wiki sample owners/8个固定guard及具明确outer owner的预期exit1 child均核实。summary TotalAlloc中位数374979856/374953544B仍未达250MiB。root回执 `root-full-costs-acceptance-05.json` SHA `032a23d5860c718e8df81e25042377aaf2d184204c5e715378e4a20ed6e0b7a3`；原命令、3GiB/T7/heavy/timeout/固定guard未改，storage01/clock02/cost04失败单列，不拼旧partial；本机容量不替代码CI或指定两main Test-step配对，M12债务仍开放 |
+| 完整EW真实inventory/完整轮/同构建LW8第二轮 | fa681 clean新构建完整Chromium EW353项、同一构建LW8第二轮24项全部PASS，0 skip/retry/flaky；执行session67793和独立audit52580均已收exit0，原monotonic分别164.62137820292264/13.762547922786325秒。251 Web资产/252 embed、实际binary/browser路径/hash与一次fresh build已由root核验，738个refs已核；root回执 `root-full-e2e-acceptance-02.json` SHA `56f76a73d552f864c2d9f579b9f9d201c4df1cd458f1fd0ddf93c9e1b80c0543`。UTC不要求与elapsed等值，不新增逐进程exe身份观察；本地EW不代替CI或独立产品复核；case身份与数量只能来自本次原生清单 |
+| 精确fa681代码分支CI | [CI41240404612](https://github.com/open-nerve/NerveWiki/actions/runs/41240404612) attempt1 / push / m10-p3-s2 / fa681cf697703bc951266aa85978b1f1d62bbffe已completed/success，root精确代码分支接受 `root-code-branch-ci-acceptance-02.json` SHA `f51c245cf5fe4ee30c994ddb3dced7dc52e1c93de07aeccda5212b63eeb36e9c`；13个实际必需jobs、38个必需steps全成功。五份Test为454/309/366/283/312秒，guards Test1517秒、job1538秒；branch首片454秒不称<450，单次分支CI不满足未来指定merge/record两main均值<450的要求，本地用时也不替CI Test step |
+| 原A/B/C对fa681的fix-check与B-M1关闭 | 原A/B/C对fa681的独立修复核对均已root接受，B-M1已按最终处置关闭，当前已核实Important/Minor/Nit/Q均0。A为4个真实PG/Chromium＋8选定native PASS（14未选）；B为原探针与锚点/More-wheel共5个PG/Chromium PASS；C为baseline5 PASS、旧focus mutant2个viewport failed＋pointer PASS、restore3 PASS，11次只记原席复核。原稿及各自限制见下方三席表，root汇总 `root-anchor-fix-check-dispositions-01.json` SHA `43a25df5b235e67ba94e232f8ca11f059793f5494aae4deb50d648421da0eed6`；局部复核不代后续文档或集成 |
+
+文档自身minimum/gen/CI、no-ff与record两个main的全jobs/steps及指定五份Test均值仍PENDING；不以本地用时或d061/S1历史CI替代。P3完成另按§10.3；P4/P5/M11未开始，M6保持done，M7/M9因后续余项保持open，M11/M12边界不变。
 
 ### 10.3 P3完成
 

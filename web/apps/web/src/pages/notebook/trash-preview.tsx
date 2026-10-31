@@ -24,7 +24,8 @@ import { BreadcrumbTrail } from "../page/breadcrumbs";
 import { useLeftBehind, VersionView } from "../page/version-view";
 import { useWorkspace } from "../workspace/workspace-layout";
 import { useNotebook } from "./notebook-layout";
-import { sourceHistoryText, useNodeNavigate } from "./duplicate-text";
+import { sourceHistoryText } from "./duplicate-text";
+import { useNodeNavigate } from "../node-target";
 import {
   ItemIcon,
   namesOf,

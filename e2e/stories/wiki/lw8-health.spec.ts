@@ -4,16 +4,41 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import type { ApiClient, Notebook, Page } from "@nervewiki/api-client";
+import type { Page as BrowserPage, TestInfo } from "@playwright/test";
 
 import { uploadAsset, utf8 } from "../../fixtures/assets";
 import { bearer, createToken, emailFor } from "../../fixtures/auth";
-import { joinAs } from "../../fixtures/invitations";
+import { answerTo, eventStreamPath } from "../../fixtures/browser";
+import { settleEvents } from "../../fixtures/events";
+import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { errorOf, mcpClient, postMcp, resultOf, type McpClient } from "../../fixtures/mcp";
-import { addedNotebookMember } from "../../fixtures/notebook-members";
-import { createNotebook } from "../../fixtures/notebooks";
-import { createPage, listNodes, readContent, renameNode, writeContent } from "../../fixtures/pages";
-import { expect, test } from "../../fixtures/test";
-import { newTeam } from "../../fixtures/workspaces";
+import { addedNotebookMember, removeNotebookMember } from "../../fixtures/notebook-members";
+import { downgradeWith, notebookPath } from "../../fixtures/notebook-pages";
+import { createNotebook, downgradeNotebook } from "../../fixtures/notebooks";
+import {
+  createPage,
+  deleteNode,
+  listNodes,
+  moveNode,
+  readContent,
+  renameNode,
+  writeContent,
+} from "../../fixtures/pages";
+import { expect, test, watchOf } from "../../fixtures/test";
+import {
+  connectedHealth,
+  healthCard,
+  healthDocumentStayed,
+  healthLink,
+  healthPagination,
+  healthPath,
+  healthReads,
+  healthShown,
+  holdHealthGet,
+  streamHellos,
+} from "../../fixtures/wiki-health";
+import { wikiPagePath } from "../../fixtures/wiki-pages";
+import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 
 // LW8 is a client story: the running binary parses and saves every page below. The expected facts come from this
 // small graph and its input bytes, never another lint response or a production rule/normalization helper.
@@ -543,4 +568,677 @@ test("LW8: readers can read health while a private notebook is hidden before the
     "account hidden notebook after fixing cursor"
   );
   expect(hiddenTool.code).toBe("notebook.not_found");
+});
+
+async function healthReader(api: ApiClient, credential: string, slug: string, notebook: string, info: TestInfo) {
+  const tokens = await joinOnboarded(api, credential, slug, emailFor(info, "health-reader"), "guest");
+  const me = await api.GET("/api/v0/me", { headers: bearer(tokens.access_token) });
+  expect(me.response.status).toBe(200);
+  if (!me.data) throw new Error("the health reader has no account");
+  await addedNotebookMember(api, credential, notebook, me.data.id, "reader");
+  return { tokens, id: me.data.id };
+}
+
+async function healthAnswer(page: BrowserPage, notebook: Notebook, action: () => Promise<unknown>, checks = 8) {
+  const answer = answerTo(page, "GET", `/api/v0/notebooks/${notebook.id}/lint`);
+  await action();
+  const response = await answer;
+  expect(response.status()).toBe(200);
+  await healthShown(page, checks);
+  return (await response.json()) as Summary;
+}
+
+const modeNotice = "The notebook mode has changed. Recheck its health.";
+
+test.describe("LW8 (page)", () => {
+  test.beforeEach(async ({ browser }, info) => {
+    await info.attach("browser-runtime", {
+      body: JSON.stringify({
+        engine: browser.browserType().name(),
+        version: browser.version(),
+        project: info.project.name,
+      }),
+      contentType: "application/json",
+    });
+  });
+
+  for (const mode of ["standard", "llm_wiki"] as const) {
+    test(`a reader opens ${mode} from the sidebar: every applicable rule, full paths and literal values fit 375px`, async ({
+      api,
+      signedInPage,
+    }, info) => {
+      const team = await newOnboardedTeam(api, info);
+      const graph = await seed(api, team.pat, team.workspace.slug, mode);
+      const reader = await healthReader(api, team.pat, team.workspace.slug, graph.notebook.id, info);
+      const page = await signedInPage(reader.tokens);
+      const reads = healthReads(page, graph.notebook.id);
+      await page.goto(wikiPagePath(team.workspace.slug, graph.notebook.id, graph.overview.id));
+      await page.evaluate(() => Object.assign(window, { lw8Document: true }));
+      const active = mode === "standard" ? rules.slice(0, 4) : rules;
+      checkSummary(
+        await healthAnswer(page, graph.notebook, () => healthLink(page, graph.notebook).click(), active.length),
+        graph,
+        "REST"
+      );
+      const main = page.getByRole("main");
+      expect(await main.locator("section[id]").evaluateAll((cards) => cards.map((card) => card.id))).toEqual(active);
+      for (const rule of active) {
+        const card = healthCard(page, rule);
+        await expect(card).toBeVisible();
+        await expect(card.getByRole("listitem")).toHaveCount(Math.min(5, graph.expected[rule].length));
+      }
+      await expect(healthCard(page, "orphans").getByRole("link", { name: "Lonely.md", exact: true })).toBeVisible();
+      const wantedCard = healthCard(page, "wanted");
+      await wantedCard.getByRole("button", { name: "More", exact: true }).click();
+      await expect(wantedCard.getByRole("listitem")).toHaveCount(6);
+      await expect(wantedCard.getByText("Target shortened.", { exact: true })).toHaveCount(2);
+      await expect(wantedCard.getByText(`${"x".repeat(255)}/`, { exact: true })).toHaveCount(2);
+      if (mode === "llm_wiki") {
+        await expect(
+          healthCard(page, "invalid_sources").getByText("This value is not a single link.", { exact: true })
+        ).toBeVisible();
+        await expect(
+          healthCard(page, "undigested_sources").getByRole("link", {
+            name: "raw/PropertyOnly/floating.txt",
+            exact: true,
+          })
+        ).toBeVisible();
+      }
+      await page.setViewportSize({ width: 375, height: 800 });
+      const width = await page.evaluate(() => ({
+        viewport: document.documentElement.clientWidth,
+        content: document.documentElement.scrollWidth,
+      }));
+      expect(width).toEqual({ viewport: 375, content: 375 });
+      const box = await wantedCard.boundingBox();
+      expect(box).not.toBeNull();
+      expect(box!.x + box!.width).toBeLessThanOrEqual(375);
+      expect([reads.summary(), reads.rule("wanted")]).toEqual([1, 1]);
+      await healthDocumentStayed(page);
+    });
+  }
+
+  test("a clean notebook keeps all zero checks collapsed, and the undigested anchor opens and focuses its zero check", async ({
+    api,
+    signedInPage,
+  }, info) => {
+    const team = await newOnboardedTeam(api, info);
+    const notebook = await createNotebook(api, team.pat, team.workspace.slug, "Clean health", "none", {
+      mode: "llm_wiki",
+    });
+    const page = await signedInPage(team.tokens);
+    await page.goto(notebookPath(team.workspace.slug, notebook.id));
+    await healthAnswer(page, notebook, () => healthLink(page, notebook).click());
+    const details = page.getByRole("main").locator("details");
+    await expect(details.locator("summary")).toHaveText("No issues (8 checks)");
+    await expect(details).not.toHaveAttribute("open");
+    await expect(healthCard(page, "undigested_sources")).toBeHidden();
+    await details.locator("summary").click();
+    expect(await details.locator("section[id]").evaluateAll((cards) => cards.map((card) => card.id))).toEqual(rules);
+    await expect(details.getByText("0 issues", { exact: true })).toHaveCount(8);
+    await expect(page.getByRole("button", { name: "More", exact: true })).toHaveCount(0);
+    await page.goto(`${healthPath(team.workspace.slug, notebook.id)}#undigested_sources`);
+    await healthShown(page);
+    await expect(page.locator("#undigested_sources-heading")).toBeFocused();
+    await expect(details).toHaveAttribute("open", "");
+  });
+
+  for (const { count, acted, outcome } of [
+    { count: 0, acted: false, outcome: "opens its zero check and brings its heading into view" },
+    { count: 1, acted: false, outcome: "brings its nonzero heading into view" },
+    { count: 0, acted: true, outcome: "keeps the reader's focus and scroll after a real pointer action" },
+  ]) {
+    test(`anchor: a delayed summary ${outcome}`, async ({ api, signedInPage }, info) => {
+      const team = await newOnboardedTeam(api, info);
+      const { notebook } = await healthPagination(api, team.pat, team.workspace.slug);
+      if (count > 0) await createPage(api, team.pat, notebook.id, "Pending", notebook.source_root_id, "A source.\n");
+      const page = await signedInPage(team.tokens);
+      await page.setViewportSize({ width: 1280, height: 600 });
+      const reads = healthReads(page, notebook.id);
+      const pathname = `/api/v0/notebooks/${notebook.id}/lint`;
+      const held = await holdHealthGet(page, pathname);
+      try {
+        await page.goto(`${healthPath(team.workspace.slug, notebook.id)}#undigested_sources`, { waitUntil: "load" });
+        await held.entered;
+        await expect(
+          page.getByRole("main").getByRole("heading", { level: 1, name: "Health", exact: true })
+        ).toBeVisible();
+        const heading = page.locator("#undigested_sources-heading");
+        expect(await page.evaluate(() => document.readyState)).toBe("complete");
+        await expect(heading).toHaveCount(0);
+        const search = page.getByRole("searchbox", { name: "Search terms", exact: true });
+        if (acted) {
+          await expect(search).toBeInViewport();
+          await page.evaluate(() => {
+            window.addEventListener(
+              "pointerdown",
+              (event) => Object.assign(window, { lw8AnchorPointerTrusted: event.isTrusted }),
+              { once: true, capture: true }
+            );
+          });
+          const box = await search.boundingBox();
+          expect(box).not.toBeNull();
+          await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2);
+          await expect(search).toBeFocused();
+          expect(
+            await page.evaluate(
+              () => (window as unknown as { lw8AnchorPointerTrusted?: boolean }).lw8AnchorPointerTrusted
+            )
+          ).toBe(true);
+        }
+        const before = await page.evaluate(() => ({ top: window.scrollY, viewport: window.innerHeight }));
+        const answer = answerTo(page, "GET", pathname);
+        held.release();
+        const response = await answer;
+        expect(response.status()).toBe(200);
+        const summary = (await response.json()) as Summary;
+        expect(summary.rules.find((rule) => rule.rule === "undigested_sources")?.count).toBe(count);
+        await healthShown(page);
+        if (count === 0) await expect(page.getByRole("main").locator("details")).toHaveAttribute("open", "");
+        // Observe the rendered position without a locator action that could scroll the target into view.
+        await info.attach("resolved-anchor", {
+          body: JSON.stringify({
+            before,
+            after: await page.evaluate(() => ({
+              top: window.scrollY,
+              viewport: window.innerHeight,
+              heading: document.getElementById("undigested_sources-heading")?.getBoundingClientRect().toJSON(),
+              focused: document.activeElement?.id,
+              trustedPointer: (window as unknown as { lw8AnchorPointerTrusted?: boolean }).lw8AnchorPointerTrusted,
+            })),
+          }),
+          contentType: "application/json",
+        });
+        if (acted) {
+          await expect(search).toBeFocused();
+          expect(await page.evaluate(() => window.scrollY)).toBe(before.top);
+          await expect(heading).not.toBeInViewport();
+        } else {
+          await expect(heading).toBeFocused();
+          await expect(
+            heading,
+            "a resolved health anchor should enter the viewport without a manual scroll"
+          ).toBeInViewport();
+        }
+        expect(reads.summary()).toBe(1);
+      } finally {
+        await held.finish();
+      }
+    });
+  }
+
+  test("focus: 61 wanted groups give five previews, fifty non-final additions, six final additions, and a fresh preview after recheck", async ({
+    api,
+    signedInPage,
+  }, info) => {
+    const team = await newOnboardedTeam(api, info);
+    const { notebook, overview, targets } = await healthPagination(api, team.pat, team.workspace.slug);
+    const page = await signedInPage(team.tokens);
+    const reads = healthReads(page, notebook.id);
+    await page.goto(wikiPagePath(team.workspace.slug, notebook.id, overview.id));
+    const summary = await healthAnswer(page, notebook, () => healthLink(page, notebook).click());
+    const wantedSummary = summary.rules.find((rule) => rule.rule === "wanted")!;
+    expect(wantedSummary.count).toBe(61);
+    expect(wantedSummary.items.map((item) => item.target)).toEqual(targets.slice(0, 5));
+    const card = healthCard(page, "wanted");
+    const items = card.getByRole("listitem");
+    await expect(items).toHaveCount(5);
+    const more = card.getByRole("button", { name: "More", exact: true });
+    const first = answerTo(page, "GET", `/api/v0/notebooks/${notebook.id}/lint/wanted`);
+    await more.click();
+    const response = await first;
+    expect(response.status()).toBe(200);
+    const query = new URL(response.url()).searchParams;
+    expect(query.get("limit")).toBeNull();
+    expect(query.get("cursor")).toBe(wantedSummary.next_cursor);
+    const next = (await response.json()) as ItemPage;
+    expect(next.data.map((item) => item.target)).toEqual(targets.slice(5, 55));
+    expect(new Set(next.data.map((item) => item.item_key)).size).toBe(50);
+    expect(next.next_cursor).toBe(next.data.at(-1)!.cursor);
+    await expect(items).toHaveCount(55);
+    await expect(more).toBeVisible();
+    await expect(items.nth(5)).toBeFocused();
+    await expect(items.nth(5)).toContainText("m005");
+    const last = answerTo(page, "GET", `/api/v0/notebooks/${notebook.id}/lint/wanted`);
+    await more.click();
+    const final = (await (await last).json()) as ItemPage;
+    expect(final.data.map((item) => item.target)).toEqual(targets.slice(55));
+    expect(final.next_cursor).toBeNull();
+    await expect(items).toHaveCount(61);
+    await expect(more).toHaveCount(0);
+    await expect(items.nth(55)).toBeFocused();
+    await createPage(api, team.pat, notebook.id, "m000", null, valid);
+    expect([reads.summary(), reads.rule("wanted")]).toEqual([1, 2]);
+    const changed = await healthAnswer(page, notebook, () =>
+      page.getByRole("button", { name: "Recheck", exact: true }).click()
+    );
+    expect(changed.rules.find((rule) => rule.rule === "wanted")?.count).toBe(60);
+    await expect(items).toHaveCount(5);
+    await expect(items.first()).toContainText("m001");
+    expect([reads.summary(), reads.rule("wanted")]).toEqual([2, 2]);
+  });
+
+  test("focus: non-final More leaves the reader's moved focus alone", async ({ api, signedInPage }, info) => {
+    const team = await newOnboardedTeam(api, info);
+    const { notebook, overview } = await healthPagination(api, team.pat, team.workspace.slug);
+    const page = await signedInPage(team.tokens);
+    const reads = healthReads(page, notebook.id);
+    await page.goto(wikiPagePath(team.workspace.slug, notebook.id, overview.id));
+    await healthAnswer(page, notebook, () => healthLink(page, notebook).click());
+    const held = await holdHealthGet(page, `/api/v0/notebooks/${notebook.id}/lint/wanted`);
+    const card = healthCard(page, "wanted");
+    try {
+      await card.getByRole("button", { name: "More", exact: true }).press("Enter");
+      await held.entered;
+      await page.keyboard.press("Tab");
+      const movedTo = healthCard(page, "orphans").getByRole("link", { name: "Overview.md", exact: true });
+      await expect(movedTo).toBeFocused();
+      held.release();
+      await expect(card.getByRole("listitem")).toHaveCount(55);
+      await expect(card.getByRole("button", { name: "More", exact: true })).toBeVisible();
+      await expect(movedTo).toBeFocused();
+      expect([reads.summary(), reads.rule("wanted")]).toEqual([1, 1]);
+    } finally {
+      await held.finish();
+    }
+  });
+
+  test("focus: a real wheel keeps More focused while its non-final page is pending and after it arrives", async ({
+    api,
+    signedInPage,
+  }, info) => {
+    const team = await newOnboardedTeam(api, info);
+    const { notebook, overview } = await healthPagination(api, team.pat, team.workspace.slug);
+    const page = await signedInPage(team.tokens);
+    const reads = healthReads(page, notebook.id);
+    await page.setViewportSize({ width: 1280, height: 600 });
+    await page.goto(wikiPagePath(team.workspace.slug, notebook.id, overview.id));
+    await healthAnswer(page, notebook, () => healthLink(page, notebook).click());
+    const card = healthCard(page, "wanted");
+    const more = card.getByRole("button", { name: "More", exact: true });
+    await more.hover();
+    const held = await holdHealthGet(page, `/api/v0/notebooks/${notebook.id}/lint/wanted`);
+    try {
+      await more.press("Enter");
+      await held.entered;
+      await expect(more).toBeFocused();
+      const before = await page.evaluate(() => {
+        window.addEventListener("wheel", (event) => Object.assign(window, { lw8WheelTrusted: event.isTrusted }), {
+          once: true,
+          capture: true,
+          passive: true,
+        });
+        return { top: window.scrollY, height: document.documentElement.scrollHeight, viewport: window.innerHeight };
+      });
+      expect(before.height).toBeGreaterThan(before.viewport);
+      await page.mouse.wheel(0, before.top > 0 ? -200 : 200);
+      await expect
+        .poll(() => page.evaluate(() => (window as unknown as { lw8WheelTrusted?: boolean }).lw8WheelTrusted))
+        .toBe(true);
+      await expect.poll(() => page.evaluate(() => window.scrollY)).not.toBe(before.top);
+      await expect(more).toBeFocused();
+      held.release();
+      await expect(card.getByRole("listitem")).toHaveCount(55);
+      await expect(more).toBeVisible();
+      expect([reads.summary(), reads.rule("wanted")]).toEqual([1, 1]);
+      await info.attach("wheel-focus-after-response", {
+        body: JSON.stringify({
+          before,
+          after: await page.evaluate(() => ({
+            top: window.scrollY,
+            trustedWheel: (window as unknown as { lw8WheelTrusted?: boolean }).lw8WheelTrusted,
+            focusedTag: document.activeElement?.tagName,
+            focusedText: document.activeElement?.textContent,
+          })),
+        }),
+        contentType: "application/json",
+      });
+      await expect(more, "a real wheel keeps focus on More after the non-final response").toBeFocused();
+    } finally {
+      await held.finish();
+    }
+  });
+
+  test("real page clicks, Back, Forward and same-address sidebar reentry each recalculate health without reloading", async ({
+    api,
+    signedInPage,
+  }, info) => {
+    const team = await newOnboardedTeam(api, info);
+    const graph = await seed(api, team.pat, team.workspace.slug, "llm_wiki");
+    const page = await signedInPage(team.tokens);
+    const reads = healthReads(page, graph.notebook.id);
+    const initial = wikiPagePath(team.workspace.slug, graph.notebook.id, graph.overview.id);
+    await page.goto(initial);
+    await page.evaluate(() => Object.assign(window, { lw8Document: true }));
+    await healthAnswer(page, graph.notebook, () => healthLink(page, graph.notebook).click());
+    await healthCard(page, "orphans").getByRole("link", { name: "Lonely.md", exact: true }).click();
+    await expect(page.getByRole("heading", { level: 1, name: "Lonely", exact: true })).toBeVisible();
+    expect(reads.summary()).toBe(1);
+    await createPage(api, team.pat, graph.notebook.id, "missing a", null, valid);
+    const back = await healthAnswer(page, graph.notebook, () => page.goBack());
+    expect(back.rules.find((rule) => rule.rule === "wanted")?.count).toBe(5);
+    expect(reads.summary()).toBe(2);
+    await page.goForward();
+    await expect(page.getByRole("heading", { level: 1, name: "Lonely", exact: true })).toBeVisible();
+    expect(reads.summary()).toBe(2);
+    await healthAnswer(page, graph.notebook, () => page.goBack());
+    expect(reads.summary()).toBe(3);
+    await page.goBack();
+    await expect(page).toHaveURL(initial);
+    expect(reads.summary()).toBe(3);
+    await healthAnswer(page, graph.notebook, () => page.goForward());
+    expect(reads.summary()).toBe(4);
+    await healthAnswer(page, graph.notebook, () => healthLink(page, graph.notebook).click());
+    expect(reads.summary()).toBe(5);
+    await healthDocumentStayed(page);
+  });
+
+  test("leaving an in-flight summary and returning starts a fresh request and does not leave Loading cached", async ({
+    api,
+    signedInPage,
+  }, info) => {
+    const team = await newOnboardedTeam(api, info);
+    const { notebook, overview } = await healthPagination(api, team.pat, team.workspace.slug);
+    const page = await signedInPage(team.tokens);
+    const reads = healthReads(page, notebook.id);
+    await page.goto(wikiPagePath(team.workspace.slug, notebook.id, overview.id));
+    await page.evaluate(() => Object.assign(window, { lw8Document: true }));
+    const held = await holdHealthGet(page, `/api/v0/notebooks/${notebook.id}/lint`);
+    try {
+      await healthLink(page, notebook).click();
+      const abandoned = await held.entered;
+      await page.goBack();
+      await expect(page.getByRole("heading", { level: 1, name: "Overview", exact: true })).toBeVisible();
+      await healthAnswer(page, notebook, () => page.goForward());
+      expect(reads.summary()).toBe(2);
+      await expect(healthCard(page, "wanted").getByRole("listitem")).toHaveCount(5);
+      await expect.poll(() => abandoned.failure()).not.toBeNull();
+      await healthDocumentStayed(page);
+    } finally {
+      await held.finish();
+    }
+  });
+
+  test("focus: a snapshot attachment follows its current parent and opens the real attachment row", async ({
+    api,
+    signedInPage,
+  }, info) => {
+    const team = await newOnboardedTeam(api, info);
+    const { notebook, overview } = await healthPagination(api, team.pat, team.workspace.slug);
+    const old = await createPage(api, team.pat, notebook.id, "Old", notebook.source_root_id);
+    const next = await createPage(api, team.pat, notebook.id, "NewParent", notebook.source_root_id);
+    const asset = await uploadAsset(
+      api,
+      team.pat,
+      notebook.id,
+      { name: "evidence.txt", bytes: utf8("Move this real source.\n") },
+      old.id
+    );
+    const page = await signedInPage(team.tokens);
+    const reads = healthReads(page, notebook.id);
+    await connectedHealth(page, team.workspace.slug, notebook, overview.id);
+    const card = healthCard(page, "undigested_sources");
+    await expect(card.getByRole("link", { name: "raw/Old/evidence.txt", exact: true })).toBeVisible();
+    const computed = await page.getByRole("main").locator("time").first().getAttribute("datetime");
+    await moveNode(api, team.pat, asset.id, { parent_id: next.id });
+    const target = card.getByRole("link", { name: "raw/NewParent/evidence.txt", exact: true });
+    await expect(target).toBeVisible();
+    await expect(target).toHaveAttribute("href", wikiPagePath(team.workspace.slug, notebook.id, next.id));
+    await expect(card.getByText("1 issue", { exact: true })).toBeVisible();
+    expect(await page.getByRole("main").locator("time").first().getAttribute("datetime")).toBe(computed);
+    expect(reads.total()).toBe(1);
+    await target.click();
+    await expect(page).toHaveURL(wikiPagePath(team.workspace.slug, notebook.id, next.id));
+    await expect(page.getByRole("heading", { level: 1, name: "NewParent", exact: true })).toBeVisible();
+    await expect(
+      page.getByRole("region", { name: "Attachments", exact: true }).locator(`[data-attachment="${asset.id}"]`)
+    ).toBeFocused();
+    await healthDocumentStayed(page);
+  });
+
+  test("a disappeared snapshot node keeps its issue and count after the current tree has been read", async ({
+    api,
+    signedInPage,
+  }, info) => {
+    const team = await newOnboardedTeam(api, info);
+    const { notebook, overview } = await healthPagination(api, team.pat, team.workspace.slug);
+    const asset = await uploadAsset(
+      api,
+      team.pat,
+      notebook.id,
+      { name: "gone.txt", bytes: utf8("This source will disappear.\n") },
+      notebook.source_root_id!
+    );
+    const page = await signedInPage(team.tokens);
+    const reads = healthReads(page, notebook.id);
+    const connection = await connectedHealth(page, team.workspace.slug, notebook, overview.id);
+    const card = healthCard(page, "undigested_sources");
+    await expect(card.getByRole("link", { name: "raw/gone.txt", exact: true })).toBeVisible();
+    const before = connection.nodes();
+    expect((await deleteNode(api, team.pat, asset.id)).response.status).toBe(204);
+    await expect(card.getByText("This node is no longer available.", { exact: true })).toBeVisible();
+    await expect.poll(connection.nodes).toBeGreaterThanOrEqual(before + 2);
+    await expect(card.getByRole("listitem")).toHaveCount(1);
+    await expect(card.getByText("1 issue", { exact: true })).toBeVisible();
+    expect(reads.total()).toBe(1);
+    await healthDocumentStayed(page);
+  });
+
+  test("a real tree transport failure preserves health and its own Try again reads current paths without rerunning lint", async ({
+    api,
+    signedInPage,
+  }, info) => {
+    const team = await newOnboardedTeam(api, info);
+    const { notebook, overview } = await healthPagination(api, team.pat, team.workspace.slug);
+    const old = await createPage(api, team.pat, notebook.id, "Old", notebook.source_root_id);
+    const next = await createPage(api, team.pat, notebook.id, "NewParent", notebook.source_root_id);
+    const asset = await uploadAsset(
+      api,
+      team.pat,
+      notebook.id,
+      { name: "paths.txt", bytes: utf8("Keep this finding.\n") },
+      old.id
+    );
+    const page = await signedInPage(team.tokens);
+    const reads = healthReads(page, notebook.id);
+    const nodesPath = `/api/v0/notebooks/${notebook.id}/nodes`;
+    const lintPath = `/api/v0/notebooks/${notebook.id}/lint`;
+    let nodeRequests = 0;
+    const nodeAnswers: number[] = [];
+    page.on("request", (request) => {
+      if (request.method() === "GET" && new URL(request.url()).pathname === nodesPath) nodeRequests += 1;
+    });
+    page.on("response", (response) => {
+      if (response.request().method() === "GET" && new URL(response.url()).pathname === nodesPath)
+        nodeAnswers.push(response.status());
+    });
+    await connectedHealth(page, team.workspace.slug, notebook, overview.id);
+    const card = healthCard(page, "undigested_sources");
+    await expect(card.getByRole("link", { name: "raw/Old/paths.txt", exact: true })).toBeVisible();
+    const computed = await page.getByRole("main").locator("time").first().getAttribute("datetime");
+    const before = { requests: nodeRequests, answers: nodeAnswers.length };
+    let failedAt = 0;
+    await page.route(
+      (url) => url.pathname === nodesPath,
+      async (route) => {
+        failedAt = Date.now();
+        await route.abort("failed");
+      },
+      { times: 1 }
+    );
+    watchOf(page).expectConsole({ errors: ["Failed to load resource: net::ERR_FAILED"] });
+    const failure = page.waitForEvent("requestfailed", {
+      predicate: (request) => new URL(request.url()).pathname === nodesPath,
+    });
+    await moveNode(api, team.pat, asset.id, { parent_id: next.id });
+    expect((await failure).failure()?.errorText).toBe("net::ERR_FAILED");
+    const paths = page.getByRole("main").getByRole("group", { name: "Page paths", exact: true });
+    await expect(paths.getByRole("alert")).toBeVisible();
+    await expect(card.getByRole("listitem")).toHaveCount(1);
+    await expect(card.getByText("1 issue", { exact: true })).toBeVisible();
+    await expect(card.getByRole("link", { name: "raw/Old/paths.txt", exact: true })).toBeVisible();
+    expect(await page.getByRole("main").locator("time").first().getAttribute("datetime")).toBe(computed);
+    expect([nodeRequests, nodeAnswers.length, reads.total()]).toEqual([before.requests + 1, before.answers, 1]);
+    expect(Date.now() - failedAt, "manual tree retry precedes the normal first 5s automatic retry").toBeLessThan(5_000);
+    const retried = page.waitForEvent("request", {
+      predicate: (request) =>
+        request.method() === "GET" && [nodesPath, lintPath].includes(new URL(request.url()).pathname),
+    });
+    await paths.getByRole("button", { name: "Try again", exact: true }).click();
+    const request = await retried;
+    await info.attach("tree-manual-retry", {
+      body: JSON.stringify({
+        before,
+        firstRetryPath: new URL(request.url()).pathname,
+        nodeRequests,
+        nodeAnswers,
+        lintRequests: reads.total(),
+      }),
+      contentType: "application/json",
+    });
+    expect(new URL(request.url()).pathname, "tree Try again must issue nodes without recalculating lint").toBe(
+      nodesPath
+    );
+    expect((await request.response())?.status()).toBe(200);
+    await expect(card.getByRole("link", { name: "raw/NewParent/paths.txt", exact: true })).toBeVisible();
+    await expect(paths).toHaveCount(0);
+    await expect(card.getByRole("listitem")).toHaveCount(1);
+    await expect(card.getByText("1 issue", { exact: true })).toBeVisible();
+    expect(await page.getByRole("main").locator("time").first().getAttribute("datetime")).toBe(computed);
+    expect([nodeRequests, nodeAnswers.length, reads.total()]).toEqual([before.requests + 2, before.answers + 1, 1]);
+    expect(nodeAnswers.at(-1)).toBe(200);
+    await healthDocumentStayed(page);
+  });
+
+  test("mode arrives on the original SSE connection from another context and only manual Recheck recalculates", async ({
+    api,
+    nervewiki,
+    signedInPage,
+    anotherPage,
+  }, info) => {
+    const team = await newOnboardedTeam(api, info);
+    const { notebook, overview } = await healthPagination(api, team.pat, team.workspace.slug);
+    const reader = await healthReader(api, team.pat, team.workspace.slug, notebook.id, info);
+    const marker = await createPage(api, team.pat, notebook.id, "Event marker", null, valid);
+    await settleEvents(api, nervewiki.baseURL, team.pat, marker.id);
+    const owner = await signedInPage(team.tokens);
+    const page = await anotherPage(reader.tokens);
+    expect(owner.context()).not.toBe(page.context());
+    await owner.goto(notebookPath(team.workspace.slug, notebook.id, "general"));
+    const reads = healthReads(page, notebook.id);
+    const connection = await connectedHealth(page, team.workspace.slug, notebook, overview.id);
+    const before = { notebooks: connection.notebooks(), opened: connection.streams.opened() };
+    const answer = answerTo(owner, "POST", `/api/v0/notebooks/${notebook.id}/downgrade`);
+    await downgradeWith(owner);
+    expect((await answer).status()).toBe(200);
+    await expect(page.getByText(modeNotice, { exact: true })).toBeVisible();
+    await expect(healthCard(page, "wanted").getByRole("button", { name: "More", exact: true })).toBeDisabled();
+    expect(connection.notebooks()).toBeGreaterThan(before.notebooks);
+    expect(connection.streams.opened()).toBe(before.opened);
+    expect(connection.ended.has(connection.stream)).toBe(false);
+    expect((await streamHellos(page)).length).toBe(1);
+    expect(reads.total()).toBe(1);
+    const changed = await healthAnswer(
+      page,
+      notebook,
+      () => page.getByRole("button", { name: "Recheck", exact: true }).click(),
+      4
+    );
+    expect(changed.rules.map((rule) => rule.rule)).toEqual(rules.slice(0, 4));
+    await expect(page.getByText(modeNotice, { exact: true })).toHaveCount(0);
+    expect(reads.total()).toBe(2);
+    await healthDocumentStayed(page);
+    expect(watchOf(page).eventStreamErrors).toEqual([]);
+  });
+
+  test("mode lost after a real SSE reset is learned on reconnect hello through notebooks without rerunning lint", async ({
+    api,
+    nervewiki,
+    openEvents,
+    signedInPage,
+  }, info) => {
+    const team = await newOnboardedTeam(api, info);
+    const { notebook, overview } = await healthPagination(api, team.pat, team.workspace.slug);
+    const reader = await healthReader(api, team.pat, team.workspace.slug, notebook.id, info);
+    const scratch = await createNotebook(api, team.pat, team.workspace.slug, "Reset witness", "none");
+    const membership = await addedNotebookMember(api, team.pat, scratch.id, reader.id, "reader");
+    const marker = await createPage(api, team.pat, notebook.id, "Event marker", null, valid);
+    await settleEvents(api, nervewiki.baseURL, team.pat, marker.id);
+    const page = await signedInPage(reader.tokens);
+    const reads = healthReads(page, notebook.id);
+    const connection = await connectedHealth(page, team.workspace.slug, notebook, overview.id);
+    const before = { notebooks: connection.notebooks(), opened: connection.streams.opened() };
+    const gate = await holdHealthGet(page, eventStreamPath);
+    try {
+      const reset = await openEvents(reader.tokens.access_token);
+      expect((await removeNotebookMember(api, team.pat, membership.id)).response.status).toBe(204);
+      await reset.expectReset("access");
+      await expect.poll(() => connection.ended.has(connection.stream)).toBe(true);
+      const reconnect = await gate.entered;
+      expect(reconnect).not.toBe(connection.stream);
+      expect(connection.streams.opened()).toBe(before.opened + 1);
+      expect((await streamHellos(page)).length).toBe(1);
+      const mode = await openEvents(team.pat);
+      expect((await downgradeNotebook(api, team.pat, notebook.id)).response.status).toBe(200);
+      expect(await mode.expectNext("mode")).toEqual({ workspace_id: team.workspace.id, notebook_id: notebook.id });
+      expect(connection.notebooks()).toBe(before.notebooks);
+      expect(reads.total()).toBe(1);
+      await expect(page.getByText(modeNotice, { exact: true })).toHaveCount(0);
+      const connected = answerTo(page, "GET", eventStreamPath);
+      const notebooks = answerTo(page, "GET", `/api/v0/workspaces/${team.workspace.slug}/notebooks`);
+      gate.release();
+      expect((await connected).status()).toBe(200);
+      await expect.poll(async () => (await streamHellos(page)).length).toBe(2);
+      const listed = await notebooks;
+      expect(listed.status()).toBe(200);
+      expect((await listed.json()).data.find((book: Notebook) => book.id === notebook.id).mode).toBe("standard");
+      await expect(page.getByText(modeNotice, { exact: true })).toBeVisible();
+      await expect(healthCard(page, "wanted").getByRole("button", { name: "More", exact: true })).toBeDisabled();
+      expect(reads.total()).toBe(1);
+      await healthAnswer(page, notebook, () => page.getByRole("button", { name: "Recheck", exact: true }).click(), 4);
+      expect(reads.total()).toBe(2);
+      await healthDocumentStayed(page);
+      expect(watchOf(page).eventStreamErrors).toEqual([]);
+    } finally {
+      await gate.finish();
+    }
+  });
+
+  test("a real summary transport failure is shown and one manual Try again gets the real answer", async ({
+    api,
+    signedInPage,
+  }, info) => {
+    const team = await newOnboardedTeam(api, info);
+    const { notebook, overview } = await healthPagination(api, team.pat, team.workspace.slug);
+    const page = await signedInPage(team.tokens);
+    const reads = healthReads(page, notebook.id);
+    await page.goto(wikiPagePath(team.workspace.slug, notebook.id, overview.id));
+    let failedAt = 0;
+    await page.route(
+      (url) => url.pathname === `/api/v0/notebooks/${notebook.id}/lint`,
+      async (route) => {
+        failedAt = Date.now();
+        await route.abort("failed");
+      },
+      { times: 1 }
+    );
+    watchOf(page).expectConsole({ errors: ["Failed to load resource: net::ERR_FAILED"] });
+    await healthLink(page, notebook).click();
+    const retry = page.getByRole("main").getByRole("button", { name: "Try again", exact: true });
+    await expect(retry).toBeVisible();
+    await expect(page.getByRole("main").getByRole("alert")).toBeVisible();
+    expect(reads.summary()).toBe(1);
+    expect(reads.answers).toEqual([]);
+    expect(watchOf(page).apiFailures.filter((failure) => failure.endsWith(`/notebooks/${notebook.id}/lint`))).toEqual([
+      `net::ERR_FAILED GET /api/v0/notebooks/${notebook.id}/lint`,
+    ]);
+    const clickedAt = Date.now();
+    expect(clickedAt - failedAt, "manual retry precedes the normal first 5s automatic retry").toBeLessThan(5_000);
+    const summary = await healthAnswer(page, notebook, () => retry.click());
+    expect(summary.rules.find((rule) => rule.rule === "wanted")?.count).toBe(61);
+    expect(reads.summary()).toBe(2);
+    expect(reads.answers).toEqual([{ path: `/api/v0/notebooks/${notebook.id}/lint`, status: 200 }]);
+    await expect(retry).toHaveCount(0);
+    await expect(page.getByRole("main").getByRole("alert")).toHaveCount(0);
+  });
 });

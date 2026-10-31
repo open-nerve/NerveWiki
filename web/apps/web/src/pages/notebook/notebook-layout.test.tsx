@@ -69,13 +69,14 @@ test("the shell says so when the notebooks cannot be loaded; Try again loads the
 });
 
 // M8/P2 design 4.5, M8/P3 design 4.5: the tree's links are its pages; the notebook's other places are a navigation of
-// their own, its history before its trash.
-test("the notebook's history and trash are in a navigation of its own below its pages, not the tree's; each leads there, which it marks", async () => {
+// their own, health before history before trash.
+test("the notebook's health, history and trash are in a navigation of its own below its pages, not the tree's; each place marks its own page", async () => {
   const user = userEvent.setup();
   const { router } = renderApp(`/lab/notebooks/${notebookJSON.id}`, withNotebooks());
   await screen.findByRole("heading", { level: 1, name: "Plans" });
 
   const tree = screen.getByRole("navigation", { name: "Pages of Plans" });
+  expect(within(tree).queryByRole("link", { name: "Health" })).toBeNull();
   expect(within(tree).queryByRole("link", { name: "Trash" })).toBeNull();
   expect(within(tree).queryByRole("link", { name: "History" })).toBeNull();
   const places = screen.getByRole("navigation", { name: "More of Plans" });
@@ -83,7 +84,7 @@ test("the notebook's history and trash are in a navigation of its own below its 
     within(places)
       .getAllByRole("link")
       .map((link) => link.textContent)
-  ).toEqual(["History", "Trash"]);
+  ).toEqual(["Health", "History", "Trash"]);
   const history = within(places).getByRole("link", { name: "History" });
   const trash = within(places).getByRole("link", { name: "Trash" });
   expect(trash.getAttribute("aria-current")).toBeNull();

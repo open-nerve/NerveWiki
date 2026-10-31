@@ -3,7 +3,8 @@ import { useId, useRef, useState, type FormEvent } from "react";
 
 import { useForm } from "../../app/form";
 import { canMoveNode } from "../../app/source-permissions";
-import { duplicateText, useNodeNavigate } from "./duplicate-text";
+import { duplicateText } from "./duplicate-text";
+import { useNodeNavigate } from "../node-target";
 import type { HeldDialog } from "../../app/held-dialog";
 import { pagesLocked } from "../../app/pages-locked";
 import { Alert } from "../../components/ui/alert";

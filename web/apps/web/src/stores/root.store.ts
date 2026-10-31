@@ -22,6 +22,7 @@ import { OwnerlessService } from "../services/ownerless.service";
 import { EditLeaveService, PageService } from "../services/page.service";
 import { TransferService } from "../services/transfer.service";
 import { WorkspaceService, type Workspace } from "../services/workspace.service";
+import { WikiService } from "../services/wiki.service";
 import type { Session } from "../session/session";
 import { AccountStore } from "./account.store";
 import { ApiTokenStore } from "./api-token.store";
@@ -82,6 +83,8 @@ export class RootStore {
   readonly apiTokens: ApiTokenStore | undefined;
   /** The signed-in account's workspaces; undefined while the tab is signed out. */
   readonly workspaces: WorkspaceStore | undefined;
+  /** Health reads use this login's client; their results belong to SWR. */
+  readonly wiki: WikiService | undefined;
   /** The edits of this generation, from as they begin until they end or are not opened (M5/P4 design 3.4). */
   readonly edits = observable.set<PageEditing>([], { deep: false });
   private readonly members: MemberService | undefined;
@@ -137,6 +140,7 @@ export class RootStore {
     this.account = client && new AccountStore(new AccountService(client));
     this.apiTokens = client && new ApiTokenStore(new ApiTokenService(client));
     this.workspaces = client && new WorkspaceStore(new WorkspaceService(client));
+    this.wiki = client && new WikiService(client);
     this.members = client && new MemberService(client);
     this.invitations = client && new InvitationService(client);
     this.notebooks = client && new NotebookService(client);

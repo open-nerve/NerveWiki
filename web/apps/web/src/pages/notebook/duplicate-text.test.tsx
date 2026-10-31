@@ -14,7 +14,8 @@ import type { RootStore } from "../../stores/root.store";
 import { json, notebookJSON, workspaceJSON, type Answer } from "../../test/fakes";
 import { assetNode, notes, pageNode, pagePath, pageServer } from "../../test/page-server";
 import { renderApp } from "../../test/render";
-import { duplicateText, nodeTarget, sourceAtPath, useNodeNavigate, type DuplicateContext } from "./duplicate-text";
+import { duplicateText, sourceAtPath, type DuplicateContext } from "./duplicate-text";
+import { nodeTarget, useNodeNavigate } from "../node-target";
 import { useNotebook } from "./notebook-layout";
 
 const raw = pageNode(71, "raw");

@@ -6,7 +6,7 @@ import { useWorkspace } from "../workspace/workspace-layout";
 /**
  * NotebookPlaces is the notebook's places other than its pages in the
  * left column, below its page tree (M8 design 4.13; M8/P2 design 4.5,
- * M8/P3 design 4.5): its history, then its trash. A navigation of its
+ * M8/P3 design 4.5, M10/P3): health, history, then trash. A navigation of its
  * own, named: the tree's links are its pages, each, as the tree's tests
  * and readers take them. Each is marked current on its own page, not on
  * what is under it, a changeset's page or a trash item's preview, which
@@ -18,6 +18,9 @@ export function NotebookPlaces({ notebook }: { notebook: Notebook }) {
   const home = `/${slug}/notebooks/${notebook.id}`;
   return (
     <nav aria-label={t("notebook.places", { notebook: notebook.name })} className="flex flex-col">
+      <NavItem end to={`${home}/health`}>
+        {t("health.title")}
+      </NavItem>
       <NavItem end to={`${home}/history`}>
         {t("history.title")}
       </NavItem>
