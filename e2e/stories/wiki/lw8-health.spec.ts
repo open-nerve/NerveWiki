@@ -759,6 +759,62 @@ test.describe("LW8 (page)", () => {
     }
   });
 
+  test("focus: a real wheel keeps More focused while its non-final page is pending and after it arrives", async ({
+    api,
+    signedInPage,
+  }, info) => {
+    const team = await newOnboardedTeam(api, info);
+    const { notebook, overview } = await healthPagination(api, team.pat, team.workspace.slug);
+    const page = await signedInPage(team.tokens);
+    const reads = healthReads(page, notebook.id);
+    await page.setViewportSize({ width: 1280, height: 600 });
+    await page.goto(wikiPagePath(team.workspace.slug, notebook.id, overview.id));
+    await healthAnswer(page, notebook, () => healthLink(page, notebook).click());
+    const card = healthCard(page, "wanted");
+    const more = card.getByRole("button", { name: "More", exact: true });
+    await more.hover();
+    const held = await holdHealthGet(page, `/api/v0/notebooks/${notebook.id}/lint/wanted`);
+    try {
+      await more.press("Enter");
+      await held.entered;
+      await expect(more).toBeFocused();
+      const before = await page.evaluate(() => {
+        window.addEventListener("wheel", (event) => Object.assign(window, { lw8WheelTrusted: event.isTrusted }), {
+          once: true,
+          capture: true,
+          passive: true,
+        });
+        return { top: window.scrollY, height: document.documentElement.scrollHeight, viewport: window.innerHeight };
+      });
+      expect(before.height).toBeGreaterThan(before.viewport);
+      await page.mouse.wheel(0, before.top > 0 ? -200 : 200);
+      await expect
+        .poll(() => page.evaluate(() => (window as unknown as { lw8WheelTrusted?: boolean }).lw8WheelTrusted))
+        .toBe(true);
+      await expect.poll(() => page.evaluate(() => window.scrollY)).not.toBe(before.top);
+      await expect(more).toBeFocused();
+      held.release();
+      await expect(card.getByRole("listitem")).toHaveCount(55);
+      await expect(more).toBeVisible();
+      expect([reads.summary(), reads.rule("wanted")]).toEqual([1, 1]);
+      await info.attach("wheel-focus-after-response", {
+        body: JSON.stringify({
+          before,
+          after: await page.evaluate(() => ({
+            top: window.scrollY,
+            trustedWheel: (window as unknown as { lw8WheelTrusted?: boolean }).lw8WheelTrusted,
+            focusedTag: document.activeElement?.tagName,
+            focusedText: document.activeElement?.textContent,
+          })),
+        }),
+        contentType: "application/json",
+      });
+      await expect(more, "a real wheel keeps focus on More after the non-final response").toBeFocused();
+    } finally {
+      await held.finish();
+    }
+  });
+
   test("real page clicks, Back, Forward and same-address sidebar reentry each recalculate health without reloading", async ({
     api,
     signedInPage,
@@ -843,6 +899,7 @@ test.describe("LW8 (page)", () => {
     await moveNode(api, team.pat, asset.id, { parent_id: next.id });
     const target = card.getByRole("link", { name: "raw/NewParent/evidence.txt", exact: true });
     await expect(target).toBeVisible();
+    await expect(target).toHaveAttribute("href", wikiPagePath(team.workspace.slug, notebook.id, next.id));
     await expect(card.getByText("1 issue", { exact: true })).toBeVisible();
     expect(await page.getByRole("main").locator("time").first().getAttribute("datetime")).toBe(computed);
     expect(reads.total()).toBe(1);
@@ -880,6 +937,92 @@ test.describe("LW8 (page)", () => {
     await expect(card.getByRole("listitem")).toHaveCount(1);
     await expect(card.getByText("1 issue", { exact: true })).toBeVisible();
     expect(reads.total()).toBe(1);
+    await healthDocumentStayed(page);
+  });
+
+  test("a real tree transport failure preserves health and its own Try again reads current paths without rerunning lint", async ({
+    api,
+    signedInPage,
+  }, info) => {
+    const team = await newOnboardedTeam(api, info);
+    const { notebook, overview } = await healthPagination(api, team.pat, team.workspace.slug);
+    const old = await createPage(api, team.pat, notebook.id, "Old", notebook.source_root_id);
+    const next = await createPage(api, team.pat, notebook.id, "NewParent", notebook.source_root_id);
+    const asset = await uploadAsset(
+      api,
+      team.pat,
+      notebook.id,
+      { name: "paths.txt", bytes: utf8("Keep this finding.\n") },
+      old.id
+    );
+    const page = await signedInPage(team.tokens);
+    const reads = healthReads(page, notebook.id);
+    const nodesPath = `/api/v0/notebooks/${notebook.id}/nodes`;
+    const lintPath = `/api/v0/notebooks/${notebook.id}/lint`;
+    let nodeRequests = 0;
+    const nodeAnswers: number[] = [];
+    page.on("request", (request) => {
+      if (request.method() === "GET" && new URL(request.url()).pathname === nodesPath) nodeRequests += 1;
+    });
+    page.on("response", (response) => {
+      if (response.request().method() === "GET" && new URL(response.url()).pathname === nodesPath)
+        nodeAnswers.push(response.status());
+    });
+    await connectedHealth(page, team.workspace.slug, notebook, overview.id);
+    const card = healthCard(page, "undigested_sources");
+    await expect(card.getByRole("link", { name: "raw/Old/paths.txt", exact: true })).toBeVisible();
+    const computed = await page.getByRole("main").locator("time").first().getAttribute("datetime");
+    const before = { requests: nodeRequests, answers: nodeAnswers.length };
+    let failedAt = 0;
+    await page.route(
+      (url) => url.pathname === nodesPath,
+      async (route) => {
+        failedAt = Date.now();
+        await route.abort("failed");
+      },
+      { times: 1 }
+    );
+    watchOf(page).expectConsole({ errors: ["Failed to load resource: net::ERR_FAILED"] });
+    const failure = page.waitForEvent("requestfailed", {
+      predicate: (request) => new URL(request.url()).pathname === nodesPath,
+    });
+    await moveNode(api, team.pat, asset.id, { parent_id: next.id });
+    expect((await failure).failure()?.errorText).toBe("net::ERR_FAILED");
+    const paths = page.getByRole("main").getByRole("group", { name: "Page paths", exact: true });
+    await expect(paths.getByRole("alert")).toBeVisible();
+    await expect(card.getByRole("listitem")).toHaveCount(1);
+    await expect(card.getByText("1 issue", { exact: true })).toBeVisible();
+    await expect(card.getByRole("link", { name: "raw/Old/paths.txt", exact: true })).toBeVisible();
+    expect(await page.getByRole("main").locator("time").first().getAttribute("datetime")).toBe(computed);
+    expect([nodeRequests, nodeAnswers.length, reads.total()]).toEqual([before.requests + 1, before.answers, 1]);
+    expect(Date.now() - failedAt, "manual tree retry precedes the normal first 5s automatic retry").toBeLessThan(5_000);
+    const retried = page.waitForEvent("request", {
+      predicate: (request) =>
+        request.method() === "GET" && [nodesPath, lintPath].includes(new URL(request.url()).pathname),
+    });
+    await paths.getByRole("button", { name: "Try again", exact: true }).click();
+    const request = await retried;
+    await info.attach("tree-manual-retry", {
+      body: JSON.stringify({
+        before,
+        firstRetryPath: new URL(request.url()).pathname,
+        nodeRequests,
+        nodeAnswers,
+        lintRequests: reads.total(),
+      }),
+      contentType: "application/json",
+    });
+    expect(new URL(request.url()).pathname, "tree Try again must issue nodes without recalculating lint").toBe(
+      nodesPath
+    );
+    expect((await request.response())?.status()).toBe(200);
+    await expect(card.getByRole("link", { name: "raw/NewParent/paths.txt", exact: true })).toBeVisible();
+    await expect(paths).toHaveCount(0);
+    await expect(card.getByRole("listitem")).toHaveCount(1);
+    await expect(card.getByText("1 issue", { exact: true })).toBeVisible();
+    expect(await page.getByRole("main").locator("time").first().getAttribute("datetime")).toBe(computed);
+    expect([nodeRequests, nodeAnswers.length, reads.total()]).toEqual([before.requests + 2, before.answers + 1, 1]);
+    expect(nodeAnswers.at(-1)).toBe(200);
     await healthDocumentStayed(page);
   });
 
