@@ -34,7 +34,7 @@ LIMIT 10000
 SELECT count(*)::bigint FROM qualified;
 
 -- name: LintOrphanItemsFirst :many
-WITH candidates AS MATERIALIZED (SELECT unnest(sqlc.arg(candidate_ids)::uuid[]) AS id),
+WITH candidates AS MATERIALIZED (SELECT unnest(sqlc.arg(candidate_ids)::uuid[]) AS id ORDER BY id),
  excluded_emitters AS MATERIALIZED (SELECT unnest(sqlc.arg(excluded_emitters)::uuid[]) AS id)
 SELECT ip.node_id
 FROM candidates c CROSS JOIN LATERAL (
@@ -55,10 +55,10 @@ WHERE true
   ) current_emitter
   WHERE l.resolved_id=ip.node_id
  )
-ORDER BY ip.node_id LIMIT sqlc.arg(take)::integer;
+ORDER BY c.id LIMIT sqlc.arg(take)::integer;
 
 -- name: LintOrphanItemsAfter :many
-WITH candidates AS MATERIALIZED (SELECT unnest(sqlc.arg(candidate_ids)::uuid[]) AS id),
+WITH candidates AS MATERIALIZED (SELECT unnest(sqlc.arg(candidate_ids)::uuid[]) AS id ORDER BY id),
  excluded_emitters AS MATERIALIZED (SELECT unnest(sqlc.arg(excluded_emitters)::uuid[]) AS id)
 SELECT ip.node_id
 FROM candidates c CROSS JOIN LATERAL (
@@ -80,7 +80,7 @@ WHERE true
   WHERE l.resolved_id=ip.node_id
  )
  AND c.id>sqlc.arg(after_id)::uuid
-ORDER BY ip.node_id LIMIT sqlc.arg(take)::integer;
+ORDER BY c.id LIMIT sqlc.arg(take)::integer;
 
 -- name: LintFrontmatterCount :one
 WITH candidates AS MATERIALIZED (SELECT unnest(sqlc.arg(candidate_ids)::uuid[]) AS id),

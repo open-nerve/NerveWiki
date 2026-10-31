@@ -166,6 +166,28 @@ func lintRulesPhysical(t *testing.T, plan planNode, ev lintPlanEvidence, rule st
 	}
 }
 
+func lintOrphanItemsWork(t *testing.T, ev lintPlanEvidence, wanted int) {
+	t.Helper()
+	// This fresh fixture has only self inbound links for every candidate.
+	// All current reader heads therefore qualify. The requested page bounds
+	// target PK checks plus at most one current-emitter PK check per item,
+	// and one resolved-target anti probe per item; hidden rows add no work.
+	// Keep this separate from the unchanged broad range/height guards.
+	work := lintWorkWithoutPlannerProbes(t, ev)
+	for _, relation := range []struct {
+		name  string
+		bound int64
+	}{{"indexed_pages_pkey", 2 * int64(wanted)}, {"page_links_resolved_id_source_id_idx", int64(wanted)}} {
+		w, ok := work[relation.name]
+		if !ok {
+			t.Fatalf("Orphan items have no actual work counter for %s", relation.name)
+		}
+		if w.Scans > relation.bound || w.Returned > relation.bound || w.Fetched > relation.bound {
+			t.Errorf("Orphan items inspected candidates past the requested page: %s=%+v > %d for %d eligible items", relation.name, w, relation.bound, wanted)
+		}
+	}
+}
+
 func TestLintPlansRules(t *testing.T) {
 	if testing.Short() {
 		t.Skip("fresh rules matrix and complete parent-relation cost")
@@ -222,6 +244,9 @@ func TestLintPlansRules(t *testing.T) {
 												t.Fatalf("real %s/%s rows=%d want %d", rule, part.name, ev.Rows, want)
 											}
 											lintRulesPhysical(t, plan, ev, rule)
+											if rule == "Orphan" && part.phase != "Count" {
+												lintOrphanItemsWork(t, ev, want)
+											}
 											compare(t, fmt.Sprintf("%s/%t/%s/%s", stats, generic, rule, part.name), ev)
 										})
 									}

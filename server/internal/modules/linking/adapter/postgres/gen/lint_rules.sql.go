@@ -519,7 +519,7 @@ func (q *Queries) LintOrphanCount(ctx context.Context, arg LintOrphanCountParams
 }
 
 const lintOrphanItemsAfter = `-- name: LintOrphanItemsAfter :many
-WITH candidates AS MATERIALIZED (SELECT unnest($5::uuid[]) AS id),
+WITH candidates AS MATERIALIZED (SELECT unnest($5::uuid[]) AS id ORDER BY id),
  excluded_emitters AS MATERIALIZED (SELECT unnest($6::uuid[]) AS id)
 SELECT ip.node_id
 FROM candidates c CROSS JOIN LATERAL (
@@ -541,7 +541,7 @@ WHERE true
   WHERE l.resolved_id=ip.node_id
  )
  AND c.id>$3::uuid
-ORDER BY ip.node_id LIMIT $4::integer
+ORDER BY c.id LIMIT $4::integer
 `
 
 type LintOrphanItemsAfterParams struct {
@@ -581,7 +581,7 @@ func (q *Queries) LintOrphanItemsAfter(ctx context.Context, arg LintOrphanItemsA
 }
 
 const lintOrphanItemsFirst = `-- name: LintOrphanItemsFirst :many
-WITH candidates AS MATERIALIZED (SELECT unnest($4::uuid[]) AS id),
+WITH candidates AS MATERIALIZED (SELECT unnest($4::uuid[]) AS id ORDER BY id),
  excluded_emitters AS MATERIALIZED (SELECT unnest($5::uuid[]) AS id)
 SELECT ip.node_id
 FROM candidates c CROSS JOIN LATERAL (
@@ -602,7 +602,7 @@ WHERE true
   ) current_emitter
   WHERE l.resolved_id=ip.node_id
  )
-ORDER BY ip.node_id LIMIT $3::integer
+ORDER BY c.id LIMIT $3::integer
 `
 
 type LintOrphanItemsFirstParams struct {
