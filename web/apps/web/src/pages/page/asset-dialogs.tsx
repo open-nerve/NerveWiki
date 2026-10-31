@@ -2,7 +2,8 @@ import { observer } from "mobx-react-lite";
 import { useId, useRef, useState, type FormEvent } from "react";
 
 import { useForm } from "../../app/form";
-import { duplicateText, useNodeNavigate } from "../notebook/duplicate-text";
+import { duplicateText } from "../notebook/duplicate-text";
+import { useNodeNavigate } from "../node-target";
 import type { HeldDialog } from "../../app/held-dialog";
 import { notebookNameProblem, notebookNameTexts } from "../../app/notebook-name";
 import type { FieldMessage } from "../../app/problem-messages";

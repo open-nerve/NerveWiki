@@ -185,6 +185,13 @@ export const routes: RouteObject[] = [
                             },
                           },
                           {
+                            path: "health",
+                            lazy: async () => {
+                              const { HealthPage } = await import("../pages/notebook/health-page");
+                              return { Component: HealthPage };
+                            },
+                          },
+                          {
                             // The notebook's history, its filters in the query (M8/P3 design 4.2).
                             path: "history",
                             lazy: async () => {

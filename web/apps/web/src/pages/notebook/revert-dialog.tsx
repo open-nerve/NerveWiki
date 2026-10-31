@@ -4,7 +4,8 @@ import { Link } from "react-router";
 import { useSWRConfig } from "swr";
 
 import { useForm, type LocalProblems } from "../../app/form";
-import { sourceHistoryText, useNodeNavigate } from "./duplicate-text";
+import { sourceHistoryText } from "./duplicate-text";
+import { useNodeNavigate } from "../node-target";
 import { lockedText } from "../../app/problem-messages";
 import { FormField } from "../../components/form-field";
 import { Alert } from "../../components/ui/alert";

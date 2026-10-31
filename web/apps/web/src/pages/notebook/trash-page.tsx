@@ -19,7 +19,8 @@ import { openOf } from "../open-node";
 import { watchReader } from "../page/readers-input";
 import { useWorkspace } from "../workspace/workspace-layout";
 import { useNotebook } from "./notebook-layout";
-import { sourceHistoryText, useNodeNavigate } from "./duplicate-text";
+import { sourceHistoryText } from "./duplicate-text";
+import { useNodeNavigate } from "../node-target";
 import type { FocusJob } from "./transfer-page";
 import {
   namesOf,

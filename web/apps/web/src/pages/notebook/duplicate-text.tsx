@@ -1,17 +1,16 @@
 import { observer } from "mobx-react-lite";
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
-import { useLocation, useNavigate } from "react-router";
+import { useLocation } from "react-router";
 
 import { useMounted } from "../../app/mounted";
 import { errorText } from "../../app/problem-messages";
 import { useT } from "../../i18n/i18n";
 import { ApiError } from "../../services/api";
-import type { TreeNode } from "../../services/page.service";
 import type { PageTreeStore } from "../../stores/page-tree.store";
 import { openOf } from "../open-node";
+import { nodeTarget, type NodeTarget } from "../node-target";
 import { useWorkspace } from "../workspace/workspace-layout";
 
-export type NodeTarget = { node: TreeNode; path: string };
 export type DuplicateContext = {
   kind?: "sync" | "background" | "import";
   path?: string;
@@ -24,22 +23,6 @@ type SourceProblem = { code: string; duplicate_of?: string | null; to?: string |
 const attempted = new WeakMap<PageTreeStore, WeakMap<object, Set<string>>>();
 const reading = new WeakMap<PageTreeStore, Promise<void>>();
 
-/** Canonical notebook paths include all ancestors and the final page's .md suffix. */
-export function nodeTarget(pages: PageTreeStore, id: string): NodeTarget | undefined {
-  const node = pages.nodeById(id);
-  const ancestors = pages.nodeAncestors(id);
-  if (
-    node === undefined ||
-    ancestors === undefined ||
-    [node, ...ancestors].some((each) => each.notebook_id !== pages.notebookId)
-  )
-    return undefined;
-  return {
-    node,
-    path: [...ancestors.map((each) => each.name), node.name].join("/") + (node.kind === "page" ? ".md" : ""),
-  };
-}
-
 export function sourceAtPath(pages: PageTreeStore, path: string): NodeTarget | undefined {
   const target = atPath(pages, path);
   return target !== undefined && pages.isSource(target.node.id) ? target : undefined;
@@ -51,22 +34,6 @@ function atPath(pages: PageTreeStore, path: string): NodeTarget | undefined {
     if (target?.path === path) return target;
   }
   return undefined;
-}
-
-/** A node is looked up again at navigation time, including an attachment's current parent. */
-export function useNodeNavigate(pages: PageTreeStore): (id: string) => void {
-  const navigate = useNavigate();
-  const { slug } = useWorkspace();
-  const mounted = useMounted();
-  return (id) => {
-    const target = nodeTarget(pages, id);
-    if (!mounted() || pages.notebook === undefined || target === undefined) return;
-    const open = openOf(
-      { id, kind: target.node.kind, parent: target.node.parent_id },
-      `/${slug}/notebooks/${pages.notebookId}`
-    );
-    void navigate(open.to, { state: open.state });
-  };
 }
 
 /** UI-only rich text. The app's ordinary errorText keeps its string contract. */
