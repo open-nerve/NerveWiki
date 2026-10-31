@@ -244,7 +244,8 @@ BOOTSTRAP_THIRD = ^Test(The[F-Z]|T[i-z]|[U-Z])
 # 379/425/590/403 秒；这是一次分支样本，不是指定两次 main 的均值，也不代表整个工作流成功。
 # FIFTH 合并 TheMCP、TheLint、TheWikiTools；第二、三份显式排除它。FIRST 和第四份现有成员不变。
 # 既有 494 个编译顶层静态分配为 167/39/114/122/52；未改测试名，Go 15m 与 bootstrap job 25m 不变。
-# 新五份完整双轮及指定两次 main 的各份 Test 均值 <450 秒仍待最终性能修复输入上实测。
+# 18b 当前五份各两轮已实测：495顶层167/39/114/123/52；process均值310.418/191.582/245.091/278.787/227.605秒。
+# 精确分支CI41171083998 attempt1五份Test为336/198/372/386/288秒；指定merge/record两次main各份均值<450秒仍待真实验收。
 BOOTSTRAP_FIFTH = ^TestThe(MCP|Lint|WikiTools)
 .PHONY: test-go-race
 test-go-race: ## 竞态检测下运行组合根（internal/bootstrap）之外的全部 Go 包（CI 的一份；需要 Docker）

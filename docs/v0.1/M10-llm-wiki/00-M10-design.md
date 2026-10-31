@@ -4,12 +4,13 @@
 |---|---|
 | 里程碑 | M10 模式契约与 LLM Wiki（`M10-llm-wiki`） |
 | 日期 | 2026-10-24 |
-| 状态 | 进行中；P1、P2已完成。P2done精确f6bd0cde的[CI40861860430](https://github.com/open-nerve/NerveWiki/actions/runs/40861860430) attempt1全11作业/必需步骤成功，当时释放P3设计阶段；b02设计自身CI与S1入口已接受；S1-0容量调整已提交89d36454，S1-0a来源表示前置已实现，结果见P3§10.1。[P3设计](03-P3-lint-health.md)及[设计审查](reviews/P3-design-review.md)记录决定49–60与原席复核；原决定49–60设计已由主持者接受；新增决定62具体第二稿经三位独立审查及原席复核后已由主持者接受设计语义，S1/S2尚未完成，P4/P5与M10收尾未开始，不开始M11。历史失败及当时待验文字保留。 |
+| 状态 | 进行中；P1、P2已完成；S1服务端、来源整区、八规则、REST/MCP两scope及LW8 API/MCP已实施；18b完整本地门禁、248units/262legs/786阶段控制、五片各两轮与精确分支CI41171083998 attempt1的13jobs均已接受。独立审查A/B/C2的初稿与原件附记均已由主持者接受，无未关闭的已核实Important/Minor/Nit；Q-B1作为已知限制关闭审查疑问，性能边界仍留M12。文档提交自身minimum/gen/CI、合并/record及指定两main配对另行，S2未释放；P3/M10继续进行中，P4/P5/M11未开始。正文保留的前置pending是历史时点，现行进度仅见第12节当前表。 |
+| 来源前置发布时状态（历史） | 进行中；P1、P2已完成。P2done精确f6bd0cde的[CI40861860430](https://github.com/open-nerve/NerveWiki/actions/runs/40861860430) attempt1全11作业/必需步骤成功，当时释放P3设计阶段；b02设计自身CI与S1入口已接受；S1-0容量调整已提交89d36454，S1-0a来源表示前置已实现，结果见P3§10.1。[P3设计](03-P3-lint-health.md)及[设计审查](reviews/P3-design-review.md)记录决定49–60与原席复核；原决定49–60设计已由主持者接受；新增决定62具体第二稿经三位独立审查及原席复核后已由主持者接受设计语义，S1/S2尚未完成，P4/P5与M10收尾未开始，不开始M11。历史失败及当时待验文字保留。 |
 | 依赖 | M9（MCP 工具与 prompt 注册表）、M7（导出贡献者、附件进树与链接）、M6（链接索引）、M8（变更集的类型、撤销与后台任务）；总体设计 12.3 照此修订（第 7 节"总体设计的修订"） |
 | 上级文档 | [v0.1 总体设计](../v0.1-design.md) 第 3.3–3.10、4.2、4.4、4.5、5、6.1–6.3、7.1、7.2、8.2、8.3、8.5、9.2、10、10.1、12.1–12.6、13、14、15 节 |
 | 代码位置的写法 | 同 [M9 总设计](../M9-mcp/00-M9-design.md)：模块写作 `page/app/unit.go:187`（`server/internal/modules/` 之下）；`platform/…`、`bootstrap/…`、`shared/…`、`archtest/…` 在 `server/internal/` 之下；迁移写作 `00009_notebook_notebooks.sql:5`（`server/migrations/sql/`）；SDK 写作 `sdk/mcp/protocol.go:966`（`~/go/pkg/mod/github.com/modelcontextprotocol/go-sdk@v1.8.0/`）；前端写作 `web/…/pages/page/page-layout.tsx:153`（`web/apps/web/src/` 之下）；e2e 写作 `e2e/fixtures/mcp.ts:41`。行号都是 `91ee78d8` 的（`ebed0e07` 只加了这份文档） |
 
-**当前来源格式**：S1-0a已用已有nullable字段保留正文NULL与合法空属性路径的非NULL空串，writer/generated与Extractor 2一起交付；现有读者/API与管理员reindex边界见[P3](03-P3-lint-health.md) §3.0，真实验证及代表成本集中见§10.1。D/F、S66/67/69、P4及完整成本/最终门禁仍待后续。
+**当前来源格式与lint**：Extractor2以既有nullable字段保留正文NULL与空属性非NULL空串，S1八规则及真实D/F、S63–S69和完整本地成本已核；管理员reindex和旧v1兼容边界见[P3](03-P3-lint-health.md) §3.0/§10.1及[S1审查](reviews/P3-S1-lint-protocol-review.md)。P4 Unknown/未改页coverage仍未实施；生产MVCC、停机和负载留M12。文档自身与Step集成验收另列。
 
 ---
 
@@ -288,6 +289,17 @@ P3决定62的S1-0a索引表示前置已实现（不是新DDL）：已有page_lin
 
 ### 4.11 lint
 
+**P3/S1实际交付（决定63–65）**：八规则、完整来源区、唯一 sources slot、正文/空属性区分、完整身份及分页、同快照编排、名额/singleflight/取消清理、两REST和notebook/account两scope MCP均已实现。wiki持有自己的DTO，经bootstrap模块根逐字段转换；Rules.PrepareRules与旧guard的Prepare分开。长TitleKeyContext保持有状态NFC→Fold→NFC与分块取消，不改旧写入热路径。每规则只记专属阶段，共享sources另列，失败/expiry只记实际可观察统计。
+
+每caller有独立授权和期限，成功交付前再次授权。名额为请求半池的 `max(1,floor(floor(max_conns/2)/2))`，运行期限为 `min(10s,request_timeout/2)`（含等名额）；singleflight在名额外。唯一Runs owner负责expiry、一次发布、Stop和等待清理；清理仍占slot，不能承诺在计算预算内结束。effective standard的root为nil；stored standard允许explicit LLM合同与拟议root。快照首条应用SQL重新读模式，所有page/linking端口及最后Paths共享ctx；SourceArea.LintData只在该快照内持有metadata bundle，不跨请求缓存，不在已有事务里嵌套调用。
+
+`lint.read`允许reader以上。摘要的用例次序是notebook404→503；规则页为cursor400→notebook404→rule404→mode409→limit422→503，已知rule的cursor binding在授权前，未知rule只先验cursor形状。notebook MCP保留外层Gate HTTP404；account和通过Gate后的tool-app按相同用例次序。busy沿用Retry-After。summary每规则最多5项，limit默认50、范围1–100，count在10000处表示下界；显示目标截256B但不裁完整身份。item_key绑定完整身份，cursor绑定version/rule/notebook/implicit或explicit scope、整体≤2048B、内部规范key≤256B。私有Fit共同缩预览、Fit0保留StartCursor，真实SDK答复≤49152B，说明≤3796B。
+
+18b本机costs17、costs-lint14×两轮、guards15均通过；100k summary wall中位895.245/873.887ms，TotalAlloc357.802/357.849MiB仍未达最初250MiB目标，固定guard与worker2s/request4s未提高。旧版本MVCC/generic物理范围仍留M12。 Sources/Nodes、各查询、asset信息和最后Paths均有实际消费者及同snapshot控制；精确结果与旧失败见[P3 §10.1](03-P3-lint-health.md#101-s1)和[S1审查](reviews/P3-S1-lint-protocol-review.md)。以下规则合同继续适用，S2健康页尚未实现。
+
+**以下原设计条款的时点说明**：语义合同继续适用；其中“首版两份metadata”“未测目标”“完整成本仍待”及决定62发布时pending为设计/前置历史，现行一次metadata、实测与接受状态以上述当前段及P3§10.1为准。
+
+
 **lint 不看来源里写的内容**（第 11 节主持者的决定）：来源只写一次，它们里面的断链、歧义与坏的 frontmatter 谁也修不了（粘贴的文章与导入的文档常带相对链接与 `---` 的块），报出来只是永远的噪声，lint 的 playbook 的"能机械修的就修"还会去修、被拒。所以在 LLM Wiki 里：来源发出的链接不产生待建页面与歧义，也不让 wiki 的页不算孤儿；来源的 frontmatter 不查；来源只由"未消化"一条判定。普通笔记本里没有来源区，每页照常。 附件跟随仍需读取current非空来源页的正文索引边，仅用于undigested_sources的F关系，不贡献wanted/ambiguous/orphans；P3不读取来源正文。
 
 **规则**（总体设计 5.6；"适用"一列：通用的两种模式都有；"链接它的页"在 LLM Wiki 里都不含来源）：
@@ -459,6 +471,9 @@ M10 的状态照 M9 4.16：P1–P5 与收尾完成之后是"实现完成，待�
 
 ## 5. 接口
 
+**P3/S1新增接口已落地**：两REST以及notebook/account两scope的 `lint`、`pending_sources` 使用同wiki.Module；真实generated client、strict schema、52格LLM工具矩阵、每个新码的真实答出和跨协议分页已验。拒绝次序、Fit0/StartCursor、48KiB实际SDK及说明余量见[S1审查](reviews/P3-S1-lint-protocol-review.md)；S2健康网页仍待。
+
+
 **REST**（先写 `api/`，再写代码；新的 4 个操作，加上改的）：
 
 | 操作 | 方法与路径 | 模块 | 说明 |
@@ -548,6 +563,9 @@ P2 增量逐格闭合：S1 write/edit/batch→source_immutable、delete→source
 Nerve 没有 MCP、prompt、数据的 lint、模式的契约或只增不改的区域（调查只读核对 `nerve-project`）。可以照搬的一样：**建的时候在同一个事务里写种子**：Nerve 建项目时在建项目的事务里写默认的状态（`nerve-project/server/internal/modules/project/app/create_project.go:113-139`），e2e 断言它们"随项目一起"写下（`nerve-project/e2e/fixtures/assert/project.ts:28-39`）。M10 的模板照这个做（4.4），e2e 的 LW1 照它断言模板的两页与笔记本同一个时刻、同一个变更集。其余沿用本项目自己的：写入单元、守卫、参与者与观察者（M4–M6）；派生数据由单元维护（M8/P5 的搜索入队）与"等于重建"的测试（M6）；导出的快照与贡献者（M7）；撤销的计划与临时名称（M8/P3、M9/P3）；MCP 的注册表与它的契约文件（M9）。
 
 ## 7. Phase 划分
+
+**P3/S1进度与移交现状**：S1服务端、来源整区、八规则、REST/MCP两scope及LW8 API/MCP已实施；18b完整本地门禁、248units/262legs/786阶段控制、五片各两轮与精确分支CI41171083998 attempt1的13jobs均已接受。独立审查A/B/C2的初稿与原件附记均已由主持者接受，无未关闭的已核实Important/Minor/Nit；Q-B1作为已知限制关闭审查疑问，性能边界仍留M12。文档提交自身minimum/gen/CI、合并/record及指定两main配对另行，S2未释放；P3/M10继续进行中，P4/P5/M11未开始。 M6六行及四项注意已完成，本次文档将其status改done；M7第5项、M9第8项/内置说明余量完成，剩余P4/P5事项使两份仍open。M11只是内部scope/旧格式移交，不启动升级；M12实际成本与MVCC/负载/停机边界保持open。下表和既有移交规划用于说明分工，当前进度唯一来源为第12节的当前表。
+
 
 | P | 名称 | 交付 | 验证 |
 |---|---|---|---|
@@ -648,6 +666,9 @@ Nerve 没有 MCP、prompt、数据的 lint、模式的契约或只增不改的�
 
 ## 8. 本 M 建立与注册的扩展点
 
+**P3/S1已接的扩展点**：wiki模块根把HTTP、两scope工具和唯一Runs停止口交给同一组合根；page.SourceArea/LintData与linking规则在同snapshot ctx下读取，逐字段DTO隔离模块。`lint.read`、Actions/access规则、两REST与两工具矩阵均已接；无写时lint或新的长期缓存。P4 Capture/ingest、P5 prompt与M11批准流程继续待各自阶段实现。
+
+
 建立（总体设计 12.4）：
 
 - **笔记本的创建（事务内的播种者）**：notebook 的 `app/extension.go` 的值 `NotebookCreation`（笔记本、工作区、模式、来源根的 id、模板的语言、执行者、客户端、时刻）与播种者接口 `Seeder`（方法 `NotebookCreated`）：在插入笔记本与管理员之后、可见性之前同步调用，交回它写下的（来源根的 id，或空：模板交回的是 `Seed` 写下的那一页的 id）与错误，任何错误整个回滚；`CreateNotebook` 核对恰有一个播种者交回来源根、且等于先定下的 id，没有、两个或不同都是缺陷（500）；`notebook.New` 在没有播种者时 panic。模块根上以替身证明到达、次序、交回与回滚（`notebook/extension_test.go`）。注册者：wiki 的模板。
@@ -677,6 +698,9 @@ Nerve 没有 MCP、prompt、数据的 lint、模式的契约或只增不改的�
 - 网页：M3 的建笔记本的对话框与设置；M4 的树的行（图标、菜单、来源区的"新建页面"、拖进来源区的确认）；M5 的 `eventHandlers`（`refreshedOnConnect` 不变）；M5 的编辑会话的失去编辑的原因；M6 的解析不到的链接；M7 的附件一节（写者在来源上收起改名、移动、删除）与上传的行的重复的文字；M8 的历史的行、筛选与变更集页，回收站与撤销的对话框；`NotebookPlaces` 的"健康"与"目录"。
 
 ## 9. 测试策略
+
+**P3/S1实证**：当前S01–S69为222units/229legs/687阶段；补充26units/33legs/99阶段，总248/262/786，825个选定heavy区间无重叠。217条原具名断言、2条断言后有终态cleanup panic、1条S52断言后缺Test终态、2条worker panic、2条child panic、2条限定等价、1条scope等价、1条singleClone存活和1条正控分别保留；补充33腿均具名断言。不能统称全部kill。 LW8 API/notebook/account MCP只读故事无DB断言；本机336项E2E及LW8第二轮7项通过，Web179文件3831测试通过。snapshot改名、排队后降级、caller授权和真实注册最后一跳各有专属控制；五片实际495顶层、两轮和13jobs分支CI见[S1审查](reviews/P3-S1-lint-protocol-review.md)。S2 UI十行和健康页故事仍待。
+
 
 决定62验收分账：S1-0a的OF/OS/OB/OW与S63/S64/S65/S68结果见P3§10.1；以下保留全Phase验收义务。P3§7.1 OF/OS/OB/OW用真实parser、literal 1旧行和literal 2新行断言，覆盖三个PageProperties结果分支、四个版本敏感读者及真实管理员reindex的linking阶段回滚、linking失败仍入队、成功linking后queue失败及queue后批失败保留前批，并保留现有CLI控制；S1-2的S66/67/69逐个D First/After/F与四kind控制，不能以一个读者红代三个。S63–S69与原72行分别记账，共79行。P4的changed/untouched Unknown→empty错误、普通编辑保守缺标/重建后新引用与已知新页正例列为P4义务，不算P3已跑。完整门禁、每提交绿与成本/双main容量要求仍按P3。
 
@@ -729,6 +753,9 @@ Nerve 没有 MCP、prompt、数据的 lint、模式的契约或只增不改的�
 
 ## 10. 风险
 
+**P3/S1保留风险（决定64–66）**：18b本机costs17、costs-lint14×两轮、guards15均通过；100k summary wall中位895.245/873.887ms，TotalAlloc357.802/357.849MiB仍未达最初250MiB目标，固定guard与worker2s/request4s未提高。旧版本MVCC/generic物理范围仍留M12。 guards分支单次Test1479/job1501s，在30分钟job余299s，不归因硬件、不外推main配对。当前完整候选数组、晚命中/密集HasSourceProperties仍有成本；强制generic的MVCC全本扫描未改写查询。未实现P4 Unknown/coverage和S2 UI；M12继续生产负载/停机与CI余量。所有等价/存活/panic分类及历史失败见[S1审查](reviews/P3-S1-lint-protocol-review.md)。
+
+
 | 风险 | 缓解 |
 |---|---|
 | 守卫逐步判比净效果严，至少三种形状（4.7）：先放回祖先再临时改名它之下的节点；移入来源区之后的写回（谁也撤销不了）；同一轮里先放回、后删除时的去重 | 只多拒、不多放（4.7 写明理由）；这些撤销要同一个变更集既移出来源区又在里面写或交换；P2 的测试钉住每一种的结论；对话框/报告按4.7给区外还原再移回的步骤，重新移回仍须去重 |
@@ -750,6 +777,20 @@ Nerve 没有 MCP、prompt、数据的 lint、模式的契约或只增不改的�
 | agent 不照 playbook 做 | playbook 只是建议，来源区、保护与保留的标题由守卫强制；真实客户端的人工核对在 v0.1 的最后（4.19） |
 
 ## 11. 负责人确认的决定
+
+### P3/S1主持者的实施决定（负责人可以改判）
+
+编号接原来源修订记录的62；以下为主持者已正式分配的实施决定。
+
+**63．模块与运行细化。** 接受当前wiki模块根与DTO/PrepareRules窄端口、effective standard与explicit LLM范围、TitleKeyContext、专属/共享Timing、expiry通知及唯一Runs/Stop细化。每caller保持独立授权/期限；只在真实snapshot中读取page/linking和最后路径，事务清理仍占运行名额。公开八规则语义、旧写入热路径和平台panic回滚合同不变；不提前实现P4的Capture/ingest。 理由：这是把已审设计的运行与模块边界落实到真实组合根；不增加一套并行调度或写时lint。 边界：实现细化若与将来的M11批准流程冲突，需按真实显式scope重新评估，现有调用不得嵌套已有事务。
+
+**64．索引、实际成本与MVCC限界。** 接受迁移51/52及各自完整Up、必要JSON和5000-links写成本的实际证据。性能说明分别列实际物理工作、计划、generic/DescribeExec与冷暖条件，不以SQL片段代完整迁移。保留旧版本MVCC/generic全本扫描失败与未成功实验；B本轮auto/custom/generic探针作为新增边界证据，Q-B1交M12真实数据复核，不为强制generic实验改写当前查询。summary约358MiB TotalAlloc未达最初250MiB目标，固定guards通过另列；不把目标未达抹去或据此提高阈值。 理由：设计§7.4正证只约束新插入fixture；当前结果正确且已有边界已披露，生产计划/停机和写放大须在M12实际数据验证。 边界：有旧版本或不同统计的生产查询仍可能增加扫描、内存与耗时；当前接受不等于生产物理工作始终有界。
+
+**65．三次CI后的窄修复与容量。** 接受当前18b的Count0/context等价化、snapshot局部metadata bundle、有效frontmatter候选过滤、失败样本RunFinished清理、ORDER双排序、Sources Heads/Values有界ip探测和完整关系HasSourceProperties单探测。保持worker2s/request4s、各fixed guard及Go15m不变。五bootstrap分片和独立costs-lint对应当前495顶层167/39/114/123/52；costs-lint的14条recipe按两轮完整本机运行验收，costs的17条及guards的15条各有一轮完整本机运行，另有当前13作业分支CI验收。guard当前Test1479/job1501秒、30分钟job余299秒仅为本次观察；后续仍盯余量，不调高预算。指定merge/record两次main的各bootstrap Test均值必须各小于450秒后才释放S2。 理由：以真实consumer读量和成本失败为触发修复路径与分份，不以重复重试或单机时间替代CI。 边界：完整候选ID数组仍有分配，当前分支单样本不能保证后续runner；main指定配对或固定guard失败必须先处置。
+
+**66．执行身份、反向对照及审查读界。** 保留每个进程原HEAD/tree及raw；七项minimum实际为0b dirty源码，与18b提交后gen及本轮产品门禁分别记录。当前正式69行和补充控制合计248units/262legs/786阶段，825选定heavy区间不重叠；不把限定等价、singleClone存活、正控、expected/child panic和S52缺Test终态的具名断言混称普通kill。原失败/解析拒绝、8ba至045同树桥、已发布4dd尾注缺失例外永久保留，不强改历史。只native第13全nonbootstrap本机命令用perbinary session exec，第14affected保持原argv。三个fresh席以A/B/C2计：原C完整结果段暴露改为补充并另设C2；B初稿前意外两行历史计时/Web状态，保留逐字披露并限定接受其未依赖这些行的独立SQL审查；C2冻结初稿后被动看到其他席摘要独立记录。所有历史原件仅在各初稿冻结后释放。 理由：证据必须可回溯到实际动作，审查独立性按真实上下文披露；针对上下文完整污染补足新席，不能把补充审查充作fresh。 边界：有限控制只证明其具体路径，不能外推通用无害；B读界保留透明限制，未来若发现相关结论依赖暴露行须重审。
+下列原负责人决定、设计审查与既往实施编号继续保留，不重编历史。
+
 
 负责人 2026-10-24 定下四件事：
 
@@ -850,6 +891,21 @@ Nerve 没有 MCP、prompt、数据的 lint、模式的契约或只增不改的�
 
 ## 12. Phase 进度表
 
+**当前进度表（唯一现行状态，2026-10-31）。**
+
+| P | Phase 文档 | 状态 | 审查 | 合并 |
+|---|---|---|---|---|
+| P1 契约的框架（S1–S4） | [01-P1](01-P1-contract-frame.md) | 已完成 | [设计](reviews/P1-design-review.md)、[S1](reviews/P1-S1-mode-template-review.md)、[S2](reviews/P1-S2-guard-review.md)、[S3](reviews/P1-S3-prechecks-refusals-numbering-review.md)、[S4](reviews/P1-S4-web-review.md) | S1 `45d086a1`、S2 `bad859c0`；S3 `a46c3d1d`；S4 `f261952f` |
+| P2 来源区（S1–S3） | [02-P2](02-P2-source-area.md) | 已完成；实施、三审复核、三Step集成及两main均值已验；[完成核对](02-P2-source-area.md#104-p2完成核对)。P2done `f6bd0cde` 的 [CI40861860430](https://github.com/open-nerve/NerveWiki/actions/runs/40861860430) 已接受并放行P3 | [设计](reviews/P2-design-review.md)、[S1](reviews/P2-S1-source-rules-review.md)、[S2](reviews/P2-S2-source-hash-review.md)、[S3](reviews/P2-S3-source-web-review.md) | S1 `bf8d6625`；S2 `66d8236c12aaa8923616f6f42f2ee33b772884f9`，记录`8904a8769646c3b8919ff6a4c503eeae3ac70727`；S3 `ecd79c77d0cdb2259d50758b26514f61ebb329ca`，记录`ae1794a89c6d6d501e1cdd659fcc99104721fab7` |
+| P3 lint 与健康度（S1、S2） | [03-P3](03-P3-lint-health.md) | 进行中；S1服务端、来源整区、八规则、REST/MCP两scope及LW8 API/MCP已实施；18b完整本地门禁、248units/262legs/786阶段控制、五片各两轮与精确分支CI41171083998 attempt1的13jobs均已接受。独立审查A/B/C2的初稿与原件附记均已由主持者接受，无未关闭的已核实Important/Minor/Nit；Q-B1作为已知限制关闭审查疑问，性能边界仍留M12。文档提交自身minimum/gen/CI、合并/record及指定两main配对另行，S2未释放；P3/M10继续进行中，P4/P5/M11未开始。 | [原设计](reviews/P3-design-review.md)、[来源修订](reviews/P3-origin-design-review.md)、[S1](reviews/P3-S1-lint-protocol-review.md) | S1合并/record尚未产生；见本节下句 |
+| P4 虚拟页面与 ingest（S1–S3） | — | 未开始 | — | — |
+| P5 playbook、说明与收尾的故事（S1） | — | 未开始 | — | — |
+| 收尾 | — | 未开始 | — | — |
+
+本次文档投影时尚未产生合并/record提交；真实记录见00-M10-design.md第12节。
+
+**以下为来源前置发布时的历史进度快照，保留原字节与当时pending；不作为当前进度表。**
+
 | P | Phase 文档 | 状态 | 审查 | 合并 |
 |---|---|---|---|---|
 | P1 契约的框架（S1–S4） | [01-P1](01-P1-contract-frame.md) | 已完成 | [设计](reviews/P1-design-review.md)、[S1](reviews/P1-S1-mode-template-review.md)、[S2](reviews/P1-S2-guard-review.md)、[S3](reviews/P1-S3-prechecks-refusals-numbering-review.md)、[S4](reviews/P1-S4-web-review.md) | S1 `45d086a1`、S2 `bad859c0`；S3 `a46c3d1d`；S4 `f261952f` |
@@ -862,6 +918,9 @@ Nerve 没有 MCP、prompt、数据的 lint、模式的契约或只增不改的�
 **P3入口维护（不计作P3/S1）**：搜索守卫参考校准，代码 `ccac8c5d9e741721965e07c2b053f04dbe446e61`，分支 `m10-search-guard-calibration`；范围内实施、七项Go门禁、独立代码审查及精确代码CI40913568907 attempt1已由主持者接受。文档 `aa860be1b32bb98410e6a6811d2d87569de78b25` 的CI40921122246 attempt1亦已接受；实际no-ff合并为 `b957fdbe0367a9a6ff0f65d2afc303db49a755c2`，两父为 `9e38a38f648ffa19130afb8a8b468b792dad1381` / `aa860be1b32bb98410e6a6811d2d87569de78b25`，树 `8ded1428ce9cfe42a24ab80dd374c32c10b4dfd3` 与文档分支相同；该main自身CI40925905708 attempt1全11作业/32必需步骤成功并已接受，回执见[维护审查记录第7节](reviews/search-guard-calibration-review.md#7-维护文档合并与main-ci)。本记录自身提交/CI仍待产生；新增空名称属性链接来源设计缺口仍开放，决定62的具体修订与独立审查另行完成，P3放行尚待重绑。维护仅在此单列，不填入上表P3/S1合并位置。
 
 ## 13. 变更记录
+
+- 2026-10-31：P3/S1八规则、来源整区、同snapshot/唯一Runs、REST/两scope MCP与LW8 API/MCP已实现；18b完整本地门禁/控制248units262legs786阶段、825选定heavy区间、五片双轮与精确分支CI41171083998 attempt1全13jobs已验。决定63–66、三次CI失败/窄修复、当前成本及全部历史身份见[S1审查](reviews/P3-S1-lint-protocol-review.md)；M6六行/注意关闭，M7/M9/M11/M12继续open。三席最终审查已接受，无未关闭的已核实Important/Minor/Nit；文档/merge/record及指定两main仍按后续真实回执收口，S2/P4未释放。以下各条保留记录当时状态。
+
 
 - 2026-10-30：S1-0容量调整89d36454之后，实现S1-0a的writer/generated/Extractor 2与空属性来源表示，同步M6/README/API、既有读者及管理员重建说明。前置实测、变异与未测项见[P3 §10.1](03-P3-lint-health.md#101-s1)；D/F、S1/S2与完整成本/三审/最终门禁/CI仍待。以下保留各记录当时状态，含原9e38失败及设计发布时的pending。
 

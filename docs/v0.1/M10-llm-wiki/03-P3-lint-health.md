@@ -4,13 +4,13 @@
 |---|---|
 | Phase | M10/P3；两个 Step：S1 服务端与协议；S2 健康度网页 |
 | 日期 | 2026-10-29 |
-| 状态 | 原49–60及决定62设计已接受，设计自身CI与S1入口已核；S1实施中。S1-0容量调整已提交89d36454；S1-0a已实现来源表示与Extractor 2，结果和余项见§10.1。S1/S2未完成，三审、完整成本、最终门禁与merge/record两main仍待；P4/P5/M11未开始 |
+| 状态 | S1服务端、来源整区、八规则、REST/MCP两scope及LW8 API/MCP已实施；18b完整本地门禁、248units/262legs/786阶段控制、五片各两轮与精确分支CI41171083998 attempt1的13jobs均已接受。独立审查A/B/C2的初稿与原件附记均已由主持者接受，无未关闭的已核实Important/Minor/Nit；Q-B1作为已知限制关闭审查疑问，性能边界仍留M12。文档提交自身minimum/gen/CI、合并/record及指定两main配对另行，S2未释放；P3/M10继续进行中，P4/P5/M11未开始。详见§10.1和[S1审查](reviews/P3-S1-lint-protocol-review.md)；合并见00号文档第12节 |
 | 原设计精确基线 | `main = origin/main = f6bd0cdee2b7570252a43581cf71cd1e71592f76`；P2 已完成 |
 | 上级 | [M10 总设计](00-M10-design.md) §4.10–4.12、§5、§7–9；[总体设计](../v0.1-design.md) §5.6、§13；[推进方式](../claude_to_codex/02-workflow.md)；[P2 移交](02-P2-source-area.md#9-给后面-phase-与-m-的移交) |
 | 记法 | `page/`、`linking/`、`wiki/` 在 `server/internal/modules/` 下；`bootstrap/`、`platform/`、`shared/` 在 `server/internal/` 下；`W/` 是 `web/apps/web/src/`。本文拟新增的文件、类型、测试名均是设计，不冒称已有实现 |
 | 决定 | 主持者接受连续实施决定49–60（负责人可以改判），见[设计审查记录](reviews/P3-design-review.md)；索引、容量及所有运行结果仍须完成本文实测准入。见§2.2 |
 
-**来源表示前置（S1-0a）**：writer沿已有 `Link.InFrontmatter()` 传等长bool，实际生成SQL用CASE保留正文NULL与空属性非NULL空串，当前Extractor为2；M6/README/API说明同步。S63/S64/S65/S68的验证与代表成本集中记在§10.1，S66/S67/S69仍归S1-2；原79行总账及S1最终复跑不改。[来源修订记录](reviews/P3-origin-design-review.md)保留决定62、三审、搜索校准与原失败历史。
+**来源表示与S1当前结果**：writer沿已有 `Link.InFrontmatter()` 传等长bool，generated CASE保留正文NULL与合法空属性非NULL空串，Extractor为2。S63–S69及其跨OS/OB/Web、D/F真实消费者在18b完整控制中逐腿核验；S1-0a的原样本保留为历史，当前完整结果见§10.1和[S1审查](reviews/P3-S1-lint-protocol-review.md)。原S01–S69＋W01–W10共79行不改，W仍属未实施S2。[来源修订记录](reviews/P3-origin-design-review.md)的决定62、三审、搜索维护及原失败历史保留。
 
 ## 0. 两个可独立合并为绿的 Step
 
@@ -785,6 +785,18 @@ Tools
 
 以TestTheBuiltInInstructionsNameEveryTool守每工具一行，TestTheBuiltInInstructionsAreShort改为每入口`TextBytes<=4096-300`并对SDK真编码。实际字节数与余量写S1结果和M11既有handoff；本文不编造修改后数值。P5系统段、prompt与真实客户端人工验收仍P5。
 
+### 3.14 S1实施对设计的细化（决定63–66）
+
+八规则、完整来源区、唯一 sources slot、正文/空属性区分、完整身份及分页、同快照编排、名额/singleflight/取消清理、两REST和notebook/account两scope MCP均已实现。wiki持有自己的DTO，经bootstrap模块根逐字段转换；Rules.PrepareRules与旧guard的Prepare分开。长TitleKeyContext保持有状态NFC→Fold→NFC与分块取消，不改旧写入热路径。每规则只记专属阶段，共享sources另列，失败/expiry只记实际可观察统计。
+
+每caller有独立授权和期限，成功交付前再次授权。名额为请求半池的 `max(1,floor(floor(max_conns/2)/2))`，运行期限为 `min(10s,request_timeout/2)`（含等名额）；singleflight在名额外。唯一Runs owner负责expiry、一次发布、Stop和等待清理；清理仍占slot，不能承诺在计算预算内结束。effective standard的root为nil；stored standard允许explicit LLM合同与拟议root。快照首条应用SQL重新读模式，所有page/linking端口及最后Paths共享ctx；SourceArea.LintData只在该快照内持有metadata bundle，不跨请求缓存，不在已有事务里嵌套调用。
+
+`lint.read`允许reader以上。摘要的用例次序是notebook404→503；规则页为cursor400→notebook404→rule404→mode409→limit422→503，已知rule的cursor binding在授权前，未知rule只先验cursor形状。notebook MCP保留外层Gate HTTP404；account和通过Gate后的tool-app按相同用例次序。busy沿用Retry-After。summary每规则最多5项，limit默认50、范围1–100，count在10000处表示下界；显示目标截256B但不裁完整身份。item_key绑定完整身份，cursor绑定version/rule/notebook/implicit或explicit scope、整体≤2048B、内部规范key≤256B。私有Fit共同缩预览、Fit0保留StartCursor，真实SDK答复≤49152B，说明≤3796B。
+
+正常提交0b983268e0e6c1a2b7c37f068b6d898ca1c6bb94先落ORDER窄修复；随后18b922cfdec5471de622f1bcce9366c497a519e6将A/B来源读取组合并真sqlc生成。0b 的两条 Orphan Items 在完整 candidates CTE 内按 id 排序，外层按等值 c.id 排序，保留全部候选、资格、First/After、零 UUID、Count cap 与返回身份；实际计划守卫限制按 take 产生的 PK/anti 探测，不依赖固定节点形状。18b 的 SourceHeads/SourceValues 将 notebook/current/FM 资格放入 requested 每项的 indexed_pages LATERAL LIMIT1，保留首 ASCII 键、首 position、配对精确值和必要 JSON 两读。新 HasSourceProperties 在 SourceValues 第一次 Next 对完整、已拥有且严格排序唯一的 eligible IDs 只探一次：先 partial-index 属性点探测，命中后仍验原 notebook/current/FM；false 仅停止属性流，正文 D 与 pending 继续，true 继续原 512/8MiB 流。错误/取消不得当 absence，无新 p.notebook 条件、索引、缓存或跨 snapshot 复用。 完整候选数组的校验/编码/物化仍计成本；Has 的晚命中或全密集情形不是零成本。ORDER 的尾/空页在旧诊断中有约3–5ms额外排序样本，不能称所有页更快。fresh100k/noStats/ANALYZE/custom/真实generic与隐藏A/B/A是已测边界，不解决既有page旧版本MVCC generic退化。SQL+Scan墙钟不是PG纯CPU，Go TotalAlloc、采样heap和PG/RSS/WAL分开；本段解释修正的来源；当前18b精确分支CI已通过，仍不证明生产环境或指定两次main。
+
+实测、失败来源及精确接受范围见§10.1和[S1审查](reviews/P3-S1-lint-protocol-review.md)。上述细化不实现S2网页、P4 Capture/ingest或M11升级。
+
 ## 4. 网页
 
 ### 4.1 S1随契约交付
@@ -950,6 +962,9 @@ barrier只观察/暂停并随后执行原操作，不替换生产检查或建立
 
 ### 7.3 逐条运行时变异表
 
+**实施核对（18b）**：当前S01–S69为222units/229legs/687阶段；补充26units/33legs/99阶段，总248/262/786，825个选定heavy区间无重叠。217条原具名断言、2条断言后有终态cleanup panic、1条S52断言后缺Test终态、2条worker panic、2条child panic、2条限定等价、1条scope等价、1条singleClone存活和1条正控分别保留；补充33腿均具名断言。不能统称全部kill。完整69行逐行表、31组补充腿和特殊分类见[S1审查](reviews/P3-S1-lint-protocol-review.md#变异与反向对照)。下列原设计故障/catcher表保留；“应失败”是原义务，不抹去实际等价、存活或不可观察的边界。
+
+
 每条先在干净树执行其同命令为绿，再只改该项、同命令观察**该断言**失败、备份恢复、不运行gen，最后同命令复绿。grep命中/编译失败不算杀死。更多审查变异追加在原表之后，不覆盖历史存活/不等价记录。
 
 | ID | 改坏点（一次一条） | 真正抓它的测试、命令 |
@@ -1056,6 +1071,9 @@ docs/v0.1/claude_to_codex/tools/heavy.sh go -C server test -p=1 -race -count=1 .
 
 ### 7.4 计划、物理工作、TOAST与迁移
 
+**当前实测边界（决定64）**：51/52各自完整Up、5000-links独立开/关索引、必要JSON/TOAST与真实consumer已实测。fresh无旧版本fixture的custom/generic与隐藏本A→B→A证据成立；原page MVCC恢复后generic返回2000却扫52000行的失败和未成功CTE实验保留，B新增auto/custom/generic探针分开归档，不能写生产物理工作始终有界。完整仓库内数表见[M12性能移交](../M12-release/handoffs/M4-performance.md)和[S1审查](reviews/P3-S1-lint-protocol-review.md)。以下仍是测量合同及原设计义务。
+
+
 **计划矩阵**在自己的库中跑，无统计/ANALYZE × force_custom/实际 PREPARE force_generic；另跑真实Store的DescribeExec多次，查pg_prepared_statements计数区分“无named cache”和“已实际generic”，不说Planned强制custom。种子：读者本1000–3000页，另一不可见本50000页以上；部分索引首键有一页1000无关属性、10000边及dotted冲突跨批、少/全source、空/10k/100k source参数；keyset分别第一/中/尾/空，合法最大内部batch512及8MiB、两相邻source跨批。所有planner开关正常，不以enable_seqscan=off伪造生产选择。
 
 Physical读要计backend-local rows/scans/index tuples/heap fetched/blocks（含cache hit），先确认track_counts；用新插入无旧版本fixture为正证，不将数字推广到MVCC生产恒等式。隐藏本A→B→A改变相邻键分布，总结果不变，目标本读取关系/索引范围也不随别本规模/词变化；Btree高度控制。负控删notebook过滤、tuple条件、改LATERAL为全表join，每一条应真正失败。
@@ -1068,6 +1086,9 @@ sources迁移和每个获准额外索引分别测：自有库10万页、至少20
 
 ### 7.5 10万页成本与新行安排
 
+**本轮完整结果**：18b本机costs17、costs-lint14×两轮、guards15均通过；100k summary wall中位895.245/873.887ms，TotalAlloc357.802/357.849MiB仍未达最初250MiB目标，固定guard与worker2s/request4s未提高。旧版本MVCC/generic物理范围仍留M12。costs-lint各14recipes/1047 PASS，整目标378.950/377.538s，每recipe process均值×2.4最大156.088s≤300s。新固定guard未按本轮耗时上调，测量全表在[M12性能移交](../M12-release/handoffs/M4-performance.md)。下列“尚待”等是实施前的安排；当前本机和分支CI见§10.1，指定merge/record两main仍未发生。
+
+
 成本测试!race、short跳过，每条在Makefile单独`-v -count=1`。原costs中10条lint迁移/保存/计划/物理范围/TOAST/page metadata命令及其注释按原顺序搬到`test-go-costs-lint`；其余costs命令（包括server/tools）与guards原命令/顺序保持。当前Makefile为17 costs＋14 costs-lint＋15 guards，共46条go-test recipes（含server/tools）。costs-lint的14条中，后三个新顶层占四条完整recipe：`^TestLintRulesOfAHundredThousandPagesTakeTheirTime$/^eight-rules-and-100k-sources$`单跑八规则与10万来源；同一顶层的`^(hot-many-spellings-kinds|unique-long-targets|relative-deep-folder|same-last-key-presence|one-page-10000-edges|100k-excluded-and-outside)$`完整跑其余六种wanted形状，两个子选择器互斥且合起来覆盖全部七形状；`^TestLintOfAHundredThousandPagesKeepsItsTimeAndMemory$`跑真实编排，`^TestLintPropertiesReadOnlyNecessaryValues$`跑必要属性值，各自一行。该主动拆分为CI留余量，不把单轮128s当成违反125s硬门禁；正式判断仍是后述两轮process均值规则。当前组成不表示最终完整recipe/Test/job容量、CI或Step已完成；需要再拆时保留完整最坏形状与正反证，再按实际Makefile更新计数，不删样本以守行数。至少：
 
 1. `TestLintRulesOfAHundredThousandPagesTakeTheirTime`（linking postgres）：八规则每一条分别计query/Go归组；summary实际组合以另条真编排测。wanted分别少数热目标×大量source、多raw拼法同页、全独特长目标、relative深folder、一末键×大量深路径同名page/asset（确认无候选祖先读）、多kind；一页10000重复目标跨批；来源10万集合与大量区外未解析边必须同场，记录excluded_ids每批序列化/分配与DB join/往返；另有大量0page/stale/root/AGENTS在cap前。
@@ -1079,6 +1100,9 @@ sources迁移和每个获准额外索引分别测：自有库10万页、至少20
 每行本机两轮锁内process wall均值×2.4必须≤其既有Go进程timeout一半（默认10m为300s）；超出就拆更细行，也允许未超线时主动按完整形状拆分留余量，不能把300/2.4=125s误作每一轮的硬门禁。新行不借本任务提高任何原-timeout。若单一新成本样本仍大，拆fixture/子形状为独立有完整正反证的顶层，而非删最坏形状。作业costs25m、costs-lint25m、guards30m；S1总recipe预估与真实完整Test/job用时分别记录，costs/costs-lint的最终完整容量、最终两次main各分片Test容量及实际CI尚待验收。若任一份逼近上限，由root按实际形状进一步拆分并更新全清单/CI，不提高期限或把候选估计当成功。新增算法回退guard用真实两轮、每轮至少三样本的`max(round1 median, round2 median)×3`校准为固定阈值，再据实际慢CI核验；不能在每次运行用当轮耗时自抬阈值，也不能把进程容量倍数2.4当算法门槛。真实编排仍保持worker 2s/request 4s与原caller/slot期限，既有guards不因拆行而放宽。
 
 ### 7.6 bootstrap容量：入场已在线上，先处理再增加
+
+**当前接受布局（决定65）**：18b真实race清单495顶层，五份167/39/114/123/52，完整两轮各匹配，process均值310.418/191.582/245.091/278.787/227.605s。精确分支CI41171083998的五份Test为336/198/372/386/288s；分支一次样本不替指定merge/record两main各均值<450s。当前是五份，以下四份候选、470/494数量和预算预测属于保留的设计/实施历史，不是现行布局或最终样本；S2等待真实两main核验。
+
 
 历史仍保留：S3指定merge/record Test均值438.5/447/304/364.5s<450；最新record/P2done为425/447/249/363与379/453/229/357，入场均值**402/450/239/360**，第二片恰450，不满足严格<450；这触发容量处置，不推翻S3已接受的指定配对。
 
@@ -1095,6 +1119,9 @@ S1-0先重建当前编译测试清单、验证四片互斥完备并完整两轮�
 最新已有成本Test/job=635/796s、guards=1463/1486s、E2E=263/319s。新成本不得只看单条预算而漏作业总量；e2e不先分份。既有IndexItems30ms/grep600ms义务保留，新lint通过不抵消它们，M10收尾继续看稳定性。
 
 ### 7.7 串行门禁与证据保存
+
+**实际命令身份与串行核验（决定66）**：当前nonbootstrap＋五bootstrap为六个race入口，后接costs→costs-lint→guards，short独立；825个选定heavy子进程区间无重叠。仅native第13条全nonbootstrap本机命令采用per-binary session `-exec`，第14条affected为原argv；七项minimum来自0b dirty联合源码，提交后gen独立为18b。完整命令/实际skip见[S1审查](reviews/P3-S1-lint-protocol-review.md)，不把旧GNU mkdir/Ryuk/重叠失败改写成功。以下命令清单为原四份阶段的设计历史，当前Makefile/CI五份是执行入口，未提高期限。
+
 
 所有重任务同一`docs/v0.1/claude_to_codex/tools/heavy.sh` mkdir锁；本机统一`GOFLAGS=-p=1`，定向Go命令显式`-p=1`，再以make -j1分次执行。make -j1本身不限制Go包并行，不能只写它。本机前置不改CI原命令、作业并发或原timeout：
 
@@ -1134,6 +1161,9 @@ docs/v0.1/claude_to_codex/tools/heavy.sh env GOFLAGS=-p=1 make -j1 e2e
 
 ### 8.1 S1必须满足
 
+**S1当前履行情况**：实现、全部本地门禁/控制、成本、五片双轮和精确18b分支13jobs已接受；独立审查及文档/集成状态见§10.1与[S1审查](reviews/P3-S1-lint-protocol-review.md)。本次同步下表列出的当前合同、总体长期约定和移交：M6六行及注意1–4完成后改done；M7/M9仍有P4/P5事项保持open，M11/M12保持open。Step文档自身minimum/gen/CI及指定两main仍需真实验收，不据设计列表宣布P3完成。
+
+
 两个REST/两个工具两scope真实可达；八规则、metadata/数组/Unicode/JSON/identity一致；真实snapshot/名额/flight/授权交错；所有声明码真实答出；sources迁移、可能的新索引均有计划/实际工作/写成本与扫描义务；48KiB/说明余量/本机容量双轮及两main指定配对；LW8 API/MCP。全部原/审查追加变异都有干净基线、失败断言、恢复证据。S1三审无Important/Minor，审查记录写清接受/后续。
 
 由文档起草者出受控exact-old/new脚本，root审核应用；每段旧文恰一次，先副本check，不替换整篇历史。以下是各目标应新增的**新文字**（结果中的实际数字须以真证据填入；无证据不能投影为完成）：
@@ -1158,6 +1188,9 @@ docs/v0.1/claude_to_codex/tools/heavy.sh env GOFLAGS=-p=1 make -j1 e2e
 | M12性能handoff | 新lint八规则/summary、长属性/目标/来源数组、singleflight并发/池与取消清理、索引迁移和5000links保存的本机真数；真实服务器负载/停机仍待M12 |
 
 ### 8.1a 决定62的实施文档与兼容完成标准（S1-0a与S1收尾）
+
+**当前收尾转录**：S1-0a与后续S1实现已完成来源v2、真实D/F、S63–S69及完整重建/成本/控制核验；现行结果在§10.1和[S1审查](reviews/P3-S1-lint-protocol-review.md)。M6既有四份来源格式说明只核不改，P3A L6原“不改”历史保留。以下“仍须完成/待”的措辞是前置交付时点的原要求；文档自身与集成门禁仍独立待办，P4 Unknown/未改页coverage和M11不冒称完成。
+
 
 S1-0a已同步当前writer/版本/API的说明，前置实测与未测项见§10.1；S1收尾仍须完成全部reindex/成本/变异/审查及CI。下表保留逐项交付要求，不以本前置替代完整S1验收：
 
@@ -1189,6 +1222,9 @@ S1完整验收须兼容/存储/API与真实D/F一起成立；正文TOAST禁止�
 
 ## 9. 交给后面的Phase
 
+**S1已交付的边界**：SourceArea严格整区和snapshot局部LintData、SourceSlots纯资格、JS trim、完整身份、内部explicit scope与public协议已实现。M6六行/注意项在本分支文档交付关闭；M7第5项与M9第8项及说明余量完成，整份仍open。M12实际314行成本表和旧MVCC失败、约358MiB TotalAlloc未达目标、生产负载/停机/CI余量接续开放。S2、P4、P5、M11尚未开始；下面的P4/P5交接继续是未来义务。
+
+
 P4只复用P3实际定下的SourceArea/metadata、SourceSlots纯资格、jsTrim缺定义、稳定identity；OldQualifiedFacts与unit起点BeforeIngest、删前Capture、未改页批量SQL按§3.8.1/00§4.14在P4实现并测量；P3没有替它实现ingest或可直接套用的direct SQL。按自己的index/log/export/ingest合同增加功能，来源数量不等同pending数量。P3只提供虚拟target只读谓词，P4仍负责路径lookup/render/web样例与virtual工具行为。health#undigested_sources锚点可直接用，P4目录仍自己的SWR数据，不暗调lint计数。
 
 决定62新增交接：P4只信实际落地的v2来源表示；已存在页的stale/missing旧索引和未改页coverage不足均为Unknown，不是KnownAbsent或空union，按§3.8.2保守不加无法证明的标记。管理员重建恢复可靠判断；P4高效判定/诊断/测试与成本仍未实施。
@@ -1199,7 +1235,7 @@ P5仍负责prompt注册/分类/大小、系统说明段、人工清单和根READ
 
 ### 10.1 S1
 
-S1整体尚未完成：后续规则/运行时/接口、三审、完整变异与成本、最终门禁和merge/record两main仍待。本节按前置分别记录，不以局部验证代替Step完成。
+S1服务端、来源整区、八规则、REST/MCP两scope及LW8 API/MCP已实施；18b完整本地门禁、248units/262legs/786阶段控制、五片各两轮与精确分支CI41171083998 attempt1的13jobs均已接受。独立审查A/B/C2的初稿与原件附记均已由主持者接受，无未关闭的已核实Important/Minor/Nit；Q-B1作为已知限制关闭审查疑问，性能边界仍留M12。文档提交自身minimum/gen/CI、合并/record及指定两main配对另行，S2未释放；P3/M10继续进行中，P4/P5/M11未开始。 本节先保留S1-0a在2026-10-30的历史记录，含当时pending；后接18b当前完整结果，历史样本不改标为18b。
 
 #### S1-0a 来源表示前置（2026-10-30）
 
@@ -1250,6 +1286,149 @@ S63/S64/S65/S68四行分成五种独立单改、七组目标命令，共21次bas
 **原件与余项。** 树外证据位于 `p3-s1/s1-0a/author/`：`targeted-and-mutation-summary.json`（SHA256 `23509f2658f1893fcf3ff184c83254fac7b51ac8c7dbc4767ec6b1001d351793`）逐项列input/result/output哈希；`targeted-{OF,OS,OB,OW,CLI}-round{1,2}`、`20-cost-corrected-first`及`targeted-cost-round2`保存原始命令/日志/源码，`mutation-*`保留全部单改及恢复，早期03/04/05/12/16不删除。主持者接受回执为同目录上级的 `root-targeted-acceptance.json`（SHA256 `14b2733a205c2f92baf7ec3c6693a725dbf5d663728623b9c4c76531d4488e2c`）及 `root-mutation-acceptance.json`（SHA256 `9e3d993bb2e0e205043584541b99623e2e55e2f3ee7de6296198cc8bbed52073`）。
 
 本段截至定向验收时点，只记来源表示前置；每提交七项及Web门禁随后在文档投影候选上执行，原生gen-check按仓库约定在提交后执行，实际结果由提交/外部验收记录承接，后续S1文档汇总，不在此预填成功或本提交自身SHA/CI。后续S1规则/运行时/REST-MCP、S66/67/69、全部成本/容量、三审与Step/合并/record CI，S2网页和P4 Unknown/未改页coverage仍待；M6/M11/M12移交保持open。
+
+#### S1当前实现、完整本地验证与分支CI（2026-10-31）
+
+S1服务端、来源整区、八规则、REST/MCP两scope及LW8 API/MCP已实施；18b完整本地门禁、248units/262legs/786阶段控制、五片各两轮与精确分支CI41171083998 attempt1的13jobs均已接受。独立审查A/B/C2的初稿与原件附记均已由主持者接受，无未关闭的已核实Important/Minor/Nit；Q-B1作为已知限制关闭审查疑问，性能边界仍留M12。文档提交自身minimum/gen/CI、合并/record及指定两main配对另行，S2未释放；P3/M10继续进行中，P4/P5/M11未开始。
+
+产品门禁与控制实际输入：18b922cfdec5471de622f1bcce9366c497a519e6。
+
+对应 tree 为 `852cf970297933e5635eb1451424c683410b4958`，分支 `m10-p3-s1` 从 `b02b4a01567945919fa6d0705f911ad22c2ae879` 开出。16个实际提交、178个文件、增加32,228行/删除222行；3,328源文件、251 owned embed及原19工具逐项绑定。当前 native/cost/E2E/controls 的真实执行输入为18b；复用七项minimum保留 `0b983268e0e6c1a2b7c37f068b6d898ca1c6bb94` parent加dirty联合源码身份，与18b提交后gen分开记。它们的源字节、native modes、embed和工具实际等价，不称七项在18b提交后重跑。
+
+文档提交自身的minimum/gen/CI另行绑定；本次归档投影不产生这些结果。
+
+本次文档投影时尚未产生合并/record提交；真实记录见00-M10-design.md第12节。
+
+八规则、完整来源区、唯一 sources slot、正文/空属性区分、完整身份及分页、同快照编排、名额/singleflight/取消清理、两REST和notebook/account两scope MCP均已实现。wiki持有自己的DTO，经bootstrap模块根逐字段转换；Rules.PrepareRules与旧guard的Prepare分开。长TitleKeyContext保持有状态NFC→Fold→NFC与分块取消，不改旧写入热路径。每规则只记专属阶段，共享sources另列，失败/expiry只记实际可观察统计。
+
+每caller有独立授权和期限，成功交付前再次授权。名额为请求半池的 `max(1,floor(floor(max_conns/2)/2))`，运行期限为 `min(10s,request_timeout/2)`（含等名额）；singleflight在名额外。唯一Runs owner负责expiry、一次发布、Stop和等待清理；清理仍占slot，不能承诺在计算预算内结束。effective standard的root为nil；stored standard允许explicit LLM合同与拟议root。快照首条应用SQL重新读模式，所有page/linking端口及最后Paths共享ctx；SourceArea.LintData只在该快照内持有metadata bundle，不跨请求缓存，不在已有事务里嵌套调用。
+
+`lint.read`允许reader以上。摘要的用例次序是notebook404→503；规则页为cursor400→notebook404→rule404→mode409→limit422→503，已知rule的cursor binding在授权前，未知rule只先验cursor形状。notebook MCP保留外层Gate HTTP404；account和通过Gate后的tool-app按相同用例次序。busy沿用Retry-After。summary每规则最多5项，limit默认50、范围1–100，count在10000处表示下界；显示目标截256B但不裁完整身份。item_key绑定完整身份，cursor绑定version/rule/notebook/implicit或explicit scope、整体≤2048B、内部规范key≤256B。私有Fit共同缩预览、Fit0保留StartCursor，真实SDK答复≤49152B，说明≤3796B。
+
+**三次真实 CI 失败与修正。** f64 的 CI41068871923 attempt1 保持失败：100k summary 三样本在原 worker 2s 期限答 busy，后续必要属性 recipe 未执行。bf8 随后的 Count0 修正仅在四个 page 规则完成 Count 错误、数值和 capped 校验后，对合法 0 省去空 Items 查询并保留 ctx 错误；正 count、After、Items 错误不变。app spy 与真实 BC call-count 原实现均有具名红证，同一早退删除在两层各 0/1/0；ctx 单表达式删除为真实 0/0/0 等价，不能称 kill。专项 8 过程保留 f64+三文件、无 race 的真实身份。[E04–E06]
+
+bf8 完整本机验证通过后，仅补未发布提交尾注而成为同 tree/同父的 14fe；这不把 bf8 日志改称 14fe。14fe 的 CI41102139096 仍实际失败：summary 三样本约 2.001s，wanted 三样本成功，recipe14 未运行。完整 Test 原日志与 PID/snapshot 分组解析保留；旧 trace 可能混入前一取消 worker 的后续查询，不能将 SQL+scan 当 PG 纯执行或把被截断统计补成完整成功耗时。[N01]
+
+这次按既有 §3.3 允许的 bundle，3d96 将显式 `page.SourceArea.LintData` 作为 LLM 路径的唯一 metadata 读取：一次完整 live metadata，复用原 strict source 算法产出 Sources 与 Nodes；wiki 只在本次 snapshot 使用局部值，跨根端口逐字段转换并拥有切片/ParentID，无跨请求缓存。standard 继续 Nodes；旧 SourceNodes 仍存在并共享严格成员算法。不读正文，不以 hash/ProbeSources 过滤成员，不截断 10k，不改变 stale、cap、排序、slot 或必要 JSON 合同。[N02/N05]
+
+fed62 只将 current/outside 页面按 FrontmatterValid 分配候选：有效项进 properties，无效项进 frontmatter；SQL 仍核真实资格，坏 FM 的 root/AGENTS 不被统一豁免。该改动省去有效页面在 frontmatter count 中的宽参数工作，不改变规则结果、公开字段、request4s/worker2s 或固定成本 guard。[N03/N06]
+
+8ba 的 tracer 改动属于测试收尾：每个实际样本在原 Execute/CPU/heap 测量和日志之后，以相同 flight 的 RunFinished 完成清理；Fatal 路径也先清理再允许下一次 reset。缺 Created 会停止后续采样。独立 wiki-cleanup 记录 WaitNS，原测量区间、3+3 样本、固定界及运行期限不变。`TestWikiCostSamplesWaitForFinished` 用真实 child 的取消失败和下一 reset 断言覆盖收尾；child 预期 exit1 与 outer PASS 分开，不把它计作第七个 100k 样本。缺 Created 分支仍仅代码检查，不虚构运行证据。[N04/N07/N15–N16]
+
+8ba 的 subject-only metadata 桥已实际成为045970d1f46ee5ffa7605402eeea30dc18527fae；两者同tree1ea/同父fed62，旧8ba执行日志不改称045。045的CI41148286267仍只有costs-lint失败，image/E2E按依赖跳过。原Test步骤三summary均在2s期限失败、三wanted成功；每样本清理先于下一reset，本次没有foreign snapshot混入。已完成的OrphanItems约334ms、MissingTypeCount约431ms、196次空FirstSourceHeads合约342–352ms只是具体截点观测，未捕获的取消SQL/完整summary成功耗时不能推断。[N17]
+
+正常提交0b983268e0e6c1a2b7c37f068b6d898ca1c6bb94先落ORDER窄修复；随后18b922cfdec5471de622f1bcce9366c497a519e6将A/B来源读取组合并真sqlc生成。0b 的两条 Orphan Items 在完整 candidates CTE 内按 id 排序，外层按等值 c.id 排序，保留全部候选、资格、First/After、零 UUID、Count cap 与返回身份；实际计划守卫限制按 take 产生的 PK/anti 探测，不依赖固定节点形状。18b 的 SourceHeads/SourceValues 将 notebook/current/FM 资格放入 requested 每项的 indexed_pages LATERAL LIMIT1，保留首 ASCII 键、首 position、配对精确值和必要 JSON 两读。新 HasSourceProperties 在 SourceValues 第一次 Next 对完整、已拥有且严格排序唯一的 eligible IDs 只探一次：先 partial-index 属性点探测，命中后仍验原 notebook/current/FM；false 仅停止属性流，正文 D 与 pending 继续，true 继续原 512/8MiB 流。错误/取消不得当 absence，无新 p.notebook 条件、索引、缓存或跨 snapshot 复用。 完整候选数组的校验/编码/物化仍计成本；Has 的晚命中或全密集情形不是零成本。ORDER 的尾/空页在旧诊断中有约3–5ms额外排序样本，不能称所有页更快。fresh100k/noStats/ANALYZE/custom/真实generic与隐藏A/B/A是已测边界，不解决既有page旧版本MVCC generic退化。SQL+Scan墙钟不是PG纯CPU，Go TotalAlloc、采样heap和PG/RSS/WAL分开；本段解释修正的来源；当前18b精确分支CI已通过，仍不证明生产环境或指定两次main。[N18–N22]
+
+**当前控制与恢复。**
+
+当前统一18b输入的完整本地控制已由主持者接受；原正式行与补充分账如下。正式行仍为S01–S69；149个设计execution units中148映射到实际控制、1项不可独立观察。149、222和248不是同一种计数。S2的W01–W10尚未执行，原79行设计文字保留。
+
+| 范围 | distinct units | legs | baseline/fault/recovery实际阶段 |
+|---|---:|---:|---:|
+| 原S01–S69控制 | 222 | 229 | 687 |
+| 独立补充控制 | 26 | 33 | 99 |
+| 合计 | 248 | 262 | 786 |
+| owner A | 117 | 125 | 375 |
+| owner B | 58 | 61 | 183 |
+| owner C | 73 | 76 | 228 |
+
+| 实际逐腿分类 | 原229腿 | 补充33腿 | 全部262腿 |
+|---|---:|---:|---:|
+| 具名断言捕获 | 217 | 33 | 250 |
+| 具名断言后已披露cleanup panic，仍有Test终态 | 2 | 0 | 2 |
+| 具名断言后次生worker cleanup panic、Test终态中断 | 1 | 0 | 1 |
+| 预期worker panic | 2 | 0 | 2 |
+| 专用child panic | 2 | 0 | 2 |
+| 限定等价，不计kill | 2 | 0 | 2 |
+| 合法scope等价，不计kill | 1 | 0 | 1 |
+| singleClone存活，不计kill | 1 | 0 | 1 |
+| 所需正控，不计kill | 1 | 0 | 1 |
+
+补充33腿包括原五个故障新增bundle入口腿、六个metadata控制、FM两腿、tracer一腿，以及本轮ORDER四个、Heads/Values两个、HasSourceProperties十二个units（AP01有app与真实body两腿）。总计26个新units，另五腿属于原控制；未新增正式行。S65/S68的A-OS与B-OB在同18b输入使用逐字相同故障，S68 Web仍为三个真实渲染断言。
+
+S29.1的any→all没有独立可观察中间点；S38单删Close在当前pgx耗尽/错误自动Close路径是限定等价；S60只删Contract字段与删RootID值不同，合法scope等价不计kill。S39只删Execute Clone存活，另一个生产clone仍在；返回后alias隔离不证明并发map安全。S50旧first-flight-only catcher、旧Timings copy catcher、原S39越界panic、旧S04数据替身及旧15m S58命令均保留历史，当前补实的catcher另记，不覆盖旧失败或存活。
+
+S52原report仍为 `FAILED_CONTROL_PRESERVED`：baseline/fault/recovery为0/1/0，fault第6行先有“Stop omitted expired worker still in cleanup”的具名Fatalf，第7行才是重复close的worker cleanup panic；两个RUN没有leaf/top Test终态，仅package FAIL。补充接受分类为 `NAMED_ASSERTION_THEN_SECONDARY_WORKER_CLEANUP_PANIC_INTERRUPTED_TEST_TERMINALS`，`ordinary_kill=false`，不虚造Test FAIL，也不只凭panic计kill。S50/S61各另有具名断言后次生cleanup panic且终态仍在；两类必须分开。已过期冗余cancel仍无独立控制。
+
+原工具控制会话55814的exit1、原第13项report及三errors永久保留；获准会话67432仅续发原14–73，共60units/63legs/189阶段，exit0，没有重跑1–13。55814/67432是工具会话ID；真实续行controller PID为2483239。ordinal65完整恢复后因空间暂停477.813802秒，经精确缓存回收后同PID继续66，未重启、未retry、未中断子测试。当前全部源码/native modes、251embed、工具及driver/timer恢复，工作树干净。
+
+825个选定heavy子进程区间实际无重叠：786控制阶段、25条新native命令、8个复用minimum/gen过程、4个完整成本目标、2个E2E过程；成本recipe嵌套于外层目标，不重复计数。旧锁/重叠、GNU mkdir与Ryuk失败历史不回写。这是选定进程范围，不是主机所有活动的证明。
+
+**当前本机门禁与容量。**
+
+当前18b的完整本地门禁、原生E2E和控制总账已获接受，数值来自实际进程和原始测试事件；下表process均为锁内子进程wall，不含排队，也不是CI Test步骤时间。
+
+| 当前门禁 | 真实终态/覆盖 | 锁内process秒 |
+|---|---|---|
+| 全nonbootstrap race | 115包，8038 PASS＋1既有Markdown成本SKIP | 1118.231 |
+| 受影响13包第二轮 | 1425 PASS，0skip | 222.509 |
+| costs | 17 recipes，89 PASS，0skip | 411.941 |
+| costs-lint第一/二轮 | 各14 recipes、1047 PASS，0skip | 378.950 / 377.538 |
+| guards | 15 recipes，57 PASS，0skip | 829.613 |
+| lint-web / knip / test-web | exit0 / exit0 / 179文件3831 PASS，0失败/0skip | 2.619 / 1.053 / 111.497 |
+| E2E / LW8第二轮 | 336项E2E测试通过 / 7项通过 | 155.134 / 4.487 |
+
+仅native第13条全nonbootstrap命令使用已接受的per-binary session `-exec`；第14条affected保持原go test argv，没有`-exec`。92条binary trace关联21个Testcontainers包，末次资源观察为空且PID不存在；不据此称上游已修复。E2E实际 `make e2e` 带已接受的只读build捕获prerequisite，一次build后复用同binary/assets/browser；版本明确18b/modified=false、250个Web资产及含.gitkeep的251owned embed，默认2workers、无retry/skip。336是测试项数，不是不同故事数；这不验收S2健康页。
+
+race/nonrace真实编译清单为495/525顶层。当前五份各完整两轮共10条命令，顶层167/39/114/123/52恰覆盖495，没有重复或遗漏；两轮节点/动作按既定UUID子名归一化后匹配，片4每轮保留4个既有条件SKIP。新增!race tracer只归costs-lint第13条。
+
+| bootstrap片 | 顶层 | 两轮process秒 | process均值秒 | Go package均值秒 | 每轮SKIP |
+|---|---:|---|---:|---:|---:|
+| 1 | 167 | 311.710 / 309.126 | 310.418 | 309.544 | 0 |
+| 2 | 39 | 195.656 / 187.509 | 191.582 | 190.697 | 0 |
+| 3 | 114 | 248.732 / 241.450 | 245.091 | 244.199 | 0 |
+| 4 | 123 | 280.015 / 277.559 | 278.787 | 277.890 | 4 |
+| 5 | 52 | 227.324 / 227.886 | 227.605 | 226.728 | 0 |
+
+`make test-go`组合为nonbootstrap加五bootstrap竞态入口 `-j6`，之后costs→costs-lint→guards；short独立。CI为server10加web/e2e/image共13jobs，costs17/costs-lint14/guards15条recipe；静态/gen-check仍只在原costs一次，server/tools保留。Go与job timeout未提高。
+
+**成本与未解边界。**
+
+18b两轮完整costs-lint每条recipe的process均值×2.4最大156.087704524秒≤300秒；这是排程容量换算，不是算法guard的×3校准。每轮100k恰3summary＋3wanted，12次RunFinished清理各独立记账；专用cleanup child的预期exit1与outer PASS不计为额外100k样本。
+
+| 当前18b两轮指标 | 第一轮 | 第二轮 |
+|---|---:|---:|
+| 100k Module summary wall中位，ms | 895.245 | 873.887 |
+| 同summary TotalAlloc中位，MiB | 357.802 | 357.849 |
+| 同summary采样heap增量中位，MiB | 125.745 | 123.666 |
+| 100k Module wanted wall中位，ms | 341.591 | 334.144 |
+| 最慢recipe11 process，s | 64.961 | 65.113 |
+
+原8项Module固定guard全部PASS，worker2s/request4s及门限未变；summary约358MiB TotalAlloc仍未达最初250MiB目标，采样heap不是TotalAlloc或连续RSS。直接linking wanted最坏形状的秒数也不能替代真实Module的2s生命周期证明。
+
+完整仓库内成本表见[M12性能移交](../M12-release/handoffs/M4-performance.md)：保留314行附录的全部数表及原件导航，包括12个100k样本/12次cleanup、224个component shapes/672样本、8个51/52完整Up、72个单索引5000-links写入腿、18个reindex阶段、必要JSON/TOAST及大target。普通SHARE构建挡写允许读；分别完整Up，不能拿索引片段替代。Go CPU/TotalAlloc/采样heap不含PG CPU/RSS，SQL+Scan是墙钟；warm fixture、cluster WAL、受控barrier不承诺生产停机。
+
+旧版本MVCC/generic物理范围未解决。已保存原失败 `TestLintMetadataPhysicalRanges/ANALYZE/A-restored/generic`：返回2000行但Seq Scan nodes扫52000行、过滤50000行；未成功CTE实验和其他原失败一并保留。B本轮探针auto/custom有界、强制generic仍扫52000，结果始终正确。设计§7.4正证限新插入无旧版本fixture；决定64把生产数据、统计/计划与停机复核留M12，不为强制generic实验改写当前查询。
+
+bf8历史成本身份另存：14条lint recipe双轮均值×2.4最大185.022s；summary wall中位1373.078/1389.919ms、TotalAlloc479.282/478.216MiB、采样heap增量128.682/119.193MiB；直接linking wanted最坏约3.082/3.334s。S1-0a原10,004页代表reindex与本轮相同形状重跑分别记；单本linking事务与独立search≤10000行批次分账，后批失败保留已提交前批，不称整条命令或全实例原子。
+
+**精确分支CI与后续集成。**
+
+精确18b的[分支CI41171083998](https://github.com/open-nerve/NerveWiki/actions/runs/41171083998) attempt1已由主持者核验：全部13jobs及必需步骤success；下表为该一次真实运行。条件性失败注解/报告上传跳过不冒称必需步骤缺失。
+
+| job | Test或主测试步骤秒 | job秒 |
+|---|---:|---:|
+| server (bootstrap-1) | 336 | 356 |
+| server (bootstrap-2) | 198 | 216 |
+| server (bootstrap-3) | 372 | 395 |
+| server (bootstrap-4) | 386 | 416 |
+| server (bootstrap-5) | 288 | 307 |
+| server (race) | 745 | 763 |
+| server (short) | 213 | 232 |
+| server (costs) | 650 | 811 |
+| server (costs-lint) | 617 | 641 |
+| server (guards) | 1479 | 1501 |
+| web | 246 | 278 |
+| e2e | 264 | 312 |
+| image | 79 | 86 |
+
+guards job在原30分钟预算余299秒，15条实际recipe均以package ok结束；非verbose配方不推断完整Test节点数。该单次分支观察不作硬件或根因归因，也不是指定merge/record两main配对。后两次各bootstrap Test均值必须分别严格<450秒，才释放S2；文档提交与其分支CI也须独立取得真实结果。
+
+三次旧分支失败永久保留：[f64/41068871923](https://github.com/open-nerve/NerveWiki/actions/runs/41068871923)、[14fe/41102139096](https://github.com/open-nerve/NerveWiki/actions/runs/41102139096)、[045/41148286267](https://github.com/open-nerve/NerveWiki/actions/runs/41148286267)，均attempt1。summary撞原2s worker预算；未执行的后续recipe、按依赖跳过的E2E/image和旧trace局限照原件保存，18b通过不将旧run改绿。
+
+**审查与移交。** 独立审查A/B/C2的初稿与原件附记均已由主持者接受，无未关闭的已核实Important/Minor/Nit；Q-B1审查疑问已关闭，性能限制仍留M12。正式三席只计A/B/C2；原C因完整结果段暴露归补充，B初稿前意外两行历史计时/Web状态及C2初稿冻结后被动看到其他席摘要均按实际披露。决定63–66见[S1审查](reviews/P3-S1-lint-protocol-review.md#主持者的决定负责人可以改判)。M6六行/注意1–4完成，文档交付关闭；M7/M9/M11/M12仍open。
+
+**历史与身份保留。** S1-0a/dd6e、e5、7d3＋catchers/同字节2c4、f64测试迁移修正的编译闭包复用、candidate02/03与386dirty各保留原输入。bf8→14fe仅补未发布尾注、8ba→045仅改subject，同tree/同父桥不把旧执行日志换头；0b/18b是后续真实产品提交。已发布4dd缺Co-Authored-By尾注的例外保留。三次成本CI失败、9e38原搜索失败/维护及全部旧记录不覆盖。证据索引及逐提交定位见[S1审查](reviews/P3-S1-lint-protocol-review.md#原件导航与身份)。
 
 ### 10.2 S2
 

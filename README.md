@@ -28,7 +28,7 @@ make          # 查看所有命令
 - 命令按工具链分区：`*-go` 只需要 Go，`*-web` 需要 Node。
   - `make lint` 依次执行 `make lint-go` 和 `make lint-web`。前者校验 golangci-lint 的配置并运行它（含格式检查），并检查 `server/` 与 `server/tools/` 的 `go.mod` 是否整洁；后者做 Markdown 样例集自检、`tools/`、`web/` 与 `e2e/` 的 oxlint（零警告）、格式检查和各 Node 包的类型检查。
   - `make knip` 检查未使用的文件、导出与依赖；配置里过时的条目也算失败。
-  - `make test` 依次执行 `make test-go` 和 `make test-web`。前者运行 Go 测试：先以 `-j5` 同时跑 `test-go-race` 与四个 `test-go-bootstrap-*` 竞态入口（需要 cgo：macOS 装有 Xcode 命令行工具即可），再串行跑 `test-go-costs` → `test-go-costs-lint` → `test-go-guards`。lint 的迁移、计划、规则与编排成本在中间入口，`server/tools` 保留在 costs 并按原命令开启竞态；`test-go-short` 是另一个独立入口。集成测试用 testcontainers 启动与开发库相同的 PostgreSQL 镜像，需要 Docker；只跑单元测试用 `make test-go-short`（即 `cd server && go test -short ./...`，`make check` 与持续集成的 `short` 一份跑它）。后者运行前端各包的 vitest。
+  - `make test` 依次执行 `make test-go` 和 `make test-web`。前者运行 Go 测试：先以 `-j6` 同时跑 `test-go-race` 与五个 `test-go-bootstrap-*` 竞态入口（需要 cgo：macOS 装有 Xcode 命令行工具即可），再串行跑 `test-go-costs` → `test-go-costs-lint` → `test-go-guards`。lint 的迁移、计划、规则与编排成本在中间入口，`server/tools` 保留在 costs 并按原命令开启竞态；`test-go-short` 是另一个独立入口。集成测试用 testcontainers 启动与开发库相同的 PostgreSQL 镜像，需要 Docker；只跑单元测试用 `make test-go-short`（即 `cd server && go test -short ./...`，`make check` 与持续集成的 `short` 一份跑它）。后者运行前端各包的 vitest。
   - 端到端测试另跑 `make e2e`，见下文"端到端测试"。
 - 格式有问题时执行 `make fmt`，它修正 Go 与其余文件的格式。`docs/` 不参与格式化。
 - 开发数据库以 builtin provider 的 `C.UTF-8` 初始化（`LC_CTYPE` 同为 `C.UTF-8`），与生产环境的要求相同，见[总体设计](docs/v0.1/v0.1-design.md) 7.1。
@@ -58,6 +58,9 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
 | `version`        | 打印版本号与构建信息                                           |
 
 ### 配置
+
+健康检查每次调用重新计算。运行名额从现有请求半池派生为 `max(1,floor(floor(max_conns/2)/2))`，运行期限为 `min(10s,request_timeout/2)`（含等名额与计算），没有新配置键。繁忙返回 `server_busy`/`Retry-After`；每caller独立授权/等待期限，共享计算可能在caller离开后继续到自身期限。进程Stop取消并等事务清理，清理可能晚于计算预算且仍占名额。
+
 
 配置按层合并，后面的覆盖前面的：
 
@@ -149,6 +152,9 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
 
 ### 链接索引
 
+M10/P3/S1的lint读取Extractor2当前索引，不parse正文、不自动重建旧页；正文链接的property_key为NULL，合法空属性路径为非NULL空串。literal-v1保留旧读取行为并计入stale_pages，需管理员重建。八规则、来源/附件和分页协议已提供REST与两scope MCP，健康网页留S2；详见[本Step记录](docs/v0.1/M10-llm-wiki/reviews/P3-S1-lint-protocol-review.md)。
+
+
 - **索引**：每一页正文里的链接（wikilink、嵌入、Markdown 链接与图片，以及 frontmatter 里的属性链接）、标签、属性与别名，和每条链接解析到的页，随每次写入在同一个事务里更新：新建、改名、移动、删除（连同子页）、从回收站恢复、写正文、勾选任务项（还原版本与整组撤销由这几种写组成），删除笔记本时一并删除。同一笔记本的索引维护一个接一个进行（索引自己按笔记本的锁），所以同一笔记本的保存在提交处排队。
 - **来源格式**：当前链接索引的 `Extractor` 为 2。正文链接的 `property_key` 是 SQL NULL；合法空名称属性的路径是非 NULL 空字符串，属性接口会返回 `key: ""`。旧版本 1 把这两者合并，不能从旧行猜出来源。升级后须用新版 `reindex` 重建；真正写入正文会更新该页的格式，纯改树、读取或同内容保存不保证升级，不能代替全面重建。
 - **解析**：链接按目标最后一段的标题键找页。以 `.md` 结尾（不分大小写）的，笔记本里有去掉 `.md` 的那个名称的页时就是去掉 `.md` 的，没有时才是标题以 `.md` 结尾的页。`./`、`../` 开头的从出发页所在的文件夹（它的父页）算起；`/` 开头的从根算起；否则先找从根起路径恰好如此的页，再找路径以这几段结尾的页（出发文件夹的子树里的优先，文件夹自己的页也算，再按路径短的，即导出路径的字符数，再按 id，最后这一步时算有歧义）；只有一段的名称最后才找别名。规则与样例在 `tools/md-fixtures/resolve/`，与 Obsidian 1.12.7 核对过；不同的有：别名（Obsidian 不按别名解析），标题键用 Unicode 的大小写折叠（Obsidian 用 `toLowerCase`，`ß` 与 `ss` 它不当作一样），路径一样长时按 id 选（Obsidian 没有稳定的次序），以及三处 Obsidian 按字符串比较路径的地方（这里按整段）。
@@ -205,6 +211,9 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
 - 打开一条流在限流中算一次请求，读它看得到的笔记本受 `server.request_timeout` 约束；连着的流不受请求期限与服务端写超时约束，每一帧要在一个心跳之内写出，停机开始时关闭。
 
 ### MCP
+
+`lint` 与 `pending_sources` 已在notebook/account两入口注册，复用同一个健康检查执行入口与授权规则。真实SDK答复上限48KiB，分页裁剪保留真实末项游标；摘要完全裁空时仍可用StartCursor取非空规则。当前内置说明notebook raw/SDK为3044/3093B、account为3113/3163B，实际SDK距4KiB余1003/933B，保留M11至少300B余量；P4虚拟页与P5 prompts仍待。
+
 
 - **两种地址**：`/mcp` 是整个账户（账户入口），`/mcp?notebook=<笔记本 id>` 是一本笔记本（笔记本入口）。`notebook` 只能出现一次、是 UUID，否则答 404 `notebook.not_found`，不查库；看不到或已删除的笔记本同样答 404，在握手之前。
 - **只收个人访问令牌**：`Authorization: Bearer <PAT>`。会话的访问令牌答 403 `forbidden`（它 15 分钟就过期，服务端没有 OAuth，经 MCP 续不了期），没有、无效、已撤销的令牌答 401。服务端没有 OAuth：`/.well-known/` 之下都答 404，`POST /register` 答 OAuth 的错误 `invalid_client_metadata`。一个 POST 在限流里算一次请求，与 REST 共用这个令牌的桶。
@@ -319,6 +328,9 @@ Claude Code、Codex 一类的 agent 经 `/mcp` 读写笔记本。工具、路径
 - **Codex**：一个服务的 `default_tools_approval_mode` 决定调用它的工具之前问不问人，取值是 `auto`、`prompt`、`writes` 与 `approve`；`approve` 是都不问。`codex exec`（不交互）问不了人，要审批的调用都被拒。交互的会话用 `prompt`；只读的无人值守的任务不必放行写的工具；`approve` 只给确实要无人值守地写的任务，并照上面的第一条接受它的代价。
 
 ### 上限
+
+lint的summary每规则最多5项，规则页limit默认50、范围1–100；count达10000标为下界，显示目标最多256B而完整身份不裁。cursor整体≤2048B，跨REST与两MCP绑定同rule/notebook/scope。大sources JSON与合法长target按必要值读取并保证分页推进；这些上限不能解释成生产CPU/内存硬界，实际样本和未解MVCC范围见[性能移交](docs/v0.1/M12-release/handoffs/M4-performance.md)。
+
 
 | 什么            | 上限                                                                                                                                                                                                   |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -449,6 +461,9 @@ cd e2e && pnpm exec playwright show-report                      # 查看上一�
 - `make e2e` 把 `VERSION` 交给故事核对注入的版本号；持续集成用 `0.0.0-ci.<运行号>`，与默认值不同。
 
 ## 部署
+
+M10/P3/S1升级沿下述原停机/备份/迁移/权限步骤：停止旧单实例，用新binary完成迁移及 `reindex` 后再 `serve`，启动不会自动重建。Extractor2重建的linking/rekey按每本事务持锁阻写，阶段失败/撞键回滚本阶段；后续search入队按独立≤10000节点批次提交，linking失败仍可能入队，queue失败不回滚已提交v2或前批，锁不覆盖全部queue，整个命令/全实例并非原子。51/52普通SHARE索引构建挡写允许读；真实本机Up、5000-links写入和代表重建表见[性能移交](docs/v0.1/M12-release/handoffs/M4-performance.md)，生产停机与负载仍待M12实机复核；回退binary后仍按对应格式重建。
+
 
 镜像由 `deploy/Dockerfile` 构建：前端与服务端都在其中，运行时是 distroless 镜像，只有 `/nervewiki` 一个程序，以非 root 用户（uid 65532）运行，监听 8080。
 

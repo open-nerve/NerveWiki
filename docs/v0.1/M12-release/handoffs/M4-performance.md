@@ -7,6 +7,331 @@ created: 2026-10-03
 
 # 页面的性能与部署：压测要看的几处
 
+### M10/P3/S1当前实际成本与未解范围（2026-10-31）
+
+18b本机costs17、costs-lint14×两轮、guards15均通过；100k summary wall中位895.245/873.887ms，TotalAlloc357.802/357.849MiB仍未达最初250MiB目标，固定guard与worker2s/request4s未提高。旧版本MVCC/generic物理范围仍留M12。 当前本地门禁/控制及精确18b分支13jobs已通过；三席及文档/集成接受按[S1审查](../../M10-llm-wiki/reviews/P3-S1-lint-protocol-review.md)独立记录，不能借成本表预验后续main。
+
+**M12继续open。** 已知旧版本MVCC/generic返回2000却Seq Scan52000及未成功CTE实验保留；B本轮真实auto/custom有界、强制generic仍52000且结果正确，不修改当前查询掩盖边界。生产计划/负载、100k全reindex、部署停机、PG CPU/RSS及CI余量仍需实机复核；guards单次分支Test1479/job1501s、30分钟余299s，不作原因归因。
+
+**完整当前成本数表。** 以下314行成本附录原数据/表格/原件导航完整承接；首尾“尚待/冻结时不宣称”的说明是该成本摘录冻结时点，不覆盖本段当前结果。只有标题为适配本文件层次而下移一级。
+
+## 当前 18b 本机成本补充（只读摘录）
+
+实际源为 `18b922cfdec5471de622f1bcce9366c497a519e6` / tree `852cf970297933e5635eb1451424c683410b4958`，3,328 个源文件及 251 个 embed 文件。数据仅来自本次 `post-sources-cost-recipes-01` 四目标及其已验收回执；没有使用旧 8ba/045 的数值。这里只说明本机样本，不能证明指定 main CI 均值、生产实机预算或未来审查通过。当前完整 native/控制/后续 CI 与 Step 审查仍由根代理另行收口。
+
+表中时间为 ms，内存为 MiB（1 MiB=1,048,576 B），保留三位小数；机器文件保留原 ns/B 整数。`R1/NN`、`R2/NN` 分别是 costs-lint 第一/第二轮 recipe NN，`L` 为原 output.log 的物理行号。完整路径和 SHA-256 见文末及 pins.json。samples.json 保存原 JSON、真实 Package/Test 归属和跨 GoJSON Output 碎片的原行范围；tables.json 保存本表选择与聚合。
+
+**测量边界。** ProcessCPU 是 Go 测试进程的 CPU；TotalAlloc 是该进程分配差值；峰值是约 1 ms 采样 Go heap，可能漏掉采样间瞬时峰值，均不含 PostgreSQL RSS/CPU。SQL+Scan 是 pgx 调用到扫描完成的墙钟，不能当作 PG CPU；OtherWall 也不是 Go CPU。stage、规则 Timings、SQL 墙钟存在包含关系，不能相加构造另一个总耗时。WAL 是专用诊断 cluster 的 LSN 差，包含回滚和同 cluster 观察活动，不等于某 SQL 的精确独占 WAL。fixture/种子、真实操作、清理、整个测试进程、锁外排队分别记账。
+
+### 100k 页真实 Module.Execute：两轮各 summary×3、wanted×3
+
+原完整存储夹具：100,000 页、110,001 节点（含 10,001 live assets），两真实来源；真实 auth/snapshot/全部 ports/最终 Paths。worker 2 s、request 4 s 和原固定 guards 均保持。两轮种子耗时单列：R1 6556.419 ms（R1/13:L27）; R2 6569.022 ms（R2/13:L27）；不计入下列 Execute。
+
+| 轮/操作/样本 | wall | Go CPU | TotalAlloc | heap 基线/采样峰值/增量 | SQL+Scan / OtherWall | 原件 |
+| --- | --- | --- | --- | --- | --- | --- |
+| R1/summary/1 | 895.245 | 535.541 | 357.802 | 8.478/127.750/119.271 | 683.749/211.496 | R1/13:L32–36 |
+| R1/summary/2 | 951.933 | 634.963 | 357.017 | 10.712/144.219/133.507 | 674.982/276.951 | R1/13:L40–44 |
+| R1/summary/3 | 874.696 | 556.339 | 358.113 | 10.725/136.469/125.745 | 654.430/220.266 | R1/13:L48–52 |
+| R1/wanted/1 | 345.644 | 432.162 | 262.149 | 10.725/113.806/103.080 | 150.839/194.805 | R1/13:L62–63 |
+| R1/wanted/2 | 329.093 | 393.092 | 262.787 | 8.629/98.357/89.728 | 138.375/190.718 | R1/13:L67–68 |
+| R1/wanted/3 | 341.591 | 398.905 | 260.467 | 8.613/108.796/100.182 | 137.909/203.682 | R1/13:L72–73 |
+| R2/summary/1 | 888.423 | 550.225 | 357.849 | 8.478/127.869/119.391 | 670.201/218.221 | R2/13:L32–36 |
+| R2/summary/2 | 873.887 | 501.822 | 357.093 | 10.715/134.381/123.666 | 674.177/199.710 | R2/13:L40–44 |
+| R2/summary/3 | 849.126 | 493.992 | 358.508 | 10.727/140.311/129.584 | 654.110/195.016 | R2/13:L48–52 |
+| R2/wanted/1 | 334.144 | 381.966 | 261.683 | 10.732/103.066/92.334 | 136.626/197.517 | R2/13:L62–63 |
+| R2/wanted/2 | 323.168 | 372.688 | 261.837 | 8.635/100.936/92.301 | 135.508/187.661 | R2/13:L67–68 |
+| R2/wanted/3 | 341.463 | 411.864 | 263.252 | 8.639/106.650/98.012 | 140.245/201.218 | R2/13:L72–73 |
+
+| 轮/操作 | 三样本 median wall / CPU / alloc / heap增量 | sources / rules / paths stage median（ms） | SharedSources median（ms） |
+| --- | --- | --- | --- |
+| R1/summary | 895.245/556.339/357.802/125.745 | 154.459/714.587/0.810 | 82.415 |
+| R1/wanted | 341.591/398.905/262.149/100.182 | 160.070/172.809/未执行 | 未请求 |
+| R2/summary | 873.887/501.822/357.849/123.666 | 154.520/710.263/0.677 | 78.909 |
+| R2/wanted | 334.144/381.966/261.837/92.334 | 155.653/164.754/未执行 | 未请求 |
+
+下面按同一 query 名称列每组三次调用的墙钟 median；不存在的语句记“—”。括号为单样本 calls/Rows/UUID array elements/logical argument bytes，只有全部出现样本的形状相同才合并。Rows 是返回行数；EXISTS/Count 的 Rows=1 只是一个标量返回，不能读成一条匹配属性。参数字节是应用逻辑大小，非 wire bytes。每个样本的实际 PID/snapshot、完整 queries（含未命名事务语句）及全部八规则 Timings 均在 samples.json，未丢弃。
+
+| SQL | calls/rows/array/B | R1 summary | R1 wanted | R2 summary | R2 wanted |
+| --- | --- | --- | --- | --- | --- |
+| FindNotebook | 1/1/0/16 | 0.650 | 0.194 | 0.160 | 0.186 |
+| LintNodeMetadata | 1/110001/0/16 | 114.041 | 117.027 | 114.121 | 115.495 |
+| LintHeads | 1/100000/0/16 | 22.284 | 20.188 | 20.155 | 18.926 |
+| LintHasSourceProperties | 1/1/99999/1600000 | 46.414 | — | 44.233 | — |
+| LintBodyReferencesFirst | 1/0/99997/1599968 | 33.401 | — | 31.513 | — |
+| LintWantedEdgeHeadsFirst | 1/3/1/32 | 1.026 | 0.784 | 0.971 | 0.751 |
+| LintEdgesByPositions | 1/3/6/76 | 0.467 | 0.402 | 0.388 | 0.404 |
+| LintWantedEdgeHeadsAfter | 1/0/1/48 | 0.435 | 0.446 | 0.422 | 0.463 |
+| LintOrphanCount | 1/1/99998/1599984 | 26.722 | — | 27.039 | — |
+| LintOrphanItemsFirst | 1/6/99998/1599984 | 17.877 | — | 21.523 | — |
+| LintAmbiguousEdgeHeadsFirst | 1/0/1/32 | 1.008 | — | 0.637 | — |
+| LintMissingTypeCount | 1/1/99997/1600030 | 201.879 | — | 198.354 | — |
+| LintMissingSummaryCount | 1/1/99997/1600030 | 200.300 | — | 196.637 | — |
+| LintPendingAssets | 1/1/2/48 | 2.056 | — | 1.864 | — |
+| AttachmentInfos | 1/1/1/16 | 0.222 | — | 0.199 | — |
+| LinkTargetsByIDs | 1/19/7/128 | 0.626 | — | 0.513 | — |
+
+| 真实规则 Timings（包含共享阶段以外的本规则工作） | R1 median ms | R2 median ms |
+| --- | --- | --- |
+| wanted | 2.085 | 2.686 |
+| orphans | 44.070 | 49.040 |
+| ambiguous | 1.022 | 0.650 |
+| invalid_frontmatter | 0.001 | 0.001 |
+| missing_type | 202.140 | 198.576 |
+| missing_summary | 200.518 | 196.870 |
+| undigested_sources | 2.147 | 1.930 |
+| invalid_sources | 0.000 | 0.000 |
+
+本轮每个 summary 的 LintHasSourceProperties 只调用一次（完整 99,999 IDs）；此 fixture 不含 sources 属性，因此不再执行 196 次空 LintFirstSourceHeads，也没有原有效 frontmatter 的空 Count。LintBodyReferencesFirst 仍读取完整 99,997 候选；missing_type/summary 仍各有同规模完整资格 SQL。wanted 页面不执行来源属性探测。这里只是本 fixture 的实际调用，不推断其他 positive source fixture 会跳过原 512/8 MiB 流。
+
+12 次 BC 清理均实际 Created/Finished；cleanup 等待范围 0.003–0.005 ms，在 Execute/CPU/alloc 日志之后独立记账。另有两条小夹具 wiki-execute/wiki-cleanup 属 TestWikiCostSamplesWaitForFinished；其 expected-failure child 的 sample-failure FAIL、next-reset PASS 与父测试 PASS 分开，未算作第 13/14 个 100k 样本。BC 固定 guard 逐项事实保存于两轮 recipe13 回执，门限没有随本轮结果改写。
+
+原固定成本 guard（wall/Go CPU 为 ms，alloc/heap 为 MiB）仍为：
+
+| 操作 | wall | Go CPU | TotalAlloc | 采样heap增量 |
+| --- | --- | --- | --- | --- |
+| summary | 5200.000 | 2100.000 | 1571.000 | 404.000 |
+| wanted | 1400.000 | 1500.000 | 1104.000 | 348.000 |
+
+这些是原测试成本断言，不能延长真实 worker 2 s/request 4 s；实际请求仍需在原生命周期内完成。
+
+### 直接 linking 与属性最坏形状（非完整 Module）
+
+每轮 112 个 shape，每 shape 三次：recipe11 为 66（八规则 summary/count/page 的各统计/位置组合），recipe12 为 10 wanted 最坏形状，recipe14 为 36 属性/Body/完整必要 JSON 形状。每次都使用真实 consumer 与原 fixed_limits。下面每 budget_group、每轮选 **wall median 最大的一个实际 case**；CPU/alloc/heap 取该同一 case 各自三样本 median，不是跨 case 拼出的四个最大值。完整 224 个 case、672 个实际样本和精确选择 case 路径在 tables.json/samples.json。
+
+| budget_group | R1 wall/CPU/alloc/heap | R2 同口径 | 原固定上限同序 | 原件 |
+| --- | --- | --- | --- | --- |
+| rules/eight/summary | 584.933/427.654/295.436/173.221 | 584.529/438.903/295.437/173.164 | 2364.000/1403.000/894.312/542.250 | R1/11:L47–48; R2/11:L47–48 |
+| rules/eight/wanted | 348.304/314.866/189.287/159.704 | 342.418/313.293/189.339/156.857 | 983.000/941.000/570.812/479.812 | R1/11:L72–73; R2/11:L72–73 |
+| rules/eight/orphans | 315.257/314.704/187.783/147.613 | 316.068/298.509/187.837/157.502 | 937.000/936.000/566.188/474.875 | R1/11:L113–114; R2/11:L127–128 |
+| rules/eight/ambiguous | 305.011/296.248/189.325/155.478 | 306.853/289.426/189.372/158.247 | 932.000/964.000/570.750/480.375 | R1/11:L197–198; R2/11:L210–211 |
+| rules/eight/invalid_frontmatter | 261.928/289.754/157.641/132.168 | 274.171/284.149/157.593/125.949 | 816.000/850.000/486.125/409.750 | R1/11:L764–765; R2/11:L249–250 |
+| rules/eight/missing_type | 295.116/292.149/161.062/135.587 | 302.263/302.191/161.114/124.924 | 855.000/853.000/486.125/409.562 | R1/11:L778–779; R2/11:L778–779 |
+| rules/eight/missing_summary | 300.796/288.033/161.115/135.640 | 311.981/313.596/161.114/131.438 | 860.000/861.000/486.125/409.688 | R1/11:L325–326; R2/11:L828–829 |
+| rules/eight/undigested_sources | 402.592/381.692/194.988/157.878 | 364.421/362.866/195.040/157.880 | 1608.000/1060.000/582.750/486.938 | R1/11:L450–451; R2/11:L953–954 |
+| rules/eight/invalid_sources | 290.057/272.731/161.624/135.078 | 295.000/283.021/161.572/136.091 | 1525.000/898.000/482.438/406.000 | R1/11:L473–474; R2/11:L473–474 |
+| rules/wanted/hot-many-spellings-kinds | 3132.483/1576.714/907.536/84.336 | 3192.446/1610.494/907.535/78.216 | 9799.000/5081.000/2748.250/238.688 | R1/12:L35–36; R2/12:L35–36 |
+| rules/wanted/unique-long-targets | 1393.151/1367.776/1160.479/349.585 | 1463.362/1421.966/1160.469/334.347 | 4534.000/4401.000/3507.062/1068.125 | R1/12:L49–50; R2/12:L77–78 |
+| rules/wanted/relative-deep-folder | 1285.232/854.831/447.140/82.488 | 1270.195/816.346/447.138/86.649 | 4144.000/2770.000/1367.062/264.188 | R1/12:L119–120; R2/12:L119–120 |
+| rules/wanted/same-last-key-presence | 206.508/235.001/116.226/89.619 | 213.251/242.801/116.226/91.644 | 720.000/820.000/374.312/301.750 | R1/12:L133–134; R2/12:L133–134 |
+| rules/wanted/one-page-10000-edges | 164.326/164.348/99.098/71.056 | 172.897/168.354/99.097/75.009 | 615.000/593.000/322.875/222.125 | R1/12:L146–147; R2/12:L146–147 |
+| rules/wanted/100k-excluded-and-outside | 2941.663/1417.478/1418.662/150.293 | 2904.400/1400.548/1418.661/150.700 | 8846.000/4270.000/4261.000/456.938 | R1/12:L160–161; R2/12:L160–161 |
+| properties/first-sources-complete-JSON-and-slot | 5.236/2.789/6.562/6.562 | 4.485/2.454/6.562/6.562 | 18.000/10.000/19.688/19.688 | R1/14:L89–90; R2/14:L89–90 |
+| properties/actual-body-positive-control | 2.346/1.027/3.526/3.526 | 2.277/1.314/1.526/1.526 | 7.000/4.000/10.625/10.625 | R1/14:L643–644; R2/14:L643–644 |
+| properties/missing_type-prefix-and-unrelated | 0.721/0.203/0.005/0.005 | 0.581/0.226/0.005/0.005 | 3.000/3.000/0.062/0.062 | R1/14:L223–224; R2/14:L223–224 |
+| properties/missing_type-complete-needed-values | 11.457/1.496/0.012/0.012 | 10.840/1.086/0.012/0.012 | 36.000/5.000/0.062/0.062 | R1/14:L780–781; R2/14:L54–55 |
+| properties/missing_summary-prefix-and-unrelated | 0.629/0.255/0.005/0.005 | 0.693/0.236/0.005/0.005 | 2.000/1.000/0.062/0.062 | R1/14:L793–794; R2/14:L67–68 |
+| properties/missing_summary-complete-needed-values | 11.409/1.065/0.012/0.012 | 11.815/1.719/0.012/0.012 | 37.000/6.000/0.062/0.062 | R1/14:L984–985; R2/14:L78–79 |
+
+八规则大形状原 oracle：wanted=8、orphans=21、ambiguous=7、invalid_frontmatter=7、missing_type=12007、missing_summary=12007、undigested_sources=100007、invalid_sources=14；fixture 有 100007 source IDs、12000 stale、12000 cap 前零文件夹和50000外本页。属性形状在 fresh hidden A→B→A 各5读取页/50000外页、noStats/ANALYZE下运行；首 sources 位置1003、body524288 B、完整 sources JSON524296 B、必要 distinct JSON1269162 B。group 固定门限来自已冻结校准，当前 median 通过该门限；日志中 median_times_three 是诊断字段，不能再当本轮新门限。
+
+参数编码的 622 条旁路诊断也保留：每条对实际代表 UUID 参数做一次真实 pgx 二进制编码，位于 Prepare 计量之外；observed_calls_times_encoded_bytes 是等长参数调用次数×一次编码字节，不是 wire 总量或重复分配测量，不能追加到上面的 operation wall。
+
+### 51/52 生产 Up 与 SHARE 观察
+
+| 轮 | 版本 | 分布 | 页 | properties | links | Up ms | Build ms | WAL MiB | 新索引 MiB | 观察 SHARE ms | 原件 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| R1 | 52 | empty | 100004 | 2000040 | 2000040 | 562.737 | 550.129 | 101.496 | 112.492 | 544.264 | R1/06:L39–40 |
+| R1 | 52 | dense | 100004 | 2000040 | 2000040 | 577.797 | 566.697 | 101.496 | 112.492 | 561.423 | R1/07:L39–40 |
+| R1 | 51 | empty | 100000 | 2000000 | — | 386.350 | 374.525 | 0.064 | 0.008 | 366.630 | R1/03:L38 |
+| R1 | 51 | dense | 100000 | 2000000 | — | 640.756 | 629.434 | 70.118 | 77.477 | 623.889 | R1/04:L38 |
+| R2 | 52 | empty | 100004 | 2000040 | 2000040 | 573.148 | 562.763 | 101.496 | 112.492 | 558.050 | R2/06:L39–40 |
+| R2 | 52 | dense | 100004 | 2000040 | 2000040 | 578.158 | 567.873 | 101.496 | 112.492 | 558.769 | R2/07:L39–40 |
+| R2 | 51 | empty | 100000 | 2000000 | — | 390.239 | 380.162 | 0.064 | 0.008 | 374.831 | R2/03:L38 |
+| R2 | 51 | dense | 100000 | 2000000 | — | 655.713 | 643.784 | 70.118 | 77.477 | 639.304 | R2/04:L38 |
+
+51 从实际 version50 起执行完整 Up；52 从实际 version51 起执行完整 Up，各自不是从空库跑完所有历史迁移。原100k/2M夹具及52的100004页/2000040属性与边均保留。Build 是迁移内建索引语句；Up 包含迁移事务到提交。SHARE 值来自活动采样，不是服务器精确锁生命期。
+
+| 轮/版本/测试 | Up ms | barrier hold ms | 真实 writer ms | 真实 read ms | 原件 |
+| --- | --- | --- | --- | --- | --- |
+| R1/51/TestLintSourcesMigrationCostsEmptySources | 400.143 | 13.753 | 14.413 | 0.801 | R1/03:L39 |
+| R1/51/TestLintSourcesMigrationCostsDenseSources | 626.301 | 13.170 | 13.954 | 0.784 | R1/04:L39 |
+| R1/52/TestLintRangeMigrationCostsEmptySources | 561.760 | 14.093 | 14.942 | 0.853 | R1/06:L47 |
+| R1/52/TestLintRangeMigrationCostsDenseSources | 567.086 | 13.351 | 14.249 | 0.797 | R1/07:L47 |
+| R2/51/TestLintSourcesMigrationCostsEmptySources | 393.707 | 13.133 | 13.630 | 0.646 | R2/03:L39 |
+| R2/51/TestLintSourcesMigrationCostsDenseSources | 653.436 | 15.027 | 16.023 | 0.855 | R2/04:L39 |
+| R2/52/TestLintRangeMigrationCostsEmptySources | 560.714 | 14.673 | 15.106 | 0.698 | R2/06:L47 |
+| R2/52/TestLintRangeMigrationCostsDenseSources | 553.475 | 14.121 | 14.925 | 0.806 | R2/07:L47 |
+
+上述 controlled interleaving 为另一独立实际运行，观察明确 barrier 下的读写交错；不能把 hold 时间加到自然 Up 样本，或称其代表生产锁竞争分布。
+
+### 5000-link 真实保存与单索引开关
+
+| 轮/形状 | wall/Go CPU ms | TotalAlloc/采样heap增量 MiB | cluster WAL MiB | 原件 |
+| --- | --- | --- | --- | --- |
+| R1/http-save-body | 71.323/35.176 | 26.248/16.054 | 5.024 | R1/01:L30 |
+| R1/http-save-named | 93.768/56.563 | 38.022/15.454 | 6.000 | R1/01:L33 |
+| R1/http-save-mixed-named | 82.943/44.820 | 32.034/12.255 | 5.512 | R1/01:L36 |
+| R1/http-save-mixed-empty | 84.711/47.536 | 32.049/15.412 | 5.512 | R1/01:L39 |
+| R2/http-save-body | 73.943/39.656 | 26.259/15.452 | 5.024 | R2/01:L30 |
+| R2/http-save-named | 101.445/67.184 | 38.023/15.031 | 6.000 | R2/01:L33 |
+| R2/http-save-mixed-named | 83.063/47.248 | 32.042/12.502 | 5.512 | R2/01:L36 |
+| R2/http-save-mixed-empty | 94.893/49.082 | 32.212/12.883 | 5.520 | R2/01:L39 |
+
+单索引比较每腿仍保存5000链接，并有1000无关properties；每个 off/on 为独立克隆，只有被测51或52索引开关不同。下面成对列 wall/CPU/alloc/heap增量/WAL（前两项 ms、后三项 MiB），共两轮×两索引×三形状×三统计状态。force_generic_setting 只表示该保存池设置，不额外宣称 Planned 的每一条内部 SQL 用了 generic plan。
+
+| 版本/形状/状态 | R1 off → on | R2 off → on | 原件 |
+| --- | --- | --- | --- |
+| 51/sources/no_statistics | 112.245/58.809/40.314/17.436/6.550 → 116.785/59.258/40.390/17.553/6.550 | 110.259/52.060/40.344/17.476/6.550 → 112.090/55.268/40.351/17.480/6.550 | R1/02:L31; R1/02:L38; R2/02:L31; R2/02:L38 |
+| 51/sources/analyzed | 111.423/57.103/40.313/18.935/6.550 → 118.967/63.913/40.310/16.460/6.550 | 118.368/60.485/40.345/18.768/6.550 → 115.501/57.291/40.339/17.499/6.550 | R1/02:L45; R1/02:L52; R2/02:L45; R2/02:L52 |
+| 51/sources/force_generic_setting | 116.751/58.590/40.349/17.290/6.550 → 115.853/57.631/40.352/17.281/6.550 | 115.918/57.544/40.315/17.555/6.550 → 116.072/56.668/40.320/16.058/6.550 | R1/02:L59; R1/02:L66; R2/02:L59; R2/02:L66 |
+| 51/nonsources/no_statistics | 117.372/64.233/40.844/17.064/6.588 → 113.332/56.814/40.843/16.939/6.588 | 106.569/52.083/40.871/17.989/6.588 → 114.856/54.899/40.870/16.937/6.588 | R1/02:L75; R1/02:L82; R2/02:L75; R2/02:L82 |
+| 51/nonsources/analyzed | 111.595/53.067/40.874/16.873/6.588 → 113.565/58.163/40.883/17.936/6.588 | 117.663/63.323/40.880/16.990/6.588 → 114.678/63.589/40.882/16.562/6.588 | R1/02:L89; R1/02:L96; R2/02:L89; R2/02:L96 |
+| 51/nonsources/force_generic_setting | 112.478/56.074/40.871/17.741/6.588 → 115.659/56.888/40.838/17.679/6.588 | 115.882/57.590/40.868/17.748/6.588 → 116.353/56.218/40.879/17.494/6.588 | R1/02:L103; R1/02:L110; R2/02:L103; R2/02:L110 |
+| 51/mixed-empty/no_statistics | 100.429/51.338/34.046/13.063/6.086 → 105.347/53.415/34.136/15.479/6.086 | 99.891/50.622/34.095/18.077/6.086 → 102.808/52.384/34.127/16.366/6.086 | R1/02:L119; R1/02:L126; R2/02:L119; R2/02:L126 |
+| 51/mixed-empty/analyzed | 100.496/50.123/33.956/16.057/6.086 → 106.064/51.547/34.076/16.394/6.086 | 101.407/48.297/34.082/15.042/6.086 → 108.248/56.801/34.163/13.134/6.086 | R1/02:L133; R1/02:L140; R2/02:L133; R2/02:L140 |
+| 51/mixed-empty/force_generic_setting | 109.593/54.719/33.980/15.366/6.086 → 106.999/51.853/33.988/13.168/6.086 | 122.235/55.011/33.989/15.768/6.086 → 101.931/49.504/33.953/13.033/6.086 | R1/02:L147; R1/02:L154; R2/02:L147; R2/02:L154 |
+| 52/sources/no_statistics | 105.842/56.413/40.309/17.181/5.597 → 111.485/57.894/40.338/17.222/6.550 | 112.645/63.270/40.362/17.485/5.597 → 115.368/58.437/40.345/16.476/6.550 | R1/08:L49; R1/08:L56; R2/08:L49; R2/08:L56 |
+| 52/sources/analyzed | 101.961/61.558/40.315/16.582/5.597 → 113.683/58.760/40.338/17.388/6.550 | 107.884/60.337/40.316/17.397/5.597 → 113.333/58.625/40.344/16.590/6.550 | R1/08:L63; R1/08:L70; R2/08:L63; R2/08:L70 |
+| 52/sources/force_generic_setting | 103.930/55.177/40.348/16.304/5.597 → 113.031/56.053/40.318/18.948/6.550 | 104.836/53.620/40.342/17.278/5.597 → 118.779/63.986/40.339/16.370/6.550 | R1/08:L77; R1/08:L84; R2/08:L77; R2/08:L84 |
+| 52/nonsources/no_statistics | 113.244/63.738/40.872/17.726/5.635 → 118.372/62.109/40.891/18.605/6.588 | 103.352/57.174/40.875/16.911/5.635 → 113.814/57.693/40.876/18.067/6.588 | R1/08:L110; R1/08:L117; R2/08:L110; R2/08:L117 |
+| 52/nonsources/analyzed | 104.579/59.784/40.876/17.624/5.635 → 115.987/67.735/40.850/17.105/6.588 | 104.049/56.478/40.874/17.751/5.635 → 117.076/63.220/40.851/17.769/6.588 | R1/08:L124; R1/08:L131; R2/08:L124; R2/08:L131 |
+| 52/nonsources/force_generic_setting | 120.035/65.726/40.872/16.814/5.635 → 113.140/53.074/40.868/17.640/6.588 | 103.920/56.714/40.868/16.933/5.635 → 114.487/57.043/40.843/18.072/6.588 | R1/08:L138; R1/08:L145; R2/08:L138; R2/08:L145 |
+| 52/mixed-empty/no_statistics | 113.939/54.905/34.085/13.144/5.133 → 111.626/56.608/34.133/15.891/6.086 | 95.940/52.028/33.981/16.281/5.133 → 101.815/49.316/33.983/16.328/6.086 | R1/08:L171; R1/08:L178; R2/08:L171; R2/08:L178 |
+| 52/mixed-empty/analyzed | 92.254/49.724/34.081/15.565/5.133 → 106.456/57.476/34.077/16.799/6.086 | 98.356/50.812/34.077/16.010/5.133 → 100.806/48.395/34.170/13.539/6.086 | R1/08:L185; R1/08:L192; R2/08:L185; R2/08:L192 |
+| 52/mixed-empty/force_generic_setting | 100.658/57.887/34.080/16.285/5.133 → 107.880/54.286/33.955/16.868/6.086 | 99.762/46.937/33.987/18.028/5.133 → 103.903/50.816/34.083/16.010/6.086 | R1/08:L199; R1/08:L206; R2/08:L199; R2/08:L206 |
+
+这些只是本机两轮各一真实 off/on 保存的原值，不从单样本宣称固定百分比收益；每腿 catalog、relation/index bytes、statistics、fixture fingerprint 和 pool 边界均另存原 write-index-boundary/range-index-write 记录。
+
+### 重建、回滚、queue、后续 search 与受控等待分账
+
+这里是当前18b实际重跑的原 representative reindex cost suite：1本、10004 live页、一个56 B文档内3边与10003空正文；不是100k全重建。每次 whole-command 前恢复并核 literal-v1/空属性 collapsed-NULL，真实 v1→v2；current-tokenizer 与 missing/old-tokenizer 两类全命令分列。原S1-0a初始证据仍属历史身份，不用本轮值回写它。
+
+| 实际阶段 | R1 wall/CPU/alloc/heap/WAL | R2 同口径 | 预期 error R1/R2 | 原件 |
+| --- | --- | --- | --- | --- |
+| diagnostic-linking-rollback | 7040.582/2626.707/94.367/22.886/3.010 | 7012.689/2595.597/94.410/24.955/3.010 | true/true | R1/01:L43; R2/01:L43 |
+| whole-command-linking-rollback-queue-success | 6942.395/2477.153/89.966/24.889/6.688 | 7002.312/2555.541/89.968/25.052/6.688 | true/true | R1/01:L46; R2/01:L46 |
+| diagnostic-linking-commit | 6977.644/2588.146/95.261/19.635/2.873 | 6948.896/2601.744/95.258/19.250/2.873 | false/false | R1/01:L47; R2/01:L47 |
+| diagnostic-queue-second-batch-failure | 46.726/4.836/2.334/2.332/4.021 | 46.383/5.806/2.334/2.332/4.021 | true/true | R1/01:L50; R2/01:L50 |
+| diagnostic-queue-recovery | 47.663/5.197/2.332/2.331/4.745 | 47.227/6.028/2.336/2.335/4.745 | false/false | R1/01:L52; R2/01:L52 |
+| later-search-job-build | 609.816/158.367/64.491/16.015/27.919 | 602.521/156.471/64.487/14.301/27.919 | false/false | R1/01:L54; R2/01:L54 |
+| whole-command-current-tokenizer-v1-to-v2 | 6978.807/2568.134/89.020/21.370/3.810 | 7014.814/2578.200/89.020/26.973/3.810 | false/false | R1/01:L55; R2/01:L55 |
+| whole-command-missing-old-tokenizer-v1-to-v2 | 7199.640/2687.258/91.356/24.330/6.719 | 7068.952/2588.206/91.352/26.577/6.719 | false/false | R1/01:L56; R2/01:L56 |
+| diagnostic-linking-commit-controlled-wait | 7108.733/2619.177/95.284/21.090/3.712 | 6968.539/2546.387/95.285/21.570/3.711 | false/false | R1/01:L58; R2/01:L58 |
+
+Failed=true 的 rollback/第二批失败是明确注入后被测试断言接受的错误，不是顶层测试失败。诊断 linking、queue、later-search-job 都是独立真实阶段；不得相加冒充完整命令，也不能用整个 go test 的 CPU/时长冒充阶段。
+
+| 轮/阶段 | index观察持有 ms | notebook观察持有 ms | 原件 |
+| --- | --- | --- | --- |
+| R1/diagnostic-linking-rollback | 7035.624 | 7036.008 | R1/01:L44 |
+| R1/diagnostic-linking-commit | 6976.208 | 6976.393 | R1/01:L48 |
+| R1/diagnostic-linking-commit-controlled-wait | 7053.715 | 7053.957 | R1/01:L59 |
+| R2/diagnostic-linking-rollback | 7008.304 | 7008.611 | R2/01:L44 |
+| R2/diagnostic-linking-commit | 6947.971 | 6948.106 | R2/01:L48 |
+| R2/diagnostic-linking-commit-controlled-wait | 6914.444 | 6914.689 | R2/01:L59 |
+
+持有区间从锁查询确认到真实提交/回滚清理确认，包含 SQL 往返和观察开销，不能表述为精确 server lock duration；没有锁跨越后续独立 queue 事务。
+
+| 轮 | 实际 waiter/blocker PID | 请求 hold ms | 确认 wait 下界 ms | 观察进程 Go CPU ms | cluster WAL MiB | 原件 |
+| --- | --- | --- | --- | --- | --- | --- |
+| R1 | 125/124 | 50.000 | 51.683 | 3.565 | 0.000 | R1/01:L57 |
+| R2 | 125/124 | 50.000 | 50.788 | 2.232 | 0.000 | R2/01:L57 |
+
+- `R1/01:L51`：[{"ElapsedNS":39267291,"Rows":10000,"Failed":false},{"ElapsedNS":1273459,"Rows":0,"Failed":true}]; earlier linking lock acquisition query wall=1250834ns (SQL round trips included, not pure contention wait; no lock spans queue)
+
+- `R1/01:L53`：[{"ElapsedNS":40862958,"Rows":10000,"Failed":false},{"ElapsedNS":331667,"Rows":3,"Failed":false}]; earlier linking lock acquisition query wall=1250834ns (SQL round trips included, not pure contention wait; no lock spans queue)
+
+- `R2/01:L51`：[{"ElapsedNS":39124209,"Rows":10000,"Failed":false},{"ElapsedNS":1227833,"Rows":0,"Failed":true}]; earlier linking lock acquisition query wall=886376ns (SQL round trips included, not pure contention wait; no lock spans queue)
+
+- `R2/01:L53`：[{"ElapsedNS":40857083,"Rows":10000,"Failed":false},{"ElapsedNS":223208,"Rows":3,"Failed":false}]; earlier linking lock acquisition query wall=886376ns (SQL round trips included, not pure contention wait; no lock spans queue)
+
+两批保持真实生产最多10000行：失败样本第一批10000提交、第二批0/error；恢复10000+3。上面的逐批原 JSON ElapsedNS 单位为 ns；锁获取 query wall 不是纯竞争等待。这里只覆盖明确fixture和注入阶段，未测生产负载下queue尾延迟、长期WAL/RSS或100k完整重建。
+
+### 必要属性、合法长 JSON/target、TOAST 与首键
+
+| 轮/实际分布（8 reader页） | wall ms | Go alloc MiB | necessary JSON B | read TOAST blocks | 返回 scalar | 原件 |
+| --- | --- | --- | --- | --- | --- | --- |
+| R1/prefix-sufficient | 1.669 | 0.007 | 0 | 0 | 0 | R1/09:L33 |
+| R1/long-whitespace-then-text | 37.147 | 0.007 | 2981936 | 152 | 0 | R1/09:L57 |
+| R1/long-whitespace-only | 38.381 | 0.007 | 2981928 | 152 | 8 | R1/09:L81 |
+| R1/unrelated-only | 1.849 | 0.007 | 0 | 0 | 8 | R1/09:L105 |
+| R2/prefix-sufficient | 2.270 | 0.007 | 0 | 0 | 0 | R2/09:L33 |
+| R2/long-whitespace-then-text | 38.212 | 0.007 | 2981936 | 152 | 0 | R2/09:L57 |
+| R2/long-whitespace-only | 38.186 | 0.007 | 2981928 | 152 | 8 | R2/09:L81 |
+| R2/unrelated-only | 1.495 | 0.007 | 0 | 0 | 8 | R2/09:L105 |
+
+此表只选 count/missing_type 代表值；两规则 count/first/after 全48条实际读取证据及各自返回值在 samples.json，不能把 count 标量/返回数推成读取行数。计时仅 caller snapshot 下 warm 生产写入夹具的 reader，排除 parser、writer 与fixture字符串；stored TOAST 大小也单独保留。
+
+| 轮 | 大target B | target head / exact blocks | JSON head / exact / presence blocks | 原件 |
+| --- | --- | --- | --- | --- |
+| R1 | 1048578 | 0/135 | 135/135/0 | R1/09:L18711 |
+| R2 | 1048578 | 0/135 | 135/135/0 | R2/09:L18711 |
+
+| 轮/合法来源 | source B | 完整target/serialized JSON B | wall ms | Go alloc MiB | heap开始/采样峰 MiB | 原件 |
+| --- | --- | --- | --- | --- | --- | --- |
+| R1/alias-expansion | 50032 | 100008 | 23.690 | 6.185 | 32.045/38.230 | R1/09:L18760; R1/09:L18756 |
+| R2/alias-expansion | 50032 | 100008 | 24.091 | 6.057 | 104.775/110.832 | R2/09:L18760; R2/09:L18756 |
+| R1/numeric-exponent | 24 | 326 | 18.100 | 0.317 | 31.372/31.689 | R1/09:L18742; R1/09:L18738 |
+| R2/numeric-exponent | 24 | 326 | 19.725 | 0.301 | 104.161/104.462 | R2/09:L18742; R2/09:L18738 |
+| R1/over-8MiB | 4400034 | 13200008 | 1363.872 | 890.700 | 38.254/223.978 | R1/09:L18769; R1/09:L18765 |
+| R2/over-8MiB | 4400034 | 13200008 | 1342.280 | 906.859 | 110.892/205.050 | R2/09:L18769; R2/09:L18765 |
+| R1/string-escapes | 30 | 17 | 23.570 | 0.307 | 31.713/32.020 | R1/09:L18751; R1/09:L18747 |
+| R2/string-escapes | 30 | 17 | 21.592 | 0.265 | 104.486/104.751 | R2/09:L18751; R2/09:L18747 |
+| R1/legal-escaped-target | 3600028 | 5400004 | 1524.538 | 1139.777 | 10.319/145.120 | R1/09:L18731; R1/09:L18728–18730 |
+| R2/legal-escaped-target | 3600028 | 5400004 | 1657.724 | 1147.793 | 10.308/178.129 | R2/09:L18731; R2/09:L18728–18730 |
+
+上表含真实 parser→生产索引写入→选定 bounded reads/规则 consumer→独立断言，排除预造字符串与 PG 内存；没有 processCPU 字段，不能从 wall 估算 CPU。合法 escaped target 的完整身份为5,400,004 B（source3,600,028 B）；over-8MiB JSON完整13,200,008 B。原实际 wanted/invalid_sources consumer 身份、分页终止与完整 J/L 值断言见 text_records；这不是只跑裸 reader。新 absence query 的 JSON_presence_blocks=0 不代表 old JSON head 可以不取必要 value。
+
+### 四目标进程与本机容量换算
+
+| 实际目标 | recipes | 真实 PASS节点 | 锁内外层 process s | 各recipe process总和 s |
+| --- | --- | --- | --- | --- |
+| 15-costs-first | 17 | 89 | 411.940750 | 410.554668 |
+| 16-costs-lint-first | 14 | 1047 | 378.950150 | 377.844616 |
+| 17-costs-lint-second | 14 | 1047 | 377.537874 | 376.417918 |
+| 18-guards-first | 15 | 57 | 829.613264 | 828.408628 |
+
+costs-lint 每轮14独立进程、1047 PASS节点；两轮逐recipe锁内process均值×2.4的最大值为 **156.087704524 s ≤300 s**。此为既定本机容量校核，未测/未宣称指定main CI的真实<450 s均值。外层heavy等待不在子进程process数内；outerprocess与recipe总和的差也不能当产品SQL成本。成本/guards总共只执行了回执所列四目标，没有补跑或改变门限。
+
+### 可定位原件与未测范围
+
+上述数值分别以原四目标回执、当前两轮成本容量接受和根全成本复核为事实基础；没有用当前可能暂处单故障的工作树读取数值。root_acceptances/receipts 全 ref 在 pins.json。完整源码测量边界的10个文件也由实际gen输入的 preserved_bytes/SHA/native mode绑定；原件一律未修改。
+
+- `/home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/root-post-sources-all-cost-targets-review-01.json` — SHA-256 `4f187063ee86d0125616b6a609236371825b7ff3061e43b59601f569c1bfb701`
+
+- `/home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/root-post-sources-cost-pair-review-01.json` — SHA-256 `34298af3553a67b44324cc99e0f9057e9518d3c646afaf93a772506420790d4a`
+
+R1 原始文件（以下是全部14个recipe；data行号在各表和samples.json）：
+
+| ID | 原始 output.log 路径 | SHA-256 |
+| --- | --- | --- |
+| R1/01 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/16-costs-lint-first/test-go-costs-lint-01/output.log | 90aa072f46c5da7663e922ba138d895d1554efb78a3172dbfe9a14fb48723323 |
+| R1/02 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/16-costs-lint-first/test-go-costs-lint-02/output.log | 1baa2676f137a9bd79a8f235734f9e48890f1d6039193835779ddc370474759f |
+| R1/03 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/16-costs-lint-first/test-go-costs-lint-03/output.log | b69805c87837aabd23d81bca2e36d8b0cd37f0e7690d0608c1741bd91a22b554 |
+| R1/04 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/16-costs-lint-first/test-go-costs-lint-04/output.log | 94b6a8a8ad662df882d56a13c99a5d563a287853b6427660a2ccf40d3932cd7f |
+| R1/05 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/16-costs-lint-first/test-go-costs-lint-05/output.log | c0fed09054dc5f1ecf3b02d9b8f2745b76796ddb9cb6f4725fcc9db6d719a2df |
+| R1/06 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/16-costs-lint-first/test-go-costs-lint-06/output.log | 488a1676ed446475d7ed6a98f45887a13499c2d96b7ab8bf8d487cfba3085160 |
+| R1/07 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/16-costs-lint-first/test-go-costs-lint-07/output.log | 30f364e08222669fec50bfb61fe9ea90763cd48ee3cabcf69834ec0673980bd8 |
+| R1/08 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/16-costs-lint-first/test-go-costs-lint-08/output.log | 133bd89e0a4a452ab89df4ba50e97aed9bd8c0e8401a2ccb3392b4aad792d055 |
+| R1/09 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/16-costs-lint-first/test-go-costs-lint-09/output.log | f74b79d023dafe90d8ae20e83c8304d328408385b5dae9b039deab6462f7be07 |
+| R1/10 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/16-costs-lint-first/test-go-costs-lint-10/output.log | 2748f6019f9168fd224845dca9696111e63c3d148c93acd246d153716daab061 |
+| R1/11 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/16-costs-lint-first/test-go-costs-lint-11/output.log | 3f819d0de658aa75fb7621c5e4650cbd69343bbcc0f680eed7e4d9e174a9cb1b |
+| R1/12 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/16-costs-lint-first/test-go-costs-lint-12/output.log | 7f67bae7f25807993789c9d5beedfc8cf9c589fee32795a339f4fe71e8257974 |
+| R1/13 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/16-costs-lint-first/test-go-costs-lint-13/output.log | 913f34249adfd1fa90ff2a9414181d747a6d7bbdd66b83645355f5fa23879e5b |
+| R1/14 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/16-costs-lint-first/test-go-costs-lint-14/output.log | 8c4a39bbacdd3104613645f34794f66aba2394af367726d6deba209bd4a98522 |
+
+R2 原始文件（以下是全部14个recipe；data行号在各表和samples.json）：
+
+| ID | 原始 output.log 路径 | SHA-256 |
+| --- | --- | --- |
+| R2/01 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/17-costs-lint-second/test-go-costs-lint-01/output.log | 47ccb05e2cc38c6a32e361af662c92265ef08a2c143fbe0ec70ac59caafae9fd |
+| R2/02 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/17-costs-lint-second/test-go-costs-lint-02/output.log | 9371aba785858c71f3f7626b7d6148fcb6c93c81c6b5b5ad2cc894a2454f6c20 |
+| R2/03 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/17-costs-lint-second/test-go-costs-lint-03/output.log | 738c2fcce5ec490334443ddad33bbd9d39414c396f585fe814ddf60419ee3c75 |
+| R2/04 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/17-costs-lint-second/test-go-costs-lint-04/output.log | 335f2969866fa7f13a1b5625011a8ed5279cfb0601bede261f8a2d843b746577 |
+| R2/05 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/17-costs-lint-second/test-go-costs-lint-05/output.log | b88793931214640d2b21051108cc3605e872b1d0bd5a24a80a2c266cdfef4fea |
+| R2/06 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/17-costs-lint-second/test-go-costs-lint-06/output.log | 064e3d3143c330f2bb3ccb0a46b79031a46f0eb38f513ea811c6ced3d63104e2 |
+| R2/07 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/17-costs-lint-second/test-go-costs-lint-07/output.log | c64494dcc25a85b061cf29f0aaaf05ecea846227fffd69dac352f060122330d3 |
+| R2/08 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/17-costs-lint-second/test-go-costs-lint-08/output.log | 415b88158cdc9ccc2a3e0e362cb3dd9d2de612cafc11ac791b1ba9505189e09b |
+| R2/09 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/17-costs-lint-second/test-go-costs-lint-09/output.log | 2dd481fd711c8ebebf50635d3172da3e54fa6886d72c9b2ab6a0c8099254eb5b |
+| R2/10 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/17-costs-lint-second/test-go-costs-lint-10/output.log | 6022f6234aeb5f75876d23fef9ad1bcd91b16a97f34f90befbe5c08f5aa351c9 |
+| R2/11 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/17-costs-lint-second/test-go-costs-lint-11/output.log | 1071078622a39741790e16554fa7513ab7cde5fcf65ce71c66dde8f4d8d681cc |
+| R2/12 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/17-costs-lint-second/test-go-costs-lint-12/output.log | 1ed2db05f2cfffe0bc072664e288c3dfb7c5cabfdfbbab1ee404d9f4debce47e |
+| R2/13 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/17-costs-lint-second/test-go-costs-lint-13/output.log | e7f4ac31c5215e84c63ef71feda738fcab1c64d27cdcc070201d109f499da3ea |
+| R2/14 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/17-costs-lint-second/test-go-costs-lint-14/output.log | 831f860dd565e7dfaa06271a5381293720f338a8253cb42b51af54bc0dcf90c7 |
+
+未测或不作推断：PG CPU/进程RSS、全部生产集群的冷缓存/并发争用分布、100k实际全reindex、真实部署的长尾与CI慢机预算。临时开发诊断和此前失败CI、原S1-0a历史样本保持各自身份；没有用本机当前成功覆盖它们。最终分支CI、main、三个独立Step审查及整个控制批次的结论在本补充冻结时不宣称完成。
+
+### S1-0a代表实测历史（保留原时点）
+
 ### M10/P3决定62来源表示修订的代表实测与后续（2026-10-30）
 
 当前Extractor为2；S1-0a的5000-links保存与literal-v1→v2代表样本、原始证据及未测项集中见[P3 §10.1](../../M10-llm-wiki/03-P3-lint-health.md#101-s1)。S1-0a的额外bool输入、空路径进入既有property部分索引须计入5000-links生产保存成本；测试自有代表库分别量literal-v1→v2的linking/rekey每本事务wall/CPU/内存、锁等待、成功提交或本阶段回滚、WAL/空间，以及随后Requeue各独立批的耗时/已提交批数/队列变化/失败位置；再记命令整体wall/结果及后续搜索job成本，当前tokenizer和缺失/旧tokenizer分列。linking事务持锁阻写只覆盖本阶段；ctx可用时linking失败/撞键仍可入队，queue失败不回滚已提交v2，后批失败保留前批。不能把队列各批归进linking的锁/回滚范围，单本命令可部分成功，全实例亦非原子；source通常只读，不能靠日常保存代替全面重建。历史330秒只是旧估计，下文M6/M8搜索数字与61守卫校准各保留原范围，不充本轮数字。
