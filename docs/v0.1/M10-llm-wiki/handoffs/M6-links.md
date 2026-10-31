@@ -27,6 +27,8 @@ created: 2026-10-06
 
 ## 处理进展
 
+- P3/S2（2026-11-01；合并见[00号文档](../00-M10-design.md)第12节）：健康页消费已接受的八规则与来源表示，当前路径、missing/stale说明及管理员reindex提示已实现；没有改索引规则/版本或重新打开原移交。M6 status保持done；d061历史门禁/三审保留；B-M1修复fa681已提交并有9+2 minimum及postgen，fa681正式38＋额外3+1控制及完整本地native19/Cost05/EW已按各自范围接受；当前接受结论：fa681代码CI41240404612 attempt1及原A/B/C修复核对均已接受；root关闭B-M1，当前已核实Important/Minor/Nit/Q均0，准入Step文档（处置回执43a25df5…），文档CI与集成仍PENDING，见[S2记录](../reviews/P3-S2-health-web-review.md)。
+
 ### P3/S1完成接收（2026-10-31）
 
 | 原移交行 | 当前 S1 实现与已存在证据 |

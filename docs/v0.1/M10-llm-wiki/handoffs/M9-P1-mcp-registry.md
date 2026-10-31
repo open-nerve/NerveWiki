@@ -33,6 +33,8 @@ M9/P1 建了 MCP 的平台与读的工具（[M9/P1 文档](../../M9-mcp/01-P1-pl
 
 ## 处理进展
 
+- P3/S2（2026-11-01；合并见[00号文档](../00-M10-design.md)第12节）：本单元只加健康网页与LW8 page，保留原7个API/MCP故事；未改两scope注册、工具合同、SDK限值或说明余量。虚拟页P4、prompt/说明/人工清单P5与M11预留仍按原边界，整份status保持open；d061历史门禁/三审保留；B-M1修复fa681已提交并有9+2 minimum及postgen，fa681正式38＋额外3+1控制及完整本地native19/Cost05/EW已按各自范围接受；当前接受结论：fa681代码CI41240404612 attempt1及原A/B/C修复核对均已接受；root关闭B-M1，当前已核实Important/Minor/Nit/Q均0，准入Step文档（处置回执43a25df5…），文档CI与集成仍PENDING，见[S2记录](../reviews/P3-S2-health-web-review.md)。
+
 - P3/S1（2026-10-31）：第8项lint/pending_sources两scope实际注册、全对象合同、52格LLM权限矩阵、码、私有Fit和跨中页续读已验；第6项内置说明raw/真实SDK为notebook3044/3093B、account3113/3163B，SDK余1003/933B，仍给M11留至少300B。48KiB响应上界和Fit0/StartCursor由真实SDK/PG及负控证明，具体fixture中页47208B不当通用大小。见[S1审查](../reviews/P3-S1-lint-protocol-review.md)。P4虚拟页和P5 prompt/get注册、分类、大小、系统说明/人工清单仍待，整份status保持open。
 
 以下历史阶段open/pending保留为原时点。

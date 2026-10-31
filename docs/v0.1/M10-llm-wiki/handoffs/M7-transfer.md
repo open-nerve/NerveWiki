@@ -18,6 +18,8 @@ M7 建立了导出贡献者的扩展点，交空（[M7 总设计](../../M7-asset
 
 ## 处理进展
 
+- P3/S2（2026-11-01；合并见[00号文档](../00-M10-design.md)第12节）：健康页附件条目按当前树父页和attachment state打开，移动后路径/href及点击落点有真实浏览器故事；缺失/树读失败保留结果并只重读nodes。第5项服务端语义仍沿S1；第1/2/6项export contributor、import skipping与输出界仍归P4，整份status保持open，d061历史门禁/三审保留；B-M1修复fa681已提交并有9+2 minimum及postgen，fa681正式38＋额外3+1控制及完整本地native19/Cost05/EW已按各自范围接受；当前接受结论：fa681代码CI41240404612 attempt1及原A/B/C修复核对均已接受；root关闭B-M1，当前已核实Important/Minor/Nit/Q均0，准入Step文档（处置回执43a25df5…），文档CI与集成仍PENDING，见[S2记录](../reviews/P3-S2-health-web-review.md)。
+
 - P3/S1（2026-10-31）：第5项的page/asset分型和来源附件跟随已完成，真实规则、REST、两scope MCP和控制见[S1审查](../reviews/P3-S1-lint-protocol-review.md)。附件A在D或其来源父集F(A)与D相交即已消化；否则有父source由待消化来源代表，无父则独立待消化。第1/2/6项的export contributor、import skipping及输出上界仍归P4，整份status保持open。
 
 以下保留此前各阶段记录及当时pending。
