@@ -4,7 +4,7 @@
 |---|---|
 | 里程碑 | M10 模式契约与 LLM Wiki（`M10-llm-wiki`） |
 | 日期 | 2026-10-24 |
-| 状态 | 进行中；P1、P2已完成；S1服务端、来源整区、八规则、REST/MCP两scope及LW8 API/MCP已实施；18b完整本地门禁、248units/262legs/786阶段控制、五片各两轮与精确分支CI41171083998 attempt1的13jobs均已接受。独立审查A/B/C2的初稿与原件附记均已由主持者接受，无未关闭的已核实Important/Minor/Nit；Q-B1作为已知限制关闭审查疑问，性能边界仍留M12。文档提交自身minimum/gen/CI、合并/record及指定两main配对另行，S2未释放；P3/M10继续进行中，P4/P5/M11未开始。正文保留的前置pending是历史时点，现行进度仅见第12节当前表。 |
+| 状态 | 进行中；P1、P2已完成；S1服务端、来源整区、八规则、REST/MCP两scope及LW8 API/MCP已实施；18b完整本地门禁、248units/262legs/786阶段控制、五片各两轮与精确分支CI41171083998 attempt1的13jobs均已接受。独立审查A/B/C2的初稿与原件附记均已由主持者接受，无未关闭的已核实Important/Minor/Nit；Q-B1作为已知限制关闭审查疑问，性能边界仍留M12。Step文档 `6e2b8bbf9a71a0b11db29dea62e44910a76d7213` 的minimum、提交后gen与精确分支CI已分别接受；S1以 `689bf607bf05842e8d56389b1e5f282b252cd64e` no-ff合并，首次main CI已接受。本次record自身CI及指定两main五份Test配对尚待提交后验收，S2未释放；P3/M10继续进行中，P4/P5/M11未开始。正文保留的前置pending是历史时点，现行进度仅见第12节当前表。 |
 | 来源前置发布时状态（历史） | 进行中；P1、P2已完成。P2done精确f6bd0cde的[CI40861860430](https://github.com/open-nerve/NerveWiki/actions/runs/40861860430) attempt1全11作业/必需步骤成功，当时释放P3设计阶段；b02设计自身CI与S1入口已接受；S1-0容量调整已提交89d36454，S1-0a来源表示前置已实现，结果见P3§10.1。[P3设计](03-P3-lint-health.md)及[设计审查](reviews/P3-design-review.md)记录决定49–60与原席复核；原决定49–60设计已由主持者接受；新增决定62具体第二稿经三位独立审查及原席复核后已由主持者接受设计语义，S1/S2尚未完成，P4/P5与M10收尾未开始，不开始M11。历史失败及当时待验文字保留。 |
 | 依赖 | M9（MCP 工具与 prompt 注册表）、M7（导出贡献者、附件进树与链接）、M6（链接索引）、M8（变更集的类型、撤销与后台任务）；总体设计 12.3 照此修订（第 7 节"总体设计的修订"） |
 | 上级文档 | [v0.1 总体设计](../v0.1-design.md) 第 3.3–3.10、4.2、4.4、4.5、5、6.1–6.3、7.1、7.2、8.2、8.3、8.5、9.2、10、10.1、12.1–12.6、13、14、15 节 |
@@ -564,7 +564,7 @@ Nerve 没有 MCP、prompt、数据的 lint、模式的契约或只增不改的�
 
 ## 7. Phase 划分
 
-**P3/S1进度与移交现状**：S1服务端、来源整区、八规则、REST/MCP两scope及LW8 API/MCP已实施；18b完整本地门禁、248units/262legs/786阶段控制、五片各两轮与精确分支CI41171083998 attempt1的13jobs均已接受。独立审查A/B/C2的初稿与原件附记均已由主持者接受，无未关闭的已核实Important/Minor/Nit；Q-B1作为已知限制关闭审查疑问，性能边界仍留M12。文档提交自身minimum/gen/CI、合并/record及指定两main配对另行，S2未释放；P3/M10继续进行中，P4/P5/M11未开始。 M6六行及四项注意已完成，本次文档将其status改done；M7第5项、M9第8项/内置说明余量完成，剩余P4/P5事项使两份仍open。M11只是内部scope/旧格式移交，不启动升级；M12实际成本与MVCC/负载/停机边界保持open。下表和既有移交规划用于说明分工，当前进度唯一来源为第12节的当前表。
+**P3/S1进度与移交现状**：S1服务端、来源整区、八规则、REST/MCP两scope及LW8 API/MCP已实施；18b完整本地门禁、248units/262legs/786阶段控制、五片各两轮与精确分支CI41171083998 attempt1的13jobs均已接受。独立审查A/B/C2的初稿与原件附记均已由主持者接受，无未关闭的已核实Important/Minor/Nit；Q-B1作为已知限制关闭审查疑问，性能边界仍留M12。Step文档 `6e2b8bbf9a71a0b11db29dea62e44910a76d7213` 的minimum、提交后gen与精确分支CI已分别接受；S1以 `689bf607bf05842e8d56389b1e5f282b252cd64e` no-ff合并，首次main CI已接受。本次record自身CI及指定两main五份Test配对尚待提交后验收，S2未释放；P3/M10继续进行中，P4/P5/M11未开始。 M6六行及四项注意已完成，Step分支文档已将其status改done；M7第5项、M9第8项/内置说明余量完成，剩余P4/P5事项使两份仍open。M11只是内部scope/旧格式移交，不启动升级；M12实际成本与MVCC/负载/停机边界保持open。下表和既有移交规划用于说明分工，当前进度唯一来源为第12节的当前表。
 
 
 | P | 名称 | 交付 | 验证 |
@@ -897,12 +897,12 @@ Nerve 没有 MCP、prompt、数据的 lint、模式的契约或只增不改的�
 |---|---|---|---|---|
 | P1 契约的框架（S1–S4） | [01-P1](01-P1-contract-frame.md) | 已完成 | [设计](reviews/P1-design-review.md)、[S1](reviews/P1-S1-mode-template-review.md)、[S2](reviews/P1-S2-guard-review.md)、[S3](reviews/P1-S3-prechecks-refusals-numbering-review.md)、[S4](reviews/P1-S4-web-review.md) | S1 `45d086a1`、S2 `bad859c0`；S3 `a46c3d1d`；S4 `f261952f` |
 | P2 来源区（S1–S3） | [02-P2](02-P2-source-area.md) | 已完成；实施、三审复核、三Step集成及两main均值已验；[完成核对](02-P2-source-area.md#104-p2完成核对)。P2done `f6bd0cde` 的 [CI40861860430](https://github.com/open-nerve/NerveWiki/actions/runs/40861860430) 已接受并放行P3 | [设计](reviews/P2-design-review.md)、[S1](reviews/P2-S1-source-rules-review.md)、[S2](reviews/P2-S2-source-hash-review.md)、[S3](reviews/P2-S3-source-web-review.md) | S1 `bf8d6625`；S2 `66d8236c12aaa8923616f6f42f2ee33b772884f9`，记录`8904a8769646c3b8919ff6a4c503eeae3ac70727`；S3 `ecd79c77d0cdb2259d50758b26514f61ebb329ca`，记录`ae1794a89c6d6d501e1cdd659fcc99104721fab7` |
-| P3 lint 与健康度（S1、S2） | [03-P3](03-P3-lint-health.md) | 进行中；S1服务端、来源整区、八规则、REST/MCP两scope及LW8 API/MCP已实施；18b完整本地门禁、248units/262legs/786阶段控制、五片各两轮与精确分支CI41171083998 attempt1的13jobs均已接受。独立审查A/B/C2的初稿与原件附记均已由主持者接受，无未关闭的已核实Important/Minor/Nit；Q-B1作为已知限制关闭审查疑问，性能边界仍留M12。文档提交自身minimum/gen/CI、合并/record及指定两main配对另行，S2未释放；P3/M10继续进行中，P4/P5/M11未开始。 | [原设计](reviews/P3-design-review.md)、[来源修订](reviews/P3-origin-design-review.md)、[S1](reviews/P3-S1-lint-protocol-review.md) | S1合并/record尚未产生；见本节下句 |
+| P3 lint 与健康度（S1、S2） | [03-P3](03-P3-lint-health.md) | 进行中；S1服务端、来源整区、八规则、REST/MCP两scope及LW8 API/MCP已实施；18b完整本地门禁、248units/262legs/786阶段控制、五片各两轮与精确分支CI41171083998 attempt1的13jobs均已接受。独立审查A/B/C2的初稿与原件附记均已由主持者接受，无未关闭的已核实Important/Minor/Nit；Q-B1作为已知限制关闭审查疑问，性能边界仍留M12。Step文档 `6e2b8bbf9a71a0b11db29dea62e44910a76d7213` 的minimum、提交后gen与精确分支CI已分别接受；S1以 `689bf607bf05842e8d56389b1e5f282b252cd64e` no-ff合并，首次main CI已接受。本次record自身CI及指定两main五份Test配对尚待提交后验收，S2未释放；P3/M10继续进行中，P4/P5/M11未开始。 | [原设计](reviews/P3-design-review.md)、[来源修订](reviews/P3-origin-design-review.md)、[S1](reviews/P3-S1-lint-protocol-review.md) | S1 `689bf607bf05842e8d56389b1e5f282b252cd64e`；[record验收](reviews/P3-S1-lint-protocol-review.md#文档合并与record验收) |
 | P4 虚拟页面与 ingest（S1–S3） | — | 未开始 | — | — |
 | P5 playbook、说明与收尾的故事（S1） | — | 未开始 | — | — |
 | 收尾 | — | 未开始 | — | — |
 
-本次文档投影时尚未产生合并/record提交；真实记录见00-M10-design.md第12节。
+S1合并 `689bf607bf05842e8d56389b1e5f282b252cd64e` 的首次main [CI41185522147](https://github.com/open-nerve/NerveWiki/actions/runs/41185522147) attempt1 已接受。本次record自身SHA/CI在提交后树外绑定；两main五份Test配对验收前S2未释放，实际明细见[S1审查](reviews/P3-S1-lint-protocol-review.md#文档合并与record验收)。
 
 **以下为来源前置发布时的历史进度快照，保留原字节与当时pending；不作为当前进度表。**
 
@@ -918,6 +918,8 @@ Nerve 没有 MCP、prompt、数据的 lint、模式的契约或只增不改的�
 **P3入口维护（不计作P3/S1）**：搜索守卫参考校准，代码 `ccac8c5d9e741721965e07c2b053f04dbe446e61`，分支 `m10-search-guard-calibration`；范围内实施、七项Go门禁、独立代码审查及精确代码CI40913568907 attempt1已由主持者接受。文档 `aa860be1b32bb98410e6a6811d2d87569de78b25` 的CI40921122246 attempt1亦已接受；实际no-ff合并为 `b957fdbe0367a9a6ff0f65d2afc303db49a755c2`，两父为 `9e38a38f648ffa19130afb8a8b468b792dad1381` / `aa860be1b32bb98410e6a6811d2d87569de78b25`，树 `8ded1428ce9cfe42a24ab80dd374c32c10b4dfd3` 与文档分支相同；该main自身CI40925905708 attempt1全11作业/32必需步骤成功并已接受，回执见[维护审查记录第7节](reviews/search-guard-calibration-review.md#7-维护文档合并与main-ci)。本记录自身提交/CI仍待产生；新增空名称属性链接来源设计缺口仍开放，决定62的具体修订与独立审查另行完成，P3放行尚待重绑。维护仅在此单列，不填入上表P3/S1合并位置。
 
 ## 13. 变更记录
+
+- 2026-10-31：P3/S1 Step文档 `6e2b8bbf9a71a0b11db29dea62e44910a76d7213` 的minimum、提交后gen及精确分支CI已接受；no-ff合并 `689bf607bf05842e8d56389b1e5f282b252cd64e` 与首次main CI41185522147 attempt1 已接受。本次record自身CI/指定两main配对仍待提交后验收，S2未释放，P3/M10仍进行中；M6已done，M7/M9/M11/M12保持原处置。实际身份与边界见[S1审查](reviews/P3-S1-lint-protocol-review.md#文档合并与record验收)。以下各条保留记录当时状态。
 
 - 2026-10-31：P3/S1八规则、来源整区、同snapshot/唯一Runs、REST/两scope MCP与LW8 API/MCP已实现；18b完整本地门禁/控制248units262legs786阶段、825选定heavy区间、五片双轮与精确分支CI41171083998 attempt1全13jobs已验。决定63–66、三次CI失败/窄修复、当前成本及全部历史身份见[S1审查](reviews/P3-S1-lint-protocol-review.md)；M6六行/注意关闭，M7/M9/M11/M12继续open。三席最终审查已接受，无未关闭的已核实Important/Minor/Nit；文档/merge/record及指定两main仍按后续真实回执收口，S2/P4未释放。以下各条保留记录当时状态。
 

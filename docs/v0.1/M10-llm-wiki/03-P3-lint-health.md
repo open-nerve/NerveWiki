@@ -4,7 +4,7 @@
 |---|---|
 | Phase | M10/P3；两个 Step：S1 服务端与协议；S2 健康度网页 |
 | 日期 | 2026-10-29 |
-| 状态 | S1服务端、来源整区、八规则、REST/MCP两scope及LW8 API/MCP已实施；18b完整本地门禁、248units/262legs/786阶段控制、五片各两轮与精确分支CI41171083998 attempt1的13jobs均已接受。独立审查A/B/C2的初稿与原件附记均已由主持者接受，无未关闭的已核实Important/Minor/Nit；Q-B1作为已知限制关闭审查疑问，性能边界仍留M12。文档提交自身minimum/gen/CI、合并/record及指定两main配对另行，S2未释放；P3/M10继续进行中，P4/P5/M11未开始。详见§10.1和[S1审查](reviews/P3-S1-lint-protocol-review.md)；合并见00号文档第12节 |
+| 状态 | S1服务端、来源整区、八规则、REST/MCP两scope及LW8 API/MCP已实施；18b完整本地门禁、248units/262legs/786阶段控制、五片各两轮与精确分支CI41171083998 attempt1的13jobs均已接受。独立审查A/B/C2的初稿与原件附记均已由主持者接受，无未关闭的已核实Important/Minor/Nit；Q-B1作为已知限制关闭审查疑问，性能边界仍留M12。Step文档 `6e2b8bbf9a71a0b11db29dea62e44910a76d7213` 的minimum、提交后gen与精确分支CI已分别接受；S1以 `689bf607bf05842e8d56389b1e5f282b252cd64e` no-ff合并，首次main CI已接受。本次record自身CI及指定两main五份Test配对尚待提交后验收，S2未释放；P3/M10继续进行中，P4/P5/M11未开始。详见§10.1和[S1审查](reviews/P3-S1-lint-protocol-review.md)；合并与record验收见00号文档第12节 |
 | 原设计精确基线 | `main = origin/main = f6bd0cdee2b7570252a43581cf71cd1e71592f76`；P2 已完成 |
 | 上级 | [M10 总设计](00-M10-design.md) §4.10–4.12、§5、§7–9；[总体设计](../v0.1-design.md) §5.6、§13；[推进方式](../claude_to_codex/02-workflow.md)；[P2 移交](02-P2-source-area.md#9-给后面-phase-与-m-的移交) |
 | 记法 | `page/`、`linking/`、`wiki/` 在 `server/internal/modules/` 下；`bootstrap/`、`platform/`、`shared/` 在 `server/internal/` 下；`W/` 是 `web/apps/web/src/`。本文拟新增的文件、类型、测试名均是设计，不冒称已有实现 |
@@ -1161,7 +1161,7 @@ docs/v0.1/claude_to_codex/tools/heavy.sh env GOFLAGS=-p=1 make -j1 e2e
 
 ### 8.1 S1必须满足
 
-**S1当前履行情况**：实现、全部本地门禁/控制、成本、五片双轮和精确18b分支13jobs已接受；独立审查及文档/集成状态见§10.1与[S1审查](reviews/P3-S1-lint-protocol-review.md)。本次同步下表列出的当前合同、总体长期约定和移交：M6六行及注意1–4完成后改done；M7/M9仍有P4/P5事项保持open，M11/M12保持open。Step文档自身minimum/gen/CI及指定两main仍需真实验收，不据设计列表宣布P3完成。
+**S1当前履行情况**：实现、全部本地门禁/控制、成本、五片双轮和精确18b分支13jobs已接受；独立审查及文档/集成状态见§10.1与[S1审查](reviews/P3-S1-lint-protocol-review.md)。本次同步下表列出的当前合同、总体长期约定和移交：M6六行及注意1–4已随Step分支文档改done；M7/M9仍有P4/P5事项保持open，M11/M12保持open。Step文档自身minimum/提交后gen/精确分支CI与首次main CI均按下文实际身份接受；record自身CI和指定两main配对仍待，不据设计列表宣布S1集成或P3完成。
 
 
 两个REST/两个工具两scope真实可达；八规则、metadata/数组/Unicode/JSON/identity一致；真实snapshot/名额/flight/授权交错；所有声明码真实答出；sources迁移、可能的新索引均有计划/实际工作/写成本与扫描义务；48KiB/说明余量/本机容量双轮及两main指定配对；LW8 API/MCP。全部原/审查追加变异都有干净基线、失败断言、恢复证据。S1三审无Important/Minor，审查记录写清接受/后续。
@@ -1189,7 +1189,7 @@ docs/v0.1/claude_to_codex/tools/heavy.sh env GOFLAGS=-p=1 make -j1 e2e
 
 ### 8.1a 决定62的实施文档与兼容完成标准（S1-0a与S1收尾）
 
-**当前收尾转录**：S1-0a与后续S1实现已完成来源v2、真实D/F、S63–S69及完整重建/成本/控制核验；现行结果在§10.1和[S1审查](reviews/P3-S1-lint-protocol-review.md)。M6既有四份来源格式说明只核不改，P3A L6原“不改”历史保留。以下“仍须完成/待”的措辞是前置交付时点的原要求；文档自身与集成门禁仍独立待办，P4 Unknown/未改页coverage和M11不冒称完成。
+**当前收尾转录**：S1-0a与后续S1实现已完成来源v2、真实D/F、S63–S69及完整重建/成本/控制核验；现行结果在§10.1和[S1审查](reviews/P3-S1-lint-protocol-review.md)。M6既有四份来源格式说明只核不改，P3A L6原“不改”历史保留。以下“仍须完成/待”的措辞是前置交付时点的原要求；文档自身门禁与首次main CI已按实际身份接受，record自身CI及指定两main配对仍待，P4 Unknown/未改页coverage和M11不冒称完成。
 
 
 S1-0a已同步当前writer/版本/API的说明，前置实测与未测项见§10.1；S1收尾仍须完成全部reindex/成本/变异/审查及CI。下表保留逐项交付要求，不以本前置替代完整S1验收：
@@ -1235,7 +1235,7 @@ P5仍负责prompt注册/分类/大小、系统说明段、人工清单和根READ
 
 ### 10.1 S1
 
-S1服务端、来源整区、八规则、REST/MCP两scope及LW8 API/MCP已实施；18b完整本地门禁、248units/262legs/786阶段控制、五片各两轮与精确分支CI41171083998 attempt1的13jobs均已接受。独立审查A/B/C2的初稿与原件附记均已由主持者接受，无未关闭的已核实Important/Minor/Nit；Q-B1作为已知限制关闭审查疑问，性能边界仍留M12。文档提交自身minimum/gen/CI、合并/record及指定两main配对另行，S2未释放；P3/M10继续进行中，P4/P5/M11未开始。 本节先保留S1-0a在2026-10-30的历史记录，含当时pending；后接18b当前完整结果，历史样本不改标为18b。
+S1服务端、来源整区、八规则、REST/MCP两scope及LW8 API/MCP已实施；18b完整本地门禁、248units/262legs/786阶段控制、五片各两轮与精确分支CI41171083998 attempt1的13jobs均已接受。独立审查A/B/C2的初稿与原件附记均已由主持者接受，无未关闭的已核实Important/Minor/Nit；Q-B1作为已知限制关闭审查疑问，性能边界仍留M12。Step文档 `6e2b8bbf9a71a0b11db29dea62e44910a76d7213` 的minimum、提交后gen与精确分支CI已分别接受；S1以 `689bf607bf05842e8d56389b1e5f282b252cd64e` no-ff合并，首次main CI已接受。本次record自身CI及指定两main五份Test配对尚待提交后验收，S2未释放；P3/M10继续进行中，P4/P5/M11未开始。 本节先保留S1-0a在2026-10-30的历史记录，含当时pending；后接18b当前完整结果，历史样本不改标为18b。
 
 #### S1-0a 来源表示前置（2026-10-30）
 
@@ -1289,15 +1289,15 @@ S63/S64/S65/S68四行分成五种独立单改、七组目标命令，共21次bas
 
 #### S1当前实现、完整本地验证与分支CI（2026-10-31）
 
-S1服务端、来源整区、八规则、REST/MCP两scope及LW8 API/MCP已实施；18b完整本地门禁、248units/262legs/786阶段控制、五片各两轮与精确分支CI41171083998 attempt1的13jobs均已接受。独立审查A/B/C2的初稿与原件附记均已由主持者接受，无未关闭的已核实Important/Minor/Nit；Q-B1作为已知限制关闭审查疑问，性能边界仍留M12。文档提交自身minimum/gen/CI、合并/record及指定两main配对另行，S2未释放；P3/M10继续进行中，P4/P5/M11未开始。
+S1服务端、来源整区、八规则、REST/MCP两scope及LW8 API/MCP已实施；18b完整本地门禁、248units/262legs/786阶段控制、五片各两轮与精确分支CI41171083998 attempt1的13jobs均已接受。独立审查A/B/C2的初稿与原件附记均已由主持者接受，无未关闭的已核实Important/Minor/Nit；Q-B1作为已知限制关闭审查疑问，性能边界仍留M12。Step文档 `6e2b8bbf9a71a0b11db29dea62e44910a76d7213` 的minimum、提交后gen与精确分支CI已分别接受；S1以 `689bf607bf05842e8d56389b1e5f282b252cd64e` no-ff合并，首次main CI已接受。本次record自身CI及指定两main五份Test配对尚待提交后验收，S2未释放；P3/M10继续进行中，P4/P5/M11未开始。
 
 产品门禁与控制实际输入：18b922cfdec5471de622f1bcce9366c497a519e6。
 
 对应 tree 为 `852cf970297933e5635eb1451424c683410b4958`，分支 `m10-p3-s1` 从 `b02b4a01567945919fa6d0705f911ad22c2ae879` 开出。16个实际提交、178个文件、增加32,228行/删除222行；3,328源文件、251 owned embed及原19工具逐项绑定。当前 native/cost/E2E/controls 的真实执行输入为18b；复用七项minimum保留 `0b983268e0e6c1a2b7c37f068b6d898ca1c6bb94` parent加dirty联合源码身份，与18b提交后gen分开记。它们的源字节、native modes、embed和工具实际等价，不称七项在18b提交后重跑。
 
-文档提交自身的minimum/gen/CI另行绑定；本次归档投影不产生这些结果。
+Step文档 `6e2b8bbf9a71a0b11db29dea62e44910a76d7213` 的minimum、提交后gen及精确分支CI已分别接受；实际输入和原件见下段及[S1审查](reviews/P3-S1-lint-protocol-review.md#文档合并与record验收)，不替换上面的18b产品运行身份。
 
-本次文档投影时尚未产生合并/record提交；真实记录见00-M10-design.md第12节。
+S1实际no-ff合并为 `689bf607bf05842e8d56389b1e5f282b252cd64e`，首次main CI已接受；本次record自身SHA/CI在提交后树外绑定，指定两main配对尚待。
 
 八规则、完整来源区、唯一 sources slot、正文/空属性区分、完整身份及分页、同快照编排、名额/singleflight/取消清理、两REST和notebook/account两scope MCP均已实现。wiki持有自己的DTO，经bootstrap模块根逐字段转换；Rules.PrepareRules与旧guard的Prepare分开。长TitleKeyContext保持有状态NFC→Fold→NFC与分块取消，不改旧写入热路径。每规则只记专属阶段，共享sources另列，失败/expiry只记实际可观察统计。
 
@@ -1422,13 +1422,23 @@ bf8历史成本身份另存：14条lint recipe双轮均值×2.4最大185.022s；
 | e2e | 264 | 312 |
 | image | 79 | 86 |
 
-guards job在原30分钟预算余299秒，15条实际recipe均以package ok结束；非verbose配方不推断完整Test节点数。该单次分支观察不作硬件或根因归因，也不是指定merge/record两main配对。后两次各bootstrap Test均值必须分别严格<450秒，才释放S2；文档提交与其分支CI也须独立取得真实结果。
+guards job在原30分钟预算余299秒，15条实际recipe均以package ok结束；非verbose配方不推断完整Test节点数。该单次分支观察不作硬件或根因归因，也不是指定merge/record两main配对。后两次各bootstrap Test均值必须分别严格<450秒，才释放S2；Step文档及其分支CI的独立结果见下段；该旧18b观察仍不替代merge/record配对。
 
 三次旧分支失败永久保留：[f64/41068871923](https://github.com/open-nerve/NerveWiki/actions/runs/41068871923)、[14fe/41102139096](https://github.com/open-nerve/NerveWiki/actions/runs/41102139096)、[045/41148286267](https://github.com/open-nerve/NerveWiki/actions/runs/41148286267)，均attempt1。summary撞原2s worker预算；未执行的后续recipe、按依赖跳过的E2E/image和旧trace局限照原件保存，18b通过不将旧run改绿。
 
 **审查与移交。** 独立审查A/B/C2的初稿与原件附记均已由主持者接受，无未关闭的已核实Important/Minor/Nit；Q-B1审查疑问已关闭，性能限制仍留M12。正式三席只计A/B/C2；原C因完整结果段暴露归补充，B初稿前意外两行历史计时/Web状态及C2初稿冻结后被动看到其他席摘要均按实际披露。决定63–66见[S1审查](reviews/P3-S1-lint-protocol-review.md#主持者的决定负责人可以改判)。M6六行/注意1–4完成，文档交付关闭；M7/M9/M11/M12仍open。
 
 **历史与身份保留。** S1-0a/dd6e、e5、7d3＋catchers/同字节2c4、f64测试迁移修正的编译闭包复用、candidate02/03与386dirty各保留原输入。bf8→14fe仅补未发布尾注、8ba→045仅改subject，同tree/同父桥不把旧执行日志换头；0b/18b是后续真实产品提交。已发布4dd缺Co-Authored-By尾注的例外保留。三次成本CI失败、9e38原搜索失败/维护及全部旧记录不覆盖。证据索引及逐提交定位见[S1审查](reviews/P3-S1-lint-protocol-review.md#原件导航与身份)。
+
+#### S1文档、合并与record验收（2026-10-31）
+
+**文档身份与失败历史。** 40aac原七项minimum实际为18b加dirty文档，原生gen实际在40aac提交后；其CI41177624917 attempt1因README五个额外空行被oxfmt拒绝，10个server作业成功、E2E/image跳过。本机原生lint-web exit2也保留。仅删这五空行的新提交6e2，自己的八项检查（Web lint含类型检查＋七项minimum）实际在40aac加该dirty修正上通过，原生gen在6e2提交后通过；两组身份不混写。6e2的CI41178647750 attempt1因x/tools下载TLS handshake timeout使archtest setup failed，10作业成功、E2E/image跳过；91其他package OK、23无测试、0断言失败/0race告警，不等于该attempt1通过。第一次完整重跑请求实际被token权限拒绝，exit1；截至2026-10-31 07:20 UTC的权限阻断记录仍只有attempt1，尚无attempt2，当时等待用户更新Actions write。用户后来完成权限更新并要求继续，主持者对同一6e2头只执行一次获准的完整rerun（exit0）；after-1的首次状态GET报EOF仅是只读查询失败，没有再次触发重跑。真实attempt2已全13作业/38必需步骤成功并被接受；此前拒绝请求与两次文档失败均保留，和原三次产品阶段成本CI失败分别记账。完整原件及实际处置见[S1审查](reviews/P3-S1-lint-protocol-review.md#文档合并与record验收)。
+
+Step文档 `6e2b8bbf9a71a0b11db29dea62e44910a76d7213`（tree `138df2292d681d60f3fd8f59641e573d6279cec5`）的七项minimum、原生提交后gen与精确分支 [CI41178647750](https://github.com/open-nerve/NerveWiki/actions/runs/41178647750) attempt2 已由主持者分别接受。minimum实际输入为“40aac8f0960c421b078b6765460fe606dfccef49 加 README 的五处空行删除（提交前真实 dirty 输入；原生 Web lint 加七项 minimum 共八项）”，不改称在文档提交后运行；原生gen实际检查 `6e2b8bbf9a71a0b11db29dea62e44910a76d7213`。原件与SHA见[S1审查](reviews/P3-S1-lint-protocol-review.md#文档合并与record验收)。
+
+实际no-ff合并 `689bf607bf05842e8d56389b1e5f282b252cd64e`，两父为 `b02b4a01567945919fa6d0705f911ad22c2ae879` / `6e2b8bbf9a71a0b11db29dea62e44910a76d7213`，tree `138df2292d681d60f3fd8f59641e573d6279cec5`；与已接受文档分支的树关系为“与已接受文档分支完全同树”。首次main [CI41185522147](https://github.com/open-nerve/NerveWiki/actions/runs/41185522147) attempt1 全部13个必需作业、38个必需步骤成功并被接受；五份bootstrap Test秒数见审查记录。
+
+本次record只记录此前已发生的文档与merge事实；自身minimum、提交后gen、SHA/精确CI与配对验收均仍未知，后续按各自实际执行阶段由树外回执绑定。第二次main须是该record的精确CI，与上述merge配对后五份Test各自的两次均值均严格<450秒，且两次全部必需作业/步骤通过，才由主持者释放S2。当前不声明record CI或配对已通过；S2/P4/P5/M11未开始，P3/M10继续进行中，既有M12限制不变。record身份和验收结论在下一份既定S2文档自然转录，不为自填SHA反复新建记录提交。
 
 ### 10.2 S2
 

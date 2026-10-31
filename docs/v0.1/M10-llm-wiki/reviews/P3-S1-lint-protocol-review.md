@@ -4,16 +4,16 @@
 |---|---|
 | 对象 | 分支m10-p3-s1；BASE b02b4a0至产品HEAD18b922cf、tree852cf970；16个提交，178文件，+32228/-222 |
 | 日期 | 2026-10-31 |
-| 当前结论 | 实现、18b完整本地门禁/控制和精确分支13jobs已接受；A/B/C2独立初稿与原件附记均已由主持者接受，无未关闭的已核实Important/Minor/Nit；Q-B1审查疑问已关闭，性能边界留M12。文档及Step集成仍按后续实际门禁验收 |
-| 后续 | 文档自身minimum/gen/CI；no-ff合并/record和指定两main五份Test均值；S2尚未释放，P3/M10进行中 |
+| 当前结论 | 实现、18b完整本地门禁/控制和精确分支13jobs已接受；A/B/C2独立初稿与原件附记均已由主持者接受，无未关闭的已核实Important/Minor/Nit；Q-B1审查疑问已关闭，性能边界留M12。Step文档minimum/提交后gen/精确分支CI及实际merge首次main CI已接受；record自身CI与指定两main配对仍待 |
+| 后续 | 本次record提交后的原生gen、精确main CI与五份Test配对；S2尚未释放，P3/M10进行中 |
 
 产品门禁与控制实际输入：18b922cfdec5471de622f1bcce9366c497a519e6。
 
 对应 tree 为 `852cf970297933e5635eb1451424c683410b4958`，分支 `m10-p3-s1` 从 `b02b4a01567945919fa6d0705f911ad22c2ae879` 开出。16个实际提交、178个文件、增加32,228行/删除222行；3,328源文件、251 owned embed及原19工具逐项绑定。当前 native/cost/E2E/controls 的真实执行输入为18b；复用七项minimum保留 `0b983268e0e6c1a2b7c37f068b6d898ca1c6bb94` parent加dirty联合源码身份，与18b提交后gen分开记。它们的源字节、native modes、embed和工具实际等价，不称七项在18b提交后重跑。
 
-文档提交自身的minimum/gen/CI另行绑定；本次归档投影不产生这些结果。
+Step文档 `6e2b8bbf9a71a0b11db29dea62e44910a76d7213` 的minimum、提交后gen及精确分支CI已分别接受；实际输入与原件列在[文档、合并与record验收](#文档合并与record验收)。产品门禁与控制继续绑定18b，不重标为文档或合并提交。
 
-本次文档投影时尚未产生合并/record提交；真实记录见00-M10-design.md第12节。
+S1实际no-ff合并为 `689bf607bf05842e8d56389b1e5f282b252cd64e`，首次main CI已接受；本次record自身SHA/CI在提交后树外绑定，指定两main配对尚待。
 
 ## 对象、方法与独立性
 
@@ -366,9 +366,79 @@ bf8历史成本身份另存：14条lint recipe双轮均值×2.4最大185.022s；
 
 ## 接受、移交与后续验收
 
-实现和当前本地/分支证据以F01–F04为准；三席最终接受由F08/F11/F12与汇总F13收口，A/B/C2均无未关闭的已核实Important/Minor/Nit，读界与Q-B1限定处置保留。M6六行及注意1–4完成，本次分支文档交付将status改done；M7第5项来源附件分型、M9第8项两工具及内置说明余量完成，但各自P4/P5事项使整份open。M11只交explicit scope/旧版本stale闸门，尚未开始；M12保留MVCC/generic、初始250MiB未达、生产负载/停机及CI余量。P4 KnownAbsent/Ineligible/Known/Unknown、Capture和未改页coverage未实施，不能把旧事实缺失当空union。
+实现和当前本地/分支证据以F01–F04为准；三席最终接受由F08/F11/F12与汇总F13收口，A/B/C2均无未关闭的已核实Important/Minor/Nit，读界与Q-B1限定处置保留。M6六行及注意1–4完成，已随Step分支文档交付改done；M7第5项来源附件分型、M9第8项两工具及内置说明余量完成，但各自P4/P5事项使整份open。M11只交explicit scope/旧版本stale闸门，尚未开始；M12保留MVCC/generic、初始250MiB未达、生产负载/停机及CI余量。P4 KnownAbsent/Ineligible/Known/Unknown、Capture和未改页coverage未实施，不能把旧事实缺失当空union。
 
-文档起草只写树外文件，由主持者按工作流§3.5审全文、在真实git archive干净副本投影后应用。旧56锚全保留；原准备工具漏M6 status，主持者仅加H08成为57锚，13既有目标、四份M6历史只核不改，没有新产品决定。本文自身minimum/gen/CI不借产品18b结果，合并/record与指定两main配对均尚未发生。只有两main各片Test均值严格<450且全部必需作业/步骤通过才释放S2；本记录不启动S2/P4/M11。
+文档由树外起草、主持者审全文并按工作流§3.5在真实git archive核对后应用；最终正文及精确delta已由主持者接受。旧56锚全保留；原准备工具漏M6 status，主持者仅加H08成为57锚，13既有目标与一份新审查落库、四份M6历史只核不改，没有新产品决定。Step文档自身minimum/提交后gen/精确分支CI与实际merge首次main CI按下节原件分别接受，不借产品18b结果。本次record自身CI和指定两main配对仍待提交后验收；五份Test各自的两次均值必须严格<450且两次全部必需作业/步骤通过才释放S2，本记录不启动S2/P4/M11。
+
+## 文档、合并与record验收
+
+### 文档提交、两次失败CI与一次完整重跑
+
+原Step文档提交为 `40aac8f0960c421b078b6765460fe606dfccef49`，tree `2556bcd28774315d539107fbfb4df953d43affda`，parent为产品18b。其七项minimum实际在18b加dirty文档/注释上运行并被接受：server short 8746 RUN、7282 PASS、1464既有SKIP、0 FAIL，tools 27 PASS；保留原skip集合与实际输入，不改称提交后运行。原生 `make -j1 gen-check` 则实际在40aac提交后通过，单独留回执。
+
+40aac的[CI41177624917](https://github.com/open-nerve/NerveWiki/actions/runs/41177624917) attempt1实际失败：10个server作业成功，只有web在Lint被oxfmt拒绝，原因是README五个额外空行；E2E/image按依赖跳过。本机原生 `make lint-web` 亦exit2，原失败和原始日志不删除。该CI没有被写作成功，也没有据此重跑产品变异或重开三席审查。
+
+随后在真实40aac archive中核对格式修正，只删除README五个空行，形成新提交 `6e2b8bbf9a71a0b11db29dea62e44910a76d7213`，tree `138df2292d681d60f3fd8f59641e573d6279cec5`；三个设计/审查目标的字节不变。6e2自己的提交前检查实际输入是40aac加这五处空行删除：原生Web lint（含类型检查）加七项minimum，共八项exit0；server short仍8746 RUN、7282 PASS、1464 SKIP、0 FAIL，skip集合不变，tools 27 PASS。原生 `make -j1 gen-check` 再在6e2提交后通过。这一组原件与40aac原minimum/gen分别保存，不混写身份，不改变产品、测试、工作流、依赖版本或预算。
+
+6e2的[CI41178647750](https://github.com/open-nerve/NerveWiki/actions/runs/41178647750) attempt1也实际失败：10个作业成功，只有 `server (race)` 在下载 `golang.org/x/tools@v0.50.0` 时收到 `proxy.golang.org` 的 `net/http: TLS handshake timeout`，`internal/archtest` 为setup failed；其他91个package OK、23个无测试，原日志中0个断言失败、0个race告警。archtest没有实际执行，E2E/image被跳过，因此不能把该attempt1接受为绿；这个下载失败也不证明产品断言失败。
+
+主持者决定在同一6e2头请求一次完整workflow重跑，但实际 `gh run rerun 41178647750 --repo open-nerve/NerveWiki` 返回exit1，stderr为 `Resource not accessible by personal access token`。请求记录的 `expected_next_attempt: 2` 仅是期望，不是已执行证据：截至2026-10-31 07:20 UTC的权限阻断记录仍只有attempt1，没有attempt2启动或结果，这是当时的历史截止点。当时主持者已请求用户更新Actions write权限，等待答复。
+
+用户后来更新Actions read/write并指示复查继续。主持者于2026-10-31 08:05 UTC对同一6e2头执行一次完整rerun，请求实际exit0；随后after-1的首次状态GET返回EOF，只是一次只读查询失败，没有重复触发重跑。真实 [CI41178647750](https://github.com/open-nerve/NerveWiki/actions/runs/41178647750) attempt2随后全部13作业/38必需步骤成功，并由主持者按精确6e2接受；五份bootstrap Test为309/200/358/376/311秒，guards为1539秒Test/1557秒job，原30分钟job预算余243秒。该分支样本和余量仅记本次观察，不替代merge/record两main配对，也不改18b原单次观察。
+
+失败来源分别保留：原[f64/41068871923](https://github.com/open-nerve/NerveWiki/actions/runs/41068871923)、[14fe/41102139096](https://github.com/open-nerve/NerveWiki/actions/runs/41102139096)、[045/41148286267](https://github.com/open-nerve/NerveWiki/actions/runs/41148286267)均为产品阶段的成本CI失败（三者均attempt1）；[40aac/41177624917](https://github.com/open-nerve/NerveWiki/actions/runs/41177624917) attempt1是文档格式失败，6e2/41178647750 attempt1是依赖下载TLS失败。共五次失败保持各自HEAD、run、attempt与原始结果，不因后来的成功改绿或合并归类。两次文档失败的E2E/image跳过、第一次重跑请求的权限拒绝亦保留；6e2实际attempt2成功及首次main成功按下节分别记录，record自身验收仍待。这些文档历史不替代产品18b的完整门禁与控制，也不增减既有M12边界。
+
+| 历史原件 | 路径（S17下） | SHA256 |
+|---|---|---|
+| 40aac提交 | `documentation-commit-01/result.json` | `5cbc785f197a2a2557cafd4429bb981ad5fca21e21a4ac3b12dc856770f69f15` |
+| 40aac原minimum | `root-document-minimum-acceptance-01.json` | `341d04a9842d50dda79f4f9a8f5d676817fd8290cf04cf37c752d0edcd193250` |
+| 40aac提交后gen | `root-document-postcommit-gen-acceptance-01.json` | `168998ab525a2b6eccc18028374c079046afde38c0aa5115ca5d475cb2be5517` |
+| 40aac格式CI失败 | `branch-ci-40aac8f0-01/root-failure-disposition-01.json` | `6a7391978b3586a32a89ff901600d09b164c9b79fa6e743102a903f53dedc02c` |
+| 原生lint-web复现 | `document-postcommit-checks-01/02-lint-web-before-format/result.json` | `38488dd65349fb2cf24d7be05511f5172fe9b28d5d0adbfa8807d1ced07f9732` |
+| README五空行实际修正 | `root-document-format-application-01.json` | `37adc44d5984d7ef4757d720df9d72a6c90fe456fc84edf3fc62fbaa4820bf16` |
+| 6e2提交 | `document-format-commit-01/result.json` | `a05e971068182ee66ff77ddf76bd7c3b410e543703239b2eeb8dfd62548628a9` |
+| 6e2提交前八项检查 | `root-document-format-minimum-acceptance-01.json` | `d36ca6f9192a172a3ec45e6b9095c17a4be6e1a01cc1a55d70d9f3f4231ef320` |
+| 6e2提交后gen | `root-document-format-postcommit-gen-acceptance-01.json` | `c795feca2fd3832acd957a84985758de287831a3fdc034c8d5b3897c2c662a35` |
+| 6e2 attempt1失败处置 | `branch-ci-6e2b8bbf-01/root-failure-disposition-01.json` | `657a5f6a0e5bb26387540d430ee33a4b65bcffe0ce6fcb451d0850cf31f9a652` |
+| race原始日志 | `document-ci-race-investigation-01/job.log` | `d2de89d853e1646208d1cd50d51f2c166c3ff5e0703a568f08e9118374f883f1` |
+| TLS诊断 | `document-ci-race-investigation-01/root-diagnosis-01.json` | `565cfc8814ef851f75474936e2b6d8bb5bff70f640734f704d8001e3130e6fc8` |
+| 实际重跑请求 | `document-ci-network-retry-01/request.json` | `02d5bb76d167cfdb325e914797792dede0eeda8b95621db6a8d410cdd75ff70d` |
+| 重跑拒绝stderr | `document-ci-network-retry-01/rerun.stderr` | `3ad509e8d90b48877d5fd9cd1d5e63a309c4c04e8642d48bcb440d0cd1e93e94` |
+| 权限更新后的实际一次完整rerun | `document-ci-network-retry-02/request.json` | `bb15a25dd462dc8b4588973a5018273d2d84c4c999371f10630d56cee29fede1` |
+| 首次只读状态GET的EOF | `document-ci-network-retry-02/after-1.stderr` | `4b5f0c49f733f3ca0aec9b7d6a81b3fc175fc1bdb92ed0523071c122a29e6ef3` |
+
+### 后续文档与merge的实际验收
+
+以下只记2026-10-31写入本次record前已接受的事实。产品18b及其controls、native/cost/E2E、原minimum桥和三次失败CI均保留原输入，未因文档或合并换头。
+
+| 对象 | 实际身份与验收 |
+|---|---|
+| Step文档 | `6e2b8bbf9a71a0b11db29dea62e44910a76d7213`，tree `138df2292d681d60f3fd8f59641e573d6279cec5`；七项minimum实际输入为“40aac8f0960c421b078b6765460fe606dfccef49 加 README 的五处空行删除（提交前真实 dirty 输入；原生 Web lint 加七项 minimum 共八项）”，原生提交后gen检查 `6e2b8bbf9a71a0b11db29dea62e44910a76d7213`，两者各按自己的原件接受 |
+| 文档分支CI | [41178647750](https://github.com/open-nerve/NerveWiki/actions/runs/41178647750) attempt2，精确HEAD `6e2b8bbf9a71a0b11db29dea62e44910a76d7213`，全部13个必需作业与38个必需步骤成功 |
+| no-ff合并 | `689bf607bf05842e8d56389b1e5f282b252cd64e`；两父 `b02b4a01567945919fa6d0705f911ad22c2ae879` / `6e2b8bbf9a71a0b11db29dea62e44910a76d7213`；tree `138df2292d681d60f3fd8f59641e573d6279cec5`；与文档分支树关系为“与已接受文档分支完全同树” |
+| 首次main CI | [41185522147](https://github.com/open-nerve/NerveWiki/actions/runs/41185522147) attempt1，精确HEAD `689bf607bf05842e8d56389b1e5f282b252cd64e`，全部13个必需作业与38个必需步骤成功并由主持者接受 |
+| 本次record | 本文是工作流§3.6第5步的合并记录；自身minimum、提交后gen、SHA/精确CI与两main配对仍待实际执行，分别由树外回执绑定；本提交不自填未知身份或预称通过 |
+
+| bootstrap分片 | merge的Test秒 | record的Test秒 | 指定两次均值秒 |
+|---|---:|---|---|
+| 1 | 303 | 待本次record精确CI | 待实际配对 |
+| 2 | 308 | 待本次record精确CI | 待实际配对 |
+| 3 | 291 | 待本次record精确CI | 待实际配对 |
+| 4 | 405 | 待本次record精确CI | 待实际配对 |
+| 5 | 318 | 待本次record精确CI | 待实际配对 |
+
+上表只使用Test步骤，不混入job时长；18b分支336/198/372/386/288秒及本机双轮不是这组main配对。第二个样本必须绑定本次record的精确HEAD/attempt；五份均值分别严格<450秒且两次必需作业/步骤全成功后，主持者才在树外接受并释放S2。record失败或容量不达标时保留该样本并按实际处置，不自行换样本或声明放行。后续既定S2文档自然转录record身份和验收结果，本次不另造自指提交。
+
+| 原件 | 路径（S17下） | SHA256 |
+|---|---|---|
+| 文档全文与精确delta接受 | `root-final-documents-review-01.json` | `0240cc4d4fbbb294e4cf7d82bcaa6a20ac2f0b7b09afa999c0b1b21cf8528f5d` |
+| 实际文档应用 | `root-final-documents-application-01.json` | `7cba531920a54ce178b1e0ad6dc040e1867e0ddb82ca403eea84d3ad72eb4ee7` |
+| 文档minimum接受 | `root-document-format-minimum-acceptance-01.json` | `d36ca6f9192a172a3ec45e6b9095c17a4be6e1a01cc1a55d70d9f3f4231ef320` |
+| 文档提交后gen接受 | `root-document-format-postcommit-gen-acceptance-01.json` | `c795feca2fd3832acd957a84985758de287831a3fdc034c8d5b3897c2c662a35` |
+| 文档分支CI接受 | `branch-ci-6e2b8bbf-attempt2-01/root-acceptance-01.json` | `b272c05a3fd7f136758ba6da1efe5ec586d9bec08d4464baa3aeaf616bd5ac10` |
+| 实际merge与首次main CI接受 | `root-main-merge-689bf607-acceptance-01.json` | `02151beb6b8e6bfa9fe359d67fb0109df7ba694134048677449566c02de99515` |
+
+M6已随Step文档done；M7/M9的P4/P5事项、M11未开始，以及M12既有MVCC/generic、约358MiB TotalAlloc未达初始250MiB、生产负载/停机与CI余量边界均不变。当前S2未释放，P3/M10仍进行中。
 
 ## 原件导航与身份
 
