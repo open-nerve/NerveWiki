@@ -312,6 +312,14 @@ func (f *wikiCostFixture) checkTrace(t *testing.T, queries []wikiCostSQL, timing
 		}
 	}
 	if operation == "summary" {
+		if calls["LintHasSourceProperties"] != 1 || calls["LintBodyReferencesFirst"] != 1 {
+			t.Errorf("source absence must probe once and retain Bodies: calls=%v", calls)
+		}
+		for _, name := range []string{"LintFirstSourceHeads", "LintFirstSourceValues", "LintSourceSlotHeadsFirst", "LintSourceSlotHeadsAfter", "LintSourceSlotEdges"} {
+			if calls[name] != 0 {
+				t.Errorf("known source absence read property/slot data: %s calls=%d", name, calls[name])
+			}
+		}
 		if calls["LintFrontmatterCount"] != 0 {
 			t.Errorf("known-valid frontmatter queried Count: calls=%d, want none", calls["LintFrontmatterCount"])
 		}
@@ -323,6 +331,9 @@ func (f *wikiCostFixture) checkTrace(t *testing.T, queries []wikiCostSQL, timing
 		if calls["LintOrphanCount"] != 1 || calls["LintOrphanItemsFirst"] != 1 {
 			t.Errorf("positive orphan count lost its real Items query: calls=%v", calls)
 		}
+	}
+	if operation == "wanted" && calls["LintHasSourceProperties"] != 0 {
+		t.Errorf("wanted performed an unrelated source presence query: calls=%d", calls["LintHasSourceProperties"])
 	}
 	if calls["LintNodeMetadata"] != 1 || counts["LintNodeMetadata"] != int64(100000+f.bulkAssets+2) {
 		t.Fatalf("metadata must be read once: calls=%d rows=%d; want 1/%d", calls["LintNodeMetadata"], counts["LintNodeMetadata"], 100000+f.bulkAssets+2)

@@ -161,6 +161,32 @@ func (f *lintData) Edges(ctx context.Context, nb uuid.UUID, positions []app.Edge
 	f.valueSizes = append(f.valueSizes, size)
 	return out, nil
 }
+func (f *lintData) HasSourceProperties(ctx context.Context, nb uuid.UUID, ids []uuid.UUID) (bool, error) {
+	if err := f.enter(ctx, "source-exists", nb); err != nil {
+		return false, err
+	}
+	if !lintSorted(ids, 0) {
+		return false, errors.New("fake rejected complete source relation")
+	}
+	for _, p := range f.properties {
+		key := []byte(p.Key)
+		for i, c := range key {
+			if c >= 'A' && c <= 'Z' {
+				key[i] = c + ('a' - 'A')
+			}
+		}
+		if string(key) != "sources" || !slices.Contains(ids, p.PageID) {
+			continue
+		}
+		for _, h := range f.heads {
+			if h.ID == p.PageID && h.Extractor == domain.Extractor && h.FrontmatterValid {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
 func (f *lintData) SourcePropertyHeads(ctx context.Context, nb uuid.UUID, ids []uuid.UUID) ([]app.SourcePropertyHead, error) {
 	if err := f.enter(ctx, "source-heads", nb); err != nil {
 		return nil, err

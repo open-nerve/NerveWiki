@@ -58,17 +58,43 @@ FROM requested r CROSS JOIN LATERAL (
 WHERE l.notebook_id=sqlc.arg(notebook_id)
 ORDER BY l.source_id,l.range_start;
 
+-- name: LintHasSourceProperties :one
+-- The complete eligible relation drives indexed property point probes. Check
+-- the original current-page qualification only after a property is found;
+-- keep both LIMITs so absent sources do not require every indexed-page lookup.
+-- page_properties has no FK: do not add a new p.notebook_id qualification.
+WITH requested AS MATERIALIZED (SELECT unnest(sqlc.arg(page_ids)::uuid[]) AS id)
+SELECT EXISTS (
+ SELECT 1 FROM requested r
+ CROSS JOIN LATERAL (
+  SELECT p.source_id FROM page_properties p
+  WHERE p.source_id=r.id AND translate(p.key,'SOURCE','source')='sources'
+  LIMIT 1
+ ) present
+ CROSS JOIN LATERAL (
+  SELECT 1 FROM indexed_pages ip
+  WHERE ip.node_id=present.source_id AND ip.notebook_id=sqlc.arg(notebook_id)
+  AND ip.extractor=sqlc.arg(extractor) AND ip.frontmatter_valid
+  LIMIT 1
+ ) current
+);
+
 -- name: LintFirstSourceHeads :many
 WITH requested AS MATERIALIZED (SELECT unnest(sqlc.arg(page_ids)::uuid[]) AS id)
 SELECT ip.node_id,p.position,octet_length(p.value::text)::bigint AS value_bytes
-FROM requested r JOIN indexed_pages ip ON ip.node_id=r.id
+FROM requested r
+CROSS JOIN LATERAL (
+ SELECT ip.node_id FROM indexed_pages ip
+ WHERE ip.node_id=r.id AND ip.notebook_id=sqlc.arg(notebook_id)
+   AND ip.extractor=sqlc.arg(extractor) AND ip.frontmatter_valid
+ LIMIT 1
+) ip
 CROSS JOIN LATERAL (
  SELECT p.position,p.value FROM page_properties p
  WHERE p.source_id=ip.node_id AND translate(p.key,'SOURCE','source')='sources'
  ORDER BY p.position LIMIT 1
 ) p
-WHERE ip.notebook_id=sqlc.arg(notebook_id) AND ip.extractor=sqlc.arg(extractor)
- AND ip.frontmatter_valid ORDER BY ip.node_id;
+ORDER BY ip.node_id;
 
 -- name: LintFirstSourceValues :many
 WITH requested AS MATERIALIZED (
@@ -76,13 +102,18 @@ WITH requested AS MATERIALIZED (
         unnest(sqlc.arg(positions)::integer[]) AS position
 )
 SELECT r.id::uuid AS node_id,p.position,p.key,p.value::text AS value
-FROM requested r JOIN indexed_pages ip ON ip.node_id=r.id
+FROM requested r
+CROSS JOIN LATERAL (
+ SELECT ip.node_id FROM indexed_pages ip
+ WHERE ip.node_id=r.id AND ip.notebook_id=sqlc.arg(notebook_id)
+   AND ip.extractor=sqlc.arg(extractor) AND ip.frontmatter_valid
+ LIMIT 1
+) ip
 CROSS JOIN LATERAL (
  SELECT p.position,p.key,p.value FROM page_properties p
  WHERE p.source_id=r.id AND p.position=r.position LIMIT 1
 ) p
-WHERE ip.notebook_id=sqlc.arg(notebook_id) AND ip.extractor=sqlc.arg(extractor)
- AND ip.frontmatter_valid AND translate(p.key,'SOURCE','source')='sources'
+WHERE translate(p.key,'SOURCE','source')='sources'
 ORDER BY r.id;
 
 -- name: LintSourceSlotHeadsFirst :many

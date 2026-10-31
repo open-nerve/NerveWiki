@@ -159,6 +159,21 @@ func (r *LintReads) Edges(ctx context.Context, notebook uuid.UUID, positions []a
 	return out, nil
 }
 
+// HasSourceProperties checks a complete sorted eligibility relation, which is
+// not a 512-row read batch. False skips only the sources-property stream.
+func (r *LintReads) HasSourceProperties(ctx context.Context, notebook uuid.UUID, ids []uuid.UUID) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	if err := lintRelationIDs(ids); err != nil {
+		return false, err
+	}
+	if len(ids) == 0 {
+		return false, nil
+	}
+	return r.store.planned(ctx).LintHasSourceProperties(ctx, gen.LintHasSourcePropertiesParams{NotebookID: notebook, Extractor: domain.Extractor, PageIds: ids})
+}
+
 // SourcePropertyHeads probes only the first ASCII sources property per page.
 // JSON serialization here and exact retrieval are two necessary DB reads.
 func (r *LintReads) SourcePropertyHeads(ctx context.Context, notebook uuid.UUID, ids []uuid.UUID) ([]app.SourcePropertyHead, error) {

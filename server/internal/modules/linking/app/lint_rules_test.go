@@ -308,7 +308,7 @@ func TestLintPreparePreservesItsBoundary(t *testing.T) {
 			t.Fatal("unprepared rule unexpectedly existed")
 		}
 	})
-	for _, failed := range []string{"heads", "edges", "page-orphans", "source-values", "slot-values", "bodies", "pending-assets", "asset-bytes"} {
+	for _, failed := range []string{"heads", "edges", "page-orphans", "source-exists", "source-values", "slot-values", "bodies", "pending-assets", "asset-bytes"} {
 		t.Run("no-partial-result/"+failed, func(t *testing.T) {
 			f, in := lintSourceFixture()
 			f.fail = failed

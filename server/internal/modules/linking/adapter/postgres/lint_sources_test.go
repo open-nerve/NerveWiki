@@ -9,13 +9,17 @@ import (
 	"uuid"
 
 	postgresadapter "github.com/open-nerve/NerveWiki/server/internal/modules/linking/adapter/postgres"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/adapter/postgres/gen"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/app"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/domain"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
 )
 
 func lintID(n uint64) uuid.UUID { var id uuid.UUID; binary.BigEndian.PutUint64(id[8:], n); return id }
 
 func TestLintSources(t *testing.T) {
+	t.Run("presence", testLintSourcePresence)
+	t.Run("source-heads-batch-contract", testLintSourceHeadsBatchContract)
 	t.Run("first-key-and-json-items", testLintFirstSourcesConsumer)
 	t.Run("real-link-and-not-link-boundary", testLintSourceLinkBoundary)
 	t.Run("identity-tags-and-long-values", testLintSourceIdentities)
@@ -172,9 +176,70 @@ func TestLintSources(t *testing.T) {
 			t.Fatalf("complete source data: IDs %d sizes %v", len(got), sizes)
 		}
 		calls := tr.names()
-		want := []string{"LintFirstSourceHeads", "LintFirstSourceHeads", "LintFirstSourceValues", "LintFirstSourceValues", "LintFirstSourceHeads", "LintFirstSourceValues"}
+		want := []string{"LintHasSourceProperties", "LintFirstSourceHeads", "LintFirstSourceHeads", "LintFirstSourceValues", "LintFirstSourceValues", "LintFirstSourceHeads", "LintFirstSourceValues"}
 		if !reflect.DeepEqual(calls, want) {
 			t.Fatalf("JSON buffer calls = %v; want %v", calls, want)
 		}
 	})
+}
+
+func testLintSourceHeadsBatchContract(t *testing.T) {
+	f := newFixture(t)
+	zero, current, old, invalid, foreign, missing := uuid.UUID{}, lintID(1), lintID(2), lintID(3), lintID(4), lintID(5)
+	for _, page := range []app.Page{{ID: zero, NotebookID: f.eng, Revision: 1}, {ID: current, NotebookID: f.eng, Revision: 1}, {ID: old, NotebookID: f.eng, Revision: 1}, {ID: invalid, NotebookID: f.eng, Revision: 1}, {ID: foreign, NotebookID: f.ops, Revision: 1}} {
+		f.replace(t, page, originFacts(t, "---\nSources: é\nsources: later\n---\n"))
+	}
+	lintExec(t, f, `UPDATE indexed_pages SET extractor=1 WHERE node_id=$1`, old)
+	lintExec(t, f, `UPDATE indexed_pages SET frontmatter_valid=false WHERE node_id=$1`, invalid)
+	// The existing query qualifies the indexed page, not the property's notebook.
+	// The index has no FK that rules this corrupt row out: preserve that behavior.
+	lintExec(t, f, `UPDATE page_properties SET notebook_id=$1 WHERE source_id=$2`, f.ops, zero)
+	lintExec(t, f, `INSERT INTO page_properties(source_id,position,notebook_id,key,value) VALUES($1,0,$2,'sources','"orphan"')`, missing, f.eng)
+	tr := &lintTrace{}
+	r := postgresadapter.NewLintReads(lintPool(t, f, tr, 1), 5*1024*1024)
+	heads, err := r.SourcePropertyHeads(t.Context(), f.eng, []uuid.UUID{zero, current, old, invalid, foreign, missing})
+	want := []app.SourcePropertyHead{
+		{SourcePropertyPos: app.SourcePropertyPos{PageID: zero, Position: 0}, ValueBytes: int64(len(`"é"`))},
+		{SourcePropertyPos: app.SourcePropertyPos{PageID: current, Position: 0}, ValueBytes: int64(len(`"é"`))},
+	}
+	if err != nil || !reflect.DeepEqual(heads, want) {
+		t.Fatalf("source-head eligibility, zero ID/position, first ASCII key and UTF-8 bytes: got=%+v err=%v want=%+v", heads, err, want)
+	}
+	var positions []app.SourcePropertyPos
+	for _, id := range []uuid.UUID{zero, current, old, invalid, foreign, missing} {
+		positions = append(positions, app.SourcePropertyPos{PageID: id, Position: 0})
+	}
+	values, err := r.SourceProperties(t.Context(), f.eng, positions)
+	wantValues := []app.SourceProperty{
+		{SourcePropertyPos: positions[0], Key: "Sources", JSON: []byte(`"é"`)},
+		{SourcePropertyPos: positions[1], Key: "Sources", JSON: []byte(`"é"`)},
+	}
+	if err != nil || !reflect.DeepEqual(values, wantValues) {
+		t.Fatalf("source-values preserve exact eligibility/position/JSON: got=%+v err=%v want=%+v", values, err, wantValues)
+	}
+	calls := tr.names()
+	if !reflect.DeepEqual(calls, []string{"LintFirstSourceHeads", "LintFirstSourceValues"}) {
+		t.Fatalf("source reads real query witness=%v", calls)
+	}
+	if empty, err := r.SourcePropertyHeads(t.Context(), f.eng, nil); err != nil || len(empty) != 0 {
+		t.Fatalf("empty source-head batch: %+v, %v", empty, err)
+	}
+	large := make([]uuid.UUID, 513)
+	for i := range large {
+		large[i] = lintID(uint64(i))
+	}
+	for _, ids := range [][]uuid.UUID{{zero, zero}, {current, zero}, large} {
+		if got, err := r.SourcePropertyHeads(t.Context(), f.eng, ids); err == nil || len(got) != 0 {
+			t.Fatalf("invalid source-head batch len=%d accepted: %+v, %v", len(ids), got, err)
+		}
+	}
+	if !reflect.DeepEqual(tr.names(), calls) {
+		t.Fatalf("empty or invalid source-head IDs reached SQL: before=%v after=%v", calls, tr.names())
+	}
+	// Adapter callers require unique IDs. The generated SQL still preserves bag
+	// multiplicity if called directly, since indexed_pages.node_id is a PK.
+	duplicates, err := gen.New(postgres.Planned(f.pool)).LintFirstSourceHeads(t.Context(), gen.LintFirstSourceHeadsParams{NotebookID: f.eng, Extractor: domain.Extractor, PageIds: []uuid.UUID{zero, zero}})
+	if err != nil || len(duplicates) != 2 || duplicates[0] != duplicates[1] || duplicates[0].NodeID != zero || duplicates[0].Position != 0 || duplicates[0].ValueBytes != int64(len(`"é"`)) {
+		t.Fatalf("direct SQL source-head duplicate multiplicity: %+v, %v", duplicates, err)
+	}
 }

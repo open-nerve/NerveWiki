@@ -126,6 +126,9 @@ type LintReadStore interface {
 	WantedEdgeHeads(context.Context, uuid.UUID, []uuid.UUID, *EdgePos, int) ([]EdgeHead, error)
 	AmbiguousEdgeHeads(context.Context, uuid.UUID, []uuid.UUID, *EdgePos, int) ([]EdgeHead, error)
 	Edges(context.Context, uuid.UUID, []EdgePos) ([]LintEdge, error)
+	// HasSourceProperties takes the complete sorted, unique eligibility set,
+	// including zero UUID. True still requires the original bounded reads.
+	HasSourceProperties(context.Context, uuid.UUID, []uuid.UUID) (bool, error)
 	SourcePropertyHeads(context.Context, uuid.UUID, []uuid.UUID) ([]SourcePropertyHead, error)
 	SourceProperties(context.Context, uuid.UUID, []SourcePropertyPos) ([]SourceProperty, error)
 	SourceSlotHeads(context.Context, uuid.UUID, []SourceSpec, *EdgePos, int) ([]SourceSlotHead, error)
@@ -265,8 +268,8 @@ func (r *LintReads) Ambiguous(notebook uuid.UUID, excluded []uuid.UUID) *LintBat
 	})
 }
 
-// SourceValues probes every eligible page once, in disjoint groups of 512.
-// A page without sources yields no head and never causes a slot query.
+// SourceValues first checks the complete eligible relation for sources. A
+// positive result retains the original disjoint 512-page heads/value stream.
 func (r *LintReads) SourceValues(notebook uuid.UUID, eligible []uuid.UUID) *LintBatches[SourceProperty] {
 	ids := slices.Clone(eligible)
 	for i, id := range ids {
@@ -274,7 +277,25 @@ func (r *LintReads) SourceValues(notebook uuid.UUID, eligible []uuid.UUID) *Lint
 			return &LintBatches[SourceProperty]{err: errors.New("lint reads: source IDs must be unique and sorted")}
 		}
 	}
+	probed := false
 	head := func(ctx context.Context, _ *EdgePos) ([]SourcePropertyHead, error) {
+		if !probed && len(ids) > 0 {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			has, err := r.store.HasSourceProperties(ctx, notebook, ids)
+			if err != nil {
+				return nil, err
+			}
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			probed = true
+			if !has {
+				ids = nil
+				return nil, nil
+			}
+		}
 		for len(ids) > 0 {
 			if err := ctx.Err(); err != nil {
 				return nil, err

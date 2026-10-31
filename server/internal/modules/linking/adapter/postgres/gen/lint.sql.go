@@ -335,14 +335,19 @@ func (q *Queries) LintEdgesByPositions(ctx context.Context, arg LintEdgesByPosit
 const lintFirstSourceHeads = `-- name: LintFirstSourceHeads :many
 WITH requested AS MATERIALIZED (SELECT unnest($3::uuid[]) AS id)
 SELECT ip.node_id,p.position,octet_length(p.value::text)::bigint AS value_bytes
-FROM requested r JOIN indexed_pages ip ON ip.node_id=r.id
+FROM requested r
+CROSS JOIN LATERAL (
+ SELECT ip.node_id FROM indexed_pages ip
+ WHERE ip.node_id=r.id AND ip.notebook_id=$1
+   AND ip.extractor=$2 AND ip.frontmatter_valid
+ LIMIT 1
+) ip
 CROSS JOIN LATERAL (
  SELECT p.position,p.value FROM page_properties p
  WHERE p.source_id=ip.node_id AND translate(p.key,'SOURCE','source')='sources'
  ORDER BY p.position LIMIT 1
 ) p
-WHERE ip.notebook_id=$1 AND ip.extractor=$2
- AND ip.frontmatter_valid ORDER BY ip.node_id
+ORDER BY ip.node_id
 `
 
 type LintFirstSourceHeadsParams struct {
@@ -383,13 +388,18 @@ WITH requested AS MATERIALIZED (
         unnest($4::integer[]) AS position
 )
 SELECT r.id::uuid AS node_id,p.position,p.key,p.value::text AS value
-FROM requested r JOIN indexed_pages ip ON ip.node_id=r.id
+FROM requested r
+CROSS JOIN LATERAL (
+ SELECT ip.node_id FROM indexed_pages ip
+ WHERE ip.node_id=r.id AND ip.notebook_id=$1
+   AND ip.extractor=$2 AND ip.frontmatter_valid
+ LIMIT 1
+) ip
 CROSS JOIN LATERAL (
  SELECT p.position,p.key,p.value FROM page_properties p
  WHERE p.source_id=r.id AND p.position=r.position LIMIT 1
 ) p
-WHERE ip.notebook_id=$1 AND ip.extractor=$2
- AND ip.frontmatter_valid AND translate(p.key,'SOURCE','source')='sources'
+WHERE translate(p.key,'SOURCE','source')='sources'
 ORDER BY r.id
 `
 
@@ -435,6 +445,41 @@ func (q *Queries) LintFirstSourceValues(ctx context.Context, arg LintFirstSource
 		return nil, err
 	}
 	return items, nil
+}
+
+const lintHasSourceProperties = `-- name: LintHasSourceProperties :one
+WITH requested AS MATERIALIZED (SELECT unnest($3::uuid[]) AS id)
+SELECT EXISTS (
+ SELECT 1 FROM requested r
+ CROSS JOIN LATERAL (
+  SELECT p.source_id FROM page_properties p
+  WHERE p.source_id=r.id AND translate(p.key,'SOURCE','source')='sources'
+  LIMIT 1
+ ) present
+ CROSS JOIN LATERAL (
+  SELECT 1 FROM indexed_pages ip
+  WHERE ip.node_id=present.source_id AND ip.notebook_id=$1
+  AND ip.extractor=$2 AND ip.frontmatter_valid
+  LIMIT 1
+ ) current
+)
+`
+
+type LintHasSourcePropertiesParams struct {
+	NotebookID uuid.UUID
+	Extractor  int32
+	PageIds    []uuid.UUID
+}
+
+// The complete eligible relation drives indexed property point probes. Check
+// the original current-page qualification only after a property is found;
+// keep both LIMITs so absent sources do not require every indexed-page lookup.
+// page_properties has no FK: do not add a new p.notebook_id qualification.
+func (q *Queries) LintHasSourceProperties(ctx context.Context, arg LintHasSourcePropertiesParams) (bool, error) {
+	row := q.db.QueryRow(ctx, lintHasSourceProperties, arg.NotebookID, arg.Extractor, arg.PageIds)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
 const lintHeads = `-- name: LintHeads :many

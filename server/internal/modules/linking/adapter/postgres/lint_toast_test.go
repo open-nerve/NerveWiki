@@ -116,6 +116,15 @@ func TestLintJSONToast(t *testing.T) {
 			t.Fatalf("target point read: %d rows, %d TOAST blocks", len(exact), positive)
 		}
 		var jsonHeads []app.SourcePropertyHead
+		var hasSources bool
+		presenceJSON := lintToast(t, f, "page_properties", func(ctx context.Context) error {
+			var err error
+			hasSources, err = r.HasSourceProperties(ctx, f.eng, []uuid.UUID{p})
+			return err
+		})
+		if !hasSources || presenceJSON != 0 {
+			t.Fatalf("presence read JSON TOAST or lost the real source: has=%t blocks=%d", hasSources, presenceJSON)
+		}
 		headJSON := lintToast(t, f, "page_properties", func(ctx context.Context) error {
 			var err error
 			jsonHeads, err = r.SourcePropertyHeads(ctx, f.eng, []uuid.UUID{p})
@@ -156,7 +165,7 @@ func TestLintJSONToast(t *testing.T) {
 				t.Fatalf("short body read %s TOAST: %d", table, bodyBlocks)
 			}
 		}
-		lintEvidence(t, "toast-controls", map[string]any{"target_bytes": len(target), "target_head_blocks": blocks, "exact_target_blocks": positive, "JSON_head_blocks": headJSON, "JSON_exact_blocks": exactJSON})
+		lintEvidence(t, "toast-controls", map[string]any{"target_bytes": len(target), "target_head_blocks": blocks, "exact_target_blocks": positive, "JSON_presence_blocks": presenceJSON, "JSON_head_blocks": headJSON, "JSON_exact_blocks": exactJSON})
 	})
 	t.Run("legal-escaped-target", func(t *testing.T) {
 		const c = 5 * 1024 * 1024

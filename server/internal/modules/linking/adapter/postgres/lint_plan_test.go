@@ -135,6 +135,19 @@ func lintEvidence(t *testing.T, name string, value any) {
 }
 func lintExecuted(t *testing.T, f fixture, s statement, generic bool) (planNode, lintPlanEvidence) {
 	t.Helper()
+	mode := "force_custom_plan"
+	if generic {
+		mode = "force_generic_plan"
+	}
+	return lintExecutedMode(t, f, s, mode, nil)
+}
+
+func lintExecutedMode(t *testing.T, f fixture, s statement, mode string, checkRow func(pgx.Rows, int)) (planNode, lintPlanEvidence) {
+	t.Helper()
+	if mode != "auto" && mode != "force_custom_plan" && mode != "force_generic_plan" {
+		t.Fatalf("unsupported plan mode %q", mode)
+	}
+	generic := mode == "force_generic_plan"
 	ctx := t.Context()
 	tx, err := f.pool.Begin(ctx)
 	if err != nil {
@@ -170,10 +183,6 @@ func lintExecuted(t *testing.T, f fixture, s statement, generic bool) (planNode,
 		if v != "on" {
 			t.Fatalf("production planner switch %s=%s", name, v)
 		}
-	}
-	mode := "force_custom_plan"
-	if generic {
-		mode = "force_generic_plan"
 	}
 	evidence.Mode = mode
 	if _, err := tx.Exec(ctx, "SET LOCAL plan_cache_mode="+mode); err != nil {
@@ -213,8 +222,11 @@ func lintExecuted(t *testing.T, f fixture, s statement, generic bool) (planNode,
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer rows.Close()
 	for rows.Next() {
-		if _, err := rows.Values(); err != nil {
+		if checkRow != nil {
+			checkRow(rows, evidence.Rows)
+		} else if _, err := rows.Values(); err != nil {
 			rows.Close()
 			t.Fatal(err)
 		}
@@ -466,6 +478,112 @@ func TestLintPlans(t *testing.T) {
 	if testing.Short() {
 		t.Skip("plan and physical work fixture")
 	}
+	t.Run("source-heads-bounded-indexed-pages", func(t *testing.T) {
+		t.Run("fresh-100k", func(t *testing.T) {
+			f := newFixture(t)
+			lintExec(t, f, "CREATE EXTENSION IF NOT EXISTS pageinspect")
+			for _, table := range []string{"indexed_pages", "page_links", "page_properties"} {
+				lintExec(t, f, "ALTER TABLE "+table+" SET (autovacuum_enabled=false)")
+			}
+			// Copy actual parser/writer facts. Each query gets one 512-ID batch;
+			// the other current pages must not multiply that batch's work.
+			first := lintReaderID(1)
+			f.replace(t, app.Page{ID: first, NotebookID: f.eng, Revision: 1}, originFacts(t, "---\ntype: note\nsummary: complete\n---\n[[x]]"))
+			lintExec(t, f, `INSERT INTO indexed_pages(node_id,notebook_id,revision,extractor,frontmatter_valid)
+ SELECT ('10000000-0000-0000-0000-'||lpad(to_hex(k),12,'0'))::uuid,$1,1,$2,true FROM generate_series(2,100000) k`, f.eng, domain.Extractor)
+			lintExec(t, f, `INSERT INTO page_properties(source_id,position,notebook_id,key,value)
+ SELECT ip.node_id,p.position,ip.notebook_id,p.key,p.value FROM indexed_pages ip CROSS JOIN page_properties p
+ WHERE p.source_id=$1 AND ip.node_id<>$1`, first)
+			// The first batch has no sources; the last batch has tiny, position-2
+			// sources. Both readers share this one fresh 100k-page fixture.
+			lintExec(t, f, `INSERT INTO page_properties(source_id,position,notebook_id,key,value)
+ SELECT node_id,2,notebook_id,'Sources','"tiny"'::jsonb FROM indexed_pages
+ WHERE node_id>='10000000-0000-0000-0000-0000000184a1'::uuid`)
+			var pages, properties int
+			if err := f.pool.QueryRow(t.Context(), `SELECT (SELECT count(*) FROM indexed_pages),(SELECT count(*) FROM page_properties)`).Scan(&pages, &properties); err != nil || pages != 100000 || properties != 200512 {
+				t.Fatalf("source-heads fixture: pages=%d properties=%d err=%v", pages, properties, err)
+			}
+			ids, valueIDs := make([]uuid.UUID, 512), make([]uuid.UUID, 512)
+			positions := make([]int32, 512)
+			for i := range ids {
+				ids[i] = lintReaderID(uint64(i + 1))
+				valueIDs[i] = lintReaderID(uint64(99489 + i))
+				positions[i] = 2
+			}
+			for _, stats := range []string{"no-statistics", "analyzed"} {
+				if stats == "analyzed" {
+					lintAnalyze(t, f)
+				}
+				t.Run(stats, func(t *testing.T) {
+					for _, mode := range []struct{ name, setting string }{{"normal", "auto"}, {"custom", "force_custom_plan"}, {"generic", "force_generic_plan"}} {
+						t.Run(mode.name, func(t *testing.T) {
+							s := statementOf(t, func(q *gen.Queries) error {
+								_, err := q.LintFirstSourceHeads(t.Context(), gen.LintFirstSourceHeadsParams{NotebookID: f.eng, Extractor: domain.Extractor, PageIds: ids})
+								return err
+							})
+							plan, evidence := lintExecutedMode(t, f, s, mode.setting, nil)
+							lintAssertSourceHeadWork(t, plan, evidence, len(ids), 0)
+							if mode.name == "normal" {
+								lintSourceReadsDescribeExec(t, f, ids, valueIDs)
+							}
+						})
+						t.Run("values-"+mode.name, func(t *testing.T) {
+							s := statementOf(t, func(q *gen.Queries) error {
+								_, err := q.LintFirstSourceValues(t.Context(), gen.LintFirstSourceValuesParams{NotebookID: f.eng, Extractor: domain.Extractor, PageIds: valueIDs, Positions: positions})
+								return err
+							})
+							plan, evidence := lintExecutedMode(t, f, s, mode.setting, lintSourceValueRows(t, valueIDs, 2, "Sources", `"tiny"`))
+							lintAssertSourceValueWork(t, plan, evidence, len(valueIDs), 512)
+						})
+					}
+				})
+			}
+		})
+		t.Run("hidden-A-B-A", func(t *testing.T) {
+			lintHiddenFixtures(t, "wanted", func(t *testing.T, f fixture, compare func(*testing.T, string, lintPlanEvidence)) {
+				// One 512-ID batch spans the first, middle, and last target keys.
+				var ids []uuid.UUID
+				for _, span := range [][2]uint64{{1, 170}, {916, 1086}, {1830, 2000}} {
+					for n := span[0]; n <= span[1]; n++ {
+						ids = append(ids, lintReaderID(n))
+					}
+				}
+				for _, stats := range []string{"no-statistics", "analyzed"} {
+					if stats == "analyzed" {
+						lintAnalyze(t, f)
+					}
+					t.Run(stats, func(t *testing.T) {
+						for _, generic := range []bool{false, true} {
+							t.Run(fmt.Sprint(generic), func(t *testing.T) {
+								s := statementOf(t, func(q *gen.Queries) error {
+									_, err := q.LintFirstSourceHeads(t.Context(), gen.LintFirstSourceHeadsParams{NotebookID: f.eng, Extractor: domain.Extractor, PageIds: ids})
+									return err
+								})
+								plan, evidence := lintExecuted(t, f, s, generic)
+								lintAssertSourceHeadWork(t, plan, evidence, len(ids), 510)
+								compare(t, fmt.Sprintf("heads/%s/%t", stats, generic), evidence)
+								positions := make([]int32, len(ids))
+								for i := range positions {
+									positions[i] = 1
+								}
+								values := statementOf(t, func(q *gen.Queries) error {
+									_, err := q.LintFirstSourceValues(t.Context(), gen.LintFirstSourceValuesParams{NotebookID: f.eng, Extractor: domain.Extractor, PageIds: ids, Positions: positions})
+									return err
+								})
+								mode := "force_custom_plan"
+								if generic {
+									mode = "force_generic_plan"
+								}
+								plan, evidence = lintExecutedMode(t, f, values, mode, lintSourceValueRows(t, ids[2:], 1, "Sources", `"x"`))
+								lintAssertSourceValueWork(t, plan, evidence, len(ids), 510)
+								compare(t, fmt.Sprintf("values/%s/%t", stats, generic), evidence)
+							})
+						}
+					})
+				}
+			})
+		})
+	})
 	t.Run("first-sources-probe", func(t *testing.T) {
 		f := lintPlanFixture(t, "00000000", 50000)
 		absent, dense := lintReaderID(1), lintReaderID(2)
@@ -484,6 +602,7 @@ func TestLintPlans(t *testing.T) {
 							return err
 						})
 						plan, ev := lintExecuted(t, f, s, generic)
+						lintAssertSourceHeadWork(t, plan, ev, len(ids), 2)
 						if ev.Rows != 2 {
 							t.Errorf("first-key probe rows %d, want 2", ev.Rows)
 						}
@@ -577,6 +696,105 @@ func TestLintPlans(t *testing.T) {
 			t.Fatalf("cached positive control: %d %v", cached, err)
 		}
 	})
+}
+
+// This exercises the public adapter on a default auto/DescribeExec connection,
+// separately from the measured custom and actual prepared-generic calls.
+func lintSourceReadsDescribeExec(t *testing.T, f fixture, ids, valueIDs []uuid.UUID) {
+	t.Helper()
+	tr := &lintTrace{}
+	pool := lintPool(t, f, tr, 1)
+	conn, err := pool.Acquire(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Release()
+	var mode string
+	if err := conn.QueryRow(t.Context(), "SHOW plan_cache_mode").Scan(&mode); err != nil || mode != "auto" {
+		t.Fatalf("normal source-head mode=%q err=%v", mode, err)
+	}
+	ctx := postgres.OnConn(t.Context(), conn)
+	heads, err := postgresadapter.NewLintReads(pool, 5*1024*1024).SourcePropertyHeads(ctx, f.eng, ids)
+	if err != nil || len(heads) != 0 || len(tr.calls) != 1 || tr.calls[0] != "LintFirstSourceHeads" || len(tr.modes) != 1 || tr.modes[0] != pgx.QueryExecModeDescribeExec {
+		t.Fatalf("normal source-head adapter: heads=%+v err=%v calls=%v modes=%v", heads, err, tr.calls, tr.modes)
+	}
+	positions := make([]app.SourcePropertyPos, len(valueIDs))
+	want := make([]app.SourceProperty, len(valueIDs))
+	for i, id := range valueIDs {
+		positions[i] = app.SourcePropertyPos{PageID: id, Position: 2}
+		want[i] = app.SourceProperty{SourcePropertyPos: positions[i], Key: "Sources", JSON: []byte(`"tiny"`)}
+	}
+	values, err := postgresadapter.NewLintReads(pool, 5*1024*1024).SourceProperties(ctx, f.eng, positions)
+	if err != nil || !reflect.DeepEqual(values, want) || len(tr.calls) != 2 || tr.calls[1] != "LintFirstSourceValues" || len(tr.modes) != 2 || tr.modes[1] != pgx.QueryExecModeDescribeExec {
+		t.Fatalf("normal source-values adapter: rows=%d err=%v calls=%v modes=%v", len(values), err, tr.calls, tr.modes)
+	}
+	var cached int
+	if err := conn.QueryRow(t.Context(), `SELECT count(*) FROM pg_prepared_statements WHERE statement LIKE '-- name: Lint%'`).Scan(&cached); err != nil || cached != 0 {
+		t.Fatalf("normal sources named cache=%d err=%v", cached, err)
+	}
+	lintEvidence(t, "source-reads-normal-adapter", map[string]any{"requested": len(ids), "head_rows": len(heads), "value_rows": len(values), "mode": mode, "calls": tr.calls, "execution_modes": tr.modes, "named_cache": cached})
+}
+
+func lintAssertSourcePageWork(t *testing.T, plan planNode, evidence lintPlanEvidence, requested, rows int) {
+	t.Helper()
+	if evidence.Rows != rows {
+		t.Errorf("source-head rows=%d, want %d", evidence.Rows, rows)
+	}
+	work := lintWorkWithoutPlannerProbes(t, evidence)
+	for name, w := range work {
+		if strings.HasPrefix(name, "indexed_pages") && (w.Scans > int64(requested) || w.Returned > int64(requested) || w.Fetched > int64(requested)) {
+			t.Errorf("indexed_pages read exceeded requested batch: %s=%+v requested=%d", name, w, requested)
+		}
+	}
+	ip := plan.all(readsOf("indexed_pages"))
+	if len(ip) != 1 || ip[0].Index != "indexed_pages_pkey" || !strings.Contains(ip[0].IndexCond, "node_id") || len(plan.unlimited("indexed_pages")) != 0 {
+		t.Errorf("source-head current-page probe needs bounded primary-key reads: %+v", ip)
+	}
+	if work["indexed_pages_pkey"].Scans == 0 || work["indexed_pages_pkey"].Fetched == 0 || work["indexed_pages"].Blocks == 0 {
+		t.Error("source-head physical witness did not read requested indexed_pages")
+	}
+}
+
+func lintAssertSourceHeadWork(t *testing.T, plan planNode, evidence lintPlanEvidence, requested, rows int) {
+	t.Helper()
+	lintAssertSourcePageWork(t, plan, evidence, requested, rows)
+	work := lintWorkWithoutPlannerProbes(t, evidence)
+	properties := plan.all(readsOf("page_properties"))
+	if len(properties) != 1 || properties[0].Index != "page_properties_sources_idx" || len(plan.unlimited("page_properties")) != 0 {
+		t.Errorf("source-head first property needs its partial index and LIMIT 1: %+v", properties)
+	}
+	if w := work["page_properties_sources_idx"]; w.Scans == 0 || w.Scans > int64(requested) || w.Returned != int64(rows) {
+		t.Errorf("source-head property probe work=%+v, requested=%d rows=%d", w, requested, rows)
+	}
+}
+
+func lintAssertSourceValueWork(t *testing.T, plan planNode, evidence lintPlanEvidence, requested, rows int) {
+	t.Helper()
+	lintAssertSourcePageWork(t, plan, evidence, requested, rows)
+	work := lintWorkWithoutPlannerProbes(t, evidence)
+	properties := plan.all(readsOf("page_properties"))
+	if len(properties) != 1 || properties[0].Index != "page_properties_pkey" || !strings.Contains(properties[0].IndexCond, "position") || len(plan.unlimited("page_properties")) != 0 {
+		t.Errorf("source-values paired probe needs its primary key and LIMIT 1: %+v", properties)
+	}
+	if w := work["page_properties_pkey"]; w.Scans == 0 || w.Scans > int64(requested) || w.Returned != int64(rows) {
+		t.Errorf("source-values property probe work=%+v, requested=%d rows=%d", w, requested, rows)
+	}
+}
+
+func lintSourceValueRows(t *testing.T, ids []uuid.UUID, position int32, key, value string) func(pgx.Rows, int) {
+	t.Helper()
+	return func(rows pgx.Rows, index int) {
+		t.Helper()
+		var id uuid.UUID
+		var gotPosition int32
+		var gotKey, gotValue string
+		if err := rows.Scan(&id, &gotPosition, &gotKey, &gotValue); err != nil {
+			t.Fatal(err)
+		}
+		if index >= len(ids) || id != ids[index] || gotPosition != position || gotKey != key || gotValue != value {
+			t.Fatalf("source-values row %d identity/position/key/JSON: %s %d %q %q", index, id, gotPosition, gotKey, gotValue)
+		}
+	}
 }
 
 func TestLintPhysicalRangesCompleteSources(t *testing.T) {

@@ -291,6 +291,19 @@ func testLintOriginD(t *testing.T, after bool) {
 		t.Fatalf("real non-NULL empty-property witness: %d %v", propertyPaths, err)
 	}
 	c.assertPending(t, []uuid.UUID{lintID(101)})
+	var probes int
+	for _, call := range c.trace.names() {
+		if call == "LintHasSourceProperties" {
+			probes++
+		}
+		if call == "LintFirstSourceHeads" || call == "LintFirstSourceValues" || call == "LintSourceSlotHeadsFirst" {
+			t.Fatalf("source absence queried property/slot rows: %v", c.trace.names())
+		}
+	}
+	// assertPending executes one summary and one list request for this item.
+	if probes != 2 {
+		t.Fatalf("body-only consumer needs one absence probe per request: calls=%v", c.trace.names())
+	}
 	name := "LintBodyReferencesFirst"
 	if after {
 		name = "LintBodyReferencesAfter"
